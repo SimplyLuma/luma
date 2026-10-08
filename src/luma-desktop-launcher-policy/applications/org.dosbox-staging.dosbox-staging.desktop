@@ -1,0 +1,8 @@
+[Desktop Entry]
+NoDisplay=true
+Name=DOSBox Staging
+Exec=dosbox
+Icon=org.dosbox-staging.dosbox-staging
+Type=Application
+Terminal=false
+Categories=Game;Emulator;

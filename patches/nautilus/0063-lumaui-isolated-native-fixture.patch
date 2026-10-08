@@ -1,0 +1,248 @@
+From ecd1ec1476b8d406ddac0e6e377e86c374b1679f Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:14:40 +0000
+Subject: [PATCH] Filer: isolate native fixture data and places
+
+---
+ src/nautilus-main.c    |  51 ++++++++++++++++++++
+ src/nautilus-sidebar.c | 106 ++++++++++++++++++++++++++++++++++-------
+ 2 files changed, 139 insertions(+), 18 deletions(-)
+
+diff --git a/src/nautilus-main.c b/src/nautilus-main.c
+index 3ca374e..d6daf85 100644
+--- a/src/nautilus-main.c
++++ b/src/nautilus-main.c
+@@ -55,6 +55,7 @@ main (int   argc,
+     textdomain (GETTEXT_PACKAGE);
+ 
+     g_set_prgname (APPLICATION_ID);
++    g_set_application_name (_("Filer"));
+ 
+     if (getuid () == 0)
+     {
+@@ -64,6 +65,56 @@ main (int   argc,
+         exit (ENOTSUP);
+     }
+ 
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        const char *fixture = g_getenv ("LUMA_FILER_FIXTURE");
++        const char *root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        if (*fixture == '\0' || !g_file_test (fixture, G_FILE_TEST_IS_REGULAR) ||
++            root == NULL || !g_path_is_absolute (root) ||
++            !g_file_test (root, G_FILE_TEST_IS_DIR))
++        {
++            g_printerr ("Filer fixture needs an absolute LUMA_FILER_FIXTURE_ROOT directory\n");
++            return EXIT_FAILURE;
++        }
++        g_autofree char *home = g_build_filename (root, "Home", NULL);
++        if (!g_file_test (home, G_FILE_TEST_IS_DIR))
++        {
++            g_printerr ("Filer fixture needs a Home directory under its root\n");
++            return EXIT_FAILURE;
++        }
++        g_setenv ("HOME", home, TRUE);
++        const struct { const char *name; const char *env; } profile[] = {
++            { "config", "XDG_CONFIG_HOME" },
++            { "data", "XDG_DATA_HOME" },
++            { "cache", "XDG_CACHE_HOME" },
++        };
++        for (guint i = 0; i < G_N_ELEMENTS (profile); i++)
++        {
++            g_autofree char *path = g_build_filename (root, "Profile", profile[i].name, NULL);
++            if (!g_file_test (path, G_FILE_TEST_IS_DIR))
++            {
++                g_printerr ("Filer fixture needs its private Profile/%s directory\n", profile[i].name);
++                return EXIT_FAILURE;
++            }
++            g_setenv (profile[i].env, path, TRUE);
++        }
++        g_autoptr (GFile) root_file = g_file_new_for_path (root);
++        for (int i = 1; i < argc; i++)
++        {
++            if (argv[i][0] == '-')
++            {
++                continue;
++            }
++            g_autoptr (GFile) requested = g_file_new_for_commandline_arg (argv[i]);
++            if (!g_file_has_prefix (requested, root_file) &&
++                !g_file_equal (requested, root_file))
++            {
++                g_printerr ("Filer fixture refuses a location outside its root: %s\n", argv[i]);
++                return EXIT_FAILURE;
++            }
++        }
++    }
++
+     nautilus_register_resource ();
+     /* Run the nautilus application. */
+     application = nautilus_application_new ();
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index 0931409..b35e7d1 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -15,6 +15,7 @@
+ #include "config.h"
+ #include <glib/gi18n.h>
+ #include <gtk/gtk.h>
++#include <luma-ui.h>
+ #include <luma-reorder-hint.h>
+ #include "nautilus-enum-types.h"
+ 
+@@ -726,6 +727,43 @@ on_account_updated (GObject    *object,
+ 
+ #endif
+ 
++static void
++add_fixture_places (NautilusSidebar *sidebar,
++                    const char      *fixture_root)
++{
++    const struct {
++        const char *name;
++        const char *path;
++        const char *icon;
++        NautilusSidebarSectionType section;
++    } places[] = {
++        { N_("Recent"), "Recent", "clock", NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS },
++        { N_("Home"), "Home", "house", NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS },
++        { N_("Documents"), "Home/Documents", "file-text", NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS },
++        { N_("Downloads"), "Home/Downloads", "download", NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS },
++        { N_("Pictures"), "Home/Pictures", "image", NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS },
++        { N_("Projects"), "Home/Projects", "folder", NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS },
++        { N_("Fable SSD"), "Fable SSD", "hard-drive", NAUTILUS_SIDEBAR_SECTION_MOUNTS },
++        { N_("Archive"), "Archive", "hard-drive", NAUTILUS_SIDEBAR_SECTION_MOUNTS },
++    };
++
++    for (guint i = 0; i < G_N_ELEMENTS (places); i++)
++    {
++        g_autofree char *path = g_build_filename (fixture_root, places[i].path, NULL);
++        if (!g_file_test (path, G_FILE_TEST_IS_DIR))
++        {
++            continue;
++        }
++        g_autoptr (GFile) file = g_file_new_for_path (path);
++        g_autofree char *uri = g_file_get_uri (file);
++        g_autofree char *icon_name = luma_ui_icon_name (places[i].icon);
++        g_autoptr (GIcon) icon = g_themed_icon_new (icon_name);
++        add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN, places[i].section,
++                   _(places[i].name), icon, NULL, uri,
++                   NULL, NULL, NULL, NULL, i, path);
++    }
++}
++
+ static void
+ update_places (NautilusSidebar *sidebar)
+ {
+@@ -785,6 +823,22 @@ update_places (NautilusSidebar *sidebar)
+         gtk_list_box_remove (GTK_LIST_BOX (sidebar->trash_list_box), child);
+     }
+ 
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        if (fixture_root != NULL && *fixture_root != '\0')
++        {
++            add_fixture_places (sidebar, fixture_root);
++        }
++        if (original_uri != NULL)
++        {
++            g_autoptr (GFile) restore = g_file_new_for_uri (original_uri);
++            nautilus_sidebar_set_location (sidebar, restore);
++            g_free (original_uri);
++        }
++        return;
++    }
++
+     network_mounts = network_volumes = NULL;
+ 
+     /* add built-in places */
+@@ -3576,6 +3630,10 @@ list_box_sort_func (GtkListBoxRow *row1,
+ 
+     if (section_type_1 == NAUTILUS_SIDEBAR_SECTION_MOUNTS)
+     {
++        if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++        {
++            return index_1 - index_2;
++        }
+         g_autoptr (GVolume) volume_1 = NULL, volume_2 = NULL;
+ 
+         g_object_get (row1, "volume", &volume_1, NULL);
+@@ -3724,7 +3782,10 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+     GtkEventController *controller;
+     GtkGesture *gesture;
+ 
+-    create_volume_monitor (sidebar);
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        create_volume_monitor (sidebar);
++    }
+ 
+     sidebar->slot_signal_group = g_signal_group_new (NAUTILUS_TYPE_WINDOW_SLOT);
+     g_signal_group_connect_object (sidebar->slot_signal_group, "notify::location",
+@@ -3742,9 +3803,12 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+                              G_CALLBACK (update_places), sidebar,
+                              G_CONNECT_SWAPPED);
+ 
+-    g_signal_connect_object (nautilus_trash_monitor_get (), "trash-state-changed",
+-                             G_CALLBACK (update_trash_icon), sidebar,
+-                             G_CONNECT_SWAPPED);
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        g_signal_connect_object (nautilus_trash_monitor_get (), "trash-state-changed",
++                                 G_CALLBACK (update_trash_icon), sidebar,
++                                 G_CONNECT_SWAPPED);
++    }
+ 
+     sidebar->root_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+     gtk_widget_set_parent (sidebar->root_box, GTK_WIDGET (sidebar));
+@@ -3818,15 +3882,18 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+ 
+     sidebar->hostname = g_strdup (_("Device"));
+     sidebar->hostnamed_cancellable = g_cancellable_new ();
+-    g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM,
+-                              G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES,
+-                              NULL,
+-                              "org.freedesktop.hostname1",
+-                              "/org/freedesktop/hostname1",
+-                              "org.freedesktop.hostname1",
+-                              sidebar->hostnamed_cancellable,
+-                              hostname_proxy_new_cb,
+-                              sidebar);
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM,
++                                  G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES,
++                                  NULL,
++                                  "org.freedesktop.hostname1",
++                                  "/org/freedesktop/hostname1",
++                                  "org.freedesktop.hostname1",
++                                  sidebar->hostnamed_cancellable,
++                                  hostname_proxy_new_cb,
++                                  sidebar);
++    }
+ 
+     sidebar->drop_state = DROP_STATE_NORMAL;
+ 
+@@ -3839,11 +3906,14 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+ 
+     /* Cloud providers */
+ #ifdef HAVE_CLOUDPROVIDERS
+-    sidebar->cloud_manager = cloud_providers_collector_dup_singleton ();
+-    g_signal_connect_swapped (sidebar->cloud_manager,
+-                              "providers-changed",
+-                              G_CALLBACK (update_places),
+-                              sidebar);
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        sidebar->cloud_manager = cloud_providers_collector_dup_singleton ();
++        g_signal_connect_swapped (sidebar->cloud_manager,
++                                  "providers-changed",
++                                  G_CALLBACK (update_places),
++                                  sidebar);
++    }
+ #endif
+ 
+     sidebar->show_trash = TRUE;
+-- 
+2.55.0
+

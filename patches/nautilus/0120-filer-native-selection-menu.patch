@@ -1,0 +1,89 @@
+From bf8847bc8fff5130f457c64990a107eff9e7845a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:58:16 +0000
+Subject: [PATCH] Open Filer selection menu in native fixture
+
+---
+ src/nautilus-window.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 7d206be..deab44c 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -143,6 +143,7 @@ struct _NautilusWindow
+     LumaBarItem *action_search_item;
+     char *action_search_placeholder;
+     LumaBarItem *action_modes_item;
++    LumaBarItem *action_more_item;
+     LumaModeSwitch *action_modes;
+     gboolean action_bar_selected;
+     guint action_search_timer;
+@@ -784,12 +785,12 @@ on_bar_more (LumaBarItem *item,
+     if (anchor == NULL)
+         return;
+     LumaFloatingMenu *menu = LUMA_FLOATING_MENU (luma_floating_menu_new (_("More")));
+-    luma_floating_menu_add_item (menu, _("Open in…"), "app-window", NULL, NULL,
++    luma_floating_menu_add_item (menu, _("Open in"), "app-window", NULL, NULL,
+                                  "view.open-with-other-application", FALSE);
+     luma_floating_menu_add_separator (menu);
+-    luma_floating_menu_add_item (menu, _("Rename…"), "pencil", NULL, NULL,
++    luma_floating_menu_add_item (menu, _("Rename"), "pencil", NULL, NULL,
+                                  "view.rename", FALSE);
+-    luma_floating_menu_add_item (menu, _("Move to…"), "folder-input", NULL, NULL,
++    luma_floating_menu_add_item (menu, _("Move to"), "folder-input", NULL, NULL,
+                                  "view.move-to", FALSE);
+     luma_floating_menu_add_item (menu, _("Compress"), "file-archive", NULL, NULL,
+                                  "view.compress", FALSE);
+@@ -828,6 +829,7 @@ update_action_center (NautilusWindow *window)
+         g_signal_connect (items[0], "dismissed", G_CALLBACK (on_bar_selection_dismissed), window);
+         g_signal_connect (items[4], "activated", G_CALLBACK (on_bar_information), window);
+         g_signal_connect (items[5], "activated", G_CALLBACK (on_bar_more), window);
++        g_set_object (&window->action_more_item, items[5]);
+         luma_action_center_show_bar (window->action_center, items, G_N_ELEMENTS (items), NULL);
+         for (guint i = 0; i < G_N_ELEMENTS (items); i++)
+             g_object_unref (items[i]);
+@@ -835,6 +837,7 @@ update_action_center (NautilusWindow *window)
+         return;
+     }
+ 
++    g_clear_object (&window->action_more_item);
+     LumaBarItem *back = luma_bar_item_new_action ("chevron-left", NULL, "slot.back");
+     LumaBarItem *forward = luma_bar_item_new_action ("chevron-right", NULL, "slot.forward");
+     luma_bar_item_set_tooltip (back, _("Back"));
+@@ -1953,6 +1956,7 @@ nautilus_window_finalize (GObject *object)
+     g_clear_object (&window->action_search_item);
+     g_clear_pointer (&window->action_search_placeholder, g_free);
+     g_clear_object (&window->action_modes_item);
++    g_clear_object (&window->action_more_item);
+ 
+     g_clear_object (&window->selected_file);
+     g_clear_object (&window->selected_volume);
+@@ -2298,6 +2302,15 @@ get_current_pointer_x (GtkGestureDrag *gesture,
+ /* The conform fixture names stable native states without making a capture
+  * client reach into Nautilus' private widget tree. Normal launches never use
+  * this path. Wait for the directory model before selecting a sample file. */
++static gboolean
++show_fixture_more (gpointer data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (data);
++    if (window->action_more_item != NULL)
++        on_bar_more (window->action_more_item, window);
++    return G_SOURCE_REMOVE;
++}
++
+ static gboolean
+ apply_fixture_state (gpointer data)
+ {
+@@ -2352,6 +2365,8 @@ apply_fixture_state (gpointer data)
+         g_autoptr (NautilusFile) file = nautilus_file_get (child);
+         GList selection = { .data = file };
+         nautilus_files_view_set_selection (view, &selection, FALSE);
++        if (g_strcmp0 (state, "more") == 0)
++            g_timeout_add (100, show_fixture_more, window);
+     }
+     else if (!g_str_has_prefix (state, "search-"))
+     {
+-- 
+2.55.0
+

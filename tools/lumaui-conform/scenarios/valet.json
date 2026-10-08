@@ -1,0 +1,111 @@
+{
+  "app": "valet",
+  "title": "Valet",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=valet",
+    "window": "#w-valet",
+    "exclude": [".grip"]
+  },
+  "gtk": {
+    "module": "luma_installer.installer",
+    "pythonpath": ["src/luma-installer"],
+    "fixtures": ["tests/fixtures/valet-v70.json", "tests/fixtures/valet-v70"],
+    "env": {
+      "LUMA_VALET_FIXTURE": "{run}/fixtures/valet-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "install",
+      "about": "Kiln installation ticket, v70's opening state",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "installing",
+      "about": "Kiln installation progress at 30 percent",
+      "spec": [{"eval": "window.setTimeout = () => 0"}, {"click": "[data-vlgo]"}, {"eval": "const bar = document.querySelector('#vl-body .vlprog'); bar.querySelector('i').style.width = '30%'; bar.querySelector('span').textContent = 'Downloading from Flathub'"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "installing"}}]
+    },
+    {
+      "name": "home",
+      "about": "Drop an app here",
+      "spec": [{"click": "[data-vlcancel]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "home"}}]
+    },
+    {
+      "name": "choose",
+      "about": "The sample Downloads chooser",
+      "spec": [{"click": "[data-vlcancel]"}, {"click": "[data-vlpick]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "choose"}}]
+    },
+    {
+      "name": "advanced",
+      "about": "Kiln package details",
+      "spec": [{"click": "[data-vladv]"}, {"eval": "document.querySelectorAll('#vl-body > .vtmain, #vl-body > .vtstub').forEach(el => { el.style.visibility = 'hidden' })"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "advanced"}}]
+    },
+    {
+      "name": "permission",
+      "about": "Network permission blocked for Kiln",
+      "spec": [{"click": "[data-vlperm=\"kiln0\"]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "permission"}}]
+    },
+    {
+      "name": "update",
+      "about": "Driftwood update ticket",
+      "spec": [{"click": "[data-vlcancel]"}, {"click": "[data-vlpick]"}, {"click": "[data-vlopen=\"driftwood\"]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "update"}}]
+    },
+    {
+      "name": "warning",
+      "about": "LabelPress compatibility warning",
+      "spec": [{"click": "[data-vlcancel]"}, {"click": "[data-vlpick]"}, {"click": "[data-vlopen=\"labelpress\"]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "warning"}}]
+    },
+    {
+      "name": "remove",
+      "about": "Harbor removal, keeping settings and data",
+      "spec": [{"eval": "document.querySelector('#vl-top .vlmenu').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true}))"}, {"click": "[data-vlrm=\"harbor\"]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "remove"}}]
+    },
+    {
+      "name": "remove_all",
+      "about": "Harbor removal, including settings and data",
+      "spec": [{"eval": "document.querySelector('#vl-top .vlmenu').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true}))"}, {"click": "[data-vlrm=\"harbor\"]"}, {"click": "[data-vlkeep=\"0\"]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "remove_all"}}]
+    },
+    {
+      "name": "removed",
+      "about": "Harbor removal complete",
+      "spec": [{"eval": "document.querySelector('#vl-top .vlmenu').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true}))"}, {"click": "[data-vlrm=\"harbor\"]"}, {"click": "[data-vlrmgo]"}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "removed"}}]
+    },
+    {
+      "name": "installed",
+      "about": "Kiln installation complete",
+      "spec": [{"eval": "window.Date = class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-25T10:40:00'])) } }"}, {"click": "[data-vlgo]", "wait": 5000}],
+      "gtk": [{"env": {"LUMA_VALET_STATE": "installed"}}]
+    }
+  ],
+  "phone_states": ["install", "installing", "home", "advanced", "remove", "remove_all", "installed"],
+  "app_icon": {"spec_src": "valet.svg", "gtk": "^valet-v70-spec$|^io\\.luma\\.Valet$|^application-x-executable$"},
+  "groups": [
+    {"name": "window controls", "spec": "#w-valet > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#vl-top"},
+    {"name": "advanced", "spec": "#vl-body .vladv.on"},
+    {"name": "app hero", "spec": "#vl-body .vthd"},
+    {"name": "permissions", "spec": "#vl-body .vtcanrow"},
+    {"name": "action", "spec": "#vl-body .vtact"},
+    {"name": "facts", "spec": "#vl-body .vtstub"},
+    {"name": "ticket", "spec": "#vl-body"}
+  ],
+  "pairs": [
+    {"spec": "#vl-top", "gtk": "vl-top", "name": "title row"},
+    {"spec": "#vl-body", "gtk": "vl-ticket", "name": "ticket"},
+    {"spec": "#vl-body .vtmain:not(.vtdrop)", "gtk": "vl-main", "name": "app panel"},
+    {"spec": "#vl-body .vtdrop", "gtk": "vl-home", "name": "home card"},
+    {"spec": "#vl-body .vtstub", "gtk": "vl-stub", "name": "facts stub"},
+    {"spec": "#vl-body .vlhero .vlic", "gtk": "vl-hero", "name": "app hero icon"}
+  ]
+}

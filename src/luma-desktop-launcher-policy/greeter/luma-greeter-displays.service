@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Show the login screen on the displays people arranged
+After=local-fs.target systemd-user-sessions.service
+Before=gdm.service display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-greeter-displays
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gdm
+PrivateNetwork=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical.target

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=Shows event reminders while Calendar is closed
+Exec=prairie-calendar --agent --autostart
+Icon=org.projectluma.Calendar
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-AutoRestart=false
+# Before luma-background is installed. With it, this start exits at once and the
+# service starts the agent under its limits.
+X-Luma-Background-Agent=org.projectluma.Calendar.Agent

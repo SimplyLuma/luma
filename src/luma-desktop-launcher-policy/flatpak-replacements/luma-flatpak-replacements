@@ -1,0 +1,61 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Fedora preinstalls some stock applications as system Flatpaks. Where Luma
+# ships a native application for the same role, two of them sit side by side
+# and the Flatpak's export path outranks Luma's launcher overrides. Image
+# provisioning removes these on fresh installs; this applies the same list to
+# machines that were installed before an entry existed.
+#
+# An application is removed only when its native provider RPM is installed,
+# and at most once: reinstalling it afterwards is the user's choice and stays.
+# User Flatpaks and shared runtimes are never touched.
+set -euo pipefail
+
+list=/usr/share/luma/system-flatpak-replacements.txt
+state=/var/lib/luma/flatpak-replacements
+
+command -v flatpak >/dev/null 2>&1 || exit 0
+[ -r "$list" ] || exit 0
+install -d -m 0755 "$state"
+
+# vitals RESULT APP PROVIDER: one structured journal entry per decision, for
+# Luma Vitals. Logging never blocks the removal.
+vitals() {
+  local result=$1 app=$2 provider=$3 priority=5
+  [ "$result" = failed ] && priority=3
+  printf '%s\n' \
+    "MESSAGE=System Flatpak $app $result; $provider replaces it" \
+    "SYSLOG_IDENTIFIER=luma-flatpak-replacements" \
+    "PRIORITY=$priority" \
+    "LUMA_VITALS_KIND=system-software-change" \
+    "LUMA_VITALS_UNIT=luma-flatpak-replacements.service" \
+    "LUMA_VITALS_DETAILS={\"action\": \"replace-system-flatpak\", \"app\": \"$app\", \"provider\": \"$provider\", \"result\": \"$result\"}" |
+    logger --journald 2>/dev/null || true
+}
+
+while read -r app_id provider remainder; do
+  case "$app_id" in
+    ''|'#'*) continue ;;
+  esac
+  if [ -z "${provider:-}" ] || [ -n "${remainder:-}" ]; then
+    printf 'Skipping malformed entry: %s %s %s\n' \
+      "$app_id" "${provider:-}" "${remainder:-}" >&2
+    continue
+  fi
+  case "$app_id" in
+    */*|.*) printf 'Skipping unsafe application id: %s\n' "$app_id" >&2; continue ;;
+  esac
+  [ -e "$state/$app_id" ] && continue
+  rpm -q "$provider" >/dev/null 2>&1 || continue
+  if flatpak info --system "$app_id" >/dev/null 2>&1; then
+    if flatpak uninstall --system --noninteractive "$app_id"; then
+      printf 'Removed system Flatpak %s; %s replaces it\n' "$app_id" "$provider"
+      vitals removed "$app_id" "$provider"
+    else
+      printf 'Could not remove system Flatpak %s; will retry next boot\n' "$app_id" >&2
+      vitals failed "$app_id" "$provider"
+      continue
+    fi
+  fi
+  : >"$state/$app_id"
+done <"$list"

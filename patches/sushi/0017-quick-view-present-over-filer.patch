@@ -1,0 +1,184 @@
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -35,8 +35,54 @@
+ const WINDOW_MAX_W_BASE = 1368;
+ const WINDOW_MAX_H_BASE = 768;
+ 
+-const Embed = GObject.registerClass(class Embed extends Gtk.Overlay {});
++// Luma: a GTK 3 window that cannot be resized takes its content's natural
++// size, and a picture's natural size is its pixel size, which can be larger
++// than the monitor. The pane's size request is the size Quick View chose, so
++// report it as the natural size.
++const Embed = GObject.registerClass(class Embed extends Gtk.Overlay {
++    vfunc_get_preferred_width() {
++        const [minimum, natural] = super.vfunc_get_preferred_width();
++        const [width] = this.get_size_request();
++        return width > 0 ? [Math.min(minimum, width), width] : [minimum, natural];
++    }
+ 
++    vfunc_get_preferred_height() {
++        const [minimum, natural] = super.vfunc_get_preferred_height();
++        const [, height] = this.get_size_request();
++        return height > 0 ? [Math.min(minimum, height), height] : [minimum, natural];
++    }
++
++    vfunc_get_preferred_height_for_width(width) {
++        const [minimum, natural] = super.vfunc_get_preferred_height_for_width(width);
++        const [, height] = this.get_size_request();
++        return height > 0 ? [Math.min(minimum, height), height] : [minimum, natural];
++    }
++
++    vfunc_get_preferred_width_for_height(height) {
++        const [minimum, natural] = super.vfunc_get_preferred_width_for_height(height);
++        const [width] = this.get_size_request();
++        return width > 0 ? [Math.min(minimum, width), width] : [minimum, natural];
++    }
++});
++
++// Luma: the compositor centres Quick View over the Filer window that asked for
++// it (the xdg-foreign parent), so the preview must fit whichever monitor that
++// window is on. GDK cannot name a Wayland window's monitor before it is shown,
++// so previews are sized for the smallest monitor. Monitor geometry is logical,
++// which keeps mixed scales (a 1x monitor next to a 1.25x panel) exact.
++var PREVIEW_CHROME = [12, 50];
++
++function smallestMonitorArea(areas) {
++    if (!areas.length) return {width: 1024, height: 768};
++    return {width: Math.min(...areas.map(area => area.width)),
++            height: Math.min(...areas.map(area => area.height))};
++}
++
++function previewMaxSize(area) {
++    return [Math.min(1080, Math.floor((area.width - 28) * 0.74)),
++            Math.min(800, Math.floor((area.height - 26) * 0.88) - PREVIEW_CHROME[1])];
++}
++
+ const ErrorBox = GObject.registerClass({
+     Implements: [Renderer.Renderer],
+     Properties: {
+@@ -292,19 +338,52 @@
+         if (this._renderer.ready) {
+             this._resizeWindow();
+             this.queue_resize();
++            if (!this.get_visible()) log(`[quick-view] present ${this._describeSize()}`);
+             this.show();
+         }
+ 
+     }
+ 
+-    _getMaxSize() {
++    _monitorAreas() {
+         const display = this.get_display();
+-        const monitor = display.get_monitor_at_window(this.get_window());
+-        const area = monitor.get_workarea();
+-        return [Math.min(1080, Math.floor((area.width - 28) * 0.74)),
+-                Math.min(800, Math.floor((area.height - 26) * 0.88) - 50)];
++        const areas = [];
++        for (let i = 0; i < display.get_n_monitors(); i++)
++            areas.push(display.get_monitor(i).get_workarea());
++        return areas;
+     }
+ 
++    _getMaxSize() {
++        return previewMaxSize(smallestMonitorArea(this._monitorAreas()));
++    }
++
++    _describeSize() {
++        const areas = this._monitorAreas();
++        const smallest = smallestMonitorArea(areas);
++        const [width, height] = this.get_size();
++        return `${width}x${height} over ${this._parentHandle ? 'its Filer window' : 'no parent'}; ` +
++            `${areas.length} monitor(s), smallest ${smallest.width}x${smallest.height}`;
++    }
++
++    // A shown Wayland window keeps its top-left corner when it changes size,
++    // so a new size would drift away from Filer and could leave the monitor.
++    // Show the preview again instead: the compositor places it afresh,
++    // centred over Filer and inside Filer's monitor.
++    _presentAgain(windowSize) {
++        this.hide();
++        this._applyContentSize(windowSize);
++        if (this._parentHandle)
++            Sushi.window_set_child_of_external(this, this._parentHandle);
++        log(`[quick-view] present again ${this._describeSize()}`);
++        this.show();
++    }
++
++    _applyContentSize(windowSize) {
++        // GTK ignores resize() for a non-resizable window without a content
++        // request. Keep the pane sized while preserving disabled edge grips.
++        this._embed.set_size_request(windowSize[0], windowSize[1]);
++        this.resize(windowSize[0] + PREVIEW_CHROME[0], windowSize[1] + PREVIEW_CHROME[1]);
++    }
++
+     _resizeWindow() {
+         if (!this._renderer)
+             return;
+@@ -344,10 +423,10 @@
+         if ((windowSize[0] > 0 && windowSize[0] != this._lastWindowSize[0]) ||
+             (windowSize[1] > 0 && windowSize[1] != this._lastWindowSize[1])) {
+             this._lastWindowSize = windowSize;
+-            // GTK ignores resize() for a non-resizable window without a content
+-            // request. Keep the pane sized while preserving disabled edge grips.
+-            this._embed.set_size_request(windowSize[0], windowSize[1]);
+-            this.resize(windowSize[0] + 12, windowSize[1] + 50);
++            if (this.get_mapped())
++                this._presentAgain(windowSize);
++            else
++                this._applyContentSize(windowSize);
+         }
+     }
+ 
+@@ -504,6 +583,7 @@
+      ************************ public methods **********************************
+      **************************************************************************/
+     setParent(handle) {
++        this._parentHandle = handle;
+         Sushi.window_set_child_of_external(this, handle);
+         this.application.updateParentHandle(handle);
+     }
+--- a/src/viewers/image.js
++++ b/src/viewers/image.js
+@@ -59,6 +59,14 @@
+ 
+         this._createImageTexture(file);
+ 
++        // Luma: a preview is created before it is shown, at the scale of the
++        // first monitor, then shown on Filer's monitor. Beside a 1x monitor a
++        // 1.25x panel draws at scale 2, so rebuild the picture for it.
++        this.connect('notify::scale-factor', () => {
++            this._scaledSurface = null;
++            this._ensureScaledPix();
++            this.queue_draw();
++        });
+         this.connect('destroy', this._onDestroy.bind(this));
+     }
+ 
+@@ -82,7 +90,8 @@
+         let width = this.get_allocated_width();
+         let height = this.get_allocated_height();
+ 
+-        let scaleFactor = this.get_scale_factor();
++        // Place the picture by the scale it was built for.
++        let scaleFactor = this._surfaceScale;
+         let offsetX = (width - this._scaledSurface.getWidth() / scaleFactor) / 2;
+         let offsetY = (height - this._scaledSurface.getHeight() / scaleFactor) / 2;
+ 
+@@ -128,7 +137,8 @@
+         let scaledWidth = this._scaledSurface ? this._scaledSurface.getWidth() : 0;
+         let scaledHeight = this._scaledSurface ? this._scaledSurface.getHeight() : 0;
+ 
+-        if (newWidth == scaledWidth && newHeight == scaledHeight)
++        if (newWidth == scaledWidth && newHeight == scaledHeight &&
++            this._surfaceScale === scaleFactor)
+             return;
+ 
+         // Avoid blur if we're upscaling a lot, e.g. when fullscreening
+@@ -141,6 +151,7 @@
+         this._scaledSurface = Gdk.cairo_surface_create_from_pixbuf(scaledPixbuf,
+                                                                    scaleFactor,
+                                                                    this.get_window());
++        this._surfaceScale = scaleFactor;
+     }
+ 
+     _setPix(pix) {

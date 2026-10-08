@@ -1,0 +1,53 @@
+diff --git a/extension.js b/extension.js
+--- a/extension.js
++++ b/extension.js
+@@ -28,6 +28,33 @@
+   squaredEuclideanDistance
+ } from "./utils/ui.js";
+ import * as Main from "resource:///org/gnome/shell/ui/main.js";
++
++// Luma: a window placed in a tile is tiled, as far as its client knows.
++// Mutter only sends tiled states for its own side-by-side tiling, so a window
++// Tiling Shell resized kept the shadows and resize borders of a floating
++// window; some clients (Chromium) keep those inside the size they are given
++// and spill past the tile. Every place Tiling Shell tiles or releases a window
++// sets `assignedTile`, so that one property tells Mutter.
++const LUMA_ASSIGNED_TILE = Symbol("luma-assigned-tile");
++function lumaTrackTiledState() {
++  if (Object.getOwnPropertyDescriptor(Meta.Window.prototype, "assignedTile"))
++    return;
++  Object.defineProperty(Meta.Window.prototype, "assignedTile", {
++    configurable: true,
++    get() {
++      return this[LUMA_ASSIGNED_TILE];
++    },
++    set(value) {
++      this[LUMA_ASSIGNED_TILE] = value;
++      this.set_externally_tiled?.(value !== void 0 && value !== null);
++    }
++  });
++}
++function lumaReleaseTiledState() {
++  delete Meta.Window.prototype.assignedTile;
++  for (const actor of global.get_window_actors())
++    actor.get_meta_window()?.set_externally_tiled?.(false);
++}
+ import { TilingManager } from "./components/tilingsystem/tilingManager.js";
+ import Settings from "./settings/settings.js";
+ import SignalHandling from "./utils/signalHandling.js";
+@@ -99,6 +126,7 @@
+   }
+ 
+   enable() {
++    lumaTrackTiledState();
+     if (this._signals) this._signals.disconnect();
+     this._signals = new SignalHandling();
+     Settings.initialize(this.getSettings());
+@@ -575,6 +603,7 @@
+   }
+ 
+   disable() {
++    lumaReleaseTiledState();
+     this._keybindings?.destroy();
+     this._keybindings = null;
+     this._signals?.disconnect();

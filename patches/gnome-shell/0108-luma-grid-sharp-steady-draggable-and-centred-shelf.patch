@@ -1,0 +1,499 @@
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -990,8 +990,16 @@
+                                     monitor.inFullscreen);
+     }
+ 
++    // Luma Grid shows every window as a card, so it hides the windows
++    // themselves exactly as the overview does.
++    setWindowsHiddenForGrid(hidden) {
++        this._hiddenForGrid = hidden;
++        this._updateVisibility();
++    }
++
+     _updateVisibility() {
+-        const windowsVisible = Main.sessionMode.hasWindows && !this._inOverview;
++        const windowsVisible = Main.sessionMode.hasWindows && !this._inOverview &&
++            !this._hiddenForGrid;
+ 
+         global.window_group.visible = windowsVisible;
+         global.top_window_group.visible = windowsVisible;
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -13,6 +13,7 @@
+ import * as Main from './main.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import {gridLayout, gridNeighbor} from './gridLayout.js';
++import {smoothOffscreenSampling} from './iconMask.js';
+ 
+ let activeGrid = null;
+ 
+@@ -49,6 +50,11 @@
+ const TRAVEL_MODE = Clutter.AnimationMode.EASE_OUT_QUART;
+ // Breathing room outside the row, applied identically on both sides.
+ const GRID_EDGE = 56;
++// A window's own corner radius on the desktop, which a travelling card starts from.
++const WINDOW_RADIUS = 15;
++// A flung row keeps moving and slows like a list on a phone: velocity decays
++// with this time constant, so it travels velocity x FLING_DECAY in total.
++const FLING_DECAY = 325;
+ 
+ // Keep the native handheld carousel unless Grid is explicitly invoked (Alt-Tab).
+ export function isDefault() {
+@@ -76,31 +82,68 @@
+     activeGrid.open();
+ }
+ 
++// Rounds a preview. The offscreen texture covers the body's paint volume,
++// enlarged the way ClutterOffscreenEffect enlarges it, not its allocation, so
++// the shape is measured in actor pixels from the texture's real origin.
++// Sampling is linear: previews rest and travel on fractional positions, and
++// nearest sampling there drops and doubles columns of text.
+ const RoundedPreview = GObject.registerClass(
+ class RoundedPreview extends Shell.GLSLEffect {
+     vfunc_build_pipeline() {
+         this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
+-            'uniform vec3 grid_shape;',
+-            `vec2 p = cogl_tex_coord_in[0].st * grid_shape.xy;
++            'uniform vec2 origin; uniform vec2 extent; uniform vec3 grid_shape;',
++            `vec2 p = origin + cogl_tex_coord_in[0].st * extent;
+              vec2 q = abs(p - grid_shape.xy * 0.5) -
+                  (grid_shape.xy * 0.5 - vec2(grid_shape.z));
+              float d = length(max(q, vec2(0.0))) +
+                  min(max(q.x, q.y), 0.0) - grid_shape.z;
+-             cogl_color_out *= 1.0 - smoothstep(-0.5, 0.5, d);`, false);
++             cogl_color_out *= clamp(0.5 - d, 0.0, 1.0);`, false);
+     }
+ 
+     setShape(width, height, radius) {
+         this.set_uniform_float(this.get_uniform_location('grid_shape'),
+             3, [width, height, radius]);
+     }
++
++    _textureOrigin(actor) {
++        const enlarge = (x1, width) => Math.ceil(x1 + width + 0.75) - Math.round(width) - 3;
++        const volume = actor.get_paint_volume();
++        if (volume && volume.get_width() * volume.get_height() !== 0) {
++            const origin = volume.get_origin();
++            return [Math.trunc(enlarge(origin.x, volume.get_width())),
++                Math.trunc(enlarge(origin.y, volume.get_height()))];
++        }
++        const box = actor.get_allocation_box();
++        return [Math.trunc(enlarge(box.x1, box.x2 - box.x1) - box.x1),
++            Math.trunc(enlarge(box.y1, box.y2 - box.y1) - box.y1)];
++    }
++
++    vfunc_paint_target(node, paintContext) {
++        const actor = this.actor;
++        const texture = this.get_texture();
++        if (actor && texture) {
++            const textureScale = Math.max(1, Math.ceil(actor.get_resource_scale()));
++            this.set_uniform_float(this.get_uniform_location('origin'), 2,
++                this._textureOrigin(actor));
++            this.set_uniform_float(this.get_uniform_location('extent'), 2,
++                [texture.get_width() / textureScale, texture.get_height() / textureScale]);
++        }
++        smoothOffscreenSampling(this);
++        super.vfunc_paint_target(node, paintContext);
++    }
+ });
+ 
+ function allocate(actor, x, y, width, height) {
++    // Whole pixels: a preview on a fractional position is resampled across it.
+     const box = new Clutter.ActorBox();
+-    box.set_origin(x, y);
+-    box.set_size(Math.max(0, width), Math.max(0, height));
++    const x1 = Math.round(x);
++    const y1 = Math.round(y);
++    box.set_origin(x1, y1);
++    box.set_size(Math.max(0, Math.round(x + width) - x1), Math.max(0, Math.round(y + height) - y1));
+     actor.allocate(box);
+ }
++
++const lerp = (from, to, progress) => from + (to - from) * progress;
+ 
+ const GridCard = GObject.registerClass(
+ class GridCard extends St.Widget {
+@@ -111,6 +154,7 @@
+         this._popup = popup;
+         this._selected = false;
+         this._radius = 9;
++        this._shapeRadius = null;
+         this._body = new Clutter.Actor();
+         this._body.layout_manager = new Shell.WindowPreviewLayout();
+         this._body.layout_manager.add_window(window);
+@@ -214,7 +258,7 @@
+         allocate(this._body, 0, 28 * scale, width, height);
+         allocate(this._close, width - 23 * scale, 25 * scale,
+             26 * scale, 26 * scale);
+-        this._rounded.setShape(width, height, this._radius * scale);
++        this._rounded.setShape(width, height, (this._shapeRadius ?? this._radius) * scale);
+     }
+ });
+ 
+@@ -239,10 +283,14 @@
+         this._wallpaper = new Clutter.Clone({source: Main.layoutManager._backgroundGroup});
+         this.add_child(this._wallpaper);
+         this._stage = new St.Widget({clip_to_allocation: true});
++        // Press and drag moves the row like a finger on a touchscreen, with a
++        // mouse as well as touch, and a flick keeps it gliding.
+         const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
+         pan.connect('recognize', () => {
++            this._stopFling();
+             this._panStart = this._scroll;
+             this._panStartX = this._scrollX;
++            this._flingVelocity = 0;
+         });
+         pan.connect('pan-update', gesture => {
+             const delta = gesture.get_accumulated_delta();
+@@ -251,8 +299,10 @@
+                 Math.max(0, this._geometry.height - this._contentHeight)));
+             this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax,
+                 this._panStartX - delta.get_x() / scale));
++            this._flingVelocity = -gesture.get_velocity().get_x() / scale;
+             this.queue_relayout();
+         });
++        pan.connect('end', () => this._fling(this._flingVelocity ?? 0));
+         this._stage.add_action(pan);
+         this.add_child(this._stage);
+         const recent = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
+@@ -303,14 +353,10 @@
+                 this.destroy();
+         }, this);
+         this.connect('destroy', () => {
+-            // Put back exactly the windows this popup hid. A window unmanaged
+-            // while Grid was open must not be resurrected, so each actor is
+-            // checked for its window before being shown again.
+-            this._hiddenActors?.forEach(actor => {
+-                if (actor.get_meta_window())
+-                    actor.show();
+-            });
+-            this._hiddenActors = null;
++            this._stopFling();
++            this._travelTimeline?.stop();
++            this._travelTimeline = null;
++            Main.layoutManager.setWindowsHiddenForGrid(false);
+             this._dismissSwipe?.destroy();
+             this._dismissSwipe = null;
+             if (this._grab)
+@@ -321,10 +367,6 @@
+         });
+     }
+ 
+-    get travelling() {
+-        return this._travel > 0;
+-    }
+-
+     get leaving() {
+         return this._leaving === true;
+     }
+@@ -338,18 +380,6 @@
+         return rect.width > 0 && rect.height > 0 ? rect : null;
+     }
+ 
+-    // The transform that puts a card's preview exactly over |rect|, given
+-    // where the card is allocated on the stage.
+-    _transformOnto(card, rect) {
+-        const home = card.home;
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const label = 28 * scale;
+-        const sx = rect.width / Math.max(1, home.width);
+-        const sy = rect.height / Math.max(1, home.height - label);
+-        return {translation_x: rect.x - home.x, translation_y: rect.y - home.y - label * sy,
+-            scale_x: sx, scale_y: sy};
+-    }
+-
+     _stackLikeTheDesktop(last = null) {
+         const windows = global.display.sort_windows_by_stacking(this._cards.map(c => c.window));
+         windows.forEach(window => {
+@@ -361,50 +391,93 @@
+             this._stage.set_child_above_sibling(last, null);
+     }
+ 
+-    _travelStarted() {
+-        this._travel = (this._travel ?? 0) + 1;
++    // Travel animates each card's allocation between its window's place on
++    // the desktop and its place in the row. Scaling a card instead would draw
++    // its preview texture at the row's size and stretch it over the window.
++    _travel(leaving, onDone) {
++        this._travelTimeline?.stop();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const label = 28 * scale;
++        const monitor = Main.layoutManager.primaryMonitor;
++        this._cards.forEach(card => {
++            const rect = this._desktopRect(card.window);
++            const home = card.home;
++            card._travelFrom = rect
++                ? {x: rect.x, y: rect.y - label, width: rect.width, height: rect.height + label}
++                : null;
++            // A card resting outside the visible row fades rather than flying
++            // to a place the clip hides.
++            card._travelShown = !monitor || !home ||
++                (home.x + home.width > monitor.x && home.x < monitor.x + monitor.width);
++            card.remove_all_transitions();
++            card.translation_y = 0;
++            card._close.visible = false;
++        });
++        this._travelProgress = leaving ? 1 : 0;
++        this._travelLeaving = leaving;
+         this._stage.clip_to_allocation = false;
+-    }
+-
+-    _travelEnded() {
+-        this._travel = Math.max(0, (this._travel ?? 0) - 1);
+-        if (this._travel === 0 && !this._leaving) {
+-            this._stage.clip_to_allocation = true;
+-            this._cards.forEach(card => {
+-                card.opacity = 255;
+-                card._syncSelection();
+-            });
++        const reduced = !St.Settings.get().enable_animations;
++        const timeline = this._travelTimeline = new Clutter.Timeline({
++            actor: this,
++            duration: reduced ? 1 : leaving ? LEAVE_DURATION : ENTER_DURATION,
++            progress_mode: TRAVEL_MODE,
++        });
++        timeline.connect('new-frame', () => {
++            this._travelProgress = leaving ? 1 - timeline.get_progress() : timeline.get_progress();
++            this.queue_relayout();
++        });
++        timeline.connect('stopped', (_timeline, finished) => {
++            if (this._travelTimeline !== timeline)
++                return;
++            this._travelTimeline = null;
++            this._travelProgress = leaving ? 0 : 1;
++            if (finished)
++                onDone();
++        });
++        timeline.start();
++    }
++
++    get travelling() {
++        return this._travelTimeline !== null && this._travelTimeline !== undefined;
++    }
++
++    // Where a card is drawn this frame: its row place, or on the way to or from its window.
++    _placeTravelling(card, home, stageOrigin, restRadius) {
++        const progress = this._travelProgress ?? 1;
++        if (progress >= 1 || !this.travelling && !this._leaving) {
++            card._shapeRadius = null;
++            card._header.opacity = 255;
++            card.opacity = 255;
++            return home;
+         }
++        const header = this._travelLeaving
++            ? Math.max(0, (progress - 0.5) * 2) : Math.max(0, (progress - 1 / 3) * 1.5);
++        card._header.opacity = Math.round(255 * Math.min(1, header));
++        const from = card._travelFrom;
++        if (!from) {
++            // Nothing on the desktop to come from: grow in place from 94%.
++            const inset = 0.03 * (1 - progress);
++            card.opacity = Math.round(255 * progress);
++            card._shapeRadius = restRadius;
++            return {x: home.x + home.width * inset, y: home.y + home.height * inset,
++                width: home.width * (1 - 2 * inset), height: home.height * (1 - 2 * inset)};
++        }
++        card.opacity = card._travelShown ? 255 : Math.round(255 * (1 - progress));
++        card._shapeRadius = lerp(WINDOW_RADIUS, restRadius, progress);
++        return {x: lerp(from.x - stageOrigin.x, home.x, progress),
++            y: lerp(from.y - stageOrigin.y, home.y, progress),
++            width: lerp(from.width, home.width, progress),
++            height: lerp(from.height, home.height, progress)};
+     }
+ 
+     // Bring every card from its window's place on the desktop into the grid.
+     _enter() {
+         this._entered = true;
+         this._stackLikeTheDesktop();
+-        const monitor = Main.layoutManager.primaryMonitor;
+-        this._cards.forEach(card => {
+-            const rect = this._desktopRect(card.window);
+-            const home = card.home;
+-            // A card that settles outside the visible row fades rather than
+-            // flying to a place the clip is about to hide.
+-            const shown = !monitor ||
+-                (home.x + home.width > monitor.x && home.x < monitor.x + monitor.width);
+-            card.remove_all_transitions();
+-            card.set_pivot_point(0, 0);
+-            card._header.opacity = 0;
+-            if (rect) {
+-                card.set(this._transformOnto(card, rect));
+-            } else {
+-                card.set({opacity: 0, scale_x: 0.94, scale_y: 0.94,
+-                    translation_x: home.width * 0.03, translation_y: home.height * 0.03});
+-            }
+-            this._travelStarted();
+-            card.ease({translation_x: 0, translation_y: card.lift, scale_x: 1, scale_y: 1,
+-                opacity: shown || !rect ? 255 : 0,
+-                duration: ENTER_DURATION, mode: TRAVEL_MODE,
+-                onStopped: () => this._travelEnded()});
+-            card._header.ease({opacity: 255, delay: ENTER_DURATION / 3,
+-                duration: ENTER_DURATION * 2 / 3, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        this._travel(false, () => {
++            this._stage.clip_to_allocation = true;
++            this._cards.forEach(card => card._syncSelection());
++            this.queue_relayout();
+         });
+     }
+ 
+@@ -415,34 +488,44 @@
+             return;
+         this._leaving = true;
+         this.reactive = false;
++        this._stopFling();
+         this._dismissSwipe?.destroy();
+         this._dismissSwipe = null;
+         if (chosen)
+             Main.activateWindow(chosen);
+         const chosenCard = this._cards.find(c => c.window === chosen) ?? null;
+         this._stackLikeTheDesktop(chosenCard);
+-        let remaining = this._cards.length;
+-        const finished = () => {
+-            if (--remaining <= 0)
+-                this.destroy();
+-        };
+-        if (remaining === 0 || !this._entered) {
++        if (this._cards.length === 0 || !this._entered) {
+             this.destroy();
+             return;
+         }
+-        this._travelStarted();
+-        this._cards.forEach(card => {
+-            const rect = this._desktopRect(card.window);
+-            card.remove_all_transitions();
+-            card.set_pivot_point(0, 0);
+-            card._close.visible = false;
+-            card._header.ease({opacity: 0, duration: LEAVE_DURATION / 2,
+-                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+-            const target = rect ? this._transformOnto(card, rect)
+-                : {opacity: 0, scale_x: 0.94, scale_y: 0.94};
+-            card.ease({...target, duration: LEAVE_DURATION, mode: TRAVEL_MODE,
+-                onStopped: finished});
+-        });
++        this._travel(true, () => this.destroy());
++    }
++
++    _fling(velocity) {
++        this._stopFling();
++        if (Math.abs(velocity) < 0.05 || !St.Settings.get().enable_animations)
++            return;
++        const start = this._scrollX;
++        const timeline = this._flingTimeline = new Clutter.Timeline({actor: this, duration: 5 * FLING_DECAY});
++        timeline.connect('new-frame', (_timeline, elapsed) => {
++            const target = start + velocity * FLING_DECAY * (1 - Math.exp(-elapsed / FLING_DECAY));
++            this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax, target));
++            this.queue_relayout();
++            if (this._scrollX !== target)
++                this._stopFling();
++        });
++        timeline.connect('stopped', () => {
++            if (this._flingTimeline === timeline)
++                this._flingTimeline = null;
++        });
++        timeline.start();
++    }
++
++    _stopFling() {
++        const timeline = this._flingTimeline;
++        this._flingTimeline = null;
++        timeline?.stop();
+     }
+ 
+     open() {
+@@ -452,8 +535,10 @@
+         // under, because every one of them is already represented by a card and
+         // leaving them painted behind the grid makes it unreadable.
+         Main.uiGroup.set_child_above_sibling(this, global.window_group);
+-        this._hiddenActors = global.get_window_actors().filter(a => a.visible);
+-        this._hiddenActors.forEach(actor => actor.hide());
++        // The windows are hidden the way the overview hides them, as groups.
++        // Hiding each actor lost to Mutter showing actors again as windows
++        // mapped or changed, and the desktop flickered through behind Grid.
++        Main.layoutManager.setWindowsHiddenForGrid(true);
+         this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+         this.grab_key_focus();
+         this._syncSelection();
+@@ -548,6 +633,7 @@
+         // scroll moves along it whichever way the fingers went. Three-finger
+         // gestures are left alone: those belong to the workspace switcher.
+         const travel = (dx + dy) * 60;
++        this._stopFling();
+         this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax,
+             this._scrollX + travel));
+         this.queue_relayout();
+@@ -576,7 +662,8 @@
+                 this._swipeTravel = 0;
+             }
+         }
+-        return super.vfunc_captured_event(event);
++        // StWidget has no captured_event of its own to chain up to.
++        return Clutter.EVENT_PROPAGATE;
+     }
+ 
+     vfunc_allocate(box) {
+@@ -618,26 +705,34 @@
+             this._scrollX = Math.max(this._scrollMin,
+                 Math.min(this._scrollMax, this._scrollX));
+         }
++        const homes = this._geometry.items.map((item, index) => {
++            const card = this._cards[index];
++            const x = (GRID_EDGE + item.x - this._scrollX) * scale;
++            const y = (28 + item.labelY - this._scroll) * scale;
++            const home = {x, y, width: item.width * scale, height: (item.height + 28) * scale};
++            // Where the card rests on the stage, for travelling to and from it.
++            card.home = {x: monitor.x + x, y: area.y + y, width: home.width, height: home.height};
++            return home;
++        });
++        // Start the entrance before anything is placed, so the first frame
++        // already shows every card over its window.
++        if (!this._entered && this._cards.length)
++            this._enter();
+         this._geometry.items.forEach((item, index) => {
+             const card = this._cards[index];
+             if (card._radius !== item.radius) {
+                 card._radius = item.radius;
+                 card._syncSelection();
+             }
++            const home = homes[index];
++            const place = this._placeTravelling(card, home, {x: monitor.x, y: area.y}, item.radius);
+             card.save_easing_state();
+-            card.set_easing_duration(this._lastSize && reflow ? 220 : 0);
++            card.set_easing_duration(this._lastSize && reflow && !this.travelling ? 220 : 0);
+             card.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
+-            const x = (GRID_EDGE + item.x - this._scrollX) * scale;
+-            const y = (28 + item.labelY - this._scroll) * scale;
+-            allocate(card, x, y, item.width * scale, (item.height + 28) * scale);
++            allocate(card, place.x, place.y, place.width, place.height);
+             card.restore_easing_state();
+-            // Where the card rests on the stage, for travelling to and from it.
+-            card.home = {x: monitor.x + x, y: area.y + y,
+-                width: item.width * scale, height: (item.height + 28) * scale};
+         });
+         this._lastSize = size;
+         this._dirty = false;
+-        if (!this._entered && this._cards.length)
+-            this._enter();
+     }
+ });
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -848,19 +848,6 @@
+         const geometry = dashGeometry(monitor, this._edge, this._protrude,
+             this._span, this._floatEnds, natural, scale, this._padding);
+         this._syncWorkAreaInset(scale);
+-        // Anchor the status end while media consumes space on its inner side.
+-        if (!this._span && this._mediaIsland.get_parent() === this._group) {
+-            const mediaSize = this._vertical ? this._mediaIsland.get_preferred_height(50 * scale)[1]
+-                : this._mediaIsland.get_preferred_width(50 * scale)[1];
+-            const base = dashGeometry(monitor, this._edge, this._protrude,
+-                false, this._floatEnds, Math.max(1, natural - mediaSize - (this._group._separate ? this._padding : 0) * scale), scale, this._padding);
+-            if (this._vertical)
+-                geometry.y = base.y + base.height - geometry.height;
+-            else if (this._group.text_direction === Clutter.TextDirection.RTL)
+-                geometry.x = base.x;
+-            else
+-                geometry.x = base.x + base.width - geometry.width;
+-        }
+         const explicitChange = this._previousVisualPosition !== null && this._previousVisualPosition !== undefined;
+         const moved = this.x !== geometry.x || this.y !== geometry.y;
+         const [oldX, oldY] = this._previousVisualPosition ??

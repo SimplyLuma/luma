@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=ChatGPT (Second)
+Exec=true
+Icon=/gon/icons/capsule-chatgpt.png
+StartupWMClass=chatgpt-second

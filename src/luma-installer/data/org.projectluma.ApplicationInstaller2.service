@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.ApplicationInstaller2
+Exec=/usr/bin/luma-installer-service

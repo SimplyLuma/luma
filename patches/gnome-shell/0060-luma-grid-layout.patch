@@ -1,0 +1,107 @@
+diff --git a/js/ui/gridLayout.js b/js/ui/gridLayout.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/gridLayout.js
+@@ -0,0 +1,102 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Logical-pixel geometry for Luma Grid. Input order is MRU and never changes.
++export const GRID_GAP = 28;
++export const GRID_LABEL = 28; // 20px icon/text plus 8px to the preview.
++
++// Exact contiguous minimax partition at a given preview height. Backtracking
++// prefers fuller earlier rows when widths tie. No window is reordered.
++function partition(aspects, rows, height) {
++    const n = aspects.length;
++    const sum = [0];
++    for (const a of aspects) sum.push(sum.at(-1) + a);
++    const cost = Array.from({length: rows + 1}, () => Array(n + 1).fill(Infinity));
++    const cut = Array.from({length: rows + 1}, () => Array(n + 1).fill(-1));
++    cost[0][0] = 0;
++    for (let r = 1; r <= rows; r++) {
++        for (let end = r; end <= n; end++) {
++            for (let start = r - 1; start < end; start++) {
++                const width = (sum[end] - sum[start]) * height + (end - start - 1) * GRID_GAP;
++                const candidate = Math.max(cost[r - 1][start], width);
++                if (candidate <= cost[r][end] + 1e-9) {
++                    cost[r][end] = candidate;
++                    cut[r][end] = start;
++                }
++            }
++        }
++    }
++    const groups = [];
++    for (let r = rows, end = n; r > 0; r--) {
++        const start = cut[r][end];
++        groups.unshift({start, end});
++        end = start;
++    }
++    return {width: cost[rows][n], groups};
++}
++
++export function gridLayout(windows, width, height) {
++    if (!windows.length) return {items: [], rows: [], height: 0, scroll: false};
++    if (!(width > 0 && height > 0) || windows.some(w => !(w.width > 0 && w.height > 0)))
++        throw new RangeError('Grid requires positive stage and window dimensions');
++    const aspects = windows.map(w => w.width / w.height);
++    const sorted = windows.map(w => w.height).sort((a, b) => a - b);
++    const middle = Math.floor(sorted.length / 2);
++    const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
++    const cap = Math.min(height * 0.6, median * 2 / 3);
++    let best = null;
++    for (let r = 1; r <= windows.length; r++) {
++        let low = 0;
++        let high = Math.max(0, Math.min(cap, (height - r * GRID_LABEL - (r - 1) * GRID_GAP) / r));
++        if (best && high <= best.h + 1e-7) continue;
++        for (let step = 0; step < 40; step++) {
++            const mid = (low + high) / 2;
++            if (partition(aspects, r, mid).width <= width) low = mid;
++            else high = mid;
++        }
++        if (!best || low > best.h + 1e-7) best = {h: low, r};
++    }
++    // When the floor requires scrolling, use the fewest rows that fit at the
++    // floor. An individually over-wide preview is reported, never cropped.
++    const h = Math.max(120, best.h);
++    if (best.h < 120) {
++        best.r = windows.length;
++        for (let r = 1; r <= windows.length; r++) {
++            if (partition(aspects, r, h).width <= width) { best.r = r; break; }
++        }
++    }
++    const packed = partition(aspects, best.r, h);
++    const blockHeight = best.r * (GRID_LABEL + h) + (best.r - 1) * GRID_GAP;
++    const scroll = blockHeight > height;
++    const top = scroll ? 0 : (height - blockHeight) / 2;
++    const items = [], rows = [];
++    packed.groups.forEach(({start, end}, row) => {
++        const rowWidth = aspects.slice(start, end).reduce((a, b) => a + b, 0) * h + (end - start - 1) * GRID_GAP;
++        let x = (width - rowWidth) / 2;
++        const labelY = top + row * (GRID_LABEL + h + GRID_GAP);
++        rows.push({start, end, width: rowWidth, y: labelY});
++        for (let index = start; index < end; index++) {
++            const w = h * aspects[index];
++            items.push({index, row, x, y: labelY + GRID_LABEL, width: w, height: h,
++                labelY, labelHeight: 20, radius: Math.max(9, Math.min(16, 25.5 * h / windows[index].height))});
++            x += w + GRID_GAP;
++        }
++    });
++    return {items, rows, height: blockHeight, scroll, overflowX: packed.width > width + 1e-6};
++}
++
++export function gridNeighbor(layout, index, direction) {
++    const {items, rows} = layout;
++    if (!items.length) return -1;
++    if (direction === 'Home') return 0;
++    if (direction === 'End') return items.length - 1;
++    if (direction === 'Left') return (index + items.length - 1) % items.length;
++    if (direction === 'Right') return (index + 1) % items.length;
++    const current = items[index];
++    const row = rows[current.row + (direction === 'Up' ? -1 : 1)];
++    if (!row) return index;
++    const center = current.x + current.width / 2;
++    let closest = row.start;
++    for (let i = row.start + 1; i < row.end; i++)
++        if (Math.abs(items[i].x + items[i].width / 2 - center) <
++            Math.abs(items[closest].x + items[closest].width / 2 - center)) closest = i;
++    return closest;
++}

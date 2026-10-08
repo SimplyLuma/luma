@@ -1,0 +1,68 @@
+From: Project Luma FP6 bring-up <luma@project-luma.invalid>
+Date: Sat, 22 Aug 2026 23:30:00 +0000
+Subject: [PATCH] tee: qseecom: use stock-exact application staging
+
+Fairphone's shipping QSEECom driver allocates PAGE_ALIGN(image_length) with
+dma_alloc_coherent() and passes that allocation's DMA address directly to
+QSEOS_APP_START.  Do the same for the dedicated apps heap instead of
+over-allocating and advancing the image to an internal 4 MiB boundary.
+
+The reserved apps heap and its whole-pool SHM bridge remain 4 MiB aligned.
+This changes only the per-application buffer contract and is intended as a
+bounded, module-only physical diagnostic before promotion.
+---
+ drivers/tee/qseecom/core.c | 26 ++++++++------------------
+ 1 file changed, 8 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 111111111111..222222222222 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -1468,7 +1468,6 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 	char fw_name[QSEECOM_TEE_MAX_APP_NAME + sizeof(".mdt")];
+ 	char app_name[QSEECOM_TEE_MAX_APP_NAME];
+ 	size_t img_len, mdt_len, stage_len;
+-	phys_addr_t stage_phys, img_phys;
+ 	const struct firmware *mdt;
+ 	void *stage, *aligned;
+ 	ssize_t len;
+@@ -1511,18 +1510,13 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 	/*
+ 	 * Stage the image through a pool of its own rather than the shared one.
+-	 * Two reasons, and both were learned the hard way:
+-	 *
+-	 * TZ maps the image itself and wants it at a 4 MiB aligned physical
+-	 * address -- Android's qseecom driver reserves its TA region that way -- so the
+-	 * buffer has to be big enough to contain an aligned copy. The shared
+-	 * pool only promises page alignment.
+-	 *
+-	 * And an image is *large*: nine megabytes of staging for a five
+-	 * megabyte application. Taking that from the shared pool grows it
+-	 * permanently, since it never shrinks, which starves every other user
+-	 * of the same TZ memory region. A dedicated pool goes away again.
++	 * An image is large, and taking it from the shared pool grows that pool
++	 * permanently.  A dedicated pool goes away after the load.  Match the
++	 * shipping Fairphone QSEECom loader's per-image contract exactly: one
++	 * page-rounded coherent allocation whose DMA address is passed directly
++	 * to QSEOS_APP_START.  The containing reserved heap and whole-pool SHM
++	 * bridge retain their required 4 MiB alignment.
+ 	 */
+-	stage_len = PAGE_ALIGN(img_len) + QSEECOM_TEE_IMAGE_ALIGN;
++	stage_len = PAGE_ALIGN(img_len);
+ 	pool_config.initial_size = stage_len;
+ 	pool_config.max_size = stage_len;
+ 
+@@ -1543,10 +1537,7 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 		goto out_release;
+ 	}
+ 
+-	/* The area is physically contiguous, so an offset applies to both. */
+-	stage_phys = qcom_tzmem_to_phys(stage);
+-	img_phys = ALIGN(stage_phys, QSEECOM_TEE_IMAGE_ALIGN);
+-	aligned = stage + (img_phys - stage_phys);
++	aligned = stage;
+ 
+ 	len = qcom_mdt_read_image(qtee->dev, mdt, fw_name, aligned, img_len);
+ 	if (len < 0)
+-- 
+2.51.0

@@ -1,0 +1,719 @@
+Subject: [PATCH] Settings: own Bluetooth operations and retain discovery rows
+
+--- a/shell/cc-luma-live-bluetooth.c
++++ b/shell/cc-luma-live-bluetooth.c
+@@ -23,7 +23,9 @@
+   GDBusProxy *rfkill, *hostnamed;
+   GCancellable *cancel;
+   guint refresh, scan_lease, pending;
+-  gboolean ready;
++  gboolean ready, stopped;
++  guint refs;
++  guint64 pairing_generation, scanning_generation;
+   char *scanning;                /* the adapter this page asked to discover */
+   /* The pairing agent, registered only while this page pairs a device. */
+   GDBusConnection *system;
+@@ -34,6 +36,11 @@
+ } Bt;
+ 
+ static void queue_refresh (Bt *b);
++/* Async D-Bus completions own a reference even after page disposal. Cancellation
++ * is a request, not proof that a completion cannot already be queued. */
++static Bt *bt_ref (Bt *b) { b->refs++; return b; }
++static void bt_unref (Bt *b) { g_assert (b->refs > 0); if (!--b->refs) g_free (b); }
++
+ 
+ static gboolean
+ rfkill_flag (Bt *b, const char *name)
+@@ -198,7 +205,7 @@
+ static void
+ queue_refresh (Bt *b)
+ {
+-  if (!b->pending && !b->refresh) b->refresh = g_idle_add (refresh, b);
++  if (!b->stopped && !b->pending && !b->refresh) b->refresh = g_timeout_add (100, refresh, b);
+ }
+ 
+ /* ── Writing ─────────────────────────────────────────────────────────── */
+@@ -211,8 +218,11 @@
+ static void
+ warn (Bt *b, GError *error, const char *what)
+ {
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (error) g_warning ("Settings: Bluetooth could not %s: %s", what, error->message);
++  if (b->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
++  if (error) {
++    g_autofree char *message = g_strdup_printf ("Could not %s: %s", what, error->message);
++    cc_luma_fixture_publish_string (b->model, "btError", message);
++  }
+   queue_refresh (b);
+ }
+ static void
+@@ -220,21 +230,27 @@
+ {
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
+-  warn (data, error, "change power");
++  Bt *b = data;
++  warn (b, error, "change power");
++  bt_unref (b);
+ }
+ static void
+ connect_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
+-  warn (data, error, "connect");
++  Bt *b = data;
++  warn (b, error, "connect");
++  bt_unref (b);
+ }
+ static void
+ call_done (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
+-  warn (data, error, "change a device");
++  Bt *b = data;
++  warn (b, error, "change a device");
++  bt_unref (b);
+ }
+ /* ── Pairing agent (BluetoothSettingsWidget's, org.bluez.Agent1) ─────────
+  * Codes are shown on the device's tile; a confirmation waits for the page;
+@@ -279,6 +295,11 @@
+             const char *method, GVariant *parameters, GDBusMethodInvocation *invocation, gpointer data)
+ {
+   Bt *b = data;
++  g_autofree char *owner = b->bluez ? g_dbus_object_manager_client_get_name_owner (G_DBUS_OBJECT_MANAGER_CLIENT (b->bluez)) : NULL;
++  if (b->stopped || !owner || g_strcmp0 (sender, owner) != 0) {
++    g_dbus_method_invocation_return_dbus_error (invocation, "org.bluez.Error.Rejected", "Only the current Bluetooth owner may request confirmation");
++    return;
++  }
+   const char *device = NULL;
+   if (g_str_equal (method, "Release")) { g_dbus_method_invocation_return_value (invocation, NULL); return; }
+   if (g_str_equal (method, "Cancel"))
+@@ -336,6 +357,7 @@
+ static void
+ agent_stop (Bt *b)
+ {
++  b->pairing_generation++; /* queued callbacks cannot resume a cancelled/replaced pairing */
+   answer (b, FALSE);
+   if (b->agent)
+     {
+@@ -348,25 +370,29 @@
+   g_clear_pointer (&b->pairing, g_free);
+   g_clear_pointer (&b->code, g_free);
+ }
+-typedef struct { Bt *bt; char *path; GDBusProxy *device; } Pairing;
++typedef struct { Bt *bt; char *path; GDBusProxy *device; guint64 generation; } Pairing;
++static gboolean pairing_current (Pairing *p) { return !p->bt->stopped && p->generation == p->bt->pairing_generation; }
+ static void
+ paired (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   Pairing *p = data;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
+-  if (!error)
++  if (!error && pairing_current (p))
+     {
+       /* bluetooth_client_setup_device: trust it, then connect its services. */
+       g_dbus_proxy_call (G_DBUS_PROXY (source), "org.freedesktop.DBus.Properties.Set",
+                          g_variant_new ("(ssv)", "org.bluez.Device1", "Trusted", g_variant_new_boolean (TRUE)),
+                          G_DBUS_CALL_FLAGS_NONE, -1, p->bt->cancel, NULL, NULL);
+-      g_dbus_proxy_call (G_DBUS_PROXY (source), "Connect", NULL, G_DBUS_CALL_FLAGS_NONE, 60000, p->bt->cancel, connect_done, p->bt);
+-    }
+-  if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) agent_stop (p->bt);
+-  warn (p->bt, error, "pair");
++      g_dbus_proxy_call (G_DBUS_PROXY (source), "Connect", NULL, G_DBUS_CALL_FLAGS_NONE, 60000, p->bt->cancel, connect_done, bt_ref (p->bt));
++    }
++  if (pairing_current (p)) {
++    warn (p->bt, error, "pair");
++    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) agent_stop (p->bt);
++  }
+   g_object_unref (p->device);
+   g_free (p->path);
++  bt_unref (p->bt);
+   g_free (p);
+ }
+ static void
+@@ -375,26 +401,41 @@
+   Pairing *p = data;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
+-  if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++  if (pairing_current (p) && error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+     {
+       agent_stop (p->bt);
+       warn (p->bt, error, "start pairing");
+     }
+-  if (error)
+-    {
+-      g_object_unref (p->device); g_free (p->path); g_free (p);
++  if (error || !pairing_current (p))
++    {
++      g_object_unref (p->device); g_free (p->path); bt_unref (p->bt); g_free (p);
+       return;
+     }
+   /* BlueZ asks the agent of whoever called Pair. */
+   g_dbus_proxy_call (p->device, "Pair", NULL, G_DBUS_CALL_FLAGS_NONE, 90000, p->bt->cancel, paired, p);
+ }
++typedef struct { Bt *bt; gboolean starting; guint64 generation; char *adapter; } Discovery;
++static void discovery_done (GObject *source, GAsyncResult *result, gpointer data) {
++  Discovery *d = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) out = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  if (!d->bt->stopped && d->generation == d->bt->scanning_generation &&
++      (!d->starting || g_strcmp0 (d->adapter, d->bt->scanning) == 0)) {
++    if (error && d->starting) g_clear_pointer (&d->bt->scanning, g_free);
++    warn (d->bt, error, d->starting ? "look for devices" : "stop looking for devices");
++  }
++  bt_unref (d->bt);g_free (d->adapter);g_free (d);
++}
+ static void
+ discovery (Bt *b, const char *adapter, gboolean on, GCancellable *cancel)
+ {
+   GDBusConnection *bus = b->bluez ? g_dbus_object_manager_client_get_connection (G_DBUS_OBJECT_MANAGER_CLIENT (b->bluez)) : NULL;
+-  if (bus && adapter)
++  if (bus && adapter) {
++    Discovery *d = g_new0 (Discovery, 1);d->bt = bt_ref (b);d->starting = on;
++    d->generation = ++b->scanning_generation;d->adapter = g_strdup (adapter);
+     g_dbus_connection_call (bus, "org.bluez", adapter, "org.bluez.Adapter1", on ? "StartDiscovery" : "StopDiscovery",
+-                            NULL, NULL, G_DBUS_CALL_FLAGS_NONE, -1, cancel, NULL, NULL);
++                            NULL, NULL, G_DBUS_CALL_FLAGS_NONE, 10000, cancel, discovery_done, d);
++  }
+ }
+ static gboolean
+ stop_scan (gpointer data)
+@@ -416,22 +457,26 @@
+ {
+   Bt *b = state;
+   if (!g_strv_contains (owned, key)) return FALSE;
++  if (b->stopped) return fail (error, "Bluetooth Settings has closed");
++  cc_luma_fixture_publish_string (b->model, "btError", "");
+   g_autoptr (GDBusProxy) adapter = default_adapter (b);
+   if (!adapter) return fail (error, "This computer has no Bluetooth");
+   if (g_str_equal (key, "bt"))
+     {
+       gboolean on = JSON_NODE_HOLDS_VALUE (value) && json_node_get_boolean (value);
+       if (on && rfkill_flag (b, "BluetoothHardwareAirplaneMode")) return fail (error, "A hardware switch keeps Bluetooth off");
+-      /* cc-bluetooth-panel.c: power is the Bluetooth airplane mode. */
++      if (!on) { g_clear_handle_id (&b->scan_lease, g_source_remove); stop_scan (b); agent_stop (b); }
++      /* Rfkill owns airplane mode; the adapter owns its actual Powered state. */
+       if (has_rfkill (b))
+         g_dbus_proxy_call (b->rfkill, "org.freedesktop.DBus.Properties.Set",
+                            g_variant_new_parsed ("('org.gnome.SettingsDaemon.Rfkill', 'BluetoothAirplaneMode', %v)",
+                                                  g_variant_new_boolean (!on)),
+-                           G_DBUS_CALL_FLAGS_NONE, -1, b->cancel, power_done, b);
+-      if ((on && !prop_bool (adapter, "Powered")) || (!on && !has_rfkill (b)))
+-        g_dbus_proxy_call (adapter, "org.freedesktop.DBus.Properties.Set",
++                           G_DBUS_CALL_FLAGS_NONE, -1, b->cancel, power_done, bt_ref (b));
++      /* Cached readback may precede an earlier queued Off. Always send the
++       * latest explicit intent so rapid Off then On finishes powered on. */
++      g_dbus_proxy_call (adapter, "org.freedesktop.DBus.Properties.Set",
+                            g_variant_new ("(ssv)", "org.bluez.Adapter1", "Powered", g_variant_new_boolean (on)),
+-                           G_DBUS_CALL_FLAGS_NONE, -1, b->cancel, power_done, b);
++                           G_DBUS_CALL_FLAGS_NONE, -1, b->cancel, power_done, bt_ref (b));
+       return TRUE;
+     }
+   if (g_str_equal (key, "CFNEAR.scan"))
+@@ -441,6 +486,7 @@
+       gboolean on = JSON_NODE_HOLDS_VALUE (value) && json_node_get_boolean (value);
+       g_clear_handle_id (&b->scan_lease, g_source_remove);
+       if (!on) { stop_scan (b); return TRUE; }
++      if (!powered (b)) return fail (error, "Bluetooth is off");
+       if (g_strcmp0 (b->scanning, g_dbus_proxy_get_object_path (adapter)) != 0)
+         {
+           if (b->scanning) discovery (b, b->scanning, FALSE, NULL);
+@@ -459,7 +505,7 @@
+   if (g_str_equal (key, "CFBT.connect") || g_str_equal (key, "CFBT.disconnect"))
+     {
+       g_dbus_proxy_call (d, g_str_equal (key, "CFBT.connect") ? "Connect" : "Disconnect", NULL, G_DBUS_CALL_FLAGS_NONE,
+-                         60000, b->cancel, connect_done, b);
++                         60000, b->cancel, connect_done, bt_ref (b));
+       return TRUE;
+     }
+   if (g_str_equal (key, "CFNEAR.pair"))
+@@ -472,7 +518,7 @@
+       if (!b->agent) { g_clear_object (&b->system); return FALSE; }
+       b->pairing = g_strdup (path);
+       Pairing *p = g_new0 (Pairing, 1);
+-      p->bt = b; p->path = g_strdup (path); p->device = g_steal_pointer (&proxy);
++      p->bt = bt_ref (b); p->generation = ++b->pairing_generation; p->path = g_strdup (path); p->device = g_steal_pointer (&proxy);
+       g_dbus_connection_call (b->system, "org.bluez", "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+                               g_variant_new ("(os)", AGENT_PATH, "KeyboardDisplay"), NULL, G_DBUS_CALL_FLAGS_NONE, -1,
+                               b->cancel, agent_registered, p);
+@@ -492,7 +538,7 @@
+   /* CFBT.forget: the page has already asked. */
+   g_dbus_connection_call (g_dbus_proxy_get_connection (d), "org.bluez", g_dbus_proxy_get_object_path (adapter), "org.bluez.Adapter1",
+                           "RemoveDevice", g_variant_new ("(o)", path), NULL, G_DBUS_CALL_FLAGS_NONE, -1,
+-                          b->cancel, call_done, b);
++                          b->cancel, call_done, bt_ref (b));
+   return TRUE;
+ }
+ 
+@@ -507,30 +553,32 @@
+ {
+   g_autoptr (GError) error = NULL;
+   GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish (result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  Bt *b = data;
++  Bt *b = data;
++  if (b->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) { g_clear_object (&proxy); bt_unref (b); return; }
+   b->rfkill = proxy;
+   if (proxy) g_signal_connect_swapped (proxy, "g-properties-changed", G_CALLBACK (queue_refresh), b);
+   settle (b);
++  bt_unref (b);
+ }
+ static void
+ hostnamed_ready (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+   GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish (result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  Bt *b = data;
++  Bt *b = data;
++  if (b->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) { g_clear_object (&proxy); bt_unref (b); return; }
+   b->hostnamed = proxy;
+   if (proxy) g_signal_connect_swapped (proxy, "g-properties-changed", G_CALLBACK (queue_refresh), b);
+   settle (b);
++  bt_unref (b);
+ }
+ static void
+ bluez_ready (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+   GDBusObjectManager *manager = g_dbus_object_manager_client_new_for_bus_finish (result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  Bt *b = data;
++  Bt *b = data;
++  if (b->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) { g_clear_object (&manager); bt_unref (b); return; }
+   b->bluez = manager;
+   if (manager)
+     {
+@@ -541,28 +589,31 @@
+     }
+   else g_warning ("Settings: BlueZ: %s", error->message);
+   settle (b);
++  bt_unref (b);
+ }
+ static gpointer
+ bt_start (CcLumaFixture *model)
+ {
+   Bt *b = g_new0 (Bt, 1);
++  b->refs = 1;
+   b->model = model;
+   b->cancel = g_cancellable_new ();
+   for (guint i = 0; owned[i]; i++) cc_luma_fixture_own_key (model, owned[i]);
+   b->pending = 3;
+   g_dbus_object_manager_client_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_DO_NOT_AUTO_START,
+-                                            "org.bluez", "/", NULL, NULL, NULL, b->cancel, bluez_ready, b);
++                                            "org.bluez", "/", NULL, NULL, NULL, b->cancel, bluez_ready, bt_ref (b));
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, NULL,
+                             "org.gnome.SettingsDaemon.Rfkill", "/org/gnome/SettingsDaemon/Rfkill",
+-                            "org.gnome.SettingsDaemon.Rfkill", b->cancel, rfkill_ready, b);
++                            "org.gnome.SettingsDaemon.Rfkill", b->cancel, rfkill_ready, bt_ref (b));
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL, "org.freedesktop.hostname1",
+-                            "/org/freedesktop/hostname1", "org.freedesktop.hostname1", b->cancel, hostnamed_ready, b);
++                            "/org/freedesktop/hostname1", "org.freedesktop.hostname1", b->cancel, hostnamed_ready, bt_ref (b));
+   return b;
+ }
+ static void
+ bt_stop (gpointer state)
+ {
+   Bt *b = state;
++  b->stopped = TRUE;
+   g_cancellable_cancel (b->cancel);
+   g_clear_object (&b->cancel);
+   g_clear_handle_id (&b->refresh, g_source_remove);
+@@ -575,7 +626,8 @@
+   g_clear_object (&b->bluez);
+   g_clear_object (&b->rfkill);
+   g_clear_object (&b->hostnamed);
+-  g_free (b);
++  b->model = NULL;
++  bt_unref (b);
+ }
+ 
+ const CcLumaAdapter cc_luma_adapter_bluetooth = { ADAPTER, pages, bt_start, bt_write, bt_stop };
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -108,6 +108,10 @@
+                                                         /* Night Light's times and warmth wait for a VM write check */
+                                                         /* Bluetooth discovery while the page is open, as GNOME's panel does */
+                                                         "CFNEAR.scan",
++                                                        /* Private native BlueZ/Rfkill readback, confirm/cancel and
++                                                         * async failure/disposal gates (creator Bluetooth45). */
++                                                        "bt", "CFBT.connect", "CFBT.disconnect", "CFBT.forget",
++                                                        "CFNEAR.pair", "CFNEAR.confirm", "CFNEAR.cancel",
+                                                         /* People, Date & Time and Remote Desktop (VM, 28 Sep): the
+                                                          * person Users opens, clock format, weekday, automatic time
+                                                          * zone, and Remote Desktop's tab (a view choice) */
+--- a/shell/cc-luma-view-bluetooth.c
++++ b/shell/cc-luma-view-bluetooth.c
+@@ -47,7 +47,6 @@
+ }
+ static void device_connection (GtkButton *button, View *v)
+ {
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Bluetooth panel connects */
+   const char *id = g_object_get_data (G_OBJECT (button), "cf-device");
+   gboolean active = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "cf-connected"));
+   g_autoptr (GError) error = NULL;
+@@ -79,7 +78,6 @@
+ }
+ static void pair_device (LumaDetailsItem *item, GtkWidget *root)
+ {
+-  { View *d = g_object_get_data (G_OBJECT (root), "cf-view"); if (d && cc_luma_view_delegated (d)) return; } /* live: GNOME's Bluetooth panel pairs */
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v) return;
+   if (v->pair_timer || !cc_luma_view_flag (v, "bt")) return;
+@@ -131,14 +129,13 @@
+   if (!undo) { luma_toast_show (root, error->message, "error"); return; }
+   cc_luma_view_queue_refresh (v);
+   if (cc_luma_fixture_is_live (v->model))
+-    { cc_luma_bluetooth_undo_free (undo); luma_toast_show (root, "Device forgotten", "deleted"); return; }
++    { cc_luma_bluetooth_undo_free (undo); return; } /* actual owner readback removes the row */
+   LumaToast *toast = luma_toast_show_with_undo (root, "Device forgotten", "deleted");
+   g_object_set_data_full (G_OBJECT (toast), "cf-device-undo", undo, (GDestroyNotify) cc_luma_bluetooth_undo_free);
+   g_signal_connect_object (toast, "undo", G_CALLBACK (device_undone), root, 0);
+ }
+ static void device_forget (GtkButton *button, GtkWidget *root)
+ {
+-  { View *d = g_object_get_data (G_OBJECT (root), "cf-view"); if (d && cc_luma_view_delegated (d)) return; } /* live: GNOME's Bluetooth panel removes */
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v) return;
+   g_autofree char *title = g_strdup_printf ("Forget %s?", (char *) g_object_get_data (G_OBJECT (button), "cf-device-name"));
+@@ -251,6 +248,44 @@
+   g_signal_connect_object (tile, "clicked", G_CALLBACK (pair_device), v->root, 0);
+   return tile;
+ }
++/* Device rows retain identity across owner reports. A fresh device or changed
++ * state replaces only its row, rather than allocating the discovery list again.
++ * The view owns this cache and prunes devices the real owner removed. */
++typedef struct { GtkWidget *widget; char *signature; gboolean seen; } BtRow;
++static void row_free (BtRow *row) { g_object_unref (row->widget); g_free (row->signature); g_free (row); }
++static GHashTable *row_cache (View *v) {
++  GHashTable *cache = g_object_get_data (G_OBJECT (v->root), "cf-bt-rows");
++  if (!cache) {
++    cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) row_free);
++    g_object_set_data_full (G_OBJECT (v->root), "cf-bt-rows", cache, (GDestroyNotify) g_hash_table_unref);
++  }
++  return cache;
++}
++static char *row_signature (JsonObject *device) {
++  g_autoptr (JsonNode) node = json_node_init_object (json_node_alloc (), device);
++  return json_to_string (node, FALSE);
++}
++static GtkWidget *row_lookup (View *v, JsonObject *device, gboolean saved) {
++  g_autofree char *id = g_strconcat (saved ? "saved:" : "near:", json_object_get_string_member (device, "id"), NULL);
++  g_autofree char *signature = row_signature (device);
++  BtRow *row = g_hash_table_lookup (row_cache (v), id);
++  if (!row || g_strcmp0 (row->signature, signature)) return NULL;
++  /* GTK may retain the old layout for a frame after its body is removed.
++   * Move the owned row through its actual container API before reattaching. */
++  GtkWidget *parent = gtk_widget_get_parent (row->widget);
++  if (GTK_IS_GRID (parent)) gtk_grid_remove (GTK_GRID (parent), row->widget);
++  else if (GTK_IS_BOX (parent)) gtk_box_remove (GTK_BOX (parent), row->widget);
++  else if (parent) return NULL;
++  row->seen = TRUE;
++  return row->widget;
++}
++static void row_remember (View *v, JsonObject *device, gboolean saved, GtkWidget *widget) {
++  char *id = g_strconcat (saved ? "saved:" : "near:", json_object_get_string_member (device, "id"), NULL);
++  BtRow *row = g_new0 (BtRow, 1);row->widget = g_object_ref_sink (widget);row->signature = row_signature (device);row->seen = TRUE;
++  g_hash_table_replace (row_cache (v), id, row);
++}
++static gboolean unused_row (gpointer key, gpointer value, gpointer data) { return !((BtRow *) value)->seen; }
++static void reset_seen (gpointer key, gpointer value, gpointer data) { ((BtRow *) value)->seen = FALSE; }
+ void cc_luma_view_bluetooth_render (View *v)
+ {
+   JsonArray *saved = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFBT");
+@@ -258,6 +293,7 @@
+   guint connected_count = 0, shown;
+   gboolean live = cc_luma_fixture_is_live (v->model), on = cc_luma_view_flag (v, "bt");
+   GtkWidget *hero_body;
++  g_hash_table_foreach (row_cache (v), reset_seen, NULL);
+   JsonObject *confirming = NULL;
+   /* Live: every device the owner found is shown, and discovery runs. */
+   if (live && on && !v->scan_timer) v->scan_timer = g_idle_add (scan_next, v);
+@@ -269,6 +305,7 @@
+     {
+       hero_body = cf_off_hero (v, "bluetooth", "Bluetooth is off", NULL, "bt", G_CALLBACK (bluetooth_on));
+       cf_hero (v, hero_body, "cf-bt-hero");
++      g_hash_table_remove_all (row_cache (v));
+       return;
+     }
+   hero_body = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+@@ -312,7 +349,9 @@
+       {
+         JsonObject *d = json_array_get_object_element (near, i);
+         if (live && json_object_get_boolean_member_with_default (d, "confirm", FALSE)) confirming = d;
+-        gtk_grid_attach (GTK_GRID (grid), nearby_tile (v, d), i % 3, i / 3, 1, 1);
++        GtkWidget *tile = row_lookup (v, d, FALSE);
++        if (!tile) { tile = nearby_tile (v, d); row_remember (v, d, FALSE, tile); }
++        gtk_grid_attach (GTK_GRID (grid), tile, i % 3, i / 3, 1, 1);
+       }
+     if (shown < json_array_get_length (near) || live)
+       {
+@@ -341,6 +380,7 @@
+       g_object_set_data_full (G_OBJECT (cancel), "cf-device", g_strdup (id), g_free);
+       g_object_set_data_full (G_OBJECT (pair), "cf-device", g_strdup (id), g_free);
+       gtk_widget_set_name (pair, "cf-bt-pair-confirm");
++      gtk_widget_set_name (cancel, "cf-bt-pair-cancel");
+       gtk_widget_set_halign (answer, GTK_ALIGN_END);
+       gtk_widget_set_margin_top (answer, 14);
+       gtk_box_append (GTK_BOX (answer), cancel);
+@@ -352,6 +392,8 @@
+   for (guint i = 0; i < json_array_get_length (saved); i++)
+     {
+       JsonObject *d = json_array_get_object_element (saved, i);
++      GtkWidget *retained = row_lookup (v, d, TRUE);
++      if (retained) { gtk_box_append (rows, retained); continue; }
+       gboolean active = json_object_get_boolean_member (d, "on");
+       JsonNode *battery = json_object_get_member (d, "bat");
+       const char *name = json_object_get_string_member (d, "n");
+@@ -368,8 +410,18 @@
+       g_object_set_data_full (G_OBJECT (forget), "cf-device-name", g_strdup (name), g_free);
+       g_signal_connect_object (forget, "clicked", G_CALLBACK (device_forget), v->root, 0);
+       gtk_box_append (GTK_BOX (actions), forget);
+-      cf_row (rows, cf_lead_icon (json_object_get_string_member (d, "i")), name, status, actions, FALSE);
+-    }
++      GtkWidget *row = cf_row (rows, cf_lead_icon (json_object_get_string_member (d, "i")), name, status, actions, FALSE);
++      row_remember (v, d, TRUE, row);
++    }
++  g_hash_table_foreach_remove (row_cache (v), unused_row, NULL);
++  if (live) {
++    const char *problem = cc_luma_view_text (v, "btError");
++    if (*problem) {
++      GtkWidget *feedback = cc_luma_view_label (problem, "small", FALSE);
++      gtk_widget_set_name (feedback, "cf-bt-error");gtk_label_set_selectable (GTK_LABEL (feedback), TRUE);
++      gtk_box_append (v->body, feedback);
++    }
++  }
+   /* Sending files has no owner yet: left out in live mode. */
+   if (live) return;
+   rows = cf_group (v, NULL, NULL);
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -36,7 +36,7 @@
+   /* Invalidate now: a completed task may run before the redraw idle. */
+   v->generation++;
+   if (v->images_cancel) g_cancellable_cancel (v->images_cancel);
+-  if (!v->refresh) v->refresh = g_idle_add (refresh_view, v);
++  if (!v->refresh) v->refresh = g_str_equal (v->page, "bluetooth") ? g_timeout_add (100, refresh_view, v) : g_idle_add (refresh_view, v);
+ }
+ const char *cc_luma_view_text (View *v, const char *key)
+ {
+@@ -192,6 +192,12 @@
+   }
+   if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
+     { cc_luma_view_report_error (v, error); return; }
++  if (g_str_equal (key, "bt") && cc_luma_fixture_is_live (v->model)) {
++    /* Keep the user's switch stable while the asynchronous owner replies.
++     * Its real readback drives the next frame; no optimistic model write. */
++    if (!gtk_switch_get_active (widget)) cc_luma_view_bluetooth_stop (v);
++    return;
++  }
+   if (!cc_luma_view_flag (v, "wifi"))
+     {
+       g_clear_pointer (&v->joining, g_free);
+@@ -1146,12 +1152,19 @@
+   if (sw && same_page)
+     v->keep_scroll = gtk_adjustment_get_value (gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (sw)));
+   if (GTK_IS_VIEWPORT (viewport)) gtk_viewport_set_scroll_to_focus (GTK_VIEWPORT (viewport), FALSE);
++  g_autoptr (GtkWidget) bluetooth_focus = NULL;
++  GtkRoot *native = gtk_widget_get_root (v->root);
++  if (g_str_equal (v->page, "bluetooth") && native) {
++    GtkWidget *focus = gtk_root_get_focus (native);
++    if (focus && gtk_widget_is_ancestor (focus, v->root)) bluetooth_focus = g_object_ref (focus);
++  }
+   v->rendering = TRUE; /* removing a focused field must not commit its draft */
+   while ((child = gtk_widget_get_first_child (GTK_WIDGET (v->body))))
+     gtk_box_remove (v->body, child);
+   if (v->query && *v->query) search_render (v);
+   else render_page (v);
+   cf_rows_wrap (v);
++  if (bluetooth_focus && gtk_widget_is_ancestor (bluetooth_focus, v->root)) gtk_widget_grab_focus (bluetooth_focus);
+   island_drawn (v);
+   v->rendering = FALSE;
+   g_free (v->drawn_page);
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -373,6 +373,11 @@
+ fixture_view_sources += ['../panels/privacy/screen/cc-screen-page.c']
+ fixture_view_sources += ['../panels/privacy/camera/cc-camera-page.c', '../panels/privacy/location/cc-location-page.c']
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1'), m_dep]
++live_bluetooth_test = executable('test-luma-live-bluetooth', ['test-luma-live-bluetooth.c', 'cc-luma-live-bluetooth.c'] + fixture_view_sources, dependencies: fixture_view_deps)
++test('luma-settings-live-bluetooth', live_bluetooth_test, timeout: 45,
++  env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
++    'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
++
+ fixture_view_test = executable('test-luma-view', ['test-luma-view.c'] + fixture_view_sources, dependencies: fixture_view_deps,
+   c_args: ['-DLUMA_SHELL_SRCDIR="' + meson.current_source_dir() + '"'])
+ apps_list_test = executable('test-luma-apps-list', ['test-luma-apps-list.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+--- /dev/null
++++ b/shell/test-luma-live-bluetooth.c
+@@ -0,0 +1,165 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* The production adapter talks only to owned BlueZ/Rfkill on a private bus. */
++#include "cc-luma-live.h"
++#include <gio/gio.h>
++#include "cc-luma-view.h"
++#include <gtk/gtk.h>
++#include <adwaita.h>
++#include <sys/prctl.h>
++#include <signal.h>
++#include <math.h>
++extern const CcLumaAdapter cc_luma_adapter_bluetooth;
++static gboolean ready;
++void cc_luma_live_ready (CcLumaFixture *model, const char *adapter) { ready = TRUE; }
++#define AP "/org/bluez/hci0"
++#define DP AP "/dev_AA"
++#define NP AP "/dev_BB"
++#define RP "/org/gnome/SettingsDaemon/Rfkill"
++static const char xml[] =
++"<node><interface name='org.freedesktop.DBus.ObjectManager'><method name='GetManagedObjects'><arg direction='out' type='a{oa{sa{sv}}}'/></method></interface>"
++"<interface name='org.bluez.Adapter1'><method name='StartDiscovery'/><method name='StopDiscovery'/><method name='RemoveDevice'><arg type='o' direction='in'/></method><property name='Powered' type='b' access='readwrite'/></interface>"
++"<interface name='org.bluez.Device1'><method name='Connect'/><method name='Disconnect'/><method name='Pair'/><method name='CancelPairing'/><property name='Address' type='s' access='read'/><property name='Alias' type='s' access='read'/><property name='Icon' type='s' access='read'/><property name='Adapter' type='o' access='read'/><property name='Paired' type='b' access='read'/><property name='Trusted' type='b' access='readwrite'/><property name='Connected' type='b' access='read'/></interface>"
++"<interface name='org.bluez.AgentManager1'><method name='RegisterAgent'><arg type='o' direction='in'/><arg type='s' direction='in'/></method><method name='UnregisterAgent'><arg type='o' direction='in'/></method></interface>"
++"<interface name='org.gnome.SettingsDaemon.Rfkill'><property name='AirplaneMode' type='b' access='read'/><property name='BluetoothAirplaneMode' type='b' access='readwrite'/><property name='BluetoothHardwareAirplaneMode' type='b' access='read'/></interface>"
++"<interface name='org.freedesktop.hostname1'><property name='PrettyHostname' type='s' access='read'/></interface></node>";
++typedef struct { GDBusConnection *bus; gboolean powered, airplane, connected, paired, trusted, refuse, removed; guint starts, stops, connects, pairs, extra; gboolean hold_start; GDBusMethodInvocation *delayed_start; char *agent_owner, *agent_path; GDBusMethodInvocation *pair; } Owner;
++static void spin (guint ms) { gint64 end=g_get_monotonic_time()+ms*1000;do { while(g_main_context_iteration(NULL,FALSE));g_usleep(1000); } while(g_get_monotonic_time()<end); }
++static GVariant *property (GDBusConnection *bus,const char *sender,const char *path,const char *iface,const char *name,GError **error,gpointer data) {
++ Owner *o=data;gboolean extra=g_str_has_prefix(path,AP "/dev_EXTRA_");gboolean near=g_str_equal(path,NP)||extra;
++ if(extra&&g_str_equal(name,"Address"))return g_variant_new_string(strrchr(path,'/')+1);
++ if(extra&&g_str_equal(name,"Alias"))return g_variant_new_string("Synthetic nearby device");
++ if(extra&&(g_str_equal(name,"Paired")||g_str_equal(name,"Trusted")||g_str_equal(name,"Connected")))return g_variant_new_boolean(FALSE);
++ if(g_str_equal(name,"Powered"))return g_variant_new_boolean(o->powered);
++ if(g_str_equal(name,"BluetoothAirplaneMode"))return g_variant_new_boolean(o->airplane);
++ if(g_str_equal(name,"AirplaneMode")||g_str_equal(name,"BluetoothHardwareAirplaneMode"))return g_variant_new_boolean(FALSE);
++ if(g_str_equal(name,"PrettyHostname"))return g_variant_new_string("Synthetic Settings Owner");
++ if(g_str_equal(name,"Adapter"))return g_variant_new_object_path(AP);
++ if(g_str_equal(name,"Address"))return g_variant_new_string(near?"BB":"AA");
++ if(g_str_equal(name,"Alias"))return g_variant_new_string(near?"Synthetic Nearby":"Synthetic Keyboard");
++ if(g_str_equal(name,"Icon"))return g_variant_new_string("input-keyboard");
++ if(g_str_equal(name,"Paired"))return g_variant_new_boolean(near?o->paired:TRUE);
++ if(g_str_equal(name,"Trusted"))return g_variant_new_boolean(near?o->trusted:TRUE);
++ if(g_str_equal(name,"Connected"))return g_variant_new_boolean(near?FALSE:o->connected);
++ g_assert_not_reached();return NULL;
++}
++static void change (Owner *o,const char *path,const char *iface,const char *name,GVariant *value) {
++ GVariantBuilder changed,invalid;g_variant_builder_init(&changed,G_VARIANT_TYPE("a{sv}"));g_variant_builder_add(&changed,"{sv}",name,value);g_variant_builder_init(&invalid,G_VARIANT_TYPE("as"));
++ g_assert_true(g_dbus_connection_emit_signal(o->bus,NULL,path,"org.freedesktop.DBus.Properties","PropertiesChanged",g_variant_new("(sa{sv}as)",iface,&changed,&invalid),NULL));
++}
++static gboolean set (GDBusConnection *bus,const char *sender,const char *path,const char *iface,const char *name,GVariant *value,GError **error,gpointer data) {
++ Owner *o=data;if(g_str_equal(name,"Powered"))o->powered=g_variant_get_boolean(value);else if(g_str_equal(name,"BluetoothAirplaneMode"))o->airplane=g_variant_get_boolean(value);else if(g_str_equal(name,"Trusted"))o->trusted=g_variant_get_boolean(value);else g_assert_not_reached();change(o,path,iface,name,value);return TRUE;
++}
++static GVariant *props (Owner *o,const char *path,GDBusInterfaceInfo *iface) { GVariantBuilder b;g_variant_builder_init(&b,G_VARIANT_TYPE("a{sv}"));for(guint i=0;iface->properties&&iface->properties[i];i++)g_variant_builder_add(&b,"{sv}",iface->properties[i]->name,property(NULL,NULL,path,iface->name,iface->properties[i]->name,NULL,o));return g_variant_builder_end(&b); }
++static GDBusNodeInfo *info;
++static void confirmed(GObject *source,GAsyncResult *result,gpointer data) {
++ Owner *o=data;g_autoptr(GError) e=NULL;g_autoptr(GVariant) out=g_dbus_connection_call_finish(G_DBUS_CONNECTION(source),result,&e);
++ if(!o->pair)return;
++ if(e)g_dbus_method_invocation_return_dbus_error(o->pair,"org.bluez.Error.AuthenticationRejected","Synthetic confirmation rejected");
++ else {o->paired=TRUE;change(o,NP,"org.bluez.Device1","Paired",g_variant_new_boolean(TRUE));g_dbus_method_invocation_return_value(o->pair,NULL);}g_clear_object(&o->pair);
++}
++static void method(GDBusConnection *bus,const char *sender,const char *path,const char *iface,const char *name,GVariant *args,GDBusMethodInvocation *call,gpointer data) {
++ Owner *o=data;
++ if(g_str_equal(name,"GetManagedObjects")) {
++  GVariantBuilder objects;g_variant_builder_init(&objects,G_VARIANT_TYPE("a{oa{sa{sv}}}"));const char *paths[]={AP,DP,NP};
++  for(guint i=0;i<3;i++){if(i==1&&o->removed)continue;GVariantBuilder interfaces;g_variant_builder_init(&interfaces,G_VARIANT_TYPE("a{sa{sv}}"));GDBusInterfaceInfo *in=g_dbus_node_info_lookup_interface(info,i?"org.bluez.Device1":"org.bluez.Adapter1");g_variant_builder_add(&interfaces,"{s@a{sv}}",in->name,props(o,paths[i],in));g_variant_builder_add(&objects,"{o@a{sa{sv}}}",paths[i],g_variant_builder_end(&interfaces));}
++  for(guint i=0;i<o->extra;i++){g_autofree char *p=g_strdup_printf(AP "/dev_EXTRA_%03u",i);GVariantBuilder interfaces;g_variant_builder_init(&interfaces,G_VARIANT_TYPE("a{sa{sv}}"));GDBusInterfaceInfo *in=g_dbus_node_info_lookup_interface(info,"org.bluez.Device1");g_variant_builder_add(&interfaces,"{s@a{sv}}",in->name,props(o,p,in));g_variant_builder_add(&objects,"{o@a{sa{sv}}}",p,g_variant_builder_end(&interfaces));}
++  g_dbus_method_invocation_return_value(call,g_variant_new("(a{oa{sa{sv}}})",&objects));return;
++ }
++ if(g_str_equal(name,"RegisterAgent")){const char *agent,*capability;g_variant_get(args,"(&o&s)",&agent,&capability);g_free(o->agent_owner);g_free(o->agent_path);o->agent_owner=g_strdup(sender);o->agent_path=g_strdup(agent);}
++ else if(g_str_equal(name,"StartDiscovery")){o->starts++;g_assert_true(o->powered);if(o->hold_start){o->delayed_start=g_object_ref(call);return;}}
++ else if(g_str_equal(name,"StopDiscovery"))o->stops++;
++ else if(g_str_equal(name,"Connect")||g_str_equal(name,"Disconnect")) {
++  o->connects++;if(o->refuse){g_dbus_method_invocation_return_dbus_error(call,"org.bluez.Error.Failed","Synthetic device refuses connection");return;}
++  if(g_str_equal(path,DP)){o->connected=g_str_equal(name,"Connect");change(o,DP,"org.bluez.Device1","Connected",g_variant_new_boolean(o->connected));}
++ }
++ else if(g_str_equal(name,"RemoveDevice")) {
++  const char *removed;g_variant_get(args,"(&o)",&removed);g_assert_cmpstr(removed,==,DP);o->removed=TRUE;
++  GVariantBuilder gone;g_variant_builder_init(&gone,G_VARIANT_TYPE("as"));g_variant_builder_add(&gone,"s","org.bluez.Device1");g_assert_true(g_dbus_connection_emit_signal(o->bus,NULL,"/","org.freedesktop.DBus.ObjectManager","InterfacesRemoved",g_variant_new("(oas)",DP,&gone),NULL));
++ }
++ else if(g_str_equal(name,"Pair")){o->pairs++;g_assert_nonnull(o->agent_owner);o->pair=g_object_ref(call);g_dbus_connection_call(o->bus,o->agent_owner,o->agent_path,"org.bluez.Agent1","RequestConfirmation",g_variant_new("(ou)",NP,123456),NULL,G_DBUS_CALL_FLAGS_NONE,3000,NULL,confirmed,o);return;}
++ g_dbus_method_invocation_return_value(call,NULL);
++}
++static const GDBusInterfaceVTable vtable={method,property,set,{0}};
++static void own(Owner *o,const char *name){g_autoptr(GVariant) v=g_dbus_connection_call_sync(o->bus,"org.freedesktop.DBus","/org/freedesktop/DBus","org.freedesktop.DBus","RequestName",g_variant_new("(su)",name,0),G_VARIANT_TYPE("(u)"),G_DBUS_CALL_FLAGS_NONE,3000,NULL,NULL);g_assert_nonnull(v);}
++static gboolean owner_write(CcLumaFixture *m,const char *key,JsonNode *value,gpointer state,GError **error){return cc_luma_adapter_bluetooth.write(state,key,value,error);}
++static void command(CcLumaFixture *m,const char *key,const char *id){g_autoptr(JsonNode) n=json_node_init_string(json_node_alloc(),id);g_autoptr(GError) e=NULL;g_assert_true(cc_luma_fixture_write(m,key,n,&e));g_assert_no_error(e);}
++static GtkWidget *named (GtkWidget *root, const char *name) {
++ if (!g_strcmp0 (gtk_widget_get_name (root), name)) return root;
++ for (GtkWidget *w=gtk_widget_get_first_child(root);w;w=gtk_widget_get_next_sibling(w)){GtkWidget *found=named(w,name);if(found)return found;}return NULL;
++}
++static GtkWidget *control (GtkWidget *root, const char *id) {
++ if (GTK_IS_BUTTON(root)&&!g_strcmp0(g_object_get_data(G_OBJECT(root),"cf-device"),id))return root;
++ for(GtkWidget *w=gtk_widget_get_first_child(root);w;w=gtk_widget_get_next_sibling(w)){GtkWidget *found=control(w,id);if(found)return found;}return NULL;
++}
++typedef struct {guint ticks;gint64 last,max_gap;} Heartbeat;
++static gboolean heartbeat(gpointer data){Heartbeat *h=data;gint64 now=g_get_monotonic_time();if(h->last)h->max_gap=MAX(h->max_gap,now-h->last);h->last=now;h->ticks++;return G_SOURCE_CONTINUE;}
++static guint delegates;
++static gboolean delegated (GtkWidget *root,const char *page,gpointer data){delegates++;return TRUE;}
++static gboolean flag(CcLumaFixture *m){return json_node_get_boolean(cc_luma_fixture_get(m,"bt"));}
++static void bus_child_setup (gpointer data) { prctl (PR_SET_PDEATHSIG, SIGTERM); }
++int main(int argc,char **argv){
++ g_test_init(&argc,&argv,NULL);
++ /* GTK legitimately keeps its session connection until process exit. An owned
++  * subprocess bus measures this fixture without GTestDBus's singleton-destruction
++  * assertion about a process-wide GTK connection. Daemon exit is still verified. */
++ g_autoptr(GSubprocessLauncher) launcher=g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_STDOUT_PIPE);
++ g_subprocess_launcher_set_child_setup(launcher,bus_child_setup,NULL,NULL);
++ g_autoptr(GSubprocess) private=g_subprocess_launcher_spawn(launcher,NULL,"dbus-daemon","--session","--nofork","--print-address=1",NULL);g_assert_nonnull(private);
++ g_autoptr(GDataInputStream) output=g_data_input_stream_new(g_subprocess_get_stdout_pipe(private));
++ g_autofree char *address=g_data_input_stream_read_line(output,NULL,NULL,NULL);g_assert_nonnull(address);g_assert_true(g_str_has_prefix(address,"unix:"));
++ g_setenv("DBUS_SYSTEM_BUS_ADDRESS",address,TRUE);g_setenv("DBUS_SESSION_BUS_ADDRESS",address,TRUE);
++ g_autofree char *runtime=g_dir_make_tmp("luma-bt-native-XXXXXX",NULL);g_assert_nonnull(runtime);g_setenv("XDG_RUNTIME_DIR",runtime,TRUE);
++ Owner o={.powered=TRUE,.extra=180};o.bus=g_dbus_connection_new_for_address_sync(address,G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT|G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,NULL,NULL,NULL);g_assert_nonnull(o.bus);
++ own(&o,"org.bluez");own(&o,"org.gnome.SettingsDaemon.Rfkill");own(&o,"org.freedesktop.hostname1");info=g_dbus_node_info_new_for_xml(xml,NULL);
++ const char *paths[]={"/",AP,DP,NP,"/org/bluez",RP,"/org/freedesktop/hostname1"};const char *names[]={"org.freedesktop.DBus.ObjectManager","org.bluez.Adapter1","org.bluez.Device1","org.bluez.Device1","org.bluez.AgentManager1","org.gnome.SettingsDaemon.Rfkill","org.freedesktop.hostname1"};
++ for(guint i=0;i<G_N_ELEMENTS(paths);i++)g_assert_cmpuint(g_dbus_connection_register_object(o.bus,paths[i],g_dbus_node_info_lookup_interface(info,names[i]),&vtable,&o,NULL,NULL),>,0);
++ g_autoptr(JsonParser) parser=json_parser_new();g_assert_true(json_parser_load_from_data(parser,"{\"version\":1,\"settings\":{},\"data\":{},\"pages\":[{\"id\":\"bluetooth\"}]}",-1,NULL));
++ g_autoptr(CcLumaFixture) model=cc_luma_fixture_new_live(json_parser_get_root(parser));gpointer state=cc_luma_adapter_bluetooth.start(model);cc_luma_fixture_set_writer(model,owner_write,state);cc_luma_fixture_verify_owned_keys(model);
++ for(guint i=0;i<50&&!ready;i++)spin(20);g_assert_true(ready);g_assert_true(flag(model));
++ g_autoptr(JsonNode) on=json_node_init_boolean(json_node_alloc(),TRUE);g_autoptr(JsonNode) off=json_node_init_boolean(json_node_alloc(),FALSE);g_autoptr(GError) error=NULL;
++ adw_init ();GtkWidget *view=cc_luma_view_new(model,"bluetooth",&error);g_assert_no_error(error);g_assert_nonnull(view);
++ cc_luma_view_set_delegate(view,delegated,NULL);GtkWidget *window=gtk_window_new();gtk_window_set_default_size(GTK_WINDOW(window),900,700);gtk_window_set_child(GTK_WINDOW(window),view);gtk_window_present(GTK_WINDOW(window));spin(200);
++ g_assert_true(cc_luma_fixture_write(model,"CFNEAR.scan",on,&error));spin(150);g_assert_cmpuint(o.starts,==,1);
++ g_assert_cmpuint(json_array_get_length(json_object_get_array_member(cc_luma_fixture_get_data(model),"CFNEAR")),==,181);
++ GtkWidget *retained=named(view,"cf-pair-BB");g_assert_nonnull(retained);g_assert_true(gtk_widget_grab_focus(retained));
++ GtkWidget *sw=named(view,"cf-body");GtkAdjustment *adjustment=gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(sw));gtk_adjustment_set_value(adjustment,500);spin(50);double scroll=gtk_adjustment_get_value(adjustment);
++ graphene_rect_t before,after;g_assert_true(gtk_widget_compute_bounds(retained,view,&before));
++ Heartbeat beat={0};guint pulse=g_timeout_add(10,heartbeat,&beat);
++ for(guint i=0;i<500;i++)change(&o,DP,"org.bluez.Device1","RSSI",g_variant_new_int16(-40-(i%10)));
++ change(&o,"/org/freedesktop/hostname1","org.freedesktop.hostname1","PrettyHostname",g_variant_new_string("Synthetic renamed Settings owner"));
++ GVariantBuilder added;g_variant_builder_init(&added,G_VARIANT_TYPE("a{sa{sv}}"));GDBusInterfaceInfo *device_info=g_dbus_node_info_lookup_interface(info,"org.bluez.Device1");g_variant_builder_add(&added,"{s@a{sv}}",device_info->name,props(&o,AP "/dev_EXTRA_180",device_info));g_assert_true(g_dbus_connection_emit_signal(o.bus,NULL,"/","org.freedesktop.DBus.ObjectManager","InterfacesAdded",g_variant_new("(oa{sa{sv}})",AP "/dev_EXTRA_180",&added),NULL));
++ spin(450);g_source_remove(pulse);g_assert_cmpuint(json_array_get_length(json_object_get_array_member(cc_luma_fixture_get_data(model),"CFNEAR")),==,182);
++ g_assert_true(named(view,"cf-pair-BB")==retained);g_assert_true(gtk_widget_compute_bounds(retained,view,&after));g_assert_cmpfloat(fabs(before.origin.x-after.origin.x),<,2);g_assert_cmpfloat(fabs(before.origin.y-after.origin.y),<,2);
++ g_assert_true(named(view,"cf-pair-BB")==retained);g_assert_true(gtk_root_get_focus(GTK_ROOT(window))==retained);g_assert_cmpfloat(fabs(gtk_adjustment_get_value(adjustment)-scroll),<,2);
++ g_assert_cmpuint(beat.ticks,>=,10);g_assert_cmpint(beat.max_gap,<,200000);g_print("181 devices/500 owner signals: retained row/focus/scroll, ticks=%u max-gap-us=%"G_GINT64_FORMAT"\n",beat.ticks,beat.max_gap);
++ /* An older failed start must not clear a newer successful discovery lease. */
++ g_assert_true(cc_luma_fixture_write(model,"CFNEAR.scan",off,&error));spin(80);
++ o.hold_start=TRUE;g_assert_true(cc_luma_fixture_write(model,"CFNEAR.scan",on,&error));spin(80);g_assert_nonnull(o.delayed_start);
++ o.hold_start=FALSE;g_assert_true(cc_luma_fixture_write(model,"CFNEAR.scan",off,&error));g_assert_true(cc_luma_fixture_write(model,"CFNEAR.scan",on,&error));spin(100);
++ g_dbus_method_invocation_return_dbus_error(o.delayed_start,"org.bluez.Error.Failed","Synthetic older start failed");g_clear_object(&o.delayed_start);spin(100);
++ guint expected_stops=o.stops+1;g_assert_true(cc_luma_fixture_write(model,"CFNEAR.scan",off,&error));spin(100);g_assert_cmpuint(o.stops,==,expected_stops);
++ guint expected_starts=o.starts;
++ GtkWidget *power=named(view,"cf-bt");g_assert_nonnull(power);if(!GTK_IS_SWITCH(power))power=g_object_get_data(G_OBJECT(power),"cf-switch");g_assert_true(GTK_IS_SWITCH(power));gtk_switch_set_active(GTK_SWITCH(power),FALSE);spin(300);g_assert_false(o.powered);g_assert_true(o.airplane);g_assert_false(flag(model));g_assert_cmpuint(o.stops,>=,1);
++ g_assert_false(cc_luma_fixture_write(model,"CFNEAR.scan",on,&error));g_assert_nonnull(error);g_clear_error(&error);spin(150);g_assert_false(o.powered);g_assert_cmpuint(o.starts,==,expected_starts);
++ g_signal_emit_by_name(named(view,"cf-bt-on"),"clicked");spin(300);g_assert_true(o.powered);g_assert_false(o.airplane);g_assert_true(flag(model));
++ /* Both native intents precede owner readback: latest On must win. */
++ power=named(view,"cf-bt");if(!GTK_IS_SWITCH(power))power=g_object_get_data(G_OBJECT(power),"cf-switch");
++ gtk_switch_set_active(GTK_SWITCH(power),FALSE);gtk_switch_set_active(GTK_SWITCH(power),TRUE);spin(300);g_assert_true(o.powered);g_assert_false(o.airplane);g_assert_true(flag(model));
++ g_signal_emit_by_name(control(view,"AA"),"clicked");spin(300);g_assert_true(o.connected);g_signal_emit_by_name(control(view,"AA"),"clicked");spin(300);g_assert_false(o.connected);
++ o.refuse=TRUE;g_signal_emit_by_name(control(view,"AA"),"clicked");spin(300);g_assert_nonnull(named(view,"cf-bt-error"));g_assert_false(o.connected);g_assert_nonnull(strstr(json_node_get_string(cc_luma_fixture_get(model,"btError")),"Synthetic device refuses"));o.refuse=FALSE;
++ command(model,"CFBT.forget","AA");spin(300);g_assert_true(o.removed);g_assert_cmpuint(json_array_get_length(json_object_get_array_member(cc_luma_fixture_get_data(model),"CFBT")),==,0);
++ g_signal_emit_by_name(named(view,"cf-pair-BB"),"clicked");spin(300);g_assert_false(o.paired);g_assert_nonnull(o.pair);JsonArray *near=json_object_get_array_member(cc_luma_fixture_get_data(model),"CFNEAR");g_assert_true(json_object_get_boolean_member(json_array_get_object_element(near,0),"confirm"));
++ g_signal_emit_by_name(named(view,"cf-bt-pair-cancel"),"clicked");spin(300);g_assert_false(o.paired);g_assert_null(o.pair);
++ /* Power-off immediately after Pair cancels a queued RegisterAgent reply.
++  * It must not resume Pair on a now-off adapter or a replacement operation. */
++ guint previous_pairs=o.pairs;g_signal_emit_by_name(named(view,"cf-pair-BB"),"clicked");
++ power=named(view,"cf-bt");if(!GTK_IS_SWITCH(power))power=g_object_get_data(G_OBJECT(power),"cf-switch");gtk_switch_set_active(GTK_SWITCH(power),FALSE);spin(300);
++ g_assert_cmpuint(o.pairs,==,previous_pairs);g_assert_null(o.pair);g_assert_false(o.powered);g_assert_false(o.paired);
++ g_signal_emit_by_name(named(view,"cf-bt-on"),"clicked");spin(300);
++ g_signal_emit_by_name(named(view,"cf-pair-BB"),"clicked");spin(300);g_assert_false(o.paired);g_signal_emit_by_name(named(view,"cf-bt-pair-confirm"),"clicked");spin(350);g_assert_true(o.paired);g_assert_true(o.trusted);
++ g_assert_cmpuint(delegates,==,0);gtk_window_destroy(GTK_WINDOW(window));spin(150);
++ cc_luma_adapter_bluetooth.stop(state);spin(100);
++ /* Disposal before startup replies drain is a real async cancellation race. */
++ for(guint i=0;i<40;i++){state=cc_luma_adapter_bluetooth.start(model);cc_luma_adapter_bluetooth.stop(state);}spin(400);
++ g_clear_object(&o.pair);g_free(o.agent_owner);g_free(o.agent_path);g_dbus_connection_close_sync(o.bus,NULL,NULL);g_object_unref(o.bus);g_dbus_node_info_unref(info);g_subprocess_force_exit(private);g_assert_true(g_subprocess_wait(private,NULL,NULL));g_assert_true(g_subprocess_get_if_signaled(private));g_print("private BlueZ/Rfkill power, discovery, connect/error, confirm/cancel and disposal PASS\n");return 0;
++}

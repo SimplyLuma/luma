@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@APP_ID@</id>
+  <name>@APP_NAME@</name>
+  <summary>An adaptive Luma application</summary>
+  <description>
+    <p>
+      @APP_NAME@ is one responsive application for desktop, tablet, and mobile
+      presentations built with the Luma Developer Platform.
+    </p>
+  </description>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="@APP_ID@.developers">
+    <name>@APP_NAME@ developers</name>
+  </developer>
+  <url type="homepage">https://projectluma.org/apps</url>
+  <launchable type="desktop-id">@APP_ID@.desktop</launchable>
+  <provides>
+    <binary>run-app</binary>
+  </provides>
+  <custom>
+    <value key="org.projectluma.ApplicationContract">0.2</value>
+  </custom>
+  <releases>
+    <release version="0.1.0" date="2026-08-27"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

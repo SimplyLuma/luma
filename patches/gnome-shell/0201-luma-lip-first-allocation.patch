@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: size the notification lip before its first animation
+
+Set the initial chrome extent directly so Clutter has an allocation before
+later idle, pill, card and tray transitions animate.
+---
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index 56430a0..5a96198 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -366,6 +366,14 @@ export const NotificationLip = GObject.registerClass(class NotificationLip exten
+         this._anchor();
+         if (unchanged) return;
+         this.remove_transition('width'); this.remove_transition('height');
++        // Startup and monitor changes can request a render before chrome has
++        // its first allocation. Set the initial extent directly; Clutter
++        // cannot animate an actor that has never been allocated.
++        if (!this.has_allocation()) {
++            this.set_size(width, height);
++            this.queue_relayout();
++            return;
++        }
+         this.ease({width, height, duration: St.Settings.get().enable_animations ? MORPH_TIME : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUART});
+         for (const property of ['width', 'height'])

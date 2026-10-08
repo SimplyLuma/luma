@@ -1,0 +1,599 @@
+--- a/src/stylesheet/adwaita-dark.css
++++ b/src/stylesheet/adwaita-dark.css
+@@ -20,3 +20,137 @@
+ @define-color phosh_emergency_button_fg_color #ffffff;
+ 
+ @import url("resource:///mobi/phosh/stylesheet/common.css");
++
++/* Luma lockscreen ---------------------------------------------------------
++ *
++ * These rules live here rather than in common.css because this is the file
++ * phosh loads by name (style-manager.c picks adwaita-dark.css or
++ * adwaita-hc-light.css). Appended after the @import so nothing in the imported
++ * sheet can outrank them on cascade order.
++ *
++ * Sizes and colours are copied from the pre-session greeter's stylesheet, not
++ * approximated, so the session lock and the greeter are the same design. Do not
++ * add a rule here that selects bare labels inside the unlock page: at (0,1,1)
++ * it outranks every .luma-* class and flattens the whole page to one size.
++ */
++
++phosh-lockscreen,
++phosh-lockscreen label,
++phosh-lockscreen entry,
++phosh-lockscreen button {
++  font-family: "Figtree";
++}
++
++/* The greeter shows the same 46px clock on both of its states. Upstream phosh
++ * uses 84px here, which is what made the quiet page look oversized beside it. */
++#phosh-lockscreen-clock {
++  font-size: 46px;
++  font-weight: 500;
++  padding-top: 0;
++  margin: 0;
++  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
++}
++
++#phosh-lockscreen-date {
++  font-size: 13px;
++  font-weight: 600;
++  margin-top: 2px;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
++}
++
++.p-small #phosh-lockscreen-clock {
++  font-size: 46px;
++  font-weight: 500;
++}
++
++.p-small #phosh-lockscreen-date {
++  font-size: 13px;
++  font-weight: 600;
++}
++
++.phosh-lockscreen-arrow + label {
++  margin-bottom: 36px;
++  font-size: 13px;
++  font-weight: 600;
++  opacity: 0.82;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36);
++}
++
++.phosh-lockscreen-unlocker .luma-unlock-clock {
++  font-size: 46px;
++  font-weight: 500;
++  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
++}
++
++.phosh-lockscreen-unlocker .luma-unlock-date {
++  font-size: 13px;
++  font-weight: 600;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
++}
++
++/* Phosh's status label becomes the greeter's feedback line: it is what reports
++ * "Checking..." and a wrong passcode, so it stays in the tree and is simply
++ * quiet until it has something to say. */
++.phosh-lockscreen-unlocker .luma-unlock-feedback {
++  font-size: 12px;
++  font-weight: 600;
++  text-shadow: 0 1px 7px rgba(0, 0, 0, 0.44);
++}
++
++/* Keypad: the greeter's dark translucent keys, not pale white ones. */
++phosh-keypad {
++  min-width: 288px;
++}
++
++phosh-keypad button {
++  min-width: 88px;
++  min-height: 64px;
++  padding: 0;
++  margin: 6px;
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  border-radius: 999px;
++  background-image: none;
++  background-color: rgba(31, 37, 46, 0.42);
++  box-shadow: inset 0 1px rgba(255, 255, 255, 0.10),
++              0 3px 12px rgba(0, 0, 0, 0.16);
++}
++
++phosh-keypad button:hover {
++  background-color: rgba(48, 56, 67, 0.54);
++}
++
++phosh-keypad button:active,
++phosh-keypad button:checked {
++  background-color: rgba(255, 255, 255, 0.22);
++}
++
++phosh-keypad button:disabled {
++  opacity: 0.55;
++}
++
++phosh-keypad label.digit {
++  font-size: 26px;
++  font-weight: 500;
++  text-shadow: none;
++}
++
++phosh-keypad image {
++  -gtk-icon-shadow: none;
++}
++
++.luma-emergency {
++  min-height: 44px;
++  padding: 0 16px;
++  border: 1px solid rgba(255, 255, 255, 0.15);
++  border-radius: 999px;
++  background-image: none;
++  background-color: rgba(27, 32, 38, 0.68);
++  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08),
++              0 3px 12px rgba(0, 0, 0, 0.22);
++  color: #ffffff;
++}
++
++.luma-emergency label {
++  font-size: 13px;
++  font-weight: 600;
++}
+--- a/src/stylesheet/adwaita-hc-light.css
++++ b/src/stylesheet/adwaita-hc-light.css
+@@ -67,3 +67,137 @@
+ .phosh-search-bar {
+   background-color: @phosh_button_bg_color;
+ }
++
++/* Luma lockscreen ---------------------------------------------------------
++ *
++ * These rules live here rather than in common.css because this is the file
++ * phosh loads by name (style-manager.c picks adwaita-dark.css or
++ * adwaita-hc-light.css). Appended after the @import so nothing in the imported
++ * sheet can outrank them on cascade order.
++ *
++ * Sizes and colours are copied from the pre-session greeter's stylesheet, not
++ * approximated, so the session lock and the greeter are the same design. Do not
++ * add a rule here that selects bare labels inside the unlock page: at (0,1,1)
++ * it outranks every .luma-* class and flattens the whole page to one size.
++ */
++
++phosh-lockscreen,
++phosh-lockscreen label,
++phosh-lockscreen entry,
++phosh-lockscreen button {
++  font-family: "Figtree";
++}
++
++/* The greeter shows the same 46px clock on both of its states. Upstream phosh
++ * uses 84px here, which is what made the quiet page look oversized beside it. */
++#phosh-lockscreen-clock {
++  font-size: 46px;
++  font-weight: 500;
++  padding-top: 0;
++  margin: 0;
++  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
++}
++
++#phosh-lockscreen-date {
++  font-size: 13px;
++  font-weight: 600;
++  margin-top: 2px;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
++}
++
++.p-small #phosh-lockscreen-clock {
++  font-size: 46px;
++  font-weight: 500;
++}
++
++.p-small #phosh-lockscreen-date {
++  font-size: 13px;
++  font-weight: 600;
++}
++
++.phosh-lockscreen-arrow + label {
++  margin-bottom: 36px;
++  font-size: 13px;
++  font-weight: 600;
++  opacity: 0.82;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36);
++}
++
++.phosh-lockscreen-unlocker .luma-unlock-clock {
++  font-size: 46px;
++  font-weight: 500;
++  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
++}
++
++.phosh-lockscreen-unlocker .luma-unlock-date {
++  font-size: 13px;
++  font-weight: 600;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
++}
++
++/* Phosh's status label becomes the greeter's feedback line: it is what reports
++ * "Checking..." and a wrong passcode, so it stays in the tree and is simply
++ * quiet until it has something to say. */
++.phosh-lockscreen-unlocker .luma-unlock-feedback {
++  font-size: 12px;
++  font-weight: 600;
++  text-shadow: 0 1px 7px rgba(0, 0, 0, 0.44);
++}
++
++/* Keypad: the greeter's dark translucent keys, not pale white ones. */
++phosh-keypad {
++  min-width: 288px;
++}
++
++phosh-keypad button {
++  min-width: 88px;
++  min-height: 64px;
++  padding: 0;
++  margin: 6px;
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  border-radius: 999px;
++  background-image: none;
++  background-color: rgba(31, 37, 46, 0.42);
++  box-shadow: inset 0 1px rgba(255, 255, 255, 0.10),
++              0 3px 12px rgba(0, 0, 0, 0.16);
++}
++
++phosh-keypad button:hover {
++  background-color: rgba(48, 56, 67, 0.54);
++}
++
++phosh-keypad button:active,
++phosh-keypad button:checked {
++  background-color: rgba(255, 255, 255, 0.22);
++}
++
++phosh-keypad button:disabled {
++  opacity: 0.55;
++}
++
++phosh-keypad label.digit {
++  font-size: 26px;
++  font-weight: 500;
++  text-shadow: none;
++}
++
++phosh-keypad image {
++  -gtk-icon-shadow: none;
++}
++
++.luma-emergency {
++  min-height: 44px;
++  padding: 0 16px;
++  border: 1px solid rgba(255, 255, 255, 0.15);
++  border-radius: 999px;
++  background-image: none;
++  background-color: rgba(27, 32, 38, 0.68);
++  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08),
++              0 3px 12px rgba(0, 0, 0, 0.22);
++  color: #ffffff;
++}
++
++.luma-emergency label {
++  font-size: 13px;
++  font-weight: 600;
++}
+--- a/src/lockscreen.c
++++ b/src/lockscreen.c
+@@ -16,6 +16,7 @@
+ #include "layersurface-priv.h"
+ #include "lockscreen-bg.h"
+ #include "lockscreen-priv.h"
++#include <gio/gdesktopappinfo.h>
+ #include "notifications/notify-manager.h"
+ #include "notifications/notification-frame.h"
+ #include "osk-manager.h"
+@@ -93,6 +94,10 @@
+ 
+   /* unlock page */
+   GtkWidget          *box_unlock;
++  GtkWidget          *lbl_unlock_clock;
++  GtkWidget          *lbl_unlock_date;
++  GtkWidget          *dots[4];
++  GtkWidget          *btn_emergency;
+   GtkWidget          *keypad_revealer;
+   GtkWidget          *keypad;
+   GtkWidget          *entry_pin;
+@@ -595,8 +600,24 @@
+   priv->last_input = g_get_monotonic_time ();
+   return handled;
+ }
++
++
++/* Trim Unicode whitespace, not just ASCII: the clock's padding is U+2007. */
++static char *
++luma_trim_clock (const char *time)
++{
++  const char *start = time;
++  char *out;
+ 
++  while (*start != '\0' && g_unichar_isspace (g_utf8_get_char (start)))
++    start = g_utf8_next_char (start);
+ 
++  out = g_strdup (start);
++
++  return g_strchomp (out);
++}
++
++
+ static void
+ wall_clock_notify_cb (PhoshLockscreen *self,
+                       GParamSpec      *pspec,
+@@ -605,12 +626,28 @@
+   PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+   const char *time;
+   g_autofree char *date = NULL;
++  g_autofree char *trimmed = NULL;
+ 
+   time = phosh_wall_clock_get_clock (wall_clock, TRUE);
+-  gtk_label_set_text (GTK_LABEL (priv->lbl_clock), time);
+ 
++  /* GNOME pads the 12 hour clock with U+2007 FIGURE SPACE, which is exactly one
++   * digit wide, so before 10 o'clock the string begins with an invisible
++   * digit-sized gap. Centring the label centres that gap too and pushes the
++   * visible time half a digit right; the date, which has no padding, sat
++   * correctly and made the clock look like the broken one. g_strstrip does not
++   * help here - it only knows ASCII whitespace. */
++  trimmed = luma_trim_clock (time);
++  gtk_label_set_text (GTK_LABEL (priv->lbl_clock), trimmed);
++
+   date = phosh_wall_clock_local_date (wall_clock);
+   gtk_label_set_label (GTK_LABEL (priv->lbl_date), date);
++
++  /* The passcode page carries the same clock as the page it slid up from, so
++   * the time does not disappear the moment somebody starts unlocking. */
++  if (priv->lbl_unlock_clock != NULL) {
++    gtk_label_set_text (GTK_LABEL (priv->lbl_unlock_clock), trimmed);
++    gtk_label_set_label (GTK_LABEL (priv->lbl_unlock_date), date);
++  }
+ }
+ 
+ 
+@@ -890,6 +927,232 @@
+   priv->background = phosh_lockscreen_bg_new (phosh_wayland_get_zwlr_layer_shell_v1 (wl),
+                                               wl_output);
+   g_object_bind_property (self, "visible", priv->background, "visible", G_BINDING_SYNC_CREATE);
++}
++
++
++static gboolean
++draw_pin_dot (GtkWidget *area, cairo_t *cr, gpointer data)
++{
++  GtkAllocation alloc;
++  gboolean filled = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (area), "filled"));
++  double r;
++
++  (void) data;
++  gtk_widget_get_allocation (area, &alloc);
++  r = MIN (alloc.width, alloc.height) / 2.0 - 1.0;
++
++  cairo_arc (cr, alloc.width / 2.0, alloc.height / 2.0, r, 0, 2 * G_PI);
++  if (filled) {
++    cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.96);
++    cairo_fill (cr);
++  } else {
++    cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.24);
++    cairo_fill_preserve (cr);
++    cairo_set_source_rgba (cr, 1.0, 1.0, 1.0, 0.18);
++    cairo_set_line_width (cr, 1.0);
++    cairo_stroke (cr);
++  }
++
++  return TRUE;
++}
++
++
++static void
++luma_sync_dots (PhoshLockscreen *self)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++  guint16 length = gtk_entry_get_text_length (GTK_ENTRY (priv->entry_pin));
++
++  for (guint i = 0; i < G_N_ELEMENTS (priv->dots); i++) {
++    g_object_set_data (G_OBJECT (priv->dots[i]), "filled", GINT_TO_POINTER (i < length));
++    gtk_widget_queue_draw (priv->dots[i]);
++  }
++
++  /* The greeter submits itself once the passcode is complete, so there is no
++   * button to reach for. Match that rather than leaving a dead control on the
++   * page. Guarded on sensitivity so the in-flight attempt cannot be resubmitted
++   * while phosh is still talking to PAM. */
++  if (length == G_N_ELEMENTS (priv->dots) && gtk_widget_get_sensitive (GTK_WIDGET (self))) {
++    PhoshLockscreenClass *klass = PHOSH_LOCKSCREEN_GET_CLASS (self);
++
++    if (klass->unlock_submit != NULL)
++      klass->unlock_submit (self);
++  }
++}
++
++
++static void
++on_emergency_clicked (GtkButton *button, gpointer data)
++{
++  g_autoptr (GAppInfo) calls = NULL;
++  g_autoptr (GError) error = NULL;
++
++  (void) button;
++  (void) data;
++
++  calls = G_APP_INFO (g_desktop_app_info_new ("org.gnome.Calls.desktop"));
++  if (calls == NULL)
++    return;
++
++  if (!g_app_info_launch (calls, NULL, NULL, &error))
++    g_warning ("Could not open the emergency dialler: %s", error->message);
++}
++
++
++static void
++luma_polish_unlock_page (PhoshLockscreen *self)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++  GtkWidget *dots;
++  GDesktopAppInfo *emergency_app;
++
++  /* The keypad was filling whatever height the page had left, which stretched
++   * its round keys into ovals. Pin it to its natural size and let the page
++   * distribute the slack instead. */
++  /* GTK3 has no max-width, so without an explicit request the homogeneous grid
++   * takes the whole page width and the keys stretch into wide ovals. 288 is the
++   * greeter's keypad width. */
++  gtk_widget_set_size_request (GTK_WIDGET (priv->keypad_revealer), 288, -1);
++  gtk_widget_set_halign (GTK_WIDGET (priv->keypad_revealer), GTK_ALIGN_CENTER);
++  gtk_widget_set_hexpand (GTK_WIDGET (priv->keypad_revealer), FALSE);
++  {
++    /* A size request is only a minimum, and GTK3 has no maximum, so the grid
++     * inside kept expanding to the page width and the keys spread into wide
++     * ovals. Deny it the expansion instead of asking it to be smaller. */
++    GtkWidget *keypad = gtk_bin_get_child (GTK_BIN (priv->keypad_revealer));
++
++    if (keypad != NULL) {
++      gtk_widget_set_hexpand (keypad, FALSE);
++      gtk_widget_set_halign (keypad, GTK_ALIGN_CENTER);
++      gtk_widget_set_size_request (keypad, 288, -1);
++    }
++  }
++
++  /* The greeter leaves the lower-left key empty; phosh puts an on-screen
++   * keyboard toggle there. Hide it so the two keypads have the same shape. */
++  gtk_widget_set_no_show_all (GTK_WIDGET (priv->btn_keyboard), TRUE);
++  gtk_widget_hide (GTK_WIDGET (priv->btn_keyboard));
++
++  priv->lbl_unlock_clock = gtk_label_new (NULL);
++  gtk_style_context_add_class (gtk_widget_get_style_context (priv->lbl_unlock_clock),
++                               "luma-unlock-clock");
++  priv->lbl_unlock_date = gtk_label_new (NULL);
++  gtk_style_context_add_class (gtk_widget_get_style_context (priv->lbl_unlock_date),
++                               "luma-unlock-date");
++
++  gtk_box_pack_start (GTK_BOX (priv->box_unlock), priv->lbl_unlock_clock, FALSE, FALSE, 0);
++  gtk_box_pack_start (GTK_BOX (priv->box_unlock), priv->lbl_unlock_date, FALSE, FALSE, 0);
++  gtk_box_reorder_child (GTK_BOX (priv->box_unlock), priv->lbl_unlock_clock, 0);
++  gtk_box_reorder_child (GTK_BOX (priv->box_unlock), priv->lbl_unlock_date, 1);
++
++  /* Upstream spaces every child by 12 and starts 100px down. With a clock, an
++   * avatar, a name, four dots, a keypad and a pill on one page that produces
++   * even gaps between things that are not equally related, so drive the rhythm
++   * from each widget's own margin instead and let the page start near the top. */
++  gtk_box_set_spacing (GTK_BOX (priv->box_unlock), 0);
++  gtk_widget_set_margin_top (GTK_WIDGET (priv->box_unlock), 100);
++  gtk_widget_set_valign (GTK_WIDGET (priv->box_unlock), GTK_ALIGN_FILL);
++  gtk_widget_set_vexpand (GTK_WIDGET (priv->box_unlock), TRUE);
++
++  gtk_widget_set_margin_top (priv->lbl_unlock_clock, 56);
++  gtk_widget_set_margin_top (priv->lbl_unlock_date, 2);
++  /* The dots take the slack between the date and the keypad and centre
++   * themselves in it, rather than hanging off the bottom of the date. */
++
++
++  /* Everything on this page is centred, including the labels themselves: a
++   * label that fills the width and draws its text at the default alignment is
++   * what made the clock look pushed to one side. */
++  {
++    GtkWidget *centred[] = {
++      priv->lbl_unlock_clock, priv->lbl_unlock_date,
++      priv->lbl_clock, priv->lbl_date,
++    };
++
++    for (guint i = 0; i < G_N_ELEMENTS (centred); i++) {
++      gtk_label_set_xalign (GTK_LABEL (centred[i]), 0.5);
++      gtk_label_set_justify (GTK_LABEL (centred[i]), GTK_JUSTIFY_CENTER);
++      gtk_widget_set_halign (centred[i], GTK_ALIGN_FILL);
++      gtk_widget_set_hexpand (centred[i], TRUE);
++    }
++  }
++
++  /* The emergency call sits on the bottom edge like the greeter's, with the
++   * keypad taking the slack above it. */
++  /* Keypad and emergency call share the space under the dots, and the page
++   * keeps clear of the bottom edge so the pill is not clipped by it. */
++  gtk_widget_set_vexpand (GTK_WIDGET (priv->keypad_revealer), FALSE);
++  gtk_widget_set_valign (GTK_WIDGET (priv->keypad_revealer), GTK_ALIGN_CENTER);
++  gtk_widget_set_margin_bottom (GTK_WIDGET (priv->box_unlock), 32);
++
++  /* Upstream uses this label as a caption ("Enter Passcode") and as the place
++   * it reports "Checking..." and a wrong passcode. The greeter has no caption
++   * but does have a feedback line, so keep the label, start it empty and let
++   * phosh fill it only when it has something to say. Hiding it outright would
++   * have silently thrown away every authentication error. */
++  gtk_label_set_text (GTK_LABEL (priv->lbl_unlock_status), "");
++  gtk_style_context_add_class (gtk_widget_get_style_context (priv->lbl_unlock_status),
++                               "luma-unlock-feedback");
++  gtk_widget_set_size_request (priv->lbl_unlock_status, -1, 64);
++  gtk_label_set_line_wrap (GTK_LABEL (priv->lbl_unlock_status), TRUE);
++  gtk_label_set_justify (GTK_LABEL (priv->lbl_unlock_status), GTK_JUSTIFY_CENTER);
++
++  /* The entry keeps holding the credential - it is a GcrSecureEntryBuffer and
++   * the unlock path reads it - but it stops being what the person looks at.
++   * Four fixed dots replace its variable-length readout. */
++  gtk_widget_set_no_show_all (priv->entry_pin, TRUE);
++  gtk_widget_hide (priv->entry_pin);
++
++  dots = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
++  gtk_widget_set_halign (dots, GTK_ALIGN_CENTER);
++  for (guint i = 0; i < G_N_ELEMENTS (priv->dots); i++) {
++    priv->dots[i] = gtk_drawing_area_new ();
++    gtk_widget_set_size_request (priv->dots[i], 11, 11);
++    gtk_widget_set_valign (priv->dots[i], GTK_ALIGN_CENTER);
++    g_signal_connect (priv->dots[i], "draw", G_CALLBACK (draw_pin_dot), self);
++    gtk_box_pack_start (GTK_BOX (dots), priv->dots[i], FALSE, FALSE, 0);
++  }
++  gtk_box_pack_start (GTK_BOX (priv->box_unlock), dots, FALSE, FALSE, 0);
++  gtk_box_reorder_child (GTK_BOX (priv->box_unlock), dots, 2);
++  /* Feedback belongs under the keypad, where the greeter puts it. */
++  gtk_box_reorder_child (GTK_BOX (priv->box_unlock), priv->lbl_unlock_status, 4);
++  gtk_widget_set_margin_top (priv->lbl_unlock_status, 4);
++  g_signal_connect_swapped (priv->entry_pin, "changed", G_CALLBACK (luma_sync_dots), self);
++
++  /* Reserve the height of the gap on the row itself and centre the dots inside
++   * it, so they sit midway between the date and the keypad. Measured: the date
++   * ends at y=688 and the keypad begins at y=984, so the row needs to carry the
++   * difference rather than hug the date. */
++  gtk_widget_set_size_request (dots, -1, 96);
++  gtk_widget_set_valign (dots, GTK_ALIGN_CENTER);
++  for (guint i = 0; i < G_N_ELEMENTS (priv->dots); i++)
++    gtk_widget_set_valign (priv->dots[i], GTK_ALIGN_CENTER);
++
++  /* Upstream's submit button becomes redundant once entry completes itself.
++   * The greeter puts an emergency call in that position instead. */
++  gtk_widget_set_no_show_all (GTK_WIDGET (priv->btn_submit), TRUE);
++  gtk_widget_hide (GTK_WIDGET (priv->btn_submit));
++
++  emergency_app = g_desktop_app_info_new ("org.gnome.Calls.desktop");
++  if (emergency_app != NULL) {
++    GtkWidget *label = gtk_label_new ("Emergency call");
++
++    priv->btn_emergency = gtk_button_new ();
++    gtk_container_add (GTK_CONTAINER (priv->btn_emergency), label);
++    gtk_style_context_add_class (gtk_widget_get_style_context (priv->btn_emergency),
++                                 "luma-emergency");
++    gtk_widget_set_halign (priv->btn_emergency, GTK_ALIGN_CENTER);
++    g_signal_connect (priv->btn_emergency, "clicked", G_CALLBACK (on_emergency_clicked), self);
++    gtk_box_pack_end (GTK_BOX (priv->box_unlock), priv->btn_emergency, FALSE, FALSE, 0);
++    gtk_widget_set_margin_bottom (priv->btn_emergency, 8);
++    gtk_widget_show_all (priv->btn_emergency);
++    g_object_unref (emergency_app);
++  }
++
++  luma_sync_dots (self);
++  gtk_widget_show_all (dots);
++  gtk_widget_show (priv->lbl_unlock_clock);
++  gtk_widget_show (priv->lbl_unlock_date);
+ }
+ 
+ 
+@@ -927,6 +1190,7 @@
+                            G_CALLBACK (wall_clock_notify_cb),
+                            self,
+                            G_CONNECT_SWAPPED);
++  luma_polish_unlock_page (self);
+   wall_clock_notify_cb (self, NULL, wall_clock);
+ 
+   g_signal_connect_object (priv->calls_manager,
+-- 
+2.53.0

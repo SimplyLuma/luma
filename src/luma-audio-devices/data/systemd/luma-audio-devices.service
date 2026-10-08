@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma sound output devices (output routing and AirPlay)
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=dbus
+BusName=org.projectluma.AudioDevices
+ExecStart=/usr/libexec/luma-audio-devices --gapplication-service
+Restart=on-failure
+RestartSec=3
+# A session helper, never a reason to keep the session busy.
+Slice=session.slice
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryHigh=64M
+
+[Install]
+WantedBy=graphical-session.target

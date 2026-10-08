@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Capsule URL/file handoff through the host's filtered desktop portal.
+set -eu
+if [ "$#" -ne 1 ]; then
+    echo 'usage: xdg-open URI_OR_FILE' >&2
+    exit 2
+fi
+case "$1" in
+    /*|./*|../*)
+        exec gdbus call --session --dest org.freedesktop.portal.Desktop \
+            --object-path /org/freedesktop/portal/desktop \
+            --method org.freedesktop.portal.OpenURI.OpenFile \
+            --timeout 15 '' 3 '{}' 3< "$1"
+        ;;
+    *:*)
+        exec gdbus call --session --dest org.freedesktop.portal.Desktop \
+            --object-path /org/freedesktop/portal/desktop \
+            --method org.freedesktop.portal.OpenURI.OpenURI \
+            --timeout 15 '' "$1" '{}'
+        ;;
+    *)
+        echo 'Expected a URI or an explicit file path' >&2
+        exit 2
+        ;;
+esac

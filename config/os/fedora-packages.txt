@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Fedora 44 packages the Luma desktop image adds by name, resolved from
+# Fedora's repositories at build time. The exact versions installed are
+# recorded in every build's package inventory and SBOM.
+#
+# The shared and desktop application roles (config/shared/application-
+# packages.txt, config/desktop/application-packages.txt) are resolved in the
+# same transaction; roles supplied by a pinned Luma package or removed by
+# config/os/removed-packages.txt are skipped.
+
+# Luma Android runtime engine
+waydroid
+
+# Luma Relay (Windows applications)
+wine
+ntsync-autoload
+wine-dxvk
+winetricks
+
+# Automatic rollback after a failed boot (ADR-030 section 6). Only greenboot
+# itself: greenboot-default-health-checks makes a DNS lookup of the update
+# servers a required check, which would roll back a machine that simply boots
+# offline. Luma's required checks are image/luma-desktop/rootfs/usr/lib/
+# greenboot/check/required.d.
+greenboot
+
+# Reporting what the machine can decode in hardware. The VA-API drivers
+# themselves already come from the Fedora base -- libva-intel-media-driver for
+# Intel, mesa-dri-drivers for everything else -- and nothing is excluded, but
+# without vainfo neither Vitals nor a support conversation can say which
+# codecs a given machine actually has. It is a diagnostic, not a driver.
+libva-utils

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Nightly Luma OS build, gate and publication
+
+[Timer]
+# At midnight Central, closing out the day that just ended (owner decision
+# 2026-09-16); scripts/os/build-image.sh names the build for that day.
+OnCalendar=*-*-* 00:00:00 America/Chicago
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,39 @@
+window {
+    background-color: #20242b;
+    padding: 6px 5px 10px;
+}
+
+button {
+    color: #f7f9fc;
+    background: #343a43;
+    border: 1px solid #49515c;
+    border-radius: 9px;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.22);
+    margin: 3px;
+    padding: 0;
+    transition: background-color 70ms ease-out, transform 70ms ease-out;
+}
+
+button > label {
+    color: #f7f9fc;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+button:hover {
+    background: #414955;
+}
+
+button:active,
+button:checked {
+    color: white;
+    background: #4f86d9;
+    border-color: #7aa6e8;
+    box-shadow: none;
+    transform: translateY(1px);
+}
+
+button:active > label,
+button:checked > label {
+    color: white;
+}

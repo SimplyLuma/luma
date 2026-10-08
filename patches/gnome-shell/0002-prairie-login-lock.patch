@@ -1,0 +1,2273 @@
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index 30d9dc4..c6346bb 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -8,6 +8,8 @@
+     <file>gnome-shell-high-contrast.css</file>
+     <file>gnome-shell-start.svg</file>
+     <file>pad-osd.css</file>
++    <file>prairie-daybreak.svg</file>
++    <file>prairie-login-avatar.svg</file>
+     <file>workspace-placeholder.svg</file>
+   </gresource>
+ </gresources>
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 592d5b5..ea757b8 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -1802,7 +1802,7 @@ StScrollBar {
+ #panel {
+   background-color: #000000;
+   font-weight: bold;
+-  height: 2.2em;
++  height: 34px;
+   transition-duration: 250ms; }
+   #panel .panel-button {
+     transition-duration: 150ms;
+@@ -1927,47 +1927,52 @@ StScrollBar {
+         box-shadow: inset 0 0 0 100px #ff902e; }
+         #panel:overview .panel-button.screen-sharing-indicator:active:hover, #panel:overview .panel-button.screen-sharing-indicator:checked:hover, #panel.unlock-screen .panel-button.screen-sharing-indicator:active:hover, #panel.unlock-screen .panel-button.screen-sharing-indicator:checked:hover, #panel.login-screen .panel-button.screen-sharing-indicator:active:hover, #panel.login-screen .panel-button.screen-sharing-indicator:checked:hover {
+           box-shadow: inset 0 0 0 100px #ff9638; }
+-  #panel.unlock-screen .panel-button, #panel.login-screen .panel-button {
+-    transition-duration: 150ms;
+-    border: 3px solid transparent;
+-    background-color: transparent;
+-    border-radius: 999px;
+-    font-weight: bold;
+-    color: #ffffff;
+-    box-shadow: inset 0 0 0 100px transparent; }
+-    #panel.unlock-screen .panel-button:focus, #panel.unlock-screen .panel-button:hover, #panel.login-screen .panel-button:focus, #panel.login-screen .panel-button:hover {
+-      box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-    #panel.unlock-screen .panel-button:active, #panel.unlock-screen .panel-button:checked, #panel.login-screen .panel-button:active, #panel.login-screen .panel-button:checked {
+-      box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-      #panel.unlock-screen .panel-button:active:hover, #panel.unlock-screen .panel-button:checked:hover, #panel.login-screen .panel-button:active:hover, #panel.login-screen .panel-button:checked:hover {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+-    #panel.unlock-screen .panel-button.clock-display, #panel.login-screen .panel-button.clock-display {
++  #panel.unlock-screen, #panel.login-screen {
++    min-height: 0;
++    height: 0;
++    border: 0;
++    opacity: 0; }
++    #panel.unlock-screen .panel-button, #panel.login-screen .panel-button {
+       transition-duration: 150ms;
+       border: 3px solid transparent;
+       background-color: transparent;
+       border-radius: 999px;
+       font-weight: bold;
+       color: #ffffff;
+-      box-shadow: inset 0 0 0 100px transparent;
+-      background: none !important;
+-      box-shadow: none !important;
+-      border: none !important; }
+-      #panel.unlock-screen .panel-button.clock-display:focus, #panel.unlock-screen .panel-button.clock-display:hover, #panel.login-screen .panel-button.clock-display:focus, #panel.login-screen .panel-button.clock-display:hover {
++      box-shadow: inset 0 0 0 100px transparent; }
++      #panel.unlock-screen .panel-button:focus, #panel.unlock-screen .panel-button:hover, #panel.login-screen .panel-button:focus, #panel.login-screen .panel-button:hover {
+         box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-      #panel.unlock-screen .panel-button.clock-display:active, #panel.unlock-screen .panel-button.clock-display:checked, #panel.login-screen .panel-button.clock-display:active, #panel.login-screen .panel-button.clock-display:checked {
++      #panel.unlock-screen .panel-button:active, #panel.unlock-screen .panel-button:checked, #panel.login-screen .panel-button:active, #panel.login-screen .panel-button:checked {
+         box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-        #panel.unlock-screen .panel-button.clock-display:active:hover, #panel.unlock-screen .panel-button.clock-display:checked:hover, #panel.login-screen .panel-button.clock-display:active:hover, #panel.login-screen .panel-button.clock-display:checked:hover {
++        #panel.unlock-screen .panel-button:active:hover, #panel.unlock-screen .panel-button:checked:hover, #panel.login-screen .panel-button:active:hover, #panel.login-screen .panel-button:checked:hover {
+           box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+-      #panel.unlock-screen .panel-button.clock-display .clock, #panel.login-screen .panel-button.clock-display .clock {
++      #panel.unlock-screen .panel-button.clock-display, #panel.login-screen .panel-button.clock-display {
+         transition-duration: 150ms;
+         border: 3px solid transparent;
+-        border-radius: 999px; }
+-      #panel.unlock-screen .panel-button.clock-display:focus .clock, #panel.unlock-screen .panel-button.clock-display:hover .clock, #panel.login-screen .panel-button.clock-display:focus .clock, #panel.login-screen .panel-button.clock-display:hover .clock {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-      #panel.unlock-screen .panel-button.clock-display:active .clock, #panel.unlock-screen .panel-button.clock-display:checked .clock, #panel.login-screen .panel-button.clock-display:active .clock, #panel.login-screen .panel-button.clock-display:checked .clock {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-        #panel.unlock-screen .panel-button.clock-display:active .clock:hover, #panel.unlock-screen .panel-button.clock-display:checked .clock:hover, #panel.login-screen .panel-button.clock-display:active .clock:hover, #panel.login-screen .panel-button.clock-display:checked .clock:hover {
+-          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
++        background-color: transparent;
++        border-radius: 999px;
++        font-weight: bold;
++        color: #ffffff;
++        box-shadow: inset 0 0 0 100px transparent;
++        background: none !important;
++        box-shadow: none !important;
++        border: none !important; }
++        #panel.unlock-screen .panel-button.clock-display:focus, #panel.unlock-screen .panel-button.clock-display:hover, #panel.login-screen .panel-button.clock-display:focus, #panel.login-screen .panel-button.clock-display:hover {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
++        #panel.unlock-screen .panel-button.clock-display:active, #panel.unlock-screen .panel-button.clock-display:checked, #panel.login-screen .panel-button.clock-display:active, #panel.login-screen .panel-button.clock-display:checked {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
++          #panel.unlock-screen .panel-button.clock-display:active:hover, #panel.unlock-screen .panel-button.clock-display:checked:hover, #panel.login-screen .panel-button.clock-display:active:hover, #panel.login-screen .panel-button.clock-display:checked:hover {
++            box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
++        #panel.unlock-screen .panel-button.clock-display .clock, #panel.login-screen .panel-button.clock-display .clock {
++          transition-duration: 150ms;
++          border: 3px solid transparent;
++          border-radius: 999px; }
++        #panel.unlock-screen .panel-button.clock-display:focus .clock, #panel.unlock-screen .panel-button.clock-display:hover .clock, #panel.login-screen .panel-button.clock-display:focus .clock, #panel.login-screen .panel-button.clock-display:hover .clock {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
++        #panel.unlock-screen .panel-button.clock-display:active .clock, #panel.unlock-screen .panel-button.clock-display:checked .clock, #panel.login-screen .panel-button.clock-display:active .clock, #panel.login-screen .panel-button.clock-display:checked .clock {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
++          #panel.unlock-screen .panel-button.clock-display:active .clock:hover, #panel.unlock-screen .panel-button.clock-display:checked .clock:hover, #panel.login-screen .panel-button.clock-display:active .clock:hover, #panel.login-screen .panel-button.clock-display:checked .clock:hover {
++            box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+   #panel:overview .panel-button {
+     transition-duration: 150ms;
+     border: 3px solid transparent;
+@@ -2545,7 +2550,7 @@ StScrollBar {
+   offset-y: 6px; }
+ 
+ .app-folder-dialog-container {
+-  padding-top: 2.2em; }
++  padding-top: 34px; }
+ 
+ .app-folder-dialog {
+   width: 720px;
+@@ -3045,6 +3050,194 @@ StScrollBar {
+     width: 25em;
+     spacing: 9px; }
+ 
++.login-dialog,
++.unlock-dialog,
++.prairie-login-background {
++  background-color: #c9d7ef;
++  background-image: url("resource:///org/gnome/shell/theme/prairie-daybreak.svg");
++  background-size: cover;
++  color: #1f2937;
++  font-family: "Figtree"; }
++
++#lockDialogGroup {
++  background-color: #c9d7ef; }
++
++.prairie-login-clock {
++  spacing: 9px;
++  color: #1f2937;
++  font-family: "Figtree"; }
++  .prairie-login-clock .prairie-login-clock-time {
++    color: #1f2937;
++    font-family: "Figtree";
++    font-size: 74px;
++    font-weight: 500;
++    letter-spacing: -0.025em;
++    text-align: center; }
++  .prairie-login-clock .prairie-login-clock-date {
++    color: #6b7280;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0.03em;
++    text-align: center; }
++  .prairie-login-clock.compact .prairie-login-clock-time {
++    font-size: 52px; }
++  .prairie-login-clock.compact .prairie-login-clock-date {
++    font-size: 14px; }
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 272px;
++  padding: 0;
++  spacing: 22px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937; }
++  .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical {
++    spacing: 13px; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .user-widget-label {
++      margin: 0;
++      color: #1f2937;
++      font-family: "Figtree";
++      font-size: 21px;
++      font-weight: 700;
++      letter-spacing: -0.01em;
++      text-align: center; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .user-icon.prairie-login-avatar {
++      icon-size: 66px;
++      border: 0;
++      border-radius: 99px;
++      background-color: #4878b8;
++      background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
++      background-size: cover;
++      box-shadow: 0 5px 14px 0 rgba(40, 70, 120, 0.3);
++      color: white; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .prairie-login-avatar-initial {
++      color: white;
++      font-family: "Figtree";
++      font-size: 24px;
++      font-weight: 600;
++      text-align: center; }
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 272px;
++  spacing: 8px; }
++
++.login-dialog-button-box.prairie-password-field {
++  width: 254px;
++  height: 34px;
++  padding: 4px 4px 4px 12px;
++  spacing: 8px;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 11px;
++  background-color: white;
++  box-shadow: none; }
++
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry,
++.login-dialog .login-dialog-prompt-entry,
++.unlock-dialog .login-dialog-prompt-entry.prairie-login-entry,
++.unlock-dialog .login-dialog-prompt-entry {
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937;
++  font-family: "Figtree";
++  font-size: 15px;
++  font-weight: 600;
++  letter-spacing: 0.14em;
++  selection-background-color: rgba(72, 120, 184, 0.12);
++  selected-color: #1f2937; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StLabel.hint-text,
++  .login-dialog .login-dialog-prompt-entry StLabel.hint-text,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StLabel.hint-text,
++  .unlock-dialog .login-dialog-prompt-entry StLabel.hint-text {
++    margin: 0;
++    color: #9ca3af;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
++  .login-dialog .login-dialog-prompt-entry StIcon.peek-password,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
++  .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password {
++    icon-size: 19px;
++    padding: 0;
++    color: #9ca3af; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
++  .login-dialog .login-dialog-prompt-entry StIcon.peek-password:hover,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
++  .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password:hover {
++    color: #374151; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
++  .login-dialog .login-dialog-prompt-entry:focus,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
++  .unlock-dialog .login-dialog-prompt-entry:focus {
++    border: 0;
++    background-color: transparent;
++    box-shadow: none;
++    color: #1f2937; }
++
++.login-dialog-prompt-entry.prairie-login-entry,
++.login-dialog-prompt-entry.prairie-login-entry:hover,
++.login-dialog-prompt-entry.prairie-login-entry:focus,
++.login-dialog-prompt-entry.prairie-login-entry:insensitive {
++  border: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937; }
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 9px;
++  background-color: #4878b8;
++  box-shadow: none;
++  color: white; }
++  .prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
++    background-color: #3f6aa2; }
++  .prairie-login-submit-button:active {
++    background-color: #365e91; }
++  .prairie-login-submit-button .prairie-login-submit-icon {
++    icon-size: 18px;
++    color: white; }
++
++.prairie-login-error,
++.login-dialog-message-warning.prairie-login-error {
++  min-height: 0;
++  color: #c0483c;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 500;
++  text-align: left; }
++
++.prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 8px;
++  background-color: white;
++  box-shadow: none;
++  color: #374151; }
++  .prairie-login-power-button:hover, .prairie-login-power-button:focus {
++    background-color: #eceef1; }
++  .prairie-login-power-button:active {
++    background-color: #e3e6ea; }
++  .prairie-login-power-button .prairie-login-power-icon {
++    icon-size: 17px;
++    color: #374151; }
++
+ .login-dialog-bottom-button-group {
+   padding: 32px;
+   spacing: 16px; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 718c86c..d7274a6 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -1998,7 +1998,7 @@ StScrollBar {
+ #panel {
+   background-color: #000000;
+   font-weight: bold;
+-  height: 2.2em;
++  height: 34px;
+   transition-duration: 250ms; }
+   #panel .panel-button {
+     transition-duration: 150ms;
+@@ -2123,47 +2123,52 @@ StScrollBar {
+         box-shadow: inset 0 0 0 100px #ff902e; }
+         #panel:overview .panel-button.screen-sharing-indicator:active:hover, #panel:overview .panel-button.screen-sharing-indicator:checked:hover, #panel.unlock-screen .panel-button.screen-sharing-indicator:active:hover, #panel.unlock-screen .panel-button.screen-sharing-indicator:checked:hover, #panel.login-screen .panel-button.screen-sharing-indicator:active:hover, #panel.login-screen .panel-button.screen-sharing-indicator:checked:hover {
+           box-shadow: inset 0 0 0 100px #ff9638; }
+-  #panel.unlock-screen .panel-button, #panel.login-screen .panel-button {
+-    transition-duration: 150ms;
+-    border: 3px solid transparent;
+-    background-color: transparent;
+-    border-radius: 999px;
+-    font-weight: bold;
+-    color: #ffffff;
+-    box-shadow: inset 0 0 0 100px transparent; }
+-    #panel.unlock-screen .panel-button:focus, #panel.unlock-screen .panel-button:hover, #panel.login-screen .panel-button:focus, #panel.login-screen .panel-button:hover {
+-      box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-    #panel.unlock-screen .panel-button:active, #panel.unlock-screen .panel-button:checked, #panel.login-screen .panel-button:active, #panel.login-screen .panel-button:checked {
+-      box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-      #panel.unlock-screen .panel-button:active:hover, #panel.unlock-screen .panel-button:checked:hover, #panel.login-screen .panel-button:active:hover, #panel.login-screen .panel-button:checked:hover {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+-    #panel.unlock-screen .panel-button.clock-display, #panel.login-screen .panel-button.clock-display {
++  #panel.unlock-screen, #panel.login-screen {
++    min-height: 0;
++    height: 0;
++    border: 0;
++    opacity: 0; }
++    #panel.unlock-screen .panel-button, #panel.login-screen .panel-button {
+       transition-duration: 150ms;
+       border: 3px solid transparent;
+       background-color: transparent;
+       border-radius: 999px;
+       font-weight: bold;
+       color: #ffffff;
+-      box-shadow: inset 0 0 0 100px transparent;
+-      background: none !important;
+-      box-shadow: none !important;
+-      border: none !important; }
+-      #panel.unlock-screen .panel-button.clock-display:focus, #panel.unlock-screen .panel-button.clock-display:hover, #panel.login-screen .panel-button.clock-display:focus, #panel.login-screen .panel-button.clock-display:hover {
++      box-shadow: inset 0 0 0 100px transparent; }
++      #panel.unlock-screen .panel-button:focus, #panel.unlock-screen .panel-button:hover, #panel.login-screen .panel-button:focus, #panel.login-screen .panel-button:hover {
+         box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-      #panel.unlock-screen .panel-button.clock-display:active, #panel.unlock-screen .panel-button.clock-display:checked, #panel.login-screen .panel-button.clock-display:active, #panel.login-screen .panel-button.clock-display:checked {
++      #panel.unlock-screen .panel-button:active, #panel.unlock-screen .panel-button:checked, #panel.login-screen .panel-button:active, #panel.login-screen .panel-button:checked {
+         box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-        #panel.unlock-screen .panel-button.clock-display:active:hover, #panel.unlock-screen .panel-button.clock-display:checked:hover, #panel.login-screen .panel-button.clock-display:active:hover, #panel.login-screen .panel-button.clock-display:checked:hover {
++        #panel.unlock-screen .panel-button:active:hover, #panel.unlock-screen .panel-button:checked:hover, #panel.login-screen .panel-button:active:hover, #panel.login-screen .panel-button:checked:hover {
+           box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+-      #panel.unlock-screen .panel-button.clock-display .clock, #panel.login-screen .panel-button.clock-display .clock {
++      #panel.unlock-screen .panel-button.clock-display, #panel.login-screen .panel-button.clock-display {
+         transition-duration: 150ms;
+         border: 3px solid transparent;
+-        border-radius: 999px; }
+-      #panel.unlock-screen .panel-button.clock-display:focus .clock, #panel.unlock-screen .panel-button.clock-display:hover .clock, #panel.login-screen .panel-button.clock-display:focus .clock, #panel.login-screen .panel-button.clock-display:hover .clock {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-      #panel.unlock-screen .panel-button.clock-display:active .clock, #panel.unlock-screen .panel-button.clock-display:checked .clock, #panel.login-screen .panel-button.clock-display:active .clock, #panel.login-screen .panel-button.clock-display:checked .clock {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-        #panel.unlock-screen .panel-button.clock-display:active .clock:hover, #panel.unlock-screen .panel-button.clock-display:checked .clock:hover, #panel.login-screen .panel-button.clock-display:active .clock:hover, #panel.login-screen .panel-button.clock-display:checked .clock:hover {
+-          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
++        background-color: transparent;
++        border-radius: 999px;
++        font-weight: bold;
++        color: #ffffff;
++        box-shadow: inset 0 0 0 100px transparent;
++        background: none !important;
++        box-shadow: none !important;
++        border: none !important; }
++        #panel.unlock-screen .panel-button.clock-display:focus, #panel.unlock-screen .panel-button.clock-display:hover, #panel.login-screen .panel-button.clock-display:focus, #panel.login-screen .panel-button.clock-display:hover {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
++        #panel.unlock-screen .panel-button.clock-display:active, #panel.unlock-screen .panel-button.clock-display:checked, #panel.login-screen .panel-button.clock-display:active, #panel.login-screen .panel-button.clock-display:checked {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
++          #panel.unlock-screen .panel-button.clock-display:active:hover, #panel.unlock-screen .panel-button.clock-display:checked:hover, #panel.login-screen .panel-button.clock-display:active:hover, #panel.login-screen .panel-button.clock-display:checked:hover {
++            box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
++        #panel.unlock-screen .panel-button.clock-display .clock, #panel.login-screen .panel-button.clock-display .clock {
++          transition-duration: 150ms;
++          border: 3px solid transparent;
++          border-radius: 999px; }
++        #panel.unlock-screen .panel-button.clock-display:focus .clock, #panel.unlock-screen .panel-button.clock-display:hover .clock, #panel.login-screen .panel-button.clock-display:focus .clock, #panel.login-screen .panel-button.clock-display:hover .clock {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
++        #panel.unlock-screen .panel-button.clock-display:active .clock, #panel.unlock-screen .panel-button.clock-display:checked .clock, #panel.login-screen .panel-button.clock-display:active .clock, #panel.login-screen .panel-button.clock-display:checked .clock {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
++          #panel.unlock-screen .panel-button.clock-display:active .clock:hover, #panel.unlock-screen .panel-button.clock-display:checked .clock:hover, #panel.login-screen .panel-button.clock-display:active .clock:hover, #panel.login-screen .panel-button.clock-display:checked .clock:hover {
++            box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+   #panel:overview .panel-button {
+     transition-duration: 150ms;
+     border: 3px solid transparent;
+@@ -2824,7 +2829,7 @@ StScrollBar {
+   offset-y: 6px; }
+ 
+ .app-folder-dialog-container {
+-  padding-top: 2.2em; }
++  padding-top: 34px; }
+ 
+ .app-folder-dialog {
+   width: 720px;
+@@ -3375,6 +3380,194 @@ StScrollBar {
+     width: 25em;
+     spacing: 9px; }
+ 
++.login-dialog,
++.unlock-dialog,
++.prairie-login-background {
++  background-color: #c9d7ef;
++  background-image: url("resource:///org/gnome/shell/theme/prairie-daybreak.svg");
++  background-size: cover;
++  color: #1f2937;
++  font-family: "Figtree"; }
++
++#lockDialogGroup {
++  background-color: #c9d7ef; }
++
++.prairie-login-clock {
++  spacing: 9px;
++  color: #1f2937;
++  font-family: "Figtree"; }
++  .prairie-login-clock .prairie-login-clock-time {
++    color: #1f2937;
++    font-family: "Figtree";
++    font-size: 74px;
++    font-weight: 500;
++    letter-spacing: -0.025em;
++    text-align: center; }
++  .prairie-login-clock .prairie-login-clock-date {
++    color: #6b7280;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0.03em;
++    text-align: center; }
++  .prairie-login-clock.compact .prairie-login-clock-time {
++    font-size: 52px; }
++  .prairie-login-clock.compact .prairie-login-clock-date {
++    font-size: 14px; }
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 272px;
++  padding: 0;
++  spacing: 22px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937; }
++  .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical {
++    spacing: 13px; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .user-widget-label {
++      margin: 0;
++      color: #1f2937;
++      font-family: "Figtree";
++      font-size: 21px;
++      font-weight: 700;
++      letter-spacing: -0.01em;
++      text-align: center; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .user-icon.prairie-login-avatar {
++      icon-size: 66px;
++      border: 0;
++      border-radius: 99px;
++      background-color: #4878b8;
++      background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
++      background-size: cover;
++      box-shadow: 0 5px 14px 0 rgba(40, 70, 120, 0.3);
++      color: white; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .prairie-login-avatar-initial {
++      color: white;
++      font-family: "Figtree";
++      font-size: 24px;
++      font-weight: 600;
++      text-align: center; }
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 272px;
++  spacing: 8px; }
++
++.login-dialog-button-box.prairie-password-field {
++  width: 254px;
++  height: 34px;
++  padding: 4px 4px 4px 12px;
++  spacing: 8px;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 11px;
++  background-color: white;
++  box-shadow: none; }
++
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry,
++.login-dialog .login-dialog-prompt-entry,
++.unlock-dialog .login-dialog-prompt-entry.prairie-login-entry,
++.unlock-dialog .login-dialog-prompt-entry {
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937;
++  font-family: "Figtree";
++  font-size: 15px;
++  font-weight: 600;
++  letter-spacing: 0.14em;
++  selection-background-color: rgba(72, 120, 184, 0.12);
++  selected-color: #1f2937; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StLabel.hint-text,
++  .login-dialog .login-dialog-prompt-entry StLabel.hint-text,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StLabel.hint-text,
++  .unlock-dialog .login-dialog-prompt-entry StLabel.hint-text {
++    margin: 0;
++    color: #9ca3af;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
++  .login-dialog .login-dialog-prompt-entry StIcon.peek-password,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
++  .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password {
++    icon-size: 19px;
++    padding: 0;
++    color: #9ca3af; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
++  .login-dialog .login-dialog-prompt-entry StIcon.peek-password:hover,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
++  .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password:hover {
++    color: #374151; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
++  .login-dialog .login-dialog-prompt-entry:focus,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
++  .unlock-dialog .login-dialog-prompt-entry:focus {
++    border: 0;
++    background-color: transparent;
++    box-shadow: none;
++    color: #1f2937; }
++
++.login-dialog-prompt-entry.prairie-login-entry,
++.login-dialog-prompt-entry.prairie-login-entry:hover,
++.login-dialog-prompt-entry.prairie-login-entry:focus,
++.login-dialog-prompt-entry.prairie-login-entry:insensitive {
++  border: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937; }
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 9px;
++  background-color: #4878b8;
++  box-shadow: none;
++  color: white; }
++  .prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
++    background-color: #3f6aa2; }
++  .prairie-login-submit-button:active {
++    background-color: #365e91; }
++  .prairie-login-submit-button .prairie-login-submit-icon {
++    icon-size: 18px;
++    color: white; }
++
++.prairie-login-error,
++.login-dialog-message-warning.prairie-login-error {
++  min-height: 0;
++  color: #c0483c;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 500;
++  text-align: left; }
++
++.prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 8px;
++  background-color: white;
++  box-shadow: none;
++  color: #374151; }
++  .prairie-login-power-button:hover, .prairie-login-power-button:focus {
++    background-color: #eceef1; }
++  .prairie-login-power-button:active {
++    background-color: #e3e6ea; }
++  .prairie-login-power-button .prairie-login-power-icon {
++    icon-size: 17px;
++    color: #374151; }
++
+ .login-dialog-bottom-button-group {
+   padding: 32px;
+   spacing: 16px; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 26eb8ee..e39e243 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -1802,7 +1802,7 @@ StScrollBar {
+ #panel {
+   background-color: #fafafb;
+   font-weight: bold;
+-  height: 2.2em;
++  height: 34px;
+   transition-duration: 250ms;
+   box-shadow: inset 0 -0.5px 0 0 rgba(34, 34, 38, 0.1); }
+   #panel .panel-button {
+@@ -1928,47 +1928,52 @@ StScrollBar {
+         box-shadow: inset 0 0 0 100px #b84e00; }
+         #panel:overview .panel-button.screen-sharing-indicator:active:hover, #panel:overview .panel-button.screen-sharing-indicator:checked:hover, #panel.unlock-screen .panel-button.screen-sharing-indicator:active:hover, #panel.unlock-screen .panel-button.screen-sharing-indicator:checked:hover, #panel.login-screen .panel-button.screen-sharing-indicator:active:hover, #panel.login-screen .panel-button.screen-sharing-indicator:checked:hover {
+           box-shadow: inset 0 0 0 100px #ae4900; }
+-  #panel.unlock-screen .panel-button, #panel.login-screen .panel-button {
+-    transition-duration: 150ms;
+-    border: 3px solid transparent;
+-    background-color: transparent;
+-    border-radius: 999px;
+-    font-weight: bold;
+-    color: #ffffff;
+-    box-shadow: inset 0 0 0 100px transparent; }
+-    #panel.unlock-screen .panel-button:focus, #panel.unlock-screen .panel-button:hover, #panel.login-screen .panel-button:focus, #panel.login-screen .panel-button:hover {
+-      box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-    #panel.unlock-screen .panel-button:active, #panel.unlock-screen .panel-button:checked, #panel.login-screen .panel-button:active, #panel.login-screen .panel-button:checked {
+-      box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-      #panel.unlock-screen .panel-button:active:hover, #panel.unlock-screen .panel-button:checked:hover, #panel.login-screen .panel-button:active:hover, #panel.login-screen .panel-button:checked:hover {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+-    #panel.unlock-screen .panel-button.clock-display, #panel.login-screen .panel-button.clock-display {
++  #panel.unlock-screen, #panel.login-screen {
++    min-height: 0;
++    height: 0;
++    border: 0;
++    opacity: 0; }
++    #panel.unlock-screen .panel-button, #panel.login-screen .panel-button {
+       transition-duration: 150ms;
+       border: 3px solid transparent;
+       background-color: transparent;
+       border-radius: 999px;
+       font-weight: bold;
+       color: #ffffff;
+-      box-shadow: inset 0 0 0 100px transparent;
+-      background: none !important;
+-      box-shadow: none !important;
+-      border: none !important; }
+-      #panel.unlock-screen .panel-button.clock-display:focus, #panel.unlock-screen .panel-button.clock-display:hover, #panel.login-screen .panel-button.clock-display:focus, #panel.login-screen .panel-button.clock-display:hover {
++      box-shadow: inset 0 0 0 100px transparent; }
++      #panel.unlock-screen .panel-button:focus, #panel.unlock-screen .panel-button:hover, #panel.login-screen .panel-button:focus, #panel.login-screen .panel-button:hover {
+         box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-      #panel.unlock-screen .panel-button.clock-display:active, #panel.unlock-screen .panel-button.clock-display:checked, #panel.login-screen .panel-button.clock-display:active, #panel.login-screen .panel-button.clock-display:checked {
++      #panel.unlock-screen .panel-button:active, #panel.unlock-screen .panel-button:checked, #panel.login-screen .panel-button:active, #panel.login-screen .panel-button:checked {
+         box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-        #panel.unlock-screen .panel-button.clock-display:active:hover, #panel.unlock-screen .panel-button.clock-display:checked:hover, #panel.login-screen .panel-button.clock-display:active:hover, #panel.login-screen .panel-button.clock-display:checked:hover {
++        #panel.unlock-screen .panel-button:active:hover, #panel.unlock-screen .panel-button:checked:hover, #panel.login-screen .panel-button:active:hover, #panel.login-screen .panel-button:checked:hover {
+           box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+-      #panel.unlock-screen .panel-button.clock-display .clock, #panel.login-screen .panel-button.clock-display .clock {
++      #panel.unlock-screen .panel-button.clock-display, #panel.login-screen .panel-button.clock-display {
+         transition-duration: 150ms;
+         border: 3px solid transparent;
+-        border-radius: 999px; }
+-      #panel.unlock-screen .panel-button.clock-display:focus .clock, #panel.unlock-screen .panel-button.clock-display:hover .clock, #panel.login-screen .panel-button.clock-display:focus .clock, #panel.login-screen .panel-button.clock-display:hover .clock {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
+-      #panel.unlock-screen .panel-button.clock-display:active .clock, #panel.unlock-screen .panel-button.clock-display:checked .clock, #panel.login-screen .panel-button.clock-display:active .clock, #panel.login-screen .panel-button.clock-display:checked .clock {
+-        box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
+-        #panel.unlock-screen .panel-button.clock-display:active .clock:hover, #panel.unlock-screen .panel-button.clock-display:checked .clock:hover, #panel.login-screen .panel-button.clock-display:active .clock:hover, #panel.login-screen .panel-button.clock-display:checked .clock:hover {
+-          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
++        background-color: transparent;
++        border-radius: 999px;
++        font-weight: bold;
++        color: #ffffff;
++        box-shadow: inset 0 0 0 100px transparent;
++        background: none !important;
++        box-shadow: none !important;
++        border: none !important; }
++        #panel.unlock-screen .panel-button.clock-display:focus, #panel.unlock-screen .panel-button.clock-display:hover, #panel.login-screen .panel-button.clock-display:focus, #panel.login-screen .panel-button.clock-display:hover {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
++        #panel.unlock-screen .panel-button.clock-display:active, #panel.unlock-screen .panel-button.clock-display:checked, #panel.login-screen .panel-button.clock-display:active, #panel.login-screen .panel-button.clock-display:checked {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
++          #panel.unlock-screen .panel-button.clock-display:active:hover, #panel.unlock-screen .panel-button.clock-display:checked:hover, #panel.login-screen .panel-button.clock-display:active:hover, #panel.login-screen .panel-button.clock-display:checked:hover {
++            box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
++        #panel.unlock-screen .panel-button.clock-display .clock, #panel.login-screen .panel-button.clock-display .clock {
++          transition-duration: 150ms;
++          border: 3px solid transparent;
++          border-radius: 999px; }
++        #panel.unlock-screen .panel-button.clock-display:focus .clock, #panel.unlock-screen .panel-button.clock-display:hover .clock, #panel.login-screen .panel-button.clock-display:focus .clock, #panel.login-screen .panel-button.clock-display:hover .clock {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.17); }
++        #panel.unlock-screen .panel-button.clock-display:active .clock, #panel.unlock-screen .panel-button.clock-display:checked .clock, #panel.login-screen .panel-button.clock-display:active .clock, #panel.login-screen .panel-button.clock-display:checked .clock {
++          box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.28); }
++          #panel.unlock-screen .panel-button.clock-display:active .clock:hover, #panel.unlock-screen .panel-button.clock-display:checked .clock:hover, #panel.login-screen .panel-button.clock-display:active .clock:hover, #panel.login-screen .panel-button.clock-display:checked .clock:hover {
++            box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.32); }
+   #panel:overview .panel-button {
+     transition-duration: 150ms;
+     border: 3px solid transparent;
+@@ -2025,6 +2030,84 @@ StScrollBar {
+     padding-left: 0.818em;
+     padding-right: 0.818em; }
+ 
++#panel, #panel:overview {
++  background-color: #f2f3f5;
++  border: 0;
++  border-bottom: 1px solid rgba(17, 24, 39, 0.1);
++  box-shadow: none;
++  color: #374151;
++  font-weight: normal; }
++  #panel .panel-button, #panel:overview .panel-button {
++    -natural-hpadding: 0;
++    -minimum-hpadding: 0;
++    background-color: transparent;
++    border: 0;
++    border-radius: 8px;
++    box-shadow: none;
++    color: #374151;
++    font-weight: normal; }
++    #panel .panel-button .system-status-icon, #panel:overview .panel-button .system-status-icon {
++      -st-icon-style: symbolic;
++      icon-size: 16px;
++      margin: 0;
++      padding: 0; }
++    #panel .panel-button .panel-status-indicators-box, #panel:overview .panel-button .panel-status-indicators-box {
++      spacing: 12px; }
++  #panel #panelRight .panel-button, #panel:overview #panelRight .panel-button {
++    -natural-hpadding: 8px;
++    -minimum-hpadding: 6px;
++    margin: 3px 1px;
++    padding: 0;
++    transition-duration: 120ms; }
++    #panel #panelRight .panel-button:focus, #panel #panelRight .panel-button:hover, #panel:overview #panelRight .panel-button:focus, #panel:overview #panelRight .panel-button:hover {
++      background-color: rgba(120, 130, 145, 0.14); }
++    #panel #panelRight .panel-button:active, #panel #panelRight .panel-button:checked, #panel:overview #panelRight .panel-button:active, #panel:overview #panelRight .panel-button:checked {
++      background-color: rgba(120, 130, 145, 0.22); }
++  #panel .panel-button.clock-display, #panel:overview .panel-button.clock-display {
++    background: none;
++    border: 0;
++    box-shadow: none; }
++    #panel .panel-button.clock-display .clock, #panel:overview .panel-button.clock-display .clock {
++      background-color: transparent;
++      border: 0;
++      border-radius: 8px;
++      box-shadow: none;
++      padding: 0 10px; }
++    #panel .panel-button.clock-display:focus .clock, #panel .panel-button.clock-display:hover .clock, #panel:overview .panel-button.clock-display:focus .clock, #panel:overview .panel-button.clock-display:hover .clock {
++      background-color: rgba(15, 23, 42, 0.06); }
++    #panel .panel-button.clock-display:active .clock, #panel .panel-button.clock-display:checked .clock, #panel:overview .panel-button.clock-display:active .clock, #panel:overview .panel-button.clock-display:checked .clock {
++      background-color: rgba(72, 120, 184, 0.14); }
++
++.clock-display-box {
++  spacing: 0; }
++
++.luma-clock-content {
++  spacing: 0; }
++
++.luma-clock-time {
++  color: #1f2937;
++  font-size: 12.5px;
++  font-weight: 600;
++  font-feature-settings: "tnum";
++  letter-spacing: -0.005em; }
++
++.luma-secondary-status-text {
++  color: #6b7280;
++  font-size: 11.5px;
++  font-weight: 500; }
++
++.messages-indicator {
++  min-width: 16px;
++  height: 16px;
++  padding: 0 2px;
++  border-radius: 5px;
++  background-color: #c2984e;
++  color: white;
++  font-size: 10px;
++  font-weight: 700;
++  font-feature-settings: "tnum";
++  text-align: center; }
++
+ /* Activities Ripple */
+ .ripple-box {
+   background-color: rgba(255, 255, 255, 0.2);
+@@ -2546,7 +2629,7 @@ StScrollBar {
+   offset-y: 6px; }
+ 
+ .app-folder-dialog-container {
+-  padding-top: 2.2em; }
++  padding-top: 34px; }
+ 
+ .app-folder-dialog {
+   width: 720px;
+@@ -3046,6 +3129,194 @@ StScrollBar {
+     width: 25em;
+     spacing: 9px; }
+ 
++.login-dialog,
++.unlock-dialog,
++.prairie-login-background {
++  background-color: #c9d7ef;
++  background-image: url("resource:///org/gnome/shell/theme/prairie-daybreak.svg");
++  background-size: cover;
++  color: #1f2937;
++  font-family: "Figtree"; }
++
++#lockDialogGroup {
++  background-color: #c9d7ef; }
++
++.prairie-login-clock {
++  spacing: 9px;
++  color: #1f2937;
++  font-family: "Figtree"; }
++  .prairie-login-clock .prairie-login-clock-time {
++    color: #1f2937;
++    font-family: "Figtree";
++    font-size: 74px;
++    font-weight: 500;
++    letter-spacing: -0.025em;
++    text-align: center; }
++  .prairie-login-clock .prairie-login-clock-date {
++    color: #6b7280;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0.03em;
++    text-align: center; }
++  .prairie-login-clock.compact .prairie-login-clock-time {
++    font-size: 52px; }
++  .prairie-login-clock.compact .prairie-login-clock-date {
++    font-size: 14px; }
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 272px;
++  padding: 0;
++  spacing: 22px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937; }
++  .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical {
++    spacing: 13px; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .user-widget-label {
++      margin: 0;
++      color: #1f2937;
++      font-family: "Figtree";
++      font-size: 21px;
++      font-weight: 700;
++      letter-spacing: -0.01em;
++      text-align: center; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .user-icon.prairie-login-avatar {
++      icon-size: 66px;
++      border: 0;
++      border-radius: 99px;
++      background-color: #4878b8;
++      background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
++      background-size: cover;
++      box-shadow: 0 5px 14px 0 rgba(40, 70, 120, 0.3);
++      color: white; }
++    .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .prairie-login-avatar-initial {
++      color: white;
++      font-family: "Figtree";
++      font-size: 24px;
++      font-weight: 600;
++      text-align: center; }
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 272px;
++  spacing: 8px; }
++
++.login-dialog-button-box.prairie-password-field {
++  width: 254px;
++  height: 34px;
++  padding: 4px 4px 4px 12px;
++  spacing: 8px;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 11px;
++  background-color: white;
++  box-shadow: none; }
++
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry,
++.login-dialog .login-dialog-prompt-entry,
++.unlock-dialog .login-dialog-prompt-entry.prairie-login-entry,
++.unlock-dialog .login-dialog-prompt-entry {
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937;
++  font-family: "Figtree";
++  font-size: 15px;
++  font-weight: 600;
++  letter-spacing: 0.14em;
++  selection-background-color: rgba(72, 120, 184, 0.12);
++  selected-color: #1f2937; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StLabel.hint-text,
++  .login-dialog .login-dialog-prompt-entry StLabel.hint-text,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StLabel.hint-text,
++  .unlock-dialog .login-dialog-prompt-entry StLabel.hint-text {
++    margin: 0;
++    color: #9ca3af;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
++  .login-dialog .login-dialog-prompt-entry StIcon.peek-password,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
++  .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password {
++    icon-size: 19px;
++    padding: 0;
++    color: #9ca3af; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
++  .login-dialog .login-dialog-prompt-entry StIcon.peek-password:hover,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
++  .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password:hover {
++    color: #374151; }
++  .login-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
++  .login-dialog .login-dialog-prompt-entry:focus,
++  .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
++  .unlock-dialog .login-dialog-prompt-entry:focus {
++    border: 0;
++    background-color: transparent;
++    box-shadow: none;
++    color: #1f2937; }
++
++.login-dialog-prompt-entry.prairie-login-entry,
++.login-dialog-prompt-entry.prairie-login-entry:hover,
++.login-dialog-prompt-entry.prairie-login-entry:focus,
++.login-dialog-prompt-entry.prairie-login-entry:insensitive {
++  border: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937; }
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 9px;
++  background-color: #4878b8;
++  box-shadow: none;
++  color: white; }
++  .prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
++    background-color: #3f6aa2; }
++  .prairie-login-submit-button:active {
++    background-color: #365e91; }
++  .prairie-login-submit-button .prairie-login-submit-icon {
++    icon-size: 18px;
++    color: white; }
++
++.prairie-login-error,
++.login-dialog-message-warning.prairie-login-error {
++  min-height: 0;
++  color: #c0483c;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 500;
++  text-align: left; }
++
++.prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 8px;
++  background-color: white;
++  box-shadow: none;
++  color: #374151; }
++  .prairie-login-power-button:hover, .prairie-login-power-button:focus {
++    background-color: #eceef1; }
++  .prairie-login-power-button:active {
++    background-color: #e3e6ea; }
++  .prairie-login-power-button .prairie-login-power-icon {
++    icon-size: 17px;
++    color: #374151; }
++
+ .login-dialog-bottom-button-group {
+   padding: 32px;
+   spacing: 16px; }
+@@ -3323,108 +3585,3 @@ StScrollBar {
+     .login-dialog .user-widget.vertical .user-icon StIcon,
+     .unlock-dialog .user-widget.vertical .user-icon StIcon {
+       padding: 30px; }
+-
+-/* Project Luma light panel. Keep this generated artifact beside the SCSS so
+- * Fedora's release-tarball build packages the same source-owned treatment. */
+-#panel,
+-#panel:overview {
+-  height: 34px;
+-  background-color: #f2f3f5;
+-  border: 0;
+-  border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+-  box-shadow: none;
+-  color: #374151;
+-  font-weight: normal; }
+-
+-#panel .panel-button,
+-#panel:overview .panel-button {
+-  -natural-hpadding: 0;
+-  -minimum-hpadding: 0;
+-  padding: 0;
+-  background-color: transparent;
+-  border: 0;
+-  border-radius: 8px;
+-  box-shadow: none;
+-  color: #374151;
+-  font-weight: normal; }
+-
+-#panel .panel-button .system-status-icon,
+-#panel:overview .panel-button .system-status-icon {
+-  -st-icon-style: symbolic;
+-  icon-size: 16px;
+-  margin: 0;
+-  padding: 0; }
+-
+-#panel .panel-button .panel-status-indicators-box,
+-#panel:overview .panel-button .panel-status-indicators-box {
+-  spacing: 12px; }
+-
+-#panelRight .panel-button {
+-  -natural-hpadding: 8px;
+-  -minimum-hpadding: 6px;
+-  margin: 3px 1px;
+-  padding: 0;
+-  transition-duration: 120ms; }
+-
+-#panelRight .panel-button:focus,
+-#panelRight .panel-button:hover {
+-  background-color: rgba(120, 130, 145, 0.14); }
+-
+-#panelRight .panel-button:active,
+-#panelRight .panel-button:checked {
+-  background-color: rgba(120, 130, 145, 0.22); }
+-
+-#panel .panel-button.clock-display,
+-#panel:overview .panel-button.clock-display {
+-  background: none;
+-  border: 0;
+-  box-shadow: none; }
+-
+-#panel .panel-button.clock-display .clock,
+-#panel:overview .panel-button.clock-display .clock {
+-  padding: 0 10px;
+-  background-color: transparent;
+-  border: 0;
+-  border-radius: 8px;
+-  box-shadow: none; }
+-
+-#panel .panel-button.clock-display:focus .clock,
+-#panel .panel-button.clock-display:hover .clock,
+-#panel:overview .panel-button.clock-display:focus .clock,
+-#panel:overview .panel-button.clock-display:hover .clock {
+-  background-color: rgba(15, 23, 42, 0.06); }
+-
+-#panel .panel-button.clock-display:active .clock,
+-#panel .panel-button.clock-display:checked .clock,
+-#panel:overview .panel-button.clock-display:active .clock,
+-#panel:overview .panel-button.clock-display:checked .clock {
+-  background-color: rgba(72, 120, 184, 0.14); }
+-
+-.clock-display-box,
+-.luma-clock-content {
+-  spacing: 0; }
+-
+-#panel .luma-clock-time {
+-  color: #1f2937;
+-  font-size: 12.5px;
+-  font-weight: 600;
+-  font-feature-settings: "tnum";
+-  letter-spacing: -0.005em; }
+-
+-#panel .luma-clock-date,
+-#panel .luma-secondary-status-text {
+-  color: #6b7280;
+-  font-size: 11.5px;
+-  font-weight: 500; }
+-
+-#panel .messages-indicator {
+-  min-width: 16px;
+-  height: 16px;
+-  padding: 0 2px;
+-  border-radius: 5px;
+-  background-color: #c2984e;
+-  color: white;
+-  font-size: 10px;
+-  font-weight: 700;
+-  font-feature-settings: "tnum";
+-  text-align: center; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index cf8b0e5..4810f35 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -18,6 +18,216 @@ $_gdm_dialog_width: 25em;
+   }
+ }
+ 
++// Prairie Daybreak login and unlock surface. All geometry here is native St
++// theme geometry; the shared JS components only own composition and allocation.
++.login-dialog,
++.unlock-dialog,
++.prairie-login-background {
++  background-color: #c9d7ef;
++  background-image: url("resource:///org/gnome/shell/theme/prairie-daybreak.svg");
++  background-size: cover;
++  color: #1f2937;
++  font-family: "Figtree";
++}
++
++#lockDialogGroup {
++  background-color: #c9d7ef;
++}
++
++.prairie-login-clock {
++  spacing: 9px;
++  color: #1f2937;
++  font-family: "Figtree";
++
++  .prairie-login-clock-time {
++    color: #1f2937;
++    font-family: "Figtree";
++    font-size: 74px;
++    font-weight: 500;
++    letter-spacing: -0.025em;
++    text-align: center;
++  }
++
++  .prairie-login-clock-date {
++    color: #6b7280;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 500;
++    letter-spacing: 0.03em;
++    text-align: center;
++  }
++
++  &.compact {
++    .prairie-login-clock-time { font-size: 52px; }
++    .prairie-login-clock-date { font-size: 14px; }
++  }
++}
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 272px;
++  padding: 0;
++  spacing: 22px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent;
++  box-shadow: none;
++  color: #1f2937;
++
++  .user-widget.vertical {
++    spacing: 13px;
++
++    .user-widget-label {
++      margin: 0;
++      color: #1f2937;
++      font-family: "Figtree";
++      font-size: 21px;
++      font-weight: 700;
++      letter-spacing: -0.01em;
++      text-align: center;
++    }
++
++    .user-icon.prairie-login-avatar {
++      icon-size: 66px;
++      border: 0;
++      border-radius: 99px;
++      background-color: #4878b8;
++      background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
++      background-size: cover;
++      box-shadow: 0 5px 14px 0 rgba(40, 70, 120, 0.30);
++      color: white;
++    }
++
++    .prairie-login-avatar-initial {
++      color: white;
++      font-family: "Figtree";
++      font-size: 24px;
++      font-weight: 600;
++      text-align: center;
++    }
++  }
++}
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 272px;
++  spacing: 8px;
++}
++
++.login-dialog-button-box.prairie-password-field {
++  width: 254px;
++  height: 34px;
++  padding: 4px 4px 4px 12px;
++  spacing: 8px;
++  border: 1px solid rgba(17, 24, 39, 0.10);
++  border-radius: 11px;
++  background-color: white;
++  box-shadow: none;
++}
++
++.login-dialog,
++.unlock-dialog {
++  .login-dialog-prompt-entry.prairie-login-entry,
++  .login-dialog-prompt-entry {
++    min-height: 34px;
++    padding: 0;
++    border: 0;
++    border-radius: 0;
++    background-color: transparent;
++    box-shadow: none;
++    color: #1f2937;
++    font-family: "Figtree";
++    font-size: 15px;
++    font-weight: 600;
++    letter-spacing: 0.14em;
++    selection-background-color: rgba(72, 120, 184, 0.12);
++    selected-color: #1f2937;
++
++    StLabel.hint-text {
++      margin: 0;
++      color: #9ca3af;
++      font-family: "Figtree";
++      font-size: 15px;
++      font-weight: 500;
++      letter-spacing: 0;
++    }
++
++    StIcon.peek-password {
++      icon-size: 19px;
++      padding: 0;
++      color: #9ca3af;
++    }
++
++    StIcon.peek-password:hover { color: #374151; }
++
++    &:focus {
++      border: 0;
++      background-color: transparent;
++      box-shadow: none;
++      color: #1f2937;
++    }
++  }
++}
++
++.login-dialog-prompt-entry.prairie-login-entry {
++  &, &:hover, &:focus, &:insensitive {
++    border: 0;
++    background-color: transparent;
++    box-shadow: none;
++    color: #1f2937;
++  }
++}
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  padding: 0;
++  border: 0;
++  border-radius: 9px;
++  background-color: #4878b8;
++  box-shadow: none;
++  color: white;
++
++  &:hover, &:focus { background-color: #3f6aa2; }
++  &:active { background-color: #365e91; }
++
++  .prairie-login-submit-icon {
++    icon-size: 18px;
++    color: white;
++  }
++}
++
++.prairie-login-error,
++.login-dialog-message-warning.prairie-login-error {
++  min-height: 0;
++  color: #c0483c;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 500;
++  text-align: left;
++}
++
++.prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 1px solid rgba(17, 24, 39, 0.10);
++  border-radius: 8px;
++  background-color: white;
++  box-shadow: none;
++  color: #374151;
++
++  &:hover, &:focus { background-color: #eceef1; }
++  &:active { background-color: #e3e6ea; }
++
++  .prairie-login-power-icon {
++    icon-size: 17px;
++    color: #374151;
++  }
++}
++
+ // GDM Login Dialog
+ // uses dark grey system styles
+ .login-dialog {
+diff --git a/data/theme/gnome-shell-sass/widgets/_panel.scss b/data/theme/gnome-shell-sass/widgets/_panel.scss
+index 13f639d..7b77684 100644
+--- a/data/theme/gnome-shell-sass/widgets/_panel.scss
++++ b/data/theme/gnome-shell-sass/widgets/_panel.scss
+@@ -116,6 +116,11 @@ $panel_transition_duration: 250ms; // same as the overview transition duration
+   // use transparent text styles for lock & login screen panels
+   &.unlock-screen,
+   &.login-screen {
++    min-height: 0;
++    height: 0;
++    border: 0;
++    opacity: 0;
++
+     .panel-button {
+       @include panel_button($fg:$transparent_panel_fg_color);
+ 
+diff --git a/data/theme/meson.build b/data/theme/meson.build
+index 8d01ae8..06cf569 100644
+--- a/data/theme/meson.build
++++ b/data/theme/meson.build
+@@ -1,4 +1,6 @@
+ theme_sources = files([
++  'prairie-daybreak.svg',
++  'prairie-login-avatar.svg',
+   'gnome-shell-high-contrast.scss',
+   'gnome-shell-dark.scss',
+   'gnome-shell-light.scss',
+@@ -59,4 +61,3 @@ foreach stylesheet: stylesheets
+                                 depend_files: theme_sources)
+   endif
+ endforeach
+-
+diff --git a/data/theme/prairie-daybreak.svg b/data/theme/prairie-daybreak.svg
+new file mode 100644
+index 0000000..b229f4a
+--- /dev/null
++++ b/data/theme/prairie-daybreak.svg
+@@ -0,0 +1,20 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
++  <defs>
++    <linearGradient id="base" gradientUnits="userSpaceOnUse" x1="-12" y1="23" x2="1932" y2="1057">
++      <stop offset="0" stop-color="#b7cbe7"/>
++      <stop offset="0.48" stop-color="#c9d7ef"/>
++      <stop offset="1" stop-color="#e6edf8"/>
++    </linearGradient>
++    <radialGradient id="light" gradientUnits="userSpaceOnUse" cx="1728" cy="64.8" r="1500" gradientTransform="translate(1728 64.8) scale(1 .733333) translate(-1728 -64.8)">
++      <stop offset="0" stop-color="#ffffff" stop-opacity=".72"/>
++      <stop offset=".55" stop-color="#ffffff" stop-opacity="0"/>
++    </radialGradient>
++    <radialGradient id="shade" gradientUnits="userSpaceOnUse" cx="153.6" cy="1036.8" r="1200" gradientTransform="translate(153.6 1036.8) scale(1 .75) translate(-153.6 -1036.8)">
++      <stop offset="0" stop-color="#96afd7" stop-opacity=".30"/>
++      <stop offset=".55" stop-color="#96afd7" stop-opacity="0"/>
++    </radialGradient>
++  </defs>
++  <rect width="1920" height="1080" fill="url(#base)"/>
++  <rect width="1920" height="1080" fill="url(#light)"/>
++  <rect width="1920" height="1080" fill="url(#shade)"/>
++</svg>
+diff --git a/data/theme/prairie-login-avatar.svg b/data/theme/prairie-login-avatar.svg
+new file mode 100644
+index 0000000..b4ced67
+--- /dev/null
++++ b/data/theme/prairie-login-avatar.svg
+@@ -0,0 +1,10 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="66" height="66" viewBox="0 0 66 66">
++  <defs>
++    <linearGradient id="avatar" gradientUnits="userSpaceOnUse" x1="7" y1="4" x2="59" y2="62">
++      <stop offset="0" stop-color="#7b9ecc"/>
++      <stop offset=".5" stop-color="#4878b8"/>
++      <stop offset="1" stop-color="#284265"/>
++    </linearGradient>
++  </defs>
++  <circle cx="33" cy="33" r="33" fill="url(#avatar)"/>
++</svg>
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index c01c6fe..29835f4 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -145,7 +145,7 @@ export const AuthPrompt = GObject.registerClass({
+ }, class AuthPrompt extends St.BoxLayout {
+     _init(gdmClient, mode) {
+         super._init({
+-            style_class: 'login-dialog-prompt-layout',
++            style_class: 'login-dialog-prompt-layout prairie-auth-card',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+             x_align: Clutter.ActorAlign.CENTER,
+@@ -186,7 +186,7 @@ export const AuthPrompt = GObject.registerClass({
+         this.add_child(this._userWell);
+ 
+         this._inputWell = new St.BoxLayout({
+-            style_class: 'login-dialog-prompt-layout',
++            style_class: 'login-dialog-prompt-layout prairie-login-input-well',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_align: Clutter.ActorAlign.CENTER,
+             x_expand: true,
+@@ -198,26 +198,18 @@ export const AuthPrompt = GObject.registerClass({
+ 
+         this._initInputRow();
+ 
+-        const capsLockPlaceholder = new St.Label();
+-        this._inputWell.add_child(capsLockPlaceholder);
+-
+         this._capsLockWarningLabel = new ShellEntry.CapsLockWarning({
+             x_expand: true,
+             x_align: Clutter.ActorAlign.CENTER,
+         });
+-        this._inputWell.add_child(this._capsLockWarningLabel);
+-
+-        this._capsLockWarningLabel.bind_property('visible',
+-            capsLockPlaceholder, 'visible',
+-            GObject.BindingFlags.SYNC_CREATE | GObject.BindingFlags.INVERT_BOOLEAN);
+ 
+         this._message = new St.Label({
+             opacity: 0,
+-            styleClass: 'login-dialog-message',
+-            y_expand: true,
++            styleClass: 'login-dialog-message prairie-login-error',
++            y_expand: false,
+             x_expand: true,
+             y_align: Clutter.ActorAlign.START,
+-            x_align: Clutter.ActorAlign.CENTER,
++            x_align: Clutter.ActorAlign.START,
+         });
+         this._message.clutter_text.line_wrap = true;
+         this._message.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+@@ -246,7 +238,7 @@ export const AuthPrompt = GObject.registerClass({
+ 
+     _initInputRow() {
+         this._mainBox = new St.BoxLayout({
+-            style_class: 'login-dialog-button-box',
++            style_class: 'login-dialog-button-box prairie-password-field',
+             orientation: Clutter.Orientation.HORIZONTAL,
+         });
+         this._inputWell.add_child(this._mainBox);
+@@ -263,9 +255,7 @@ export const AuthPrompt = GObject.registerClass({
+         });
+         if (this._hasCancelButton)
+             this.cancelButton.connect('clicked', () => this.cancel());
+-        else
+-            this.cancelButton.opacity = 0;
+-        this._mainBox.add_child(this.cancelButton);
++        this.cancelButton.hide();
+ 
+         this._authList = new AuthList.AuthList();
+         this._authList.set({
+@@ -289,7 +279,7 @@ export const AuthPrompt = GObject.registerClass({
+         this._mainBox.add_child(this._authList);
+ 
+         const entryParams = {
+-            style_class: 'login-dialog-prompt-entry',
++            style_class: 'login-dialog-prompt-entry prairie-login-entry',
+             can_focus: true,
+             x_expand: true,
+         };
+@@ -312,7 +302,6 @@ export const AuthPrompt = GObject.registerClass({
+             scale_x: 0,
+         });
+ 
+-        this._inputWell.add_child(this._timedLoginIndicator);
+ 
+         [this._textEntry, this._passwordEntry].forEach(entry => {
+             entry.clutter_text.connect('text-changed', () => {
+@@ -332,14 +321,29 @@ export const AuthPrompt = GObject.registerClass({
+             x_align: Clutter.ActorAlign.END,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+-        this._defaultButtonWell.add_constraint(new Clutter.BindConstraint({
+-            source: this.cancelButton,
+-            coordinate: Clutter.BindCoordinate.WIDTH,
+-        }));
+-        this._mainBox.add_child(this._defaultButtonWell);
++        this._submitArrow = new St.Icon({
++            icon_name: 'go-next-symbolic',
++            style_class: 'prairie-login-submit-icon',
++        });
++        this._defaultButtonWell.add_child(this._submitArrow);
++
++        this._submitButton = new St.Button({
++            style_class: 'prairie-login-submit-button',
++            accessible_name: _('Log In'),
++            can_focus: true,
++            reactive: true,
++            child: this._defaultButtonWell,
++        });
++        this._submitButton.connect('clicked', () => {
++            if (this._entry.reactive)
++                this._activateNext(this._entry === this._passwordEntry);
++        });
++        this._mainBox.add_child(this._submitButton);
+ 
+         this._spinner = new Animation.Spinner(DEFAULT_BUTTON_WELL_ICON_SIZE);
+         this._defaultButtonWell.add_child(this._spinner);
++        this._spinner.opacity = 0;
++        this._defaultButtonWellActor = this._submitArrow;
+     }
+ 
+     showTimedLoginIndicator(time) {
+@@ -506,8 +510,8 @@ export const AuthPrompt = GObject.registerClass({
+         if (!canRetry)
+             this.verificationStatus = AuthPromptStatus.VERIFICATION_FAILED;
+ 
+-        if (wasQueryingService)
+-            wiggle(this._entry);
++        // Prairie keeps an authentication error in place; it does not shake
++        // or otherwise move the password field.
+     }
+ 
+     _onVerificationComplete() {
+@@ -523,6 +527,8 @@ export const AuthPrompt = GObject.registerClass({
+     }
+ 
+     setActorInDefaultButtonWell(actor, animate) {
++        actor ??= this._submitArrow;
++
+         if (!this._defaultButtonWellActor &&
+             !actor)
+             return;
+@@ -697,6 +703,8 @@ export const AuthPrompt = GObject.registerClass({
+             return;
+ 
+         authWidget.reactive = sensitive;
++        this._submitButton.reactive = sensitive;
++        this._submitButton.can_focus = sensitive;
+ 
+         if (sensitive) {
+             authWidget.grab_key_focus();
+diff --git a/js/gdm/loginDialog.js b/js/gdm/loginDialog.js
+index 50f29f7..0a332e5 100644
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -38,6 +38,7 @@ import * as Main from '../ui/main.js';
+ import * as MessageTray from '../ui/messageTray.js';
+ import * as ModalDialog from '../ui/modalDialog.js';
+ import * as PopupMenu from '../ui/popupMenu.js';
++import * as PrairieLogin from '../ui/prairieLogin.js';
+ import * as Realmd from './realmd.js';
+ import * as UserWidget from '../ui/userWidget.js';
+ import {QuickSettingsMenu} from '../ui/quickSettings.js';
+@@ -312,6 +313,12 @@ const UserList = GObject.registerClass({
+     numItems() {
+         return this._items.size;
+     }
++
++    getOnlyItem() {
++        if (this._items.size !== 1)
++            return null;
++        return this._items.values().next().value;
++    }
+ });
+ 
+ const SessionMenuButton = GObject.registerClass({
+@@ -595,6 +602,12 @@ export const LoginDialog = GObject.registerClass({
+         this._authPrompt.hide();
+         this.add_child(this._authPrompt);
+ 
++        this._prairieClock = new PrairieLogin.Clock();
++        this.add_child(this._prairieClock);
++
++        this._prairiePowerButton = new PrairieLogin.PowerButton();
++        this.add_child(this._prairiePowerButton);
++
+         // translators: this message is shown below the user list on the
+         // login screen. It can be activated to reveal an entry for
+         // manually entering the username.
+@@ -656,6 +669,7 @@ export const LoginDialog = GObject.registerClass({
+ 
+         this._a11yMenuButton = new A11yMenuButton();
+         this._bottomButtonGroup.add_child(this._a11yMenuButton);
++        this._bottomButtonGroup.hide();
+ 
+         this._logoBin = new St.Widget({
+             style_class: 'login-dialog-logo-bin',
+@@ -667,6 +681,7 @@ export const LoginDialog = GObject.registerClass({
+         });
+         this.add_child(this._logoBin);
+         this._updateLogo();
++        this._logoBin.hide();
+ 
+         this._userList.connect('activate', (userList, item) => {
+             this._onUserListActivated(item);
+@@ -759,6 +775,24 @@ export const LoginDialog = GObject.registerClass({
+ 
+         const dialogWidth = dialogBox.x2 - dialogBox.x1;
+         const dialogHeight = dialogBox.y2 - dialogBox.y1;
++        const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scaleFactor;
++
++        const [, , clockWidth, clockHeight] =
++            this._prairieClock.get_preferred_size();
++        const clockAllocation = new Clutter.ActorBox();
++        clockAllocation.x1 = Math.floor(
++            dialogBox.x1 + (dialogWidth - clockWidth) / 2);
++        clockAllocation.y1 = dialogBox.y1 + 64 * scaleFactor;
++        clockAllocation.x2 = clockAllocation.x1 + clockWidth;
++        clockAllocation.y2 = clockAllocation.y1 + clockHeight;
++
++        const [, , powerWidth, powerHeight] =
++            this._prairiePowerButton.get_preferred_size();
++        const powerAllocation = new Clutter.ActorBox();
++        powerAllocation.x1 = dialogBox.x2 - (24 * scaleFactor) - powerWidth;
++        powerAllocation.y1 = dialogBox.y2 - (22 * scaleFactor) - powerHeight;
++        powerAllocation.x2 = powerAllocation.x1 + powerWidth;
++        powerAllocation.y2 = powerAllocation.y1 + powerHeight;
+ 
+         // First find out what space the children require
+         let bannerAllocation = null;
+@@ -894,4 +927,7 @@ export const LoginDialog = GObject.registerClass({
+ 
+         if (bottomButtonGroupAllocation)
+             this._bottomButtonGroup.allocate(bottomButtonGroupAllocation);
++
++        this._prairieClock.allocate(clockAllocation);
++        this._prairiePowerButton.allocate(powerAllocation);
+     }
+@@ -1084,10 +1120,20 @@ export const LoginDialog = GObject.registerClass({
+             this._authPrompt.setUser(this._user);
+             this._authPrompt.begin({userName: previousUser.get_user_name()});
+         } else if (beginRequest === AuthPrompt.BeginRequestType.PROVIDE_USERNAME) {
+-            if (!this._disableUserList)
+-                this._showUserList();
+-            else
++            if (!this._disableUserList) {
++                if (this._userListLoaded) {
++                    const onlyItem = this._userList.getOnlyItem();
++                    if (onlyItem)
++                        this._onUserListActivated(onlyItem);
++                    else
++                        this._showUserList();
++                } else {
++                    this._hideUserList();
++                    this._ensureUserListLoaded();
++                }
++            } else {
+                 this._hideUserListAskForUsernameAndBeginVerification();
++            }
+         } else {
+             this._hideUserListAndBeginVerification();
+         }
+@@ -1254,16 +1300,9 @@ export const LoginDialog = GObject.registerClass({
+     }
+ 
+     _startSession(serviceName) {
+-        this._bindOpacity();
+-        this.ease({
+-            opacity: 0,
+-            duration: _FADE_ANIMATION_TIME,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-            onComplete: () => {
+-                this._greeter.call_start_session_when_ready_sync(serviceName, true, null);
+-                this._unbindOpacity();
+-            },
+-        });
++        // Keep the completed Prairie authentication surface stable until GDM
++        // replaces it with the user session; do not darken it first.
++        this._greeter.call_start_session_when_ready_sync(serviceName, true, null);
+     }
+ 
+     async _findConflictingSession(startingSessionId) {
+@@ -1527,6 +1573,16 @@ export const LoginDialog = GObject.registerClass({
+ 
+         this._updateDisableUserList();
+ 
++        const onlyItem = this._userList.getOnlyItem();
++        if (onlyItem) {
++            GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
++                if (!this._authPrompt.visible)
++                    this._onUserListActivated(onlyItem);
++            });
++        } else {
++            this._showUserList();
++        }
++
+         this._userManager.connectObject(
+             'user-added', (userManager, user) => {
+                 this._userList.addUser(user);
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index e5e6167..98d4c23 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -99,6 +99,7 @@
+     <file>ui/panelMenu.js</file>
+     <file>ui/pointerA11yTimeout.js</file>
+     <file>ui/pointerWatcher.js</file>
++    <file>ui/prairieLogin.js</file>
+     <file>ui/popupMenu.js</file>
+     <file>ui/quickSettings.js</file>
+     <file>ui/remoteSearch.js</file>
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+new file mode 100644
+index 0000000..fd9bc24
+--- /dev/null
++++ b/js/ui/prairieLogin.js
+@@ -0,0 +1,75 @@
++import Clutter from 'gi://Clutter';
++import GnomeDesktop from 'gi://GnomeDesktop';
++import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import {formatDateWithCFormatString} from '../misc/dateUtils.js';
++import * as SystemActions from '../misc/systemActions.js';
++
++export const Clock = GObject.registerClass(
++class PrairieLoginClock extends St.BoxLayout {
++    _init() {
++        super._init({
++            style_class: 'prairie-login-clock',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++
++        this._time = new St.Label({
++            style_class: 'prairie-login-clock-time',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._date = new St.Label({
++            style_class: 'prairie-login-clock-date',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this.add_child(this._time);
++        this.add_child(this._date);
++
++        this._wallClock = new GnomeDesktop.WallClock({time_only: true});
++        this._wallClock.connectObject(
++            'notify::clock', this._updateClock.bind(this), this);
++        this._updateClock();
++        this.connect('destroy', () => this._wallClock.run_dispose());
++    }
++
++    _updateClock() {
++        this._time.text = this._wallClock.clock.trim();
++        const dateFormat = Shell.util_translate_time_string(
++            N_('%A, %B %-d'));
++        this._date.text = formatDateWithCFormatString(new Date(), dateFormat);
++    }
++});
++
++export const PowerButton = GObject.registerClass(
++class PrairieLoginPowerButton extends St.Button {
++    _init() {
++        super._init({
++            style_class: 'prairie-login-power-button',
++            accessible_name: _('Power Off'),
++            can_focus: true,
++            reactive: true,
++            child: new St.Icon({
++                icon_name: 'system-shutdown-symbolic',
++                style_class: 'prairie-login-power-icon',
++            }),
++        });
++
++        this._systemActions = SystemActions.getDefault();
++        this._systemActions.bind_property(
++            'can-power-off', this, 'reactive',
++            GObject.BindingFlags.SYNC_CREATE);
++        this.connect('clicked', () => this._systemActions.activatePowerOff());
++    }
++});
++
++export const Background = GObject.registerClass(
++class PrairieLoginBackground extends St.Widget {
++    _init(params = {}) {
++        super._init({
++            ...params,
++            style_class: 'prairie-login-background',
++        });
++    }
++});
+diff --git a/js/ui/sessionMode.js b/js/ui/sessionMode.js
+index 3f8454e..a1303a8 100644
+--- a/js/ui/sessionMode.js
++++ b/js/ui/sessionMode.js
+@@ -58,8 +58,8 @@ const _modes = {
+             : ['polkitAgent'],
+         panel: {
+             left: [],
+-            center: ['dateMenu'],
+-            right: ['dwellClick', 'keyboard', 'quickSettings'],
++            center: [],
++            right: [],
+         },
+         panelStyle: 'login-screen',
+     },
+@@ -73,7 +73,7 @@ const _modes = {
+         panel: {
+             left: [],
+             center: [],
+-            right: ['dwellClick', 'a11y', 'keyboard', 'quickSettings'],
++            right: [],
+         },
+         panelStyle: 'unlock-screen',
+     },
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index f5f31f5..22bf372 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -3,18 +3,16 @@ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Gdm from 'gi://Gdm';
+ import Gio from 'gi://Gio';
+-import GnomeDesktop from 'gi://GnomeDesktop';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+-import * as Background from './background.js';
+ import * as Layout from './layout.js';
+ import * as Main from './main.js';
+ import * as MessageTray from './messageTray.js';
++import * as PrairieLogin from './prairieLogin.js';
+ import * as SwipeTracker from './swipeTracker.js';
+-import {formatDateWithCFormatString} from '../misc/dateUtils.js';
+ import {TimeLimitsState} from '../misc/timeLimitsManager.js';
+ import * as AuthPrompt from '../gdm/authPrompt.js';
+ import {AuthPromptStatus} from '../gdm/authPrompt.js';
+@@ -24,16 +22,7 @@ import {MediaMessage} from './messageList.js';
+ // The timeout before going back automatically to the lock screen (in seconds)
+ const IDLE_TIMEOUT = 2 * 60;
+ 
+-// The timeout before showing the unlock hint (in seconds)
+-const HINT_TIMEOUT = 4;
+-
+ const CROSSFADE_TIME = 300;
+-const FADE_OUT_TRANSLATION = 200;
+-const FADE_OUT_SCALE = 0.3;
+-
+-const BLUR_BRIGHTNESS = 0.65;
+-const BLUR_RADIUS = 90;
+-
+ const NotificationsBox = GObject.registerClass({
+     Signals: {'wake-up-screen': {}},
+ }, class NotificationsBox extends St.BoxLayout {
+@@ -354,89 +343,56 @@ const NotificationsBox = GObject.registerClass({
+     }
+ });
+ 
+-const Clock = GObject.registerClass(
+-class UnlockDialogClock extends St.BoxLayout {
+-    _init() {
+-        super._init({
+-            style_class: 'unlock-dialog-clock',
+-            orientation: Clutter.Orientation.VERTICAL,
+-        });
+-
+-        this._time = new St.Label({
+-            style_class: 'unlock-dialog-clock-time',
+-            x_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._date = new St.Label({
+-            style_class: 'unlock-dialog-clock-date',
+-            x_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._hint = new St.Label({
+-            style_class: 'unlock-dialog-clock-hint',
+-            x_align: Clutter.ActorAlign.CENTER,
+-            opacity: 0,
+-        });
+-
+-        this.add_child(this._time);
+-        this.add_child(this._date);
+-        this.add_child(this._hint);
+-
+-        this._wallClock = new GnomeDesktop.WallClock({time_only: true});
+-        this._wallClock.connect('notify::clock', this._updateClock.bind(this));
+-
+-        const backend = this.get_context().get_backend();
+-        this._seat = backend.get_default_seat();
+-        this._seat.connectObject('notify::touch-mode',
+-            this._updateHint.bind(this), this);
+-
+-        this._monitorManager = global.backend.get_monitor_manager();
+-        this._monitorManager.connectObject('power-save-mode-changed',
+-            () => (this._hint.opacity = 0), this);
+-
+-        this._idleMonitor = global.backend.get_core_idle_monitor();
+-        this._idleWatchId = this._idleMonitor.add_idle_watch(HINT_TIMEOUT * 1000, () => {
+-            this._hint.ease({
+-                opacity: 255,
+-                duration: CROSSFADE_TIME,
+-            });
+-        });
+-
+-        this._updateClock();
+-        this._updateHint();
+-
+-        this.connect('destroy', this._onDestroy.bind(this));
++const PrairieUnlockContentLayout = GObject.registerClass(
++class PrairieUnlockContentLayout extends Clutter.LayoutManager {
++    _init(clock, prompt) {
++        super._init();
++        this._clock = clock;
++        this._prompt = prompt;
+     }
+ 
+-    _updateClock() {
+-        this._time.text = this._wallClock.clock.trim();
+-
+-        const date = new Date();
+-        /* Translators: This is a time format for a date in
+-           long format */
+-        const dateFormat = Shell.util_translate_time_string(N_('%A %B %-d'));
+-        this._date.text = formatDateWithCFormatString(date, dateFormat);
++    vfunc_get_preferred_width(container, forHeight) {
++        const [, promptWidth] = this._prompt.get_preferred_width(forHeight);
++        const [, clockWidth] = this._clock.get_preferred_width(forHeight);
++        return [Math.max(promptWidth, clockWidth), Math.max(promptWidth, clockWidth)];
+     }
+ 
+-    _updateHint() {
+-        this._hint.text = this._seat.touch_mode
+-            ? _('Swipe up to unlock')
+-            : _('Click or press a key to unlock');
++    vfunc_get_preferred_height(container, forWidth) {
++        const [, promptHeight] = this._prompt.get_preferred_height(forWidth);
++        const [, clockHeight] = this._clock.get_preferred_height(forWidth);
++        return [promptHeight + clockHeight, promptHeight + clockHeight];
+     }
+ 
+-    _onDestroy() {
+-        this._wallClock.run_dispose();
++    vfunc_allocate(container, box) {
++        const [width, height] = box.get_size();
++        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
++        const actorBox = new Clutter.ActorBox();
+ 
+-        this._idleMonitor.remove_watch(this._idleWatchId);
++        const [, , clockWidth, clockHeight] = this._clock.get_preferred_size();
++        actorBox.x1 = Math.floor((width - clockWidth) / 2);
++        actorBox.y1 = 64 * scaleFactor;
++        actorBox.x2 = actorBox.x1 + clockWidth;
++        actorBox.y2 = actorBox.y1 + clockHeight;
++        this._clock.allocate(actorBox);
++
++        const [, , promptWidth, promptHeight] = this._prompt.get_preferred_size();
++        actorBox.x1 = Math.floor((width - promptWidth) / 2);
++        actorBox.y1 = Math.floor((height - promptHeight) / 2);
++        actorBox.x2 = actorBox.x1 + promptWidth;
++        actorBox.y2 = actorBox.y1 + promptHeight;
++        this._prompt.allocate(actorBox);
+     }
+ });
+ 
+ const UnlockDialogLayout = GObject.registerClass(
+ class UnlockDialogLayout extends Clutter.LayoutManager {
+-    _init(stack, notifications, switchUserButton) {
++    _init(stack, notifications, switchUserButton, powerButton) {
+         super._init();
+ 
+         this._stack = stack;
+         this._notifications = notifications;
+         this._switchUserButton = switchUserButton;
++        this._powerButton = powerButton;
+     }
+ 
+     vfunc_get_preferred_width(container, forHeight) {
+@@ -450,61 +406,29 @@ class UnlockDialogLayout extends Clutter.LayoutManager {
+     vfunc_allocate(container, box) {
+         const [width, height] = box.get_size();
+ 
+-        const tenthOfHeight = height / 10.0;
+-        const thirdOfHeight = height / 3.0;
+-
+-        const [, , stackWidth, stackHeight] =
+-            this._stack.get_preferred_size();
+-
+-        const [, , notificationsWidth, notificationsHeight] =
+-            this._notifications.get_preferred_size();
+-
+-        const columnWidth = Math.max(stackWidth, notificationsWidth);
+-
+-        const columnX1 = Math.floor((width - columnWidth) / 2.0);
+         const actorBox = new Clutter.ActorBox();
+-
+-        // Notifications
+-        const maxNotificationsHeight = Math.min(
+-            notificationsHeight,
+-            height - tenthOfHeight - stackHeight);
+-
+-        actorBox.x1 = columnX1;
+-        actorBox.y1 = height - maxNotificationsHeight;
+-        actorBox.x2 = columnX1 + columnWidth;
+-        actorBox.y2 = actorBox.y1 + maxNotificationsHeight;
+-
++        actorBox.x1 = 0;
++        actorBox.y1 = 0;
++        actorBox.x2 = 0;
++        actorBox.y2 = 0;
+         this._notifications.allocate(actorBox);
+ 
+-        // Authentication Box
+-        const stackY = Math.min(
+-            thirdOfHeight,
+-            height - stackHeight - maxNotificationsHeight);
+-
+-        actorBox.x1 = columnX1;
+-        actorBox.y1 = stackY;
+-        actorBox.x2 = columnX1 + columnWidth;
+-        actorBox.y2 = stackY + stackHeight;
+-
++        actorBox.x1 = 0;
++        actorBox.y1 = 0;
++        actorBox.x2 = width;
++        actorBox.y2 = height;
+         this._stack.allocate(actorBox);
+ 
+-        // Switch User button
+-        if (this._switchUserButton.visible) {
+-            const [, , natWidth, natHeight] =
+-                this._switchUserButton.get_preferred_size();
+-
+-            const textDirection = this._switchUserButton.get_text_direction();
+-            if (textDirection === Clutter.TextDirection.RTL)
+-                actorBox.x1 = box.x1 + natWidth;
+-            else
+-                actorBox.x1 = box.x2 - (natWidth * 2);
+-
+-            actorBox.y1 = box.y2 - (natHeight * 2);
+-            actorBox.x2 = actorBox.x1 + natWidth;
+-            actorBox.y2 = actorBox.y1 + natHeight;
++        this._switchUserButton.allocate(new Clutter.ActorBox());
+ 
+-            this._switchUserButton.allocate(actorBox);
+-        }
++        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
++        const [, , powerWidth, powerHeight] =
++            this._powerButton.get_preferred_size();
++        actorBox.x1 = width - 24 * scaleFactor - powerWidth;
++        actorBox.y1 = height - 22 * scaleFactor - powerHeight;
++        actorBox.x2 = actorBox.x1 + powerWidth;
++        actorBox.y2 = actorBox.y1 + powerHeight;
++        this._powerButton.allocate(actorBox);
+     }
+ });
+ 
+@@ -591,7 +515,7 @@ export const UnlockDialog = GObject.registerClass({
+         this._user = this._userManager.get_user(this._userName);
+ 
+         // Authentication & Clock stack
+-        this._stack = new Shell.Stack();
++        this._stack = new St.Widget();
+ 
+         this._promptBox = new St.BoxLayout({
+             orientation: Clutter.Orientation.VERTICAL,
+@@ -600,9 +524,11 @@ export const UnlockDialog = GObject.registerClass({
+         this._promptBox.hide();
+         this._stack.add_child(this._promptBox);
+ 
+-        this._clock = new Clock();
++        this._clock = new PrairieLogin.Clock();
+         this._clock.set_pivot_point(0.5, 0.5);
+         this._stack.add_child(this._clock);
++        this._stack.layout_manager = new PrairieUnlockContentLayout(
++            this._clock, this._promptBox);
+         this._showClock();
+ 
+         this.allowCancel = false;
+@@ -612,6 +538,7 @@ export const UnlockDialog = GObject.registerClass({
+         // Notifications
+         this._notificationsBox = new NotificationsBox();
+         this._notificationsBox.connect('wake-up-screen', () => this.emit('wake-up-screen'));
++        this._notificationsBox.hide();
+ 
+         // Switch User button
+         this._otherUserButton = new St.Button({
+@@ -642,6 +569,9 @@ export const UnlockDialog = GObject.registerClass({
+             this);
+ 
+         this._updateUserSwitchVisibility();
++        this._otherUserButton.hide();
++
++        this._prairiePowerButton = new PrairieLogin.PowerButton();
+ 
+         // When parental controls session limits are enabled, the screen will be
+         // locked upon reaching the time limit. In those cases, tweak the lock screen,
+@@ -657,10 +587,12 @@ export const UnlockDialog = GObject.registerClass({
+         mainBox.add_child(this._stack);
+         mainBox.add_child(this._notificationsBox);
+         mainBox.add_child(this._otherUserButton);
++        mainBox.add_child(this._prairiePowerButton);
+         mainBox.layout_manager = new UnlockDialogLayout(
+             this._stack,
+             this._notificationsBox,
+-            this._otherUserButton);
++            this._otherUserButton,
++            this._prairiePowerButton);
+         this.add_child(mainBox);
+ 
+         this._idleMonitor = global.backend.get_core_idle_monitor();
+@@ -700,39 +632,19 @@ export const UnlockDialog = GObject.registerClass({
+ 
+     _createBackground(monitorIndex) {
+         const monitor = Main.layoutManager.monitors[monitorIndex];
+-        const widget = new St.Widget({
+-            style_class: 'screen-shield-background',
++        const widget = new PrairieLogin.Background({
+             x: monitor.x,
+             y: monitor.y,
+             width: monitor.width,
+             height: monitor.height,
+-            effect: new Shell.BlurEffect({name: 'blur'}),
+-        });
+-
+-        const bgManager = new Background.BackgroundManager({
+-            container: widget,
+-            monitorIndex,
+-            controlPosition: false,
+         });
+ 
+-        this._bgManagers.push(bgManager);
+-
+         this._backgroundGroup.add_child(widget);
+     }
+ 
+     _updateBackgroundEffects() {
+-        const themeContext = St.ThemeContext.get_for_stage(global.stage);
+-
+-        for (const widget of this._backgroundGroup) {
+-            const effect = widget.get_effect('blur');
+-
+-            if (effect) {
+-                effect.set({
+-                    brightness: BLUR_BRIGHTNESS,
+-                    radius: BLUR_RADIUS * themeContext.scale_factor,
+-                });
+-            }
+-        }
++        // Prairie's vector background is already the final material. It does
++        // not blur or darken the user's desktop behind the unlock surface.
+     }
+ 
+     _updateBackgrounds() {
+@@ -812,27 +724,25 @@ export const UnlockDialog = GObject.registerClass({
+ 
+     _setTransitionProgress(progress) {
+         this._promptBox.visible = progress > 0;
+-        this._clock.visible = progress < 1;
++        this._clock.visible = true;
+ 
+         this._otherUserButton.set({
+             reactive: progress > 0,
+             can_focus: progress > 0,
+         });
+ 
+-        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+-
+         this._promptBox.set({
+             opacity: 255 * progress,
+-            scale_x: FADE_OUT_SCALE + (1 - FADE_OUT_SCALE) * progress,
+-            scale_y: FADE_OUT_SCALE + (1 - FADE_OUT_SCALE) * progress,
+-            translation_y: FADE_OUT_TRANSLATION * (1 - progress) * scaleFactor,
++            scale_x: 1,
++            scale_y: 1,
++            translation_y: 0,
+         });
+ 
+         this._clock.set({
+-            opacity: 255 * (1 - progress),
+-            scale_x: FADE_OUT_SCALE + (1 - FADE_OUT_SCALE) * (1 - progress),
+-            scale_y: FADE_OUT_SCALE + (1 - FADE_OUT_SCALE) * (1 - progress),
+-            translation_y: -FADE_OUT_TRANSLATION * progress * scaleFactor,
++            opacity: 255,
++            scale_x: 1,
++            scale_y: 1,
++            translation_y: 0,
+         });
+ 
+         this._otherUserButton.set({
+@@ -843,7 +753,7 @@ export const UnlockDialog = GObject.registerClass({
+     }
+ 
+     _fail() {
+-        this._showClock();
++        this._showPrompt();
+         this.emit('failed');
+     }
+ 
+@@ -919,10 +829,7 @@ export const UnlockDialog = GObject.registerClass({
+     }
+ 
+     _updateUserSwitchVisibility() {
+-        this._otherUserButton.visible = this._userManager.can_switch() &&
+-            this._userManager.has_multiple_users &&
+-            this._screenSaverSettings.get_boolean('user-switch-enabled') &&
+-            !this._lockdownSettings.get_boolean('disable-user-switching');
++        this._otherUserButton.hide();
+     }
+ 
+     _updateAuthBlocked() {
+diff --git a/js/ui/userWidget.js b/js/ui/userWidget.js
+index 9447308..331d00c 100644
+--- a/js/ui/userWidget.js
++++ b/js/ui/userWidget.js
+@@ -23,6 +23,7 @@ class Avatar extends St.Bin {
+             styleClass: 'user-icon',
+             reactive: false,
+             iconSize: AVATAR_ICON_SIZE,
++            showInitial: false,
+         });
+ 
+         super._init({
+@@ -35,6 +36,7 @@ class Avatar extends St.Bin {
+         });
+ 
+         this._iconSize = params.iconSize;
++        this._showInitial = params.showInitial;
+         this._user = user;
+ 
+         this.bind_property('reactive', this, 'track-hover',
+@@ -86,6 +88,20 @@ class Avatar extends St.Bin {
+             this.style = `
+                 background-image: url("${iconFile}");
+                 background-size: cover;`;
++        } else if (this._showInitial) {
++            this.style = null;
++            this.remove_style_class_name('user-avatar');
++            const name = this._user?.get_real_name() ||
++                this._user?.get_user_name() || '';
++            const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() ?? '';
++            this.child = new St.Label({
++                style_class: 'prairie-login-avatar-initial',
++                text: initial,
++                x_expand: true,
++                y_expand: true,
++                x_align: Clutter.ActorAlign.CENTER,
++                y_align: Clutter.ActorAlign.CENTER,
++            });
+         } else {
+             this.style = null;
+             this.child = new St.Icon({
+@@ -183,7 +199,13 @@ class UserWidget extends St.BoxLayout {
+             xAlign,
+         });
+ 
+-        this._avatar = new Avatar(user);
++        this._avatar = new Avatar(user, vertical
++            ? {
++                styleClass: 'user-icon prairie-login-avatar',
++                iconSize: 66,
++                showInitial: true,
++            }
++            : {});
+         this._avatar.x_align = Clutter.ActorAlign.CENTER;
+         this.add_child(this._avatar);
+ 

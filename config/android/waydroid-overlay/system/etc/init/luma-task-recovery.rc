@@ -1,0 +1,11 @@
+# Project Luma: keep closing an app window working after Android's system
+# process restarts. See /system/etc/luma-task-recovery.sh.
+service luma_task_recovery /system/bin/sh /system/etc/luma-task-recovery.sh
+    class late_start
+    user root
+    group root
+    disabled
+
+on property:sys.boot_completed=1
+    setprop persist.luma.task_recovery 2
+    start luma_task_recovery

@@ -1,0 +1,565 @@
+diff --git a/src/adw-accent-color.c b/src/adw-accent-color.c
+index b6bdc5b..f8641b2 100644
+--- a/src/adw-accent-color.c
++++ b/src/adw-accent-color.c
+@@ -13,7 +13,7 @@
+ 
+ /**
+  * AdwAccentColor:
+- * @ADW_ACCENT_COLOR_BLUE: Use a blue color (`#3584e4`). This is the default value.
++ * @ADW_ACCENT_COLOR_BLUE: Use Luma blue (`#4878b8`). This is the default value.
+  * @ADW_ACCENT_COLOR_TEAL: Use a teal color (`#2190a4`).
+  * @ADW_ACCENT_COLOR_GREEN: Use a green color (`#3a944a`).
+  * @ADW_ACCENT_COLOR_YELLOW: Use a yellow color (`#c88800`).
+@@ -51,7 +51,7 @@ adw_accent_color_to_rgba (AdwAccentColor  self,
+ 
+   switch (self) {
+   case ADW_ACCENT_COLOR_BLUE:
+-    hex = "#3584e4";
++    hex = "#4878b8";
+     break;
+   case ADW_ACCENT_COLOR_TEAL:
+     hex = "#2190a4";
+diff --git a/src/stylesheet/_colors.scss b/src/stylesheet/_colors.scss
+index a54758c..aac141c 100644
+--- a/src/stylesheet/_colors.scss
++++ b/src/stylesheet/_colors.scss
+@@ -29,54 +29,59 @@
+ @define-color error_color oklab(from @error_bg_color min(l, 0.5) a b);
+ 
+ // Window
+-@define-color window_bg_color #fafafb;
+-@define-color window_fg_color RGB(0 0 6 / 80%);
++@define-color window_bg_color #ffffff;
++@define-color window_fg_color #1f2937;
+ 
+ // Views - e.g. text view or tree view
+ @define-color view_bg_color #ffffff;
+-@define-color view_fg_color RGB(0 0 6 / 80%);
++@define-color view_fg_color #1f2937;
+ 
+ // Header bar, search bar, tab bar
+-@define-color headerbar_bg_color #ffffff;
+-@define-color headerbar_fg_color RGB(0 0 6 / 80%);
+-@define-color headerbar_border_color RGB(0 0 6 / 80%);
+-@define-color headerbar_backdrop_color @window_bg_color;
+-@define-color headerbar_shade_color RGB(0 0 6 / 12%);
+-@define-color headerbar_darker_shade_color RGB(0 0 6 / 12%);
++@define-color headerbar_bg_color #f2f3f5;
++@define-color headerbar_fg_color #374151;
++@define-color headerbar_border_color #111827;
++@define-color headerbar_backdrop_color #f2f3f5;
++@define-color headerbar_shade_color RGB(17 24 39 / 10%);
++@define-color headerbar_darker_shade_color RGB(17 24 39 / 10%);
+ 
+ // Split pane views
+-@define-color sidebar_bg_color #ebebed;
+-@define-color sidebar_fg_color RGB(0 0 6 / 80%);
+-@define-color sidebar_backdrop_color #f2f2f4;
+-@define-color sidebar_shade_color RGB(0 0 6 / 7%);
+-@define-color sidebar_border_color RGB(0 0 6 / 7%);
+-
+-@define-color secondary_sidebar_bg_color #f3f3f5;
+-@define-color secondary_sidebar_fg_color RGB(0 0 6 / 80%);
+-@define-color secondary_sidebar_backdrop_color #f6f6fa;
+-@define-color secondary_sidebar_shade_color RGB(0 0 6 / 7%);
+-@define-color secondary_sidebar_border_color RGB(0 0 6 / 7%);
++@define-color sidebar_bg_color #f2f3f5;
++@define-color sidebar_fg_color #374151;
++@define-color sidebar_backdrop_color #f2f3f5;
++@define-color sidebar_shade_color RGB(17 24 39 / 6%);
++@define-color sidebar_border_color RGB(17 24 39 / 5.5%);
++
++@define-color secondary_sidebar_bg_color #f2f3f5;
++@define-color secondary_sidebar_fg_color #374151;
++@define-color secondary_sidebar_backdrop_color #f2f3f5;
++@define-color secondary_sidebar_shade_color RGB(17 24 39 / 6%);
++@define-color secondary_sidebar_border_color RGB(17 24 39 / 5.5%);
+ 
+ // Cards, boxed lists
+ @define-color card_bg_color #ffffff;
+-@define-color card_fg_color RGB(0 0 6 / 80%);
+-@define-color card_shade_color RGB(0 0 6 / 7%);
++@define-color card_fg_color #1f2937;
++@define-color card_shade_color RGB(17 24 39 / 10%);
+ 
+ // Dialogs
+ @define-color dialog_bg_color #fafafb;
+-@define-color dialog_fg_color RGB(0 0 6 / 80%);
++@define-color dialog_fg_color #1f2937;
+ 
+ // Popovers
+ @define-color popover_bg_color #ffffff;
+-@define-color popover_fg_color RGB(0 0 6 / 80%);
+-@define-color popover_shade_color RGB(0 0 6 / 7%);
++@define-color popover_fg_color #1f2937;
++@define-color popover_shade_color RGB(17 24 39 / 10%);
+ 
+ // Thumbnails
+ @define-color thumbnail_bg_color #ffffff;
+-@define-color thumbnail_fg_color RGB(0 0 6 / 80%);
++@define-color thumbnail_fg_color #1f2937;
+ 
+ // Miscellaneous
+-@define-color shade_color RGB(0 0 6 / 7%);
++@define-color luma_secondary_fg_color #6b7280;
++@define-color luma_faint_fg_color #9ca3af;
++@define-color luma_hover_bg_color #eceef1;
++@define-color luma_active_bg_color #e3e6ea;
++@define-color luma_soft_accent_bg_color RGB(72 120 184 / 12%);
++@define-color shade_color RGB(17 24 39 / 6%);
+ @define-color scrollbar_outline_color white;
+ 
+ @media (prefers-color-scheme: dark) {
+@@ -153,7 +158,7 @@
+ }
+ 
+ :root {
+-  --accent-blue: #3584e4;
++  --accent-blue: #4878b8;
+   --accent-teal: #2190a4;
+   --accent-green: #3a944a;
+   --accent-yellow: #c88800;
+@@ -236,10 +241,10 @@
+   --scrollbar-outline-color: @scrollbar_outline_color;
+ 
+   --active-toggle-bg-color: #ffffff;
+-  --active-toggle-fg-color: rgb(0 0 6 / 80%);
++  --active-toggle-fg-color: #1f2937;
+ 
+   --overview-bg-color: #f3f3f5;
+-  --overview-fg-color: rgb(0 0 6 / 80%);
++  --overview-fg-color: #1f2937;
+ }
+ 
+ @media (prefers-color-scheme: dark) {
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index de00da8..2fea6ac 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -5,16 +5,16 @@ $focus_transition: outline-color 200ms $ease-out-quad,
+                    outline-offset 200ms $ease-out-quad;
+ $button_transition: background 200ms $ease-out-quad,
+                     box-shadow 200ms $ease-out-quad;
+-$button_radius: 9px;
++$button_radius: 8px;
+ $card_radius: 12px;
+-$menu_radius: 9px;
++$menu_radius: 7px;
+ $menu_margin: 6px; //margin around menuitems & sidebar items
+ $menu_padding: 12px; //inner menuitem padding
+ $popover_radius: $menu_radius + 6;
+ $dialog_radius: $button_radius + 6;
+ 
+ :root {
+-  --window-radius: #{$button_radius + 6};
++  --window-radius: 13px;
+ 
+   -gtk-icon-palette: success var(--success-color),
+                      warning var(--warning-color),
+diff --git a/src/stylesheet/_compat-colors.scss b/src/stylesheet/_compat-colors.scss
+index 7bde5cf..8bce6e8 100644
+--- a/src/stylesheet/_compat-colors.scss
++++ b/src/stylesheet/_compat-colors.scss
+@@ -16,6 +16,10 @@
+ 
+ @define-color borders color-mix(in srgb, currentColor 15%, transparent);
+ 
++@media (prefers-color-scheme: light) {
++  @define-color borders RGB(17 24 39 / 10%);
++}
++
+ @media (prefers-contrast: more) {
+   @define-color borders color-mix(in srgb, currentColor 50%, transparent);
+ }
+diff --git a/src/stylesheet/widgets/_buttons.scss b/src/stylesheet/widgets/_buttons.scss
+index b1c4ab4..9da0794 100644
+--- a/src/stylesheet/widgets/_buttons.scss
++++ b/src/stylesheet/widgets/_buttons.scss
+@@ -17,11 +17,11 @@ $destructive_button_checked_active_color: color-mix(in srgb, currentColor 45%, t
+ %button,
+ button {
+   @at-root %button_basic, & {
+-    min-height: 24px;
++    min-height: 20px;
+     min-width: 16px;
+     padding: 5px 10px;
+     border-radius: $button_radius;
+-    font-weight: bold;
++    font-weight: 500;
+ 
+     @include focus-ring($transition: $button_transition);
+ 
+diff --git a/src/stylesheet/widgets/_entries.scss b/src/stylesheet/widgets/_entries.scss
+index 2f9b381..2fb7410 100644
+--- a/src/stylesheet/widgets/_entries.scss
++++ b/src/stylesheet/widgets/_entries.scss
+@@ -1,7 +1,7 @@
+ %entry,
+ entry {
+   %entry_basic, & {
+-    min-height: 34px;
++    min-height: 30px;
+     padding-left: 9px;
+     padding-right: 9px;
+     border-radius: $button_radius;
+diff --git a/src/stylesheet/widgets/_file-chooser.scss b/src/stylesheet/widgets/_file-chooser.scss
+index 08ac9f5..caf8039 100644
+--- a/src/stylesheet/widgets/_file-chooser.scss
++++ b/src/stylesheet/widgets/_file-chooser.scss
+@@ -5,7 +5,11 @@ placessidebar {
+ 
+     // Using margins/padding directly in the SidebarRow
+     // will make the animation of the new bookmark row jump
+-    > revealer { padding: 0 14px; }
++    // GtkPlacesSidebar deliberately zeroes the outer navigation row because
++    // bookmark reveal animations are owned by this inner revealer. Keep the
++    // global Luma row geometry here so Files and file chooser sidebars retain
++    // the same 7px vertical / 11px horizontal inset as AdwNavigationSplitView.
++    > revealer { padding: 7px 11px; }
+ 
+     image.sidebar-icon {
+       &:dir(ltr) { padding-right: 8px; }
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 66b314b..8126a48 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -1,28 +1,28 @@
+ headerbar {
+-  min-height: 47px;
++  min-height: 17px;
+   background-color: var(--headerbar-bg-color);
+   color: var(--headerbar-fg-color);
+-  box-shadow: inset 0 -1px var(--headerbar-shade-color),
+-              inset  1px 0 $headerbar_border_color,
+-              inset -1px 0 $headerbar_border_color;
++  box-shadow: inset 0 -1px var(--headerbar-shade-color);
+ 
+   @media (prefers-contrast: more) {
+-    box-shadow: inset 0 -1px $headerbar_border_color,
+-                inset  1px 0 $headerbar_border_color,
+-                inset -1px 0 $headerbar_border_color;
++    box-shadow: inset 0 -1px $headerbar_border_color;
+   }
+ 
+   margin-left: -1px;
+   margin-right: -1px;
+ 
++  @media (prefers-color-scheme: light) {
++    background-image: linear-gradient(to bottom, #f2f3f5, #e8eaee);
++  }
++
+   @extend %toolbar;
+ 
+   > windowhandle > box {
+-    padding: 6px 7px 7px 7px;
++    padding: 0 10px 1px;
+ 
+     > box.start,
+     > box.end {
+-      border-spacing: 6px;
++      border-spacing: 8px;
+     }
+ 
+     &, > widget {
+@@ -59,9 +59,9 @@ headerbar {
+ 
+     windowcontrols {
+       > button {
+-        min-height: 22px;
+-        min-width: 22px;
+-        padding: 4px;
++        min-height: 18px;
++        min-width: 18px;
++        padding: 0;
+ 
+         > image {
+           padding: 3px;
+@@ -87,16 +87,17 @@ window:not(.ssd-frame) > {
+   }
+ 
+   .titlebar headerbar:not(.flat) {
+-    box-shadow: inset  1px 0 $headerbar_border_color,
++    box-shadow: inset 0 -1px var(--headerbar-shade-color),
++                inset  1px 0 $headerbar_border_color,
+                 inset -1px 0 $headerbar_border_color;
+   }
+ 
+   headerbar.titlebar,
+   .titlebar headerbar {
+-    min-height: 46px;
++    min-height: 17px;
+ 
+     > windowhandle > box {
+-      padding-bottom: 6px;
++      padding-bottom: 1px;
+     }
+ 
+     &.default-decoration {
+@@ -114,10 +115,10 @@ window:not(.ssd-frame) > {
+   box-shadow: none;
+   color: inherit;
+ 
+-  min-height: 46px;
++  min-height: 17px;
+ 
+   > windowhandle > box {
+-    padding-bottom: 6px;
++    padding-bottom: 1px;
+   }
+ 
+   &.default-decoration {
+@@ -147,11 +148,11 @@ window:not(.ssd-frame) > {
+ }
+ 
+ %headerbar-shrunk {
+-  min-height: 40px;
++  min-height: 34px;
+ 
+   > windowhandle > box {
+-    padding-top: 3px;
+-    padding-bottom: 3px;
++    padding-top: 0;
++    padding-bottom: 0;
+   }
+ 
+   &.default-decoration {
+@@ -173,11 +174,13 @@ window:not(.ssd-frame) > {
+  *********************/
+ 
+ windowcontrols {
+-  border-spacing: 3px;
++  border-spacing: 2px;
+ 
+-  > button {
+-    min-width: 24px;
+-    padding: 5px;
++  > button,
++  > button.image-button {
++    min-width: 20px;
++    min-height: 20px;
++    padding: 0;
+ 
+     &:not(.raised):not(.suggested-action):not(.destructive-action):not(.opaque).image-button {
+       &, &:hover, &:active {
+@@ -187,7 +190,10 @@ windowcontrols {
+     }
+ 
+     > image {
+-      background-color: $button_color;
++      -gtk-icon-size: 10px;
++      color: #6b7280;
++      background-color: var(--view-bg-color);
++      box-shadow: inset 0 0 0 1px color-mix(in srgb, #111827 10%, transparent);
+       border-radius: 100%;
+       padding: 4px;
+       transition: $button_transition;
+@@ -197,12 +203,30 @@ windowcontrols {
+       }
+     }
+ 
+-    &:hover > image { background-color: $button_hover_color; }
+-    &:active > image { background-color: $button_active_color; }
++    &:hover > image { background-color: color-mix(in srgb, currentColor 8%, var(--view-bg-color)); }
++    &:active > image { background-color: color-mix(in srgb, currentColor 14%, var(--view-bg-color)); }
++
++    &.close:hover > image,
++    &.close:active > image {
++      color: #bd5a4e;
++      background-color: color-mix(in srgb, #bd5a4e 16%, var(--view-bg-color));
++    }
++
++    &.minimize:hover > image,
++    &.minimize:active > image {
++      color: #b0782b;
++      background-color: color-mix(in srgb, #b0782b 16%, var(--view-bg-color));
++    }
++
++    &.maximize:hover > image,
++    &.maximize:active > image {
++      color: #4f8a52;
++      background-color: color-mix(in srgb, #4f8a52 16%, var(--view-bg-color));
++    }
+   }
+ 
+   > .icon {
+-    margin: 9px;
++    margin: 4px;
+   }
+ }
+ 
+@@ -215,7 +239,9 @@ windowtitle {
+   .title {
+     padding-left: 12px;
+     padding-right: 12px;
+-    font-weight: bold;
++    font-weight: 600;
++    font-size: 12.5px;
++    color: var(--headerbar-fg-color);
+   }
+ 
+   .subtitle {
+diff --git a/src/stylesheet/widgets/_sidebars.scss b/src/stylesheet/widgets/_sidebars.scss
+index a3ddda7..1a05661 100644
+--- a/src/stylesheet/widgets/_sidebars.scss
++++ b/src/stylesheet/widgets/_sidebars.scss
+@@ -119,12 +119,12 @@ stacksidebar row {
+   }
+ 
+   row.activatable, child.activatable, flowboxchild {
+-    &:hover { background-color: $hover_color; }
++    &:hover { background-color: RGB(44 49 56 / 5%); }
+ 
+     &:active { background-color: $active_color; }
+ 
+     // this is for indicating which row generated a popover see https://bugzilla.gnome.org/show_bug.cgi?id=754411
+-    &.has-open-popup { background-color: $hover_color; }
++    &.has-open-popup { background-color: RGB(44 49 56 / 5%); }
+ 
+     &:selected {
+       &:hover { background-color: $selected_hover_color; }
+@@ -141,17 +141,20 @@ stacksidebar row {
+     }
+   }
+ 
+-  padding-top: $menu_margin;
+-  padding-bottom: $menu_margin - 2px; // Compensate for the last row's margin
++  padding-top: 11px;
++  padding-bottom: 11px;
+ 
+   > separator,
+   > .header > separator {
+-    margin: $menu_margin;
++    margin: 9px 6px;
+   }
+ 
+ 
+   > .header > .heading {
+-    margin: $menu_margin + 6px;
++    margin: 2px 14px 6px;
++    color: #9ca3af;
++    font-size: 11px;
++    font-weight: 700;
+   }
+ 
+   /* No top margin on the first header */
+@@ -177,10 +180,24 @@ stacksidebar row {
+   }
+ 
+   > row {
+-    border-radius: $menu_radius;
+-    min-height: 36px;
+-    padding: 0 8px;
+-    margin: 0 $menu_margin 2px;
++    border-radius: 8px;
++    min-height: 14px;
++    padding: 7px 11px;
++    margin: 1px 10px;
++    color: #374151;
++    font-size: 12.5px;
++
++    &:selected {
++      background-color: var(--accent-bg-color);
++      color: var(--accent-fg-color);
++
++      &:hover,
++      &:active,
++      &.has-open-popup {
++        background-color: var(--accent-bg-color);
++        color: var(--accent-fg-color);
++      }
++    }
+   }
+ 
+   > child, > flowboxchild {
+@@ -206,9 +223,9 @@ sidebar {
+     padding: 0;
+ 
+     > box {
+-      padding: 3px 14px;
+-      min-height: 36px;
+-      border-spacing: 12px;
++      padding: 7px 11px;
++      min-height: 14px;
++      border-spacing: 9px;
+ 
+       > .icon:disabled {
+         opacity: var(--disabled-opacity);
+diff --git a/src/stylesheet/widgets/_toolbars.scss b/src/stylesheet/widgets/_toolbars.scss
+index c237376..c0d70a1 100644
+--- a/src/stylesheet/widgets/_toolbars.scss
++++ b/src/stylesheet/widgets/_toolbars.scss
+@@ -22,6 +22,13 @@
+     &.image-button,
+     &.image-text-button {
+       @extend %button_basic_raised;
++      background-color: var(--view-bg-color);
++      box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++
++      &:disabled {
++        filter: none;
++        color: color-mix(in srgb, var(--headerbar-fg-color) 42%, transparent);
++      }
+     }
+   }
+ 
+@@ -265,6 +272,11 @@ banner {
+  * AdwToolbarView *
+  ******************/
+ toolbarview {
++  > .top-bar {
++    background-color: var(--headerbar-bg-color);
++    color: var(--headerbar-fg-color);
++  }
++
+   > .top-bar,
+   > .bottom-bar {
+     headerbar { @extend %headerbar-inline; }
+@@ -274,8 +286,11 @@ toolbarview {
+     tabbar    { @extend %tabbar-inline; }
+ 
+     .collapse-spacing {
+-      padding-top: 3px;
+-      padding-bottom: 3px;
++      // Luma's compact stacked header bars are measured edge-to-edge. The
++      // individual bars own their height and separator, so the wrapper must
++      // not add an invisible six-pixel gutter around the shared surface.
++      padding-top: 0;
++      padding-bottom: 0;
+ 
+       headerbar { @extend %headerbar-shrunk; }
+       searchbar { @extend %searchbar-shrunk; }
+diff --git a/src/stylesheet/widgets/_window.scss b/src/stylesheet/widgets/_window.scss
+index e3edef3..543f956 100644
+--- a/src/stylesheet/widgets/_window.scss
++++ b/src/stylesheet/widgets/_window.scss
+@@ -1,12 +1,14 @@
+ window {
+   &.csd {
+-    box-shadow: 0 0 14px 5px RGB(0 0 0 / 15%),
+-                0 0 5px 2px RGB(0 0 0 / 10%),
+-                0 0 0 1px RGB(0 0 0 / 5%);
++    // One quiet slate falloff matches the dock instead of stacking two dark
++    // upstream shadows. The shared neutral hairline defines the edge.
++    box-shadow: 0 5px 16px RGB(30 41 59 / 4%),
++                0 0 0 1px RGB(17 24 39 / 10%);
+     margin: 0px;
+     border-radius: var(--window-radius);
+ 
+-    outline: 1px solid $window_outline_color;
++    // A neutral hairline replaces upstream's light-catching white rim.
++    outline: 1px solid color-mix(in srgb, #111827 10%, transparent);
+     outline-offset: -1px;
+ 
+     @media (prefers-contrast: more) {
+@@ -21,8 +23,7 @@ window {
+       // The biggest shadow should be in the same order then in the active state
+       // or the jumping will happen during the transition.
+-      box-shadow: 0 0 14px 5px transparent,
+-                  0 0 10px 5px RGB(0 0 0 / 8%),
+-                  0 0 0 1px RGB(0 0 0 / 5%);
++      box-shadow: 0 5px 16px RGB(30 41 59 / 2%),
++                  0 0 0 1px RGB(17 24 39 / 8%);
+       transition: box-shadow $backdrop_transition;
+ 
+       @media (prefers-contrast: more) {

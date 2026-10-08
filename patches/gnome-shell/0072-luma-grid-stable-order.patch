@@ -1,0 +1,92 @@
+From d06325e06782b0ca20ec780927bb0d625985191f Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 20:05:20 -0500
+Subject: [PATCH] luma: Grid keeps its arrangement instead of resorting by
+ recency
+
+---
+ js/ui/lumaGrid.js | 46 +++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 39 insertions(+), 7 deletions(-)
+
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index 91de7da..25616d8 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -16,6 +16,29 @@ import {gridLayout, gridNeighbor} from './gridLayout.js';
+ 
+ let activeGrid = null;
+ 
++// The arrangement Grid last showed, as stable window sequences. Rebuilding the
++// row in most-recently-used order every time moves the window you just left to
++// the front and shifts everything else under it, which destroys the spatial
++// memory people navigate by: "Phone was before Messages, Contacts was after".
++// The order therefore persists for as long as the session does. It is not saved
++// across restarts, and windows that have closed simply fall out of it.
++let rememberedOrder = [];
++
++function orderedForDisplay(windows) {
++    const key = window => window.get_stable_sequence();
++    const rank = new Map(rememberedOrder.map((sequence, index) => [sequence, index]));
++    // Windows Grid has not shown before keep their relative recency and are
++    // appended, so a newly opened window arrives at the end rather than
++    // displacing anything already placed.
++    const ordered = [...windows].sort((a, b) => {
++        const left = rank.has(key(a)) ? rank.get(key(a)) : Number.MAX_SAFE_INTEGER;
++        const right = rank.has(key(b)) ? rank.get(key(b)) : Number.MAX_SAFE_INTEGER;
++        return left === right ? windows.indexOf(a) - windows.indexOf(b) : left - right;
++    });
++    rememberedOrder = ordered.map(key);
++    return ordered;
++}
++
+ // How far a three-finger swipe must travel downward to dismiss Grid.
+ const DISMISS_TRAVEL = 64;
+ // Breathing room outside the row, applied identically on both sides.
+@@ -215,17 +238,24 @@ class GridPopup extends St.Widget {
+         });
+         this._stage.add_action(pan);
+         this.add_child(this._stage);
+-        const windows = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
++        const recent = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
+             .map(w => w.is_attached_dialog() ? w.get_transient_for() : w)
+             .filter((w, i, list) => w && !w.skip_taskbar && list.indexOf(w) === i &&
+                 w.get_compositor_private());
++        const windows = orderedForDisplay(recent);
+         windows.forEach((window, index) => {
+-            const card = new GridCard(window, this, index);
++            // Recency drives the label, position does not: a card reading
++            // "Current" must be the window you left, wherever it now sits.
++            const card = new GridCard(window, this, recent.indexOf(window));
+             this._cards.push(card);
+             this._stage.add_child(card);
+         });
++        // Alt-Tab still means "the one before this one" in recency terms, which
++        // is no longer simply the next card along.
++        const positionOf = window => Math.max(0, windows.indexOf(window));
++        this._focusIndex = positionOf(recent[0]);
+         this._selected = modifierMask && this._cards.length > 1
+-            ? backward ? this._cards.length - 1 : 1 : 0;
++            ? positionOf(recent[backward ? recent.length - 1 : 1]) : this._focusIndex;
+         this.add_constraint(new Clutter.BindConstraint({source: global.stage,
+             coordinate: Clutter.BindCoordinate.ALL}));
+         const dismiss = new Clutter.ClickGesture();
+@@ -437,10 +467,12 @@ class GridPopup extends St.Widget {
+             const centreOf = item => item.x + item.width / 2 - width / 2;
+             this._scrollMin = items.length ? centreOf(items[0]) : 0;
+             this._scrollMax = items.length ? centreOf(items[items.length - 1]) : 0;
+-            if (this._scrollX === null)
+-                // Open on the window you just left, so the arrangement reads the
+-                // same every time and a neighbour can be reached from memory.
+-                this._scrollX = this._scrollMin;
++            if (this._scrollX === null) {
++                // Open on the window you just left. Because the order is stable,
++                // that also restores the neighbours it had last time.
++                const focus = items[Math.min(this._focusIndex ?? 0, items.length - 1)];
++                this._scrollX = focus ? centreOf(focus) : this._scrollMin;
++            }
+             this._scrollX = Math.max(this._scrollMin,
+                 Math.min(this._scrollMax, this._scrollX));
+         }
+-- 
+2.55.0
+

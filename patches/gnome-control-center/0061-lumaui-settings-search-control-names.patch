@@ -1,0 +1,20 @@
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index 3836a98..6a23cb1 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -265,6 +265,7 @@ static void list_showing (LumaListFirst *stack, const char *which, Frame *f)
+     {
+       LumaBarItem *items[] = { f->search_item };
+       luma_action_center_show_bar (LUMA_ACTION_CENTER (f->search_center), items, 1, NULL);
++      gtk_widget_set_name (luma_bar_item_search_get_entry (f->search_item), "cf-search");
+     }
+   else luma_action_center_hide_bar (LUMA_ACTION_CENTER (f->search_center));
+ }
+@@ -377,6 +378,7 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+       gtk_widget_set_name (f->stack, "cf-list-first");
+       luma_application_window_set_body (LUMA_APPLICATION_WINDOW (window), f->stack);
+       f->search_center = luma_action_center_new (NULL);
++      gtk_widget_set_name (f->search_center, "cf-foot");
+       f->search_item = luma_bar_item_new_search ("Search settings");
+       luma_bar_item_search_set_keep (f->search_item, TRUE);
+       g_signal_connect (f->search_item, "search-changed", G_CALLBACK (search_changed), f);

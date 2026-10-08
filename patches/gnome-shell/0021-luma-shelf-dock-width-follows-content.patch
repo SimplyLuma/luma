@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Fri, 4 Sep 2026 21:10:00 -0500
+Subject: [PATCH] shelf: let the dock narrow again when items leave
+
+The shelf pins its dock scroll to the dash's natural width and re-syncs on
+the dash's notify::width. A scroll view allocates its child at least the
+viewport's width, so when an item is added the dash widens and signals, but
+when an item is destroyed the dash keeps the viewport's width and never
+signals: the dock grew with every application opened and never shrank,
+leaving blank space either side of the icons. The dock width now follows the
+dash's box as children come and go.
+
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -227,6 +227,12 @@
+ 
+         this._dash.connectObject('notify::width', () => this._queueDockWidth(), this);
+         this._actionsBox.connectObject('notify::width', () => this._queueDockWidth(), this);
++        // A scroll view allocates the dash at least the viewport's width, so
++        // a dash that lost an item never reports a narrower width; its box
++        // does report the item leaving.
++        this._dash._box.connectObject(
++            'child-added', () => this._queueDockWidth(),
++            'child-removed', () => this._queueDockWidth(), this);
+         this._sync();
+     }
+ 

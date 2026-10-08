@@ -1,0 +1,12 @@
+[Plymouth Theme]
+Name=Luma Loading
+Description=Project Luma native Hearth / Ink boot surface
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/luma-loading
+ScriptFile=/usr/share/plymouth/themes/luma-loading/luma-loading.script
+
+# The dracut Plymouth module uses these to include the prompt font.
+Font=Figtree Medium
+TitleFont=Figtree Bold

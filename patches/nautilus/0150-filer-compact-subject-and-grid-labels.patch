@@ -1,0 +1,130 @@
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index d20efff..fbdb0e9 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -32,6 +32,7 @@ struct _NautilusGridCell
+     GtkWidget *icon;
+     GtkWidget *emblems_box;
+     GtkWidget *labels_box;
++    GtkWidget *label;
+     GtkWidget *first_caption;
+     GtkWidget *second_caption;
+     GtkWidget *third_caption;
+@@ -288,6 +289,11 @@ on_file_changed (NautilusGridCell *self)
+ static void
+ on_icon_size_changed (NautilusGridCell *self)
+ {
++    guint icon_size = 0;
++    g_object_get (self, "icon-size", &icon_size, NULL);
++    /* Phone tiles keep one filename line; ellipsis retains the full tooltip. */
++    gtk_label_set_wrap (GTK_LABEL (self->label), icon_size != 88);
++    gtk_label_set_lines (GTK_LABEL (self->label), icon_size == 88 ? 1 : 3);
+     g_autoptr (NautilusViewItem) item = nautilus_view_cell_get_item (NAUTILUS_VIEW_CELL (self));
+ 
+     if (item == NULL)
+@@ -600,6 +606,7 @@ nautilus_grid_cell_class_init (NautilusGridCellClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, icon);
+     gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, emblems_box);
+     gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, labels_box);
++    gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, label);
+     gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, first_caption);
+     gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, second_caption);
+     gtk_widget_class_bind_template_child (widget_class, NautilusGridCell, third_caption);
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 2913303..2934d4a 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -625,7 +625,8 @@ update_location_header (NautilusWindow *window)
+ 
+ static void
+ filer_fill_details (NautilusWindow  *window,
+-                    LumaDetailsPane *pane)
++                    LumaDetailsPane *pane,
++                    gboolean compact)
+ {
+     g_autoptr (NautilusFile) directory = NULL;
+     g_autoptr (GdkPaintable) paintable = NULL;
+@@ -664,7 +665,7 @@ filer_fill_details (NautilusWindow  *window,
+     if (file_location != NULL && nautilus_file_should_show_thumbnail (file))
+     {
+         NautilusImage *preview = nautilus_image_new ();
+-        nautilus_image_set_size (preview, 220);
++        nautilus_image_set_size (preview, compact ? 44 : 220);
+         nautilus_image_set_fallback (preview, paintable);
+         nautilus_image_set_source (preview, file_location);
+         icon = GTK_WIDGET (preview);
+@@ -673,16 +674,27 @@ filer_fill_details (NautilusWindow  *window,
+     {
+         icon = paintable != NULL ? gtk_image_new_from_paintable (paintable)
+                                  : gtk_image_new_from_icon_name ("folder-symbolic");
+-        gtk_image_set_pixel_size (GTK_IMAGE (icon), 72);
++        gtk_image_set_pixel_size (GTK_IMAGE (icon), compact ? 44 : 72);
+     }
+-    luma_details_pane_add_hero (pane,
+-                                nautilus_file_get_display_name (file), NULL, icon);
++    kind = nautilus_file_get_string_attribute_with_default (file, "type");
++    size = nautilus_file_get_string_attribute_with_default (file, "size");
++    g_autofree char *fixture_kind = nautilus_filer_fixture_info (
++        nautilus_file_get_name (file), "kind");
++    g_autofree char *fixture_size = nautilus_filer_fixture_info (
++        nautilus_file_get_name (file), "size");
++    if (compact)
++    {
++        g_autofree char *subtitle = g_strdup_printf ("%s · %s",
++            fixture_kind != NULL ? fixture_kind : kind,
++            fixture_size != NULL ? fixture_size : size);
++        luma_details_pane_add_subject (pane, nautilus_file_get_display_name (file), subtitle, icon);
++    }
++    else
++        luma_details_pane_add_hero (pane, nautilus_file_get_display_name (file), NULL, icon);
+ 
+     /* The native conform tree stores the sample's displayed metadata alongside
+      * its files. Its sparse files cannot carry document dimensions or the
+      * Studio sample's historical modified labels in ordinary GFileInfo. */
+-    g_autofree char *fixture_kind = nautilus_filer_fixture_info (
+-        nautilus_file_get_name (file), "kind");
+     if (fixture_kind != NULL)
+     {
+         static const struct { const char *key; const char *label; } fields[] = {
+@@ -710,8 +722,6 @@ filer_fill_details (NautilusWindow  *window,
+         return;
+     }
+ 
+-    kind = nautilus_file_get_string_attribute_with_default (file, "type");
+-    size = nautilus_file_get_string_attribute_with_default (file, "size");
+     modified = nautilus_file_get_string_attribute_with_default (file, "date_modified");
+     if (kind != NULL)
+     {
+@@ -751,7 +761,7 @@ filer_fill_details (NautilusWindow  *window,
+ static void
+ update_information (NautilusWindow *window)
+ {
+-    filer_fill_details (window, window->information_pane);
++    filer_fill_details (window, window->information_pane, FALSE);
+ }
+ 
+ /* ── Filer v71: the action bar (LumaUI-1, K-C) ─────────────────────────────
+@@ -1122,7 +1132,8 @@ filer_details_panel (LumaBarItem *item,
+     gtk_widget_set_name (GTK_WIDGET (pane), "filer-details-panel");
+     luma_details_pane_set_embedded (pane, TRUE);
+     luma_details_pane_set_closable (pane, FALSE);
+-    filer_fill_details (window, pane);
++    luma_details_pane_set_header_visible (pane, FALSE);
++    filer_fill_details (window, pane, TRUE);
+     luma_details_pane_show (pane, TRUE);
+     return GTK_WIDGET (pane);
+ }
+diff --git a/test/automated/test-properties-about.c b/test/automated/test-properties-about.c
+index 1545cc3..e9d219c 100644
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -290,6 +290,9 @@ static void review_navigation(void)
+     g_assert_cmpstr(luma_action_center_get_grown(center),==,"details");
+     GtkWidget *panel=required(GTK_WIDGET(window),"filer-details-panel");
+     g_assert_false(luma_details_pane_get_is_drawer(LUMA_DETAILS_PANE(panel)));
++    g_assert_nonnull(find_css(panel,"lumaui-details-subject"));
++    g_assert_false(gtk_widget_get_mapped(find_css(panel,"lumaui-details-header")));
++    g_assert_cmpint(gtk_widget_get_height(panel),<,350);
+     g_assert_true(gtk_widget_get_mapped(copy));
+     g_assert_true(gtk_widget_compute_bounds(copy,GTK_WIDGET(window),&files_box));
+     g_assert_true(gtk_widget_compute_bounds(panel,GTK_WIDGET(window),&pane_box));

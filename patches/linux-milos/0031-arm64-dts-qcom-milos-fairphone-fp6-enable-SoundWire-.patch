@@ -1,0 +1,56 @@
+From 5c9c899ba9a21366c82e41c842207075d3a0f5f0 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 5 Jul 2026 02:52:32 +0200
+Subject: [PATCH] arm64: dts: qcom: milos-fairphone-fp6: enable SoundWire buses
+ with WCD9378 slaves
+
+Enable the RX (swr1) and TX (swr2) SoundWire controllers and describe
+the two WCD9378 codec slave devices, as enumerated on hardware:
+unique-id 4 on the RX bus, unique-id 3 on the TX bus, SoundWire id
+sdw20217011000 (mfg 0x0217, part 0x0110). A firmware description is
+required for the sdw core to bind a driver since dynamically enumerated
+devices are visible but not bindable.
+
+WIP: the codec node set is minimal (no port mappings, no codec parent
+node yet); grows with the wcd9378 driver.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ .../boot/dts/qcom/milos-fairphone-fp6.dts     | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+index e5944a1..0c50c91 100644
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -1086,6 +1086,26 @@ touchscreen@0 {
+ 	};
+ };
+ 
++&swr1 {
++	status = "okay";
++
++	/* WCD9378 RX */
++	wcd9378_rx: codec@0,4 {
++		compatible = "sdw20217011000";
++		reg = <0 4>;
++	};
++};
++
++&swr2 {
++	status = "okay";
++
++	/* WCD9378 TX */
++	wcd9378_tx: codec@0,3 {
++		compatible = "sdw20217011000";
++		reg = <0 3>;
++	};
++};
++
+ &tlmm {
+ 	gpio-reserved-ranges = <8 4>, /* Fingerprint SPI */
+ 			       <13 1>, /* NC */
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="runtime">
+  <id>org.projectluma.Platform</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Luma Platform</name>
+  <summary>Shared libraries and the Luma application kit</summary>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <description>
+    <p>
+      The Luma Platform is the Flatpak runtime for Luma applications. It is built
+      from the same Fedora 44 packages as the Luma operating system, including
+      Luma's GTK 4, libadwaita, the Luma Developer Platform, the Prairie icon
+      theme and Luma's fonts, so an application looks and behaves the same on
+      Luma and on any other distribution with Flatpak.
+    </p>
+  </description>
+  <url type="homepage">https://simplyluma.com/</url>
+  <releases>
+    <release version="44" date="2026-09-15"/>
+  </releases>
+</component>

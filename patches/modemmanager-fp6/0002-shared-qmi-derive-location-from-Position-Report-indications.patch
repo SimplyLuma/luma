@@ -1,0 +1,251 @@
+From 7566587e77d299ab0f67613ae03cab9973e351db Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Thu, 2 Jul 2026 15:44:16 +0200
+Subject: [PATCH 3/3] shared-qmi: derive location from Position Report
+ indications
+
+Some GNSS engines (e.g. gnss8 in the SM7635/Fairphone 6) report fixes
+only via QMI_LOC Position Report indications and never emit NMEA (Set
+NMEA Types returns NotSupported), while location is derived exclusively
+from NMEA traces. As a result no location was surfaced even with the
+engine running and tracking satellites.
+
+Register for the POSITION_REPORT event and synthesize minimal $GPGGA
+and $GPRMC sentences from Position Report indications carrying a
+successful fix (intermediate reports are disabled at engine start),
+feeding the existing NMEA-based pipeline so that gps-raw and gps-nmea
+both work on these engines too. Synthesizing NMEA rather than extending
+the location interface keeps the change local to the QMI backend.
+
+To avoid polluting the location output of engines that do emit NMEA
+with duplicate synthesized sentences, position reports are ignored as
+soon as a real NMEA indication has been seen for the current engine
+run. In the worst case an NMEA-emitting engine could have a few
+synthesized sentences slip in before its first real NMEA arrives, but
+NMEA engines emit sentences immediately (fix or not) while a position
+report needs a valid fix, so real NMEA wins that race in practice.
+Values the position report does not carry are left as empty NMEA
+fields rather than invented, and $GPRMC is only synthesized when the
+report carries a UTC timestamp, as an RMC sentence without one is
+meaningless.
+
+Tested on the Fairphone 6 (SM7635): with both patches applied,
+enabling gps-nmea/gps-raw via mmcli surfaces a correct live fix
+(lat/lon/altitude/UTC) from the synthesized sentences; position
+reports without a valid fix (session status 'timeout' while indoors)
+are correctly ignored. The effect on other LOC engines (now also
+receiving the POSITION_REPORT registration) has not been verified on
+real hardware.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ src/mm-shared-qmi.c | 147 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 147 insertions(+)
+
+diff --git a/src/mm-shared-qmi.c b/src/mm-shared-qmi.c
+index 09aa987a..cad75080 100644
+--- a/src/mm-shared-qmi.c
++++ b/src/mm-shared-qmi.c
+@@ -88,6 +88,8 @@ typedef struct {
+     gulong                          pds_location_event_report_indication_id;
+     QmiClient                      *loc_client;
+     gulong                          loc_location_nmea_indication_id;
++    gulong                          loc_location_position_report_indication_id;
++    gboolean                        loc_location_nmea_received;
+     gchar                         **loc_assistance_data_servers;
+     guint32                         loc_assistance_data_max_file_size;
+     guint32                         loc_assistance_data_max_part_size;
+@@ -126,6 +128,8 @@ private_free (Private *priv)
+         g_object_unref (priv->pds_client);
+     if (priv->loc_location_nmea_indication_id)
+         g_signal_handler_disconnect (priv->loc_client, priv->loc_location_nmea_indication_id);
++    if (priv->loc_location_position_report_indication_id)
++        g_signal_handler_disconnect (priv->loc_client, priv->loc_location_position_report_indication_id);
+     if (priv->loc_assistance_inject_time_req_indication_id)
+         g_signal_handler_disconnect (priv->loc_client, priv->loc_assistance_inject_time_req_indication_id);
+     if (priv->loc_assistance_inject_position_req_indication_id)
+@@ -5161,6 +5165,10 @@ loc_stop_ready (QmiClientLoc *client,
+             g_signal_handler_disconnect (priv->loc_client, priv->loc_location_nmea_indication_id);
+             priv->loc_location_nmea_indication_id = 0;
+         }
++        if (priv->loc_location_position_report_indication_id != 0) {
++            g_signal_handler_disconnect (priv->loc_client, priv->loc_location_position_report_indication_id);
++            priv->loc_location_position_report_indication_id = 0;
++        }
+         g_clear_object (&priv->loc_client);
+     }
+ 
+@@ -5264,11 +5272,142 @@ loc_location_nmea_indication_cb (QmiClientLoc               *client,
+     if (!nmea)
+         return;
+ 
++    priv->loc_location_nmea_received = TRUE;
++
+     mm_obj_dbg (self, "[NMEA] %s", nmea);
+     mm_iface_modem_location_gps_update (MM_IFACE_MODEM_LOCATION (self), nmea);
+     mm_location_cache_update_from_nmea (priv->location_cache, nmea);
+ }
+ 
++/* Build a NMEA sentence ("$" + body + "*" + XOR checksum) from its body */
++static gchar *
++nmea_sentence_new (const gchar *body)
++{
++    guint8       checksum = 0;
++    const gchar *p;
++
++    for (p = body; *p; p++)
++        checksum ^= (guint8) *p;
++    return g_strdup_printf ("$%s*%02X", body, checksum);
++}
++
++/* Some GNSS engines (e.g. gnss8 in the SM7635) report fixes only via
++ * Position Report indications and never emit NMEA. Synthesize minimal
++ * $GPGGA/$GPRMC sentences from the position report so that the existing
++ * NMEA-based location pipeline (gps-raw and gps-nmea) also works on those
++ * engines. Not used on engines seen emitting NMEA themselves. */
++static void
++loc_location_position_report_indication_cb (QmiClientLoc                         *client,
++                                            QmiIndicationLocPositionReportOutput *output,
++                                            MMSharedQmi                          *self)
++{
++    Private             *priv;
++    QmiLocSessionStatus  session_status = QMI_LOC_SESSION_STATUS_GENERAL_FAILURE;
++    gdouble              latitude = 0.0;
++    gdouble              longitude = 0.0;
++    gfloat               altitude = 0.0;
++    gfloat               speed = 0.0;
++    gfloat               heading = 0.0;
++    guint64              timestamp = 0;
++    gdouble              absolute;
++    gdouble              minutes;
++    guint                degrees;
++    gchar                ns;
++    gchar                ew;
++    gchar                latbuf[32];
++    gchar                lonbuf[32];
++    gchar                timebuf[16] = "";
++    gchar                datebuf[8] = "";
++    gchar                altbuf[16] = "";
++    gchar                speedbuf[16] = "";
++    gchar                headingbuf[16] = "";
++    g_autofree gchar    *gga_body = NULL;
++    g_autofree gchar    *gga = NULL;
++
++    priv = get_private (self);
++
++    /* Engines that emit NMEA themselves don't need synthesized sentences */
++    if (priv->loc_location_nmea_received)
++        return;
++
++    /* Only surface reports carrying a valid fix; intermediate reports are
++     * disabled at engine start */
++    if (!qmi_indication_loc_position_report_output_get_session_status (output, &session_status, NULL) ||
++        (session_status != QMI_LOC_SESSION_STATUS_SUCCESS))
++        return;
++
++    if (!qmi_indication_loc_position_report_output_get_latitude (output, &latitude, NULL) ||
++        !qmi_indication_loc_position_report_output_get_longitude (output, &longitude, NULL))
++        return;
++
++    /* Unavailable optional values are left as empty NMEA fields */
++    if (qmi_indication_loc_position_report_output_get_utc_timestamp (output, &timestamp, NULL)) {
++        g_autoptr(GDateTime) utc = NULL;
++
++        utc = g_date_time_new_from_unix_utc ((gint64) (timestamp / 1000));
++        if (utc) {
++            g_snprintf (timebuf, sizeof (timebuf), "%02d%02d%02d.%02u",
++                        g_date_time_get_hour (utc),
++                        g_date_time_get_minute (utc),
++                        g_date_time_get_second (utc),
++                        (guint) ((timestamp % 1000) / 10));
++            g_snprintf (datebuf, sizeof (datebuf), "%02d%02d%02d",
++                        g_date_time_get_day_of_month (utc),
++                        g_date_time_get_month (utc),
++                        g_date_time_get_year (utc) % 100);
++        }
++    }
++    if (qmi_indication_loc_position_report_output_get_altitude_from_sealevel (output, &altitude, NULL))
++        g_snprintf (altbuf, sizeof (altbuf), "%.1f", (gdouble) altitude);
++    if (qmi_indication_loc_position_report_output_get_horizontal_speed (output, &speed, NULL))
++        g_snprintf (speedbuf, sizeof (speedbuf), "%.1f", (gdouble) speed * 1.943844); /* m/s -> knots */
++    if (qmi_indication_loc_position_report_output_get_heading (output, &heading, NULL))
++        g_snprintf (headingbuf, sizeof (headingbuf), "%.1f", (gdouble) heading);
++
++    ns = (latitude >= 0.0) ? 'N' : 'S';
++    absolute = (latitude >= 0.0) ? latitude : -latitude;
++    degrees = (guint) absolute;
++    minutes = (absolute - degrees) * 60.0;
++    /* %.6f rounding must not print out-of-spec 60.000000 minutes */
++    if (minutes >= 60.0 - 0.0000005) {
++        minutes = 0.0;
++        degrees++;
++    }
++    g_snprintf (latbuf, sizeof (latbuf), "%02u%09.6f", degrees, minutes);
++
++    ew = (longitude >= 0.0) ? 'E' : 'W';
++    absolute = (longitude >= 0.0) ? longitude : -longitude;
++    degrees = (guint) absolute;
++    minutes = (absolute - degrees) * 60.0;
++    if (minutes >= 60.0 - 0.0000005) {
++        minutes = 0.0;
++        degrees++;
++    }
++    g_snprintf (lonbuf, sizeof (lonbuf), "%03u%09.6f", degrees, minutes);
++
++    gga_body = g_strdup_printf ("GPGGA,%s,%s,%c,%s,%c,1,,,%s,M,,M,,",
++                                timebuf, latbuf, ns, lonbuf, ew, altbuf);
++    gga = nmea_sentence_new (gga_body);
++
++    mm_obj_dbg (self, "[position-report] %s", gga);
++    mm_iface_modem_location_gps_update (MM_IFACE_MODEM_LOCATION (self), gga);
++    mm_location_cache_update_from_nmea (priv->location_cache, gga);
++
++    /* An RMC sentence without a UTC timestamp would be meaningless */
++    if (timebuf[0]) {
++        g_autofree gchar *rmc_body = NULL;
++        g_autofree gchar *rmc = NULL;
++
++        rmc_body = g_strdup_printf ("GPRMC,%s,A,%s,%c,%s,%c,%s,%s,%s,,",
++                                    timebuf, latbuf, ns, lonbuf, ew, speedbuf, headingbuf, datebuf);
++        rmc = nmea_sentence_new (rmc_body);
++
++        mm_obj_dbg (self, "[position-report] %s", rmc);
++        mm_iface_modem_location_gps_update (MM_IFACE_MODEM_LOCATION (self), rmc);
++        mm_location_cache_update_from_nmea (priv->location_cache, rmc);
++    }
++}
++
+ /*****************************************************************************/
+ /* Location: internal helper: setup minimum required NMEA traces */
+ 
+@@ -5662,6 +5801,7 @@ gps_engine_loc_register_events (QmiClientLoc *client,
+     guint64                           event_mask;
+ 
+     event_mask = QMI_LOC_EVENT_REGISTRATION_FLAG_NMEA |
++                 QMI_LOC_EVENT_REGISTRATION_FLAG_POSITION_REPORT |
+                  QMI_LOC_EVENT_REGISTRATION_FLAG_INJECT_TIME_REQUEST |
+                  QMI_LOC_EVENT_REGISTRATION_FLAG_INJECT_POSITION_REQUEST;
+     input = qmi_message_loc_register_events_input_new ();
+@@ -5713,12 +5853,19 @@ loc_start_ready (QmiClientLoc *client,
+ 
+     g_assert (!priv->loc_client);
+     g_assert (!priv->loc_location_nmea_indication_id);
++    g_assert (!priv->loc_location_position_report_indication_id);
+     priv->loc_client = QMI_CLIENT (g_object_ref (client));
++    priv->loc_location_nmea_received = FALSE;
+     priv->loc_location_nmea_indication_id =
+         g_signal_connect (client,
+                           "nmea",
+                           G_CALLBACK (loc_location_nmea_indication_cb),
+                           self);
++    priv->loc_location_position_report_indication_id =
++        g_signal_connect (client,
++                          "position-report",
++                          G_CALLBACK (loc_location_position_report_indication_cb),
++                          self);
+ 
+     g_task_return_boolean (task, TRUE);
+     g_object_unref (task);
+-- 
+2.55.0
+

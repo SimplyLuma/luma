@@ -1,0 +1,648 @@
+From 3587f73e521aa48ef2a285d7b029cf1b7e0e7378 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 23:22:27 -0400
+Subject: [PATCH] luma: dock previews fit what remains, and the dock menu reads
+ as one context menu
+
+Window previews: closing a window from its card left the preview at its old
+size until the pointer left and came back. The preview now eases straight to
+the cards that remain, 180ms, size and place driven by one timeline so every
+frame is centred on its icon and SHELF_SURFACE_GAP from the island. With
+reduced motion it changes size at once. It holds its size while a closing
+window's card goes, so no frame is drawn at the new size early. A pointer
+that closed a window and has not moved does not count as leaving, even when
+the preview shrinks away from it. Closing the last window closes the preview
+as it always leaves.
+
+Dock menu: the title is the app's name as a menu heading, never a window's
+title. Window rows show only when the app has two or more windows. The menu
+is grouped as the menu contract groups it: windows; New Window and the app's
+actions; how it starts; Pin/Unpin, App Details and Quit. There is one rule
+between groups that show and none between items. New Window and Unpin are
+unchanged.
+
+Open at Login: every app gets a switch backed by luma-background's login
+items (interface version 2, luma-background 0.1.0-1.luma.3). That service
+answers from the person's and the system's XDG autostart entries and the
+Background portal's entries. When an app's login start is its background
+agent, this switch is that agent's decision and the separate "Run in the
+Background" row is not shown, so there is one control per start. The row
+follows LoginItemsChanged while the menu is open, and is hidden when the
+service is not there.
+
+Dropping this patch restores the previous preview and menu.
+---
+ js/ui/appMenu.js         | 223 +++++++++++++++++++++++++++++++++------
+ js/ui/lumaDockWindows.js | 148 +++++++++++++++++++++++---
+ 2 files changed, 323 insertions(+), 48 deletions(-)
+
+diff --git a/js/ui/appMenu.js b/js/ui/appMenu.js
+index 50da2e4..17a5a40 100644
+--- a/js/ui/appMenu.js
++++ b/js/ui/appMenu.js
+@@ -27,7 +27,7 @@ const BACKGROUND_INTERFACE = 'org.projectluma.Background1';
+ const BackgroundActivityItem = GObject.registerClass({
+     Signals: {'toggled': {param_types: [GObject.TYPE_BOOLEAN]}},
+ }, class BackgroundActivityItem extends PopupMenu.PopupBaseMenuItem {
+-    _init() {
++    _init(text = _('Run in the Background')) {
+         super._init({style_class: 'background-app-item app-menu-background-item'});
+ 
+         const box = new St.BoxLayout({
+@@ -38,7 +38,7 @@ const BackgroundActivityItem = GObject.registerClass({
+         this.add_child(box);
+ 
+         this.label = new St.Label({
+-            text: _('Run in the Background'),
++            text,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+         box.add_child(this.label);
+@@ -69,11 +69,15 @@ const BackgroundActivityItem = GObject.registerClass({
+ 
+     update(agent) {
+         const allowed = agent['allowed'];
+-        this._switch.state = allowed;
+         // When an app people rely on is off, say what they are missing;
+         // otherwise say what the switch gives them.
+         const essentialAndOff = !allowed && agent['essential'];
+-        this._subtitle.text = essentialAndOff ? agent['consequence'] : agent['explanation'];
++        this.setState(allowed, essentialAndOff ? agent['consequence'] : agent['explanation']);
++    }
++
++    setState(allowed, subtitle = '') {
++        this._switch.state = allowed;
++        this._subtitle.text = subtitle ?? '';
+         this._subtitle.visible = this._subtitle.text !== '';
+         if (allowed)
+             this.add_accessible_state(Atk.StateType.CHECKED);
+@@ -95,6 +99,29 @@ const BackgroundActivityItem = GObject.registerClass({
+     }
+ });
+ 
++/*
++ * The rule between two groups. Drawn like the menu's separator, but its
++ * visibility is the menu's grouping decision alone (PopupSeparatorMenuItem
++ * re-decides its own on every opening from whatever sits next to it).
++ */
++const GroupRule = GObject.registerClass(
++class GroupRule extends PopupMenu.PopupBaseMenuItem {
++    _init() {
++        super._init({
++            style_class: 'popup-separator-menu-item',
++            reactive: false,
++            can_focus: false,
++        });
++        this.add_child(new St.Widget({
++            style_class: 'popup-separator-menu-item-separator',
++            x_expand: true,
++            y_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        this.accessible_role = Atk.Role.SEPARATOR;
++    }
++});
++
+ export class AppMenu extends PopupMenu.PopupMenu {
+     /**
+      * @param {Clutter.Actor} sourceActor - actor the menu is attached to
+@@ -130,48 +157,59 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._windowsChangedId = 0;
+         this._updateWindowsLaterId = 0;
+ 
+-        /* Translators: This is the heading of a list of open windows */
+-        this._openWindowsHeader = new PopupMenu.PopupSeparatorMenuItem(_('Open Windows'));
+-        this.addMenuItem(this._openWindowsHeader);
++        // One context menu, grouped the way the menu contract groups it: the
++        // app's name, then its windows, what it can open, how it starts, and
++        // the system's actions. A rule sits only between groups that show.
++        this._titleItem = new PopupMenu.PopupMenuItem('', {reactive: false, can_focus: false});
++        this._titleItem.add_style_class_name('luma-menu-heading');
++        this.addMenuItem(this._titleItem);
+ 
+         this._windowSection = new PopupMenu.PopupMenuSection();
+         this.addMenuItem(this._windowSection);
+ 
+-        this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-
+-        this._newWindowItem = this.addAction(_('New Window'), () => {
++        this._actionsGroup = new PopupMenu.PopupMenuSection();
++        this._newWindowItem = this._actionsGroup.addAction(_('New Window'), () => {
+             this._animateLaunch();
+             this._app.open_new_window(-1);
+             Main.overview.hide();
+         });
+ 
+         this._actionSection = new PopupMenu.PopupMenuSection();
+-        this.addMenuItem(this._actionSection);
++        this._actionsGroup.addMenuItem(this._actionSection);
+ 
+-        this._onGpuMenuItem = this.addAction('', () => {
++        this._onGpuMenuItem = this._actionsGroup.addAction('', () => {
+             this._animateLaunch();
+             this._app.launch(0, -1, this._getNonDefaultLaunchGpu());
+             Main.overview.hide();
+         });
+ 
+-        this._backgroundSeparator = new PopupMenu.PopupSeparatorMenuItem();
+-        this.addMenuItem(this._backgroundSeparator);
++        this._startGroup = new PopupMenu.PopupMenuSection();
++        this._loginItem = new BackgroundActivityItem(_('Open at Login'));
++        this._loginItem.connect('toggled',
++            (item, state) => this._setOpenAtLogin(state).catch(logError));
++        this._startGroup.addMenuItem(this._loginItem);
++        this._login = null;
++        this._loginRequest = 0;
++        this._loginSignalId = 0;
+         this._backgroundItem = new BackgroundActivityItem();
+         this._backgroundItem.connect('toggled',
+             (item, state) => this._setBackgroundAllowed(state).catch(logError));
+-        this.addMenuItem(this._backgroundItem);
++        this._startGroup.addMenuItem(this._backgroundItem);
+         this._backgroundAgent = null;
+         this._backgroundSignalId = 0;
+         this._backgroundRequest = 0;
+         this._updateBackgroundItem();
++        this._updateLoginItem();
+         this.connect('open-state-changed', (menu, open) => {
+-            if (open)
+-                this._queryBackground().catch(logError);
++            if (!open)
++                return;
++            this._syncGroups();
++            this._queryBackground().catch(logError);
++            this._queryLogin().catch(logError);
+         });
+ 
+-        this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-
+-        this._toggleFavoriteItem = this.addAction('', () => {
++        this._systemGroup = new PopupMenu.PopupMenuSection();
++        this._toggleFavoriteItem = this._systemGroup.addAction('', () => {
+             const appId = this._app.get_id();
+             if (this._appFavorites.isFavorite(appId))
+                 this._appFavorites.removeFavorite(appId);
+@@ -179,9 +217,7 @@ export class AppMenu extends PopupMenu.PopupMenu {
+                 this._appFavorites.addFavorite(appId);
+         });
+ 
+-        this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-
+-        this._detailsItem = this.addAction(_('App Details'), async () => {
++        this._detailsItem = this._systemGroup.addAction(_('App Details'), async () => {
+             const id = this._app.get_id();
+             const args = GLib.Variant.new('(ss)', [id, '']);
+             const bus = await Gio.DBus.get(Gio.BusType.SESSION, null);
+@@ -194,12 +230,20 @@ export class AppMenu extends PopupMenu.PopupMenu {
+             Main.overview.hide();
+         });
+ 
+-        this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-
+         this._sessionApplications = SessionApplications.getDefault();
+-        this._quitItem = this.addAction(_('Quit'), () => {
++        this._quitItem = this._systemGroup.addAction(_('Quit'), () => {
+             this._sessionApplications.requestQuit(this._app);
+         });
++
++        this._groups = [this._windowSection, this._actionsGroup, this._startGroup, this._systemGroup];
++        this._groupRules = [];
++        for (const group of this._groups) {
++            const rule = new GroupRule();
++            this._groupRules.push(rule);
++            this.addMenuItem(rule);
++            this.addMenuItem(group);
++        }
++
+         this._sessionApplications.connectObject('changed',
+             () => this._updateQuitItem(), this.actor);
+ 
+@@ -237,6 +281,97 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateGpuItem();
+     }
+ 
++    // A rule between two groups that both show something, and nowhere else.
++    _syncGroups() {
++        if (!this._groups)
++            return;
++        const shows = group => group._getMenuItems().some(item =>
++            item instanceof PopupMenu.PopupMenuSection ? shows(item) : item.visible);
++        // The heading needs no rule under it; each later group gets one.
++        let before = false;
++        this._groups.forEach((group, index) => {
++            const visible = shows(group);
++            group.actor.visible = visible;
++            this._groupRules[index].visible = visible && before;
++            before ||= visible;
++        });
++    }
++
++    _updateLoginItem() {
++        const login = this._login;
++        const show = Boolean(login) && (login['available'] || login['enabled']);
++        this._loginItem.visible = show;
++        if (show) {
++            // A portal autostart entry runs as the app's background agent: that
++            // agent's decision is this switch, so its own row is not shown too.
++            const viaAgent = login['controlled-by'] === 'background';
++            this._loginItem.setState(login['enabled'],
++                viaAgent ? _('Starts in the background') : '');
++        }
++        this._updateBackgroundItem();
++    }
++
++    async _queryLogin() {
++        const desktopId = this._backgroundAppId();
++        const request = ++this._loginRequest;
++        if (!desktopId) {
++            this._login = null;
++            this._updateLoginItem();
++            return;
++        }
++        this._watchLogin();
++        let login = null;
++        try {
++            const reply = await Gio.DBus.session.call(
++                BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH, BACKGROUND_INTERFACE,
++                'GetLoginItem', new GLib.Variant('(s)', [desktopId]),
++                new GLib.VariantType('(a{sv})'),
++                Gio.DBusCallFlags.NONE, 3000, null);
++            login = reply.recursiveUnpack()[0];
++        } catch (error) {
++            // No service to ask: no row, rather than a switch that does nothing.
++            login = null;
++        }
++        if (request !== this._loginRequest || desktopId !== this._backgroundAppId())
++            return;
++        this._login = login;
++        this._updateLoginItem();
++    }
++
++    _watchLogin() {
++        if (this._loginSignalId)
++            return;
++        this._loginSignalId = Gio.DBus.session.signal_subscribe(
++            BACKGROUND_BUS_NAME, BACKGROUND_INTERFACE, 'LoginItemsChanged',
++            BACKGROUND_OBJECT_PATH, null, Gio.DBusSignalFlags.NONE,
++            () => {
++                if (this.isOpen)
++                    this._queryLogin().catch(logError);
++            });
++    }
++
++    async _setOpenAtLogin(enabled) {
++        const desktopId = this._backgroundAppId();
++        if (!desktopId)
++            return;
++        this._loginItem.reactive = false;
++        try {
++            const reply = await Gio.DBus.session.call(
++                BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH, BACKGROUND_INTERFACE,
++                'SetLoginItem', new GLib.Variant('(sb)', [desktopId, enabled]),
++                new GLib.VariantType('(a{sv})'), Gio.DBusCallFlags.NONE, 10000, null);
++            this._login = reply.recursiveUnpack()[0];
++            this._updateLoginItem();
++        } catch (error) {
++            logError(error, `Could not change whether ${desktopId} opens at login`);
++        } finally {
++            this._loginItem.reactive = true;
++            // The service's answer is the truth, whether or not the call worked.
++            await this._queryLogin();
++            await this._queryBackground();
++        }
++    }
++
+     _backgroundAppId() {
+         const id = this._app?.get_id() ?? '';
+         return id.endsWith('.desktop') ? id.slice(0, -'.desktop'.length) : '';
+@@ -244,11 +379,11 @@ export class AppMenu extends PopupMenu.PopupMenu {
+ 
+     _updateBackgroundItem() {
+         const agent = this._backgroundAgent;
+-        const show = agent !== null;
++        const show = agent !== null && this._login?.['controlled-by'] !== 'background';
+         this._backgroundItem.visible = show;
+-        this._backgroundSeparator.visible = show;
+         if (show)
+             this._backgroundItem.update(agent);
++        this._syncGroups();
+     }
+ 
+     async _queryBackground() {
+@@ -315,12 +450,14 @@ export class AppMenu extends PopupMenu.PopupMenu {
+     _updateQuitItem() {
+         this._quitItem.visible = Boolean(this._app) &&
+             this._sessionApplications.isRunning(this._app);
++        this._syncGroups();
+     }
+ 
+     _updateNewWindowItem() {
+         const actions = this._app?.appInfo?.list_actions() ?? [];
+         this._newWindowItem.visible =
+             this._app?.can_open_new_window() && !actions.includes('new-window');
++        this._syncGroups();
+     }
+ 
+     _updateFavoriteItem() {
+@@ -331,6 +468,7 @@ export class AppMenu extends PopupMenu.PopupMenu {
+             this._parentalControlsManager.shouldShowApp(appInfo);
+ 
+         this._toggleFavoriteItem.visible = canFavorite;
++        this._syncGroups();
+ 
+         if (!canFavorite)
+             return;
+@@ -349,6 +487,7 @@ export class AppMenu extends PopupMenu.PopupMenu {
+             this._app?.state === Shell.AppState.STOPPED && hasDualGpu;
+ 
+         this._onGpuMenuItem.visible = showItem;
++        this._syncGroups();
+ 
+         if (!showItem)
+             return;
+@@ -362,6 +501,7 @@ export class AppMenu extends PopupMenu.PopupMenu {
+     _updateDetailsVisibility() {
+         const sw = this._appSystem.lookup_app('org.gnome.Software.desktop');
+         this._detailsItem.visible = sw !== null;
++        this._syncGroups();
+     }
+ 
+     _animateLaunch() {
+@@ -377,6 +517,10 @@ export class AppMenu extends PopupMenu.PopupMenu {
+ 
+     /** */
+     destroy() {
++        if (this._loginSignalId) {
++            Gio.DBus.session.signal_unsubscribe(this._loginSignalId);
++            this._loginSignalId = 0;
++        }
+         if (this._backgroundSignalId) {
+             Gio.DBus.session.signal_unsubscribe(this._backgroundSignalId);
+             this._backgroundSignalId = 0;
+@@ -430,9 +574,15 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateFavoriteItem();
+         this._updateGpuItem();
+ 
++        // The heading is the app, never one of its windows.
++        this._titleItem.label.text = (app?.get_name() ?? '').toLocaleUpperCase();
++        this._titleItem.visible = Boolean(app);
++
+         this._backgroundAgent = null;
+-        this._updateBackgroundItem();
++        this._login = null;
++        this._updateLoginItem();
+         this._queryBackground().catch(logError);
++        this._queryLogin().catch(logError);
+     }
+ 
+     _queueUpdateWindowsSection() {
+@@ -455,17 +605,19 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateWindowsLaterId = 0;
+ 
+         this._windowSection.removeAll();
+-        this._openWindowsHeader.hide();
+ 
+-        if (!this._app)
++        if (!this._app) {
++            this._syncGroups();
+             return;
++        }
+ 
+-        const minWindows = this._showSingleWindows ? 1 : 2;
++        // A single window is the app itself, which the heading already names;
++        // its title is never shown as though it were the menu's title.
+         const windows = this._app.get_windows().filter(w => !w.skip_taskbar);
+-        if (windows.length < minWindows)
++        if (windows.length < 2) {
++            this._syncGroups();
+             return;
+-
+-        this._openWindowsHeader.show();
++        }
+ 
+         windows.forEach(window => {
+             const title = window.title || this._app.get_name();
+@@ -476,5 +628,6 @@ export class AppMenu extends PopupMenu.PopupMenu {
+                 item.label.text = window.title || this._app.get_name();
+             }, item);
+         });
++        this._syncGroups();
+     }
+ }
+diff --git a/js/ui/lumaDockWindows.js b/js/ui/lumaDockWindows.js
+index f0ff514..d855097 100644
+--- a/js/ui/lumaDockWindows.js
++++ b/js/ui/lumaDockWindows.js
+@@ -33,6 +33,8 @@ const PREVIEW_SWITCH_TIMEOUT = 150;
+ const PREVIEW_WARM_TIMEOUT = 300;
+ const PREVIEW_SHOW_TIME = 150;
+ const PREVIEW_HIDE_TIME = 100;
++// A window closed from the preview: the cards that remain settle into place.
++const PREVIEW_RESIZE_TIME = 180;
+ const PREVIEW_RISE = 4;
+ const MARK_TIME = 150;
+ 
+@@ -473,6 +475,9 @@ class PreviewCard extends St.Button {
+             accessible_role: Atk.Role.PUSH_BUTTON});
+         this.window = window;
+         this._preview = preview;
++        // Its thumbnail goes with the window; the preview keeps the size it
++        // has until it eases to the cards that remain.
++        window.connectObject('unmanaging', () => preview.holdSize(), this);
+         const app = Shell.WindowTracker.get_default().get_window_app(window);
+         this._appName = app?.get_name() ?? '';
+ 
+@@ -894,6 +899,16 @@ class DockPreview {
+             this._closeId = 0;
+             if (this._keyboard || this._pointerInside())
+                 return GLib.SOURCE_REMOVE;
++            // The preview shrank away from a pointer that has not moved since
++            // it closed a window: that is not leaving. Decide on its next move.
++            if (this._stillSince) {
++                const [x, y] = global.get_pointer();
++                if (Math.hypot(x - this._stillSince[0], y - this._stillSince[1]) < 3) {
++                    this._awaitMotion();
++                    return GLib.SOURCE_REMOVE;
++                }
++                this._forgetStillPointer();
++            }
+             this.close();
+             return GLib.SOURCE_REMOVE;
+         });
+@@ -928,7 +943,7 @@ class DockPreview {
+     }
+ 
+     _queuePlace() {
+-        if (this._placeLater || !this.isOpen)
++        if (this._placeLater || !this.isOpen || this._resizing)
+             return;
+         const laters = global.compositor.get_laters();
+         this._placeLater = laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
+@@ -1061,9 +1076,9 @@ class DockPreview {
+         return true;
+     }
+ 
+-    _placement() {
++    _placement(size = null) {
+         const popover = this._popover;
+-        const [, , width, height] = popover.get_preferred_size();
++        const [, , width, height] = size ? [0, 0, size.width, size.height] : popover.get_preferred_size();
+         const place = placeShelfSurface(this._icon, {width, height});
+         if (place)
+             return [place.x, place.y];
+@@ -1109,23 +1124,121 @@ class DockPreview {
+     _refresh() {
+         if (!this.isOpen || !this._popover.get_stage())
+             return;
+-        // A window closed from under the pointer: the preview keeps its size
+-        // and place until the pointer leaves, so the next card or close button
+-        // is not pulled out from under it.
++        // The last window gone: the preview goes, the way it always leaves.
++        if (this._app && this._groups(this._app).every(group => group.windows.length === 0)) {
++            this.close();
++            return;
++        }
++        // Otherwise the preview fits what remains at once, easing from the size
++        // it had, and stays centred on its icon SHELF_SURFACE_GAP from the
++        // island while it does (every allocation re-places it).
+         const surface = this._popover._surface;
+-        const hold = this._popover.hover ? surface.get_size() : null;
++        const [fromWidth, fromHeight] = surface.get_size();
++        // Where the pointer rests if it was over the preview as it was: the
++        // card it closed a window from may already be gone, and its hover too.
++        const [px, py] = global.get_pointer();
++        const was = actorRect(surface);
++        if (this._stillSince || (px >= was.x && px < was.x + was.width && py >= was.y && py < was.y + was.height))
++            this._stillSince = [px, py];
++        // Held at the size it had while the cards change and anything reads a
++        // position: a read lays the stage out, and would draw the new size early.
++        const timeline = this._resizeTimeline;
++        this._resizeTimeline = null;
++        timeline?.stop();
++        this._resizing = false;
++        if (fromWidth > 0 && fromHeight > 0)
++            surface.set_size(fromWidth, fromHeight);
+         if (!this._populate())
+             return;
+-        if (hold) {
+-            surface.set_size(-1, -1);
+-            const [, naturalWidth] = surface.get_preferred_width(-1);
+-            const [, naturalHeight] = surface.get_preferred_height(Math.max(hold[0], naturalWidth));
+-            surface.set_size(Math.max(hold[0], naturalWidth), Math.max(hold[1], naturalHeight));
++        // Measured with no read in between that could lay the stage out.
++        surface.set_size(-1, -1);
++        const [, toWidth] = surface.get_preferred_width(-1);
++        const [, toHeight] = surface.get_preferred_height(toWidth);
++        if (fromWidth > 0 && fromHeight > 0)
++            surface.set_size(fromWidth, fromHeight);
++        const changed = Math.round(fromWidth) !== Math.round(toWidth) ||
++            Math.round(fromHeight) !== Math.round(toHeight);
++        if (animations() && changed && fromWidth > 0 && fromHeight > 0) {
++            // Size and place ease on one curve: a position that is a linear
++            // function of the size (centred on the icon, the gap from the
++            // island) is then exact on every frame, not a frame behind.
++            const popover = this._popover;
++            const [fromX, fromY] = [popover.x, popover.y];
++            const [toX, toY] = this._placement({width: toWidth, height: toHeight});
++            surface.clip_to_allocation = true;
++            this._resizing = true;
++            this._target = [toX, toY];
++            // One timeline drives size and place together, so the first frame
++            // drawn is the size the preview had, never the size it is going to.
++            const resize = new Clutter.Timeline({actor: surface, duration: PREVIEW_RESIZE_TIME,
++                progress_mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            const step = progress => {
++                const mix = (a, b) => a + (b - a) * progress;
++                surface.set_size(Math.round(mix(fromWidth, toWidth)), Math.round(mix(fromHeight, toHeight)));
++                popover.set_position(Math.round(mix(fromX, toX)), Math.round(mix(fromY, toY)));
++            };
++            resize.connect('new-frame', () => step(resize.get_progress()));
++            resize.connect('stopped', (_timeline, finished) => {
++                if (this._resizeTimeline !== resize)
++                    return;
++                this._resizeTimeline = null;
++                if (finished)
++                    this._finishResize();
++            });
++            this._resizeTimeline = resize;
++            resize.start();
++            this._syncBridge(toX, toY);
++            return;
+         }
+         this._queuePlace();
+     }
+ 
++    holdSize() {
++        const surface = this._popover?._surface;
++        if (!this.isOpen || !surface || this._resizeTimeline)
++            return;
++        const [width, height] = surface.get_size();
++        if (width > 0 && height > 0)
++            surface.set_size(width, height);
++    }
++
++    _awaitMotion() {
++        if (this._motionId)
++            return;
++        this._motionId = global.stage.connect('captured-event', (_stage, event) => {
++            if (event.type() !== Clutter.EventType.MOTION)
++                return Clutter.EVENT_PROPAGATE;
++            const [x, y] = event.get_coords();
++            if (this._stillSince && Math.hypot(x - this._stillSince[0], y - this._stillSince[1]) < 3)
++                return Clutter.EVENT_PROPAGATE;
++            this._forgetStillPointer();
++            this.onPopoverHover();
++            return Clutter.EVENT_PROPAGATE;
++        });
++    }
++
++    _forgetStillPointer() {
++        this._stillSince = null;
++        if (this._motionId)
++            global.stage.disconnect(this._motionId);
++        this._motionId = 0;
++    }
++
++    _finishResize() {
++        const surface = this._popover?._surface;
++        this._resizing = false;
++        const timeline = this._resizeTimeline;
++        this._resizeTimeline = null;
++        timeline?.stop();
++        if (!surface)
++            return;
++        surface.clip_to_allocation = false;
++        surface.set_size(-1, -1);
++        this._queuePlace();
++    }
++
+     _teardown() {
++        this._forgetStillPointer();
+         this._cancelOpen();
+         this._cancelClose();
+         this._cancelWarm();
+@@ -1143,7 +1256,15 @@ class DockPreview {
+     }
+ 
+     _releaseHold() {
+-        this._popover?._surface.set_size(-1, -1);
++        const surface = this._popover?._surface;
++        if (!surface)
++            return;
++        this._resizing = false;
++        const timeline = this._resizeTimeline;
++        this._resizeTimeline = null;
++        timeline?.stop();
++        surface.clip_to_allocation = false;
++        surface.set_size(-1, -1);
+     }
+ 
+     _onFocusChanged() {
+@@ -1196,6 +1317,7 @@ class DockPreview {
+             this._warmId = 0;
+             return GLib.SOURCE_REMOVE;
+         });
++        this._forgetStillPointer();
+         const finish = () => {
+             if (!this._closing)
+                 return;

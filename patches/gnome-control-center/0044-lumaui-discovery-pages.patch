@@ -1,0 +1,442 @@
+From 7960990bc494aa0c1ab2d0b975a812e4fe3ee62b Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:25:52 +0000
+Subject: [PATCH] Settings: compose Notifications and Search pages with real
+ drag targets
+
+---
+ shell/cc-application.c         |   6 ++
+ shell/cc-luma-discovery.c      |   8 ++
+ shell/cc-luma-fixture.c        |   6 +-
+ shell/cc-luma-view-discovery.c | 147 +++++++++++++++++++++++++++++++++
+ shell/cc-luma-view-private.h   |   4 +
+ shell/cc-luma-view.c           |  23 ++++--
+ shell/meson.build              |   3 +-
+ shell/test-luma-view.c         |  60 ++++++++++++++
+ 8 files changed, 249 insertions(+), 8 deletions(-)
+ create mode 100644 shell/cc-luma-view-discovery.c
+
+diff --git a/shell/cc-application.c b/shell/cc-application.c
+index e3e9a4f..93b620b 100644
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -238,6 +238,12 @@ cc_application_handle_local_options (GApplication *application,
+       CcApplication *self = CC_APPLICATION (application);
+       g_autoptr (GError) error = NULL;
+       const char *page = g_getenv ("LUMA_SETTINGS_PAGE");
++      const char *query = g_getenv ("LUMA_SETTINGS_QUERY");
++      if (query && *query)
++        {
++          g_printerr ("Settings fixture search QUERY is not ported yet\n");
++          return 1;
++        }
+       self->fixture = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_FIXTURE"), &error);
+       if (!self->fixture)
+         {
+diff --git a/shell/cc-luma-discovery.c b/shell/cc-luma-discovery.c
+index 31a3e3e..88ec891 100644
+--- a/shell/cc-luma-discovery.c
++++ b/shell/cc-luma-discovery.c
+@@ -29,6 +29,14 @@ static gboolean duration_allowed (gint64 seconds)
+ gboolean cc_luma_notifications_validate (CcLumaFixture *model)
+ {
+   if (!is_flag (model, "dnd") || !is_flag (model, "lockN")) return FALSE;
++  JsonNode *sample = json_object_get_member (cc_luma_fixture_get_data (model), "CFNOTIFY");
++  if (!sample || !JSON_NODE_HOLDS_OBJECT (sample)) return FALSE;
++  JsonObject *preview = json_node_get_object (sample);
++  const char *fields[] = { "from", "text", "when" };
++  for (guint i = 0; i < G_N_ELEMENTS (fields); i++)
++    { JsonNode *n = json_object_get_member (preview, fields[i]); if (!n || json_node_get_value_type (n) != G_TYPE_STRING) return FALSE; }
++  JsonNode *count = json_object_get_member (preview, "count");
++  if (!count || json_node_get_value_type (count) != G_TYPE_INT64 || json_node_get_int (count) < 0) return FALSE;
+   JsonNode *nshow = cc_luma_fixture_get (model, "nshow"), *apps = cc_luma_fixture_get (model, "na");
+   if (!nshow || json_node_get_value_type (nshow) != G_TYPE_STRING ||
+       !(g_str_equal (json_node_get_string (nshow), "0") || g_str_equal (json_node_get_string (nshow), "4") || g_str_equal (json_node_get_string (nshow), "6") || g_str_equal (json_node_get_string (nshow), "10")) || !apps || !JSON_NODE_HOLDS_OBJECT (apps)) return FALSE;
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index b75a032..460cb97 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -370,8 +370,8 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+           g_autofree char *file = g_strconcat (id, ".png", NULL);
+           return g_build_filename (self->resource_dir, file, NULL);
+         }
+-  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos" };
+-  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos" };
++  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos", "calendar", "phone", "clock", "depot", "maps", "settings", "calc", "contacts", "notes", "term" };
++  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos", "calendar", "phone", "clock", "app-store", "maps", "settings", "calculator", "contacts", "notes", "terminal" };
+   if (self->resource_dir && id)
+     for (guint i = 0; i < G_N_ELEMENTS (apps); i++)
+       if (g_str_equal (id, apps[i]))
+@@ -379,6 +379,8 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+           g_autofree char *file = g_strdup_printf ("luma-v3-%s.svg", artwork[i]);
+           return g_build_filename (self->resource_dir, file, NULL);
+         }
++  if (self->resource_dir && g_strcmp0 (id, "tasks") == 0)
++    return g_build_filename (self->resource_dir, "org.projectluma.Tasks.svg", NULL);
+   g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown fixture asset or no fixture resource directory");
+   return NULL;
+ }
+diff --git a/shell/cc-luma-view-discovery.c b/shell/cc-luma-view-discovery.c
+new file mode 100644
+index 0000000..fd4a543
+--- /dev/null
++++ b/shell/cc-luma-view-discovery.c
+@@ -0,0 +1,147 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++#include "cc-luma-discovery.h"
++
++static const char * const durations[] = { "4", "4 seconds", "6", "6 seconds", "10", "10 seconds", "0", "Until dismissed", NULL };
++static GtkWidget *notification_preview (View *v)
++{
++  GtkWidget *preview = gtk_overlay_new ();
++  gtk_widget_set_name (preview, "cf-notification-preview");
++  gtk_widget_set_size_request (preview, -1, 150);
++  gtk_overlay_set_child (GTK_OVERLAY (preview), cc_luma_view_image (v, cc_luma_view_text (v, "wall"), 1040, 300));
++  if (cc_luma_view_flag (v, "dnd"))
++    {
++      GtkWidget *content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 5);
++      gtk_box_append (GTK_BOX (content), luma_ui_icon_new ("bell-off"));
++      JsonObject *sample = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFNOTIFY");
++      g_autofree char *count = g_strdup_printf ("%" G_GINT64_FORMAT, json_object_get_int_member (sample, "count"));
++      gtk_box_append (GTK_BOX (content), cc_luma_view_label (count, "caption", FALSE));
++      GtkWidget *lip = luma_card_new (content, FALSE);
++      gtk_widget_set_size_request (lip, 180, 22); gtk_widget_set_halign (lip, GTK_ALIGN_CENTER); gtk_widget_set_valign (lip, GTK_ALIGN_START);
++      gtk_overlay_add_overlay (GTK_OVERLAY (preview), lip);
++    }
++  else
++    {
++      GtkWidget *content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
++      GtkWidget *icon = cc_luma_view_image (v, "messages", 60, 60); gtk_widget_set_size_request (icon, 30, 30);
++      gtk_box_append (GTK_BOX (content), icon);
++      JsonObject *sample = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFNOTIFY");
++      gtk_box_append (GTK_BOX (content), cc_luma_view_words (json_object_get_string_member (sample, "from"), json_object_get_string_member (sample, "text")));
++      gtk_box_append (GTK_BOX (content), cc_luma_view_label (json_object_get_string_member (sample, "when"), "caption", TRUE));
++      GtkWidget *card = luma_card_new (content, TRUE);
++      gtk_widget_set_size_request (card, 300, -1); gtk_widget_set_halign (card, GTK_ALIGN_CENTER); gtk_widget_set_valign (card, GTK_ALIGN_START); gtk_widget_set_margin_top (card, 16);
++      gtk_overlay_add_overlay (GTK_OVERLAY (preview), card);
++    }
++  GtkWidget *clamp = adw_clamp_new (); adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 520); adw_clamp_set_child (ADW_CLAMP (clamp), preview);
++  return clamp;
++}
++void cc_luma_view_notifications_render (View *v)
++{
++  JsonObject *apps = json_node_get_object (cc_luma_fixture_get (v->model, "na"));
++  g_autoptr (GList) ids = json_object_get_members (apps);
++  guint count = 0;
++  for (GList *i = ids; i; i = i->next) if (json_object_get_boolean_member (apps, i->data)) count++;
++  g_autofree char *meta = cc_luma_view_flag (v, "dnd") ? g_strdup ("Do Not Disturb is on. Calls still come through.") : g_strdup_printf ("%u apps can notify you", count);
++  cc_luma_view_header (v, "Notifications", meta, "dnd");
++  GtkWidget *hero = luma_card_new (notification_preview (v), TRUE); luma_card_set_recessed (LUMA_CARD (hero), TRUE); gtk_widget_set_margin_top (hero, 20); gtk_box_append (v->body, hero);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  cc_luma_view_row (rows, "On the lock screen", "Show who a notification is from while locked", cc_luma_view_toggle (v, "lockN", "cf-lockN", "On the lock screen"));
++  cc_luma_view_row (rows, "Stay on screen for", "Then it tucks into the top edge", cc_luma_view_picker (v, "nshow", durations));
++  rows = cc_luma_view_group (v, "Apps");
++  for (GList *i = ids; i; i = i->next)
++    {
++      const char *id = i->data, *name = cc_luma_app_name (v->model, id);
++      g_autofree char *key = g_strconcat ("na.", id, NULL), *widget_name = g_strconcat ("cf-na-", id, NULL);
++      GtkWidget *row = cc_luma_view_row (rows, name, NULL, cc_luma_view_toggle (v, key, widget_name, name));
++      GtkWidget *icon = cc_luma_view_image (v, id, 60, 60); gtk_widget_set_size_request (icon, 30, 30);
++      gtk_box_prepend (GTK_BOX (row), icon);
++    }
++}
++static void provider_changed (GtkSwitch *button, GParamSpec *spec, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *id = g_object_get_data (G_OBJECT (button), "cf-app");
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_search_set_app (v->model, id, gtk_switch_get_active (button), &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static void provider_dropped (GSimpleAction *action, GVariant *parameter, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *id; guint target;
++  g_variant_get (parameter, "(&su)", &id, &target);
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_search_move_app (v->model, id, target, &error)) cc_luma_view_queue_refresh (v);
++  else luma_toast_show (root, error->message, "error");
++}
++static GdkContentProvider *provider_dragged (GtkDragSource *source, double x, double y, gpointer unused)
++{
++  const char *id = g_object_get_data (G_OBJECT (source), "cf-app");
++  return gdk_content_provider_new_typed (G_TYPE_STRING, id);
++}
++static gboolean provider_drop (GtkDropTarget *target, const GValue *value, double x, double y, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return FALSE;
++  guint index = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (target), "cf-index"));
++  g_autoptr (GError) error = NULL;
++  if (!cc_luma_search_move_app (v->model, g_value_get_string (value), index, &error)) return FALSE;
++  cc_luma_view_queue_refresh (v);
++  return TRUE;
++}
++void cc_luma_view_search_render (View *v)
++{
++  g_autofree char *meta = g_strdup_printf ("Searching %u apps and %u places", cc_luma_search_app_count (v->model), cc_luma_search_place_count (v->model));
++  cc_luma_view_header (v, "Search", meta, NULL);
++  GtkBox *rows = cc_luma_view_group (v, "Results come from");
++  JsonArray *apps = json_node_get_array (cc_luma_fixture_get (v->model, "sa"));
++  for (guint i = 0; i < json_array_get_length (apps); i++)
++    {
++      JsonArray *pair = json_array_get_array_element (apps, i);
++      const char *id = json_array_get_string_element (pair, 0), *name = cc_luma_app_name (v->model, id);
++      GtkWidget *button = gtk_switch_new (); gtk_switch_set_active (GTK_SWITCH (button), json_array_get_boolean_element (pair, 1)); gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
++      g_autofree char *widget_name = g_strconcat ("cf-sa-", id, NULL); gtk_widget_set_name (button, widget_name);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, name, -1);
++      g_object_set_data_full (G_OBJECT (button), "cf-app", g_strdup (id), g_free); g_signal_connect_object (button, "notify::active", G_CALLBACK (provider_changed), v->root, 0);
++      GtkWidget *row = cc_luma_view_row (rows, name, NULL, button);
++      g_autofree char *row_name = g_strconcat ("cf-provider-", id, NULL); gtk_widget_set_name (row, row_name);
++      GtkWidget *icon = cc_luma_view_image (v, id, 60, 60); gtk_widget_set_size_request (icon, 30, 30); gtk_box_prepend (GTK_BOX (row), icon);
++      GtkWidget *grip = luma_ui_icon_new ("grip-vertical"); gtk_box_prepend (GTK_BOX (row), grip);
++      GtkDragSource *drag = gtk_drag_source_new (); gtk_drag_source_set_actions (drag, GDK_ACTION_MOVE);
++      g_object_set_data_full (G_OBJECT (drag), "cf-app", g_strdup (id), g_free); g_signal_connect (drag, "prepare", G_CALLBACK (provider_dragged), NULL); gtk_widget_add_controller (grip, GTK_EVENT_CONTROLLER (drag));
++      GtkDropTarget *drop = gtk_drop_target_new (G_TYPE_STRING, GDK_ACTION_MOVE); g_object_set_data (G_OBJECT (drop), "cf-index", GUINT_TO_POINTER (i));
++      g_signal_connect_object (drop, "drop", G_CALLBACK (provider_drop), v->root, 0); gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (drop));
++    }
++  GtkWidget *note = cc_luma_view_label ("Drag to change the order results appear in.", "caption", TRUE); gtk_widget_set_margin_top (note, 8); gtk_box_append (v->body, note);
++  rows = cc_luma_view_group (v, "Places");
++  g_autofree char *folders = g_strdup_printf ("%u folders", cc_luma_search_place_count (v->model));
++  cc_luma_view_row (rows, "Folders to search", "Filer looks inside these", cc_luma_view_link (v, folders, "search-places"));
++  rows = cc_luma_view_group (v, "Ari");
++  cc_luma_view_row (rows, "Offer to ask Ari", "When nothing matches what you typed", cc_luma_view_toggle (v, "askAri", "cf-askAri", "Offer to ask Ari"));
++  if (!g_action_map_lookup_action (G_ACTION_MAP (v->actions), "provider-move"))
++    {
++      GSimpleAction *move = g_simple_action_new ("provider-move", G_VARIANT_TYPE ("(su)")); g_signal_connect_object (move, "activate", G_CALLBACK (provider_dropped), v->root, 0); g_action_map_add_action (G_ACTION_MAP (v->actions), G_ACTION (move)); g_object_unref (move);
++    }
++}
++static void add_place (GtkButton *button, View *v)
++{
++  luma_toast_show (v->root, "Choose a folder in Filer", "success");
++}
++void cc_luma_view_search_places_render (View *v)
++{
++  cc_luma_view_header (v, "Folders to search", "Filer and search look inside these", NULL);
++  gtk_box_append (v->body, cc_luma_view_link (v, "Search", "search"));
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  JsonObject *places = json_node_get_object (cc_luma_fixture_get (v->model, "sl"));
++  g_autoptr (GList) names = json_object_get_members (places);
++  for (GList *i = names; i; i = i->next)
++    {
++      const char *name = i->data;
++      g_autofree char *key = g_strconcat ("sl.", name, NULL), *widget_name = g_strconcat ("cf-sl-", name, NULL);
++      GtkWidget *row = cc_luma_view_row (rows, name, g_str_equal (name, "Archive HD") ? "External drive" : NULL, cc_luma_view_toggle (v, key, widget_name, name));
++      gtk_box_prepend (GTK_BOX (row), luma_ui_icon_new (g_str_equal (name, "Archive HD") ? "hard-drive" : g_str_equal (name, "Home") ? "house" : "folder"));
++    }
++  cc_luma_view_row (cc_luma_view_group (v, NULL), "Another folder", NULL, cc_luma_view_command (v, "Add…", G_CALLBACK (add_place)));
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 869c905..4e96c85 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -53,3 +53,7 @@ GtkWidget *cc_luma_view_picker (View *v, const char *key, const char * const *ch
+ void cc_luma_view_shelf_render (View *v);
+ 
+ void cc_luma_view_appearance_render (View *v);
++
++void cc_luma_view_notifications_render (View *v);
++void cc_luma_view_search_render (View *v);
++void cc_luma_view_search_places_render (View *v);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index a13274f..ff22f97 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -2,6 +2,7 @@
+ #include "cc-luma-view-private.h"
+ #include "cc-luma-bluetooth.h"
+ #include "cc-luma-desktop.h"
++#include "cc-luma-discovery.h"
+ #include <luma-ui.h>
+ #include <string.h>
+ 
+@@ -85,6 +86,8 @@ static void navigate (GtkButton *button, View *v)
+ GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target)
+ {
+   GtkWidget *button = gtk_button_new_with_label (caption);
++  g_autofree char *name = g_strconcat ("cf-go-", target, NULL);
++  gtk_widget_set_name (button, name);
+   g_object_set_data_full (G_OBJECT (button), "cf-target", g_strdup (target), g_free);
+   g_signal_connect (button, "clicked", G_CALLBACK (navigate), v);
+   return button;
+@@ -131,7 +134,7 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   g_variant_get (parameter, "(&s&s)", &key, &value);
+   if (!picker_value_allowed (key, value)) return;
+   json_node_set_string (n, value);
+-  gboolean changed = g_str_equal (key, "hide") ? cc_luma_shelf_set_choice (v->model, key, value, &error) : cc_luma_fixture_set (v->model, key, n, &error);
++  gboolean changed = g_str_equal (key, "nshow") ? cc_luma_notifications_set_duration (v->model, g_ascii_strtoll (value, NULL, 10), &error) : g_str_equal (key, "hide") ? cc_luma_shelf_set_choice (v->model, key, value, &error) : cc_luma_fixture_set (v->model, key, n, &error);
+   if (changed) cc_luma_view_queue_refresh (v);
+   else g_warning ("%s", error->message);
+ }
+@@ -238,6 +241,7 @@ static GtkWidget *nav_row (View *v, GtkBox *rows, const char *title, const char
+   gtk_box_append (rows, r);
+   return r;
+ }
++static const char * const duration_choices[] = { "4", "4 seconds", "6", "6 seconds", "10", "10 seconds", "0", "Until dismissed", NULL };
+ static const char * const hiding_choices[] = { "never", "Never", "touch", "When a window touches it", "always", "Until you point at it", NULL };
+ static const char * const metered_choices[] = { "auto", "Automatic", "yes", "Yes", "no", "No", NULL };
+ static const char * const band_choices[] = { "auto", "Automatic", "5", "5 GHz", "2", "2.4 GHz", NULL };
+@@ -245,7 +249,7 @@ static const char * const proxy_choices[] = { "off", "Off", "auto", "Automatic",
+ static gboolean picker_value_allowed (const char *key, const char *value)
+ {
+   const char * const *choices = g_str_equal (key, "metered") ? metered_choices :
+-    g_str_equal (key, "hsBand") ? band_choices : g_str_equal (key, "proxy") ? proxy_choices : g_str_equal (key, "hide") ? hiding_choices : NULL;
++    g_str_equal (key, "hsBand") ? band_choices : g_str_equal (key, "proxy") ? proxy_choices : g_str_equal (key, "hide") ? hiding_choices : g_str_equal (key, "nshow") ? duration_choices : NULL;
+   if (!choices) return FALSE;
+   for (guint i = 0; choices[i]; i += 2)
+     if (g_str_equal (value, choices[i])) return TRUE;
+@@ -261,7 +265,11 @@ void cc_luma_view_header (View *v, const char *title, const char *subtitle, cons
+   gtk_box_append (GTK_BOX (titles), GTK_WIDGET (v->subtitle));
+   gtk_box_append (GTK_BOX (head), titles);
+   if (switch_key)
+-    gtk_box_append (GTK_BOX (head), cc_luma_view_toggle (v, switch_key, g_str_equal (switch_key, "wifi") ? "cf-wifi" : g_str_equal (switch_key, "bt") ? "cf-bt" : "cf-hotspot", title));
++    {
++      g_autofree char *name = g_strconcat ("cf-", switch_key, NULL);
++      if (g_str_equal (switch_key, "dnd")) gtk_box_append (GTK_BOX (head), cc_luma_view_label ("Do Not Disturb", "caption", FALSE));
++      gtk_box_append (GTK_BOX (head), cc_luma_view_toggle (v, switch_key, name, g_str_equal (switch_key, "dnd") ? "Do Not Disturb" : title));
++    }
+   gtk_box_append (v->body, head);
+ }
+ static void center_changed (LumaActionCenter *center, const char *state, gpointer unused)
+@@ -602,6 +610,9 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "windows")) cc_luma_view_windows_render (v);
+   else if (g_str_equal (v->page, "shelf")) cc_luma_view_shelf_render (v);
+   else if (g_str_equal (v->page, "appearance")) cc_luma_view_appearance_render (v);
++  else if (g_str_equal (v->page, "notifications")) cc_luma_view_notifications_render (v);
++  else if (g_str_equal (v->page, "search")) cc_luma_view_search_render (v);
++  else if (g_str_equal (v->page, "search-places")) cc_luma_view_search_places_render (v);
+ }
+ static void view_free (View *v)
+ {
+@@ -679,7 +690,7 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   View *v;
+   if (!page) page = "wifi";
+   if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
+-      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows") && !g_str_equal (page, "shelf") && !g_str_equal (page, "appearance"))
++      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows") && !g_str_equal (page, "shelf") && !g_str_equal (page, "appearance") && !g_str_equal (page, "notifications") && !g_str_equal (page, "search") && !g_str_equal (page, "search-places"))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+@@ -687,7 +698,9 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   if (!valid_wifi_model (model) || (g_str_equal (page, "bluetooth") && !cc_luma_bluetooth_validate (model)) ||
+       (g_str_equal (page, "windows") && !cc_luma_windows_validate (model)) ||
+       (g_str_equal (page, "shelf") && !cc_luma_shelf_validate (model)) ||
+-      (g_str_equal (page, "appearance") && !cc_luma_appearance_validate (model)))
++      (g_str_equal (page, "appearance") && !cc_luma_appearance_validate (model)) ||
++      (g_str_equal (page, "notifications") && !cc_luma_notifications_validate (model)) ||
++      ((g_str_equal (page, "search") || g_str_equal (page, "search-places")) && !cc_luma_search_validate (model)))
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings fixture contains invalid Wi-Fi data");
+       return NULL;
+diff --git a/shell/meson.build b/shell/meson.build
+index 40dba39..69f8be8 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -74,6 +74,7 @@ common_sources = files(
+   'cc-luma-view-windows.c',
+   'cc-luma-view-shelf.c',
+   'cc-luma-view-appearance.c',
++  'cc-luma-view-discovery.c',
+ )
+ 
+ 
+@@ -202,7 +203,7 @@ subdir('test-fixture-schemas')
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index cafb46b..e6bfc78 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -4,6 +4,7 @@
+ #include <luma-ui.h>
+ #include <glib/gstdio.h>
+ #include <luma-appearance.h>
++#include "cc-luma-discovery.h"
+ 
+ static GtkWidget *find_name (GtkWidget *root, const char *name)
+ {
+@@ -325,6 +326,64 @@ static void remove_asset_fixture (const char *dir)
+   if (g_file_test (image, G_FILE_TEST_EXISTS)) g_assert_cmpint (g_remove (image), ==, 0);
+   g_assert_cmpint (g_rmdir (dir), ==, 0);
+ }
++static void discovery_view (void)
++{
++  const char *ids[] = { "prism", "messages", "charlie", "calendar", "phone", "tasks", "clock", "depot", "tide", "maps", "filer", "settings", "calc", "contacts", "notes", "term" };
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  for (guint i = 0; i < G_N_ELEMENTS (ids); i++)
++    { g_autofree char *p = cc_luma_fixture_asset_path (model, ids[i], NULL); g_assert_nonnull (p); g_assert_true (g_file_set_contents (p, art, -1, NULL)); }
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "notifications", NULL));
++  g_assert_true (has_text (view, "7 apps can notify you"));
++  g_assert_true (has_text (view, "Priya Raman"));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-dnd")), TRUE); drain ();
++  g_assert_true (has_text (view, "Do Not Disturb is on. Calls still come through."));
++  g_assert_false (has_text (view, "Priya Raman"));
++  gtk_widget_activate_action (view, "cf.pick", "(ss)", "nshow", "0"); drain ();
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "nshow")), ==, "0");
++  g_assert_true (has_text (view, "Until dismissed"));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-na-messages")), FALSE); drain ();
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "na.calendar")));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-dnd")), FALSE); drain ();
++  g_assert_true (has_text (view, "6 apps can notify you"));
++  wait_ms (100); g_assert_null (cc_luma_view_get_error (view)); g_object_unref (view);
++  view = g_object_ref_sink (cc_luma_view_new (model, "search", NULL));
++  g_assert_true (has_text (view, "Searching 9 apps and 6 places"));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-sa-filer")), FALSE); drain ();
++  g_assert_true (has_text (view, "Searching 8 apps and 6 places"));
++  /* Exercise the actual drop target signal, not just its model helper. */
++  GtkWidget *row = find_name (view, "cf-provider-filer");
++  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (row);
++  GtkDropTarget *drop = NULL;
++  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
++    {
++      GObject *controller = g_list_model_get_item (controllers, i);
++      if (GTK_IS_DROP_TARGET (controller)) { drop = GTK_DROP_TARGET (controller); break; }
++      g_object_unref (controller);
++    }
++  g_assert_nonnull (drop);
++  GValue value = G_VALUE_INIT; g_value_init (&value, G_TYPE_STRING); g_value_set_string (&value, "term");
++  gboolean accepted = FALSE; g_signal_emit_by_name (drop, "drop", &value, 0., 0., &accepted); g_assert_true (accepted);
++  g_value_unset (&value); g_object_unref (drop); drain ();
++  JsonArray *apps = json_node_get_array (cc_luma_fixture_get (model, "sa"));
++  g_assert_cmpstr (json_array_get_string_element (json_array_get_array_element (apps, 0), 0), ==, "term");
++  g_assert_false (json_array_get_boolean_element (json_array_get_array_element (apps, 0), 1));
++  gtk_widget_activate_action (view, "cf.provider-move", "(su)", "filer", 4u); drain ();
++  g_assert_cmpstr (json_array_get_string_element (json_array_get_array_element (apps, 4), 0), ==, "filer");
++  g_signal_emit_by_name (find_name (view, "cf-go-search-places"), "clicked"); drain ();
++  g_assert_true (has_text (view, "Filer and search look inside these"));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-sl-Archive HD")), TRUE); drain ();
++  g_assert_cmpuint (cc_luma_search_place_count (model), ==, 7);
++  g_signal_emit_by_name (find_name (view, "cf-go-search"), "clicked"); drain ();
++  g_assert_true (has_text (view, "Searching 8 apps and 7 places"));
++  wait_ms (100); g_assert_null (cc_luma_view_get_error (view)); g_object_unref (view); wait_ms (100);
++  for (guint i = 1; i < G_N_ELEMENTS (ids); i++)
++    { g_autofree char *p = cc_luma_fixture_asset_path (model, ids[i], NULL); g_assert_cmpint (g_remove (p), ==, 0); }
++  remove_asset_fixture (dir);
++}
+ static void appearance_view (void)
+ {
+   g_autofree char *dir = asset_fixture ();
+@@ -518,6 +577,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/windows", windows_view);
+   g_test_add_func ("/settings/view/shelf", shelf_view);
+   g_test_add_func ("/settings/view/appearance", appearance_view);
++  g_test_add_func ("/settings/view/discovery", discovery_view);
+   g_test_add_func ("/settings/view/missing-asset", missing_asset);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

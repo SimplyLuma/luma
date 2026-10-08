@@ -1,0 +1,146 @@
+#!/usr/bin/python3
+from __future__ import annotations
+
+import os
+import re
+import sys
+from pathlib import Path
+
+
+VALID = {
+    "CPU_WEIGHT": (1, 10_000),
+    "IO_WEIGHT": (1, 10_000),
+    "CPU_QUOTA_PERCENT": (25, 10_000),
+    "MEMORY_HIGH_PERCENT": (1, 100),
+    "MEMORY_MAX_PERCENT": (1, 100),
+    "TASKS_MAX": (64, 32_768),
+}
+
+
+def device_class() -> str:
+    explicit = os.environ.get("LUMA_DEVICE_CLASS", "").strip().lower()
+    if explicit in {"desktop", "tablet", "handheld"}:
+        return explicit
+    marker = Path("/etc/luma-device-class")
+    if marker.is_file():
+        value = marker.read_text(encoding="utf-8").strip().lower()
+        if value in {"desktop", "tablet", "handheld"}:
+            return value
+    if Path("/etc/luma-mobile-release").is_file():
+        return "handheld"
+    return "desktop"
+
+
+def profile_root() -> Path:
+    return Path(os.environ.get("LUMA_ANDROID_PROFILE_ROOT", "/usr/share/luma/android/profiles"))
+
+
+def needs_builtin_binder_compat() -> bool:
+    explicit = os.environ.get("LUMA_BINDER_COMPAT", "").strip().lower()
+    if explicit in {"force", "true"}:
+        return True
+    if explicit in {"off", "false"}:
+        return False
+    filesystems = Path(os.environ.get("LUMA_PROC_FILESYSTEMS", "/proc/filesystems"))
+    try:
+        if any(line.split()[-1:] == ["binder"] for line in filesystems.read_text().splitlines()):
+            return False
+    except FileNotFoundError:
+        return False
+    sys_root = Path(os.environ.get("LUMA_BINDER_SYS_ROOT", "/sys/class/misc"))
+    return all((sys_root / name / "dev").is_file() for name in ("binder", "hwbinder", "vndbinder"))
+
+
+def needs_fp6_graphics_compat() -> bool:
+    explicit = os.environ.get("LUMA_FP6_GRAPHICS_COMPAT", "").strip().lower()
+    if explicit in {"force", "true"}:
+        return True
+    if explicit in {"off", "false"}:
+        return False
+    compatible = Path(
+        os.environ.get("LUMA_DEVICE_TREE_COMPATIBLE", "/proc/device-tree/compatible")
+    )
+    try:
+        return b"fairphone,fp6" in compatible.read_bytes().split(b"\0")
+    except FileNotFoundError:
+        return False
+
+
+def parse_profile(path: Path) -> dict[str, int]:
+    values: dict[str, int] = {}
+    for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("KEEP_WARM="):
+            continue
+        if "=" not in line:
+            raise ValueError(f"{path}:{number}: malformed policy line")
+        key, value = line.split("=", 1)
+        if key not in VALID or not re.fullmatch(r"[0-9]+", value):
+            raise ValueError(f"{path}:{number}: invalid policy value")
+        integer = int(value)
+        minimum, maximum = VALID[key]
+        if not minimum <= integer <= maximum:
+            raise ValueError(f"{path}:{number}: policy value outside its safe range")
+        values[key] = integer
+    missing = set(VALID) - values.keys()
+    if missing:
+        raise ValueError(f"{path}: missing policy values: {', '.join(sorted(missing))}")
+    if values["MEMORY_HIGH_PERCENT"] > values["MEMORY_MAX_PERCENT"]:
+        raise ValueError(f"{path}: MemoryHigh cannot exceed MemoryMax")
+    return values
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        return 0
+    output_root = Path(argv[1])
+    profile = parse_profile(profile_root() / f"{device_class()}.conf")
+    dropin = output_root / "waydroid-container.service.d" / "40-luma-resource-policy.conf"
+    dropin.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    compat = needs_builtin_binder_compat()
+    fp6_graphics = needs_fp6_graphics_compat()
+    if compat:
+        mount_mask = output_root / "dev-binderfs.mount"
+        if not mount_mask.exists() and not mount_mask.is_symlink():
+            mount_mask.symlink_to("/dev/null")
+    dropin.write_text(
+        (
+            (
+                "[Unit]\n"
+                "BindsTo=luma-waydroid-fp6-gpu-watchdog.service\n"
+                "After=luma-waydroid-fp6-gpu-watchdog.service\n"
+                if fp6_graphics
+                else ""
+            )
+            + "[Service]\n"
+            + (
+                "ExecStartPre=\n"
+                "ExecStartPre=/usr/libexec/luma-waydroid-binder-compat\n"
+                if compat
+                else ""
+            )
+            + (
+                "ExecStartPre=/usr/libexec/luma-waydroid-fp6-gpu-watchdog --check\n"
+                "ExecStartPre=/usr/libexec/luma-waydroid-fp6-graphics-compat\n"
+                if fp6_graphics
+                else ""
+            )
+            # CPU accounting is implicit on cgroup v2; current systemd (259 on
+            # Fedora 44) ignores CPUAccounting= and warns on every reload.
+            + f"CPUWeight={profile['CPU_WEIGHT']}\n"
+            + f"CPUQuota={profile['CPU_QUOTA_PERCENT']}%\n"
+            + "IOAccounting=yes\n"
+            + f"IOWeight={profile['IO_WEIGHT']}\n"
+            + "MemoryAccounting=yes\n"
+            + f"MemoryHigh={profile['MEMORY_HIGH_PERCENT']}%\n"
+            + f"MemoryMax={profile['MEMORY_MAX_PERCENT']}%\n"
+            + "TasksAccounting=yes\n"
+            + f"TasksMax={profile['TASKS_MAX']}\n"
+        ),
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

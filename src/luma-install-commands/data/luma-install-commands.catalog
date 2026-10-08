@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MPL-2.0
+# Luma software changes: journal catalog (journalctl -x shows this text).
+
+-- a08437fa35fc4db9a55f26f08c3e9847
+Subject: System software changed: @LUMA_SOFTWARE_ACTION@ @LUMA_SOFTWARE_PACKAGES@
+Defined-By: Luma
+Support: https://projectluma.org/vitals
+Documentation: file:///usr/share/doc/luma-install-commands/README.md
+
+A person changed the software in this computer's system image with dnf, yum,
+apt or Depot. LUMA_SOFTWARE_RESULT says how it ended: "live" (applied to the
+running system and kept through updates), "staged" (takes effect at the next
+restart) or "failed". LUMA_VITALS_DETAILS holds the full request as JSON,
+including who asked for it. rpm-ostree status lists what is added; sudo dnf
+remove takes a package away again, and sudo rpm-ostree rollback returns to
+the previous version of the whole system.

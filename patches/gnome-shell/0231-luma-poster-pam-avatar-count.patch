@@ -1,0 +1,85 @@
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index 2889e5c..80286c8 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -30,6 +30,30 @@ const DEFAULT_BUTTON_WELL_ICON_SIZE = 16;
+ const FINISH_MESSAGE_QUEUE_TIMEOUT = 2000;
+ const DEFAULT_BUTTON_WELL_ANIMATION_DELAY = 1000;
+ 
++// St.Label can allocate the verifier line at its natural width inside this
++// fixed-width card even when Pango wrapping is enabled. Add visual line breaks
++// without changing the verifier's words or the original accessibility notice.
++function wrapPosterVerifierMessage(message) {
++    return message.split('\n').map(line => {
++        const maxChars = /[\u1100-\u11ff\u2e80-\u9fff\uac00-\ud7af]/u.test(line)
++            ? 22 : /[\u0590-\u08ff]/u.test(line) ? 30 : 40;
++        const chars = Array.from(line);
++        const rows = [];
++        while (chars.length > maxChars) {
++            let breakAt = maxChars;
++            while (breakAt > 0 && !/\s/u.test(chars[breakAt]))
++                breakAt--;
++            if (breakAt === 0)
++                breakAt = maxChars;
++            rows.push(chars.splice(0, breakAt).join('').trimEnd());
++            while (chars[0] === ' ')
++                chars.shift();
++        }
++        rows.push(chars.join(''));
++        return rows.join('\n');
++    }).join('\n');
++}
++
+ // A widget displayed instead of the unlock prompt
+ // when parental controls session limits are reached
+ const ParentalControlsShield = GObject.registerClass(
+@@ -719,7 +743,7 @@ export const AuthPrompt = GObject.registerClass({
+         this._message.show();
+         if (message) {
+             this._message.remove_all_transitions();
+-            this._message.text = message;
++            this._message.text = wrapPosterVerifierMessage(message);
+             this._message.opacity = 255;
+             this.get_accessible().emit('notification', message, Atk.Live.ASSERTIVE);
+         } else {
+@@ -781,13 +805,23 @@ export const AuthPrompt = GObject.registerClass({
+         avatar.x_align = Clutter.ActorAlign.CENTER;
+         avatar.update();
+         identity.add_child(avatar);
++        identity.connect('notify::mapped', () => {
++            if (identity.mapped)
++                avatar.update();
++        });
+         this._greeting = new St.Label({style_class: 'poster-greeting'});
+         identity.add_child(this._greeting);
+         this._userWell.set_child(identity);
+         identity.visible = !!user && this._identityAllowed !== false;
+         this._user = user;
+-        if (user)
+-            user.connectObject('changed', this._updateGreeting.bind(this), identity);
++        if (user) {
++            const refreshIdentity = () => {
++                avatar.update();
++                this._updateGreeting();
++            };
++            user.connectObject('notify::is-loaded', refreshIdentity,
++                'changed', refreshIdentity, identity);
++        }
+         this._updateGreeting();
+         if (!user)
+             this._updateEntry(false);
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index 64ddd65..9bf061f 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -117,7 +117,9 @@ class PosterNotifications extends St.BoxLayout {
+                 ? notification.title : source.title;
+             const summary = details && notification?.body
+                 ? notification.body.replace(/\n/g, ' ')
+-                : _('%d new messages').format(count);
++                : count === 1
++                    ? _('1 new message')
++                    : _('%d new messages').format(count);
+             copy.add_child(new St.Label({style_class: 'poster-away-title', text: title}));
+             copy.add_child(new St.Label({style_class: 'poster-away-summary', text: summary}));
+             row.add_child(copy);

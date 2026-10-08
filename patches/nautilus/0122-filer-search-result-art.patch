@@ -1,0 +1,51 @@
+From 0ad544b7f1f53b48fe42882d589fbb4cf17c7179 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 03:14:53 +0000
+Subject: [PATCH] Size Filer search rows and thumbnails for results
+
+---
+ src/nautilus-list-view.c | 7 +++++++
+ src/resources/style.css  | 2 +-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 2350d3d..2b5f72b 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -127,6 +127,12 @@ real_get_icon_size (NautilusListBase *list_base_view)
+ {
+     NautilusListView *self = NAUTILUS_LIST_VIEW (list_base_view);
+ 
++    /* Search rows include a path and optional excerpt, so their file art is
++     * the 32px result thumbnail instead of the 20px compact list mark. */
++    if (self->search_directory != NULL)
++    {
++        return 32;
++    }
+     return get_icon_size_for_zoom_level (self->zoom_level);
+ }
+ 
+@@ -757,6 +763,7 @@ nautilus_list_view_setup_directory (NautilusListBase  *list_base,
+     {
+         gtk_widget_remove_css_class (GTK_WIDGET (self), "search-results");
+     }
++    g_object_notify (G_OBJECT (self), "icon-size");
+     luma_column_view_header_set_visible (self->luma_header,
+                                          self->search_directory == NULL);
+ 
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 5d4faa2..21f1fd7 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1118,7 +1118,7 @@ window.luma-files-window .nautilus-list-view columnview > listview > row {
+ 
+ /* Search results carry a name, path and optional excerpt in one row. */
+ window.luma-files-window .nautilus-list-view.search-results columnview > listview > row {
+-  min-height: var(--lumaui-sidebar-row-height);
++  min-height: 52px;
+ }
+ 
+ /* Hover and focus render identically, as everywhere else in Luma. An accent
+-- 
+2.55.0
+

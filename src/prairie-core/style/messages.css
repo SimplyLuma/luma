@@ -1,0 +1,137 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* LumaUI owns shared surfaces; Messages places them and styles its own reactions with kit tokens. */
+.messages-window.luma-fullscreen .luma-window-body { padding: 0; }
+.messages-window .luma-window-body { min-width: 0; min-height: 0; }
+
+/* The reaction marker is a Messages-only surface composed beside MessageBubble. */
+box.messages-reactions {
+  min-height: var(--lumaui-foot-heading-button-height);
+  margin-top: calc(var(--lumaui-foot-heading-button-height) * -0.75);
+  padding: 0 var(--lumaui-details-fact-padding-y);
+  border-radius: 999px;
+  background: @luma_float_surface;
+  box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 2px @luma_content;
+  color: @luma_ink;
+}
+box.messages-reactions label.messages-reaction-emoji { font-size: 15px; }
+box.messages-reactions image.messages-reaction-emoji { -gtk-icon-size: 14px; }
+box.messages-reactions label.messages-reaction-count { font-size: 12px; font-weight: 650; }
+box.messages-reactions button.messages-reaction {
+  min-height: 24px;
+  padding: 0 7px;
+  border-radius: 8px;
+  background: @luma_bar_surface;
+  color: @luma_ink;
+}
+box.messages-reactions button.messages-reaction label { font-size: 13px; }
+box.messages-reactions button.messages-reaction label.messages-reaction-count { font-size: 11px; }
+box.messages-reactions button.messages-reaction.on {
+  box-shadow: inset 0 0 0 1.5px @luma_accent_ink;
+}
+box.messages-reactions button.messages-reaction:not(.on):hover {
+  background: @luma_control_fill_hover;
+  box-shadow: none;
+}
+
+#msg-sidebar row.messages-conversation-row.unread label.messages-row-title {
+  font-weight: 700;
+}
+
+/* Pending media is a small, legible status card, never an enlarged low-res preview. */
+box.messages-media-pending {
+  min-width: 230px;
+  padding: 10px;
+  border-radius: var(--lumaui-msg-radius);
+  border-spacing: 6px;
+  background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring;
+}
+box.messages-media-pending > box:first-child image { color: @luma_muted; -gtk-icon-size: 16px; }
+box.messages-media-pending > button {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: var(--lumaui-bubble-button-radius);
+  background: @luma_control_fill;
+  color: @luma_ink;
+  box-shadow: none;
+}
+box.messages-media-pending > button:hover { background: @luma_control_fill_hover; }
+
+/* Recipient search keeps names primary and addresses scannable in the secondary line. */
+#msg-new-results row.messages-recipient label.luma-navigation-title { font-weight: 600; }
+#msg-new-results row.messages-recipient label.luma-navigation-subtitle { color: @luma_muted; }
+#msg-new-results row.messages-recipient.handle label.luma-navigation-title { color: @luma_accent_ink; }
+#msg-new-results row.messages-recipient.phone label.luma-navigation-title,
+#msg-new-results row.messages-recipient label.luma-navigation-subtitle {
+  font-feature-settings: "tnum";
+}
+
+/* The sample reply's typing dots are an app-only message surface. */
+box.messages-typing { margin: var(--lumaui-msg-padding-top) var(--lumaui-msg-padding-x); }
+box.messages-typing-dot {
+  min-width: var(--lumaui-status-dot);
+  min-height: var(--lumaui-status-dot);
+  border-radius: var(--lumaui-status-radius);
+  background: @luma_muted;
+}
+
+/* A quoted preview is part of the sent bubble's material, and its button
+   supplies activation without adding another control's padding or surface. */
+button.messages-quote-jump {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+}
+box.messages-quote {
+  box-shadow: inset 2.5px 0 0 currentColor;
+  border-radius: var(--lumaui-bubble-button-radius);
+  background: @luma_well;
+}
+box.messages-quote.mine {
+  background: alpha(@luma_bubble_mine_shadow, .16);
+  color: @luma_bubble_mine_ink;
+}
+box.messages-quote.mine label { color: @luma_bubble_mine_ink; }
+box.messages-quote.mine label.messages-quote-caption { color: alpha(@luma_bubble_mine_ink, .75); }
+
+/* The link preview is Messages-only; its 12px well follows the shared tokens. */
+box.messages-link {
+  background: @luma_well;
+  border-radius: var(--lumaui-bubble-radius);
+}
+
+/* v71 phone, holding a message: the six reactions as one row in a well (.mreact2). */
+box.messages-react-well {
+  padding: 4px 6px;
+  border-radius: 22px;
+  background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring;
+}
+box.messages-react-well button.messages-react-choice {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 27px;
+  background: none;
+  box-shadow: none;
+}
+box.messages-react-well button.messages-react-choice:hover { background: @luma_control_fill_hover; }
+box.messages-react-well button.messages-react-choice.on { background: alpha(@luma_accent, .3); }
+
+/* v71 phone Emoji: a 6-across grid grown out of the bar (.emrow.memo2). */
+grid.messages-emoji-grid button.messages-emoji-choice {
+  min-height: 48px;
+  padding: 0;
+  border-radius: var(--lumaui-bubble-button-radius);
+  font-size: 24px;
+  background: none;
+  box-shadow: none;
+}
+grid.messages-emoji-grid button.messages-emoji-choice:hover { background: @luma_control_fill_hover; }
+
+/* v71 phone: the grown title island's encryption facts, inset (.mislkv). */
+box.messages-island-facts { padding: 0 14px; border-radius: 16px; }
+box.messages-island-fact { min-height: 44px; }
+box.messages-island-fact + box.messages-island-fact { border-top: 1px solid @luma_line; }
+box.messages-island-body { padding: 12px; }

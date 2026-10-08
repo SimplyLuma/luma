@@ -1,0 +1,211 @@
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -162,13 +162,6 @@
+     /* always show name column */
+     g_hash_table_insert (visible_columns_hash, g_strdup ("name"), g_strdup ("name"));
+ 
+-    /* always show star column if supported */
+-    if (nautilus_tag_manager_can_star_contents (nautilus_tag_manager_get (), location) ||
+-        g_file_has_uri_scheme (location, SCHEME_STARRED))
+-    {
+-        g_hash_table_insert (visible_columns_hash, g_strdup ("starred"), g_strdup ("starred"));
+-    }
+-
+     if (visible_columns != NULL)
+     {
+         for (int i = 0; visible_columns[i] != NULL; ++i)
+@@ -178,6 +171,10 @@
+                                  g_ascii_strdown (visible_columns[i], -1));
+         }
+     }
++
++    /* Luma keeps starring in actions, never as a list column.
++     * Discard stale per-folder column preferences as well. */
++    g_hash_table_remove (visible_columns_hash, "starred");
+ 
+     old_view_columns_hash = g_hash_table_new_full (g_str_hash,
+                                                    g_str_equal,
+--- a/src/nautilus-name-cell.c
++++ b/src/nautilus-name-cell.c
+@@ -155,6 +155,7 @@
+     }
+ 
+     guint icon_size;
++    guint rendered_icon_size;
+     g_autoptr (GdkPaintable) icon_paintable = NULL;
+     NautilusFile *file = nautilus_view_item_get_file (item);
+     gint scale_factor = gtk_widget_get_scale_factor (GTK_WIDGET (self));
+@@ -162,7 +163,9 @@
+     gboolean show_thumbnail;
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
+-    icon_paintable = nautilus_file_get_icon_paintable (file, icon_size, scale_factor, flags);
++    rendered_icon_size = (self->column_mode || icon_size <= 20) ? 14 : icon_size;
++    gtk_image_set_pixel_size (GTK_IMAGE (self->symbolic_folder_icon), rendered_icon_size);
++    icon_paintable = nautilus_file_get_icon_paintable (file, rendered_icon_size, scale_factor, flags);
+     show_thumbnail = icon_size >= NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE &&
+                      nautilus_file_should_show_thumbnail (file);
+ 
+@@ -171,7 +174,7 @@
+ 
+     gtk_widget_set_visible (self->icon, !use_symbolic_folder);
+     gtk_widget_set_visible (self->symbolic_folder_icon, use_symbolic_folder);
+-    nautilus_image_set_size (NAUTILUS_IMAGE (self->icon), icon_size);
++    nautilus_image_set_size (NAUTILUS_IMAGE (self->icon), rendered_icon_size);
+     nautilus_image_set_fallback (NAUTILUS_IMAGE (self->icon), icon_paintable);
+ 
+     if (self->in_file_change ||
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1385,3 +1385,62 @@
+ window.luma-files-window .nautilus-column-view .luma-details-value {
+   font-weight: 600;
+ }
++
++/* Filer simulator follow-up: native history group and undimmed metadata. */
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls {
++  padding: 0;
++  border: 1px solid @luma_line;
++  border-radius: 10px;
++  background: transparent;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button {
++  min-width: 26px;
++  min-height: 26px;
++  padding: 0;
++  margin: 0;
++  border: none;
++  border-radius: 0;
++  box-shadow: none;
++  background: transparent;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button:first-child {
++  border-top-left-radius: 9px;
++  border-bottom-left-radius: 9px;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button:last-child {
++  border-top-right-radius: 9px;
++  border-bottom-right-radius: 9px;
++  box-shadow: -1px 0 @luma_line;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button:hover {
++  background: @luma_hover;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field {
++  min-width: 28px;
++  min-height: 28px;
++  padding: 0;
++  border: none;
++  box-shadow: none;
++  background: transparent;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:hover,
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:checked {
++  background: @luma_hover;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls image,
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field image,
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls image {
++  -gtk-icon-size: 15px;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls button {
++  min-width: 26px;
++  min-height: 24px;
++  padding: 0;
++}
++window.luma-files-window .nautilus-list-view .nautilus-view-cell > label.dim-label {
++  opacity: 1;
++  color: @luma_muted;
++  font-family: "Figtree";
++  font-size: 11px;
++  font-weight: 500;
++}
+--- a/src/resources/ui/nautilus-history-controls.blp
++++ b/src/resources/ui/nautilus-history-controls.blp
+@@ -17,7 +17,7 @@
+     Button back_button {
+       valign: center;
+       action-name: "slot.back";
+-      icon-name: "go-previous-symbolic";
++      icon-name: "luma-chevron-left-symbolic";
+ 
+       accessibility {
+         label: _("Back");
+@@ -27,7 +27,7 @@
+     Button forward_button {
+       valign: center;
+       action-name: "slot.forward";
+-      icon-name: "go-next-symbolic";
++      icon-name: "luma-chevron-right-symbolic";
+ 
+       accessibility {
+         label: _("Forward");
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -45,7 +45,7 @@
+ 
+             ToggleButton search_button {
+               valign: center;
+-              icon-name: "edit-find-symbolic";
++              icon-name: "luma-search-symbolic";
+               action-name: "slot.search-global";
+               active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+ 
+@@ -109,7 +109,7 @@
+     Button compact_back_button {
+       visible: bind template.compact;
+       action-name: "slot.back";
+-      icon-name: "go-previous-symbolic";
++      icon-name: "luma-chevron-left-symbolic";
+ 
+       accessibility {
+         label: _("Back");
+@@ -151,7 +151,7 @@
+     [end]
+     ToggleButton compact_search_button {
+       visible: bind template.compact;
+-      icon-name: "edit-find-symbolic";
++      icon-name: "luma-search-symbolic";
+       action-name: "slot.search-global";
+       active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+ 
+--- a/src/resources/ui/nautilus-name-cell.blp
++++ b/src/resources/ui/nautilus-name-cell.blp
+@@ -36,7 +36,7 @@
+             halign: center;
+             valign: center;
+             icon-name: "folder-symbolic";
+-            pixel-size: bind template.icon-size;
++            pixel-size: 14;
+ 
+             styles [
+               "luma-column-symbolic-folder",
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -65,7 +65,7 @@
+       ]
+ 
+       ToggleButton {
+-        icon-name: "view-grid-symbolic";
++        icon-name: "luma-layout-grid-symbolic";
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 2";
+ 
+@@ -75,7 +75,7 @@
+       }
+ 
+       ToggleButton {
+-        icon-name: "view-list-symbolic";
++        icon-name: "luma-list-symbolic";
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 1";
+ 
+@@ -85,7 +85,7 @@
+       }
+ 
+       ToggleButton {
+-        icon-name: "view-dual-symbolic";
++        icon-name: "luma-columns-three-symbolic";
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 4";
+ 

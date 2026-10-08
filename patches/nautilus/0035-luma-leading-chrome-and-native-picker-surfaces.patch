@@ -1,0 +1,520 @@
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -943,6 +943,12 @@
+ 
+     G_OBJECT_CLASS (nautilus_window_slot_parent_class)->constructed (object);
+ 
++    /* Picker presentation is local to this request, not the browsing preference. */
++    if (self->mode != NAUTILUS_MODE_BROWSE)
++    {
++        self->default_view_id = NAUTILUS_VIEW_LIST_ID;
++    }
++
+     self->stack = gtk_stack_new ();
+     adw_bin_set_child (ADW_BIN (self), self->stack);
+ 
+@@ -1188,7 +1194,10 @@
+     if (self->default_view_id != view_id)
+     {
+         self->default_view_id = view_id;
+-        g_settings_set_enum (nautilus_preferences, NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER, view_id);
++        if (self->mode == NAUTILUS_MODE_BROWSE)
++        {
++            g_settings_set_enum (nautilus_preferences, NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER, view_id);
++        }
+     }
+ 
+     nautilus_window_slot_set_view_id (self, view_id);
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1395,24 +1395,9 @@
+ 
+ /* Chooser composition only. Quiet materials and control metrics are shared
+  * libadwaita variants; no portal protocol or application geometry is changed. */
+-window.luma-native-file-chooser {
+-  background-color: @luma_window;
+-  color: @luma_ink;
+-}
+ .luma-native-file-chooser .luma-chooser-purpose { padding: 11px; }
+ .luma-native-file-chooser .luma-chooser-purpose-title { font-size: 14px; font-weight: 700; }
+ .luma-native-file-chooser .luma-chooser-actions { padding: 7px; }
+-.luma-native-file-chooser .luma-chooser-places-heading { padding: 5px; }
+-.luma-native-file-chooser .luma-chooser-places .navigation-sidebar { padding: 6px; }
+-.luma-native-file-chooser .luma-chooser-places .navigation-sidebar row {
+-  min-height: 24px;
+-  padding: 4px 8px;
+-  font-size: 13px;
+-  font-weight: 600;
+-}
+-.luma-native-file-chooser.luma-touch .luma-chooser-places .navigation-sidebar row {
+-  min-height: 36px;
+-}
+ .luma-native-file-chooser .luma-chooser-files .view {
+   background-color: transparent;
+ }
+--- a/src/resources/ui/nautilus-file-chooser.blp
++++ b/src/resources/ui/nautilus-file-chooser.blp
+@@ -11,6 +11,9 @@
+       child: Adw.ToolbarView {
+         [top]
+         Adw.HeaderBar {
++          show-title: false;
++          styles ["luma-titlebar", "luma-no-automatic-identity", "luma-no-command-row"]
++          [start] Label {label: _("File picker"); styles ["heading"]}
+           title-widget: Box {};
+         }
+ 
+@@ -103,24 +106,9 @@
+             styles ["luma-island-split", "luma-chooser-middle"]
+ 
+             sidebar: Adw.ToolbarView {
++              overflow: hidden;
+               styles ["luma-island", "luma-island-quiet", "luma-chooser-places"]
+-              [top]
+-              Box {
+-                spacing: 6;
+-                styles ["luma-chooser-places-heading"]
+-                Label {
+-                  label: _("Places");
+-                  xalign: 0;
+-                  hexpand: true;
+-                  styles ["caption", "dim-label"]
+-                }
+-                ToggleButton {
+-                  tooltip-text: _("Search Everywhere");
+-                  action-name: "slot.search-global";
+-                  icon-name: "edit-find-symbolic";
+-                  styles ["flat"]
+-                }
+-              }
++
+               content: $NautilusSidebar places_sidebar {
+                 vexpand: true;
+                 window-slot: bind slot_container.child;
+@@ -129,6 +117,7 @@
+ 
+             content: Adw.ToolbarView files_surface {
+               margin-start: 8;
++              overflow: hidden;
+               styles ["luma-island", "luma-island-quiet", "luma-chooser-files"]
+               [top]
+               $NautilusToolbar toolbar {
+@@ -233,6 +222,7 @@
+     condition ("max-width: 549sp")
+     setters {
+       split_view.collapsed: true;
++      toolbar.compact: true;
+       files_surface.margin-start: 0;
+       toolbar.show-new-folder-button: false;
+       toolbar.show-view-controls: false;
+@@ -245,7 +235,7 @@
+     scope: managed;
+     Shortcut { trigger: "Escape"; action: "action(window.close)"; }
+   }
+-  styles ["nautilus-file-chooser", "luma-native-file-chooser"]
++  styles ["nautilus-file-chooser", "luma-native-file-chooser", "luma-app-window", "luma-files-window"]
+ }
+ 
+ $NautilusFilenameValidator validator {
+--- a/src/resources/ui/nautilus-properties-widget.blp
++++ b/src/resources/ui/nautilus-properties-widget.blp
+@@ -23,13 +23,13 @@
+  title: _("About"); tag: "main";
+  child: Adw.ToolbarView {
+  [top] Adw.HeaderBar about_header {
+- show-title: true; show-start-title-buttons: false; decoration-layout: ":close";
++ show-title: false; show-back-button: false; show-start-title-buttons: false; decoration-layout: ":close";
+  styles ["luma-about-header", "luma-no-automatic-identity"]
+- [title] Label about_title {label: _("About"); ellipsize: end; xalign: 0; hexpand: true; styles ["heading"]}
++ [start] Label about_title {label: _("About"); ellipsize: end; xalign: 0; hexpand: true; styles ["heading"]}
+  }
+  content: ScrolledWindow about_scroller {
+  hscrollbar-policy: never; propagate-natural-height: true; max-content-height: 640;
+- child: Box {orientation: vertical; spacing: 8; margin-top: 8; margin-bottom: 8; margin-start: 8; margin-end: 8;
++ child: Box {orientation: vertical; spacing: 8; margin-top: 0; margin-bottom: 8; margin-start: 8; margin-end: 8;
+  Box overview_island {orientation: vertical; styles ["luma-island", "luma-island-quiet", "luma-about-overview"]
+  Box preview_box {visible: false; orientation: vertical; margin-top: 12; margin-start: 12; margin-end: 12;
+  Adw.Clamp {orientation: vertical; maximum-size: 144; tightening-threshold: 144; child: Picture preview_picture {height-request: 144; can-shrink: true; content-fit: contain; paintable: bind icon_image.paintable;};}
+@@ -148,6 +148,7 @@
+  }
+  Box {orientation: vertical; spacing: 4;
+  Label size_value_label {
++                    xalign: 0;
+                     visible: false;
+                     selectable: true;
+                     ellipsize: end;
+@@ -193,13 +194,13 @@
+  title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
+  [prefix] Label {label: _("Modified"); xalign: 0; width-request: 84; styles ["dim-label"]}
+  [suffix] Label modified_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
+- 
++
+  }
+  Adw.ActionRow created_row {
+  title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
+  [prefix] Label {label: _("Created"); xalign: 0; width-request: 84; styles ["dim-label"]}
+  [suffix] Label created_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
+- 
++
+  }
+  }
+  }
+@@ -388,25 +389,25 @@
+  title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
+  [prefix] Label {label: _("Accessed"); xalign: 0; width-request: 84; styles ["dim-label"]}
+  [suffix] Label accessed_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
+- 
++
+  }
+  Adw.ActionRow exact_modified_row {
+  title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
+  [prefix] Label {label: _("Modified (exact)"); xalign: 0; width-request: 84; styles ["dim-label"]}
+  [suffix] Label exact_modified_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
+- 
++
+  }
+  Adw.ActionRow exact_created_row {
+  title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
+  [prefix] Label {label: _("Created (exact)"); xalign: 0; width-request: 84; styles ["dim-label"]}
+  [suffix] Label exact_created_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
+- 
++
+  }
+  Adw.ActionRow full_location_row {
+  title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
+  [prefix] Label {label: _("Full location"); xalign: 0; width-request: 84; styles ["dim-label"]}
+  [suffix] Label full_location_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
+- 
++
+  }
+  }
+  Label free_space_value_label {
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -12,171 +12,168 @@
+     ]
+ 
+     [title]
+-    Stack toolbar_switcher {
+-      valign: center;
++    Box {
+       hexpand: true;
+-      transition-type: crossfade;
++      spacing: 6;
++      ToggleButton compact_sidebar_button {
++            visible: bind template.compact;
++            active: bind template.sidebar-button-active bidirectional;
++            icon-name: "sidebar-show-symbolic";
+ 
+-      StackPage {
+-        name: "pathbar";
++            accessibility {
++              label: _("Show Sidebar");
++            }
+ 
+-        child: Box {
+-          spacing: 9;
++            styles [
++              "luma-compact-toolbar-button",
++            ]
++          }
+ 
+-          $NautilusPathBar path_bar {
++      Button compact_back_button {
++            visible: bind template.compact;
++            action-name: "slot.back";
++            icon-name: "luma-chevron-left-symbolic";
++
++            accessibility {
++              label: _("Back");
++            }
++
++            styles [
++              "luma-compact-toolbar-button",
++            ]
++          }
++
++      Stack history_controls_stack {
++            visible: bind template.show-history-controls;
++            hhomogeneous: true;
++            transition-type: crossfade;
++
++            $NautilusHistoryControls history_controls {
++              window-slot: bind template.window-slot;
++            }
++
++            Adw.Bin history_controls_placeholder {}
++          }
++
++      Stack toolbar_switcher {
+             valign: center;
+-            hexpand: bind template.compact;
+-            compact: bind template.compact;
+-            margin-start: 4;
++            hexpand: true;
++            transition-type: crossfade;
++
++            StackPage {
++              name: "pathbar";
++
++              child: Box {
++                spacing: 9;
++
++                $NautilusPathBar path_bar {
++                  valign: center;
++                  hexpand: bind template.compact;
++                  compact: bind template.compact;
++                  margin-start: 4;
++                  window-slot: bind template.window-slot;
++                }
++
++                Box {
++                  hexpand: true;
++                }
++
++                Stack search_button_stack {
++                  width-request: 30;
++                  halign: end;
++                  hexpand: false;
++                  hhomogeneous: true;
++                  transition-type: crossfade;
++                  visible: bind template.compact inverted;
++
++                  ToggleButton search_button {
++                    valign: center;
++                    icon-name: "luma-search-symbolic";
++                    action-name: "slot.search-global";
++                    active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
++
++                    accessibility {
++                      label: _("Search");
++                    }
++
++                    styles [
++                      "luma-search-field",
++                    ]
++                  }
++
++                  Adw.Bin search_button_placeholder {}
++                }
++              };
++            }
++
++            StackPage {
++              name: "location";
++
++              child: Box {
++                styles [
++                  "linked",
++                ]
++
++                $NautilusLocationEntry location_entry {}
++
++                Button {
++                  icon-name: "window-close-symbolic";
++                  tooltip-text: _("Cancel");
++                  clicked => $nautilus_toolbar_close_location_entry() swapped;
++                }
++              };
++            }
++
++            StackPage {
++              name: "search";
++
++              child: Box search_container {
++                orientation: vertical;
++              };
++            }
++          }
++
++      MenuButton compact_overflow_button {
++            visible: bind template.compact;
++            icon-name: "view-more-symbolic";
++            menu-model: bind template.compact-menu;
++
++            styles [
++              "luma-compact-toolbar-button",
++            ]
++
++            accessibility {
++              label: _("More Options");
++            }
++          }
++
++      ToggleButton compact_search_button {
++            visible: bind template.compact;
++            icon-name: "luma-search-symbolic";
++            action-name: "slot.search-global";
++            active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
++
++            styles [
++              "luma-compact-toolbar-button",
++            ]
++
++            accessibility {
++              label: _("Search");
++            }
++          }
++
++      Button new_folder_button {
++            visible: bind template.show-new-folder-button;
++            icon-name: "folder-new-symbolic";
++            tooltip-text: _("New Folder");
++            action-name: "view.new-folder";
++            focus-on-click: false;
++          }
++
++      $NautilusViewControls view_controls {
++            visible: bind template.show-view-controls;
+             window-slot: bind template.window-slot;
+           }
+-
+-          Box {
+-            hexpand: true;
+-          }
+-
+-          Stack search_button_stack {
+-            width-request: 30;
+-            halign: end;
+-            hexpand: false;
+-            hhomogeneous: true;
+-            transition-type: crossfade;
+-            visible: bind template.compact inverted;
+-
+-            ToggleButton search_button {
+-              valign: center;
+-              icon-name: "luma-search-symbolic";
+-              action-name: "slot.search-global";
+-              active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+-
+-              accessibility {
+-                label: _("Search");
+-              }
+-
+-              styles [
+-                "luma-search-field",
+-              ]
+-            }
+-
+-            Adw.Bin search_button_placeholder {}
+-          }
+-        };
+-      }
+-
+-      StackPage {
+-        name: "location";
+-
+-        child: Box {
+-          styles [
+-            "linked",
+-          ]
+-
+-          $NautilusLocationEntry location_entry {}
+-
+-          Button {
+-            icon-name: "window-close-symbolic";
+-            tooltip-text: _("Cancel");
+-            clicked => $nautilus_toolbar_close_location_entry() swapped;
+-          }
+-        };
+-      }
+-
+-      StackPage {
+-        name: "search";
+-
+-        child: Box search_container {
+-          orientation: vertical;
+-        };
+-      }
+-    }
+-
+-    [start]
+-    ToggleButton compact_sidebar_button {
+-      visible: bind template.compact;
+-      active: bind template.sidebar-button-active bidirectional;
+-      icon-name: "sidebar-show-symbolic";
+-
+-      accessibility {
+-        label: _("Show Sidebar");
+-      }
+-
+-      styles [
+-        "luma-compact-toolbar-button",
+-      ]
+-    }
+-
+-    [start]
+-    Button compact_back_button {
+-      visible: bind template.compact;
+-      action-name: "slot.back";
+-      icon-name: "luma-chevron-left-symbolic";
+-
+-      accessibility {
+-        label: _("Back");
+-      }
+-
+-      styles [
+-        "luma-compact-toolbar-button",
+-      ]
+-    }
+-
+-    [start]
+-    Stack history_controls_stack {
+-      visible: bind template.show-history-controls;
+-      hhomogeneous: true;
+-      transition-type: crossfade;
+-
+-      $NautilusHistoryControls history_controls {
+-        window-slot: bind template.window-slot;
+-      }
+-
+-      Adw.Bin history_controls_placeholder {}
+-    }
+-
+-    [end]
+-    MenuButton compact_overflow_button {
+-      visible: bind template.compact;
+-      icon-name: "view-more-symbolic";
+-      menu-model: bind template.compact-menu;
+-
+-      styles [
+-        "luma-compact-toolbar-button",
+-      ]
+-
+-      accessibility {
+-        label: _("More Options");
+-      }
+-    }
+-
+-    [end]
+-    ToggleButton compact_search_button {
+-      visible: bind template.compact;
+-      icon-name: "luma-search-symbolic";
+-      action-name: "slot.search-global";
+-      active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+-
+-      styles [
+-        "luma-compact-toolbar-button",
+-      ]
+-
+-      accessibility {
+-        label: _("Search");
+-      }
+-    }
+-
+-    [end]
+-    Button new_folder_button {
+-      visible: bind template.show-new-folder-button;
+-      icon-name: "folder-new-symbolic";
+-      tooltip-text: _("New Folder");
+-      action-name: "view.new-folder";
+-      focus-on-click: false;
+-    }
+-
+-    [end]
+-    $NautilusViewControls view_controls {
+-      visible: bind template.show-view-controls;
+-      window-slot: bind template.window-slot;
+     }
+   }
+ }

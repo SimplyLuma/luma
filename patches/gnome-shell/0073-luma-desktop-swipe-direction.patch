@@ -1,0 +1,59 @@
+From be4dc93f9000c3bb5236b113ea370d813e675d24 Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 20:05:20 -0500
+Subject: [PATCH] luma: decide the desktop three-finger swipe from its
+ direction
+
+---
+ js/ui/overview.js | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/overview.js b/js/ui/overview.js
+index d1aaf55..eba707b 100644
+--- a/js/ui/overview.js
++++ b/js/ui/overview.js
+@@ -362,13 +362,29 @@ export class Overview extends Signals.EventEmitter {
+         // Without this the gesture lands on Window View instead of Grid.
+         if (LumaGrid.isDefault() && !this._visible && !this.isDummy) {
+             this._gestureOpensGrid = true;
+-            LumaGrid.toggle();
++            // Claim the gesture, but do not decide what it means yet. Acting on
++            // begin made every three-finger touch open Grid, so a downward
++            // swipe opened and immediately dismissed it. Symmetric snap points
++            // let the tracker report a direction instead: up settles at 1,
++            // down at -1, and anything too small or ambiguous returns to 0 and
++            // does nothing at all.
++            const monitor = Main.layoutManager.primaryMonitor;
++            tracker.confirmSwipe(monitor?.height ?? 800, [-1, 0, 1], 0, 0);
+             return;
+         }
+         this._gestureOpensGrid = false;
+         this._overview.controls.gestureBegin(tracker);
+     }
+ 
++    // Swiping down on the desktop clears it, the counterpart to swiping down
++    // inside Grid to leave it.
++    _showDesktop() {
++        const workspace = global.workspace_manager.get_active_workspace();
++        global.display.get_tab_list(Meta.TabList.NORMAL_ALL, workspace)
++            .filter(window => !window.minimized && window.can_minimize())
++            .forEach(window => window.minimize());
++    }
++
+     _gestureUpdate(tracker, progress) {
+         // Grid took this gesture; the overview must not also animate in.
+         if (this._gestureOpensGrid)
+@@ -399,6 +415,10 @@ export class Overview extends Signals.EventEmitter {
+     _gestureEnd(tracker, duration, endProgress) {
+         if (this._gestureOpensGrid) {
+             this._gestureOpensGrid = false;
++            if (endProgress > 0)
++                LumaGrid.toggle();
++            else if (endProgress < 0)
++                this._showDesktop();
+             return;
+         }
+ 
+-- 
+2.55.0
+

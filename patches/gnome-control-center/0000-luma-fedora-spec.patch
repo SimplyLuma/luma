@@ -1,0 +1,188 @@
+--- a/gnome-control-center.spec
++++ b/gnome-control-center.spec
+@@ -28,14 +28,104 @@
+ 
+ Name:           gnome-control-center
+ Version:        50.4
+-Release:        %autorelease
++Release:        1.luma.48.creator20261006.1%{?dist}
+ Summary:        Utilities to configure the GNOME desktop
+ 
+ License:        GPL-2.0-or-later AND CC0-1.0
+ URL:            https://gitlab.gnome.org/GNOME/gnome-control-center/
+ Source0:        https://download.gnome.org/sources/%{name}/50/%{name}-%{tarball_version}.tar.xz
++Source1000:     luma-settings-session-identity-check.py
++Source1001:     org.project_luma.shell-state.gschema.xml
++Source1002:     0019-input-Adjustable-scroll-speed-for-mice-and-touchpads.patch
++Source1003:     extract-scroll-schema.py
++Source1004:     settings-v70.json
++Patch1000:      0001-luma-preferred-choice-order.patch
++Patch1001:      0002-luma-touchpad-gestures-section.patch
++Patch1002:      0003-luma-shared-preferences-layout.patch
++Patch1003:      0004-luma-native-islands-persistent-search.patch
++Patch1004:      0005-luma-native-identity-centered-navigation.patch
++Patch1005:      0006-luma-dash-settings-panel.patch
++Patch1006:      0007-luma-dash-preview-physical-corners.patch
++Patch1007:      0008-luma-dash-padding-control.patch
++Patch1008:      0009-luma-dash-status-settings.patch
++Patch1009:      0010-luma-status-divider-preview.patch
++Patch1010:      0011-appearance-Add-native-Luma-surface-treatments.patch
++Patch1011:      0012-luma-settings-material-navigation-sections.patch
++Patch1012:      0013-luma-displays-panel-composition.patch
++Patch1013:      0014-luma-background-activity-page.patch
++Patch1014:      0015-luma-sound-new-devices-and-network-outputs.patch
++Patch1015:      0016-luma-cast-settings-page.patch
++Patch1016:      0017-luma-about-names-luma.patch
++Patch1017:      0018-luma-device-name-static-slug.patch
++Patch1018:      0019-luma-about-legacy-os-release.patch
++Patch1019:      0020-luma-notifications-badge-app-icon.patch
++Patch1020:      0021-luma-mouse-trackpoint-page.patch
++Patch1021:      0022-luma-dash-allow-free-placement.patch
++Patch1022:      0023-luma-dash-span-and-float-follow-islands.patch
++Patch1023:      0024-luma-dash-dock-folders.patch
++Patch1024:      0025-users-Saved-passwords-follow-a-password-change.patch
++Patch1025:      0026-mouse-Scroll-Speed-for-the-mouse-and-the-touchpad.patch
++Patch1026:      0027-lumaui-sidebar-foot.patch
++Patch1027:      0028-lumaui-fixture-model.patch
++Patch1028:      0029-lumaui-fixture-startup-wifi.patch
++Patch1029:      0030-lumaui-network-actions-draft.patch
++Patch1030:      0031-lumaui-wifi-join-undo.patch
++Patch1031:      0032-lumaui-wifi-capture-variants.patch
++Patch1032:      0033-lumaui-bluetooth-fixture.patch
++Patch1033:      0034-lumaui-page-modules.patch
++Patch1034:      0035-lumaui-windows-model.patch
++Patch1035:      0036-lumaui-network-copy.patch
++Patch1036:      0037-lumaui-fixture-assets.patch
++Patch1037:      0038-lumaui-windows-page.patch
++Patch1038:      0039-lumaui-shelf-model.patch
++Patch1039:      0040-lumaui-shelf-page.patch
++Patch1040:      0041-lumaui-appearance-model.patch
++Patch1041:      0042-lumaui-appearance-page.patch
++Patch1042:      0043-lumaui-discovery-model.patch
++Patch1043:      0044-lumaui-discovery-pages.patch
++Patch1044:      0045-lumaui-adaptive-padding-and-navigation.patch
++Patch1045:      0046-lumaui-live-network-adapter.patch
++Patch1046:      0047-lumaui-display-draft-model.patch
++Patch1047:      0048-settings-add-native-read-adapters-and-isolated-fixtu.patch
++Patch1048:      0049-settings-fix-fixture-artwork-and-verify-native-surfa.patch
++Patch1049:      0050-settings-add-Apps-fixture-routes-and-scoped-action-c.patch
++Patch1050:      0051-settings-add-accessibility-routes-and-bounded-native-reader-action.patch
++Patch1051:      0052-settings-add-scoped-native-preference-edits-with-durable-recovery.patch
++Patch1052:      0053-settings-compose-scoped-Privacy-routes-and-native-schema-contracts.patch
++Patch1053:      0054-settings-scoped-native-permission-edits.patch
++Patch1054:      0055-settings-native-screen-lock-view.patch
++Patch1055:      0056-settings-native-permission-views.patch
++Patch1056:      0057-settings-empty-native-permission-list.patch
++Patch1057:      0058-luma-hide-inapplicable-span-row.patch
++Patch1058:      0059-lumaui-settings-v70-finish.patch
++Patch1059:      0060-lumaui-settings-phone-search-bar.patch
++Patch1060:      0061-lumaui-settings-search-control-names.patch
++Patch1061:      0062-lumaui-settings-fixture-account-hue.patch
++Patch1062:      0063-lumaui-shelf-phone-choices.patch
++Patch1063:      0064-lumaui-phone-first-section-spacing.patch
++Patch1064:      0065-lumaui-stable-display-drag.patch
++Patch1065:      0066-settings-use-shared-device-identity.patch
++Patch1066:      0067-settings-open-handheld-destination-list.patch
++Patch1067:      0068-settings-native-session-identity.patch
++Patch1068:      0069-settings-retain-decoded-artwork.patch
++Patch1069:      0070-settings-dark-first-appearance.patch
++Patch1070:      0071-settings-native-network-editor-frame.patch
++Patch1071:      0072-settings-native-scroll-speed.patch
++Patch1072:      0073-settings-native-bluetooth-operations.patch
++Patch1073:      0074-settings-native-wifi-lifecycle.patch
++Patch1074:      0075-settings-bluetooth-error-notice.patch
++Patch1075:      0076-settings-retained-bluetooth-and-wifi-drafts.patch
++Patch1076:      0077-settings-native-pointer-write-qualification.patch
+ 
+ BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
++BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1
++BuildRequires:  pkgconfig(xkbcommon)
++# GTestDBus in the adapter tests spawns a private bus.
++BuildRequires:  dbus-daemon
++BuildRequires:  python3-dbus
++BuildRequires:  python3-gobject
++BuildRequires:  xorg-x11-server-Xvfb
++BuildRequires:  xorg-x11-xauth
+ BuildRequires:  desktop-file-utils
+ BuildRequires:  docbook-style-xsl libxslt
+ BuildRequires:  gcc
+@@ -85,6 +174,11 @@
+ %endif
+ 
+ # Versioned library deps
++Requires:       luma-shell-state >= 0.2.0-1.luma.21
++Requires:       luma-developer-platform >= 0.1.0-1.luma.89.lumaui20260929.1
++# Settings › Apps › Background Activity shows and changes what the Luma
++# background service runs; without it the page says so and changes nothing.
++Recommends:     luma-background
+ Requires: libadwaita%{?_isa} >= %{libadwaita_version}
+ Requires: glib2%{?_isa} >= %{glib2_version}
+ Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
+@@ -170,16 +264,10 @@
+ 
+ %build
+ %meson \
++  -Dc_link_args="%{build_ldflags} %{build_cflags} -flto=1" \
+   -Ddocumentation=true \
+   -Dlocation-services=enabled \
+-%if 0%{?fedora}
+-  -Ddistributor_logo=%{_datadir}/pixmaps/fedora_logo_med.png \
+-  -Ddark_mode_distributor_logo=%{_datadir}/pixmaps/fedora_whitelogo_med.png \
+-%endif
+-%if 0%{?rhel}
+-  -Ddistributor_logo=%{_datadir}/pixmaps/fedora-logo.png \
+-  -Ddark_mode_distributor_logo=%{_datadir}/pixmaps/system-logo-white.png \
+-%endif
++%dnl Luma (ADR-040): no fixed distributor logo; About shows os-release LOGO.
+ %if %{with malcontent}
+   -Dmalcontent=true \
+ %else
+@@ -200,6 +288,48 @@
+ 
+ %find_lang %{name} --all-name --with-gnome
+ 
++%check
++# Native Settings and its launcher work without a GNOME session identity.
++python3 %{SOURCE1000} %{_vpath_builddir}/shell/gnome-control-center \
++  %{_vpath_builddir}/shell/org.gnome.Settings.desktop
++# Luma: the device-name slug rules (0018) run through upstream's hostname test.
++%meson_test test-hostname
++# Luma's compositor schema is used only on this private package-check backend.
++task_runtime=$(mktemp -d)
++chmod 700 "$task_runtime"
++trap 'rm -rf "$task_runtime"' EXIT
++export XDG_RUNTIME_DIR="$task_runtime"
++mkdir "$task_runtime/schema"
++cp %{SOURCE1001} "$task_runtime/schema/"
++python3 %{SOURCE1003} %{SOURCE1002} "$task_runtime/schema/org.projectluma.peripherals.gschema.xml"
++glib-compile-schemas --strict "$task_runtime/schema"
++export GSETTINGS_SCHEMA_DIR="$task_runtime/schema"
++# LumaUI Settings model and adapter tests; display-bound tests run below.
++%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard
++# Test the actual native network editor frame and Cancel with accessibility enabled.
++xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GIO_USE_VFS=local GDK_DEBUG=no-portals meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-network-editor
++# Native page actions must reach the owned BlueZ/Rfkill service on a private bus.
++xvfb-run -a --server-args="-screen 0 1920x1080x24" env GSK_RENDERER=cairo meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-live-bluetooth
++# Native pointer clicks must stay in Luma and read back from their actual owner.
++xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GIO_USE_VFS=local GDK_DEBUG=no-portals meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-live-pointer
++# Native Wi-Fi confirmation, failure/readback and scan-refresh input preservation.
++xvfb-run -a --server-args="-screen 0 1920x1080x24" env GSK_RENDERER=cairo GIO_USE_VFS=local meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-live-network
++xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GSETTINGS_BACKEND=memory LUMA_SETTINGS_TEST_FIXTURE=%{SOURCE1004} %{_vpath_builddir}/shell/test-luma-view --tap -p /settings/view/scroll-speed
++# Luma: the pointing stick page is called TrackPoint and says what it is (0021).
++grep -Fq '>TrackPoint<' %{_vpath_builddir}/panels/mouse/cc-mouse-panel.ui
++grep -Fq 'translatable="yes">The small pointer control in the middle of your keyboard.<' \
++  %{_vpath_builddir}/panels/mouse/cc-mouse-panel.ui
++if grep -Fq 'Pointing Stick' %{_vpath_builddir}/panels/mouse/cc-mouse-panel.ui; then exit 1; fi
++grep -q '^Keywords=.*;TrackPoint;' %{_vpath_builddir}/panels/mouse/gnome-mouse-panel.desktop
++# Luma: Scroll Speed on the Mouse and Touchpad sections (0026), and its
++# slider mapping; every mapping test must report ok.
++test "$(grep -c 'translatable="yes">Scroll _Speed<' %{_vpath_builddir}/panels/mouse/cc-mouse-panel.ui)" -eq 2
++gcc -o test-scroll-speed panels/mouse/test-scroll-speed.c \
++  $(pkg-config --cflags --libs glib-2.0) -lm
++./test-scroll-speed --tap | tee test-scroll-speed.log
++passed=$(grep -c '^ok ' test-scroll-speed.log)
++test "$passed" -eq 3 || { echo "test-scroll-speed: $passed of 3 passed"; exit 1; }
++
+ %files -f %{name}.lang
+ %license COPYING
+ %doc NEWS README.md

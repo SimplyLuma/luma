@@ -1,0 +1,1050 @@
+diff --git a/src/gui/common/gcal-date-chooser.c b/src/gui/common/gcal-date-chooser.c
+index 89b8b99..dddade7 100644
+--- a/src/gui/common/gcal-date-chooser.c
++++ b/src/gui/common/gcal-date-chooser.c
+@@ -401,16 +401,11 @@ format_month_year (GcalMultiChoice *choice,
+                    gint             value,
+                    gpointer         data)
+ {
+-  GcalDateChooser *self = GCAL_DATE_CHOOSER (data);
+-  g_autoptr (GDateTime) now = g_date_time_new_now (g_date_time_get_timezone (self->date));
+   gint year, month;
+ 
+   decode_combined_choice_value (value, &year, &month, NULL);
+ 
+-  if (g_date_time_get_year (now) == year)
+-    return g_strdup (gcal_get_month_name (month - 1));
+-  else
+-    return g_strdup_printf ("%s %d", gcal_get_month_name (month - 1), year);
++  return g_strdup_printf ("%s %d", gcal_get_month_name (month - 1), year);
+ }
+ 
+ static void
+diff --git a/src/gui/gcal-calendar-navigation-button.blp b/src/gui/gcal-calendar-navigation-button.blp
+index 649b519..c349b27 100644
+--- a/src/gui/gcal-calendar-navigation-button.blp
++++ b/src/gui/gcal-calendar-navigation-button.blp
+@@ -10,25 +10,55 @@ template $GcalCalendarNavigationButton: Adw.Bin {
+ 
+       child: MenuButton button {
+         popover: popover_date_chooser;
+-        label: _("_Choose Date");
+-        use-underline: true;
+         can-shrink: true;
+         tooltip-text: _("Choose a Date");
+-        always-show-arrow: true;
++
++        accessibility {
++          label: _("Choose a Date");
++        }
++
++        child: Box {
++          spacing: 6;
++
++          Label month_label {
++            styles [
++              "luma-calendar-month-title",
++            ]
++          }
++
++          Label year_label {
++            styles [
++              "luma-calendar-year-title",
++            ]
++          }
++
++          Image {
++            icon-name: "pan-down-symbolic";
++            pixel-size: 12;
++          }
++        };
+       };
+     }
+ 
+     StackPage {
+       name: "inactive";
+ 
+-      child: Label static_label {
+-        styles [
+-          "heading",
+-        ]
+-
+-        label: bind button.label no-sync-create;
++      child: Box {
++        spacing: 6;
+         margin-start: 9;
+         margin-end: 9;
++
++        Label static_month_label {
++          styles [
++            "luma-calendar-month-title",
++          ]
++        }
++
++        Label static_year_label {
++          styles [
++            "luma-calendar-year-title",
++          ]
++        }
+       };
+     }
+ 
+@@ -40,7 +70,7 @@ Popover popover_date_chooser {
+   position: bottom;
+ 
+   child: $GcalDateChooser {
+-    split-month-year: true;
++    split-month-year: false;
+     vexpand: false;
+     valign: end;
+     active-date: bind template.active-date no-sync-create bidirectional;
+diff --git a/src/gui/gcal-calendar-navigation-button.c b/src/gui/gcal-calendar-navigation-button.c
+index a5317a6..f7d5ef0 100644
+--- a/src/gui/gcal-calendar-navigation-button.c
++++ b/src/gui/gcal-calendar-navigation-button.c
+@@ -33,7 +33,11 @@ struct _GcalCalendarNavigationButton
+   gboolean active;
+ 
+   GtkMenuButton *button;
++  GtkLabel *month_label;
+   GtkStack *stack;
++  GtkLabel *static_month_label;
++  GtkLabel *static_year_label;
++  GtkLabel *year_label;
+ };
+ 
+ G_DEFINE_TYPE (GcalCalendarNavigationButton, gcal_calendar_navigation_button, ADW_TYPE_BIN)
+@@ -96,15 +100,21 @@ gcal_calendar_navigation_button_set_property (GObject *object,
+   switch (prop_id)
+     {
+     case PROP_ACTIVE_DATE:
++      {
++        g_autofree gchar *month = NULL;
++        g_autofree gchar *year = NULL;
++
+       gcal_clear_date_time (&self->active_date);
+       self->active_date = g_date_time_ref (g_value_get_boxed (value));
+-      /*
+-       * Translators: %B is the month name and %Y is the year.
+-       * More formats can be found on the doc:
+-       * https://docs.gtk.org/glib/method.DateTime.format.html
+-       */
+-      gtk_menu_button_set_label (self->button, g_date_time_format (self->active_date, _ ("%B %Y")));
++      month = g_date_time_format (self->active_date, "%B");
++      year = g_date_time_format (self->active_date, "%Y");
++
++      gtk_label_set_label (self->month_label, month);
++      gtk_label_set_label (self->year_label, year);
++      gtk_label_set_label (self->static_month_label, month);
++      gtk_label_set_label (self->static_year_label, year);
+       break;
++      }
+ 
+     case PROP_ACTIVE:
+       self->active = g_value_get_boolean (value);
+@@ -143,7 +153,11 @@ gcal_calendar_navigation_button_class_init (GcalCalendarNavigationButtonClass *k
+   gtk_widget_class_set_template_from_resource (widget_class, "/org/gnome/calendar/ui/gui/gcal-calendar-navigation-button.ui");
+ 
+   gtk_widget_class_bind_template_child (widget_class, GcalCalendarNavigationButton, button);
++  gtk_widget_class_bind_template_child (widget_class, GcalCalendarNavigationButton, month_label);
+   gtk_widget_class_bind_template_child (widget_class, GcalCalendarNavigationButton, stack);
++  gtk_widget_class_bind_template_child (widget_class, GcalCalendarNavigationButton, static_month_label);
++  gtk_widget_class_bind_template_child (widget_class, GcalCalendarNavigationButton, static_year_label);
++  gtk_widget_class_bind_template_child (widget_class, GcalCalendarNavigationButton, year_label);
+ }
+ 
+ static void
+diff --git a/src/gui/gcal-window.blp b/src/gui/gcal-window.blp
+index c90a095..03b660c 100644
+--- a/src/gui/gcal-window.blp
++++ b/src/gui/gcal-window.blp
+@@ -1,6 +1,22 @@
+ using Gtk 4.0;
+ using Adw 1;
+ 
++menu view_menu {
++  section {
++    item {
++      label: _("_Month");
++      action: "win.change-view";
++      target: "int32 0";
++    }
++
++    item {
++      label: _("_Week");
++      action: "win.change-view";
++      target: "int32 1";
++    }
++  }
++}
++
+ template $GcalWindow: Adw.ApplicationWindow {
+   title: _("Calendar");
+   default-width: 800;
+@@ -8,6 +24,10 @@ template $GcalWindow: Adw.ApplicationWindow {
+   width-request: 360;
+   height-request: 600;
+ 
++  styles [
++    "luma-calendar-window",
++  ]
++
+   ShortcutController {
+     Shortcut {
+       trigger: "<Control>t";
+@@ -120,7 +140,27 @@ template $GcalWindow: Adw.ApplicationWindow {
+     pressed => $on_forward_button_pressed_cb(template) not-swapped;
+   }
+ 
+-  Adw.ToastOverlay overlay {
++  Adw.ToolbarView {
++    [top]
++    Adw.HeaderBar {
++      centering-policy: strict;
++
++      styles [
++        "luma-calendar-titlebar",
++      ]
++
++      [title]
++      Label {
++        label: _("Calendar");
++        ellipsize: end;
++
++        styles [
++          "luma-calendar-title",
++        ]
++      }
++    }
++
++    content: Adw.ToastOverlay overlay {
+     $GcalDropOverlay drop_overlay {
+       overlayed: Adw.StatusPage drop_status_page {
+         title: _("Drop Event Files to Import");
+@@ -134,7 +174,10 @@ template $GcalWindow: Adw.ApplicationWindow {
+ 
+       child: Adw.OverlaySplitView split_view {
+         pin-sidebar: true;
+-        show-sidebar: false;
++        show-sidebar: true;
++        min-sidebar-width: 210;
++        max-sidebar-width: 232;
++        sidebar-width-fraction: 0.125;
+ 
+         DropTarget drop_target {
+           actions: copy;
+@@ -148,20 +191,42 @@ template $GcalWindow: Adw.ApplicationWindow {
+         ]
+ 
+         sidebar: Adw.ToolbarView {
+-          [top]
+-          Adw.HeaderBar {}
++          styles [
++            "luma-calendar-sidebar",
++          ]
+ 
+           content: Box {
+             orientation: vertical;
+ 
++            styles [
++              "luma-calendar-sidebar-surface",
++            ]
++
++            $GcalCalendarList calendars_list {}
++
++            Box {
++              vexpand: true;
++            }
++
++            Separator {
++              orientation: horizontal;
++              margin-start: 10;
++              margin-end: 10;
++              margin-top: 8;
++              margin-bottom: 8;
++
++              styles [
++                "luma-calendar-sidebar-separator",
++              ]
++            }
++
+             $GcalDateChooser date_chooser {
+-              split-month-year: true;
++              split-month-year: false;
+               vexpand: false;
++              margin-bottom: 8;
+               active-date: bind template.active-date no-sync-create bidirectional;
+               day-selected => $day_selected(template);
+             }
+-
+-            $GcalCalendarList calendars_list {}
+           };
+         };
+ 
+@@ -172,12 +237,26 @@ template $GcalWindow: Adw.ApplicationWindow {
+ 
+           [top]
+           Adw.HeaderBar header_bar {
++            show-start-title-buttons: false;
++            show-end-title-buttons: false;
++
++            styles [
++              "luma-calendar-headerbar",
++            ]
++
+             [start]
+             ToggleButton sidebar_button {
++              width-request: 30;
++              height-request: 30;
+               icon-name: "sidebar-show-symbolic";
+               tooltip-text: _("Toggle Sidebar");
+               active: bind split_view.show-sidebar bidirectional;
+ 
++              styles [
++                "luma-calendar-toolbar-control",
++                "luma-calendar-sidebar-toggle",
++              ]
++
+               ShortcutController {
+                 scope: managed;
+ 
+@@ -188,25 +267,133 @@ template $GcalWindow: Adw.ApplicationWindow {
+               }
+             }
+ 
++            [start]
++            Button {
++              action-name: "win.today";
++
++              styles [
++                "luma-calendar-today",
++              ]
++
++              child: Adw.ButtonContent {
++                label: _("_Today");
++                use-underline: true;
++                icon-name: "calendar-today-symbolic";
++                can-shrink: true;
++                tooltip-text: _("Go to Today");
++              };
++            }
++
++            [start]
++            Button previous_date_button {
++              width-request: 30;
++              height-request: 30;
++              icon-name: bind $get_previous_date_icon(views_stack.visible-child) as <string>;
++              tooltip-text: bind $get_previous_date_tooltip(views_stack.visible-child-name) as <string>;
++              action-name: "win.previous-date";
++
++              styles [
++                "luma-calendar-nav-control",
++              ]
++            }
++
++            [start]
++            Button next_date_button {
++              width-request: 30;
++              height-request: 30;
++              icon-name: bind $get_next_date_icon(views_stack.visible-child) as <string>;
++              tooltip-text: bind $get_next_date_tooltip(views_stack.visible-child-name) as <string>;
++              action-name: "win.next-date";
++
++              styles [
++                "luma-calendar-nav-control",
++              ]
++            }
++
+             [start]
+             $GcalSyncIndicator sync_indicator {}
+ 
+             title-widget: $GcalCalendarNavigationButton navigation_button_title {
+               active-date: bind template.active-date no-sync-create bidirectional;
+               active: bind split_view.show-sidebar inverted;
++
++              styles [
++                "luma-calendar-navigation",
++              ]
+             };
+ 
+             [end]
+             MenuButton menu_button {
++              width-request: 30;
++              height-request: 30;
+               icon-name: "open-menu-symbolic";
+               popover: win_menu;
+               tooltip-text: _("Main Menu");
+               primary: true;
++
++              styles [
++                "luma-calendar-toolbar-control",
++              ]
++            }
++
++            [end]
++            Button {
++              width-request: 30;
++              height-request: 30;
++              icon-name: "x-office-calendar-symbolic";
++              tooltip-text: _("Manage Calendars");
++              action-name: "win.show-calendars";
++
++              styles [
++                "luma-calendar-toolbar-control",
++              ]
++            }
++
++            [end]
++            Button {
++              width-request: 30;
++              height-request: 30;
++              icon-name: "list-add-symbolic";
++              action-name: "win.new-event";
++              tooltip-text: C_("tooltip", "Add Event");
++
++              styles [
++                "luma-calendar-toolbar-control",
++              ]
+             }
+ 
+             [end]
+             $GcalSearchButton search_button {
++              width-request: 30;
++              height-request: 30;
+               tooltip-text: C_("tooltip", "Search");
++
++              styles [
++                "luma-calendar-toolbar-control",
++                "luma-calendar-search-control",
++              ]
++            }
++
++            [end]
++            MenuButton view_menu_button {
++              menu-model: view_menu;
++              tooltip-text: _("Calendar View");
++
++              styles [
++                "luma-calendar-view-menu",
++              ]
++
++              child: Box {
++                spacing: 6;
++
++                Label {
++                  label: bind $content_title(template.active-view) as <string>;
++                }
++
++                Image {
++                  icon-name: "pan-down-symbolic";
++                }
++              };
+             }
+           }
+ 
+@@ -262,60 +449,10 @@ template $GcalWindow: Adw.ApplicationWindow {
+             }
+           };
+ 
+-          [bottom]
+-          ActionBar {
+-            [start]
+-            Button previous_date_button {
+-              icon-name: bind $get_previous_date_icon(views_stack.visible-child) as <string>;
+-              tooltip-text: bind $get_previous_date_tooltip(views_stack.visible-child-name) as <string>;
+-              action-name: "win.previous-date";
+-            }
+-
+-            [start]
+-            Button next_date_button {
+-              icon-name: bind $get_next_date_icon(views_stack.visible-child) as <string>;
+-              tooltip-text: bind $get_next_date_tooltip(views_stack.visible-child-name) as <string>;
+-              action-name: "win.next-date";
+-            }
+-
+-            [start]
+-            Button {
+-              action-name: "win.today";
+-
+-              child: Adw.ButtonContent {
+-                label: _("_Today");
+-                use-underline: true;
+-                icon-name: "calendar-today-symbolic";
+-                can-shrink: true;
+-                tooltip-text: _("Go to Today");
+-              };
+-            }
+-
+-            [center]
+-            Adw.Bin view_switcher_bin {
+-              child: Adw.ViewSwitcher view_switcher_wide {
+-                stack: views_stack;
+-                policy: wide;
+-              };
+-            }
+-
+-            [end]
+-            Button {
+-              icon-name: "list-add-symbolic";
+-              action-name: "win.new-event";
+-              tooltip-text: C_("tooltip", "Add Event");
+-            }
+-
+-            [end]
+-            Button {
+-              icon-name: "x-office-calendar-symbolic";
+-              tooltip-text: _("Manage Calendars");
+-              action-name: "win.show-calendars";
+-            }
+-          }
+         };
+       };
+     }
++    };
+   }
+ 
+   notify::current-breakpoint => $on_breakpoint_changed(template) not-swapped;
+@@ -325,7 +462,7 @@ template $GcalWindow: Adw.ApplicationWindow {
+ 
+     setters {
+       split_view.collapsed: true;
+-      view_switcher_bin.child: view_switcher_narrow;
++      split_view.show-sidebar: false;
+     }
+   }
+ 
+@@ -334,7 +471,7 @@ template $GcalWindow: Adw.ApplicationWindow {
+ 
+     setters {
+       split_view.collapsed: true;
+-      view_switcher_bin.visible: false;
++      view_menu_button.visible: false;
+       previous_date_button.visible: false;
+       next_date_button.visible: false;
+       split_view.show-sidebar: false;
+@@ -348,15 +485,6 @@ template $GcalWindow: Adw.ApplicationWindow {
+   }
+ }
+ 
+-Adw.InlineViewSwitcher view_switcher_narrow {
+-  styles [
+-    "flat",
+-  ]
+-
+-  stack: views_stack;
+-  display-mode: icons;
+-}
+-
+ $GcalQuickAddPopover quick_add_popover {
+   edit-event => $edit_event(template) not-swapped;
+   closed => $close_new_event_widget(template) not-swapped;
+diff --git a/src/gui/views/gcal-month-view.blp b/src/gui/views/gcal-month-view.blp
+index 9be70d6..e23c13e 100644
+--- a/src/gui/views/gcal-month-view.blp
++++ b/src/gui/views/gcal-month-view.blp
+@@ -52,42 +52,63 @@ template $GcalMonthView: Widget {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+ 
+     Label label_1 {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+ 
+     Label label_2 {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+ 
+     Label label_3 {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+ 
+     Label label_4 {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+ 
+     Label label_5 {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+ 
+     Label label_6 {
+       margin-start: 12;
+       hexpand: true;
+       xalign: 0.0;
++      styles [
++        "weekday-label",
++      ]
+     }
+   }
+ }
+diff --git a/src/gui/views/gcal-week-grid.c b/src/gui/views/gcal-week-grid.c
+index 9cc5ea7..bb7b4dc 100644
+--- a/src/gui/views/gcal-week-grid.c
++++ b/src/gui/views/gcal-week-grid.c
+@@ -863,6 +863,8 @@ gcal_week_grid_init (GcalWeekGrid *self)
+ {
+   GtkDropTarget *drop_target;
+   GtkGesture *click_gesture;
++  GtkWidget *now_dot;
++  GtkWidget *now_line;
+ 
+   self->selection.start = -1;
+   self->selection.end = -1;
+@@ -877,9 +879,21 @@ gcal_week_grid_init (GcalWeekGrid *self)
+ 
+   self->events = gcal_range_tree_new_with_free_func (child_data_free);
+ 
+-  self->now_strip = adw_bin_new ();
++  self->now_strip = gtk_overlay_new ();
+   gtk_widget_add_css_class (self->now_strip, "now-strip");
+   gtk_widget_set_can_target (self->now_strip, FALSE);
++
++  now_line = adw_bin_new ();
++  gtk_widget_add_css_class (now_line, "now-line");
++  gtk_widget_set_valign (now_line, GTK_ALIGN_CENTER);
++  gtk_overlay_set_child (GTK_OVERLAY (self->now_strip), now_line);
++
++  now_dot = adw_bin_new ();
++  gtk_widget_add_css_class (now_dot, "now-dot");
++  gtk_widget_set_halign (now_dot, GTK_ALIGN_START);
++  gtk_widget_set_valign (now_dot, GTK_ALIGN_CENTER);
++  gtk_overlay_add_overlay (GTK_OVERLAY (self->now_strip), now_dot);
++
+   gtk_widget_set_parent (self->now_strip, GTK_WIDGET (self));
+ 
+   click_gesture = gtk_gesture_click_new ();
+@@ -1004,4 +1018,3 @@ gcal_week_grid_set_date (GcalWeekGrid *self,
+   gtk_widget_queue_resize (GTK_WIDGET (self));
+   gtk_widget_queue_draw (GTK_WIDGET (self));
+ }
+-
+diff --git a/src/gui/views/gcal-week-header.c b/src/gui/views/gcal-week-header.c
+index fa943d0..76911bf 100644
+--- a/src/gui/views/gcal-week-header.c
++++ b/src/gui/views/gcal-week-header.c
+@@ -1574,6 +1574,7 @@ gcal_week_header_init (GcalWeekHeader *self)
+       gtk_widget_set_hexpand (header->weekday_name_label, TRUE);
+       gtk_widget_add_css_class (header->weekday_name_label, "heading");
+       gtk_widget_add_css_class (header->weekday_name_label, "dimmed");
++      gtk_widget_add_css_class (header->weekday_name_label, "weekday-name");
+       gtk_label_set_xalign (GTK_LABEL (header->weekday_name_label), 0.0);
+       gtk_box_append (GTK_BOX (box), header->weekday_name_label);
+ 
+@@ -1581,6 +1582,7 @@ gcal_week_header_init (GcalWeekHeader *self)
+       gtk_widget_set_hexpand (header->day_number_label, TRUE);
+       gtk_widget_add_css_class (header->day_number_label, "title-2");
+       gtk_widget_add_css_class (header->day_number_label, "dimmed");
++      gtk_widget_add_css_class (header->day_number_label, "day-number");
+       gtk_label_set_xalign (GTK_LABEL (header->day_number_label), 0.0);
+       gtk_box_append (GTK_BOX (box), header->day_number_label);
+ 
+diff --git a/src/gui/views/gcal-week-view-common.c b/src/gui/views/gcal-week-view-common.c
+index 8fe3e68..9ae27b9 100644
+--- a/src/gui/views/gcal-week-view-common.c
++++ b/src/gui/views/gcal-week-view-common.c
+@@ -35,10 +35,11 @@ gcal_week_view_common_snapshot_hour_lines (GtkWidget      *widget,
+ 
+   ltr = gtk_widget_get_direction (widget) != GTK_TEXT_DIR_RTL;
+ 
+-  gtk_snapshot_save (snapshot);
+-  gtk_widget_get_color (widget, &color);
+-  color.alpha = 0.15;
+-  gtk_snapshot_restore (snapshot);
++  /* Luma's calendar grid uses a deliberately faint neutral hairline. Keep
++   * this in the renderer so every hour/column line has one exact value and
++   * does not inherit an arbitrary foreground color from surrounding UI. */
++  gdk_rgba_parse (&color, "#111827");
++  color.alpha = 0.055;
+ 
+   column_width = width / (float) N_WEEKDAYS;
+ 
+diff --git a/src/theme/events.css b/src/theme/events.css
+index 0878b7a..d5e3671 100644
+--- a/src/theme/events.css
++++ b/src/theme/events.css
+@@ -3,10 +3,11 @@
+ }
+ 
+ event {
+-  background-color: color-mix(in srgb, var(--event-bg-color) 25%, var(--view-bg-color));
++  background-color: var(--event-bg-color);
+   border-radius: var(--event-border-radius);
+-  color: var(--view-fg-color);
+-  font-size: 0.9rem;
++  color: #ffffff;
++  font-size: 11px;
++  font-weight: 600;
+   margin: 1px;
+   outline: 0 solid transparent;
+   outline-offset: 5px;
+@@ -34,12 +35,19 @@ event.slanted-start:dir(rtl) {
+ }
+ 
+ event widget.content {
+-  margin: 4px;
++  margin: 3px 7px;
+ }
+ 
+ event widget.edge {
+-  background-color: var(--event-bg-color);
+-  min-width: 6px;
++  background-color: transparent;
++  min-width: 0;
++}
++
++event label.dimmed {
++  color: currentColor;
++  font-size: 10px;
++  font-weight: 500;
++  opacity: 0.9;
+ }
+ 
+ event.slanted widget.edge,
+diff --git a/src/theme/style.css b/src/theme/style.css
+index f38a264..fbe307c 100644
+--- a/src/theme/style.css
++++ b/src/theme/style.css
+@@ -508,3 +508,314 @@ syncindicator {
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    padding: 6px 9px;
+ }
++
++/* Project Luma Calendar composition — light mode v1.
++ * The shared libadwaita palette owns system surfaces and inks. Calendar owns
++ * only its semantic title/header controls, grids, events and time marker. */
++@media (prefers-color-scheme: light) {
++  .luma-calendar-window,
++  .luma-calendar-window .view {
++    background-color: #ffffff;
++    color: #1f2937;
++  }
++
++  headerbar.luma-calendar-titlebar {
++    min-height: 34px;
++    background-color: #f2f3f5;
++    background-image: linear-gradient(to bottom, #f2f3f5, #e8eaee);
++    color: #374151;
++    border: none;
++    box-shadow: inset 0 -1px RGB(44 49 56 / 11%);
++  }
++
++  headerbar.luma-calendar-titlebar > windowhandle > box {
++    padding-top: 0;
++    padding-bottom: 1px;
++  }
++
++  .luma-calendar-title {
++    color: #374151;
++    font-size: 12.5px;
++    font-weight: 600;
++  }
++
++  headerbar.luma-calendar-headerbar {
++    min-height: 38px;
++    padding: 3px 0;
++    background-color: var(--headerbar-bg-color);
++    background-image: none;
++    color: var(--headerbar-fg-color);
++    border: none;
++    border-bottom: 1px solid var(--headerbar-shade-color);
++    box-shadow: none;
++  }
++
++  headerbar.luma-calendar-headerbar > windowhandle > box {
++    padding-top: 3px;
++    padding-bottom: 3px;
++  }
++
++  toolbarview.luma-calendar-sidebar,
++  .luma-calendar-sidebar-surface {
++    background-color: @sidebar_bg_color;
++    color: @sidebar_fg_color;
++  }
++
++  toolbarview.luma-calendar-sidebar {
++    border-right: 1px solid var(--headerbar-shade-color);
++  }
++
++  toolbarview.luma-calendar-sidebar:dir(rtl) {
++    border-right: none;
++    border-left: 1px solid var(--headerbar-shade-color);
++  }
++
++  .luma-calendar-sidebar datechooser {
++    padding: 10px;
++  }
++
++  .luma-calendar-sidebar .calendar-list {
++    padding-top: 4px;
++    background-color: transparent;
++  }
++
++  .luma-calendar-sidebar-separator {
++    min-height: 1px;
++    background-color: var(--headerbar-shade-color);
++  }
++
++  .luma-calendar-toolbar-control,
++  .luma-calendar-nav-control,
++  .luma-calendar-today {
++    color: var(--headerbar-fg-color);
++    min-height: 30px;
++    min-width: 30px;
++    padding: 0;
++    border-radius: 8px;
++    background-color: var(--view-bg-color);
++    background-image: none;
++    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++  }
++
++  .luma-calendar-toolbar-control image {
++    -gtk-icon-size: 14px;
++  }
++
++  .luma-calendar-nav-control image {
++    -gtk-icon-size: 14px;
++  }
++
++  .luma-calendar-search-control button {
++    min-width: 30px;
++    min-height: 30px;
++    padding: 0;
++    border-radius: 8px;
++    color: var(--headerbar-fg-color);
++    background-color: var(--view-bg-color);
++    background-image: none;
++    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++  }
++
++  .luma-calendar-search-control button:hover {
++    background-color: #eceef1;
++  }
++
++  .luma-calendar-search-control button image {
++    -gtk-icon-size: 14px;
++  }
++
++  .luma-calendar-sidebar-toggle {
++    min-width: 30px;
++    min-height: 30px;
++  }
++
++  .luma-calendar-toolbar-control:hover,
++  .luma-calendar-nav-control:hover,
++  .luma-calendar-today:hover {
++    background-color: #eceef1;
++  }
++
++  .luma-calendar-today {
++    padding: 0 10px;
++    font-size: 13px;
++    font-weight: 600;
++  }
++
++  .luma-calendar-today image {
++    -gtk-icon-size: 14px;
++  }
++
++  .luma-calendar-navigation .luma-calendar-month-title {
++    color: #1f2937;
++    font-size: 20px;
++    font-weight: 700;
++  }
++
++  .luma-calendar-navigation .luma-calendar-year-title {
++    color: #9ca3af;
++    font-size: 20px;
++    font-weight: 600;
++  }
++
++  .luma-calendar-navigation menubutton > button {
++    min-height: 32px;
++    padding: 0 10px;
++    border-radius: 8px;
++    background-color: transparent;
++    background-image: none;
++    box-shadow: none;
++  }
++
++  .luma-calendar-navigation menubutton > button:hover {
++    background-color: #eceef1;
++  }
++
++  .luma-calendar-view-menu > button {
++    min-height: 30px;
++    padding: 0 9px;
++    border-radius: 8px;
++    color: #374151;
++    font-size: 12px;
++    font-weight: 600;
++    background-color: var(--view-bg-color);
++    background-image: none;
++    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++  }
++
++  .luma-calendar-view-menu > button:hover,
++  .luma-calendar-view-menu > button:checked {
++    background-color: #eceef1;
++  }
++
++  .luma-calendar-view-menu image {
++    -gtk-icon-size: 12px;
++  }
++
++  calendar-view {
++    background-color: #ffffff;
++    color: #1f2937;
++    font-size: 12.5px;
++  }
++
++  calendar-view.month-view {
++    box-shadow: none;
++  }
++
++  calendar-view.month-view > box.month-header {
++    padding-top: 8px;
++    padding-bottom: 8px;
++    background-color: #ffffff;
++    box-shadow: inset 0 -1px RGB(17 24 39 / 5.5%);
++  }
++
++  calendar-view.month-view > box.month-header label.weekday-label {
++    color: #6b7280;
++    font-size: 11px;
++    font-weight: 600;
++  }
++
++  monthcell {
++    --bg-color: #ffffff;
++    --separator-color: RGB(17 24 39 / 5.5%);
++    background-color: #ffffff;
++    box-shadow:
++      0 -1px RGB(17 24 39 / 5.5%),
++      var(--offset) 0 RGB(17 24 39 / 5.5%);
++    transition: background-color 120ms, var(--focus-ring-transition);
++  }
++
++  monthcell:hover {
++    background-color: #eceef1;
++  }
++
++  monthcell .day-label {
++    min-width: 23px;
++    min-height: 23px;
++    padding: 0;
++    border-radius: 999px;
++    color: #374151;
++    font-size: 12.5px;
++    font-weight: 600;
++  }
++
++  monthcell label.first-day {
++    color: #374151;
++    background-color: transparent;
++  }
++
++  monthcell.today label.day-label {
++    color: #ffffff;
++    background-color: #4878b8;
++  }
++
++  monthcell:selected {
++    background-color: RGB(72 120 184 / 12%);
++  }
++
++  monthcell:hover:selected {
++    background-color: RGB(72 120 184 / 16%);
++  }
++
++  monthcell .overflow {
++    color: #6b7280;
++    font-size: 11px;
++    font-weight: 500;
++    border-radius: 5px;
++  }
++
++  .week-header {
++    background-color: #ffffff;
++    box-shadow: inset 0 -1px RGB(17 24 39 / 5.5%);
++  }
++
++  .week-header label.weekday-name {
++    color: #6b7280;
++    font-size: 11px;
++    font-weight: 600;
++  }
++
++  .week-header label.day-number {
++    color: #374151;
++    font-size: 12.5px;
++    font-weight: 600;
++  }
++
++  .week-header label.accent {
++    color: #4878b8;
++  }
++
++  .week-main-content {
++    background-color: #ffffff;
++    border-color: RGB(17 24 39 / 5.5%);
++  }
++
++  weekhourbar {
++    min-width: 54px;
++    color: #9ca3af;
++  }
++
++  weekhourbar > label {
++    color: #9ca3af;
++    font-size: 10.5px;
++    font-weight: 400;
++    padding: 4px 8px;
++  }
++
++  weekgrid > widget.now-strip {
++    min-height: 8px;
++    margin: 0;
++    background-color: transparent;
++  }
++
++  weekgrid > widget.now-strip > widget.now-line {
++    min-height: 2px;
++    background-color: #d9544a;
++  }
++
++  weekgrid > widget.now-strip > widget.now-dot {
++    min-width: 8px;
++    min-height: 8px;
++    border-radius: 999px;
++    background-color: #d9544a;
++  }
++}

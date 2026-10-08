@@ -1,0 +1,17 @@
+{
+  "_doc": "v71 .rlback2 with late .phrow override: measured Stage phone Back/title x16,y48,w161.33,h44; icon x20,w20; text x44,w129.33. Lead region28,text start0,end4. Original standalone rlback2 padding8/14 is overridden by phrow padding4.",
+  "lumaui": {
+    "title_island": {
+      "creative": {
+        "height": 44,
+        "lead": 28,
+        "text_start": 0,
+        "text_end": 4,
+        "left": 16,
+        "top": 48,
+        "title_size": 14,
+        "title_weight": 600
+      }
+    }
+  }
+}

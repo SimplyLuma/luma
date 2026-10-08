@@ -1,0 +1,39 @@
+/* Monitor roles consume App Kit colors/chrome; no global toolkit overrides. */
+.luma-monitor .monitor-table { background: transparent; font-size: 13px; font-weight: 550; }
+.luma-monitor .monitor-table header { min-height: 26px; }
+.luma-monitor .monitor-table row { min-height: 29px; }
+.luma-monitor .monitor-table row:nth-child(even) { background: alpha(@luma_ink, .03); }
+.luma-monitor .monitor-table row:selected { background: @luma_selected; }
+.luma-monitor .monitor-table cell { padding: 0 8px; }
+.luma-monitor .monitor-table label { font-feature-settings: 'tnum'; }
+.luma-monitor .monitor-footer { border-top: 1px solid @luma_border; padding: 10px 12px; }
+.luma-monitor .monitor-graph { background: @luma_fill; border: 1px solid @luma_border; border-radius: 6px; }
+.luma-monitor .monitor-figure { min-height: 58px; border-left: 1px solid @luma_border; padding: 0 16px; }
+.luma-monitor .monitor-figure-label { color: @luma_muted; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.luma-monitor .monitor-figure-value { font-size: 19px; font-weight: 650; font-feature-settings: 'tnum'; }
+.luma-monitor .monitor-cores { border-top: 1px solid @luma_border; padding-top: 8px; }
+.luma-monitor .monitor-core-number { font-size: 9px; color: @luma_muted; }
+.luma-monitor .monitor-cores progressbar trough { min-height: 6px; background: @luma_border; }
+.luma-monitor .monitor-cores progressbar progress { min-height: 6px; background: @luma_ink; }
+.luma-monitor.compact .monitor-figure { padding: 0 8px; }
+.luma-monitor.compact .monitor-figure-value { font-size: 15px; }
+
+.luma-monitor .monitor-table header button { min-height: 26px; padding: 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.88px; }
+
+/* This machine: one row per capability, same weights and tints as the table. */
+.luma-monitor .monitor-capability { padding: 11px 14px; }
+.luma-monitor .monitor-capabilities > box:nth-child(even) { background: alpha(@luma_ink, .03); }
+.luma-monitor .monitor-capability-title { font-size: 13px; font-weight: 650; }
+.luma-monitor .monitor-capability-promise { font-size: 12px; color: @luma_muted; }
+.luma-monitor .monitor-capability-note { font-size: 12px; padding-top: 2px; }
+.luma-monitor .monitor-capability-broken { color: @luma_destructive; }
+.luma-monitor .monitor-capability-unproven { color: @luma_amber; }
+.luma-monitor .monitor-state { font-size: 11px; font-weight: 700; letter-spacing: 0.88px; min-width: 132px; }
+.luma-monitor .monitor-state-working { color: @luma_green; }
+.luma-monitor .monitor-state-broken { color: @luma_destructive; }
+.luma-monitor .monitor-state-unproven { color: @luma_amber; }
+/* Nothing is wrong with a capability this machine does not have, so it is the
+   quietest thing on screen rather than another colour competing for attention. */
+.luma-monitor .monitor-state-absent { color: @luma_muted; font-weight: 550; letter-spacing: 0; }
+.luma-monitor.compact .monitor-capability { padding: 10px 10px; }
+.luma-monitor.compact .monitor-state { min-width: 0; }

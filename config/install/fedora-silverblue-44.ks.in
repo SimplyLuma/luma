@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+# Project Luma physical x86_64 installation template.
+#
+# Render only into a private, one-time installer initramfs. The password hash,
+# disk passphrase, and SSH key placeholders must never be committed with real
+# values.
+
+#version=F44
+graphical
+lang en_US.UTF-8
+keyboard --vckeymap=us --xlayouts='us'
+timezone America/Chicago --utc
+
+# Installation is deliberately offline.  The known-good Wi-Fi profile is
+# carried inside the one-time initramfs and copied into the installed system
+# below; Anaconda must never wait for networking to fetch its own stage 2.
+network --device=link --no-activate --hostname=@@HOST_NAME@@
+
+rootpw --lock
+user --name=@@USER_NAME@@ --groups=wheel --password=@@PASSWORD_HASH@@ --iscrypted
+sshkey --username=@@USER_NAME@@ "@@SSH_PUBLIC_KEY@@"
+services --enabled=sshd
+firewall --enabled --service=ssh
+selinux --enforcing
+firstboot --disable
+
+ignoredisk --only-use=@@TARGET_DISK@@
+zerombr
+clearpart --all --initlabel --drives=@@TARGET_DISK@@
+autopart --type=btrfs --encrypted --luks-version=luks2 --pbkdf=argon2id --passphrase="@@LUKS_PASSPHRASE@@"
+bootloader --location=boot
+
+# This is the exact payload declaration shipped by Fedora's own Silverblue 44
+# interactive installer. The official install.img carries the OSTree repo.
+ostreesetup --nogpg --osname=fedora --remote=fedora --url=file:///ostree/repo --ref=fedora/44/x86_64/silverblue
+
+reboot
+
+%post --nochroot --erroronfail
+# Preserve the already-proven system Wi-Fi profile for the first native boot.
+# Dracut retains the one-time initramfs below /run/initramfs after pivoting to
+# the embedded installer image.  Keep a fallback for installer environments
+# that retain the keyfile in their live /etc instead.
+target_root=/mnt/sysroot
+[ -d /mnt/sysimage/etc ] && target_root=/mnt/sysimage
+for source_profile in \
+  /run/initramfs/etc/NetworkManager/system-connections/luma-installer.nmconnection \
+  /etc/NetworkManager/system-connections/luma-installer.nmconnection; do
+  if [ -f "$source_profile" ]; then
+    install -D -m 0600 "$source_profile" \
+      "$target_root/etc/NetworkManager/system-connections/HiveCoworking.nmconnection"
+    break
+  fi
+done
+%end
+
+%post --erroronfail
+install -d -m 0755 /etc/luma
+printf '%s\n' 'fedora/44/x86_64/silverblue' > /etc/luma/installed-base-ref
+systemctl enable sshd.service
+%end

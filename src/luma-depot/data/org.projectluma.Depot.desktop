@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Depot
+Comment=Discover, install and update apps, and keep Luma up to date
+Exec=luma-depot %U
+Icon=org.projectluma.Depot
+Categories=System;PackageManager;
+Keywords=Apps;Applications;Software;Store;Install;Uninstall;Update;Updates;Upgrade;Firmware;
+MimeType=x-scheme-handler/luma-depot;x-scheme-handler/appstream;
+Terminal=false
+StartupNotify=true
+DBusActivatable=true
+Actions=updates;
+X-Purism-FormFactor=Workstation;Mobile;
+
+[Desktop Action updates]
+Name=Software Update
+Exec=luma-depot --view updates

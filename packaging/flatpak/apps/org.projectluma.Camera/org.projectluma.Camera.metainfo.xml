@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Camera</id>
+  <name>Camera</name>
+  <summary>Capture photos and videos</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Capture photos and videos, choose your camera, and adjust capture settings with Luma’s responsive camera interface.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Camera.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Camera controls</caption>
+      <image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Camera/e43ddbf5a430a32d6795ceaf8a464da64db4550a9a16ab9d04e69d2f119cb4e7.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

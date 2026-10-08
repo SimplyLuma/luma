@@ -1,0 +1,12 @@
+diff --git a/src/gui/gcal-window.blp b/src/gui/gcal-window.blp
+index 6f5213c..87c295f 100644
+--- a/src/gui/gcal-window.blp
++++ b/src/gui/gcal-window.blp
+@@ -154,6 +154,7 @@ template $GcalWindow: Adw.ApplicationWindow {
+ 
+         styles [
+           "luma-calendar-title",
++          "luma-title-label",
+         ]
+       }
+     }

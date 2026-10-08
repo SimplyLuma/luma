@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 15:10:00 -0400
+Subject: [PATCH] luma: the unread badge takes the deeper Ember
+
+White on the Ember the badge shipped with, #f26a1b, measures 3.06:1, below
+the 4.5:1 WCAG AA asks for text at 9.5px. The owner chose the deeper Ember
+(2026-09-17): #c24a0b, which measures 4.91:1 with white and still reads as
+Ember beside the rest of the system.
+
+Only the one fill constant changes. Size, placement, the cap, the dot, the
+ring and the pop are the same, and the ring still takes the shelf's own
+surface colour. tests/gnome-shell/dock-badges.js now computes the contrast
+of BADGE_INK on BADGE_FILL and fails below 4.5:1, so the next change to
+either colour has to keep the count legible.
+
+Generated against the Shell .103 tree with 0145–0147 applied, for release
+.106.
+---
+diff --git a/js/ui/lumaDockBadgeModel.js b/js/ui/lumaDockBadgeModel.js
+index 3e4859f..9d9f487 100644
+--- a/js/ui/lumaDockBadgeModel.js
++++ b/js/ui/lumaDockBadgeModel.js
+@@ -4,10 +4,11 @@
+ // No GI imports, so the rules can be checked with plain gjs at build time
+ // (tests/gnome-shell/dock-badges.js). lumaDockBadges.js draws them.
+ 
+-// The badge's fill and ink. Ember was chosen by eye from three styles; white on
+-// #f26a1b measures about 3.1:1. If the owner darkens it for contrast, this is
+-// the one place to change.
+-export const BADGE_FILL = '#f26a1b';
++// The badge's fill and ink, in one place. The owner chose Ember by eye from
++// three styles, then took the deeper Ember (2026-09-17) so the count meets
++// WCAG AA: white on #c24a0b measures 4.91:1, where the original #f26a1b
++// measured 3.06:1 and failed at 9.5px.
++export const BADGE_FILL = '#c24a0b';
+ export const BADGE_INK = '#ffffff';
+ 
+ // Interim product defaults, each one line to flip.

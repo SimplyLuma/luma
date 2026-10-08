@@ -1,0 +1,4 @@
+#!/usr/bin/python3
+from luma_relay.settings import main
+
+raise SystemExit(main())

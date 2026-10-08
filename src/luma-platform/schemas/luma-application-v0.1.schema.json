@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectluma.org/schemas/application/v0.1",
+  "title": "Luma application contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "application", "platform", "responsive", "conformance"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version", "entrypoint"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+){2,}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "version": { "type": "string", "minLength": 1 },
+        "entrypoint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ui_contract", "semantics_contract"],
+      "properties": {
+        "ui_contract": { "const": "1" },
+        "semantics_contract": { "const": "1" }
+      }
+    },
+    "responsive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adaptive", "test_widths", "input_modes", "presentation_modes"],
+      "properties": {
+        "adaptive": { "const": true },
+        "test_widths": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 320, "maximum": 3840 }
+        },
+        "input_modes": {
+          "type": "array",
+          "contains": { "const": "touch" },
+          "items": { "enum": ["pointer", "touch", "keyboard", "pen"] }
+        },
+        "presentation_modes": {
+          "type": "array",
+          "contains": { "const": "fullscreen-mobile" },
+          "items": { "enum": ["windowed", "fullscreen-mobile"] }
+        }
+      }
+    },
+    "conformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accessibility", "keyboard", "semantics", "reduced_motion"],
+      "properties": {
+        "accessibility": { "type": "boolean" },
+        "keyboard": { "type": "boolean" },
+        "semantics": { "type": "boolean" },
+        "reduced_motion": { "type": "boolean" }
+      }
+    }
+  }
+}

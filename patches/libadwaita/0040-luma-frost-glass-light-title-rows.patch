@@ -1,0 +1,119 @@
+From: Project Luma
+Subject: [PATCH] theme: frost and glass title rows are light, with dark ink
+
+Owner, 2026-09-18: frost and glass had turned into dark mode. 0038 gave their
+title rows a smoked veil with white ink, and the kit tokens smoked every
+window surface the same way, so a Frost or Glass window read as Dark. Frost
+and glass are light, see-through panels over the wallpaper, as the thumbnails
+in Settings > Appearance show.
+
+The title row keeps a veil, because a title drawn straight on the see-through
+frame measured 1.54:1 on glass over a dark wallpaper, but the veil is a light
+one: rgba(251,251,250,.92) on frost and rgba(246,244,240,.88) on glass, with
+the light family's dark ink. Composited over black, the worst case, a title
+measures 10.8:1 on frost and 8.8:1 on glass, so the white ink and its drop
+shadow are not needed and are removed. The checked-control fills on the title
+row take the frost and glass state slate (#56667c with white, 3:1 or better
+from the veil). The tiled-window stroke from 0038 is unchanged.
+
+Every Luma title row is drawn on the window frame, which on glass is
+see-through at .31; there Settings' title measured 2.8:1 over the default blue
+wallpaper. On frost and glass the frame now carries the title-row veil
+(@luma_chrome) as a 42px band behind the title row, the lighter band the
+thumbnails show. It is drawn by the window itself, so kit windows, native
+windows and Filer all get it.
+
+Dimmed text (row subtitles, captions, .dim-label) moves from the stock 55%
+of the ink to 78%, in every mode: 55% measured 3.4:1 for the Reduce
+Transparency subtitle, and 78% holds 4.5:1 on every Luma surface, a glass
+island over black included (4.52:1). High
+contrast keeps 90%.
+---
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 255da36..e3b9581 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -667,3 +667,83 @@ headerbar.luma-command-host {
+     margin: 0 4px;
+   }
+ }
++
++// Frost and glass title rows are light, like the panels under them and the
++// thumbnails in Settings > Appearance: a denser light veil than the window
++// frame, carrying the light family's dark ink. The veil is what keeps a
++// title at 4.5:1 or better over any wallpaper, black included (glass 8.8:1,
++// frost 10.8:1 for the title; 4.5:1 for the quietest text), so neither the
++// white ink nor its shadow is needed. This replaces the smoked veil of 0038
++// and the smoked-header control fills of 0039; the tiled-window stroke stays.
++window.csd.luma-treatment-frost {
++  --headerbar-bg-color: rgba(251, 251, 250, 0.92);
++  --headerbar-fg-color: #283038;
++}
++
++window.csd.luma-treatment-glass {
++  --headerbar-bg-color: rgba(246, 244, 240, 0.88);
++  --headerbar-fg-color: #2c343a;
++}
++
++window.csd.luma-treatment-frost headerbar,
++window.csd.luma-treatment-glass headerbar {
++  --luma-state: #56667c;
++  --luma-state-ink: #ffffff;
++  --luma-knob: #ffffff;
++  --luma-knob-ring: #56667c;
++}
++
++window.csd.luma-treatment-frost windowtitle .title,
++window.csd.luma-treatment-glass windowtitle .title,
++window.csd.luma-treatment-frost headerbar .luma-identity-button > button,
++window.csd.luma-treatment-glass headerbar .luma-identity-button > button {
++  text-shadow: none;
++}
++
++window.csd.luma-treatment-frost headerbar windowcontrols button > image,
++window.csd.luma-treatment-glass headerbar windowcontrols button > image,
++window.csd.luma-treatment-frost headerbar .luma-identity-icon,
++window.csd.luma-treatment-glass headerbar .luma-identity-icon,
++window.csd.luma-treatment-frost headerbar .luma-identity-chevron,
++window.csd.luma-treatment-glass headerbar .luma-identity-chevron {
++  -gtk-icon-shadow: none;
++}
++
++@media (prefers-contrast: more) {
++  window.csd.luma-treatment-frost headerbar,
++  window.csd.luma-treatment-glass headerbar {
++    box-shadow: inset 0 -1px rgba(37, 46, 54, 0.30);
++  }
++}
++
++// Every Luma title row is drawn on the window frame (a kit window's top bar
++// and a native window's headerbar both leave it showing), and the glass frame
++// is see-through at .31: Settings' title measured 2.8:1 over the default blue
++// wallpaper and 1.5:1 over black. On frost and glass the frame carries the
++// title-row veil (@luma_chrome: .92 frost, .88 glass) behind the 42px title
++// row, the lighter band the Appearance thumbnails show, so a title holds
++// 4.5:1 or better over any wallpaper. Light and dark keep one continuous frame.
++window.luma-treatment-frost,
++window.luma-treatment-glass,
++window.luma-treatment-frost:backdrop,
++window.luma-treatment-glass:backdrop {
++  background-image: linear-gradient(to bottom, unquote("@luma_chrome"), unquote("@luma_chrome"));
++  background-size: 100% 42px;
++  background-position: top;
++  background-repeat: no-repeat;
++}
++
++// Dimmed text (row subtitles, captions, .dim-label) is the ink at
++// --dim-opacity. Stock 55% gives about 3.8:1 on paper and less on a frost or
++// glass island over a dark wallpaper; 78% holds 4.5:1 or better on every Luma
++// surface in all four modes (Settings > Appearance's Reduce Transparency
++// subtitle measured 3.4:1 before). High contrast keeps its own 90%.
++:root {
++  --dim-opacity: 78%;
++}
++
++@media (prefers-contrast: more) {
++  :root {
++    --dim-opacity: 90%;
++  }
++}

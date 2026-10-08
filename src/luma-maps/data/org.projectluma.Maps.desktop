@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Maps
+Exec=luma-maps
+Icon=org.projectluma.Maps
+Terminal=false
+Categories=Utility;

@@ -1,0 +1,222 @@
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 22:30:00 +0000
+Subject: [PATCH] emojier: Find letters with marks by short names
+
+"e acute" and "eacute" find LATIN SMALL LETTER E WITH ACUTE; "E acute" and
+"Eacute" the capital. Space moves between candidates in the picker, so the
+spaced form usually arrives without its space. The key function is kept
+between markers so %check can compile it with the test, which runs against
+the build's own unicode-names.dict.
+---
+diff --git a/ui/gtk3/emojier.vala b/ui/gtk3/emojier.vala
+index d899780..3d74159 100644
+--- a/ui/gtk3/emojier.vala
++++ b/ui/gtk3/emojier.vala
+@@ -812,6 +812,10 @@ public class IBusEmojier : Gtk.ApplicationWindow {
+     private static void update_name_to_unicodes_dict(IBus.UnicodeData data) {
+         unichar code = data.get_code();
+         string[] names = {data.get_name().down(), data.get_alias().down()};
++        // Luma: "e acute" and "eacute" find LATIN SMALL LETTER E WITH ACUTE.
++        foreach (unowned string key in
++                 IBusUnicodeLetterKeys.for_name(data.get_name()))
++            names += key;
+         foreach (unowned string name in names) {
+             if (name == "")
+                 continue;
+@@ -2829,3 +2833,43 @@ public class IBusEmojier : Gtk.ApplicationWindow {
+             make_unicode_name_dict(IBusEmojier.get_load_progress_object());
+     }
+ }
++
++
++// Luma: begin unicode-letter-keys
++/* Project Luma: extra search keys for letters with marks, so the picker
++ * finds "LATIN SMALL LETTER E WITH ACUTE" as "e acute" and as "eacute".
++ * Space moves between candidates in the picker, so "e acute" typed with
++ * Space arrives as "eacute", which is also the X keysym name. Capital
++ * letters keep their case ("E acute", "Eacute"), so a lowercase query
++ * finds the lowercase letter first.
++ */
++namespace IBusUnicodeLetterKeys {
++    public static string[] for_name(string name) {
++        string lower = name.down();
++        int letter_at = lower.index_of(" letter ");
++        if (letter_at < 0)
++            return {};
++        int with_at = lower.index_of(" with ", letter_at);
++        if (with_at <= letter_at + 8)
++            return {};
++        string letter = lower.substring(letter_at + 8,
++                                        with_at - letter_at - 8);
++        if (letter.index_of(" ") >= 0)
++            return {};
++        string[] marks = {};
++        foreach (unowned string word in
++                 lower.substring(with_at + 6).split(" ")) {
++            if (word != "" && word != "and")
++                marks += word;
++        }
++        if (marks.length == 0)
++            return {};
++        if (lower.substring(0, letter_at).has_suffix("capital")) {
++            letter = letter.length == 1 ? letter.up()
++                     : letter.substring(0, 1).up() + letter.substring(1);
++        }
++        return { letter + " " + string.joinv(" ", marks),
++                 letter + string.joinv("", marks) };
++    }
++}
++// Luma: end unicode-letter-keys
+diff --git a/ui/gtk3/test-unicode-letter-keys.vala b/ui/gtk3/test-unicode-letter-keys.vala
+new file mode 100644
+index 0000000..e96a83d
+--- /dev/null
++++ b/ui/gtk3/test-unicode-letter-keys.vala
+@@ -0,0 +1,147 @@
++/* vim:set et sts=4 sw=4:
++ *
++ * Project Luma: the symbol picker (Super+.) finds accented letters by name.
++ *
++ * %check builds this against the unicode-names.dict this build made, with
++ * IBusUnicodeLetterKeys taken from emojier.vala itself, and looks names up
++ * the way IBusEmojier.lookup_emojis_from_annotation() does: exact key
++ * first, then keys containing the text, then the same again lowercased.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ */
++
++static GLib.HashTable<string, string> name_index;
++
++static void add_key(string key, unichar code) {
++    if (key == "")
++        return;
++    string ch = code.to_string();
++    unowned string? have = name_index.lookup(key);
++    if (have == null)
++        name_index.insert(key, ch);
++    else if (have.index_of(ch) < 0)
++        name_index.insert(key, have + ch);
++}
++
++static bool has(GLib.GenericArray<string> hits, string ch) {
++    for (uint i = 0; i < hits.length; i++) {
++        if (hits[i] == ch)
++            return true;
++    }
++    return false;
++}
++
++static void append_chars(string chars, GLib.GenericArray<string> hits) {
++    int i = 0;
++    unichar c;
++    while (chars.get_next_char(ref i, out c)) {
++        string ch = c.to_string();
++        if (!has(hits, ch))
++            hits.add(ch);
++    }
++}
++
++static GLib.GenericArray<string> lookup_once(string annotation) {
++    var hits = new GLib.GenericArray<string>();
++    unowned string? exact = name_index.lookup(annotation);
++    if (exact != null)
++        append_chars(exact, hits);
++    if (annotation.length >= 3) {
++        var partial = new GLib.GenericArray<string>();
++        foreach (unowned string key in name_index.get_keys()) {
++            if (key.index_of(annotation) >= 0)
++                append_chars(name_index.lookup(key), partial);
++        }
++        partial.sort((a, b) => GLib.strcmp(a, b));
++        for (uint i = 0; i < partial.length; i++) {
++            if (!has(hits, partial[i]))
++                hits.add(partial[i]);
++        }
++    }
++    return hits;
++}
++
++static GLib.GenericArray<string> lookup(string annotation) {
++    var hits = lookup_once(annotation);
++    if (hits.length == 0)
++        hits = lookup_once(annotation.down());
++    return hits;
++}
++
++static int failures = 0;
++
++static void expect_first(string typed, string expected) {
++    var hits = lookup(typed);
++    string first = hits.length > 0 ? hits[0] : "(nothing)";
++    if (first == expected) {
++        print("ok: \"%s\" -> %s\n", typed, first);
++    } else {
++        print("FAIL: \"%s\" -> %s, expected %s first\n", typed, first, expected);
++        failures++;
++    }
++}
++
++static void expect_found(string typed, string expected) {
++    var hits = lookup(typed);
++    if (has(hits, expected)) {
++        print("ok: \"%s\" finds %s among %u\n", typed, expected, hits.length);
++    } else {
++        print("FAIL: \"%s\" does not find %s (%u results)\n",
++              typed, expected, hits.length);
++        failures++;
++    }
++}
++
++public static int main(string[] args) {
++    if (args.length != 2) {
++        stderr.printf("usage: %s unicode-names.dict\n", args[0]);
++        return 2;
++    }
++    // The dictionary deserializes IBusUnicodeData objects: register the type.
++    typeof(IBus.UnicodeData).class_ref();
++    name_index = new GLib.HashTable<string, string>(GLib.str_hash, GLib.str_equal);
++    GLib.SList<IBus.UnicodeData> list = IBus.UnicodeData.load(args[1], null);
++    uint count = 0;
++    foreach (unowned IBus.UnicodeData data in list) {
++        // As IBusEmojier.update_name_to_unicodes_dict() does.
++        string[] names = {data.get_name().down(), data.get_alias().down()};
++        foreach (unowned string key in
++                 IBusUnicodeLetterKeys.for_name(data.get_name()))
++            names += key;
++        foreach (unowned string name in names)
++            add_key(name, data.get_code());
++        count++;
++    }
++    // A dictionary that did not load finds nothing and proves nothing.
++    if (count < 30000) {
++        print("FAIL: %s has %u characters, expected more than 30000\n",
++              args[1], count);
++        return 1;
++    }
++    print("loaded %u characters from %s\n", count, args[1]);
++
++    // What people type (Space moves between candidates, so "e acute"
++    // typed with Space arrives as "eacute"; Shift+Space types a space).
++    expect_first("e acute", "é");
++    expect_first("eacute", "é");
++    expect_first("E acute", "É");
++    expect_first("Eacute", "É");
++    expect_first("n tilde", "ñ");
++    expect_first("ntilde", "ñ");
++    expect_first("c cedilla", "ç");
++    expect_first("u diaeresis", "ü");
++    expect_first("degree", "°");
++    // The full Unicode name still works.
++    expect_first("latin small letter e with acute", "é");
++    expect_found("e with acute", "é");
++
++    if (failures > 0) {
++        print("%d of 11 lookups failed\n", failures);
++        return 1;
++    }
++    print("all 11 lookups passed\n");
++    return 0;
++}

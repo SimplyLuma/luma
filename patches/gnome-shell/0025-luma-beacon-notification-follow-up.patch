@@ -1,0 +1,2080 @@
+diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+index 55ee76d..a37e37a 100644
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -1,6 +1,15 @@
+ <schemalist>
+   <schema id="org.gnome.shell" path="/org/gnome/shell/"
+           gettext-domain="@GETTEXT_PACKAGE@">
++    <key name="notification-corner" type="s">
++      <default>'bottom-right'</default>
++      <summary>Screen corner used for notification banners</summary>
++      <description>
++        Place notification banners in one of bottom-right, bottom-left,
++        top-right, or top-left. The desktop work area keeps banners clear of
++        Luma shell chrome such as the Shelf.
++      </description>
++    </key>
+     <key name="development-tools" type="b">
+       <default>true</default>
+       <summary>
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 8f0851c..f0fe2bb 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4087,3 +4087,159 @@ StScrollBar {
+     padding: 6px 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: #e6eaec;
++  background-color: rgba(38, 42, 48, 0.9);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  border: 1px solid rgba(255, 255, 255, 0.085);
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree"; }
++  .notification-banner .message-header {
++    spacing: 10px;
++    padding: 0; }
++    .notification-banner .message-header .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px; }
++    .notification-banner .message-header .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px; }
++    .notification-banner .message-header .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent; }
++      .notification-banner .message-header .message-close-button:hover, .notification-banner .message-header .message-close-button:focus {
++        opacity: 1; }
++  .notification-banner:hover .message-close-button, .notification-banner:focus .message-close-button {
++    opacity: 1; }
++  .notification-banner .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px; }
++    .notification-banner .message-box .message-content {
++      spacing: 2px; }
++    .notification-banner .message-box .message-title {
++      font-size: 13px;
++      font-weight: 650; }
++    .notification-banner .message-box .message-body {
++      font-size: 13px;
++      font-weight: 500; }
++  .notification-banner .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px; }
++  .notification-banner.luma-notification-urgent {
++    border-color: rgba(105, 115, 125, 0.6);
++    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
++    border-color: rgba(94, 166, 111, 0.6);
++    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
++    border-color: rgba(139, 121, 198, 0.6);
++    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
++    border-color: rgba(100, 141, 183, 0.6);
++    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
++    border-color: rgba(201, 139, 66, 0.6);
++    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
++    background-color: #5ea66f; }
++  .notification-banner.luma-notification-tone-calendar .message-source-icon {
++    background-color: #8b79c6; }
++  .notification-banner.luma-notification-tone-mail .message-source-icon, .notification-banner.luma-notification-tone-files .message-source-icon {
++    background-color: #648db7; }
++  .notification-banner.luma-notification-tone-depot .message-source-icon {
++    background-color: #c98b42; }
++  .notification-banner.luma-notification-tone-neutral .message-source-icon {
++    background-color: #69737d; }
++
++.notification-buttons-bin {
++  spacing: 4px; }
++
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++.luma-notification-action-box {
++  spacing: 4px; }
++
++.luma-inline-reply-row {
++  spacing: 4px;
++  min-height: 28px; }
++
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px; }
++
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: #eef1f3;
++  background-color: rgba(38, 42, 48, 0.88);
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  font-family: "Figtree"; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-copy {
++    max-width: 142px;
++    spacing: 0; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-title {
++    font-size: 11px;
++    font-weight: 700; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-summary {
++    color: #aeb5bb;
++    font-size: 10px;
++    font-weight: 600; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: #b57f3f;
++    color: #ffffff;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 12d249d..6d88362 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4396,3 +4396,146 @@ StScrollBar {
+     padding: 6px 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: #e6eaec;
++  background-color: #1a1a1a;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  border: 1px solid rgba(255, 255, 255, 0.4);
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree";
++  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
++  .notification-banner .message-header {
++    spacing: 10px;
++    padding: 0; }
++    .notification-banner .message-header .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px; }
++    .notification-banner .message-header .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px; }
++    .notification-banner .message-header .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent; }
++      .notification-banner .message-header .message-close-button:hover, .notification-banner .message-header .message-close-button:focus {
++        opacity: 1; }
++  .notification-banner:hover .message-close-button, .notification-banner:focus .message-close-button {
++    opacity: 1; }
++  .notification-banner .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px; }
++    .notification-banner .message-box .message-content {
++      spacing: 2px; }
++    .notification-banner .message-box .message-title {
++      font-size: 13px;
++      font-weight: 650; }
++    .notification-banner .message-box .message-body {
++      font-size: 13px;
++      font-weight: 500; }
++  .notification-banner .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px; }
++  .notification-banner.luma-notification-urgent {
++    border-color: rgba(255, 255, 255, 0.6);
++    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent {
++    border-color: #ffffff;
++    box-shadow: inset 0 0 0 2px #ffffff; }
++  .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon, .notification-banner.luma-notification-tone-calendar .message-source-icon, .notification-banner.luma-notification-tone-mail .message-source-icon, .notification-banner.luma-notification-tone-files .message-source-icon, .notification-banner.luma-notification-tone-depot .message-source-icon, .notification-banner.luma-notification-tone-neutral .message-source-icon {
++    background-color: #ffffff;
++    color: #000000; }
++
++.notification-buttons-bin {
++  spacing: 4px; }
++
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++.luma-notification-action-box {
++  spacing: 4px; }
++
++.luma-inline-reply-row {
++  spacing: 4px;
++  min-height: 28px; }
++
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px; }
++
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: #ffffff;
++  background-color: #1a1a1a;
++  border: 2px solid #ffffff;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  font-family: "Figtree"; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68;
++    color: #000000;
++    background-color: #ffffff; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-copy {
++    max-width: 142px;
++    spacing: 0; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-title {
++    font-size: 11px;
++    font-weight: 700; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-summary {
++    color: #ffffff;
++    font-size: 10px;
++    font-weight: 600; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: #ffffff;
++    color: #000000;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 272a070..06c3aa0 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4242,3 +4242,159 @@ StScrollBar {
+     padding: 6px 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: #282f36;
++  background-color: rgba(252, 252, 251, 0.9);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  border: 1px solid rgba(35, 44, 52, 0.1);
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree"; }
++  .notification-banner .message-header {
++    spacing: 10px;
++    padding: 0; }
++    .notification-banner .message-header .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px; }
++    .notification-banner .message-header .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px; }
++    .notification-banner .message-header .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent; }
++      .notification-banner .message-header .message-close-button:hover, .notification-banner .message-header .message-close-button:focus {
++        opacity: 1; }
++  .notification-banner:hover .message-close-button, .notification-banner:focus .message-close-button {
++    opacity: 1; }
++  .notification-banner .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px; }
++    .notification-banner .message-box .message-content {
++      spacing: 2px; }
++    .notification-banner .message-box .message-title {
++      font-size: 13px;
++      font-weight: 650; }
++    .notification-banner .message-box .message-body {
++      font-size: 13px;
++      font-weight: 500; }
++  .notification-banner .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px; }
++  .notification-banner.luma-notification-urgent {
++    border-color: rgba(105, 115, 125, 0.6);
++    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
++    border-color: rgba(94, 166, 111, 0.6);
++    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
++    border-color: rgba(139, 121, 198, 0.6);
++    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
++    border-color: rgba(100, 141, 183, 0.6);
++    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
++    border-color: rgba(201, 139, 66, 0.6);
++    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
++    background-color: #5ea66f; }
++  .notification-banner.luma-notification-tone-calendar .message-source-icon {
++    background-color: #8b79c6; }
++  .notification-banner.luma-notification-tone-mail .message-source-icon, .notification-banner.luma-notification-tone-files .message-source-icon {
++    background-color: #648db7; }
++  .notification-banner.luma-notification-tone-depot .message-source-icon {
++    background-color: #c98b42; }
++  .notification-banner.luma-notification-tone-neutral .message-source-icon {
++    background-color: #69737d; }
++
++.notification-buttons-bin {
++  spacing: 4px; }
++
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++.luma-notification-action-box {
++  spacing: 4px; }
++
++.luma-inline-reply-row {
++  spacing: 4px;
++  min-height: 28px; }
++
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px; }
++
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: #27313a;
++  background-color: rgba(252, 252, 251, 0.78);
++  border: 1px solid rgba(35, 44, 52, 0.1);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  font-family: "Figtree"; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-copy {
++    max-width: 142px;
++    spacing: 0; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-title {
++    font-size: 11px;
++    font-weight: 700; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-summary {
++    color: #767e86;
++    font-size: 10px;
++    font-weight: 600; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: #b57f3f;
++    color: #ffffff;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center; }
+diff --git a/data/theme/luma-notifications/README.md b/data/theme/luma-notifications/README.md
+new file mode 100644
+index 0000000..af23565
+--- /dev/null
++++ b/data/theme/luma-notifications/README.md
+@@ -0,0 +1,20 @@
++# Luma notification theme fragment
++
++These entry points compile only selectors owned by the Luma notification card,
++inline reply, and Shelf Beacon. They deliberately do not import the global
++GNOME Shell SCSS graph because the accepted checked-in Shell theme contains
++other independently accepted downstream surfaces that a full regeneration
++would overwrite.
++
++Compile each entry with `sassc -a INPUT OUTPUT`. Packaging compares the output
++against the matching notification-owned rules in `gnome-shell-dark.css`,
++`gnome-shell-light.css`, and `gnome-shell-high-contrast.css`; it must not replace
++the rest of those stylesheets with a full global SCSS regeneration.
++
++Run `verify-generated.sh` from this directory during packaging. It recompiles
++all three entries, byte-compares them with the checked-in fragments, and proves
++that each fragment is the literal suffix of the matching shipped stylesheet.
++
++`_material.scss` is the shared notification material ledger. Each entry changes
++only variant colors and accessibility overrides, while `_surface.scss` owns the
++complete selector set and geometry.
+diff --git a/data/theme/luma-notifications/_material.scss b/data/theme/luma-notifications/_material.scss
+new file mode 100644
+index 0000000..fd65051
+--- /dev/null
++++ b/data/theme/luma-notifications/_material.scss
+@@ -0,0 +1,22 @@
++// Standalone Luma notification material. These defaults are overridden only by
++// the three entry points in this directory; no GNOME-wide theme state is read.
++$note-ink: #e6eaec !default;
++$note-surface: rgba(38, 42, 48, .90) !default;
++$note-border: rgba(255, 255, 255, .085) !default;
++$note-summary-ink: #aeb5bb !default;
++$note-beacon-surface: rgba(38, 42, 48, .88) !default;
++$note-beacon-border: rgba(255, 255, 255, .10) !default;
++$note-beacon-ink: #eef1f3 !default;
++$note-count-surface: #b57f3f !default;
++$note-count-ink: #ffffff !default;
++$note-mark-messages: #5ea66f !default;
++$note-mark-calendar: #8b79c6 !default;
++$note-mark-mail: #648db7 !default;
++$note-mark-depot: #c98b42 !default;
++$note-mark-neutral: #69737d !default;
++$note-ring-messages: rgb(94, 166, 111) !default;
++$note-ring-calendar: rgb(139, 121, 198) !default;
++$note-ring-mail: rgb(100, 141, 183) !default;
++$note-ring-depot: rgb(201, 139, 66) !default;
++$note-ring-neutral: rgb(105, 115, 125) !default;
++$note-high-contrast: false !default;
+diff --git a/data/theme/luma-notifications/_surface.scss b/data/theme/luma-notifications/_surface.scss
+new file mode 100644
+index 0000000..b9b5eda
+--- /dev/null
++++ b/data/theme/luma-notifications/_surface.scss
+@@ -0,0 +1,198 @@
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: $note-ink;
++  background-color: $note-surface;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08),
++              0 3px 10px rgba(8, 12, 17, .18),
++              0 20px 44px -20px rgba(8, 12, 17, .54);
++  border: 1px solid $note-border;
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree";
++
++  .message-header {
++    spacing: 10px;
++    padding: 0;
++
++    .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px;
++    }
++    .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0;
++    }
++    .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px;
++    }
++    .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0;
++    }
++    .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent;
++
++      &:hover, &:focus { opacity: 1; }
++    }
++  }
++
++  &:hover .message-close-button,
++  &:focus .message-close-button { opacity: 1; }
++
++  .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px;
++    .message-content { spacing: 2px; }
++    .message-title { font-size: 13px; font-weight: 650; }
++    .message-body { font-size: 13px; font-weight: 500; }
++  }
++  .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px;
++  }
++
++  &.luma-notification-urgent {
++    border-color: rgba($note-ring-neutral, .60);
++    box-shadow: 0 0 0 2px rgba($note-ring-neutral, .18),
++                0 20px 44px -20px rgba(8, 12, 17, .54);
++  }
++  @if not $note-high-contrast {
++    &.luma-notification-urgent.luma-notification-tone-messages,
++    &.luma-notification-urgent.luma-notification-tone-phone {
++      border-color: rgba($note-ring-messages, .60);
++      box-shadow: 0 0 0 2px rgba($note-ring-messages, .18),
++                  0 20px 44px -20px rgba(8, 12, 17, .54);
++    }
++    &.luma-notification-urgent.luma-notification-tone-calendar {
++      border-color: rgba($note-ring-calendar, .60);
++      box-shadow: 0 0 0 2px rgba($note-ring-calendar, .18),
++                  0 20px 44px -20px rgba(8, 12, 17, .54);
++    }
++    &.luma-notification-urgent.luma-notification-tone-mail,
++    &.luma-notification-urgent.luma-notification-tone-files {
++      border-color: rgba($note-ring-mail, .60);
++      box-shadow: 0 0 0 2px rgba($note-ring-mail, .18),
++                  0 20px 44px -20px rgba(8, 12, 17, .54);
++    }
++    &.luma-notification-urgent.luma-notification-tone-depot {
++      border-color: rgba($note-ring-depot, .60);
++      box-shadow: 0 0 0 2px rgba($note-ring-depot, .18),
++                  0 20px 44px -20px rgba(8, 12, 17, .54);
++    }
++
++    &.luma-notification-tone-messages .message-source-icon,
++    &.luma-notification-tone-phone .message-source-icon { background-color: $note-mark-messages; }
++    &.luma-notification-tone-calendar .message-source-icon { background-color: $note-mark-calendar; }
++    &.luma-notification-tone-mail .message-source-icon,
++    &.luma-notification-tone-files .message-source-icon { background-color: $note-mark-mail; }
++    &.luma-notification-tone-depot .message-source-icon { background-color: $note-mark-depot; }
++    &.luma-notification-tone-neutral .message-source-icon { background-color: $note-mark-neutral; }
++  }
++
++  @if $note-high-contrast {
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .40);
++    &.luma-notification-urgent {
++      border-color: #ffffff;
++      box-shadow: inset 0 0 0 2px #ffffff;
++    }
++    &.luma-notification-tone-messages .message-source-icon,
++    &.luma-notification-tone-phone .message-source-icon,
++    &.luma-notification-tone-calendar .message-source-icon,
++    &.luma-notification-tone-mail .message-source-icon,
++    &.luma-notification-tone-files .message-source-icon,
++    &.luma-notification-tone-depot .message-source-icon,
++    &.luma-notification-tone-neutral .message-source-icon {
++      background-color: #ffffff;
++      color: #000000;
++    }
++  }
++}
++
++.notification-buttons-bin { spacing: 4px; }
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650;
++}
++.luma-notification-action-box { spacing: 4px; }
++.luma-inline-reply-row { spacing: 4px; min-height: 28px; }
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px;
++}
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650;
++}
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: $note-beacon-ink;
++  background-color: $note-beacon-surface;
++  border: if($note-high-contrast, 2px solid #ffffff, 1px solid $note-beacon-border);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10),
++              0 3px 10px rgba(8, 12, 17, .16);
++  font-family: "Figtree";
++
++  .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68;
++
++    @if $note-high-contrast {
++      color: #000000;
++      background-color: #ffffff;
++    }
++  }
++  .messages-indicator-copy { max-width: 142px; spacing: 0; }
++  .messages-indicator-title { font-size: 11px; font-weight: 700; }
++  .messages-indicator-summary {
++    color: $note-summary-ink;
++    font-size: 10px;
++    font-weight: 600;
++  }
++  .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: $note-count-surface;
++    color: $note-count-ink;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center;
++  }
++}
+diff --git a/data/theme/luma-notifications/dark.css b/data/theme/luma-notifications/dark.css
+new file mode 100644
+index 0000000..58631b6
+--- /dev/null
++++ b/data/theme/luma-notifications/dark.css
+@@ -0,0 +1,156 @@
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: #e6eaec;
++  background-color: rgba(38, 42, 48, 0.9);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  border: 1px solid rgba(255, 255, 255, 0.085);
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree"; }
++  .notification-banner .message-header {
++    spacing: 10px;
++    padding: 0; }
++    .notification-banner .message-header .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px; }
++    .notification-banner .message-header .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px; }
++    .notification-banner .message-header .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent; }
++      .notification-banner .message-header .message-close-button:hover, .notification-banner .message-header .message-close-button:focus {
++        opacity: 1; }
++  .notification-banner:hover .message-close-button, .notification-banner:focus .message-close-button {
++    opacity: 1; }
++  .notification-banner .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px; }
++    .notification-banner .message-box .message-content {
++      spacing: 2px; }
++    .notification-banner .message-box .message-title {
++      font-size: 13px;
++      font-weight: 650; }
++    .notification-banner .message-box .message-body {
++      font-size: 13px;
++      font-weight: 500; }
++  .notification-banner .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px; }
++  .notification-banner.luma-notification-urgent {
++    border-color: rgba(105, 115, 125, 0.6);
++    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
++    border-color: rgba(94, 166, 111, 0.6);
++    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
++    border-color: rgba(139, 121, 198, 0.6);
++    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
++    border-color: rgba(100, 141, 183, 0.6);
++    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
++    border-color: rgba(201, 139, 66, 0.6);
++    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
++    background-color: #5ea66f; }
++  .notification-banner.luma-notification-tone-calendar .message-source-icon {
++    background-color: #8b79c6; }
++  .notification-banner.luma-notification-tone-mail .message-source-icon, .notification-banner.luma-notification-tone-files .message-source-icon {
++    background-color: #648db7; }
++  .notification-banner.luma-notification-tone-depot .message-source-icon {
++    background-color: #c98b42; }
++  .notification-banner.luma-notification-tone-neutral .message-source-icon {
++    background-color: #69737d; }
++
++.notification-buttons-bin {
++  spacing: 4px; }
++
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++.luma-notification-action-box {
++  spacing: 4px; }
++
++.luma-inline-reply-row {
++  spacing: 4px;
++  min-height: 28px; }
++
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px; }
++
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: #eef1f3;
++  background-color: rgba(38, 42, 48, 0.88);
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  font-family: "Figtree"; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-copy {
++    max-width: 142px;
++    spacing: 0; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-title {
++    font-size: 11px;
++    font-weight: 700; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-summary {
++    color: #aeb5bb;
++    font-size: 10px;
++    font-weight: 600; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: #b57f3f;
++    color: #ffffff;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center; }
+diff --git a/data/theme/luma-notifications/dark.scss b/data/theme/luma-notifications/dark.scss
+new file mode 100644
+index 0000000..bae570e
+--- /dev/null
++++ b/data/theme/luma-notifications/dark.scss
+@@ -0,0 +1,3 @@
++@import 'material';
++@import 'surface';
++
+diff --git a/data/theme/luma-notifications/high-contrast.css b/data/theme/luma-notifications/high-contrast.css
+new file mode 100644
+index 0000000..d1aff57
+--- /dev/null
++++ b/data/theme/luma-notifications/high-contrast.css
+@@ -0,0 +1,143 @@
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: #e6eaec;
++  background-color: #1a1a1a;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  border: 1px solid rgba(255, 255, 255, 0.4);
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree";
++  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
++  .notification-banner .message-header {
++    spacing: 10px;
++    padding: 0; }
++    .notification-banner .message-header .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px; }
++    .notification-banner .message-header .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px; }
++    .notification-banner .message-header .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent; }
++      .notification-banner .message-header .message-close-button:hover, .notification-banner .message-header .message-close-button:focus {
++        opacity: 1; }
++  .notification-banner:hover .message-close-button, .notification-banner:focus .message-close-button {
++    opacity: 1; }
++  .notification-banner .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px; }
++    .notification-banner .message-box .message-content {
++      spacing: 2px; }
++    .notification-banner .message-box .message-title {
++      font-size: 13px;
++      font-weight: 650; }
++    .notification-banner .message-box .message-body {
++      font-size: 13px;
++      font-weight: 500; }
++  .notification-banner .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px; }
++  .notification-banner.luma-notification-urgent {
++    border-color: rgba(255, 255, 255, 0.6);
++    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent {
++    border-color: #ffffff;
++    box-shadow: inset 0 0 0 2px #ffffff; }
++  .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon, .notification-banner.luma-notification-tone-calendar .message-source-icon, .notification-banner.luma-notification-tone-mail .message-source-icon, .notification-banner.luma-notification-tone-files .message-source-icon, .notification-banner.luma-notification-tone-depot .message-source-icon, .notification-banner.luma-notification-tone-neutral .message-source-icon {
++    background-color: #ffffff;
++    color: #000000; }
++
++.notification-buttons-bin {
++  spacing: 4px; }
++
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++.luma-notification-action-box {
++  spacing: 4px; }
++
++.luma-inline-reply-row {
++  spacing: 4px;
++  min-height: 28px; }
++
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px; }
++
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: #ffffff;
++  background-color: #1a1a1a;
++  border: 2px solid #ffffff;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  font-family: "Figtree"; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68;
++    color: #000000;
++    background-color: #ffffff; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-copy {
++    max-width: 142px;
++    spacing: 0; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-title {
++    font-size: 11px;
++    font-weight: 700; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-summary {
++    color: #ffffff;
++    font-size: 10px;
++    font-weight: 600; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: #ffffff;
++    color: #000000;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center; }
+diff --git a/data/theme/luma-notifications/high-contrast.scss b/data/theme/luma-notifications/high-contrast.scss
+new file mode 100644
+index 0000000..a66ac8b
+--- /dev/null
++++ b/data/theme/luma-notifications/high-contrast.scss
+@@ -0,0 +1,18 @@
++$note-ink: #e6eaec;
++$note-surface: #1a1a1a;
++$note-border: rgba(255, 255, 255, .40);
++$note-summary-ink: #ffffff;
++$note-beacon-surface: #1a1a1a;
++$note-beacon-border: #ffffff;
++$note-beacon-ink: #ffffff;
++$note-count-surface: #ffffff;
++$note-count-ink: #000000;
++$note-ring-messages: #ffffff;
++$note-ring-calendar: #ffffff;
++$note-ring-mail: #ffffff;
++$note-ring-depot: #ffffff;
++$note-ring-neutral: #ffffff;
++$note-high-contrast: true;
++
++@import 'material';
++@import 'surface';
+diff --git a/data/theme/luma-notifications/light.css b/data/theme/luma-notifications/light.css
+new file mode 100644
+index 0000000..cab6bac
+--- /dev/null
++++ b/data/theme/luma-notifications/light.css
+@@ -0,0 +1,156 @@
++/* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
++.notification-banner {
++  min-height: 64px;
++  width: 333px;
++  padding: 11px 12px;
++  color: #282f36;
++  background-color: rgba(252, 252, 251, 0.9);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  border: 1px solid rgba(35, 44, 52, 0.1);
++  border-radius: 10px;
++  margin: 0;
++  font-family: "Figtree"; }
++  .notification-banner .message-header {
++    spacing: 10px;
++    padding: 0; }
++    .notification-banner .message-header .message-source-icon {
++      icon-size: 16px;
++      min-width: 30px;
++      min-height: 30px;
++      border-radius: 9px; }
++    .notification-banner .message-header .message-header-content {
++      spacing: 7px;
++      min-height: 30px;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-source-title {
++      font-size: 11px;
++      font-weight: 700;
++      letter-spacing: 1.1px; }
++    .notification-banner .message-header .event-time {
++      font-size: 11px;
++      font-weight: 600;
++      padding-bottom: 0; }
++    .notification-banner .message-header .message-close-button {
++      min-width: 20px;
++      min-height: 20px;
++      width: 20px;
++      height: 20px;
++      padding: 0;
++      margin: 0;
++      opacity: 0;
++      border-radius: 999px;
++      background-color: transparent; }
++      .notification-banner .message-header .message-close-button:hover, .notification-banner .message-header .message-close-button:focus {
++        opacity: 1; }
++  .notification-banner:hover .message-close-button, .notification-banner:focus .message-close-button {
++    opacity: 1; }
++  .notification-banner .message-box {
++    padding: 1px 0 0 40px;
++    margin: 0;
++    spacing: 10px; }
++    .notification-banner .message-box .message-content {
++      spacing: 2px; }
++    .notification-banner .message-box .message-title {
++      font-size: 13px;
++      font-weight: 650; }
++    .notification-banner .message-box .message-body {
++      font-size: 13px;
++      font-weight: 500; }
++  .notification-banner .message-action-bin {
++    padding: 7px 0 0 40px;
++    spacing: 4px; }
++  .notification-banner.luma-notification-urgent {
++    border-color: rgba(105, 115, 125, 0.6);
++    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
++    border-color: rgba(94, 166, 111, 0.6);
++    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
++    border-color: rgba(139, 121, 198, 0.6);
++    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
++    border-color: rgba(100, 141, 183, 0.6);
++    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
++    border-color: rgba(201, 139, 66, 0.6);
++    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++  .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
++    background-color: #5ea66f; }
++  .notification-banner.luma-notification-tone-calendar .message-source-icon {
++    background-color: #8b79c6; }
++  .notification-banner.luma-notification-tone-mail .message-source-icon, .notification-banner.luma-notification-tone-files .message-source-icon {
++    background-color: #648db7; }
++  .notification-banner.luma-notification-tone-depot .message-source-icon {
++    background-color: #c98b42; }
++  .notification-banner.luma-notification-tone-neutral .message-source-icon {
++    background-color: #69737d; }
++
++.notification-buttons-bin {
++  spacing: 4px; }
++
++.notification-button {
++  min-height: 23px;
++  padding: 5px 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++.luma-notification-action-box {
++  spacing: 4px; }
++
++.luma-inline-reply-row {
++  spacing: 4px;
++  min-height: 28px; }
++
++.luma-inline-reply-entry {
++  min-height: 28px;
++  padding: 0 10px;
++  border-radius: 999px;
++  font-size: 12px; }
++
++.luma-inline-reply-button {
++  min-height: 28px;
++  padding: 0 11px;
++  border-radius: 999px;
++  font-size: 11px;
++  font-weight: 650; }
++
++#panel .panel-button.clock-display .messages-indicator {
++  max-width: 220px;
++  min-height: 34px;
++  padding: 3px 7px;
++  spacing: 8px;
++  border-radius: 10px;
++  color: #27313a;
++  background-color: rgba(252, 252, 251, 0.78);
++  border: 1px solid rgba(35, 44, 52, 0.1);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  font-family: "Figtree"; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
++    icon-size: 14px;
++    min-width: 26px;
++    min-height: 26px;
++    border-radius: 8px;
++    color: #ffffff;
++    background-color: #4d5a68; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-copy {
++    max-width: 142px;
++    spacing: 0; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-title {
++    font-size: 11px;
++    font-weight: 700; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-summary {
++    color: #767e86;
++    font-size: 10px;
++    font-weight: 600; }
++  #panel .panel-button.clock-display .messages-indicator .messages-indicator-count {
++    min-width: 19px;
++    height: 19px;
++    padding: 0 5px;
++    border-radius: 999px;
++    background-color: #b57f3f;
++    color: #ffffff;
++    font-size: 9px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center; }
+diff --git a/data/theme/luma-notifications/light.scss b/data/theme/luma-notifications/light.scss
+new file mode 100644
+index 0000000..197e3d1
+--- /dev/null
++++ b/data/theme/luma-notifications/light.scss
+@@ -0,0 +1,11 @@
++$note-ink: #282f36;
++$note-surface: rgba(252, 252, 251, .90);
++$note-border: rgba(35, 44, 52, .10);
++$note-summary-ink: #767e86;
++$note-beacon-surface: rgba(252, 252, 251, .78);
++$note-beacon-border: rgba(35, 44, 52, .10);
++$note-beacon-ink: #27313a;
++
++@import 'material';
++@import 'surface';
++
+diff --git a/data/theme/luma-notifications/verify-generated.sh b/data/theme/luma-notifications/verify-generated.sh
+new file mode 100755
+index 0000000..05d2d28
+--- /dev/null
++++ b/data/theme/luma-notifications/verify-generated.sh
+@@ -0,0 +1,19 @@
++#!/bin/sh
++set -eu
++
++fragment_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
++theme_dir=$(CDPATH= cd -- "$fragment_dir/.." && pwd)
++sassc_bin=${LUMA_NOTIFICATION_SASSC:-sassc}
++verify_dir=$(mktemp -d "${TMPDIR:-/tmp}/luma-notification-css.XXXXXX")
++trap 'rm -rf "$verify_dir"' EXIT HUP INT TERM
++
++for variant in dark light high-contrast; do
++    "$sassc_bin" -a "$fragment_dir/$variant.scss" "$verify_dir/$variant.css"
++    cmp "$verify_dir/$variant.css" "$fragment_dir/$variant.css"
++
++    fragment_bytes=$(wc -c < "$fragment_dir/$variant.css" | tr -d ' ')
++    tail -c "$fragment_bytes" "$theme_dir/gnome-shell-$variant.css" |
++        cmp - "$fragment_dir/$variant.css"
++done
++
++echo 'PASS: standalone notification CSS is compiler-current and exact stylesheet suffix'
+diff --git a/data/theme/meson.build b/data/theme/meson.build
+index a3cf392..0605f84 100644
+--- a/data/theme/meson.build
++++ b/data/theme/meson.build
+@@ -4,6 +4,15 @@ theme_sources = files([
+   'gnome-shell-high-contrast.scss',
+   'gnome-shell-dark.scss',
+   'gnome-shell-light.scss',
++  'luma-notifications/_material.scss',
++  'luma-notifications/_surface.scss',
++  'luma-notifications/dark.css',
++  'luma-notifications/dark.scss',
++  'luma-notifications/high-contrast.css',
++  'luma-notifications/high-contrast.scss',
++  'luma-notifications/light.css',
++  'luma-notifications/light.scss',
++  'luma-notifications/verify-generated.sh',
+   'gnome-shell-sass/_colors.scss',
+   'gnome-shell-sass/_common.scss',
+   'gnome-shell-sass/_drawing.scss',
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+index 20958b0..938bf37 100644
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -740,7 +740,7 @@ class WeatherSection extends St.Button {
+ });
+ 
+ const MessagesIndicator = GObject.registerClass(
+-class MessagesIndicator extends St.Label {
++class MessagesIndicator extends St.BoxLayout {
+     _init() {
+         super._init({
+             style_class: 'messages-indicator',
+@@ -748,6 +748,34 @@ class MessagesIndicator extends St.Label {
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+ 
++        this._mark = new St.Icon({
++            style_class: 'messages-indicator-mark',
++            icon_name: 'notifications-symbolic',
++        });
++        this.add_child(this._mark);
++
++        this._copy = new St.BoxLayout({
++            style_class: 'messages-indicator-copy',
++            vertical: true,
++        });
++        this._title = new St.Label({
++            style_class: 'messages-indicator-title',
++        });
++        this._title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._summary = new St.Label({
++            style_class: 'messages-indicator-summary',
++        });
++        this._summary.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._copy.add_child(this._title);
++        this._copy.add_child(this._summary);
++        this.add_child(this._copy);
++
++        this._countLabel = new St.Label({
++            style_class: 'messages-indicator-count',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.add_child(this._countLabel);
++
+         this._sources = [];
+         this._count = 0;
+ 
+@@ -783,17 +811,34 @@ class MessagesIndicator extends St.Label {
+     }
+ 
+     _updateCount() {
+-        let count = 0;
+-        this._sources.forEach(source => (count += source.unseenCount));
+-        this._count = count - Main.messageTray.queueCount;
++        const waiting = this._sources.flatMap(source =>
++            source.notifications.filter(notification =>
++                notification.lifecycleState ===
++                    MessageTray.NotificationLifecycleState.WAITING));
++        waiting.sort((a, b) => b.sortSequence - a.sortSequence);
++        this._count = waiting.length;
++        this._newest = waiting[0] ?? null;
+ 
+         this._sync();
+     }
+ 
+     _sync() {
+-        this.text = this._count > 99 ? '99+' : `${this._count}`;
+-        this.accessible_name = `${this._count} notifications waiting`;
+-        // Do Not Disturb suppresses heads-up presentation, never history.
++        const countText = this._count > 99 ? '99+' : `${this._count}`;
++        this._countLabel.text = countText;
++        if (this._newest) {
++            const appName = this._newest.source.title ?? _('Unknown App');
++            const title = this._newest.title ?? _('Notification');
++            this._title.text = title;
++            this._summary.text = this._count > 1
++                ? _('%s and %d more').format(appName, this._count - 1)
++                : appName;
++            this.accessible_name = this._count > 1
++                ? _('%d notifications waiting. Newest: %s from %s.').format(
++                    this._count, title, appName)
++                : _('One notification waiting: %s from %s.').format(
++                    title, appName);
++        }
++        // DND suppresses heads-up presentation, never this history affordance.
+         this.visible = this._count > 0;
+     }
+ });
+diff --git a/js/ui/messageList.js b/js/ui/messageList.js
+index aedf714..ae38fdd 100644
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -392,6 +392,7 @@ class MessageHeader extends St.BoxLayout {
+             style_class: 'message-source-title',
+             y_align: Clutter.ActorAlign.END,
+         });
++        this.sourceTitle = sourceTitle;
+         headerContent.add_child(sourceTitle);
+ 
+         source.bind_property_full('title',
+@@ -695,6 +696,7 @@ class NotificationMessage extends Message {
+         notification.connectObject(
+             'action-added', (_, action) => this._addAction(action),
+             'action-removed', (_, action) => this._removeAction(action),
++            'notify', () => this._syncInlineReply(),
+             'destroy', () => {
+                 this.notification = null;
+                 if (!this._closed)
+@@ -721,13 +723,23 @@ class NotificationMessage extends Message {
+         this.notification.actions.forEach(action => {
+             this._addAction(action);
+         });
++        this._syncInlineReply();
+     }
+ 
+     on_close() {
++        if (this._bannerRestHandler && this.notification) {
++            this._bannerRestHandler();
++            return;
++        }
++
+         this._closed = true;
+         this.notification?.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
+     }
+ 
++    setBannerRestHandler(callback) {
++        this._bannerRestHandler = callback;
++    }
++
+     vfunc_clicked() {
+         this.notification?.activate();
+     }
+@@ -737,12 +749,13 @@ class NotificationMessage extends Message {
+     }
+ 
+     _addAction(action) {
++        this._ensureActionBox();
+         if (!this._buttonBox) {
+             this._buttonBox = new St.BoxLayout({
+                 x_expand: true,
+                 style_class: 'notification-buttons-bin',
+             });
+-            this.setActionArea(this._buttonBox);
++            this._actionBox.add_child(this._buttonBox);
+             global.focus_manager.add_group(this._buttonBox);
+         }
+ 
+@@ -765,6 +778,129 @@ class NotificationMessage extends Message {
+         this._actions.get(action)?.destroy();
+         this._actions.delete(action);
+     }
++
++    _ensureActionBox() {
++        if (this._actionBox)
++            return;
++
++        this._actionBox = new St.BoxLayout({
++            vertical: true,
++            x_expand: true,
++            style_class: 'luma-notification-action-box',
++        });
++        this.setActionArea(this._actionBox);
++    }
++
++    _syncInlineReply() {
++        const reply = this.notification?.inlineReply ?? null;
++        if (reply === this._inlineReply)
++            return;
++
++        // Replacement invalidates the old token and its editor. Never send
++        // text entered for one notification generation against another.
++        this._inlineReply = reply;
++        this._inlineReplyRow?.destroy();
++        this._inlineReplyRow = null;
++        this._replyRequestId = null;
++        this._replyPayload = null;
++        this._replyUncertain = false;
++        if (!reply)
++            return;
++
++        this._ensureActionBox();
++        this._inlineReplyRow = new St.BoxLayout({
++            style_class: 'luma-inline-reply-row',
++            x_expand: true,
++        });
++        this._replyEntry = new St.Entry({
++            style_class: 'luma-inline-reply-entry',
++            hint_text: _('Reply'),
++            can_focus: true,
++            x_expand: true,
++        });
++        this._replyEntry.accessible_name = _('Reply to %s').format(this.title);
++        this._replyButton = new St.Button({
++            style_class: 'luma-inline-reply-button',
++            label: _('Send'),
++            can_focus: true,
++        });
++        this._replyButton.accessible_name = _('Send reply');
++        this._inlineReplyRow.add_child(this._replyEntry);
++        this._inlineReplyRow.add_child(this._replyButton);
++        this._actionBox.add_child(this._inlineReplyRow);
++        global.focus_manager.add_group(this._inlineReplyRow);
++
++        this._replyButton.connect('clicked', () => this._submitInlineReply());
++        this._replyEntry.clutter_text.connect('activate',
++            () => this._submitInlineReply());
++    }
++
++    async _submitInlineReply() {
++        if (this._replyUncertain) {
++            this.notification?.source.open();
++            return;
++        }
++        if (!this._inlineReply || this._replyPending)
++            return;
++
++        const enteredText = this._replyEntry.get_text();
++        const text = enteredText.trim();
++        const bytes = new TextEncoder().encode(text).length;
++        if (!text || bytes > 4096) {
++            this._replyEntry.hint_text = bytes > 4096
++                ? _('Reply is too long') : _('Enter a reply');
++            return;
++        }
++
++        // This ID deliberately survives retryable pre-dispatch failures.
++        this._replyRequestId ??= GLib.uuid_string_random();
++        this._replyPayload ??= text;
++        this._replyPending = true;
++        this._replyEntry.reactive = false;
++        this._replyButton.reactive = false;
++
++        try {
++            const notification = this.notification;
++            const [, state] = await this._inlineReply.send(
++                this._replyPayload, this._replyRequestId);
++            if (state === 'sent') {
++                if (!notification || notification !== this.notification)
++                    return;
++                notification.lifecycleState =
++                    MessageTray.NotificationLifecycleState.ACTED;
++                notification.destroy(
++                    MessageTray.NotificationDestroyedReason.DISMISSED);
++                return;
++            }
++            this._setReplyUncertain();
++        } catch (error) {
++            const remoteName = Gio.DBusError.get_remote_error(error) ?? '';
++            if (remoteName.endsWith('.NotReady')) {
++                this._replyEntry.hint_text = _('Messages is not ready; try again');
++                this._replyButton.label = _('Try again');
++            } else {
++                // A timeout may have happened after dispatch. Preserve the
++                // text and request ID, and reconcile in Messages instead of
++                // blindly transmitting again.
++                this._setReplyUncertain();
++            }
++        } finally {
++            this._replyPending = false;
++            if (this._replyEntry && !this._replyRequestId)
++                this._replyEntry.reactive = true;
++            if (this._replyButton && !this._replyUncertain)
++                this._replyButton.reactive = true;
++        }
++    }
++
++    _setReplyUncertain() {
++        this._replyUncertain = true;
++        this._replyEntry.reactive = false;
++        this._replyEntry.hint_text = _('Delivery uncertain');
++        this._replyButton.label = _('Open Messages');
++        this._replyButton.reactive = true;
++        this._replyButton.accessible_name = _('Open Messages to check delivery');
++    }
+ });
+ 
+ export const MediaMessage = GObject.registerClass(
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index 082b605..8409323 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -22,7 +22,7 @@ const HIDE_TIMEOUT = 200;
+ const LONGER_HIDE_TIMEOUT = 600;
+ 
+ const MAX_NOTIFICATIONS_IN_QUEUE = 20;
+-const MAX_VISIBLE_NOTIFICATIONS = 3;
++const MAX_VISIBLE_NOTIFICATIONS = 5;
+ const MAX_NOTIFICATIONS_PER_SOURCE = 10;
+ 
+ // We delay hiding of the tray if the mouse is within MOUSE_LEFT_ACTOR_THRESHOLD
+@@ -365,11 +365,14 @@ class Action extends GObject.Object {
+     }
+ });
+ 
++let notificationSequence = 0;
++
+ export class Notification extends GObject.Object {
+     constructor(params) {
+         super(params);
+ 
+         this._actions = [];
++        this.sortSequence = ++notificationSequence;
+ 
+         if (!this.datetime)
+             this.datetime = GLib.DateTime.new_now_local();
+@@ -377,6 +380,7 @@ export class Notification extends GObject.Object {
+         // Automatically update the datetime property when the notification
+         // is updated.
+         this.connect('notify', (o, pspec) => {
++            this.sortSequence = ++notificationSequence;
+             if (pspec.name === 'acknowledged') {
+                 // Don't update datetime property
+             } else if (pspec.name === 'datetime') {
+@@ -615,8 +619,15 @@ export const Source = GObject.registerClass({
+     }
+ 
+     addNotification(notification) {
+-        if (this.notifications.includes(notification))
++        if (this.notifications.includes(notification)) {
++            if (notification.lifecycleState ===
++                NotificationLifecycleState.REPLACED) {
++                notification.lifecycleState = NotificationLifecycleState.QUEUED;
++                this.emit('notification-request-banner', notification);
++                this.countUpdated();
++            }
+             return;
++        }
+ 
+         while (this.notifications.length >= MAX_NOTIFICATIONS_PER_SOURCE) {
+             const [oldest] = this.notifications;
+@@ -631,6 +642,7 @@ export const Source = GObject.registerClass({
+             if (!notification.acknowledged)
+                 this.emit('notification-request-banner', notification);
+         });
++        notification.connect('notify::lifecycle-state', () => this.countUpdated());
+         notification.lifecycleState = notification.acknowledged
+             ? NotificationLifecycleState.SEEN
+             : NotificationLifecycleState.QUEUED;
+@@ -803,6 +815,11 @@ export const MessageTray = GObject.registerClass({
+             this._onNotificationHoverChanged.bind(this));
+         this.add_child(this._bannerBin);
+ 
++        this._shellSettings = new Gio.Settings({schema_id: 'org.gnome.shell'});
++        this._shellSettings.connectObject('changed::notification-corner',
++            () => this._syncBannerCorner(), this);
++        this._syncBannerCorner();
++
+         this._notificationFocusGrabber = new FocusGrabber(this._bannerBin);
+         this._notificationQueue = [];
+         this._notification = null;
+@@ -888,6 +905,73 @@ export const MessageTray = GObject.registerClass({
+         this._bannerBin.set_x_align(align);
+     }
+ 
++    _syncBannerCorner() {
++        const corner = this._shellSettings.get_string('notification-corner');
++        const [vertical, horizontal] = [
++            'bottom-right', 'bottom-left', 'top-right', 'top-left',
++        ].includes(corner) ? corner.split('-') : ['bottom', 'right'];
++
++        this._bannerBin.set_x_align(horizontal === 'right'
++            ? Clutter.ActorAlign.END : Clutter.ActorAlign.START);
++        this._bannerBin.set_y_align(vertical === 'bottom'
++            ? Clutter.ActorAlign.END : Clutter.ActorAlign.START);
++    }
++
++    _bannerTranslation() {
++        return this.bannerAlignment === Clutter.ActorAlign.END ? 26 : -26;
++    }
++
++    _restBanner(notification) {
++        if (notification === this._notification) {
++            this._expireNotification();
++            return;
++        }
++
++        const entry = this._additionalBanners.find(
++            candidate => candidate.notification === notification);
++        if (entry)
++            this._removeAdditionalBanner(entry, false);
++    }
++
++    _prepareBanner(banner, notification) {
++        banner.can_focus = true;
++        banner._header.expandButton.visible = false;
++        banner._header.sourceTitle.text =
++            banner._header.sourceTitle.text.toLocaleUpperCase();
++        banner._bodyBin.layout_manager.expandLines = 2;
++        banner.setBannerRestHandler(() => this._restBanner(notification));
++        banner.add_style_class_name('notification-banner');
++
++        if (notification.urgency === Urgency.CRITICAL)
++            banner.add_style_class_name('luma-notification-urgent');
++        else if (notification.standing)
++            banner.add_style_class_name('luma-notification-standing');
++
++        const appId = notification.source.app?.get_id()?.replace(/\.desktop$/, '');
++        const tone = {
++            'org.projectluma.Messages': 'messages',
++            'org.projectluma.Phone': 'phone',
++            'org.projectluma.Calendar': 'calendar',
++            'org.gnome.Calendar': 'calendar',
++            'org.gnome.Geary': 'mail',
++            'org.gnome.Evolution': 'mail',
++            'org.projectluma.Depot': 'depot',
++            'org.gnome.Software': 'depot',
++            'org.gnome.Nautilus': 'files',
++        }[appId] ?? 'neutral';
++        banner.add_style_class_name(`luma-notification-tone-${tone}`);
++
++        // Shell blur is native scene-graph state; no resident helper or
++        // extension is needed, and reduced-motion settings remain authoritative.
++        banner.add_effect_with_name('luma-background-blur', new Shell.BlurEffect({
++            mode: Shell.BlurMode.BACKGROUND,
++            radius: 28,
++        }));
++
++        if (notification.actions.length || notification.inlineReply)
++            banner.expand(false);
++    }
++
+     _onNotificationKeyRelease(actor, event) {
+         if (event.get_key_symbol() === Clutter.KEY_Escape && event.get_state() === 0) {
+             const focusedActor = global.stage.get_key_focus();
+@@ -1005,18 +1089,24 @@ export const MessageTray = GObject.registerClass({
+         if (notification.acknowledged)
+             return;
+ 
+-        if (notification.urgency === Urgency.LOW)
++        if (notification.urgency === Urgency.LOW) {
++            notification.lifecycleState = NotificationLifecycleState.WAITING;
+             return;
++        }
+ 
+-        if (!notification.source.policy.showBanners && notification.urgency !== Urgency.CRITICAL)
++        if (!notification.source.policy.showBanners && notification.urgency !== Urgency.CRITICAL) {
++            notification.lifecycleState = NotificationLifecycleState.WAITING;
+             return;
++        }
+ 
+         const additional = this._additionalBanners.find(
+             entry => entry.notification === notification);
+         if (additional) {
+             additional.notification.lifecycleState =
+                 NotificationLifecycleState.ARRIVING;
+-            this._updateAdditionalBannerTimeout(additional, NOTIFICATION_TIMEOUT);
++            this._updateAdditionalBannerTimeout(additional,
++                notification.urgency === Urgency.CRITICAL || notification.standing
++                    ? 0 : NOTIFICATION_TIMEOUT);
+         } else if (this._notification === notification) {
+             // If a notification that is being shown is updated, we update
+             // how it is shown and extend the time until it auto-hides.
+@@ -1036,6 +1126,14 @@ export const MessageTray = GObject.registerClass({
+                 this._notificationQueue.sort(
+                     (n1, n2) => n2.urgency - n1.urgency);
+                 this.emit('queue-changed');
++
++                // Beacon keeps the five newest eligible banners visible. An
++                // urgent card is never displaced by an ordinary arrival.
++                if (bannerCount >= MAX_VISIBLE_NOTIFICATIONS &&
++                    this._notification?.urgency !== Urgency.CRITICAL)
++                    this._notificationExpired = true;
++            } else {
++                notification.lifecycleState = NotificationLifecycleState.WAITING;
+             }
+         }
+         this._updateState();
+@@ -1224,15 +1322,13 @@ export const MessageTray = GObject.registerClass({
+         }
+ 
+         this._banner = new MessageList.NotificationMessage(this._notification);
+-        this._banner.can_focus = false;
+-        this._banner._header.expandButton.visible = false;
+-        this._banner.add_style_class_name('notification-banner');
++        this._prepareBanner(this._banner, this._notification);
+ 
+-        this._bannerBin.add_child(this._banner);
++        this._bannerBin.insert_child_at_index(this._banner, 0);
+ 
+         this._notification.lifecycleState = NotificationLifecycleState.ARRIVING;
+         this._banner.opacity = 0;
+-        this._banner.translation_x = -26;
++        this._banner.translation_x = this._bannerTranslation();
+         this.show();
+ 
+         global.compositor.disable_unredirect();
+@@ -1257,7 +1353,9 @@ export const MessageTray = GObject.registerClass({
+ 
+     _updateShowingNotification() {
+         this._notification.lifecycleState = NotificationLifecycleState.ARRIVING;
+-        this._notification.playSound();
++        if (!this._notification.standing ||
++            this._notification.urgency === Urgency.CRITICAL)
++            this._notification.playSound();
+ 
+         // We auto-expand notifications with CRITICAL urgency, or for which the relevant setting
+         // is on in the control center.
+@@ -1292,7 +1390,8 @@ export const MessageTray = GObject.registerClass({
+     }
+ 
+     _showNotificationCompleted() {
+-        if (this._notification.urgency !== Urgency.CRITICAL)
++        if (this._notification.urgency !== Urgency.CRITICAL &&
++            !this._notification.standing)
+             this._updateNotificationTimeout(NOTIFICATION_TIMEOUT);
+     }
+ 
+@@ -1352,17 +1451,17 @@ export const MessageTray = GObject.registerClass({
+                 continue;
+ 
+             const banner = new MessageList.NotificationMessage(notification);
+-            banner.can_focus = true;
+-            banner._header.expandButton.visible = false;
+-            banner.add_style_class_name('notification-banner');
++            this._prepareBanner(banner, notification);
+             banner.opacity = 0;
+-            banner.translation_x = -26;
+-            this._bannerBin.add_child(banner);
++            banner.translation_x = this._bannerTranslation();
++            this._bannerBin.insert_child_at_index(banner, 0);
+ 
+             const entry = {notification, banner, timeoutId: 0};
+             this._additionalBanners.push(entry);
+             notification.lifecycleState = NotificationLifecycleState.ARRIVING;
+-            notification.playSound();
++            if (!notification.standing ||
++                notification.urgency === Urgency.CRITICAL)
++                notification.playSound();
+ 
+             banner.ease({
+                 opacity: 255,
+@@ -1370,7 +1469,8 @@ export const MessageTray = GObject.registerClass({
+                 duration: ANIMATION_TIME,
+                 mode: Clutter.AnimationMode.EASE_OUT_BACK,
+             });
+-            if (notification.urgency !== Urgency.CRITICAL)
++            if (notification.urgency !== Urgency.CRITICAL &&
++                !notification.standing)
+                 this._updateAdditionalBannerTimeout(entry, NOTIFICATION_TIMEOUT);
+         }
+     }
+@@ -1419,7 +1519,7 @@ export const MessageTray = GObject.registerClass({
+         banner.remove_all_transitions();
+         banner.ease({
+             opacity: 0,
+-            translation_x: -26,
++            translation_x: this._bannerTranslation(),
+             duration: ANIMATION_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+             onStopped: () => banner.destroy(),
+@@ -1444,7 +1544,7 @@ export const MessageTray = GObject.registerClass({
+         this._notificationState = State.HIDING;
+         this._banner.ease({
+             opacity: 0,
+-            translation_x: -26,
++            translation_x: this._bannerTranslation(),
+             duration,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+             onStopped: () => {
+diff --git a/js/ui/notificationDaemon.js b/js/ui/notificationDaemon.js
+index ddb1581..bf5b83a 100644
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -28,6 +28,10 @@ const Urgency = {
+     CRITICAL: 2,
+ };
+ 
++const MESSAGES_REPLY_PATH = '/org/projectluma/Messages/Notifications';
++const MESSAGES_REPLY_IFACE = 'org.projectluma.Messages.NotificationReply1';
++const INLINE_REPLY_TIMEOUT_MS = 30_000;
++
+ class FdoNotificationDaemon {
+     constructor() {
+         this._dbusImpl = Gio.DBusExportedObject.wrapJSObject(FdoNotificationsIface, this);
+@@ -38,6 +42,18 @@ class FdoNotificationDaemon {
+         this._notifications = new Map();
+ 
+         this._nextNotificationId = 1;
++
++        // org.freedesktop.Notifications is GNOME's forwarding service in the
++        // Luma image. Only it may attest the producer's unique bus name in
++        // x-shell-sender; an arbitrary client cannot opt itself into reply.
++        this._notificationForwarderOwner = null;
++        this._notificationForwarderWatchId = Gio.DBus.session.watch_name(
++            'org.freedesktop.Notifications', Gio.BusNameWatcherFlags.NONE,
++            (_connection, _name, owner) => {
++                this._notificationForwarderOwner = owner;
++            }, () => {
++                this._notificationForwarderOwner = null;
++            });
+     }
+ 
+     _imageForNotificationData(hints) {
+@@ -142,6 +158,9 @@ class FdoNotificationDaemon {
+         }
+ 
+         hints = {urgency: Urgency.NORMAL, ...hints};
++        const producerSender =
++            invocation.get_sender() === this._notificationForwarderOwner
++                ? hints['x-shell-sender'] : null;
+ 
+         // Be compatible with the various hints for image data and image path
+         // 'image-data' and 'image-path' are the latest name of these hints, introduced in 1.2
+@@ -204,6 +223,11 @@ class FdoNotificationDaemon {
+         const soundFile = 'sound-file' in hints
+             ? Gio.File.new_for_path(hints['sound-file']) : null;
+ 
++        // Replacement revokes the previous token/editor before any property
++        // update can refresh a visible banner.
++        notification.inlineReply = this._createInlineReply(
++            source, id, producerSender, hints);
++
+         notification.set({
+             title: summary,
+             body,
+@@ -254,6 +278,9 @@ class FdoNotificationDaemon {
+             break;
+         }
+         notification.resident = !!hints.resident;
++        // Standing is an explicit presentation contract. Do not overload the
++        // freedesktop resident hint, which only controls post-action lifetime.
++        notification.standing = hints['x-luma-notification-kind'] === 'update';
+         // 'transient' is a reserved keyword in JS, so we have to retrieve the value
+         // of the 'transient' hint with hints['transient'] rather than hints.transient
+         notification.isTransient = !!hints['transient'];
+@@ -270,6 +297,40 @@ class FdoNotificationDaemon {
+         return invocation.return_value(GLib.Variant.new('(u)', [id]));
+     }
+ 
++    _createInlineReply(source, notificationId, producerSender, hints) {
++        const appId = source.app?.get_id()?.replace(/\.desktop$/, '');
++        const path = hints['x-luma-inline-reply-path'];
++        const token = hints['x-luma-inline-reply-token'];
++        if (appId !== 'org.projectluma.Messages' ||
++            typeof producerSender !== 'string' ||
++            !producerSender.startsWith(':') ||
++            path !== MESSAGES_REPLY_PATH ||
++            typeof token !== 'string' ||
++            !/^[0-9a-f]{32}$/.test(token))
++            return null;
++
++        return Object.freeze({
++            sender: producerSender,
++            path,
++            token,
++            send: async (text, requestId) => {
++                const result = await Gio.DBus.session.call(
++                    producerSender,
++                    path,
++                    MESSAGES_REPLY_IFACE,
++                    'Reply',
++                    new GLib.Variant('(usss)', [
++                        notificationId, token, requestId, text,
++                    ]),
++                    new GLib.VariantType('(ss)'),
++                    Gio.DBusCallFlags.NONE,
++                    INLINE_REPLY_TIMEOUT_MS,
++                    null);
++                return result.deepUnpack();
++            },
++        });
++    }
++
+     CloseNotification(id) {
+         const notification = this._notifications.get(id);
+         notification?.destroy(MessageTray.NotificationDestroyedReason.SOURCE_CLOSED);
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 7a51af7..f815029 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -956,10 +956,6 @@ class Panel extends St.Widget {
+         this._updateBox(panel.center, this._centerBox);
+         this._updateBox(panel.right, this._rightBox);
+ 
+-        // Luma notifications are a screen-level surface.  Their bottom-left
+-        // anchor is independent of the clock/status actor.
+-        Main.messageTray.bannerAlignment = Clutter.ActorAlign.START;
+-
+         if (this._sessionStyle)
+             this.remove_style_class_name(this._sessionStyle);
+ 
+diff --git a/js/ui/status/doNotDisturb.js b/js/ui/status/doNotDisturb.js
+index fe313d2..3ec8b0e 100644
+--- a/js/ui/status/doNotDisturb.js
++++ b/js/ui/status/doNotDisturb.js
+@@ -1,15 +1,25 @@
+ import Gio from 'gi://Gio';
+ import GObject from 'gi://GObject';
+ 
+-import {QuickToggle, SystemIndicator} from '../quickSettings.js';
++import * as PopupMenu from '../popupMenu.js';
++
++import {QuickMenuToggle, SystemIndicator} from '../quickSettings.js';
++
++const CORNERS = {
++    'bottom-right': _('Bottom right'),
++    'bottom-left': _('Bottom left'),
++    'top-right': _('Top right'),
++    'top-left': _('Top left'),
++};
+ 
+ const DoNotDisturbToggle = GObject.registerClass(
+-class DoNotDisturbToggle extends QuickToggle {
++class DoNotDisturbToggle extends QuickMenuToggle {
+     constructor() {
+         super({
+             title: _('Do Not Disturb'),
+             iconName: 'notifications-disabled-symbolic',
+             toggleMode: true,
++            menuButtonAccessibleName: _('Choose notification corner'),
+         });
+ 
+         this._settings = new Gio.Settings({
+@@ -18,6 +28,35 @@ class DoNotDisturbToggle extends QuickToggle {
+         this._settings.bind('show-banners',
+             this, 'checked',
+             Gio.SettingsBindFlags.INVERT_BOOLEAN);
++
++        this._shellSettings = new Gio.Settings({schema_id: 'org.gnome.shell'});
++        this._cornerItems = new Map();
++        this.menu.setHeader('notifications-symbolic',
++            _('Notification corner'));
++        for (const [corner, label] of Object.entries(CORNERS)) {
++            const item = new PopupMenu.PopupMenuItem(label);
++            item.connect('activate', () =>
++                this._shellSettings.set_string('notification-corner', corner));
++            this._cornerItems.set(corner, item);
++            this.menu.addMenuItem(item);
++        }
++        this._shellSettings.connectObject('changed::notification-corner',
++            () => this._syncCorner(), this);
++        this.connect('destroy', () => {
++            this._settings.run_dispose();
++            this._shellSettings.run_dispose();
++        });
++        this._syncCorner();
++    }
++
++    _syncCorner() {
++        const current = this._shellSettings.get_string('notification-corner');
++        this.subtitle = CORNERS[current] ?? CORNERS['bottom-right'];
++        for (const [corner, item] of this._cornerItems) {
++            item.setOrnament(corner === current
++                ? PopupMenu.Ornament.CHECK
++                : PopupMenu.Ornament.NONE);
++        }
+     }
+ });
+ 
+@@ -36,4 +75,3 @@ class Indicator extends SystemIndicator {
+         this.quickSettingsItems.push(toggle);
+     }
+ });
+-

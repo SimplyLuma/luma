@@ -1,0 +1,450 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 00:10:00 -0500
+Subject: [PATCH] dash: Dock folders
+
+Settings for the folders pinned to the dock, reading and writing the same
+org.project_luma.shell-state keys the Shell does.
+
+Show folders hides the rail without unpinning anything, so the folders keep
+their places, their arrangements and their counts. Separate island takes
+them out of the dock and gives them a surface of their own beside it, and
+the preview draws that third surface. Both rows need a folder pinned before
+they mean anything, and say so when there is none.
+
+Each pinned folder is a row: its name, the path underneath it written the
+way Files writes it, the arrangement it opens in (Stack or Grid, kept per
+folder), buttons to move it along the rail, and one to take it off. Add
+folder… opens a folder chooser. Taking a folder off the dock forgets its
+arrangement, the stamp its count was measured against, and any position it
+was last left in away from the dock, so nothing accumulates for folders that
+are no longer there.
+
+Every row is built only if the installed shell state has its key, so an
+older one shows fewer rows rather than dead ones.
+
+Generated against the g-c-c tree with 0001-0023 applied, for release
+1.luma.27.preview20260920.1.
+---
+diff --git a/panels/dash/cc-dash-panel.c b/panels/dash/cc-dash-panel.c
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -19,12 +19,54 @@
+   AdwSwitchRow *float_row;
+   AdwSwitchRow *span_row;
+   gboolean syncing_span;
++  AdwSwitchRow *folders_show_row;
++  AdwSwitchRow *folders_separate_row;
++  AdwPreferencesGroup *folders_group;
++  GPtrArray *folder_rows;
++  char *folders_key;
++  gboolean syncing_folders;
+   AdwSpinRow *padding_row;
+   GtkCheckButton *positions[4];
+ };
+ 
+ CC_PANEL_REGISTER (CcDashPanel, cc_dash_panel)
+ static const char *edges[] = { "bottom", "top", "left", "right" };
++static const char * const folder_views[] = { "stack", "grid", NULL };
++
++/* A key the installed shell state does not have is simply absent: the row
++ * that would set it is not built, rather than built and dead. */
++static gboolean
++has_key (CcDashPanel *self, const char *key)
++{
++  g_autoptr(GSettingsSchema) schema = NULL;
++  g_object_get (self->settings, "settings-schema", &schema, NULL);
++  return schema && g_settings_schema_has_key (schema, key);
++}
++
++static gboolean
++folders_pinned (CcDashPanel *self)
++{
++  if (!has_key (self, "dock-folders"))
++    return FALSE;
++  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  return uris != NULL && uris[0] != NULL;
++}
++
++/* Pinned and not hidden: what the dock actually draws. */
++static gboolean
++folders_shown (CcDashPanel *self)
++{
++  return folders_pinned (self) &&
++    (!has_key (self, "dock-folders-visible") ||
++     g_settings_get_boolean (self->settings, "dock-folders-visible"));
++}
++
++static gboolean
++folders_separate (CcDashPanel *self)
++{
++  return has_key (self, "dock-folders-separate") &&
++    g_settings_get_boolean (self->settings, "dock-folders-separate");
++}
+ 
+ static void
+ rounded_rect (cairo_t *cr, double x, double y, double w, double h, double r)
+@@ -218,9 +260,22 @@
+     {
+       double dock = span ? MIN (length * .55, 100) : length * .62;
+       double status = MIN (length-dock-4, vertical ? 36 : 48);
++      /* Separated, the folders leave the dock and stand beside it, so the
++       * Dash reads as three surfaces instead of two. */
++      gboolean rail = folders_shown (self) && folders_separate (self);
++      double rail_len = rail ? MIN (dock * .26, 26) : 0, rail_gap = rail ? 5 : 0;
++      dock -= rail_len + rail_gap;
+       surface_rect (cr, x, y, vertical ? thickness : dock, vertical ? dock : thickness,
+                     edge, attached, span && !floating, FALSE);
+       cairo_fill (cr);
++      if (rail)
++        {
++          double at = dock + rail_gap;
++          surface_rect (cr, vertical ? x : x+at, vertical ? y+at : y,
++                        vertical ? thickness : rail_len, vertical ? rail_len : thickness,
++                        edge, attached, FALSE, FALSE);
++          cairo_fill (cr);
++        }
+       surface_rect (cr, vertical ? x : x+length-status, vertical ? y+length-status : y,
+                     vertical ? thickness : status, vertical ? status : thickness,
+                     edge, attached, FALSE, span && !floating);
+@@ -229,6 +284,161 @@
+   preview_status (self, cr, sx+sw/2, sy+sh/2, vertical);
+ }
+ 
++static void folders_sync (CcDashPanel *self);
++
++/* The arrangement a folder opens in, from the map the Shell keeps by URI.
++ * A folder with no entry of its own opens as a Stack. */
++static const char *
++folder_view_for (CcDashPanel *self, const char *uri)
++{
++  const char *view = NULL;
++  g_autoptr(GVariant) stored = NULL;
++  if (!has_key (self, "dock-folders-views"))
++    return folder_views[0];
++  stored = g_settings_get_value (self->settings, "dock-folders-views");
++  if (g_variant_lookup (stored, uri, "&s", &view) && g_str_equal (view, "grid"))
++    return folder_views[1];
++  return folder_views[0];
++}
++
++static void
++folder_set_view (CcDashPanel *self, const char *uri, const char *view)
++{
++  g_autoptr(GVariant) stored = g_settings_get_value (self->settings, "dock-folders-views");
++  GVariantBuilder builder;
++  GVariantIter iter;
++  const char *key, *value;
++  g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{ss}"));
++  g_variant_iter_init (&iter, stored);
++  while (g_variant_iter_next (&iter, "{&s&s}", &key, &value))
++    if (!g_str_equal (key, uri))
++      g_variant_builder_add (&builder, "{ss}", key, value);
++  g_variant_builder_add (&builder, "{ss}", uri, view);
++  g_settings_set_value (self->settings, "dock-folders-views", g_variant_builder_end (&builder));
++}
++
++/* A folder that is no longer pinned leaves nothing behind: not the
++ * arrangement it opened in, not the stamp its count was measured against,
++ * and not a position it was last left in away from the Dash. */
++static void
++folder_forget (CcDashPanel *self, const char *uri)
++{
++  if (has_key (self, "dock-folders-views"))
++    {
++      g_autoptr(GVariant) stored = g_settings_get_value (self->settings, "dock-folders-views");
++      GVariantBuilder builder;
++      GVariantIter iter;
++      const char *key, *value;
++      g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{ss}"));
++      g_variant_iter_init (&iter, stored);
++      while (g_variant_iter_next (&iter, "{&s&s}", &key, &value))
++        if (!g_str_equal (key, uri))
++          g_variant_builder_add (&builder, "{ss}", key, value);
++      g_settings_set_value (self->settings, "dock-folders-views", g_variant_builder_end (&builder));
++    }
++  if (has_key (self, "dock-folders-seen"))
++    {
++      g_autoptr(GVariant) stored = g_settings_get_value (self->settings, "dock-folders-seen");
++      GVariantBuilder builder;
++      GVariantIter iter;
++      const char *key;
++      gint64 when;
++      g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sx}"));
++      g_variant_iter_init (&iter, stored);
++      while (g_variant_iter_next (&iter, "{&sx}", &key, &when))
++        if (!g_str_equal (key, uri))
++          g_variant_builder_add (&builder, "{sx}", key, when);
++      g_settings_set_value (self->settings, "dock-folders-seen", g_variant_builder_end (&builder));
++    }
++  if (has_key (self, "dock-folders-detached"))
++    {
++      g_autoptr(GVariant) stored = g_settings_get_value (self->settings, "dock-folders-detached");
++      const char *open_uri = NULL;
++      if (g_variant_lookup (stored, "uri", "&s", &open_uri) && g_str_equal (open_uri, uri))
++        g_settings_set_value (self->settings, "dock-folders-detached",
++                              g_variant_new_array (G_VARIANT_TYPE ("{sv}"), NULL, 0));
++    }
++}
++
++static void
++folder_view_changed (GtkDropDown *drop, GParamSpec *pspec, CcDashPanel *self)
++{
++  const char *uri = g_object_get_data (G_OBJECT (drop), "folder-uri");
++  guint selected = gtk_drop_down_get_selected (drop);
++  if (self->syncing_folders || !uri || selected >= G_N_ELEMENTS (folder_views) - 1)
++    return;
++  folder_set_view (self, uri, folder_views[selected]);
++}
++
++static void
++folder_remove_clicked (GtkButton *button, CcDashPanel *self)
++{
++  const char *uri = g_object_get_data (G_OBJECT (button), "folder-uri");
++  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  g_autoptr(GPtrArray) kept = g_ptr_array_new ();
++  for (guint i = 0; uris[i]; i++)
++    if (!g_str_equal (uris[i], uri))
++      g_ptr_array_add (kept, uris[i]);
++  g_ptr_array_add (kept, NULL);
++  g_settings_set_strv (self->settings, "dock-folders", (const char * const *) kept->pdata);
++  folder_forget (self, uri);
++}
++
++/* The list is the order the tiles are drawn in, so moving a row moves a
++ * tile. */
++static void
++folder_move_clicked (GtkButton *button, CcDashPanel *self)
++{
++  const char *uri = g_object_get_data (G_OBJECT (button), "folder-uri");
++  int delta = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "folder-delta"));
++  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  guint count = g_strv_length (uris);
++  for (guint i = 0; i < count; i++)
++    {
++      if (!g_str_equal (uris[i], uri))
++        continue;
++      int to = (int) i + delta;
++      if (to < 0 || to >= (int) count)
++        return;
++      char *moved = uris[i];
++      uris[i] = uris[to];
++      uris[to] = moved;
++      g_settings_set_strv (self->settings, "dock-folders", (const char * const *) uris);
++      return;
++    }
++}
++
++static void
++folder_chosen (GObject *source, GAsyncResult *result, gpointer data)
++{
++  CcDashPanel *self = data;
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GFile) folder = gtk_file_dialog_select_folder_finish (GTK_FILE_DIALOG (source), result, &error);
++  if (!folder)
++    return;
++  g_autofree char *uri = g_file_get_uri (folder);
++  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  guint count = g_strv_length (uris);
++  for (guint i = 0; i < count; i++)
++    if (g_str_equal (uris[i], uri))
++      return;
++  g_autofree const char **next = g_new0 (const char *, count + 2);
++  for (guint i = 0; i < count; i++)
++    next[i] = uris[i];
++  next[count] = uri;
++  g_settings_set_strv (self->settings, "dock-folders", (const char * const *) next);
++}
++
++static void
++folder_add_activated (AdwButtonRow *row, CcDashPanel *self)
++{
++  g_autoptr(GtkFileDialog) dialog = gtk_file_dialog_new ();
++  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
++  gtk_file_dialog_set_title (dialog, _("Add a folder to the dock"));
++  gtk_file_dialog_select_folder (dialog, GTK_IS_WINDOW (root) ? GTK_WINDOW (root) : NULL,
++                                 NULL, folder_chosen, self);
++}
++
+ static void
+ sync_settings (CcDashPanel *self)
+ {
+@@ -257,9 +467,125 @@
+                             g_settings_is_writable (self->settings, "shelf-float-ends"));
+   adw_action_row_set_subtitle (ADW_ACTION_ROW (self->float_row), span ?
+     _("Leave a gap at each end of the Dash") : _("Turn on Span full edge to change this setting"));
++  folders_sync (self);
+   gtk_widget_queue_draw (self->preview);
+ }
+ 
++/* The pinned folders, in the order they are drawn. The rows are rebuilt only
++ * when the list or an arrangement actually changes, so typing in another row
++ * does not take the list apart underneath the pointer. */
++static void
++folders_sync (CcDashPanel *self)
++{
++  if (!self->folders_group)
++    return;
++
++  g_auto(GStrv) uris = g_settings_get_strv (self->settings, "dock-folders");
++  guint count = g_strv_length (uris);
++  gboolean pinned = count > 0;
++  gboolean shown = folders_shown (self);
++
++  if (self->folders_show_row)
++    {
++      gtk_widget_set_sensitive (GTK_WIDGET (self->folders_show_row), pinned &&
++                                g_settings_is_writable (self->settings, "dock-folders-visible"));
++      adw_action_row_set_subtitle (ADW_ACTION_ROW (self->folders_show_row), pinned ?
++        _("Show the pinned folders in the Dash") : _("Pin a folder to show it"));
++    }
++  if (self->folders_separate_row)
++    {
++      gtk_widget_set_sensitive (GTK_WIDGET (self->folders_separate_row), shown &&
++                                g_settings_is_writable (self->settings, "dock-folders-separate"));
++      adw_action_row_set_subtitle (ADW_ACTION_ROW (self->folders_separate_row), shown ?
++        _("Give the folders a surface of their own beside the dock") :
++        _("Show the folders to place them separately"));
++    }
++
++  g_autoptr(GString) key = g_string_new (NULL);
++  for (guint i = 0; i < count; i++)
++    g_string_append_printf (key, "%s\t%s\n", uris[i], folder_view_for (self, uris[i]));
++  if (g_strcmp0 (key->str, self->folders_key) == 0)
++    return;
++  g_free (self->folders_key);
++  self->folders_key = g_strdup (key->str);
++
++  for (guint i = 0; i < self->folder_rows->len; i++)
++    adw_preferences_group_remove (self->folders_group, g_ptr_array_index (self->folder_rows, i));
++  g_ptr_array_set_size (self->folder_rows, 0);
++
++  self->syncing_folders = TRUE;
++  for (guint i = 0; i < count; i++)
++    {
++      g_autoptr(GFile) file = g_file_new_for_uri (uris[i]);
++      g_autofree char *path = g_file_get_path (file);
++      g_autofree char *name = g_file_get_basename (file);
++      g_autofree char *shortened = NULL;
++      const char *home = g_get_home_dir ();
++      AdwActionRow *row = ADW_ACTION_ROW (adw_action_row_new ());
++      GtkWidget *views, *buttons, *remove;
++      const char *icons[] = { "go-up-symbolic", "go-down-symbolic" };
++      const char *moves[] = { N_("Move up"), N_("Move down") };
++
++      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), name ? name : uris[i]);
++      /* The folder's path is its second line, written the way Files writes
++       * it, so a folder is told apart from another of the same name. */
++      if (path && home && g_str_has_prefix (path, home))
++        shortened = g_strconcat ("~", path + strlen (home), NULL);
++      adw_action_row_set_subtitle (ADW_ACTION_ROW (row),
++                                   shortened ? shortened : (path ? path : uris[i]));
++      adw_action_row_add_prefix (row, gtk_image_new_from_icon_name ("folder-symbolic"));
++
++      views = gtk_drop_down_new_from_strings ((const char * const *) (const char *[]) { _("Stack"), _("Grid"), NULL });
++      gtk_widget_set_valign (views, GTK_ALIGN_CENTER);
++      gtk_drop_down_set_selected (GTK_DROP_DOWN (views),
++        g_str_equal (folder_view_for (self, uris[i]), folder_views[1]) ? 1 : 0);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (views),
++                                      GTK_ACCESSIBLE_PROPERTY_LABEL, _("Opens as"), -1);
++      g_object_set_data_full (G_OBJECT (views), "folder-uri", g_strdup (uris[i]), g_free);
++      g_signal_connect_object (views, "notify::selected", G_CALLBACK (folder_view_changed), self, 0);
++      adw_action_row_add_suffix (row, views);
++
++      buttons = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++      gtk_widget_add_css_class (buttons, "linked");
++      gtk_widget_set_valign (buttons, GTK_ALIGN_CENTER);
++      for (guint b = 0; b < G_N_ELEMENTS (icons); b++)
++        {
++          GtkWidget *button = gtk_button_new_from_icon_name (icons[b]);
++          gtk_widget_add_css_class (button, "flat");
++          gtk_widget_set_tooltip_text (button, _(moves[b]));
++          gtk_accessible_update_property (GTK_ACCESSIBLE (button),
++                                          GTK_ACCESSIBLE_PROPERTY_LABEL, _(moves[b]), -1);
++          gtk_widget_set_sensitive (button, b == 0 ? i > 0 : i + 1 < count);
++          g_object_set_data_full (G_OBJECT (button), "folder-uri", g_strdup (uris[i]), g_free);
++          g_object_set_data (G_OBJECT (button), "folder-delta", GINT_TO_POINTER (b == 0 ? -1 : 1));
++          g_signal_connect_object (button, "clicked", G_CALLBACK (folder_move_clicked), self, 0);
++          gtk_box_append (GTK_BOX (buttons), button);
++        }
++      remove = gtk_button_new_from_icon_name ("list-remove-symbolic");
++      gtk_widget_add_css_class (remove, "flat");
++      gtk_widget_set_tooltip_text (remove, _("Remove from the dock"));
++      gtk_accessible_update_property (GTK_ACCESSIBLE (remove),
++                                      GTK_ACCESSIBLE_PROPERTY_LABEL, _("Remove from the dock"), -1);
++      g_object_set_data_full (G_OBJECT (remove), "folder-uri", g_strdup (uris[i]), g_free);
++      g_signal_connect_object (remove, "clicked", G_CALLBACK (folder_remove_clicked), self, 0);
++      gtk_box_append (GTK_BOX (buttons), remove);
++      adw_action_row_add_suffix (row, buttons);
++
++      adw_preferences_group_add (self->folders_group, GTK_WIDGET (row));
++      g_ptr_array_add (self->folder_rows, row);
++    }
++  self->syncing_folders = FALSE;
++
++  {
++    AdwButtonRow *add = ADW_BUTTON_ROW (adw_button_row_new ());
++    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (add), _("Add folder…"));
++    adw_button_row_set_start_icon_name (add, "list-add-symbolic");
++    g_signal_connect_object (add, "activated", G_CALLBACK (folder_add_activated), self, 0);
++    adw_preferences_group_add (self->folders_group, GTK_WIDGET (add));
++    g_ptr_array_add (self->folder_rows, add);
++  }
++}
++
+ static void
+ settings_changed (GSettings *settings, const char *key, CcDashPanel *self)
+ {
+@@ -320,8 +646,12 @@
+     /* Not bound: without islands the switch shows On without storing it. */
+     g_signal_connect_object (row, "notify::active", G_CALLBACK (span_toggled), self, 0);
+   else
++    /* Rows whose sensitivity says something of its own (Float outer edges,
++     * and the folders rows, which need a folder pinned first) keep it from
++     * sync_settings rather than from the key's writability alone. */
+     g_settings_bind (self->settings, key, row, "active",
+-                     g_str_equal (key, "shelf-float-ends") ? G_SETTINGS_BIND_NO_SENSITIVITY : G_SETTINGS_BIND_DEFAULT);
++                     g_str_has_prefix (key, "dock-folders") || g_str_equal (key, "shelf-float-ends")
++                     ? G_SETTINGS_BIND_NO_SENSITIVITY : G_SETTINGS_BIND_DEFAULT);
+   return row;
+ }
+ 
+@@ -395,6 +725,9 @@
+ {
+   CcDashPanel *self = CC_DASH_PANEL (object);
+   g_clear_object (&self->settings);
++  g_clear_pointer (&self->folder_rows, g_ptr_array_unref);
++  g_clear_pointer (&self->folders_key, g_free);
++  self->folders_group = NULL;
+   G_OBJECT_CLASS (cc_dash_panel_parent_class)->dispose (object);
+ }
+ 
+@@ -478,6 +811,29 @@
+   g_settings_bind (self->settings, "shelf-padding", self->padding_row, "value", G_SETTINGS_BIND_DEFAULT);
+   adw_preferences_group_add (appearance, GTK_WIDGET (self->padding_row));
+   adw_preferences_page_add (page, appearance);
++
++  /* Dock folders. A folder pinned to the dock shows what is in it and opens
++   * in place; this is where it is pinned, ordered, arranged and put away.
++   * Every row here reads and writes the same keys the Shell does. */
++  if (has_key (self, "dock-folders"))
++    {
++      AdwPreferencesGroup *folders = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++      self->folders_group = folders;
++      self->folder_rows = g_ptr_array_new ();
++      adw_preferences_group_set_title (folders, _("Dock folders"));
++      adw_preferences_group_set_description (folders,
++        _("A folder pinned to the dock shows what is in it and opens in place, without a window. Drag a folder onto the dock to pin it."));
++      if (has_key (self, "dock-folders-visible"))
++        self->folders_show_row = add_switch (self, folders, _("Show folders"),
++                                             _("Show the pinned folders in the Dash"),
++                                             "dock-folders-visible", NULL);
++      if (has_key (self, "dock-folders-separate"))
++        self->folders_separate_row = add_switch (self, folders, _("Separate island"),
++                                                 _("Give the folders a surface of their own beside the dock"),
++                                                 "dock-folders-separate", NULL);
++      adw_preferences_page_add (page, folders);
++    }
++
+   AdwPreferencesGroup *status = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
+   static const char * const frames[] = { "none", "stroke", "fill", "both", NULL };
+   static const char * const scopes[] = { "all", "controls", "split", "joined", "flush", NULL };

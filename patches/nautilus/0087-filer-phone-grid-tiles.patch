@@ -1,0 +1,31 @@
+From 0b9908df99f8f3e9dc6b720f65b65b327e9caae5 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:55:39 +0000
+Subject: [PATCH] Filer: cap phone grid tile width for wrapped names
+
+---
+ src/nautilus-grid-cell.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index 24d1ba5..ba320f6 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -306,6 +306,14 @@ nautilus_grid_cell_measure (GtkWidget      *widget,
+                        gtk_widget_get_name (self->emblems_box), self->emblems_box, EMBLEMS_BOX_WIDTH);
+             width += 2 * (child_min - EMBLEMS_BOX_WIDTH);
+         }
++
++        /* At phone width, names wrap within a tile instead of widening the
++         * grid past three columns. The 72px face plus its side allowance is
++         * the width the view reserves for each tile. */
++        if (icon_size == 72)
++        {
++            width = MIN (width, 100);
++        }
+     }
+     else /* GTK_ORIENTATION_VERTICAL */
+     {
+-- 
+2.55.0
+

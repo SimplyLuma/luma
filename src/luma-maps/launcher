@@ -1,0 +1,3 @@
+#!/bin/sh
+export PYTHONPATH=/opt/luma-previews/maps
+exec /usr/bin/python3 /opt/luma-previews/maps/bin/luma-maps "$@"

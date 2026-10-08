@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: MPL-2.0
+# Nothing important is missed only if the service is always there.
+enable luma-background.service

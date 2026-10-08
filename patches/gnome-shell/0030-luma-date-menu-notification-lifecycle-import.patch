@@ -1,0 +1,10 @@
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -9,6 +9,7 @@
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import * as MessageTray from './messageTray.js';
+ import * as PanelMenu from './panelMenu.js';
+ import * as Calendar from './calendar.js';
+ import * as Weather from '../misc/weather.js';

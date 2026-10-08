@@ -1,0 +1,14 @@
+[terminal]
+vt = 1
+switch = true
+
+[general]
+source_profile = true
+
+[initial_session]
+command = "/usr/bin/phosh-session"
+user = "luma"
+
+[default_session]
+command = "agreety --cmd /usr/bin/phosh-session"
+user = "greetd"

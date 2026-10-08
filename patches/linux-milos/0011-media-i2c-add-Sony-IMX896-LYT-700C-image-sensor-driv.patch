@@ -1,0 +1,1543 @@
+From 059899bf1519293b1c1409f6da0252dcdd01c164 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 16 Aug 2026 19:47:13 +0200
+Subject: [PATCH] media: i2c: add Sony IMX896 (LYT-700C) image sensor driver
+
+Minimal driver for the 50MP quad-bayer C-PHY sensor used as the
+Fairphone 6 main camera: 4096x3072 binned and 8192x6144 full-res
+modes, exposure/analogue-gain/vblank/test-pattern controls, runtime
+PM. Register tables derived from Motorola's GPL-2.0 vendor driver
+(mot_vienna_imx896_mipi_raw, Copyright MediaTek Inc.); mode timings
+cross-checked against the FP6's own CamX sensormodule data (line
+lengths identical, frame lengths within 4 lines). Link frequency
+1.2 GHz derived from the OP PLL chain and confirmed against the
+vendor pixel rate to 2.6 ppm.
+
+Untested on hardware at commit time; first-light validation follows.
+
+Assisted-by: Claude:claude-fable-5
+---
+ drivers/media/i2c/Kconfig  |   11 +
+ drivers/media/i2c/Makefile |    1 +
+ drivers/media/i2c/imx896.c | 1475 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 1487 insertions(+)
+ create mode 100644 drivers/media/i2c/imx896.c
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 8f2ba41..f69a914 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -287,6 +287,17 @@ config VIDEO_IMX415
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called imx415.
+ 
++config VIDEO_IMX896
++	tristate "Sony IMX896 sensor support"
++	depends on OF_GPIO
++	select V4L2_CCI_I2C
++	help
++	  This is a Video4Linux2 sensor driver for the Sony
++	  IMX896 camera.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called imx896.
++
+ config VIDEO_MAX9271_LIB
+ 	tristate
+ 
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 90b276a..d6d988f 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -61,6 +61,7 @@ obj-$(CONFIG_VIDEO_IMX335) += imx335.o
+ obj-$(CONFIG_VIDEO_IMX355) += imx355.o
+ obj-$(CONFIG_VIDEO_IMX412) += imx412.o
+ obj-$(CONFIG_VIDEO_IMX415) += imx415.o
++obj-$(CONFIG_VIDEO_IMX896) += imx896.o
+ obj-$(CONFIG_VIDEO_IR_I2C) += ir-kbd-i2c.o
+ obj-$(CONFIG_VIDEO_ISL7998X) += isl7998x.o
+ obj-$(CONFIG_VIDEO_KS0127) += ks0127.o
+diff --git a/drivers/media/i2c/imx896.c b/drivers/media/i2c/imx896.c
+new file mode 100644
+index 0000000..9c8af5d
+--- /dev/null
++++ b/drivers/media/i2c/imx896.c
+@@ -0,0 +1,1475 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Sony IMX896 (LYTIA LYT-700C) CMOS image sensor driver
++ *
++ * Copyright (C) 2026 Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
++ *
++ * Register tables derived from Motorola's GPL-2.0 vendor driver
++ * mot_vienna_imx896_mipi_raw:
++ *
++ *   Copyright (c) 2019, 2022 MediaTek Inc.
++ */
++
++#include <linux/bits.h>
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/pm_runtime.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++
++#include <media/v4l2-cci.h>
++#include <media/v4l2-common.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-fwnode.h>
++#include <media/v4l2-subdev.h>
++
++#define IMX896_REG_CHIP_ID		CCI_REG16(0x0016)
++#define IMX896_CHIP_ID			0x0896
++
++/* Hardware revision, bit 4 distinguishes mass production from early silicon */
++#define IMX896_REG_HW_REVISION		CCI_REG8(0x0018)
++#define IMX896_HW_REVISION_MP		BIT(4)
++
++#define IMX896_REG_MODE_SELECT		CCI_REG8(0x0100)
++#define IMX896_MODE_STANDBY		0x00
++#define IMX896_MODE_STREAMING		0x01
++
++/* Frame length lines */
++#define IMX896_REG_FLL			CCI_REG16(0x0340)
++#define IMX896_FLL_MAX			0xfffc
++
++/* Coarse integration time, in lines */
++#define IMX896_REG_EXPOSURE		CCI_REG16(0x0202)
++#define IMX896_EXPOSURE_MIN		4
++#define IMX896_EXPOSURE_STEP		1
++#define IMX896_EXPOSURE_DEFAULT		0x03e8
++/* Exposure must stay this many lines below the frame length */
++#define IMX896_EXPOSURE_OFFSET		48
++
++/*
++ * Analogue gain. The gain register holds a 14 bit code with
++ *
++ *	gain = 16384 / (16384 - code)
++ *
++ * so code 0 is 1x and code 16128 is 64x. Only multiples of 4 are programmable.
++ */
++#define IMX896_REG_ANALOGUE_GAIN	CCI_REG16(0x0204)
++#define IMX896_ANA_GAIN_MIN		0
++#define IMX896_ANA_GAIN_MAX		16128
++#define IMX896_ANA_GAIN_STEP		4
++#define IMX896_ANA_GAIN_DEFAULT		0
++
++#define IMX896_REG_TEST_PATTERN		CCI_REG16(0x0600)
++
++#define IMX896_INCLK_RATE		24000000
++
++/*
++ * CSI-2 C-PHY, 3 trios. The output PLL runs at 2400 MHz, which is the C-PHY
++ * symbol rate; V4L2 expresses the link frequency as half of that. See the
++ * pixel rate formula in Documentation/driver-api/media/tx-rx.rst.
++ */
++#define IMX896_LINK_FREQ		1200000000ULL
++#define IMX896_NUM_DATA_LANES		3
++
++/* Pixel array readout rate, identical for all modes */
++#define IMX896_PIXEL_RATE		1360000000ULL
++
++#define IMX896_NATIVE_WIDTH		8192
++#define IMX896_NATIVE_HEIGHT		6144
++
++static const char * const imx896_supply_names[] = {
++	"dovdd",	/* Digital I/O power, 1.8 V */
++	"avdd2",	/* Analog power, 1.8 V */
++	"avdd1",	/* Analog power, 2.8 V */
++	"dvdd",		/* Digital core power, 1.1 V */
++};
++
++static const s64 imx896_link_freq_menu[] = {
++	IMX896_LINK_FREQ,
++};
++
++static const char * const imx896_test_pattern_menu[] = {
++	"Disabled",
++	"Solid Colour",
++	"Eight Vertical Colour Bars",
++	"Colour Bars With Fade to Grey",
++	"Pseudorandom Sequence (PN9)",
++};
++
++/**
++ * struct imx896_mode - imx896 sensor mode structure
++ * @width: Frame width in pixels
++ * @height: Frame height in pixels
++ * @hblank: Horizontal blanking in pixels, fixed for the mode
++ * @vblank: Vertical blanking in lines, also the minimum for the mode
++ * @vblank_max: Maximum vertical blanking in lines
++ * @regs: Register list for the mode
++ * @num_regs: Number of entries in @regs
++ */
++struct imx896_mode {
++	u32 width;
++	u32 height;
++	u32 hblank;
++	u32 vblank;
++	u32 vblank_max;
++	const struct cci_reg_sequence *regs;
++	unsigned int num_regs;
++};
++
++/**
++ * struct imx896 - imx896 sensor device structure
++ * @dev: Pointer to the generic device
++ * @sd: V4L2 sub-device
++ * @pad: Media pad, only a single source pad is supported
++ * @cci: CCI register map
++ * @inclk: Sensor input clock
++ * @reset_gpio: Sensor reset (XCLR) gpio
++ * @supplies: Regulator supplies
++ * @ctrl_handler: V4L2 control handler
++ * @exposure: Pointer to the exposure control
++ * @hblank: Pointer to the horizontal blanking control
++ * @vblank: Pointer to the vertical blanking control
++ * @cur_mode: Pointer to the currently selected sensor mode
++ * @link_freq_bitmap: Bitmap of the link frequencies enabled in firmware
++ */
++struct imx896 {
++	struct device *dev;
++	struct v4l2_subdev sd;
++	struct media_pad pad;
++	struct regmap *cci;
++	struct clk *inclk;
++	struct gpio_desc *reset_gpio;
++	struct regulator_bulk_data supplies[ARRAY_SIZE(imx896_supply_names)];
++
++	struct v4l2_ctrl_handler ctrl_handler;
++	struct v4l2_ctrl *exposure;
++	struct v4l2_ctrl *hblank;
++	struct v4l2_ctrl *vblank;
++
++	const struct imx896_mode *cur_mode;
++	unsigned long link_freq_bitmap;
++};
++
++/*
++ * Common initialisation, applied before the mode registers on every stream
++ * start. Transcribed from imx896_mp_init_setting[] in
++ * mot_vienna_imx896Sensor_mp_setting.h.
++ */
++static const struct cci_reg_sequence imx896_init_regs[] = {
++	{ CCI_REG8(0x0136), 0x18 },
++	{ CCI_REG8(0x0137), 0x00 },
++	{ CCI_REG8(0xf800), 0xfd },
++	{ CCI_REG8(0xf801), 0xfd },
++	{ CCI_REG8(0xf802), 0xd7 },
++	{ CCI_REG8(0xf803), 0xe3 },
++	{ CCI_REG8(0xf804), 0x55 },
++	{ CCI_REG8(0xf805), 0xc0 },
++	{ CCI_REG8(0xf806), 0x03 },
++	{ CCI_REG8(0xf807), 0x01 },
++	{ CCI_REG8(0xf808), 0x16 },
++	{ CCI_REG8(0xf809), 0xfa },
++	{ CCI_REG8(0xf80a), 0x82 },
++	{ CCI_REG8(0xf80b), 0x00 },
++	{ CCI_REG8(0xf80c), 0x55 },
++	{ CCI_REG8(0xf80d), 0xc4 },
++	{ CCI_REG8(0xf80e), 0x03 },
++	{ CCI_REG8(0xf80f), 0x01 },
++	{ CCI_REG8(0xf810), 0x1b },
++	{ CCI_REG8(0xf811), 0x24 },
++	{ CCI_REG8(0xf812), 0xc2 },
++	{ CCI_REG8(0xf813), 0xfc },
++	{ CCI_REG8(0xf814), 0x55 },
++	{ CCI_REG8(0xf815), 0x90 },
++	{ CCI_REG8(0xf816), 0x11 },
++	{ CCI_REG8(0xf817), 0x01 },
++	{ CCI_REG8(0xf818), 0x00 },
++	{ CCI_REG8(0xf819), 0x00 },
++	{ CCI_REG8(0xf81a), 0x51 },
++	{ CCI_REG8(0xf81b), 0x00 },
++	{ CCI_REG8(0xf81c), 0x55 },
++	{ CCI_REG8(0xf81d), 0x94 },
++	{ CCI_REG8(0xf81e), 0x11 },
++	{ CCI_REG8(0xf81f), 0x01 },
++	{ CCI_REG8(0xf820), 0x16 },
++	{ CCI_REG8(0xf821), 0xfa },
++	{ CCI_REG8(0xf822), 0x00 },
++	{ CCI_REG8(0xf823), 0x00 },
++	{ CCI_REG8(0xf824), 0x55 },
++	{ CCI_REG8(0xf825), 0x98 },
++	{ CCI_REG8(0xf826), 0x11 },
++	{ CCI_REG8(0xf827), 0x01 },
++	{ CCI_REG8(0xf828), 0xb4 },
++	{ CCI_REG8(0xf829), 0x00 },
++	{ CCI_REG8(0xf82a), 0x20 },
++	{ CCI_REG8(0xf82b), 0xef },
++	{ CCI_REG8(0xf82c), 0x55 },
++	{ CCI_REG8(0xf82d), 0x64 },
++	{ CCI_REG8(0xf82e), 0x39 },
++	{ CCI_REG8(0xf82f), 0x00 },
++	{ CCI_REG8(0xf830), 0x32 },
++	{ CCI_REG8(0xf831), 0xc8 },
++	{ CCI_REG8(0xf832), 0x17 },
++	{ CCI_REG8(0xf833), 0xfa },
++	{ CCI_REG8(0xf884), 0x4f },
++	{ CCI_REG8(0xf885), 0x06 },
++	{ CCI_REG8(0xf886), 0xac },
++	{ CCI_REG8(0xf887), 0x27 },
++	{ CCI_REG8(0xf888), 0xac },
++	{ CCI_REG8(0xf889), 0x1d },
++	{ CCI_REG8(0xf88a), 0xac },
++	{ CCI_REG8(0xf88b), 0x14 },
++	{ CCI_REG8(0xf88c), 0xd4 },
++	{ CCI_REG8(0xf88d), 0x18 },
++	{ CCI_REG8(0xf88e), 0x08 },
++	{ CCI_REG8(0xf88f), 0x00 },
++	{ CCI_REG8(0xf890), 0xf0 },
++	{ CCI_REG8(0xf891), 0x45 },
++	{ CCI_REG8(0xf892), 0x06 },
++	{ CCI_REG8(0xf893), 0xd8 },
++	{ CCI_REG8(0xf894), 0xd4 },
++	{ CCI_REG8(0xf895), 0x21 },
++	{ CCI_REG8(0xf896), 0x42 },
++	{ CCI_REG8(0xf897), 0x84 },
++	{ CCI_REG8(0xf898), 0x1e },
++	{ CCI_REG8(0xf899), 0x44 },
++	{ CCI_REG8(0xf89a), 0x29 },
++	{ CCI_REG8(0xf89b), 0x14 },
++	{ CCI_REG8(0xf89c), 0x90 },
++	{ CCI_REG8(0xf89d), 0x0c },
++	{ CCI_REG8(0xf89e), 0xd4 },
++	{ CCI_REG8(0xf89f), 0x21 },
++	{ CCI_REG8(0xf8a0), 0x42 },
++	{ CCI_REG8(0xf8a1), 0x86 },
++	{ CCI_REG8(0xf8a2), 0x1e },
++	{ CCI_REG8(0xf8a3), 0x44 },
++	{ CCI_REG8(0xf8a4), 0x0f },
++	{ CCI_REG8(0xf8a5), 0x14 },
++	{ CCI_REG8(0xf8a6), 0x80 },
++	{ CCI_REG8(0xf8a7), 0x04 },
++	{ CCI_REG8(0xf8a8), 0x00 },
++	{ CCI_REG8(0xf8a9), 0x14 },
++	{ CCI_REG8(0xf8aa), 0x00 },
++	{ CCI_REG8(0xf8ab), 0x41 },
++	{ CCI_REG8(0xf8ac), 0xa1 },
++	{ CCI_REG8(0xf8ad), 0x50 },
++	{ CCI_REG8(0xf8ae), 0xa8 },
++	{ CCI_REG8(0xf8af), 0x14 },
++	{ CCI_REG8(0xf8b0), 0xa8 },
++	{ CCI_REG8(0xf8b1), 0x1d },
++	{ CCI_REG8(0xf8b2), 0xa8 },
++	{ CCI_REG8(0xf8b3), 0x27 },
++	{ CCI_REG8(0xf8b4), 0xa0 },
++	{ CCI_REG8(0xf8b5), 0x09 },
++	{ CCI_REG8(0xf8b6), 0x4f },
++	{ CCI_REG8(0xf8b7), 0x06 },
++	{ CCI_REG8(0xf8b8), 0xac },
++	{ CCI_REG8(0xf8b9), 0x27 },
++	{ CCI_REG8(0xf8ba), 0xac },
++	{ CCI_REG8(0xf8bb), 0x1d },
++	{ CCI_REG8(0xf8bc), 0xac },
++	{ CCI_REG8(0xf8bd), 0x14 },
++	{ CCI_REG8(0xf8be), 0xd0 },
++	{ CCI_REG8(0xf8bf), 0x21 },
++	{ CCI_REG8(0xf8c0), 0x42 },
++	{ CCI_REG8(0xf8c1), 0x84 },
++	{ CCI_REG8(0xf8c2), 0x1e },
++	{ CCI_REG8(0xf8c3), 0x00 },
++	{ CCI_REG8(0xf8c4), 0xbe },
++	{ CCI_REG8(0xf8c5), 0x54 },
++	{ CCI_REG8(0xf8c6), 0xd0 },
++	{ CCI_REG8(0xf8c7), 0x21 },
++	{ CCI_REG8(0xf8c8), 0x42 },
++	{ CCI_REG8(0xf8c9), 0x86 },
++	{ CCI_REG8(0xf8ca), 0x1e },
++	{ CCI_REG8(0xf8cb), 0x05 },
++	{ CCI_REG8(0xf8cc), 0xd4 },
++	{ CCI_REG8(0xf8cd), 0x18 },
++	{ CCI_REG8(0xf8ce), 0x27 },
++	{ CCI_REG8(0xf8cf), 0xf8 },
++	{ CCI_REG8(0xf8d0), 0xf1 },
++	{ CCI_REG8(0xf8d1), 0x41 },
++	{ CCI_REG8(0xf8d2), 0x00 },
++	{ CCI_REG8(0xf8d3), 0x02 },
++	{ CCI_REG8(0xf8d4), 0x1a },
++	{ CCI_REG8(0xf8d5), 0x40 },
++	{ CCI_REG8(0xf8d6), 0xd2 },
++	{ CCI_REG8(0xf8d7), 0x20 },
++	{ CCI_REG8(0xf8d8), 0x44 },
++	{ CCI_REG8(0xf8d9), 0x00 },
++	{ CCI_REG8(0xf8da), 0x1a },
++	{ CCI_REG8(0xf8db), 0x22 },
++	{ CCI_REG8(0xf8dc), 0x20 },
++	{ CCI_REG8(0xf8dd), 0x21 },
++	{ CCI_REG8(0xf8de), 0x90 },
++	{ CCI_REG8(0xf8df), 0x04 },
++	{ CCI_REG8(0xf8e0), 0x80 },
++	{ CCI_REG8(0xf8e1), 0x0e },
++	{ CCI_REG8(0xf8e2), 0xfc },
++	{ CCI_REG8(0xf8e3), 0x41 },
++	{ CCI_REG8(0xf8e4), 0x7f },
++	{ CCI_REG8(0xf8e5), 0xff },
++	{ CCI_REG8(0xf8e6), 0xfc },
++	{ CCI_REG8(0xf8e7), 0x31 },
++	{ CCI_REG8(0xf8e8), 0xff },
++	{ CCI_REG8(0xf8e9), 0xff },
++	{ CCI_REG8(0xf8ea), 0x50 },
++	{ CCI_REG8(0xf8eb), 0x00 },
++	{ CCI_REG8(0xf8ec), 0x80 },
++	{ CCI_REG8(0xf8ed), 0x0e },
++	{ CCI_REG8(0xf8ee), 0x02 },
++	{ CCI_REG8(0xf8ef), 0x21 },
++	{ CCI_REG8(0xf8f0), 0x11 },
++	{ CCI_REG8(0xf8f1), 0x00 },
++	{ CCI_REG8(0xf8f2), 0xfa },
++	{ CCI_REG8(0xf8f3), 0xe8 },
++	{ CCI_REG8(0xf8f4), 0x07 },
++	{ CCI_REG8(0xf8f5), 0x14 },
++	{ CCI_REG8(0xf8f6), 0x00 },
++	{ CCI_REG8(0xf8f7), 0x01 },
++	{ CCI_REG8(0xf8f8), 0x15 },
++	{ CCI_REG8(0xf8f9), 0xf0 },
++	{ CCI_REG8(0xf8fa), 0x6f },
++	{ CCI_REG8(0xf8fb), 0xf5 },
++	{ CCI_REG8(0xf8fc), 0x28 },
++	{ CCI_REG8(0xf8fd), 0x05 },
++	{ CCI_REG8(0xf8fe), 0xa6 },
++	{ CCI_REG8(0xf8ff), 0x13 },
++	{ CCI_REG8(0xf900), 0xa5 },
++	{ CCI_REG8(0xf901), 0x53 },
++	{ CCI_REG8(0xf902), 0x50 },
++	{ CCI_REG8(0xf903), 0x02 },
++	{ CCI_REG8(0xf904), 0xfa },
++	{ CCI_REG8(0xf905), 0xe9 },
++	{ CCI_REG8(0xf906), 0xd0 },
++	{ CCI_REG8(0xf907), 0x20 },
++	{ CCI_REG8(0xf908), 0x00 },
++	{ CCI_REG8(0xf909), 0x02 },
++	{ CCI_REG8(0xf90a), 0x00 },
++	{ CCI_REG8(0xf90b), 0x13 },
++	{ CCI_REG8(0xf90c), 0x00 },
++	{ CCI_REG8(0xf90d), 0x30 },
++	{ CCI_REG8(0xf90e), 0x05 },
++	{ CCI_REG8(0xf90f), 0x20 },
++	{ CCI_REG8(0xf910), 0xb8 },
++	{ CCI_REG8(0xf911), 0x07 },
++	{ CCI_REG8(0xf912), 0x19 },
++	{ CCI_REG8(0xf913), 0x40 },
++	{ CCI_REG8(0xf914), 0x50 },
++	{ CCI_REG8(0xf915), 0x01 },
++	{ CCI_REG8(0xf916), 0xfa },
++	{ CCI_REG8(0xf917), 0xe8 },
++	{ CCI_REG8(0xf918), 0x07 },
++	{ CCI_REG8(0xf919), 0x86 },
++	{ CCI_REG8(0xf91a), 0x00 },
++	{ CCI_REG8(0xf91b), 0x10 },
++	{ CCI_REG8(0xf91c), 0x80 },
++	{ CCI_REG8(0xf91d), 0x04 },
++	{ CCI_REG8(0xf91e), 0x5f },
++	{ CCI_REG8(0xf91f), 0xf0 },
++	{ CCI_REG8(0xf920), 0xd1 },
++	{ CCI_REG8(0xf921), 0x18 },
++	{ CCI_REG8(0xf922), 0x26 },
++	{ CCI_REG8(0xf923), 0x58 },
++	{ CCI_REG8(0xf924), 0x1a },
++	{ CCI_REG8(0xf925), 0x12 },
++	{ CCI_REG8(0xf926), 0xd1 },
++	{ CCI_REG8(0xf927), 0x18 },
++	{ CCI_REG8(0xf928), 0x28 },
++	{ CCI_REG8(0xf929), 0x40 },
++	{ CCI_REG8(0xf92a), 0xf6 },
++	{ CCI_REG8(0xf92b), 0x11 },
++	{ CCI_REG8(0xf92c), 0x08 },
++	{ CCI_REG8(0xf92d), 0x3a },
++	{ CCI_REG8(0xf92e), 0x0f },
++	{ CCI_REG8(0xf92f), 0x21 },
++	{ CCI_REG8(0xf930), 0xd2 },
++	{ CCI_REG8(0xf931), 0x01 },
++	{ CCI_REG8(0xf932), 0x00 },
++	{ CCI_REG8(0xf933), 0x00 },
++	{ CCI_REG8(0xf934), 0x01 },
++	{ CCI_REG8(0xf935), 0x02 },
++	{ CCI_REG8(0xf936), 0x0e },
++	{ CCI_REG8(0xf937), 0x03 },
++	{ CCI_REG8(0xf938), 0x28 },
++	{ CCI_REG8(0xf939), 0x03 },
++	{ CCI_REG8(0xf93a), 0xa4 },
++	{ CCI_REG8(0xf93b), 0x03 },
++	{ CCI_REG8(0xf93c), 0xa5 },
++	{ CCI_REG8(0xf93d), 0x23 },
++	{ CCI_REG8(0xf93e), 0xfc },
++	{ CCI_REG8(0xf93f), 0x42 },
++	{ CCI_REG8(0xf940), 0xff },
++	{ CCI_REG8(0xf941), 0xfe },
++	{ CCI_REG8(0xf942), 0xfc },
++	{ CCI_REG8(0xf943), 0x32 },
++	{ CCI_REG8(0xf944), 0xff },
++	{ CCI_REG8(0xf945), 0xff },
++	{ CCI_REG8(0xf946), 0x24 },
++	{ CCI_REG8(0xf947), 0x02 },
++	{ CCI_REG8(0xf948), 0xa5 },
++	{ CCI_REG8(0xf949), 0x30 },
++	{ CCI_REG8(0xf94a), 0x13 },
++	{ CCI_REG8(0xf94b), 0x00 },
++	{ CCI_REG8(0xf94c), 0xf1 },
++	{ CCI_REG8(0xf94d), 0x42 },
++	{ CCI_REG8(0xf94e), 0x00 },
++	{ CCI_REG8(0xf94f), 0x02 },
++	{ CCI_REG8(0xf950), 0x02 },
++	{ CCI_REG8(0xf951), 0x02 },
++	{ CCI_REG8(0xf952), 0x2a },
++	{ CCI_REG8(0xf953), 0x02 },
++	{ CCI_REG8(0xf954), 0xa6 },
++	{ CCI_REG8(0xf955), 0x00 },
++	{ CCI_REG8(0xf956), 0xa5 },
++	{ CCI_REG8(0xf957), 0x20 },
++	{ CCI_REG8(0xf958), 0xfc },
++	{ CCI_REG8(0xf959), 0x12 },
++	{ CCI_REG8(0xf95a), 0x3f },
++	{ CCI_REG8(0xf95b), 0xff },
++	{ CCI_REG8(0xf95c), 0x22 },
++	{ CCI_REG8(0xf95d), 0x02 },
++	{ CCI_REG8(0xf95e), 0xa5 },
++	{ CCI_REG8(0xf95f), 0x02 },
++	{ CCI_REG8(0xf960), 0x0e },
++	{ CCI_REG8(0xf961), 0x20 },
++	{ CCI_REG8(0xf962), 0xfa },
++	{ CCI_REG8(0xf963), 0x00 },
++	{ CCI_REG8(0xf964), 0x00 },
++	{ CCI_REG8(0xf965), 0x24 },
++	{ CCI_REG8(0xf966), 0xd1 },
++	{ CCI_REG8(0xf967), 0x18 },
++	{ CCI_REG8(0xf968), 0x28 },
++	{ CCI_REG8(0xf969), 0x0c },
++	{ CCI_REG8(0xf96a), 0x3a },
++	{ CCI_REG8(0xf96b), 0x18 },
++	{ CCI_REG8(0xf96c), 0xd0 },
++	{ CCI_REG8(0xf96d), 0x18 },
++	{ CCI_REG8(0xf96e), 0x26 },
++	{ CCI_REG8(0xf96f), 0x76 },
++	{ CCI_REG8(0xf970), 0x1a },
++	{ CCI_REG8(0xf971), 0x00 },
++	{ CCI_REG8(0xf972), 0x50 },
++	{ CCI_REG8(0xf973), 0x01 },
++	{ CCI_REG8(0xf974), 0xfa },
++	{ CCI_REG8(0xf975), 0x00 },
++	{ CCI_REG8(0xf976), 0x00 },
++	{ CCI_REG8(0xf977), 0x12 },
++	{ CCI_REG8(0xf978), 0xd1 },
++	{ CCI_REG8(0xf979), 0x18 },
++	{ CCI_REG8(0xf97a), 0x28 },
++	{ CCI_REG8(0xf97b), 0x0c },
++	{ CCI_REG8(0xf97c), 0x3a },
++	{ CCI_REG8(0xf97d), 0x1b },
++	{ CCI_REG8(0xf97e), 0xa8 },
++	{ CCI_REG8(0xf97f), 0x14 },
++	{ CCI_REG8(0xf980), 0xa8 },
++	{ CCI_REG8(0xf981), 0x1d },
++	{ CCI_REG8(0xf982), 0xa8 },
++	{ CCI_REG8(0xf983), 0x27 },
++	{ CCI_REG8(0xf984), 0xa0 },
++	{ CCI_REG8(0xf985), 0x09 },
++	{ CCI_REG8(0xf986), 0x4f },
++	{ CCI_REG8(0xf987), 0x86 },
++	{ CCI_REG8(0xf988), 0xac },
++	{ CCI_REG8(0xf989), 0x17 },
++	{ CCI_REG8(0xf98a), 0x50 },
++	{ CCI_REG8(0xf98b), 0x12 },
++	{ CCI_REG8(0xf98c), 0x50 },
++	{ CCI_REG8(0xf98d), 0x03 },
++	{ CCI_REG8(0xf98e), 0xfa },
++	{ CCI_REG8(0xf98f), 0xe9 },
++	{ CCI_REG8(0xf990), 0x18 },
++	{ CCI_REG8(0xf991), 0x76 },
++	{ CCI_REG8(0xf992), 0xa8 },
++	{ CCI_REG8(0xf993), 0x17 },
++	{ CCI_REG8(0xf994), 0xa0 },
++	{ CCI_REG8(0xf995), 0x05 },
++	{ CCI_REG8(0xf996), 0x4f },
++	{ CCI_REG8(0xf997), 0x06 },
++	{ CCI_REG8(0xf998), 0xac },
++	{ CCI_REG8(0xf999), 0x27 },
++	{ CCI_REG8(0xf99a), 0xac },
++	{ CCI_REG8(0xf99b), 0x1d },
++	{ CCI_REG8(0xf99c), 0xac },
++	{ CCI_REG8(0xf99d), 0x14 },
++	{ CCI_REG8(0xf99e), 0xfa },
++	{ CCI_REG8(0xf99f), 0xe8 },
++	{ CCI_REG8(0xf9a0), 0xf6 },
++	{ CCI_REG8(0xf9a1), 0x2c },
++	{ CCI_REG8(0xf9a2), 0xd0 },
++	{ CCI_REG8(0xf9a3), 0x20 },
++	{ CCI_REG8(0xf9a4), 0x40 },
++	{ CCI_REG8(0xf9a5), 0x4f },
++	{ CCI_REG8(0xf9a6), 0x1e },
++	{ CCI_REG8(0xf9a7), 0x05 },
++	{ CCI_REG8(0xf9a8), 0xd4 },
++	{ CCI_REG8(0xf9a9), 0x18 },
++	{ CCI_REG8(0xf9aa), 0x08 },
++	{ CCI_REG8(0xf9ab), 0x00 },
++	{ CCI_REG8(0xf9ac), 0xf6 },
++	{ CCI_REG8(0xf9ad), 0x40 },
++	{ CCI_REG8(0xf9ae), 0x06 },
++	{ CCI_REG8(0xf9af), 0xe7 },
++	{ CCI_REG8(0xf9b0), 0xbe },
++	{ CCI_REG8(0xf9b1), 0x06 },
++	{ CCI_REG8(0xf9b2), 0xf0 },
++	{ CCI_REG8(0xf9b3), 0x40 },
++	{ CCI_REG8(0xf9b4), 0x06 },
++	{ CCI_REG8(0xf9b5), 0xe8 },
++	{ CCI_REG8(0xf9b6), 0x29 },
++	{ CCI_REG8(0xf9b7), 0x25 },
++	{ CCI_REG8(0xf9b8), 0x90 },
++	{ CCI_REG8(0xf9b9), 0x2c },
++	{ CCI_REG8(0xf9ba), 0x80 },
++	{ CCI_REG8(0xf9bb), 0x22 },
++	{ CCI_REG8(0xf9bc), 0xf6 },
++	{ CCI_REG8(0xf9bd), 0x41 },
++	{ CCI_REG8(0xf9be), 0x05 },
++	{ CCI_REG8(0xf9bf), 0x1c },
++	{ CCI_REG8(0xf9c0), 0xb8 },
++	{ CCI_REG8(0xf9c1), 0x8b },
++	{ CCI_REG8(0xf9c2), 0xd0 },
++	{ CCI_REG8(0xf9c3), 0x18 },
++	{ CCI_REG8(0xf9c4), 0x28 },
++	{ CCI_REG8(0xf9c5), 0x40 },
++	{ CCI_REG8(0xf9c6), 0xf0 },
++	{ CCI_REG8(0xf9c7), 0x02 },
++	{ CCI_REG8(0xf9c8), 0x02 },
++	{ CCI_REG8(0xf9c9), 0x74 },
++	{ CCI_REG8(0xf9ca), 0xf6 },
++	{ CCI_REG8(0xf9cb), 0x40 },
++	{ CCI_REG8(0xf9cc), 0x07 },
++	{ CCI_REG8(0xf9cd), 0x10 },
++	{ CCI_REG8(0xf9ce), 0x0f },
++	{ CCI_REG8(0xf9cf), 0x20 },
++	{ CCI_REG8(0xf9d0), 0xfa },
++	{ CCI_REG8(0xf9d1), 0xe8 },
++	{ CCI_REG8(0xf9d2), 0x05 },
++	{ CCI_REG8(0xf9d3), 0xf4 },
++	{ CCI_REG8(0xf9d4), 0x80 },
++	{ CCI_REG8(0xf9d5), 0x04 },
++	{ CCI_REG8(0xf9d6), 0x5f },
++	{ CCI_REG8(0xf9d7), 0xf0 },
++	{ CCI_REG8(0xf9d8), 0x29 },
++	{ CCI_REG8(0xf9d9), 0x25 },
++	{ CCI_REG8(0xf9da), 0x90 },
++	{ CCI_REG8(0xf9db), 0x0a },
++	{ CCI_REG8(0xf9dc), 0x50 },
++	{ CCI_REG8(0xf9dd), 0x31 },
++	{ CCI_REG8(0xf9de), 0xfa },
++	{ CCI_REG8(0xf9df), 0xe8 },
++	{ CCI_REG8(0xf9e0), 0x05 },
++	{ CCI_REG8(0xf9e1), 0xe6 },
++	{ CCI_REG8(0xf9e2), 0x80 },
++	{ CCI_REG8(0xf9e3), 0x04 },
++	{ CCI_REG8(0xf9e4), 0x09 },
++	{ CCI_REG8(0xf9e5), 0x50 },
++	{ CCI_REG8(0xf9e6), 0xf4 },
++	{ CCI_REG8(0xf9e7), 0x40 },
++	{ CCI_REG8(0xf9e8), 0x06 },
++	{ CCI_REG8(0xf9e9), 0xec },
++	{ CCI_REG8(0xf9ea), 0x50 },
++	{ CCI_REG8(0xf9eb), 0xa1 },
++	{ CCI_REG8(0xf9ec), 0xfa },
++	{ CCI_REG8(0xf9ed), 0xe8 },
++	{ CCI_REG8(0xf9ee), 0x05 },
++	{ CCI_REG8(0xf9ef), 0xd8 },
++	{ CCI_REG8(0xf9f0), 0xfa },
++	{ CCI_REG8(0xf9f1), 0xe8 },
++	{ CCI_REG8(0xf9f2), 0x05 },
++	{ CCI_REG8(0xf9f3), 0x08 },
++	{ CCI_REG8(0xf9f4), 0xa8 },
++	{ CCI_REG8(0xf9f5), 0x14 },
++	{ CCI_REG8(0xf9f6), 0xa8 },
++	{ CCI_REG8(0xf9f7), 0x1d },
++	{ CCI_REG8(0xf9f8), 0xa8 },
++	{ CCI_REG8(0xf9f9), 0x27 },
++	{ CCI_REG8(0xf9fa), 0xa0 },
++	{ CCI_REG8(0xf9fb), 0x09 },
++	{ CCI_REG8(0x97d8), 0x00 },
++	{ CCI_REG8(0x97d9), 0x01 },
++	{ CCI_REG8(0x97da), 0x0b },
++	{ CCI_REG8(0x97db), 0x38 },
++	{ CCI_REG8(0x4331), 0x01 },
++	{ CCI_REG8(0x3304), 0x00 },
++	{ CCI_REG8(0x33f0), 0x02 },
++	{ CCI_REG8(0x33f1), 0x03 },
++	{ CCI_REG8(0x0111), 0x03 },
++	{ CCI_REG8(0x0101), 0x03 },
++	{ CCI_REG8(0xa71e), 0x00 },
++	{ CCI_REG8(0xa722), 0x00 },
++	{ CCI_REG8(0xad01), 0x0a },
++	{ CCI_REG8(0xad02), 0x0a },
++	{ CCI_REG8(0xad0e), 0x02 },
++	{ CCI_REG8(0xae48), 0x01 },
++	{ CCI_REG8(0xae49), 0x61 },
++	{ CCI_REG8(0xae4a), 0x01 },
++	{ CCI_REG8(0xae4b), 0xdf },
++	{ CCI_REG8(0xae4c), 0x02 },
++	{ CCI_REG8(0xae4d), 0xd0 },
++	{ CCI_REG8(0xae4e), 0x01 },
++	{ CCI_REG8(0xae4f), 0x61 },
++	{ CCI_REG8(0xae50), 0x01 },
++	{ CCI_REG8(0xae51), 0xdf },
++	{ CCI_REG8(0xae52), 0x02 },
++	{ CCI_REG8(0xae53), 0xd0 },
++	{ CCI_REG8(0xaea3), 0x28 },
++	{ CCI_REG8(0xaea9), 0x28 },
++	{ CCI_REG8(0xaebb), 0xaa },
++	{ CCI_REG8(0xaebd), 0xe9 },
++	{ CCI_REG8(0xaec1), 0xaa },
++	{ CCI_REG8(0xaec3), 0xe9 },
++	{ CCI_REG8(0xaec9), 0x78 },
++	{ CCI_REG8(0xaecf), 0x78 },
++	{ CCI_REG8(0xaed3), 0x0c },
++	{ CCI_REG8(0xaed5), 0x42 },
++	{ CCI_REG8(0xaed9), 0x0c },
++	{ CCI_REG8(0xaedb), 0x42 },
++	{ CCI_REG8(0xaef7), 0x50 },
++	{ CCI_REG8(0xaef9), 0x50 },
++	{ CCI_REG8(0xaf5b), 0x50 },
++	{ CCI_REG8(0xaf5d), 0x50 },
++	{ CCI_REG8(0x0106), 0x01 },
++};
++
++/*
++ * 4096x3072, 2x2 binned, full field of view. Transcribed from
++ * imx896_preview_setting[] in mot_vienna_imx896Sensor_setting.h, without the
++ * trailing streaming mode write.
++ */
++static const struct cci_reg_sequence imx896_mode_4096x3072_regs[] = {
++	{ CCI_REG8(0x0112), 0x0a },
++	{ CCI_REG8(0x0113), 0x0a },
++	{ CCI_REG8(0x0114), 0x02 },
++	{ CCI_REG8(0x3239), 0x00 },
++	{ CCI_REG8(0x0342), 0x2e },
++	{ CCI_REG8(0x0343), 0x80 },
++	{ CCI_REG8(0x3850), 0x00 },
++	{ CCI_REG8(0x3851), 0xd3 },
++	{ CCI_REG8(0x0340), 0x0e },
++	{ CCI_REG8(0x0341), 0xcf },
++	{ CCI_REG8(0x0344), 0x00 },
++	{ CCI_REG8(0x0345), 0x00 },
++	{ CCI_REG8(0x0346), 0x00 },
++	{ CCI_REG8(0x0347), 0x00 },
++	{ CCI_REG8(0x0348), 0x1f },
++	{ CCI_REG8(0x0349), 0xff },
++	{ CCI_REG8(0x034a), 0x17 },
++	{ CCI_REG8(0x034b), 0xff },
++	{ CCI_REG8(0x0900), 0x01 },
++	{ CCI_REG8(0x0901), 0x22 },
++	{ CCI_REG8(0x0902), 0x00 },
++	{ CCI_REG8(0x3005), 0x02 },
++	{ CCI_REG8(0x3006), 0x02 },
++	{ CCI_REG8(0x3140), 0x0a },
++	{ CCI_REG8(0x3144), 0x00 },
++	{ CCI_REG8(0x3148), 0x04 },
++	{ CCI_REG8(0x31c0), 0x41 },
++	{ CCI_REG8(0x31c1), 0x41 },
++	{ CCI_REG8(0x3205), 0x00 },
++	{ CCI_REG8(0x323c), 0x01 },
++	{ CCI_REG8(0x0408), 0x00 },
++	{ CCI_REG8(0x0409), 0x00 },
++	{ CCI_REG8(0x040a), 0x00 },
++	{ CCI_REG8(0x040b), 0x00 },
++	{ CCI_REG8(0x040c), 0x10 },
++	{ CCI_REG8(0x040d), 0x00 },
++	{ CCI_REG8(0x040e), 0x0c },
++	{ CCI_REG8(0x040f), 0x00 },
++	{ CCI_REG8(0x034c), 0x10 },
++	{ CCI_REG8(0x034d), 0x00 },
++	{ CCI_REG8(0x034e), 0x0c },
++	{ CCI_REG8(0x034f), 0x00 },
++	{ CCI_REG8(0x0301), 0x06 },
++	{ CCI_REG8(0x0303), 0x02 },
++	{ CCI_REG8(0x0305), 0x04 },
++	{ CCI_REG8(0x0306), 0x01 },
++	{ CCI_REG8(0x0307), 0x54 },
++	{ CCI_REG8(0x030b), 0x01 },
++	{ CCI_REG8(0x030d), 0x03 },
++	{ CCI_REG8(0x030e), 0x01 },
++	{ CCI_REG8(0x030f), 0x2c },
++	{ CCI_REG8(0x3104), 0x01 },
++	{ CCI_REG8(0x324c), 0x01 },
++	{ CCI_REG8(0x3800), 0x01 },
++	{ CCI_REG8(0x3801), 0x01 },
++	{ CCI_REG8(0x3802), 0x01 },
++	{ CCI_REG8(0x38a0), 0x00 },
++	{ CCI_REG8(0x38a1), 0x00 },
++	{ CCI_REG8(0x38a2), 0x00 },
++	{ CCI_REG8(0x38a3), 0x00 },
++	{ CCI_REG8(0x38a8), 0x00 },
++	{ CCI_REG8(0x38a9), 0x00 },
++	{ CCI_REG8(0x38aa), 0x00 },
++	{ CCI_REG8(0x38ab), 0x00 },
++	{ CCI_REG8(0x38d0), 0x00 },
++	{ CCI_REG8(0x38d1), 0x00 },
++	{ CCI_REG8(0x38d2), 0x00 },
++	{ CCI_REG8(0x38d3), 0x00 },
++	{ CCI_REG8(0x38e0), 0x00 },
++	{ CCI_REG8(0x38e1), 0x00 },
++	{ CCI_REG8(0x38e2), 0x00 },
++	{ CCI_REG8(0x38e3), 0x00 },
++	{ CCI_REG8(0x38e4), 0x00 },
++	{ CCI_REG8(0x38e5), 0x00 },
++	{ CCI_REG8(0x38e6), 0x00 },
++	{ CCI_REG8(0x38e7), 0x00 },
++	{ CCI_REG8(0x38e8), 0x00 },
++	{ CCI_REG8(0x38e9), 0x00 },
++	{ CCI_REG8(0x39ac), 0x01 },
++	{ CCI_REG8(0x3b00), 0x00 },
++	{ CCI_REG8(0x3b01), 0x00 },
++	{ CCI_REG8(0x3b04), 0x00 },
++	{ CCI_REG8(0x3b05), 0x00 },
++	{ CCI_REG8(0x3b06), 0x00 },
++	{ CCI_REG8(0x3b07), 0x00 },
++	{ CCI_REG8(0x3b0a), 0x00 },
++	{ CCI_REG8(0x3b0b), 0x00 },
++	{ CCI_REG8(0x0202), 0x03 },
++	{ CCI_REG8(0x0203), 0xe8 },
++	{ CCI_REG8(0x0204), 0x00 },
++	{ CCI_REG8(0x0205), 0x00 },
++	{ CCI_REG8(0x020e), 0x01 },
++	{ CCI_REG8(0x020f), 0x00 },
++};
++
++/*
++ * 8192x6144, full resolution. Transcribed from addr_data_pair_custom4[] in
++ * mot_vienna_imx896Sensor_setting.h.
++ */
++static const struct cci_reg_sequence imx896_mode_8192x6144_regs[] = {
++	{ CCI_REG8(0x0112), 0x0a },
++	{ CCI_REG8(0x0113), 0x0a },
++	{ CCI_REG8(0x0114), 0x02 },
++	{ CCI_REG8(0x3239), 0x00 },
++	{ CCI_REG8(0x0342), 0x36 },
++	{ CCI_REG8(0x0343), 0xd0 },
++	{ CCI_REG8(0x3850), 0x00 },
++	{ CCI_REG8(0x3851), 0xf8 },
++	{ CCI_REG8(0x0340), 0x19 },
++	{ CCI_REG8(0x0341), 0x33 },
++	{ CCI_REG8(0x0344), 0x00 },
++	{ CCI_REG8(0x0345), 0x00 },
++	{ CCI_REG8(0x0346), 0x00 },
++	{ CCI_REG8(0x0347), 0x00 },
++	{ CCI_REG8(0x0348), 0x1f },
++	{ CCI_REG8(0x0349), 0xff },
++	{ CCI_REG8(0x034a), 0x17 },
++	{ CCI_REG8(0x034b), 0xff },
++	{ CCI_REG8(0x0900), 0x00 },
++	{ CCI_REG8(0x0901), 0x11 },
++	{ CCI_REG8(0x0902), 0x00 },
++	{ CCI_REG8(0x3005), 0x00 },
++	{ CCI_REG8(0x3006), 0x00 },
++	{ CCI_REG8(0x3140), 0x0a },
++	{ CCI_REG8(0x3144), 0x00 },
++	{ CCI_REG8(0x3148), 0x00 },
++	{ CCI_REG8(0x31c0), 0x01 },
++	{ CCI_REG8(0x31c1), 0x01 },
++	{ CCI_REG8(0x3205), 0x01 },
++	{ CCI_REG8(0x323c), 0x01 },
++	{ CCI_REG8(0x0408), 0x00 },
++	{ CCI_REG8(0x0409), 0x00 },
++	{ CCI_REG8(0x040a), 0x00 },
++	{ CCI_REG8(0x040b), 0x00 },
++	{ CCI_REG8(0x040c), 0x20 },
++	{ CCI_REG8(0x040d), 0x00 },
++	{ CCI_REG8(0x040e), 0x18 },
++	{ CCI_REG8(0x040f), 0x00 },
++	{ CCI_REG8(0x034c), 0x20 },
++	{ CCI_REG8(0x034d), 0x00 },
++	{ CCI_REG8(0x034e), 0x18 },
++	{ CCI_REG8(0x034f), 0x00 },
++	{ CCI_REG8(0x0301), 0x06 },
++	{ CCI_REG8(0x0303), 0x02 },
++	{ CCI_REG8(0x0305), 0x04 },
++	{ CCI_REG8(0x0306), 0x01 },
++	{ CCI_REG8(0x0307), 0x54 },
++	{ CCI_REG8(0x030b), 0x01 },
++	{ CCI_REG8(0x030d), 0x03 },
++	{ CCI_REG8(0x030e), 0x01 },
++	{ CCI_REG8(0x030f), 0x2c },
++	{ CCI_REG8(0x3104), 0x00 },
++	{ CCI_REG8(0x324c), 0x00 },
++	{ CCI_REG8(0x3800), 0x00 },
++	{ CCI_REG8(0x3801), 0x00 },
++	{ CCI_REG8(0x3802), 0x02 },
++	{ CCI_REG8(0x38a0), 0x00 },
++	{ CCI_REG8(0x38a1), 0x00 },
++	{ CCI_REG8(0x38a2), 0x00 },
++	{ CCI_REG8(0x38a3), 0x00 },
++	{ CCI_REG8(0x38a8), 0x00 },
++	{ CCI_REG8(0x38a9), 0x00 },
++	{ CCI_REG8(0x38aa), 0x00 },
++	{ CCI_REG8(0x38ab), 0x00 },
++	{ CCI_REG8(0x38d0), 0x00 },
++	{ CCI_REG8(0x38d1), 0x00 },
++	{ CCI_REG8(0x38d2), 0x00 },
++	{ CCI_REG8(0x38d3), 0x00 },
++	{ CCI_REG8(0x38e0), 0x00 },
++	{ CCI_REG8(0x38e1), 0x00 },
++	{ CCI_REG8(0x38e2), 0x00 },
++	{ CCI_REG8(0x38e3), 0x00 },
++	{ CCI_REG8(0x38e4), 0x00 },
++	{ CCI_REG8(0x38e5), 0x00 },
++	{ CCI_REG8(0x38e6), 0x00 },
++	{ CCI_REG8(0x38e7), 0x00 },
++	{ CCI_REG8(0x38e8), 0x00 },
++	{ CCI_REG8(0x38e9), 0x00 },
++	{ CCI_REG8(0x39ac), 0x01 },
++	{ CCI_REG8(0x3b00), 0x00 },
++	{ CCI_REG8(0x3b01), 0x00 },
++	{ CCI_REG8(0x3b04), 0x00 },
++	{ CCI_REG8(0x3b05), 0x00 },
++	{ CCI_REG8(0x3b06), 0x00 },
++	{ CCI_REG8(0x3b07), 0x00 },
++	{ CCI_REG8(0x3b0a), 0x00 },
++	{ CCI_REG8(0x3b0b), 0x00 },
++	{ CCI_REG8(0x0202), 0x03 },
++	{ CCI_REG8(0x0203), 0xe8 },
++	{ CCI_REG8(0x0204), 0x00 },
++	{ CCI_REG8(0x0205), 0x00 },
++	{ CCI_REG8(0x020e), 0x01 },
++	{ CCI_REG8(0x020f), 0x00 },
++	{ CCI_REG8(0x3103), 0x00 },
++	{ CCI_REG8(0x3422), 0x01 },
++	{ CCI_REG8(0x3423), 0xfc },
++	{ CCI_REG8(0x30a4), 0x00 },
++	{ CCI_REG8(0x30a6), 0x00 },
++	{ CCI_REG8(0x30f2), 0x01 },
++	{ CCI_REG8(0x30f3), 0x01 },
++	{ CCI_REG8(0x30a5), 0x30 },
++	{ CCI_REG8(0x30a7), 0x30 },
++	{ CCI_REG8(0x30a2), 0x00 },
++	{ CCI_REG8(0x30f1), 0x01 },
++	{ CCI_REG8(0x30a3), 0x30 },
++};
++
++static const struct imx896_mode imx896_supported_modes[] = {
++	{
++		/* 2x2 binned, full field of view, 30 fps. LLP 11904, FLL 3791 */
++		.width = 4096,
++		.height = 3072,
++		.hblank = 7808,
++		.vblank = 719,
++		.vblank_max = IMX896_FLL_MAX - 3072,
++		.regs = imx896_mode_4096x3072_regs,
++		.num_regs = ARRAY_SIZE(imx896_mode_4096x3072_regs),
++	},
++	{
++		/* Full resolution, 15 fps. LLP 14032, FLL 6451 */
++		.width = 8192,
++		.height = 6144,
++		.hblank = 5840,
++		.vblank = 307,
++		.vblank_max = IMX896_FLL_MAX - 6144,
++		.regs = imx896_mode_8192x6144_regs,
++		.num_regs = ARRAY_SIZE(imx896_mode_8192x6144_regs),
++	},
++};
++
++static inline struct imx896 *to_imx896(struct v4l2_subdev *sd)
++{
++	return container_of(sd, struct imx896, sd);
++}
++
++static int imx896_set_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct imx896 *imx896 =
++		container_of(ctrl->handler, struct imx896, ctrl_handler);
++	const struct imx896_mode *mode = imx896->cur_mode;
++	int ret = 0;
++
++	if (ctrl->id == V4L2_CID_VBLANK) {
++		s64 exp_max = mode->height + ctrl->val - IMX896_EXPOSURE_OFFSET;
++
++		__v4l2_ctrl_modify_range(imx896->exposure,
++					 imx896->exposure->minimum, exp_max,
++					 imx896->exposure->step,
++					 min_t(s64, imx896->exposure->val,
++					       exp_max));
++	}
++
++	/* The sensor is not reachable while powered down. */
++	if (pm_runtime_get_if_in_use(imx896->dev) == 0)
++		return 0;
++
++	switch (ctrl->id) {
++	case V4L2_CID_EXPOSURE:
++		cci_write(imx896->cci, IMX896_REG_EXPOSURE, ctrl->val, &ret);
++		break;
++	case V4L2_CID_ANALOGUE_GAIN:
++		cci_write(imx896->cci, IMX896_REG_ANALOGUE_GAIN, ctrl->val,
++			  &ret);
++		break;
++	case V4L2_CID_VBLANK:
++		cci_write(imx896->cci, IMX896_REG_FLL,
++			  mode->height + ctrl->val, &ret);
++		break;
++	case V4L2_CID_TEST_PATTERN:
++		cci_write(imx896->cci, IMX896_REG_TEST_PATTERN, ctrl->val,
++			  &ret);
++		break;
++	default:
++		dev_err(imx896->dev, "unhandled control 0x%x\n", ctrl->id);
++		ret = -EINVAL;
++		break;
++	}
++
++	pm_runtime_put_autosuspend(imx896->dev);
++
++	return ret;
++}
++
++static const struct v4l2_ctrl_ops imx896_ctrl_ops = {
++	.s_ctrl = imx896_set_ctrl,
++};
++
++static void imx896_fill_format(const struct imx896_mode *mode,
++			       struct v4l2_mbus_framefmt *fmt)
++{
++	fmt->width = mode->width;
++	fmt->height = mode->height;
++	fmt->code = MEDIA_BUS_FMT_SBGGR10_1X10;
++	fmt->field = V4L2_FIELD_NONE;
++	fmt->colorspace = V4L2_COLORSPACE_RAW;
++	fmt->ycbcr_enc = V4L2_YCBCR_ENC_601;
++	fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
++	fmt->xfer_func = V4L2_XFER_FUNC_NONE;
++}
++
++static int imx896_enum_mbus_code(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *sd_state,
++				 struct v4l2_subdev_mbus_code_enum *code)
++{
++	if (code->index > 0)
++		return -EINVAL;
++
++	code->code = MEDIA_BUS_FMT_SBGGR10_1X10;
++
++	return 0;
++}
++
++static int imx896_enum_frame_size(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *sd_state,
++				  struct v4l2_subdev_frame_size_enum *fse)
++{
++	if (fse->index >= ARRAY_SIZE(imx896_supported_modes))
++		return -EINVAL;
++
++	if (fse->code != MEDIA_BUS_FMT_SBGGR10_1X10)
++		return -EINVAL;
++
++	fse->min_width = imx896_supported_modes[fse->index].width;
++	fse->max_width = fse->min_width;
++	fse->min_height = imx896_supported_modes[fse->index].height;
++	fse->max_height = fse->min_height;
++
++	return 0;
++}
++
++static int imx896_init_state(struct v4l2_subdev *sd,
++			     struct v4l2_subdev_state *sd_state)
++{
++	imx896_fill_format(&imx896_supported_modes[0],
++			   v4l2_subdev_state_get_format(sd_state, 0));
++
++	return 0;
++}
++
++/* Update the mode dependent control limits. Called with the ctrl lock held. */
++static void imx896_update_ctrl_limits(struct imx896 *imx896,
++				      const struct imx896_mode *mode)
++{
++	s64 exp_max = mode->height + mode->vblank - IMX896_EXPOSURE_OFFSET;
++
++	imx896->cur_mode = mode;
++
++	__v4l2_ctrl_modify_range(imx896->hblank, mode->hblank, mode->hblank, 1,
++				 mode->hblank);
++	__v4l2_ctrl_modify_range(imx896->vblank, mode->vblank,
++				 mode->vblank_max, 1, mode->vblank);
++	__v4l2_ctrl_s_ctrl(imx896->vblank, mode->vblank);
++	__v4l2_ctrl_modify_range(imx896->exposure, IMX896_EXPOSURE_MIN, exp_max,
++				 IMX896_EXPOSURE_STEP,
++				 min_t(s64, imx896->exposure->val, exp_max));
++}
++
++static int imx896_set_pad_format(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *sd_state,
++				 struct v4l2_subdev_format *fmt)
++{
++	struct imx896 *imx896 = to_imx896(sd);
++	const struct imx896_mode *mode;
++
++	mode = v4l2_find_nearest_size(imx896_supported_modes,
++				      ARRAY_SIZE(imx896_supported_modes),
++				      width, height, fmt->format.width,
++				      fmt->format.height);
++
++	imx896_fill_format(mode, &fmt->format);
++	*v4l2_subdev_state_get_format(sd_state, 0) = fmt->format;
++
++	if (fmt->which == V4L2_SUBDEV_FORMAT_ACTIVE)
++		imx896_update_ctrl_limits(imx896, mode);
++
++	return 0;
++}
++
++static int imx896_get_selection(struct v4l2_subdev *sd,
++				struct v4l2_subdev_state *sd_state,
++				struct v4l2_subdev_selection *sel)
++{
++	switch (sel->target) {
++	case V4L2_SEL_TGT_CROP:
++	case V4L2_SEL_TGT_CROP_DEFAULT:
++	case V4L2_SEL_TGT_CROP_BOUNDS:
++	case V4L2_SEL_TGT_NATIVE_SIZE:
++		/* Both modes read out the whole pixel array. */
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = IMX896_NATIVE_WIDTH;
++		sel->r.height = IMX896_NATIVE_HEIGHT;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int imx896_enable_streams(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *sd_state, u32 pad,
++				 u64 streams_mask)
++{
++	struct imx896 *imx896 = to_imx896(sd);
++	const struct v4l2_mbus_framefmt *fmt;
++	const struct imx896_mode *mode;
++	int ret;
++
++	fmt = v4l2_subdev_state_get_format(sd_state, 0);
++	mode = v4l2_find_nearest_size(imx896_supported_modes,
++				      ARRAY_SIZE(imx896_supported_modes),
++				      width, height, fmt->width, fmt->height);
++
++	ret = pm_runtime_resume_and_get(imx896->dev);
++	if (ret < 0)
++		return ret;
++
++	ret = cci_multi_reg_write(imx896->cci, imx896_init_regs,
++				  ARRAY_SIZE(imx896_init_regs), NULL);
++	if (ret) {
++		dev_err(imx896->dev, "failed to write the init table\n");
++		goto err_rpm_put;
++	}
++
++	ret = cci_multi_reg_write(imx896->cci, mode->regs, mode->num_regs,
++				  NULL);
++	if (ret) {
++		dev_err(imx896->dev, "failed to write the mode table\n");
++		goto err_rpm_put;
++	}
++
++	ret = __v4l2_ctrl_handler_setup(&imx896->ctrl_handler);
++	if (ret)
++		goto err_rpm_put;
++
++	ret = cci_write(imx896->cci, IMX896_REG_MODE_SELECT,
++			IMX896_MODE_STREAMING, NULL);
++	if (ret)
++		goto err_rpm_put;
++
++	return 0;
++
++err_rpm_put:
++	pm_runtime_put_autosuspend(imx896->dev);
++
++	return ret;
++}
++
++static int imx896_disable_streams(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *sd_state, u32 pad,
++				  u64 streams_mask)
++{
++	struct imx896 *imx896 = to_imx896(sd);
++	int ret = 0;
++
++	cci_write(imx896->cci, IMX896_REG_MODE_SELECT, IMX896_MODE_STANDBY,
++		  &ret);
++	if (ret)
++		dev_err(imx896->dev, "failed to stop streaming\n");
++
++	pm_runtime_put_autosuspend(imx896->dev);
++
++	return ret;
++}
++
++static const struct v4l2_subdev_video_ops imx896_video_ops = {
++	.s_stream = v4l2_subdev_s_stream_helper,
++};
++
++static const struct v4l2_subdev_pad_ops imx896_pad_ops = {
++	.enum_mbus_code = imx896_enum_mbus_code,
++	.enum_frame_size = imx896_enum_frame_size,
++	.get_fmt = v4l2_subdev_get_fmt,
++	.set_fmt = imx896_set_pad_format,
++	.get_selection = imx896_get_selection,
++	.enable_streams = imx896_enable_streams,
++	.disable_streams = imx896_disable_streams,
++};
++
++static const struct v4l2_subdev_ops imx896_subdev_ops = {
++	.video = &imx896_video_ops,
++	.pad = &imx896_pad_ops,
++};
++
++static const struct v4l2_subdev_internal_ops imx896_internal_ops = {
++	.init_state = imx896_init_state,
++};
++
++static int imx896_power_on(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct imx896 *imx896 = to_imx896(sd);
++	int ret;
++
++	ret = regulator_bulk_enable(ARRAY_SIZE(imx896_supply_names),
++				    imx896->supplies);
++	if (ret) {
++		dev_err(dev, "failed to enable regulators\n");
++		return ret;
++	}
++
++	usleep_range(1000, 2000);
++
++	ret = clk_prepare_enable(imx896->inclk);
++	if (ret) {
++		dev_err(dev, "failed to enable inclk\n");
++		goto err_reg_off;
++	}
++
++	gpiod_set_value_cansleep(imx896->reset_gpio, 0);
++
++	/*
++	 * The sensor needs the input clock to be stable before XCLR is
++	 * released, and a further settling period before it answers on I2C.
++	 */
++	usleep_range(5000, 6000);
++
++	return 0;
++
++err_reg_off:
++	regulator_bulk_disable(ARRAY_SIZE(imx896_supply_names),
++			       imx896->supplies);
++
++	return ret;
++}
++
++static int imx896_power_off(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct imx896 *imx896 = to_imx896(sd);
++
++	gpiod_set_value_cansleep(imx896->reset_gpio, 1);
++	clk_disable_unprepare(imx896->inclk);
++	regulator_bulk_disable(ARRAY_SIZE(imx896_supply_names),
++			       imx896->supplies);
++
++	return 0;
++}
++
++static int imx896_identify_module(struct imx896 *imx896)
++{
++	int ret = 0;
++	u64 val;
++
++	cci_read(imx896->cci, IMX896_REG_CHIP_ID, &val, &ret);
++	if (ret)
++		return dev_err_probe(imx896->dev, ret,
++				     "failed to read the chip id\n");
++
++	if (val != IMX896_CHIP_ID)
++		return dev_err_probe(imx896->dev, -ENXIO,
++				     "chip id mismatch: %x != %llx\n",
++				     IMX896_CHIP_ID, val);
++
++	cci_read(imx896->cci, IMX896_REG_HW_REVISION, &val, &ret);
++	if (ret)
++		return dev_err_probe(imx896->dev, ret,
++				     "failed to read the hardware revision\n");
++
++	if (!(val & IMX896_HW_REVISION_MP))
++		dev_warn(imx896->dev,
++			 "pre-production silicon (revision 0x%02llx), the initialisation table may not match\n",
++			 val);
++
++	return 0;
++}
++
++static int imx896_init_controls(struct imx896 *imx896)
++{
++	const struct imx896_mode *mode = &imx896_supported_modes[0];
++	struct v4l2_ctrl_handler *ctrl_hdlr = &imx896->ctrl_handler;
++	struct v4l2_fwnode_device_properties props;
++	struct v4l2_ctrl *link_freq;
++	s64 exp_max;
++	int ret;
++
++	ret = v4l2_ctrl_handler_init(ctrl_hdlr, 10);
++	if (ret)
++		return ret;
++
++	link_freq = v4l2_ctrl_new_int_menu(ctrl_hdlr, &imx896_ctrl_ops,
++					   V4L2_CID_LINK_FREQ,
++					   __fls(imx896->link_freq_bitmap),
++					   __ffs(imx896->link_freq_bitmap),
++					   imx896_link_freq_menu);
++	if (link_freq)
++		link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++
++	v4l2_ctrl_new_std(ctrl_hdlr, &imx896_ctrl_ops, V4L2_CID_PIXEL_RATE,
++			  IMX896_PIXEL_RATE, IMX896_PIXEL_RATE, 1,
++			  IMX896_PIXEL_RATE);
++
++	imx896->hblank = v4l2_ctrl_new_std(ctrl_hdlr, &imx896_ctrl_ops,
++					   V4L2_CID_HBLANK, mode->hblank,
++					   mode->hblank, 1, mode->hblank);
++	if (imx896->hblank)
++		imx896->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++
++	imx896->vblank = v4l2_ctrl_new_std(ctrl_hdlr, &imx896_ctrl_ops,
++					   V4L2_CID_VBLANK, mode->vblank,
++					   mode->vblank_max, 1, mode->vblank);
++
++	exp_max = mode->height + mode->vblank - IMX896_EXPOSURE_OFFSET;
++	imx896->exposure = v4l2_ctrl_new_std(ctrl_hdlr, &imx896_ctrl_ops,
++					     V4L2_CID_EXPOSURE,
++					     IMX896_EXPOSURE_MIN, exp_max,
++					     IMX896_EXPOSURE_STEP,
++					     IMX896_EXPOSURE_DEFAULT);
++
++	v4l2_ctrl_new_std(ctrl_hdlr, &imx896_ctrl_ops, V4L2_CID_ANALOGUE_GAIN,
++			  IMX896_ANA_GAIN_MIN, IMX896_ANA_GAIN_MAX,
++			  IMX896_ANA_GAIN_STEP, IMX896_ANA_GAIN_DEFAULT);
++
++	v4l2_ctrl_new_std_menu_items(ctrl_hdlr, &imx896_ctrl_ops,
++				     V4L2_CID_TEST_PATTERN,
++				     ARRAY_SIZE(imx896_test_pattern_menu) - 1,
++				     0, 0, imx896_test_pattern_menu);
++
++	if (ctrl_hdlr->error) {
++		ret = ctrl_hdlr->error;
++		dev_err(imx896->dev, "control init failed (%d)\n", ret);
++		goto err_free;
++	}
++
++	ret = v4l2_fwnode_device_parse(imx896->dev, &props);
++	if (ret)
++		goto err_free;
++
++	ret = v4l2_ctrl_new_fwnode_properties(ctrl_hdlr, &imx896_ctrl_ops,
++					      &props);
++	if (ret)
++		goto err_free;
++
++	imx896->sd.ctrl_handler = ctrl_hdlr;
++
++	return 0;
++
++err_free:
++	v4l2_ctrl_handler_free(ctrl_hdlr);
++
++	return ret;
++}
++
++static int imx896_parse_endpoint(struct imx896 *imx896)
++{
++	struct v4l2_fwnode_endpoint bus_cfg = {
++		.bus_type = V4L2_MBUS_CSI2_CPHY,
++	};
++	struct fwnode_handle *ep;
++	int ret;
++
++	ep = fwnode_graph_get_next_endpoint(dev_fwnode(imx896->dev), NULL);
++	if (!ep)
++		return dev_err_probe(imx896->dev, -ENXIO,
++				     "no endpoint found\n");
++
++	ret = v4l2_fwnode_endpoint_alloc_parse(ep, &bus_cfg);
++	fwnode_handle_put(ep);
++	if (ret)
++		return dev_err_probe(imx896->dev, ret,
++				     "failed to parse the endpoint\n");
++
++	if (bus_cfg.bus.mipi_csi2.num_data_lanes != IMX896_NUM_DATA_LANES) {
++		ret = dev_err_probe(imx896->dev, -EINVAL,
++				    "only %u C-PHY trios are supported, got %u\n",
++				    IMX896_NUM_DATA_LANES,
++				    bus_cfg.bus.mipi_csi2.num_data_lanes);
++		goto err_free;
++	}
++
++	ret = v4l2_link_freq_to_bitmap(imx896->dev, bus_cfg.link_frequencies,
++				       bus_cfg.nr_of_link_frequencies,
++				       imx896_link_freq_menu,
++				       ARRAY_SIZE(imx896_link_freq_menu),
++				       &imx896->link_freq_bitmap);
++
++err_free:
++	v4l2_fwnode_endpoint_free(&bus_cfg);
++
++	return ret;
++}
++
++static int imx896_probe(struct i2c_client *client)
++{
++	struct imx896 *imx896;
++	unsigned long rate;
++	unsigned int i;
++	int ret;
++
++	imx896 = devm_kzalloc(&client->dev, sizeof(*imx896), GFP_KERNEL);
++	if (!imx896)
++		return -ENOMEM;
++
++	imx896->dev = &client->dev;
++	imx896->cur_mode = &imx896_supported_modes[0];
++
++	v4l2_i2c_subdev_init(&imx896->sd, client, &imx896_subdev_ops);
++
++	imx896->cci = devm_cci_regmap_init_i2c(client, 16);
++	if (IS_ERR(imx896->cci))
++		return dev_err_probe(imx896->dev, PTR_ERR(imx896->cci),
++				     "failed to initialise CCI\n");
++
++	imx896->inclk = devm_v4l2_sensor_clk_get(imx896->dev, NULL);
++	if (IS_ERR(imx896->inclk))
++		return dev_err_probe(imx896->dev, PTR_ERR(imx896->inclk),
++				     "failed to get inclk\n");
++
++	rate = clk_get_rate(imx896->inclk);
++	if (rate != IMX896_INCLK_RATE)
++		return dev_err_probe(imx896->dev, -EINVAL,
++				     "inclk rate %lu Hz is unsupported\n",
++				     rate);
++
++	for (i = 0; i < ARRAY_SIZE(imx896_supply_names); i++)
++		imx896->supplies[i].supply = imx896_supply_names[i];
++
++	ret = devm_regulator_bulk_get(imx896->dev,
++				      ARRAY_SIZE(imx896_supply_names),
++				      imx896->supplies);
++	if (ret)
++		return dev_err_probe(imx896->dev, ret,
++				     "failed to get the regulators\n");
++
++	imx896->reset_gpio = devm_gpiod_get_optional(imx896->dev, "reset",
++						     GPIOD_OUT_HIGH);
++	if (IS_ERR(imx896->reset_gpio))
++		return dev_err_probe(imx896->dev, PTR_ERR(imx896->reset_gpio),
++				     "failed to get the reset gpio\n");
++
++	ret = imx896_parse_endpoint(imx896);
++	if (ret)
++		return ret;
++
++	/* The sensor must be powered up to answer the chip id read. */
++	ret = imx896_power_on(imx896->dev);
++	if (ret)
++		return ret;
++
++	ret = imx896_identify_module(imx896);
++	if (ret)
++		goto err_power_off;
++
++	/*
++	 * The device is powered on already, so mark it active and take a
++	 * reference without resuming it again.
++	 */
++	pm_runtime_set_active(imx896->dev);
++	pm_runtime_get_noresume(imx896->dev);
++	pm_runtime_enable(imx896->dev);
++	pm_runtime_set_autosuspend_delay(imx896->dev, 1000);
++	pm_runtime_use_autosuspend(imx896->dev);
++
++	ret = imx896_init_controls(imx896);
++	if (ret)
++		goto err_pm;
++
++	imx896->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	imx896->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	imx896->sd.internal_ops = &imx896_internal_ops;
++	imx896->pad.flags = MEDIA_PAD_FL_SOURCE;
++
++	ret = media_entity_pads_init(&imx896->sd.entity, 1, &imx896->pad);
++	if (ret)
++		goto err_ctrls;
++
++	imx896->sd.state_lock = imx896->ctrl_handler.lock;
++	ret = v4l2_subdev_init_finalize(&imx896->sd);
++	if (ret < 0)
++		goto err_media_entity;
++
++	ret = v4l2_async_register_subdev_sensor(&imx896->sd);
++	if (ret < 0)
++		goto err_subdev;
++
++	pm_runtime_put_autosuspend(imx896->dev);
++
++	return 0;
++
++err_subdev:
++	v4l2_subdev_cleanup(&imx896->sd);
++err_media_entity:
++	media_entity_cleanup(&imx896->sd.entity);
++err_ctrls:
++	v4l2_ctrl_handler_free(&imx896->ctrl_handler);
++err_pm:
++	pm_runtime_disable(imx896->dev);
++	pm_runtime_set_suspended(imx896->dev);
++err_power_off:
++	imx896_power_off(imx896->dev);
++
++	return ret;
++}
++
++static void imx896_remove(struct i2c_client *client)
++{
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct imx896 *imx896 = to_imx896(sd);
++
++	v4l2_async_unregister_subdev(sd);
++	v4l2_subdev_cleanup(sd);
++	media_entity_cleanup(&sd->entity);
++	v4l2_ctrl_handler_free(&imx896->ctrl_handler);
++
++	pm_runtime_disable(imx896->dev);
++	if (!pm_runtime_status_suspended(imx896->dev))
++		imx896_power_off(imx896->dev);
++	pm_runtime_set_suspended(imx896->dev);
++}
++
++static DEFINE_RUNTIME_DEV_PM_OPS(imx896_pm_ops, imx896_power_off,
++				 imx896_power_on, NULL);
++
++static const struct of_device_id imx896_of_match[] = {
++	{ .compatible = "sony,imx896" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, imx896_of_match);
++
++static struct i2c_driver imx896_driver = {
++	.probe = imx896_probe,
++	.remove = imx896_remove,
++	.driver = {
++		.name = "imx896",
++		.pm = pm_ptr(&imx896_pm_ops),
++		.of_match_table = imx896_of_match,
++	},
++};
++module_i2c_driver(imx896_driver);
++
++MODULE_DESCRIPTION("Sony IMX896 sensor driver");
++MODULE_AUTHOR("Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>");
++MODULE_LICENSE("GPL");
+-- 
+2.54.0 (Apple Git-157)
+

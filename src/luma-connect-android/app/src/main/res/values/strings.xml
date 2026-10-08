@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Luma Connect</string>
+    <string name="share_label">Send to computer</string>
+    <string name="tile_clipboard">Send clipboard</string>
+    <string name="notification_listener_label">Luma Connect notifications</string>
+    <string name="accessibility_label">Luma Connect remote control</string>
+    <string name="accessibility_description">Lets your paired Luma computer tap, swipe and type on this phone while you share its screen. It only acts during a screen-sharing session you started, and never reads the screen for any other purpose.</string>
+
+    <string name="channel_link">Connection</string>
+    <string name="channel_ring">Find my phone</string>
+    <string name="channel_incoming">From your computer</string>
+    <string name="channel_sharing">Camera and screen sharing</string>
+
+    <string name="link_connected">Connected to %1$s</string>
+    <string name="link_searching">Looking for %1$s</string>
+    <string name="link_paused">Paused</string>
+    <string name="action_send_clipboard">Send clipboard</string>
+    <string name="action_pause">Pause</string>
+    <string name="ring_title">%1$s is ringing this phone</string>
+    <string name="ring_stop">Found it</string>
+    <string name="link_from">Link from %1$s</string>
+    <string name="file_from">%1$s sent %2$s</string>
+    <string name="action_open">Open</string>
+    <string name="clipboard_sent">Sent to %1$s</string>
+    <string name="clipboard_empty">Your clipboard is empty</string>
+    <string name="clipboard_failed">Couldn\'t reach %1$s</string>
+    <string name="not_paired">Pair with a Luma computer first</string>
+    <string name="sending_files">Sending to %1$s</string>
+    <string name="sent_files">Sent to %1$s</string>
+    <string name="send_failed">Couldn\'t send to %1$s</string>
+    <string name="needs_tap_camera">%1$s wants to use this phone as a camera</string>
+    <string name="needs_tap_screen">%1$s wants to show this phone\'s screen</string>
+    <string name="tap_to_start">Tap to start</string>
+    <string name="camera_live">Camera is on for %1$s</string>
+    <string name="screen_live">Screen is shared with %1$s</string>
+    <string name="action_stop">Stop</string>
+</resources>

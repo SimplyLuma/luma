@@ -1,0 +1,132 @@
+From 4e07aa94707c2c01ff3c11dfca07769b68bca54e Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 18:45:55 -0400
+Subject: [PATCH] header-bar: present an identity-repeating AdwWindowTitle as
+ empty
+
+When an application sets its AdwWindowTitle to the bare application name with
+no subtitle while the automatic identity already shows that name, the title is
+a duplicate rather than a page or document title. Only a presentation class is
+applied; the widget, its text and its accessible name are unchanged, and the
+class follows title and subtitle changes.
+---
+ src/adw-header-bar.c                    | 46 +++++++++++++++++++++++++
+ src/stylesheet/widgets/_header-bar.scss |  6 ++++
+ 2 files changed, 52 insertions(+)
+
+diff --git a/src/adw-header-bar.c b/src/adw-header-bar.c
+index be74562..f9d82db 100644
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -41,6 +41,7 @@
+ #include "adw-overlay-split-view.h"
+ #include "adw-sheet-controls-private.h"
+ #include "adw-widget-utils-private.h"
++#include "adw-window-title.h"
+ 
+ #include <glib/gi18n-lib.h>
+ #ifdef G_OS_UNIX
+@@ -230,6 +231,7 @@ static GParamSpec *props[LAST_PROP] = { NULL, };
+ static const char luma_identity_owner_key[] = "adw-header-bar-luma-identity-owner";
+ static void add_automatic_luma_identity (AdwHeaderBar *self);
+ static void update_title (AdwHeaderBar *self);
++static void luma_update_title_widget_duplicate (AdwHeaderBar *self);
+ static void luma_enter_command_row (AdwHeaderBar *self);
+ static void luma_leave_command_row (AdwHeaderBar *self);
+ static void luma_update_command_bar_visibility (AdwHeaderBar *self);
+@@ -381,6 +383,33 @@ create_back_button (AdwHeaderBar *self)
+   self->back_button = button;
+ }
+ 
++/* AdwWindowTitle is a toolkit widget. When an application sets it to the bare
++ * application name with no subtitle while the automatic identity already
++ * presents that name, the title is a duplicate rather than a document or page
++ * title. Only a presentation class changes; the widget and its text do not. */
++static void
++luma_update_title_widget_duplicate (AdwHeaderBar *self)
++{
++  gboolean duplicate = FALSE;
++
++  if (!self->title_widget || !ADW_IS_WINDOW_TITLE (self->title_widget))
++    return;
++
++  if (self->luma_identity && self->luma_identity_name) {
++    AdwWindowTitle *title = ADW_WINDOW_TITLE (self->title_widget);
++    const char *text = adw_window_title_get_title (title);
++    const char *subtitle = adw_window_title_get_subtitle (title);
++
++    duplicate = text && g_str_equal (text, self->luma_identity_name) &&
++                (!subtitle || !*subtitle);
++  }
++
++  if (duplicate)
++    gtk_widget_add_css_class (self->title_widget, "luma-repeats-identity");
++  else
++    gtk_widget_remove_css_class (self->title_widget, "luma-repeats-identity");
++}
++
+ static gboolean
+ has_explicit_luma_identity (AdwHeaderBar *self)
+ {
+@@ -666,6 +695,8 @@ add_automatic_luma_identity (AdwHeaderBar *self)
+                               self->start_controls);
+   g_object_set_data (G_OBJECT (root), luma_identity_owner_key, self);
+   update_box_visibility (self->start_box);
++  update_title (self);
++  luma_update_title_widget_duplicate (self);
+   luma_enter_command_row (self);
+ }
+ 
+@@ -692,6 +723,7 @@ remove_automatic_luma_identity (AdwHeaderBar *self)
+   g_clear_pointer (&self->luma_identity_name, g_free);
+   update_box_visibility (self->start_box);
+   update_title (self);
++  luma_update_title_widget_duplicate (self);
+ }
+ 
+ 
+@@ -1774,6 +1806,12 @@ adw_header_bar_set_title_widget (AdwHeaderBar *self,
+   if (self->title_widget == title_widget)
+     return;
+ 
++  if (self->title_widget && ADW_IS_WINDOW_TITLE (self->title_widget)) {
++    g_signal_handlers_disconnect_by_func (self->title_widget,
++                                          luma_update_title_widget_duplicate, self);
++    gtk_widget_remove_css_class (self->title_widget, "luma-repeats-identity");
++  }
++
+   adw_bin_set_child (ADW_BIN (self->center_bin), NULL);
+   self->title_widget = NULL;
+ 
+@@ -1783,6 +1821,14 @@ adw_header_bar_set_title_widget (AdwHeaderBar *self,
+     adw_bin_set_child (ADW_BIN (self->center_bin), title_widget);
+ 
+     self->title_label = NULL;
++
++    if (ADW_IS_WINDOW_TITLE (title_widget)) {
++      g_signal_connect_swapped (title_widget, "notify::title",
++                                G_CALLBACK (luma_update_title_widget_duplicate), self);
++      g_signal_connect_swapped (title_widget, "notify::subtitle",
++                                G_CALLBACK (luma_update_title_widget_duplicate), self);
++      luma_update_title_widget_duplicate (self);
++    }
+   } else if (self->title_label == NULL)
+     construct_title_label (self);
+ 
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 11ec594..56ad7a5 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -145,6 +145,12 @@ headerbar .luma-identity-chevron {
+   color: unquote("@luma_muted");
+ }
+ 
++// An application title that only repeats the identity is presented as
++// empty space; the widget, its text, and its accessible name remain.
++headerbar windowtitle.luma-repeats-identity {
++  opacity: 0;
++}
++
+ // Figtree 12.5px needs a 16px logical line at 1x. Keep one-line stock titles
+ // from being rounded down to a 15px allocation without altering their native
+ // alignment or attaching them to Prairie's custom title component.

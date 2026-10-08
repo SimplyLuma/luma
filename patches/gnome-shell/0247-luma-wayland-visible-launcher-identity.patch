@@ -1,0 +1,45 @@
+--- a/src/shell-window-tracker.c
++++ b/src/shell-window-tracker.c
+@@ -257,12 +257,41 @@
+ get_app_from_gapplication_id (MetaWindow  *window)
+ {
+   const char *id;
++  const char *sandbox_id;
++  ShellApp *app;
++  ShellApp *canonical;
++  GDesktopAppInfo *info;
++  g_autofree char *app_prefix = NULL;
+ 
+   id = meta_window_get_gtk_application_id (window);
+   if (!id)
+     return NULL;
+ 
+-  return get_app_from_id (window, id);
++  app = get_app_from_id (window, id);
++  info = app ? shell_app_get_app_info (app) : NULL;
++  if (info && g_app_info_should_show (G_APP_INFO (info)))
++    return app;
++
++  /* GTK/Wayland clients can publish an integration ID whose desktop file
++   * is intentionally hidden. Use the same explicit StartupWMClass owner
++   * as X11, so favorites remain the installed visible launcher identity.
++   * Never promote a hidden backend or cross the existing sandbox prefix.
++   */
++  canonical = shell_app_system_lookup_startup_wmclass (
++    shell_app_system_get_default (), id);
++  info = canonical ? shell_app_get_app_info (canonical) : NULL;
++  if (!info || !g_app_info_should_show (G_APP_INFO (info)) ||
++      g_strcmp0 (g_desktop_app_info_get_startup_wm_class (info), id) != 0)
++    return app;
++
++  sandbox_id = meta_window_get_sandboxed_app_id (window);
++  if (sandbox_id)
++    app_prefix = g_strdup_printf ("%s.", sandbox_id);
++  if (!check_app_id_prefix (canonical, app_prefix))
++    return app;
++
++  g_clear_object (&app);
++  return g_object_ref (canonical);
+ }
+ 
+ /*

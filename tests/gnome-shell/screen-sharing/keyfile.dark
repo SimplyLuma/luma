@@ -1,0 +1,9 @@
+[org/project-luma/shell-state]
+reduce-transparency=false
+surface-treatment='dark'
+
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+
+[org/gnome/shell]
+welcome-dialog-last-shown-version='999'

@@ -1,0 +1,107 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 14 Sep 2026 18:00:00 -0500
+Subject: [PATCH] workspace: Keep a margin on every monitor edge chrome does not pad
+
+Luma's shelf floats clear of the screen edges and reserves a margin with
+struts, so maximized and tiled windows stay inside it. Mutter ignores struts
+on an edge shared with another monitor, and a monitor without the shelf has
+none, so windows there touched every edge. meta_display_set_work_area_inset()
+gives every monitor's work area the same margin on each edge no strut
+already moves it in from.
+---
+
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -71,6 +71,9 @@
+ {
+   GObject parent_instance;
+ 
++  /* Logical pixels every monitor's work area keeps from edges no strut covers. */
++  int work_area_inset;
++
+   MetaX11Display *x11_display;
+ 
+   int clutter_event_filter;
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -2304,6 +2304,34 @@
+ }
+ 
+ /**
++ * meta_display_set_work_area_inset:
++ * @display: a #MetaDisplay
++ * @inset: logical pixels, 0 for none
++ *
++ * Keeps every monitor's work area @inset away from each monitor edge that
++ * no strut already moves it in from. A shell whose chrome floats clear of the
++ * screen edges uses this so maximized and tiled windows keep the same margin
++ * on every monitor, including monitors with no chrome of their own and edges
++ * shared with another monitor, where struts do not apply.
++ */
++void
++meta_display_set_work_area_inset (MetaDisplay *display,
++                                  int          inset)
++{
++  GList *l;
++
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  inset = CLAMP (inset, 0, 200);
++  if (display->work_area_inset == inset)
++    return;
++
++  display->work_area_inset = inset;
++  for (l = meta_workspace_manager_get_workspaces (display->workspace_manager); l; l = l->next)
++    meta_workspace_invalidate_work_area (l->data);
++}
++
++/**
+  * meta_display_get_size:
+  * @display: A #MetaDisplay
+  * @width: (out): The width of the screen
+--- a/src/core/workspace.c
++++ b/src/core/workspace.c
+@@ -1000,6 +1000,30 @@
+                                        FIXED_DIRECTION_NONE,
+                                        &work_area);
+ 
++      if (workspace->display->work_area_inset > 0)
++        {
++          const MtkRectangle *monitor = &logical_monitor->rect;
++          int inset = workspace->display->work_area_inset;
++
++          /* Only edges no strut moved the work area in from. */
++          if (work_area.x == monitor->x)
++            {
++              work_area.x += inset;
++              work_area.width -= inset;
++            }
++          if (work_area.y == monitor->y)
++            {
++              work_area.y += inset;
++              work_area.height -= inset;
++            }
++          if (work_area.x + work_area.width == monitor->x + monitor->width)
++            work_area.width -= inset;
++          if (work_area.y + work_area.height == monitor->y + monitor->height)
++            work_area.height -= inset;
++          work_area.width = MAX (work_area.width, MIN_SANE_AREA);
++          work_area.height = MAX (work_area.height, MIN_SANE_AREA);
++        }
++
+       data->logical_monitor_work_area = work_area;
+ 
+       meta_topic (META_DEBUG_WORKAREA,
+--- a/src/meta/display.h
++++ b/src/meta/display.h
+@@ -188,6 +188,10 @@
+                                            int                 feature_number);
+ 
+ META_EXPORT
++void meta_display_set_work_area_inset (MetaDisplay *display,
++                                       int          inset);
++
++META_EXPORT
+ void meta_display_get_size (MetaDisplay *display,
+                             int         *width,
+                             int         *height);

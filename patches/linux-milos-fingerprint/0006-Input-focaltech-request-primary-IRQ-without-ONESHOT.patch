@@ -1,0 +1,29 @@
+From 6a1b909b53bf9bbdc5c9f424737a72a4fbe4a9e1 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 23 Aug 2026 10:30:00 -0500
+Subject: [PATCH 6/6] Input: focaltech: request primary IRQ without ONESHOT
+
+IRQF_ONESHOT is meaningful only for a threaded interrupt handler. The
+FocalTech shim registers a primary handler with request_irq(), so combining
+that API with IRQF_ONESHOT trips __setup_irq()'s warning and provides no
+synchronization benefit. Retain the rising-edge trigger while dropping the
+inapplicable flag.
+---
+ drivers/input/finger/focal_finger/ff_core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/input/finger/focal_finger/ff_core.c b/drivers/input/finger/focal_finger/ff_core.c
+index 4db65f9..c4b9569 100644
+--- a/drivers/input/finger/focal_finger/ff_core.c
++++ b/drivers/input/finger/focal_finger/ff_core.c
+@@ -1171,7 +1171,7 @@ int ff_ctl_init_driver(void)
+ 
+     if (ff_ctx->irq_num > 0) {
+         FF_LOGI("irq_num:%d", ff_ctx->irq_num);
+-        irqflags = IRQF_TRIGGER_RISING | IRQF_ONESHOT;
++        irqflags = IRQF_TRIGGER_RISING;
+         ret = request_irq(ff_ctx->irq_num, ff_irq_handler, irqflags, FF_DRV_NAME, ff_ctx);
+         if (ret < 0) {
+             FF_LOGE("request_irq(%d) failed,ret=%d", ff_ctx->irq_num, ret);
+-- 
+2.54.0 (Apple Git-157)

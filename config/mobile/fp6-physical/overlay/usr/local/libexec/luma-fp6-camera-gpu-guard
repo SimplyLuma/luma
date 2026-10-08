@@ -1,0 +1,144 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Contain FP6 camera GPU faults before they can repeatedly stall the shell."""
+
+from __future__ import annotations
+
+import os
+import selectors
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+
+FP6_COMPATIBLE = b"fairphone,fp6"
+COMPATIBLE_PATH = Path("/proc/device-tree/compatible")
+FAULT_MARKER = Path("/run/luma-fp6-camera-gpu-fault")
+FAULT_SIGNATURES = (
+    b"hangcheck detected gpu lockup",
+    b"Timeout waiting for GMU",
+    b"a8xx_recover: cx gdsc didn't collapse",
+)
+
+
+def is_fp6(path: Path = COMPATIBLE_PATH) -> bool:
+    try:
+        return FP6_COMPATIBLE in path.read_bytes().split(b"\0")
+    except OSError:
+        return False
+
+
+def camera_pids(proc_root: Path = Path("/proc")) -> tuple[int, ...]:
+    """Return only unprivileged processes whose argv launches prairie-camera."""
+
+    matches: list[int] = []
+    try:
+        candidates = tuple(proc_root.iterdir())
+    except OSError:
+        return ()
+    for candidate in candidates:
+        if not candidate.name.isdecimal():
+            continue
+        try:
+            status = (candidate / "status").read_text(encoding="utf-8")
+            uid_line = next(line for line in status.splitlines() if line.startswith("Uid:"))
+            real_uid = int(uid_line.split()[1])
+            arguments = (candidate / "cmdline").read_bytes().split(b"\0")
+        except (OSError, StopIteration, ValueError):
+            continue
+        if real_uid == 0:
+            continue
+        if any(argument.rsplit(b"/", 1)[-1] == b"prairie-camera" for argument in arguments):
+            matches.append(int(candidate.name))
+    return tuple(sorted(matches))
+
+
+def fault_record(payload: bytes) -> bytes | None:
+    """Return the bounded kernel record containing a known Adreno fault."""
+
+    for line in payload.splitlines():
+        if any(signature in line for signature in FAULT_SIGNATURES):
+            return line.strip()[:512]
+    return None
+
+
+def contain_fault(record: bytes, marker: Path = FAULT_MARKER) -> bool:
+    pids = camera_pids()
+    if not pids:
+        return False
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(marker, flags, 0o644)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(record + b"\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    return True
+
+
+def monitor() -> int:
+    if not is_fp6():
+        return 0
+    journal = subprocess.Popen(
+        [
+            "/usr/bin/journalctl",
+            "--dmesg",
+            "--follow",
+            "--lines=0",
+            "--output=cat",
+            "--no-pager",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+    if journal.stdout is None:
+        return 72
+    carry = b""
+    selector = selectors.DefaultSelector()
+    selector.register(journal.stdout, selectors.EVENT_READ)
+    try:
+        while True:
+            for _key, _mask in selector.select(timeout=5):
+                chunk = os.read(journal.stdout.fileno(), 65536)
+                if chunk:
+                    payload = carry + chunk
+                    record = fault_record(payload)
+                    if record is not None and contain_fault(record):
+                        return 70
+                    carry = payload[-256:]
+            if journal.poll() is not None:
+                return 72
+    finally:
+        if journal.poll() is None:
+            journal.terminate()
+            try:
+                journal.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                journal.kill()
+
+
+def main() -> int:
+    if sys.argv[1:] == ["--check"]:
+        if not Path("/usr/bin/journalctl").is_file():
+            return 69
+        return 0
+    if sys.argv[1:]:
+        print("usage: luma-fp6-camera-gpu-guard [--check]", file=sys.stderr)
+        return 2
+    return monitor()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

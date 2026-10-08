@@ -1,0 +1,63 @@
+From 3bdb3a9eb56c9ac89eb41814db14936ea0842c9b Mon Sep 17 00:00:00 2001
+From: Project Luma <luma@project-luma.invalid>
+Date: Fri, 21 Aug 2026 11:55:00 -0500
+Subject: [PATCH 42/42] firmware: qcom: scm: try modern listener registration
+
+The Fairphone 6 secure world rejects the legacy QSEE listener-registration
+command with EIO.  Its exact published securemsm-kernel branch first uses
+command 6, TZ_OS_REGISTER_LISTENER_SMCINVOKE_ID, and falls back to legacy
+command 1 only when that SCM call itself returns EIO.
+
+Mirror that narrow negotiation.  Keep the response-result check separate so
+a successfully delivered modern call whose secure response rejects the
+request is not silently retried through a different ABI.
+
+This changes listener registration only.  It does not load an application,
+add a listener protocol, or expose a biometric operation.
+
+Link: https://gerrit-public.fairphone.software/platform/vendor/qcom/opensource/securemsm-kernel/+/11617d92a2eeb05d31d713c7022cbc0999c63f8e
+Signed-off-by: Project Luma <luma@project-luma.invalid>
+---
+ drivers/firmware/qcom/qcom_scm.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 69c5f4c37..f63e49330 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -127,6 +127,7 @@ enum qcom_scm_qseecom_tz_cmd_app {
+ };
+ 
+ enum qcom_scm_qseecom_tz_cmd_listener {
++	QSEECOM_TZ_CMD_LISTENER_REGISTER_SMCINVOKE = 6,
+ 	QSEECOM_TZ_CMD_LISTENER_REGISTER	= 1,
+ 	QSEECOM_TZ_CMD_LISTENER_DEREGISTER	= 2,
+ 	QSEECOM_TZ_CMD_LISTENER_RESPONSE	= 3,
+@@ -2334,7 +2335,7 @@ int qcom_scm_qseecom_listener_register(struct qcom_scm_qseecom_listener *listener
+ 
+ 	desc.owner = QSEECOM_TZ_OWNER_QSEE_OS;
+ 	desc.svc = QSEECOM_TZ_SVC_LISTENER;
+-	desc.cmd = QSEECOM_TZ_CMD_LISTENER_REGISTER;
++	desc.cmd = QSEECOM_TZ_CMD_LISTENER_REGISTER_SMCINVOKE;
+ 	desc.arginfo = QCOM_SCM_ARGS(3, QCOM_SCM_VAL, QCOM_SCM_RW,
+ 				     QCOM_SCM_VAL);
+ 	desc.args[0] = listener->id;
+@@ -2349,6 +2350,15 @@ int qcom_scm_qseecom_listener_register(struct qcom_scm_qseecom_listener *listener
+ 	}
+ 
+ 	status = __qcom_scm_qseecom_call(&desc, &res);
++	if (status == -EIO) {
++		/*
++		 * Older QSEE versions predate the session-aware listener call.
++		 * Follow Qualcomm's published negotiation and retry only when
++		 * the modern SCM command itself is unsupported.
++		 */
++		desc.cmd = QSEECOM_TZ_CMD_LISTENER_REGISTER;
++		status = __qcom_scm_qseecom_call(&desc, &res);
++	}
+ 	if (!status && res.result != QSEECOM_RESULT_SUCCESS)
+ 		status = -EIO;
+ 	if (!status)
+-- 
+2.51.0
+

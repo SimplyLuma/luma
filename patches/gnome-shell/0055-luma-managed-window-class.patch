@@ -1,0 +1,42 @@
+From: Project Luma
+Subject: [PATCH] apps: match unambiguous managed capsule class capitalization
+
+--- a/src/shell-app-system.c
++++ b/src/shell-app-system.c
+@@ -463,6 +463,36 @@
+ 
+   id = g_hash_table_lookup (system->startup_wm_class_to_id, wmclass);
+   if (id == NULL)
++    {
++      GHashTableIter iter;
++      gpointer key, value;
++      const char *candidate_id = NULL;
++
++      /* Managed capsules retain the vendor StartupWMClass, while toolkit
++       * class capitalization can differ from that declaration. Keep exact
++       * upstream matches first and accept only an unambiguous managed match.
++       * This does not alter sandbox-prefix checks in the window tracker. */
++      g_hash_table_iter_init (&iter, system->startup_wm_class_to_id);
++      while (g_hash_table_iter_next (&iter, &key, &value))
++        {
++          ShellApp *candidate;
++          GDesktopAppInfo *info;
++
++          if (g_ascii_strcasecmp (key, wmclass) != 0)
++            continue;
++          candidate = shell_app_system_lookup_app (system, value);
++          if (!candidate)
++            continue;
++          info = shell_app_get_app_info (candidate);
++          if (!info || !g_desktop_app_info_get_boolean (info, "X-Luma-Managed"))
++            continue;
++          if (candidate_id && g_strcmp0 (candidate_id, value) != 0)
++            return NULL;
++          candidate_id = value;
++        }
++      id = candidate_id;
++    }
++  if (id == NULL)
+     return NULL;
+ 
+   return shell_app_system_lookup_app (system, id);

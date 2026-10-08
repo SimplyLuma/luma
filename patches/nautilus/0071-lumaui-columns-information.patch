@@ -1,0 +1,164 @@
+From 45964c363cc365f9ae5cde714d6b65b085c9b77e Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:10:36 +0000
+Subject: [PATCH] Filer: open Columns information and use exact fixture facts
+
+---
+ src/nautilus-filer-fixture.c | 26 ++++++++++++++++
+ src/nautilus-filer-fixture.h |  2 ++
+ src/nautilus-window.c        | 60 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 88 insertions(+)
+
+diff --git a/src/nautilus-filer-fixture.c b/src/nautilus-filer-fixture.c
+index e5b65ec..5828f1f 100644
+--- a/src/nautilus-filer-fixture.c
++++ b/src/nautilus-filer-fixture.c
+@@ -11,6 +11,8 @@ typedef struct
+ 
+ static GHashTable *grid_items;
+ static gsize grid_loaded;
++static GKeyFile *info_items;
++static gsize info_loaded;
+ 
+ static void
+ fixture_grid_item_free (gpointer data)
+@@ -77,3 +79,27 @@ nautilus_filer_fixture_grid_caption (const char *name)
+     FixtureGridItem *item = g_hash_table_lookup (grid_items, name);
+     return item != NULL ? item->caption : NULL;
+ }
++
++char *
++nautilus_filer_fixture_info (const char *name,
++                             const char *key)
++{
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL || name == NULL)
++    {
++        return NULL;
++    }
++    if (g_once_init_enter (&info_loaded))
++    {
++        const char *root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        g_autofree char *path = root != NULL
++                                ? g_build_filename (root, "Profile", "config", "filer-info.ini", NULL)
++                                : NULL;
++        info_items = g_key_file_new ();
++        if (path != NULL)
++        {
++            g_key_file_load_from_file (info_items, path, G_KEY_FILE_NONE, NULL);
++        }
++        g_once_init_leave (&info_loaded, 1);
++    }
++    return g_key_file_get_string (info_items, name, key, NULL);
++}
+diff --git a/src/nautilus-filer-fixture.h b/src/nautilus-filer-fixture.h
+index d8eaca6..1e3474d 100644
+--- a/src/nautilus-filer-fixture.h
++++ b/src/nautilus-filer-fixture.h
+@@ -5,3 +5,5 @@
+ 
+ guint       nautilus_filer_fixture_grid_rank    (const char *name);
+ const char *nautilus_filer_fixture_grid_caption (const char *name);
++char       *nautilus_filer_fixture_info         (const char *name,
++                                                 const char *key);
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index cc9c63f..6fa7bed 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -56,6 +56,7 @@
+ #include "nautilus-file-undo-manager.h"
+ #include "nautilus-file-undo-operations.h"
+ #include "nautilus-file-utilities.h"
++#include "nautilus-filer-fixture.h"
+ #include "nautilus-files-view.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-history-controls.h"
+@@ -462,6 +463,38 @@ update_information (NautilusWindow *window)
+     luma_details_pane_add_hero (window->information_pane,
+                                 nautilus_file_get_display_name (file), NULL, icon);
+ 
++    /* The native conform tree stores the sample's displayed metadata alongside
++     * its files. Its sparse files cannot carry document dimensions or the
++     * Studio sample's historical modified labels in ordinary GFileInfo. */
++    g_autofree char *fixture_kind = nautilus_filer_fixture_info (
++        nautilus_file_get_name (file), "kind");
++    if (fixture_kind != NULL)
++    {
++        static const struct { const char *key; const char *label; } fields[] = {
++            { "contains", N_("Contains") },
++            { "size", N_("Size") },
++            { "size_on_disk", N_("Size on disk") },
++            { "modified", N_("Modified") },
++            { "where", N_("Where") },
++            { "shared_with", N_("Shared with") },
++            { "dimensions", N_("Dimensions") },
++            { "length", N_("Length") },
++            { "tags", N_("Tags") },
++        };
++        luma_details_pane_add_fact (window->information_pane, _("Kind"), fixture_kind);
++        for (guint i = 0; i < G_N_ELEMENTS (fields); i++)
++        {
++            g_autofree char *value = nautilus_filer_fixture_info (
++                nautilus_file_get_name (file), fields[i].key);
++            if (value != NULL && *value != '\0')
++            {
++                luma_details_pane_add_fact (window->information_pane,
++                                            _(fields[i].label), value);
++            }
++        }
++        return;
++    }
++
+     kind = nautilus_file_get_string_attribute_with_default (file, "type");
+     size = nautilus_file_get_string_attribute_with_default (file, "size");
+     modified = nautilus_file_get_string_attribute_with_default (file, "date_modified");
+@@ -554,6 +587,27 @@ on_slot_location_changed (NautilusWindowSlot *slot,
+     g_signal_emit (window, signals[LOCATIONS_CHANGED], 0);
+ }
+ 
++static void
++on_slot_view_mode_changed (GActionGroup   *group,
++                           const char     *action_name,
++                           GVariant       *state,
++                           NautilusWindow *window)
++{
++    if (window->active_slot == NULL ||
++        group != nautilus_window_slot_get_action_group (window->active_slot) ||
++        g_strcmp0 (action_name, "files-view-mode") != 0 ||
++        window->information_pane == NULL)
++    {
++        return;
++    }
++
++    if (g_variant_get_uint32 (state) == NAUTILUS_VIEW_COLUMN_ID &&
++        gtk_widget_get_width (GTK_WIDGET (window)) >= 640)
++    {
++        luma_details_pane_show (window->information_pane, TRUE);
++    }
++}
++
+ static void
+ tab_view_setup_menu_cb (AdwTabView     *tab_view,
+                         AdwTabPage     *page,
+@@ -1583,6 +1637,9 @@ set_active_slot (NautilusWindow     *window,
+     /* make old slot inactive if it exists (may be NULL after init, for example) */
+     if (old_slot != NULL)
+     {
++        g_signal_handlers_disconnect_by_func (
++            nautilus_window_slot_get_action_group (old_slot),
++            G_CALLBACK (on_slot_view_mode_changed), window);
+         /* inform slot & view */
+         nautilus_window_slot_set_active (old_slot, FALSE);
+     }
+@@ -1598,6 +1655,9 @@ set_active_slot (NautilusWindow     *window,
+ 
+         /* inform slot & view */
+         nautilus_window_slot_set_active (new_slot, TRUE);
++        g_signal_connect (nautilus_window_slot_get_action_group (new_slot),
++                          "action-state-changed",
++                          G_CALLBACK (on_slot_view_mode_changed), window);
+ 
+         on_location_changed (window);
+         update_cursor (window);
+-- 
+2.55.0
+

@@ -1,0 +1,38 @@
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -260,7 +260,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+ 
+           sidebar: Adw.ToolbarView sidebar_action_surface {
+             reveal-bottom-bars: bind progress_indicator.reveal;
+-            margin-top: 9;
++            margin-top: 0;
+             margin-bottom: 9;
+             margin-start: 9;
+             overflow: hidden;
+@@ -303,7 +303,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           };
+ 
+           content: Adw.ToolbarView {
+-            margin-top: 9;
++            margin-top: 0;
+             margin-bottom: 9;
+             margin-start: 9;
+             margin-end: 9;
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -309,6 +309,13 @@
+   .luma-files-window .luma-sidebar-surface {
+     border: none;
+   }
++
++  /* The shared island boundary owns the complete perimeter.  The older
++   * sidebar divider reset is intentionally more specific, so restore the
++   * semantic island stroke at that same source-owned specificity. */
++  .luma-files-window .luma-sidebar-surface.luma-island {
++    border: 1px solid @luma_line;
++  }
+ 
+   /* GtkPaned reserves an invisible 8px resize target at the sidebar edge.
+    * Compensate only that structural gutter so the globally themed row still

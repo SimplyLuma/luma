@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Stage
+Icon=io.luma.Stage
+Exec=true %f
+MimeType=application/vnd.oasis.opendocument.presentation;
+NoDisplay=true

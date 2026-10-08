@@ -1,0 +1,34 @@
+{
+  "luma_base": "0.1.0",
+  "architecture": "x86_64",
+  "presentation": "desktop",
+  "kernel_release": "6.15.10-200.fc44.x86_64",
+  "install_mode": "running-system",
+  "hardware": ["dmi:LENOVO:20TH003HUS"],
+  "capabilities": {
+    "org.luma.platform.session-contract": "1.0.0",
+    "org.luma.apps.core": "1.0.0",
+    "org.luma.session.compositor": "1.0.0",
+    "org.luma.session.shell": "1.0.0",
+    "org.luma.session.screen-locker": "1.0.0",
+    "org.luma.session.notifications": "1.0.0",
+    "org.luma.session.polkit-agent": "1.0.0",
+    "org.luma.session.secret-service": "1.0.0",
+    "org.luma.session.power": "1.0.0",
+    "org.luma.session.accessibility": "1.0.0",
+    "org.luma.portal.desktop": "1.0.0"
+  },
+  "capability_providers": {
+    "org.luma.session.compositor": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.session.shell": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.session.screen-locker": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.session.notifications": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.session.polkit-agent": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.session.secret-service": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "selectable"},
+    "org.luma.session.power": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.session.accessibility": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "exclusive"},
+    "org.luma.portal.desktop": {"provider": "org.projectluma.prairie.experience", "version": "1.0.0", "ownership": "selectable"}
+  },
+  "installed_mods": {},
+  "effect_owners": {}
+}

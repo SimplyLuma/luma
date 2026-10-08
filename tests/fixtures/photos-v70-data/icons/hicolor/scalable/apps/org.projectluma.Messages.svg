@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#8a83eb"/><stop offset="1" stop-color="#3b3093"/></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="bubble" x1="190" y1="328" x2="664" y2="820" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".34" stop-color="#fafafa"/><stop offset=".68" stop-color="#e9e8ee"/><stop offset=".86" stop-color="#f8f7fa"/><stop offset="1" stop-color="#c9c7d1"/></linearGradient>
+    <radialGradient id="bubbleLight" cx="300" cy="400" r="420" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity=".78"/><stop offset=".55" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="backBubble" x1="390" y1="214" x2="760" y2="624" gradientUnits="userSpaceOnUse"><stop stop-color="#d8d5ff"/><stop offset=".5" stop-color="#b6aff0"/><stop offset="1" stop-color="#7770bd"/></linearGradient>
+    <radialGradient id="ink" cx=".3" cy=".2" r=".85"><stop stop-color="#55517b"/><stop offset=".7" stop-color="#34315a"/><stop offset="1" stop-color="#24213f"/></radialGradient>
+    <radialGradient id="ember" cx=".3" cy=".2" r=".85"><stop stop-color="#ff9a55"/><stop offset=".58" stop-color="#fe6819"/><stop offset="1" stop-color="#d94708"/></radialGradient>
+    <filter id="moldShadow" x="-35%" y="-35%" width="170%" height="170%"><feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#171713" flood-opacity=".32"/></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+  <path d="M398 220h356q102 0 102 102v118q0 102-102 102H602l-92 82v-82H398q-102 0-102-102V322q0-102 102-102Z" fill="url(#backBubble)" stroke="#fff" stroke-opacity=".24" stroke-width="10" filter="url(#moldShadow)"/>
+  <g filter="url(#moldShadow)">
+    <path d="M236 342h414q112 0 112 112v156q0 112-112 112H374L242 838V722h-6q-112 0-112-112V454q0-112 112-112Z" fill="url(#bubble)" stroke="#fff" stroke-opacity=".52" stroke-width="12"/>
+    <path d="M236 342h414q112 0 112 112v156q0 112-112 112H374L242 838V722h-6q-112 0-112-112V454q0-112 112-112Z" fill="url(#bubbleLight)"/>
+  </g>
+  <g filter="url(#moldShadow)"><circle cx="308" cy="532" r="34" fill="url(#ink)"/><circle cx="452" cy="532" r="34" fill="url(#ink)"/><circle cx="596" cy="532" r="34" fill="url(#ember)"/></g>
+</svg>

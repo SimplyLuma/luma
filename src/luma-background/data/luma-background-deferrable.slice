@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma background agents that pause in Power Saver
+Documentation=https://projectluma.org/developer/kit/background-agents
+
+[Slice]
+# Within the background, messages, reminders and alarms come first.
+CPUWeight=50
+IOWeight=50

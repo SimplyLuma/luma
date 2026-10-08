@@ -1,0 +1,15 @@
+# Messages' background agent (ADR-033): network accounts stay connected and new
+# messages are announced while Messages is closed.
+# Installed as /usr/share/luma/background/org.projectluma.Messages.toml for luma-background.
+schema_version = "0.2"
+
+[application]
+id = "org.projectluma.Messages"
+name = "Messages"
+
+[background]
+agent = "org.projectluma.Messages.Agent"
+exec = "prairie-messages --agent"
+category = "communication"
+wake = ["login", "network", "resume"]
+publishes = ["unread-count", "unread-conversations", "accounts", "badge", "live-extension:org.projectluma.Messages.Unread"]

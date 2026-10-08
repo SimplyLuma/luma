@@ -1,0 +1,23 @@
+--- a/libhandy.spec
++++ b/libhandy.spec
+@@ -15,7 +15,7 @@
+ 
+ Name:           libhandy
+ Version:        1.8.3
+-Release:        %autorelease
++Release:        10.luma.9%{?dist}
+ Summary:        Building blocks for modern adaptive GNOME apps
+ License:        LGPL-2.1-or-later
+ 
+@@ -23,6 +23,11 @@
+ URL:            https://gitlab.gnome.org/GNOME/libhandy
+ %global majmin %(echo %{version} | cut -d . -f -2)
+ Source0:        https://download.gnome.org/sources/%{name}/%{majmin}/%{name}-%{version}.tar.xz
++Patch1000:      0001-luma-generic-application-identity.patch
++Patch1001:      0002-luma-generic-command-row.patch
++Patch1002:      0003-luma-title-slot-and-leaflet-islands.patch
++Patch1003:      0004-luma-identity-title-repeat.patch
++Patch1004:      0005-luma-one-title-row-per-window.patch
+ 
+ BuildRequires:  gcc
+ BuildRequires:  gi-docgen

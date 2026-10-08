@@ -1,0 +1,9 @@
+#!/bin/sh
+# Run the Leaf source against its separate LumaUI preview kit and app ID.
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+unset LUMA_LEAF_FIXTURE LUMA_LEAF_STATE
+export LUMA_LEAF_PREVIEW=1
+export PYTHONPATH="$here/python:$HOME/Documents/wt/lumaui-leaf/src/luma-leaf"
+export LUMA_APPKIT_ICON_PATH="$here/python/icons"
+exec python3 -m luma_leaf "$@"

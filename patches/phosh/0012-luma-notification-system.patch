@@ -1,0 +1,804 @@
+From 9916c4a3b4a7aa615a5bdb44c953199d1cfe410b Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 16:44:52 -0500
+Subject: [PATCH] shell: add native Luma notification system
+
+---
+ src/notifications/notification-banner.c  | 111 +++++++++++++++++++++-
+ src/notifications/notification-banner.h  |   2 +
+ src/notifications/notification-content.c |   4 +-
+ src/notifications/notify-manager.c       |   5 +-
+ src/settings.c                           |  43 +++++++--
+ src/shell.c                              |  76 ++++++++++++---
+ src/stylesheet/common.css                | 113 +++++++++++++++++++----
+ src/ui/notification-content.ui           |   2 +-
+ src/ui/notification-frame.ui             |   4 +-
+ src/ui/settings.ui                       |  49 +++++++++-
+ 10 files changed, 362 insertions(+), 47 deletions(-)
+
+diff --git a/src/notifications/notification-banner.c b/src/notifications/notification-banner.c
+index ce7a9a5..d655db0 100644
+--- a/src/notifications/notification-banner.c
++++ b/src/notifications/notification-banner.c
+@@ -18,7 +18,11 @@
+ 
+ #include <handy.h>
+ 
+-#define BANNER_MIN_WIDTH 360
++#define BANNER_MIN_WIDTH 320
++#define LUMA_BANNER_TOP_INSET 54
++#define LUMA_BANNER_SIDE_INSET 12
++#define LUMA_BANNER_GAP 8
++#define LUMA_BANNER_TIMEOUT_MS 8500
+ 
+ /**
+  * PhoshNotificationBanner:
+@@ -43,12 +47,17 @@ struct _PhoshNotificationBanner {
+ 
+   gboolean slide_up;
+   PhoshAnimation *animation;
++  guint timeout_id;
++  guint stack_position;
+ };
+ typedef struct _PhoshNotificationBanner PhoshNotificationBanner;
+ 
+ 
+ G_DEFINE_TYPE (PhoshNotificationBanner, phosh_notification_banner, PHOSH_TYPE_LAYER_SURFACE)
+ 
++static void phosh_notification_banner_slide (double value, gpointer user_data);
++static void phosh_notification_banner_slide_done (gpointer user_data);
++
+ 
+ static void
+ clear_handler (PhoshNotificationBanner *self)
+@@ -57,17 +66,76 @@ clear_handler (PhoshNotificationBanner *self)
+   g_clear_signal_handler (&self->handler_closed, self->notification);
+ }
+ 
++static gboolean
++luma_banner_timeout (PhoshNotificationBanner *self)
++{
++  self->timeout_id = 0;
++
++  /* Resting is presentation state, not protocol expiry.  Fade only the layer
++   * surface and leave the record in PhoshNotifyManager's collection. */
++  if (gtk_widget_get_mapped (GTK_WIDGET (self))) {
++    self->slide_up = TRUE;
++    self->animation = phosh_animation_new (GTK_WIDGET (self),
++                                           0.0,
++                                           1.0,
++                                           240 * PHOSH_ANIMATION_SLOWDOWN,
++                                           PHOSH_ANIMATION_TYPE_EASE_OUT_CUBIC,
++                                           phosh_notification_banner_slide,
++                                           phosh_notification_banner_slide_done,
++                                           self);
++    phosh_animation_start (self->animation);
++  } else {
++    gtk_widget_destroy (GTK_WIDGET (self));
++  }
++  return G_SOURCE_REMOVE;
++}
++
++static void
++luma_banner_resume_timeout (PhoshNotificationBanner *self)
++{
++  if (self->timeout_id ||
++      phosh_notification_get_urgency (self->notification) == PHOSH_NOTIFICATION_URGENCY_CRITICAL)
++    return;
++
++  self->timeout_id = g_timeout_add (LUMA_BANNER_TIMEOUT_MS,
++                                    (GSourceFunc) luma_banner_timeout,
++                                    self);
++  g_source_set_name_by_id (self->timeout_id, "[Luma] notification heads-up timeout");
++}
++
++static gboolean
++luma_banner_enter (PhoshNotificationBanner *self, GdkEvent *event)
++{
++  g_clear_handle_id (&self->timeout_id, g_source_remove);
++  return GDK_EVENT_PROPAGATE;
++}
++
++static gboolean
++luma_banner_leave (PhoshNotificationBanner *self, GdkEvent *event)
++{
++  luma_banner_resume_timeout (self);
++  return GDK_EVENT_PROPAGATE;
++}
++
+ 
+ static void
+ phosh_notification_banner_slide (double value, gpointer user_data)
+ {
+   PhoshNotificationBanner *self = PHOSH_NOTIFICATION_BANNER (user_data);
++  double reveal = self->slide_up ? 1.0 - value : value;
+   int margin, height;
+ 
+   gtk_window_get_size (GTK_WINDOW (self), NULL, &height);
+-  margin = -(height * 0.9) * (self->slide_up ? value : (1.0 - value));
++  margin = LUMA_BANNER_TOP_INSET +
++           self->stack_position * (height + LUMA_BANNER_GAP) -
++           (int) (12 * (1.0 - reveal));
+ 
+-  phosh_layer_surface_set_margins (PHOSH_LAYER_SURFACE (self), margin, 0, 0, 0);
++  gtk_widget_set_opacity (GTK_WIDGET (self), reveal);
++  phosh_layer_surface_set_margins (PHOSH_LAYER_SURFACE (self),
++                                   margin,
++                                   LUMA_BANNER_SIDE_INSET,
++                                   0,
++                                   LUMA_BANNER_SIDE_INSET);
+ 
+   phosh_layer_surface_wl_surface_commit (PHOSH_LAYER_SURFACE (self));
+ }
+@@ -191,6 +259,7 @@ phosh_notification_banner_dispose (GObject *object)
+ 
+   clear_handler (self);
+ 
++  g_clear_handle_id (&self->timeout_id, g_source_remove);
+   g_clear_pointer (&self->animation, phosh_animation_unref);
+   g_clear_object (&self->notification);
+ 
+@@ -210,6 +279,7 @@ phosh_notification_banner_map (GtkWidget *widget)
+   phosh_layer_surface_set_size (PHOSH_LAYER_SURFACE (widget), -1, height);
+ 
+   phosh_animation_start (self->animation);
++  luma_banner_resume_timeout (self);
+ }
+ 
+ 
+@@ -244,10 +314,21 @@ phosh_notification_banner_class_init (PhoshNotificationBannerClass *klass)
+ static void
+ phosh_notification_banner_init (PhoshNotificationBanner *self)
+ {
++  gtk_widget_add_events (GTK_WIDGET (self),
++                         GDK_ENTER_NOTIFY_MASK | GDK_LEAVE_NOTIFY_MASK |
++                         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
++  g_signal_connect_swapped (self, "enter-notify-event",
++                            G_CALLBACK (luma_banner_enter), self);
++  g_signal_connect_swapped (self, "button-press-event",
++                            G_CALLBACK (luma_banner_enter), self);
++  g_signal_connect_swapped (self, "leave-notify-event",
++                            G_CALLBACK (luma_banner_leave), self);
++  g_signal_connect_swapped (self, "button-release-event",
++                            G_CALLBACK (luma_banner_leave), self);
+   self->animation = phosh_animation_new (GTK_WIDGET (self),
+                                          0.0,
+                                          1.0,
+-                                         250 * PHOSH_ANIMATION_SLOWDOWN,
++                                         240 * PHOSH_ANIMATION_SLOWDOWN,
+                                          PHOSH_ANIMATION_TYPE_EASE_OUT_CUBIC,
+                                          phosh_notification_banner_slide,
+                                          phosh_notification_banner_slide_done,
+@@ -272,7 +353,7 @@ phosh_notification_banner_new (PhoshNotification *notification)
+                        "layer-shell", phosh_wayland_get_zwlr_layer_shell_v1 (wl),
+                        "wl-output", monitor ? monitor->wl_output : NULL,
+                        "anchor", ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
+-                       "width", MIN (width, 450),
++                       "width", MIN (width - (2 * LUMA_BANNER_SIDE_INSET), 450),
+                        /* Initial height to not take up the whole screen */
+                        "height", 100,
+                        "layer", ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+@@ -282,6 +363,26 @@ phosh_notification_banner_new (PhoshNotification *notification)
+                        NULL);
+ }
+ 
++void
++phosh_notification_banner_set_stack_position (PhoshNotificationBanner *self,
++                                              guint                    position)
++{
++  int height = 100;
++
++  g_return_if_fail (PHOSH_IS_NOTIFICATION_BANNER (self));
++
++  self->stack_position = position;
++  if (gtk_widget_get_mapped (GTK_WIDGET (self)))
++    gtk_window_get_size (GTK_WINDOW (self), NULL, &height);
++
++  phosh_layer_surface_set_margins (PHOSH_LAYER_SURFACE (self),
++                                   LUMA_BANNER_TOP_INSET +
++                                   position * (height + LUMA_BANNER_GAP),
++                                   LUMA_BANNER_SIDE_INSET,
++                                   0,
++                                   LUMA_BANNER_SIDE_INSET);
++}
++
+ /**
+  * phosh_notification_banner_get_notification
+  * @self: The banner
+diff --git a/src/notifications/notification-banner.h b/src/notifications/notification-banner.h
+index a55e737..41aa2c1 100644
+--- a/src/notifications/notification-banner.h
++++ b/src/notifications/notification-banner.h
+@@ -20,6 +20,8 @@ G_DECLARE_FINAL_TYPE (PhoshNotificationBanner, phosh_notification_banner, PHOSH,
+ 
+ GtkWidget         *phosh_notification_banner_new              (PhoshNotification       *notification);
+ PhoshNotification *phosh_notification_banner_get_notification (PhoshNotificationBanner *self);
++void               phosh_notification_banner_set_stack_position (PhoshNotificationBanner *self,
++                                                                  guint                    position);
+ 
+ 
+ G_END_DECLS
+diff --git a/src/notifications/notification-content.c b/src/notifications/notification-content.c
+index 6103cd8..4bf0061 100644
+--- a/src/notifications/notification-content.c
++++ b/src/notifications/notification-content.c
+@@ -165,7 +165,8 @@ set_actions (PhoshNotificationContent *self,  PhoshNotification *notification)
+ 
+   filters = get_action_filter_keys (notification, (const char *const *)self->action_filter_keys);
+ 
+-  for (int i = 0; actions[i] != NULL; i += 2) {
++  guint visible_actions = 0;
++  for (int i = 0; actions[i] != NULL && visible_actions < 2; i += 2) {
+     GtkWidget *btn;
+     GtkWidget *lbl;
+ 
+@@ -207,6 +208,7 @@ set_actions (PhoshNotificationContent *self,  PhoshNotification *notification)
+     gtk_container_add (GTK_CONTAINER (btn), lbl);
+ 
+     gtk_container_add (GTK_CONTAINER (self->box_actions), btn);
++    visible_actions++;
+   }
+ }
+ 
+diff --git a/src/notifications/notify-manager.c b/src/notifications/notify-manager.c
+index 91db7b2..8f15d54 100644
+--- a/src/notifications/notify-manager.c
++++ b/src/notifications/notify-manager.c
+@@ -877,7 +877,10 @@ phosh_notify_manager_add_notification (PhoshNotifyManager *self,
+                            self,
+                            G_CONNECT_SWAPPED);
+ 
+-  if (expire_timeout)
++  /* A normal producer timeout controls heads-up presentation; it must not
++   * delete the waiting record.  Explicitly transient records still expire and
++   * report reason 1 as required by org.freedesktop.Notifications. */
++  if (expire_timeout && phosh_notification_get_transient (notification))
+     phosh_notification_expires (notification, expire_timeout);
+ 
+   g_signal_emit (self, signals[NEW_NOTIFICATION], 0, notification);
+diff --git a/src/settings.c b/src/settings.c
+index 23572ec..4ca313e 100644
+--- a/src/settings.c
++++ b/src/settings.c
+@@ -67,6 +67,8 @@ typedef struct _PhoshSettings {
+   /* Notifications */
+   GtkWidget *list_notifications;
+   GtkWidget *stack_notifications;
++  GtkWidget *lbl_notification_count;
++  GtkWidget *lbl_notifications_empty;
+ 
+   /* Torch */
+   PhoshTorchManager *torch_manager;
+@@ -242,10 +244,17 @@ on_notifications_clear_all_clicked (PhoshSettings *self)
+   phosh_notify_manager_close_all_notifications (manager, PHOSH_NOTIFICATION_REASON_DISMISSED);
+ }
+ 
++static void on_notification_frames_items_changed (PhoshSettings *self,
++                                                  guint          position,
++                                                  guint          removed,
++                                                  guint          added,
++                                                  GListModel    *list);
++
+ 
+ static GtkWidget *
+ create_notification_row (gpointer item, gpointer data)
+ {
++  PhoshSettings *self = PHOSH_SETTINGS (data);
+   PhoshShell *shell = phosh_shell_get_default ();
+   GtkWidget *row = NULL;
+   GtkWidget *frame = NULL;
+@@ -257,6 +266,9 @@ create_notification_row (gpointer item, gpointer data)
+ 
+   frame = phosh_notification_frame_new (TRUE, NULL);
+   phosh_notification_frame_bind_model (PHOSH_NOTIFICATION_FRAME (frame), item);
++  g_signal_connect_object (item, "items-changed",
++                           G_CALLBACK (on_notification_frames_items_changed),
++                           self, G_CONNECT_SWAPPED);
+ 
+   if (!(phosh_shell_get_state (shell) & PHOSH_STATE_SETTINGS))
+     phosh_notification_frame_set_animate_show (PHOSH_NOTIFICATION_FRAME (frame), FALSE);
+@@ -311,17 +323,27 @@ on_notification_frames_items_changed (PhoshSettings *self,
+                                       GListModel    *list)
+ {
+   gboolean is_empty;
+-  const char *child_name;
++  guint count = 0;
++  GListModel *sources;
+ 
+   g_return_if_fail (PHOSH_IS_SETTINGS (self));
+   g_return_if_fail (G_IS_LIST_MODEL (list));
+ 
+-  is_empty = !g_list_model_get_n_items (list);
++  sources = G_LIST_MODEL (phosh_notify_manager_get_list (
++    phosh_notify_manager_get_default ()));
++  for (guint i = 0; i < g_list_model_get_n_items (sources); i++) {
++    g_autoptr (GListModel) source = G_LIST_MODEL (g_list_model_get_object (sources, i));
++    count += g_list_model_get_n_items (source);
++  }
++  is_empty = count == 0;
+   g_debug ("Notification list empty: %d", is_empty);
+ 
+-  child_name = is_empty ? STACK_CHILD_NO_NOTIFICATIONS : STACK_CHILD_NOTIFICATIONS;
+-  gtk_stack_set_visible_child_name (GTK_STACK (self->stack_notifications), child_name);
+-  gtk_widget_set_visible (self->stack_notifications, !is_empty);
++  g_autofree char *count_text = g_strdup_printf ("%u", count);
++  gtk_label_set_text (GTK_LABEL (self->lbl_notification_count), count_text);
++  gtk_widget_set_visible (self->lbl_notifications_empty, is_empty);
++  gtk_stack_set_visible_child_name (GTK_STACK (self->stack_notifications),
++                                    STACK_CHILD_NOTIFICATIONS);
++  gtk_widget_set_visible (self->stack_notifications, TRUE);
+   update_drag_handle_offset (self);
+ }
+ 
+@@ -364,7 +386,7 @@ phosh_settings_constructed (GObject *object)
+   gtk_list_box_bind_model (GTK_LIST_BOX (self->list_notifications),
+                            G_LIST_MODEL (phosh_notify_manager_get_list (manager)),
+                            create_notification_row,
+-                           NULL,
++                           self,
+                            NULL);
+   g_signal_connect_object (phosh_notify_manager_get_list (manager),
+                            "items-changed",
+@@ -461,6 +483,8 @@ phosh_settings_class_init (PhoshSettingsClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, PhoshSettings, box_sliders);
+   gtk_widget_class_bind_template_child (widget_class, PhoshSettings, box_settings);
+   gtk_widget_class_bind_template_child (widget_class, PhoshSettings, list_notifications);
++  gtk_widget_class_bind_template_child (widget_class, PhoshSettings, lbl_notification_count);
++  gtk_widget_class_bind_template_child (widget_class, PhoshSettings, lbl_notifications_empty);
+   gtk_widget_class_bind_template_child (widget_class, PhoshSettings, media_player);
+   gtk_widget_class_bind_template_child (widget_class, PhoshSettings, quick_settings);
+   gtk_widget_class_bind_template_child (widget_class, PhoshSettings, revealer);
+@@ -481,6 +505,13 @@ phosh_settings_init (PhoshSettings *self)
+ {
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
++  /* The collection is the first Quick Options section.  Media remains near
++   * the bottom and connectivity follows notifications, matching the one-shade
++   * handheld information hierarchy. */
++  gtk_box_reorder_child (GTK_BOX (self->box_settings), self->box_bottom_half, 0);
++  gtk_box_reorder_child (GTK_BOX (self->box_bottom_half), self->stack_notifications, 0);
++  gtk_box_reorder_child (GTK_BOX (self->box_bottom_half), self->media_player, -1);
++
+   g_signal_connect (self, "size-allocate", G_CALLBACK (on_size_allocate), NULL);
+ }
+ 
+diff --git a/src/shell.c b/src/shell.c
+index 73cb5ed..a10f282 100644
+--- a/src/shell.c
++++ b/src/shell.c
+@@ -154,7 +154,7 @@ typedef struct {
+   gint osd_timeoutid;
+   gboolean                    osd_continue;
+ 
+-  GtkWidget                  *notification_banner;
++  GPtrArray                  *notification_banners;
+ 
+   PhoshUdevManager           *udev_manager;
+   PhoshAppTracker            *app_tracker;
+@@ -235,6 +235,8 @@ typedef struct {
+ 
+ static void phosh_shell_action_group_iface_init (GActionGroupInterface *iface);
+ static void phosh_shell_action_map_iface_init (GActionMapInterface *iface);
++static void on_notification_banner_destroyed (GtkWidget *banner, PhoshShell *self);
++static void clear_notification_banners (PhoshShell *self);
+ 
+ G_DEFINE_TYPE_WITH_CODE (PhoshShell, phosh_shell, G_TYPE_OBJECT,
+                          G_ADD_PRIVATE (PhoshShell)
+@@ -318,6 +320,8 @@ on_top_panel_state_changed (PhoshShell *self, GParamSpec *pspec, PhoshTopPanel *
+   priv = phosh_shell_get_instance_private (self);
+ 
+   state = phosh_top_panel_get_state (PHOSH_TOP_PANEL (priv->top_panel));
++  if (state == PHOSH_TOP_PANEL_STATE_UNFOLDED)
++    clear_notification_banners (self);
+   phosh_shell_set_state (self, PHOSH_STATE_SETTINGS, state == PHOSH_TOP_PANEL_STATE_UNFOLDED);
+ }
+ 
+@@ -378,7 +382,6 @@ get_foreground_status_surface (PhoshShell *self,
+   return NULL;
+ }
+ 
+-
+ static void
+ update_top_bar_transparency (PhoshShell *self)
+ {
+@@ -758,7 +761,8 @@ phosh_shell_dispose (GObject *object)
+   panels_dispose (self);
+   g_clear_pointer (&priv->faders, g_ptr_array_unref);
+ 
+-  g_clear_pointer (&priv->notification_banner, phosh_cp_widget_destroy);
++  clear_notification_banners (self);
++  g_clear_pointer (&priv->notification_banners, g_ptr_array_unref);
+ 
+   /* dispose managers in opposite order of declaration */
+   g_clear_object (&priv->debug_control);
+@@ -883,6 +887,45 @@ on_toplevel_added (PhoshShell *self, PhoshToplevel *toplevel, PhoshToplevelManag
+ }
+ 
+ 
++static void
++clear_notification_banners (PhoshShell *self)
++{
++  PhoshShellPrivate *priv = phosh_shell_get_instance_private (self);
++
++  if (!priv->notification_banners)
++    return;
++
++  while (priv->notification_banners->len) {
++    GtkWidget *banner = g_ptr_array_steal_index (
++      priv->notification_banners, priv->notification_banners->len - 1);
++    g_signal_handlers_disconnect_by_func (banner,
++                                          on_notification_banner_destroyed,
++                                          self);
++    gtk_widget_destroy (banner);
++  }
++}
++
++
++static void
++on_notification_banner_destroyed (GtkWidget *banner, PhoshShell *self)
++{
++  PhoshShellPrivate *priv = phosh_shell_get_instance_private (self);
++
++  if (!priv->notification_banners)
++    return;
++
++  for (guint i = 0; i < priv->notification_banners->len; i++) {
++    if (g_ptr_array_index (priv->notification_banners, i) == banner) {
++      g_ptr_array_steal_index (priv->notification_banners, i);
++      break;
++    }
++  }
++  for (guint i = 0; i < priv->notification_banners->len; i++)
++    phosh_notification_banner_set_stack_position (
++      PHOSH_NOTIFICATION_BANNER (g_ptr_array_index (priv->notification_banners, i)), i);
++}
++
++
+ static void
+ on_new_notification (PhoshShell         *self,
+                      PhoshNotification  *notification,
+@@ -896,18 +939,18 @@ on_new_notification (PhoshShell         *self,
+ 
+   priv = phosh_shell_get_instance_private (self);
+ 
+-  /* Clear existing banner */
+-  g_clear_pointer (&priv->notification_banner, phosh_cp_widget_destroy);
+   if (phosh_notify_manager_get_show_notification_banner (manager, notification) &&
+       phosh_top_panel_get_state (PHOSH_TOP_PANEL (priv->top_panel)) == PHOSH_TOP_PANEL_STATE_FOLDED &&
+-      !priv->locked) {
+-    priv->notification_banner = phosh_notification_banner_new (notification);
+-    g_signal_connect (priv->notification_banner,
+-                      "destroy",
+-                      G_CALLBACK (gtk_widget_destroyed),
+-                      &priv->notification_banner);
+-
+-    gtk_widget_set_visible (GTK_WIDGET (priv->notification_banner), TRUE);
++      !priv->locked && priv->notification_banners->len < 3) {
++    GtkWidget *banner = phosh_notification_banner_new (notification);
++
++    g_ptr_array_insert (priv->notification_banners, 0, banner);
++    g_signal_connect (banner, "destroy",
++                      G_CALLBACK (on_notification_banner_destroyed), self);
++    for (guint i = 0; i < priv->notification_banners->len; i++)
++      phosh_notification_banner_set_stack_position (
++        PHOSH_NOTIFICATION_BANNER (g_ptr_array_index (priv->notification_banners, i)), i);
++    gtk_widget_set_visible (banner, TRUE);
+   }
+ }
+ 
+@@ -930,7 +973,11 @@ on_notification_activated (PhoshShell *self)
+ 
+   priv = phosh_shell_get_instance_private (self);
+ 
+-  phosh_top_panel_fold (PHOSH_TOP_PANEL (priv->top_panel));
++  /* Action completion mutates the shared list in place.  Keep Quick Options
++   * open so the next logical card/header retains focus. */
++  if (phosh_top_panel_get_state (PHOSH_TOP_PANEL (priv->top_panel)) ==
++      PHOSH_TOP_PANEL_STATE_FOLDED)
++    phosh_top_panel_fold (PHOSH_TOP_PANEL (priv->top_panel));
+ }
+ 
+ 
+@@ -1482,6 +1529,7 @@ phosh_shell_constructed (GObject *object)
+   priv->idle_manager = phosh_idle_manager_get_default ();
+ 
+   priv->faders = g_ptr_array_new_with_free_func ((GDestroyNotify) (gtk_widget_destroy));
++  priv->notification_banners = g_ptr_array_new ();
+ 
+   phosh_system_prompter_register ();
+   priv->polkit_auth_agent = phosh_polkit_auth_agent_new ();
+diff --git a/src/stylesheet/common.css b/src/stylesheet/common.css
+index 8c5583f..1966ab1 100644
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -303,6 +303,7 @@ phosh-channel-bar scale {
+ button.phosh-settings-details,
+ button.phosh-settings-details:focus {
+   background: none;
++  opacity: 0;
+ }
+ 
+ /* Listboxes in settings (e.g. audio details) */
+@@ -919,15 +920,71 @@ phosh-gtk-mount-prompt .phosh-system-modal-dialog-content > image {
+  * Notifications
+  */
+ 
++/* Luma notification semantic contract.  GTK3 cannot backdrop-filter, so Phosh
++ * uses the documented opaque fallback while preserving the same roles. */
++@define-color luma_notification_ink #282f36;
++@define-color luma_notification_muted #767e86;
++@define-color luma_notification_arriving rgba(252,252,251,.96);
++@define-color luma_notification_card #ffffff;
++@define-color luma_notification_line rgba(35,44,52,.10);
++@define-color luma_notification_fill rgba(35,44,52,.055);
++@define-color luma_notification_hover rgba(35,44,52,.09);
++
++.phosh-settings-menu .phosh-notifications-header {
++  min-height: 28px;
++  padding: 13px 14px 8px 14px;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 700;
++}
++
++.luma-notification-count {
++  min-width: 20px;
++  min-height: 20px;
++  padding: 0 6px;
++  border-radius: 10px;
++  background: alpha(@phosh_fg_color, .06);
++  color: alpha(@phosh_fg_color, .62);
++  font-family: "Figtree";
++  font-size: 9px;
++  font-weight: 700;
++}
++
++#phosh-notifications-clear-all-btn {
++  min-height: 28px;
++  padding: 0 8px;
++  border: 0;
++  border-radius: 14px;
++  background: transparent;
++  box-shadow: none;
++  font-family: "Figtree";
++  font-size: 10px;
++  font-weight: 650;
++}
++
++#phosh-notifications-clear-all-btn:hover,
++#phosh-notifications-clear-all-btn:focus {
++  background: alpha(@phosh_fg_color, .06);
++}
++
++.luma-notification-empty {
++  padding: 10px 14px 14px;
++  color: alpha(@phosh_fg_color, .62);
++  font-family: "Figtree";
++  font-size: 10.5px;
++}
++
+ phosh-notification-content {
+   background: transparent;
+   color: @phosh_fg_color;
+   padding: 0;
+   margin: 0;
++  font-family: "Figtree";
+ }
+ 
+ phosh-notification-content .message-area {
+-  padding: 12px 12px 9px 12px;
++  padding: 10px 38px 10px 48px;
++  min-height: 50px;
+ }
+ 
+ .phosh-notification-body:focus {
+@@ -946,12 +1003,16 @@ phosh-notification-content .actions-area {
+ }
+ 
+ phosh-notification-content .actions-area button {
+-  background: @phosh_action_bg_color;
+-  border: 1px solid @phosh_borders_color;
+-  border-radius: 0;
+-  font-weight: bold;
+-  padding: 8px 12px;
+-  box-shadow: inset -1px 0 0 0 @phosh_borders_color;
++  min-height: 44px;
++  margin: 0 0 8px 5px;
++  padding: 0 10px;
++  background: alpha(@phosh_fg_color, .075);
++  border: 1px solid alpha(@phosh_fg_color, .10);
++  border-radius: 14px;
++  box-shadow: none;
++  font-family: "Figtree";
++  font-size: 9.5px;
++  font-weight: 650;
+ }
+ 
+ phosh-notification-content .actions-area button:only-child {
+@@ -994,17 +1055,33 @@ phosh-notification-frame list {
+ }
+ 
+ phosh-notification-frame .header-area {
+-  padding: 12px 12px 0 12px;
++  padding: 10px 10px 0 10px;
++  font-family: "Figtree";
+ }
+ 
+ phosh-notification-frame .header-area image {
+-  -gtk-icon-style: symbolic;
++  min-width: 30px;
++  min-height: 30px;
++  border-radius: 9px;
++  -gtk-icon-style: regular;
++}
++
++.luma-notification-source {
++  font-size: 8.5px;
++  font-weight: 700;
++  letter-spacing: 1px;
++}
++
++.luma-notification-time {
++  font-size: 8.5px;
++  font-weight: 600;
+ }
+ 
+ phosh-notification-frame .notification-container {
+-  border-radius: 12px;
+-  border: none;
+-  background-color: @phosh_notification_bg_color;
++  margin: 3px 12px;
++  border-radius: 14px;
++  border: 1px solid alpha(@phosh_fg_color, .10);
++  background-color: alpha(@phosh_fg_color, .055);
+ }
+ 
+ /* Banner */
+@@ -1019,14 +1096,18 @@ phosh-notification-banner > phosh-notification-frame {
+ }
+ 
+ phosh-notification-banner .notification-container {
+-  margin: 6px;
+-  box-shadow: 0px 1px 4px 0px rgba(0, 0, 0, 0.33),
+-              0px 2px 4px 2px rgba(0, 0, 0, 0.07);
++  margin: 0;
++  border-radius: 18px;
++  background-color: @luma_notification_arriving;
++  color: @luma_notification_ink;
++  box-shadow: 0 3px 10px rgba(10,14,19,.16),
++              0 20px 44px rgba(10,14,19,.20);
+ }
+ 
+ /* Notification Tray */
+ .phosh-notification-tray {
+-  padding-bottom: 12px;
++  padding: 0 0 14px 0;
++  border-bottom: 1px solid alpha(@phosh_fg_color, .10);
+ }
+ 
+ .phosh-notification-tray,
+diff --git a/src/ui/notification-content.ui b/src/ui/notification-content.ui
+index 3b08a2d..b599c94 100644
+--- a/src/ui/notification-content.ui
++++ b/src/ui/notification-content.ui
+@@ -53,7 +53,7 @@
+                     <property name="wrap">1</property>
+                     <property name="wrap-mode">word-char</property>
+                     <property name="ellipsize">end</property>
+-                    <property name="lines">3</property>
++                    <property name="lines">2</property>
+                     <property name="xalign">0</property>
+                     <style>
+                       <class name="dim-label"/>
+diff --git a/src/ui/notification-frame.ui b/src/ui/notification-frame.ui
+index 472f71c..0979f8a 100644
+--- a/src/ui/notification-frame.ui
++++ b/src/ui/notification-frame.ui
+@@ -34,7 +34,7 @@
+                         <child>
+                           <object class="GtkImage" id="img_icon">
+                             <property name="visible">1</property>
+-                            <property name="pixel-size">16</property>
++                            <property name="pixel-size">30</property>
+                             <property name="icon-name">notification-symbolic</property>
+                             <style>
+                               <class name="app-icon"/>
+@@ -51,6 +51,7 @@
+                             <property name="xalign">0</property>
+                             <style>
+                               <class name="heading"/>
++                              <class name="luma-notification-source"/>
+                             </style>
+                           </object>
+                         </child>
+@@ -62,6 +63,7 @@
+                             <style>
+                               <class name="dim-label"/>
+                               <class name="caption"/>
++                              <class name="luma-notification-time"/>
+                             </style>
+                           </object>
+                         </child>
+diff --git a/src/ui/settings.ui b/src/ui/settings.ui
+index fa6c96c..e13bb1a 100644
+--- a/src/ui/settings.ui
++++ b/src/ui/settings.ui
+@@ -115,6 +115,34 @@
+                     <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.poweroff</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-shutdown-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
+                   </object>
+                 </child>
++                <child>
++                  <object class="GtkBox" id="luma_actions_row">
++                    <property name="visible" bind-source="PhoshSettings" bind-property="on-lockscreen" bind-flags="sync-create|invert-boolean"/>
++                    <property name="spacing">8</property>
++                    <property name="margin-top">8</property>
++                    <property name="margin-bottom">10</property>
++                    <child>
++                      <object class="GtkBox">
++                        <property name="visible">1</property>
++                        <property name="hexpand">1</property>
++                        <property name="spacing">7</property>
++                        <style><class name="luma-user-pill"/></style>
++                        <child><object class="GtkLabel"><property name="visible">1</property><property name="label">N</property><style><class name="luma-user-avatar"/></style></object></child>
++                        <child>
++                          <object class="GtkBox">
++                            <property name="visible">1</property><property name="orientation">vertical</property>
++                            <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label">Nick</property><style><class name="luma-user-name"/></style></object></child>
++                            <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label">Administrator</property><style><class name="luma-user-role"/></style></object></child>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.launch-panel</property><property name="action-target">(&quot;about&quot;, [&lt;&quot;&quot;&gt;])</property><child><object class="GtkLabel"><property name="visible">1</property><property name="label">i</property><style><class name="luma-action-glyph"/></style></object></child><style><class name="luma-round-action"/></style></object></child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.search</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-search-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.launch-mobile-panel</property><property name="action-target">(&quot;topbar&quot;, [&lt;&quot;&quot;&gt;])</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">preferences-system-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.poweroff</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-shutdown-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
++                  </object>
++                </child>
+                 <child>
+                   <object class="HdyClamp">
+                     <property name="visible">1</property>
+@@ -192,6 +220,15 @@
+                                         </attributes>
+                                       </object>
+                                     </child>
++                                    <child>
++                                      <object class="GtkLabel" id="lbl_notification_count">
++                                        <property name="visible">1</property>
++                                        <property name="label">0</property>
++                                        <property name="width-chars">2</property>
++                                        <property name="xalign">0.5</property>
++                                        <style><class name="luma-notification-count"/></style>
++                                      </object>
++                                    </child>
+                                     <child>
+                                       <object class="GtkButton">
+                                         <property name="visible">1</property>
+@@ -206,8 +243,8 @@
+                                     </style>
+                                   </object>
+                                 </child>
+-                                <child>
+-                                  <object class="GtkBox">
++                              <child>
++                                <object class="GtkBox">
+                                     <property name="visible">1</property>
+                                     <child>
+                                       <object class="GtkListBox" id="list_notifications">
+@@ -221,6 +258,14 @@
+                                     </style>
+                                   </object>
+                                 </child>
++                                <child>
++                                  <object class="GtkLabel" id="lbl_notifications_empty">
++                                    <property name="visible">0</property>
++                                    <property name="wrap">1</property>
++                                    <property name="label" translatable="yes">Nothing waiting. New alerts will collect here.</property>
++                                    <style><class name="luma-notification-empty"/></style>
++                                  </object>
++                                </child>
+                               </object>
+                               <packing>
+                                 <property name="name">notifications</property>
+-- 
+2.54.0 (Apple Git-157)

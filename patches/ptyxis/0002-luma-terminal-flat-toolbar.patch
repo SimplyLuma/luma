@@ -1,0 +1,45 @@
+--- a/src/ptyxis-fullscreen-box.c
++++ b/src/ptyxis-fullscreen-box.c
+@@ -396,8 +396,9 @@
+   self->autohide = TRUE;
+ 
+   toolbar_view = ADW_TOOLBAR_VIEW (adw_toolbar_view_new ());
+-  adw_toolbar_view_set_top_bar_style (toolbar_view, ADW_TOOLBAR_RAISED);
+-  adw_toolbar_view_set_bottom_bar_style (toolbar_view, ADW_TOOLBAR_RAISED);
++  /* The shared title row sits on the window ground, without elevation. */
++  adw_toolbar_view_set_top_bar_style (toolbar_view, ADW_TOOLBAR_FLAT);
++  adw_toolbar_view_set_bottom_bar_style (toolbar_view, ADW_TOOLBAR_FLAT);
+ 
+   g_signal_connect_object (toolbar_view, "notify::reveal-top-bars",
+                            G_CALLBACK (notify_reveal_cb), self, G_CONNECT_SWAPPED);
+--- a/src/ptyxis-window-dressing.c
++++ b/src/ptyxis-window-dressing.c
+@@ -112,16 +112,8 @@
+ 
+       revealer_bg = g_strdup_printf ("alpha(mix(%s,%s,.05),%s)", titlebar_bg, titlebar_fg, popover_alpha_str);
+ 
+-      /* The window wears the titlebar colour — in Luma's palettes that is the
+-       * window ground — and the terminal wears the terminal colour on the
+-       * island above it. Painting the whole window in the terminal's colour
+-       * leaves the island invisible. */
+-      g_string_append_printf (string,
+-                              "window.%s { color: %s; background-color: alpha(%s, %s); }\n",
+-                              self->css_class, fg, titlebar_bg, window_alpha_str);
+-      g_string_append_printf (string,
+-                              "window.%s.fullscreen { background-color: %s; }\n",
+-                              self->css_class, titlebar_bg);
++      /* Outer window and titlebar material belong to the shared toolkit.
++       * Profile colors remain scoped to terminal content and status accents. */
+       g_string_append_printf (string,
+                               "window.%s .window-contents popover > contents { color: %s; background-color: alpha(%s, %s); }\n",
+                               self->css_class, titlebar_fg, titlebar_bg, popover_alpha_str);
+@@ -142,9 +134,6 @@
+                               self->css_class, fg);
+       g_string_append_printf (string,
+                               "window.%s .window-contents toolbarview.overview { background-color: %s; color: %s; }\n",
+-                              self->css_class, titlebar_bg, titlebar_fg);
+-      g_string_append_printf (string,
+-                              "window.%s .window-contents revealer.raised.top-bar { background-color: %s; color: %s; }\n",
+                               self->css_class, titlebar_bg, titlebar_fg);
+       g_string_append_printf (string,
+                               "window.%s .window-contents box.visual-bell headerbar { background-color: transparent; }\n"

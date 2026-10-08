@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Tiling's layout picker in Quick Options follows the appearance mode Quick
+ * Options is showing: every value below is from the Shell's ink ledger
+ * (js/ui/lumaSurfaceMaterials.js SURFACE_INK and js/ui/lumaControlInk.js
+ * CONTROL_INK) for that mode. Layouts are a neutral frame and tiles; the
+ * chosen one takes the state slate and a 2px ring, the one filled state of
+ * ADR-043. tests/verify-ink.py measures each pair from %check. */
+
+/* Geometry is the same in every mode. */
+.luma-tiling-layouts { padding: 4px 8px 12px; }
+.luma-tiling-layouts-box { spacing: 8px; }
+.luma-tiling-layouts-row { spacing: 4px; }
+.luma-tiling-display-name { font-weight: 700; padding-top: 4px; }
+.luma-tiling-actions-rule { margin: 4px 8px 6px; }
+.luma-tiling-preview {
+  padding: 6px; margin: 2px;
+  border-radius: 8px; border: 0;
+  background-color: transparent; }
+.luma-tiling-preview-frame { border-radius: 4px; border-width: 1px; border-style: solid; }
+.luma-tiling-preview-tile { border-radius: 2px; border-width: 1px; border-style: solid; }
+
+/* Before a mode class arrives (or if the Shell never sets one), a neutral
+ * grey that holds 3:1 on both the light and the dark detail. */
+.luma-tiling-preview:hover { background-color: rgba(125,131,139,0.14); }
+.luma-tiling-preview:checked { box-shadow: inset 0 0 0 2px #7d838b; }
+.luma-tiling-preview-frame { background-color: transparent; border-color: rgba(125,131,139,0.30); }
+.luma-tiling-preview-tile { background-color: rgba(125,131,139,0.22); border-color: #7d838b; }
+.luma-tiling-preview:checked .luma-tiling-preview-tile { background-color: #7d838b; border-color: #7d838b; }
+
+/* light */
+.luma-surface-light .luma-tiling-display-name { color: rgba(52,56,61,0.78); }
+.luma-surface-light .luma-tiling-preview:hover { background-color: rgba(25,27,31,0.06); }
+.luma-surface-light .luma-tiling-preview:checked { box-shadow: inset 0 0 0 2px #61728a; }
+.luma-surface-light .luma-tiling-preview-frame { background-color: transparent; border-color: rgba(25,27,31,0.12); }
+.luma-surface-light .luma-tiling-preview-tile { background-color: rgba(52,56,61,0.14); border-color: rgba(52,56,61,0.62); }
+.luma-surface-light .luma-tiling-preview:checked .luma-tiling-preview-tile { background-color: #61728a; border-color: #61728a; }
+
+/* dark */
+.luma-surface-dark .luma-tiling-display-name { color: rgba(231,233,232,0.80); }
+.luma-surface-dark .luma-tiling-preview:hover { background-color: rgba(255,255,255,0.06); }
+.luma-surface-dark .luma-tiling-preview:checked { box-shadow: inset 0 0 0 2px #8a99a8; }
+.luma-surface-dark .luma-tiling-preview-frame { background-color: transparent; border-color: rgba(255,255,255,0.10); }
+.luma-surface-dark .luma-tiling-preview-tile { background-color: rgba(231,233,232,0.14); border-color: rgba(231,233,232,0.62); }
+.luma-surface-dark .luma-tiling-preview:checked .luma-tiling-preview-tile { background-color: #8a99a8; border-color: #8a99a8; }
+
+/* frost */
+.luma-surface-frost .luma-tiling-display-name { color: rgba(255,255,255,0.88); }
+.luma-surface-frost .luma-tiling-preview:hover { background-color: rgba(255,255,255,0.07); }
+.luma-surface-frost .luma-tiling-preview:checked { box-shadow: inset 0 0 0 2px #a9b5c1; }
+.luma-surface-frost .luma-tiling-preview-frame { background-color: transparent; border-color: rgba(255,255,255,0.18); }
+.luma-surface-frost .luma-tiling-preview-tile { background-color: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.62); }
+.luma-surface-frost .luma-tiling-preview:checked .luma-tiling-preview-tile { background-color: #a9b5c1; border-color: #a9b5c1; }
+
+/* glass */
+.luma-surface-glass .luma-tiling-display-name { color: rgba(255,255,255,0.90); }
+.luma-surface-glass .luma-tiling-preview:hover { background-color: rgba(255,255,255,0.07); }
+.luma-surface-glass .luma-tiling-preview:checked { box-shadow: inset 0 0 0 2px #a9b5c1; }
+.luma-surface-glass .luma-tiling-preview-frame { background-color: transparent; border-color: rgba(255,255,255,0.22); }
+.luma-surface-glass .luma-tiling-preview-tile { background-color: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.62); }
+.luma-surface-glass .luma-tiling-preview:checked .luma-tiling-preview-tile { background-color: #a9b5c1; border-color: #a9b5c1; }

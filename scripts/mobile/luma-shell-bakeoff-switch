@@ -1,0 +1,185 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Atomically select one staged FP6 shell candidate and recover to the proven
+# Phosh session if it does not acquire the display. This never reboots, flashes,
+# accesses partitions, changes slots, or edits user data.
+
+set -eu
+
+candidate=${1:-}
+candidate_dir=/usr/local/share/luma-shell-bakeoff
+state_dir=/var/lib/luma-shell-bakeoff
+greetd_config=/etc/greetd/config.toml
+run_marker=/run/greetd.run
+startup_timeout=${LUMA_BAKEOFF_STARTUP_TIMEOUT:-60}
+
+die() {
+  printf 'luma-shell-bakeoff: %s\n' "$*" >&2
+  exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || die 'must run as root'
+
+case "$candidate" in
+  luma|phosh|gnome-mobile|plasma-mobile) ;;
+  *) die 'candidate must be luma, phosh, gnome-mobile, or plasma-mobile' ;;
+esac
+
+case "$startup_timeout" in
+  ''|*[!0-9]*) die 'startup timeout must be a positive integer' ;;
+esac
+[ "$startup_timeout" -gt 0 ] || die 'startup timeout must be positive'
+
+model=$(tr -d '\000' </proc/device-tree/model 2>/dev/null || true)
+case "$model" in
+  *Fairphone*Gen.*6*|*Fairphone*6*) ;;
+  *) die 'device-tree identity is not Fairphone 6' ;;
+esac
+
+. /etc/os-release
+[ "${ID:-}" = fedora ] || die 'userspace is not Fedora'
+[ "${VERSION_ID:-}" = 44 ] || die 'userspace is not Fedora 44'
+
+candidate_config=$candidate_dir/greetd-$candidate.toml
+rescue_config=$candidate_dir/greetd-phosh.toml
+
+for file in "$candidate_config" "$rescue_config" "$greetd_config"; do
+  [ -f "$file" ] || die "required regular file is missing: $file"
+  [ ! -L "$file" ] || die "refusing symbolic link: $file"
+done
+
+[ "$(stat -c %U:%G "$candidate_config")" = root:root ] ||
+  die 'candidate config is not root-owned'
+[ "$(stat -c %a "$candidate_config")" = 644 ] ||
+  die 'candidate config mode is not 0644'
+
+case "$candidate" in
+  luma)
+    command=/usr/local/bin/luma-shell-session
+    expected='command = "/usr/local/bin/luma-shell-session"'
+    ;;
+  phosh)
+    command=/usr/bin/phosh-session
+    expected='command = "/usr/bin/phosh-session"'
+    ;;
+  gnome-mobile)
+    command=/usr/local/bin/luma-gnome-mobile-session
+    expected='command = "/usr/local/bin/luma-gnome-mobile-session"'
+    ;;
+  plasma-mobile)
+    command=/usr/local/bin/luma-plasma-mobile-session
+    expected='command = "/usr/local/bin/luma-plasma-mobile-session"'
+    ;;
+esac
+
+[ -x "$command" ] || die "candidate launcher is unavailable: $command"
+[ "$(grep -Fxc "$expected" "$candidate_config")" -eq 1 ] ||
+  die 'candidate config does not contain exactly one expected initial command'
+grep -Fqx 'user = "luma"' "$candidate_config" ||
+  die 'candidate config does not run as luma'
+
+install -d -o root -g root -m 0755 "$state_dir"
+install -o root -g root -m 0644 "$greetd_config" "$state_dir/previous.toml"
+
+rearm_greetd() {
+  if [ -e "$run_marker" ]; then
+    [ ! -L "$run_marker" ] || die "refusing symbolic link: $run_marker"
+    [ -f "$run_marker" ] || die "refusing non-regular marker: $run_marker"
+    [ "$(stat -c %U:%G "$run_marker")" = root:root ] ||
+      die 'greetd marker is not root-owned'
+    unlink "$run_marker"
+  fi
+}
+
+start_config() {
+  selected=$1
+  systemctl stop greetd.service
+
+  # The diagnostic Luma launcher starts graphical-session.target directly.
+  # Fedora's gnome-session refuses to initialize Phosh while that target and
+  # the preceding compositor environment remain active in the persistent user
+  # manager. Quiesce only graphical-session state after greetd has ended the
+  # physical login; SSH and all non-graphical user services remain untouched.
+  user_runtime=/run/user/1000
+  if [ -S "$user_runtime/bus" ]; then
+    runuser -u luma -- env \
+      XDG_RUNTIME_DIR="$user_runtime" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$user_runtime/bus" \
+      systemctl --user stop luma-shell-session.target || true
+    runuser -u luma -- env \
+      XDG_RUNTIME_DIR="$user_runtime" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$user_runtime/bus" \
+      systemctl --user stop graphical-session.target || true
+    runuser -u luma -- env \
+      XDG_RUNTIME_DIR="$user_runtime" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$user_runtime/bus" \
+      systemctl --user unset-environment \
+        DISPLAY WAYLAND_DISPLAY DESKTOP_SESSION GNOME_SHELL_SESSION_MODE \
+        XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP LUMA_DEVICE_CLASS \
+        KDE_FULL_SESSION KDE_SESSION_VERSION PLASMA_PLATFORM \
+        PLASMA_DEFAULT_SHELL QT_QPA_PLATFORMTHEME \
+        QT_QUICK_CONTROLS_STYLE QT_QUICK_CONTROLS_MOBILE \
+        PLASMA_INTEGRATION_USE_PORTAL EGL_PLATFORM || true
+  fi
+
+  install -o root -g root -m 0644 "$selected" "$greetd_config"
+  rearm_greetd
+  systemctl start greetd.service
+}
+
+exact_process_exists() {
+  name=$1
+  executable=$2
+  for pid in $(pgrep -u luma -x "$name" 2>/dev/null || true); do
+    [ "$(readlink "/proc/$pid/exe" 2>/dev/null || true)" = "$executable" ] &&
+      return 0
+  done
+  return 1
+}
+
+candidate_ready() {
+  case "$candidate" in
+    luma)
+      exact_process_exists gnome-shell /usr/bin/gnome-shell &&
+        ! pgrep -u luma -x phosh >/dev/null 2>&1 &&
+        ! pgrep -u luma -x phoc >/dev/null 2>&1
+      ;;
+    phosh)
+      exact_process_exists phosh /usr/libexec/phosh &&
+        exact_process_exists phoc /usr/bin/phoc &&
+        ! pgrep -u luma -x gnome-shell >/dev/null 2>&1
+      ;;
+    gnome-mobile)
+      exact_process_exists gnome-shell /opt/luma/gnome-mobile-48/bin/gnome-shell &&
+        [ -f /run/user/1000/luma-gnome-mobile-session ] &&
+        ! pgrep -u luma -x phoc >/dev/null 2>&1
+      ;;
+    plasma-mobile)
+      exact_process_exists kwin_wayland /usr/bin/kwin_wayland &&
+        exact_process_exists plasmashell /usr/bin/plasmashell
+      ;;
+  esac
+}
+
+recover_phosh() {
+  printf 'luma-shell-bakeoff: candidate failed; restoring Phosh rescue\n' >&2
+  start_config "$rescue_config"
+  exit 1
+}
+
+start_config "$candidate_config"
+
+deadline=$(( $(date +%s) + startup_timeout ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  if candidate_ready; then
+    printf '%s\n' "$candidate" >"$state_dir/active-candidate"
+    chmod 0644 "$state_dir/active-candidate"
+    printf 'LUMA_SHELL_CANDIDATE=%s\n' "$candidate"
+    printf 'LUMA_SHELL_SWITCH=accepted\n'
+    exit 0
+  fi
+  sleep 1
+done
+
+recover_phosh

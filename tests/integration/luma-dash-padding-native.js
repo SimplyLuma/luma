@@ -1,0 +1,145 @@
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import Clutter from 'gi://Clutter';
+import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Scripting from 'resource:///org/gnome/shell/ui/scripting.js';
+
+function equal(actual, expected, label) {
+    if (actual !== expected)
+        throw new Error(`${label}: actual ${actual}, expected ${expected}`);
+}
+function pixels(actual, expected, label) {
+    if (!Number.isFinite(actual) || !Number.isFinite(expected) || Math.abs(actual - expected) > 1)
+        throw new Error(`${label}: actual ${actual}, expected ${expected}`);
+}
+function inset(actual, expected, label) {
+    if (!Number.isFinite(actual) || Math.abs(actual-expected) > .1)
+        throw new Error(`${label}: actual ${actual}, expected ${expected}`);
+}
+export function init() {
+    if (GLib.getenv('LUMA_DASH_DIRECT') !== '1')
+        return;
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+        runChecks().catch(error => console.error(`${error.message}\n${error.stack}`)).finally(() => global.context.terminate());
+        return GLib.SOURCE_REMOVE;
+    });
+}
+export async function run() {
+    if (GLib.getenv('LUMA_DASH_DIRECT') === '1') {
+        // The init hook owns completion and terminates this private compositor.
+        // Keep the perf runner alive until then; otherwise its helper cleanup
+        // can race the scheduled checks before they have even started.
+        await new Promise(() => {});
+    } else {
+        await runChecks();
+    }
+}
+async function runChecks() {
+    console.log('START_NATIVE_DASH');
+    const settings = new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
+    new Gio.Settings({schema_id: 'org.gnome.desktop.interface'})
+        .set_boolean('enable-animations', false);
+    await Scripting.sleep(200);
+    if (!Main.shelf)
+        throw new Error('Native Dash not constructed');
+    let cases = 0;
+    for (const padding of [4,10,24]) {
+    settings.set_int('shelf-padding', padding);
+    for (const edge of ['bottom', 'top', 'left', 'right']) {
+        for (const protrude of [false, true]) {
+            for (const span of [false, true]) {
+                for (const floatEnds of [false, true]) {
+                for (const islands of [false, true]) {
+                    settings.set_string('shelf-edge', edge);
+                    settings.set_string('shelf-edge-mode', protrude ? 'protruding' : 'floating');
+                    settings.set_boolean('shelf-span-full', span);
+                    settings.set_boolean('shelf-float-ends', floatEnds);
+                    settings.set_string('shelf-surface-mode', islands ? 'separate' : 'connected');
+                    // Observe actual Mutter state after queued layout/strut work;
+                    // do not depend on unrelated whole-Shell performance-helper quiescence.
+                    await Scripting.sleep(300);
+                    const monitor = Main.layoutManager.primaryMonitor;
+                    const work = global.workspace_manager.get_active_workspace()
+                        .get_work_area_for_monitor(monitor.index);
+                    const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+                    const thickness = (36 + 2 * padding) * scale;
+                    const reserve = protrude && span ? thickness : 0;
+                    pixels(work.x, monitor.x + (edge === 'left' ? reserve : 0), 'work-area x');
+                    pixels(work.y, monitor.y + (edge === 'top' ? reserve : 0), 'work-area y');
+                    pixels(work.width, monitor.width - (edge === 'left' || edge === 'right' ? reserve : 0), 'work-area width');
+                    pixels(work.height, monitor.height - (edge === 'top' || edge === 'bottom' ? reserve : 0), 'work-area height');
+                    const vertical = edge === 'left' || edge === 'right';
+                    pixels(vertical ? Main.shelf.width : Main.shelf.height, thickness, 'Dash thickness');
+                    equal(Main.shelf._dash._box.layout_manager.orientation,
+                        vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL,
+                        'native dock orientation');
+                    pixels(Main.shelf._surface.translation_x, 0, 'reduced-motion x');
+                    pixels(Main.shelf._surface.translation_y, 0, 'reduced-motion y');
+                    for (const [actor, ownsSurface] of [[Main.shelf._surface, !islands],
+                        ...Main.shelf._group.get_children().map(actor => [actor, islands])]) {
+                        equal(actor._stroke.visible, ownsSurface, 'stroke ownership');
+                        for (const shadow of actor._shadows)
+                            equal(shadow.visible, ownsSurface && !protrude && !span, 'shadow policy');
+                    }
+                    const surfaces = islands ? Main.shelf._group.get_children().filter(actor => actor.mapped) : [Main.shelf._surface];
+                    for (const island of surfaces) {
+
+                        const [ix, iy] = island.get_transformed_position();
+                        const [iw, ih] = island.get_transformed_size();
+                        for (const painted of [island._content, island._stroke, ...island._shadows].filter(actor => actor.visible)) {
+                            const [x,y] = painted.get_transformed_position();
+                            const [w,h] = painted.get_transformed_size();
+                            pixels(x,ix,'painted surface x'); pixels(y,iy,'painted surface y');
+                            pixels(w,iw,'painted surface width'); pixels(h,ih,'painted surface height');
+                            pixels(vertical ? w : h, thickness, 'painted island thickness');
+                            const distance = {top:y-monitor.y, bottom:monitor.y+monitor.height-y-h,
+                                left:x-monitor.x, right:monitor.x+monitor.width-x-w}[edge];
+                            pixels(distance, protrude ? 0 : padding * scale, 'painted edge gap');
+                            // Derive expected corners from observed physical contact, independently
+                            // of production corner selection or logical child order.
+                            const touches = {top:Math.abs(y-monitor.y)<1,
+                                bottom:Math.abs(y+h-monitor.y-monitor.height)<1,
+                                left:Math.abs(x-monitor.x)<1,
+                                right:Math.abs(x+w-monitor.x-monitor.width)<1};
+                            const expected = [touches.top||touches.left, touches.top||touches.right,
+                                touches.bottom||touches.right, touches.bottom||touches.left];
+                            const corners = [St.Corner.TOPLEFT,St.Corner.TOPRIGHT,St.Corner.BOTTOMRIGHT,St.Corner.BOTTOMLEFT];
+                            corners.forEach((corner,index)=>pixels(painted.get_theme_node().get_border_radius(corner),
+                                expected[index] ? 0 : 15 * scale, 'painted corner radius'));
+                        }
+                    }
+                    const icons = Main.shelf._dash._box.get_children()
+                        .map(item=>item.child?._delegate?.icon?.icon).filter(icon=>icon?.mapped);
+                    if (!icons.length) throw new Error('No real dock icons to measure');
+                    const bounds = actor => { const [x,y]=actor.get_transformed_position();
+                        const [w,h]=actor.get_transformed_size(); return {x,y,w,h}; };
+                    const material = bounds(Main.shelf._dockMaterial);
+                    const tiles = icons.map(bounds);
+                    // Icons are 36px content. Test both outermost ends and every
+                    // cross-axis inset; overflow may clip the final tile only.
+                    for (const tile of tiles) {
+                        inset(vertical ? tile.x-material.x : tile.y-material.y, padding * scale, 'icon leading cross inset');
+                        inset(vertical ? material.x+material.w-tile.x-tile.w : material.y+material.h-tile.y-tile.h, padding * scale, 'icon trailing cross inset');
+                    }
+                    const start = Math.min(...tiles.map(t=>vertical ? t.y : t.x));
+                    const end = Math.max(...tiles.map(t=>vertical ? t.y+t.h : t.x+t.w));
+                    inset(start-(vertical ? material.y : material.x),padding * scale,'first icon outer inset');
+                    if (!Main.shelf._dockScroll.has_style_pseudo_class('overflowing'))
+                        inset((vertical ? material.y+material.h : material.x+material.w)-end,padding * scale,'last icon outer inset');
+                    for (const island of Main.shelf._group.get_children().filter(a=>a.mapped && a!==Main.shelf._dockIsland)) {
+                        const pad=island._content.get_theme_node();
+                        for (const side of [St.Side.TOP,St.Side.RIGHT,St.Side.BOTTOM,St.Side.LEFT])
+                            inset(pad.get_padding(side)+pad.get_border_width(side),padding * scale,'status/live uniform padding');
+                    }
+                    cases++;
+                    console.log('NATIVE_DASH_CASE', cases, edge, protrude, span, islands, floatEnds);
+                }
+            }
+        }
+    }
+    }
+    }
+    console.log(`PASS ${cases} native Dash padding cases: actual icon insets, shared floating gaps, material thickness/corners, work areas`);
+}
+export function finish() {}

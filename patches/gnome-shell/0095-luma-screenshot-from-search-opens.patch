@@ -1,0 +1,38 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: Take a Screenshot from search opens the screenshot UI
+
+The screenshot system action waited for the overview to finish hiding
+before opening the screenshot UI. Luma searches in its own dialog, so the
+overview was never showing and never hid: the screenshot UI did not open,
+and because the wait stayed pending, no later request opened it either
+until the session restarted. When the overview is not showing, the UI now
+opens as soon as the search dialog has released its grab.
+
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -513,6 +513,25 @@
+         if (!this._actions.get(SCREENSHOT_UI_ACTION_ID).available)
+             throw new Error('The screenshot UI action is not available!');
+ 
++        // Luma searches in its own dialog, not the overview. Waiting for an
++        // overview that is not showing to hide never finished: the screenshot
++        // UI never opened, and because the wait was still pending, neither did
++        // any later request. Open it once whatever launched it has let go of
++        // the keyboard and pointer, so the search is not in the capture.
++        if (!Main.overview.visible) {
++            if (this._screenshotWaitId)
++                return;
++            let attempts = 0;
++            this._screenshotWaitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
++                if (Main.modalCount > 0 && ++attempts < 40)
++                    return GLib.SOURCE_CONTINUE;
++                delete this._screenshotWaitId;
++                Screenshot.showScreenshotUI();
++                return GLib.SOURCE_REMOVE;
++            });
++            return;
++        }
++
+         if (this._overviewHiddenId)
+             return;
+ 

@@ -1,0 +1,98 @@
+# Build products and VM state
+/build/
+/backups/
+dist/
+out/
+*.iso
+*.img
+*.raw
+*.raw.xz
+*.qcow2
+*.vdi
+*.vmdk
+*.vhd
+*.ova
+*.box
+*.fd
+*.nvram
+
+# Container, build-tool, and test caches
+.cache/
+__pycache__/
+*.py[cod]
+.flatpak-builder/
+.podman/
+.pnpm-store/
+tmp/
+*.log
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.kdbx
+credentials/
+secrets/
+
+# Editor and OS state
+.DS_Store
+*~
+*.swp
+.idea/
+.vscode/
+.private/
+
+# Agent scratch source trees
+/.codex-tmp/
+
+# macOS debug symbol bundles from local test builds
+*.dSYM/
+# Luma Emulator: build products, guest state, and generated keys.
+# Everything else the emulator owns lives under
+# ~/Library/Application Support/Luma Emulator, outside this repository.
+tools/luma-emulator/.build/
+xcuserdata/
+*.xcuserstate
+*.app/
+*.nvram
+*_ed25519
+*_ed25519.pub
+known_hosts
+
+# Local dependency environments and generated packages
+node_modules/
+.venv/
+venv/
+.gradle/
+.kotlin/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+coverage/
+*.rpm
+*.deb
+*.flatpak
+*.apk
+*.aab
+*.dmg
+
+# Local user data and release credentials
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+r2-access-key-id
+r2-secret-access-key
+id_rsa
+id_ed25519
+
+# Private capture exports (source fixtures and artwork remain trackable)
+/src/external/charlie/docs/evidence/

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+# Enabled by default: an upcoming event on the shelf is the behaviour Luma
+# ships with, and a unit nobody enables is a unit that never runs.
+enable luma-agenda-producer.service

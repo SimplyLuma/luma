@@ -1,0 +1,243 @@
+From: Project Luma <noreply@project-luma.local>
+Date: Fri, 21 Aug 2026 13:25:45 -0500
+Subject: [PATCH] soc: qcom: mdt_loader: support ELF64 contiguous images
+
+The QSEECOM application loader assembles a complete MDT image before passing
+it to secure world. Some modern Qualcomm trusted applications, including the
+FP6 focal64 image, use ELF64/AArch64 headers. The carried contiguous-image
+helpers currently parse only ELF32 and consequently reject the image before
+the qcom_scm application-start call.
+
+Add a separate, bounds-checked ELF64 path to qcom_mdt_get_image_size() and
+qcom_mdt_read_image(). Keep every remoteproc-facing helper on its existing
+ELF32 contract, and accept only little-endian AArch64 ELF64 images.
+
+Signed-off-by: Project Luma <noreply@project-luma.local>
+---
+ drivers/soc/qcom/mdt_loader.c | 115 +++++++++++++++++++++++++++++++++--
+ 1 file changed, 109 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/soc/qcom/mdt_loader.c b/drivers/soc/qcom/mdt_loader.c
+--- a/drivers/soc/qcom/mdt_loader.c
++++ b/drivers/soc/qcom/mdt_loader.c
+@@ -53,6 +53,50 @@ static bool mdt_header_valid(const struct firmware *fw)
+ }
+ 
+ /*
++ * The remoteproc-facing MDT helpers predate 64-bit trusted applications and
++ * intentionally keep their ELF32 contract. QSEECOM's contiguous-image path,
++ * however, also receives ELF64/AArch64 TAs. Validate that format separately so
++ * existing remoteproc callers and layouts remain untouched.
++ */
++static bool mdt64_header_valid(const struct firmware *fw)
++{
++	const struct elf64_hdr *ehdr;
++	size_t phend;
++	size_t shend;
++
++	if (fw->size < sizeof(*ehdr))
++		return false;
++
++	ehdr = (const struct elf64_hdr *)fw->data;
++
++	if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) ||
++	    ehdr->e_ident[EI_CLASS] != ELFCLASS64 ||
++	    ehdr->e_ident[EI_DATA] != ELFDATA2LSB ||
++	    ehdr->e_machine != EM_AARCH64)
++		return false;
++
++	if (ehdr->e_phentsize != sizeof(struct elf64_phdr))
++		return false;
++
++	phend = size_add(size_mul(sizeof(struct elf64_phdr), ehdr->e_phnum),
++			 ehdr->e_phoff);
++	if (phend > fw->size)
++		return false;
++
++	if (ehdr->e_shentsize || ehdr->e_shnum) {
++		if (ehdr->e_shentsize != sizeof(struct elf64_shdr))
++			return false;
++
++		shend = size_add(size_mul(sizeof(struct elf64_shdr),
++					     ehdr->e_shnum), ehdr->e_shoff);
++		if (shend > fw->size)
++			return false;
++	}
++
++	return true;
++}
++
++/*
+  * Does this segment contribute bytes to the image file?
+  *
+  * A different question from mdt_phdr_loadable(), which asks whether a segment
+@@ -80,11 +124,11 @@ static bool mdt_phdr_loadable(const struct elf32_phdr *phdr)
+ 	return true;
+ }
+ 
+-static ssize_t mdt_load_split_segment(void *ptr, const struct elf32_phdr *phdrs,
+-				      unsigned int segment, const char *fw_name,
+-				      struct device *dev)
++static ssize_t mdt_load_split_segment_size(void *ptr, size_t segment_size,
++					   unsigned int segment,
++					   const char *fw_name,
++					   struct device *dev)
+ {
+-	const struct elf32_phdr *phdr = &phdrs[segment];
+ 	const struct firmware *seg_fw;
+ 	ssize_t ret;
+ 
+@@ -97,13 +141,13 @@ static ssize_t mdt_load_split_segment(void *ptr, const struct elf32_phdr *phdrs,
+ 
+ 	sprintf(seg_name + strlen(fw_name) - 3, "b%02d", segment);
+ 	ret = request_firmware_into_buf(&seg_fw, seg_name, dev,
+-					ptr, phdr->p_filesz);
++					ptr, segment_size);
+ 	if (ret) {
+ 		dev_err(dev, "error %zd loading %s\n", ret, seg_name);
+ 		return ret;
+ 	}
+ 
+-	if (seg_fw->size != phdr->p_filesz) {
++	if (seg_fw->size != segment_size) {
+ 		dev_err(dev,
+ 			"failed to load segment %d from truncated file %s\n",
+ 			segment, seg_name);
+@@ -115,6 +159,14 @@ static ssize_t mdt_load_split_segment(void *ptr, const struct elf32_phdr *phdrs,
+ 	return ret;
+ }
+ 
++static ssize_t mdt_load_split_segment(void *ptr, const struct elf32_phdr *phdrs,
++				      unsigned int segment, const char *fw_name,
++				      struct device *dev)
++{
++	return mdt_load_split_segment_size(ptr, phdrs[segment].p_filesz,
++					   segment, fw_name, dev);
++}
++
+ /**
+  * qcom_mdt_get_size() - acquire size of the memory region needed to load mdt
+  * @fw:		firmware object for the mdt file
+@@ -175,6 +227,27 @@ static bool qcom_mdt_bins_are_split(const struct firmware *fw)
+ 		seg_start = phdrs[i].p_offset;
+ 		seg_end = phdrs[i].p_offset + phdrs[i].p_filesz;
+ 		if (seg_start > fw->size || seg_end > fw->size)
++			return true;
++	}
++
++	return false;
++}
++
++static bool qcom_mdt64_bins_are_split(const struct firmware *fw)
++{
++	const struct elf64_phdr *phdrs;
++	const struct elf64_hdr *ehdr;
++	int i;
++
++	ehdr = (const struct elf64_hdr *)fw->data;
++	phdrs = (const struct elf64_phdr *)(fw->data + ehdr->e_phoff);
++
++	for (i = 0; i < ehdr->e_phnum; i++) {
++		if (!phdrs[i].p_filesz)
++			continue;
++
++		if (phdrs[i].p_offset > fw->size ||
++		    phdrs[i].p_filesz > fw->size - phdrs[i].p_offset)
+ 			return true;
+ 	}
+ 
+@@ -198,12 +271,42 @@ static bool qcom_mdt_bins_are_split(const struct firmware *fw)
+  */
+ ssize_t qcom_mdt_get_image_size(const struct firmware *fw)
+ {
++	const struct elf64_phdr *phdrs64;
++	const struct elf64_hdr *ehdr64;
+ 	const struct elf32_phdr *phdrs;
+ 	const struct elf32_hdr *ehdr;
+ 	size_t size;
+ 	int i;
+ 
+-	if (!mdt_header_valid(fw))
++	if (fw->size < EI_NIDENT || memcmp(fw->data, ELFMAG, SELFMAG))
++		return -EINVAL;
++
++	if (fw->data[EI_CLASS] == ELFCLASS64) {
++		if (!mdt64_header_valid(fw))
++			return -EINVAL;
++
++		if (!qcom_mdt64_bins_are_split(fw))
++			return fw->size;
++
++		ehdr64 = (const struct elf64_hdr *)fw->data;
++		phdrs64 = (const struct elf64_phdr *)(fw->data +
++						     ehdr64->e_phoff);
++		size = fw->size;
++
++		for (i = 0; i < ehdr64->e_phnum; i++) {
++			if (!phdrs64[i].p_filesz)
++				continue;
++
++			if (phdrs64[i].p_filesz > SIZE_MAX - size)
++				return -EINVAL;
++
++			size += phdrs64[i].p_filesz;
++		}
++
++		return size;
++	}
++
++	if (fw->data[EI_CLASS] != ELFCLASS32 || !mdt_header_valid(fw))
+ 		return -EINVAL;
+ 
+ 	/* A single-file image already is the blob. */
+@@ -256,6 +359,8 @@ EXPORT_SYMBOL_GPL(qcom_mdt_get_image_size);
+ ssize_t qcom_mdt_read_image(struct device *dev, const struct firmware *fw,
+ 			    const char *fw_name, void *mem, size_t mem_size)
+ {
++	const struct elf64_phdr *phdrs64;
++	const struct elf64_hdr *ehdr64;
+ 	const struct elf32_phdr *phdrs;
+ 	const struct elf32_hdr *ehdr;
+ 	size_t off;
+@@ -270,14 +375,37 @@ ssize_t qcom_mdt_read_image(struct device *dev, const struct firmware *fw,
+ 		return -ENOSPC;
+ 
+ 	memcpy(mem, fw->data, fw->size);
++	off = fw->size;
+ 
++	if (fw->data[EI_CLASS] == ELFCLASS64) {
++		if (!qcom_mdt64_bins_are_split(fw))
++			return fw->size;
++
++		ehdr64 = (const struct elf64_hdr *)fw->data;
++		phdrs64 = (const struct elf64_phdr *)(fw->data +
++						     ehdr64->e_phoff);
++
++		for (i = 0; i < ehdr64->e_phnum; i++) {
++			if (!phdrs64[i].p_filesz)
++				continue;
++
++			ret = mdt_load_split_segment_size(mem + off,
++							  phdrs64[i].p_filesz,
++							  i, fw_name, dev);
++			if (ret)
++				return ret;
++
++			off += phdrs64[i].p_filesz;
++		}
++
++		return off;
++	}
++
+ 	if (!qcom_mdt_bins_are_split(fw))
+ 		return fw->size;
+ 
+ 	ehdr = (struct elf32_hdr *)fw->data;
+ 	phdrs = (struct elf32_phdr *)(fw->data + ehdr->e_phoff);
+-	off = fw->size;
+-
+ 	for (i = 0; i < ehdr->e_phnum; i++) {
+ 		if (!mdt_phdr_has_payload(&phdrs[i]))
+ 			continue;
+-- 
+2.49.0

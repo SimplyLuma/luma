@@ -1,0 +1,218 @@
+From: Project Luma
+Subject: [PATCH] gsk: Cover hinted glyph outlines in text bounds and the glyph cache
+
+GTK lays text out without hint metrics, and without hint metrics cairo
+reports glyph extents of the unhinted outline - but a hinted font draws its
+glyphs with edges moved onto the pixel grid. Light hinting moves them by most
+of a pixel, full hinting by more: Figtree's "7" at 13px measures 9.10px tall
+and is drawn 10px tall, its top bar one whole row above the extents. GSK uses
+those extents in two places, and both lose the moved pixels.
+
+Text node bounds come from gsk_get_glyph_string_extents(), which drops hinting
+on purpose. The bounds feed the render node diff, so when text changes (typing
+in an entry or text view) the redraw region stops short of the hinted rows and
+they are never repainted: the top bar of a 7, the dot of an i or j, the hook
+of an f, accents and the tops of ascenders stay missing until something forces
+a full redraw. This is the bug of #6568 and #6577, which 3d7fc0a5 fixed with
+hinted extents and e1392c4c brought back.
+
+The GPU glyph cache sizes a glyph's atlas box from the same kind of extents
+plus the subpixel offset, and the hinted rows above them land in the padding,
+which is uploaded but not sampled. Which glyphs lose them depends on the
+subpixel position they were cached at, until the glyph is evicted.
+
+In both places, take the union with the grid-fitted extents of the same glyphs
+(the font reloaded with hint metrics on), which cover the hinted outlines.
+Unhinted fonts are unchanged. gsk_reload_font() now remembers its last four
+results instead of one, since text node creation asks for two variants of the
+same font in a row.
+
+Simulating both boxes over quarter-pixel offsets for Figtree, Adwaita Sans,
+Noto Sans, Cantarell and IBM Plex Mono at 10-20px, slight and full hinting
+lose rows in 1% to 68% of glyph/offset cases; with the union, none.
+
+--- a/gsk/gskprivate.c
++++ b/gsk/gskprivate.c
+@@ -52,31 +52,43 @@
+   static PangoContext *context = NULL;
+   cairo_scaled_font_t *sf;
+ 
+-  /* These requests often come in sequentially so keep the result
+-   * around and re-use it if everything matches.
++  /* These requests often come in sequentially, and callers such as
++   * gsk_get_glyph_string_extents() ask for more than one variant of the
++   * same font in a row, so keep the last few results around and re-use
++   * one if everything matches.
+    */
+-  static PangoFont *last_font;
+-  static float last_scale;
+-  static cairo_hint_metrics_t last_hint_metrics;
+-  static cairo_hint_style_t last_hint_style;
+-  static cairo_antialias_t last_antialias;
+-  static PangoFont *last_result;
+-
+-  if (last_result != NULL &&
+-      last_font == font &&
+-      last_scale == scale &&
+-      last_hint_metrics == hint_metrics &&
+-      last_hint_style == hint_style &&
+-      last_antialias == antialias)
+-    return g_object_ref (last_result);
+-
+-  last_scale = scale;
+-  last_hint_metrics = hint_metrics;
+-  last_hint_style = hint_style;
+-  last_antialias = antialias;
++  static struct {
++    PangoFont *font;
++    float scale;
++    cairo_hint_metrics_t hint_metrics;
++    cairo_hint_style_t hint_style;
++    cairo_antialias_t antialias;
++    PangoFont *result;
++  } recent[4];
++  static guint next_recent;
++  guint i;
+ 
+-  g_set_object (&last_font, font);
+-  g_clear_object (&last_result);
++  for (i = 0; i < G_N_ELEMENTS (recent); i++)
++    {
++      if (recent[i].result != NULL &&
++          recent[i].font == font &&
++          recent[i].scale == scale &&
++          recent[i].hint_metrics == hint_metrics &&
++          recent[i].hint_style == hint_style &&
++          recent[i].antialias == antialias)
++        return g_object_ref (recent[i].result);
++    }
++
++  i = next_recent;
++  next_recent = (next_recent + 1) % G_N_ELEMENTS (recent);
++
++  recent[i].scale = scale;
++  recent[i].hint_metrics = hint_metrics;
++  recent[i].hint_style = hint_style;
++  recent[i].antialias = antialias;
++
++  g_set_object (&recent[i].font, font);
++  g_clear_object (&recent[i].result);
+ 
+   if (G_UNLIKELY (options == NULL))
+     options = cairo_font_options_create ();
+@@ -99,7 +111,7 @@
+       cairo_font_options_get_antialias (options) == antialias &&
+       cairo_font_options_get_subpixel_order (options) == CAIRO_SUBPIXEL_ORDER_DEFAULT)
+     {
+-      last_result = g_object_ref (font);
++      recent[i].result = g_object_ref (font);
+       return g_object_ref (font);
+     }
+ 
+@@ -114,9 +126,9 @@
+   pango_context_set_round_glyph_positions (context, hint_metrics == CAIRO_HINT_METRICS_ON);
+   pango_cairo_context_set_font_options (context, options);
+ 
+-  last_result = pango_font_map_reload_font (pango_font_get_font_map (font), font, scale, context, NULL);
++  recent[i].result = pango_font_map_reload_font (pango_font_get_font_map (font), font, scale, context, NULL);
+ 
+-  return g_object_ref (last_result);
++  return g_object_ref (recent[i].result);
+ }
+ 
+ /*< private >
+@@ -128,7 +140,8 @@
+  * Compute the ink extents of a glyph string.
+  *
+  * This is like [method@Pango.GlyphString.extents], but it
+- * ignores hinting of the font.
++ * does not depend on the hinting of the font: the result covers
++ * the glyphs both unhinted and as a hinted font draws them.
+  */
+ void
+ gsk_get_glyph_string_extents (PangoGlyphString *glyphs,
+@@ -146,6 +159,43 @@
+   pango_glyph_string_extents (glyphs, unhinted, ink_rect, NULL);
+ 
+   g_object_unref (unhinted);
++
++  if (ink_rect->width > 0 && ink_rect->height > 0 &&
++      gsk_font_get_hint_style (font) != CAIRO_HINT_STYLE_NONE)
++    {
++      PangoFont *fitted;
++      PangoRectangle fitted_rect;
++      int x0, y0, x1, y1;
++
++      /* A hinted font draws its glyphs with edges moved onto the pixel
++       * grid, by most of a pixel: the top of a digit or the dot of an i
++       * ends up above the unhinted extents. Those pixels are still part
++       * of the node, and bounds that leave them out keep them out of
++       * redraw regions, so they are never repainted when the text
++       * changes. The grid-fitted extents cover the hinted outlines.
++       */
++      fitted = gsk_reload_font (font,
++                                1.0,
++                                CAIRO_HINT_METRICS_ON,
++                                CAIRO_HINT_STYLE_DEFAULT,
++                                CAIRO_ANTIALIAS_DEFAULT);
++
++      pango_glyph_string_extents (glyphs, fitted, &fitted_rect, NULL);
++
++      g_object_unref (fitted);
++
++      if (fitted_rect.width > 0 && fitted_rect.height > 0)
++        {
++          x0 = MIN (ink_rect->x, fitted_rect.x);
++          y0 = MIN (ink_rect->y, fitted_rect.y);
++          x1 = MAX (ink_rect->x + ink_rect->width, fitted_rect.x + fitted_rect.width);
++          y1 = MAX (ink_rect->y + ink_rect->height, fitted_rect.y + fitted_rect.height);
++          ink_rect->x = x0;
++          ink_rect->y = y0;
++          ink_rect->width = x1 - x0;
++          ink_rect->height = y1 - y0;
++        }
++    }
+ }
+ 
+ /*< private >
+--- a/gsk/gpu/gskgpucachedglyph.c
++++ b/gsk/gpu/gskgpucachedglyph.c
+@@ -188,6 +188,38 @@
+   subpixel_x = (flags & 3) / 4.f;
+   subpixel_y = ((flags >> 2) & 3) / 4.f;
+   pango_font_get_glyph_extents (scaled_font, glyph, &ink_rect, NULL);
++
++  if (gsk_font_get_hint_style (scaled_font) != CAIRO_HINT_STYLE_NONE)
++    {
++      PangoFont *fitted_font;
++      PangoRectangle fitted_rect;
++      int x0, y0, x1, y1;
++
++      /* The glyph is drawn hinted, and hinting moves outline edges onto the
++       * pixel grid - the top of a digit or the dot of an i can move up by
++       * most of a pixel. Without hint metrics the extents describe the
++       * outline before that move, so those pixels land outside the box
++       * below and are never sampled: tops of glyphs go missing, depending
++       * on the subpixel position they were cached at. The grid-fitted
++       * extents of the same glyph do cover the hinted outline, so use
++       * both.
++       */
++      fitted_font = gsk_reload_font (font, scale, CAIRO_HINT_METRICS_ON, CAIRO_HINT_STYLE_DEFAULT, CAIRO_ANTIALIAS_DEFAULT);
++      pango_font_get_glyph_extents (fitted_font, glyph, &fitted_rect, NULL);
++      g_object_unref (fitted_font);
++
++      if (fitted_rect.width > 0 && fitted_rect.height > 0)
++        {
++          x0 = MIN (ink_rect.x, fitted_rect.x);
++          y0 = MIN (ink_rect.y, fitted_rect.y);
++          x1 = MAX (ink_rect.x + ink_rect.width, fitted_rect.x + fitted_rect.width);
++          y1 = MAX (ink_rect.y + ink_rect.height, fitted_rect.y + fitted_rect.height);
++          ink_rect.x = x0;
++          ink_rect.y = y0;
++          ink_rect.width = x1 - x0;
++          ink_rect.height = y1 - y0;
++        }
++    }
+   origin.x = floor (ink_rect.x * 1.0 / PANGO_SCALE + subpixel_x);
+   origin.y = floor (ink_rect.y * 1.0 / PANGO_SCALE + subpixel_y);
+   rect.size.width = ceil ((ink_rect.x + ink_rect.width) * 1.0 / PANGO_SCALE + subpixel_x) - origin.x;

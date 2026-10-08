@@ -1,0 +1,24 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: never let the note stack take the session down with it
+
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -298,7 +298,16 @@
+         // The note stack lives on the same lanes the Shelf does: it is chrome
+         // for the same reason, and on the handheld lane the application can
+         // ask for a layer surface itself.
+-        stickyDock = new LumaStickyDock.LumaStickyDock();
++        //
++        // Guarded because this runs inside session start-up: a stack that
++        // cannot be drawn is a missing rail, and a throw here would be a
++        // desktop that never appears. Losing the notes is survivable; losing
++        // the session is not.
++        try {
++            stickyDock = new LumaStickyDock.LumaStickyDock();
++        } catch (e) {
++            logError(e, 'the sticky note stack could not be drawn');
++        }
+     }
+ 
+     new PointerA11yTimeout.PointerA11yTimeout();

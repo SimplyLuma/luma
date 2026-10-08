@@ -1,0 +1,16 @@
+[Unit]
+Description=Luma Monitor host activity and owned process interface
+
+[Service]
+Type=dbus
+BusName=org.projectluma.MonitorHost1
+ExecStart=/usr/bin/luma-monitor-host
+CPUQuota=25%
+MemoryMax=256M
+TasksMax=16
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=yes

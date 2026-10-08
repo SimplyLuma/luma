@@ -1,0 +1,437 @@
+From 4193f789cc8286185e07f612efe7cf1d9cade678 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:43:03 +0000
+Subject: [PATCH] Settings: add asynchronous read-only NetworkManager adapter
+ and private service tests
+
+---
+ shell/cc-luma-network.c   | 198 ++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-network.h   |  15 +++
+ shell/meson.build         |  16 +++
+ shell/test-luma-network.c | 149 ++++++++++++++++++++++++++++
+ 4 files changed, 378 insertions(+)
+ create mode 100644 shell/cc-luma-network.c
+ create mode 100644 shell/cc-luma-network.h
+ create mode 100644 shell/test-luma-network.c
+
+diff --git a/shell/cc-luma-network.c b/shell/cc-luma-network.c
+new file mode 100644
+index 0000000..d3993b2
+--- /dev/null
++++ b/shell/cc-luma-network.c
+@@ -0,0 +1,198 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-network.h"
++#include <NetworkManager.h>
++
++struct _CcLumaNetwork {
++  GObject parent_instance;
++  NMClient *client;
++  GCancellable *cancel;
++  JsonObject *snapshot;
++  GHashTable *watched;
++  guint refresh;
++  guint64 generation;
++};
++G_DEFINE_TYPE (CcLumaNetwork, cc_luma_network, G_TYPE_OBJECT)
++enum { CHANGED, FAILED, N_SIGNALS };
++static guint signals[N_SIGNALS];
++typedef struct { GWeakRef self; guint64 generation; } Load;
++static void load_free (Load *load) { g_weak_ref_clear (&load->self); g_free (load); }
++static void queue_snapshot (CcLumaNetwork *self);
++static void property_changed (GObject *object, GParamSpec *pspec, CcLumaNetwork *self) { queue_snapshot (self); }
++static void watch (CcLumaNetwork *self, GObject *object)
++{
++  if (!object || g_hash_table_contains (self->watched, object)) return;
++  g_hash_table_add (self->watched, g_object_ref (object));
++  g_signal_connect_object (object, "notify", G_CALLBACK (property_changed), self, 0);
++}
++static void unwatch (CcLumaNetwork *self)
++{
++  GHashTableIter iter; gpointer object;
++  g_hash_table_iter_init (&iter, self->watched);
++  while (g_hash_table_iter_next (&iter, &object, NULL)) g_signal_handlers_disconnect_by_data (object, self);
++  g_hash_table_remove_all (self->watched);
++}
++static void add_addresses (JsonObject *device, const char *key, NMIPConfig *config)
++{
++  JsonArray *addresses = json_array_new ();
++  const GPtrArray *items = config ? nm_ip_config_get_addresses (config) : NULL;
++  for (guint i = 0; items && i < items->len; i++)
++    {
++      NMIPAddress *address = g_ptr_array_index (items, i);
++      JsonObject *entry = json_object_new ();
++      json_object_set_string_member (entry, "address", nm_ip_address_get_address (address));
++      json_object_set_int_member (entry, "prefix", nm_ip_address_get_prefix (address));
++      json_array_add_object_element (addresses, entry);
++    }
++  json_object_set_array_member (device, key, addresses);
++}
++static gboolean refresh_snapshot (gpointer data)
++{
++  CcLumaNetwork *self = data;
++  self->refresh = 0;
++  if (!self->client) return G_SOURCE_REMOVE;
++  if (!nm_client_get_nm_running (self->client))
++    {
++      g_clear_pointer (&self->snapshot, json_object_unref);
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED, "NetworkManager is not running");
++      g_signal_emit (self, signals[FAILED], 0, error);
++      return G_SOURCE_REMOVE;
++    }
++  unwatch (self); watch (self, G_OBJECT (self->client));
++  JsonObject *snapshot = json_object_new ();
++  json_object_set_boolean_member (snapshot, "wifi", nm_client_wireless_get_enabled (self->client));
++  json_object_set_boolean_member (snapshot, "wifi-hardware", nm_client_wireless_hardware_get_enabled (self->client));
++  json_object_set_int_member (snapshot, "connectivity", nm_client_get_connectivity (self->client));
++  JsonArray *devices = json_array_new (), *saved = json_array_new ();
++  const GPtrArray *items = nm_client_get_devices (self->client);
++  for (guint i = 0; i < items->len; i++)
++    {
++      NMDevice *device = g_ptr_array_index (items, i);
++      if (!NM_IS_DEVICE_WIFI (device) && !NM_IS_DEVICE_ETHERNET (device)) continue;
++      watch (self, G_OBJECT (device));
++      NMIPConfig *ip4 = nm_device_get_ip4_config (device), *ip6 = nm_device_get_ip6_config (device);
++      watch (self, G_OBJECT (ip4)); watch (self, G_OBJECT (ip6));
++      JsonObject *entry = json_object_new ();
++      json_object_set_string_member (entry, "path", nm_object_get_path (NM_OBJECT (device)));
++      json_object_set_string_member (entry, "interface", nm_device_get_iface (device));
++      json_object_set_string_member (entry, "kind", NM_IS_DEVICE_WIFI (device) ? "wifi" : "ethernet");
++      json_object_set_int_member (entry, "state", nm_device_get_state (device));
++      add_addresses (entry, "ipv4", ip4); add_addresses (entry, "ipv6", ip6);
++      JsonArray *aps = json_array_new ();
++      if (NM_IS_DEVICE_WIFI (device))
++        {
++          NMAccessPoint *active = nm_device_wifi_get_active_access_point (NM_DEVICE_WIFI (device));
++          const GPtrArray *points = nm_device_wifi_get_access_points (NM_DEVICE_WIFI (device));
++          for (guint j = 0; j < points->len; j++)
++            {
++              NMAccessPoint *ap = g_ptr_array_index (points, j);
++              watch (self, G_OBJECT (ap));
++              GBytes *ssid = nm_access_point_get_ssid (ap);
++              if (!ssid || !g_bytes_get_size (ssid)) continue;
++              gsize size; const guint8 *bytes = g_bytes_get_data (ssid, &size);
++              g_autofree char *name = nm_utils_ssid_to_utf8 (bytes, size);
++              g_autofree char *raw = g_base64_encode (bytes, size);
++              JsonObject *point = json_object_new ();
++              /* Paths/raw bytes identify a network; display labels never do. */
++              json_object_set_string_member (point, "path", nm_object_get_path (NM_OBJECT (ap)));
++              json_object_set_string_member (point, "ssid", raw);
++              json_object_set_string_member (point, "name", name ? name : "");
++              json_object_set_int_member (point, "strength", nm_access_point_get_strength (ap));
++              json_object_set_boolean_member (point, "connected", ap == active);
++              json_object_set_boolean_member (point, "locked", nm_access_point_get_flags (ap) & NM_802_11_AP_FLAGS_PRIVACY || nm_access_point_get_wpa_flags (ap) || nm_access_point_get_rsn_flags (ap));
++              json_array_add_object_element (aps, point);
++            }
++        }
++      json_object_set_array_member (entry, "access-points", aps);
++      json_array_add_object_element (devices, entry);
++    }
++  items = nm_client_get_connections (self->client);
++  for (guint i = 0; i < items->len; i++)
++    {
++      NMRemoteConnection *remote = g_ptr_array_index (items, i);
++      watch (self, G_OBJECT (remote));
++      NMSettingWireless *wireless = nm_connection_get_setting_wireless (NM_CONNECTION (remote));
++      GBytes *ssid = wireless ? nm_setting_wireless_get_ssid (wireless) : NULL;
++      if (!ssid) continue;
++      gsize size; const guint8 *bytes = g_bytes_get_data (ssid, &size);
++      g_autofree char *raw = g_base64_encode (bytes, size);
++      g_autofree char *name = nm_utils_ssid_to_utf8 (bytes, size);
++      JsonObject *entry = json_object_new ();
++      json_object_set_string_member (entry, "uuid", nm_connection_get_uuid (NM_CONNECTION (remote)));
++      json_object_set_string_member (entry, "ssid", raw);
++      json_object_set_string_member (entry, "name", name ? name : "");
++      NMSettingConnection *setting = nm_connection_get_setting_connection (NM_CONNECTION (remote));
++      json_object_set_boolean_member (entry, "autoconnect", nm_setting_connection_get_autoconnect (setting));
++      json_object_set_int_member (entry, "metered", nm_setting_connection_get_metered (setting));
++      json_array_add_object_element (saved, entry);
++    }
++  json_object_set_array_member (snapshot, "devices", devices);
++  json_object_set_array_member (snapshot, "saved", saved);
++  g_clear_pointer (&self->snapshot, json_object_unref); self->snapshot = snapshot;
++  g_signal_emit (self, signals[CHANGED], 0);
++  return G_SOURCE_REMOVE;
++}
++static void queue_snapshot (CcLumaNetwork *self)
++{
++  if (!self->refresh) self->refresh = g_idle_add (refresh_snapshot, self);
++}
++static void client_loaded (GObject *source, GAsyncResult *result, gpointer data)
++{
++  Load *load = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (NMClient) client = nm_client_new_finish (result, &error);
++  g_autoptr (CcLumaNetwork) self = g_weak_ref_get (&load->self);
++  guint64 generation = load->generation; load_free (load);
++  if (!self || generation != self->generation) return;
++  if (!client) { g_signal_emit (self, signals[FAILED], 0, error); return; }
++  self->client = g_steal_pointer (&client);
++  watch (self, G_OBJECT (self->client)); queue_snapshot (self);
++}
++void cc_luma_network_stop (CcLumaNetwork *self)
++{
++  self->generation++;
++  if (self->cancel) g_cancellable_cancel (self->cancel);
++  g_clear_object (&self->cancel);
++  if (self->refresh) { g_source_remove (self->refresh); self->refresh = 0; }
++  unwatch (self); g_clear_object (&self->client);
++  g_clear_pointer (&self->snapshot, json_object_unref);
++}
++void cc_luma_network_start (CcLumaNetwork *self)
++{
++  cc_luma_network_stop (self);
++  self->cancel = g_cancellable_new ();
++  Load *load = g_new0 (Load, 1);
++  g_weak_ref_init (&load->self, self); load->generation = self->generation;
++  nm_client_new_async (self->cancel, client_loaded, load);
++}
++JsonObject *cc_luma_network_dup_snapshot (CcLumaNetwork *self)
++{
++  if (!self->snapshot) return NULL;
++  g_autoptr (JsonNode) node = json_node_init_object (json_node_alloc (), self->snapshot);
++  g_autoptr (JsonNode) copy = json_node_copy (node);
++  /* JSON-GLib node copies share objects; clone through the serialized value. */
++  g_autofree char *text = json_to_string (copy, FALSE);
++  g_autoptr (JsonParser) parser = json_parser_new ();
++  if (!json_parser_load_from_data (parser, text, -1, NULL)) return NULL;
++  return json_object_ref (json_node_get_object (json_parser_get_root (parser)));
++}
++static void dispose (GObject *object)
++{
++  cc_luma_network_stop (CC_LUMA_NETWORK (object));
++  G_OBJECT_CLASS (cc_luma_network_parent_class)->dispose (object);
++}
++static void finalize (GObject *object)
++{
++  g_hash_table_unref (CC_LUMA_NETWORK (object)->watched);
++  G_OBJECT_CLASS (cc_luma_network_parent_class)->finalize (object);
++}
++static void cc_luma_network_class_init (CcLumaNetworkClass *klass)
++{
++  G_OBJECT_CLASS (klass)->dispose = dispose; G_OBJECT_CLASS (klass)->finalize = finalize;
++  signals[CHANGED] = g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
++  signals[FAILED] = g_signal_new ("failed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_ERROR);
++}
++static void cc_luma_network_init (CcLumaNetwork *self)
++{
++  self->watched = g_hash_table_new_full (g_direct_hash, g_direct_equal, g_object_unref, NULL);
++}
++CcLumaNetwork *cc_luma_network_new (void) { return g_object_new (CC_TYPE_LUMA_NETWORK, NULL); }
+diff --git a/shell/cc-luma-network.h b/shell/cc-luma-network.h
+new file mode 100644
+index 0000000..9efe9d9
+--- /dev/null
++++ b/shell/cc-luma-network.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include <gio/gio.h>
++#include <json-glib/json-glib.h>
++G_BEGIN_DECLS
++#define CC_TYPE_LUMA_NETWORK (cc_luma_network_get_type ())
++G_DECLARE_FINAL_TYPE (CcLumaNetwork, cc_luma_network, CC, LUMA_NETWORK, GObject)
++/* Live, read-only NetworkManager adapter. Never constructed by fixture views.
++ * ::changed supplies a new snapshot, ::failed a service error. start() returns
++ * immediately; stop() invalidates every pending callback. No secrets are read. */
++CcLumaNetwork *cc_luma_network_new (void);
++void cc_luma_network_start (CcLumaNetwork *self);
++void cc_luma_network_stop (CcLumaNetwork *self);
++JsonObject *cc_luma_network_dup_snapshot (CcLumaNetwork *self);
++G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index 69f8be8..2ae6801 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -98,6 +98,10 @@ generated_sources += gnome.compile_resources(
+   dependencies: [gresource_file, metainfo_file, blueprints]
+ )
+ 
++if host_is_linux
++  common_sources += files('cc-luma-network.c')
++endif
++
+ common_sources += generated_sources
+ 
+ ############
+@@ -135,6 +139,10 @@ shell_deps = common_deps + [
+   dependency('luma-appearance-1'),
+ ]
+ 
++if host_is_linux
++  shell_deps += network_manager_deps[0]
++endif
++
+ if host_is_linux_not_s390
+   shell_deps += wacom_deps
+ endif
+@@ -208,3 +216,11 @@ fixture_view_test = executable(
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+ test('luma-settings-view', fixture_view_test, env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
++
++if host_is_linux
++  network_adapter_test = executable('test-luma-network',
++    ['test-luma-network.c', 'cc-luma-network.c'],
++    dependencies: [json_glib_dep, gio_dep, network_manager_deps[0]],
++    c_args: ['-DTEST_NM_SERVICE="' + meson.project_source_root() / 'tests/network/nm-utils/test-networkmanager-service.py' + '"'])
++  test('luma-settings-network', network_adapter_test, env: ['G_DEBUG=fatal-warnings'])
++endif
+diff --git a/shell/test-luma-network.c b/shell/test-luma-network.c
+new file mode 100644
+index 0000000..2d07ac6
+--- /dev/null
++++ b/shell/test-luma-network.c
+@@ -0,0 +1,149 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-network.h"
++
++typedef struct { guint changed, failed; GError *error; } Seen;
++static void changed (CcLumaNetwork *self, Seen *seen) { seen->changed++; }
++static void failed (CcLumaNetwork *self, GError *error, Seen *seen)
++{
++  seen->failed++; g_clear_error (&seen->error); seen->error = g_error_copy (error);
++}
++static void spin (guint ms)
++{
++  gint64 end = g_get_monotonic_time () + ms * 1000;
++  do { while (g_main_context_iteration (NULL, FALSE)) {} g_usleep (1000); }
++  while (g_get_monotonic_time () < end);
++}
++static void unavailable (void)
++{
++  g_autoptr (CcLumaNetwork) network = cc_luma_network_new ();
++  Seen seen = { 0 };
++  g_signal_connect (network, "changed", G_CALLBACK (changed), &seen);
++  g_signal_connect (network, "failed", G_CALLBACK (failed), &seen);
++  gint64 began = g_get_monotonic_time ();
++  cc_luma_network_start (network);
++  g_assert_cmpint (g_get_monotonic_time () - began, <, 100000);
++  g_assert_cmpuint (seen.failed, ==, 0);
++  g_assert_null (cc_luma_network_dup_snapshot (network));
++  gint64 deadline = began + 5000000;
++  while (!seen.failed && g_get_monotonic_time () < deadline) spin (1);
++  g_assert_cmpuint (seen.failed, ==, 1);
++  g_assert_cmpuint (seen.changed, ==, 0);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED);
++  g_assert_null (cc_luma_network_dup_snapshot (network));
++  g_clear_error (&seen.error);
++}
++static void cancel_and_destroy (void)
++{
++  CcLumaNetwork *network = cc_luma_network_new ();
++  Seen seen = { 0 };
++  g_signal_connect (network, "changed", G_CALLBACK (changed), &seen);
++  g_signal_connect (network, "failed", G_CALLBACK (failed), &seen);
++  cc_luma_network_start (network);
++  cc_luma_network_stop (network);
++  spin (100);
++  g_assert_cmpuint (seen.changed + seen.failed, ==, 0);
++  cc_luma_network_start (network);
++  g_object_unref (network); spin (100);
++  g_assert_cmpuint (seen.changed + seen.failed, ==, 0);
++}
++static void generation (void)
++{
++  g_autoptr (CcLumaNetwork) network = cc_luma_network_new ();
++  Seen seen = { 0 };
++  g_signal_connect (network, "failed", G_CALLBACK (failed), &seen);
++  cc_luma_network_start (network); cc_luma_network_start (network);
++  gint64 deadline = g_get_monotonic_time () + 5000000;
++  while (!seen.failed && g_get_monotonic_time () < deadline) spin (1);
++  spin (100);
++  g_assert_cmpuint (seen.failed, ==, 1);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED);
++  g_clear_error (&seen.error);
++}
++static GVariant *call (GDBusConnection *bus, const char *method, GVariant *args)
++{
++  g_autoptr (GError) error = NULL;
++  GVariant *result = g_dbus_connection_call_sync (bus, "org.freedesktop.NetworkManager",
++    "/org/freedesktop/NetworkManager", "org.freedesktop.NetworkManager.LibnmGlibTest",
++    method, args, NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
++  g_assert_no_error (error); g_assert_nonnull (result); return result;
++}
++static JsonObject *wait_snapshot (CcLumaNetwork *network, guint devices, guint aps)
++{
++  gint64 deadline = g_get_monotonic_time () + 5000000;
++  do {
++    JsonObject *snapshot = cc_luma_network_dup_snapshot (network);
++    if (snapshot) {
++      JsonArray *list = json_object_get_array_member (snapshot, "devices");
++      if (json_array_get_length (list) == devices && (!devices ||
++          json_array_get_length (json_object_get_array_member (json_array_get_object_element (list, 0), "access-points")) == aps)) return snapshot;
++      json_object_unref (snapshot);
++    }
++    spin (1);
++  } while (g_get_monotonic_time () < deadline);
++  g_error ("Live NetworkManager snapshot did not reach %u devices and %u APs", devices, aps);
++  return NULL;
++}
++static void service_snapshot (void)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GSubprocess) service = g_subprocess_new (G_SUBPROCESS_FLAGS_STDIN_PIPE, &error,
++    "python3", TEST_NM_SERVICE, NULL);
++  g_assert_no_error (error);
++  g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
++  g_assert_no_error (error);
++  gboolean owner = FALSE;
++  gint64 deadline = g_get_monotonic_time () + 5000000;
++  while (!owner && g_get_monotonic_time () < deadline) {
++    g_autoptr (GVariant) result = g_dbus_connection_call_sync (bus, "org.freedesktop.DBus",
++      "/org/freedesktop/DBus", "org.freedesktop.DBus", "NameHasOwner",
++      g_variant_new ("(s)", "org.freedesktop.NetworkManager"), G_VARIANT_TYPE ("(b)"),
++      G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
++    g_assert_no_error (error); g_variant_get (result, "(b)", &owner); if (!owner) spin (1);
++  }
++  g_assert_true (owner);
++  g_autoptr (GVariant) device = call (bus, "AddWifiDevice", g_variant_new ("(s)", "test-wifi"));
++  const char *device_path; g_variant_get (device, "(&o)", &device_path);
++  g_autoptr (GVariant) ap1 = call (bus, "AddWifiAp", g_variant_new ("(sss)", "test-wifi", "Same label", "52:54:00:00:00:01"));
++  g_autoptr (GVariant) ap2 = call (bus, "AddWifiAp", g_variant_new ("(sss)", "test-wifi", "Same label", "52:54:00:00:00:02"));
++  g_autoptr (CcLumaNetwork) network = cc_luma_network_new ();
++  Seen seen = { 0 };
++  g_signal_connect (network, "failed", G_CALLBACK (failed), &seen);
++  cc_luma_network_start (network);
++  g_autoptr (JsonObject) snapshot = wait_snapshot (network, 1, 2);
++  JsonObject *d = json_array_get_object_element (json_object_get_array_member (snapshot, "devices"), 0);
++  g_assert_cmpstr (json_object_get_string_member (d, "interface"), ==, "test-wifi");
++  JsonArray *aps = json_object_get_array_member (d, "access-points");
++  JsonObject *first = json_array_get_object_element (aps, 0), *second = json_array_get_object_element (aps, 1);
++  g_assert_cmpstr (json_object_get_string_member (first, "name"), ==, "Same label");
++  g_assert_cmpstr (json_object_get_string_member (first, "ssid"), ==, "U2FtZSBsYWJlbA==");
++  g_assert_cmpstr (json_object_get_string_member (first, "path"), !=, json_object_get_string_member (second, "path"));
++  json_object_set_string_member (first, "name", "Caller edited its copy");
++  g_autoptr (JsonObject) independent = cc_luma_network_dup_snapshot (network);
++  JsonObject *fresh_device = json_array_get_object_element (json_object_get_array_member (independent, "devices"), 0);
++  g_assert_cmpstr (json_object_get_string_member (json_array_get_object_element (json_object_get_array_member (fresh_device, "access-points"), 0), "name"), ==, "Same label");
++  const char *ap_path; g_variant_get (ap1, "(&o)", &ap_path);
++  g_autoptr (GVariant) removed = call (bus, "RemoveWifiAp", g_variant_new ("(so)", "test-wifi", ap_path));
++  g_autoptr (JsonObject) after = wait_snapshot (network, 1, 1);
++  g_autoptr (GVariant) unplugged = call (bus, "RemoveDevice", g_variant_new ("(o)", device_path));
++  g_autoptr (JsonObject) empty = wait_snapshot (network, 0, 0);
++  g_assert_cmpuint (seen.failed, ==, 0);
++  cc_luma_network_stop (network);
++  g_output_stream_close (g_subprocess_get_stdin_pipe (service), NULL, &error); g_assert_no_error (error);
++  g_assert_true (g_subprocess_wait_check (service, NULL, &error)); g_assert_no_error (error);
++}
++int main (int argc, char **argv)
++{
++  g_test_init (&argc, &argv, NULL);
++  /* An isolated system bus, deliberately without NetworkManager. Tests cannot
++   * contact Nick's services or accidentally read or modify his connections. */
++  GTestDBus *bus = g_test_dbus_new (G_TEST_DBUS_NONE);
++  g_test_dbus_up (bus);
++  g_setenv ("DBUS_SYSTEM_BUS_ADDRESS", g_test_dbus_get_bus_address (bus), TRUE);
++  g_test_add_func ("/settings/live-network/unavailable", unavailable);
++  g_test_add_func ("/settings/live-network/cancel-and-destroy", cancel_and_destroy);
++  g_test_add_func ("/settings/live-network/generation", generation);
++  g_test_add_func ("/settings/live-network/service-snapshot", service_snapshot);
++  int result = g_test_run ();
++  g_test_dbus_down (bus); g_object_unref (bus);
++  return result;
++}
+-- 
+2.55.0
+

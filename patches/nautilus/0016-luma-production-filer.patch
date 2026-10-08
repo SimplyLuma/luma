@@ -1,0 +1,725 @@
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 3191adc99c16624d4a0aea942d7ee2cf0e287fea..906e46a406768c0aacc4001e73621fc5114fc39d 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -1009,6 +1009,7 @@ setup_view_columns (NautilusListView *self)
+         NautilusColumn *nautilus_column = NAUTILUS_COLUMN (l->data);
+         g_autofree gchar *name = NULL;
+         g_autofree gchar *label = NULL;
++        g_autofree gchar *header_label = NULL;
+         GQuark attribute_q = 0;
+         GtkSortType sort_order;
+         g_autoptr (GtkCustomSorter) sorter = NULL;
+@@ -1029,7 +1030,8 @@ setup_view_columns (NautilusListView *self)
+         view_column = gtk_column_view_column_new (NULL, factory);
+         gtk_column_view_column_set_expand (view_column, FALSE);
+         gtk_column_view_column_set_resizable (view_column, TRUE);
+-        gtk_column_view_column_set_title (view_column, label);
++        header_label = g_utf8_strup (label, -1);
++        gtk_column_view_column_set_title (view_column, header_label);
+         gtk_column_view_column_set_sorter (view_column, GTK_SORTER (sorter));
+ 
+         if (!strcmp (name, "name"))
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 4f974cec4a9f8ca4c7ef77b65885be2ba257be7b..5cbfc85bfed3b6f1d51b8caa35bf6dc06205941f 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1,17 +1,38 @@
+-/* Files-specific composition for Project Luma.
++/* Filer-specific composition for Project Luma.
+  *
+- * The distro-wide light palette and generic controls are owned by Luma's
++ * The distro-wide palette and generic controls are owned by Luma's
+  * downstream libadwaita package. This file is intentionally limited to
+  * Nautilus structure and behavior that libadwaita cannot express globally. */
++.luma-files-window {
++  background-color: @luma_window;
++  color: @luma_ink;
++  font-family: "Figtree";
++}
++
++/* Filer uses a deliberate two-row native title composition. */
++.luma-files-window headerbar.luma-titlebar {
++  min-height: 42px;
++  background-color: @luma_window;
++  background-image: none;
++  color: @luma_ink;
++  box-shadow: inset 0 -1px @luma_line;
++}
++
+ @media (prefers-color-scheme: light) {
+-  /* Files uses a deliberately defined two-row title composition. Keep this
+-   * component treatment explicit so AdwToolbarView's flat top-bar state cannot
+-   * erase the global Luma title gradient or its lower hairline. */
+   .luma-files-window headerbar.luma-titlebar {
+-    background-color: #f2f3f5;
+     background-image: linear-gradient(to bottom, #f2f3f5, #e8eaee);
+-    box-shadow: inset 0 -1px #dcdee0;
+   }
++}
++
++.luma-files-window headerbar.luma-titlebar > windowhandle > box {
++  padding: 0 8px 0 12px;
++}
++
++.luma-files-window .luma-window-title {
++  color: @luma_ink;
++  font-size: 14px;
++  font-weight: 675;
++}
+ 
+   /* The working controls remain native Nautilus actions in a second row. */
+   .luma-files-window headerbar.luma-secondary-toolbar {
+@@ -19,11 +40,11 @@
+     /* libadwaita owns the shared 10px headerbar inset. Keep only the
+      * Files-specific vertical contribution for this structural second row. */
+     padding: 3px 0;
+-    background-color: var(--headerbar-bg-color);
++    background-color: @luma_window;
+     background-image: none;
+-    color: var(--headerbar-fg-color);
++    color: @luma_ink;
+     border: none;
+-    border-bottom: 1px solid var(--headerbar-shade-color);
++    border-bottom: 1px solid @luma_line;
+     box-shadow: none;
+   }
+ 
+@@ -33,12 +54,12 @@
+   }
+ 
+   .luma-files-window .luma-sidebar-action-surface {
+-    background-color: var(--sidebar-bg-color);
++    background-color: @luma_window;
+   }
+ 
+   .luma-files-window .luma-content-action-surface {
+     min-height: 46px;
+-    background-color: var(--headerbar-bg-color);
++    background-color: @luma_window;
+   }
+ 
+   .luma-files-window .luma-action-toolbar-overlay headerbar.luma-secondary-toolbar {
+@@ -46,9 +67,9 @@
+   }
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar {
+     min-height: 30px;
+-    background-color: var(--view-bg-color);
++    background-color: @luma_content;
+     background-image: none;
+-    border: 1px solid var(--headerbar-shade-color);
++    border: 1px solid @luma_line;
+     border-radius: 8px;
+     box-shadow: none;
+   }
+@@ -68,16 +89,16 @@
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.current-dir {
+     font-weight: 600;
+-    color: var(--headerbar-fg-color);
++    color: @luma_ink;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button:not(.current-dir) {
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 52%, transparent);
++    color: color-mix(in srgb, @luma_ink 52%, transparent);
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button image {
+     -gtk-icon-size: 14px;
+-    color: var(--accent-color);
++    color: @luma_folder;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.luma-path-root image {
+@@ -87,7 +108,7 @@
+   .luma-files-window headerbar.luma-secondary-toolbar .luma-path-separator {
+     -gtk-icon-size: 7px;
+     margin: 0 3px;
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 42%, transparent);
++    color: @luma_muted;
+   }
+ 
+   /* The pathbar owns the one shared outer stroke. Its breadcrumb scroller and
+@@ -101,7 +122,7 @@
+     min-height: 28px;
+     padding: 0;
+     border: none;
+-    border-right: 1px solid var(--headerbar-shade-color);
++    border-right: 1px solid @luma_line;
+     border-left: none;
+     border-radius: 7px 0 0 7px;
+     box-shadow: none;
+@@ -117,44 +138,39 @@
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar:dir(rtl) > .luma-path-menu > button {
+     border-right: none;
+-    border-left: 1px solid var(--headerbar-shade-color);
++    border-left: 1px solid @luma_line;
+     border-radius: 0 7px 7px 0;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field {
++    min-width: 30px;
+     min-height: 30px;
+-    padding: 0 10px;
+-    background-color: var(--view-bg-color);
++    padding: 0;
++    background-color: @luma_content;
+     background-image: none;
+-    border: 1px solid var(--headerbar-shade-color);
++    border: 1px solid @luma_line;
+     border-radius: 8px;
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 50%, transparent);
++    color: @luma_muted;
+     box-shadow: none;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:hover,
+   .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:checked {
+-    background-color: var(--view-bg-color);
+-    color: var(--headerbar-fg-color);
+-    outline: 2px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
++    background-color: @luma_hover;
++    color: @luma_ink;
++    outline: 2px solid color-mix(in srgb, var(--accent-color) 42%, transparent);
+     outline-offset: -2px;
+   }
+ 
+-  .luma-files-window .luma-search-placeholder {
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 50%, transparent);
+-    font-size: 12px;
+-    font-weight: 400;
+-  }
+-
+   /* Compact is still the same native toolbar, with five durable controls.
+    * The current path becomes a title/menu while navigation and overflow keep
+    * their original actions. Nothing is duplicated in a mobile-only surface. */
+   .luma-files-window .luma-action-toolbar-overlay.compact .nautilus-pathbar {
+     min-width: 0;
+     min-height: 30px;
+-    background-color: var(--view-bg-color);
++    background-color: @luma_content;
+     background-image: none;
+-    border: 1px solid var(--headerbar-shade-color);
++    border: 1px solid @luma_line;
+     border-radius: 8px;
+     box-shadow: none;
+   }
+@@ -163,7 +179,7 @@
+     min-width: 0;
+     min-height: 28px;
+     padding: 0 9px;
+-    background: var(--view-bg-color);
++    background: @luma_content;
+     border: none;
+     border-radius: 7px;
+     box-shadow: none;
+@@ -171,11 +187,11 @@
+ 
+   .luma-files-window .luma-compact-root-icon {
+     -gtk-icon-size: 14px;
+-    color: var(--accent-color);
++    color: @luma_folder;
+   }
+ 
+   .luma-files-window .luma-compact-root-label {
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 58%, transparent);
++    color: @luma_muted;
+     font-size: 12px;
+     font-weight: 500;
+     transform: translate(0, 1px);
+@@ -183,11 +199,11 @@
+ 
+   .luma-files-window .luma-compact-path-separator {
+     -gtk-icon-size: 7px;
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 38%, transparent);
++    color: @luma_faint;
+   }
+ 
+   .luma-files-window .luma-compact-current-label {
+-    color: var(--headerbar-fg-color);
++    color: @luma_ink;
+     font-size: 12px;
+     font-weight: 600;
+     transform: translate(0, 1px);
+@@ -199,10 +215,10 @@
+     min-height: 30px;
+     padding: 0;
+     border-radius: 8px;
+-    background-color: var(--view-bg-color);
++    background-color: @luma_content;
+     background-image: none;
+-    color: var(--headerbar-fg-color);
+-    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++    color: @luma_ink;
++    box-shadow: inset 0 0 0 1px @luma_line;
+   }
+ 
+   .luma-files-window .luma-compact-toolbar-button image {
+@@ -211,25 +227,25 @@
+ 
+   .luma-files-window .luma-compact-toolbar-button:hover,
+   .luma-files-window .luma-compact-toolbar-button > button:hover {
+-    background-color: var(--hover-color);
++    background-color: @luma_hover;
+   }
+ 
+   .luma-files-window .luma-compact-toolbar-button:checked,
+   .luma-files-window .luma-compact-toolbar-button > button:checked {
+-    background-color: color-mix(in srgb, var(--accent-bg-color) 12%, var(--view-bg-color));
++    background-color: color-mix(in srgb, var(--accent-bg-color) 12%, @luma_content);
+     color: var(--accent-color);
+   }
+ 
+   .luma-files-window popover.luma-compact-menu label.title {
+     padding: 7px 12px 4px;
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 60%, transparent);
++    color: @luma_muted;
+     font-size: 11px;
+     font-weight: 700;
+   }
+ 
+   .luma-files-window popover.luma-compact-menu separator {
+     margin: 5px 4px;
+-    background-color: color-mix(in srgb, var(--headerbar-fg-color) 8%, transparent);
++    background-color: @luma_line;
+   }
+ 
+   .luma-files-window .luma-path-overflow > button {
+@@ -237,7 +253,7 @@
+     min-height: 28px;
+     padding: 0;
+     border: none;
+-    border-right: 1px solid var(--headerbar-shade-color);
++    border-right: 1px solid @luma_line;
+     border-radius: 0;
+     box-shadow: none;
+   }
+@@ -246,7 +262,8 @@
+    * these 30px controls. Move only the text atoms; icons and hit geometry are
+    * already centered and remain untouched. */
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button label,
+-  .luma-files-window .luma-search-placeholder {
++  .luma-files-window .luma-compact-root-label,
++  .luma-files-window .luma-compact-current-label {
+     transform: translate(0, 1px);
+   }
+ 
+@@ -260,23 +277,11 @@
+    * Keep their neutral material identical; checked view modes alone carry the
+    * blue selection treatment below. */
+   .luma-files-window .luma-history-controls button,
+-  .luma-files-window .luma-view-controls button,
+-  .luma-files-window .luma-main-menu > button {
+-    background-color: var(--view-bg-color);
++  .luma-files-window .luma-view-controls button {
++    background-color: @luma_content;
+     background-image: none;
+-    color: var(--headerbar-fg-color);
+-    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
+-  }
+-
+-  .luma-files-window .luma-main-menu > button {
+-    min-width: 32px;
+-    min-height: 30px;
+-    padding: 0;
+-    border-radius: 8px;
+-  }
+-
+-  .luma-files-window .luma-main-menu > button image {
+-    -gtk-icon-size: 14px;
++    color: @luma_ink;
++    box-shadow: inset 0 0 0 1px @luma_line;
+   }
+ 
+   .luma-files-window .luma-view-controls {
+@@ -294,7 +299,7 @@
+   }
+ 
+   .luma-files-window .luma-view-controls button:checked {
+-    background-color: color-mix(in srgb, var(--accent-bg-color) 12%, transparent);
++    background-color: color-mix(in srgb, var(--accent-bg-color) 12%, @luma_content);
+     color: var(--accent-color);
+   }
+ 
+@@ -302,12 +307,12 @@
+   .luma-files-window .luma-sidebar-surface,
+   .luma-files-window .luma-sidebar-surface viewport,
+   .luma-files-window .luma-sidebar-surface .navigation-sidebar {
+-    background-color: var(--sidebar-bg-color);
+-    color: var(--sidebar-fg-color);
++    background-color: @luma_window;
++    color: @luma_ink;
+   }
+ 
+   .luma-files-window .luma-sidebar-surface {
+-    border-right: 1px solid var(--headerbar-shade-color);
++    border-right: 1px solid @luma_line;
+   }
+ 
+   /* GtkPaned reserves an invisible 8px resize target at the sidebar edge.
+@@ -319,7 +324,7 @@
+ 
+   .luma-files-window .luma-sidebar-surface:dir(rtl) {
+     border-right: none;
+-    border-left: 1px solid var(--headerbar-shade-color);
++    border-left: 1px solid @luma_line;
+   }
+ 
+   .luma-files-window .navigation-sidebar > row {
+@@ -339,36 +344,153 @@
+ 
+   .luma-files-window .navigation-sidebar > row image {
+     -gtk-icon-size: 14px;
+-    color: color-mix(in srgb, var(--sidebar-fg-color) 50%, transparent);
++    color: @luma_muted;
++  }
++
++  .luma-files-window .navigation-sidebar > row:not(:selected):hover {
++    background-color: @luma_hover;
++  }
++
++  .luma-files-window .navigation-sidebar > row:selected,
++  .luma-files-window .navigation-sidebar > row:selected:hover,
++  .luma-files-window .navigation-sidebar > row:selected:active,
++  .luma-files-window .navigation-sidebar > row:selected.has-open-popup {
++    background-color: @luma_selected;
++    color: @luma_ink;
++    font-weight: 600;
+   }
+ 
+   .luma-files-window .navigation-sidebar > row:selected image {
+-    color: var(--accent-fg-color);
++    color: @luma_folder;
+   }
+ 
+   .luma-files-window .navigation-sidebar separator {
+     min-height: 1px;
+     margin: 8px 16px;
+-    background-color: var(--sidebar-shade-color);
++    background-color: @luma_line;
+   }
+ 
+   .luma-files-window .luma-content-surface,
+   .luma-files-window .luma-content-surface .view,
+   .luma-files-window .luma-content-surface viewport {
+-    background-color: var(--view-bg-color);
+-    color: var(--view-fg-color);
++    background-color: @luma_content;
++    color: @luma_ink;
+   }
+ 
+   .luma-files-window .luma-status-bar {
+     min-height: 27px;
+     padding: 0 16px;
+-    background-color: var(--headerbar-bg-color);
+-    color: color-mix(in srgb, var(--headerbar-fg-color) 50%, transparent);
+-    border-top: 1px solid var(--headerbar-shade-color);
++    background-color: @luma_content;
++    color: @luma_muted;
++    border-top: 1px solid @luma_line;
+     font-size: 11.5px;
+-    font-weight: 400;
++    font-weight: 500;
++    font-feature-settings: "tnum";
+   }
+ 
++/* Native Grid presentation. Selection and focus decorate the real GtkGridView
++ * child; file models, thumbnails, captions, and zoom remain Nautilus-owned. */
++.luma-files-window .nautilus-grid-view gridview {
++  padding: 12px;
++  border-spacing: 8px;
++}
++
++.luma-files-window .nautilus-grid-view gridview > child,
++.luma-files-window .nautilus-grid-view .nautilus-view-cell {
++  border-radius: 10px;
++}
++
++.luma-files-window .nautilus-grid-view gridview > child.activatable:hover {
++  background-color: @luma_hover;
++}
++
++.luma-files-window .nautilus-grid-view gridview > child:selected {
++  background-color: @luma_selected;
++  color: @luma_ink;
++}
++
++.luma-files-window .nautilus-grid-view gridview > child:focus-visible {
++  outline: 2px solid var(--accent-color);
++  outline-offset: -2px;
++}
++
++.luma-files-window .nautilus-grid-view .icon-ui-labels-box > label:not(.caption) {
++  color: @luma_ink;
++  font-size: 13px;
++  font-weight: 625;
++}
++
++.luma-files-window .nautilus-grid-view .icon-ui-labels-box > label.caption {
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 500;
++  font-feature-settings: "tnum";
++}
++
++/* Native List presentation. GtkColumnView remains the one column/sort model. */
++.luma-files-window .nautilus-list-view columnview {
++  padding-left: 12px;
++  padding-right: 12px;
++}
++
++.luma-files-window .nautilus-list-view columnview > listview {
++  padding-top: 8px;
++  padding-bottom: 12px;
++  border-spacing: 0;
++  margin-left: -12px;
++  margin-right: -12px;
++}
++
++.luma-files-window .nautilus-list-view columnview > listview > row {
++  min-height: 30px;
++  margin-left: 12px;
++  margin-right: 12px;
++  border-radius: 8px;
++  color: @luma_ink;
++  font-size: 13px;
++  font-weight: 525;
++}
++
++.luma-files-window .nautilus-list-view columnview > listview > row.activatable:hover {
++  background-color: @luma_hover;
++}
++
++.luma-files-window .nautilus-list-view columnview > listview > row:selected {
++  background-color: @luma_selected;
++  color: @luma_ink;
++  font-weight: 650;
++}
++
++.luma-files-window .nautilus-list-view columnview > listview > row:focus-visible {
++  outline: 2px solid var(--accent-color);
++  outline-offset: -2px;
++}
++
++.luma-files-window .nautilus-list-view .nautilus-view-cell {
++  padding: 4px 8px;
++}
++
++.luma-files-window .nautilus-list-view .column-name-labels-box > box > label {
++  color: @luma_ink;
++}
++
++.luma-files-window .nautilus-list-view .nautilus-view-cell > label,
++.luma-files-window .nautilus-list-view label.dim-label {
++  color: @luma_muted;
++  font-feature-settings: "tnum";
++}
++
++.luma-files-window .nautilus-list-view columnview > header > button {
++  min-height: 26px;
++  padding: 0 8px;
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 700;
++  letter-spacing: 0.08em;
++}
++
++.luma-files-window .nautilus-list-view columnview > header > button:checked {
++  color: @luma_ink;
+ }
+ 
+ /* Toolbar */
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 9500da6a3190089190b3bfea3f16a5fae438ac1f..b147ead02bfc7b6111d96d2762ea28c0dd1f211f 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -35,7 +35,7 @@ template $NautilusToolbar: Adw.Bin {
+           }
+ 
+           Stack search_button_stack {
+-            width-request: 198;
++            width-request: 30;
+             halign: end;
+             hexpand: false;
+             hhomogeneous: true;
+@@ -44,6 +44,7 @@ template $NautilusToolbar: Adw.Bin {
+ 
+             ToggleButton search_button {
+               valign: center;
++              icon-name: "edit-find-symbolic";
+               action-name: "slot.search-global";
+               active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+ 
+@@ -54,24 +55,6 @@ template $NautilusToolbar: Adw.Bin {
+               styles [
+                 "luma-search-field",
+               ]
+-
+-              child: Box {
+-                spacing: 8;
+-
+-                Image {
+-                  icon-name: "edit-find-symbolic";
+-                }
+-
+-                Label {
+-                  label: _("Search");
+-                  hexpand: true;
+-                  xalign: 0;
+-
+-                  styles [
+-                    "luma-search-placeholder",
+-                  ]
+-                }
+-              };
+             }
+ 
+             Adw.Bin search_button_placeholder {}
+@@ -149,21 +132,6 @@ template $NautilusToolbar: Adw.Bin {
+       Adw.Bin history_controls_placeholder {}
+     }
+ 
+-    [end]
+-    MenuButton {
+-      visible: bind template.compact inverted;
+-      icon-name: "open-menu-symbolic";
+-      menu-model: bind template.main-menu;
+-
+-      accessibility {
+-        label: _("Main Menu");
+-      }
+-
+-      styles [
+-        "luma-main-menu",
+-      ]
+-    }
+-
+     [end]
+     MenuButton compact_overflow_button {
+       visible: bind template.compact;
+diff --git a/src/resources/ui/nautilus-view-controls.blp b/src/resources/ui/nautilus-view-controls.blp
+index bd01646213f8268c5d93aee9197335c8f926d563..2cd230cf2ec2f78bd7e33d3a77c200683afdaaef 100644
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -52,29 +52,36 @@ template $NautilusViewControls: Adw.Bin {
+   child: Box view_controls {
+     halign: center;
+     valign: center;
++    spacing: 8;
+ 
+     styles [
+-      "linked",
+       "luma-view-controls",
+     ]
+ 
+-    ToggleButton {
+-      icon-name: "view-grid-symbolic";
+-      action-name: "slot.files-view-mode";
+-      action-target: "uint32 2";
++    Box {
++      styles [
++        "linked",
++        "luma-view-mode-controls",
++      ]
+ 
+-      accessibility {
+-        label: _("Grid View");
++      ToggleButton {
++        icon-name: "view-grid-symbolic";
++        action-name: "slot.files-view-mode";
++        action-target: "uint32 2";
++
++        accessibility {
++          label: _("Grid View");
++        }
+       }
+-    }
+ 
+-    ToggleButton {
+-      icon-name: "view-list-symbolic";
+-      action-name: "slot.files-view-mode";
+-      action-target: "uint32 1";
++      ToggleButton {
++        icon-name: "view-list-symbolic";
++        action-name: "slot.files-view-mode";
++        action-target: "uint32 1";
+ 
+-      accessibility {
+-        label: _("List View");
++        accessibility {
++          label: _("List View");
++        }
+       }
+     }
+ 
+@@ -86,6 +93,10 @@ template $NautilusViewControls: Adw.Bin {
+         label: _("View Options");
+       }
+ 
++      styles [
++        "luma-view-options",
++      ]
++
+       popover: PopoverMenu {
+         menu-model: view_menu;
+ 
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 045172c96574fa7b4f3bbabe9303b30088fa8d4f..575217272ecc4e3807dabd0f3ae01a468ccb76ec 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -116,12 +116,52 @@ template $NautilusWindow: Adw.ApplicationWindow {
+       child: Adw.ToolbarView {
+         [top]
+         Adw.HeaderBar {
+-          show-end-title-buttons: false;
++          show-start-title-buttons: false;
++          show-end-title-buttons: true;
++          decoration-layout: ":minimize,maximize,close";
+ 
+           styles [
+             "luma-titlebar",
+           ]
+ 
++          [start]
++          MenuButton {
++            menu-model: app_menu;
++
++            accessibility {
++              label: _("Filer Menu");
++            }
++
++            styles [
++              "luma-identity-button",
++            ]
++
++            child: Box {
++              spacing: 8;
++
++              Image {
++                icon-name: "org.gnome.Nautilus";
++
++                styles [
++                  "luma-identity-icon",
++                ]
++              }
++
++              Label {
++                label: _("Filer");
++                ellipsize: end;
++              }
++
++              Image {
++                icon-name: "pan-down-symbolic";
++
++                styles [
++                  "luma-identity-chevron",
++                ]
++              }
++            };
++          }
++
+           title-widget: Box {
+             halign: center;
+ 

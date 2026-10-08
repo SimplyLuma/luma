@@ -1,0 +1,68 @@
+From 7874cba719aece9ce20ccbb9eed64e969f931b9f Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 22:05:16 -0400
+Subject: [PATCH] luma: dock icons finish appearing when the displays change
+ under them
+
+On Nick's ThinkPad (a 3440x1440 display at 1x, a portrait 1440x2560 at 1x
+and the laptop panel at 1.25x), every dock icon came up a few pixels wide
+after a reboot, evenly spaced in a normal-size island. The dock's items ease
+from scale 0 to 1 as they are added. When the stage views are rebuilt during
+that ease -- the monitor layout and scales applied at login do exactly that
+-- Clutter stops the transition without finishing it, and the item kept the
+scale it had reached: its allocation is scaled once and its paint again, so
+a 36px icon at 0.4 draws about 6px. Nothing ever eased it again.
+
+An entrance that is stopped before it finishes now settles the item at full
+size and opacity, and an item that is animating out is destroyed even when
+its exit is stopped. The oracle reproduces the stuck scale on Shell .92 with
+animations enabled and a monitor configuration applied during the entrance,
+at mixed 1x/1.25x, 1x and 1.25x; with this patch every item ends at 1.
+
+Dropping this patch restores the stuck entrance.
+---
+ js/ui/dash.js | 21 ++++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index 3286698..fa6be69 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -282,9 +282,27 @@ class DashItemContainer extends St.Widget {
+             opacity: 255,
+             duration: time,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            // Clutter stops a transition without finishing it when the stage
++            // views under the actor are rebuilt, as a monitor layout or scale
++            // change at login does. The item then kept the scale it had
++            // reached, and a whole dock of icons stayed a few pixels wide.
++            // An entrance that is stopped still ends at rest.
++            onStopped: isFinished => {
++                if (!isFinished && !this.animatingOut)
++                    this._settleShown();
++            },
+         });
+     }
+ 
++    _settleShown() {
++        this.remove_transition('scale-x');
++        this.remove_transition('scale-y');
++        this.remove_transition('opacity');
++        this.scale_x = 1;
++        this.scale_y = 1;
++        this.opacity = 255;
++    }
++
+     animateOutAndDestroy() {
+         this.label.hide();
+ 
+@@ -301,7 +319,8 @@ class DashItemContainer extends St.Widget {
+             duration: St.Settings.get().enable_animations
+                 ? (this._shelfItem ? SHELF_ITEM_ANIMATION_TIME : DASH_ANIMATION_TIME) : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-            onComplete: () => this.destroy(),
++            // Removed items go even when the stage views change under them.
++            onStopped: () => this.destroy(),
+         });
+     }
+ });

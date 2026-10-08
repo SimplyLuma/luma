@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=Manage events and schedules
+Exec=prairie-calendar
+Icon=org.projectluma.Calendar
+Terminal=false
+Categories=Office;Calendar;
+Keywords=Calendar;Event;Schedule;Appointment;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;
+X-GNOME-UsesNotifications=true

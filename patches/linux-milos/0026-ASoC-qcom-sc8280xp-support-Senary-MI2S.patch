@@ -1,0 +1,34 @@
+From 692c0cd1a495ff101f8ee44a4de1b9c52168374a Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 5 Jul 2026 21:32:11 +0200
+Subject: [PATCH] ASoC: qcom: sc8280xp: support Senary MI2S
+
+Extend the clock-provider DAI fmt setup to Senary MI2S; without it
+q6i2s_set_fmt() is never called, ws_src remains external and the DSP
+does not drive the I2S clocks.
+
+On the Fairphone (Gen. 6) the speaker amplifiers sit on this
+interface; the board DTS enabling it is headed upstream separately
+via linux-arm-msm.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ sound/soc/qcom/sc8280xp.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
+index a366669..ce28bfa 100644
+--- a/sound/soc/qcom/sc8280xp.c
++++ b/sound/soc/qcom/sc8280xp.c
+@@ -34,6 +34,7 @@ static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	switch (cpu_dai->id) {
+ 	case PRIMARY_MI2S_RX...QUATERNARY_MI2S_TX:
+ 	case QUINARY_MI2S_RX...QUINARY_MI2S_TX:
++	case SENARY_MI2S_RX...SENARY_MI2S_TX:
+ 		snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_BP_FP);
+ 		break;
+ 	case WSA_CODEC_DMA_RX_0:
+-- 
+2.54.0 (Apple Git-157)
+

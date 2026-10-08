@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Private transport for Project Luma Recent updates
+Documentation=https://github.com/SimplyLuma/luma/blob/stage/docs/build/recent-ostree-channel.md
+After=network-online.target
+Wants=network-online.target
+Before=luma-recent-update.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/luma/recent-tunnel.conf
+ExecStart=/usr/bin/ssh -NT -p ${LUMA_UPDATE_SSH_PORT} -i /etc/luma/recent-tunnel.key -o BatchMode=yes -o ExitOnForwardFailure=yes -o IdentitiesOnly=yes -o PasswordAuthentication=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/luma/recent-known-hosts -L 127.0.0.1:8443:127.0.0.1:8443 luma-update-tunnel@${LUMA_UPDATE_SSH_HOST}
+Restart=always
+RestartSec=10s
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/luma/recent-tunnel.conf /etc/luma/recent-tunnel.key /etc/luma/recent-known-hosts
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

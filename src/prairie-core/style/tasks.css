@@ -1,0 +1,120 @@
+/* Tasks-only surfaces; shared LumaUI parts retain their kit styling. */
+.tk-task-row { padding: var(--lumaui-details-fact-padding-y) var(--lumaui-field-padding-x) var(--lumaui-details-fact-padding-y) var(--lumaui-details-row-radius); border-radius: var(--lumaui-account-radius); min-height: calc(var(--lumaui-dialog-icon-box) - var(--lumaui-details-fact-padding-y) * 2); }
+.tk-task-row:hover { background: @luma_hover; }
+.tk-task-row.suggested { box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.25) @luma_line; border-radius: var(--lumaui-account-radius); }
+.tk-task-pick { padding: 0; border: none; background: none; box-shadow: none; }
+.tk-task-check check, .tk-step-check check { padding: 0; min-width: calc(var(--lumaui-dialog-icon) - var(--lumaui-place-padding)); min-height: calc(var(--lumaui-dialog-icon) - var(--lumaui-place-padding)); border-radius: var(--lumaui-details-row-radius); background: none; color: transparent; border: none; box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.375) @luma_muted; }
+.tk-step-check check { border-radius: var(--lumaui-mini-dot); min-width: var(--lumaui-count-height); min-height: var(--lumaui-count-height); }
+.tk-task-check.priority-1 check { box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.375) @luma_blue; }
+.tk-task-check.priority-2 check { box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.375) @luma_amber; }
+.tk-task-check.priority-3 check { box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.375) @luma_danger_ink; }
+.tk-task-check.done check, .tk-step-check.done check { background: @luma_good; box-shadow: none; color: transparent; }
+.tk-overdue { color: @luma_danger_ink; }
+.tk-task-row.completed .tk-task-title { color: @luma_muted; text-decoration-line: line-through; }
+.tk-activity { color: @luma_muted; }
+.tk-comment { padding: var(--lumaui-details-row-padding-y) var(--lumaui-field-padding-x) var(--lumaui-details-row-radius); border-radius: var(--lumaui-place-padding) var(--lumaui-account-radius) var(--lumaui-account-radius) var(--lumaui-account-radius); background: @luma_fill; }
+.tk-comment.mine { background: @luma_accent_soft; }
+.tk-person { box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.25) @luma_chip_highlight, 0 calc(var(--lumaui-place-padding) * 0.25) 0 @luma_chip_ring; background: @luma_chip; border-radius: var(--lumaui-account-radius); padding: 0 calc(var(--lumaui-details-row-radius) - var(--lumaui-place-padding) * 0.25) 0 calc(var(--lumaui-place-padding) * 0.75); min-height: var(--lumaui-details-action); }
+
+.tk-task-check, .tk-step-check { padding: 0; }
+.tk-note-well { padding: var(--lumaui-details-row-radius) var(--lumaui-field-padding-x); border-radius: var(--lumaui-field-radius); background: @luma_well; box-shadow: inset 0 0 0 calc(var(--lumaui-place-padding) * 0.25) @luma_line; }
+
+.tk-check-glyph { color: transparent; }
+.tk-check-glyph.done { color: @luma_primary_ink; }
+
+.tk-step-done { color: @luma_muted; text-decoration-line: line-through; }
+
+.tk-task-list-row { padding: 0; margin: 0; }
+
+.tk-task-meta > flowboxchild { padding: 0; margin: 0; }
+
+.tk-task-meta { color: @luma_muted; }
+.tk-task-flag { color: @luma_danger_ink; }
+
+.tk-composer { padding: var(--lumaui-place-padding) var(--lumaui-place-padding) var(--lumaui-place-padding) var(--lumaui-details-row-padding-y); border-radius: var(--lumaui-account-radius); background: @luma_fill; box-shadow: inset 0 0 0 1px @luma_line; }
+.tk-composer:focus-within { box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 2px @luma_focus_ring; }
+.tk-inline-field.lumaui-field { margin-top: 0; border-spacing: 0; }
+.tk-composer entry.lumaui-field-well,
+.tk-composer entry.lumaui-field-well:focus-within { min-height: var(--lumaui-ac-tool-button); padding: 0 4px; border-radius: 0; background: transparent; box-shadow: none; }
+.tk-step-entry entry.lumaui-field-well { background: @luma_fill; box-shadow: inset 0 0 0 1px @luma_line; }
+
+
+.tk-clear-icon { color: @luma_good; }
+
+.tk-task-check.big check { min-width: calc(var(--lumaui-dialog-icon) - var(--lumaui-place-padding) * 0.5); min-height: calc(var(--lumaui-dialog-icon) - var(--lumaui-place-padding) * 0.5); }
+
+.tk-assignees > flowboxchild, .tk-fact-values > flowboxchild,
+.tk-assignees > flowboxchild:hover, .tk-fact-values > flowboxchild:hover { padding: 0; margin: 0; background: none; border: none; box-shadow: none; }
+
+.tk-suggestion-icon { color: @luma_amber; }
+
+.tk-clear-title { color: @luma_secondary; }
+
+/* The primary icon-only Send key keeps dark ink when its surface brightens on hover. */
+button#tk-send:hover { color: @luma_key_ink; }
+
+/* v71 "Tasks detail (2026-10-01)", phone and desktop: grouped, not run-on. */
+.tk-detail-head { margin-bottom: 0; }
+/* Due, Priority, Assigned and List: one inset card with hairline rows and a 92 px label column. */
+.tk-props { margin-top: 14px; margin-bottom: 6px; padding: 0 14px; border-radius: 16px; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip; }
+.tk-fact { min-height: var(--lumaui-details-action); padding: var(--lumaui-details-fact-padding-y) 0; }
+.tk-fact.following { box-shadow: inset 0 1px 0 @luma_line; }
+.tk-fact.wide { padding: 12px 0; }
+.tk-fact-label { color: @luma_ink_secondary; font-size: 13.5px; }
+.tk-fact-label image { color: @luma_muted; }
+/* Steps and Comments: each its own inset card; sections get 22 px above their labels. */
+box.lumaui-details-body.tk-details-grown,
+#tk-details box.lumaui-details-body { padding-bottom: var(--lumaui-details-body-padding-bottom); }
+#tk-details box.lumaui-details-section, box.tk-details-grown box.lumaui-details-section { margin-top: 22px; }
+.tk-card { border-radius: 16px; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip; }
+#tk-steps { padding: 4px; }
+.tk-step { padding: 4px 6px; border-radius: 9px; }
+.tk-step-progress { margin-bottom: 8px; }
+#tk-comments { padding: 10px 12px; }
+.tk-step-entry entry.lumaui-field-well { background: none; box-shadow: none; }
+/* The phone's grown bar shows the pane's body without its header (v71 .tkdet2). */
+box.lumaui-details-body.tk-details-grown { padding: 6px 8px; }
+box.lumaui-details-body.tk-details-grown > * { margin-left: 0; margin-right: 0; }
+#tk-details-grown .tk-composer { margin: 6px 4px 4px; }
+
+/* v71 "Tasks: Plan my day" (phone): the warm card on Today, then the full-window stack. */
+button.tk-plan-button { padding: 14px; border-radius: 22px; color: @luma_primary_ink;
+  background: linear-gradient(135deg, @luma_task_plan_start, @luma_task_plan_end);
+  box-shadow: 0 10px 24px -14px @luma_task_plan_shadow; }
+button.tk-plan-button label { color: @luma_primary_ink; }
+.tk-plan-glyph { min-width: 40px; min-height: 40px; border-radius: 13px; background: alpha(@luma_primary_ink, 0.18); }
+.tk-plan-chevron { opacity: 0.8; }
+box.tk-plan { padding: 52px 16px 34px; background: @luma_window; }
+.tk-plan-head { min-height: 44px; }
+.tk-plan-stack { margin: 16px 0; }
+.tk-plan-card { padding: 22px; border-radius: 28px; background: @luma_card_surface;
+  box-shadow: inset 0 0 0 1px @luma_line, 0 20px 44px -22px @luma_window_shadow_far; }
+.tk-plan-card.going-yes { box-shadow: inset 0 0 0 2px @luma_good, 0 20px 44px -22px @luma_window_shadow_far; }
+.tk-plan-card.going-no { box-shadow: inset 0 0 0 2px @luma_mark_orange, 0 20px 44px -22px @luma_window_shadow_far; }
+.tk-plan-chip { min-height: 28px; padding: 0 10px; border-radius: 10px; color: @luma_ink_secondary; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring; }
+.tk-plan-chip.late { color: @luma_danger_ink; }
+.tk-plan-meta > flowboxchild { padding: 0; margin: 0; }
+.tk-plan-notes { font-size: 15px; color: @luma_ink_secondary; }
+.tk-plan-chip label { color: @luma_ink_secondary; }
+.tk-plan-chip.late, .tk-plan-chip.late label { color: @luma_danger_ink; }
+.tk-plan-stamp { margin: 22px 20px; padding: 6px 12px; border-radius: 10px; font-size: 16px; letter-spacing: 0.04em; }
+.tk-plan-stamp.yes { color: @luma_good; box-shadow: inset 0 0 0 2.5px @luma_good; }
+.tk-plan-stamp.no { color: @luma_mark_orange; box-shadow: inset 0 0 0 2.5px @luma_mark_orange; }
+button.tk-plan-act { min-height: 56px; border-radius: 22px; padding: 0 16px; }
+button#tk-plan-no { background: alpha(@luma_mark_orange, 0.16); color: @luma_mark_orange; }
+button#tk-plan-yes { background: shade(@luma_good, 0.72); color: @luma_primary_ink; }
+button#tk-plan-skip { background: none; color: @luma_muted; }
+button.tk-plan-act label { color: inherit; }
+.tk-plan-end-glyph { min-width: 64px; min-height: 64px; border-radius: 22px; color: @luma_primary_ink;
+  background: linear-gradient(135deg, shade(mix(@luma_mark_orange, @luma_danger_fill_end, 0.2), 0.85), shade(@luma_danger_fill_end, 0.9)); }
+.tk-plan-today { min-width: 320px; margin: 10px 0; }
+.tk-plan-today-row { padding: 10px 12px; border-radius: 14px; background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; }
+.tk-plan-start { min-width: 320px; min-height: 52px; border-radius: 20px; }
+
+/* Group headings: ink-2 (v71 .tkgrp h6); Overdue red; the suggestions amber. */
+.tk-group-title { color: @luma_ink_secondary; }
+.tk-group-title.tk-overdue { color: @luma_danger_ink; }
+.tk-suggested-title { color: @luma_amber; }

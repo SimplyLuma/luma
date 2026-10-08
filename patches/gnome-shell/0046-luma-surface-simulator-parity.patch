@@ -1,0 +1,371 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shell: converge surface chrome on the Design Center contract
+
+The global treatment, rather than the retired Shelf material preference, owns
+all Shelf ink. Give every painted layer the effective treatment class, restore
+the simulator's mode-specific depth stack and icon elevation, and keep Quick
+Options' nested detail menus inside the one root backdrop effect.
+
+---
+ data/theme/luma-shelf.css     | 184 ++++++++++++++++++++++++++++++++++++
+ js/ui/lumaSurfaceMaterials.js |  11 +++
+ js/ui/panel.js                |   3 +-
+ js/ui/quickSettings.js        |   4 +
+ js/ui/shelf.js                |  19 +++-
+ 5 files changed, 218 insertions(+), 3 deletions(-)
+
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -111,6 +111,8 @@ class SurfaceMaterialBinding {
+         enabled = true,
+         cornerRadii = 15,
+         classActors = [],
++        backdrop = true,
++        onTreatmentChanged = null,
+     } = {}) {
+         this._controller = controller;
+         this._actor = actor;
+@@ -118,12 +120,17 @@ class SurfaceMaterialBinding {
+         this._classActors = [actor, ...classActors];
+         this._cornerRadii = Array.isArray(cornerRadii)
+             ? [...cornerRadii]
+             : [cornerRadii, cornerRadii, cornerRadii, cornerRadii];
++        this._onTreatmentChanged = onTreatmentChanged;
++        this._treatment = null;
+-        this._effect = new Shell.BlurEffect({
+-            mode: Shell.BlurMode.BACKGROUND,
+-            brightness: 1,
+-        });
+-        actor.add_effect_with_name(EFFECT_NAME, this._effect);
++        this._effect = backdrop
++            ? new Shell.BlurEffect({
++                mode: Shell.BlurMode.BACKGROUND,
++                brightness: 1,
++            })
++            : null;
++        if (this._effect)
++            actor.add_effect_with_name(EFFECT_NAME, this._effect);
+         actor.connect('destroy', () => {
+             this._controller._remove(this);
+             this._actor = null;
+@@ -159,17 +166,28 @@ class SurfaceMaterialBinding {
+     }
+ 
+     _sync(treatment, recipe) {
+-        if (!this._actor || !this._effect)
++        if (!this._actor)
+             return;
+         for (const actor of this._classActors) {
+             for (const name of TREATMENTS)
+                 actor.remove_style_class_name(`luma-surface-${name}`);
+             actor.add_style_class_name(`luma-surface-${treatment}`);
+         }
+ 
++        if (this._treatment !== treatment) {
++            this._treatment = treatment;
++            try {
++                this._onTreatmentChanged?.(treatment);
++            } catch (error) {
++                logError(error, 'Unable to apply Luma surface treatment');
++            }
++        }
++
+-        const active = this._enabled && TRANSLUCENT.has(treatment);
+-        this._effect.radius = recipe.radius;
+-        this._effect.saturation = recipe.saturation;
+-        this._effect.enabled = active;
+-        this._setEffectGeometry();
++        if (this._effect) {
++            const active = this._enabled && TRANSLUCENT.has(treatment);
++            this._effect.radius = recipe.radius;
++            this._effect.saturation = recipe.saturation;
++            this._effect.enabled = active;
++            this._setEffectGeometry();
++        }
+     }
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -827,7 +827,8 @@ class QuickSettings extends PanelMenu.Button {
+         const filled = ['fill', 'both'].includes(frame) || flush;
+         const stroked = ['stroke', 'both'].includes(frame) && !flush;
+         const strength = Number(s.get_string('status-fill-strength')) / 100;
+-        const light = ['light', 'frost'].includes(s.get_string('shelf-material'));
++        const treatment = this._lumaSurfaceTreatment ?? s.get_string('surface-treatment');
++        const light = ['light', 'frost'].includes(treatment);
+         const line = light ? 'rgba(25,27,31,0.14)' : 'rgba(255,255,255,0.16)';
+         const rgba = key => {
+             const raw = s.get_string(key);
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1014,6 +1014,10 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+ 
+         if (item.menu) {
+             item.menu.box.add_style_class_name('luma-quick-detail');
++            // A detail sheet is a pane inside Quick Options, not another
++            // physical sheet over the desktop. The root panel alone owns the
++            // compositor backdrop; the detail retains only its pane fill.
++            item.menu._materialBinding?.setEnabled(false);
+             this._overlay.add_child(item.menu.actor);
+ 
+             item.menu.connect('open-state-changed', (m, isOpen) => {
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -223,10 +223,6 @@ class ShelfIsland extends St.Widget {
+ 
+         child.add_style_class_name('luma-shelf-material');
+         this.add_child(child);
+-        this._materialBinding = SurfaceMaterials.bindSurface(child, {
+-            enabled: false,
+-            cornerRadii: 15,
+-        });
+ 
+         const stroke = new St.Widget({
+             style_class: 'luma-shelf-stroke',
+@@ -241,6 +237,16 @@ class ShelfIsland extends St.Widget {
+         // These painted layers must never intercept the real tile delegate.
+         Shell.util_set_hidden_from_pick(stroke, true);
+         this._stroke = stroke;
++        this._materialBinding = SurfaceMaterials.bindSurface(child, {
++            enabled: false,
++            cornerRadii: 15,
++            classActors: [this, stroke, ...this._shadows],
++            onTreatmentChanged: treatment => {
++                this._content._lumaSurfaceTreatment = treatment;
++                if (this._content._statusActive)
++                    this._content._styleStatusCluster();
++            },
++        });
+     }
+ 
+     setOrientation(vertical, padding, outer = false) {
+@@ -746,6 +752,10 @@ export const Shelf = GObject.registerClass(
+                 item.connectObject('destroy', () => bar.destroy(), bar);
+                 this._dockIndicators.add_child(bar);
+             }
++            if (delegate?.label && !delegate.label._lumaSurfaceBinding) {
++                delegate.label._lumaSurfaceBinding = SurfaceMaterials.bindSurface(
++                    delegate.label, {backdrop: false, cornerRadii: 999});
++            }
+             const icon = delegate?.icon?.icon;
+             if (!icon || icon.get_effect('luma-icon-mask'))
+                 continue;
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -329,2 +329,210 @@
+ .luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material {
+   background-color: transparent; }
++
++/* Design Center surface parity. The effective treatment class is copied to
++ * the material, its physical edge, and each independent shadow layer. */
++.luma-shelf-material.luma-surface-light {
++  background-color: #f1f2f3;
++  color: #34383d; }
++.luma-shelf-material.luma-surface-dark {
++  background-color: #21252b;
++  color: #e7e9e8; }
++.luma-shelf-material.luma-surface-frost {
++  background-color: rgba(241, 242, 243, 0.73);
++  color: #21252b; }
++.luma-shelf-material.luma-surface-glass {
++  background-color: rgba(255, 255, 255, 0.31);
++  color: #ffffff; }
++
++.luma-shelf-stroke.luma-surface-light { border-color: rgba(255,255,255,0.82); }
++.luma-shelf-stroke.luma-surface-dark { border-color: rgba(255,255,255,0.045); }
++.luma-shelf-stroke.luma-surface-frost { border-color: rgba(255,255,255,0.62); }
++.luma-shelf-stroke.luma-surface-glass { border-color: rgba(255,255,255,0.48); }
++
++.luma-shelf-shadow.luma-surface-light,
++.luma-shelf-shadow.luma-surface-frost,
++.luma-shelf-shadow.luma-surface-glass { background-color: rgba(25,27,31,0.01); }
++.luma-shelf-shadow.luma-surface-dark { background-color: rgba(9,11,14,0.01); }
++.luma-shelf-shadow-near.luma-surface-light,
++.luma-shelf-shadow-near.luma-surface-frost { box-shadow: 0 2px 5px 0 rgba(25,27,31,0.18); }
++.luma-shelf-shadow-middle.luma-surface-light,
++.luma-shelf-shadow-middle.luma-surface-frost { box-shadow: 0 18px 42px -14px rgba(25,27,31,0.42); }
++.luma-shelf-shadow-far.luma-surface-light,
++.luma-shelf-shadow-far.luma-surface-frost { box-shadow: 0 54px 110px -28px rgba(25,27,31,0.56); }
++.luma-shelf-shadow-near.luma-surface-dark { box-shadow: 0 3px 8px 0 rgba(9,11,14,0.38); }
++.luma-shelf-shadow-middle.luma-surface-dark { box-shadow: 0 22px 52px -15px rgba(9,11,14,0.72); }
++.luma-shelf-shadow-far.luma-surface-dark { box-shadow: 0 64px 120px -30px rgba(9,11,14,0.82); }
++.luma-shelf-shadow-near.luma-surface-glass { box-shadow: 0 3px 8px 0 rgba(25,27,31,0.20); }
++.luma-shelf-shadow-middle.luma-surface-glass { box-shadow: 0 22px 52px -15px rgba(25,27,31,0.48); }
++.luma-shelf-shadow-far.luma-surface-glass { box-shadow: 0 64px 120px -30px rgba(25,27,31,0.62); }
++
++/* App artwork is one elevated object; hover changes that object, never an
++ * additional square Dash tile behind it. */
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:active {
++  background-color: transparent;
++  box-shadow: none; }
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon {
++  border-radius: 9px;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,0.36),
++              inset 0 0 0 1px rgba(255,255,255,0.09),
++              inset 0 -9px 15px rgba(10,14,20,0.15),
++              0 1px 2px rgba(12,17,24,0.30),
++              0 4px 9px -3px rgba(12,17,24,0.42); }
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover .overview-icon {
++  box-shadow: inset 0 1px 0 rgba(255,255,255,0.42),
++              inset 0 0 0 1px rgba(255,255,255,0.12),
++              inset 0 -9px 15px rgba(10,14,20,0.13),
++              0 2px 3px rgba(12,17,24,0.28),
++              0 6px 12px -3px rgba(12,17,24,0.46); }
++
++.dash-label.luma-surface-light,
++.dash-label.luma-surface-frost,
++.dash-label.luma-surface-glass {
++  border-color: rgba(39,48,56,0.10);
++  background-color: rgba(251,251,250,0.92);
++  color: #283038;
++  box-shadow: 0 4px 14px -5px rgba(10,14,19,0.45); }
++.dash-label.luma-surface-dark {
++  border-color: rgba(255,255,255,0.09);
++  background-color: rgba(42,46,52,0.94);
++  color: #e6eaec;
++  box-shadow: 0 4px 14px -5px rgba(0,0,0,0.60); }
++
++/* The status cluster has no second material inside its island. Its labels and
++ * glyphs follow the global treatment; Glass uses wallpaper-facing white ink. */
++.luma-surface-light .luma-status-cluster,
++.luma-surface-frost .luma-status-cluster {
++  background-color: transparent;
++  color: #191b1f; }
++.luma-surface-dark .luma-status-cluster,
++.luma-surface-glass .luma-status-cluster {
++  background-color: transparent;
++  color: #e7e9e8; }
++.luma-surface-light .luma-status-cluster:hover,
++.luma-surface-light .luma-status-cluster:active,
++.luma-surface-frost .luma-status-cluster:hover,
++.luma-surface-frost .luma-status-cluster:active,
++.luma-surface-dark .luma-status-cluster:hover,
++.luma-surface-dark .luma-status-cluster:active,
++.luma-surface-glass .luma-status-cluster:hover,
++.luma-surface-glass .luma-status-cluster:active { background-color: transparent; }
++.luma-surface-light .luma-status-hover,
++.luma-surface-frost .luma-status-hover { background-color: rgba(25,27,31,0.14); }
++.luma-surface-dark .luma-status-hover,
++.luma-surface-glass .luma-status-hover { background-color: rgba(255,255,255,0.14); }
++.luma-surface-light .luma-shelf-running-indicator,
++.luma-surface-frost .luma-shelf-running-indicator { background-color: #21252b; }
++.luma-surface-dark .luma-shelf-running-indicator,
++.luma-surface-glass .luma-shelf-running-indicator { background-color: #ffffff; }
++
++/* Quick Options is one physical panel. The popup's generic treatment rule is
++ * intentionally beaten here; nested detail panes keep their own raised fill
++ * but their compositor effect is disabled in quickSettings.js. */
++.popup-menu.luma-surface-light .popup-menu-content.luma-quick-options {
++  border-color: rgba(255,255,255,0.72);
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 4px 12px rgba(14,18,24,0.20); }
++.luma-quick-options-popup.luma-surface-light .luma-popup-shadow {
++  background-color: rgba(241,242,243,0.01);
++  box-shadow: 0 34px 84px -24px rgba(14,18,24,0.62); }
++.luma-quick-options.luma-surface-light .luma-quick-time,
++.luma-quick-options.luma-surface-light .luma-quick-battery-icon,
++.luma-quick-options.luma-surface-light .luma-quick-battery-label,
++.luma-quick-options.luma-surface-light .luma-quick-level-title,
++.luma-quick-options.luma-surface-light .luma-quick-identity-name { color: #30343a; }
++.luma-quick-options.luma-surface-light .luma-quick-date,
++.luma-quick-options.luma-surface-light .quick-toggle-subtitle,
++.luma-quick-options.luma-surface-light .luma-quick-level-value,
++.luma-quick-options.luma-surface-light .luma-quick-identity-role { color: #767b81; }
++.luma-quick-options.luma-surface-light .quick-toggle,
++.luma-quick-options.luma-surface-light .quick-toggle-has-menu,
++.luma-quick-options.luma-surface-light .luma-quick-identity,
++.luma-quick-options.luma-surface-light .luma-quick-action,
++.luma-quick-options.luma-surface-light .quick-slider .icon-button {
++  border-color: rgba(35,39,45,0.09);
++  background-color: rgba(35,39,45,0.06);
++  color: #30343a; }
++.luma-quick-options.luma-surface-light .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-light .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-light .luma-quick-avatar {
++  border-color: rgba(35,39,45,0.09);
++  background-color: #ffffff;
++  color: #767b81; }
++.luma-quick-options.luma-surface-light .slider {
++  color: #3d444c;
++  -barlevel-background-color: rgba(35,39,45,0.10);
++  -barlevel-active-background-color: #3d444c;
++  -slider-handle-border-color: #f1f2f3; }
++.popup-menu.luma-surface-frost .popup-menu-content.luma-quick-options {
++  border-color: rgba(255,255,255,0.62);
++  background-color: rgba(244,245,246,0.80);
++  color: #30343a;
++  box-shadow: 0 5px 16px rgba(14,18,24,0.20); }
++.luma-quick-options-popup.luma-surface-frost .luma-popup-shadow {
++  background-color: rgba(241,242,243,0.01);
++  box-shadow: 0 38px 94px -26px rgba(14,18,24,0.62); }
++.popup-menu.luma-surface-glass .popup-menu-content.luma-quick-options {
++  border-color: rgba(255,255,255,0.34);
++  background-color: rgba(22,29,40,0.38);
++  color: #ffffff;
++  box-shadow: 0 5px 16px rgba(9,15,25,0.24); }
++.luma-quick-options-popup.luma-surface-glass .luma-popup-shadow {
++  background-color: rgba(22,29,40,0.01);
++  box-shadow: 0 42px 100px -26px rgba(9,15,25,0.76); }
++
++.luma-quick-options.luma-surface-frost .luma-quick-time,
++.luma-quick-options.luma-surface-frost .luma-quick-battery-icon,
++.luma-quick-options.luma-surface-frost .luma-quick-battery-label,
++.luma-quick-options.luma-surface-frost .luma-quick-level-title,
++.luma-quick-options.luma-surface-frost .luma-quick-identity-name { color: #30343a; }
++.luma-quick-options.luma-surface-frost .luma-quick-date,
++.luma-quick-options.luma-surface-frost .quick-toggle-subtitle,
++.luma-quick-options.luma-surface-frost .luma-quick-level-value,
++.luma-quick-options.luma-surface-frost .luma-quick-identity-role { color: #6c757d; }
++.luma-quick-options.luma-surface-frost .quick-toggle,
++.luma-quick-options.luma-surface-frost .quick-toggle-has-menu,
++.luma-quick-options.luma-surface-frost .luma-quick-identity,
++.luma-quick-options.luma-surface-frost .luma-quick-action,
++.luma-quick-options.luma-surface-frost .quick-slider .icon-button {
++  border-color: rgba(37,46,54,0.105);
++  background-color: rgba(37,46,54,0.07);
++  color: #30343a; }
++.luma-quick-options.luma-surface-frost .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-frost .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-frost .luma-quick-avatar {
++  border-color: rgba(37,46,54,0.105); }
++
++.luma-quick-options.luma-surface-glass .luma-quick-time,
++.luma-quick-options.luma-surface-glass .luma-quick-battery-icon,
++.luma-quick-options.luma-surface-glass .luma-quick-battery-label,
++.luma-quick-options.luma-surface-glass .luma-quick-level-title,
++.luma-quick-options.luma-surface-glass .luma-quick-identity-name { color: #ffffff; }
++.luma-quick-options.luma-surface-glass .luma-quick-date,
++.luma-quick-options.luma-surface-glass .quick-toggle-subtitle,
++.luma-quick-options.luma-surface-glass .luma-quick-level-value,
++.luma-quick-options.luma-surface-glass .luma-quick-identity-role { color: rgba(255,255,255,0.70); }
++.luma-quick-options.luma-surface-glass .quick-toggle,
++.luma-quick-options.luma-surface-glass .quick-toggle-has-menu,
++.luma-quick-options.luma-surface-glass .luma-quick-identity,
++.luma-quick-options.luma-surface-glass .luma-quick-action,
++.luma-quick-options.luma-surface-glass .quick-slider .icon-button {
++  border-color: rgba(255,255,255,0.15);
++  background-color: rgba(10,20,33,0.20);
++  color: #ffffff; }
++.luma-quick-options.luma-surface-glass .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-glass .quick-toggle-menu-button {
++  border-color: rgba(255,255,255,0.15);
++  background-color: rgba(255,255,255,0.15);
++  color: rgba(255,255,255,0.70); }
++.luma-quick-options.luma-surface-glass .quick-toggle:checked .quick-toggle-icon {
++  background-color: #f2f5f7;
++  color: #1b2129; }
++.luma-quick-options.luma-surface-glass .slider {
++  color: #f2f5f7;
++  -barlevel-background-color: rgba(10,20,33,0.20);
++  -barlevel-active-background-color: #f2f5f7;
++  -slider-handle-border-color: rgba(24,34,47,0.72); }
+-- 
+2.54.0

@@ -1,0 +1,46 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Use the final private Mutter typelib directory at runtime
+
+The bake-off resolves Mutter through a staged pkg-config prefix. Embedding
+that staging directory as MUTTER_TYPELIB_DIR makes GI dlopen a second copy of
+Mutter after the installed copy has already been linked, which causes a
+duplicate ClutterActor registration and aborts the session.
+
+Retain the dependency-provided directory for build rpaths, but compile the
+final private-prefix typelib directory into the installed shell.
+---
+ meson.build     | 6 ++++++
+ src/meson.build | 2 +-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/meson.build b/meson.build
+index 7b15b4e..bf4ea78 100644
+--- a/meson.build
++++ b/meson.build
+@@ -140,6 +140,12 @@ if get_option('man')
+ endif
+ 
+ mutter_typelibdir = mutter_dep.get_variable('typelibdir')
++# The bake-off build resolves Mutter from a staging pkg-config prefix. That
++# path is valid while linking, but embedding it in the installed shell makes
++# GI load a second copy of Mutter alongside the one already linked from the
++# final private prefix. Keep the dependency-provided directory for build
++# rpaths and use the final install directory for runtime GI discovery.
++mutter_runtime_typelibdir = join_paths(libdir, 'mutter-' + mutter_api_version)
+ python = find_program('python3')
+ gjs = find_program('gjs')
+ generate_app_list = find_program('meson/generate-app-list.py')
+diff --git a/src/meson.build b/src/meson.build
+index b365bcc..a3f5c24 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -44,6 +44,6 @@ endif
+ 
+ typelib_cflags = [
+-  '-DMUTTER_TYPELIB_DIR="@0@"'.format(mutter_typelibdir),
++  '-DMUTTER_TYPELIB_DIR="@0@"'.format(mutter_runtime_typelibdir),
+   '-DSHELL_TYPELIB_DIR="@0@"'.format(pkglibdir),
+ ]
+ 
+-- 
+2.51.0

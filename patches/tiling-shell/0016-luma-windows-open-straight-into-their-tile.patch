@@ -1,0 +1,170 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 22 Sep 2026 12:00:00 -0500
+Subject: [PATCH] luma: windows open straight into their tile
+
+Window memory placed a window with a remembered tile only once Mutter had
+shown it: the client first drew at the size it chose itself, window
+memory then asked for the tile, and the window stayed invisible until
+the client had drawn again at the new size. A client slower than the
+250 ms that hold allowed (Tide, Files, Messages on the owner's laptop)
+was shown at its own size and then eased into its tile, which is the
+settle people saw; every other launch waited out a second layout.
+
+Mutter asks for a new window's initial configuration before the client
+draws anything, with the window's "configure" signal: the size a Wayland
+client's first configure carries, and the geometry an X11 window is
+mapped with. Window memory now answers there, so the client's first
+frame is already the tile (or the remembered floating place, or
+maximized). The tiled state travels in the same configure, so the first
+frame has no floating shadows either. The hold stays as a safety net
+for clients that ignore the size they are given, shortened to 150 ms
+after the window first reaches the screen, and the window then appears
+with the usual open animation.
+
+Anything unsure keeps the old path, placed when first shown: a window
+restored by the session, one that turns out to be a dialog, transient
+or fixed-size, an app's second window, a window the person already
+moved, a monitor that is gone, or a Mutter without the signal. Each
+reveal logs whether the window was placed before its first frame and,
+if not, why.
+---
+--- a/components/lumaWindowMemory/windowMemory.js
++++ b/components/lumaWindowMemory/windowMemory.js
+@@ -21,7 +21,7 @@
+ // and a window the person touches wins. Whatever else moved it (Mutter on a
+ // monitor change, a client that is slow to wake), a window never stays partly
+ // off its monitor's work area: it is brought fully inside in one move.
+-import { Clutter, GLib, Gio, Meta, Shell, St } from "../../gi/ext.js";
++import { Clutter, GLib, GObject, Gio, Meta, Shell, St } from "../../gi/ext.js";
+ import { buildRectangle } from "../../utils/ui.js";
+ import * as Main from "resource:///org/gnome/shell/ui/main.js";
+ import Tile from "../layout/Tile.js";
+@@ -29,6 +29,16 @@
+ import { maximizeWindow, unmaximizeWindow } from "../../utils/gnomesupport.js";
+ 
+ const VERSION = 1;
++// Mutter 48 and later ask for a new window's initial configuration with the
++// window's "configure" signal: the size a Wayland client's first configure
++// carries, and the geometry an X11 window is mapped with.
++const HAS_INITIAL_CONFIGURE = (() => {
++  try {
++    return GObject.signal_lookup("configure", Meta.Window) !== 0;
++  } catch (e) {
++    return false;
++  }
++})();
+ export const KEY_ENABLED = "luma-remember-window-positions";
+ export const KEY_RESET = "luma-window-memory-reset";
+ const HOUR = 3600 * 1e3;
+@@ -57,6 +67,10 @@
+   holdMax: 1000,
+   // a hold longer than this is logged as a warning, so a regression shows up
+   holdWarn: 500,
++  // A window given its place in Mutter's initial configuration draws its first
++  // frame there; it is kept hidden only until that frame, and at most this long
++  // after it first reaches the screen if its client ignores the size it was given.
++  holdPreplaced: 150,
+   // a stay shorter than this is a detour: it adds hours but not a session
+   dwell: 60 * 1e3,
+   // open windows credit their hours this often, so a crash loses little
+@@ -776,6 +790,11 @@
+     const actor = window.get_compositor_private();
+     if (!actor) return;
+     data.actor = actor;
++    // Decide before the client draws anything: a window with a place of its own
++    // is given that place in Mutter's initial configuration, so its first frame
++    // is already there and nothing is seen to settle.
++    if (HAS_INITIAL_CONFIGURE)
++      data.ids.push(window.connect("configure", (_window, config) => this._onInitialConfigure(window, data, config)));
+     // Decide before the client's first frame: a window with a place of its own
+     // stays invisible until it is there, then appears with the usual animation.
+     if (this._hold(window, data)) return;
+@@ -823,7 +842,7 @@
+         hold.shown = true;
+         hold.shownBy = by;
+       }
+-      hold.shownId ||= this._timeout(this.timing.holdAfterShown, () => this._revealHold(window, data, "safety timeout", { placeAfter: true }));
++      hold.shownId ||= this._timeout(hold.preplaced ? this.timing.holdPreplaced : this.timing.holdAfterShown, () => this._revealHold(window, data, "safety timeout", { placeAfter: true }));
+       check();
+     };
+     for (const signal of ["size-changed", "position-changed", "notify::maximized-vertically"])
+@@ -849,6 +868,60 @@
+     if (data.shown) markShown("already shown");
+     else if (actor.visible && actor.mapped) markShown("already mapped");
+     return true;
++  }
++
++  // Mutter asks for a new window's initial configuration before the client has
++  // drawn anything (a Wayland client's first configure, an X11 window's map). A
++  // held window whose place is known gets it here, so its first frame is drawn
++  // in its tile and at its size; the hold then only covers that first frame.
++  // Anything unsure (a window restored by the session, one that turns out to be
++  // a dialog or fixed-size, not the app's first window, a monitor that is gone)
++  // is left to the usual path, placed when it is first shown.
++  _onInitialConfigure(window, data, config) {
++    if (data.configured || !config.get_is_initial()) return;
++    data.configured = true;
++    if (!data.decided && !data.hold) this._hold(window, data);
++    const hold = data.hold;
++    if (!hold || hold.started) return;
++    const skip = (reason) => {
++      hold.preplaceSkipped = reason;
++    };
++    const wayland = window.get_client_type() === Meta.WindowClientType.WAYLAND;
++    const current = window.get_frame_rect();
++    if (wayland && (current.width > 0 || window.maximizedHorizontally || window.maximizedVertically || window.is_fullscreen()))
++      return skip("restored by the session");
++    const unfit = notRememberableReason(window);
++    if (unfit) return skip(unfit);
++    this._identify(window);
++    if (window[ORDINAL] !== 0) return skip("not the app's first window");
++    if (window[TOUCHED]) return skip("moved by the person");
++    const p = hold.decision.target;
++    const monitor = this._monitors().find((m) => m.key === p.m);
++    if (!monitor) return skip("monitor gone");
++    let frame;
++    if (p.k === "tile") {
++      hold.tile ??= this._tileFrame(window, p, monitor);
++      if (!hold.tile) return skip("no tiling manager for the monitor");
++      frame = hold.tile.frame;
++    } else if (p.k === "max") {
++      const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
++      frame = [area.x, area.y, area.width, area.height];
++    } else {
++      frame = this._floatFrame(p, monitor);
++    }
++    hold.started = true;
++    hold.preplaced = true;
++    hold.expected = frame;
++    window[OWN_UNTIL] = this._now() + this.timing.holdMax;
++    // Tiled or maximized states travel in the same configure, so the client
++    // draws its first frame without the shadows of a floating window.
++    if (p.k === "tile") window.assignedTile = hold.tile.tile;
++    // Position and size separately: set_rect() takes its rectangle by value,
++    // which GJS passes as garbage.
++    const [x, y, width, height] = frame;
++    config.set_position(x, y);
++    config.set_size(width, height);
++    if (p.k === "max") maximizeWindow(window);
+   }
+ 
+   // The exact frame Tiling Shell gives a tile on this monitor, and the tile.
+@@ -1011,7 +1084,7 @@
+     const placed = why === "in place";
+     data.revealedAfter = waited;
+     data.revealedWhy = why;
+-    vitals(placed ? "launch-placed" : "launch-revealed", `${window[APP]} ${placed ? "opened" : "shown"} at ${describe(target)} (${reason}${confidence ? `, ${confidence}` : ""}; ${why} after ${waited} ms, on screen by ${hold.shownBy ?? "nothing"})`, {
++    vitals(placed ? "launch-placed" : "launch-revealed", `${window[APP]} ${placed ? "opened" : "shown"} at ${describe(target)} (${reason}${confidence ? `, ${confidence}` : ""}; ${why} after ${waited} ms, on screen by ${hold.shownBy ?? "nothing"}; ${hold.preplaced ? "placed before its first frame" : `placed after it was shown: ${hold.preplaceSkipped ?? (HAS_INITIAL_CONFIGURE ? "decided late" : "no initial configure")}`})`, {
+       app: window[APP],
+       reason,
+       kind: target.k,
+@@ -1020,7 +1093,8 @@
+       setup_mode: mode,
+       hidden_ms: waited,
+       reveal: why,
+-      shown_by: hold.shownBy
++      shown_by: hold.shownBy,
++      preplaced: !!hold.preplaced
+     });
+     if (waited > this.timing.holdWarn) {
+       vitals("launch-slow-reveal", `${window[APP]} was held ${waited} ms before it was shown (${why}; on screen by ${hold.shownBy ?? "nothing"})`, {

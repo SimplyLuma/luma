@@ -1,0 +1,310 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Session D-Bus broker for the canonical Project Luma shell state."""
+
+from __future__ import annotations
+
+import sys
+
+sys.path.insert(0, "/usr/libexec/luma-shell-state")
+
+from gi.repository import Gio, GLib
+
+from luma_shell_state import (
+    InvalidState,
+    LUMA_GTK3_THEMES,
+    build_snapshot,
+    detect_renderer,
+    encode_snapshot,
+    gtk_theme_for_appearance,
+    normalize_app_ids,
+    normalize_appearance,
+    normalize_idle_delay,
+    normalize_shelf,
+    normalize_wallpaper_uri,
+)
+
+
+BUS_NAME = "org.project_luma.ShellState1"
+OBJECT_PATH = "/org/project_luma/ShellState1"
+INTERFACE = BUS_NAME
+
+INTROSPECTION_XML = """
+<node>
+  <interface name="org.project_luma.ShellState1">
+    <method name="GetSnapshot">
+      <arg name="snapshot" type="s" direction="out"/>
+    </method>
+    <method name="SetFavorites">
+      <arg name="application_ids" type="as" direction="in"/>
+    </method>
+    <method name="SetHomeApps">
+      <arg name="application_ids" type="as" direction="in"/>
+    </method>
+    <method name="SetWallpaper">
+      <arg name="uri" type="s" direction="in"/>
+    </method>
+    <method name="SetAppearance">
+      <arg name="appearance" type="s" direction="in"/>
+    </method>
+    <method name="SetIdleDelay">
+      <arg name="seconds" type="u" direction="in"/>
+    </method>
+    <signal name="Changed">
+      <arg name="key" type="s"/>
+      <arg name="snapshot" type="s"/>
+    </signal>
+  </interface>
+</node>
+"""
+
+
+class ShellStateService:
+    def __init__(self) -> None:
+        self._connection: Gio.DBusConnection | None = None
+        self._registration_id = 0
+        self._node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION_XML)
+        self._shell = Gio.Settings.new("org.gnome.shell")
+        self._background = Gio.Settings.new("org.gnome.desktop.background")
+        self._interface = Gio.Settings.new("org.gnome.desktop.interface")
+        self._session = Gio.Settings.new("org.gnome.desktop.session")
+        self._a11y = Gio.Settings.new("org.gnome.desktop.a11y.applications")
+        self._luma = Gio.Settings.new("org.project_luma.shell-state")
+        self._phosh = None
+        self._syncing_favorites = False
+        schema_source = Gio.SettingsSchemaSource.get_default()
+        if schema_source.lookup("sm.puri.phosh", True) is not None:
+            self._phosh = Gio.Settings.new("sm.puri.phosh")
+            self._phosh.connect("changed::favorites", self._on_phosh_favorites_changed)
+
+        watched = (
+            (self._shell, "favorites"),
+            (self._background, "wallpaper"),
+            (self._interface, "appearance"),
+            (self._session, "power"),
+            (self._a11y, "input"),
+            (self._luma, "luma"),
+        )
+        for settings, group in watched:
+            settings.connect("changed", self._on_settings_changed, group)
+        self._sync_gtk3_theme()
+        self._project_favorites_to_phosh()
+
+    def _sync_gtk3_theme(self) -> None:
+        """Keep supported legacy GTK apps on Luma's selected material."""
+
+        current = self._interface.get_string("gtk-theme")
+        if current not in LUMA_GTK3_THEMES:
+            return
+        selected = self._luma.get_user_value("surface-treatment")
+        desired = gtk_theme_for_appearance(
+            self._interface.get_string("color-scheme"),
+            selected.get_string() if selected is not None else None,
+        )
+        if current != desired:
+            self._interface.set_string("gtk-theme", desired)
+
+    def _arrangement(self) -> list:
+        # A shell-state schema older than ADR-044 has no key: the default.
+        if not self._luma.props.settings_schema.has_key("shelf-arrangement"):
+            return []
+        return self._luma.get_value("shelf-arrangement").unpack()
+
+    def _free_placement(self) -> bool:
+        if not self._luma.props.settings_schema.has_key("shelf-free-placement"):
+            return False
+        return self._luma.get_boolean("shelf-free-placement")
+
+    def _renderer(self) -> str:
+        renderer = detect_renderer()
+        if renderer != "unknown" or self._connection is None:
+            return renderer
+        result = self._connection.call_sync(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "NameHasOwner",
+            GLib.Variant("(s)", ("mobi.phosh.Shell.DebugControl",)),
+            GLib.VariantType.new("(b)"),
+            Gio.DBusCallFlags.NONE,
+            1000,
+            None,
+        )
+        if result is not None and result.unpack()[0]:
+            return "phosh"
+        return "gnome"
+
+    def _project_favorites_to_phosh(self) -> None:
+        if self._phosh is None or self._syncing_favorites:
+            return
+        canonical = list(self._shell.get_strv("favorite-apps"))
+        if canonical == list(self._phosh.get_strv("favorites")):
+            return
+        self._syncing_favorites = True
+        try:
+            self._phosh.set_strv("favorites", canonical)
+        finally:
+            self._syncing_favorites = False
+
+    def _on_phosh_favorites_changed(self, settings: Gio.Settings, _key: str) -> None:
+        if self._syncing_favorites:
+            return
+        try:
+            favorites = normalize_app_ids(settings.get_strv("favorites"))
+        except InvalidState:
+            self._project_favorites_to_phosh()
+            return
+        if favorites == list(self._shell.get_strv("favorite-apps")):
+            return
+        self._syncing_favorites = True
+        try:
+            self._shell.set_strv("favorite-apps", favorites)
+        finally:
+            self._syncing_favorites = False
+
+    def snapshot(self) -> str:
+        snapshot = build_snapshot(
+            favorites=self._shell.get_strv("favorite-apps"),
+            home_apps=self._luma.get_strv("home-apps"),
+            wallpaper_uri=self._background.get_string("picture-uri"),
+            wallpaper_uri_dark=self._background.get_string("picture-uri-dark"),
+            wallpaper_style=self._background.get_string("picture-options"),
+            appearance=self._interface.get_string("color-scheme"),
+            idle_delay=self._session.get_uint("idle-delay"),
+            screen_keyboard_enabled=self._a11y.get_boolean("screen-keyboard-enabled"),
+            launcher_columns=self._luma.get_uint("mobile-launcher-columns"),
+            input_method=self._luma.get_string("input-method"),
+            restore_app_state=self._luma.get_boolean("restore-app-state"),
+            renderer=self._renderer(),
+            shelf=normalize_shelf(
+                layout_version=self._luma.get_uint("shelf-layout-version"),
+                edge=self._luma.get_string("shelf-edge"),
+                dock_anchor=self._luma.get_string("shelf-dock-anchor"),
+                actions_anchor=self._luma.get_string("shelf-actions-anchor"),
+                group_layout=self._luma.get_string("shelf-group-layout"),
+                surface_mode=self._luma.get_string("shelf-surface-mode"),
+                edge_mode=self._luma.get_string("shelf-edge-mode"),
+                span_full=self._luma.get_boolean("shelf-span-full"),
+                float_ends=self._luma.get_boolean("shelf-float-ends"),
+                padding=self._luma.get_int("shelf-padding"),
+                status={
+                    "frame": self._luma.get_string("status-frame"),
+                    "frame_scope": self._luma.get_string("status-frame-scope"),
+                    "divider": self._luma.get_boolean("status-divider"),
+                    "glyph_tiles": self._luma.get_boolean("status-glyph-tiles"),
+                    "controls_right": self._luma.get_boolean("status-controls-right"),
+                    "fill_strength": self._luma.get_string("status-fill-strength"),
+                    "clock_fill": self._luma.get_string("status-clock-fill"),
+                    "controls_fill": self._luma.get_string("status-controls-fill"),
+                    "time_size": self._luma.get_int("status-time-size"),
+                    "date_size": self._luma.get_int("status-date-size"),
+                },
+                material=self._luma.get_string("shelf-material"),
+                monitor_mode=self._luma.get_string("shelf-monitor-mode"),
+                overflow_mode=self._luma.get_string("shelf-overflow-mode"),
+                dock_visible=self._luma.get_boolean("shelf-dock-visible"),
+                actions_visible=self._luma.get_boolean("shelf-actions-visible"),
+                reserve_work_area=self._luma.get_boolean("shelf-reserve-work-area"),
+                auto_hide=self._luma.get_boolean("shelf-auto-hide"),
+                islands=self._luma.get_strv("shelf-islands"),
+                arrangement=self._arrangement(),
+                free_placement=self._free_placement(),
+            ),
+        )
+        return encode_snapshot(snapshot)
+
+    def _on_settings_changed(self, _settings: Gio.Settings, key: str, group: str) -> None:
+        if group == "favorites" and key == "favorite-apps":
+            self._project_favorites_to_phosh()
+        if (group == "appearance" and key in {"color-scheme", "gtk-theme"}) or (
+            group == "luma" and key == "surface-treatment"
+        ):
+            self._sync_gtk3_theme()
+        if self._connection is None:
+            return
+        self._connection.emit_signal(
+            None,
+            OBJECT_PATH,
+            INTERFACE,
+            "Changed",
+            GLib.Variant("(ss)", (f"{group}.{key}", self.snapshot())),
+        )
+
+    def _return_error(self, invocation: Gio.DBusMethodInvocation, error: Exception) -> None:
+        invocation.return_dbus_error(f"{INTERFACE}.InvalidState", str(error))
+
+    def _on_method_call(
+        self,
+        _connection: Gio.DBusConnection,
+        _sender: str,
+        _object_path: str,
+        _interface_name: str,
+        method_name: str,
+        parameters: GLib.Variant,
+        invocation: Gio.DBusMethodInvocation,
+    ) -> None:
+        try:
+            values = parameters.unpack()
+            if method_name == "GetSnapshot":
+                invocation.return_value(GLib.Variant("(s)", (self.snapshot(),)))
+            elif method_name == "SetFavorites":
+                self._shell.set_strv("favorite-apps", normalize_app_ids(values[0]))
+                invocation.return_value(None)
+            elif method_name == "SetHomeApps":
+                self._luma.set_strv("home-apps", normalize_app_ids(values[0]))
+                invocation.return_value(None)
+            elif method_name == "SetWallpaper":
+                uri = normalize_wallpaper_uri(values[0])
+                self._background.set_string("picture-uri", uri)
+                self._background.set_string("picture-uri-dark", uri)
+                invocation.return_value(None)
+            elif method_name == "SetAppearance":
+                self._interface.set_string("color-scheme", normalize_appearance(values[0]))
+                invocation.return_value(None)
+            elif method_name == "SetIdleDelay":
+                self._session.set_uint("idle-delay", normalize_idle_delay(values[0]))
+                invocation.return_value(None)
+            else:
+                invocation.return_dbus_error(
+                    f"{INTERFACE}.UnknownMethod", f"unknown method: {method_name}"
+                )
+        except (InvalidState, TypeError, ValueError) as error:
+            self._return_error(invocation, error)
+
+    def on_bus_acquired(self, connection: Gio.DBusConnection, _name: str) -> None:
+        self._connection = connection
+        self._registration_id = connection.register_object(
+            OBJECT_PATH,
+            self._node.interfaces[0],
+            self._on_method_call,
+            None,
+            None,
+        )
+
+    def close(self) -> None:
+        if self._connection is not None and self._registration_id:
+            self._connection.unregister_object(self._registration_id)
+
+
+def main() -> int:
+    loop = GLib.MainLoop()
+    service = ShellStateService()
+    owner_id = Gio.bus_own_name(
+        Gio.BusType.SESSION,
+        BUS_NAME,
+        Gio.BusNameOwnerFlags.NONE,
+        service.on_bus_acquired,
+        None,
+        lambda *_args: loop.quit(),
+    )
+    try:
+        loop.run()
+    finally:
+        Gio.bus_unown_name(owner_id)
+        service.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

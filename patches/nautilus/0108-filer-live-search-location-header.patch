@@ -1,0 +1,179 @@
+From aa87905a4014df25c60c64e998f18e157d90c659 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 23:01:16 +0000
+Subject: [PATCH] Filer: show live search heading and scope in location header
+
+---
+ src/nautilus-window.c | 111 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 111 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index eea2f85..085ed78 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -68,6 +68,7 @@
+ #include "nautilus-module.h"
+ #include "nautilus-progress-indicator.h"
+ #include "nautilus-query.h"
++#include "nautilus-search-directory.h"
+ #include "nautilus-scheme.h"
+ #include "nautilus-shortcut-manager.h"
+ #include "nautilus-sidebar.h"
+@@ -118,6 +119,8 @@ struct _NautilusWindow
+     LumaSidebarToggle *sidebar_toggle;
+     GtkWidget *location_title;
+     GtkWidget *location_meta;
++    GtkWidget *location_scope;
++    GFile *search_origin;
+     GtkWidget *information_host;
+     LumaDetailsPane *information_pane;
+ 
+@@ -355,6 +358,78 @@ append_location_separator (NautilusWindow *window)
+     gtk_box_append (GTK_BOX (window->location_meta), separator);
+ }
+ 
++static void
++on_search_scope_changed (LumaModeSwitch *switcher,
++                         const char     *key,
++                         NautilusWindow *window)
++{
++    if (window->active_slot == NULL)
++    {
++        return;
++    }
++    GFile *location = nautilus_window_slot_get_location (window->active_slot);
++    if (location == NULL || !g_file_has_uri_scheme (location, SCHEME_SEARCH))
++    {
++        return;
++    }
++    g_autoptr (NautilusDirectory) directory = nautilus_directory_get (location);
++    if (!NAUTILUS_IS_SEARCH_DIRECTORY (directory))
++    {
++        return;
++    }
++    NautilusQuery *current = nautilus_search_directory_get_query (NAUTILUS_SEARCH_DIRECTORY (directory));
++    if (current == NULL)
++    {
++        return;
++    }
++    g_autoptr (NautilusQuery) query = nautilus_query_copy (current);
++    g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++    const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++    if (fixture_root != NULL)
++    {
++        g_autofree char *fixture_home = g_build_filename (fixture_root, "Home", NULL);
++        g_clear_object (&home);
++        home = g_file_new_for_path (fixture_home);
++    }
++    GFile *target = g_strcmp0 (key, "all") == 0 ? home : window->search_origin;
++    if (target != NULL)
++    {
++        nautilus_query_set_location (query, target);
++        nautilus_window_slot_search (window->active_slot, query);
++    }
++}
++
++static void
++set_search_scope_label (NautilusWindow *window,
++                        const char     *label)
++{
++    GtkWidget *old = window->location_scope;
++    if (old != NULL && g_strcmp0 (g_object_get_data (G_OBJECT (old), "filer-scope-label"), label) == 0)
++    {
++        return;
++    }
++    GtkWidget *host = old != NULL ? gtk_widget_get_parent (old) : NULL;
++    if (old != NULL && host != NULL)
++    {
++        gtk_box_remove (GTK_BOX (host), old);
++    }
++    window->location_scope = luma_mode_switch_new (_("Search in"));
++    gtk_widget_set_name (window->location_scope, "filer-location-scope");
++    luma_mode_switch_add (LUMA_MODE_SWITCH (window->location_scope), "here", label, "folder");
++    luma_mode_switch_add (LUMA_MODE_SWITCH (window->location_scope), "all", _("Everywhere"), "globe");
++    gtk_widget_set_margin_top (window->location_scope, 12);
++    gtk_widget_set_halign (window->location_scope, GTK_ALIGN_START);
++    gtk_widget_set_visible (window->location_scope, FALSE);
++    g_object_set_data_full (G_OBJECT (window->location_scope), "filer-scope-label",
++                            g_strdup (label), g_free);
++    g_signal_connect (window->location_scope, "changed",
++                      G_CALLBACK (on_search_scope_changed), window);
++    if (host != NULL)
++    {
++        gtk_box_append (GTK_BOX (host), window->location_scope);
++    }
++}
++
+ static void
+ update_location_header (NautilusWindow *window)
+ {
+@@ -373,9 +448,26 @@ update_location_header (NautilusWindow *window)
+     g_autoptr (NautilusDirectory) listing = location != NULL
+                                              ? nautilus_directory_get (location) : NULL;
+     guint count;
++    gboolean searching = location != NULL &&
++                         g_file_has_uri_scheme (location, SCHEME_SEARCH) &&
++                         NAUTILUS_IS_SEARCH_DIRECTORY (listing);
++    NautilusQuery *query = searching
++                           ? nautilus_search_directory_get_query (NAUTILUS_SEARCH_DIRECTORY (listing))
++                           : NULL;
+     const char *title = window->active_slot != NULL
+                         ? nautilus_window_slot_get_title (window->active_slot) : _("Files");
+ 
++    if (!searching && location != NULL)
++    {
++        g_set_object (&window->search_origin, location);
++    }
++    if (searching && window->search_origin != NULL)
++    {
++        g_autofree char *scope_label = g_file_get_basename (window->search_origin);
++        set_search_scope_label (window, scope_label != NULL ? scope_label : _("Here"));
++    }
++    gtk_widget_set_visible (window->location_scope, searching && query != NULL);
++
+     gtk_label_set_label (GTK_LABEL (window->location_title),
+                          title != NULL ? title : _("Files"));
+     GtkWidget *child;
+@@ -418,6 +510,22 @@ update_location_header (NautilusWindow *window)
+     {
+         return;
+     }
++    if (query != NULL)
++    {
++        g_autofree char *query_text = nautilus_query_get_text (query);
++        g_autofree char *heading = count > 0
++                                   ? g_strdup_printf (ngettext ("%u result", "%u results", count), count)
++                                   : g_strdup (_("No results"));
++        g_autofree char *description = g_strdup_printf (_("for “%s”"), query_text != NULL ? query_text : "");
++        gtk_label_set_label (GTK_LABEL (window->location_title), heading);
++        GtkWidget *description_label = gtk_label_new (description);
++        gtk_box_append (GTK_BOX (window->location_meta), description_label);
++        GFile *scope = nautilus_query_get_location (query);
++        luma_mode_switch_set_current (LUMA_MODE_SWITCH (window->location_scope),
++                                      scope != NULL && window->search_origin != NULL &&
++                                      g_file_equal (scope, window->search_origin) ? "here" : "all");
++        return;
++    }
+     g_autofree char *count_meta = g_strdup_printf (ngettext ("%u item", "%u items", count), count);
+     if (gtk_widget_get_first_child (window->location_meta) != NULL)
+     {
+@@ -1622,6 +1730,7 @@ nautilus_window_finalize (GObject *object)
+ 
+     g_clear_object (&window->selected_file);
+     g_clear_object (&window->selected_volume);
++    g_clear_object (&window->search_origin);
+ 
+     g_signal_handlers_disconnect_by_func (nautilus_file_undo_manager_get (),
+                                           G_CALLBACK (nautilus_window_on_undo_changed),
+@@ -2177,6 +2286,8 @@ nautilus_window_init (NautilusWindow *window)
+     gtk_widget_set_margin_top (window->location_meta, 4);
+     gtk_box_append (GTK_BOX (location), window->location_title);
+     gtk_box_append (GTK_BOX (location), window->location_meta);
++    set_search_scope_label (window, _("Here"));
++    gtk_box_append (GTK_BOX (location), window->location_scope);
+     gtk_box_append (GTK_BOX (window->trail_host), location);
+     gtk_widget_set_name (window->location_row, "filer-location-row");
+     window->information_pane = LUMA_DETAILS_PANE (
+-- 
+2.55.0
+

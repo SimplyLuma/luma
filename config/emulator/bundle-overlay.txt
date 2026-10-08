@@ -1,0 +1,23 @@
+# The Luma composition overlay.
+#
+# Installing Luma's packages is not enough to get Luma. The FP6 rootfs
+# composition (scripts/mobile/compose-fp6-rootfs.sh) also installs a session
+# launcher, a device-class environment, and a compiled dconf database — and it
+# is those that carry the dock, the layout, the wallpaper and the touch
+# capabilities. A guest with the packages but without this overlay comes up as
+# generic upstream Phosh, which is exactly the trap this file exists to close.
+#
+# Format:  <scope> <mode> <repo-relative source> <guest destination>
+#   scope  shared   applied to every machine
+#          desktop  applied when the machine is in desktop presentation
+#          mobile   applied when the machine is in handheld presentation
+#
+# Scoped entries are staged in the image and placed by the emulator when the
+# presentation mode is selected, mirroring the way composition installs only
+# the overlay for the device class being built.
+
+shared   0644  config/desktop/dconf/profile/user                  /etc/dconf/profile/user
+shared   0644  config/desktop/dconf/db/luma.d/00-luma-desktop     /etc/dconf/db/luma.d/00-luma-desktop
+mobile   0644  config/mobile/luma-shell-handheld.dconf            /etc/dconf/db/luma.d/90-luma-handheld
+mobile   0644  config/mobile/environment.d/90-luma-handheld.conf  /etc/environment.d/90-luma-handheld.conf
+mobile   0755  scripts/mobile/luma-phosh-session                  /usr/local/bin/luma-phosh-session

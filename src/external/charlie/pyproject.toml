@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "charlie-luma"
+version = "0.2.14"
+description = "Native adaptive mail for Project Luma"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+
+[tool.setuptools]
+packages = ["charlie_luma"]

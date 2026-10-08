@@ -1,0 +1,22 @@
+[terminal]
+vt = 7
+switch = true
+
+[general]
+source_profile = false
+persistent_compositor = true
+
+# A handheld boots directly into the authenticated user's native Phosh session
+# and Phosh starts locked. This is the same lock manager used after suspend, so
+# cold boot and wake cannot diverge into two independently maintained login
+# surfaces. The user session owns its one Phoc compositor from the beginning.
+[initial_session]
+command = "/usr/local/bin/luma-phosh-session"
+user = "luma"
+
+# Presence remains a recovery greeter only. If the initial session exits,
+# greetd presents a PAM-backed path back into the phone instead of leaving a
+# dead VT. It is not part of the normal boot or wake path.
+[default_session]
+command = "/usr/libexec/luma-presence-compositor"
+user = "greetd"

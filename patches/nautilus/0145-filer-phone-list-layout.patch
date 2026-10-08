@@ -1,0 +1,145 @@
+From: Luma UI maintainers <noreply@projectluma.org>
+Subject: [PATCH] Adapt Filer views through the shared width watch
+
+At phone widths, show a headerless file-name and modified-date list.
+Use the shared window width watcher so first allocation and later resizing
+apply the layout, without rewriting saved desktop column preferences.
+Grid uses the same watcher and 560 breakpoint instead of an idle map retry.
+
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -133,6 +133,8 @@
+     {
+         return 32;
+     }
++    if (self->phone_layout)
++        return 24;
+     return get_icon_size_for_zoom_level (self->zoom_level);
+ }
+ 
+@@ -196,7 +198,10 @@
+     g_hash_table_remove (visible_columns_hash, "starred");
+     if (self->phone_layout && self->search_directory == NULL)
+     {
+-        g_hash_table_remove (visible_columns_hash, "date_modified");
++        /* Temporary phone columns do not rewrite saved desktop preferences. */
++        g_hash_table_remove_all (visible_columns_hash);
++        g_hash_table_insert (visible_columns_hash, g_strdup ("name"), g_strdup ("name"));
++        g_hash_table_insert (visible_columns_hash, g_strdup ("date_modified"), g_strdup ("date_modified"));
+     }
+ 
+     old_view_columns_hash = g_hash_table_new_full (g_str_hash,
+@@ -765,7 +770,7 @@
+     }
+     g_object_notify (G_OBJECT (self), "icon-size");
+     luma_column_view_header_set_visible (self->luma_header,
+-                                         self->search_directory == NULL);
++                                         self->search_directory == NULL && !self->phone_layout);
+ 
+     if (self->search_directory != NULL)
+     {
+@@ -1333,7 +1338,8 @@
+     GtkShortcut *shortcut;
+ 
+     gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-list-view");
+-    g_signal_connect_swapped (self, "notify::width", G_CALLBACK (update_phone_layout), self);
++    g_signal_connect_object (luma_width_watch_get (GTK_WIDGET (self)), "notify::width",
++                             G_CALLBACK (update_phone_layout), self, G_CONNECT_SWAPPED);
+     g_signal_connect_swapped (self, "notify::root", G_CALLBACK (update_phone_layout), self);
+ 
+     g_signal_connect_object (nautilus_list_view_preferences,
+@@ -1455,11 +1461,19 @@
+     GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
+     int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root))
+                                     : gtk_widget_get_width (GTK_WIDGET (self));
+-    gboolean phone_layout = window_width > 0 && window_width <= 480;
++    gboolean phone_layout = window_width > 0 && window_width < 560;
+ 
+     if (self->phone_layout != phone_layout)
+     {
+         self->phone_layout = phone_layout;
++        if (phone_layout)
++            gtk_widget_add_css_class (GTK_WIDGET (self), "phone-list");
++        else
++            gtk_widget_remove_css_class (GTK_WIDGET (self), "phone-list");
++        if (self->luma_header != NULL)
++            luma_column_view_header_set_visible (self->luma_header,
++                                                  !phone_layout && self->search_directory == NULL);
++        g_object_notify (G_OBJECT (self), "icon-size");
+         if (nautilus_list_base_get_directory_as_file (NAUTILUS_LIST_BASE (self)) != NULL)
+         {
+             update_columns_settings_from_metadata_and_preferences (self);
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1327,3 +1327,16 @@
+   font-family: "Figtree";
+   font-size: 13px;
+ }
++
++/* v71 phone list: headerless name/date rows with 24px file artwork. */
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) columnview > listview {
++  border-spacing: 0;
++}
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) .nautilus-view-cell {
++  min-height: 54px;
++}
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) columnview > listview > row {
++  min-height: 54px;
++  font-size: 15px;
++  font-weight: 500;
++}
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -16,6 +16,7 @@
+ #include "nautilus-view-model.h"
+ 
+ #include <glib/gi18n.h>
++#include <luma-ui.h>
+ 
+ struct _NautilusGridView
+ {
+@@ -360,7 +361,7 @@
+     GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
+     int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root))
+                                     : gtk_widget_get_width (GTK_WIDGET (self));
+-    gboolean phone_layout = window_width > 0 && window_width <= 480;
++    gboolean phone_layout = window_width > 0 && window_width < 560;
+ 
+     if (self->phone_layout != phone_layout)
+     {
+@@ -375,23 +376,6 @@
+         }
+         g_object_notify (G_OBJECT (self), "icon-size");
+     }
+-}
+-
+-static gboolean
+-update_phone_layout_after_map (gpointer data)
+-{
+-    update_phone_layout (NAUTILUS_GRID_VIEW (data));
+-    return G_SOURCE_REMOVE;
+-}
+-
+-static void
+-queue_phone_layout_after_map (NautilusGridView *self)
+-{
+-    /* A view opened by a fixture or restored tab can map before its root has
+-     * its final width. Recheck after the first layout so selection does not
+-     * fall back to two oversized columns at phone width. */
+-    g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, update_phone_layout_after_map,
+-                     g_object_ref (self), g_object_unref);
+ }
+ 
+ static int
+@@ -623,9 +607,9 @@
+     GtkWidget *scrolled_window = nautilus_list_base_get_scrolled_window (NAUTILUS_LIST_BASE (self));
+ 
+     gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-grid-view");
+-    g_signal_connect_swapped (self, "notify::width", G_CALLBACK (update_phone_layout), self);
++    g_signal_connect_object (luma_width_watch_get (GTK_WIDGET (self)), "notify::width",
++                             G_CALLBACK (update_phone_layout), self, G_CONNECT_SWAPPED);
+     g_signal_connect_swapped (self, "notify::root", G_CALLBACK (update_phone_layout), self);
+-    g_signal_connect_swapped (self, "map", G_CALLBACK (queue_phone_layout_after_map), self);
+ 
+     set_captions_from_preferences (self);
+     g_signal_connect_object (nautilus_icon_view_preferences,

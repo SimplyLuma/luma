@@ -1,0 +1,319 @@
+--- a/js/ui/lumaSearch.js
++++ b/js/ui/lumaSearch.js
+@@ -1,6 +1,7 @@
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
+@@ -14,7 +15,28 @@
+         super._init({
+             styleClass: 'luma-search-dialog',
+             destroyOnClose: false,
++            actionMode: Shell.ActionMode.OVERVIEW,
+         });
++        // Position the natural-sized dialog wrapper itself; otherwise its
++        // changing intro/result height is centered in the monitor. Keeping it
++        // tight also lets the sibling event blocker own every outside click.
++        this.dialogLayout.set({
++            x_expand: false,
++            y_expand: false,
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.START,
++        });
++        this._yPositionConstraint = new Clutter.BindConstraint({
++            source: this.backgroundStack,
++            coordinate: Clutter.BindCoordinate.Y,
++        });
++        this.dialogLayout.add_constraint(this._yPositionConstraint);
++        this._island = this.dialogLayout._dialog;
++        // Establish the anchor before the dialog is mapped for the first
++        // time; changing the inherited centered alignment from open() leaves
++        // one frame (and on some monitors one allocation) at the old center.
++        this._island.y_align = Clutter.ActorAlign.START;
++        this._island.margin_top = 0;
+         this.accessible_name = _('Search this machine');
+         this._lightbox._radialEffect = false;
+         this._lightbox.remove_effect_by_name('radial');
+@@ -23,6 +45,11 @@
+             opacity: 0,
+             style: 'background-color: rgb(12, 16, 21);',
+         });
++        // Dialog enables forced offscreen rendering for generic wrapped
++        // content. Beam uses fixed-width islands, and the offscreen texture
++        // clips their shadows to the dialog allocation.
++        this._island.set_offscreen_redirect(
++            Clutter.OffscreenRedirect.NEVER);
+         this._eventBlocker.connect('button-press-event', () => {
+             this.close();
+             return Clutter.EVENT_STOP;
+@@ -55,11 +82,15 @@
+         }));
+         ShellEntry.addContextMenu(this._entry);
+         this._fieldIsland.add_child(this._entry);
+-        this._fieldIsland.add_child(new St.Label({
++        this._closeButton = new St.Button({
+             style_class: 'luma-search-escape',
+-            text: _('esc'),
++            label: _('esc'),
++            accessible_name: _('Close Search'),
++            can_focus: true,
+             y_align: Clutter.ActorAlign.CENTER,
+-        }));
++        });
++        this._closeButton.connect('clicked', () => this.close());
++        this._fieldIsland.add_child(this._closeButton);
+         stage.add_child(this._fieldIsland);
+ 
+         this._intro = new St.BoxLayout({
+@@ -70,10 +101,12 @@
+         this._intro.add_child(new St.Label({
+             style_class: 'luma-search-intro-title',
+             text: _('Everything on this machine, in one place.'),
++            x_align: Clutter.ActorAlign.CENTER,
+         }));
+         this._intro.add_child(new St.Label({
+             style_class: 'luma-search-intro-subtitle',
+             text: _('Applications and settings first, then your files, mail, people, days and music.'),
++            x_align: Clutter.ActorAlign.CENTER,
+         }));
+         const suggestions = new St.BoxLayout({
+             style_class: 'luma-search-suggestions',
+@@ -98,6 +131,7 @@
+         // activation paths as GNOME's mature Activity View search. Compact is
+         // presentation-only: it renders every provider as a Beam result row.
+         this._results = new Search.SearchResultsView({compact: true});
++        this._results.y_expand = false;
+         this._results.connect('result-activated', () => this.close());
+         this._results.hide();
+         stage.add_child(this._results);
+@@ -119,15 +153,11 @@
+     open() {
+         if (Main.overview.visible)
+             Main.overview.hide();
+-        const monitor = global.display.get_current_monitor();
+-        const workArea = Main.layoutManager.getWorkAreaForMonitor(monitor);
+-        const island = this.dialogLayout._dialog;
+-        island.width = Math.min(620, workArea.width - 48);
+-        island.y_align = Clutter.ActorAlign.START;
+-        island.margin_top = Math.round(workArea.height * 0.13);
+-        this._results.set_style(
+-            `max-height: ${Math.round(workArea.height * 0.46)}px;`);
++        this._syncGeometry();
++        const island = this._island;
+         const animate = St.Settings.get().enable_animations;
++        // The outer dialog owns the fixed work-area anchor. Keep the island's
++        // own translation exclusively for its short entrance motion.
+         island.translation_y = animate ? 10 : 0;
+         island.scale_x = animate ? 0.985 : 1;
+         island.scale_y = animate ? 0.985 : 1;
+@@ -146,6 +176,45 @@
+         return opened;
+     }
+ 
++    warmUp() {
++        // Resolve Beam's theme nodes and natural sizes while the shell is
++        // starting, rather than making the first overlay-key invocation pay
++        // that cost. The dialog stays hidden and never takes a modal grab.
++        this._syncGeometry();
++        for (const actor of [
++            this.dialogLayout,
++            this._fieldIsland,
++            this._entry,
++            this._closeButton,
++            this._intro,
++            this._results,
++        ]) {
++            actor.ensure_style();
++            actor.get_preferred_size();
++        }
++    }
++
++    _syncGeometry() {
++        const monitor = global.display.get_current_monitor();
++        const workArea = Main.layoutManager.getWorkAreaForMonitor(monitor);
++        const island = this._island;
++        island.width = Math.min(620, workArea.width - 48);
++        const topInset = Math.round(workArea.height * 0.13);
++        const rowHeight = 64;
++        const rowSpacing = 2;
++        const viewportPadding = 12;
++        const maxAvailable = Math.round(workArea.height * 0.46);
++        const rowCount = Math.max(1, Math.floor(
++            (maxAvailable - viewportPadding + rowSpacing) /
++            (rowHeight + rowSpacing)));
++        const maxResultsHeight = viewportPadding + rowCount * rowHeight +
++            (rowCount - 1) * rowSpacing;
++        this._results.set_style(
++            `max-height: ${maxResultsHeight}px;`);
++        this._yPositionConstraint.offset = topInset;
++        island.queue_relayout();
++    }
++
+     toggle() {
+         if (this.state === ModalDialog.State.OPENED ||
+             this.state === ModalDialog.State.OPENING)
+@@ -196,6 +265,7 @@
+ export class LumaSearch {
+     constructor() {
+         this._dialog = new LumaSearchDialog();
++        this._dialog.warmUp();
+         this._a11ySettings = new Gio.Settings({
+             schema_id: 'org.gnome.desktop.a11y.keyboard',
+         });
+--- a/js/ui/search.js
++++ b/js/ui/search.js
+@@ -82,7 +82,10 @@
+     }
+ 
+     activate() {
+-        this.provider.activateResult(this.metaInfo.id, this._resultsView.terms);
++        if (this._activationDelegate)
++            this._activationDelegate.activate();
++        else
++            this.provider.activateResult(this.metaInfo.id, this._resultsView.terms);
+ 
+         if (this.metaInfo.clipboardText) {
+             St.Clipboard.get_default().set_text(
+@@ -95,8 +98,12 @@
+ 
+ export const ListSearchResult = GObject.registerClass(
+ class ListSearchResult extends SearchResult {
+-    _init(provider, metaInfo, resultsView) {
++    _init(provider, metaInfo, resultsView, activationDelegate = null) {
+         super._init(provider, metaInfo, resultsView);
++        this._activationDelegate = activationDelegate;
++        if (activationDelegate) {
++            this.connect('destroy', () => activationDelegate.destroy());
++        }
+ 
+         if (resultsView.compact) {
+             this._initCompact(metaInfo);
+@@ -170,9 +177,19 @@
+             icon_name: 'edit-find-symbolic',
+             icon_size: 17,
+         });
++        // Remote providers may return an application icon whose natural size
++        // ignores createIcon()'s hint. Constrain the actor as well as its bin
++        // so one result can never turn into an oversized app tile.
++        resultIcon.set_size(18, 18);
++        resultIcon.set({
++            x_expand: false,
++            y_expand: false,
++        });
+         content.add_child(new St.Bin({
+             style_class: `luma-search-result-mark kind-${kind}`,
+             child: resultIcon,
++            width: 34,
++            height: 34,
+             x_align: Clutter.ActorAlign.CENTER,
+             y_align: Clutter.ActorAlign.CENTER,
+         }));
+@@ -267,7 +284,10 @@
+         this._resultDisplayBin = new St.Bin();
+         this.add_child(this._resultDisplayBin);
+ 
+-        const separator = new St.Widget({style_class: 'search-section-separator'});
++        const separator = new St.Widget({
++            style_class: 'search-section-separator',
++            visible: !resultsView.compact,
++        });
+         this.add_child(separator);
+ 
+         this._resultDisplays = {};
+@@ -420,6 +440,16 @@
+     }
+ 
+     _createResultDisplay(meta) {
++        if (this._resultsView.compact) {
++            // Application search results own launch animation and activation
++            // in a provider-created actor. Keep that behavior as a hidden
++            // delegate while presenting the same compact row as every other
++            // provider.
++            const activationDelegate = this.provider.createResultObject?.(meta);
++            return new ListSearchResult(
++                this.provider, meta, this._resultsView, activationDelegate);
++        }
++
+         return super._createResultDisplay(meta) ||
+                new ListSearchResult(this.provider, meta, this._resultsView);
+     }
+@@ -664,7 +694,7 @@
+             name: 'searchResults',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+-            y_expand: true,
++            y_expand: !params.compact,
+         });
+         this._compact = params.compact ?? false;
+         if (this._compact)
+@@ -681,9 +711,11 @@
+ 
+         this._scrollView = new St.ScrollView({
+             overlay_scrollbars: true,
+-            style_class: 'search-display vfade',
++            style_class: this._compact
++                ? 'search-display'
++                : 'search-display vfade',
+             x_expand: true,
+-            y_expand: true,
++            y_expand: !this._compact,
+             child: this._content,
+         });
+ 
+@@ -697,7 +729,7 @@
+             style_class: 'search-statusbox',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+-            y_expand: true,
++            y_expand: !this._compact,
+             x_align: Clutter.ActorAlign.CENTER,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+--- a/data/theme/gnome-shell-sass/widgets/_dialogs.scss
++++ b/data/theme/gnome-shell-sass/widgets/_dialogs.scss
+@@ -48,7 +48,7 @@
+     border-radius: 18px;
+     background-color: if($variant == 'light', #fbfbfa, #2a2e34);
+     border: if($contrast == 'high', 2px solid $fg_color, 1px solid if($variant == 'light', rgba(39, 48, 56, .095), rgba(255, 255, 255, .08)));
+-    box-shadow: 0 18px 48px -18px rgba(8, 12, 17, .70);
++    box-shadow: 0 14px 36px -18px rgba(8, 12, 17, .58);
+   }
+ 
+   .luma-search-field {
+@@ -58,7 +58,7 @@
+ 
+     &:focus {
+       border-color: if($variant == 'light', rgba(67, 113, 156, .45), rgba(128, 168, 210, .48));
+-      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, .70), inset 0 0 0 1px if($variant == 'light', rgba(67, 113, 156, .16), rgba(128, 168, 210, .18));
++      box-shadow: 0 14px 36px -18px rgba(8, 12, 17, .58), inset 0 0 0 1px if($variant == 'light', rgba(67, 113, 156, .16), rgba(128, 168, 210, .18));
+     }
+   }
+ 
+@@ -96,6 +96,13 @@
+     font-family: 'Figtree';
+     font-size: 11px;
+     font-weight: 600;
++
++    &:hover, &:focus {
++      background-color: if($variant == 'light', rgba(39, 48, 56, .08), rgba(255, 255, 255, .08));
++    }
++    &:active {
++      background-color: if($variant == 'light', rgba(39, 48, 56, .12), rgba(255, 255, 255, .12));
++    }
+   }
+ 
+   .luma-search-intro {
+@@ -184,8 +191,8 @@
+   }
+   .luma-search-result-content { spacing: $base_padding * 2; }
+   .luma-search-result-mark {
+-    width: 32px;
+-    height: 32px;
++    width: 34px;
++    height: 34px;
+     border-radius: 10px;
+     color: $fg_color;
+     background-color: if($variant == 'light', rgba(70, 125, 176, .12), rgba(128, 168, 210, .14));

@@ -1,0 +1,118 @@
+From df8b5cc03d5c11094617adf3a7a32b722e704f19 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 11:02:00 +0200
+Subject: [PATCH 23/41] tee: qseecom: do not sleep inside the supplicant's wait
+ condition
+
+wait_event_interruptible() evaluates its condition with the task state already
+set to TASK_INTERRUPTIBLE, and the condition here took a mutex. mutex_lock()
+calls might_sleep(), so under CONFIG_DEBUG_ATOMIC_SLEEP every supplicant block
+hits the "do not call blocking ops when !TASK_RUNNING" warning, and on a
+contended acquisition the task is left runnable and spins rather than sleeping.
+
+Take the request under the lock in an explicit loop and block outside it on a
+flag that can be read without one, which is the shape OP-TEE settled on for the
+same reason.
+
+Assisted-by: Claude:claude-opus-5
+Assisted-by: Kimi:kimi-k3
+---
+ drivers/tee/qseecom/core.c | 48 +++++++++++++++++++++-----------------
+ 1 file changed, 26 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index a7f083b86..b1b586612 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -105,6 +105,7 @@ struct qseecom_tee_supp {
+ 	wait_queue_head_t wq;
+ 	struct qseecom_tee_listener *req;
+ 	bool taken;
++	bool pending;		/* readable without the mutex, for the wait */
+ 	bool answered;
+ 	u32 status;
+ 	unsigned int users;
+@@ -977,6 +978,7 @@ static int qseecom_tee_listener_service(struct qcom_scm_qseecom_listener *scm)
+ 
+ 		supp->req = listener;
+ 		supp->taken = false;
++		WRITE_ONCE(supp->pending, true);
+ 		supp->answered = false;
+ 		supp->status = QSEECOM_LISTENER_FAILURE;
+ 	}
+@@ -1007,6 +1009,7 @@ static int qseecom_tee_listener_service(struct qcom_scm_qseecom_listener *scm)
+ 
+ 		supp->req = NULL;
+ 		supp->taken = false;
++		WRITE_ONCE(supp->pending, false);
+ 		supp->answered = false;
+ 	}
+ 
+@@ -1017,17 +1020,6 @@ static int qseecom_tee_listener_service(struct qcom_scm_qseecom_listener *scm)
+ 	return status;
+ }
+ 
+-static bool qseecom_tee_supp_pending(struct qseecom_tee_supp *supp)
+-{
+-	bool pending;
+-
+-	mutex_lock(&supp->mutex);
+-	pending = supp->req && !supp->taken;
+-	mutex_unlock(&supp->mutex);
+-
+-	return pending;
+-}
+-
+ /*
+  * Withdraw a listener and release what it held.
+  *
+@@ -1067,7 +1059,6 @@ static int qseecom_tee_supp_recv(struct tee_context *ctx, u32 *func,
+ 	struct qseecom_tee_supp *supp = &qtee->supp;
+ 	struct qseecom_tee_listener *listener;
+ 	unsigned int i;
+-	int ret;
+ 
+ 	if (*num_params < 1)
+ 		return -EINVAL;
+@@ -1092,18 +1083,31 @@ static int qseecom_tee_supp_recv(struct tee_context *ctx, u32 *func,
+ 			return -EINVAL;
+ 	}
+ 
+-	ret = wait_event_interruptible(supp->wq,
+-				       qseecom_tee_supp_pending(supp));
+-	if (ret)
+-		return -ERESTARTSYS;
+-
+-	guard(mutex)(&supp->mutex);
++	/*
++	 * Take the request under the lock, and wait outside it.
++	 *
++	 * Evaluating a condition that can sleep from inside
++	 * wait_event_interruptible() is not allowed: the condition runs with
++	 * the task state already set to TASK_INTERRUPTIBLE, and mutex_lock()
++	 * calls might_sleep(), which splats under CONFIG_DEBUG_ATOMIC_SLEEP
++	 * and can leave the task spinning rather than sleeping. OP-TEE settled
++	 * on this shape for the same reason.
++	 */
++	while (true) {
++		scoped_guard(mutex, &supp->mutex) {
++			listener = supp->req;
++			if (listener && !supp->taken) {
++				supp->taken = true;
++				goto got_request;
++			}
++		}
+ 
+-	listener = supp->req;
+-	if (!listener || supp->taken)
+-		return -EAGAIN;
++		if (wait_event_interruptible(supp->wq,
++					     READ_ONCE(supp->pending)))
++			return -ERESTARTSYS;
++	}
+ 
+-	supp->taken = true;
++got_request:
+ 
+ 	/*
+ 	 * The request is already in the listener's buffer, which the

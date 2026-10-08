@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+[application]
+id = "com.example.Usage"
+name = "Usage"
+
+[background]
+agent = "org.projectluma.Messages.Agent"
+exec = "usage-meter --agent"
+category = "widget-data"
+wake = ["login"]

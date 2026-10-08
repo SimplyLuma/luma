@@ -1,0 +1,213 @@
+{
+  "id": "org.gnome.Nautilus",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "nautilus",
+  "appstream-compose": false,
+  "finish-args": [
+    "--metadata=X-Luma=min-host-installer=60",
+    "--metadata=X-Luma=app-data-schema=filer-shared-v1",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--share=network",
+    "--filesystem=host",
+    "--filesystem=xdg-run/gvfsd",
+    "--filesystem=xdg-run/dconf",
+    "--filesystem=xdg-config/dconf:ro",
+    "--filesystem=xdg-config/gtk-4.0",
+    "--filesystem=xdg-config/gtk-3.0",
+    "--filesystem=xdg-config/nautilus",
+    "--env=DCONF_USER_CONFIG_DIR=.config/dconf",
+    "--talk-name=ca.desrt.dconf",
+    "--talk-name=org.gtk.vfs.*",
+    "--talk-name=org.gtk.MountOperationHandler",
+    "--talk-name=org.gnome.Mutter.ServiceChannel",
+    "--talk-name=org.projectluma.ApplicationInstaller2",
+    "--talk-name=org.project_luma.shell",
+    "--talk-name=org.gnome.Ptyxis",
+    "--talk-name=org.projectluma.QuickView",
+    "--own-name=org.freedesktop.FileManager1",
+    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Audio",
+    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Documents",
+    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:FileSystem",
+    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Pictures",
+    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Music",
+    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Video",
+    "--talk-name=org.projectluma.ApplicationDirectory1"
+  ],
+  "modules": [
+    {
+      "name": "filer",
+      "buildsystem": "simple",
+      "modules": [
+        {
+          "name": "inih",
+          "buildsystem": "meson",
+          "builddir": true,
+          "config-opts": [
+            "-Ddefault_library=shared",
+            "-Ddistro_install=true",
+            "-Dwith_INIReader=true",
+            "-Dtests=false"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://github.com/benhoyt/inih/archive/refs/tags/r62.tar.gz",
+              "sha256": "9c15fa751bb8093d042dae1b9f125eb45198c32c6704cd5481ccde460d4f8151"
+            }
+          ],
+          "post-install": [
+            "install -Dm644 /run/build/inih/LICENSE.txt /app/share/licenses/org.gnome.Nautilus/dependencies/inih/LICENSE.txt"
+          ]
+        },
+        {
+          "name": "exiv2",
+          "buildsystem": "cmake-ninja",
+          "builddir": true,
+          "config-opts": [
+            "-DCMAKE_INSTALL_PREFIX=/app",
+            "-DCMAKE_INSTALL_LIBDIR=lib",
+            "-DEXIV2_BUILD_EXIV2_COMMAND=OFF",
+            "-DEXIV2_BUILD_SAMPLES=OFF",
+            "-DEXIV2_BUILD_UNIT_TESTS=OFF"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://github.com/Exiv2/exiv2/archive/refs/tags/v0.28.3.tar.gz",
+              "sha256": "1315e17d454bf4da3cc0edb857b1d2c143670f3485b537d0f946d9ed31d87b70"
+            }
+          ],
+          "post-install": [
+            "install -Dm644 /run/build/exiv2/COPYING /app/share/licenses/org.gnome.Nautilus/dependencies/exiv2/COPYING",
+            "install -Dm644 /run/build/exiv2/LICENSE.txt /app/share/licenses/org.gnome.Nautilus/dependencies/exiv2/LICENSE.txt",
+            "install -Dm644 /run/build/exiv2/doc/COPYING-XMPSDK /app/share/licenses/org.gnome.Nautilus/dependencies/exiv2/doc/COPYING-XMPSDK"
+          ]
+        },
+        {
+          "name": "gexiv2",
+          "buildsystem": "meson",
+          "builddir": true,
+          "config-opts": [
+            "-Dintrospection=false",
+            "-Dvapi=false",
+            "-Dtools=false",
+            "-Dpython3=false"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://download.gnome.org/sources/gexiv2/0.16/gexiv2-0.16.0.tar.xz",
+              "sha256": "d96f895f24539f966f577b2bb2489ae84f8232970a8d0c064e4a007474a77bbb"
+            }
+          ],
+          "post-install": [
+            "install -Dm644 /run/build/gexiv2/COPYING /app/share/licenses/org.gnome.Nautilus/dependencies/gexiv2/COPYING"
+          ]
+        },
+        {
+          "name": "gnome-desktop",
+          "buildsystem": "meson",
+          "builddir": true,
+          "config-opts": [
+            "-Ddebug_tools=false",
+            "-Ddesktop_docs=false",
+            "-Dlegacy_library=false",
+            "-Dintrospection=true",
+            "-Dsystemd=disabled",
+            "-Dudev=disabled"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://download.gnome.org/sources/gnome-desktop/44/gnome-desktop-44.5.tar.xz",
+              "sha256": "20e0995a6e3a03e8c1026c5a27bc3f45e69ffcc392ad743dcab6107a541d232f"
+            }
+          ],
+          "post-install": [
+            "install -Dm644 /run/build/gnome-desktop/COPYING /app/share/licenses/org.gnome.Nautilus/dependencies/gnome-desktop/COPYING",
+            "install -Dm644 /run/build/gnome-desktop/COPYING.LIB /app/share/licenses/org.gnome.Nautilus/dependencies/gnome-desktop/COPYING.LIB"
+          ]
+        },
+        {
+          "name": "gnome-autoar",
+          "buildsystem": "meson",
+          "builddir": true,
+          "config-opts": [
+            "-Dgtk=false",
+            "-Dintrospection=disabled"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://download.gnome.org/sources/gnome-autoar/0.4/gnome-autoar-0.4.5.tar.xz",
+              "sha256": "838c5306fc38bfaa2f23abe24262f4bf15771e3303fb5dcb74f5b9c7a615dabe"
+            }
+          ],
+          "post-install": [
+            "install -Dm644 /run/build/gnome-autoar/COPYING /app/share/licenses/org.gnome.Nautilus/dependencies/gnome-autoar/COPYING"
+          ]
+        },
+        {
+          "name": "libportal",
+          "buildsystem": "meson",
+          "builddir": true,
+          "config-opts": [
+            "-Dbackend-gtk4=enabled",
+            "-Dbackend-gtk3=disabled",
+            "-Ddocs=false",
+            "-Dintrospection=false",
+            "-Dtests=false",
+            "-Dvapi=false"
+          ],
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://github.com/flatpak/libportal/releases/download/0.9.1/libportal-0.9.1.tar.xz",
+              "sha256": "de801ee349ed3c255a9af3c01b1a401fab5b3fc1c35eb2fd7dfb35d4b8194d7f"
+            }
+          ],
+          "post-install": [
+            "install -Dm644 /run/build/libportal/COPYING /app/share/licenses/org.gnome.Nautilus/dependencies/libportal/COPYING"
+          ]
+        },
+        {
+          "name": "localsearch-schemas",
+          "buildsystem": "simple",
+          "sources": [
+            {
+              "type": "archive",
+              "url": "https://download.gnome.org/sources/localsearch/3.11/localsearch-3.11.2.tar.xz",
+              "sha256": "65cf50a8be54bff81fb1ffab539890c82d12895880f11fbbd8815142bc9e93df"
+            }
+          ],
+          "build-commands": [
+            "install -d /app/share/glib-2.0/schemas /app/share/licenses/org.gnome.Nautilus/dependencies/localsearch",
+            "python3 -c 'from pathlib import Path; p=Path(\"data/org.freedesktop.Tracker.Miner.Files.gschema.xml\"); text=p.read_text().replace(\"@INDEX_RECURSIVE_DIRS@\", repr(chr(36)+\"HOME\")).replace(\"@INDEX_SINGLE_DIRS@\", \"\"); assert \"@INDEX_\" not in text; Path(\"/app/share/glib-2.0/schemas/org.freedesktop.Tracker3.Miner.Files.gschema.xml\").write_text(text)' ",
+            "install -m644 COPYING COPYING.GPL COPYING.LGPL /app/share/licenses/org.gnome.Nautilus/dependencies/localsearch/",
+            "glib-compile-schemas --strict /app/share/glib-2.0/schemas"
+          ]
+        }
+      ],
+      "build-commands": [
+        "python3 packaging/nautilus/flatpak-source.py .",
+        "patch --batch --fuzz=0 -d nautilus-50.2.2 -p1 -i ../packaging/nautilus/flatpak-test-localsearch.patch",
+        "meson setup _build nautilus-50.2.2 --prefix=/app --libdir=lib -Ddocs=false -Dtests=headless -Dintrospection=false -Dextensions=true",
+        "meson compile -C _build -j2",
+        "meson test -C _build --no-rebuild --print-errorlogs test-filename-common-prefix test-filename-utilities",
+        "meson install -C _build",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.gnome.Nautilus.metainfo.xml",
+        "install -Dm644 nautilus-50.2.2/LICENSE /app/share/licenses/org.gnome.Nautilus/LICENSE",
+        "install -Dm644 nautilus-50.2.2/LUCIDE-LICENSE /app/share/licenses/org.gnome.Nautilus/LUCIDE-LICENSE",
+        "rm /app/share/applications/nautilus-autorun-software.desktop",
+        "glib-compile-schemas /app/share/glib-2.0/schemas",
+        "install -Dm644 -t /app/share/luma-app-media depot-media/*.png"
+      ]
+    }
+  ]
+}

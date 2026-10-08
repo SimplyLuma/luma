@@ -1,0 +1,461 @@
+{
+  "version": 1,
+  "now": "2026-09-22T12:00:00+00:00",
+  "view": "library",
+  "zoom": "days",
+  "size": 168,
+  "viewer": null,
+  "photos": [
+    {
+      "id": "0",
+      "image": "photos-v70/social-luma/photos/life-hero-writing.webp",
+      "title": "Writing at home",
+      "place": "Oakland",
+      "day": "Today",
+      "day_subtitle": "Tuesday, September 22",
+      "date": "2026-09-22",
+      "time": "10:42 AM",
+      "favourite": true,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "1",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-write.webp",
+      "title": "Laptop on the boardwalk",
+      "place": "Venice",
+      "day": "Today",
+      "day_subtitle": "Tuesday, September 22",
+      "date": "2026-09-22",
+      "time": "10:18 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "2",
+      "image": "photos-v70/social-luma/photos/life-sync-terrace.webp",
+      "title": "Terrace, morning",
+      "place": "Lisbon",
+      "day": "Today",
+      "day_subtitle": "Tuesday, September 22",
+      "date": "2026-09-22",
+      "time": "8:05 AM",
+      "favourite": true,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "3",
+      "image": "photos-v70/social-luma/photos/life-work-suite.webp",
+      "title": "At the desk",
+      "place": "Brooklyn",
+      "day": "Today",
+      "day_subtitle": "Tuesday, September 22",
+      "date": "2026-09-22",
+      "time": "7:51 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "4",
+      "image": "photos-v70/social-luma/photos/life-ari-street.webp",
+      "title": "On the way in",
+      "place": "Brooklyn",
+      "day": "Today",
+      "day_subtitle": "Tuesday, September 22",
+      "date": "2026-09-22",
+      "time": "7:30 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "5",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-canvas.webp",
+      "title": "Posters on the floor",
+      "place": "Los Angeles",
+      "day": "Saturday",
+      "day_subtitle": "September 19",
+      "date": "2026-09-19",
+      "time": "4:12 PM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "6",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-sessions.webp",
+      "title": "Band practice",
+      "place": "Nashville",
+      "day": "Saturday",
+      "day_subtitle": "September 19",
+      "date": "2026-09-19",
+      "time": "2:40 PM",
+      "favourite": true,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "7",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-reel.webp",
+      "title": "Skate shoot",
+      "place": "Los Angeles",
+      "day": "Saturday",
+      "day_subtitle": "September 19",
+      "date": "2026-09-19",
+      "time": "11:05 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "8",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-stage.webp",
+      "title": "Showing the deck",
+      "place": "Austin",
+      "day": "Saturday",
+      "day_subtitle": "September 19",
+      "date": "2026-09-19",
+      "time": "10:20 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "9",
+      "image": "photos-v70/social-luma/photos/life-footer.webp",
+      "title": "A desk in a field",
+      "place": "Sonoma",
+      "day": "Saturday",
+      "day_subtitle": "September 19",
+      "date": "2026-09-19",
+      "time": "8:44 AM",
+      "favourite": true,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "10",
+      "image": "photos-v70/social-luma/photos/life-testimonial.webp",
+      "title": "Picnic",
+      "place": "Sonoma",
+      "day": "Saturday",
+      "day_subtitle": "September 19",
+      "date": "2026-09-19",
+      "time": "8:10 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "11",
+      "image": "photos-v70/social-luma/photos/life-hero-home.webp",
+      "title": "Kitchen table",
+      "place": "Portland",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "6:30 PM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "12",
+      "image": "photos-v70/social-luma/photos/life-professionals-loft.webp",
+      "title": "The loft",
+      "place": "Chicago",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "3:15 PM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "13",
+      "image": "photos-v70/social-luma/photos/life-ledge-blog-1.webp",
+      "title": "Two at work",
+      "place": "Chicago",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "2:02 PM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "14",
+      "image": "photos-v70/social-luma/photos/life-hero-studio.webp",
+      "title": "Studio floor",
+      "place": "Oakland",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "11:48 AM",
+      "favourite": true,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "15",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-grid.webp",
+      "title": "Papers and a calculator",
+      "place": "Venice",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "10:31 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "16",
+      "image": "photos-v70/social-luma/photos/life-suite-bg-darkroom.webp",
+      "title": "Shooting the coast",
+      "place": "Big Sur",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "7:12 AM",
+      "favourite": true,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "17",
+      "image": "photos-v70/social-luma/photos/take-back.webp",
+      "title": "Pink coat",
+      "place": "Mexico City",
+      "day": "Sep 14",
+      "day_subtitle": "Sunday, September 14",
+      "date": "2026-09-14",
+      "time": "6:58 AM",
+      "favourite": false,
+      "wallpaper": false,
+      "camera": "Luma phone \u00b7 24 MP",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "18",
+      "image": "photos-v70/wallpapers/prism.png",
+      "title": "Prism",
+      "place": "Wallpaper",
+      "day": "Aug 30",
+      "day_subtitle": "Sunday, August 30",
+      "date": "2026-08-30",
+      "time": "9:00 PM",
+      "favourite": false,
+      "wallpaper": true,
+      "camera": "Made in Canvas",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "19",
+      "image": "photos-v70/wallpapers/meadow.png",
+      "title": "Meadow",
+      "place": "Wallpaper",
+      "day": "Aug 30",
+      "day_subtitle": "Sunday, August 30",
+      "date": "2026-08-30",
+      "time": "9:00 PM",
+      "favourite": false,
+      "wallpaper": true,
+      "camera": "Made in Canvas",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "20",
+      "image": "photos-v70/wallpapers/blue-fog.png",
+      "title": "Blue fog",
+      "place": "Wallpaper",
+      "day": "Aug 30",
+      "day_subtitle": "Sunday, August 30",
+      "date": "2026-08-30",
+      "time": "9:00 PM",
+      "favourite": false,
+      "wallpaper": true,
+      "camera": "Made in Canvas",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    },
+    {
+      "id": "21",
+      "image": "photos-v70/wallpapers/ember.png",
+      "title": "Ember",
+      "place": "Wallpaper",
+      "day": "Aug 30",
+      "day_subtitle": "Sunday, August 30",
+      "date": "2026-08-30",
+      "time": "9:00 PM",
+      "favourite": false,
+      "wallpaper": true,
+      "camera": "Made in Canvas",
+      "stored": "This computer",
+      "backup": "Luma Connect"
+    }
+  ],
+  "albums": [
+    {
+      "id": "launch",
+      "name": "Launch",
+      "photos": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ]
+    }
+  ],
+  "year_cards": [
+    {
+      "year": 2026,
+      "photo": "0",
+      "count": 22
+    },
+    {
+      "year": 2025,
+      "photo": "17",
+      "count": 1840
+    },
+    {
+      "year": 2024,
+      "photo": "9",
+      "count": 2346
+    }
+  ],
+  "import": {
+    "device": "Pixel 9",
+    "count": 38,
+    "since": "September 19",
+    "photos": [
+      "0",
+      "1",
+      "2",
+      "3"
+    ],
+    "remaining": 34
+  },
+  "sync": "Synced with Luma Connect",
+  "share_people": [
+    {
+      "name": "Priya Raman",
+      "username": "priya",
+      "hue": 330,
+      "face": {
+        "image": "photos-v70/social-luma/photos/life-ari-street.webp",
+        "x": 0.705,
+        "y": 0.2,
+        "zoom": 5.2
+      }
+    },
+    {
+      "name": "Nora Feld",
+      "username": "nora",
+      "hue": 45,
+      "face": {
+        "image": "photos-v70/social-luma/photos/life-sync-terrace.webp",
+        "x": 0.36,
+        "y": 0.27,
+        "zoom": 5
+      }
+    },
+    {
+      "name": "Theo Marsh",
+      "username": "theo",
+      "hue": 350,
+      "face": {
+        "image": "photos-v70/social-luma/photos/take-back.webp",
+        "x": 0.575,
+        "y": 0.12,
+        "zoom": 5.4
+      }
+    },
+    {
+      "name": "Sam Kaur",
+      "username": "samk",
+      "hue": 200,
+      "face": {
+        "image": "photos-v70/social-luma/photos/life-suite-bg-write.webp",
+        "x": 0.47,
+        "y": 0.3,
+        "zoom": 5
+      }
+    },
+    {
+      "name": "Alex Ruiz",
+      "username": "alexr",
+      "hue": 262,
+      "face": {
+        "image": "photos-v70/social-luma/photos/life-professionals-loft.webp",
+        "x": 0.55,
+        "y": 0.36,
+        "zoom": 5.2
+      }
+    },
+    {
+      "name": "Ada Chen",
+      "username": "ada",
+      "hue": 200
+    },
+    {
+      "name": "Jordan Kim",
+      "username": "jordan.k",
+      "hue": 100
+    },
+    {
+      "name": "Zoe Martin",
+      "username": "zoe",
+      "hue": 270
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+Package "firefox-155.0-1.fc44.x86_64" is already installed.
+
+Package                  Arch   Version        Repository      Size
+Changing reason:
+ firefox                 x86_64 0:155.0-1.fc44 @System    287.3 MiB
+   External User -> User                                           
+
+Transaction Summary:
+ Changing reason:    1 package
+
+After this operation, 0 B extra will be used (install 0 B, remove 0 B).
+Operation aborted by the user.

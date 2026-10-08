@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.projectluma.Depot
+runtime: org.projectluma.Platform
+runtime-version: '44'
+sdk: org.projectluma.Sdk
+command: luma-depot
+appstream-compose: false
+finish-args:
+  - --metadata=X-Luma=min-host-installer=68
+  - --metadata=X-Luma=app-data-schema=depot-v1
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --env=LUMA_DEPOT_STYLE_PATH=/app/share/luma/depot/depot.css
+  - --talk-name=org.projectluma.DepotHost1
+  - --talk-name=org.projectluma.AppData1
+  - --talk-name=org.gnome.SessionManager
+  - --system-talk-name=org.projectluma.Update1
+  - --system-talk-name=org.freedesktop.UPower
+  - --system-talk-name=org.freedesktop.UPower.PowerProfiles
+modules:
+  - name: depot-ui
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/python3.14/site-packages /app/bin
+      - cp -a src/luma-depot/luma_depot src/luma-installer/luma_installer /app/lib/python3.14/site-packages/
+      - printf '#!/bin/sh\nexec python3 -m luma_depot.window "$@"\n' > /app/bin/luma-depot-real
+      - printf '#!/bin/sh\nexec python3 -m luma_appkit.migration_startup luma-depot-real "$@"\n' > /app/bin/luma-depot
+      - chmod 755 /app/bin/luma-depot /app/bin/luma-depot-real
+      - install -Dm644 src/luma-depot/data/depot.css /app/share/luma/depot/depot.css
+      - install -Dm644 src/luma-depot/data/org.projectluma.Depot.desktop /app/share/applications/org.projectluma.Depot.desktop
+      - install -Dm644 src/luma-depot/data/org.projectluma.Depot.service /app/share/dbus-1/services/org.projectluma.Depot.service
+      - install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Depot.svg
+      - install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Depot.metainfo.xml
+      - install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Depot/LICENSE.md
+      - install -Dm644 depot-media/cc3af148aaa7857e61833f095effb5441297f05eab2f5733f3c912f5b561af56.png /app/share/luma-app-media/cc3af148aaa7857e61833f095effb5441297f05eab2f5733f3c912f5b561af56.png

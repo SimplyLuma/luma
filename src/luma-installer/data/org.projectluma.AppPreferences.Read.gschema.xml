@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+<schema id="org.projectluma.AppPreferences.Read.Write">
+<key name="recent-files" type="as"><default>[]</default></key>
+<key name="pinned-files" type="as"><default>[]</default></key>
+<key name="autosave-minutes" type="i"><default>0</default></key>
+<key name="default-paste-mode" type="s"><default>''</default></key>
+<key name="show-navigator" type="b"><default>false</default></key>
+<key name="show-inspector" type="b"><default>false</default></key>
+<key name="last-save-format" type="s"><default>''</default></key>
+<key name="zoom" type="d"><default>0.0</default></key>
+<key name="page-theme" type="s"><default>''</default></key>
+<key name="recent-fonts" type="as"><default>[]</default></key>
+<key name="show-advanced" type="b"><default>false</default></key>
+<key name="show-welcome" type="b"><default>false</default></key>
+</schema>
+<schema id="org.projectluma.AppPreferences.Read.Grid">
+<key name="recent-files" type="as"><default>[]</default></key>
+<key name="show-welcome" type="b"><default>false</default></key>
+</schema>
+<schema id="org.projectluma.AppPreferences.Read.Stage">
+<key name="default-new-format" type="s"><default>''</default></key>
+<key name="recovery-interval-seconds" type="u"><default>0</default></key>
+<key name="present-without-motion" type="b"><default>false</default></key>
+<key name="show-welcome" type="b"><default>false</default></key>
+</schema>
+<schema id="org.projectluma.AppPreferences.Read.Session">
+<key name="recent-projects" type="as"><default>[]</default></key>
+<key name="default-input" type="s"><default>''</default></key>
+<key name="default-output" type="s"><default>''</default></key>
+<key name="sample-rate" type="i"><default>0</default></key>
+<key name="recording-format" type="s"><default>''</default></key>
+<key name="buffer-frames" type="i"><default>0</default></key>
+<key name="autosave-minutes" type="i"><default>0</default></key>
+<key name="waveform-quality" type="s"><default>''</default></key>
+<key name="show-welcome" type="b"><default>false</default></key>
+</schema>
+<schema id="org.projectluma.AppPreferences.Read.Reel">
+<key name="show-welcome" type="b"><default>false</default></key>
+</schema>
+</schemalist>

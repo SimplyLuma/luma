@@ -1,0 +1,30 @@
+--- a/js/ui/boxpointer.js
++++ b/js/ui/boxpointer.js
+@@ -520,7 +520,26 @@
+         const borderRadius = themeNode.get_length('-arrow-border-radius');
+         const margin = 4 * borderRadius + borderWidth + arrowBase;
+ 
+-        const gap = themeNode.get_length('-boxpointer-gap');
++        let gap = themeNode.get_length('-boxpointer-gap');
++        // Dock menus point along the clicked icon's centre, but clear the
++        // painted island on the perpendicular axis, including its padding.
++        for (let parent = sourceActor.get_parent(); parent; parent = parent.get_parent()) {
++            if (!parent.has_style_class_name?.('luma-shelf-dock-island'))
++                continue;
++            const bounds = parent.get_transformed_extents();
++            const first = bounds.get_top_left();
++            const last = bounds.get_bottom_right();
++            if (this._arrowSide === St.Side.TOP || this._arrowSide === St.Side.BOTTOM) {
++                sourceTopLeft.y = first.y;
++                sourceBottomRight.y = last.y;
++            } else {
++                sourceTopLeft.x = first.x;
++                sourceBottomRight.x = last.x;
++            }
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            gap = Math.max(gap, (parent._padding ?? 10) * scale);
++            break;
++        }
+         const padding = themeNode.get_length('-arrow-rise');
+ 
+         let resX, resY;

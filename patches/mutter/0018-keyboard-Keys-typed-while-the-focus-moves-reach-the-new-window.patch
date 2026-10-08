@@ -1,0 +1,1092 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 17:00:00 -0500
+Subject: [PATCH] keyboard: Keys typed while the focus moves reach the new window
+
+Switching to another window and typing at once lost the first letters.
+Mutter names the focused window at once, but the keyboard focus reaches
+the client later: the surface takes it on the compositor's next focus
+update, and the client is told then. Measured on a headless session, the
+window focus changed 1 ms after the switch while the client was told
+between 4 ms and 5.5 s later, and a key typed in between went to the
+window being left, or nowhere at all -- the letters the person watched
+disappear.
+
+The keys typed during a handover between two client windows are now
+held and given to the window the focus is going to as soon as it has it,
+in the order they were typed and with their own times. A key still held
+down when the focus lands is already named in the enter event, so only
+its release is sent on; a release whose press the previous window had
+goes to that window, so no client is left with a key it thinks is down.
+
+Nothing is ever held while the shell has the keyboard: a grab or modal,
+the lock screen and its unlock dialog, the overview search, the run
+dialog, or any shell actor with the key focus. Those keys go to the shell
+at once. A grab starting or ending ends a handover on the spot, and a
+handover that never lands hands its keys, in order, to whoever has the
+keyboard after a second -- the shell included. No key is ever dropped:
+dropping them on a timeout left the lock screen unable to take a
+password after waking, because the focus there is the shell's own and a
+handover towards a window never completed.
+
+The rules live in meta-key-handover.c, apart from the rest of Mutter, and
+are tested by src/tests/key-handover-test.c in %check.
+
+MUTTER_DEBUG_KEY_HANDOVER=1 logs every key with where it went, every
+keyboard focus change, and the keys the shell keeps for itself, which is
+how the handover was measured.
+
+---
+diff --git a/src/core/display.c b/src/core/display.c
+index 94b4cb8..de0b039 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -1149,6 +1149,17 @@ on_is_grabbed_changed (ClutterStage *stage,
+ {
+   MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
+ 
++  /* Luma: a grab starting or ending (a modal, the lock screen, the
++   * overview) ends any keyboard focus handover at once. Keys held for it go
++   * to whoever has the keyboard now, the shell included; none are dropped. */
++  {
++    MetaWaylandCompositor *compositor = wayland_compositor_from_display (display);
++
++    if (compositor)
++      meta_wayland_compositor_release_held_keys (compositor,
++                                                 "the shell took or gave back the keyboard");
++  }
++
+   if (!priv->focus_on_grab_dismissed.window)
+     return;
+ 
+diff --git a/src/core/events.c b/src/core/events.c
+index b4bf668..683599a 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -263,13 +263,32 @@ meta_display_handle_event (MetaDisplay        *display,
+       meta_keybindings_process_event (display, window, event))
+     return CLUTTER_EVENT_STOP;
+ 
++  /* Luma: a key typed while the keyboard moves from one client window to
++   * another is held for the new window. Nothing is held while the shell has
++   * the keyboard (a grab, a modal, the lock screen, an entry with the key
++   * focus); a key that is not held first lets any held keys go, in order,
++   * to whoever has the keyboard. See meta-key-handover.c.
++   */
++  if (IS_KEY_EVENT (event_type) &&
++      meta_wayland_compositor_maybe_hold_key (wayland_compositor, event))
++    return CLUTTER_EVENT_STOP;
++
+   /* Do not pass keyboard events to Wayland if key focus is not on the
+    * stage in normal mode (e.g. during keynav in the panel)
+    */
+   if (!has_grab)
+     {
+       if (IS_KEY_EVENT (event_type) && !stage_has_key_focus (display))
+-        return CLUTTER_EVENT_PROPAGATE;
++        {
++          /* Luma: measuring where a key goes during a handover. */
++          if (g_getenv ("MUTTER_DEBUG_KEY_HANDOVER"))
++            {
++              g_message ("[luma-keys] key event kept by the shell, which "
++                         "holds the key focus, at %" G_GINT64_FORMAT " us",
++                         g_get_monotonic_time ());
++            }
++          return CLUTTER_EVENT_PROPAGATE;
++        }
+     }
+ 
+   if (event_type == CLUTTER_SCROLL &&
+@@ -286,7 +305,14 @@ meta_display_handle_event (MetaDisplay        *display,
+     return CLUTTER_EVENT_PROPAGATE;
+ 
+   if (stage_has_grab (display))
+-    return CLUTTER_EVENT_PROPAGATE;
++    {
++      if (IS_KEY_EVENT (event_type) && g_getenv ("MUTTER_DEBUG_KEY_HANDOVER"))
++        {
++          g_message ("[luma-keys] key event kept by a shell grab at %"
++                     G_GINT64_FORMAT " us", g_get_monotonic_time ());
++        }
++      return CLUTTER_EVENT_PROPAGATE;
++    }
+ 
+   if (window)
+     {
+diff --git a/src/meson.build b/src/meson.build
+index 80b48bc..fb34150 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -583,6 +583,8 @@ mutter_sources += [
+   'wayland/meta-wayland-input.h',
+   'wayland/meta-wayland-input-device.c',
+   'wayland/meta-wayland-input-device.h',
++  'wayland/meta-key-handover.c',
++  'wayland/meta-key-handover.h',
+   'wayland/meta-wayland-keyboard.c',
+   'wayland/meta-wayland-keyboard.h',
+   'wayland/meta-wayland-legacy-xdg-foreign.c',
+diff --git a/src/tests/key-handover-test.c b/src/tests/key-handover-test.c
+new file mode 100644
+index 0000000..647f796
+--- /dev/null
++++ b/src/tests/key-handover-test.c
+@@ -0,0 +1,204 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ */
++
++/* Luma: the keyboard focus handover rules (meta-key-handover.c). Prints one
++ * TAP line per test; the %check counts the "ok" lines. */
++
++#include "config.h"
++
++#include <stdio.h>
++#include <string.h>
++
++#include "wayland/meta-key-handover.h"
++
++static int test_number;
++static int failures;
++
++static void
++report (gboolean    passed,
++        const char *name)
++{
++  test_number++;
++  printf ("%s %d - %s\n", passed ? "ok" : "not ok", test_number, name);
++  if (!passed)
++    failures++;
++}
++
++typedef struct
++{
++  int key;
++  gboolean press;
++} FakeKey;
++
++typedef struct
++{
++  GString *log;
++  MetaKeyHandoverDestination last_destination;
++  int named_key;
++} Sink;
++
++static FakeKey *
++fake_key (int      key,
++          gboolean press)
++{
++  FakeKey *k = g_new0 (FakeKey, 1);
++
++  k->key = key;
++  k->press = press;
++  return k;
++}
++
++static void
++sink_deliver (gpointer                   event,
++              MetaKeyHandoverDestination destination,
++              gpointer                   user_data)
++{
++  Sink *sink = user_data;
++  FakeKey *k = event;
++
++  g_string_append_printf (sink->log, "%c%d ", k->press ? '+' : '-', k->key);
++  sink->last_destination = destination;
++}
++
++static gboolean
++sink_is_named_press (gpointer event,
++                     gpointer user_data)
++{
++  Sink *sink = user_data;
++  FakeKey *k = event;
++
++  return k->press && k->key == sink->named_key;
++}
++
++static GPtrArray *
++held (void)
++{
++  GPtrArray *events = g_ptr_array_new_with_free_func (g_free);
++
++  g_ptr_array_add (events, fake_key (30, TRUE));
++  g_ptr_array_add (events, fake_key (30, FALSE));
++  g_ptr_array_add (events, fake_key (48, TRUE));
++  return events;
++}
++
++int
++main (int    argc,
++      char **argv)
++{
++  MetaKeyHandoverState lock_screen = {
++    .stage_has_grab = TRUE, .stage_has_key_focus = FALSE,
++    .windows_interactable = FALSE, .keyboard_focus_is_client = FALSE,
++    .target_is_other_client = TRUE,
++  };
++  MetaKeyHandoverState lock_screen_old_focus = {
++    .stage_has_grab = TRUE, .stage_has_key_focus = FALSE,
++    .windows_interactable = FALSE, .keyboard_focus_is_client = TRUE,
++    .target_is_other_client = TRUE,
++  };
++  MetaKeyHandoverState shell_entry_no_grab = {
++    .stage_has_grab = FALSE, .stage_has_key_focus = FALSE,
++    .windows_interactable = TRUE, .keyboard_focus_is_client = TRUE,
++    .target_is_other_client = TRUE,
++  };
++  MetaKeyHandoverState grab_only = {
++    .stage_has_grab = TRUE, .stage_has_key_focus = TRUE,
++    .windows_interactable = FALSE, .keyboard_focus_is_client = TRUE,
++    .target_is_other_client = TRUE,
++  };
++  MetaKeyHandoverState from_nothing = {
++    .stage_has_grab = FALSE, .stage_has_key_focus = TRUE,
++    .windows_interactable = TRUE, .keyboard_focus_is_client = FALSE,
++    .target_is_other_client = TRUE,
++  };
++  MetaKeyHandoverState client_to_client = {
++    .stage_has_grab = FALSE, .stage_has_key_focus = TRUE,
++    .windows_interactable = TRUE, .keyboard_focus_is_client = TRUE,
++    .target_is_other_client = TRUE,
++  };
++  MetaKeyHandoverState settled = client_to_client;
++  Sink sink = { 0 };
++  GPtrArray *events;
++  guint delivered;
++
++  settled.target_is_other_client = FALSE;
++
++  /* 1-4: the focus is on the shell (the lock screen, the unlock dialog, a
++   * shell entry, a modal): a key is not held, it goes straight on. */
++  report (!meta_key_handover_should_hold (&lock_screen) &&
++          meta_key_handover_destination (&lock_screen) == META_KEY_HANDOVER_TO_SHELL,
++          "lock screen: a key is delivered to the shell at once, not held");
++  report (!meta_key_handover_should_hold (&lock_screen_old_focus) &&
++          meta_key_handover_destination (&lock_screen_old_focus) == META_KEY_HANDOVER_TO_SHELL,
++          "lock screen over a window that had the keyboard: not held");
++  report (!meta_key_handover_should_hold (&shell_entry_no_grab) &&
++          meta_key_handover_destination (&shell_entry_no_grab) == META_KEY_HANDOVER_TO_SHELL,
++          "shell actor with the key focus, no grab: not held");
++  report (!meta_key_handover_should_hold (&grab_only),
++          "any grab: not held");
++
++  /* 5-7: only a move between two client windows holds keys. */
++  report (!meta_key_handover_should_hold (&from_nothing),
++          "no client had the keyboard: not held");
++  report (meta_key_handover_should_hold (&client_to_client) &&
++          meta_key_handover_destination (&client_to_client) == META_KEY_HANDOVER_TO_CLIENT,
++          "client to client: held for the new window");
++  report (!meta_key_handover_should_hold (&settled),
++          "focus already arrived: not held");
++
++  /* 8: a handover that times out while the shell has the keyboard (the
++   * machine locked meanwhile) delivers every key to the shell, in order. */
++  sink.log = g_string_new (NULL);
++  sink.named_key = 30;
++  events = held ();
++  delivered = meta_key_handover_release (events,
++                                         meta_key_handover_destination (&lock_screen),
++                                         sink_is_named_press, sink_deliver,
++                                         g_free, &sink);
++  report (delivered == 3 && events->len == 0 &&
++          g_str_equal (sink.log->str, "+30 -30 +48 ") &&
++          sink.last_destination == META_KEY_HANDOVER_TO_SHELL,
++          "timeout with the focus on the shell: all keys delivered in order");
++  g_ptr_array_unref (events);
++
++  /* 9: a timeout with a window still holding the keyboard delivers to it. */
++  g_string_truncate (sink.log, 0);
++  events = held ();
++  delivered = meta_key_handover_release (events,
++                                         META_KEY_HANDOVER_TO_CLIENT,
++                                         NULL, sink_deliver, g_free, &sink);
++  report (delivered == 3 && events->len == 0 &&
++          g_str_equal (sink.log->str, "+30 -30 +48 "),
++          "timeout with a window focused: all keys delivered, none dropped");
++  g_ptr_array_unref (events);
++
++  /* 10: once the enter event named a key that is down, only its press is
++   * left out; everything else still arrives, in order. */
++  g_string_truncate (sink.log, 0);
++  sink.named_key = 48;
++  events = held ();
++  delivered = meta_key_handover_release (events,
++                                         META_KEY_HANDOVER_TO_CLIENT,
++                                         sink_is_named_press, sink_deliver,
++                                         g_free, &sink);
++  report (delivered == 2 && events->len == 0 &&
++          g_str_equal (sink.log->str, "+30 -30 "),
++          "focus arrived: a press named in the enter event is not sent twice");
++  g_ptr_array_unref (events);
++
++  /* 11: releasing nothing delivers nothing and does not crash. */
++  events = g_ptr_array_new_with_free_func (g_free);
++  report (meta_key_handover_release (events, META_KEY_HANDOVER_TO_SHELL,
++                                     NULL, sink_deliver, g_free, &sink) == 0,
++          "nothing held: nothing delivered");
++  g_ptr_array_unref (events);
++
++  g_string_free (sink.log, TRUE);
++  printf ("1..%d\n", test_number);
++  return failures == 0 ? 0 : 1;
++}
+diff --git a/src/wayland/meta-key-handover.c b/src/wayland/meta-key-handover.c
+new file mode 100644
+index 0000000..f705f5e
+--- /dev/null
++++ b/src/wayland/meta-key-handover.c
+@@ -0,0 +1,86 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ */
++
++#include "config.h"
++
++#include "wayland/meta-key-handover.h"
++
++/* A key is held only while the keyboard moves from one client window to
++ * another. Whenever the shell has the keyboard -- a grab or modal, the lock
++ * screen and its unlock dialog, the overview search, the run dialog, any
++ * actor with the key focus -- nothing is held: those keys are the shell's
++ * and reach it at once. */
++gboolean
++meta_key_handover_should_hold (const MetaKeyHandoverState *state)
++{
++  return (!state->stage_has_grab &&
++          state->stage_has_key_focus &&
++          state->windows_interactable &&
++          state->keyboard_focus_is_client &&
++          state->target_is_other_client);
++}
++
++/* Whoever has the keyboard now: a client only when there is no grab and
++ * the stage itself has the key focus; otherwise the shell. */
++MetaKeyHandoverDestination
++meta_key_handover_destination (const MetaKeyHandoverState *state)
++{
++  if (!state->stage_has_grab &&
++      state->stage_has_key_focus &&
++      state->keyboard_focus_is_client)
++    return META_KEY_HANDOVER_TO_CLIENT;
++
++  return META_KEY_HANDOVER_TO_SHELL;
++}
++
++/* Hands every held key to @destination in the order it was typed and
++ * empties @events. Nothing is dropped. The one key not sent again is a
++ * press a client was already told about in its enter event
++ * (@is_named_press); the shell gets everything. Each key is freed with
++ * @free_event once it has been handed on. Returns the number of keys
++ * delivered. */
++guint
++meta_key_handover_release (GPtrArray                   *events,
++                           MetaKeyHandoverDestination   destination,
++                           MetaKeyHandoverIsNamedPress  is_named_press,
++                           MetaKeyHandoverDeliver       deliver,
++                           GDestroyNotify               free_event,
++                           gpointer                     user_data)
++{
++  g_autofree gpointer *taken = NULL;
++  gsize n_taken = 0;
++  guint delivered = 0;
++  gsize i;
++
++  if (!events || events->len == 0)
++    return 0;
++
++  /* Take the keys first: delivering one can hold or release keys again. */
++  taken = g_ptr_array_steal (events, &n_taken);
++
++  for (i = 0; i < n_taken; i++)
++    {
++      gpointer event = taken[i];
++
++      if (destination == META_KEY_HANDOVER_TO_CLIENT &&
++          is_named_press && is_named_press (event, user_data))
++        {
++          if (free_event)
++            free_event (event);
++          continue;
++        }
++
++      deliver (event, destination, user_data);
++      delivered++;
++      if (free_event)
++        free_event (event);
++    }
++
++  return delivered;
++}
+diff --git a/src/wayland/meta-key-handover.h b/src/wayland/meta-key-handover.h
+new file mode 100644
+index 0000000..a82c5cb
+--- /dev/null
++++ b/src/wayland/meta-key-handover.h
+@@ -0,0 +1,54 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ */
++
++#pragma once
++
++#include <glib.h>
++
++/* Luma: the rules for keys typed while the keyboard focus moves between
++ * windows, kept apart from the rest of Mutter so they can be tested alone. */
++
++typedef enum
++{
++  META_KEY_HANDOVER_TO_CLIENT,
++  META_KEY_HANDOVER_TO_SHELL,
++} MetaKeyHandoverDestination;
++
++typedef struct
++{
++  /* The shell has a grab: a modal, the lock screen, the overview. */
++  gboolean stage_has_grab;
++  /* The stage itself has the key focus, so keys go to Wayland clients. A
++   * shell actor with the key focus (an entry, the unlock dialog) is not. */
++  gboolean stage_has_key_focus;
++  gboolean windows_interactable;
++  /* A client surface has the keyboard now. */
++  gboolean keyboard_focus_is_client;
++  /* The focused window is a client whose surface does not have the
++   * keyboard yet. */
++  gboolean target_is_other_client;
++} MetaKeyHandoverState;
++
++gboolean meta_key_handover_should_hold (const MetaKeyHandoverState *state);
++
++MetaKeyHandoverDestination meta_key_handover_destination (const MetaKeyHandoverState *state);
++
++typedef gboolean (* MetaKeyHandoverIsNamedPress) (gpointer event,
++                                                  gpointer user_data);
++
++typedef void (* MetaKeyHandoverDeliver) (gpointer                   event,
++                                         MetaKeyHandoverDestination destination,
++                                         gpointer                   user_data);
++
++guint meta_key_handover_release (GPtrArray                   *events,
++                                 MetaKeyHandoverDestination   destination,
++                                 MetaKeyHandoverIsNamedPress  is_named_press,
++                                 MetaKeyHandoverDeliver       deliver,
++                                 GDestroyNotify               free_event,
++                                 gpointer                     user_data);
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index 27b101c..f5d2b78 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -54,6 +54,8 @@
+ #include "backends/meta-backend-private.h"
+ #include "core/display-private.h"
+ #include "mtk/mtk.h"
++#include "clutter/clutter-mutter.h"
++#include "wayland/meta-key-handover.h"
+ #include "wayland/meta-wayland-private.h"
+ 
+ typedef struct
+@@ -90,6 +92,20 @@ struct _MetaWaylandKeyboard
+   MetaWaylandXkbInfo xkb_info;
+   GSettings *settings;
+ 
++  /* Luma: the keys typed while the keyboard focus is on its way to another
++   * window. See meta_wayland_keyboard_hold_for_handover(). */
++  struct {
++    MetaWaylandSurface *surface;
++    struct wl_listener surface_destroy_listener;
++    GPtrArray *events;
++    GHashTable *held_keys;
++    int64_t since_us;
++    guint timeout_id;
++    /* The keyboard focus has entered a surface since the keys were held,
++     * and the enter event named the keys that are down. */
++    gboolean entered;
++  } handover;
++
+   /* Modifier state last sent to the client under the pointer while that
+    * client has no keyboard focus. See
+    * meta_wayland_keyboard_sync_pointer_modifiers(). */
+@@ -110,6 +126,40 @@ G_DEFINE_TYPE (MetaWaylandKeyboard, meta_wayland_keyboard,
+ static void meta_wayland_keyboard_update_xkb_state (MetaWaylandKeyboard *keyboard);
+ static void notify_modifiers (MetaWaylandKeyboard *keyboard);
+ static void invalidate_pointer_modifiers (MetaWaylandKeyboard *keyboard);
++static void send_key_to_focus (MetaWaylandKeyboard *keyboard,
++                               const ClutterEvent  *event);
++static guint release_held_keys (MetaWaylandKeyboard *keyboard,
++                                const char          *why);
++
++
++/* Luma: how long, and how many keys, a handover may hold. A person typing
++ * fast enough to run into a handover types a few letters; past this the
++ * keys are not part of the switch any more and go, in order, to whoever
++ * has the keyboard. They are never dropped. */
++#define META_KEY_HANDOVER_MAX_MS 1000
++#define META_KEY_HANDOVER_MAX_KEYS 64
++
++static MetaDisplay *
++display_from_keyboard (MetaWaylandKeyboard *keyboard)
++{
++  MetaWaylandInputDevice *input_device = META_WAYLAND_INPUT_DEVICE (keyboard);
++  MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
++  MetaWaylandCompositor *compositor = meta_wayland_seat_get_compositor (seat);
++  MetaContext *context = meta_wayland_compositor_get_context (compositor);
++
++  return meta_context_get_display (context);
++}
++
++static gboolean
++handover_debug (void)
++{
++  static int debug = -1;
++
++  if (debug < 0)
++    debug = g_getenv ("MUTTER_DEBUG_KEY_HANDOVER") != NULL ? 1 : 0;
++
++  return debug == 1;
++}
+ 
+ static MetaBackend *
+ backend_from_keyboard (MetaWaylandKeyboard *keyboard)
+@@ -249,9 +299,27 @@ keyboard_handle_focus_surface_destroy (struct wl_listener *listener, void *data)
+   meta_wayland_keyboard_set_focus (keyboard, NULL);
+ }
+ 
++/* Whether a key is down as far as the client has been told (the enter
++ * event carries these). */
+ static gboolean
+-meta_wayland_keyboard_broadcast_key (MetaWaylandKeyboard *keyboard,
+-                                     const ClutterEvent  *event)
++key_is_pressed (MetaWaylandKeyboard *keyboard,
++                uint32_t             key)
++{
++  uint32_t *keys = keyboard->pressed_keys.data;
++  size_t i, n = keyboard->pressed_keys.size / sizeof (uint32_t);
++
++  for (i = 0; i < n; i++)
++    {
++      if (keys[i] == key)
++        return TRUE;
++    }
++
++  return FALSE;
++}
++
++static void
++send_key_to_focus (MetaWaylandKeyboard *keyboard,
++                   const ClutterEvent  *event)
+ {
+   struct wl_resource *resource;
+   enum wl_keyboard_key_state key_state;
+@@ -309,6 +377,23 @@ meta_wayland_keyboard_broadcast_key (MetaWaylandKeyboard *keyboard,
+           wl_keyboard_send_key (resource, serial, time, key, key_state);
+         }
+     }
++}
++
++static gboolean
++meta_wayland_keyboard_broadcast_key (MetaWaylandKeyboard *keyboard,
++                                     const ClutterEvent  *event)
++{
++  if (handover_debug ())
++    {
++      g_message ("[luma-keys] key %u (%s) %s at %" G_GINT64_FORMAT " us",
++                 clutter_event_get_event_code (event),
++                 clutter_event_type (event) == CLUTTER_KEY_PRESS ? "press" : "release",
++                 keyboard->focus_surface ? "sent to the focused window"
++                                         : "went nowhere: no window has the keyboard",
++                 g_get_monotonic_time ());
++    }
++
++  send_key_to_focus (keyboard, event);
+ 
+   /* Eat the key events if we have a focused surface. */
+   return (keyboard->focus_surface != NULL);
+@@ -502,6 +587,14 @@ meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard)
+   wl_list_remove (&keyboard->focus_resource_list);
+   wl_list_init (&keyboard->focus_resource_list);
+ 
++  g_clear_handle_id (&keyboard->handover.timeout_id, g_source_remove);
++  if (keyboard->handover.surface)
++    {
++      wl_list_remove (&keyboard->handover.surface_destroy_listener.link);
++      keyboard->handover.surface = NULL;
++    }
++  g_clear_pointer (&keyboard->handover.events, g_ptr_array_unref);
++  g_clear_pointer (&keyboard->handover.held_keys, g_hash_table_unref);
+   g_clear_pointer (&keyboard->key_down_serials, g_hash_table_unref);
+   keyboard->last_key_up_serial = 0;
+ 
+@@ -939,6 +1032,303 @@ meta_wayland_keyboard_release_pointer_modifiers (MetaWaylandKeyboard *keyboard,
+   set_pointer_modifiers_client (keyboard, NULL);
+ }
+ 
++/* Luma: where the keyboard focus is going, if it is not there yet. Mutter
++ * decides which window is focused at once, but the focus reaches the
++ * client's surface later -- the client has to be told, and the surface only
++ * takes the focus when the compositor next updates it. A key that arrives
++ * in between belongs to the window the person is switching to, not to the
++ * one they left and not to nobody. This only ever applies between two
++ * client windows: see meta_key_handover_should_hold().
++ */
++static MetaKeyHandoverState
++handover_state (MetaWaylandKeyboard  *keyboard,
++                MetaWaylandSurface  **out_target)
++{
++  MetaKeyHandoverState state = { 0 };
++  MetaDisplay *display = display_from_keyboard (keyboard);
++  MetaBackend *backend = backend_from_keyboard (keyboard);
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++  ClutterActor *key_focus = clutter_stage_get_key_focus (stage);
++  MetaWindow *window = display ? meta_display_get_focus_window (display) : NULL;
++  MetaWaylandSurface *surface = window ? meta_window_get_wayland_surface (window) : NULL;
++
++  state.stage_has_grab = clutter_stage_get_grab_actor (stage) != NULL;
++  state.stage_has_key_focus = (key_focus == NULL ||
++                               key_focus == CLUTTER_ACTOR (stage));
++  state.windows_interactable = (display &&
++                                meta_display_windows_are_interactable (display));
++  state.keyboard_focus_is_client = keyboard->focus_surface != NULL;
++  state.target_is_other_client = (surface && surface->resource &&
++                                  surface != keyboard->focus_surface);
++
++  if (out_target)
++    *out_target = state.target_is_other_client ? surface : NULL;
++
++  return state;
++}
++
++/* Ends the handover without touching the keys it holds. */
++static void
++stop_handover (MetaWaylandKeyboard *keyboard)
++{
++  g_clear_handle_id (&keyboard->handover.timeout_id, g_source_remove);
++  if (keyboard->handover.surface)
++    {
++      wl_list_remove (&keyboard->handover.surface_destroy_listener.link);
++      keyboard->handover.surface = NULL;
++    }
++  if (keyboard->handover.held_keys)
++    g_hash_table_remove_all (keyboard->handover.held_keys);
++  keyboard->handover.entered = FALSE;
++}
++
++static gboolean
++held_key_was_named (gpointer data,
++                    gpointer user_data)
++{
++  MetaWaylandKeyboard *keyboard = user_data;
++  const ClutterEvent *event = data;
++
++  /* The enter event named the keys that are down, so sending their press
++   * again would give the client the same key twice. */
++  return (clutter_event_type (event) == CLUTTER_KEY_PRESS &&
++          key_is_pressed (keyboard, clutter_event_get_event_code (event)));
++}
++
++static void
++deliver_held_key (gpointer                   data,
++                  MetaKeyHandoverDestination destination,
++                  gpointer                   user_data)
++{
++  MetaWaylandKeyboard *keyboard = user_data;
++  const ClutterEvent *event = data;
++  ClutterModifierSet raw_modifiers;
++  ClutterEvent *copy;
++
++  if (destination == META_KEY_HANDOVER_TO_CLIENT)
++    {
++      send_key_to_focus (keyboard, event);
++      return;
++    }
++
++  /* The shell has the keyboard: the key goes back through the stage to the
++   * actor with the key focus (the unlock dialog, a modal, an entry). It is
++   * marked synthetic so it is neither held again nor sent to a client. */
++  clutter_event_get_key_state (event,
++                               &raw_modifiers.pressed,
++                               &raw_modifiers.latched,
++                               &raw_modifiers.locked);
++  copy = clutter_event_key_new (clutter_event_type (event),
++                                clutter_event_get_flags (event) |
++                                CLUTTER_EVENT_FLAG_SYNTHETIC,
++                                clutter_event_get_time_us (event),
++                                clutter_event_get_source_device (event),
++                                raw_modifiers,
++                                clutter_event_get_state (event),
++                                clutter_event_get_key_symbol (event),
++                                clutter_event_get_event_code (event),
++                                clutter_event_get_key_code (event),
++                                clutter_event_get_key_unicode (event));
++  clutter_event_put (copy);
++  clutter_event_free (copy);
++}
++
++/* Ends the handover and hands every key it held, in order, to whoever has
++ * the keyboard now: the window, or the shell. Nothing is dropped. */
++static guint
++release_held_keys (MetaWaylandKeyboard *keyboard,
++                   const char          *why)
++{
++  MetaKeyHandoverState state;
++  MetaKeyHandoverDestination destination;
++  gboolean entered = keyboard->handover.entered;
++  double waited_ms;
++  guint held, delivered;
++
++  waited_ms = (g_get_monotonic_time () - keyboard->handover.since_us) / 1000.0;
++  stop_handover (keyboard);
++
++  if (!keyboard->handover.events || keyboard->handover.events->len == 0)
++    return 0;
++
++  held = keyboard->handover.events->len;
++  state = handover_state (keyboard, NULL);
++  destination = meta_key_handover_destination (&state);
++  delivered = meta_key_handover_release (keyboard->handover.events,
++                                         destination,
++                                         entered ? held_key_was_named : NULL,
++                                         deliver_held_key,
++                                         (GDestroyNotify) clutter_event_free,
++                                         keyboard);
++
++  g_message ("[luma-keys] delivered %u of %u key event(s) typed while the "
++             "keyboard focus was moving, %.1f ms later, to %s: %s",
++             delivered, held, waited_ms,
++             destination == META_KEY_HANDOVER_TO_CLIENT ?
++             "the window with the keyboard" : "the shell",
++             why);
++
++  return delivered;
++}
++
++void
++meta_wayland_keyboard_release_held_keys (MetaWaylandKeyboard *keyboard,
++                                         const char          *why)
++{
++  release_held_keys (keyboard, why);
++}
++
++static void
++handover_surface_destroyed (struct wl_listener *listener,
++                            void               *data)
++{
++  MetaWaylandKeyboard *keyboard =
++    wl_container_of (listener, keyboard, handover.surface_destroy_listener);
++
++  wl_list_remove (&keyboard->handover.surface_destroy_listener.link);
++  keyboard->handover.surface = NULL;
++  release_held_keys (keyboard, "the window went away");
++}
++
++static gboolean
++handover_timed_out (gpointer user_data)
++{
++  MetaWaylandKeyboard *keyboard = user_data;
++
++  keyboard->handover.timeout_id = 0;
++  release_held_keys (keyboard, "the focus did not arrive in time");
++
++  return G_SOURCE_REMOVE;
++}
++
++/* Hold a key that was typed during a handover between two client windows,
++ * to be given to the window the focus is going to as soon as it has it.
++ * Only a press and the release that goes with it are held: a release of a
++ * key whose press the window being left already had goes to that window,
++ * so no client is left with a key it thinks is still down.
++ */
++gboolean
++meta_wayland_keyboard_maybe_hold_key (MetaWaylandKeyboard *keyboard,
++                                      const ClutterEvent  *event)
++{
++  MetaKeyHandoverState state;
++  MetaWaylandSurface *target = NULL;
++  ClutterEventType type = clutter_event_type (event);
++  uint32_t key;
++  gboolean is_press = type == CLUTTER_KEY_PRESS;
++  gboolean pending;
++
++  if (type != CLUTTER_KEY_PRESS && type != CLUTTER_KEY_RELEASE)
++    return FALSE;
++
++  key = clutter_event_get_event_code (event);
++
++  if (clutter_event_get_flags (event) & CLUTTER_EVENT_FLAG_REPEATED)
++    return FALSE;
++
++  if (clutter_event_get_flags (event) & CLUTTER_EVENT_FLAG_SYNTHETIC &&
++      !(clutter_event_get_flags (event) & CLUTTER_EVENT_FLAG_INPUT_METHOD))
++    return FALSE;
++
++  pending = keyboard->handover.events && keyboard->handover.events->len > 0;
++  state = handover_state (keyboard, &target);
++
++  if (!meta_key_handover_should_hold (&state))
++    {
++      if (pending &&
++          meta_key_handover_destination (&state) == META_KEY_HANDOVER_TO_SHELL)
++        {
++          /* The held keys go back through the stage, so this one follows
++           * them there to keep the order they were typed in. */
++          g_ptr_array_add (keyboard->handover.events, clutter_event_copy (event));
++          release_held_keys (keyboard, "the shell has the keyboard");
++          return TRUE;
++        }
++
++      if (pending)
++        release_held_keys (keyboard, "the focus is not moving between windows");
++
++      if (handover_debug ())
++        {
++          g_message ("[luma-keys] key %u (%s) not held: grab %s, key focus on "
++                     "%s, keyboard focus %s, at %" G_GINT64_FORMAT " us", key,
++                     is_press ? "press" : "release",
++                     state.stage_has_grab ? "yes" : "no",
++                     state.stage_has_key_focus ? "the stage" : "a shell actor",
++                     state.keyboard_focus_is_client ? "a surface" : "nothing",
++                     g_get_monotonic_time ());
++        }
++      return FALSE;
++    }
++
++  if (!keyboard->handover.events)
++    {
++      keyboard->handover.events =
++        g_ptr_array_new_with_free_func ((GDestroyNotify) clutter_event_free);
++      keyboard->handover.held_keys = g_hash_table_new (NULL, NULL);
++      keyboard->handover.surface_destroy_listener.notify =
++        handover_surface_destroyed;
++    }
++
++  if (keyboard->handover.surface && keyboard->handover.surface != target)
++    release_held_keys (keyboard, "the focus went to another window first");
++
++  if (!is_press &&
++      !g_hash_table_contains (keyboard->handover.held_keys,
++                              GUINT_TO_POINTER (key)))
++    return FALSE;
++
++  if (keyboard->handover.events->len >= META_KEY_HANDOVER_MAX_KEYS)
++    {
++      release_held_keys (keyboard, "more keys than a handover holds");
++      return FALSE;
++    }
++
++  if (!keyboard->handover.surface)
++    {
++      keyboard->handover.surface = target;
++      wl_resource_add_destroy_listener (target->resource,
++                                        &keyboard->handover.surface_destroy_listener);
++      keyboard->handover.since_us = g_get_monotonic_time ();
++      keyboard->handover.entered = FALSE;
++      keyboard->handover.timeout_id =
++        g_timeout_add (META_KEY_HANDOVER_MAX_MS, handover_timed_out, keyboard);
++    }
++
++  if (is_press)
++    g_hash_table_add (keyboard->handover.held_keys, GUINT_TO_POINTER (key));
++  else
++    g_hash_table_remove (keyboard->handover.held_keys, GUINT_TO_POINTER (key));
++
++  g_ptr_array_add (keyboard->handover.events, clutter_event_copy (event));
++
++  if (handover_debug ())
++    {
++      g_message ("[luma-keys] holding key %u (%s) %.1f ms into a handover",
++                 key, is_press ? "press" : "release",
++                 (g_get_monotonic_time () - keyboard->handover.since_us) / 1000.0);
++    }
++
++  return TRUE;
++}
++
++/* The window has the focus now: give it the keys typed on the way. A key
++ * still held down was already named in the enter event, so its press is not
++ * sent again -- only what the client has not been told about.
++ */
++static void
++flush_handover (MetaWaylandKeyboard *keyboard)
++{
++  if (!keyboard->handover.surface ||
++      keyboard->handover.surface != keyboard->focus_surface ||
++      !keyboard->handover.events ||
++      keyboard->handover.events->len == 0)
++    return;
++
++  keyboard->handover.entered = TRUE;
++  release_held_keys (keyboard, "the focus arrived");
++}
++
+ static void
+ broadcast_focus (MetaWaylandKeyboard *keyboard,
+                  struct wl_resource  *resource)
+@@ -1022,6 +1412,28 @@ meta_wayland_keyboard_set_focus (MetaWaylandKeyboard *keyboard,
+               broadcast_focus (keyboard, resource);
+             }
+         }
++
++      /* Luma: the window has the focus now, so it gets the keys that were
++       * typed on the way. */
++      flush_handover (keyboard);
++    }
++
++  if (keyboard->handover.surface && keyboard->handover.surface != surface)
++    {
++      keyboard->handover.entered = surface != NULL;
++      release_held_keys (keyboard, "the focus went elsewhere");
++    }
++
++  if (handover_debug ())
++    {
++      MetaDisplay *display = display_from_keyboard (keyboard);
++      MetaWindow *window = display ? meta_display_get_focus_window (display) : NULL;
++
++      g_message ("[luma-keys] keyboard focus is now %s (focus window %s) at %"
++                 G_GINT64_FORMAT " us",
++                 surface ? "a surface" : "nothing",
++                 window ? meta_window_get_title (window) : "none",
++                 g_get_monotonic_time ());
+     }
+ }
+ 
+diff --git a/src/wayland/meta-wayland-keyboard.h b/src/wayland/meta-wayland-keyboard.h
+index c82ac5a..52c1a47 100644
+--- a/src/wayland/meta-wayland-keyboard.h
++++ b/src/wayland/meta-wayland-keyboard.h
+@@ -69,6 +69,12 @@ void meta_wayland_keyboard_update_key_state (MetaWaylandKeyboard *compositor,
+                                              int                  key_vector_len,
+                                              int                  offset);
+ 
++gboolean meta_wayland_keyboard_maybe_hold_key (MetaWaylandKeyboard *keyboard,
++                                               const ClutterEvent  *event);
++
++void meta_wayland_keyboard_release_held_keys (MetaWaylandKeyboard *keyboard,
++                                              const char          *why);
++
+ void meta_wayland_keyboard_set_focus (MetaWaylandKeyboard *keyboard,
+                                       MetaWaylandSurface *surface);
+ 
+diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
+index 7b7dff8..2034446 100644
+--- a/src/wayland/meta-wayland-seat.c
++++ b/src/wayland/meta-wayland-seat.c
+@@ -655,6 +655,27 @@ meta_wayland_seat_can_popup (MetaWaylandSeat *seat,
+           meta_wayland_tablet_seat_can_popup (seat->tablet_seat, serial));
+ }
+ 
++/* Luma: a key typed during a handover is the new window's. */
++gboolean
++meta_wayland_seat_maybe_hold_key (MetaWaylandSeat    *seat,
++                                  const ClutterEvent *event)
++{
++  if (!meta_wayland_seat_has_keyboard (seat))
++    return FALSE;
++
++  return meta_wayland_keyboard_maybe_hold_key (seat->keyboard, event);
++}
++
++void
++meta_wayland_seat_release_held_keys (MetaWaylandSeat *seat,
++                                     const char      *why)
++{
++  if (!meta_wayland_seat_has_keyboard (seat))
++    return;
++
++  meta_wayland_keyboard_release_held_keys (seat->keyboard, why);
++}
++
+ gboolean
+ meta_wayland_seat_has_keyboard (MetaWaylandSeat *seat)
+ {
+diff --git a/src/wayland/meta-wayland-seat.h b/src/wayland/meta-wayland-seat.h
+index 27bee9f..f7eee88 100644
+--- a/src/wayland/meta-wayland-seat.h
++++ b/src/wayland/meta-wayland-seat.h
+@@ -90,6 +90,12 @@ gboolean meta_wayland_seat_can_popup     (MetaWaylandSeat *seat,
+ 
+ gboolean meta_wayland_seat_has_keyboard (MetaWaylandSeat *seat);
+ 
++gboolean meta_wayland_seat_maybe_hold_key (MetaWaylandSeat    *seat,
++                                           const ClutterEvent *event);
++
++void meta_wayland_seat_release_held_keys (MetaWaylandSeat *seat,
++                                          const char      *why);
++
+ gboolean meta_wayland_seat_has_pointer (MetaWaylandSeat *seat);
+ 
+ gboolean meta_wayland_seat_has_touch (MetaWaylandSeat *seat);
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index 6b9e0df..657466d 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -1300,6 +1300,37 @@ meta_wayland_compositor_get_text_input (MetaWaylandCompositor *compositor)
+   return compositor->seat->text_input;
+ }
+ 
++/**
++ * meta_wayland_compositor_maybe_hold_key:
++ * @compositor: the wayland compositor
++ * @event: a key event
++ *
++ * Luma: holds a key typed while the keyboard focus is moving to another
++ * window, to be given to that window once it has the focus. Returns %TRUE
++ * when the key was held, and the event goes no further.
++ */
++gboolean
++meta_wayland_compositor_maybe_hold_key (MetaWaylandCompositor *compositor,
++                                        const ClutterEvent    *event)
++{
++  if (!compositor || !compositor->seat)
++    return FALSE;
++
++  return meta_wayland_seat_maybe_hold_key (compositor->seat, event);
++}
++
++/* Luma: ends a keyboard focus handover now, handing the keys held for it to
++ * whoever has the keyboard. */
++void
++meta_wayland_compositor_release_held_keys (MetaWaylandCompositor *compositor,
++                                           const char            *why)
++{
++  if (!compositor || !compositor->seat)
++    return;
++
++  meta_wayland_seat_release_held_keys (compositor->seat, why);
++}
++
+ static void
+ meta_wayland_compositor_update_focus (MetaWaylandCompositor *compositor,
+                                       MetaWindow            *window)
+diff --git a/src/wayland/meta-wayland.h b/src/wayland/meta-wayland.h
+index d4de53d..2073b35 100644
+--- a/src/wayland/meta-wayland.h
++++ b/src/wayland/meta-wayland.h
+@@ -113,6 +113,13 @@ MetaWaylandFilterManager * meta_wayland_compositor_get_filter_manager (MetaWayla
+ 
+ void meta_wayland_compositor_sync_focus (MetaWaylandCompositor *compositor);
+ 
++META_EXPORT_TEST
++gboolean meta_wayland_compositor_maybe_hold_key (MetaWaylandCompositor *compositor,
++                                                 const ClutterEvent    *event);
++
++void meta_wayland_compositor_release_held_keys (MetaWaylandCompositor *compositor,
++                                                const char            *why);
++
+ ClutterCursor * meta_wayland_compositor_get_cursor (MetaWaylandCompositor *compositor,
+                                                     ClutterSprite         *sprite);
+ 

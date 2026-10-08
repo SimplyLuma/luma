@@ -1,0 +1,26 @@
+schema_version = "0.1"
+
+[application]
+id = "org.projectluma.Darkroom"
+name = "Darkroom"
+version = "0.1.0"
+entrypoint = "bin/luma-darkroom"
+
+[platform]
+ui_contract = "1"
+semantics_contract = "1"
+
+[responsive]
+adaptive = true
+test_widths = [360, 500, 1024, 1380]
+input_modes = ["pointer", "touch", "stylus", "keyboard"]
+presentation_modes = ["windowed", "fullscreen-mobile"]
+
+[conformance]
+accessibility = true
+keyboard = true
+semantics = true
+reduced_motion = true
+color_managed = true
+non_destructive = true
+

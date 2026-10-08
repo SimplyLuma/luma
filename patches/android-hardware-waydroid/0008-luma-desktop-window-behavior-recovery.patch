@@ -1,0 +1,611 @@
+From: Project Luma <builds@projectluma.invalid>
+Subject: [PATCH] Recover desktop resize, scaling, input and close behavior
+
+Applies after 0001-0004 and 0007 to the pinned source. Bounded retries use
+actual Android task bounds and generation-safe cancellation, off the Wayland
+thread. Includes unmodified Figtree copyright/OFL in vendor and source.
+No HIDL, privilege or display ABI changes.
+
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -31,6 +31,7 @@
+ #include "hwcomposer.h"
+ #include "egl-tools.h"
+ #include "prairie-titlebar.h"
++#include "luma-task-resize.h"
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -149,6 +150,18 @@
+             reply.version == kPrairieResizeVersion && reply.success == 1;
+ }
+ 
++// One in-process worker sleeps when idle. It never owns a Wayland object or
++// window pointer; Android task relaunch/bridge waits cannot block host input.
++luma::TaskResizeQueue& task_resize_queue() {
++    static luma::TaskResizeQueue queue([](const luma::TaskResize& size) {
++        if (!request_prairie_task_resize(size.task, size.left, size.top,
++                                        size.right, size.bottom, 1))
++            ALOGE("Task %u rejected host resize to %dx%d px", size.task,
++                  size.right - size.left, size.bottom - size.top);
++    });
++    return queue;
++}
++
+ }  // namespace
+ 
+ struct buffer;
+@@ -296,11 +309,13 @@
+ 	}
+ 
+     bool maximized = false;
++    bool resizing = false;
+     const auto* configured_states =
+         static_cast<const uint32_t*>(states->data);
+     const size_t configured_state_count = states->size / sizeof(uint32_t);
+     for (size_t index = 0; index < configured_state_count; ++index) {
+         if (configured_states[index] == XDG_TOPLEVEL_STATE_MAXIMIZED) maximized = true;
++        if (configured_states[index] == XDG_TOPLEVEL_STATE_RESIZING) resizing = true;
+     }
+ 
+     if (window->has_prairie_titlebar && window->taskID != "none" &&
+@@ -318,13 +333,20 @@
+         window->maximized = maximized;
+         window->content_width = content_width;
+         window->content_height = content_height;
+-        if (changed) {
++        const auto now = std::chrono::steady_clock::now();
++        const bool paint_due = !resizing ||
++            now - window->chrome_drawn_at >= std::chrono::milliseconds(33);
++        if (paint_due && (changed || window->chrome_drawn_width != width ||
++                                     window->chrome_drawn_height != height)) {
+             prairie::redraw_titlebar(*window);
+             prairie::redraw_shadow(*window);
+-        }
+-        // Each accepted configure is a task size, including interactive drag.
+-        // Focus and the compositor's resizing state must not suppress delivery.
+-        window->request_task_resize(content_width, content_height);
++            window->chrome_drawn_at = now;
++            window->chrome_drawn_width = width;
++            window->chrome_drawn_height = height;
++        }
++        // Coalesce drag updates; deliver the final configure immediately.
++        // The queue also delivers a drag held still for 1.5 seconds.
++        window->request_task_resize(content_width, content_height, resizing);
+         if (window->viewport)
+             wp_viewport_set_destination(window->viewport, width, height);
+         xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, width, height);
+@@ -364,6 +386,7 @@
+                 property_set("waydroid.active_apps", "none");
+                 display->task->removeAllVisibleRecentTasks();
+             } else {
++                task_resize_queue().cancel(stoi(window->taskID));
+                 display->task->removeTask(stoi(window->taskID));
+             }
+         }
+@@ -555,43 +578,39 @@
+     }
+ }
+ 
+-void window::request_task_resize(int width, int height) {
+-    if (taskID == "none" || taskID == "0" ||
+-            width < 1 || height < 1)
+-        return;
+-    if (requested_content_width == width && requested_content_height == height)
+-        return;
+-
+-    int left = task_origin_x;
+-    int top = task_origin_y;
+-    const int display_width = display->width > 0 ? display->width : width;
+-    const int display_height = display->height > 0 ? display->height : height;
+-    if (maximized) {
+-        left = 0;
+-        top = 0;
+-    } else {
+-        left = restore_task_origin_x;
+-        top = restore_task_origin_y;
+-        left = std::max(0, std::min(left, display_width - width));
+-        top = std::max(0, std::min(top, display_height - height));
+-    }
+-    const int right = left + width;
+-    const int bottom = top + height;
+-    constexpr int resize_mode_preserve_window = 1;
+-    if (!request_prairie_task_resize(stoi(taskID), left, top, right, bottom,
+-                                     resize_mode_preserve_window)) {
+-        ALOGE("Task %s rejected host resize to %dx%d", taskID.c_str(),
+-              width, height);
+-        return;
+-    }
+-    task_origin_x = left;
+-    task_origin_y = top;
++void window::request_task_resize(int width, int height, bool interactive) {
++    if (taskID == "none" || taskID == "0" || width < 1 || height < 1)
++        return;
++    if (requested_content_width == width && requested_content_height == height &&
++            task_resize_interactive == interactive)
++        return;
++
++    // Host sizes are logical; Android bounds/origins are display pixels.
++    const int px_width = luma::logical_to_pixels(width, display->scale);
++    const int px_height = luma::logical_to_pixels(height, display->scale);
++    const int display_width = luma::logical_to_pixels(display->width, display->scale);
++    const int display_height = luma::logical_to_pixels(display->height, display->scale);
++    int left = 0, top = 0;
++    if (!maximized) {
++        left = std::max(0, std::min(restore_task_origin_x, display_width - px_width));
++        top = std::max(0, std::min(restore_task_origin_y, display_height - px_height));
++    }
++    task_resize_queue().submit({static_cast<uint32_t>(stoi(taskID)), left, top,
++                               left + px_width, top + px_height}, interactive);
+     requested_content_width = width;
+     requested_content_height = height;
+-    ALOGI("Luma task %s configured %dx%d", taskID.c_str(), width, height);
++    task_resize_interactive = interactive;
++}
++
++void window::observe_task_bounds(const hwc_rect_t& bounds) {
++    if (taskID == "none" || taskID == "0") return;
++    task_resize_queue().observe_bounds({static_cast<uint32_t>(stoi(taskID)),
++        bounds.left, bounds.top, bounds.right, bounds.bottom});
+ }
+ 
+ window::~window() {
++    if (taskID != "none" && taskID != "0")
++        task_resize_queue().cancel(stoi(taskID));
+     prairie::destroy_titlebar(*this);
+     if (xdg_toplevel)
+         xdg_toplevel_destroy(xdg_toplevel);
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -43,6 +43,7 @@
+ #include <getopt.h>
+ #include <errno.h>
+ #include <map>
++#include <chrono>
+ #include <list>
+ #include <set>
+ #include <pthread.h>
+@@ -227,6 +228,10 @@
+     int restore_task_origin_y {};
+     int requested_content_width {};
+     int requested_content_height {};
++    bool task_resize_interactive {};
++    std::chrono::steady_clock::time_point chrome_drawn_at {};
++    int chrome_drawn_width {};
++    int chrome_drawn_height {};
+     int missing_frames {};
+     bool maximized {};
+     int hovered_chrome_target {};
+@@ -265,7 +270,8 @@
+     void set_maximize(bool enabled);
+     void set_title(const char *title);
+     void set_app_id(std::string appID);
+-    void request_task_resize(int width, int height);
++    void request_task_resize(int width, int height, bool interactive = false);
++    void observe_task_bounds(const hwc_rect_t& bounds);
+ 
+   private:
+     window() = default;
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -17,6 +17,7 @@
+ 
+ #include "hwcomposer.h"
+ #include "prairie-titlebar.h"
++#include "luma-task-resize.h"
+ 
+ #include <errno.h>
+ #include <pthread.h>
+@@ -407,6 +408,26 @@
+     int width = std::max(1, int(ceil(source_width / pdev->display->scale)));
+     int height = std::max(1, int(ceil(source_height / pdev->display->scale)));
+     double scale_x = 1.0, scale_y = 1.0;
++    // Keep the last Android frame at its natural scale during a host resize.
++    // Clip exposed right/bottom edges instead of distorting text and controls.
++    if (!window->composed_canvas && window_layer.viewport && hwc_layer->transform == 0) {
++        const int visible_width = std::min(width, geometry.content.x + geometry.content.width - x);
++        const int visible_height = std::min(height, geometry.content.y + geometry.content.height - y);
++        if (visible_width < 1 || visible_height < 1) {
++            wl_surface_attach(window_layer.surface, nullptr, 0, 0);
++            wl_surface_commit(window_layer.surface);
++            return 0;
++        }
++        if (visible_width < width || visible_height < height) {
++            const auto& crop = hwc_layer->sourceCropf;
++            window_layer.set_crop({crop.left, crop.top,
++                crop.left + (crop.right - crop.left) * float(visible_width) / width,
++                crop.top + (crop.bottom - crop.top) * float(visible_height) / height});
++            width = visible_width;
++            height = visible_height;
++            wp_viewport_set_destination(window_layer.viewport, width, height);
++        }
++    }
+     if (window->composed_canvas && window_layer.viewport &&
+             source_width > 0 && source_height > 0) {
+         x = geometry.content.x;
+@@ -420,9 +441,9 @@
+         const double rx = (crop.right - crop.left) / source_width;
+         const double ry = (crop.bottom - crop.top) / source_height;
+         const int task_width = std::min(window->requested_content_width > 0 ?
+-            window->requested_content_width : source_width, source_width);
++            luma::logical_to_pixels(window->requested_content_width, pdev->display->scale) : source_width, source_width);
+         const int task_height = std::min(window->requested_content_height > 0 ?
+-            window->requested_content_height : source_height, source_height);
++            luma::logical_to_pixels(window->requested_content_height, pdev->display->scale) : source_height, source_height);
+         const int origin_x = std::clamp(window->task_origin_x - hwc_layer->displayFrame.left, 0, source_width - task_width);
+         const int origin_y = std::clamp(window->task_origin_y - hwc_layer->displayFrame.top, 0, source_height - task_height);
+         wp_viewport_set_source(window_layer.viewport,
+@@ -815,8 +836,15 @@
+         pdev->display->cursor_handler.reset(new subsurface_cursor_handler());
+     }
+ 
+-    auto first_window = window::create(pdev->display, pdev->should_compose, "Waydroid", "0", {0, 0, 0, 255});
+-    if (!property_get_bool("waydroid.background_start", true)) {
++    // The first window measures the output. When Android starts in the
++    // background it is destroyed straight away, but as an opaque black window
++    // it still flashed across the whole monitor at every login. Only a
++    // window that stays (the full Android screen) is painted black.
++    const bool background_start = property_get_bool("waydroid.background_start", true);
++    const hwc_color_t first_color = background_start
++        ? hwc_color_t{0, 0, 0, 0} : hwc_color_t{0, 0, 0, 255};
++    auto first_window = window::create(pdev->display, pdev->should_compose, "Waydroid", "0", first_color);
++    if (!background_start) {
+         pdev->display->windows.add("Waydroid", std::move(first_window));
+         property_set("waydroid.active_apps", "Waydroid");
+     } else {
+--- a/hwcomposer/modes/multi-window.cpp
++++ b/hwcomposer/modes/multi-window.cpp
+@@ -27,8 +27,19 @@
+ 
+ #include <log/log.h>
+ #include <cutils/properties.h>
++#include <algorithm>
++#include <cstring>
++#include <cmath>
+ 
+ constexpr hwc_color_t color_transparent = {0, 0, 0, 0};
++
++// Preserve Android's keyboard on touch postures; a desktop InputMethod host
++// window is a transparent display-sized layer that steals every pointer click.
++static bool desktop_posture() {
++    char value[PROPERTY_VALUE_MAX] {};
++    property_get("persist.luma.device_class", value, "desktop");
++    return std::strcmp(value, "desktop") == 0;
++}
+ 
+ window *multi_window_mode::get_window(waydroid_hwc_composer_device_1 *pdev, layer_info &layer_info) {
+     auto &windows = pdev->display->windows;
+@@ -37,18 +48,23 @@
+         if (is_blacklisted(pdev, layer_info.aid, layer_info.component))
+             return nullptr;
+ 
++        if (pdev->display->ignored_apps.count(layer_info.tid))
++            return nullptr;
+         auto it = windows.find(layer_info.tid);
+         if (it != windows.end()) {
+             it->second->missing_frames = 0;
+             const auto bounds = task_bounds.at(layer_info.tid);
++            it->second->observe_task_bounds(bounds);
++            it->second->task_origin_x = bounds.left;
++            it->second->task_origin_y = bounds.top;
+             if (it->second->requested_content_width == 0 ||
+                     it->second->requested_content_height == 0) {
+                 it->second->task_origin_x = bounds.left;
+                 it->second->task_origin_y = bounds.top;
+                 it->second->restore_task_origin_x = bounds.left;
+                 it->second->restore_task_origin_y = bounds.top;
+-                it->second->content_width = bounds.right - bounds.left;
+-                it->second->content_height = bounds.bottom - bounds.top;
++                it->second->content_width = std::max(1, int(std::ceil((bounds.right - bounds.left) / pdev->display->scale)));
++                it->second->content_height = std::max(1, int(std::ceil((bounds.bottom - bounds.top) / pdev->display->scale)));
+             }
+             return it->second.get();
+         } else {
+@@ -56,11 +72,14 @@
+             return windows.add(
+                 pdev, layer_info.tid, layer_info.aid, layer_info.tid,
+                 color_transparent,
+-                bounds.right - bounds.left, bounds.bottom - bounds.top,
++                std::max(1, int(std::ceil((bounds.right - bounds.left) / pdev->display->scale))),
++                std::max(1, int(std::ceil((bounds.bottom - bounds.top) / pdev->display->scale))),
+                 bounds.left, bounds.top);
+         }
+     } else if (layer_info.type == LayerSplitType::RawName) {
+         if (layer_info.aid == "InputMethod") {
++            if (desktop_posture())
++                return nullptr;
+             auto it = windows.find("InputMethod");
+             if (it != windows.end()) {
+                 return it->second.get();
+@@ -125,7 +144,15 @@
+         return ++it.second->missing_frames > 120;
+     });
+ 
+-    pdev->display->ignored_apps.clear();
++    // Only permit the task to reopen after Android removed its old layers.
++    auto& ignored = pdev->display->ignored_apps;
++    for (auto it = ignored.begin(); it != ignored.end();) {
++        const bool still_shown = std::any_of(layer_infos.container().begin(),
++            layer_infos.container().end(), [&it](const auto& info) {
++                return info.type == LayerSplitType::TID && info.tid == *it;
++            });
++        it = still_shown ? std::next(it) : ignored.erase(it);
++    }
+ 
+     return 0;
+ }
+--- a/hwcomposer/modes/single-window.cpp
++++ b/hwcomposer/modes/single-window.cpp
+@@ -133,6 +133,26 @@
+     {
+         std::scoped_lock lock(pdev->display->windowsMutex);
+         select_target(pdev);
++        // Android's task layer displayFrame is the authoritative requested
++        // bounds. A host-clipped or full-display client target is not an ack.
++        hwc_rect_t bounds {};
++        bool found = false;
++        for (size_t i = 0; i < contents->numHwLayers; ++i) {
++            const auto& info = layer_infos[i];
++            if (info.type != LayerSplitType::TID || info.tid != target_layer_tid)
++                continue;
++            const auto& frame = contents->hwLayers[i].displayFrame;
++            if (!found) { bounds = frame; found = true; }
++            else {
++                bounds.left = std::min(bounds.left, frame.left);
++                bounds.top = std::min(bounds.top, frame.top);
++                bounds.right = std::max(bounds.right, frame.right);
++                bounds.bottom = std::max(bounds.bottom, frame.bottom);
++            }
++        }
++        const auto current = pdev->display->windows.find(target_layer_tid);
++        if (found && current != pdev->display->windows.end())
++            current->second->observe_task_bounds(bounds);
+     }
+     target_prepared = true;
+     // HWC_SKIP_LAYER must remain client-composed. If an unrelated task has one,
+--- /dev/null
++++ b/hwcomposer/luma-task-resize.h
+@@ -0,0 +1,124 @@
++/* SPDX-License-Identifier: Apache-2.0
++ * Host configure events must never wait on Android activity relaunches.
++ * This worker retains values only, never a window/display/Wayland pointer.
++ */
++#pragma once
++#include <algorithm>
++#include <chrono>
++#include <cmath>
++#include <condition_variable>
++#include <cstdint>
++#include <functional>
++#include <map>
++#include <mutex>
++#include <thread>
++#include <utility>
++
++namespace luma {
++inline int logical_to_pixels(int logical, double scale) {
++    return std::max(1, static_cast<int>(std::ceil(logical * (scale > 0 ? scale : 1.0))));
++}
++struct TaskResize {
++    uint32_t task;
++    int left, top, right, bottom;
++};
++class TaskResizeQueue {
++    using Clock = std::chrono::steady_clock;
++    struct Pending {
++        TaskResize size;
++        Clock::time_point due;
++        uint64_t generation;
++        unsigned retries;
++        bool interactive;
++    };
++    std::function<void(const TaskResize&)> deliver;
++    std::chrono::milliseconds pause;
++    std::mutex mutex;
++    std::condition_variable wake;
++    std::map<uint32_t, Pending> pending;
++    bool stopping = false;
++    uint64_t generation = 0;
++    std::thread worker;
++    void run() {
++        std::unique_lock<std::mutex> lock(mutex);
++        while (!stopping) {
++            if (pending.empty()) {
++                wake.wait(lock, [this] { return stopping || !pending.empty(); });
++                continue;
++            }
++            auto next = std::min_element(pending.begin(), pending.end(),
++                [](const auto& a, const auto& b) { return a.second.due < b.second.due; });
++            auto deadline = next->second.due;
++            if (Clock::now() < deadline) {
++                wake.wait_until(lock, deadline);
++                continue; // Recompute after a newer configure or cancellation.
++            }
++            const Pending request = next->second;
++            // Keep the expected bounds visible to observations during socket
++            // delivery. A new configure, Close, or acknowledgement can replace
++            // or erase this generation while the worker waits for Android.
++            next->second.due = Clock::time_point::max();
++            lock.unlock();
++            deliver(request.size); // Existing authenticated, bounded socket.
++            lock.lock();
++            const auto current = pending.find(request.size.task);
++            if (current == pending.end() ||
++                    current->second.generation != request.generation)
++                continue;
++            if (!request.interactive && request.retries < 2) {
++                current->second.retries = request.retries + 1;
++                current->second.due = Clock::now() + pause;
++            } else {
++                pending.erase(current);
++            }
++        }
++    }
++public:
++    explicit TaskResizeQueue(std::function<void(const TaskResize&)> callback,
++                            std::chrono::milliseconds delay = std::chrono::milliseconds(1500))
++        : deliver(std::move(callback)), pause(delay), worker([this] { run(); }) {}
++    TaskResizeQueue(const TaskResizeQueue&) = delete;
++    TaskResizeQueue& operator=(const TaskResizeQueue&) = delete;
++    ~TaskResizeQueue() {
++        {
++            std::lock_guard<std::mutex> lock(mutex);
++            stopping = true;
++            pending.clear();
++        }
++        wake.notify_one();
++        worker.join();
++    }
++    void submit(TaskResize size, bool interactive) {
++        {
++            std::lock_guard<std::mutex> lock(mutex);
++            pending.insert_or_assign(size.task, Pending{size, Clock::now() +
++                (interactive ? pause : std::chrono::milliseconds(0)),
++                ++generation, 0, interactive});
++        }
++        wake.notify_one();
++    }
++    // HWC supplies actual Android task bounds, not the host viewport's clipped
++    // or scaled buffer size. Two pixels permit fractional-scale rounding.
++    void observe_bounds(TaskResize actual) {
++        {
++            std::lock_guard<std::mutex> lock(mutex);
++            const auto found = pending.find(actual.task);
++            if (found == pending.end()) return;
++            const auto& expected = found->second.size;
++            if (std::abs(actual.left - expected.left) <= 2 &&
++                    std::abs(actual.top - expected.top) <= 2 &&
++                    std::abs(actual.right - expected.right) <= 2 &&
++                    std::abs(actual.bottom - expected.bottom) <= 2)
++                pending.erase(found);
++        }
++        wake.notify_one();
++    }
++    void cancel(uint32_t task) {
++        {
++            std::lock_guard<std::mutex> lock(mutex);
++            pending.erase(task);
++        }
++        wake.notify_one();
++    }
++};
++} // namespace luma
+--- a/hwcomposer/Android.bp
++++ b/hwcomposer/Android.bp
+@@ -91,6 +91,7 @@
+ 
+ prebuilt_etc {
+     name: "prairie-figtree-font",
++    required: ["prairie-figtree-license"],
+     src: "fonts/Figtree-VF.ttf",
+     sub_dir: "fonts",
+     filename_from_src: true,
+@@ -146,3 +147,12 @@
+     cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
+     out: ["cursor-shape-v1-client-protocol.h"],
+ }
++
++// Unmodified Figtree font redistribution includes its upstream copyright/OFL.
++prebuilt_etc {
++    name: "prairie-figtree-license",
++    src: "fonts/OFL.txt",
++    sub_dir: "licenses/prairie-figtree",
++    filename: "OFL.txt",
++    vendor: true,
++}
+--- /dev/null
++++ b/hwcomposer/fonts/OFL.txt
+@@ -0,0 +1,93 @@
++Copyright 2022 The Figtree Project Authors (https://github.com/erikdkennedy/figtree)
++
++This Font Software is licensed under the SIL Open Font License, Version 1.1.
++This license is copied below, and is also available with a FAQ at:
++http://scripts.sil.org/OFL
++
++
++-----------------------------------------------------------
++SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
++-----------------------------------------------------------
++
++PREAMBLE
++The goals of the Open Font License (OFL) are to stimulate worldwide
++development of collaborative font projects, to support the font creation
++efforts of academic and linguistic communities, and to provide a free and
++open framework in which fonts may be shared and improved in partnership
++with others.
++
++The OFL allows the licensed fonts to be used, studied, modified and
++redistributed freely as long as they are not sold by themselves. The
++fonts, including any derivative works, can be bundled, embedded, 
++redistributed and/or sold with any software provided that any reserved
++names are not used by derivative works. The fonts and derivatives,
++however, cannot be released under any other type of license. The
++requirement for fonts to remain under this license does not apply
++to any document created using the fonts or their derivatives.
++
++DEFINITIONS
++"Font Software" refers to the set of files released by the Copyright
++Holder(s) under this license and clearly marked as such. This may
++include source files, build scripts and documentation.
++
++"Reserved Font Name" refers to any names specified as such after the
++copyright statement(s).
++
++"Original Version" refers to the collection of Font Software components as
++distributed by the Copyright Holder(s).
++
++"Modified Version" refers to any derivative made by adding to, deleting,
++or substituting -- in part or in whole -- any of the components of the
++Original Version, by changing formats or by porting the Font Software to a
++new environment.
++
++"Author" refers to any designer, engineer, programmer, technical
++writer or other person who contributed to the Font Software.
++
++PERMISSION & CONDITIONS
++Permission is hereby granted, free of charge, to any person obtaining
++a copy of the Font Software, to use, study, copy, merge, embed, modify,
++redistribute, and sell modified and unmodified copies of the Font
++Software, subject to the following conditions:
++
++1) Neither the Font Software nor any of its individual components,
++in Original or Modified Versions, may be sold by itself.
++
++2) Original or Modified Versions of the Font Software may be bundled,
++redistributed and/or sold with any software, provided that each copy
++contains the above copyright notice and this license. These can be
++included either as stand-alone text files, human-readable headers or
++in the appropriate machine-readable metadata fields within text or
++binary files as long as those fields can be easily viewed by the user.
++
++3) No Modified Version of the Font Software may use the Reserved Font
++Name(s) unless explicit written permission is granted by the corresponding
++Copyright Holder. This restriction only applies to the primary font name as
++presented to the users.
++
++4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
++Software shall not be used to promote, endorse or advertise any
++Modified Version, except to acknowledge the contribution(s) of the
++Copyright Holder(s) and the Author(s) or with their explicit written
++permission.
++
++5) The Font Software, modified or unmodified, in part or in whole,
++must be distributed entirely under this license, and must not be
++distributed under any other license. The requirement for fonts to
++remain under this license does not apply to any document created
++using the Font Software.
++
++TERMINATION
++This license becomes null and void if any of the above conditions are
++not met.
++
++DISCLAIMER
++THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
++MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
++OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
++COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
++DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
++OTHER DEALINGS IN THE FONT SOFTWARE.

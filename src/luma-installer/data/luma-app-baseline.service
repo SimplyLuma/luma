@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Seed Luma's signed offline independent applications
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=display-manager.service
+ConditionPathExists=/usr/share/luma/app-baseline/manifest.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-seed-app-baseline
+UMask=0077
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
+StateDirectory=luma/app-baseline
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=graphical.target

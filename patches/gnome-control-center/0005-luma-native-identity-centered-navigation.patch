@@ -1,0 +1,80 @@
+--- a/shell/cc-panel-list.c
++++ b/shell/cc-panel-list.c
+@@ -256,6 +256,7 @@
+   /* Setup the row */
+   grid = gtk_grid_new ();
+   gtk_widget_set_hexpand (grid, TRUE);
++  gtk_widget_set_valign (grid, GTK_ALIGN_CENTER);
+   /* Geometry belongs to the shared native preference navigation style.
+    * Keep labels wrapping so translations and large text can grow rows. */
+   gtk_widget_add_css_class (grid, "luma-preferences-navigation-content");
+--- a/shell/cc-window.c
++++ b/shell/cc-window.c
+@@ -850,7 +850,19 @@
+ cc_window_new (GtkApplication *application,
+                CcShellModel   *model)
+ {
++  g_autoptr (GMenu) menu = NULL;
++  g_autoptr (GMenu) section = NULL;
++
+   g_return_val_if_fail (GTK_IS_APPLICATION (application), NULL);
++
++  /* The shared native application identity owns this same primary menu. */
++  menu = g_menu_new ();
++  section = g_menu_new ();
++  g_menu_append (section, _("_Keyboard Shortcuts"), "app.shortcuts");
++  g_menu_append (section, _("_Help"), "app.help");
++  g_menu_append (section, _("_About Settings"), "app.about");
++  g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
++  gtk_application_set_menubar (application, G_MENU_MODEL (menu));
+ 
+   return g_object_new (CC_TYPE_WINDOW,
+                        "application", application,
+--- a/shell/cc-window.blp
++++ b/shell/cc-window.blp
+@@ -14,20 +14,14 @@
+   content: Adw.ToolbarView {
+     [top]
+     Adw.HeaderBar titlebar {
+-      styles ["luma-titlebar", "luma-no-automatic-identity"]
++      styles ["luma-titlebar", "luma-no-command-row"]
+       show-start-title-buttons: false;
+       decoration-layout: ":minimize,maximize,close";
+       title-widget: Label {
+         label: _("Settings");
+         styles ["luma-window-title"]
+       };
+-      [start]
+-      MenuButton {
+-        icon-name: "open-menu-symbolic";
+-        menu-model: primary_menu;
+-        primary: true;
+-        tooltip-text: _("Main Menu");
+-      }
++
+     }
+ 
+     content: Adw.NavigationSplitView split_view {
+@@ -78,22 +72,3 @@
+ 
+   response => $on_development_warning_dialog_responded_cb(template);
+ }
+-
+-menu primary_menu {
+-  section {
+-    item {
+-      label: _("_Keyboard Shortcuts");
+-      action: "app.shortcuts";
+-    }
+-
+-    item {
+-      label: _("_Help");
+-      action: "app.help";
+-    }
+-
+-    item {
+-      label: _("_About Settings");
+-      action: "app.about";
+-    }
+-  }
+-}

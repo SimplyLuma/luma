@@ -1,0 +1,47 @@
+{
+  "id": "org.projectluma.Charlie",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "org.projectluma.Charlie",
+  "appstream-compose": false,
+  "finish-args": [
+    "--metadata=X-Luma=app-data-schema=charlie-shared-mailbox-v1",
+    "--metadata=X-Luma=min-host-installer=59",
+    "--metadata=X-Luma=min-host-charlie=6",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--share=network",
+    "--filesystem=xdg-data/charlie",
+    "--talk-name=org.projectluma.AppData1",
+    "--talk-name=org.projectluma.MailHost1",
+    "--talk-name=org.projectluma.Background1"
+  ],
+  "modules": [
+    {
+      "name": "charlie-ui",
+      "buildsystem": "simple",
+      "build-commands": [
+        "PYTHONPATH=src/external/charlie:src/external/charlie/tests python3 -B -m unittest discover -s src/external/charlie/tests -p 'test_google_release.py'",
+        "PYTHONPATH=src/external/charlie python3 -B -m unittest discover -s src/external/charlie/tests -p 'test_oauth.py'",
+        "PYTHONPATH=src/external/charlie python3 -m unittest discover -s src/external/charlie/tests -p 'test_host_mail_wire.py'",
+        "PYTHONPATH=src/external/charlie python3 -m unittest discover -s src/external/charlie/tests -p 'test_host_mail_owner.py'",
+        "PYTHONPATH=src/external/charlie python3 -m unittest discover -s src/external/charlie/tests -p 'test_host_mail_races.py'",
+        "PYTHONPATH=src/external/charlie python3 -m unittest discover -s src/external/charlie/tests -p 'test_host_mail_agent_races.py'",
+        "PYTHONPATH=src/external/charlie python3 -m unittest discover -s src/external/charlie/tests -p 'test_host_mail_oauth_cancel.py'",
+        "install -d /app/lib/python3.14/site-packages /app/bin /app/share/charlie /app/share/dbus-1/services",
+        "cp -a src/external/charlie/charlie_luma /app/lib/python3.14/site-packages/",
+        "install -m755 src/external/charlie/data/org.projectluma.Charlie.in /app/bin/org.projectluma.Charlie",
+        "install -m644 src/external/charlie/data/charlie.css /app/share/charlie/charlie.css",
+        "sed 's|Exec=/usr/bin/|Exec=/app/bin/|' src/external/charlie/data/org.projectluma.Charlie.service > /app/share/dbus-1/services/org.projectluma.Charlie.service",
+        "install -Dm644 src/external/charlie/data/org.projectluma.Charlie.desktop /app/share/applications/org.projectluma.Charlie.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Charlie.svg",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Charlie.metainfo.xml",
+        "install -Dm644 src/external/charlie/LICENSE.md /app/share/licenses/org.projectluma.Charlie/LICENSE.md",
+        "install -Dm644 -t /app/share/luma-app-media depot-media/*.png"
+      ]
+    }
+  ]
+}

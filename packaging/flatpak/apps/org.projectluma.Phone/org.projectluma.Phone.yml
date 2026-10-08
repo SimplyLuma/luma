@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+# Exact maintained sources attached by the canonical source sealer.
+{
+  "id": "org.projectluma.Phone",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "prairie-phone",
+  "finish-args": [
+    "--env=LUMA_PHONE_STYLE_PATH=/app/share/prairie-core/phone.css",
+    "--metadata=X-Luma=min-host-core=97",
+    "--metadata=X-Luma=app-data-schema=phone-v1",
+    "--metadata=X-Luma=min-host-installer=64",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--share=network",
+    "--talk-name=org.projectluma.AppData1",
+    "--socket=pulseaudio",
+    "--system-talk-name=org.freedesktop.ModemManager1",
+    "--system-talk-name=net.catcrafts.IMS1",
+    "--system-talk-name=org.projectluma.AudioRoute1",
+    "--filesystem=xdg-data/prairie/phone:create",
+    "--filesystem=xdg-data/luma/phone:create",
+    "--talk-name=org.projectluma.Connect1",
+    "--talk-name=org.gnome.evolution.dataserver.Sources5",
+    "--talk-name=org.gnome.evolution.dataserver.AddressBook10",
+    "--metadata=X-Luma=min-host-continuity=63",
+    "--talk-name=org.projectluma.ApplicationDirectory1"
+  ],
+  "modules": [
+    {
+      "name": "phone",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core",
+        "cp -a src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/",
+        "install -d /app/lib/python3.14/site-packages/luma_continuity",
+        "install -m644 src/luma-continuity/luma_continuity/__init__.py src/luma-continuity/luma_continuity/phone_contract.py src/luma-continuity/luma_continuity/call_provider.py /app/lib/python3.14/site-packages/luma_continuity/",
+        "install -Dm755 src/prairie-core/bin/prairie-phone /app/bin/prairie-phone-real",
+        "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup prairie-phone-real \"$@\"\\n' > /app/bin/prairie-phone",
+        "chmod 755 /app/bin/prairie-phone",
+        "install -Dm644 src/prairie-core/data/org.projectluma.Phone.desktop /app/share/applications/org.projectluma.Phone.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Phone.svg",
+        "cp -a src/prairie-core/style/. /app/share/prairie-core/",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Phone.metainfo.xml",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Phone/LICENSE.md",
+        "install -Dm644 depot-media/fa2bce9454417e98358758c20aac625d6c4d7dea7284486b85aa4e365e58cffa.png /app/share/luma-app-media/fa2bce9454417e98358758c20aac625d6c4d7dea7284486b85aa4e365e58cffa.png"
+      ]
+    }
+  ],
+  "appstream-compose": false
+}

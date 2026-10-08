@@ -1,0 +1,76 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: sharp dock icons and masked windows
+
+Dock icons read as pixelated. Clutter draws an offscreen effect with
+nearest-texel sampling at whole display scales, and the centred dock sat on
+a half pixel whenever its width was odd, so every masked icon was resampled
+across that half pixel. The dock now snaps to whole pixels, and the icon and
+window masks sample their offscreen texture linearly.
+
+--- a/js/ui/iconMask.js
++++ b/js/ui/iconMask.js
+@@ -18,6 +18,14 @@
+ cogl_color_out *= 1.0 - smoothstep(radius - 0.02, radius + 0.02, corner);
+ `;
+ 
++// Clutter draws an offscreen effect with nearest-texel sampling at whole
++// display scales. Any sub-pixel position or scale on the way to the screen
++// then duplicated and dropped rows of the icon, which read as pixelation.
++export function smoothOffscreenSampling(effect) {
++    const pipeline = effect.get_pipeline();
++    pipeline?.set_layer_filters(0, Cogl.PipelineFilter.LINEAR, Cogl.PipelineFilter.LINEAR);
++}
++
+ export const LumaIconMask = GObject.registerClass(
+ class LumaIconMask extends Shell.GLSLEffect {
+     vfunc_build_pipeline() {
+@@ -25,5 +33,10 @@
+             Cogl.SnippetHook.FRAGMENT,
+             ICON_MASK_DECLARATIONS, ICON_MASK_CODE, false);
+     }
++
++    vfunc_paint_target(node, paintContext) {
++        smoothOffscreenSampling(this);
++        super.vfunc_paint_target(node, paintContext);
++    }
+ });
+ 
+--- a/js/ui/lumaWindowCorners.js
++++ b/js/ui/lumaWindowCorners.js
+@@ -37,6 +37,7 @@
+ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import Cogl from 'gi://Cogl';
++import {smoothOffscreenSampling} from './iconMask.js';
+ 
+ const RADIUS = 15;
+ const EFFECT_NAME = 'luma-window-corners';
+@@ -156,6 +157,7 @@
+                 [texture.get_width() / textureScale, texture.get_height() / textureScale]);
+             this.set_uniform_float(this.get_uniform_location('scale'), 1, [textureScale]);
+         }
++        smoothOffscreenSampling(this);
+         super.vfunc_paint_target(node, paintContext);
+     }
+ });
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -42,12 +42,14 @@
+     const length = span ? available : Math.min(available, natural);
+     const width = vertical ? thickness : length;
+     const height = vertical ? length : thickness;
+-    const x = vertical
++    // Whole pixels: centring an odd width put the dock on a half pixel, and
++    // every masked icon on it was resampled across that half pixel.
++    const x = Math.round(vertical
+         ? monitor.x + (edge === 'left' ? inset : monitor.width - inset - width)
+-        : monitor.x + (monitor.width - width) / 2;
+-    const y = vertical
++        : monitor.x + (monitor.width - width) / 2);
++    const y = Math.round(vertical
+         ? monitor.y + (monitor.height - height) / 2
+-        : monitor.y + (edge === 'top' ? inset : monitor.height - inset - height);
++        : monitor.y + (edge === 'top' ? inset : monitor.height - inset - height));
+     // A floating Dash still consumes maximized work area through the physical
+     // edge gap. A separate nonreactive chrome actor owns these static bounds.
+     const reserved = thickness + 2 * inset;

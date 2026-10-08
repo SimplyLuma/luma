@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Wine Software Uninstaller
+Exec=wine uninstaller.exe
+Icon=msiexec
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=X-Wine;

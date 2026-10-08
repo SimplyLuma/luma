@@ -1,0 +1,47 @@
+{
+  "app": "rows-tree",
+  "title": "SB1 sidebar rows, tree variant, with SB4 marks and SB3 faces (vs Notes' sidebar)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=notes",
+    "window": "#n-side",
+    "exclude": [
+      "#n-side .sfoot"
+    ],
+    "exclude_note": "The sidebar foot is F2's SidebarFoot, not a rows part.",
+    "accent_note": "The Studio tints its light mode with the wallpaper's hue (168); the kit's tokens are the default accent (258), so the spec is pinned to it."
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "notes-side",
+      "LUMAUI_ROWS_PHOTOS": "{run}/fixtures/contacts-v70"
+    }
+  },
+  "states": [
+    {
+      "name": "tree",
+      "about": "Notes' pinned pages and folders, Launch checklist open (v70's opening state)",
+      "spec": [
+        {
+          "eval": "document.body.style.setProperty('--acc', '258')"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "tree",
+      "spec": "#n-side"
+    }
+  ],
+  "pairs_note": "No structure pair: the surface fills its window, so the window's own frame paint would be read as the sidebar's."
+}

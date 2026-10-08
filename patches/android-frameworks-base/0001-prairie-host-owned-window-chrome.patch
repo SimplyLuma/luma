@@ -1,0 +1,84 @@
+diff --git a/core/java/android/view/ViewRootImpl.java b/core/java/android/view/ViewRootImpl.java
+index f6211fd488d8..7491c3015993 100644
+--- a/core/java/android/view/ViewRootImpl.java
++++ b/core/java/android/view/ViewRootImpl.java
+@@ -283,7 +283,9 @@ public final class ViewRootImpl implements ViewParent,
+      * @hide
+      */
+     public static final boolean CAPTION_ON_SHELL =
+-            SystemProperties.getBoolean("persist.wm.debug.caption_on_shell", false);
++            SystemProperties.getBoolean("persist.wm.debug.caption_on_shell", false)
++                    || SystemProperties.getBoolean("ro.luma.host_window_chrome",
++                    SystemProperties.getBoolean("persist.luma.host_window_chrome", false));
+ 
+     /**
+      * Whether the client should compute the window frame on its own.
+diff --git a/libs/WindowManager/Shell/src/com/android/wm/shell/windowdecor/CaptionWindowDecorViewModel.java b/libs/WindowManager/Shell/src/com/android/wm/shell/windowdecor/CaptionWindowDecorViewModel.java
+index 6b7ca421f5ed..5f1faa9813fb 100644
+--- a/libs/WindowManager/Shell/src/com/android/wm/shell/windowdecor/CaptionWindowDecorViewModel.java
++++ b/libs/WindowManager/Shell/src/com/android/wm/shell/windowdecor/CaptionWindowDecorViewModel.java
+@@ -23,6 +23,7 @@ import static android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN;
+ import android.app.ActivityManager.RunningTaskInfo;
+ import android.content.Context;
+ import android.os.Handler;
++import android.os.SystemProperties;
+ import android.util.SparseArray;
+ import android.view.Choreographer;
+ import android.view.MotionEvent;
+@@ -43,6 +44,9 @@ import com.android.wm.shell.transition.Transitions;
+  * {@link CaptionWindowDecoration}.
+  */
+ public class CaptionWindowDecorViewModel implements WindowDecorViewModel {
++    private static final boolean HOST_OWNS_WINDOW_CHROME =
++            SystemProperties.getBoolean("ro.luma.host_window_chrome",
++                    SystemProperties.getBoolean("persist.luma.host_window_chrome", false));
+     private final ShellTaskOrganizer mTaskOrganizer;
+     private final Context mContext;
+     private final Handler mMainHandler;
+@@ -145,10 +149,11 @@ public class CaptionWindowDecorViewModel implements WindowDecorViewModel {
+     }
+ 
+     private boolean shouldShowWindowDecor(RunningTaskInfo taskInfo) {
+-        return taskInfo.getWindowingMode() == WINDOWING_MODE_FREEFORM
++        return !HOST_OWNS_WINDOW_CHROME
++                && (taskInfo.getWindowingMode() == WINDOWING_MODE_FREEFORM
+                 || (taskInfo.getActivityType() == ACTIVITY_TYPE_STANDARD
+                 && taskInfo.configuration.windowConfiguration.getDisplayWindowingMode()
+-                == WINDOWING_MODE_FREEFORM);
++                == WINDOWING_MODE_FREEFORM));
+     }
+ 
+     private void createWindowDecoration(
+@@ -273,4 +278,4 @@ public class CaptionWindowDecorViewModel implements WindowDecorViewModel {
+             return true;
+         }
+     }
+-}
+\ No newline at end of file
++}
+--- a/services/core/java/com/android/server/wm/ActivityTaskManagerService.java
++++ b/services/core/java/com/android/server/wm/ActivityTaskManagerService.java
+@@ -2874,6 +2874,9 @@
+     @Override
+     public boolean resizeTask(int taskId, Rect bounds, int resizeMode) {
+         enforceTaskPermission("resizeTask()");
++        final boolean lumaHostResize = Binder.getCallingUid() == Process.SYSTEM_UID
++                && SystemProperties.getBoolean("ro.luma.host_window_chrome", false)
++                && !"handheld".equals(SystemProperties.get("persist.luma.device_class", "desktop"));
+         final long ident = Binder.clearCallingIdentity();
+         try {
+             synchronized (mGlobalLock) {
+@@ -2882,6 +2885,13 @@
+                 if (task == null) {
+                     Slog.w(TAG, "resizeTask: taskId=" + taskId + " not found");
+                     return false;
++                }
++                // Host resize uses a task-local windowing mode. Never hotplug
++                // the shared display, which would reconfigure unrelated apps.
++                if (lumaHostResize && bounds != null && !bounds.isEmpty()
++                        && task.isActivityTypeStandard() && task.isResizeable()
++                        && task.getWindowingMode() == android.app.WindowConfiguration.WINDOWING_MODE_FULLSCREEN) {
++                    task.setWindowingMode(android.app.WindowConfiguration.WINDOWING_MODE_FREEFORM);
+                 }
+                 if (!task.getWindowConfiguration().canResizeTask()) {
+                     Slog.w(TAG, "resizeTask not allowed on task=" + task);

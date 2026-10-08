@@ -1,0 +1,57 @@
+From 6fb8d22ee6e5861c3dc81fc55fc23a263f4de29c Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Sun, 30 Aug 2026 13:12:21 -0500
+Subject: [PATCH] stylesheet: add shared Luma work islands
+
+---
+ src/stylesheet/_colors.scss |  2 ++
+ src/stylesheet/_common.scss | 13 +++++++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/src/stylesheet/_colors.scss b/src/stylesheet/_colors.scss
+index a0abfcb..27d8bf9 100644
+--- a/src/stylesheet/_colors.scss
++++ b/src/stylesheet/_colors.scss
+@@ -101,6 +101,7 @@
+ @define-color luma_image #865f9f;
+ @define-color luma_audio #b17a3c;
+ @define-color luma_code #3b8967;
++@define-color luma_island_shadow RGB(25 27 31 / 7%);
+ @define-color luma_frost_outer RGB(241 242 243 / 73%);
+ @define-color luma_frost_content RGB(251 251 250 / 92%);
+ @define-color luma_glass_outer RGB(255 255 255 / 31%);
+@@ -184,6 +185,7 @@
+   @define-color luma_image #b58bd0;
+   @define-color luma_audio #d19447;
+   @define-color luma_code #65b58c;
++  @define-color luma_island_shadow RGB(0 0 0 / 22%);
+ }
+ 
+ :root {
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index 2fea6ac..ecd6301 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -27,6 +27,19 @@ $dialog_radius: $button_radius + 6;
+   background-color: var(--window-bg-color);
+ }
+ 
++// Shared Luma work-area primitives. Source-integrated applications opt in by
++// class, so upstream and third-party libadwaita applications remain unchanged.
++.luma-window-body {
++  padding: 0 9px 9px;
++}
++
++.luma-island {
++  background-color: unquote("@luma_content");
++  border-radius: 10px;
++  box-shadow: inset 0 0 0 1px unquote("@luma_line"),
++              0 1px 2px unquote("@luma_island_shadow");
++}
++
+ dnd {
+   color: var(--window-fg-color);
+ }
+-- 
+2.54.0 (Apple Git-157)
+

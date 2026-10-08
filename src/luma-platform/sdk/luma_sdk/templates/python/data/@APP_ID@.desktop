@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=@APP_NAME@
+Exec=run-app
+Icon=@APP_ID@
+Terminal=false
+DBusActivatable=false
+Categories=Utility;

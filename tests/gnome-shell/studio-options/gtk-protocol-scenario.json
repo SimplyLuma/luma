@@ -1,0 +1,13 @@
+{
+  "shell": {
+    "size": "1440x900", "settle": 3, "reset": [], "gtk_protocol": true,
+    "states": [
+      {"name": "setup", "eval": ["import('resource:///org/gnome/shell/ui/lumaStudioVisualFixtures.js').then(m => {global.lumaStudioFixture=m;});true"], "wait": 1000},
+      {"name": "gtk-replacement", "eval": ["global.lumaStudioFixture.gtkWireReplacement();true"], "wait": 500},
+      {"name": "gtk-activation", "eval": ["global.lumaStudioFixture.gtkWireNotification('activation').activate();true"], "wait": 500},
+      {"name": "gtk-action", "eval": ["global.lumaStudioFixture.gtkWireNotification('action').actions[0].activate();true"], "wait": 500},
+      {"name": "gtk-reply", "eval": ["global.lumaStudioFixture.gtkWireReply().then(()=>global.gtkWireReplyPassed=true).catch(e=>global.gtkWireError=e.message);true"], "wait": 500},
+      {"name": "gtk-dismiss", "before_wait": 1100, "eval": ["if(!global.gtkWireReplyPassed)throw Error(global.gtkWireError||'GTK reply still pending');global.lumaStudioFixture.gtkWireDismissed();true"], "wait": 500}
+    ]
+  }
+}

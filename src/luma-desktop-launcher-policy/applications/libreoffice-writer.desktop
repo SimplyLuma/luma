@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice Writer
+Exec=libreoffice --writer %U
+NoDisplay=true

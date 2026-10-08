@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: Apache-2.0
+Assert(global.refresh && global.normal && global.password && global.question &&
+       global.display_message && global.hide_message && global.system_update, "callbacks registered");
+if (global.desktop) {
+    // Boot starts on the firmware's screen with the Luma wordmark coming up at
+    // its bottom, holds it for a second, then the vendor logo fades while the
+    // wordmark rises into Luma's surface (ADR-045).
+    Assert(Window.firmware_opacity == 1 && global.firmware_active, "desktop boot starts on the firmware logo");
+    normal(); refresh();
+    Assert(global.surface_opacity == 0 && global.dot[0].sprite.opacity == 0, "Luma surface waits for the firmware logo");
+    Assert(global.logo_sprite.opacity == 0 && global.brand_logo_sprite.opacity < 0.1, "the wordmark eases in rather than popping");
+    for (frame=0; frame<20; frame++) refresh();
+    Assert(Window.firmware_opacity == 1 && global.brand_logo_sprite.opacity == 1, "wordmark shown under the firmware logo");
+    Assert(global.brand_stop_sprite.opacity == global.brand_stop_visible, "its stop only where the lockup has one");
+    Assert(global.brand_logo_sprite.y == global.brand_y && global.brand_y > global.brand_target_y, "wordmark sits at the bottom");
+    Assert(global.brand_y + global.brand_height <= Window.height, "wordmark on screen");
+    for (frame=0; frame<27; frame++) refresh();
+    Assert(Window.firmware_opacity == 1 && global.surface_opacity == 0, "firmware logo held for about a second");
+    for (frame=0; frame<25; frame++) refresh();
+    Assert(Window.firmware_opacity > 0 && Window.firmware_opacity < 1, "firmware logo cross-fades");
+    Assert(global.brand_logo_sprite.y < global.brand_y && global.brand_logo_sprite.y > global.brand_target_y, "wordmark rises into place");
+    Assert(global.surface_opacity <= 1.001 - Window.firmware_opacity, "Luma surface never outruns the fading logo");
+    Assert(global.dot[0].sprite.opacity <= global.surface_opacity + 0.001, "loader fades in with the surface");
+    for (frame=0; frame<12; frame++) refresh();
+    Assert(Window.firmware_opacity == 0 && global.firmware_active && global.brand_logo_sprite.y > global.brand_target_y, "the vendor logo is gone before the wordmark lands");
+    Assert(global.surface_opacity == 0 || global.brand_logo_sprite.y - global.brand_target_y < 2, "the loader waits for the wordmark to arrive");
+    // A stalled frame (a GPU driver taking over) is capped, not skipped over.
+    global.test_step = 2.0; refresh(); global.test_step = 0.02;
+    Assert(global.firmware_active, "a stall cannot jump the hand-off");
+    Assert(global.dt <= 0.1, "a stall counts as at most 0.1 s");
+    for (frame=0; frame<40; frame++) refresh();
+    Assert(Window.firmware_opacity == 0 && !global.firmware_active && global.surface_opacity == 1, "firmware logo released");
+    Assert((global.logo_sprite.opacity == 1 || global.mark_sprite.opacity == 1) && global.brand_logo_sprite.opacity == 0, "the risen wordmark is the lockup's own");
+    Assert(global.brand_logo_sprite.y == global.brand_target_y && global.brand_logo_sprite.x == global.brand_target_x, "it landed exactly on the lockup");
+    if (global.lockup != "mark") Assert(global.logo_sprite.y == global.brand_target_y && global.logo_sprite.x == global.brand_target_x, "lockup in place");
+    else Assert(global.mark_sprite.y == global.brand_target_y && global.mark_sprite.x == global.brand_target_x, "mark in place");
+    Assert(global.advanced_hint == "" && !global.hint_sprite.image, "advanced startup hint reserved and empty");
+} else {
+    Assert(!global.firmware_active && Window.firmware_opacity == 0, "handheld owns the screen from the start");
+}
+normal(); refresh();
+Assert(global.logo_sprite.opacity == 1 || global.mark_sprite.opacity == 1, "normal lockup visible");
+password("Unlock encrypted volume", 99999);
+if (global.desktop) {
+    Assert(global.dot[0].sprite.opacity == 0 && global.dot[3].sprite.opacity == 0, "password hides the loader");
+    Assert(global.field_sprite.opacity == 1 && global.lock_sprite.opacity == 1, "unlock field visible");
+    Assert(global.bullets_shown == global.bullet_fit && global.bullet_fit <= global.bullet_limit, "bullets bounded");
+    Assert(global.bullet[global.bullets_shown - 1].sprite.x + 16 <= global.field_x + global.field_w, "bullets stay inside the field");
+    Assert(global.bullet[global.bullets_shown].sprite.opacity == 0, "no bullet past the field");
+    Assert(global.capslock_sprite.opacity == 0, "Caps Lock indicator hidden");
+    global.capslock = 1; refresh();
+    Assert(global.capslock_sprite.opacity == 1, "Caps Lock indicator follows the key");
+    global.capslock = 0; refresh();
+    Assert(global.capslock_sprite.opacity == 0, "Caps Lock indicator clears");
+    password("Unlock encrypted volume", 3);
+    Assert(global.bullets_shown == 3 && global.bullet[3].sprite.opacity == 0, "bullets follow typing");
+} else {
+    Assert(global.logo_sprite.opacity == 0, "password hides normal surface");
+}
+Assert(global.last_text.Length() < 160, "password mask bounded");
+Assert(global.prompt_sprite.image.GetWidth() <= Window.width - 48, "prompt fits output");
+Assert(global.prompt_sprite.opacity == 1, "password prompt visible");
+refresh();
+if (global.desktop) Assert(global.dot[0].sprite.opacity == 0 && global.prompt_sprite.opacity == 1, "refresh cannot cover password");
+else Assert(global.logo_sprite.opacity == 0, "refresh cannot cover password");
+question("Recovery question", "response");
+// The desktop draws the prompt label, then the answer inside the field.
+if (global.desktop) Assert(global.prompt_text == "Recovery question" && global.answer_text == "response" && global.answer_sprite.opacity == 1 && global.prompt_sprite.opacity == 1, "question uses real entry");
+else Assert(global.last_text == "Recovery question\nresponse", "question uses real entry");
+display_message("Volume unlock failed");
+Assert(global.message_sprite.opacity == 1, "failure message visible");
+hide_message("Unrelated old message");
+Assert(global.message_sprite.opacity == 1, "stale hide cannot erase active failure");
+hide_message("Volume unlock failed");
+Assert(global.message_sprite.opacity == 0, "matching message cleared");
+normal();refresh();
+Assert(global.prompt_sprite.opacity == 0, "normal clears prompt");
+Window.width = 360; Window.height = 800; refresh();
+Assert(global.logo_sprite.x >= 0, "rotated output logo centered");
+password("This is a very long translated encrypted volume password prompt for a compact display",0);
+Assert(global.prompt_sprite.image.GetWidth() <= 312, "compact prompt bounded");
+Assert(global.prompt_sprite.x >= 24, "compact prompt margin");
+if (global.desktop) Assert(global.lock_sprite.x >= 24 && global.field_x + global.field_w <= 336, "compact unlock field fits");
+Window.width=260;Window.height=500;refresh();
+Assert(global.prompt_sprite.image.GetWidth() <= 212,"prompt relayout while unlocking");
+Assert(global.prompt_sprite.x >= 24,"rotated unlock prompt margin");
+if (global.desktop) Assert(global.prompt_sprite.opacity == 1 && global.field_sprite.opacity == 1,"rotation keeps the unlock prompt");
+else Assert(global.logo_sprite.opacity == 0,"rotation does not cover unlock prompt");
+Window.width=360;Window.height=800;refresh();
+
+boot_progress(1,-1);Assert(global.progress_fraction == 0,"negative progress bounded");
+boot_progress(1,2);Assert(global.progress_fraction == 1,"excess progress bounded");
+boot_progress(1,0.25);Assert(global.progress_fraction == 0.25,"progress reflects native value");
+normal();refresh();
+if (global.progress_mode == "determinate" && global.loader == "dots") {
+    Assert(global.dot[0].sprite.opacity == 1,"determinate first quarter");
+    Assert(global.dot[1].sprite.opacity == global.minimum_opacity,"no invented progress");
+}
+
+for (frame=0;frame<200;frame++) refresh();
+Assert(global.elapsed >= 0 && global.elapsed < 1.5,"animation time remains bounded");
+
+// A laptop beside an ultrawide: the splash is centred on both, not placed by
+// adding the laptop's offset to the ultrawide's half-width.
+Window.width=5120;Window.height=1440;Window.second_width=1920;Window.second_height=1200;
+normal();refresh();
+Assert(global.loader_x + global.loader_width/2 == 2560,"splash centred across displays of different widths");
+Assert(global.logo_sprite.x - 1600 >= 0 && global.logo_sprite.x - 1600 + global.logo_width <= 1920,"splash inside the smaller display");
+Assert(global.logo_sprite.y - 120 >= 0 && global.logo_sprite.y - 120 < 1200,"splash inside the smaller display's height");
+display_message("Stopping services");
+Assert(global.message_sprite.y - 120 + global.message_sprite.image.GetHeight() <= 1200,"message visible on the smaller display");
+Window.second_width=0;Window.second_height=0;Window.width=360;Window.height=800;refresh();
+
+// plymouth change-mode --updates: the running splash becomes an update screen.
+normal(); refresh();
+if (global.desktop) {
+    Window.width=1920;Window.height=1200;
+    global.test_mode = "updates"; refresh();
+    Assert(global.status == "update" && global.title_sprite.opacity == 1 && global.subtitle_sprite.opacity == 1, "update screen shown");
+    Assert(global.dot[0].sprite.opacity == 0, "update screen replaces the loader");
+    system_update(42);
+    Assert(global.update_fill_width == Math.Int(global.update_bar_width * 0.42) && global.percent_shown == 42, "progress follows Plymouth");
+    system_update(250);
+    Assert(global.update_progress == 100 && global.update_fill_width == global.update_bar_width, "progress bounded");
+    Assert(global.update_bar_x >= 0 && global.update_bar_x + global.update_bar_width <= 1920, "progress bar on screen");
+    global.test_mode = "boot";
+}

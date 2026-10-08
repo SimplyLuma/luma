@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Charlie</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="com.simplyluma"><name>Luma</name></developer>
+  <name>Charlie</name>
+  <summary>A focused email client without all of the nonsense</summary>
+  <description>
+    <p>Charlie is Luma's native adaptive mail client. It keeps accounts together,
+    groups replies into readable conversations, and preserves the same actions
+    from wide desktop windows to handheld presentation.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Charlie.desktop</launchable>
+  <provides><binary>org.projectluma.Charlie</binary></provides>
+  <url type="homepage">https://opencharlie.com/</url>
+  <screenshots>
+    <screenshot type="default"><caption>Mail conversations on desktop</caption><image width="1430" height="818">https://dl.simplyluma.com/media/org.projectluma.Charlie/fcdc4692abed5a623d657b9a0d97a7b9331e47ba4ab12590860d1ca9f06dc0c4.png</image></screenshot>
+    <screenshot><caption>Mail on a compact display</caption><image width="490" height="818">https://dl.simplyluma.com/media/org.projectluma.Charlie/4a71e88f0a56d5b6d8429fd2297be9a231371e6363746444de05b3a3c443dde7.png</image></screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.2.14.6" date="2026-10-07"><description><p>Google OAuth is unavailable in this release. Existing mail and saved sign-in grants remain preserved. Gmail app passwords and supported Microsoft sign-in remain available.</p></description></release>
+    <release version="0.2.14.5" date="2026-10-07"><description><p>Independent interface updates preserve the existing mailbox. A native mail service owns credentials and account authentication.</p></description></release>
+    <release version="0.2.14" date="2026-09-17">
+      <description><p>Introduced provider-first Luma account setup for Google, Microsoft, iCloud, Yahoo, Fastmail, Zoho, AOL and standards-based IMAP.</p></description>
+    </release>
+    <release version="0.2.13" date="2026-09-17">
+      <description><p>Retires stale sign-in notifications after a proven account login.</p></description>
+    </release>
+    <release version="0.2.12" date="2026-09-17">
+      <description><p>Recovered stale Gmail access tokens, added cached account and sender avatars, and opened complete formatted messages from their email surface.</p></description>
+    </release>
+    <release version="0.2.11" date="2026-09-16">
+      <description><p>Expanded complete formatted messages inline with one compact collapse control.</p></description>
+    </release>
+    <release version="0.2.10" date="2026-09-16">
+      <description><p>Improved formatted-mail expansion with a deeper fade and full-width collapse footer.</p></description>
+    </release>
+    <release version="0.2.9" date="2026-09-15">
+      <description><p>Expanded formatted messages in place with a centered text affordance and readable lower fade.</p></description>
+    </release>
+    <release version="0.2.8" date="2026-09-15">
+      <description><p>Displayed message times and relative dates in the system's local timezone.</p></description>
+    </release>
+    <release version="0.2.7" date="2026-09-15">
+      <description><p>Charlie checks mail in the background while its window is closed and shows who wrote and what about, with private text on the lock screen.</p></description>
+    </release>
+    <release version="0.2.6" date="2026-09-14">
+      <description><p>Searching mail from the desktop no longer opens Charlie at sign-in.</p></description>
+    </release>
+    <release version="0.2.5" date="2026-09-14">
+      <description><p>Stopped reporting transient IMAP connection failures as rejected credentials.</p></description>
+    </release>
+    <release version="0.2.4" date="2026-09-14">
+      <description><p>Kept Charlie running by minimizing its main window when the close control is used.</p></description>
+    </release>
+    <release version="0.2.3" date="2026-09-14">
+      <description><p>Corrected the installed icon to use Luma's rounded platform silhouette.</p></description>
+    </release>
+    <release version="0.2.2" date="2026-09-13">
+      <description><p>Simplified conversational HTML, quoted history, embedded images and mirrored sent metadata.</p></description>
+    </release>
+    <release version="0.2.1" date="2026-09-13">
+      <description><p>Polished message conversations, formatted mail, attachment actions and Sent-folder threading.</p></description>
+    </release>
+    <release version="0.2.0" date="2026-09-13">
+      <description><p>Added account management, Google browser authentication and Gmail XOAUTH2.</p></description>
+    </release>
+    <release version="0.1.1" date="2026-09-13">
+      <description><p>Polished adaptive pane measures, thread alignment and compact navigation.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-09-13">
+      <description><p>Initial Luma-native development candidate.</p></description>
+    </release>
+  </releases>
+</component>

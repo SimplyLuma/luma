@@ -1,0 +1,20 @@
+{
+  "name": "luma-installer-atlas",
+  "version": "0.1.0",
+  "description": "Atlas, Luma's installer front end for Anaconda's D-Bus modules",
+  "private": true,
+  "type": "module",
+  "license": "LGPL-2.1-or-later",
+  "scripts": {
+    "build": "node build.js",
+    "build:preview": "ATLAS_PREVIEW=1 node build.js",
+    "test": "node --test test/unit/*.test.js"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.4"
+  }
+}

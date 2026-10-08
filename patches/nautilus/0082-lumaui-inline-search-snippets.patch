@@ -1,0 +1,71 @@
+From eb09e432233a66f0aa98c94865b6a042c5aca8e6 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:30:03 +0000
+Subject: [PATCH] Filer: show search snippets inline under result names
+
+---
+ src/nautilus-name-cell.c                |  6 +++++-
+ src/resources/ui/nautilus-name-cell.blp | 13 +++++++++++++
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-name-cell.c b/src/nautilus-name-cell.c
+index 908a87d..0ea2f7a 100644
+--- a/src/nautilus-name-cell.c
++++ b/src/nautilus-name-cell.c
+@@ -36,6 +36,7 @@ struct _NautilusNameCell
+     GtkWidget *emblems_box;
+     GtkWidget *snippet_button;
+     GtkLabel *snippet;
++    GtkLabel *inline_snippet;
+     GtkWidget *path;
+ 
+     gboolean show_snippet;
+@@ -145,10 +146,12 @@ update_labels (NautilusNameCell *self)
+         !g_str_equal (gtk_label_get_text (self->snippet), fts_snippet))
+     {
+         gtk_label_set_markup (self->snippet, fts_snippet);
++        gtk_label_set_markup (self->inline_snippet, fts_snippet);
+     }
+ 
+     gtk_widget_set_visible (self->path, (path_text != NULL));
+-    gtk_widget_set_visible (self->snippet_button, (fts_snippet != NULL));
++    gtk_widget_set_visible (GTK_WIDGET (self->inline_snippet), fts_snippet != NULL);
++    gtk_widget_set_visible (self->snippet_button, FALSE);
+ }
+ 
+ static void
+@@ -506,6 +509,7 @@ nautilus_name_cell_class_init (NautilusNameCellClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, emblems_box);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, snippet_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, snippet);
++    gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, inline_snippet);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, path);
+ 
+     gtk_widget_class_bind_template_callback (widget_class, on_label_query_tooltip);
+diff --git a/src/resources/ui/nautilus-name-cell.blp b/src/resources/ui/nautilus-name-cell.blp
+index 139b7b0..9b6d243 100644
+--- a/src/resources/ui/nautilus-name-cell.blp
++++ b/src/resources/ui/nautilus-name-cell.blp
+@@ -91,6 +91,19 @@ template $NautilusNameCell: $NautilusViewCell {
+           }
+         }
+ 
++        Label inline_snippet {
++          visible: false;
++          ellipsize: end;
++          lines: 1;
++          halign: fill;
++          xalign: 0.0;
++
++          styles [
++            "caption",
++            "dim-label",
++          ]
++        }
++
+         Label path {
+           visible: false;
+           ellipsize: start;
+-- 
+2.55.0
+

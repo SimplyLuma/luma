@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Rygel Preferences
+Exec=rygel-preferences
+NoDisplay=true

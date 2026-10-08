@@ -1,0 +1,79 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Skip GDM locking in the greetd bake-off session
+
+The rollback-safe candidate is deliberately launched by greetd and no GDM
+service is present to open a reauthentication channel. Preserve all mobile
+dim, blank, suspend, and wake behavior, but do not enter the GDM unlock dialog
+for the explicitly marked candidate session. Ordinary Luma and GNOME sessions
+continue to honor the shared lock-enabled setting.
+---
+ js/misc/powerManager.js | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/js/misc/powerManager.js b/js/misc/powerManager.js
+index 187c119..1fd4df8 100644
+--- a/js/misc/powerManager.js
++++ b/js/misc/powerManager.js
+@@ -211,6 +211,14 @@ export class PowerManager {
+             this._maybeCancelAction('session-inactive');
+     }
+ 
++    _lockEnabled() {
++        // The rollback-safe bake-off runs under greetd, so GDM cannot open a
++        // reauthentication channel. Keep dim/blank/suspend behavior, but do
++        // not enter an unlock dialog that can never authenticate.
++        return !this._isLumaGreetdSession &&
++            this._screensaverSettings.get_boolean(LOCK_ENABLED_KEY);
++    }
++
+     async _maybeCancelAction(cancelReason) {
+         const ongoingAction = this._isInAction;
+         if (!ongoingAction)
+@@ -773,7 +781,7 @@ export class PowerManager {
+                 if (cancellable.is_cancelled())
+                     return;
+ 
+-                if (!this._screensaverSettings.get_boolean(LOCK_ENABLED_KEY))
++                if (!this._lockEnabled())
+                     return;
+ 
+                 // try to become modal now already, so that we fail before LOCK_DELAY
+@@ -800,7 +808,7 @@ export class PowerManager {
+                 break;
+             }
+             case 'blank': {
+-                if (this._screensaverSettings.get_boolean(LOCK_ENABLED_KEY)) {
++                if (this._lockEnabled()) {
+                     Main.screenShield.lock(false, true);
+                     await this._turnOffScreen(screenFadeTimeMs).catch(e => console.error(e));
+                     Main.screenShield.showLater();
+@@ -836,7 +844,7 @@ export class PowerManager {
+                 if (cancellable.is_cancelled())
+                     return;
+ 
+-                if (this._screensaverSettings.get_boolean(LOCK_ENABLED_KEY)) {
++                if (this._lockEnabled()) {
+                     Main.screenShield.lock(false, true);
+                     await this._turnOffScreen(screenFadeTimeMs).catch(e => console.error(e));
+                     Main.screenShield.showLater();
+@@ -877,8 +885,8 @@ export class PowerManager {
+ 
+                 // Strictly speaking lock-enabled is defined as "lock the screen when
+                 // the screensaver goes active", but we interpret it as "lock the screen
+                 // when using screensaver, blanking, and suspending".
+-                if (this._screensaverSettings.get_boolean(LOCK_ENABLED_KEY) && !Main.screenShield.locked) {
++                if (this._lockEnabled() && !Main.screenShield.locked) {
+                     Main.screenShield.lock(false);
+ 
+                     // The suspend can happen quicker than we take to draw the next frame
+@@ -922,7 +930,7 @@ export class PowerManager {
+                 if (cancellable.is_cancelled())
+                     return;
+ 
+-                if (this._screensaverSettings.get_boolean(LOCK_ENABLED_KEY)) {
++                if (this._lockEnabled()) {
+                     Main.screenShield.lock(false, true);
+                     await this._turnOffScreen(screenFadeTimeMs).catch(e => console.error(e));
+                     Main.screenShield.showLater();
+-- 
+2.51.0

@@ -1,0 +1,13 @@
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -869,8 +869,8 @@
+         this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: ${joined ? 1 : 1}px; margin: ${joined ? '0' : vertical ? '3px 0' : '0 3px'};`);
+         this._statusSeam.x_expand = vertical;
+         this._statusSeam.y_expand = !vertical;
+-        this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700;`);
+-        this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600;`);
++        this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);
++        this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+         this._statusClockBox.set_style(`spacing: ${Math.max(0, Math.min(3, 36 - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],

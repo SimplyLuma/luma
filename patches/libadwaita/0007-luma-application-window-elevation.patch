@@ -1,0 +1,36 @@
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index ecd6301..2beaa20 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -40,6 +40,31 @@ $dialog_radius: $button_radius + 6;
+               0 1px 2px unquote("@luma_island_shadow");
+ }
+ 
++// Luma product windows opt into the simulator's shared elevation. Keep this
++// class-scoped: ordinary libadwaita applications retain upstream decoration.
++window.luma-files-window,
++window.luma-calculator-window,
++window.luma-app-window {
++  border-radius: 15px;
++  box-shadow: inset 0 0 0 1px RGB(255 255 255 / 82%),
++              0 2px 5px RGB(25 27 31 / 18%),
++              0 18px 42px -14px RGB(25 27 31 / 42%),
++              0 54px 110px -28px RGB(25 27 31 / 56%);
++
++  &:backdrop {
++    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 62%),
++                0 2px 5px RGB(25 27 31 / 12%),
++                0 18px 42px -14px RGB(25 27 31 / 28%);
++  }
++
++  @media (prefers-color-scheme: dark) {
++    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 4.5%),
++                0 3px 8px RGB(9 11 14 / 38%),
++                0 22px 52px -15px RGB(9 11 14 / 72%),
++                0 64px 120px -30px RGB(9 11 14 / 82%);
++  }
++}
++
+ dnd {
+   color: var(--window-fg-color);
+ }

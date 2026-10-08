@@ -1,0 +1,14 @@
+#!/bin/sh
+# Copy to ~/.local/share/luma-dev/lumaui-monitor/bin/run after gate PASS.
+# The preview contains python/ (kit) and src/luma-monitor/ (app and data).
+set -eu
+preview_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ ! -f "$preview_root/src/luma-monitor/luma_monitor/preview.py" ] ||
+   [ ! -d "$preview_root/python/luma_appkit" ]; then
+    printf '%s\n' 'Monitor preview is incomplete; re-sync its app and kit.' >&2
+    exit 1
+fi
+unset LUMA_MONITOR_FIXTURE LUMA_MONITOR_QUERY LUMA_MONITOR_STYLE_PATH
+export PYTHONPATH="$preview_root/python:$preview_root/src/luma-monitor"
+export LUMA_APPKIT_ICON_PATH="$preview_root/python/icons"
+exec python3 -B -m luma_monitor.preview "$@"

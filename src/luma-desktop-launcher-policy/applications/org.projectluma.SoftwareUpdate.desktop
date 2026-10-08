@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Software Update
+Comment=System, firmware and app updates
+Exec=luma-depot --view updates
+Icon=org.projectluma.Depot
+Terminal=false
+NoDisplay=true
+Categories=GNOME;GTK;Settings;X-GNOME-SystemSettings;
+StartupNotify=false
+X-Purism-FormFactor=Workstation;Mobile;

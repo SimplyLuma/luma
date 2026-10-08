@@ -1,0 +1,72 @@
+--- a/src/nautilus-dnd.c
++++ b/src/nautilus-dnd.c
+@@ -231,8 +231,26 @@
+     return GDK_ACTION_COPY;
+ }
+ 
++static void
++application_install_requested (GObject *source, GAsyncResult *result, gpointer data)
++{
++    GWeakRef *parent_ref = data;
++    g_autoptr (GtkWidget) parent = g_weak_ref_get (parent_ref);
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++
++    g_weak_ref_clear (parent_ref);
++    g_free (parent_ref);
++    if (error != NULL)
++    {
++        g_autofree char *message = g_strdup_printf (_("The application installer could not be opened: %s"), error->message);
++        nautilus_show_ok_dialog (_("Installation unavailable"), message,
++                                 parent && gtk_widget_get_root (parent) ? parent : NULL);
++    }
++}
++
+ static gboolean
+-request_application_install (const GValue *value)
++request_application_install (const GValue *value, NautilusFilesView *view)
+ {
+     GApplication *application = g_application_get_default ();
+     GDBusConnection *connection;
+@@ -286,10 +304,14 @@
+     connection = g_application_get_dbus_connection (application);
+     if (connection == NULL)
+     {
+-        g_warning ("Application installer is unavailable: no session bus");
+-        return FALSE;
+-    }
+-
++        nautilus_show_ok_dialog (_("Installation unavailable"),
++                                 _("The application installer is unavailable because there is no session bus."),
++                                 GTK_WIDGET (view));
++        return TRUE;
++    }
++
++    GWeakRef *parent_ref = g_new0 (GWeakRef, 1);
++    g_weak_ref_init (parent_ref, view);
+     uri = g_file_get_uri (file);
+     g_dbus_connection_call (connection,
+                             "org.projectluma.ApplicationInstaller2",
+@@ -299,10 +321,10 @@
+                             g_variant_new ("(s)", uri),
+                             NULL,
+                             G_DBUS_CALL_FLAGS_NONE,
+-                            -1,
++                            30000,
+                             NULL,
+-                            NULL,
+-                            NULL);
++                            application_install_requested,
++                            parent_ref);
+     return TRUE;
+ }
+ 
+@@ -314,7 +336,7 @@
+ {
+     g_autofree gchar *target_uri = g_file_get_uri (target_location);
+ 
+-    if (g_str_equal (target_uri, "applications:///") && request_application_install (value))
++    if (g_str_equal (target_uri, "applications:///") && request_application_install (value, view))
+     {
+         return TRUE;
+     }

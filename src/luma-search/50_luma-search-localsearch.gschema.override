@@ -1,0 +1,7 @@
+# Luma Search: keep build output, dependency caches and virtual environments
+# out of the LocalSearch index. LocalSearch already skips hidden folders and
+# any folder holding one of the "with content" marker files. These are
+# defaults only; Settings → Search and gsettings can still change them.
+[org.freedesktop.Tracker3.Miner.Files]
+ignored-directories=['po', 'CVS', 'core-dumps', 'lost+found', 'node_modules', 'bower_components', '__pycache__', 'site-packages', 'venv', 'rpmbuild', 'BUILDROOT']
+ignored-directories-with-content=['.trackerignore', '.git', '.hg', '.nomedia', '.noindex', 'CACHEDIR.TAG', 'pyvenv.cfg']

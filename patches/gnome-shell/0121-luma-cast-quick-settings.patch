@@ -1,0 +1,3855 @@
+From: Project Luma
+Subject: [PATCH] luma: Cast in Quick Settings (ADR-034)
+
+One Cast tile lists every screen org.projectluma.Cast1 finds, whatever it
+speaks (Google Cast, Miracast, AirPlay): pinned, then recent, then nearby,
+with "Connects directly" and "Higher delay" where they apply. Discovery runs
+only while the menu is open (StartDiscovery/StopDiscovery), and the list
+follows DevicesChanged without reshuffling.
+
+Choosing a screen opens its sheet: Entire screen, Use as a separate screen,
+One display (with several monitors) or One app (a window picker; the app is
+presented floating on the wallpaper), Optimize for the screen or this
+computer, and Sound on the screen or this computer, remembered per screen.
+While casting the same sheet changes what is shared or where sound plays with
+Session.Change, without reconnecting, and Stop Casting always works. The
+shelf gets a Cast island (connecting, reconnecting, the screen's name) with
+its own menu.
+
+Pairing uses one dialog for CodeRequested: enter the code shown on the TV,
+show a code to type on the TV, or accept on the TV. Errors are the service's
+codes in the Shell's words, with Try Again and Other Screens.
+
+Privacy the Shell alone can enforce:
+- Before a system modal with a password entry (polkit, keyring, network
+  secrets, unlock) is painted, the Shell calls Session.SetPrivacyCurtain and
+  holds the dialog's paint until the service answers; no answer in time stops
+  the cast. The curtain is lowered when the dialog closes.
+- While casting, and with org.projectluma.cast silence-notifications on,
+  banners are silenced as runtime state only; show-banners is never written.
+  A monitor in CapturedConnectors shows no banner at all, critical or not.
+- The service ends casts on lock; the Shell shows why once.
+
+Adds js/ui/lumaCast.js (the one D-Bus client), lumaCastSheet.js,
+lumaCastDialogs.js, status/cast.js, luma-cast.css and the luma-cast icons;
+hooks panel.js, sessionMode.js, shelf.js, messageTray.js, lumaGrid.js
+(RoundedPreview for picker thumbnails) and introspect.js (window list for the
+service). Without luma-cast installed the tile stays hidden.
+
+Generated against the Shell .81 build tree (0117-0120) for release .82.
+---
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index 7cbf2d5..c5dca81 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -6,6 +6,7 @@
+     <file>gnome-shell-dark.css</file>
+     <file>gnome-shell-light.css</file>
+     <file>gnome-shell-high-contrast.css</file>
++    <file>luma-cast.css</file>
+     <file>luma-shelf.css</file>
+     <file>gnome-shell-start.svg</file>
+     <file>pad-osd.css</file>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-alert-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-alert-symbolic.svg
+new file mode 100644
+index 0000000..fe75d9b
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-alert-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M1,12 A11,11 0 1 1 23,12 A11,11 0 1 1 1,12 Z M3,12 A9,9 0 1 0 21,12 A9,9 0 1 0 3,12 Z" fill="#2e3436"/>
++  <path d="M11,8 L11,12 A1,1 0 0 1 13,12 L13,8 A1,1 0 0 1 11,8 Z" fill="#2e3436"/>
++  <path d="M10.85,16 A1.15,1.15 0 1 0 13.15,16 A1.15,1.15 0 1 0 10.85,16 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-app-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-app-symbolic.svg
+new file mode 100644
+index 0000000..53a4a53
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-app-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M4,3 H20 A3,3 0 0 1 23,6 V18 A3,3 0 0 1 20,21 H4 A3,3 0 0 1 1,18 V6 A3,3 0 0 1 4,3 Z M4,5 A1,1 0 0 0 3,6 V18 A1,1 0 0 0 4,19 H20 A1,1 0 0 0 21,18 V6 A1,1 0 0 0 20,5 Z" fill="#2e3436"/>
++  <path d="M9,4 L9,8 A1,1 0 0 1 11,8 L11,4 A1,1 0 0 1 9,4 Z" fill="#2e3436"/>
++  <path d="M2,9 L22,9 A1,1 0 0 1 22,7 L2,7 A1,1 0 0 1 2,9 Z" fill="#2e3436"/>
++  <path d="M5,4 L5,8 A1,1 0 0 1 7,8 L7,4 A1,1 0 0 1 5,4 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-back-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-back-symbolic.svg
+new file mode 100644
+index 0000000..1663697
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-back-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M15.707,17.293 L9.707,11.293 A1,1 0 0 1 8.293,12.707 L14.293,18.707 A1,1 0 0 1 15.707,17.293 Z" fill="#2e3436"/>
++  <path d="M9.707,12.707 L15.707,6.707 A1,1 0 0 1 14.293,5.293 L8.293,11.293 A1,1 0 0 1 9.707,12.707 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-check-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-check-symbolic.svg
+new file mode 100644
+index 0000000..61b03bc
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-check-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M19.293,5.293 L8.293,16.293 A1,1 0 0 1 9.707,17.707 L20.707,6.707 A1,1 0 0 1 19.293,5.293 Z" fill="#2e3436"/>
++  <path d="M9.707,16.293 L4.707,11.293 A1,1 0 0 1 3.293,12.707 L8.293,17.707 A1,1 0 0 1 9.707,16.293 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-extend-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-extend-symbolic.svg
+new file mode 100644
+index 0000000..63647e9
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-extend-symbolic.svg
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M10,5 L10,4.5 A1,1 0 0 1 8,4.5 L8,5 A1,1 0 0 1 10,5 Z" fill="#2e3436"/>
++  <path d="M8,4.5 A2.5,2.5 0 0 1 10.5,2 L10.5,4 A0.5,0.5 0 0 0 10,4.5 Z" fill="#2e3436"/>
++  <path d="M8,4.5 A1,1 0 1 0 10,4.5 A1,1 0 1 0 8,4.5 Z" fill="#2e3436"/>
++  <path d="M9.5,3 A1,1 0 1 0 11.5,3 A1,1 0 1 0 9.5,3 Z" fill="#2e3436"/>
++  <path d="M10.5,4 L20,4 A1,1 0 0 1 20,2 L10.5,2 A1,1 0 0 1 10.5,4 Z" fill="#2e3436"/>
++  <path d="M20,2 A3,3 0 0 1 23,5 L21,5 A1,1 0 0 0 20,4 Z" fill="#2e3436"/>
++  <path d="M19,3 A1,1 0 1 0 21,3 A1,1 0 1 0 19,3 Z" fill="#2e3436"/>
++  <path d="M21,5 A1,1 0 1 0 23,5 A1,1 0 1 0 21,5 Z" fill="#2e3436"/>
++  <path d="M21,5 L21,12 A1,1 0 0 1 23,12 L23,5 A1,1 0 0 1 21,5 Z" fill="#2e3436"/>
++  <path d="M23,12 A3,3 0 0 1 20,15 L20,13 A1,1 0 0 0 21,12 Z" fill="#2e3436"/>
++  <path d="M21,12 A1,1 0 1 0 23,12 A1,1 0 1 0 21,12 Z" fill="#2e3436"/>
++  <path d="M19,14 A1,1 0 1 0 21,14 A1,1 0 1 0 19,14 Z" fill="#2e3436"/>
++  <path d="M20,13 L19,13 A1,1 0 0 1 19,15 L20,15 A1,1 0 0 1 20,13 Z" fill="#2e3436"/>
++  <path d="M4,7 H15 A3,3 0 0 1 18,10 V16 A3,3 0 0 1 15,19 H4 A3,3 0 0 1 1,16 V10 A3,3 0 0 1 4,7 Z M4,9 A1,1 0 0 0 3,10 V16 A1,1 0 0 0 4,17 H15 A1,1 0 0 0 16,16 V10 A1,1 0 0 0 15,9 Z" fill="#2e3436"/>
++  <path d="M6,23 L13,23 A1,1 0 0 1 13,21 L6,21 A1,1 0 0 1 6,23 Z" fill="#2e3436"/>
++  <path d="M8.5,18 L8.5,22 A1,1 0 0 1 10.5,22 L10.5,18 A1,1 0 0 1 8.5,18 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-go-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-go-symbolic.svg
+new file mode 100644
+index 0000000..2ffd9fc
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-go-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M9.707,18.707 L15.707,12.707 A1,1 0 0 1 14.293,11.293 L8.293,17.293 A1,1 0 0 1 9.707,18.707 Z" fill="#2e3436"/>
++  <path d="M15.707,11.293 L9.707,5.293 A1,1 0 0 1 8.293,6.707 L14.293,12.707 A1,1 0 0 1 15.707,11.293 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-laptop-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-laptop-symbolic.svg
+new file mode 100644
+index 0000000..5174ec8
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-laptop-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M5,3 H19 A3,3 0 0 1 22,6 V14 A3,3 0 0 1 19,17 H5 A3,3 0 0 1 2,14 V6 A3,3 0 0 1 5,3 Z M5,5 A1,1 0 0 0 4,6 V14 A1,1 0 0 0 5,15 H19 A1,1 0 0 0 20,14 V6 A1,1 0 0 0 19,5 Z" fill="#2e3436"/>
++  <path d="M2,21 L22,21 A1,1 0 0 1 22,19 L2,19 A1,1 0 0 1 2,21 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-lock-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-lock-symbolic.svg
+new file mode 100644
+index 0000000..0438abd
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-lock-symbolic.svg
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M5,10 H19 A3,3 0 0 1 22,13 V20 A3,3 0 0 1 19,23 H5 A3,3 0 0 1 2,20 V13 A3,3 0 0 1 5,10 Z M5,12 A1,1 0 0 0 4,13 V20 A1,1 0 0 0 5,21 H19 A1,1 0 0 0 20,20 V13 A1,1 0 0 0 19,12 Z" fill="#2e3436"/>
++  <path d="M8,11 L8,7 A1,1 0 0 1 6,7 L6,11 A1,1 0 0 1 8,11 Z" fill="#2e3436"/>
++  <path d="M6,7 A6,6 0 0 1 18,7 L16,7 A4,4 0 0 0 8,7 Z" fill="#2e3436"/>
++  <path d="M6,7 A1,1 0 1 0 8,7 A1,1 0 1 0 6,7 Z" fill="#2e3436"/>
++  <path d="M16,7 A1,1 0 1 0 18,7 A1,1 0 1 0 16,7 Z" fill="#2e3436"/>
++  <path d="M16,7 L16,11 A1,1 0 0 1 18,11 L18,7 A1,1 0 0 1 16,7 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-monitor-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-monitor-symbolic.svg
+new file mode 100644
+index 0000000..1bca7f9
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-monitor-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M4,2 H20 A3,3 0 0 1 23,5 V15 A3,3 0 0 1 20,18 H4 A3,3 0 0 1 1,15 V5 A3,3 0 0 1 4,2 Z M4,4 A1,1 0 0 0 3,5 V15 A1,1 0 0 0 4,16 H20 A1,1 0 0 0 21,15 V5 A1,1 0 0 0 20,4 Z" fill="#2e3436"/>
++  <path d="M8,22 L16,22 A1,1 0 0 1 16,20 L8,20 A1,1 0 0 1 8,22 Z" fill="#2e3436"/>
++  <path d="M11,17 L11,21 A1,1 0 0 1 13,21 L13,17 A1,1 0 0 1 11,17 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-on-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-on-symbolic.svg
+new file mode 100644
+index 0000000..9ddd9c4
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-on-symbolic.svg
+@@ -0,0 +1,25 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M3,8 L3,6 A1,1 0 0 1 1,6 L1,8 A1,1 0 0 1 3,8 Z" fill="#2e3436"/>
++  <path d="M1,6 A3,3 0 0 1 4,3 L4,5 A1,1 0 0 0 3,6 Z" fill="#2e3436"/>
++  <path d="M1,6 A1,1 0 1 0 3,6 A1,1 0 1 0 1,6 Z" fill="#2e3436"/>
++  <path d="M3,4 A1,1 0 1 0 5,4 A1,1 0 1 0 3,4 Z" fill="#2e3436"/>
++  <path d="M4,5 L20,5 A1,1 0 0 1 20,3 L4,3 A1,1 0 0 1 4,5 Z" fill="#2e3436"/>
++  <path d="M20,3 A3,3 0 0 1 23,6 L21,6 A1,1 0 0 0 20,5 Z" fill="#2e3436"/>
++  <path d="M19,4 A1,1 0 1 0 21,4 A1,1 0 1 0 19,4 Z" fill="#2e3436"/>
++  <path d="M21,6 A1,1 0 1 0 23,6 A1,1 0 1 0 21,6 Z" fill="#2e3436"/>
++  <path d="M21,6 L21,18 A1,1 0 0 1 23,18 L23,6 A1,1 0 0 1 21,6 Z" fill="#2e3436"/>
++  <path d="M23,18 A3,3 0 0 1 20,21 L20,19 A1,1 0 0 0 21,18 Z" fill="#2e3436"/>
++  <path d="M21,18 A1,1 0 1 0 23,18 A1,1 0 1 0 21,18 Z" fill="#2e3436"/>
++  <path d="M19,20 A1,1 0 1 0 21,20 A1,1 0 1 0 19,20 Z" fill="#2e3436"/>
++  <path d="M20,19 L14,19 A1,1 0 0 1 14,21 L20,21 A1,1 0 0 1 20,19 Z" fill="#2e3436"/>
++  <path d="M2,11 A9,9 0 0 1 11,20 L9,20 A7,7 0 0 0 2,13 Z" fill="#2e3436"/>
++  <path d="M1,12 A1,1 0 1 0 3,12 A1,1 0 1 0 1,12 Z" fill="#2e3436"/>
++  <path d="M9,20 A1,1 0 1 0 11,20 A1,1 0 1 0 9,20 Z" fill="#2e3436"/>
++  <path d="M2,15 A5,5 0 0 1 7,20 L5,20 A3,3 0 0 0 2,17 Z" fill="#2e3436"/>
++  <path d="M1,16 A1,1 0 1 0 3,16 A1,1 0 1 0 1,16 Z" fill="#2e3436"/>
++  <path d="M5,20 A1,1 0 1 0 7,20 A1,1 0 1 0 5,20 Z" fill="#2e3436"/>
++  <path d="M0.95,19.8 A1.25,1.25 0 1 0 3.45,19.8 A1.25,1.25 0 1 0 0.95,19.8 Z" fill="#2e3436"/>
++  <path d="M8.7,7.5 H17.8 A1.2,1.2 0 0 1 19,8.7 V15.8 A1.2,1.2 0 0 1 17.8,17 H8.7 A1.2,1.2 0 0 1 7.5,15.8 V8.7 A1.2,1.2 0 0 1 8.7,7.5 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-presentation-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-presentation-symbolic.svg
+new file mode 100644
+index 0000000..a1be5d0
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-presentation-symbolic.svg
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M2,4 L22,4 A1,1 0 0 1 22,2 L2,2 A1,1 0 0 1 2,4 Z" fill="#2e3436"/>
++  <path d="M20,3 L20,14 A1,1 0 0 1 22,14 L22,3 A1,1 0 0 1 20,3 Z" fill="#2e3436"/>
++  <path d="M22,14 A3,3 0 0 1 19,17 L19,15 A1,1 0 0 0 20,14 Z" fill="#2e3436"/>
++  <path d="M20,14 A1,1 0 1 0 22,14 A1,1 0 1 0 20,14 Z" fill="#2e3436"/>
++  <path d="M18,16 A1,1 0 1 0 20,16 A1,1 0 1 0 18,16 Z" fill="#2e3436"/>
++  <path d="M19,15 L5,15 A1,1 0 0 1 5,17 L19,17 A1,1 0 0 1 19,15 Z" fill="#2e3436"/>
++  <path d="M5,17 A3,3 0 0 1 2,14 L4,14 A1,1 0 0 0 5,15 Z" fill="#2e3436"/>
++  <path d="M4,16 A1,1 0 1 0 6,16 A1,1 0 1 0 4,16 Z" fill="#2e3436"/>
++  <path d="M2,14 A1,1 0 1 0 4,14 A1,1 0 1 0 2,14 Z" fill="#2e3436"/>
++  <path d="M4,14 L4,3 A1,1 0 0 1 2,3 L2,14 A1,1 0 0 1 4,14 Z" fill="#2e3436"/>
++  <path d="M7.707,21.707 L12.707,16.707 A1,1 0 0 1 11.293,15.293 L6.293,20.293 A1,1 0 0 1 7.707,21.707 Z" fill="#2e3436"/>
++  <path d="M11.293,16.707 L16.293,21.707 A1,1 0 0 1 17.707,20.293 L12.707,15.293 A1,1 0 0 1 11.293,16.707 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-quiet-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-quiet-symbolic.svg
+new file mode 100644
+index 0000000..5d29581
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-quiet-symbolic.svg
+@@ -0,0 +1,14 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M6,9 A6,6 0 0 1 18,9 L16,9 A4,4 0 0 0 8,9 Z" fill="#2e3436"/>
++  <path d="M6,9 A1,1 0 1 0 8,9 A1,1 0 1 0 6,9 Z" fill="#2e3436"/>
++  <path d="M16,9 A1,1 0 1 0 18,9 A1,1 0 1 0 16,9 Z" fill="#2e3436"/>
++  <path d="M6,9 L6,13 A1,1 0 0 1 8,13 L8,9 A1,1 0 0 1 6,9 Z" fill="#2e3436"/>
++  <path d="M16,9 L16,13 A1,1 0 0 1 18,13 L18,9 A1,1 0 0 1 16,9 Z" fill="#2e3436"/>
++  <path d="M6.152,12.47 L3.652,16.47 A1,1 0 0 1 5.348,17.53 L7.848,13.53 A1,1 0 0 1 6.152,12.47 Z" fill="#2e3436"/>
++  <path d="M16.152,13.53 L18.652,17.53 A1,1 0 0 1 20.348,16.47 L17.848,12.47 A1,1 0 0 1 16.152,13.53 Z" fill="#2e3436"/>
++  <path d="M4.5,18 L19.5,18 A1,1 0 0 1 19.5,16 L4.5,16 A1,1 0 0 1 4.5,18 Z" fill="#2e3436"/>
++  <path d="M10.3,22 L13.7,22 A1,1 0 0 1 13.7,20 L10.3,20 A1,1 0 0 1 10.3,22 Z" fill="#2e3436"/>
++  <path d="M2.293,3.707 L20.293,21.707 A1,1 0 0 1 21.707,20.293 L3.707,2.293 A1,1 0 0 1 2.293,3.707 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-refresh-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-refresh-symbolic.svg
+new file mode 100644
+index 0000000..1676694
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-refresh-symbolic.svg
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M19.66,5.572 A10,10 0 1 1 12,2 L12,4 A8,8 0 1 0 18.128,6.858 Z" fill="#2e3436"/>
++  <path d="M17.894,6.215 A1,1 0 1 0 19.894,6.215 A1,1 0 1 0 17.894,6.215 Z" fill="#2e3436"/>
++  <path d="M11,3 A1,1 0 1 0 13,3 A1,1 0 1 0 11,3 Z" fill="#2e3436"/>
++  <path d="M20,3 L20,8 A1,1 0 0 1 22,8 L22,3 A1,1 0 0 1 20,3 Z" fill="#2e3436"/>
++  <path d="M21,7 L16,7 A1,1 0 0 1 16,9 L21,9 A1,1 0 0 1 21,7 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-screen-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-screen-symbolic.svg
+new file mode 100644
+index 0000000..5bc5c22
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-screen-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M4,2 H20 A3,3 0 0 1 23,5 V15 A3,3 0 0 1 20,18 H4 A3,3 0 0 1 1,15 V5 A3,3 0 0 1 4,2 Z M4,4 A1,1 0 0 0 3,5 V15 A1,1 0 0 0 4,16 H20 A1,1 0 0 0 21,15 V5 A1,1 0 0 0 20,4 Z" fill="#2e3436"/>
++  <path d="M6.3,6.5 H17.7 A0.8,0.8 0 0 1 18.5,7.3 V12.7 A0.8,0.8 0 0 1 17.7,13.5 H6.3 A0.8,0.8 0 0 1 5.5,12.7 V7.3 A0.8,0.8 0 0 1 6.3,6.5 Z" fill="#2e3436"/>
++  <path d="M8,22 L16,22 A1,1 0 0 1 16,20 L8,20 A1,1 0 0 1 8,22 Z" fill="#2e3436"/>
++  <path d="M11,17 L11,21 A1,1 0 0 1 13,21 L13,17 A1,1 0 0 1 11,17 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-settings-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-settings-symbolic.svg
+new file mode 100644
+index 0000000..9fa48f7
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-settings-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M14,16 L5,16 A1,1 0 0 1 5,18 L14,18 A1,1 0 0 1 14,16 Z" fill="#2e3436"/>
++  <path d="M19,6 L10,6 A1,1 0 0 1 10,8 L19,8 A1,1 0 0 1 19,6 Z" fill="#2e3436"/>
++  <path d="M13,17 A4,4 0 1 1 21,17 A4,4 0 1 1 13,17 Z M15,17 A2,2 0 1 0 19,17 A2,2 0 1 0 15,17 Z" fill="#2e3436"/>
++  <path d="M3,7 A4,4 0 1 1 11,7 A4,4 0 1 1 3,7 Z M5,7 A2,2 0 1 0 9,7 A2,2 0 1 0 5,7 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-sound-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-sound-symbolic.svg
+new file mode 100644
+index 0000000..c89cbc2
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-sound-symbolic.svg
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M11 4.702 a0.705 0.705 0 0 0 -1.203 -0.498 L6.413 7.587 A1.4 1.4 0 0 1 5.416 8 H3 a1 1 0 0 0 -1 1 v6 a1 1 0 0 0 1 1 h2.416 a1.4 1.4 0 0 1 0.997 0.413 l3.383 3.384 A0.705 0.705 0 0 0 11 19.298 Z" fill="#2e3436"/>
++  <path d="M15.792,8.389 A6,6 0 0 1 15.792,15.611 L14.195,14.407 A4,4 0 0 0 14.195,9.593 Z" fill="#2e3436"/>
++  <path d="M13.993,8.991 A1,1 0 1 0 15.993,8.991 A1,1 0 1 0 13.993,8.991 Z" fill="#2e3436"/>
++  <path d="M13.993,15.009 A1,1 0 1 0 15.993,15.009 A1,1 0 1 0 13.993,15.009 Z" fill="#2e3436"/>
++  <path d="M17.571,4.929 A10,10 0 0 1 17.571,19.071 L16.157,17.657 A8,8 0 0 0 16.157,6.343 Z" fill="#2e3436"/>
++  <path d="M15.864,5.636 A1,1 0 1 0 17.864,5.636 A1,1 0 1 0 15.864,5.636 Z" fill="#2e3436"/>
++  <path d="M15.864,18.364 A1,1 0 1 0 17.864,18.364 A1,1 0 1 0 15.864,18.364 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-speaker-display-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-speaker-display-symbolic.svg
+new file mode 100644
+index 0000000..719dbe5
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-speaker-display-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M5,2 H19 A3,3 0 0 1 22,5 V13 A3,3 0 0 1 19,16 H5 A3,3 0 0 1 2,13 V5 A3,3 0 0 1 5,2 Z M5,4 A1,1 0 0 0 4,5 V13 A1,1 0 0 0 5,14 H19 A1,1 0 0 0 20,13 V5 A1,1 0 0 0 19,4 Z" fill="#2e3436"/>
++  <path d="M7.542,14.713 L6.042,19.713 A1,1 0 0 1 7.958,20.287 L9.458,15.287 A1,1 0 0 1 7.542,14.713 Z" fill="#2e3436"/>
++  <path d="M14.542,15.287 L16.042,20.287 A1,1 0 0 1 17.958,19.713 L16.458,14.713 A1,1 0 0 1 14.542,15.287 Z" fill="#2e3436"/>
++  <path d="M7,21 L17,21 A1,1 0 0 1 17,19 L7,19 A1,1 0 0 1 7,21 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-symbolic.svg
+new file mode 100644
+index 0000000..f59628b
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-symbolic.svg
+@@ -0,0 +1,24 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M3,8 L3,6 A1,1 0 0 1 1,6 L1,8 A1,1 0 0 1 3,8 Z" fill="#2e3436"/>
++  <path d="M1,6 A3,3 0 0 1 4,3 L4,5 A1,1 0 0 0 3,6 Z" fill="#2e3436"/>
++  <path d="M1,6 A1,1 0 1 0 3,6 A1,1 0 1 0 1,6 Z" fill="#2e3436"/>
++  <path d="M3,4 A1,1 0 1 0 5,4 A1,1 0 1 0 3,4 Z" fill="#2e3436"/>
++  <path d="M4,5 L20,5 A1,1 0 0 1 20,3 L4,3 A1,1 0 0 1 4,5 Z" fill="#2e3436"/>
++  <path d="M20,3 A3,3 0 0 1 23,6 L21,6 A1,1 0 0 0 20,5 Z" fill="#2e3436"/>
++  <path d="M19,4 A1,1 0 1 0 21,4 A1,1 0 1 0 19,4 Z" fill="#2e3436"/>
++  <path d="M21,6 A1,1 0 1 0 23,6 A1,1 0 1 0 21,6 Z" fill="#2e3436"/>
++  <path d="M21,6 L21,18 A1,1 0 0 1 23,18 L23,6 A1,1 0 0 1 21,6 Z" fill="#2e3436"/>
++  <path d="M23,18 A3,3 0 0 1 20,21 L20,19 A1,1 0 0 0 21,18 Z" fill="#2e3436"/>
++  <path d="M21,18 A1,1 0 1 0 23,18 A1,1 0 1 0 21,18 Z" fill="#2e3436"/>
++  <path d="M19,20 A1,1 0 1 0 21,20 A1,1 0 1 0 19,20 Z" fill="#2e3436"/>
++  <path d="M20,19 L14,19 A1,1 0 0 1 14,21 L20,21 A1,1 0 0 1 20,19 Z" fill="#2e3436"/>
++  <path d="M2,11 A9,9 0 0 1 11,20 L9,20 A7,7 0 0 0 2,13 Z" fill="#2e3436"/>
++  <path d="M1,12 A1,1 0 1 0 3,12 A1,1 0 1 0 1,12 Z" fill="#2e3436"/>
++  <path d="M9,20 A1,1 0 1 0 11,20 A1,1 0 1 0 9,20 Z" fill="#2e3436"/>
++  <path d="M2,15 A5,5 0 0 1 7,20 L5,20 A3,3 0 0 0 2,17 Z" fill="#2e3436"/>
++  <path d="M1,16 A1,1 0 1 0 3,16 A1,1 0 1 0 1,16 Z" fill="#2e3436"/>
++  <path d="M5,20 A1,1 0 1 0 7,20 A1,1 0 1 0 5,20 Z" fill="#2e3436"/>
++  <path d="M0.95,19.8 A1.25,1.25 0 1 0 3.45,19.8 A1.25,1.25 0 1 0 0.95,19.8 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-cast-tv-symbolic.svg b/data/icons/hicolor/scalable/status/luma-cast-tv-symbolic.svg
+new file mode 100644
+index 0000000..79884a7
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-cast-tv-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M4,6 H20 A3,3 0 0 1 23,9 V20 A3,3 0 0 1 20,23 H4 A3,3 0 0 1 1,20 V9 A3,3 0 0 1 4,6 Z M4,8 A1,1 0 0 0 3,9 V20 A1,1 0 0 0 4,21 H20 A1,1 0 0 0 21,20 V9 A1,1 0 0 0 20,8 Z" fill="#2e3436"/>
++  <path d="M16.293,1.293 L11.293,6.293 A1,1 0 0 1 12.707,7.707 L17.707,2.707 A1,1 0 0 1 16.293,1.293 Z" fill="#2e3436"/>
++  <path d="M12.707,6.293 L7.707,1.293 A1,1 0 0 1 6.293,2.707 L11.293,7.707 A1,1 0 0 1 12.707,6.293 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/theme/luma-cast.css b/data/theme/luma-cast.css
+new file mode 100644
+index 0000000..f3b0ced
+--- /dev/null
++++ b/data/theme/luma-cast.css
+@@ -0,0 +1,745 @@
++/* Luma Cast (ADR-034): Quick Settings detail, shelf indicator and its menu,
++ * app picker and pairing dialog.
++ *
++ * Checked in and loaded by lumaCast.js, the way luma-shelf.css is by the
++ * Shelf. Values are Quick Options' own: Figtree 13/11, island radius 10,
++ * window radius 15, 28/36 controls, 18/16 glyphs, spacing 8/12. Dark is the
++ * base; the light and frost treatments follow the Luma surface classes that
++ * lumaSurfaceMaterials.js puts on each Cast surface.
++ *
++ * Tokens, dark / light:
++ *   ink            #e9ebec / #30343a
++ *   muted          #969da4 / #767b81
++ *   fill           rgba(255,255,255,0.072) / rgba(35,44,52,0.072)
++ *   hover          rgba(255,255,255,0.12)  / rgba(35,44,52,0.115)
++ *   line           rgba(255,255,255,0.075) / rgba(35,39,45,0.09)
++ *   selected       rgba(255,255,255,0.115) + rgba(255,255,255,0.17) line
++ *                / rgba(35,44,52,0.105)   + rgba(35,44,52,0.18) line
++ *   primary        #e6e9eb on #242a30 ink / #31373e on #ffffff ink
++ *   stop           #a64d52 / #b4474d
++ *   sharing amber  #f5c26b / #b7791f
++ */
++
++/* ── The pane ──────────────────────────────────────────────────────────── */
++.luma-cast-pane {
++  font-family: Figtree, sans-serif;
++  color: #e9ebec; }
++.luma-cast-view {
++  spacing: 0; }
++.quick-toggle-menu.luma-quick-detail.luma-cast-detail {
++  padding: 10px; }
++.luma-cast-menu.popup-menu-content {
++  padding: 10px; }
++.luma-cast-indicator .luma-cast-pane {
++  width: 344px; }
++
++/* Header: the tile's own 36 chip, title 13/700 over 11 muted. */
++.luma-cast-header {
++  spacing: 10px;
++  padding: 0 0 10px; }
++.luma-cast-header-compact {
++  min-height: 20px;
++  padding: 2px 6px 4px; }
++.luma-cast-header-chip {
++  width: 36px;
++  height: 36px;
++  border-radius: 10px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec; }
++.luma-cast-header-chip .luma-cast-chip-icon {
++  icon-size: 18px; }
++.luma-cast-header-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++.luma-cast-header-subtitle {
++  font-size: 11px;
++  font-weight: 500;
++  padding-top: 1px;
++  color: #969da4; }
++.luma-cast-spinner {
++  width: 16px;
++  height: 16px;
++  color: #969da4; }
++.luma-cast-live-dot {
++  width: 8px;
++  height: 8px;
++  border-radius: 99px;
++  background-color: #f5c26b;
++  border: 2px solid #2a2f36; }
++
++.luma-cast-back {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border-radius: 10px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec;
++  transition-duration: 100ms; }
++.luma-cast-back StIcon {
++  icon-size: 14px; }
++.luma-cast-back:hover {
++  background-color: rgba(255, 255, 255, 0.12); }
++
++/* Section headings: "Recent", "Nearby", "Share", "Optimize for", "Sound". */
++.luma-cast-heading,
++.luma-cast-field-label {
++  font-size: 11px;
++  font-weight: 650;
++  color: #969da4;
++  padding: 8px 6px 5px; }
++.luma-cast-list > .luma-cast-heading:first-child {
++  padding-top: 2px; }
++.luma-cast-options > .luma-cast-field-label {
++  padding-top: 2px; }
++.luma-cast-field-heading {
++  spacing: 6px; }
++
++.luma-cast-scroll {
++  max-height: 336px; }
++.luma-cast-list,
++.luma-cast-options {
++  spacing: 2px; }
++
++/* Rows: a screen, or something to share. 10 radius, fill on hover only. */
++.luma-cast-device,
++.luma-cast-option {
++  min-height: 0;
++  padding: 5px 8px 5px 5px;
++  border: 1px solid transparent;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #e9ebec;
++  transition-duration: 100ms; }
++.luma-cast-device:hover,
++.luma-cast-option:hover {
++  background-color: rgba(255, 255, 255, 0.07); }
++.luma-cast-device:active,
++.luma-cast-option:active {
++  background-color: rgba(255, 255, 255, 0.12); }
++.luma-cast-option:checked {
++  background-color: rgba(255, 255, 255, 0.115);
++  border-color: rgba(255, 255, 255, 0.17); }
++.luma-cast-option:checked:hover {
++  background-color: rgba(255, 255, 255, 0.14); }
++.luma-cast-row-box {
++  spacing: 10px; }
++.luma-cast-device > .luma-cast-row-box {
++  min-height: 34px; }
++.luma-cast-option > .luma-cast-row-box {
++  min-height: 28px; }
++.luma-cast-row-text {
++  spacing: 1px; }
++
++.luma-cast-chip {
++  width: 32px;
++  height: 32px;
++  border-radius: 9px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec; }
++.luma-cast-chip .luma-cast-chip-icon {
++  icon-size: 16px; }
++.luma-cast-row-title,
++.luma-cast-option-title {
++  font-size: 13px;
++  font-weight: 650;
++  color: #e9ebec; }
++.luma-cast-row-subtitle {
++  font-size: 11px;
++  font-weight: 500;
++  color: #969da4; }
++.luma-cast-row-go {
++  icon-size: 14px;
++  color: #969da4; }
++
++.luma-cast-option-chip {
++  width: 28px;
++  height: 28px;
++  border-radius: 8px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec; }
++.luma-cast-option:checked .luma-cast-option-chip {
++  background-color: rgba(255, 255, 255, 0.88);
++  color: #242a30; }
++.luma-cast-option-icon {
++  icon-size: 16px; }
++.luma-cast-option-app-icon {
++  icon-size: 22px; }
++.luma-cast-option:checked .luma-cast-option-chip.luma-cast-option-app {
++  background-color: transparent; }
++.luma-cast-option-check {
++  icon-size: 14px;
++  color: #e9ebec; }
++
++/* Two-way choices: a track holding two segments, the chosen one raised. */
++.luma-cast-field {
++  spacing: 0; }
++.luma-cast-segmented {
++  height: 30px;
++  padding: 2px;
++  spacing: 2px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 10px;
++  background-color: rgba(255, 255, 255, 0.072); }
++.luma-cast-segment {
++  min-height: 0;
++  padding: 0 8px;
++  border-radius: 8px;
++  background-color: transparent;
++  color: #969da4;
++  transition-duration: 100ms; }
++.luma-cast-segment:hover {
++  color: #e9ebec;
++  background-color: rgba(255, 255, 255, 0.05); }
++.luma-cast-segment:checked {
++  color: #e9ebec;
++  background-color: rgba(255, 255, 255, 0.15);
++  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28); }
++.luma-cast-segment-label {
++  font-size: 12px;
++  font-weight: 650; }
++
++/* Start and Stop: full-width, 36 tall, the panel's strongest control. */
++.luma-cast-primary,
++.luma-cast-stop,
++.luma-cast-secondary {
++  height: 36px;
++  min-height: 0;
++  padding: 0 14px;
++  margin-top: 12px;
++  border-radius: 10px;
++  font-size: 13px;
++  font-weight: 700;
++  transition-duration: 100ms; }
++.luma-cast-primary {
++  background-color: #e6e9eb;
++  color: #242a30; }
++.luma-cast-primary:hover {
++  background-color: #ffffff; }
++.luma-cast-primary:active {
++  background-color: #cfd3d7; }
++.luma-cast-stop {
++  background-color: #a64d52;
++  color: #ffffff; }
++.luma-cast-stop:hover {
++  background-color: #b5575c; }
++.luma-cast-stop:active {
++  background-color: #934247; }
++.luma-cast-secondary {
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec; }
++.luma-cast-secondary:hover {
++  background-color: rgba(255, 255, 255, 0.12); }
++.luma-cast-button-box {
++  spacing: 7px; }
++.luma-cast-button-icon {
++  icon-size: 14px; }
++
++/* Focus: a 2px ring. Inside for translucent controls (St fills an outer
++ * shadow under a transparent background); outside for the solid buttons. */
++.luma-cast-pane StButton:focus,
++.luma-cast-dialog StButton:focus {
++  box-shadow: inset 0 0 0 2px #e6e9eb; }
++.luma-cast-pane .luma-cast-primary:focus,
++.luma-cast-pane .luma-cast-stop:focus,
++.luma-cast-dialog .modal-dialog-button:default:focus {
++  box-shadow: 0 0 0 2px #e6e9eb; }
++
++/* Searching and empty: centred, quiet, and it says what to do. */
++.luma-cast-placeholder {
++  padding: 14px 18px 6px;
++  spacing: 4px; }
++.luma-cast-beacon {
++  width: 56px;
++  height: 56px;
++  margin-bottom: 6px; }
++.luma-cast-beacon-ring {
++  border-radius: 99px;
++  background-color: rgba(255, 255, 255, 0.06);
++  border: 1px solid rgba(255, 255, 255, 0.08); }
++.luma-cast-placeholder-chip {
++  width: 44px;
++  height: 44px;
++  border-radius: 12px;
++  background-color: rgba(255, 255, 255, 0.072);
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  color: #e9ebec; }
++.luma-cast-placeholder-chip .luma-cast-chip-icon {
++  icon-size: 20px; }
++.luma-cast-placeholder-chip-quiet {
++  color: #969da4;
++  margin-bottom: 6px; }
++.luma-cast-placeholder-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++.luma-cast-placeholder-body {
++  font-size: 11px;
++  font-weight: 500;
++  color: #969da4;
++  text-align: center; }
++.luma-cast-search-again {
++  height: 30px;
++  margin-top: 10px;
++  padding: 0 12px;
++  font-size: 12px; }
++
++/* Footer: Cast Settings, under a rule, the way every detail ends. */
++.luma-cast-footer {
++  margin-top: 10px;
++  padding-top: 6px;
++  border-top: 1px solid rgba(255, 255, 255, 0.075); }
++.luma-cast-footer-button {
++  min-height: 0;
++  height: 32px;
++  padding: 0 11px;
++  border-radius: 10px;
++  font-size: 13px;
++  font-weight: 600;
++  color: #e9ebec;
++  background-color: transparent; }
++.luma-cast-footer-button:hover {
++  background-color: rgba(255, 255, 255, 0.07); }
++.luma-cast-footer-icon {
++  icon-size: 16px;
++  color: #969da4; }
++
++/* While casting: what's private, said once, quietly. */
++.luma-cast-note {
++  spacing: 8px;
++  padding: 10px 6px 0; }
++.luma-cast-note-icon {
++  icon-size: 14px;
++  color: #969da4; }
++.luma-cast-note-label {
++  font-size: 11px;
++  font-weight: 500;
++  color: #969da4; }
++
++/* Errors say what happened and what to do. */
++.luma-cast-error {
++  padding: 12px;
++  spacing: 0;
++  border-radius: 10px;
++  border: 1px solid rgba(240, 139, 130, 0.22);
++  background-color: rgba(240, 139, 130, 0.08); }
++.luma-cast-error-top {
++  spacing: 10px; }
++.luma-cast-error-chip {
++  width: 32px;
++  height: 32px;
++  border-radius: 9px;
++  background-color: rgba(240, 139, 130, 0.16);
++  color: #f3a098; }
++.luma-cast-error-chip .luma-cast-chip-icon {
++  icon-size: 16px; }
++.luma-cast-error-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++.luma-cast-error-body {
++  font-size: 11px;
++  font-weight: 500;
++  padding-top: 2px;
++  color: #b9bfc5; }
++.luma-cast-error-buttons {
++  spacing: 8px; }
++.luma-cast-error-buttons .luma-cast-secondary {
++  height: 32px;
++  margin-top: 12px;
++  font-size: 12px; }
++
++/* ── Shelf indicator ───────────────────────────────────────────────────── */
++.luma-shelf-actions-box .luma-cast-indicator {
++  padding: 0 12px 0 10px;
++  color: #f5c26b; }
++.luma-cast-indicator-box {
++  spacing: 8px; }
++.luma-shelf-actions-box .luma-cast-indicator .luma-cast-indicator-icon {
++  icon-size: 16px;
++  color: #f5c26b; }
++.luma-cast-indicator-label {
++  font-family: Figtree, sans-serif;
++  font-size: 12px;
++  font-weight: 650;
++  max-width: 160px;
++  color: #e7e9e8; }
++.luma-shelf-actions-box .luma-cast-indicator.luma-cast-indicator-connecting .luma-cast-indicator-icon {
++  color: #e7e9e8; }
++.luma-shelf-actions-box .luma-cast-indicator.luma-cast-indicator-failed .luma-cast-indicator-icon {
++  color: #f3a098; }
++
++/* ── Dialogs ───────────────────────────────────────────────────────────── */
++.modal-dialog.luma-cast-dialog {
++  padding: 22px 22px 18px;
++  spacing: 18px;
++  border-radius: 15px;
++  border: 1px solid rgba(255, 255, 255, 0.055);
++  background-color: #21252b;
++  color: #e9ebec;
++  font-family: Figtree, sans-serif;
++  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.72); }
++.modal-dialog.luma-cast-dialog .modal-dialog-content-box {
++  padding-top: 0;
++  spacing: 16px;
++  max-width: 50em; }
++.modal-dialog.luma-cast-dialog .modal-dialog-button-box {
++  padding-top: 0;
++  spacing: 8px; }
++.modal-dialog.luma-cast-dialog .modal-dialog-button {
++  height: 36px;
++  min-height: 0;
++  padding: 0 18px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 10px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec;
++  font-size: 13px;
++  font-weight: 700;
++  box-shadow: none; }
++.modal-dialog.luma-cast-dialog .modal-dialog-button:hover {
++  background-color: rgba(255, 255, 255, 0.12); }
++.modal-dialog.luma-cast-dialog .modal-dialog-button:default {
++  border-color: transparent;
++  background-color: #e6e9eb;
++  color: #242a30; }
++.modal-dialog.luma-cast-dialog .modal-dialog-button:default:hover {
++  background-color: #ffffff; }
++.modal-dialog.luma-cast-dialog .modal-dialog-button:insensitive {
++  color: #969da4; }
++.modal-dialog.luma-cast-dialog .modal-dialog-button:default:insensitive {
++  background-color: rgba(230, 233, 235, 0.28);
++  color: rgba(36, 42, 48, 0.7); }
++.luma-cast-dialog-heading {
++  spacing: 4px;
++  padding: 0 2px; }
++.luma-cast-dialog-title {
++  font-size: 15px;
++  font-weight: 700;
++  color: #e9ebec; }
++.luma-cast-dialog-body {
++  font-size: 12px;
++  font-weight: 500;
++  color: #969da4; }
++
++/* App picker: dock-preview cards, a thumbnail rounded 8 under a 16 icon. */
++.luma-cast-app-picker {
++  width: 740px; }
++.luma-cast-window-scroll {
++  max-height: 460px; }
++.luma-cast-window-grid {
++  spacing-rows: 6px;
++  spacing-columns: 6px; }
++.luma-cast-window {
++  padding: 6px 6px 8px;
++  border-radius: 12px;
++  border: 1px solid transparent;
++  background-color: transparent;
++  transition-duration: 120ms; }
++.luma-cast-window:hover {
++  background-color: rgba(255, 255, 255, 0.07); }
++.luma-cast-window:checked {
++  background-color: rgba(255, 255, 255, 0.115);
++  border-color: rgba(255, 255, 255, 0.17); }
++.luma-cast-dialog .luma-cast-window:focus {
++  box-shadow: inset 0 0 0 2px #e6e9eb; }
++.luma-cast-window-box {
++  spacing: 7px; }
++.luma-cast-window-header {
++  height: 22px;
++  spacing: 8px;
++  padding: 0 2px; }
++.luma-cast-window-title {
++  font-size: 11px;
++  font-weight: 650;
++  color: #e9ebec; }
++.luma-cast-window-thumb {
++  border-radius: 8px; }
++
++/* Pairing: the device, one sentence, the digits. */
++.luma-cast-code-dialog {
++  width: 360px; }
++.luma-cast-code-box {
++  spacing: 6px;
++  padding: 4px 6px 0; }
++.luma-cast-code-chip {
++  width: 48px;
++  height: 48px;
++  margin-bottom: 8px;
++  border-radius: 13px;
++  background-color: rgba(255, 255, 255, 0.072);
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  color: #e9ebec; }
++.luma-cast-code-chip .luma-cast-chip-icon {
++  icon-size: 24px; }
++.luma-cast-code-title {
++  text-align: center; }
++.luma-cast-code-body {
++  text-align: center; }
++.luma-cast-code-cells {
++  spacing: 8px;
++  padding-top: 14px; }
++.luma-cast-code-cell {
++  width: 46px;
++  height: 56px;
++  border-radius: 10px;
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  background-color: rgba(255, 255, 255, 0.072); }
++.luma-cast-code-cell:focus {
++  border: 2px solid #e6e9eb;
++  background-color: rgba(255, 255, 255, 0.1); }
++.luma-cast-code-digit {
++  font-size: 26px;
++  font-weight: 700;
++  font-feature-settings: "tnum";
++  color: #e9ebec; }
++.luma-cast-code-entry {
++  height: 1px;
++  min-height: 0;
++  padding: 0;
++  margin: 0;
++  border: 0;
++  background-color: transparent;
++  color: transparent;
++  box-shadow: none;
++  caret-color: transparent;
++  selected-color: transparent;
++  selection-background-color: transparent; }
++.luma-cast-code-error {
++  padding-top: 8px;
++  font-size: 12px;
++  font-weight: 650;
++  color: #f3a098; }
++.luma-cast-code-waiting {
++  spacing: 8px;
++  padding-top: 14px;
++  font-size: 12px;
++  font-weight: 600;
++  color: #969da4; }
++
++/* ── Light and frost ───────────────────────────────────────────────────── */
++.luma-surface-light .luma-cast-header-title,
++.luma-surface-frost .luma-cast-header-title,
++.luma-surface-light .luma-cast-row-title,
++.luma-surface-frost .luma-cast-row-title,
++.luma-surface-light .luma-cast-option-title,
++.luma-surface-frost .luma-cast-option-title,
++.luma-surface-light .luma-cast-placeholder-title,
++.luma-surface-frost .luma-cast-placeholder-title,
++.luma-surface-light .luma-cast-error-title,
++.luma-surface-frost .luma-cast-error-title,
++.luma-surface-light .luma-cast-option-check,
++.luma-surface-frost .luma-cast-option-check,
++.luma-surface-light.luma-cast-dialog,
++.luma-surface-frost.luma-cast-dialog,
++.luma-surface-light .luma-cast-dialog-title,
++.luma-surface-frost .luma-cast-dialog-title,
++.luma-surface-light .luma-cast-window-title,
++.luma-surface-frost .luma-cast-window-title,
++.luma-surface-light .luma-cast-code-digit,
++.luma-surface-frost .luma-cast-code-digit {
++  color: #30343a; }
++.luma-cast-pane.luma-surface-light,
++.luma-cast-pane.luma-surface-frost {
++  color: #30343a; }
++.luma-surface-light .luma-cast-header-subtitle,
++.luma-surface-frost .luma-cast-header-subtitle,
++.luma-surface-light .luma-cast-heading,
++.luma-surface-frost .luma-cast-heading,
++.luma-surface-light .luma-cast-field-label,
++.luma-surface-frost .luma-cast-field-label,
++.luma-surface-light .luma-cast-row-subtitle,
++.luma-surface-frost .luma-cast-row-subtitle,
++.luma-surface-light .luma-cast-row-go,
++.luma-surface-frost .luma-cast-row-go,
++.luma-surface-light .luma-cast-placeholder-body,
++.luma-surface-frost .luma-cast-placeholder-body,
++.luma-surface-light .luma-cast-note-icon,
++.luma-surface-frost .luma-cast-note-icon,
++.luma-surface-light .luma-cast-note-label,
++.luma-surface-frost .luma-cast-note-label,
++.luma-surface-light .luma-cast-footer-icon,
++.luma-surface-frost .luma-cast-footer-icon,
++.luma-surface-light .luma-cast-spinner,
++.luma-surface-frost .luma-cast-spinner,
++.luma-surface-light .luma-cast-dialog-body,
++.luma-surface-frost .luma-cast-dialog-body,
++.luma-surface-light .luma-cast-code-waiting,
++.luma-surface-frost .luma-cast-code-waiting,
++.luma-surface-light .luma-cast-placeholder-chip-quiet,
++.luma-surface-frost .luma-cast-placeholder-chip-quiet {
++  color: #767b81; }
++.luma-surface-light .luma-cast-error-body,
++.luma-surface-frost .luma-cast-error-body {
++  color: #5c6167; }
++
++.luma-surface-light .luma-cast-header-chip,
++.luma-surface-frost .luma-cast-header-chip,
++.luma-surface-light .luma-cast-chip,
++.luma-surface-frost .luma-cast-chip,
++.luma-surface-light .luma-cast-option-chip,
++.luma-surface-frost .luma-cast-option-chip,
++.luma-surface-light .luma-cast-placeholder-chip,
++.luma-surface-frost .luma-cast-placeholder-chip,
++.luma-surface-light .luma-cast-code-chip,
++.luma-surface-frost .luma-cast-code-chip {
++  border-color: rgba(35, 39, 45, 0.09);
++  background-color: rgba(35, 44, 52, 0.07);
++  color: #30343a; }
++.luma-surface-light .luma-cast-placeholder-chip-quiet,
++.luma-surface-frost .luma-cast-placeholder-chip-quiet {
++  color: #767b81; }
++.luma-surface-light .luma-cast-live-dot,
++.luma-surface-frost .luma-cast-live-dot {
++  background-color: #d99a2b;
++  border-color: #ffffff; }
++.luma-surface-light .luma-cast-beacon-ring,
++.luma-surface-frost .luma-cast-beacon-ring {
++  background-color: rgba(35, 44, 52, 0.05);
++  border-color: rgba(35, 44, 52, 0.08); }
++
++.luma-surface-light .luma-cast-device,
++.luma-surface-frost .luma-cast-device,
++.luma-surface-light .luma-cast-option,
++.luma-surface-frost .luma-cast-option,
++.luma-surface-light .luma-cast-footer-button,
++.luma-surface-frost .luma-cast-footer-button {
++  color: #30343a; }
++.luma-surface-light .luma-cast-device:hover,
++.luma-surface-frost .luma-cast-device:hover,
++.luma-surface-light .luma-cast-option:hover,
++.luma-surface-frost .luma-cast-option:hover,
++.luma-surface-light .luma-cast-footer-button:hover,
++.luma-surface-frost .luma-cast-footer-button:hover,
++.luma-surface-light .luma-cast-window:hover,
++.luma-surface-frost .luma-cast-window:hover {
++  background-color: rgba(35, 44, 52, 0.06); }
++.luma-surface-light .luma-cast-device:active,
++.luma-surface-frost .luma-cast-device:active,
++.luma-surface-light .luma-cast-option:active,
++.luma-surface-frost .luma-cast-option:active {
++  background-color: rgba(35, 44, 52, 0.1); }
++.luma-surface-light .luma-cast-option:checked,
++.luma-surface-frost .luma-cast-option:checked,
++.luma-surface-light .luma-cast-window:checked,
++.luma-surface-frost .luma-cast-window:checked {
++  background-color: rgba(35, 44, 52, 0.07);
++  border-color: rgba(35, 44, 52, 0.16); }
++.luma-surface-light .luma-cast-option:checked .luma-cast-option-chip,
++.luma-surface-frost .luma-cast-option:checked .luma-cast-option-chip {
++  background-color: #343a40;
++  color: #ffffff; }
++
++.luma-surface-light .luma-cast-back,
++.luma-surface-frost .luma-cast-back,
++.luma-surface-light .luma-cast-secondary,
++.luma-surface-frost .luma-cast-secondary {
++  border-color: rgba(35, 39, 45, 0.09);
++  background-color: #ffffff;
++  color: #30343a;
++  box-shadow: 0 1px 2px rgba(20, 27, 34, 0.06); }
++.luma-surface-light .luma-cast-back:hover,
++.luma-surface-frost .luma-cast-back:hover,
++.luma-surface-light .luma-cast-secondary:hover,
++.luma-surface-frost .luma-cast-secondary:hover {
++  background-color: #f4f5f6; }
++
++.luma-surface-light .luma-cast-segmented,
++.luma-surface-frost .luma-cast-segmented {
++  border-color: rgba(35, 39, 45, 0.09);
++  background-color: rgba(35, 44, 52, 0.07); }
++.luma-surface-light .luma-cast-segment,
++.luma-surface-frost .luma-cast-segment {
++  color: #767b81; }
++.luma-surface-light .luma-cast-segment:hover,
++.luma-surface-frost .luma-cast-segment:hover {
++  color: #30343a;
++  background-color: rgba(35, 44, 52, 0.05); }
++.luma-surface-light .luma-cast-segment:checked,
++.luma-surface-frost .luma-cast-segment:checked {
++  color: #30343a;
++  background-color: #ffffff;
++  box-shadow: 0 1px 3px rgba(20, 27, 34, 0.14); }
++
++.luma-surface-light .luma-cast-primary,
++.luma-surface-frost .luma-cast-primary {
++  background-color: #31373e;
++  color: #ffffff; }
++.luma-surface-light .luma-cast-primary:hover,
++.luma-surface-frost .luma-cast-primary:hover {
++  background-color: #252a30; }
++.luma-surface-light .luma-cast-stop,
++.luma-surface-frost .luma-cast-stop {
++  background-color: #b4474d; }
++.luma-surface-light .luma-cast-stop:hover,
++.luma-surface-frost .luma-cast-stop:hover {
++  background-color: #a23e44; }
++.luma-surface-light StButton:focus,
++.luma-surface-frost StButton:focus,
++.luma-surface-light.luma-cast-dialog StButton:focus,
++.luma-surface-frost.luma-cast-dialog StButton:focus {
++  box-shadow: inset 0 0 0 2px #31373e; }
++.luma-surface-light .luma-cast-primary:focus,
++.luma-surface-frost .luma-cast-primary:focus,
++.luma-surface-light .luma-cast-stop:focus,
++.luma-surface-frost .luma-cast-stop:focus,
++.luma-surface-light.luma-cast-dialog .modal-dialog-button:default:focus,
++.luma-surface-frost.luma-cast-dialog .modal-dialog-button:default:focus {
++  box-shadow: 0 0 0 2px #31373e; }
++
++.luma-surface-light .luma-cast-footer,
++.luma-surface-frost .luma-cast-footer {
++  border-top-color: rgba(35, 39, 45, 0.09); }
++
++.luma-surface-light .luma-cast-error,
++.luma-surface-frost .luma-cast-error {
++  border-color: rgba(180, 71, 77, 0.2);
++  background-color: rgba(180, 71, 77, 0.06); }
++.luma-surface-light .luma-cast-error-chip,
++.luma-surface-frost .luma-cast-error-chip {
++  background-color: rgba(180, 71, 77, 0.12);
++  color: #b4474d; }
++.luma-surface-light .luma-cast-code-error,
++.luma-surface-frost .luma-cast-code-error {
++  color: #b4474d; }
++
++.modal-dialog.luma-cast-dialog.luma-surface-light,
++.modal-dialog.luma-cast-dialog.luma-surface-frost {
++  border-color: rgba(255, 255, 255, 0.72);
++  background-color: #f1f2f3;
++  box-shadow: 0 30px 80px -20px rgba(14, 18, 24, 0.5); }
++.modal-dialog.luma-cast-dialog.luma-surface-light .modal-dialog-button,
++.modal-dialog.luma-cast-dialog.luma-surface-frost .modal-dialog-button {
++  border-color: rgba(35, 39, 45, 0.09);
++  background-color: #ffffff;
++  color: #30343a; }
++.modal-dialog.luma-cast-dialog.luma-surface-light .modal-dialog-button:hover,
++.modal-dialog.luma-cast-dialog.luma-surface-frost .modal-dialog-button:hover {
++  background-color: #f7f8f9; }
++.modal-dialog.luma-cast-dialog.luma-surface-light .modal-dialog-button:default,
++.modal-dialog.luma-cast-dialog.luma-surface-frost .modal-dialog-button:default {
++  border-color: transparent;
++  background-color: #31373e;
++  color: #ffffff; }
++.modal-dialog.luma-cast-dialog.luma-surface-light .modal-dialog-button:default:insensitive,
++.modal-dialog.luma-cast-dialog.luma-surface-frost .modal-dialog-button:default:insensitive {
++  background-color: rgba(49, 55, 62, 0.3);
++  color: rgba(255, 255, 255, 0.85); }
++.luma-surface-light .luma-cast-code-cell,
++.luma-surface-frost .luma-cast-code-cell {
++  border-color: rgba(35, 39, 45, 0.12);
++  background-color: #ffffff; }
++.luma-surface-light .luma-cast-code-cell:focus,
++.luma-surface-frost .luma-cast-code-cell:focus {
++  border-color: #31373e; }
++
++.luma-surface-light .luma-shelf-actions-box .luma-cast-indicator .luma-cast-indicator-icon,
++.luma-surface-frost .luma-shelf-actions-box .luma-cast-indicator .luma-cast-indicator-icon {
++  color: #b7791f; }
++.luma-surface-light .luma-cast-indicator-label,
++.luma-surface-frost .luma-cast-indicator-label {
++  color: #191b1f; }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index dad6f4d..547fe2e 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -484,6 +484,13 @@
+   border-color: rgba(35,39,45,0.09);
+   background-color: rgba(35,39,45,0.06);
+   color: #30343a; }
++/* A tile with a detail is one surface: its inner toggle takes no second fill
++ * from the treatment rules above. */
++.luma-quick-options.luma-surface-light .quick-toggle-has-menu .quick-toggle,
++.luma-quick-options.luma-surface-frost .quick-toggle-has-menu .quick-toggle,
++.luma-quick-options.luma-surface-glass .quick-toggle-has-menu .quick-toggle {
++  border-color: transparent;
++  background-color: transparent; }
+ .luma-quick-options.luma-surface-light .quick-toggle .quick-toggle-icon,
+ .luma-quick-options.luma-surface-light .quick-toggle-menu-button,
+ .luma-quick-options.luma-surface-light .luma-quick-avatar {
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index f600684..5153b2e 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -90,6 +90,9 @@
+     <file>ui/lumaWell.js</file>
+     <file>ui/lumaDockWindows.js</file>
+     <file>ui/lumaNotificationBeacon.js</file>
++    <file>ui/lumaCast.js</file>
++    <file>ui/lumaCastDialogs.js</file>
++    <file>ui/lumaCastSheet.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>
+@@ -164,6 +167,7 @@
+     <file>ui/status/bluetooth.js</file>
+     <file>ui/status/brightness.js</file>
+     <file>ui/status/camera.js</file>
++    <file>ui/status/cast.js</file>
+     <file>ui/status/darkMode.js</file>
+     <file>ui/status/doNotDisturb.js</file>
+     <file>ui/status/dwellClick.js</file>
+diff --git a/js/misc/introspect.js b/js/misc/introspect.js
+index 8314e46..5dc0a82 100644
+--- a/js/misc/introspect.js
++++ b/js/misc/introspect.js
+@@ -7,6 +7,9 @@ import St from 'gi://St';
+ const APP_ALLOWLIST = [
+     'org.freedesktop.impl.portal.desktop.gtk',
+     'org.freedesktop.impl.portal.desktop.gnome',
++    // Luma Cast follows the one app being presented: its focused window,
++    // dialogs, minimising and closing (ADR-034).
++    'org.projectluma.Cast1',
+ ];
+ 
+ const INTROSPECT_DBUS_API_VERSION = 3;
+diff --git a/js/ui/lumaCast.js b/js/ui/lumaCast.js
+new file mode 100644
+index 0000000..93025da
+--- /dev/null
++++ b/js/ui/lumaCast.js
+@@ -0,0 +1,812 @@
++// Luma Cast: the Shell's side of ADR-034.
++//
++// One client for the org.projectluma.Cast1 session service. The Quick
++// Settings tile, the shelf indicator, the app picker and the pairing dialog
++// all read this model; none of them talks to D-Bus on its own. The service
++// owns discovery, protocols, capture and encoding. The Shell owns what people
++// see, and the privacy rules that only the Shell can enforce: no notification
++// banner on a monitor whose pixels reach a receiver, notifications silenced
++// while casting, and a privacy curtain while a password prompt is up.
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as Signals from '../misc/signals.js';
++
++const BUS_NAME = 'org.projectluma.Cast1';
++const MANAGER_PATH = '/org/projectluma/Cast1';
++const MANAGER_IFACE = 'org.projectluma.Cast1';
++const SESSION_IFACE = 'org.projectluma.Cast1.Session';
++const STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-cast.css';
++const SETTINGS_SCHEMA = 'org.projectluma.cast';
++
++// How long "Looking for screens" stays before the menu says nothing was found.
++// Discovery keeps running underneath, and a late screen still appears.
++export const SEARCH_GRACE_SECONDS = 8;
++
++export const Source = {
++    SCREEN: 'screen',
++    EXTEND: 'extend',
++    DISPLAY: 'display',
++    APP: 'app',
++};
++
++export const KIND_ICONS = {
++    'tv': 'luma-cast-tv-symbolic',
++    'speaker-display': 'luma-cast-speaker-display-symbolic',
++    'computer': 'luma-cast-laptop-symbolic',
++    'conference-room': 'luma-cast-presentation-symbolic',
++    'projector': 'luma-cast-presentation-symbolic',
++    'unknown': 'luma-cast-monitor-symbolic',
++};
++
++export function kindIcon(kind) {
++    return KIND_ICONS[kind] ?? KIND_ICONS.unknown;
++}
++
++// Error codes are the service's; the words are the Shell's, because they have
++// to say what to do next, in the room, with the device's own name.
++export function describeError(code, deviceName, fallback = '') {
++    const name = deviceName || _('The screen');
++    switch (code) {
++    case 'no-answer':
++        return {
++            title: _('%s didn’t answer').format(name),
++            body: _('Make sure it’s on and connected to the same network as this computer.'),
++        };
++    case 'code-rejected':
++        return {
++            title: _('That code didn’t match'),
++            body: _('Check the code shown on %s and try again.').format(name),
++        };
++    case 'wifi-direct-busy':
++        return {
++            title: _('Wi-Fi Direct isn’t available right now'),
++            body: _('It can’t be used while this network is in use. Luma will reconnect when you stop casting.'),
++        };
++    case 'wifi-direct-disabled':
++        return {
++            title: _('%s connects directly').format(name),
++            body: _('Casting to screens that need Wi-Fi Direct is turned off in Settings.'),
++        };
++    case 'lost-connection':
++        return {
++            title: _('Lost the connection to %s').format(name),
++            body: _('Casting stopped because the screen stopped responding.'),
++        };
++    case 'locked':
++        return {
++            title: _('Casting stopped when the screen locked'),
++            body: _('Nothing was shared while this computer was locked.'),
++        };
++    case 'unsupported-source':
++        return {
++            title: _('%s can’t show that').format(name),
++            body: _('Try sharing the entire screen instead.'),
++        };
++    case 'declined':
++        return {
++            title: _('%s declined').format(name),
++            body: _('Accept the request on the screen, then try again.'),
++        };
++    case 'receiver-busy':
++        return {
++            title: _('%s is showing something else').format(name),
++            body: _('Stop it there, then try again.'),
++        };
++    case 'app-closed':
++        return {
++            title: _('The app you were sharing closed'),
++            body: _('Casting to %s stopped with it.').format(name),
++        };
++    case 'backend-failed':
++        return {
++            title: _('Casting to %s stopped unexpectedly').format(name),
++            body: _('Try again, or choose another screen.'),
++        };
++    default:
++        // A code this Shell doesn't know: the service's sentence is complete.
++        return {
++            title: _('Couldn’t cast to %s').format(name),
++            body: fallback || _('Try again, or choose another screen.'),
++        };
++    }
++}
++
++function unpackDict(variantDict) {
++    const out = {};
++    for (const [key, value] of Object.entries(variantDict ?? {}))
++        out[key] = value instanceof GLib.Variant ? value.recursiveUnpack() : value;
++    return out;
++}
++
++function packOptions(options) {
++    const dict = {};
++    for (const [key, value] of Object.entries(options)) {
++        if (value === undefined || value === null)
++            continue;
++        if (typeof value === 'boolean')
++            dict[key] = GLib.Variant.new_boolean(value);
++        else if (Array.isArray(value))
++            dict[key] = new GLib.Variant('at', value);
++        else
++            dict[key] = GLib.Variant.new_string(`${value}`);
++    }
++    return dict;
++}
++
++function normaliseDevice(raw) {
++    const d = unpackDict(raw);
++    return {
++        id: d.id ?? '',
++        name: d.name || _('Unnamed screen'),
++        kind: d.kind ?? 'unknown',
++        recent: Boolean(d.recent),
++        lastUsed: Number(d['last-used'] ?? 0),
++        direct: Boolean(d.direct),
++        higherDelay: Boolean(d['higher-delay']),
++        // 'realtime', 'buffered' (about a second behind) or 'high' (DLNA).
++        latency: d['latency-class'] ?? (d['higher-delay'] ? 'high' : 'realtime'),
++        capabilities: new Set(d.capabilities ?? ['screen', 'extend', 'app', 'display', 'audio']),
++        lastChoices: d['last-choices'] ?? {},
++        nativeWidth: Number(d['native-width'] ?? 0),
++        nativeHeight: Number(d['native-height'] ?? 0),
++        pinned: Boolean(d.pinned),
++        rank: d.rank ?? null,
++        busy: Boolean(d.busy),
++    };
++}
++
++function optionalSettings(schemaId) {
++    const schema = Gio.SettingsSchemaSource.get_default()?.lookup(schemaId, true);
++    return schema ? new Gio.Settings({settings_schema: schema}) : null;
++}
++
++// Every descendant that takes a secret: a password entry, or any text whose
++// characters are drawn masked.
++function containsSecretEntry(actor) {
++    if (actor instanceof St.PasswordEntry)
++        return true;
++    if (actor instanceof Clutter.Text && actor.password_char !== 0)
++        return true;
++    for (const child of actor.get_children?.() ?? []) {
++        if (containsSecretEntry(child))
++            return true;
++    }
++    return false;
++}
++
++const CURTAIN_TIMEOUT_MS = 1500;
++
++// Draws nothing: the dialog it is attached to stays unpainted, but keeps its
++// layout, focus and grab, until the curtain is up.
++const PaintHold = GObject.registerClass(
++class PaintHold extends Clutter.Effect {
++    vfunc_paint(_node, _paintContext, _flags) {
++    }
++});
++
++class CastManager extends Signals.EventEmitter {
++    constructor() {
++        super();
++
++        this.available = false;
++        this.discovering = false;
++        this.wifiDirectAvailable = true;
++        this.devices = new Map();
++        this.session = null;
++        this.lastEnded = null;
++        this.displays = [];
++        this._discoveryHolds = 0;
++        this._sessionPath = '/';
++        this._subscriptions = [];
++        this._sessionSubscriptions = [];
++        this._curtains = new Map();
++
++        this._settings = optionalSettings(SETTINGS_SCHEMA);
++        this._settings?.connectObject('changed', () => {
++            this.emit('settings-changed');
++            this._syncPrivacy();
++        }, this);
++
++        const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
++        theme.load_stylesheet(Gio.File.new_for_uri(STYLESHEET_URI));
++
++        this._bus = Gio.DBus.session;
++        this._watchId = this._bus.watch_name(BUS_NAME, Gio.BusNameWatcherFlags.NONE,
++            () => this._onServiceAppeared(), () => this._onServiceVanished());
++        this._checkActivatable();
++
++        Main.layoutManager.connectObject('monitors-changed',
++            () => this._refreshDisplays(), this);
++        Main.layoutManager.connectObject('system-modal-opened',
++            () => this._onSystemModalOpened(), this);
++        this._refreshDisplays();
++    }
++
++    // Settings, with the ADR's defaults when the service's schema is absent.
++    get silenceNotifications() {
++        return this._settings?.get_boolean('silence-notifications') ?? true;
++    }
++
++    get defaultAudio() {
++        return this._settings?.get_string('default-audio') || 'receiver';
++    }
++
++    get allowWifiDirect() {
++        return this._settings?.get_boolean('allow-wifi-direct') ?? true;
++    }
++
++    get casting() {
++        return Boolean(this.session) && this.session.state !== 'ended';
++    }
++
++    async _checkActivatable() {
++        try {
++            const [names] = (await this._bus.call('org.freedesktop.DBus', '/org/freedesktop/DBus',
++                'org.freedesktop.DBus', 'ListActivatableNames', null,
++                new GLib.VariantType('(as)'), Gio.DBusCallFlags.NONE, -1, null)).deepUnpack();
++            if (names.includes(BUS_NAME))
++                this._setAvailable(true);
++        } catch (e) {
++            logError(e, 'Luma Cast: unable to list activatable services');
++        }
++    }
++
++    _setAvailable(available) {
++        if (this.available === available)
++            return;
++        this.available = available;
++        this.emit('available-changed');
++    }
++
++    _onServiceAppeared() {
++        this._setAvailable(true);
++        this._subscribeManager();
++        this._refreshManager().catch(e => logError(e, 'Luma Cast: refresh'));
++        // A menu that was already open keeps its discovery after a restart.
++        if (this._discoveryHolds > 0)
++            this._call(MANAGER_PATH, MANAGER_IFACE, 'StartDiscovery', null, null, true).catch(() => {});
++    }
++
++    _onServiceVanished() {
++        for (const id of this._subscriptions)
++            this._bus.signal_unsubscribe(id);
++        this._subscriptions = [];
++        this.devices.clear();
++        this.discovering = false;
++        if (this.session) {
++            const {deviceId, deviceName} = this.session;
++            this._clearSession();
++            this.lastEnded = {deviceId, deviceName, code: 'backend-failed', message: ''};
++            this.emit('session-ended', this.lastEnded);
++        }
++        this.emit('devices-changed');
++        this.emit('discovering-changed');
++        this._checkActivatable();
++    }
++
++    _call(path, iface, method, params = null, replyType = null, autoStart = false) {
++        return this._bus.call(BUS_NAME, path, iface, method, params,
++            replyType ? new GLib.VariantType(replyType) : null,
++            autoStart ? Gio.DBusCallFlags.NONE : Gio.DBusCallFlags.NO_AUTO_START,
++            -1, null);
++    }
++
++    async _getAll(path, iface) {
++        const reply = await this._call(path, 'org.freedesktop.DBus.Properties', 'GetAll',
++            new GLib.Variant('(s)', [iface]), '(a{sv})');
++        return unpackDict(reply.deepUnpack()[0]);
++    }
++
++    _subscribeManager() {
++        if (this._subscriptions.length)
++            return;
++        const subscribe = (iface, member, path, handler) => this._subscriptions.push(
++            this._bus.signal_subscribe(BUS_NAME, iface, member, path, null,
++                Gio.DBusSignalFlags.NONE, (_c, _s, _p, _i, _m, params) => handler(params)));
++        subscribe(MANAGER_IFACE, 'DevicesChanged', MANAGER_PATH, params => {
++            const [changed, removed] = params.deepUnpack();
++            for (const raw of changed) {
++                const device = normaliseDevice(raw);
++                this.devices.set(device.id, device);
++            }
++            for (const id of removed)
++                this.devices.delete(id);
++            this.emit('devices-changed');
++        });
++        subscribe('org.freedesktop.DBus.Properties', 'PropertiesChanged', MANAGER_PATH, params => {
++            const [iface, changed] = params.deepUnpack();
++            if (iface === MANAGER_IFACE)
++                this._applyManagerProperties(unpackDict(changed));
++        });
++    }
++
++    async _refreshManager() {
++        const props = await this._getAll(MANAGER_PATH, MANAGER_IFACE);
++        this._applyManagerProperties(props);
++        const reply = await this._call(MANAGER_PATH, MANAGER_IFACE, 'GetDevices', null, '(aa{sv})');
++        this.devices.clear();
++        for (const raw of reply.deepUnpack()[0]) {
++            const device = normaliseDevice(raw);
++            this.devices.set(device.id, device);
++        }
++        this.emit('devices-changed');
++    }
++
++    _applyManagerProperties(props) {
++        if ('Discovering' in props && props.Discovering !== this.discovering) {
++            this.discovering = props.Discovering;
++            this.emit('discovering-changed');
++        }
++        if ('WifiDirectAvailable' in props) {
++            this.wifiDirectAvailable = props.WifiDirectAvailable;
++            this.emit('devices-changed');
++        }
++        if ('Session' in props && props.Session !== this._sessionPath)
++            this._bindSession(props.Session);
++    }
++
++    // The service's order: pinned, then recent by last use, then nearby by
++    // name. A screen that needs Wi-Fi Direct is hidden while Settings
++    // disallows it, rather than listed and then refused.
++    sortedDevices() {
++        const collator = new Intl.Collator(undefined, {sensitivity: 'base', numeric: true});
++        const list = [...this.devices.values()].filter(d => this.allowWifiDirect || !d.direct);
++        const byRank = (a, b) => (a.rank ?? 1e6) - (b.rank ?? 1e6) ||
++            Number(b.pinned) - Number(a.pinned) || b.lastUsed - a.lastUsed ||
++            collator.compare(a.name, b.name);
++        const recent = list.filter(d => d.recent || d.pinned).sort(byRank);
++        const nearby = list.filter(d => !d.recent && !d.pinned).sort(byRank);
++        return {recent, nearby};
++    }
++
++    holdDiscovery() {
++        this._discoveryHolds++;
++        if (this._discoveryHolds !== 1)
++            return;
++        this.discoveryStarted = GLib.get_monotonic_time();
++        this.emit('discovering-changed');
++        // The first hold is what starts the service: it is not resident until
++        // someone opens Cast.
++        this._call(MANAGER_PATH, MANAGER_IFACE, 'StartDiscovery', null, null, true)
++            .catch(e => logError(e, 'Luma Cast: StartDiscovery'));
++    }
++
++    releaseDiscovery() {
++        if (this._discoveryHolds === 0)
++            return;
++        this._discoveryHolds--;
++        if (this._discoveryHolds === 0)
++            this._call(MANAGER_PATH, MANAGER_IFACE, 'StopDiscovery').catch(() => {});
++    }
++
++    restartDiscovery() {
++        this.discoveryStarted = GLib.get_monotonic_time();
++        this.emit('discovering-changed');
++        this._call(MANAGER_PATH, MANAGER_IFACE, 'StopDiscovery').catch(() => {})
++            .finally(() => this._call(MANAGER_PATH, MANAGER_IFACE, 'StartDiscovery', null, null, true)
++                .catch(e => logError(e, 'Luma Cast: StartDiscovery')));
++    }
++
++    get searchExpired() {
++        if (!this.discoveryStarted)
++            return false;
++        return GLib.get_monotonic_time() - this.discoveryStarted > SEARCH_GRACE_SECONDS * GLib.USEC_PER_SEC;
++    }
++
++    // What a sheet pre-selects for a device: its last choices, if they still
++    // make sense on this machine, else mirror, optimised for the receiver.
++    choicesFor(device) {
++        const last = device?.lastChoices ?? {};
++        const choices = {
++            source: Object.values(Source).includes(last.source) ? last.source : Source.SCREEN,
++            connector: last.connector ?? null,
++            appId: last['app-id'] ?? null,
++            optimize: last.optimize === 'local' ? 'local' : 'receiver',
++            audio: ['receiver', 'local'].includes(last.audio) ? last.audio : this.defaultAudio,
++        };
++        const multi = this.displays.length > 1;
++        if (choices.source === Source.SCREEN && multi) {
++            choices.source = Source.DISPLAY;
++            choices.connector = this.displays.find(d => d.builtin)?.connector ?? this.displays[0]?.connector;
++        }
++        if (choices.source === Source.DISPLAY &&
++            (!multi || !this.displays.some(d => d.connector === choices.connector))) {
++            choices.source = multi ? Source.DISPLAY : Source.SCREEN;
++            choices.connector = multi ? this.displays[0].connector : null;
++        }
++        if (choices.source === Source.APP && !this.runningApp(choices.appId))
++            choices.appId = null;
++        if (device && !device.capabilities.has(choices.source))
++            choices.source = multi ? Source.DISPLAY : Source.SCREEN;
++        return choices;
++    }
++
++    runningApp(appId) {
++        if (!appId)
++            return null;
++        // Ids come from the Shell (with .desktop) and from the service (without).
++        const system = Shell.AppSystem.get_default();
++        const app = system.lookup_app(appId) ?? system.lookup_app(`${appId}.desktop`);
++        return app?.get_windows().length ? app : null;
++    }
++
++    _optionsFromChoices(choices) {
++        const options = {
++            source: choices.source,
++            optimize: choices.optimize,
++            audio: choices.audio,
++        };
++        if (choices.source === Source.DISPLAY)
++            options.connector = choices.connector;
++        if (choices.source === Source.APP) {
++            const app = this.runningApp(choices.appId);
++            // The service speaks desktop ids without the .desktop suffix.
++            options['app-id'] = choices.appId.replace(/\.desktop$/, '');
++            options['window-ids'] = (app?.get_windows() ?? []).map(w => w.get_id());
++        }
++        return packOptions(options);
++    }
++
++    async connectDevice(device, choices) {
++        this.lastEnded = null;
++        // Show the connection at once; the service's session replaces this.
++        this.session = {
++            path: null, deviceId: device.id, deviceName: device.name, deviceKind: device.kind,
++            state: 'connecting', source: choices.source, connector: choices.connector,
++            appId: choices.appId, optimize: choices.optimize, audio: choices.audio,
++            capturedConnectors: [], errorCode: '', errorMessage: '',
++        };
++        this.emit('session-changed');
++        this._syncPrivacy();
++        try {
++            const reply = await this._call(MANAGER_PATH, MANAGER_IFACE, 'Connect',
++                new GLib.Variant('(sa{sv})', [device.id, this._optionsFromChoices(choices)]), '(o)', true);
++            const [path] = reply.deepUnpack();
++            if (path !== this._sessionPath)
++                this._bindSession(path);
++        } catch (e) {
++            logError(e, 'Luma Cast: Connect');
++            this._endSession(device.id, device.name, 'backend-failed', '');
++        }
++    }
++
++    async change(choices) {
++        if (!this.session?.path)
++            return;
++        Object.assign(this.session, {
++            source: choices.source ?? this.session.source,
++            connector: choices.connector ?? this.session.connector,
++            appId: choices.appId ?? this.session.appId,
++            optimize: choices.optimize ?? this.session.optimize,
++            audio: choices.audio ?? this.session.audio,
++        });
++        this.emit('session-changed');
++        try {
++            await this._call(this.session.path, SESSION_IFACE, 'Change',
++                new GLib.Variant('(a{sv})', [this._optionsFromChoices(this.session)]));
++        } catch (e) {
++            logError(e, 'Luma Cast: Change');
++        }
++    }
++
++    // Stop always works: the Shell forgets the session at once, whatever the
++    // service answers.
++    stop() {
++        const session = this.session;
++        if (!session)
++            return;
++        if (session.path)
++            this._call(session.path, SESSION_IFACE, 'Stop').catch(e => logError(e, 'Luma Cast: Stop'));
++        this._clearSession();
++        this.lastEnded = null;
++        this.emit('session-changed');
++    }
++
++    submitCode(code) {
++        if (this.session?.path)
++            return this._call(this.session.path, SESSION_IFACE, 'SubmitCode', new GLib.Variant('(s)', [code]));
++        return Promise.resolve();
++    }
++
++    cancelPairing() {
++        if (this.session?.path)
++            this._call(this.session.path, SESSION_IFACE, 'CancelPairing').catch(() => {});
++        this.stop();
++    }
++
++    forget(deviceId) {
++        return this._call(MANAGER_PATH, MANAGER_IFACE, 'ForgetDevice', new GLib.Variant('(s)', [deviceId]));
++    }
++
++    dismissError() {
++        if (!this.lastEnded)
++            return;
++        this.lastEnded = null;
++        this.emit('session-changed');
++    }
++
++    _bindSession(path) {
++        for (const id of this._sessionSubscriptions)
++            this._bus.signal_unsubscribe(id);
++        this._sessionSubscriptions = [];
++        this._sessionPath = path;
++        if (!path || path === '/') {
++            if (this.session?.path) {
++                this._clearSession();
++                this.emit('session-changed');
++            }
++            return;
++        }
++        const subscribe = (iface, member, handler) => this._sessionSubscriptions.push(
++            this._bus.signal_subscribe(BUS_NAME, iface, member, path, null,
++                Gio.DBusSignalFlags.NONE, (_c, _s, _p, _i, _m, params) => handler(params)));
++        subscribe('org.freedesktop.DBus.Properties', 'PropertiesChanged', params => {
++            const [iface, changed] = params.deepUnpack();
++            if (iface === SESSION_IFACE)
++                this._applySessionProperties(unpackDict(changed));
++        });
++        subscribe(SESSION_IFACE, 'CodeRequested', params => {
++            const [mode, code, digits] = params.deepUnpack();
++            this.emit('code-requested', {mode, code, digits});
++        });
++        subscribe(SESSION_IFACE, 'Ended', params => {
++            const [code, message] = params.deepUnpack();
++            const {deviceId, deviceName} = this.session ?? {};
++            this._endSession(deviceId, deviceName, code, message);
++        });
++        this.session ??= {path, state: 'connecting', capturedConnectors: []};
++        this.session.path = path;
++        this._getAll(path, SESSION_IFACE)
++            .then(props => this._applySessionProperties(props))
++            .catch(e => logError(e, 'Luma Cast: session properties'));
++    }
++
++    _applySessionProperties(props) {
++        if (!this.session)
++            return;
++        const map = {
++            DeviceId: 'deviceId', DeviceName: 'deviceName', DeviceKind: 'deviceKind', State: 'state',
++            Source: 'source', Connector: 'connector', AppId: 'appId', Optimize: 'optimize', Audio: 'audio',
++            ErrorCode: 'errorCode', ErrorMessage: 'errorMessage', CapturedConnectors: 'capturedConnectors',
++        };
++        for (const [key, field] of Object.entries(map)) {
++            if (key in props)
++                this.session[field] = props[key];
++        }
++        if (this.session.state === 'ended') {
++            const {deviceId, deviceName, errorCode, errorMessage} = this.session;
++            this._endSession(deviceId, deviceName, errorCode, errorMessage);
++            return;
++        }
++        this.emit('session-changed');
++        this._syncPrivacy();
++    }
++
++    _endSession(deviceId, deviceName, code, message) {
++        if (!this.session)
++            return;
++        this._clearSession();
++        // A person who pressed Stop sees nothing; a failure explains itself.
++        this.lastEnded = code ? {deviceId, deviceName, code, message} : null;
++        this.emit('session-changed');
++        if (this.lastEnded)
++            this.emit('session-ended', this.lastEnded);
++    }
++
++    _clearSession() {
++        for (const id of this._sessionSubscriptions)
++            this._bus.signal_unsubscribe(id);
++        this._sessionSubscriptions = [];
++        this._sessionPath = '/';
++        this.session = null;
++        this._syncPrivacy();
++    }
++
++    // Monitors, with their connectors and names, for "one display".
++    async _refreshDisplays() {
++        try {
++            const reply = await this._bus.call('org.gnome.Mutter.DisplayConfig',
++                '/org/gnome/Mutter/DisplayConfig', 'org.gnome.Mutter.DisplayConfig', 'GetCurrentState',
++                null, null, Gio.DBusCallFlags.NONE, -1, null);
++            const [, monitors, logical] = reply.deepUnpack();
++            const manager = global.backend.get_monitor_manager();
++            const inLayout = new Set();
++            for (const lm of logical) {
++                for (const [connector] of lm[5])
++                    inLayout.add(connector);
++            }
++            this.displays = monitors
++                .map(([[connector], , props]) => {
++                    const p = unpackDict(props);
++                    return {
++                        connector,
++                        builtin: Boolean(p['is-builtin']),
++                        name: p['is-builtin'] ? _('Built-in display') : (p['display-name'] || connector),
++                        index: manager.get_monitor_for_connector(connector),
++                    };
++                })
++                .filter(d => inLayout.has(d.connector) && d.index >= 0)
++                .sort((a, b) => Number(b.builtin) - Number(a.builtin) || a.index - b.index);
++            // Two identical monitors get numbers, the way Displays shows them.
++            const counts = new Map();
++            for (const d of this.displays)
++                counts.set(d.name, (counts.get(d.name) ?? 0) + 1);
++            const seen = new Map();
++            for (const d of this.displays) {
++                if (counts.get(d.name) > 1) {
++                    seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
++                    d.name = `${d.name} ${seen.get(d.name)}`;
++                }
++            }
++        } catch (e) {
++            // A session without DisplayConfig can't name its monitors; one
++            // entry per monitor is the honest fallback.
++            logError(e, 'Luma Cast: reading displays');
++            this.displays = Main.layoutManager.monitors.map((m, index) => ({
++                connector: `monitor-${index}`, builtin: index === Main.layoutManager.primaryIndex,
++                name: index === Main.layoutManager.primaryIndex ? _('Built-in display') : _('Display %d').format(index + 1),
++                index,
++            }));
++        }
++        this.emit('displays-changed');
++        this._syncPrivacy();
++    }
++
++    // The privacy model. A monitor is captured when its pixels reach the
++    // receiver: mirroring it, or the virtual monitor that extends onto it.
++    isMonitorCaptured(index) {
++        if (!this.casting || index < 0)
++            return false;
++        const manager = global.backend.get_monitor_manager();
++        return (this.session.capturedConnectors ?? [])
++            .some(connector => manager.get_monitor_for_connector(connector) === index);
++    }
++
++    // Where a notification banner may be placed: the preferred monitor if it
++    // isn't captured, else another that isn't. When every monitor is
++    // captured the preferred one is returned, and the tray's captured rule
++    // keeps every banner off it.
++    bannerMonitor(preferred) {
++        if (!this.isMonitorCaptured(preferred))
++            return preferred;
++        const monitors = Main.layoutManager.monitors;
++        const primary = Main.layoutManager.primaryIndex;
++        const order = [primary, ...monitors.map((_m, i) => i).filter(i => i !== primary)];
++        return order.find(i => !this.isMonitorCaptured(i)) ?? preferred;
++    }
++
++    // Silenced: ordinary notifications are collected quietly, as they are
++    // under a full-screen presentation, and never replayed afterwards.
++    get silencing() {
++        return this.casting && this.silenceNotifications;
++    }
++
++    _syncPrivacy() {
++        const key = JSON.stringify([this.silencing,
++            this.casting ? this.session.capturedConnectors ?? [] : []]);
++        if (this._privacyKey === key)
++            return;
++        this._privacyKey = key;
++        Main.messageTray?.castPrivacyChanged?.();
++        this.emit('privacy-changed');
++    }
++
++    // A Shell password prompt over a captured screen raises the service's
++    // privacy curtain first. system-modal-opened fires inside pushModal,
++    // before the dialog is shown; its painting is held until the service
++    // replies that the curtain is in the compositor, so no frame carrying
++    // the prompt can be captured. A service that doesn't answer in time
++    // has its cast stopped rather than the prompt withheld.
++    _onSystemModalOpened() {
++        if (!this.casting || !(this.session.capturedConnectors ?? []).length || !this.session.path)
++            return;
++        const top = Main.modalActorFocusStack.at(-1)?.actor;
++        if (!top || this._curtains.has(top) || !containsSecretEntry(top))
++            return;
++        this._raiseCurtain(top);
++    }
++
++    // The reason is journal-only; the service documents these four.
++    _curtainReason(dialog) {
++        const name = dialog.constructor?.name ?? '';
++        if (name.includes('Authentication'))
++            return 'polkit';
++        if (name.includes('Keyring'))
++            return 'keyring';
++        if (name.includes('NetworkSecret'))
++            return 'network-secrets';
++        return 'unlock';
++    }
++
++    _raiseCurtain(dialog) {
++        const path = this.session.path;
++        const reason = this._curtainReason(dialog);
++        const hold = new PaintHold();
++        dialog.add_effect_with_name('luma-cast-curtain-hold', hold);
++        const entry = {path, released: false};
++        this._curtains.set(dialog, entry);
++        const release = () => {
++            if (dialog.get_effect('luma-cast-curtain-hold'))
++                dialog.remove_effect(hold);
++        };
++        const timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CURTAIN_TIMEOUT_MS, () => {
++            console.warn('Luma Cast: no privacy curtain in time; stopping the cast');
++            this.stop();
++            release();
++            return GLib.SOURCE_REMOVE;
++        });
++        this._call(path, SESSION_IFACE, 'SetPrivacyCurtain',
++            new GLib.Variant('(bs)', [true, reason]))
++            .then(() => {
++                GLib.source_remove(timeout);
++                release();
++            })
++            .catch(e => {
++                logError(e, 'Luma Cast: SetPrivacyCurtain');
++                GLib.source_remove(timeout);
++                this.stop();
++                release();
++            });
++        const lower = () => {
++            if (entry.released)
++                return;
++            entry.released = true;
++            dialog.disconnectObject(this);
++            this._curtains.delete(dialog);
++            this._call(entry.path, SESSION_IFACE, 'SetPrivacyCurtain',
++                new GLib.Variant('(bs)', [false, reason])).catch(() => {});
++            this.emit('curtain-changed');
++        };
++        dialog.connectObject('closed', lower, 'destroy', lower, this);
++        this.emit('curtain-changed');
++    }
++
++    get curtainActive() {
++        return this._curtains.size > 0;
++    }
++
++    openSettings() {
++        const app = Shell.AppSystem.get_default().lookup_app('gnome-display-panel.desktop');
++        if (app) {
++            Main.overview.hide();
++            Main.panel.closeQuickSettings();
++            // The Displays panel opens straight onto its Cast page.
++            Shell.util_spawn_async(null, ['gnome-control-center', 'display', 'cast'], null, GLib.SpawnFlags.SEARCH_PATH);
++        }
++    }
++
++    destroy() {
++        this.releaseDiscovery();
++        this._bus.unwatch_name(this._watchId);
++        Main.layoutManager.disconnectObject(this);
++    }
++}
++
++let _manager = null;
++
++/** @returns {CastManager} */
++export function getCast() {
++    _manager ??= new CastManager();
++    return _manager;
++}
++
++/** Null until something in the session has asked for Cast. */
++export function peekCast() {
++    return _manager;
++}
++
++export function reduceMotion() {
++    return !St.Settings.get().enable_animations;
++}
++
++// Seconds for Meta window ids exposed to the service.
++export function windowId(window) {
++    return window instanceof Meta.Window ? window.get_id() : 0;
++}
+diff --git a/js/ui/lumaCastDialogs.js b/js/ui/lumaCastDialogs.js
+new file mode 100644
+index 0000000..8cfbd33
+--- /dev/null
++++ b/js/ui/lumaCastDialogs.js
+@@ -0,0 +1,422 @@
++// Luma Cast: choosing one app, and pairing with a screen.
++//
++// Both are Shell modal dialogs in the Luma window material. The app picker
++// shows every app window as a live thumbnail, drawn the way the Grid and the
++// dock previews draw windows, so "One app…" chooses from what the person
++// already recognises.
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Animation from './animation.js';
++import * as ModalDialog from './modalDialog.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {RoundedPreview} from './lumaGrid.js';
++import {getCast, kindIcon, reduceMotion} from './lumaCast.js';
++
++const THUMB_WIDTH = 216;
++const THUMB_HEIGHT = 136;
++const THUMB_RADIUS = 8;
++const COLUMNS = 3;
++
++function scaleFactor() {
++    return St.ThemeContext.get_for_stage(global.stage).scale_factor;
++}
++
++function bindMaterial(dialog) {
++    // Treatment classes only; a modal dialog sits over a lightbox, not the
++    // wallpaper, so it takes no compositor backdrop.
++    SurfaceMaterials.bindSurface(dialog.dialogLayout._dialog, {backdrop: false, enabled: false});
++}
++
++// The windows a person would call "an app": normal, on this session's
++// workspaces, not skip-taskbar, most recently used first. One card per app.
++function appWindows() {
++    const tracker = Shell.WindowTracker.get_default();
++    const seen = new Map();
++    const windows = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null);
++    for (const window of windows) {
++        if (window.skip_taskbar || !window.get_compositor_private())
++            continue;
++        const app = tracker.get_window_app(window);
++        if (!app || seen.has(app.get_id()))
++            continue;
++        seen.set(app.get_id(), {app, window});
++    }
++    return [...seen.values()];
++}
++
++const WindowCard = GObject.registerClass(
++class WindowCard extends St.Button {
++    constructor({app, window}) {
++        super({
++            style_class: 'luma-cast-window',
++            can_focus: true,
++            reactive: true,
++            accessible_role: Atk.Role.RADIO_BUTTON,
++            accessible_name: window.title && window.title !== app.get_name()
++                ? `${app.get_name()}, ${window.title}` : app.get_name(),
++        });
++        this.app = app;
++        this.window = window;
++        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'luma-cast-window-box'});
++        const header = new St.BoxLayout({style_class: 'luma-cast-window-header'});
++        const icon = app.create_icon_texture(16);
++        icon.y_align = Clutter.ActorAlign.CENTER;
++        header.add_child(icon);
++        const title = new St.Label({
++            text: app.get_name(),
++            style_class: 'luma-cast-window-title',
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        header.add_child(title);
++        box.add_child(header);
++
++        this._thumb = new St.Widget({
++            style_class: 'luma-cast-window-thumb',
++        });
++        this._body = new Clutter.Actor({layout_manager: new Shell.WindowPreviewLayout()});
++        this._body.layout_manager.add_window(window);
++        window.foreach_transient(transient => {
++            if (transient.is_attached_dialog() && transient.get_compositor_private())
++                this._body.layout_manager.add_window(transient);
++            return true;
++        });
++        this._rounded = new RoundedPreview();
++        this._body.add_effect(this._rounded);
++        this._thumb.add_child(this._body);
++        this._thumb.connect('notify::allocation', () => this._placeBody());
++        this._body.layout_manager.connectObject('notify::bounding-box', () => this._placeBody(), this);
++        box.add_child(this._thumb);
++        this.set_child(box);
++        this._syncSize();
++    }
++
++    _syncSize() {
++        const scale = scaleFactor();
++        this._thumb.set_size(THUMB_WIDTH * scale, THUMB_HEIGHT * scale);
++    }
++
++    // Fit the window inside the thumbnail, centred, rounded at 8 on screen.
++    _placeBody() {
++        const bounds = this._body.layout_manager.bounding_box;
++        const width = Math.max(1, bounds.get_width());
++        const height = Math.max(1, bounds.get_height());
++        const scale = scaleFactor();
++        const fit = Math.min(THUMB_WIDTH * scale / width, THUMB_HEIGHT * scale / height);
++        this._body.set_size(width, height);
++        this._body.set_scale(fit, fit);
++        this._body.set_position(
++            Math.round((THUMB_WIDTH * scale - width * fit) / 2),
++            Math.round((THUMB_HEIGHT * scale - height * fit) / 2));
++        this._rounded.setShape(width, height, THUMB_RADIUS * scale / fit);
++    }
++
++    setSelected(selected) {
++        this.checked = selected;
++        if (selected)
++            this.add_accessible_state(Atk.StateType.CHECKED);
++        else
++            this.remove_accessible_state(Atk.StateType.CHECKED);
++    }
++});
++
++export const AppPickerDialog = GObject.registerClass({
++    Signals: {'picked': {param_types: [GObject.TYPE_STRING]}},
++}, class AppPickerDialog extends ModalDialog.ModalDialog {
++    constructor({deviceName, selectedAppId = null, actionLabel = _('Start Casting')}) {
++        super({styleClass: 'luma-cast-dialog luma-cast-app-picker', destroyOnClose: true});
++        bindMaterial(this);
++
++        const heading = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-dialog-heading',
++        });
++        const title = new St.Label({text: _('Choose an app to share'), style_class: 'luma-cast-dialog-title'});
++        heading.add_child(title);
++        const body = new St.Label({
++            text: deviceName
++                ? _('Only this app appears on %s. Everything else on your screen stays private.').format(deviceName)
++                : _('Only this app appears on the screen. Everything else stays private.'),
++            style_class: 'luma-cast-dialog-body',
++        });
++        body.clutter_text.line_wrap = true;
++        heading.add_child(body);
++        this.contentLayout.add_child(heading);
++
++        const entries = appWindows();
++        this._cards = [];
++        const layout = new Clutter.GridLayout({orientation: Clutter.Orientation.HORIZONTAL});
++        const grid = new St.Widget({
++            style_class: 'luma-cast-window-grid',
++            layout_manager: layout,
++            x_align: Clutter.ActorAlign.CENTER,
++            accessible_role: Atk.Role.LIST,
++            accessible_name: _('Apps'),
++        });
++        layout.hookup_style(grid);
++        entries.forEach((entry, i) => {
++            const card = new WindowCard(entry);
++            card.connect('clicked', () => this._select(card));
++            card.connect('key-focus-in', () => this._select(card));
++            const click = new Clutter.ClickGesture({n_clicks_required: 2});
++            click.connect('recognize', () => this._confirm());
++            card.add_action(click);
++            layout.attach(card, i % COLUMNS, Math.floor(i / COLUMNS), 1, 1);
++            this._cards.push(card);
++        });
++
++        if (entries.length) {
++            const scrollable = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
++            scrollable.add_child(grid);
++            const scroll = new St.ScrollView({
++                style_class: 'luma-cast-window-scroll',
++                hscrollbar_policy: St.PolicyType.NEVER,
++                vscrollbar_policy: St.PolicyType.AUTOMATIC,
++                overlay_scrollbars: true,
++                child: scrollable,
++            });
++            this.contentLayout.add_child(scroll);
++        } else {
++            const empty = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'luma-cast-placeholder'});
++            empty.add_child(new St.Bin({
++                style_class: 'luma-cast-placeholder-chip luma-cast-placeholder-chip-quiet',
++                x_align: Clutter.ActorAlign.CENTER,
++                child: new St.Icon({icon_name: 'luma-cast-app-symbolic', style_class: 'luma-cast-chip-icon'}),
++            }));
++            empty.add_child(new St.Label({text: _('No apps are open'), style_class: 'luma-cast-placeholder-title',
++                x_align: Clutter.ActorAlign.CENTER}));
++            empty.add_child(new St.Label({text: _('Open the app you want to share, then choose One app again.'),
++                style_class: 'luma-cast-placeholder-body', x_align: Clutter.ActorAlign.CENTER}));
++            this.contentLayout.add_child(empty);
++        }
++
++        this.addButton({label: _('Cancel'), action: () => this.close(), key: Clutter.KEY_Escape});
++        this._action = this.addButton({label: actionLabel, action: () => this._confirm(), default: true});
++
++        const initial = this._cards.find(c => c.app.get_id() === selectedAppId) ?? this._cards[0] ?? null;
++        this._select(initial);
++        if (initial)
++            this.setInitialKeyFocus(initial);
++    }
++
++    _select(card) {
++        this._selected = card;
++        for (const c of this._cards)
++            c.setSelected(c === card);
++        this._action.reactive = Boolean(card);
++        this._action.can_focus = Boolean(card);
++    }
++
++    _confirm() {
++        if (!this._selected)
++            return;
++        const appId = this._selected.app.get_id();
++        // Emit first: closing disposes the dialog, and a signal on a disposed
++        // object never reaches the sheet.
++        this.emit('picked', appId);
++        this.close();
++    }
++});
++
++/**
++ * The pairing prompt. Modes follow CodeRequested:
++ *   enter   — "Enter the code shown on <device>", digits typed here;
++ *   show    — "Enter this code on <device>", digits shown here;
++ *   confirm — "Accept on <device>", nothing to type.
++ */
++export const CodeDialog = GObject.registerClass(
++class CodeDialog extends ModalDialog.ModalDialog {
++    constructor({mode, code = '', digits = 4, deviceName, deviceKind, rejected = false}) {
++        super({styleClass: 'luma-cast-dialog luma-cast-code-dialog', destroyOnClose: true});
++        bindMaterial(this);
++        this._cast = getCast();
++        this._mode = mode;
++        this._digits = Math.max(1, digits || code.length || 4);
++
++        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'luma-cast-code-box'});
++        box.add_child(new St.Bin({
++            style_class: 'luma-cast-code-chip',
++            x_align: Clutter.ActorAlign.CENTER,
++            child: new St.Icon({icon_name: kindIcon(deviceKind), style_class: 'luma-cast-chip-icon'}),
++        }));
++        const titles = {
++            enter: _('Enter the code shown on %s'),
++            show: _('Enter this code on %s'),
++            confirm: _('Accept on %s'),
++        };
++        const bodies = {
++            enter: _('The screen is showing a code to make sure you’re casting to the right place.'),
++            show: _('Type these numbers using the screen’s remote.'),
++            confirm: _('Choose Allow on the screen to start casting.'),
++        };
++        this._title = new St.Label({
++            text: (titles[mode] ?? titles.enter).format(deviceName),
++            style_class: 'luma-cast-dialog-title luma-cast-code-title',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._title.clutter_text.line_wrap = true;
++        this._title.clutter_text.line_alignment = Pango.Alignment.CENTER;
++        box.add_child(this._title);
++        const body = new St.Label({
++            text: bodies[mode] ?? bodies.enter,
++            style_class: 'luma-cast-dialog-body luma-cast-code-body',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        body.clutter_text.line_wrap = true;
++        body.clutter_text.line_alignment = Pango.Alignment.CENTER;
++        box.add_child(body);
++
++        if (mode !== 'confirm') {
++            this._cells = new St.BoxLayout({style_class: 'luma-cast-code-cells', x_align: Clutter.ActorAlign.CENTER});
++            this._cellLabels = [];
++            for (let i = 0; i < this._digits; i++) {
++                const cell = new St.Bin({style_class: 'luma-cast-code-cell'});
++                const digit = new St.Label({style_class: 'luma-cast-code-digit',
++                    x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++                cell.child = digit;
++                this._cells.add_child(cell);
++                this._cellLabels.push({cell, digit});
++            }
++            box.add_child(this._cells);
++        }
++
++        if (mode === 'enter') {
++            // One real entry takes the input, so paste, IME and the screen
++            // reader all work; the cells only draw it.
++            this._entry = new St.Entry({
++                style_class: 'luma-cast-code-entry',
++                can_focus: true,
++                x_expand: true,
++                input_purpose: Clutter.InputContentPurpose.DIGITS,
++            });
++            this._entry.clutter_text.max_length = this._digits;
++            this._entry.accessible_name = this._title.text;
++            this._entry.clutter_text.connect('text-changed', () => this._syncCells());
++            this._entry.clutter_text.connect('activate', () => this._submit());
++            this._entry.connect('key-focus-in', () => this._syncCells());
++            this._entry.opacity = 0;
++            box.add_child(this._entry);
++            this._cells.reactive = true;
++            this._cells.connect('button-press-event', () => {
++                this._entry.grab_key_focus();
++                return Clutter.EVENT_STOP;
++            });
++            this.setInitialKeyFocus(this._entry);
++        } else if (mode === 'show') {
++            [...code].slice(0, this._digits).forEach((ch, i) => (this._cellLabels[i].digit.text = ch));
++            this._cells.accessible_name = [...code].join(' ');
++        }
++
++        if (mode !== 'enter') {
++            const waiting = new St.BoxLayout({style_class: 'luma-cast-code-waiting', x_align: Clutter.ActorAlign.CENTER});
++            const spinner = new Animation.Spinner(16, {animate: true});
++            waiting.add_child(spinner);
++            waiting.add_child(new St.Label({text: _('Waiting for %s…').format(deviceName),
++                y_align: Clutter.ActorAlign.CENTER}));
++            spinner.play();
++            box.add_child(waiting);
++        }
++
++        this._error = new St.Label({
++            text: _('That code didn’t match. Try again.'),
++            style_class: 'luma-cast-code-error',
++            x_align: Clutter.ActorAlign.CENTER,
++            opacity: rejected ? 255 : 0,
++            accessible_role: Atk.Role.ALERT,
++        });
++        box.add_child(this._error);
++        this.contentLayout.add_child(box);
++
++        this.addButton({
++            label: _('Cancel'),
++            action: () => {
++                this._cancelled = true;
++                this._cast.cancelPairing();
++                this.close();
++            },
++            key: Clutter.KEY_Escape,
++        });
++        if (mode === 'enter')
++            this._connect = this.addButton({label: _('Connect'), action: () => this._submit(), default: true});
++
++        // The prompt belongs to its session: it goes when pairing is over.
++        this._sawPairing = this._cast.session?.state === 'pairing';
++        this._cast.connectObject('session-changed', () => {
++            const state = this._cast.session?.state;
++            if (state === 'pairing')
++                this._sawPairing = true;
++            else if (!state || state === 'ended' || this._sawPairing)
++                this.close();
++        }, this);
++        this.connect('destroy', () => this._cast.disconnectObject(this));
++        this._syncCells();
++        if (rejected)
++            this._shake();
++    }
++
++    _syncCells() {
++        if (this._mode !== 'enter')
++            return;
++        const text = this._entry.text.replace(/\D/g, '');
++        if (text !== this._entry.text)
++            this._entry.text = text;
++        this._cellLabels.forEach(({cell, digit}, i) => {
++            digit.text = text[i] ?? '';
++            const active = this._entry.has_key_focus() && i === Math.min(text.length, this._digits - 1);
++            if (active)
++                cell.add_style_pseudo_class('focus');
++            else
++                cell.remove_style_pseudo_class('focus');
++        });
++        const complete = text.length === this._digits;
++        this._connect.reactive = complete;
++        this._connect.can_focus = complete;
++        if (text.length)
++            this._error.opacity = 0;
++    }
++
++    _submit() {
++        const text = this._entry?.text ?? '';
++        if (text.length !== this._digits)
++            return;
++        this._cast.submitCode(text).catch(e => logError(e, 'Luma Cast: SubmitCode'));
++        this._connect.reactive = false;
++        this._entry.clutter_text.editable = false;
++    }
++
++    // A wrong code: the service asks again. Clear, say so, and nudge.
++    reject() {
++        this._entry.clutter_text.editable = true;
++        this._entry.text = '';
++        this._error.opacity = 255;
++        this._entry.grab_key_focus();
++        this._shake();
++    }
++
++    _shake() {
++        if (reduceMotion() || !this._cells)
++            return;
++        const cells = this._cells;
++        cells.remove_transition('translation-x');
++        const steps = [8, -6, 4, -2, 0];
++        const next = i => {
++            if (i >= steps.length)
++                return;
++            cells.ease({
++                translation_x: steps[i],
++                duration: 45,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                onComplete: () => next(i + 1),
++            });
++        };
++        next(0);
++    }
++});
+diff --git a/js/ui/lumaCastSheet.js b/js/ui/lumaCastSheet.js
+new file mode 100644
+index 0000000..bb9175c
+--- /dev/null
++++ b/js/ui/lumaCastSheet.js
+@@ -0,0 +1,999 @@
++// Luma Cast: the device menu, the sharing sheet and the controls while casting.
++//
++// One pane, three faces, drawn from the CastManager model:
++//   devices  — every screen in the room, recent first, as they're found;
++//   sheet    — what to share with the chosen screen, and how; Start;
++//   session  — what is being shared, sound, and Stop.
++// The same pane is the Quick Settings Cast detail and the shelf indicator's
++// menu, so the controls never differ between the two.
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Graphene from 'gi://Graphene';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Animation from './animation.js';
++import {
++    getCast, kindIcon, describeError, reduceMotion, Source, SEARCH_GRACE_SECONDS,
++} from './lumaCast.js';
++
++const VIEW_FADE_MS = 160;
++const VIEW_RISE_PX = 6;
++const RESIZE_MS = 180;
++
++function label(text, styleClass, params = {}) {
++    const l = new St.Label({text: text ?? '', style_class: styleClass, ...params});
++    l.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++    return l;
++}
++
++function wrapLabel(text, styleClass, params = {}) {
++    const l = new St.Label({text: text ?? '', style_class: styleClass, ...params});
++    l.clutter_text.line_wrap = true;
++    l.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
++    l.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++    return l;
++}
++
++function chip(iconName, styleClass = 'luma-cast-chip') {
++    return new St.Bin({
++        style_class: styleClass,
++        child: new St.Icon({icon_name: iconName, style_class: 'luma-cast-chip-icon'}),
++        y_align: Clutter.ActorAlign.CENTER,
++    });
++}
++
++function setRadioState(button, checked) {
++    button.checked = checked;
++    if (checked)
++        button.add_accessible_state(Atk.StateType.CHECKED);
++    else
++        button.remove_accessible_state(Atk.StateType.CHECKED);
++}
++
++export function sourceSummary(choices, device = null) {
++    const cast = getCast();
++    switch (choices.source) {
++    case Source.EXTEND:
++        return _('Separate screen');
++    case Source.DISPLAY:
++        return cast.displays.find(d => d.connector === choices.connector)?.name ?? _('One display');
++    case Source.APP:
++        return cast.runningApp(choices.appId)?.get_name() ?? _('One app');
++    default:
++        return device ? _('Entire screen') : _('Entire screen');
++    }
++}
++
++/** A screen in the device menu. */
++const DeviceRow = GObject.registerClass(
++class DeviceRow extends St.Button {
++    constructor(device) {
++        super({
++            style_class: 'luma-cast-device',
++            can_focus: true,
++            x_expand: true,
++            accessible_role: Atk.Role.PUSH_BUTTON,
++        });
++        this.device = device;
++        const box = new St.BoxLayout({style_class: 'luma-cast-row-box', x_expand: true});
++        box.add_child(chip(kindIcon(device.kind)));
++        const text = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-row-text',
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        text.add_child(label(device.name, 'luma-cast-row-title'));
++        const detail = DeviceRow.detail(device);
++        if (detail)
++            text.add_child(label(detail, 'luma-cast-row-subtitle'));
++        box.add_child(text);
++        box.add_child(new St.Icon({
++            icon_name: 'luma-cast-go-symbolic',
++            style_class: 'luma-cast-row-go',
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        this.set_child(box);
++        this.accessible_name = detail ? `${device.name}, ${detail}` : device.name;
++    }
++
++    static detail(device) {
++        const parts = [];
++        if (device.busy)
++            parts.push(_('In use'));
++        if (device.direct)
++            parts.push(_('Connects directly'));
++        if (device.latency === 'buffered')
++            parts.push(_('Slight delay'));
++        else if (device.latency === 'high' || device.higherDelay)
++            parts.push(_('Higher delay'));
++        if (!parts.length && device.recent && device.lastChoices?.source)
++            parts.push(sourceSummary(getCast().choicesFor(device), device));
++        return parts.join(' · ');
++    }
++});
++
++/** One answer to "what to share": a row with an icon and a check. */
++const OptionRow = GObject.registerClass(
++class OptionRow extends St.Button {
++    constructor({iconName, gicon = null, title, subtitle = ''}) {
++        super({
++            style_class: 'luma-cast-option',
++            can_focus: true,
++            x_expand: true,
++            accessible_role: Atk.Role.RADIO_BUTTON,
++            accessible_name: subtitle ? `${title}, ${subtitle}` : title,
++        });
++        const box = new St.BoxLayout({style_class: 'luma-cast-row-box', x_expand: true});
++        this._chip = new St.Bin({style_class: 'luma-cast-option-chip', y_align: Clutter.ActorAlign.CENTER});
++        this.setIcon(iconName, gicon);
++        box.add_child(this._chip);
++        const text = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._title = label(title, 'luma-cast-option-title');
++        this._subtitle = label(subtitle, 'luma-cast-row-subtitle', {visible: Boolean(subtitle)});
++        text.add_child(this._title);
++        text.add_child(this._subtitle);
++        box.add_child(text);
++        this._check = new St.Icon({
++            icon_name: 'luma-cast-check-symbolic',
++            style_class: 'luma-cast-option-check',
++            y_align: Clutter.ActorAlign.CENTER,
++            opacity: 0,
++        });
++        box.add_child(this._check);
++        this.set_child(box);
++    }
++
++    setIcon(iconName, gicon = null) {
++        if (gicon) {
++            this._chip.child = new St.Icon({gicon, style_class: 'luma-cast-option-app-icon'});
++        } else {
++            this._chip.child = new St.Icon({icon_name: iconName, style_class: 'luma-cast-option-icon'});
++        }
++    }
++
++    setText(title, subtitle = '') {
++        this._title.text = title;
++        this._subtitle.text = subtitle;
++        this._subtitle.visible = Boolean(subtitle);
++        this.accessible_name = subtitle ? `${title}, ${subtitle}` : title;
++    }
++
++    setSelected(selected) {
++        setRadioState(this, selected);
++        this._check.opacity = selected ? 255 : 0;
++    }
++});
++
++// The receiver side of a two-way choice: a short noun, because the header
++// already carries the full name and long room names would truncate here.
++function receiverNoun(kind) {
++    switch (kind) {
++    case 'tv':
++        return _('TV');
++    case 'projector':
++        return _('Projector');
++    case 'computer':
++        return _('Other Computer');
++    case 'speaker-display':
++    case 'conference-room':
++        return _('Display');
++    default:
++        return _('Screen');
++    }
++}
++
++/** Two choices side by side: "TV" | "This computer". */
++const Segmented = GObject.registerClass({
++    Signals: {'changed': {param_types: [GObject.TYPE_STRING]}},
++}, class Segmented extends St.BoxLayout {
++    constructor(title, segments) {
++        super({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-field',
++            x_expand: true,
++        });
++        const heading = new St.BoxLayout({style_class: 'luma-cast-field-heading'});
++        if (segments.iconName) {
++            heading.add_child(new St.Icon({
++                icon_name: segments.iconName,
++                style_class: 'luma-cast-field-icon',
++                y_align: Clutter.ActorAlign.CENTER,
++            }));
++        }
++        this._label = label(title, 'luma-cast-field-label', {y_align: Clutter.ActorAlign.CENTER});
++        heading.add_child(this._label);
++        this.add_child(heading);
++        this._track = new St.BoxLayout({
++            style_class: 'luma-cast-segmented',
++            x_expand: true,
++            layout_manager: new Clutter.BoxLayout({homogeneous: true}),
++            accessible_role: Atk.Role.PANEL,
++        });
++        this._track.accessible_name = title;
++        this.add_child(this._track);
++        this._buttons = new Map();
++        for (const {value, text} of segments.items) {
++            const button = new St.Button({
++                style_class: 'luma-cast-segment',
++                can_focus: true,
++                x_expand: true,
++                accessible_role: Atk.Role.RADIO_BUTTON,
++                accessible_name: `${title}: ${text}`,
++            });
++            button.set_child(label(text, 'luma-cast-segment-label', {x_align: Clutter.ActorAlign.CENTER}));
++            button.connect('clicked', () => {
++                this.value = value;
++                this.emit('changed', value);
++            });
++            this._buttons.set(value, button);
++            this._track.add_child(button);
++        }
++    }
++
++    set value(value) {
++        this._value = value;
++        for (const [v, button] of this._buttons)
++            setRadioState(button, v === value);
++    }
++
++    get value() {
++        return this._value;
++    }
++});
++
++function primaryButton(text, styleClass = 'luma-cast-primary') {
++    return new St.Button({
++        style_class: styleClass,
++        label: text,
++        can_focus: true,
++        x_expand: true,
++    });
++}
++
++/**
++ * CastPane: the whole Cast interaction inside a menu.
++ *
++ * @param {object} params
++ * @param {string} params.context 'quick-settings' or 'indicator'
++ * @param {Function} params.onRequestClose close the surrounding menu
++ */
++export const CastPane = GObject.registerClass(
++class CastPane extends St.BoxLayout {
++    constructor({context = 'quick-settings', onRequestClose = () => {}} = {}) {
++        super({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: `luma-cast-pane luma-cast-${context}`,
++            x_expand: true,
++            reactive: true,
++        });
++        this._context = context;
++        this._requestClose = onRequestClose;
++        this._cast = getCast();
++        this._device = null;
++        this._choices = null;
++        this._active = false;
++        this._view = null;
++
++        this._stage = new St.Widget({layout_manager: new Clutter.BinLayout(), x_expand: true});
++        this.add_child(this._stage);
++
++        this._cast.connectObject(
++            'devices-changed', () => this._queueRender('devices'),
++            'discovering-changed', () => this._queueRender('devices'),
++            'session-changed', () => this._queueRender('session'),
++            'displays-changed', () => this._queueRender('displays'),
++            'settings-changed', () => this._queueRender('settings'),
++            this);
++        this.connect('key-press-event', (_actor, event) => this._onKeyPress(event));
++        this.connect('destroy', () => this._onDestroy());
++        this._render(false);
++    }
++
++    // The surrounding menu opened: look for screens while it is visible.
++    activate() {
++        if (this._active)
++            return;
++        this._active = true;
++        if (!this._cast.casting)
++            this._cast.holdDiscovery();
++        this._holdingDiscovery = !this._cast.casting;
++        // A finished error is shown once; a fresh open starts at the list.
++        if (!this._cast.casting && !this._cast.lastEnded)
++            this._device = null;
++        this._render(false);
++        this._armSearchTimer();
++    }
++
++    deactivate() {
++        if (!this._active)
++            return;
++        this._active = false;
++        if (this._holdingDiscovery)
++            this._cast.releaseDiscovery();
++        this._holdingDiscovery = false;
++        this._cast.dismissError();
++        this._clearSearchTimer();
++    }
++
++    focusFirst() {
++        this._stage.get_first_child()?.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
++    }
++
++    _onDestroy() {
++        this.deactivate();
++        this._clearSearchTimer();
++        if (this._renderId)
++            GLib.source_remove(this._renderId);
++        this._cast.disconnectObject(this);
++    }
++
++    _armSearchTimer() {
++        this._clearSearchTimer();
++        this._searchTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, SEARCH_GRACE_SECONDS + 1, () => {
++            this._searchTimer = 0;
++            this._queueRender('devices');
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _clearSearchTimer() {
++        if (this._searchTimer)
++            GLib.source_remove(this._searchTimer);
++        this._searchTimer = 0;
++    }
++
++    _onKeyPress(event) {
++        const key = event.get_key_symbol();
++        if (key === Clutter.KEY_Escape && this._view === 'sheet') {
++            this._back();
++            return Clutter.EVENT_STOP;
++        }
++        // Left (right in RTL) from the Back button leaves the sheet, the way
++        // it leaves a submenu.
++        const backKey = this.get_text_direction() === Clutter.TextDirection.RTL
++            ? Clutter.KEY_Right : Clutter.KEY_Left;
++        if (key === backKey && this._view === 'sheet' && this._backButton?.has_key_focus()) {
++            this._back();
++            return Clutter.EVENT_STOP;
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    _queueRender(reason) {
++        // Device lists arrive in bursts; one frame of coalescing keeps a menu
++        // from rebuilding for every protocol that finds the same TV.
++        if (this._renderId)
++            return;
++        this._renderId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._renderId = 0;
++            // A list that merely changed contents doesn't animate as a new view.
++            this._render(this._viewFor() !== this._view, reason);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _viewFor() {
++        if (this._cast.casting)
++            return 'session';
++        if (this._cast.lastEnded)
++            return 'error';
++        if (this._device)
++            return 'sheet';
++        return 'devices';
++    }
++
++    _render(animate = true) {
++        const view = this._viewFor();
++        if (view === 'sheet' && this._device && this._cast.devices.has(this._device.id))
++            this._device = this._cast.devices.get(this._device.id);
++        // The sheet is edited in place: re-rendering it for a device update
++        // would drop the choices the person is making.
++        if (view === 'sheet' && this._view === 'sheet' && this._content) {
++            this._syncSheet();
++            return;
++        }
++        if (view === 'session' && this._view === 'session' && this._content) {
++            this._syncSession();
++            return;
++        }
++
++        const focus = global.stage.key_focus;
++        const hadFocus = Boolean(focus) && this._stage.contains(focus);
++        const oldHeight = this.mapped ? this._stage.height : -1;
++        const old = this._content;
++        const forward = this._rank(view) >= this._rank(this._view);
++        this._view = view;
++
++        const content = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: `luma-cast-view luma-cast-view-${view}`,
++            x_expand: true,
++        });
++        this._content = content;
++        switch (view) {
++        case 'session':
++            this._buildSession(content);
++            break;
++        case 'error':
++            this._buildError(content);
++            break;
++        case 'sheet':
++            this._buildSheet(content);
++            break;
++        default:
++            this._buildDevices(content);
++        }
++        this._stage.add_child(content);
++
++        const motion = animate && this.mapped && !reduceMotion();
++        if (old) {
++            if (motion) {
++                old.ease({
++                    opacity: 0,
++                    translation_x: (forward ? -VIEW_RISE_PX : VIEW_RISE_PX),
++                    duration: VIEW_FADE_MS / 2,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                    onStopped: () => old.destroy(),
++                });
++            } else {
++                old.destroy();
++            }
++        }
++        if (motion) {
++            content.opacity = 0;
++            content.translation_x = forward ? VIEW_RISE_PX : -VIEW_RISE_PX;
++            content.ease({
++                opacity: 255,
++                translation_x: 0,
++                delay: VIEW_FADE_MS / 3,
++                duration: VIEW_FADE_MS,
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++            });
++            this._animateHeight(oldHeight);
++        }
++        if (hadFocus)
++            content.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
++    }
++
++    _rank(view) {
++        return {devices: 0, error: 1, sheet: 1, session: 2}[view] ?? 0;
++    }
++
++    // Menus grow and shrink with their content rather than jumping.
++    _animateHeight(from) {
++        if (from < 0)
++            return;
++        this._stage.remove_transition('height');
++        const [, to] = this._stage.get_preferred_height(this._stage.width || -1);
++        if (Math.abs(to - from) < 1) {
++            this._stage.height = -1;
++            return;
++        }
++        this._stage.height = from;
++        this._stage.ease({
++            height: to,
++            duration: RESIZE_MS,
++            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++            onStopped: () => (this._stage.height = -1),
++        });
++    }
++
++    _header({iconName = null, title, subtitle = '', back = false, spinner = false, live = false, compact = false}) {
++        const header = new St.BoxLayout({
++            style_class: compact ? 'luma-cast-header luma-cast-header-compact' : 'luma-cast-header',
++            x_expand: true,
++        });
++        this._backButton = null;
++        if (back) {
++            const button = new St.Button({
++                style_class: 'luma-cast-back',
++                can_focus: true,
++                accessible_name: _('Back to screens'),
++                child: new St.Icon({
++                    icon_name: this.get_text_direction() === Clutter.TextDirection.RTL
++                        ? 'luma-cast-go-symbolic' : 'luma-cast-back-symbolic',
++                }),
++                y_align: Clutter.ActorAlign.CENTER,
++            });
++            button.connect('clicked', () => this._back());
++            header.add_child(button);
++            this._backButton = button;
++        }
++        const icon = new St.Widget({layout_manager: new Clutter.BinLayout(), y_align: Clutter.ActorAlign.CENTER,
++            visible: Boolean(iconName)});
++        if (iconName)
++            icon.add_child(chip(iconName, 'luma-cast-header-chip'));
++        if (live) {
++            icon.add_child(new St.Widget({
++                style_class: 'luma-cast-live-dot',
++                x_align: Clutter.ActorAlign.END,
++                y_align: Clutter.ActorAlign.START,
++                x_expand: true,
++                y_expand: true,
++            }));
++        }
++        header.add_child(icon);
++        const text = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        const titleLabel = label(title, 'luma-cast-header-title');
++        text.add_child(titleLabel);
++        const subtitleLabel = label(subtitle, 'luma-cast-header-subtitle', {visible: Boolean(subtitle)});
++        text.add_child(subtitleLabel);
++        header.add_child(text);
++        if (spinner) {
++            const spin = new Animation.Spinner(16, {animate: true, hideOnStop: true});
++            spin.add_style_class_name('luma-cast-spinner');
++            spin.y_align = Clutter.ActorAlign.CENTER;
++            header.add_child(spin);
++            spin.play();
++            header._spinner = spin;
++        }
++        header._title = titleLabel;
++        header._subtitle = subtitleLabel;
++        header.accessible_role = Atk.Role.HEADING;
++        header.label_actor = titleLabel;
++        return header;
++    }
++
++    // ── devices ─────────────────────────────────────────────────────────
++    _buildDevices(content) {
++        const {recent, nearby} = this._cast.sortedDevices();
++        const count = recent.length + nearby.length;
++        const searching = this._active && !this._cast.searchExpired;
++        // The tile above already says Cast; the detail says what to do.
++        content.add_child(this._header({
++            title: _('Choose a screen'),
++            spinner: this._active && count > 0,
++            compact: true,
++        }));
++
++        if (count === 0) {
++            content.add_child(searching ? this._searchingBlock() : this._emptyBlock());
++        } else {
++            const list = new St.BoxLayout({
++                orientation: Clutter.Orientation.VERTICAL,
++                style_class: 'luma-cast-list',
++                x_expand: true,
++            });
++            const addSection = (title, devices) => {
++                if (!devices.length)
++                    return;
++                const heading = label(title, 'luma-cast-heading');
++                heading.accessible_role = Atk.Role.HEADING;
++                list.add_child(heading);
++                for (const device of devices) {
++                    const row = new DeviceRow(device);
++                    row.connect('clicked', () => this._choose(device));
++                    list.add_child(row);
++                }
++            };
++            addSection(_('Recent'), recent);
++            addSection(_('Nearby'), nearby);
++            const scroll = new St.ScrollView({
++                style_class: 'luma-cast-scroll',
++                hscrollbar_policy: St.PolicyType.NEVER,
++                vscrollbar_policy: St.PolicyType.AUTOMATIC,
++                overlay_scrollbars: true,
++                child: list,
++                x_expand: true,
++            });
++            content.add_child(scroll);
++        }
++        content.add_child(this._footer());
++    }
++
++    _searchingBlock() {
++        const block = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-placeholder',
++            x_expand: true,
++        });
++        const beacon = new St.Widget({
++            layout_manager: new Clutter.BinLayout(),
++            style_class: 'luma-cast-beacon',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        const ring = new St.Widget({style_class: 'luma-cast-beacon-ring', x_expand: true, y_expand: true,
++            pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
++        beacon.add_child(ring);
++        beacon.add_child(chip('luma-cast-symbolic', 'luma-cast-placeholder-chip'));
++        block.add_child(beacon);
++        block.add_child(label(_('Looking for screens…'), 'luma-cast-placeholder-title', {x_align: Clutter.ActorAlign.CENTER}));
++        block.add_child(wrapLabel(_('TVs and displays on this network appear here as they’re found.'),
++            'luma-cast-placeholder-body', {x_align: Clutter.ActorAlign.CENTER}));
++        // A slow, soft pulse; nothing moves when motion is reduced.
++        if (!reduceMotion()) {
++            ring.opacity = 0;
++            ring.set_scale(0.72, 0.72);
++            ring.ease({
++                opacity: 150,
++                scale_x: 1,
++                scale_y: 1,
++                duration: 1400,
++                mode: Clutter.AnimationMode.EASE_OUT_SINE,
++                repeatCount: -1,
++                autoReverse: true,
++            });
++        }
++        return block;
++    }
++
++    _emptyBlock() {
++        const block = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-placeholder',
++            x_expand: true,
++        });
++        const quiet = chip('luma-cast-tv-symbolic', 'luma-cast-placeholder-chip luma-cast-placeholder-chip-quiet');
++        quiet.x_align = Clutter.ActorAlign.CENTER;
++        block.add_child(quiet);
++        block.add_child(label(_('No screens found'), 'luma-cast-placeholder-title', {x_align: Clutter.ActorAlign.CENTER}));
++        const help = [_('Make sure the TV or display is on and connected to the same network as this computer.')];
++        if (!this._cast.allowWifiDirect)
++            help.push(_('Screens that connect directly are turned off in Settings.'));
++        else if (!this._cast.wifiDirectAvailable)
++            help.push(_('Screens that connect directly need Wi-Fi to be on.'));
++        block.add_child(wrapLabel(help.join(' '), 'luma-cast-placeholder-body', {x_align: Clutter.ActorAlign.CENTER}));
++        const again = new St.Button({
++            style_class: 'luma-cast-secondary luma-cast-search-again',
++            can_focus: true,
++            x_align: Clutter.ActorAlign.CENTER,
++            child: (() => {
++                const b = new St.BoxLayout({style_class: 'luma-cast-button-box'});
++                b.add_child(new St.Icon({icon_name: 'luma-cast-refresh-symbolic', style_class: 'luma-cast-button-icon'}));
++                b.add_child(new St.Label({text: _('Search Again'), y_align: Clutter.ActorAlign.CENTER}));
++                return b;
++            })(),
++        });
++        again.connect('clicked', () => {
++            this._cast.restartDiscovery();
++            this._armSearchTimer();
++            this._render(true);
++        });
++        block.add_child(again);
++        return block;
++    }
++
++    _footer() {
++        const footer = new St.BoxLayout({style_class: 'luma-cast-footer', x_expand: true});
++        const settings = new St.Button({
++            style_class: 'luma-cast-footer-button',
++            can_focus: true,
++            x_expand: true,
++            x_align: Clutter.ActorAlign.FILL,
++            child: (() => {
++                const b = new St.BoxLayout({style_class: 'luma-cast-row-box', x_expand: true});
++                b.add_child(new St.Icon({icon_name: 'luma-cast-settings-symbolic', style_class: 'luma-cast-footer-icon'}));
++                b.add_child(new St.Label({text: _('Cast Settings'), y_align: Clutter.ActorAlign.CENTER}));
++                return b;
++            })(),
++        });
++        settings.connect('clicked', () => {
++            this._requestClose();
++            this._cast.openSettings();
++        });
++        footer.add_child(settings);
++        return footer;
++    }
++
++    // ── sheet ───────────────────────────────────────────────────────────
++    _choose(device) {
++        this._device = device;
++        this._choices = this._cast.choicesFor(device);
++        this._render(true);
++    }
++
++    _back() {
++        this._device = null;
++        this._choices = null;
++        this._render(true);
++    }
++
++    _shareOptions(device, choices, onPick) {
++        const cast = this._cast;
++        const box = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-options',
++            x_expand: true,
++            accessible_role: Atk.Role.PANEL,
++        });
++        const heading = label(_('Share'), 'luma-cast-field-label');
++        box.add_child(heading);
++        const rows = [];
++        const can = source => !device || device.capabilities.has(source);
++        const add = (key, params, apply) => {
++            const row = new OptionRow(params);
++            row._key = key;
++            row.connect('clicked', () => onPick(apply()));
++            rows.push(row);
++            box.add_child(row);
++            return row;
++        };
++        if (cast.displays.length > 1) {
++            // Several monitors: each is its own thing to share, so "entire
++            // screen" is never ambiguous.
++            for (const display of cast.displays) {
++                if (!can(Source.DISPLAY) && !can(Source.SCREEN))
++                    break;
++                add(`display:${display.connector}`, {
++                    iconName: display.builtin ? 'luma-cast-laptop-symbolic' : 'luma-cast-screen-symbolic',
++                    title: display.name,
++                    subtitle: _('Mirror this display'),
++                }, () => ({source: Source.DISPLAY, connector: display.connector}));
++            }
++        } else if (can(Source.SCREEN)) {
++            add('screen', {iconName: 'luma-cast-screen-symbolic', title: _('Entire screen')},
++                () => ({source: Source.SCREEN, connector: null}));
++        }
++        if (can(Source.EXTEND)) {
++            add('extend', {iconName: 'luma-cast-extend-symbolic', title: _('Use as a separate screen')},
++                () => ({source: Source.EXTEND}));
++        }
++        if (can(Source.APP)) {
++            const appRow = add('app', {iconName: 'luma-cast-app-symbolic', title: _('One app…')},
++                () => ({source: Source.APP, pick: true}));
++            appRow._isApp = true;
++        }
++        box._rows = rows;
++        box._heading = heading;
++        return box;
++    }
++
++    _syncOptions(box, choices) {
++        const key = choices.source === Source.DISPLAY ? `display:${choices.connector}` : choices.source;
++        for (const row of box._rows) {
++            row.setSelected(row._key === key);
++            if (row._isApp) {
++                const app = choices.source === Source.APP ? this._cast.runningApp(choices.appId) : null;
++                if (app) {
++                    row.setIcon(null, app.get_icon());
++                    row.setText(app.get_name(), _('One app · Change…'));
++                } else {
++                    row.setIcon('luma-cast-app-symbolic');
++                    row.setText(_('One app…'));
++                }
++            }
++        }
++    }
++
++    _buildSheet(content) {
++        const device = this._device;
++        const choices = this._choices ??= this._cast.choicesFor(device);
++        const detail = DeviceRow.detail(device);
++        content.add_child(this._header({
++            iconName: kindIcon(device.kind),
++            title: device.name,
++            subtitle: detail,
++            back: true,
++        }));
++
++        const options = this._shareOptions(device, choices, pick => {
++            if (pick.pick) {
++                this._pickApp(device, choices);
++                return;
++            }
++            Object.assign(choices, pick);
++            this._syncSheet();
++        });
++        content.add_child(options);
++
++        const optimize = new Segmented(_('Optimize for'), {
++            iconName: null,
++            items: [
++                {value: 'receiver', text: receiverNoun(device.kind)},
++                {value: 'local', text: _('This computer')},
++            ],
++        });
++        optimize.connect('changed', (_s, value) => (choices.optimize = value));
++        content.add_child(optimize);
++
++        let sound = null;
++        if (device.capabilities.has('audio')) {
++            sound = new Segmented(_('Sound'), {
++                iconName: null,
++                items: [
++                    {value: 'receiver', text: receiverNoun(device.kind)},
++                    {value: 'local', text: _('This computer')},
++                ],
++            });
++            sound.connect('changed', (_s, value) => (choices.audio = value));
++            content.add_child(sound);
++        }
++
++        const start = primaryButton(_('Start'));
++        start.accessible_name = _('Start casting to %s').format(device.name);
++        start.connect('clicked', () => {
++            if (choices.source === Source.APP && !this._cast.runningApp(choices.appId)) {
++                this._pickApp(device, choices);
++                return;
++            }
++            // The menu steps aside; the shelf shows the connection from here.
++            this._requestClose();
++            this._cast.connectDevice(device, {...choices});
++        });
++        content.add_child(start);
++
++        this._sheet = {options, optimize, sound, start, choices};
++        this._syncSheet();
++    }
++
++    _syncSheet() {
++        const {options, optimize, sound, start, choices} = this._sheet ?? {};
++        if (!options)
++            return;
++        this._syncOptions(options, choices);
++        optimize.value = choices.optimize;
++        // Optimizing is a mirroring choice; nothing to optimize otherwise.
++        optimize.visible = [Source.SCREEN, Source.DISPLAY].includes(choices.source);
++        if (sound)
++            sound.value = choices.audio;
++        start.reactive = true;
++    }
++
++    _pickApp(device, choices, {live = false} = {}) {
++        import('./lumaCastDialogs.js').then(({AppPickerDialog}) => {
++            this._requestClose();
++            const dialog = new AppPickerDialog({
++                deviceName: device?.name ?? this._cast.session?.deviceName ?? '',
++                selectedAppId: choices.appId,
++                actionLabel: live ? _('Share This App') : _('Start Casting'),
++            });
++            dialog.connect('picked', (_d, appId) => {
++                if (live) {
++                    this._cast.change({source: Source.APP, appId});
++                } else {
++                    Object.assign(choices, {source: Source.APP, appId});
++                    this._cast.connectDevice(device, {...choices});
++                }
++            });
++            dialog.open();
++        }).catch(e => logError(e, 'Luma Cast: app picker'));
++    }
++
++    // ── session ─────────────────────────────────────────────────────────
++    _sessionSubtitle(session) {
++        switch (session.state) {
++        case 'connecting':
++        case 'pairing':
++            return _('Connecting…');
++        case 'reconnecting':
++            return _('Reconnecting…');
++        default: {
++            const what = sourceSummary(session);
++            return session.audio === 'receiver'
++                ? _('%s · Sound on screen').format(what) : what;
++        }
++        }
++    }
++
++    _buildSession(content) {
++        const session = this._cast.session;
++        const connecting = ['connecting', 'pairing', 'reconnecting'].includes(session.state);
++        const header = this._header({
++            iconName: kindIcon(session.deviceKind),
++            title: connecting && session.state !== 'reconnecting'
++                ? _('Connecting to %s').format(session.deviceName)
++                : _('Casting to %s').format(session.deviceName),
++            subtitle: this._sessionSubtitle(session),
++            spinner: connecting,
++            live: !connecting,
++        });
++        content.add_child(header);
++
++        const device = this._cast.devices.get(session.deviceId) ?? null;
++        const options = this._shareOptions(device, session, pick => {
++            if (pick.pick) {
++                this._pickApp(device, session, {live: true});
++                return;
++            }
++            this._cast.change(pick);
++        });
++        content.add_child(options);
++
++        const sound = new Segmented(_('Sound'), {
++            iconName: null,
++            items: [
++                {value: 'receiver', text: receiverNoun(session.deviceKind)},
++                {value: 'local', text: _('This computer')},
++            ],
++        });
++        sound.connect('changed', (_s, value) => this._cast.change({audio: value}));
++        content.add_child(sound);
++
++        const quiet = new St.BoxLayout({style_class: 'luma-cast-note', x_expand: true});
++        quiet.add_child(new St.Icon({icon_name: 'luma-cast-quiet-symbolic', style_class: 'luma-cast-note-icon',
++            y_align: Clutter.ActorAlign.CENTER}));
++        quiet.add_child(wrapLabel(_('Notifications are silenced while you cast.'), 'luma-cast-note-label',
++            {x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
++        content.add_child(quiet);
++
++        const stop = primaryButton(connecting && session.state !== 'reconnecting' ? _('Cancel') : _('Stop Casting'), 'luma-cast-stop');
++        stop.connect('clicked', () => {
++            this._requestClose();
++            this._cast.stop();
++        });
++        content.add_child(stop);
++
++        this._session = {header, options, sound, quiet, stop, connecting};
++        this._syncSession();
++    }
++
++    _syncSession() {
++        const session = this._cast.session;
++        const parts = this._session;
++        if (!session || !parts)
++            return;
++        const connecting = ['connecting', 'pairing', 'reconnecting'].includes(session.state);
++        if (connecting !== parts.connecting) {
++            // Connected: the header gains its live mark and loses the spinner.
++            this._view = null;
++            this._render(true);
++            return;
++        }
++        parts.header._subtitle.text = this._sessionSubtitle(session);
++        parts.header._subtitle.visible = true;
++        this._syncOptions(parts.options, session);
++        parts.sound.value = session.audio;
++        parts.quiet.visible = this._cast.silenceNotifications;
++        parts.options.visible = !connecting;
++        parts.sound.visible = !connecting;
++        parts.quiet.visible = !connecting && this._cast.silenceNotifications;
++    }
++
++    // ── error ───────────────────────────────────────────────────────────
++    _buildError(content) {
++        const ended = this._cast.lastEnded;
++        const {title, body} = describeError(ended.code, ended.deviceName, ended.message);
++        content.add_child(this._header({title: _('Choose a screen'), compact: true}));
++        const card = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-cast-error',
++            x_expand: true,
++            accessible_role: Atk.Role.ALERT,
++        });
++        const top = new St.BoxLayout({style_class: 'luma-cast-error-top', x_expand: true});
++        top.add_child(chip('luma-cast-alert-symbolic', 'luma-cast-error-chip'));
++        const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
++        text.add_child(wrapLabel(title, 'luma-cast-error-title'));
++        text.add_child(wrapLabel(body, 'luma-cast-error-body'));
++        top.add_child(text);
++        card.add_child(top);
++        card.accessible_name = `${title}. ${body}`;
++        const buttons = new St.BoxLayout({
++            style_class: 'luma-cast-error-buttons',
++            x_expand: true,
++            layout_manager: new Clutter.BoxLayout({homogeneous: true}),
++        });
++        const device = this._cast.devices.get(ended.deviceId);
++        const retry = primaryButton(_('Try Again'), 'luma-cast-secondary');
++        retry.visible = Boolean(device) && ended.code !== 'wifi-direct-disabled';
++        retry.connect('clicked', () => {
++            this._cast.dismissError();
++            if (device)
++                this._choose(device);
++        });
++        const other = primaryButton(_('Other Screens'), 'luma-cast-secondary');
++        other.connect('clicked', () => {
++            this._device = null;
++            this._cast.dismissError();
++        });
++        buttons.add_child(retry);
++        buttons.add_child(other);
++        card.add_child(buttons);
++        content.add_child(card);
++        content.add_child(this._footer());
++    }
++});
++
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index 2336ab6..e6f8fe8 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -94,7 +94,7 @@ export function show(backward = false, modifierMask = 0) {
+ // The texture covers the body's paint volume, enlarged the way
+ // ClutterOffscreenEffect enlarges it, not its allocation, so the shape is
+ // measured in window pixels from the texture's real origin.
+-const RoundedPreview = GObject.registerClass(
++export const RoundedPreview = GObject.registerClass(
+ class RoundedPreview extends Shell.GLSLEffect {
+     vfunc_build_pipeline() {
+         this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index ab13390..d485935 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -12,6 +12,7 @@ import * as Main from './main.js';
+ import * as MessageList from './messageList.js';
+ import * as SignalTracker from '../misc/signalTracker.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {peekCast} from './lumaCast.js';
+ 
+ const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+ 
+@@ -1013,7 +1014,8 @@ export const MessageTray = GObject.registerClass({
+             index = global.display.get_current_monitor();
+         if (index < 0 || index >= monitors.length)
+             index = Main.layoutManager.primaryIndex;
+-        return index;
++        // Luma Cast: never on a monitor whose pixels reach a receiver.
++        return peekCast()?.bannerMonitor(index) ?? index;
+     }
+ 
+     get _monitor() {
+@@ -1321,11 +1323,20 @@ export const MessageTray = GObject.registerClass({
+     }
+ 
+     _isLimited() {
+-        return this._busy || !!this._monitor?.inFullscreen;
++        return this._busy || !!this._monitor?.inFullscreen ||
++            Boolean(peekCast()?.silencing) || this._isCaptured();
++    }
++
++    // Luma Cast: a captured monitor shows no banner at all, critical or not;
++    // it waits in the tray. Silencing alone still lets critical ones through
++    // on a monitor that isn't shared.
++    _isCaptured() {
++        return Boolean(peekCast()?.isMonitorCaptured(this._monitorIndex));
+     }
+ 
+     _isExempt(notification) {
+-        return notification.forFeedback || notification.urgency === Urgency.CRITICAL;
++        return (notification.forFeedback || notification.urgency === Urgency.CRITICAL) &&
++            !this._isCaptured();
+     }
+ 
+     _onFullscreenChanged() {
+@@ -1333,6 +1344,11 @@ export const MessageTray = GObject.registerClass({
+         this._updateState();
+     }
+ 
++    // Casting started, stopped or changed what reaches the receiver.
++    castPrivacyChanged() {
++        this._onFullscreenChanged();
++    }
++
+     // Presentation, full-screen play and a busy session collect ordinary
+     // notifications quietly instead of covering the work.
+     _restLimitedCards() {
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 83ef0fb..904aa63 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -36,6 +36,7 @@ import * as BacklightStatus from './status/backlight.js';
+ import * as ThunderboltStatus from './status/thunderbolt.js';
+ import * as AutoRotateStatus from './status/autoRotate.js';
+ import * as BackgroundAppsStatus from './status/backgroundApps.js';
++import * as CastStatus from './status/cast.js';
+ 
+ import {DateMenuButton} from './dateMenu.js';
+ import {getNotificationTray} from './lumaNotificationBeacon.js';
+@@ -1464,6 +1465,7 @@ class QuickSettings extends PanelMenu.Button {
+         this._autoRotate = new AutoRotateStatus.Indicator();
+         this._unsafeMode = new UnsafeModeIndicator();
+         this._backgroundApps = new BackgroundAppsStatus.Indicator();
++        this._cast = new CastStatus.Indicator();
+ 
+         for (const indicator of [this._network, this._bluetooth, this._rfkill])
+             for (const item of indicator?.quickSettingsItems ?? [])
+@@ -1506,6 +1508,8 @@ class QuickSettings extends PanelMenu.Button {
+             this._addItemsBefore(this._network.quickSettingsItems, sibling);
+         if (this._bluetooth)
+             this._addItemsBefore(this._bluetooth.quickSettingsItems, sibling);
++        // Cast sits with the things you connect to (ADR-034).
++        this._addItemsBefore(this._cast.quickSettingsItems, sibling);
+ 
+         // The utility pills: one row, across the panel.
+         this._utilityRow = new QuickUtilityRow();
+@@ -1573,6 +1577,7 @@ const PANEL_ITEM_IMPLEMENTATIONS = {
+     'dwellClick': DwellClickIndicator,
+     'screenRecording': ScreenRecordingIndicator,
+     'screenSharing': ScreenSharingIndicator,
++    'cast': CastStatus.CastingIndicator,
+ };
+ 
+ export const Panel = GObject.registerClass(
+diff --git a/js/ui/sessionMode.js b/js/ui/sessionMode.js
+index 9108a0a..5f43515 100644
+--- a/js/ui/sessionMode.js
++++ b/js/ui/sessionMode.js
+@@ -98,7 +98,7 @@ const _modes = {
+         panel: {
+             left: ['dateMenu'],
+             center: ['liveExtensions'],
+-            right: ['screenRecording', 'screenSharing', 'dwellClick', 'a11y', 'keyboard', 'quickSettings'],
++            right: ['screenRecording', 'screenSharing', 'cast', 'dwellClick', 'a11y', 'keyboard', 'quickSettings'],
+         },
+     },
+ };
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 973599f..0153d4f 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -129,9 +129,12 @@ class ShelfGroupLayout extends Clutter.LayoutManager {
+         // appears, hides or changes width without the shelf resizing, the old
+         // size no longer matches and the content sat off centre; ask again.
+         if (container._fitsContent && Math.abs(available - length) > 1 &&
+-                container._askedFor !== available) {
++                (container._askedFor !== available || container._askedLength !== length)) {
+             // Once per size: a shelf clamped to its monitor stays shorter than its content.
++            // An island whose text changes (a cast going from "Connecting…" to
++            // its screen's name) is a new length, and asks again.
+             container._askedFor = available;
++            container._askedLength = length;
+             container._lengthChanged?.();
+         }
+         const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap,
+@@ -627,6 +630,7 @@ class Shelf extends St.Widget {
+         const actionRoles = [
+             'screenRecording',
+             'screenSharing',
++            'cast',
+             'dwellClick',
+             'a11y',
+             'keyboard',
+diff --git a/js/ui/status/cast.js b/js/ui/status/cast.js
+new file mode 100644
+index 0000000..60e1f81
+--- /dev/null
++++ b/js/ui/status/cast.js
+@@ -0,0 +1,275 @@
++// Luma Cast in Quick Settings and on the shelf (ADR-034, "What people see").
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Pango from 'gi://Pango';
++import St from 'gi://St';
++
++import * as Main from '../main.js';
++import * as PanelMenu from '../panelMenu.js';
++import * as SurfaceMaterials from '../lumaSurfaceMaterials.js';
++
++import {QuickMenuToggle, SystemIndicator} from '../quickSettings.js';
++import {getCast, describeError, reduceMotion} from '../lumaCast.js';
++import {CastPane} from '../lumaCastSheet.js';
++
++// A failure stays on the shelf this long, then the indicator leaves.
++const ENDED_LINGER_SECONDS = 8;
++
++const CastToggle = GObject.registerClass(
++class CastToggle extends QuickMenuToggle {
++    constructor() {
++        super({
++            title: _('Cast'),
++            iconName: 'luma-cast-symbolic',
++            toggleMode: false,
++            menuButtonAccessibleName: _('Choose a screen'),
++        });
++        this.add_style_class_name('luma-cast-toggle');
++        this._cast = getCast();
++
++        this.menu.box.add_style_class_name('luma-cast-detail');
++        this._pane = new CastPane({
++            context: 'quick-settings',
++            onRequestClose: () => Main.panel.closeQuickSettings(),
++        });
++        SurfaceMaterials.bindSurface(this._pane, {backdrop: false});
++        this.menu.box.add_child(this._pane);
++        this.menu.connect('open-state-changed', (_menu, open) => {
++            if (open) {
++                this._pane.activate();
++                // Keyboard users land on the first control of the detail.
++                const focus = global.stage.key_focus;
++                if (focus && this.contains(focus))
++                    GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._pane.focusFirst());
++            } else {
++                this._pane.deactivate();
++            }
++        });
++
++        // Pressing the tile itself opens the screens; there is nothing to
++        // switch on without choosing one.
++        this.connect('clicked', () => {
++            if (this.menu.isOpen)
++                this.menu.close();
++            else
++                this.menu.open();
++        });
++
++        this._cast.connectObject(
++            'available-changed', () => this._sync(),
++            'session-changed', () => this._sync(),
++            this);
++        this._sync();
++    }
++
++    _sync() {
++        const cast = this._cast;
++        const session = cast.session;
++        this.visible = cast.available;
++        this.checked = cast.casting && session.state === 'streaming';
++        this.icon_name = cast.casting ? 'luma-cast-on-symbolic' : 'luma-cast-symbolic';
++        if (!cast.casting) {
++            this.title = _('Cast');
++            this.subtitle = null;
++            this.accessible_name = _('Cast');
++        } else if (session.state === 'streaming') {
++            // Title over subtitle reads "Casting / Conference Room B"; the
++            // accessible name is the sentence.
++            this.title = _('Casting');
++            this.subtitle = session.deviceName;
++            this.accessible_name = _('Casting to %s').format(session.deviceName);
++        } else {
++            this.title = session.state === 'reconnecting' ? _('Reconnecting') : _('Connecting');
++            this.subtitle = session.deviceName;
++            this.accessible_name = _('Connecting to %s').format(session.deviceName);
++        }
++    }
++});
++
++export const Indicator = GObject.registerClass(
++class Indicator extends SystemIndicator {
++    constructor() {
++        super();
++        this.quickSettingsItems.push(new CastToggle());
++        CodePrompter.get();
++    }
++});
++
++/**
++ * The shelf indicator while casting: the device's name beside the cast mark,
++ * and a menu with what's shared, sound and Stop.
++ */
++export const CastingIndicator = GObject.registerClass(
++class CastingIndicator extends PanelMenu.Button {
++    constructor() {
++        super(0.5, _('Casting'), false);
++        this.add_style_class_name('luma-cast-indicator');
++        this.accessible_role = Atk.Role.PUSH_BUTTON;
++        this._cast = getCast();
++
++        this._box = new St.BoxLayout({style_class: 'luma-cast-indicator-box'});
++        this._icon = new St.Icon({
++            icon_name: 'luma-cast-on-symbolic',
++            style_class: 'system-status-icon luma-cast-indicator-icon',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._label = new St.Label({
++            style_class: 'luma-cast-indicator-label',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._box.add_child(this._icon);
++        this._box.add_child(this._label);
++        this.add_child(this._box);
++
++        this.menu.box.add_style_class_name('luma-cast-menu');
++        this._pane = new CastPane({
++            context: 'indicator',
++            onRequestClose: () => this.menu.close(),
++        });
++        SurfaceMaterials.bindSurface(this._pane, {backdrop: false});
++        this.menu.box.add_child(this._pane);
++        this.menu.connect('open-state-changed', (_menu, open) => {
++            if (open)
++                this._pane.activate();
++            else
++                this._pane.deactivate();
++        });
++
++        this._cast.connectObject('session-changed', () => this._sync(), this);
++        this.connect('destroy', () => {
++            if (this._lingerId)
++                GLib.source_remove(this._lingerId);
++        });
++        this._sync();
++    }
++
++    _sync() {
++        const cast = this._cast;
++        const session = cast.session;
++        this.remove_style_class_name('luma-cast-indicator-connecting');
++        this.remove_style_class_name('luma-cast-indicator-failed');
++        this._stopPulse();
++        if (this._lingerId && (cast.casting || !cast.lastEnded)) {
++            GLib.source_remove(this._lingerId);
++            this._lingerId = 0;
++        }
++
++        if (cast.casting) {
++            const streaming = session.state === 'streaming';
++            this._icon.icon_name = streaming ? 'luma-cast-on-symbolic' : 'luma-cast-symbolic';
++            this._label.text = streaming ? session.deviceName
++                : session.state === 'reconnecting' ? _('Reconnecting…') : _('Connecting…');
++            this.accessible_name = streaming
++                ? _('Casting to %s').format(session.deviceName)
++                : _('Connecting to %s').format(session.deviceName);
++            if (!streaming) {
++                this.add_style_class_name('luma-cast-indicator-connecting');
++                this._startPulse();
++            }
++            this._show();
++        } else if (cast.lastEnded && !Main.panel.statusArea.quickSettings?.menu.isOpen) {
++            // A failure seen in Quick Settings is explained there; the shelf
++            // only carries one that happened out of sight.
++            const {title} = describeError(cast.lastEnded.code, cast.lastEnded.deviceName, cast.lastEnded.message);
++            this._icon.icon_name = 'luma-cast-alert-symbolic';
++            this._label.text = _('Casting stopped');
++            this.accessible_name = title;
++            this.add_style_class_name('luma-cast-indicator-failed');
++            this._show();
++            if (!this._lingerId) {
++                this._lingerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, ENDED_LINGER_SECONDS, () => {
++                    this._lingerId = 0;
++                    if (!this.menu.isOpen && !Main.panel.statusArea.quickSettings?.menu.isOpen)
++                        cast.dismissError();
++                    return GLib.SOURCE_REMOVE;
++                });
++            }
++        } else {
++            this._hide();
++        }
++    }
++
++    _show() {
++        if (this.visible)
++            return;
++        this.visible = true;
++        if (reduceMotion())
++            return;
++        this.opacity = 0;
++        this.ease({opacity: 255, duration: 180, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    _hide() {
++        if (!this.visible)
++            return;
++        this.menu.close();
++        this.visible = false;
++    }
++
++    _startPulse() {
++        if (reduceMotion() || this._pulsing)
++            return;
++        this._pulsing = true;
++        this._icon.ease({
++            opacity: 110,
++            duration: 700,
++            mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
++            repeatCount: -1,
++            autoReverse: true,
++        });
++    }
++
++    _stopPulse() {
++        if (!this._pulsing)
++            return;
++        this._pulsing = false;
++        this._icon.remove_all_transitions();
++        this._icon.opacity = 255;
++    }
++
++    setShelfPresentation(_enabled) {
++    }
++});
++
++/** One owner for pairing prompts, whichever surface started the cast. */
++class CodePrompter {
++    static get() {
++        CodePrompter._instance ??= new CodePrompter();
++        return CodePrompter._instance;
++    }
++
++    constructor() {
++        this._cast = getCast();
++        this._dialog = null;
++        this._cast.connectObject('code-requested', (_c, request) => this._onCode(request), this);
++    }
++
++    async _onCode({mode, code, digits}) {
++        const session = this._cast.session;
++        if (!session)
++            return;
++        // A second "enter" while the prompt is up means the code was wrong.
++        if (this._dialog && this._dialog.mode === 'enter' && mode === 'enter') {
++            this._dialog.reject();
++            return;
++        }
++        this._dialog?.close();
++        const {CodeDialog} = await import('../lumaCastDialogs.js');
++        Main.panel.closeQuickSettings();
++        const dialog = new CodeDialog({
++            mode, code, digits,
++            deviceName: session.deviceName,
++            deviceKind: session.deviceKind,
++        });
++        dialog.mode = mode;
++        dialog.connect('destroy', () => {
++            if (this._dialog === dialog)
++                this._dialog = null;
++        });
++        this._dialog = dialog;
++        dialog.open();
++    }
++}

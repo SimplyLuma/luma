@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Voice Memos
+Comment=Record and play voice memos
+Exec=prairie-voice-memos
+Icon=org.projectluma.VoiceMemos
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;
+Keywords=Audio;Record;Microphone;Memo;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;

@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Select the FP6 primary microphone or the physically accepted AMIC1+AMIC3
+# array beneath the stable PipeWire/UCM source. This hardware adapter does not
+# restart services, change profiles, or expose a second application stack.
+
+set -euo pipefail
+
+die() {
+	printf 'error: %s\n' "$*" >&2
+	exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || die 'FP6 microphone routing requires root'
+[ "$(tr -d '\000' </proc/device-tree/model)" = 'The Fairphone (Gen. 6)' ] ||
+	die 'this microphone adapter is restricted to the Fairphone 6'
+[ "$(cat /proc/asound/F6/id 2>/dev/null)" = F6 ] ||
+	die 'the expected F6 ALSA card is not present'
+command -v amixer >/dev/null || die 'amixer is not installed'
+command -v flock >/dev/null || die 'flock is not installed'
+
+route=${1:-status}
+case "$route" in
+	primary|array|status) ;;
+	*) die 'usage: luma-fp6-microphone-route {primary|array|status}' ;;
+esac
+
+exec 9>/run/lock/luma-fp6-microphone-route.lock
+flock 9
+
+control_exists() {
+	amixer -c F6 cget "name=$1" >/dev/null 2>&1
+}
+
+for control in \
+	'ADC1 MUX' 'ADC1 Switch' 'ADC1 Volume' \
+	'TX0 MODE' 'TX0 SEQUENCER Switch' 'TX SMIC MUX0' \
+	'TX DEC0 MUX' 'TX_DEC0 Volume' 'TX_AIF1_CAP Mixer DEC0' \
+	'ADC2 MUX' 'ADC2 Switch' 'ADC2 Volume' \
+	'TX1 MODE' 'TX1 SEQUENCER Switch' 'TX SMIC MUX1' \
+	'TX DEC1 MUX' 'TX_DEC1 Volume' 'TX_AIF1_CAP Mixer DEC1' \
+	'MultiMedia2 Mixer TX_CODEC_DMA_TX_3'; do
+	control_exists "$control" || die "missing ALSA control: $control"
+done
+
+set_control() {
+	amixer -q -c F6 cset "name=$1" "$2"
+}
+
+primary_route() {
+	set_control 'TX_AIF1_CAP Mixer DEC1' 0
+	set_control 'TX1 SEQUENCER Switch' 0
+	set_control 'ADC2 Switch' 0
+	set_control 'TX SMIC MUX1' ZERO
+	set_control 'ADC1 MUX' CH1_AMIC1
+	set_control 'ADC1 Volume' 12
+	set_control 'TX0 MODE' ADC_NORMAL
+	set_control 'TX SMIC MUX0' SWR_MIC0
+	set_control 'TX DEC0 MUX' SWR_MIC
+	set_control 'TX_DEC0 Volume' 84
+	set_control 'ADC1 Switch' 1
+	set_control 'TX0 SEQUENCER Switch' 1
+	set_control 'TX_AIF1_CAP Mixer DEC0' 1
+	set_control 'MultiMedia2 Mixer TX_CODEC_DMA_TX_3' 1,0
+}
+
+array_supported() {
+	local routes mapping
+	routes=$(tr '\000' '\n' </proc/device-tree/sound/audio-routing)
+	mapping=$(od -An -t u1 /proc/device-tree/soc@0/soundwire@33b0000/codec@0,3/qcom,tx-port-mapping | xargs)
+	grep -Fxq 'TX SWR_INPUT4' <<<"$routes" &&
+		[ "$mapping" = '0 0 0 1 0 0 0 2 0 0 0 3 0 0 0 2 0 0 0 3' ]
+}
+
+show_status() {
+	for control in \
+		'ADC1 Switch' 'TX0 SEQUENCER Switch' 'TX SMIC MUX0' \
+		'TX_AIF1_CAP Mixer DEC0' 'ADC2 Switch' \
+		'TX1 SEQUENCER Switch' 'TX SMIC MUX1' \
+		'TX_AIF1_CAP Mixer DEC1' \
+		'MultiMedia2 Mixer TX_CODEC_DMA_TX_3'; do
+		amixer -c F6 cget "name=$control"
+	done
+}
+
+if [ "$route" = status ]; then
+	show_status
+	exit 0
+fi
+
+if [ "$route" = primary ]; then
+	primary_route
+	printf 'microphone_route=primary\n'
+	exit 0
+fi
+
+array_supported || die 'the accepted FP6 ADC2/SWR_INPUT4 route is not booted'
+fail_primary() {
+	set +e
+	primary_route >/dev/null 2>&1
+}
+trap fail_primary ERR INT TERM
+primary_route
+set_control 'ADC2 MUX' CH2_AMIC3
+set_control 'ADC2 Volume' 12
+set_control 'TX1 MODE' ADC_LP
+set_control 'TX SMIC MUX1' SWR_MIC4
+set_control 'TX DEC1 MUX' SWR_MIC
+set_control 'TX_DEC1 Volume' 84
+set_control 'ADC2 Switch' 1
+set_control 'TX1 SEQUENCER Switch' 1
+set_control 'TX_AIF1_CAP Mixer DEC1' 1
+set_control 'MultiMedia2 Mixer TX_CODEC_DMA_TX_3' 1,1
+trap - ERR INT TERM
+printf 'microphone_route=array\n'

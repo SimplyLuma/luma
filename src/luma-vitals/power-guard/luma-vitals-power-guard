@@ -1,0 +1,299 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MPL-2.0
+"""luma-vitals-power-guard: no Performance power mode left running on battery.
+
+Measured on a ThinkPad X1 (ADR-046 §5): the Performance profile, chosen while
+plugged in, stayed on after the charger came out and across reboots, pinning
+every core to its performance settings on battery. Nothing moved it back.
+
+The guard does one thing. When the machine starts running on battery and the
+profile is Performance, it switches to Balanced. When power returns it puts
+back the profile the person chose on mains power. It never lowers the profile
+while the machine is plugged in.
+
+- It only switches through the power-profiles D-Bus API, so the Quick Options
+  toggle and everything else that reads the profile keep telling the truth.
+  The platform knobs belong to whatever serves that API (tuned-ppd or
+  power-profiles-daemon); the guard never touches them.
+- The person's choice on mains power is remembered in a state file, because
+  the profile service persists whatever was set last — including the guard's
+  own Balanced — and would otherwise hand that back after a restart.
+- A profile the person picks while on battery is respected until the next
+  time the machine is plugged in.
+- Holds (an application asking for a profile for a while) are not a choice
+  and are never overridden.
+- Every switch, and every choice it records, is logged to Vitals:
+  `journalctl -t luma-vitals LUMA_VITALS_KIND=power-profile`.
+"""
+from __future__ import annotations
+
+import json
+import os
+import signal
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+#: Only ever compared, never written to the platform: higher means more power.
+RANK = {"power-saver": 0, "balanced": 1, "performance": 2}
+#: What the guard steps Performance down to on battery.
+ON_BATTERY = "balanced"
+#: An echo of the guard's own switch that arrives later than this is not one.
+ECHO_SECONDS = 10.0
+
+UPOWER = ("org.freedesktop.UPower", "/org/freedesktop/UPower", "org.freedesktop.UPower")
+#: Both names are served by tuned-ppd and power-profiles-daemon with one shared
+#: state; the first one present is used.
+PROFILES = (
+    ("org.freedesktop.UPower.PowerProfiles", "/org/freedesktop/UPower/PowerProfiles",
+     "org.freedesktop.UPower.PowerProfiles"),
+    ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles"),
+)
+LOGIN = ("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager")
+PROPERTIES = "org.freedesktop.DBus.Properties"
+
+
+def state_path() -> Path:
+    directory = os.environ.get("STATE_DIRECTORY", "/var/lib/luma-vitals-power-guard").split(":")[0]
+    return Path(directory) / "state.json"
+
+
+def log(message: str, priority: int = 5, **details) -> None:
+    """One Vitals event per change; `journalctl -t luma-vitals` shows them."""
+    if os.environ.get("LUMA_VITALS_LOG") != "stderr":
+        try:
+            from systemd import journal  # python3-systemd, when installed
+            journal.send(message, SYSLOG_IDENTIFIER="luma-vitals", PRIORITY=priority,
+                         LUMA_VITALS_KIND="power-profile", LUMA_VITALS_UNIT="luma-vitals-power-guard.service",
+                         LUMA_VITALS_DETAILS=json.dumps(details, sort_keys=True))
+            return
+        except ImportError:
+            pass
+    print(f"<{priority}>power-profile: {message} {json.dumps(details, sort_keys=True)}", file=sys.stderr, flush=True)
+
+
+class Guard:
+    """The whole policy, with the bus reduced to three facts and one action.
+
+    ``state`` survives restarts:
+      ac_choice       the profile the person last chose on mains power
+      on_battery      the power state the guard last acted on (None: never)
+      lowered         the guard stepped Performance down during this battery run
+      battery_choice  the person picked a profile during this battery run
+    """
+
+    def __init__(self, path: Path, switch) -> None:
+        self.path = path
+        self.switch = switch  # switch(profile) -> bool, through the profiles API
+        self.pending: tuple[str, float] | None = None
+        self.held = False            # a hold was in force at the last look
+        self.unheld: str | None = None  # the profile in force before it
+        self.state = {"ac_choice": None, "on_battery": None, "lowered": False, "battery_choice": False}
+        try:
+            loaded = json.loads(path.read_text())
+            if isinstance(loaded, dict):
+                self.state.update({k: loaded[k] for k in self.state if k in loaded})
+        except (OSError, ValueError):
+            pass
+        if self.state["ac_choice"] not in RANK:
+            self.state["ac_choice"] = None
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir=self.path.parent, delete=False, prefix=".power-guard.") as out:
+            json.dump(self.state, out, sort_keys=True)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(out.name, self.path)
+
+    def _set(self, profile: str, reason: str, active: str, on_battery: bool) -> None:
+        self.pending = (profile, time.monotonic())
+        if self.switch(profile):
+            log(f"Power mode {active} → {profile}: {reason}", profile=profile, previous=active,
+                on_battery=on_battery, reason=reason)
+        else:
+            self.pending = None
+            log(f"Could not switch the power mode to {profile}: {reason}", 3, profile=profile, previous=active)
+
+    def profile_changed(self, active: str, holds: bool) -> None:
+        """The profile changed on the bus: the guard's own echo, a hold, or the person."""
+        was_held, self.held = self.held, holds
+        if holds:
+            return
+        before_hold, self.unheld = self.unheld, active
+        if self.pending:
+            profile, when = self.pending
+            self.pending = None
+            if profile == active and time.monotonic() - when < ECHO_SECONDS:
+                return
+        if active not in RANK:
+            return
+        if was_held and active == before_hold:
+            return  # a hold released: back to what was there, nobody chose it
+        if self.state["lowered"] and active == ON_BATTERY:
+            # The profile service handing back the guard's own Balanced (a hold
+            # released, or it restarted) is not the person choosing it.
+            return
+        if self.state["on_battery"]:
+            self.state.update(battery_choice=True, lowered=False)
+            log(f"Power mode {active} chosen on battery; kept until the computer is plugged in",
+                profile=active, on_battery=True, reason="chosen")
+        else:
+            if self.state["ac_choice"] == active and not self.state["lowered"]:
+                return
+            self.state.update(ac_choice=active, lowered=False)
+            log(f"Power mode {active} chosen on mains power; restored whenever power returns",
+                profile=active, on_battery=False, reason="chosen")
+        self.save()
+
+    def evaluate(self, on_battery: bool, active: str, holds: bool, why: str) -> None:
+        """Bring the profile in line with the power state (start, plug event, resume)."""
+        self.held = holds
+        if not holds:
+            self.unheld = active
+        if active not in RANK:
+            return
+        dirty = False
+        # Coming back to mains after the guard stepped down, or after the person
+        # picked a profile for the battery run: the mains choice comes back.
+        restore = bool(self.state["lowered"]) or (
+            not on_battery and self.state["on_battery"] is True and bool(self.state["battery_choice"]))
+        if on_battery != self.state["on_battery"]:
+            # A plug event, including one missed while suspended or stopped:
+            # a choice made during the last battery run no longer holds.
+            self.state.update(on_battery=on_battery, battery_choice=False)
+            log(f"{'On battery' if on_battery else 'On mains power'} ({why})", 6,
+                on_battery=on_battery, profile=active, reason=why)
+            dirty = True
+        if not on_battery and not self.state["lowered"] and self.state["ac_choice"] is None:
+            self.state["ac_choice"] = active  # first start: what is in force is the choice
+            dirty = True
+        if dirty:
+            self.save()
+        if holds:
+            return
+        if on_battery:
+            if active == "performance" and not self.state["battery_choice"]:
+                if not self.state["lowered"]:
+                    # Performance in force when power went is the choice to come back to.
+                    self.state["ac_choice"] = active
+                self.state["lowered"] = True
+                self.save()
+                self._set(ON_BATTERY, "running on battery", active, True)
+            return
+        target = self.state["ac_choice"]
+        if self.state["lowered"]:
+            self.state["lowered"] = False
+            self.save()
+        if not restore or target is None or target == active:
+            return
+        if RANK[target] < RANK[active]:
+            # Owner rule: never lower the profile on mains power.
+            log(f"Kept power mode {active} on mains power rather than lowering it to {target}", 6,
+                profile=active, remembered=target, reason="never-lower-on-mains")
+            return
+        self._set(target, "power returned; restoring the person's choice", active, False)
+
+
+class Bus:
+    """Gio glue: three facts in, one switch out, and when to look again."""
+
+    def __init__(self) -> None:
+        from gi.repository import Gio, GLib  # noqa: F401  (python3-gobject)
+        self.Gio, self.GLib = Gio, GLib
+        self.conn = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.guard = Guard(state_path(), self.switch)
+        self.loop = GLib.MainLoop()
+
+    def _get(self, target, prop):
+        name, path, iface = target
+        reply = self.conn.call_sync(name, path, PROPERTIES, "Get", self.GLib.Variant("(ss)", (iface, prop)),
+                                    self.GLib.VariantType("(v)"), self.Gio.DBusCallFlags.NO_AUTO_START, 5000, None)
+        return reply.unpack()[0]
+
+    def profiles(self):
+        for target in PROFILES:
+            try:
+                self._get(target, "ActiveProfile")
+                return target
+            except self.GLib.Error:
+                continue
+        return None
+
+    def read(self):
+        target = self.profiles()
+        if target is None:
+            return None
+        try:
+            on_battery = bool(self._get(UPOWER, "OnBattery"))
+        except self.GLib.Error:
+            return None
+        return on_battery, str(self._get(target, "ActiveProfile")), bool(self._get(target, "ActiveProfileHolds"))
+
+    def switch(self, profile: str) -> bool:
+        target = self.profiles()
+        if target is None:
+            return False
+        name, path, iface = target
+        try:
+            self.conn.call_sync(name, path, PROPERTIES, "Set",
+                                self.GLib.Variant("(ssv)", (iface, "ActiveProfile", self.GLib.Variant("s", profile))),
+                                None, self.Gio.DBusCallFlags.NO_AUTO_START, 5000, None)
+            return True
+        except self.GLib.Error as error:
+            log(f"Setting the power mode failed: {error.message}", 3, profile=profile)
+            return False
+
+    def sync(self, why: str, profile_changed: bool = False) -> bool:
+        try:
+            facts = self.read()
+        except self.GLib.Error:
+            facts = None
+        if facts is None:
+            return False
+        on_battery, active, holds = facts
+        log(f"Checked ({why})", 7, on_battery=on_battery, profile=active, holds=holds, reason=why)
+        if profile_changed:
+            self.guard.profile_changed(active, holds)
+        self.guard.evaluate(on_battery, active, holds, why)
+        return False
+
+    def run(self) -> int:
+        Gio = self.Gio
+        none = Gio.DBusSignalFlags.NONE
+
+        def upower_changed(_c, _s, _p, _i, _m, params):
+            if "OnBattery" in params.unpack()[1]:
+                self.sync("power source changed")
+
+        def profile_changed(_c, _s, _p, _i, _m, params):
+            if {"ActiveProfile", "ActiveProfileHolds"} & set(params.unpack()[1]):
+                self.sync("profile changed", profile_changed=True)
+
+        def sleep(_c, _s, _p, _i, _m, params):
+            if not params.unpack()[0]:
+                self.sync("resumed")
+
+        self.conn.signal_subscribe(UPOWER[0], PROPERTIES, "PropertiesChanged", UPOWER[1], UPOWER[2], none,
+                                   upower_changed)
+        for _name, path, iface in PROFILES:
+            self.conn.signal_subscribe(None, PROPERTIES, "PropertiesChanged", path, iface, none, profile_changed)
+        self.conn.signal_subscribe(LOGIN[0], LOGIN[2], "PrepareForSleep", LOGIN[1], None, none, sleep)
+        # The profile service or UPower (re)starting is when a stale profile appears.
+        for name in [UPOWER[0]] + [p[0] for p in PROFILES]:
+            Gio.bus_watch_name_on_connection(self.conn, name, Gio.BusNameWatcherFlags.NONE,
+                                             lambda *_a, n=name: self.sync(f"{n} appeared"), None)
+        self.GLib.unix_signal_add(self.GLib.PRIORITY_DEFAULT, signal.SIGTERM, self.loop.quit)
+        self.GLib.unix_signal_add(self.GLib.PRIORITY_DEFAULT, signal.SIGINT, self.loop.quit)
+        self.GLib.idle_add(self.sync, "started")
+        self.loop.run()
+        return 0
+
+
+def main() -> int:
+    return Bus().run()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

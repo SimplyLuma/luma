@@ -1,0 +1,188 @@
+From: Project Luma
+Subject: [PATCH] luma: apps appear as soon as they open
+
+Window memory keeps a window with a remembered place invisible until it is
+there. The short reveal timer was armed only by Mutter's "shown" signal, so
+an X11 client that mapped and drew without "shown" arriving after the hold
+began (an Electron app through the container launcher took 12 s) stayed
+invisible until the 10 s safety timeout, and Wayland apps waited about a
+second on the same path.
+
+Any sign that the window reached the screen now counts as shown: "shown",
+the actor's first frame, damage, or the actor being mapped, including when
+it already is at the start of the hold. Each arms the reveal timer, now
+250 ms, and the hold ends at the latest 1 s after it began. A window that
+is not in place by then is shown where it is and moved to its place with
+Tiling Shell's usual animation. Every reveal logs how long the window was
+held and what showed it; a hold over 500 ms is logged as a warning.
+---
+--- a/components/lumaWindowMemory/windowMemory.js
++++ b/components/lumaWindowMemory/windowMemory.js
+@@ -42,10 +42,16 @@ const DEFAULT_TIMING = {
+   // after a restore, Mutter and clients settle before recording resumes
+   quiet: 1000,
+   launchDelay: 120,
+-  // a window held invisible until it is in its place is shown anyway this long
+-  // after the client first shows it, or this long after it was created
+-  holdAfterShown: 700,
+-  holdMax: 10 * 1e3,
++  // A window is held invisible only until it is in its place, and never
++  // noticeably: it is shown anyway this long after it first reaches the screen
++  // (Mutter's "shown", its first frame, damage or mapping), and at the latest
++  // this long after the hold began. Placement usually settles within a few
++  // frames; a window that has not by then is shown where it is and moved to its
++  // place afterwards with the usual animation.
++  holdAfterShown: 250,
++  holdMax: 1000,
++  // a hold longer than this is logged as a warning, so a regression shows up
++  holdWarn: 500,
+   // a stay shorter than this is a detour: it adds hours but not a session
+   dwell: 60 * 1e3,
+   // open windows credit their hours this often, so a crash loses little
+@@ -93,7 +99,7 @@ function stateFile() {
+ }
+ 
+ // Journal entries for Luma Vitals: GLIB_DOMAIN=luma-window-memory, LUMA_EVENT=...
+-function vitals(event, message, fields = {}) {
++function vitals(event, message, fields = {}, level = GLib.LogLevelFlags.LEVEL_MESSAGE) {
+   const entry = {
+     MESSAGE: `window memory: ${message}`,
+     LUMA_COMPONENT: "window-memory",
+@@ -104,7 +110,7 @@ function vitals(event, message, fields = {}) {
+       entry[`LUMA_${key.toUpperCase()}`] = String(value);
+   }
+   try {
+-    GLib.log_structured("luma-window-memory", GLib.LogLevelFlags.LEVEL_MESSAGE, entry);
++    GLib.log_structured("luma-window-memory", level, entry);
+   } catch (e) {
+     console.log(`[luma-window-memory] ${message}`);
+   }
+@@ -794,28 +800,46 @@ export default class LumaWindowMemory {
+     if (decision !== void 0) data.decided = true;
+     if (!decision) return false;
+     data.held = true;
+-    const hold = data.hold = { decision, start: this._now(), attempts: 0, ids: [], x11: window.get_client_type() === Meta.WindowClientType.X11, drawn: false, shown: data.shown };
+-    Main.wm.skipNextEffect(data.actor);
+-    data.actor.opacity = 0;
++    const actor = data.actor;
++    const hold = data.hold = { decision, start: this._now(), attempts: 0, ids: [], x11: window.get_client_type() === Meta.WindowClientType.X11, drawn: false, shown: false, shownBy: null };
++    Main.wm.skipNextEffect(actor);
++    actor.opacity = 0;
+     const check = () => this._checkHold(window, data);
++    // Any sign that the window has reached the screen counts as shown. Mutter's
++    // "shown" alone is not enough: an X11 client (Electron, for one) can map and
++    // draw without "shown" arriving after the hold began, which held it for the
++    // whole safety timeout.
++    const markShown = (by) => {
++      if (data.hold !== hold) return;
++      if (!hold.shown) {
++        hold.shown = true;
++        hold.shownBy = by;
++      }
++      hold.shownId ||= this._timeout(this.timing.holdAfterShown, () => this._revealHold(window, data, "safety timeout", { placeAfter: true }));
++      check();
++    };
+     for (const signal of ["size-changed", "position-changed", "notify::maximized-vertically"])
+       hold.ids.push([window, window.connect(signal, check)]);
+-    hold.ids.push([window, window.connect("shown", () => {
+-      hold.shown = true;
+-      hold.shownId ||= this._timeout(this.timing.holdAfterShown, () => this._revealHold(window, data, "safety timeout"));
+-      check();
+-    })]);
++    hold.ids.push([window, window.connect("shown", () => markShown("shown"))]);
+     for (const signal of ["damaged", "thawed", "first-frame"]) {
+       try {
+-        hold.ids.push([data.actor, data.actor.connect(signal, () => {
++        hold.ids.push([actor, actor.connect(signal, () => {
+           hold.drawn = true;
+-          check();
++          if (signal === "thawed") check();
++          else markShown(signal);
+         })]);
+       } catch (e) {
+       }
+     }
+-    hold.maxId = this._timeout(this.timing.holdMax, () => this._revealHold(window, data, "safety timeout"));
+-    if (hold.shown) this._checkHold(window, data);
++    try {
++      hold.ids.push([actor, actor.connect("notify::mapped", () => {
++        if (actor.mapped) markShown("mapped");
++      })]);
++    } catch (e) {
++    }
++    hold.maxId = this._timeout(this.timing.holdMax, () => this._revealHold(window, data, "safety timeout", { placeAfter: true }));
++    if (data.shown) markShown("already shown");
++    else if (actor.visible && actor.mapped) markShown("already mapped");
+     return true;
+   }
+ 
+@@ -916,7 +940,7 @@ export default class LumaWindowMemory {
+     this._revealHold(window, data, "in place");
+   }
+ 
+-  _revealHold(window, data, why, { animate = true } = {}) {
++  _revealHold(window, data, why, { animate = true, placeAfter = false } = {}) {
+     const hold = data.hold;
+     if (!hold) return;
+     data.hold = null;
+@@ -969,7 +993,9 @@ export default class LumaWindowMemory {
+     }
+     const { target, why: reason, confidence, mode } = hold.decision;
+     const placed = why === "in place";
+-    vitals(placed ? "launch-placed" : "launch-revealed", `${window[APP]} ${placed ? "opened" : "shown"} at ${describe(target)} (${reason}${confidence ? `, ${confidence}` : ""}; ${why} after ${waited} ms)`, {
++    data.revealedAfter = waited;
++    data.revealedWhy = why;
++    vitals(placed ? "launch-placed" : "launch-revealed", `${window[APP]} ${placed ? "opened" : "shown"} at ${describe(target)} (${reason}${confidence ? `, ${confidence}` : ""}; ${why} after ${waited} ms, on screen by ${hold.shownBy ?? "nothing"})`, {
+       app: window[APP],
+       reason,
+       kind: target.k,
+@@ -977,8 +1003,48 @@ export default class LumaWindowMemory {
+       confidence,
+       setup_mode: mode,
+       hidden_ms: waited,
+-      reveal: why
++      reveal: why,
++      shown_by: hold.shownBy
+     });
++    if (waited > this.timing.holdWarn) {
++      vitals("launch-slow-reveal", `${window[APP]} was held ${waited} ms before it was shown (${why}; on screen by ${hold.shownBy ?? "nothing"})`, {
++        app: window[APP],
++        hidden_ms: waited,
++        reveal: why,
++        shown_by: hold.shownBy,
++        x11: hold.x11
++      }, GLib.LogLevelFlags.LEVEL_WARNING);
++    }
++    if (placeAfter && !placed) {
++      try {
++        this._placeAfterReveal(window, hold);
++      } catch (e) {
++        vitals("launch-place-failed", `${window[APP]} could not be moved to its place after it was shown: ${e}`, { app: window[APP] });
++      }
++    }
++  }
++
++  // A window that was not in its place when the hold ran out is shown where it
++  // is, then moved there with Tiling Shell's own animation.
++  _placeAfterReveal(window, hold) {
++    if (window[TOUCHED] || window.minimized || notRememberableReason(window)) return;
++    this._identify(window);
++    if (window[ORDINAL] !== 0) return;
++    const p = hold.decision.target;
++    const monitor = this._monitors().find((m) => m.key === p.m);
++    if (!monitor) return;
++    if (hold.expected && sameFrame(frameOf(window), hold.expected)) return;
++    window[OWN_UNTIL] = this._now() + this.timing.settle + 500;
++    if (window.get_monitor() !== monitor.index) window.move_to_monitor(monitor.index);
++    if (p.k === "max") {
++      if (!(window.maximizedHorizontally && window.maximizedVertically)) maximizeWindow(window);
++    } else if (p.k === "tile" && this._managerFor(monitor.index)) {
++      const [x, y, width, height] = p.r;
++      this._managerFor(monitor.index)._easeWindowRectFromTile(new Tile({ x, y, width, height, groups: [] }), window);
++    } else {
++      window.move_resize_frame(false, ...this._floatFrame(p, monitor));
++    }
++    vitals("launch-placed-late", `${window[APP]} moved to ${describe(p)} after it was shown`, { app: window[APP], kind: p.k, monitor: p.m });
+   }
+ 
+   // undefined: identity not known yet; null: no placement; else the decision.

@@ -1,0 +1,395 @@
+{
+  "source": "Owner-selected Luma icon family revision 40 (2026-09-27), derived revision 42 retains dock sizing and removes the decorative outer rim; preserved v3 icons for unselected apps",
+  "license": "Luma-owned icon-family revision 40 and derived revision 42 artwork: CC-BY-SA-4.0; owner confirmed distribution rights on 2026-09-28. Attributed Lucide geometry retains ISC/MIT notices.",
+  "icons": [
+    {
+      "source": "artwork/icon-family-r42/clock.svg",
+      "sha256": "2b0a6759fc1879b5303694dcb0c4e67dd1d00f4aafad675585ba356f3ff2dc0c",
+      "aliases": [
+        "luma-v3-clock",
+        "org.projectluma.Clock"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/filer.svg",
+      "sha256": "2105167ab3aa5bcae377fa3bcfc4fc0376634d5d80b6ee478a9bc5de160b470b",
+      "aliases": [
+        "luma-v3-files",
+        "org.gnome.Nautilus"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/calendar.svg",
+      "sha256": "8ad10af2947db3b384f96ec54d03b33666acac098b5b3739e963a449db0dfcbb",
+      "aliases": [
+        "luma-v3-calendar",
+        "org.projectluma.Calendar",
+        "org.gnome.Calendar"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/messages.svg",
+      "sha256": "46ab0575ae22e0b6ec7fc07b33c594ad6bb166e215325fda3f4dc7ebde8a7811",
+      "aliases": [
+        "luma-v3-messages",
+        "org.projectluma.Messages"
+      ],
+      "bundled": [
+        "src/prairie-core/data/org.projectluma.Messages.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/messages.svg",
+      "bundled_sha256": "343f7ecf3f34d590dde5ffab3f4f8dfdd72823fb397ec0e7622361add09fbc07"
+    },
+    {
+      "source": "artwork/v3/05-mail.svg",
+      "sha256": "c84bfd84f66737287dd1546a97c0a11aabe64a843ddb04bbf10f301573247a13",
+      "aliases": [
+        "luma-v3-mail",
+        "org.gnome.Geary"
+      ]
+    },
+    {
+      "source": "artwork/icon-family-r42/notes.svg",
+      "sha256": "60e6ad1b2b4ce70a4813629fe5aa24861a63f58a494e8a5385e86e3db49eb511",
+      "aliases": [
+        "luma-v3-notes",
+        "org.projectluma.Notes"
+      ],
+      "bundled": [
+        "src/prairie-core/data/org.projectluma.Notes.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/notes.svg",
+      "bundled_sha256": "a5d86f8bfd6b71d62c22995e4a9ae72c612b3e448c255f4332fa5a07d7217740"
+    },
+    {
+      "source": "artwork/icon-family-r42/tide.svg",
+      "sha256": "f4700dde1dca6b50b5d71752800b432f9c81a1e2ff5ce27fbd95b452c6dff946",
+      "aliases": [
+        "luma-v3-music",
+        "org.projectluma.Tide"
+      ],
+      "bundled": [
+        "src/luma-tide/data/org.projectluma.Tide.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/tide.svg",
+      "bundled_sha256": "7e0dc5fc3407ca83142e1c66ba9898884a234ef4387ec275dd2276b643ce0f14"
+    },
+    {
+      "source": "artwork/icon-family-r42/maps.svg",
+      "sha256": "52f86db94297c70178e89a6068edcc99bd97f1b55cf203526a37e91ab7cbbd7a",
+      "aliases": [
+        "luma-v3-maps",
+        "org.projectluma.Maps",
+        "map-globe"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/terminal.svg",
+      "sha256": "ab4f9438c4c907a9ad521cf71b54ae1d66622ff78365aec9cf79ca6b3473105c",
+      "aliases": [
+        "luma-v3-terminal",
+        "org.gnome.Ptyxis",
+        "org.projectluma.Terminal"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/settings.svg",
+      "sha256": "1b582ed51a88ffa9fc11a801ea6baf23ec280b82e5efe93c29ad8f04a0a4fd00",
+      "aliases": [
+        "luma-v3-settings",
+        "org.gnome.Settings",
+        "org.projectluma.AndroidSettings"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/calculator.svg",
+      "sha256": "bd2ae027cd039acfd9c7b471098fc1d4a7faf06ad67097f5b02534880f46c0d6",
+      "aliases": [
+        "luma-v3-calculator",
+        "org.gnome.Calculator",
+        "org.projectluma.Calculator"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/photos.svg",
+      "sha256": "b0fb477f17be1aa4e818258744df0365db1b277cc43a8bd3e032f97f879cd2ad",
+      "aliases": [
+        "luma-v3-photos",
+        "org.projectluma.Photos"
+      ],
+      "bundled": [
+        "src/prairie-core/data/org.projectluma.Photos.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/photos.svg",
+      "bundled_sha256": "68a9f90ffe648d0cd72a6664b509bd00ad92bf527c5f738f2d2a0120b9fc4374"
+    },
+    {
+      "source": "artwork/icon-family-r42/depot.svg",
+      "sha256": "98528c0ce8090f850e5abcb7da5b1c7ea35a21a60fb1e292f830792eef99e1e1",
+      "aliases": [
+        "luma-v3-app-store",
+        "org.projectluma.Depot"
+      ],
+      "bundled": [
+        "src/luma-depot/data/icons/org.projectluma.Depot.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/depot.svg",
+      "bundled_sha256": "d653ca313bcd31b008f1840d19aaff080467857b824efd52066cd0e7b1d628fb"
+    },
+    {
+      "source": "artwork/v3/14-browser.svg",
+      "sha256": "76e7d4b4b8528d0bdf6c1ed56af48f4211bd1d9074af219edbf8e55d4025dffb",
+      "aliases": [
+        "luma-v3-browser"
+      ]
+    },
+    {
+      "source": "artwork/icon-family-r42/contacts.svg",
+      "sha256": "25ca1be2ffc44129af9a878127d4efdc5e13f236be320e5fc1f3624eaee8bf48",
+      "aliases": [
+        "luma-v3-contacts",
+        "org.projectluma.Contacts"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/camera.svg",
+      "sha256": "a0a122f2122bae1a7835adb19200bad9c8befb7768eb2bf2a8780c031135f69b",
+      "aliases": [
+        "luma-v3-camera",
+        "org.projectluma.Camera",
+        "org.gnome.Snapshot"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/canvas.svg",
+      "sha256": "003af879be19c029dce572fb80cfdc320a80f0e1a345c83e05135ae40940cdc8",
+      "aliases": [
+        "luma-v3-designer",
+        "org.projectluma.Canvas"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/darkroom.svg",
+      "sha256": "2cca4c27d29fe9837745627fbd012610a44bd56f17a7b3f1115e316aa2d9c95f",
+      "aliases": [
+        "luma-v3-photo-editor",
+        "org.projectluma.Darkroom"
+      ],
+      "bundled": [
+        "src/luma-darkroom/data/org.projectluma.Darkroom.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/darkroom.svg",
+      "bundled_sha256": "b4ddb7ea7660eb7b11cb64830ece1605ac0124f5a8b4d430a08043422448c19d"
+    },
+    {
+      "source": "artwork/icon-family-r42/write.svg",
+      "sha256": "60f8361e2bdacab68c2570ad293c814f8de6b6d27ba30e14055c7142b7dfbec3",
+      "aliases": [
+        "luma-v3-documents",
+        "org.projectluma.Write",
+        "io.luma.Write"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/grid.svg",
+      "sha256": "37edb5f74db06b3fa78cfddc71a870de4f35efaee9bf225d12d119d75c9075bf",
+      "aliases": [
+        "luma-v3-spreadsheets",
+        "io.luma.Grid"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/stage.svg",
+      "sha256": "591532e09725127a8f595374e9978c94e714a02d531d10944bf1e69428a201de",
+      "aliases": [
+        "luma-v3-presentations",
+        "io.luma.Stage",
+        "org.projectluma.Stage"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/reel.svg",
+      "sha256": "17ed6b0a28294f7666d8b1b77836d031f1bd142d908e08c9e47623a3e43c9a1b",
+      "aliases": [
+        "luma-v3-video-editor",
+        "org.projectluma.Reel"
+      ],
+      "bundled": [
+        "src/luma-reel/data/org.projectluma.Reel.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/reel.svg",
+      "bundled_sha256": "7d1c48ae0a5e29a506b2bedc2feaa7228b388e9d03c1d04f50ab4136304733e9"
+    },
+    {
+      "source": "artwork/icon-family-r42/ari.svg",
+      "sha256": "c4a0d2d90b5e3d8893cea1f60b7c596162b1454cd26229c7920d2577276fb6fd",
+      "aliases": [
+        "luma-v3-ari",
+        "org.projectluma.Ari"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/weather.svg",
+      "sha256": "d91ca0d52c77ad119afaf4974db272212915fd216333a74d413743c95c7afd37",
+      "aliases": [
+        "luma-v3-weather",
+        "org.projectluma.Weather"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/phone.svg",
+      "sha256": "0129e21658848ff1b20cb832fcdafb1f496f96327d2dfc35cbf8ad740bce5426",
+      "aliases": [
+        "luma-v3-phone",
+        "org.projectluma.Phone"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/v3/26-wallet.svg",
+      "sha256": "ab87f7923bbb4f186e3a243515033072997dd0b7a3ac2dfeaa9cf27b3f4cd7f3",
+      "aliases": [
+        "luma-v3-wallet"
+      ]
+    },
+    {
+      "source": "artwork/icon-family-r42/viewer.svg",
+      "sha256": "dec79964524aaa7817a1cb81bd62b883465d71b76afc89ba62426240a195dd00",
+      "aliases": [
+        "luma-v3-viewer",
+        "org.projectluma.Viewer"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/icon-family-r42/vault.svg",
+      "sha256": "c4f538e555592c3957fc245439c8f31d593882e9bc85523566bbad5457973adc",
+      "aliases": [
+        "luma-v3-vault",
+        "org.projectluma.Keyring"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/v3/29-system-report.svg",
+      "sha256": "b12ec08f869b3da5837903f24228c6fcd9ae8ba19412edd6ee82f5d69c8dd914",
+      "aliases": [
+        "luma-v3-system-report"
+      ]
+    },
+    {
+      "source": "artwork/icon-family-r42/relay.svg",
+      "sha256": "9f2895d0a855cb4eb8b73a7b114681f3cfcfd9c6e55cc37b2db59bc1bbd6b987",
+      "aliases": [
+        "luma-v3-relay",
+        "org.projectluma.Relay"
+      ],
+      "bundled": [
+        "src/luma-relay/data/org.projectluma.Relay.svg"
+      ],
+      "precomposed": true,
+      "bundled_source": "artwork/icon-family-r40/relay.svg",
+      "bundled_sha256": "3b6b737612149ea182d6aa0c9c55b4155e63f455565456230b49167b5825408e"
+    },
+    {
+      "source": "artwork/icon-family-r42/valet.svg",
+      "sha256": "2160225c3ce9aa09256fb9ce7eec4510299f9f0634a7f2f6618eed8865e52f57",
+      "aliases": [
+        "luma-v3-valet",
+        "io.luma.Valet",
+        "io.luma.Install",
+        "org.projectluma.ApplicationInstaller"
+      ],
+      "precomposed": true
+    },
+    {
+      "source": "artwork/derived-20260910/application-placeholder.svg",
+      "sha256": "ebf5617bd24b39eee4392d0704ec608b50b7e197dd37680b23757d8c69766bc4",
+      "aliases": [
+        "application-x-executable"
+      ],
+      "license": "LicenseRef-Luma-System-Artwork-Pending",
+      "provenance": "Scale-only derivative of system-20260907/0023-application-x-executable/application-x-executable-b.svg; requested by user 2026-09-10"
+    },
+    {
+      "aliases": [
+        "org.projectluma.Session"
+      ],
+      "source": "artwork/icon-family-r42/sessions.svg",
+      "sha256": "8fe6956ed84562f0b57c78e9a167d445b9e230be769e170b81655c03561d970c",
+      "precomposed": true
+    },
+    {
+      "aliases": [
+        "org.projectluma.VoiceMemos"
+      ],
+      "source": "artwork/icon-family-r42/memos.svg",
+      "sha256": "0c22a17e451017bc86b8efd5ee365cd0e80c941e038c39a6f16c2636ba5106c2",
+      "precomposed": true
+    },
+    {
+      "aliases": [
+        "org.projectluma.Tasks"
+      ],
+      "source": "artwork/icon-family-r42/tasks.svg",
+      "sha256": "1ffb14305854231008606216ad8734859f4f5d816c06741f79a641426a537077",
+      "precomposed": true
+    },
+    {
+      "aliases": [
+        "org.projectluma.Connect"
+      ],
+      "source": "artwork/icon-family-r42/connect.svg",
+      "sha256": "ea1e7aa81da0f0210d5c1cff73329a7c370391ffa460ba5a5e19779f1edaec13",
+      "precomposed": true
+    },
+    {
+      "aliases": [
+        "org.projectluma.Disks",
+        "org.projectluma.Disks.Preview"
+      ],
+      "source": "artwork/icon-family-r42/disks.svg",
+      "sha256": "18cf2e1223d9d9f838e8a9b96bbad55a432b6492ca6889cce72d90d86b8e4502",
+      "precomposed": true
+    },
+    {
+      "aliases": [
+        "io.luma.Monitor",
+        "luma-v3-monitor"
+      ],
+      "source": "artwork/icon-family-r42/monitor.svg",
+      "sha256": "a72f23f25c1d7fa1273e721573c100abd2da4a5e367faec3898006a51dc80667",
+      "precomposed": true
+    },
+    {
+      "aliases": [
+        "org.projectluma.Leaf"
+      ],
+      "source": "artwork/icon-family-r42/leaf.svg",
+      "sha256": "f966c2b3b5ffe3a935f4b17f48a9e50eefe4837d5a1f1636a9a73901a737e1e3",
+      "precomposed": true
+    }
+  ]
+}

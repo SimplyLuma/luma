@@ -1,0 +1,113 @@
+From 6c1fc248b785da5a307b5534fe83b46e7022487c Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:09:26 +0000
+Subject: [PATCH] Filer: keep responsive list safe and narrow phone tiles
+
+---
+ src/nautilus-grid-cell.c | 27 +++++++++++++++------------
+ src/nautilus-list-view.c |  5 ++++-
+ 2 files changed, 19 insertions(+), 13 deletions(-)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index ba320f6..bf8c979 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -267,10 +267,11 @@ nautilus_grid_cell_measure (GtkWidget      *widget,
+ {
+     NautilusGridCell *self = NAUTILUS_GRID_CELL (widget);
+     guint icon_size;
+-    int width, child_min, child_nat;
++    int width, side, child_min, child_nat;
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
+-    width = EMBLEMS_BOX_WIDTH + icon_size + EMBLEMS_BOX_WIDTH;
++    side = icon_size == 72 ? 12 : EMBLEMS_BOX_WIDTH;
++    width = side + icon_size + side;
+ 
+     /* We always expect our layout to fit into this width. Check that
+      * this is indeed the case. This also shuts up the
+@@ -300,19 +301,19 @@ nautilus_grid_cell_measure (GtkWidget      *widget,
+         }
+         gtk_widget_measure (self->emblems_box, orientation, -1,
+                             &child_min, NULL, NULL, NULL);
+-        if (G_UNLIKELY (child_min > EMBLEMS_BOX_WIDTH))
++        if (G_UNLIKELY (child_min > side))
+         {
+             g_warning ("%s %p unexpectedly doesn't fit into width of %d",
+-                       gtk_widget_get_name (self->emblems_box), self->emblems_box, EMBLEMS_BOX_WIDTH);
+-            width += 2 * (child_min - EMBLEMS_BOX_WIDTH);
++                       gtk_widget_get_name (self->emblems_box), self->emblems_box, side);
++            width += 2 * (child_min - side);
+         }
+ 
+         /* At phone width, names wrap within a tile instead of widening the
+-         * grid past three columns. The 72px face plus its side allowance is
++         * grid past three columns. The 72px face plus 12px on each side is
+          * the width the view reserves for each tile. */
+         if (icon_size == 72)
+         {
+-            width = MIN (width, 100);
++            width = MIN (width, 96);
+         }
+     }
+     else /* GTK_ORIENTATION_VERTICAL */
+@@ -324,7 +325,7 @@ nautilus_grid_cell_measure (GtkWidget      *widget,
+             g_warning ("%s %p unexpectedly doesn't fit into height of %d",
+                        gtk_widget_get_name (self->icon), self->icon, icon_size);
+         }
+-        gtk_widget_measure (self->emblems_box, orientation, EMBLEMS_BOX_WIDTH,
++        gtk_widget_measure (self->emblems_box, orientation, side,
+                             &child_min, NULL, NULL, NULL);
+         if (G_UNLIKELY (child_min > (int) icon_size))
+         {
+@@ -365,8 +366,10 @@ nautilus_grid_cell_size_allocate (GtkWidget *widget,
+     NautilusGridCell *self = NAUTILUS_GRID_CELL (widget);
+     GtkAllocation child_allocation;
+     guint icon_size;
++    int side;
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
++    side = icon_size == 72 ? 12 : EMBLEMS_BOX_WIDTH;
+ 
+     /* Put the icon at the top. Center it horizontally, with
+      * EMBLEMS_BOX_WIDTH horizontal margins on both sides.
+@@ -374,16 +377,16 @@ nautilus_grid_cell_size_allocate (GtkWidget *widget,
+      * inside the allocation that we give it.
+      */
+     child_allocation = (GtkAllocation) {
+-        EMBLEMS_BOX_WIDTH, 0,
+-        width - EMBLEMS_BOX_WIDTH * 2, icon_size
++        side, 0,
++        width - side * 2, icon_size
+     };
+     gtk_widget_size_allocate (self->icon, &child_allocation, -1);
+ 
+     /* Put the emblems_box into the "end" margin. */
+-    child_allocation.width = EMBLEMS_BOX_WIDTH;
++    child_allocation.width = side;
+     if (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_LTR)
+     {
+-        child_allocation.x = width - EMBLEMS_BOX_WIDTH;
++        child_allocation.x = width - side;
+     }
+     else
+     {
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index e479b40..28ee618 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -1407,7 +1407,10 @@ update_phone_layout (NautilusListView *self)
+     if (self->phone_layout != phone_layout)
+     {
+         self->phone_layout = phone_layout;
+-        update_columns_settings_from_metadata_and_preferences (self);
++        if (nautilus_list_base_get_directory_as_file (NAUTILUS_LIST_BASE (self)) != NULL)
++        {
++            update_columns_settings_from_metadata_and_preferences (self);
++        }
+     }
+ }
+ 
+-- 
+2.55.0
+

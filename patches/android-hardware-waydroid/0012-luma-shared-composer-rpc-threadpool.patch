@@ -1,0 +1,14 @@
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -702,7 +702,10 @@ static void* hwc_binder_thread(void* data) {
+     sp<IWaydroidClipboard> waydroidClipboard;
+ 
+     setpriority(PRIO_PROCESS, 0, HAL_PRIORITY_URGENT_DISPLAY);
+-    configureRpcThreadpool(1, true /*callerWillJoin*/);
++    // This HAL module shares the composer service process and its HIDL pool.
++    // Match graphics/composer/2.1/default/service.cpp: shrinking its already
++    // started four-thread pool aborts depending on registration scheduling.
++    configureRpcThreadpool(4, true /*callerWillJoin*/);
+ 
+     waydroidDisplay = new WaydroidDisplay(pdev->display);
+     if (waydroidDisplay == nullptr) {

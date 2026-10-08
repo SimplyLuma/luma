@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma Vitals: step Performance down to Balanced while running on battery
+Documentation=https://projectluma.org/vitals
+After=dbus.service upower.service tuned-ppd.service power-profiles-daemon.service
+
+[Service]
+ExecStart=/usr/libexec/luma-vitals-power-guard
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUWeight=10
+MemoryMax=64M
+# The person's choice on mains power, which the profile service does not keep.
+StateDirectory=luma-vitals-power-guard
+StateDirectoryMode=0700
+# Root only so the profile service authorises the switch without a session;
+# it needs no capability and reaches nothing but the system bus.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

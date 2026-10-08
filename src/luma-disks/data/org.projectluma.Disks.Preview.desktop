@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Disks
+Comment=See drives and volumes, and how their space is used
+Exec=luma-disks
+Icon=org.projectluma.Disks.Preview
+Terminal=false
+Categories=System;Utility;
+Keywords=drive;disk;partition;volume;storage;usb;
+StartupNotify=true

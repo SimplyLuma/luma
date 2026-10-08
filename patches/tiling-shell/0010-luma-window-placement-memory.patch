@@ -1,0 +1,1525 @@
+From: Project Luma
+Subject: [PATCH] luma: remember where windows live, per app and monitor setup
+
+Tiling Shell forgot where windows were. Apps opened wherever Mutter put
+them, and after moving between desks, sleeping, unplugging or opening the
+lid, windows stayed wherever Mutter moved them. Windows are now remembered
+by app identity and window role, per monitor setup (physical monitors by
+maker, model and serial, with arrangement and scale), as a last placement
+and a long-term habit: hours lived in each Tiling Shell tile, maximized
+state or normalized floating rect, with a six-month half-life. The first
+main window of an app opens in its strong habit, otherwise its last
+placement however old; a move kept for three sessions replaces the habit.
+When the monitors settle after a change, open windows go back to where
+they were left in that setup; in a setup never seen
+before, nothing is scattered. Dialogs, transients, popups and splash
+windows are never touched, and a window the person moves wins. A window
+with a place of its own is kept invisible until it is there, so it opens
+already in its tile. Tiling Shell also runs on the lock screen, so windows
+keep their tiles across lock and sleep, and restores finish before unlock. Decisions
+are logged to the journal for Luma Vitals, the memory lives in
+$XDG_STATE_HOME/luma/window-memory.json, and Tiling Settings has one switch
+and a Forget button. See ADR-036.
+
+diff -ruN a/components/lumaWindowMemory/windowMemory.js b/components/lumaWindowMemory/windowMemory.js
+--- a/components/lumaWindowMemory/windowMemory.js
++++ b/components/lumaWindowMemory/windowMemory.js
+@@ -0,0 +1,1321 @@
++// Project Luma: window placement memory (ADR-036).
++//
++// Windows are remembered by app identity (desktop-file id, GApplication id,
++// Flatpak id, Wayland app_id or WM_CLASS) and a stable ordinal among that app's
++// open main windows, never by PID or window id. For every monitor setup (the
++// physical monitors by maker, model and serial, with their arrangement and
++// scale) each window keeps its last placement and a long-term habit: the hours
++// it lived in each place (six-month half-life) and how many sessions. A
++// placement is a monitor identity plus a Tiling Shell tile, a maximized state
++// or a normalized floating rect.
++//
++// Launch: a strong habit wins; otherwise the last placement, however old; with
++// no history nothing happens. A move kept for 3+ sessions demotes the old habit.
++// Setup change: once the monitors have been stable for a moment, open windows go
++// back to where they were left in that setup (windows opened since follow the
++// launch rule). In a setup never seen before nothing
++// is scattered: windows keep still-connected monitors, and windows from a
++// monitor that went away go to the new monitor with the same role.
++// Dialogs, transients, popups and splash windows are never remembered or moved,
++// and a window the person touches wins.
++import { Clutter, GLib, Gio, Meta, Shell, St } from "../../gi/ext.js";
++import { buildRectangle } from "../../utils/ui.js";
++import * as Main from "resource:///org/gnome/shell/ui/main.js";
++import Tile from "../layout/Tile.js";
++import { maximizeWindow, unmaximizeWindow } from "../../utils/gnomesupport.js";
++
++const VERSION = 1;
++export const KEY_ENABLED = "luma-remember-window-positions";
++export const KEY_RESET = "luma-window-memory-reset";
++const HOUR = 3600 * 1e3;
++const DAY = 24 * HOUR;
++const DEFAULT_TIMING = {
++  settle: 1500,
++  // a window the person moved or tiled is remembered and saved right away
++  touchedSettle: 400,
++  touchedSave: 250,
++  // a monitor setup is final once nothing changed for this long
++  stable: 1500,
++  // after a restore, Mutter and clients settle before recording resumes
++  quiet: 1000,
++  launchDelay: 120,
++  // a window held invisible until it is in its place is shown anyway this long
++  // after the client first shows it, or this long after it was created
++  holdAfterShown: 700,
++  holdMax: 10 * 1e3,
++  // a stay shorter than this is a detour: it adds hours but not a session
++  dwell: 60 * 1e3,
++  // open windows credit their hours this often, so a crash loses little
++  flush: 10 * 60 * 1e3,
++  save: 5000
++};
++// Habit = hours a window lived in a place, fading with a six-month half-life.
++const HALF_LIFE_MS = 182 * DAY;
++const EXPIRE_MS = 400 * DAY;
++// one uninterrupted stay counts at most this long (a window left open overnight)
++const SEGMENT_CAP_MS = 8 * HOUR;
++const HABIT_MIN_HOURS = 2;
++const HABIT_MIN_SESSIONS = 3;
++const HABIT_MIN_SHARE = 0.6;
++// A sustained move: the last 3+ sessions in one new place, with most of the
++// hours of the last 6 sessions, demotes the old habit to a quarter.
++const RECENT_SESSIONS = 6;
++const SHIFT_MIN_STREAK = 3;
++const SHIFT_MIN_SHARE = 0.6;
++const SHIFT_DEMOTE = 0.25;
++const MAX_SETUPS = 16;
++const MAX_APPS = 48;
++const MAX_HISTOGRAM = 6;
++const MAX_ORDINALS = 4;
++const TOLERANCE = 0.02;
++const APP = Symbol("luma-window-memory-app");
++const ORDINAL = Symbol("luma-window-memory-ordinal");
++const TOUCHED = Symbol("luma-window-memory-touched");
++const OWN_UNTIL = Symbol("luma-window-memory-own");
++const LEFT = Symbol("luma-window-memory-left");
++// Where a window was when Tiling Shell last stopped (lock-time re-enable of
++// later extensions, the Quick Settings switch, Shell shutdown).
++const PAUSED = Symbol("luma-window-memory-paused");
++const FRAME_SLACK = 2;
++// A disable and enable this close together is GNOME re-ordering extensions.
++const REBASE_MS = 5000;
++
++function stateFile() {
++  return GLib.build_filenamev([GLib.get_user_state_dir(), "luma", "window-memory.json"]);
++}
++
++// Journal entries for Luma Vitals: GLIB_DOMAIN=luma-window-memory, LUMA_EVENT=...
++function vitals(event, message, fields = {}) {
++  const entry = {
++    MESSAGE: `window memory: ${message}`,
++    LUMA_COMPONENT: "window-memory",
++    LUMA_EVENT: event
++  };
++  for (const [key, value] of Object.entries(fields)) {
++    if (value !== void 0 && value !== null)
++      entry[`LUMA_${key.toUpperCase()}`] = String(value);
++  }
++  try {
++    GLib.log_structured("luma-window-memory", GLib.LogLevelFlags.LEVEL_MESSAGE, entry);
++  } catch (e) {
++    console.log(`[luma-window-memory] ${message}`);
++  }
++}
++
++function normalizeId(id) {
++  if (typeof id !== "string") return null;
++  let value = id.trim().toLowerCase();
++  if (value.endsWith(".desktop")) value = value.slice(0, -8);
++  if (!value || value.startsWith("window:") || value === "gjs") return null;
++  return value;
++}
++
++export function appIdentity(window) {
++  const candidates = [];
++  const app = Shell.WindowTracker.get_default().get_window_app(window);
++  if (app && !app.is_window_backed()) candidates.push(app.get_id());
++  candidates.push(
++    window.get_gtk_application_id(),
++    window.get_sandboxed_app_id(),
++    window.get_wm_class(),
++    window.get_wm_class_instance()
++  );
++  for (const candidate of candidates) {
++    const id = normalizeId(candidate);
++    if (id) return id;
++  }
++  return null;
++}
++
++// Only main windows: normal, resizable, top-level and on the taskbar.
++export function isRememberable(window) {
++  if (!window || window.is_override_redirect()) return false;
++  if (window.get_window_type() !== Meta.WindowType.NORMAL) return false;
++  if (window.get_transient_for() !== null || window.is_attached_dialog()) return false;
++  if (window.is_skip_taskbar() || !resizable(window)) return false;
++  if (window.is_always_on_all_workspaces?.()) return false;
++  return true;
++}
++
++function ordinalName(ordinal) {
++  return ordinal === 0 ? "main" : `main-${ordinal + 1}`;
++}
++
++function round(value) {
++  return Math.round(value * 1e4) / 1e4;
++}
++
++function samePlacement(a, b) {
++  return !!a && !!b && a.m === b.m && a.k === b.k && a.r.every((v, i) => Math.abs(v - b.r[i]) <= TOLERANCE);
++}
++
++function bucketId(p) {
++  return `${p.m}|${p.k}|${p.r.map((v) => Math.round(v / TOLERANCE)).join(",")}`;
++}
++
++function decayed(item, now) {
++  return item.w * Math.pow(0.5, Math.max(0, now - item.t) / HALF_LIFE_MS);
++}
++
++function emptyMemory(reset) {
++  return { version: VERSION, reset, active: null, setups: {} };
++}
++
++function describe(p) {
++  return p ? `${p.k} [${p.r.map((v) => v.toFixed(2)).join(" ")}] on ${p.m}` : "nothing";
++}
++
++// Mutter reports maximized and fullscreen windows as not resizable; only a
++// window that cannot be resized in its normal state is fixed-size.
++function resizable(window) {
++  return window.allows_resize() || window.maximizedHorizontally || window.maximizedVertically || window.is_fullscreen();
++}
++
++function frameOf(window) {
++  const r = window.get_frame_rect();
++  return [r.x, r.y, r.width, r.height];
++}
++
++function sameFrame(a, b) {
++  return !!a && !!b && a.every((v, i) => Math.abs(v - b[i]) <= FRAME_SLACK);
++}
++
++// Why a window is never remembered or moved, for the journal.
++function notRememberableReason(window) {
++  if (window.is_override_redirect()) return "override-redirect";
++  if (window.get_window_type() !== Meta.WindowType.NORMAL) return "not a normal window";
++  if (window.get_transient_for() !== null || window.is_attached_dialog()) return "dialog or transient";
++  if (window.is_skip_taskbar()) return "skips the taskbar";
++  if (!resizable(window)) return "not resizable (splash or fixed-size)";
++  if (window.is_always_on_all_workspaces?.()) return "on all workspaces";
++  return null;
++}
++
++export default class LumaWindowMemory {
++  // Test harness only: fake EDIDs for virtual monitors, a clock offset and short
++  // timings, shared by every instance (Tiling Shell may be re-enabled mid-test).
++  static testHooks = null;
++
++  // settings: Tiling Shell Gio.Settings. managerFor(index): that monitor's
++  // TilingManager. keybindings: Tiling Shell KeyBindings (user moves).
++  constructor({ settings, managerFor, keybindings }) {
++    this._settings = settings;
++    this._managerFor = managerFor;
++    this._keybindings = keybindings;
++    this._windows = /* @__PURE__ */ new Map();
++    this._signals = [];
++    this._sources = /* @__PURE__ */ new Set();
++    this._stable = false;
++    this._setupKey = null;
++    this._monitorsCache = null;
++    this._transition = null;
++    this._stableId = 0;
++    this._saveId = 0;
++    this._quietUntil = 0;
++    this._sleepSubscription = 0;
++    this._locked = false;
++    this._memory = emptyMemory(0);
++    this.timing = { ...DEFAULT_TIMING, ...LumaWindowMemory.testHooks?.timing ?? {} };
++  }
++
++  enable() {
++    this._load();
++    this._enabled = this._settings.get_boolean(KEY_ENABLED);
++    this._connect(this._settings, `changed::${KEY_ENABLED}`, () => this._onEnabledChanged());
++    this._connect(this._settings, `changed::${KEY_RESET}`, () => this._onReset());
++    this._connect(global.display, "window-created", (_d, window) => this._onWindowCreated(window));
++    this._connect(global.display, "grab-op-begin", (_d, window) => this.touch(window, "grab"));
++    this._connect(Main.layoutManager, "monitors-changed", () => this._beginTransition("monitors-changed"));
++    this._connect(global.display, "workareas-changed", () => {
++      if (!this._stable && this._stableId) this._scheduleStable();
++      else if (this._stable && !this._locked) this._reassertLockRestores("work area changed after unlock");
++    });
++    for (const signal of ["move-window", "span-window", "span-window-all-tiles", "untile-window", "move-window-center"]) {
++      if (this._keybindings)
++        this._connect(this._keybindings, signal, (_k, display) => this.touch(display.get_focus_window(), signal));
++    }
++    this._flushId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, Math.max(1, Math.round(this.timing.flush / 1e3)), () => {
++      if (this._stable) {
++        const now = this._now();
++        this._windows.forEach((data, window) => this._credit(window, data, now));
++        this._queueSave();
++      }
++      return GLib.SOURCE_CONTINUE;
++    });
++    this._sleepSubscription = Gio.DBus.system.signal_subscribe(
++      "org.freedesktop.login1",
++      "org.freedesktop.login1.Manager",
++      "PrepareForSleep",
++      "/org/freedesktop/login1",
++      null,
++      Gio.DBusSignalFlags.NONE,
++      (_c, _s, _p, _i, _n, parameters) => this.onPrepareForSleep(parameters.deep_unpack()[0])
++    );
++    const windows = global.display.list_all_windows().sort((a, b) => a.get_stable_sequence() - b.get_stable_sequence());
++    windows.forEach((window) => this._track(window, true));
++    // Shell start, the Quick Settings switch, or GNOME re-enabling extensions:
++    // the monitors may have changed while Tiling Shell was off. Compare with the
++    // setup that was active when it last ran.
++    this._beginTransition("enable", this._memory.active);
++    // Stopped and started again at once (GNOME re-orders extensions when one
++    // before Tiling Shell is switched off, as at lock): settle now, so every
++    // window keeps its tile without a visible gap.
++    const now = this._now();
++    const paused = windows.map((w) => w[PAUSED]).filter(Boolean);
++    if (paused.length > 0 && paused.every((pause) => now - pause.t <= REBASE_MS) && this._setupKeys(this._monitors()).key === this._memory.active) {
++      this._stableId = this._clearTimeout(this._stableId);
++      this._transition.reason = "re-enable";
++      this._settle();
++    }
++  }
++
++  // The session mode changed (lock screen shown or dismissed). Anything still
++  // waiting to be restored is done before the desktop is revealed.
++  onSessionModeChanged(locked) {
++    if (locked === this._locked) return;
++    this._locked = locked;
++    if (locked) {
++      this._lockRestores = null;
++      vitals("locked", "screen locked; windows stay where they are");
++      return;
++    }
++    if (!this._stable && this._transition) {
++      this._stableId = this._clearTimeout(this._stableId);
++      this._asleep = false;
++      this._transition.reason = `${this._transition.reason}, before unlock`;
++      vitals("unlock-restore", "unlocking with monitors just changed: restoring before the desktop is shown");
++      this._settle();
++    }
++    // Windows restored behind the lock screen were placed in the lock screen's
++    // work area; if the desktop's differs they are re-placed as it returns.
++    if (this._lockRestores?.size) {
++      this._clearTimeout(this._lockRestoreExpiry);
++      this._lockRestoreExpiry = this._timeout(3000, () => {
++        this._lockRestoreExpiry = 0;
++        this._lockRestores = null;
++      });
++    }
++  }
++
++  _reassertLockRestores(why) {
++    if (!this._lockRestores?.size) return;
++    const monitors = this._monitors();
++    let count = 0;
++    for (const [window, p] of this._lockRestores) {
++      if (!this._windows.has(window) || (window[TOUCHED] ?? 0) > this._lockRestoresAt) continue;
++      if (this._exactlyAt(window, p, monitors)) continue;
++      this._apply(window, p, monitors);
++      count++;
++    }
++    if (count > 0) vitals("restore-reasserted", `${count} window(s) re-placed: ${why}`, { reason: why, windows: count });
++  }
++
++  destroy() {
++    if (this._stable) this._windows.forEach((_d, window) => this._flushSettle(window));
++    const now = this._now();
++    const monitors = this._monitors();
++    for (const [window, data] of this._windows) {
++      if (!data.mapped || notRememberableReason(window)) continue;
++      window[PAUSED] = { t: now, setup: this._stable ? this._setupKey : null, frame: frameOf(window), p: this._placementOf(window, monitors) };
++    }
++    this._windows.forEach((data, window) => this._commitSession(window, data));
++    if (this._flushId) GLib.source_remove(this._flushId);
++    this._flushId = 0;
++    for (const [object, id] of this._signals) {
++      try {
++        object.disconnect(id);
++      } catch (e) {
++      }
++    }
++    this._signals = [];
++    for (const [window, data] of this._windows) this._untrack(window, data, false);
++    this._windows.clear();
++    for (const id of this._sources) GLib.source_remove(id);
++    this._sources.clear();
++    this._stableId = 0;
++    if (this._saveId) {
++      GLib.source_remove(this._saveId);
++      this._saveId = 0;
++    }
++    if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
++    this._sleepSubscription = 0;
++    this._save();
++  }
++
++  // The person moved, resized, tiled or maximized this window.
++  touch(window, why) {
++    if (!window || !this._windows.has(window)) return;
++    window[TOUCHED] = this._now();
++    this._windows.get(window).touchedWhy = why;
++  }
++
++  onPrepareForSleep(sleeping) {
++    vitals(sleeping ? "sleep" : "wake", sleeping ? "going to sleep; recording paused" : "woke up; waiting for monitors");
++    this._asleep = sleeping;
++    if (sleeping) this._beginTransition("sleep", this._setupKey, false);
++    else this._beginTransition("wake", this._transition?.from ?? this._setupKey);
++  }
++
++  debugState() {
++    return {
++      enabled: this._enabled,
++      stable: this._stable,
++      setup: this._setupKey,
++      monitors: this._monitors().map((m) => ({ index: m.index, key: m.key, role: m.role })),
++      windows: [...this._windows.keys()].map((w) => ({
++        title: w.get_title(),
++        app: w[APP] ?? null,
++        ordinal: w[ORDINAL] ?? null,
++        touched: !!w[TOUCHED],
++        placement: this._placementOf(w, this._monitors())
++      })),
++      memory: this._memory
++    };
++  }
++
++  _now() {
++    return Date.now() + (LumaWindowMemory.testHooks?.timeOffset ?? 0);
++  }
++
++  _connect(object, signal, callback) {
++    this._signals.push([object, object.connect(signal, callback)]);
++  }
++
++  _timeout(ms, callback) {
++    const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
++      this._sources.delete(id);
++      callback();
++      return GLib.SOURCE_REMOVE;
++    });
++    this._sources.add(id);
++    return id;
++  }
++
++  _clearTimeout(id) {
++    if (id && this._sources.delete(id)) GLib.source_remove(id);
++    return 0;
++  }
++
++  // ---- memory file -------------------------------------------------------
++
++  _load() {
++    const reset = Number(this._settings.get_int64(KEY_RESET));
++    try {
++      const [ok, bytes] = GLib.file_get_contents(stateFile());
++      const value = ok ? JSON.parse(new TextDecoder().decode(bytes)) : null;
++      if (value?.version === VERSION && value.reset === reset && typeof value.setups === "object") {
++        this._memory = value;
++        return;
++      }
++    } catch (e) {
++    }
++    this._memory = emptyMemory(reset);
++  }
++
++  _queueSave() {
++    if (this._saveId) return;
++    this._saveId = GLib.timeout_add(GLib.PRIORITY_LOW, this.timing.save, () => {
++      this._saveId = 0;
++      this._save();
++      return GLib.SOURCE_REMOVE;
++    });
++  }
++
++  // The person just placed a window: survive a reboot or Shell crash seconds later.
++  _saveSoon() {
++    if (this._saveId) GLib.source_remove(this._saveId);
++    this._saveId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.timing.touchedSave, () => {
++      this._saveId = 0;
++      this._save();
++      return GLib.SOURCE_REMOVE;
++    });
++  }
++
++  _prune() {
++    const now = this._now();
++    const setups = Object.entries(this._memory.setups).sort((a, b) => (b[1].seen ?? 0) - (a[1].seen ?? 0));
++    setups.slice(MAX_SETUPS).forEach(([key]) => delete this._memory.setups[key]);
++    for (const [, setup] of setups.slice(0, MAX_SETUPS)) {
++      const apps = Object.entries(setup.apps ?? {}).map(([app, roles]) => {
++        let latest = 0;
++        for (const [role, entry] of Object.entries(roles)) {
++          entry.hist = (entry.hist ?? []).filter((h) => now - h.t < EXPIRE_MS).sort((a, b) => decayed(b, now) - decayed(a, now)).slice(0, MAX_HISTOGRAM);
++          entry.hist.forEach((h) => h.w = Math.round(h.w * 1e3) / 1e3);
++          entry.recent = (entry.recent ?? []).slice(-RECENT_SESSIONS);
++          const t = Math.max(entry.last?.t ?? 0, ...entry.hist.map((h) => h.t));
++          if (now - t >= EXPIRE_MS) delete roles[role];
++          latest = Math.max(latest, t);
++        }
++        return [app, latest];
++      }).sort((a, b) => b[1] - a[1]);
++      apps.forEach(([app, latest], index) => {
++        if (index >= MAX_APPS || Object.keys(setup.apps[app]).length === 0 || now - latest >= EXPIRE_MS)
++          delete setup.apps[app];
++      });
++    }
++  }
++
++  _save() {
++    try {
++      this._prune();
++      const file = stateFile();
++      GLib.mkdir_with_parents(GLib.path_get_dirname(file), 448);
++      GLib.file_set_contents(file, JSON.stringify(this._memory));
++    } catch (e) {
++      vitals("save-failed", `could not save: ${e}`);
++    }
++  }
++
++  _onReset() {
++    const reset = Number(this._settings.get_int64(KEY_RESET));
++    if (reset === this._memory.reset) return;
++    const active = this._memory.active;
++    this._memory = emptyMemory(reset);
++    this._memory.active = active;
++    for (const [window, data] of this._windows) {
++      delete window[LEFT];
++      data.seg = null;
++      data.session = /* @__PURE__ */ new Map();
++    }
++    this._save();
++    vitals("forgot", "forgot every window position");
++  }
++
++  _onEnabledChanged() {
++    this._enabled = this._settings.get_boolean(KEY_ENABLED);
++    vitals(this._enabled ? "enabled" : "disabled", this._enabled ? "remembering window positions" : "not remembering window positions");
++    // Switching it back on learns the current arrangement; it never moves windows.
++    if (this._enabled && this._stable) {
++      this._quietUntil = 0;
++      this._recordAll();
++    }
++  }
++
++  // ---- monitors ----------------------------------------------------------
++
++  _monitors() {
++    if (this._stable && this._monitorsCache) return this._monitorsCache;
++    const layout = Main.layoutManager;
++    const physical = [];
++    for (const logical of global.backend.get_monitor_manager().get_logical_monitors())
++      physical[logical.get_number()] = logical.get_monitors();
++    const monitors = layout.monitors.map((geometry, index) => {
++      let panel = false;
++      const ids = (physical[index] ?? []).map((monitor) => {
++        const id = LumaWindowMemory.testHooks?.monitorIdentity?.(monitor, geometry) ?? {
++          vendor: monitor.get_vendor(),
++          product: monitor.get_product(),
++          serial: monitor.get_serial(),
++          builtin: monitor.is_builtin()
++        };
++        panel ||= !!id.builtin;
++        return `${id.builtin ? "panel:" : ""}${[id.vendor, id.product, id.serial].map((v) => `${v ?? ""}`.trim()).join("|")}`;
++      }).sort();
++      return {
++        index,
++        key: ids.join("+") || `unknown-${index}`,
++        panel,
++        primary: index === layout.primaryIndex,
++        x: geometry.x,
++        y: geometry.y,
++        scale: geometry.geometry_scale ?? 1
++      };
++    });
++    // Identical monitors without serials: tell them apart left to right.
++    const byKey = /* @__PURE__ */ new Map();
++    monitors.forEach((m) => byKey.set(m.key, [...byKey.get(m.key) ?? [], m]));
++    for (const same of byKey.values()) {
++      same.sort((a, b) => a.x - b.x || a.y - b.y);
++      same.forEach((m, i) => {
++        if (i > 0) m.key = `${m.key}#${i + 1}`;
++      });
++    }
++    const secondaries = monitors.filter((m) => !m.panel && !m.primary).sort((a, b) => a.x - b.x || a.y - b.y);
++    monitors.forEach((m) => m.role = m.panel ? "panel" : m.primary ? "primary" : `secondary-${secondaries.indexOf(m) + 1}`);
++    if (this._stable) this._monitorsCache = monitors;
++    return monitors;
++  }
++
++  _setupKeys(monitors) {
++    const minX = Math.min(...monitors.map((m) => m.x));
++    const minY = Math.min(...monitors.map((m) => m.y));
++    const sorted = [...monitors].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
++    return {
++      set: sorted.map((m) => m.key).join(","),
++      key: sorted.map((m) => `${m.key}@${m.x - minX},${m.y - minY}x${m.scale}${m.primary ? "*" : ""}`).join(",")
++    };
++  }
++
++  // ---- placements --------------------------------------------------------
++
++  _placementOf(window, monitors) {
++    if (window.minimized || window.is_fullscreen()) return null;
++    const monitor = monitors.find((m) => m.index === window.get_monitor());
++    if (!monitor) return null;
++    const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
++    if (!area || area.width <= 0 || area.height <= 0) return null;
++    if (window.maximizedHorizontally && window.maximizedVertically)
++      return { m: monitor.key, k: "max", r: [0, 0, 1, 1] };
++    const frame = window.get_frame_rect();
++    const tile = window.assignedTile;
++    // A tile only counts while the window still fills it (gaps aside): Mutter
++    // moving a window to another monitor leaves a stale assignedTile behind.
++    if (tile && !window.maximizedHorizontally && !window.maximizedVertically) {
++      const slack = 64 * monitor.scale;
++      const tx = area.x + tile.x * area.width;
++      const ty = area.y + tile.y * area.height;
++      const tw = tile.width * area.width;
++      const th = tile.height * area.height;
++      if (Math.abs(frame.x - tx) <= slack && Math.abs(frame.y - ty) <= slack && Math.abs(frame.x + frame.width - tx - tw) <= slack && Math.abs(frame.y + frame.height - ty - th) <= slack)
++        return { m: monitor.key, k: "tile", r: [tile.x, tile.y, tile.width, tile.height].map(round) };
++    }
++    return {
++      m: monitor.key,
++      k: "float",
++      r: [
++        (frame.x - area.x) / area.width,
++        (frame.y - area.y) / area.height,
++        Math.min(1, frame.width / area.width),
++        Math.min(1, frame.height / area.height)
++      ].map(round)
++    };
++  }
++
++  _apply(window, p, monitors) {
++    const monitor = monitors.find((m) => m.key === p.m);
++    if (!monitor || window.is_fullscreen()) return false;
++    window[OWN_UNTIL] = this._now() + this.timing.settle + 500;
++    const [x, y, width, height] = p.r;
++    const maximized = window.maximizedHorizontally || window.maximizedVertically;
++    if (p.k === "max") {
++      if (window.get_monitor() !== monitor.index) {
++        if (maximized) unmaximizeWindow(window);
++        window.move_to_monitor(monitor.index);
++      }
++      if (!(window.maximizedHorizontally && window.maximizedVertically)) maximizeWindow(window);
++      return true;
++    }
++    if (maximized) unmaximizeWindow(window);
++    if (window.get_monitor() !== monitor.index) window.move_to_monitor(monitor.index);
++    if (p.k === "tile") {
++      const manager = this._managerFor(monitor.index);
++      if (manager) {
++        // Keep the current tile until the new one is set: clearing it first
++        // would flash the client's floating decorations and lose its original size.
++        const before = window.assignedTile;
++        manager._easeWindowRectFromTile(new Tile({ x, y, width, height, groups: [] }), window, true);
++        const now = window.assignedTile;
++        if (now && (now !== before || samePlacement({ m: p.m, k: "tile", r: [now.x, now.y, now.width, now.height] }, p))) return true;
++      }
++    }
++    const [left, top, w, h] = this._floatFrame(p, monitor);
++    window.assignedTile = void 0;
++    window.move_resize_frame(false, left, top, w, h);
++    return true;
++  }
++
++  _floatFrame(p, monitor) {
++    const [x, y, width, height] = p.r;
++    const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
++    const w = Math.max(1, Math.min(area.width, Math.round(width * area.width)));
++    const h = Math.max(1, Math.min(area.height, Math.round(height * area.height)));
++    const left = Math.max(area.x, Math.min(area.x + area.width - w, Math.round(area.x + x * area.width)));
++    const top = Math.max(area.y, Math.min(area.y + area.height - h, Math.round(area.y + y * area.height)));
++    return [left, top, w, h];
++  }
++
++  // Is the window exactly at p (not merely close)? Tiles are re-applied anyway:
++  // Tiling Shell computes their gaps, and re-applying an exact tile is a no-op.
++  _exactlyAt(window, p, monitors) {
++    const monitor = monitors.find((m) => m.key === p.m);
++    if (!monitor || window.get_monitor() !== monitor.index) return false;
++    const maximized = window.maximizedHorizontally && window.maximizedVertically;
++    if (p.k === "max") return maximized;
++    if (maximized) return false;
++    if (p.k === "tile") return false;
++    return sameFrame(frameOf(window), this._floatFrame(p, monitor));
++  }
++
++  // The place a window has lived longest (decayed hours). Strong when it has
++  // real hours, several sessions and most of the weight.
++  _habit(entry, now, { any = false } = {}) {
++    const hist = entry?.hist ?? [];
++    let total = 0;
++    let best = null;
++    let bestWeight = 0;
++    for (const item of hist) {
++      const weight = decayed(item, now);
++      total += weight;
++      if (weight > bestWeight) {
++        best = item;
++        bestWeight = weight;
++      }
++    }
++    if (!best) return null;
++    const habit = { p: best.p, weight: bestWeight, share: total > 0 ? bestWeight / total : 0, sessions: best.n ?? 0 };
++    if (any) return habit;
++    if (bestWeight < HABIT_MIN_HOURS || habit.sessions < HABIT_MIN_SESSIONS || habit.share < HABIT_MIN_SHARE) return null;
++    return habit;
++  }
++
++  // Launch rule (and restore, for windows opened since): a strong habit wins
++  // when it points elsewhere; otherwise the last placement, however old.
++  _decide(entry, present, now) {
++    const last = entry?.last?.sure && present(entry.last.p) ? entry.last.p : null;
++    const habit = this._habit(entry, now);
++    if (habit && present(habit.p) && (!last || !samePlacement(habit.p, last))) {
++      return {
++        p: habit.p,
++        why: last ? "habit-overrides-last" : "habit",
++        confidence: `${Math.round(habit.share * 100)}% of ${habit.weight.toFixed(1)} h over ${habit.sessions} sessions`
++      };
++    }
++    return last ? { p: last, why: "last", confidence: "" } : null;
++  }
++  _setupRecordFor(monitors, { exact } = {}) {
++    const { key, set } = this._setupKeys(monitors);
++    if (this._memory.setups[key]) return { record: this._memory.setups[key], key, mode: "known" };
++    if (exact) return { record: null, key: null, mode: "new" };
++    const sameMonitors = Object.entries(this._memory.setups).filter(([, s]) => s.set === set).sort((a, b) => b[1].seen - a[1].seen)[0];
++    return sameMonitors ? { record: sameMonitors[1], key: sameMonitors[0], mode: "same-monitors" } : { record: null, key: null, mode: "new" };
++  }
++
++  _entry(record, window, create = false, ordinal = window[ORDINAL]) {
++    if (!record || !window[APP] || !(ordinal >= 0)) return null;
++    const role = ordinalName(ordinal);
++    if (!create) return record.apps?.[window[APP]]?.[role] ?? null;
++    record.apps ??= {};
++    record.apps[window[APP]] ??= {};
++    return record.apps[window[APP]][role] ??= { last: null, hist: [] };
++  }
++
++  // ---- windows -----------------------------------------------------------
++
++  _identify(window) {
++    if (window[APP] && window[ORDINAL] !== void 0) return window[APP];
++    const app = appIdentity(window);
++    if (!app) return null;
++    const used = new Set([...this._windows.keys()].filter((w) => w !== window && w[APP] === app).map((w) => w[ORDINAL]));
++    let ordinal = 0;
++    while (used.has(ordinal)) ordinal++;
++    window[APP] = app;
++    window[ORDINAL] = ordinal < MAX_ORDINALS ? ordinal : -1;
++    return app;
++  }
++
++  _track(window, existing = false) {
++    if (this._windows.has(window) || window.get_window_type() !== Meta.WindowType.NORMAL) return null;
++    const data = { ids: [], settleId: 0, launchId: 0, seg: null, session: /* @__PURE__ */ new Map() };
++    this._windows.set(window, data);
++    const onChange = () => this._onWindowChanged(window);
++    for (const signal of ["position-changed", "size-changed", "notify::maximized-horizontally", "notify::maximized-vertically", "notify::minimized"])
++      data.ids.push(window.connect(signal, onChange));
++    data.ids.push(window.connect("notify::maximized-vertically", () => {
++      if (this._stable && window.has_focus() && (window[OWN_UNTIL] ?? 0) < this._now() && data.mapped) this.touch(window, "maximize");
++    }));
++    data.ids.push(window.connect("unmanaged", () => this._onUnmanaged(window)));
++    data.ids.push(window.connect("shown", () => data.shown = true));
++    data.shown = existing;
++    data.mapped = existing;
++    if (isRememberable(window)) this._identify(window);
++    return data;
++  }
++
++  _untrack(window, data, forget = true) {
++    [...data.ids, ...data.identityIds?.splice(0) ?? []].forEach((id) => {
++      try {
++        window.disconnect(id);
++      } catch (e) {
++      }
++    });
++    if (data.hold) this._revealHold(window, data, forget ? "closed while held" : "Tiling Shell stopping", { animate: false });
++    data.settleId = this._clearTimeout(data.settleId);
++    data.launchId = this._clearTimeout(data.launchId);
++    if (data.actor && data.frameId) data.actor.disconnect(data.frameId);
++    if (forget) this._windows.delete(window);
++  }
++
++  _onWindowCreated(window) {
++    const data = this._track(window);
++    if (!data) return;
++    const actor = window.get_compositor_private();
++    if (!actor) return;
++    data.actor = actor;
++    // Decide before the client's first frame: a window with a place of its own
++    // stays invisible until it is there, then appears with the usual animation.
++    if (this._hold(window, data)) return;
++    // Wayland clients send their app id just after the window is created, and
++    // before its first frame: decide then.
++    if (!data.decided) {
++      const late = () => {
++        if (data.decided || data.shown || data.hold) return;
++        this._hold(window, data);
++        if (data.decided) {
++          for (const id of data.identityIds.splice(0)) window.disconnect(id);
++        }
++      };
++      data.identityIds = ["notify::wm-class", "notify::gtk-application-id"].map((signal) => window.connect(signal, late));
++    }
++    data.frameId = actor.connect("first-frame", () => {
++      actor.disconnect(data.frameId);
++      data.frameId = 0;
++      data.launchId = this._timeout(this.timing.launchDelay, () => {
++        data.launchId = 0;
++        data.mapped = true;
++        // Only windows whose identity was not known when they were created.
++        if (!data.decided) this._launch(window);
++      });
++    });
++  }
++
++  _hold(window, data) {
++    const decision = this._launchDecision(window);
++    if (decision !== void 0) data.decided = true;
++    if (!decision) return false;
++    data.held = true;
++    const hold = data.hold = { decision, start: this._now(), attempts: 0, ids: [], x11: window.get_client_type() === Meta.WindowClientType.X11, drawn: false, shown: data.shown };
++    Main.wm.skipNextEffect(data.actor);
++    data.actor.opacity = 0;
++    const check = () => this._checkHold(window, data);
++    for (const signal of ["size-changed", "position-changed", "notify::maximized-vertically"])
++      hold.ids.push([window, window.connect(signal, check)]);
++    hold.ids.push([window, window.connect("shown", () => {
++      hold.shown = true;
++      hold.shownId ||= this._timeout(this.timing.holdAfterShown, () => this._revealHold(window, data, "safety timeout"));
++      check();
++    })]);
++    for (const signal of ["damaged", "thawed", "first-frame"]) {
++      try {
++        hold.ids.push([data.actor, data.actor.connect(signal, () => {
++          hold.drawn = true;
++          check();
++        })]);
++      } catch (e) {
++      }
++    }
++    hold.maxId = this._timeout(this.timing.holdMax, () => this._revealHold(window, data, "safety timeout"));
++    if (hold.shown) this._checkHold(window, data);
++    return true;
++  }
++
++  // The exact frame Tiling Shell gives a tile on this monitor, and the tile.
++  _tileFrame(window, p, monitor) {
++    const manager = this._managerFor(monitor.index);
++    if (!manager) return null;
++    const [x, y, width, height] = p.r;
++    const probe = {
++      maximizedHorizontally: false,
++      maximizedVertically: false,
++      assignedTile: void 0,
++      originalSize: void 0,
++      rect: null,
++      get_workspace: () => window.get_workspace() ?? global.workspace_manager.get_active_workspace(),
++      get_frame_rect: () => window.get_frame_rect(),
++      move_resize_frame(_user, fx, fy, fw, fh) {
++        this.rect = [fx, fy, fw, fh];
++      }
++    };
++    manager._easeWindowRectFromTile(new Tile({ x, y, width, height, groups: [] }), probe, true);
++    return probe.rect ? { frame: probe.rect, tile: probe.assignedTile } : null;
++  }
++
++  _placeHeld(window, data) {
++    const hold = data.hold;
++    const p = hold.decision.target;
++    const monitors = this._monitors();
++    const monitor = monitors.find((m) => m.key === p.m);
++    if (!monitor) {
++      this._revealHold(window, data, "monitor gone");
++      return;
++    }
++    hold.placing = true;
++    hold.drawn = false;
++    try {
++      window[OWN_UNTIL] = this._now() + this.timing.holdMax;
++      if (window.get_monitor() !== monitor.index) window.move_to_monitor(monitor.index);
++      if (p.k === "max") {
++        const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
++        hold.expected = [area.x, area.y, area.width, area.height];
++        if (!(window.maximizedHorizontally && window.maximizedVertically)) maximizeWindow(window);
++      } else if (p.k === "tile" && (hold.tile ??= this._tileFrame(window, p, monitor))) {
++        hold.expected = hold.tile.frame;
++        window.assignedTile = hold.tile.tile;
++        window.move_resize_frame(false, ...hold.expected);
++      } else {
++        hold.expected = this._floatFrame(p, monitor);
++        window.move_resize_frame(false, ...hold.expected);
++      }
++    } finally {
++      hold.placing = false;
++    }
++  }
++
++  _checkHold(window, data) {
++    const hold = data.hold;
++    if (!hold || hold.placing) return;
++    const unfit = notRememberableReason(window);
++    if (unfit) {
++      this._revealHold(window, data, `turned out to be ${unfit}`);
++      return;
++    }
++    // Mutter places a window when it is first shown, and only then are its size
++    // limits and role known: place it then.
++    if (!hold.shown) return;
++    if (!hold.started) {
++      hold.started = true;
++      this._identify(window);
++      if (window[ORDINAL] !== 0) {
++        this._revealHold(window, data, "not the app's first window");
++        return;
++      }
++      if (window[TOUCHED]) {
++        this._revealHold(window, data, "moved by the person");
++        return;
++      }
++      const before = frameOf(window);
++      this._placeHeld(window, data);
++      if (!data.hold) return;
++      if (sameFrame(before, frameOf(window))) hold.drawn = true;
++    }
++    const frame = frameOf(window);
++    if (frame[2] <= 1 || frame[3] <= 1) return;
++    const maximized = window.maximizedHorizontally && window.maximizedVertically;
++    const inPlace = hold.decision.target.k === "max" ? maximized && sameFrame(frame, hold.expected) : !maximized && sameFrame(frame, hold.expected);
++    if (!inPlace) {
++      // The client's own first size is its size when untiled.
++      if (!hold.natural && hold.decision.target.k === "tile" && !maximized) hold.natural = window.get_frame_rect().copy();
++      if (hold.attempts < 4) {
++        hold.attempts++;
++        this._placeHeld(window, data);
++      }
++      return;
++    }
++    // X11 clients draw after the resize; wait for their new contents.
++    if (hold.x11 && !hold.drawn) return;
++    this._revealHold(window, data, "in place");
++  }
++
++  _revealHold(window, data, why, { animate = true } = {}) {
++    const hold = data.hold;
++    if (!hold) return;
++    data.hold = null;
++    for (const [object, id] of hold.ids) {
++      try {
++        object.disconnect(id);
++      } catch (e) {
++      }
++    }
++    this._clearTimeout(hold.shownId);
++    this._clearTimeout(hold.maxId);
++    const actor = data.actor;
++    Main.wm._skippedActors?.delete(actor);
++    const p = hold.decision.target;
++    if (p.k === "tile" && window.assignedTile && !window.originalSize) {
++      const area = Main.layoutManager.getWorkAreaForMonitor(window.get_monitor());
++      const n = hold.natural;
++      window.originalSize = n && n.width > 1 ? n : buildRectangle({
++        x: area.x + Math.round(area.width * 0.2),
++        y: area.y + Math.round(area.height * 0.15),
++        width: Math.round(area.width * 0.6),
++        height: Math.round(area.height * 0.7)
++      });
++    }
++    window[OWN_UNTIL] = this._now() + this.timing.settle + 500;
++    data.mapped = true;
++    this._onWindowChanged(window);
++    const waited = this._now() - hold.start;
++    try {
++      actor.remove_all_transitions();
++      if (animate && St.Settings.get().enable_animations && !window.minimized) {
++        // The Shell's own map animation, now at the window's place.
++        actor.set_pivot_point(0.5, 1);
++        actor.scale_x = 0.01;
++        actor.scale_y = 0.05;
++        actor.opacity = 0;
++        actor.ease({
++          opacity: 255,
++          scale_x: 1,
++          scale_y: 1,
++          duration: 150,
++          mode: Clutter.AnimationMode.EASE_OUT_EXPO
++        });
++      } else {
++        actor.opacity = 255;
++        actor.scale_x = 1;
++        actor.scale_y = 1;
++      }
++    } catch (e) {
++    }
++    const { target, why: reason, confidence, mode } = hold.decision;
++    const placed = why === "in place";
++    vitals(placed ? "launch-placed" : "launch-revealed", `${window[APP]} ${placed ? "opened" : "shown"} at ${describe(target)} (${reason}${confidence ? `, ${confidence}` : ""}; ${why} after ${waited} ms)`, {
++      app: window[APP],
++      reason,
++      kind: target.k,
++      monitor: target.m,
++      confidence,
++      setup_mode: mode,
++      hidden_ms: waited,
++      reveal: why
++    });
++  }
++
++  // undefined: identity not known yet; null: no placement; else the decision.
++  _launchDecision(window) {
++    if (!this._enabled || this._locked || !isRememberable(window)) return null;
++    const shown = this._windows.get(window)?.shown;
++    // Before a window is shown its size limits are unknown (a splash screen still
++    // looks resizable), so its role is only assumed here and settled when shown.
++    const title = shown ? this._identify(window) : window[APP] ??= appIdentity(window);
++    if (!title) return void 0;
++    const ordinal = shown ? window[ORDINAL] : [...this._windows.keys()].some((w) => w !== window && w[APP] === title && w[ORDINAL] === 0) ? 1 : 0;
++    if (ordinal !== 0) return null;
++    if (window[TOUCHED]) {
++      vitals("launch-skipped", `${title} was moved by the person before it could be placed`, { app: title, reason: "touched" });
++      return null;
++    }
++    if (!this._stable) {
++      vitals("launch-skipped", `${title} opened while monitors were changing`, { app: title, reason: "monitors-changing" });
++      return null;
++    }
++    const monitors = this._monitors();
++    const { record, mode } = this._setupRecordFor(monitors);
++    const entry = this._entry(record, window, false, ordinal);
++    const present = (p) => p && monitors.some((m) => m.key === p.m);
++    const decision = this._decide(entry, present, this._now());
++    if (!decision) {
++      vitals("launch-unplaced", `${title}: no confident placement; left where it opens`, { app: title, reason: entry ? "no-chosen-placement" : "no-history", setup_mode: mode });
++      return null;
++    }
++    return { target: decision.p, why: decision.why, confidence: decision.confidence, mode };
++  }
++  // Fallback for a window whose identity arrived after it was created: placed
++  // after its first frame (visible, but rare).
++  _launch(window) {
++    const decision = this._launchDecision(window);
++    if (!decision) return;
++    const monitors = this._monitors();
++    const { target, why, confidence, mode } = decision;
++    if (samePlacement(this._placementOf(window, monitors), target)) return;
++    this._apply(window, target, monitors);
++    vitals("launch-placed-late", `${window[APP]} placed at ${describe(target)} after its first frame (${why}${confidence ? `, ${confidence}` : ""})`, {
++      app: window[APP],
++      reason: why,
++      kind: target.k,
++      monitor: target.m,
++      setup_mode: mode
++    });
++  }
++  _onWindowChanged(window) {
++    const data = this._windows.get(window);
++    if (!data || !this._stable || !this._enabled) return;
++    data.settleId = this._clearTimeout(data.settleId);
++    data.settleId = this._timeout(window[TOUCHED] ? this.timing.touchedSettle : this.timing.settle, () => {
++      data.settleId = 0;
++      this._record(window);
++    });
++  }
++
++  _flushSettle(window) {
++    const data = this._windows.get(window);
++    if (data?.settleId) {
++      data.settleId = this._clearTimeout(data.settleId);
++      this._record(window);
++    }
++  }
++
++  _onUnmanaged(window) {
++    const data = this._windows.get(window);
++    if (!data) return;
++    if (this._recording() && isRememberable(window) && window[APP]) {
++      const entry = this._entry(this._currentRecord(), window);
++      const p = this._placementOf(window, this._monitors());
++      if (entry?.last && (!p || samePlacement(entry.last.p, p))) entry.last.t = this._now();
++      else if (p && data.mapped) this._record(window);
++      this._queueSave();
++    }
++    this._commitSession(window, data);
++    this._untrack(window, data);
++  }
++
++  _recording() {
++    return this._enabled && this._stable && this._now() >= this._quietUntil;
++  }
++
++  _currentRecord() {
++    return this._setupKey ? this._memory.setups[this._setupKey] : null;
++  }
++
++  _record(window) {
++    if (!this._recording() || !isRememberable(window) || !this._identify(window) || window[ORDINAL] < 0) return;
++    const data = this._windows.get(window);
++    if (!data?.mapped) return;
++    const p = this._placementOf(window, this._monitors());
++    if (!p) return;
++    const record = this._currentRecord();
++    const entry = this._entry(record, window, true);
++    const now = this._now();
++    const sure = !!window[TOUCHED] || (window[OWN_UNTIL] ?? 0) > 0;
++    const changed = !samePlacement(entry.last?.p, p);
++    entry.last = { p, t: now, sure: sure || !changed && !!entry.last?.sure };
++    if (changed && window[TOUCHED]) this._saveSoon();
++    if (changed) {
++      vitals("remembered", `${window[APP]} (${ordinalName(window[ORDINAL])}) lives at ${describe(p)}`, {
++        app: window[APP],
++        role: ordinalName(window[ORDINAL]),
++        kind: p.k,
++        monitor: p.m
++      });
++    }
++    const id = bucketId(p);
++    if (!data.seg || data.seg.setup !== this._setupKey || data.seg.id !== id) {
++      this._credit(window, data, now);
++      data.seg = { setup: this._setupKey, p, id, since: now };
++    }
++    this._queueSave();
++  }
++
++  // Credit the hours a window has lived in its current place so far.
++  _credit(window, data, now) {
++    const seg = data.seg;
++    if (!seg) return;
++    const elapsed = Math.min(SEGMENT_CAP_MS, Math.max(0, now - seg.since));
++    seg.since = now;
++    const entry = this._entry(this._memory.setups[seg.setup], window);
++    if (!entry || elapsed <= 0) return;
++    const key = `${seg.setup}|${seg.id}`;
++    const stay = data.session.get(key) ?? { setup: seg.setup, p: seg.p, id: seg.id, ms: 0 };
++    stay.ms += elapsed;
++    data.session.set(key, stay);
++    entry.hist ??= [];
++    const item = entry.hist.find((h) => bucketId(h.p) === seg.id);
++    if (item) {
++      item.w = decayed(item, now) + elapsed / HOUR;
++      item.t = now;
++      item.p = seg.p;
++    } else {
++      entry.hist.push({ p: seg.p, w: elapsed / HOUR, t: now, n: 0 });
++    }
++    if (stay.ms >= this.timing.dwell && entry.last && samePlacement(entry.last.p, seg.p)) entry.last.sure = true;
++  }
++
++  // A window session ends (closed, setup left, Shell stopping): count one
++  // session for each place it really stayed, and look for a sustained move.
++  _commitSession(window, data) {
++    const now = this._now();
++    this._credit(window, data, now);
++    data.seg = null;
++    const bySetup = /* @__PURE__ */ new Map();
++    for (const stay of data.session.values()) bySetup.set(stay.setup, [...bySetup.get(stay.setup) ?? [], stay]);
++    data.session = /* @__PURE__ */ new Map();
++    for (const [setup, stays] of bySetup) {
++      const entry = this._entry(this._memory.setups[setup], window);
++      if (!entry) continue;
++      for (const stay of stays) {
++        const item = stay.ms >= this.timing.dwell && entry.hist.find((h) => bucketId(h.p) === stay.id);
++        if (item) item.n = (item.n ?? 0) + 1;
++      }
++      const main = stays.reduce((a, b) => b.ms > a.ms ? b : a);
++      if (main.ms < this.timing.dwell) continue;
++      entry.recent = [...entry.recent ?? [], { b: main.id, h: Math.round(main.ms / HOUR * 1e3) / 1e3, t: now }].slice(-RECENT_SESSIONS);
++      this._detectShift(window, entry, now);
++    }
++    this._queueSave();
++  }
++
++  _detectShift(window, entry, now) {
++    const recent = entry.recent;
++    const place = recent[recent.length - 1]?.b;
++    let streak = 0;
++    for (let i = recent.length - 1; i >= 0 && recent[i].b === place; i--) streak++;
++    if (streak < SHIFT_MIN_STREAK) return;
++    const hours = recent.reduce((sum, r) => sum + r.h, 0);
++    const share = hours > 0 ? recent.filter((r) => r.b === place).reduce((sum, r) => sum + r.h, 0) / hours : 0;
++    const habit = this._habit(entry, now, { any: true });
++    if (share < SHIFT_MIN_SHARE || !habit || bucketId(habit.p) === place) return;
++    for (const item of entry.hist) {
++      if (bucketId(item.p) !== place) {
++        item.w = decayed(item, now) * SHIFT_DEMOTE;
++        item.t = now;
++      }
++    }
++    vitals("habit-shift", `${window[APP]} (${ordinalName(window[ORDINAL])}) moved for good: ${streak} sessions in a new place outweigh ${describe(habit.p)}`, {
++      app: window[APP],
++      role: ordinalName(window[ORDINAL]),
++      streak,
++      share: share.toFixed(2)
++    });
++  }
++  _recordAll() {
++    for (const window of this._windows.keys()) {
++      if (this._windows.get(window).mapped) this._record(window);
++    }
++  }
++
++  // ---- monitor setup changes ---------------------------------------------
++
++  _beginTransition(reason, from = this._setupKey, waitForStable = true) {
++    if (this._stable || !this._transition) {
++      const now = this._now();
++      this._transition = { from, start: now, reason };
++      if (this._stable) {
++        // Windows open when a setup is left were there until now.
++        const record = this._currentRecord();
++        for (const [window, data] of this._windows) {
++          data.settleId = this._clearTimeout(data.settleId);
++          const entry = this._entry(record, window);
++          if (entry?.last) entry.last.t = now;
++          const left = data.seg?.p ?? entry?.last?.p;
++          if (record && left) (window[LEFT] ??= /* @__PURE__ */ new Map()).set(this._setupKey, left);
++          this._commitSession(window, data);
++        }
++        vitals("setup-changing", `monitors changing (${reason}); recording paused`, { reason });
++      }
++      this._stable = false;
++      this._monitorsCache = null;
++      for (const data of this._windows.values()) data.settleId = this._clearTimeout(data.settleId);
++    }
++    if (waitForStable) this._scheduleStable();
++    else this._stableId = this._clearTimeout(this._stableId);
++  }
++
++  _scheduleStable() {
++    this._stableId = this._clearTimeout(this._stableId);
++    // Between PrepareForSleep and waking up, only settle if wake never arrives.
++    this._stableId = this._timeout(this._asleep ? 30 * 1e3 : this.timing.stable, () => {
++      this._stableId = 0;
++      this._asleep = false;
++      this._settle();
++    });
++  }
++
++  _settle() {
++    const transition = this._transition ?? { from: this._setupKey, start: this._now(), reason: "unknown" };
++    const monitors = this._monitors();
++    const { key, set } = this._setupKeys(monitors);
++    const now = this._now();
++    const previous = transition.from ? this._memory.setups[transition.from] : null;
++    const { record: source, key: sourceKey, mode } = this._setupRecordFor(monitors);
++    let moved = 0;
++    let kept = 0;
++    let touched = 0;
++    const skipped = /* @__PURE__ */ new Map();
++    const skip = (window, reason) => {
++      skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
++      vitals("restore-skipped", `${window[APP] ?? appIdentity(window) ?? window.get_wm_class() ?? "window"}${window[ORDINAL] >= 0 ? ` (${ordinalName(window[ORDINAL])})` : ""} left alone: ${reason}`, {
++        app: window[APP] ?? appIdentity(window),
++        reason
++      });
++    };
++    if (this._enabled) {
++      for (const window of this._windows.keys()) {
++        const paused = window[PAUSED];
++        delete window[PAUSED];
++        const unfit = notRememberableReason(window);
++        if (unfit) {
++          if (window.get_window_type() === Meta.WindowType.NORMAL && !window.is_override_redirect()) skip(window, unfit);
++          continue;
++        }
++        if (!this._identify(window)) {
++          skip(window, "no app identity");
++          continue;
++        }
++        if (window[ORDINAL] < 0) {
++          skip(window, `more than ${MAX_ORDINALS} windows of this app`);
++          continue;
++        }
++        if (window.minimized) {
++          skip(window, "minimized");
++          continue;
++        }
++        if ((window[TOUCHED] ?? 0) >= transition.start) {
++          touched++;
++          skip(window, "moved by the person while monitors changed");
++          continue;
++        }
++        let target;
++        if (paused && paused.setup === key) {
++          if (!sameFrame(paused.frame, frameOf(window))) {
++            skip(window, "moved while Tiling Shell was off");
++            continue;
++          }
++          target = paused.p ? { p: paused.p, why: "as it was when Tiling Shell stopped" } : { p: null, why: "had no placement when Tiling Shell stopped" };
++        } else if (!paused && /^(enable|re-enable)/.test(transition.reason) && this._windows.get(window)?.mapped) {
++          skip(window, "opened while Tiling Shell was off");
++          continue;
++        } else {
++          target = this._restoreTarget(window, monitors, source, sourceKey, previous, now);
++        }
++        if (!target.p) {
++          skip(window, target.why);
++          continue;
++        }
++        if (this._locked) {
++          this._lockRestores ??= /* @__PURE__ */ new Map();
++          this._lockRestores.set(window, target.p);
++          this._lockRestoresAt = now;
++        }
++        const was = this._placementOf(window, monitors);
++        if (this._exactlyAt(window, target.p, monitors)) {
++          kept++;
++          continue;
++        }
++        this._apply(window, target.p, monitors);
++        if (target.p.k === "tile" && samePlacement(was, target.p)) {
++          kept++;
++          continue;
++        }
++        moved++;
++        vitals("restored", `${window[APP]} (${ordinalName(window[ORDINAL])}) back to ${describe(target.p)} (${target.why})`, {
++          app: window[APP],
++          role: ordinalName(window[ORDINAL]),
++          reason: target.why,
++          kind: target.p.k,
++          monitor: target.p.m
++        });
++      }
++    }
++    const record = this._memory.setups[key] ??= { set, seen: now, monitors: {}, apps: {} };
++    record.set = set;
++    record.seen = now;
++    record.monitors = Object.fromEntries(monitors.map((m) => [m.key, m.role]));
++    this._memory.active = key;
++    this._setupKey = key;
++    this._transition = null;
++    this._stable = true;
++    this._monitorsCache = null;
++    this._quietUntil = now + this.timing.quiet;
++    vitals("setup-stable", `${monitors.length} monitor(s), ${mode} setup after ${transition.reason}: moved ${moved}, kept ${kept}, person moved ${touched}${skipped.size ? `, left alone ${[...skipped].map(([r, n]) => `${n} ${r}`).join("; ")}` : ""}`, {
++      reason: transition.reason,
++      setup_mode: mode,
++      monitors: monitors.length,
++      moved,
++      kept,
++      touched
++    });
++    this._queueSave();
++    this._timeout(this.timing.quiet + 50, () => {
++      if (this._stable) this._recordAll();
++    });
++  }
++
++  _restoreTarget(window, monitors, source, sourceKey, previous, now) {
++    const present = (p) => p && monitors.some((m) => m.key === p.m);
++    // Open when this setup was left: exactly as it was left.
++    const left = sourceKey && window[LEFT]?.get(sourceKey);
++    if (present(left)) return { p: left, why: "as it was left in this setup" };
++    const entry = this._entry(source, window);
++    const decision = this._decide(entry, present, now);
++    if (decision) return { p: decision.p, why: `${decision.why} in this setup` };
++    // Not remembered here: keep what it had before the change, without piling
++    // windows onto a monitor that already has its own.
++    const last = this._entry(previous, window)?.last?.p;
++    if (!last) {
++      if (entry?.last && !present(entry.last.p)) return { p: null, why: "its monitor is not connected" };
++      return { p: null, why: entry ? "never placed by the person in this setup" : "no memory in this setup" };
++    }
++    if (present(last)) return { p: last, why: "same monitor as before" };
++    const role = previous.monitors?.[last.m];
++    const monitor = monitors.find((m) => m.role === role && !(m.key in (previous.monitors ?? {})));
++    return monitor ? { p: { ...last, m: monitor.key }, why: `same role (${role})` } : { p: null, why: "its monitor went away and no new monitor has its role" };
++  }}
+diff -ruN a/extension.js b/extension.js
+--- a/extension.js
++++ b/extension.js
+@@ -36,7 +36,17 @@
+ // and spill past the tile. Every place Tiling Shell tiles or releases a window
+ // sets `assignedTile`, so that one property tells Mutter.
+ const LUMA_ASSIGNED_TILE = Symbol("luma-assigned-tile");
++//
++// GNOME disables and at once re-enables every extension after one that is
++// switched off (at lock, extensions that do not run on the lock screen are
++// switched off). Releasing tiled state waits a moment, so such a re-enable does
++// not flash windows back to floating.
++let lumaReleaseId = 0;
+ function lumaTrackTiledState() {
++  if (lumaReleaseId) {
++    GLib.source_remove(lumaReleaseId);
++    lumaReleaseId = 0;
++  }
+   if (Object.getOwnPropertyDescriptor(Meta.Window.prototype, "assignedTile"))
+     return;
+   Object.defineProperty(Meta.Window.prototype, "assignedTile", {
+@@ -52,14 +62,24 @@
+ }
+ function lumaReleaseTiledState() {
+   delete Meta.Window.prototype.assignedTile;
+-  for (const actor of global.get_window_actors())
+-    actor.get_meta_window()?.set_externally_tiled?.(false);
++  if (lumaReleaseId) return;
++  lumaReleaseId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
++    lumaReleaseId = 0;
++    for (const actor of global.get_window_actors()) {
++      const window = actor.get_meta_window();
++      if (!window) continue;
++      delete window[LUMA_ASSIGNED_TILE];
++      window.set_externally_tiled?.(false);
++    }
++    return GLib.SOURCE_REMOVE;
++  });
+ }
+ import { TilingManager } from "./components/tilingsystem/tilingManager.js";
+ import Settings from "./settings/settings.js";
+ import SignalHandling from "./utils/signalHandling.js";
+ import GlobalState from "./utils/globalState.js";
+ import * as LumaLayoutMemory from "./utils/lumaLayoutMemory.js";
++import LumaWindowMemory from "./components/lumaWindowMemory/windowMemory.js";
+ import Indicator from "./indicator/indicator.js";
+ import DBus from "./dbus.js";
+ import { KeyBindingsDirection, FocusSwitchDirection } from "./keybindings.js";
+@@ -130,6 +150,14 @@
+     lumaTrackTiledState();
+     if (this._signals) this._signals.disconnect();
+     this._signals = new SignalHandling();
++    // Luma: Tiling Shell keeps running on the lock screen (session-modes
++    // user + unlock-dialog), so windows keep their tiles across lock and sleep.
++    // Its key bindings only act in normal mode and its panel indicator is
++    // hidden by the Shell there; window memory finishes any restore before the
++    // desktop is revealed.
++    this._signals.connect(Main.sessionMode, "updated", () => {
++      this._lumaWindowMemory?.onSessionModeChanged(!!Main.sessionMode.isLocked);
++    });
+     Settings.initialize(this.getSettings());
+     if (Settings.LAST_VERSION_NAME_INSTALLED === "0") {
+       this._onInstall();
+@@ -380,6 +408,7 @@
+       OverriddenWindowMenu,
+       "tile-clicked",
+       (_, tile, window) => {
++        this._lumaWindowMemory?.touch(window, "window-menu");
+         const monitorIndex = window.get_monitor();
+         const manager = this._tilingManagers[monitorIndex];
+         if (manager) manager.onTileFromWindowMenu(tile, window);
+@@ -389,6 +418,21 @@
+       if (Settings.OVERRIDE_ALT_TAB) OverriddenAltTab.enable();
+       else OverriddenAltTab.disable();
+     });
++    // Luma: windows open where they live and come back when monitors change (ADR-036).
++    this._lumaWindowMemory?.destroy();
++    this._lumaWindowMemory = null;
++    try {
++      this._lumaWindowMemory = new LumaWindowMemory({
++        settings: Settings.gioSetting,
++        managerFor: (index) => this._tilingManagers[index],
++        keybindings: this._keybindings
++      });
++      this._lumaWindowMemory.enable();
++      this._lumaWindowMemory.onSessionModeChanged(!!Main.sessionMode.isLocked);
++    } catch (e) {
++      console.log(`[luma-window-memory] unavailable: ${e}`);
++      this._lumaWindowMemory = null;
++    }
+   }
+ 
+   /* todo private _moveMaximizedToWorkspace(
+@@ -622,6 +666,12 @@
+   }
+ 
+   disable() {
++    try {
++      this._lumaWindowMemory?.destroy();
++    } catch (e) {
++      console.log(`[luma-window-memory] teardown: ${e}`);
++    }
++    this._lumaWindowMemory = null;
+     lumaReleaseTiledState();
+     this._keybindings?.destroy();
+     this._keybindings = null;
+diff -ruN a/metadata.json b/metadata.json
+--- a/metadata.json
++++ b/metadata.json
+@@ -8,6 +8,10 @@
+   "gettext-domain": "tilingshell",
+   "name": "Tiling Shell",
+   "settings-schema": "org.gnome.shell.extensions.tilingshell",
++  "session-modes": [
++    "user",
++    "unlock-dialog"
++  ],
+   "shell-version": [
+     "45",
+     "46",
+diff -ruN a/prefs.js b/prefs.js
+--- a/prefs.js
++++ b/prefs.js
+@@ -295,6 +295,33 @@
+       )
+     );
+     behaviourGroup.add(raiseTogetherRow);
++    // Luma: window placement memory (ADR-036).
++    const windowPositionsGroup = new Adw.PreferencesGroup({
++      title: _("Window Positions")
++    });
++    windowPositionsGroup.add(
++      this._buildSwitchRow(
++        "luma-remember-window-positions",
++        _("Remember window positions"),
++        _("Open apps where you usually keep them, and put windows back when monitors change")
++      )
++    );
++    const forgetButton = new Gtk.Button({
++      label: _("Forget"),
++      valign: Gtk.Align.CENTER
++    });
++    const forgetRow = new Adw.ActionRow({
++      title: _("Forget Window Positions"),
++      subtitle: _("Luma learns again from how you arrange your windows")
++    });
++    forgetRow.add_suffix(forgetButton);
++    forgetButton.connect("clicked", () => {
++      Settings.gioSetting.set_int64("luma-window-memory-reset", GLib.get_real_time());
++      forgetButton.set_label(_("Forgotten"));
++      forgetButton.set_sensitive(false);
++    });
++    windowPositionsGroup.add(forgetRow);
++    prefsPage.add(windowPositionsGroup);
+     const activeScreenEdgesGroup = new Adw.PreferencesGroup({
+       title: _("Screen Edges"),
+       description: _(
+diff -ruN a/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml b/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+--- a/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
++++ b/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+@@ -12,6 +12,16 @@
+             <summary>Enable tiling system</summary>
+             <description>Hold CTRL while moving a window to tile it.</description>
+         </key>
++        <key name="luma-remember-window-positions" type="b">
++            <default>true</default>
++            <summary>Remember window positions</summary>
++            <description>Open apps where they usually live, and put windows back where they were when monitors change.</description>
++        </key>
++        <key name="luma-window-memory-reset" type="x">
++            <default>0</default>
++            <summary>Window positions forgotten at</summary>
++            <description>Microseconds since the epoch when remembered window positions were last forgotten. Changing it clears them.</description>
++        </key>
+         <key name="show-layout-while-dragging" type="b">
+             <default>true</default>
+             <summary>Show layout while dragging</summary>

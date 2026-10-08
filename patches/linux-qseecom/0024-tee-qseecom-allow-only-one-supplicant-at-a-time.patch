@@ -1,0 +1,49 @@
+From 80a9bd7a1dbbe3b62e1cb8ae480ba3f1b65b4220 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 11:03:02 +0200
+Subject: [PATCH 24/41] tee: qseecom: allow only one supplicant at a time
+
+There is one request slot, so a second process on the privileged device races
+the first on TEE_IOC_SUPPL_RECV and the two consume each other's requests --
+and since a request is answered by whoever calls SUPPL_SEND next, the wrong
+reply reaches the wrong application. The documentation warned about this while
+the driver permitted it.
+
+The listener a request belongs to is reported in arg.func precisely so that one
+process can serve them all, so refusing the second costs nothing.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index b1b586612..d38307e27 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -1173,9 +1173,22 @@ static int qseecom_tee_supp_open(struct tee_context *ctx)
+ 	if (ret)
+ 		return ret;
+ 
+-	mutex_lock(&qtee->supp.mutex);
+-	qtee->supp.users++;
+-	mutex_unlock(&qtee->supp.mutex);
++	/*
++	 * One supplicant, because there is one request slot. A second process
++	 * on this device would race the first on TEE_IOC_SUPPL_RECV and the
++	 * two would consume each other's requests -- and since a request is
++	 * answered by whoever calls SUPPL_SEND next, the wrong reply would go
++	 * to the wrong application. The listener a request belongs to is in
++	 * arg.func precisely so that one process can serve them all.
++	 */
++	scoped_guard(mutex, &qtee->supp.mutex) {
++		if (qtee->supp.users) {
++			qseecom_tee_release(ctx);
++			return -EBUSY;
++		}
++
++		qtee->supp.users++;
++	}
+ 
+ 	return 0;
+ }

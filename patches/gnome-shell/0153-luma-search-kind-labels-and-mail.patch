@@ -1,0 +1,133 @@
+From ff3d299c314330edf5cc0f4133a32a92c39a9015 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 19:46:52 -0500
+Subject: [PATCH] luma: Beam keeps the kind label whole and puts mail below
+ apps and files
+
+- Beam's result list no longer uses an overlay scrollbar, which sat on
+  top of each row's kind label; the scrollbar takes its own width and the
+  list never scrolls sideways. The kind label never ellipsizes: titles
+  and paths give way first.
+- A provider whose app is not recognised by name takes its kind from the
+  app's freedesktop Categories, so a mail app's results are labelled Mail.
+- Mail, messages, contacts and events match on their contents; they now
+  rank below apps, settings and files that match by name, and at most
+  three of each kind are shown.
+---
+ js/ui/lumaSearchRanking.js |  6 ++++++
+ js/ui/search.js            | 38 +++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 43 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/lumaSearchRanking.js b/js/ui/lumaSearchRanking.js
+index 77a1860..620c782 100644
+--- a/js/ui/lumaSearchRanking.js
++++ b/js/ui/lumaSearchRanking.js
+@@ -352,6 +352,8 @@ export function rankSettingPages(pages, terms, limit = 5) {
+ 
+ // Results from other providers (Settings, Calculator, Characters, …). The
+ // provider already decided they match; the name decides how well.
++const CONTENT_KINDS = new Set(['mail', 'message', 'contact', 'calendar']);
++
+ export function scoreProviderResult(kind, name, terms, index = 0, providerId = '') {
+     const id = String(providerId).toLowerCase();
+     if (id.includes('calculator'))
+@@ -362,6 +364,10 @@ export function scoreProviderResult(kind, name, terms, index = 0, providerId = '
+         return (match ? match.score + SETTING_BONUS : 520) - order;
+     if (id.includes('software'))
+         return (match ? match.score - 250 : 150) - order;
++    // Mail, messages, people and events match on what they contain; they
++    // follow apps, settings and files that match by name.
++    if (CONTENT_KINDS.has(kind))
++        return (match ? Math.min(match.score, TIER_WORD) - 350 : 150) - order;
+     return (match ? match.score : 300) - order;
+ }
+ 
+diff --git a/js/ui/search.js b/js/ui/search.js
+index f23cbb9..50a4b2c 100644
+--- a/js/ui/search.js
++++ b/js/ui/search.js
+@@ -29,6 +29,10 @@ const LUMA_LOCAL_SEARCH_DELAY_MS = 0;
+ const LUMA_REMOTE_SEARCH_DELAY_MS = 90;
+ const LUMA_MAX_MERGED_ROWS = 14;
+ const LUMA_MAX_SETTING_ROWS = 4;
++// Mail, messages and people match on their contents, so they could fill
++// the list; a few rows are enough, below apps, settings and files.
++const LUMA_MAX_CONTENT_ROWS = 3;
++const LUMA_CONTENT_KINDS = ['mail', 'message', 'contact', 'calendar'];
+ const SEARCH_SPINNER_SIZE = 64;
+ 
+ function getProviderKind(provider) {
+@@ -49,6 +53,23 @@ function getProviderKind(provider) {
+         if (markers.some(marker => identity.includes(marker)))
+             return {kind, label};
+     }
++    // Otherwise the app's own freedesktop categories say what its results
++    // are: a mail app's results are mail, whatever the app is called.
++    const categories = (provider.appInfo?.get_categories?.() ?? '').split(';');
++    const byCategory = [
++        ['mail', _('Mail'), ['Email']],
++        ['contact', _('Contact'), ['ContactManagement']],
++        ['calendar', _('Calendar'), ['Calendar']],
++        ['message', _('Message'), ['InstantMessaging', 'Chat']],
++        ['photo', _('Photo'), ['Photography']],
++        ['music', _('Music'), ['Music']],
++        ['place', _('Place'), ['Maps']],
++        ['file', _('File'), ['FileManager']],
++    ];
++    for (const [kind, label, names] of byCategory) {
++        if (names.some(name => categories.includes(name)))
++            return {kind, label};
++    }
+     return {kind: 'app', label: _('App')};
+ }
+ 
+@@ -252,8 +273,12 @@ class ListSearchResult extends SearchResult {
+             style_class: 'luma-search-result-kind',
+             text: metaInfo.lumaKindLabel ?? label,
+             x_align: Clutter.ActorAlign.END,
++            x_expand: false,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
++        // The kind is never cut short: long titles and paths give way first.
++        this._kindLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++        copy.set({x_expand: true, min_width: 0});
+ 
+         if (!this.canReveal) {
+             content.add_child(this._kindLabel);
+@@ -823,7 +848,12 @@ export const SearchResultsView = GObject.registerClass({
+         this._localSearchId = 0;
+ 
+         this._scrollView = new St.ScrollView({
+-            overlay_scrollbars: true,
++            // Beam's rows end in a kind label; an overlay scrollbar would sit
++            // on top of it. Let the scrollbar take its own width instead, and
++            // never scroll sideways.
++            overlay_scrollbars: !this._compact,
++            hscrollbar_policy: this._compact
++                ? St.PolicyType.NEVER : St.PolicyType.AUTOMATIC,
+             style_class: this._compact
+                 ? 'search-display'
+                 : 'search-display vfade',
+@@ -984,6 +1014,7 @@ export const SearchResultsView = GObject.registerClass({
+         // Settings' own panels and Luma's pages can name the same thing;
+         // show it once, and show at most a handful of settings.
+         const seenSettings = new Set();
++        const contentShown = new Map();
+         let shown = 0;
+         for (const row of this._merged.get_children()) {
+             let visible = shown < LUMA_MAX_MERGED_ROWS;
+@@ -991,6 +1022,11 @@ export const SearchResultsView = GObject.registerClass({
+                 const key = Ranking.foldText(row.metaInfo.name);
+                 visible &&= !seenSettings.has(key) && seenSettings.size < LUMA_MAX_SETTING_ROWS;
+                 seenSettings.add(key);
++            } else if (LUMA_CONTENT_KINDS.includes(row._lumaRank.kind)) {
++                const count = contentShown.get(row._lumaRank.kind) ?? 0;
++                visible &&= count < LUMA_MAX_CONTENT_ROWS;
++                if (visible)
++                    contentShown.set(row._lumaRank.kind, count + 1);
+             }
+             row.visible = visible;
+             if (visible)
+-- 
+2.54.0 (Apple Git-157)
+

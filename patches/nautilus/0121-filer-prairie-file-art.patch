@@ -1,0 +1,39 @@
+From 476a50cc5c8777f228d4360d9ef040f8402a2508 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 03:04:57 +0000
+Subject: [PATCH] Use Prairie file art in Filer icon theme
+
+---
+ src/nautilus-application.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+index ecb85d3..5cdab7b 100644
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -1037,7 +1037,21 @@ nautilus_application_startup (GApplication *app)
+ 
+     g_signal_connect (self, "shutdown", G_CALLBACK (on_application_shutdown), NULL);
+ 
+-    g_signal_connect_object (gtk_icon_theme_get_for_display (gdk_display_get_default ()),
++    /* Filer's file art is part of Prairie's native icon theme.  The fixture
++     * path makes that same theme available to isolated visual checks; on an
++     * installed desktop GTK finds it in the usual icon-theme directories. */
++    GtkIconTheme *file_icon_theme = gtk_icon_theme_get_for_display (gdk_display_get_default ());
++    const char *theme_root = g_getenv ("LUMA_FILER_ICON_THEME_ROOT");
++    if (theme_root != NULL && g_file_test (theme_root, G_FILE_TEST_IS_DIR))
++    {
++        gtk_icon_theme_add_search_path (file_icon_theme, theme_root);
++    }
++    /* GTK's display icon theme is a singleton; its name is owned by the
++     * display settings rather than GtkIconTheme.set_theme_name(). */
++    g_object_set (gtk_settings_get_for_display (gdk_display_get_default ()),
++                  "gtk-icon-theme-name", "Prairie", NULL);
++
++    g_signal_connect_object (file_icon_theme,
+                              "changed",
+                              G_CALLBACK (icon_theme_changed_callback),
+                              NULL, 0);
+-- 
+2.55.0
+

@@ -1,0 +1,167 @@
+#!/usr/bin/python3 -B
+# SPDX-License-Identifier: Apache-2.0
+"""Install only missing signed OS app bundles at the first baseline handoff.
+
+Normal Flatpak transactions keep app state outside the OSTree OS deployment.
+The durable completion marker prevents reseeding a user's later uninstall or
+replacing an independently updated app when the OS updates or rolls back.
+"""
+from pathlib import Path
+import hashlib,json,os,platform,re,stat,subprocess,tempfile
+
+BASELINE=Path('/usr/share/luma/app-baseline')
+STATE=Path('/var/lib/luma/app-baseline')
+OPTIONAL={'org.projectluma.Write','org.projectluma.Grid','org.projectluma.Stage','org.projectluma.Session','org.projectluma.Reel','org.projectluma.Darkroom'}
+RUNTIMES={'org.projectluma.Platform','org.projectluma.Platform.GL.default','org.projectluma.Platform.Locale'}
+HEX=re.compile('[0-9a-f]{64}')
+
+
+def digest(path):
+    with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
+
+
+def plain_file(path):
+    mode=path.lstat()
+    if not stat.S_ISREG(mode.st_mode) or mode.st_uid!=0 or mode.st_mode&0o022:
+        raise ValueError('Baseline inputs must be root-owned plain non-writable files.')
+    return path
+
+
+def document(path):
+    plain_file(path)
+    def unique(pairs):
+        result={}
+        for name,value in pairs:
+            if name in result:raise ValueError('Duplicate baseline field.')
+            result[name]=value
+        return result
+    return json.loads(path.read_text(),object_pairs_hook=unique)
+
+
+def validate(root,architecture,*,hash_bundles=True):
+    st=root.lstat()
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid!=0 or st.st_mode&0o022:
+        raise ValueError('Baseline directory is not a protected plain directory.')
+    manifest=document(root/'manifest.json');selection=document(root/'shipping.json');roles=document(root/'roles.json')
+    if manifest.get('schema')!='org.projectluma.offline-app-baseline/v1' or manifest.get('selection_scope')!='os-shipping':
+        raise ValueError('This is not a reviewed OS shipping baseline.')
+    if selection.get('schema')!='org.projectluma.os-app-baseline/v1':raise ValueError('Unknown shipping selection.')
+    apps=selection.get('applications')
+    if not isinstance(apps,list) or len(apps)!=24 or len(set(apps))!=24 or any(not isinstance(app,str) for app in apps) or set(apps)&OPTIONAL:
+        raise ValueError('The baseline must contain exactly the 24 shipping applications.')
+    if manifest.get('architecture')!=architecture or architecture not in ('x86_64','aarch64'):raise ValueError('Wrong baseline architecture.')
+    if manifest.get('shipping_contract_sha256')!=digest(root/'shipping.json'):raise ValueError('Shipping selection changed.')
+    if manifest.get('role_contract_sha256')!=digest(root/'roles.json') or roles!={'schema':'org.projectluma.first-party-app-roles/v1','roles':{app:'signed-system-flatpak' for app in apps}}:
+        raise ValueError('App ownership does not match the shipping baseline.')
+    key=plain_file(root/'luma-depot.gpg')
+    if key.stat().st_size>65536 or manifest.get('public_key_sha256')!=digest(key) or digest(key)!='39df35f1e59e766cd4d76ce71dabc99b5e14bbc2596e33e4e5613b8f07be041f':raise ValueError('Baseline public key changed.')
+    expected={f'runtime/{name}/{architecture}/44' for name in RUNTIMES}|{f'app/{name}/{architecture}/beta' for name in apps}
+    rows=manifest.get('bundles')
+    if not isinstance(rows,list) or len(rows)!=len(expected) or {row.get('ref') for row in rows}!=expected:raise ValueError('Baseline ref closure is incomplete or ambiguous.')
+    files={'manifest.json','shipping.json','roles.json','luma-depot.gpg'}
+    for row in rows:
+        if not HEX.fullmatch(row.get('commit','')) or not HEX.fullmatch(row.get('sha256','')) or row.get('file')!=row['sha256']+'.flatpak':raise ValueError('Malformed immutable bundle identity.')
+        path=plain_file(root/row['file']);files.add(row['file'])
+        if type(row.get('bytes')) is not int or row['bytes']<=0 or path.stat().st_size!=row['bytes']:raise ValueError('Bundle size changed.')
+        if hash_bundles and digest(path)!=row['sha256']:raise ValueError('Bundle bytes changed.')
+    if {path.name for path in root.iterdir()}!=files:raise ValueError('Unexpected baseline inputs.')
+    return manifest
+
+
+def finish(state,manifest,commits):
+    marker=state/'installed-v1.json'
+    if marker.exists() or marker.is_symlink():raise ValueError('Baseline completion is immutable.')
+    fd,name=tempfile.mkstemp(prefix='.completion-',dir=state)
+    try:
+        with os.fdopen(fd,'w') as stream:
+            json.dump({'schema':'org.projectluma.app-baseline-completion/v1','baseline_manifest_sha256':manifest,'installed_or_preserved':commits},stream,sort_keys=True)
+            stream.write('\n');stream.flush();os.fchmod(stream.fileno(),0o600);os.fsync(stream.fileno())
+        os.link(name,marker,follow_symlinks=False)
+        directory=os.open(state,os.O_RDONLY|os.O_DIRECTORY);os.fsync(directory);os.close(directory)
+    finally:os.unlink(name)
+
+
+def handoff(root,state,architecture,installation,verify,install):
+    # A marker belongs to mutable machine state, never to an OS commit.
+    if state.exists():
+        st=state.lstat()
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid!=0 or st.st_mode&0o077:raise ValueError('Unsafe baseline state directory.')
+    else:
+        missing=[];parent=state
+        while not parent.exists() and not parent.is_symlink():missing.append(parent);parent=parent.parent
+        for path in (parent,*parent.parents):
+            meta=path.lstat()
+            if not stat.S_ISDIR(meta.st_mode) or meta.st_uid!=0 or meta.st_mode&0o022:raise ValueError('Unsafe baseline state ancestor.')
+        for path in reversed(missing):path.mkdir(mode=0o700)
+    for path in state.parents:
+        meta=path.lstat()
+        if not stat.S_ISDIR(meta.st_mode) or meta.st_uid!=0 or meta.st_mode&0o022:raise ValueError('Unsafe baseline state ancestor.')
+    marker=state/'installed-v1.json'
+    if marker.exists() or marker.is_symlink():
+        done=document(marker)
+        if done.get('schema')!='org.projectluma.app-baseline-completion/v1' or not HEX.fullmatch(done.get('baseline_manifest_sha256','')) or not isinstance(done.get('installed_or_preserved'),dict):raise ValueError('Malformed baseline completion marker.')
+        return 'already-handed-off'
+    manifest=validate(root,architecture)
+    commits={}
+    rows=sorted(manifest['bundles'],key=lambda row:(not row['ref'].startswith('runtime/'),row['ref']))
+    # Refuse conflicting existing deployments before any initial transaction.
+    existing_refs=installation()
+    for row in rows:
+        if row['ref'] in existing_refs:verify(existing_refs[row['ref']],row['ref'])
+    for row in rows:
+        refs=installation()
+        existing=refs.get(row['ref'])
+        if existing is None:
+            install(root/row['file'],root/'luma-depot.gpg',row)
+            existing=installation().get(row['ref'])
+            if existing is None or existing.get_commit()!=row['commit']:raise ValueError('Normal Flatpak install did not deploy the exact signed bundle.')
+        # Existing signed deployments are preserved, including newer independent
+        # updates. Conflicting origins or signature failures abort the handoff.
+        verify(existing,row['ref'])
+        commits[row['ref']]=existing.get_commit()
+    finish(state,digest(root/'manifest.json'),commits)
+    return 'completed'
+
+
+def main():
+    if os.geteuid()!=0:raise PermissionError('The OS baseline handoff requires root.')
+    if (STATE/'installed-v1.json').exists() or (STATE/'installed-v1.json').is_symlink():
+        # The handoff function validates the marker before skipping transactions.
+        print(handoff(BASELINE,STATE,platform.machine(),lambda:{},lambda *a:None,lambda *a:None));return
+    validate(BASELINE,platform.machine())
+    import gi
+    gi.require_version('Flatpak','1.0')
+    from gi.repository import Flatpak,Gio
+    from luma_installer.native_app_roles import verify_deployed_commit
+    from luma_installer.depot_flatpak import validate_remote
+    key=BASELINE/'luma-depot.gpg'
+    subprocess.run(['flatpak','remote-add','--system','--if-not-exists','--gpg-import='+str(key),'luma','https://dl.simplyluma.com/repo/'],check=True)
+    instance=Flatpak.Installation.new_system(None)
+    validate_remote(instance.get_remote_by_name('luma',None),'luma')
+    def installed():
+        instance.drop_caches(None)
+        result={}
+        for ref in instance.list_installed_refs(None):
+            if ref.format_ref() in result:raise ValueError('Ambiguous system installation.')
+            result[ref.format_ref()]=ref
+        return result
+    def verify(ref,expected):
+        if ref.get_origin()!='luma' or ref.format_ref()!=expected:raise ValueError('Existing baseline ref has a foreign identity.')
+        verify_deployed_commit(instance,ref,exact_ref=expected)
+    def install(bundle,public,row):
+        actual=Flatpak.BundleRef.new(Gio.File.new_for_path(str(bundle)))
+        if actual.format_ref()!=row['ref'] or actual.get_commit()!=row['commit']:raise ValueError('Supported bundle has a different identity.')
+        # A direct first-time bundle installation creates its own *-origin
+        # remote. Import into the configured source, authenticate the actual
+        # imported commit, then deploy through Flatpak's normal named remote.
+        # --no-pull keeps the first handoff available without network access.
+        repository=instance.get_path().get_child('repo').get_path()
+        subprocess.run(['flatpak','build-import-bundle','--no-update-summary',
+                        '--ref=luma:'+row['ref'],repository,str(bundle)],check=True)
+        verify_deployed_commit(instance,actual,commit=row['commit'],exact_ref=row['ref'])
+        subprocess.run(['flatpak','install','--system','--noninteractive',
+                        '--no-pull','--no-deps','--no-related','luma',row['ref']],check=True)
+    print(handoff(BASELINE,STATE,platform.machine(),installed,verify,install))
+
+
+if __name__=='__main__':main()

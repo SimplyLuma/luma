@@ -1,0 +1,53 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] files: ask the portal for the application chooser
+
+The Luma application chooser is a portal backend, so that a sandboxed
+application asking OpenURI and a double-click in Files both reach the
+same dialog. Files never reached it. Upstream asks the portal only when
+it is itself sandboxed, and otherwise builds its own chooser inline, so
+the Luma chooser was configured correctly, owned its bus name and
+answered activation in 0.2 seconds while ChooseApplication went
+uncalled for an entire session.
+
+The portal path taken below is upstream's own, already carrying the
+parent window, walking a multiple-file selection and recording recents.
+Only the condition that selects it changes.
+
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -1497,6 +1497,25 @@
+     adw_dialog_close (ADW_DIALOG (dialog));
+ }
+ 
++/* Luma answers application-chooser requests with its own dialog, served over
++ * the AppChooser portal so that every caller gets the same chooser. Upstream
++ * asks the portal only when Files is sandboxed and otherwise builds its own
++ * chooser inline, which is why the Luma chooser could be installed,
++ * configured, activating in 0.2s and still never appear: an unsandboxed Files
++ * never sent the request at all, and ChooseApplication was never called once.
++ *
++ * Widening the condition is all that is needed. The portal path below is
++ * upstream's own and already carries the parent window, walks a
++ * multiple-file selection and records recents, so nothing here is
++ * reimplemented. Set NAUTILUS_LUMA_NATIVE_CHOOSER=1 to get the built-in
++ * dialog back for comparison.
++ */
++static gboolean
++luma_prefers_portal_chooser (void)
++{
++    return g_strcmp0 (g_getenv ("NAUTILUS_LUMA_NATIVE_CHOOSER"), "1") != 0;
++}
++
+ static void
+ choose_program (NautilusFilesView *view,
+                 GList             *files)
+@@ -1508,7 +1527,7 @@
+ 
+     parent_window = nautilus_files_view_get_containing_window (view);
+ 
+-    if (nautilus_application_is_sandboxed ())
++    if (luma_prefers_portal_chooser () || nautilus_application_is_sandboxed ())
+     {
+         sandboxed_choose_program (g_steal_pointer (&files), parent_window);
+         return;

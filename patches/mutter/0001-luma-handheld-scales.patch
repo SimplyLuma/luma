@@ -1,0 +1,25 @@
+--- a/src/backends/meta-monitor.c
++++ b/src/backends/meta-monitor.c
+@@ -34,6 +34,7 @@
+ #define MIN_INTEGER_SCALE 1
+ #define MAX_INTEGER_SCALE 4
+ #define MINIMUM_LOGICAL_AREA (600 * 600)
++#define MINIMUM_HANDHELD_LOGICAL_AREA (240 * 600)
+ #define MAXIMUM_REFRESH_RATE_DIFF 0.001f
+ 
+ typedef struct _MetaMonitorModePrivate
+@@ -2427,7 +2428,13 @@
+ is_logical_size_large_enough (int width,
+                               int height)
+ {
+-  return width * height >= MINIMUM_LOGICAL_AREA;
++  const char *device_class = g_getenv ("LUMA_DEVICE_CLASS");
++  int minimum_area = MINIMUM_LOGICAL_AREA;
++
++  if (g_strcmp0 (device_class, "handheld") == 0)
++    minimum_area = MINIMUM_HANDHELD_LOGICAL_AREA;
++
++  return width * height >= minimum_area;
+ }
+ 
+ static gboolean

@@ -1,0 +1,135 @@
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -372,6 +372,15 @@
+         header = gtk_label_new (heading);
+         gtk_label_set_xalign (GTK_LABEL (header), 0.0f);
+         gtk_widget_add_css_class (header, "luma-sidebar-section-heading");
++        if (before != NULL)
++        {
++            GtkWidget *group = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++            GtkWidget *divider = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
++            gtk_widget_add_css_class (divider, "luma-sidebar-section-divider");
++            gtk_box_append (GTK_BOX (group), divider);
++            gtk_box_append (GTK_BOX (group), header);
++            header = group;
++        }
+         gtk_list_box_row_set_header (row, header);
+     }
+ }
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -670,6 +670,8 @@
+     adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 190);
+     adw_clamp_set_tightening_threshold (ADW_CLAMP (clamp), 190);
+     gtk_widget_set_size_request (clamp, 190, -1);
++    /* Do not inherit expansion from the inspector action buttons. */
++    gtk_widget_set_hexpand (clamp, FALSE);
+     gtk_widget_set_vexpand (clamp, TRUE);
+ 
+     gtk_widget_add_css_class (header, "luma-column-header");
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -97,7 +97,8 @@
+ 
+         case NAUTILUS_LIST_ZOOM_LEVEL_MEDIUM:
+         {
+-            return NAUTILUS_LIST_ICON_SIZE_MEDIUM;
++            /* Normal list rows use a 20px icon allocation inside a 32px row. */
++            return 20;
+         }
+         break;
+ 
+--- a/src/nautilus-name-cell.c
++++ b/src/nautilus-name-cell.c
+@@ -166,7 +166,7 @@
+     show_thumbnail = icon_size >= NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE &&
+                      nautilus_file_should_show_thumbnail (file);
+ 
+-    gboolean use_symbolic_folder = self->column_mode &&
++    gboolean use_symbolic_folder = (self->column_mode || icon_size <= 20) &&
+                                    nautilus_file_is_directory (file);
+ 
+     gtk_widget_set_visible (self->icon, !use_symbolic_folder);
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1308,3 +1308,80 @@
+ window.luma-files-window .luma-view-mode-controls button:checked image {
+   color: @luma_content;
+ }
++
++/* Reviewed against the desktop Filer simulator: compact native list rows,
++ * readable metadata and one continuous material per browsing column. */
++window.luma-files-window .nautilus-list-view columnview {
++  padding-left: 8px;
++  padding-right: 8px;
++}
++window.luma-files-window .nautilus-list-view columnview > listview {
++  padding-top: 6px;
++  padding-bottom: 6px;
++  margin-left: -8px;
++  margin-right: -8px;
++  border-spacing: 1px;
++}
++window.luma-files-window .nautilus-list-view columnview > listview > row {
++  min-height: 32px;
++  padding: 0;
++  margin-left: 8px;
++  margin-right: 8px;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 600;
++}
++window.luma-files-window .nautilus-list-view .nautilus-view-cell {
++  padding: 0 8px;
++}
++window.luma-files-window .nautilus-list-view .luma-column-symbolic-folder {
++  -gtk-icon-size: 14px;
++  color: @luma_folder;
++}
++window.luma-files-window .nautilus-list-view columnview > header > button,
++window.luma-files-window .nautilus-list-view columnview > header > button label {
++  font-family: "Figtree";
++  font-size: 11px;
++  font-weight: 700;
++  letter-spacing: 0.08em;
++  color: @luma_muted;
++}
++window.luma-files-window .nautilus-list-view .nautilus-view-cell > label,
++window.luma-files-window .nautilus-list-view label.dim-label {
++  font-family: "Figtree";
++  font-size: 11px;
++  font-weight: 500;
++  color: @luma_muted;
++  font-feature-settings: "tnum";
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar button,
++window.luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar button label {
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 600;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar .current-dir,
++window.luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar .current-dir label {
++  font-weight: 700;
++}
++window.luma-files-window .luma-sidebar-section-divider {
++  min-height: 1px;
++  margin: 5px 7px;
++  background-color: @luma_line;
++  border: none;
++}
++window.luma-files-window .nautilus-column-view .luma-column-island {
++  background-color: @luma_island;
++  border-radius: 10px;
++  box-shadow: inset 0 0 0 1px @luma_line;
++}
++window.luma-files-window .nautilus-column-view .luma-column-island > scrolledwindow {
++  background-color: transparent;
++  border-radius: 0 0 10px 10px;
++}
++window.luma-files-window .nautilus-column-view .luma-details-content {
++  padding: 16px;
++}
++window.luma-files-window .nautilus-column-view .luma-details-value {
++  font-weight: 600;
++}

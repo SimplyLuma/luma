@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+"""Explicit, one-time Pictures → Photos migration; never run at login.
+
+No merging, replacing user files, or moving custom/external libraries. A hidden
+relative compatibility symlink preserves older applications' saved references.
+The journal allows interruption recovery and a lossless --rollback.
+"""
+import argparse
+from collections import defaultdict, deque
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+from urllib.parse import unquote, urlsplit
+
+
+def atomic_write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix='.luma-photos-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def migrate_bookmarks(content, old, new):
+    """Change only the default media bookmark and its default English label."""
+    lines = []
+    for line in content.splitlines(keepends=True):
+        body = line.rstrip('\r\n')
+        ending = line[len(body):]
+        uri, separator, label = body.partition(' ')
+        try:
+            parsed = urlsplit(uri)
+        except ValueError:
+            lines.append(line)
+            continue
+        if (parsed.scheme == 'file' and parsed.netloc in ('', 'localhost')
+                and not parsed.query and not parsed.fragment
+                and unquote(parsed.path) in (str(old), str(new))):
+            if unquote(parsed.path) == str(old):
+                uri = new.as_uri()
+            if label == 'Pictures':
+                label = 'Photos'
+            body = uri + separator + label
+        lines.append(body + ending)
+    return ''.join(lines)
+
+
+def rollback_bookmarks(content, before, old, new):
+    """Reverse recorded line changes only; retain subsequent bookmark edits."""
+    replacements = defaultdict(deque)
+    for original in before.splitlines(keepends=True):
+        migrated = migrate_bookmarks(original, old, new)
+        if migrated != original:
+            replacements[migrated].append(original)
+    lines = []
+    for line in content.splitlines(keepends=True):
+        matches = replacements.get(line)
+        lines.append(matches.popleft() if matches else line)
+    return ''.join(lines)
+
+
+def migrate(home, config, rollback=False):
+    home, config = Path(home), Path(config)
+    old, new = home / 'Pictures', home / 'Photos'
+    journal = config / 'luma-photos-directory-migration.json'
+    dirs, hidden = config / 'user-dirs.dirs', home / '.hidden'
+    bookmarks = ('gtk-3.0/bookmarks', 'gtk-4.0/bookmarks')
+    state = json.loads(journal.read_text()) if journal.exists() else None
+    if rollback:
+        if state is None:
+            raise ValueError('No migration journal exists')
+        if old.is_symlink() and os.readlink(old) == 'Photos':
+            old.unlink()
+        if old.exists() and new.exists():
+            raise ValueError('Both folders exist; refusing to overwrite either')
+        if new.is_dir():
+            new.rename(old)
+        for path, key in ((dirs, 'user_dirs'), (hidden, 'hidden')):
+            before = state[key]
+            if before is None:
+                path.unlink(missing_ok=True)
+            else:
+                atomic_write(path, before)
+        for relative, before in state.get('bookmarks', {}).items():
+            path = config / relative
+            # Do not resurrect deleted files or overwrite bookmarks edited
+            # since migration. Revert only still-matching transformed entries.
+            if before is not None and path.exists():
+                current = path.read_text()
+                restored = rollback_bookmarks(current, before, old, new)
+                if restored != current:
+                    atomic_write(path, restored)
+        # Later applications may have saved the new URI. Preserve those too.
+        if not new.exists():
+            new.symlink_to('Pictures', target_is_directory=True)
+        restored_hidden = hidden.read_text() if hidden.exists() else ''
+        if 'Photos' not in restored_hidden.splitlines():
+            atomic_write(hidden, restored_hidden.rstrip('\n') + '\nPhotos\n')
+        journal.unlink()
+        return 'Rolled back; files remain in Pictures'
+    if state is None:
+        original = dirs.read_text() if dirs.exists() else None
+        match = re.search(r'^XDG_PICTURES_DIR="(.*)"$', original or '', re.M)
+        if match and match[1] not in ('$HOME/Pictures', str(old)):
+            raise ValueError('A custom pictures directory is configured; leaving it unchanged')
+        if old.is_symlink() or not old.is_dir():
+            raise ValueError('Pictures must be an ordinary existing directory')
+        if new.exists() or new.is_symlink():
+            raise ValueError('Photos already exists; refusing to merge or replace files')
+        state = {'user_dirs': original, 'hidden': hidden.read_text() if hidden.exists() else None}
+        atomic_write(journal, json.dumps(state, indent=2) + '\n')
+    # Older journals predate bookmark migration. Save originals before the first
+    # bookmark write, including when resuming such a migration.
+    if 'bookmarks' not in state:
+        state['bookmarks'] = {relative: (config / relative).read_text()
+                              if (config / relative).exists() else None
+                              for relative in bookmarks}
+        atomic_write(journal, json.dumps(state, indent=2) + '\n')
+    # Each step is replayable after an interruption; originals are never copied
+    # or deleted. A rename on the same filesystem preserves inode identity.
+    if not new.exists():
+        old.rename(new)
+    if not old.exists() and not old.is_symlink():
+        old.symlink_to('Photos', target_is_directory=True)
+    if not old.is_symlink() or os.readlink(old) != 'Photos' or not new.is_dir():
+        raise ValueError('Unexpected folder state; nothing overwritten')
+    content = dirs.read_text() if dirs.exists() else ''
+    replacement = 'XDG_PICTURES_DIR="$HOME/Photos"'
+    if re.search(r'^XDG_PICTURES_DIR=.*$', content, re.M):
+        content = re.sub(r'^XDG_PICTURES_DIR=.*$', lambda _: replacement, content, flags=re.M)
+    else:
+        content = content.rstrip('\n') + '\n' + replacement + '\n'
+    atomic_write(dirs, content)
+    content = hidden.read_text() if hidden.exists() else ''
+    if 'Pictures' not in content.splitlines():
+        atomic_write(hidden, content.rstrip('\n') + '\nPictures\n')
+    for relative in bookmarks:
+        path = config / relative
+        if path.exists():
+            before = path.read_text()
+            after = migrate_bookmarks(before, old, new)
+            if after != before:
+                atomic_write(path, after)
+    return 'Photos is the system media folder; hidden Pictures alias preserves existing references'
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--rollback', action='store_true')
+    args = parser.parse_args()
+    print(migrate(Path.home(), Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))), args.rollback))

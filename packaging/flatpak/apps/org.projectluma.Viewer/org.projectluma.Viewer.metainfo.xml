@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Viewer</id>
+  <name>Viewer</name>
+  <summary>Preview your files</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND MIT</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Preview supported documents, images, audio, EPUB books, and three-dimensional models in Luma’s responsive file viewer.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Viewer.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>EPUB document preview</caption>
+      <image width="1430" height="730">https://dl.simplyluma.com/media/org.projectluma.Viewer/b9f82c293919cf6768328f95e473fc9ea74c0c738d5b29e584cfe73f0a76c634.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

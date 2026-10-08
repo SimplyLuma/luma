@@ -1,0 +1,71 @@
+From e9b32556008d4f96805abdaa6ef418e3fdc70089 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:01:26 +0000
+Subject: [PATCH] Filer: show search results as rows with fixture text snippets
+
+---
+ src/nautilus-search-engine-simple.c | 9 +++++++++
+ src/nautilus-window-slot.c          | 6 +++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-search-engine-simple.c b/src/nautilus-search-engine-simple.c
+index eedd5b5..dc86eae 100644
+--- a/src/nautilus-search-engine-simple.c
++++ b/src/nautilus-search-engine-simple.c
+@@ -134,6 +134,7 @@ visit_directory (NautilusSearchEngineSimple *self,
+         g_autoptr (GFile) child = g_file_get_child (dir, g_file_info_get_name (info));
+         gdouble match = nautilus_query_matches_string (query, display_name);
+         gboolean found = (match > -1);
++        g_autofree char *fixture_snippet = NULL;
+         gint64 current_time;
+ 
+         /* The private v70 sample includes a Markdown hit found in its text.
+@@ -151,6 +152,10 @@ visit_directory (NautilusSearchEngineSimple *self,
+             {
+                 match = nautilus_query_matches_string (query, contents);
+                 found = match > -1;
++                if (found)
++                {
++                    fixture_snippet = g_markup_escape_text (contents, -1);
++                }
+             }
+         }
+ 
+@@ -214,6 +219,10 @@ visit_directory (NautilusSearchEngineSimple *self,
+             NautilusSearchHit *hit = nautilus_search_hit_new (uri);
+ 
+             nautilus_search_hit_set_fts_rank (hit, match);
++            if (fixture_snippet != NULL)
++            {
++                nautilus_search_hit_set_fts_snippet (hit, fixture_snippet);
++            }
+             nautilus_search_hit_set_modification_time (hit, mtime);
+             nautilus_search_hit_set_access_time (hit, atime);
+             nautilus_search_hit_set_creation_time (hit, ctime);
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+index effb763..ca8427d 100644
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -523,7 +523,8 @@ query_editor_changed_callback (NautilusQueryEditor *editor,
+ 
+     /* Setting search query may cause the view to load a new location. */
+     GFile *location = nautilus_files_view_get_location (self->content_view);
+-    guint view_id = nautilus_window_slot_get_view_id_for_location (self, location);
++    guint view_id = query != NULL ? NAUTILUS_VIEW_LIST_ID
++                                  : nautilus_window_slot_get_view_id_for_location (self, location);
+ 
+     nautilus_window_slot_set_location (self, location);
+     nautilus_window_slot_set_view_id (self, view_id);
+@@ -671,6 +672,9 @@ nautilus_window_slot_search (NautilusWindowSlot *self,
+         nautilus_window_slot_set_search_visible (self, TRUE);
+         nautilus_query_editor_set_query (self->query_editor, query);
+         nautilus_files_view_set_search_query (self->content_view, query);
++        /* Search results use their own rows with location and content
++         * snippets, regardless of the directory's current browsing mode. */
++        nautilus_window_slot_set_view_id (self, NAUTILUS_VIEW_LIST_ID);
+     }
+     else
+     {
+-- 
+2.55.0
+

@@ -1,0 +1,380 @@
+{
+  "app": "charlie",
+  "title": "Charlie",
+  "spec": {
+    "url": "mockups/luma-next-71.html?app=charlie",
+    "window": "#w-charlie",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ],
+    "before": [
+      {
+        "eval": "document.documentElement.dataset.phone == null && document.querySelector('[data-crt=\"deck\"]').click()"
+      }
+    ]
+  },
+  "gtk": {
+    "module": "charlie_luma.application",
+    "app_id": "org.projectluma.Charlie",
+    "pythonpath": [
+      "."
+    ],
+    "fixtures": [
+      "data"
+    ],
+    "env": {
+      "LUMA_CHARLIE_FIXTURE": "v71",
+      "CHARLIE_RESOURCE_DIR": "{run}/fixtures/data",
+      "GSETTINGS_BACKEND": "memory",
+      "LUMA_CHARLIE_FIXTURE_ASSETS": "/design/social-luma/photos"
+    }
+  },
+  "states_note": "One state name works in both tiers. A computer opens on 'Launch walkthrough deck' beside the list; a phone opens on the list (v71 list-first) and a state clicks a row to push the thread. Clicks that differ by tier are an eval that takes the phone's control when it is there. GTK: LUMA_CHARLIE_OPEN=<thread> opens (and on a phone pushes) a thread; the widget names are the same in both tiers.",
+  "states": [
+    {
+      "name": "list",
+      "about": "As it opens: the deck thread beside the list (computer), the inbox list (phone) (the computer clicks the deck so v71 draws its window-size head)",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "thread",
+      "phone_only": true,
+      "about": "The deck thread pushed: title island, Messages-style thread, the two-row bar",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck"
+          }
+        }
+      ]
+    },
+    {
+      "name": "details",
+      "about": "Information: the title island grown (phone), the details pane (computer)",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        },
+        {
+          "eval": "(document.querySelector('#cr-head [data-crisl]') || document.querySelector('#cr-head .crright [data-crppl]')).click()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck"
+          }
+        },
+        {
+          "activate": "cr-details"
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "about": "The thread's ⋯",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        },
+        {
+          "eval": "(document.querySelector('#cr-bar [data-crpx=\"more\"]') || document.querySelector('#cr-head [data-crmore=\"thread\"]')).click()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck"
+          }
+        },
+        {
+          "activate": "cr-more"
+        }
+      ]
+    },
+    {
+      "name": "reply_mode",
+      "about": "Reply, Reply all or Forward",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        },
+        {
+          "eval": "(document.querySelector('#cr-bar [data-crpx=\"mode\"]') || document.querySelector('#cr-bar [data-crcmode]')).click()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck"
+          }
+        },
+        {
+          "activate": "cr-reply-mode"
+        }
+      ]
+    },
+    {
+      "name": "reply",
+      "about": "The reply editor: the bar grown",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        },
+        {
+          "click": "#cr-bar [data-crexpand]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck"
+          }
+        },
+        {
+          "activate": "cr-quick-reply"
+        }
+      ]
+    },
+    {
+      "name": "new",
+      "about": "New email: To, Subject, the text, Send",
+      "spec": [
+        {
+          "eval": "(document.querySelector('#cr-side .crlbar [data-crnew]') || document.querySelector('#cr-side .crsh [data-crnew]')).click()"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cr-new"
+        }
+      ]
+    },
+    {
+      "name": "unread",
+      "about": "Only unread",
+      "spec": [
+        {
+          "eval": "(document.querySelector('#cr-side .crlbar [data-crunv=\"1\"]') || document.querySelector('#cr-side .crtabs [data-crunv=\"1\"]')).click()"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cr-unread"
+        }
+      ]
+    },
+    {
+      "name": "updates",
+      "about": "The Updates bundle open",
+      "spec": [
+        {
+          "click": "[data-crbundle]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cr-updates"
+        }
+      ]
+    },
+    {
+      "name": "newsletter",
+      "about": "A newsletter: the sender in place of the reply",
+      "spec": [
+        {
+          "click": "[data-crbundle]"
+        },
+        {
+          "click": "[data-crt=\"rail\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "rail"
+          }
+        }
+      ]
+    },
+    {
+      "name": "message",
+      "about": "Priya's last message picked",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        },
+        {
+          "click": "[data-crm=\"d4\"] .crbub"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck",
+            "LUMA_CHARLIE_SELECT": "d4"
+          }
+        }
+      ]
+    },
+    {
+      "name": "attachment",
+      "about": "The deck file picked",
+      "spec": [
+        {
+          "click": "[data-crt=\"deck\"]"
+        },
+        {
+          "click": "[data-cratt=\"d1:0\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CHARLIE_OPEN": "deck",
+            "LUMA_CHARLIE_SELECT": "d1:0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mailboxes",
+      "phone_only": true,
+      "about": "The list's title island grown into the mailboxes",
+      "spec": [
+        {
+          "click": ".phboxbtn"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cr-places"
+        }
+      ]
+    },
+    {
+      "name": "accounts",
+      "about": "The title's account menu",
+      "spec": [
+        {
+          "click": "#cr-top b"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "lumaui-identity"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "list",
+    "thread",
+    "details",
+    "more",
+    "reply_mode",
+    "reply",
+    "new",
+    "unread",
+    "newsletter",
+    "message",
+    "attachment",
+    "mailboxes"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-charlie > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#cr-top"
+    },
+    {
+      "name": "mailboxes",
+      "spec": "#cr-nav"
+    },
+    {
+      "name": "list title island",
+      "spec": "#w-charlie > .phboxbtn"
+    },
+    {
+      "name": "list bar",
+      "spec": "#cr-side .crlbar"
+    },
+    {
+      "name": "list",
+      "spec": "#cr-side"
+    },
+    {
+      "name": "thread head",
+      "spec": "#cr-head"
+    },
+    {
+      "name": "composer",
+      "spec": "#cr-comp"
+    },
+    {
+      "name": "thread bar",
+      "spec": "#cr-bar"
+    },
+    {
+      "name": "thread",
+      "spec": "#cr-body"
+    },
+    {
+      "name": "details",
+      "spec": "#cr-det"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#cr-nav",
+      "gtk": "cr-nav",
+      "name": "mailboxes"
+    },
+    {
+      "spec": "#cr-side",
+      "gtk": "cr-list",
+      "name": "list island"
+    },
+    {
+      "spec": "#cr-main",
+      "gtk": "cr-main",
+      "name": "thread island"
+    },
+    {
+      "spec": "#cr-bar",
+      "gtk": "cr-bar",
+      "name": "thread bar"
+    },
+    {
+      "spec": "#cr-det",
+      "gtk": "cr-det",
+      "name": "details pane"
+    },
+    {
+      "spec": "#cr-comp",
+      "gtk": "cr-bar",
+      "name": "composer"
+    }
+  ],
+  "text_aliases": {
+    "Sep 19": "Sat",
+    "Sep 18": "Fri",
+    "Sep 17": "Thu",
+    "Sep 19, 3:30 PM": "Sat 3:30 PM",
+    "Sep 18, 10:14 AM": "Fri 10:14 AM",
+    "Sep 17, 1:10 PM": "Thu 1:10 PM"
+  },
+  "text_aliases_note": "v71 writes every older day as a weekday; Charlie writes a date past a week. The fixture pins the clock to Thu 1 Oct 2026.",
+  "phone_states_note": "updates is desktop only: in v71's phone shell the bundle row is a .crrow, so tapping it pushes the open thread (a shell artefact); Charlie keeps the list."
+}

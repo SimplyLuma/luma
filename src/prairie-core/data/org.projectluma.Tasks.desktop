@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Tasks
+Comment=Organize tasks and due dates
+Exec=prairie-tasks
+Icon=org.projectluma.Tasks
+Terminal=false
+Categories=Office;ProjectManagement;
+Keywords=Task;Todo;Checklist;Due;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;

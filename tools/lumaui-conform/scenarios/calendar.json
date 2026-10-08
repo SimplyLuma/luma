@@ -1,0 +1,666 @@
+{
+  "app": "calendar",
+  "title": "Calendar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=calendar",
+    "window": "#w-calendar",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ],
+    "clock": "2026-09-23T10:30:00"
+  },
+  "gtk": {
+    "module": "calendar",
+    "fixtures": [
+      "tests/fixtures/calendar-v70.json",
+      "tests/fixtures/calendar-v70",
+      "tests/fixtures/calendar-v70-data"
+    ],
+    "env": {
+      "LUMA_CALENDAR_FIXTURE": "{run}/fixtures/calendar-v70.json",
+      "LUMA_CLOCK_HOUR_FORMAT": "12",
+      "LUMA_CALENDAR_TZID": "UTC"
+    }
+  },
+  "states": [
+    {
+      "name": "month",
+      "about": "Opening month and today pane",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "week",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cview=\"week\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cal-mode-week"
+        }
+      ]
+    },
+    {
+      "name": "flow",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cview=\"flow\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cal-mode-flow"
+        }
+      ]
+    },
+    {
+      "name": "day",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"3\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-24"
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty-day",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"-1\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-20"
+          }
+        }
+      ]
+    },
+    {
+      "name": "event",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cev=\"27\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_EVENT": "27"
+          }
+        }
+      ]
+    },
+    {
+      "name": "holiday",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"1\"]"
+        },
+        {
+          "click": "#cal-det [data-cev=\"23\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_EVENT": "23"
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendars",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-ccals]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cal-calendars"
+        }
+      ]
+    },
+    {
+      "name": "date-menu",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cjump]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cal-head"
+        }
+      ]
+    },
+    {
+      "name": "panel-closed",
+      "spec": [
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the details pane/drawer'); })()"
+        },
+        {
+          "click": "#cal-det [data-cclose]"
+        },
+        {
+          "eval": "(() => { if (!document.querySelector('#cal-det').hidden) throw new Error('Day panel must close the pane/drawer'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        },
+        {
+          "activate": "cal-day-close"
+        }
+      ],
+      "about": "Open today\u2019s pane/drawer through day selection, then use its visible header Close action. This is the reachable phone equivalent of closing the desktop pane; both widths assert closure and capture the usable month/bar. The runtime fixture also checks the corner control reopening the closed pane/drawer."
+    },
+    {
+      "name": "new-event",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        }
+      ]
+    },
+    {
+      "name": "event-more",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cev=\"27\"]"
+        },
+        {
+          "click": "#cal-det [data-cmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_EVENT": "27"
+          }
+        },
+        {
+          "activate": "cal-event-more"
+        }
+      ],
+      "wait_for": "#w-calendar .pop [data-cdel]"
+    },
+    {
+      "name": "quick-parsed",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "eval": "(() => { const e=document.querySelector('#cal-q');e.value=\"Lunch with Priya Fri 1pm\";e.dispatchEvent(new Event('input',{bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_QUICK": "Lunch with Priya Fri 1pm"
+          }
+        }
+      ]
+    },
+    {
+      "name": "parsed-editor",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "eval": "(() => { const e=document.querySelector('#cal-q');e.value=\"Lunch with Priya Fri 1pm\";e.dispatchEvent(new Event('input',{bubbles:true})); })()"
+        },
+        {
+          "eval": "(() => document.querySelector('#cal-q').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})))()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_QUICK": "Lunch with Priya Fri 1pm",
+            "LUMA_CALENDAR_STATE": "parsed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "invitee-suggestions",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        },
+        {
+          "eval": "(() => { const e=document.querySelector('[data-cdq]');e.value='Pri';e.dispatchEvent(new Event('input',{bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23",
+            "LUMA_CALENDAR_INVITEE_QUERY": "Pri"
+          }
+        }
+      ]
+    },
+    {
+      "name": "draft-alerts",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        },
+        {
+          "click": "[data-calert]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        },
+        {
+          "activate": "cal-draft-alert"
+        }
+      ]
+    },
+    {
+      "name": "rsvp-maybe",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cev=\"27\"]"
+        },
+        {
+          "click": "[data-crsvp=\"maybe\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_EVENT": "27"
+          }
+        },
+        {
+          "activate": "cal-rsvp-maybe"
+        }
+      ]
+    },
+    {
+      "name": "video-call",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cev=\"26\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_SELECTED_EVENT": "26"
+          }
+        }
+      ]
+    },
+    {
+      "name": "draft-day",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        },
+        {
+          "click": "[data-cdpick=\"o\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        },
+        {
+          "activate": "cal-draft-day"
+        }
+      ],
+      "about": "New event day picker; anchored menu on desktop, shared menu drawer on phone.",
+      "wait_for": "#w-calendar .pop [data-cdset^=\"o:\"]"
+    },
+    {
+      "name": "draft-start",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        },
+        {
+          "click": "[data-cdpick=\"s\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        },
+        {
+          "activate": "cal-draft-start"
+        }
+      ],
+      "about": "New event start picker; anchored menu on desktop, shared menu drawer on phone.",
+      "wait_for": "#w-calendar .pop [data-cdset^=\"s:\"]"
+    },
+    {
+      "name": "draft-end",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        },
+        {
+          "click": "[data-cdpick=\"e\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        },
+        {
+          "activate": "cal-draft-end"
+        }
+      ],
+      "about": "New event end picker; anchored menu on desktop, shared menu drawer on phone.",
+      "wait_for": "#w-calendar .pop [data-cdset^=\"e:\"]"
+    },
+    {
+      "name": "draft-calendar",
+      "spec": [
+        {
+          "eval": "(() => { const panel=document.querySelector('[data-cpanel]'); panel.click(); panel.click(); })()"
+        },
+        {
+          "click": "[data-cdayp=\"2\"]"
+        },
+        {
+          "eval": "(() => { if (document.querySelector('#cal-det').hidden) throw new Error('Day selection must open the pane/drawer before its controls are used'); })()"
+        },
+        {
+          "click": "#cal-det [data-cnewon]"
+        },
+        {
+          "click": "[data-ccalpick]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CALENDAR_STATE": "new",
+            "LUMA_CALENDAR_SELECTED_DAY": "2026-09-23"
+          }
+        },
+        {
+          "activate": "cal-draft-calendar"
+        }
+      ],
+      "about": "New event calendar picker; anchored menu on desktop, shared menu drawer on phone.",
+      "wait_for": "#w-calendar .pop [data-ccalset]"
+    }
+  ],
+  "phone_states": [
+    "month",
+    "week",
+    "flow",
+    "day",
+    "empty-day",
+    "event",
+    "holiday",
+    "calendars",
+    "date-menu",
+    "panel-closed",
+    "new-event",
+    "event-more",
+    "quick-parsed",
+    "parsed-editor",
+    "invitee-suggestions",
+    "draft-alerts",
+    "rsvp-maybe",
+    "video-call",
+    "draft-day",
+    "draft-start",
+    "draft-end",
+    "draft-calendar"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-calendar > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#cal-top"
+    },
+    {
+      "name": "action center",
+      "spec": "#cal-draft"
+    },
+    {
+      "name": "action bar",
+      "spec": "#cal-bar"
+    },
+    {
+      "name": "details",
+      "spec": "#cal-det"
+    },
+    {
+      "name": "date heading",
+      "spec": "#cal-head"
+    },
+    {
+      "name": "corner pill",
+      "spec": "#cal-cals"
+    },
+    {
+      "name": "menu",
+      "spec": "#w-calendar > .pop"
+    },
+    {
+      "name": "month",
+      "spec": "#cal-body .cmonth"
+    },
+    {
+      "name": "week",
+      "spec": "#cal-body .cweek"
+    },
+    {
+      "name": "flow",
+      "spec": "#cal-body .cflow"
+    },
+    {
+      "name": "main",
+      "spec": "#cal-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#cal-main",
+      "gtk": "cal-main",
+      "name": "island"
+    },
+    {
+      "spec": "#cal-head",
+      "gtk": "cal-head",
+      "name": "date heading"
+    },
+    {
+      "spec": "#cal-cals",
+      "gtk": "cal-cals",
+      "name": "corner pill"
+    },
+    {
+      "spec": "#cal-body",
+      "gtk": "cal-body",
+      "name": "calendar surface"
+    },
+    {
+      "spec": "#cal-det",
+      "gtk": "cal-det",
+      "name": "details pane"
+    },
+    {
+      "spec": "#cal-bar",
+      "gtk": "cal-bar",
+      "name": "quick entry"
+    },
+    {
+      "spec": "#cal-draft",
+      "gtk": "cal-draft",
+      "name": "event editor"
+    }
+  ],
+  "about": "Calendar fixtures and Studio both use 10:30 AM so queued captures compare the same now-line, free time and quick-entry defaults."
+}

@@ -1,0 +1,33 @@
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -477,11 +477,18 @@
+         this._setContent(column);
+         this._cards.clear();
+         this._syncTray(); this._render();
+-        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
++        // A modal grab swallows pointer input outside this narrow actor before
++        // a stage listener can see it. Keep the tray focused for keyboard
++        // navigation and intercept outside clicks at the stage instead.
+         this._outsideId = global.stage.connect('captured-event', (_a, event) => {
+             if (event.type() !== Clutter.EventType.BUTTON_PRESS && event.type() !== Clutter.EventType.TOUCH_BEGIN)
+                 return Clutter.EVENT_PROPAGATE;
+-            if (!this.contains(event.get_source())) { this.close(); return Clutter.EVENT_STOP; }
++            const [stageX, stageY] = event.get_coords();
++            const [valid, x, y] = this.transform_stage_point(stageX, stageY);
++            if (!valid || x < 0 || y < 0 || x >= this.width || y >= this.height) {
++                this.close();
++                return Clutter.EVENT_STOP;
++            }
+             return Clutter.EVENT_PROPAGATE;
+         });
+         this.grab_key_focus();
+@@ -511,8 +518,6 @@
+         if (!this.isOpen) return;
+         if (this._outsideId) global.stage.disconnect(this._outsideId);
+         this._outsideId = 0;
+-        if (this._grab) Main.popModal(this._grab);
+-        this._grab = null;
+         this._state = 'idle'; this._cards.clear(); this._render();
+     }
+ });

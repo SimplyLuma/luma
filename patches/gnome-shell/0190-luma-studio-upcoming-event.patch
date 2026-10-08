@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: show upcoming events only in the shelf window
+
+Calendar owns the whole day's next event. The shelf shows it from fifteen
+minutes before the start through ten minutes after, and ranks it above media.
+Keep live copy title first and use forty pixel leading art.
+---
+diff --git a/js/ui/liveActivity.js b/js/ui/liveActivity.js
+index 162841a..5dac991 100644
+--- a/js/ui/liveActivity.js
++++ b/js/ui/liveActivity.js
+@@ -28,12 +28,12 @@ export const Style = Object.freeze({
+ const PRIORITY = Object.freeze({
+     call: 0,
+     recording: 1,
+-    navigation: 2,
+-    timer: 3,
+-    transfer: 4,
+-    installation: 5,
+-    media: 6,
+-    event: 7,
++    event: 2,
++    navigation: 3,
++    timer: 4,
++    transfer: 5,
++    installation: 6,
++    media: 7,
+     generic: 8,
+ });
+ const UNKNOWN_PRIORITY = 9;
+@@ -119,10 +119,20 @@ export function categoryIcon(item) {
+ 
+ // The one publication the island shows: highest priority first, then the one
+ // that started (or starts) soonest, then the one that expires soonest.
+-export function pickActivity(items) {
++export function pickActivity(items, nowMs = Date.now()) {
+     const when = item => parseInstant(item.extension.starts_at) ??
+         parseInstant(item.extension.expires_at) ?? Number.MAX_SAFE_INTEGER;
+-    return [...items].sort((a, b) =>
++    // Calendar publishes the day's next event for its own purposes. The shelf
++    // only joins that event from fifteen minutes before until ten minutes
++    // after its start; the daemon's thirty-second updates wake this selector.
++    const visible = items.filter(item => {
++        if (categoryOf(item) !== 'event')
++            return true;
++        const start = parseInstant(item.extension.starts_at);
++        return start !== null && nowMs >= start - 15 * 60_000 &&
++            nowMs <= start + 10 * 60_000;
++    });
++    return visible.sort((a, b) =>
+         priorityOf(a) - priorityOf(b) || when(a) - when(b))[0] ?? null;
+ }
+ 
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 389ffbf..072bbfe 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -61,7 +61,7 @@ const LUMA_LIVE_EXTENSION_MAX_ACTIONS = 3;
+ // the title. Its publications are the only ones whose icon and click belong to
+ // an application other than the publisher.
+ const LUMA_CALLS_APPLICATION_ID = 'org.projectluma.Calls';
+-const LUMA_LIVE_LEADING_SIZE = 36;
++const LUMA_LIVE_LEADING_SIZE = 40;
+ // org.projectluma.SemanticBroker1 answers an InvokeAction with a request
+ // object, and only reports the outcome on that object's Response signal. A
+ // request needs a handle token of the caller's choosing, which also makes its
+@@ -180,10 +180,9 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             style_class: 'luma-live-extension-text',
+             vertical: true,
+         });
+-        // The subtitle is an eyebrow -- "Up next, 42 minutes" -- and it reads
+-        // above the thing it qualifies, not below it.
+-        text.add_child(this._subtitle);
++        // Every live tile reads title first and its secondary line below.
+         text.add_child(this._title);
++        text.add_child(this._subtitle);
+         text.x_expand = true;
+         this._text = text;
+         this._time = new St.Label({
+@@ -320,12 +319,6 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+                 this.remove_style_class_name(`luma-live-extension-${this._style}`);
+             this.add_style_class_name(`luma-live-extension-${style}`);
+             this._style = style;
+-            // Only the calendar reads its eyebrow first ("Up next · 20 min"
+-            // over the event); a call and everything else read title first.
+-            if (style === LiveActivity.Style.EVENT)
+-                this._text.set_child_above_sibling(this._title, this._subtitle);
+-            else
+-                this._text.set_child_above_sibling(this._subtitle, this._title);
+             console.debug(`Luma live island: ${item.application_id} ` +
+                 `category=${LiveActivity.categoryOf(item)} style=${style}`);
+         }

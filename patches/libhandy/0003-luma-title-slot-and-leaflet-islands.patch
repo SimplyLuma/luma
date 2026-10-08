@@ -1,0 +1,263 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 11:30:00 -0500
+Subject: [PATCH] header-bar: host custom-title controls on the command row; leaflets become islands
+
+Carry the Luma title-slot rule into HdyHeaderBar and mark an HdyLeaflet on
+the native work surface as a split so the installed theme presents its pages
+as sibling islands while unfolded and flattens the secondary header bars
+inside them.
+---
+diff --git a/src/hdy-header-bar.c b/src/hdy-header-bar.c
+index d4f6a8c..c8d64fc 100644
+--- a/src/hdy-header-bar.c
++++ b/src/hdy-header-bar.c
+@@ -110,6 +110,7 @@ typedef struct {
+   GtkWidget *luma_command_start;
+   GtkWidget *luma_command_end;
+   GList *luma_command_children;
++  GtkWidget *luma_hosted_title;
+ 
+   guint tick_id;
+   GtkProgressTracker tracker;
+@@ -165,6 +166,9 @@ static void luma_leave_command_row (HdyHeaderBar *self);
+ static gboolean luma_command_row_active (HdyHeaderBar *self);
+ static void luma_command_row_measure (HdyHeaderBar *self, GtkOrientation orientation, gint for_size, gint *minimum, gint *natural);
+ static gint luma_command_row_height (HdyHeaderBar *self, gint width);
++static void luma_host_title (HdyHeaderBar *self);
++static void luma_unhost_title (HdyHeaderBar *self);
++#define LUMA_TITLE_ROW_CUSTOM(priv) ((priv)->luma_hosted_title ? NULL : (priv)->custom_title)
+ static void remove_automatic_luma_identity (HdyHeaderBar *self);
+ 
+ static void hdy_header_bar_buildable_init (GtkBuildableIface *iface);
+@@ -774,7 +778,7 @@ hdy_header_bar_get_size (GtkWidget      *widget,
+       add_child_size (priv->label_sizing_box, orientation, &center_min, &center_nat);
+   }
+ 
+-  if (priv->custom_title != NULL)
++  if (LUMA_TITLE_ROW_CUSTOM (priv) != NULL)
+     add_child_size (priv->custom_title, orientation, &center_min, &center_nat);
+ 
+   if (priv->titlebar_start_box != NULL) {
+@@ -851,7 +855,7 @@ hdy_header_bar_compute_size_for_orientation (GtkWidget *widget,
+     required_natural += child_natural;
+   }
+ 
+-  if (priv->custom_title != NULL &&
++  if (LUMA_TITLE_ROW_CUSTOM (priv) != NULL &&
+       gtk_widget_get_visible (priv->custom_title)) {
+     gtk_widget_get_preferred_width (priv->custom_title,
+                                     &child_size, &child_natural);
+@@ -961,7 +965,7 @@ hdy_header_bar_compute_size_for_opposing_orientation (GtkWidget *widget,
+                                      &center_min, &center_nat);
+   }
+ 
+-  if (priv->custom_title != NULL &&
++  if (LUMA_TITLE_ROW_CUSTOM (priv) != NULL &&
+       gtk_widget_get_visible (priv->custom_title)) {
+     gtk_widget_get_preferred_height (priv->custom_title,
+                                      &center_min, &center_nat);
+@@ -1065,7 +1069,7 @@ get_title_size (HdyHeaderBar     *self,
+   HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
+   GtkWidget *title_widget;
+ 
+-  if (priv->custom_title != NULL &&
++  if (LUMA_TITLE_ROW_CUSTOM (priv) != NULL &&
+       gtk_widget_get_visible (priv->custom_title))
+     title_widget = priv->custom_title;
+   else if (priv->label_box != NULL)
+@@ -1571,7 +1575,7 @@ hdy_header_bar_size_allocate (GtkWidget     *widget,
+   }
+ 
+   /* Allocate the title widget. */
+-  if (priv->custom_title != NULL && gtk_widget_get_visible (priv->custom_title))
++  if (LUMA_TITLE_ROW_CUSTOM (priv) != NULL && gtk_widget_get_visible (priv->custom_title))
+     gtk_widget_size_allocate (priv->custom_title, &title_allocation);
+   else if (priv->label_box != NULL)
+     gtk_widget_size_allocate (priv->label_box, &title_allocation);
+@@ -1870,7 +1874,7 @@ hdy_header_bar_forall (GtkContainer *container,
+       (* callback) (child->widget, callback_data);
+   }
+ 
+-  if (priv->custom_title != NULL)
++  if (LUMA_TITLE_ROW_CUSTOM (priv) != NULL)
+     (* callback) (priv->custom_title, callback_data);
+ 
+   if (include_internals && priv->label_box != NULL)
+@@ -2391,10 +2395,95 @@ luma_update_command_bar_visibility (HdyHeaderBar *self)
+     }
+   }
+ 
++  if (priv->luma_hosted_title && gtk_widget_get_visible (priv->luma_hosted_title))
++    visible = TRUE;
++
++  /* An empty group must not paint its material as a sliver. */
++  {
++    GtkWidget *groups[2] = { priv->luma_command_start, priv->luma_command_end };
++    guint i;
++
++    for (i = 0; i < 2; i++)
++      {
++        GList *children = gtk_container_get_children (GTK_CONTAINER (groups[i]));
++        gboolean any = FALSE;
++
++        for (l = children; l; l = l->next)
++          if (gtk_widget_get_visible (l->data))
++            any = TRUE;
++        g_list_free (children);
++        gtk_widget_set_visible (groups[i], any);
++      }
++  }
++
+   gtk_widget_set_visible (priv->luma_command_bar, visible);
+   gtk_widget_queue_resize (GTK_WIDGET (self));
+ }
+ 
++static gboolean
++luma_custom_title_is_text (GtkWidget *widget)
++{
++  gboolean text = TRUE;
++
++  if (widget == NULL || GTK_IS_LABEL (widget))
++    return TRUE;
++
++  if (!GTK_IS_BOX (widget))
++    return FALSE;
++
++  {
++    GList *children = gtk_container_get_children (GTK_CONTAINER (widget));
++    GList *l;
++
++    for (l = children; l; l = l->next)
++      if (!GTK_IS_LABEL (l->data))
++        text = FALSE;
++    g_list_free (children);
++  }
++
++  return text;
++}
++
++static void
++luma_host_title (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GtkWidget *title = priv->custom_title;
++
++  if (!priv->luma_command_bar || priv->luma_hosted_title || !title ||
++      luma_custom_title_is_text (title))
++    return;
++
++  g_object_ref (title);
++  gtk_widget_unparent (title);
++  gtk_style_context_add_class (gtk_widget_get_style_context (title), "luma-command-title");
++  gtk_box_set_center_widget (GTK_BOX (priv->luma_command_bar), title);
++  g_signal_connect (title, "notify::visible", G_CALLBACK (notify_child_cb), self);
++  g_object_unref (title);
++  priv->luma_hosted_title = title;
++  luma_update_command_bar_visibility (self);
++}
++
++static void
++luma_unhost_title (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GtkWidget *title = priv->luma_hosted_title;
++
++  if (!title)
++    return;
++
++  g_object_ref (title);
++  g_signal_handlers_disconnect_by_func (title, notify_child_cb, self);
++  gtk_container_remove (GTK_CONTAINER (priv->luma_command_bar), title);
++  gtk_style_context_remove_class (gtk_widget_get_style_context (title), "luma-command-title");
++  priv->luma_hosted_title = NULL;
++  if (priv->custom_title == title)
++    gtk_widget_set_parent (title, GTK_WIDGET (self));
++  g_object_unref (title);
++  gtk_widget_queue_resize (GTK_WIDGET (self));
++}
++
+ static void
+ luma_command_child_visibility (GObject      *child,
+                                GParamSpec   *pspec,
+@@ -2462,6 +2551,7 @@ luma_enter_command_row (HdyHeaderBar *self)
+     priv->luma_command_children = g_list_append (priv->luma_command_children, child);
+   }
+ 
++  luma_host_title (self);
+   luma_update_command_bar_visibility (self);
+   _hdy_header_bar_update_separator_visibility (self);
+ }
+@@ -2476,6 +2566,8 @@ luma_leave_command_row (HdyHeaderBar *self)
+   if (!priv->luma_command_bar)
+     return;
+ 
++  luma_unhost_title (self);
++
+   for (l = priv->luma_command_children; l; l = next) {
+     Child *child = l->data;
+ 
+@@ -3036,13 +3128,20 @@ hdy_header_bar_set_custom_title (HdyHeaderBar *self,
+     GtkWidget *custom = priv->custom_title;
+ 
+     priv->custom_title = NULL;
+-    gtk_widget_unparent (custom);
++    if (priv->luma_hosted_title == custom) {
++      g_signal_handlers_disconnect_by_func (custom, notify_child_cb, self);
++      gtk_style_context_remove_class (gtk_widget_get_style_context (custom), "luma-command-title");
++      priv->luma_hosted_title = NULL;
++      gtk_container_remove (GTK_CONTAINER (priv->luma_command_bar), custom);
++    } else
++      gtk_widget_unparent (custom);
+   }
+ 
+   if (title_widget != NULL) {
+     priv->custom_title = title_widget;
+ 
+     gtk_widget_set_parent (priv->custom_title, GTK_WIDGET (self));
++    luma_host_title (self);
+ 
+     if (priv->label_box != NULL) {
+       GtkWidget *label_box = priv->label_box;
+diff --git a/src/hdy-leaflet.c b/src/hdy-leaflet.c
+index 46a530f..ad9859c 100644
+--- a/src/hdy-leaflet.c
++++ b/src/hdy-leaflet.c
+@@ -952,9 +952,37 @@ hdy_leaflet_set_child_property (GtkContainer *container,
+   }
+ }
+ 
++/* Luma: a leaflet placed on the native work surface presents its pages as
++ * sibling islands while unfolded; the surface itself turns transparent. */
++static void
++luma_mark_split_leaflet (GtkWidget *widget)
++{
++  GtkWidget *ancestor = gtk_widget_get_parent (widget);
++  GtkStyleContext *own = gtk_widget_get_style_context (widget);
++
++  if (gtk_style_context_has_class (own, "luma-native-work-surface"))
++    {
++      gtk_style_context_add_class (own, "luma-split-surface");
++      gtk_style_context_add_class (own, "luma-split-leaflet");
++      return;
++    }
++
++  while (ancestor && !GTK_IS_WINDOW (ancestor)) {
++    GtkStyleContext *context = gtk_widget_get_style_context (ancestor);
++
++    if (gtk_style_context_has_class (context, "luma-native-work-surface")) {
++      gtk_style_context_add_class (context, "luma-split-surface");
++      gtk_style_context_add_class (gtk_widget_get_style_context (widget), "luma-split-leaflet");
++      return;
++    }
++    ancestor = gtk_widget_get_parent (ancestor);
++  }
++}
++
+ static void
+ hdy_leaflet_realize (GtkWidget *widget)
+ {
++  luma_mark_split_leaflet (widget);
+   hdy_stackable_box_realize (HDY_GET_HELPER (widget));
+ }
+ 

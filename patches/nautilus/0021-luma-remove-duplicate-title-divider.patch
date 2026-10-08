@@ -1,0 +1,27 @@
+From 39bb057119b31dc54d1ee6af0c5282e1d1a7eb3d Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 10:31:00 -0500
+Subject: [PATCH] style: remove duplicate outer title divider
+
+The title row and work islands are separate native surfaces.  The title bar's
+old lower hairline visually joined them and disagreed with Notes and
+Calculator.  Keep the functional secondary-toolbar divider inside the Filer
+content island, but remove this duplicate window-level edge.
+---
+ src/resources/style.css | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -15,7 +15,7 @@
+   background-color: @luma_window;
+   background-image: none;
+   color: @luma_ink;
+-  box-shadow: inset 0 -1px @luma_line;
++  box-shadow: none;
+ }
+ 
+ @media (prefers-color-scheme: light) {
+-- 
+2.54.0 (Apple Git-157)

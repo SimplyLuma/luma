@@ -1,0 +1,27 @@
+From: Luma Shell Notifications
+Subject: [PATCH] Match reply send circle and quiet footer to Studio
+
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2972,3 +2972,10 @@
+ .quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
++
++/* Native measured controls: Studio reply send circle and quiet footer. */
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button { min-width: 0; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: 1px solid rgba(255,255,255,.09); padding-top: 9px; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { border-top-color: rgba(22,25,29,.10); }
++.quick-settings.luma-studio-options .luma-options-battery-text { color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-battery-text { color: #16191d; }
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -464,7 +464,7 @@
+             const percentage = GLib.markup_escape_text(this._powerToggle.title ?? '', -1);
+             const suffix = remaining ? ` · ${remaining} ` +
+                 (proxy.State === UPower.DeviceState.CHARGING ? _('until full') : _('left')) : '';
+-            label.clutter_text.set_markup(`<span weight="650" alpha="65535">${percentage}</span>${GLib.markup_escape_text(suffix, -1)}`);
++            label.clutter_text.set_markup(`<span weight="650">${percentage}</span><span alpha="40632">${GLib.markup_escape_text(suffix, -1)}</span>`);
+             key.visible = this._powerToggle.visible;
+         };
+         this._powerToggle._proxy.connectObject('g-properties-changed', syncBattery, key);

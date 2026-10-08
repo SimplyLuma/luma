@@ -1,0 +1,35 @@
+[Unit]
+Description=Project Luma CPU-isolated FP6 Android compositor
+Documentation=https://project-luma.local/android
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+# Android is an optional per-user runtime. Never start it for GDM's greeter
+# (a dynamic, non-system UID whose session class is "greeter") or for
+# system users; systemd logs the unmet condition as the reason it skipped.
+ConditionUser=!@system
+ConditionEnvironment=XDG_SESSION_CLASS=user
+ConditionPathExists=/usr/lib64/libweston-15/rdp-backend.so
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/luma-waydroid-fp6-software-compositor
+ExecStopPost=/usr/bin/rm -f %t/luma-android/rdp-weston.pid %t/luma-android/luma-android-rdp %t/luma-android/luma-android-rdp.lock
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=%t/luma-android
+UnsetEnvironment=DISPLAY WAYLAND_DISPLAY

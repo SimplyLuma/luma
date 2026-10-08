@@ -1,0 +1,10 @@
+[Unit]
+Description=Luma Shell graphical session
+Documentation=man:systemd.special(7)
+DefaultDependencies=no
+
+# graphical-session.target refuses direct manual activation. A concrete
+# desktop session target is expected to pull it in and define its lifetime.
+BindsTo=graphical-session.target
+Before=graphical-session.target
+

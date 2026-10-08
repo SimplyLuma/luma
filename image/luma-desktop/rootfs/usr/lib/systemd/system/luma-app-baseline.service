@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Hand off the signed offline Luma application baseline
+After=local-fs.target systemd-tmpfiles-setup.service dbus.service
+Before=display-manager.service graphical.target
+ConditionPathExists=/usr/share/luma/app-baseline/manifest.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-app-baseline
+UMask=0077
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
+StateDirectory=luma/app-baseline
+StateDirectoryMode=0700
+RemainAfterExit=yes
+TimeoutStartSec=600
+
+[Install]
+WantedBy=graphical.target

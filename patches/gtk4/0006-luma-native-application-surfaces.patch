@@ -1,0 +1,130 @@
+From e24147471053f5b0d2fb10f383c034803acbf64d Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 13:18:00 -0500
+Subject: [PATCH] application-window: mark native Luma work surfaces
+
+Make ordinary GtkApplicationWindow content inherit the Luma frame and work
+surface without recognizing individual applications. The application keeps
+its real GtkHeaderBar, actions, menus, accessibility tree, and content.
+libadwaita marks its own windows so its richer native implementation remains
+the single owner there, and a custom renderer can use the documented
+luma-no-native-surfaces escape class.
+---
+ gtk/gtkapplicationwindow.c             |  2 ++
+ gtk/gtkwindow.c                        | 10 ++++++++++
+ gtk/theme/Default/_common.scss         | 35 +++++++++++++++++++++++++++++++++++
+ gtk/theme/Default/Default-dark.css     | 12 ++++++++++++
+ gtk/theme/Default/Default-light.css    | 12 ++++++++++++
+ 5 files changed, 71 insertions(+)
+
+diff --git a/gtk/gtkapplicationwindow.c b/gtk/gtkapplicationwindow.c
+index 0526e23..7fd818a 100644
+--- a/gtk/gtkapplicationwindow.c
++++ b/gtk/gtkapplicationwindow.c
+@@ -642,6 +642,8 @@ gtk_application_window_init (GtkApplicationWindow *window)
+   priv->actions = gtk_application_window_actions_new (window);
+   priv->menubar_section = g_menu_new ();
+ 
++  gtk_widget_add_css_class (GTK_WIDGET (window), "luma-native-window");
++
+   gtk_widget_insert_action_group (GTK_WIDGET (window), "win", G_ACTION_GROUP (priv->actions));
+ 
+   /* priv->actions is the one and only ref on the group, so when
+diff --git a/gtk/gtkwindow.c b/gtk/gtkwindow.c
+index 2720fbf..82dc107 100644
+--- a/gtk/gtkwindow.c
++++ b/gtk/gtkwindow.c
+@@ -7008,10 +7008,16 @@ gtk_window_set_child (GtkWindow *window,
+   if (priv->child == child)
+     return;
+ 
++  if (priv->child && GTK_IS_APPLICATION_WINDOW (window))
++    gtk_widget_remove_css_class (priv->child, "luma-native-work-surface");
++
+   g_clear_pointer (&priv->child, gtk_widget_unparent);
+ 
+   if (child)
+     {
++      if (GTK_IS_APPLICATION_WINDOW (window))
++        gtk_widget_add_css_class (child, "luma-native-work-surface");
++
+       priv->child = child;
+       gtk_widget_insert_before (child, GTK_WIDGET (window), priv->title_box);
+     }
+diff --git a/gtk/theme/Default/_common.scss b/gtk/theme/Default/_common.scss
+index 501619f..1074f0c 100644
+--- a/gtk/theme/Default/_common.scss
++++ b/gtk/theme/Default/_common.scss
+@@ -1697,6 +1697,40 @@ headerbar {
+     opacity: 0.55;
+   }
+ 
++  window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) & {
++    background-color: if($variant == 'light', #f1f2f3, #21252b);
++    background-image: none;
++    color: if($variant == 'light', #283038, #e4e8ea);
++
++    &:backdrop {
++      background-color: if($variant == 'light', #f1f2f3, #21252b);
++      background-image: none;
++      color: if($variant == 'light', #283038, #e4e8ea);
++    }
++  }
++
++}
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) {
++  background-color: if($variant == 'light', #f1f2f3, #21252b);
++  color: if($variant == 'light', #283038, #e4e8ea);
++  font-family: "Figtree", sans-serif;
++
++  > .luma-native-work-surface {
++    margin: 0 9px 9px;
++    border: 1px solid if($variant == 'light', rgba(39, 48, 56, 0.095), rgba(255, 255, 255, 0.08));
++    border-radius: 10px;
++    background-color: if($variant == 'light', #fbfbfa, #2a2e34);
++    color: if($variant == 'light', #283038, #e4e8ea);
++    box-shadow: if($variant == 'light',
++                   (0 2px 5px rgba(25, 27, 31, 0.16),
++                    0 18px 36px -16px rgba(25, 27, 31, 0.48)),
++                   (0 2px 6px rgba(0, 0, 0, 0.42),
++                    0 20px 38px -15px rgba(0, 0, 0, 0.78)));
++  }
++}
++
++headerbar {
+   switch {
+     margin-top: 10px;
+     margin-bottom: 10px;
+diff --git a/gtk/theme/Default/Default-light.css b/gtk/theme/Default/Default-light.css
+index 60f78eb..35f0b4d 100644
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -644,2 +644,10 @@ headerbar .luma-identity-chevron { -gtk-icon-size: 10px; opacity: 0.55; }
+ 
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar { background-color: #f1f2f3; background-image: none; color: #283038; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar:backdrop { background-color: #f1f2f3; background-image: none; color: #283038; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) { background-color: #f1f2f3; color: #283038; font-family: "Figtree", sans-serif; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin: 0 9px 9px; border: 1px solid rgba(39, 48, 56, 0.095); border-radius: 10px; background-color: #fbfbfa; color: #283038; box-shadow: 0 2px 5px rgba(25, 27, 31, 0.16), 0 18px 36px -16px rgba(25, 27, 31, 0.48); }
++
+ headerbar switch { margin-top: 10px; margin-bottom: 10px; }
+diff --git a/gtk/theme/Default/Default-dark.css b/gtk/theme/Default/Default-dark.css
+index 7023355..5559f15 100644
+--- a/gtk/theme/Default/Default-dark.css
++++ b/gtk/theme/Default/Default-dark.css
+@@ -636,2 +636,10 @@ headerbar .luma-identity-chevron { -gtk-icon-size: 10px; opacity: 0.55; }
+ 
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar { background-color: #21252b; background-image: none; color: #e4e8ea; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar:backdrop { background-color: #21252b; background-image: none; color: #e4e8ea; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) { background-color: #21252b; color: #e4e8ea; font-family: "Figtree", sans-serif; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin: 0 9px 9px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background-color: #2a2e34; color: #e4e8ea; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42), 0 20px 38px -15px rgba(0, 0, 0, 0.78); }
++
+ headerbar switch { margin-top: 10px; margin-bottom: 10px; }
+-- 
+2.54.0

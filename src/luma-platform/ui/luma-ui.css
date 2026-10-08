@@ -1,0 +1,182 @@
+@import url("luma-empty-state-tokens.css");
+
+/* Frost and Glass select libadwaita's light colour scheme for legible ink,
+ * but that must never turn an application's title region into an opaque Light
+ * slab. The root window owns the one physical translucent material. Every
+ * structural descendant between it and the title contents must therefore be
+ * unpainted; stacking the same tint three times is visibly opaque.
+ *
+ * These select on the effective treatment alone. They used to require
+ * `luma-translucent` as well, which is set only once a window has negotiated
+ * its own compositor blur region: a window that is in Glass but whose
+ * protocol handshake has not landed yet kept an opaque Light title region,
+ * which is one of the ways two windows on one desktop came out different
+ * colours. What the treatment paints is the treatment's business; whether a
+ * given surface also gets a live blur region is the compositor's.
+ *
+ * Include the effective treatment class in the selector deliberately. It
+ * outranks application composition sheets that provide an opaque Light
+ * fallback without naming Filer, Calculator, or any other consumer here. */
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .top-bar,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .top-bar,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .bottom-bar,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .bottom-bar,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .top-bar.raised,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .top-bar.raised,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .bottom-bar.raised,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .bottom-bar.raised,
+window.luma-treatment-frost headerbar.luma-titlebar,
+window.luma-treatment-glass headerbar.luma-titlebar,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view:backdrop,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view:backdrop,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .top-bar:backdrop,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .top-bar:backdrop,
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .bottom-bar:backdrop,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .bottom-bar:backdrop,
+window.luma-treatment-frost headerbar.luma-titlebar:backdrop,
+window.luma-treatment-glass headerbar.luma-titlebar:backdrop {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transition: none;
+}
+
+window.luma-treatment-frost toolbarview.luma-window-toolbar-view > .top-bar:backdrop > windowhandle,
+window.luma-treatment-glass toolbarview.luma-window-toolbar-view > .top-bar:backdrop > windowhandle,
+window.luma-treatment-frost headerbar.luma-titlebar:backdrop > windowhandle,
+window.luma-treatment-glass headerbar.luma-titlebar:backdrop > windowhandle {
+  filter: none;
+  transition: none;
+}
+
+
+/* Islands are opaque, in every treatment. The window's own surface is the
+ * glass -- the frame, the title band and the gaps between islands -- and the
+ * content surfaces standing on it are paper. A month grid or a sidebar that
+ * the wallpaper shows through is not a material, it is unreadable text on
+ * unreadable text. The colours come from the treatment's token sheet, which
+ * now carries the light family's paper for these roles; this sheet only makes
+ * sure nothing below it repaints them translucent. */
+window.luma-treatment-frost .luma-island,
+window.luma-treatment-glass .luma-island,
+window.luma-treatment-frost .luma-island:backdrop,
+window.luma-treatment-glass .luma-island:backdrop {
+  background-color: @luma_island;
+}
+
+window.luma-treatment-frost .luma-pane,
+window.luma-treatment-glass .luma-pane,
+window.luma-treatment-frost .luma-pane:backdrop,
+window.luma-treatment-glass .luma-pane:backdrop {
+  background-color: @luma_content;
+}
+
+/* Text on a translucent surface is plain text: dark ink in the light family,
+ * and nothing else. A shadow or an outline behind a glyph is what a surface
+ * reaches for when it is too thin to carry its own text; the surface is thick
+ * enough now (see the veil in config/shared/design-tokens.json), so the
+ * rescue comes off everywhere rather than in the places somebody noticed. */
+window.luma-treatment-frost,
+window.luma-treatment-glass,
+window.luma-treatment-frost *,
+window.luma-treatment-glass * {
+  text-shadow: none;
+  -gtk-icon-shadow: none;
+}
+
+/* The C kit's own sheet. Chrome, panes, bars, buttons, groups, segments and
+ * sliders come from luma-appkit-base.css, shared with the Python kit, so a
+ * C application and a Python application are the same application to look at.
+ * Only what the C widgets add beyond that lives here. */
+
+.luma-action-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: @luma_ink;
+}
+
+.luma-touch .luma-action-bar button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Ink-filled controls (play, the primary button) print their label in the
+ * surface colour. On frost and glass the surface roles are translucent layers,
+ * so a label in one would let the dark plate through; it takes the paper the
+ * layers stand for instead. */
+window.luma-treatment-frost .luma-play,
+window.luma-treatment-glass .luma-play,
+window.luma-treatment-frost .luma-button.primary,
+window.luma-treatment-glass .luma-button.primary,
+window.luma-treatment-frost button.luma-media-play,
+window.luma-treatment-glass button.luma-media-play {
+  color: #fbfbfa;
+}
+
+/* Reorder hint (luma-reorder-hint.c), inlined: a resource import fails wherever the
+ * library's resources are not registered (a Python LumaUI process). */
+/* Opt-in, geometry-stable reorder feedback. Scope validation and persistence
+ * belong to the application; the insertion marker never means “drop into”. */
+.luma-reorder-list.luma-reordering > row,
+.luma-reorder-list.luma-reordering > row:hover,
+.luma-reorder-list.luma-reordering > row:selected,
+.luma-reorder-list.luma-reordering > row:drop(active) {
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+.luma-reorder-list.luma-reordering > row.luma-reorder-source { opacity: .35; }
+.luma-reorder-list.luma-reordering > row.luma-reorder-before {
+  border-radius: 0;
+  box-shadow: inset 0 2px @accent_color;
+}
+.luma-reorder-list.luma-reordering > row.luma-reorder-after {
+  border-radius: 0;
+  box-shadow: inset 0 -2px @accent_color;
+}
+
+/* MD3: data-bound arrangement/story timeline. The C kit owns these surfaces. */
+.luma-timeline { background: @luma_bar_surface; border-top: 1px solid @luma_hairline; }
+.luma-timeline .timeline-header { min-height: 40px; padding: 0 10px 0 16px; border-bottom: 1px solid @luma_hairline; }
+.luma-timeline .timeline-header label { color: @luma_ink_secondary; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.luma-timeline .timeline-header progressbar { min-width: 120px; }
+.luma-timeline .timeline-tools { background: @luma_well; border-radius: 11px; padding: 3px; }
+.luma-timeline .timeline-key { min-width: 30px; min-height: 28px; padding: 0; border: none; border-radius: 8px; background: none; color: @luma_ink_secondary; }
+.luma-timeline .timeline-key.on { background: @luma_control_fill; color: @luma_ink; }
+.luma-timeline .timeline-key:hover { background: @luma_hover; }
+.luma-timeline .timeline-key:focus-visible, .luma-timeline .timeline-region:focus-visible,
+.luma-timeline .timeline-ruler:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+.luma-timeline .timeline-heads { background: @luma_bar_surface; border-right: 1px solid @luma_hairline; }
+.luma-timeline .timeline-track-head { border-bottom: 1px solid @luma_hairline; padding: 0 4px 0 8px; }
+.luma-timeline .timeline-track-head label { color: @luma_ink; font-size: 11px; font-weight: 600; }
+.luma-timeline .timeline-track-head .lane-key { min-width: 20px; min-height: 22px; }
+.luma-timeline.phone .timeline-track-head .lane-key { min-width: 16px; }
+.luma-timeline .timeline-canvas { background: @luma_bar_surface; }
+.luma-timeline .timeline-ruler { border: none; border-radius: 0; border-bottom: 1px solid @luma_hairline; background: none; }
+.luma-timeline .timeline-tick { border-left: 1px solid @luma_hairline; padding-left: 4px; color: @luma_muted; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.luma-timeline .timeline-marker { color: @luma_media_toggle_on; font-size: 8px; }
+.luma-timeline .timeline-loop { background: @luma_media_toggle_on; }
+.luma-timeline .timeline-track { border-bottom: 1px solid @luma_hairline; background: @luma_bar_surface; }
+.luma-timeline .timeline-track.audio { background: @luma_media_deck; }
+.luma-timeline .timeline-region { border: 1px solid @luma_hairline; border-radius: 8px; padding: 0 6px; background: @luma_control_fill; color: @luma_ink; font-size: 11px; font-weight: 600; }
+.luma-timeline .timeline-region.midi { background: @luma_media_toggle_on; color: @luma_key; }
+.luma-timeline .timeline-region.audio { background: @luma_media_progress; color: @luma_key; }
+.luma-timeline .timeline-region.selected { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+.luma-timeline .timeline-playhead { background: @luma_media_recording; }
+@media (prefers-reduced-motion: reduce) { .luma-timeline * { transition: none; } }
+
+/* ══ v71 (K-C): what only the C kit draws ═══════════════════════════════════════════════════════
+ * The v71 bar, its panels, held row, search and in-bar confirm, and the title island are styled by the
+ * shared sheets (luma-appkit-bar.css, luma-appkit-base.css): the C parts build Python's trees. Here only
+ * the C layer host's drawers (menus, sheets, the phone's confirm) in the bar's frame (v71: 16 gutter, 34
+ * up, 26 corners all round, no grabber, a light scrim), and the phone confirm's in-bar look. */
+.lumaui-modal.drawer { border-radius: 26px; }
+.lumaui-modal.drawer .lumaui-drawer-handle { min-width: 0; min-height: 0; margin: 0; background: none; }
+.lumaui-scrim.drawer { background: @luma_scrim; }
+box.lumaui-dialog.phone.drawer { padding: 18px 12px 12px; border-radius: 26px; }
+box.lumaui-dialog.phone label.lumaui-dialog-title { margin: 0; padding: 0 6px; font-size: 17px; }
+box.lumaui-dialog.phone label.lumaui-dialog-body { margin: 6px 0 0; padding: 0 6px; font-size: 14px; }
+box.lumaui-dialog.phone box.lumaui-dialog-buttons { margin-top: 16px; border-spacing: 8px; }
+box.lumaui-dialog.phone box.lumaui-dialog-buttons button { min-height: 48px; border-radius: 20px; font-size: 15px; }

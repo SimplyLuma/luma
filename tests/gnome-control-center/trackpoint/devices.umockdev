@@ -1,0 +1,43 @@
+P: /devices/platform/i8042
+E: SUBSYSTEM=platform
+E: DRIVER=i8042
+
+P: /devices/platform/i8042/serio1
+E: SUBSYSTEM=serio
+E: DRIVER=psmouse
+
+P: /devices/platform/i8042/serio1/input/input5
+E: SUBSYSTEM=input
+E: NAME="ELAN0676:00 04F3:3195 Touchpad"
+E: ID_INPUT=1
+E: ID_INPUT_TOUCHPAD=1
+A: name=ELAN0676:00 04F3:3195 Touchpad
+
+P: /devices/platform/i8042/serio1/input/input5/event5
+N: input/event5
+E: DEVNAME=/dev/input/event5
+E: SUBSYSTEM=input
+E: ID_INPUT=1
+E: ID_INPUT_TOUCHPAD=1
+E: ID_INPUT_WIDTH_MM=110
+E: ID_INPUT_HEIGHT_MM=65
+
+P: /devices/platform/i8042/serio1/serio2
+E: SUBSYSTEM=serio
+E: DRIVER=psmouse
+
+P: /devices/platform/i8042/serio1/serio2/input/input6
+E: SUBSYSTEM=input
+E: NAME="TPPS/2 Elan TrackPoint"
+E: ID_INPUT=1
+E: ID_INPUT_MOUSE=1
+E: ID_INPUT_POINTINGSTICK=1
+A: name=TPPS/2 Elan TrackPoint
+
+P: /devices/platform/i8042/serio1/serio2/input/input6/event6
+N: input/event6
+E: DEVNAME=/dev/input/event6
+E: SUBSYSTEM=input
+E: ID_INPUT=1
+E: ID_INPUT_MOUSE=1
+E: ID_INPUT_POINTINGSTICK=1

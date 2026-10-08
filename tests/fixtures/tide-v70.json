@@ -1,0 +1,399 @@
+{
+  "albums": [
+    {
+      "id": "pet",
+      "t": "Pet Sounds",
+      "a": "The Beach Boys",
+      "y": 1966,
+      "img": "pet-sounds.webp",
+      "h": 95,
+      "h2": 80,
+      "h3": 150,
+      "label": "Capitol",
+      "note": "Recorded across four months in Los Angeles, with most of the arrangements written and produced by Brian Wilson.",
+      "tr": [
+        [
+          "Wouldn’t It Be Nice",
+          "2:33"
+        ],
+        [
+          "You Still Believe in Me",
+          "2:36"
+        ],
+        [
+          "That’s Not Me",
+          "2:31"
+        ],
+        [
+          "Don’t Talk (Put Your Head on My Shoulder)",
+          "2:58"
+        ],
+        [
+          "I’m Waiting for the Day",
+          "3:06"
+        ],
+        [
+          "Let’s Go Away for Awhile",
+          "2:24"
+        ],
+        [
+          "Sloop John B",
+          "2:58"
+        ],
+        [
+          "God Only Knows",
+          "2:51"
+        ],
+        [
+          "I Know There’s an Answer",
+          "3:14"
+        ],
+        [
+          "Here Today",
+          "2:59"
+        ],
+        [
+          "I Just Wasn’t Made for These Times",
+          "3:12"
+        ],
+        [
+          "Pet Sounds",
+          "2:37"
+        ],
+        [
+          "Caroline, No",
+          "2:52"
+        ]
+      ]
+    },
+    {
+      "id": "hdn",
+      "t": "A Hard Day’s Night",
+      "a": "The Beatles",
+      "y": 1964,
+      "h": 255,
+      "h2": 230,
+      "h3": 265,
+      "label": "Parlophone",
+      "note": "The first Beatles album made up entirely of their own songs, written alongside the film of the same name.",
+      "tr": [
+        [
+          "A Hard Day’s Night",
+          "2:34"
+        ],
+        [
+          "I Should Have Known Better",
+          "2:43"
+        ],
+        [
+          "If I Fell",
+          "2:19"
+        ],
+        [
+          "I’m Happy Just to Dance With You",
+          "1:56"
+        ],
+        [
+          "And I Love Her",
+          "2:29"
+        ],
+        [
+          "Tell Me Why",
+          "2:08"
+        ],
+        [
+          "Can’t Buy Me Love",
+          "2:11"
+        ],
+        [
+          "Any Time at All",
+          "2:11"
+        ],
+        [
+          "I’ll Cry Instead",
+          "1:46"
+        ],
+        [
+          "Things We Said Today",
+          "2:35"
+        ],
+        [
+          "When I Get Home",
+          "2:16"
+        ],
+        [
+          "You Can’t Do That",
+          "2:34"
+        ],
+        [
+          "I’ll Be Back",
+          "2:24"
+        ]
+      ]
+    },
+    {
+      "id": "rum",
+      "t": "Rumours",
+      "a": "Fleetwood Mac",
+      "y": 1977,
+      "h": 45,
+      "h2": 70,
+      "h3": 20,
+      "label": "Warner Bros.",
+      "note": "Written and recorded while the band’s two couples were separating, which is most of what the songs are about.",
+      "tr": [
+        [
+          "Second Hand News",
+          "2:56"
+        ],
+        [
+          "Dreams",
+          "4:14"
+        ],
+        [
+          "Never Going Back Again",
+          "2:14"
+        ],
+        [
+          "Don’t Stop",
+          "3:13"
+        ],
+        [
+          "Go Your Own Way",
+          "3:43"
+        ],
+        [
+          "Songbird",
+          "3:20"
+        ],
+        [
+          "The Chain",
+          "4:30"
+        ],
+        [
+          "You Make Loving Fun",
+          "3:31"
+        ],
+        [
+          "I Don’t Want to Know",
+          "3:15"
+        ],
+        [
+          "Oh Daddy",
+          "3:56"
+        ],
+        [
+          "Gold Dust Woman",
+          "4:56"
+        ]
+      ]
+    },
+    {
+      "id": "kob",
+      "t": "Kind of Blue",
+      "a": "Miles Davis",
+      "y": 1959,
+      "h": 245,
+      "h2": 215,
+      "h3": 260,
+      "label": "Columbia",
+      "note": "Recorded in two sessions, largely from sketches the players saw for the first time in the studio.",
+      "tr": [
+        [
+          "So What",
+          "9:22"
+        ],
+        [
+          "Freddie Freeloader",
+          "9:46"
+        ],
+        [
+          "Blue in Green",
+          "5:37"
+        ],
+        [
+          "All Blues",
+          "11:33"
+        ],
+        [
+          "Flamenco Sketches",
+          "9:26"
+        ]
+      ]
+    },
+    {
+      "id": "blue",
+      "t": "Blue",
+      "a": "Joni Mitchell",
+      "y": 1971,
+      "h": 230,
+      "h2": 200,
+      "h3": 250
+    },
+    {
+      "id": "harv",
+      "t": "Harvest",
+      "a": "Neil Young",
+      "y": 1972,
+      "h": 65,
+      "h2": 90,
+      "h3": 40
+    },
+    {
+      "id": "abbey",
+      "t": "Abbey Road",
+      "a": "The Beatles",
+      "y": 1969,
+      "h": 200,
+      "h2": 180,
+      "h3": 230
+    },
+    {
+      "id": "rain",
+      "t": "In Rainbows",
+      "a": "Radiohead",
+      "y": 2007,
+      "h": 25,
+      "h2": 330,
+      "h3": 290
+    },
+    {
+      "id": "curr",
+      "t": "Currents",
+      "a": "Tame Impala",
+      "y": 2015,
+      "h": 300,
+      "h2": 20,
+      "h3": 280
+    },
+    {
+      "id": "ram",
+      "t": "Random Access Memories",
+      "a": "Daft Punk",
+      "y": 2013,
+      "h": 60,
+      "h2": 80,
+      "h3": 30
+    },
+    {
+      "id": "blonde",
+      "t": "Blonde",
+      "a": "Frank Ocean",
+      "y": 2016,
+      "h": 150,
+      "h2": 100,
+      "h3": 170
+    },
+    {
+      "id": "ff",
+      "t": "Fleet Foxes",
+      "a": "Fleet Foxes",
+      "y": 2008,
+      "h": 120,
+      "h2": 95,
+      "h3": 150
+    }
+  ],
+  "sources": [
+    {
+      "id": "nd",
+      "name": "Navidrome",
+      "icon": "server",
+      "state": "ok",
+      "remote": true,
+      "subtitle": "Up to date · 19,333 songs",
+      "facts": [
+        [
+          "Server",
+          "music.home.lan"
+        ],
+        [
+          "Account",
+          "nick"
+        ],
+        [
+          "Songs",
+          "19,333"
+        ],
+        [
+          "Last sync",
+          "4 minutes ago"
+        ],
+        [
+          "Password",
+          "In your keyring"
+        ]
+      ]
+    },
+    {
+      "id": "dev",
+      "name": "This device",
+      "icon": "monitor",
+      "state": "ok",
+      "subtitle": "Music folder · 412 songs",
+      "facts": [
+        [
+          "Folder",
+          "~/Music"
+        ],
+        [
+          "Songs",
+          "412"
+        ],
+        [
+          "Last sync",
+          "Watching for changes"
+        ]
+      ]
+    },
+    {
+      "id": "dl",
+      "name": "Downloads",
+      "icon": "download",
+      "state": "busy",
+      "subtitle": "Downloading 3 songs",
+      "facts": [
+        [
+          "Kept offline",
+          "38 songs · 312 MB"
+        ],
+        [
+          "Downloading",
+          "3 songs"
+        ]
+      ]
+    }
+  ],
+  "view": "album",
+  "album": "pet",
+  "player": {
+    "song": "pet:7",
+    "playing": true,
+    "position": 64,
+    "volume": 70,
+    "shuffle": false,
+    "repeat": false,
+    "output": "This computer",
+    "outputs": [
+      [
+        "This computer",
+        "monitor",
+        "Built-in speakers"
+      ],
+      [
+        "Studio headphones",
+        "headphones",
+        "Bluetooth · 80%"
+      ],
+      [
+        "Kitchen",
+        "volume-2",
+        "Speaker on your network"
+      ]
+    ]
+  },
+  "loved": [
+    "pet:7",
+    "pet:0"
+  ]
+}

@@ -1,0 +1,135 @@
+--- a/src/resources/ui/nautilus-new-folder-dialog.blp
++++ b/src/resources/ui/nautilus-new-folder-dialog.blp
+@@ -3,53 +3,71 @@
+ 
+ template $NautilusNewFolderDialog: Adw.Dialog {
+   title: _("New Folder");
+-  content-width: 450;
++  content-width: 360;
+   focus-widget: name_entry;
+ 
+-  child: Adw.ToolbarView {
+-    [top]
+-    Adw.HeaderBar {}
++  child: Box {
++    orientation: vertical;
++    spacing: 18;
++    margin-top: 24;
++    margin-bottom: 24;
++    margin-start: 24;
++    margin-end: 24;
+ 
+-    content: Adw.PreferencesPage {
+-      Adw.PreferencesGroup {
+-        Adw.EntryRow name_entry {
+-          title: _("_Folder Name");
+-          use-underline: true;
+-          changed => $nautilus_filename_validator_validate(validator);
+-          entry-activated => $nautilus_filename_validator_try_accept(validator);
+-        }
++    Label {
++      label: _("New Folder");
++      xalign: 0;
++      styles ["title-2"]
++    }
+ 
+-        Revealer {
+-          reveal-child: bind validator.has-feedback no-sync-create;
+-          transition-type: crossfade;
++    Box {
++      orientation: vertical;
++      spacing: 8;
+ 
+-          child: Label {
+-            label: bind validator.feedback-text no-sync-create;
+-            margin-top: 6;
+-            xalign: 0;
++      Label {
++        label: _("_Folder name");
++        use-underline: true;
++        mnemonic-widget: name_entry;
++        xalign: 0;
++      }
+ 
+-            styles [
+-              "warning",
+-              "caption",
+-            ]
+-          };
+-        }
++      Entry name_entry {
++        hexpand: true;
++        changed => $nautilus_filename_validator_validate(validator);
++        activate => $nautilus_filename_validator_try_accept(validator);
++      }
+ 
+-        Button {
+-          label: _("_Create");
+-          use-underline: true;
+-          margin-top: 6;
+-          halign: center;
+-          sensitive: bind validator.passed;
+-          clicked => $nautilus_filename_validator_try_accept(validator);
++      Revealer {
++        reveal-child: bind validator.has-feedback no-sync-create;
++        transition-type: slide_down;
++        child: Label {
++          label: bind validator.feedback-text no-sync-create;
++          xalign: 0;
++          wrap: true;
++          max-width-chars: 36;
++          styles ["warning", "caption"]
++        };
++      }
++    }
+ 
+-          styles [
+-            "pill",
+-            "suggested-action",
+-          ]
+-        }
++    Box {
++      spacing: 8;
++      halign: end;
++
++      Button {
++        label: _("_Cancel");
++        use-underline: true;
++        clicked => $on_cancel_clicked() swapped;
+       }
+-    };
++
++      Button {
++        label: _("_Create");
++        use-underline: true;
++        sensitive: bind validator.passed;
++        clicked => $nautilus_filename_validator_try_accept(validator);
++        styles ["suggested-action"]
++      }
++    }
+   };
+ }
+ 
+--- a/src/nautilus-new-folder-dialog.c
++++ b/src/nautilus-new-folder-dialog.c
+@@ -24,6 +24,12 @@
+ };
+ 
+ G_DEFINE_TYPE (NautilusNewFolderDialog, nautilus_new_folder_dialog, ADW_TYPE_DIALOG)
++
++static void
++on_cancel_clicked (NautilusNewFolderDialog *self)
++{
++    adw_dialog_close (ADW_DIALOG (self));
++}
+ 
+ static void
+ on_feedback_changed (NautilusNewFolderDialog *self)
+@@ -113,6 +119,7 @@
+     gtk_widget_class_bind_template_child (widget_class, NautilusNewFolderDialog, name_entry);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNewFolderDialog, validator);
+ 
++    gtk_widget_class_bind_template_callback (widget_class, on_cancel_clicked);
+     gtk_widget_class_bind_template_callback (widget_class, on_feedback_changed);
+     gtk_widget_class_bind_template_callback (widget_class, on_name_accepted);
+     gtk_widget_class_bind_template_callback (widget_class, nautilus_filename_validator_try_accept);

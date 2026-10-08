@@ -1,0 +1,81 @@
+{
+  "app": "bar-messages",
+  "title": "Bar entry (compose) and the selected subject against Messages' bar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=messages",
+    "window": "#w-messages",
+    "exclude": [
+      "#w-messages *:not(:has(#m-bar)):not(#m-bar):not(#m-bar *)",
+      "#m-bar .mrow > .ib",
+      "#m-bar .mcin > .bt",
+      "#m-bar .mcin > .ib"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "messages",
+      "LUMAUI_BAR_HOST": "292,46,880,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774",
+      "LUMAUI_BAR_FACES": "{run}/fixtures/contacts-v70"
+    },
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ]
+  },
+  "states": [
+    {
+      "name": "compose",
+      "about": "The resting composer: attach, the field with emoji and grow, the mic key (v70 measures its textarea before layout on first paint and opens it 52 tall; any input settles it at its designed 36, which is what is compared)",
+      "spec": [
+        {
+          "eval": "(()=>{const t=document.querySelector('#m-in'); t.dispatchEvent(new Event('input',{bubbles:true}));})()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "compose"
+          }
+        }
+      ]
+    },
+    {
+      "name": "subject",
+      "about": "A message selected: the subject chip, Reply, React, Copy, More",
+      "spec": [
+        {
+          "click": "#m-body .msg.theirs .bub"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "subject"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "compose",
+    "subject"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#m-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#m-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

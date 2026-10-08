@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Calendar</id>
+  <name>Calendar</name>
+  <summary>Plan your day and manage events</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Plan your schedule and organize calendar events with a responsive interface across desktop, tablet, and phone.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Calendar.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Organize your calendar</caption>
+      <image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Calendar/8e3cb385111d2a692cb2c8c77d1ad234d83f141e78ece65115aa9ffddcb0850f.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

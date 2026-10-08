@@ -1,0 +1,26 @@
+--- a/src/ui/application.js
++++ b/src/ui/application.js
+@@ -129,8 +129,7 @@
+     }
+ 
+     _defineStyleAndThemes() {
+-        let settings = Gtk.Settings.get_default();
+-        settings.gtk_application_prefer_dark_theme = true;
++        // Follow the system treatment; Quick View does not force a dark theme.
+     }
+ 
+     close() {
+--- a/src/viewers/text.js
++++ b/src/viewers/text.js
+@@ -76,8 +76,9 @@
+                                               'styles']);
+         styleManager.prepend_search_path(stylePath);
+ 
+-        let scheme = styleManager.get_scheme('builder-dark');
+-        buffer.set_style_scheme(scheme);
++        // Respect the shared theme; never force the bundled dark palette.
++        // A Luma source scheme may be provided by the shared platform.
++        buffer.set_style_scheme(styleManager.get_scheme('luma'));
+ 
+         let langManager = GtkSource.LanguageManager.get_default();
+         let language = langManager.guess_language(file.get_basename(),

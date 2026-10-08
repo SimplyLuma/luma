@@ -1,0 +1,8 @@
+# Running-kernel notes admitted for interactive Android on Fairphone 6.
+#
+# This file intentionally contains no admitted hashes. The former IFPC-disabled
+# candidate (/sys/kernel/notes SHA-256 660058cff2adc5935373ea223ad9b695316f2edab4d0c78d823598bea65d98c2)
+# was revoked after a full cold Waydroid/TikTok launch produced GMU firmware
+# initialization failure, repeated GPU_SET timeouts, and DPU hangchecks on
+# 2026-08-15. A future candidate must pass the complete physical workload and
+# sleep/wake matrix before its /sys/kernel/notes digest is added here.

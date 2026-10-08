@@ -1,0 +1,5 @@
+[MIME Cache]
+image/jpeg=org.projectluma.Canvas.desktop;org.projectluma.Darkroom.desktop;org.projectluma.Viewer.desktop;org.projectluma.Photos.desktop;
+image/png=org.projectluma.Canvas.desktop;org.projectluma.Darkroom.desktop;org.projectluma.Viewer.desktop;org.projectluma.Photos.desktop;
+image/webp=org.projectluma.Canvas.desktop;org.projectluma.Darkroom.desktop;org.projectluma.Viewer.desktop;org.projectluma.Photos.desktop;
+application/pdf=org.projectluma.Canvas.desktop;org.projectluma.Darkroom.desktop;org.projectluma.Viewer.desktop;org.projectluma.Photos.desktop;

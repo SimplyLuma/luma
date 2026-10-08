@@ -1,0 +1,17 @@
+[Unit]
+Description=Luma bounded user Mod preferences
+
+[Service]
+Type=dbus
+BusName=org.projectluma.ModProfiles1
+ExecStart=/usr/bin/python3 -m luma_mods.profile_service
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+TasksMax=32
+MemoryMax=256M

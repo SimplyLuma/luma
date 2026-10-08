@@ -1,0 +1,24 @@
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -700,8 +700,8 @@
+ 
+     _setStatusLineHeight(label) {
+         const size = this._statusSettings.get_int(label === this._statusTime ? 'status-time-size' : 'status-date-size');
+-        const attrs = new Pango.AttrList();
+-        attrs.insert(Pango.attr_line_height_new_absolute(size *
++        const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
++        attrs.change(Pango.attr_line_height_new_absolute(size *
+             St.ThemeContext.get_for_stage(global.stage).scale_factor * Pango.SCALE));
+         label.clutter_text.set_attributes(attrs);
+     }
+@@ -875,8 +875,8 @@
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
+             [this._statusDateLabel, s.get_int('status-date-size')]]) {
+-            const attrs = new Pango.AttrList();
+-            attrs.insert(Pango.attr_line_height_new_absolute(size * textScale * Pango.SCALE));
++            const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
++            attrs.change(Pango.attr_line_height_new_absolute(size * textScale * Pango.SCALE));
+             label.clutter_text.set_attributes(attrs);
+             const textWidth = 36 - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
+             label.set_width(vertical ? textWidth * textScale : -1);

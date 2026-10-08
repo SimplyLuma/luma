@@ -1,0 +1,39 @@
+From 3ddc494cb8e4468ed0137c40aecc0deb0be18c98 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:41:56 +0000
+Subject: [PATCH] Filer: use LumaUI island for native content
+
+---
+ src/nautilus-window.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 6efc03e..2d5c544 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -2114,9 +2114,21 @@ nautilus_window_init (NautilusWindow *window)
+     nautilus_toolbar_set_information_pane (NAUTILUS_TOOLBAR (window->toolbar),
+                                            window->information_pane);
+     gtk_widget_set_name (GTK_WIDGET (window->places_sidebar), "filer-sidebar");
+-    gtk_widget_set_name (window->split_view, "filer-island");
+     gtk_widget_set_name (window->toolbar, "filer-action-center");
+ 
++    /* Keep Nautilus' live split view, but let LumaUI own the content island's
++     * clipped edge and surface. The sidebar remains a separate destination. */
++    AdwOverlaySplitView *split = ADW_OVERLAY_SPLIT_VIEW (window->split_view);
++    GtkWidget *content = adw_overlay_split_view_get_content (split);
++    g_object_ref (content);
++    adw_overlay_split_view_set_content (split, NULL);
++    gtk_widget_remove_css_class (content, "luma-island");
++    GtkWidget *island = luma_island_new (GTK_ORIENTATION_VERTICAL);
++    gtk_widget_set_name (island, "filer-island");
++    gtk_box_append (GTK_BOX (island), content);
++    adw_overlay_split_view_set_content (split, island);
++    g_object_unref (content);
++
+     set_sidebar_width (window,
+                        g_settings_get_int (nautilus_window_state,
+                                            NAUTILUS_WINDOW_STATE_SIDEBAR_WIDTH));
+-- 
+2.55.0
+

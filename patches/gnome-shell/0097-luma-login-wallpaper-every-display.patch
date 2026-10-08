@@ -1,0 +1,140 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: the login wallpaper fills every display
+
+The login screen drew its wallpaper as a stylesheet background inside
+the dialog on the primary display only. It did not fill a wide or scaled
+display, and every other display stayed black. Each display now gets its
+own wallpaper from Mutter's background renderer, zoomed to that display
+at its own scale, on the login and lock screens alike. If the renderer
+cannot be created the stylesheet picture is kept, so the screen always
+draws.
+
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -584,8 +584,13 @@
+         this._textureCache.connectObject('texture-file-changed',
+             this._updateLogoTexture.bind(this), this);
+ 
+-        this._prairieBackground = new PrairieLogin.Background();
+-        this.add_child(this._prairieBackground);
++        // One wallpaper per display, not only behind the dialog on the
++        // primary one: every other display was left black.
++        this._prairieBackgrounds = new Clutter.Actor();
++        this.add_child(this._prairieBackgrounds);
++        this._updatePrairieBackgrounds();
++        Main.layoutManager.connectObject('monitors-changed',
++            () => this._updatePrairieBackgrounds(), this);
+ 
+         this._userSelectionBox = new St.BoxLayout({
+             style_class: 'login-dialog-user-selection-box',
+@@ -780,6 +785,22 @@
+         return Clutter.EVENT_PROPAGATE;
+     }
+ 
++    _updatePrairieBackgrounds() {
++        this._prairieBackgrounds.destroy_all_children();
++        const primary = Main.layoutManager.primaryMonitor;
++        if (!primary)
++            return;
++        // The dialog covers the primary monitor, so each wallpaper is placed
++        // relative to it; the others extend past the dialog onto their own
++        // displays.
++        Main.layoutManager.monitors.forEach((monitor, index) => {
++            const background = new PrairieLogin.Background({monitorIndex: index});
++            background.set_position(monitor.x - primary.x, monitor.y - primary.y);
++            background.set_size(monitor.width, monitor.height);
++            this._prairieBackgrounds.add_child(background);
++        });
++    }
++
+     vfunc_allocate(dialogBox) {
+         this.set_allocation(dialogBox);
+ 
+@@ -788,7 +809,7 @@
+         backgroundAllocation.y1 = dialogBox.y1;
+         backgroundAllocation.x2 = dialogBox.x2;
+         backgroundAllocation.y2 = dialogBox.y2;
+-        this._prairieBackground.allocate(backgroundAllocation);
++        this._prairieBackgrounds.allocate(backgroundAllocation);
+ 
+         const themeNode = this.get_theme_node();
+         dialogBox = themeNode.get_content_box(dialogBox);
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -1,7 +1,10 @@
+ import Clutter from 'gi://Clutter';
++import GDesktopEnums from 'gi://GDesktopEnums';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GnomeDesktop from 'gi://GnomeDesktop';
+ import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+@@ -123,16 +126,53 @@
+     }
+ });
+ 
++const LOGIN_WALLPAPER = '/usr/share/backgrounds/luma/prism.png';
++let loginWallpaper = null;
++
++function getLoginWallpaper() {
++    if (!loginWallpaper) {
++        loginWallpaper = new Meta.Background({meta_display: global.display});
++        loginWallpaper.set_file(Gio.File.new_for_path(LOGIN_WALLPAPER),
++            GDesktopEnums.BackgroundStyle.ZOOM);
++    }
++    return loginWallpaper;
++}
++
+ export const Background = GObject.registerClass(
+ class PrairieLoginBackground extends St.Widget {
+     _init(params = {}) {
++        const {monitorIndex, ...widgetParams} = params;
+         super._init({
+-            ...params,
++            ...widgetParams,
+             style_class: 'prairie-login-background',
+             layout_manager: new Clutter.BinLayout(),
+         });
+ 
+-        this._wallpaper = new St.Widget({
++        // For a monitor, the wallpaper is drawn by Mutter's own background
++        // renderer, which zooms it to that monitor at its own scale -- a CSS
++        // background did not fill a wide or scaled display. Without a monitor
++        // (a preview, a test) the stylesheet's picture remains.
++        this._wallpaper = null;
++        if (Number.isInteger(monitorIndex)) {
++            try {
++                this._wallpaper = new Meta.BackgroundActor({
++                    meta_display: global.display,
++                    monitor: monitorIndex,
++                    x_expand: true,
++                    y_expand: true,
++                    x_align: Clutter.ActorAlign.FILL,
++                    y_align: Clutter.ActorAlign.FILL,
++                });
++                this._wallpaper.content.set({background: getLoginWallpaper()});
++            } catch (error) {
++                // The login screen must always draw; the stylesheet picture
++                // is a correct, if less exact, wallpaper.
++                logError(error, 'Luma login wallpaper renderer unavailable');
++                this._wallpaper?.destroy();
++                this._wallpaper = null;
++            }
++        }
++        this._wallpaper ??= new St.Widget({
+             style_class: 'prairie-login-wallpaper',
+             x_expand: true,
+             y_expand: true,
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -641,6 +641,7 @@
+     _createBackground(monitorIndex) {
+         const monitor = Main.layoutManager.monitors[monitorIndex];
+         const widget = new PrairieLogin.Background({
++            monitorIndex,
+             x: monitor.x,
+             y: monitor.y,
+             width: monitor.width,

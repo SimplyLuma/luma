@@ -1,0 +1,218 @@
+From 15065494335e552f35aced0d4beda3a1e47d5b83 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:38:54 +0000
+Subject: [PATCH] Filer: launch reproducible native conform states
+
+---
+ src/nautilus-application.c | 11 +++++
+ src/nautilus-main.c        | 14 ++++++
+ src/nautilus-window-slot.c |  3 +-
+ src/nautilus-window.c      | 90 ++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 117 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+index d17c9fe..45dfe63 100644
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -38,6 +38,7 @@
+ #include <gtk/gtk.h>
+ #include <libportal/portal.h>
+ #include <nautilus-extension.h>
++#include <stdlib.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ #include <xdp-gnome/externalwindow.h>
+@@ -219,6 +220,16 @@ nautilus_application_create_window (NautilusApplication *self,
+                                  MAX (NAUTILUS_WINDOW_MIN_WIDTH, default_width),
+                                  MAX (NAUTILUS_WINDOW_MIN_HEIGHT, default_height));
+ 
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        const char *width = g_getenv ("LUMA_FILER_WIDTH");
++        const char *height = g_getenv ("LUMA_FILER_HEIGHT");
++        gtk_window_unmaximize (GTK_WINDOW (window));
++        gtk_window_set_default_size (GTK_WINDOW (window),
++                                     width != NULL ? MAX (320, atoi (width)) : 1180,
++                                     height != NULL ? MAX (400, atoi (height)) : 740);
++    }
++
+     if (g_strcmp0 (PROFILE, "") != 0)
+     {
+         gtk_widget_add_css_class (GTK_WIDGET (window), "devel");
+diff --git a/src/nautilus-main.c b/src/nautilus-main.c
+index d6daf85..4bf4fb9 100644
+--- a/src/nautilus-main.c
++++ b/src/nautilus-main.c
+@@ -48,6 +48,7 @@ main (int   argc,
+ {
+     gint retval;
+     NautilusApplication *application;
++    g_auto (GStrv) fixture_argv = NULL;
+     /* Initialize gettext support */
+     setlocale (LC_ALL, "");
+     bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
+@@ -113,6 +114,19 @@ main (int   argc,
+                 return EXIT_FAILURE;
+             }
+         }
++
++        if (argc == 1)
++        {
++            const char *state = g_getenv ("LUMA_FILER_STATE");
++            g_autofree char *location = g_strcmp0 (state, "empty") == 0
++                ? g_build_filename (root, "Fable SSD", "Luma", "Apps", NULL)
++                : g_build_filename (root, "Home", "Projects", "Launch", NULL);
++            fixture_argv = g_new0 (char *, 3);
++            fixture_argv[0] = g_strdup (argv[0]);
++            fixture_argv[1] = g_steal_pointer (&location);
++            argv = fixture_argv;
++            argc = 2;
++        }
+     }
+ 
+     nautilus_register_resource ();
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+index 9371cc4..effb763 100644
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -1765,7 +1765,8 @@ begin_location_change (NautilusWindowSlot         *self,
+         const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
+         g_autoptr (GFile) root = g_file_new_for_path (fixture_root);
+ 
+-        if (!g_file_equal (location, root) && !g_file_has_prefix (location, root))
++        if (!g_file_equal (location, root) && !g_file_has_prefix (location, root) &&
++            !g_file_has_uri_scheme (location, SCHEME_SEARCH))
+         {
+             g_warning ("Filer fixture refused navigation outside its root");
+             return;
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 3c91812..55d808a 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -56,19 +56,23 @@
+ #include "nautilus-file-undo-manager.h"
+ #include "nautilus-file-undo-operations.h"
+ #include "nautilus-file-utilities.h"
++#include "nautilus-files-view.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-history-controls.h"
++#include "nautilus-list-base.h"
+ #include "nautilus-metadata.h"
+ #include "nautilus-network-address-bar.h"
+ #include "nautilus-mime-actions.h"
+ #include "nautilus-module.h"
+ #include "nautilus-progress-indicator.h"
++#include "nautilus-query.h"
+ #include "nautilus-scheme.h"
+ #include "nautilus-shortcut-manager.h"
+ #include "nautilus-sidebar.h"
+ #include "nautilus-signaller.h"
+ #include "nautilus-toolbar.h"
+ #include "nautilus-view-controls.h"
++#include "nautilus-view-info.h"
+ #include "nautilus-trash-monitor.h"
+ #include "nautilus-ui-utilities.h"
+ #include "nautilus-window-slot.h"
+@@ -1810,6 +1814,85 @@ get_current_pointer_x (GtkGestureDrag *gesture,
+     return event != NULL && gdk_event_get_position (event, pointer_x, &pointer_y);
+ }
+ 
++/* The conform fixture names stable native states without making a capture
++ * client reach into Nautilus' private widget tree. Normal launches never use
++ * this path. Wait for the directory model before selecting a sample file. */
++static gboolean
++apply_fixture_state (gpointer data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (data);
++    const char *state = g_getenv ("LUMA_FILER_STATE");
++    NautilusWindowSlot *slot = window->active_slot;
++    NautilusFilesView *view;
++    guint wanted_view = NAUTILUS_VIEW_GRID_ID;
++    gboolean selected;
++    gboolean information;
++
++    if (slot == NULL || (view = nautilus_window_slot_get_current_view (slot)) == NULL ||
++        nautilus_files_view_is_loading (view))
++    {
++        return G_SOURCE_CONTINUE;
++    }
++
++    if (g_str_has_prefix (state, "list"))
++    {
++        wanted_view = NAUTILUS_VIEW_LIST_ID;
++    }
++    else if (g_str_has_prefix (state, "columns"))
++    {
++        wanted_view = NAUTILUS_VIEW_COLUMN_ID;
++    }
++
++    if (nautilus_files_view_get_view_id (view) != wanted_view)
++    {
++        g_action_group_activate_action (nautilus_window_slot_get_action_group (slot),
++                                        "files-view-mode", g_variant_new_uint32 (wanted_view));
++        return G_SOURCE_CONTINUE;
++    }
++
++    if (g_strcmp0 (state, "list-sort-size") == 0 && NAUTILUS_IS_LIST_BASE (view))
++    {
++        nautilus_list_base_set_sort_state (NAUTILUS_LIST_BASE (view),
++                                          g_variant_new ("(sb)", "size", FALSE));
++    }
++
++    selected = g_strcmp0 (state, "selected") == 0 ||
++               g_strcmp0 (state, "file-information") == 0 ||
++               g_strcmp0 (state, "columns-selected") == 0 ||
++               g_strcmp0 (state, "more") == 0;
++    information = g_strcmp0 (state, "information") == 0 ||
++                  g_strcmp0 (state, "file-information") == 0;
++    if (selected)
++    {
++        GFile *location = nautilus_window_slot_get_location (slot);
++        g_autoptr (GFile) child = g_file_get_child (location, "hero-writing.webp");
++        g_autoptr (NautilusFile) file = nautilus_file_get (child);
++        GList selection = { .data = file };
++        nautilus_files_view_set_selection (view, &selection, FALSE);
++    }
++
++    if (information)
++    {
++        luma_details_pane_show (window->information_pane, TRUE);
++    }
++    if (g_strcmp0 (state, "sidebar-collapsed") == 0)
++    {
++        luma_sidebar_toggle_toggle (window->sidebar_toggle);
++    }
++    if (g_str_has_prefix (state, "search-"))
++    {
++        g_autoptr (NautilusQuery) query = nautilus_query_new ();
++        nautilus_query_set_text (query, "press");
++        if (g_strcmp0 (state, "search-here") == 0)
++        {
++            nautilus_query_set_location (query, nautilus_window_slot_get_location (slot));
++        }
++        nautilus_window_slot_search (slot, query);
++    }
++
++    return G_SOURCE_REMOVE;
++}
++
+ static void
+ sidebar_resize_drag_begin (GtkGestureDrag *gesture,
+                            gdouble         start_x,
+@@ -1879,6 +1962,13 @@ nautilus_window_init (NautilusWindow *window)
+     g_type_ensure (NAUTILUS_TYPE_VIEW_CONTROLS);
+     gtk_widget_init_template (GTK_WIDGET (window));
+ 
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL &&
++        g_getenv ("LUMA_FILER_STATE") != NULL)
++    {
++        g_timeout_add_full (G_PRIORITY_DEFAULT, 500, apply_fixture_state,
++                            g_object_ref (window), g_object_unref);
++    }
++
+     luma_layer_host_install (GTK_WINDOW (window));
+     window->sidebar_toggle = LUMA_SIDEBAR_TOGGLE (
+         luma_sidebar_toggle_new (window->split_view, TRUE));
+-- 
+2.55.0
+

@@ -1,0 +1,70 @@
+From 560846968b860fb1b8cfeb0dcbf8b880696f0165 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:52:05 +0000
+Subject: [PATCH] Filer: fit three grid tiles at phone width
+
+---
+ src/nautilus-grid-view.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/src/nautilus-grid-view.c b/src/nautilus-grid-view.c
+index 83d8a12..5678463 100644
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -24,6 +24,7 @@ struct _NautilusGridView
+     GtkGridView *view_ui;
+ 
+     gint zoom_level;
++    gboolean phone_layout;
+ 
+     gboolean directories_first;
+ 
+@@ -345,9 +346,32 @@ real_get_icon_size (NautilusListBase *list_base_view)
+ {
+     NautilusGridView *self = NAUTILUS_GRID_VIEW (list_base_view);
+ 
++    if (self->phone_layout && self->zoom_level == NAUTILUS_GRID_ZOOM_LEVEL_MEDIUM)
++    {
++        return 72;
++    }
++
+     return get_icon_size_for_zoom_level (self->zoom_level);
+ }
+ 
++static void
++nautilus_grid_view_size_allocate (GtkWidget *widget,
++                                  int        width,
++                                  int        height,
++                                  int        baseline)
++{
++    NautilusGridView *self = NAUTILUS_GRID_VIEW (widget);
++    gboolean phone_layout = width <= 480;
++
++    GTK_WIDGET_CLASS (nautilus_grid_view_parent_class)->size_allocate (widget, width, height, baseline);
++
++    if (self->phone_layout != phone_layout)
++    {
++        self->phone_layout = phone_layout;
++        g_object_notify (G_OBJECT (self), "icon-size");
++    }
++}
++
+ static int
+ real_get_zoom_level (NautilusListBase *list_base_view)
+ {
+@@ -554,10 +578,12 @@ static void
+ nautilus_grid_view_class_init (NautilusGridViewClass *klass)
+ {
+     GObjectClass *object_class = G_OBJECT_CLASS (klass);
++    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+     NautilusListBaseClass *list_base_view_class = NAUTILUS_LIST_BASE_CLASS (klass);
+ 
+     object_class->dispose = dispose;
+     object_class->finalize = finalize;
++    widget_class->size_allocate = nautilus_grid_view_size_allocate;
+ 
+     list_base_view_class->get_icon_size = real_get_icon_size;
+     list_base_view_class->get_sort_state = real_get_sort_state;
+-- 
+2.55.0
+

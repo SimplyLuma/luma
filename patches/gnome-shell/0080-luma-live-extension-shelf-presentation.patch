@@ -1,0 +1,95 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: put live extensions beside the clock and make them readable
+
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -622,6 +622,12 @@
+             }
+             this._liveIsland.visible = liveIndicator.visible;
+             liveIndicator.setShelfOrientation(this._vertical);
++            // Next to the clock, not at the other end of the shelf. The index
++            // this was inserted at is decided before the actions island even
++            // exists, so the position is settled here by sibling instead —
++            // which also survives the islands being added in another order.
++            if (this._actionsIsland?.get_parent() === this._group)
++                this._group.set_child_below_sibling(this._liveIsland, this._actionsIsland);
+         }
+     }
+ 
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -691,3 +691,72 @@
+   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.34);
+ }
+ .luma-sticky-new:hover { background-color: rgba(48, 54, 62, 0.96); }
++
++/* ── Live extensions on a horizontal shelf ─────────────────────────────── */
++/* Only the vertical shelf had rules here. On a horizontal one the base theme
++ * applied, and those values are hardcoded light — rgba(255,255,255,.72) behind
++ * #1f2937 text — so a dark shelf drew a white card with black writing on it.
++ * Colour follows the surface treatment, the way every other island does. */
++.luma-shelf-live-island .luma-live-extension {
++  margin: 0;
++  border: 0;
++  border-radius: 11px;
++  background-color: transparent;
++  box-shadow: none;
++}
++.luma-shelf-live-island .luma-live-extension-content {
++  spacing: 9px;
++  padding: 1px 2px;
++}
++.luma-shelf-live-island .luma-live-extension-text {
++  /* 180px was a fixed guess that cramped a title and stranded a short one. */
++  width: auto;
++  min-width: 96px;
++  max-width: 260px;
++  spacing: 1px;
++}
++.luma-shelf-live-island .luma-live-extension-title {
++  font-size: 11.5px;
++  font-weight: 650;
++}
++.luma-shelf-live-island .luma-live-extension-subtitle {
++  font-size: 9.5px;
++  font-weight: 500;
++}
++.luma-shelf-live-island .luma-live-extension-icon { icon-size: 16px; }
++.luma-shelf-live-island .luma-live-extension-actions { spacing: 5px; }
++.luma-shelf-live-island .luma-live-extension-action {
++  min-width: 24px; min-height: 24px;
++  padding: 0;
++  border: 0;
++  border-radius: 999px;
++  box-shadow: none;
++}
++
++/* Dark, and the default here. */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-title,
++.luma-shelf-live-island .luma-live-extension-title { color: #e7e9e8; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-live-extension-subtitle { color: rgba(231, 233, 232, 0.62); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-icon,
++.luma-shelf-live-island .luma-live-extension-icon { color: #91b6d2; }
++.luma-shelf-live-island .luma-live-extension-action {
++  background-color: rgba(255, 255, 255, 0.09);
++  color: #e7e9e8;
++}
++.luma-shelf-live-island .luma-live-extension-action:hover {
++  background-color: rgba(255, 255, 255, 0.16);
++}
++
++/* The light treatments, taken from the same values the materials use. */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-title { color: #191b1f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-subtitle { color: rgba(25, 27, 31, 0.60); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-icon { color: #4878b8; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action {
++  background-color: rgba(25, 27, 31, 0.07);
++  color: #191b1f;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-title,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-title { color: #2c343a; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-subtitle { color: rgba(44, 52, 58, 0.62); }

@@ -1,0 +1,39 @@
+From 5d92e434b969f3587cbfcb1955e352d62a837e1e Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:48:55 +0000
+Subject: [PATCH] Filer: drive fixture size sort through view action
+
+---
+ src/nautilus-window.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 3fb822c..cc9c63f 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -60,7 +60,6 @@
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-history-controls.h"
+ #include "nautilus-image.h"
+-#include "nautilus-list-base.h"
+ #include "nautilus-metadata.h"
+ #include "nautilus-network-address-bar.h"
+ #include "nautilus-mime-actions.h"
+@@ -1877,10 +1876,11 @@ apply_fixture_state (gpointer data)
+         return G_SOURCE_CONTINUE;
+     }
+ 
+-    if (g_strcmp0 (state, "list-sort-size") == 0 && NAUTILUS_IS_LIST_BASE (view))
++    if (g_strcmp0 (state, "list-sort-size") == 0)
+     {
+-        nautilus_list_base_set_sort_state (NAUTILUS_LIST_BASE (view),
+-                                          g_variant_new ("(sb)", "size", FALSE));
++        g_action_group_change_action_state (
++            nautilus_files_view_get_private_action_group (view),
++            "sort", g_variant_new ("(sb)", "size", FALSE));
+     }
+ 
+     selected = g_strcmp0 (state, "selected") == 0 ||
+-- 
+2.55.0
+

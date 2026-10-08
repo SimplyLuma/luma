@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Darkroom
+Comment=Develop and edit images non-destructively
+Exec=luma-darkroom %U
+Icon=org.projectluma.Darkroom
+Terminal=false
+Type=Application
+Categories=Graphics;Photography;
+MimeType=application/x-luma-darkroom;image/jpeg;image/png;image/tiff;image/webp;image/heif;image/avif;image/x-adobe-dng;
+StartupNotify=true
+DBusActivatable=false
+

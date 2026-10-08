@@ -1,0 +1,139 @@
+From e70ea2c6b11f1f3df3af6d8f7363c63ad3941e19 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 13:00:49 +0200
+Subject: [PATCH 33/41] tee: qseecom: allow one receiver, not one opener, on
+ the supplicant device
+
+Rejecting a second open of the privileged device enforced the single-supplicant
+rule in the wrong place. Loading an application is an open_session on that same
+device, so a supplicant holding it open made every load fail with -EBUSY --
+including the documented flow of starting the file service and then loading the
+application it serves.
+
+The constraint is really about who consumes requests, so enforce it there: the
+first context to receive claims the role, and a receive or send from any other
+context is refused. Opening the device stays free.
+
+The role is released when its context closes, and an in-flight request is
+abandoned then too, which previously happened only once the last opener went
+away -- with a loader also holding the device open, that could have left a
+request unanswered until the loader closed.
+
+Reported-by: Kimi K3
+Assisted-by: Claude:claude-opus-5
+---
+ Documentation/tee/qseecom.rst |  4 +++-
+ drivers/tee/qseecom/core.c    | 45 ++++++++++++++++++++++++-----------
+ 2 files changed, 34 insertions(+), 15 deletions(-)
+
+diff --git a/Documentation/tee/qseecom.rst b/Documentation/tee/qseecom.rst
+index 11b860aff..15d2d85d8 100644
+--- a/Documentation/tee/qseecom.rst
++++ b/Documentation/tee/qseecom.rst
+@@ -111,7 +111,9 @@ There is **one supplicant queue per device**, not one per listener. Each
+ received request reports the listener it belongs to in ``arg.func``, so a
+ single supplicant can and must serve them all: two processes each registering a
+ different listener would race on ``TEE_IOC_SUPPL_RECV`` and consume each
+-other's requests.
++other's requests. The first context to receive claims that role, and a receive
++or send from any other is refused. Merely opening the device is not claiming
++it, because loading an application opens the same device.
+ 
+ Anything other than an explicit success is reported to the secure world as a
+ failure. Claiming success without having filled the request buffer leaves the
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 7be8c5f75..4b468cc1b 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -99,6 +99,7 @@
+  * @answered: A supplicant has answered @req.
+  * @status:   That answer.
+  * @users:    Number of open contexts on the supplicant device.
++ * @recv_ctx: The context serving requests, claimed by the first receive.
+  *
+  * Only ever one request is in flight: they originate in
+  * qcom_scm_qseecom_call(), which holds the QSEECOM call lock for the whole
+@@ -116,6 +117,7 @@ struct qseecom_tee_supp {
+ 	bool answered;
+ 	u32 status;
+ 	unsigned int users;
++	struct tee_context *recv_ctx;
+ };
+ 
+ /**
+@@ -1069,6 +1071,14 @@ static int qseecom_tee_supp_recv(struct tee_context *ctx, u32 *func,
+ 	if (*num_params < 1)
+ 		return -EINVAL;
+ 
++	/* See qseecom_tee_supp_open(): whoever receives first, receives. */
++	scoped_guard(mutex, &supp->mutex) {
++		if (!supp->recv_ctx)
++			supp->recv_ctx = ctx;
++		else if (supp->recv_ctx != ctx)
++			return -EBUSY;
++	}
++
+ 	/*
+ 	 * The core resolved any memref the caller passed and took a reference
+ 	 * for it, and deliberately does not drop them on this path -- see the
+@@ -1145,6 +1155,9 @@ static int qseecom_tee_supp_send(struct tee_context *ctx, u32 ret,
+ 	struct qseecom_tee_supp *supp = &qtee->supp;
+ 
+ 	scoped_guard(mutex, &supp->mutex) {
++		if (supp->recv_ctx != ctx)
++			return -EPERM;
++
+ 		if (!supp->req || !supp->taken)
+ 			return -EINVAL;
+ 
+@@ -1197,21 +1210,20 @@ static int qseecom_tee_supp_open(struct tee_context *ctx)
+ 		return ret;
+ 
+ 	/*
+-	 * One supplicant, because there is one request slot. A second process
+-	 * on this device would race the first on TEE_IOC_SUPPL_RECV and the
+-	 * two would consume each other's requests -- and since a request is
+-	 * answered by whoever calls SUPPL_SEND next, the wrong reply would go
+-	 * to the wrong application. The listener a request belongs to is in
+-	 * arg.func precisely so that one process can serve them all.
++	 * One *receiver*, because there is one request slot. A second process
++	 * receiving on this device would race the first on TEE_IOC_SUPPL_RECV
++	 * and the two would consume each other's requests -- and since a
++	 * request is answered by whoever calls SUPPL_SEND next, the wrong reply
++	 * would go to the wrong application. The listener a request belongs to
++	 * is in arg.func precisely so that one process can serve them all.
++	 *
++	 * That is enforced at the first receive rather than here, because
++	 * opening this device is not the same as serving it: loading an
++	 * application is an open_session on this device too, and a loader is
++	 * expected to run alongside a supplicant.
+ 	 */
+-	scoped_guard(mutex, &qtee->supp.mutex) {
+-		if (qtee->supp.users) {
+-			qseecom_tee_release(ctx);
+-			return -EBUSY;
+-		}
+-
++	scoped_guard(mutex, &qtee->supp.mutex)
+ 		qtee->supp.users++;
+-	}
+ 
+ 	return 0;
+ }
+@@ -1258,10 +1270,15 @@ static void qseecom_tee_supp_close_context(struct tee_context *ctx)
+ 	 * delay this is meant to avoid.
+ 	 */
+ 	scoped_guard(mutex, &qtee->supp.mutex) {
++		bool was_receiver = qtee->supp.recv_ctx == ctx;
++
++		if (was_receiver)
++			qtee->supp.recv_ctx = NULL;
++
+ 		if (qtee->supp.users)
+ 			qtee->supp.users--;
+ 
+-		if (!qtee->supp.users && qtee->supp.req) {
++		if ((was_receiver || !qtee->supp.users) && qtee->supp.req) {
+ 			qtee->supp.status = QSEECOM_LISTENER_FAILURE;
+ 			qtee->supp.answered = true;
+ 		}

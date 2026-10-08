@@ -1,0 +1,14 @@
+NAME=Luma
+VERSION="Prairie, Beta 0"
+ID=luma
+ID_LIKE=fedora
+VERSION_ID=1
+VERSION_CODENAME=prairie
+PRETTY_NAME="Luma (Prairie, Beta 0)"
+RELEASE_TYPE=development
+LOGO=luma-logo
+CPE_NAME=cpe:/o:projectluma:luma:1
+DEFAULT_HOSTNAME=luma
+PLATFORM_ID=platform:f44
+LUMA_RELEASE_STAGE=beta
+LUMA_RELEASE_STAGE_NUMBER=0

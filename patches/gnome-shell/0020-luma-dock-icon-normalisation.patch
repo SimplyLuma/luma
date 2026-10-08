@@ -1,0 +1,128 @@
+diff -ruN reference/data/theme/luma-shelf.css gnome-shell-50.3/data/theme/luma-shelf.css
+--- reference/data/theme/luma-shelf.css	2026-09-03 19:05:49.063990998 -0400
++++ gnome-shell-50.3/data/theme/luma-shelf.css	2026-09-03 19:05:49.159146251 -0400
+@@ -186,3 +186,15 @@
+   font-size: 11px;
+   font-weight: 700;
+   text-align: center; }
++
++/* The tile every dock icon sits on.
++ *
++ * The shader rounds the artwork; this is what it sits against. Artwork with
++ * transparency reads as an object on a surface instead of a glyph floating on
++ * the wallpaper, and artwork that fills its box simply covers it. */
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon {
++  border-radius: 8px;
++  background-gradient-direction: vertical;
++  background-gradient-start: rgba(255, 255, 255, 0.13);
++  background-gradient-end: rgba(255, 255, 255, 0.04);
++  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+diff -ruN reference/js/ui/shelf.js gnome-shell-50.3/js/ui/shelf.js
+--- reference/js/ui/shelf.js	2026-09-03 19:05:49.063990998 -0400
++++ gnome-shell-50.3/js/ui/shelf.js	2026-09-03 19:05:49.171971616 -0400
+@@ -1,7 +1,9 @@
+ import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
+@@ -10,6 +12,44 @@
+ const SHELF_EDGE_INSET = 14;
+ const SHELF_ISLAND_GAP = 8;
+ const SHELF_ICON_SIZE = 36;
++// Every application on the dock is drawn to the same silhouette, whatever
++// artwork it ships. Linux has spent a decade letting applications put whatever
++// they like on a dock — square screenshots, bare glyphs floating on nothing —
++// and the result never looks like one system.
++//
++// The rounding is a fragment shader rather than a stylesheet because St clips
++// a widget's own background to its border radius but not a child icon, so no
++// amount of CSS rounds the artwork itself. The shader masks the icon's alpha
++// to a rounded square; the tile behind it, which the stylesheet draws, is what
++// stops artwork with transparency floating.
++//
++// ICON_CORNER_RATIO is a fraction of the icon's width so it holds at every
++// icon size. 0.25 is the radius every Prairie application icon is drawn at,
++// so the mask agrees with the artwork instead of cutting into it.
++const ICON_CORNER_RATIO = 0.25;
++const ICON_MASK_DECLARATIONS = `
++uniform float radius;
++`;
++
++// Runs after the default fragment stage, so cogl_color_out already holds the
++// sampled texel and the mask only has to attenuate it. Colour is premultiplied,
++// so scaling the whole vector is the correct way to fade a corner out.
++const ICON_MASK_CODE = `
++vec2 uv = cogl_tex_coord_in[0].st;
++vec2 edge = min(uv, vec2(1.0) - uv);
++float corner = length(max(vec2(radius) - edge, vec2(0.0)));
++cogl_color_out *= 1.0 - smoothstep(radius - 0.02, radius + 0.02, corner);
++`;
++
++const LumaIconMask = GObject.registerClass(
++class LumaIconMask extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(
++            Cogl.SnippetHook.FRAGMENT,
++            ICON_MASK_DECLARATIONS, ICON_MASK_CODE, false);
++    }
++});
++
+ const LEGACY_DESKTOP_DOCK_UUID = 'dash-to-dock@micxgx.gmail.com';
+ const SHELF_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-shelf.css';
+ 
+@@ -150,6 +189,7 @@
+         // in the stylesheet leaves its container and separator behind as dead
+         // space at the ends of the dock.
+         this._dash.showAppsButton?.hide();
++        this._normaliseDockIcons();
+         this._dash._showAppsIcon?.hide();
+         this._dockScroll = new St.ScrollView({
+             style_class: 'luma-shelf-dock-scroll',
+@@ -313,6 +353,30 @@
+         this.set_size(monitor.width, reserve);
+     }
+ 
++    _normaliseDockIcons() {
++        const box = this._dash?._box;
++        if (!box)
++            return;
++        for (const item of box.get_children()) {
++            const icon = item.child?._delegate?.icon?.icon;
++            if (!icon || icon.get_effect('luma-icon-mask'))
++                continue;
++            try {
++                const effect = new LumaIconMask();
++                effect.set_uniform_float(
++                    effect.get_uniform_location('radius'), 1,
++                    [ICON_CORNER_RATIO]);
++                icon.add_effect_with_name('luma-icon-mask', effect);
++            } catch (error) {
++                // A display without a usable shader path must still get a
++                // dock. The tile behind the icon remains, so the result is a
++                // square icon on a rounded tile rather than no dock at all.
++                logError(error, 'Luma Shelf: icon mask unavailable');
++                return;
++            }
++        }
++    }
++
+     _queueDockWidth() {
+         if (this._widthLaterId)
+             return;
+@@ -324,6 +388,11 @@
+     }
+ 
+     _syncDockWidth() {
++        // The dash rebuilds its items when favourites change, which changes
++        // its width, which is why this runs here rather than on a signal of
++        // its own: a mask applied only at construction silently stops covering
++        // icons added later.
++        this._normaliseDockIcons();
+         const monitor = Main.layoutManager.primaryMonitor;
+         if (!monitor || !this._dockIsland.visible)
+             return;

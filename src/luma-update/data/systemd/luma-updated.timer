@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# ADR-030 section 6: check 10 minutes after boot, then every 6 hours with
+# jitter. A NetworkManager dispatcher script also starts a check when the
+# network comes back and a check is overdue.
+[Unit]
+Description=Check for Luma system updates periodically
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30min
+AccuracySec=5min
+Persistent=true
+Unit=luma-update-check.service
+
+[Install]
+WantedBy=timers.target

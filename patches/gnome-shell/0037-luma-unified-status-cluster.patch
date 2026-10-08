@@ -1,0 +1,762 @@
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1,5 +1,6 @@
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+@@ -7,6 +8,7 @@
+ import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+ import St from 'gi://St';
++import Shell from 'gi://Shell';
+ 
+ import * as Config from '../misc/config.js';
+ import * as CtrlAltTab from './ctrlAltTab.js';
+@@ -426,6 +428,26 @@
+     }
+ });
+ 
++// Shared St border radii clip their own fill, not descendants. Joined/flush
++// frames need one small native paint mask, using the same Shell GLSL boundary
++// as Dash artwork. The unframed default has no offscreen effect.
++const StatusFrameClip = GObject.registerClass(
++class StatusFrameClip extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
++            'uniform vec2 status_size; uniform vec4 status_radii;', `
++            vec2 p = cogl_tex_coord_in[0].st * status_size;
++            float r = p.y < status_size.y * 0.5
++                ? (p.x < status_size.x * 0.5 ? status_radii.x : status_radii.y)
++                : (p.x < status_size.x * 0.5 ? status_radii.w : status_radii.z);
++            r = min(r, min(status_size.x, status_size.y) * 0.5);
++            vec2 q = abs(p - status_size * 0.5) - status_size * 0.5 + vec2(r);
++            float d = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
++            cogl_color_out *= 1.0 - smoothstep(-0.5, 0.5, d);
++            `, false);
++    }
++});
++
+ const ShelfStatusLayout = GObject.registerClass(
+ class ShelfStatusLayout extends Clutter.LayoutManager {
+     _init() {
+@@ -445,7 +467,7 @@
+     }
+ 
+     _columns(container) {
+-        return Math.max(2,
++        return this._vertical ? 2 : Math.max(2,
+             Math.ceil(this._visibleChildren(container).length / 2));
+     }
+ 
+@@ -471,9 +493,9 @@
+ 
+         const scale = this._scale();
+         const columns = this._columns(container);
+-        const width = Math.max(34,
+-            8 + columns * 11 + (columns - 1) * 3) * scale;
+-        return [width, width];
++        const width = Math.max(36,
++            7 + columns * 13 + (columns - 1) * 3) * scale;
++        return [(columns * 13 + (columns - 1) * 3) * scale, width];
+     }
+ 
+     vfunc_get_preferred_height(container, forWidth) {
+@@ -488,8 +510,9 @@
+             return [minHeight, natHeight];
+         }
+ 
+-        const height = 34 * this._scale();
+-        return [height, height];
++        const rows = Math.max(2, Math.ceil(this._visibleChildren(container).length / this._columns(container)));
++        const height = (7 + rows * 13 + (rows - 1) * 3) * this._scale();
++        return [(rows * 13 + (rows - 1) * 3) * this._scale(), height];
+     }
+ 
+     vfunc_allocate(container, box) {
+@@ -515,14 +538,15 @@
+         }
+ 
+         const scale = this._scale();
+-        const columns = Math.max(2, Math.ceil(children.length / 2));
+-        const cell = 11 * scale;
++        const columns = this._columns(container);
++        const rows = Math.max(2, Math.ceil(children.length / columns));
++        const cell = 13 * scale;
+         const gap = 3 * scale;
+         const contentWidth = columns * cell + (columns - 1) * gap;
+         const width = box.x2 - box.x1;
+         const height = box.y2 - box.y1;
+         const startX = Math.floor((width - contentWidth) / 2);
+-        const startY = Math.floor((height - (2 * cell + gap)) / 2);
++        const startY = Math.floor((height - (rows * cell + (rows - 1) * gap)) / 2);
+ 
+         children.forEach((child, index) => {
+             const column = index % columns;
+@@ -566,6 +590,341 @@
+             this.remove_style_class_name('luma-shelf-status-button');
+         }
+         this.queue_relayout();
++    }
++
++    // The existing Quick Settings button owns the complete material and its
++    // padding. No overlaid input actor and no second menu button are involved.
++    setStatusCluster(dateMenu, settings, vertical) {
++        if (!this._statusBox) {
++            this._statusSettings = settings;
++            this._statusDate = dateMenu;
++            this._statusBox = new St.BoxLayout({style_class: 'luma-status-frame'});
++            this._statusObserved = new WeakSet();
++            this._statusClip = new StatusFrameClip();
++            this._statusClip.enabled = false;
++            this._statusBox.add_effect_with_name('luma-status-clip', this._statusClip);
++            this._statusBox.connectObject('notify::width', () => this._syncStatusClip(),
++                'notify::height', () => this._syncStatusClip(), this);
++            this._statusHover = new St.Widget({style_class: 'luma-status-hover', reactive: false, opacity: 0});
++            this._statusViewport = new St.ScrollView({child: this._statusBox,
++                enable_mouse_scrolling: true, overlay_scrollbars: true,
++                hscrollbar_policy: St.PolicyType.EXTERNAL, vscrollbar_policy: St.PolicyType.NEVER});
++            this._statusClock = new St.Bin({style_class: 'luma-status-clock'});
++            this._statusControls = new St.Bin({style_class: 'luma-status-controls'});
++            this._statusSeam = new St.Widget({style_class: 'luma-status-seam'});
++            this._statusClockBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
++                style_class: 'luma-status-clock-text', y_align: Clutter.ActorAlign.CENTER});
++            this._statusTime = new St.Label({style_class: 'luma-status-time',
++                y_align: Clutter.ActorAlign.CENTER});
++            this._statusDateLabel = new St.Label({style_class: 'luma-status-date',
++                y_align: Clutter.ActorAlign.CENTER});
++            this._statusClockBox.add_child(this._statusTime);
++            this._statusClockBox.add_child(this._statusDateLabel);
++            this._statusClock.child = this._statusClockBox;
++            // Bind the owned clock, rather than running another timer.
++            dateMenu._timeDisplay.bind_property('text', this._statusTime, 'text',
++                GObject.BindingFlags.SYNC_CREATE);
++            dateMenu._dateDisplay.bind_property('text', this._statusDateLabel, 'text',
++                GObject.BindingFlags.SYNC_CREATE);
++            for (const label of [this._statusTime, this._statusDateLabel]) {
++                label.connectObject('notify::text', () => this._updateStatusName(), this);
++                label.connect_after('style-changed', () => this._setStatusLineHeight(label));
++            }
++            this.connectObject('notify::has-key-focus', () => this._syncStatusHover(), this);
++            this.menu.connectObject('open-state-changed', () => this._syncStatusHover(), this);
++            this.connectObject('notify::hover', () => {
++                this._syncStatusHover();
++
++            }, this);
++            this.connectObject('key-press-event', (_actor, event) => {
++                if (!this._statusActive)
++                    return Clutter.EVENT_PROPAGATE;
++                if ([Clutter.KEY_Return, Clutter.KEY_KP_Enter, Clutter.KEY_space].includes(event.get_key_symbol())) {
++                    Main.panel.toggleQuickSettings();
++                    return Clutter.EVENT_STOP;
++                }
++                return Clutter.EVENT_PROPAGATE;
++            }, this);
++            this._indicators.connectObject('child-added', (_actor, child) => this._watchStatus(child), this);
++            this._indicators.get_children().forEach(child => this._watchStatus(child));
++            this._createNotificationSurface();
++        }
++        if (!this._statusActive) {
++            this._statusActive = true;
++            this.remove_child(this._indicators);
++            this._statusControls.child = this._indicators;
++            this.add_child(this._statusViewport);
++            this.add_child(this._statusHover);
++            this.add_style_class_name('luma-status-cluster');
++            this.accessible_role = Atk.Role.PUSH_BUTTON;
++            this.set_cursor_type(Clutter.CursorType.POINTER);
++            dateMenu.setStatusOnly(true);
++            this._notificationRoutes.show();
++        }
++        this._statusVertical = vertical;
++        this._indicatorsLayout._vertical = vertical;
++        this._indicatorsLayout.layout_changed();
++        this.setShelfPresentation(true);
++        this._styleStatusCluster();
++        this._updateStatusName();
++    }
++
++    releaseStatusCluster() {
++        if (!this._statusActive)
++            return;
++        this._notifications.close();
++        this._statusActive = false;
++        this._statusDate.setStatusOnly(false);
++        this._statusControls.child = null;
++        this.remove_child(this._statusViewport);
++        this.remove_child(this._statusHover);
++        this.add_child(this._indicators);
++        this.remove_style_class_name('luma-status-cluster');
++        this.set_style(null);
++        this.accessible_role = Atk.Role.MENU;
++        this.set_cursor_type(Clutter.CursorType.DEFAULT);
++        this.accessible_name = C_('System menu in the top bar', 'System');
++        this._notificationRoutes.hide();
++        this.setShelfPresentation(false);
++    }
++
++    _syncStatusClip() {
++        if (!this._statusClip.enabled) return;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const radii = this._statusFlush ? this._statusRadii ?? [15,15,15,15] : [10,10,10,10];
++        this._statusClip.set_uniform_float(this._statusClip.get_uniform_location('status_size'), 2,
++            [Math.max(1,this._statusBox.width), Math.max(1,this._statusBox.height)]);
++        this._statusClip.set_uniform_float(this._statusClip.get_uniform_location('status_radii'), 4,
++            radii.map(r => r*scale));
++    }
++
++    _setStatusLineHeight(label) {
++        const size = this._statusSettings.get_int(label === this._statusTime ? 'status-time-size' : 'status-date-size');
++        const attrs = new Pango.AttrList();
++        attrs.insert(Pango.attr_line_height_new_absolute(size *
++            St.ThemeContext.get_for_stage(global.stage).scale_factor * Pango.SCALE));
++        label.clutter_text.set_attributes(attrs);
++    }
++
++    _statusIndicatorsChanged() {
++        if (this._statusActive) this._styleStatusCluster();
++        this._updateStatusName();
++    }
++
++    _syncStatusHover() {
++        if (!this._statusActive) return;
++        this._statusHover.ease({opacity: this.hover || this.has_key_focus() || this.menu.isOpen ? 255 : 0,
++            duration: St.Settings.get().enable_animations ? 120 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    _watchStatus(child) {
++        if (this._statusObserved.has(child)) return;
++        this._statusObserved.add(child);
++        child.connectObject('notify::visible', () => this._statusIndicatorsChanged(),
++            'notify::accessible-name', () => this._updateStatusName(), this);
++        if (child instanceof St.Icon)
++            child.connectObject('notify::icon-name', () => this._updateStatusName(), this);
++        child.connectObject('child-added', (_actor, added) => this._watchStatus(added), this);
++        child.get_children().forEach(added => this._watchStatus(added));
++        this._updateStatusName();
++    }
++
++    _updateStatusName() {
++        if (!this._statusActive)
++            return;
++        const names = [];
++        const visit = actor => {
++            if (!actor.visible) return;
++            if (actor.accessible_name) names.push(actor.accessible_name);
++            actor.get_children().forEach(visit);
++        };
++        visit(this._indicators);
++        for (const indicator of [this._network, this._bluetooth, this._rfkill]) {
++            for (const item of indicator?.quickSettingsItems ?? []) {
++                if (item.visible && item.title)
++                    names.push([item.title, item.subtitle || (typeof item.checked === 'boolean'
++                        ? (item.checked ? _('On') : _('Off')) : null)].filter(Boolean).join(' '));
++            }
++        }
++        for (const [indicator, text] of [[this._camera, _('Camera in use')],
++            [this._volumeInput, _('Microphone in use')], [this._location, _('Location in use')],
++            [this._remoteAccess, _('Screen sharing')]])
++            if (indicator?.visible) names.push(text);
++        const battery = this.menu._lumaBatteryLabel?.text;
++        if (this.menu._lumaBattery?.visible && battery)
++            names.push(_('Battery') + ' ' + battery);
++        this.accessible_name = `${this._statusTime.text}, ${this._statusDateLabel.text}. ` +
++            ([...new Set(names)].join(', ') || _('System status')) + '. ' + _('Quick options');
++    }
++
++    _createNotificationSurface() {
++        // Keep the existing message model, including unread history, clear and
++        // dismissal semantics. Reparent only while the dedicated surface is open.
++        this._notifications = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
++        this._notifications.actor.add_style_class_name('panel-menu');
++        this._notifications.box.add_style_class_name('luma-notifications-surface');
++        Main.uiGroup.add_child(this._notifications.actor);
++        this._notifications.actor.hide();
++        Main.panel.menuManager.addMenu(this._notifications);
++        this._notifications.box.add_child(new St.Label({text: _('Notifications'),
++            style_class: 'luma-notifications-title'}));
++        this._notifications.connectObject('open-state-changed', (_menu, open) => {
++            const list = this._statusDate._messageList;
++            if (open) {
++                this._messageHome = list.get_parent();
++                this._messageHome?.remove_child(list);
++                this._notifications.box.add_child(list);
++            } else if (this._messageHome) {
++                list.get_parent()?.remove_child(list);
++                this._messageHome.insert_child_at_index(list, 0);
++                this._messageHome = null;
++            }
++        }, this);
++        this._notifications.actor.connectObject('captured-event', (_actor, event) =>
++            this._statusDate._messageList.maybeCollapseMessageGroupForEvent(event), this);
++        this._notificationRoutes = new St.BoxLayout({style_class: 'luma-status-routes'});
++        const history = new St.Button({label: _('Notifications'), style_class: 'button',
++            can_focus: true, x_expand: true});
++        history.connect('clicked', () => {
++            this.menu.close();
++            this.openNotifications();
++        });
++        this._notificationRoutes.add_child(history);
++        const calendar = new St.Button({label: _('Calendar'), style_class: 'button',
++            can_focus: true, x_expand: true});
++        calendar.connect('clicked', () => {
++            this.menu.close();
++            const app = Shell.AppSystem.get_default().lookup_app('org.projectluma.Calendar.desktop');
++            app?.activate();
++        });
++        calendar.visible = Shell.AppSystem.get_default().lookup_app('org.projectluma.Calendar.desktop') !== null;
++        this._notificationRoutes.add_child(calendar);
++        this.menu.box.add_child(this._notificationRoutes);
++        this.connect('destroy', () => {
++            this._notifications.close();
++            this._notifications.destroy();
++            if (!this._statusActive) { this._statusViewport.destroy(); this._statusHover.destroy(); }
++        });
++    }
++
++    openNotifications() {
++        if (!this._statusActive || !this.mapped)
++            return;
++        this._notifications.setArrowSide(this._statusArrowSide ?? St.Side.TOP);
++        this._notifications.open();
++        this._notifications.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
++    }
++
++    _styleStatusCluster() {
++        const s = this._statusSettings;
++        const vertical = this._statusVertical;
++        const scope = s.get_string('status-frame-scope');
++        const frame = s.get_string('status-frame');
++        const flush = scope === 'flush';
++        const joined = scope === 'joined' || flush;
++        const filled = ['fill', 'both'].includes(frame) || flush;
++        const stroked = ['stroke', 'both'].includes(frame) && !flush;
++        const strength = Number(s.get_string('status-fill-strength')) / 100;
++        const light = ['light', 'frost'].includes(s.get_string('shelf-material'));
++        const line = light ? 'rgba(25,27,31,0.14)' : 'rgba(255,255,255,0.16)';
++        const rgba = key => {
++            const raw = s.get_string(key);
++            const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#7f8892';
++            const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
++            return `rgba(${rgb.join(',')},${strength})`;
++        };
++        const right = s.get_boolean('status-controls-right');
++        this._statusBox.text_direction = this.text_direction;
++        this._statusBox.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._statusBox.remove_all_children();
++        const parts = right ? [this._statusClock, this._statusControls] : [this._statusControls, this._statusClock];
++        this._statusBox.add_child(parts[0]);
++        this._statusBox.add_child(this._statusSeam);
++        this._statusBox.add_child(parts[1]);
++        const rtl = !vertical && this.text_direction === Clutter.TextDirection.RTL;
++        const visual = rtl ? [...parts].reverse() : parts;
++        const padding = s.get_int('shelf-padding');
++        const corner = flush ? (this._statusRadii ?? [15, 15, 15, 15]) : [10, 10, 10, 10];
++        const gap = 0;
++        this._statusBox.set_style(`spacing: ${gap}px; border: ${stroked && scope === 'all' ? 1 : 0}px solid ${line}; ` +
++            `border-radius: 10px; background-color: ${filled && scope === 'all' ? rgba('status-clock-fill') : 'transparent'};`);
++        for (const part of parts) {
++            const isClock = part === this._statusClock;
++            const framed = scope === 'split' || joined || (!isClock && scope === 'controls');
++            let radii = [10, 10, 10, 10];
++            if (joined) {
++                radii = [...corner];
++                const first = part === visual[0];
++                for (const i of vertical ? (first ? [2, 3] : [0, 1]) : (first ? [1, 2] : [0, 3])) radii[i] = 0;
++            }
++            const innerSide = vertical ? (part === visual[0] ? 'bottom' : 'top') : (part === visual[0] ? 'right' : 'left');
++            part.set_style(`border: ${framed && stroked ? 1 : 0}px solid ${line}; ` +
++                `border-radius: ${radii.map(n => `${n}px`).join(' ')}; ` +
++                `background-color: ${framed && filled ? rgba(isClock ? 'status-clock-fill' : 'status-controls-fill') : 'transparent'}; ` +
++                `padding: ${flush ? padding : 0}px; ${joined ? `border-${innerSide}: 0;` : ''}`);
++        }
++        const seam = s.get_boolean('status-divider') && (frame !== 'none' || flush);
++        this._statusSeam.visible = !joined || seam;
++        this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: ${joined ? 1 : 1}px; margin: ${joined ? '0' : vertical ? '3px 0' : '0 3px'};`);
++        this._statusSeam.x_expand = vertical;
++        this._statusSeam.y_expand = !vertical;
++        this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700;`);
++        this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600;`);
++        this._statusClockBox.set_style(`spacing: ${Math.max(0, Math.min(3, 36 - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
++        const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
++            [this._statusDateLabel, s.get_int('status-date-size')]]) {
++            const attrs = new Pango.AttrList();
++            attrs.insert(Pango.attr_line_height_new_absolute(size * textScale * Pango.SCALE));
++            label.clutter_text.set_attributes(attrs);
++            const textWidth = 36 - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
++            label.set_width(vertical ? textWidth * textScale : -1);
++            label.clutter_text.single_line_mode = !vertical;
++            label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++            label.clutter_text.line_wrap = vertical;
++            label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
++            label.clutter_text.line_alignment = Pango.Alignment.CENTER;
++        }
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._statusControls.set_height(vertical ? -1 : (36 - (scope === 'all' && stroked ? 2 : 0) + (flush ? 2 * padding : 0)) * scale);
++        const columns = this._indicatorsLayout._columns(this._indicators);
++        const controlWidth = (7 + columns * 13 + (columns - 1) * 3) * scale;
++        this._statusControls.set_width(vertical ? -1 : controlWidth + (flush ? 2 * padding * scale : 0));
++        this._statusClock.set_style(this._statusClock.get_style() + (vertical ? '' : 'min-width: 70px;'));
++        this._indicators.get_children().forEach(child => child.set_style(
++            s.get_boolean('status-glyph-tiles') ? `background-color: ${light ? 'rgba(25,27,31,0.05)' : 'rgba(255,255,255,0.08)'}; border-radius: 3px;` : null));
++        this.remove_style_class_name('luma-status-light');
++        if (light) this.add_style_class_name('luma-status-light');
++        this._statusFlush = flush;
++        this._statusClip.enabled = joined;
++        this._syncStatusClip();
++        this.queue_relayout();
++    }
++
++    // PanelMenu.ButtonBox normally measures horizontal panel padding itself.
++    // In cluster mode use the real material's themed content box on both axes.
++    vfunc_get_preferred_width(forHeight) {
++        if (!this._statusActive) return super.vfunc_get_preferred_width(forHeight);
++        const node = this.get_theme_node();
++        const size = this._statusViewport.get_preferred_width(node.adjust_for_height(forHeight));
++        return node.adjust_preferred_width(...size);
++    }
++
++    vfunc_get_preferred_height(forWidth) {
++        if (!this._statusActive) return super.vfunc_get_preferred_height(forWidth);
++        const node = this.get_theme_node();
++        const size = this._statusViewport.get_preferred_height(node.adjust_for_width(forWidth));
++        return node.adjust_preferred_height(...size);
++    }
++
++    vfunc_allocate(box) {
++        if (!this._statusActive) { super.vfunc_allocate(box); return; }
++        this.set_allocation(box);
++        const content = this.get_theme_node().get_content_box(new Clutter.ActorBox({
++            x1: 0, y1: 0, x2: box.get_width(), y2: box.get_height()}));
++        this._statusViewport.allocate(content);
++        this._statusHover.allocate(new Clutter.ActorBox({x1:0, y1:0, x2:box.get_width(), y2:box.get_height()}));
+     }
+ 
+     async _setupIndicators() {
+@@ -609,6 +968,13 @@
+         this._unsafeMode = new UnsafeModeIndicator();
+         this._backgroundApps = new BackgroundAppsStatus.Indicator();
+ 
++        for (const indicator of [this._network, this._bluetooth, this._rfkill])
++            for (const item of indicator?.quickSettingsItems ?? [])
++                item.connectObject('notify::title', () => this._updateStatusName(),
++                    'notify::subtitle', () => this._updateStatusName(),
++                    'notify::checked', () => this._updateStatusName(), this);
++        this.menu._lumaBatteryLabel.connectObject('notify::text', () => this._updateStatusName(), this);
++
+         // add privacy-related indicators before any external indicators
+         let pos = 0;
+         this._indicators.insert_child_at_index(this._remoteAccess, pos++);
+@@ -924,6 +1290,10 @@
+     }
+ 
+     toggleCalendar() {
++        if (this.statusArea.quickSettings?._statusActive) {
++            this.toggleQuickSettings();
++            return;
++        }
+         this._toggleMenu(this.statusArea.dateMenu);
+     }
+ 
+@@ -932,6 +1302,7 @@
+     }
+ 
+     closeCalendar() {
++        this.statusArea.quickSettings?._notifications?.close();
+         this._closeMenu(this.statusArea.dateMenu);
+     }
+ 
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -207,6 +207,11 @@
+ 
+     setCornerRadii(radii) {
+         this._radii = radii;
++        if (this._content._statusActive) {
++            this._content._statusRadii = radii;
++            this._content._styleStatusCluster();
++            this._content._statusHover?.set_style(`border-radius: ${radii.map(n => `${n}px`).join(' ')};`);
++        }
+         this._updateStyle();
+     }
+ 
+@@ -215,7 +220,7 @@
+         const style = `border-radius: ${radii.map(value => `${value}px`).join(' ')};`;
+         for (const actor of [this._stroke, ...this._shadows])
+             actor.set_style(style);
+-        const padding = this._outer ? 0 : this._padding ?? DASH_PADDING;
++        const padding = this._outer || this._content._statusFlush ? 0 : this._padding ?? DASH_PADDING;
+         // Native Dash tiles already contribute half of the 5px inter-icon
+         // gap at each end. Absorb only those outer half-margins; preserve
+         // spacing between icons and measure padding to the artwork bounds.
+@@ -230,7 +235,7 @@
+         const sides = [St.Side.TOP, St.Side.RIGHT, St.Side.BOTTOM, St.Side.LEFT];
+         const values = insets.map((value, index) =>
+             Math.max(0, value - node.get_border_width(sides[index]) / scale));
+-        this._content.set_style(`${style} padding: ${values.map(value => `${value}px`).join(' ')};`);
++        this._content.set_style(`${style} ${this._content._statusActive ? `transition-duration: ${St.Settings.get().enable_animations ? 120 : 0}ms;` : ''} padding: ${values.map(value => `${value}px`).join(' ')};`);
+     }
+ 
+     setSurfaceVisible(visible, castShadows) {
+@@ -337,20 +342,25 @@
+         this._dockMaterial = new St.Bin({child: this._dockScroll});
+         this._dockIsland = new ShelfIsland('luma-shelf-dock-island', this._dockMaterial);
+ 
+-        this._actionsBox = new St.BoxLayout({
+-            style_class: 'luma-shelf-actions-box',
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._actionsScroll = new St.ScrollView({
+-            hscrollbar_policy: St.PolicyType.NEVER,
+-            vscrollbar_policy: St.PolicyType.NEVER,
+-            enable_mouse_scrolling: true,
+-            overlay_scrollbars: true,
+-        });
+-        this._actionsScroll.set_child(this._actionsBox);
+-        this._actionsMaterial = new St.Bin({child: this._actionsScroll});
++        // Keep secondary accessibility/input applets reachable in their own
++        // island. The clock/status island itself has exactly one input target.
++        this._auxBox = new St.BoxLayout({style_class: 'luma-shelf-actions-box'});
++        this._auxMaterial = new St.Bin({child: this._auxBox});
++        this._auxIsland = new ShelfIsland('luma-shelf-aux-island', this._auxMaterial);
++        this._actionsMaterial = Main.panel.statusArea.quickSettings;
++        this._actionsMaterial.container.get_parent()?.remove_child(this._actionsMaterial.container);
++        this._actionsMaterial.container.child = null;
+         this._actionsIsland = new ShelfIsland(
+             'luma-shelf-actions-island', this._actionsMaterial);
++        this._actionsMaterial.setStatusCluster(Main.panel.statusArea.dateMenu,
++            this._settings, false);
++        this._actionsBox = this._actionsMaterial._statusBox;
++        this._actionsScroll = this._actionsMaterial._statusViewport;
++
++        this.connect('destroy', () => {
++            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland])
++                if (island && !island.get_parent()) island.destroy();
++        });
+ 
+         Main.layoutManager.addChrome(this, {
+             affectsStruts: false,
+@@ -413,30 +423,39 @@
+     _adoptPanelActors() {
+         const indicators = Main.panel.statusArea;
+         const actionRoles = [
+-            'dateMenu',
+             'screenRecording',
+             'screenSharing',
+             'dwellClick',
+             'a11y',
+             'keyboard',
+-            'quickSettings',
+         ];
+         const arrowSide = St.Side[this._edge.toUpperCase()];
+ 
++        const quick = indicators.quickSettings;
++        quick.container.get_parent()?.remove_child(quick.container);
++        quick.container.child = null;
++        if (quick.get_parent() !== this._actionsIsland) {
++            quick.get_parent()?.remove_child(quick);
++            this._actionsIsland.insert_child_below(quick, this._actionsIsland._stroke);
++        }
++        quick.setStatusCluster(indicators.dateMenu, this._settings, this._vertical);
++        this._setMenuSide(quick, arrowSide);
++        quick._statusArrowSide = arrowSide;
++        this._auxBox.orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         for (const role of actionRoles) {
+             const indicator = indicators[role];
+             if (!indicator)
+                 continue;
+             const container = indicator.container;
+             const parent = container.get_parent();
+-            if (parent !== this._actionsBox) {
++            if (parent !== this._auxBox) {
+                 parent?.remove_child(container);
+-                this._actionsBox.add_child(container);
++                this._auxBox.add_child(container);
+             }
+             if (!indicator._lumaShelfVisibilityBound) {
+                 indicator.connectObject('notify::visible', () => {
+                     container.visible = indicator.visible;
+-                    this._queueDockWidth();
++                    this._sync();
+                 }, this);
+                 indicator._lumaShelfVisibilityBound = true;
+             }
+@@ -445,6 +464,10 @@
+             indicator.setShelfOrientation?.(this._vertical);
+             this._setMenuSide(indicator, arrowSide);
+         }
++
++        this._auxIsland.visible = this._auxBox.get_children().some(child => child.visible);
++        if (this._auxIsland.visible && this._settings.get_boolean('shelf-actions-visible'))
++            this._group.add_child(this._auxIsland);
+ 
+         const liveIndicator = indicators.liveExtensions;
+         const live = liveIndicator?.container;
+@@ -479,6 +502,12 @@
+ 
+     _restorePanelActors() {
+         const indicators = Main.panel.statusArea;
++        const quick = indicators.quickSettings;
++        if (quick?._statusActive) {
++            quick.releaseStatusCluster();
++            quick.get_parent()?.remove_child(quick);
++            quick.container.child = quick;
++        }
+         indicators.quickSettings?.setShelfPresentation?.(false);
+         indicators.dateMenu?.setShelfPresentation?.(false);
+         Main.panel._updatePanel();
+@@ -553,11 +582,17 @@
+             island.remove_style_class_name('luma-shelf-divider-after');
+             if (surfaceMode === 'connected' && island !== visibleIslands.at(-1))
+                 island.add_style_class_name('luma-shelf-divider-after');
+-            island.setCornerRadii(surfaceMode === 'separate'
+-                ? dashCornerRadii(this._edge, this._protrude,
+-                    flushEnds && island === physicalIslands[0],
+-                    flushEnds && island === physicalIslands.at(-1))
+-                : [0, 0, 0, 0]);
++            const first = island === physicalIslands[0];
++            const last = island === physicalIslands.at(-1);
++            let radii = surfaceMode === 'separate'
++                ? dashCornerRadii(this._edge, this._protrude, flushEnds && first, flushEnds && last)
++                : [0, 0, 0, 0];
++            if (surfaceMode === 'connected' && island === this._actionsIsland && this._actionsMaterial._statusFlush) {
++                radii = dashCornerRadii(this._edge, this._protrude, flushEnds && first, flushEnds && last);
++                if (!first) for (const i of this._vertical ? [0, 1] : [0, 3]) radii[i] = 0;
++                if (!last) for (const i of this._vertical ? [2, 3] : [1, 2]) radii[i] = 0;
++            }
++            island.setCornerRadii(radii);
+             island.setOrientation(this._vertical, this._padding);
+             island.setSurfaceVisible(surfaceMode === 'separate', castShadows);
+         }
+@@ -681,9 +716,17 @@
+         const gap = this._group._separate ? others.length * this._padding * scale : 0;
+         this._actionsScroll.set_size(-1, -1);
+         const actionsBudget = Math.max(1, available - liveSize - gap - this._thickness * scale);
+-        const actionsPadding = 2 * this._padding * scale;
+-        const actionsLength = Math.min(measure(this._actionsBox), Math.max(1, actionsBudget - actionsPadding));
+-        setViewport(this._actionsScroll, actionsLength, 36 * scale);
++        const flushStatus = this._actionsMaterial._statusFlush;
++        const actionsPadding = flushStatus ? 0 : 2 * this._padding * scale;
++        const statusCross = (flushStatus ? this._thickness : 36) * scale;
++        // Measure wrapped clock labels at the actual content width, not the
++        // material width including padding. Otherwise a vertical shelf clips
++        // its last status row after labels wrap during allocation.
++        const statusNatural = this._vertical
++            ? this._actionsBox.get_preferred_height(statusCross)[1]
++            : this._actionsBox.get_preferred_width(36 * scale)[1];
++        const actionsLength = Math.min(statusNatural, Math.max(1, actionsBudget - actionsPadding));
++        setViewport(this._actionsScroll, actionsLength, statusCross);
+         const otherSize = others.reduce((sum, actor) => sum + measure(actor), 0);
+         const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - (2 * this._padding - 5) * scale);
+         const length = Math.min(naturalDock, maxLength);
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -1041,6 +1041,14 @@
+ 
+         Main.sessionMode.connect('updated', this._sessionUpdated.bind(this));
+         this._sessionUpdated();
++    }
++
++    setStatusOnly(enabled) {
++        this.menu.close();
++        this._statusOnly = enabled;
++        this.setSensitive(!enabled);
++        this.container.visible = !enabled;
++        this._updateClock();
+     }
+ 
+     setShelfPresentation(enabled) {
+@@ -1107,9 +1115,11 @@
+         else if (showDate)
+             dateFormat = N_('%b %-d');
+ 
++        if (this._statusOnly)
++            dateFormat = N_('%a, %b %-d');
+         this._dateDisplay.visible = dateFormat !== null;
+         this._dateDisplay.text = dateFormat
+-            ? formatDateWithCFormatString(now, T_(dateFormat))
++            ? formatDateWithCFormatString(now, T_(dateFormat)).replaceAll(',', '')
+             : '';
+     }
+ 
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -8,6 +8,7 @@
+ import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+ import St from 'gi://St';
++import Shell from 'gi://Shell';
+ 
+ import GnomeDesktop from 'gi://GnomeDesktop';
+ 
+@@ -981,7 +982,7 @@
+         const format = this._lumaClockSettings.get_string('clock-format') === '24h'
+             ? '%H:%M' : '%l:%M %p';
+         this._lumaTime.text = now.format(format).trim();
+-        this._lumaDate.text = now.format('%a, %b %-d');
++        this._lumaDate.text = now.format(Shell.util_translate_time_string('%a, %b %-d')).replaceAll(',', '');
+     }
+ 
+     // Bind the existing UPower presentation model. Header percentage is
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -268,3 +268,55 @@
+ .luma-shelf-vertical .luma-shelf-divider-after > .luma-shelf-material {
+   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+ }
++
++/* One real clock/status button, including the material's padding. */
++.luma-shelf-actions-island .luma-status-cluster {
++  -minimum-hpadding: 0; -natural-hpadding: 0;
++  background-color: #22272b; color: #e3e6e8;
++  border: 0; box-shadow: none; transition-duration: 120ms;
++}
++.luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster {
++  background-color: transparent;
++}
++.luma-shelf-actions-island .luma-status-cluster:hover,
++.luma-shelf-actions-island .luma-status-cluster:active {
++  background-color: #22272b;
++}
++.luma-shelf-actions-island .luma-status-cluster:focus {
++  background-color: #22272b;
++  box-shadow: 0 0 0 2px #91b6d2;
++}
++.luma-status-cluster .system-status-icon { icon-size: 13px; padding: 0; margin: 0; }
++.luma-status-cluster .panel-status-indicators-box { spacing: 0; }
++.luma-status-cluster .luma-status-clock-text { padding: 0; margin: 0; }
++.luma-status-cluster .luma-status-time, .luma-status-cluster .luma-status-date { text-align: center; }
++.luma-status-cluster .luma-status-date { color: inherit; }
++.luma-shelf-actions-island .luma-status-light { background-color: #eef0f2; color: #191b1f; }
++.luma-shelf-actions-island .luma-status-light:hover,
++.luma-shelf-actions-island .luma-status-light:active,
++.luma-shelf-actions-island .luma-status-light:focus { background-color: #eef0f2; }
++.luma-status-routes { spacing: 8px; padding-top: 12px; }
++.luma-notifications-surface { min-width: 360px; max-height: 540px; padding: 12px; }
++.luma-notifications-title { font-weight: bold; padding: 0 0 12px; }
++
++.luma-status-cluster .luma-status-hover { background-color: rgba(255,255,255,0.14); }
++.luma-status-light .luma-status-hover { background-color: rgba(25,27,31,0.14); }
++.luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster:hover,
++.luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster:active,
++.luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster:focus { background-color: transparent; }
++
++/* Status treatment tokens follow the owned Dash material, including merged
++ * surfaces. Frost/Glass keep the current opaque material fallback; this does
++ * not install a second blur compositor. */
++.luma-shelf-group.luma-shelf-material-light,
++.luma-shelf-group.luma-shelf-material-frost {
++  background-color: #eef0f2; color: #191b1f;
++}
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material-light,
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material-frost {
++  background-color: transparent;
++}
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-material-light > .luma-shelf-island > .luma-shelf-material,
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-material-frost > .luma-shelf-island > .luma-shelf-material {
++  background-color: #eef0f2; color: #191b1f;
++}

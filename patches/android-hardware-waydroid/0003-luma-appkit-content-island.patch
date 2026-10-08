@@ -1,0 +1,1822 @@
+--- a/hwcomposer/Android.bp
++++ b/hwcomposer/Android.bp
+@@ -20,6 +20,7 @@
+     vendor: true,
+     shared_libs: [
+         "liblog",
++        "libz",
+         "libutils",
+         "libcutils",
+         "libhardware",
+@@ -43,6 +44,7 @@
+         "libwayland_extension_client_protocols",
+         "libxkbcommon",
+         "libft2.nodep",
++        "libpng",
+     ],
+     srcs: [
+         "extension.cpp",
+@@ -78,10 +80,12 @@
+     generated_sources: [
+         "wayland_android_client_protocol_sources",
+         "wayland_fractional_scale_client_protocol_sources",
++        "luma_cursor_shape_client_sources",
+     ],
+     generated_headers: [
+         "wayland_android_client_protocol_headers",
+         "wayland_fractional_scale_client_protocol_headers",
++        "luma_cursor_shape_client_headers",
+     ],
+ }
+ 
+@@ -126,3 +130,19 @@
+     cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
+     out: ["fractional-scale-v1-client-protocol.h"],
+ }
++
++// Unmodified wayland-protocols 1.32, MIT license retained in the XML.
++genrule {
++    name: "luma_cursor_shape_client_sources",
++    srcs: ["cursor-shape-v1.xml"],
++    tools: ["wayland_scanner"],
++    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
++    out: ["cursor-shape-v1-client-protocol.c"],
++}
++genrule {
++    name: "luma_cursor_shape_client_headers",
++    srcs: ["cursor-shape-v1.xml"],
++    tools: ["wayland_scanner"],
++    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
++    out: ["cursor-shape-v1-client-protocol.h"],
++}
+--- /dev/null
++++ b/hwcomposer/cursor-shape-v1.xml
+@@ -0,0 +1,147 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="cursor_shape_v1">
++  <copyright>
++    Copyright 2018 The Chromium Authors
++    Copyright 2023 Simon Ser
++
++    Permission is hereby granted, free of charge, to any person obtaining a
++    copy of this software and associated documentation files (the "Software"),
++    to deal in the Software without restriction, including without limitation
++    the rights to use, copy, modify, merge, publish, distribute, sublicense,
++    and/or sell copies of the Software, and to permit persons to whom the
++    Software is furnished to do so, subject to the following conditions:
++    The above copyright notice and this permission notice (including the next
++    paragraph) shall be included in all copies or substantial portions of the
++    Software.
++    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
++    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++    DEALINGS IN THE SOFTWARE.
++  </copyright>
++
++  <interface name="wp_cursor_shape_manager_v1" version="1">
++    <description summary="cursor shape manager">
++      This global offers an alternative, optional way to set cursor images. This
++      new way uses enumerated cursors instead of a wl_surface like
++      wl_pointer.set_cursor does.
++
++      Warning! The protocol described in this file is currently in the testing
++      phase. Backward compatible changes may be added together with the
++      corresponding interface version bump. Backward incompatible changes can
++      only be done by creating a new major version of the extension.
++    </description>
++
++    <request name="destroy" type="destructor">
++      <description summary="destroy the manager">
++        Destroy the cursor shape manager.
++      </description>
++    </request>
++
++    <request name="get_pointer">
++      <description summary="manage the cursor shape of a pointer device">
++        Obtain a wp_cursor_shape_device_v1 for a wl_pointer object.
++      </description>
++      <arg name="cursor_shape_device" type="new_id" interface="wp_cursor_shape_device_v1"/>
++      <arg name="pointer" type="object" interface="wl_pointer"/>
++    </request>
++
++    <request name="get_tablet_tool_v2">
++      <description summary="manage the cursor shape of a tablet tool device">
++        Obtain a wp_cursor_shape_device_v1 for a zwp_tablet_tool_v2 object.
++      </description>
++      <arg name="cursor_shape_device" type="new_id" interface="wp_cursor_shape_device_v1"/>
++      <arg name="tablet_tool" type="object" interface="zwp_tablet_tool_v2"/>
++    </request>
++  </interface>
++
++  <interface name="wp_cursor_shape_device_v1" version="1">
++    <description summary="cursor shape for a device">
++      This interface advertises the list of supported cursor shapes for a
++      device, and allows clients to set the cursor shape.
++    </description>
++
++    <enum name="shape">
++      <description summary="cursor shapes">
++        This enum describes cursor shapes.
++
++        The names are taken from the CSS W3C specification:
++        https://w3c.github.io/csswg-drafts/css-ui/#cursor
++      </description>
++      <entry name="default" value="1" summary="default cursor"/>
++      <entry name="context_menu" value="2" summary="a context menu is available for the object under the cursor"/>
++      <entry name="help" value="3" summary="help is available for the object under the cursor"/>
++      <entry name="pointer" value="4" summary="pointer that indicates a link or another interactive element"/>
++      <entry name="progress" value="5" summary="progress indicator"/>
++      <entry name="wait" value="6" summary="program is busy, user should wait"/>
++      <entry name="cell" value="7" summary="a cell or set of cells may be selected"/>
++      <entry name="crosshair" value="8" summary="simple crosshair"/>
++      <entry name="text" value="9" summary="text may be selected"/>
++      <entry name="vertical_text" value="10" summary="vertical text may be selected"/>
++      <entry name="alias" value="11" summary="drag-and-drop: alias of/shortcut to something is to be created"/>
++      <entry name="copy" value="12" summary="drag-and-drop: something is to be copied"/>
++      <entry name="move" value="13" summary="drag-and-drop: something is to be moved"/>
++      <entry name="no_drop" value="14" summary="drag-and-drop: the dragged item cannot be dropped at the current cursor location"/>
++      <entry name="not_allowed" value="15" summary="drag-and-drop: the requested action will not be carried out"/>
++      <entry name="grab" value="16" summary="drag-and-drop: something can be grabbed"/>
++      <entry name="grabbing" value="17" summary="drag-and-drop: something is being grabbed"/>
++      <entry name="e_resize" value="18" summary="resizing: the east border is to be moved"/>
++      <entry name="n_resize" value="19" summary="resizing: the north border is to be moved"/>
++      <entry name="ne_resize" value="20" summary="resizing: the north-east corner is to be moved"/>
++      <entry name="nw_resize" value="21" summary="resizing: the north-west corner is to be moved"/>
++      <entry name="s_resize" value="22" summary="resizing: the south border is to be moved"/>
++      <entry name="se_resize" value="23" summary="resizing: the south-east corner is to be moved"/>
++      <entry name="sw_resize" value="24" summary="resizing: the south-west corner is to be moved"/>
++      <entry name="w_resize" value="25" summary="resizing: the west border is to be moved"/>
++      <entry name="ew_resize" value="26" summary="resizing: the east and west borders are to be moved"/>
++      <entry name="ns_resize" value="27" summary="resizing: the north and south borders are to be moved"/>
++      <entry name="nesw_resize" value="28" summary="resizing: the north-east and south-west corners are to be moved"/>
++      <entry name="nwse_resize" value="29" summary="resizing: the north-west and south-east corners are to be moved"/>
++      <entry name="col_resize" value="30" summary="resizing: that the item/column can be resized horizontally"/>
++      <entry name="row_resize" value="31" summary="resizing: that the item/row can be resized vertically"/>
++      <entry name="all_scroll" value="32" summary="something can be scrolled in any direction"/>
++      <entry name="zoom_in" value="33" summary="something can be zoomed in"/>
++      <entry name="zoom_out" value="34" summary="something can be zoomed out"/>
++    </enum>
++
++    <enum name="error">
++      <entry name="invalid_shape" value="1"
++        summary="the specified shape value is invalid"/>
++    </enum>
++
++    <request name="destroy" type="destructor">
++      <description summary="destroy the cursor shape device">
++        Destroy the cursor shape device.
++
++        The device cursor shape remains unchanged.
++      </description>
++    </request>
++
++    <request name="set_shape">
++      <description summary="set device cursor to the shape">
++        Sets the device cursor to the specified shape. The compositor will
++        change the cursor image based on the specified shape.
++
++        The cursor actually changes only if the input device focus is one of
++        the requesting client's surfaces. If any, the previous cursor image
++        (surface or shape) is replaced.
++
++        The "shape" argument must be a valid enum entry, otherwise the
++        invalid_shape protocol error is raised.
++
++        This is similar to the wl_pointer.set_cursor and
++        zwp_tablet_tool_v2.set_cursor requests, but this request accepts a
++        shape instead of contents in the form of a surface. Clients can mix
++        set_cursor and set_shape requests.
++
++        The serial parameter must match the latest wl_pointer.enter or
++        zwp_tablet_tool_v2.proximity_in serial number sent to the client.
++        Otherwise the request will be ignored.
++      </description>
++      <arg name="serial" type="uint" summary="serial number of the enter event"/>
++      <arg name="shape" type="uint" enum="shape"/>
++    </request>
++  </interface>
++</protocol>
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -334,7 +334,7 @@
+     });
+ }
+ 
+-static int apply_hwc_layer_to_surface_context(waydroid_hwc_composer_device_1 *pdev, hwc_layer_1 *hwc_layer, size_t hwc_layer_index, surface_context &surface_context, buffer *buf = nullptr) {
++static int apply_hwc_layer_to_surface_context(waydroid_hwc_composer_device_1 *pdev, hwc_layer_1 *hwc_layer, size_t hwc_layer_index, surface_context &surface_context, buffer *buf = nullptr, bool defer_commit = false) {
+     constexpr int acquireWarningMS = 100;
+     int res = -1;
+ 
+@@ -371,7 +371,8 @@
+         res = 0;
+     }
+ 
+-    wl_surface_commit(surface_context.surface);
++    if (!defer_commit)
++        wl_surface_commit(surface_context.surface);
+ 
+ out:
+     if (hwc_layer->acquireFenceFd != -1) {
+@@ -392,28 +393,54 @@
+ 
+     auto &window_layer = window->get_next_layer();
+ 
+-    if (apply_hwc_layer_to_surface_context(pdev, hwc_layer, hwc_layer_index, window_layer, buf) != 0) {
++    if (apply_hwc_layer_to_surface_context(pdev, hwc_layer, hwc_layer_index, window_layer, buf, true) != 0) {
+         return -1;
+     }
+ 
++    const auto geometry = prairie::frame(*window);
+     const int local_x = hwc_layer->displayFrame.left - window->task_origin_x;
+     const int local_y = hwc_layer->displayFrame.top - window->task_origin_y;
+-    const int chrome_y = window->has_prairie_titlebar ? prairie::kTitlebarHeight : 0;
+-    window_layer.set_position(
+-        floor(local_x / pdev->display->scale),
+-        chrome_y + floor(local_y / pdev->display->scale));
+-
+-    if (window->input_region) {
+-        wl_region_add(window->input_region,
+-                      -WINDOW_DECORATION_OUTSET + floor(local_x / pdev->display->scale),
+-                      chrome_y - WINDOW_DECORATION_OUTSET + floor(local_y / pdev->display->scale),
+-                      2*WINDOW_DECORATION_OUTSET + ceil((hwc_layer->displayFrame.right - hwc_layer->displayFrame.left) / pdev->display->scale),
+-                      2*WINDOW_DECORATION_OUTSET + ceil((hwc_layer->displayFrame.bottom - hwc_layer->displayFrame.top) / pdev->display->scale));
+-    }
+-
++    const int source_width = hwc_layer->displayFrame.right - hwc_layer->displayFrame.left;
++    const int source_height = hwc_layer->displayFrame.bottom - hwc_layer->displayFrame.top;
++    int x = geometry.content.x + floor(local_x / pdev->display->scale);
++    int y = geometry.content.y + floor(local_y / pdev->display->scale);
++    int width = std::max(1, int(ceil(source_width / pdev->display->scale)));
++    int height = std::max(1, int(ceil(source_height / pdev->display->scale)));
++    double scale_x = 1.0, scale_y = 1.0;
++    if (window->composed_canvas && window_layer.viewport &&
++            source_width > 0 && source_height > 0) {
++        x = geometry.content.x;
++        y = geometry.content.y;
++        width = geometry.content.width;
++        height = geometry.content.height;
++        // SurfaceFlinger still supplies a composed RGB display buffer. Crop
++        // that buffer to this task's bounds; do not rescale the whole display
++        // or enable the YUV-unsafe multi-window copier.
++        const auto& crop = hwc_layer->sourceCropf;
++        const double rx = (crop.right - crop.left) / source_width;
++        const double ry = (crop.bottom - crop.top) / source_height;
++        const int task_width = std::min(window->requested_content_width > 0 ?
++            window->requested_content_width : source_width, source_width);
++        const int task_height = std::min(window->requested_content_height > 0 ?
++            window->requested_content_height : source_height, source_height);
++        const int origin_x = std::clamp(window->task_origin_x - hwc_layer->displayFrame.left, 0, source_width - task_width);
++        const int origin_y = std::clamp(window->task_origin_y - hwc_layer->displayFrame.top, 0, source_height - task_height);
++        wp_viewport_set_source(window_layer.viewport,
++            wl_fixed_from_double(crop.left + origin_x * rx),
++            wl_fixed_from_double(crop.top + origin_y * ry),
++            wl_fixed_from_double(task_width * rx), wl_fixed_from_double(task_height * ry));
++        wp_viewport_set_destination(window_layer.viewport, width, height);
++        scale_x = double(task_width) / width / pdev->display->scale;
++        scale_y = double(task_height) / height / pdev->display->scale;
++    }
++    window_layer.set_position(x, y);
++    if (window->input_region)
++        wl_region_add(window->input_region, x, y, width, height);
+     pdev->display->layers[window_layer.surface] = {
+-            .x = hwc_layer->displayFrame.left,
+-            .y = hwc_layer->displayFrame.top };
++        .x = window->composed_canvas ? window->task_origin_x : hwc_layer->displayFrame.left,
++        .y = window->composed_canvas ? window->task_origin_y : hwc_layer->displayFrame.top,
++        .scale_x = scale_x, .scale_y = scale_y };
++    wl_surface_commit(window_layer.surface);
+ 
+     if (window->display->presentation) {
+         auto feedback = wp_presentation_feedback(window->display->presentation, window_layer.surface);
+@@ -431,6 +458,7 @@
+ static void reset_per_commit_state_window(waydroid_hwc_composer_device_1 *pdev) {
+     for (auto& [id, window] : pdev->display->windows) {
+         window->reset_per_set_state();
++        prairie::refresh_appearance(*window);
+     }
+ }
+ 
+--- /dev/null
++++ b/hwcomposer/luma-frame-tokens.h
+@@ -0,0 +1,41 @@
++/* Generated from config/shared/design-tokens.json. */
++#pragma once
++#define LUMA_FRAME_GAP 9
++#define LUMA_FRAME_WINDOW_RADIUS 15
++#define LUMA_FRAME_ISLAND_RADIUS 10
++#define LUMA_FRAME_HEADER_HEIGHT 42
++#define LUMA_FRAME_TITLE_SIZE 13
++#define LUMA_FRAME_TITLE_WEIGHT 650
++#define LUMA_FRAME_CONTROL_SIZE 20
++#define LUMA_FRAME_CONTROL_PADDING 2
++#define LUMA_FRAME_CONTROL_INSET 8
++#define LUMA_FRAME_RESIZE_BAND 9
++#define LUMA_FRAME_RESIZE_CORNER 20
++#define LUMA_FRAME_IDENTITY_INSET 12
++#define LUMA_FRAME_IDENTITY_ICON_SIZE 20
++#define LUMA_FRAME_IDENTITY_GAP 8
++#define LUMA_FRAME_BACK_GAP 8
++#define LUMA_FRAME_LIGHT_SHADOW_NEAR_Y 2
++#define LUMA_FRAME_LIGHT_SHADOW_NEAR_BLUR 5
++#define LUMA_FRAME_LIGHT_SHADOW_NEAR_ALPHA 0.16
++#define LUMA_FRAME_LIGHT_SHADOW_FAR_Y 18
++#define LUMA_FRAME_LIGHT_SHADOW_FAR_BLUR 36
++#define LUMA_FRAME_LIGHT_SHADOW_FAR_SPREAD -16
++#define LUMA_FRAME_LIGHT_SHADOW_FAR_ALPHA 0.48
++#define LUMA_FRAME_LIGHT_SHADOW_COLOR 0x191b1fu
++#define LUMA_FRAME_DARK_SHADOW_NEAR_Y 2
++#define LUMA_FRAME_DARK_SHADOW_NEAR_BLUR 6
++#define LUMA_FRAME_DARK_SHADOW_NEAR_ALPHA 0.42
++#define LUMA_FRAME_DARK_SHADOW_FAR_Y 20
++#define LUMA_FRAME_DARK_SHADOW_FAR_BLUR 38
++#define LUMA_FRAME_DARK_SHADOW_FAR_SPREAD -15
++#define LUMA_FRAME_DARK_SHADOW_FAR_ALPHA 0.78
++#define LUMA_FRAME_DARK_SHADOW_COLOR 0x000000u
++#define LUMA_FRAME_LIGHT_WINDOW 0xfff1f2f3u
++#define LUMA_FRAME_LIGHT_CONTENT 0xfffbfbfau
++#define LUMA_FRAME_LIGHT_INK 0xff1f2937u
++#define LUMA_FRAME_LIGHT_MUTED 0xff757e87u
++#define LUMA_FRAME_DARK_WINDOW 0xff21252bu
++#define LUMA_FRAME_DARK_CONTENT 0xff2a2e34u
++#define LUMA_FRAME_DARK_INK 0xffe4e8eau
++#define LUMA_FRAME_DARK_MUTED 0xff8b949cu
+--- /dev/null
++++ b/hwcomposer/luma-window-frame.h
+@@ -0,0 +1,231 @@
++/* SPDX-License-Identifier: Apache-2.0
++ * Shared App Kit frame geometry for native compatibility renderers.
++ * No toolkit, process, input injection or client-content copying is required.
++ */
++#pragma once
++#include <stdbool.h>
++#include <stdint.h>
++#include <math.h>
++#include "luma-frame-tokens.h"
++
++typedef struct { int x, y, width, height; } LumaFrameRect;
++typedef struct {
++    LumaFrameRect outer, content;
++    int header;
++    bool decorated;
++} LumaWindowFrame;
++
++static inline LumaWindowFrame
++luma_window_frame(int content_width, int content_height, int header, bool decorated)
++{
++    int gap = decorated ? LUMA_FRAME_GAP : 0;
++    LumaWindowFrame f = {{0, 0, 0, 0}, {0, 0, 0, 0}, 0, false};
++    f.decorated = decorated;
++    f.header = decorated ? header : 0;
++    f.content = (LumaFrameRect){gap, f.header, content_width, content_height};
++    f.outer = (LumaFrameRect){0, 0, content_width + gap * 2,
++                            content_height + f.header + gap};
++    return f;
++}
++
++/* Fit a composed Android canvas in the content area without changing its
++ * display size. Viewporter scales the existing buffer; input uses the inverse.
++ */
++static inline LumaFrameRect
++luma_frame_fit(LumaFrameRect area, int source_width, int source_height)
++{
++    if (source_width < 1 || source_height < 1 || area.width < 1 || area.height < 1)
++        return (LumaFrameRect){area.x, area.y, 0, 0};
++    double scale = fmin((double)area.width / source_width,
++                        (double)area.height / source_height);
++    int width = (int)fmax(1, floor(source_width * scale));
++    int height = (int)fmax(1, floor(source_height * scale));
++    return (LumaFrameRect){area.x + (area.width - width) / 2,
++                           area.y + (area.height - height) / 2, width, height};
++}
++
++static inline double
++luma_frame_distance(double x, double y, LumaFrameRect r, double radius)
++{
++    radius = fmin(radius, fmin(r.width, r.height) / 2.0);
++    double qx = fabs(x - (r.x + r.width / 2.0)) - (r.width / 2.0 - radius);
++    double qy = fabs(y - (r.y + r.height / 2.0)) - (r.height / 2.0 - radius);
++    return hypot(fmax(qx, 0), fmax(qy, 0)) + fmin(fmax(qx, qy), 0) - radius;
++}
++
++static inline double luma_frame_coverage(double distance)
++{
++    return fmin(1, fmax(0, 0.5 - distance));
++}
++
++/* Two-layer App Kit elevation, from the same tokens as native surfaces.
++ * The signed-distance Gaussian is evaluated only in the exposed gutter. */
++static inline double luma_frame_shadow(LumaFrameRect r, double radius,
++                                       double x, double y, bool dark)
++{
++    double near_y = dark ? LUMA_FRAME_DARK_SHADOW_NEAR_Y : LUMA_FRAME_LIGHT_SHADOW_NEAR_Y;
++    double blur = dark ? LUMA_FRAME_DARK_SHADOW_NEAR_BLUR : LUMA_FRAME_LIGHT_SHADOW_NEAR_BLUR;
++    double opacity = dark ? LUMA_FRAME_DARK_SHADOW_NEAR_ALPHA : LUMA_FRAME_LIGHT_SHADOW_NEAR_ALPHA;
++    double a = opacity * 0.5 * erfc(luma_frame_distance(x, y - near_y, r, radius) / (blur * 0.70710678118));
++    int spread = dark ? LUMA_FRAME_DARK_SHADOW_FAR_SPREAD : LUMA_FRAME_LIGHT_SHADOW_FAR_SPREAD;
++    LumaFrameRect far = {r.x - spread, r.y - spread,
++                         r.width + 2 * spread, r.height + 2 * spread};
++    if (far.width > 0 && far.height > 0) {
++        double far_y = dark ? LUMA_FRAME_DARK_SHADOW_FAR_Y : LUMA_FRAME_LIGHT_SHADOW_FAR_Y;
++        blur = dark ? LUMA_FRAME_DARK_SHADOW_FAR_BLUR : LUMA_FRAME_LIGHT_SHADOW_FAR_BLUR;
++        opacity = dark ? LUMA_FRAME_DARK_SHADOW_FAR_ALPHA : LUMA_FRAME_LIGHT_SHADOW_FAR_ALPHA;
++        double b = opacity * 0.5 * erfc(luma_frame_distance(x, y - far_y, far, fmax(0, radius + spread)) / (blur * 0.70710678118));
++        a += b * (1 - a);
++    }
++    return a;
++}
++
++/* Premultiplied ARGB overlay. Transparent interior preserves the real app
++ * surface; opaque corner masks and the inner stroke stay within its island.
++ */
++static inline uint32_t
++luma_frame_pixel(LumaWindowFrame f, int x, int y, bool dark, bool maximized)
++{
++    if (!f.decorated || x < 0 || y < 0 || x >= f.outer.width || y >= f.outer.height)
++        return 0;
++    /* The large central region never needs raster work, including on hover. */
++    if (x >= f.content.x + LUMA_FRAME_ISLAND_RADIUS &&
++        x < f.content.x + f.content.width - LUMA_FRAME_ISLAND_RADIUS &&
++        y >= f.content.y + LUMA_FRAME_ISLAND_RADIUS &&
++        y < f.content.y + f.content.height - LUMA_FRAME_ISLAND_RADIUS)
++        return 0;
++    double outer = luma_frame_coverage(luma_frame_distance(
++        x + 0.5, y + 0.5, f.outer, maximized ? 0 : LUMA_FRAME_WINDOW_RADIUS));
++    double distance = luma_frame_distance(x + 0.5, y + 0.5, f.content, LUMA_FRAME_ISLAND_RADIUS);
++    double hole = luma_frame_coverage(distance);
++    double alpha = outer * (1 - hole);
++    uint32_t base = dark ? LUMA_FRAME_DARK_WINDOW : LUMA_FRAME_LIGHT_WINDOW;
++    double shade = luma_frame_shadow(f.content, LUMA_FRAME_ISLAND_RADIUS, x + 0.5, y + 0.5, dark);
++    uint32_t shade_color = dark ? LUMA_FRAME_DARK_SHADOW_COLOR : LUMA_FRAME_LIGHT_SHADOW_COLOR;
++    unsigned br = (unsigned)lround(((base >> 16) & 255) * (1 - shade) + ((shade_color >> 16) & 255) * shade);
++    unsigned bg = (unsigned)lround(((base >> 8) & 255) * (1 - shade) + ((shade_color >> 8) & 255) * shade);
++    unsigned bb = (unsigned)lround((base & 255) * (1 - shade) + (shade_color & 255) * shade);
++    base = (br << 16) | (bg << 8) | bb;
++    double border = hole * luma_frame_coverage(-distance - 1) * (dark ? 0.08 : 0.095);
++    unsigned a = (unsigned)lround(255 * (alpha + border * (1 - alpha)));
++    unsigned ink = dark ? 255 : 39;
++    unsigned red = (unsigned)lround(((base >> 16) & 255) * alpha + ink * border * (1 - alpha));
++    unsigned green = (unsigned)lround(((base >> 8) & 255) * alpha + ink * border * (1 - alpha));
++    unsigned blue = (unsigned)lround((base & 255) * alpha + ink * border * (1 - alpha));
++    return (a << 24) | (red << 16) | (green << 8) | blue;
++}
++
++/* Shared compatibility geometry mirrors the toolkit's connected controls:
++ * three 20px targets in a 2px padded pill, at the trailing 8px header inset. */
++static inline LumaFrameRect luma_frame_controls(LumaWindowFrame f)
++{
++    int height = LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_PADDING;
++    int width = 3 * LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_PADDING;
++    return (LumaFrameRect){f.outer.width - LUMA_FRAME_CONTROL_INSET - width,
++                          (f.header - height) / 2, width, height};
++}
++
++static inline LumaFrameRect luma_frame_back(LumaWindowFrame f)
++{
++    LumaFrameRect controls = luma_frame_controls(f);
++    return (LumaFrameRect){controls.x - LUMA_FRAME_BACK_GAP - controls.height,
++                          controls.y, controls.height, controls.height};
++}
++
++/* Values deliberately match xdg_toplevel.resize_edge, allowing a native
++ * compositor resize with the real input serial; no synthetic drag machinery. */
++static inline unsigned luma_frame_resize_edge(LumaWindowFrame f, int x, int y,
++                                               bool maximized)
++{
++    if (!f.decorated || maximized || x < 0 || y < 0 ||
++        x >= f.outer.width || y >= f.outer.height) return 0;
++    int band = LUMA_FRAME_RESIZE_BAND, corner = LUMA_FRAME_RESIZE_CORNER;
++    bool left = x < band, right = x >= f.outer.width - band;
++    bool top = y < band, bottom = y >= f.outer.height - band;
++    if ((left || right) && y < corner) top = true;
++    if ((left || right) && y >= f.outer.height - corner) bottom = true;
++    if ((top || bottom) && x < corner) left = true;
++    if ((top || bottom) && x >= f.outer.width - corner) right = true;
++    return (top ? 1u : bottom ? 2u : 0u) | (left ? 4u : right ? 8u : 0u);
++}
++
++/* Premultiplied control-pill surface. Glyphs and hover use the same source
++ * symbols and semantic colours as GtkWindowControls, rendered by the backend. */
++static inline uint32_t luma_frame_control_surface(LumaFrameRect r, int x, int y, bool dark)
++{
++    double d = luma_frame_distance(x + 0.5, y + 0.5, r, r.height / 2.0);
++    double coverage = luma_frame_coverage(d);
++    double stroke = coverage * luma_frame_coverage(-d - 1) * 0.055;
++    double shadow = luma_frame_shadow(r, r.height / 2.0, x + 0.5, y + 0.5, dark) * (1 - coverage);
++    uint32_t fill = dark ? LUMA_FRAME_DARK_CONTENT : LUMA_FRAME_LIGHT_CONTENT;
++    uint32_t shade = dark ? LUMA_FRAME_DARK_SHADOW_COLOR : LUMA_FRAME_LIGHT_SHADOW_COLOR;
++    unsigned line = dark ? 255 : 33;
++    unsigned a = (unsigned)lround(255 * (coverage + shadow));
++    unsigned red = (unsigned)lround(((fill >> 16) & 255) * (coverage - stroke) + line * stroke + ((shade >> 16) & 255) * shadow);
++    unsigned green = (unsigned)lround(((fill >> 8) & 255) * (coverage - stroke) + line * stroke + ((shade >> 8) & 255) * shadow);
++    unsigned blue = (unsigned)lround((fill & 255) * (coverage - stroke) + line * stroke + (shade & 255) * shadow);
++    return (a << 24) | (red << 16) | (green << 8) | blue;
++}
++static inline uint32_t luma_frame_controls_pixel(LumaWindowFrame f, int x, int y, bool dark)
++{
++    return luma_frame_control_surface(luma_frame_controls(f), x, y, dark);
++}
++
++/* Exact native 11px symbolic alpha, rasterized by GdkPixbuf/librsvg from
++ * Prairie window controls. Lucide ISC/MIT notices are retained by the theme. */
++/* source SHA256 a1c758be8a9110c05d13b6a90a7ca2710c45eb88fd3a035f7eeb21479ae3833e */
++static const uint8_t luma_frame_close_glyph[121] = {
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,32,52,0,0,0,52,32,0,0,
++    0,0,52,223,53,0,53,223,52,0,0,
++    0,0,0,53,223,100,223,53,0,0,0,
++    0,0,0,0,100,255,100,0,0,0,0,
++    0,0,0,53,223,100,223,53,0,0,0,
++    0,0,52,223,53,0,53,223,52,0,0,
++    0,0,32,52,0,0,0,52,32,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++};
++/* source SHA256 a5207f4e3cde7bee1bf2a29a4a6f0e15156a0dfa83342b0397fdae3b8c436865 */
++static const uint8_t luma_frame_minimize_glyph[121] = {
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,31,1,0,1,31,0,0,0,
++    0,0,0,140,144,1,144,140,0,0,0,
++    0,0,0,1,152,208,152,1,0,0,0,
++    0,0,0,0,1,90,1,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++};
++/* source SHA256 6e859341f48aec92fb414688e4c0967d6a82b677e78f5693928a7bdcf92f3d1b */
++static const uint8_t luma_frame_maximize_glyph[121] = {
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,1,56,68,68,68,56,1,0,0,
++    0,0,54,215,153,153,153,215,54,0,0,
++    0,0,64,155,0,0,0,155,64,0,0,
++    0,0,64,155,0,0,0,155,64,0,0,
++    0,0,64,155,0,0,0,155,64,0,0,
++    0,0,54,215,153,153,153,215,54,0,0,
++    0,0,1,56,68,68,68,56,1,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++};
++/* source SHA256 ac9f5c1916e12823b2f6143db6da32c4ea12d96114c18d7b06f535e4ac138b92 */
++static const uint8_t luma_frame_restore_glyph[121] = {
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,134,153,153,153,55,0,0,
++    0,0,10,51,155,170,161,179,151,0,0,
++    0,0,140,193,170,170,224,156,151,0,0,
++    0,0,151,68,0,0,163,167,151,0,0,
++    0,0,151,68,0,0,163,152,131,0,0,
++    0,0,151,118,68,68,188,55,0,0,0,
++    0,0,56,153,153,153,141,10,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,
++};
+--- a/hwcomposer/modes/single-window.cpp
++++ b/hwcomposer/modes/single-window.cpp
+@@ -27,9 +27,10 @@
+ 
+ #include <log/log.h>
+ #include <cutils/properties.h>
++#include "../prairie-titlebar.h"
+ 
+ bool single_window_mode_base::should_show() const {
+-    return !target_layer_tid.empty();
++    return composition_safe && !target_layer_tid.empty();
+ }
+ 
+ window *single_window_mode_base::get_window(waydroid_hwc_composer_device_1 *pdev) const {
+@@ -40,7 +41,22 @@
+     if (it != windows.end()) {
+         return it->second.get();
+     } else {
+-        return windows.add(pdev, target_layer_tid, target_layer_aid, target_layer_tid);
++        const bool framed = prairie::desktop_chrome_enabled() && !pdev->should_compose;
++        // A desktop-hosted phone app starts with a portrait content area.
++        // This is an initial allocation, never an aspect constraint: compositor
++        // configures still resize the Android task normally. Mobile/fullscreen
++        // presentation keeps the display-owned sizing path.
++        const int available_width = std::max(1, pdev->display->width * 4 / 5);
++        const int available_height = std::max(1, pdev->display->height * 4 / 5);
++        const int initial_width = std::min(available_width,
++                                          std::max(1, available_height * 9 / 16));
++        const int initial_height = std::min(available_height,
++                                           std::max(1, initial_width * 16 / 9));
++        return windows.add(pdev, target_layer_tid, target_layer_aid, target_layer_tid,
++            {0, 0, 0, 255},
++            framed ? initial_width : 0,
++            framed ? initial_height : 0,
++            0, 0, framed);
+     }
+ }
+ 
+@@ -49,20 +65,29 @@
+     return 0;
+ }
+ 
+-int single_window_mode_base::cleanup_stale_windows(waydroid_hwc_composer_device_1* pdev,
+-                                                   hwc_display_contents_1_t*) {
+-    auto first_tid_layer = std::find_if(layer_infos.container().cbegin(), layer_infos.container().cend(), [&](const auto& layer_info){
++void single_window_mode_base::select_target(waydroid_hwc_composer_device_1 *pdev) {
++    // HWC layers are in increasing Z order. A freeform task exposes the
++    // Android launcher underneath; selecting the first task would mistake
++    // that background for the foreground and close the host window.
++    auto first_tid_layer = std::find_if(layer_infos.container().crbegin(), layer_infos.container().crend(), [&](const auto& layer_info){
+         return layer_info.type == LayerSplitType::TID;
+     });
+-    if (first_tid_layer != layer_infos.container().cend()) {
++    if (first_tid_layer != layer_infos.container().crend()) {
+         if (is_blacklisted(pdev, first_tid_layer->aid, first_tid_layer->component)) {
+-            clear_open_windows(pdev);
+-            return 0;
++            target_layer_tid.clear();
++            target_layer_aid.clear();
++            return;
+         } else if (pdev->display->ignored_apps.count(first_tid_layer->tid) == 0) {
+             target_layer_tid = first_tid_layer->tid;
+             target_layer_aid = first_tid_layer->aid;
+         }
+     }
++
++}
++
++int single_window_mode_base::cleanup_stale_windows(waydroid_hwc_composer_device_1* pdev,
++                                                   hwc_display_contents_1_t*) {
++    if (!target_prepared) select_target(pdev);
+ 
+     // Close leftover window from full-ui mode
+     pdev->display->windows.erase("Waydroid");
+@@ -100,6 +125,37 @@
+ }
+ 
+ 
++// Freeze task identity before SurfaceFlinger renders the client target. Choosing
++// it in set() can label one task's already composed buffer as another task.
++int non_compositing_single_window_mode::setup_prepare(waydroid_hwc_composer_device_1 *pdev,
++                                                     hwc_display_contents_1_t *contents) {
++    layer_infos.setup(pdev, contents->hwLayers, contents->numHwLayers);
++    {
++        std::scoped_lock lock(pdev->display->windowsMutex);
++        select_target(pdev);
++    }
++    target_prepared = true;
++    // HWC_SKIP_LAYER must remain client-composed. If an unrelated task has one,
++    // retain the last safe frame rather than publish cross-application pixels.
++    for (size_t i = 0; i < contents->numHwLayers; ++i) {
++        const auto &info = layer_infos[i];
++        if ((contents->hwLayers[i].flags & HWC_SKIP_LAYER) &&
++                (info.type == LayerSplitType::TID || info.type == LayerSplitType::TaskChild) && info.tid != target_layer_tid)
++            composition_safe = false;
++    }
++    return 0;
++}
++
++int non_compositing_single_window_mode::prepare(hwc_layer_1 *layer, size_t index) {
++    const auto &info = layer_infos[index];
++    const bool own_task = (info.type == LayerSplitType::TID || info.type == LayerSplitType::TaskChild) && info.tid == target_layer_tid;
++    const bool input_method = info.type == LayerSplitType::RawName && info.aid == "InputMethod";
++    // Keep the proven RGB SurfaceFlinger path for the represented task, including
++    // its video layers. Other tasks are deliberately omitted from this window.
++    layer->compositionType = own_task || input_method ? HWC_FRAMEBUFFER : HWC_OVERLAY;
++    return 0;
++}
++
+ int non_compositing_single_window_mode::setup_set(waydroid_hwc_composer_device_1* pdev, hwc_display_contents_1_t* contents) {
+     int res = Base::setup_set(pdev, contents);
+     if (res != 0)
+@@ -135,4 +191,4 @@
+     }
+ 
+     return Base::handle_layer(pdev, hwc_layer, i);
+-}
+\ No newline at end of file
++}
+--- a/hwcomposer/modes/single-window.h
++++ b/hwcomposer/modes/single-window.h
+@@ -34,6 +34,9 @@
+     std::string target_layer_tid;
+     std::string target_layer_aid;
+ 
++    bool target_prepared = false;
++    bool composition_safe = true;
++    void select_target(waydroid_hwc_composer_device_1 *pdev);
+     bool should_show() const;
+     window *get_window(waydroid_hwc_composer_device_1 *pdev) const;
+ 
+@@ -47,6 +50,8 @@
+     friend Base;
+     using single_window_mode_base::get_window;
+ 
++    int setup_prepare(waydroid_hwc_composer_device_1 *pdev, hwc_display_contents_1_t *contents) final;
++    int prepare(hwc_layer_1 *layer, size_t index) final;
+     int setup_set(waydroid_hwc_composer_device_1 *pdev, hwc_display_contents_1_t *contents) final;
+     int handle_layer(waydroid_hwc_composer_device_1 *pdev, hwc_layer_1 *hwc_layer, size_t hwc_layer_index) final;
+ };
+--- a/hwcomposer/modes/waydroid_mode.cpp
++++ b/hwcomposer/modes/waydroid_mode.cpp
+@@ -94,6 +94,13 @@
+                 std::string(),
+                 std::string()
+         };
++    } else if (layer_name.compare(0, 10, "LUMA_TASK:") == 0) {
++        const auto end = layer_name.find('#', 10);
++        if (end != std::string::npos && end > 10 &&
++                layer_name.find_first_not_of("0123456789", 10) == end) {
++            return {LayerSplitType::TaskChild, "", layer_name.substr(10, end - 10)};
++        }
++        return {LayerSplitType::Empty, "", ""};
+     } else if (layer_name.compare(0, 4, "TID:") == 0) {
+         const auto hash_pos = layer_name.find('#');
+         const auto slash_pos = layer_name.find('/');
+@@ -117,6 +124,7 @@
+ }
+ 
+ void split_layer_names_helper::setup(waydroid_hwc_composer_device_1 *pdev, const hwc_layer_1 *layers, size_t count_of_layers) {
++    layer_infos.clear();
+     layer_infos.reserve(count_of_layers);
+     for (size_t l = 0; l < count_of_layers; l++) {
+         const auto& name = [&](){
+@@ -129,6 +137,15 @@
+             }
+         }();
+         layer_infos.push_back(split_layer_name(name));
++    }
++    // Use the WindowManager task layer's package/component for inherited child
++    // identity. This also keeps upstream multi-window grouping compatible.
++    for (auto &info : layer_infos) {
++        if (info.type != LayerSplitType::TaskChild) continue;
++        const auto owner = std::find_if(layer_infos.begin(), layer_infos.end(), [&](const auto &item) {
++            return item.type == LayerSplitType::TID && item.tid == info.tid;
++        });
++        if (owner != layer_infos.end()) info = *owner;
+     }
+ }
+ 
+--- a/hwcomposer/modes/waydroid_mode.h
++++ b/hwcomposer/modes/waydroid_mode.h
+@@ -82,6 +82,7 @@
+ 
+ enum class LayerSplitType {
+     TID,
++    TaskChild,
+     RawName,
+     Empty
+ };
+--- a/hwcomposer/prairie-titlebar.cpp
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -10,6 +10,8 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <cstring>
++#include <cctype>
++#include <png.h>
+ #include <fcntl.h>
+ #include <linux/memfd.h>
+ #include <log/log.h>
+@@ -23,15 +25,27 @@
+ #include FT_MULTIPLE_MASTERS_H
+ 
+ namespace prairie {
++LumaWindowFrame frame(const window& window) {
++    auto geometry = luma_window_frame(window.content_width, window.content_height,
++                                     kTitlebarHeight, window.has_prairie_titlebar);
++    return geometry;
++}
+ namespace {
+-
+-constexpr uint32_t kTop = 0xfff2f3f5;
+-constexpr uint32_t kBottom = 0xffe8eaee;
+-constexpr uint32_t kHairline = 0x1c2c3138;
+-constexpr uint32_t kControlFill = 0xffffffff;
+-constexpr uint32_t kControlBorder = 0x1a111827;
+-constexpr uint32_t kGlyph = 0xff6b7280;
+-constexpr uint32_t kTitle = 0xff374151;
++int outer_width(const window& window) { return frame(window).outer.width; }
++bool dark_frame() {
++    char appearance[PROPERTY_VALUE_MAX] {};
++    property_get("persist.luma.color_scheme", appearance, "light");
++    return std::strcmp(appearance, "dark") == 0;
++}
++uint32_t frame_ink() { return dark_frame() ? LUMA_FRAME_DARK_INK : LUMA_FRAME_LIGHT_INK; }
++int control_left(const window& window, int kind) {
++    // Match the native order at the right: minimize, maximize, close.
++    const int position = kind == 0 ? 0 : kind == 1 ? 2 : 1;
++    return luma_frame_controls(frame(window)).x + LUMA_FRAME_CONTROL_PADDING +
++        (2 - position) * LUMA_FRAME_CONTROL_SIZE;
++}
++
++
+ constexpr uint32_t kCloseHover = 0x29bd5a4e;
+ constexpr uint32_t kMinimizeHover = 0x29b0782b;
+ constexpr uint32_t kMaximizeHover = 0x294f8a52;
+@@ -39,46 +53,12 @@
+ constexpr uint32_t kCloseGlyphHover = 0xffbd5a4e;
+ constexpr uint32_t kMinimizeGlyphHover = 0xffb0782b;
+ constexpr uint32_t kMaximizeGlyphHover = 0xff4f8a52;
+-constexpr int kIconSize = 10;
++constexpr int kIconSize = 11;
+ constexpr int kShadowInset = 24;
+ constexpr int kShadowOffsetY = 5;
+ constexpr float kShadowSigma = 8.0f;
+ constexpr float kShadowOpacity = 0.04f;
+ 
+-// These are the exact 10 px alpha masks produced by GTK's real symbolic
+-// loader from Adwaita's window-{close,minimize,maximize}-symbolic.svg files.
+-// Keeping the native artwork here avoids a second, visually heavier drawing
+-// of the same controls while retaining HWC's dependency-light renderer.
+-constexpr uint8_t kCloseMask[kIconSize * kIconSize] = {
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-    0,0,60,73,0,0,71,60,0,0, 0,0,79,252,98,97,252,81,0,0,
+-    0,0,0,107,252,253,112,0,0,0, 0,0,0,100,252,253,103,0,0,0,
+-    0,0,76,252,103,103,253,77,0,0, 0,0,68,77,0,0,77,68,0,0,
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-};
+-constexpr uint8_t kMinimizeMask[kIconSize * kIconSize] = {
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-    0,0,95,191,191,191,191,95,0,0, 0,0,63,127,127,127,127,63,0,0,
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-};
+-constexpr uint8_t kMaximizeMask[kIconSize * kIconSize] = {
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-    0,0,65,129,129,129,129,64,0,0, 0,0,130,239,191,191,239,128,0,0,
+-    0,0,130,190,0,0,192,128,0,0, 0,0,130,190,0,0,192,128,0,0,
+-    0,0,130,239,191,191,239,128,0,0, 0,0,65,129,129,129,129,64,0,0,
+-    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
+-};
+-
+-uint32_t blend(uint32_t top, uint32_t bottom, float amount) {
+-    auto channel = [&](int shift) {
+-        const float a = static_cast<float>((top >> shift) & 0xff);
+-        const float b = static_cast<float>((bottom >> shift) & 0xff);
+-        return static_cast<uint32_t>(std::round(a + (b - a) * amount));
+-    };
+-    return 0xff000000 | (channel(16) << 16) | (channel(8) << 8) | channel(0);
+-}
+ 
+ void composite(uint32_t& destination, uint32_t source) {
+     const uint32_t alpha = source >> 24;
+@@ -108,10 +88,10 @@
+ }
+ 
+ void pixel(window& window, int x, int y, uint32_t color) {
+-    if (x < 0 || y < 0 || x >= window.content_width || y >= kTitlebarHeight)
++    if (x < 0 || y < 0 || x >= outer_width(window) || y >= kTitlebarHeight)
+         return;
+     auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
+-    composite(pixels[y * window.content_width + x], color);
++    composite(pixels[y * outer_width(window) + x], color);
+ }
+ 
+ void disc(window& window, int left, int top, int diameter, uint32_t color) {
+@@ -153,35 +133,10 @@
+     }
+ }
+ 
+-void line(window& window, int x0, int y0, int x1, int y1, uint32_t color) {
+-    const int dx = std::abs(x1 - x0);
+-    const int sx = x0 < x1 ? 1 : -1;
+-    const int dy = -std::abs(y1 - y0);
+-    const int sy = y0 < y1 ? 1 : -1;
+-    int error = dx + dy;
+-    while (true) {
+-        pixel(window, x0, y0, color);
+-        if (x0 == x1 && y0 == y1)
+-            break;
+-        const int twice_error = 2 * error;
+-        if (twice_error >= dy) {
+-            error += dy;
+-            x0 += sx;
+-        }
+-        if (twice_error <= dx) {
+-            error += dx;
+-            y0 += sy;
+-        }
+-    }
+-}
+-
+ void draw_control(window& window, int button_left, int kind) {
+     constexpr int circle_top = (kTitlebarHeight - kControlDiameter) / 2;
+     const int circle_left = button_left +
+         (kControlAllocation - kControlDiameter) / 2;
+-    disc(window, circle_left, circle_top, kControlDiameter, kControlBorder);
+-    disc(window, circle_left + 1, circle_top + 1,
+-         kControlDiameter - 2, kControlFill);
+     const bool hovered = window.hovered_chrome_target == kind + 2;
+     if (hovered) {
+         const uint32_t hover = kind == 0 ? kCloseHover :
+@@ -192,19 +147,17 @@
+ 
+     const uint32_t glyph = hovered ?
+         (kind == 0 ? kCloseGlyphHover :
+-         (kind == 1 ? kMinimizeGlyphHover : kMaximizeGlyphHover)) : kGlyph;
+-    const uint8_t* mask = kind == 0 ? kCloseMask :
+-        (kind == 1 ? kMinimizeMask : kMaximizeMask);
++         (kind == 1 ? kMinimizeGlyphHover : kMaximizeGlyphHover)) : frame_ink();
++    const uint8_t* mask = kind == 0 ? luma_frame_close_glyph :
++        (kind == 1 ? luma_frame_minimize_glyph :
++         (window.maximized ? luma_frame_restore_glyph : luma_frame_maximize_glyph));
+     const int icon_left = button_left + (kControlAllocation - kIconSize) / 2;
+     constexpr int icon_top = (kTitlebarHeight - kIconSize) / 2;
+     draw_mask(window, icon_left, icon_top, mask, glyph);
+ }
+ 
+ void draw_back(window& window) {
+-    const int controls_end = kControlInset + 3 * kControlAllocation +
+-        2 * kControlSpacing;
+-    const int left = controls_end + kBackButtonInset;
+-    const int center_x = left + kBackButtonSize / 2;
++    const int left = luma_frame_back(frame(window)).x;
+     constexpr int center_y = kTitlebarHeight / 2;
+     if (window.hovered_chrome_target ==
+             static_cast<int>(TitlebarTarget::Back)) {
+@@ -219,12 +172,18 @@
+                 const int dx = x - nearest_x;
+                 const int dy = y - nearest_y;
+                 if (dx * dx + dy * dy <= radius * radius)
+-                    pixel(window, x, y, kHeaderHover);
++                    pixel(window, x, y, dark_frame() ? LUMA_FRAME_DARK_CONTENT : kHeaderHover);
+             }
+         }
+     }
+-    line(window, center_x + 3, center_y - 5, center_x - 2, center_y, kGlyph);
+-    line(window, center_x - 2, center_y, center_x + 3, center_y + 5, kGlyph);
++    // Rotate the exact App Kit minimize chevron, preserving its optical size
++    // and antialiasing instead of drawing an oversized ten-pixel back arrow.
++    uint8_t back_mask[kIconSize * kIconSize];
++    for (int y = 0; y < kIconSize; ++y)
++        for (int x = 0; x < kIconSize; ++x)
++            back_mask[y * kIconSize + x] = luma_frame_minimize_glyph[(kIconSize - 1 - x) * kIconSize + y];
++    draw_mask(window, left + (kBackButtonSize - kIconSize) / 2,
++              (kTitlebarHeight - kIconSize) / 2, back_mask, frame_ink());
+ }
+ 
+ uint32_t rounded_top_coverage(int width, int x, int y) {
+@@ -248,28 +207,6 @@
+     return 255 * inside / (samples * samples);
+ }
+ 
+-void mask_rounded_top_corners(window& window) {
+-    auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
+-    for (int y = 0; y < kWindowRadius; ++y) {
+-        for (int x = 0; x < kWindowRadius; ++x) {
+-            const uint32_t coverage = rounded_top_coverage(
+-                window.content_width, x, y);
+-            const uint32_t left_pixel = pixels[y * window.content_width + x];
+-            const uint32_t left_red = ((left_pixel >> 16) & 0xff) * coverage / 255;
+-            const uint32_t left_green = ((left_pixel >> 8) & 0xff) * coverage / 255;
+-            const uint32_t left_blue = (left_pixel & 0xff) * coverage / 255;
+-            pixels[y * window.content_width + x] =
+-                (coverage << 24) | (left_red << 16) | (left_green << 8) | left_blue;
+-            const int right_x = window.content_width - 1 - x;
+-            const uint32_t right_pixel = pixels[y * window.content_width + right_x];
+-            const uint32_t right_red = ((right_pixel >> 16) & 0xff) * coverage / 255;
+-            const uint32_t right_green = ((right_pixel >> 8) & 0xff) * coverage / 255;
+-            const uint32_t right_blue = (right_pixel & 0xff) * coverage / 255;
+-            pixels[y * window.content_width + right_x] =
+-                (coverage << 24) | (right_red << 16) | (right_green << 8) | right_blue;
+-        }
+-    }
+-}
+ 
+ uint32_t premultiplied(uint32_t rgb, uint32_t alpha) {
+     const uint32_t red = ((rgb >> 16) & 0xff) * alpha / 255;
+@@ -323,6 +260,57 @@
+     return result + suffix;
+ }
+ 
++void draw_app_icon(window& window) {
++    constexpr int size = LUMA_FRAME_IDENTITY_ICON_SIZE;
++    if (!window.prairie_icon_loaded && !window.appID.empty()) {
++        window.prairie_icon_loaded = true;
++        // Reuse WaydroidService's exported icons. Treat the file as untrusted:
++        // no path components, symlinks, oversized files or allocation bombs.
++        const bool valid = window.appID.size() <= 255 && std::all_of(
++            window.appID.begin(), window.appID.end(), [](unsigned char c) {
++                return std::isalnum(c) || c == '.' || c == '_';
++            });
++        if (valid) {
++            const std::string path = "/data/icons/" + window.appID + ".png";
++            const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++            struct stat st {};
++            if (fd >= 0 && fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= 2 * 1024 * 1024) {
++                FILE* file = fdopen(fd, "rb");
++                if (file) {
++                    png_image image {}; image.version = PNG_IMAGE_VERSION;
++                    if (png_image_begin_read_from_stdio(&image, file) && image.width > 0 && image.height > 0 && image.width <= 1024 && image.height <= 1024) {
++                        image.format = PNG_FORMAT_RGBA;
++                        std::vector<uint8_t> bytes(PNG_IMAGE_SIZE(image));
++                        if (png_image_finish_read(&image, nullptr, bytes.data(), 0, nullptr)) {
++                            window.prairie_icon.resize(size * size);
++                            for (int y = 0; y < size; ++y) for (int x = 0; x < size; ++x) {
++                                // Area sample the exported icon once, then retain the small tile.
++                                unsigned long a=0, red=0, green=0, blue=0, count=0;
++                                unsigned y0=y*image.height/size, y1=std::max(y0+1,(y+1)*image.height/size);
++                                unsigned x0=x*image.width/size, x1=std::max(x0+1,(x+1)*image.width/size);
++                                for (unsigned sy=y0; sy<y1; ++sy) for (unsigned sx=x0; sx<x1; ++sx) {
++                                    const uint8_t* c=&bytes[(sy*image.width+sx)*4];
++                                    a+=c[3]; red+=c[0]*c[3]; green+=c[1]*c[3]; blue+=c[2]*c[3]; ++count;
++                                }
++                                window.prairie_icon[y*size+x] = a ? ((a/count)<<24)|((red/a)<<16)|((green/a)<<8)|(blue/a) : 0;
++                            }
++                        }
++                    }
++                    png_image_free(&image); fclose(file);
++                } else close(fd);
++            } else if (fd >= 0) close(fd);
++        }
++    }
++    if (window.prairie_icon.size() != size*size) return;
++    LumaFrameRect rect = {0,0,size,size};
++    for (int y=0; y<size; ++y) for(int x=0; x<size; ++x) {
++        uint32_t c=window.prairie_icon[y*size+x];
++        double coverage=luma_frame_coverage(luma_frame_distance(x+0.5,y+0.5,rect,size*0.25));
++        unsigned alpha=(unsigned)lround((c>>24)*coverage);
++        pixel(window,LUMA_FRAME_IDENTITY_INSET+x,(kTitlebarHeight-size)/2+y,(alpha<<24)|(c&0xffffff));
++    }
++}
++
+ void draw_title(window& window) {
+     FT_Library library = nullptr;
+     FT_Face face = nullptr;
+@@ -332,23 +320,15 @@
+         FT_Done_FreeType(library);
+         return;
+     }
+-    // Match libadwaita's Figtree 12.5 px title token without integer rounding.
+-    FT_Set_Char_Size(face, 0, 12 * 64 + 32, 72, 72);
+-    FT_Fixed weight = 600 << 16;
++    // Match the shared App Kit Figtree title size and semibold weight.
++    FT_Set_Char_Size(face, 0, LUMA_FRAME_TITLE_SIZE * 64, 72, 72);
++    FT_Fixed weight = LUMA_FRAME_TITLE_WEIGHT << 16;
+     FT_Set_Var_Design_Coordinates(face, 1, &weight);
+-    const int controls_end = kControlInset + 3 * kControlAllocation +
+-        2 * kControlSpacing;
+-    const int side_reserve = controls_end + kBackButtonInset +
+-        kBackButtonSize + 12;
+-    const int max_width = std::max(0, window.content_width - 2 * side_reserve);
++    const int title_left = LUMA_FRAME_IDENTITY_INSET + LUMA_FRAME_IDENTITY_ICON_SIZE + LUMA_FRAME_IDENTITY_GAP;
++    const int max_width = std::max(0, luma_frame_back(frame(window)).x - LUMA_FRAME_IDENTITY_GAP - title_left);
+     const std::string text = ellipsize(face, window.title, max_width);
+-
+-    int text_width = 0;
+-    for (unsigned char character : text) {
+-        if (FT_Load_Char(face, character, FT_LOAD_DEFAULT) == 0)
+-            text_width += face->glyph->advance.x >> 6;
+-    }
+-    int pen_x = (window.content_width - text_width) / 2;
++    int pen_x = title_left;
++    const uint32_t ink = frame_ink();
+     const int ascender = face->size->metrics.ascender >> 6;
+     const int descender = -(face->size->metrics.descender >> 6);
+     const int baseline = (kTitlebarHeight - ascender - descender) / 2 + ascender;
+@@ -362,7 +342,7 @@
+             for (unsigned int x = 0; x < bitmap.width; ++x) {
+                 const uint32_t alpha = bitmap.buffer[y * bitmap.pitch + x];
+                 pixel(window, glyph_x + x, glyph_y + y,
+-                      (alpha << 24) | (kTitle & 0x00ffffff));
++                      (alpha << 24) | (ink & 0x00ffffff));
+             }
+         }
+         pen_x += face->glyph->advance.x >> 6;
+@@ -390,15 +370,16 @@
+     window.shadow_data = nullptr;
+     window.shadow_data_size = 0;
+ 
+-    if (window.maximized || window.content_width < 1 ||
++    if (window.maximized || outer_width(window) < 1 ||
++            outer_width(window) > 4096 || window.content_height > 4096 ||
+             window.content_height < 1) {
+         wl_surface_attach(window.shadow_surface, nullptr, 0, 0);
+         wl_surface_commit(window.shadow_surface);
+         return;
+     }
+ 
+-    const int frame_width = window.content_width;
+-    const int frame_height = kTitlebarHeight + window.content_height;
++    const int frame_width = outer_width(window);
++    const int frame_height = frame(window).outer.height;
+     const int width = frame_width + 2 * kShadowInset;
+     const int height = frame_height + 2 * kShadowInset;
+     const size_t size = static_cast<size_t>(width) * height * sizeof(uint32_t);
+@@ -476,12 +457,20 @@
+ }
+ 
+ TitlebarTarget hit_test(const window& window, int x, int y) {
+-    if (!window.has_prairie_titlebar || y < 0 || y >= kTitlebarHeight)
++    if (!window.has_prairie_titlebar)
++        return TitlebarTarget::Content;
++    const auto content = frame(window).content;
++    if (y >= kTitlebarHeight) {
++        if (x >= content.x && x < content.x + content.width &&
++            y >= content.y && y < content.y + content.height)
++            return TitlebarTarget::Content;
++        return TitlebarTarget::Drag;
++    }
++    if (y < 0)
+         return TitlebarTarget::Content;
+     const int half_hit = kControlHitSize / 2;
+     for (int index = 0; index < 3; ++index) {
+-        const int button_left = kControlInset +
+-            index * (kControlAllocation + kControlSpacing);
++        const int button_left = control_left(window, index);
+         const int center = button_left + kControlAllocation / 2;
+         if (x >= center - half_hit && x < center + half_hit) {
+             if (index == 0)
+@@ -491,16 +480,16 @@
+             return TitlebarTarget::Maximize;
+         }
+     }
+-    const int controls_end = kControlInset + 3 * kControlAllocation +
+-        2 * kControlSpacing;
+-    const int back_left = controls_end + kBackButtonInset;
++    const int back_left = luma_frame_back(frame(window)).x;
+     if (x >= back_left && x < back_left + kBackButtonSize)
+         return TitlebarTarget::Back;
+     return TitlebarTarget::Drag;
+ }
+ 
+ bool create_titlebar(window& window) {
+-    if (!desktop_chrome_enabled() || !window.display->subcompositor)
++    if (!desktop_chrome_enabled() || !window.display->subcompositor ||
++            !window.display->viewporter || !window.display->wm_base ||
++            property_get_bool("persist.waydroid.no_background_subsurface", false))
+         return false;
+     window.shadow_surface = wl_compositor_create_surface(window.display->compositor);
+     window.shadow_subsurface = wl_subcompositor_get_subsurface(
+@@ -522,11 +511,11 @@
+     wl_region* input_region = wl_compositor_create_region(window.display->compositor);
+     for (int y = 0; y < kTitlebarHeight; ++y) {
+         int left = 0;
+-        int right = window.content_width;
+-        while (left < right && rounded_top_coverage(window.content_width, left, y) < 128)
++        int right = outer_width(window);
++        while (left < right && rounded_top_coverage(outer_width(window), left, y) < 128)
+             ++left;
+         while (right > left &&
+-                rounded_top_coverage(window.content_width, right - 1, y) < 128)
++                rounded_top_coverage(outer_width(window), right - 1, y) < 128)
+             --right;
+         if (right > left)
+             wl_region_add(input_region, left, y, right - left, 1);
+@@ -568,56 +557,68 @@
+     window.titlebar_surface = nullptr;
+ }
+ 
++void refresh_appearance(window& window) {
++    if (window.has_prairie_titlebar && window.dark_appearance != dark_frame())
++        redraw_titlebar(window);
++}
++
+ void redraw_titlebar(window& window) {
+-    if (!window.has_prairie_titlebar || window.content_width < 1)
+-        return;
+-    const size_t size = static_cast<size_t>(window.content_width) *
+-                        kTitlebarHeight * sizeof(uint32_t);
+-    if (window.titlebar_buffer)
+-        wl_buffer_destroy(window.titlebar_buffer);
++    if (!window.has_prairie_titlebar || window.content_width < 1 || window.content_height < 1)
++        return;
++    const auto geometry = frame(window);
++    const int width = geometry.outer.width;
++    const int height = geometry.outer.height;
++    // Avoid unbounded allocations from invalid compositor configurations.
++    if (width > 4096 || height > 4096) return;
++    const size_t size = static_cast<size_t>(width) * height * sizeof(uint32_t);
++    const int fd = syscall(SYS_memfd_create, "luma-window-frame", MFD_CLOEXEC);
++    if (fd < 0) return;
++    if (ftruncate(fd, size) != 0) { close(fd); return; }
++    void *data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++    if (data == MAP_FAILED) { close(fd); return; }
++    if (window.titlebar_buffer) wl_buffer_destroy(window.titlebar_buffer);
+     if (window.titlebar_data && window.titlebar_data_size)
+         munmap(window.titlebar_data, window.titlebar_data_size);
+-
+-    const int fd = syscall(SYS_memfd_create, "prairie-titlebar", MFD_CLOEXEC);
+-    if (fd < 0 || ftruncate(fd, size) != 0) {
+-        if (fd >= 0)
+-            close(fd);
+-        return;
+-    }
+-    window.titlebar_data = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+-                                MAP_SHARED, fd, 0);
+-    if (window.titlebar_data == MAP_FAILED) {
+-        window.titlebar_data = nullptr;
+-        close(fd);
+-        return;
+-    }
++    window.titlebar_data = data;
+     window.titlebar_data_size = size;
+-    auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
+-    for (int y = 0; y < kTitlebarHeight; ++y) {
+-        const float amount = static_cast<float>(y) / (kTitlebarHeight - 1);
+-        const uint32_t color = blend(kTop, kBottom, amount);
+-        std::fill_n(pixels + y * window.content_width, window.content_width, color);
+-    }
+-    for (int x = 0; x < window.content_width; ++x)
+-        composite(pixels[(kTitlebarHeight - 1) * window.content_width + x],
+-                  kHairline);
+-
++    const bool dark = dark_frame();
++    window.dark_appearance = dark;
++    auto* pixels = static_cast<uint32_t*>(data);
++    for (int y = 0; y < height; ++y) {
++        const bool interior = y >= geometry.content.y + LUMA_FRAME_ISLAND_RADIUS &&
++            y < geometry.content.y + geometry.content.height - LUMA_FRAME_ISLAND_RADIUS;
++        const int left = interior ? geometry.content.x + LUMA_FRAME_ISLAND_RADIUS : width;
++        const int right = interior ? geometry.content.x + geometry.content.width - LUMA_FRAME_ISLAND_RADIUS : width;
++        for (int x = 0; x < left; ++x)
++            pixels[y * width + x] = luma_frame_pixel(geometry, x, y, dark, window.maximized);
++        for (int x = right; x < width; ++x)
++            pixels[y * width + x] = luma_frame_pixel(geometry, x, y, dark, window.maximized);
++    }
++    const auto back = luma_frame_back(geometry);
++    for (int y = 0; y < kTitlebarHeight; ++y)
++        for (int x = std::max(0, back.x - 16); x < width; ++x) {
++            composite_premultiplied(pixels[y * width + x], luma_frame_controls_pixel(geometry, x, y, dark));
++            composite_premultiplied(pixels[y * width + x], luma_frame_control_surface(back, x, y, dark));
++        }
+     for (int index = 0; index < 3; ++index)
+-        draw_control(window, kControlInset +
+-                     index * (kControlAllocation + kControlSpacing), index);
++        draw_control(window, control_left(window, index), index);
+     draw_back(window);
++    draw_app_icon(window);
+     draw_title(window);
+-    mask_rounded_top_corners(window);
+-
+     wl_shm_pool* pool = wl_shm_create_pool(window.display->shm, fd, size);
+     close(fd);
+-    window.titlebar_buffer = wl_shm_pool_create_buffer(
+-        pool, 0, window.content_width, kTitlebarHeight,
+-        window.content_width * sizeof(uint32_t), WL_SHM_FORMAT_ARGB8888);
++    window.titlebar_buffer = wl_shm_pool_create_buffer(pool, 0, width, height,
++        width * sizeof(uint32_t), WL_SHM_FORMAT_ARGB8888);
+     wl_shm_pool_destroy(pool);
++    // Only the frame takes input. The client remains the real input surface.
++    wl_region* region = wl_compositor_create_region(window.display->compositor);
++    wl_region_add(region, 0, 0, width, height);
++    wl_region_subtract(region, geometry.content.x, geometry.content.y,
++                        geometry.content.width, geometry.content.height);
++    wl_surface_set_input_region(window.titlebar_surface, region);
++    wl_region_destroy(region);
+     wl_surface_attach(window.titlebar_surface, window.titlebar_buffer, 0, 0);
+-    wl_surface_damage(window.titlebar_surface, 0, 0, window.content_width,
+-                      kTitlebarHeight);
++    wl_surface_damage(window.titlebar_surface, 0, 0, width, height);
+     wl_surface_commit(window.titlebar_surface);
+ }
+ 
+--- a/hwcomposer/prairie-titlebar.h
++++ b/hwcomposer/prairie-titlebar.h
+@@ -7,19 +7,20 @@
+ 
+ #include <cstdint>
+ #include <string>
++#include "luma-window-frame.h"
+ 
+ struct window;
+ 
+ namespace prairie {
+ 
+-constexpr int kTitlebarHeight = 34;
+-constexpr int kControlDiameter = 18;
+-constexpr int kControlAllocation = 20;
+-constexpr int kControlSpacing = 2;
+-constexpr int kControlInset = 10;
+-constexpr int kControlHitSize = 26;
+-constexpr int kWindowRadius = 13;
+-constexpr int kBackButtonSize = 28;
++constexpr int kTitlebarHeight = LUMA_FRAME_HEADER_HEIGHT;
++constexpr int kControlDiameter = LUMA_FRAME_CONTROL_SIZE;
++constexpr int kControlAllocation = LUMA_FRAME_CONTROL_SIZE;
++constexpr int kControlSpacing = 0;
++constexpr int kControlInset = 12;
++constexpr int kControlHitSize = LUMA_FRAME_CONTROL_SIZE;
++constexpr int kWindowRadius = LUMA_FRAME_WINDOW_RADIUS;
++constexpr int kBackButtonSize = LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_PADDING;
+ constexpr int kBackButtonInset = 7;
+ 
+ enum class TitlebarTarget {
+@@ -31,11 +32,13 @@
+     Back,
+ };
+ 
++LumaWindowFrame frame(const window& window);
+ bool desktop_chrome_enabled();
+ TitlebarTarget hit_test(const window& window, int x, int y);
+ bool create_titlebar(window& window);
+ void destroy_titlebar(window& window);
+ void redraw_titlebar(window& window);
++void refresh_appearance(window& window);
+ void redraw_shadow(window& window);
+ 
+ }  // namespace prairie
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -116,6 +116,13 @@
+     if (fd < 0)
+         return false;
+ 
++    // A dead resize bridge must not indefinitely block Wayland input.
++    const timeval timeout{1, 0};
++    if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0 ||
++            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
++        close(fd);
++        return false;
++    }
+     sockaddr_un address{};
+     address.sun_family = AF_UNIX;
+     address.sun_path[0] = '\0';
+@@ -154,9 +161,9 @@
+ 
+ // Call me from egl_worker_thread only!
+ void snapshot_inactive_app_window(struct display *display, struct window *window) {
+-    if (!window->layers[0].surface || !window->last_layer_buffer
+-        || window->last_layer_buffer->isShm || window->snapshot_buffer) {
+-        // Need a surface to draw and a non-SHM buffer to make snapshot from
++    if (window->layers.empty() || !window->layers[0].surface || !window->last_layer_buffer
++        || window->snapshot_buffer) {
++        // Need a previously presented buffer to preserve this task.
+         return;
+     }
+ 
+@@ -173,7 +180,17 @@
+     // FIXME won't work as expected if there are multiple surfaces
+     struct wl_surface *surface = window->layers[0].surface;
+ 
+-    egl_render_to_pixels(display, window->snapshot_buffer.get());
++    if (old_buf->isShm) {
++        // The software RGB path reuses its client-target buffers. An inactive
++        // window must own its copy before get_wl_buffer updates that storage.
++        if (old_buf->size != window->snapshot_buffer->size) {
++            window->snapshot_buffer.reset();
++            return;
++        }
++        memcpy(window->snapshot_buffer->shm_data, old_buf->shm_data, old_buf->size);
++    } else {
++        egl_render_to_pixels(display, window->snapshot_buffer.get());
++    }
+ 
+     wl_surface_attach(surface, window->snapshot_buffer->wl_buffer, 0, 0);
+     wl_surface_damage(surface, 0, 0, INT32_MAX, INT32_MAX);
+@@ -268,6 +285,10 @@
+     struct window *window = (struct window *)data;
+     struct display *display = window->display;
+ 
++    if (window->has_prairie_titlebar) {
++        if (width <= 1) width = window->content_width + 2 * LUMA_FRAME_GAP;
++        if (height <= 1) height = window->content_height + prairie::kTitlebarHeight + LUMA_FRAME_GAP;
++    }
+     if (width <= 1 || height <= 1) {
+ 		/* Compositor is deferring to us */
+         /* or invalid during calibration */
+@@ -279,31 +300,37 @@
+         static_cast<const uint32_t*>(states->data);
+     const size_t configured_state_count = states->size / sizeof(uint32_t);
+     for (size_t index = 0; index < configured_state_count; ++index) {
+-        if (configured_states[index] == XDG_TOPLEVEL_STATE_MAXIMIZED)
+-            maximized = true;
++        if (configured_states[index] == XDG_TOPLEVEL_STATE_MAXIMIZED) maximized = true;
+     }
+ 
+     if (window->has_prairie_titlebar && window->taskID != "none" &&
+             window->taskID != "0") {
+-        const int content_height = std::max(1, height - prairie::kTitlebarHeight);
++        const int content_width = std::max(1, width - 2 * LUMA_FRAME_GAP);
++        const int content_height = std::max(1,
++            height - prairie::kTitlebarHeight - LUMA_FRAME_GAP);
+         if (maximized && !window->maximized) {
+             window->restore_task_origin_x = window->task_origin_x;
+             window->restore_task_origin_y = window->task_origin_y;
+         }
+-        const bool state_changed = window->maximized != maximized;
+-        const bool width_changed = window->content_width != width;
+-        const bool height_changed = window->content_height != content_height;
++        const bool changed = window->maximized != maximized ||
++            window->content_width != content_width ||
++            window->content_height != content_height;
+         window->maximized = maximized;
+-        if (width_changed) {
+-            window->content_width = width;
++        window->content_width = content_width;
++        window->content_height = content_height;
++        if (changed) {
+             prairie::redraw_titlebar(*window);
+-        }
+-        window->content_height = content_height;
+-        if (state_changed || width_changed || height_changed)
+             prairie::redraw_shadow(*window);
+-        if (window->configured)
+-            window->request_task_resize(width, content_height);
++        }
++        // Each accepted configure is a task size, including interactive drag.
++        // Focus and the compositor's resizing state must not suppress delivery.
++        window->request_task_resize(content_width, content_height);
++        if (window->viewport)
++            wp_viewport_set_destination(window->viewport, width, height);
+         xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, width, height);
++        // Resubmit the existing canvas after resize, including when paused.
++        if (changed && display->procs && display->procs->invalidate)
++            display->procs->invalidate(display->procs);
+         return;
+     }
+ 
+@@ -473,7 +500,7 @@
+     if (input_region) {
+         wl_region_subtract(input_region, 0, 0, INT_MAX, INT_MAX);
+         if (has_prairie_titlebar)
+-            wl_region_add(input_region, 0, 0, content_width,
++            wl_region_add(input_region, 0, 0, prairie::frame(*this).outer.width,
+                           prairie::kTitlebarHeight);
+     }
+ }
+@@ -561,6 +588,7 @@
+     task_origin_y = top;
+     requested_content_width = width;
+     requested_content_height = height;
++    ALOGI("Luma task %s configured %dx%d", taskID.c_str(), width, height);
+ }
+ 
+ window::~window() {
+@@ -611,7 +639,8 @@
+ std::unique_ptr<window>
+ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+                std::string taskID, hwc_color_t color, int content_width,
+-               int content_height, int task_origin_x, int task_origin_y)
++               int content_height, int task_origin_x, int task_origin_y,
++               bool composed_canvas)
+ {
+     std::unique_ptr<window> window { new struct window() };
+     if (!window)
+@@ -625,6 +654,7 @@
+     window->taskID = std::move(taskID);
+     window->content_width = content_width;
+     window->content_height = content_height;
++    window->composed_canvas = composed_canvas;
+     window->task_origin_x = task_origin_x;
+     window->task_origin_y = task_origin_y;
+     window->restore_task_origin_x = task_origin_x;
+@@ -659,6 +689,9 @@
+         window->xdg_toplevel = xdg_surface_get_toplevel(window->xdg_surface);
+         assert(window->xdg_toplevel);
+         xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window.get());
++        if (window->has_prairie_titlebar)
++            xdg_toplevel_set_min_size(window->xdg_toplevel, 240 + 2 * LUMA_FRAME_GAP,
++                                     180 + prairie::kTitlebarHeight + LUMA_FRAME_GAP);
+     } else if (display->shell) {
+         window->shell_surface =
+             wl_shell_get_shell_surface(display->shell, window->surface);
+@@ -729,12 +762,14 @@
+             window->set_maximize(false);
+     }
+ 
++    if (window->content_width < 1)
++        window->content_width = display->width;
++    if (window->content_height < 1)
++        window->content_height = display->height;
++    const auto geometry = prairie::frame(*window);
+     if (display->wm_base)
+-        xdg_surface_set_window_geometry(
+-            window->xdg_surface, 0, 0,
+-            window->content_width > 0 ? window->content_width : display->width,
+-            (window->content_height > 0 ? window->content_height : display->height) +
+-                (window->has_prairie_titlebar ? prairie::kTitlebarHeight : 0));
++        xdg_surface_set_window_geometry(window->xdg_surface, 0, 0,
++            geometry.outer.width, geometry.outer.height);
+ 
+     struct wl_region *region = wl_compositor_create_region(display->compositor);
+     if (color.a == 0) {
+@@ -779,17 +814,17 @@
+     wp_viewport_set_source(window->viewport, wl_fixed_from_int(0), wl_fixed_from_int(0), wl_fixed_from_int(1), wl_fixed_from_int(1));
+     wp_viewport_set_destination(
+         window->viewport,
+-        window->content_width > 0 ? window->content_width : display->width,
+-        (window->content_height > 0 ? window->content_height : display->height) +
+-            (window->has_prairie_titlebar ? prairie::kTitlebarHeight : 0));
++        geometry.outer.width, geometry.outer.height);
+     wl_surface_commit(window->surface);
+ 
+     if (window->has_prairie_titlebar) {
+         prairie::redraw_titlebar(*window);
+         prairie::redraw_shadow(*window);
+-        wl_region_add(window->input_region, 0, 0, window->content_width,
+-                      prairie::kTitlebarHeight);
+-        wl_surface_set_input_region(window->surface, window->input_region);
++        if (window->input_region) {
++            wl_region_add(window->input_region, 0, 0, geometry.outer.width,
++                          prairie::kTitlebarHeight);
++            wl_surface_set_input_region(window->surface, window->input_region);
++        }
+     }
+ 
+     return window;
+@@ -874,6 +909,8 @@
+     if (display->viewporter)
+         viewport = wp_viewporter_get_viewport(display->viewporter, surface);
+ 
++    if (titlebar_subsurface)
++        wl_subsurface_place_above(titlebar_subsurface, surface);
+     return layers.emplace_back(surface, viewport, subsurface);
+ }
+ 
+@@ -1022,6 +1059,30 @@
+     keyboard_handle_repeat_info,
+ };
+ 
++// The host owns cursor artwork, scale and accessibility through the standard
++// cursor-shape protocol. No cursor bitmap/helper is maintained by Luma.
++static void update_chrome_cursor(struct display* d) {
++    if (!d->pointer || !d->cursor_shape_manager || !d->pointer_surface) return;
++    if (!d->cursor_shape_device)
++        d->cursor_shape_device = wp_cursor_shape_manager_v1_get_pointer(
++            d->cursor_shape_manager, d->pointer);
++    uint32_t shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
++    auto* window = reinterpret_cast<struct window*>(wl_surface_get_user_data(d->pointer_surface));
++    if (window && window->has_prairie_titlebar && d->pointer_surface == window->titlebar_surface) {
++        switch (luma_frame_resize_edge(prairie::frame(*window), d->pointer_x, d->pointer_y, window->maximized)) {
++            case 1: case 2: shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE; break;
++            case 4: case 8: shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE; break;
++            case 5: case 10: shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NWSE_RESIZE; break;
++            case 6: case 9: shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NESW_RESIZE; break;
++        }
++    }
++    if (shape != d->chrome_cursor_shape || d->chrome_cursor_serial != d->pointer_enter_serial) {
++        wp_cursor_shape_device_v1_set_shape(d->cursor_shape_device, d->pointer_enter_serial, shape);
++        d->chrome_cursor_shape = shape;
++        d->chrome_cursor_serial = d->pointer_enter_serial;
++    }
++}
++
+ static void
+ pointer_handle_enter(void *data, struct wl_pointer *pointer,
+                      uint32_t serial, struct wl_surface *surface,
+@@ -1038,6 +1099,7 @@
+     display->pointer_x = wl_fixed_to_int(sx);
+     display->pointer_y = wl_fixed_to_int(sy);
+     display->cursor_handler->on_cursor_enter(display);
++    update_chrome_cursor(display);
+ 
+     (void)pointer;
+ }
+@@ -1068,17 +1130,16 @@
+     int x, y;
+     unsigned int res, n = 0;
+ 
+-    if (ensure_pipe(display, INPUT_POINTER))
+-        return;
+-
+     if (!display->pointer_surface)
+         return;
+ 
+     display->pointer_x = wl_fixed_to_int(sx);
+     display->pointer_y = wl_fixed_to_int(sy);
++    update_chrome_cursor(display);
+     auto* window = reinterpret_cast<struct window*>(
+         wl_surface_get_user_data(display->pointer_surface));
+-    if (window && window->has_prairie_titlebar) {
++    if (window && window->has_prairie_titlebar &&
++            display->pointer_surface == window->titlebar_surface) {
+         const auto target = prairie::hit_test(
+             *window, display->pointer_x, display->pointer_y);
+         const int hovered = static_cast<int>(target);
+@@ -1090,6 +1151,9 @@
+             return;
+     }
+ 
++    if (ensure_pipe(display, INPUT_POINTER))
++        return;
++
+     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+         ALOGE("%s:%d error in touch clock_gettime: %s",
+               __FILE__, __LINE__, strerror(errno));
+@@ -1100,8 +1164,8 @@
+         x = int(x * display->scale);
+         y = int(y * display->scale);
+     }
+-    x += display->layers[display->pointer_surface].x;
+-    y += display->layers[display->pointer_surface].y;
++    x = int(x * display->layers[display->pointer_surface].scale_x) + display->layers[display->pointer_surface].x;
++    y = int(y * display->layers[display->pointer_surface].scale_y) + display->layers[display->pointer_surface].y;
+ 
+     ADD_EVENT(EV_ABS, ABS_X, x);
+     ADD_EVENT(EV_ABS, ABS_Y, y);
+@@ -1164,21 +1228,23 @@
+     struct timespec rt;
+     unsigned int res, n = 0;
+ 
+-    if (ensure_pipe(display, INPUT_POINTER))
+-        return;
+-
+     if (!display->pointer_surface)
+         return;
+ 
+     display->pointer_button_serial = serial;
+     auto* window = reinterpret_cast<struct window*>(
+         wl_surface_get_user_data(display->pointer_surface));
+-    if (window && window->has_prairie_titlebar) {
++    if (window && window->has_prairie_titlebar &&
++            display->pointer_surface == window->titlebar_surface) {
+         const auto target = prairie::hit_test(
+             *window, display->pointer_x, display->pointer_y);
+         if (target != prairie::TitlebarTarget::Content) {
+             if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+-                if (target == prairie::TitlebarTarget::Drag) {
++                const unsigned edge = luma_frame_resize_edge(prairie::frame(*window),
++                    display->pointer_x, display->pointer_y, window->maximized);
++                if (edge) {
++                    xdg_toplevel_resize(window->xdg_toplevel, display->seat, serial, edge);
++                } else if (target == prairie::TitlebarTarget::Drag) {
+                     xdg_toplevel_move(window->xdg_toplevel, display->seat, serial);
+                 } else if (target == prairie::TitlebarTarget::Close) {
+                     xdg_toplevel_handle_close(window, window->xdg_toplevel);
+@@ -1200,6 +1266,9 @@
+         }
+     }
+ 
++    if (ensure_pipe(display, INPUT_POINTER))
++        return;
++
+     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+         ALOGE("%s:%d error in touch clock_gettime: %s",
+               __FILE__, __LINE__, strerror(errno));
+@@ -1232,6 +1301,7 @@
+     auto* window = reinterpret_cast<struct window*>(
+         wl_surface_get_user_data(display->pointer_surface));
+     if (window && window->has_prairie_titlebar &&
++            display->pointer_surface == window->titlebar_surface &&
+             prairie::hit_test(*window, display->pointer_x, display->pointer_y) !=
+                 prairie::TitlebarTarget::Content)
+         return;
+@@ -1361,12 +1431,17 @@
+     unsigned int res, n = 0;
+ 
+     auto* window = reinterpret_cast<struct window*>(wl_surface_get_user_data(surface));
+-    if (window && window->has_prairie_titlebar) {
++    if (window && window->has_prairie_titlebar &&
++            surface == window->titlebar_surface) {
+         const int title_x = wl_fixed_to_int(x_w);
+         const int title_y = wl_fixed_to_int(y_w);
+         const auto target = prairie::hit_test(*window, title_x, title_y);
+         if (target != prairie::TitlebarTarget::Content) {
+-            if (target == prairie::TitlebarTarget::Drag)
++            const unsigned edge = luma_frame_resize_edge(prairie::frame(*window),
++                title_x, title_y, window->maximized);
++            if (edge)
++                xdg_toplevel_resize(window->xdg_toplevel, display->seat, serial, edge);
++            else if (target == prairie::TitlebarTarget::Drag)
+                 xdg_toplevel_move(window->xdg_toplevel, display->seat, serial);
+             else if (target == prairie::TitlebarTarget::Close)
+                 xdg_toplevel_handle_close(window, window->xdg_toplevel);
+@@ -1403,8 +1478,8 @@
+         x = int(x * display->scale);
+         y = int(y * display->scale);
+     }
+-    x += display->layers[surface].x;
+-    y += display->layers[surface].y;
++    x = int(x * display->layers[surface].scale_x) + display->layers[surface].x;
++    y = int(y * display->layers[surface].scale_y) + display->layers[surface].y;
+ 
+     ADD_EVENT(EV_ABS, ABS_MT_SLOT, touch_id);
+     ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, touch_id);
+@@ -1475,8 +1550,8 @@
+             x = int(x * display->scale);
+             y = int(y * display->scale);
+         }
+-        x += display->layers[display->touch_surfaces[id]].x;
+-        y += display->layers[display->touch_surfaces[id]].y;
++        x = int(x * display->layers[display->touch_surfaces[id]].scale_x) + display->layers[display->touch_surfaces[id]].x;
++        y = int(y * display->layers[display->touch_surfaces[id]].scale_y) + display->layers[display->touch_surfaces[id]].y;
+ 
+         ADD_EVENT(EV_ABS, ABS_MT_SLOT, touch_id);
+         ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, touch_id);
+@@ -1609,6 +1684,10 @@
+         wl_pointer_add_listener(d->pointer, &pointer_listener, d);
+     } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && d->pointer) {
+         remove(INPUT_PIPE_NAME[INPUT_POINTER]);
++        if (d->cursor_shape_device) {
++            wp_cursor_shape_device_v1_destroy(d->cursor_shape_device);
++            d->cursor_shape_device = nullptr;
++        }
+         wl_pointer_destroy(d->pointer);
+         d->pointer = NULL;
+     }
+@@ -1943,8 +2022,8 @@
+             x = int(x * display->scale);
+             y = int(y * display->scale);
+         }
+-        x += display->layers[display->tablet_surface].x;
+-        y += display->layers[display->tablet_surface].y;
++        x = int(x * display->layers[display->tablet_surface].scale_x) + display->layers[display->tablet_surface].x;
++        y = int(y * display->layers[display->tablet_surface].scale_y) + display->layers[display->tablet_surface].y;
+ 
+         ADD_EVENT(EV_ABS, ABS_X, x);
+         ADD_EVENT(EV_ABS, ABS_Y, y);
+@@ -2211,6 +2290,9 @@
+                 &wl_data_device_manager_interface, std::min(version,  3U));
+         if (d->data_device_manager && d->seat)
+             d->data_device = wl_data_device_manager_get_data_device(d->data_device_manager, d->seat);
++    } else if (strcmp(interface, "wp_cursor_shape_manager_v1") == 0) {
++        d->cursor_shape_manager = (struct wp_cursor_shape_manager_v1*)wl_registry_bind(
++            registry, id, &wp_cursor_shape_manager_v1_interface, 1);
+     } else if (strcmp(interface, "gtk_shell1") == 0) {
+         if (version < 6)
+             d->supports_cursor_viewport = false;
+@@ -2258,14 +2340,14 @@
+ window *open_windows::add(waydroid_hwc_composer_device_1 *pdev,
+         const std::string& key, const std::string& aid, const std::string& tid,
+         hwc_color_t color, int content_width, int content_height,
+-        int task_origin_x, int task_origin_y) {
++        int task_origin_x, int task_origin_y, bool composed_canvas) {
+     window *window = nullptr;
+     update([&](){
+         auto res = windows.emplace(
+             key,
+             window::create(pdev->display, pdev->should_compose, aid, tid, color,
+                            content_width, content_height, task_origin_x,
+-                           task_origin_y)
++                           task_origin_y, composed_canvas)
+         );
+         assert(res.second);
+         window = res.first->second.get();
+@@ -2390,6 +2472,10 @@
+     if (display->pointer_constraints)
+         zwp_pointer_constraints_v1_destroy(display->pointer_constraints);
+ 
++    if (display->cursor_shape_device)
++        wp_cursor_shape_device_v1_destroy(display->cursor_shape_device);
++    if (display->cursor_shape_manager)
++        wp_cursor_shape_manager_v1_destroy(display->cursor_shape_manager);
+     wl_registry_destroy(display->registry);
+     wl_display_flush(display->display);
+     wl_display_disconnect(display->display);
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -52,6 +52,7 @@
+ #include <vendor/waydroid/task/1.0/IWaydroidTask.h>
+ #include <wayland-util.h>
+ #include <wayland-client.h>
++#include "cursor-shape-v1-client-protocol.h"
+ 
+ #define EGL_EGLEXT_PROTOTYPES
+ #include <EGL/egl.h>
+@@ -91,6 +92,8 @@
+ struct layerFrame {
+     int x;
+     int y;
++    double scale_x = 1.0;
++    double scale_y = 1.0;
+ };
+ 
+ struct handleExt {
+@@ -209,8 +212,14 @@
+     void *titlebar_data {};
+     size_t titlebar_data_size {};
+     std::string title;
++    std::vector<uint32_t> prairie_icon;
++    bool prairie_icon_loaded {};
+     int content_width {};
+     int content_height {};
++    // SurfaceFlinger supplies one RGB canvas in the software-video mode.
++    // Native display configuration follows committed host content dimensions.
++    bool composed_canvas {};
++    bool dark_appearance {};
+     int task_origin_x {};
+     int task_origin_y {};
+     int restore_task_origin_x {};
+@@ -244,7 +253,8 @@
+                                           hwc_color_t color, int content_width = 0,
+                                           int content_height = 0,
+                                           int task_origin_x = 0,
+-                                          int task_origin_y = 0);
++                                          int task_origin_y = 0,
++                                          bool composed_canvas = false);
+ 
+     window::layer &get_next_layer();
+     window::layer &create_new_layer();
+@@ -307,7 +317,7 @@
+                 const std::string& aid, const std::string& tid,
+                 hwc_color_t color = {0, 0, 0, 255}, int content_width = 0,
+                 int content_height = 0, int task_origin_x = 0,
+-                int task_origin_y = 0);
++                int task_origin_y = 0, bool composed_canvas = false);
+     void add(const std::string& key, std::unique_ptr<window> window);
+     void clear();
+     void erase(const_iterator pos);
+@@ -339,6 +349,10 @@
+ 
+     struct wl_display *display;
+     struct wl_registry *registry;
++    struct wp_cursor_shape_manager_v1* cursor_shape_manager = nullptr;
++    struct wp_cursor_shape_device_v1* cursor_shape_device = nullptr;
++    uint32_t chrome_cursor_shape = 0;
++    uint32_t chrome_cursor_serial = 0;
+     struct wl_compositor *compositor;
+     struct wl_subcompositor *subcompositor;
+     struct wl_seat *seat;

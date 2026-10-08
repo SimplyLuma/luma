@@ -1,0 +1,70 @@
+{
+  "app": "messages",
+  "title": "Messages",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=messages",
+    "window": "#w-messages",
+    "before": [
+      {"eval": "(async () => { const b = document.querySelector('#m-body'); await Promise.all([...b.querySelectorAll('img')].map(img => img.decode().catch(() => {}))); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); b.scrollTop = b.scrollHeight; })()"}
+    ],
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "module": "messages",
+    "fixtures": ["tests/fixtures/messages-v70.json", "tests/fixtures/messages-v70"],
+    "env": {"LUMA_MESSAGES_FIXTURE": "{run}/fixtures/messages-v70.json", "GSETTINGS_BACKEND": "memory"}
+  },
+  "states": [
+    {"name": "thread", "about": "Launch crew, the v70 opening conversation", "spec": [], "gtk": []},
+    {"name": "event", "about": "Priya's event card and direct conversation",
+     "spec": [{"click": "[data-mcv=\"priya\"]"}], "gtk": [{"activate": "msg-row-priya"}]},
+    {"name": "song", "about": "Theo's song and voice cards",
+     "spec": [{"click": "[data-mcv=\"theo\"]"}], "gtk": [{"activate": "msg-row-theo"}]},
+    {"name": "place", "about": "Climbing Saturday's place card",
+     "spec": [{"click": "[data-mcv=\"climb\"]"}], "gtk": [{"activate": "msg-row-climb"}]},
+    {"name": "sms", "about": "Mom's text-message conversation",
+     "spec": [{"click": "[data-mcv=\"mom\"]"}], "gtk": [{"activate": "msg-row-mom"}]},
+    {"name": "details", "about": "Conversation details open", "spec": [{"click": "[data-mdetails]"}],
+     "gtk": [{"activate": "msg-info"}]},
+    {"name": "selected", "about": "A file message selected", "spec": [{"click": "[data-mid=\"7\"] .bub"}],
+     "gtk": [{"activate": "msg-select-7"}]},
+    {"name": "compose", "about": "The action center grown into the message editor",
+     "spec": [{"click": "[data-mgrow]"}], "gtk": [{"activate": "msg-expand"}]},
+    {"name": "new", "about": "New message picker above the sidebar foot",
+     "spec": [{"click": "[data-mnew]"}], "gtk": [{"activate": "msg-new"}]},
+    {"name": "attach", "about": "Composer attachment choices",
+     "spec": [{"click": "[data-mattach]"}], "gtk": [{"activate": "msg-attach"}]},
+    {"name": "emoji", "about": "Composer emoji choices",
+     "spec": [{"click": "[data-memoji]"}], "gtk": [{"activate": "msg-emoji"}]},
+    {"name": "react", "about": "Reaction choices for a selected message",
+     "spec": [{"click": "[data-mid=\"7\"] .bub"}, {"click": "[data-mreactpop]"}],
+     "gtk": [{"activate": "msg-select-7"}, {"activate": "msg-react"}]},
+    {"name": "more", "about": "More actions for a selected message",
+     "spec": [{"click": "[data-mid=\"7\"] .bub"}, {"click": "[data-mmore]"}],
+     "gtk": [{"activate": "msg-select-7"}, {"activate": "msg-more"}]},
+    {"name": "code", "about": "Your Luma code from the new-message picker",
+     "spec": [{"click": "[data-mnew]"}, {"click": "[data-mmycode]"}],
+     "gtk": [{"activate": "msg-new"}, {"activate": "msg-own-code"}]}
+  ],
+  "phone_states": ["thread", "event", "song", "place", "sms", "details", "selected", "compose", "attach", "emoji", "react", "more"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-messages > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#m-top"},
+    {"name": "sidebar foot", "spec": "#m-side .sfoot"},
+    {"name": "sidebar", "spec": "#m-side"},
+    {"name": "header identity", "spec": "#m-head .mwho"},
+    {"name": "header actions", "spec": "#m-head .macts"},
+    {"name": "message content", "spec": "#m-body .mthread"},
+    {"name": "composer or selection bar", "spec": "#m-bar"},
+    {"name": "grown editor", "spec": "#m-comp"},
+    {"name": "details", "spec": "#m-det"},
+    {"name": "main", "spec": "#m-main"}
+  ],
+  "pairs": [
+    {"spec": "#m-side", "gtk": "msg-sidebar", "name": "sidebar"},
+    {"spec": "#m-main", "gtk": "msg-island", "name": "conversation island"},
+    {"spec": "#m-light", "gtk": "msg-light", "name": "conversation light"},
+    {"spec": "#m-bar", "gtk": "msg-bar", "name": "action center"},
+    {"spec": "#m-det", "gtk": "msg-details", "name": "details pane"}
+  ]
+}

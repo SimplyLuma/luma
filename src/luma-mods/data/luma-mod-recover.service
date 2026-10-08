@@ -1,0 +1,32 @@
+[Unit]
+Description=Recover interrupted Luma Mod preference transaction
+Documentation=file:///usr/share/doc/luma-mods/README.md
+Before=graphical-session-pre.target
+# Mods belong to people's sessions. The login screen and first-boot setup run
+# as dynamically allocated users (outside the system UID range, so
+# ConditionUser=!@system does not exclude them) whose state directory is
+# read-only, so recovery there only ever failed. GNOME's own session-only user
+# units use the same condition.
+ConditionUser=!@system
+ConditionEnvironment=XDG_SESSION_CLASS=user
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-mod-recover
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# Create only the existing recovery data roots before sandbox setup.
+ConfigurationDirectory=luma
+ConfigurationDirectoryMode=0700
+StateDirectory=luma
+StateDirectoryMode=0700
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=graphical-session-pre.target

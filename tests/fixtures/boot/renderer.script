@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: Apache-2.0
+// A renderer test double; frame geometry and callbacks only, no visual proof.
+Window.width = 1920; Window.height = 1080;
+// Plymouth's multi-display semantics: with no index, GetWidth/GetHeight are the
+// largest display and GetX/GetY the largest offset, each display being offset
+// so that all centres coincide. Index 0 is the largest display in this double,
+// so an absent index and index 0 answer alike; index 1 is an optional second,
+// smaller display (Window.second_width/second_height).
+Window.GetWidth = fun(window) {
+    if (window == 1) { if (Window.second_width) return Window.second_width; }
+    else if (!window) return Window.width;
+};
+Window.GetHeight = fun(window) {
+    if (window == 1) { if (Window.second_height) return Window.second_height; }
+    else if (!window) return Window.height;
+};
+Window.GetX = fun() { if (Window.second_width) return (Window.width - Window.second_width) / 2; return 0; };
+Window.GetY = fun() { if (Window.second_height) return (Window.height - Window.second_height) / 2; return 0; };
+Window.SetBackgroundTopColor = fun(r,g,b) {};
+Window.SetBackgroundBottomColor = fun(r,g,b) {};
+// Luma's plymouth: the firmware logo is present and starts fully shown.
+global.firmware_logo = 1;
+Window.firmware_opacity = 0;
+Window.HasFirmwareBackground = fun() { return global.firmware_logo; };
+Window.SetFirmwareBackgroundOpacity = fun(value) { Window.firmware_opacity = value; };
+global.test_mode = "boot";
+global.capslock = 0;
+Plymouth.GetMode = fun() { return global.test_mode; };
+// Luma's plymouth clock: 50 Hz unless a test stalls it.
+global.test_clock = 100.0;
+global.test_step = 0.02;
+Plymouth.GetTime = fun() { global.test_clock += global.test_step; return global.test_clock; };
+Plymouth.GetCapslockState = fun() { return global.capslock; };
+fun make_image(w,h) {
+    local.i.width=w; i.height=h;
+    i.GetWidth=fun() {return this.width;};
+    i.GetHeight=fun() {return this.height;};
+    i.Scale=fun(w,h) {return make_image(w,h);};
+    return i;
+}
+Image.Text=fun(text,r,g,b,a,font) {
+    global.last_text = text;
+    return make_image(text.Length()*8,40);
+};
+Image |= fun(filename) { return make_image(2219,715); };
+Sprite=fun(image) {
+    local.s.image=image; s.opacity=1;
+    s.SetImage=fun(image) {this.image=image;};
+    s.SetOpacity=fun(opacity) {this.opacity=opacity;};
+    s.SetPosition=fun(x,y,z) {this.x=x;this.y=y;this.z=z;};
+    return s;
+};
+Plymouth.SetRefreshFunction=fun(callback) {global.refresh=callback;};
+Plymouth.SetDisplayNormalFunction=fun(callback) {global.normal=callback;};
+Plymouth.SetDisplayPasswordFunction=fun(callback) {global.password=callback;};
+Plymouth.SetDisplayQuestionFunction=fun(callback) {global.question=callback;};
+Plymouth.SetDisplayMessageFunction=fun(callback) {global.display_message=callback;};
+Plymouth.SetHideMessageFunction=fun(callback) {global.hide_message=callback;};
+
+Plymouth.SetBootProgressFunction=fun(callback) {global.boot_progress=callback;};
+Plymouth.SetSystemUpdateFunction=fun(callback) {global.system_update=callback;};

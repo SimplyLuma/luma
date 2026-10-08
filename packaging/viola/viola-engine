@@ -1,0 +1,7 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# Zypak keeps Chromium subprocesses in their supported Flatpak sandboxes.
+# Anonymous DevTools descriptors 3/4 remain inherited by the real engine.
+set -eu
+export CHROME_WRAPPER=/app/bin/viola-engine
+exec /app/bin/zypak-wrapper /app/lib/viola/browser/chrome "$@"

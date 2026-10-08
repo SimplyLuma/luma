@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma application chooser portal backend
+Documentation=https://github.com/SimplyLuma/luma
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+# Type=dbus is what makes the backend's readiness legible. Without a
+# SystemdService= line in the D-Bus service file, the bus spawned this process
+# on its own and then waited for the name; on a cold login that wait ran past
+# xdg-desktop-portal's activation timeout, the frontend logged
+#
+#   Failed to create app chooser proxy: Error calling StartServiceByName
+#   for org.freedesktop.impl.portal.desktop.luma: Timeout was reached
+#
+# and fell back to the GNOME chooser for the rest of the session -- a single
+# missed window that no later correctness could recover. systemd now owns the
+# unit, treats the name appearing as the service being ready, and the unit is
+# pulled into the graphical session so the name is there before anything asks.
+Type=dbus
+BusName=org.freedesktop.impl.portal.desktop.luma
+ExecStart=/usr/libexec/luma-portal-appchooser
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+# No [Install] section on purpose. The backend is activated when a chooser is
+# actually wanted, the way xdg-desktop-portal-gnome is. Pulling it into
+# graphical-session.target as well put it in the login path, where it has no
+# business being: it is answered in a fifth of a second on demand.

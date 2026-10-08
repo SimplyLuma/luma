@@ -1,0 +1,48 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 14 Sep 2026 12:00:00 -0500
+Subject: [PATCH] window-drag: Let a secondary click reach the tiling manager
+
+Pressing any extra mouse button during a window drag ended the drag, so
+a right-click while holding a window dropped it where it was -- and a
+tiling manager then tiled it. Luma uses that right-click as the gesture
+for "don't tile this one". While a window
+being moved by the pointer, a secondary press or release no longer ends the drag; the
+tiling manager sees the button in the pointer state and acts on it.
+Keyboard and menu moves, resizes, and every other button behave as before.
+---
+ src/compositor/meta-window-drag.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -1881,6 +1881,13 @@
+   switch (clutter_event_type (event))
+     {
+     case CLUTTER_BUTTON_PRESS:
++      /* A secondary click while a window is carried by the pointer is a
++       * gesture for the tiling manager, not the end of the drag. */
++      if (clutter_event_get_button (event) == CLUTTER_BUTTON_SECONDARY &&
++          !(window_drag->grab_op & META_GRAB_OP_WINDOW_FLAG_KEYBOARD) &&
++          meta_grab_op_is_moving (window_drag->grab_op))
++        break;
++
+       /* This is the keybinding or menu case where we've
+        * been dragging around the window without the button
+        * pressed, or the case of pressing extra mouse buttons
+@@ -1894,6 +1901,13 @@
+     case CLUTTER_BUTTON_RELEASE:
+       button = clutter_event_get_button (event);
+ 
++      /* Its release belongs to the same gesture, even when the secondary
++       * button is configured for resizing. */
++      if (button == CLUTTER_BUTTON_SECONDARY &&
++          !(window_drag->grab_op & META_GRAB_OP_WINDOW_FLAG_KEYBOARD) &&
++          meta_grab_op_is_moving (window_drag->grab_op))
++        break;
++
+       if (button == 1 ||
+           button == (unsigned int) meta_prefs_get_mouse_button_resize ())
+         end_grab_op (window_drag, event);
+-- 
+2.55.0

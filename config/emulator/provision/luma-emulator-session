@@ -1,0 +1,67 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# Select the presentation mode for this guest before the display manager starts.
+#
+# Desktop and handheld are presentation modes of one Luma platform. This chooses
+# which shell session the display manager logs into and places the composition
+# overlay for that device class — the same overlay the FP6 rootfs installs. It
+# never chooses a different application build: both modes run the same packages.
+
+set -euo pipefail
+
+session_file=/etc/luma-emulator/session
+mode=$(cat "$session_file" 2>/dev/null || echo gnome)
+
+case "$mode" in
+  gnome|desktop) session=gnome;         device_class=desktop  ;;
+  phosh|handheld|mobile)                device_class=handheld
+    # Prefer Luma's own launcher; fall back to Fedora's session only when the
+    # overlay is absent, and say so, because that fallback is not Luma.
+    if [ -f /usr/share/wayland-sessions/luma-handheld.desktop ]; then
+      session=luma-handheld
+    else
+      session=phosh
+      echo "luma-emulator: no Luma handheld session installed; falling back to upstream Phosh" >&2
+    fi
+    ;;
+  *) session=gnome; device_class=desktop ;;
+esac
+
+# The stable hardware role every Luma component reads.
+printf '%s\n' "$device_class" > /etc/luma-device-class
+
+# Place the scoped composition overlay for this device class and remove the
+# other one, so a desktop guest never inherits handheld defaults and vice versa.
+placement=/etc/luma-emulator/overlay/placement.json
+if [ -f "$placement" ]; then
+  python3 - "$device_class" <<'PLACE'
+import json, os, shutil, sys
+
+wanted = {"handheld": "mobile", "desktop": "desktop"}[sys.argv[1]]
+placement = json.load(open("/etc/luma-emulator/overlay/placement.json"))
+
+for scope, entries in placement.items():
+    for entry in entries:
+        destination = entry["destination"]
+        if scope == wanted:
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            shutil.copy2(entry["staged"], destination)
+            os.chmod(destination, int(entry["mode"], 8))
+            print("placed " + destination)
+        elif os.path.exists(destination):
+            os.remove(destination)
+            print("removed " + destination)
+PLACE
+  dconf update || true
+fi
+
+install -d -m 0755 /var/lib/AccountsService/users
+cat > /var/lib/AccountsService/users/luma <<ACCOUNT
+[User]
+Session=$session
+XSession=$session
+SystemAccount=false
+ACCOUNT
+
+echo "luma-emulator: presentation mode $device_class, session $session"

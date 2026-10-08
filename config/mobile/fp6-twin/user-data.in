@@ -1,0 +1,175 @@
+#cloud-config
+users:
+  - name: luma
+    gecos: Project Luma twin developer
+    groups: [wheel]
+    lock_passwd: true
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - __LUMA_TWIN_SSH_PUBLIC_KEY__
+ssh_pwauth: false
+disable_root: true
+write_files:
+  - path: /etc/luma/rootfs-contract
+    owner: root:root
+    permissions: '0644'
+    content: |
+      LUMA_ROOTFS_CONTRACT=mobile-v1
+      LUMA_ROOTFS_BASE=fedora-44-aarch64
+      LUMA_HARDWARE_BACKEND=virtual
+      LUMA_KERNEL_CONTRACT=qemu-virt
+      LUMA_PHYSICAL_DEVICE=false
+  - path: /etc/luma/hardware-profile
+    owner: root:root
+    permissions: '0644'
+    content: |
+      LUMA_PROFILE=fp6-behavioral-twin-v1
+      REFERENCE_DEVICE=fairphone-fp6
+      REFERENCE_SOC=sm7635
+      REFERENCE_PLATFORM=milos
+      DISPLAY_WIDTH=1116
+      DISPLAY_HEIGHT=2484
+      DISPLAY_PPI=431
+      DISPLAY_MIN_HZ=10
+      DISPLAY_MAX_HZ=120
+      TOUCH_SAMPLE_HZ=240
+      REFERENCE_MEMORY_MIB=8192
+      REFERENCE_BATTERY_MAH=4415
+  - path: /etc/luma/fp6-twin/default-state.env
+    owner: root:root
+    permissions: '0644'
+    content: |
+      LUMA_TWIN_STATE_VERSION=1
+      BATTERY_PERCENT=82
+      BATTERY_STATUS=discharging
+      BATTERY_PRESENT=true
+      ORIENTATION=portrait
+      WIFI_STATE=connected
+      BLUETOOTH_STATE=on
+      CELLULAR_STATE=registered
+      MODEM_SIGNAL_PERCENT=72
+      CALL_STATE=idle
+      POWER_STATE=active
+      THERMAL_STATE=nominal
+  - path: /usr/local/bin/luma-fp6-twinctl
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      state_dir=/run/luma-fp6-twin
+      state_file=$state_dir/state.env
+      defaults=/etc/luma/fp6-twin/default-state.env
+
+      usage() {
+        printf 'usage: %s status | reset | set KEY VALUE | scenario NAME\n' "$0" >&2
+        exit 2
+      }
+
+      ensure_state() {
+        install -d -m 0755 "$state_dir"
+        if [ ! -f "$state_file" ]; then
+          install -m 0644 "$defaults" "$state_file"
+        fi
+      }
+
+      validate_key() {
+        case "$1" in
+          BATTERY_PERCENT|BATTERY_STATUS|BATTERY_PRESENT|ORIENTATION|WIFI_STATE|BLUETOOTH_STATE|CELLULAR_STATE|MODEM_SIGNAL_PERCENT|CALL_STATE|POWER_STATE|THERMAL_STATE) ;;
+          *) printf 'error: unsupported state key: %s\n' "$1" >&2; exit 2 ;;
+        esac
+      }
+
+      set_value() {
+        key=$1
+        value=$2
+        validate_key "$key"
+        case "$value" in
+          *[!A-Za-z0-9_.-]*) printf 'error: state values use letters, numbers, dot, underscore, or hyphen only\n' >&2; exit 2 ;;
+        esac
+        temporary=$(mktemp "$state_dir/state.XXXXXX")
+        awk -F= -v key="$key" -v value="$value" '
+          BEGIN { changed = 0 }
+          $1 == key { print key "=" value; changed = 1; next }
+          { print }
+          END { if (!changed) print key "=" value }
+        ' "$state_file" >"$temporary"
+        chmod 0644 "$temporary"
+        mv -f "$temporary" "$state_file"
+      }
+
+      apply_scenario() {
+        case "$1" in
+          normal)
+            install -m 0644 "$defaults" "$state_file"
+            ;;
+          low-battery)
+            install -m 0644 "$defaults" "$state_file"
+            set_value BATTERY_PERCENT 8
+            set_value BATTERY_STATUS discharging
+            ;;
+          offline)
+            install -m 0644 "$defaults" "$state_file"
+            set_value WIFI_STATE disconnected
+            set_value CELLULAR_STATE unavailable
+            set_value MODEM_SIGNAL_PERCENT 0
+            ;;
+          incoming-call)
+            install -m 0644 "$defaults" "$state_file"
+            set_value CALL_STATE incoming
+            ;;
+          landscape)
+            install -m 0644 "$defaults" "$state_file"
+            set_value ORIENTATION landscape-left
+            ;;
+          thermal-warning)
+            install -m 0644 "$defaults" "$state_file"
+            set_value THERMAL_STATE warning
+            ;;
+          *) printf 'error: unknown scenario: %s\n' "$1" >&2; exit 2 ;;
+        esac
+      }
+
+      [ "$#" -ge 1 ] || usage
+      ensure_state
+      case "$1" in
+        status)
+          [ "$#" -eq 1 ] || usage
+          cat "$state_file"
+          ;;
+        reset)
+          [ "$#" -eq 1 ] || usage
+          install -m 0644 "$defaults" "$state_file"
+          ;;
+        set)
+          [ "$#" -eq 3 ] || usage
+          set_value "$2" "$3"
+          ;;
+        scenario)
+          [ "$#" -eq 2 ] || usage
+          apply_scenario "$2"
+          ;;
+        *) usage ;;
+      esac
+  - path: /etc/systemd/system/luma-fp6-twin-state.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Initialize Project Luma FP6 behavioral state
+      ConditionPathExists=/etc/luma/rootfs-contract
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/luma-fp6-twinctl reset
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, luma-fp6-twin-state.service]
+  - [systemctl, enable, --now, sshd.service]
+final_message: "Project Luma FP6 behavioral twin is ready"

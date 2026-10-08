@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+set -eu
+
+device_class=handheld
+if [ -r /etc/luma-device-class ]; then
+  IFS= read -r marker </etc/luma-device-class || true
+  case "$marker" in
+    desktop|tablet|handheld) device_class=$marker ;;
+  esac
+fi
+
+export LUMA_DEVICE_CLASS=${LUMA_DEVICE_CLASS:-$device_class}
+export LUMA_PRESENTATION_MODE=${LUMA_PRESENTATION_MODE:-fullscreen-mobile}
+export LUMA_INPUT_MODE=${LUMA_INPUT_MODE:-touch}
+
+# The renderer and every application it launches inherit these capabilities.
+# environment.d supplies the same stable device class to session user services.
+exec /opt/luma/phosh/bin/phosh-session "$@"

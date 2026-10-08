@@ -1,0 +1,37 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: narrow local focus refinement
+
+A local autofocus scan already brackets the current lens position.  The second
+pass should sample immediately around the coarse maximum, not repeat an entire
+coarse-step radius.  Use the new fine step as the local refinement radius while
+retaining the original full-sweep behavior.  This substantially reduces lens
+moves, latency, and actuator clicking for startup and touch focus.
+
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -302,17 +302,21 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ 	}
+ 
+ 	/* Sweep phase over, narrow the range around the best position. */
+-	focus.start = std::clamp(focus.focus_max_pos - focus.step,
++	const double previousStep = focus.step;
++	const double nextStep = previousStep / stepDivisor_;
++	const double refinementRadius = localSweep_
++		? std::max(nextStep, fineStepMin_) : previousStep;
++	focus.start = std::clamp(focus.focus_max_pos - refinementRadius,
+ 				 sweepStart_, sweepStop_);
+-	focus.stop = std::clamp(focus.focus_max_pos + focus.step,
++	focus.stop = std::clamp(focus.focus_max_pos + refinementRadius,
+ 				sweepStart_, sweepStop_);
+ 	LOG(IPASoftAutoFocus, Info)
+-		<< "Best focus with step " << focus.step << ": "
++		<< "Best focus with step " << previousStep << ": "
+ 		<< focus.focus_max_pos << " (sharpness "
+ 		<< focus.sharpness_max << "), next range " << focus.start
+ 		<< ".." << focus.stop;
+ 	focus_pos = focus.start;
+-	focus.step /= stepDivisor_;
++	focus.step = nextStep;
+ 	focus.skip = localSweep_ ? localSettleSkip_ : settleSkip_;
+ 
+ 	if (focus.step >= fineStepMin_) {

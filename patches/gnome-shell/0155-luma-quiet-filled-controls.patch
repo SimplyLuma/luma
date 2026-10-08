@@ -1,0 +1,541 @@
+From: Project Luma
+Subject: [PATCH] luma: Quick Options' filled controls take one quiet state fill (ADR-043)
+
+Ink used as a fill is symmetric by design -- white on dark, near-black on
+paper -- so in light mode Quick Options' on tiles, checked pills and slider
+handles were heavy blocks, several to a panel. Four owner reports, measured:
+
+  - On and off tiles looked the same because they were the same. luma-shelf.css
+    gives the light icon plate #ffffff with one rule at the specificity of the
+    variant sheet's :checked plate, and wins by order, so an on tile's plate
+    measured 1.00:1 against an off tile's.
+  - Slider handles were solid #3d444c dots in light, #f2f5f7 in glass.
+  - A tile's chevron sat on its own white plate, which read as a hole cut in
+    the tile.
+  - Notifications and Calendar are plain St `button`s nobody styled, so they
+    took the variant sheet's stock button: a dark slab whenever the dark sheet
+    was loaded, which in light mode was always until 0152.
+
+js/ui/lumaControlInk.js is the ledger for this, next to SURFACE_INK and with
+the app kit's values, so a Quick Options toggle and an app's segment are the
+same colour: one `state` slate with `stateInk` on it for every on state, a
+`knob` disc ringed in `knobRing` for a handle, and the ledger's `ink`, `line`,
+`control` and `hover` for the quiet controls. data/theme/luma-controls.css
+spends it; shelf.js loads it after luma-shelf.css, and every selector is one
+class more specific than the rule it replaces.
+
+  mode   state    glyph on it   on vs off plate   before (on vs off)
+  light  #61728a  4.90:1        4.90:1            1.00:1
+  dark   #8a99a8  5.99:1        4.62:1            10.87:1 (white plate)
+  frost  #a9b5c1  8.38:1        6.46:1            10.55:1 (white plate)
+  glass  #a9b5c1  8.38:1        3.34:1            6.36:1  (#f2f5f7 plate)
+
+Worst case over the panel veil and the raised veil, frost and glass over pure
+white and pure black, shadow discounted. Chevrons and route buttons carry the
+ledger ink at 8.95:1 or more on a tile, hovered included.
+
+verify-treatment-ink.py grows three things:
+  - a plate is any opaque fill the rule's own ink clears at 4.5:1, not only a
+    near-white one: the state slate is mid-tone on purpose;
+  - a filled-control pass that reads CONTROL_INK and SURFACE_INK from the
+    modules themselves and fails if luma-controls.css spends a colour the
+    ledger does not name for that mode, or if any pair above drops below 3:1
+    (fills, rings) or 4.5:1 (glyphs, button ink); St slider rules, whose
+    `color` is the handle fill, say so with an `ink-guard: handle` comment;
+  - a notification pass: the island's Sass map must use the ledger's hover and
+    press, and ink and muted ink must hold 4.5:1 on the card, the arriving
+    surface and the tray, at rest, hovered, pressed, hover under hover and
+    hover under press. That is the island on the Shelf and off it (the tray,
+    a banner). A stale 0.22 press on frost now fails it at 4.40:1.
+
+Touches none of 0151's, 0152's, 0153's or 0154's files. The gresource lines
+are placed away from 0149's, so the queue can order them freely.
+
+Verified from a patches-only tree: the 0148 tree, 0149 (screen-sharing-picker-r2
+@9b3a9b44), 0150 @554e4109, then this; 0 rejects; verify-treatment-ink.py PASS.
+
+Generated against the 0150 tree (shelf-ink-contract @554e4109); release at
+build time.
+---
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index b9475f8..a067fda 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -3,6 +3,7 @@
+   <gresource prefix="/org/gnome/shell/theme">
+     <file>calendar-today.svg</file>
+     <file>calendar-today-light.svg</file>
++    <file>luma-controls.css</file>
+     <file>gnome-shell-dark.css</file>
+     <file>gnome-shell-light.css</file>
+     <file>gnome-shell-high-contrast.css</file>
+diff --git a/data/theme/luma-controls.css b/data/theme/luma-controls.css
+new file mode 100644
+index 0000000..71a83bb
+--- /dev/null
++++ b/data/theme/luma-controls.css
+@@ -0,0 +1,125 @@
++/* Luma filled controls in the Shell (ADR-043). Every colour here is one of
++ * CONTROL_INK's in js/ui/lumaControlInk.js; data/theme/verify-treatment-ink.py
++ * fails the build if one is not, or if a pair drops below its threshold.
++ *
++ * Ink is the one emphasis a view may keep. Every on state -- an on tile's icon
++ * plate, a checked pill, a keyboard-brightness step -- takes the one state
++ * fill; a slider's value runs in it and its handle is a surface disc ringed in
++ * it. A tile's chevron takes no plate of its own, only a hairline, so it never
++ * reads as a hole in the tile. Notifications and Calendar are ordinary quiet
++ * buttons of the panel, not the variant sheet's stock slabs.
++ *
++ * Loaded after luma-shelf.css; every selector here is one class more specific
++ * than the rule it replaces, so order is not what decides it. */
++
++/* light */
++.luma-quick-options.luma-surface-light .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-light .quick-toggle.luma-quick-pill:checked,
++.luma-quick-options.luma-surface-light .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-light .luma-quick-detail .keyboard-brightness-level .button:checked {
++  background-color: #61728a;
++  color: #ffffff; }
++.luma-quick-options.luma-surface-light .quick-toggle-has-menu .quick-toggle-menu-button {
++  border-color: rgba(25,27,31,0.12);
++  background-color: transparent;
++  color: #34383d;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-light .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  background-color: rgba(25,27,31,0.06); }
++/* ink-guard: handle -- St paints the slider handle in `color` */
++.luma-quick-options.luma-surface-light .quick-slider .slider {
++  color: #ffffff;
++  -barlevel-active-background-color: #61728a;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #61728a; }
++.luma-quick-options.luma-surface-light .luma-status-routes .button {
++  border: 1px solid rgba(25,27,31,0.12);
++  background-color: rgba(35,39,45,0.06);
++  color: #34383d;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-light .luma-status-routes .button:hover {
++  background-color: rgba(25,27,31,0.06); }
++
++/* dark */
++.luma-quick-options.luma-surface-dark .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-dark .quick-toggle.luma-quick-pill:checked,
++.luma-quick-options.luma-surface-dark .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-dark .luma-quick-detail .keyboard-brightness-level .button:checked {
++  background-color: #8a99a8;
++  color: #161a1f; }
++.luma-quick-options.luma-surface-dark .quick-toggle-has-menu .quick-toggle-menu-button {
++  border-color: rgba(255,255,255,0.10);
++  background-color: transparent;
++  color: #e7e9e8;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-dark .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  background-color: rgba(255,255,255,0.06); }
++/* ink-guard: handle -- St paints the slider handle in `color` */
++.luma-quick-options.luma-surface-dark .quick-slider .slider {
++  color: #2a2e34;
++  -barlevel-active-background-color: #8a99a8;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #8a99a8; }
++.luma-quick-options.luma-surface-dark .luma-status-routes .button {
++  border: 1px solid rgba(255,255,255,0.10);
++  background-color: rgba(255,255,255,0.072);
++  color: #e7e9e8;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-dark .luma-status-routes .button:hover {
++  background-color: rgba(255,255,255,0.06); }
++
++/* frost */
++.luma-quick-options.luma-surface-frost .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-frost .quick-toggle.luma-quick-pill:checked,
++.luma-quick-options.luma-surface-frost .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .keyboard-brightness-level .button:checked {
++  background-color: #a9b5c1;
++  color: #161a1f; }
++.luma-quick-options.luma-surface-frost .quick-toggle-has-menu .quick-toggle-menu-button {
++  border-color: rgba(255,255,255,0.18);
++  background-color: transparent;
++  color: #ffffff;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-frost .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  background-color: rgba(255,255,255,0.07); }
++/* ink-guard: handle -- St paints the slider handle in `color` */
++.luma-quick-options.luma-surface-frost .quick-slider .slider {
++  color: #1f252d;
++  -barlevel-active-background-color: #a9b5c1;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #a9b5c1; }
++.luma-quick-options.luma-surface-frost .luma-status-routes .button {
++  border: 1px solid rgba(255,255,255,0.18);
++  background-color: rgba(10,20,33,0.20);
++  color: #ffffff;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-frost .luma-status-routes .button:hover {
++  background-color: rgba(255,255,255,0.07); }
++
++/* glass */
++.luma-quick-options.luma-surface-glass .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-glass .quick-toggle.luma-quick-pill:checked,
++.luma-quick-options.luma-surface-glass .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .keyboard-brightness-level .button:checked {
++  background-color: #a9b5c1;
++  color: #161a1f; }
++.luma-quick-options.luma-surface-glass .quick-toggle-has-menu .quick-toggle-menu-button {
++  border-color: rgba(255,255,255,0.22);
++  background-color: transparent;
++  color: #ffffff;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-glass .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  background-color: rgba(255,255,255,0.07); }
++/* ink-guard: handle -- St paints the slider handle in `color` */
++.luma-quick-options.luma-surface-glass .quick-slider .slider {
++  color: #151a21;
++  -barlevel-active-background-color: #a9b5c1;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #a9b5c1; }
++.luma-quick-options.luma-surface-glass .luma-status-routes .button {
++  border: 1px solid rgba(255,255,255,0.22);
++  background-color: rgba(10,20,33,0.20);
++  color: #ffffff;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-glass .luma-status-routes .button:hover {
++  background-color: rgba(255,255,255,0.07); }
+diff --git a/data/theme/verify-treatment-ink.py b/data/theme/verify-treatment-ink.py
+index 90ffdeb..b974b27 100644
+--- a/data/theme/verify-treatment-ink.py
++++ b/data/theme/verify-treatment-ink.py
+@@ -113,6 +113,64 @@ def paints_its_own_dark_plate(body):
+ WAIVER = "ink-guard: on-plate"
+ 
+ 
++# A St slider paints its handle in the rule's `color`, which is a fill, not
++# ink. Such a rule says so directly above itself and is measured instead by
++# the filled-control pass below:
++#   /* ink-guard: handle */
++HANDLE_WAIVER = "ink-guard: handle"
++
++# A fill its own ink clears at this ratio is a plate, whatever its lightness:
++# a filled control's state fill (ADR-043) is a mid slate on every treatment,
++# neither near-white nor near-black, and carries its own glyph colour.
++PLATE_INK_MINIMUM = 4.5
++
++
++def rgba(colour):
++    """(r, g, b, a) for a hex or rgb/rgba literal, or None."""
++    text = colour.strip()
++    hexen = HEX.match(text)
++    if hexen:
++        raw = int(hexen.group(1), 16)
++        return ((raw >> 16) & 255, (raw >> 8) & 255, raw & 255, 1.0)
++    m = RGBA.match(text)
++    if not m:
++        return None
++    return (int(m.group(1)), int(m.group(2)), int(m.group(3)),
++            float(m.group(4)) if m.group(4) else 1.0)
++
++
++def over(top, bottom):
++    r, g, b, a = top
++    return (r * a + bottom[0] * (1 - a), g * a + bottom[1] * (1 - a),
++            b * a + bottom[2] * (1 - a), 1.0)
++
++
++def luminance(c):
++    def lin(v):
++        v /= 255.0
++        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
++    return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
++
++
++def ratio(a, b):
++    la, lb = luminance(a), luminance(b)
++    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
++
++
++def plate_carries_ink(body, ink):
++    """True if the rule's own opaque-enough fill carries its ink at 4.5:1."""
++    ink = rgba(ink)
++    if ink is None:
++        return False
++    for value in declared(body, "background-color"):
++        fill = rgba(value)
++        if fill is None or fill[3] < 0.95:
++            continue
++        if ratio(over(ink, fill), fill) >= PLATE_INK_MINIMUM:
++            return True
++    return False
++
++
+ def paints_its_own_plate(body):
+     """True if the rule lays down a light fill for its own ink to sit on.
+ 
+@@ -208,6 +266,138 @@ def find_state_leaks(sheets_text):
+     return problems
+ 
+ 
++# --------------------------------------------------------------------------
++# Filled controls (ADR-043) and the notification island, measured.
++#
++# The passes above check direction only. These two measure contrast, from the
++# ledgers themselves, over pure white and pure black for the smoked modes --
++# the two ends any wallpaper composites to -- with the text shadow discounted.
++
++JS = HERE.parent.parent / "js" / "ui"
++MODES = ("light", "dark", "frost", "glass")
++WHITE = (255, 255, 255, 1.0)
++BLACK = (0, 0, 0, 1.0)
++BODY_MINIMUM = 4.5
++GLYPH_MINIMUM = 3.0
++
++
++def js_ledger(path, name):
++    """{mode: {role: colour}} from `export const NAME = {...}` in a module."""
++    text = path.read_text(encoding="utf-8")
++    start = text.index(f"export const {name} = {{")
++    end = text.index("\n};", start)
++    body = text[start:end]
++    ledger = {}
++    for mode in MODES:
++        m = re.search(rf"\n    {mode}: {{(.*?)\n    }},", body, re.S)
++        if m:
++            ledger[mode] = dict(re.findall(r"(\w+): '([^']+)'", m.group(1)))
++    return ledger
++
++
++def grounds(mode, *fills):
++    """Each backdrop a mode can sit on, with `fills` stacked over it."""
++    for backdrop in ((WHITE, BLACK) if mode in ("frost", "glass") else (WHITE,)):
++        colour = backdrop
++        for fill in fills:
++            colour = over(rgba(fill), colour)
++        yield colour
++
++
++def check_filled_controls():
++    problems = []
++    control = js_ledger(JS / "lumaControlInk.js", "CONTROL_INK")
++    surface = js_ledger(JS / "lumaSurfaceMaterials.js", "SURFACE_INK")
++    sheet = HERE / "luma-controls.css"
++    text = re.sub(r"/\*.*?\*/", "", sheet.read_text(encoding="utf-8"),
++                  flags=re.S)
++
++    def need(label, value, minimum):
++        if value < minimum:
++            problems.append(f"luma-controls: {label}: {value:.2f} < {minimum}")
++
++    for mode in MODES:
++        c, s = control[mode], surface[mode]
++        state = over(rgba(c["state"]), WHITE)
++        need(f"{mode} state glyph on state",
++             ratio(over(rgba(c["stateInk"]), state), state), BODY_MINIMUM)
++        for veil in ("veil", "veilRaised"):
++            for ground in grounds(mode, s[veil]):
++                need(f"{mode} state vs {veil}", ratio(state, ground),
++                     GLYPH_MINIMUM)
++                need(f"{mode} knob ring vs {veil}",
++                     ratio(over(rgba(c["knobRing"]), WHITE), ground),
++                     GLYPH_MINIMUM)
++            # A tile is the control wash over the panel; its off plate sits
++            # on the tile. On must stand 3:1 from both.
++            for tile in grounds(mode, s[veil], c["control"]):
++                need(f"{mode} state vs tile on {veil}", ratio(state, tile),
++                     GLYPH_MINIMUM)
++                off = over(rgba(c["offPlate"]), tile)
++                need(f"{mode} state vs off plate on {veil}",
++                     ratio(state, off), GLYPH_MINIMUM)
++                for fill in (None, c["hover"]):
++                    ground = over(rgba(fill), tile) if fill else tile
++                    need(f"{mode} chevron and button ink on tile"
++                         f"{' hovered' if fill else ''} ({veil})",
++                         ratio(over(rgba(c["ink"]), ground), ground),
++                         BODY_MINIMUM)
++
++        # The sheet may spend only this mode's ledger values.
++        allowed = {rgba(v) for v in c.values()} | {(0, 0, 0, 0.0)}
++        for head, body in rules(text):
++            if f"luma-surface-{mode}" not in head:
++                continue
++            for value in re.findall(r"#[0-9a-fA-F]{6}|rgba?\([^)]*\)", body):
++                if rgba(value) not in allowed:
++                    problems.append(
++                        f"luma-controls.css: {head.strip()[:60]}\n    "
++                        f"{value} is not in CONTROL_INK.{mode}")
++    return problems
++
++
++def check_notification_stacks():
++    """The notification island, on the Shelf and off it (the tray, a banner).
++
++    Its Sass map is its own ledger. Hover and pressed must be the Shell
++    ledger's -- a stale 0.22 pressed once shipped here while the Shelf had
++    moved on -- and ink and muted ink must hold on every fill the island
++    draws, under hover, pressed, and a hover stacked on either.
++    """
++    problems = []
++    surface = js_ledger(JS / "lumaSurfaceMaterials.js", "SURFACE_INK")
++    sass = (HERE / "luma-notifications" / "_material.scss").read_text(
++        encoding="utf-8")
++    block = sass[sass.index("$note-treatments:"):]
++    block = block[:block.index(") !default;")]
++    for mode in MODES:
++        m = re.search(rf"\n  {mode}: \((.*?)\n  \),", block, re.S)
++        if not m:
++            problems.append(f"notifications: no {mode} map")
++            continue
++        roles = dict(re.findall(r"([a-z-]+): (#[0-9a-fA-F]{6}|rgba\([^)]*\))",
++                                m.group(1)))
++        for role, ledger_role in (("hover", "hover"), ("pressed", "press")):
++            if rgba(roles[role]) != rgba(surface[mode][ledger_role]):
++                problems.append(
++                    f"notifications: {mode} {role} {roles[role]} is not the "
++                    f"ledger's {ledger_role} {surface[mode][ledger_role]}")
++        stacks = {"rest": (), "hover": ("hover",), "pressed": ("pressed",),
++                  "hover under hover": ("hover", "hover"),
++                  "hover under pressed": ("pressed", "hover")}
++        for fill in ("card", "surface", "tray"):
++            for label, extra in stacks.items():
++                for ground in grounds(mode, roles[fill],
++                                      *(roles[e] for e in extra)):
++                    for ink in ("ink", "muted"):
++                        value = ratio(over(rgba(roles[ink]), ground), ground)
++                        if value < BODY_MINIMUM:
++                            problems.append(
++                                f"notifications: {mode} {ink} on {fill} "
++                                f"({label}): {value:.2f} < {BODY_MINIMUM}")
++    return problems
++
++
+ def main():
+     problems = []
+     sheets_text = []
+@@ -228,6 +418,9 @@ def main():
+             plated = paints_its_own_plate(body)
+             dark_plated = paints_its_own_dark_plate(body)
+             waived = WAIVER in head
++            handle = HANDLE_WAIVER in head
++            if handle:
++                continue
+             # WCAG 1.4.3 exempts inactive controls from contrast minimums, so
+             # a disabled state is not held to the direction check either.
+             if all(":insensitive" in sel or ":disabled" in sel
+@@ -239,6 +432,8 @@ def main():
+                 if lum is None or alpha < 0.5:
+                     continue
+                 where = f"{name}: {selectors[-1][:70]}"
++                if plate_carries_ink(body, value):
++                    continue
+                 if has_light and lum > TOO_LIGHT_FOR_PAPER and not dark_plated:
+                     problems.append(
+                         f"{where}\n    {LIGHT} is opaque paper and cannot "
+@@ -251,13 +446,16 @@ def main():
+                         f"to sit on: color: {value}")
+ 
+     problems.extend(find_state_leaks(sheets_text))
++    problems.extend(check_filled_controls())
++    problems.extend(check_notification_stacks())
+ 
+     if problems:
+         print("FAIL: ink written against its treatment's direction")
+         for p in problems:
+             print("  " + p)
+         return 1
+-    print("PASS: every treatment's ink runs in its own direction")
++    print("PASS: every treatment's ink runs in its own direction, and the "
++          "filled controls and notification island hold their contrast")
+     return 0
+ 
+ 
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index c687f25..6516517 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -82,6 +82,7 @@
+     <file>ui/listModes.js</file>
+     <file>ui/locatePointer.js</file>
+     <file>ui/lookingGlass.js</file>
++    <file>ui/lumaControlInk.js</file>
+     <file>ui/lumaSurfaceMaterials.js</file>
+     <file>ui/lumaFileIndex.js</file>
+     <file>ui/lumaFileSearch.js</file>
+diff --git a/js/ui/lumaControlInk.js b/js/ui/lumaControlInk.js
+new file mode 100644
+index 0000000..0b75706
+--- /dev/null
++++ b/js/ui/lumaControlInk.js
+@@ -0,0 +1,50 @@
++// Filled controls in the Shell (ADR-043), the companion to SURFACE_INK in
++// lumaSurfaceMaterials.js.
++//
++// Ink used as a fill is symmetric by design -- white on dark, near-black on
++// paper -- so every on tile, checked pill and slider handle in Quick Options
++// became a heavy block in light mode, several to a panel. A view keeps at most
++// one ink fill, its emphasis. Every on state takes `state` with `stateInk` on
++// it, a slider runs its value in `state` and draws its handle as a `knob` disc
++// ringed in `knobRing`, and a tile's chevron takes no plate, only `line`.
++//
++// The values are the app kit's (config/shared/design-tokens.json `controls`),
++// so a toggle in Quick Options and a segment in an app window are the same
++// colour. data/theme/luma-controls.css spends them and
++// data/theme/verify-treatment-ink.py fails the build if it spends anything
++// else, or if `state` stands less than 3:1 from the surface and the off plate
++// it replaces, or its glyph less than 4.5:1 on it.
++export const CONTROL_INK = {
++    light: {
++        state: '#61728a', stateInk: '#ffffff',
++        knob: '#ffffff', knobRing: '#61728a',
++        ink: '#34383d', line: 'rgba(25,27,31,0.12)',
++        control: 'rgba(35,39,45,0.06)', hover: 'rgba(25,27,31,0.06)',
++        offPlate: '#ffffff',
++    },
++    dark: {
++        state: '#8a99a8', stateInk: '#161a1f',
++        knob: '#2a2e34', knobRing: '#8a99a8',
++        ink: '#e7e9e8', line: 'rgba(255,255,255,0.10)',
++        control: 'rgba(255,255,255,0.072)', hover: 'rgba(255,255,255,0.06)',
++        offPlate: '#2a2f36',
++    },
++    frost: {
++        state: '#a9b5c1', stateInk: '#161a1f',
++        knob: '#1f252d', knobRing: '#a9b5c1',
++        ink: '#ffffff', line: 'rgba(255,255,255,0.18)',
++        control: 'rgba(10,20,33,0.20)', hover: 'rgba(255,255,255,0.07)',
++        offPlate: '#2a2f36',
++    },
++    glass: {
++        state: '#a9b5c1', stateInk: '#161a1f',
++        knob: '#151a21', knobRing: '#a9b5c1',
++        ink: '#ffffff', line: 'rgba(255,255,255,0.22)',
++        control: 'rgba(10,20,33,0.20)', hover: 'rgba(255,255,255,0.07)',
++        offPlate: 'rgba(255,255,255,0.15)',
++    },
++};
++
++export function controlInkFor(treatment) {
++    return CONTROL_INK[treatment] ?? CONTROL_INK.dark;
++}
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index d367183..5ae1678 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -37,6 +37,8 @@ const DASH_PADDING = 10;
+ const ICON_CORNER_RATIO = 10 / 36;
+ const LEGACY_DESKTOP_DOCK_UUID = 'dash-to-dock@micxgx.gmail.com';
+ const SHELF_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-shelf.css';
++// Filled controls (ADR-043), loaded after the Shelf's own sheet.
++const CONTROLS_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-controls.css';
+ 
+ // Geometry is independent of St so every shape can be tested without changing
+ // a user's session. Left/right are physical monitor edges, including in RTL.
+@@ -377,9 +379,9 @@ class Shelf extends St.Widget {
+             schema_id: 'org.gnome.shell',
+         });
+         this._stylesheet = Gio.File.new_for_uri(SHELF_STYLESHEET_URI);
+-        St.ThemeContext.get_for_stage(global.stage)
+-            .get_theme()
+-            .load_stylesheet(this._stylesheet);
++        const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
++        theme.load_stylesheet(this._stylesheet);
++        theme.load_stylesheet(Gio.File.new_for_uri(CONTROLS_STYLESHEET_URI));
+         this._settings.connectObject('changed', (_settings, key) => this._settingsChanged(key), this);
+         St.Settings.get().connectObject('notify::enable-animations', () => this._sync(), this);
+         St.ThemeContext.get_for_stage(global.stage).connectObject(

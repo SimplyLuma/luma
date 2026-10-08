@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "status": "preview",
+  "fex_nevra": "fex-emu-2604-1.fc44.aarch64",
+  "rootfs_nevra": "fex-emu-rootfs-fedora-44^20260410.n.0-1.fc44.noarch",
+  "rootfs_sha256": "8cdcce4561df1f8263445f975a67673c4db4ecdfac441c8fc7b73bb51f9e699d"
+}

@@ -1,0 +1,74 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: margins on every monitor and a centred shelf
+
+Maximized and tiled windows touched the screen edges on monitors without the
+shelf, and on the shelf monitor's edges shared with another monitor, because
+Mutter only honours struts on outer screen edges. The shelf now gives Mutter
+its margin through meta_display_set_work_area_inset() (Mutter patch 0011).
+
+A shelf sized to its content was centred by a width measured when an island
+last changed; when the media or extras island appeared, hid or changed
+width, the content sat off centre. The shelf now resizes whenever its
+content no longer fills it.
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -117,6 +117,15 @@
+         const {children, sizes, gap, scale, length} = this._measure(container);
+         const vertical = container._vertical;
+         const available = vertical ? box.get_height() : box.get_width();
++        // A shelf sized to its content is centred by that size. When an island
++        // appears, hides or changes width without the shelf resizing, the old
++        // size no longer matches and the content sat off centre; ask again.
++        if (container._fitsContent && Math.abs(available - length) > 1 &&
++                container._askedFor !== available) {
++            // Once per size: a shelf clamped to its monitor stays shorter than its content.
++            container._askedFor = available;
++            container._lengthChanged?.();
++        }
+         const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap,
+             Math.max(0, available - length) / scale, container._liveIsland).map(value => value * scale);
+         const rtl = !vertical && container.text_direction === Clutter.TextDirection.RTL;
+@@ -486,6 +495,7 @@
+             this._adoptLaterId = 0;
+             this._workArea?.destroy();
+             for (const actor of this._edgeInsets ?? []) actor.destroy();
++            global.display.set_work_area_inset?.(0);
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+             for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland])
+@@ -733,6 +743,8 @@
+         this._vertical = this._edge === 'left' || this._edge === 'right';
+         this._protrude = this._settings.get_string('shelf-edge-mode') === 'protruding';
+         this._span = this._settings.get_boolean('shelf-span-full');
++        this._group._fitsContent = !this._span;
++        this._group._lengthChanged ??= () => this._queueDockWidth();
+         this._floatEnds = this._settings.get_boolean('shelf-float-ends');
+         this._group._vertical = this._vertical;
+         this._group._separate = surfaceMode === 'separate';
+@@ -811,6 +823,17 @@
+             });
+         }
+         this._workAreaTracked = enabled;
++        this._syncWorkAreaInset(St.ThemeContext.get_for_stage(global.stage).scale_factor);
++    }
++
++    // The floating shelf keeps a margin on its monitor's edges through struts.
++    // Mutter ignores struts on an edge shared with another monitor, and other
++    // monitors have none, so maximized and tiled windows there touched the
++    // screen edges. The same margin now applies to every monitor edge that no
++    // strut pads.
++    _syncWorkAreaInset(scale) {
++        const inset = this._workAreaTracked && !this._protrude ? Math.round(this._padding * scale) : 0;
++        global.display.set_work_area_inset?.(inset);
+     }
+ 
+     _syncGeometry() {
+@@ -824,6 +847,7 @@
+             : this._group.get_preferred_width(this._thickness * scale)[1];
+         const geometry = dashGeometry(monitor, this._edge, this._protrude,
+             this._span, this._floatEnds, natural, scale, this._padding);
++        this._syncWorkAreaInset(scale);
+         // Anchor the status end while media consumes space on its inner side.
+         if (!this._span && this._mediaIsland.get_parent() === this._group) {
+             const mediaSize = this._vertical ? this._mediaIsland.get_preferred_height(50 * scale)[1]

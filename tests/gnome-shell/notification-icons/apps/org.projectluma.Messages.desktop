@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Messages
+Exec=true
+Icon=org.projectluma.Messages

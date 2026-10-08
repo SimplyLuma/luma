@@ -1,0 +1,154 @@
+From: Project Luma
+Subject: [PATCH] luma: every tiling layout has its own id, and the editor's dividers move
+
+New layouts were named after the current event time, which is 0 when no
+event is being handled, so several layouts could be saved with the id "0".
+Choosing any of them selected the first, so a new layout could be picked
+but never used. New layouts now get an unused id, and repeated ids already
+saved are renamed when the layouts load; the first layout keeps its id.
+
+GNOME 50 replaced Meta.Cursor and MetaDisplay.set_cursor() with
+Clutter.CursorType on actors, so hovering or dragging a divider in the
+layout editor threw. The divider sets its cursor on itself and on the grab.
+
+--- a/components/editor/slider.js
++++ b/components/editor/slider.js
+@@ -43,7 +43,7 @@
+     );
+     this.connect(
+       "notify::hover",
+-      () => global.display.set_cursor(this.preferredCursor)
++      () => this._applyCursor()
+     );
+     this.connect("destroy", this._onDestroy.bind(this));
+   }
+@@ -60,10 +60,24 @@
+     return (this._horizontalDir ? this._sliderSize : 12) * this._scalingFactor;
+   }
+ 
++  // Luma: GNOME 50 moved cursors from Meta.Cursor and display.set_cursor()
++  // to Clutter.CursorType on actors. Without this every hover and drag of a
++  // divider in the layout editor threw.
+   get preferredCursor() {
+-    const horizCursor = Meta.Cursor.WEST_RESIZE ?? Meta.Cursor.W_RESIZE;
+-    const vertCursor = Meta.Cursor.NORTH_RESIZE ?? Meta.Cursor.N_RESIZE;
+-    return this.hover || this._dragging ? this._horizontalDir ? horizCursor : vertCursor : Meta.Cursor.DEFAULT;
++    const cursors = Clutter.CursorType ?? Meta.Cursor;
++    const horizCursor = cursors.WEST_RESIZE ?? cursors.W_RESIZE;
++    const vertCursor = cursors.NORTH_RESIZE ?? cursors.N_RESIZE;
++    return this.hover || this._dragging ? this._horizontalDir ? horizCursor : vertCursor : cursors.DEFAULT;
++  }
++
++  _applyCursor() {
++    const cursor = this.preferredCursor;
++    if (global.display.set_cursor) {
++      global.display.set_cursor(cursor);
++      return;
++    }
++    this.set_cursor_type?.(cursor);
++    global.stage.get_grab_actor?.()?.set_cursor_type?.(cursor);
+   }
+ 
+   addTile(tile) {
+@@ -202,8 +216,8 @@
+   _startDragging(event) {
+     if (this._dragging) return Clutter.EVENT_PROPAGATE;
+     this._dragging = true;
+-    global.display.set_cursor(this.preferredCursor);
+     this._grab = global.stage.grab(this);
++    this._applyCursor();
+     const [stageX, stageY] = getEventCoords(event);
+     this._move(stageX, stageY);
+     return Clutter.EVENT_STOP;
+@@ -218,7 +232,7 @@
+       this._dragging = false;
+       this._lastEventCoord = null;
+     }
+-    global.display.set_cursor(this.preferredCursor);
++    this._applyCursor();
+     return Clutter.EVENT_STOP;
+   }
+ 
+--- a/indicator/indicator.js
++++ b/indicator/indicator.js
+@@ -6,7 +6,7 @@
+ import Tile from "../components/layout/Tile.js";
+ import LayoutEditor from "../components/editor/layoutEditor.js";
+ import DefaultMenu from "./defaultMenu.js";
+-import GlobalState from "../utils/globalState.js";
++import GlobalState, { lumaNewLayoutId } from "../utils/globalState.js";
+ import EditingMenu from "./editingMenu.js";
+ import EditorDialog from "../components/editor/editorDialog.js";
+ import { registerGObjectClass } from "../utils/gjs.js";
+@@ -83,7 +83,7 @@
+         new Tile({ x: 0, y: 0, width: 0.3, height: 1, groups: [1] }),
+         new Tile({ x: 0.3, y: 0, width: 0.7, height: 1, groups: [1] })
+       ],
+-      `${Shell.Global.get().get_current_time()}`
++      lumaNewLayoutId(GlobalState.get().layouts)
+     );
+     if (this._layoutEditor) {
+       this._layoutEditor.layout = newLayout;
+--- a/utils/globalState.js
++++ b/utils/globalState.js
+@@ -10,6 +10,32 @@
+ import { getWindows } from "./ui.js";
+ import * as LumaLayoutMemory from "./lumaLayoutMemory.js";
+ const debug = logger("GlobalState");
++// Luma: every layout needs its own id. New layouts were named after the
++// current event time, which is 0 when no event is being handled, so several
++// layouts could share "0" and choosing any of them selected the first. A
++// repeated id is renamed; the first layout keeps it.
++function lumaUniqueLayoutIds(layouts) {
++  const seen = new Set();
++  let changed = false;
++  for (const layout of layouts) {
++    let id = typeof layout.id === "string" && layout.id !== "" ? layout.id : "Layout";
++    if (seen.has(id) || id !== layout.id) {
++      let n = 2;
++      while (seen.has(`${id} ${n}`)) n++;
++      id = `${id} ${n}`;
++      layout.id = id;
++      changed = true;
++    }
++    seen.add(id);
++  }
++  return changed;
++}
++export function lumaNewLayoutId(layouts) {
++  const taken = new Set(layouts.map((layout) => layout.id));
++  let id = `${Date.now()}`;
++  while (taken.has(id)) id = `${Number(id) + 1}`;
++  return id;
++}
+ const _GlobalState = class _GlobalState extends GObject.Object {
+   _signals;
+   _layouts;
+@@ -35,6 +61,7 @@
+     super();
+     this._signals = new SignalHandling();
+     this._layouts = Settings.get_layouts_json();
++    if (lumaUniqueLayoutIds(this._layouts)) Settings.save_layouts_json(this._layouts);
+     this._tilePreviewAnimationTime = 100;
+     this._selected_layouts = /* @__PURE__ */ new Map();
+     this.validate_selected_layouts();
+@@ -49,6 +76,10 @@
+       Settings.KEY_SETTING_LAYOUTS_JSON,
+       () => {
+         this._layouts = Settings.get_layouts_json();
++        if (lumaUniqueLayoutIds(this._layouts)) {
++          Settings.save_layouts_json(this._layouts);
++          return;
++        }
+         this.emit(_GlobalState.SIGNAL_LAYOUTS_CHANGED);
+       }
+     );
+@@ -182,6 +213,8 @@
+   }
+ 
+   addLayout(newLay) {
++    if (!newLay.id || this._layouts.some((lay) => lay.id === newLay.id))
++      newLay.id = lumaNewLayoutId(this._layouts);
+     this._layouts.push(newLay);
+     this.layouts = this._layouts;
+   }

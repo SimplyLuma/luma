@@ -1,0 +1,2412 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: Present MessageTray notifications in the Studio lip
+
+Downstream GNOME Shell 50.3; upstream GPL-2.0-or-later. New bundled
+Lucide glyphs retain ISC/MIT provenance in ProjectLuma source register.
+
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -1,836 +1,510 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+-// The desktop resting collection: the Shelf beacon and the tray it opens.
+-//
+-// A notification whose heads-up card faded has not been handled. It waits
+-// here -- counted by the beacon beside the status island, listed in the tray
+-// above the Shelf -- until it is acted on, dismissed, or withdrawn. Both read
+-// the same records as the heads-up presenter; there is no second inbox.
++// Studio shelf-2: one notification surface grown from the screen edge.
++// MessageTray and its sources remain the only notification store and daemon.
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+-import Meta from 'gi://Meta';
++import Graphene from 'gi://Graphene';
+ import Pango from 'gi://Pango';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+-
+ import * as Main from './main.js';
+ import * as MessageList from './messageList.js';
+ import * as MessageTray from './messageTray.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {peekCast} from './lumaCast.js';
+ import {LumaIconMask} from './iconMask.js';
+-import {placePopover} from './lumaPopoverPlacement.js';
+-
+-const {NotificationLifecycleState, NotificationDestroyedReason, Urgency} = MessageTray;
+-
+-const RESTING_STATES = new Set([
+-    NotificationLifecycleState.WAITING,
+-    NotificationLifecycleState.SEEN,
+-]);
+-
+-// Tray geometry (logical px): clamp(280px, 26vw, 344px) wide, at most 64% of
+-// the usable monitor height. It opens 8 beyond the island of the item that
+-// opened it, as every Shelf menu does, and never nearer than 14 to a screen
+-// edge.
+-const TRAY_MIN_WIDTH = 280;
+-const TRAY_MAX_WIDTH = 344;
+-const TRAY_MAX_HEIGHT = 0.64;
+-const EDGE_INSET = 14;
+-const ISLAND_GAP = 8;
+-const ISLAND_PADDING = 8;
+-const TRAY_RADIUS = 15;
+-const TRAY_OPEN_TIME = 170;
+-const TRAY_RISE = 4;
+-const MARK_SIZE = 36;
+-const MARK_RADIUS = 10;
+-const COUNT_LIMIT = 99;
+-// A swipe or fling to the right dismisses the newest notification.
+-const SWIPE_START = 8;
+-const SWIPE_DISMISS = 72;
+-const FLING_MIN = 24;
+-const FLING_VELOCITY = 0.5; // logical px per ms
+-const SWIPE_OUT_TIME = 160;
+-const SWIPE_BACK_TIME = 200;
+-
+-// The first line of a notification's body, as plain text.
+-function bodyLine(notification) {
+-    const body = notification.body ?? '';
+-    const text = notification.useBodyMarkup ? body.replace(/<[^>]*>/g, '') : body;
+-    return text.split('\n').map(line => line.trim()).find(Boolean) ?? '';
+-}
+-
+-function restingNotifications() {
+-    return Main.messageTray.getSources()
+-        .flatMap(source => source.notifications)
+-        .filter(notification => RESTING_STATES.has(notification.lifecycleState))
++
++const MORPH_TIME = 460;
++const RETRACT_TIME = 6500;
++
++function records() {
++    const CLOSED = new Set([MessageTray.NotificationLifecycleState.ACTED,
++        MessageTray.NotificationLifecycleState.DISMISSED, MessageTray.NotificationLifecycleState.EXPIRED]);
++    return Main.messageTray.getSources().filter(s => s.policy.enable).flatMap(s => s.notifications)
++        .filter(n => !CLOSED.has(n.lifecycleState))
+         .sort((a, b) => (b.datetime && a.datetime ? b.datetime.compare(a.datetime) : 0) ||
+             b.sortSequence - a.sortSequence);
+ }
+ 
+-function maskIcon(icon, radiusRatio) {
+-    try {
+-        const mask = new LumaIconMask();
+-        mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [radiusRatio]);
+-        icon.add_effect_with_name('luma-tile-mask', mask);
+-    } catch (error) {
+-        logError(error, 'Luma notification mark mask unavailable');
+-    }
++function glyph(name, size = 16) {
++    return new St.Icon({icon_name: `luma-${name}-symbolic`, icon_size: size});
+ }
+ 
+-// Watches every source the tray knows and coalesces their changes into one
+-// idle update, so a burst of arrivals or a replacement repaints once.
+-class RestingModel {
+-    constructor(callback) {
+-        this._callback = callback;
++function button(name, label, callback) {
++    const b = new St.Button({style_class: 'luma-lip-key', child: glyph(name),
++        accessible_name: label, can_focus: true});
++    b.connect('clicked', callback);
++    return b;
++}
++
++// The viewport must scroll whole cards, never compress their text to fit.
++const TrayCard = GObject.registerClass(class TrayCard extends St.Bin {
++    vfunc_get_preferred_height(width) {
++        const [, natural] = super.vfunc_get_preferred_height(width);
++        return [natural, natural];
++    }
++});
++
++export const NotificationLip = GObject.registerClass(class NotificationLip extends St.Widget {
++    _init() {
++        super._init({style_class: 'luma-notification-lip', reactive: true,
++            can_focus: true, track_hover: true, accessible_name: _('Notifications'),
++            accessible_role: Atk.Role.PUSH_BUTTON});
++        this._state = 'idle';
+         this._sources = new Map();
+-        Main.messageTray.connectObject(
+-            'source-added', (_tray, source) => this._watch(source),
+-            'source-removed', (_tray, source) => this._unwatch(source),
+-            'queue-changed', () => this.queue(), this);
+-        Main.messageTray.getSources().forEach(source => this._watch(source));
+-    }
++        this._notifications = new Set();
++        this._cards = new Map();
++        this._surface = new St.Bin({style_class: 'luma-lip-surface', clip_to_allocation: true});
++        this.add_child(this._surface);
++        this._left = new St.DrawingArea({style_class: 'luma-lip-shoulder'});
++        this._right = new St.DrawingArea({style_class: 'luma-lip-shoulder'});
++        this.add_child(this._left);
++        this.add_child(this._right);
++        this._left.connect('repaint', () => this._shoulder(this._left, false));
++        this._right.connect('repaint', () => this._shoulder(this._right, true));
++        this._glow = new St.Widget({style_class: 'luma-lip-glow', opacity: 0});
++        this.add_child(this._glow);
++        this._settings = new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
++        this._positionSettings = new Gio.Settings({schema_id: 'org.gnome.shell'});
++        this._settings.connectObject('changed::show-banners', () => {
++            if (this.dnd && this._current?.urgency !== MessageTray.Urgency.CRITICAL)
++                this._rest();
++            this._render();
++        }, this);
++        this._positionSettings.connectObject('changed::notification-corner', () => this._place(), this);
++        Main.messageTray.connectObject('source-added', (_t, s) => this._watch(s),
++            'source-removed', (_t, s) => this._unwatch(s),
++            'queue-changed', () => this._queueSync(), this);
++        for (const s of Main.messageTray.getSources())
++            this._watch(s);
++        Main.layoutManager.connectObject('monitors-changed', () => this._place(), this);
++        Main.sessionMode.connectObject('updated', () => {
++            if (Main.sessionMode.isLocked || Main.sessionMode.isGreeter || !Main.sessionMode.hasNotifications) {
++                this.close();
++                this._rest();
++            }
++            this._place();
++        }, this);
++        St.ThemeContext.get_for_stage(global.stage).connectObject('notify::scale-factor', () => this._render(), this);
++        global.stage.connectObject('notify::key-focus', () => this._engagementChanged(), this);
++        this.connect('notify::width', () => this._anchor());
++        this.connect('notify::hover', () => this._engagementChanged());
++        this.connect('button-release-event', (_a, e) => {
++            if (e.get_button() === Clutter.BUTTON_PRIMARY && ['idle', 'pill'].includes(this._state)) {
++                this.open();
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++        this.connect('key-press-event', (_a, e) => {
++            if (e.get_key_symbol() === Clutter.KEY_Escape) {
++                this.close();
++                this._rest();
++                return Clutter.EVENT_STOP;
++            }
++            if ([Clutter.KEY_Return, Clutter.KEY_space].includes(e.get_key_symbol()) && this._state !== 'card') {
++                this.toggle();
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++        this.connect('destroy', () => {
++            this._destroying = true;
++            this.close();
++            for (const id of [this._timer, this._buzzId, this._syncId])
++                if (id) GLib.source_remove(id);
++            for (const s of this._sources.keys()) { s.disconnectObject(this); s.policy.disconnectObject(this); }
++            for (const n of this._notifications) n.disconnectObject(this);
++        });
++        this._material = SurfaceMaterials.bindSurface(this._surface, {
++            cornerRadii: [0, 0, 22, 22], translucentRecipe: {radius: 40, saturation: 1.4},
++            classActors: [this], onTreatmentChanged: () => {
++                this._left.queue_repaint(); this._right.queue_repaint();
++            },
++        });
++        Main.layoutManager.addChrome(this, {affectsStruts: false, trackFullscreen: true});
++        this._queueSync();
++        this._render();
++    }
++
++    get dnd() { return !this._settings.get_boolean('show-banners'); }
++    get isOpen() { return this._state === 'tray'; }
++    get state() { return this._state; }
+ 
+     _watch(source) {
+-        if (this._sources.has(source))
+-            return;
+-        source.connectObject(
+-            'notify::count', () => this.queue(),
+-            'notification-added', () => this.queue(),
+-            'notification-removed', () => this.queue(), this);
++        if (this._sources.has(source)) return;
+         this._sources.set(source, true);
+-        this.queue();
+-    }
+-
++        source.policy.connectObject('notify', () => {
++            if (this._current?.source === source && !source.policy.showBanners) this._rest();
++            this._queueSync();
++        }, this);
++        source.connectObject('notification-added', () => this._queueSync(),
++            'notification-removed', () => this._queueSync(), 'notify::count', () => this._queueSync(), this);
++        this._queueSync();
++    }
+     _unwatch(source) {
+         source.disconnectObject(this);
++        source.policy.disconnectObject(this);
+         this._sources.delete(source);
+-        this.queue();
+-    }
+-
+-    queue() {
+-        if (this._idleId)
++        this._queueSync();
++    }
++    _queueSync() {
++        if (this._destroying) return;
++        if (this._syncId) return;
++        this._syncId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._syncId = 0;
++            if (Main.shelf && !this._watchingShelf) {
++                this._watchingShelf = true;
++                Main.shelf.connectObject('notify::allocation', () => this._place(), this);
++                for (const group of Main.shelf._groups ?? [])
++                    group.connectObject('notify::allocation', () => this._place(), this);
++            }
++            this._records = records();
++            const keep = new Set(this._records);
++            for (const n of this._notifications) {
++                if (!keep.has(n)) { n.disconnectObject(this); this._notifications.delete(n); }
++            }
++            for (const n of keep) {
++                if (!this._notifications.has(n)) {
++                    this._notifications.add(n);
++                    n.connectObject('notify', () => this._queueSync(), this);
++                }
++            }
++            if (this._current && !keep.has(this._current)) this._rest();
++            if (this._state === 'tray') this._syncTray();
++            else if (this._state !== 'card') this._render();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    // Called at the existing MessageTray presentation boundary, after app
++    // identity and notification policy have been resolved by the daemon.
++    receive(notification, quiet = false) {
++        this._fresh = true;
++        this._queueSync();
++        if (this.isOpen || quiet || !notification.source.policy.showBanners || this.dnd) {
++            notification.lifecycleState = MessageTray.NotificationLifecycleState.WAITING;
+             return;
+-        this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+-            this._idleId = 0;
+-            this._callback(restingNotifications());
++        }
++        // An incoming critical record holds the surface; ordinary arrivals
++        // wait in the same collection rather than replacing an ongoing call.
++        if (this._current?.urgency === MessageTray.Urgency.CRITICAL && this._current !== notification) {
++            notification.lifecycleState = MessageTray.NotificationLifecycleState.WAITING;
++            return;
++        }
++        if (this._current && this._current !== notification) this._rest(false);
++        notification.lifecycleState = MessageTray.NotificationLifecycleState.ARRIVING;
++        if (this._current !== notification) {
++            this._current = notification;
++            this._state = 'card';
++            this._card = this._createCard(notification, false);
++            this._setContent(this._card);
++            notification.playSound();
++        }
++        this._render();
++        this._pause();
++        this._remaining = RETRACT_TIME;
++        this._arm();
++    }
++
++    _createCard(n, tray) {
++        const card = new MessageList.NotificationMessage(n);
++        card.add_style_class_name('notification-banner');
++        card.add_style_class_name('luma-lip-card');
++        card.useCardLayout();
++        card.setInlineReplyVisible(!tray);
++        if (n.urgency === MessageTray.Urgency.CRITICAL) {
++            card.add_style_class_name('luma-notification-urgent');
++            const ring = new St.Widget({style_class: 'luma-lip-call-ring',
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++            card._tile.insert_child_at_index(ring, 0); ring.set_pivot_point(.5, .5);
++            const pulse = () => {
++                if (!ring.mapped) return;
++                ring.scale_x = ring.scale_y = 1; ring.opacity = 153;
++                if (!St.Settings.get().enable_animations) return;
++                ring.ease({scale_x: 1.4, scale_y: 1.4, opacity: 0, duration: 1200,
++                    mode: Clutter.AnimationMode.EASE_IN_OUT_SINE, onComplete: pulse});
++            };
++            ring.connect('notify::mapped', () => { ring.remove_all_transitions(); pulse(); });
++        }
++        card.expand(false);
++        card.connect_after('clicked', () => {
++            if (n.lifecycleState !== MessageTray.NotificationLifecycleState.ACTED) n.lifecycleState = MessageTray.NotificationLifecycleState.ACTED;
++            if (!n.resident) n.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
++            if (this.isOpen) this.close();
++        });
++        card.connect('notify::height', () => this._place());
++        return card;
++    }
++
++    _engaged() {
++        const focus = global.stage.get_key_focus();
++        return this.hover || !!(focus && this.contains(focus));
++    }
++    _engagementChanged() {
++        if (this._state === 'card') {
++            if (this._engaged()) this._pause();
++            else this._arm();
++        } else if (this._state !== 'tray') this._render();
++    }
++    _pause() {
++        if (!this._timer) return;
++        this._remaining = Math.max(0, this._remaining - (GLib.get_monotonic_time() - this._started) / 1000);
++        GLib.source_remove(this._timer);
++        this._timer = 0;
++    }
++    _arm() {
++        this._pause();
++        if (!this._current || this._current.urgency === MessageTray.Urgency.CRITICAL || this._engaged()) return;
++        this._started = GLib.get_monotonic_time();
++        this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._remaining)), () => {
++            this._timer = 0;
++            this._rest();
++            if (this._buzzId) GLib.source_remove(this._buzzId);
++            this._buzzId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 480, () => {
++                this._buzzId = 0; this._buzz(); return GLib.SOURCE_REMOVE;
++            });
+             return GLib.SOURCE_REMOVE;
+         });
+     }
+-
+-    destroy() {
+-        if (this._idleId)
+-            GLib.source_remove(this._idleId);
+-        this._idleId = 0;
+-        Main.messageTray.disconnectObject(this);
+-        for (const source of this._sources.keys())
+-            source.disconnectObject(this);
+-        this._sources.clear();
+-    }
+-}
+-
+-/**
+- * The beacon: a peer of the live extensions, beside the status island. It
+- * earns attention with the newest application's mark, a restrained accent
+- * and a count -- never with larger text than its neighbours.
+- */
+-export const NotificationBeacon = GObject.registerClass(
+-class NotificationBeacon extends St.Button {
++    _rest(render = true) {
++        this._pause();
++        if (this._current?.lifecycleState === MessageTray.NotificationLifecycleState.ARRIVING) this._current.lifecycleState = MessageTray.NotificationLifecycleState.WAITING;
++        this._current = null;
++        if (!this.isOpen) this._state = 'idle';
++        if (render) this._render();
++    }
++    _setContent(actor) {
++        const old = this._surface.child;
++        this._surface.child = null;
++        old?.destroy();
++        this._surface.child = actor;
++        if (this._state !== 'pill') { this.remove_transition('translation-x'); this.translation_x = 0; }
++    }
++    _pill() {
++        const big = this._engaged();
++        const box = new St.BoxLayout({style_class: `luma-lip-pill${big ? ' big' : ''}`});
++        if (this.dnd) box.add_child(glyph('moon', 13));
++        const stack = new St.BoxLayout({style_class: 'luma-lip-icon-stack'});
++        const apps = new Set();
++        for (const n of this._records ?? []) {
++            const source = n.source;
++            const id = source.app?.get_id() ?? source;
++            if (apps.has(id)) continue;
++            apps.add(id);
++            const icon = new St.Icon({gicon: source.app?.get_icon() ?? source.icon,
++                fallback_icon_name: 'application-x-executable-symbolic', icon_size: big ? 18 : 14});
++            const mask = new LumaIconMask();
++            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [0.3]);
++            icon.add_effect_with_name('luma-lip-icon-mask', mask);
++            stack.add_child(icon);
++            if (apps.size === 3) break;
++        }
++        box.add_child(stack);
++        const count = this._records?.length ?? 0;
++        const title = new St.Label({style_class: 'luma-lip-pill-title',
++            text: big ? this._records[0].title : String(count), y_align: Clutter.ActorAlign.CENTER});
++        title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        box.add_child(title);
++        if (big && count > 1) box.add_child(new St.Label({style_class: 'luma-lip-pill-more',
++            text: _('and %d more').format(count - 1), y_align: Clutter.ActorAlign.CENTER}));
++        return box;
++    }
++    _render() {
++        if (this._destroying) return;
++        if (!this.isOpen && !this._current) {
++            this._state = this._records?.length ? 'pill' : 'idle';
++            this._setContent(this._state === 'pill' ? this._pill() : null);
++        }
++        for (const state of ['idle', 'pill', 'card', 'tray']) {
++            if (state === this._state) this.add_style_class_name(state);
++            else this.remove_style_class_name(state);
++        }
++        this._surface.opacity = this._state === 'idle' ? 217 : 255;
++        this._left.visible = this._right.visible = this._state !== 'idle';
++        this.accessible_role = this.isOpen ? Atk.Role.DIALOG : Atk.Role.PUSH_BUTTON;
++        this.accessible_name = this._records?.length
++            ? _('%d notifications').format(this._records.length) : _('Notifications');
++        this._place();
++        this._breathe();
++    }
++    _place() {
++        if (this._destroying) return;
++        const monitor = Main.layoutManager.primaryMonitor;
++        if (!monitor) return;
++        this.visible = Main.sessionMode.hasNotifications && !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
++            !peekCast()?.isMonitorCaptured(monitor.index);
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        let top = monitor.y;
++        const groups = Main.shelf?._groups ?? [];
++        for (const g of groups) {
++            if (g.visible && g.placement?.edge === 'top' && g.placement?.monitor === monitor.index) {
++                const [, y] = g.get_transformed_position();
++                const [, h] = g.get_transformed_size();
++                top = Math.max(top, y + h);
++            }
++        }
++        let width, height;
++        if (this._state === 'idle') {
++            width = (this._engaged() ? 60 : 44) * scale;
++            height = (this._engaged() ? 9 : 5) * scale;
++        } else {
++            width = (this._state === 'tray' ? 400 : 392) * scale;
++            if (this._state === 'pill') [, width] = this._surface.child.get_preferred_width(-1);
++            width = Math.min(width, monitor.width - 60 * scale);
++            [, height] = this._surface.child.get_preferred_height(width);
++            height = Math.min(height, monitor.height - (top - monitor.y) - 24 * scale);
++        }
++        const unchanged = this._targetWidth === width && this._targetHeight === height;
++        this._targetHeight = height;
++        this._targetWidth = width;
++        this._targetTop = top;
++        this._rightAligned = this._positionSettings.get_string('notification-corner') === 'top-right';
++        // Anchor the *animated* width on every frame, rather than animating x
++        // independently and briefly separating the lip from the top edge.
++        this._anchor();
++        if (unchanged) return;
++        this.remove_transition('width'); this.remove_transition('height');
++        this.ease({width, height, duration: St.Settings.get().enable_animations ? MORPH_TIME : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUART});
++        for (const property of ['width', 'height'])
++            this.get_transition(property)?.set_cubic_bezier_progress(
++                new Graphene.Point({x: .2, y: .8}), new Graphene.Point({x: .2, y: 1}));
++        this.queue_relayout();
++    }
++    _anchor() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        if (!monitor) return;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this.set_position(this._rightAligned
++            ? monitor.x + monitor.width - 30 * scale - this.width
++            : monitor.x + (monitor.width - this.width) / 2, this._targetTop ?? monitor.y);
++    }
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const width = box.get_width(), height = box.get_height();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));
++        this._left.allocate(new Clutter.ActorBox({x1: -12 * scale, y1: 0, x2: 0, y2: 12 * scale}));
++        this._right.allocate(new Clutter.ActorBox({x1: width, y1: 0, x2: width + 12 * scale, y2: 12 * scale}));
++        this._glow.allocate(new Clutter.ActorBox({x1: width * .22, y1: height - 2 * scale,
++            x2: width * .78, y2: height}));
++    }
++    _shoulder(actor, right) {
++        const cr = actor.get_context();
++        const [w, h] = actor.get_surface_size();
++        const color = this._surface.get_theme_node().get_background_color();
++        cr.setSourceRGBA(color.red / 255, color.green / 255, color.blue / 255, color.alpha / 255);
++        if (right) { cr.translate(w, 0); cr.scale(-1, 1); }
++        cr.moveTo(0, 0); cr.lineTo(w, 0); cr.lineTo(w, h);
++        cr.arcNegative(0, h, w, 0, -Math.PI / 2); cr.closePath(); cr.fill();
++        cr.setSourceRGBA(1, 1, 1, .1); cr.setLineWidth(1);
++        cr.arcNegative(0, h, w - .5, 0, -Math.PI / 2); cr.stroke();
++        cr.$dispose();
++    }
++    _buzz(step = 0) {
++        if (this.dnd || this._state !== 'pill' || !St.Settings.get().enable_animations) return;
++        const values = [0, -3, 3, -2, 2, 0, -3, 3, -2, 2, 0];
++        this.ease({translation_x: values[step], duration: 100, mode: Clutter.AnimationMode.LINEAR,
++            onComplete: () => { if (step + 1 < values.length) this._buzz(step + 1); }});
++    }
++    _breathe() {
++        this._glow.remove_all_transitions();
++        this._glow.opacity = 0;
++        if (this._state !== 'pill' || !this._fresh || this.dnd) return;
++        if (!St.Settings.get().enable_animations) { this._glow.opacity = 128; return; }
++        const breath = up => {
++            if (this._state !== 'pill' || !this._fresh || this.dnd) return;
++            this._glow.ease({opacity: up ? 230 : 0, duration: 1300,
++                mode: Clutter.AnimationMode.EASE_IN_OUT_SINE, onComplete: () => breath(!up)});
++        };
++        breath(true);
++    }
++    toggle() { if (this.isOpen) this.close(); else this.open(); }
++    open() {
++        if (this.isOpen || !Main.sessionMode.hasNotifications || Main.sessionMode.isLocked) return;
++        this._rest(false);
++        this._fresh = false;
++        this._state = 'tray';
++        this._records = records();
++        const column = new St.BoxLayout({style_class: 'luma-lip-tray', orientation: Clutter.Orientation.VERTICAL});
++        const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
++        header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
++        this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
++        header.add_child(this._count); header.add_child(new St.Widget({x_expand: true}));
++        this._dndButton = button('moon', _('Do Not Disturb'), () => this._settings.set_boolean('show-banners', this.dnd));
++        header.add_child(this._dndButton);
++        this._clear = new St.Button({label: _('Clear all'), style_class: 'luma-lip-clear', can_focus: true});
++        this._clear.connect('clicked', () => {
++            for (const n of this._records) if (n.urgency !== MessageTray.Urgency.CRITICAL) n.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
++        });
++        header.add_child(this._clear); column.add_child(header);
++        this._list = new St.BoxLayout({style_class: 'luma-lip-list', orientation: Clutter.Orientation.VERTICAL});
++        this._scroll = new St.ScrollView({style_class: 'luma-lip-scroll',
++            hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.EXTERNAL,
++            overlay_scrollbars: true, enable_mouse_scrolling: true});
++        this._scroll.set_child(this._list); column.add_child(this._scroll);
++        this._empty = new St.Label({text: _("You're all caught up."), style_class: 'luma-lip-empty'});
++        column.add_child(this._empty);
++        this._setContent(column);
++        this._cards.clear();
++        this._syncTray(); this._render();
++        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
++        this._outsideId = global.stage.connect('captured-event', (_a, event) => {
++            if (event.type() !== Clutter.EventType.BUTTON_PRESS && event.type() !== Clutter.EventType.TOUCH_BEGIN)
++                return Clutter.EVENT_PROPAGATE;
++            if (!this.contains(event.get_source())) { this.close(); return Clutter.EVENT_STOP; }
++            return Clutter.EVENT_PROPAGATE;
++        });
++        this.grab_key_focus();
++    }
++    _syncTray() {
++        if (!this.isOpen || !this._list) return;
++        this._count.text = this._records.length ? String(this._records.length) : '';
++        this._clear.visible = this._records.some(n => n.urgency !== MessageTray.Urgency.CRITICAL);
++        this._dndButton.checked = this.dnd;
++        this._empty.visible = !this._records.length;
++        this._scroll.visible = !!this._records.length;
++        const keep = new Set(this._records);
++        for (const [n, frame] of this._cards) {
++            if (!keep.has(n)) { frame.destroy(); this._cards.delete(n); }
++        }
++        this._records.forEach((n, index) => {
++            let frame = this._cards.get(n);
++            if (!frame) {
++                frame = new TrayCard({child: this._createCard(n, true), x_expand: true});
++                this._cards.set(n, frame); this._list.add_child(frame);
++            }
++            this._list.set_child_at_index(frame, index);
++        });
++        this._place();
++    }
++    close() {
++        if (!this.isOpen) return;
++        if (this._outsideId) global.stage.disconnect(this._outsideId);
++        this._outsideId = 0;
++        if (this._grab) Main.popModal(this._grab);
++        this._grab = null;
++        this._state = 'idle'; this._cards.clear(); this._render();
++    }
++});
++
++// Keep the arrangement schema's legacy notifications slot dormant so saved
++// shelf arrangements load unchanged. The lip itself is separate chrome and
++// never pushes the dock or the status island aside.
++export const NotificationBeacon = GObject.registerClass(class NotificationBeacon extends St.Widget {
+     _init() {
+-        super._init({
+-            style_class: 'luma-notification-beacon',
+-            reactive: true,
+-            can_focus: true,
+-            track_hover: true,
+-            visible: false,
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this.accessible_role = Atk.Role.PUSH_BUTTON;
+-
+-        const content = new St.BoxLayout({style_class: 'luma-notification-beacon-content'});
+-        this.set_child(content);
+-
+-        this._mark = new St.Widget({
+-            style_class: 'luma-notification-beacon-mark',
+-            layout_manager: new Clutter.BinLayout(),
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._markIcon = new St.Icon({
+-            style_class: 'luma-notification-beacon-mark-icon',
+-            fallback_icon_name: 'luma-bell-symbolic',
+-            x_align: Clutter.ActorAlign.CENTER,
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        maskIcon(this._markIcon, MARK_RADIUS / MARK_SIZE);
+-        // A file icon's symbolic-ness is known once it has loaded.
+-        this._markIcon.connect('notify::is-symbolic', () => this._syncMark());
+-        this._mark.add_child(this._markIcon);
+-        content.add_child(this._mark);
+-
+-        this._copy = new St.BoxLayout({
+-            style_class: 'luma-notification-beacon-copy',
+-            orientation: Clutter.Orientation.VERTICAL,
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._title = new St.Label({style_class: 'luma-notification-beacon-title'});
+-        this._summary = new St.Label({style_class: 'luma-notification-beacon-summary'});
+-        for (const label of [this._title, this._summary]) {
+-            label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+-            label.clutter_text.single_line_mode = true;
+-            this._copy.add_child(label);
+-        }
+-        content.add_child(this._copy);
+-
+-        // The kit's count chip: a 24-high capsule on the island's own quiet
+-        // fill, ink numerals, centred on the island's line.
+-        // The count opens the whole stack; the rest of the island opens the
+-        // newest notification.
+-        this._count = new St.Button({
+-            style_class: 'luma-notification-beacon-count',
+-            y_align: Clutter.ActorAlign.CENTER,
+-            can_focus: true,
+-            label: '',
+-        });
+-        this._count.connect('clicked', () => getNotificationTray().toggle(this));
+-        content.add_child(this._count);
+-
+-        // Hovered or focused, the island offers the newest notification's
+-        // actions in place of its body line, and a dismiss button. Its slot
+-        // is always kept, so the island never changes width under the
+-        // pointer.
+-        this._actions = new St.BoxLayout({
+-            style_class: 'luma-notification-beacon-actions',
+-            visible: false,
+-        });
+-        this._copy.add_child(this._actions);
+-        this._dismiss = new St.Button({
+-            style_class: 'luma-notification-beacon-dismiss',
+-            y_align: Clutter.ActorAlign.CENTER,
+-            can_focus: true,
+-            opacity: 0,
+-            accessible_name: _('Dismiss'),
+-            child: new St.Icon({icon_name: 'window-close-symbolic', style_class: 'luma-notification-beacon-dismiss-icon'}),
+-        });
+-        this._dismiss.connect('clicked', () => this._dismissNewest('dismiss button'));
+-        content.add_child(this._dismiss);
+-        this._content = content;
+-
+-        this._model = new RestingModel(records => this._sync(records));
+-        // A click opens the notification drawer from the island, wherever it
+-        // is placed (a newest notification opens from its card there), and
+-        // closes it again.
+-        this.connect('clicked', () => {
+-            if (this._swiped) {
+-                this._swiped = false;
+-                return;
+-            }
+-            this._swipe = null;
+-            console.log('[luma-notifications] island toggled the drawer');
+-            getNotificationTray().toggle(this);
+-        });
+-        this.connect('notify::hover', () => this._syncHover());
+-        this.connect('key-focus-in', () => this._syncHover());
+-        this.connect('key-focus-out', () => this._syncHover());
+-        this.connect('captured-event', (_actor, event) => this._onSwipeEvent(event));
+-        this.connect('key-press-event', (_actor, event) => {
+-            const key = event.get_key_symbol();
+-            if (key === Clutter.KEY_Delete || key === Clutter.KEY_BackSpace) {
+-                this._dismissNewest('keyboard');
+-                return Clutter.EVENT_STOP;
+-            }
+-            return Clutter.EVENT_PROPAGATE;
+-        });
+-        this.connect('destroy', () => this._model.destroy());
+-        this._model.queue();
+-    }
+-
+-    setVertical(vertical) {
+-        // A column shelf keeps the mark and the count; the copy moves to
+-        // the accessible name, as live extensions do.
+-        this._content.orientation = vertical
+-            ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+-        this._copy.visible = !vertical;
+-        this._lumaColumn = vertical;
+-    }
+-
+-    _sync(records) {
+-        const count = records.length;
+-        const newest = records[0] ?? null;
+-        for (const tone of ['messages', 'phone', 'mail', 'files', 'calendar', 'depot', 'neutral'])
+-            this.remove_style_class_name(`luma-notification-tone-${tone}`);
+-        if (newest) {
+-            const source = newest.source;
+-            const appName = source?.title || _('Unknown App');
+-            const title = newest.title || appName;
+-            this.add_style_class_name(`luma-notification-tone-${MessageTray.notificationTone(newest)}`);
+-            this._title.text = title;
+-            // One line of the body, or where it came from when it has none.
+-            this._summary.text = bodyLine(newest) || appName;
+-            const icon = source?.app?.get_icon() ?? source?.icon ?? null;
+-            this._markIcon.gicon = icon;
+-            this._syncMark();
+-            this._count.label = count > COUNT_LIMIT ? `${COUNT_LIMIT}+` : `${count}`;
+-            this._count.accessible_name = _('Show all %d notifications').format(count);
+-            this._count.visible = count > 1;
+-            this.accessible_name = count > 1
+-                ? _('%d notifications waiting. Newest: %s from %s.').format(count, title, appName)
+-                : _('One notification waiting: %s from %s.').format(title, appName);
+-        }
+-        this._newest = newest;
+-        this._syncHover();
+-        const visible = count > 0;
+-        if (this._held) {
+-            // Something new while the island folds away: it comes back.
+-            if (visible) {
+-                this._held = false;
+-                this.notify('visible');
+-            }
+-        } else if (this.visible !== visible) {
+-            this.visible = visible;
+-        }
+-        getNotificationTray().sync(records);
+-    }
+-
+-    // The shelf keeps the last notification drawn while its island folds
+-    // away, so the island never empties into a bare sliver of surface.
+-    get held() {
+-        return !!this._held;
+-    }
+-
+-    hold() {
+-        this._held = true;
+-        this.visible = true;
+-    }
+-
+-    release() {
+-        if (!this._held)
+-            return;
+-        this._held = false;
+-        this.visible = !!this._newest;
+-    }
+-
+-    _syncHover() {
+-        const newest = this._newest;
+-        const engaged = this.hover || this.has_key_focus() ||
+-            this._dismiss.has_key_focus() || this._count.has_key_focus();
+-        this._dismiss.opacity = engaged && newest ? 255 : 0;
+-        this._dismiss.reactive = engaged && !!newest;
+-        // Hover and focus change only the island's look, never its size or
+-        // place: the notification's actions are in the drawer, not swapped
+-        // in here (they made the island grow and the Dash shift under the
+-        // pointer).
+-        const actions = [];
+-        if (this._shownActionsFor !== (actions.length ? newest : null)) {
+-            this._actions.destroy_all_children();
+-            for (const action of actions) {
+-                const button = new St.Button({
+-                    style_class: 'luma-notification-beacon-action',
+-                    label: action.label,
+-                    can_focus: true,
+-                });
+-                button.connect('clicked', () => {
+-                    console.log('[luma-notifications] island ran an action');
+-                    action.activate();
+-                    if (!newest.resident)
+-                        newest.destroy(NotificationDestroyedReason.DISMISSED);
+-                });
+-                this._actions.add_child(button);
+-            }
+-            this._shownActionsFor = actions.length ? newest : null;
+-        }
+-        this._actions.visible = actions.length > 0;
+-        this._summary.visible = actions.length === 0;
+-    }
+-
+-    _dismissNewest(how) {
+-        const newest = this._newest;
+-        if (!newest)
+-            return;
+-        console.log(`[luma-notifications] island dismissed the newest notification (${how})`);
+-        newest.destroy(NotificationDestroyedReason.DISMISSED);
+-    }
+-
+-    // The island follows a horizontal drag; let go far enough, or fast
+-    // enough, towards the end of the shelf and the newest notification is
+-    // dismissed. Anything shorter springs back.
+-    _swipeTarget() {
+-        let actor = this;
+-        while (actor && !actor.has_style_class_name?.('luma-shelf-beacon-island'))
+-            actor = actor.get_parent();
+-        return actor ?? this;
+-    }
+-
+-    _onSwipeEvent(event) {
+-        const type = event.type();
+-        const [x] = event.get_coords();
+-        const time = event.get_time();
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        if (type === Clutter.EventType.BUTTON_PRESS && event.get_button() === Clutter.BUTTON_PRIMARY) {
+-            this._swipe = {x0: x, samples: [[x, time]], dragging: false};
+-            this._swiped = false;
+-            return Clutter.EVENT_PROPAGATE;
+-        }
+-        const swipe = this._swipe;
+-        if (!swipe)
+-            return Clutter.EVENT_PROPAGATE;
+-        if (type === Clutter.EventType.MOTION) {
+-            // Only a held button drags. A press whose release went elsewhere
+-            // (the click opened the drawer, which took the pointer) must not
+-            // leave the island following the pointer on the next hover.
+-            if (!(event.get_state() & Clutter.ModifierType.BUTTON1_MASK)) {
+-                this._swipe = null;
+-                if (swipe.dragging) {
+-                    const target = this._swipeTarget();
+-                    target.ease({translation_x: 0, opacity: 255, duration: SWIPE_BACK_TIME,
+-                        mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+-                }
+-                return Clutter.EVENT_PROPAGATE;
+-            }
+-            const dx = (x - swipe.x0) / scale;
+-            swipe.samples.push([x, time]);
+-            if (swipe.samples.length > 4)
+-                swipe.samples.shift();
+-            if (!swipe.dragging && Math.abs(dx) > SWIPE_START)
+-                swipe.dragging = true;
+-            if (swipe.dragging) {
+-                const target = this._swipeTarget();
+-                target.remove_all_transitions();
+-                target.translation_x = Math.max(0, dx) * scale;
+-                target.opacity = Math.round(255 * Math.max(0.25, 1 - Math.max(0, dx) / 160));
+-            }
+-            return Clutter.EVENT_PROPAGATE;
+-        }
+-        if (type !== Clutter.EventType.BUTTON_RELEASE)
+-            return Clutter.EVENT_PROPAGATE;
+-        this._swipe = null;
+-        if (!swipe.dragging)
+-            return Clutter.EVENT_PROPAGATE;
+-        this._swiped = true;
+-        const dx = (x - swipe.x0) / scale;
+-        const [[x1, t1]] = swipe.samples;
+-        const velocity = time > t1 ? (x - x1) / scale / (time - t1) : 0;
+-        const target = this._swipeTarget();
+-        const dismiss = dx > SWIPE_DISMISS || (dx > FLING_MIN && velocity > FLING_VELOCITY);
+-        console.log(`[luma-notifications] swipe ${Math.round(dx)} px at ${velocity.toFixed(2)} px/ms: ${dismiss ? 'dismiss' : 'spring back'}`);
+-        if (dismiss) {
+-            target.ease({
+-                translation_x: target.translation_x + 120 * scale,
+-                opacity: 0,
+-                duration: St.Settings.get().enable_animations ? SWIPE_OUT_TIME : 1,
+-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-                onStopped: () => {
+-                    this._dismissNewest('swipe');
+-                    target.translation_x = 0;
+-                    target.opacity = 255;
+-                },
+-            });
+-        } else {
+-            target.ease({
+-                translation_x: 0,
+-                opacity: 255,
+-                duration: St.Settings.get().enable_animations ? SWIPE_BACK_TIME : 1,
+-                mode: Clutter.AnimationMode.EASE_OUT_BACK,
+-            });
+-        }
+-        return Clutter.EVENT_PROPAGATE;
+-    }
+-
+-    _syncMark() {
+-        // Real application artwork is shown whole; a glyph sits on a quiet
+-        // tile, as on a notification card.
+-        // Until the island is first shown its icon has not loaded, so a
+-        // themed -symbolic name counts as a glyph as well (the first
+-        // notification otherwise showed its glyph bare, as artwork).
+-        // The app's own icon is artwork whatever the island showed before it;
+-        // see MessageList.isGlyphIcon for why neither is-symbolic nor every
+-        // themed name can decide that.
+-        const gicon = this._markIcon.gicon;
+-        const glyph = MessageList.isGlyphIcon(gicon);
+-        if (glyph && !this._markIcon.gicon)
+-            this._markIcon.icon_name = 'luma-bell-symbolic';
+-        this._mark.remove_style_class_name(glyph ? 'luma-notification-beacon-mark-art' : 'luma-notification-beacon-mark-glyph');
+-        this._mark.add_style_class_name(glyph ? 'luma-notification-beacon-mark-glyph' : 'luma-notification-beacon-mark-art');
+-        this._markIcon.get_effect('luma-tile-mask')?.set_enabled(!glyph);
+-    }
++        super._init({visible: false});
++        getNotificationTray();
++    }
++    setVertical() {}
++    get held() { return false; }
++    hold() {}
++    release() {}
+ });
+-
+-// A card in the tray's scrolled list. The list is a viewport, and a viewport
+-// hands its children their minimum heights before it scrolls; a notification
+-// card's minimum is only its first line, so fifteen cards were squeezed to
+-// fit instead of scrolling -- each preview line drawn over the next card. A
+-// card is never shorter than its content: its minimum is its natural height.
+-const TrayCard = GObject.registerClass(
+-class TrayCard extends St.Widget {
+-    constructor(frame) {
+-        super({
+-            style_class: 'luma-notification-tray-card',
+-            layout_manager: new Clutter.BinLayout(),
+-            x_expand: true,
+-        });
+-        this.frame = frame;
+-        this.add_child(frame);
+-    }
+-
+-    vfunc_get_preferred_height(forWidth) {
+-        const [, natural] = super.vfunc_get_preferred_height(forWidth);
+-        return [natural, natural];
+-    }
+-});
+-
+-/**
+- * The tray: the resting notifications as quiet cards above the Shelf, with
+- * the exact count and Clear all. Clicking outside closes it without changing
+- * any notification.
+- */
+-const NotificationTray = GObject.registerClass(
+-class NotificationTray extends St.BoxLayout {
+-    _init() {
+-        super._init({
+-            style_class: 'luma-notification-tray',
+-            orientation: Clutter.Orientation.VERTICAL,
+-            reactive: true,
+-            visible: false,
+-            accessible_role: Atk.Role.DIALOG,
+-        });
+-        this.accessible_name = _('Notifications');
+-
+-        const header = new St.BoxLayout({style_class: 'luma-notification-tray-header'});
+-        this._heading = new St.Label({
+-            style_class: 'luma-notification-tray-title',
+-            text: _('Notifications'),
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        // The count reads as part of the title -- "Notifications 10" -- in
+-        // the kit's count chip, the same capsule the beacon uses.
+-        this._countLabel = new St.Label({
+-            style_class: 'luma-notification-tray-count',
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._countLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+-        this._countLabel.clutter_text.y_align = Clutter.ActorAlign.CENTER;
+-        this._clearButton = new St.Button({
+-            style_class: 'luma-notification-tray-clear',
+-            label: _('Clear all'),
+-            can_focus: true,
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._clearButton.connect('clicked', () => this._clearAll());
+-        header.add_child(this._heading);
+-        header.add_child(this._countLabel);
+-        header.add_child(new St.Widget({x_expand: true}));
+-        header.add_child(this._clearButton);
+-        this.add_child(header);
+-
+-        this._list = new St.BoxLayout({
+-            style_class: 'luma-notification-tray-list',
+-            orientation: Clutter.Orientation.VERTICAL,
+-        });
+-        // Scrolls only when it must; no decorative scrollbar, but wheel,
+-        // touch, keyboard and assistive scrolling all still work.
+-        this._scroll = new St.ScrollView({
+-            style_class: 'luma-notification-tray-scroll',
+-            hscrollbar_policy: St.PolicyType.NEVER,
+-            vscrollbar_policy: St.PolicyType.EXTERNAL,
+-            overlay_scrollbars: true,
+-            enable_mouse_scrolling: true,
+-            x_expand: true,
+-            y_expand: true,
+-        });
+-        this._scroll.set_child(this._list);
+-        this.add_child(this._scroll);
+-
+-        this._empty = new St.BoxLayout({
+-            style_class: 'luma-notification-tray-empty',
+-            orientation: Clutter.Orientation.VERTICAL,
+-            visible: false,
+-        });
+-        this._empty.add_child(new St.Label({
+-            style_class: 'luma-notification-tray-empty-title',
+-            text: _('Nothing waiting'),
+-            x_align: Clutter.ActorAlign.CENTER,
+-        }));
+-        this._empty.add_child(new St.Label({
+-            style_class: 'luma-notification-tray-empty-body',
+-            text: _('Anything you let fade shows up here.'),
+-            x_align: Clutter.ActorAlign.CENTER,
+-        }));
+-        this.add_child(this._empty);
+-
+-        this._cards = new Map();
+-        this._records = [];
+-
+-        this._blur = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 28, brightness: 1});
+-        this._rounded = !!Shell.BlurEffect.find_property('corner-radius-top-left');
+-        if (this._rounded) {
+-            this._blur.saturation = 1.35;
+-            for (const corner of ['top_left', 'top_right', 'bottom_right', 'bottom_left'])
+-                this._blur[`corner_radius_${corner}`] = TRAY_RADIUS;
+-        }
+-        this.add_effect_with_name('luma-background-blur', this._blur);
+-        SurfaceMaterials.bindSurface(this, {
+-            backdrop: false,
+-            cornerRadii: TRAY_RADIUS,
+-            onTreatmentChanged: () => this._syncMaterial(),
+-        });
+-
+-        this.connect('captured-event', (_actor, event) => this._onCapturedEvent(event));
+-        this.connect('key-press-event', (_actor, event) => {
+-            if (event.get_key_symbol() === Clutter.KEY_Escape) {
+-                this.close();
+-                return Clutter.EVENT_STOP;
+-            }
+-            return Clutter.EVENT_PROPAGATE;
+-        });
+-        Main.sessionMode.connectObject('updated', () => {
+-            if (!Main.sessionMode.hasNotifications)
+-                this.close();
+-        }, this);
+-        Main.layoutManager.connectObject('monitors-changed', () => this.close(), this);
+-        Main.uiGroup.add_child(this);
+-    }
+-
+-    _syncMaterial() {
+-        const translucent = this._rounded && MessageTray.materialIsTranslucent();
+-        this._blur.enabled = translucent;
+-        if (translucent)
+-            this.remove_style_class_name('luma-notification-opaque');
+-        else
+-            this.add_style_class_name('luma-notification-opaque');
+-    }
+-
+-    get isOpen() {
+-        return !!this._grab;
+-    }
+-
+-    toggle(anchor) {
+-        if (this.isOpen)
+-            this.close();
+-        else
+-            this.open(anchor);
+-    }
+-
+-    open(anchor = null) {
+-        if (this.isOpen || !Main.sessionMode.hasNotifications)
+-            return;
+-        this._anchor = anchor;
+-        this._syncMaterial();
+-        const records = restingNotifications();
+-        // Opened from Quick Options with nothing waiting, it says so rather
+-        // than refusing to open.
+-        this._keepEmptyOpen = records.length === 0;
+-        this.sync(records);
+-        this._place();
+-        // The collection and the heads-up stack never show one record twice.
+-        Main.messageTray.bannerBlocked = true;
+-        this.show();
+-        Main.uiGroup.set_child_above_sibling(this, null);
+-        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+-        this._markSeen();
+-        this.opacity = 0;
+-        // It opens from the island's edge: up from the bottom, down from the
+-        // top, inward from a side.
+-        const rise = TRAY_RISE * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const edge = (anchor && Main.shelf?.edgeForActor?.(anchor)) ?? 'bottom';
+-        this.translation_x = edge === 'left' ? -rise : edge === 'right' ? rise : 0;
+-        this.translation_y = edge === 'top' ? -rise : edge === 'bottom' ? rise : 0;
+-        this._openEdge = edge;
+-        this.ease({
+-            opacity: 255,
+-            translation_x: 0,
+-            translation_y: 0,
+-            duration: TRAY_OPEN_TIME,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-        });
+-        // The modal grab gives the tray the keyboard: Tab reaches the cards
+-        // and Clear all without a pointer-opened tray drawing a focus ring.
+-        this._queuePlace();
+-    }
+-
+-    // Cards measure their wrapped copy only once they are laid out at the
+-    // tray's width; settle the height on the next frame.
+-    _queuePlace() {
+-        if (this._placeLaterId)
+-            return;
+-        this._placeLaterId = global.compositor.get_laters().add(
+-            Meta.LaterType.BEFORE_REDRAW, () => {
+-                this._placeLaterId = 0;
+-                if (this.isOpen)
+-                    this._place();
+-                return GLib.SOURCE_REMOVE;
+-            });
+-    }
+-
+-    close() {
+-        if (!this.isOpen)
+-            return;
+-        Main.popModal(this._grab);
+-        this._grab = null;
+-        this.remove_all_transitions();
+-        this.ease({
+-            opacity: 0,
+-            duration: TRAY_OPEN_TIME,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-            onStopped: () => {
+-                if (!this.isOpen)
+-                    this.hide();
+-            },
+-        });
+-        Main.messageTray.bannerBlocked = false;
+-        this._anchor?.grab_key_focus?.();
+-    }
+-
+-    _onCapturedEvent(event) {
+-        if (!this.isOpen)
+-            return Clutter.EVENT_PROPAGATE;
+-        const type = event.type();
+-        if (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.TOUCH_BEGIN)
+-            return Clutter.EVENT_PROPAGATE;
+-        const target = global.stage.get_event_actor(event);
+-        if (target && this.contains(target))
+-            return Clutter.EVENT_PROPAGATE;
+-        // The beacon's own click toggles; anything else only closes.
+-        const onAnchor = target && this._anchor?.contains(target);
+-        this.close();
+-        return onAnchor ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+-    }
+-
+-    _markSeen() {
+-        for (const notification of this._records) {
+-            if (notification.lifecycleState === NotificationLifecycleState.WAITING)
+-                notification.lifecycleState = NotificationLifecycleState.SEEN;
+-        }
+-    }
+-
+-    _place() {
+-        const tray = Main.messageTray;
+-        const anchor = this._anchor?.get_stage() && this._anchor.visible ? this._anchor : null;
+-        const monitor = (anchor && Main.layoutManager.findMonitorForActor(anchor)) ??
+-            Main.layoutManager.primaryMonitor;
+-        if (!monitor)
+-            return;
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const reserve = tray.shelfReserve(monitor);
+-        const width = Math.min(TRAY_MAX_WIDTH,
+-            Math.max(TRAY_MIN_WIDTH, Math.round(0.26 * monitor.width / scale))) * scale;
+-        const usable = monitor.height - reserve.top - reserve.bottom;
+-        this.set_width(width);
+-        this.set_height(-1);
+-        const [, natural] = this.get_preferred_height(width);
+-
+-        // Opened from the beacon: above it (or beside it, on a side Shelf),
+-        // centred on it. Opened from Quick Options with no beacon showing: the
+-        // middle of the Shelf's edge on that monitor.
+-        let box;
+-        if (anchor) {
+-            const [ax, ay] = anchor.get_transformed_position();
+-            const [aw, ah] = anchor.get_transformed_size();
+-            box = {x: ax, y: ay, width: aw, height: ah};
+-        } else {
+-            box = {
+-                x: monitor.x + monitor.width / 2,
+-                y: monitor.y + monitor.height - reserve.bottom,
+-                width: 0, height: 0,
+-            };
+-        }
+-        // Away from the notifications island's own edge (ADR-044).
+-        const edge = anchor ? Main.shelf?.edgeForActor?.(anchor) ?? null : null;
+-        const place = placePopover({
+-            anchor: box,
+-            edge,
+-            monitor,
+-            reserve,
+-            size: {width, height: natural},
+-            gap: ISLAND_GAP * scale,
+-            lift: anchor ? ISLAND_PADDING * scale : 0,
+-            inset: EDGE_INSET * scale,
+-        });
+-        const height = Math.min(natural, Math.floor(usable * TRAY_MAX_HEIGHT), place.maxHeight);
+-        this.set_height(height);
+-        const final = placePopover({
+-            anchor: box, edge, monitor, reserve,
+-            size: {width, height},
+-            gap: ISLAND_GAP * scale,
+-            lift: anchor ? ISLAND_PADDING * scale : 0,
+-            inset: EDGE_INSET * scale,
+-        });
+-        this.set_position(final.x, final.y);
+-    }
+-
+-    sync(records) {
+-        this._records = records;
+-        const count = records.length;
+-        this._countLabel.text = count > COUNT_LIMIT ? `${COUNT_LIMIT}+` : `${count}`;
+-        this._countLabel.visible = count > 0;
+-        this._countLabel.accessible_name = count === 1
+-            ? _('One notification') : _('%d notifications').format(count);
+-        this._clearButton.visible = records.some(n => this._isClearable(n));
+-        this._empty.visible = count === 0;
+-        this._scroll.visible = count > 0;
+-
+-        const keep = new Set(records);
+-        for (const [notification, frame] of this._cards) {
+-            if (!keep.has(notification)) {
+-                this._cards.delete(notification);
+-                frame.destroy();
+-            }
+-        }
+-        records.forEach((notification, index) => {
+-            let frame = this._cards.get(notification);
+-            if (!frame) {
+-                frame = this._createCard(notification);
+-                this._cards.set(notification, frame);
+-                this._list.insert_child_at_index(frame, index);
+-            } else if (this._list.get_child_at_index(index) !== frame) {
+-                this._list.set_child_at_index(frame, index);
+-            }
+-        });
+-
+-        if (this.isOpen) {
+-            if (count === 0 && !this._keepEmptyOpen)
+-                this.close();
+-            else
+-                this._queuePlace();
+-        }
+-    }
+-
+-    _createCard(notification) {
+-        const card = new MessageList.NotificationMessage(notification);
+-        card.add_style_class_name('notification-banner');
+-        card.add_style_class_name('luma-notification-resting');
+-        card.add_style_class_name(`luma-notification-tone-${MessageTray.notificationTone(notification)}`);
+-        if (notification.urgency === Urgency.CRITICAL)
+-            card.add_style_class_name('luma-notification-urgent');
+-        card.useCardLayout();
+-        card.expand(false);
+-        const frame = new MessageTray.CardFrame(card);
+-        frame.shadow.add_style_class_name('luma-notification-resting');
+-        SurfaceMaterials.bindSurface(card, {
+-            backdrop: false,
+-            cornerRadii: 10,
+-            classActors: [frame.shadow],
+-        });
+-        // Opening the application leaves the collection; answering an
+-        // action keeps it open and updates it in place.
+-        card.connect_after('clicked', () => this.close());
+-        return new TrayCard(frame);
+-    }
+-
+-    _isClearable(notification) {
+-        // Calls, alarms and running operations are not cleared behind the
+-        // user's back.
+-        return notification.urgency !== Urgency.CRITICAL;
+-    }
+-
+-    _clearAll() {
+-        const clearable = this._records.filter(n => this._isClearable(n));
+-        for (const notification of clearable)
+-            notification.destroy(NotificationDestroyedReason.DISMISSED);
+-    }
+-});
+-
+-let tray = null;
+-
+-export function getNotificationTray() {
+-    tray ??= new NotificationTray();
+-    return tray;
+-}
++let lip = null;
++export function getNotificationTray() { lip ??= new NotificationLip(); return lip; }
++export function peekNotificationLip() { return lip; }
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -14,6 +14,7 @@
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {peekCast} from './lumaCast.js';
+ import {peekShare} from './lumaShare.js';
++import {peekNotificationLip} from './lumaNotificationBeacon.js';
+ 
+ const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+ 
+@@ -1371,6 +1372,13 @@
+         if (notification.acknowledged)
+             return;
+ 
++        const lip = peekNotificationLip();
++        if (lip && Main.sessionMode.hasNotifications && !Main.sessionMode.isLocked) {
++            lip.receive(notification, this._bannerBlocked || notification.urgency === Urgency.LOW ||
++                (this._isLimited() && !this._isExempt(notification)));
++            return;
++        }
++
+         if (notification.urgency === Urgency.LOW) {
+             notification.lifecycleState = NotificationLifecycleState.WAITING;
+             return;
+@@ -1520,7 +1528,7 @@
+                         return false;
+                     });
+                 }
+-                if (shelfHoldsNotifications()) {
++                if (shelfHoldsNotifications() && !peekNotificationLip()) {
+                     // Straight to the island: it chimes as a card would have,
+                     // and waits there until it is acted on or dismissed.
+                     this._notificationQueue = this._notificationQueue.filter(n => {
+@@ -1581,6 +1589,11 @@
+     }
+ 
+     _showCard(notification) {
++        const lip = peekNotificationLip();
++        if (lip) {
++            lip.receive(notification, this._isLimited() && !this._isExempt(notification));
++            return;
++        }
+         if (this._cards.length + this._leavingCards.size === 0)
+             global.compositor.disable_unredirect();
+ 
+diff --git a/js/ui/messageList.js b/js/ui/messageList.js
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -22,10 +22,10 @@
+ // Luma notification card anatomy. The app tile and its corner are the
+ // design contract's desktop values (30 px tile, 9 px radius); the dismiss
+ // control fades in over the hover-transition range.
+-const CARD_TILE_SIZE = 30;
+-const CARD_TILE_RADIUS = 9;
++const CARD_TILE_SIZE = 34;
++const CARD_TILE_RADIUS = 10;
+ const CARD_BODY_LINES = 2;
+-const CARD_BODY_LINE_HEIGHT = 1.38;
++const CARD_BODY_LINE_HEIGHT = 17 / 12.5;
+ const CARD_HOVER_TIME = 150;
+ // A heads-up or resting card offers at most two immediate actions; the rest
+ // belong to the application, which a click on the card opens.
+@@ -381,6 +381,11 @@
+             return;
+         // A Luma card states when it arrived as a clock time ("9:47 AM"),
+         // and only adds the day once it is no longer today.
++        if (this._compactTime) {
++            const minutes = Math.max(0, Math.round(GLib.DateTime.new_now_local().difference(this._datetime) / 60000000));
++            this.text = minutes < 1 ? _('now') : minutes < 60 ? _('%dm').format(minutes) : _('%dh').format(Math.round(minutes / 60));
++            return;
++        }
+         this.text = this._clockTime
+             ? formatTime(this._datetime)
+             : formatTimeSpan(this._datetime);
+@@ -668,6 +673,9 @@
+             visible: false,
+         });
+         this._tile.add_child(this._tileImage);
++        this._appBadge = new St.Icon({style_class: 'luma-lip-app-badge', icon_size: 16,
++            x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.END, visible: false});
++        this._tile.add_child(this._appBadge);
+         grid.add_child(this._tile);
+         grid.add_child(column);
+ 
+@@ -675,7 +683,10 @@
+         // is exactly as tall as the dismiss control, as in the design.
+         this._header.y_align = Clutter.ActorAlign.START;
+         this._header.expandButton.visible = false;
+-        this._header.timeLabel.clockTime = true;
++        this._header.timeLabel.clockTime = false;
++        this._header.timeLabel._compactTime = true;
++        Main.panel?.statusArea.dateMenu?._clock?.connectObject('notify::clock',
++            () => this._header.timeLabel._updateText(), this);
+         this._header.timeLabel.x_expand = false;
+         this._header.sourceTitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+         // Source and time sit on the tile's top edge, beside the dismiss
+@@ -719,12 +730,19 @@
+         // keyboard focus anywhere in the card, and stays reachable and named
+         // for assistive technology while it is invisible.
+         const close = this._header.closeButton;
++        this._header.remove_child(close);
++        const closeSlot = new St.Widget({layout_manager: new Clutter.FixedLayout(),
++            x_expand: false, y_expand: false, width: 0, height: 0});
++        closeSlot.add_child(close);
++        this._header.add_child(closeSlot);
++        close.set_position(-22, -3);
+         close.accessible_name = _('Dismiss');
+         close.opacity = 0;
+         this.track_hover = true;
+         const syncClose = () => {
+             const focus = global.stage.get_key_focus();
+             const shown = this.hover || (focus && this.contains(focus));
++            this._header.timeLabel.opacity = shown && close.visible ? 0 : 255;
+             close.remove_transition('opacity');
+             close.ease({
+                 opacity: shown ? 255 : 0,
+@@ -770,6 +788,10 @@
+         this._tileImage.gicon = showImage ? image : null;
+         this._tileImage.visible = showImage;
+         sourceIcon.visible = !showImage;
++        this._appBadge.gicon = sourceIcon.gicon;
++        this._appBadge.visible = showImage;
++        this._tileImage.get_effect('luma-tile-mask')?.set_uniform_float(
++            this._tileImage.get_effect('luma-tile-mask').get_uniform_location('radius'), 1, [0.5]);
+         const glyph = !showImage && isGlyphIcon(sourceIcon.gicon);
+         this._tile.remove_style_class_name(glyph
+             ? 'luma-notification-tile-art' : 'luma-notification-tile-glyph');
+@@ -976,6 +998,7 @@
+         super.useCardLayout();
+         this._syncActionButtons();
+         this._syncInlineReplyStyle();
++        this._header.closeButton.visible = this.canClose();
+     }
+ 
+     _syncActionButtons() {
+@@ -983,7 +1006,17 @@
+             return;
+         this._buttonBox.get_children().forEach((button, index) => {
+             button.x_expand = false;
+-            button.visible = index < CARD_MAX_ACTIONS;
++            button.visible = index < CARD_MAX_ACTIONS && !(this._inlineReply && this._allowInlineReply !== false);
++            if (this._allowInlineReply !== undefined && !button._lumaCallGlyph) {
++                const id = button._lumaAction.id;
++                if (AFFIRMATIVE_ACTIONS.has(id) || DECLINING_ACTIONS.has(id)) {
++                    const content = new St.BoxLayout({style_class: 'luma-lip-call-action'});
++                    content.add_child(new St.Icon({icon_name: AFFIRMATIVE_ACTIONS.has(id)
++                        ? 'luma-phone-symbolic' : 'luma-phone-off-symbolic', icon_size: 14}));
++                    content.add_child(new St.Label({text: button._lumaAction.label}));
++                    button.child = content; button._lumaCallGlyph = true;
++                }
++            }
+             const weight = actionWeight(button._lumaAction, this.notification);
+             for (const name of ['ok', 'danger']) {
+                 if (name === weight)
+@@ -999,7 +1032,14 @@
+     }
+ 
+     canClose() {
+-        return true;
++        return !this.notification || this.notification.urgency !== MessageTray.Urgency.CRITICAL ||
++            !this.notification.actions.some(a => AFFIRMATIVE_ACTIONS.has(a.id));
++    }
++
++    setInlineReplyVisible(visible) {
++        this._allowInlineReply = visible;
++        if (this._inlineReplyRow) this._inlineReplyRow.visible = visible;
++        this._syncActionButtons();
+     }
+ 
+     _addAction(action) {
+@@ -1066,6 +1106,7 @@
+ 
+         this._ensureActionBox();
+         this._inlineReplyRow = new St.BoxLayout({
++            visible: this._allowInlineReply !== false,
+             style_class: 'luma-inline-reply-row',
+             x_expand: true,
+         });
+@@ -1137,15 +1178,22 @@
+ 
+         try {
+             const notification = this.notification;
++            const generation = this._inlineReply;
+             const [, state] = await this._inlineReply.send(
+                 this._replyPayload, this._replyRequestId);
+             if (state === 'sent') {
+-                if (!notification || notification !== this.notification)
++                if (!notification || notification !== this.notification || generation !== this._inlineReply)
+                     return;
+-                notification.lifecycleState =
+-                    MessageTray.NotificationLifecycleState.ACTED;
+-                notification.destroy(
+-                    MessageTray.NotificationDestroyedReason.DISMISSED);
++                this._inlineReplyRow.destroy_all_children();
++                this._replyEntry = this._replyButton = null;
++                this._inlineReplyRow.add_child(new St.Label({text: _('Sent'), style_class: 'luma-lip-sent'}));
++                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
++                    if (notification === this.notification && generation === this._inlineReply) {
++                        notification.lifecycleState = MessageTray.NotificationLifecycleState.ACTED;
++                        notification.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
++                    }
++                    return GLib.SOURCE_REMOVE;
++                });
+                 return;
+             }
+             this._setReplyUncertain();
+@@ -1164,7 +1212,7 @@
+             }
+         } finally {
+             this._replyPending = false;
+-            if (this._replyEntry && !this._replyRequestId)
++            if (this._replyEntry && !this._replyUncertain)
+                 this._replyEntry.reactive = true;
+             if (this._replyButton && !this._replyUncertain)
+                 this._replyButton.reactive = true;
+diff --git a/js/ui/notificationDaemon.js b/js/ui/notificationDaemon.js
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -532,6 +532,15 @@
+ 
+         if (buttons) {
+             buttons.deepUnpack().forEach(button => {
++                const actionId = button.action.unpack();
++                if (actionId === 'app.notification-reply' && button.target?.get_type_string() === '(ss)') {
++                    const [conversation] = button.target.deepUnpack();
++                    this.inlineReply = Object.freeze({send: async text => {
++                        await this.source.activateAction('notification-reply',
++                            new GLib.Variant('(ss)', [conversation, text]));
++                        return ['', 'sent'];
++                    }});
++                }
+                 this.addAction(button.label.unpack(), () => {
+                     this._onButtonClicked(button);
+                 });
+@@ -553,7 +562,8 @@
+ 
+     _activateAction(actionId, target) {
+         if (actionId.startsWith('app.'))
+-            this.source.activateAction(actionId.slice('app.'.length), target);
++            this.source.activateAction(actionId.slice('app.'.length), target).catch(() =>
++                console.warn('Notification action could not be activated'));
+         else
+             this.source.emitActionInvoked(this.id, actionId, target);
+     }
+@@ -605,12 +615,10 @@
+ 
+     activateAction(actionId, target) {
+         const params = target ? GLib.Variant.new('av', [target]) : null;
+-        this._app.activate_action(actionId, params, 0, -1, null).catch(error => {
+-            logError(error, `Failed to activate action for ${this._appId}`);
+-        });
+-
++        const pending = this._app.activate_action(actionId, params, 0, -1, null);
+         Main.overview.hide();
+         Main.panel.closeCalendar();
++        return pending;
+     }
+ 
+     emitActionInvoked(notificationId, actionId, target) {
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -256,7 +256,9 @@
+         classActors = [],
+         backdrop = true,
+         onTreatmentChanged = null,
++        translucentRecipe = null,
+     } = {}) {
++        this._translucentRecipe = translucentRecipe;
+         this._controller = controller;
+         this._actor = actor;
+         this._enabled = enabled;
+@@ -287,6 +289,11 @@
+             RECIPES[this._controller._effective]);
+     }
+ 
++    setTranslucentRecipe(recipe) {
++        this._translucentRecipe = recipe;
++        this._sync(this._controller._effective, RECIPES[this._controller._effective]);
++    }
++
+     setCornerRadii(radii) {
+         this._cornerRadii = Array.isArray(radii)
+             ? [...radii]
+@@ -324,6 +331,7 @@
+ 
+         if (this._effect) {
+             const active = this._enabled && TRANSLUCENT.has(treatment);
++            if (TRANSLUCENT.has(treatment) && this._translucentRecipe) recipe = this._translucentRecipe;
+             this._effect.radius = recipe.radius;
+             this._effect.saturation = recipe.saturation;
+             this._effect.enabled = active;
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5077,3 +5077,195 @@
+ 
+ .luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+   background-color: rgba(37, 46, 54, 0.08); }
++
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5301,3 +5301,195 @@
+ 
+ .luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+   background-color: rgba(37, 46, 54, 0.08); }
++
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5251,3 +5251,195 @@
+ 
+ .luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+   background-color: rgba(37, 46, 54, 0.08); }
++
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2689,3 +2689,195 @@
+ .luma-shelf-material.luma-surface-light { background-color: #eceef1; }
+ .luma-shelf-shadow-near.luma-surface-light { box-shadow: 0 3px 8px rgba(20,22,26,0.14); }
+ .luma-shelf-shadow-middle.luma-surface-light { box-shadow: 0 22px 52px -15px rgba(20,22,26,0.40); }
++
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }

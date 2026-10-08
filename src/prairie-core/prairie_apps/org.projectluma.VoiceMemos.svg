@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="g" x1=".08" y1="0" x2=".92" y2="1"><stop stop-color="#ff6f91"/><stop offset="1" stop-color="#d72166"/></linearGradient><radialGradient id="b" cx=".18" cy="0" r="1"><stop stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <clipPath id="lumaTile"><rect width="1024" height="1024" rx="256.0" ry="256.0"/></clipPath>
+  </defs>
+  <g clip-path="url(#lumaTile)">
+  <rect width="1024" height="1024" fill="url(#g)"/><rect width="1024" height="1024" fill="url(#b)"/>
+  <path d="M248 512v82M336 512v178M424 512v-76M512 512v-250M600 512v156M688 512V356M776 512v70" stroke="#fff" stroke-width="54" stroke-linecap="round"/>
+</g>
+</svg>

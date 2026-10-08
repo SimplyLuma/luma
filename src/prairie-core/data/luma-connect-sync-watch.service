@@ -1,0 +1,21 @@
+[Unit]
+Description=Receive Notes, Contacts, Photos, Clocks and Weather changes from the Luma Hub
+# Nothing to wait for until this device has been connected with a Hub code.
+ConditionPathExists=%h/.local/share/luma/connect/device.json
+After=network-online.target
+
+[Service]
+Type=simple
+# Holds one request open to the hub and syncs the moment the account changes.
+ExecStart=/usr/bin/luma-connect-sync watch
+Restart=always
+RestartSec=30
+# A revoked device (exit 3) must be enrolled again; restarting cannot help.
+RestartPreventExitStatus=3
+Environment=PYTHONUNBUFFERED=1
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

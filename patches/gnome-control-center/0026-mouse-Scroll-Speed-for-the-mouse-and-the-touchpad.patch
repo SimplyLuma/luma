@@ -1,0 +1,437 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 21 Sep 2026 12:30:00 -0500
+Subject: [PATCH] mouse: Scroll Speed for the mouse and the touchpad
+
+Scrolling distance could not be changed anywhere: libinput has no
+option for it and GNOME never offered one. Luma's compositor now scales
+scrolling per kind of device, and Mouse & Touchpad gets a Scroll Speed
+slider in the Mouse section and in the touchpad's Scrolling section,
+styled like Pointer Speed (Slow to Fast) with a reset button that is
+available whenever the speed is not the default.
+
+The slider runs over the base-2 logarithm of the stored multiple
+(0.25 to 4.0), so Slow and Fast are equally far from the middle, and
+the middle snaps to exactly 1.0, which the compositor treats as
+unchanged. The settings, org.projectluma.peripherals.mouse and
+.touchpad scroll-speed, come from Mutter; when they are not installed
+the rows are hidden.
+---
+ panels/mouse/cc-mouse-panel.blp  |  76 +++++++++++++++++++++
+ panels/mouse/cc-mouse-panel.c    | 112 +++++++++++++++++++++++++++++++
+ panels/mouse/cc-scroll-speed.h   |  41 +++++++++++
+ panels/mouse/test-scroll-speed.c |  65 ++++++++++++++++++
+ 4 files changed, 294 insertions(+)
+ create mode 100644 panels/mouse/cc-scroll-speed.h
+ create mode 100644 panels/mouse/test-scroll-speed.c
+
+diff --git a/panels/mouse/cc-mouse-panel.blp b/panels/mouse/cc-mouse-panel.blp
+index d093b9d..7d47a4e 100644
+--- a/panels/mouse/cc-mouse-panel.blp
++++ b/panels/mouse/cc-mouse-panel.blp
+@@ -133,6 +133,44 @@ template $CcMousePanel: $CcPanel {
+                 }
+               }
+ 
++              Adw.ActionRow mouse_scroll_speed_row {
++                title: _("Scroll _Speed");
++                use-underline: true;
++                activatable-widget: mouse_scroll_speed_scale;
++
++                [suffix]
++                Scale mouse_scroll_speed_scale {
++                  hexpand: true;
++
++                  marks [
++                    mark (-2, bottom, _("Slow")),
++                    mark (0),
++                    mark (2, bottom, _("Fast")),
++                  ]
++
++                  adjustment: Adjustment {
++                    lower: -2;
++                    upper: 2;
++                    step-increment: 0.1;
++                    page-increment: 0.5;
++                  };
++                }
++
++                [suffix]
++                Button mouse_scroll_speed_reset {
++                  valign: center;
++                  icon-name: "edit-undo-symbolic";
++                  tooltip-text: _("Reset Scroll Speed");
++                  sensitive: false;
++                  clicked => $on_mouse_scroll_speed_reset_cb(template);
++
++                  styles [
++                    "flat",
++                    "circular",
++                  ]
++                }
++              }
++
+               $CcSplitRow mouse_scroll_direction_row {
+                 title: _("Scroll Direction");
+                 default-option-title: _("_Natural");
+@@ -240,6 +278,44 @@ template $CcMousePanel: $CcPanel {
+               title: _("Scrolling");
+               sensitive: bind touchpad_toggle_row.active;
+ 
++              Adw.ActionRow touchpad_scroll_speed_row {
++                title: _("Scroll _Speed");
++                use-underline: true;
++                activatable-widget: touchpad_scroll_speed_scale;
++
++                [suffix]
++                Scale touchpad_scroll_speed_scale {
++                  hexpand: true;
++
++                  marks [
++                    mark (-2, bottom, _("Slow")),
++                    mark (0),
++                    mark (2, bottom, _("Fast")),
++                  ]
++
++                  adjustment: Adjustment {
++                    lower: -2;
++                    upper: 2;
++                    step-increment: 0.1;
++                    page-increment: 0.5;
++                  };
++                }
++
++                [suffix]
++                Button touchpad_scroll_speed_reset {
++                  valign: center;
++                  icon-name: "edit-undo-symbolic";
++                  tooltip-text: _("Reset Scroll Speed");
++                  sensitive: false;
++                  clicked => $on_touchpad_scroll_speed_reset_cb(template);
++
++                  styles [
++                    "flat",
++                    "circular",
++                  ]
++                }
++              }
++
+               $CcSplitRow touchpad_scroll_method_row {
+                 title: _("Scroll Method");
+                 default-option-title: _("T_wo Finger");
+diff --git a/panels/mouse/cc-mouse-panel.c b/panels/mouse/cc-mouse-panel.c
+index 4786870..27926e3 100644
+--- a/panels/mouse/cc-mouse-panel.c
++++ b/panels/mouse/cc-mouse-panel.c
+@@ -31,6 +31,7 @@
+ #include "cc-mouse-panel.h"
+ #include "cc-mouse-resources.h"
+ #include "cc-mouse-test.h"
++#include "cc-scroll-speed.h"
+ #include "gsd-device-manager.h"
+ #include "gsd-input-helper.h"
+ 
+@@ -42,6 +43,9 @@ struct _CcMousePanel
+   AdwPreferencesGroup *mouse_group;
+   CcSplitRow        *mouse_scroll_direction_row;
+   GtkScale          *mouse_speed_scale;
++  AdwActionRow      *mouse_scroll_speed_row;
++  GtkScale          *mouse_scroll_speed_scale;
++  GtkWidget         *mouse_scroll_speed_reset;
+   GtkWindow         *mouse_test;
+ 
+   AdwToggleGroup    *primary_toggle_group;
+@@ -53,6 +57,9 @@ struct _CcMousePanel
+   CcSplitRow        *touchpad_scroll_direction_row;
+   CcSplitRow        *touchpad_scroll_method_row;
+   GtkScale          *touchpad_speed_scale;
++  AdwActionRow      *touchpad_scroll_speed_row;
++  GtkScale          *touchpad_scroll_speed_scale;
++  GtkWidget         *touchpad_scroll_speed_reset;
+   AdwSwitchRow      *touchpad_toggle_row;
+   AdwSwitchRow      *touchpad_typing_row;
+ 
+@@ -64,6 +71,9 @@ struct _CcMousePanel
+   GSettings         *mouse_settings;
+   GSettings         *touchpad_settings;
+   GSettings         *pointingstick_settings;
++  /* Luma scroll speed, read by the compositor; NULL when not installed. */
++  GSettings         *mouse_scroll_settings;
++  GSettings         *touchpad_scroll_settings;
+ 
+   gboolean           have_mouse;
+   gboolean           have_touchpad;
+@@ -272,6 +282,86 @@ pointingstick_accel_set_mapping (const GValue       *value,
+ }
+ 
+ /* Set up the property editors in the dialog. */
++static gboolean
++scroll_speed_get_mapping (GValue   *value,
++                          GVariant *variant,
++                          gpointer  user_data)
++{
++  g_value_set_double (value, cc_scroll_speed_to_slider (g_variant_get_double (variant)));
++  return TRUE;
++}
++
++static GVariant *
++scroll_speed_set_mapping (const GValue       *value,
++                          const GVariantType *expected_type,
++                          gpointer            user_data)
++{
++  return g_variant_new_double (cc_scroll_speed_from_slider (g_value_get_double (value)));
++}
++
++static void
++update_scroll_speed_reset (GSettings  *settings,
++                           const char *key,
++                           GtkWidget  *reset)
++{
++  gtk_widget_set_sensitive (reset,
++                            g_settings_get_double (settings, "scroll-speed") !=
++                            CC_SCROLL_SPEED_DEFAULT);
++}
++
++static void
++setup_scroll_speed (GSettings    *settings,
++                    AdwActionRow *row,
++                    GtkScale     *scale,
++                    GtkWidget    *reset)
++{
++  if (!settings)
++    {
++      gtk_widget_set_visible (GTK_WIDGET (row), FALSE);
++      return;
++    }
++
++  g_settings_bind_with_mapping (settings, "scroll-speed",
++                                gtk_range_get_adjustment (GTK_RANGE (scale)), "value",
++                                G_SETTINGS_BIND_DEFAULT |
++                                G_SETTINGS_BIND_NO_SENSITIVITY,
++                                scroll_speed_get_mapping,
++                                scroll_speed_set_mapping,
++                                NULL, NULL);
++  g_signal_connect_object (settings, "changed::scroll-speed",
++                           G_CALLBACK (update_scroll_speed_reset), reset, 0);
++  update_scroll_speed_reset (settings, "scroll-speed", reset);
++}
++
++static void
++on_mouse_scroll_speed_reset_cb (CcMousePanel *self)
++{
++  g_settings_reset (self->mouse_scroll_settings, "scroll-speed");
++}
++
++static void
++on_touchpad_scroll_speed_reset_cb (CcMousePanel *self)
++{
++  g_settings_reset (self->touchpad_scroll_settings, "scroll-speed");
++}
++
++static GSettings *
++maybe_new_settings (const char *schema_id)
++{
++  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++  g_autoptr(GSettingsSchema) schema = NULL;
++
++  if (source)
++    schema = g_settings_schema_source_lookup (source, schema_id, TRUE);
++  if (!schema)
++    {
++      g_warning ("Settings schema %s is not installed; hiding Scroll Speed", schema_id);
++      return NULL;
++    }
++
++  return g_settings_new_full (schema, NULL, NULL);
++}
++
+ static void
+ setup_dialog (CcMousePanel *self)
+ {
+@@ -295,6 +385,11 @@ setup_dialog (CcMousePanel *self)
+                    gtk_range_get_adjustment (GTK_RANGE (self->mouse_speed_scale)), "value",
+                    G_SETTINGS_BIND_DEFAULT);
+ 
++  setup_scroll_speed (self->mouse_scroll_settings,
++                      self->mouse_scroll_speed_row,
++                      self->mouse_scroll_speed_scale,
++                      self->mouse_scroll_speed_reset);
++
+   g_settings_bind_with_mapping (self->mouse_settings, "accel-profile",
+                                 self->mouse_accel_switch, "active",
+                                 G_SETTINGS_BIND_DEFAULT,
+@@ -329,6 +424,11 @@ setup_dialog (CcMousePanel *self)
+                    G_SETTINGS_BIND_DEFAULT |
+                    G_SETTINGS_BIND_NO_SENSITIVITY);
+ 
++  setup_scroll_speed (self->touchpad_scroll_settings,
++                      self->touchpad_scroll_speed_row,
++                      self->touchpad_scroll_speed_scale,
++                      self->touchpad_scroll_speed_reset);
++
+   g_settings_bind (self->touchpad_settings, "tap-to-click",
+                    self->tap_to_click_switch, "active",
+                    G_SETTINGS_BIND_DEFAULT |
+@@ -402,6 +502,8 @@ cc_mouse_panel_dispose (GObject *object)
+ 
+   g_clear_object (&self->mouse_settings);
+   g_clear_object (&self->touchpad_settings);
++  g_clear_object (&self->mouse_scroll_settings);
++  g_clear_object (&self->touchpad_scroll_settings);
+   g_clear_pointer (&self->mouse_test, gtk_window_destroy);
+ 
+   G_OBJECT_CLASS (cc_mouse_panel_parent_class)->dispose (object);
+@@ -435,6 +537,8 @@ cc_mouse_panel_init (CcMousePanel *self)
+   self->mouse_settings = g_settings_new ("org.gnome.desktop.peripherals.mouse");
+   self->touchpad_settings = g_settings_new ("org.gnome.desktop.peripherals.touchpad");
+   self->pointingstick_settings = g_settings_new ("org.gnome.desktop.peripherals.pointingstick");
++  self->mouse_scroll_settings = maybe_new_settings ("org.projectluma.peripherals.mouse");
++  self->touchpad_scroll_settings = maybe_new_settings ("org.projectluma.peripherals.touchpad");
+ 
+   device_manager = gsd_device_manager_get ();
+   g_signal_connect_object (device_manager, "device-added",
+@@ -473,6 +577,9 @@ cc_mouse_panel_class_init (CcMousePanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, mouse_group);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, mouse_scroll_direction_row);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, mouse_speed_scale);
++  gtk_widget_class_bind_template_child (widget_class, CcMousePanel, mouse_scroll_speed_row);
++  gtk_widget_class_bind_template_child (widget_class, CcMousePanel, mouse_scroll_speed_scale);
++  gtk_widget_class_bind_template_child (widget_class, CcMousePanel, mouse_scroll_speed_reset);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, pointingstick_accel_switch);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, pointingstick_stack_page);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, pointingstick_speed_scale);
+@@ -484,12 +591,17 @@ cc_mouse_panel_class_init (CcMousePanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_scroll_method_row);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_stack_page);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_speed_scale);
++  gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_scroll_speed_row);
++  gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_scroll_speed_scale);
++  gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_scroll_speed_reset);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_toggle_row);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, touchpad_typing_row);
+   gtk_widget_class_bind_template_child (widget_class, CcMousePanel, two_finger_push_row);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_primary_button_changed_cb);
+   gtk_widget_class_bind_template_callback (widget_class, on_touchpad_scroll_method_changed_cb);
++  gtk_widget_class_bind_template_callback (widget_class, on_mouse_scroll_speed_reset_cb);
++  gtk_widget_class_bind_template_callback (widget_class, on_touchpad_scroll_speed_reset_cb);
+   gtk_widget_class_bind_template_callback (widget_class, primary_toggle_right_click_pressed_cb);
+   gtk_widget_class_bind_template_callback (widget_class, test_button_row_activated_cb);
+ }
+diff --git a/panels/mouse/cc-scroll-speed.h b/panels/mouse/cc-scroll-speed.h
+new file mode 100644
+index 0000000..e2c51d8
+--- /dev/null
++++ b/panels/mouse/cc-scroll-speed.h
+@@ -0,0 +1,41 @@
++/*
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Scroll speed slider mapping. The setting is a multiple of the usual scroll
++ * distance (0.25 to 4.0); the slider runs over its base-2 logarithm, so Slow
++ * and Fast are equally far from the middle and the middle is exactly 1.0.
++ */
++
++#pragma once
++
++#include <math.h>
++
++#define CC_SCROLL_SPEED_MIN 0.25
++#define CC_SCROLL_SPEED_MAX 4.0
++#define CC_SCROLL_SPEED_DEFAULT 1.0
++
++static inline double
++cc_scroll_speed_clamp (double speed)
++{
++  if (!isfinite (speed))
++    return CC_SCROLL_SPEED_DEFAULT;
++
++  return fmin (fmax (speed, CC_SCROLL_SPEED_MIN), CC_SCROLL_SPEED_MAX);
++}
++
++static inline double
++cc_scroll_speed_to_slider (double speed)
++{
++  return log2 (cc_scroll_speed_clamp (speed));
++}
++
++/* Near the middle snaps to exactly 1.0, which the compositor treats as
++ * "unchanged"; elsewhere the value is kept to two decimals. */
++static inline double
++cc_scroll_speed_from_slider (double position)
++{
++  if (!isfinite (position) || fabs (position) < 0.05)
++    return CC_SCROLL_SPEED_DEFAULT;
++
++  return cc_scroll_speed_clamp (round (exp2 (position) * 100.0) / 100.0);
++}
+diff --git a/panels/mouse/test-scroll-speed.c b/panels/mouse/test-scroll-speed.c
+new file mode 100644
+index 0000000..5b3023a
+--- /dev/null
++++ b/panels/mouse/test-scroll-speed.c
+@@ -0,0 +1,65 @@
++/*
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Scroll speed slider mapping. Built and run by the package's %check, which
++ * requires every test below to report ok.
++ */
++
++#include <glib.h>
++
++#include "cc-scroll-speed.h"
++
++static void
++test_middle_is_exactly_default (void)
++{
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (0.0), ==, 1.0);
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (0.04), ==, 1.0);
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (-0.04), ==, 1.0);
++  g_assert_cmpfloat (cc_scroll_speed_to_slider (1.0), ==, 0.0);
++}
++
++static void
++test_ends_are_the_range (void)
++{
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (-2.0), ==, CC_SCROLL_SPEED_MIN);
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (2.0), ==, CC_SCROLL_SPEED_MAX);
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (-9.0), ==, CC_SCROLL_SPEED_MIN);
++  g_assert_cmpfloat (cc_scroll_speed_to_slider (0.25), ==, -2.0);
++  g_assert_cmpfloat (cc_scroll_speed_to_slider (4.0), ==, 2.0);
++  g_assert_cmpfloat (cc_scroll_speed_to_slider (100.0), ==, 2.0);
++  g_assert_cmpfloat (cc_scroll_speed_to_slider (NAN), ==, 0.0);
++}
++
++/* Faster to the right everywhere, and a stored value read back into the
++ * slider gives the same stored value, so the binding settles. */
++static void
++test_monotonic_and_stable (void)
++{
++  double previous = 0;
++  double x;
++
++  for (x = -2.0; x <= 2.0001; x += 0.1)
++    {
++      double speed = cc_scroll_speed_from_slider (x);
++
++      g_assert_cmpfloat (speed, >=, previous);
++      g_assert_cmpfloat (cc_scroll_speed_from_slider (cc_scroll_speed_to_slider (speed)), ==, speed);
++      previous = speed;
++    }
++
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (1.0), ==, 2.0);
++  g_assert_cmpfloat (cc_scroll_speed_from_slider (-1.0), ==, 0.5);
++}
++
++int
++main (int    argc,
++      char **argv)
++{
++  g_test_init (&argc, &argv, NULL);
++
++  g_test_add_func ("/scroll-speed/middle", test_middle_is_exactly_default);
++  g_test_add_func ("/scroll-speed/range", test_ends_are_the_range);
++  g_test_add_func ("/scroll-speed/monotonic", test_monotonic_and_stable);
++
++  return g_test_run ();
++}

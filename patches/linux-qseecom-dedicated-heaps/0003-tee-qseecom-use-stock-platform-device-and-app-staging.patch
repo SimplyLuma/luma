@@ -1,0 +1,177 @@
+From: Project Luma FP6 bring-up <luma@project-luma.invalid>
+Date: Sun, 23 Aug 2026 01:10:00 -0500
+Subject: [PATCH] tee: qseecom: use stock platform device and app staging
+
+Fairphone's shipping QSEECom driver allocates application images with the
+real qcom,qseecom platform device and passes the base of one page-rounded
+coherent allocation to QSEOS_APP_START. Match both parts of that contract.
+
+The stock platform device must be unbound, advertise the AppsBL/commonlib64
+boot contract, and reference the exact same reserved apps pool as the isolated
+TEE heap. Keep a device reference and reserved-memory assignment only for the
+module lifetime. The TA/apps whole-pool SHM bridges and all other transport
+logic remain unchanged.
+
+This supersedes the narrower stock-staging experiment and is intended as a
+bounded module-only physical diagnostic before promotion.
+---
+ drivers/tee/qseecom/core.c | 91 +++++++++++++++++++++++++++------------------
+ 1 file changed, 55 insertions(+), 36 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -35,6 +35,7 @@
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/of.h>
++#include <linux/of_platform.h>
+ #include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
+ #include <linux/sizes.h>
+@@ -1479,7 +1480,6 @@
+ 	char fw_name[QSEECOM_TEE_MAX_APP_NAME + sizeof(".mdt")];
+ 	char app_name[QSEECOM_TEE_MAX_APP_NAME];
+ 	size_t img_len, mdt_len, stage_len;
+-	phys_addr_t stage_phys, img_phys;
+ 	const struct firmware *mdt;
+ 	void *stage, *aligned;
+ 	ssize_t len;
+@@ -1516,19 +1516,14 @@
+ 
+ 	/*
+ 	 * Stage the image through a pool of its own rather than the shared one.
+-	 * Two reasons, and both were learned the hard way:
+-	 *
+-	 * TZ maps the image itself and wants it at a 4 MiB aligned physical
+-	 * address -- Android's qseecom driver reserves its TA region that way -- so the
+-	 * buffer has to be big enough to contain an aligned copy. The shared
+-	 * pool only promises page alignment.
+-	 *
+-	 * And an image is *large*: nine megabytes of staging for a five
+-	 * megabyte application. Taking that from the shared pool grows it
+-	 * permanently, since it never shrinks, which starves every other user
+-	 * of the same TZ memory region. A dedicated pool goes away again.
++	 * An image is large, and taking it from the shared pool grows that pool
++	 * permanently. A dedicated pool goes away after the load. Match the
++	 * shipping Fairphone QSEECom loader's per-image contract exactly: one
++	 * page-rounded coherent allocation whose DMA address is passed directly
++	 * to QSEOS_APP_START. The containing reserved heap and whole-pool SHM
++	 * bridge retain their required 4 MiB alignment.
+ 	 */
+-	stage_len = PAGE_ALIGN(img_len) + QSEECOM_TEE_IMAGE_ALIGN;
++	stage_len = PAGE_ALIGN(img_len);
+ 	pool_config.initial_size = stage_len;
+ 	pool_config.max_size = stage_len;
+ 
+@@ -1547,10 +1542,7 @@
+ 		goto out_release;
+ 	}
+ 
+-	/* The area is physically contiguous, so an offset applies to both. */
+-	stage_phys = qcom_tzmem_to_phys(stage);
+-	img_phys = ALIGN(stage_phys, QSEECOM_TEE_IMAGE_ALIGN);
+-	aligned = stage + (img_phys - stage_phys);
++	aligned = stage;
+ 
+ 	len = qcom_mdt_read_image(qtee->dev, mdt, fw_name, aligned, img_len);
+ 	if (len < 0)
+@@ -1839,9 +1831,9 @@
+ 	of_reserved_mem_device_release(data);
+ }
+ 
+-static void qseecom_tee_platform_device_unregister(void *data)
++static void qseecom_tee_device_put(void *data)
+ {
+-	platform_device_unregister(data);
++	put_device(data);
+ }
+ 
+ static void qseecom_tee_shm_bridge_delete(void *data)
+@@ -1911,6 +1903,9 @@
+ 					      struct qcom_tzmem_pool_config *config)
+ {
+ 	struct platform_device *apps_pdev;
++	struct device_node *apps_node;
++	struct device_node *apps_pool;
++	struct reserved_mem *apps_rmem;
+ 	struct device *dev = &pdev->dev;
+ 	int ret;
+ 
+@@ -1937,29 +1932,59 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	apps_pdev = platform_device_alloc("qcom_qseecom_apps_mem",
+-					  PLATFORM_DEVID_NONE);
+-	if (!apps_pdev)
+-		return -ENOMEM;
++	/*
++	 * Use the real stock QSEECom platform device for the apps heap.  Besides
++	 * matching Android's dma_alloc_coherent() caller exactly, this preserves
++	 * any architecture DMA setup inherited by the qcom,qseecom DT node.
++	 */
++	apps_node = of_find_compatible_node(NULL, NULL, "qcom,qseecom");
++	if (!apps_node)
++		return dev_err_probe(dev, -ENODEV,
++				     "stock QSEECom device is absent\n");
+ 
+-	apps_pdev->dev.parent = dev;
+-	ret = platform_device_add(apps_pdev);
+-	if (ret) {
+-		platform_device_put(apps_pdev);
+-		return ret;
++	if (!of_property_read_bool(apps_node, "qcom,appsbl-qseecom-support") ||
++	    !of_property_read_bool(apps_node,
++				   "qcom,commonlib64-loaded-by-uefi")) {
++		of_node_put(apps_node);
++		return dev_err_probe(dev, -EINVAL,
++				     "stock QSEECom boot contract is absent\n");
+ 	}
+ 
+-	ret = devm_add_action_or_reset(dev,
+-				       qseecom_tee_platform_device_unregister,
+-				       apps_pdev);
++	apps_pool = of_parse_phandle(apps_node, "memory-region", 0);
++	if (!apps_pool) {
++		of_node_put(apps_node);
++		return dev_err_probe(dev, -EINVAL,
++				     "stock QSEECom apps pool is absent\n");
++	}
++	apps_rmem = of_reserved_mem_lookup(apps_pool);
++	of_node_put(apps_pool);
++	if (!apps_rmem || apps_rmem->base != qtee->apps_mem_base ||
++	    apps_rmem->size != qtee->apps_mem_size) {
++		of_node_put(apps_node);
++		return dev_err_probe(dev, -EINVAL,
++				     "stock QSEECom apps pool differs\n");
++	}
++
++	apps_pdev = of_find_device_by_node(apps_node);
++	of_node_put(apps_node);
++	if (!apps_pdev)
++		return dev_err_probe(dev, -EPROBE_DEFER,
++				     "stock QSEECom platform device is unavailable\n");
++	if (apps_pdev->dev.driver) {
++		put_device(&apps_pdev->dev);
++		return dev_err_probe(dev, -EBUSY,
++				     "stock QSEECom platform device is already bound\n");
++	}
++
++	ret = devm_add_action_or_reset(dev, qseecom_tee_device_put,
++				       &apps_pdev->dev);
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = of_reserved_mem_device_init_by_name(&apps_pdev->dev,
+-						  dev->of_node, "apps");
++	ret = of_reserved_mem_device_init(&apps_pdev->dev);
+ 	if (ret)
+ 		return dev_err_probe(dev, ret,
+-				     "failed to assign dedicated apps heap\n");
++				     "failed to assign stock QSEECom apps heap\n");
+ 
+ 	ret = devm_add_action_or_reset(dev, qseecom_tee_reserved_mem_release,
+ 				       &apps_pdev->dev);
+-- 
+2.51.0

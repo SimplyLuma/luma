@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/*
+ * The FP6 presence compositor and greetd retain seat0 across the authentication
+ * handoff.  Consequently PolicyKit cannot classify the authenticated Luma
+ * process as the active seat owner even though it is the handset's sole local
+ * account.  Grant only the two ModemManager actions required by the native
+ * Phone and Messages applications.  SIM/eSIM, firmware, bearer, location and
+ * general device-control actions remain under their upstream policies.
+ */
+polkit.addRule(function(action, subject) {
+    if (subject.user == "luma" &&
+        (action.id == "org.freedesktop.ModemManager1.Messaging" ||
+         action.id == "org.freedesktop.ModemManager1.Voice")) {
+        return polkit.Result.YES;
+    }
+});

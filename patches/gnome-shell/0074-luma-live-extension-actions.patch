@@ -1,0 +1,449 @@
+From b6d15e5d0b9e8bb2425e2fbe639bfabeab2e427b Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 20:24:40 -0500
+Subject: [PATCH] luma: Live Extension actions render as controls in the island
+
+A Live Extension already carried up to three actions across the bus and the
+Shell drew none of them.  The island now renders each action as a compact,
+icon-only square to the right of the text, and a press calls InvokeAction on
+org.projectluma.SemanticBroker1 with the publication that owns the extension,
+the extension identifier as the semantic object, and an empty a{sv} parameter,
+which is what the interface requires for an action that declares no parameter
+type.
+
+The island opens its application from a click gesture that recognizes on press,
+so that gesture would always win over a button that only acts on release.  The
+gesture now refuses to recognize while the press is inside one of the action
+buttons, so the two never fire together.
+
+An action the provider marked disabled stays visible, reads as unavailable,
+refuses the press, and carries the provider description as its accessible name
+and tooltip.  A control that cannot work for a given application has to say so;
+hiding it, or leaving it pressable and inert, would be a lie about what the
+system can do.
+
+The Shell chooses the glyph from the action identifier and falls back to a
+neutral symbol for vocabulary it does not know, so an application can never
+push artwork into panel chrome.  The row is only rebuilt when the actions
+themselves change, because a visible timer republishes its extension about once
+a second and rebuilding would drop the press under the pointer.
+---
+ data/theme/gnome-shell-light.css              |  33 +++
+ .../gnome-shell-sass/widgets/_panel.scss      |  53 ++++
+ data/theme/luma-shelf.css                     |   4 +
+ js/ui/panel.js                                | 231 +++++++++++++++++-
+ 4 files changed, 319 insertions(+), 2 deletions(-)
+
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 05bd0ae..8e10872 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -2340,6 +2340,39 @@ StScrollBar {
+     font-size: 9px;
+     font-weight: 500;
+     color: #6b7280; }
++  .luma-live-extension .luma-live-extension-actions {
++    spacing: 4px; }
++  .luma-live-extension .luma-live-extension-action {
++    min-width: 22px;
++    min-height: 22px;
++    padding: 0;
++    border: 1px solid rgba(17, 24, 39, 0.1);
++    border-radius: 7px;
++    background-color: rgba(255, 255, 255, 0.55);
++    color: #1f2937; }
++    .luma-live-extension .luma-live-extension-action:hover, .luma-live-extension .luma-live-extension-action:focus {
++      background-color: rgba(255, 255, 255, 0.95); }
++    .luma-live-extension .luma-live-extension-action:active {
++      background-color: rgba(72, 120, 184, 0.18); }
++  .luma-live-extension .luma-live-extension-action-icon {
++    icon-size: 13px; }
++  .luma-live-extension .luma-live-extension-action-unavailable,
++  .luma-live-extension .luma-live-extension-action-unavailable:hover,
++  .luma-live-extension .luma-live-extension-action-unavailable:focus,
++  .luma-live-extension .luma-live-extension-action-unavailable:active {
++    border-color: rgba(17, 24, 39, 0.06);
++    background-color: rgba(17, 24, 39, 0.04);
++    color: rgba(31, 41, 55, 0.38); }
++
++.luma-live-extension-tooltip {
++  padding: 4px 10px;
++  border: 1px solid rgba(255, 255, 255, 0.09);
++  border-radius: 999px;
++  background-color: rgba(42, 46, 52, 0.94);
++  color: #e6eaec;
++  font-size: 11px;
++  font-weight: 600;
++  text-align: center; }
+ 
+ #panel.luma-handheld .panel-button,
+ #panel.luma-handheld:overview .panel-button {
+diff --git a/data/theme/gnome-shell-sass/widgets/_panel.scss b/data/theme/gnome-shell-sass/widgets/_panel.scss
+index a24165d..39ffadd 100644
+--- a/data/theme/gnome-shell-sass/widgets/_panel.scss
++++ b/data/theme/gnome-shell-sass/widgets/_panel.scss
+@@ -321,6 +321,59 @@ $panel_transition_duration: 250ms; // same as the overview transition duration
+     font-weight: 500;
+     color: #6b7280;
+   }
++
++  // Actions are compact, icon-only, and square. The application names an
++  // action; the Shell owns the glyph and the geometry.
++  .luma-live-extension-actions {
++    spacing: 4px;
++  }
++
++  .luma-live-extension-action {
++    min-width: 22px;
++    min-height: 22px;
++    padding: 0;
++    border: 1px solid rgba(17, 24, 39, 0.10);
++    border-radius: 7px;
++    background-color: rgba(255, 255, 255, 0.55);
++    color: #1f2937;
++
++    &:hover, &:focus {
++      background-color: rgba(255, 255, 255, 0.95);
++    }
++
++    &:active {
++      background-color: rgba(72, 120, 184, 0.18);
++    }
++  }
++
++  .luma-live-extension-action-icon {
++    icon-size: 13px;
++  }
++
++  // An action that cannot work for this application stays visible and reads
++  // as unavailable. It is never hidden, and it never looks pressable.
++  .luma-live-extension-action-unavailable,
++  .luma-live-extension-action-unavailable:hover,
++  .luma-live-extension-action-unavailable:focus,
++  .luma-live-extension-action-unavailable:active {
++    border-color: rgba(17, 24, 39, 0.06);
++    background-color: rgba(17, 24, 39, 0.04);
++    color: rgba(31, 41, 55, 0.38);
++  }
++}
++
++// The tooltip lives in the UI group, not in the island, because it is
++// positioned against the stage. It carries the provider's own explanation for
++// a control that cannot work.
++.luma-live-extension-tooltip {
++  padding: 4px 10px;
++  border: 1px solid rgba(255, 255, 255, 0.09);
++  border-radius: 999px;
++  background-color: rgba(42, 46, 52, 0.94);
++  color: #e6eaec;
++  font-size: 11px;
++  font-weight: 600;
++  text-align: center;
+ }
+ 
+ // Portrait handheld posture clears the camera cutout without turning the
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 6e3bc2b..fb5f30e 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -256,6 +256,10 @@
+   text-align: center;
+   font-size: 11px;
+ }
++.luma-shelf-vertical .luma-live-extension-actions {
++  spacing: 4px;
++  padding-top: 3px;
++}
+ 
+ 
+ .luma-shelf-horizontal .luma-shelf-divider-after > .luma-shelf-material {
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 59cb8b0..c455344 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -45,6 +45,36 @@ const LUMA_LIVE_EXTENSIONS_BUS = 'org.projectluma.SemanticBroker1';
+ const LUMA_LIVE_EXTENSIONS_PATH = '/org/projectluma/SemanticBroker1';
+ const LUMA_LIVE_EXTENSIONS_INTERFACE = 'org.projectluma.SemanticBroker1';
+ 
++// The Live Extension contract allows at most three actions. The application
++// names an action; the Shell decides the glyph, the size, and whether the
++// control can be pressed at all. Applications never ship artwork here.
++const LUMA_LIVE_EXTENSION_MAX_ACTIONS = 3;
++const LUMA_LIVE_EXTENSION_ACTION_ICON = 'view-more-symbolic';
++const LUMA_LIVE_EXTENSION_ACTION_ICONS = new Map([
++    ['mute', 'microphone-disabled-symbolic'],
++    ['mute-microphone', 'microphone-disabled-symbolic'],
++    ['microphone-mute', 'microphone-disabled-symbolic'],
++    ['unmute', 'audio-input-microphone-symbolic'],
++    ['microphone', 'audio-input-microphone-symbolic'],
++    ['mic', 'audio-input-microphone-symbolic'],
++    ['camera', 'camera-web-symbolic'],
++    ['video', 'camera-web-symbolic'],
++    ['camera-off', 'camera-disabled-symbolic'],
++    ['mute-camera', 'camera-disabled-symbolic'],
++    ['camera-mute', 'camera-disabled-symbolic'],
++    ['end-call', 'call-stop-symbolic'],
++    ['hang-up', 'call-stop-symbolic'],
++    ['hangup', 'call-stop-symbolic'],
++    ['answer', 'call-start-symbolic'],
++    ['answer-call', 'call-start-symbolic'],
++    ['hold', 'media-playback-pause-symbolic'],
++    ['speaker', 'audio-volume-high-symbolic'],
++    ['share-screen', 'screen-shared-symbolic'],
++    ['screen-share', 'screen-shared-symbolic'],
++]);
++const LUMA_LIVE_EXTENSION_TOOLTIP_DELAY = 300;
++const LUMA_LIVE_EXTENSION_TOOLTIP_GAP = 6;
++
+ const LiveExtensionsIndicator = GObject.registerClass(
+ class LiveExtensionsIndicator extends PanelMenu.Button {
+     _init() {
+@@ -52,6 +82,10 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         this.add_style_class_name('luma-live-extension');
+         this._handheld = GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld';
+         this._current = null;
++        this._actionsKey = null;
++        this._tooltip = null;
++        this._tooltipTarget = null;
++        this._tooltipTimeoutId = 0;
+ 
+         this._icon = new St.Icon({
+             style_class: 'luma-live-extension-icon',
+@@ -76,15 +110,26 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         });
+         text.add_child(this._title);
+         text.add_child(this._subtitle);
++        this._actions = new St.BoxLayout({
++            style_class: 'luma-live-extension-actions',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
+         const content = this._shelfContent = new St.BoxLayout({
+             style_class: 'luma-live-extension-content',
+         });
+         content.add_child(this._icon);
+         content.add_child(text);
++        content.add_child(this._actions);
+         this.add_child(content);
+ 
+-        const click = new Clutter.ClickGesture();
++        // Opening the application is the island's own gesture and it
++        // recognizes on press, so it would win over any action button before
++        // that button ever saw a release. Refusing to recognize while the
++        // press is inside a button is what keeps the two apart.
++        const click = this._click = new Clutter.ClickGesture();
+         click.set_recognize_on_press(true);
++        click.connect('may-recognize', () => !this._pressIsOnAction());
+         click.connect('recognize', () => this._openApplication());
+         this.add_action(click);
+ 
+@@ -100,6 +145,9 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             if (this._signal)
+                 Gio.DBus.session.signal_unsubscribe(this._signal);
+             this._signal = 0;
++            this._hideTooltip();
++            this._tooltip?.destroy();
++            this._tooltip = null;
+         });
+         this.hide();
+         this._refresh();
+@@ -150,6 +198,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+ 
+     _setExtension(item) {
+         this._current = item;
++        this._syncActions(item);
+         if (!item || this._handheld) {
+             this.hide();
+             return;
+@@ -164,9 +213,187 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         this.show();
+     }
+ 
++    // An action is only renderable when the broker gave us everything needed
++    // to invoke it later: the publication that owns it and a well formed
++    // action record. Anything else is dropped rather than drawn as a control
++    // that would do nothing.
++    _validActions(item) {
++        if (typeof item?.publication_id !== 'string' ||
++            typeof item?.extension?.id !== 'string' ||
++            !Array.isArray(item.extension.actions))
++            return [];
++
++        return item.extension.actions.filter(action =>
++            action && typeof action === 'object' &&
++            typeof action.id === 'string' && action.id !== '' &&
++            typeof action.label === 'string' &&
++            typeof action.enabled === 'boolean' &&
++            (action.description === undefined ||
++                typeof action.description === 'string'))
++            .slice(0, LUMA_LIVE_EXTENSION_MAX_ACTIONS);
++    }
++
++    // A visible timer republishes its extension about once a second. Rebuilding
++    // the buttons on every update would drop hover and press state under the
++    // pointer, so the row is only rebuilt when the actions themselves change.
++    _syncActions(item) {
++        const actions = this._validActions(item);
++        const key = JSON.stringify([
++            item?.publication_id ?? '',
++            actions.map(action =>
++                [action.id, action.label, action.enabled, action.description ?? '']),
++        ]);
++        if (key === this._actionsKey)
++            return;
++
++        this._actionsKey = key;
++        this._hideTooltip();
++        this._actions.destroy_all_children();
++        for (const action of actions)
++            this._actions.add_child(this._createActionButton(action));
++        this._actions.visible = actions.length > 0;
++    }
++
++    // A disabled action is part of the design, not an error: some controls
++    // genuinely cannot work for a given application. Such a control stays
++    // visible, reads as unavailable, refuses the press, and carries the
++    // provider's explanation as its accessible name and tooltip.
++    _createActionButton(action) {
++        const button = new St.Button({
++            style_class: 'luma-live-extension-action',
++            child: new St.Icon({
++                style_class: 'luma-live-extension-action-icon',
++                icon_name: LUMA_LIVE_EXTENSION_ACTION_ICONS.get(action.id) ??
++                    LUMA_LIVE_EXTENSION_ACTION_ICON,
++            }),
++            can_focus: false,
++            track_hover: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        const hint = action.description || action.label;
++        button.accessible_name = hint;
++        if (!action.enabled)
++            button.add_style_class_name('luma-live-extension-action-unavailable');
++        button.connect('clicked', () => {
++            if (action.enabled)
++                this._invokeAction(action);
++        });
++        button.connect('notify::hover', () => {
++            if (button.hover)
++                this._scheduleTooltip(button, hint);
++            else if (this._tooltipTarget === button)
++                this._hideTooltip();
++        });
++        button.connect('destroy', () => {
++            if (this._tooltipTarget === button)
++                this._hideTooltip();
++        });
++        return button;
++    }
++
++    _pressIsOnAction() {
++        if (!this._actions.visible)
++            return false;
++
++        const {x, y} = this._click.get_coords_abs();
++        return this._actions.get_children().some(button => {
++            if (!button.visible)
++                return false;
++            const extents = button.get_transformed_extents();
++            return x >= extents.get_x() && y >= extents.get_y() &&
++                x < extents.get_x() + extents.get_width() &&
++                y < extents.get_y() + extents.get_height();
++        });
++    }
++
++    _invokeAction(action) {
++        const publicationId = this._current?.publication_id;
++        const objectId = this._current?.extension?.id;
++        if (typeof publicationId !== 'string' || typeof objectId !== 'string')
++            return;
++
++        Gio.DBus.session.call(
++            LUMA_LIVE_EXTENSIONS_BUS,
++            LUMA_LIVE_EXTENSIONS_PATH,
++            LUMA_LIVE_EXTENSIONS_INTERFACE,
++            'InvokeAction',
++            new GLib.Variant('(sssva{sv})', [
++                publicationId,
++                objectId,
++                action.id,
++                new GLib.Variant('a{sv}', {}),
++                {},
++            ]),
++            new GLib.VariantType('(o)'),
++            Gio.DBusCallFlags.NONE,
++            3000,
++            null,
++            (connection, result) => {
++                try {
++                    connection.call_finish(result);
++                } catch (error) {
++                    // The action identifier is contract vocabulary; the
++                    // extension's own text never reaches the journal.
++                    console.debug(
++                        `Luma Live Extension action ${action.id} failed: ${error}`);
++                }
++            });
++    }
++
++    _scheduleTooltip(button, text) {
++        this._hideTooltip();
++        this._tooltipTarget = button;
++        this._tooltipTimeoutId = GLib.timeout_add(
++            GLib.PRIORITY_DEFAULT, LUMA_LIVE_EXTENSION_TOOLTIP_DELAY, () => {
++                this._tooltipTimeoutId = 0;
++                this._showTooltip(button, text);
++                return GLib.SOURCE_REMOVE;
++            });
++        GLib.Source.set_name_by_id(this._tooltipTimeoutId,
++            '[gnome-shell] lumaLiveExtensionTooltip');
++    }
++
++    _showTooltip(button, text) {
++        if (!button.visible || button.get_stage() === null)
++            return;
++
++        if (!this._tooltip) {
++            this._tooltip = new St.Label({
++                style_class: 'luma-live-extension-tooltip',
++                visible: false,
++            });
++            Main.layoutManager.uiGroup.add_child(this._tooltip);
++        }
++        this._tooltip.text = text;
++        this._tooltip.show();
++
++        const extents = button.get_transformed_extents();
++        const x = Math.clamp(
++            Math.round(extents.get_x() +
++                (extents.get_width() - this._tooltip.width) / 2),
++            0, Math.max(0, global.stage.width - this._tooltip.width));
++        const above =
++            extents.get_y() - this._tooltip.height - LUMA_LIVE_EXTENSION_TOOLTIP_GAP;
++        const below =
++            extents.get_y() + extents.get_height() + LUMA_LIVE_EXTENSION_TOOLTIP_GAP;
++        this._tooltip.set_position(x, Math.round(above >= 0 ? above : below));
++    }
++
++    _hideTooltip() {
++        if (this._tooltipTimeoutId) {
++            GLib.source_remove(this._tooltipTimeoutId);
++            this._tooltipTimeoutId = 0;
++        }
++        this._tooltipTarget = null;
++        this._tooltip?.hide();
++    }
++
+     setShelfOrientation(vertical) {
+-        this._shelfContent.orientation = vertical
++        const orientation = vertical
+             ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._shelfContent.orientation = orientation;
++        // A vertical shelf is a narrow column: three buttons only fit stacked.
++        this._actions.orientation = orientation;
+     }
+ 
+     _openApplication() {
+-- 
+2.55.0
+

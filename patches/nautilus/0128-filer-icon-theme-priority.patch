@@ -1,0 +1,33 @@
+From 2e4e30463dd9ba00c346a719669785f2368b308d Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 05:18:22 +0000
+Subject: [PATCH] Prioritize Filer fixture icon theme
+
+---
+ src/nautilus-application.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+index 5cdab7b..d9f58e0 100644
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -1044,7 +1044,15 @@ nautilus_application_startup (GApplication *app)
+     const char *theme_root = g_getenv ("LUMA_FILER_ICON_THEME_ROOT");
+     if (theme_root != NULL && g_file_test (theme_root, G_FILE_TEST_IS_DIR))
+     {
+-        gtk_icon_theme_add_search_path (file_icon_theme, theme_root);
++        /* The fixture theme must take priority over a previously installed
++         * Prairie copy, or visual checks silently exercise stale file art. */
++        g_auto (GStrv) old_paths = gtk_icon_theme_get_search_path (file_icon_theme);
++        guint n_paths = g_strv_length (old_paths);
++        g_auto (GStrv) paths = g_new0 (char *, n_paths + 2);
++        paths[0] = g_strdup (theme_root);
++        for (guint i = 0; i < n_paths; i++)
++            paths[i + 1] = g_strdup (old_paths[i]);
++        gtk_icon_theme_set_search_path (file_icon_theme, (const char * const *) paths);
+     }
+     /* GTK's display icon theme is a singleton; its name is owned by the
+      * display settings rather than GtkIconTheme.set_theme_name(). */
+-- 
+2.55.0
+

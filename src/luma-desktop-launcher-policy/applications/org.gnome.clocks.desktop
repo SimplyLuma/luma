@@ -1,0 +1,10 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Clocks
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=gnome-clocks org.gnome.clocks
+Icon=org.gnome.clocks
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Utility;Clock;
+StartupNotify=true
+DBusActivatable=true

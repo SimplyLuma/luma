@@ -1,0 +1,78 @@
+From b7c59f920273f5f58ec78653031affc29b24a1e2 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 14:32:00 -0500
+Subject: [PATCH] application-window: mark native Luma work surfaces
+
+Give ordinary GtkApplicationWindow instances a toolkit-owned styling contract
+without recognizing or patching individual applications. The application keeps
+its real widgets, actions, menus, accessibility tree, and responsive behavior;
+the installed Luma GTK theme only receives stable window and work-surface
+classes to style.
+
+Custom renderers can opt out with the documented luma-no-native-surfaces class.
+---
+ gtk/gtkapplicationwindow.c | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/gtk/gtkapplicationwindow.c b/gtk/gtkapplicationwindow.c
+index 4a40257..4c2814f 100644
+--- a/gtk/gtkapplicationwindow.c
++++ b/gtk/gtkapplicationwindow.c
+@@ -810,6 +810,36 @@ gtk_application_window_dispose (GObject *object)
+   g_clear_object (&window->priv->actions);
+ }
+ 
++static void
++gtk_application_window_add (GtkContainer *container,
++                            GtkWidget    *child)
++{
++  GtkStyleContext *context;
++
++  GTK_CONTAINER_CLASS (gtk_application_window_parent_class)->add (container, child);
++
++  if (gtk_bin_get_child (GTK_BIN (container)) != child)
++    return;
++
++  context = gtk_widget_get_style_context (child);
++  gtk_style_context_add_class (context, "luma-native-work-surface");
++}
++
++static void
++gtk_application_window_remove (GtkContainer *container,
++                               GtkWidget    *child)
++{
++  GtkStyleContext *context;
++
++  if (gtk_bin_get_child (GTK_BIN (container)) == child)
++    {
++      context = gtk_widget_get_style_context (child);
++      gtk_style_context_remove_class (context, "luma-native-work-surface");
++    }
++
++  GTK_CONTAINER_CLASS (gtk_application_window_parent_class)->remove (container, child);
++}
++
+ static void
+ gtk_application_window_init (GtkApplicationWindow *window)
+ {
+@@ -819,6 +849,9 @@ gtk_application_window_init (GtkApplicationWindow *window)
+   window->priv->app_menu_section = g_menu_new ();
+   window->priv->menubar_section = g_menu_new ();
+ 
++  gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (window)),
++                               "luma-native-window");
++
+   gtk_widget_insert_action_group (GTK_WIDGET (window), "win", G_ACTION_GROUP (window->priv->actions));
+ 
+   /* window->priv->actions is the one and only ref on the group, so when
+@@ -844,6 +877,8 @@ gtk_application_window_class_init (GtkApplicationWindowClass *class)
+   GObjectClass *object_class = G_OBJECT_CLASS (class);
+ 
+   container_class->forall = gtk_application_window_real_forall_internal;
++  container_class->add = gtk_application_window_add;
++  container_class->remove = gtk_application_window_remove;
+   widget_class->get_preferred_height = gtk_application_window_real_get_preferred_height;
+   widget_class->get_preferred_height_for_width = gtk_application_window_real_get_preferred_height_for_width;
+   widget_class->get_preferred_width = gtk_application_window_real_get_preferred_width;
+-- 
+2.54.0

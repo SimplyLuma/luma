@@ -1,0 +1,468 @@
+{
+  "snapshot_date": "2026-09-07",
+  "source_root": "local-source-artwork",
+  "selection_manifest": "local-source-artwork",
+  "approved_names": 51,
+  "unique_assets": 41,
+  "icons": [
+    {
+      "id": "0001",
+      "name": "folder",
+      "category": "places",
+      "source": "0001-folder/folder-b.svg",
+      "destination": "scalable/places/folder.svg",
+      "sha256": "23f9d7967801f26cf76b621e507318bf8b1e475ccfe9919adae9875ae6a939a4",
+      "selection": "B"
+    },
+    {
+      "id": "0002",
+      "name": "folder-bookmarks",
+      "category": "places",
+      "source": "0002-folder-bookmarks/folder-bookmarks.svg",
+      "destination": "scalable/places/folder-bookmarks.svg",
+      "sha256": "a3d786bac388ccbad1908149bd11ccfa7515c03b89f338039af78b9bc2100a52",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0003",
+      "name": "folder-documents",
+      "category": "places",
+      "source": "0003-folder-documents/folder-documents.svg",
+      "destination": "scalable/places/folder-documents.svg",
+      "sha256": "75931f2c9493f40192e8d27a3876adedc3e81aba7e54dd7497bfc32a0fab11e5",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0004",
+      "name": "folder-download",
+      "category": "places",
+      "source": "0004-folder-download/folder-download.svg",
+      "destination": "scalable/places/folder-download.svg",
+      "sha256": "35130b1211e18d936c97eaf1d06e826ccd7abb75fd696dd4b97104d810f10ac0",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0005",
+      "name": "folder-drag-accept",
+      "category": "places",
+      "source": "0001-folder/folder-b.svg",
+      "destination": "scalable/places/folder-drag-accept.svg",
+      "sha256": "23f9d7967801f26cf76b621e507318bf8b1e475ccfe9919adae9875ae6a939a4",
+      "selection": "Same as 0001"
+    },
+    {
+      "id": "0006",
+      "name": "folder-music",
+      "category": "places",
+      "source": "0006-folder-music/folder-music.svg",
+      "destination": "scalable/places/folder-music.svg",
+      "sha256": "ef96e5ef6c34bdc1a14c56c62371ade90059437c194d95e483e11009ffa26f66",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0007",
+      "name": "folder-open",
+      "category": "places",
+      "source": "0007-folder-open/folder-open-b.svg",
+      "destination": "scalable/places/folder-open.svg",
+      "sha256": "dee774a94d51c843322c555505fc7ea9f3e46376fcb1d4eeeec868fcbabaf778",
+      "selection": "B"
+    },
+    {
+      "id": "0008",
+      "name": "folder-pictures",
+      "category": "places",
+      "source": "0008-folder-pictures/folder-pictures.svg",
+      "destination": "scalable/places/folder-pictures.svg",
+      "sha256": "3c6f9b964761eb4e403eb39bb5321581e76f27aace705b0a3064568b7a70cf3b",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0009",
+      "name": "folder-publicshare",
+      "category": "places",
+      "source": "0009-folder-publicshare/folder-publicshare.svg",
+      "destination": "scalable/places/folder-publicshare.svg",
+      "sha256": "6fe0f922a54b9399140ed5b39c79e9a5156fdc8f4dbd78d3b13b79703b70dddf",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0010",
+      "name": "folder-remote",
+      "category": "places",
+      "source": "0010-folder-remote/folder-remote.svg",
+      "destination": "scalable/places/folder-remote.svg",
+      "sha256": "046f029f2bab863449242b8ca3a0c45cca67d7d355e5733dffde599163da1326",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0011",
+      "name": "folder-saved-search",
+      "category": "places",
+      "source": "0011-folder-saved-search/folder-saved-search.svg",
+      "destination": "scalable/places/folder-saved-search.svg",
+      "sha256": "ef032914ec34088f1bd2238e07920288af164e6781ce5a9a3193fd92fffb0738",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0012",
+      "name": "folder-templates",
+      "category": "places",
+      "source": "0012-folder-templates/folder-templates.svg",
+      "destination": "scalable/places/folder-templates.svg",
+      "sha256": "a995830c142107463c68e63dcdd35e9e7a366a7c61788e547ba00df43938d6ec",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0013",
+      "name": "folder-videos",
+      "category": "places",
+      "source": "0013-folder-videos/folder-videos.svg",
+      "destination": "scalable/places/folder-videos.svg",
+      "sha256": "fb3625fb7b7b0fc4c49f4c7d4239878236ed096b96be037b6ae17a0e6049528c",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0017",
+      "name": "user-bookmarks",
+      "category": "places",
+      "source": "0017-user-bookmarks/user-bookmarks.svg",
+      "destination": "scalable/places/user-bookmarks.svg",
+      "sha256": "a2dc37e36619ac07a9310f47e40155492ef816c22bfb38b55457d0ed042f4a9d",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0018",
+      "name": "user-desktop",
+      "category": "places",
+      "source": "0018-user-desktop/user-desktop.svg",
+      "destination": "scalable/places/user-desktop.svg",
+      "sha256": "b67d7dacf77e77f31facaa9c110b7da6f6bb8b43719746909dfaa26f703799ff",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0019",
+      "name": "user-home",
+      "category": "places",
+      "source": "0019-user-home/user-home.svg",
+      "destination": "scalable/places/user-home.svg",
+      "sha256": "03945507460e9d8c864e19b8d8f6f15141b028544845c20c1b86c72cd94c8e7f",
+      "selection": "Tonal inset"
+    },
+    {
+      "id": "0020",
+      "name": "user-trash",
+      "category": "places",
+      "source": "0020-user-trash/user-trash-b.svg",
+      "destination": "scalable/places/user-trash.svg",
+      "sha256": "15a7def31bbda2df5c9ee4d55f3004c59e0bd2d26b4864879fec236536bceea0",
+      "selection": "B \u00b7 Porcelain"
+    },
+    {
+      "id": "0021",
+      "name": "application-certificate",
+      "category": "mimetypes",
+      "source": "0021-application-certificate/application-certificate.svg",
+      "destination": "scalable/mimetypes/application-certificate.svg",
+      "sha256": "d1640b235e1623349fa1b8334b1307b9857d3a2d783dc40122b86bffd31ab6a6",
+      "selection": "Certificate"
+    },
+    {
+      "id": "0022",
+      "name": "application-x-addon",
+      "category": "mimetypes",
+      "source": "0022-application-x-addon/application-x-addon-a.svg",
+      "destination": "scalable/mimetypes/application-x-addon.svg",
+      "sha256": "9162d29682f5a17951c41e4c0156782dbe8db6b68fd8acf6e5b17bd8c36a6bbc",
+      "selection": "A \u00b7 Module"
+    },
+    {
+      "id": "0023",
+      "name": "application-x-executable",
+      "category": "mimetypes",
+      "source": "0023-application-x-executable/application-x-executable-b.svg",
+      "destination": "scalable/mimetypes/application-x-executable.svg",
+      "sha256": "566525535606106bd1381a66c86dd7e8e66d8e46edd60049908212b6788f9bb6",
+      "selection": "B \u00b7 Four panes"
+    },
+    {
+      "id": "0025",
+      "name": "application-x-generic",
+      "category": "mimetypes",
+      "source": "0025-application-x-generic/application-x-generic.svg",
+      "destination": "scalable/mimetypes/application-x-generic.svg",
+      "sha256": "99e9ca4ed8c5c78c4eea0d37c3c73b2aed1ec3b1d56316596946eee1a84cf5e0",
+      "selection": "Approved paper design"
+    },
+    {
+      "id": "0026",
+      "name": "application-x-sharedlib",
+      "category": "mimetypes",
+      "source": "0022-application-x-addon/application-x-addon-a.svg",
+      "destination": "scalable/mimetypes/application-x-sharedlib.svg",
+      "sha256": "9162d29682f5a17951c41e4c0156782dbe8db6b68fd8acf6e5b17bd8c36a6bbc",
+      "selection": "Same as 0022"
+    },
+    {
+      "id": "0027",
+      "name": "audio-x-generic",
+      "category": "mimetypes",
+      "source": "0027-audio-x-generic/audio-x-generic.svg",
+      "destination": "scalable/mimetypes/audio-x-generic.svg",
+      "sha256": "215b446c722eebd3e924dbd2603f1730a0117e765f683d253efa1e15cc4c62f6",
+      "selection": "Approved"
+    },
+    {
+      "id": "0028",
+      "name": "font-x-generic",
+      "category": "mimetypes",
+      "source": "0028-font-x-generic/font-x-generic-a.svg",
+      "destination": "scalable/mimetypes/font-x-generic.svg",
+      "sha256": "eddfd2297d616aaac64935a1f359d0273ae1a6810cf6ba18cdd2970f35e6701c",
+      "selection": "A \u00b7 Classic serif"
+    },
+    {
+      "id": "0029",
+      "name": "image-x-generic",
+      "category": "mimetypes",
+      "source": "0029-image-x-generic/image-x-generic-b.svg",
+      "destination": "scalable/mimetypes/image-x-generic.svg",
+      "sha256": "8643db3619ffbfac8cde1c0a762a1f09de6ea95b451663fc1ae14c4d97fbb987",
+      "selection": "B \u00b7 Outline"
+    },
+    {
+      "id": "0033",
+      "name": "package-x-generic",
+      "category": "mimetypes",
+      "source": "0051-x-package-repository/x-package-repository.svg",
+      "destination": "scalable/mimetypes/package-x-generic.svg",
+      "sha256": "3699637097da50927ddf5d2da53f4f6b42b71307234500b67552139a405ebd81",
+      "selection": "Same as 0051"
+    },
+    {
+      "id": "0034",
+      "name": "text-html",
+      "category": "mimetypes",
+      "source": "0034-text-html/text-html-a.svg",
+      "destination": "scalable/mimetypes/text-html.svg",
+      "sha256": "4eb62577f79b276243ec93a7fe066a5ac3b2759c792f43dd6a3dc5f07618cd2e",
+      "selection": "A \u00b7 Code"
+    },
+    {
+      "id": "0035",
+      "name": "text-x-generic",
+      "category": "mimetypes",
+      "source": "0035-text-x-generic/text-x-generic.svg",
+      "destination": "scalable/mimetypes/text-x-generic.svg",
+      "sha256": "77cc9ed77c683c6172c3cfc6c89c42669c733e7cf7c4bf654ca9d63bbfbd7c33",
+      "selection": "Approved paper design"
+    },
+    {
+      "id": "0036",
+      "name": "text-x-generic-template",
+      "category": "mimetypes",
+      "source": "0035-text-x-generic/text-x-generic.svg",
+      "destination": "scalable/mimetypes/text-x-generic-template.svg",
+      "sha256": "77cc9ed77c683c6172c3cfc6c89c42669c733e7cf7c4bf654ca9d63bbfbd7c33",
+      "selection": "Same as 0035"
+    },
+    {
+      "id": "0037",
+      "name": "text-x-preview",
+      "category": "mimetypes",
+      "source": "0035-text-x-generic/text-x-generic.svg",
+      "destination": "scalable/mimetypes/text-x-preview.svg",
+      "sha256": "77cc9ed77c683c6172c3cfc6c89c42669c733e7cf7c4bf654ca9d63bbfbd7c33",
+      "selection": "Same as 0035"
+    },
+    {
+      "id": "0038",
+      "name": "text-x-script",
+      "category": "mimetypes",
+      "source": "0038-text-x-script/text-x-script.svg",
+      "destination": "scalable/mimetypes/text-x-script.svg",
+      "sha256": "eeed677ecae8adea9b6433eb6e55b81b4b053d9166bdfe6f13f1e1c8015f2157",
+      "selection": "Script"
+    },
+    {
+      "id": "0039",
+      "name": "video-x-generic",
+      "category": "mimetypes",
+      "source": "0039-video-x-generic/video-x-generic.svg",
+      "destination": "scalable/mimetypes/video-x-generic.svg",
+      "sha256": "696402c69222d161210ee859a891862804d9da3d7e95dcded9126caf05a41cb4",
+      "selection": "Approved"
+    },
+    {
+      "id": "0040",
+      "name": "x-office-address-book",
+      "category": "mimetypes",
+      "source": "0040-x-office-address-book/x-office-address-book-a.svg",
+      "destination": "scalable/mimetypes/x-office-address-book.svg",
+      "sha256": "0bd11ff367829bebd492de4de83a23e451e2d760a8e0fde0635382e38276f786",
+      "selection": "A \u00b7 Slate blue"
+    },
+    {
+      "id": "0041",
+      "name": "x-office-addressbook",
+      "category": "mimetypes",
+      "source": "0040-x-office-address-book/x-office-address-book-a.svg",
+      "destination": "scalable/mimetypes/x-office-addressbook.svg",
+      "sha256": "0bd11ff367829bebd492de4de83a23e451e2d760a8e0fde0635382e38276f786",
+      "selection": "A \u00b7 Slate blue"
+    },
+    {
+      "id": "0043",
+      "name": "x-office-document",
+      "category": "mimetypes",
+      "source": "0043-x-office-document/x-office-document.svg",
+      "destination": "scalable/mimetypes/x-office-document.svg",
+      "sha256": "e0ceaa56b53ed45774de8d9fc87f085dde196f02c0618772465e9237bcdad417",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0044",
+      "name": "x-office-document-template",
+      "category": "mimetypes",
+      "source": "0043-x-office-document/x-office-document.svg",
+      "destination": "scalable/mimetypes/x-office-document-template.svg",
+      "sha256": "e0ceaa56b53ed45774de8d9fc87f085dde196f02c0618772465e9237bcdad417",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0045",
+      "name": "x-office-drawing",
+      "category": "mimetypes",
+      "source": "0045-x-office-drawing/x-office-drawing.svg",
+      "destination": "scalable/mimetypes/x-office-drawing.svg",
+      "sha256": "6b2c3400c5ede4e5e1a60c3441858b36db55bbd4d43f4574c185811183a08f1d",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0046",
+      "name": "x-office-drawing-template",
+      "category": "mimetypes",
+      "source": "0045-x-office-drawing/x-office-drawing.svg",
+      "destination": "scalable/mimetypes/x-office-drawing-template.svg",
+      "sha256": "6b2c3400c5ede4e5e1a60c3441858b36db55bbd4d43f4574c185811183a08f1d",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0047",
+      "name": "x-office-presentation",
+      "category": "mimetypes",
+      "source": "0047-x-office-presentation/x-office-presentation.svg",
+      "destination": "scalable/mimetypes/x-office-presentation.svg",
+      "sha256": "2f849f5d5451d06c4de092c9d69bd48bc1b94afbdb967ed14e1799ea86ad10e6",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0048",
+      "name": "x-office-presentation-template",
+      "category": "mimetypes",
+      "source": "0047-x-office-presentation/x-office-presentation.svg",
+      "destination": "scalable/mimetypes/x-office-presentation-template.svg",
+      "sha256": "2f849f5d5451d06c4de092c9d69bd48bc1b94afbdb967ed14e1799ea86ad10e6",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0049",
+      "name": "x-office-spreadsheet",
+      "category": "mimetypes",
+      "source": "0049-x-office-spreadsheet/x-office-spreadsheet.svg",
+      "destination": "scalable/mimetypes/x-office-spreadsheet.svg",
+      "sha256": "ba3f609bfd2abe4735b8981cdcadf72629d809ce69367a7cbcf0455899a5e810",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0050",
+      "name": "x-office-spreadsheet-template",
+      "category": "mimetypes",
+      "source": "0049-x-office-spreadsheet/x-office-spreadsheet.svg",
+      "destination": "scalable/mimetypes/x-office-spreadsheet-template.svg",
+      "sha256": "ba3f609bfd2abe4735b8981cdcadf72629d809ce69367a7cbcf0455899a5e810",
+      "selection": "Approved office design"
+    },
+    {
+      "id": "0051",
+      "name": "x-package-repository",
+      "category": "mimetypes",
+      "source": "0051-x-package-repository/x-package-repository.svg",
+      "destination": "scalable/mimetypes/x-package-repository.svg",
+      "sha256": "3699637097da50927ddf5d2da53f4f6b42b71307234500b67552139a405ebd81",
+      "selection": "Archive zipper"
+    },
+    {
+      "id": "0056",
+      "name": "computer",
+      "category": "devices",
+      "source": "0056-computer/computer.svg",
+      "destination": "scalable/devices/computer.svg",
+      "sha256": "a24b7435012c9bb3208192861cbd6642aa6cdd36bd7a3195e28260a842c91335",
+      "selection": "Graphite computer"
+    },
+    {
+      "id": "0061",
+      "name": "ebook-reader",
+      "category": "devices",
+      "source": "0061-ebook-reader/ebook-reader-a.svg",
+      "destination": "scalable/devices/ebook-reader.svg",
+      "sha256": "41916ac811ce580576b59c7f31ed61be1fcd9a79c22c0380e58db3fd4cac1725",
+      "selection": "A \u00b7 Graphite"
+    },
+    {
+      "id": "0064",
+      "name": "input-mouse",
+      "category": "devices",
+      "source": "0064-input-mouse/input-mouse-b.svg",
+      "destination": "scalable/devices/input-mouse.svg",
+      "sha256": "af2ab0315a53e3d1e841bf1d08092f643cd4c874d0dd2189df42b181bedce8d7",
+      "selection": "B \u00b7 Mineral"
+    },
+    {
+      "id": "0066",
+      "name": "media-flash",
+      "category": "devices",
+      "source": "0066-media-flash/media-flash-a.svg",
+      "destination": "scalable/devices/media-flash.svg",
+      "sha256": "6cbddec2100e705bb6c3aa800fdf9b98741c4d50e855f46eeec3086e7aa47a3c",
+      "selection": "A \u00b7 Graphite"
+    },
+    {
+      "id": "0067",
+      "name": "media-optical",
+      "category": "devices",
+      "source": "0067-media-optical/media-optical-a.svg",
+      "destination": "scalable/devices/media-optical.svg",
+      "sha256": "83e3b051a5984e690fb5cfd3b3ac29788e78aa7d3fccdb1e31f1a4909313304d",
+      "selection": "A \u00b7 Silver"
+    },
+    {
+      "id": "0068",
+      "name": "media-removable",
+      "category": "devices",
+      "source": "0068-media-removable/media-removable-a.svg",
+      "destination": "scalable/devices/media-removable.svg",
+      "sha256": "4df1c6e06b46d1e111d97ea5caf4cc9ef85b50ef7abee01eda512c057d9d68fd",
+      "selection": "A \u00b7 Graphite"
+    },
+    {
+      "id": "0070",
+      "name": "phone",
+      "category": "devices",
+      "source": "0070-phone/phone-b.svg",
+      "destination": "scalable/devices/phone.svg",
+      "sha256": "97db5dbedf63c0e903baf368351c6d0f869e7ecc8a1e9189ef2e2da1001d8749",
+      "selection": "B \u00b7 Slate"
+    },
+    {
+      "id": "0074",
+      "name": "video-display",
+      "category": "devices",
+      "source": "0074-video-display/video-display-a.svg",
+      "destination": "scalable/devices/video-display.svg",
+      "sha256": "567fce60b0ecb592c6ca65508ced54d2dda5540d160298f3cdbfc76297b390ec",
+      "selection": "A \u00b7 Graphite"
+    }
+  ]
+}

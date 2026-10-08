@@ -1,0 +1,43 @@
+From 3ab66459ee00dc8fe9eb147937cb916cacc3b647 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:57:52 +0000
+Subject: [PATCH] Filer: measure responsive views from window width
+
+---
+ src/nautilus-grid-view.c | 4 +++-
+ src/nautilus-list-view.c | 4 +++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/nautilus-grid-view.c b/src/nautilus-grid-view.c
+index 5678463..e04ba82 100644
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -361,7 +361,9 @@ nautilus_grid_view_size_allocate (GtkWidget *widget,
+                                   int        baseline)
+ {
+     NautilusGridView *self = NAUTILUS_GRID_VIEW (widget);
+-    gboolean phone_layout = width <= 480;
++    GtkRoot *root = gtk_widget_get_root (widget);
++    int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root)) : width;
++    gboolean phone_layout = window_width > 0 && window_width <= 480;
+ 
+     GTK_WIDGET_CLASS (nautilus_grid_view_parent_class)->size_allocate (widget, width, height, baseline);
+ 
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 1064e14..9c8e2dd 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -1399,7 +1399,9 @@ nautilus_list_view_size_allocate (GtkWidget *widget,
+                                   int        baseline)
+ {
+     NautilusListView *self = NAUTILUS_LIST_VIEW (widget);
+-    gboolean phone_layout = width <= 480;
++    GtkRoot *root = gtk_widget_get_root (widget);
++    int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root)) : width;
++    gboolean phone_layout = window_width > 0 && window_width <= 480;
+ 
+     GTK_WIDGET_CLASS (nautilus_list_view_parent_class)->size_allocate (widget, width, height, baseline);
+ 
+-- 
+2.55.0
+

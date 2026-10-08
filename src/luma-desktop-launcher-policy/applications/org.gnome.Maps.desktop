@@ -1,0 +1,11 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Maps
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=gapplication --file-forwarding org.gnome.Maps launch org.gnome.Maps @@u %U @@
+Icon=org.gnome.Maps
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Utility;
+DBusActivatable=true
+MimeType=application/vnd.geo+json;x-scheme-handler/geo;x-scheme-handler/maps;application/vnd.google-earth.kml+xml;application/gpx+xml;application/fits;

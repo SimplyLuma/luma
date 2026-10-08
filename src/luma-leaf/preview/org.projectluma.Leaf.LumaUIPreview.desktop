@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Leaf (LumaUI preview)
+Comment=Leaf rebuilt on LumaUI
+Exec=/var/home/nick/.local/share/luma-dev/lumaui-leaf/bin/run
+Icon=org.projectluma.Leaf
+Terminal=false
+Categories=Office;Viewer;
+StartupNotify=true
+StartupWMClass=org.projectluma.Leaf.LumaUIPreview

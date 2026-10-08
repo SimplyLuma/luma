@@ -1,0 +1,142 @@
+From f46767cc3343b01a7e62be811c70b0ce8ed98e71 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:04:49 +0000
+Subject: [PATCH] Settings: validate Appearance catalog and scope wallpaper and
+ accent edits
+
+---
+ shell/cc-luma-desktop.c   | 69 +++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-desktop.h   |  3 ++
+ shell/test-luma-fixture.c | 20 ++++++++++++
+ 3 files changed, 92 insertions(+)
+
+diff --git a/shell/cc-luma-desktop.c b/shell/cc-luma-desktop.c
+index 2eba9ca..4a79fa4 100644
+--- a/shell/cc-luma-desktop.c
++++ b/shell/cc-luma-desktop.c
+@@ -177,3 +177,72 @@ gboolean cc_luma_shelf_set_size (CcLumaFixture *model, gint64 size, GError **err
+   g_autoptr (JsonNode) n = json_node_init_int (json_node_alloc (), size);
+   return cc_luma_fixture_set (model, "isz", n, error);
+ }
++
++static JsonArray *appearance_catalog (CcLumaFixture *model, const char *key)
++{
++  JsonNode *n = json_object_get_member (cc_luma_fixture_get_data (model), key);
++  return n && JSON_NODE_HOLDS_ARRAY (n) ? json_node_get_array (n) : NULL;
++}
++gboolean cc_luma_appearance_validate (CcLumaFixture *model)
++{
++  JsonNode *wall = cc_luma_fixture_get (model, "wall"), *accent = cc_luma_fixture_get (model, "acc"), *tint = cc_luma_fixture_get (model, "tint");
++  if (!wall || json_node_get_value_type (wall) != G_TYPE_STRING || !accent || json_node_get_value_type (accent) != G_TYPE_INT64 || !tint || json_node_get_value_type (tint) != G_TYPE_BOOLEAN) return FALSE;
++  const char *keys[] = { "CFWALL", "CFACC" };
++  for (guint k = 0; k < G_N_ELEMENTS (keys); k++)
++    {
++      JsonArray *catalog = appearance_catalog (model, keys[k]);
++      if (!catalog || json_array_get_length (catalog) == 0) return FALSE;
++      gboolean found = FALSE;
++      g_autoptr (GHashTable) ids = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++      for (guint i = 0; i < json_array_get_length (catalog); i++)
++        {
++          JsonNode *entry = json_array_get_element (catalog, i);
++          if (!JSON_NODE_HOLDS_ARRAY (entry)) return FALSE;
++          JsonArray *pair = json_node_get_array (entry);
++          if (json_array_get_length (pair) != 2 || !array_text (pair, 1) || !*array_text (pair, 1)) return FALSE;
++          JsonNode *id = json_array_get_element (pair, 0);
++          g_autofree char *unique = NULL;
++          if (k == 0)
++            {
++              if (json_node_get_value_type (id) != G_TYPE_STRING || !*json_node_get_string (id)) return FALSE;
++              const char *value = json_node_get_string (id);
++              const char *allowed[] = { "prism", "meadow", "blue-fog", "ember", "luma-creatives" };
++              gboolean legal = FALSE;
++              for (guint a = 0; a < G_N_ELEMENTS (allowed); a++) if (g_str_equal (allowed[a], value)) legal = TRUE;
++              if (!legal) return FALSE;
++              unique = g_strdup (value);
++              if (g_str_equal (value, json_node_get_string (wall))) found = TRUE;
++            }
++          else
++            {
++              if (json_node_get_value_type (id) != G_TYPE_INT64 || json_node_get_int (id) < 0 || json_node_get_int (id) >= 360) return FALSE;
++              unique = g_strdup_printf ("%" G_GINT64_FORMAT, json_node_get_int (id));
++              if (json_node_get_int (id) == json_node_get_int (accent)) found = TRUE;
++            }
++          if (g_hash_table_contains (ids, unique)) return FALSE;
++          g_hash_table_add (ids, g_steal_pointer (&unique));
++        }
++      if (!found) return FALSE;
++    }
++  return TRUE;
++}
++gboolean cc_luma_appearance_set_wall (CcLumaFixture *model, const char *wall, GError **error)
++{
++  if (!cc_luma_appearance_validate (model) || !wall) return invalid (error);
++  JsonArray *catalog = appearance_catalog (model, "CFWALL");
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    if (g_str_equal (array_text (json_array_get_array_element (catalog, i), 0), wall)) return set_text (model, "wall", wall, error);
++  return invalid (error);
++}
++gboolean cc_luma_appearance_set_accent (CcLumaFixture *model, gint64 hue, GError **error)
++{
++  if (!cc_luma_appearance_validate (model)) return invalid (error);
++  JsonArray *catalog = appearance_catalog (model, "CFACC");
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    if (json_array_get_int_element (json_array_get_array_element (catalog, i), 0) == hue)
++      {
++        g_autoptr (JsonNode) n = json_node_init_int (json_node_alloc (), hue);
++        return cc_luma_fixture_set (model, "acc", n, error);
++      }
++  return invalid (error);
++}
+diff --git a/shell/cc-luma-desktop.h b/shell/cc-luma-desktop.h
+index f8d57dc..e221826 100644
+--- a/shell/cc-luma-desktop.h
++++ b/shell/cc-luma-desktop.h
+@@ -11,4 +11,7 @@ gboolean cc_luma_shelf_validate (CcLumaFixture *model);
+ gboolean cc_luma_shelf_set_preset (CcLumaFixture *model, const char *preset, GError **error);
+ gboolean cc_luma_shelf_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error);
+ gboolean cc_luma_shelf_set_size (CcLumaFixture *model, gint64 size, GError **error);
++gboolean cc_luma_appearance_validate (CcLumaFixture *model);
++gboolean cc_luma_appearance_set_wall (CcLumaFixture *model, const char *wall, GError **error);
++gboolean cc_luma_appearance_set_accent (CcLumaFixture *model, gint64 hue, GError **error);
+ G_END_DECLS
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index fd1bc32..899bd88 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -249,6 +249,25 @@ static void shelf_model (void)
+   g_assert_false (cc_luma_shelf_set_preset (model, "one", NULL));
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "edge")), ==, "right");
+ }
++static void appearance_model (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_true (cc_luma_appearance_validate (model));
++  g_assert_true (cc_luma_appearance_set_wall (model, "blue-fog", NULL));
++  g_assert_true (cc_luma_appearance_set_accent (model, 300, NULL));
++  g_assert_false (cc_luma_appearance_set_wall (model, "../../private", NULL));
++  g_assert_false (cc_luma_appearance_set_accent (model, 301, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "wall")), ==, "blue-fog");
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "acc")), ==, 300);
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "tint")));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++  JsonArray *accents = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFACC");
++  JsonArray *entry = json_array_get_array_element (accents, 0);
++  json_node_set_int (json_array_get_element (entry, 0), 300);
++  g_assert_false (cc_luma_appearance_validate (model));
++  g_assert_false (cc_luma_appearance_set_wall (model, "prism", NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "wall")), ==, "blue-fog");
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -265,6 +284,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/bluetooth", bluetooth_model);
+       g_test_add_func ("/settings/fixture/windows", windows_model);
+       g_test_add_func ("/settings/fixture/shelf", shelf_model);
++      g_test_add_func ("/settings/fixture/appearance", appearance_model);
+     }
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

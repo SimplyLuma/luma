@@ -1,0 +1,48 @@
+{
+  "schema": "org.luma.mod/v0.1",
+  "identity": {
+    "id": "org.projectluma.prairie.dock-style-api",
+    "version": "1.0.0",
+    "kind": "appearance",
+    "name": "Prairie Dock Styling Support",
+    "summary": "Provides the supported Prairie dock appearance contract.",
+    "license": ["Apache-2.0"],
+    "publisher": {"id": "org.projectluma", "name": "Project Luma"}
+  },
+  "compatibility": {
+    "luma_base": ">=0.1.0 <1.0.0",
+    "architectures": ["x86_64", "aarch64"],
+    "presentations": ["desktop", "tablet"],
+    "hardware": []
+  },
+  "dependencies": [],
+  "capabilities": {
+    "provides": [{
+      "id": "org.luma.session.dock-style-api",
+      "version": "1.0.0",
+      "ownership": "selectable",
+      "reason": "Exposes bounded dock design tokens without arbitrary Shell CSS."
+    }],
+    "requires": [],
+    "conflicts": [],
+    "replaces": []
+  },
+  "effects": {
+    "settings": [], "files": [], "packages": [], "services": [],
+    "dbus_names": [], "portals": [], "devices": [],
+    "configuration_domains": [], "kernel_modules": [], "firmware": [],
+    "boot_arguments": [], "user_data": [], "initramfs": false,
+    "secure_boot": "none"
+  },
+  "payloads": [],
+  "recovery": {
+    "previous_composition_retained": false,
+    "health_gate": "settings-contract-v1",
+    "user_data": "retain"
+  },
+  "evidence": {
+    "source": "repo:patches/dash-to-dock/0001-luma-dock-material.patch",
+    "source_digest": "sha256:2f04948304ff906467185d16fbf317fb23f420d24383895ee9d61c42a5c5e6f1"
+  },
+  "signatures": []
+}

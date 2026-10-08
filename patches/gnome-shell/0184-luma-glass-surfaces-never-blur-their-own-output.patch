@@ -1,0 +1,189 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 15:50:00 -0400
+Subject: [PATCH] luma: a glass surface never blurs its own last output
+
+Under Glass every Shell surface -- the dock, the panel menus, Quick Options,
+the clock, a live extension's chips -- blurs what lies behind it by copying
+the framebuffer under itself and blurring the copy. The copy is only correct
+where the frame has been repainted. Outside the frame's redraw clip the
+framebuffer still holds the last frame that was presented, and there, where
+the surface is, it holds the surface itself. So a few pixels of damage inside
+one of them -- a hover highlight -- makes it blur its own previous output,
+again on the next frame, and the smears build up across every glass surface
+on screen. A full repaint clears them, which is why a screenshot of the
+artifact comes out clean and why a busy window (a wide Stage window playing)
+makes them constant: it keeps the frames partial.
+
+Mutter's own background blur avoids this with a redraw clip filter that
+widens the clip to what it samples; that is private to mutter. The Shell
+instead notices the case: when the redraw clip does not cover the actor, it
+keeps the blur it already has for that frame and asks for a repaint of the
+whole actor, which repaints what is behind it, so the next frame's copy is
+real. After three such frames it takes the copy anyway, so a surface whose
+clip never covers it follows the screen instead of freezing.
+
+Two counters say which of those happened, for the test that hovers a glass
+surface and watches the case occur and stop mattering.
+
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -107,6 +107,12 @@
+   float downscale_factor;
+   float brightness;
+   int radius;
++
++  /* Luma: how many frames in a row the background could have been stale. */
++  int stale_frames;
++  /* Luma: counters a test reads, to see the case happen and stop happening. */
++  int stale_background_paints;
++  int reused_background_paints;
+ };
+ 
+ G_DEFINE_TYPE (ShellBlurEffect, shell_blur_effect, CLUTTER_TYPE_EFFECT)
+@@ -667,6 +673,98 @@
+     }
+ }
+ 
++/* Luma: after this many frames in a row, take the blit rather than the cache,
++ * so a surface whose redraw clip never covers it still follows the screen
++ * instead of freezing on its last blur.
++ */
++#define MAX_STALE_FRAMES 3
++
++/*
++ * Luma: whether what lies behind the actor was painted in this frame.
++ *
++ * A background blur copies the framebuffer under the actor and blurs that
++ * copy. Outside the frame's redraw clip the framebuffer still holds the last
++ * frame the compositor presented -- which, where this actor is, is this
++ * actor's own blurred surface. Blitting that blurs the surface's own output
++ * again, every frame, and the smears that builds up are only cleared by a
++ * full repaint (which is why a screenshot never shows them). A hover
++ * highlight is exactly this case: a few pixels of damage inside a glass
++ * surface, a redraw clip that covers the highlight and not the surface.
++ *
++ * Mutter's own background blur avoids it with a redraw clip filter, which is
++ * private to mutter; the Shell instead notices the case and keeps its last
++ * blurred copy for that frame.
++ *
++ * The clip is in stage coordinates (clutter_stage_add_redraw_clip()
++ * intersects it with the view layout), so the actor's transformed box is
++ * compared in the same space, not in framebuffer pixels.
++ */
++/* A test turns the fix off -- the case is still counted -- to watch the
++ * smears come back.
++ */
++static gboolean
++keep_stale_background (void)
++{
++  static int keep = -1;
++
++  if (keep < 0)
++    keep = g_getenv ("LUMA_SHELL_BLUR_KEEP_STALE_BACKGROUND") != NULL;
++
++  return keep;
++}
++
++static gboolean
++background_was_painted (ShellBlurEffect     *self,
++                        ClutterPaintContext *paint_context)
++{
++  const MtkRegion *redraw_clip;
++  MtkRectangle rect;
++  float x, y, width, height;
++
++  redraw_clip = clutter_paint_context_get_redraw_clip (paint_context);
++  if (!redraw_clip)
++    return TRUE;
++
++  clutter_actor_get_transformed_position (self->actor, &x, &y);
++  clutter_actor_get_transformed_size (self->actor, &width, &height);
++
++  rect = (MtkRectangle) {
++    .x = (int) floorf (x),
++    .y = (int) floorf (y),
++    .width = (int) ceilf (x + width) - (int) floorf (x),
++    .height = (int) ceilf (y + height) - (int) floorf (y),
++  };
++
++  if (rect.width <= 0 || rect.height <= 0)
++    return TRUE;
++
++  return mtk_region_contains_rectangle (redraw_clip, &rect) ==
++         MTK_REGION_OVERLAP_IN;
++}
++
++/**
++ * shell_blur_effect_get_background_paint_counts:
++ * @self: a #ShellBlurEffect
++ * @stale: (out) (optional): frames whose background copy could be stale
++ * @reused: (out) (optional): frames that kept the last blur instead
++ *
++ * Luma: what the effect did about a redraw clip that did not cover it. A test
++ * hovers a glass surface and reads these: without the fix @stale counts up,
++ * with it @reused does and @stale stays where it was.
++ */
++void
++shell_blur_effect_get_background_paint_counts (ShellBlurEffect *self,
++                                               int             *stale,
++                                               int             *reused)
++{
++  g_return_if_fail (SHELL_IS_BLUR_EFFECT (self));
++
++  if (stale)
++    *stale = self->stale_background_paints;
++  if (reused)
++    *reused = self->reused_background_paints;
++}
++
+ static gboolean
+ needs_repaint (ShellBlurEffect         *self,
+                ClutterEffectPaintFlags  flags)
+@@ -721,6 +819,33 @@
+           break;
+         }
+ 
++      /* Luma: the background copy would be this surface's own last output,
++       * so keep the blur we have and ask for a frame that repaints what is
++       * behind us. Without a blur to keep, or after MAX_STALE_FRAMES, take
++       * the copy rather than show nothing.
++       */
++      if (self->mode == SHELL_BLUR_MODE_BACKGROUND &&
++          !background_was_painted (self, paint_context))
++        {
++          if (!keep_stale_background () &&
++              (self->cache_flags & BLUR_APPLIED) &&
++              self->stale_frames < MAX_STALE_FRAMES)
++            {
++              self->stale_frames++;
++              self->reused_background_paints++;
++              add_blurred_pipeline (self, node, paint_opacity);
++              add_actor_node (self, node, -1);
++              clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
++              return;
++            }
++
++          self->stale_background_paints++;
++        }
++      else
++        {
++          self->stale_frames = 0;
++        }
++
+       if (needs_repaint (self, flags))
+         {
+           ClutterActorBox source_actor_box;
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -50,6 +50,10 @@
+ void shell_blur_effect_set_brightness (ShellBlurEffect *self,
+                                        float            brightness);
+ 
++void shell_blur_effect_get_background_paint_counts (ShellBlurEffect *self,
++                                                    int             *stale,
++                                                    int             *reused);
++
+ ShellBlurMode shell_blur_effect_get_mode (ShellBlurEffect *self);
+ void shell_blur_effect_set_mode (ShellBlurEffect *self,
+                                  ShellBlurMode    mode);

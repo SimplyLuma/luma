@@ -1,0 +1,26 @@
+From: Project Luma
+Subject: [PATCH] shelf: reserve hover room inside the StViewport content clip
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -405,7 +405,10 @@
+         this._dockContent = new St.BoxLayout({
+             orientation: Clutter.Orientation.HORIZONTAL,
+         });
+-        this._dockContent.add_child(this._dash);
++        // StViewport clips to its content box, excluding its own padding.
++        // Put hover headroom inside that clip, on a non-scrollable child.
++        this._dockPadding = new St.Bin({child: this._dash});
++        this._dockContent.add_child(this._dockPadding);
+         this._dockScroll.set_child(this._dockContent);
+         this._dockMaterial = new St.Bin({child: this._dockScroll});
+         this._dockMaterial._lumaDock = true;
+@@ -658,7 +661,7 @@
+         this._dockScroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+         this._dockScroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
+         this._dockScroll.set_size(-1, -1);
+-        this._dockContent.set_style(this._vertical
++        this._dockPadding.set_style(this._vertical
+             ? `padding: 0 ${this._padding}px;`
+             : `padding: ${this._padding}px 0;`);
+         this._surface.set_style_class_name(`luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +

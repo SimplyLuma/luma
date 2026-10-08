@@ -1,0 +1,223 @@
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -77,6 +77,11 @@
+   </schema>
+ 
+   <schema path="/org/gnome/nautilus/preferences/" id="org.gnome.nautilus.preferences" gettext-domain="nautilus">
++    <key type="b" name="personal-storage-only">
++      <default>false</default>
++      <summary>Show only personal and removable storage</summary>
++      <description>If set to true, Filer hides operating-system storage from the sidebar and warns before opening the system root. Removable storage remains visible.</description>
++    </key>
+     <key type="b" name="always-use-location-entry">
+       <default>false</default>
+       <summary>Always use the location entry, instead of the pathbar</summary>
+diff --git a/src/nautilus-global-preferences.h b/src/nautilus-global-preferences.h
+--- a/src/nautilus-global-preferences.h
++++ b/src/nautilus-global-preferences.h
+@@ -45,6 +45,7 @@
+ #define NAUTILUS_PREFERENCES_NEW_TAB_POSITION			"tabs-open-position"
+ 
+ #define NAUTILUS_PREFERENCES_ALWAYS_USE_LOCATION_ENTRY		"always-use-location-entry"
++#define NAUTILUS_PREFERENCES_PERSONAL_STORAGE_ONLY             "personal-storage-only"
+ 
+ /* Which views should be displayed for new windows */
+ #define NAUTILUS_WINDOW_STATE_INITIAL_SIZE			"initial-size"
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -820,18 +820,25 @@
+     }
+ #endif
+ 
+-    /* The root filesystem is not exposed by every GVolumeMonitor backend,
+-     * especially inside virtual machines. Represent it as a real local place
+-     * so the hardware section is always present; removable and optical media
+-     * continue to come from the live GDrive/GVolume/GMount pipeline below. */
+-    start_icon = g_themed_icon_new_with_default_fallbacks ("drive-harddisk-symbolic");
+-    add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
+-               NAUTILUS_SIDEBAR_SECTION_MOUNTS,
+-               _("System Disk"), start_icon, NULL, "file:///",
+-               NULL, NULL, NULL, NULL, 0,
+-               _("Open the system disk"));
+-    g_object_unref (start_icon);
++    gboolean personal_storage_only =
++        g_settings_get_boolean (nautilus_preferences,
++                                NAUTILUS_PREFERENCES_PERSONAL_STORAGE_ONLY);
+ 
++    if (!personal_storage_only)
++    {
++        /* The root filesystem is not exposed by every GVolumeMonitor backend,
++         * especially inside virtual machines. Represent it as a real local place
++         * so the hardware section is always present; removable and optical media
++         * continue to come from the live GDrive/GVolume/GMount pipeline below. */
++        start_icon = g_themed_icon_new_with_default_fallbacks ("drive-harddisk-symbolic");
++        add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
++                   NAUTILUS_SIDEBAR_SECTION_MOUNTS,
++                   _("System Disk"), start_icon, NULL, "file:///",
++                   NULL, NULL, NULL, NULL, 0,
++                   _("Open the system disk"));
++        g_object_unref (start_icon);
++    }
++
+     /* go through all connected drives */
+     drives = g_volume_monitor_get_connected_drives (sidebar->volume_monitor);
+ 
+@@ -845,6 +852,7 @@
+             for (ll = volumes; ll != NULL; ll = ll->next)
+             {
+                 volume = ll->data;
++
+                 identifier = g_volume_get_identifier (volume, G_VOLUME_IDENTIFIER_KIND_CLASS);
+ 
+                 if (g_strcmp0 (identifier, "network") == 0)
+@@ -855,6 +863,14 @@
+                 }
+                 g_free (identifier);
+ 
++                if (personal_storage_only &&
++                    !is_external_volume (volume) &&
++                    !g_drive_is_media_removable (drive))
++                {
++                    g_object_unref (volume);
++                    continue;
++                }
++
+                 mount = g_volume_get_mount (volume);
+                 if (mount != NULL)
+                 {
+@@ -961,6 +977,12 @@
+         }
+         g_free (identifier);
+ 
++        if (personal_storage_only && !is_external_volume (volume))
++        {
++            g_object_unref (volume);
++            continue;
++        }
++
+         mount = g_volume_get_mount (volume);
+         if (mount != NULL)
+         {
+@@ -1028,6 +1050,13 @@
+         {
+             network_mounts = g_list_prepend (network_mounts, mount);
+             g_object_unref (root);
++            continue;
++        }
++
++        if (personal_storage_only)
++        {
++            g_object_unref (root);
++            g_object_unref (mount);
+             continue;
+         }
+ 
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -146,6 +146,7 @@
+     GCancellable *mount_cancellable;
+     GError *mount_error;
+     gboolean tried_mount;
++    gboolean root_warning_bypass;
+     guint default_view_id;
+ 
+     /* Menus */
+@@ -173,6 +174,74 @@
+ static void nautilus_window_slot_update_extra_location_widgets (NautilusWindowSlot *self);
+ static void create_and_bind_new_content_view (NautilusWindowSlot *self,
+                                               guint               view_id);
++
++typedef struct
++{
++    NautilusWindowSlot *slot;
++    GFile *location;
++    NautilusFileList *selection;
++} RootWarningRequest;
++
++static void
++root_warning_request_free (RootWarningRequest *request)
++{
++    g_clear_object (&request->slot);
++    g_clear_object (&request->location);
++    g_clear_list (&request->selection, g_object_unref);
++    g_free (request);
++}
++
++static void
++on_root_warning_response (GObject      *source,
++                          GAsyncResult *result,
++                          gpointer      user_data)
++{
++    RootWarningRequest *request = user_data;
++    const char *response =
++        adw_alert_dialog_choose_finish (ADW_ALERT_DIALOG (source), result);
++
++    if (g_strcmp0 (response, "continue") == 0)
++    {
++        request->slot->root_warning_bypass = TRUE;
++        nautilus_window_slot_open_location_full (request->slot,
++                                                 request->location,
++                                                 request->selection);
++    }
++
++    root_warning_request_free (request);
++}
++
++static void
++show_root_warning (NautilusWindowSlot *self,
++                   GFile              *location,
++                   NautilusFileList   *selection)
++{
++    RootWarningRequest *request = g_new0 (RootWarningRequest, 1);
++    AdwAlertDialog *dialog = ADW_ALERT_DIALOG (
++        adw_alert_dialog_new (_("You’ve reached the system root"),
++                              _("These are the files Prairie itself runs on. Moving, editing, or deleting anything here can keep your computer from starting up — and it’s hard to undo. If you’re not sure you need to be here, you probably don’t.")));
++    GtkWidget *icon = gtk_image_new_from_icon_name ("security-high-symbolic");
++
++    gtk_image_set_pixel_size (GTK_IMAGE (icon), 32);
++    adw_alert_dialog_set_extra_child (dialog, icon);
++    adw_alert_dialog_add_responses (dialog,
++                                    "back", _("Take me back"),
++                                    "continue", _("I understand — continue"),
++                                    NULL);
++    adw_alert_dialog_set_default_response (dialog, "back");
++    adw_alert_dialog_set_close_response (dialog, "back");
++    adw_alert_dialog_set_response_appearance (dialog, "back", ADW_RESPONSE_SUGGESTED);
++
++    request->slot = g_object_ref (self);
++    request->location = g_object_ref (location);
++    request->selection = g_list_copy_deep (selection, (GCopyFunc) g_object_ref, NULL);
++
++    adw_alert_dialog_choose (dialog,
++                             GTK_WIDGET (self),
++                             NULL,
++                             on_root_warning_response,
++                             request);
++}
+ static void nautilus_window_slot_update_for_new_location (NautilusWindowSlot *self);
+ static void apply_pending_location_and_selection_on_view (NautilusWindowSlot *self);
+ static void nautilus_window_slot_set_loading (NautilusWindowSlot *self,
+@@ -1431,6 +1500,20 @@
+                                          NautilusFileList   *new_selection)
+ {
+     GFile *old_location = nautilus_window_slot_get_location (self);
++    g_autoptr (GFile) root = g_file_new_for_path ("/");
++
++    if (g_settings_get_boolean (nautilus_preferences,
++                                NAUTILUS_PREFERENCES_PERSONAL_STORAGE_ONLY) &&
++        g_file_equal (location, root))
++    {
++        if (!self->root_warning_bypass)
++        {
++            show_root_warning (self, location, new_selection);
++            return;
++        }
++
++        self->root_warning_bypass = FALSE;
++    }
+ 
+     nautilus_window_slot_set_search_global (self, FALSE);
+ 

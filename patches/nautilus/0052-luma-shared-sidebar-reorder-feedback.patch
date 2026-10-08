@@ -1,0 +1,413 @@
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -15,6 +15,7 @@
+ #include "config.h"
+ #include <glib/gi18n.h>
+ #include <gtk/gtk.h>
++#include <luma-reorder-hint.h>
+ #include "nautilus-enum-types.h"
+ 
+ #include <gio/gio.h>
+@@ -135,9 +136,6 @@
+     /* DND */
+     gboolean dragging_over;
+     GtkWidget *drag_row;
+-    int drag_row_height;
+-    int drag_row_x;
+-    int drag_row_y;
+     GtkWidget *row_placeholder;
+     DropState drop_state;
+     guint hover_timer_id;
+@@ -209,20 +207,15 @@
+                                       GDrive   *drive,
+                                       gboolean *show_unmount,
+                                       gboolean *show_eject);
+-static void on_row_pressed (GtkGestureClick    *gesture,
+-                            int                 n_press,
+-                            double              x,
+-                            double              y,
+-                            NautilusSidebarRow *row);
+ static void on_row_released (GtkGestureClick    *gesture,
+                              int                 n_press,
+                              double              x,
+                              double              y,
+                              NautilusSidebarRow *row);
+-static void on_row_dragged (GtkGestureDrag     *gesture,
+-                            double              x,
+-                            double              y,
+-                            NautilusSidebarRow *row);
++static GdkContentProvider *sidebar_drag_prepare (GtkDragSource *source, double x, double y, NautilusSidebarRow *row);
++static void sidebar_drag_begin (GtkDragSource *source, GdkDrag *drag, NautilusSidebarRow *row);
++static void sidebar_drag_end (GtkDragSource *source, GdkDrag *drag, gboolean delete_data, NautilusSidebarRow *row);
++static gboolean sidebar_drag_cancel (GtkDragSource *source, GdkDrag *drag, GdkDragCancelReason reason, NautilusSidebarRow *row);
+ 
+ static void popup_menu_cb (NautilusSidebarRow *row);
+ static void long_press_cb (GtkGesture      *gesture,
+@@ -554,16 +547,17 @@
+ 
+     gesture = gtk_gesture_click_new ();
+     gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 0);
+-    g_signal_connect (gesture, "pressed",
+-                      G_CALLBACK (on_row_pressed), row);
+     g_signal_connect (gesture, "released",
+                       G_CALLBACK (on_row_released), row);
+     gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (gesture));
+ 
+-    gesture = gtk_gesture_drag_new ();
+-    g_signal_connect (gesture, "drag-update",
+-                      G_CALLBACK (on_row_dragged), row);
+-    gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (gesture));
++    GtkDragSource *source = gtk_drag_source_new ();
++    gtk_drag_source_set_actions (source, GDK_ACTION_MOVE);
++    g_signal_connect (source, "prepare", G_CALLBACK (sidebar_drag_prepare), row);
++    g_signal_connect (source, "drag-begin", G_CALLBACK (sidebar_drag_begin), row);
++    g_signal_connect (source, "drag-end", G_CALLBACK (sidebar_drag_end), row);
++    g_signal_connect (source, "drag-cancel", G_CALLBACK (sidebar_drag_cancel), row);
++    gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (source));
+ 
+     GtkWidget *target_list =
+         (sidebar->trash_list_box != NULL &&
+@@ -1374,7 +1368,8 @@
+         g_autofree char *source_id = sidebar_row_id (source);
+         g_autofree char *target_id = sidebar_row_id (GTK_WIDGET (row));
+         g_free (uri);
+-        return source_id != NULL && target_id != NULL &&
++        return gtk_widget_get_parent (source) == sidebar->list_box &&
++               source != GTK_WIDGET (row) && source_id != NULL && target_id != NULL &&
+                sidebar_order_key (section_type) != NULL &&
+                sidebar_category (source_section) == sidebar_category (section_type);
+     }
+@@ -1426,6 +1421,23 @@
+ 
+     g_free (uri);
+     return valid;
++}
++
++/* Resolve once by stable geometry; both the line and drop use this contract. */
++static gboolean
++resolve_sidebar_insertion (NautilusSidebar *sidebar, const GValue *value,
++                            double x, double y, GtkListBoxRow **row, gboolean *after)
++{
++    *row = gtk_list_box_get_row_at_y (GTK_LIST_BOX (sidebar->list_box), y);
++    if (value == NULL || !G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW) ||
++        !check_valid_drop_target (sidebar, NAUTILUS_SIDEBAR_ROW (*row), value))
++        return FALSE;
++    graphene_point_t point;
++    if (!gtk_widget_compute_point (sidebar->list_box, GTK_WIDGET (*row),
++                                    &GRAPHENE_POINT_INIT (x, y), &point))
++        return FALSE;
++    *after = luma_reorder_hint_is_after (GTK_WIDGET (*row), point.y);
++    return TRUE;
+ }
+ 
+ static void
+@@ -1446,6 +1458,8 @@
+         }
+ 
+         sensitive = value == NULL ||
++                    (G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW) &&
++                     g_value_get_object (value) == row) ||
+                     check_valid_drop_target (sidebar, NAUTILUS_SIDEBAR_ROW (row), value);
+         gtk_widget_set_sensitive (row, sensitive);
+     }
+@@ -1490,6 +1504,7 @@
+ static void
+ stop_drop_feedback (NautilusSidebar *sidebar)
+ {
++    luma_reorder_hint_end (sidebar->list_box);
+     update_possible_drop_targets (sidebar, NULL);
+ 
+     if (sidebar->drop_state != DROP_STATE_NEW_BOOKMARK_ARMED_PERMANENT &&
+@@ -1501,7 +1516,6 @@
+ 
+     if (sidebar->drag_row != NULL)
+     {
+-        gtk_widget_set_visible (sidebar->drag_row, TRUE);
+         sidebar->drag_row = NULL;
+     }
+ 
+@@ -1549,6 +1563,7 @@
+ 
+     /* Workaround https://gitlab.gnome.org/GNOME/gtk/-/issues/5023 */
+     gtk_list_box_drag_unhighlight_row (GTK_LIST_BOX (sidebar->list_box));
++    luma_reorder_hint_clear (sidebar->list_box);
+ 
+     /* Nothing to do if no value yet */
+     value = gtk_drop_target_get_value (target);
+@@ -1565,8 +1580,12 @@
+ 
+     if (G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW))
+     {
+-        action = GDK_ACTION_MOVE;
+-        gtk_list_box_drag_highlight_row (GTK_LIST_BOX (sidebar->list_box), row);
++        gboolean after;
++        if (resolve_sidebar_insertion (sidebar, value, x, y, &row, &after))
++        {
++            action = GDK_ACTION_MOVE;
++            luma_reorder_hint_set_target (sidebar->list_box, GTK_WIDGET (row), after);
++        }
+     }
+     else if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
+     {
+@@ -1676,11 +1695,9 @@
+     if (G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW))
+     {
+         GtkWidget *source = g_value_get_object (value);
+-        graphene_point_t point;
+-        gboolean after = gtk_widget_compute_point (sidebar->list_box, GTK_WIDGET (target_row),
+-                                                    &GRAPHENE_POINT_INIT (x, y), &point) &&
+-                         point.y > gtk_widget_get_height (GTK_WIDGET (target_row)) / 2;
+-        result = sidebar_reorder (sidebar, source, GTK_WIDGET (target_row), after);
++        gboolean after;
++        if (resolve_sidebar_insertion (sidebar, value, x, y, &target_row, &after))
++            result = sidebar_reorder (sidebar, source, GTK_WIDGET (target_row), after);
+     }
+     else if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
+     {
+@@ -1733,21 +1750,6 @@
+     stop_drop_feedback (sidebar);
+ 
+     return result;
+-}
+-
+-static void
+-dnd_finished_cb (GdkDrag         *drag,
+-                 NautilusSidebar *sidebar)
+-{
+-    stop_drop_feedback (sidebar);
+-}
+-
+-static void
+-dnd_cancel_cb (GdkDrag             *drag,
+-               GdkDragCancelReason  reason,
+-               NautilusSidebar     *sidebar)
+-{
+-    stop_drop_feedback (sidebar);
+ }
+ 
+ /* This functions is called every time the drag source leaves
+@@ -1775,6 +1777,7 @@
+     NautilusSidebar *sidebar = NAUTILUS_PLACES_SIDEBAR (user_data);
+ 
+     gtk_list_box_drag_unhighlight_row (GTK_LIST_BOX (sidebar->list_box));
++    luma_reorder_hint_clear (sidebar->list_box);
+ 
+     if (sidebar->drop_state != DROP_STATE_NEW_BOOKMARK_ARMED_PERMANENT)
+     {
+@@ -3379,32 +3382,6 @@
+ }
+ 
+ static void
+-on_row_pressed (GtkGestureClick    *gesture,
+-                int                 n_press,
+-                double              x,
+-                double              y,
+-                NautilusSidebarRow *row)
+-{
+-    NautilusSidebar *sidebar;
+-    NautilusSidebarSectionType section_type;
+-
+-    g_object_get (row,
+-                  "sidebar", &sidebar,
+-                  "section_type", &section_type,
+-                  NULL);
+-
+-    g_autofree char *id = sidebar_row_id (GTK_WIDGET (row));
+-    if (id != NULL && sidebar_order_key (section_type) != NULL)
+-    {
+-        sidebar->drag_row = GTK_WIDGET (row);
+-        sidebar->drag_row_x = (int) x;
+-        sidebar->drag_row_y = (int) y;
+-    }
+-
+-    g_object_unref (sidebar);
+-}
+-
+-static void
+ on_row_released (GtkGestureClick    *gesture,
+                  int                 n_press,
+                  double              x,
+@@ -3444,72 +3421,42 @@
+     }
+ }
+ 
+-static void
+-on_row_dragged (GtkGestureDrag     *gesture,
+-                double              x,
+-                double              y,
+-                NautilusSidebarRow *row)
+-{
+-    NautilusSidebar *sidebar;
+-
++static GdkContentProvider *
++sidebar_drag_prepare (GtkDragSource *source, double x, double y, NautilusSidebarRow *row)
++{
++    NautilusSidebarSectionType section;
++    g_object_get (row, "section-type", &section, NULL);
++    g_autofree char *id = sidebar_row_id (GTK_WIDGET (row));
++    if (id == NULL || sidebar_order_key (section) == NULL) return NULL;
++    g_autoptr (GdkPaintable) icon = gtk_widget_paintable_new (
++        gtk_list_box_row_get_child (GTK_LIST_BOX_ROW (row)));
++    gtk_drag_source_set_icon (source, icon, x, y);
++    return gdk_content_provider_new_typed (NAUTILUS_TYPE_SIDEBAR_ROW, row);
++}
++
++static void
++sidebar_drag_begin (GtkDragSource *source, GdkDrag *drag, NautilusSidebarRow *row)
++{
++    g_autoptr (NautilusSidebar) sidebar = NULL;
+     g_object_get (row, "sidebar", &sidebar, NULL);
+-
+-    if (sidebar->drag_row == NULL || sidebar->dragging_over)
+-    {
+-        g_object_unref (sidebar);
+-        return;
+-    }
+-
+-    if (gtk_drag_check_threshold (GTK_WIDGET (row), 0, 0, x, y))
+-    {
+-        double start_x, start_y;
+-        GdkContentProvider *content;
+-        GdkSurface *surface;
+-        GdkDevice *device;
+-        gint width, height;
+-        GtkWidget *drag_widget;
+-        GdkDrag *drag;
+-        graphene_point_t drag_point;
+-
+-        gtk_gesture_drag_get_start_point (gesture, &start_x, &start_y);
+-        if (!gtk_widget_compute_point (GTK_WIDGET (row), GTK_WIDGET (sidebar),
+-                                       &GRAPHENE_POINT_INIT (start_x, start_y),
+-                                       &drag_point))
+-        {
+-            g_return_if_reached ();
+-        }
+-
+-        sidebar->dragging_over = TRUE;
+-
+-        content = gdk_content_provider_new_typed (NAUTILUS_TYPE_SIDEBAR_ROW, sidebar->drag_row);
+-
+-        surface = gtk_native_get_surface (gtk_widget_get_native (GTK_WIDGET (sidebar)));
+-        device = gtk_gesture_get_device (GTK_GESTURE (gesture));
+-
+-        drag = gdk_drag_begin (surface, device, content, GDK_ACTION_MOVE, drag_point.x, drag_point.y);
+-
+-        g_object_unref (content);
+-
+-        gdk_drag_set_hotspot (drag, start_x, start_y);
+-        g_signal_connect (drag, "dnd-finished", G_CALLBACK (dnd_finished_cb), sidebar);
+-        g_signal_connect (drag, "cancel", G_CALLBACK (dnd_cancel_cb), sidebar);
+-
+-        width = gtk_widget_get_width (sidebar->drag_row);
+-        height = gtk_widget_get_height (sidebar->drag_row);
+-        gtk_widget_set_visible (sidebar->drag_row, FALSE);
+-
+-        drag_widget = GTK_WIDGET (nautilus_sidebar_row_clone (NAUTILUS_SIDEBAR_ROW (sidebar->drag_row)));
+-        sidebar->drag_row_height = height;
+-        gtk_widget_set_size_request (drag_widget, width, height);
+-        gtk_widget_set_opacity (drag_widget, 0.8);
+-        gtk_widget_set_margin_start (drag_widget, 14);
+-
+-        gtk_drag_icon_set_child (GTK_DRAG_ICON (gtk_drag_icon_get_for_drag (drag)), drag_widget);
+-
+-        g_object_unref (drag);
+-    }
+-
+-    g_object_unref (sidebar);
++    sidebar->drag_row = GTK_WIDGET (row);
++    sidebar->dragging_over = TRUE;
++    luma_reorder_hint_begin (sidebar->list_box, GTK_WIDGET (row));
++}
++
++static void
++sidebar_drag_end (GtkDragSource *source, GdkDrag *drag, gboolean delete_data, NautilusSidebarRow *row)
++{
++    g_autoptr (NautilusSidebar) sidebar = NULL;
++    g_object_get (row, "sidebar", &sidebar, NULL);
++    stop_drop_feedback (sidebar);
++}
++
++static gboolean
++sidebar_drag_cancel (GtkDragSource *source, GdkDrag *drag, GdkDragCancelReason reason, NautilusSidebarRow *row)
++{
++    sidebar_drag_end (source, drag, FALSE, row);
++    return FALSE;
+ }
+ 
+ static void
+--- a/test/automated/display/test-luma-column-header-menu.c
++++ b/test/automated/display/test-luma-column-header-menu.c
+@@ -256,6 +256,65 @@
+     g_print ("PASS: Favorites reorder persists, remove keeps folder, add restores shortcut\n");
+ }
+ 
++static void
++test_sidebar_drop_position (void)
++{
++    GtkWidget *window = gtk_window_new ();
++    GtkWidget *sidebar = nautilus_sidebar_new ();
++    gtk_window_set_child (GTK_WINDOW (window), sidebar);
++    gtk_window_set_default_size (GTK_WINDOW (window), 280, 900);
++    gtk_window_present (GTK_WINDOW (window));
++    settle_metadata ();
++    g_autoptr (GFile) documents = g_file_new_for_path (g_get_user_special_dir (G_USER_DIRECTORY_DOCUMENTS));
++    g_autoptr (GFile) music = g_file_new_for_path (g_get_user_special_dir (G_USER_DIRECTORY_MUSIC));
++    g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++    g_autofree char *documents_uri = g_file_get_uri (documents);
++    g_autofree char *music_uri = g_file_get_uri (music);
++    g_autofree char *home_uri = g_file_get_uri (home);
++    GtkWidget *source = find_row (sidebar, documents_uri);
++    GtkWidget *destination = find_row (sidebar, music_uri);
++    GtkWidget *list = gtk_widget_get_parent (source);
++    g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (list);
++    g_autoptr (GObject) drop = NULL;
++    for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
++    {
++        g_autoptr (GObject) item = g_list_model_get_item (controllers, i);
++        if (GTK_IS_DROP_TARGET (item)) { drop = g_object_ref (item); break; }
++    }
++    g_assert_nonnull (drop);
++    GValue value = G_VALUE_INIT;
++    g_value_init (&value, NAUTILUS_TYPE_SIDEBAR_ROW);
++    g_value_set_object (&value, source);
++    for (guint after = 0; after < 2; after++)
++    {
++        graphene_point_t point;
++        double y = gtk_widget_get_height (destination) * (after ? .75 : .25);
++        g_assert_true (gtk_widget_compute_point (destination, list,
++                       &GRAPHENE_POINT_INIT (10, y), &point));
++        gboolean accepted = FALSE;
++        g_signal_emit_by_name (drop, "drop", &value, (double) point.x, (double) point.y, &accepted);
++        g_assert_true (accepted);
++        int first = gtk_list_box_row_get_index (GTK_LIST_BOX_ROW (source));
++        int second = gtk_list_box_row_get_index (GTK_LIST_BOX_ROW (destination));
++        g_assert_cmpint (first, ==, second + (after ? 1 : -1));
++        settle_metadata ();
++    }
++    g_auto (GStrv) order = g_settings_get_strv (nautilus_preferences, "sidebar-favorites-order");
++    GtkWidget *other_category = find_row (sidebar, home_uri);
++    graphene_point_t point;
++    g_assert_true (gtk_widget_compute_point (other_category, list,
++                   &GRAPHENE_POINT_INIT (10, 10), &point));
++    gboolean accepted = TRUE;
++    g_signal_emit_by_name (drop, "drop", &value, (double) point.x, (double) point.y, &accepted);
++    g_assert_false (accepted);
++    g_auto (GStrv) unchanged = g_settings_get_strv (nautilus_preferences, "sidebar-favorites-order");
++    g_assert_cmpstrv (unchanged, order);
++    g_value_unset (&value);
++    gtk_window_destroy (GTK_WINDOW (window));
++    g_settings_reset (nautilus_preferences, "sidebar-favorites-order");
++    g_print ("PASS: native drops resolve before/after and reject cross-category moves\n");
++}
++
+ static GtkDragSource *
+ find_drag_source (GtkWidget *widget)
+ {
+@@ -340,6 +399,7 @@
+     test_favorites ();
+     test_sidebar_customization ();
+     test_parent_drag ();
++    test_sidebar_drop_position ();
+     g_print ("PASS: header columns toggle, preserve order, and reopen\n");
+     return 0;
+ }

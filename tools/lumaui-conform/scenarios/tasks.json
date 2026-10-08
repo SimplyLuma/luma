@@ -1,0 +1,494 @@
+{
+  "app": "tasks",
+  "title": "Tasks",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=tasks",
+    "window": "#w-tasks",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "tasks",
+    "fixtures": [
+      "tests/fixtures/tasks-v70.json",
+      "tests/fixtures/tasks-v70"
+    ],
+    "env": {
+      "LUMA_TASKS_FIXTURE": "{run}/fixtures/tasks-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "today",
+      "about": "Opening state: no task selected, details closed",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "upcoming",
+      "spec": [
+        {
+          "click": "[data-tkview=\"upcoming\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-upcoming"
+        }
+      ]
+    },
+    {
+      "name": "mine",
+      "spec": [
+        {
+          "click": "[data-tkview=\"mine\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-mine"
+        }
+      ]
+    },
+    {
+      "name": "flag",
+      "spec": [
+        {
+          "click": "[data-tkview=\"flag\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-flag"
+        }
+      ]
+    },
+    {
+      "name": "done",
+      "spec": [
+        {
+          "click": "[data-tkview=\"done\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-done"
+        }
+      ]
+    },
+    {
+      "name": "personal",
+      "spec": [
+        {
+          "click": "[data-tkview=\"personal\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-personal"
+        }
+      ]
+    },
+    {
+      "name": "launch",
+      "spec": [
+        {
+          "click": "[data-tkview=\"launch\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-launch"
+        }
+      ]
+    },
+    {
+      "name": "home",
+      "spec": [
+        {
+          "click": "[data-tkview=\"home\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-home"
+        }
+      ]
+    },
+    {
+      "name": "groc",
+      "spec": [
+        {
+          "click": "[data-tkview=\"groc\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-groc"
+        }
+      ]
+    },
+    {
+      "name": "task",
+      "spec": [
+        {
+          "click": "[data-tkpick=\"t100\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-pick-t100"
+        }
+      ]
+    },
+    {
+      "name": "due",
+      "spec": [
+        {
+          "click": "[data-tkpick=\"t100\"]"
+        },
+        {
+          "click": "#tk-det [data-tkdue]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-pick-t100"
+        },
+        {
+          "activate": "tk-due"
+        }
+      ]
+    },
+    {
+      "name": "assigned",
+      "spec": [
+        {
+          "click": "[data-tkpick=\"t100\"]"
+        },
+        {
+          "click": "[data-tkassign]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-pick-t100"
+        },
+        {
+          "activate": "tk-assign"
+        }
+      ]
+    },
+    {
+      "name": "move",
+      "spec": [
+        {
+          "click": "[data-tkpick=\"t100\"]"
+        },
+        {
+          "click": "#tk-det [data-tkmove]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-pick-t100"
+        },
+        {
+          "activate": "tk-move"
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "spec": [
+        {
+          "click": "[data-tkpick=\"t100\"]"
+        },
+        {
+          "click": "[data-tkmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-pick-t100"
+        },
+        {
+          "activate": "tk-more"
+        }
+      ]
+    },
+    {
+      "name": "share",
+      "spec": [
+        {
+          "click": "[data-tkview=\"launch\"]"
+        },
+        {
+          "click": "[data-tkshare]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-launch"
+        },
+        {
+          "activate": "tk-share"
+        }
+      ]
+    },
+    {
+      "name": "launch-done",
+      "spec": [
+        {
+          "click": "[data-tkview=\"launch\"]"
+        },
+        {
+          "click": "[data-tkshowdone]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-view-launch"
+        },
+        {
+          "activate": "tk-show-done"
+        }
+      ]
+    },
+    {
+      "name": "new",
+      "spec": [
+        {
+          "click": "[data-tknew]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-new"
+        }
+      ]
+    },
+    {
+      "name": "new-parsed",
+      "spec": [
+        {
+          "click": "[data-tknew]"
+        },
+        {
+          "eval": "(() => { const i = document.querySelector('[data-tkadd]'); i.value = 'Call Theo tomorrow 3pm !high #Launch @Priya'; i.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-new"
+        },
+        {
+          "env": {
+            "LUMA_TASKS_DRAFT": "Call Theo tomorrow 3pm !high #Launch @Priya"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-empty",
+      "spec": [
+        {
+          "eval": "(() => { const i = document.querySelector('[data-tkq]'); i.value = 'no matching task'; i.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_TASKS_QUERY": "no matching task"
+          }
+        }
+      ]
+    },
+    {
+      "name": "hide-suggestions",
+      "spec": [
+        {
+          "click": "[data-tksugx]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "tk-hide-suggestions"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "today",
+    "upcoming",
+    "mine",
+    "flag",
+    "done",
+    "personal",
+    "launch",
+    "home",
+    "groc",
+    "task",
+    "due",
+    "assigned",
+    "move",
+    "more",
+    "share",
+    "launch-done",
+    "new",
+    "new-parsed",
+    "search-empty",
+    "hide-suggestions"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-tasks > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#tk-top"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#tk-side .tkfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#tk-side"
+    },
+    {
+      "name": "menu",
+      "spec": "#tk-pop"
+    },
+    {
+      "name": "action center",
+      "spec": "#tk-bar"
+    },
+    {
+      "name": "task details",
+      "spec": "#tk-det"
+    },
+    {
+      "name": "suggestions",
+      "spec": "#tk-body .tkgrp.sug"
+    },
+    {
+      "name": "main",
+      "spec": "#tk-main"
+    }
+  ],
+  "groups_note": "Items take the first group whose spec box contains them, so list inner regions before outer ones. info_only groups are reported, never failed.",
+  "pairs": [
+    {
+      "name": "sidebar",
+      "spec": "#tk-side",
+      "gtk": "tk-sidebar"
+    },
+    {
+      "name": "main island",
+      "spec": "#tk-main",
+      "gtk": "tk-island"
+    },
+    {
+      "name": "task details",
+      "spec": "#tk-det",
+      "gtk": "tk-details"
+    },
+    {
+      "name": "action center",
+      "spec": "#tk-bar",
+      "gtk": "tk-bar"
+    },
+    {
+      "name": "task row t100",
+      "spec": ".tkrow[data-tkpick=\"t100\"], .tkrow:has([data-tktoday=\"t100\"])",
+      "gtk": "tk-row-t100"
+    },
+    {
+      "name": "selected task chip",
+      "spec": "#tk-bar .tkctx",
+      "gtk": "tk-bar-task"
+    },
+    {
+      "name": "task row t101",
+      "spec": ".tkrow[data-tkpick=\"t101\"], .tkrow:has([data-tktoday=\"t101\"])",
+      "gtk": "tk-row-t101"
+    },
+    {
+      "name": "task row t102",
+      "spec": ".tkrow[data-tkpick=\"t102\"], .tkrow:has([data-tktoday=\"t102\"])",
+      "gtk": "tk-row-t102"
+    },
+    {
+      "name": "task row t103",
+      "spec": ".tkrow[data-tkpick=\"t103\"], .tkrow:has([data-tktoday=\"t103\"])",
+      "gtk": "tk-row-t103"
+    },
+    {
+      "name": "task row t104",
+      "spec": ".tkrow[data-tkpick=\"t104\"], .tkrow:has([data-tktoday=\"t104\"])",
+      "gtk": "tk-row-t104"
+    },
+    {
+      "name": "task row t105",
+      "spec": ".tkrow[data-tkpick=\"t105\"], .tkrow:has([data-tktoday=\"t105\"])",
+      "gtk": "tk-row-t105"
+    },
+    {
+      "name": "task row t106",
+      "spec": ".tkrow[data-tkpick=\"t106\"], .tkrow:has([data-tktoday=\"t106\"])",
+      "gtk": "tk-row-t106"
+    },
+    {
+      "name": "task row t107",
+      "spec": ".tkrow[data-tkpick=\"t107\"], .tkrow:has([data-tktoday=\"t107\"])",
+      "gtk": "tk-row-t107"
+    },
+    {
+      "name": "task row t108",
+      "spec": ".tkrow[data-tkpick=\"t108\"], .tkrow:has([data-tktoday=\"t108\"])",
+      "gtk": "tk-row-t108"
+    },
+    {
+      "name": "task row t109",
+      "spec": ".tkrow[data-tkpick=\"t109\"], .tkrow:has([data-tktoday=\"t109\"])",
+      "gtk": "tk-row-t109"
+    },
+    {
+      "name": "task row t110",
+      "spec": ".tkrow[data-tkpick=\"t110\"], .tkrow:has([data-tktoday=\"t110\"])",
+      "gtk": "tk-row-t110"
+    },
+    {
+      "name": "task row t111",
+      "spec": ".tkrow[data-tkpick=\"t111\"], .tkrow:has([data-tktoday=\"t111\"])",
+      "gtk": "tk-row-t111"
+    },
+    {
+      "name": "task row t112",
+      "spec": ".tkrow[data-tkpick=\"t112\"], .tkrow:has([data-tktoday=\"t112\"])",
+      "gtk": "tk-row-t112"
+    },
+    {
+      "name": "task row t113",
+      "spec": ".tkrow[data-tkpick=\"t113\"], .tkrow:has([data-tktoday=\"t113\"])",
+      "gtk": "tk-row-t113"
+    },
+    {
+      "name": "task row t114",
+      "spec": ".tkrow[data-tkpick=\"t114\"], .tkrow:has([data-tktoday=\"t114\"])",
+      "gtk": "tk-row-t114"
+    },
+    {
+      "name": "task row t115",
+      "spec": ".tkrow[data-tkpick=\"t115\"], .tkrow:has([data-tktoday=\"t115\"])",
+      "gtk": "tk-row-t115"
+    }
+  ],
+  "pairs_note": "Structure and composed task surfaces map exact spec selectors to their stable GTK widget names. Tasks12 TOOL triage approves selector pairs for whole task cards, whose completion/title/actions have separate GTK targets. All descendants, inventory and tolerances remain measured.",
+  "implementation_note": "Twenty v70 states; stable GTK names and fixture-only draft/query startup modes. Shared destinations, marks, row avatars, progress, text modes, section tally and BarEntry adopted. Pending measured kit parity is recorded in Tasks kit requests; no parity claimed until all four variants PASS."
+}

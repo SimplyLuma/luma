@@ -1,0 +1,193 @@
+{
+  "app": "stage",
+  "title": "Stage",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=stage",
+    "window": "#w-stage",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "build": {
+      "source": ".",
+      "meson_options": ["-Dlibreofficekit=disabled"]
+    },
+    "binary": "bin/luma-stage",
+    "fixtures": [
+      "lumaui/fixtures/stage-v70.json",
+      "lumaui/fixtures/images"
+    ],
+    "env": {
+      "LUMA_STAGE_FIXTURE": "{run}/fixtures/stage-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "editor",
+      "about": "Title slide in the opening editor state",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "selection",
+      "about": "Wordmark selected and object inspector open",
+      "spec": [
+        {
+          "eval": "(() => { const n = document.querySelector('#st-slide [data-stn=\\\"s3\\\"]'); const r = n.getBoundingClientRect(); n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2 })); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_STAGE_FIXTURE_STATE": "selection"
+          }
+        }
+      ]
+    },
+    {
+      "name": "slide",
+      "about": "Slide inspector open",
+      "spec": [
+        {
+          "click": "#st-right [data-stslide]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_STAGE_FIXTURE_STATE": "slide"
+          }
+        }
+      ]
+    },
+    {
+      "name": "layouts",
+      "about": "New slide layout menu",
+      "spec": [
+        {
+          "click": "#st-bar [data-stlayouts]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_STAGE_FIXTURE_STATE": "layouts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "notes-collapsed",
+      "about": "Notes panel collapsed",
+      "spec": [
+        {
+          "click": "#st-notes [data-stnotes]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_STAGE_FIXTURE_STATE": "notes-collapsed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "second-slide",
+      "about": "Why now slide selected",
+      "spec": [
+        {
+          "eval": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_STAGE_FIXTURE_STATE": "second-slide"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "editor",
+    "selection",
+    "slide",
+    "layouts",
+    "second-slide"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-stage > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#st-top"
+    },
+    {
+      "name": "slides",
+      "spec": "#st-left"
+    },
+    {
+      "name": "notes",
+      "spec": "#st-notes"
+    },
+    {
+      "name": "inspector",
+      "spec": "#st-right"
+    },
+    {
+      "name": "tools",
+      "spec": "#st-bar"
+    },
+    {
+      "name": "slide canvas",
+      "spec": "#st-slide"
+    },
+    {
+      "name": "main",
+      "spec": "#st-work"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#st-top",
+      "gtk": "st-top",
+      "name": "title row"
+    },
+    {
+      "spec": "#st-left",
+      "gtk": "st-slides",
+      "name": "slides"
+    },
+    {
+      "spec": "#st-notes",
+      "gtk": "st-notes",
+      "name": "notes"
+    },
+    {
+      "spec": "#st-right",
+      "gtk": "st-inspector",
+      "name": "inspector"
+    },
+    {
+      "spec": "#st-bar",
+      "gtk": "st-actions",
+      "name": "action center"
+    },
+    {
+      "spec": "#st-slide",
+      "gtk": "st-slide",
+      "name": "slide canvas"
+    },
+    {
+      "spec": "#st-work",
+      "gtk": "st-work",
+      "name": "main island"
+    }
+  ]
+}

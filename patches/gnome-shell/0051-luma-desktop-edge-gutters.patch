@@ -1,0 +1,81 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shelf: reserve consistent floating desktop edge gutters
+
+Use native chrome struts; fullscreen retains monitor bounds. No timers or
+window-move loops. Attached docks retain zero outer inset.
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -71,14 +71,20 @@
+         : monitor.y + (edge === 'top' ? inset : monitor.height - inset - height);
+     // A floating Dash still consumes maximized work area through the physical
+     // edge gap. A separate nonreactive chrome actor owns these static bounds.
+-    const reserved = thickness + inset;
++    const reserved = thickness + 2 * inset;
+     const workArea = {
+         x: edge === 'right' ? monitor.x + monitor.width - reserved : monitor.x,
+         y: edge === 'bottom' ? monitor.y + monitor.height - reserved : monitor.y,
+         width: vertical ? reserved : monitor.width,
+         height: vertical ? monitor.height : reserved,
+     };
+-    return {x, y, width, height, vertical, available, workArea};
++    const edgeInsets = [
++        {x: monitor.x, y: monitor.y, width: monitor.width, height: inset},
++        {x: monitor.x, y: monitor.y, width: inset, height: monitor.height},
++        {x: monitor.x + monitor.width - inset, y: monitor.y, width: inset, height: monitor.height},
++        {x: monitor.x, y: monitor.y + monitor.height - inset, width: monitor.width, height: inset},
++    ].filter((_rect, index) => ['top', 'left', 'right', 'bottom'][index] !== edge);
++    return {x, y, width, height, vertical, available, workArea, edgeInsets};
+ }
+ 
+ // Corner order is CSS top-left, top-right, bottom-right, bottom-left.
+@@ -427,6 +433,7 @@
+ 
+         this.connect('destroy', () => {
+             this._workArea?.destroy();
++            for (const actor of this._edgeInsets ?? []) actor.destroy();
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+             for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland])
+@@ -441,6 +448,11 @@
+         Main.layoutManager.addChrome(this._workArea, {
+             affectsStruts: true,
+             trackFullscreen: true,
++        });
++        this._edgeInsets = Array.from({length: 3}, () => {
++            const actor = new St.Widget({name: 'lumaDesktopEdgeInset', reactive: false});
++            Main.layoutManager.addChrome(actor, {affectsStruts: true, trackFullscreen: true});
++            return actor;
+         });
+         this._workAreaTracked = true;
+         Main.layoutManager.addChrome(this, {
+@@ -689,11 +701,13 @@
+     _trackWorkArea(enabled) {
+         if (enabled === this._workAreaTracked)
+             return;
+-        Main.layoutManager.untrackChrome(this._workArea);
+-        Main.layoutManager.trackChrome(this._workArea, {
+-            affectsStruts: enabled,
+-            trackFullscreen: true,
+-        });
++        for (const actor of [this._workArea, ...this._edgeInsets]) {
++            Main.layoutManager.untrackChrome(actor);
++            Main.layoutManager.trackChrome(actor, {
++                affectsStruts: enabled,
++                trackFullscreen: true,
++            });
++        }
+         this._workAreaTracked = enabled;
+     }
+ 
+@@ -723,6 +737,10 @@
+         const workArea = geometry.workArea;
+         this._workArea.set_position(workArea.x, workArea.y);
+         this._workArea.set_size(workArea.width, workArea.height);
++        geometry.edgeInsets.forEach((rect, index) => {
++            this._edgeInsets[index].set_position(rect.x, rect.y);
++            this._edgeInsets[index].set_size(rect.width, rect.height);
++        });
+         if (this._positioned && St.Settings.get().enable_animations &&
+             (moved || explicitChange) && (oldX !== geometry.x || oldY !== geometry.y)) {
+             this._surface.remove_all_transitions();

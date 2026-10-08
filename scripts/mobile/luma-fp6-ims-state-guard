@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# An IMS security association can only be resumed in the boot and carrier
+# context that created it. Drop the recreatable resume state when either
+# context changes so imsd performs a clean registration instead of looping on
+# a carrier 403. No subscriber identity or protected state is logged.
+
+set -Eeuo pipefail
+umask 077
+
+state_dir=/var/lib/imsd
+state_file=$state_dir/imsreg.state
+context_file=$state_dir/network-context.sha256
+
+[[ $(id -u) -eq 0 ]] || exit 1
+install -d -m 0700 -o root -g root "$state_dir"
+
+boot_id=$(cat /proc/sys/kernel/random/boot_id)
+modem_kv=$(mmcli -m 0 --output-keyvalue 2>/dev/null || true)
+mode=$(printf '%s\n' "$modem_kv" |
+  sed -n 's/^modem.generic.current-modes[[:space:]]*:[[:space:]]*//p' |
+  head -n1)
+iface=$(sed -n 's/^DEV=//p' /run/imsd.env 2>/dev/null | head -n1)
+address=
+if [[ $iface =~ ^[A-Za-z0-9_.:-]+$ ]]; then
+  address=$(ip -6 -o address show dev "$iface" scope global 2>/dev/null |
+    awk 'NR == 1 { print $4 }')
+fi
+
+context=$(printf '%s\n%s\n%s\n' "$boot_id" "$mode" "$address" | sha256sum |
+  cut -d' ' -f1)
+previous=$(cat "$context_file" 2>/dev/null || true)
+
+if [[ -f $state_file && $previous != "$context" ]]; then
+  rm -f -- "$state_file"
+  printf 'event=luma_fp6_ims_state state=fresh reason=context-change protected_contents_logged=0\n'
+else
+  printf 'event=luma_fp6_ims_state state=reusable protected_contents_logged=0\n'
+fi
+
+temporary=$(mktemp "$state_dir/.network-context.XXXXXX")
+printf '%s\n' "$context" >"$temporary"
+chmod 0600 "$temporary"
+mv -f "$temporary" "$context_file"
+[[ ! -f $state_file ]] || chmod 0600 "$state_file"

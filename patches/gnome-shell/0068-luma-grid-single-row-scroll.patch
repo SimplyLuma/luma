@@ -1,0 +1,166 @@
+From f465ec8dfe61094e68892ac9973e79418fe5433c Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 17:14:43 -0500
+Subject: [PATCH] [LUMA] Grid: one row with a preview floor, two-finger scroll,
+ swipe down to dismiss
+
+The layout stopped shrinking previews to make every window fit. It is now a
+single row whose preview height comes from the median aspect, sized so about
+three previews span the work area, with a hard floor. That floor is what
+produces horizontal overflow at all: before this the row always fit, so the
+scrolling the popup already implemented could never engage.
+
+Scrolling moves along that row from either wheel axis, so a normal two-finger
+touchpad scroll travels through the windows. Three-finger gestures are left to
+the workspace switcher.
+
+Grid holds a modal grab, so the overview swipe tracker never sees events while
+it is open. It now owns a POPUP-mode vertical tracker: the three-finger swipe
+up that opened Grid is answered by a three-finger swipe down that closes it.
+---
+ js/ui/gridLayout.js | 50 +++++++++++++++++++++------------------------
+ js/ui/lumaGrid.js   | 41 ++++++++++++++++++++++++++++++-------
+ 2 files changed, 57 insertions(+), 34 deletions(-)
+
+diff --git a/js/ui/gridLayout.js b/js/ui/gridLayout.js
+index ed8650c..115e2be 100644
+--- a/js/ui/gridLayout.js
++++ b/js/ui/gridLayout.js
+@@ -2,10 +2,14 @@
+ // Logical-pixel geometry for Luma Grid. Input order is MRU and never changes.
+ export const GRID_GAP = 28;
+ export const GRID_LABEL = 28; // 20px icon/text plus 8px to the preview.
+-// Grid never grows past two rows. Beyond that previews shrink faster than
+-// they stay recognisable, so extra windows extend the rows and scroll
+-// horizontally rather than stacking into a third row.
+-export const GRID_MAX_ROWS = 2;
++// Grid is a single row. Previews are never shrunk to make everything fit:
++// they hold a usable size and the row overflows, which is what turns the
++// surface into something you scroll through rather than squint at.
++export const GRID_MAX_ROWS = 1;
++// About this many previews span the work area at once; the rest are a scroll away.
++export const GRID_TARGET_VISIBLE = 3;
++// A preview never goes below this height, which is what forces the overflow.
++export const GRID_MIN_PREVIEW = 260;
+ 
+ // Exact contiguous minimax partition at a given preview height. Backtracking
+ // prefers fuller earlier rows when widths tie. No window is reordered.
+@@ -45,29 +49,21 @@ export function gridLayout(windows, width, height) {
+     const sorted = windows.map(w => w.height).sort((a, b) => a - b);
+     const middle = Math.floor(sorted.length / 2);
+     const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+-    const cap = Math.min(height * 0.6, median * 2 / 3);
+-    let best = null;
+-    const maxRows = Math.min(GRID_MAX_ROWS, windows.length);
+-    for (let r = 1; r <= maxRows; r++) {
+-        let low = 0;
+-        let high = Math.max(0, Math.min(cap, (height - r * GRID_LABEL - (r - 1) * GRID_GAP) / r));
+-        if (best && high <= best.h + 1e-7) continue;
+-        for (let step = 0; step < 40; step++) {
+-            const mid = (low + high) / 2;
+-            if (partition(aspects, r, mid).width <= width) low = mid;
+-            else high = mid;
+-        }
+-        if (!best || low > best.h + 1e-7) best = {h: low, r};
+-    }
+-    // When the floor requires scrolling, use the fewest rows that fit at the
+-    // floor. An individually over-wide preview is reported, never cropped.
+-    const h = Math.max(120, best.h);
+-    if (best.h < 120) {
+-        best.r = maxRows;
+-        for (let r = 1; r <= maxRows; r++) {
+-            if (partition(aspects, r, h).width <= width) { best.r = r; break; }
+-        }
+-    }
++    // One row, sized so roughly GRID_TARGET_VISIBLE previews span the work
++    // area. The height is chosen from the median aspect rather than from a
++    // fit-everything search, so adding windows lengthens the row instead of
++    // shrinking every preview toward illegibility.
++    const sortedAspects = [...aspects].sort((a, b) => a - b);
++    const aspectMiddle = Math.floor(sortedAspects.length / 2);
++    const medianAspect = sortedAspects.length % 2
++        ? sortedAspects[aspectMiddle]
++        : (sortedAspects[aspectMiddle - 1] + sortedAspects[aspectMiddle]) / 2;
++    const vertical = Math.max(1, height - GRID_LABEL);
++    const byWidth = (width - (GRID_TARGET_VISIBLE - 1) * GRID_GAP) /
++        (GRID_TARGET_VISIBLE * Math.max(0.1, medianAspect));
++    // The floor wins over the width budget; the vertical space is the hard cap.
++    const h = Math.min(vertical, Math.max(GRID_MIN_PREVIEW, Math.min(byWidth, height * 0.72)));
++    const best = {h, r: 1};
+     const packed = partition(aspects, best.r, h);
+     const blockHeight = best.r * (GRID_LABEL + h) + (best.r - 1) * GRID_GAP;
+     const scroll = blockHeight > height;
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index 88846a7..253572d 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -11,6 +11,7 @@ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import * as SwipeTracker from './swipeTracker.js';
+ import {gridLayout, gridNeighbor} from './gridLayout.js';
+ 
+ let activeGrid = null;
+@@ -223,6 +224,20 @@ class GridPopup extends St.Widget {
+         dismiss.connect('may-recognize', () => !this._cards.some(c => c.hover));
+         dismiss.connect('recognize', () => this.destroy());
+         this.add_action(dismiss);
++        // A three-finger swipe up opened Grid, so a three-finger swipe down
++        // closes it. Grid holds a modal grab, so it needs its own tracker in
++        // POPUP mode; the overview's tracker never sees these events.
++        this._dismissSwipe = new SwipeTracker.SwipeTracker(global.stage,
++            Clutter.Orientation.VERTICAL, Shell.ActionMode.POPUP,
++            {allowDrag: false, allowScroll: false, name: 'Luma Grid dismiss'});
++        this._dismissSwipe.connect('begin', tracker => {
++            const monitor = Main.layoutManager.primaryMonitor;
++            tracker.confirmSwipe(monitor?.height ?? 800, [0, 1], 1, 1);
++        });
++        this._dismissSwipe.connect('end', (tracker, duration, endProgress) => {
++            if (endProgress === 0)
++                this.destroy();
++        });
+         Main.layoutManager.connectObject('system-modal-opened', () => this.destroy(),
+             'monitors-changed', () => this.reflow(), this);
+         global.display.connectObject('workareas-changed', () => this.reflow(),
+@@ -241,6 +256,8 @@ class GridPopup extends St.Widget {
+                     actor.show();
+             });
+             this._hiddenActors = null;
++            this._dismissSwipe?.destroy();
++            this._dismissSwipe = null;
+             if (this._grab)
+                 Main.popModal(this._grab);
+             this._grab = null;
+@@ -335,14 +352,24 @@ class GridPopup extends St.Widget {
+ 
+     vfunc_scroll_event(event) {
+         const direction = event.get_scroll_direction();
+-        const horizontal = direction === Clutter.ScrollDirection.SMOOTH
+-            ? event.get_scroll_delta()[0] : 0;
++        let dx = 0;
++        let dy = 0;
++        if (direction === Clutter.ScrollDirection.SMOOTH)
++            [dx, dy] = event.get_scroll_delta();
++        else if (direction === Clutter.ScrollDirection.UP)
++            dy = -1;
++        else if (direction === Clutter.ScrollDirection.DOWN)
++            dy = 1;
++        else if (direction === Clutter.ScrollDirection.LEFT)
++            dx = -1;
++        else if (direction === Clutter.ScrollDirection.RIGHT)
++            dx = 1;
++        // The row is the only axis that travels, so an ordinary two-finger
++        // scroll moves along it whichever way the fingers went. Three-finger
++        // gestures are left alone: those belong to the workspace switcher.
++        const travel = (dx + dy) * 60;
+         this._scrollX = Math.max(-this._overflowX / 2, Math.min(this._overflowX / 2,
+-            this._scrollX + horizontal * 60));
+-        const delta = direction === Clutter.ScrollDirection.SMOOTH
+-            ? event.get_scroll_delta()[1] : direction === Clutter.ScrollDirection.UP ? -1 : 1;
+-        this._scroll = Math.max(0, Math.min(this._scroll + delta * 60,
+-            Math.max(0, (this._geometry?.height ?? 0) - this._contentHeight)));
++            this._scrollX + travel));
+         this.queue_relayout();
+         return Clutter.EVENT_STOP;
+     }

@@ -1,0 +1,23 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] Preserve explicit build-host Go garbage-collection tuning
+
+Blueprint launches soong_build with env -i. Preserve GOGC when the build
+owner explicitly supplies it, so a bounded compiler does not reclaim its
+working heap through swap. This controls the host compiler only; Android
+product configuration and generated module rules are unchanged.
+
+Upstream: Android Soong, Apache-2.0, retained pinned LineageOS 20 source.
+
+diff --git a/ui/build/soong.go b/ui/build/soong.go
+--- a/ui/build/soong.go
++++ b/ui/build/soong.go
+@@ -167,6 +167,9 @@ func primaryBuilderInvocation(
+ 
+ 	commonArgs = append(commonArgs, "-l", filepath.Join(config.FileListDir(), "Android.bp.list"))
+ 	invocationEnv := make(map[string]string)
++	if gc := os.Getenv("GOGC"); gc != "" {
++		invocationEnv["GOGC"] = gc
++	}
+ 	debugMode := os.Getenv("SOONG_DELVE") != ""
+ 
+ 	if debugMode {

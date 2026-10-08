@@ -1,0 +1,246 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Sticky Notes content only. The window frame, the identity corner, the
+ * window controls, the island stroke and shadow, the buttons and the focus
+ * ring are all the Application Kit's, and none of them is restated here.
+ *
+ * The one thing this sheet owns that the kit's tokens cannot supply is the
+ * paper. A note's colour is document data — the person chose it, it is stored
+ * with the note, and it has to mean the same thing on a light desktop and a
+ * dark one — so it is not a palette token and does not follow the treatment.
+ * The kit says the same thing about the control that picks it: "The colour is
+ * document data, while the selected ring uses the current toolkit foreground."
+ *
+ * If these five ever become system colours, they belong in
+ * config/shared/design-tokens.json and should be deleted from here.
+ */
+
+@define-color sticky_yellow #f3e3a3;
+@define-color sticky_coral  #f4c3b4;
+@define-color sticky_green  #c3ddbf;
+@define-color sticky_blue   #bcd4e9;
+@define-color sticky_purple #d5c6e7;
+/* One ink for every paper, in both treatments. A yellow note is yellow in the
+ * dark, so its writing cannot follow @luma_ink into white. */
+@define-color sticky_ink    #2c2a24;
+/* Paper is one of five fixed light values whatever the session theme is, so
+ * anything sitting on ink needs a fixed light relief. @luma_content is a
+ * surface token and goes dark with the theme, which put near-black text on
+ * the near-black Close button. */
+@define-color sticky_relief #fbfaf5;
+
+/* ── Paper ─────────────────────────────────────────────────────────────── */
+
+/* Stated for every state the paper has to survive. The toolkit repaints an
+ * island's background when its window goes to the backdrop, and libadwaita
+ * fills a toggle button when it is checked or hovered — a tab is both. This
+ * sheet loads above both, but saying it once per state is what makes the
+ * paper a property of the note rather than of the window's focus. */
+.paper-yellow, .paper-yellow:hover, .paper-yellow:checked, .paper-yellow:active,
+.paper-yellow:backdrop { background: @sticky_yellow; }
+.paper-coral, .paper-coral:hover, .paper-coral:checked, .paper-coral:active,
+.paper-coral:backdrop { background: @sticky_coral; }
+.paper-green, .paper-green:hover, .paper-green:checked, .paper-green:active,
+.paper-green:backdrop { background: @sticky_green; }
+.paper-blue, .paper-blue:hover, .paper-blue:checked, .paper-blue:active,
+.paper-blue:backdrop { background: @sticky_blue; }
+.paper-purple, .paper-purple:hover, .paper-purple:checked, .paper-purple:active,
+.paper-purple:backdrop { background: @sticky_purple; }
+.paper-yellow, .paper-coral, .paper-green, .paper-blue, .paper-purple,
+.paper-yellow:backdrop, .paper-coral:backdrop, .paper-green:backdrop,
+.paper-blue:backdrop, .paper-purple:backdrop {
+  background-image: none;
+  color: @sticky_ink;
+}
+
+/* ── The note window ───────────────────────────────────────────────────── */
+
+/* The island is the kit's; only its fill is the note's. */
+.sticky-note { padding: 0; }
+.sticky-note-head { min-height: 42px; padding: 4px 8px 4px 14px; }
+.sticky-note-title {
+  padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: @sticky_ink;
+  font-size: 15px; font-weight: 700; box-shadow: none;
+}
+.sticky-note-title:focus { background: alpha(@sticky_ink, .07); box-shadow: none; }
+.sticky-note-title selection { background: alpha(@sticky_ink, .18); color: @sticky_ink; }
+.sticky-saved {
+  color: alpha(@sticky_ink, .52); font-size: 11px; font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.sticky-saved.error { color: @luma_destructive; }
+.sticky-pin { color: alpha(@sticky_ink, .5); box-shadow: none; }
+.sticky-pin:hover { background: alpha(@sticky_ink, .08); color: @sticky_ink; }
+.sticky-pin:checked { background: alpha(@sticky_ink, .12); color: @sticky_ink; }
+
+/* The design's thin rule. It is the paper's own crease, not the kit's
+ * @luma_line, which would disappear against a pastel. */
+.sticky-rule { min-height: 1px; background: alpha(@sticky_ink, .16); }
+
+/* The writing. Caveat is the note body face and google-caveat-fonts is a hard
+ * Requires of this app, so the first name in the chain is the one that wins on
+ * a Luma image; the rest is only there for a developer checkout on a bare
+ * system. It is also set a step larger and a good deal looser than kit body
+ * text, so a note reads as something written rather than something filed. */
+.sticky-body, .sticky-body text, .sticky-body-scroll, .sticky-body-scroll > viewport {
+  background: transparent;
+}
+.sticky-body, .sticky-body text {
+  color: @sticky_ink;
+  font-family: "Caveat", cursive, Figtree, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+}
+.sticky-body text selection { background: alpha(@sticky_ink, .18); color: @sticky_ink; }
+.sticky-note.completed .sticky-body, .sticky-note.completed .sticky-body text { opacity: .62; }
+
+/* The paper is the window: nothing between it and the frame. */
+window.sticky-note-window,
+window.sticky-note-window > dialog-host,
+window.sticky-note-window > dialog-host > widget,
+window.sticky-note-window > dialog-host > widget > box {
+  background-color: transparent;
+  background-image: none;
+}
+/* The body is the kit's flexible region and normally insets its content; a
+ * note has nothing to inset, because the paper is the window. */
+window.sticky-note-window .luma-window-body { padding: 0; margin: 0; }
+.sticky-dots { margin-right: 4px; }
+.sticky-dot {
+  min-width: 13px; min-height: 13px; padding: 0; margin: 0;
+  border-radius: 999px; border: 0; box-shadow: none;
+  background: alpha(@sticky_ink, .20); color: transparent;
+}
+.sticky-dot:hover { background: alpha(@sticky_ink, .38); }
+.sticky-dot:active { background: alpha(@sticky_ink, .50); }
+
+.sticky-note-foot {
+  min-height: 46px; padding: 6px 10px 8px;
+  border-top: 1px solid alpha(@sticky_ink, .14);
+}
+.sticky-palette { padding: 0 2px; }
+/* The swatch itself is the kit's control; on paper it needs a ring of its own
+ * so a pale dot is still a dot. */
+/* A swatch is a dot. Without a radius and a square box it takes the footer
+ * button's height and reads as a tall pill with a dot inside it. */
+.sticky-swatch {
+  min-width: 22px; min-height: 22px; padding: 0;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px alpha(@sticky_ink, .22);
+}
+.sticky-swatch:hover { background: alpha(@sticky_ink, .08); }
+.sticky-note-foot button.luma-button {
+  background: alpha(@sticky_ink, .08); color: @sticky_ink;
+  box-shadow: inset 0 0 0 1px alpha(@sticky_ink, .16);
+}
+.sticky-note-foot button.luma-button:hover { background: alpha(@sticky_ink, .14); }
+.sticky-note-foot button.luma-button.primary {
+  background: @sticky_ink; color: @sticky_relief; box-shadow: none;
+}
+.sticky-note-foot button.luma-button.sticky-destructive {
+  color: @luma_destructive; box-shadow: inset 0 0 0 1px alpha(@luma_destructive, .34);
+}
+.sticky-note-foot button.luma-button.sticky-destructive:hover {
+  background: alpha(@luma_destructive, .12);
+}
+
+/* ── The dock ──────────────────────────────────────────────────────────── */
+
+/* The stack floats on the desktop: there is no panel behind it, and anything
+ * the toolkit paints for an ordinary window has to be taken back off. The
+ * selectors carry the element as well as the class because the window's own
+ * background rule does, and a class on its own loses the tie. */
+window.sticky-dock,
+window.sticky-dock > dialog-host,
+window.sticky-dock > dialog-host > widget,
+window.sticky-dock > dialog-host > widget > box,
+window.sticky-dock headerbar,
+window.sticky-dock toastoverlay,
+window.sticky-dock windowhandle,
+window.sticky-dock scrolledwindow,
+window.sticky-dock scrolledwindow > viewport,
+window.sticky-dock .sticky-dock-row,
+window.sticky-dock .sticky-rail,
+window.sticky-dock .sticky-tabs {
+  background-color: transparent;
+  background-image: none;
+}
+/* The paper still paints, because a tab's own colour beats this on specificity;
+ * everything structural between the window and the tab does not. */
+window.sticky-dock,
+window.sticky-dock.csd,
+window.sticky-dock.background {
+  box-shadow: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.sticky-rail { padding: 6px 0 6px 4px; }
+/* A tab opens from a sliver, so the width is a transition and not a jump. */
+.sticky-tab { transition: min-width 160ms ease, margin-right 140ms ease, box-shadow 140ms ease; }
+window.sticky-dock.expanded .sticky-tab { min-width: 34px; }
+
+/* A tab is a sliver of the same paper, rounded on the side that shows and
+ * square against the edge it is stuck to, with the kit's island lift. */
+.sticky-tab {
+  /* The resting width. The stack opens by growing this, so it is a transition
+   * rather than a jump, and the size request never has to fight the theme. */
+  min-width: 7px; padding: 0; border: 0;
+  border-radius: 10px 0 0 10px;
+  color: @sticky_ink;
+  box-shadow: -1px 0 0 0 alpha(@sticky_ink, .10), -6px 4px 16px @luma_island_shadow;
+  transition: margin-right 140ms ease, box-shadow 140ms ease;
+}
+.sticky-tab:hover { margin-right: -3px; }
+.sticky-tab:checked { margin-right: -4px; box-shadow: -10px 6px 22px @luma_island_shadow; }
+.sticky-tab.completed { opacity: .66; }
+/* A tab is a toggle button; nothing of a button is wanted but its behaviour. */
+.sticky-tab, .sticky-tab:hover, .sticky-tab:checked,
+.sticky-tab:active, .sticky-tab:backdrop { border: 0; }
+.sticky-tab.pinned { box-shadow: -2px 0 0 0 alpha(@sticky_ink, .34), -6px 4px 16px @luma_island_shadow; }
+.sticky-tab-title { font-size: 10px; font-weight: 700; }
+.sticky-tab:focus-visible, .sticky-peek:focus-visible { outline: 2px solid @luma_accent; outline-offset: 2px; }
+
+/* The new-note button: the one genuinely round thing in the application. */
+.sticky-new {
+  min-width: 30px; min-height: 30px; padding: 0; border: 0;
+  border-radius: 999px;
+  background: @luma_island; color: @luma_ink;
+  box-shadow: 0 3px 12px @luma_island_shadow, inset 0 0 0 1px @luma_line;
+}
+.sticky-new:hover { background: @luma_menu_raised; color: @luma_ink; }
+.sticky-new:active { background: @luma_pressed; }
+
+/* The peek. A button, so it is reachable and announces itself; nothing of a
+ * button is drawn, because what is drawn is the note. */
+.sticky-peek, .sticky-peek:hover, .sticky-peek:active, .sticky-peek:backdrop {
+  padding: 0; border: 0; background: transparent;
+  background-image: none; box-shadow: none;
+}
+.sticky-peek-card {
+  padding: 0; border-radius: 12px 0 0 12px;
+  color: @sticky_ink;
+  box-shadow: -8px 6px 24px @luma_island_shadow;
+}
+/* The spine is the tab, still attached: same width, same rotated name, and a
+ * perforation between it and the writing, as though the note were torn from a
+ * pad along that line. */
+.sticky-peek-spine { color: alpha(@sticky_ink, .62); padding: 10px 0; }
+.sticky-perforation {
+  min-width: 1px; margin: 8px 0;
+  background-image: linear-gradient(to bottom,
+    alpha(@sticky_ink, .30) 0, alpha(@sticky_ink, .30) 3px,
+    transparent 3px, transparent 6px);
+  background-size: 1px 6px;
+  background-color: transparent;
+  border: 0;
+}
+.sticky-peek-leaf { padding: 12px 14px 12px 12px; }
+.sticky-peek-title { font-size: 14px; font-weight: 700; color: @sticky_ink; }
+.sticky-peek-body {
+  color: alpha(@sticky_ink, .82);
+  font-family: "Caveat", cursive, Figtree, sans-serif;
+  font-size: 14px;
+}
+.sticky-peek-card.completed .sticky-peek-title { opacity: .6; }

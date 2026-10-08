@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Package releases that must never be pinned into any image again.
+# tests/smoke/package-release-contract.sh fails on any pin (packages.txt or
+# inputs.env) whose NEVRA matches a line here.
+#
+# Fields: NAME VERSION-RELEASE-REGEX RECORDED REASON
+luma-messages-bridges 0\.1\.0-0\.[0-8]\.experiment 2026-09-16 Duplicate texts to Nick's contacts. Every helper before 0.9 sends automatic phone requests (GetFullSizeImage, resend) outside a single audited send path. Only 0.9 or later, with the outbound-safety design, may ship.
+gnome-characters .* 2026-09-22 Characters is removed from every Luma image (owner decision); the Super+. emoji and symbol picker replaces it. Remove this line only with a new owner decision.

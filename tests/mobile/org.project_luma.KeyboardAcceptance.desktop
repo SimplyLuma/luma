@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Luma Keyboard Acceptance
+Exec=/tmp/luma-keyboard-acceptance
+Icon=input-keyboard-symbolic
+Terminal=false
+StartupNotify=true
+Categories=Utility;

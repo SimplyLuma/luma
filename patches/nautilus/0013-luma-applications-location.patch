@@ -1,0 +1,1063 @@
+diff --git a/src/meson.build b/src/meson.build
+index 128ad44..ff29528 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -39,6 +39,8 @@ libnautilus_sources = [
+   'nautilus-app-chooser.h',
+   'nautilus-app-chooser-widget.c',
+   'nautilus-app-chooser-widget.h',
++  'nautilus-applications-directory.c',
++  'nautilus-applications-directory.h',
+   'nautilus-application.c',
+   'nautilus-application.h',
+   'nautilus-batch-rename-dialog.c',
+diff --git a/src/nautilus-applications-directory.c b/src/nautilus-applications-directory.c
+new file mode 100644
+index 0000000..9fba73e
+--- /dev/null
++++ b/src/nautilus-applications-directory.c
+@@ -0,0 +1,380 @@
++/* nautilus-applications-directory.c
++ *
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "nautilus-applications-directory.h"
++
++#include <gio/gdesktopappinfo.h>
++#include <glib/gi18n.h>
++
++#include "nautilus-directory-private.h"
++#include "nautilus-file-private.h"
++#include "nautilus-file-utilities.h"
++#include "nautilus-internal-place-file.h"
++#include "nautilus-scheme.h"
++
++struct _NautilusApplicationsDirectory
++{
++    NautilusDirectory parent_instance;
++
++    GList *files;
++    GList *monitor_list;
++    GAppInfoMonitor *app_monitor;
++};
++
++typedef struct
++{
++    gconstpointer client;
++} ApplicationsMonitor;
++
++G_DEFINE_TYPE_WITH_CODE (NautilusApplicationsDirectory, nautilus_applications_directory, NAUTILUS_TYPE_DIRECTORY,
++                         nautilus_ensure_extension_points ();
++                         g_io_extension_point_implement (NAUTILUS_DIRECTORY_PROVIDER_EXTENSION_POINT_NAME,
++                                                         g_define_type_id,
++                                                         NAUTILUS_APPLICATIONS_DIRECTORY_PROVIDER_NAME,
++                                                         0));
++
++static NautilusFile *
++real_new_as_file (NautilusDirectory *directory)
++{
++    return g_object_new (NAUTILUS_TYPE_INTERNAL_PLACE_FILE, "directory", directory, NULL);
++}
++
++static gboolean
++real_contains_file (NautilusDirectory *directory,
++                    NautilusFile      *file)
++{
++    return nautilus_file_get_directory (file) == directory;
++}
++
++static gboolean
++real_is_editable (NautilusDirectory *directory)
++{
++    (void) directory;
++
++    return FALSE;
++}
++
++static gboolean
++real_are_all_files_seen (NautilusDirectory *directory)
++{
++    (void) directory;
++
++    return TRUE;
++}
++
++static gboolean
++real_handles_location (GFile *location)
++{
++    return g_file_has_uri_scheme (location, SCHEME_APPLICATIONS);
++}
++
++static GList *
++real_get_file_list (NautilusDirectory *directory)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
++
++    return nautilus_file_list_copy (self->files);
++}
++
++static void
++real_call_when_ready (NautilusDirectory         *directory,
++                      NautilusFileAttributes     file_attributes,
++                      gboolean                   wait_for_file_list,
++                      NautilusDirectoryCallback  callback,
++                      gpointer                   callback_data)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
++    g_autolist (NautilusFile) files = nautilus_file_list_copy (self->files);
++
++    (void) file_attributes;
++    (void) wait_for_file_list;
++
++    if (callback != NULL)
++    {
++        callback (directory, files, callback_data);
++    }
++}
++
++static void
++real_cancel_callback (NautilusDirectory         *directory,
++                      NautilusDirectoryCallback  callback,
++                      gpointer                   callback_data)
++{
++    (void) directory;
++    (void) callback;
++    (void) callback_data;
++}
++
++static void
++real_file_monitor_add (NautilusDirectory         *directory,
++                       gconstpointer              client,
++                       gboolean                   monitor_hidden_files,
++                       NautilusFileAttributes     file_attributes,
++                       NautilusDirectoryCallback  callback,
++                       gpointer                   callback_data)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
++    ApplicationsMonitor *monitor = g_new0 (ApplicationsMonitor, 1);
++
++    (void) monitor_hidden_files;
++    (void) file_attributes;
++
++    monitor->client = client;
++    self->monitor_list = g_list_prepend (self->monitor_list, monitor);
++
++    if (callback != NULL)
++    {
++        callback (directory, self->files, callback_data);
++    }
++}
++
++static void
++real_file_monitor_remove (NautilusDirectory *directory,
++                          gconstpointer      client)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
++
++    for (GList *l = self->monitor_list; l != NULL; l = l->next)
++    {
++        ApplicationsMonitor *monitor = l->data;
++
++        if (monitor->client == client)
++        {
++            self->monitor_list = g_list_delete_link (self->monitor_list, l);
++            g_free (monitor);
++            return;
++        }
++    }
++}
++
++static void
++copy_source_dates (GFileInfo *destination,
++                   const char *desktop_filename)
++{
++    if (desktop_filename == NULL)
++    {
++        return;
++    }
++
++    g_autoptr (GFile) source = g_file_new_for_path (desktop_filename);
++    g_autoptr (GFileInfo) source_info = g_file_query_info (source,
++                                                           G_FILE_ATTRIBUTE_TIME_CREATED ","
++                                                           G_FILE_ATTRIBUTE_TIME_MODIFIED,
++                                                           G_FILE_QUERY_INFO_NONE,
++                                                           NULL,
++                                                           NULL);
++
++    if (source_info == NULL)
++    {
++        return;
++    }
++
++    if (g_file_info_has_attribute (source_info, G_FILE_ATTRIBUTE_TIME_CREATED))
++    {
++        g_file_info_set_attribute_uint64 (destination,
++                                          G_FILE_ATTRIBUTE_TIME_CREATED,
++                                          g_file_info_get_attribute_uint64 (source_info,
++                                                                            G_FILE_ATTRIBUTE_TIME_CREATED));
++    }
++
++    if (g_file_info_has_attribute (source_info, G_FILE_ATTRIBUTE_TIME_MODIFIED))
++    {
++        g_file_info_set_attribute_uint64 (destination,
++                                          G_FILE_ATTRIBUTE_TIME_MODIFIED,
++                                          g_file_info_get_attribute_uint64 (source_info,
++                                                                            G_FILE_ATTRIBUTE_TIME_MODIFIED));
++    }
++}
++
++static NautilusFile *
++file_for_application (NautilusApplicationsDirectory *self,
++                      GAppInfo                      *app_info)
++{
++    const char *id = g_app_info_get_id (app_info);
++    const char *display_name = g_app_info_get_display_name (app_info);
++    const char *description = g_app_info_get_description (app_info);
++    const char *desktop_filename = NULL;
++    GIcon *icon = g_app_info_get_icon (app_info);
++    g_autoptr (GIcon) fallback_icon = NULL;
++    g_autoptr (GFileInfo) info = NULL;
++
++    if (id == NULL || display_name == NULL)
++    {
++        return NULL;
++    }
++
++    if (G_IS_DESKTOP_APP_INFO (app_info))
++    {
++        desktop_filename = g_desktop_app_info_get_filename (G_DESKTOP_APP_INFO (app_info));
++    }
++
++    if (icon == NULL)
++    {
++        fallback_icon = g_themed_icon_new ("application-x-executable");
++        icon = fallback_icon;
++    }
++
++    info = g_file_info_new ();
++    g_file_info_set_name (info, id);
++    g_file_info_set_display_name (info, display_name);
++    g_file_info_set_edit_name (info, display_name);
++    g_file_info_set_file_type (info, G_FILE_TYPE_REGULAR);
++    g_file_info_set_content_type (info, "application/x-desktop");
++    g_file_info_set_icon (info, icon);
++    g_file_info_set_size (info, 0);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_STANDARD_IS_VIRTUAL, TRUE);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_READ, TRUE);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_WRITE, FALSE);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_DELETE, FALSE);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_TRASH, FALSE);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_RENAME, FALSE);
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_EXECUTE, FALSE);
++
++    if (description != NULL)
++    {
++        g_file_info_set_attribute_string (info, G_FILE_ATTRIBUTE_STANDARD_DESCRIPTION, description);
++    }
++
++    if (desktop_filename != NULL)
++    {
++        g_autoptr (GFile) source = g_file_new_for_path (desktop_filename);
++        g_autofree char *target_uri = g_file_get_uri (source);
++
++        g_file_info_set_attribute_string (info,
++                                          G_FILE_ATTRIBUTE_STANDARD_TARGET_URI,
++                                          target_uri);
++        copy_source_dates (info, desktop_filename);
++    }
++
++    return nautilus_file_new_from_info (NAUTILUS_DIRECTORY (self), info);
++}
++
++static void
++set_files (NautilusApplicationsDirectory *self)
++{
++    g_autolist (GAppInfo) applications = g_app_info_get_all ();
++    g_autoptr (GHashTable) seen_ids = g_hash_table_new_full (g_str_hash,
++                                                             g_str_equal,
++                                                             g_free,
++                                                             NULL);
++
++    for (GList *l = applications; l != NULL; l = l->next)
++    {
++        GAppInfo *app_info = l->data;
++        const char *id = g_app_info_get_id (app_info);
++
++        if (id == NULL ||
++            !g_app_info_should_show (app_info) ||
++            g_hash_table_contains (seen_ids, id))
++        {
++            continue;
++        }
++
++        NautilusFile *file = file_for_application (self, app_info);
++        if (file != NULL)
++        {
++            g_hash_table_add (seen_ids, g_strdup (id));
++            nautilus_directory_add_file (NAUTILUS_DIRECTORY (self), file);
++            self->files = g_list_prepend (self->files, file);
++        }
++    }
++
++    self->files = g_list_reverse (self->files);
++}
++
++static void
++real_force_reload (NautilusDirectory *directory)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
++    g_autolist (NautilusFile) removed_files = g_steal_pointer (&self->files);
++
++    for (GList *l = removed_files; l != NULL; l = l->next)
++    {
++        nautilus_file_mark_gone (l->data);
++    }
++
++    if (removed_files != NULL)
++    {
++        nautilus_directory_emit_files_changed (directory, removed_files);
++    }
++
++    set_files (self);
++
++    if (self->files != NULL)
++    {
++        nautilus_directory_emit_files_added (directory, self->files);
++    }
++}
++
++static void
++on_applications_changed (GAppInfoMonitor              *monitor,
++                         NautilusApplicationsDirectory *self)
++{
++    (void) monitor;
++
++    real_force_reload (NAUTILUS_DIRECTORY (self));
++}
++
++static void
++nautilus_applications_directory_finalize (GObject *object)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (object);
++
++    g_signal_handlers_disconnect_by_func (self->app_monitor,
++                                          on_applications_changed,
++                                          self);
++    g_clear_object (&self->app_monitor);
++
++    for (GList *l = self->files; l != NULL; l = l->next)
++    {
++        nautilus_file_mark_gone (l->data);
++    }
++
++    g_clear_list (&self->files, g_object_unref);
++    g_clear_list (&self->monitor_list, g_free);
++
++    G_OBJECT_CLASS (nautilus_applications_directory_parent_class)->finalize (object);
++}
++
++static void
++nautilus_applications_directory_class_init (NautilusApplicationsDirectoryClass *klass)
++{
++    GObjectClass *object_class = G_OBJECT_CLASS (klass);
++    NautilusDirectoryClass *directory_class = NAUTILUS_DIRECTORY_CLASS (klass);
++
++    object_class->finalize = nautilus_applications_directory_finalize;
++
++    directory_class->new_as_file = real_new_as_file;
++    directory_class->handles_location = real_handles_location;
++    directory_class->contains_file = real_contains_file;
++    directory_class->is_editable = real_is_editable;
++    directory_class->force_reload = real_force_reload;
++    directory_class->call_when_ready = real_call_when_ready;
++    directory_class->are_all_files_seen = real_are_all_files_seen;
++    directory_class->file_monitor_add = real_file_monitor_add;
++    directory_class->file_monitor_remove = real_file_monitor_remove;
++    directory_class->cancel_callback = real_cancel_callback;
++    directory_class->get_file_list = real_get_file_list;
++}
++
++NautilusApplicationsDirectory *
++nautilus_applications_directory_new (void)
++{
++    return g_object_new (NAUTILUS_TYPE_APPLICATIONS_DIRECTORY, NULL);
++}
++
++static void
++nautilus_applications_directory_init (NautilusApplicationsDirectory *self)
++{
++    self->app_monitor = g_app_info_monitor_get ();
++    g_signal_connect (self->app_monitor,
++                      "changed",
++                      G_CALLBACK (on_applications_changed),
++                      self);
++
++    set_files (self);
++}
+diff --git a/src/nautilus-applications-directory.h b/src/nautilus-applications-directory.h
+new file mode 100644
+index 0000000..eced62d
+--- /dev/null
++++ b/src/nautilus-applications-directory.h
+@@ -0,0 +1,22 @@
++/* nautilus-applications-directory.h
++ *
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include "nautilus-directory.h"
++
++G_BEGIN_DECLS
++
++#define NAUTILUS_APPLICATIONS_DIRECTORY_PROVIDER_NAME "applications-directory-provider"
++
++#define NAUTILUS_TYPE_APPLICATIONS_DIRECTORY (nautilus_applications_directory_get_type ())
++
++G_DECLARE_FINAL_TYPE (NautilusApplicationsDirectory, nautilus_applications_directory, NAUTILUS, APPLICATIONS_DIRECTORY, NautilusDirectory);
++
++NautilusApplicationsDirectory *nautilus_applications_directory_new (void);
++
++G_END_DECLS
+diff --git a/src/nautilus-directory.c b/src/nautilus-directory.c
+index 1629681..659a44c 100644
+--- a/src/nautilus-directory.c
++++ b/src/nautilus-directory.c
+@@ -730,6 +730,19 @@ nautilus_directory_is_in_starred (NautilusDirectory *directory)
+     return g_file_has_uri_scheme (directory->details->location, SCHEME_STARRED);
+ }
+ 
++gboolean
++nautilus_directory_is_in_applications (NautilusDirectory *directory)
++{
++    g_return_val_if_fail (NAUTILUS_IS_DIRECTORY (directory), FALSE);
++
++    if (directory->details->location == NULL)
++    {
++        return FALSE;
++    }
++
++    return g_file_has_uri_scheme (directory->details->location, SCHEME_APPLICATIONS);
++}
++
+ gboolean
+ nautilus_directory_is_in_admin (NautilusDirectory *directory)
+ {
+diff --git a/src/nautilus-directory.h b/src/nautilus-directory.h
+index b099a13..653f2cb 100644
+--- a/src/nautilus-directory.h
++++ b/src/nautilus-directory.h
+@@ -225,6 +225,7 @@ gboolean           nautilus_directory_is_local_or_fuse         (NautilusDirector
+ gboolean           nautilus_directory_is_in_trash              (NautilusDirectory         *directory);
+ gboolean           nautilus_directory_is_in_recent             (NautilusDirectory         *directory);
+ gboolean           nautilus_directory_is_in_starred            (NautilusDirectory         *directory);
++gboolean           nautilus_directory_is_in_applications       (NautilusDirectory         *directory);
+ gboolean           nautilus_directory_is_in_admin              (NautilusDirectory         *directory);
+ 
+ /* Return false if directory contains anything besides a Nautilus metafile.
+diff --git a/src/nautilus-file-utilities.c b/src/nautilus-file-utilities.c
+index 6f88da6..1900ad9 100644
+--- a/src/nautilus-file-utilities.c
++++ b/src/nautilus-file-utilities.c
+@@ -23,6 +23,7 @@
+ #include "nautilus-file-utilities.h"
+ 
+ #include "nautilus-application.h"
++#include "nautilus-applications-directory.h"
+ #include "nautilus-file.h"
+ #include "nautilus-file-operations.h"
+ #include "nautilus-filename-utilities.h"
+@@ -1065,6 +1066,7 @@ nautilus_ensure_extension_builtins (void)
+     g_type_ensure (NAUTILUS_TYPE_NETWORK_DIRECTORY);
+     g_type_ensure (NAUTILUS_TYPE_SEARCH_DIRECTORY);
+     g_type_ensure (NAUTILUS_TYPE_STARRED_DIRECTORY);
++    g_type_ensure (NAUTILUS_TYPE_APPLICATIONS_DIRECTORY);
+ }
+ 
+ void
+diff --git a/src/nautilus-file.c b/src/nautilus-file.c
+index b54876c..716872a 100644
+--- a/src/nautilus-file.c
++++ b/src/nautilus-file.c
+@@ -3400,7 +3400,8 @@ prepend_automatic_keywords (NautilusFile *file,
+     /* Trash files are assumed to be read-only,
+      * so we want to ignore them here. */
+     if (!nautilus_file_can_write (file) &&
+-        !nautilus_file_is_in_trash (file))
++        !nautilus_file_is_in_trash (file) &&
++        !nautilus_file_is_in_applications (file))
+     {
+         g_autoptr (NautilusFile) parent = nautilus_file_get_parent (file);
+ 
+@@ -7483,6 +7484,14 @@ nautilus_file_is_in_starred (NautilusFile *file)
+     return nautilus_directory_is_in_starred (file->details->directory);
+ }
+ 
++gboolean
++nautilus_file_is_in_applications (NautilusFile *file)
++{
++    g_assert (NAUTILUS_IS_FILE (file));
++
++    return nautilus_directory_is_in_applications (file->details->directory);
++}
++
+ /**
+  * nautilus_file_is_remote
+  *
+diff --git a/src/nautilus-file.h b/src/nautilus-file.h
+index c72eb9c..36ba20f 100644
+--- a/src/nautilus-file.h
++++ b/src/nautilus-file.h
+@@ -190,6 +190,7 @@ gboolean                nautilus_file_is_in_search                      (Nautilu
+ gboolean                nautilus_file_is_in_trash                       (NautilusFile                   *file);
+ gboolean                nautilus_file_is_in_recent                      (NautilusFile                   *file);
+ gboolean                nautilus_file_is_in_starred                     (NautilusFile                   *file);
++gboolean                nautilus_file_is_in_applications                (NautilusFile                   *file);
+ gboolean                nautilus_file_is_in_admin                       (NautilusFile                   *file);
+ gboolean                nautilus_file_is_remote                         (NautilusFile                   *file);
+ gboolean                nautilus_file_is_starred_location              (NautilusFile                   *file);
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+index caf2cca..e5ef36a 100644
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -28,6 +28,7 @@
+ 
+ #include <gdk/gdk.h>
+ #include <gio/gio.h>
++#include <gio/gdesktopappinfo.h>
+ #include <glib/gi18n.h>
+ #include <glib/gstdio.h>
+ #include <gtk/gtk.h>
+@@ -998,6 +999,13 @@ showing_starred_directory (NautilusFilesView *self)
+            nautilus_file_is_in_starred (self->directory_as_file);
+ }
+ 
++static gboolean
++showing_applications_directory (NautilusFilesView *self)
++{
++    return self->directory_as_file != NULL &&
++           nautilus_file_is_in_applications (self->directory_as_file);
++}
++
+ static gboolean
+ nautilus_files_view_supports_creating_files (NautilusFilesView *view)
+ {
+@@ -1006,7 +1014,8 @@ nautilus_files_view_supports_creating_files (NautilusFilesView *view)
+     return !nautilus_files_view_is_read_only (view)
+            && !showing_trash_directory (view)
+            && !showing_recent_directory (view)
+-           && !showing_starred_directory (view);
++           && !showing_starred_directory (view)
++           && !showing_applications_directory (view);
+ }
+ 
+ static gboolean
+@@ -1277,6 +1286,28 @@ nautilus_files_view_activate_files (NautilusFilesView *view,
+                                     NautilusOpenFlags  flags,
+                                     gboolean           confirm_multiple)
+ {
++    if (showing_applications_directory (view))
++    {
++        if (files != NULL && files->next == NULL)
++        {
++            NautilusFile *file = files->data;
++            const char *app_id = nautilus_file_get_name (file);
++            g_autoptr (GDesktopAppInfo) app_info = g_desktop_app_info_new (app_id);
++
++            if (app_info != NULL)
++            {
++                nautilus_launch_application_without_files (G_APP_INFO (app_info),
++                                                           nautilus_files_view_get_containing_window (view));
++            }
++            else
++            {
++                g_warning ("Could not find application metadata for '%s'", app_id);
++            }
++        }
++
++        return;
++    }
++
+     if (nautilus_window_slot_handle_activate_files (view->slot, files))
+     {
+         return;
+@@ -3771,6 +3802,12 @@ nautilus_files_view_update_status_overlay (NautilusFilesView *self)
+             adw_status_page_set_title (status_page, _("No Recent Files"));
+             adw_status_page_set_description (status_page, NULL);
+         }
++        else if (g_file_has_uri_scheme (self->location, SCHEME_APPLICATIONS))
++        {
++            adw_status_page_set_icon_name (status_page, "view-app-grid-symbolic");
++            adw_status_page_set_title (status_page, _("No Applications Found"));
++            adw_status_page_set_description (status_page, NULL);
++        }
+         else if (g_file_has_uri_scheme (self->location, SCHEME_NETWORK_VIEW))
+         {
+             adw_status_page_set_icon_name (status_page, "network-computer-symbolic");
+@@ -7798,6 +7835,83 @@ nautilus_files_view_update_actions_state (NautilusFilesView *self)
+     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
+                                          "remove-recent-server");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action), can_remove_recent_server);
++
++    if (showing_applications_directory (self))
++    {
++        const char *disabled_actions[] =
++        {
++            "new-folder-with-selection",
++            "rename",
++            "extract-here",
++            "extract-to",
++            "compress",
++            "open-with-other-application",
++            "open-item-new-tab",
++            "open-item-new-window",
++            "run-in-terminal",
++            "set-as-wallpaper",
++            "restore-from-trash",
++            "move-to-trash",
++            "delete-from-trash",
++            "delete-permanently-shortcut",
++            "delete-permanently-menu-item",
++            "permanent-delete-permanently-menu-item",
++            "remove-from-recent",
++            "cut",
++            "copy",
++            "create-link-in-place",
++            "create-link-in-place-shortcut",
++            "send-email",
++            "copy-to",
++            "move-to",
++            "preview-selection",
++            "copy-current-location",
++            "mount-volume",
++            "unmount-volume",
++            "eject-volume",
++            "start-volume",
++            "stop-volume",
++            "detect-media",
++            "open-current-directory-with-other-application",
++            "open-current-directory-with-files",
++            "new-folder",
++            "empty-trash",
++            "paste",
++            "paste_accel",
++            "paste-into",
++            "console",
++            "current-directory-console",
++            "properties",
++            "current-directory-properties",
++            "star",
++            "unstar",
++            "copy-network-address",
++            "remove-recent-server",
++            NULL,
++        };
++
++        for (guint i = 0; disabled_actions[i] != NULL; i++)
++        {
++            action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
++                                                 disabled_actions[i]);
++            if (action != NULL)
++            {
++                g_simple_action_set_enabled (G_SIMPLE_ACTION (action), FALSE);
++            }
++        }
++
++        action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
++                                             "open-with-default-application");
++        g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
++                                     mode == NAUTILUS_MODE_BROWSE &&
++                                     list_len_is_one (selection));
++
++        action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group),
++                                             "open-item-location");
++        g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
++                                     list_len_is_one (selection) &&
++                                     nautilus_file_has_activation_uri (selection->data));
++    }
+ }
+ 
+ static void
+@@ -8158,6 +8272,18 @@ nautilus_files_view_update_context_menus (NautilusFilesView *self)
+     g_clear_object (&self->background_menu_model);
+     g_clear_object (&self->selection_menu_model);
+ 
++    if (showing_applications_directory (self))
++    {
++        object = gtk_builder_get_object (builder, "applications-background-menu");
++        self->background_menu_model = g_object_ref (G_MENU (object));
++
++        object = gtk_builder_get_object (builder, "applications-selection-menu");
++        self->selection_menu_model = g_object_ref (G_MENU (object));
++
++        nautilus_files_view_update_actions_state (self);
++        return;
++    }
++
+     object = gtk_builder_get_object (builder, "background-menu");
+     self->background_menu_model = g_object_ref (G_MENU (object));
+ 
+diff --git a/src/nautilus-internal-place-file.c b/src/nautilus-internal-place-file.c
+index 1a38d8e..4cb2fbf 100644
+--- a/src/nautilus-internal-place-file.c
++++ b/src/nautilus-internal-place-file.c
+@@ -12,6 +12,7 @@
+ #include <gio/gio.h>
+ 
+ #include "nautilus-file-private.h"
++#include "nautilus-applications-directory.h"
+ #include "nautilus-scheme.h"
+ #include "nautilus-network-directory.h"
+ #include "nautilus-starred-directory.h"
+@@ -169,6 +170,10 @@ nautilus_internal_place_file_constructed (GObject *object)
+     {
+         nautilus_file_set_display_name (file, _("Starred"), NULL, TRUE);
+     }
++    else if (NAUTILUS_IS_APPLICATIONS_DIRECTORY (file->details->directory))
++    {
++        nautilus_file_set_display_name (file, _("Applications"), NULL, TRUE);
++    }
+ 
+     file->details->got_file_info = TRUE;
+     file->details->file_info_is_up_to_date = TRUE;
+diff --git a/src/nautilus-program-choosing.c b/src/nautilus-program-choosing.c
+index be3dce7..2050873 100644
+--- a/src/nautilus-program-choosing.c
++++ b/src/nautilus-program-choosing.c
+@@ -136,6 +136,30 @@ get_launch_context (GtkWindow *parent_window)
+     return launch_context;
+ }
+ 
++void
++nautilus_launch_application_without_files (GAppInfo  *application,
++                                           GtkWindow *parent_window)
++{
++    g_autoptr (GdkAppLaunchContext) launch_context = get_launch_context (parent_window);
++    g_autoptr (GError) error = NULL;
++    GIcon *icon = g_app_info_get_icon (application);
++
++    if (icon != NULL)
++    {
++        gdk_app_launch_context_set_icon (launch_context, icon);
++    }
++
++    if (!g_app_info_launch (application,
++                            NULL,
++                            G_APP_LAUNCH_CONTEXT (launch_context),
++                            &error))
++    {
++        g_warning ("Could not launch application '%s': %s",
++                   g_app_info_get_name (application),
++                   error->message);
++    }
++}
++
+ void
+ nautilus_launch_application_by_uri (GAppInfo  *application,
+                                     GList     *uris,
+diff --git a/src/nautilus-program-choosing.h b/src/nautilus-program-choosing.h
+index 1f91535..37fef01 100644
+--- a/src/nautilus-program-choosing.h
++++ b/src/nautilus-program-choosing.h
+@@ -34,6 +34,8 @@ typedef void (*NautilusApplicationChoiceCallback)   (GAppInfo
+ void nautilus_launch_application                    (GAppInfo                          *application,
+                                                      NautilusFileList                  *files,
+                                                      GtkWindow                         *parent_window);
++void nautilus_launch_application_without_files      (GAppInfo                          *application,
++                                                     GtkWindow                         *parent_window);
+ void nautilus_launch_application_by_uri             (GAppInfo                          *application,
+                                                      GList                             *uris,
+                                                      GtkWindow                         *parent_window);
+diff --git a/src/nautilus-scheme.c b/src/nautilus-scheme.c
+index 7dd8952..c9f160e 100644
+--- a/src/nautilus-scheme.c
++++ b/src/nautilus-scheme.c
+@@ -11,7 +11,8 @@
+ gboolean
+ nautilus_scheme_is_internal (const char *scheme)
+ {
+-    return g_str_equal (scheme, SCHEME_BURN) ||
++    return g_str_equal (scheme, SCHEME_APPLICATIONS) ||
++           g_str_equal (scheme, SCHEME_BURN) ||
+            g_str_equal (scheme, SCHEME_NETWORK) ||
+            g_str_equal (scheme, SCHEME_NETWORK_VIEW) ||
+            g_str_equal (scheme, SCHEME_RECENT) ||
+diff --git a/src/nautilus-scheme.h b/src/nautilus-scheme.h
+index 01ac3cd..9130364 100644
+--- a/src/nautilus-scheme.h
++++ b/src/nautilus-scheme.h
+@@ -9,6 +9,7 @@
+ #include <glib.h>
+ 
+ #define SCHEME_ADMIN "admin"
++#define SCHEME_APPLICATIONS "applications"
+ #define SCHEME_BURN "burn"
+ #define SCHEME_COMPUTER "computer"
+ #define SCHEME_SEARCH "x-nautilus-search"
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index 8d38b7b..632e842 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -736,6 +736,14 @@ update_places (NautilusSidebar *sidebar)
+                _("Starred Files"));
+     g_object_unref (start_icon);
+ 
++    start_icon = g_themed_icon_new_with_default_fallbacks ("view-app-grid-symbolic");
++    add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
++               NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS,
++               _("Applications"), start_icon, NULL, SCHEME_APPLICATIONS ":///",
++               NULL, NULL, NULL, NULL, 0,
++               _("Browse Installed Applications"));
++    g_object_unref (start_icon);
++
+     /* desktop */
+     if (sidebar->show_desktop)
+     {
+@@ -1184,6 +1192,7 @@ hover_timer (gpointer user_data)
+         {
+             SCHEME_TRASH ":///",
+             SCHEME_STARRED ":///",
++            SCHEME_APPLICATIONS ":///",
+             NULL,
+         };
+ 
+@@ -1230,10 +1239,11 @@ check_valid_drop_target (NautilusSidebar    *sidebar,
+         return TRUE;
+     }
+ 
+-    /* Disallow drops on recent:/// */
++    /* Disallow drops on read-only virtual locations. */
+     if (place_type == NAUTILUS_SIDEBAR_ROW_BUILT_IN)
+     {
+-        if (g_strcmp0 (uri, SCHEME_RECENT ":///") == 0)
++        if (g_strcmp0 (uri, SCHEME_RECENT ":///") == 0 ||
++            g_strcmp0 (uri, SCHEME_APPLICATIONS ":///") == 0)
+         {
+             g_free (uri);
+             return FALSE;
+diff --git a/src/resources/menu/nautilus-files-view-context-menus.ui b/src/resources/menu/nautilus-files-view-context-menus.ui
+index 2d9a5e3..441daa4 100644
+--- a/src/resources/menu/nautilus-files-view-context-menus.ui
++++ b/src/resources/menu/nautilus-files-view-context-menus.ui
+@@ -1,6 +1,38 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <interface>
+   <requires lib="gtk" version="4.0"/>
++  <menu id="applications-background-menu">
++    <section>
++      <item>
++        <attribute name="label" translatable="yes">Select _All</attribute>
++        <attribute name="action">view.select-all</attribute>
++      </item>
++      <item>
++        <attribute name="label" translatable="yes">_Visible Columns…</attribute>
++        <attribute name="action">view.visible-columns</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
++      <item>
++        <attribute name="label" translatable="yes">_Captions…</attribute>
++        <attribute name="action">view.visible-captions</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
++    </section>
++  </menu>
++  <menu id="applications-selection-menu">
++    <section>
++      <item>
++        <attribute name="label" translatable="yes">_Open</attribute>
++        <attribute name="action">view.open-with-default-application</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
++      <item>
++        <attribute name="label" translatable="yes">Show Application _File</attribute>
++        <attribute name="action">view.open-item-location</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
++    </section>
++  </menu>
+   <menu id="background-menu">
+     <item>
+       <attribute name="label" translatable="yes">New _Folder…</attribute>
+diff --git a/src/nautilus-list-base.c b/src/nautilus-list-base.c
+index 90170d0..923a175 100644
+--- a/src/nautilus-list-base.c
++++ b/src/nautilus-list-base.c
+@@ -26,6 +26,12 @@
+ 
+ /* 1 page worth of scroll in 100ms zooms in or out when the ctrl key is held */
+ #define SCROLL_TO_ZOOM_INTERVAL 100
++#define ROOTWINDOW_DROP_MIME "application/x-rootwindow-drop"
++#define SHELL_DBUS_NAME "org.gnome.Shell"
++#define SHELL_DBUS_PATH "/org/gnome/Shell"
++#define SHELL_DBUS_INTERFACE "org.gnome.Shell"
++#define APPLICATION_DRAG_DATA_KEY "luma-application-drag"
++#define APPLICATION_DRAG_ENDED_KEY "luma-application-drag-ended"
+ 
+ /**
+  * NautilusListBase:
+@@ -89,6 +95,105 @@ enum
+ 
+ static GParamSpec *properties[N_PROPS] = { NULL, };
+ 
++static gboolean
++begin_shell_application_drag (const char *app_id)
++{
++    g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++    g_autoptr (GVariant) reply = NULL;
++    gboolean accepted = FALSE;
++
++    if (bus == NULL)
++    {
++        return FALSE;
++    }
++
++    reply = g_dbus_connection_call_sync (bus,
++                                         SHELL_DBUS_NAME,
++                                         SHELL_DBUS_PATH,
++                                         SHELL_DBUS_INTERFACE,
++                                         "BeginApplicationDrag",
++                                         g_variant_new ("(s)", app_id),
++                                         G_VARIANT_TYPE ("(b)"),
++                                         G_DBUS_CALL_FLAGS_NO_AUTO_START,
++                                         500,
++                                         NULL,
++                                         NULL);
++    if (reply != NULL)
++    {
++        g_variant_get (reply, "(b)", &accepted);
++    }
++
++    return accepted;
++}
++
++static void
++end_shell_application_drag (GtkDragSource *source,
++                            gboolean       succeeded)
++{
++    const char *app_id = g_object_get_data (G_OBJECT (source), APPLICATION_DRAG_DATA_KEY);
++
++    if (app_id == NULL ||
++        GPOINTER_TO_INT (g_object_get_data (G_OBJECT (source), APPLICATION_DRAG_ENDED_KEY)))
++    {
++        return;
++    }
++
++    g_object_set_data (G_OBJECT (source), APPLICATION_DRAG_ENDED_KEY, GINT_TO_POINTER (TRUE));
++
++    g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++    if (bus != NULL)
++    {
++        g_dbus_connection_call (bus,
++                                SHELL_DBUS_NAME,
++                                SHELL_DBUS_PATH,
++                                SHELL_DBUS_INTERFACE,
++                                "EndApplicationDrag",
++                                g_variant_new ("(b)", succeeded),
++                                NULL,
++                                G_DBUS_CALL_FLAGS_NO_AUTO_START,
++                                -1,
++                                NULL,
++                                NULL,
++                                NULL);
++    }
++}
++
++static gboolean
++on_item_drag_cancel (GtkDragSource       *source,
++                     GdkDrag             *drag,
++                     GdkDragCancelReason  reason,
++                     gpointer             user_data)
++{
++    (void) drag;
++    (void) user_data;
++
++    /* GTK reports root-window destinations as NO_TARGET on some Wayland
++     * input paths even though Mutter has accepted the Shell-side drop.  The
++     * Shell validates the live destination, so only an explicit user cancel
++     * should veto it here. GtkDragSource always follows with drag-end. */
++    if (reason == GDK_DRAG_CANCEL_USER_CANCELLED)
++    {
++        end_shell_application_drag (source, FALSE);
++    }
++    return FALSE;
++}
++
++static void
++on_item_drag_end (GtkDragSource *source,
++                  GdkDrag       *drag,
++                  gboolean       delete_data,
++                  gpointer       user_data)
++{
++    (void) drag;
++    (void) delete_data;
++    (void) user_data;
++
++    /* Mutter's application/x-rootwindow-drop contract does not guarantee a
++     * selected GDK action. Shell owns final target validation; reaching
++     * drag-end means it may commit the currently validated target. */
++    end_shell_application_drag (source, TRUE);
++}
++
+ static inline NautilusViewItem *
+ get_view_item (GListModel *model,
+                guint       position)
+@@ -427,6 +532,9 @@ on_item_drag_prepare (GtkDragSource *source,
+     GtkBitsetIter iter;
+     guint i;
+ 
++    g_object_set_data_full (G_OBJECT (source), APPLICATION_DRAG_DATA_KEY, NULL, NULL);
++    g_object_set_data (G_OBJECT (source), APPLICATION_DRAG_ENDED_KEY, NULL);
++
+     if (priv->dnd_disabled)
+     {
+         return NULL;
+@@ -467,7 +575,33 @@ on_item_drag_prepare (GtkDragSource *source,
+ 
+     gtk_drag_source_set_icon (source, paintable, 0, 0);
+ 
+-    return gdk_content_provider_new_typed (GDK_TYPE_FILE_LIST, file_list);
++    GdkContentProvider *file_provider =
++        gdk_content_provider_new_typed (GDK_TYPE_FILE_LIST, file_list);
++
++    if (selected_files->next == NULL &&
++        nautilus_file_is_in_applications (selected_files->data))
++    {
++        const char *app_id = nautilus_file_get_name (selected_files->data);
++
++        if (begin_shell_application_drag (app_id))
++        {
++            GdkContentProvider *providers[2];
++            g_autoptr (GBytes) root_payload = g_bytes_new (app_id, strlen (app_id));
++
++            g_object_set_data_full (G_OBJECT (source),
++                                    APPLICATION_DRAG_DATA_KEY,
++                                    g_strdup (app_id),
++                                    g_free);
++            gtk_drag_source_set_actions (source, GDK_ACTION_COPY);
++
++            providers[0] = file_provider;
++            providers[1] = gdk_content_provider_new_for_bytes (ROOTWINDOW_DROP_MIME,
++                                                               root_payload);
++            return gdk_content_provider_new_union (providers, G_N_ELEMENTS (providers));
++        }
++    }
++
++    return file_provider;
+ }
+ 
+ static gboolean
+@@ -892,6 +1026,8 @@ setup_cell_common (GObject          *listitem,
+     gtk_widget_add_controller (GTK_WIDGET (cell), controller);
+     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+     g_signal_connect (controller, "prepare", G_CALLBACK (on_item_drag_prepare), cell);
++    g_signal_connect (controller, "drag-cancel", G_CALLBACK (on_item_drag_cancel), NULL);
++    g_signal_connect (controller, "drag-end", G_CALLBACK (on_item_drag_end), NULL);
+ 
+     /* TODO: Implement GDK_ACTION_ASK */
+     drop_target = gtk_drop_target_new (G_TYPE_INVALID, GDK_ACTION_ALL);

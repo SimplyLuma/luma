@@ -1,0 +1,88 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: log windows that flash
+
+A window flashing black at login was gone before anyone could see what it
+was. The Shell now logs every window that closes within three seconds of
+appearing, and every window opened in a session's first ninety seconds,
+with its application, class, type, client and size.
+
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -35,6 +35,7 @@
+ import * as LumaSearch from './lumaSearch.js';
+ import * as LumaDisplayArrival from './lumaDisplayArrival.js';
+ import * as LumaWindowCorners from './lumaWindowCorners.js';
++import * as LumaWindowWatch from './lumaWindowWatch.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -69,6 +70,7 @@
+ export let lumaSearch = null;
+ export let lumaDisplayArrival = null;
+ export let lumaWindowCorners = null;
++export let lumaWindowWatch = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
+ export let welcomeDialog = null;
+@@ -258,6 +260,7 @@
+     if (sessionMode.hasOverview) {
+         try {
+             lumaWindowCorners = new LumaWindowCorners.WindowCorners();
++            lumaWindowWatch = new LumaWindowWatch.WindowWatch();
+         } catch (error) {
+             logError(error, 'Failed to round window corners');
+         }
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -86,6 +86,7 @@
+     <file>ui/lumaSearch.js</file>
+     <file>ui/lumaDisplayArrival.js</file>
+     <file>ui/lumaWindowCorners.js</file>
++    <file>ui/lumaWindowWatch.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>
+--- /dev/null
++++ b/js/ui/lumaWindowWatch.js
+@@ -0,0 +1,41 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Windows that flash: every window that closes within a few seconds of
++// appearing, and every window in the first moments of a session, go to the
++// journal with who made it. A black window flashing at login is otherwise
++// gone before anyone can see what it was (ADR-026: account for everything).
++//
++//   journalctl --user -b -g luma-windows
++
++import GLib from 'gi://GLib';
++import Meta from 'gi://Meta';
++
++const SHORT_LIVED_MS = 3000;
++const STARTUP_WINDOW_MS = 90000;
++
++function describe(window) {
++    const rect = window.get_frame_rect();
++    const type = Object.keys(Meta.WindowType).find(key => Meta.WindowType[key] === window.get_window_type()) ?? '?';
++    return `app=${window.get_gtk_application_id() ?? window.get_sandboxed_app_id() ?? '-'} ` +
++        `class=${window.get_wm_class() ?? '-'} title=${JSON.stringify(window.get_title() ?? '')} ` +
++        `type=${type} client=${window.get_client_type() === Meta.WindowClientType.X11 ? 'x11' : 'wayland'} ` +
++        `pid=${window.get_pid()} size=${rect.width}x${rect.height}+${rect.x}+${rect.y}`;
++}
++
++export class WindowWatch {
++    constructor() {
++        this._started = GLib.get_monotonic_time();
++        global.display.connectObject('window-created', (_display, window) => this._created(window), this);
++    }
++
++    _created(window) {
++        const born = GLib.get_monotonic_time();
++        const sinceStart = (born - this._started) / 1000;
++        if (sinceStart < STARTUP_WINDOW_MS)
++            console.log(`[luma-windows] +${Math.round(sinceStart)}ms opened ${describe(window)}`);
++        window.connectObject('unmanaged', () => {
++            const lived = (GLib.get_monotonic_time() - born) / 1000;
++            if (lived < SHORT_LIVED_MS)
++                console.log(`[luma-windows] short-lived window (${Math.round(lived)}ms) ${describe(window)}`);
++        }, this);
++    }
++}

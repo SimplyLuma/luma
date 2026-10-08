@@ -1,0 +1,258 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: Frost is the smoked glass on the shelf and its
+ pop-overs
+
+Studio Desktop's approved Frost is a smoked glass with dark ink in Light and
+Dark alike: the islands take the glass gradient from rgba(40,40,45,.74) to
+rgba(26,26,30,.84) and pop-overs the denser rgba(50,50,56,.8) to
+rgba(32,32,36,.86), both over a blur of 40 at saturation 1.4, with a bright
+top edge and a faint rim. Frost surfaces now wear the dark family's classes
+plus luma-surface-smoke, so their ink, wells and marks are the dark ones;
+application windows keep the platform Frost recipe.
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index bd80755..773d6cf 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2701,7 +2701,7 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-notification-lip.luma-surface-light { color: #1d1f23; }
+ .luma-notification-lip.luma-surface-light .luma-lip-surface {
+   background-color: #eceef1; border-color: rgba(255,255,255,.9); }
+-.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++.luma-notification-lip.luma-surface-smoke .luma-lip-surface {
+   background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
+ .luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
+ .luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
+@@ -2787,7 +2787,7 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+   background-color: #262a31; color: #f2f3f5; border-radius: 22px;
+   border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
+ .quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
+-.quick-settings.luma-studio-options.luma-surface-frost {
++.quick-settings.luma-studio-options.luma-surface-smoke {
+   background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
+   background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
+   color: #f2f3f5; border-color: rgba(255,255,255,.1); }
+@@ -3001,3 +3001,46 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-link { color: #16191d; }
+ .luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry .hint-text { color: rgba(231,233,232,.42); }
+ .luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry .hint-text { color: rgba(22,25,29,.56); }
++/* Smoked Frost (Studio Desktop, approved 25 Sep). In Frost the Shell's
++ * surfaces wear the dark family's classes, so their ink, wells, hover and
++ * marks are the dark ones, plus luma-surface-smoke, which trades the opaque
++ * charcoal for the smoked glass over the blurred wallpaper (blur 40,
++ * saturation 1.4, lumaSurfaceMaterials.js). Light and Dark alike: Frost always
++ * carries dark ink. Pop-overs take the denser pop glass. */
++.luma-shelf-material.luma-surface-smoke,
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-smoke,
++.dash-label.luma-surface-smoke,
++.luma-dock-preview.luma-surface-smoke,
++.luma-dockf-surface.luma-surface-smoke {
++  background-color: rgba(40,40,45,0.74);
++  background-gradient-direction: vertical;
++  background-gradient-start: rgba(40,40,45,0.74);
++  background-gradient-end: rgba(26,26,30,0.84);
++  color: #e7e9e8;
++  text-shadow: none; }
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material.luma-surface-smoke {
++  background-color: transparent;
++  background-gradient-direction: none; }
++.popup-menu.luma-surface-smoke .popup-menu-content,
++.popup-menu.luma-surface-smoke .popup-menu-content.luma-quick-options {
++  background-color: rgba(50,50,56,0.80);
++  background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,0.80);
++  background-gradient-end: rgba(32,32,36,0.86);
++  color: #e7e9e8;
++  text-shadow: none; }
++.luma-shelf-stroke.luma-surface-smoke {
++  border-color: rgba(255,255,255,0.06);
++  border-top-color: rgba(255,255,255,0.12); }
++/* Inside the glass the kit is glass: wells a translucent inset, chips a
++ * translucent lift, never an opaque tile. */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-smoke .luma-live-extension-action,
++.luma-surface-smoke .luma-media-control {
++  background-color: rgba(255,255,255,0.10); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-smoke .luma-live-extension-action:hover,
++.luma-surface-smoke .luma-media-control:hover {
++  background-color: rgba(255,255,255,0.16); }
++.luma-surface-smoke .luma-media-control.luma-media-primary {
++  background-color: rgba(255,255,255,0.20); }
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+index 21b4f5c..9161fe5 100644
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -16,6 +16,23 @@ const RECIPES = {
+     frost: {radius: 38, saturation: 1.6},
+     glass: {radius: 18, saturation: 1.35},
+ };
++// The Shell's own Frost is the approved smoked glass (Studio Desktop, 25
++// Sep): the shelf, its pop-overs and the notification lip blur 40 with
++// saturation 1.4 under a dark smoke, with dark-mode ink in Light and Dark.
++// Application windows keep the platform's Frost recipe above (the
++// compositor's client parameters); only Shell surfaces take this one.
++const SHELL_RECIPES = {...RECIPES, frost: {radius: 40, saturation: 1.4}};
++// The classes a treatment puts on a surface. Smoked Frost wears the dark
++// family's classes, so every dark rule (ink, hover, wells, marks) applies,
++// plus luma-surface-smoke, which paints the translucent smoke instead of
++// the opaque charcoal.
++const SURFACE_CLASSES = {
++    light: ['luma-surface-light'],
++    dark: ['luma-surface-dark'],
++    frost: ['luma-surface-dark', 'luma-surface-smoke'],
++    glass: ['luma-surface-glass'],
++};
++const ALL_SURFACE_CLASSES = [...TREATMENTS.map(name => `luma-surface-${name}`), 'luma-surface-smoke'];
+ 
+ // One ink ledger for every surface Luma draws over the wallpaper: the Shelf
+ // islands, the Well, the clock, Quick Options, notifications, the beacon, the
+@@ -74,17 +91,23 @@ export const SURFACE_INK = {
+         rim: 'rgba(255,255,255,0.045)',
+         shadow: null,
+     },
++    // Smoked Frost (Studio Desktop): the glass gradient rgba(40,40,45,.74)
++    // to rgba(26,26,30,.84) over the blurred wallpaper, carrying the dark
++    // family's ink. Its worst case is the brightest wallpaper, pure white,
++    // where the smoke alone darkens the ground under light ink.
+     frost: {
+-        veil: 'rgba(248,249,250,0.90)', veilRaised: 'rgba(248,249,250,0.90)',
+-        veilCard: 'rgba(250,250,251,0.88)',
+-        recess: 'rgba(37,46,54,0.05)',
+-        ink: '#1f262d', ink2: '#394047',
+-        accent: '#7a4a0c', line: 'rgba(37,46,54,0.10)',
++        // The gradient's denser end: islands rgba(26,26,30,.84), pop-overs
++        // rgba(32,32,36,.86). The painted gradient is in luma-shelf.css.
++        veil: 'rgba(26,26,30,0.84)', veilRaised: 'rgba(32,32,36,0.86)',
++        veilCard: 'rgba(30,30,34,0.86)',
++        recess: 'rgba(0,0,0,0.22)',
++        ink: '#f1f2f4', ink2: '#dcdfe1',
++        accent: '#f5c26b', line: 'rgba(255,255,255,0.10)',
+         // The rule between the parts of one island or bar (DIVIDER_WIDTH;
+         // ShelfIsland.setDivider draws it between the parts of a bar).
+-        divider: 'rgba(37,46,54,0.28)',
+-        hover: 'rgba(37,46,54,0.06)', press: 'rgba(37,46,54,0.10)',
+-        rim: 'rgba(255,255,255,0.55)',
++        divider: 'rgba(255,255,255,0.22)',
++        hover: 'rgba(255,255,255,0.06)', press: 'rgba(255,255,255,0.09)',
++        rim: 'rgba(255,255,255,0.06)',
+         shadow: null,
+     },
+     glass: {
+@@ -103,7 +126,8 @@ export const SURFACE_INK = {
+ };
+ 
+ // The modes whose surfaces are paper-coloured and carry dark ink.
+-export const LIGHT_FAMILY = new Set(['light', 'frost', 'glass']);
++// Smoked Frost carries dark ink, so it is not one of them.
++export const LIGHT_FAMILY = new Set(['light', 'glass']);
+ 
+ // Body text must clear this; a glyph or large text clears LARGE_MINIMUM.
+ export const INK_MINIMUM = 4.5;
+@@ -217,7 +241,7 @@ class SurfaceMaterialController {
+         }
+ 
+         for (const binding of this._bindings)
+-            binding._sync(this._effective, recipe);
++            binding._sync(this._effective, SHELL_RECIPES[this._effective]);
+ 
+         if (previous !== undefined && previous !== this._effective) {
+             for (const listener of this._listeners) {
+@@ -240,7 +264,7 @@ class SurfaceMaterialController {
+             this._sync();
+         const binding = new SurfaceMaterialBinding(this, actor, options);
+         this._bindings.add(binding);
+-        binding._sync(this._effective, RECIPES[this._effective]);
++        binding._sync(this._effective, SHELL_RECIPES[this._effective]);
+         return binding;
+     }
+ 
+@@ -286,7 +310,7 @@ class SurfaceMaterialBinding {
+     setEnabled(enabled) {
+         this._enabled = enabled;
+         this._sync(this._controller._effective,
+-            RECIPES[this._controller._effective]);
++            SHELL_RECIPES[this._controller._effective]);
+     }
+ 
+     setTranslucentRecipe(recipe) {
+@@ -315,9 +339,10 @@ class SurfaceMaterialBinding {
+         if (!this._actor)
+             return;
+         for (const actor of this._classActors) {
+-            for (const name of TREATMENTS)
+-                actor.remove_style_class_name(`luma-surface-${name}`);
+-            actor.add_style_class_name(`luma-surface-${treatment}`);
++            for (const name of ALL_SURFACE_CLASSES)
++                actor.remove_style_class_name(name);
++            for (const name of SURFACE_CLASSES[treatment] ?? [`luma-surface-${treatment}`])
++                actor.add_style_class_name(name);
+         }
+ 
+         if (this._treatment !== treatment) {
+diff --git a/tests/unit/lumaSurfaceInk.js b/tests/unit/lumaSurfaceInk.js
+index d3f2ffa..9337c3e 100644
+--- a/tests/unit/lumaSurfaceInk.js
++++ b/tests/unit/lumaSurfaceInk.js
+@@ -150,10 +150,12 @@ describe('Luma surface ink ledger', () => {
+         // translucent veil over a black wallpaper that ground is already the
+         // darkest it gets. Pressed must stay at or above AA there, not merely
+         // close to it.
+-        for (const mode of ['frost', 'glass']) {
+-            const rest = ratio(mode, 'veil', 'ink2', BLACK);
++        // Smoked Frost carries light ink, so its darkest ground is the other
++        // extreme: a white wallpaper, where the smoke alone darkens it.
++        for (const [mode, worst] of [['frost', WHITE], ['glass', BLACK]]) {
++            const rest = ratio(mode, 'veil', 'ink2', worst);
+             const pressed =
+-                ratio(mode, 'veil', 'ink2', BLACK, ['recess', 'press']);
++                ratio(mode, 'veil', 'ink2', worst, ['recess', 'press']);
+             expect(rest).toBeGreaterThanOrEqual(INK_MINIMUM);
+             expect(pressed).toBeGreaterThanOrEqual(INK_MINIMUM);
+         }
+@@ -175,25 +177,28 @@ describe('Luma surface ink ledger', () => {
+             .toBeGreaterThan(INK_MINIMUM);
+     });
+ 
+-    it('makes frost and glass one light material, never a dark smoke', () => {
+-        // Frost and glass are what their Settings thumbnails show: light,
+-        // see-through panels over the wallpaper, like application windows.
+-        for (const mode of ['frost', 'glass']) {
+-            for (const veil of VEILS) {
+-                const [r, g, b, a] = parse(SURFACE_INK[mode][veil]);
+-                expect(luminance([r, g, b])).toBeGreaterThan(0.85);
+-                expect(a).toBeLessThan(0.95);
+-            }
+-            expect(luminance(parse(SURFACE_INK[mode].ink))).toBeLessThan(0.05);
+-            expect(LIGHT_FAMILY.has(mode)).toBeTrue();
++    it('keeps glass a light material', () => {
++        // Glass is what its Settings thumbnail shows: a light, see-through
++        // panel over the wallpaper, like application windows.
++        for (const veil of VEILS) {
++            const [r, g, b, a] = parse(SURFACE_INK.glass[veil]);
++            expect(luminance([r, g, b])).toBeGreaterThan(0.85);
++            expect(a).toBeLessThan(0.95);
+         }
++        expect(luminance(parse(SURFACE_INK.glass.ink))).toBeLessThan(0.05);
++        expect(LIGHT_FAMILY.has('glass')).toBeTrue();
+     });
+ 
+-    it('lets clearly more wallpaper through glass than frost', () => {
++    it('makes Frost the smoked glass with light ink', () => {
++        // Studio Desktop (approved 25 Sep): a see-through dark smoke over
++        // the wallpaper, carrying dark-mode ink in Light and Dark alike.
+         for (const veil of VEILS) {
+-            const frost = parse(SURFACE_INK.frost[veil])[3];
+-            const glass = parse(SURFACE_INK.glass[veil])[3];
+-            expect(frost - glass).toBeGreaterThan(0.075);
++            const [r, g, b, a] = parse(SURFACE_INK.frost[veil]);
++            expect(luminance([r, g, b])).toBeLessThan(0.05);
++            expect(a).toBeGreaterThanOrEqual(0.74);
++            expect(a).toBeLessThan(0.95);
+         }
++        expect(luminance(parse(SURFACE_INK.frost.ink))).toBeGreaterThan(0.7);
++        expect(LIGHT_FAMILY.has('frost')).toBeFalse();
+     });
+ });

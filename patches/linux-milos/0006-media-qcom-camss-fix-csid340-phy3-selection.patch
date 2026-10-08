@@ -1,0 +1,32 @@
+From: Project Luma <luma@projectluma.dev>
+Subject: [PATCH] media: qcom: camss: fix CSID 3.4.0 PHY3 selection
+
+The TFE CSID665 receiver used by SM7635 encodes the selected CSIPHY in
+bits 22:20 of CSI2_RX_CFG0.  PHY indices are biased by one, so CSIPHY3 must
+be written as value 4.  The existing two-bit mask silently truncates that
+value to zero and prevents sensors connected to CSIPHY3 from reaching the
+CSID receiver.
+
+Qualcomm's downstream CSID665 definition exposes the same field with mask
+0x7.  Widen the mainline field accordingly.  Existing PHY0 through PHY2
+encodings are unchanged.
+
+---
+ drivers/media/platform/qcom/camss/camss-csid-340.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/qcom/camss/camss-csid-340.c b/drivers/media/platform/qcom/camss/camss-csid-340.c
+index 2fa43fc97b41..ce62abb55e89 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid-340.c
++++ b/drivers/media/platform/qcom/camss/camss-csid-340.c
+@@ -32,7 +32,7 @@
+ #define CSID_CSI2_RX_CFG0					(0x100)
+ #define		CSI2_RX_CFG0_NUM_ACTIVE_LANES_MASK	GENMASK(1, 0)
+ #define		CSI2_RX_CFG0_DLX_INPUT_SEL_MASK		GENMASK(17, 4)
+-#define		CSI2_RX_CFG0_PHY_NUM_SEL_MASK		GENMASK(21, 20)
++#define		CSI2_RX_CFG0_PHY_NUM_SEL_MASK		GENMASK(22, 20)
+ #define		CSI2_RX_CFG0_PHY_NUM_SEL_BASE_IDX	1
+ #define		CSI2_RX_CFG0_PHY_TYPE_SEL		BIT(24)
+ 
+-- 
+2.51.0

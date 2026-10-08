@@ -1,0 +1,1252 @@
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index 3c23600..97248fa 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -242,12 +242,12 @@
+   <schema path="/org/gnome/nautilus/window-state/" id="org.gnome.nautilus.window-state" gettext-domain="nautilus">
+     <key type="i" name="sidebar-width">
+       <range min="120" max="480"/>
+-      <default>160</default>
++      <default>232</default>
+       <summary>Width of the navigation sidebar</summary>
+       <description>The saved width of the resizable navigation sidebar in pixels.</description>
+     </key>
+     <key type="(ii)" name="initial-size">
+-      <default>(890, 550)</default>
++      <default>(920, 598)</default>
+       <summary>Initial size of the window</summary>
+       <description>A tuple containing the initial width and height of the app window.</description>
+     </key>
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+index 2cede7f..3597ccd 100644
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -235,6 +235,8 @@ struct _NautilusFilesView
+     guint floating_bar_loading_timeout_id;
+     guint floating_bar_set_passthrough_timeout_id;
+     GtkWidget *floating_bar;
++    GtkWidget *status_primary_label;
++    GtkWidget *status_free_label;
+ 
+     /* Toolbar menu */
+     NautilusToolbarMenuSections *toolbar_menu_sections;
+@@ -3387,6 +3389,8 @@ nautilus_files_view_display_selection_info (NautilusFilesView *view)
+     {
+         /* Selection info is not relevant on this view and visually clashes with
+          * the action bar. */
++        gtk_label_set_text (GTK_LABEL (view->status_primary_label), "");
++        gtk_label_set_text (GTK_LABEL (view->status_free_label), "");
+         return;
+     }
+ 
+@@ -3576,6 +3580,50 @@ nautilus_files_view_display_selection_info (NautilusFilesView *view)
+         detail_status = NULL;
+     }
+ 
++    guint total_count = view->model != NULL
++                        ? g_list_model_get_n_items (G_LIST_MODEL (view->model))
++                        : 0;
++    guint selected_count = folder_count + non_folder_count;
++    g_autofree char *item_status =
++        g_strdup_printf (ngettext ("%'u item", "%'u items", total_count),
++                         total_count);
++    g_autofree char *selected_status = NULL;
++    g_autofree char *status = NULL;
++
++    if (selected_count > 0)
++    {
++        selected_status =
++            g_strdup_printf (ngettext ("%'u selected", "%'u selected", selected_count),
++                             selected_count);
++
++        if (detail_status != NULL && detail_status[0] != '\0')
++        {
++            g_autofree char *selected_with_detail =
++                g_strdup_printf ("%s %s", selected_status, detail_status);
++            status = g_strdup_printf (_("%s · %s"), item_status, selected_with_detail);
++        }
++        else
++        {
++            status = g_strdup_printf (_("%s · %s"), item_status, selected_status);
++        }
++    }
++    else
++    {
++        status = g_strdup (item_status);
++    }
++
++    gtk_label_set_text (GTK_LABEL (view->status_primary_label), status);
++
++    g_autofree char *free_space = view->directory_as_file != NULL
++                                  ? nautilus_file_get_volume_free_space (view->directory_as_file)
++                                  : NULL;
++    gtk_label_set_text (GTK_LABEL (view->status_free_label),
++                        free_space != NULL ? free_space : "");
++
++    /* Selection state now lives in the persistent status bar. Keep the
++     * floating bar exclusively for loading and stop affordances. */
++    set_floating_bar_status (view, NULL, NULL);
++
+     g_free (folder_count_str);
+     g_free (folder_item_count_str);
+     g_free (folder_counts_str);
+@@ -3583,8 +3631,6 @@ nautilus_files_view_display_selection_info (NautilusFilesView *view)
+     g_free (non_folder_item_count_str);
+     g_free (non_folder_counts_str);
+ 
+-    set_floating_bar_status (view, primary_status, detail_status);
+-
+     g_free (primary_status);
+     g_free (detail_status);
+ }
+@@ -9386,6 +9432,8 @@ nautilus_files_view_class_init (NautilusFilesViewClass *klass)
+ 
+     gtk_widget_class_bind_template_child (widget_class, NautilusFilesView, overlay);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFilesView, floating_bar);
++    gtk_widget_class_bind_template_child (widget_class, NautilusFilesView, status_primary_label);
++    gtk_widget_class_bind_template_child (widget_class, NautilusFilesView, status_free_label);
+ 
+     /* See also the global accelerators in init() in addition to all the local
+      * ones defined below.
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index c9bd4a6..d1dc09f 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -104,8 +104,10 @@ struct _NautilusSidebar
+     NautilusWindowSlot *window_slot;
+     GSignalGroup *slot_signal_group;
+ 
++    GtkWidget *root_box;
+     GtkWidget *swin;
+     GtkWidget *list_box;
++    GtkWidget *trash_list_box;
+     GtkWidget *new_bookmark_row;
+ 
+     NautilusBookmarkList *bookmark_list;
+@@ -438,7 +440,13 @@ add_place (NautilusSidebar           *sidebar,
+                       G_CALLBACK (on_row_dragged), row);
+     gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (gesture));
+ 
+-    gtk_list_box_insert (GTK_LIST_BOX (sidebar->list_box), GTK_WIDGET (row), -1);
++    GtkWidget *target_list =
++        (sidebar->trash_list_box != NULL &&
++         g_strcmp0 (uri, SCHEME_TRASH ":///") == 0)
++        ? sidebar->trash_list_box
++        : sidebar->list_box;
++
++    gtk_list_box_insert (GTK_LIST_BOX (target_list), GTK_WIDGET (row), -1);
+ 
+     return row;
+ }
+@@ -669,6 +677,10 @@ update_places (NautilusSidebar *sidebar)
+ 
+     /* save original selection */
+     selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
++    if (selected == NULL && sidebar->trash_list_box != NULL)
++    {
++        selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->trash_list_box));
++    }
+     if (selected)
+     {
+         g_object_get (selected, "uri", &original_uri, NULL);
+@@ -685,6 +697,10 @@ update_places (NautilusSidebar *sidebar)
+     {
+         gtk_list_box_remove (GTK_LIST_BOX (sidebar->list_box), child);
+     }
++    while ((child = gtk_widget_get_first_child (GTK_WIDGET (sidebar->trash_list_box))))
++    {
++        gtk_list_box_remove (GTK_LIST_BOX (sidebar->trash_list_box), child);
++    }
+ 
+     network_mounts = network_volumes = NULL;
+ 
+@@ -3186,6 +3202,24 @@ on_row_activated (GtkListBox    *list_box,
+     open_row (selected_row, 0);
+ }
+ 
++static void
++on_row_selected (GtkListBox    *list_box,
++                 GtkListBoxRow *row,
++                 gpointer       user_data)
++{
++    NautilusSidebar *sidebar = NAUTILUS_PLACES_SIDEBAR (user_data);
++
++    if (row == NULL)
++    {
++        return;
++    }
++
++    GtkWidget *other_list = list_box == GTK_LIST_BOX (sidebar->list_box)
++                            ? sidebar->trash_list_box
++                            : sidebar->list_box;
++    gtk_list_box_unselect_all (GTK_LIST_BOX (other_list));
++}
++
+ static void
+ on_row_pressed (GtkGestureClick    *gesture,
+                 int                 n_press,
+@@ -3594,8 +3628,12 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+                              G_CALLBACK (update_trash_icon), sidebar,
+                              G_CONNECT_SWAPPED);
+ 
++    sidebar->root_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    gtk_widget_set_parent (sidebar->root_box, GTK_WIDGET (sidebar));
++
+     sidebar->swin = gtk_scrolled_window_new ();
+-    gtk_widget_set_parent (sidebar->swin, GTK_WIDGET (sidebar));
++    gtk_widget_set_vexpand (sidebar->swin, TRUE);
++    gtk_box_append (GTK_BOX (sidebar->root_box), sidebar->swin);
+ 
+     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (sidebar->swin),
+                                     GTK_POLICY_NEVER,
+@@ -3615,6 +3653,8 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+ 
+     g_signal_connect (sidebar->list_box, "row-activated",
+                       G_CALLBACK (on_row_activated), sidebar);
++    g_signal_connect (sidebar->list_box, "row-selected",
++                      G_CALLBACK (on_row_selected), sidebar);
+ 
+     controller = gtk_event_controller_key_new ();
+     g_signal_connect (controller, "key-pressed",
+@@ -3643,6 +3683,18 @@ nautilus_sidebar_init (NautilusSidebar *sidebar)
+ 
+     gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (sidebar->swin), sidebar->list_box);
+ 
++    sidebar->trash_list_box = gtk_list_box_new ();
++    gtk_widget_add_css_class (sidebar->trash_list_box, "navigation-sidebar");
++    gtk_widget_add_css_class (sidebar->trash_list_box, "luma-trash-list");
++    gtk_list_box_set_selection_mode (GTK_LIST_BOX (sidebar->trash_list_box), GTK_SELECTION_SINGLE);
++    gtk_list_box_set_activate_on_single_click (GTK_LIST_BOX (sidebar->trash_list_box), TRUE);
++    gtk_list_box_set_tab_behavior (GTK_LIST_BOX (sidebar->trash_list_box), GTK_LIST_TAB_ITEM);
++    g_signal_connect (sidebar->trash_list_box, "row-activated",
++                      G_CALLBACK (on_row_activated), sidebar);
++    g_signal_connect (sidebar->trash_list_box, "row-selected",
++                      G_CALLBACK (on_row_selected), sidebar);
++    gtk_box_append (GTK_BOX (sidebar->root_box), sidebar->trash_list_box);
++
+     sidebar->hostname = g_strdup (_("Device"));
+     sidebar->hostnamed_cancellable = g_cancellable_new ();
+     g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM,
+@@ -3849,7 +3901,10 @@ nautilus_sidebar_finalize (GObject *object)
+ 
+     g_clear_object (&sidebar->row_actions);
+ 
+-    g_clear_pointer (&sidebar->swin, gtk_widget_unparent);
++    g_clear_pointer (&sidebar->root_box, gtk_widget_unparent);
++    sidebar->swin = NULL;
++    sidebar->list_box = NULL;
++    sidebar->trash_list_box = NULL;
+ 
+     G_OBJECT_CLASS (nautilus_sidebar_parent_class)->finalize (object);
+ }
+@@ -3865,7 +3920,7 @@ nautilus_sidebar_measure (GtkWidget      *widget,
+ {
+     NautilusSidebar *sidebar = NAUTILUS_PLACES_SIDEBAR (widget);
+ 
+-    gtk_widget_measure (sidebar->swin,
++    gtk_widget_measure (sidebar->root_box,
+                         orientation,
+                         for_size,
+                         minimum, natural,
+@@ -3880,7 +3935,7 @@ nautilus_sidebar_size_allocate (GtkWidget *widget,
+ {
+     NautilusSidebar *sidebar = NAUTILUS_PLACES_SIDEBAR (widget);
+ 
+-    gtk_widget_size_allocate (sidebar->swin,
++    gtk_widget_size_allocate (sidebar->root_box,
+                               &(GtkAllocation) { 0, 0, width, height },
+                               baseline);
+ 
+@@ -4145,6 +4200,7 @@ nautilus_sidebar_set_location (NautilusSidebar *sidebar,
+     g_return_if_fail (NAUTILUS_IS_PLACES_SIDEBAR (sidebar));
+ 
+     gtk_list_box_unselect_all (GTK_LIST_BOX (sidebar->list_box));
++    gtk_list_box_unselect_all (GTK_LIST_BOX (sidebar->trash_list_box));
+ 
+     g_set_object (&sidebar->current_location, location);
+ 
+@@ -4175,6 +4231,18 @@ nautilus_sidebar_set_location (NautilusSidebar *sidebar,
+         g_free (row_uri);
+     }
+ 
++    if (!found && sidebar->trash_row != NULL)
++    {
++        g_object_get (sidebar->trash_row, "uri", &row_uri, NULL);
++        if (row_uri != NULL && g_strcmp0 (row_uri, uri) == 0)
++        {
++            gtk_list_box_select_row (GTK_LIST_BOX (sidebar->trash_list_box),
++                                     GTK_LIST_BOX_ROW (sidebar->trash_row));
++            found = TRUE;
++        }
++        g_free (row_uri);
++    }
++
+     g_free (uri);
+ 
+ out:
+@@ -4205,6 +4273,10 @@ nautilus_sidebar_get_location (NautilusSidebar *sidebar)
+ 
+     file = NULL;
+     selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
++    if (selected == NULL)
++    {
++        selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->trash_list_box));
++    }
+ 
+     if (selected)
+     {
+@@ -4228,6 +4300,10 @@ nautilus_sidebar_get_location_title (NautilusSidebar *sidebar)
+ 
+     title = NULL;
+     selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
++    if (selected == NULL)
++    {
++        selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->trash_list_box));
++    }
+ 
+     if (selected)
+     {
+diff --git a/src/nautilus-toolbar.c b/src/nautilus-toolbar.c
+index a20b99d..7525d25 100644
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -50,6 +50,7 @@ struct _NautilusToolbar
+     GtkWidget *search_button_stack;
+     GtkWidget *search_button;
+     GtkWidget *search_button_placeholder;
++    GMenuModel *main_menu;
+ 
+     gboolean show_location_entry;
+     GtkWidget *focus_before_location_entry;
+@@ -70,6 +71,7 @@ enum
+ {
+     PROP_0,
+     PROP_WINDOW_SLOT,
++    PROP_MAIN_MENU,
+     PROP_SHOW_NEW_FOLDER_BUTTON,
+     PROP_SHOW_SIDEBAR_BUTTON,
+     PROP_SIDEBAR_BUTTON_ACTIVE,
+@@ -319,6 +321,12 @@ nautilus_toolbar_get_property (GObject    *object,
+         }
+         break;
+ 
++        case PROP_MAIN_MENU:
++        {
++            g_value_set_object (value, self->main_menu);
++        }
++        break;
++
+         case PROP_SHOW_NEW_FOLDER_BUTTON:
+         {
+             g_value_set_boolean (value, self->show_new_folder_button);
+@@ -384,6 +392,12 @@ nautilus_toolbar_set_property (GObject      *object,
+         }
+         break;
+ 
++        case PROP_MAIN_MENU:
++        {
++            g_set_object (&self->main_menu, g_value_get_object (value));
++        }
++        break;
++
+         case PROP_SHOW_NEW_FOLDER_BUTTON:
+         {
+             self->show_new_folder_button = g_value_get_boolean (value);
+@@ -428,6 +442,7 @@ nautilus_toolbar_dispose (GObject *object)
+     NautilusToolbar *self = NAUTILUS_TOOLBAR (object);
+ 
+     adw_bin_set_child (ADW_BIN (object), NULL);
++    g_clear_object (&self->main_menu);
+     gtk_widget_dispose_template (GTK_WIDGET (self), NAUTILUS_TYPE_TOOLBAR);
+ 
+     G_OBJECT_CLASS (nautilus_toolbar_parent_class)->dispose (object);
+@@ -475,6 +490,13 @@ nautilus_toolbar_class_init (NautilusToolbarClass *klass)
+                              (G_PARAM_READWRITE |
+                               G_PARAM_STATIC_STRINGS));
+ 
++    properties[PROP_MAIN_MENU] =
++        g_param_spec_object ("main-menu",
++                             "Main menu",
++                             "Application menu displayed by the toolbar",
++                             G_TYPE_MENU_MODEL,
++                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
++
+     properties[PROP_SHOW_NEW_FOLDER_BUTTON] =
+         g_param_spec_boolean ("show-new-folder-button", NULL, NULL,
+                               FALSE,
+diff --git a/src/nautilus-view-controls.c b/src/nautilus-view-controls.c
+index 6594a7c..6f31ada 100644
+--- a/src/nautilus-view-controls.c
++++ b/src/nautilus-view-controls.c
+@@ -13,7 +13,7 @@ struct _NautilusViewControls
+ {
+     AdwBin parent_instance;
+ 
+-    GtkWidget *view_split_button;
++    GtkWidget *view_controls;
+     GMenuModel *view_menu;
+ 
+     NautilusWindowSlot *window_slot;
+@@ -42,7 +42,7 @@ on_slot_toolbar_menu_sections_changed (NautilusViewControls *self,
+ 
+     new_sections = nautilus_window_slot_get_toolbar_menu_sections (slot);
+ 
+-    gtk_widget_set_sensitive (self->view_split_button, (new_sections != NULL));
++    gtk_widget_set_sensitive (self->view_controls, (new_sections != NULL));
+     if (new_sections == NULL)
+     {
+         return;
+@@ -189,7 +189,7 @@ nautilus_view_controls_class_init (NautilusViewControlsClass *klass)
+     gtk_widget_class_set_template_from_resource (widget_class,
+                                                  "/org/gnome/nautilus/ui/nautilus-view-controls.ui");
+     gtk_widget_class_bind_template_child (widget_class, NautilusViewControls, view_menu);
+-    gtk_widget_class_bind_template_child (widget_class, NautilusViewControls, view_split_button);
++    gtk_widget_class_bind_template_child (widget_class, NautilusViewControls, view_controls);
+ }
+ 
+ static void
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+index 48e8ce0..bbbb646 100644
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -932,7 +932,7 @@ get_gicon (ButtonData *button_data)
+ 
+         case HOME_BUTTON:
+         {
+-            return g_themed_icon_new (NAUTILUS_ICON_HOME);
++            return g_themed_icon_new ("luma-folder");
+         }
+ 
+         case MOUNT_BUTTON:
+@@ -1255,14 +1255,14 @@ make_button_data (NautilusPathBar *self,
+         /* Fall through */
+         default:
+         {
+-            GtkWidget *separator_label;
++            GtkWidget *separator_icon;
+ 
+-            separator_label = gtk_label_new (G_DIR_SEPARATOR_S);
+-            gtk_widget_add_css_class (separator_label, "dim-label");
++            separator_icon = gtk_image_new_from_icon_name ("go-next-symbolic");
++            gtk_widget_add_css_class (separator_icon, "luma-path-separator");
+             button_data->label = gtk_label_new (NULL);
+             child = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
+             button_data->container = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+-            gtk_box_append (GTK_BOX (button_data->container), separator_label);
++            gtk_box_append (GTK_BOX (button_data->container), separator_icon);
+             gtk_box_append (GTK_BOX (button_data->container), button_data->button);
+ 
+             gtk_box_append (GTK_BOX (child), button_data->label);
+diff --git a/src/resources/icons/scalable/actions/luma-folder.svg b/src/resources/icons/scalable/actions/luma-folder.svg
+new file mode 100644
+index 0000000..cd3d62e
+--- /dev/null
++++ b/src/resources/icons/scalable/actions/luma-folder.svg
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
++  <path fill="#4b7ab5" d="M2 3h4.6L8 5H1V4a1 1 0 0 1 1-1Z"/>
++  <path fill="#6492c7" d="M1 5h13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V5Z"/>
++</svg>
+diff --git a/src/resources/nautilus.gresource.xml.in b/src/resources/nautilus.gresource.xml.in
+index ed72e3d..b5dad01 100644
+--- a/src/resources/nautilus.gresource.xml.in
++++ b/src/resources/nautilus.gresource.xml.in
+@@ -50,6 +50,7 @@
+     <file>style.css</file>
+ 
+     <!-- Icons -->
++    <file preprocess="xml-stripblanks">icons/scalable/actions/luma-folder.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/arrow-next-symbolic-rtl.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/arrow-next-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/cancel-operation-symbolic.svg</file>
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 7ba5fa5..dd39067 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1,3 +1,232 @@
++/* Files-specific composition for Project Luma.
++ *
++ * The distro-wide light palette and generic controls are owned by Luma's
++ * downstream libadwaita package. This file is intentionally limited to
++ * Nautilus structure and behavior that libadwaita cannot express globally. */
++@media (prefers-color-scheme: light) {
++  /* Files uses a deliberately defined two-row title composition. Keep this
++   * component treatment explicit so AdwToolbarView's flat top-bar state cannot
++   * erase the global Luma title gradient or its lower hairline. */
++  .luma-files-window headerbar.luma-titlebar {
++    background-color: #f2f3f5;
++    background-image: linear-gradient(to bottom, #f2f3f5, #e8eaee);
++    box-shadow: inset 0 -1px #dcdee0;
++  }
++
++  .luma-files-window .luma-window-title {
++    min-height: 18px;
++    padding-top: 1px;
++  }
++
++  /* The working controls remain native Nautilus actions in a second row. */
++  .luma-files-window headerbar.luma-secondary-toolbar {
++    min-height: 38px;
++    /* libadwaita owns the shared 10px headerbar inset. Keep only the
++     * Files-specific vertical contribution for this structural second row. */
++    padding: 3px 0;
++    background-color: var(--headerbar-bg-color);
++    background-image: none;
++    color: var(--headerbar-fg-color);
++    border: none;
++    border-bottom: 1px solid var(--headerbar-shade-color);
++    box-shadow: none;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar > windowhandle > box {
++    padding-top: 4px;
++    padding-bottom: 2px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar {
++    min-height: 30px;
++    background-color: var(--view-bg-color);
++    background-image: none;
++    border: 1px solid var(--headerbar-shade-color);
++    border-radius: 8px;
++    box-shadow: none;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar button {
++    min-height: 28px;
++    padding: 0 5px;
++    border-radius: 7px;
++    font-size: 12px;
++    font-weight: 400;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button {
++    margin: 1px 0;
++    padding: 0 3px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.luma-path-root {
++    margin-left: 8px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.current-dir {
++    font-weight: 600;
++    color: var(--headerbar-fg-color);
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button:not(.current-dir) {
++    color: color-mix(in srgb, var(--headerbar-fg-color) 52%, transparent);
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button image {
++    -gtk-icon-size: 14px;
++    color: var(--accent-color);
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.luma-path-root image {
++    -gtk-icon-size: 15px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .luma-path-separator {
++    -gtk-icon-size: 7px;
++    margin: 0 3px;
++    color: color-mix(in srgb, var(--headerbar-fg-color) 42%, transparent);
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > menubutton > button {
++    min-width: 8px;
++    padding: 0;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > menubutton > button image {
++    -gtk-icon-size: 6px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field {
++    min-height: 30px;
++    padding: 0 10px;
++    background-color: var(--view-bg-color);
++    background-image: none;
++    border: 1px solid var(--headerbar-shade-color);
++    border-radius: 8px;
++    color: color-mix(in srgb, var(--headerbar-fg-color) 50%, transparent);
++    box-shadow: none;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:hover,
++  .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:checked {
++    background-color: var(--view-bg-color);
++    color: var(--headerbar-fg-color);
++    outline: 2px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
++    outline-offset: -2px;
++  }
++
++  .luma-files-window .luma-search-placeholder {
++    color: color-mix(in srgb, var(--headerbar-fg-color) 50%, transparent);
++    font-size: 12px;
++    font-weight: 400;
++  }
++
++  /* Figtree's 12px ink rounds one device pixel above the optical center of
++   * these 30px controls. Move only the text atoms; icons and hit geometry are
++   * already centered and remain untouched. */
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button label,
++  .luma-files-window .luma-search-placeholder {
++    transform: translate(0, 1px);
++  }
++
++  .luma-files-window .luma-view-controls button {
++    min-width: 32px;
++    min-height: 30px;
++    padding: 0;
++  }
++
++  .luma-files-window .luma-view-controls {
++    margin-left: 3px;
++  }
++
++  .luma-files-window .luma-history-controls button {
++    min-width: 35px;
++    min-height: 30px;
++    padding: 0;
++  }
++
++  .luma-files-window .luma-history-controls button image {
++    -gtk-icon-size: 10px;
++  }
++
++  .luma-files-window .luma-view-controls button:checked {
++    background-color: color-mix(in srgb, var(--accent-bg-color) 12%, transparent);
++    color: var(--accent-color);
++  }
++
++  /* Sidebar and content are explicit sibling surfaces below the toolbars. */
++  .luma-files-window .luma-sidebar-surface,
++  .luma-files-window .luma-sidebar-surface viewport,
++  .luma-files-window .luma-sidebar-surface .navigation-sidebar {
++    background-color: var(--sidebar-bg-color);
++    color: var(--sidebar-fg-color);
++  }
++
++  .luma-files-window .luma-sidebar-surface {
++    border-right: 1px solid var(--sidebar-border-color);
++  }
++
++  /* GtkPaned reserves an invisible 8px resize target at the sidebar edge.
++   * Compensate only that structural gutter so the globally themed row still
++   * reads as having a true 10px inset from the visible divider. */
++  .luma-files-window placessidebar .navigation-sidebar > row {
++    margin-right: 2px;
++  }
++
++  .luma-files-window .luma-sidebar-surface:dir(rtl) {
++    border-right: none;
++    border-left: 1px solid var(--sidebar-border-color);
++  }
++
++  .luma-files-window .navigation-sidebar > row {
++    font-size: 13px;
++    font-weight: 400;
++  }
++
++  .luma-files-window .navigation-sidebar:not(.luma-trash-list) {
++    padding-top: 11px;
++    padding-bottom: 7px;
++  }
++
++  .luma-files-window .navigation-sidebar.luma-trash-list {
++    padding-top: 0;
++    padding-bottom: 10px;
++  }
++
++  .luma-files-window .navigation-sidebar > row image {
++    -gtk-icon-size: 14px;
++    color: color-mix(in srgb, var(--sidebar-fg-color) 50%, transparent);
++  }
++
++  .luma-files-window .navigation-sidebar > row:selected image {
++    color: var(--accent-fg-color);
++  }
++
++  .luma-files-window .navigation-sidebar separator {
++    min-height: 1px;
++    margin: 8px 16px;
++    background-color: var(--sidebar-shade-color);
++  }
++
++  .luma-files-window .luma-content-surface,
++  .luma-files-window .luma-content-surface .view,
++  .luma-files-window .luma-content-surface viewport {
++    background-color: var(--view-bg-color);
++    color: var(--view-fg-color);
++  }
++
++  .luma-files-window .luma-status-bar {
++    min-height: 27px;
++    padding: 0 16px;
++    background-color: var(--headerbar-bg-color);
++    color: color-mix(in srgb, var(--headerbar-fg-color) 50%, transparent);
++    border-top: 1px solid var(--headerbar-shade-color);
++    font-size: 11.5px;
++    font-weight: 400;
++  }
++
++}
++
+ /* Toolbar */
+ 
+ @keyframes needs_attention_keyframes {
+diff --git a/src/resources/ui/nautilus-files-view.blp b/src/resources/ui/nautilus-files-view.blp
+index ab89ab7..e3df56b 100644
+--- a/src/resources/ui/nautilus-files-view.blp
++++ b/src/resources/ui/nautilus-files-view.blp
+@@ -2,16 +2,39 @@ using Gtk 4.0;
+ using Adw 1;
+ 
+ template $NautilusFilesView: Adw.Bin {
+-  Overlay overlay {
+-    hexpand: true;
+-    vexpand: true;
++  Box {
++    orientation: vertical;
+ 
+-    [overlay]
+-    $NautilusFloatingBar floating_bar {
+-      halign: end;
+-      valign: end;
+-      spacing: 8;
+-      show-spinner: bind template.loading;
++    Overlay overlay {
++      hexpand: true;
++      vexpand: true;
++
++      [overlay]
++      $NautilusFloatingBar floating_bar {
++        halign: end;
++        valign: end;
++        spacing: 8;
++        show-spinner: bind template.loading;
++      }
++    }
++
++    Box {
++      styles [
++        "luma-status-bar",
++      ]
++
++      Label status_primary_label {
++        xalign: 0;
++        ellipsize: end;
++      }
++
++      Box {
++        hexpand: true;
++      }
++
++      Label status_free_label {
++        xalign: 1;
++      }
+     }
+   }
+ }
+diff --git a/src/resources/ui/nautilus-history-controls.blp b/src/resources/ui/nautilus-history-controls.blp
+index f865151..1a3cb55 100644
+--- a/src/resources/ui/nautilus-history-controls.blp
++++ b/src/resources/ui/nautilus-history-controls.blp
+@@ -7,7 +7,12 @@ PopoverMenu forward_menu {}
+ 
+ template $NautilusHistoryControls: Adw.Bin {
+   child: Box {
+-    spacing: 6;
++    spacing: 0;
++
++    styles [
++      "linked",
++      "luma-history-controls",
++    ]
+ 
+     Button back_button {
+       tooltip-text: _("Back");
+diff --git a/src/resources/ui/nautilus-sidebar-row.blp b/src/resources/ui/nautilus-sidebar-row.blp
+index e9ffc0e..b35d583 100644
+--- a/src/resources/ui/nautilus-sidebar-row.blp
++++ b/src/resources/ui/nautilus-sidebar-row.blp
+@@ -14,7 +14,7 @@ template $NautilusSidebarRow: ListBoxRow {
+ 
+     Box {
+       Image start_icon_widget {
+-        margin-end: 8;
++        margin-end: 9;
+ 
+         accessibility {
+           labelled-by: [
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 7cedfe9..e3c875c 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -3,65 +3,102 @@ using Adw 1;
+ 
+ template $NautilusToolbar: Adw.Bin {
+   Adw.HeaderBar {
++    show-start-title-buttons: false;
++    show-end-title-buttons: false;
++
++    styles [
++      "luma-secondary-toolbar",
++    ]
++
+     [title]
+-    Box header_toolbar {
+-      spacing: 6;
++    Stack toolbar_switcher {
++      valign: center;
++      hexpand: true;
++      transition-type: crossfade;
+ 
+-      Stack toolbar_switcher {
+-        valign: center;
+-        hexpand: false;
+-        transition-type: crossfade;
++      StackPage {
++        name: "pathbar";
+ 
+-        StackPage {
+-          name: "pathbar";
++        child: Box {
++          spacing: 9;
+ 
+-          child: $NautilusPathBar path_bar {
+-            valign: "center";
++          $NautilusPathBar path_bar {
++            valign: center;
++            hexpand: false;
++            width-request: 174;
++            margin-start: 4;
+             window-slot: bind template.window-slot;
+-          };
+-        }
++          }
++
++          Box {
++            hexpand: true;
++          }
++
++          Stack search_button_stack {
++            width-request: 198;
++            halign: end;
++            hexpand: false;
++            hhomogeneous: true;
++            transition-type: crossfade;
++
++            ToggleButton search_button {
++              tooltip-text: _("Search");
++              valign: center;
++              action-name: "slot.search-global";
++              active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
++
++              styles [
++                "luma-search-field",
++              ]
++
++              child: Box {
++                spacing: 8;
++
++                Image {
++                  icon-name: "edit-find-symbolic";
++                }
++
++                Label {
++                  label: _("Search");
++                  hexpand: true;
++                  xalign: 0;
++
++                  styles [
++                    "luma-search-placeholder",
++                  ]
++                }
++              };
++            }
+ 
+-        StackPage {
+-          name: "location";
++            Adw.Bin search_button_placeholder {}
++          }
++        };
++      }
+ 
+-          child: Box {
+-            styles [
+-              "linked",
+-            ]
++      StackPage {
++        name: "location";
+ 
+-            $NautilusLocationEntry location_entry {}
++        child: Box {
++          styles [
++            "linked",
++          ]
+ 
+-            Button {
+-              icon-name: "window-close-symbolic";
+-              tooltip-text: _("Cancel");
+-              clicked => $nautilus_toolbar_close_location_entry() swapped;
+-            }
+-          };
+-        }
++          $NautilusLocationEntry location_entry {}
+ 
+-        StackPage {
+-          name: "search";
+-
+-          child: Box search_container {
+-            orientation: vertical;
+-          };
+-        }
++          Button {
++            icon-name: "window-close-symbolic";
++            tooltip-text: _("Cancel");
++            clicked => $nautilus_toolbar_close_location_entry() swapped;
++          }
++        };
+       }
+ 
+-      Stack search_button_stack {
+-        hhomogeneous: true;
+-        transition-type: crossfade;
+-
+-        ToggleButton search_button {
+-          tooltip-text: _("Search");
+-          halign: center;
+-          valign: center;
+-          action-name: "slot.search-global";
+-          icon-name: "edit-find-symbolic";
+-          active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+-        }
++      StackPage {
++        name: "search";
+ 
+-        Adw.Bin search_button_placeholder {}
++        child: Box search_container {
++          orientation: vertical;
++        };
+       }
+     }
+ 
+@@ -87,9 +124,10 @@ template $NautilusToolbar: Adw.Bin {
+     }
+ 
+     [end]
+-    $NautilusViewControls {
+-      visible: bind template.show-view-controls;
+-      window-slot: bind template.window-slot;
++    MenuButton {
++      tooltip-text: _("Main Menu");
++      icon-name: "open-menu-symbolic";
++      menu-model: bind template.main-menu;
+     }
+ 
+     [end]
+@@ -100,5 +138,11 @@ template $NautilusToolbar: Adw.Bin {
+       action-name: "view.new-folder";
+       focus-on-click: false;
+     }
++
++    [end]
++    $NautilusViewControls {
++      visible: bind template.show-view-controls;
++      window-slot: bind template.window-slot;
++    }
+   }
+ }
+diff --git a/src/resources/ui/nautilus-view-controls.blp b/src/resources/ui/nautilus-view-controls.blp
+index a5e3ca9..fb2bd2a 100644
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -49,41 +49,59 @@ menu view_menu {
+ }
+ 
+ template $NautilusViewControls: Adw.Bin {
+-  child: Adw.SplitButton view_split_button {
++  child: Box view_controls {
+     halign: center;
+     valign: center;
+ 
+-    /* Translators: This is a noun, meaning the options pertaining to the view. */
+-    dropdown-tooltip: _("View Options");
+-    action-name: "slot.files-view-mode-toggle";
+-
+-    popover: PopoverMenu {
+-      menu-model: view_menu;
+-
+-      [zoom-out]
+-      Button {
+-        icon-name: "zoom-out-symbolic";
+-        action-name: "view.zoom-out";
+-        tooltip-text: _("Zoom Out");
+-
+-        styles [
+-          "flat",
+-        ]
+-      }
+-
+-      [zoom-in]
+-      Button {
+-        icon-name: "zoom-in-symbolic";
+-        action-name: "view.zoom-in";
+-        tooltip-text: _("Zoom In");
+-
+-        styles [
+-          "flat",
+-        ]
+-      }
+-    };
+-
+-    icon-name: bind template.window-slot as <$NautilusWindowSlot>.icon-name;
+-    tooltip-text: bind template.window-slot as <$NautilusWindowSlot>.tooltip;
++    styles [
++      "linked",
++      "luma-view-controls",
++    ]
++
++    ToggleButton {
++      icon-name: "view-grid-symbolic";
++      tooltip-text: _("Grid View");
++      action-name: "slot.files-view-mode";
++      action-target: "uint32 2";
++    }
++
++    ToggleButton {
++      icon-name: "view-list-symbolic";
++      tooltip-text: _("List View");
++      action-name: "slot.files-view-mode";
++      action-target: "uint32 1";
++    }
++
++    MenuButton {
++      /* Translators: This is a noun, meaning the options pertaining to the view. */
++      tooltip-text: _("View Options");
++      icon-name: "pan-down-symbolic";
++
++      popover: PopoverMenu {
++        menu-model: view_menu;
++
++        [zoom-out]
++        Button {
++          icon-name: "zoom-out-symbolic";
++          action-name: "view.zoom-out";
++          tooltip-text: _("Zoom Out");
++
++          styles [
++            "flat",
++          ]
++        }
++
++        [zoom-in]
++        Button {
++          icon-name: "zoom-in-symbolic";
++          action-name: "view.zoom-in";
++          tooltip-text: _("Zoom In");
++
++          styles [
++            "flat",
++          ]
++        }
++      };
++    }
+   };
+ }
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index cc6933b..72d81ce 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -106,94 +106,121 @@ template $NautilusWindow: Adw.ApplicationWindow {
+   title: bind template.active-slot as <$NautilusWindowSlot>.title;
+ 
+   styles [
++    "luma-files-window",
+     "view",
+   ]
+ 
+   $NautilusShortcutManager {
+     child: Adw.ToastOverlay toast_overlay {
+-      child: Adw.OverlaySplitView split_view {
+-        enable-show-gesture: false;
+-        enable-hide-gesture: false;
+-        min-sidebar-width: 120;
+-        max-sidebar-width: 160;
+-        sidebar-width-unit: px;
+-        sidebar-width-fraction: 0.15;
+-
+-        sidebar: Adw.ToolbarView {
+-          reveal-bottom-bars: bind progress_indicator.reveal;
+-
+-          [top]
+-          Adw.HeaderBar {
+-            title-widget: Box {};
+-
+-            [end]
+-            MenuButton {
+-              tooltip-text: _("Main Menu");
+-              icon-name: "open-menu-symbolic";
+-              menu-model: app_menu;
+-            }
+-          }
++      child: Adw.ToolbarView {
++        [top]
++        Adw.HeaderBar {
++          show-end-title-buttons: false;
++
++          styles [
++            "luma-titlebar",
++          ]
++
++          title-widget: Box {
++            halign: center;
+ 
+-          [bottom]
+-          Box {
+             styles [
+-              "toolbar",
++              "luma-window-title",
++              "title",
+             ]
+ 
+-            $NautilusProgressIndicator progress_indicator {}
+-          }
+-
+-          content: Box {
+-            $NautilusSidebar places_sidebar {
+-              hexpand: true;
+-              vexpand: true;
+-              window-slot: bind template.active-slot;
++            Label {
++              label: bind template.active-slot as <$NautilusWindowSlot>.title;
++              ellipsize: end;
+             }
+ 
+-            Box sidebar_resize_handle {
+-              width-request: 8;
+-              visible: bind split_view.collapsed inverted;
++            Label {
++              label: _(" — Files");
+             }
+           };
+-        };
++        }
++
++        [top]
++        $NautilusToolbar toolbar {
++          main-menu: app_menu;
++          show-view-controls: true;
++          show-history-controls: true;
++          sidebar-button-active: bind split_view.show-sidebar bidirectional;
++          window-slot: bind template.active-slot;
++        }
++
++        content: Adw.OverlaySplitView split_view {
++          enable-show-gesture: false;
++          enable-hide-gesture: false;
++          min-sidebar-width: 120;
++          max-sidebar-width: 232;
++          sidebar-width-unit: px;
++          sidebar-width-fraction: 0.25;
++
++          sidebar: Adw.ToolbarView {
++            reveal-bottom-bars: bind progress_indicator.reveal;
++
++            styles [
++              "luma-sidebar-surface",
++            ]
++
++            [bottom]
++            Box {
++              styles [
++                "toolbar",
++              ]
+ 
+-        content: Adw.ToolbarView {
+-          [top]
+-          $NautilusToolbar toolbar {
+-            show-view-controls: true;
+-            show-history-controls: true;
+-            sidebar-button-active: bind split_view.show-sidebar bidirectional;
+-            window-slot: bind template.active-slot;
+-          }
+-
+-          [top]
+-          Adw.TabBar tab_bar {
+-            view: tab_view;
+-          }
+-
+-          content: Adw.TabView tab_view {
+-            menu-model: tab_menu_model;
++              $NautilusProgressIndicator progress_indicator {}
++            }
++
++            content: Box {
++              $NautilusSidebar places_sidebar {
++                hexpand: true;
++                vexpand: true;
++                window-slot: bind template.active-slot;
++              }
++
++              Box sidebar_resize_handle {
++                width-request: 8;
++                visible: bind split_view.collapsed inverted;
++              }
++            };
+           };
+ 
+-          [bottom]
+-          $NautilusNetworkAddressBar network_address_bar {
+-            visible: false;
+-          }
++          content: Adw.ToolbarView {
++            styles [
++              "luma-content-surface",
++            ]
+ 
+-          [bottom]
+-          ActionBar action_bar {
+-            revealed: false;
++            [top]
++            Adw.TabBar tab_bar {
++              view: tab_view;
++            }
+ 
+-            [start]
+-            $NautilusHistoryControls {
+-              window-slot: bind template.active-slot;
++            content: Adw.TabView tab_view {
++              menu-model: tab_menu_model;
++            };
++
++            [bottom]
++            $NautilusNetworkAddressBar network_address_bar {
++              visible: false;
+             }
+ 
+-            [end]
+-            $NautilusViewControls {
+-              window-slot: bind template.active-slot;
++            [bottom]
++            ActionBar action_bar {
++              revealed: false;
++
++              [start]
++              $NautilusHistoryControls {
++                window-slot: bind template.active-slot;
++              }
++
++              [end]
++              $NautilusViewControls {
++                window-slot: bind template.active-slot;
++              }
+             }
+-          }
++          };
+         };
+       };
+     };

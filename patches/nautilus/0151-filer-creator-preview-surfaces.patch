@@ -1,0 +1,974 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] Filer: responsive Applications and shared preview surfaces
+
+--- a/src/nautilus-applications-directory.c
++++ b/src/nautilus-applications-directory.c
+@@ -23,12 +23,25 @@
+     GList *files;
+     GList *monitor_list;
+     GAppInfoMonitor *app_monitor;
++    GList *ready_callbacks;
++    gboolean loading;
++    gboolean loaded;
++    gboolean reload_pending;
++    guint reload_source;
+ };
+ 
+ typedef struct
+ {
+     gconstpointer client;
+ } ApplicationsMonitor;
++
++typedef struct
++{
++    NautilusDirectoryCallback callback;
++    gpointer data;
++} ApplicationsReady;
++
++static void start_loading (NautilusApplicationsDirectory *self);
+ 
+ G_DEFINE_TYPE_WITH_CODE (NautilusApplicationsDirectory, nautilus_applications_directory, NAUTILUS_TYPE_DIRECTORY,
+                          nautilus_ensure_extension_points ();
+@@ -61,9 +74,7 @@
+ static gboolean
+ real_are_all_files_seen (NautilusDirectory *directory)
+ {
+-    (void) directory;
+-
+-    return TRUE;
++    return !NAUTILUS_APPLICATIONS_DIRECTORY (directory)->loading;
+ }
+ 
+ static gboolean
+@@ -91,12 +102,17 @@
+     g_autolist (NautilusFile) files = nautilus_file_list_copy (self->files);
+ 
+     (void) file_attributes;
+-    (void) wait_for_file_list;
+-
+-    if (callback != NULL)
+-    {
+-        callback (directory, files, callback_data);
+-    }
++    if (callback == NULL)
++        return;
++    if (self->loading && (wait_for_file_list || !self->loaded))
++    {
++        ApplicationsReady *ready = g_new0 (ApplicationsReady, 1);
++        ready->callback = callback;
++        ready->data = callback_data;
++        self->ready_callbacks = g_list_append (self->ready_callbacks, ready);
++        return;
++    }
++    callback (directory, files, callback_data);
+ }
+ 
+ static void
+@@ -104,9 +120,18 @@
+                       NautilusDirectoryCallback  callback,
+                       gpointer                   callback_data)
+ {
+-    (void) directory;
+-    (void) callback;
+-    (void) callback_data;
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
++    for (GList *l = self->ready_callbacks; l != NULL; )
++    {
++        GList *next = l->next;
++        ApplicationsReady *ready = l->data;
++        if (ready->callback == callback && ready->data == callback_data)
++        {
++            self->ready_callbacks = g_list_delete_link (self->ready_callbacks, l);
++            g_free (ready);
++        }
++        l = next;
++    }
+ }
+ 
+ static void
+@@ -190,9 +215,8 @@
+     }
+ }
+ 
+-static NautilusFile *
+-file_for_application (NautilusApplicationsDirectory *self,
+-                      GAppInfo                      *app_info)
++static GFileInfo *
++info_for_application (GAppInfo *app_info)
+ {
+     const char *id = g_app_info_get_id (app_info);
+     const char *display_name = g_app_info_get_display_name (app_info);
+@@ -250,73 +274,115 @@
+         copy_source_dates (info, desktop_filename);
+     }
+ 
+-    return nautilus_file_new_from_info (NAUTILUS_DIRECTORY (self), info);
+-}
+-
+-static void
+-set_files (NautilusApplicationsDirectory *self)
+-{
++    return g_steal_pointer (&info);
++}
++
++/* GAppInfo and desktop-file stat work runs outside the GTK main context.
++ * Only creation and publication of NautilusFile models happens on GTK's
++ * thread. Monitor bursts coalesce; one scan may run at a time. */
++static void
++scan_applications (GTask *task, gpointer source_object,
++                   gpointer task_data, GCancellable *cancellable)
++{
++    (void) source_object;
++    (void) task_data;
++    (void) cancellable;
+     g_autolist (GAppInfo) applications = g_app_info_get_all ();
+-    g_autoptr (GHashTable) seen_ids = g_hash_table_new_full (g_str_hash,
+-                                                             g_str_equal,
+-                                                             g_free,
+-                                                             NULL);
+-
++    g_autoptr (GHashTable) seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++    GPtrArray *infos = g_ptr_array_new_with_free_func (g_object_unref);
+     for (GList *l = applications; l != NULL; l = l->next)
+     {
+-        GAppInfo *app_info = l->data;
+-        const char *id = g_app_info_get_id (app_info);
+-
+-        if (id == NULL ||
+-            !g_app_info_should_show (app_info) ||
+-            g_hash_table_contains (seen_ids, id))
++        GAppInfo *app = l->data;
++        const char *id = g_app_info_get_id (app);
++        if (id == NULL || !g_app_info_should_show (app) || g_hash_table_contains (seen, id))
++            continue;
++        GFileInfo *info = info_for_application (app);
++        if (info != NULL)
+         {
+-            continue;
++            g_hash_table_add (seen, g_strdup (id));
++            g_ptr_array_add (infos, info);
+         }
+-
+-        NautilusFile *file = file_for_application (self, app_info);
+-        if (file != NULL)
+-        {
+-            g_hash_table_add (seen_ids, g_strdup (id));
+-            nautilus_directory_add_file (NAUTILUS_DIRECTORY (self), file);
+-            self->files = g_list_prepend (self->files, file);
+-        }
+-    }
+-
++    }
++    g_task_return_pointer (task, infos, (GDestroyNotify) g_ptr_array_unref);
++}
++
++static void
++applications_ready (GObject *source_object, GAsyncResult *result, gpointer user_data)
++{
++    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (source_object);
++    NautilusDirectory *directory = NAUTILUS_DIRECTORY (self);
++    g_autoptr (GPtrArray) infos = g_task_propagate_pointer (G_TASK (result), NULL);
++    g_autolist (NautilusFile) removed = g_steal_pointer (&self->files);
++    (void) user_data;
++    for (GList *l = removed; l != NULL; l = l->next)
++        nautilus_file_mark_gone (l->data);
++    if (removed != NULL)
++        nautilus_directory_emit_files_changed (directory, removed);
++    for (guint i = 0; i < infos->len; i++)
++    {
++        NautilusFile *file = nautilus_file_new_from_info (directory, g_ptr_array_index (infos, i));
++        nautilus_directory_add_file (directory, file);
++        self->files = g_list_prepend (self->files, file);
++    }
+     self->files = g_list_reverse (self->files);
++    self->loading = FALSE;
++    self->loaded = TRUE;
++    if (self->files != NULL)
++        nautilus_directory_emit_files_added (directory, self->files);
++    nautilus_directory_emit_done_loading (directory);
++    /* A callback may reenter/cancel another callback. Remove each entry from
++     * the live queue before invoking it, so cancellation still works. */
++    while (self->ready_callbacks != NULL && !self->loading)
++    {
++        GList *entry = self->ready_callbacks;
++        ApplicationsReady *ready = entry->data;
++        self->ready_callbacks = g_list_delete_link (self->ready_callbacks, entry);
++        g_autolist (NautilusFile) files = nautilus_file_list_copy (self->files);
++        ready->callback (directory, files, ready->data);
++        g_free (ready);
++    }
++    if (self->reload_pending)
++    {
++        self->reload_pending = FALSE;
++        start_loading (self);
++    }
++}
++
++static void
++start_loading (NautilusApplicationsDirectory *self)
++{
++    if (self->loading)
++    {
++        self->reload_pending = TRUE;
++        return;
++    }
++    self->loading = TRUE;
++    g_autoptr (GTask) task = g_task_new (self, NULL, applications_ready, NULL);
++    g_task_run_in_thread (task, scan_applications);
+ }
+ 
+ static void
+ real_force_reload (NautilusDirectory *directory)
+ {
+-    NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (directory);
+-    g_autolist (NautilusFile) removed_files = g_steal_pointer (&self->files);
+-
+-    for (GList *l = removed_files; l != NULL; l = l->next)
+-    {
+-        nautilus_file_mark_gone (l->data);
+-    }
+-
+-    if (removed_files != NULL)
+-    {
+-        nautilus_directory_emit_files_changed (directory, removed_files);
+-    }
+-
+-    set_files (self);
+-
+-    if (self->files != NULL)
+-    {
+-        nautilus_directory_emit_files_added (directory, self->files);
+-    }
+-}
+-
+-static void
+-on_applications_changed (GAppInfoMonitor              *monitor,
+-                         NautilusApplicationsDirectory *self)
++    start_loading (NAUTILUS_APPLICATIONS_DIRECTORY (directory));
++}
++
++static gboolean
++reload_after_changes (gpointer data)
++{
++    NautilusApplicationsDirectory *self = data;
++    self->reload_source = 0;
++    start_loading (self);
++    return G_SOURCE_REMOVE;
++}
++
++static void
++on_applications_changed (GAppInfoMonitor *monitor, NautilusApplicationsDirectory *self)
+ {
+     (void) monitor;
+-
+-    real_force_reload (NAUTILUS_DIRECTORY (self));
++    if (self->reload_source == 0)
++        self->reload_source = g_timeout_add_full (G_PRIORITY_DEFAULT, 100,
++            reload_after_changes, g_object_ref (self), g_object_unref);
+ }
+ 
+ static void
+@@ -336,6 +402,7 @@
+ 
+     g_clear_list (&self->files, g_object_unref);
+     g_clear_list (&self->monitor_list, g_free);
++    g_clear_list (&self->ready_callbacks, g_free);
+ 
+     G_OBJECT_CLASS (nautilus_applications_directory_parent_class)->finalize (object);
+ }
+@@ -376,5 +443,5 @@
+                       G_CALLBACK (on_applications_changed),
+                       self);
+ 
+-    set_files (self);
+-}
++    start_loading (self);
++}
+--- a/src/nautilus-file-chooser.c
++++ b/src/nautilus-file-chooser.c
+@@ -1258,7 +1258,14 @@
+     }
+     else
+     {
+-        location_to_open = g_file_new_for_path (g_get_home_dir ());
++        /* A save request without an explicit destination starts in Downloads;
++         * open/import requests keep Home and caller-specified locations win. */
++        const char *path = NULL;
++        if (self->mode == NAUTILUS_MODE_SAVE_FILE || self->mode == NAUTILUS_MODE_SAVE_FILES)
++        {
++            path = g_get_user_special_dir (G_USER_DIRECTORY_DOWNLOAD);
++        }
++        location_to_open = g_file_new_for_path (path != NULL ? path : g_get_home_dir ());
+     }
+ 
+     nautilus_window_slot_open_location_full (self->slot, location_to_open, NULL);
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -3848,7 +3848,7 @@
+             {
+                 g_autofree char *location_title = nautilus_compute_title_for_location (self->location);
+                 g_autofree char *empty_title = g_strdup_printf (_("%s is empty"), location_title);
+-                adw_status_page_set_icon_name (status_page, NULL);
++                adw_status_page_set_icon_name (status_page, "folder-symbolic");
+                 adw_status_page_set_title (status_page, empty_title);
+                 adw_status_page_set_description (status_page, NULL);
+             }
+--- a/src/nautilus-icon-info.c
++++ b/src/nautilus-icon-info.c
+@@ -118,6 +118,152 @@
+     return fallback_info;
+ }
+ 
++/* File-backed application icons may start an image-loader sandbox. Never
++ * perform that I/O or decoding while GtkGridView binds a scrolling cell.
++ * The existing bounded icon cache shares this paintable while it loads. */
++typedef struct
++{
++    GObject parent_instance;
++    GLoadableIcon *icon;
++    GdkPaintable *fallback;
++    GdkTexture *texture;
++    int size;
++    int scale;
++} NautilusLoadablePaintable;
++typedef GObjectClass NautilusLoadablePaintableClass;
++static GType nautilus_loadable_paintable_get_type (void);
++static void loadable_paintable_iface_init (GdkPaintableInterface *iface);
++G_DEFINE_TYPE_WITH_CODE (NautilusLoadablePaintable, nautilus_loadable_paintable, G_TYPE_OBJECT,
++                         G_IMPLEMENT_INTERFACE (GDK_TYPE_PAINTABLE, loadable_paintable_iface_init))
++
++static void
++loadable_paintable_snapshot (GdkPaintable *paintable, GdkSnapshot *snapshot,
++                             double width, double height)
++{
++    NautilusLoadablePaintable *self = (NautilusLoadablePaintable *) paintable;
++    if (self->texture == NULL)
++    {
++        gdk_paintable_snapshot (self->fallback, snapshot, width, height);
++        return;
++    }
++    double tw = gdk_texture_get_width (self->texture);
++    double th = gdk_texture_get_height (self->texture);
++    double factor = MIN (width / tw, height / th);
++    graphene_rect_t bounds = GRAPHENE_RECT_INIT ((width - tw * factor) / 2,
++                                                (height - th * factor) / 2,
++                                                tw * factor, th * factor);
++    gtk_snapshot_append_texture (GTK_SNAPSHOT (snapshot), self->texture, &bounds);
++}
++
++static int
++loadable_paintable_size (GdkPaintable *paintable)
++{
++    return ((NautilusLoadablePaintable *) paintable)->size;
++}
++
++static double
++loadable_paintable_ratio (GdkPaintable *paintable)
++{
++    (void) paintable;
++    return 1;
++}
++
++static GdkPaintableFlags
++loadable_paintable_flags (GdkPaintable *paintable)
++{
++    (void) paintable;
++    return GDK_PAINTABLE_STATIC_SIZE;
++}
++
++static void
++loadable_paintable_iface_init (GdkPaintableInterface *iface)
++{
++    iface->snapshot = loadable_paintable_snapshot;
++    iface->get_intrinsic_width = loadable_paintable_size;
++    iface->get_intrinsic_height = loadable_paintable_size;
++    iface->get_intrinsic_aspect_ratio = loadable_paintable_ratio;
++    iface->get_flags = loadable_paintable_flags;
++}
++
++static void
++nautilus_loadable_paintable_finalize (GObject *object)
++{
++    NautilusLoadablePaintable *self = (NautilusLoadablePaintable *) object;
++    g_clear_object (&self->icon);
++    g_clear_object (&self->fallback);
++    g_clear_object (&self->texture);
++    G_OBJECT_CLASS (nautilus_loadable_paintable_parent_class)->finalize (object);
++}
++
++static void
++nautilus_loadable_paintable_class_init (NautilusLoadablePaintableClass *klass)
++{
++    klass->finalize = nautilus_loadable_paintable_finalize;
++}
++
++static void
++nautilus_loadable_paintable_init (NautilusLoadablePaintable *self)
++{
++    (void) self;
++}
++
++static void
++loadable_paintable_decode (GTask *task, gpointer source_object,
++                           gpointer task_data, GCancellable *cancellable)
++{
++    NautilusLoadablePaintable *self = source_object;
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GInputStream) stream = g_loadable_icon_load (self->icon,
++        self->size * self->scale, NULL, cancellable, &error);
++    (void) task_data;
++    if (stream != NULL)
++    {
++        g_autoptr (GlyLoader) loader = gly_loader_new_for_stream (stream);
++        g_autoptr (GlyImage) image = gly_loader_load (loader, &error);
++        if (image != NULL)
++        {
++            g_autoptr (GlyFrameRequest) request = gly_frame_request_new ();
++            gly_frame_request_set_scale (request, self->size * self->scale, self->size * self->scale);
++            g_autoptr (GlyFrame) frame = gly_image_get_specific_frame (image, request, &error);
++            if (frame != NULL)
++            {
++                g_task_return_pointer (task, gly_gtk_frame_get_texture (frame), g_object_unref);
++                return;
++            }
++        }
++    }
++    if (error != NULL)
++        g_task_return_error (task, g_steal_pointer (&error));
++    else
++        g_task_return_pointer (task, NULL, NULL);
++}
++
++static void
++loadable_paintable_ready (GObject *source_object, GAsyncResult *result, gpointer user_data)
++{
++    NautilusLoadablePaintable *self = (NautilusLoadablePaintable *) source_object;
++    (void) user_data;
++    g_autoptr (GError) error = NULL;
++    self->texture = g_task_propagate_pointer (G_TASK (result), &error);
++    if (error != NULL)
++        g_debug ("Could not load application icon: %s", error->message);
++    gdk_paintable_invalidate_contents (GDK_PAINTABLE (self));
++}
++
++static GdkPaintable *
++loadable_paintable_new (GLoadableIcon *icon, int size, int scale)
++{
++    NautilusLoadablePaintable *self = g_object_new (nautilus_loadable_paintable_get_type (), NULL);
++    g_autoptr (NautilusIconInfo) fallback = nautilus_icon_info_get_fallback (size, scale);
++    self->icon = g_object_ref (icon);
++    self->fallback = nautilus_icon_info_get_paintable (fallback);
++    self->size = size;
++    self->scale = scale;
++    g_autoptr (GTask) task = g_task_new (self, NULL, loadable_paintable_ready, NULL);
++    g_task_run_in_thread (task, loadable_paintable_decode);
++    return GDK_PAINTABLE (self);
++}
++
+ static NautilusIconInfo *
+ nautilus_icon_info_new_for_icon_paintable (GtkIconPaintable *icon_paintable)
+ {
+@@ -396,47 +542,7 @@
+             return g_object_ref (icon_info);
+         }
+ 
+-        g_autoptr (GInputStream) stream = g_loadable_icon_load (G_LOADABLE_ICON (icon),
+-                                                                size * scale,
+-                                                                NULL, NULL, NULL);
+-        if (stream)
+-        {
+-            g_autoptr (GlyLoader) loader = gly_loader_new_for_stream (stream);
+-            g_autoptr (GlyImage) image = gly_loader_load (loader, NULL);
+-
+-            if (image != NULL)
+-            {
+-                g_autoptr (GlyFrameRequest) frame_request = gly_frame_request_new ();
+-                g_autoptr (GlyFrame) frame = NULL;
+-
+-                gly_frame_request_set_scale (frame_request, size * scale, size * scale);
+-                frame = gly_image_get_specific_frame (image, frame_request, NULL);
+-
+-                if (frame != NULL)
+-                {
+-                    double iw = gly_frame_get_width (frame);
+-                    double ih = gly_frame_get_height (frame);
+-
+-                    double scale_factor = MIN ((double) size / iw, (double) size / ih);
+-
+-                    double width = iw * scale_factor;
+-                    double height = ih * scale_factor;
+-
+-                    g_autoptr (GdkTexture) texture = gly_gtk_frame_get_texture (frame);
+-                    g_autoptr (GtkSnapshot) snapshot = gtk_snapshot_new ();
+-
+-                    gdk_paintable_snapshot (GDK_PAINTABLE (texture),
+-                                            GDK_SNAPSHOT (snapshot),
+-                                            width, height);
+-                    paintable = gtk_snapshot_to_paintable (snapshot, NULL);
+-                }
+-            }
+-        }
+-
+-        if (paintable == NULL)
+-        {
+-            return nautilus_icon_info_get_fallback (size, scale);
+-        }
++        paintable = loadable_paintable_new (G_LOADABLE_ICON (icon), size, scale);
+ 
+         icon_info = nautilus_icon_info_new_for_paintable (paintable);
+ 
+--- a/src/nautilus-image.c
++++ b/src/nautilus-image.c
+@@ -554,6 +554,12 @@
+ {
+     gboolean resize = (self->fallback_paintable != paintable);
+ 
++    if (self->fallback_paintable != paintable && self->fallback_paintable != NULL)
++    {
++        g_signal_handlers_disconnect_by_func (self->fallback_paintable, gtk_widget_queue_draw, self);
++        g_signal_handlers_disconnect_by_func (self->fallback_paintable, gtk_widget_queue_resize, self);
++    }
++
+     if (resize && self->fallback_paintable != NULL && paintable != NULL)
+     {
+         resize = (gdk_paintable_get_intrinsic_width (self->fallback_paintable) !=
+@@ -562,9 +568,17 @@
+                   gdk_paintable_get_intrinsic_height (paintable));
+     }
+ 
+-    if (g_set_object (&self->fallback_paintable, paintable) &&
+-        nautilus_image_get_status (self) == NAUTILUS_IMAGE_STATUS_FALLBACK)
+-    {
++    if (g_set_object (&self->fallback_paintable, paintable))
++    {
++        if (paintable != NULL)
++        {
++            g_signal_connect_object (paintable, "invalidate-contents",
++                                     G_CALLBACK (gtk_widget_queue_draw), self, G_CONNECT_SWAPPED);
++            g_signal_connect_object (paintable, "invalidate-size",
++                                     G_CALLBACK (gtk_widget_queue_resize), self, G_CONNECT_SWAPPED);
++        }
++        if (nautilus_image_get_status (self) != NAUTILUS_IMAGE_STATUS_FALLBACK)
++            return;
+         if (resize)
+         {
+             gtk_widget_queue_resize (GTK_WIDGET (self));
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -494,6 +494,13 @@
+     GFile *location = window->active_slot != NULL
+                       ? nautilus_window_slot_get_location (window->active_slot) : NULL;
+     g_autoptr (GFile) parent = location != NULL ? g_file_get_parent (location) : NULL;
++    if (view != NULL)
++    {
++        if (location != NULL && g_file_has_uri_scheme (location, SCHEME_APPLICATIONS))
++            gtk_widget_add_css_class (GTK_WIDGET (view), "applications");
++        else
++            gtk_widget_remove_css_class (GTK_WIDGET (view), "applications");
++    }
+     const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
+     g_autofree char *fixture_home = fixture_root != NULL
+                                     ? g_build_filename (fixture_root, "Home", NULL) : NULL;
+@@ -581,8 +588,13 @@
+     else if (directory == NULL ||
+              !nautilus_file_get_directory_item_count (directory, &count, NULL))
+     {
+-        /* Count it, then say it: the heading is the only place it shows. */
+-        if (directory != NULL && window->count_file != directory)
++        /* Applications publishes its count with the directory's loading signal.
++         * Internal-place file attributes are static and invoke ready callbacks
++         * immediately; requesting an unavailable count there would reenter this
++         * header indefinitely while the asynchronous application scan runs. */
++        if (directory != NULL &&
++            (location == NULL || !g_file_has_uri_scheme (location, SCHEME_APPLICATIONS)) &&
++            window->count_file != directory)
+         {
+             filer_cancel_count (window);
+             window->count_file = nautilus_file_ref (directory);
+@@ -677,16 +689,18 @@
+         gtk_image_set_pixel_size (GTK_IMAGE (icon), compact ? 44 : 72);
+     }
+     kind = nautilus_file_get_string_attribute_with_default (file, "type");
+-    size = nautilus_file_get_string_attribute_with_default (file, "size");
++    size = nautilus_file_is_in_applications (file)
++           ? NULL : nautilus_file_get_string_attribute_with_default (file, "size");
+     g_autofree char *fixture_kind = nautilus_filer_fixture_info (
+         nautilus_file_get_name (file), "kind");
+     g_autofree char *fixture_size = nautilus_filer_fixture_info (
+         nautilus_file_get_name (file), "size");
+     if (compact)
+     {
+-        g_autofree char *subtitle = g_strdup_printf ("%s · %s",
+-            fixture_kind != NULL ? fixture_kind : kind,
+-            fixture_size != NULL ? fixture_size : size);
++        g_autofree char *subtitle = size == NULL && fixture_size == NULL
++            ? g_strdup (fixture_kind != NULL ? fixture_kind : kind)
++            : g_strdup_printf ("%s · %s", fixture_kind != NULL ? fixture_kind : kind,
++                               fixture_size != NULL ? fixture_size : size);
+         luma_details_pane_add_subject (pane, nautilus_file_get_display_name (file), subtitle, icon);
+     }
+     else
+@@ -1386,8 +1400,10 @@
+             g_autofree char *size = nautilus_file_get_string_attribute_with_default (file, "size");
+             guint n = g_list_length (selection);
+             g_autofree char *description = n == 1
+-                ? g_strdup_printf ("%s  %s", nautilus_file_get_display_name (file),
+-                                   size != NULL ? size : "")
++                ? (nautilus_file_is_in_applications (file)
++                   ? g_strdup (nautilus_file_get_display_name (file))
++                   : g_strdup_printf ("%s  %s", nautilus_file_get_display_name (file),
++                                      size != NULL ? size : ""))
+                 : g_strdup_printf (ngettext ("%u item", "%u items", n), n);
+             LumaBarItem *chip = luma_bar_item_new_chip (description, filer_file_glyph (file), TRUE);
+             /* The chip wears the file's own face (v71 .who .th). */
+@@ -2603,7 +2619,7 @@
+     /* v71: no sidebar toggle in the desktop title bar (F9 still toggles the
+      * sidebar); on a phone the title island's ☰ opens the places. The toggle
+      * stays as the one owner of the sidebar's open state, unshown. */
+-    gtk_widget_set_visible (GTK_WIDGET (window->sidebar_toggle), FALSE);
++    luma_sidebar_toggle_set_control_visible (window->sidebar_toggle, FALSE);
+     gtk_widget_set_visible (window->sidebar_toggle_phone_host, FALSE);
+     GMenuModel *main_menu = NULL;
+     g_object_get (window->toolbar, "main-menu", &main_menu, NULL);
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -48,8 +48,6 @@
+   background-image: none;
+ }
+ .luma-files-window #filer-location-scope image { -gtk-icon-size: 0px; }
+-.luma-files-window box.lumaui-bar-chip { min-width: 243px; }
+-.luma-files-window .lumaui-action-center.phone box.lumaui-bar-chip { min-width: 0; }
+ .luma-files-window row.luma-live-rail-row { padding-left: 3px; padding-right: 3px; }
+ 
+ /* Filer uses a deliberate two-row native title composition. */
+@@ -415,6 +413,14 @@
+ 
+ .luma-files-window .nautilus-grid-view .nautilus-view-cell {
+   padding: 0;
++}
++
++/* Application faces need breathing room inside the hovered card. Keep the
++ * horizontal tile measure unchanged so a phone still fits three columns. */
++.luma-files-window .applications.nautilus-grid-view .nautilus-view-cell,
++.luma-files-window .applications .nautilus-grid-view .nautilus-view-cell {
++  padding-top: 8px;
++  padding-bottom: 8px;
+ }
+ 
+ .luma-files-window .nautilus-grid-view gridview > child.activatable:hover {
+--- a/src/resources/ui/nautilus-file-chooser.blp
++++ b/src/resources/ui/nautilus-file-chooser.blp
+@@ -29,7 +29,7 @@
+ 
+         content: Box {
+           orientation: vertical;
+-          spacing: 8;
++          spacing: 12;
+           styles ["luma-window-body", "luma-chooser-body"]
+ 
+           Box {
+@@ -137,7 +137,7 @@
+           }
+ 
+           Adw.MultiLayoutView bottom_toolbar {
+-            styles ["luma-island", "luma-island-quiet", "luma-chooser-actions", "luma-controls-quiet"]
++            styles ["luma-chooser-actions"]
+             Adw.Layout {
+               name: "wide";
+               content: Box {
+@@ -181,14 +181,14 @@
+               label: _("_Cancel");
+               use-underline: true;
+               action-name: "window.close";
+-              styles ["luma-button", "small"]
++              styles ["lumaui-text-button", "raised"]
+             }
+             [accept-button]
+             Button accept_button {
+               label: "_Select";
+               use-underline: true;
+               action-name: "chooser.accept";
+-              styles ["suggested-action", "luma-button", "small", "primary"]
++              styles ["lumaui-text-button", "key"]
+             }
+             [filter-dropdown]
+             DropDown filters_dropdown {
+--- a/src/resources/ui/nautilus-new-folder-dialog.blp
++++ b/src/resources/ui/nautilus-new-folder-dialog.blp
+@@ -58,6 +58,7 @@
+         label: _("_Cancel");
+         use-underline: true;
+         clicked => $on_cancel_clicked() swapped;
++        styles ["lumaui-text-button", "raised"]
+       }
+ 
+       Button {
+@@ -65,7 +66,7 @@
+         use-underline: true;
+         sensitive: bind validator.passed;
+         clicked => $nautilus_filename_validator_try_accept(validator);
+-        styles ["suggested-action"]
++        styles ["lumaui-text-button", "raised"]
+       }
+     }
+   };
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -9,6 +9,8 @@
+ #include "nautilus-query.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-file.h"
++#include "nautilus-icon-info.h"
++#include "nautilus-image.h"
+ #include "nautilus-tag-manager.h"
+ #include "nautilus-resources.h"
+ #include <luma-ui.h>
+@@ -194,6 +196,27 @@
+     {GtkWidget *r=find_css(c,css);if(r)return r;}
+     return NULL;
+ }
++static gboolean contains_label(GtkWidget *widget,const char *text)
++{
++    if(GTK_IS_LABEL(widget) && !g_strcmp0(gtk_label_get_label(GTK_LABEL(widget)),text))return TRUE;
++    for(GtkWidget *child=gtk_widget_get_first_child(widget);child;child=gtk_widget_get_next_sibling(child))
++        if(contains_label(child,text))return TRUE;
++    return FALSE;
++}
++typedef struct {gint64 last;gint64 maximum;guint ticks;} ResponsivenessProbe;
++static gboolean responsiveness_tick(gpointer data)
++{
++    ResponsivenessProbe *probe=data;gint64 now=g_get_monotonic_time();
++    probe->maximum=MAX(probe->maximum,now-probe->last);probe->last=now;probe->ticks++;
++    return G_SOURCE_CONTINUE;
++}
++static GtkWidget *find_grid(GtkWidget *widget)
++{
++    if(GTK_IS_GRID_VIEW(widget))return widget;
++    for(GtkWidget *child=gtk_widget_get_first_child(widget);child;child=gtk_widget_get_next_sibling(child))
++    {GtkWidget *found=find_grid(child);if(found)return found;}
++    return NULL;
++}
+ static void review_navigation(void)
+ {
+     /* The private root test home is outside the user tree; this memory-only
+@@ -299,8 +322,179 @@
+     g_assert_cmpfloat(files_box.origin.y,>=,pane_box.origin.y+pane_box.size.height);
+     g_signal_emit_by_name(details,"clicked");spin(300);
+     g_assert_null(luma_action_center_get_grown(center));
++
++    /* Applications are launch identities, not zero-byte disk files. Exercise
++     * the real provider and resulting action bar in the isolated test home. */
++    g_autofree char *app_dir=g_build_filename(g_get_user_data_dir(),"applications",NULL);
++    g_assert_cmpint(g_mkdir_with_parents(app_dir,0700),==,0);
++    g_autofree char *desktop=g_build_filename(app_dir,"org.projectluma.PreviewCamera.desktop",NULL);
++    g_assert_true(g_file_set_contents(desktop,
++        "[Desktop Entry]\nType=Application\nName=Creator preview camera\nExec=/bin/true\nIcon=camera-photo-symbolic\n",-1,NULL));
++    /* Distinct absolute icons exercise cold GtkGridView binds while scrolling,
++     * not just enumeration of already-cached themed icons. */
++    for(guint i=0;i<120;i++)
++    {
++        g_autofree char *id=g_strdup_printf("org.projectluma.ScrollFixture%03u.desktop",i);
++        g_autofree char *entry=g_build_filename(app_dir,id,NULL);
++        g_autofree char *face=g_strdup_printf("%s/scroll-icon-%03u.svg",app_dir,i);
++        g_autofree char *art=g_strdup_printf("<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='96' height='96' fill='#%06x'/></svg>",0x208040+i*100);
++        g_assert_true(g_file_set_contents(face,art,-1,NULL));
++        g_autofree char *contents=g_strdup_printf("[Desktop Entry]\nType=Application\nName=Scroll fixture %03u\nExec=/bin/true\nIcon=%s\n",i,face);
++        g_assert_true(g_file_set_contents(entry,contents,-1,NULL));
++    }
++    ResponsivenessProbe probe={.last=g_get_monotonic_time()};
++    guint heartbeat=g_timeout_add(20,responsiveness_tick,&probe);
++    g_autoptr(GFile) apps=g_file_new_for_uri("applications:///");
++    gint64 opening=g_get_monotonic_time();
++    nautilus_window_open_location_full(window,apps,0,NULL);
++    g_test_message("Applications navigation call: %.2fms",(g_get_monotonic_time()-opening)/1000.0);
++    spin(1000);
++    GtkWidget *grid=find_grid(GTK_WIDGET(window));g_assert_nonnull(grid);
++    GtkWidget *scroll=gtk_widget_get_ancestor(grid,GTK_TYPE_SCROLLED_WINDOW);g_assert_nonnull(scroll);
++    GtkAdjustment *adjustment=gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scroll));
++    double bottom=gtk_adjustment_get_upper(adjustment)-gtk_adjustment_get_page_size(adjustment);
++    g_assert_cmpfloat(bottom,>,0);
++    for(guint i=0;i<50;i++)
++    {
++        gtk_adjustment_set_value(adjustment,bottom*((i%25)/24.0));spin(30);
++    }
++    gtk_adjustment_set_value(adjustment,0);spin(200);
++    g_source_remove(heartbeat);
++    g_test_message("Applications cold-load and scroll heartbeat: %u ticks; maximum interval %.2fms",probe.ticks,probe.maximum/1000.0);
++    g_assert_cmpuint(probe.ticks,>,40);g_assert_cmpint(probe.maximum,<,250000);
++    GtkWidget *cell=find_css(grid,"nautilus-view-cell");g_assert_nonnull(cell);
++    GtkWidget *face=required(cell,"icon");graphene_rect_t face_bounds;
++    GtkWidget *hover_card=gtk_widget_get_parent(cell);
++    g_assert_cmpstr(gtk_widget_get_css_name(hover_card),==,"child");
++    g_assert_true(gtk_widget_compute_bounds(face,hover_card,&face_bounds));
++    GtkBorder cell_padding;gtk_style_context_get_padding(gtk_widget_get_style_context(cell),&cell_padding);
++    g_test_message("Application icon inside hover card: y%.0f; cell CSS padding top%d bottom%d",face_bounds.origin.y,cell_padding.top,cell_padding.bottom);
++    g_assert_cmpfloat(face_bounds.origin.y,>=,8);
++
++    g_autoptr(GFile) app_location=g_file_get_child(apps,"org.projectluma.PreviewCamera.desktop");
++    NautilusFile *app_file=nautilus_file_get(app_location);
++    g_assert_true(nautilus_file_is_in_applications(app_file));
++    selection=g_list_append(NULL,app_file);
++    gtk_window_set_default_size(GTK_WINDOW(window),1180,740);
++    nautilus_window_open_location_full(window,apps,0,selection);spin(600);
++    g_list_free_full(selection,g_object_unref);
++    GtkWidget *chip=luma_action_center_get_bar_control(center,0);
++    g_assert_nonnull(chip);
++    GtkWidget *preview=find_css(chip,"lumaui-bar-chip-preview");
++    g_assert_nonnull(preview);
++    g_assert_cmpint(gtk_widget_get_width(preview),==,28);
++    g_assert_cmpint(gtk_widget_get_height(preview),==,28);
++    GtkWidget *name=gtk_widget_get_next_sibling(preview);
++    g_assert_true(GTK_IS_LABEL(name));
++    g_assert_cmpstr(gtk_label_get_label(GTK_LABEL(name)),==,"Creator preview camera");
++    GtkWidget *dismiss=find_css(chip,"lumaui-bar-chip-close");
++    g_assert_nonnull(dismiss);
++    graphene_rect_t close_bounds, chip_bounds, open_bounds;
++    g_assert_true(gtk_widget_compute_bounds(dismiss,chip,&close_bounds));
++    g_assert_cmpfloat(gtk_widget_get_width(chip)-close_bounds.origin.x-close_bounds.size.width,<=,14);
++    GtkWidget *open=luma_action_center_get_bar_control(center,2);
++    g_assert_nonnull(open);
++    g_assert_true(gtk_widget_compute_bounds(chip,GTK_WIDGET(center),&chip_bounds));
++    g_assert_true(gtk_widget_compute_bounds(open,GTK_WIDGET(center),&open_bounds));
++    g_assert_cmpfloat(open_bounds.origin.x-chip_bounds.origin.x-chip_bounds.size.width,<=,24);
++    g_assert_true(luma_details_pane_show(info,TRUE));spin(300);
++    g_assert_false(contains_label(GTK_WIDGET(info),"Size"));
+     gtk_window_destroy(GTK_WINDOW(window));spin(100);
+     g_remove(path);
++    g_remove(desktop);
++    for(guint i=0;i<120;i++)
++    {
++        g_autofree char *entry=g_strdup_printf("%s/org.projectluma.ScrollFixture%03u.desktop",app_dir,i);
++        g_autofree char *icon_path=g_strdup_printf("%s/scroll-icon-%03u.svg",app_dir,i);
++        g_remove(entry);g_remove(icon_path);
++    }
++}
++
++/* A deliberately slow real GLoadableIcon makes the GTK-thread I/O contract
++ * deterministic; its SVG is decoded by the production sandboxed loader. */
++typedef struct {GObject parent_instance;} PreviewSlowIcon;
++typedef GObjectClass PreviewSlowIconClass;
++static GType preview_slow_icon_get_type(void);
++static guint slow_icon_hash(GIcon *icon){return g_direct_hash(icon);}
++static gboolean slow_icon_equal(GIcon *a,GIcon *b){return a==b;}
++static void slow_icon_iface(GIconIface *iface){iface->hash=slow_icon_hash;iface->equal=slow_icon_equal;}
++static GInputStream *slow_icon_load(GLoadableIcon *icon,int size,char **type,GCancellable *cancellable,GError **error)
++{
++    (void)icon;(void)size;(void)cancellable;(void)error;
++    g_usleep(250000);
++    if(type)*type=g_strdup("image/svg+xml");
++    const char *svg="<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' fill='#ff0000'/></svg>";
++    return g_memory_input_stream_new_from_data(g_strdup(svg),strlen(svg),g_free);
++}
++static void slow_loadable_iface(GLoadableIconIface *iface){iface->load=slow_icon_load;}
++G_DEFINE_TYPE_WITH_CODE(PreviewSlowIcon,preview_slow_icon,G_TYPE_OBJECT,
++    G_IMPLEMENT_INTERFACE(G_TYPE_ICON,slow_icon_iface)
++    G_IMPLEMENT_INTERFACE(G_TYPE_LOADABLE_ICON,slow_loadable_iface))
++static void preview_slow_icon_class_init(PreviewSlowIconClass *klass){(void)klass;}
++static void preview_slow_icon_init(PreviewSlowIcon *self){(void)self;}
++static gboolean pulse(gpointer data){(*(guint*)data)++;return G_SOURCE_CONTINUE;}
++static void invalidated(GdkPaintable *paintable,gpointer data){(void)paintable;*(gboolean*)data=TRUE;}
++static void icon_responsiveness(void)
++{
++    /* Preserve isolated user dirs while exposing the installed decoder configs. */
++    g_autofree char *loader_dir=g_build_filename(g_get_system_data_dirs()[0],"glycin-loaders","2+","conf.d",NULL);
++    g_assert_cmpint(g_mkdir_with_parents(loader_dir,0700),==,0);
++    g_autoptr(GDir) configs=g_dir_open("/usr/share/glycin-loaders/2+/conf.d",0,NULL);
++    g_assert_nonnull(configs);
++    const char *config_name;guint copied=0;
++    while((config_name=g_dir_read_name(configs))!=NULL)
++    {
++        if(!g_str_has_suffix(config_name,".conf"))continue;
++        g_autofree char *from=g_build_filename("/usr/share/glycin-loaders/2+/conf.d",config_name,NULL);
++        g_autofree char *to=g_build_filename(loader_dir,config_name,NULL);
++        g_autofree char *contents=NULL;gsize length=0;
++        g_assert_true(g_file_get_contents(from,&contents,&length,NULL));
++        g_assert_true(g_file_set_contents(to,contents,length,NULL));copied++;
++    }
++    g_assert_cmpuint(copied,>,0);
++    g_autoptr(GObject) slow=g_object_new(preview_slow_icon_get_type(),NULL);
++    guint pulses=0;guint source=g_timeout_add(10,pulse,&pulses);
++    gint64 begin=g_get_monotonic_time();
++    g_autoptr(NautilusIconInfo) info=nautilus_icon_info_lookup(G_ICON(slow),64,1);
++    gint64 elapsed=g_get_monotonic_time()-begin;
++    g_test_message("Uncached slow icon lookup GTK-thread time: %.2fms",elapsed/1000.0);
++    g_assert_cmpint(elapsed,<,100000);
++    g_autoptr(GdkPaintable) art=nautilus_icon_info_get_paintable(info);
++    gboolean ready=FALSE;g_signal_connect(art,"invalidate-contents",G_CALLBACK(invalidated),&ready);
++    NautilusImage *view=nautilus_image_new();nautilus_image_set_size(view,64);
++    nautilus_image_set_fallback(view,art);
++    GtkWidget *window=gtk_window_new();gtk_window_set_child(GTK_WINDOW(window),GTK_WIDGET(view));
++    gtk_window_present(GTK_WINDOW(window));spin(30);
++    g_autoptr(GdkPaintable) widget_art=gtk_widget_paintable_new(GTK_WIDGET(view));
++    for(guint i=0;i<500 && !ready;i++)spin(20);
++    spin(40);
++    g_source_remove(source);
++    g_assert_true(ready);g_assert_cmpuint(pulses,>=,10);
++    g_autoptr(GtkSnapshot) snapshot=gtk_snapshot_new();
++    gdk_paintable_snapshot(art,GDK_SNAPSHOT(snapshot),64,64);
++    g_autoptr(GskRenderNode) node=gtk_snapshot_to_node(snapshot);
++    g_assert_nonnull(node);
++    g_assert_cmpint(gsk_render_node_get_node_type(node),==,GSK_TEXTURE_NODE);
++    GdkTexture *texture=gsk_texture_node_get_texture(node);
++    guint8 pixel[64*64*4];gdk_texture_download(texture,pixel,64*4);
++    /* Download is Cairo ARGB32: inspect the opaque red center. */
++    guint8 *center=pixel+(32*64+32)*4;
++    g_test_message("Decoded color-managed center BGRA: %u,%u,%u,%u",center[0],center[1],center[2],center[3]);
++    g_assert_cmpuint(center[2],>,200);
++    g_assert_cmpuint(center[2],>,3*center[1]);g_assert_cmpuint(center[2],>,3*center[0]);
++    g_assert_cmpuint(center[3],==,255);
++    g_signal_handlers_disconnect_by_data(art,&ready);
++    g_autoptr(GtkSnapshot) rendered=gtk_snapshot_new();
++    gdk_paintable_snapshot(widget_art,GDK_SNAPSHOT(rendered),64,64);
++    g_autoptr(GskRenderNode) rendered_node=gtk_snapshot_to_node(rendered);g_assert_nonnull(rendered_node);
++    graphene_rect_t viewport=GRAPHENE_RECT_INIT(0,0,64,64);
++    GskRenderer *renderer=gtk_native_get_renderer(gtk_widget_get_native(GTK_WIDGET(view)));
++    g_autoptr(GdkTexture) rendered_texture=gsk_renderer_render_texture(renderer,rendered_node,&viewport);
++    gdk_texture_download(rendered_texture,pixel,64*4);
++    g_assert_cmpuint(center[2],>,200);g_assert_cmpuint(center[2],>,3*center[1]);
++    g_assert_cmpuint(center[2],>,3*center[0]);
++    gtk_window_destroy(GTK_WINDOW(window));spin(20);
++    g_test_message("UI heartbeat continued (%u pulses); decoded artwork repainted the real NautilusImage",pulses);
+ }
+ 
+ int main(int argc,char **argv)
+@@ -315,6 +509,7 @@
+     g_autoptr(NautilusApplication) app=nautilus_application_new();
+     g_application_set_flags(G_APPLICATION(app),G_APPLICATION_NON_UNIQUE);
+     g_autoptr(GError) error=NULL;g_assert_true(g_application_register(G_APPLICATION(app),NULL,&error));
++    g_test_add_func("/luma/icons/responsiveness",icon_responsiveness);
+     g_test_add_func("/luma/review/navigation",review_navigation);
+     g_test_add_func("/luma/about/native-mutations",fixture);
+     g_test_add_func("/luma/navigation/system-warning",system_warning);
+--- a/test/automated/display/test-luma-empty-picker.c
++++ b/test/automated/display/test-luma-empty-picker.c
+@@ -75,9 +75,13 @@
+         g_assert_true(g_file_set_contents(path, "fixture", -1, NULL));
+     }
+     const int widths[] = {360, 500, 1024, 1440};
++    /* The canonical Shell policy owns native appearance. Direct Adw force flags
++     * are overridden by that policy and can produce mislabeled Light captures. */
++    g_autoptr(GSettings) appearance = g_settings_new("org.project_luma.shell-state");
+     for (int dark = 0; dark < 2; dark++) {
+-        adw_style_manager_set_color_scheme(adw_style_manager_get_default(),
+-            dark ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT);
++        g_assert_true(g_settings_set_string(appearance, "surface-treatment", dark ? "dark" : "light"));
++        settle();
++        g_assert_cmpint(adw_style_manager_get_dark(adw_style_manager_get_default()), ==, dark);
+         for (int save = 0; save < 2; save++) {
+             for (guint n = 0; n < G_N_ELEMENTS(widths); n++) {
+                 NautilusFileChooser *chooser = nautilus_file_chooser_new(save ? NAUTILUS_MODE_SAVE_FILE : NAUTILUS_MODE_OPEN_FILE);
+@@ -111,8 +115,12 @@
+                 g_assert_nonnull(header);
+                 g_assert_cmpstr(adw_header_bar_get_decoration_layout(ADW_HEADER_BAR(header)), ==, ":close");
+                 g_assert_false(gtk_widget_has_css_class(header, "luma-no-automatic-identity"));
+-                g_assert_true(gtk_widget_has_css_class(accept, "luma-button"));
+-                g_assert_true(gtk_widget_has_css_class(accept, "small"));
++                /* The primary action uses the actual shared native key-button
++                 * contract, rather than the retired blue compatibility style. */
++                g_assert_true(gtk_widget_has_css_class(accept, "lumaui-text-button"));
++                g_assert_true(gtk_widget_has_css_class(accept, "key"));
++                g_assert_false(gtk_widget_has_css_class(accept, "suggested-action"));
++                g_assert_false(gtk_widget_has_css_class(accept, "luma-button"));
+                 g_assert_cmpstr(gtk_window_get_title(GTK_WINDOW(window)), ==, save ? "Save image" : "Open image");
+                 /* Exercise resize after native initial geometry restoration. */
+                 gtk_window_set_default_size(GTK_WINDOW(window), widths[n], 560);

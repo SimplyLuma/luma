@@ -1,0 +1,190 @@
+From f3ecd68ec81a7bafe7bc3b5b17b02bf6005fe177 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:42:09 +0000
+Subject: [PATCH] Filer: render search group heading and create snippet label
+ at runtime
+
+---
+ src/nautilus-list-view.c                | 62 ++++++++++++++++++++++++-
+ src/nautilus-name-cell.c                | 13 +++++-
+ src/resources/ui/nautilus-name-cell.blp | 13 ------
+ 3 files changed, 72 insertions(+), 16 deletions(-)
+
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index fda2e57..ba09a7f 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -39,6 +39,11 @@ struct _NautilusListView
+     NautilusListBase parent_instance;
+ 
+     GtkColumnView *view_ui;
++    GtkWidget *search_heading;
++    LumaTypeLabel *search_heading_title;
++    LumaCountBadge *search_heading_count;
++    NautilusViewModel *observed_model;
++    gulong items_changed_id;
+ 
+     NautilusSearchDirectory *search_directory;
+ 
+@@ -697,6 +702,16 @@ nautilus_list_view_setup_directory (NautilusListBase  *list_base,
+         self->search_directory = g_object_ref (NAUTILUS_SEARCH_DIRECTORY (new_directory));
+     }
+ 
++    if (self->search_directory != NULL)
++    {
++        g_autoptr (GFile) location = nautilus_search_directory_get_search_location (self->search_directory);
++        g_autofree char *basename = location != NULL ? g_file_get_basename (location) : NULL;
++        g_autofree char *heading = g_strdup_printf (_("In %s"), basename != NULL ? basename : _("this folder"));
++
++        luma_type_label_set_text (self->search_heading_title, heading);
++    }
++    gtk_widget_set_visible (self->search_heading, self->search_directory != NULL);
++
+     update_columns_settings_from_metadata_and_preferences (self);
+ 
+     self->expand_as_a_tree = g_settings_get_boolean (nautilus_list_view_preferences,
+@@ -1190,11 +1205,29 @@ nautilus_list_view_reload (NautilusListView *self)
+     gtk_widget_activate_action (GTK_WIDGET (self), "slot.reload", NULL);
+ }
+ 
++static void
++on_search_items_changed (NautilusViewModel *model,
++                         guint              position,
++                         guint              removed,
++                         guint              added,
++                         NautilusListView  *self)
++{
++    luma_count_badge_set_count (self->search_heading_count,
++                                g_list_model_get_n_items (G_LIST_MODEL (model)));
++}
++
+ static void
+ on_model_changed (NautilusListView *self)
+ {
+     NautilusViewModel *model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
+ 
++    if (self->observed_model != NULL)
++    {
++        g_signal_handler_disconnect (self->observed_model, self->items_changed_id);
++        g_clear_object (&self->observed_model);
++        self->items_changed_id = 0;
++    }
++
+     if (model != NULL)
+     {
+         g_autoptr (GtkMultiSorter) sorter = gtk_multi_sorter_new ();
+@@ -1212,6 +1245,11 @@ on_model_changed (NautilusListView *self)
+ 
+         gtk_column_view_set_enable_rubberband (GTK_COLUMN_VIEW (self->view_ui),
+                                                !nautilus_view_model_get_single_selection (model));
++
++        self->observed_model = g_object_ref (model);
++        self->items_changed_id = g_signal_connect (model, "items-changed",
++                                                    G_CALLBACK (on_search_items_changed), self);
++        on_search_items_changed (model, 0, 0, 0, self);
+     }
+ 
+     gtk_column_view_set_model (self->view_ui, GTK_SELECTION_MODEL (model));
+@@ -1221,6 +1259,7 @@ static void
+ nautilus_list_view_init (NautilusListView *self)
+ {
+     GtkWidget *scrolled_window = nautilus_list_base_get_scrolled_window (NAUTILUS_LIST_BASE (self));
++    GtkWidget *content;
+     GtkSorter *column_view_sorter;
+     GtkEventController *controller;
+     GtkShortcut *shortcut;
+@@ -1256,8 +1295,20 @@ nautilus_list_view_init (NautilusListView *self)
+ 
+     g_signal_connect_swapped (self, "notify::model", G_CALLBACK (on_model_changed), self);
+ 
+-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled_window),
+-                                   GTK_WIDGET (self->view_ui));
++    content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    self->search_heading = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++    gtk_widget_set_margin_start (self->search_heading, 28);
++    gtk_widget_set_margin_end (self->search_heading, 28);
++    gtk_widget_set_margin_top (self->search_heading, 6);
++    gtk_widget_set_margin_bottom (self->search_heading, 6);
++    self->search_heading_title = LUMA_TYPE_LABEL (luma_type_label_new (NULL, "caption"));
++    self->search_heading_count = LUMA_COUNT_BADGE (luma_count_badge_new (0, FALSE));
++    gtk_box_append (GTK_BOX (self->search_heading), GTK_WIDGET (self->search_heading_title));
++    gtk_box_append (GTK_BOX (self->search_heading), GTK_WIDGET (self->search_heading_count));
++    gtk_widget_set_visible (self->search_heading, FALSE);
++    gtk_box_append (GTK_BOX (content), self->search_heading);
++    gtk_box_append (GTK_BOX (content), GTK_WIDGET (self->view_ui));
++    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled_window), content);
+ 
+     g_signal_connect_object (gtk_filechooser_preferences,
+                              "changed::" NAUTILUS_PREFERENCES_SORT_DIRECTORIES_FIRST,
+@@ -1298,6 +1349,13 @@ nautilus_list_view_dispose (GObject *object)
+     }
+     g_clear_object (&self->view_model_sorter);
+ 
++    if (self->observed_model != NULL)
++    {
++        g_signal_handler_disconnect (self->observed_model, self->items_changed_id);
++        g_clear_object (&self->observed_model);
++        self->items_changed_id = 0;
++    }
++
+     g_clear_object (&self->search_directory);
+ 
+     g_signal_handlers_disconnect_by_func (nautilus_list_view_preferences,
+diff --git a/src/nautilus-name-cell.c b/src/nautilus-name-cell.c
+index 0ea2f7a..6853b4f 100644
+--- a/src/nautilus-name-cell.c
++++ b/src/nautilus-name-cell.c
+@@ -376,6 +376,18 @@ nautilus_name_cell_init (NautilusNameCell *self)
+ {
+     gtk_widget_init_template (GTK_WIDGET (self));
+ 
++    self->inline_snippet = GTK_LABEL (gtk_label_new (NULL));
++    gtk_widget_set_visible (GTK_WIDGET (self->inline_snippet), FALSE);
++    gtk_label_set_ellipsize (self->inline_snippet, PANGO_ELLIPSIZE_END);
++    gtk_label_set_lines (self->inline_snippet, 1);
++    gtk_widget_set_halign (GTK_WIDGET (self->inline_snippet), GTK_ALIGN_FILL);
++    gtk_label_set_xalign (self->inline_snippet, 0.0);
++    gtk_widget_add_css_class (GTK_WIDGET (self->inline_snippet), "caption");
++    gtk_widget_add_css_class (GTK_WIDGET (self->inline_snippet), "dim-label");
++    gtk_box_insert_child_after (GTK_BOX (gtk_widget_get_parent (GTK_WIDGET (self->path))),
++                                GTK_WIDGET (self->inline_snippet),
++                                gtk_widget_get_prev_sibling (GTK_WIDGET (self->path)));
++
+     g_signal_connect (self, "notify::icon-size",
+                       G_CALLBACK (on_icon_size_changed), NULL);
+     g_signal_connect (self, "notify::scale-factor", G_CALLBACK (on_icon_size_changed), NULL);
+@@ -509,7 +521,6 @@ nautilus_name_cell_class_init (NautilusNameCellClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, emblems_box);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, snippet_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, snippet);
+-    gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, inline_snippet);
+     gtk_widget_class_bind_template_child (widget_class, NautilusNameCell, path);
+ 
+     gtk_widget_class_bind_template_callback (widget_class, on_label_query_tooltip);
+diff --git a/src/resources/ui/nautilus-name-cell.blp b/src/resources/ui/nautilus-name-cell.blp
+index 9b6d243..139b7b0 100644
+--- a/src/resources/ui/nautilus-name-cell.blp
++++ b/src/resources/ui/nautilus-name-cell.blp
+@@ -91,19 +91,6 @@ template $NautilusNameCell: $NautilusViewCell {
+           }
+         }
+ 
+-        Label inline_snippet {
+-          visible: false;
+-          ellipsize: end;
+-          lines: 1;
+-          halign: fill;
+-          xalign: 0.0;
+-
+-          styles [
+-            "caption",
+-            "dim-label",
+-          ]
+-        }
+-
+         Label path {
+           visible: false;
+           ellipsize: start;
+-- 
+2.55.0
+

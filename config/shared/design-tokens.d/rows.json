@@ -1,0 +1,177 @@
+{
+  "_doc": "LumaUI rows family (KB-A): navigation rows and sidebar variants (SB1), type roles for app-only surfaces (TY1), ProgressLine (DT3), rich menu rows (MN1), AvatarStack and presence (SB3), FavouritesStrip (SB2) and Mark (SB4). Deep-merged into design-tokens.json's lumaui object. Every number is read off luma-next-70.html; px unless the key says otherwise.",
+  "lumaui": {
+    "nav_people": {
+      "_doc": "v70 Messages #m-side .crow (292 wide, 64 px rows, a 46 face) and Phone .pnrow (a 38 face). Title 13.5/550 (700 when it wants attention), the time on line 1 at 11.5, the preview at 12.5.",
+      "width": 292, "row_padding_y": 9, "row_padding_x": 10, "row_gap": 12, "row_radius": 12, "row_spacing": 1,
+      "title_size": 13.5, "title_weight": 550, "attention_weight": 700, "subtitle_size": 12.5, "meta_size": 11.5,
+      "medium_padding_y": 8, "medium_padding_x": 8, "medium_gap": 11, "medium_radius": 13, "line_gap": 3, "list_top": 8, "drawer_padding_y": 8, "drawer_padding_x": 9
+    },
+    "nav_destinations": {
+      "_doc": "v70 Tasks .tki and Photos #p-rail .si: 36 px single-line rows, a 16 px glyph or a list's dot, 13/500, a count at the end.",
+      "width": 224, "row_height": 36, "row_padding_x": 10, "row_gap": 10, "row_radius": 11, "icon": 16,
+      "title_size": 13, "title_weight": 500, "heading_top": 16, "heading_bottom": 6, "heading_inset": 10,
+      "padding_top": 4, "padding_bottom": 12, "row_spacing": 1,
+      "action_heading_top": 12, "action_heading_bottom": 4, "action_heading_padding_top": 12, "action_heading_padding_start": 20
+    },
+    "nav_settings": {
+      "_doc": "v70 Settings .cfside (236 wide, padding 0 10 10; its own right padding is the gap to the island, so the frame's 8 comes out of its width) with .si rows at .cfside's 32: a 17 px glyph in ink-3 (the accent ink when chosen), 13/500 in ink-2, an 11.5 ink-4 value at the end (at most 92 wide), headings .sh 11.5/600 at 16 10 5.",
+      "width": 236, "padding_x": 10, "padding_bottom": 10, "row_height": 32, "row_padding_x": 10, "row_gap": 11, "row_radius": 10,
+      "row_spacing": 0, "icon": 17, "title_size": 13, "title_weight": 500, "meta_size": 11.5, "meta_weight": 500, "meta_max_width": 92,
+      "heading_size": 11.5, "heading_weight": 600, "heading_top": 16, "heading_bottom": 5, "heading_inset": 10
+    },
+    "nav_resources": {
+      "_doc": "v70 Monitor .mnres (a 32 square well, 10 round, the accent well when chosen), Maps .mprow and Weather .wxpl.",
+      "width": 248, "row_padding_y": 9, "row_padding_x": 10, "row_gap": 11, "row_radius": 14, "row_spacing": 2,
+      "title_size": 13, "title_weight": 600, "subtitle_size": 11.5,
+      "well": 32, "well_radius": 10, "well_icon": 16, "face": 34, "face_icon": 16, "heading_top": 6, "heading_bottom": 8
+    },
+    "nav_files": {
+      "_doc": "v70 Viewer .vwrow: a 42x34 thumbnail (7 round), 12.5/550 over an 11 px size. Memos .merow has no lead: 10/12 padding, 13.5/600 over 12.",
+      "width": 236, "row_padding": 6, "row_gap": 10, "row_radius": 12,
+      "title_size": 12.5, "title_weight": 550, "subtitle_size": 11,
+      "thumb_width": 42, "thumb_height": 34, "thumb_radius": 7, "thumb_icon": 15, "page_width": 30, "page_padding_x": 8, "page_line": 2, "page_line_gap": 3,
+      "plain_padding_y": 10, "plain_padding_x": 12, "plain_radius": 13, "plain_title_size": 13.5, "plain_title_weight": 600, "plain_subtitle_size": 12,
+      "heading_size": 11, "heading_top": 10, "heading_bottom": 4, "heading_inset": 8
+    },
+    "nav_tree": {
+      "_doc": "v70 Notes .trow: 32 px rows, 16 px indent per level, an 18 px twisty (13 px chevron, turns 90 when open), a 22 px mark button, a folder's name at 600.",
+      "width": 284, "row_height": 32, "row_padding_start": 4, "row_padding_end": 8, "row_gap": 6, "row_radius": 9, "indent": 16,
+      "twisty": 18, "twisty_radius": 5, "twisty_icon": 13, "mark_button": 22, "mark_radius": 6, "mark_gap": 4, "count_size": 11.5, "pinned_mark_shift": -12,
+      "heading_top": 14, "heading_first_top": 4, "heading_bottom": 6, "heading_action": 24, "heading_action_icon": 14,
+      "title_size": 13, "title_weight": 400, "folder_weight": 600, "faces": 16, "drop_ring": 1.5
+    },
+    "nav_widths": {
+      "_doc": "The named widths an app may pick instead of its variant's: narrow (Viewer), regular (Contacts, Maps), wide (Messages).",
+      "narrow": 236, "regular": 272, "wide": 292
+    },
+    "row_lead": {
+      "_doc": "What leads a row: a face (46 large, 38 medium, 32 small), a group of two faces (each 0.7 of the lead, corners opposite, ringed 2 in the ground), a presence dot (12, ringed 2.5).",
+      "face_large": 46, "face_medium": 38, "face_small": 32, "group_scale": 0.7, "group_ring": 2,
+      "presence": 12, "presence_ring": 2.5, "pin_icon": 12, "title_icon": 11, "subtitle_icon": 12, "meta_gap": 6, "icon_gap": 5, "missing_opacity": 0.55, "line_height": 1.45,
+      "dot": 10, "dot_radius": 4, "dot_lightness_ratio": 0.7, "dot_chroma_ratio": 0.14, "dot_margin": 3
+    },
+    "structure": {
+      "details": {"back_inset": 6, "count_gap": 6}
+    },
+    "app_icon": {
+      "_doc": "AppIcon (v70 .dic): corner 22% of the side; a monogram's initial at 36% on a radial wash 0.74 to 0.46 lightness, 0.12 chroma.",
+      "corner_ratio": 0.22, "mono_size_ratio": 0.36, "mono_light_ratio": 0.74, "mono_dark_ratio": 0.46, "mono_chroma_ratio": 0.12, "mono_tracking_em": -0.02
+    },
+    "lit_glow": {
+      "_doc": "ContentLitHeader(hues=) and tone=\"luma\" (v70 .dapp, .dsysbg): radial light from the corners, fading from 35% to 90% down.",
+      "mask_start_pct": 35, "mask_end_pct": 90,
+      "dark": {"lightness_ratio": 0.5, "chroma_ratio": 0.13, "peak_alpha": 0.95, "second_alpha": 0.47},
+      "light": {"lightness_ratio": 0.85, "chroma_ratio": 0.1, "peak_alpha": 1.0, "second_alpha": 0.47},
+      "luma": ["rgba(254, 104, 25, 0.75)", "rgba(240, 86, 143, 0.6)", "rgba(255, 199, 154, 0.28)"]
+    },
+    "note_card": {
+      "_doc": "NoteCard (v70 #n-kids .kid): 10/12 inside, 12 gap, 12 round, on the well; a 16 glyph, a 14 chevron, 600 title, 12 preview.",
+      "padding_y": 10, "padding_x": 12, "gap": 12, "radius": 12, "spacing": 6, "icon": 16, "chevron": 14,
+      "title_weight": 600, "preview_size": 12
+    },
+    "section_action": {
+      "_doc": "A sidebar heading that carries an action (Tasks' Lists +): a 26 px button, 8 round, a 15 px glyph.",
+      "button": 26, "radius": 8, "icon": 15
+    },
+    "progress": {
+      "_doc": "ProgressLine (v70 .mnmeter, .tkstepbar, .pnvbar 4 px; Leaf .lfpr 3 px; Depot .dprog 8 px in a well; Settings' toner and the downloads list .lprog 5 px in a well, 140 wide beside a row's words).",
+      "row_height": 4, "row_radius": 2, "tile_height": 3, "tile_radius": 2, "hero_height": 8, "hero_radius": 4,
+      "meter_height": 4, "meter_radius": 2, "well_height": 5, "well_radius": 3, "well_width": 140
+    },
+    "avatar_stack": {
+      "_doc": "AvatarStack (v70 .nfaces 16/-5/1.5, .tkstk 18/-6/2, .pnwho .pnstk 28/-8/2): faces overlapping left to right, ringed in the ground they stand on.",
+      "small": 16, "small_overlap": 5, "small_ring": 1.5,
+      "row": 18, "row_overlap": 6, "row_ring": 2,
+      "header": 28, "header_overlap": 8, "header_ring": 2,
+      "document": 28, "document_overlap": 5, "document_ring": 2,
+      "more_size": 10
+    },
+    "favourites": {
+      "_doc": "FavouritesStrip (v70 Phone .pnfavs: 64 wide tiles, 48 faces, 11.5/600 names; Maps .mpfavs: 80 wide, 44 round glyph wells, a 11 px sub).",
+      "gap": 4, "column_count": 4, "wide_gap": 6, "wide_column_count": 3, "margin_top": 14, "margin_bottom": 6, "tile_width": 64, "tile_radius": 14, "tile_padding_y": 6, "tile_gap": 5,
+      "face": 48, "name_size": 11.5, "name_weight": 600, "sub_size": 11, "well": 44, "well_icon": 19, "wide_tile_width": 80, "wide_padding_y": 10,
+      "heading_radius": 22, "heading_padding_top": 8, "heading_padding_bottom": 6, "heading_padding_x": 6, "heading_margin_top": 6, "heading_margin_bottom": 10, "heading_size": 11.5, "heading_weight": 650, "heading_tracking": 0.23, "heading_label_padding_y": 2, "heading_label_padding_x": 8,
+      "panel_radius": 16, "panel_padding_top": 10, "panel_padding_bottom": 8, "panel_gap": 4, "panel_name_size": 12.5, "well_shadow_y": 2, "well_shadow_blur": 6
+    },
+    "mark": {
+      "_doc": "Mark (v70 lMark .lmk): an 18 box; a 9 dot with a 2.5 halo at 22%, a 15 icon, or a 14 emoji. lg 42 (16 dot, 24 icon, 26 emoji). MarkButton 22, 6 round. MarkPicker 344 wide, 12 inside, 18 round.",
+      "box": 18, "dot": 9, "card_dot": 7, "filter_dot": 8, "path_box": 14, "path_dot": 7, "path_icon": 13, "path_emoji_size": 12, "halo": 2.5, "halo_alpha": 0.22, "hue_lightness_ratio": 0.72, "hue_chroma_ratio": 0.13, "icon": 15, "emoji_size": 14,
+      "large": 42, "large_dot": 16, "large_halo": 4, "large_icon": 24, "large_emoji_size": 26, "large_radius": 12,
+      "button": 22, "button_radius": 6,
+      "page_box": 52, "page_icon": 38, "page_emoji_size": 40, "page_dot": 20, "page_radius": 14, "page_padding": 4, "page_add_height": 28, "page_add_radius": 9, "page_add_size": 12, "page_add_weight": 500, "page_add_icon": 14,
+      "picker_width": 344, "picker_padding": 12, "picker_radius": 18, "picker_cell": 34, "picker_cell_radius": 10, "picker_hue": 26, "picker_gap": 4
+    },
+    "document_check": {
+      "size": 17, "radius": 6, "glyph": 11, "outline_size": 16, "outline_radius": 5, "outline_width": 1.5, "marker_offset": 2,
+      "checked_lightness_ratio": 0.62, "checked_chroma_ratio": 0.13, "checked_lip_alpha": 0.2
+    },
+    "menu_rich": {
+      "_doc": "Rich menu rows (v70 .crmi, #cm-pop .cmsw/.cmval, .tsesspop): 36 min, 5/10 inside, a 11 px subtitle, a trailing value at 12 with a 14 chevron, trailing actions 22 (6 round, 12 glyph), a switch at 85%.",
+      "row_min_height": 36, "row_padding_y": 5, "row_padding_x": 10, "subtitle_size": 11, "value_size": 12, "chevron": 14,
+      "trail_button": 22, "trail_radius": 6, "trail_icon": 12, "switch_width": 32, "switch_height": 19, "switch_knob": 14
+    },
+    "swipe_row": {
+      "_doc": "v71 LumaUI swipe rows (.lswu, LSW): past 90 commits, 12 px slop, sideways when |dx| > 1.4|dy|; the reveal is 14 round in the action's colour, its icon (20) over its name (11.5/700) in a 76 column, 3 apart, at 75% and 92% until it would commit (100%, 106%); settles in 220 ms.",
+      "commit": 90, "slop": 12, "radius": 14, "face_min": 76, "face_gap": 3, "icon": 20, "label_size": 11.5, "label_weight": 700,
+      "face_opacity": 0.75, "face_scale": 0.92, "face_go_scale": 1.06, "face_ms": 150, "settle_ms": 220
+    },
+    "az_index": {
+      "_doc": "v71 LumaUI A-Z index (.lazidx, lAZ, phone): 20 wide at 3 from the window's right, 150 from its top and bottom, 4 inside, 11 round (fill-1 while touched); letters 10.5/700 in the accent, those with no one at the faint ink and 45%; the list's own lane is 26 (.lazgut); the bubble is 56 round, 40 left of the index's right edge, 26/700. Shown with 6 or more letters.",
+      "width": 20, "end": 3, "top": 150, "bottom": 150, "padding_y": 4, "radius": 11, "letter_size": 10.5, "letter_weight": 700,
+      "dim_alpha": 0.45, "gutter": 26, "bubble": 56, "bubble_gap": 40, "bubble_size": 26, "bubble_weight": 700, "minimum": 6
+    },
+    "lit_glass": {
+      "_doc": "v71 Weather on a phone (.wxcard2, .wxtile, .wxnext, .wxhlist/.wxhr, .wxradar): glass over the live sky in light and dark, white at 8% with an 8% inset edge (the blur is the compositor's, never faked). A card 12/14 inside, 22 round; a tile 12, 20 round; a strip 12/10, 22 round; a list 22 round with 52 rows 0/14 inside, an 8% hairline under each and the current one filled; a map 24 round.",
+      "card_radius": 22, "card_padding_y": 12, "card_padding_x": 14, "tile_radius": 20, "tile_padding": 12,
+      "strip_radius": 22, "strip_padding_y": 12, "strip_padding_x": 10, "list_radius": 22, "row_height": 52, "row_padding_x": 14,
+      "map_radius": 24
+    },
+    "message_run": {
+      "_doc": "v71 Messages mShape: a run from one person is one block. 18 where a bubble is free, 5 where two touch (always on the sender's side; on the far side where the neighbour is at least as wide, less 3), 2 apart.",
+      "radius": 18, "join": 5, "gap": 2, "wider_slack": 3
+    },
+    "type_scale": {
+      "_doc": "TY1: roles for surfaces only one app draws, so no app sets a one-off size. The keeper may merge these into fewer roles.",
+      "reading": {"size": 15, "weight": 400, "line_height": 1.65, "tracking_em": 0},
+      "assistant_title": {"size": 19, "weight": 650, "line_height": 1.3, "tracking_em": -0.015},
+      "temperature": {"size": 96, "weight": 200, "line_height": 0.95, "tracking_em": -0.04, "tabular": true},
+      "place": {"size": 30, "weight": 500, "line_height": 1.2, "tracking_em": -0.01},
+      "condition": {"size": 17, "weight": 550, "line_height": 1.35, "tracking_em": 0},
+      "album_title": {"size": 46, "weight": 700, "line_height": 1.0, "tracking_em": -0.045, "phone_size": 34},
+      "section_day": {"size": 16, "weight": 650, "line_height": 1.3, "tracking_em": -0.018},
+      "dial": {"size": 38, "weight": 300, "line_height": 1.2, "tracking_em": 0.02, "tabular": true},
+      "mono": {"size": 13.5, "weight": 400, "line_height": 1.55, "tracking_em": 0, "family": "IBM Plex Mono"},
+      "mono_small": {"size": 12, "weight": 400, "line_height": 1.45, "tracking_em": 0, "family": "IBM Plex Mono"},
+      "weather_phone_temperature": {"size": 88, "weight": 300, "line_height": 1.0, "tracking_em": -0.05, "tabular": true},
+      "weather_phone_sentence": {"size": 17, "weight": 600, "line_height": 1.35, "tracking_em": -0.01},
+      "weather_phone_title": {"size": 30, "weight": 750, "line_height": 1.45, "tracking_em": -0.03},
+      "weather_phone_tile": {"size": 20, "weight": 650, "line_height": 1.45, "tracking_em": -0.006},
+      "weather_phone_kicker": {"size": 11.5, "weight": 700, "line_height": 1.45, "tracking_em": 0.05},
+      "weather_phone_hour_temperature": {"size": 17, "weight": 650, "line_height": 1.45, "tracking_em": -0.006}
+    },
+    "colors": {
+      "_doc": "Rows family colours. The accent ones are v70's at the default accent hue (258), like count_attention_bg.",
+      "light": {
+        "thumb_paper": "#f4f2ec", "thumb_paper_line": "#b9b3a6", "thumb_paper_ink": "#7d766a",
+        "progress_fill": "#70a6f5", "progress_good": "#53be70", "well_on": "#4c80cd", "well_on_ink": "#ffffff",
+        "mark_blue": "#60aaf3", "mark_teal": "#00bcc5", "mark_green": "#62bb78", "mark_yellow": "#bea333", "mark_orange": "#e28d4f",
+        "mark_red": "#eb827b", "mark_pink": "#e181b0", "mark_purple": "#b191ea", "mark_violet": "#9d98f2",
+        "swipe_green": "#2e9e52", "swipe_orange": "#eb881f", "swipe_blue": "#3a81d7", "swipe_red": "#de3b3d", "swipe_gray": "#6b727e", "swipe_yellow": "#e3ae28", "swipe_ink": "#ffffff", "az_letter": "#59aaf8", "az_dim": "#616367", "lit_glass_fill": "alpha(#ffffff, 0.08)", "lit_glass_edge": "alpha(#ffffff, 0.08)"
+      },
+      "dark": {
+        "thumb_paper": "#f4f2ec", "thumb_paper_line": "#b9b3a6", "thumb_paper_ink": "#7d766a",
+        "progress_fill": "#70a6f5", "progress_good": "#53be70", "well_on": "#4c80cd", "well_on_ink": "#ffffff",
+        "mark_blue": "#60aaf3", "mark_teal": "#00bcc5", "mark_green": "#62bb78", "mark_yellow": "#bea333", "mark_orange": "#e28d4f",
+        "mark_red": "#eb827b", "mark_pink": "#e181b0", "mark_purple": "#b191ea", "mark_violet": "#9d98f2",
+        "swipe_green": "#2e9e52", "swipe_orange": "#eb881f", "swipe_blue": "#3a81d7", "swipe_red": "#de3b3d", "swipe_gray": "#6b727e", "swipe_yellow": "#e3ae28", "swipe_ink": "#ffffff", "az_letter": "#59aaf8", "az_dim": "#616367", "lit_glass_fill": "alpha(#ffffff, 0.08)", "lit_glass_edge": "alpha(#ffffff, 0.08)"
+      },
+      "high_contrast": {
+        "thumb_paper": "#f4f2ec", "thumb_paper_line": "#b9b3a6", "thumb_paper_ink": "#7d766a",
+        "progress_fill": "@accent_bg_color", "progress_good": "@accent_bg_color", "well_on": "@accent_bg_color", "well_on_ink": "@accent_fg_color",
+        "mark_blue": "#60aaf3", "mark_teal": "#00bcc5", "mark_green": "#62bb78", "mark_yellow": "#bea333", "mark_orange": "#e28d4f", "mark_red": "#eb827b", "mark_pink": "#e181b0", "mark_purple": "#b191ea", "mark_violet": "#9d98f2",
+        "swipe_green": "#2e9e52", "swipe_orange": "#eb881f", "swipe_blue": "#3a81d7", "swipe_red": "#de3b3d", "swipe_gray": "#6b727e", "swipe_yellow": "#e3ae28", "swipe_ink": "#ffffff", "az_letter": "#59aaf8", "az_dim": "#616367", "lit_glass_fill": "alpha(#ffffff, 0.08)", "lit_glass_edge": "alpha(#ffffff, 0.08)"
+      }
+    }
+  }
+}

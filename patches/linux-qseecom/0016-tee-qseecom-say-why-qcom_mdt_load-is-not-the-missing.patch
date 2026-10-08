@@ -1,0 +1,52 @@
+From 34aa8bacc0c63d247e177b20490b13e7f9557fdd Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:12:50 +0200
+Subject: [PATCH 16/41] tee: qseecom: say why qcom_mdt_load() is not the
+ missing piece
+
+Reviewers reasonably ask why a driver handling MDT images does not call the
+kernel's existing MDT loader, and the comment asserted a preference without
+evidence. Replace it with the reason.
+
+qcom_mdt_load() solves the remoteproc problem: scatter each segment to its
+p_paddr inside a carveout. QSEECOM's APP_START takes one contiguous buffer --
+the .mdt followed by the segment payloads, with an mdt length and a total
+length. Same file format, different contracts.
+
+And for this image the program headers are not usable as a file layout at all.
+Checked against Goodix gfenu: segment 0 declares p_offset 0, which would
+overwrite the ELF and program headers being parsed, and segments 6 and 7
+declare the same p_offset *and* the same p_paddr with different sizes, so
+placing by p_offset makes one overwrite the other. Concatenation in
+program-header order is what the vendor's loader does and what TZ accepts.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index f8d6eb772..836c7f239 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -1195,6 +1195,20 @@ static void qseecom_tee_supp_release(struct tee_context *ctx)
+  * .bNN in program-header order -- is firmware layout policy, and it belongs in
+  * user space with the rest of it.
+  *
++ * qcom_mdt_load() is not the missing piece here, despite handling the same
++ * file format. It solves the remoteproc problem: scatter each segment to its
++ * p_paddr inside a carveout. QSEECOM's APP_START instead takes one contiguous
++ * buffer -- the .mdt followed by the segment payloads, with an mdt length and a
++ * total length -- so the two want different things from the same files.
++ *
++ * The program headers cannot even be read as a file layout for this image.
++ * Taking a real one (Goodix gfenu): segment 0 has p_offset 0, which would
++ * overwrite the very ELF and program headers being parsed, and segments 6 and 7
++ * declare the same p_offset and the same p_paddr with different sizes, so
++ * placing by p_offset makes one overwrite the other. Concatenation in
++ * program-header order is what the vendor's own loader does, and it is what
++ * produces an image TZ accepts.
++ *
+  * That this is only reachable on the privileged device *is* the access
+  * control. Loading puts an image into the same ID space and the same secure
+  * storage machinery as every other application, so it is not something an

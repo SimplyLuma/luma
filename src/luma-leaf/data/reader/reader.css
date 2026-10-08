@@ -1,0 +1,78 @@
+/* SPDX-License-Identifier: Apache-2.0
+   Leaf's page. Everything outside the page is GTK and follows the window;
+   the page keeps its own paper, because a reading theme is the reader's
+   choice. Auto takes the window's own surface, ink and muted colours, which
+   the application passes in as --auto-*. No animation: turning a page does
+   not move. */
+@font-face { font-family: Literata; src: url("fonts/Literata.ttf"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: Literata; src: url("fonts/Literata-Italic.ttf"); font-weight: 100 900; font-style: italic; }
+@font-face { font-family: Newsreader; src: url("fonts/Newsreader.ttf"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: Newsreader; src: url("fonts/Newsreader-Italic.ttf"); font-weight: 100 900; font-style: italic; }
+@font-face { font-family: "Atkinson Hyperlegible"; src: url("fonts/AtkinsonHyperlegible-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "Atkinson Hyperlegible"; src: url("fonts/AtkinsonHyperlegible-Bold.ttf"); font-weight: 700; }
+:root {
+  --auto-paper: #ffffff;
+  --auto-text: #1d1d1f;
+  --auto-quiet: #86868b;
+  color-scheme: light dark;
+}
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+body { font: 550 11px/1 Figtree, system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+
+.lf-page {
+  --lf-paper: var(--auto-paper); --lf-text: var(--auto-text); --lf-quiet: var(--auto-quiet);
+  --lf-mx: 9%;
+  position: absolute; inset: 0; background: var(--lf-paper); color: var(--lf-text); outline: 0;
+}
+.lf-page[data-theme="paper"] { --lf-paper: #f6f1e6; --lf-text: #2a251f; --lf-quiet: #8d887e; }
+.lf-page[data-theme="sepia"] { --lf-paper: #ecdfc6; --lf-text: #3a2d1f; --lf-quiet: #8f7d64; }
+.lf-page[data-theme="stone"] { --lf-paper: #e2e1dc; --lf-text: #25272a; --lf-quiet: #777a7d; }
+.lf-page[data-theme="night"] { --lf-paper: #1d1c1a; --lf-text: #d9d1c3; --lf-quiet: #6e6a63; }
+/* D-Ink: the page follows the panel's paper whatever theme is set. */
+.lf-page[data-dink="true"] { --lf-paper: #ffffff; --lf-text: #000000; --lf-quiet: #555555; }
+
+.lf-running { position: absolute; left: var(--lf-mx); right: var(--lf-mx); top: 28px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 104px; font: 400 10.5px/1 Literata, Georgia, serif;
+  letter-spacing: .2em; color: var(--lf-quiet); text-transform: uppercase; }
+.lf-running span { text-align: center; }
+.lf-view { position: absolute; left: var(--lf-mx); right: var(--lf-mx); top: 68px; bottom: 76px; overflow: hidden; }
+.lf-view iframe { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+
+.lf-turn { position: absolute; top: 68px; bottom: 76px; z-index: 2; width: calc(var(--lf-mx) - 4px); min-width: 22px;
+  border: 0; padding: 0; background: transparent; cursor: pointer; }
+.lf-turn.prev { left: 0; } .lf-turn.next { right: 0; }
+.lf-turn::after { content: ''; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px;
+  border: solid var(--lf-quiet); border-width: 0 0 1.5px 1.5px; opacity: 0; }
+.lf-turn.prev::after { transform: translate(-25%, -50%) rotate(45deg); }
+.lf-turn.next::after { transform: translate(-75%, -50%) rotate(-135deg); }
+.lf-turn:hover::after, .lf-turn:focus-visible::after { opacity: .85; }
+.lf-turn:disabled { cursor: default; } .lf-turn:disabled::after { display: none; }
+.lf-turn:focus { outline: 0; }
+/* A page with only a line or two on it (a chapter opener, an epigraph) shows
+   its way on at rest: the chevron, and a quiet Continue under the text. */
+.lf-page[data-brief="true"] .lf-turn.next::after { opacity: .55; }
+.lf-page[data-brief="true"] .lf-turn.next:hover::after { opacity: .85; }
+.lf-continue { position: absolute; right: var(--lf-mx); bottom: 64px; z-index: 2; display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 0; border: 0; background: transparent; color: var(--lf-quiet); cursor: pointer;
+  font: 650 11px/1 Figtree, system-ui, sans-serif; }
+.lf-continue::after { content: ''; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); }
+.lf-continue:hover { color: var(--lf-text); }
+.lf-continue[hidden] { display: none; }
+.lf-continue:focus { outline: 0; }
+
+.lf-foot { position: absolute; left: var(--lf-mx); right: var(--lf-mx); bottom: 34px; display: flex;
+  justify-content: space-between; gap: 12px; color: var(--lf-quiet);
+  font: 400 11px/1.2 Figtree, system-ui, sans-serif; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+.lf-foot span { overflow: hidden; text-overflow: ellipsis; }
+.lf-rail { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--lf-text) 8%, transparent); }
+.lf-rail i { display: block; height: 100%; width: 0; background: #d0a766; opacity: .8; }
+
+.lf-status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--lf-quiet);
+  font: 600 13px/1.4 Figtree, system-ui, sans-serif; text-align: center; padding: 0 20%; }
+.lf-status[hidden] { display: none; }
+
+@media (max-width: 559px) {
+  .lf-running { top: 58px; }
+  .lf-view, .lf-turn { top: 92px; bottom: 110px; }
+  .lf-foot { display: none; }
+}

@@ -1,0 +1,56 @@
+From 6d354b85638c55fcc4a2a10ff5c82b8e4a412323 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:32:41 +0000
+Subject: [PATCH] Filer: clear fixture selection in unselected list and search
+ states
+
+---
+ src/nautilus-window.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 39c0c19..24f1cef 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1963,6 +1963,10 @@ apply_fixture_state (gpointer data)
+         GList selection = { .data = file };
+         nautilus_files_view_set_selection (view, &selection, FALSE);
+     }
++    else if (!g_str_has_prefix (state, "search-"))
++    {
++        nautilus_files_view_set_selection (view, NULL, FALSE);
++    }
+ 
+     if (information)
+     {
+@@ -1974,6 +1978,18 @@ apply_fixture_state (gpointer data)
+     }
+     if (g_str_has_prefix (state, "search-"))
+     {
++        if (g_object_get_data (G_OBJECT (window), "filer-fixture-search-started") != NULL)
++        {
++            GFile *location = nautilus_window_slot_get_location (slot);
++
++            if (location == NULL || !g_file_has_uri_scheme (location, SCHEME_SEARCH))
++            {
++                return G_SOURCE_CONTINUE;
++            }
++            nautilus_files_view_set_selection (view, NULL, FALSE);
++            return G_SOURCE_REMOVE;
++        }
++
+         g_autoptr (NautilusQuery) query = nautilus_query_new ();
+         nautilus_query_set_text (query, "press");
+         if (g_strcmp0 (state, "search-here") == 0)
+@@ -1990,6 +2006,8 @@ apply_fixture_state (gpointer data)
+             nautilus_query_set_location (query, home);
+         }
+         nautilus_window_slot_search (slot, query);
++        g_object_set_data (G_OBJECT (window), "filer-fixture-search-started", GINT_TO_POINTER (1));
++        return G_SOURCE_CONTINUE;
+     }
+ 
+     return G_SOURCE_REMOVE;
+-- 
+2.55.0
+

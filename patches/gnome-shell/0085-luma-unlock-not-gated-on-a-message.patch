@@ -1,0 +1,85 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: never hold an accepted unlock open for a message
+
+A password that had already been accepted could leave the lock screen
+up with its spinner turning, until the prompt was cancelled and the
+password typed again. PAM logged success and no exception was raised;
+the session simply stayed locked.
+
+ScreenShield.deactivate() does not unlock anything itself. It calls
+UnlockDialog.finish(), which calls AuthPrompt.finish(), which waited --
+with no bound -- for the verifier to emit no-more-messages. That queue is
+advanced by the promise handed to the show-message signal, and for a
+fingerprint error that promise is a wiggle animation. So a successful
+authentication was made to depend on an animation completing, which is
+also why the fault needed an idle screen to appear: fprintd cancels its
+own ongoing verify when it idles, pam_fprintd reports the resulting
+no-match as an error, and that error was at the head of the queue at the
+moment the password was accepted. Cancelling and retrying worked because
+the retry found the queue empty.
+
+The wait is now bounded, and whatever was still queued is logged, so the
+next occurrence names its cause instead of being inferred.
+
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -22,6 +22,11 @@
+ const TimerChildProxy = Gio.DBusProxy.makeProxyWrapper(TimerChildIface);
+ 
+ const DEFAULT_BUTTON_WELL_ICON_SIZE = 16;
++
++//: How long a completed authentication will wait for the verifier's message
++//: queue before going ahead without it. Long enough for a fingerprint error to
++//: be read and its wiggle to run, short enough that nobody sees a stall.
++const FINISH_MESSAGE_QUEUE_TIMEOUT = 2000;
+ const DEFAULT_BUTTON_WELL_ANIMATION_DELAY = 1000;
+ 
+ // A widget displayed instead of the unlock prompt
+@@ -833,11 +838,43 @@
+             return;
+         }
+ 
+-        const signalId = this._userVerifier.connect('no-more-messages', () => {
+-            this._userVerifier.disconnect(signalId);
++        // This gates ScreenShield.deactivate(): until onComplete runs, a
++        // password that has already been accepted leaves the lock screen up
++        // with its spinner turning. Waiting for the queue without a bound made
++        // a successful unlock depend on an animation finishing -- the queue is
++        // advanced by the promise handed to show-message, and for a fingerprint
++        // error that promise is a wiggle. After the screen had blanked and
++        // fprintd cancelled its own verify, that error sat at the head of the
++        // queue and the session stayed locked until the prompt was cancelled
++        // and the password typed a second time.
++        //
++        // An accepted authentication is not allowed to hang on a message, so
++        // the wait is bounded and what was still queued is recorded, which
++        // names the cause rather than leaving it to be inferred.
++        let done = false;
++        let signalId = 0;
++        let timeoutId = 0;
++        const complete = () => {
++            if (done)
++                return;
++            done = true;
++            if (timeoutId)
++                GLib.source_remove(timeoutId);
++            if (signalId)
++                this._userVerifier.disconnect(signalId);
+             this._userVerifier.clear();
+             onComplete();
+-        });
++        };
++
++        signalId = this._userVerifier.connect('no-more-messages', complete);
++        timeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
++            FINISH_MESSAGE_QUEUE_TIMEOUT, () => {
++                timeoutId = 0;
++                const stuck = this._userVerifier.currentMessage;
++                log('gdm: completing the unlock without the message queue; ' +
++                    `still queued: ${stuck ? `${stuck.serviceName} type ${stuck.type}` : 'nothing'}`);
++                complete();
++            });
+     }
+ 
+     cancel() {

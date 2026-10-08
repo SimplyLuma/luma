@@ -1,0 +1,283 @@
+From 2fd346efe39e2d2628bad61292088d594442f0a0 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 5 Jul 2026 02:52:32 +0200
+Subject: [PATCH] ASoC: codecs: wcd9378: add SoundWire skeleton driver (WIP)
+
+Bring-up skeleton for the Qualcomm WCD9378 codec (SoundWire dev id
+0x0217:0x0110, one slave per RX/TX bus). Probes both slaves, maps the
+SDCA control space (32-bit paged addresses) through regmap-sdw with
+prop.paging_support set, and dumps the device identity registers on
+ATTACHED as a transport self-test:
+
+  DEV_MANU_ID_0/1 = 0x17/0x02 (Qualcomm 0x0217)
+  DEV_PART_ID_0/1 = 0x10/0x01 (WCD9378 0x0110)
+  ANA_TX_CH1 0x20, ANA_MICB1 0x10 (downstream reset defaults)
+
+The analog core is WCD937x register-compatible; full codec function
+(TX/ADC path first) to be built on top of this. Not for upstream in
+this form.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ sound/soc/codecs/Kconfig       |   9 +++
+ sound/soc/codecs/Makefile      |   2 +
+ sound/soc/codecs/wcd9378-sdw.c | 135 +++++++++++++++++++++++++++++++++
+ sound/soc/codecs/wcd9378.h     |  63 +++++++++++++++
+ 4 files changed, 209 insertions(+)
+ create mode 100644 sound/soc/codecs/wcd9378-sdw.c
+ create mode 100644 sound/soc/codecs/wcd9378.h
+
+diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
+index 269c31c..18f489a 100644
+--- a/sound/soc/codecs/Kconfig
++++ b/sound/soc/codecs/Kconfig
+@@ -2431,6 +2431,15 @@ config SND_SOC_WCD937X_SDW
+ 	  via soundwire.
+ 	  To compile this codec driver say Y or m.
+ 
++config SND_SOC_WCD9378_SDW
++	tristate "WCD9378 Codec - SDW (bring-up skeleton)"
++	depends on SOUNDWIRE
++	select REGMAP_SOUNDWIRE
++	help
++	  Bring-up skeleton driver for the Qualcomm WCD9378 audio codec
++	  connected via SoundWire, as found on SM7635 phones.
++	  To compile this codec driver say Y or m.
++
+ config SND_SOC_WCD938X
+ 	depends on SND_SOC_WCD938X_SDW
+ 	tristate
+diff --git a/sound/soc/codecs/Makefile b/sound/soc/codecs/Makefile
+index 172861d..466d7bd 100644
+--- a/sound/soc/codecs/Makefile
++++ b/sound/soc/codecs/Makefile
+@@ -356,6 +356,7 @@ snd-soc-wcd9335-y := wcd9335.o
+ snd-soc-wcd934x-y := wcd934x.o
+ snd-soc-wcd937x-y := wcd937x.o
+ snd-soc-wcd937x-sdw-y := wcd937x-sdw.o
++snd-soc-wcd9378-sdw-y := wcd9378-sdw.o
+ snd-soc-wcd938x-y := wcd938x.o
+ snd-soc-wcd938x-sdw-y := wcd938x-sdw.o
+ snd-soc-wcd939x-y := wcd939x.o
+@@ -796,6 +797,7 @@ ifdef CONFIG_SND_SOC_WCD937X_SDW
+ # avoid link failure by forcing sdw code built-in when needed
+ obj-$(CONFIG_SND_SOC_WCD937X) += snd-soc-wcd937x-sdw.o
+ endif
++obj-$(CONFIG_SND_SOC_WCD9378_SDW) += snd-soc-wcd9378-sdw.o
+ obj-$(CONFIG_SND_SOC_WCD938X)	+= snd-soc-wcd938x.o
+ ifdef CONFIG_SND_SOC_WCD938X_SDW
+ # avoid link failure by forcing sdw code built-in when needed
+diff --git a/sound/soc/codecs/wcd9378-sdw.c b/sound/soc/codecs/wcd9378-sdw.c
+new file mode 100644
+index 0000000..e613f62
+--- /dev/null
++++ b/sound/soc/codecs/wcd9378-sdw.c
+@@ -0,0 +1,135 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2026, Jorijn van der Graaf
++ *
++ * SoundWire slave driver for the Qualcomm WCD9378 audio codec.
++ *
++ * Bring-up skeleton: binds to the two WCD9378 SoundWire devices (TX and
++ * RX), maps the SDCA control space through regmap and verifies the device
++ * identity registers. No audio paths yet.
++ */
++
++#include <linux/device.h>
++#include <linux/module.h>
++#include <linux/regmap.h>
++#include <linux/soundwire/sdw.h>
++#include <linux/soundwire/sdw_registers.h>
++#include <linux/soundwire/sdw_type.h>
++
++#include "wcd9378.h"
++
++struct wcd9378_sdw_priv {
++	struct sdw_slave *sdev;
++	struct regmap *regmap;
++};
++
++static const struct regmap_config wcd9378_sdw_regmap_config = {
++	.name = "wcd9378_sdw",
++	.reg_bits = 32,
++	.val_bits = 8,
++	.cache_type = REGCACHE_NONE,
++	.max_register = WCD9378_MAX_REGISTER,
++};
++
++static void wcd9378_sdw_read_id(struct wcd9378_sdw_priv *wcd)
++{
++	struct device *dev = &wcd->sdev->dev;
++	static const struct {
++		const char *name;
++		unsigned int reg;
++	} id_regs[] = {
++		{ "DEV_MANU_ID_0", WCD9378_DEV_MANU_ID_0 },
++		{ "DEV_MANU_ID_1", WCD9378_DEV_MANU_ID_1 },
++		{ "DEV_PART_ID_0", WCD9378_DEV_PART_ID_0 },
++		{ "DEV_PART_ID_1", WCD9378_DEV_PART_ID_1 },
++		{ "DEV_VER",       WCD9378_DEV_VER },
++		{ "FUNC_EXT_ID_0", WCD9378_FUNC_EXT_ID_0 },
++		{ "FUNC_EXT_ID_1", WCD9378_FUNC_EXT_ID_1 },
++		{ "ANA_BIAS",      WCD9378_ANA_BIAS },
++		{ "ANA_TX_CH1",    WCD9378_ANA_TX_CH1 },
++		{ "ANA_MICB1",     WCD9378_ANA_MICB1 },
++		{ "SYS_USAGE_CTRL", WCD9378_SYS_USAGE_CTRL },
++	};
++	unsigned int val, packed, pval;
++	int i, ret, pret;
++
++	for (i = 0; i < ARRAY_SIZE(id_regs); i++) {
++		/* downstream WCD9378_REG() wire packing */
++		packed = ((id_regs[i].reg & 0x0ff00000) >> 8) |
++			 (id_regs[i].reg & 0xfff);
++
++		ret = regmap_read(wcd->regmap, id_regs[i].reg, &val);
++		pret = regmap_read(wcd->regmap, packed, &pval);
++		dev_info(dev, "%s: virt %#010x = %#04x (ret %d), packed %#07x = %#04x (ret %d)\n",
++			 id_regs[i].name,
++			 id_regs[i].reg, ret ? 0xdead : val, ret,
++			 packed, pret ? 0xdead : pval, pret);
++	}
++}
++
++static int wcd9378_sdw_update_status(struct sdw_slave *slave,
++				     enum sdw_slave_status status)
++{
++	struct wcd9378_sdw_priv *wcd = dev_get_drvdata(&slave->dev);
++
++	dev_info(&slave->dev, "status %d (dev_num %d)\n", status,
++		 slave->dev_num);
++
++	if (status == SDW_SLAVE_ATTACHED)
++		wcd9378_sdw_read_id(wcd);
++
++	return 0;
++}
++
++static const struct sdw_slave_ops wcd9378_sdw_ops = {
++	.update_status = wcd9378_sdw_update_status,
++};
++
++static int wcd9378_sdw_probe(struct sdw_slave *pdev,
++			     const struct sdw_device_id *id)
++{
++	struct device *dev = &pdev->dev;
++	struct wcd9378_sdw_priv *wcd;
++
++	wcd = devm_kzalloc(dev, sizeof(*wcd), GFP_KERNEL);
++	if (!wcd)
++		return -ENOMEM;
++
++	wcd->sdev = pdev;
++	dev_set_drvdata(dev, wcd);
++
++	pdev->prop.scp_int1_mask = SDW_SCP_INT1_IMPL_DEF |
++				   SDW_SCP_INT1_BUS_CLASH |
++				   SDW_SCP_INT1_PARITY;
++	pdev->prop.simple_clk_stop_capable = true;
++	/* The SDCA control space sits above the 16-bit address range */
++	pdev->prop.paging_support = true;
++
++	wcd->regmap = devm_regmap_init_sdw(pdev, &wcd9378_sdw_regmap_config);
++	if (IS_ERR(wcd->regmap))
++		return dev_err_probe(dev, PTR_ERR(wcd->regmap),
++				     "regmap init failed\n");
++
++	dev_info(dev, "wcd9378 sdw slave probed\n");
++
++	return 0;
++}
++
++static const struct sdw_device_id wcd9378_sdw_id[] = {
++	SDW_SLAVE_ENTRY(0x0217, 0x0110, 0),
++	{ },
++};
++MODULE_DEVICE_TABLE(sdw, wcd9378_sdw_id);
++
++static struct sdw_driver wcd9378_sdw_driver = {
++	.probe = wcd9378_sdw_probe,
++	.ops = &wcd9378_sdw_ops,
++	.id_table = wcd9378_sdw_id,
++	.driver = {
++		.name = "wcd9378-sdw",
++	},
++};
++module_sdw_driver(wcd9378_sdw_driver);
++
++MODULE_DESCRIPTION("WCD9378 SoundWire slave driver");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/codecs/wcd9378.h b/sound/soc/codecs/wcd9378.h
+new file mode 100644
+index 0000000..380786f
+--- /dev/null
++++ b/sound/soc/codecs/wcd9378.h
+@@ -0,0 +1,63 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) 2026, Jorijn van der Graaf
++ *
++ * Register map for the Qualcomm WCD9378 audio codec.
++ *
++ * The codec exposes its control registers in the SoundWire SDCA control
++ * address space (bit 30 set, SDCA function number in bits 25:22), accessed
++ * through the TX SoundWire slave. The analog core registers (function 0,
++ * implementation-defined region at +0x180000) are layout-compatible with
++ * the WCD937x family.
++ */
++
++#ifndef __WCD9378_H__
++#define __WCD9378_H__
++
++#include <linux/regmap.h>
++#include <sound/soc.h>
++
++/* SDCA function 0 (extension unit): device identity */
++#define WCD9378_FUNC_EXT_ID_0			0x40000048
++#define WCD9378_FUNC_EXT_ID_1			0x40000049
++#define WCD9378_FUNC_EXT_VER			0x40000050
++#define WCD9378_FUNC_STAT			0x40080000
++#define WCD9378_DEV_MANU_ID_0			0x40100060
++#define WCD9378_DEV_MANU_ID_1			0x40100061
++#define WCD9378_DEV_PART_ID_0			0x40100068
++#define WCD9378_DEV_PART_ID_1			0x40100069
++#define WCD9378_DEV_VER				0x40100070
++
++/* Analog core (WCD937x-compatible layout), function 0 + 0x180000 */
++#define WCD9378_ANA_PAGE			0x40180000
++#define WCD9378_ANA_BIAS			0x40180001
++#define WCD9378_ANA_RX_SUPPLIES			0x40180008
++#define WCD9378_ANA_TX_CH1			0x4018000e
++#define WCD9378_ANA_TX_CH2			0x4018000f
++#define WCD9378_ANA_TX_CH3			0x40180010
++#define WCD9378_ANA_MICB1			0x40180022
++#define WCD9378_ANA_MICB2			0x40180023
++#define WCD9378_ANA_MICB2_RAMP			0x40180024
++#define WCD9378_ANA_MICB3			0x40180025
++
++/* Sequencer block (SEQR) */
++#define WCD9378_SYS_USAGE_CTRL			0x40180501
++#define WCD9378_SM0_MB_SEL			0x401805b0
++#define WCD9378_SM1_MB_SEL			0x401805b1
++#define WCD9378_SM2_MB_SEL			0x401805b2
++
++/* SDCA function activation (one per function) */
++#define WCD9378_SMP_AMP_FUNC_STAT		0x40880000
++#define WCD9378_SMP_AMP_FUNC_ACT		0x40880008
++#define WCD9378_SMP_JACK_FUNC_STAT		0x40c80000
++#define WCD9378_SMP_JACK_FUNC_ACT		0x40c80008
++#define WCD9378_SMP_MIC_CTRL0_FUNC_STAT		0x41080000
++#define WCD9378_SMP_MIC_CTRL0_FUNC_ACT		0x41080008
++#define WCD9378_SMP_MIC_CTRL1_FUNC_STAT		0x41480000
++#define WCD9378_SMP_MIC_CTRL1_FUNC_ACT		0x41480008
++#define WCD9378_SMP_MIC_CTRL2_FUNC_STAT		0x41880000
++#define WCD9378_SMP_MIC_CTRL2_FUNC_ACT		0x41880008
++
++#define WCD9378_MAX_REGISTER			0x41900070
++
++#endif /* __WCD9378_H__ */
+-- 
+2.54.0 (Apple Git-157)
+

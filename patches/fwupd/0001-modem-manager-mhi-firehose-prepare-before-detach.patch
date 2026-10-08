@@ -1,0 +1,58 @@
+From bb5de7a91ea5e560b36a1af58aae140a1b378c62 Mon Sep 17 00:00:00 2001
+From: Luma <noreply@projectluma.org>
+Date: Fri, 18 Sep 2026 21:45:13 -0500
+Subject: [PATCH] modem-manager: parse the firmware before detaching MHI
+ firehose modems
+
+FuMmMhiQcdmDevice inherits FU_DEVICE_PRIVATE_FLAG_DETACH_PREPARE_FIRMWARE
+from FuMmQcdmDevice since 2.1.7, so the engine detaches before
+prepare_firmware() has loaded the firehose prog from the archive. detach()
+then calls fu_bytes_set_contents() with NULL bytes, which fails a
+g_return_val_if_fail() without setting an error, and the update ends as
+"failed to detach using modem_manager: unspecified error" before the
+modem is touched.
+
+The MHI device must copy the firehose prog into the firmware search path
+before it switches the modem into EDL, so remove the flag for this GType,
+restoring the 2.1.6 order, and fail with a real error if the prog is
+still missing.
+
+Upstream: https://github.com/fwupd/fwupd/issues/10939
+---
+ plugins/modem-manager/fu-mm-mhi-qcdm-device.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/plugins/modem-manager/fu-mm-mhi-qcdm-device.c b/plugins/modem-manager/fu-mm-mhi-qcdm-device.c
+index 6843fd24a..8aedeb7d6 100644
+--- a/plugins/modem-manager/fu-mm-mhi-qcdm-device.c
++++ b/plugins/modem-manager/fu-mm-mhi-qcdm-device.c
+@@ -42,6 +42,14 @@ fu_mm_mhi_qcdm_device_detach(FuDevice *device, FuProgress *progress, GError **er
+ 		return FALSE;
+ 	}
+ 
++	if (self->firehose_prog == NULL) {
++		g_set_error_literal(error,
++				    FWUPD_ERROR,
++				    FWUPD_ERROR_INTERNAL,
++				    "Firehose prog was not loaded from the firmware archive");
++		return FALSE;
++	}
++
+ 	/* copy the firehose prog into the search path locker */
+ 	path = fu_kernel_search_path_locker_get_path(self->search_path_locker);
+ 	fn = g_build_filename(path, "qcom", self->firehose_prog_file, NULL);
+@@ -189,6 +197,11 @@ fu_mm_mhi_qcdm_device_init(FuMmMhiQcdmDevice *self)
+ 	fu_udev_device_add_open_flag(FU_UDEV_DEVICE(self), FU_IO_CHANNEL_OPEN_FLAG_READ);
+ 	fu_udev_device_add_open_flag(FU_UDEV_DEVICE(self), FU_IO_CHANNEL_OPEN_FLAG_WRITE);
+ 	fu_device_add_protocol(FU_UDEV_DEVICE(self), "com.qualcomm.firehose");
++	/* the firehose prog comes from the archive and must be copied into the
++	 * firmware search path *before* the detach into EDL, so unlike the USB
++	 * QCDM parent this device has to parse the firmware before detaching */
++	fu_device_remove_private_flag(FU_DEVICE(self),
++				      FU_DEVICE_PRIVATE_FLAG_DETACH_PREPARE_FIRMWARE);
+ }
+ 
+ static void
+-- 
+2.54.0 (Apple Git-157)
+

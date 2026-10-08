@@ -1,0 +1,34 @@
+From b767dad3aef906196558c0036bad67691ff6130b Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:41:45 +0000
+Subject: [PATCH] Filer: use LumaUI play icon on video tile
+
+---
+ src/nautilus-grid-cell.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index 584b836..2f019af 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -6,6 +6,8 @@
+ 
+ #include "nautilus-grid-cell.h"
+ 
++#include <luma-ui.h>
++
+ #include "nautilus-file.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-icon-info.h"
+@@ -600,7 +602,7 @@ nautilus_grid_cell_init (NautilusGridCell *self)
+     gtk_image_set_pixel_size (GTK_IMAGE (self->document_app_icon), 26);
+     gtk_widget_set_visible (self->document_app_icon, FALSE);
+     gtk_widget_set_parent (self->document_app_icon, GTK_WIDGET (self));
+-    self->play_badge = gtk_image_new_from_icon_name ("media-playback-start-symbolic");
++    self->play_badge = luma_ui_icon_new ("play");
+     gtk_image_set_pixel_size (GTK_IMAGE (self->play_badge), 14);
+     gtk_widget_add_css_class (self->play_badge, "filer-grid-play");
+     gtk_widget_set_visible (self->play_badge, FALSE);
+-- 
+2.55.0
+

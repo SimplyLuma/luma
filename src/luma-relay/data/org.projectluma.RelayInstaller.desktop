@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Relay Application Installer
+Comment=Inspect and open a Windows application
+Exec=luma-relay-installer %f
+Icon=org.projectluma.Relay
+Terminal=false
+Type=Application
+NoDisplay=true
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/vnd.microsoft.portable-executable;
+Categories=System;
+StartupNotify=true

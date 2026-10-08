@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hardware-free C1 manifest projection. The physical sensor HAL is deliberately
+  omitted because C1 exposes no sensor devices. This replaces only the stock
+  one-HAL fragment inside the temporary container mount namespace.
+-->
+<manifest version="1.0" type="device" />

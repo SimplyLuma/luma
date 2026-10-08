@@ -1,0 +1,187 @@
+From 58ec8f0f918882a3c6b3e414fa98a8f37a46f406 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Wed, 12 Aug 2026 23:42:00 -0500
+Subject: [PATCH] luma: route application package drops to installer
+
+Keep applications:/// a read-only virtual registry while accepting one narrow
+operation: a single local application package dropped on its background.
+Advertise a copy action only for that exact input and hand its URI to the
+generic Luma ApplicationInstaller D-Bus interface. Filer never opens package
+contents, copies package bytes, invokes a compatibility runtime, or gains
+package-management privilege.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+---
+ src/nautilus-dnd.c       | 81 +++++++++++++++++++++++++++++++++++++++++++++
+ src/nautilus-list-base.c | 53 ++++++++++++++++++++++++++++++
+ 2 files changed, 129 insertions(+)
+
+diff --git a/src/nautilus-dnd.c b/src/nautilus-dnd.c
+index 91066de..e153c04 100644
+--- a/src/nautilus-dnd.c
++++ b/src/nautilus-dnd.c
+@@ -229,6 +229,81 @@ nautilus_dnd_get_preferred_action (NautilusFile *target_file,
+     return GDK_ACTION_COPY;
+ }
+ 
++static gboolean
++request_application_install (const GValue *value)
++{
++    GApplication *application = g_application_get_default ();
++    GDBusConnection *connection;
++    GSList *files;
++    GFile *file;
++    g_autofree char *uri = NULL;
++    g_autofree char *path = NULL;
++    g_autofree char *lower_path = NULL;
++
++    if (!G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
++    {
++        return FALSE;
++    }
++
++    files = g_value_get_boxed (value);
++    if (files == NULL || files->next != NULL)
++    {
++        return FALSE;
++    }
++
++    file = G_FILE (files->data);
++    if (!g_file_is_native (file))
++    {
++        return FALSE;
++    }
++
++    path = g_file_get_path (file);
++    if (path == NULL)
++    {
++        return FALSE;
++    }
++
++    lower_path = g_ascii_strdown (path, -1);
++    if (!(g_str_has_suffix (lower_path, ".apk") ||
++          g_str_has_suffix (lower_path, ".apks") ||
++          g_str_has_suffix (lower_path, ".xapk") ||
++          g_str_has_suffix (lower_path, ".apkm") ||
++          g_str_has_suffix (lower_path, ".exe") ||
++          g_str_has_suffix (lower_path, ".msi") ||
++          g_str_has_suffix (lower_path, ".rpm") ||
++          g_str_has_suffix (lower_path, ".deb") ||
++          g_str_has_suffix (lower_path, ".appimage") ||
++          g_str_has_suffix (lower_path, ".flatpak") ||
++          g_str_has_suffix (lower_path, ".flatpakref") ||
++          g_str_has_suffix (lower_path, ".flatpakrepo") ||
++          g_str_has_suffix (lower_path, ".snap")))
++    {
++        return FALSE;
++    }
++
++    connection = g_application_get_dbus_connection (application);
++    if (connection == NULL)
++    {
++        g_warning ("Application installer is unavailable: no session bus");
++        return FALSE;
++    }
++
++    uri = g_file_get_uri (file);
++    g_dbus_connection_call (connection,
++                            "org.projectluma.ApplicationInstaller2",
++                            "/org/projectluma/ApplicationInstaller2",
++                            "org.projectluma.ApplicationInstaller2",
++                            "RequestInstall",
++                            g_variant_new ("(s)", uri),
++                            NULL,
++                            G_DBUS_CALL_FLAGS_NONE,
++                            -1,
++                            NULL,
++                            NULL,
++                            NULL);
++    return TRUE;
++}
++
+ gboolean
+ nautilus_dnd_perform_drop (NautilusFilesView *view,
+                            const GValue      *value,
+@@ -237,6 +312,11 @@ nautilus_dnd_perform_drop (NautilusFilesView *view,
+ {
+     g_autofree gchar *target_uri = g_file_get_uri (target_location);
+ 
++    if (g_str_equal (target_uri, "applications:///") && request_application_install (value))
++    {
++        return TRUE;
++    }
++
+     if (!gdk_drag_action_is_unique (action))
+     {
+         /* TODO: Implement */
+diff --git a/src/nautilus-list-base.c b/src/nautilus-list-base.c
+index c4a4b5d..78be063 100644
+--- a/src/nautilus-list-base.c
++++ b/src/nautilus-list-base.c
+@@ -704,12 +704,64 @@ on_item_drag_hover_motion (GtkDropControllerMotion *controller,
+     }
+ }
+ 
++static gboolean
++is_single_local_application_package (const GValue *value)
++{
++    GSList *files;
++    GFile *file;
++    g_autofree char *path = NULL;
++    g_autofree char *lower_path = NULL;
++
++    if (value == NULL || !G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
++    {
++        return FALSE;
++    }
++
++    files = g_value_get_boxed (value);
++    if (files == NULL || files->next != NULL)
++    {
++        return FALSE;
++    }
++
++    file = G_FILE (files->data);
++    if (!g_file_is_native (file))
++    {
++        return FALSE;
++    }
++
++    path = g_file_get_path (file);
++    if (path == NULL)
++    {
++        return FALSE;
++    }
++
++    lower_path = g_ascii_strdown (path, -1);
++    return g_str_has_suffix (lower_path, ".apk") ||
++           g_str_has_suffix (lower_path, ".apks") ||
++           g_str_has_suffix (lower_path, ".xapk") ||
++           g_str_has_suffix (lower_path, ".apkm") ||
++           g_str_has_suffix (lower_path, ".exe") ||
++           g_str_has_suffix (lower_path, ".msi") ||
++           g_str_has_suffix (lower_path, ".rpm") ||
++           g_str_has_suffix (lower_path, ".deb") ||
++           g_str_has_suffix (lower_path, ".appimage") ||
++           g_str_has_suffix (lower_path, ".flatpak") ||
++           g_str_has_suffix (lower_path, ".flatpakref") ||
++           g_str_has_suffix (lower_path, ".flatpakrepo") ||
++           g_str_has_suffix (lower_path, ".snap");
++}
++
+ static GdkDragAction
+ get_preferred_action (NautilusFile *target_file,
+                       const GValue *value)
+ {
+     GdkDragAction action = 0;
+ 
++    if (nautilus_file_is_in_applications (target_file) && is_single_local_application_package (value))
++    {
++        return GDK_ACTION_COPY;
++    }
++
+     if (value == NULL)
+     {
+         action = nautilus_dnd_get_preferred_action (target_file, NULL);
+-- 
+2.51.0

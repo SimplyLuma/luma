@@ -1,0 +1,38 @@
+--- a/ibus.spec
++++ b/ibus.spec
+@@ -58,7 +58,7 @@
+ Name:           ibus
+ Version:        1.5.34
+ # https://github.com/fedora-infra/rpmautospec/issues/101
+-Release:        4%{?dist}
++Release:        4.luma.2%{?dist}
+ Summary:        Intelligent Input Bus for Linux OS
+ License:        LGPL-2.1-or-later
+ URL:            https://github.com/ibus/%name/wiki
+@@ -70,6 +70,8 @@
+ Patch0:         %{name}-HEAD.patch
+ # Under testing #1349148 #1385349 #1350291 #1406699 #1432252 #1601577
+ Patch1:         %{name}-1385349-segv-bus-proxy.patch
++# Project Luma: the symbol picker finds accented letters by name ("e acute").
++Patch1001:      0001-luma-emojier-letter-names.patch
+ 
+ # autoreconf requires autopoint but not po.m4
+ BuildRequires:  gettext-devel
+@@ -418,6 +420,17 @@
+     DISABLE_GUI_TESTS="ibus-compose ibus-keypress test-stress xkb-latin-layouts" \
+     VERBOSE=1 \
+     %{nil}
++# Project Luma: the symbol picker finds accented letters by name. The key
++# function is taken from emojier.vala itself; the dictionary is this build's.
++sed -n '/^\/\/ Luma: begin unicode-letter-keys$/,/^\/\/ Luma: end unicode-letter-keys$/p' \
++    ui/gtk3/emojier.vala > luma-letter-keys.vala
++grep -q 'public static string\[\] for_name' luma-letter-keys.vala || {
++    echo 'Luma letter keys not found in ui/gtk3/emojier.vala' >&2; exit 1; }
++valac --pkg ibus-1.0 --pkg gio-2.0 --vapidir bindings/vala \
++    -X -I. -X -Isrc -X -Lsrc/.libs -X -libus-1.0 \
++    luma-letter-keys.vala ui/gtk3/test-unicode-letter-keys.vala \
++    -o luma-letter-keys-test
++LD_LIBRARY_PATH=src/.libs ./luma-letter-keys-test src/dicts/unicode-names.dict
+ 
+ %post xinit
+ %{_sbindir}/alternatives --install %{_sysconfdir}/X11/xinit/xinputrc xinputrc %{_xinputconf} 83 || :

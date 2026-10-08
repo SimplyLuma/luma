@@ -1,0 +1,5 @@
+# Shared Project Luma Mod lifecycle package.
+#
+# One architecture-independent build is composed into desktop and handheld.
+
+luma-mods

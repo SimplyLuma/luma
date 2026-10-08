@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Charlie's background agent declaration for luma-background (ADR-033).
+# Installed as /usr/share/luma/background/org.projectluma.Charlie.toml; keep the
+# [background] table identical to luma-app.toml's.
+
+[application]
+id = "org.projectluma.Charlie"
+name = "Charlie"
+
+[background]
+agent = "org.projectluma.Charlie.Agent"
+exec = "org.projectluma.Charlie --agent"
+category = "mail"
+wake = ["login", "network", "resume", "schedule"]
+publishes = ["unread-count", "unread-by-account", "live-extension:org.projectluma.Charlie.Unread"]

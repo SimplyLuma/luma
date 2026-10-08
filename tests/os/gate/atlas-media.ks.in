@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Unattended install from Atlas installer media, for verifying staff media in
+# a VM. The payload, trust, remote, origin and channel handling are Atlas's
+# own: this file only answers the questions a person answers in Atlas (disk,
+# account) and includes the media's installer kickstart, which chooses the
+# carried payload, pulls it with GPG verification against the Luma OS Release
+# key, and writes the HTTPS remote, key, origin and channel.
+#
+# GATE-ONLY lines let the host reach the disposable VM; they are never part of
+# installer media.
+
+text
+lang en_US.UTF-8
+keyboard us
+timezone UTC --utc
+# No --hostname: the medium's own default name (luma, ADR-040) is what the
+# identity check verifies.
+network --bootproto=dhcp --device=link --activate
+zerombr
+clearpart --all --initlabel --disklabel=gpt
+autopart --type=btrfs --noswap
+bootloader --timeout=3 --append="rhgb quiet"
+@ACCOUNT@
+rootpw --lock
+# GATE-ONLY: root over SSH with a per-run key.
+sshkey --username=root "@SSH_PUBLIC_KEY@"
+services --enabled=sshd
+poweroff
+
+%include /usr/share/anaconda/interactive-defaults.ks

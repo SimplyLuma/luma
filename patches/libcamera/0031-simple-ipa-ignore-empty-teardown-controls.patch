@@ -1,0 +1,50 @@
+From c4d2b6aa965b0129c5ed0ef7e4d50346be81b7e2 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 18 Aug 2026 19:40:00 -0500
+Subject: [PATCH] ipa: simple: Ignore empty controls during teardown
+
+A stopping software-ISP pipeline can deliver a final statistics message whose
+control list still contains the exposure and analogue-gain IDs, but whose
+ControlValue objects have already been cleared to ControlTypeNone.  Checking
+only ControlList::contains() therefore still lets ControlValue::get<int32_t>()
+abort the camera client.
+
+Require both values to retain their expected integer type before reading them.
+As with a missing-control teardown message, an empty or mistyped message cannot
+produce valid metadata or a safe subsequent sensor request and must be dropped.
+
+Signed-off-by: Project Luma <maintainers@projectluma.org>
+---
+ src/ipa/simple/soft_simple.cpp | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index c184f5d0..51efddc3 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -329,11 +329,21 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 		return;
+ 	}
+ 
++	const ControlValue &exposureControl =
++		sensorControls.get(V4L2_CID_EXPOSURE);
++	const ControlValue &gainControl =
++		sensorControls.get(V4L2_CID_ANALOGUE_GAIN);
++	if (exposureControl.type() != ControlTypeInteger32 ||
++	    gainControl.type() != ControlTypeInteger32) {
++		LOG(IPASoft, Debug) << "Ignoring empty controls during stop";
++		return;
++	}
++
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+ 	frameContext.sensor.exposure =
+-		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++		exposureControl.get<int32_t>();
++	int32_t again = gainControl.get<int32_t>();
+ 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
+ 
+ 	ControlList metadata(controls::controls);
+-- 
+2.51.0

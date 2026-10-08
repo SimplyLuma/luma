@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: a refused power action says so
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Power off, Restart and Sleep swallowed a refusal from the session manager
+(policy, an inhibitor, failed authorization): the request did nothing and
+said nothing. Log it as before and show a short notice, "Couldn’t restart",
+"The system did not allow it." A cancelled request stays silent.
+
+diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
+index 2fc5034..acfa2a1 100644
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -480,6 +480,17 @@ const SystemActions = GObject.registerClass({
+         });
+     }
+ 
++    // A power request the system refuses (policy, an inhibitor, a failed
++    // authorization) used to leave nothing on screen. Say so, briefly.
++    _refused(title) {
++        return error => {
++            if (error?.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                return;
++            logErrorUnlessCancelled(error);
++            Main.notifyError(title, _('The system did not allow it.'));
++        };
++    }
++
+     activateLogout() {
+         if (!this._actions.get(LOGOUT_ACTION_ID).available)
+             throw new Error('The logout action is not available!');
+@@ -492,21 +503,21 @@ const SystemActions = GObject.registerClass({
+         if (!this._actions.get(POWER_OFF_ACTION_ID).available)
+             throw new Error('The power-off action is not available!');
+ 
+-        this._session.ShutdownAsync(0).catch(logErrorUnlessCancelled);
++        this._session.ShutdownAsync(0).catch(this._refused(_('Couldn’t power off')));
+     }
+ 
+     activateRestart() {
+         if (!this._actions.get(RESTART_ACTION_ID).available)
+             throw new Error('The restart action is not available!');
+ 
+-        this._session.RebootAsync().catch(logErrorUnlessCancelled);
++        this._session.RebootAsync().catch(this._refused(_('Couldn’t restart')));
+     }
+ 
+     activateSuspend() {
+         if (!this._actions.get(SUSPEND_ACTION_ID).available)
+             throw new Error('The suspend action is not available!');
+ 
+-        this._session.SuspendAsync().catch(logErrorUnlessCancelled);
++        this._session.SuspendAsync().catch(this._refused(_('Couldn’t sleep')));
+     }
+ 
+     activateScreenshotUI() {

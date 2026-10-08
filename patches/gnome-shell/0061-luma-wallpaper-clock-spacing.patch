@@ -1,0 +1,29 @@
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -877,7 +877,10 @@
+         this._statusSeam.y_expand = !vertical;
+         this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);
+         this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+-        this._statusClockBox.set_style(`padding: ${vertical ? '0' : '0 3.5px'}; spacing: ${Math.max(0, Math.min(3, DASH_TILE_SIZE - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
++        // Use the shared inset rhythm instead of collapsing the gap when
++        // the configured font sizes consume the tile's nominal height.
++        const clockGap = Math.max(3, Math.round(padding / 3));
++        this._statusClockBox.set_style(`padding: 0; spacing: ${clockGap}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
+             [this._statusDateLabel, s.get_int('status-date-size')]]) {
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -125,8 +125,8 @@
+             y_expand: true,
+             x_align: Clutter.ActorAlign.FILL,
+             y_align: Clutter.ActorAlign.FILL,
+-            scale_x: 1.08,
+-            scale_y: 1.08,
++            scale_x: 1,
++            scale_y: 1,
+         });
+         this._wallpaper.set_pivot_point(0.5, 0.5);
+         this._wallpaper.add_effect_with_name('luma-login-blur',

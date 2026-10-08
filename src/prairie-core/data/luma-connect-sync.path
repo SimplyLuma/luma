@@ -1,0 +1,23 @@
+[Unit]
+Description=Sync to the Luma Hub when Notes, Contacts, Photos, Clocks, Weather or Books change
+
+[Path]
+# Directories, so SQLite journal and WAL writes count. PathModified, not
+# PathChanged: SQLite keeps the WAL open, so a close-after-write never comes.
+PathModified=%h/.local/share/evolution/addressbook/system
+PathModified=%h/.local/share/luma/notes
+PathModified=%h/.local/share/prairie/weather
+PathModified=%h/.local/share/prairie/clock
+PathModified=%h/.local/share/leaf
+# The same apps installed as Flatpaks keep their data in their sandbox's data
+# directory.
+PathModified=%h/.var/app/org.projectluma.Notes/data/luma/notes
+PathModified=%h/.var/app/org.projectluma.Weather/data/prairie/weather
+PathModified=%h/.var/app/org.projectluma.Clock/data/prairie/clock
+PathModified=%h/.var/app/org.projectluma.Leaf/data/leaf
+# The top of the library; photos filed deeper are picked up by the timer.
+PathModified=%h/Pictures
+Unit=luma-connect-sync.service
+
+[Install]
+WantedBy=default.target

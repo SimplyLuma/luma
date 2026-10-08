@@ -1,0 +1,22 @@
+[Unit]
+Description=Project Luma FP6 safe modem shutdown ordering
+After=rmtfs.service tqftpserv.service ModemManager.service
+Wants=rmtfs.service tqftpserv.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+ExecStop=/usr/libexec/luma-fp6-modem-quiesce
+RemainAfterExit=yes
+TimeoutStopSec=20
+TimeoutStopFailureMode=terminate
+SendSIGKILL=no
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

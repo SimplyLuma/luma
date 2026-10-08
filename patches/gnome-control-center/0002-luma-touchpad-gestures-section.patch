@@ -1,0 +1,34 @@
+--- a/panels/mouse/cc-mouse-panel.blp
++++ b/panels/mouse/cc-mouse-panel.blp
+@@ -269,6 +269,31 @@
+               }
+             }
+ 
++            Adw.PreferencesGroup {
++              title: _("Gestures");
++              sensitive: bind touchpad_toggle_row.active;
++
++              Adw.ActionRow {
++                title: _("Swipe Up with Three Fingers");
++                subtitle: _("Open Activities; swipe up again to open Applications");
++
++                [prefix]
++                Image {
++                  icon-name: "view-grid-symbolic";
++                }
++              }
++
++              Adw.ActionRow {
++                title: _("Swipe Left or Right with Three Fingers");
++                subtitle: _("Switch between workspaces");
++
++                [prefix]
++                Image {
++                  icon-name: "go-next-symbolic";
++                }
++              }
++            }
++
+             Adw.PreferencesGroup {
+               Adw.ButtonRow {
+                 title: _("Test _Settings");

@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+@import url("luma-appkit.css");
+@import url("luma-appkit-high-contrast-tokens.css");
+
+/* LumaUI: high contrast gives the pills an edge instead of a tint. */
+label.lumaui-count, label.lumaui-category { box-shadow: inset 0 0 0 1px @luma_ink; }
+
+/* LumaUI: Content-lit header. High contrast draws neither the light nor the wash. */
+.lumaui-lit-header .lumaui-lit-picture { opacity: 0; }
+box.lumaui-lit-wash { background-image: none; }

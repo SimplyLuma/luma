@@ -1,0 +1,326 @@
+From ed35a7be741d4457fe989f5803e81abba902410e Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:43:03 +0000
+Subject: [PATCH] Settings: validate display geometry and scoped keep-or-revert
+ drafts
+
+---
+ shell/cc-luma-displays.c  | 168 ++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-displays.h  |  17 ++++
+ shell/meson.build         |   5 +-
+ shell/test-luma-fixture.c |  56 +++++++++++++
+ 4 files changed, 244 insertions(+), 2 deletions(-)
+ create mode 100644 shell/cc-luma-displays.c
+ create mode 100644 shell/cc-luma-displays.h
+
+diff --git a/shell/cc-luma-displays.c b/shell/cc-luma-displays.c
+new file mode 100644
+index 0000000..8571c83
+--- /dev/null
++++ b/shell/cc-luma-displays.c
+@@ -0,0 +1,168 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-displays.h"
++#include <gio/gio.h>
++#include <math.h>
++#include <stdio.h>
++#include <string.h>
++
++static gboolean invalid (GError **error)
++{
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid display configuration"); return FALSE;
++}
++static gboolean string_in (JsonNode *node, const char * const *values)
++{
++  if (!node || json_node_get_value_type (node) != G_TYPE_STRING) return FALSE;
++  for (guint i = 0; values[i]; i++) if (g_str_equal (values[i], json_node_get_string (node))) return TRUE;
++  return FALSE;
++}
++static gboolean resolution (const char *text, double *width, double *height)
++{
++  g_auto (GStrv) parts = g_strsplit (text, " × ", -1);
++  if (g_strv_length (parts) != 2) return FALSE;
++  char *a, *b;
++  guint64 w = g_ascii_strtoull (parts[0], &a, 10), h = g_ascii_strtoull (parts[1], &b, 10);
++  if (!w || !h || *a || *b || w > G_MAXINT || h > G_MAXINT) return FALSE;
++  *width = w; *height = h; return TRUE;
++}
++static gboolean catalog_has (JsonObject *catalog, const char *key, JsonNode *value)
++{
++  JsonNode *node = json_object_get_member (catalog, key);
++  if (!node || !JSON_NODE_HOLDS_ARRAY (node) || !value || json_node_get_value_type (value) != G_TYPE_STRING) return FALSE;
++  JsonArray *values = json_node_get_array (node);
++  gboolean found = FALSE;
++  for (guint i = 0; i < json_array_get_length (values); i++) {
++    JsonNode *item = json_array_get_element (values, i);
++    if (json_node_get_value_type (item) != G_TYPE_STRING || !*json_node_get_string (item)) return FALSE;
++    if (g_str_equal (key, "res")) {
++      double w, h; if (!resolution (json_node_get_string (item), &w, &h)) return FALSE;
++    }
++    if (g_str_equal (json_node_get_string (item), json_node_get_string (value))) found = TRUE;
++  }
++  return found;
++}
++gboolean cc_luma_displays_validate (CcLumaFixture *model)
++{
++  const char *join[] = { "join", "mirror", NULL }, *ids[] = { "int", "ext", NULL };
++  const char *scales[] = { "100", "125", "150", "175", "200", NULL };
++  const char *rotations[] = { "Landscape", "Portrait right", "Portrait left", "Landscape, flipped", NULL };
++  const char *sides[] = { "top", "left", "right", NULL };
++  const char *internal_profiles[] = { "Built-in, factory calibrated", "sRGB", NULL };
++  const char *external_profiles[] = { "Dell U2723QE", "sRGB", "Display P3", NULL };
++  JsonNode *catalog_node = json_object_get_member (cc_luma_fixture_get_data (model), "CFDISP");
++  if (!catalog_node || !JSON_NODE_HOLDS_OBJECT (catalog_node) ||
++      !string_in (cc_luma_fixture_get (model, "join"), join) ||
++      !string_in (cc_luma_fixture_get (model, "dsel"), ids) ||
++      !string_in (cc_luma_fixture_get (model, "arr.side"), sides)) return FALSE;
++  JsonNode *offset = cc_luma_fixture_get (model, "arr.off");
++  if (!offset || json_node_get_value_type (offset) != G_TYPE_DOUBLE || !isfinite (json_node_get_double (offset)) || json_node_get_double (offset) < 0 || json_node_get_double (offset) > 1) return FALSE;
++  JsonObject *catalog = json_node_get_object (catalog_node);
++  guint primary = 0;
++  for (guint i = 0; ids[i]; i++) {
++    JsonNode *entry = json_object_get_member (catalog, ids[i]);
++    if (!entry || !JSON_NODE_HOLDS_OBJECT (entry)) return FALSE;
++    const char *fields[] = { "res", "hz", "scale", "rot", "prof", "primary", NULL };
++    for (guint j = 0; fields[j]; j++) {
++      g_autofree char *key = g_strdup_printf ("d.%s.%s", ids[i], fields[j]);
++      JsonNode *value = cc_luma_fixture_get (model, key);
++      if (j < 2 && !catalog_has (json_node_get_object (entry), fields[j], value)) return FALSE;
++      if (j == 2 && !string_in (value, scales)) return FALSE;
++      if (j == 3 && !string_in (value, rotations)) return FALSE;
++      if (j == 4 && !string_in (value, i ? external_profiles : internal_profiles)) return FALSE;
++      if (j == 5) { if (!value || json_node_get_value_type (value) != G_TYPE_BOOLEAN) return FALSE; primary += json_node_get_boolean (value); }
++    }
++    if (!i) {
++      JsonNode *value = cc_luma_fixture_get (model, "d.int.bright");
++      if (!value || json_node_get_value_type (value) != G_TYPE_INT64 || json_node_get_int (value) < 5 || json_node_get_int (value) > 100) return FALSE;
++    } else {
++      JsonNode *value = cc_luma_fixture_get (model, "d.ext.hdr");
++      if (!value || json_node_get_value_type (value) != G_TYPE_BOOLEAN) return FALSE;
++    }
++  }
++  return primary == 1;
++}
++static void dimensions (CcLumaFixture *model, const char *id, double *width, double *height)
++{
++  g_autofree char *res = g_strdup_printf ("d.%s.res", id), *scale = g_strdup_printf ("d.%s.scale", id), *rot = g_strdup_printf ("d.%s.rot", id);
++  double w = 0, h = 0; resolution (json_node_get_string (cc_luma_fixture_get (model, res)), &w, &h);
++  double factor = g_ascii_strtod (json_node_get_string (cc_luma_fixture_get (model, scale)), NULL) / 100;
++  gboolean portrait = g_str_has_prefix (json_node_get_string (cc_luma_fixture_get (model, rot)), "Portrait");
++  *width = (portrait ? h : w) / factor; *height = (portrait ? w : h) / factor;
++}
++gboolean cc_luma_displays_rects (CcLumaFixture *model, CcLumaPreviewRect rects[2], GError **error)
++{
++  if (!cc_luma_displays_validate (model)) return invalid (error);
++  if (g_str_equal (json_node_get_string (cc_luma_fixture_get (model, "join")), "mirror")) {
++    rects[0] = rects[1] = (CcLumaPreviewRect) { 185, 53, 190, 110 }; return TRUE;
++  }
++  double iw, ih, ew, eh, ex, ey;
++  dimensions (model, "int", &iw, &ih); dimensions (model, "ext", &ew, &eh);
++  if (iw <= 0 || ih <= 0 || ew <= 0 || eh <= 0) return invalid (error);
++  const char *side = json_node_get_string (cc_luma_fixture_get (model, "arr.side"));
++  double off = json_node_get_double (cc_luma_fixture_get (model, "arr.off"));
++  if (g_str_equal (side, "top")) { ex = (iw - ew) * off; ey = -eh; }
++  else { ex = g_str_equal (side, "left") ? -ew : iw; ey = (ih - eh) * off; }
++  double x0 = MIN (0, ex), y0 = MIN (0, ey);
++  double w = MAX (iw, ex + ew) - x0, h = MAX (ih, ey + eh) - y0;
++  double k = MIN (520 / w, 190 / h), ox = (560 - w * k) / 2, oy = (216 - h * k) / 2;
++  rects[0] = (CcLumaPreviewRect) { ox - x0 * k, oy - y0 * k, iw * k - 4, ih * k - 4 };
++  rects[1] = (CcLumaPreviewRect) { ox + (ex - x0) * k, oy + (ey - y0) * k, ew * k - 4, eh * k - 4 };
++  return TRUE;
++}
++struct _CcLumaDisplayDraft { CcLumaFixture *model; GHashTable *original; guint remaining; };
++CcLumaDisplayDraft *cc_luma_display_draft_new (CcLumaFixture *model)
++{
++  CcLumaDisplayDraft *draft = g_new0 (CcLumaDisplayDraft, 1);
++  draft->model = g_object_ref (model);
++  draft->original = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) json_node_unref);
++  return draft;
++}
++gboolean cc_luma_display_draft_set (CcLumaDisplayDraft *draft, const char *key, JsonNode *value, GError **error)
++{
++  if (!cc_luma_displays_validate (draft->model) || !key || !value ||
++      !(g_str_equal (key, "join") || g_str_equal (key, "arr.side") || g_str_equal (key, "arr.off") || g_str_has_prefix (key, "d.int.") || g_str_has_prefix (key, "d.ext."))) return invalid (error);
++  JsonNode *current = cc_luma_fixture_get (draft->model, key);
++  if (!current || json_node_get_value_type (current) != json_node_get_value_type (value)) return invalid (error);
++  if (g_str_has_prefix (key, "d.")) {
++    const char *field = key + 6;
++    const char *allowed[] = { "res", "hz", "scale", "rot", "prof", "primary", "bright", "hdr", NULL };
++    gboolean known = FALSE;
++    for (guint i = 0; allowed[i]; i++) if (g_str_equal (field, allowed[i])) known = TRUE;
++    if (!known) return invalid (error);
++  }
++  g_autoptr (JsonNode) old = json_node_copy (current);
++  gboolean main = g_str_has_suffix (key, ".primary");
++  const char *other = g_str_has_prefix (key, "d.int.") ? "d.ext.primary" : "d.int.primary";
++  if (main && !json_node_get_boolean (value)) return invalid (error);
++  g_autoptr (JsonNode) other_old = main ? json_node_copy (cc_luma_fixture_get (draft->model, other)) : NULL;
++  cc_luma_fixture_set (draft->model, key, value, NULL);
++  if (main) { g_autoptr (JsonNode) off = json_node_init_boolean (json_node_alloc (), FALSE); cc_luma_fixture_set (draft->model, other, off, NULL); }
++  if (!cc_luma_displays_validate (draft->model)) {
++    cc_luma_fixture_set (draft->model, key, old, NULL);
++    if (main) cc_luma_fixture_set (draft->model, other, other_old, NULL);
++    return invalid (error);
++  }
++  /* Capture original values after validation but before accepting the edit. */
++  if (!g_hash_table_contains (draft->original, key)) g_hash_table_insert (draft->original, g_strdup (key), json_node_copy (old));
++  if (main && !g_hash_table_contains (draft->original, other)) g_hash_table_insert (draft->original, g_strdup (other), json_node_copy (other_old));
++  draft->remaining = 15; return TRUE;
++}
++guint cc_luma_display_draft_remaining (CcLumaDisplayDraft *draft) { return draft->remaining; }
++gboolean cc_luma_display_draft_revert (CcLumaDisplayDraft *draft, GError **error)
++{
++  GHashTableIter iter; gpointer key, value;
++  g_hash_table_iter_init (&iter, draft->original);
++  while (g_hash_table_iter_next (&iter, &key, &value)) {
++    JsonNode *current = cc_luma_fixture_get (draft->model, key);
++    if (!current || json_node_get_value_type (current) != json_node_get_value_type (value)) return invalid (error);
++  }
++  g_hash_table_iter_init (&iter, draft->original);
++  while (g_hash_table_iter_next (&iter, &key, &value)) cc_luma_fixture_set (draft->model, key, value, NULL);
++  cc_luma_display_draft_keep (draft); return TRUE;
++}
++gboolean cc_luma_display_draft_tick (CcLumaDisplayDraft *draft, GError **error)
++{
++  if (draft->remaining && --draft->remaining == 0) return cc_luma_display_draft_revert (draft, error);
++  return TRUE;
++}
++void cc_luma_display_draft_keep (CcLumaDisplayDraft *draft) { draft->remaining = 0; g_hash_table_remove_all (draft->original); }
++void cc_luma_display_draft_free (CcLumaDisplayDraft *draft) { if (!draft) return; g_object_unref (draft->model); g_hash_table_unref (draft->original); g_free (draft); }
+diff --git a/shell/cc-luma-displays.h b/shell/cc-luma-displays.h
+new file mode 100644
+index 0000000..16db415
+--- /dev/null
++++ b/shell/cc-luma-displays.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include "cc-luma-desktop.h"
++G_BEGIN_DECLS
++gboolean cc_luma_displays_validate (CcLumaFixture *model);
++gboolean cc_luma_displays_rects (CcLumaFixture *model, CcLumaPreviewRect rects[2], GError **error);
++typedef struct _CcLumaDisplayDraft CcLumaDisplayDraft;
++/* A draft captures display fields before the first edit. Subsequent edits
++ * restart the 15-second deadline; accept or revert consumes the snapshot. */
++CcLumaDisplayDraft *cc_luma_display_draft_new (CcLumaFixture *model);
++gboolean cc_luma_display_draft_set (CcLumaDisplayDraft *draft, const char *key, JsonNode *value, GError **error);
++guint cc_luma_display_draft_remaining (CcLumaDisplayDraft *draft);
++gboolean cc_luma_display_draft_tick (CcLumaDisplayDraft *draft, GError **error);
++gboolean cc_luma_display_draft_revert (CcLumaDisplayDraft *draft, GError **error);
++void cc_luma_display_draft_keep (CcLumaDisplayDraft *draft);
++void cc_luma_display_draft_free (CcLumaDisplayDraft *draft);
++G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index 2ae6801..b44facc 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -68,6 +68,7 @@ common_sources = files(
+   'cc-luma-bluetooth.c',
+   'cc-luma-desktop.c',
+   'cc-luma-discovery.c',
++  'cc-luma-displays.c',
+   'cc-luma-view.c',
+   'cc-luma-view-image.c',
+   'cc-luma-view-bluetooth.c',
+@@ -202,7 +203,7 @@ install_data (
+ # The fixture model has no GTK or system-service dependency.
+ fixture_test = executable(
+   'test-luma-fixture',
+-  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c'],
++  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c'],
+   dependencies: [json_glib_dep, gio_dep],
+ )
+ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+@@ -211,7 +212,7 @@ subdir('test-fixture-schemas')
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index aaabc7f..03a6359 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -3,6 +3,7 @@
+ #include "cc-luma-bluetooth.h"
+ #include "cc-luma-desktop.h"
+ #include "cc-luma-discovery.h"
++#include "cc-luma-displays.h"
+ #include <gio/gio.h>
+ 
+ static const char fixture[] = "{\"version\":1,\"settings\":{\"wifi\":true,\"d\":{\"ext\":{\"scale\":\"150\"}},\"vol\":62},\"data\":{\"CFAPPS\":[\"tide\"]},\"pages\":[{\"id\":\"wifi\"}]}";
+@@ -318,6 +319,60 @@ static void discovery_model (void)
+   g_assert_false (cc_luma_search_set_app (model, "filer", TRUE, NULL));
+   g_assert_false (json_array_get_boolean_element (json_array_get_array_element (initial, 0), 1));
+ }
++static void display_model (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_true (cc_luma_displays_validate (model));
++  CcLumaDisplayDraft *draft = cc_luma_display_draft_new (model);
++  const char *sides[] = { "top", "left", "right" }, *rotations[] = { "Landscape", "Portrait right", "Portrait left", "Landscape, flipped" }, *scales[] = { "100", "125", "150", "175", "200" };
++  for (guint i = 0; i < G_N_ELEMENTS (sides); i++)
++    for (guint j = 0; j < G_N_ELEMENTS (rotations); j++)
++      for (guint k = 0; k < G_N_ELEMENTS (scales); k++) {
++        g_autoptr (JsonNode) side = json_node_init_string (json_node_alloc (), sides[i]);
++        g_autoptr (JsonNode) rotation = json_node_init_string (json_node_alloc (), rotations[j]);
++        g_autoptr (JsonNode) scale = json_node_init_string (json_node_alloc (), scales[k]);
++        g_assert_true (cc_luma_display_draft_set (draft, "arr.side", side, NULL));
++        g_assert_true (cc_luma_display_draft_set (draft, "d.ext.rot", rotation, NULL));
++        g_assert_true (cc_luma_display_draft_set (draft, "d.ext.scale", scale, NULL));
++        CcLumaPreviewRect rects[2]; g_assert_true (cc_luma_displays_rects (model, rects, NULL));
++        for (guint n = 0; n < 2; n++) {
++          g_assert_cmpfloat (rects[n].x, >=, 0); g_assert_cmpfloat (rects[n].y, >=, 0);
++          g_assert_cmpfloat (rects[n].width, >, 0); g_assert_cmpfloat (rects[n].height, >, 0);
++          g_assert_cmpfloat (rects[n].x + rects[n].width, <=, 560);
++          g_assert_cmpfloat (rects[n].y + rects[n].height, <=, 216);
++        }
++        g_assert_true (rects[0].x + rects[0].width <= rects[1].x || rects[1].x + rects[1].width <= rects[0].x || rects[0].y + rects[0].height <= rects[1].y || rects[1].y + rects[1].height <= rects[0].y);
++      }
++  g_assert_true (cc_luma_display_draft_revert (draft, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.ext.scale")), ==, "150");
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "arr.side")), ==, "top");
++  g_autoptr (JsonNode) scale = json_node_init_string (json_node_alloc (), "200");
++  g_assert_true (cc_luma_display_draft_set (draft, "d.ext.scale", scale, NULL));
++  for (guint i = 0; i < 14; i++) g_assert_true (cc_luma_display_draft_tick (draft, NULL));
++  g_assert_cmpuint (cc_luma_display_draft_remaining (draft), ==, 1);
++  json_node_set_string (scale, "175");
++  g_assert_true (cc_luma_display_draft_set (draft, "d.ext.scale", scale, NULL));
++  g_assert_cmpuint (cc_luma_display_draft_remaining (draft), ==, 15);
++  g_assert_true (cc_luma_fixture_set_flag (model, "wifi", FALSE, NULL));
++  for (guint i = 0; i < 15; i++) g_assert_true (cc_luma_display_draft_tick (draft, NULL));
++  g_assert_cmpuint (cc_luma_display_draft_remaining (draft), ==, 0);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.ext.scale")), ==, "150");
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++  g_autoptr (JsonNode) on = json_node_init_boolean (json_node_alloc (), TRUE);
++  g_assert_true (cc_luma_display_draft_set (draft, "d.int.primary", on, NULL));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "d.ext.primary")));
++  cc_luma_display_draft_keep (draft);
++  g_assert_true (cc_luma_display_draft_set (draft, "d.ext.primary", on, NULL));
++  g_assert_true (cc_luma_display_draft_revert (draft, NULL));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "d.int.primary")));
++  json_node_set_string (scale, "999");
++  g_assert_false (cc_luma_display_draft_set (draft, "d.ext.scale", scale, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.ext.scale")), ==, "150");
++  g_assert_cmpuint (cc_luma_display_draft_remaining (draft), ==, 0);
++  g_assert_false (cc_luma_display_draft_set (draft, "wifi", on, NULL));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++  cc_luma_display_draft_free (draft);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -336,6 +391,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/shelf", shelf_model);
+       g_test_add_func ("/settings/fixture/appearance", appearance_model);
+       g_test_add_func ("/settings/fixture/discovery", discovery_model);
++      g_test_add_func ("/settings/fixture/displays", display_model);
+     }
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

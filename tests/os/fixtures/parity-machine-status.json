@@ -1,0 +1,19 @@
+{
+  "transaction": null,
+  "deployments": [
+    {
+      "booted": true,
+      "staged": false,
+      "checksum": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "origin": "private:luma/repair/example",
+      "requested-packages": ["gnome-shell-extension-appindicator", "libretro-bsnes-mercury"],
+      "requested-local-packages": ["luma-vitals-0.1.0-1.luma.3.fc44.noarch", "openemu-linux-0.1.0-1.luma.2.fc44.x86_64"],
+      "requested-base-local-replacements": [
+        "gnome-shell-50.3-1.luma.99.surfacepreview20260914.78.fc44.x86_64",
+        "prairie-core-apps-0.1.0-1.luma.74.connect.28~preview.20260914.1.fc44.noarch",
+        "luma-continuity-0.1.0-0.54.experiment.fc44.noarch"
+      ],
+      "requested-base-removals": ["gnome-tour", "gnome-software"]
+    }
+  ]
+}

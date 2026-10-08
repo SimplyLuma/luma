@@ -1,0 +1,109 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 13 Sep 2026 20:00:00 +0000
+Subject: [PATCH] window: Let a tiling manager mark a window as tiled
+
+Mutter sends xdg_toplevel tiled states, and _GTK_EDGE_CONSTRAINTS, only
+for its own side-by-side tiling. A tiling manager that places windows
+with meta_window_move_resize_frame() had no way to say a window is
+tiled, so clients that draw their own decorations kept the shadows and
+resize borders of a floating window. Chromium keeps those insets inside
+the size it is given, and its content spilled past the tile.
+
+meta_window_set_externally_tiled() marks every otherwise unconstrained
+edge as tiled against a neighbouring window and sends the new state.
+---
+--- a/src/core/window-private.h
++++ b/src/core/window-private.h
+@@ -285,6 +285,9 @@
+     MetaEdgeConstraint left;
+   } edge_constraints;
+ 
++  /* Placed in a tile by a tiling manager rather than by Mutter itself */
++  gboolean externally_tiled;
++
+   MetaLogicalMonitorId *preferred_logical_monitor;
+ 
+   /* Area to cover when in fullscreen mode.  If _NET_WM_FULLSCREEN_MONITORS has
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -3235,6 +3235,64 @@
+       window->edge_constraints.right = META_EDGE_CONSTRAINT_MONITOR;
+       window->edge_constraints.left = META_EDGE_CONSTRAINT_MONITOR;
+     }
++
++  /* A window a tiling manager placed in a tile is tiled on every side that
++   * nothing else constrains: it borders other tiles, not open desktop. */
++  if (window->externally_tiled)
++    {
++      if (window->edge_constraints.top == META_EDGE_CONSTRAINT_NONE)
++        window->edge_constraints.top = META_EDGE_CONSTRAINT_WINDOW;
++      if (window->edge_constraints.right == META_EDGE_CONSTRAINT_NONE)
++        window->edge_constraints.right = META_EDGE_CONSTRAINT_WINDOW;
++      if (window->edge_constraints.bottom == META_EDGE_CONSTRAINT_NONE)
++        window->edge_constraints.bottom = META_EDGE_CONSTRAINT_WINDOW;
++      if (window->edge_constraints.left == META_EDGE_CONSTRAINT_NONE)
++        window->edge_constraints.left = META_EDGE_CONSTRAINT_WINDOW;
++    }
++}
++
++/**
++ * meta_window_set_externally_tiled:
++ * @window: a #MetaWindow
++ * @tiled: whether a tiling manager has placed @window in a tile
++ *
++ * Tells the client that @window is tiled, as Mutter does for its own
++ * side-by-side tiling, when a tiling manager places it with
++ * meta_window_move_resize_frame(). Clients that draw their own decorations
++ * drop the shadows and resize borders they draw outside a floating window;
++ * without the tiled state some of them keep those insets inside the size
++ * they are given, and the window's content spills past its tile.
++ */
++void
++meta_window_set_externally_tiled (MetaWindow *window,
++                                  gboolean    tiled)
++{
++  g_return_if_fail (META_IS_WINDOW (window));
++
++  tiled = !!tiled;
++  if (window->externally_tiled == tiled)
++    return;
++
++  window->externally_tiled = tiled;
++  update_edge_constraints (window);
++  /* X11 clients read the same state from _GTK_EDGE_CONSTRAINTS */
++  set_net_wm_state (window);
++  meta_window_frame_size_changed (window);
++  meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
++}
++
++/**
++ * meta_window_is_externally_tiled:
++ * @window: a #MetaWindow
++ *
++ * Returns: whether a tiling manager has marked @window as tiled
++ */
++gboolean
++meta_window_is_externally_tiled (MetaWindow *window)
++{
++  g_return_val_if_fail (META_IS_WINDOW (window), FALSE);
++
++  return window->externally_tiled;
+ }
+ 
+ gboolean
+--- a/src/meta/window.h
++++ b/src/meta/window.h
+@@ -116,6 +116,13 @@
+ gboolean meta_window_is_skip_taskbar (MetaWindow *window);
+ 
+ META_EXPORT
++void meta_window_set_externally_tiled (MetaWindow *window,
++                                       gboolean    tiled);
++
++META_EXPORT
++gboolean meta_window_is_externally_tiled (MetaWindow *window);
++
++META_EXPORT
+ void meta_window_get_buffer_rect (const MetaWindow *window,
+                                   MtkRectangle     *rect);
+ 

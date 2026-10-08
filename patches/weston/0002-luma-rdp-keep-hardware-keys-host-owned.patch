@@ -1,0 +1,36 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] backend-rdp: keep local hardware controls host-owned
+
+The local GNOME session handles phone hardware keys.  Do not forward those
+keys through the isolated Android presentation connection.
+
+---
+ libweston/backend-rdp/rdp.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/libweston/backend-rdp/rdp.c b/libweston/backend-rdp/rdp.c
+index 9f975bee..ff33f8f5 100644
+--- a/libweston/backend-rdp/rdp.c
++++ b/libweston/backend-rdp/rdp.c
+@@ -1815,6 +1815,21 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, XF_KEV_CODE_TYPE code)
+ 
+ 		scan_code = GetKeycodeFromVirtualKeyCode(vk_code, WINPR_KEYCODE_TYPE_XKB);
+ 
++		/* The local GNOME session owns physical hardware controls. */
++		switch (scan_code - 8) {
++		case KEY_MUTE:
++		case KEY_VOLUMEDOWN:
++		case KEY_VOLUMEUP:
++		case KEY_MICMUTE:
++		case KEY_BRIGHTNESSDOWN:
++		case KEY_BRIGHTNESSUP:
++		case KEY_POWER:
++		case KEY_CAMERA:
++			return TRUE;
++		default:
++			break;
++		}
++
+ 		/*weston_log("code=%x ext=%d vk_code=%x scan_code=%x\n", code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
+ 				vk_code, scan_code);*/
+ 		weston_compositor_get_time(&time);

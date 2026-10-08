@@ -1,0 +1,282 @@
+From 5a421f04d955c7c813478373dbf3e3645e78e8b9 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 22:20:00 -0500
+Subject: [PATCH] header-bar: provide a native generic Luma application identity
+
+Give ordinary application-owned libadwaita windows a restrained Luma identity
+surface derived from GtkApplication metadata and the application's own
+GMenuModel or existing app actions. This is a compatibility-tier treatment:
+it does not move or duplicate application-specific actions, and an explicit
+AppKit identity suppresses the automatic one.
+
+Dialogs, sheets, adaptive previews, and header bars carrying the documented
+luma-no-automatic-identity escape class are left untouched. One header bar per
+application window owns the automatic identity so split layouts do not receive
+duplicates.
+---
+ src/adw-header-bar.c | 208 +++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 207 insertions(+), 1 deletion(-)
+
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -39,6 +39,8 @@
+ #include "adw-sheet-controls-private.h"
+ #include "adw-widget-utils-private.h"
+ 
++#include <glib/gi18n-lib.h>
++
+ #ifdef GDK_WINDOWING_MACOS
+ #include <gdk/macos/gdkmacos.h>
+ #endif
+@@ -178,6 +180,8 @@
+   GtkWidget *start_controls;
+   GtkWidget *end_controls;
+   GtkWidget *back_button;
++  GtkWidget *luma_identity;
++  GtkRoot *luma_identity_root;
+ 
+   char *decoration_layout;
+ 
+@@ -213,6 +217,9 @@
+ 
+ static GParamSpec *props[LAST_PROP] = { NULL, };
+ 
++static const char luma_identity_owner_key[] = "adw-header-bar-luma-identity-owner";
++static void add_automatic_luma_identity (AdwHeaderBar *self);
++
+ static void adw_header_bar_buildable_init (GtkBuildableIface *iface);
+ 
+ G_DEFINE_FINAL_TYPE_WITH_CODE (AdwHeaderBar, adw_header_bar, GTK_TYPE_WIDGET,
+@@ -352,15 +359,211 @@
+ 
+   gtk_box_insert_child_after (GTK_BOX (self->start_box),
+                               button,
+-                              self->start_controls);
++                              self->luma_identity ? self->luma_identity : self->start_controls);
+   g_signal_connect_swapped (button, "notify::visible",
+                             G_CALLBACK (update_box_visibility),
+                             self->start_box);
+ 
+   self->back_button = button;
++}
++
++static gboolean
++has_explicit_luma_identity (AdwHeaderBar *self)
++{
++  GtkWidget *child;
++
++  for (child = gtk_widget_get_first_child (self->start_box);
++       child;
++       child = gtk_widget_get_next_sibling (child)) {
++    if (gtk_widget_has_css_class (child, "luma-identity-button"))
++      return TRUE;
++  }
++
++  return FALSE;
+ }
+ 
+ static void
++append_fallback_action (GMenu          *menu,
++                        GtkApplication *application,
++                        const char     *label,
++                        const char     *action_name)
++{
++  g_autofree char *detailed_action = NULL;
++
++  if (!g_action_map_lookup_action (G_ACTION_MAP (application), action_name))
++    return;
++
++  detailed_action = g_strconcat ("app.", action_name, NULL);
++  g_menu_append (menu, label, detailed_action);
++}
++
++static GMenuModel *
++create_luma_fallback_menu (GtkApplication *application,
++                           const char     *application_name)
++{
++  g_autoptr (GMenu) menu = g_menu_new ();
++  g_autofree char *about_label = NULL;
++  g_autofree char *quit_label = NULL;
++
++  append_fallback_action (menu, application, _("Preferences"), "preferences");
++
++  about_label = g_strdup_printf (_("About %s"), application_name);
++  append_fallback_action (menu, application, about_label, "about");
++
++  quit_label = g_strdup_printf (_("Quit %s"), application_name);
++  append_fallback_action (menu, application, quit_label, "quit");
++
++  if (g_menu_model_get_n_items (G_MENU_MODEL (menu)) == 0)
++    return NULL;
++
++  return G_MENU_MODEL (g_steal_pointer (&menu));
++}
++
++static GtkWidget *
++create_luma_identity (GtkApplication *application,
++                      GtkWindow      *window)
++{
++  g_autoptr (GMenuModel) fallback_menu = NULL;
++  GMenuModel *menu_model;
++  const char *application_id;
++  const char *application_name;
++  GtkWidget *button;
++  GtkWidget *box;
++  GtkWidget *icon;
++  GtkWidget *label;
++  GtkWidget *chevron;
++
++  application_name = g_get_application_name ();
++  if (!application_name || !*application_name)
++    application_name = gtk_window_get_title (window);
++  if (!application_name || !*application_name)
++    application_name = g_get_prgname ();
++  if (!application_name || !*application_name)
++    application_name = _("Application");
++
++  application_id = g_application_get_application_id (G_APPLICATION (application));
++
++  box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++  gtk_widget_add_css_class (box, "luma-identity-content");
++
++  icon = gtk_image_new_from_icon_name (application_id && *application_id
++                                       ? application_id
++                                       : "application-x-executable-symbolic");
++  gtk_image_set_pixel_size (GTK_IMAGE (icon), 22);
++  gtk_widget_add_css_class (icon, "luma-identity-icon");
++  gtk_box_append (GTK_BOX (box), icon);
++
++  label = gtk_label_new (application_name);
++  gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
++  gtk_label_set_max_width_chars (GTK_LABEL (label), 24);
++  gtk_box_append (GTK_BOX (box), label);
++
++  menu_model = gtk_application_get_menubar (application);
++  if (!menu_model) {
++    fallback_menu = create_luma_fallback_menu (application, application_name);
++    menu_model = fallback_menu;
++  }
++
++  if (!menu_model) {
++    gtk_widget_add_css_class (box, "luma-identity-button");
++    gtk_widget_add_css_class (box, "luma-automatic-identity");
++    gtk_widget_add_css_class (box, "luma-identity-display");
++    gtk_widget_set_tooltip_text (box, application_name);
++    gtk_accessible_update_property (GTK_ACCESSIBLE (box),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL, application_name,
++                                    -1);
++    return box;
++  }
++
++  chevron = gtk_image_new_from_icon_name ("lumaui-chevron-down-symbolic");
++  gtk_image_set_pixel_size (GTK_IMAGE (chevron), 14);
++  gtk_widget_add_css_class (chevron, "luma-identity-chevron");
++  gtk_box_append (GTK_BOX (box), chevron);
++
++  button = gtk_menu_button_new ();
++  gtk_widget_add_css_class (button, "luma-identity-button");
++  gtk_widget_add_css_class (button, "luma-automatic-identity");
++  gtk_widget_set_tooltip_text (button, application_name);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (button),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL, application_name,
++                                  -1);
++  gtk_menu_button_set_child (GTK_MENU_BUTTON (button), box);
++  gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (button), menu_model);
++
++  return button;
++}
++
++static void
++application_changed (GtkWindow    *window,
++                     GParamSpec   *pspec,
++                     AdwHeaderBar *self)
++{
++  (void) window;
++  (void) pspec;
++
++  add_automatic_luma_identity (self);
++}
++
++static void
++add_automatic_luma_identity (AdwHeaderBar *self)
++{
++  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
++  GtkApplication *application;
++
++  if (self->luma_identity ||
++      !GTK_IS_WINDOW (root) ||
++      gtk_window_get_transient_for (GTK_WINDOW (root)) != NULL ||
++      self->dialog ||
++      self->sheet ||
++      self->adaptive_preview ||
++      gtk_widget_has_css_class (GTK_WIDGET (self), "luma-no-automatic-identity") ||
++      has_explicit_luma_identity (self) ||
++      g_object_get_data (G_OBJECT (root), luma_identity_owner_key))
++    return;
++
++  if (!self->luma_identity_root) {
++    self->luma_identity_root = root;
++    g_signal_connect (root, "notify::application",
++                      G_CALLBACK (application_changed), self);
++  }
++
++  application = gtk_window_get_application (GTK_WINDOW (root));
++  if (!application)
++    return;
++
++  self->luma_identity = create_luma_identity (application, GTK_WINDOW (root));
++  self->luma_identity_root = root;
++
++  gtk_box_insert_child_after (GTK_BOX (self->start_box),
++                              self->luma_identity,
++                              self->start_controls);
++  g_object_set_data (G_OBJECT (root), luma_identity_owner_key, self);
++  update_box_visibility (self->start_box);
++}
++
++static void
++remove_automatic_luma_identity (AdwHeaderBar *self)
++{
++  if (self->luma_identity_root)
++    g_signal_handlers_disconnect_by_func (self->luma_identity_root,
++                                          application_changed, self);
++
++  if (!self->luma_identity) {
++    self->luma_identity_root = NULL;
++    return;
++  }
++
++  if (self->luma_identity_root &&
++      g_object_get_data (G_OBJECT (self->luma_identity_root), luma_identity_owner_key) == self)
++    g_object_set_data (G_OBJECT (self->luma_identity_root), luma_identity_owner_key, NULL);
++
++  gtk_box_remove (GTK_BOX (self->start_box), self->luma_identity);
++  self->luma_identity = NULL;
++  self->luma_identity_root = NULL;
++  update_box_visibility (self->start_box);
++}
++
++static void
+ update_start_title_buttons (AdwHeaderBar *self)
+ {
+   gboolean show = self->show_start_title_buttons;
+@@ -683,6 +886,7 @@
+   update_title (self);
+   update_title_buttons (self);
+   update_decoration_layout (self, TRUE, TRUE);
++  add_automatic_luma_identity (self);
+ }
+ 
+ static void
+@@ -690,6 +894,8 @@
+ {
+   AdwHeaderBar *self = ADW_HEADER_BAR (widget);
+   GSList *l;
++
++  remove_automatic_luma_identity (self);
+ 
+   if (self->title_navigation_page) {
+     g_signal_handlers_disconnect_by_func (self->title_navigation_page,
+
+-- 
+2.54.0

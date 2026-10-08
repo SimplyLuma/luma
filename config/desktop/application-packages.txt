@@ -1,0 +1,15 @@
+# Desktop-only Project Luma application roles, expressed as Fedora package names.
+#
+# These complement config/shared/application-packages.txt. They exist only on
+# the GNOME desktop composition; the handheld rootfs must not grow launchers for
+# GNOME Shell utilities. Roles listed here are resolved from Fedora unless a
+# pinned Luma package already supplies them.
+
+# Tray icons (StatusNotifierItem/AppIndicator) from applications such as Steam,
+# Discord, Dropbox and hardware monitors. The Shelf adopts them beside Luma's
+# secondary controls; without a tray host they are simply never shown.
+gnome-shell-extension-appindicator
+luma-ari
+# Luma-owned desktop utility: asks how to use new display arrangements
+luma-displays
+

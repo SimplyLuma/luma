@@ -1,0 +1,55 @@
+{
+  "app": "bar-reel",
+  "title": "Export sheet against Reel's Export",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=reel",
+    "window": "#w-reel",
+    "exclude": [
+      "#w-reel *:not(:has(#rl-sheet)):not(#rl-sheet):not(#rl-sheet *)"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "reel"
+    }
+  },
+  "states": [
+    {
+      "name": "export",
+      "about": "Export open: the choices, Cancel and Export",
+      "spec": [
+        {
+          "click": "[data-rlexport]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "export"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "export"
+  ],
+  "groups": [
+    {
+      "name": "export sheet",
+      "spec": "#rl-sheet"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#rl-sheet",
+      "gtk": "export-sheet",
+      "name": "export sheet"
+    }
+  ]
+}

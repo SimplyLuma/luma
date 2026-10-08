@@ -1,0 +1,288 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: windows travel into Grid and back out
+
+Grid hid every window and drew its cards in place in the same frame, and
+closing it did the reverse, so both directions were a jump cut. Each card
+now starts exactly over its window, with the window's stacking, and
+travels to its place in the grid while its name fades in. On leaving,
+the cards travel back to their windows, and the chosen window arrives
+last and on top before the desktop is handed back. Minimised windows and
+windows on other workspaces fade and scale instead of flying. Opening
+Grid again while it leaves starts from the desktop, and reduced motion
+makes both transitions instant. Emergencies (a system dialog, locking)
+still close Grid at once.
+
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -41,6 +41,12 @@
+ 
+ // How far a three-finger swipe must travel downward to dismiss Grid.
+ const DISMISS_TRAVEL = 64;
++// Windows travel between where they sit and where Grid shows them, so a person
++// can follow each one in and back out. Leaving is a little quicker than
++// arriving. The curve is Luma's ease-out; reduced motion makes both instant.
++const ENTER_DURATION = 320;
++const LEAVE_DURATION = 260;
++const TRAVEL_MODE = Clutter.AnimationMode.EASE_OUT_QUART;
+ // Breathing room outside the row, applied identically on both sides.
+ const GRID_EDGE = 56;
+ 
+@@ -50,13 +56,16 @@
+ }
+ 
+ export function toggle() {
+-    if (activeGrid)
+-        activeGrid.destroy();
++    if (activeGrid && !activeGrid.leaving)
++        activeGrid.dismiss();
+     else
+         show();
+ }
+ 
+ export function show(backward = false, modifierMask = 0) {
++    // Opening again while Grid is still leaving starts from the desktop.
++    if (activeGrid?.leaving)
++        activeGrid.destroy();
+     if (activeGrid) {
+         activeGrid.step(backward ? 'Left' : 'Right');
+         return;
+@@ -169,11 +178,19 @@
+         this._syncSelection();
+     }
+ 
++    get lift() {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        return this._selected || this.hover ? -3 * scale : 0;
++    }
++
+     _syncSelection() {
+         const lifted = this._selected || this.hover;
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        this.ease({translation_y: lifted ? -3 * scale : 0,
+-            duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        // While the card travels, the travel owns its transform and ends on
++        // this lift.
++        if (!this._popup.travelling) {
++            this.ease({translation_y: this.lift,
++                duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        }
+         this._name.opacity = lifted ? 255 : 204;
+         this._close.visible = lifted && this.window.can_close();
+         this._edge.set_style(`border-radius: ${this._radius}px;
+@@ -260,7 +277,7 @@
+             coordinate: Clutter.BindCoordinate.ALL}));
+         const dismiss = new Clutter.ClickGesture();
+         dismiss.connect('may-recognize', () => !this._cards.some(c => c.hover));
+-        dismiss.connect('recognize', () => this.destroy());
++        dismiss.connect('recognize', () => this.dismiss());
+         this.add_action(dismiss);
+         // A three-finger swipe up opened Grid, so a three-finger swipe down
+         // closes it. Grid holds a modal grab, so it needs its own tracker in
+@@ -274,7 +291,7 @@
+         });
+         this._dismissSwipe.connect('end', (tracker, duration, endProgress) => {
+             if (endProgress === 0)
+-                this.destroy();
++                this.dismiss();
+         });
+         Main.layoutManager.connectObject('system-modal-opened', () => this.destroy(),
+             'monitors-changed', () => this.reflow(), this);
+@@ -301,9 +318,133 @@
+             this._grab = null;
+             if (activeGrid === this)
+                 activeGrid = null;
++        });
++    }
++
++    get travelling() {
++        return this._travel > 0;
++    }
++
++    get leaving() {
++        return this._leaving === true;
++    }
++
++    // Where a window sits on the desktop, if it is there to travel from or to.
++    _desktopRect(window) {
++        const workspace = global.workspace_manager.get_active_workspace();
++        if (window.minimized || !window.located_on_workspace(workspace))
++            return null;
++        const rect = window.get_frame_rect();
++        return rect.width > 0 && rect.height > 0 ? rect : null;
++    }
++
++    // The transform that puts a card's preview exactly over |rect|, given
++    // where the card is allocated on the stage.
++    _transformOnto(card, rect) {
++        const home = card.home;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const label = 28 * scale;
++        const sx = rect.width / Math.max(1, home.width);
++        const sy = rect.height / Math.max(1, home.height - label);
++        return {translation_x: rect.x - home.x, translation_y: rect.y - home.y - label * sy,
++            scale_x: sx, scale_y: sy};
++    }
++
++    _stackLikeTheDesktop(last = null) {
++        const windows = global.display.sort_windows_by_stacking(this._cards.map(c => c.window));
++        windows.forEach(window => {
++            const card = this._cards.find(c => c.window === window);
++            if (card)
++                this._stage.set_child_above_sibling(card, null);
+         });
++        if (last)
++            this._stage.set_child_above_sibling(last, null);
+     }
+ 
++    _travelStarted() {
++        this._travel = (this._travel ?? 0) + 1;
++        this._stage.clip_to_allocation = false;
++    }
++
++    _travelEnded() {
++        this._travel = Math.max(0, (this._travel ?? 0) - 1);
++        if (this._travel === 0 && !this._leaving) {
++            this._stage.clip_to_allocation = true;
++            this._cards.forEach(card => {
++                card.opacity = 255;
++                card._syncSelection();
++            });
++        }
++    }
++
++    // Bring every card from its window's place on the desktop into the grid.
++    _enter() {
++        this._entered = true;
++        this._stackLikeTheDesktop();
++        const monitor = Main.layoutManager.primaryMonitor;
++        this._cards.forEach(card => {
++            const rect = this._desktopRect(card.window);
++            const home = card.home;
++            // A card that settles outside the visible row fades rather than
++            // flying to a place the clip is about to hide.
++            const shown = !monitor ||
++                (home.x + home.width > monitor.x && home.x < monitor.x + monitor.width);
++            card.remove_all_transitions();
++            card.set_pivot_point(0, 0);
++            card._header.opacity = 0;
++            if (rect) {
++                card.set(this._transformOnto(card, rect));
++            } else {
++                card.set({opacity: 0, scale_x: 0.94, scale_y: 0.94,
++                    translation_x: home.width * 0.03, translation_y: home.height * 0.03});
++            }
++            this._travelStarted();
++            card.ease({translation_x: 0, translation_y: card.lift, scale_x: 1, scale_y: 1,
++                opacity: shown || !rect ? 255 : 0,
++                duration: ENTER_DURATION, mode: TRAVEL_MODE,
++                onStopped: () => this._travelEnded()});
++            card._header.ease({opacity: 255, delay: ENTER_DURATION / 3,
++                duration: ENTER_DURATION * 2 / 3, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        });
++    }
++
++    // Send every card back to its window, the chosen one last and on top,
++    // then hand the desktop back.
++    dismiss(chosen = null) {
++        if (this._leaving)
++            return;
++        this._leaving = true;
++        this.reactive = false;
++        this._dismissSwipe?.destroy();
++        this._dismissSwipe = null;
++        if (chosen)
++            Main.activateWindow(chosen);
++        const chosenCard = this._cards.find(c => c.window === chosen) ?? null;
++        this._stackLikeTheDesktop(chosenCard);
++        let remaining = this._cards.length;
++        const finished = () => {
++            if (--remaining <= 0)
++                this.destroy();
++        };
++        if (remaining === 0 || !this._entered) {
++            this.destroy();
++            return;
++        }
++        this._travelStarted();
++        this._cards.forEach(card => {
++            const rect = this._desktopRect(card.window);
++            card.remove_all_transitions();
++            card.set_pivot_point(0, 0);
++            card._close.visible = false;
++            card._header.ease({opacity: 0, duration: LEAVE_DURATION / 2,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            const target = rect ? this._transformOnto(card, rect)
++                : {opacity: 0, scale_x: 0.94, scale_y: 0.94};
++            card.ease({...target, duration: LEAVE_DURATION, mode: TRAVEL_MODE,
++                onStopped: finished});
++        });
++    }
++
+     open() {
+         Main.uiGroup.add_child(this);
+         // Above the windows but below the panel and dock: both stay available
+@@ -359,13 +500,12 @@
+     }
+ 
+     activate(card) {
+-        const window = card?.window;
+-        this.destroy();
+-        if (window)
+-            Main.activateWindow(window);
++        this.dismiss(card?.window ?? null);
+     }
+ 
+     vfunc_key_press_event(event) {
++        if (this._leaving)
++            return Clutter.EVENT_STOP;
+         const key = event.get_key_symbol();
+         const directions = new Map([[Clutter.KEY_Left, 'Left'], [Clutter.KEY_Right, 'Right'],
+             [Clutter.KEY_Up, 'Up'], [Clutter.KEY_Down, 'Down'],
+@@ -379,7 +519,7 @@
+         else if (key === Clutter.KEY_Delete)
+             this._cards[this._selected]?.closeWindow();
+         else if (key === Clutter.KEY_Escape)
+-            this.destroy();
++            this.dismiss();
+         return Clutter.EVENT_STOP;
+     }
+ 
+@@ -389,6 +529,8 @@
+     }
+ 
+     vfunc_scroll_event(event) {
++        if (this._leaving)
++            return Clutter.EVENT_STOP;
+         const direction = event.get_scroll_direction();
+         let dx = 0;
+         let dy = 0;
+@@ -427,7 +569,7 @@
+                 const travelled = this._swipeTravel ?? 0;
+                 this._swipeTravel = 0;
+                 if (travelled > DISMISS_TRAVEL) {
+-                    this.destroy();
++                    this.dismiss();
+                     return Clutter.EVENT_STOP;
+                 }
+             } else {
+@@ -485,12 +627,17 @@
+             card.save_easing_state();
+             card.set_easing_duration(this._lastSize && reflow ? 220 : 0);
+             card.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
+-            allocate(card, (GRID_EDGE + item.x - this._scrollX) * scale,
+-                (28 + item.labelY - this._scroll) * scale,
+-                item.width * scale, (item.height + 28) * scale);
++            const x = (GRID_EDGE + item.x - this._scrollX) * scale;
++            const y = (28 + item.labelY - this._scroll) * scale;
++            allocate(card, x, y, item.width * scale, (item.height + 28) * scale);
+             card.restore_easing_state();
++            // Where the card rests on the stage, for travelling to and from it.
++            card.home = {x: monitor.x + x, y: area.y + y,
++                width: item.width * scale, height: (item.height + 28) * scale};
+         });
+         this._lastSize = size;
+         this._dirty = false;
++        if (!this._entered && this._cards.length)
++            this._enter();
+     }
+ });

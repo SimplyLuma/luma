@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Camera
+Exec=python3 -m prairie_apps.camera
+Icon=org.projectluma.Camera
+Categories=AudioVideo;Photography;

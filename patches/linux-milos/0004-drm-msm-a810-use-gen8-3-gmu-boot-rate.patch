@@ -1,0 +1,32 @@
+From: Project Luma diagnostics <diagnostics@project-luma.local>
+Date: Sun, 16 Aug 2026 15:30:00 -0500
+Subject: [PATCH] drm/msm/a810: use the Gen8.3 GMU boot rate
+
+Fairphone's published Gen8.3 driver selects the upper GMU power level,
+650 MHz, before releasing CM3 reset. The generic DRM/MSM path requests
+200 MHz, which rounds to the A810 device tree's lower 350 MHz OPP.
+
+Use the stock Gen8.3 boot rate for A810 only. Keep every other A8xx and
+the later firmware-managed frequency table unchanged.
+
+This is a one-variable behavior test. It must be applied after the A810
+timeout diagnostics and without the rejected AHB fence-range patch.
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -1315,7 +1315,8 @@ static int a6xx_gmu_resume(struct a6xx_gpu *a6xx_gpu)
+ 	a6xx_gmu_gxpd_get(gmu);
+ 
+ 	/* Use a known rate to bring up the GMU */
+-	clk_set_rate(gmu->core_clk, 200000000);
++	clk_set_rate(gmu->core_clk,
++		     adreno_is_a810(adreno_gpu) ? 650000000 : 200000000);
+ 	clk_set_rate(gmu->hub_clk, adreno_is_a740_family(adreno_gpu) ?
+ 		     200000000 : 150000000);
+ 	ret = clk_bulk_prepare_enable(gmu->nr_clocks, gmu->clocks);
+-- 
+2.50.1

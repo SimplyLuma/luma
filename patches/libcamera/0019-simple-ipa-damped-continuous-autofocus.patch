@@ -1,0 +1,316 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: add damped sensor-tuned continuous autofocus
+
+The first FP6 autofocus lane used a generic 5-95 percent sweep, moved the
+lens again before it had settled, and disabled autonomous refocusing.  This
+made startup focus mechanically noisy and left the preview stale whenever the
+subject distance changed.
+
+Make the safe travel range, coarse step, settling interval, local search
+radius, and loss detector tuning properties.  Wait after every actuator move,
+use a sustained sharpness loss plus cooldown before a bounded local rescan,
+and retain an explicit trigger for a deliberate full-range search.  Sensors
+without an Af tuning block remain unaffected.
+
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -35,8 +35,21 @@ private:
+ 	void updateFocus(IPAContext &context, IPAFrameContext &frameContext, double focus);
+ 	void step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep);
+-	void restart(IPAContext &context);
++	void restart(IPAContext &context, bool local);
+ 
+ 	unsigned int steps_;
++	double sweepStart_;
++	double sweepStop_;
++	double coarseStep_;
++	double stepDivisor_;
++	double fineStepMin_;
++	double localRadius_;
++	double focusLossThreshold_;
++	uint32_t settleSkip_;
++	uint32_t focusLossFrames_;
++	uint32_t refocusCooldownFrames_;
++	uint32_t refocusCooldown_;
++	bool defaultContinuous_;
++	bool localSweep_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -23,40 +23,75 @@ namespace ipa::soft::algorithms {
+ 
+ namespace {
+ 
+-/* Percentage of the lens travel between two samples of the coarse sweep. */
+-constexpr double kCoarseStep = 10.0;
+-/* The step is divided by this at every phase of the sweep. */
+-constexpr double kStepDivisor = 5.0;
+-/* The sweep ends once the step would become finer than this. */
+-constexpr double kFineStepMin = 1.0;
+-/* Stats frames to ignore after a large lens movement. */
+-constexpr uint32_t kSettleSkipLong = 3;
+-/* Keep experimental actuators away from their mechanical end stops. */
+-constexpr double kSweepStart = 5.0;
+-constexpr double kSweepStop = 95.0;
+-/*
+- * Applications that know nothing about AF still receive one startup scan.
+- * Additional scans require an explicit mode transition or AF trigger.
+- */
+-constexpr int32_t kDefaultAfMode = controls::AfModeAuto;
++constexpr double kDefaultSweepStart = 10.0;
++constexpr double kDefaultSweepStop = 90.0;
++constexpr double kDefaultCoarseStep = 4.0;
++constexpr double kDefaultStepDivisor = 4.0;
++constexpr double kDefaultFineStepMin = 0.5;
++constexpr double kDefaultLocalRadius = 12.0;
++constexpr double kDefaultFocusLossThreshold = 0.30;
++constexpr uint32_t kDefaultSettleSkip = 3;
++constexpr uint32_t kDefaultFocusLossFrames = 8;
++constexpr uint32_t kDefaultRefocusCooldownFrames = 24;
+ 
+ } /* namespace */
+ 
+ Af::Af()
+-	: steps_(0)
++	: steps_(0), sweepStart_(kDefaultSweepStart),
++	  sweepStop_(kDefaultSweepStop), coarseStep_(kDefaultCoarseStep),
++	  stepDivisor_(kDefaultStepDivisor), fineStepMin_(kDefaultFineStepMin),
++	  localRadius_(kDefaultLocalRadius),
++	  focusLossThreshold_(kDefaultFocusLossThreshold),
++	  settleSkip_(kDefaultSettleSkip),
++	  focusLossFrames_(kDefaultFocusLossFrames),
++	  refocusCooldownFrames_(kDefaultRefocusCooldownFrames),
++	  refocusCooldown_(0), defaultContinuous_(false), localSweep_(false)
+ {
+ }
+ 
+ int Af::init(IPAContext &context,
+-	     [[maybe_unused]] const ValueNode &tuningData)
++	     const ValueNode &tuningData)
+ {
++	sweepStart_ = tuningData["sweepStart"].get<double>(kDefaultSweepStart);
++	sweepStop_ = tuningData["sweepStop"].get<double>(kDefaultSweepStop);
++	coarseStep_ = tuningData["coarseStep"].get<double>(kDefaultCoarseStep);
++	stepDivisor_ = tuningData["stepDivisor"].get<double>(kDefaultStepDivisor);
++	fineStepMin_ = tuningData["fineStepMin"].get<double>(kDefaultFineStepMin);
++	localRadius_ = tuningData["localRadius"].get<double>(kDefaultLocalRadius);
++	focusLossThreshold_ = tuningData["focusLossThreshold"].get<double>(
++		kDefaultFocusLossThreshold);
++	settleSkip_ = tuningData["settleFrames"].get<uint32_t>(kDefaultSettleSkip);
++	focusLossFrames_ = tuningData["focusLossFrames"].get<uint32_t>(
++		kDefaultFocusLossFrames);
++	refocusCooldownFrames_ = tuningData["refocusCooldownFrames"].get<uint32_t>(
++		kDefaultRefocusCooldownFrames);
++	defaultContinuous_ = tuningData["continuous"].get<bool>(false);
++
++	if (sweepStart_ < 0.0 || sweepStop_ > 100.0 ||
++	    sweepStart_ >= sweepStop_ || coarseStep_ <= 0.0 ||
++	    coarseStep_ >= sweepStop_ - sweepStart_ || stepDivisor_ <= 1.0 ||
++	    fineStepMin_ <= 0.0 || localRadius_ < coarseStep_ ||
++	    focusLossThreshold_ <= 0.0 || focusLossThreshold_ >= 1.0 ||
++	    settleSkip_ == 0 || focusLossFrames_ == 0) {
++		LOG(IPASoftAutoFocus, Error) << "Invalid autofocus tuning";
++		return -EINVAL;
++	}
++
++	const int32_t defaultMode = defaultContinuous_
++		? controls::AfModeContinuous : controls::AfModeAuto;
+ 	context.ctrlMap[&controls::AfMode] =
+ 		ControlInfo(controls::AfModeValues,
+-			    ControlValue(static_cast<int32_t>(kDefaultAfMode)));
++			    ControlValue(defaultMode));
+ 	context.ctrlMap[&controls::AfTrigger] =
+ 		ControlInfo(controls::AfTriggerValues,
+ 			    ControlValue(static_cast<int32_t>(controls::AfTriggerStart)));
+-	context.ctrlMap[&controls::LensPosition] = ControlInfo(0.0f, 100.0f, 50.0f);
++	context.ctrlMap[&controls::LensPosition] = ControlInfo(
++		0.0f, 100.0f, static_cast<float>((sweepStart_ + sweepStop_) / 2.0));
++	LOG(IPASoftAutoFocus, Info)
++		<< "AF tuning range " << sweepStart_ << "-" << sweepStop_
++		<< ", coarse " << coarseStep_ << ", settle " << settleSkip_
++		<< ", local radius " << localRadius_
++		<< ", continuous " << defaultContinuous_;
+ 	return 0;
+ }
+ 
+@@ -64,18 +99,20 @@ int Af::configure(IPAContext &context,
+ 		  [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+-	context.activeState.knobs.af_mode = kDefaultAfMode;
++	context.activeState.knobs.af_mode = defaultContinuous_
++		? controls::AfModeContinuous : controls::AfModeAuto;
+ 	context.activeState.knobs.focus_sweep = false;
+-	context.activeState.knobs.focus_pos = 0;
+-	context.configuration.focus.skip = kSettleSkipLong;
++	context.activeState.knobs.focus_pos = (sweepStart_ + sweepStop_) / 2.0;
++	context.configuration.focus.skip = settleSkip_;
++	refocusCooldown_ = 0;
+ 
+ 	/*
+ 	 * Start focusing as soon as the camera streams. Applications that do
+ 	 * not know about AF at all never send an AfTrigger, so waiting for one
+ 	 * would leave the lens parked wherever it was.
+ 	 */
+ 	if (context.configuration.focus.available &&
+ 	    context.activeState.knobs.af_mode != controls::AfModeManual)
+-		restart(context);
++		restart(context, false);
+ 
+ 	return 0;
+ }
+@@ -97,7 +134,7 @@ void Af::queueRequest(typename Module::Context &context,
+ 		if (afMode.value() == controls::AfModeManual)
+ 			context.activeState.knobs.focus_sweep = false;
+ 		else
+-			restart(context);
++			restart(context, false);
+ 	}
+ 
+ 	const auto &lensPosition = controls.get(controls::LensPosition);
+@@ -104,6 +141,6 @@ void Af::queueRequest(typename Module::Context &context,
+ 	    context.activeState.knobs.af_mode == controls::AfModeManual) {
+ 		context.activeState.knobs.focus_pos = lensPosition.value();
+-		context.configuration.focus.skip = kSettleSkipLong;
++		context.configuration.focus.skip = settleSkip_;
+ 		LOG(IPASoftAutoFocus, Debug)
+ 			<< "Setting focus position to " << lensPosition.value();
+ 	}
+@@ -112,9 +149,9 @@ void Af::queueRequest(typename Module::Context &context,
+ 	const auto &afTrigger = controls.get(controls::AfTrigger);
+ 	if (afTrigger.has_value() &&
+-	    context.activeState.knobs.af_mode == controls::AfModeAuto) {
++	    context.activeState.knobs.af_mode != controls::AfModeManual) {
+ 		if (afTrigger.value() == controls::AfTriggerStart)
+-			restart(context);
++			restart(context, false);
+ 		else
+ 			context.activeState.knobs.focus_sweep = false;
+ 	}
+ }
+@@ -129,22 +166,33 @@ void Af::updateFocus(IPAContext &context, IPAFrameContext &frameContext,
+ 				      std::lround(pos / 100.0 * (focus.focus_max - focus.focus_min));
+ }
+ 
+-void Af::restart(IPAContext &context)
++void Af::restart(IPAContext &context, bool local)
+ {
+ 	auto &focus = context.configuration.focus;
++	const double current = std::clamp(
++		context.activeState.knobs.focus_pos.value_or(
++			(sweepStart_ + sweepStop_) / 2.0), sweepStart_, sweepStop_);
+ 
+ 	steps_ = 0;
+ 	focus.focus_max_pos = 0;
+ 	focus.sharpness_max = 0;
+-	focus.start = kSweepStart;
+-	focus.stop = kSweepStop;
+-	focus.step = kCoarseStep;
+-	focus.skip = kSettleSkipLong;
++	focus.start = local ? std::max(sweepStart_, current - localRadius_)
++			    : sweepStart_;
++	focus.stop = local ? std::min(sweepStop_, current + localRadius_)
++			   : sweepStop_;
++	focus.step = local ? std::max(fineStepMin_, coarseStep_ / 2.0)
++			   : coarseStep_;
++	focus.skip = settleSkip_;
+ 	focus.settled = false;
+ 	focus.lossCount = 0;
+-	context.activeState.knobs.focus_pos = kSweepStart;
++	context.activeState.knobs.focus_pos = focus.start;
+ 	context.activeState.knobs.focus_sweep = true;
+-	LOG(IPASoftAutoFocus, Info) << "Starting focus sweep";
++	refocusCooldown_ = refocusCooldownFrames_;
++	localSweep_ = local;
++	LOG(IPASoftAutoFocus, Info)
++		<< "Starting " << (local ? "local" : "full")
++		<< " focus sweep " << focus.start << "-" << focus.stop
++		<< " step " << focus.step;
+ }
+ 
+ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+@@ -161,6 +209,36 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ 	}
+ 
+ 	if (!sweep) {
++		if (context.activeState.knobs.af_mode != controls::AfModeContinuous)
++			return;
++
++		if (!focus.settled) {
++			focus.sharpness_max = sharp;
++			focus.lossCount = 0;
++			focus.settled = true;
++			return;
++		}
++		if (refocusCooldown_ != 0) {
++			refocusCooldown_--;
++			return;
++		}
++
++		const uint64_t threshold = static_cast<uint64_t>(
++			focus.sharpness_max * (1.0 - focusLossThreshold_));
++		if (sharp >= threshold) {
++			focus.lossCount = 0;
++			/* Slowly follow benign scene/noise changes without hunting. */
++			focus.sharpness_max = static_cast<uint64_t>(
++				focus.sharpness_max * 0.98 + sharp * 0.02);
++			return;
++		}
++		if (++focus.lossCount < focusLossFrames_)
++			return;
++
++		LOG(IPASoftAutoFocus, Info)
++			<< "Sustained focus loss: " << sharp << " vs "
++			<< focus.sharpness_max;
++		restart(context, true);
+ 		return;
+ 	}
+ 
+@@ -167,22 +245,28 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ 		focus.focus_max_pos = focus_pos;
+ 	}
+ 
+-	focus_pos += focus.step;
+-	if (focus_pos > focus.start && focus_pos < focus.stop)
++	const double next = focus_pos + focus.step;
++	if (next <= focus.stop) {
++		focus_pos = next;
++		/* Do not measure another frame until this move has settled. */
++		focus.skip = settleSkip_;
+ 		return;
++	}
+ 
+ 	/* Sweep phase over, narrow the range around the best position. */
+-	focus.start = std::clamp(focus.focus_max_pos - focus.step, 0.0, 100.0);
+-	focus.stop = std::clamp(focus.focus_max_pos + focus.step, 0.0, 100.0);
++	focus.start = std::clamp(focus.focus_max_pos - focus.step,
++				 sweepStart_, sweepStop_);
++	focus.stop = std::clamp(focus.focus_max_pos + focus.step,
++				sweepStart_, sweepStop_);
+ 	LOG(IPASoftAutoFocus, Info)
+ 		<< "Best focus with step " << focus.step << ": "
+ 		<< focus.focus_max_pos << " (sharpness "
+ 		<< focus.sharpness_max << "), next range " << focus.start
+ 		<< ".." << focus.stop;
+ 	focus_pos = focus.start;
+-	focus.step /= kStepDivisor;
+-	focus.skip = kSettleSkipLong;
++	focus.step /= stepDivisor_;
++	focus.skip = settleSkip_;
+ 
+-	if (focus.step >= kFineStepMin) {
++	if (focus.step >= fineStepMin_) {
+ 		/* Look for the maximum again at the finer step. */
+ 		focus.sharpness_max = 0;
+@@ -194,7 +278,9 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ 	focus_pos = focus.focus_max_pos;
+ 	focus.settled = false;
++	refocusCooldown_ = refocusCooldownFrames_;
+ 	LOG(IPASoftAutoFocus, Info)
+-		<< "Sweep end. Best focus: " << focus.focus_max_pos
++		<< (localSweep_ ? "Local" : "Full")
++		<< " sweep end. Best focus: " << focus.focus_max_pos
+ 		<< " after " << steps_ << " frames";
+ }
+ 

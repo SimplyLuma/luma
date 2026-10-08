@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Luma OS nightly installer media: build, verify and publish USB media for the
+# release the nightly just published (scripts/os/nightly-media.sh).
+# Started by luma-os-nightly.service on success, so media never delay the image.
+# Installed by scripts/os/install-build-host-units.sh, which fills @ROOT@.
+[Unit]
+Description=Luma OS nightly installer media (build, verify, publish)
+Documentation=file://@ROOT@/src/nightly/docs/os/release-runbook.md
+After=luma-os-nightly.service network-online.target libvirtd.service virtqemud.service
+Wants=network-online.target
+RequiresMountsFor=@ROOT@
+ConditionPathExists=@ROOT@/keys/os-release-fingerprint.txt
+# Media that fail their release-blocking checks are not published and alert.
+OnFailure=luma-os-alert@%n
+
+[Service]
+Type=oneshot
+Slice=luma-os.slice
+Nice=10
+IOSchedulingClass=idle
+Environment=LUMA_OS_ROOT=@ROOT@
+Environment=TMPDIR=@ROOT@/tmp
+# The media script runs from the same checkout the nightly just built from.
+ExecStart=/usr/bin/bash @ROOT@/src/nightly/scripts/os/nightly-media.sh --channel nightly
+TimeoutStartSec=5h

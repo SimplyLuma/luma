@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Luma Semantic Inspector
+Comment=Developer inspection client for Luma semantic surfaces
+Exec=luma semantic list
+Icon=system-search-symbolic
+Terminal=true
+NoDisplay=true
+Categories=Development;

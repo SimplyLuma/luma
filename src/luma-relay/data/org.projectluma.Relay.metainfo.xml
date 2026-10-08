@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Relay</id>
+  <name>Luma Relay</name>
+  <summary>Manage applications made for other operating systems</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <description>
+    <p>Luma Relay integrates compatible Windows and Android applications with Luma while preserving isolated application data and explicit file permissions.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Relay.desktop</launchable>
+  <provides>
+    <binary>luma-relay</binary>
+  </provides>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+</component>

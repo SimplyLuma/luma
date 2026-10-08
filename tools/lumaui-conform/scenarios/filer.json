@@ -1,0 +1,349 @@
+{
+  "app": "filer",
+  "title": "Filer",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=filer",
+    "window": "#w-filer",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "build": {
+      "patched_upstream": "nautilus",
+      "patches": "patches/nautilus",
+      "meson_options": [
+        "-Dextensions=false",
+        "-Dtests=all"
+      ]
+    },
+    "binary": "bin/nautilus",
+    "app_id": "org.gnome.Nautilus",
+    "fixtures": [
+      "tests/fixtures/filer-v70.json",
+      "tests/fixtures/filer-images",
+      "tools/filer-fixture.py",
+      "assets/icon-theme/Prairie/index.theme",
+      "assets/icon-theme/Prairie/scalable/places",
+      "assets/icon-theme/Prairie/scalable/mimetypes",
+      "assets/icon-theme/Prairie/scalable/apps"
+    ],
+    "env": {
+      "LUMA_FILER_FIXTURE": "{run}/fixtures/filer-v70.json",
+      "LUMA_FILER_FIXTURE_ROOT": "{run}/filer-tree",
+      "LUMA_FILER_FIXTURE_TOOL": "/w/src/wt/tools/filer-fixture.py",
+      "LUMA_FILER_ICON_THEME_ROOT": "/w/src/wt/assets/icon-theme",
+      "LUMA_APPKIT_ICON_PATH": "/w/src/wt/assets/icon-theme/Prairie/symbolic/actions:/w/src/wt/assets/icon-theme/Prairie/scalable/apps:/w/src/wt/assets/icon-theme/Prairie/scalable/places:/w/src/wt/assets/icon-theme/Prairie/scalable/mimetypes"
+    }
+  },
+  "states": [
+    {
+      "name": "grid",
+      "about": "Opening Launch folder in Grid view",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "selected",
+      "about": "An image file selected",
+      "spec": [
+        {
+          "click": "#f-body [data-file=\"hero-writing.webp\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "selected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "information",
+      "about": "Current folder Information pane",
+      "spec": [
+        {
+          "click": "#f-bar [data-finfo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "information"
+          }
+        }
+      ]
+    },
+    {
+      "name": "file-information",
+      "about": "Selected image Information pane",
+      "spec": [
+        {
+          "click": "#f-body [data-file=\"hero-writing.webp\"]"
+        },
+        {
+          "click": "#f-bar [data-finfo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "file-information"
+          }
+        }
+      ]
+    },
+    {
+      "name": "list",
+      "about": "Launch folder in List view",
+      "spec": [
+        {
+          "click": "#f-bar [data-fview=\"list\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "list"
+          }
+        }
+      ]
+    },
+    {
+      "name": "list-sort-size",
+      "about": "List sorted by Size with a sortable table header",
+      "spec": [
+        {
+          "click": "#f-bar [data-fview=\"list\"]"
+        },
+        {
+          "click": "#f-body [data-fsort=\"size\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "list-sort-size"
+          }
+        }
+      ]
+    },
+    {
+      "name": "columns",
+      "about": "Responsive Columns and its Information pane",
+      "spec": [
+        {
+          "click": "#f-bar [data-fview=\"cols\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "columns"
+          }
+        }
+      ]
+    },
+    {
+      "name": "columns-selected",
+      "about": "File selected in the active column",
+      "spec": [
+        {
+          "click": "#f-bar [data-fview=\"cols\"]"
+        },
+        {
+          "click": "#f-body [data-fcol=\"2\"][data-fname=\"hero-writing.webp\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "columns-selected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-here",
+      "about": "Search in the current folder",
+      "spec": [
+        {
+          "eval": "{ const q = document.querySelector('#f-q'); q.value = 'press'; q.dispatchEvent(new Event('input', { bubbles: true })); }"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "search-here"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-everywhere",
+      "about": "Search expanded to Everywhere",
+      "spec": [
+        {
+          "eval": "{ const q = document.querySelector('#f-q'); q.value = 'press'; q.dispatchEvent(new Event('input', { bubbles: true })); }"
+        },
+        {
+          "click": "#f-ttl [data-fscope=\"all\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "search-everywhere"
+          }
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "about": "Selected file More menu",
+      "spec": [
+        {
+          "click": "#f-body [data-file=\"hero-writing.webp\"]"
+        },
+        {
+          "click": "#f-bar [data-fmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "more"
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "about": "Empty Apps folder on Fable SSD",
+      "spec": [
+        {
+          "click": "#f-rail [data-fplace=\"ssd\"]"
+        },
+        {
+          "eval": "document.querySelector('#f-body [data-file=\"Luma\"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))"
+        },
+        {
+          "eval": "document.querySelector('#f-body [data-file=\"Apps\"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sidebar-collapsed",
+      "about": "Places hidden with the shared F9 toggle",
+      "spec": [
+        {
+          "click": "#w-filer [data-lside]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_FILER_STATE": "sidebar-collapsed"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "grid",
+    "selected",
+    "file-information",
+    "list",
+    "columns",
+    "search-here",
+    "more",
+    "sidebar-collapsed"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-filer > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "menu and toast",
+      "spec": "#w-filer > .pop"
+    },
+    {
+      "name": "title row",
+      "spec": "#w-filer > .tbar"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#f-rail"
+    },
+    {
+      "name": "location and count",
+      "spec": "#f-ttl"
+    },
+    {
+      "name": "grid",
+      "spec": "#f-body .fgrid"
+    },
+    {
+      "name": "list and table header",
+      "spec": "#f-body .flist"
+    },
+    {
+      "name": "columns",
+      "spec": "#f-body .fcols"
+    },
+    {
+      "name": "search results",
+      "spec": "#f-body .fresults, #f-body .fnone"
+    },
+    {
+      "name": "action center",
+      "spec": "#f-bar"
+    },
+    {
+      "name": "Information",
+      "spec": "#f-dock"
+    },
+    {
+      "name": "main island",
+      "spec": "#f-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#f-rail",
+      "gtk": "filer-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#f-main",
+      "gtk": "filer-island",
+      "name": "main island"
+    },
+    {
+      "spec": "#f-ttl",
+      "gtk": "filer-location",
+      "name": "location header"
+    },
+    {
+      "spec": "#f-bar",
+      "gtk": "filer-action-center",
+      "name": "action center"
+    },
+    {
+      "spec": "#f-dock",
+      "gtk": "filer-information",
+      "name": "Information pane"
+    }
+  ]
+}

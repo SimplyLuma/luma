@@ -1,0 +1,829 @@
+From a69e69a0fe35a4efa052885f263e08a0494cfd0a Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 19:01:11 -0400
+Subject: [PATCH 2/3] luma: Beam, the volume and brightness level indicator
+
+GNOME's on-screen display is a centred pill 4em above the bottom of the
+monitor, unrelated to the shelf. Luma presents it as Beam: a 236 x 48 capsule
+whose body fills from the leading edge to the level, with the glyph at the
+leading end and the value at the trailing end. It uses the Quick Options
+surface of the current appearance mode (fill, 1px line, both shadows, and the
+compositor blur on Frost and Glass); the fill is the active control colour at
+24% ending in a 2px marker at 55%. Above 100% the fill stops at full width
+and the number shows the real value.
+
+Beam is a presentation of OsdWindow, not a new service: OsdWindowManager and
+show/showOne/showAll keep their API, so the volume indicator, brightness,
+gnome-settings-daemon's ShowOSD and Mutter's show-osd reach it unchanged. The
+kind of request is read from the icon every caller sends. Requests without a
+level show the icon and the caller's short label.
+
+It is placed by the shelf surface rule against the island holding Quick
+Options, and where no shelf is shown (fullscreen, the lock screen, a monitor
+without the shelf) it is centred on the monitor, 8px inside the work-area
+edge the shelf uses. It updates in place, hides 1500ms after the last change,
+fades in over 100ms while moving 6px away from the shelf, and animates its
+fill over 100ms; with reduced motion there is no movement and no fill
+animation. It never takes focus or pointer input, never shows while Quick
+Options is open, and opening Quick Options dismisses it. Screen readers hear
+"Volume 48 percent", "Volume muted" or "Brightness 72 percent" through a
+polite ATK notification.
+
+The volume and brightness glyphs are drawn from Lucide geometry (ISC).
+
+Dropping this patch restores GNOME's on-screen display.
+---
+ data/theme/gnome-shell-dark.css          |  65 ++++
+ data/theme/gnome-shell-high-contrast.css |  65 ++++
+ data/theme/gnome-shell-light.css         |  65 ++++
+ js/ui/osdWindow.js                       | 467 ++++++++++++++++++++---
+ 4 files changed, 612 insertions(+), 50 deletions(-)
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index a9fa423..c7226d5 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4230,6 +4230,71 @@ StScrollBar {
+   .quick-toggle-menu.luma-quick-detail .luma-airplay-placeholder {
+     font-size: 12px;
+     color: #969da4; }
++
++/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 capsule on the
++ * Quick Options surface of the current appearance mode: the same fill, 1px
++ * line and shadows, and the same compositor blur on Frost and Glass. The fill
++ * is the active control colour at 24% over the surface, ending in a 2px
++ * marker at 55%. Where it sits is the shelf surface rule, not a margin. */
++.luma-beam {
++  width: 236px;
++  height: 48px;
++  border-radius: 24px;
++  font-family: Figtree, sans-serif;
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 4px 12px rgba(14, 18, 24, 0.20);
++  -luma-beam-fill-color: rgba(61, 68, 76, 0.24);
++  -luma-beam-marker-color: rgba(61, 68, 76, 0.55); }
++.luma-beam-shadow {
++  border-radius: 24px;
++  background-color: rgba(241, 242, 243, 0.01);
++  box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
++.luma-beam-line {
++  border-radius: 24px;
++  border: 1px solid rgba(255, 255, 255, 0.72); }
++.luma-beam-row {
++  spacing: 10px;
++  padding: 0 16px 0 14px; }
++.luma-beam-row:rtl { padding: 0 14px 0 16px; }
++.luma-beam-glyph { width: 19px; height: 19px; }
++.luma-beam-icon { icon-size: 19px; }
++.luma-beam-value {
++  font-size: 15px;
++  font-weight: 750;
++  font-feature-settings: "tnum";
++  letter-spacing: -0.15px; }
++.luma-beam.luma-surface-dark {
++  background-color: #21252b;
++  color: #e9ebec;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.38);
++  -luma-beam-fill-color: rgba(230, 233, 235, 0.24);
++  -luma-beam-marker-color: rgba(230, 233, 235, 0.55); }
++.luma-beam.luma-surface-dark .luma-beam-line { border-color: rgba(255, 255, 255, 0.055); }
++.luma-beam-shadow.luma-surface-dark {
++  background-color: rgba(33, 37, 43, 0.01);
++  box-shadow: 0 38px 94px -26px rgba(0, 0, 0, 0.88); }
++.luma-beam.luma-surface-frost {
++  background-color: rgba(244, 245, 246, 0.80);
++  color: #30343a;
++  box-shadow: 0 5px 16px rgba(14, 18, 24, 0.20);
++  -luma-beam-fill-color: rgba(49, 55, 62, 0.24);
++  -luma-beam-marker-color: rgba(49, 55, 62, 0.55); }
++.luma-beam.luma-surface-frost .luma-beam-line { border-color: rgba(255, 255, 255, 0.62); }
++.luma-beam-shadow.luma-surface-frost {
++  background-color: rgba(241, 242, 243, 0.01);
++  box-shadow: 0 38px 94px -26px rgba(14, 18, 24, 0.62); }
++.luma-beam.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.38);
++  color: #ffffff;
++  box-shadow: 0 5px 16px rgba(9, 15, 25, 0.24);
++  -luma-beam-fill-color: rgba(242, 245, 247, 0.24);
++  -luma-beam-marker-color: rgba(242, 245, 247, 0.55); }
++.luma-beam.luma-surface-glass .luma-beam-line { border-color: rgba(255, 255, 255, 0.34); }
++.luma-beam-shadow.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.01);
++  box-shadow: 0 42px 100px -26px rgba(9, 15, 25, 0.76); }
++
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index d599542..fc1643f 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4448,6 +4448,71 @@ StScrollBar {
+ /* Luma compact context menus; preserve high-contrast system colors. */
+ .popup-menu-content, .background-menu .popup-menu-content { min-width: 204px; padding: 7px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
++
++/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 capsule on the
++ * Quick Options surface of the current appearance mode: the same fill, 1px
++ * line and shadows, and the same compositor blur on Frost and Glass. The fill
++ * is the active control colour at 24% over the surface, ending in a 2px
++ * marker at 55%. Where it sits is the shelf surface rule, not a margin. */
++.luma-beam {
++  width: 236px;
++  height: 48px;
++  border-radius: 24px;
++  font-family: Figtree, sans-serif;
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 4px 12px rgba(14, 18, 24, 0.20);
++  -luma-beam-fill-color: rgba(61, 68, 76, 0.24);
++  -luma-beam-marker-color: rgba(61, 68, 76, 0.55); }
++.luma-beam-shadow {
++  border-radius: 24px;
++  background-color: rgba(241, 242, 243, 0.01);
++  box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
++.luma-beam-line {
++  border-radius: 24px;
++  border: 1px solid rgba(255, 255, 255, 0.72); }
++.luma-beam-row {
++  spacing: 10px;
++  padding: 0 16px 0 14px; }
++.luma-beam-row:rtl { padding: 0 14px 0 16px; }
++.luma-beam-glyph { width: 19px; height: 19px; }
++.luma-beam-icon { icon-size: 19px; }
++.luma-beam-value {
++  font-size: 15px;
++  font-weight: 750;
++  font-feature-settings: "tnum";
++  letter-spacing: -0.15px; }
++.luma-beam.luma-surface-dark {
++  background-color: #21252b;
++  color: #e9ebec;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.38);
++  -luma-beam-fill-color: rgba(230, 233, 235, 0.24);
++  -luma-beam-marker-color: rgba(230, 233, 235, 0.55); }
++.luma-beam.luma-surface-dark .luma-beam-line { border-color: rgba(255, 255, 255, 0.055); }
++.luma-beam-shadow.luma-surface-dark {
++  background-color: rgba(33, 37, 43, 0.01);
++  box-shadow: 0 38px 94px -26px rgba(0, 0, 0, 0.88); }
++.luma-beam.luma-surface-frost {
++  background-color: rgba(244, 245, 246, 0.80);
++  color: #30343a;
++  box-shadow: 0 5px 16px rgba(14, 18, 24, 0.20);
++  -luma-beam-fill-color: rgba(49, 55, 62, 0.24);
++  -luma-beam-marker-color: rgba(49, 55, 62, 0.55); }
++.luma-beam.luma-surface-frost .luma-beam-line { border-color: rgba(255, 255, 255, 0.62); }
++.luma-beam-shadow.luma-surface-frost {
++  background-color: rgba(241, 242, 243, 0.01);
++  box-shadow: 0 38px 94px -26px rgba(14, 18, 24, 0.62); }
++.luma-beam.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.38);
++  color: #ffffff;
++  box-shadow: 0 5px 16px rgba(9, 15, 25, 0.24);
++  -luma-beam-fill-color: rgba(242, 245, 247, 0.24);
++  -luma-beam-marker-color: rgba(242, 245, 247, 0.55); }
++.luma-beam.luma-surface-glass .luma-beam-line { border-color: rgba(255, 255, 255, 0.34); }
++.luma-beam-shadow.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.01);
++  box-shadow: 0 42px 100px -26px rgba(9, 15, 25, 0.76); }
++
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index e7cbc3f..a95e18d 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4418,6 +4418,71 @@ StScrollBar {
+   .quick-toggle-menu.luma-quick-detail .luma-airplay-placeholder {
+     font-size: 12px;
+     color: #767b81; }
++
++/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 capsule on the
++ * Quick Options surface of the current appearance mode: the same fill, 1px
++ * line and shadows, and the same compositor blur on Frost and Glass. The fill
++ * is the active control colour at 24% over the surface, ending in a 2px
++ * marker at 55%. Where it sits is the shelf surface rule, not a margin. */
++.luma-beam {
++  width: 236px;
++  height: 48px;
++  border-radius: 24px;
++  font-family: Figtree, sans-serif;
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 4px 12px rgba(14, 18, 24, 0.20);
++  -luma-beam-fill-color: rgba(61, 68, 76, 0.24);
++  -luma-beam-marker-color: rgba(61, 68, 76, 0.55); }
++.luma-beam-shadow {
++  border-radius: 24px;
++  background-color: rgba(241, 242, 243, 0.01);
++  box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
++.luma-beam-line {
++  border-radius: 24px;
++  border: 1px solid rgba(255, 255, 255, 0.72); }
++.luma-beam-row {
++  spacing: 10px;
++  padding: 0 16px 0 14px; }
++.luma-beam-row:rtl { padding: 0 14px 0 16px; }
++.luma-beam-glyph { width: 19px; height: 19px; }
++.luma-beam-icon { icon-size: 19px; }
++.luma-beam-value {
++  font-size: 15px;
++  font-weight: 750;
++  font-feature-settings: "tnum";
++  letter-spacing: -0.15px; }
++.luma-beam.luma-surface-dark {
++  background-color: #21252b;
++  color: #e9ebec;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.38);
++  -luma-beam-fill-color: rgba(230, 233, 235, 0.24);
++  -luma-beam-marker-color: rgba(230, 233, 235, 0.55); }
++.luma-beam.luma-surface-dark .luma-beam-line { border-color: rgba(255, 255, 255, 0.055); }
++.luma-beam-shadow.luma-surface-dark {
++  background-color: rgba(33, 37, 43, 0.01);
++  box-shadow: 0 38px 94px -26px rgba(0, 0, 0, 0.88); }
++.luma-beam.luma-surface-frost {
++  background-color: rgba(244, 245, 246, 0.80);
++  color: #30343a;
++  box-shadow: 0 5px 16px rgba(14, 18, 24, 0.20);
++  -luma-beam-fill-color: rgba(49, 55, 62, 0.24);
++  -luma-beam-marker-color: rgba(49, 55, 62, 0.55); }
++.luma-beam.luma-surface-frost .luma-beam-line { border-color: rgba(255, 255, 255, 0.62); }
++.luma-beam-shadow.luma-surface-frost {
++  background-color: rgba(241, 242, 243, 0.01);
++  box-shadow: 0 38px 94px -26px rgba(14, 18, 24, 0.62); }
++.luma-beam.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.38);
++  color: #ffffff;
++  box-shadow: 0 5px 16px rgba(9, 15, 25, 0.24);
++  -luma-beam-fill-color: rgba(242, 245, 247, 0.24);
++  -luma-beam-marker-color: rgba(242, 245, 247, 0.55); }
++.luma-beam.luma-surface-glass .luma-beam-line { border-color: rgba(255, 255, 255, 0.34); }
++.luma-beam-shadow.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.01);
++  box-shadow: 0 42px 100px -26px rgba(9, 15, 25, 0.76); }
++
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
+index 47c840a..1939430 100644
+--- a/js/ui/osdWindow.js
++++ b/js/ui/osdWindow.js
+@@ -1,107 +1,431 @@
++import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+-import * as BarLevel from './barLevel.js';
+-import * as Layout from './layout.js';
+ import * as Main from './main.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {SHELF_SURFACE_GAP, placeShelfSurface, shelfEdge} from './lumaShelfSurface.js';
+ 
+ const HIDE_TIMEOUT = 1500;
+ const FADE_TIME = 100;
+ export const LEVEL_ANIMATION_TIME = 100;
+ 
++// Beam: Luma's presentation of the on-screen display. A capsule whose own
++// body fills to the level, the icon at the leading end and the number at the
++// trailing end, on the Quick Options surface of the current appearance mode.
++// It is placed by the shelf surface rule against the island holding Quick
++// Options, and keeps GNOME's OsdWindowManager API so every caller -- the
++// volume indicator, brightness, gnome-settings-daemon's ShowOSD and Mutter's
++// show-osd -- reaches it unchanged.
++
++// Lift toward the desktop on the way in, in logical pixels.
++const ENTRANCE_DISTANCE = 6;
++
++const reduceMotion = () => !St.Settings.get().enable_animations;
++
++function iconName(gicon) {
++    if (gicon instanceof Gio.ThemedIcon)
++        return gicon.get_names()[0] ?? '';
++    return gicon?.to_string?.() ?? '';
++}
++
++// What an OSD request is about, from the icon its caller chose: the icon is
++// the one thing every caller (Shell, gnome-settings-daemon, Mutter) sends.
++export function beamKind(name) {
++    if (name.startsWith('audio-volume'))
++        return 'volume';
++    if (name.startsWith('display-brightness'))
++        return 'brightness';
++    if (name.startsWith('keyboard-brightness'))
++        return 'keyboard-brightness';
++    if (name.startsWith('microphone-sensitivity'))
++        return 'microphone';
++    return 'other';
++}
++
++// The Beam's glyph, number and spoken text for a request. level and maxLevel
++// are GNOME's: 1 is 100%, and maxLevel above 1 allows over-amplification.
++export function beamPresentation({name, level = null, label = null}) {
++    const kind = beamKind(name);
++    if (level === null || level === undefined || level < 0) {
++        return {kind, glyph: null, fill: 0, value: label ?? '',
++            spoken: label ?? ''};
++    }
++    const muted = kind === 'volume' && (name.includes('muted') || level <= 0);
++    const percent = muted ? 0 : Math.round(level * 100);
++    const fill = Math.clamp(muted ? 0 : level, 0, 1);
++    let glyph = null;
++    if (kind === 'volume')
++        glyph = muted ? 'muted' : percent < 50 ? 'low' : 'high';
++    else if (kind === 'brightness')
++        glyph = 'sun';
++    const value = `${percent}%`;
++    let spoken;
++    switch (kind) {
++    case 'volume':
++        spoken = muted ? _('Volume muted') : _('Volume %d percent').format(percent);
++        break;
++    case 'brightness':
++        spoken = _('Brightness %d percent').format(percent);
++        break;
++    case 'keyboard-brightness':
++        spoken = _('Keyboard brightness %d percent').format(percent);
++        break;
++    case 'microphone':
++        spoken = _('Microphone %d percent').format(percent);
++        break;
++    default:
++        spoken = label ? `${label} ${_('%d percent').format(percent)}`
++            : _('%d percent').format(percent);
++    }
++    return {kind, glyph, fill, value, spoken};
++}
++
++// The volume and brightness glyphs, drawn at 19px with a 1.8 stroke on a 24
++// unit grid. Geometry from Lucide (volume-x, volume-1, volume-2, sun),
++// ISC licensed; see LUCIDE-ICONS in docs/research/source-register.md.
++const BeamGlyph = GObject.registerClass(
++class BeamGlyph extends St.DrawingArea {
++    _init() {
++        super._init({style_class: 'luma-beam-glyph', y_align: Clutter.ActorAlign.CENTER});
++        this._glyph = null;
++    }
++
++    set glyph(glyph) {
++        if (this._glyph === glyph)
++            return;
++        this._glyph = glyph;
++        this.queue_repaint();
++    }
++
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const [width, height] = this.get_surface_size();
++        const node = this.get_theme_node();
++        const size = Math.min(width, height);
++        cr.translate((width - size) / 2, (height - size) / 2);
++        cr.scale(size / 24, size / 24);
++        cr.setSourceColor(node.get_foreground_color());
++        cr.setLineWidth(1.8);
++        cr.setLineCap(1);   // Cairo.LineCap.ROUND
++        cr.setLineJoin(1);  // Cairo.LineJoin.ROUND
++        const line = (x1, y1, x2, y2) => {
++            cr.moveTo(x1, y1);
++            cr.lineTo(x2, y2);
++        };
++        const wave = (x, top, bottom, radius) => {
++            const half = (bottom - top) / 2;
++            const cx = x - Math.sqrt(radius * radius - half * half);
++            const angle = Math.atan2(half, x - cx);
++            cr.newSubPath();
++            cr.arc(cx, top + half, radius, -angle, angle);
++        };
++        if (this._glyph === 'sun') {
++            cr.newSubPath();
++            cr.arc(12, 12, 4, 0, 2 * Math.PI);
++            line(12, 2, 12, 4);
++            line(12, 20, 12, 22);
++            line(4.9, 4.9, 6.3, 6.3);
++            line(17.7, 17.7, 19.1, 19.1);
++            line(2, 12, 4, 12);
++            line(20, 12, 22, 12);
++            line(6.3, 17.7, 4.9, 19.1);
++            line(19.1, 4.9, 17.7, 6.3);
++        } else if (this._glyph) {
++            cr.moveTo(11, 5);
++            cr.lineTo(6, 9);
++            cr.lineTo(2, 9);
++            cr.lineTo(2, 15);
++            cr.lineTo(6, 15);
++            cr.lineTo(11, 19);
++            cr.closePath();
++            if (this._glyph === 'muted') {
++                line(22, 9, 16, 15);
++                line(16, 9, 22, 15);
++            } else {
++                wave(15.5, 8.5, 15.5, 5);
++                if (this._glyph === 'high')
++                    wave(19, 5, 19, 10);
++            }
++        }
++        cr.stroke();
++        cr.$dispose();
++    }
++});
++
++// The level: from the leading edge to the amount, the active control colour
++// over the surface, ending in a 2px marker; clipped to the capsule.
++const BeamFill = GObject.registerClass({
++    Properties: {
++        'value': GObject.ParamSpec.double(
++            'value', null, null,
++            GObject.ParamFlags.READWRITE,
++            0, 1, 0),
++    },
++}, class BeamFill extends St.DrawingArea {
++    _init() {
++        super._init({style_class: 'luma-beam-fill', x_expand: true, y_expand: true});
++        this._value = 0;
++    }
++
++    get value() {
++        return this._value;
++    }
++
++    set value(value) {
++        value = Math.clamp(value, 0, 1);
++        if (this._value === value)
++            return;
++        this._value = value;
++        this.notify('value');
++        this.queue_repaint();
++    }
++
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const [width, height] = this.get_surface_size();
++        const node = this.get_theme_node();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const radius = height / 2;
++        cr.newSubPath();
++        cr.arc(radius, radius, radius, Math.PI / 2, 3 * Math.PI / 2);
++        cr.arc(width - radius, radius, radius, -Math.PI / 2, Math.PI / 2);
++        cr.closePath();
++        cr.clip();
++
++        const filled = Math.round(width * this._value);
++        if (filled > 0) {
++            const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
++            const start = rtl ? width - filled : 0;
++            const [, fill] = node.lookup_color('-luma-beam-fill-color', true);
++            cr.setSourceColor(fill);
++            cr.rectangle(start, 0, filled, height);
++            cr.fill();
++            const marker = Math.min(2 * scale, filled);
++            const [, end] = node.lookup_color('-luma-beam-marker-color', true);
++            cr.setSourceColor(end);
++            cr.rectangle(rtl ? start : filled - marker, 0, marker, height);
++            cr.fill();
++        }
++        cr.$dispose();
++    }
++});
++
+ export const OsdWindow = GObject.registerClass(
+-class OsdWindow extends Clutter.Actor {
++class OsdWindow extends St.Widget {
+     _init(monitorIndex) {
+         super._init({
+-            x_expand: true,
+-            y_expand: true,
+-            x_align: Clutter.ActorAlign.CENTER,
+-            y_align: Clutter.ActorAlign.END,
++            style_class: 'luma-beam-window',
++            layout_manager: new Clutter.BinLayout(),
++            reactive: false,
++            can_focus: false,
+         });
++        // Never takes pointer input: it is not even a pick target.
++        Shell.util_set_hidden_from_pick(this, true);
+ 
+         this._monitorIndex = monitorIndex;
+-        const constraint = new Layout.MonitorConstraint({index: monitorIndex});
+-        this.add_constraint(constraint);
+ 
+-        this._hbox = new St.BoxLayout({
+-            style_class: 'osd-window',
++        this._shadow = new St.Widget({
++            style_class: 'luma-beam-shadow',
++            x_expand: true,
++            y_expand: true,
+         });
+-        this.add_child(this._hbox);
++        this.add_child(this._shadow);
+ 
+-        this._icon = new St.Icon({y_expand: true});
+-        this._hbox.add_child(this._icon);
++        this._capsule = new St.Widget({
++            style_class: 'luma-beam',
++            layout_manager: new Clutter.BinLayout(),
++            accessible_role: Atk.Role.NOTIFICATION,
++        });
++        this.add_child(this._capsule);
++        this._material = SurfaceMaterials.bindSurface(this._capsule, {
++            cornerRadii: 0,
++            classActors: [this._shadow],
++        });
++        this._capsule.connect('notify::height', () =>
++            this._material.setCornerRadii(this._capsule.height / 2));
+ 
+-        this._vbox = new St.BoxLayout({
+-            orientation: Clutter.Orientation.VERTICAL,
+-            y_align: Clutter.ActorAlign.CENTER,
++        // The 1px line lies on the surface, under the fill, as Quick Options'
++        // does under its controls.
++        this._line = new St.Widget({style_class: 'luma-beam-line', x_expand: true, y_expand: true});
++        this._capsule.add_child(this._line);
++
++        this._fill = new BeamFill();
++        this._capsule.add_child(this._fill);
++
++        this._row = new St.BoxLayout({
++            style_class: 'luma-beam-row',
++            x_expand: true,
++            y_expand: true,
+         });
+-        this._hbox.add_child(this._vbox);
++        this._capsule.add_child(this._row);
+ 
+-        this._label = new St.Label();
+-        this._vbox.add_child(this._label);
++        this._glyph = new BeamGlyph();
++        this._icon = new St.Icon({
++            style_class: 'luma-beam-icon',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._row.add_child(this._glyph);
++        this._row.add_child(this._icon);
+ 
+-        this._level = new BarLevel.BarLevel({
+-            style_class: 'level',
+-            value: 0,
++        this._value = new St.Label({
++            style_class: 'luma-beam-value',
++            x_expand: true,
++            x_align: Clutter.ActorAlign.END,
++            y_align: Clutter.ActorAlign.CENTER,
+         });
+-        this._vbox.add_child(this._level);
++        this._value.clutter_text.ellipsize = 3; // Pango.EllipsizeMode.END
++        this._row.add_child(this._value);
+ 
++        this._gicon = null;
++        this._label = null;
++        this._level = null;
++        this._spoken = null;
+         this._hideTimeoutId = 0;
++        this._announceId = 0;
++        this._leaving = false;
+         this._reset();
++        this.connect('destroy', () => this._onDestroy());
+         Main.uiGroup.add_child(this);
+     }
+ 
+-    _updateBoxVisibility() {
+-        this._vbox.visible = [...this._vbox].some(c => c.visible);
+-    }
+-
+     setIcon(icon) {
+-        this._icon.gicon = icon;
++        this._gicon = icon;
+     }
+ 
+     setLabel(label) {
+-        this._label.visible = label != null;
+-        if (this._label.visible)
+-            this._label.text = label;
+-        this._updateBoxVisibility();
++        this._label = label ?? null;
+     }
+ 
+     setLevel(value) {
+-        this._level.visible = value != null;
+-        if (this._level.visible) {
+-            if (this.visible) {
+-                this._level.ease_property('value', value, {
+-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-                    duration: LEVEL_ANIMATION_TIME,
+-                });
+-            } else {
+-                this._level.value = value;
+-            }
+-        }
+-        this._updateBoxVisibility();
++        this._level = value ?? null;
+     }
+ 
+     setMaxLevel(maxLevel = 1) {
+-        this._level.maximum_value = maxLevel;
++        // The capsule fills to 100% and stops; the number shows the real
++        // value above it, so the maximum only matters to the caller.
++        this._maxLevel = maxLevel;
++    }
++
++    _present(animate) {
++        const name = iconName(this._gicon);
++        const view = beamPresentation({name, level: this._level, label: this._label});
++        this._glyph.visible = view.glyph !== null;
++        this._glyph.glyph = view.glyph;
++        this._icon.visible = view.glyph === null;
++        this._icon.gicon = this._gicon;
++        this._value.text = view.value;
++        this._fill.visible = this._level !== null && this._level >= 0;
++        this._fill.remove_transition('value');
++        if (animate && !reduceMotion()) {
++            this._fill.ease_property('value', view.fill, {
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                duration: LEVEL_ANIMATION_TIME,
++            });
++        } else {
++            this._fill.value = view.fill;
++        }
++        this._announce(view.spoken);
++    }
++
++    // Spoken politely, once per distinct value: a held key reads the value
++    // it settles on, not every step.
++    _announce(text) {
++        this._capsule.accessible_name = text;
++        if (!text || text === this._spoken)
++            return;
++        this._spoken = text;
++        const accessible = this._capsule.get_accessible();
++        if (!accessible)
++            return;
++        if (this._announceId)
++            GLib.source_remove(this._announceId);
++        this._announceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
++            this._announceId = 0;
++            accessible.emit('notification', this._spoken, Atk.Live.POLITE);
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(this._announceId, '[gnome-shell] Beam announce');
++    }
++
++    // Beside the island holding Quick Options when this monitor's shelf is
++    // shown; otherwise centred on the monitor, the same gap inside the
++    // work-area edge the shelf uses.
++    _place() {
++        const [, , width, height] = this.get_preferred_size();
++        const quick = Main.panel?.statusArea?.quickSettings;
++        let place = null;
++        if (quick && Main.layoutManager.findIndexForActor(quick) === this._monitorIndex)
++            place = placeShelfSurface(quick, {width, height});
++        let edge = place?.edge ?? shelfEdge();
++        if (!place) {
++            const monitor = Main.layoutManager.monitors[this._monitorIndex];
++            const work = Main.layoutManager.getWorkAreaForMonitor(this._monitorIndex);
++            const gap = SHELF_SURFACE_GAP * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            place = {
++                x: monitor.x + (monitor.width - width) / 2,
++                y: monitor.y + (monitor.height - height) / 2,
++            };
++            if (edge === 'top')
++                place.y = work.y + gap;
++            else if (edge === 'left')
++                place.x = work.x + gap;
++            else if (edge === 'right')
++                place.x = work.x + work.width - gap - width;
++            else
++                place.y = work.y + work.height - gap - height;
++            edge = edge ?? 'bottom';
++        }
++        this._edge = edge;
++        this.set_position(Math.round(place.x), Math.round(place.y));
+     }
+ 
+     show() {
+-        if (!this._icon.gicon)
++        if (!this._gicon)
+             return;
++        if (Main.osdWindowManager?.quickOptionsOpen())
++            return;
++
++        const entering = !this.visible;
++        this._present(!entering);
+ 
+-        if (!this.visible) {
++        if (entering) {
+             global.compositor.disable_unredirect();
+             super.show();
+-            this.opacity = 0;
++            this._place();
+             this.get_parent().set_child_above_sibling(this, null);
+-
++            this.remove_all_transitions();
++            this.opacity = 0;
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            const distance = reduceMotion() ? 0 : ENTRANCE_DISTANCE * scale;
++            // Starts toward the shelf and moves away from it.
++            this.translation_x = this._edge === 'left' ? -distance
++                : this._edge === 'right' ? distance : 0;
++            this.translation_y = this._edge === 'top' ? -distance
++                : this._edge === 'bottom' ? distance : 0;
+             this.ease({
+                 opacity: 255,
++                translation_x: 0,
++                translation_y: 0,
+                 duration: FADE_TIME,
+                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             });
++        } else {
++            this._place();
++            if (this._leaving) {
++                // Changed again while fading out: back to full, no entrance.
++                this._leaving = false;
++                this.remove_transition('opacity');
++                this.ease({
++                    opacity: 255,
++                    duration: FADE_TIME,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                });
++            }
+         }
+ 
+         if (this._hideTimeoutId)
+@@ -119,13 +443,29 @@ class OsdWindow extends Clutter.Actor {
+         this._hide();
+     }
+ 
++    // Gone at once, without a fade: Quick Options is opening over it.
++    dismiss() {
++        if (this._hideTimeoutId) {
++            GLib.source_remove(this._hideTimeoutId);
++            this._hideTimeoutId = 0;
++        }
++        if (!this.visible)
++            return;
++        this.remove_all_transitions();
++        this._leaving = false;
++        this._reset();
++        global.compositor.enable_unredirect();
++    }
++
+     _hide() {
+         this._hideTimeoutId = 0;
++        this._leaving = true;
+         this.ease({
+             opacity: 0,
+             duration: FADE_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             onComplete: () => {
++                this._leaving = false;
+                 this._reset();
+                 global.compositor.enable_unredirect();
+             },
+@@ -134,9 +474,21 @@ class OsdWindow extends Clutter.Actor {
+ 
+     _reset() {
+         super.hide();
++        this.translation_x = 0;
++        this.translation_y = 0;
+         this.setLabel(null);
+         this.setMaxLevel(null);
+         this.setLevel(null);
++        this._spoken = null;
++    }
++
++    _onDestroy() {
++        if (this._hideTimeoutId)
++            GLib.source_remove(this._hideTimeoutId);
++        this._hideTimeoutId = 0;
++        if (this._announceId)
++            GLib.source_remove(this._announceId);
++        this._announceId = 0;
+     }
+ });
+ 
+@@ -162,6 +514,21 @@ export class OsdWindowManager {
+         this._osdWindows.length = Main.layoutManager.monitors.length;
+     }
+ 
++    // Beam and Quick Options show the same values from the same source, so
++    // Beam never shows over Quick Options, and opening it dismisses Beam.
++    quickOptionsOpen() {
++        const menu = Main.panel?.statusArea?.quickSettings?.menu;
++        if (menu && menu !== this._quickOptionsMenu) {
++            this._quickOptionsMenu?.disconnectObject(this);
++            this._quickOptionsMenu = menu;
++            menu.connectObject('open-state-changed', (_menu, open) => {
++                if (open)
++                    this._osdWindows.forEach(window => window?.dismiss());
++            }, this);
++        }
++        return menu?.isOpen ?? false;
++    }
++
+     _showOsdWindow(monitorIndex, icon, label, level, maxLevel) {
+         this._osdWindows[monitorIndex].setIcon(icon);
+         this._osdWindows[monitorIndex].setLabel(label);

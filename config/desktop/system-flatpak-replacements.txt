@@ -1,0 +1,19 @@
+# Fedora Silverblue supplies some stock applications as system Flatpaks whose
+# bundled runtime bypasses Luma's patched host GTK/libadwaita. Luma ships these
+# curated roles as native packages so they consume the exact host toolkit and
+# shared window chrome. One entry per line: `<application id> <native package>`.
+# Image provisioning removes a system Flatpak only after its native provider is
+# already installed or has been requested in the same deployment. User Flatpaks
+# and shared runtimes are never touched, and no sandbox theme override is used.
+org.gnome.TextEditor prairie-core-apps
+org.gnome.Calendar prairie-core-apps
+org.gnome.Calculator luma-calculator
+org.gnome.Extensions gnome-shell
+org.gnome.Loupe luma-viewer
+org.gnome.Papers luma-viewer
+org.gnome.Evince luma-viewer
+org.gnome.DiskUtility luma-disks
+org.gnome.Ptyxis luma-terminal
+org.gnome.Console luma-terminal
+org.gnome.Terminal luma-terminal
+org.mozilla.firefox viola-browser-stable

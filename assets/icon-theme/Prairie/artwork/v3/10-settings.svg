@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="metal" x1=".08" y1="0" x2=".92" y2="1">
+      <stop stop-color="#dce5e7"/>
+      <stop offset=".36" stop-color="#bac6c9"/>
+      <stop offset=".7" stop-color="#8e9ba0"/>
+      <stop offset="1" stop-color="#6d797f"/>
+    </linearGradient>
+    <radialGradient id="metalBloom" cx=".17" cy=".03" r=".86">
+      <stop stop-color="#fff" stop-opacity=".52"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ceramicEdge" x1="240" y1="350" x2="786" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset=".42" stop-color="#d9dfde"/>
+      <stop offset=".76" stop-color="#aeb8b7"/>
+      <stop offset="1" stop-color="#e9eceb"/>
+    </linearGradient>
+    <linearGradient id="ceramic" x1="270" y1="372" x2="754" y2="658" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset=".4" stop-color="#f8f9f7"/>
+      <stop offset=".76" stop-color="#e0e4e2"/>
+      <stop offset="1" stop-color="#c8cecc"/>
+    </linearGradient>
+    <radialGradient id="ceramicLight" cx=".27" cy=".18" r=".78">
+      <stop stop-color="#fff" stop-opacity=".82"/>
+      <stop offset=".62" stop-color="#fff" stop-opacity=".04"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="knobEdge" x1="520" y1="390" x2="744" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f4f6f4"/>
+      <stop offset=".5" stop-color="#bdc5c3"/>
+      <stop offset="1" stop-color="#8d9897"/>
+    </linearGradient>
+    <radialGradient id="knob" cx=".3" cy=".2" r=".86">
+      <stop stop-color="#ffad73"/>
+      <stop offset=".5" stop-color="#ff761f"/>
+      <stop offset=".82" stop-color="#f15a12"/>
+      <stop offset="1" stop-color="#d64708"/>
+    </radialGradient>
+    <filter id="brush" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency=".82 .018" numOctaves="1" seed="9" result="grain"/>
+      <feColorMatrix in="grain" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 .07 0" result="softGrain"/>
+      <feBlend in="SourceGraphic" in2="softGrain" mode="soft-light"/>
+    </filter>
+    <filter id="softShadow" x="-30%" y="-38%" width="160%" height="176%">
+      <feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#263136" flood-opacity=".24"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#metal)" filter="url(#brush)"/>
+  <rect width="1024" height="1024" fill="url(#metalBloom)"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="222" y="338" width="580" height="348" rx="174" fill="url(#ceramicEdge)"/>
+    <rect x="238" y="354" width="548" height="316" rx="158" fill="url(#ceramic)"/>
+    <rect x="248" y="364" width="528" height="296" rx="148" fill="url(#ceramicLight)"/>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <circle cx="630" cy="512" r="126" fill="url(#knobEdge)"/>
+    <circle cx="630" cy="512" r="113" fill="url(#knob)"/>
+    <ellipse cx="594" cy="466" rx="50" ry="22" fill="#fff" opacity=".2" transform="rotate(-25 594 466)"/>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Connect</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Luma Connect</name>
+  <summary>Your account, devices and phones together</summary>
+  <description>
+    <p>Connect your devices, choose what they share and manage your Luma account. Device credentials stay with the host service.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Connect.desktop</launchable>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <url type="homepage">https://simplyluma.com/apps/connect</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.63.0" date="2026-10-07" />
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Connect your Luma account and devices</caption>
+      <image type="source" width="1014" height="790">https://dl.simplyluma.com/media/org.projectluma.Connect/b64764c47c1618212201ea1c6ba465e94fa3b098588fd5cf56c3c5a65f6ce247.png</image>
+    </screenshot>
+  </screenshots>
+</component>

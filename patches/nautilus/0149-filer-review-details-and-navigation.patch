@@ -1,0 +1,166 @@
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 9b2e4bc..2913303 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1120,6 +1120,7 @@ filer_details_panel (LumaBarItem *item,
+     NautilusWindow *window = NAUTILUS_WINDOW (user_data);
+     LumaDetailsPane *pane = LUMA_DETAILS_PANE (luma_details_pane_new (_("Details"), FALSE));
+     gtk_widget_set_name (GTK_WIDGET (pane), "filer-details-panel");
++    luma_details_pane_set_embedded (pane, TRUE);
+     luma_details_pane_set_closable (pane, FALSE);
+     filer_fill_details (window, pane);
+     luma_details_pane_show (pane, TRUE);
+diff --git a/test/automated/test-properties-about.c b/test/automated/test-properties-about.c
+index 7e28452..1545cc3 100644
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -5,10 +5,13 @@
+ #include "nautilus-application.h"
+ #include "nautilus-properties.h"
+ #include "nautilus-window.h"
++#include "nautilus-window-slot.h"
++#include "nautilus-query.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-file.h"
+ #include "nautilus-tag-manager.h"
+ #include "nautilus-resources.h"
++#include <luma-ui.h>
+ 
+ static void spin (guint milliseconds)
+ {
+@@ -17,6 +20,7 @@ static void spin (guint milliseconds)
+ }
+ static GtkWidget *find (GtkWidget *root,const char *id)
+ {
++    if(!g_strcmp0(gtk_widget_get_name(root),id))return root;
+     if(GTK_IS_BUILDABLE(root) && !g_strcmp0(gtk_buildable_get_buildable_id(GTK_BUILDABLE(root)),id))return root;
+     for(GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c))
+     {GtkWidget *r=find(c,id);if(r)return r;}
+@@ -183,6 +187,119 @@ static void fixture(void)
+     gtk_window_destroy(window);spin(50);
+     g_remove(renamed);g_remove(conflict);g_rmdir(dir);
+ }
++static GtkWidget *find_css(GtkWidget *root,const char *css)
++{
++    if(gtk_widget_has_css_class(root,css))return root;
++    for(GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c))
++    {GtkWidget *r=find_css(c,css);if(r)return r;}
++    return NULL;
++}
++static void review_navigation(void)
++{
++    /* The private root test home is outside the user tree; this memory-only
++     * preference keeps the independent system-folder warning out of this UI test. */
++    g_settings_set_boolean(nautilus_preferences,"show-system-folder-warning",FALSE);
++    g_test_message("Review home: %s",g_get_home_dir());
++    g_assert_cmpint(g_mkdir_with_parents(g_get_home_dir(),0700),==,0);
++    NautilusWindow *window=nautilus_window_new();
++    gtk_window_set_default_size(GTK_WINDOW(window),402,740);
++    gtk_window_present(GTK_WINDOW(window));
++    g_autoptr(GFile) home=g_file_new_for_path(g_get_home_dir());
++    nautilus_window_open_location_full(window,home,0,NULL);spin(600);
++    AdwDialog *unexpected=adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window));
++    if(ADW_IS_ALERT_DIALOG(unexpected))g_test_message("Unexpected dialog: %s / %s",adw_alert_dialog_get_heading(ADW_ALERT_DIALOG(unexpected)),adw_alert_dialog_get_body(ADW_ALERT_DIALOG(unexpected)));
++    g_assert_null(unexpected);
++    GtkWidget *island=find_css(GTK_WIDGET(window),"lumaui-title-island");
++    g_assert_nonnull(island);
++    g_assert_true(gtk_widget_get_mapped(island));
++    GtkWidget *title=find_css(island,"lumaui-title-island-title");
++    GtkWidget *lead=find_css(island,"lumaui-title-island-lead");
++    for(guint i=0;i<3;i++)
++    {
++        g_signal_emit_by_name(title,"clicked");spin(400);
++        g_assert_true(luma_title_island_get_grown(LUMA_TITLE_ISLAND(island)));
++        GtkWidget *sidebar=required(GTK_WIDGET(window),"places_sidebar");
++        g_assert_true(gtk_widget_is_ancestor(sidebar,island));
++        g_assert_true(gtk_widget_get_mapped(sidebar));
++        g_signal_emit_by_name(lead,"clicked");spin(400);
++        g_assert_false(luma_title_island_get_grown(LUMA_TITLE_ISLAND(island)));
++        g_assert_false(gtk_widget_is_ancestor(sidebar,island));
++    }
++    gtk_window_set_default_size(GTK_WINDOW(window),1180,740);spin(400);
++    g_assert_false(gtk_widget_get_mapped(island));
++    g_assert_true(gtk_widget_get_mapped(required(GTK_WIDGET(window),"places_sidebar")));
++    g_autoptr(NautilusWindowSlot) active_slot=NULL;
++    g_object_get(window,"active-slot",&active_slot,NULL);
++    GActionGroup *slot_actions=nautilus_window_slot_get_action_group(active_slot);
++    g_autoptr(NautilusQuery) query=nautilus_query_new();
++    nautilus_query_set_text(query,"private-review-query");
++    nautilus_query_set_location(query,home);
++    nautilus_window_search(window,query);spin(600);
++    const int search_widths[]={360,402,720,1180,402};
++    for(guint i=0;i<G_N_ELEMENTS(search_widths);i++) {
++        gtk_window_set_default_size(GTK_WINDOW(window),search_widths[i],740);spin(300);
++        g_assert_false(gtk_widget_get_mapped(island));
++    }
++    g_action_group_change_action_state(slot_actions,"search-visible",g_variant_new_boolean(FALSE));spin(300);
++    g_assert_true(gtk_widget_get_mapped(island));
++    gtk_window_set_default_size(GTK_WINDOW(window),1180,740);spin(300);
++    LumaDetailsPane *info=LUMA_DETAILS_PANE(required(GTK_WIDGET(window),"filer-information"));
++    g_assert_nonnull(luma_details_pane_get_subject(info));
++    g_assert_true(luma_details_pane_show(info,TRUE));spin(400);
++    GtkWidget *sheet=find_css(GTK_WIDGET(info),"lumaui-details");
++    graphene_rect_t pane_box, files_box;
++    g_assert_true(gtk_widget_compute_bounds(sheet,GTK_WIDGET(window),&pane_box));
++    g_assert_true(gtk_widget_compute_bounds(required(GTK_WIDGET(window),"filer-island"),GTK_WIDGET(window),&files_box));
++    GtkBorder pane_margin;
++    gtk_style_context_get_margin(gtk_widget_get_style_context(sheet),&pane_margin);
++    g_test_message("Info bounds %.0f %.0f %.0f %.0f; file bounds %.0f %.0f %.0f %.0f; margin %d %d %d %d",
++      pane_box.origin.x,pane_box.origin.y,pane_box.size.width,pane_box.size.height,
++      files_box.origin.x,files_box.origin.y,files_box.size.width,files_box.size.height,
++      pane_margin.left,pane_margin.right,pane_margin.top,pane_margin.bottom);
++    GtkSnapshot *snapshot=gtk_snapshot_new();
++    GdkPaintable *paintable=gtk_widget_paintable_new(GTK_WIDGET(window));
++    gdk_paintable_snapshot(paintable,snapshot,gtk_widget_get_width(GTK_WIDGET(window)),gtk_widget_get_height(GTK_WIDGET(window)));
++    GskRenderNode *node=gtk_snapshot_free_to_node(snapshot);
++    if(node) {
++      GdkTexture *texture=gsk_renderer_render_texture(gtk_native_get_renderer(GTK_NATIVE(window)),node,NULL);
++      gdk_texture_save_to_png(texture,"/tmp/filer-info-review.png");
++      g_object_unref(texture);gsk_render_node_unref(node);
++    }
++    g_object_unref(paintable);
++    g_assert_cmpfloat(pane_box.origin.x-(files_box.origin.x+files_box.size.width),>=,8);
++    g_assert_cmpfloat(gtk_widget_get_width(GTK_WIDGET(window))-(pane_box.origin.x+pane_box.size.width),>=,8);
++    luma_details_pane_show(info,FALSE);spin(100);
++    g_autofree char *path=g_build_filename(g_get_home_dir(),"review.txt",NULL);
++    g_assert_true(g_file_set_contents(path,"Review fixture",-1,NULL));
++    g_autoptr(GFile) location=g_file_new_for_path(path);
++    NautilusFile *file=nautilus_file_get(location);
++    GList *selection=g_list_append(NULL,file);
++    gtk_window_set_default_size(GTK_WINDOW(window),402,740);spin(300);
++    nautilus_window_open_location_full(window,home,0,selection);spin(600);
++    g_list_free_full(selection,g_object_unref);
++    LumaActionCenter *center=LUMA_ACTION_CENTER(find_css(GTK_WIDGET(window),"lumaui-action-center"));
++    GtkWidget *details=NULL,*copy=NULL;
++    for(guint i=0;i<6;i++) {
++        GtkWidget *control=luma_action_center_get_bar_control(center,i);
++        if(!control)continue;
++        if(!g_strcmp0(gtk_widget_get_tooltip_text(control),"Details"))details=control;
++        if(!g_strcmp0(gtk_widget_get_tooltip_text(control),"Copy"))copy=control;
++    }
++    g_assert_nonnull(details);g_assert_nonnull(copy);
++    g_signal_emit_by_name(details,"clicked");spin(400);
++    g_assert_cmpstr(luma_action_center_get_grown(center),==,"details");
++    GtkWidget *panel=required(GTK_WIDGET(window),"filer-details-panel");
++    g_assert_false(luma_details_pane_get_is_drawer(LUMA_DETAILS_PANE(panel)));
++    g_assert_true(gtk_widget_get_mapped(copy));
++    g_assert_true(gtk_widget_compute_bounds(copy,GTK_WIDGET(window),&files_box));
++    g_assert_true(gtk_widget_compute_bounds(panel,GTK_WIDGET(window),&pane_box));
++    g_assert_cmpfloat(files_box.origin.y,>=,pane_box.origin.y+pane_box.size.height);
++    g_signal_emit_by_name(details,"clicked");spin(300);
++    g_assert_null(luma_action_center_get_grown(center));
++    gtk_window_destroy(GTK_WINDOW(window));spin(100);
++    g_remove(path);
++}
++
+ int main(int argc,char **argv)
+ {
+     g_setenv("GIO_USE_VFS", "local", TRUE);
+@@ -195,6 +312,7 @@ int main(int argc,char **argv)
+     g_autoptr(NautilusApplication) app=nautilus_application_new();
+     g_application_set_flags(G_APPLICATION(app),G_APPLICATION_NON_UNIQUE);
+     g_autoptr(GError) error=NULL;g_assert_true(g_application_register(G_APPLICATION(app),NULL,&error));
++    g_test_add_func("/luma/review/navigation",review_navigation);
+     g_test_add_func("/luma/about/native-mutations",fixture);
+     g_test_add_func("/luma/navigation/system-warning",system_warning);
+     return g_test_run();

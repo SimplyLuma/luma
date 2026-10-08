@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Wine Wordpad
+Exec=wine wordpad.exe
+Icon=wordpad
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=X-Wine;

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+[Desktop Entry]
+Type=Application
+Name=IMS Dialer Daemon
+Comment=Plasma Dialer backend for imsd (replaces plasma-dialer's modem-daemon)
+Exec=/usr/bin/imsd-dialerd
+Icon=call-start
+NoDisplay=true
+X-KDE-autostart-phase=1
+X-KDE-StartupNotify=false

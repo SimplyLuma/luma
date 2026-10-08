@@ -1,0 +1,2680 @@
+diff --git a/hwcomposer/Android.bp b/hwcomposer/Android.bp
+index f057bda..cf19d95 100644
+--- a/hwcomposer/Android.bp
++++ b/hwcomposer/Android.bp
+@@ -24,7 +24,6 @@ cc_library_shared {
+         "libcutils",
+         "libhardware",
+         "libhidlbase",
+-        "libsync",
+         "libui",
+         "libdrm",
+         "libEGL",
+@@ -43,6 +42,7 @@ cc_library_shared {
+         "libffi",
+         "libwayland_extension_client_protocols",
+         "libxkbcommon",
++        "libft2.nodep",
+     ],
+     srcs: [
+         "extension.cpp",
+@@ -57,6 +57,8 @@ cc_library_shared {
+         "modes/full-ui.cpp",
+         "modes/multi-window.cpp",
+         "modes/single-window.cpp",
++        "prairie-titlebar.cpp",
++        "sw-sync-compat.cpp",
+     ],
+     header_libs: [
+         "libsystem_headers",
+@@ -72,8 +74,23 @@ cc_library_shared {
+         "-Wall",
+         "-Werror",
+     ],
+-    generated_sources: ["wayland_android_client_protocol_sources"],
+-    generated_headers: ["wayland_android_client_protocol_headers"],
++    required: ["prairie-figtree-font"],
++    generated_sources: [
++        "wayland_android_client_protocol_sources",
++        "wayland_fractional_scale_client_protocol_sources",
++    ],
++    generated_headers: [
++        "wayland_android_client_protocol_headers",
++        "wayland_fractional_scale_client_protocol_headers",
++    ],
++}
++
++prebuilt_etc {
++    name: "prairie-figtree-font",
++    src: "fonts/Figtree-VF.ttf",
++    sub_dir: "fonts",
++    filename_from_src: true,
++    vendor: true,
+ }
+ 
+ // Generate wayland-android protocol source file
+@@ -92,3 +109,20 @@ genrule {
+     cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
+     out: ["wayland-android-client-protocol.h"],
+ }
++
++// Generate the standard fractional-scale protocol used by upstream Waydroid.
++genrule {
++    name: "wayland_fractional_scale_client_protocol_sources",
++    srcs: ["fractional-scale-v1.xml"],
++    tools: ["wayland_scanner"],
++    cmd: "$(location wayland_scanner) code < $(in) > $(out)",
++    out: ["fractional-scale-v1-client-protocol.c"],
++}
++
++genrule {
++    name: "wayland_fractional_scale_client_protocol_headers",
++    srcs: ["fractional-scale-v1.xml"],
++    tools: ["wayland_scanner"],
++    cmd: "$(location wayland_scanner) client-header < $(in) > $(out)",
++    out: ["fractional-scale-v1-client-protocol.h"],
++}
+diff --git a/hwcomposer/fonts/Figtree-VF.ttf b/hwcomposer/fonts/Figtree-VF.ttf
+new file mode 100644
+index 0000000000000000000000000000000000000000..579e2ab5f30beb21cd0b618dd0796b0fce0eff8e
+GIT binary patch
+literal 62712
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/hwcomposer/fractional-scale-v1.xml b/hwcomposer/fractional-scale-v1.xml
+new file mode 100644
+index 0000000..350bfc0
+--- /dev/null
++++ b/hwcomposer/fractional-scale-v1.xml
+@@ -0,0 +1,102 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="fractional_scale_v1">
++  <copyright>
++    Copyright © 2022 Kenny Levinsen
++
++    Permission is hereby granted, free of charge, to any person obtaining a
++    copy of this software and associated documentation files (the "Software"),
++    to deal in the Software without restriction, including without limitation
++    the rights to use, copy, modify, merge, publish, distribute, sublicense,
++    and/or sell copies of the Software, and to permit persons to whom the
++    Software is furnished to do so, subject to the following conditions:
++
++    The above copyright notice and this permission notice (including the next
++    paragraph) shall be included in all copies or substantial portions of the
++    Software.
++
++    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++    DEALINGS IN THE SOFTWARE.
++  </copyright>
++
++  <description summary="Protocol for requesting fractional surface scales">
++    This protocol allows a compositor to suggest for surfaces to render at
++    fractional scales.
++
++    A client can submit scaled content by utilizing wp_viewport. This is done by
++    creating a wp_viewport object for the surface and setting the destination
++    rectangle to the surface size before the scale factor is applied.
++
++    The buffer size is calculated by multiplying the surface size by the
++    intended scale.
++
++    The wl_surface buffer scale should remain set to 1.
++
++    If a surface has a surface-local size of 100 px by 50 px and wishes to
++    submit buffers with a scale of 1.5, then a buffer of 150px by 75 px should
++    be used and the wp_viewport destination rectangle should be 100 px by 50 px.
++
++    For toplevel surfaces, the size is rounded halfway away from zero. The
++    rounding algorithm for subsurface position and size is not defined.
++  </description>
++
++  <interface name="wp_fractional_scale_manager_v1" version="1">
++    <description summary="fractional surface scale information">
++      A global interface for requesting surfaces to use fractional scales.
++    </description>
++
++    <request name="destroy" type="destructor">
++      <description summary="unbind the fractional surface scale interface">
++        Informs the server that the client will not be using this protocol
++        object anymore. This does not affect any other objects,
++        wp_fractional_scale_v1 objects included.
++      </description>
++    </request>
++
++    <enum name="error">
++      <entry name="fractional_scale_exists" value="0"
++        summary="the surface already has a fractional_scale object associated"/>
++    </enum>
++
++    <request name="get_fractional_scale">
++      <description summary="extend surface interface for scale information">
++        Create an add-on object for the the wl_surface to let the compositor
++        request fractional scales. If the given wl_surface already has a
++        wp_fractional_scale_v1 object associated, the fractional_scale_exists
++        protocol error is raised.
++      </description>
++      <arg name="id" type="new_id" interface="wp_fractional_scale_v1"
++           summary="the new surface scale info interface id"/>
++      <arg name="surface" type="object" interface="wl_surface"
++           summary="the surface"/>
++    </request>
++  </interface>
++
++  <interface name="wp_fractional_scale_v1" version="1">
++    <description summary="fractional scale interface to a wl_surface">
++      An additional interface to a wl_surface object which allows the compositor
++      to inform the client of the preferred scale.
++    </description>
++
++    <request name="destroy" type="destructor">
++      <description summary="remove surface scale information for surface">
++        Destroy the fractional scale object. When this object is destroyed,
++        preferred_scale events will no longer be sent.
++      </description>
++    </request>
++
++    <event name="preferred_scale">
++      <description summary="notify of new preferred scale">
++        Notification of a new preferred scale for this surface that the
++        compositor suggests that the client should use.
++
++        The sent scale is the numerator of a fraction with a denominator of 120.
++      </description>
++      <arg name="scale" type="uint" summary="the new preferred scale"/>
++    </event>
++  </interface>
++</protocol>
+diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
+index f509ed7..7974aa6 100644
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -16,6 +16,7 @@
+  */
+ 
+ #include "hwcomposer.h"
++#include "prairie-titlebar.h"
+ 
+ #include <errno.h>
+ #include <pthread.h>
+@@ -395,15 +396,17 @@ int apply_hwc_layer_to_window(waydroid_hwc_composer_device_1 *pdev, hwc_layer_1
+         return -1;
+     }
+ 
++    const int local_x = hwc_layer->displayFrame.left - window->task_origin_x;
++    const int local_y = hwc_layer->displayFrame.top - window->task_origin_y;
++    const int chrome_y = window->has_prairie_titlebar ? prairie::kTitlebarHeight : 0;
+     window_layer.set_position(
+-        floor(hwc_layer->displayFrame.left / pdev->display->scale),
+-        floor(hwc_layer->displayFrame.top / pdev->display->scale)
+-    );
++        floor(local_x / pdev->display->scale),
++        chrome_y + floor(local_y / pdev->display->scale));
+ 
+     if (window->input_region) {
+         wl_region_add(window->input_region,
+-                      -WINDOW_DECORATION_OUTSET + floor(hwc_layer->displayFrame.left / pdev->display->scale),
+-                      -WINDOW_DECORATION_OUTSET + floor(hwc_layer->displayFrame.top / pdev->display->scale),
++                      -WINDOW_DECORATION_OUTSET + floor(local_x / pdev->display->scale),
++                      chrome_y - WINDOW_DECORATION_OUTSET + floor(local_y / pdev->display->scale),
+                       2*WINDOW_DECORATION_OUTSET + ceil((hwc_layer->displayFrame.right - hwc_layer->displayFrame.left) / pdev->display->scale),
+                       2*WINDOW_DECORATION_OUTSET + ceil((hwc_layer->displayFrame.bottom - hwc_layer->displayFrame.top) / pdev->display->scale));
+     }
+diff --git a/hwcomposer/modes/multi-window.cpp b/hwcomposer/modes/multi-window.cpp
+index bfc251a..a705d2d 100644
+--- a/hwcomposer/modes/multi-window.cpp
++++ b/hwcomposer/modes/multi-window.cpp
+@@ -39,9 +39,25 @@ window *multi_window_mode::get_window(waydroid_hwc_composer_device_1 *pdev, laye
+ 
+         auto it = windows.find(layer_info.tid);
+         if (it != windows.end()) {
++            it->second->missing_frames = 0;
++            const auto bounds = task_bounds.at(layer_info.tid);
++            if (it->second->requested_content_width == 0 ||
++                    it->second->requested_content_height == 0) {
++                it->second->task_origin_x = bounds.left;
++                it->second->task_origin_y = bounds.top;
++                it->second->restore_task_origin_x = bounds.left;
++                it->second->restore_task_origin_y = bounds.top;
++                it->second->content_width = bounds.right - bounds.left;
++                it->second->content_height = bounds.bottom - bounds.top;
++            }
+             return it->second.get();
+         } else {
+-            return windows.add(pdev, layer_info.tid, layer_info.aid, layer_info.tid, color_transparent);
++            const auto bounds = task_bounds.at(layer_info.tid);
++            return windows.add(
++                pdev, layer_info.tid, layer_info.aid, layer_info.tid,
++                color_transparent,
++                bounds.right - bounds.left, bounds.bottom - bounds.top,
++                bounds.left, bounds.top);
+         }
+     } else if (layer_info.type == LayerSplitType::RawName) {
+         if (layer_info.aid == "InputMethod") {
+@@ -70,6 +86,22 @@ int multi_window_mode::prepare(hwc_layer_1* hwc_layer, size_t) {
+ 
+ int multi_window_mode::setup_set(waydroid_hwc_composer_device_1* pdev, hwc_display_contents_1_t* contents) {
+     layer_infos.setup(pdev, contents->hwLayers, contents->numHwLayers);
++    task_bounds.clear();
++    for (size_t i = 0; i < contents->numHwLayers; ++i) {
++        const auto& info = layer_infos[i];
++        const auto& layer = contents->hwLayers[i];
++        if (!can_handle_layer(layer) || info.type != LayerSplitType::TID)
++            continue;
++        const auto found = task_bounds.find(info.tid);
++        if (found == task_bounds.end()) {
++            task_bounds.emplace(info.tid, layer.displayFrame);
++        } else {
++            found->second.left = std::min(found->second.left, layer.displayFrame.left);
++            found->second.top = std::min(found->second.top, layer.displayFrame.top);
++            found->second.right = std::max(found->second.right, layer.displayFrame.right);
++            found->second.bottom = std::max(found->second.bottom, layer.displayFrame.bottom);
++        }
++    }
+     return 0;
+ }
+ 
+@@ -85,7 +117,12 @@ int multi_window_mode::cleanup_stale_windows(waydroid_hwc_composer_device_1* pde
+                 return false;
+             }
+         }
+-        return true;
++        if (it.second->appID == "InputMethod")
++            return true;
++        // Android commonly removes and recreates an activity layer while it
++        // adapts to a new task size. Keep the host toplevel stable across that
++        // bounded relaunch instead of making GNOME destroy and recreate it.
++        return ++it.second->missing_frames > 120;
+     });
+ 
+     pdev->display->ignored_apps.clear();
+@@ -123,4 +160,4 @@ int multi_window_mode::post_processing(waydroid_hwc_composer_device_1 *pdev, hwc
+         neutralize_remaining_subsurfaces(pdev);
+     }
+     return 0;
+-}
+\ No newline at end of file
++}
+diff --git a/hwcomposer/modes/multi-window.h b/hwcomposer/modes/multi-window.h
+index e5afee6..ba1f338 100644
+--- a/hwcomposer/modes/multi-window.h
++++ b/hwcomposer/modes/multi-window.h
+@@ -29,8 +29,9 @@
+ 
+ class multi_window_mode : public waydroid_mode {
+     split_layer_names_helper layer_infos;
++    std::map<std::string, hwc_rect_t> task_bounds;
+ 
+-    static window *get_window(waydroid_hwc_composer_device_1 *pdev, layer_info &layer_info);
++    window *get_window(waydroid_hwc_composer_device_1 *pdev, layer_info &layer_info);
+     static bool can_handle_layer(const hwc_layer_1& layer);
+ 
+   public:
+@@ -41,4 +42,4 @@ class multi_window_mode : public waydroid_mode {
+                               hwc_display_contents_1_t* contents) final;
+     int handle_layer(waydroid_hwc_composer_device_1 *pdev, hwc_layer_1 *hwc_layer, size_t hwc_layer_index) final;
+     int post_processing(waydroid_hwc_composer_device_1 *pdev, hwc_display_contents_1_t *contents) final;
+-};
+\ No newline at end of file
++};
+diff --git a/hwcomposer/prairie-titlebar.cpp b/hwcomposer/prairie-titlebar.cpp
+new file mode 100644
+index 0000000..a76d14e
+--- /dev/null
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -0,0 +1,618 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#include "prairie-titlebar.h"
++
++#include "wayland-hwc.h"
++
++#include <algorithm>
++#include <cmath>
++#include <cstring>
++#include <fcntl.h>
++#include <linux/memfd.h>
++#include <log/log.h>
++#include <sys/mman.h>
++#include <sys/stat.h>
++#include <syscall.h>
++#include <unistd.h>
++
++#include <ft2build.h>
++#include FT_FREETYPE_H
++#include FT_MULTIPLE_MASTERS_H
++
++namespace prairie {
++namespace {
++
++constexpr uint32_t kTop = 0xfff2f3f5;
++constexpr uint32_t kBottom = 0xffe8eaee;
++constexpr uint32_t kHairline = 0x1c2c3138;
++constexpr uint32_t kControlFill = 0xffffffff;
++constexpr uint32_t kControlBorder = 0x1a111827;
++constexpr uint32_t kGlyph = 0xff6b7280;
++constexpr uint32_t kTitle = 0xff374151;
++constexpr uint32_t kCloseHover = 0x29bd5a4e;
++constexpr uint32_t kMinimizeHover = 0x29b0782b;
++constexpr uint32_t kMaximizeHover = 0x294f8a52;
++constexpr uint32_t kHeaderHover = 0xffeceef1;
++constexpr uint32_t kCloseGlyphHover = 0xffbd5a4e;
++constexpr uint32_t kMinimizeGlyphHover = 0xffb0782b;
++constexpr uint32_t kMaximizeGlyphHover = 0xff4f8a52;
++constexpr int kIconSize = 10;
++constexpr int kShadowInset = 24;
++constexpr int kShadowOffsetY = 5;
++constexpr float kShadowSigma = 8.0f;
++constexpr float kShadowOpacity = 0.04f;
++
++// These are the exact 10 px alpha masks produced by GTK's real symbolic
++// loader from Adwaita's window-{close,minimize,maximize}-symbolic.svg files.
++// Keeping the native artwork here avoids a second, visually heavier drawing
++// of the same controls while retaining HWC's dependency-light renderer.
++constexpr uint8_t kCloseMask[kIconSize * kIconSize] = {
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++    0,0,60,73,0,0,71,60,0,0, 0,0,79,252,98,97,252,81,0,0,
++    0,0,0,107,252,253,112,0,0,0, 0,0,0,100,252,253,103,0,0,0,
++    0,0,76,252,103,103,253,77,0,0, 0,0,68,77,0,0,77,68,0,0,
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++};
++constexpr uint8_t kMinimizeMask[kIconSize * kIconSize] = {
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++    0,0,95,191,191,191,191,95,0,0, 0,0,63,127,127,127,127,63,0,0,
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++};
++constexpr uint8_t kMaximizeMask[kIconSize * kIconSize] = {
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++    0,0,65,129,129,129,129,64,0,0, 0,0,130,239,191,191,239,128,0,0,
++    0,0,130,190,0,0,192,128,0,0, 0,0,130,190,0,0,192,128,0,0,
++    0,0,130,239,191,191,239,128,0,0, 0,0,65,129,129,129,129,64,0,0,
++    0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,
++};
++
++uint32_t blend(uint32_t top, uint32_t bottom, float amount) {
++    auto channel = [&](int shift) {
++        const float a = static_cast<float>((top >> shift) & 0xff);
++        const float b = static_cast<float>((bottom >> shift) & 0xff);
++        return static_cast<uint32_t>(std::round(a + (b - a) * amount));
++    };
++    return 0xff000000 | (channel(16) << 16) | (channel(8) << 8) | channel(0);
++}
++
++void composite(uint32_t& destination, uint32_t source) {
++    const uint32_t alpha = source >> 24;
++    if (alpha == 255) {
++        destination = source;
++        return;
++    }
++    const uint32_t inverse = 255 - alpha;
++    const uint32_t destination_alpha = destination >> 24;
++    const uint32_t output_alpha = alpha + destination_alpha * inverse / 255;
++    const uint32_t source_red = (source >> 16) & 0xff;
++    const uint32_t source_green = (source >> 8) & 0xff;
++    const uint32_t source_blue = source & 0xff;
++    const uint32_t destination_red = (destination >> 16) & 0xff;
++    const uint32_t destination_green = (destination >> 8) & 0xff;
++    const uint32_t destination_blue = destination & 0xff;
++    const uint32_t red = (source_red * alpha +
++        destination_red * destination_alpha * inverse / 255) /
++        std::max(1u, output_alpha);
++    const uint32_t green = (source_green * alpha +
++        destination_green * destination_alpha * inverse / 255) /
++        std::max(1u, output_alpha);
++    const uint32_t blue = (source_blue * alpha +
++        destination_blue * destination_alpha * inverse / 255) /
++        std::max(1u, output_alpha);
++    destination = (output_alpha << 24) | (red << 16) | (green << 8) | blue;
++}
++
++void pixel(window& window, int x, int y, uint32_t color) {
++    if (x < 0 || y < 0 || x >= window.content_width || y >= kTitlebarHeight)
++        return;
++    auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
++    composite(pixels[y * window.content_width + x], color);
++}
++
++void disc(window& window, int left, int top, int diameter, uint32_t color) {
++    constexpr int samples = 4;
++    const float radius = static_cast<float>(diameter) / 2.0f;
++    const float center_x = static_cast<float>(left) + radius;
++    const float center_y = static_cast<float>(top) + radius;
++    for (int y = top; y < top + diameter; ++y) {
++        for (int x = left; x < left + diameter; ++x) {
++            int inside = 0;
++            for (int sample_y = 0; sample_y < samples; ++sample_y) {
++                for (int sample_x = 0; sample_x < samples; ++sample_x) {
++                    const float px = x + (sample_x + 0.5f) / samples;
++                    const float py = y + (sample_y + 0.5f) / samples;
++                    const float dx = px - center_x;
++                    const float dy = py - center_y;
++                    if (dx * dx + dy * dy <= radius * radius)
++                        ++inside;
++                }
++            }
++            const uint32_t alpha = (color >> 24) * inside /
++                (samples * samples);
++            if (alpha != 0)
++                pixel(window, x, y, (alpha << 24) | (color & 0x00ffffff));
++        }
++    }
++}
++
++void draw_mask(window& window, int left, int top, const uint8_t* mask,
++               uint32_t color) {
++    for (int y = 0; y < kIconSize; ++y) {
++        for (int x = 0; x < kIconSize; ++x) {
++            const uint32_t alpha = (color >> 24) *
++                mask[y * kIconSize + x] / 255;
++            if (alpha != 0)
++                pixel(window, left + x, top + y,
++                      (alpha << 24) | (color & 0x00ffffff));
++        }
++    }
++}
++
++void line(window& window, int x0, int y0, int x1, int y1, uint32_t color) {
++    const int dx = std::abs(x1 - x0);
++    const int sx = x0 < x1 ? 1 : -1;
++    const int dy = -std::abs(y1 - y0);
++    const int sy = y0 < y1 ? 1 : -1;
++    int error = dx + dy;
++    while (true) {
++        pixel(window, x0, y0, color);
++        if (x0 == x1 && y0 == y1)
++            break;
++        const int twice_error = 2 * error;
++        if (twice_error >= dy) {
++            error += dy;
++            x0 += sx;
++        }
++        if (twice_error <= dx) {
++            error += dx;
++            y0 += sy;
++        }
++    }
++}
++
++void draw_control(window& window, int button_left, int kind) {
++    constexpr int circle_top = (kTitlebarHeight - kControlDiameter) / 2;
++    const int circle_left = button_left +
++        (kControlAllocation - kControlDiameter) / 2;
++    disc(window, circle_left, circle_top, kControlDiameter, kControlBorder);
++    disc(window, circle_left + 1, circle_top + 1,
++         kControlDiameter - 2, kControlFill);
++    const bool hovered = window.hovered_chrome_target == kind + 2;
++    if (hovered) {
++        const uint32_t hover = kind == 0 ? kCloseHover :
++            (kind == 1 ? kMinimizeHover : kMaximizeHover);
++        disc(window, circle_left + 1, circle_top + 1,
++             kControlDiameter - 2, hover);
++    }
++
++    const uint32_t glyph = hovered ?
++        (kind == 0 ? kCloseGlyphHover :
++         (kind == 1 ? kMinimizeGlyphHover : kMaximizeGlyphHover)) : kGlyph;
++    const uint8_t* mask = kind == 0 ? kCloseMask :
++        (kind == 1 ? kMinimizeMask : kMaximizeMask);
++    const int icon_left = button_left + (kControlAllocation - kIconSize) / 2;
++    constexpr int icon_top = (kTitlebarHeight - kIconSize) / 2;
++    draw_mask(window, icon_left, icon_top, mask, glyph);
++}
++
++void draw_back(window& window) {
++    const int controls_end = kControlInset + 3 * kControlAllocation +
++        2 * kControlSpacing;
++    const int left = controls_end + kBackButtonInset;
++    const int center_x = left + kBackButtonSize / 2;
++    constexpr int center_y = kTitlebarHeight / 2;
++    if (window.hovered_chrome_target ==
++            static_cast<int>(TitlebarTarget::Back)) {
++        constexpr int radius = 8;
++        for (int y = center_y - kBackButtonSize / 2;
++                y < center_y + kBackButtonSize / 2; ++y) {
++            for (int x = left; x < left + kBackButtonSize; ++x) {
++                const int nearest_x = std::clamp(x, left + radius,
++                                                 left + kBackButtonSize - radius - 1);
++                const int nearest_y = std::clamp(y, center_y - kBackButtonSize / 2 + radius,
++                                                 center_y + kBackButtonSize / 2 - radius - 1);
++                const int dx = x - nearest_x;
++                const int dy = y - nearest_y;
++                if (dx * dx + dy * dy <= radius * radius)
++                    pixel(window, x, y, kHeaderHover);
++            }
++        }
++    }
++    line(window, center_x + 3, center_y - 5, center_x - 2, center_y, kGlyph);
++    line(window, center_x - 2, center_y, center_x + 3, center_y + 5, kGlyph);
++}
++
++uint32_t rounded_top_coverage(int width, int x, int y) {
++    if (y >= kWindowRadius ||
++            (x >= kWindowRadius && x < width - kWindowRadius))
++        return 255;
++    constexpr int samples = 4;
++    constexpr float radius = static_cast<float>(kWindowRadius);
++    const int local_x = x < kWindowRadius ? x : width - 1 - x;
++    int inside = 0;
++    for (int sample_y = 0; sample_y < samples; ++sample_y) {
++        for (int sample_x = 0; sample_x < samples; ++sample_x) {
++            const float px = local_x + (sample_x + 0.5f) / samples;
++            const float py = y + (sample_y + 0.5f) / samples;
++            const float dx = px - radius;
++            const float dy = py - radius;
++            if (dx * dx + dy * dy <= radius * radius)
++                ++inside;
++        }
++    }
++    return 255 * inside / (samples * samples);
++}
++
++void mask_rounded_top_corners(window& window) {
++    auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
++    for (int y = 0; y < kWindowRadius; ++y) {
++        for (int x = 0; x < kWindowRadius; ++x) {
++            const uint32_t coverage = rounded_top_coverage(
++                window.content_width, x, y);
++            const uint32_t left_pixel = pixels[y * window.content_width + x];
++            const uint32_t left_red = ((left_pixel >> 16) & 0xff) * coverage / 255;
++            const uint32_t left_green = ((left_pixel >> 8) & 0xff) * coverage / 255;
++            const uint32_t left_blue = (left_pixel & 0xff) * coverage / 255;
++            pixels[y * window.content_width + x] =
++                (coverage << 24) | (left_red << 16) | (left_green << 8) | left_blue;
++            const int right_x = window.content_width - 1 - x;
++            const uint32_t right_pixel = pixels[y * window.content_width + right_x];
++            const uint32_t right_red = ((right_pixel >> 16) & 0xff) * coverage / 255;
++            const uint32_t right_green = ((right_pixel >> 8) & 0xff) * coverage / 255;
++            const uint32_t right_blue = (right_pixel & 0xff) * coverage / 255;
++            pixels[y * window.content_width + right_x] =
++                (coverage << 24) | (right_red << 16) | (right_green << 8) | right_blue;
++        }
++    }
++}
++
++uint32_t premultiplied(uint32_t rgb, uint32_t alpha) {
++    const uint32_t red = ((rgb >> 16) & 0xff) * alpha / 255;
++    const uint32_t green = ((rgb >> 8) & 0xff) * alpha / 255;
++    const uint32_t blue = (rgb & 0xff) * alpha / 255;
++    return (alpha << 24) | (red << 16) | (green << 8) | blue;
++}
++
++void composite_premultiplied(uint32_t& destination, uint32_t source) {
++    const uint32_t alpha = source >> 24;
++    const uint32_t inverse = 255 - alpha;
++    const uint32_t output_alpha = alpha + (destination >> 24) * inverse / 255;
++    const uint32_t red = ((source >> 16) & 0xff) +
++        ((destination >> 16) & 0xff) * inverse / 255;
++    const uint32_t green = ((source >> 8) & 0xff) +
++        ((destination >> 8) & 0xff) * inverse / 255;
++    const uint32_t blue = (source & 0xff) +
++        (destination & 0xff) * inverse / 255;
++    destination = (output_alpha << 24) |
++        (std::min(255u, red) << 16) |
++        (std::min(255u, green) << 8) | std::min(255u, blue);
++}
++
++float rounded_rect_distance(float x, float y, float left, float top,
++                            float right, float bottom, float radius) {
++    const float half_width = (right - left) / 2.0f;
++    const float half_height = (bottom - top) / 2.0f;
++    const float center_x = (left + right) / 2.0f;
++    const float center_y = (top + bottom) / 2.0f;
++    const float qx = std::abs(x - center_x) - half_width + radius;
++    const float qy = std::abs(y - center_y) - half_height + radius;
++    return std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) +
++        std::min(std::max(qx, qy), 0.0f) - radius;
++}
++
++std::string ellipsize(FT_Face face, const std::string& title, int max_width) {
++    auto width_of = [&](const std::string& value) {
++        int width = 0;
++        for (unsigned char character : value) {
++            if (FT_Load_Char(face, character, FT_LOAD_DEFAULT) == 0)
++                width += face->glyph->advance.x >> 6;
++        }
++        return width;
++    };
++    if (width_of(title) <= max_width)
++        return title;
++    std::string result = title;
++    constexpr const char* suffix = "...";
++    while (!result.empty() && width_of(result + suffix) > max_width)
++        result.pop_back();
++    return result + suffix;
++}
++
++void draw_title(window& window) {
++    FT_Library library = nullptr;
++    FT_Face face = nullptr;
++    if (FT_Init_FreeType(&library) != 0)
++        return;
++    if (FT_New_Face(library, "/vendor/etc/fonts/Figtree-VF.ttf", 0, &face) != 0) {
++        FT_Done_FreeType(library);
++        return;
++    }
++    // Match libadwaita's Figtree 12.5 px title token without integer rounding.
++    FT_Set_Char_Size(face, 0, 12 * 64 + 32, 72, 72);
++    FT_Fixed weight = 600 << 16;
++    FT_Set_Var_Design_Coordinates(face, 1, &weight);
++    const int controls_end = kControlInset + 3 * kControlAllocation +
++        2 * kControlSpacing;
++    const int side_reserve = controls_end + kBackButtonInset +
++        kBackButtonSize + 12;
++    const int max_width = std::max(0, window.content_width - 2 * side_reserve);
++    const std::string text = ellipsize(face, window.title, max_width);
++
++    int text_width = 0;
++    for (unsigned char character : text) {
++        if (FT_Load_Char(face, character, FT_LOAD_DEFAULT) == 0)
++            text_width += face->glyph->advance.x >> 6;
++    }
++    int pen_x = (window.content_width - text_width) / 2;
++    const int ascender = face->size->metrics.ascender >> 6;
++    const int descender = -(face->size->metrics.descender >> 6);
++    const int baseline = (kTitlebarHeight - ascender - descender) / 2 + ascender;
++    for (unsigned char character : text) {
++        if (FT_Load_Char(face, character, FT_LOAD_RENDER) != 0)
++            continue;
++        const FT_Bitmap& bitmap = face->glyph->bitmap;
++        const int glyph_x = pen_x + face->glyph->bitmap_left;
++        const int glyph_y = baseline - face->glyph->bitmap_top;
++        for (unsigned int y = 0; y < bitmap.rows; ++y) {
++            for (unsigned int x = 0; x < bitmap.width; ++x) {
++                const uint32_t alpha = bitmap.buffer[y * bitmap.pitch + x];
++                pixel(window, glyph_x + x, glyph_y + y,
++                      (alpha << 24) | (kTitle & 0x00ffffff));
++            }
++        }
++        pen_x += face->glyph->advance.x >> 6;
++    }
++    FT_Done_Face(face);
++    FT_Done_FreeType(library);
++}
++
++}  // namespace
++
++bool desktop_chrome_enabled() {
++    char value[PROPERTY_VALUE_MAX] {};
++    property_get("persist.luma.device_class", value, "desktop");
++    return std::strcmp(value, "handheld") != 0;
++}
++
++void redraw_shadow(window& window) {
++    if (!window.shadow_surface)
++        return;
++    if (window.shadow_buffer)
++        wl_buffer_destroy(window.shadow_buffer);
++    window.shadow_buffer = nullptr;
++    if (window.shadow_data && window.shadow_data_size)
++        munmap(window.shadow_data, window.shadow_data_size);
++    window.shadow_data = nullptr;
++    window.shadow_data_size = 0;
++
++    if (window.maximized || window.content_width < 1 ||
++            window.content_height < 1) {
++        wl_surface_attach(window.shadow_surface, nullptr, 0, 0);
++        wl_surface_commit(window.shadow_surface);
++        return;
++    }
++
++    const int frame_width = window.content_width;
++    const int frame_height = kTitlebarHeight + window.content_height;
++    const int width = frame_width + 2 * kShadowInset;
++    const int height = frame_height + 2 * kShadowInset;
++    const size_t size = static_cast<size_t>(width) * height * sizeof(uint32_t);
++    const int fd = syscall(SYS_memfd_create, "prairie-window-shadow", MFD_CLOEXEC);
++    if (fd < 0 || ftruncate(fd, size) != 0) {
++        if (fd >= 0)
++            close(fd);
++        return;
++    }
++    window.shadow_data = mmap(nullptr, size, PROT_READ | PROT_WRITE,
++                              MAP_SHARED, fd, 0);
++    if (window.shadow_data == MAP_FAILED) {
++        window.shadow_data = nullptr;
++        close(fd);
++        return;
++    }
++    window.shadow_data_size = size;
++    auto* pixels = static_cast<uint32_t*>(window.shadow_data);
++    std::fill_n(pixels, static_cast<size_t>(width) * height, 0u);
++
++    for (int y = 0; y < height; ++y) {
++        for (int x = 0; x < width; ++x) {
++            const float local_x = x - kShadowInset + 0.5f;
++            const float local_y = y - kShadowInset + 0.5f;
++            const bool deep_inside = local_x >= 1.0f &&
++                local_x < frame_width - 1.0f && local_y >= 1.0f &&
++                local_y < frame_height - 1.0f &&
++                !((local_x < kWindowRadius ||
++                   local_x >= frame_width - kWindowRadius) &&
++                  (local_y < kWindowRadius ||
++                   local_y >= frame_height - kWindowRadius));
++            if (deep_inside)
++                continue;
++
++            const float shadow_distance = rounded_rect_distance(
++                local_x, local_y, 0.0f, static_cast<float>(kShadowOffsetY),
++                static_cast<float>(frame_width),
++                static_cast<float>(frame_height + kShadowOffsetY),
++                static_cast<float>(kWindowRadius));
++            const float outside = std::max(0.0f, shadow_distance);
++            const uint32_t shadow_alpha = static_cast<uint32_t>(std::round(
++                255.0f * kShadowOpacity *
++                std::exp(-0.5f * outside * outside /
++                         (kShadowSigma * kShadowSigma))));
++            if (shadow_alpha != 0)
++                pixels[y * width + x] =
++                    premultiplied(0x001e293b, shadow_alpha);
++
++            const float frame_distance = rounded_rect_distance(
++                local_x, local_y, 0.0f, 0.0f,
++                static_cast<float>(frame_width),
++                static_cast<float>(frame_height),
++                static_cast<float>(kWindowRadius));
++            if (std::abs(frame_distance) <= 0.75f)
++                composite_premultiplied(pixels[y * width + x],
++                                        premultiplied(0x00111827, 26));
++        }
++    }
++
++    wl_shm_pool* pool = wl_shm_create_pool(window.display->shm, fd, size);
++    close(fd);
++    window.shadow_buffer = wl_shm_pool_create_buffer(
++        pool, 0, width, height, width * sizeof(uint32_t),
++        WL_SHM_FORMAT_ARGB8888);
++    wl_shm_pool_destroy(pool);
++    wl_surface_attach(window.shadow_surface, window.shadow_buffer, 0, 0);
++    wl_surface_damage(window.shadow_surface, 0, 0, width, height);
++    wl_surface_commit(window.shadow_surface);
++}
++
++TitlebarTarget hit_test(const window& window, int x, int y) {
++    if (!window.has_prairie_titlebar || y < 0 || y >= kTitlebarHeight)
++        return TitlebarTarget::Content;
++    const int half_hit = kControlHitSize / 2;
++    for (int index = 0; index < 3; ++index) {
++        const int button_left = kControlInset +
++            index * (kControlAllocation + kControlSpacing);
++        const int center = button_left + kControlAllocation / 2;
++        if (x >= center - half_hit && x < center + half_hit) {
++            if (index == 0)
++                return TitlebarTarget::Close;
++            if (index == 1)
++                return TitlebarTarget::Minimize;
++            return TitlebarTarget::Maximize;
++        }
++    }
++    const int controls_end = kControlInset + 3 * kControlAllocation +
++        2 * kControlSpacing;
++    const int back_left = controls_end + kBackButtonInset;
++    if (x >= back_left && x < back_left + kBackButtonSize)
++        return TitlebarTarget::Back;
++    return TitlebarTarget::Drag;
++}
++
++bool create_titlebar(window& window) {
++    if (!desktop_chrome_enabled() || !window.display->subcompositor)
++        return false;
++    window.shadow_surface = wl_compositor_create_surface(window.display->compositor);
++    window.shadow_subsurface = wl_subcompositor_get_subsurface(
++        window.display->subcompositor, window.shadow_surface, window.surface);
++    wl_subsurface_set_position(window.shadow_subsurface,
++                               -kShadowInset, -kShadowInset);
++    wl_subsurface_place_below(window.shadow_subsurface, window.surface);
++    wl_subsurface_set_desync(window.shadow_subsurface);
++    wl_region* shadow_input =
++        wl_compositor_create_region(window.display->compositor);
++    wl_surface_set_input_region(window.shadow_surface, shadow_input);
++    wl_region_destroy(shadow_input);
++    window.titlebar_surface = wl_compositor_create_surface(window.display->compositor);
++    window.titlebar_subsurface = wl_subcompositor_get_subsurface(
++        window.display->subcompositor, window.titlebar_surface, window.surface);
++    wl_surface_set_user_data(window.titlebar_surface, &window);
++    wl_subsurface_set_position(window.titlebar_subsurface, 0, 0);
++    wl_subsurface_set_desync(window.titlebar_subsurface);
++    wl_region* input_region = wl_compositor_create_region(window.display->compositor);
++    for (int y = 0; y < kTitlebarHeight; ++y) {
++        int left = 0;
++        int right = window.content_width;
++        while (left < right && rounded_top_coverage(window.content_width, left, y) < 128)
++            ++left;
++        while (right > left &&
++                rounded_top_coverage(window.content_width, right - 1, y) < 128)
++            --right;
++        if (right > left)
++            wl_region_add(input_region, left, y, right - left, 1);
++    }
++    wl_surface_set_input_region(window.titlebar_surface, input_region);
++    wl_region_destroy(input_region);
++    window.has_prairie_titlebar = true;
++    return true;
++}
++
++void destroy_titlebar(window& window) {
++    if (window.shadow_buffer)
++        wl_buffer_destroy(window.shadow_buffer);
++    window.shadow_buffer = nullptr;
++    if (window.shadow_data && window.shadow_data_size)
++        munmap(window.shadow_data, window.shadow_data_size);
++    window.shadow_data = nullptr;
++    window.shadow_data_size = 0;
++    if (window.shadow_subsurface)
++        wl_subsurface_destroy(window.shadow_subsurface);
++    window.shadow_subsurface = nullptr;
++    if (window.shadow_surface)
++        wl_surface_destroy(window.shadow_surface);
++    window.shadow_surface = nullptr;
++    if (window.titlebar_buffer)
++        wl_buffer_destroy(window.titlebar_buffer);
++    window.titlebar_buffer = nullptr;
++    if (window.titlebar_data && window.titlebar_data_size)
++        munmap(window.titlebar_data, window.titlebar_data_size);
++    window.titlebar_data = nullptr;
++    window.titlebar_data_size = 0;
++    if (window.titlebar_subsurface)
++        wl_subsurface_destroy(window.titlebar_subsurface);
++    window.titlebar_subsurface = nullptr;
++    if (window.titlebar_surface) {
++        wl_surface_set_user_data(window.titlebar_surface, nullptr);
++        wl_surface_destroy(window.titlebar_surface);
++    }
++    window.titlebar_surface = nullptr;
++}
++
++void redraw_titlebar(window& window) {
++    if (!window.has_prairie_titlebar || window.content_width < 1)
++        return;
++    const size_t size = static_cast<size_t>(window.content_width) *
++                        kTitlebarHeight * sizeof(uint32_t);
++    if (window.titlebar_buffer)
++        wl_buffer_destroy(window.titlebar_buffer);
++    if (window.titlebar_data && window.titlebar_data_size)
++        munmap(window.titlebar_data, window.titlebar_data_size);
++
++    const int fd = syscall(SYS_memfd_create, "prairie-titlebar", MFD_CLOEXEC);
++    if (fd < 0 || ftruncate(fd, size) != 0) {
++        if (fd >= 0)
++            close(fd);
++        return;
++    }
++    window.titlebar_data = mmap(nullptr, size, PROT_READ | PROT_WRITE,
++                                MAP_SHARED, fd, 0);
++    if (window.titlebar_data == MAP_FAILED) {
++        window.titlebar_data = nullptr;
++        close(fd);
++        return;
++    }
++    window.titlebar_data_size = size;
++    auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
++    for (int y = 0; y < kTitlebarHeight; ++y) {
++        const float amount = static_cast<float>(y) / (kTitlebarHeight - 1);
++        const uint32_t color = blend(kTop, kBottom, amount);
++        std::fill_n(pixels + y * window.content_width, window.content_width, color);
++    }
++    for (int x = 0; x < window.content_width; ++x)
++        composite(pixels[(kTitlebarHeight - 1) * window.content_width + x],
++                  kHairline);
++
++    for (int index = 0; index < 3; ++index)
++        draw_control(window, kControlInset +
++                     index * (kControlAllocation + kControlSpacing), index);
++    draw_back(window);
++    draw_title(window);
++    mask_rounded_top_corners(window);
++
++    wl_shm_pool* pool = wl_shm_create_pool(window.display->shm, fd, size);
++    close(fd);
++    window.titlebar_buffer = wl_shm_pool_create_buffer(
++        pool, 0, window.content_width, kTitlebarHeight,
++        window.content_width * sizeof(uint32_t), WL_SHM_FORMAT_ARGB8888);
++    wl_shm_pool_destroy(pool);
++    wl_surface_attach(window.titlebar_surface, window.titlebar_buffer, 0, 0);
++    wl_surface_damage(window.titlebar_surface, 0, 0, window.content_width,
++                      kTitlebarHeight);
++    wl_surface_commit(window.titlebar_surface);
++}
++
++}  // namespace prairie
+diff --git a/hwcomposer/prairie-titlebar.h b/hwcomposer/prairie-titlebar.h
+new file mode 100644
+index 0000000..eef08a7
+--- /dev/null
++++ b/hwcomposer/prairie-titlebar.h
+@@ -0,0 +1,41 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#pragma once
++
++#include <cstdint>
++#include <string>
++
++struct window;
++
++namespace prairie {
++
++constexpr int kTitlebarHeight = 34;
++constexpr int kControlDiameter = 18;
++constexpr int kControlAllocation = 20;
++constexpr int kControlSpacing = 2;
++constexpr int kControlInset = 10;
++constexpr int kControlHitSize = 26;
++constexpr int kWindowRadius = 13;
++constexpr int kBackButtonSize = 28;
++constexpr int kBackButtonInset = 7;
++
++enum class TitlebarTarget {
++    Content,
++    Drag,
++    Close,
++    Minimize,
++    Maximize,
++    Back,
++};
++
++bool desktop_chrome_enabled();
++TitlebarTarget hit_test(const window& window, int x, int y);
++bool create_titlebar(window& window);
++void destroy_titlebar(window& window);
++void redraw_titlebar(window& window);
++void redraw_shadow(window& window);
++
++}  // namespace prairie
+diff --git a/hwcomposer/sw-sync-compat.cpp b/hwcomposer/sw-sync-compat.cpp
+new file mode 100644
+index 0000000..a5dbcf0
+--- /dev/null
++++ b/hwcomposer/sw-sync-compat.cpp
+@@ -0,0 +1,88 @@
++/*
++ * Copyright (C) 2012 The Android Open Source Project
++ * Copyright (C) 2026 Project Luma
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <fcntl.h>
++#include <linux/types.h>
++#include <poll.h>
++#include <errno.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++
++#include <libsync/sw_sync.h>
++
++namespace {
++
++struct sw_sync_create_fence_data {
++    __u32 value;
++    char name[32];
++    __s32 fence;
++};
++
++#define SW_SYNC_IOC_MAGIC 'W'
++#define SW_SYNC_IOC_CREATE_FENCE \
++    _IOWR(SW_SYNC_IOC_MAGIC, 0, struct sw_sync_create_fence_data)
++#define SW_SYNC_IOC_INC _IOW(SW_SYNC_IOC_MAGIC, 1, __u32)
++
++}  // namespace
++
++extern "C" int sync_wait(int fd, int timeout) {
++    if (fd < 0) {
++        errno = EINVAL;
++        return -1;
++    }
++
++    pollfd descriptor{.fd = fd, .events = POLLIN, .revents = 0};
++    int result;
++    do {
++        result = poll(&descriptor, 1, timeout);
++        if (result > 0) {
++            if (descriptor.revents & (POLLERR | POLLNVAL)) {
++                errno = EINVAL;
++                return -1;
++            }
++            return 0;
++        }
++        if (result == 0) {
++            errno = ETIME;
++            return -1;
++        }
++    } while (result == -1 && (errno == EINTR || errno == EAGAIN));
++    return result;
++}
++
++extern "C" int sw_sync_timeline_create(void) {
++    int fd = open("/sys/kernel/debug/sync/sw_sync", O_RDWR | O_CLOEXEC);
++    if (fd < 0)
++        fd = open("/dev/sw_sync", O_RDWR | O_CLOEXEC);
++    return fd;
++}
++
++extern "C" int sw_sync_timeline_inc(int fd, unsigned count) {
++    __u32 value = count;
++    return ioctl(fd, SW_SYNC_IOC_INC, &value);
++}
++
++extern "C" int sw_sync_fence_create(int fd, const char* name,
++                                      unsigned value) {
++    sw_sync_create_fence_data data{};
++    data.value = value;
++    strlcpy(data.name, name, sizeof(data.name));
++    if (ioctl(fd, SW_SYNC_IOC_CREATE_FENCE, &data) < 0)
++        return -1;
++    return data.fence;
++}
+diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
+index 0516752..ae96d51 100644
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -30,6 +30,7 @@
+ 
+ #include "hwcomposer.h"
+ #include "egl-tools.h"
++#include "prairie-titlebar.h"
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -38,8 +39,10 @@
+ #include <assert.h>
+ #include <unistd.h>
+ #include <sys/mman.h>
++#include <sys/socket.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <sys/un.h>
+ #include <signal.h>
+ #include <time.h>
+ #include <fcntl.h>
+@@ -82,6 +85,65 @@
+ 
+ using ::android::hardware::hidl_string;
+ 
++namespace {
++
++constexpr uint32_t kPrairieResizeMagic = 0x4c554d41;  // LUMA
++constexpr uint16_t kPrairieResizeVersion = 1;
++constexpr char kPrairieResizeSocket[] = "prairie-waydroid-task-v1";
++
++struct PrairieResizeRequest {
++    uint32_t magic;
++    uint16_t version;
++    uint16_t reserved;
++    uint32_t task_id;
++    int32_t left;
++    int32_t top;
++    int32_t right;
++    int32_t bottom;
++    int32_t resize_mode;
++};
++
++struct PrairieResizeReply {
++    uint32_t magic;
++    uint16_t version;
++    uint8_t success;
++    uint8_t reserved;
++};
++
++bool request_prairie_task_resize(uint32_t task_id, int32_t left, int32_t top,
++        int32_t right, int32_t bottom, int32_t resize_mode) {
++    const int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++    if (fd < 0)
++        return false;
++
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    address.sun_path[0] = '\0';
++    memcpy(address.sun_path + 1, kPrairieResizeSocket,
++           sizeof(kPrairieResizeSocket) - 1);
++    const socklen_t address_length = offsetof(sockaddr_un, sun_path) +
++            sizeof(kPrairieResizeSocket);
++    if (connect(fd, reinterpret_cast<const sockaddr*>(&address),
++                address_length) != 0) {
++        close(fd);
++        return false;
++    }
++
++    const PrairieResizeRequest request{kPrairieResizeMagic,
++            kPrairieResizeVersion, 0, task_id, left, top, right, bottom,
++            resize_mode};
++    PrairieResizeReply reply{};
++    const bool sent = TEMP_FAILURE_RETRY(send(fd, &request, sizeof(request),
++            MSG_NOSIGNAL)) == static_cast<ssize_t>(sizeof(request));
++    const bool received = sent && TEMP_FAILURE_RETRY(recv(fd, &reply,
++            sizeof(reply), 0)) == static_cast<ssize_t>(sizeof(reply));
++    close(fd);
++    return received && reply.magic == kPrairieResizeMagic &&
++            reply.version == kPrairieResizeVersion && reply.success == 1;
++}
++
++}  // namespace
++
+ struct buffer;
+ 
+ buffer::~buffer() {
+@@ -201,7 +263,7 @@ do_hotplug(struct display *display) {
+ static void
+ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
+                               int32_t width, int32_t height,
+-                              struct wl_array *)
++                              struct wl_array *states)
+ {
+     struct window *window = (struct window *)data;
+     struct display *display = window->display;
+@@ -212,6 +274,39 @@ xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *,
+ 		return;
+ 	}
+ 
++    bool maximized = false;
++    const auto* configured_states =
++        static_cast<const uint32_t*>(states->data);
++    const size_t configured_state_count = states->size / sizeof(uint32_t);
++    for (size_t index = 0; index < configured_state_count; ++index) {
++        if (configured_states[index] == XDG_TOPLEVEL_STATE_MAXIMIZED)
++            maximized = true;
++    }
++
++    if (window->has_prairie_titlebar && window->taskID != "none" &&
++            window->taskID != "0") {
++        const int content_height = std::max(1, height - prairie::kTitlebarHeight);
++        if (maximized && !window->maximized) {
++            window->restore_task_origin_x = window->task_origin_x;
++            window->restore_task_origin_y = window->task_origin_y;
++        }
++        const bool state_changed = window->maximized != maximized;
++        const bool width_changed = window->content_width != width;
++        const bool height_changed = window->content_height != content_height;
++        window->maximized = maximized;
++        if (width_changed) {
++            window->content_width = width;
++            prairie::redraw_titlebar(*window);
++        }
++        window->content_height = content_height;
++        if (state_changed || width_changed || height_changed)
++            prairie::redraw_shadow(*window);
++        if (window->configured)
++            window->request_task_resize(width, content_height);
++        xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, width, height);
++        return;
++    }
++
+     display->req_width = width;
+     display->req_height = height;
+ 
+@@ -377,6 +472,9 @@ void window::reset_per_set_state() {
+     last_layer_buffer = nullptr;
+     if (input_region) {
+         wl_region_subtract(input_region, 0, 0, INT_MAX, INT_MAX);
++        if (has_prairie_titlebar)
++            wl_region_add(input_region, 0, 0, content_width,
++                          prairie::kTitlebarHeight);
+     }
+ }
+ 
+@@ -398,12 +496,14 @@ void window::set_maximize(bool enabled) {
+ }
+ 
+ void window::set_title(const char* title) {
++    this->title = title;
+     if (xdg_toplevel) {
+         xdg_toplevel_set_title(xdg_toplevel, title);
+     } else {
+         assert(shell_surface);
+         wl_shell_surface_set_title(shell_surface, title);
+     }
++    prairie::redraw_titlebar(*this);
+ }
+ 
+ void window::set_app_id(std::string appID) {
+@@ -428,7 +528,43 @@ void window::minimize() {
+     }
+ }
+ 
++void window::request_task_resize(int width, int height) {
++    if (taskID == "none" || taskID == "0" ||
++            width < 1 || height < 1)
++        return;
++    if (requested_content_width == width && requested_content_height == height)
++        return;
++
++    int left = task_origin_x;
++    int top = task_origin_y;
++    const int display_width = display->width > 0 ? display->width : width;
++    const int display_height = display->height > 0 ? display->height : height;
++    if (maximized) {
++        left = 0;
++        top = 0;
++    } else {
++        left = restore_task_origin_x;
++        top = restore_task_origin_y;
++        left = std::max(0, std::min(left, display_width - width));
++        top = std::max(0, std::min(top, display_height - height));
++    }
++    const int right = left + width;
++    const int bottom = top + height;
++    constexpr int resize_mode_preserve_window = 1;
++    if (!request_prairie_task_resize(stoi(taskID), left, top, right, bottom,
++                                     resize_mode_preserve_window)) {
++        ALOGE("Task %s rejected host resize to %dx%d", taskID.c_str(),
++              width, height);
++        return;
++    }
++    task_origin_x = left;
++    task_origin_y = top;
++    requested_content_width = width;
++    requested_content_height = height;
++}
++
+ window::~window() {
++    prairie::destroy_titlebar(*this);
+     if (xdg_toplevel)
+         xdg_toplevel_destroy(xdg_toplevel);
+     if (xdg_surface)
+@@ -473,7 +609,9 @@ static const struct wp_fractional_scale_v1_listener fractional_scale_listener =
+ };
+ 
+ std::unique_ptr<window>
+-window::create(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color)
++window::create(struct display *display, bool use_subsurfaces, std::string appID,
++               std::string taskID, hwc_color_t color, int content_width,
++               int content_height, int task_origin_x, int task_origin_y)
+ {
+     std::unique_ptr<window> window { new struct window() };
+     if (!window)
+@@ -485,9 +623,18 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+     if (display->viewporter)
+         window->viewport = wp_viewporter_get_viewport(display->viewporter, window->surface);
+     window->taskID = std::move(taskID);
++    window->content_width = content_width;
++    window->content_height = content_height;
++    window->task_origin_x = task_origin_x;
++    window->task_origin_y = task_origin_y;
++    window->restore_task_origin_x = task_origin_x;
++    window->restore_task_origin_y = task_origin_y;
+     window->dedicated_background_surface = true;
+     window->bg_buffer = nullptr;
+ 
++    if (window->taskID != "none" && window->taskID != "0")
++        prairie::create_titlebar(*window);
++
+     int fd = syscall(SYS_memfd_create, "buffer", 0);
+     ftruncate(fd, 4);
+     void *shm_data = mmap(NULL, 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+@@ -522,7 +669,9 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+         abort();
+     }
+ 
+-    if (display->isMaximized || calibrating) {
++    if ((display->isMaximized || calibrating) &&
++            !(window->taskID != "none" && window->taskID != "0" &&
++              window->content_width > 0)) {
+         window->set_maximize(true);
+     }
+     // Set title
+@@ -581,7 +730,11 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+     }
+ 
+     if (display->wm_base)
+-        xdg_surface_set_window_geometry(window->xdg_surface, 0, 0, display->width, display->height);
++        xdg_surface_set_window_geometry(
++            window->xdg_surface, 0, 0,
++            window->content_width > 0 ? window->content_width : display->width,
++            (window->content_height > 0 ? window->content_height : display->height) +
++                (window->has_prairie_titlebar ? prairie::kTitlebarHeight : 0));
+ 
+     struct wl_region *region = wl_compositor_create_region(display->compositor);
+     if (color.a == 0) {
+@@ -591,7 +744,7 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+         else
+             wl_region_destroy(region);
+     }
+-    if (color.a == 255) {
++    if (color.a == 255 && !window->has_prairie_titlebar) {
+         wl_region_add(region, 0, 0, display->width, display->height);
+         wl_surface_set_opaque_region(window->surface, region);
+         wl_region_destroy(region);
+@@ -616,16 +769,29 @@ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+     }
+ 
+     uint32_t *buf = (uint32_t*)shm_data;
+-    *buf = color.a << 24 | color.r << 16 | color.g << 8 | color.b;
++    *buf = window->has_prairie_titlebar ? 0 :
++        (color.a << 24 | color.r << 16 | color.g << 8 | color.b);
+     window->bg_buffer = wl_shm_pool_create_buffer(pool, 0, 1, 1, 4, WL_SHM_FORMAT_ARGB8888);
+     wl_shm_pool_destroy(pool);
+ 
+     wl_surface_attach(window->surface, window->bg_buffer, 0, 0);
+     wl_surface_damage(window->surface, 0, 0, INT32_MAX, INT32_MAX);
+     wp_viewport_set_source(window->viewport, wl_fixed_from_int(0), wl_fixed_from_int(0), wl_fixed_from_int(1), wl_fixed_from_int(1));
+-    wp_viewport_set_destination(window->viewport, display->width, display->height);
++    wp_viewport_set_destination(
++        window->viewport,
++        window->content_width > 0 ? window->content_width : display->width,
++        (window->content_height > 0 ? window->content_height : display->height) +
++            (window->has_prairie_titlebar ? prairie::kTitlebarHeight : 0));
+     wl_surface_commit(window->surface);
+ 
++    if (window->has_prairie_titlebar) {
++        prairie::redraw_titlebar(*window);
++        prairie::redraw_shadow(*window);
++        wl_region_add(window->input_region, 0, 0, window->content_width,
++                      prairie::kTitlebarHeight);
++        wl_surface_set_input_region(window->surface, window->input_region);
++    }
++
+     return window;
+ }
+ 
+@@ -857,9 +1023,9 @@ static const struct wl_keyboard_listener keyboard_listener = {
+ };
+ 
+ static void
+-pointer_handle_enter(void *data, struct wl_pointer *,
++pointer_handle_enter(void *data, struct wl_pointer *pointer,
+                      uint32_t serial, struct wl_surface *surface,
+-                     wl_fixed_t, wl_fixed_t)
++                     wl_fixed_t sx, wl_fixed_t sy)
+ {
+     if (!surface) {
+         // The surface this enter event corresponds to was already destroyed
+@@ -869,7 +1035,11 @@ pointer_handle_enter(void *data, struct wl_pointer *,
+     struct display *display = (struct display *)data;
+     display->pointer_surface = surface;
+     display->pointer_enter_serial = serial;
++    display->pointer_x = wl_fixed_to_int(sx);
++    display->pointer_y = wl_fixed_to_int(sy);
+     display->cursor_handler->on_cursor_enter(display);
++
++    (void)pointer;
+ }
+ 
+ static void
+@@ -877,6 +1047,14 @@ pointer_handle_leave(void *data, struct wl_pointer *,
+                      uint32_t, struct wl_surface *)
+ {
+     struct display *display = (struct display *)data;
++    if (display->pointer_surface) {
++        auto* window = reinterpret_cast<struct window*>(
++            wl_surface_get_user_data(display->pointer_surface));
++        if (window && window->hovered_chrome_target != 0) {
++            window->hovered_chrome_target = 0;
++            prairie::redraw_titlebar(*window);
++        }
++    }
+     display->pointer_surface = NULL;
+ }
+ 
+@@ -896,6 +1074,22 @@ pointer_handle_motion(void *data, struct wl_pointer *,
+     if (!display->pointer_surface)
+         return;
+ 
++    display->pointer_x = wl_fixed_to_int(sx);
++    display->pointer_y = wl_fixed_to_int(sy);
++    auto* window = reinterpret_cast<struct window*>(
++        wl_surface_get_user_data(display->pointer_surface));
++    if (window && window->has_prairie_titlebar) {
++        const auto target = prairie::hit_test(
++            *window, display->pointer_x, display->pointer_y);
++        const int hovered = static_cast<int>(target);
++        if (window->hovered_chrome_target != hovered) {
++            window->hovered_chrome_target = hovered;
++            prairie::redraw_titlebar(*window);
++        }
++        if (target != prairie::TitlebarTarget::Content)
++            return;
++    }
++
+     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+         ALOGE("%s:%d error in touch clock_gettime: %s",
+               __FILE__, __LINE__, strerror(errno));
+@@ -962,7 +1156,7 @@ handle_relative_motion(void *data, struct zwp_relative_pointer_v1*,
+ 
+ static void
+ pointer_handle_button(void *data, struct wl_pointer *,
+-                      uint32_t, uint32_t, uint32_t button,
++                      uint32_t serial, uint32_t, uint32_t button,
+                       uint32_t state)
+ {
+     struct display* display = (struct display*)data;
+@@ -976,6 +1170,36 @@ pointer_handle_button(void *data, struct wl_pointer *,
+     if (!display->pointer_surface)
+         return;
+ 
++    display->pointer_button_serial = serial;
++    auto* window = reinterpret_cast<struct window*>(
++        wl_surface_get_user_data(display->pointer_surface));
++    if (window && window->has_prairie_titlebar) {
++        const auto target = prairie::hit_test(
++            *window, display->pointer_x, display->pointer_y);
++        if (target != prairie::TitlebarTarget::Content) {
++            if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
++                if (target == prairie::TitlebarTarget::Drag) {
++                    xdg_toplevel_move(window->xdg_toplevel, display->seat, serial);
++                } else if (target == prairie::TitlebarTarget::Close) {
++                    xdg_toplevel_handle_close(window, window->xdg_toplevel);
++                } else if (target == prairie::TitlebarTarget::Minimize) {
++                    window->minimize();
++                } else if (target == prairie::TitlebarTarget::Maximize) {
++                    window->set_maximize(!window->maximized);
++                } else if (target == prairie::TitlebarTarget::Back) {
++                    if (window->display->task && window->taskID != "none" &&
++                            window->taskID != "0")
++                        window->display->task->setFocusedTask(stoi(window->taskID));
++                    send_key_event(window->display, KEY_BACK,
++                                   WL_KEYBOARD_KEY_STATE_PRESSED);
++                    send_key_event(window->display, KEY_BACK,
++                                   WL_KEYBOARD_KEY_STATE_RELEASED);
++                }
++            }
++            return;
++        }
++    }
++
+     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+         ALOGE("%s:%d error in touch clock_gettime: %s",
+               __FILE__, __LINE__, strerror(errno));
+@@ -1005,6 +1229,13 @@ pointer_handle_axis(void *data, struct wl_pointer *,
+     if (!display->pointer_surface)
+         return;
+ 
++    auto* window = reinterpret_cast<struct window*>(
++        wl_surface_get_user_data(display->pointer_surface));
++    if (window && window->has_prairie_titlebar &&
++            prairie::hit_test(*window, display->pointer_x, display->pointer_y) !=
++                prairie::TitlebarTarget::Content)
++        return;
++
+     if (!display->reverseScroll) {
+         fVal = -fVal;
+     }
+@@ -1115,7 +1346,7 @@ flush_touch_id(struct display *display, int id)
+ 
+ static void
+ touch_handle_down(void *data, struct wl_touch *,
+-          uint32_t, uint32_t, struct wl_surface *surface,
++          uint32_t serial, uint32_t, struct wl_surface *surface,
+           int32_t id, wl_fixed_t x_w, wl_fixed_t y_w)
+ {
+     if (!surface) {
+@@ -1129,6 +1360,33 @@ touch_handle_down(void *data, struct wl_touch *,
+     int x, y;
+     unsigned int res, n = 0;
+ 
++    auto* window = reinterpret_cast<struct window*>(wl_surface_get_user_data(surface));
++    if (window && window->has_prairie_titlebar) {
++        const int title_x = wl_fixed_to_int(x_w);
++        const int title_y = wl_fixed_to_int(y_w);
++        const auto target = prairie::hit_test(*window, title_x, title_y);
++        if (target != prairie::TitlebarTarget::Content) {
++            if (target == prairie::TitlebarTarget::Drag)
++                xdg_toplevel_move(window->xdg_toplevel, display->seat, serial);
++            else if (target == prairie::TitlebarTarget::Close)
++                xdg_toplevel_handle_close(window, window->xdg_toplevel);
++            else if (target == prairie::TitlebarTarget::Minimize)
++                window->minimize();
++            else if (target == prairie::TitlebarTarget::Maximize)
++                window->set_maximize(!window->maximized);
++            else if (target == prairie::TitlebarTarget::Back) {
++                if (window->display->task && window->taskID != "none" &&
++                        window->taskID != "0")
++                    window->display->task->setFocusedTask(stoi(window->taskID));
++                send_key_event(window->display, KEY_BACK,
++                               WL_KEYBOARD_KEY_STATE_PRESSED);
++                send_key_event(window->display, KEY_BACK,
++                               WL_KEYBOARD_KEY_STATE_RELEASED);
++            }
++            return;
++        }
++    }
++
+     if (ensure_pipe(display, INPUT_TOUCH))
+         return;
+ 
+@@ -1997,12 +2255,17 @@ wayland_log_handler (const char *format, va_list args)
+     LOG_PRI_VA (ANDROID_LOG_ERROR, "wayland-hwc", format, args);
+ }
+ 
+-window *open_windows::add(waydroid_hwc_composer_device_1 *pdev, const std::string& key, const std::string& aid, const std::string& tid, hwc_color_t color) {
++window *open_windows::add(waydroid_hwc_composer_device_1 *pdev,
++        const std::string& key, const std::string& aid, const std::string& tid,
++        hwc_color_t color, int content_width, int content_height,
++        int task_origin_x, int task_origin_y) {
+     window *window = nullptr;
+     update([&](){
+         auto res = windows.emplace(
+             key,
+-            window::create(pdev->display, pdev->should_compose, aid, tid, color)
++            window::create(pdev->display, pdev->should_compose, aid, tid, color,
++                           content_width, content_height, task_origin_x,
++                           task_origin_y)
+         );
+         assert(res.second);
+         window = res.first->second.get();
+diff --git a/hwcomposer/wayland-hwc.h b/hwcomposer/wayland-hwc.h
+index 82ebbd5..47921c8 100644
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -196,6 +196,31 @@ struct window {
+     struct wl_buffer *bg_buffer;
+     struct zwp_locked_pointer_v1 *locked_pointer;
+ 
++    /* Prairie client-side chrome, part of this toplevel rather than a wrapper. */
++    bool has_prairie_titlebar {};
++    struct wl_surface *shadow_surface {};
++    struct wl_subsurface *shadow_subsurface {};
++    struct wl_buffer *shadow_buffer {};
++    void *shadow_data {};
++    size_t shadow_data_size {};
++    struct wl_surface *titlebar_surface {};
++    struct wl_subsurface *titlebar_subsurface {};
++    struct wl_buffer *titlebar_buffer {};
++    void *titlebar_data {};
++    size_t titlebar_data_size {};
++    std::string title;
++    int content_width {};
++    int content_height {};
++    int task_origin_x {};
++    int task_origin_y {};
++    int restore_task_origin_x {};
++    int restore_task_origin_y {};
++    int requested_content_width {};
++    int requested_content_height {};
++    int missing_frames {};
++    bool maximized {};
++    int hovered_chrome_target {};
++
+     struct zwp_idle_inhibitor_v1 *idle_inhibitor;
+ 
+     std::vector<layer> layers;
+@@ -214,7 +239,12 @@ struct window {
+ 
+     ~window();
+ 
+-    static std::unique_ptr<window> create(struct display *display, bool use_subsurfaces, std::string appID, std::string taskID, hwc_color_t color);
++    static std::unique_ptr<window> create(struct display *display, bool use_subsurfaces,
++                                          std::string appID, std::string taskID,
++                                          hwc_color_t color, int content_width = 0,
++                                          int content_height = 0,
++                                          int task_origin_x = 0,
++                                          int task_origin_y = 0);
+ 
+     window::layer &get_next_layer();
+     window::layer &create_new_layer();
+@@ -224,6 +254,7 @@ struct window {
+     void set_maximize(bool enabled);
+     void set_title(const char *title);
+     void set_app_id(std::string appID);
++    void request_task_resize(int width, int height);
+ 
+   private:
+     window() = default;
+@@ -272,7 +303,11 @@ class open_windows {
+         property_set("waydroid.open_windows", windows_size_str.c_str());
+     }
+ 
+-    window *add(waydroid_hwc_composer_device_1 *pdev, const std::string& key, const std::string& aid, const std::string& tid, hwc_color_t color = {0, 0, 0, 255});
++    window *add(waydroid_hwc_composer_device_1 *pdev, const std::string& key,
++                const std::string& aid, const std::string& tid,
++                hwc_color_t color = {0, 0, 0, 255}, int content_width = 0,
++                int content_height = 0, int task_origin_x = 0,
++                int task_origin_y = 0);
+     void add(const std::string& key, std::unique_ptr<window> window);
+     void clear();
+     void erase(const_iterator pos);
+@@ -355,6 +390,9 @@ struct display {
+     std::string clipboard;
+     std::list<std::string> clipboard_offer_mime_types;
+     uint32_t pointer_enter_serial;
++    uint32_t pointer_button_serial;
++    int pointer_x;
++    int pointer_y;
+     struct {float x; float y;} cursor_hotspot;
+ 
+     EGLDisplay egl_dpy;
+diff --git a/interfaces/task/1.0/default/WaydroidTask.cpp b/interfaces/task/1.0/default/WaydroidTask.cpp
+index 392b718..3405065 100644
+--- a/interfaces/task/1.0/default/WaydroidTask.cpp
++++ b/interfaces/task/1.0/default/WaydroidTask.cpp
+@@ -61,6 +61,25 @@ Return<void> WaydroidTask::removeAllVisibleRecentTasks() {
+     return Void();
+ }
+ 
++bool WaydroidTask::resizeTaskNative(uint32_t taskID, int32_t left,
++        int32_t top, int32_t right, int32_t bottom, int32_t resizeMode) {
++    bool result = false;
++    if (mActivityTaskManager == nullptr) {
++        sp<IBinder> binderTask = android::defaultServiceManager()->getService(
++                android::String16("activity_task"));
++        if (binderTask != nullptr)
++            mActivityTaskManager = android::interface_cast<IActivityTaskManager>(binderTask);
++    }
++    if (mActivityTaskManager != nullptr) {
++        const auto status = mActivityTaskManager->resizeTask(
++                taskID, left, top, right, bottom, resizeMode, &result);
++        if (!status.isOk())
++            ALOGE("resizeTask(%u) failed with exception %d", taskID,
++                  status.exceptionCode());
++    }
++    return result;
++}
++
+ Return<void> WaydroidTask::getAppName(const hidl_string& packageName, getAppName_cb _hidl_cb) {
+     android::String16 AppName;
+     if (mPlatform == nullptr) {
+diff --git a/interfaces/task/1.0/default/WaydroidTask.h b/interfaces/task/1.0/default/WaydroidTask.h
+index b2d3f0f..b3f22a1 100644
+--- a/interfaces/task/1.0/default/WaydroidTask.h
++++ b/interfaces/task/1.0/default/WaydroidTask.h
+@@ -49,6 +49,9 @@ struct WaydroidTask : public IWaydroidTask {
+     Return<void> removeTask(uint32_t taskID) override;
+     Return<void> removeAllVisibleRecentTasks() override;
+     Return<void> getAppName(const hidl_string& packageName, getAppName_cb _hidl_cb) override;
++    bool resizeTaskNative(uint32_t taskID, int32_t left, int32_t top,
++                          int32_t right, int32_t bottom,
++                          int32_t resizeMode);
+   private:
+     sp<IActivityTaskManager> mActivityTaskManager;
+     sp<IPlatform> mPlatform;
+diff --git a/interfaces/task/1.0/default/binder-interfaces/IActivityTaskManager.cpp b/interfaces/task/1.0/default/binder-interfaces/IActivityTaskManager.cpp
+index 8c21235..4da6c5c 100644
+--- a/interfaces/task/1.0/default/binder-interfaces/IActivityTaskManager.cpp
++++ b/interfaces/task/1.0/default/binder-interfaces/IActivityTaskManager.cpp
+@@ -23,6 +23,11 @@ IMPLEMENT_META_INTERFACE(ActivityTaskManager, "android.app.IActivityTaskManager"
+   return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+ }
+ 
++::android::binder::Status IActivityTaskManagerDefault::resizeTask(
++    int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, bool*) {
++  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
++}
++
+ }  // namespace app
+ 
+ }  // namespace android
+@@ -125,6 +130,44 @@ BpActivityTaskManager::BpActivityTaskManager(const ::android::sp<::android::IBin
+   return _aidl_status;
+ }
+ 
++::android::binder::Status BpActivityTaskManager::resizeTask(
++    int32_t taskId, int32_t left, int32_t top, int32_t right, int32_t bottom,
++    int32_t resizeMode, bool* _aidl_return) {
++  ::android::Parcel _aidl_data;
++  ::android::Parcel _aidl_reply;
++  ::android::status_t _aidl_ret_status = ::android::OK;
++  ::android::binder::Status _aidl_status;
++  _aidl_ret_status = _aidl_data.writeInterfaceToken(getInterfaceDescriptor());
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_data.writeInt32(taskId);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  // android.graphics.Rect parcelable: presence marker followed by its four edges.
++  _aidl_ret_status = _aidl_data.writeInt32(1);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_data.writeInt32(left);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_data.writeInt32(top);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_data.writeInt32(right);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_data.writeInt32(bottom);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_data.writeInt32(resizeMode);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = remote()->transact(
++      ::android::IBinder::FIRST_CALL_TRANSACTION + 48 /* resizeTask */,
++      _aidl_data, &_aidl_reply);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  _aidl_ret_status = _aidl_status.readFromParcel(_aidl_reply);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++  if (!_aidl_status.isOk()) return _aidl_status;
++  _aidl_ret_status = _aidl_reply.readBool(_aidl_return);
++  if (_aidl_ret_status != ::android::OK) goto _aidl_error;
++_aidl_error:
++  _aidl_status.setFromStatusT(_aidl_ret_status);
++  return _aidl_status;
++}
++
+ }  // namespace app
+ 
+ }  // namespace android
+@@ -201,6 +244,45 @@ namespace app {
+     }
+   }
+   break;
++  case ::android::IBinder::FIRST_CALL_TRANSACTION + 48 /* resizeTask */:
++  {
++    int32_t in_taskId;
++    int32_t in_left;
++    int32_t in_top;
++    int32_t in_right;
++    int32_t in_bottom;
++    int32_t in_resizeMode;
++    bool _aidl_return;
++    if (!(_aidl_data.checkInterface(this))) {
++      _aidl_ret_status = ::android::BAD_TYPE;
++      break;
++    }
++    _aidl_ret_status = _aidl_data.readInt32(&in_taskId);
++    if (_aidl_ret_status != ::android::OK) break;
++    int32_t in_rectPresent;
++    _aidl_ret_status = _aidl_data.readInt32(&in_rectPresent);
++    if (_aidl_ret_status != ::android::OK || in_rectPresent == 0) {
++      _aidl_ret_status = ::android::UNEXPECTED_NULL;
++      break;
++    }
++    _aidl_ret_status = _aidl_data.readInt32(&in_left);
++    if (_aidl_ret_status != ::android::OK) break;
++    _aidl_ret_status = _aidl_data.readInt32(&in_top);
++    if (_aidl_ret_status != ::android::OK) break;
++    _aidl_ret_status = _aidl_data.readInt32(&in_right);
++    if (_aidl_ret_status != ::android::OK) break;
++    _aidl_ret_status = _aidl_data.readInt32(&in_bottom);
++    if (_aidl_ret_status != ::android::OK) break;
++    _aidl_ret_status = _aidl_data.readInt32(&in_resizeMode);
++    if (_aidl_ret_status != ::android::OK) break;
++    ::android::binder::Status _aidl_status(resizeTask(
++        in_taskId, in_left, in_top, in_right, in_bottom, in_resizeMode,
++        &_aidl_return));
++    _aidl_ret_status = _aidl_status.writeToParcel(_aidl_reply);
++    if (_aidl_ret_status != ::android::OK || !_aidl_status.isOk()) break;
++    _aidl_ret_status = _aidl_reply->writeBool(_aidl_return);
++  }
++  break;
+   default:
+   {
+     _aidl_ret_status = ::android::BBinder::onTransact(_aidl_code, _aidl_data, _aidl_reply, _aidl_flags);
+diff --git a/interfaces/task/1.0/default/binder-interfaces/include/android/app/BpActivityTaskManager.h b/interfaces/task/1.0/default/binder-interfaces/include/android/app/BpActivityTaskManager.h
+index 016e6b9..1ebea25 100644
+--- a/interfaces/task/1.0/default/binder-interfaces/include/android/app/BpActivityTaskManager.h
++++ b/interfaces/task/1.0/default/binder-interfaces/include/android/app/BpActivityTaskManager.h
+@@ -17,6 +17,9 @@ public:
+   ::android::binder::Status setFocusedTask(int32_t taskId) override;
+   ::android::binder::Status removeTask(int32_t taskId, bool* _aidl_return) override;
+   ::android::binder::Status removeAllVisibleRecentTasks() override;
++  ::android::binder::Status resizeTask(int32_t taskId,
++      int32_t left, int32_t top, int32_t right, int32_t bottom,
++      int32_t resizeMode, bool* _aidl_return) override;
+ };  // class BpActivityTaskManager
+ 
+ }  // namespace app
+diff --git a/interfaces/task/1.0/default/binder-interfaces/include/android/app/IActivityTaskManager.h b/interfaces/task/1.0/default/binder-interfaces/include/android/app/IActivityTaskManager.h
+index ddaac5c..ad68327 100644
+--- a/interfaces/task/1.0/default/binder-interfaces/include/android/app/IActivityTaskManager.h
++++ b/interfaces/task/1.0/default/binder-interfaces/include/android/app/IActivityTaskManager.h
+@@ -5,6 +5,7 @@
+ #include <binder/IInterface.h>
+ #include <binder/Status.h>
+ #include <cstdint>
++#include <binder/Parcel.h>
+ #include <utils/StrongPointer.h>
+ 
+ namespace android {
+@@ -17,6 +18,9 @@ public:
+   virtual ::android::binder::Status setFocusedTask(int32_t taskId) = 0;
+   virtual ::android::binder::Status removeTask(int32_t taskId, bool* _aidl_return) = 0;
+   virtual ::android::binder::Status removeAllVisibleRecentTasks() = 0;
++  virtual ::android::binder::Status resizeTask(int32_t taskId,
++      int32_t left, int32_t top, int32_t right, int32_t bottom,
++      int32_t resizeMode, bool* _aidl_return) = 0;
+ };  // class IActivityTaskManager
+ 
+ class IActivityTaskManagerDefault : public IActivityTaskManager {
+@@ -25,6 +29,9 @@ public:
+   ::android::binder::Status setFocusedTask(int32_t taskId) override;
+   ::android::binder::Status removeTask(int32_t taskId, bool* _aidl_return) override;
+   ::android::binder::Status removeAllVisibleRecentTasks() override;
++  ::android::binder::Status resizeTask(int32_t taskId,
++      int32_t left, int32_t top, int32_t right, int32_t bottom,
++      int32_t resizeMode, bool* _aidl_return) override;
+ 
+ };
+ 
+diff --git a/interfaces/task/1.0/default/service.cpp b/interfaces/task/1.0/default/service.cpp
+index bfa8231..c3e19c5 100644
+--- a/interfaces/task/1.0/default/service.cpp
++++ b/interfaces/task/1.0/default/service.cpp
+@@ -19,6 +19,10 @@
+ #include <android-base/logging.h>
+ #include <binder/ProcessState.h>
+ #include <hidl/HidlTransportSupport.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <thread>
+ 
+ #include "WaydroidTask.h"
+ 
+@@ -31,11 +35,86 @@ using vendor::waydroid::task::V1_0::implementation::WaydroidTask;
+ using android::OK;
+ using android::status_t;
+ 
++namespace {
++
++constexpr uint32_t kPrairieResizeMagic = 0x4c554d41;  // LUMA
++constexpr uint16_t kPrairieResizeVersion = 1;
++constexpr char kPrairieResizeSocket[] = "prairie-waydroid-task-v1";
++
++struct PrairieResizeRequest {
++    uint32_t magic;
++    uint16_t version;
++    uint16_t reserved;
++    uint32_t task_id;
++    int32_t left;
++    int32_t top;
++    int32_t right;
++    int32_t bottom;
++    int32_t resize_mode;
++};
++
++struct PrairieResizeReply {
++    uint32_t magic;
++    uint16_t version;
++    uint8_t success;
++    uint8_t reserved;
++};
++
++void servePrairieResizeRequests(const android::sp<WaydroidTask>& service) {
++    const int server = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++    if (server < 0) {
++        LOG(ERROR) << "Cannot create Prairie resize channel.";
++        return;
++    }
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    address.sun_path[0] = '\0';
++    memcpy(address.sun_path + 1, kPrairieResizeSocket,
++           sizeof(kPrairieResizeSocket) - 1);
++    const socklen_t address_length = offsetof(sockaddr_un, sun_path) +
++            sizeof(kPrairieResizeSocket);
++    if (bind(server, reinterpret_cast<const sockaddr*>(&address),
++             address_length) != 0 || listen(server, 4) != 0) {
++        LOG(ERROR) << "Cannot bind Prairie resize channel.";
++        close(server);
++        return;
++    }
++
++    for (;;) {
++        const int client = TEMP_FAILURE_RETRY(accept4(server, nullptr, nullptr,
++                SOCK_CLOEXEC));
++        if (client < 0)
++            continue;
++        ucred credentials{};
++        socklen_t credentials_length = sizeof(credentials);
++        PrairieResizeRequest request{};
++        PrairieResizeReply reply{kPrairieResizeMagic,
++                kPrairieResizeVersion, 0, 0};
++        if (getsockopt(client, SOL_SOCKET, SO_PEERCRED, &credentials,
++                       &credentials_length) == 0 &&
++                credentials.uid == 1000 &&
++                TEMP_FAILURE_RETRY(recv(client, &request, sizeof(request), 0)) ==
++                        static_cast<ssize_t>(sizeof(request)) &&
++                request.magic == kPrairieResizeMagic &&
++                request.version == kPrairieResizeVersion &&
++                request.right > request.left && request.bottom > request.top) {
++            reply.success = service->resizeTaskNative(request.task_id,
++                    request.left, request.top, request.right, request.bottom,
++                    request.resize_mode) ? 1 : 0;
++        }
++        TEMP_FAILURE_RETRY(send(client, &reply, sizeof(reply), MSG_NOSIGNAL));
++        close(client);
++    }
++}
++
++}  // namespace
++
+ int main() {
+     // the conventional HAL might start binder services
+     android::ProcessState::self()->setThreadPoolMaxThreadCount(4);
+     android::ProcessState::self()->startThreadPool();
+-    android::sp<IWaydroidTask> service = new WaydroidTask();
++    android::sp<WaydroidTask> implementation = new WaydroidTask();
++    android::sp<IWaydroidTask> service = implementation;
+ 
+     configureRpcThreadpool(4, true);
+ 
+@@ -47,6 +126,8 @@ int main() {
+ 
+     LOG(INFO) << "Waydroid Task HAL service ready.";
+ 
++    std::thread(servePrairieResizeRequests, implementation).detach();
++
+     joinRpcThreadpool();
+ 
+     LOG(ERROR) << "WaydroidTask HAL service failed to join thread pool.";

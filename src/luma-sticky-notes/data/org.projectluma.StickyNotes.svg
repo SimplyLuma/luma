@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2=".55" y2="1">
+      <stop stop-color="#f7e9ad"/><stop offset="1" stop-color="#ecd57f"/>
+    </linearGradient>
+    <linearGradient id="peel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#d9bc63"/><stop offset="1" stop-color="#c5a54e"/>
+    </linearGradient>
+    <linearGradient id="tab" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e8a290"/><stop offset="1" stop-color="#d9836e"/>
+    </linearGradient>
+  </defs>
+  <!-- The note, square with one corner turned up, and its tab behind it. -->
+  <path d="M96 20h14a8 8 0 0 1 8 8v72a8 8 0 0 1-8 8H96z" fill="url(#tab)"/>
+  <path d="M18 26a8 8 0 0 1 8-8h62a8 8 0 0 1 8 8v58L74 110H26a8 8 0 0 1-8-8z" fill="url(#paper)"/>
+  <path d="M96 84 74 110V92a8 8 0 0 1 8-8z" fill="url(#peel)"/>
+  <g fill="none" stroke="#6f5d22" stroke-opacity=".46" stroke-width="6" stroke-linecap="round">
+    <path d="M34 46h44"/><path d="M34 64h44"/><path d="M34 82h26"/>
+  </g>
+</svg>

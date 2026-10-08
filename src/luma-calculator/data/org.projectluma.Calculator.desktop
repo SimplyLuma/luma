@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+Comment=Work out sums, percentages and conversions
+Exec=luma-calculator
+Icon=luma-v3-calculator
+Terminal=false
+Categories=Utility;Calculator;
+Keywords=calculation;arithmetic;maths;math;
+StartupNotify=true

@@ -1,0 +1,21 @@
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 5a19478..0c7be2a 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -57,2 +57,3 @@
+ #include "nautilus-global-preferences.h"
++#include "nautilus-history-controls.h"
+ #include "nautilus-metadata.h"
+@@ -67,2 +68,3 @@
+ #include "nautilus-toolbar.h"
++#include "nautilus-view-controls.h"
+ #include "nautilus-trash-monitor.h"
+@@ -1672,6 +1674,8 @@ nautilus_window_init (NautilusWindow *window)
+     g_type_ensure (NAUTILUS_TYPE_NETWORK_ADDRESS_BAR);
++    g_type_ensure (NAUTILUS_TYPE_HISTORY_CONTROLS);
+     g_type_ensure (NAUTILUS_TYPE_TOOLBAR);
+     g_type_ensure (NAUTILUS_TYPE_PLACES_SIDEBAR);
+     g_type_ensure (NAUTILUS_TYPE_PROGRESS_INDICATOR);
+     g_type_ensure (NAUTILUS_TYPE_SHORTCUT_MANAGER);
++    g_type_ensure (NAUTILUS_TYPE_VIEW_CONTROLS);
+     gtk_widget_init_template (GTK_WIDGET (window));

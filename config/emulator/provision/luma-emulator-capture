@@ -1,0 +1,92 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# Render one application at one exact logical width and capture it.
+#
+# The point of this helper is that the width matrix proves something. Each
+# width runs the same unmodified entry point inside its own nested headless
+# compositor sized to that width, so what lands in the PNG is one binary
+# answering five widths — not five builds, and not a montage of screenshots.
+
+set -euo pipefail
+
+if [ "$#" -lt 6 ]; then
+  echo "usage: luma-emulator-capture WIDTH HEIGHT SCALE SETTLE_MS OUTPUT COMMAND [ARGS...]" >&2
+  exit 2
+fi
+
+width=$1
+height=$2
+scale=$3
+settle_ms=$4
+output=$5
+shift 5
+
+for tool in sway grim; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "luma-emulator-capture: $tool is not installed in this guest" >&2
+    exit 8
+  }
+done
+
+work=$(mktemp -d /tmp/luma-capture.XXXXXX)
+trap 'rm -rf -- "$work"' EXIT
+
+printf '%s\n' "$@" > "$work/command"
+
+cat > "$work/inner" <<'INNER'
+#!/bin/bash
+set -uo pipefail
+mapfile -t argv < "$WORK/command"
+"${argv[@]}" &
+app_pid=$!
+# Give the toolkit time to lay out, load styles and settle animations before
+# the frame is taken; an early capture would libel the design.
+sleep "$SETTLE_SECONDS"
+grim "$OUTPUT" || echo "grim failed" >&2
+kill "$app_pid" 2>/dev/null || true
+wait "$app_pid" 2>/dev/null || true
+swaymsg exit >/dev/null 2>&1 || true
+INNER
+chmod +x "$work/inner"
+
+# sway's `scale` divides the output resolution to get the logical size the
+# application lays out against. The caller gives a *logical* width, because that
+# is what Luma's adaptive breakpoints respond to, so the physical resolution has
+# to be multiplied back up or the app is squeezed into width/scale points.
+physical_width=$((width * scale))
+physical_height=$((height * scale))
+
+cat > "$work/config" <<CONFIG
+output * resolution ${physical_width}x${physical_height} scale ${scale}
+default_border none
+default_floating_border none
+titlebar_padding 1
+exec_always "$work/inner"
+CONFIG
+
+export WLR_BACKENDS=headless
+export WLR_LIBINPUT_NO_DEVICES=1
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+# The emulator guest has no DRM master for this user, so the GLES renderer
+# cannot allocate buffers through GBM and every frame fails. Pixman renders in
+# software, which is all a deterministic width capture needs.
+export WLR_RENDERER=pixman
+export LIBGL_ALWAYS_SOFTWARE=1
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export WORK="$work"
+export OUTPUT="$output"
+export SETTLE_SECONDS=$(awk "BEGIN{printf \"%.2f\", $settle_ms/1000}")
+unset WAYLAND_DISPLAY
+unset DISPLAY
+
+mkdir -p "$(dirname "$output")"
+timeout 120 sway -c "$work/config" >"$work/sway.log" 2>&1 || true
+
+if [ ! -s "$output" ]; then
+  echo "luma-emulator-capture: no frame was produced at ${width}x${height}" >&2
+  tail -20 "$work/sway.log" >&2 || true
+  exit 1
+fi
+
+echo "captured ${width}x${height} logical (${physical_width}x${physical_height} physical, scale ${scale}) -> $output"

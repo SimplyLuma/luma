@@ -1,0 +1,3 @@
+#!/usr/bin/python3
+from prairie_apps.voice_memos import main
+raise SystemExit(main())

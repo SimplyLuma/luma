@@ -1,0 +1,42 @@
+From: Project Luma
+Subject: [PATCH] Dash: allocate painted layers to actual island bounds
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -140,12 +140,25 @@
+     }
+ });
+ 
++// Allocate every painted layer from the island's actual bounds. Natural
++// child sizes are used only for measuring the island's content-driven length.
++const ShelfIslandLayout = GObject.registerClass(
++class ShelfIslandLayout extends Clutter.LayoutManager {
++    vfunc_allocate(container, box) {
++        container._content.allocate(box);
++        for (const actor of [container._stroke, ...container._shadows]) {
++            if (actor.visible)
++                actor.allocate(box);
++        }
++    }
++});
++
+ const ShelfIsland = GObject.registerClass(
+ class ShelfIsland extends St.Widget {
+     _init(styleClass, child) {
+         super._init({
+             style_class: `luma-shelf-island ${styleClass}`,
+-            layout_manager: new Clutter.BinLayout(),
++            layout_manager: new ShelfIslandLayout(),
+         });
+         // The painted material, stroke and shadows must share the complete
+         // island allocation, not the natural height of its clock/buttons.
+@@ -542,6 +555,9 @@
+         this._previousVisualPosition = null;
+         this.set_position(geometry.x, geometry.y);
+         this.set_size(geometry.width, geometry.height);
++        // The outer visual actor follows the strut actor's full bounds. Its
++        // group still measures its natural length independently for content-hug.
++        this._surface.set_size(geometry.width, geometry.height);
+         if (this._reserves !== geometry.reserve) {
+             // Supported chrome tracking API: remove old strut metadata before
+             // admitting the new policy. No private strut array or polling.

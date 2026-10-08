@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Third-party app names a release-note fragment should not use as examples
+# (owner rule 2026-09-17). release_notes.py reports them as lint warnings;
+# a change that is really about one of these apps may still name it.
+Creality Print
+Discord
+Firefox
+Chrome
+Chromium
+Transmission
+Spotify
+Steam
+Slack
+Zoom
+VS Code
+Visual Studio Code
+LM Studio
+Krita
+Kdenlive
+Inkscape
+balenaEtcher
+Etcher

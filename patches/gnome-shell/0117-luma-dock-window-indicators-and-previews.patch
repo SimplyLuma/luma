@@ -1,0 +1,1610 @@
+From: Project Luma
+Subject: [PATCH] luma: dock tiles show their windows and preview them on hover
+
+Each running dock tile marks its windows: a pill for the focused window, a dot for every other open window, a hollow ring for a minimized one, and a small extra dot when there are more than three. Hovering a tile whose app has windows shows live previews of those windows instead of the name tooltip, and the tooltip and previews follow the light, frost, glass and dark surface looks. The previews live in js/ui/lumaDockWindows.js.
+---
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 4b22155..dad6f4d 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1068,3 +1068,114 @@
+ 
+ /* A left or right shelf: the Well is a 36-wide column. */
+ .luma-shelf-vertical .luma-well { width: 34px; height: auto; padding: 3px 0; }
++
++/* ── Shelf spec: window marks and the window preview ──────────────────── */
++/* One mark per window under an app: the focused window's 12 x 4 pill, a
++ * 4 x 4 dot per open window, a 4 x 4 ring per minimized one, and a 2 x 2 dot
++ * when there are more than three. Ink comes from the running-indicator rules
++ * above; the opacity (55%, or 100% for the pill) is set in code. */
++.luma-shelf-window-mark { border-radius: 2px; }
++.luma-shelf-window-mark.more { border-radius: 1px; }
++.luma-shelf-window-mark.minimized,
++.luma-surface-dark .luma-shelf-window-mark.minimized {
++  background-color: transparent; border: 1px solid #e7e9e8; }
++.luma-surface-light .luma-shelf-window-mark.minimized { background-color: transparent; border-color: #34383d; }
++.luma-surface-frost .luma-shelf-window-mark.minimized { background-color: transparent; border-color: #21252b; }
++.luma-surface-glass .luma-shelf-window-mark.minimized { background-color: transparent; border-color: #ffffff; }
++
++/* The preview: the tooltip's floating surface grown into a card. Menu surface
++ * per treatment, radius 15 and padding 6 like every shelf popover, a 1px rim
++ * inside the box, the near shadow here and the deep one on its own layer. */
++#lumaDockPreview { font-family: Figtree, sans-serif; }
++.luma-dock-preview {
++  padding: 6px;
++  spacing: 0;
++  border-radius: 15px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  background-color: #252a30;
++  color: #e7e9e8;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.2); }
++.luma-dock-preview-shadow {
++  border-radius: 15px;
++  background-color: rgba(37, 42, 48, 0.01);
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.luma-dock-preview.luma-surface-light {
++  border-color: rgba(255, 255, 255, 0.82); background-color: #f6f7f8; color: #34383d; }
++.luma-dock-preview.luma-surface-frost {
++  border-color: rgba(255, 255, 255, 0.62); background-color: rgba(246, 247, 248, 0.86); color: #21252b; }
++.luma-dock-preview.luma-surface-glass {
++  border-color: rgba(255, 255, 255, 0.16); background-color: rgba(40, 44, 50, 0.78); color: #ffffff; }
++.luma-dock-preview-shadow.luma-surface-light,
++.luma-dock-preview-shadow.luma-surface-frost {
++  box-shadow: 0 18px 42px -14px rgba(25, 27, 31, 0.42); }
++.luma-dock-preview-shadow.luma-surface-glass {
++  box-shadow: 0 22px 52px -15px rgba(25, 27, 31, 0.48); }
++
++.luma-dock-preview-row { spacing: 4px; }
++
++/* A card: radius 10 (15 less the popover's 6, rounded to the scale), padding
++ * 6, a 24 header over the thumbnail with 6 between. The fill is hover's. */
++.luma-dock-preview-card {
++  padding: 6px;
++  border-radius: 10px;
++  background-color: transparent;
++  transition-duration: 120ms; }
++.luma-dock-preview-card-box { spacing: 6px; }
++.luma-dock-preview-card:hover,
++.luma-dock-preview-card:focus { background-color: rgba(255, 255, 255, 0.08); }
++.luma-dock-preview-card:active { background-color: rgba(255, 255, 255, 0.14); }
++.luma-surface-light .luma-dock-preview-card:hover,
++.luma-surface-light .luma-dock-preview-card:focus { background-color: rgba(25, 27, 31, 0.07); }
++.luma-surface-light .luma-dock-preview-card:active { background-color: rgba(25, 27, 31, 0.12); }
++.luma-surface-frost .luma-dock-preview-card:hover,
++.luma-surface-frost .luma-dock-preview-card:focus { background-color: rgba(25, 27, 31, 0.08); }
++.luma-surface-frost .luma-dock-preview-card:active { background-color: rgba(25, 27, 31, 0.13); }
++.luma-surface-glass .luma-dock-preview-card:hover,
++.luma-surface-glass .luma-dock-preview-card:focus { background-color: rgba(255, 255, 255, 0.10); }
++.luma-surface-glass .luma-dock-preview-card:active { background-color: rgba(255, 255, 255, 0.16); }
++
++/* Header: icon 16, 8, the title in the tooltip's 11 / 650, the close button. */
++.luma-dock-preview-header { height: 24px; spacing: 8px; padding-left: 2px; }
++.luma-dock-preview-title { font-size: 11px; font-weight: 650; }
++.luma-dock-preview-close-slot { width: 24px; height: 24px; }
++.luma-dock-preview-close {
++  width: 24px; height: 24px; padding: 0; border-radius: 8px;
++  color: rgba(231, 233, 232, 0.60); background-color: transparent; transition-duration: 100ms; }
++.luma-dock-preview-close:hover { color: #e7e9e8; background-color: rgba(255, 255, 255, 0.14); }
++.luma-dock-preview-close:active { background-color: rgba(255, 255, 255, 0.20); }
++.luma-dock-preview-close-glyph { width: 16px; height: 16px; }
++.luma-surface-light .luma-dock-preview-close { color: rgba(52, 56, 61, 0.62); }
++.luma-surface-light .luma-dock-preview-close:hover { color: #34383d; background-color: rgba(25, 27, 31, 0.12); }
++.luma-surface-frost .luma-dock-preview-close { color: rgba(33, 37, 43, 0.62); }
++.luma-surface-frost .luma-dock-preview-close:hover { color: #21252b; background-color: rgba(25, 27, 31, 0.13); }
++.luma-surface-glass .luma-dock-preview-close { color: rgba(255, 255, 255, 0.72); }
++.luma-surface-glass .luma-dock-preview-close:hover { color: #ffffff; background-color: rgba(255, 255, 255, 0.22); }
++
++/* The thumbnail is rounded 8 by its shader. A window with nothing to show
++ * gets its icon on the Well's recessed fill. */
++.luma-dock-preview-placeholder { border-radius: 8px; background-color: rgba(255, 255, 255, 0.05); }
++.luma-surface-light .luma-dock-preview-placeholder,
++.luma-surface-frost .luma-dock-preview-placeholder { background-color: rgba(25, 27, 31, 0.05); }
++.luma-surface-glass .luma-dock-preview-placeholder { background-color: rgba(0, 0, 0, 0.08); }
++
++/* State over the thumbnail ("Minimized"): 11 / 650 on a dark scrim, the
++ * same in every treatment because it sits on the window's own content. */
++.luma-dock-preview-chip {
++  padding: 3px 8px;
++  border-radius: 999px;
++  background-color: rgba(12, 16, 21, 0.66);
++  color: #ffffff;
++  font-size: 11px;
++  font-weight: 650; }
++
++/* Groups after the first: a rule, then a heading, as in every shelf popover. */
++.luma-dock-preview-rule { height: 1px; margin: 5px 7px; background-color: rgba(255, 255, 255, 0.10); }
++.luma-surface-light .luma-dock-preview-rule,
++.luma-surface-frost .luma-dock-preview-rule { background-color: rgba(25, 27, 31, 0.12); }
++.luma-surface-glass .luma-dock-preview-rule { background-color: rgba(255, 255, 255, 0.24); }
++.luma-dock-preview-heading {
++  height: 22px; padding: 0 8px; margin-bottom: 2px; font-size: 9px; font-weight: 700; letter-spacing: 1px;
++  color: rgba(231, 233, 232, 0.46); }
++.luma-surface-light .luma-dock-preview-heading { color: rgba(52, 56, 61, 0.46); }
++.luma-surface-frost .luma-dock-preview-heading { color: rgba(33, 37, 43, 0.46); }
++.luma-surface-glass .luma-dock-preview-heading { color: rgba(255, 255, 255, 0.46); }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 8a95578..f600684 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -88,6 +88,7 @@
+     <file>ui/lumaWindowCorners.js</file>
+     <file>ui/lumaWindowWatch.js</file>
+     <file>ui/lumaWell.js</file>
++    <file>ui/lumaDockWindows.js</file>
+     <file>ui/lumaNotificationBeacon.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index f222e28..13fc1e2 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -10,6 +10,7 @@ import * as AppDisplay from './appDisplay.js';
+ import * as AppFavorites from './appFavorites.js';
+ import * as DND from './dnd.js';
+ import * as IconGrid from './iconGrid.js';
++import * as DockWindows from './lumaDockWindows.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
+ import * as SessionApplications from './sessionApplications.js';
+@@ -619,6 +620,10 @@ export const Dash = GObject.registerClass({
+         item.child.connect('clicked', () => {
+             this._labelShowing = false;
+             item.hideLabel();
++            // Clicking still activates or cycles the app; the window preview
++            // steps aside until the pointer leaves the icon.
++            if (appIcon && this._shelfEdge)
++                DockWindows.getDockPreview().dismiss(appIcon);
+         });
+ 
+         Main.overview.connectObject('hiding', () => {
+@@ -641,6 +646,11 @@ export const Dash = GObject.registerClass({
+         appIcon.connect('menu-state-changed', (o, opened) => {
+             this._itemMenuStateChanged(item, opened);
+         });
++        // From a focused icon, the arrow pointing away from the shelf edge
++        // moves into that app's window preview.
++        appIcon.connect('key-press-event', (_actor, event) => this._shelfEdge
++            ? DockWindows.getDockPreview().onIconKey(item, appIcon, event)
++            : Clutter.EVENT_PROPAGATE);
+ 
+         item.setChild(appIcon);
+ 
+@@ -659,6 +669,8 @@ export const Dash = GObject.registerClass({
+         // When the menu closes, it calls sync_hover, which means
+         // that the notify::hover handler does everything we need to.
+         if (opened) {
++            if (this._shelfEdge)
++                DockWindows.getDockPreview().dismiss(item.child);
+             if (this._showLabelTimeoutId > 0) {
+                 GLib.source_remove(this._showLabelTimeoutId);
+                 this._showLabelTimeoutId = 0;
+@@ -669,6 +681,21 @@ export const Dash = GObject.registerClass({
+     }
+ 
+     _syncLabel(item, appIcon) {
++        // On the shelf, an app with windows answers hover with a preview of
++        // them in place of its tooltip.
++        if (this._shelfEdge && appIcon) {
++            const preview = DockWindows.getDockPreview();
++            const previewed = preview.syncHover(item, appIcon, this._labelShowing);
++            if (preview.warm)
++                this._labelShowing = true;
++            if (previewed) {
++                if (this._showLabelTimeoutId > 0)
++                    GLib.source_remove(this._showLabelTimeoutId);
++                this._showLabelTimeoutId = 0;
++                item.hideLabel();
++                return;
++            }
++        }
+         const shouldShow = appIcon ? appIcon.shouldShowTooltip() : item.child.get_hover();
+ 
+         if (shouldShow) {
+diff --git a/js/ui/lumaDockWindows.js b/js/ui/lumaDockWindows.js
+new file mode 100644
+index 0000000..906be90
+--- /dev/null
++++ b/js/ui/lumaDockWindows.js
+@@ -0,0 +1,1225 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// The dock's windows. Under each app, a mark for every window it has open;
++// above it, on hover, a preview of those windows to pick one from.
++//
++// Mutter owns the windows: activation, unminimizing and closing (with the
++// application's own confirmation) all go through Meta.Window. Nothing here
++// holds a grab, so the dock, its menus and Grid keep their own input rules.
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {smoothOffscreenSampling} from './iconMask.js';
++import {previewPlacement, windowMarkKinds} from './shelfMetrics.js';
++
++// Windows' taskbar thumbnails wait about as long; a preview already open, or
++// a tooltip already showing, moves to the next icon at once.
++const PREVIEW_HOVER_TIMEOUT = 400;
++// Long enough to travel from the icon, across the gap, into a card.
++const PREVIEW_CLOSE_TIMEOUT = 300;
++// With a preview open, another icon takes over only after the pointer rests
++// on it this long: a diagonal path up to a far card crosses the neighbours.
++const PREVIEW_SWITCH_TIMEOUT = 150;
++// After a preview closes, the next icon still opens at once for this long.
++const PREVIEW_WARM_TIMEOUT = 300;
++const PREVIEW_SHOW_TIME = 150;
++const PREVIEW_HIDE_TIME = 100;
++const PREVIEW_RISE = 4;
++const MARK_TIME = 150;
++
++// Thumbnail box and card measurements, logical pixels.
++const THUMB_MAX_WIDTH = 240;
++const THUMB_MAX_HEIGHT = 150;
++const THUMB_RADIUS = 8;
++const CARD_MIN_WIDTH = 160;
++const CARD_PADDING = 6;
++const CARD_GAP = 4;
++const POPOVER_PADDING = 6;
++const CARDS_PER_ROW = 5;
++
++const animations = () => St.Settings.get().enable_animations;
++const scaleFactor = () => St.ThemeContext.get_for_stage(global.stage).scale_factor;
++
++// The windows a person would call this app's windows: not the ones asking to
++// stay off the taskbar, and not dialogs attached to a parent, which are drawn
++// inside their parent's preview.
++export function appWindows(app) {
++    if (!app)
++        return [];
++    return app.get_windows().filter(window => !window.skip_taskbar &&
++        !window.is_attached_dialog() &&
++        window.get_window_type() !== Meta.WindowType.DESKTOP);
++}
++
++function isFocused(window, focus) {
++    return Boolean(focus) && (focus === window || focus.find_root_ancestor?.() === window);
++}
++
++function actorRect(actor) {
++    const [x, y] = actor.get_transformed_position();
++    const [width, height] = actor.get_transformed_size();
++    return {x, y, width, height};
++}
++
++// ── Marks ─────────────────────────────────────────────────────────────────
++
++const WindowMark = GObject.registerClass(
++class WindowMark extends St.Widget {
++    _init(key) {
++        super._init({style_class: 'luma-shelf-running-indicator luma-shelf-window-mark',
++            reactive: false, opacity: 0});
++        // Allocation changes follow this actor's easing state (see place()).
++        this.save_easing_state();
++        this.key = key;
++        this.kind = null;
++        this.box = null;
++        this.leaving = false;
++    }
++
++    setKind(kind) {
++        if (this.kind === kind)
++            return;
++        if (this.kind)
++            this.remove_style_class_name(this.kind);
++        this.kind = kind;
++        this.add_style_class_name(kind);
++        this._fade();
++    }
++
++    // Ink at 55% for every mark except the focused pill, which is full ink.
++    _fade(target = this.kind === 'focused' ? 255 : 140) {
++        this.remove_transition('opacity');
++        this.ease({opacity: target, duration: animations() && this.box ? MARK_TIME : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    place(box) {
++        const first = !this.box;
++        this.box = box;
++        // A mark that already has a place slides and resizes into its new one;
++        // a new mark appears where it belongs and only fades in.
++        this.set_easing_duration(!first && animations() ? MARK_TIME : 0);
++        this.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
++        this.allocate(new Clutter.ActorBox({x1: box.x, y1: box.y,
++            x2: box.x + box.width, y2: box.y + box.height}));
++        if (first)
++            this._fade();
++    }
++
++    leave() {
++        this.leaving = true;
++        this.remove_transition('opacity');
++        this.ease({opacity: 0, duration: animations() ? MARK_TIME : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onStopped: () => this.destroy()});
++    }
++});
++
++// The marks under one dock icon. The shelf's indicator layer places the row;
++// the row places its marks.
++export const WindowMarks = GObject.registerClass(
++class WindowMarks extends St.Widget {
++    _init(app, tile) {
++        super._init({reactive: false});
++        this._app = app;
++        this._tile = tile;
++        this._marks = new Map();
++        this._watched = new Set();
++        this._geometry = null;
++        this.marks = [];
++        app?.connectObject('windows-changed', () => this._queueSync(), this);
++        global.display.connectObject('notify::focus-window', () => this._queueSync(), this);
++        Shell.WindowTracker.get_default().connectObject('notify::focus-app',
++            () => this._queueSync(), this);
++        this.connect('destroy', () => {
++            if (this._syncId)
++                GLib.source_remove(this._syncId);
++            this._syncId = 0;
++            for (const window of this._watched)
++                window.disconnectObject(this);
++            this._watched.clear();
++        });
++        this._sync();
++    }
++
++    _queueSync() {
++        if (this._syncId)
++            return;
++        // Focus moves out of one app and into another in separate
++        // notifications; settle once both have arrived.
++        this._syncId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++            this._syncId = 0;
++            this._sync();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _sync() {
++        const windows = appWindows(this._app);
++        for (const window of windows) {
++            if (this._watched.has(window))
++                continue;
++            this._watched.add(window);
++            window.connectObject('notify::minimized', () => this._queueSync(), this);
++        }
++        for (const window of [...this._watched]) {
++            if (!windows.includes(window)) {
++                window.disconnectObject(this);
++                this._watched.delete(window);
++            }
++        }
++        const focus = global.display.focus_window;
++        let marks = windowMarkKinds(windows.map(window => ({
++            key: `${window.get_stable_sequence()}`,
++            focused: isFocused(window, focus),
++            minimized: window.minimized,
++        })));
++        // Running without a window of its own (a background service, a
++        // window the tracker has not matched yet): the plain running dot.
++        if (marks.length === 0) {
++            const focusApp = Shell.WindowTracker.get_default().focus_app;
++            marks = [{key: 'app', kind: focusApp && focusApp === this._app ? 'focused' : 'open'}];
++        }
++        if (JSON.stringify(marks) === JSON.stringify(this.marks))
++            return;
++        this.marks = marks;
++        const keys = new Set(marks.map(mark => mark.key));
++        for (const [key, mark] of this._marks) {
++            if (!keys.has(key)) {
++                this._marks.delete(key);
++                mark.leave();
++            }
++        }
++        for (const {key, kind} of marks) {
++            let mark = this._marks.get(key);
++            if (!mark) {
++                mark = new WindowMark(key);
++                this._marks.set(key, mark);
++                this.add_child(mark);
++            }
++            mark.setKind(kind);
++        }
++        // The marks are drawn, not focusable: a screen reader hears the same
++        // count as the icon's description ("3 windows, 1 minimized").
++        this.accessible_name = this._describe(windows);
++        this._tile?.get_accessible?.()?.set_description(this.accessible_name);
++        this.queue_relayout();
++    }
++
++    _describe(windows) {
++        const minimized = windows.filter(window => window.minimized).length;
++        if (windows.length === 0)
++            return '';
++        return minimized
++            ? _('%d windows, %d minimized').format(windows.length, minimized)
++            : windows.length === 1 ? _('1 window') : _('%d windows').format(windows.length);
++    }
++
++    // The indicator layer hands over the row and its marks, already in whole
++    // pixels, just before allocating the row.
++    setGeometry(geometry) {
++        this._geometry = geometry;
++    }
++
++    vfunc_get_preferred_width() {
++        return [0, 0];
++    }
++
++    vfunc_get_preferred_height() {
++        return [0, 0];
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const boxes = this._geometry?.marks ?? [];
++        this.marks.forEach(({key}, index) => {
++            const mark = this._marks.get(key);
++            if (mark && boxes[index])
++                mark.place(boxes[index]);
++        });
++        // Leaving marks fade where they were.
++        for (const child of this.get_children()) {
++            if (child.leaving && child.box) {
++                child.set_easing_duration(0);
++                child.allocate(new Clutter.ActorBox({x1: child.box.x, y1: child.box.y,
++                    x2: child.box.x + child.box.width, y2: child.box.y + child.box.height}));
++            }
++        }
++    }
++});
++
++// ── Thumbnails ────────────────────────────────────────────────────────────
++
++// Rounds a live window thumbnail and shrinks it sharply. This is Grid's
++// preview recipe (lumaGrid.js, RoundedPreview): the window is laid out at its
++// own size and scaled as a whole, so the offscreen texture holds one texel per
++// window pixel, and each screen pixel averages a 4x4 grid of lookups across
++// the area it covers. A dock thumbnail is a tenth of the window, not half, so
++// the 16 lookups would be three texels apart and skip thin text strokes;
++// sampling them from the mipmap level two below the one the footprint asks
++// for lets each lookup average the texels between its neighbours.
++const RoundedThumbnail = GObject.registerClass(
++class RoundedThumbnail extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
++            `uniform vec2 origin; uniform vec2 extent; uniform vec3 shape;
++             uniform vec2 footprint; uniform vec2 texel; uniform float pixel;
++             uniform float lod_bias;`,
++            `vec2 st = cogl_tex_coord_in[0].st;
++             vec2 spread = max(footprint - vec2(1.0), vec2(0.0)) * texel / 3.0;
++             vec4 sum = vec4(0.0);
++             for (int i = 0; i < 4; i++) {
++                 for (int j = 0; j < 4; j++)
++                     sum += texture2D(cogl_sampler0,
++                         st + (vec2(float(i), float(j)) - 1.5) * spread, lod_bias);
++             }
++             cogl_color_out = cogl_color_in * (sum / 16.0);
++             vec2 p = origin + st * extent;
++             vec2 q = abs(p - shape.xy * 0.5) - (shape.xy * 0.5 - vec2(shape.z));
++             float d = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - shape.z;
++             cogl_color_out *= clamp(0.5 - d / pixel, 0.0, 1.0);`, true);
++    }
++
++    setShape(width, height, radius) {
++        this.set_uniform_float(this.get_uniform_location('shape'), 3, [width, height, radius]);
++    }
++
++    _textureOrigin(actor) {
++        const enlarge = (x1, width) => Math.ceil(x1 + width + 0.75) - Math.round(width) - 3;
++        const volume = actor.get_paint_volume();
++        if (volume && volume.get_width() * volume.get_height() !== 0) {
++            const origin = volume.get_origin();
++            return [Math.trunc(enlarge(origin.x, volume.get_width())),
++                Math.trunc(enlarge(origin.y, volume.get_height()))];
++        }
++        const box = actor.get_allocation_box();
++        return [Math.trunc(enlarge(box.x1, box.x2 - box.x1) - box.x1),
++            Math.trunc(enlarge(box.y1, box.y2 - box.y1) - box.y1)];
++    }
++
++    vfunc_paint_target(node, paintContext) {
++        const actor = this.actor;
++        const texture = this.get_texture();
++        const pipeline = this.get_pipeline();
++        let mipmapped = false;
++        if (actor && texture) {
++            const textureScale = Math.max(1, Math.ceil(actor.get_resource_scale()));
++            const viewScale = Math.max(1, ...actor.peek_stage_views().map(v => v.get_scale()));
++            const [scaleX, scaleY] = actor.get_scale();
++            const screenX = Math.max(1e-3, scaleX * viewScale);
++            const screenY = Math.max(1e-3, scaleY * viewScale);
++            const footprint = [textureScale / screenX, textureScale / screenY];
++            mipmapped = Math.min(...footprint) > 4;
++            this.set_uniform_float(this.get_uniform_location('origin'), 2, this._textureOrigin(actor));
++            this.set_uniform_float(this.get_uniform_location('extent'), 2,
++                [texture.get_width() / textureScale, texture.get_height() / textureScale]);
++            this.set_uniform_float(this.get_uniform_location('footprint'), 2, footprint);
++            this.set_uniform_float(this.get_uniform_location('texel'), 2,
++                [1 / texture.get_width(), 1 / texture.get_height()]);
++            this.set_uniform_float(this.get_uniform_location('pixel'), 1,
++                [1 / Math.min(screenX, screenY)]);
++            this.set_uniform_float(this.get_uniform_location('lod_bias'), 1, [mipmapped ? -2 : 0]);
++        }
++        smoothOffscreenSampling(this);
++        if (mipmapped) {
++            pipeline?.set_layer_filters(0, Cogl.PipelineFilter.LINEAR_MIPMAP_LINEAR,
++                Cogl.PipelineFilter.LINEAR);
++        }
++        super.vfunc_paint_target(node, paintContext);
++    }
++});
++
++const PreviewThumbnail = GObject.registerClass(
++class PreviewThumbnail extends St.Widget {
++    _init(window) {
++        super._init({style_class: 'luma-dock-preview-thumbnail', clip_to_allocation: false});
++        this.window = window;
++        this._placeholder = new St.Widget({style_class: 'luma-dock-preview-placeholder',
++            layout_manager: new Clutter.BinLayout(), visible: false});
++        const app = Shell.WindowTracker.get_default().get_window_app(window);
++        this._placeholderIcon = app?.create_icon_texture(36) ?? new St.Icon({
++            icon_name: 'application-x-executable-symbolic', icon_size: 36});
++        this._placeholderIcon.set({x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER});
++        this._placeholder.add_child(this._placeholderIcon);
++        this.add_child(this._placeholder);
++
++        this._body = new Clutter.Actor({layout_manager: new Shell.WindowPreviewLayout()});
++        this._addWindow(window);
++        window.foreach_transient(transient => {
++            if (transient.is_attached_dialog())
++                this._addWindow(transient);
++            return true;
++        });
++        this._rounded = new RoundedThumbnail();
++        this._body.add_effect(this._rounded);
++        this.add_child(this._body);
++        this._body.layout_manager.connectObject('notify::bounding-box',
++            () => this.queue_relayout(), this);
++
++        this._chip = new St.Label({style_class: 'luma-dock-preview-chip', visible: false,
++            y_align: Clutter.ActorAlign.CENTER});
++        this.add_child(this._chip);
++    }
++
++    _addWindow(window) {
++        if (!window.get_compositor_private())
++            return;
++        const clone = this._body.layout_manager.add_window(window);
++        if (clone)
++            Shell.util_set_hidden_from_pick(clone, true);
++    }
++
++    setChip(text) {
++        this._chip.text = text ?? '';
++        this._chip.visible = Boolean(text);
++    }
++
++    // A window that has never drawn (or whose buffer was released while it
++    // was minimized) has nothing to clone; its icon stands in.
++    get hasContent() {
++        const bounds = this._body.layout_manager.bounding_box;
++        const actor = this.window.get_compositor_private();
++        const texture = actor?.get_texture?.();
++        let width = 0, height = 0;
++        try {
++            [, width, height] = texture?.get_preferred_size?.() ?? [false, 0, 0];
++        } catch {
++            width = height = 1;
++        }
++        return bounds.get_width() > 1 && bounds.get_height() > 1 && width > 0 && height > 0;
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const width = box.get_width();
++        const height = box.get_height();
++        const scale = scaleFactor();
++        const bounds = this._body.layout_manager.bounding_box;
++        const naturalWidth = Math.max(1, bounds.get_width());
++        const naturalHeight = Math.max(1, bounds.get_height());
++        const fit = Math.min(width / naturalWidth, height / naturalHeight);
++        const drawnWidth = Math.round(naturalWidth * fit);
++        const drawnHeight = Math.round(naturalHeight * fit);
++        const x = Math.round((width - drawnWidth) / 2);
++        const y = Math.round((height - drawnHeight) / 2);
++        const content = this.hasContent;
++        this._body.visible = content;
++        this._placeholder.visible = !content;
++        const place = (actor, x1, y1, w, h) => actor.allocate(new Clutter.ActorBox({
++            x1, y1, x2: x1 + w, y2: y1 + h}));
++        if (content) {
++            place(this._body, x, y, Math.round(naturalWidth), Math.round(naturalHeight));
++            this._body.set_scale(drawnWidth / naturalWidth, drawnHeight / naturalHeight);
++            this._rounded.setShape(naturalWidth, naturalHeight,
++                THUMB_RADIUS * scale / Math.max(1e-3, fit));
++            place(this._placeholder, x, y, drawnWidth, drawnHeight);
++        } else {
++            place(this._placeholder, 0, 0, width, height);
++            place(this._body, 0, 0, 0, 0);
++        }
++        // The chip sits 6 in from the thumbnail's own bottom-left corner.
++        const [, , chipWidth, chipHeight] = this._chip.get_preferred_size();
++        const inset = 6 * scale;
++        const left = content ? x : 0;
++        const bottom = content ? y + drawnHeight : height;
++        place(this._chip, Math.round(left + inset), Math.round(bottom - inset - chipHeight),
++            Math.min(chipWidth, Math.max(0, (content ? drawnWidth : width) - 2 * inset)), chipHeight);
++    }
++});
++
++// Lucide "x": two strokes of 2 on a 24 grid, round caps, drawn at 16.
++const CloseGlyph = GObject.registerClass(
++class CloseGlyph extends St.DrawingArea {
++    _init() {
++        super._init({style_class: 'luma-dock-preview-close-glyph',
++            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++        this.connect('style-changed', () => this.queue_repaint());
++    }
++
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const [width, height] = this.get_surface_size();
++        const unit = Math.min(width, height) / 24;
++        cr.setSourceColor(this.get_theme_node().get_foreground_color());
++        cr.setLineWidth(2 * unit);
++        cr.setLineCap(1); // CAIRO_LINE_CAP_ROUND
++        cr.moveTo(6 * unit, 6 * unit);
++        cr.lineTo(18 * unit, 18 * unit);
++        cr.moveTo(18 * unit, 6 * unit);
++        cr.lineTo(6 * unit, 18 * unit);
++        cr.stroke();
++        cr.$dispose();
++    }
++});
++
++// ── The preview ───────────────────────────────────────────────────────────
++
++const PreviewCard = GObject.registerClass(
++class PreviewCard extends St.Button {
++    _init(window, preview) {
++        super._init({style_class: 'luma-dock-preview-card', can_focus: true,
++            track_hover: true, reactive: true, x_expand: false,
++            button_mask: St.ButtonMask.ONE | St.ButtonMask.TWO,
++            accessible_role: Atk.Role.PUSH_BUTTON});
++        this.window = window;
++        this._preview = preview;
++        const app = Shell.WindowTracker.get_default().get_window_app(window);
++        this._appName = app?.get_name() ?? '';
++
++        const column = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-dock-preview-card-box'});
++        const header = new St.BoxLayout({style_class: 'luma-dock-preview-header'});
++        const icon = app?.create_icon_texture(16) ?? new St.Icon({
++            icon_name: 'application-x-executable-symbolic', icon_size: 16});
++        icon.add_style_class_name('luma-dock-preview-app-icon');
++        icon.y_align = Clutter.ActorAlign.CENTER;
++        header.add_child(icon);
++        this._title = new St.Label({style_class: 'luma-dock-preview-title', x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER});
++        this._title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        header.add_child(this._title);
++        // The close button keeps its place while hidden, so a title never
++        // shortens under the pointer.
++        this._closeSlot = new St.Bin({style_class: 'luma-dock-preview-close-slot'});
++        this._close = new St.Button({style_class: 'luma-dock-preview-close',
++            can_focus: false, track_hover: true, child: new CloseGlyph(), opacity: 0,
++            reactive: false});
++        this._close.connect('clicked', () => this.closeWindow());
++        this._closeSlot.child = this._close;
++        header.add_child(this._closeSlot);
++        column.add_child(header);
++        this.thumbnail = new PreviewThumbnail(window);
++        column.add_child(this.thumbnail);
++        this.set_child(column);
++
++        this.connect('clicked', (_button, clickedButton) => {
++            if (clickedButton === Clutter.BUTTON_MIDDLE)
++                this.closeWindow();
++            else
++                preview.activateWindow(this.window);
++        });
++        this.connect('notify::hover', () => this._syncClose());
++        this.connect('key-focus-in', () => this._syncClose());
++        this.connect('key-focus-out', () => this._syncClose());
++        window.connectObject('notify::title', () => this.sync(),
++            'notify::minimized', () => this.sync(), this);
++        this.sync();
++    }
++
++    sync(chip = this._chipOverride) {
++        this._chipOverride = chip;
++        this._title.text = this.window.title || this._appName;
++        const state = this.window.minimized ? _('Minimized') : null;
++        this.thumbnail.setChip(state ?? chip ?? null);
++        const parts = [this._title.text];
++        if (this._appName && this._appName !== this._title.text)
++            parts.push(this._appName);
++        if (state)
++            parts.push(state);
++        if (chip)
++            parts.push(chip);
++        this.accessible_name = parts.join(', ');
++        this._close.accessible_name = _('Close %s').format(this._title.text);
++    }
++
++    _syncClose() {
++        const shown = (this.hover || this.has_key_focus()) && this.window.can_close();
++        this._close.reactive = shown;
++        this._close.remove_transition('opacity');
++        this._close.ease({opacity: shown ? 255 : 0,
++            duration: animations() ? 100 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    closeWindow() {
++        if (this.window.can_close())
++            this.window.delete(global.get_current_time());
++    }
++
++    setThumbnailSize(width, height) {
++        this.thumbnail.set_size(width, height);
++        this._title.get_parent().set_width(width);
++    }
++});
++
++const PreviewPopover = GObject.registerClass(
++class PreviewPopover extends St.Widget {
++    _init(controller) {
++        super._init({name: 'lumaDockPreview', reactive: true, track_hover: true,
++            visible: false, layout_manager: new Clutter.BinLayout(),
++            accessible_role: Atk.Role.LIST});
++        this._controller = controller;
++        this._cards = new Map();
++        // St draws one shadow per actor: the surface keeps the near shadow and
++        // this layer the deep one, as the shelf's menus do.
++        this._shadow = new St.Widget({style_class: 'luma-dock-preview-shadow'});
++        Shell.util_set_hidden_from_pick(this._shadow, true);
++        this.add_child(this._shadow);
++        this._surface = new St.BoxLayout({style_class: 'luma-dock-preview',
++            orientation: Clutter.Orientation.VERTICAL});
++        this.add_child(this._surface);
++        this._shadow.add_constraint(new Clutter.BindConstraint({source: this._surface,
++            coordinate: Clutter.BindCoordinate.ALL}));
++        this._material = SurfaceMaterials.bindSurface(this._surface, {cornerRadii: 15,
++            classActors: [this, this._shadow]});
++        global.focus_manager.add_group(this);
++        this.connect('key-press-event', (_actor, event) => controller.onPopoverKey(event));
++        this.connect('notify::hover', () => controller.onPopoverHover());
++        // A menu, Grid or any other modal surface taking the pointer ends the
++        // preview; a press on one of its own cards or buttons does not.
++        this.connect('leave-event', (_actor, event) => {
++            if ((event.get_flags() & Clutter.EventFlags.FLAG_GRAB_NOTIFY) && !controller.grabbedInside())
++                controller.close(true);
++            return Clutter.EVENT_PROPAGATE;
++        });
++    }
++
++    get cards() {
++        return [...this._cards.values()];
++    }
++
++    // Groups: [{heading, windows, chip}] in display order.
++    setGroups(app, groups, maxWidth, shrink = 1) {
++        this.accessible_name = _('%s windows').format(app.get_name());
++        const scale = scaleFactor();
++        const windows = groups.flatMap(group => group.windows);
++        for (const [window, card] of this._cards) {
++            if (!windows.includes(window)) {
++                this._cards.delete(window);
++                card.destroy();
++            }
++        }
++        for (const card of this._cards.values())
++            card.get_parent()?.remove_child(card);
++        this._surface.destroy_all_children();
++
++        // Every card shares one thumbnail height, so a row reads as a row;
++        // each thumbnail keeps its window's shape within it.
++        const fits = windows.map(window => {
++            const rect = window.get_frame_rect();
++            const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
++            const fit = Math.min(THUMB_MAX_WIDTH * scale / w, THUMB_MAX_HEIGHT * scale / h, 1) * shrink;
++            return {width: Math.round(w * fit), height: Math.round(h * fit)};
++        });
++        const thumbHeight = Math.max(...fits.map(fit => fit.height), 48 * scale);
++        // Once cards wrap, they share one width too, so the rows form columns.
++        const uniformWidth = windows.length > CARDS_PER_ROW
++            ? Math.max(...fits.map(fit => fit.width), CARD_MIN_WIDTH * scale) : 0;
++        const chrome = 2 * (POPOVER_PADDING + 1) * scale;
++        const available = Math.max(CARD_MIN_WIDTH * scale, maxWidth - chrome);
++
++        let index = 0;
++        groups.forEach((group, groupIndex) => {
++            if (group.windows.length === 0)
++                return;
++            if (groupIndex > 0 && this._surface.get_n_children() > 0)
++                this._surface.add_child(new St.Widget({style_class: 'luma-dock-preview-rule'}));
++            if (group.heading) {
++                this._surface.add_child(new St.Bin({style_class: 'luma-dock-preview-heading',
++                    x_align: Clutter.ActorAlign.START,
++                    child: new St.Label({text: group.heading.toUpperCase(),
++                        y_align: Clutter.ActorAlign.CENTER})}));
++            }
++            let row = null, rowWidth = 0, rowCount = 0;
++            for (const window of group.windows) {
++                const fit = fits[index++];
++                const width = uniformWidth || Math.max(fit.width, CARD_MIN_WIDTH * scale);
++                const cardWidth = width + 2 * CARD_PADDING * scale;
++                if (!row || rowCount >= CARDS_PER_ROW ||
++                    rowWidth + CARD_GAP * scale + cardWidth > available) {
++                    row = new St.BoxLayout({style_class: 'luma-dock-preview-row'});
++                    this._surface.add_child(row);
++                    rowWidth = 0;
++                    rowCount = 0;
++                }
++                let card = this._cards.get(window);
++                if (!card) {
++                    card = new PreviewCard(window, this._controller);
++                    this._cards.set(window, card);
++                }
++                card.sync(group.chip ?? null);
++                card.setThumbnailSize(width, thumbHeight);
++                row.add_child(card);
++                rowWidth += (rowCount ? CARD_GAP * scale : 0) + cardWidth;
++                rowCount++;
++            }
++        });
++    }
++
++    destroyCards() {
++        for (const card of this._cards.values())
++            card.destroy();
++        this._cards.clear();
++        this._surface.destroy_all_children();
++    }
++});
++
++class DockPreview {
++    constructor() {
++        this._popover = null;
++        this._icon = null;
++        this._item = null;
++        this._app = null;
++        this._pending = null;
++        this._openId = 0;
++        this._closeId = 0;
++        this._warmId = 0;
++        this._keyboard = false;
++        this._suppressed = null;
++
++        Main.sessionMode.connectObject('updated', () => {
++            if (!this._allowed())
++                this.close(true);
++        }, this);
++        Main.overview.connectObject(
++            'showing', () => this.close(true),
++            'item-drag-begin', () => this.close(true),
++            'window-drag-begin', () => this.close(true), this);
++        Main.layoutManager.connectObject(
++            'monitors-changed', () => this.close(true),
++            'system-modal-opened', () => this.close(true), this);
++        global.display.connectObject(
++            'notify::focus-window', () => this._onFocusChanged(),
++            'window-created', (_display, window) => this._onWindowCreated(window), this);
++        global.workspace_manager.connectObject('active-workspace-changed',
++            () => this._refresh(), this);
++        global.stage.connectObject('notify::key-focus', () => this._onKeyFocusChanged(), this);
++    }
++
++    get isOpen() {
++        return Boolean(this._popover?.visible) && !this._closing;
++    }
++
++    // True while a preview is open or has just closed: the next icon, and
++    // the next tooltip, show at once.
++    get warm() {
++        return this.isOpen || this._warmId !== 0;
++    }
++
++    _allowed() {
++        return !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
++            Main.sessionMode.hasWindows && !Main.overview.visible &&
++            !(Main.screenShield?.locked ?? false) && Main.modalCount === 0;
++    }
++
++    _wants(appIcon) {
++        return this._allowed() && !appIcon._dragging && appWindows(appIcon.app).length > 0;
++    }
++
++    // Called by the dock whenever an icon's hover (or menu) state changes.
++    // Returns true when the preview, not the tooltip, answers this hover.
++    syncHover(item, appIcon, tooltipWarm = false) {
++        if (!appIcon.hover && this._suppressed === appIcon)
++            this._suppressed = null;
++        const hovered = appIcon.shouldShowTooltip() && !appIcon._dragging;
++        if (!hovered && this.isOpen && this._icon === appIcon &&
++            global.stage.get_grab_actor() && !this.grabbedInside()) {
++            // Grid, a menu or a dialog took the pointer from the icon.
++            this.close(true);
++            return false;
++        }
++        if (!hovered) {
++            if (this._pending?.appIcon === appIcon)
++                this._cancelOpen();
++            if (this._icon === appIcon && this.isOpen && !this._keyboard)
++                this._scheduleClose();
++            return false;
++        }
++        if (this.isOpen && this._icon !== appIcon && !this._keyboard &&
++            this._suppressed !== appIcon) {
++            // Another icon, windows or not, takes over once the pointer rests.
++            this._scheduleOpen(item, appIcon, PREVIEW_SWITCH_TIMEOUT);
++            return true;
++        }
++        if (this._suppressed === appIcon || !this._wants(appIcon)) {
++            this._cancelOpen();
++            return this._suppressed === appIcon && appWindows(appIcon.app).length > 0;
++        }
++        this._cancelClose();
++        if (this.isOpen && this._icon === appIcon) {
++            this._cancelOpen();
++            return true;
++        }
++        const instant = this.warm || tooltipWarm;
++        this._scheduleOpen(item, appIcon, instant ? 0 : PREVIEW_HOVER_TIMEOUT);
++        return true;
++    }
++
++    // The icon was clicked, dragged or its menu opened: the preview makes way
++    // and stays away until the pointer leaves that icon.
++    dismiss(appIcon) {
++        this._suppressed = appIcon;
++        this._cancelOpen();
++        this.close(true);
++    }
++
++    // Arrow keys away from the shelf edge open the preview from a focused
++    // icon and move into it.
++    onIconKey(item, appIcon, event) {
++        const symbol = event.get_key_symbol();
++        if (symbol !== this._intoKey() || !this._allowed() || appWindows(appIcon.app).length === 0)
++            return Clutter.EVENT_PROPAGATE;
++        this._cancelOpen();
++        this._cancelClose();
++        this._keyboard = true;
++        this._open(item, appIcon);
++        const focus = global.display.focus_window;
++        const cards = this.isOpen ? this._popover.cards : [];
++        const card = cards.find(c => isFocused(c.window, focus)) ?? cards[0];
++        card?.grab_key_focus();
++        return Clutter.EVENT_STOP;
++    }
++
++    _edge() {
++        return Main.overview.dash._shelfEdge ?? 'bottom';
++    }
++
++    _intoKey() {
++        return {bottom: Clutter.KEY_Up, top: Clutter.KEY_Down,
++            left: Clutter.KEY_Right, right: Clutter.KEY_Left}[this._edge()];
++    }
++
++    _outKey() {
++        return {bottom: Clutter.KEY_Down, top: Clutter.KEY_Up,
++            left: Clutter.KEY_Left, right: Clutter.KEY_Right}[this._edge()];
++    }
++
++    onPopoverKey(event) {
++        const symbol = event.get_key_symbol();
++        const icon = this._icon;
++        if (symbol === Clutter.KEY_Escape) {
++            this.close(true);
++            icon?.grab_key_focus();
++            return Clutter.EVENT_STOP;
++        }
++        const focused = global.stage.get_key_focus();
++        const card = this._popover.cards.find(c => c === focused);
++        if (card && (symbol === Clutter.KEY_Delete || symbol === Clutter.KEY_KP_Delete)) {
++            card.closeWindow();
++            return Clutter.EVENT_STOP;
++        }
++        const directions = {
++            [Clutter.KEY_Left]: St.DirectionType.LEFT,
++            [Clutter.KEY_Right]: St.DirectionType.RIGHT,
++            [Clutter.KEY_Up]: St.DirectionType.UP,
++            [Clutter.KEY_Down]: St.DirectionType.DOWN,
++        };
++        if (!(symbol in directions))
++            return Clutter.EVENT_PROPAGATE;
++        this._keyboard = true;
++        if (this._popover.navigate_focus(focused, directions[symbol], false))
++            return Clutter.EVENT_STOP;
++        // Past the cards toward the shelf: back to the icon.
++        if (symbol === this._outKey()) {
++            this.close(true);
++            icon?.grab_key_focus();
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    grabbedInside() {
++        const grab = global.stage.get_grab_actor();
++        return Boolean(grab && this._popover?.contains(grab));
++    }
++
++    _pointerInside() {
++        return Boolean(this._popover?.hover || this._bridge?.hover || this._icon?.hover ||
++            this.grabbedInside());
++    }
++
++    onPopoverHover() {
++        if (!this._popover)
++            return;
++        if (this._popover.hover || this._bridge?.hover || this.grabbedInside()) {
++            this._cancelClose();
++            this._cancelOpen();
++        }
++        else if (!this._keyboard && !this._icon?.hover)
++            this._scheduleClose();
++    }
++
++    activateWindow(window) {
++        this.close(true);
++        Main.activateWindow(window);
++    }
++
++    _scheduleOpen(item, appIcon, timeout) {
++        if (this._pending?.appIcon === appIcon && this._openId)
++            return;
++        this._cancelOpen();
++        this._pending = {item, appIcon};
++        if (timeout === 0) {
++            this._pending = null;
++            this._open(item, appIcon);
++            return;
++        }
++        this._openId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, timeout, () => {
++            this._openId = 0;
++            const pending = this._pending;
++            this._pending = null;
++            if (!pending || !pending.appIcon.shouldShowTooltip() || this._popover?.hover || this._bridge?.hover)
++                return GLib.SOURCE_REMOVE;
++            if (this._wants(pending.appIcon)) {
++                this._open(pending.item, pending.appIcon);
++            } else if (this.isOpen) {
++                // A windowless icon: the preview goes and its tooltip shows at once.
++                this.close();
++                Main.overview.dash._syncLabel(pending.item, pending.appIcon);
++            }
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(this._openId, '[luma] dock preview open');
++    }
++
++    _cancelOpen() {
++        if (this._openId)
++            GLib.source_remove(this._openId);
++        this._openId = 0;
++        this._pending = null;
++    }
++
++    _scheduleClose() {
++        if (this._closeId)
++            return;
++        this._closeId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PREVIEW_CLOSE_TIMEOUT, () => {
++            this._closeId = 0;
++            if (this._keyboard || this._pointerInside())
++                return GLib.SOURCE_REMOVE;
++            this.close();
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(this._closeId, '[luma] dock preview close');
++    }
++
++    _cancelClose() {
++        if (this._closeId)
++            GLib.source_remove(this._closeId);
++        this._closeId = 0;
++    }
++
++    _ensurePopover() {
++        if (this._popover)
++            return;
++        this._popover = new PreviewPopover(this);
++        Main.layoutManager.addTopChrome(this._popover);
++        // The pointer crosses the island's padding and the 8px gap between
++        // the icon and the cards; this keeps that corridor part of the hover.
++        this._bridge = new St.Widget({name: 'lumaDockPreviewBridge', reactive: true,
++            track_hover: true, visible: false});
++        this._bridge.connect('notify::hover', () => this.onPopoverHover());
++        Main.layoutManager.addTopChrome(this._bridge);
++        this._popover.connect('destroy', () => {
++            this._popover = null;
++        });
++        // The preview goes with the rest of the chrome when the shell ends.
++        Main.layoutManager.uiGroup.connectObject('destroy', () => this._teardown(), this);
++        // Size is only known for certain once St has allocated the cards:
++        // follow every change so the preview stays exactly 8 from the island.
++        this._popover.connect('notify::allocation', () => this._queuePlace());
++    }
++
++    _queuePlace() {
++        if (this._placeLater || !this.isOpen)
++            return;
++        const laters = global.compositor.get_laters();
++        this._placeLater = laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._placeLater = 0;
++            if (!this.isOpen || !this._popover?.get_stage())
++                return GLib.SOURCE_REMOVE;
++            const [x, y] = this._placement();
++            const [targetX, targetY] = this._target ?? [NaN, NaN];
++            if (x !== targetX || y !== targetY) {
++                this._target = [x, y];
++                if (this._popover.get_transition('x') || this._popover.get_transition('y'))
++                    this._popover.ease({x, y, duration: PREVIEW_SHOW_TIME, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++                else
++                    this._popover.set_position(x, y);
++            }
++            this._syncBridge(x, y);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _open(item, appIcon) {
++        if (!this._allowed())
++            return;
++        this._ensurePopover();
++        const switching = this.isOpen && this._icon !== appIcon;
++        if (this._icon !== appIcon) {
++            this._icon?.disconnectObject(this);
++            this._app?.disconnectObject(this);
++            this._icon = appIcon;
++            this._item = item;
++            this._app = appIcon.app;
++            appIcon.connectObject('destroy', () => this.close(true),
++                'notify::mapped', () => {
++                    if (!appIcon.mapped)
++                        this.close(true);
++                }, this);
++            this._app.connectObject('windows-changed', () => this._refresh(), this);
++        }
++        this._closing = false;
++        this._cancelWarm();
++        const popover = this._popover;
++        popover.remove_all_transitions();
++        // Measured while shown (and still transparent): Clutter does not
++        // invalidate a hidden actor's cached size when its content changes.
++        if (!switching) {
++            popover.opacity = 0;
++            popover.show();
++        }
++        this._releaseHold();
++        if (!this._populate())
++            return;
++        const [x, y] = this._placement();
++        this._target = [x, y];
++        const rise = PREVIEW_RISE * scaleFactor();
++        const edge = this._edge();
++        const vertical = edge === 'left' || edge === 'right';
++        const sign = edge === 'bottom' || edge === 'right' ? 1 : -1;
++        if (switching) {
++            // Across icons the preview glides to its new place.
++            popover.ease({x, y, duration: animations() ? PREVIEW_SHOW_TIME : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            popover._surface.opacity = 0;
++            popover._surface.ease({opacity: 255, duration: animations() ? PREVIEW_SHOW_TIME : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        } else {
++            popover.set_position(x, y);
++            popover._surface.opacity = 255;
++            popover.translation_x = vertical ? -sign * rise : 0;
++            popover.translation_y = vertical ? 0 : sign * rise;
++            popover.ease({opacity: 255, translation_x: 0, translation_y: 0,
++                duration: animations() ? PREVIEW_SHOW_TIME : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        }
++        this._syncBridge(x, y);
++        Main.overview.dash._labelShowing = true;
++    }
++
++    _groups(app) {
++        const windows = appWindows(app).sort((a, b) =>
++            a.get_stable_sequence() - b.get_stable_sequence());
++        const workspace = global.workspace_manager.get_active_workspace();
++        const shelfMonitor = Main.layoutManager.findIndexForActor(this._icon);
++        const here = [], displays = [], elsewhere = [];
++        for (const window of windows) {
++            if (!window.located_on_workspace(workspace))
++                elsewhere.push(window);
++            else if (!window.minimized && Main.layoutManager.monitors.length > 1 &&
++                     window.get_monitor() !== shelfMonitor)
++                displays.push(window);
++            else
++                here.push(window);
++        }
++        return [
++            {heading: null, windows: here},
++            {heading: _('On other displays'), windows: displays},
++            {heading: _('On other workspaces'), windows: elsewhere},
++        ];
++    }
++
++    _populate() {
++        if (!this._popover?.get_stage())
++            return false;
++        const monitor = Main.layoutManager.monitors[
++            Main.layoutManager.findIndexForActor(this._icon)] ?? Main.layoutManager.primaryMonitor;
++        const groups = this._groups(this._app);
++        if (!monitor || groups.every(group => group.windows.length === 0)) {
++            this.close(true);
++            return false;
++        }
++        const scale = scaleFactor();
++        const edge = this._edge();
++        const islandActor = Main.shelf?._dockIsland;
++        const island = islandActor?.mapped ? actorRect(islandActor) : actorRect(this._icon);
++        const inset = 14 * scale, gap = 8 * scale;
++        const maxWidth = edge === 'left'
++            ? monitor.x + monitor.width - inset - (island.x + island.width + gap)
++            : edge === 'right' ? island.x - gap - monitor.x - inset : monitor.width - 2 * inset;
++        const maxHeight = edge === 'bottom' ? island.y - gap - monitor.y - inset
++            : edge === 'top' ? monitor.y + monitor.height - inset - (island.y + island.height + gap)
++                : monitor.height - 2 * inset;
++        // More windows than the monitor has room for: every thumbnail shrinks
++        // together rather than any card falling off the screen.
++        let shrink = 1;
++        for (;;) {
++            this._popover.setGroups(this._app, groups, maxWidth, shrink);
++            if (shrink <= 0.4 || this._popover.get_preferred_height(-1)[1] <= maxHeight)
++                break;
++            shrink -= 0.15;
++        }
++        return true;
++    }
++
++    _placement() {
++        const popover = this._popover;
++        const icon = actorRect(this._icon);
++        const islandActor = Main.shelf?._dockIsland;
++        const island = islandActor?.mapped ? actorRect(islandActor) : icon;
++        const monitor = Main.layoutManager.monitors[
++            Main.layoutManager.findIndexForActor(this._icon)] ?? Main.layoutManager.primaryMonitor;
++        const [, , width, height] = popover.get_preferred_size();
++        const position = previewPlacement(this._edge(), icon, island, {width, height},
++            monitor, scaleFactor());
++        return [position.x, position.y];
++    }
++
++    _syncBridge(x, y) {
++        if (!this._bridge || !this._popover || !this.isOpen || !this._icon?.mapped) {
++            if (this._bridge)
++                this._bridge.visible = false;
++            return;
++        }
++        x ??= this._popover.x;
++        y ??= this._popover.y;
++        const [width, height] = this._popover.get_size();
++        const icon = actorRect(this._icon);
++        const edge = this._edge();
++        let rect;
++        // As wide as the preview (and at least the icon), from the preview's
++        // edge to the icon's: it covers the island's padding, never an icon.
++        const left = Math.min(x, icon.x), right = Math.max(x + width, icon.x + icon.width);
++        const top = Math.min(y, icon.y), bottom = Math.max(y + height, icon.y + icon.height);
++        if (edge === 'bottom')
++            rect = {x: left, y: y + height, width: right - left, height: icon.y - y - height};
++        else if (edge === 'top')
++            rect = {x: left, y: icon.y + icon.height, width: right - left, height: y - icon.y - icon.height};
++        else if (edge === 'left')
++            rect = {x: icon.x + icon.width, y: top, width: x - icon.x - icon.width, height: bottom - top};
++        else
++            rect = {x: x + width, y: top, width: icon.x - x - width, height: bottom - top};
++        this._bridge.set_position(Math.round(rect.x), Math.round(rect.y));
++        this._bridge.set_size(Math.max(0, Math.round(rect.width)), Math.max(0, Math.round(rect.height)));
++        this._bridge.visible = rect.width > 0 && rect.height > 0;
++        Main.layoutManager.uiGroup.set_child_below_sibling(this._bridge, this._popover);
++    }
++
++    _refresh() {
++        if (!this.isOpen || !this._popover.get_stage())
++            return;
++        // A window closed from under the pointer: the preview keeps its size
++        // and place until the pointer leaves, so the next card or close button
++        // is not pulled out from under it.
++        const surface = this._popover._surface;
++        const hold = this._popover.hover ? surface.get_size() : null;
++        if (!this._populate())
++            return;
++        if (hold) {
++            surface.set_size(-1, -1);
++            const [, naturalWidth] = surface.get_preferred_width(-1);
++            const [, naturalHeight] = surface.get_preferred_height(Math.max(hold[0], naturalWidth));
++            surface.set_size(Math.max(hold[0], naturalWidth), Math.max(hold[1], naturalHeight));
++        }
++        this._queuePlace();
++    }
++
++    _teardown() {
++        this._cancelOpen();
++        this._cancelClose();
++        this._cancelWarm();
++        this._icon?.disconnectObject(this);
++        this._app?.disconnectObject(this);
++        this._icon = this._item = this._app = null;
++        this._closing = false;
++        // Hidden before it goes: a visible child of the layout-less uiGroup
++        // with a relayout pending is allocated by the stage after removal.
++        this._popover?.hide();
++        this._bridge?.hide();
++        this._popover?.destroy();
++        this._bridge?.destroy();
++        this._popover = this._bridge = null;
++    }
++
++    _releaseHold() {
++        this._popover?._surface.set_size(-1, -1);
++    }
++
++    _onFocusChanged() {
++        if (!this.isOpen || this._keyboard)
++            return;
++        // A window chosen elsewhere (a click on the desktop or another app)
++        // while the pointer is away from the dock ends the preview.
++        if (!this._pointerInside())
++            this.close(true);
++    }
++
++    _onKeyFocusChanged() {
++        if (!this.isOpen || !this._keyboard)
++            return;
++        const focus = global.stage.get_key_focus();
++        if (focus && (this._popover.contains(focus) || focus === this._icon))
++            return;
++        this.close(true);
++    }
++
++    _onWindowCreated(window) {
++        if (!this.isOpen)
++            return;
++        // A close confirmation, or any dialog of these windows, needs to be
++        // seen; the preview makes way for it.
++        const parent = window.get_transient_for();
++        if (parent && this._popover.cards.some(card => card.window === parent))
++            this.close(true);
++    }
++
++    _cancelWarm() {
++        if (this._warmId)
++            GLib.source_remove(this._warmId);
++        this._warmId = 0;
++    }
++
++    close(immediate = false) {
++        this._cancelOpen();
++        this._cancelClose();
++        const popover = this._popover?.get_stage() ? this._popover : null;
++        const wasKeyboard = this._keyboard;
++        this._keyboard = false;
++        if (this._bridge)
++            this._bridge.visible = false;
++        if (!popover?.visible || this._closing)
++            return;
++        this._closing = true;
++        this._cancelWarm();
++        this._warmId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PREVIEW_WARM_TIMEOUT, () => {
++            this._warmId = 0;
++            return GLib.SOURCE_REMOVE;
++        });
++        const finish = () => {
++            if (!this._closing)
++                return;
++            this._closing = false;
++            popover.hide();
++            this._releaseHold();
++            popover.destroyCards();
++            this._icon?.disconnectObject(this);
++            this._app?.disconnectObject(this);
++            this._icon = null;
++            this._item = null;
++            this._app = null;
++        };
++        popover.remove_all_transitions();
++        if (immediate || !animations() || wasKeyboard) {
++            popover.opacity = 0;
++            finish();
++            return;
++        }
++        popover.ease({opacity: 0, duration: PREVIEW_HIDE_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: finish});
++    }
++}
++
++let dockPreview = null;
++
++export function getDockPreview() {
++    dockPreview ??= new DockPreview();
++    return dockPreview;
++}
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index bbc160c..973599f 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -12,7 +12,8 @@ import {NotificationBeacon} from './lumaNotificationBeacon.js';
+ import {LumaIconMask} from './iconMask.js';
+ import {anchoredToStatus, shelfGaps} from './mediaSelection.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+-import {DASH_TILE_SIZE, SHELF_INSET, runningIndicatorGeometry} from './shelfMetrics.js';
++import {WindowMarks} from './lumaDockWindows.js';
++import {DASH_TILE_SIZE, SHELF_INSET, windowMarkRow} from './shelfMetrics.js';
+ 
+ const DASH_PADDING = 10;
+ // Every application on the dock is drawn to the same silhouette, whatever
+@@ -194,6 +195,7 @@ class DockIndicatorLayout extends Clutter.LayoutManager {
+         container.set_clip(vertical ? 0 : x, vertical ? y : 0,
+             vertical ? box.get_width() : shelf._dockScroll.width,
+             vertical ? shelf._dockScroll.height : box.get_height());
++        const rtl = container.text_direction === Clutter.TextDirection.RTL;
+         for (const bar of container.get_children()) {
+             const tile = bar._tile;
+             const [stageX, stageY] = tile.get_transformed_position();
+@@ -203,13 +205,14 @@ class DockIndicatorLayout extends Clutter.LayoutManager {
+             if (!ok)
+                 continue;
+             const center = vertical ? centerY : centerX;
+-            const app = tile._delegate?.app;
+-            const focused = Boolean(app) && Shell.WindowTracker.get_default().focus_app === app;
+-            bar.opacity = focused ? 255 : 140;
+-            const geometry = runningIndicatorGeometry(shelf._edge,
+-                box.get_width(), box.get_height(), center, scale, focused, shelf._padding ?? 8);
+-            bar.allocate(new Clutter.ActorBox({x1: geometry.x, y1: geometry.y,
+-                x2: geometry.x + geometry.width, y2: geometry.y + geometry.height}));
++            // One mark per window: the row is centred under the icon, and
++            // lays out its own pill, dots and rings.
++            const geometry = windowMarkRow(shelf._edge, box.get_width(), box.get_height(),
++                center, bar.marks, scale, shelf._padding ?? 8, rtl);
++            bar.setGeometry(geometry);
++            const row = geometry.row;
++            bar.allocate(new Clutter.ActorBox({x1: row.x, y1: row.y,
++                x2: row.x + row.width, y2: row.y + row.height}));
+         }
+     }
+ });
+@@ -794,9 +797,6 @@ class Shelf extends St.Widget {
+         this._actionsBox.orientation = orientation;
+         this._dockContent.orientation = orientation;
+         this._dash.setShelfEdge(this._edge);
+-        const indicatorRadii = runningIndicatorGeometry(this._edge, 0, 0, 0).radii;
+-        for (const bar of this._dockIndicators.get_children())
+-            bar.set_style(`border-radius: ${indicatorRadii.map(n => `${n}px`).join(' ')};`);
+         this._dockIndicators.queue_relayout();
+         this._dockScroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+         this._dockScroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
+@@ -934,10 +934,7 @@ class Shelf extends St.Widget {
+         for (const item of box.get_children()) {
+             const delegate = item.child?._delegate;
+             if (this._dockIndicators && delegate?._dot && !item._shelfIndicator) {
+-                const bar = new St.Widget({style_class: 'luma-shelf-running-indicator', reactive: false,
+-                    opacity: 235});
+-                const radii = runningIndicatorGeometry(this._edge ?? 'bottom', 0, 0, 0).radii;
+-                bar.set_style(`border-radius: ${radii.map(n => `${n}px`).join(' ')};`);
++                const bar = new WindowMarks(delegate.app, item.child);
+                 bar._tile = item.child;
+                 item._shelfIndicator = bar;
+                 delegate._dot.opacity = 0;
+@@ -945,9 +942,13 @@ class Shelf extends St.Widget {
+                 item.connectObject('destroy', () => bar.destroy(), bar);
+                 this._dockIndicators.add_child(bar);
+             }
+-            if (delegate?.label && !delegate.label._lumaSurfaceBinding) {
+-                delegate.label._lumaSurfaceBinding = SurfaceMaterials.bindSurface(
+-                    delegate.label, {backdrop: false, cornerRadii: 999});
++            // The tooltip is the item's label; the icon has none. Bound, it
++            // takes the treatment's menu surface like the window preview it
++            // hands over to, instead of staying dark in Light and Frost.
++            const tooltip = item.label ?? delegate?.label;
++            if (tooltip && !tooltip._lumaSurfaceBinding) {
++                tooltip._lumaSurfaceBinding = SurfaceMaterials.bindSurface(
++                    tooltip, {backdrop: false, cornerRadii: 999});
+             }
+             const baseIcon = delegate?.icon;
+             if (!baseIcon)
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+index d8d929e..56487f5 100644
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -32,3 +32,89 @@ export function runningIndicatorGeometry(edge, width, height, center, scale = 1,
+         radii,
+     };
+ }
++
++// One mark per window, up to three, 2 apart and centred under the icon: the
++// focused window's 12x4 pill, a 4x4 dot for each other open window and a 4x4
++// ring for each minimized one. A fourth window and beyond adds one 2x2 dot at
++// the end, the way a page indicator shrinks its last dot to say there is more.
++export const WINDOW_MARKS_MAX = 3;
++export const WINDOW_MARK_GAP = 2;
++const WINDOW_MARK_LENGTH = {focused: 12, open: 4, minimized: 4, more: 2};
++
++// windows: [{key, focused, minimized}] most recently used first. The focused
++// window leads, then open windows, then minimized ones, each by recency. When
++// only three fit and a minimized window would fall off the end, it takes the
++// last place, so both kinds of window stay visible under the icon.
++export function windowMarkKinds(windows) {
++    const rank = window => window.focused ? 0 : window.minimized ? 2 : 1;
++    const ordered = windows.map((window, index) => ({window, index}))
++        .sort((a, b) => rank(a.window) - rank(b.window) || a.index - b.index)
++        .map(entry => entry.window);
++    const shown = ordered.slice(0, WINDOW_MARKS_MAX);
++    if (ordered.length > WINDOW_MARKS_MAX && !shown.some(window => window.minimized)) {
++        const minimized = ordered.find(window => window.minimized);
++        if (minimized)
++            shown[WINDOW_MARKS_MAX - 1] = minimized;
++    }
++    const marks = shown.map(window => ({key: window.key,
++        kind: window.focused ? 'focused' : window.minimized ? 'minimized' : 'open'}));
++    if (ordered.length > WINDOW_MARKS_MAX)
++        marks.push({key: 'more', kind: 'more'});
++    return marks;
++}
++
++// The row of marks under one icon, in the indicator layer's coordinates, and
++// each mark inside that row. Whole pixels throughout: a 4px dot on a half pixel
++// is resampled into a 5px smudge.
++export function windowMarkRow(edge, width, height, center, marks, scale = 1, padding = 8, rtl = false) {
++    const vertical = edge === 'left' || edge === 'right';
++    const depth = 4 * scale;
++    const gap = WINDOW_MARK_GAP * scale;
++    const lengths = marks.map(mark => (WINDOW_MARK_LENGTH[mark.kind] ?? 4) * scale);
++    const total = lengths.reduce((sum, length) => sum + length, 0) +
++        Math.max(0, marks.length - 1) * gap;
++    const start = Math.round(center - total / 2);
++    const clearance = (padding - 2) * scale;
++    const cross = vertical
++        ? (edge === 'left' ? clearance - depth : width - clearance)
++        : (edge === 'top' ? clearance - depth : height - clearance);
++    let offset = 0;
++    const boxes = marks.map((mark, index) => {
++        const length = lengths[index];
++        const thickness = mark.kind === 'more' ? 2 * scale : depth;
++        const inset = Math.round((depth - thickness) / 2);
++        const along = rtl && !vertical ? total - offset - length : offset;
++        offset += length + gap;
++        return vertical
++            ? {x: inset, y: along, width: thickness, height: length}
++            : {x: along, y: inset, width: length, height: thickness};
++    });
++    return {
++        row: vertical
++            ? {x: Math.round(cross), y: start, width: depth, height: total}
++            : {x: start, y: Math.round(cross), width: total, height: depth},
++        marks: boxes,
++    };
++}
++
++// Where the window preview sits: 8 beyond the dock island's outer edge, like
++// the tooltip, centred on the icon along the shelf and kept 14 inside the
++// monitor. Rectangles are {x, y, width, height} in stage pixels.
++export function previewPlacement(edge, icon, island, size, monitor, scale = 1) {
++    const gap = 8 * scale;
++    const inset = SHELF_INSET * scale;
++    const clamp = (value, min, max) => Math.max(min, Math.min(value, Math.max(min, max)));
++    const centerX = icon.x + icon.width / 2;
++    const centerY = icon.y + icon.height / 2;
++    let x, y;
++    if (edge === 'left' || edge === 'right') {
++        x = edge === 'left' ? island.x + island.width + gap : island.x - gap - size.width;
++        y = clamp(centerY - size.height / 2, monitor.y + inset,
++            monitor.y + monitor.height - inset - size.height);
++    } else {
++        x = clamp(centerX - size.width / 2, monitor.x + inset,
++            monitor.x + monitor.width - inset - size.width);
++        y = edge === 'top' ? island.y + island.height + gap : island.y - gap - size.height;
++    }
++    return {x: Math.round(x), y: Math.round(y)};
++}

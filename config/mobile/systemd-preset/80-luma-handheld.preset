@@ -1,0 +1,21 @@
+# Project Luma handheld service policy.
+#
+# The shared application set may install services useful in desktop or docked
+# posture. A handheld image must not inherit their package defaults when they
+# create idle network listeners. A future docked profile may start discovery
+# on demand without changing the shared package composition.
+
+disable avahi-daemon.service
+disable avahi-daemon.socket
+
+# Android applications remain in the shared catalog, but the container is an
+# on-demand handheld capability. Avoid its idle memory and wakeup cost until a
+# user actually activates an Android launcher.
+disable waydroid-container.service
+
+# The FP6 bearer adapter is event-driven and remains idle without a provisioned
+# APN. It binds ModemManager's qmap bearer below the shared Network settings UI.
+enable luma-fp6-cellular-link.service
+enable luma-fp6-carrier-pdc.service
+enable luma-fp6-primary-gw-session.service
+enable luma-fp6-modem-quiesce.service

@@ -1,0 +1,327 @@
+diff --git a/gnome-shell.spec b/gnome-shell.spec
+--- a/gnome-shell.spec
++++ b/gnome-shell.spec
+@@ -19,7 +19,7 @@
+ 
+ Name:           gnome-shell
+ Version:        50.3
+-Release:        %autorelease
++Release:        1.luma.108.creator20261007.1%{?dist}
+ Summary:        Window management and application launching for GNOME
+ 
+ License:        GPL-2.0-or-later
+@@ -32,6 +32,249 @@
+ # Some users might have a broken PAM config, so we really need this
+ # downstream patch to stop trying on configuration errors.
+ Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
++Patch1000:      0001-luma-panel-layout.patch
++Patch1001:      0002-prairie-login-lock.patch
++Patch1002:      0003-luma-desktop-first-session.patch
++Patch1003:      0004-prairie-login-spinner-row.patch
++Patch1004:      0005-prairie-application-shortcuts.patch
++Patch1005:      0006-prairie-auth-entry-and-progress.patch
++Patch1006:      0007-luma-handheld-posture.patch
++Patch1007:      0008-luma-live-extensions.patch
++Patch1008:      0009-luma-handheld-activity-view.patch
++Patch1009:      0010-luma-shelf.patch
++Patch1010:      0011-luma-presence-login.patch
++Patch1011:      0012-luma-login-detail-polish.patch
++Patch1012:      0013-luma-login-and-single-dash.patch
++Patch1013:      0014-luma-notification-system.patch
++Patch1014:      0015-luma-notification-lifecycle-stack.patch
++Patch1015:      0016-luma-search-window-view.patch
++Patch1016:      0017-luma-search-beam-native-providers.patch
++Patch1017:      0018-luma-search-beam-layout-polish.patch
++Patch1018:      0019-luma-shelf-polish.patch
++Patch1019:      0020-luma-dock-icon-normalisation.patch
++Patch1020:      0021-luma-shelf-dock-width-follows-content.patch
++Patch1021:      0022-luma-context-menu.patch
++Patch1022:      0023-luma-quick-options-final-menu.patch
++Patch1023:      0024-luma-box-shadow-support.patch
++Patch1024:      0025-luma-beacon-notification-follow-up.patch
++Patch1025:      0026-luma-native-file-dock-open.patch
++Patch1026:      0027-luma-dash-layout-settings.patch
++Patch1027:      0028-luma-dash-attached-shadow-policy.patch
++Patch1028:      0029-luma-dash-empty-offscreen-minimum.patch
++Patch1029:      0030-luma-date-menu-notification-lifecycle-import.patch
++Patch1030:      0031-luma-dash-uniform-island-edges.patch
++Patch1031:      0032-luma-dash-material-thickness.patch
++Patch1032:      0033-luma-dash-painted-surface-allocation.patch
++Patch1033:      0034-luma-dash-unified-padding.patch
++Patch1034:      0035-luma-dash-device-pixel-insets.patch
++Patch1035:      0036-luma-dash-scaled-tile-margin.patch
++Patch1036:      0037-luma-unified-status-cluster.patch
++Patch1037:      0038-luma-status-clock-foreground.patch
++Patch1038:      0039-luma-status-clock-balanced-inset.patch
++Patch1039:      0040-luma-preserve-clock-text-paint.patch
++Patch1040:      0041-luma-boot-greeter-ink-fallback.patch
++Patch1041:      0042-luma-status-divider-spacing.patch
++Patch1042:      0043-luma-compact-menu-width.patch
++Patch1043:      0044-luma-dock-tile-geometry.patch
++Patch1044:      0045-luma-surface-materials.patch
++Patch1045:      0046-luma-surface-simulator-parity.patch
++Patch1046:      0047-luma-shelf-settle-and-artwork-background.patch
++Patch1047:      0048-luma-shelf-artwork-only.patch
++Patch1048:      0049-luma-shelf-direct-paint-damage.patch
++Patch1049:      0050-luma-status-island-material-owner.patch
++Patch1050:      0051-luma-desktop-edge-gutters.patch
++Patch1051:      0052-luma-dock-hover-viewport-padding.patch
++Patch1052:      0053-luma-dock-inner-clip.patch
++Patch1053:      0054-luma-minimize-dock-target.patch
++Patch1054:      0055-luma-managed-window-class.patch
++Patch1055:      0056-luma-hover-padding-inside-scroll-clip.patch
++Patch1056:      0057-luma-search-outside-dismissal.patch
++Patch1057:      0058-luma-unlock-initialization-order.patch
++Patch1058:      0059-luma-media-live-island.patch
++Patch1059:      0060-luma-grid-layout.patch
++Patch1060:      0061-luma-wallpaper-clock-spacing.patch
++Patch1061:      0062-luma-dock-menu-clearance.patch
++Patch1062:      0063-luma-monitor-introspection.patch
++Patch1063:      0064-luma-native-grid.patch
++Patch1064:      0065-luma-session-application-lifecycle.patch
++Patch1065:      0066-luma-grid-presentation.patch
++Patch1066:      0067-luma-grid-windows-and-rows.patch
++Patch1067:      0068-luma-grid-single-row-scroll.patch
++Patch1068:      0069-luma-shelf-clock-gap.patch
++Patch1069:      0070-luma-grid-span-titles-dismiss.patch
++Patch1070:      0071-luma-grid-centred-scroll.patch
++Patch1071:      0072-luma-grid-stable-order.patch
++Patch1072:      0073-luma-desktop-swipe-direction.patch
++Patch1073:      0074-luma-live-extension-actions.patch
++Patch1074:      0075-luma-shelf-clock-gap-spacing.patch
++Patch1075:      0076-luma-sticky-dock-placement.patch
++Patch1076:      0077-luma-shelf-clock-gap-ceiling.patch
++Patch1077:      0078-luma-sticky-dock-chrome.patch
++Patch1078:      0079-luma-sticky-dock-guard.patch
++Patch1079:      0080-luma-live-extension-shelf-presentation.patch
++Patch1080:      0081-luma-live-island-instrumentation.patch
++Patch1081:      0082-luma-unlock-clock-dispose-order.patch
++Patch1082:      0083-luma-live-island-event-presentation.patch
++Patch1083:      0084-luma-shelf-gap-right-anchor.patch
++Patch1084:      0085-luma-unlock-not-gated-on-a-message.patch
++Patch1085:      0086-luma-live-island-keeps-its-indicator.patch
++Patch1086:      0087-luma-search-result-activation.patch
++Patch1087:      0088-luma-shelf-clock-group.patch
++Patch1088:      0089-luma-login-typing-reaches-password.patch
++Patch1089:      0090-luma-password-not-held-behind-a-message.patch
++Patch1090:      0091-luma-capsule-window-belongs-to-its-launcher.patch
++Patch1091:      0092-luma-quick-options-rows-fit-their-content.patch
++Patch1092:      0093-luma-status-icons-live-on-the-shelf.patch
++Patch1093:      0094-luma-menu-rows-grow-and-quick-options-centres.patch
++Patch1094:      0095-luma-screenshot-from-search-opens.patch
++Patch1095:      0096-luma-shelf-type-scale-and-activation.patch
++Patch1096:      0097-luma-login-wallpaper-every-display.patch
++Patch1097:      0098-luma-grid-windows-travel.patch
++Patch1099:      0100-luma-ask-about-new-display-arrangements.patch
++Patch1100:      0101-luma-login-wallpaper-origin-and-clean-screenshots.patch
++Patch1101:      0102-luma-every-window-gets-luma-corners.patch
++Patch1102:      0103-luma-log-windows-that-flash.patch
++Patch1103:      0104-luma-keep-every-dock-icon-rounded.patch
++Patch1104:      0105-luma-chromium-windows-get-luma-corners.patch
++Patch1105:      0106-luma-sharp-dock-icons-and-masked-windows.patch
++Patch1106:      0107-luma-monitor-margins-and-centred-shelf.patch
++Patch1107:      0108-luma-grid-sharp-steady-draggable-and-centred-shelf.patch
++Patch1108:      0109-luma-shelf-well-and-spec-polish.patch
++Patch1109:      0110-luma-shelf-status-slots-dock-and-menus.patch
++Patch1110:      0111-luma-grid-full-resolution-previews.patch
++Patch1111:      0112-luma-shelf-spec-parity.patch
++Patch1112:      0113-luma-shelf-only-with-an-overview.patch
++Patch1113:      0114-luma-chrome-stays-off-the-lock-screen.patch
++Patch1114:      0115-luma-well-overflow-hover-and-drag.patch
++Patch1115:      0116-luma-notification-placement-anatomy-and-beacon.patch
++Patch1116:      0117-luma-dock-window-indicators-and-previews.patch
++Patch1117:      0118-luma-quiet-shell-log-noise.patch
++Patch1118:      0119-luma-audio-output-picker.patch
++Patch1119:      0120-luma-dock-menu-background-activity.patch
++Patch1120:      0121-luma-cast-quick-settings.patch
++Patch1121:      0122-luma-shelf-edge-insets-at-shutdown.patch
++Patch1122:      0123-luma-grid-own-wallpaper-drag-and-steady-travel.patch
++Patch1123:      0124-luma-grid-uniform-card-height-and-edge-scale.patch
++Patch1124:      0125-luma-dock-lists-only-apps-with-windows.patch
++Patch1125:      0126-luma-live-island-call-style-and-one-tile-family.patch
++Patch1126:      0127-luma-notifications-top-centre-and-anchored-tray.patch
++Patch1127:      0128-luma-workspace-overview-replaces-app-grid.patch
++Patch1128:      0129-luma-shelf-keeps-work-area-while-locked.patch
++Patch1129:      0130-luma-live-island-call-controls-and-tray-count.patch
++Patch1130:      0131-luma-shelf-surface-placement.patch
++Patch1131:      0132-luma-beam-level-indicator.patch
++Patch1132:      0133-luma-silent-volume-change.patch
++Patch1133:      0134-luma-well-glyphs-survive-indicator-restarts.patch
++Patch1134:      0135-luma-dock-items-settle-when-views-change.patch
++Patch1135:      0136-luma-dock-previews-resize-and-context-menu.patch
++Patch1136:      0137-luma-dock-menu-title-in-app-case.patch
++Patch1137:      0138-luma-system-indicators-in-the-well.patch
++Patch1138:      0139-luma-screenshot-shortcuts.patch
++Patch1139:      0140-luma-search-files-and-folders.patch
++Patch1140:      0141-luma-beam-island-corners-and-slider.patch
++Patch1141:      0142-luma-capture-screenshot-tool.patch
++Patch1142:      0143-luma-window-motion-to-dock-icon.patch
++Patch1143:      0144-luma-capture-thumbnail-drag.patch
++Patch1144:      0145-luma-now-playing-island-stays-whole.patch
++Patch1145:      0146-luma-seal-administrator-prompt.patch
++Patch1146:      0147-luma-dock-unread-badges.patch
++Patch1147:      0148-luma-dock-badge-deeper-ember.patch
++Patch1148:      0149-luma-screen-sharing-picker.patch
++Patch1149:      0150-luma-one-ink-and-shadow-per-appearance.patch
++Patch1150:      0151-luma-well-glyphs-and-hover-rhythm.patch
++Patch1151:      0152-luma-shell-overlays-follow-the-treatment.patch
++Patch1152:      0153-luma-search-kind-labels-and-mail.patch
++Patch1153:      0154-luma-screenshots-match-blurred-surfaces.patch
++Patch1154:      0155-luma-quiet-filled-controls.patch
++Patch1155:      0156-luma-capture-hidden-backgrounds.patch
++Patch1156:      0157-luma-frost-and-glass-menus-follow-the-ink.patch
++Patch1157:      0158-luma-live-islands-survive-appearance-changes.patch
++Patch1158:      0159-luma-detail-header-glyph-in-light.patch
++Patch1159:      0160-luma-notifications-live-in-the-shelf.patch
++Patch1160:      0161-luma-quick-options-highlights-as-one.patch
++Patch1161:      0162-luma-capture-thumbnail-throw-menu-keys.patch
++Patch1162:      0163-luma-sticky-dock-only-with-sticky-notes.patch
++Patch1163:      0164-luma-quick-options-match-the-design.patch
++Patch1166:      0167-luma-movable-shelf-islands.patch
++Patch1169:      0170-luma-frost-and-glass-are-one-light-material.patch
++Patch1170:      0171-luma-dash-islands-on-every-edge-and-every-setting.patch
++Patch1171:      0172-luma-dash-islands-as-arranged.patch
++Patch1172:      0173-inputMethod-A-key-the-input-method-cannot-answer-for-still-reaches-the-window.patch
++Patch1173:      0174-luma-three-fingers-switch-app-four-switch-workspace.patch
++Patch1179:      0180-luma-dock-folders.patch
++Patch1180:      0175-luma-a-tap-is-a-tap.patch
++Patch1181:      0176-luma-dock-folders-glyph.patch
++Patch1182:      0181-luma-captures-keep-every-pixel-and-each-shortcut-its-mode.patch
++Patch1183:      0182-luma-notification-island-folds-into-its-edge.patch
++Patch1184:      0183-luma-no-is-ready-notifications.patch
++Patch1185:      0184-luma-glass-surfaces-never-blur-their-own-output.patch
++Patch1186:      0185-luma-the-shell-wears-the-glass-veil.patch
++Patch1187:      0186-luma-notifications-show-the-app-icon.patch
++Patch1188:      0187-luma-search-finds-filer-places.patch
++Patch1189:      0188-luma-dock-icons-can-be-rearranged.patch
++Patch1190:      0189-luma-studio-shelf-layout.patch
++Patch1191:      0190-luma-studio-upcoming-event.patch
++Patch1192:      0191-luma-studio-dock-apps.patch
++Patch1193:      0192-luma-studio-notification-lip.patch
++Patch1194:      0193-luma-studio-quick-options.patch
++Patch1203:      0202-luma-studio-card-reflow.patch
++Patch1204:      0203-luma-studio-measured-metrics.patch
++Patch1205:      0204-luma-studio-output-rows.patch
++Patch1206:      0205-luma-lip-allocation-boundary.patch
++Patch1207:      0206-luma-power-title-unavailable.patch
++Patch1208:      0207-luma-hotspot-native-capability.patch
++Patch1209:      0208-luma-studio-native-controls.patch
++Patch1210:      0209-luma-light-notification-ink.patch
++Patch1211:      0210-luma-studio-native-state-controls.patch
++Patch1212:      0194-luma-status-joins-the-centred-row.patch
++Patch1213:      0195-luma-two-live-tiles.patch
++Patch1214:      0196-luma-smoked-frost.patch
++Patch1215:      0197-luma-live-tile-family.patch
++Patch1216:      0198-luma-status-row-and-apps-target.patch
++Patch1217:      0199-luma-frost-controls-follow-the-smoke.patch
++Patch1218:      0213-luma-notification-sheet-suffix.patch
++Patch1219:      0221-luma-keep-short-lived-app-notifications.patch
++Patch1220:      0224-luma-dock-without-apps-button.patch
++Patch1221:      0232-luma-hotspot-radio-tower-glyph.patch
++Patch1222:      0233-luma-dock-viewport-fits-monitor.patch
++Patch1223:      0234-luma-notification-pill-capped-width.patch
++Patch1224:      0235-luma-notification-outside-click.patch
++Patch1225:      0227-luma-poster-login.patch
++Patch1226:      0228-luma-poster-security-follow-up.patch
++Patch1227:      0229-luma-poster-vm-layout-and-avatar.patch
++Patch1228:      0230-luma-poster-pam-message-wrap.patch
++Patch1229:      0231-luma-poster-pam-avatar-count.patch
++Patch1230:      0236-luma-poster-ultrawide-and-monitor-backgrounds.patch
++Patch1231:      0237-luma-lock-wake-respects-dnd.patch
++Patch1232:      0238-luma-refused-power-action-notice.patch
++Patch1233:      0239-luma-notification-sheet-suffix-after-poster.patch
++Patch1234:      0240-luma-poster-fingerprint-glyph.patch
++Patch1235:      0241-luma-poster-monitor-clip-and-battery-scale.patch
++Patch1236:      0242-luma-poster-status-icon-and-input-proportions.patch
++Patch1237:      0243-luma-shelf-arrange-precision.patch
++Patch1238:      0244-luma-preview-quick-options-interaction.patch
++Patch1239:      0245-luma-preview-network-scroll-and-prompts.patch
++Patch1240:      0246-luma-window-corners-first-commit.patch
++Patch1241:      0247-luma-wayland-visible-launcher-identity.patch
++Patch1242:      0248-luma-native-symbolic-and-workarea-layout.patch
++Patch1243:      0249-luma-native-raised-shadow.patch
++Patch1244:      0250-luma-dash-direct-arrangement.patch
++Patch1245:      0251-luma-studio-native-paint-owner.patch
++Patch1246:      0252-luma-clock-natural-line-metrics.patch
++Patch1247:      0253-luma-status-and-lock-clock-measured-layout.patch
++Patch1248:      0254-luma-lock-osd-monitor-placement.patch
++Patch1249:      0255-luma-connectivity-picker-touch-and-discovery.patch
++Patch1250:      0256-luma-live-budget-scroll-dock-first.patch
++Patch1251:      0257-luma-notification-nub-native-touch.patch
++Patch1252:      0258-luma-unresponsive-dialog-material.patch
++Patch1253:      0259-luma-android-existing-window-activation.patch
++Patch1254:      0260-luma-android-native-caller-admission.patch
++Source9000:     quick-options-page.js
++Source9001:     quick-options-network.js
++Source9002:     window-corners-first-commit.js
++Source9003:     window-application-identity.py
++Source9004:     clock-line-metrics.js
++Source9005:     android-existing-activation.js
+ 
+ %define eds_version 3.45.1
+ %define gnome_desktop_version 44.0-7
+@@ -71,6 +314,7 @@
+ BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
+ BuildRequires:  gettext >= 0.19.6
+ BuildRequires:  python3
++BuildRequires:  sassc
+ 
+ # for rst2man
+ BuildRequires:  python3-docutils
+@@ -90,6 +334,10 @@
+ %ifnarch s390 s390x
+ Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
+ %endif
++Requires:       luma-shell-state >= 0.2.0-1.luma.28
++Requires:       mutter >= 50.4-1.luma.8.preview20260919.1
++Requires:       libtinysparql%{?_isa}
++Recommends:     localsearch
+ Requires:       %{name}-common = %{version}-%{release}
+ Requires:       gcr%{?_isa}
+ Requires:       gjs%{?_isa} >= %{gjs_version}
+@@ -191,6 +439,8 @@
+ %autosetup -S git -n %{name}-%{tarball_version}
+ 
+ %build
++sh data/theme/luma-notifications/verify-generated.sh
++python3 data/theme/verify-treatment-ink.py
+ %meson \
+   -Dextensions_app=false \
+ %if %{portal_helper}
+@@ -208,9 +458,24 @@
+ mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
+ mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
+ 
++# Keep generated helper shebangs on Fedora's canonical binary path. Native
++# AArch64 build hosts may resolve python3 through the merged-/usr /usr/sbin
++# symlink, which otherwise creates an unsatisfiable literal file dependency
++# for offline/minimal-image transaction solvers.
++sed -i '1s|^#!/usr/sbin/python3$|#!/usr/bin/python3|' \
++  %{buildroot}%{_bindir}/gnome-shell-{extension,test}-tool
++
+ %find_lang %{name}
+ 
+ %check
++GSETTINGS_BACKEND=memory %{_vpath_builddir}/src/st/test-symbolic-strokes
++python3 data/theme/test-treatment-ink.py
++python3 %{SOURCE9003} src/shell-window-tracker.c
++gjs -m %{SOURCE9000} js/ui/quickSettings.js js/ui/status/bluetooth.js js/ui/popupMenu.js
++gjs -m %{SOURCE9001} js/ui/status/network.js
++gjs -m %{SOURCE9002} js/ui/lumaWindowCorners.js
++gjs -m %{SOURCE9004} js/ui/panel.js
++gjs -m %{SOURCE9005} js/ui/lumaAndroidActivation.js
+ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
+ 
+ %if %{portal_helper}
+@@ -250,6 +515,11 @@
+ %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
+ %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
+ %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
++%{_datadir}/icons/hicolor/scalable/status/luma-*-symbolic.svg
++%{_datadir}/icons/hicolor/LUMA-STUDIO-ICONS-LICENSE.txt
++%{_libexecdir}/luma-capture-drag
++%{_userunitdir}/luma-screenshot-shortcuts-migrate.service
++%{_userunitdir}/graphical-session.target.wants/luma-screenshot-shortcuts-migrate.service
+ %{_userunitdir}/org.gnome.Shell-disable-extensions.service
+ #{_userunitdir}/org.gnome.Shell.target
+ %{_userunitdir}/org.gnome.Shell@.service

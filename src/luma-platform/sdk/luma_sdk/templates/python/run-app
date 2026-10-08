@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+set -eu
+app_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ -f "$app_dir/src/main.py" ]; then
+  exec python3 "$app_dir/src/main.py" "$@"
+fi
+exec python3 "/app/share/@APP_ID@/main.py" "$@"

@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+build_root=${LUMA_BUILD_ROOT:-/srv/luma-build}
+build_user=${LUMA_BUILD_USER:-luma-build}
+protected_vm=${LUMA_PROTECTED_VM:-viola-windows-builder}
+source_root="$build_root/src/ProjectLuma"
+
+if [ "$(id -u)" -ne 0 ]; then
+  printf 'error: invoke this guard as root; the build itself runs as %s\n' \
+    "$build_user" >&2
+  exit 1
+fi
+if [ "$#" -eq 0 ]; then
+  printf 'usage: %s COMMAND [ARG ...]\n' "$0" >&2
+  exit 2
+fi
+
+vm_state=$(virsh domstate "$protected_vm" 2>/dev/null | tr -d '\r' || true)
+case "$vm_state" in
+  running|shut\ off) ;;
+  *)
+  printf 'error: protected VM %s is %s; refusing Luma work\n' \
+    "$protected_vm" "${vm_state:-unavailable}" >&2
+  exit 75
+  ;;
+esac
+
+available_bytes=$(awk '/^MemAvailable:/ { print $2 * 1024 }' /proc/meminfo)
+minimum_bytes=$((8 * 1024 * 1024 * 1024))
+memory_profile=${LUMA_BUILD_MEMORY_PROFILE:-shared}
+memory_high=16G
+memory_max=20G
+case "$memory_profile" in
+  shared) ;;
+  standalone)
+    [ "$vm_state" = 'shut off' ] || {
+      printf 'error: standalone memory requires %s to be shut off\n' "$protected_vm" >&2
+      exit 75
+    }
+    # Explicit opt-in after the operator has shut down the other VM. Leave
+    # ample host headroom; never raise the budget merely because its CPU is idle.
+    minimum_bytes=$((40 * 1024 * 1024 * 1024))
+    memory_high=32G
+    memory_max=36G
+    ;;
+  *) printf 'error: LUMA_BUILD_MEMORY_PROFILE must be shared or standalone\n' >&2; exit 2 ;;
+esac
+if [ "${available_bytes:-0}" -lt "$minimum_bytes" ]; then
+  printf 'error: less than %s GiB is available for the %s memory profile; refusing Luma work\n' \
+    "$((minimum_bytes / 1024 / 1024 / 1024))" "$memory_profile" >&2
+  exit 75
+fi
+
+[ -d "$source_root" ] || {
+  printf 'error: Luma source root is not initialized: %s\n' "$source_root" >&2
+  exit 1
+}
+
+if [ "$vm_state" = 'shut off' ]; then
+  coexistence_mode=protected-vm-off
+  viola_cpu_percent=0
+  cpu_quota=1400%
+  cpu_weight=50
+  io_weight=50
+  build_jobs=14
+else
+  viola_pid=$(pgrep -o -f "qemu-system.*guest=$protected_vm" || true)
+  [ -n "$viola_pid" ] && [ -r "/proc/$viola_pid/stat" ] || {
+    printf 'error: cannot sample the protected VM process; refusing Luma work\n' >&2
+    exit 75
+  }
+  clock_ticks=$(getconf CLK_TCK)
+  ticks_before=$(awk '{ print $14 + $15 }' "/proc/$viola_pid/stat")
+  sleep 2
+  ticks_after=$(awk '{ print $14 + $15 }' "/proc/$viola_pid/stat")
+  viola_cpu_percent=$(( (ticks_after - ticks_before) * 100 / (clock_ticks * 2) ))
+  if [ "$viola_cpu_percent" -ge 200 ]; then
+    coexistence_mode=active-build
+    cpu_quota=800%
+    cpu_weight=20
+    io_weight=20
+    build_jobs=8
+  else
+    coexistence_mode=idle-vm
+    cpu_quota=1400%
+    cpu_weight=50
+    io_weight=50
+    build_jobs=14
+  fi
+fi
+
+printf '%s user=%q mode=%q viola_cpu=%q memory_profile=%q memory_high=%q memory_max=%q command=' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${SUDO_USER:-root}" \
+  "$coexistence_mode" "$viola_cpu_percent" "$memory_profile" "$memory_high" "$memory_max" \
+  >>"$build_root/logs/runner-audit.log"
+printf '%q ' "$@" >>"$build_root/logs/runner-audit.log"
+printf '\n' >>"$build_root/logs/runner-audit.log"
+
+unit="luma-build-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+set +e
+systemd-run \
+  --system \
+  --wait \
+  --collect \
+  --quiet \
+  --unit="$unit" \
+  --uid="$build_user" \
+  --gid="$build_user" \
+  --working-directory="$source_root" \
+  --property="CPUQuota=$cpu_quota" \
+  --property="CPUWeight=$cpu_weight" \
+  --property="MemoryHigh=$memory_high" \
+  --property="MemoryMax=$memory_max" \
+  --property=MemorySwapMax=2G \
+  --property="IOWeight=$io_weight" \
+  --property=Nice=10 \
+  --property=TasksMax=4096 \
+  --property=KillMode=process \
+  --property=StandardOutput=journal \
+  --property=StandardError=journal \
+  --setenv=DBUS_SESSION_BUS_ADDRESS= \
+  --setenv="HOME=$build_root/home" \
+  --setenv="XDG_CACHE_HOME=$build_root/cache" \
+  --setenv="XDG_CONFIG_HOME=$build_root/config" \
+  --setenv="XDG_DATA_HOME=$build_root/data" \
+  --setenv="XDG_RUNTIME_DIR=$build_root/run" \
+  --setenv="TMPDIR=$build_root/tmp" \
+  --setenv="CONTAINERS_STORAGE_CONF=$build_root/config/containers/storage.conf" \
+  --setenv="CONTAINERS_CONF=$build_root/config/containers/containers.conf" \
+  --setenv="REGISTRY_AUTH_FILE=$build_root/config/containers/auth.json" \
+  --setenv="LUMA_BUILD_JOBS=$build_jobs" \
+  --setenv="MAKEFLAGS=-j$build_jobs" \
+  --setenv="CMAKE_BUILD_PARALLEL_LEVEL=$build_jobs" \
+  /usr/bin/env -- "$@"
+status=$?
+set -e
+
+# systemd-run --pipe creates an SSH-session-labelled FIFO. Enforcing hosts
+# correctly deny the system D-Bus broker access to that FIFO, so remote builds
+# fail before their unit starts. Keep output in the unit journal and replay only
+# this audited unit after it exits; --wait preserves the command status.
+journalctl --quiet --no-pager -o cat -u "$unit" || true
+exit "$status"

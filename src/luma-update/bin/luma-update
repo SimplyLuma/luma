@@ -1,0 +1,4 @@
+#!/usr/bin/python3 -sP
+# SPDX-License-Identifier: Apache-2.0
+from luma_update.cli import main
+raise SystemExit(main())

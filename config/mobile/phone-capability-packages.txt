@@ -1,0 +1,7 @@
+# Additive phone capabilities for the converged Luma application composition.
+# These do not replace or subtract from config/shared/application-packages.txt.
+
+calls
+ModemManager
+feedbackd
+iio-sensor-proxy

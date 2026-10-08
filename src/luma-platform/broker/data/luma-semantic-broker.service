@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Project Luma per-user Semantic Broker
+Documentation=https://github.com/SimplyLuma/luma
+
+[Service]
+Type=dbus
+BusName=org.projectluma.SemanticBroker1
+ExecStart=/usr/libexec/luma-semantic-broker
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+StateDirectory=luma/semantic-broker
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=read-only
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native

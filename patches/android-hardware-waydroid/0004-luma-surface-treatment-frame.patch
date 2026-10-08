@@ -1,0 +1,272 @@
+From: Project Luma
+Subject: [PATCH] Waydroid: render host chrome from the live surface treatment
+
+Android application pixels remain provider-owned and opaque.  The native
+Waydroid HWC frame, however, is a Luma system surface and must follow the same
+Light, Dark, Frost, and Glass authority as native applications.  Consume the
+brokered effective treatment, preserve premultiplied ARGB throughout the
+renderer, and redraw existing windows when that treatment changes.
+
+--- a/hwcomposer/prairie-titlebar.cpp
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -31,13 +31,49 @@
+     return geometry;
+ }
+ namespace {
+-int outer_width(const window& window) { return frame(window).outer.width; }
+-bool dark_frame() {
+-    char appearance[PROPERTY_VALUE_MAX] {};
+-    property_get("persist.luma.color_scheme", appearance, "light");
+-    return std::strcmp(appearance, "dark") == 0;
++enum class SurfaceTreatment { Light, Dark, Frost, Glass };
++
++SurfaceTreatment read_surface_treatment() {
++    char value[PROPERTY_VALUE_MAX] {};
++    property_get("persist.luma.surface_treatment", value, "light");
++    if (std::strcmp(value, "dark") == 0) return SurfaceTreatment::Dark;
++    if (std::strcmp(value, "frost") == 0) return SurfaceTreatment::Frost;
++    if (std::strcmp(value, "glass") == 0) return SurfaceTreatment::Glass;
++    return SurfaceTreatment::Light;
+ }
+-uint32_t frame_ink() { return dark_frame() ? LUMA_FRAME_DARK_INK : LUMA_FRAME_LIGHT_INK; }
++
++const char* treatment_name(SurfaceTreatment treatment) {
++    switch (treatment) {
++    case SurfaceTreatment::Dark: return "dark";
++    case SurfaceTreatment::Frost: return "frost";
++    case SurfaceTreatment::Glass: return "glass";
++    default: return "light";
++    }
++}
++
++uint32_t scale_premultiplied(uint32_t pixel, uint32_t opacity) {
++    const uint32_t alpha = ((pixel >> 24) & 0xff) * opacity / 255;
++    const uint32_t red = ((pixel >> 16) & 0xff) * opacity / 255;
++    const uint32_t green = ((pixel >> 8) & 0xff) * opacity / 255;
++    const uint32_t blue = (pixel & 0xff) * opacity / 255;
++    return (alpha << 24) | (red << 16) | (green << 8) | blue;
++}
++
++uint32_t frame_opacity(SurfaceTreatment treatment) {
++    if (treatment == SurfaceTreatment::Glass) return 79;   // 31%
++    if (treatment == SurfaceTreatment::Frost) return 186;  // 73%
++    return 255;
++}
++
++uint32_t control_opacity(SurfaceTreatment treatment) {
++    if (treatment == SurfaceTreatment::Glass) return 219;  // 86%
++    if (treatment == SurfaceTreatment::Frost) return 235;  // 92%
++    return 255;
++}
++
++int outer_width(const window& window) { return frame(window).outer.width; }
++bool dark_frame(const window& window) { return window.surface_treatment == "dark"; }
++uint32_t frame_ink(const window& window) { return dark_frame(window) ? LUMA_FRAME_DARK_INK : LUMA_FRAME_LIGHT_INK; }
+ int control_left(const window& window, int kind) {
+     // Match the native order at the right: minimize, maximize, close.
+     const int position = kind == 0 ? 0 : kind == 1 ? 2 : 1;
+@@ -60,33 +96,33 @@
+ constexpr float kShadowOpacity = 0.04f;
+ 
+ 
+-void composite(uint32_t& destination, uint32_t source) {
++uint32_t premultiplied(uint32_t rgb, uint32_t alpha) {
++    const uint32_t red = ((rgb >> 16) & 0xff) * alpha / 255;
++    const uint32_t green = ((rgb >> 8) & 0xff) * alpha / 255;
++    const uint32_t blue = (rgb & 0xff) * alpha / 255;
++    return (alpha << 24) | (red << 16) | (green << 8) | blue;
++}
++
++void composite_premultiplied(uint32_t& destination, uint32_t source) {
+     const uint32_t alpha = source >> 24;
+-    if (alpha == 255) {
+-        destination = source;
+-        return;
+-    }
+     const uint32_t inverse = 255 - alpha;
+-    const uint32_t destination_alpha = destination >> 24;
+-    const uint32_t output_alpha = alpha + destination_alpha * inverse / 255;
+-    const uint32_t source_red = (source >> 16) & 0xff;
+-    const uint32_t source_green = (source >> 8) & 0xff;
+-    const uint32_t source_blue = source & 0xff;
+-    const uint32_t destination_red = (destination >> 16) & 0xff;
+-    const uint32_t destination_green = (destination >> 8) & 0xff;
+-    const uint32_t destination_blue = destination & 0xff;
+-    const uint32_t red = (source_red * alpha +
+-        destination_red * destination_alpha * inverse / 255) /
+-        std::max(1u, output_alpha);
+-    const uint32_t green = (source_green * alpha +
+-        destination_green * destination_alpha * inverse / 255) /
+-        std::max(1u, output_alpha);
+-    const uint32_t blue = (source_blue * alpha +
+-        destination_blue * destination_alpha * inverse / 255) /
+-        std::max(1u, output_alpha);
+-    destination = (output_alpha << 24) | (red << 16) | (green << 8) | blue;
++    const uint32_t output_alpha = alpha + (destination >> 24) * inverse / 255;
++    const uint32_t red = ((source >> 16) & 0xff) +
++        ((destination >> 16) & 0xff) * inverse / 255;
++    const uint32_t green = ((source >> 8) & 0xff) +
++        ((destination >> 8) & 0xff) * inverse / 255;
++    const uint32_t blue = (source & 0xff) +
++        (destination & 0xff) * inverse / 255;
++    destination = (output_alpha << 24) |
++        (std::min(255u, red) << 16) |
++        (std::min(255u, green) << 8) | std::min(255u, blue);
+ }
+ 
++void composite(uint32_t& destination, uint32_t source) {
++    composite_premultiplied(destination,
++        premultiplied(source & 0x00ffffff, source >> 24));
++}
++
+ void pixel(window& window, int x, int y, uint32_t color) {
+     if (x < 0 || y < 0 || x >= outer_width(window) || y >= kTitlebarHeight)
+         return;
+@@ -94,6 +130,13 @@
+     composite(pixels[y * outer_width(window) + x], color);
+ }
+ 
++void premultiplied_pixel(window& window, int x, int y, uint32_t color) {
++    if (x < 0 || y < 0 || x >= outer_width(window) || y >= kTitlebarHeight)
++        return;
++    auto* pixels = static_cast<uint32_t*>(window.titlebar_data);
++    composite_premultiplied(pixels[y * outer_width(window) + x], color);
++}
++
+ void disc(window& window, int left, int top, int diameter, uint32_t color) {
+     constexpr int samples = 4;
+     const float radius = static_cast<float>(diameter) / 2.0f;
+@@ -147,7 +190,7 @@
+ 
+     const uint32_t glyph = hovered ?
+         (kind == 0 ? kCloseGlyphHover :
+-         (kind == 1 ? kMinimizeGlyphHover : kMaximizeGlyphHover)) : frame_ink();
++         (kind == 1 ? kMinimizeGlyphHover : kMaximizeGlyphHover)) : frame_ink(window);
+     const uint8_t* mask = kind == 0 ? luma_frame_close_glyph :
+         (kind == 1 ? luma_frame_minimize_glyph :
+          (window.maximized ? luma_frame_restore_glyph : luma_frame_maximize_glyph));
+@@ -172,7 +215,7 @@
+                 const int dx = x - nearest_x;
+                 const int dy = y - nearest_y;
+                 if (dx * dx + dy * dy <= radius * radius)
+-                    pixel(window, x, y, dark_frame() ? LUMA_FRAME_DARK_CONTENT : kHeaderHover);
++                    pixel(window, x, y, dark_frame(window) ? LUMA_FRAME_DARK_CONTENT : kHeaderHover);
+             }
+         }
+     }
+@@ -183,7 +226,7 @@
+         for (int x = 0; x < kIconSize; ++x)
+             back_mask[y * kIconSize + x] = luma_frame_minimize_glyph[(kIconSize - 1 - x) * kIconSize + y];
+     draw_mask(window, left + (kBackButtonSize - kIconSize) / 2,
+-              (kTitlebarHeight - kIconSize) / 2, back_mask, frame_ink());
++              (kTitlebarHeight - kIconSize) / 2, back_mask, frame_ink(window));
+ }
+ 
+ uint32_t rounded_top_coverage(int width, int x, int y) {
+@@ -208,28 +251,6 @@
+ }
+ 
+ 
+-uint32_t premultiplied(uint32_t rgb, uint32_t alpha) {
+-    const uint32_t red = ((rgb >> 16) & 0xff) * alpha / 255;
+-    const uint32_t green = ((rgb >> 8) & 0xff) * alpha / 255;
+-    const uint32_t blue = (rgb & 0xff) * alpha / 255;
+-    return (alpha << 24) | (red << 16) | (green << 8) | blue;
+-}
+-
+-void composite_premultiplied(uint32_t& destination, uint32_t source) {
+-    const uint32_t alpha = source >> 24;
+-    const uint32_t inverse = 255 - alpha;
+-    const uint32_t output_alpha = alpha + (destination >> 24) * inverse / 255;
+-    const uint32_t red = ((source >> 16) & 0xff) +
+-        ((destination >> 16) & 0xff) * inverse / 255;
+-    const uint32_t green = ((source >> 8) & 0xff) +
+-        ((destination >> 8) & 0xff) * inverse / 255;
+-    const uint32_t blue = (source & 0xff) +
+-        (destination & 0xff) * inverse / 255;
+-    destination = (output_alpha << 24) |
+-        (std::min(255u, red) << 16) |
+-        (std::min(255u, green) << 8) | std::min(255u, blue);
+-}
+-
+ float rounded_rect_distance(float x, float y, float left, float top,
+                             float right, float bottom, float radius) {
+     const float half_width = (right - left) / 2.0f;
+@@ -306,8 +327,9 @@
+     for (int y=0; y<size; ++y) for(int x=0; x<size; ++x) {
+         uint32_t c=window.prairie_icon[y*size+x];
+         double coverage=luma_frame_coverage(luma_frame_distance(x+0.5,y+0.5,rect,size*0.25));
+-        unsigned alpha=(unsigned)lround((c>>24)*coverage);
+-        pixel(window,LUMA_FRAME_IDENTITY_INSET+x,(kTitlebarHeight-size)/2+y,(alpha<<24)|(c&0xffffff));
++        premultiplied_pixel(window, LUMA_FRAME_IDENTITY_INSET+x,
++            (kTitlebarHeight-size)/2+y,
++            scale_premultiplied(c, (uint32_t)lround(255 * coverage)));
+     }
+ }
+ 
+@@ -328,7 +350,7 @@
+     const int max_width = std::max(0, luma_frame_back(frame(window)).x - LUMA_FRAME_IDENTITY_GAP - title_left);
+     const std::string text = ellipsize(face, window.title, max_width);
+     int pen_x = title_left;
+-    const uint32_t ink = frame_ink();
++    const uint32_t ink = frame_ink(window);
+     const int ascender = face->size->metrics.ascender >> 6;
+     const int descender = -(face->size->metrics.descender >> 6);
+     const int baseline = (kTitlebarHeight - ascender - descender) / 2 + ascender;
+@@ -558,7 +580,8 @@
+ }
+ 
+ void refresh_appearance(window& window) {
+-    if (window.has_prairie_titlebar && window.dark_appearance != dark_frame())
++    const std::string treatment = treatment_name(read_surface_treatment());
++    if (window.has_prairie_titlebar && window.surface_treatment != treatment)
+         redraw_titlebar(window);
+ }
+ 
+@@ -581,7 +604,9 @@
+         munmap(window.titlebar_data, window.titlebar_data_size);
+     window.titlebar_data = data;
+     window.titlebar_data_size = size;
+-    const bool dark = dark_frame();
++    const SurfaceTreatment treatment = read_surface_treatment();
++    window.surface_treatment = treatment_name(treatment);
++    const bool dark = treatment == SurfaceTreatment::Dark;
+     window.dark_appearance = dark;
+     auto* pixels = static_cast<uint32_t*>(data);
+     for (int y = 0; y < height; ++y) {
+@@ -590,15 +615,21 @@
+         const int left = interior ? geometry.content.x + LUMA_FRAME_ISLAND_RADIUS : width;
+         const int right = interior ? geometry.content.x + geometry.content.width - LUMA_FRAME_ISLAND_RADIUS : width;
+         for (int x = 0; x < left; ++x)
+-            pixels[y * width + x] = luma_frame_pixel(geometry, x, y, dark, window.maximized);
++            pixels[y * width + x] = scale_premultiplied(
++                luma_frame_pixel(geometry, x, y, dark, window.maximized),
++                frame_opacity(treatment));
+         for (int x = right; x < width; ++x)
+-            pixels[y * width + x] = luma_frame_pixel(geometry, x, y, dark, window.maximized);
++            pixels[y * width + x] = scale_premultiplied(
++                luma_frame_pixel(geometry, x, y, dark, window.maximized),
++                frame_opacity(treatment));
+     }
+     const auto back = luma_frame_back(geometry);
+     for (int y = 0; y < kTitlebarHeight; ++y)
+         for (int x = std::max(0, back.x - 16); x < width; ++x) {
+-            composite_premultiplied(pixels[y * width + x], luma_frame_controls_pixel(geometry, x, y, dark));
+-            composite_premultiplied(pixels[y * width + x], luma_frame_control_surface(back, x, y, dark));
++            composite_premultiplied(pixels[y * width + x], scale_premultiplied(
++                luma_frame_controls_pixel(geometry, x, y, dark), control_opacity(treatment)));
++            composite_premultiplied(pixels[y * width + x], scale_premultiplied(
++                luma_frame_control_surface(back, x, y, dark), control_opacity(treatment)));
+         }
+     for (int index = 0; index < 3; ++index)
+         draw_control(window, control_left(window, index), index);
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -220,6 +220,7 @@
+     // Native display configuration follows committed host content dimensions.
+     bool composed_canvas {};
+     bool dark_appearance {};
++    std::string surface_treatment;
+     int task_origin_x {};
+     int task_origin_y {};
+     int restore_task_origin_x {};

@@ -1,0 +1,49 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 23:08:00 -0500
+Subject: [PATCH] compositor: keep Presence above the startup shield
+
+Phoc raises its safety shield until Phosh publishes the shell-up state. During
+the authenticated handoff, Presence is itself the trusted pre-session surface,
+so render that one identified view after the shield and keep input enabled for
+its exclusive hit-test path. Home remains fully covered until its first frame.
+
+--- a/src/server.c
++++ b/src/server.c
+@@ -338,7 +338,8 @@
+     /* Shell is gone, raise shields */
+     wl_list_for_each (output, &self->desktop->outputs, link)
+       phoc_output_raise_shield (output, self->show_spinner);
+-    self->allow_input = FALSE;
++    /* Presence remains the exclusive hit-test target until it exits. */
++    self->allow_input = self->handoff_app_id != NULL;
+   }
+ }
+ 
+--- a/src/render.c
++++ b/src/render.c
+@@ -627,9 +627,12 @@
+   render_drag_icons (phoc_server_get_input (server), ctx);
+ 
+   render_layer (ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, ctx);
++
++  render_output_blings (output, ctx);
+ 
+   /* Presence owns the display until it exits after the first complete Home
+-   * frame. Rendering it last makes that reveal a single compositor commit. */
++   * frame. Rendering it after Phoc's startup shield makes that reveal a
++   * single compositor commit without exposing the preparing user session. */
+   if (!handoff_view) {
+     for (GList *l = phoc_workspace_get_views (workspace)->head; l; l = l->next) {
+       PhocView *view = PHOC_VIEW (l->data);
+@@ -642,8 +645,6 @@
+   if (handoff_view && phoc_desktop_view_check_visibility (desktop, handoff_view))
+     render_view (output, handoff_view, ctx);
+ 
+-  render_output_blings (output, ctx);
+-
+   wlr_output_add_software_cursors_to_render_pass (wlr_output, ctx->render_pass, damage);
+ 
+   if (G_UNLIKELY (phoc_server_check_debug_flags (server, PHOC_SERVER_DEBUG_FLAG_TOUCH_POINTS)))
+
+-- 
+2.53.0

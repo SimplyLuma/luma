@@ -1,0 +1,57 @@
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -35,31 +35,7 @@
+ const WINDOW_MAX_W_BASE = 1368;
+ const WINDOW_MAX_H_BASE = 768;
+ 
+-const Embed = GObject.registerClass(class Embed extends Gtk.Overlay {
+-    vfunc_get_request_mode() {
+-        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH;
+-    }
+-
+-    vfunc_get_preferred_width() {
+-        let [min, nat] = super.vfunc_get_preferred_width();
+-
+-        min = Math.max(min, Constants.VIEW_MIN);
+-        nat = Math.max(nat, Constants.VIEW_MIN);
+-
+-        return [min, nat];
+-    }
+-
+-    vfunc_get_preferred_height_for_width(forWidth) {
+-        let [min, nat] = super.vfunc_get_preferred_height_for_width(forWidth);
+-
+-        if (forWidth <= Constants.VIEW_MIN) {
+-            min = Math.max(min, Constants.VIEW_MIN);
+-            nat = Math.max(nat, Constants.VIEW_MIN);
+-        }
+-
+-        return [min, nat];
+-    }
+-});
++const Embed = GObject.registerClass(class Embed extends Gtk.Overlay {});
+ 
+ const ErrorBox = GObject.registerClass({
+     Implements: [Renderer.Renderer],
+@@ -95,7 +71,7 @@
+                                            valign: Gtk.Align.CENTER });
+         this.add(primaryLabel);
+ 
+-        let secondaryLabel = new Gtk.Label({ label: error.message,
++        let secondaryLabel = new Gtk.Label({ label: 'This file cannot be previewed. Open it with its application to view it.',
+                                              wrap: true,
+                                              halign: Gtk.Align.CENTER,
+                                              valign: Gtk.Align.CENTER });
+@@ -184,8 +160,10 @@
+         this.add(eventBox);
+ 
+         this._embed = new Embed();
+-        this._embed.get_style_context().add_class('luma-preview-pane');
+-        eventBox.add(this._embed);
++        const pane = new Gtk.Frame({shadow_type: Gtk.ShadowType.NONE});
++        pane.get_style_context().add_class('luma-preview-pane');
++        pane.add(this._embed);
++        eventBox.add(pane);
+ 
+         // call show_all() early when there's still no child Renderer, because show_all() later
+         // when the Renderer is a child may have unexpected results, see comments in !49

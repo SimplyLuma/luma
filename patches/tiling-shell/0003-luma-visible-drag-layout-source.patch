@@ -1,0 +1,158 @@
+diff --git a/src/components/tilingsystem/tilingManager.ts b/src/components/tilingsystem/tilingManager.ts
+index 4bc1a68..d10e37b 100644
+--- a/src/components/tilingsystem/tilingManager.ts
++++ b/src/components/tilingsystem/tilingManager.ts
+@@ -681,43 +681,45 @@ export class TilingManager {
+         const isSpanMultiTilesActivated = this._activationKeyStatus(
+             modifier,
+             Settings.SPAN_MULTIPLE_TILES_ACTIVATION_KEY,
+         );
+-        const isTilingSystemActivated = this._activationKeyStatus(
+-            modifier,
+-            Settings.TILING_SYSTEM_ACTIVATION_KEY,
+-        );
++        const isTilingSystemActivated =
++            Settings.SHOW_LAYOUT_WHILE_DRAGGING ||
++            this._activationKeyStatus(
++                modifier,
++                Settings.TILING_SYSTEM_ACTIVATION_KEY,
++            );
+         const deactivationKey = Settings.TILING_SYSTEM_DEACTIVATION_KEY;
+         const isTilingSystemDeactivated =
+             deactivationKey === ActivationKey.NONE
+                 ? false
+                 : this._activationKeyStatus(modifier, deactivationKey);
+         const allowSpanMultipleTiles =
+             Settings.SPAN_MULTIPLE_TILES && isSpanMultiTilesActivated;
+         const showTilingSystem =
+             Settings.TILING_SYSTEM &&
+             isTilingSystemActivated &&
+             !isTilingSystemDeactivated;
+         // ensure we handle window movement only when needed
+         // if the snap assistant activation key status is not changed and the mouse is on the same position as before
+         // and the tiling system activation key status is not changed, we have nothing to do
+         const changedSpanMultipleTiles =
+             Settings.SPAN_MULTIPLE_TILES &&
+             isSpanMultiTilesActivated !== this._wasSpanMultipleTilesActivated;
+         const changedShowTilingSystem =
+             Settings.TILING_SYSTEM &&
+-            isTilingSystemActivated !== this._wasTilingSystemActivated;
++            showTilingSystem !== this._wasTilingSystemActivated;
+         if (
+             !changedSpanMultipleTiles &&
+             !changedShowTilingSystem &&
+             currPointerPos.x === this._lastCursorPos?.x &&
+             currPointerPos.y === this._lastCursorPos?.y
+         )
+             return GLib.SOURCE_CONTINUE;
+ 
+         this._lastCursorPos = currPointerPos;
+-        this._wasTilingSystemActivated = isTilingSystemActivated;
++        this._wasTilingSystemActivated = showTilingSystem;
+         this._wasSpanMultipleTilesActivated = isSpanMultiTilesActivated;
+ 
+         // layout must not be shown if it was disabled or if it is enabled but tiling system activation key is not pressed
+         // then close it and open snap assist (if enabled)
+         if (!showTilingSystem) {
+@@ -818,13 +820,21 @@ export class TilingManager {
+         this._snapAssist.close(true);
+         this._lastCursorPos = null;
+ 
+-        const isTilingSystemActivated = this._activationKeyStatus(
+-            global.get_pointer()[2],
+-            Settings.TILING_SYSTEM_ACTIVATION_KEY,
+-        );
++        const modifier = global.get_pointer()[2];
++        const deactivationKey = Settings.TILING_SYSTEM_DEACTIVATION_KEY;
++        const isTilingSystemDeactivated =
++            deactivationKey === ActivationKey.NONE
++                ? false
++                : this._activationKeyStatus(modifier, deactivationKey);
++        const isTilingSystemActivated =
++            (Settings.SHOW_LAYOUT_WHILE_DRAGGING ||
++                this._activationKeyStatus(
++                    modifier,
++                    Settings.TILING_SYSTEM_ACTIVATION_KEY,
++                )) && !isTilingSystemDeactivated;
+         if (
+             !isTilingSystemActivated &&
+             !this._snapAssistingInfo.isSnapAssisting &&
+             !this._edgeTilingManager.isPerformingEdgeTiling()
+         )
+             return;
+diff --git a/src/prefs.ts b/src/prefs.ts
+index 16abe49..602872a 100644
+--- a/src/prefs.ts
++++ b/src/prefs.ts
+@@ -245,6 +245,18 @@ export default class TilingShellExtensionPreferences extends ExtensionPreference
+         );
+         behaviourGroup.add(enableTilingSystemRow);
+ 
++        const showLayoutWhileDraggingRow = this._buildSwitchRow(
++            Settings.KEY_SHOW_LAYOUT_WHILE_DRAGGING,
++            _('Show layout while dragging'),
++            _('Reveal the active layout zones whenever a window is moved'),
++        );
++        Settings.bind(
++            Settings.KEY_TILING_SYSTEM,
++            showLayoutWhileDraggingRow,
++            'sensitive',
++        );
++        behaviourGroup.add(showLayoutWhileDraggingRow);
++
+         const tilingSystemDeactivationRow = this._buildDropDownRow(
+             _('Tiling System deactivation key'),
+             _(
+diff --git a/src/settings/settings.ts b/src/settings/settings.ts
+index 59ff551..309b702 100644
+--- a/src/settings/settings.ts
++++ b/src/settings/settings.ts
+@@ -87,6 +87,7 @@ export default class Settings {
+     static KEY_WINDOW_BORDER_COLOR = 'window-border-color';
+     static KEY_WINDOW_USE_CUSTOM_BORDER_COLOR = 'window-use-custom-border-color';
+     static KEY_TILING_SYSTEM = 'enable-tiling-system';
++    static KEY_SHOW_LAYOUT_WHILE_DRAGGING = 'show-layout-while-dragging';
+     static KEY_SNAP_ASSIST = 'enable-snap-assist';
+     static KEY_SNAP_ASSIST_SYNC_LAYOUT = 'snap-assist-sync-layout';
+     static KEY_SHOW_INDICATOR = 'show-indicator';
+@@ -196,6 +197,14 @@ export default class Settings {
+         set_boolean(Settings.KEY_TILING_SYSTEM, val);
+     }
+ 
++    static get SHOW_LAYOUT_WHILE_DRAGGING(): boolean {
++        return get_boolean(Settings.KEY_SHOW_LAYOUT_WHILE_DRAGGING);
++    }
++
++    static set SHOW_LAYOUT_WHILE_DRAGGING(val: boolean) {
++        set_boolean(Settings.KEY_SHOW_LAYOUT_WHILE_DRAGGING, val);
++    }
++
+     static get SNAP_ASSIST(): boolean {
+         return get_boolean(Settings.KEY_SNAP_ASSIST);
+     }
+@@ -584,6 +593,25 @@ export default class Settings {
+ 
+     static reset_layouts_json() {
+         this.save_layouts_json([
++            new Layout(
++                [
++                    new Tile({
++                        x: 0,
++                        y: 0,
++                        height: 1,
++                        width: 0.5,
++                        groups: [1],
++                    }),
++                    new Tile({
++                        x: 0.5,
++                        y: 0,
++                        height: 1,
++                        width: 0.5,
++                        groups: [1],
++                    }),
++                ],
++                'Luma Split',
++            ),
+             new Layout(
+                 [
+                     new Tile({

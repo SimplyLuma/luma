@@ -1,0 +1,322 @@
+From: Project Luma
+Subject: [PATCH] Shell: native picker touch scrolling, rounded clipping and owned discovery
+
+Keep nearby actors and discovery active while the native picker is open.
+Use a one-finger native PanGesture, a shared pixel-radius actor mask and
+symmetric overlay scrollbar spacing. Preserve pairing and radio ownership.
+Keep the notification-owned generated suffix byte-for-byte last.
+
+--- a/js/ui/status/bluetooth.js
++++ b/js/ui/status/bluetooth.js
+@@ -505,6 +505,12 @@
+         this._lookAgain.connect('clicked', () => this._scanNearby());
+         this._nearHeading.add_child(this._lookAgain);
+         this._nearSection = new PopupMenu.PopupMenuSection();
++        this._nearItems = new Map();
++        this._nearEmpty = new PopupMenu.PopupMenuItem(
++            _('Nothing new nearby. Put a device in pairing mode.'),
++            {reactive: false, style_class: 'luma-options-off'});
++        this._nearEmpty.label.clutter_text.line_wrap = true;
++        this._nearSection.addMenuItem(this._nearEmpty);
+         this._pairCode = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
+             style_class: 'luma-options-pair-code', visible: false});
+         // Keep the settings link at the bottom of the page.
+@@ -517,59 +523,73 @@
+             else this._stopNearby();
+         }, this);
+         this._client.connectObject('devices-changed', () => this._syncNearby(), this);
++        this._client._client.connectObject('notify::default-adapter', () => {
++            // The old adapter may have gone away. Never stop a discovery lease
++            // on its replacement merely because this picker owned the old one.
++            this._discoveryOwned = false;
++            this._discovering = false;
++            if (this.menu.isOpen && this._client.active) this._scanNearby();
++            else this._syncNearby();
++        }, this);
+         this.connect('destroy', () => this._stopNearby());
+         this._syncNearby();
+     }
+     _scanNearby() {
+-        if (!this._client.active || this._scanId) return;
+-        // Leave discovery started by another surface running when we close.
++        if (!this._client.active || this._discovering) return;
++        // Discovery belongs to the open picker, not an eight-second preview.
++        // Leave discovery started by another native surface running on close.
+         if (!this._client._client.default_adapter_setup_mode) {
+             this._client._client.default_adapter_setup_mode = true;
+             this._discoveryOwned = true;
+-        }
++            this._discoveryAdapter = this._client._client.default_adapter;
++        }
++        this._discovering = true;
+         this._nearStatus.text = _('Looking'); this._lookAgain.hide();
+-        this._scanId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 8000, () => {
+-            this._scanId = 0; this._finishScan(); return GLib.SOURCE_REMOVE;
+-        });
+         this._syncNearby();
+     }
+-    _finishScan() {
+-        if (this._discoveryOwned) {
++    _stopNearby() {
++        this._discovering = false;
++        if (this._discoveryOwned && this._discoveryAdapter === this._client._client.default_adapter) {
+             this._client._client.default_adapter_setup_mode = false;
+-            this._discoveryOwned = false;
+-        }
+-        this._nearStatus.text = ''; this._lookAgain.show(); this._syncNearby();
+-    }
+-    _stopNearby() {
+-        if (this._scanId) GLib.source_remove(this._scanId);
+-        this._scanId = 0;
+-        this._finishScan(); this._pairAgent.cancel();
++        }
++        this._discoveryOwned = false;
++        this._discoveryAdapter = null;
++        this._nearStatus.text = ''; this._lookAgain.show();
++        this._syncNearby(); this._pairAgent.cancel();
+     }
+     _syncNearby() {
+-        this._nearSection.removeAll();
+         const store = this._client._client.get_devices();
+-        let count = 0;
++        const seen = new Set();
+         if (this._client.active) for (let i = 0; i < store.get_n_items(); i++) {
+             const device = store.get_item(i);
+             if (device.paired || device.trusted || !device.alias) continue;
+-            count++;
+-            const item = new QuickSheetRow();
++            const path = device.get_object_path();
++            seen.add(path);
++            let item = this._nearItems.get(path);
++            if (!item) {
++                item = new QuickSheetRow();
++                item.connect('activate', () => this._pairAgent.pair(item._device));
++                this._nearItems.set(path, item);
++                this._nearSection.addMenuItem(item);
++            }
++            // Keep the actor, focus and touch target stable across BlueZ bursts.
++            item._device = device;
+             item.setTitle(device.alias);
+             item.setState(this._pairAgent._device === device ? _('Pairing…') : _('Tap to pair'));
+             item.setIcon(device.icon ?? 'bluetooth-symbolic');
+-            item.connect('activate', () => this._pairAgent.pair(device));
+-            this._nearSection.addMenuItem(item);
+-        }
+-        if (!count && !this._scanId) {
+-            const empty = new PopupMenu.PopupMenuItem(_('Nothing new nearby. Put a device in pairing mode.'), {reactive: false, style_class: 'luma-options-off'});
+-            empty.label.clutter_text.line_wrap = true;
+-            this._nearSection.addMenuItem(empty);
+-        }
++        }
++        for (const [path, item] of this._nearItems) {
++            if (seen.has(path)) continue;
++            item.destroy(); this._nearItems.delete(path);
++        }
++        const count = seen.size;
++        this._nearEmpty.visible = !count && !this._discovering;
+         this._nearHeading.visible = this._client.active;
+-        this._nearSection.actor.visible = this._client.active && (count > 0 || !this._scanId);
++        this._nearSection.actor.visible = this._client.active && (count > 0 || !this._discovering);
+         if (!count) this._nearSection.actor.add_style_class_name('luma-options-near-empty');
+         else this._nearSection.actor.remove_style_class_name('luma-options-near-empty');
+-        this._placeholderItem.label.text = this._client.active ? _('No devices') : _('Bluetooth is off');
++        this._placeholderItem.label.text = this._client.active ? _('No saved devices') : _('Bluetooth is off');
++        this._placeholderItem.visible = !this._deviceSection.actor.visible && !count;
+     }
+ 
+     _onActiveChanged() {
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -16,6 +16,7 @@
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+ import {Slider} from './slider.js';
++import {LumaRoundedClip} from './iconMask.js';
+ 
+ import {PopupAnimation} from './boxpointer.js';
+ 
+@@ -1378,11 +1379,30 @@
+         this._pageSwitch.child.accessible_role = Atk.Role.REDUNDANT_OBJECT;
+         header.add_child(this._pageSwitch); this._pageHost.add_child(header);
+         this._pageScroll = new St.ScrollView({style_class: 'luma-options-page-scroll',
+-            x_expand: true, overlay_scrollbars: false,
++            x_expand: true, overlay_scrollbars: true,
++            reactive: true, clip_to_allocation: true,
+             hscrollbar_policy: St.PolicyType.NEVER,
+             vscrollbar_policy: St.PolicyType.AUTOMATIC});
+-        this._pages = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
++        this._pages = new St.BoxLayout({style_class: 'luma-options-pages', orientation: Clutter.Orientation.VERTICAL});
+         this._pageScroll.set_child(this._pages);
++        this._pageClip = new LumaRoundedClip(16);
++        this._pageScroll.add_effect_with_name('luma-page-clip', this._pageClip);
++        this._pagePan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
++        this._pagePan.set_begin_threshold(10);
++        this._pagePan.connect('may-recognize', () => {
++            const adjustment = this._pageScroll.vadjustment;
++            return !!this._activeMenu && adjustment.upper > adjustment.page_size;
++        });
++        this._pagePan.connect('recognize', () => {
++            this._pagePanStart = this._pageScroll.vadjustment.value;
++        });
++        this._pagePan.connect('pan-update', gesture => {
++            const adjustment = this._pageScroll.vadjustment;
++            const delta = gesture.get_accumulated_delta();
++            adjustment.value = Math.clamp(this._pagePanStart - delta.get_y(),
++                adjustment.lower, Math.max(adjustment.lower, adjustment.upper - adjustment.page_size));
++        });
++        this._pageScroll.add_action(this._pagePan);
+         this._pageHost.add_child(this._pageScroll);
+         this.box.add_child(this._pageHost);
+         global.stage.connectObject('notify::key-focus', () => {
+--- a/js/ui/iconMask.js
++++ b/js/ui/iconMask.js
+@@ -3,6 +3,7 @@
+ import Cogl from 'gi://Cogl';
+ import GObject from 'gi://GObject';
+ import Shell from 'gi://Shell';
++import St from 'gi://St';
+ 
+ const ICON_MASK_DECLARATIONS = `
+ uniform float radius;
+@@ -45,3 +46,48 @@
+     }
+ });
+ 
++
++// Pixel-radius clipping for nonsquare native scroll containers. The mask is
++// applied to the complete actor output, including all children and the rail.
++export const LumaRoundedClip = GObject.registerClass(
++class LumaRoundedClip extends Shell.GLSLEffect {
++    _init(radius = 16) {
++        super._init();
++        this._radius = radius;
++    }
++
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
++            `uniform vec2 clip_extent;
++             uniform vec2 clip_size;
++             uniform vec2 clip_origin;
++             uniform float clip_radius;`,
++            `vec2 point = cogl_tex_coord_in[0].st * clip_extent + clip_origin;
++             float radius = min(clip_radius, min(clip_size.x, clip_size.y) * 0.5);
++             vec2 half_size = clip_size * 0.5;
++             vec2 q = abs(point - half_size) - (half_size - vec2(radius));
++             float distance = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
++             cogl_color_out *= 1.0 - smoothstep(-0.5, 0.5, distance);`, false);
++    }
++
++    vfunc_paint_target(node, paintContext) {
++        const actor = this.actor;
++        const texture = this.get_texture();
++        if (actor && texture) {
++            const scale = Math.max(1, Math.ceil(actor.get_resource_scale()));
++            const volume = actor.get_paint_volume();
++            const origin = volume?.get_origin() ?? {x: 0, y: 0};
++            // Same offscreen enlargement rule as the native window mask.
++            const enlarge = (start, size) => Math.trunc(Math.ceil(start + size + 0.75) - Math.round(size) - 3);
++            const width = volume?.get_width() ?? actor.width;
++            const height = volume?.get_height() ?? actor.height;
++            const set = (name, values) => this.set_uniform_float(this.get_uniform_location(name), values.length, values);
++            set('clip_extent', [texture.get_width() / scale, texture.get_height() / scale]);
++            set('clip_size', [actor.width, actor.height]);
++            set('clip_origin', [enlarge(origin.x, width), enlarge(origin.y, height)]);
++            set('clip_radius', [this._radius * St.ThemeContext.get_for_stage(actor.get_stage()).scale_factor]);
++        }
++        smoothOffscreenSampling(this);
++        super.vfunc_paint_target(node, paintContext);
++    }
++});
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2848,7 +2848,7 @@
+ .quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
+ .quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
+ .quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 40px; padding: 8px 10px 8px 8px; border-radius: 12px; spacing: 10px; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
+@@ -2952,7 +2952,7 @@
+ /* Studio detail lists and native Switch actors retain their service bindings. */
+ .quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
+ .quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 4px; border-radius: 0; background-color: transparent; box-shadow: none; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
+@@ -3171,3 +3171,12 @@
+   -arrow-background-color: transparent; }
+ .quick-settings.luma-studio-options .luma-options-back { width: 32px; height: 32px; }
+ .quick-settings.luma-studio-options .luma-options-radio .luma-quick-disclosure-icon { icon-size: 18px; }
++
++/* The picker owns one clipped well. Overlay rails preserve equal content insets. */
++.quick-settings.luma-studio-options .luma-options-page-scroll { border-radius: 16px; background-color: rgba(0,0,0,.14); padding: 4px 12px; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page-scroll { background-color: rgba(22,25,29,.05); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
++
++.quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5298,6 +5298,17 @@
+ .quick-settings.luma-studio-options .luma-options-back { width: 32px; height: 32px; }
+ .quick-settings.luma-studio-options .luma-options-radio .luma-quick-disclosure-icon { icon-size: 18px; }
+ .poster-battery, .poster-card.wide .poster-battery { icon-size: 24px; }
++
++/* Native picker viewport and complete child mask share one radius. */
++.quick-settings.luma-studio-options .luma-options-page-scroll,
++.quick-settings.luma-studio-options .luma-options-page-scroll:rtl { border-radius: 16px; background-color: rgba(0,0,0,.14); padding: 4px 12px; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page-scroll { background-color: rgba(22,25,29,.05); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 4px; border-radius: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 40px; padding: 8px 10px 8px 8px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
++
++.quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5074,6 +5074,17 @@
+ .quick-settings.luma-studio-options .luma-options-back { width: 32px; height: 32px; }
+ .quick-settings.luma-studio-options .luma-options-radio .luma-quick-disclosure-icon { icon-size: 18px; }
+ .poster-battery, .poster-card.wide .poster-battery { icon-size: 24px; }
++
++/* Native picker viewport and complete child mask share one radius. */
++.quick-settings.luma-studio-options .luma-options-page-scroll,
++.quick-settings.luma-studio-options .luma-options-page-scroll:rtl { border-radius: 16px; background-color: rgba(0,0,0,.14); padding: 4px 12px; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page-scroll { background-color: rgba(22,25,29,.05); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 4px; border-radius: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 40px; padding: 8px 10px 8px 8px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
++
++.quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5273,6 +5273,17 @@
+ .quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { padding: 7px 8px; border-radius: 8px; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { padding: 4px 6px; }
+ .quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 6px; }
++
++/* Native picker viewport and complete child mask share one radius. */
++.quick-settings.luma-studio-options .luma-options-page-scroll,
++.quick-settings.luma-studio-options .luma-options-page-scroll:rtl { border-radius: 16px; background-color: rgba(0,0,0,.14); padding: 4px 12px; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page-scroll { background-color: rgba(22,25,29,.05); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 4px; border-radius: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 40px; padding: 8px 10px 8px 8px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { box-shadow: none; icon-shadow: none; }
++
++.quick-settings.luma-studio-options .luma-options-pages { padding: 0 10px; }
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {

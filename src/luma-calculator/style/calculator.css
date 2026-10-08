@@ -1,0 +1,73 @@
+/* Calculator-only surfaces. Colours and shared metrics come from LumaUI. */
+.calc-display .calc-expression { color: @luma_ink; font-variant-numeric: tabular-nums; }
+.calc-display .calc-expression-operator { color: @luma_calc_expression_operator_ink; }
+.calc-display .calc-preview {
+  min-height: var(--lumaui-pill-height);
+  color: @luma_muted;
+  font-size: var(--lumaui-dialog-title-size);
+  font-variant-numeric: tabular-nums;
+}
+.calc-display .calc-preview.error { color: @luma_danger_ink; }
+.calc-display .calc-tape-line { color: @luma_muted; font-variant-numeric: tabular-nums; }
+.calc-display .calc-tape-expression { color: @luma_muted; }
+.calc-display button.calc-tape-result {
+  min-height: var(--lumaui-pill-height);
+  padding: 0;
+  border-radius: var(--lumaui-status-radius);
+  color: @luma_ink_secondary;
+  font-weight: var(--lumaui-t-label-weight);
+}
+.calc-display .calc-angle-mode {
+  color: @luma_muted;
+  background: @luma_fill;
+  border-radius: var(--lumaui-status-radius);
+}
+button.calc-key {
+  border-radius: var(--lumaui-calc-key-radius);
+  background: @luma_chip;
+  color: @luma_ink;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 var(--lumaui-calc-chip-highlight-y) 0 @luma_chip_highlight,
+              0 0 0 var(--lumaui-calc-chip-ring-spread) @luma_chip_ring,
+              0 var(--lumaui-calc-chip-shadow-y) var(--lumaui-calc-chip-shadow-blur) @luma_chip_shadow,
+              0 var(--lumaui-calc-chip-far-shadow-y) var(--lumaui-calc-chip-far-shadow-blur)
+                var(--lumaui-calc-chip-far-shadow-spread) @luma_calc_chip_far_shadow;
+}
+button.calc-key:hover { filter: brightness(var(--lumaui-hover-brightness)); }
+button.calc-key:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+button.calc-key-function {
+  color: @luma_ink_secondary;
+  background: @luma_calc_function_fill;
+}
+button.calc-key-operator {
+  color: @luma_calc_operator_ink;
+  background: @luma_calc_operator_fill;
+}
+button.calc-key-operator.active { color: @luma_key_ink; background: @luma_accent; }
+button.calc-key-equals {
+  color: @luma_key_ink;
+  background-color: @luma_key;
+  background-image: linear-gradient(@luma_key, @luma_key_end);
+  box-shadow: inset 0 var(--lumaui-key-edge-highlight-y) 0 @luma_key_highlight,
+              0 0 0 var(--lumaui-key-edge-ring-spread) @luma_key_ring,
+              0 var(--lumaui-key-edge-shadow-y) var(--lumaui-key-edge-shadow-blur) @luma_key_shadow;
+}
+button.calc-key-scientific {
+  color: @luma_ink_secondary;
+  border-radius: var(--lumaui-stack-sm-radius);
+}
+button.calc-key-scientific .calc-superscript { font-size: var(--lumaui-calc-superscript-size); }
+button.calc-key-scientific.active { color: @luma_ink; background: @luma_calc_operator_fill; }
+.luma-treatment-light button.calc-key-function,
+.luma-treatment-light button.calc-key-scientific { color: @luma_ink; }
+
+/* v71 on a phone (the "Calculator on a phone" block): the display is the page itself and the keys are big
+   squircles on the 16px gutter. Sizes are the simulator's; colours are the tokens above. */
+.calc-display-phone .calc-preview { font-size: 20px; min-height: 28px; }
+.calc-display-phone .calc-tape-line label, .calc-display-phone .calc-tape-line button { font-size: 16px; }
+button.calc-key-phone { padding: 0; border-radius: 40px; font-size: 32px; }
+button.calc-key-phone.calc-key-function { font-size: 26px; }
+button.calc-key-phone.calc-key-operator, button.calc-key-phone.calc-key-equals { font-size: 36px; }
+button.calc-key-phone.on { color: @luma_ink; background: @luma_chip; }
+button.calc-key-phone.calc-key-phone-beside { border-radius: var(--lumaui-calc-key-radius); font-size: 27px; }
+button.calc-key-phone.calc-key-phone-sci { border-radius: 14px; font-size: 15px; }

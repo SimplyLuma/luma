@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src leaf: data: blob:; script-src leaf:; style-src leaf: 'unsafe-inline'; img-src leaf: data: blob:; font-src leaf: data:; connect-src 'none'">
+<link rel="stylesheet" href="reader.css">
+<script type="module" src="reader.js"></script>
+</head>
+<body>
+<div class="lf-page" id="page" tabindex="-1" data-theme="auto" data-face="serif" data-justify="true">
+  <div class="lf-running" aria-hidden="true"><span id="running-left"></span><span id="running-right"></span></div>
+  <div class="lf-view" id="view"><iframe id="frame" title="Book" sandbox="allow-same-origin allow-scripts"></iframe></div>
+  <button class="lf-turn prev" id="prev" type="button" aria-label="Previous page" tabindex="-1" disabled></button>
+  <button class="lf-turn next" id="next" type="button" aria-label="Next page" tabindex="-1" disabled></button>
+  <button class="lf-continue" id="continue" type="button" tabindex="-1" hidden>Continue</button>
+  <div class="lf-foot" aria-hidden="true"><span id="foot-left"></span><span id="foot-right"></span></div>
+  <div class="lf-rail" aria-hidden="true"><i id="rail"></i></div>
+  <div class="lf-status" id="status" hidden></div>
+</div>
+</body>
+</html>

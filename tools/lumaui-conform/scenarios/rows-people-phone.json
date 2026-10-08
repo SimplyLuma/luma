@@ -1,0 +1,53 @@
+{
+  "app": "rows-people-phone",
+  "title": "SB1 people rows in the phone drawer (vs Messages' conversations drawer)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=messages",
+    "window": "#m-side",
+    "exclude": [
+      "#m-side .sfoot"
+    ],
+    "exclude_note": "The sidebar foot is F2's SidebarFoot, not a rows part; this run measures the rows.",
+    "accent_note": "The Studio tints its light mode with the wallpaper's hue (168); the kit's tokens are the default accent (258), so the spec is pinned to it."
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "messages-drawer",
+      "LUMAUI_ROWS_PHOTOS": "{run}/fixtures/contacts-v70"
+    }
+  },
+  "states": [
+    {
+      "name": "drawer",
+      "about": "Messages at phone width with its conversations open",
+      "spec": [
+        {
+          "eval": "document.body.style.setProperty('--acc', '258')"
+        },
+        {
+          "click": "#w-messages [data-mnav]"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [
+    "drawer"
+  ],
+  "groups": [
+    {
+      "name": "conversation rows",
+      "spec": "#m-side .scr"
+    }
+  ],
+  "pairs_note": "No structure pair: the surface fills its window, so the window's own frame paint would be read as the sidebar's.",
+  "phone_note": "Run with --phone only. The spec's window is the drawer card itself, so the GTK surface is SidebarToggle's card filling its window."
+}

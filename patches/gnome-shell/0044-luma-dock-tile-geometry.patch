@@ -1,0 +1,1151 @@
+From: Project Luma <noreply@invalid.example.invalid>
+Subject: [PATCH] Shell: anchor running marks and share native Dash tile geometry
+
+Use the existing Dash model and St scroll fade. Keep saved padding and
+physical edge policy; animate only artwork. No extension or session helper.
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -109,6 +109,7 @@
+     <file>ui/screenShield.js</file>
+     <file>ui/screenshot.js</file>
+     <file>ui/shelf.js</file>
++    <file>ui/shelfMetrics.js</file>
+     <file>ui/scripting.js</file>
+     <file>ui/search.js</file>
+     <file>ui/searchController.js</file>
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/shelfMetrics.js
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Native Dash and status geometry share one logical tile size. Display scale
++// multiplies these logical measurements; it is not a second size policy.
++export const DASH_TILE_SIZE = 36;
++export const DASH_TILE_GAP = 5;
++
++export function runningIndicatorGeometry(edge, width, height, center, scale = 1) {
++    const length = 18 * scale;
++    const depth = 3 * scale;
++    const vertical = edge === 'left' || edge === 'right';
++    const radii = {bottom: [2, 2, 0, 0], top: [0, 0, 2, 2],
++        left: [0, 2, 2, 0], right: [2, 0, 0, 2]}[edge];
++    return {
++        x: vertical ? (edge === 'left' ? 0 : width - depth) : center - length / 2,
++        y: vertical ? center - length / 2 : (edge === 'top' ? 0 : height - depth),
++        width: vertical ? depth : length,
++        height: vertical ? length : depth,
++        radii,
++    };
++}
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -7,9 +7,9 @@
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import {DASH_TILE_SIZE, runningIndicatorGeometry} from './shelfMetrics.js';
+ 
+ const DASH_PADDING = 10;
+-const SHELF_ICON_SIZE = 36;
+ // Every application on the dock is drawn to the same silhouette, whatever
+ // artwork it ships. Linux has spent a decade letting applications put whatever
+ // they like on a dock — square screenshots, bare glyphs floating on nothing —
+@@ -55,7 +55,7 @@
+ // a user's session. Left/right are physical monitor edges, including in RTL.
+ export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural, scale = 1, padding = DASH_PADDING) {
+     const vertical = edge === 'left' || edge === 'right';
+-    const thickness = (SHELF_ICON_SIZE + 2 * padding) * scale;
++    const thickness = (DASH_TILE_SIZE + 2 * padding) * scale;
+     const inset = protrude ? 0 : padding * scale;
+     const gutter = !span || floatEnds ? padding * scale : 0;
+     const available = Math.max(1, (vertical ? monitor.height : monitor.width) - 2 * gutter);
+@@ -68,7 +68,16 @@
+     const y = vertical
+         ? monitor.y + (monitor.height - height) / 2
+         : monitor.y + (edge === 'top' ? inset : monitor.height - inset - height);
+-    return {x, y, width, height, vertical, available, reserve: protrude && span};
++    // A floating Dash still consumes maximized work area through the physical
++    // edge gap. A separate nonreactive chrome actor owns these static bounds.
++    const reserved = thickness + inset;
++    const workArea = {
++        x: edge === 'right' ? monitor.x + monitor.width - reserved : monitor.x,
++        y: edge === 'bottom' ? monitor.y + monitor.height - reserved : monitor.y,
++        width: vertical ? reserved : monitor.width,
++        height: vertical ? monitor.height : reserved,
++    };
++    return {x, y, width, height, vertical, available, workArea};
+ }
+ 
+ // Corner order is CSS top-left, top-right, bottom-right, bottom-left.
+@@ -144,9 +153,45 @@
+ class ShelfIslandLayout extends Clutter.LayoutManager {
+     vfunc_allocate(container, box) {
+         container._content.allocate(box);
++        container._indicators?.allocate(box);
+         for (const actor of [container._stroke, ...container._shadows]) {
+             if (actor.visible)
+                 actor.allocate(box);
++        }
++    }
++});
++
++const DockIndicatorLayout = GObject.registerClass(
++class DockIndicatorLayout extends Clutter.LayoutManager {
++    vfunc_get_preferred_width(_container, _forHeight) { return [0, 0]; }
++    vfunc_get_preferred_height(_container, _forWidth) { return [0, 0]; }
++
++    vfunc_allocate(container, box) {
++        const shelf = container._shelf;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const [viewportX, viewportY] = shelf._dockScroll.get_transformed_position();
++        const [valid, x, y] = container.transform_stage_point(viewportX, viewportY);
++        if (!valid)
++            return;
++        const vertical = shelf._vertical;
++        // Clip only along the scrolling axis. The cross-axis deliberately
++        // includes material padding so bars meet the actual island edge.
++        container.set_clip(vertical ? 0 : x, vertical ? y : 0,
++            vertical ? box.get_width() : shelf._dockScroll.width,
++            vertical ? shelf._dockScroll.height : box.get_height());
++        for (const bar of container.get_children()) {
++            const tile = bar._tile;
++            const [stageX, stageY] = tile.get_transformed_position();
++            const [stageWidth, stageHeight] = tile.get_transformed_size();
++            const [ok, centerX, centerY] = container.transform_stage_point(
++                stageX + stageWidth / 2, stageY + stageHeight / 2);
++            if (!ok)
++                continue;
++            const center = vertical ? centerY : centerX;
++            const geometry = runningIndicatorGeometry(shelf._edge,
++                box.get_width(), box.get_height(), center, scale);
++            bar.allocate(new Clutter.ActorBox({x1: geometry.x, y1: geometry.y,
++                x2: geometry.x + geometry.width, y2: geometry.y + geometry.height}));
+         }
+     }
+ });
+@@ -174,6 +219,7 @@
+                 coordinate: Clutter.BindCoordinate.ALL,
+             }));
+             this.add_child(shadow);
++            Shell.util_set_hidden_from_pick(shadow, true);
+             this._shadows.push(shadow);
+         }
+ 
+@@ -189,13 +235,16 @@
+             coordinate: Clutter.BindCoordinate.ALL,
+         }));
+         this.add_child(stroke);
++        // Native DND picks ALL actors, including nonreactive decoration.
++        // These painted layers must never intercept the real tile delegate.
++        Shell.util_set_hidden_from_pick(stroke, true);
+         this._stroke = stroke;
+     }
+ 
+     setOrientation(vertical, padding, outer = false) {
+         this._vertical = vertical;
+         this._padding = padding;
+-        this._thickness = SHELF_ICON_SIZE + 2 * padding;
++        this._thickness = DASH_TILE_SIZE + 2 * padding;
+         this._outer = outer;
+         this._updateStyle();
+         const thickness = this._thickness * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+@@ -221,14 +270,10 @@
+         for (const actor of [this._stroke, ...this._shadows])
+             actor.set_style(style);
+         const padding = this._outer || this._content._statusFlush ? 0 : this._padding ?? DASH_PADDING;
+-        // Native Dash tiles already contribute half of the 5px inter-icon
+-        // gap at each end. Absorb only those outer half-margins; preserve
+-        // spacing between icons and measure padding to the artwork bounds.
++        // One material inset on all four sides. Inter-tile spacing and the
++        // viewport's native fade effect never contribute to outer padding.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        // St rounds the CSS margin in logical pixels before display scaling.
+-        const end = this.has_style_class_name('luma-shelf-dock-island')
+-            ? padding - Math.ceil(2.5) : padding;
+-        const insets = this._vertical ? [end, padding, end, padding] : [padding, end, padding, end];
++        const insets = [padding, padding, padding, padding];
+         // Connected-mode separators are real borders inside the material.
+         // Include them in the selected inset rather than adding another pixel.
+         const node = this._content.get_theme_node();
+@@ -314,7 +359,7 @@
+         // competing dock model during Activity View.
+         this._dash = Main.overview.dash;
+         this._dash.get_parent()?.remove_child(this._dash);
+-        this._dash.setFixedIconSize(SHELF_ICON_SIZE);
++        this._dash.setFixedIconSize(DASH_TILE_SIZE);
+         this._dash.setShowAppsAtStart(true);
+         // The Shelf names applications with its own hover label and opens the
+         // catalog from Search, so the dash's Apps tile is redundant here.
+@@ -341,6 +386,16 @@
+         this._dockScroll.set_child(this._dockContent);
+         this._dockMaterial = new St.Bin({child: this._dockScroll});
+         this._dockIsland = new ShelfIsland('luma-shelf-dock-island', this._dockMaterial);
++        this._dockIndicators = new St.Widget({layout_manager: new DockIndicatorLayout(),
++            reactive: false});
++        Shell.util_set_hidden_from_pick(this._dockIndicators, true);
++        this._dockIndicators._shelf = this;
++        this._dockIsland._indicators = this._dockIndicators;
++        this._dockIsland.insert_child_below(this._dockIndicators, this._dockIsland._stroke);
++        for (const adjustment of [this._dockScroll.hadjustment, this._dockScroll.vadjustment])
++            adjustment.connectObject('notify::value', () => this._queueIndicatorLayout(), this);
++        this._dash._box.connectObject('notify::allocation', () => this._queueIndicatorLayout(), this);
++
+ 
+         // Keep secondary accessibility/input applets reachable in their own
+         // island. The clock/status island itself has exactly one input target.
+@@ -358,10 +413,23 @@
+         this._actionsScroll = this._actionsMaterial._statusViewport;
+ 
+         this.connect('destroy', () => {
++            this._workArea?.destroy();
++            if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
++            this._indicatorLaterId = 0;
+             for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland])
+                 if (island && !island.get_parent()) island.destroy();
+         });
+ 
++        // A native chrome strut touches the physical monitor edge even when
++        // the visual islands float inward. It is invisible and nonreactive;
++        // Mutter applies it only to work-area operations such as maximize.
++        this._workArea = new St.Widget({name: 'lumaShelfWorkArea', reactive: false});
++        this._workArea.connect('destroy', () => { this._workArea = null; });
++        Main.layoutManager.addChrome(this._workArea, {
++            affectsStruts: true,
++            trackFullscreen: true,
++        });
++        this._workAreaTracked = true;
+         Main.layoutManager.addChrome(this, {
+             affectsStruts: false,
+             trackFullscreen: true,
+@@ -523,6 +591,7 @@
+         this._surface.translation_x = 0;
+         this._surface.translation_y = 0;
+         if (!this._isDesktopSession()) {
++            this._trackWorkArea(false);
+             this.hide();
+             this._restorePanelActors();
+             return;
+@@ -538,7 +607,7 @@
+         const surfaceMode = this._settings.get_string('shelf-surface-mode');
+         const material = this._settings.get_string('shelf-material');
+         this._padding = this._settings.get_int('shelf-padding');
+-        this._thickness = SHELF_ICON_SIZE + 2 * this._padding;
++        this._thickness = DASH_TILE_SIZE + 2 * this._padding;
+         this._group._padding = this._padding;
+         this._group._thickness = this._thickness;
+         this._edge = this._settings.get_string('shelf-edge');
+@@ -552,6 +621,10 @@
+         this._actionsBox.orientation = orientation;
+         this._dockContent.orientation = orientation;
+         this._dash.setShelfEdge(this._edge);
++        const indicatorRadii = runningIndicatorGeometry(this._edge, 0, 0, 0).radii;
++        for (const bar of this._dockIndicators.get_children())
++            bar.set_style(`border-radius: ${indicatorRadii.map(n => `${n}px`).join(' ')};`);
++        this._dockIndicators.queue_relayout();
+         this._dockScroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+         this._dockScroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
+         this._dockScroll.set_size(-1, -1);
+@@ -600,6 +673,17 @@
+         this._syncDockWidth();
+     }
+ 
++    _trackWorkArea(enabled) {
++        if (enabled === this._workAreaTracked)
++            return;
++        Main.layoutManager.untrackChrome(this._workArea);
++        Main.layoutManager.trackChrome(this._workArea, {
++            affectsStruts: enabled,
++            trackFullscreen: true,
++        });
++        this._workAreaTracked = enabled;
++    }
++
+     _syncGeometry() {
+         const monitor = Main.layoutManager.primaryMonitor;
+         if (!monitor)
+@@ -621,16 +705,11 @@
+         // The outer visual actor follows the strut actor's full bounds. Its
+         // group still measures its natural length independently for content-hug.
+         this._surface.set_size(geometry.width, geometry.height);
+-        if (this._reserves !== geometry.reserve) {
+-            // Supported chrome tracking API: remove old strut metadata before
+-            // admitting the new policy. No private strut array or polling.
+-            Main.layoutManager.untrackChrome(this);
+-            Main.layoutManager.trackChrome(this, {
+-                affectsStruts: geometry.reserve,
+-                trackFullscreen: true,
+-            });
+-            this._reserves = geometry.reserve;
+-        }
++        this._trackWorkArea(this._isDesktopSession() &&
++            this._group.get_children().some(actor => actor.visible));
++        const workArea = geometry.workArea;
++        this._workArea.set_position(workArea.x, workArea.y);
++        this._workArea.set_size(workArea.width, workArea.height);
+         if (this._positioned && St.Settings.get().enable_animations &&
+             (moved || explicitChange) && (oldX !== geometry.x || oldY !== geometry.y)) {
+             this._surface.remove_all_transitions();
+@@ -647,7 +726,20 @@
+         if (!box)
+             return;
+         for (const item of box.get_children()) {
+-            const icon = item.child?._delegate?.icon?.icon;
++            const delegate = item.child?._delegate;
++            if (this._dockIndicators && delegate?._dot && !item._shelfIndicator) {
++                const bar = new St.Widget({style_class: 'luma-shelf-running-indicator', reactive: false,
++                    opacity: 235});
++                const radii = runningIndicatorGeometry(this._edge ?? 'bottom', 0, 0, 0).radii;
++                bar.set_style(`border-radius: ${radii.map(n => `${n}px`).join(' ')};`);
++                bar._tile = item.child;
++                item._shelfIndicator = bar;
++                delegate._dot.opacity = 0;
++                delegate._dot.bind_property('visible', bar, 'visible', GObject.BindingFlags.SYNC_CREATE);
++                item.connectObject('destroy', () => bar.destroy(), bar);
++                this._dockIndicators.add_child(bar);
++            }
++            const icon = delegate?.icon?.icon;
+             if (!icon || icon.get_effect('luma-icon-mask'))
+                 continue;
+             try {
+@@ -664,6 +756,18 @@
+                 return;
+             }
+         }
++    }
++
++    _queueIndicatorLayout() {
++        if (this._indicatorLaterId)
++            return;
++        // Adjustment/allocation signals can arrive during parent allocation.
++        // Coalesce the notification instead of invalidating that layout pass.
++        this._indicatorLaterId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._indicatorLaterId = 0;
++            this._dockIndicators.queue_relayout();
++            return GLib.SOURCE_REMOVE;
++        });
+     }
+ 
+     _queueDockWidth() {
+@@ -709,7 +813,7 @@
+                 ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+             this._liveScroll.set_size(-1, -1);
+             liveSize = Math.min(measure(this._liveContent) + 2 * this._padding * scale, available / 3);
+-            setViewport(this._liveScroll, Math.max(1, liveSize - 2 * this._padding * scale), 36 * scale);
++            setViewport(this._liveScroll, Math.max(1, liveSize - 2 * this._padding * scale), DASH_TILE_SIZE * scale);
+             liveSize = measure(this._liveIsland);
+         }
+         const others = this._group.get_children().filter(actor => actor !== this._dockIsland && actor.visible);
+@@ -718,26 +822,27 @@
+         const actionsBudget = Math.max(1, available - liveSize - gap - this._thickness * scale);
+         const flushStatus = this._actionsMaterial._statusFlush;
+         const actionsPadding = flushStatus ? 0 : 2 * this._padding * scale;
+-        const statusCross = (flushStatus ? this._thickness : 36) * scale;
++        const statusCross = (flushStatus ? this._thickness : DASH_TILE_SIZE) * scale;
+         // Measure wrapped clock labels at the actual content width, not the
+         // material width including padding. Otherwise a vertical shelf clips
+         // its last status row after labels wrap during allocation.
+         const statusNatural = this._vertical
+             ? this._actionsBox.get_preferred_height(statusCross)[1]
+-            : this._actionsBox.get_preferred_width(36 * scale)[1];
++            : this._actionsBox.get_preferred_width(DASH_TILE_SIZE * scale)[1];
+         const actionsLength = Math.min(statusNatural, Math.max(1, actionsBudget - actionsPadding));
+         setViewport(this._actionsScroll, actionsLength, statusCross);
+         const otherSize = others.reduce((sum, actor) => sum + measure(actor), 0);
+-        const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - (2 * this._padding - 5) * scale);
++        const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - 2 * this._padding * scale);
+         const length = Math.min(naturalDock, maxLength);
+         if (this._vertical)
+-            this._dockScroll.set_size(SHELF_ICON_SIZE * scale, length);
++            this._dockScroll.set_size(DASH_TILE_SIZE * scale, length);
+         else
+             this._dockScroll.set_size(length, -1);
+-        if (naturalDock > maxLength)
+-            this._dockScroll.add_style_pseudo_class('overflowing');
+-        else
+-            this._dockScroll.remove_style_pseudo_class('overflowing');
++        const fade = Math.min(this._padding, DASH_TILE_SIZE / 2) * scale;
++        this._dockScroll.update_fade_effect(new Clutter.Margin({
++            top: this._vertical ? fade : 0, bottom: this._vertical ? fade : 0,
++            left: this._vertical ? 0 : fade, right: this._vertical ? 0 : fade,
++        }));
+         this._syncGeometry();
+     }
+ });
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -12,8 +12,10 @@
+ import * as IconGrid from './iconGrid.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
++import {DASH_TILE_GAP} from './shelfMetrics.js';
+ 
+ export const DASH_ANIMATION_TIME = 200;
++const SHELF_ITEM_ANIMATION_TIME = 160;
+ const DASH_ITEM_LABEL_SHOW_TIME = 150;
+ const DASH_ITEM_LABEL_HIDE_TIME = 100;
+ const DASH_ITEM_HOVER_TIMEOUT = 300;
+@@ -26,6 +28,41 @@
+             showLabel: false,
+             popupMenuSide: St.Side.BOTTOM,
+         });
++        this.connectObject('notify::hover', () => this._syncShelfArtwork(),
++            'notify::pressed', () => this._syncShelfArtwork(), this);
++    }
++
++    _syncShelfArtwork() {
++        const edge = Main.overview.dash._shelfEdge;
++        if (!edge)
++            return;
++        const artwork = this.icon;
++        artwork.set_pivot_point(0.5, 0.5);
++        const scale = this._dragging ? 1.12 : this.pressed ? 0.94 : 1;
++        const lift = this.hover && !this._dragging ? 3 * St.ThemeContext.get_for_stage(global.stage).scale_factor : 0;
++        artwork.ease({
++            translation_x: edge === 'left' ? lift : edge === 'right' ? -lift : 0,
++            translation_y: edge === 'top' ? lift : edge === 'bottom' ? -lift : 0,
++            scale_x: scale, scale_y: scale,
++            duration: St.Settings.get().enable_animations ? 120 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++    }
++
++    getDragActor() {
++        const actor = super.getDragActor();
++        if (Main.overview.dash._shelfEdge) {
++            // StIcon cannot resolve its theme-backed size until DND attaches
++            // it to the stage. Apply the artwork transform at that boundary.
++            const id = actor.connect('notify::mapped', () => {
++                if (!actor.mapped)
++                    return;
++                actor.disconnect(id);
++                actor.set_pivot_point(0.5, 0.5);
++                actor.set_scale(1.12, 1.12);
++            });
++        }
++        return actor;
+     }
+ 
+     popupMenu() {
+@@ -37,9 +74,16 @@
+ 
+     // Disable scale-n-fade methods used during DND by parent
+     scaleAndFade() {
++        this._syncShelfArtwork();
+     }
+ 
+     undoScaleAndFade() {
++        this._syncShelfArtwork();
++    }
++
++    _onDragCancelled() {
++        super._onDragCancelled();
++        this._syncShelfArtwork();
+     }
+ 
+     handleDragOver() {
+@@ -104,7 +148,7 @@
+             natWidth * this.scale_x);
+     }
+ 
+-    showLabel() {
++    showLabel(anchor = this) {
+         if (!this._labelText)
+             return;
+ 
+@@ -112,9 +156,9 @@
+         this.label.opacity = 0;
+         this.label.show();
+ 
+-        const [stageX, stageY] = this.get_transformed_position();
+-
+-        const itemWidth = this.allocation.get_width();
++        const [stageX, stageY] = anchor.get_transformed_position();
++
++        const itemWidth = anchor.width;
+ 
+         const labelWidth = this.label.get_width();
+         const xOffset = Math.floor((itemWidth - labelWidth) / 2);
+@@ -126,10 +170,10 @@
+         let y = stageY - this.label.height - yOffset;
+         const edge = Main.overview.dash._shelfEdge;
+         if (edge === 'top')
+-            y = stageY + this.height + yOffset;
++            y = stageY + anchor.height + yOffset;
+         else if (edge === 'left' || edge === 'right') {
+-            x = edge === 'left' ? stageX + this.width + yOffset : stageX - labelWidth - yOffset;
+-            y = stageY + (this.height - this.label.height) / 2;
++            x = edge === 'left' ? stageX + anchor.width + yOffset : stageX - labelWidth - yOffset;
++            y = stageY + (anchor.height - this.label.height) / 2;
+         }
+         x = Math.clamp(x, 0, global.stage.width - labelWidth);
+         y = Math.clamp(y, 0, global.stage.height - this.label.height);
+@@ -171,7 +215,8 @@
+         if (this.child == null)
+             return;
+ 
+-        const time = animate ? DASH_ANIMATION_TIME : 0;
++        const time = animate && St.Settings.get().enable_animations
++            ? (this._shelfItem ? SHELF_ITEM_ANIMATION_TIME : DASH_ANIMATION_TIME) : 0;
+         this.ease({
+             scale_x: 1,
+             scale_y: 1,
+@@ -194,7 +239,8 @@
+             scale_x: 0,
+             scale_y: 0,
+             opacity: 0,
+-            duration: DASH_ANIMATION_TIME,
++            duration: St.Settings.get().enable_animations
++                ? (this._shelfItem ? SHELF_ITEM_ANIMATION_TIME : DASH_ANIMATION_TIME) : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             onComplete: () => this.destroy(),
+         });
+@@ -225,6 +271,15 @@
+ 
+         this.setChild(this.toggleButton);
+         this.setDragApp(null);
++    }
++
++    showLabel() {
++        super.showLabel(this._shelfRemoveAnchor ?? this);
++    }
++
++    hideLabel() {
++        if (!this._shelfRemoveTarget)
++            super.hideLabel();
+     }
+ 
+     _createIcon(size) {
+@@ -256,7 +311,9 @@
+         if (this._iconActor)
+             this._iconActor.set_hover(canRemove);
+ 
+-        if (canRemove)
++        if (this._shelfRemoveTarget)
++            this.setLabelText(_('Remove from Dash'));
++        else if (canRemove)
+             this.setLabelText(_('Unpin'));
+         else
+             this.setLabelText(_('Show Apps'));
+@@ -406,7 +463,7 @@
+             () => this._queueRedisplay(), this);
+ 
+         Main.overview.connectObject(
+-            'item-drag-begin', () => this._onItemDragBegin(),
++            'item-drag-begin', (_overview, source) => this._onItemDragBegin(source),
+             'item-drag-end', () => this._onItemDragEnd(),
+             'item-drag-cancelled', () => this._onItemDragCancelled(),
+             'window-drag-begin', () => this._onWindowDragBegin(),
+@@ -419,13 +476,26 @@
+         Main.ctrlAltTabManager.addGroup(this, _('Dash'), 'shell-focus-dash-symbolic');
+     }
+ 
+-    _onItemDragBegin() {
++    _onItemDragBegin(source) {
+         this._dragCancelled = false;
+         this._dragMonitor = {
+             dragMotion: this._onItemDragMotion.bind(this),
+         };
+         DND.addDragMonitor(this._dragMonitor);
+ 
++        if (this._shelfEdge && this._showAppsIcon._canRemoveApp(Dash.getAppFromSource(source))) {
++            // Reuse the native unpin target only while a pinned app is being
++            // dragged. Dropping elsewhere or pressing Escape still cancels;
++            // this target changes favorites only, never app/data lifetime.
++            const target = this._showAppsIcon;
++            target._shelfRemoveTarget = true;
++            target._shelfRemoveAnchor = Main.shelf?._dockIsland ?? this;
++            target.label.reactive = true;
++            target.label._delegate = target;
++            target.setDragApp(null);
++            target.showLabel();
++        }
++
+         if (this._box.get_n_children() === 0) {
+             this._emptyDropTarget = new EmptyDropTargetItem();
+             this._box.insert_child_at_index(this._emptyDropTarget, 0);
+@@ -449,6 +519,14 @@
+         this._clearDragPlaceholder();
+         this._clearEmptyDropTarget();
+         this._showAppsIcon.setDragApp(null);
++        if (this._showAppsIcon._shelfRemoveTarget) {
++            const target = this._showAppsIcon;
++            target._shelfRemoveTarget = false;
++            target._shelfRemoveAnchor = null;
++            target.label.reactive = false;
++            target.label._delegate = null;
++            target.hideLabel();
++        }
+         DND.removeDragMonitor(this._dragMonitor);
+     }
+ 
+@@ -457,8 +535,9 @@
+         if (app == null)
+             return DND.DragMotionResult.CONTINUE;
+ 
+-        const showAppsHovered =
+-                this._showAppsIcon.contains(dragEvent.targetActor);
++        const showAppsHovered = this._showAppsIcon.contains(dragEvent.targetActor) ||
++            (this._showAppsIcon._shelfRemoveTarget &&
++                this._showAppsIcon.label === dragEvent.targetActor);
+ 
+         let boxHovered = this._box.contains(dragEvent.targetActor);
+         if (dragEvent.source === Main.xdndHandler) {
+@@ -537,6 +616,7 @@
+ 
+     _createAppItem(app) {
+         const item = new DashItemContainer();
++        item._shelfItem = !!this._shelfEdge;
+         const appIcon = new DashIcon(app);
+ 
+         appIcon.connect('menu-state-changed', (o, opened) => {
+@@ -813,12 +893,15 @@
+                 addedItems[i].pos);
+         }
+ 
++        const animate = this._shownInitially && St.Settings.get().enable_animations &&
++            (this._shelfEdge ? this.mapped :
++                Main.overview.visible && !Main.overview.animationInProgress);
+         for (let i = 0; i < removedActors.length; i++) {
+             const item = removedActors[i];
+ 
+             // Don't animate item removal when the overview is transitioning
+             // or hidden
+-            if (Main.overview.visible && !Main.overview.animationInProgress)
++            if (animate)
+                 item.animateOutAndDestroy();
+             else
+                 item.destroy();
+@@ -828,9 +911,6 @@
+ 
+         // Skip animations on first run when adding the initial set
+         // of items, to avoid all items zooming in at once
+-
+-        const animate = this._shownInitially && Main.overview.visible &&
+-            !Main.overview.animationInProgress;
+ 
+         if (!this._shownInitially)
+             this._shownInitially = true;
+@@ -864,6 +944,8 @@
+             if (this._dragPlaceholder)
+                 pos++;
+             this._box.set_child_at_index(this._separator, pos);
++            if (this._shelfEdge)
++                this._separator.hide();
+         } else if (this._separator) {
+             this._separator.destroy();
+             this._separator = null;
+@@ -924,7 +1006,7 @@
+         if (this._dragPlaceholder) {
+             boxWidth -= extent(this._dragPlaceholder);
+ 
+-            if (source === Main.xdndHandler) {
++            if (!this._shelfEdge && source === Main.xdndHandler) {
+                 // XdndHandler invokes us through _box._delegate, so x is
+                 // local to _box, not to the outer Dash actor.
+                 const boxStageX = this._box.get_transformed_position()[axis];
+@@ -956,7 +1038,24 @@
+         let pos;
+         if (this._emptyDropTarget)
+             pos = 0; // always insert at the start when dash is empty
+-        else if (source === Main.xdndHandler &&
++        else if (this._shelfEdge) {
++            // St gives the pointer in _box coordinates. Compare actual tile
++            // centers, including native spacing and RTL allocation, so the
++            // final half of the last tile offers an after-last insertion.
++            // Keep an existing gap stable while the pointer is inside it.
++            const placeholder = this._dragPlaceholder;
++            if (placeholder) {
++                const start = vertical ? placeholder.y : placeholder.x;
++                if (x >= start && x <= start + extent(placeholder))
++                    return DND.DragMotionResult.MOVE_DROP;
++            }
++            pos = children.filter(child => {
++                if (!child.child?._delegate?.app || child.animatingOut)
++                    return false;
++                const center = (vertical ? child.y : child.x) + extent(child) / 2;
++                return rtl ? x < center : x > center;
++            }).length;
++        } else if (source === Main.xdndHandler &&
+                  rtl)
+             pos = numChildren - Math.max(0, Math.min(numChildren,
+                 Math.round(x * numChildren / boxWidth)));
+@@ -994,6 +1093,7 @@
+             }
+ 
+             this._dragPlaceholder = new DragPlaceholderItem();
++            this._dragPlaceholder._shelfItem = !!this._shelfEdge;
+             this._dragPlaceholder.child.set_width(vertical ? this.iconSize / 2 : this.iconSize);
+             this._dragPlaceholder.child.set_height(vertical ? this.iconSize : this.iconSize / 2);
+             this._box.insert_child_at_index(
+@@ -1067,11 +1167,31 @@
+         this._queueRedisplay();
+     }
+ 
++    // A Scrollable BoxLayout uses its child's minimum along the scroll axis.
++    // The overview may shrink Dash; the Shelf instead scrolls complete tiles.
++    // Preserve a nonzero empty offscreen surface without a CSS minimum that
++    // replaces the populated list's real extent (especially on vertical edges).
++    vfunc_get_preferred_width(forHeight) {
++        const [minimum, natural] = super.vfunc_get_preferred_width(forHeight);
++        return this._shelfEdge ? [Math.max(1, natural), Math.max(1, natural)] : [minimum, natural];
++    }
++
++    vfunc_get_preferred_height(forWidth) {
++        const [minimum, natural] = super.vfunc_get_preferred_height(forWidth);
++        return this._shelfEdge ? [Math.max(1, natural), Math.max(1, natural)] : [minimum, natural];
++    }
++
+     setShelfEdge(edge) {
+         this._shelfEdge = edge;
+         const vertical = edge === 'left' || edge === 'right';
+         const orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._box.layout_manager.orientation = orientation;
++        this._box.layout_manager.spacing = DASH_TILE_GAP * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._separator?.hide();
++        for (const item of this._box.get_children()) {
++            item._shelfItem = true;
++            item.child?._syncShelfArtwork?.();
++        }
+         this._dashContainer.orientation = orientation;
+         this._dashContainer.x_align = vertical ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
+         this._box.y_expand = !vertical;
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -17,6 +17,7 @@
+ import * as PanelMenu from './panelMenu.js';
+ import {QuickSettingsMenu, QuickUtilityRow, SystemIndicator} from './quickSettings.js';
+ import * as Main from './main.js';
++import {DASH_TILE_SIZE} from './shelfMetrics.js';
+ import * as Util from '../misc/util.js';
+ 
+ import * as RemoteAccessStatus from './status/remoteAccess.js';
+@@ -493,7 +494,7 @@
+ 
+         const scale = this._scale();
+         const columns = this._columns(container);
+-        const width = Math.max(36,
++        const width = Math.max(DASH_TILE_SIZE,
+             7 + columns * 13 + (columns - 1) * 3) * scale;
+         return [(columns * 13 + (columns - 1) * 3) * scale, width];
+     }
+@@ -871,14 +872,14 @@
+         this._statusSeam.y_expand = !vertical;
+         this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);
+         this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+-        this._statusClockBox.set_style(`padding: ${vertical ? '0' : '0 3.5px'}; spacing: ${Math.max(0, Math.min(3, 36 - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
++        this._statusClockBox.set_style(`padding: ${vertical ? '0' : '0 3.5px'}; spacing: ${Math.max(0, Math.min(3, DASH_TILE_SIZE - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
+             [this._statusDateLabel, s.get_int('status-date-size')]]) {
+             const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
+             attrs.change(Pango.attr_line_height_new_absolute(size * textScale * Pango.SCALE));
+             label.clutter_text.set_attributes(attrs);
+-            const textWidth = 36 - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
++            const textWidth = DASH_TILE_SIZE - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
+             label.set_width(vertical ? textWidth * textScale : -1);
+             label.clutter_text.single_line_mode = !vertical;
+             label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+@@ -887,9 +888,9 @@
+             label.clutter_text.line_alignment = Pango.Alignment.CENTER;
+         }
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        this._statusControls.set_height(vertical ? -1 : (36 - (scope === 'all' && stroked ? 2 : 0) + (flush ? 2 * padding : 0)) * scale);
++        this._statusControls.set_height(vertical ? -1 : (DASH_TILE_SIZE - (scope === 'all' && stroked ? 2 : 0) + (flush ? 2 * padding : 0)) * scale);
+         const columns = this._indicatorsLayout._columns(this._indicators);
+-        const controlWidth = (7 + columns * 13 + (columns - 1) * 3) * scale;
++        const controlWidth = Math.max(DASH_TILE_SIZE, 7 + columns * 13 + (columns - 1) * 3) * scale;
+         this._statusControls.set_width(vertical ? -1 : controlWidth + (flush ? 2 * padding * scale : 0));
+         this._indicators.get_children().forEach(child => child.set_style(
+             s.get_boolean('status-glyph-tiles') ? `background-color: ${light ? 'rgba(25,27,31,0.05)' : 'rgba(255,255,255,0.08)'}; border-radius: 3px;` : null));
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -45,12 +45,9 @@
+ .luma-shelf-dock-island .luma-shelf-material {
+   padding: 7px; }
+ 
+-/* An empty favorites/running list still needs a nonzero offscreen surface.
+- * Dash owns ALWAYS offscreen redirection; a zero-width viewport trips Cogl.
+- * This does not change the natural size of any populated dock. */
++/* Native Dash measurement preserves its populated scroll extent and supplies
++ * a one-pixel floor for an empty offscreen surface. */
+ .luma-shelf-dock-island #dash {
+-  min-width: 1px;
+-  min-height: 1px;
+   padding: 0; }
+   .luma-shelf-dock-island #dash .dash-background {
+     background-color: transparent;
+@@ -59,7 +56,7 @@
+     padding: 0; }
+   .luma-shelf-dock-island #dash .dash-item-container .show-apps,
+   .luma-shelf-dock-island #dash .dash-item-container .overview-tile {
+-    margin: 0 2.5px;
++    margin: 0;
+     padding: 0; }
+     .luma-shelf-dock-island #dash .dash-item-container .show-apps .overview-icon,
+     .luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon {
+@@ -136,8 +133,10 @@
+ .luma-shelf-live-island .luma-shelf-material {
+   padding: 7px 10px; }
+ 
+-.luma-shelf-dock-scroll:overflowing {
+-  box-shadow: inset 8px 0 8px -8px rgba(231, 233, 232, 0.18); }
++/* Native St.ScrollViewFade masks the viewport; fades consume no layout. */
++.luma-shelf-running-indicator { background-color: #ffffff; }
++.luma-shelf-material-light .luma-shelf-running-indicator,
++.luma-shelf-material-frost .luma-shelf-running-indicator { background-color: #21252b; }
+ 
+ /* Dock: the Apps tile is hidden by the Shelf itself, and its separator goes
+    with it, otherwise the separator and the empty container read as dead space
+@@ -216,7 +215,7 @@
+ }
+ .luma-shelf-vertical .luma-shelf-dock-island #dash .dash-item-container .overview-tile,
+ .luma-shelf-vertical .luma-shelf-dock-island #dash .dash-item-container .show-apps {
+-  margin: 2.5px 0;
++  margin: 0;
+ }
+ .luma-shelf-vertical .luma-shelf-actions-island .luma-shelf-material {
+   padding: 9px 7px;
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -1420,7 +1420,7 @@
+     spacing: 12px; }
+     .luma-search-dialog .luma-search-field:focus {
+       border-color: rgba(128, 168, 210, 0.48);
+-      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7), inset 0 0 0 1px rgba(128, 168, 210, 0.18); }
++      box-shadow: inset 0 0 0 1px rgba(128, 168, 210, 0.18); }
+   .luma-search-dialog .luma-search-entry {
+     width: auto;
+     margin: 0;
+@@ -4094,7 +4094,7 @@
+   padding: 11px 12px;
+   color: #e6eaec;
+   background-color: rgba(38, 42, 48, 0.9);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54);
+   border: 1px solid rgba(255, 255, 255, 0.085);
+   border-radius: 10px;
+   margin: 0;
+@@ -4150,19 +4150,19 @@
+     spacing: 4px; }
+   .notification-banner.luma-notification-urgent {
+     border-color: rgba(105, 115, 125, 0.6);
+-    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
+     border-color: rgba(94, 166, 111, 0.6);
+-    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
+     border-color: rgba(139, 121, 198, 0.6);
+-    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
+     border-color: rgba(100, 141, 183, 0.6);
+-    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
+     border-color: rgba(201, 139, 66, 0.6);
+-    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
+     background-color: #5ea66f; }
+   .notification-banner.luma-notification-tone-calendar .message-source-icon {
+@@ -4213,7 +4213,7 @@
+   color: #eef1f3;
+   background-color: rgba(38, 42, 48, 0.88);
+   border: 1px solid rgba(255, 255, 255, 0.1);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, 0.16);
+   font-family: "Figtree"; }
+   #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
+     icon-size: 14px;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -1441,7 +1441,7 @@
+     spacing: 12px; }
+     .luma-search-dialog .luma-search-field:focus {
+       border-color: rgba(67, 113, 156, 0.45);
+-      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7), inset 0 0 0 1px rgba(67, 113, 156, 0.16); }
++      box-shadow: inset 0 0 0 1px rgba(67, 113, 156, 0.16); }
+   .luma-search-dialog .luma-search-entry {
+     width: auto;
+     margin: 0;
+@@ -4249,7 +4249,7 @@
+   padding: 11px 12px;
+   color: #282f36;
+   background-color: rgba(252, 252, 251, 0.9);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54);
+   border: 1px solid rgba(35, 44, 52, 0.1);
+   border-radius: 10px;
+   margin: 0;
+@@ -4305,19 +4305,19 @@
+     spacing: 4px; }
+   .notification-banner.luma-notification-urgent {
+     border-color: rgba(105, 115, 125, 0.6);
+-    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
+     border-color: rgba(94, 166, 111, 0.6);
+-    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
+     border-color: rgba(139, 121, 198, 0.6);
+-    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
+     border-color: rgba(100, 141, 183, 0.6);
+-    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
+     border-color: rgba(201, 139, 66, 0.6);
+-    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
+     background-color: #5ea66f; }
+   .notification-banner.luma-notification-tone-calendar .message-source-icon {
+@@ -4368,7 +4368,7 @@
+   color: #27313a;
+   background-color: rgba(252, 252, 251, 0.78);
+   border: 1px solid rgba(35, 44, 52, 0.1);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, 0.16);
+   font-family: "Figtree"; }
+   #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
+     icon-size: 14px;
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -1587,7 +1587,7 @@
+     spacing: 12px; }
+     .luma-search-dialog .luma-search-field:focus {
+       border-color: rgba(128, 168, 210, 0.48);
+-      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7), inset 0 0 0 1px rgba(128, 168, 210, 0.18); }
++      box-shadow: inset 0 0 0 1px rgba(128, 168, 210, 0.18); }
+   .luma-search-dialog .luma-search-entry {
+     width: auto;
+     margin: 0;
+@@ -4407,7 +4407,7 @@
+   padding: 11px 12px;
+   color: #e6eaec;
+   background-color: #1a1a1a;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54);
+   border: 1px solid rgba(255, 255, 255, 0.4);
+   border-radius: 10px;
+   margin: 0;
+@@ -4464,7 +4464,7 @@
+     spacing: 4px; }
+   .notification-banner.luma-notification-urgent {
+     border-color: rgba(255, 255, 255, 0.6);
+-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent {
+     border-color: #ffffff;
+     box-shadow: inset 0 0 0 2px #ffffff; }
+@@ -4511,7 +4511,7 @@
+   color: #ffffff;
+   background-color: #1a1a1a;
+   border: 2px solid #ffffff;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, 0.16);
+   font-family: "Figtree"; }
+   #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
+     icon-size: 14px;
+diff --git a/data/theme/luma-notifications/_surface.scss b/data/theme/luma-notifications/_surface.scss
+--- a/data/theme/luma-notifications/_surface.scss
++++ b/data/theme/luma-notifications/_surface.scss
+@@ -1,3 +1,4 @@
++// St supports one box shadow. Borders retain the material and urgency tint.
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner {
+   min-height: 64px;
+@@ -5,9 +6,7 @@
+   padding: 11px 12px;
+   color: $note-ink;
+   background-color: $note-surface;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08),
+-              0 3px 10px rgba(8, 12, 17, .18),
+-              0 20px 44px -20px rgba(8, 12, 17, .54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, .54);
+   border: 1px solid $note-border;
+   border-radius: 10px;
+   margin: 0;
+@@ -71,31 +70,26 @@
+ 
+   &.luma-notification-urgent {
+     border-color: rgba($note-ring-neutral, .60);
+-    box-shadow: 0 0 0 2px rgba($note-ring-neutral, .18),
+-                0 20px 44px -20px rgba(8, 12, 17, .54);
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, .54);
+   }
+   @if not $note-high-contrast {
+     &.luma-notification-urgent.luma-notification-tone-messages,
+     &.luma-notification-urgent.luma-notification-tone-phone {
+       border-color: rgba($note-ring-messages, .60);
+-      box-shadow: 0 0 0 2px rgba($note-ring-messages, .18),
+-                  0 20px 44px -20px rgba(8, 12, 17, .54);
++      box-shadow: 0 20px 44px -20px rgba(8, 12, 17, .54);
+     }
+     &.luma-notification-urgent.luma-notification-tone-calendar {
+       border-color: rgba($note-ring-calendar, .60);
+-      box-shadow: 0 0 0 2px rgba($note-ring-calendar, .18),
+-                  0 20px 44px -20px rgba(8, 12, 17, .54);
++      box-shadow: 0 20px 44px -20px rgba(8, 12, 17, .54);
+     }
+     &.luma-notification-urgent.luma-notification-tone-mail,
+     &.luma-notification-urgent.luma-notification-tone-files {
+       border-color: rgba($note-ring-mail, .60);
+-      box-shadow: 0 0 0 2px rgba($note-ring-mail, .18),
+-                  0 20px 44px -20px rgba(8, 12, 17, .54);
++      box-shadow: 0 20px 44px -20px rgba(8, 12, 17, .54);
+     }
+     &.luma-notification-urgent.luma-notification-tone-depot {
+       border-color: rgba($note-ring-depot, .60);
+-      box-shadow: 0 0 0 2px rgba($note-ring-depot, .18),
+-                  0 20px 44px -20px rgba(8, 12, 17, .54);
++      box-shadow: 0 20px 44px -20px rgba(8, 12, 17, .54);
+     }
+ 
+     &.luma-notification-tone-messages .message-source-icon,
+@@ -159,8 +153,7 @@
+   color: $note-beacon-ink;
+   background-color: $note-beacon-surface;
+   border: if($note-high-contrast, 2px solid #ffffff, 1px solid $note-beacon-border);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10),
+-              0 3px 10px rgba(8, 12, 17, .16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, .16);
+   font-family: "Figtree";
+ 
+   .messages-indicator-mark {
+diff --git a/data/theme/luma-notifications/dark.css b/data/theme/luma-notifications/dark.css
+--- a/data/theme/luma-notifications/dark.css
++++ b/data/theme/luma-notifications/dark.css
+@@ -5,7 +5,7 @@
+   padding: 11px 12px;
+   color: #e6eaec;
+   background-color: rgba(38, 42, 48, 0.9);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54);
+   border: 1px solid rgba(255, 255, 255, 0.085);
+   border-radius: 10px;
+   margin: 0;
+@@ -61,19 +61,19 @@
+     spacing: 4px; }
+   .notification-banner.luma-notification-urgent {
+     border-color: rgba(105, 115, 125, 0.6);
+-    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
+     border-color: rgba(94, 166, 111, 0.6);
+-    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
+     border-color: rgba(139, 121, 198, 0.6);
+-    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
+     border-color: rgba(100, 141, 183, 0.6);
+-    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
+     border-color: rgba(201, 139, 66, 0.6);
+-    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
+     background-color: #5ea66f; }
+   .notification-banner.luma-notification-tone-calendar .message-source-icon {
+@@ -124,7 +124,7 @@
+   color: #eef1f3;
+   background-color: rgba(38, 42, 48, 0.88);
+   border: 1px solid rgba(255, 255, 255, 0.1);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, 0.16);
+   font-family: "Figtree"; }
+   #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
+     icon-size: 14px;
+diff --git a/data/theme/luma-notifications/light.css b/data/theme/luma-notifications/light.css
+--- a/data/theme/luma-notifications/light.css
++++ b/data/theme/luma-notifications/light.css
+@@ -5,7 +5,7 @@
+   padding: 11px 12px;
+   color: #282f36;
+   background-color: rgba(252, 252, 251, 0.9);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54);
+   border: 1px solid rgba(35, 44, 52, 0.1);
+   border-radius: 10px;
+   margin: 0;
+@@ -61,19 +61,19 @@
+     spacing: 4px; }
+   .notification-banner.luma-notification-urgent {
+     border-color: rgba(105, 115, 125, 0.6);
+-    box-shadow: 0 0 0 2px rgba(105, 115, 125, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-messages, .notification-banner.luma-notification-urgent.luma-notification-tone-phone {
+     border-color: rgba(94, 166, 111, 0.6);
+-    box-shadow: 0 0 0 2px rgba(94, 166, 111, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-calendar {
+     border-color: rgba(139, 121, 198, 0.6);
+-    box-shadow: 0 0 0 2px rgba(139, 121, 198, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-mail, .notification-banner.luma-notification-urgent.luma-notification-tone-files {
+     border-color: rgba(100, 141, 183, 0.6);
+-    box-shadow: 0 0 0 2px rgba(100, 141, 183, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent.luma-notification-tone-depot {
+     border-color: rgba(201, 139, 66, 0.6);
+-    box-shadow: 0 0 0 2px rgba(201, 139, 66, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-tone-messages .message-source-icon, .notification-banner.luma-notification-tone-phone .message-source-icon {
+     background-color: #5ea66f; }
+   .notification-banner.luma-notification-tone-calendar .message-source-icon {
+@@ -124,7 +124,7 @@
+   color: #27313a;
+   background-color: rgba(252, 252, 251, 0.78);
+   border: 1px solid rgba(35, 44, 52, 0.1);
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, 0.16);
+   font-family: "Figtree"; }
+   #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
+     icon-size: 14px;
+diff --git a/data/theme/luma-notifications/high-contrast.css b/data/theme/luma-notifications/high-contrast.css
+--- a/data/theme/luma-notifications/high-contrast.css
++++ b/data/theme/luma-notifications/high-contrast.css
+@@ -5,7 +5,7 @@
+   padding: 11px 12px;
+   color: #e6eaec;
+   background-color: #1a1a1a;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 3px 10px rgba(8, 12, 17, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54);
++  box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54);
+   border: 1px solid rgba(255, 255, 255, 0.4);
+   border-radius: 10px;
+   margin: 0;
+@@ -62,7 +62,7 @@
+     spacing: 4px; }
+   .notification-banner.luma-notification-urgent {
+     border-color: rgba(255, 255, 255, 0.6);
+-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
++    box-shadow: 0 20px 44px -20px rgba(8, 12, 17, 0.54); }
+   .notification-banner.luma-notification-urgent {
+     border-color: #ffffff;
+     box-shadow: inset 0 0 0 2px #ffffff; }
+@@ -109,7 +109,7 @@
+   color: #ffffff;
+   background-color: #1a1a1a;
+   border: 2px solid #ffffff;
+-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(8, 12, 17, 0.16);
++  box-shadow: 0 3px 10px rgba(8, 12, 17, 0.16);
+   font-family: "Figtree"; }
+   #panel .panel-button.clock-display .messages-indicator .messages-indicator-mark {
+     icon-size: 14px;

@@ -1,0 +1,141 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 22:33:00 -0500
+Subject: [PATCH] luma: the sticky note stack only with Sticky Notes installed
+
+The sticky note stack (0078, 0079) was built on every desktop session.
+Without Sticky Notes it had nothing to show but its "+" rail, and a click
+there failed with ServiceUnknown. The owner is removing Sticky Notes from
+Luma.
+
+A manager now builds the stack only while Sticky Notes is installed: its
+desktop entry is known to the app system, or the session bus can activate
+org.projectluma.StickyNotes. It checks again on the app system's
+installed-changed and adds or removes the stack live. An absent
+application is logged once as an ordinary state, never as an error.
+---
+ js/ui/lumaStickyDock.js | 73 +++++++++++++++++++++++++++++++++++++++++
+ js/ui/main.js           |  8 ++++-
+ 2 files changed, 80 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/lumaStickyDock.js b/js/ui/lumaStickyDock.js
+index 5d342e8..27df9aa 100644
+--- a/js/ui/lumaStickyDock.js
++++ b/js/ui/lumaStickyDock.js
+@@ -18,6 +18,7 @@ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
+@@ -25,6 +26,7 @@ import * as Main from './main.js';
+ const BUS_NAME = 'org.projectluma.StickyNotes';
+ const OBJECT_PATH = '/org/projectluma/StickyNotes';
+ const SHELL_NAME = 'org.projectluma.Shell.StickyDock';
++const APP_ID = 'org.projectluma.StickyNotes.desktop';
+ 
+ const DockInterface = `
+ <node>
+@@ -277,3 +279,74 @@ class LumaStickyDock extends St.BoxLayout {
+         Main.sessionMode.disconnectObject(this);
+     }
+ });
++
++// The stack exists only while Sticky Notes is installed: its desktop entry is
++// known to the app system, or the session bus can activate its name. Without
++// it there is nothing to draw -- a stack with only "+" whose click fails with
++// ServiceUnknown. Installing or removing the application adds or removes the
++// stack live. Its absence is ordinary, never an error.
++export class StickyDockManager {
++    constructor(onDockChanged = () => {}) {
++        this._onDockChanged = onDockChanged;
++        this._dock = null;
++        this._serial = 0;
++        this._state = null;
++        Shell.AppSystem.get_default().connectObject('installed-changed',
++            () => this.check().catch(logError), this);
++        this.check().catch(logError);
++    }
++
++    get dock() {
++        return this._dock;
++    }
++
++    async _available() {
++        if (Shell.AppSystem.get_default().lookup_app(APP_ID))
++            return 'installed';
++        try {
++            const reply = await Gio.DBus.session.call('org.freedesktop.DBus',
++                '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'ListActivatableNames',
++                null, new GLib.VariantType('(as)'), Gio.DBusCallFlags.NONE, -1, null);
++            const [names] = reply.deepUnpack();
++            if (names.includes(BUS_NAME))
++                return 'activatable';
++        } catch {
++            // No answer from the bus is the same as no application.
++        }
++        return null;
++    }
++
++    async check() {
++        const serial = ++this._serial;
++        const available = await this._available();
++        if (serial !== this._serial || this._destroyed)
++            return;
++        const state = available ? 'present' : 'absent';
++        if (state !== this._state)
++            console.log(`[luma-sticky-dock] Sticky Notes ${available ? `is ${available}: showing` : 'is not installed: no'} note stack`);
++        this._state = state;
++        if (available && !this._dock) {
++            // A stack that cannot be drawn is a missing rail, never a
++            // missing session.
++            try {
++                this._dock = new LumaStickyDock();
++            } catch (e) {
++                logError(e, 'the sticky note stack could not be drawn');
++                return;
++            }
++            this._onDockChanged(this._dock);
++        } else if (!available && this._dock) {
++            const dock = this._dock;
++            this._dock = null;
++            dock.destroy();
++            this._onDockChanged(null);
++        }
++    }
++
++    destroy() {
++        this._destroyed = true;
++        Shell.AppSystem.get_default().disconnectObject(this);
++        this._dock?.destroy();
++        this._dock = null;
++    }
++}
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 43644ac..4c47b4b 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -68,6 +68,7 @@ export let extensionManager = null;
+ export let panel = null;
+ export let shelf = null;
+ export let stickyDock = null;
++export let stickyDockManager = null;
+ export let overview = null;
+ export let lumaSearch = null;
+ export let lumaDisplayArrival = null;
+@@ -352,8 +353,13 @@ async function _initializeUI() {
+         // cannot be drawn is a missing rail, and a throw here would be a
+         // desktop that never appears. Losing the notes is survivable; losing
+         // the session is not.
++        //
++        // Only while Sticky Notes is installed; the manager adds and removes
++        // the stack as the application comes and goes.
+         try {
+-            stickyDock = new LumaStickyDock.LumaStickyDock();
++            stickyDockManager = new LumaStickyDock.StickyDockManager(dock => {
++                stickyDock = dock;
++            });
+         } catch (e) {
+             logError(e, 'the sticky note stack could not be drawn');
+         }

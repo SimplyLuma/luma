@@ -1,0 +1,76 @@
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -130,16 +130,10 @@
+   return NULL;
+ }
+ 
+-/* Whether this device is a phone (LUMA_FORM_FACTOR, else CHASSIS=handset), as the kit decides it.
+- * TODO(kit): use a public luma_ui_mobile_form_factor () once the kit exports it. */
++/* Keep the window and page anatomy aligned with the shared device identity. */
+ static gboolean phone_form_factor (void)
+ {
+-  const char *value = g_getenv ("LUMA_FORM_FACTOR");
+-  g_autofree char *info = NULL;
+-  if (value && *value)
+-    return !g_ascii_strcasecmp (value, "phone") || !g_ascii_strcasecmp (value, "handset") || !g_ascii_strcasecmp (value, "mobile");
+-  if (!g_file_get_contents ("/etc/machine-info", &info, NULL, NULL)) return FALSE;
+-  return strstr (info, "CHASSIS=handset") || strstr (info, "CHASSIS=\"handset\"");
++  return luma_ui_mobile_form_factor ();
+ }
+ 
+ static void top_of_pages (GtkWidget *w)
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -1350,16 +1350,10 @@
+   cairo_fill (cr);
+   cairo_pattern_destroy (gradient);
+ }
+-/* Whether this device is a phone (LUMA_FORM_FACTOR, else CHASSIS=handset), as the kit decides it.
+- * TODO(kit): use a public luma_ui_mobile_form_factor () once the kit exports it. */
++/* Keep the window and page anatomy aligned with the shared device identity. */
+ gboolean cc_luma_view_phone_device (void)
+ {
+-  const char *value = g_getenv ("LUMA_FORM_FACTOR");
+-  g_autofree char *info = NULL;
+-  if (value && *value)
+-    return !g_ascii_strcasecmp (value, "phone") || !g_ascii_strcasecmp (value, "handset") || !g_ascii_strcasecmp (value, "mobile");
+-  if (!g_file_get_contents ("/etc/machine-info", &info, NULL, NULL)) return FALSE;
+-  return strstr (info, "CHASSIS=handset") || strstr (info, "CHASSIS=\"handset\"");
++  return luma_ui_mobile_form_factor ();
+ }
+ 
+ /* v71 phone (Settings audit, 1 Oct): Back and the page are one title island, top left: ‹ (to the
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1724,6 +1724,23 @@
+   g_unsetenv ("LUMA_FORM_FACTOR");
+ }
+ 
++static void handheld_device_identity (void)
++{
++  g_autofree char *saved_factor = g_strdup (g_getenv ("LUMA_FORM_FACTOR"));
++  g_autofree char *saved_class = g_strdup (g_getenv ("LUMA_DEVICE_CLASS"));
++  g_unsetenv ("LUMA_FORM_FACTOR");
++  g_setenv ("LUMA_DEVICE_CLASS", "handheld", TRUE);
++  g_assert_true (cc_luma_view_phone_device ());
++  g_setenv ("LUMA_DEVICE_CLASS", "desktop", TRUE);
++  g_assert_false (cc_luma_view_phone_device ());
++  g_setenv ("LUMA_FORM_FACTOR", "phone", TRUE);
++  g_assert_true (cc_luma_view_phone_device ());
++  if (saved_factor) g_setenv ("LUMA_FORM_FACTOR", saved_factor, TRUE);
++  else g_unsetenv ("LUMA_FORM_FACTOR");
++  if (saved_class) g_setenv ("LUMA_DEVICE_CLASS", saved_class, TRUE);
++  else g_unsetenv ("LUMA_DEVICE_CLASS");
++}
++
+ static void phone_device (void)
+ {
+   g_autoptr (CcLumaFixture) model = load ();
+@@ -2010,6 +2027,7 @@
+   g_test_add_func ("/settings/view/missing-asset", missing_asset);
+   g_test_add_func ("/settings/view/system", system_pages);
+   /* Last: it loads the full style sheets for the rest of the process. */
++  g_test_add_func ("/settings/view/handheld-device-identity", handheld_device_identity);
+   g_test_add_func ("/settings/view/phone-device", phone_device);
+   g_test_add_func ("/settings/view/phone-search-visibility", phone_search_visibility);
+   g_test_add_func ("/settings/view/no-spill", no_spill);

@@ -1,0 +1,52 @@
+From 0f6d9931beefb4dda5592b17b676244fb511b277 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 11:06:12 +0200
+Subject: [PATCH 29/41] MAINTAINERS: add the Qualcomm QSEECOM TEE driver
+
+Also correct the parameter count in the documentation: commands take between
+two and ten parameters, the pairs after the first two being address-patch
+descriptors. Four is the usual form, not the only one.
+
+Assisted-by: Claude:claude-opus-5
+---
+ Documentation/tee/qseecom.rst | 8 +++++---
+ MAINTAINERS                   | 7 +++++++
+ 2 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/Documentation/tee/qseecom.rst b/Documentation/tee/qseecom.rst
+index c21748050..e9655d3fc 100644
+--- a/Documentation/tee/qseecom.rst
++++ b/Documentation/tee/qseecom.rst
+@@ -32,9 +32,11 @@ field must be zero.
+ Invoking a command
+ ==================
+ 
+-Commands take four parameters. The request header and the response share one
+-buffer, the response following the request; the command payload is a separate
+-allocation.
++Commands take an even number of parameters, from two to ten. The first two are
++the request and the response, which share one buffer with the response
++following the request. Each further pair is an address-patch descriptor and the
++buffer it names, up to four of them; the four-parameter form below is the usual
++one.
+ 
+ =====  ==============  ===================================================
+ param  attr            meaning
+diff --git a/MAINTAINERS b/MAINTAINERS
+index c8d4b913f..c0ea8fbb9 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -22080,6 +22080,13 @@ L:	linux-arm-msm@vger.kernel.org
+ S:	Maintained
+ F:	drivers/firmware/qcom/qcom_qseecom.c
+ 
++QUALCOMM QSEECOM TEE DRIVER
++M:	Dawid Wróbel <me@dawidwrobel.com>
++L:	linux-arm-msm@vger.kernel.org
++S:	Maintained
++F:	Documentation/tee/qseecom.rst
++F:	drivers/tee/qseecom/
++
+ QUALCOMM QSEECOM UEFISECAPP DRIVER
+ M:	Maximilian Luz <luzmaximilian@gmail.com>
+ L:	linux-arm-msm@vger.kernel.org

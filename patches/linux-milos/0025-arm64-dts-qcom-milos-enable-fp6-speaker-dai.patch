@@ -1,0 +1,40 @@
+From 7ce7fcda31b8f57f29d2ba9eadb2f2c52c943a64 Mon Sep 17 00:00:00 2001
+From: Project Luma <luma@project-luma.org>
+Date: Wed, 19 Aug 2026 15:00:00 -0500
+Subject: [PATCH] arm64: dts: qcom: milos: enable FP6 speaker DAI
+
+The Fairphone (Gen. 6) has two AW88261 amplifiers on the Senary MI2S
+interface.  Both amplifiers already probe, but the DAI link is commented
+out, leaving the registered sound card with no PCM devices.
+
+Enable the existing link without changing any codec configuration.  The
+top amplifier is also the receiver/earpiece; profile selection remains a
+userspace policy concern.
+
+Signed-off-by: Project Luma <luma@project-luma.org>
+---
+ arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+index d11fed801b63..fd110ec2b179 100644
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -216,7 +216,6 @@ sound {
+ 		pinctrl-names = "default",
+ 				"sleep";
+ 
+-		/*
+ 		i2s-dai-link {
+ 			link-name = "Senary MI2S Playback";
+ 
+@@ -232,7 +231,6 @@ platform {
+ 				sound-dai = <&q6apm>;
+ 			};
+ 		};
+-		*/
+ 	};
+ 
+ 	thermal-zones {
+-- 
+2.53.0

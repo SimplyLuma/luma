@@ -1,0 +1,724 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 22:30:00 -0500
+Subject: [PATCH] luma: notifications live in the shelf
+
+Owner request, 2026-09-18: a notification goes to the far right of the
+shelf and lives there until it is handled. There are no banners at the top
+of the screen any more.
+
+The resting-notification beacon becomes the notifications island, the last
+island of the shelf row, after Quick Options and its clock, which it pushes
+towards the dock. It shows the newest unread notification compactly: the
+application's mark, the title, the first line of the body, and a count
+pill when more than one waits. Clicking the island opens the newest one;
+the count opens the whole stack (the 0116 tray). Hovered or focused, the
+body line gives way to up to two of the notification's actions and a
+dismiss button, in slots that keep the island's width. A drag right of 72
+px, or a fling past 24 px faster than 0.5 px/ms, dismisses the newest; a
+shorter or slower drag springs back. Delete dismisses it from the keyboard.
+Clearing the last one removes the island.
+
+It grows in from the end of the row in 200 ms while the other islands slide
+aside on the same curve, and reverses when it leaves. With reduced motion
+it only fades (150 ms) and nothing slides.
+
+An arriving notification goes straight to the island (it still chimes).
+Urgent notifications and calls keep a card, which now sits above the
+island at the end of the shelf. Lock-screen, full-screen, sharing and
+casting rules are unchanged. With Quick Options hidden the island still
+ends the row. A glyph mark is recognised by its -symbolic name before the
+icon has loaded, so the first notification no longer shows its glyph bare.
+
+The shelf keeps its islands by their ADR-044 ids ('dock', 'live',
+'media', 'notifications', 'quick-options', 'aux'): Shelf.getIsland(id),
+island.islandId, and the actor name lumaShelfIsland-<id>.
+
+A shelf sync asked for from inside a sync (an island leaving the row stops
+its transitions, whose handlers sync again) rebuilt the row while Clutter
+was still walking its children, and the Shell aborted in
+clutter_actor_remove_all_children. A nested request now runs once after the
+running sync, and the row is emptied one island at a time from a copy.
+---
+ data/theme/luma-shelf.css       |  36 ++++++
+ js/ui/lumaNotificationBeacon.js | 202 ++++++++++++++++++++++++++++++--
+ js/ui/mediaSelection.js         |  13 +-
+ js/ui/messageTray.js            |  29 +++++
+ js/ui/shelf.js                  | 201 +++++++++++++++++++++++++++++--
+ 5 files changed, 457 insertions(+), 24 deletions(-)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 3951200..098efc4 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1769,3 +1769,39 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-shelf-material.luma-surface-glass.luma-island-hover { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.07); }
+ .luma-shelf-material.luma-surface-glass.luma-island-press { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.11); }
+ .luma-shelf-material.luma-surface-glass.luma-island-focus { box-shadow: inset 0 0 0 2px #ffffff; }
++
++/* ── Notification island: actions and dismiss on hover ─────────────────── */
++/* The island lives at the end of the shelf row (owner, 2026-09-18). Hovered
++ * or focused it shows the newest notification's actions in place of its body
++ * line and a dismiss button in a slot that is always kept, so it never
++ * changes width under the pointer. The copy is one line of title over one of
++ * body, 200 wide, so a new notification never resizes the row. */
++.luma-shelf-beacon-island .luma-notification-beacon-copy { width: 200px; }
++.luma-shelf-beacon-island .luma-notification-beacon-content { spacing: 8px; }
++.luma-shelf-beacon-island .luma-notification-beacon-actions { spacing: 6px; }
++.luma-shelf-beacon-island .luma-notification-beacon-action {
++  height: 18px; padding: 0 8px; border-radius: 9px;
++  font-size: 11px; font-weight: 700;
++  background-color: rgba(255, 255, 255, 0.10); color: #e7e9e8; }
++.luma-shelf-beacon-island .luma-notification-beacon-action:hover { background-color: rgba(255, 255, 255, 0.16); }
++.luma-shelf-beacon-island .luma-notification-beacon-dismiss {
++  width: 24px; height: 24px; border-radius: 12px; padding: 0;
++  background-color: rgba(255, 255, 255, 0.08); color: #e7e9e8; }
++.luma-shelf-beacon-island .luma-notification-beacon-dismiss:hover { background-color: rgba(255, 255, 255, 0.16); }
++.luma-shelf-beacon-island .luma-notification-beacon-dismiss-icon { icon-size: 12px; }
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-light .luma-notification-beacon-action,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-light .luma-notification-beacon-dismiss {
++  background-color: rgba(25, 27, 31, 0.07); color: #34383d; }
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-light .luma-notification-beacon-action:hover,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-light .luma-notification-beacon-dismiss:hover {
++  background-color: rgba(25, 27, 31, 0.12); }
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-frost .luma-notification-beacon-action,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-frost .luma-notification-beacon-dismiss,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon-action,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon-dismiss {
++  background-color: rgba(255, 255, 255, 0.14); color: #ffffff; }
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-frost .luma-notification-beacon-action:hover,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-frost .luma-notification-beacon-dismiss:hover,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon-action:hover,
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon-dismiss:hover {
++  background-color: rgba(255, 255, 255, 0.22); }
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index 7d442c5..9df4651 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -7,6 +7,7 @@
+ // the same records as the heads-up presenter; there is no second inbox.
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+@@ -44,6 +45,21 @@ const TRAY_RISE = 4;
+ const MARK_SIZE = 36;
+ const MARK_RADIUS = 10;
+ const COUNT_LIMIT = 99;
++// A swipe or fling to the right dismisses the newest notification.
++const SWIPE_START = 8;
++const SWIPE_DISMISS = 72;
++const FLING_MIN = 24;
++const FLING_VELOCITY = 0.5; // logical px per ms
++const SWIPE_OUT_TIME = 160;
++const SWIPE_BACK_TIME = 200;
++const MAX_ISLAND_ACTIONS = 2;
++
++// The first line of a notification's body, as plain text.
++function bodyLine(notification) {
++    const body = notification.body ?? '';
++    const text = notification.useBodyMarkup ? body.replace(/<[^>]*>/g, '') : body;
++    return text.split('\n').map(line => line.trim()).find(Boolean) ?? '';
++}
+ 
+ function restingNotifications() {
+     return Main.messageTray.getSources()
+@@ -147,6 +163,8 @@ class NotificationBeacon extends St.Button {
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+         maskIcon(this._markIcon, MARK_RADIUS / MARK_SIZE);
++        // A file icon's symbolic-ness is known once it has loaded.
++        this._markIcon.connect('notify::is-symbolic', () => this._syncMark());
+         this._mark.add_child(this._markIcon);
+         content.add_child(this._mark);
+ 
+@@ -166,17 +184,62 @@ class NotificationBeacon extends St.Button {
+ 
+         // The kit's count chip: a 24-high capsule on the island's own quiet
+         // fill, ink numerals, centred on the island's line.
+-        this._count = new St.Label({
++        // The count opens the whole stack; the rest of the island opens the
++        // newest notification.
++        this._count = new St.Button({
+             style_class: 'luma-notification-beacon-count',
+             y_align: Clutter.ActorAlign.CENTER,
++            can_focus: true,
++            label: '',
+         });
+-        this._count.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+-        this._count.clutter_text.y_align = Clutter.ActorAlign.CENTER;
++        this._count.connect('clicked', () => getNotificationTray().toggle(this));
+         content.add_child(this._count);
++
++        // Hovered or focused, the island offers the newest notification's
++        // actions in place of its body line, and a dismiss button. Its slot
++        // is always kept, so the island never changes width under the
++        // pointer.
++        this._actions = new St.BoxLayout({
++            style_class: 'luma-notification-beacon-actions',
++            visible: false,
++        });
++        this._copy.add_child(this._actions);
++        this._dismiss = new St.Button({
++            style_class: 'luma-notification-beacon-dismiss',
++            y_align: Clutter.ActorAlign.CENTER,
++            can_focus: true,
++            opacity: 0,
++            accessible_name: _('Dismiss'),
++            child: new St.Icon({icon_name: 'window-close-symbolic', style_class: 'luma-notification-beacon-dismiss-icon'}),
++        });
++        this._dismiss.connect('clicked', () => this._dismissNewest('dismiss button'));
++        content.add_child(this._dismiss);
+         this._content = content;
+ 
+         this._model = new RestingModel(records => this._sync(records));
+-        this.connect('clicked', () => getNotificationTray().toggle(this));
++        this.connect('clicked', () => {
++            if (this._swiped) {
++                this._swiped = false;
++                return;
++            }
++            const newest = this._newest;
++            if (!newest)
++                return;
++            console.log('[luma-notifications] island opened the newest notification');
++            newest.activate();
++        });
++        this.connect('notify::hover', () => this._syncHover());
++        this.connect('key-focus-in', () => this._syncHover());
++        this.connect('key-focus-out', () => this._syncHover());
++        this.connect('captured-event', (_actor, event) => this._onSwipeEvent(event));
++        this.connect('key-press-event', (_actor, event) => {
++            const key = event.get_key_symbol();
++            if (key === Clutter.KEY_Delete || key === Clutter.KEY_BackSpace) {
++                this._dismissNewest('keyboard');
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
+         this.connect('destroy', () => this._model.destroy());
+         this._model.queue();
+     }
+@@ -187,6 +250,7 @@ class NotificationBeacon extends St.Button {
+         this._content.orientation = vertical
+             ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._copy.visible = !vertical;
++        this._lumaColumn = vertical;
+     }
+ 
+     _sync(records) {
+@@ -200,29 +264,147 @@ class NotificationBeacon extends St.Button {
+             const title = newest.title || appName;
+             this.add_style_class_name(`luma-notification-tone-${MessageTray.notificationTone(newest)}`);
+             this._title.text = title;
+-            // The count is said once, by the chip; the subtitle names where
+-            // the newest one came from. "Discord and 13 more" beside a 14 said
+-            // the same thing twice.
+-            this._summary.text = appName;
++            // One line of the body, or where it came from when it has none.
++            this._summary.text = bodyLine(newest) || appName;
+             const icon = source?.app?.get_icon() ?? source?.icon ?? null;
+             this._markIcon.gicon = icon;
+             this._syncMark();
+-            this._count.text = count > COUNT_LIMIT ? `${COUNT_LIMIT}+` : `${count}`;
++            this._count.label = count > COUNT_LIMIT ? `${COUNT_LIMIT}+` : `${count}`;
++            this._count.accessible_name = _('Show all %d notifications').format(count);
+             this._count.visible = count > 1;
+             this.accessible_name = count > 1
+                 ? _('%d notifications waiting. Newest: %s from %s.').format(count, title, appName)
+                 : _('One notification waiting: %s from %s.').format(title, appName);
+         }
++        this._newest = newest;
++        this._syncHover();
+         const visible = count > 0;
+         if (this.visible !== visible)
+             this.visible = visible;
+         getNotificationTray().sync(records);
+     }
+ 
++    _syncHover() {
++        const newest = this._newest;
++        const engaged = this.hover || this.has_key_focus() ||
++            this._dismiss.has_key_focus() || this._count.has_key_focus();
++        this._dismiss.opacity = engaged && newest ? 255 : 0;
++        this._dismiss.reactive = engaged && !!newest;
++        const actions = engaged && !this._lumaColumn && newest
++            ? newest.actions.slice(0, MAX_ISLAND_ACTIONS) : [];
++        if (this._shownActionsFor !== (actions.length ? newest : null)) {
++            this._actions.destroy_all_children();
++            for (const action of actions) {
++                const button = new St.Button({
++                    style_class: 'luma-notification-beacon-action',
++                    label: action.label,
++                    can_focus: true,
++                });
++                button.connect('clicked', () => {
++                    console.log('[luma-notifications] island ran an action');
++                    action.activate();
++                    if (!newest.resident)
++                        newest.destroy(NotificationDestroyedReason.DISMISSED);
++                });
++                this._actions.add_child(button);
++            }
++            this._shownActionsFor = actions.length ? newest : null;
++        }
++        this._actions.visible = actions.length > 0;
++        this._summary.visible = actions.length === 0;
++    }
++
++    _dismissNewest(how) {
++        const newest = this._newest;
++        if (!newest)
++            return;
++        console.log(`[luma-notifications] island dismissed the newest notification (${how})`);
++        newest.destroy(NotificationDestroyedReason.DISMISSED);
++    }
++
++    // The island follows a horizontal drag; let go far enough, or fast
++    // enough, towards the end of the shelf and the newest notification is
++    // dismissed. Anything shorter springs back.
++    _swipeTarget() {
++        let actor = this;
++        while (actor && !actor.has_style_class_name?.('luma-shelf-beacon-island'))
++            actor = actor.get_parent();
++        return actor ?? this;
++    }
++
++    _onSwipeEvent(event) {
++        const type = event.type();
++        const [x] = event.get_coords();
++        const time = event.get_time();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        if (type === Clutter.EventType.BUTTON_PRESS && event.get_button() === Clutter.BUTTON_PRIMARY) {
++            this._swipe = {x0: x, samples: [[x, time]], dragging: false};
++            this._swiped = false;
++            return Clutter.EVENT_PROPAGATE;
++        }
++        const swipe = this._swipe;
++        if (!swipe)
++            return Clutter.EVENT_PROPAGATE;
++        if (type === Clutter.EventType.MOTION) {
++            const dx = (x - swipe.x0) / scale;
++            swipe.samples.push([x, time]);
++            if (swipe.samples.length > 4)
++                swipe.samples.shift();
++            if (!swipe.dragging && Math.abs(dx) > SWIPE_START)
++                swipe.dragging = true;
++            if (swipe.dragging) {
++                const target = this._swipeTarget();
++                target.remove_all_transitions();
++                target.translation_x = Math.max(0, dx) * scale;
++                target.opacity = Math.round(255 * Math.max(0.25, 1 - Math.max(0, dx) / 160));
++            }
++            return Clutter.EVENT_PROPAGATE;
++        }
++        if (type !== Clutter.EventType.BUTTON_RELEASE)
++            return Clutter.EVENT_PROPAGATE;
++        this._swipe = null;
++        if (!swipe.dragging)
++            return Clutter.EVENT_PROPAGATE;
++        this._swiped = true;
++        const dx = (x - swipe.x0) / scale;
++        const [[x1, t1]] = swipe.samples;
++        const velocity = time > t1 ? (x - x1) / scale / (time - t1) : 0;
++        const target = this._swipeTarget();
++        const dismiss = dx > SWIPE_DISMISS || (dx > FLING_MIN && velocity > FLING_VELOCITY);
++        console.log(`[luma-notifications] swipe ${Math.round(dx)} px at ${velocity.toFixed(2)} px/ms: ${dismiss ? 'dismiss' : 'spring back'}`);
++        if (dismiss) {
++            target.ease({
++                translation_x: target.translation_x + 120 * scale,
++                opacity: 0,
++                duration: St.Settings.get().enable_animations ? SWIPE_OUT_TIME : 1,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                onStopped: () => {
++                    this._dismissNewest('swipe');
++                    target.translation_x = 0;
++                    target.opacity = 255;
++                },
++            });
++        } else {
++            target.ease({
++                translation_x: 0,
++                opacity: 255,
++                duration: St.Settings.get().enable_animations ? SWIPE_BACK_TIME : 1,
++                mode: Clutter.AnimationMode.EASE_OUT_BACK,
++            });
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
+     _syncMark() {
+         // Real application artwork is shown whole; a glyph sits on a quiet
+         // tile, as on a notification card.
+-        const glyph = this._markIcon.is_symbolic || !this._markIcon.gicon;
++        // Until the island is first shown its icon has not loaded, so a
++        // themed -symbolic name counts as a glyph as well (the first
++        // notification otherwise showed its glyph bare, as artwork).
++        const gicon = this._markIcon.gicon;
++        const named = gicon instanceof Gio.ThemedIcon &&
++            gicon.get_names().some(name => name.endsWith('-symbolic'));
++        const glyph = this._markIcon.is_symbolic || named || !gicon;
+         if (glyph && !this._markIcon.gicon)
+             this._markIcon.icon_name = 'luma-bell-symbolic';
+         this._mark.remove_style_class_name(glyph ? 'luma-notification-beacon-mark-art' : 'luma-notification-beacon-mark-glyph');
+diff --git a/js/ui/mediaSelection.js b/js/ui/mediaSelection.js
+index 046d9e5..af4acf3 100644
+--- a/js/ui/mediaSelection.js
++++ b/js/ui/mediaSelection.js
+@@ -56,6 +56,9 @@ export function shelfGaps(children, media, status, gap, spare = 0, live = null,
+     // clock the moment the player closed.
+     const gaps = children.slice(0, -1);
+     const statusIndex = children.indexOf(status);
++    // The notification island sits after the status cluster, at the very end
++    // of the shelf, one padding from it.
++    const beaconAfter = !!beacon && statusIndex >= 0 && children[statusIndex + 1] === beacon;
+     const pinned = new Set();
+     for (let index = statusIndex - 1;
+         index >= 0 && (children[index] === media || (live && children[index] === live) ||
+@@ -65,8 +68,10 @@ export function shelfGaps(children, media, status, gap, spare = 0, live = null,
+     // Whatever else sits before the cluster still hugs it -- but on a shelf
+     // holding only the dock and the clock that single gap is what carries the
+     // clock to the right edge, so it keeps the slack instead of being pinned.
+-    if (!pinned.size && statusIndex > 0 && gaps.length > 1)
++    if (!pinned.size && statusIndex > 0 && gaps.length - (beaconAfter ? 1 : 0) > 1)
+         pinned.add(statusIndex - 1);
++    if (beaconAfter)
++        pinned.add(statusIndex);
+     const flexible = gaps.length - pinned.size;
+     return gaps.map((_child, index) => pinned.has(index)
+         ? gap : gap + (flexible ? spare / flexible : 0));
+@@ -75,7 +80,9 @@ export function shelfGaps(children, media, status, gap, spare = 0, live = null,
+ // Whether every island on the shelf belongs with the status cluster, in which
+ // case nothing takes the slack and the whole group is anchored at the end.
+ export function anchoredToStatus(children, media, status, live = null, beacon = null) {
+-    return children.length > 1 && children[children.length - 1] === status &&
+-        children.slice(0, -1).every(child => child === media || (live && child === live) ||
++    const last = beacon && children[children.length - 1] === beacon
++        ? children.length - 2 : children.length - 1;
++    return children.length > 1 && last >= 0 && children[last] === status &&
++        children.slice(0, last).every(child => child === media || (live && child === live) ||
+             (beacon && child === beacon));
+ }
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index 064b019..52d85b5 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -25,6 +25,18 @@ const IDLE_RETURN_TIMEOUT = 2000;
+ 
+ const MAX_NOTIFICATIONS_IN_QUEUE = 20;
+ const MAX_VISIBLE_NOTIFICATIONS = 3;
++// Notifications live in the Shelf (owner, 2026-09-18): an arriving
++// notification goes straight to the notification island at the end of the
++// shelf row, which stays until it is handled. Only urgent notifications and
++// feedback (calls among them) still show a card, and that card sits above
++// the island, never at the top of the screen.
++export const NOTIFICATIONS_LIVE_IN_SHELF = true;
++
++// Only while there is a shelf on the stage to hold them: a session without
++// one (the greeter, a Shelf that failed to build) keeps its cards.
++function shelfHoldsNotifications() {
++    return NOTIFICATIONS_LIVE_IN_SHELF && !!Main.shelf?._beaconIsland && !!Main.shelf.get_stage();
++}
+ const MAX_NOTIFICATIONS_PER_SOURCE = 10;
+ 
+ // Desktop arrival geometry (logical px): clamp(268px, 26vw, 352px) wide,
+@@ -1002,6 +1014,10 @@ export const MessageTray = GObject.registerClass({
+     }
+ 
+     _corner() {
++        // The few cards still shown (urgent ones, calls) sit above the
++        // notification island at the end of the shelf.
++        if (shelfHoldsNotifications())
++            return {bottom: true, right: true, center: false};
+         // Top centre is where a banner is noticed without covering the Shelf
+         // or the corner the pointer lives in; a corner is still a choice.
+         const corner = this._shellSettings.get_string('notification-corner');
+@@ -1451,6 +1467,19 @@ export const MessageTray = GObject.registerClass({
+                         return false;
+                     });
+                 }
++                if (shelfHoldsNotifications()) {
++                    // Straight to the island: it chimes as a card would have,
++                    // and waits there until it is acted on or dismissed.
++                    this._notificationQueue = this._notificationQueue.filter(n => {
++                        if (this._isExempt(n) || n.acknowledged)
++                            return true;
++                        if (!n.standing)
++                            n.playSound();
++                        n.lifecycleState = NotificationLifecycleState.WAITING;
++                        changed = true;
++                        return false;
++                    });
++                }
+                 while (this._cards.length < MAX_VISIBLE_NOTIFICATIONS &&
+                        this._notificationQueue.length > 0) {
+                     const [notification] = this._notificationQueue.splice(0, 1);
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 5ed08c9..3ff074b 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -101,6 +101,12 @@ export function dashCornerRadii(edge, protrude, touchesStart, touchesEnd) {
+     return radius;
+ }
+ 
++// How long the notification island takes to grow in or leave, and the other
++// islands to move aside.
++const BEACON_MOTION_TIME = 200;
++// With reduced motion the island only fades in and out.
++const BEACON_FADE_TIME = 150;
++
+ const ShelfGroupLayout = GObject.registerClass(
+ class ShelfGroupLayout extends Clutter.LayoutManager {
+     _measure(container) {
+@@ -555,18 +561,25 @@ class Shelf extends St.Widget {
+         this._mediaIsland.connectObject('notify::width', () => this._queueDockWidth(),
+             'notify::height', () => this._queueDockWidth(), this);
+ 
+-        // Waiting notifications: the beacon is an island of its own, beside
+-        // the status island, shown only while something waits.
++        // Notifications live in the Shelf (owner, 2026-09-18): the
++        // notifications island is the last island of the row, shown while
++        // anything is unread, and there are no banners at the top.
+         this._beacon = new NotificationBeacon();
+         this._beaconIsland = new ShelfIsland('luma-shelf-beacon-island',
+             new St.Bin({child: this._beacon}));
+         this._beaconIsland.visible = false;
+         this._group._beaconIsland = this._beaconIsland;
+         this._beaconIsland.setBody(this._beacon);
+-        this._beacon.connectObject('notify::visible', () => {
+-            this._beaconIsland.visible = this._beacon.visible;
+-            this._sync();
+-        }, 'notify::width', () => this._queueDockWidth(), this);
++        this._beacon.connectObject('notify::visible', () => this._syncBeaconIsland(),
++            'notify::width', () => this._queueDockWidth(), this);
++
++        // The islands the shelf manages, by their ADR-044 ids. The live
++        // island joins when it is first built.
++        this._islands = new Map();
++        for (const [id, island] of [['dock', this._dockIsland], ['media', this._mediaIsland],
++            ['notifications', this._beaconIsland], ['quick-options', this._actionsIsland],
++            ['aux', this._auxIsland]])
++            this._registerIsland(id, island);
+ 
+         // Applications and extensions put status icons in the top panel: tray
+         // icons, hardware monitors, the Save button of a layout being edited.
+@@ -595,6 +608,8 @@ class Shelf extends St.Widget {
+             // insets among them, before the shelf; only destroy what is left.
+             for (const actor of [...(this._liveEdgeInsets ?? [])]) actor.destroy();
+             global.display.set_work_area_inset?.(0);
++            if (this._syncAgainId) GLib.source_remove(this._syncAgainId);
++            this._syncAgainId = 0;
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+             for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland])
+@@ -818,6 +833,7 @@ class Shelf extends St.Widget {
+                 // The layout packs the live island with the clock, as it does
+                 // the media island, so it needs to know which actor it is.
+                 this._group._liveIsland = this._liveIsland;
++                this._registerIsland('live', this._liveIsland);
+                 liveIndicator.connectObject('notify::width', () => this._queueDockWidth(),
+                     'notify::height', () => this._queueDockWidth(), this);
+                 liveIndicator.connectObject('notify::visible', () => {
+@@ -854,6 +870,137 @@ class Shelf extends St.Widget {
+         }
+     }
+ 
++    // ADR-044: every island the shelf manages has an id ('dock', 'live',
++    // 'media', 'notifications', 'quick-options', 'aux') and a matching actor
++    // name, lumaShelfIsland-<id>.
++    _registerIsland(id, island) {
++        island.islandId = id;
++        island.name = `lumaShelfIsland-${id}`;
++        this._islands.set(id, island);
++    }
++
++    getIsland(id) {
++        return this._islands?.get(id) ?? null;
++    }
++
++    get islandIds() {
++        return [...(this._islands?.keys() ?? [])];
++    }
++
++    // The notification island grows in from the end of the shelf while the
++    // other islands slide aside, and leaves the same way (about 200 ms).
++    // Reduced motion: it only fades, and nothing slides.
++    _syncBeaconIsland() {
++        const island = this._beaconIsland;
++        const show = this._beacon.visible;
++        if (show === (island.visible && !island._lumaLeaving))
++            return;
++        const animate = St.Settings.get().enable_animations;
++        // The island grows from nothing at the shelf end on the same curve the
++        // others move aside on, so its edge follows theirs and never overlaps.
++        // With reduced motion nothing moves or grows: it fades, and the fade
++        // runs even though other animations are off.
++        const time = animate ? BEACON_MOTION_TIME : 0;
++        const fade = {duration: animate ? BEACON_MOTION_TIME : BEACON_FADE_TIME, animationRequired: true};
++        island.remove_all_transitions();
++        if (this._beaconGrowId) {
++            island.disconnect(this._beaconGrowId);
++            this._beaconGrowId = 0;
++        }
++        island.set_pivot_point(this._vertical ? 0.5 : 1, this._vertical ? 1 : 0.5);
++        const collapsed = {
++            scale_x: this._vertical || !animate ? 1 : 0.01,
++            scale_y: this._vertical && animate ? 0.01 : 1,
++        };
++        if (show) {
++            island._lumaLeaving = false;
++            this._easeIslandsAside(time);
++            island.visible = true;
++            this._sync();
++            island.set({opacity: 0, ...collapsed});
++            // Start growing in the frame the row is laid out again, the same
++            // frame the other islands start moving aside.
++            const grow = () => {
++                if (this._beaconGrowId)
++                    island.disconnect(this._beaconGrowId);
++                this._beaconGrowId = 0;
++                if (island._lumaLeaving || island.opacity > 0)
++                    return;
++                island.ease({
++                    opacity: 255, scale_x: 1, scale_y: 1,
++                    ...fade,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                });
++            };
++            this._beaconGrowId = island.connect('notify::allocation', grow);
++            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
++                if (this._beaconGrowId)
++                    grow();
++                return GLib.SOURCE_REMOVE;
++            });
++            console.log(`[luma-shelf] notification island arrived (${animate ? 'grow' : 'fade'})`);
++            return;
++        }
++        island._lumaLeaving = true;
++        island.ease({
++            opacity: 0,
++            ...collapsed,
++            ...fade,
++            mode: Clutter.AnimationMode.EASE_IN_QUAD,
++            onStopped: () => {
++                if (!island._lumaLeaving)
++                    return;
++                island._lumaLeaving = false;
++                this._easeIslandsAside(time);
++                island.visible = false;
++                island.set({opacity: 255, scale_x: 1, scale_y: 1});
++                this._sync();
++                console.log('[luma-shelf] notification island left');
++            },
++        });
++    }
++
++    // Every island that moves because one arrived or left glides from where
++    // it was: its old position is kept as a translation once the row has been
++    // laid out again, and eased away. (The row re-adds its islands on every
++    // sync, so an implicit allocation transition never runs.)
++    _easeIslandsAside(time) {
++        if (!time)
++            return;
++        const before = new Map(this._group.get_children()
++            .filter(actor => actor.visible && actor !== this._beaconIsland && actor.get_stage())
++            .map(actor => [actor, actor.get_transformed_position()]));
++        for (const [actor, [x0, y0]] of before) {
++            let id = 0;
++            const done = () => {
++                if (id)
++                    actor.disconnect(id);
++                id = 0;
++            };
++            id = actor.connect('notify::allocation', () => {
++                done();
++                const [x1, y1] = actor.get_transformed_position();
++                const dx = x0 - (x1 - actor.translation_x);
++                const dy = y0 - (y1 - actor.translation_y);
++                if (Math.abs(dx) < 1 && Math.abs(dy) < 1)
++                    return;
++                actor.remove_transition('translation-x');
++                actor.remove_transition('translation-y');
++                actor.translation_x = dx;
++                actor.translation_y = dy;
++                actor.ease({
++                    translation_x: 0, translation_y: 0,
++                    duration: time,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                });
++            });
++            GLib.timeout_add(GLib.PRIORITY_DEFAULT, time + 300, () => {
++                done();
++                return GLib.SOURCE_REMOVE;
++            });
++        }
++    }
++
+     _restorePanelActors() {
+         const indicators = Main.panel.statusArea;
+         const quick = indicators.quickSettings;
+@@ -869,7 +1016,35 @@ class Shelf extends St.Widget {
+         Main.layoutManager.panelBox.show();
+     }
+ 
++    // A sync can be asked for from inside a sync: taking an island off the
++    // row stops its transitions, a Well glyph is re-adopted, and their
++    // handlers sync again. That nested sync rebuilt the row while Clutter
++    // was still walking its children, and the Shell aborted in
++    // clutter_actor_remove_all_children. A nested request now waits for the
++    // running sync to finish and then runs once, on the next idle.
+     _sync() {
++        if (this._syncing) {
++            this._syncAgain = true;
++            return;
++        }
++        this._syncing = true;
++        try {
++            this._syncNow();
++        } finally {
++            this._syncing = false;
++        }
++        if (!this._syncAgain || this._syncAgainId)
++            return;
++        this._syncAgain = false;
++        this._syncAgainId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++            this._syncAgainId = 0;
++            this._sync();
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(this._syncAgainId, '[luma-shelf] sync again');
++    }
++
++    _syncNow() {
+         this._previousVisualPosition = [this.x + this._surface.translation_x,
+             this.y + this._surface.translation_y];
+         this._surface.remove_all_transitions();
+@@ -930,7 +1105,10 @@ class Shelf extends St.Widget {
+         const castShadows = !this._protrude && (!this._span || this._floatEnds);
+         this._surface.setSurfaceVisible(surfaceMode === 'connected', castShadows);
+ 
+-        this._group.remove_all_children();
++        // One at a time from a copy: a handler that runs as an island leaves
++        // the row must not invalidate the walk over it.
++        for (const island of this._group.get_children())
++            this._group.remove_child(island);
+         if (dockVisible)
+             this._group.add_child(this._dockIsland);
+         if (actionsVisible)
+@@ -943,10 +1121,11 @@ class Shelf extends St.Widget {
+             const index = this._group.get_children().indexOf(this._actionsIsland);
+             this._group.insert_child_at_index(this._mediaIsland, index);
+         }
+-        if (actionsVisible && this._beaconIsland.visible) {
+-            const index = this._group.get_children().indexOf(this._actionsIsland);
+-            this._group.insert_child_at_index(this._beaconIsland, index);
+-        }
++        // The notification island is the last island of the row: it pushes
++        // Quick Options and its clock towards the dock (owner, 2026-09-18).
++        // With Quick Options hidden it still ends the row.
++        if (this._beaconIsland.visible)
++            this._group.add_child(this._beaconIsland);
+         this._beacon.setVertical(this._vertical);
+         this._media.setVertical(this._vertical);
+         const visibleIslands = this._group.get_children().filter(actor => actor.visible);

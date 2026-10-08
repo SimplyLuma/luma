@@ -1,0 +1,42 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Ari's thread. Colours come only from Luma's tokens. */
+.ari-header { padding: 14px 16px 12px 20px; border-bottom: 1px solid @luma_line; }
+.ari-user {
+  background: @luma_ink; color: @luma_content;
+  border-radius: 14px; padding: 10px 16px; margin-left: 64px;
+}
+.ari-reply {
+  border: 1px solid @luma_line; border-radius: 12px;
+  padding: 12px 16px; margin-right: 32px;
+}
+.ari-step {
+  border: 1px solid @luma_line; border-radius: 12px;
+  padding: 10px 12px 10px 10px; margin-right: 32px;
+}
+.ari-step-tile { min-width: 34px; min-height: 34px; border-radius: 9px; color: @luma_content; }
+.ari-step-tile.blue { background: @luma_blue; }
+.ari-step-tile.green { background: @luma_green; }
+.ari-step-tile.violet { background: @luma_violet; }
+.ari-step-tile.amber { background: @luma_amber; }
+.ari-step-tile.slate { background: @luma_muted; }
+.ari-pill { border-radius: 999px; padding: 4px 14px; background: @luma_fill; }
+.ari-pill:hover { background: @luma_hover; }
+.ari-working { padding: 4px 4px 4px 8px; }
+.ari-sources { margin-right: 32px; }
+.ari-sources button { padding: 0 4px; min-height: 0; }
+.ari-consent { border: 1px solid @luma_line; border-radius: 12px; padding: 14px 16px; margin-right: 32px; }
+.ari-composer { padding: 12px 16px 16px 16px; border-top: 1px solid @luma_line; }
+.ari-model { border-radius: 14px; padding: 4px 10px; background: @luma_fill; }
+.ari-entry { min-height: 42px; border-radius: 14px; padding: 0 14px; }
+.ari-badge { border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; background: @luma_fill; }
+.ari-badge.private, .ari-badge-private { color: @luma_green; }
+.ari-badge.moderate { color: @luma_muted; }
+.ari-badge.high { color: @luma_amber; }
+.ari-settings { padding: 18px 20px 24px 20px; }
+.ari-settings-gap { margin-top: 14px; }
+.ari-settings .ari-step-tile { min-width: 30px; min-height: 30px; border-radius: 8px; }
+/* Mirrors the AppKit rule until the next platform build carries it. */
+.luma-navigation-row .luma-navigation-subtitle { color: @luma_muted; font-size: 11px; font-variant-numeric: tabular-nums; }
+.luma-navigation-list .luma-navigation-row { padding-top: 4px; padding-bottom: 4px; }
+.luma-navigation-list .luma-navigation-row:selected { background: @luma_selected; border-radius: 8px; }
+.ari-approval { border-color: @luma_accent; }

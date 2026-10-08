@@ -1,0 +1,3 @@
+#!/usr/bin/python3
+from prairie_apps.photos import main
+raise SystemExit(main())

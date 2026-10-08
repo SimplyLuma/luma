@@ -1,0 +1,298 @@
+From 965e661560e3e03148e6e34bb5e870d816309740 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 18:21:38 +0200
+Subject: [PATCH 38/41] tee: qseecom: reference-count applications instead of
+ giving them an owner
+
+A load session owned the application it started, so only closing that session
+unloaded it. Losing the fd any other way -- a crash, a kill, a process that
+simply exits -- left the application resident in TZ, where it cannot be loaded
+again and nothing short of a reboot clears it. Ownership also forced a process
+to stay alive holding an fd for no reason other than to keep the application
+loaded, which is the wrong shape for a daemon that may be socket-activated or
+idle out.
+
+amdtee already answers this: it has no owner and no explicit unload. A TA is
+reference-counted by handle, every session holds a reference, and the last one
+out unloads it (handle_unload_ta() returns -EBUSY while the count is non-zero).
+Do the same here. The registry entry gains a user count, resolving an
+application by name takes a reference, and every path that destroys a session
+gives one back -- including the teardown that runs when a context dies without
+closing anything, which is what makes this crash-safe rather than merely tidy.
+
+Applications the boot chain loaded keep generation 0 and are never unloaded;
+this driver does not own them.
+
+Found by running it: a harness that went away without closing its session left
+the application resident, and the next load failed with -EINVAL from TZ.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 170 +++++++++++++++++++++----------------
+ 1 file changed, 98 insertions(+), 72 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 154deee32..402ba887e 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -201,6 +201,8 @@ struct qseecom_tee_session {
+  * @app_id: What TZ called it.
+  * @gen:    Generation, distinguishing this entry from a later one that TZ
+  *          happened to give the same @app_id.
++ * @users:  Sessions referring to this application. The last one out unloads
++ *          it; no session owns it.
+  * @name:   What it is called.
+  *
+  * Kept because TZ will not tell us again: qcom_scm_qseecom_app_get_id()
+@@ -212,6 +214,7 @@ struct qseecom_tee_app {
+ 	struct list_head node;
+ 	u32 app_id;
+ 	u32 gen;
++	unsigned int users;
+ 	char name[QSEECOM_TEE_MAX_APP_NAME];
+ };
+ 
+@@ -322,6 +325,69 @@ static struct tee_shm_pool *qseecom_tee_pool_new(void)
+ 	return pool;
+ }
+ 
++/*
++ * Resolve an application by name and take a reference to it.
++ *
++ * An application is not owned by whoever loaded it. It stays loaded for as long
++ * as something refers to it and is unloaded when the last reference goes, which
++ * is the shape amdtee settled on and the only one that survives a client dying
++ * without closing anything: a reference tied to a session is dropped by the
++ * teardown path no matter how the context goes away, whereas an owner that has
++ * to close explicitly leaves the application stranded when it crashes.
++ */
++static u32 qseecom_tee_app_get(struct qseecom_tee *qtee, const char *name,
++			       u32 *gen)
++{
++	struct qseecom_tee_app *app;
++	u32 app_id = 0;
++
++	guard(mutex)(&qtee->apps_lock);
++
++	list_for_each_entry(app, &qtee->apps, node) {
++		if (!strcmp(app->name, name)) {
++			app_id = app->app_id;
++			*gen = app->gen;
++			app->users++;
++			break;
++		}
++	}
++
++	return app_id;
++}
++
++/*
++ * Drop a reference, unloading the application when the last one goes.
++ *
++ * gen 0 means the boot chain loaded it: this driver has no registry entry for
++ * it, does not own it, and must not unload it.
++ */
++static void qseecom_tee_app_put(struct qseecom_tee *qtee, u32 app_id, u32 gen)
++{
++	struct qseecom_tee_app *app;
++
++	if (!gen)
++		return;
++
++	guard(mutex)(&qtee->apps_lock);
++
++	list_for_each_entry(app, &qtee->apps, node) {
++		if (app->app_id != app_id || app->gen != gen)
++			continue;
++
++		if (--app->users)
++			return;
++
++		if (qcom_scm_qseecom_app_shutdown(app_id))
++			dev_err(qtee->dev,
++				"app %u could not be unloaded and is stuck until reboot\n",
++				app_id);
++
++		list_del(&app->node);
++		kfree(app);
++		return;
++	}
++}
++
+ /* Context handling. */
+ 
+ static int qseecom_tee_open(struct tee_context *ctx)
+@@ -350,13 +416,16 @@ static void qseecom_tee_release(struct tee_context *ctx)
+ 		return;
+ 
+ 	/*
+-	 * Sessions hold no resource in TZ of their own: the application stays
+-	 * loaded, because other contexts -- and in-kernel clients such as
+-	 * uefisecapp -- may be using it. Dropping the reference is all there
+-	 * is to do.
++	 * Every session holds a reference to the application it named, so this
++	 * is where a client that died without closing anything gives them back.
++	 * The application goes when the last reference does; it is not unloaded
++	 * here just because this context is finished with it, since other
++	 * contexts -- and in-kernel clients such as uefisecapp -- may still be
++	 * using it.
+ 	 */
+ 	list_for_each_entry_safe(sess, tmp, &ctxdata->sessions, node) {
+ 		list_del(&sess->node);
++		qseecom_tee_app_put(ctxdata->qtee, sess->app_id, sess->app_gen);
+ 		kfree(sess);
+ 	}
+ 
+@@ -410,25 +479,6 @@ static int qseecom_tee_session_add(struct qseecom_tee_context *ctxdata,
+ }
+ 
+ /* Applications this driver loaded, since TZ will not look them up by name. */
+-static u32 qseecom_tee_app_find(struct qseecom_tee *qtee, const char *name,
+-				u32 *gen)
+-{
+-	struct qseecom_tee_app *app;
+-	u32 app_id = 0;
+-
+-	guard(mutex)(&qtee->apps_lock);
+-
+-	list_for_each_entry(app, &qtee->apps, node) {
+-		if (!strcmp(app->name, name)) {
+-			app_id = app->app_id;
+-			*gen = app->gen;
+-			break;
+-		}
+-	}
+-
+-	return app_id;
+-}
+-
+ /*
+  * Is the application a session was opened against still the same one?
+  *
+@@ -456,28 +506,6 @@ static bool qseecom_tee_app_current(struct qseecom_tee *qtee, u32 app_id,
+ 	return false;
+ }
+ 
+-/*
+- * Drop an application from the registry once TZ has unloaded it.
+- *
+- * Matched on the generation as well as the id, so that unloading cannot remove
+- * an entry that merely happens to have been given the same id since.
+- */
+-static void qseecom_tee_app_forget(struct qseecom_tee *qtee, u32 app_id,
+-				   u32 gen)
+-{
+-	struct qseecom_tee_app *app;
+-
+-	guard(mutex)(&qtee->apps_lock);
+-
+-	list_for_each_entry(app, &qtee->apps, node) {
+-		if (app->app_id == app_id && app->gen == gen) {
+-			list_del(&app->node);
+-			kfree(app);
+-			return;
+-		}
+-	}
+-}
+-
+ static int qseecom_tee_app_remember(struct qseecom_tee *qtee, const char *name,
+ 				    u32 app_id, u32 *gen)
+ {
+@@ -488,6 +516,7 @@ static int qseecom_tee_app_remember(struct qseecom_tee *qtee, const char *name,
+ 		return -ENOMEM;
+ 
+ 	app->app_id = app_id;
++	app->users = 1;
+ 	strscpy(app->name, name, sizeof(app->name));
+ 
+ 	mutex_lock(&qtee->apps_lock);
+@@ -613,7 +642,7 @@ static int qseecom_tee_open_session(struct tee_context *ctx,
+ 	 * chain loaded and answers -ENOENT for ours even while they are
+ 	 * running. Fall back to asking TZ for the boot-loaded ones.
+ 	 */
+-	app_id = qseecom_tee_app_find(ctxdata->qtee, app_name, &app_gen);
++	app_id = qseecom_tee_app_get(ctxdata->qtee, app_name, &app_gen);
+ 	if (!app_id) {
+ 		ret = qcom_scm_qseecom_app_get_id(app_name, &app_id);
+ 		if (ret) {
+@@ -649,6 +678,7 @@ static int qseecom_tee_close_session(struct tee_context *ctx, u32 session)
+ 	if (!sess)
+ 		return -EINVAL;
+ 
++	qseecom_tee_app_put(ctxdata->qtee, sess->app_id, sess->app_gen);
+ 	kfree(sess);
+ 
+ 	return 0;
+@@ -1506,11 +1536,13 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 
+ 	/*
+ 	 * From here the application is live in TZ. Anything that fails now has
+-	 * to put it back, because nothing else can: without a session there is
+-	 * no close to unload it on, and without a registry entry the name
+-	 * cannot even be resolved again. TZ would refuse to load it a second
+-	 * time and only a reboot would clear it -- exactly the trap unloading
+-	 * on session close exists to avoid.
++	 * to put it back, because nothing else can: without a registry entry
++	 * the name cannot even be resolved again, and TZ would refuse to load
++	 * it a second time, leaving it stuck until a reboot.
++	 *
++	 * The registry entry is created holding one reference, which the
++	 * session below takes over. If no session is created, that reference is
++	 * what has to be given back.
+ 	 */
+ 	ret = qseecom_tee_app_remember(qtee, app_name, app_id, &app_gen);
+ 	if (ret)
+@@ -1519,8 +1551,8 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 	ret = qseecom_tee_session_add(ctxdata, app_id, app_gen, NULL,
+ 				      &arg->session);
+ 	if (ret) {
+-		qseecom_tee_app_forget(qtee, app_id, app_gen);
+-		goto err_shutdown;
++		qseecom_tee_app_put(qtee, app_id, app_gen);
++		return ret;
+ 	}
+ 
+ 	dev_info(qtee->dev, "loaded '%s' as app %u\n", app_name, app_id);
+@@ -1686,29 +1718,23 @@ static int qseecom_tee_supp_close_session(struct tee_context *ctx, u32 session)
+ 	kfree(sess);
+ 
+ 	/*
+-	 * A load session on this device owns the application it started, so
+-	 * closing it unloads. Without that, TZ refuses a second load of the
+-	 * same application and only a reboot clears it -- which matters
+-	 * because an application asks for its stored state during a first
+-	 * initialisation and never again, so re-initialising it is otherwise
+-	 * impossible.
++	 * A load session holds a reference like any other, so closing it gives
++	 * that reference back rather than unloading outright. The application
++	 * goes when the last reference does -- which may be this one, and may
++	 * not: a client can be using it on the other device.
+ 	 *
+-	 * Sessions opened on the client device only reference an application,
+-	 * they do not own it -- but they do not survive it either. Each records
+-	 * the generation of the registry entry it resolved, and an invoke
++	 * Nothing owns an application, deliberately. TZ refuses a second load
++	 * of one already loaded and only a reboot clears it, so an owner that
++	 * has to close explicitly strands the application every time it
++	 * crashes. A reference dropped by the teardown path cannot be skipped.
++	 *
++	 * Sessions do not survive the application either. Each records the
++	 * generation of the registry entry it resolved, and an invoke
+ 	 * revalidates that, so a session naming an application that has since
+-	 * been unloaded fails rather than addressing whatever now holds the
+-	 * reused id.
++	 * gone fails rather than addressing whatever now holds the reused id.
+ 	 */
+ 	if (!listener) {
+-		if (app_id) {
+-			ret = qcom_scm_qseecom_app_shutdown(app_id);
+-			if (ret)
+-				dev_warn(ctxdata->qtee->dev,
+-					 "unloading app %u: %d\n", app_id, ret);
+-			else
+-				qseecom_tee_app_forget(ctxdata->qtee, app_id, app_gen);
+-		}
++		qseecom_tee_app_put(ctxdata->qtee, app_id, app_gen);
+ 		return 0;
+ 	}
+ 

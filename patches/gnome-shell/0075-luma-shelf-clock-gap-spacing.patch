@@ -1,0 +1,47 @@
+From 3aa3345f7145961fa596f4e801363019dc853437 Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 21:29:38 -0500
+Subject: [PATCH] luma: give the stacked shelf clock its gap from box spacing
+
+---
+ data/theme/luma-shelf.css | 4 +++-
+ js/ui/dateMenu.js         | 8 ++++----
+ 2 files changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index fb5f30e..7610202 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -292,7 +292,9 @@
+ }
+ .luma-status-cluster .system-status-icon { icon-size: 13px; padding: 0; margin: 0; }
+ .luma-status-cluster .panel-status-indicators-box { spacing: 0; }
+-.luma-status-cluster .luma-status-clock-text { padding: 0; margin: 0; }
++/* _setStatusLineHeight pins each label's line box to exactly its font size, so
++ * neither line carries any leading and the two sit flush without a spacing. */
++.luma-status-cluster .luma-status-clock-text { padding: 0; margin: 0; spacing: 5px; }
+ .luma-status-cluster .luma-status-time, .luma-status-cluster .luma-status-date { text-align: center; }
+ .luma-status-cluster .luma-status-date { color: inherit; }
+ .luma-shelf-actions-island .luma-status-light { background-color: #eef0f2; color: #191b1f; }
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+index e0e8e4c..6cef01b 100644
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -1010,10 +1010,10 @@ class DateMenuButton extends PanelMenu.Button {
+         this._clockContent.orientation = enabled
+             ? Clutter.Orientation.VERTICAL
+             : Clutter.Orientation.HORIZONTAL;
+-        // The spacer carries the gap on whichever axis the clock stacks
+-        // on. Hiding it in shelf presentation left the time and the date
+-        // touching, so re-point it at the cross axis instead.
+-        this._clockSpacer.set_size(enabled ? -1 : 9, enabled ? 4 : -1);
++        // Stacked, the gap comes from spacing on .luma-clock-content, which the
++        // shelf stylesheet owns; side by side, the spacer carries it. Nothing is
++        // set inline here so there is a single place to tune the value.
++        this._clockSpacer.visible = !enabled;
+         this._timeDisplay.x_align = enabled
+             ? Clutter.ActorAlign.END
+             : Clutter.ActorAlign.START;
+-- 
+2.55.0
+

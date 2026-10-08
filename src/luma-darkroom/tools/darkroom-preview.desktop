@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Darkroom (LumaUI preview)
+Comment=Darkroom v70 from the isolated worktree
+Exec=/var/home/nick/.local/share/luma-dev/lumaui-darkroom/bin/run-darkroom
+Icon=org.projectluma.Darkroom
+Terminal=false
+Categories=Graphics;
+StartupNotify=true
+StartupWMClass=org.projectluma.Darkroom.LumaUIPreview

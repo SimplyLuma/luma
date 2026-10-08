@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+# Luma OS nightly: build, export, VM gate, publish (scripts/os/nightly.sh).
+# Installed by scripts/os/install-build-host-units.sh, which fills @ROOT@.
+[Unit]
+Description=Luma OS nightly build, gate and publication
+Documentation=file://@ROOT@/src/nightly/docs/os/release-runbook.md
+After=network-online.target libvirtd.service virtqemud.service
+Wants=network-online.target
+RequiresMountsFor=@ROOT@
+ConditionPathExists=@ROOT@/keys/os-release-fingerprint.txt
+# Installer media for the release just published (luma-os-media.service).
+OnSuccess=luma-os-media.service
+# A failed nightly alerts (scripts/os/alert.sh).
+OnFailure=luma-os-alert@%n
+
+[Service]
+Type=oneshot
+Slice=luma-os.slice
+Nice=10
+IOSchedulingClass=idle
+Environment=LUMA_OS_ROOT=@ROOT@
+Environment=TMPDIR=@ROOT@/tmp
+# The job runs the pipeline from the revision it builds; this wrapper only
+# refreshes the checkout's scripts first.
+ExecStartPre=/usr/bin/bash -c 'set -e; m=@ROOT@/git/ProjectLuma.git; c=@ROOT@/src/nightly; [ -d "$c/.git" ] || git clone --quiet "$m" "$c"; git -C "$c" fetch --quiet origin "+refs/heads/@BRANCH@:refs/remotes/origin/@BRANCH@"; git -C "$c" checkout --quiet --force --detach "origin/@BRANCH@"'
+# systemd may not execute files on the unlabeled pipeline volume (SELinux);
+# the shell from /usr reads the script instead.
+ExecStart=/usr/bin/bash @ROOT@/src/nightly/scripts/os/nightly.sh --source-branch @BRANCH@
+TimeoutStartSec=6h

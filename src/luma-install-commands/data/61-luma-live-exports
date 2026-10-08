@@ -1,0 +1,12 @@
+#!/usr/bin/sh
+# SPDX-License-Identifier: MPL-2.0
+# Luma: launchers and icons of software added to the running system with
+# sudo dnf install appear at once (docs/decisions/038-no-install-hurdles.md).
+# /run/luma/live-exports/share holds only what changed in this boot and is
+# empty after every restart, when the change is part of /usr itself.
+dirs=${XDG_DATA_DIRS:-/usr/local/share/:/usr/share/}
+case ":$dirs:" in
+  *:/run/luma/live-exports/share:*) ;;
+  *) dirs="/run/luma/live-exports/share:$dirs" ;;
+esac
+echo "XDG_DATA_DIRS=$dirs"

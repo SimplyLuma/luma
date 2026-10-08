@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Tools for composing and testing the Luma installer ISO with Atlas.
+# lorax is pinned to the version Fedora 44's own installer images were made with.
+ARG BASE_IMAGE=registry.fedoraproject.org/fedora:44
+FROM ${BASE_IMAGE}
+# Fedora's container image limits installed translations to en_US through an
+# rpm macro, and rpm applies it inside lorax's install root too: the runtime
+# then has no Anaconda catalogues and Anaconda offers English only.
+RUN rm -f /etc/rpm/macros.image-language-conf && \
+    printf '%%_install_langs all\n' > /etc/rpm/macros.luma-atlas-install-langs
+RUN dnf5 -y install --setopt=install_weak_deps=False --repo=fedora lorax-44.6-1.fc44 && \
+    dnf5 -y install --setopt=install_weak_deps=False \
+      xorriso createrepo_c squashfs-tools erofs-utils mtools dosfstools isomd5sum \
+      qemu-system-x86-core qemu-img edk2-ovmf python3 util-linux e2fsprogs file cpio findutils \
+      ostree gnupg2 fedora-gpg-keys diffutils dconf glib2 && \
+    dnf5 clean all

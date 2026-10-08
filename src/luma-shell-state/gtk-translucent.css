@@ -1,0 +1,27 @@
+/* Frost and Glass for toolkits with no live translucent renderer.
+ *
+ * GTK 3, and anything that reads its window colours from the GTK 3 theme --
+ * Chromium and the Electron applications built on it draw their own client-
+ * side decorations that way -- cannot take part in a treatment: there is no
+ * compositor backdrop behind their title bar and no per-window class to key a
+ * rule on. Left alone they painted Adwaita's @theme_bg_color, which is a
+ * different colour again from the one every participating window shows, and
+ * that was one of the mismatched title bars on the desktop.
+ *
+ * They take one defined stand-in instead: the treatment's frame and title
+ * band composited over the light window colour, so a window that cannot be
+ * translucent is at least the same band as one that can. The value is
+ * appearance.glass_header_opaque in config/shared/design-tokens.json and
+ * tests/unit/test_luma_glass_surface.py fails if the two drift apart.
+ */
+@import url("luma-base.css");
+
+@define-color luma_header_opaque #f7f8f8;
+
+headerbar,
+.titlebar,
+headerbar:backdrop,
+.titlebar:backdrop {
+  background-color: @luma_header_opaque;
+  background-image: none;
+}

@@ -1,0 +1,1490 @@
+From 135018e847e20fe18e565b0d1e17647a909bbce5 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Sun, 30 Aug 2026 13:14:09 -0500
+Subject: [PATCH] nautilus: implement Atlas islands and native Columns view
+
+---
+ data/org.gnome.nautilus.gschema.xml         |   1 +
+ src/meson.build                             |   2 +
+ src/nautilus-column-view.c                  | 851 ++++++++++++++++++++
+ src/nautilus-column-view.h                  |  19 +
+ src/nautilus-files-view.c                   |  19 +
+ src/nautilus-toolbar.c                      |   5 +
+ src/nautilus-view-info.h                    |   1 +
+ src/nautilus-window-slot.c                  |  13 +-
+ src/resources/style.css                     | 164 +++-
+ src/resources/ui/nautilus-view-controls.blp |  10 +
+ src/resources/ui/nautilus-window.blp        | 140 +++-
+ 11 files changed, 1167 insertions(+), 58 deletions(-)
+ create mode 100644 src/nautilus-column-view.c
+ create mode 100644 src/nautilus-column-view.h
+
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index e8749a1..ade9623 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -25,6 +25,7 @@
+   <enum id="org.gnome.nautilus.FolderView">
+     <value value="1" nick="list-view"/>
+     <value value="2" nick="icon-view"/>
++    <value value="4" nick="column-view"/>
+   </enum>
+ 
+   <enum id="org.gnome.nautilus.SortOrder">
+diff --git a/src/meson.build b/src/meson.build
+index ff29528..b138455 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -124,6 +124,8 @@ libnautilus_sources = [
+   'nautilus-grid-view.h',
+   'nautilus-grid-view-captions-dialog.c',
+   'nautilus-grid-view-captions-dialog.h',
++  'nautilus-column-view.c',
++  'nautilus-column-view.h',
+   'nautilus-hash-queue.c',
+   'nautilus-hash-queue.h',
+   'nautilus-history-controls.c',
+diff --git a/src/nautilus-column-view.c b/src/nautilus-column-view.c
+new file mode 100644
+index 0000000..9cc3059
+--- /dev/null
++++ b/src/nautilus-column-view.c
+@@ -0,0 +1,851 @@
++/*
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "nautilus-column-view.h"
++
++#include "nautilus-directory.h"
++#include "nautilus-enum-types.h"
++#include "nautilus-file.h"
++#include "nautilus-global-preferences.h"
++#include "nautilus-list-base-private.h"
++#include "nautilus-name-cell.h"
++#include "nautilus-view-cell.h"
++#include "nautilus-view-item.h"
++#include "nautilus-view-model.h"
++
++#include <glib/gi18n.h>
++
++struct _NautilusColumnView
++{
++    NautilusListBase parent_instance;
++
++    GtkWidget *workspace;
++    GtkWidget *parent_island;
++    GtkWidget *current_island;
++    GtkWidget *details_island;
++    GtkListView *parent_view;
++    GtkSingleSelection *parent_selection;
++    GListStore *parent_store;
++    GtkLabel *parent_title;
++    GtkLabel *parent_count;
++
++    GtkListView *current_view;
++    NautilusViewModel *current_model;
++    GtkLabel *current_title;
++    GtkLabel *current_count;
++
++    GtkImage *details_icon;
++    GtkLabel *details_name;
++    GtkLabel *details_summary;
++    GtkLabel *details_kind;
++    GtkLabel *details_size;
++    GtkLabel *details_modified;
++    GtkLabel *details_where;
++    GtkWidget *details_open_button;
++    GtkWidget *details_properties_button;
++
++    NautilusDirectory *parent_directory;
++    GFile *current_location;
++
++    GQuark sort_attribute;
++    GtkSorter *sorter;
++    gint zoom_level;
++    gboolean directories_first;
++    gboolean reversed;
++};
++
++G_DEFINE_TYPE (NautilusColumnView, nautilus_column_view, NAUTILUS_TYPE_LIST_BASE)
++
++#define get_view_item(li) \
++        (NAUTILUS_VIEW_ITEM (gtk_tree_list_row_get_item (GTK_TREE_LIST_ROW (gtk_list_item_get_item (li)))))
++
++static const NautilusViewInfo column_view_info =
++{
++    .view_id = NAUTILUS_VIEW_COLUMN_ID,
++    .zoom_level_min = NAUTILUS_LIST_ZOOM_LEVEL_SMALL,
++    .zoom_level_max = NAUTILUS_LIST_ZOOM_LEVEL_LARGE,
++    .zoom_level_standard = NAUTILUS_LIST_ZOOM_LEVEL_MEDIUM,
++};
++
++static NautilusViewInfo
++real_get_view_info (NautilusListBase *list_base)
++{
++    return column_view_info;
++}
++
++static guint
++get_icon_size_for_zoom_level (NautilusListZoomLevel zoom_level)
++{
++    switch (zoom_level)
++    {
++        case NAUTILUS_LIST_ZOOM_LEVEL_SMALL:
++            return NAUTILUS_LIST_ICON_SIZE_SMALL;
++        case NAUTILUS_LIST_ZOOM_LEVEL_MEDIUM:
++            return NAUTILUS_LIST_ICON_SIZE_MEDIUM;
++        case NAUTILUS_LIST_ZOOM_LEVEL_LARGE:
++            return NAUTILUS_LIST_ICON_SIZE_LARGE;
++    }
++
++    return NAUTILUS_LIST_ICON_SIZE_MEDIUM;
++}
++
++static guint
++real_get_icon_size (NautilusListBase *list_base)
++{
++    return get_icon_size_for_zoom_level (NAUTILUS_COLUMN_VIEW (list_base)->zoom_level);
++}
++
++static int
++real_get_zoom_level (NautilusListBase *list_base)
++{
++    return NAUTILUS_COLUMN_VIEW (list_base)->zoom_level;
++}
++
++static void
++real_set_zoom_level (NautilusListBase *list_base,
++                     int               zoom_level)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (list_base);
++
++    self->zoom_level = CLAMP (zoom_level,
++                              column_view_info.zoom_level_min,
++                              column_view_info.zoom_level_max);
++    g_object_notify (G_OBJECT (self), "icon-size");
++}
++
++static gint
++column_sort (gconstpointer a,
++             gconstpointer b,
++             gpointer      user_data)
++{
++    NautilusColumnView *self = user_data;
++    NautilusFile *file_a = nautilus_view_item_get_file ((NautilusViewItem *) a);
++    NautilusFile *file_b = nautilus_view_item_get_file ((NautilusViewItem *) b);
++
++    return nautilus_file_compare_for_sort_by_attribute_q (file_a,
++                                                           file_b,
++                                                           self->sort_attribute,
++                                                           self->directories_first,
++                                                           self->reversed);
++}
++
++static void
++apply_sorter (NautilusColumnView *self)
++{
++    NautilusViewModel *model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
++
++    g_clear_object (&self->sorter);
++    self->sorter = GTK_SORTER (gtk_custom_sorter_new (column_sort, self, NULL));
++
++    if (model != NULL)
++    {
++        nautilus_view_model_set_sorter (model, self->sorter);
++    }
++}
++
++static GVariant *
++real_get_sort_state (NautilusListBase *list_base)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (list_base);
++    const char *attribute = g_quark_to_string (self->sort_attribute);
++
++    return g_variant_take_ref (g_variant_new ("(sb)", attribute != NULL ? attribute : "name", self->reversed));
++}
++
++static void
++real_set_sort_state (NautilusListBase *list_base,
++                     GVariant         *value)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (list_base);
++    const char *attribute;
++
++    g_variant_get (value, "(&sb)", &attribute, &self->reversed);
++    self->sort_attribute = g_quark_from_string (attribute);
++    apply_sorter (self);
++}
++
++static void
++real_scroll_to (NautilusListBase   *list_base,
++                guint               position,
++                GtkListScrollFlags  flags,
++                GtkScrollInfo      *scroll)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (list_base);
++
++    gtk_list_view_scroll_to (self->current_view, position, flags, scroll);
++}
++
++static void
++real_set_enable_rubberband (NautilusListBase *list_base,
++                            gboolean          enabled)
++{
++    gtk_list_view_set_enable_rubberband (NAUTILUS_COLUMN_VIEW (list_base)->current_view, enabled);
++}
++
++static void
++setup_current_cell (GtkSignalListItemFactory *factory,
++                    GtkListItem              *list_item,
++                    gpointer                  user_data)
++{
++    NautilusColumnView *self = user_data;
++    NautilusViewCell *cell = nautilus_name_cell_new (NAUTILUS_LIST_BASE (self));
++
++    gtk_list_item_set_child (list_item, GTK_WIDGET (cell));
++    setup_cell_common (G_OBJECT (list_item), cell);
++    setup_cell_hover_inner_target (cell,
++                                   nautilus_name_cell_get_content (NAUTILUS_NAME_CELL (cell)));
++    g_object_bind_property (self, "icon-size",
++                            cell, "icon-size",
++                            G_BINDING_SYNC_CREATE);
++}
++
++static void
++bind_current_cell (GtkSignalListItemFactory *factory,
++                   GtkListItem              *list_item,
++                   gpointer                  user_data)
++{
++    NautilusViewItem *item = get_view_item (list_item);
++
++    if (item != NULL)
++    {
++        nautilus_view_item_set_item_ui (item, gtk_list_item_get_child (list_item));
++    }
++}
++
++static void
++unbind_current_cell (GtkSignalListItemFactory *factory,
++                     GtkListItem              *list_item,
++                     gpointer                  user_data)
++{
++    NautilusViewItem *item = get_view_item (list_item);
++
++    if (item != NULL)
++    {
++        nautilus_view_item_set_item_ui (item, NULL);
++    }
++}
++
++static void
++on_current_item_activated (GtkListView        *view,
++                           guint               position,
++                           NautilusColumnView *self)
++{
++    nautilus_list_base_activate_selection (NAUTILUS_LIST_BASE (self), FALSE);
++}
++
++static void
++clear_details (NautilusColumnView *self)
++{
++    gtk_image_clear (self->details_icon);
++    gtk_label_set_text (self->details_name, _("Nothing selected"));
++    gtk_label_set_text (self->details_summary, _("Select an item to see details"));
++    gtk_label_set_text (self->details_kind, "—");
++    gtk_label_set_text (self->details_size, "—");
++    gtk_label_set_text (self->details_modified, "—");
++    gtk_label_set_text (self->details_where, "—");
++    gtk_widget_set_sensitive (self->details_open_button, FALSE);
++    gtk_widget_set_sensitive (self->details_properties_button, FALSE);
++}
++
++static void
++update_adaptive_presentation (NautilusColumnView *self)
++{
++    int width = gtk_widget_get_width (GTK_WIDGET (self));
++    gboolean compact = width > 0 && width < 640;
++
++    gtk_widget_set_visible (self->parent_island,
++                            !compact && self->parent_directory != NULL);
++    gtk_widget_set_visible (self->details_island, !compact);
++}
++
++static void
++on_width_changed (GObject    *object,
++                  GParamSpec *pspec,
++                  gpointer    user_data)
++{
++    update_adaptive_presentation (NAUTILUS_COLUMN_VIEW (user_data));
++}
++
++static void
++update_details (NautilusColumnView *self)
++{
++    GtkSelectionModel *selection;
++    g_autoptr (GtkBitset) selected = NULL;
++    guint position;
++    g_autoptr (GtkTreeListRow) row = NULL;
++    NautilusViewItem *item;
++    NautilusFile *file;
++    g_autofree char *kind = NULL;
++    g_autofree char *size = NULL;
++    g_autofree char *modified = NULL;
++    g_autofree char *where = NULL;
++    g_autoptr (GFile) location = NULL;
++    g_autoptr (GFile) parent = NULL;
++    g_autoptr (GdkPaintable) paintable = NULL;
++
++    if (self->current_model == NULL)
++    {
++        clear_details (self);
++        return;
++    }
++
++    selection = GTK_SELECTION_MODEL (self->current_model);
++    selected = gtk_selection_model_get_selection (selection);
++    position = gtk_bitset_get_minimum (selected);
++    if (position == GTK_INVALID_LIST_POSITION)
++    {
++        clear_details (self);
++        return;
++    }
++
++    row = g_list_model_get_item (G_LIST_MODEL (self->current_model), position);
++    if (row == NULL)
++    {
++        clear_details (self);
++        return;
++    }
++
++    item = NAUTILUS_VIEW_ITEM (gtk_tree_list_row_get_item (row));
++    file = nautilus_view_item_get_file (item);
++    if (file == NULL)
++    {
++        clear_details (self);
++        return;
++    }
++
++    paintable = nautilus_file_get_icon_paintable (file,
++                                                   48,
++                                                   gtk_widget_get_scale_factor (GTK_WIDGET (self)),
++                                                   NAUTILUS_FILE_ICON_FLAGS_NONE);
++    gtk_image_set_from_paintable (self->details_icon, paintable);
++    gtk_label_set_text (self->details_name, nautilus_file_get_display_name (file));
++
++    kind = nautilus_file_get_string_attribute_with_default (file, "type");
++    size = nautilus_file_get_string_attribute_with_default (file, "size");
++    modified = nautilus_file_get_string_attribute_with_default (file, "date_modified");
++    location = nautilus_file_get_location (file);
++    parent = location != NULL ? g_file_get_parent (location) : NULL;
++    where = parent != NULL ? g_file_get_parse_name (parent) : g_strdup ("—");
++
++    gtk_label_set_text (self->details_kind, kind);
++    gtk_label_set_text (self->details_size, size);
++    gtk_label_set_text (self->details_modified, modified);
++    gtk_label_set_text (self->details_where, where);
++    gtk_label_set_text (self->details_summary,
++                        nautilus_file_is_directory (file) ? _("Folder") : kind);
++    gtk_widget_set_sensitive (self->details_open_button, TRUE);
++    gtk_widget_set_sensitive (self->details_properties_button, TRUE);
++}
++
++static void
++on_selection_changed (GtkSelectionModel  *model,
++                      guint               position,
++                      guint               n_items,
++                      NautilusColumnView *self)
++{
++    update_details (self);
++}
++
++static void
++update_current_header (NautilusColumnView *self)
++{
++    guint n_items = self->current_model != NULL
++                    ? g_list_model_get_n_items (G_LIST_MODEL (self->current_model))
++                    : 0;
++    g_autofree char *count = g_strdup_printf ("%u", n_items);
++
++    gtk_label_set_text (self->current_count, count);
++}
++
++static void
++on_current_items_changed (GListModel         *model,
++                          guint               position,
++                          guint               removed,
++                          guint               added,
++                          NautilusColumnView *self)
++{
++    update_current_header (self);
++    update_details (self);
++}
++
++static void
++on_model_changed (NautilusColumnView *self)
++{
++    NautilusViewModel *model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
++
++    if (self->current_model != NULL)
++    {
++        g_signal_handlers_disconnect_by_data (self->current_model, self);
++    }
++
++    g_set_object (&self->current_model, model);
++    gtk_list_view_set_model (self->current_view, GTK_SELECTION_MODEL (model));
++
++    if (model != NULL)
++    {
++        gtk_list_view_set_enable_rubberband (self->current_view,
++                                             !nautilus_view_model_get_single_selection (model));
++        g_signal_connect (model, "selection-changed", G_CALLBACK (on_selection_changed), self);
++        g_signal_connect (model, "items-changed", G_CALLBACK (on_current_items_changed), self);
++        apply_sorter (self);
++    }
++
++    update_current_header (self);
++    update_details (self);
++}
++
++static void
++setup_parent_cell (GtkSignalListItemFactory *factory,
++                   GtkListItem              *list_item,
++                   gpointer                  user_data)
++{
++    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
++    GtkWidget *icon = gtk_image_new ();
++    GtkWidget *label = gtk_label_new (NULL);
++    GtkWidget *chevron = gtk_image_new_from_icon_name ("go-next-symbolic");
++
++    gtk_widget_add_css_class (row, "luma-column-row");
++    gtk_widget_add_css_class (icon, "luma-column-row-icon");
++    gtk_widget_add_css_class (chevron, "luma-column-row-chevron");
++    gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
++    gtk_label_set_xalign (GTK_LABEL (label), 0.0f);
++    gtk_widget_set_hexpand (label, TRUE);
++    gtk_box_append (GTK_BOX (row), icon);
++    gtk_box_append (GTK_BOX (row), label);
++    gtk_box_append (GTK_BOX (row), chevron);
++    g_object_set_data (G_OBJECT (row), "luma-icon", icon);
++    g_object_set_data (G_OBJECT (row), "luma-label", label);
++    g_object_set_data (G_OBJECT (row), "luma-chevron", chevron);
++    gtk_list_item_set_child (list_item, row);
++}
++
++static void
++bind_parent_cell (GtkSignalListItemFactory *factory,
++                  GtkListItem              *list_item,
++                  gpointer                  user_data)
++{
++    NautilusFile *file = gtk_list_item_get_item (list_item);
++    GtkWidget *row = gtk_list_item_get_child (list_item);
++    GtkWidget *icon = g_object_get_data (G_OBJECT (row), "luma-icon");
++    GtkWidget *label = g_object_get_data (G_OBJECT (row), "luma-label");
++    GtkWidget *chevron = g_object_get_data (G_OBJECT (row), "luma-chevron");
++    g_autoptr (GdkPaintable) paintable = NULL;
++
++    paintable = nautilus_file_get_icon_paintable (file,
++                                                   16,
++                                                   gtk_widget_get_scale_factor (row),
++                                                   NAUTILUS_FILE_ICON_FLAGS_NONE);
++    gtk_image_set_from_paintable (GTK_IMAGE (icon), paintable);
++    gtk_label_set_text (GTK_LABEL (label), nautilus_file_get_display_name (file));
++    gtk_widget_set_visible (chevron, nautilus_file_is_directory (file));
++}
++
++static gint
++parent_file_compare (gconstpointer a,
++                     gconstpointer b)
++{
++    return nautilus_file_compare_for_sort_by_attribute_q (NAUTILUS_FILE ((gpointer) a),
++                                                           NAUTILUS_FILE ((gpointer) b),
++                                                           g_quark_from_static_string ("name"),
++                                                           TRUE,
++                                                           FALSE);
++}
++
++static void
++rebuild_parent_store (NautilusColumnView *self)
++{
++    g_autolist (NautilusFile) files = NULL;
++    guint selected = GTK_INVALID_LIST_POSITION;
++    guint i = 0;
++
++    g_list_store_remove_all (self->parent_store);
++    if (self->parent_directory == NULL)
++    {
++        update_adaptive_presentation (self);
++        return;
++    }
++
++    files = nautilus_directory_get_file_list (self->parent_directory);
++    files = g_list_sort (files, parent_file_compare);
++
++    for (GList *l = files; l != NULL; l = l->next, i++)
++    {
++        NautilusFile *file = l->data;
++        g_autoptr (GFile) location = nautilus_file_get_location (file);
++
++        g_list_store_append (self->parent_store, file);
++        if (self->current_location != NULL &&
++            location != NULL &&
++            g_file_equal (location, self->current_location))
++        {
++            selected = i;
++        }
++    }
++
++    if (selected != GTK_INVALID_LIST_POSITION)
++    {
++        gtk_single_selection_set_selected (self->parent_selection, selected);
++    }
++
++    g_autofree char *count = g_strdup_printf ("%u", i);
++    gtk_label_set_text (self->parent_count, count);
++    update_adaptive_presentation (self);
++}
++
++static void
++parent_directory_ready (NautilusDirectory *directory,
++                        GList             *files,
++                        gpointer           user_data)
++{
++    rebuild_parent_store (NAUTILUS_COLUMN_VIEW (user_data));
++}
++
++static void
++on_parent_item_activated (GtkListView        *view,
++                          guint               position,
++                          NautilusColumnView *self)
++{
++    g_autoptr (NautilusFile) file = g_list_model_get_item (G_LIST_MODEL (self->parent_selection), position);
++    g_autoptr (GFile) location = file != NULL ? nautilus_file_get_location (file) : NULL;
++    g_autofree char *uri = location != NULL ? g_file_get_uri (location) : NULL;
++
++    if (uri != NULL)
++    {
++        gtk_widget_activate_action (GTK_WIDGET (self), "slot.open-location", "s", uri);
++    }
++}
++
++static gboolean
++navigation_shortcut_cb (GtkWidget *widget,
++                        GVariant  *args,
++                        gpointer   user_data)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (widget);
++    guint keyval = GPOINTER_TO_UINT (user_data);
++    GtkTextDirection direction = gtk_widget_get_direction (widget);
++    gboolean forward = (keyval == GDK_KEY_Right && direction == GTK_TEXT_DIR_LTR) ||
++                       (keyval == GDK_KEY_Left && direction == GTK_TEXT_DIR_RTL);
++
++    if (forward)
++    {
++        nautilus_list_base_activate_selection (NAUTILUS_LIST_BASE (self), FALSE);
++    }
++    else
++    {
++        gtk_widget_activate_action (widget, "slot.up", NULL);
++    }
++
++    return TRUE;
++}
++
++static GtkWidget *
++create_header (GtkLabel **title_out,
++               GtkLabel **count_out)
++{
++    GtkWidget *header = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++    GtkWidget *title = gtk_label_new (NULL);
++    GtkWidget *count = gtk_label_new (NULL);
++
++    gtk_widget_add_css_class (header, "luma-column-header");
++    gtk_widget_add_css_class (title, "luma-column-title");
++    gtk_widget_add_css_class (count, "luma-column-count");
++    gtk_label_set_xalign (GTK_LABEL (title), 0.0f);
++    gtk_label_set_ellipsize (GTK_LABEL (title), PANGO_ELLIPSIZE_END);
++    gtk_widget_set_hexpand (title, TRUE);
++    gtk_box_append (GTK_BOX (header), title);
++    gtk_box_append (GTK_BOX (header), count);
++
++    *title_out = GTK_LABEL (title);
++    *count_out = GTK_LABEL (count);
++    return header;
++}
++
++static GtkWidget *
++create_list_island (GtkWidget *header,
++                    GtkWidget *view)
++{
++    GtkWidget *island = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    GtkWidget *scroller = gtk_scrolled_window_new ();
++
++    gtk_widget_add_css_class (island, "luma-column-island");
++    gtk_widget_add_css_class (island, "luma-island");
++    gtk_widget_set_hexpand (island, TRUE);
++    gtk_widget_set_vexpand (island, TRUE);
++    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
++                                    GTK_POLICY_NEVER,
++                                    GTK_POLICY_AUTOMATIC);
++    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), view);
++    gtk_widget_set_vexpand (scroller, TRUE);
++    gtk_box_append (GTK_BOX (island), header);
++    gtk_box_append (GTK_BOX (island), scroller);
++
++    return island;
++}
++
++static GtkWidget *
++create_details_island (NautilusColumnView *self)
++{
++    GtkWidget *island = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    GtkWidget *header = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++    GtkWidget *heading = gtk_label_new (_("Details"));
++    GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
++    GtkWidget *icon_frame = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    GtkWidget *metadata = gtk_grid_new ();
++    GtkWidget *actions = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++    const char *labels[] = { N_("Kind"), N_("Size"), N_("Modified"), N_("Where") };
++    GtkLabel **values[] = { &self->details_kind, &self->details_size,
++                           &self->details_modified, &self->details_where };
++
++    gtk_widget_add_css_class (island, "luma-column-island");
++    gtk_widget_add_css_class (island, "luma-island");
++    gtk_widget_add_css_class (island, "luma-details-island");
++    gtk_widget_set_size_request (island, 190, -1);
++    gtk_widget_set_vexpand (island, TRUE);
++
++    gtk_widget_add_css_class (header, "luma-column-header");
++    gtk_widget_add_css_class (heading, "luma-details-heading");
++    gtk_label_set_xalign (GTK_LABEL (heading), 0.0f);
++    gtk_box_append (GTK_BOX (header), heading);
++
++    gtk_widget_add_css_class (content, "luma-details-content");
++    gtk_widget_add_css_class (icon_frame, "luma-details-icon-frame");
++    gtk_widget_set_halign (icon_frame, GTK_ALIGN_CENTER);
++    self->details_icon = GTK_IMAGE (gtk_image_new ());
++    gtk_image_set_pixel_size (self->details_icon, 48);
++    gtk_box_append (GTK_BOX (icon_frame), GTK_WIDGET (self->details_icon));
++
++    self->details_name = GTK_LABEL (gtk_label_new (NULL));
++    self->details_summary = GTK_LABEL (gtk_label_new (NULL));
++    gtk_widget_add_css_class (GTK_WIDGET (self->details_name), "luma-details-name");
++    gtk_widget_add_css_class (GTK_WIDGET (self->details_summary), "luma-details-summary");
++    gtk_label_set_ellipsize (self->details_name, PANGO_ELLIPSIZE_END);
++    gtk_label_set_wrap (self->details_summary, TRUE);
++    gtk_label_set_justify (self->details_summary, GTK_JUSTIFY_CENTER);
++
++    gtk_grid_set_row_spacing (GTK_GRID (metadata), 4);
++    gtk_grid_set_column_spacing (GTK_GRID (metadata), 8);
++    gtk_widget_add_css_class (metadata, "luma-details-metadata");
++    for (guint i = 0; i < G_N_ELEMENTS (labels); i++)
++    {
++        GtkWidget *label = gtk_label_new (_(labels[i]));
++        GtkWidget *value = gtk_label_new (NULL);
++
++        gtk_label_set_xalign (GTK_LABEL (label), 0.0f);
++        gtk_label_set_xalign (GTK_LABEL (value), 1.0f);
++        gtk_label_set_ellipsize (GTK_LABEL (value), PANGO_ELLIPSIZE_MIDDLE);
++        gtk_widget_add_css_class (label, "luma-details-key");
++        gtk_widget_add_css_class (value, "luma-details-value");
++        gtk_grid_attach (GTK_GRID (metadata), label, 0, i, 1, 1);
++        gtk_grid_attach (GTK_GRID (metadata), value, 1, i, 1, 1);
++        *values[i] = GTK_LABEL (value);
++    }
++
++    gtk_box_append (GTK_BOX (content), icon_frame);
++    gtk_box_append (GTK_BOX (content), GTK_WIDGET (self->details_name));
++    gtk_box_append (GTK_BOX (content), GTK_WIDGET (self->details_summary));
++    gtk_box_append (GTK_BOX (content), metadata);
++    gtk_widget_add_css_class (actions, "luma-details-actions");
++    self->details_open_button = gtk_button_new_with_label (_("Open"));
++    self->details_properties_button = gtk_button_new_with_label (_("Properties"));
++    gtk_widget_set_hexpand (self->details_open_button, TRUE);
++    gtk_widget_set_hexpand (self->details_properties_button, TRUE);
++    gtk_actionable_set_action_name (GTK_ACTIONABLE (self->details_open_button),
++                                    "view.open-with-default-application");
++    gtk_actionable_set_action_name (GTK_ACTIONABLE (self->details_properties_button),
++                                    "view.properties");
++    gtk_box_append (GTK_BOX (actions), self->details_open_button);
++    gtk_box_append (GTK_BOX (actions), self->details_properties_button);
++    gtk_box_append (GTK_BOX (content), actions);
++    gtk_box_append (GTK_BOX (island), header);
++    gtk_box_append (GTK_BOX (island), content);
++    clear_details (self);
++
++    return island;
++}
++
++static void
++nautilus_column_view_setup_directory (NautilusListBase  *list_base,
++                                      NautilusDirectory *new_directory)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (list_base);
++    g_autoptr (GFile) parent_location = NULL;
++    g_autoptr (NautilusFile) directory_file = NULL;
++
++    NAUTILUS_LIST_BASE_CLASS (nautilus_column_view_parent_class)->setup_directory (list_base,
++                                                                                   new_directory);
++
++    if (self->parent_directory != NULL)
++    {
++        nautilus_directory_file_monitor_remove (self->parent_directory, self);
++        g_signal_handlers_disconnect_by_data (self->parent_directory, self);
++        g_clear_object (&self->parent_directory);
++    }
++
++    g_set_object (&self->current_location, nautilus_directory_get_location (new_directory));
++    directory_file = nautilus_directory_get_corresponding_file (new_directory);
++    gtk_label_set_text (self->current_title,
++                        directory_file != NULL ? nautilus_file_get_display_name (directory_file) : _("Location"));
++
++    parent_location = self->current_location != NULL ? g_file_get_parent (self->current_location) : NULL;
++    if (parent_location != NULL)
++    {
++        g_autoptr (NautilusFile) parent_file = nautilus_file_get (parent_location);
++
++        self->parent_directory = nautilus_directory_get (parent_location);
++        gtk_label_set_text (self->parent_title,
++                            parent_file != NULL ? nautilus_file_get_display_name (parent_file) : _("Parent"));
++        g_signal_connect_swapped (self->parent_directory, "files-added",
++                                  G_CALLBACK (rebuild_parent_store), self);
++        g_signal_connect_swapped (self->parent_directory, "files-changed",
++                                  G_CALLBACK (rebuild_parent_store), self);
++        nautilus_directory_file_monitor_add (self->parent_directory,
++                                             self,
++                                             FALSE,
++                                             NAUTILUS_FILE_ATTRIBUTE_INFO |
++                                             NAUTILUS_FILE_ATTRIBUTE_MOUNT |
++                                             NAUTILUS_FILE_ATTRIBUTES_FOR_ICON,
++                                             parent_directory_ready,
++                                             self);
++    }
++    else
++    {
++        rebuild_parent_store (self);
++    }
++
++    self->directories_first = TRUE;
++    apply_sorter (self);
++}
++
++static void
++nautilus_column_view_dispose (GObject *object)
++{
++    NautilusColumnView *self = NAUTILUS_COLUMN_VIEW (object);
++    NautilusViewModel *model = nautilus_list_base_get_model (NAUTILUS_LIST_BASE (self));
++
++    if (model != NULL && nautilus_view_model_get_sorter (model) == self->sorter)
++    {
++        nautilus_view_model_set_sorter (model, NULL);
++    }
++    if (self->current_model != NULL)
++    {
++        g_signal_handlers_disconnect_by_data (self->current_model, self);
++    }
++    if (self->parent_directory != NULL)
++    {
++        nautilus_directory_file_monitor_remove (self->parent_directory, self);
++        g_signal_handlers_disconnect_by_data (self->parent_directory, self);
++    }
++
++    g_clear_object (&self->sorter);
++    g_clear_object (&self->current_model);
++    g_clear_object (&self->parent_directory);
++    g_clear_object (&self->current_location);
++    g_clear_object (&self->parent_selection);
++    g_clear_object (&self->parent_store);
++
++    G_OBJECT_CLASS (nautilus_column_view_parent_class)->dispose (object);
++}
++
++static void
++nautilus_column_view_class_init (NautilusColumnViewClass *klass)
++{
++    GObjectClass *object_class = G_OBJECT_CLASS (klass);
++    NautilusListBaseClass *list_base_class = NAUTILUS_LIST_BASE_CLASS (klass);
++
++    object_class->dispose = nautilus_column_view_dispose;
++    list_base_class->get_icon_size = real_get_icon_size;
++    list_base_class->get_sort_state = real_get_sort_state;
++    list_base_class->get_view_info = real_get_view_info;
++    list_base_class->get_zoom_level = real_get_zoom_level;
++    list_base_class->scroll_to = real_scroll_to;
++    list_base_class->set_enable_rubberband = real_set_enable_rubberband;
++    list_base_class->set_sort_state = real_set_sort_state;
++    list_base_class->set_zoom_level = real_set_zoom_level;
++    list_base_class->setup_directory = nautilus_column_view_setup_directory;
++}
++
++static void
++nautilus_column_view_init (NautilusColumnView *self)
++{
++    GtkWidget *base_scroller = nautilus_list_base_get_scrolled_window (NAUTILUS_LIST_BASE (self));
++    GtkListItemFactory *current_factory = gtk_signal_list_item_factory_new ();
++    GtkListItemFactory *parent_factory = gtk_signal_list_item_factory_new ();
++    GtkWidget *parent_header;
++    GtkWidget *current_header;
++    GtkEventController *shortcuts;
++    GtkShortcut *shortcut;
++
++    self->zoom_level = NAUTILUS_LIST_ZOOM_LEVEL_MEDIUM;
++    self->sort_attribute = g_quark_from_static_string ("name");
++    self->directories_first = TRUE;
++
++    gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-column-view");
++    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (base_scroller),
++                                    GTK_POLICY_NEVER,
++                                    GTK_POLICY_NEVER);
++
++    g_signal_connect (current_factory, "setup", G_CALLBACK (setup_current_cell), self);
++    g_signal_connect (current_factory, "bind", G_CALLBACK (bind_current_cell), self);
++    g_signal_connect (current_factory, "unbind", G_CALLBACK (unbind_current_cell), self);
++    self->current_view = GTK_LIST_VIEW (gtk_list_view_new (NULL, current_factory));
++    gtk_list_view_set_single_click_activate (self->current_view, FALSE);
++    gtk_list_view_set_tab_behavior (self->current_view, GTK_LIST_TAB_ITEM);
++    g_signal_connect (self->current_view, "activate", G_CALLBACK (on_current_item_activated), self);
++
++    self->parent_store = g_list_store_new (NAUTILUS_TYPE_FILE);
++    self->parent_selection = gtk_single_selection_new (
++        G_LIST_MODEL (g_object_ref (self->parent_store)));
++    g_signal_connect (parent_factory, "setup", G_CALLBACK (setup_parent_cell), self);
++    g_signal_connect (parent_factory, "bind", G_CALLBACK (bind_parent_cell), self);
++    self->parent_view = GTK_LIST_VIEW (gtk_list_view_new (
++                                                         GTK_SELECTION_MODEL (g_object_ref (self->parent_selection)),
++                                                         parent_factory));
++    gtk_list_view_set_single_click_activate (self->parent_view, TRUE);
++    g_signal_connect (self->parent_view, "activate", G_CALLBACK (on_parent_item_activated), self);
++
++    parent_header = create_header (&self->parent_title, &self->parent_count);
++    current_header = create_header (&self->current_title, &self->current_count);
++    self->parent_island = create_list_island (parent_header, GTK_WIDGET (self->parent_view));
++    self->current_island = create_list_island (current_header, GTK_WIDGET (self->current_view));
++    self->details_island = create_details_island (self);
++
++    self->workspace = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 9);
++    gtk_widget_add_css_class (self->workspace, "luma-columns-workspace");
++    gtk_box_append (GTK_BOX (self->workspace), self->parent_island);
++    gtk_box_append (GTK_BOX (self->workspace), self->current_island);
++    gtk_box_append (GTK_BOX (self->workspace), self->details_island);
++    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (base_scroller), self->workspace);
++
++    g_signal_connect (self, "notify::width", G_CALLBACK (on_width_changed), self);
++
++    nautilus_list_base_setup_gestures (NAUTILUS_LIST_BASE (self));
++    g_signal_connect_swapped (self, "notify::model", G_CALLBACK (on_model_changed), self);
++
++    shortcuts = gtk_shortcut_controller_new ();
++    gtk_widget_add_controller (GTK_WIDGET (self), shortcuts);
++    gtk_event_controller_set_propagation_phase (shortcuts, GTK_PHASE_CAPTURE);
++    shortcut = gtk_shortcut_new (gtk_keyval_trigger_new (GDK_KEY_Left, 0),
++                                 gtk_callback_action_new (navigation_shortcut_cb,
++                                                          GUINT_TO_POINTER (GDK_KEY_Left),
++                                                          NULL));
++    gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (shortcuts), shortcut);
++    shortcut = gtk_shortcut_new (gtk_keyval_trigger_new (GDK_KEY_Right, 0),
++                                 gtk_callback_action_new (navigation_shortcut_cb,
++                                                          GUINT_TO_POINTER (GDK_KEY_Right),
++                                                          NULL));
++    gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (shortcuts), shortcut);
++
++    gtk_accessible_update_property (GTK_ACCESSIBLE (self->current_view),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL, _("Column view of the current location"),
++                                    GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION, _("Files and folders"),
++                                    -1);
++}
++
++NautilusColumnView *
++nautilus_column_view_new (void)
++{
++    return g_object_new (NAUTILUS_TYPE_COLUMN_VIEW, NULL);
++}
+diff --git a/src/nautilus-column-view.h b/src/nautilus-column-view.h
+new file mode 100644
+index 0000000..51699a0
+--- /dev/null
++++ b/src/nautilus-column-view.h
+@@ -0,0 +1,19 @@
++/*
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include "nautilus-list-base.h"
++
++G_BEGIN_DECLS
++
++#define NAUTILUS_TYPE_COLUMN_VIEW (nautilus_column_view_get_type ())
++
++G_DECLARE_FINAL_TYPE (NautilusColumnView, nautilus_column_view, NAUTILUS, COLUMN_VIEW, NautilusListBase)
++
++NautilusColumnView *nautilus_column_view_new (void);
++
++G_END_DECLS
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+index e5ef36a..52c7325 100644
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -42,6 +42,7 @@
+ #include "nautilus-batch-rename-dialog.h"
+ #include "nautilus-batch-rename-utilities.h"
+ #include "nautilus-clipboard.h"
++#include "nautilus-column-view.h"
+ #include "nautilus-compress-dialog.h"
+ #include "nautilus-dbus-launcher.h"
+ #include "nautilus-directory.h"
+@@ -9802,6 +9803,12 @@ create_inner_view (NautilusFilesView *self,
+         }
+         break;
+ 
++        case NAUTILUS_VIEW_COLUMN_ID:
++        {
++            self->list_base = NAUTILUS_LIST_BASE (nautilus_column_view_new ());
++        }
++        break;
++
+         case NAUTILUS_VIEW_NETWORK_ID:
+         {
+             self->list_base = NAUTILUS_LIST_BASE (nautilus_network_view_new ());
+@@ -9842,6 +9849,12 @@ nautilus_files_view_get_toggle_icon_name (NautilusFilesView *self)
+         }
+         break;
+ 
++        case NAUTILUS_VIEW_COLUMN_ID:
++        {
++            return "view-grid-symbolic";
++        }
++        break;
++
+         case NAUTILUS_VIEW_NETWORK_ID:
+         case NAUTILUS_VIEW_GRID_ID:
+         {
+@@ -9875,6 +9888,12 @@ nautilus_files_view_get_toggle_tooltip (NautilusFilesView *self)
+         }
+         break;
+ 
++        case NAUTILUS_VIEW_COLUMN_ID:
++        {
++            return _("Grid View");
++        }
++        break;
++
+         case NAUTILUS_VIEW_NETWORK_ID:
+         case NAUTILUS_VIEW_GRID_ID:
+         {
+diff --git a/src/nautilus-toolbar.c b/src/nautilus-toolbar.c
+index 27b5de2..dfa7ba9 100644
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -104,6 +104,7 @@ rebuild_compact_menu (NautilusToolbar *self)
+     g_autoptr (GMenu) options = g_menu_new ();
+     g_autoptr (GMenuItem) grid = NULL;
+     g_autoptr (GMenuItem) list = NULL;
++    g_autoptr (GMenuItem) columns = NULL;
+     g_autoptr (GMenuModel) sort_section = NULL;
+     GMenuModel *view_menu;
+ 
+@@ -116,6 +117,10 @@ rebuild_compact_menu (NautilusToolbar *self)
+     list = g_menu_item_new (_("List View"), NULL);
+     g_menu_item_set_action_and_target (list, "slot.files-view-mode", "u", 1);
+     g_menu_append_item (modes, list);
++
++    columns = g_menu_item_new (_("Column View"), NULL);
++    g_menu_item_set_action_and_target (columns, "slot.files-view-mode", "u", 4);
++    g_menu_append_item (modes, columns);
+     g_menu_append_section (self->compact_menu, _("View"), G_MENU_MODEL (modes));
+ 
+     g_menu_append (zoom, _("Zoom Out"), "view.zoom-out");
+diff --git a/src/nautilus-view-info.h b/src/nautilus-view-info.h
+index 08dd77f..ee4b577 100644
+--- a/src/nautilus-view-info.h
++++ b/src/nautilus-view-info.h
+@@ -11,6 +11,7 @@
+ #define NAUTILUS_VIEW_GRID_ID            2
+ /* Special ids, not used by GSettings schemas: */
+ #define NAUTILUS_VIEW_NETWORK_ID         3
++#define NAUTILUS_VIEW_COLUMN_ID          4
+ #define NAUTILUS_VIEW_INVALID_ID         0
+ 
+ typedef struct
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+index 86c771d..cf0a033 100644
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -1182,7 +1182,8 @@ change_files_view_mode (NautilusWindowSlot *self,
+                         guint               view_id)
+ {
+     g_return_if_fail (view_id == NAUTILUS_VIEW_LIST_ID ||
+-                      view_id == NAUTILUS_VIEW_GRID_ID);
++                      view_id == NAUTILUS_VIEW_GRID_ID ||
++                      view_id == NAUTILUS_VIEW_COLUMN_ID);
+ 
+     if (self->default_view_id != view_id)
+     {
+@@ -1430,10 +1431,13 @@ nautilus_window_slot_init (NautilusWindowSlot *self)
+ 
+     ADD_SHORTCUT_FOR_ACTION_WITH_ARGS (self->shortcuts,
+                                        "slot.files-view-mode", "<control>1",
+-                                       "u", NAUTILUS_VIEW_LIST_ID);
++                                       "u", NAUTILUS_VIEW_GRID_ID);
+     ADD_SHORTCUT_FOR_ACTION_WITH_ARGS (self->shortcuts,
+                                        "slot.files-view-mode", "<control>2",
+-                                       "u", NAUTILUS_VIEW_GRID_ID);
++                                       "u", NAUTILUS_VIEW_LIST_ID);
++    ADD_SHORTCUT_FOR_ACTION_WITH_ARGS (self->shortcuts,
++                                       "slot.files-view-mode", "<control>3",
++                                       "u", NAUTILUS_VIEW_COLUMN_ID);
+     ADD_SHORTCUT_FOR_ACTION_WITH_ARGS (self->shortcuts,
+                                        "slot.open-location", "<alt>Home|HomePage|Start",
+                                        "s", home_uri);
+@@ -1474,7 +1478,8 @@ nautilus_window_slot_init (NautilusWindowSlot *self)
+ 
+     self->default_view_id = g_settings_get_enum (nautilus_preferences, NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER);
+     if (G_UNLIKELY (self->default_view_id != NAUTILUS_VIEW_LIST_ID &&
+-                    self->default_view_id != NAUTILUS_VIEW_GRID_ID))
++                    self->default_view_id != NAUTILUS_VIEW_GRID_ID &&
++                    self->default_view_id != NAUTILUS_VIEW_COLUMN_ID))
+     {
+         g_warning ("Invalid value stored for 'default-folder-viewer' key for "
+                    "the 'org.gnome.nautilus.preferences' schemas. Installed "
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 5cbfc85..c15e121 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -53,17 +53,10 @@
+     padding-bottom: 2px;
+   }
+ 
+-  .luma-files-window .luma-sidebar-action-surface {
+-    background-color: @luma_window;
+-  }
+-
+-  .luma-files-window .luma-content-action-surface {
+-    min-height: 46px;
+-    background-color: @luma_window;
+-  }
+-
+   .luma-files-window .luma-action-toolbar-overlay headerbar.luma-secondary-toolbar {
+-    background-color: transparent;
++    min-height: 40px;
++    background-color: @luma_content;
++    border-radius: 10px 10px 0 0;
+   }
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar {
+     min-height: 30px;
+@@ -303,16 +296,21 @@
+     color: var(--accent-color);
+   }
+ 
+-  /* Sidebar and content are explicit sibling surfaces below the toolbars. */
++  /* The desktop workspace is two real sibling islands: navigation and file
++   * content. Their separation is structural, not a user stylesheet overlay. */
++  .luma-files-window .luma-files-workspace {
++    background-color: @luma_window;
++  }
++
+   .luma-files-window .luma-sidebar-surface,
+   .luma-files-window .luma-sidebar-surface viewport,
+   .luma-files-window .luma-sidebar-surface .navigation-sidebar {
+-    background-color: @luma_window;
++    background-color: @luma_content;
+     color: @luma_ink;
+   }
+ 
+   .luma-files-window .luma-sidebar-surface {
+-    border-right: 1px solid @luma_line;
++    border: none;
+   }
+ 
+   /* GtkPaned reserves an invisible 8px resize target at the sidebar edge.
+@@ -323,15 +321,24 @@
+   }
+ 
+   .luma-files-window .luma-sidebar-surface:dir(rtl) {
+-    border-right: none;
+-    border-left: 1px solid @luma_line;
++    border: none;
+   }
+ 
+   .luma-files-window .navigation-sidebar > row {
++    color: @luma_ink;
+     font-size: 13px;
+     font-weight: 400;
+   }
+ 
++  .luma-files-window .navigation-sidebar > row:not(:selected) label {
++    color: @luma_ink;
++    opacity: 1;
++  }
++
++  .luma-files-window .navigation-sidebar > row:disabled label {
++    color: @luma_muted;
++  }
++
+   .luma-files-window .navigation-sidebar:not(.luma-trash-list) {
+     padding-top: 11px;
+     padding-bottom: 7px;
+@@ -493,6 +500,133 @@
+   color: @luma_ink;
+ }
+ 
++/* Columns is a first-class NautilusListBase presentation over the same live
++ * NautilusViewModel. The three panes are spatial work islands; rows remain
++ * ordinary native list items with the shared hover/selection/focus states. */
++.luma-files-window .nautilus-column-view .luma-columns-workspace {
++  padding: 9px;
++  background-color: @luma_content;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-island {
++  min-width: 150px;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-header {
++  min-height: 40px;
++  padding: 0 8px 0 12px;
++  border-bottom: 1px solid @luma_line;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-title {
++  color: @luma_ink;
++  font-size: 13px;
++  font-weight: 700;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-count {
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 600;
++  font-feature-settings: "tnum";
++}
++
++.luma-files-window .nautilus-column-view listview {
++  padding: 4px;
++  background-color: transparent;
++}
++
++.luma-files-window .nautilus-column-view listview > row {
++  min-height: 32px;
++  padding: 0 8px;
++  border-radius: 8px;
++  color: @luma_ink;
++  font-size: 13px;
++  font-weight: 525;
++}
++
++.luma-files-window .nautilus-column-view listview > row:hover {
++  background-color: @luma_hover;
++}
++
++.luma-files-window .nautilus-column-view listview > row:selected {
++  background-color: @luma_selected;
++  color: @luma_ink;
++  font-weight: 650;
++}
++
++.luma-files-window .nautilus-column-view listview > row:focus-visible {
++  outline: 2px solid var(--accent-color);
++  outline-offset: -2px;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-row {
++  min-height: 32px;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-row-icon {
++  -gtk-icon-size: 15px;
++}
++
++.luma-files-window .nautilus-column-view .luma-column-row-chevron {
++  -gtk-icon-size: 8px;
++  color: @luma_muted;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-heading {
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 700;
++  letter-spacing: 0.08em;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-content {
++  padding: 16px 12px;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-icon-frame {
++  min-width: 64px;
++  min-height: 64px;
++  border-radius: 10px;
++  background-color: @luma_hover;
++  box-shadow: inset 0 0 0 1px @luma_line;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-name {
++  color: @luma_ink;
++  font-size: 13px;
++  font-weight: 700;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-summary,
++.luma-files-window .nautilus-column-view .luma-details-key {
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 500;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-value {
++  color: @luma_ink;
++  font-size: 11px;
++  font-weight: 550;
++  font-feature-settings: "tnum";
++}
++
++.luma-files-window .nautilus-column-view .luma-details-actions {
++  margin-top: 4px;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-actions button {
++  min-height: 34px;
++  padding: 0 10px;
++  border-radius: 9px;
++}
++
++.luma-files-window .nautilus-column-view .luma-details-actions button:first-child {
++  background-color: @luma_ink;
++  color: @luma_content;
++}
++
+ /* Toolbar */
+ 
+ @keyframes needs_attention_keyframes {
+diff --git a/src/resources/ui/nautilus-view-controls.blp b/src/resources/ui/nautilus-view-controls.blp
+index 2cd230c..c867ef8 100644
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -83,6 +83,16 @@ template $NautilusViewControls: Adw.Bin {
+           label: _("List View");
+         }
+       }
++
++      ToggleButton {
++        icon-name: "view-dual-symbolic";
++        action-name: "slot.files-view-mode";
++        action-target: "uint32 4";
++
++        accessibility {
++          label: _("Column View");
++        }
++      }
+     }
+ 
+     MenuButton {
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index e433e39..542c707 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -3,6 +3,13 @@ using Adw 1;
+ 
+ menu app_menu {
+   section {
++    item {
++      label: _("New _Folder");
++      action: "view.new-folder";
++      accel: "<control><shift>n";
++      hidden-when: "action-disabled";
++    }
++
+     item {
+       label: _("New _Window");
+       action: "app.clone-window";
+@@ -16,6 +23,64 @@ menu app_menu {
+     }
+   }
+ 
++  section {
++    label: _("Go");
++
++    item {
++      label: _("Home");
++      action: "win.go-home";
++    }
++
++    item {
++      label: _("Recent");
++      action: "slot.open-location";
++      target: "'recent:///'";
++    }
++
++    item {
++      label: _("Starred");
++      action: "slot.open-location";
++      target: "'starred:///'";
++    }
++
++    item {
++      label: _("Applications");
++      action: "slot.open-location";
++      target: "'applications:///'";
++    }
++  }
++
++  section {
++    label: _("View");
++
++    item {
++      label: _("As _Grid");
++      action: "slot.files-view-mode";
++      target: "uint32 2";
++      accel: "<control>1";
++    }
++
++    item {
++      label: _("As _List");
++      action: "slot.files-view-mode";
++      target: "uint32 1";
++      accel: "<control>2";
++    }
++
++    item {
++      label: _("As _Columns");
++      action: "slot.files-view-mode";
++      target: "uint32 4";
++      accel: "<control>3";
++    }
++
++    item {
++      label: _("Show _Hidden Files");
++      action: "view.show-hidden-files";
++      accel: "<control>h";
++    }
++  }
++
+   section undo_redo_section {
+     /* Note: This section is often recreated by undo_manager_changed() to
+      * change the labels of the actions. If you change anything here,
+@@ -52,6 +117,12 @@ menu app_menu {
+       label: _("_About Filer");
+       action: "app.about";
+     }
++
++    item {
++      label: _("_Quit Filer");
++      action: "app.quit";
++      accel: "<control>q";
++    }
+   }
+ }
+ 
+@@ -182,55 +253,27 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           };
+         }
+ 
+-        [top]
+-        Overlay {
+-          Box {
+-            Box sidebar_action_surface {
+-              width-request: 232;
+-
+-              styles [
+-                "luma-sidebar-action-surface",
+-                "luma-content-action-surface",
+-              ]
+-            }
+-
+-            Box {
+-              hexpand: true;
+-
+-              styles [
+-                "luma-content-action-surface",
+-              ]
+-            }
+-          }
+-
+-          [overlay]
+-          $NautilusToolbar toolbar {
+-            hexpand: true;
+-            main-menu: app_menu;
+-            show-view-controls: true;
+-            show-history-controls: true;
+-            sidebar-button-active: bind split_view.show-sidebar bidirectional;
+-            window-slot: bind template.active-slot;
+-
+-            styles [
+-              "luma-action-toolbar-overlay",
+-            ]
+-          }
+-        }
+-
+         content: Adw.OverlaySplitView split_view {
+           enable-show-gesture: false;
+           enable-hide-gesture: false;
+           min-sidebar-width: 120;
+-          max-sidebar-width: 232;
++          max-sidebar-width: 480;
+           sidebar-width-unit: px;
+           sidebar-width-fraction: 0.25;
+ 
+-          sidebar: Adw.ToolbarView {
++          styles [
++            "luma-files-workspace",
++          ]
++
++          sidebar: Adw.ToolbarView sidebar_action_surface {
+             reveal-bottom-bars: bind progress_indicator.reveal;
++            margin-top: 9;
++            margin-bottom: 9;
++            margin-start: 9;
+ 
+             styles [
+               "luma-sidebar-surface",
++              "luma-island",
+             ]
+ 
+             [bottom]
+@@ -257,10 +300,30 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           };
+ 
+           content: Adw.ToolbarView {
++            margin-top: 9;
++            margin-bottom: 9;
++            margin-start: 9;
++            margin-end: 9;
++
+             styles [
+               "luma-content-surface",
++              "luma-island",
+             ]
+ 
++            [top]
++            $NautilusToolbar toolbar {
++              hexpand: true;
++              main-menu: app_menu;
++              show-view-controls: true;
++              show-history-controls: true;
++              sidebar-button-active: bind split_view.show-sidebar bidirectional;
++              window-slot: bind template.active-slot;
++
++              styles [
++                "luma-action-toolbar-overlay",
++              ]
++            }
++
+             [top]
+             Adw.TabBar tab_bar {
+               view: tab_view;
+@@ -319,7 +382,6 @@ template $NautilusWindow: Adw.ApplicationWindow {
+       toolbar.show-view-controls: false;
+       toolbar.show-history-controls: false;
+       toolbar.compact: true;
+-      sidebar_action_surface.visible: false;
+       action_bar.revealed: false;
+       progress_indicator.popover-position: 2;
+     }
+-- 
+2.54.0 (Apple Git-157)
+

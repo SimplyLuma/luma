@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma Wi-Fi Guard: stay off access points that give no address
+After=NetworkManager.service wpa_supplicant.service
+Wants=NetworkManager.service
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/luma-wifi-guard
+Restart=on-failure
+RestartSec=10
+StateDirectory=luma-wifi-guard
+StateDirectoryMode=0700
+Nice=10
+CPUWeight=10
+MemoryHigh=32M
+MemoryMax=64M
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=no
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

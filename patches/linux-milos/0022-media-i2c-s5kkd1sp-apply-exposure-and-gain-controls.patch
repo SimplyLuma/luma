@@ -1,0 +1,106 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] media: i2c: s5kkd1sp: apply exposure and gain controls
+
+The initial FP6 driver advertised exposure and analogue-gain controls with no
+control operations.  libcamera could update the cached values, but the sensor
+continued streaming with the fixed power-on values and produced an almost
+black image.
+
+Use the standard Samsung 16-bit coarse-integration and analogue-gain registers
+also used by the upstream S5K3M5 and S5KJN1 drivers.  Cache changes while the
+sensor is suspended and replay them after the mode table has been programmed,
+before stream-on.
+
+--- a/drivers/media/i2c/s5kkd1sp.c
++++ b/drivers/media/i2c/s5kkd1sp.c
+@@ -24,6 +24,15 @@
+ #define S5KKD1SP_REG_CTRL_MODE		CCI_REG16(0x0100)
+ #define S5KKD1SP_MODE_STREAMING		0x0103
+ #define S5KKD1SP_MODE_STANDBY		0x0000
++#define S5KKD1SP_REG_EXPOSURE		CCI_REG16(0x0202)
++#define S5KKD1SP_EXPOSURE_MIN		8
++#define S5KKD1SP_EXPOSURE_MAX		(5078 - 48)
++#define S5KKD1SP_EXPOSURE_DEFAULT	1000
++#define S5KKD1SP_REG_ANALOGUE_GAIN	CCI_REG16(0x0204)
++#define S5KKD1SP_ANALOGUE_GAIN_MIN	1
++#define S5KKD1SP_ANALOGUE_GAIN_MAX	64
++#define S5KKD1SP_ANALOGUE_GAIN_DEFAULT	6
++#define S5KKD1SP_ANALOGUE_GAIN_SHIFT	5
+ #define S5KKD1SP_INIT_RESET1_END	4
+ #define S5KKD1SP_INIT_RESET2_END	7
+ #define S5KKD1SP_INIT_DELAY_US		10000
+@@ -618,6 +627,38 @@ static int s5kkd1sp_set_pad_format(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
++static int s5kkd1sp_set_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct s5kkd1sp *sensor =
++		container_of(ctrl->handler, struct s5kkd1sp, ctrl_handler);
++	int ret;
++
++	/* Controls are cached while the sensor is powered down. */
++	if (!pm_runtime_get_if_active(sensor->dev))
++		return 0;
++
++	switch (ctrl->id) {
++	case V4L2_CID_EXPOSURE:
++		ret = cci_write(sensor->regmap, S5KKD1SP_REG_EXPOSURE,
++				ctrl->val, NULL);
++		break;
++	case V4L2_CID_ANALOGUE_GAIN:
++		ret = cci_write(sensor->regmap, S5KKD1SP_REG_ANALOGUE_GAIN,
++				ctrl->val << S5KKD1SP_ANALOGUE_GAIN_SHIFT, NULL);
++		break;
++	default:
++		ret = 0;
++		break;
++	}
++
++	pm_runtime_put(sensor->dev);
++	return ret;
++}
++
++static const struct v4l2_ctrl_ops s5kkd1sp_ctrl_ops = {
++	.s_ctrl = s5kkd1sp_set_ctrl,
++};
++
+ static int s5kkd1sp_enum_mbus_code(struct v4l2_subdev *sd,
+ 				   struct v4l2_subdev_state *state,
+ 				   struct v4l2_subdev_mbus_code_enum *code)
+@@ -716,7 +758,9 @@ static int s5kkd1sp_enable_streams(struct v4l2_subdev *sd,
+ 			    ARRAY_SIZE(s5kkd1sp_init_regs) -
+ 			    S5KKD1SP_INIT_RESET2_END, &ret);
+ 	cci_multi_reg_write(sensor->regmap, s5kkd1sp_3104x2336_regs,
+ 			    ARRAY_SIZE(s5kkd1sp_3104x2336_regs), &ret);
++	if (!ret)
++		ret = __v4l2_ctrl_handler_setup(sensor->sd.ctrl_handler);
+ 	cci_write(sensor->regmap, S5KKD1SP_REG_CTRL_MODE,
+ 		  S5KKD1SP_MODE_STREAMING, &ret);
+ 	if (!ret) {
+@@ -952,15 +996,14 @@ static int s5kkd1sp_init_controls(struct s5kkd1sp *sensor)
+ 				5078 - 2336, 5078 - 2336, 1, 5078 - 2336);
+ 	if (ctrl)
+ 		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+-	/*
+-	 * The stock diagnostic table currently supplies fixed exposure and gain.
+-	 * Keep writable cached controls for libcamera bring-up until the matching
+-	 * Samsung indirect-register writes are physically validated.
+-	 */
+-	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_EXPOSURE,
+-			  1, 5078 - 48, 1, 1000);
+-	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_ANALOGUE_GAIN,
+-			  0, 1023, 1, 0);
++	v4l2_ctrl_new_std(handler, &s5kkd1sp_ctrl_ops, V4L2_CID_EXPOSURE,
++			  S5KKD1SP_EXPOSURE_MIN, S5KKD1SP_EXPOSURE_MAX, 1,
++			  S5KKD1SP_EXPOSURE_DEFAULT);
++	v4l2_ctrl_new_std(handler, &s5kkd1sp_ctrl_ops,
++			  V4L2_CID_ANALOGUE_GAIN,
++			  S5KKD1SP_ANALOGUE_GAIN_MIN,
++			  S5KKD1SP_ANALOGUE_GAIN_MAX, 1,
++			  S5KKD1SP_ANALOGUE_GAIN_DEFAULT);
+ 	if (handler->error)
+ 		return handler->error;
+ 
+-- 
+2.51.0

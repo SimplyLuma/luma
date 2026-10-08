@@ -1,0 +1,1523 @@
+--- a/extensions/image-properties/nautilus-image-properties-model.c
++++ b/extensions/image-properties/nautilus-image-properties-model.c
+@@ -100,6 +100,8 @@
+     g_autofree char *width_text = format_pixels (width);
+     g_autofree char *height_text = format_pixels (height);
+ 
++    if(width>0 && height>0)
++        g_object_set_data_full(G_OBJECT(self->group_model),"luma-image-dimensions",g_strdup_printf("%d × %d",width,height),g_free);
+     append_item (self, _("Image Type"), type_text);
+     append_item (self, _("Width"), width_text);
+     append_item (self, _("Height"), height_text);
+@@ -109,6 +111,12 @@
+ append_gexiv_basic_info (NautilusImagesPropertiesModel *self)
+ {
+     const char *mime_type = gexiv2_metadata_get_mime_type (self->md);
++    if(gexiv2_metadata_has_tag(self->md,"Exif.Photo.ColorSpace",NULL))
++    {
++        g_autofree char *profile=gexiv2_metadata_get_tag_interpreted_string(self->md,"Exif.Photo.ColorSpace",NULL);
++        if(profile && *profile && g_ascii_strcasecmp(profile,"Uncalibrated"))
++            g_object_set_data_full(G_OBJECT(self->group_model),"luma-image-color-profile",g_strdup(profile),g_free);
++    }
+     GExiv2Orientation orientation = gexiv2_metadata_get_orientation (self->md, NULL);
+     int width = gexiv2_metadata_get_pixel_width (self->md);
+     int height = gexiv2_metadata_get_pixel_height (self->md);
+--- a/src/nautilus-properties.c
++++ b/src/nautilus-properties.c
+@@ -71,9 +71,48 @@
+     gboolean cancelled;
+ } GroupChange;
+ 
++typedef struct {guint32 mask; guint32 value;} AboutStagedMode;
++
+ struct _NautilusPropertiesWidget
+ {
+     AdwBin parent_instance;
++    AdwNavigationPage *main_page;
++    GtkLabel *about_title;
++    GtkLabel *dimensions_value;
++    GtkLabel *profile_value;
++    GtkLabel *facts_size_caption;
++    GtkLabel *rename_status;
++    GtkLabel *permission_status;
++    GtkLabel *parent_folder_row_value;
++    GtkLabel *modified_row_value;
++    GtkLabel *created_row_value;
++    GtkLabel *accessed_row_value;
++    GtkLabel *exact_modified_row_value;
++    GtkLabel *exact_created_row_value;
++    GtkLabel *full_location_row_value;
++    GtkWidget *preview_box;
++    GtkScrolledWindow *about_scroller;
++    GtkWidget *preview_picture;
++    GtkWidget *rename_editor;
++    GtkWidget *rename_entry;
++    GtkWidget *rename_button;
++    GtkWidget *rename_apply_button;
++    GtkWidget *dimensions_fact;
++    GtkWidget *profile_fact;
++    GtkWidget *permissions_editor;
++    GtkWidget *execution_choices;
++    GtkWidget *permission_cancel;
++    GtkWidget *permission_apply;
++    GtkWidget *exact_modified_row;
++    GtkWidget *exact_created_row;
++    GtkWidget *full_location_row;
++    GtkCheckButton *owner_exec;
++    GtkCheckButton *group_exec;
++    GtkCheckButton *others_exec;
++    GHashTable *staged_permissions;
++    char *staged_owner, *staged_group;
++    gboolean renaming, permission_editing, permission_applying, permission_validating, permission_refreshing, permission_external_change, syncing_execution;
++    guint permission_pending, permission_failures;
+ 
+     GList *files;
+     NautilusFileListHandle *handle;
+@@ -454,6 +493,7 @@
+ static GtkWindow *
+ get_parent_window (NautilusPropertiesWidget *self)
+ {
++
+     GtkWindow *parent_window = GTK_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (self),
+                                                                     GTK_TYPE_WINDOW));
+ 
+@@ -489,12 +529,16 @@
+     return NAUTILUS_FILE (self->files->data);
+ }
+ 
++static void about_update (NautilusPropertiesWidget *self);
++static void about_permissions_begin (NautilusPropertiesWidget *self);
++static void about_model_changed (GListModel *, guint, guint, guint, NautilusPropertiesWidget *);
++
+ static void
+ navigate_permissions_page (NautilusPropertiesWidget *self,
+                            GParamSpec               *params,
+                            GtkWidget                *widget)
+ {
+-    adw_navigation_view_push_by_tag (self->nav_view, "permissions");
++    about_permissions_begin (self);
+ }
+ 
+ static NautilusIconInfo *
+@@ -507,7 +551,8 @@
+     gint scale = gtk_widget_get_scale_factor (GTK_WIDGET (self));
+     NautilusFileIconFlags flags = NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS |
+                                   NAUTILUS_FILE_ICON_FLAGS_USE_MOUNT_ICON;
+-    guint size = NAUTILUS_GRID_ICON_SIZE_MEDIUM;
++    guint size = !is_multi_file_window(self) && g_str_has_prefix(nautilus_file_get_mime_type(get_file(self)), "image/")
++                 ? 320 : NAUTILUS_GRID_ICON_SIZE_MEDIUM;
+     g_autolist (NautilusIconInfo) shown_icons = NULL;
+ 
+     for (NautilusFileList *l = self->files; l != NULL; l = l->next)
+@@ -571,7 +616,11 @@
+                       gdk_paintable_get_intrinsic_width (paintable));
+ 
+     gtk_image_set_from_paintable (GTK_IMAGE (self->icon_image), paintable);
+-    gtk_image_set_pixel_size (GTK_IMAGE (self->icon_image), pixel_size);
++    gboolean preview = name == NULL && !is_stacked && !is_multi_file_window(self)
++                       && !nautilus_file_is_directory(get_file(self));
++    gtk_widget_set_visible(self->preview_box, preview);
++    gtk_widget_set_visible(GTK_WIDGET(self->icon_stack), !preview);
++    gtk_image_set_pixel_size (GTK_IMAGE (self->icon_image), preview ? pixel_size : 48);
+ }
+ 
+ /* utility to test if a uri refers to a local image */
+@@ -873,6 +922,8 @@
+                             nautilus_file_get_display_name (get_file (self)));
+     }
+ 
++    about_update (self);
++
+     /* We wish the label to be selectable, but not selected by default. */
+     gtk_label_select_region (self->name_value_label, -1, -1);
+ }
+@@ -963,16 +1014,17 @@
+     GListModel *list_model = nautilus_properties_model_get_model (model);
+     GtkWidget *row;
+ 
+-    row = adw_action_row_new ();
++    row = adw_expander_row_new ();
++    adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), FALSE);
+     g_object_bind_property (model, "title", row, "title", G_BINDING_SYNC_CREATE);
+-    gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
+-    gtk_list_box_row_set_selectable (GTK_LIST_BOX_ROW (row), FALSE);
+-    adw_action_row_add_suffix (ADW_ACTION_ROW (row),
+-                               gtk_image_new_from_icon_name ("go-next-symbolic"));
+-    g_signal_connect (row, "activated",
+-                      G_CALLBACK (navigate_extension_model_page), self);
+-
+-    g_object_set_data (G_OBJECT (row), "nautilus-extension-properties-model", list_model);
++    GtkWidget *list=gtk_list_box_new();
++    gtk_list_box_set_selection_mode(GTK_LIST_BOX(list),GTK_SELECTION_NONE);
++    gtk_list_box_bind_model(GTK_LIST_BOX(list),list_model,
++                           (GtkListBoxCreateWidgetFunc)create_extension_group_row,self,NULL);
++    adw_expander_row_add_row(ADW_EXPANDER_ROW(row),list);
++    g_signal_connect_object(list_model,"items-changed",G_CALLBACK(about_model_changed),self,0);
++    about_model_changed(list_model,0,0,0,self);
++    gtk_widget_add_css_class(row,"luma-about-disclosure");
+ 
+     return row;
+ }
+@@ -1317,12 +1369,15 @@
+         adw_banner_set_revealed (self->owner_permission_banner,
+                                  !permissions_info->can_set_all_file_permission ||
+                                  !permissions_info->can_set_all_folder_permission);
++        if (!self->permission_editing)
++        {
+         update_owner_row (self->owner_row, permissions_info);
+         update_group_row (self->group_row, permissions_info);
+         update_execution_row (GTK_WIDGET (self->execution_row), permissions_info);
+         g_list_foreach (self->permission_rows,
+                         (GFunc) update_permission_row,
+                         permissions_info);
++        }
+         g_list_foreach (self->value_labels,
+                         (GFunc) value_label_update,
+                         self);
+@@ -1332,6 +1387,7 @@
+     }
+ 
+     update_extension_list (self);
++    about_update (self);
+ }
+ 
+ static gboolean
+@@ -1416,7 +1472,27 @@
+     attribute_value = file_list_get_string_attribute (self->files,
+                                                       attribute_name);
+ 
+-    adw_action_row_set_subtitle (row, attribute_value);
++    GtkLabel *value = g_object_get_data (G_OBJECT(row), "luma-value-label");
++    if (value)
++    {
++        if (GTK_WIDGET(row) == self->parent_folder_row && !is_multi_file_window(self))
++        {
++            g_autoptr(GFile) parent = nautilus_file_get_parent_location(get_file(self));
++            g_autofree char *path = parent ? g_file_get_parse_name(parent) : NULL;
++            if (path)
++            {
++                const char *home=g_get_home_dir();
++                g_autofree char *display = g_str_has_prefix(path,home) && (path[strlen(home)]=='/' || path[strlen(home)]=='\0')
++                    ? g_strconcat(_("Home"),path+strlen(home),NULL) : g_strdup(path);
++                g_auto(GStrv) parts=g_strsplit(display,"/",-1);
++                g_autofree char *crumb=g_strjoinv(" › ",parts);
++                gtk_label_set_text(value,crumb);
++                return;
++            }
++        }
++        gtk_label_set_text(value,attribute_value ? attribute_value : _("Unavailable"));
++    }
++    else adw_action_row_set_subtitle (row, attribute_value);
+ }
+ 
+ static guint
+@@ -1680,11 +1756,10 @@
+         g_assert (new_group_name);
+         g_assert (current_group_name);
+ 
+-        if (strcmp (new_group_name, current_group_name) != 0)
+-        {
+-            /* Try to change file group. If this fails, complain to user. */
+-            unschedule_or_cancel_group_change (self);
+-            schedule_group_change (self, file, new_group_name);
++        if (self->permission_editing)
++        {
++            g_set_str (&self->staged_group,
++                       g_strcmp0 (new_group_name, current_group_name) != 0 ? new_group_name : NULL);
+         }
+     }
+ }
+@@ -1830,11 +1905,10 @@
+ 
+         g_assert (NAUTILUS_IS_FILE (file));
+ 
+-        if (strcmp (new_owner_name, current_owner_name) != 0)
+-        {
+-            /* Try to change file owner. If this fails, complain to user. */
+-            unschedule_or_cancel_owner_change (self);
+-            schedule_owner_change (self, file, new_owner_name);
++        if (self->permission_editing)
++        {
++            g_set_str (&self->staged_owner,
++                       g_strcmp0 (new_owner_name, current_owner_name) != 0 ? new_owner_name : NULL);
+         }
+     }
+ }
+@@ -2672,6 +2746,8 @@
+     {
+         gtk_widget_set_visible (self->parent_folder_row, TRUE);
+         add_updatable_row (self, self->parent_folder_row, "where");
++        gtk_widget_set_visible(self->full_location_row,TRUE);
++        add_updatable_row(self,self->full_location_row,"where");
+ 
+         should_show_locations_group = TRUE;
+     }
+@@ -2687,14 +2763,18 @@
+     {
+         gtk_widget_set_visible (self->times_group, TRUE);
+         gtk_widget_set_visible (self->modified_row, TRUE);
+-        add_updatable_row (self, self->modified_row, "date_modified_full");
++        add_updatable_row (self, self->modified_row, "date_modified");
++        gtk_widget_set_visible(self->exact_modified_row,TRUE);
++        add_updatable_row(self,self->exact_modified_row,"date_modified_full");
+     }
+ 
+     if (should_show_created_date (self))
+     {
+         gtk_widget_set_visible (self->created_row, TRUE);
+         gtk_widget_set_visible (self->times_group, TRUE);
+-        add_updatable_row (self, self->created_row, "date_created_full");
++        add_updatable_row (self, self->created_row, "date_created");
++        gtk_widget_set_visible(self->exact_created_row,TRUE);
++        add_updatable_row(self,self->exact_created_row,"date_created_full");
+     }
+ 
+     if (should_show_accessed_date (self))
+@@ -2874,12 +2954,15 @@
+             permissions = (permissions & ~vfs_mask) | vfs_new_perm;
+         }
+ 
+-        start_long_operation (self);
+-        g_object_ref (self);
+-        nautilus_file_set_permissions
+-            (file, permissions,
+-            permission_change_callback,
+-            self);
++        if (!self->permission_editing || self->permission_applying) continue;
++        AboutStagedMode *staged = g_hash_table_lookup (self->staged_permissions, file);
++        if (!staged)
++        {
++            staged=g_new0(AboutStagedMode,1);
++            g_hash_table_insert(self->staged_permissions,g_object_ref(file),staged);
++        }
++        staged->value=(staged->value & ~vfs_mask) | (permissions & vfs_mask);
++        staged->mask |= vfs_mask;
+     }
+ }
+ 
+@@ -2938,7 +3021,7 @@
+         gtk_widget_set_sensitive (row,
+                                   permissions_info->can_set_any_file_permission);
+ 
+-        gtk_widget_set_visible (GTK_WIDGET (self->execution_row), TRUE);
++        gtk_widget_set_visible (GTK_WIDGET (self->execution_row), FALSE);
+     }
+ }
+ 
+@@ -3607,6 +3690,9 @@
+                        gpointer      user_data)
+ {
+     NautilusPropertiesWidget *self = NAUTILUS_PROPERTIES_WIDGET (user_data);
++    if (self->permission_editing && (!self->permission_applying || self->permission_validating))
++        self->permission_external_change=TRUE;
++
+ 
+     if (!g_list_find (self->changed_files, file))
+     {
+@@ -3651,7 +3737,7 @@
+ 
+     if (should_show_exectution_switch (self))
+     {
+-        gtk_widget_set_visible (GTK_WIDGET (self->execution_row), TRUE);
++        gtk_widget_set_visible (GTK_WIDGET (self->execution_row), FALSE);
+     }
+ 
+     /* Update from initial state */
+@@ -3758,13 +3844,16 @@
+     AdwDialog *dialog = adw_dialog_new ();
+ 
+     adw_dialog_set_content_width (dialog, DEFAULT_PROPERTIES_WIDTH);
++    GtkRoot *root=gtk_widget_get_root(parent_widget);
++    if(root && gtk_widget_get_height(GTK_WIDGET(root))>120)
++        gtk_scrolled_window_set_max_content_height(self->about_scroller,MAX(64,gtk_widget_get_height(GTK_WIDGET(root))-64));
+     adw_dialog_set_child (dialog, GTK_WIDGET (self));
+     g_signal_connect_object (self, "hide-properties",
+                              G_CALLBACK (adw_dialog_force_close), dialog,
+                              G_CONNECT_SWAPPED);
+ 
+     self->dialog = dialog;
+-    gtk_widget_set_visible (self->popout_button, TRUE);
++    gtk_widget_set_visible (self->popout_button, FALSE);
+ 
+     adw_dialog_present (dialog, parent_widget);
+ }
+@@ -3858,6 +3947,9 @@
+     g_clear_list (&self->change_permission_combo_rows, NULL);
+ 
+     g_clear_pointer (&self->initial_permissions, g_hash_table_destroy);
++    g_clear_pointer (&self->staged_permissions,g_hash_table_unref);
++    g_clear_pointer (&self->staged_owner,g_free);
++    g_clear_pointer (&self->staged_group,g_free);
+ 
+     g_clear_list (&self->value_labels, NULL);
+     g_clear_list (&self->value_rows, NULL);
+@@ -3968,6 +4060,371 @@
+                           NULL,
+                           (GAsyncReadyCallback) custom_icon_file_chooser_response_cb,
+                           self);
++}
++
++/* Native About presentation. The file model remains the authority for every
++ * mutation and the existing monitor owns external-change/deletion handling. */
++static void
++about_status (GtkLabel *label, const char *message)
++{
++    gtk_label_set_text (label, message ? message : "");
++    gtk_widget_set_visible (GTK_WIDGET (label), message && *message);
++}
++
++static void
++about_rename_cancel (NautilusPropertiesWidget *self, GtkWidget *button)
++{
++    gtk_widget_set_visible (self->rename_editor, FALSE);
++    gtk_widget_grab_focus (self->rename_button);
++}
++
++static void
++about_rename_finished (NautilusFile *file, GFile *location, GError *error, gpointer data)
++{
++    g_autoptr (NautilusPropertiesWidget) self = data;
++    self->renaming = FALSE;
++    gtk_widget_set_sensitive (self->rename_editor, TRUE);
++    if (error)
++        about_status (self->rename_status, error->message);
++    else
++    {
++        update_name_field (self);
++        about_rename_cancel (self, NULL);
++    }
++}
++
++static void
++about_rename_apply (NautilusPropertiesWidget *self, GtkWidget *button)
++{
++    const char *name = gtk_editable_get_text (GTK_EDITABLE (self->rename_entry));
++    if (self->renaming || is_multi_file_window (self)) return;
++    if (!*name || strchr (name, '/') || !strcmp (name, ".") || !strcmp (name, ".."))
++    {
++        about_status (self->rename_status, _("Enter a valid file name without a slash."));
++        return;
++    }
++    if (!nautilus_file_can_rename (get_file (self)))
++    {
++        about_status (self->rename_status, _("This item cannot be renamed here."));
++        return;
++    }
++    self->renaming = TRUE;
++    gtk_widget_set_sensitive (self->rename_editor, FALSE);
++    nautilus_file_rename (get_file (self), name, about_rename_finished, g_object_ref (self));
++}
++
++static void
++about_rename_begin (NautilusPropertiesWidget *self, GtkWidget *button)
++{
++    if (is_multi_file_window (self)) return;
++    gtk_editable_set_text (GTK_EDITABLE (self->rename_entry), nautilus_file_get_display_name (get_file (self)));
++    about_status (self->rename_status, NULL);
++    gtk_widget_set_visible (self->rename_editor, TRUE);
++    gtk_widget_grab_focus (GTK_WIDGET (self->rename_entry));
++    gtk_editable_select_region (GTK_EDITABLE (self->rename_entry), 0, -1);
++}
++
++static void
++about_update (NautilusPropertiesWidget *self)
++{
++    guint count = g_list_length (self->files);
++    if (!count) return;
++    g_autofree char *title = count == 1
++        ? g_strdup_printf (_("About %s"), nautilus_file_get_display_name (get_file (self)))
++        : g_strdup_printf (ngettext ("About %u item", "About %u items", count), count);
++    gtk_label_set_text (self->about_title, title);
++    adw_navigation_page_set_title (self->main_page, title);
++    if (gtk_widget_get_root(GTK_WIDGET(self)) && self->dialog) adw_dialog_set_title (self->dialog, title);
++    else if (GTK_IS_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))))
++        gtk_window_set_title (GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))), title);
++    gtk_widget_set_visible (self->rename_button, count == 1);
++    gtk_widget_set_sensitive (self->rename_button, count == 1 && nautilus_file_can_rename (get_file (self)));
++    gtk_widget_set_visible (self->popout_button, FALSE);
++    gtk_widget_set_visible (GTK_WIDGET (self->execution_row), FALSE);
++    if (count == 1)
++    {
++        NautilusFile *file = get_file (self);
++        const char *summary = nautilus_file_can_write (file) ? _("You can edit") :
++                              nautilus_file_can_read (file) ? _("You can view") : _("No access");
++        gtk_label_set_text (GTK_LABEL (self->permissions_value_label), summary);
++        g_autofree char *type = g_content_type_get_description (nautilus_file_get_mime_type (file));
++        if (type) gtk_label_set_text (GTK_LABEL (self->type_value_label), type);
++    }
++    else gtk_label_set_text (GTK_LABEL (self->permissions_value_label), _("Multiple items"));
++    gtk_label_set_text (self->facts_size_caption,
++        count > 1 || nautilus_file_is_directory (get_file (self)) ? _("Contents") : _("File size"));
++}
++
++static void
++about_permissions_cancel (NautilusPropertiesWidget *self, GtkWidget *button)
++{
++    if (self->permission_applying || self->permission_refreshing) return;
++    self->permission_editing = FALSE;
++    self->permission_external_change = FALSE;
++    g_hash_table_remove_all (self->staged_permissions);
++    g_clear_pointer (&self->staged_owner, g_free);
++    g_clear_pointer (&self->staged_group, g_free);
++    gtk_widget_set_visible (self->permissions_editor, FALSE);
++    properties_widget_update (self, NULL);
++    gtk_widget_grab_focus (self->permissions_navigation_row);
++}
++
++static void
++about_permissions_begin (NautilusPropertiesWidget *self)
++{
++    if (self->permission_applying || self->permission_refreshing) return;
++    about_permissions_cancel (self, NULL);
++    self->permission_editing = TRUE;
++    gtk_widget_set_visible (self->permissions_editor, TRUE);
++    about_status (self->permission_status, NULL);
++    self->syncing_execution = TRUE;
++    const guint32 masks[] = {S_IXUSR, S_IXGRP, S_IXOTH};
++    GtkCheckButton *checks[] = {self->owner_exec, self->group_exec, self->others_exec};
++    gboolean has_files = FALSE;
++    for (guint i=0; i<3; i++)
++    {
++        guint yes=0, no=0;
++        gboolean can_change = TRUE;
++        for (GList *l=self->files; l; l=l->next)
++        {
++            NautilusFile *file=l->data;
++            if (nautilus_file_is_directory (file)) continue;
++            has_files = TRUE;
++            if (nautilus_file_get_permissions (file) & masks[i]) yes++; else no++;
++            can_change &= nautilus_file_can_set_permissions (file);
++        }
++        gtk_check_button_set_active (checks[i], yes && !no);
++        gtk_check_button_set_inconsistent (checks[i], yes && no);
++        gtk_widget_set_sensitive (GTK_WIDGET (checks[i]), can_change);
++    }
++    gtk_widget_set_visible (self->execution_choices, has_files);
++    self->syncing_execution = FALSE;
++}
++
++static void
++about_execution_changed (NautilusPropertiesWidget *self, GtkCheckButton *check)
++{
++    if (self->syncing_execution || !self->permission_editing) return;
++    guint32 mask = check == self->owner_exec ? S_IXUSR : check == self->group_exec ? S_IXGRP : S_IXOTH;
++    gtk_check_button_set_inconsistent (check, FALSE);
++    update_permissions (self, gtk_check_button_get_active (check) ? mask : 0, mask, FILES_ONLY, FALSE);
++}
++
++typedef struct {
++    NautilusPropertiesWidget *self;
++    NautilusFile *file;
++    guint32 mask, value, expected_mode, expected_uid, expected_gid;
++    gboolean check_mode, check_uid, check_gid;
++    char *owner, *group;
++    guint step;
++} AboutPermissionOperation;
++
++static void about_permission_next (AboutPermissionOperation *op);
++
++static void
++about_permission_done (NautilusFile *file, GFile *location, GError *error, gpointer data)
++{
++    AboutPermissionOperation *op=data;
++    if (error)
++    {
++        op->self->permission_failures++;
++        g_autofree char *message=g_strdup_printf (_("Could not apply changes to %s: %s"),
++                                                   nautilus_file_get_display_name (file), error->message);
++        about_status (op->self->permission_status, message);
++        op->step=3;
++    }
++    about_permission_next (op);
++}
++
++static void
++about_permission_next (AboutPermissionOperation *op)
++{
++    if (op->step++ == 0 && op->owner)
++    {
++        nautilus_file_set_owner (op->file, op->owner, about_permission_done, op);
++        return;
++    }
++    if (op->step <= 2)
++    {
++        op->step=2;
++        if (op->group) {nautilus_file_set_group (op->file, op->group, about_permission_done, op); return;}
++    }
++    if (op->step <= 3)
++    {
++        op->step=3;
++        if (op->mask)
++        {
++            guint32 current=nautilus_file_get_permissions (op->file);
++            nautilus_file_set_permissions (op->file, (current & ~op->mask) | (op->value & op->mask), about_permission_done, op);
++            return;
++        }
++    }
++    NautilusPropertiesWidget *self=op->self;
++    if (--self->permission_pending == 0)
++    {
++        self->permission_applying=FALSE;
++        gtk_widget_set_sensitive (self->permissions_editor, TRUE);
++        if (!self->permission_failures)
++        {
++            about_permissions_cancel (self, NULL);
++            about_status (self->permission_status, _("Permissions updated."));
++        }
++        else
++        {
++            /* A failed batch may have partially succeeded. Refresh every field;
++             * never pretend Cancel can undo completed filesystem operations. */
++            g_autofree char *message = g_strdup (gtk_label_get_text (self->permission_status));
++            about_permissions_begin (self);
++            about_status (self->permission_status, message);
++        }
++    }
++    g_object_unref (op->file); g_free (op->owner); g_free (op->group); g_free (op); g_object_unref (self);
++}
++
++/* Validate the backend immediately before committing. File monitors may be
++ * delayed, especially after a rename or on a remote mount. A cached mode must
++ * never overwrite permissions changed while the editor was open. */
++typedef struct {
++    GPtrArray *ops;
++    guint index;
++} AboutPermissionPreflight;
++
++static void about_permission_validate_next (AboutPermissionPreflight *check);
++
++static void
++about_permissions_refreshed (GList *files, gpointer data)
++{
++    g_autoptr (NautilusPropertiesWidget) self = data;
++    g_autofree char *message = g_strdup (gtk_label_get_text (self->permission_status));
++    self->handle = NULL;
++    self->permission_refreshing = FALSE;
++    gtk_widget_set_sensitive (self->permissions_editor, TRUE);
++    about_permissions_begin (self);
++    about_status (self->permission_status, message);
++}
++
++static void
++about_permission_validation_failed (AboutPermissionPreflight *check, const char *message)
++{
++    AboutPermissionOperation *first = g_ptr_array_index (check->ops, 0);
++    NautilusPropertiesWidget *self = first->self;
++    self->permission_validating = FALSE;
++    self->permission_applying = FALSE;
++    self->permission_pending = 0;
++    self->permission_external_change = TRUE;
++    self->permission_refreshing = TRUE;
++    gtk_widget_set_sensitive (self->permissions_editor, FALSE);
++    about_status (self->permission_status, message);
++    for (GList *l = self->files; l; l = l->next)
++        nautilus_file_invalidate_attributes (l->data, NAUTILUS_FILE_ATTRIBUTE_INFO);
++    nautilus_file_list_call_when_ready (self->files, NAUTILUS_FILE_ATTRIBUTE_INFO,
++        &self->handle, about_permissions_refreshed, g_object_ref (self));
++    for (guint i = 0; i < check->ops->len; i++)
++    {
++        AboutPermissionOperation *op = g_ptr_array_index (check->ops, i);
++        g_object_unref (op->file);
++        g_free (op->owner);
++        g_free (op->group);
++        g_object_unref (op->self);
++        g_free (op);
++    }
++    g_ptr_array_unref (check->ops);
++    g_free (check);
++}
++
++static void
++about_permission_validated (GObject *source, GAsyncResult *result, gpointer data)
++{
++    AboutPermissionPreflight *check = data;
++    AboutPermissionOperation *op = g_ptr_array_index (check->ops, check->index);
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GFileInfo) info = g_file_query_info_finish (G_FILE (source), result, &error);
++    if (!info)
++    {
++        about_permission_validation_failed (check, error->message);
++        return;
++    }
++    if (op->self->permission_external_change ||
++        (op->check_mode && (!g_file_info_has_attribute (info, G_FILE_ATTRIBUTE_UNIX_MODE) ||
++         (g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_MODE) & 07777) != (op->expected_mode & 07777))) ||
++        (op->check_uid && (!g_file_info_has_attribute (info, G_FILE_ATTRIBUTE_UNIX_UID) ||
++         g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_UID) != op->expected_uid)) ||
++        (op->check_gid && (!g_file_info_has_attribute (info, G_FILE_ATTRIBUTE_UNIX_GID) ||
++         g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_GID) != op->expected_gid)))
++    {
++        about_permission_validation_failed (check,
++            _("The item changed while you were editing, or its permissions are unavailable. Cancel and reopen the editor to review its current permissions."));
++        return;
++    }
++    check->index++;
++    about_permission_validate_next (check);
++}
++
++static void
++about_permission_validate_next (AboutPermissionPreflight *check)
++{
++    if (check->index < check->ops->len)
++    {
++        AboutPermissionOperation *op = g_ptr_array_index (check->ops, check->index);
++        g_autoptr (GFile) location = nautilus_file_get_location (op->file);
++        g_file_query_info_async (location,
++            G_FILE_ATTRIBUTE_UNIX_MODE "," G_FILE_ATTRIBUTE_UNIX_UID "," G_FILE_ATTRIBUTE_UNIX_GID,
++            G_FILE_QUERY_INFO_NONE, G_PRIORITY_DEFAULT, NULL,
++            about_permission_validated, check);
++        return;
++    }
++    AboutPermissionOperation *first = g_ptr_array_index (check->ops, 0);
++    first->self->permission_validating = FALSE;
++    for (guint i = 0; i < check->ops->len; i++)
++        about_permission_next (g_ptr_array_index (check->ops, i));
++    g_ptr_array_unref (check->ops);
++    g_free (check);
++}
++
++static void
++about_permissions_apply (NautilusPropertiesWidget *self, GtkWidget *button)
++{
++    if (!self->permission_editing || self->permission_applying || self->permission_refreshing) return;
++    if (self->permission_external_change)
++    {
++        about_status (self->permission_status, _("The item changed while you were editing. Cancel and reopen the editor to review its current permissions."));
++        return;
++    }
++    GPtrArray *ops=g_ptr_array_new ();
++    for (GList *l=self->files; l; l=l->next)
++    {
++        NautilusFile *file=l->data;
++        AboutStagedMode *mode=g_hash_table_lookup (self->staged_permissions,file);
++        if ((!mode || !mode->mask) && !self->staged_owner && !self->staged_group) continue;
++        AboutPermissionOperation *op=g_new0 (AboutPermissionOperation,1);
++        op->self=g_object_ref(self); op->file=g_object_ref(file);
++        op->expected_mode=nautilus_file_get_permissions(file);
++        op->expected_uid=nautilus_file_get_uid(file);
++        op->expected_gid=nautilus_file_get_gid(file);
++        op->check_mode=nautilus_file_can_get_permissions(file);
++        op->check_uid=op->expected_uid!=(guint32)-1;
++        op->check_gid=op->expected_gid!=(guint32)-1;
++        if (mode) {op->mask=mode->mask;op->value=mode->value;}
++        op->owner=g_strdup(self->staged_owner); op->group=g_strdup(self->staged_group);
++        g_ptr_array_add(ops,op);
++    }
++    if (!ops->len) {g_ptr_array_unref(ops);about_permissions_cancel(self,NULL);return;}
++    self->permission_pending=ops->len; self->permission_failures=0;self->permission_applying=TRUE;
++    gtk_widget_set_sensitive(self->permissions_editor,FALSE);
++    about_status(self->permission_status,_("Applying permissions…"));
++    self->permission_validating=TRUE;
++    AboutPermissionPreflight *check=g_new0(AboutPermissionPreflight,1);
++    check->ops=ops;
++    about_permission_validate_next(check);
++}
++
++static void
++about_model_changed (GListModel *model, guint position, guint removed, guint added, NautilusPropertiesWidget *self)
++{
++    const char *dimensions=g_object_get_data(G_OBJECT(model),"luma-image-dimensions");
++    const char *profile=g_object_get_data(G_OBJECT(model),"luma-image-color-profile");
++    if (dimensions) {gtk_label_set_text(self->dimensions_value,dimensions);gtk_widget_set_visible(self->dimensions_fact,TRUE);}
++    if (profile) {gtk_label_set_text(self->profile_value,profile);gtk_widget_set_visible(self->profile_fact,TRUE);}
+ }
+ 
+ static void
+@@ -4016,6 +4473,39 @@
+     gtk_widget_class_bind_template_child (widget_class, NautilusPropertiesWidget, open_in_disks_button_row);
+     gtk_widget_class_bind_template_child (widget_class, NautilusPropertiesWidget, locations_group);
+     gtk_widget_class_bind_template_child (widget_class, NautilusPropertiesWidget, link_target_row);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,main_page);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,about_title);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,dimensions_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,profile_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,facts_size_caption);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,rename_status);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,permission_status);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,parent_folder_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,modified_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,created_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,accessed_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,exact_modified_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,exact_created_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,full_location_row_value);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,preview_box);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,about_scroller);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,preview_picture);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,rename_editor);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,rename_entry);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,rename_button);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,rename_apply_button);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,dimensions_fact);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,profile_fact);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,permissions_editor);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,execution_choices);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,permission_cancel);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,permission_apply);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,exact_modified_row);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,exact_created_row);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,full_location_row);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,owner_exec);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,group_exec);
++    gtk_widget_class_bind_template_child(widget_class,NautilusPropertiesWidget,others_exec);
+     gtk_widget_class_bind_template_child (widget_class, NautilusPropertiesWidget, parent_folder_row);
+     gtk_widget_class_bind_template_child (widget_class, NautilusPropertiesWidget, trashed_group);
+     gtk_widget_class_bind_template_child (widget_class, NautilusPropertiesWidget, trashed_on_row);
+@@ -4058,10 +4548,24 @@
+     gtk_widget_class_bind_template_callback (widget_class, reset_icon);
+     gtk_widget_class_bind_template_callback (widget_class, select_image_button_callback);
+     gtk_widget_class_bind_template_callback (widget_class, on_change_permissions_clicked);
++    gtk_widget_class_bind_template_callback(widget_class,about_rename_begin);
++    gtk_widget_class_bind_template_callback(widget_class,about_rename_apply);
++    gtk_widget_class_bind_template_callback(widget_class,about_rename_cancel);
++    gtk_widget_class_bind_template_callback(widget_class,about_permissions_apply);
++    gtk_widget_class_bind_template_callback(widget_class,about_permissions_cancel);
++    gtk_widget_class_bind_template_callback(widget_class,about_execution_changed);
+ }
+ 
+ static void
+ nautilus_properties_widget_init (NautilusPropertiesWidget *self)
+ {
+     gtk_widget_init_template (GTK_WIDGET (self));
+-}
++    self->staged_permissions=g_hash_table_new_full(g_direct_hash,g_direct_equal,g_object_unref,g_free);
++    g_object_set_data(G_OBJECT(self->parent_folder_row),"luma-value-label",self->parent_folder_row_value);
++    g_object_set_data(G_OBJECT(self->modified_row),"luma-value-label",self->modified_row_value);
++    g_object_set_data(G_OBJECT(self->created_row),"luma-value-label",self->created_row_value);
++    g_object_set_data(G_OBJECT(self->accessed_row),"luma-value-label",self->accessed_row_value);
++    g_object_set_data(G_OBJECT(self->exact_modified_row),"luma-value-label",self->exact_modified_row_value);
++    g_object_set_data(G_OBJECT(self->exact_created_row),"luma-value-label",self->exact_created_row_value);
++    g_object_set_data(G_OBJECT(self->full_location_row),"luma-value-label",self->full_location_row_value);
++}
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1501,3 +1501,22 @@
+ .luma-native-file-chooser .luma-chooser-files headerbar {
+   min-height: 40px;
+ }
++
++/* Native About layout. Quiet material and controls are shared toolkit variants. */
++.nautilus-properties.luma-about-file .luma-about-header {min-height: 28px; padding: 0 4px 0 8px;}
++.nautilus-properties.luma-about-file .luma-about-header .title {font-size: 13px; font-weight: 600;}
++.nautilus-properties.luma-about-file .luma-about-name {font-size: 19px; font-weight: 700;}
++.nautilus-properties.luma-about-file .luma-about-facts label {font-size: 14px; font-weight: 600;}
++.nautilus-properties.luma-about-file .luma-about-facts label.caption {font-size: 11px; font-weight: 400;}
++.nautilus-properties.luma-about-file .luma-about-facts > box + box {border-left: 1px solid @luma_line; padding-left: 12px;}
++.nautilus-properties.luma-about-file:dir(rtl) .luma-about-facts > box + box {border-left: 0; padding-left: 0; border-right: 1px solid @luma_line; padding-right: 12px;}
++.nautilus-properties.luma-about-file .luma-about-metadata-row {min-height: 0;}
++.nautilus-properties.luma-about-file .luma-about-metadata-row > box {min-height: 28px; padding: 8px 16px; border-spacing: 12px;}
++.nautilus-properties.luma-about-file .luma-about-metadata-row label {font-size: 13px;}
++.nautilus-properties.luma-about-file .luma-about-metadata-row button {min-width: 24px; min-height: 24px; padding: 0;}
++.nautilus-properties.luma-about-file .luma-about-history preferencesgroup > box > list {border: 0; background: transparent; box-shadow: none;}
++.nautilus-properties.luma-about-file .luma-about-history preferencesgroup {margin: 0;}
++.nautilus-properties.luma-about-file .luma-about-history row + row {border-top: 1px solid @luma_line;}
++.nautilus-properties.luma-about-file .luma-about-history preferencesgroup + preferencesgroup {border-top: 1px solid @luma_line;}
++.nautilus-properties.luma-about-file picture {background: @luma_fill; border-radius: 6px;}
++.nautilus-properties.luma-about-file .icon-dropshadow {margin: 0; padding: 0;}
+--- a/src/resources/ui/nautilus-properties-widget.blp
++++ b/src/resources/ui/nautilus-properties-widget.blp
+@@ -1,29 +1,17 @@
+ using Gtk 4.0;
+ using Adw 1;
+-
+ template $NautilusPropertiesWidget: Adw.Bin {
+-  styles [
+-    "nautilus-properties",
+-  ]
+-
+-  child: Adw.ToastOverlay toast_overlay {
+-    child: Adw.NavigationView nav_view {
+-      Adw.NavigationPage {
++ styles ["nautilus-properties", "luma-about-file", "luma-controls-quiet"]
++ child: Adw.ToastOverlay toast_overlay {
++ child: Adw.NavigationView nav_view {
++Adw.NavigationPage {
+         title: _("Loading…");
+         tag: "loading";
+ 
+         child: Adw.ToolbarView {
+           [top]
+-          Adw.HeaderBar {
+-            [end]
+-            Button {
+-              visible: bind popout_button.visible;
+-              icon-name: "external-link-symbolic";
+-              clicked => $popout_window_clicked(template);
+-            }
+-          }
+-
+-          content: Adw.StatusPage {
++          Adw.HeaderBar {decoration-layout: ":close";}
++content: Adw.StatusPage {
+             child: Adw.Spinner {
+               height-request: 64;
+               width-request: 64;
+@@ -31,44 +19,23 @@
+           };
+         };
+       }
+-
+-      Adw.NavigationPage {
+-        title: _("Properties");
+-        tag: "main";
+-
+-        child: Adw.ToolbarView {
+-          [top]
+-          Adw.HeaderBar {
+-            show-title: false;
+-
+-            [start]
+-            Button star_button {
+-              visible: false;
+-              valign: start;
+-              clicked => $star_clicked() swapped;
+-
+-              styles [
+-                "star",
+-              ]
+-            }
+-
+-            [end]
+-            Button popout_button {
+-              visible: false;
+-              icon-name: "external-link-symbolic";
+-              clicked => $popout_window_clicked(template);
+-            }
+-          }
+-
+-          content: Adw.PreferencesPage {
+-            Adw.PreferencesGroup {
+-              Box {
+-                orientation: vertical;
+-                spacing: 12;
+-
+-                CenterBox {
+-                  [center]
+-                  Stack icon_stack {
++Adw.NavigationPage main_page {
++ title: _("About"); tag: "main";
++ child: Adw.ToolbarView {
++ [top] Adw.HeaderBar about_header {
++ show-title: true; show-start-title-buttons: false; decoration-layout: ":close";
++ styles ["luma-about-header", "luma-no-automatic-identity"]
++ [title] Label about_title {label: _("About"); ellipsize: end; xalign: 0; hexpand: true; styles ["heading"]}
++ }
++ content: ScrolledWindow about_scroller {
++ hscrollbar-policy: never; propagate-natural-height: true; max-content-height: 640;
++ child: Box {orientation: vertical; spacing: 8; margin-top: 8; margin-bottom: 8; margin-start: 8; margin-end: 8;
++ Box overview_island {orientation: vertical; styles ["luma-island", "luma-island-quiet", "luma-about-overview"]
++ Box preview_box {visible: false; orientation: vertical; margin-top: 12; margin-start: 12; margin-end: 12;
++ Adw.Clamp {orientation: vertical; maximum-size: 144; tightening-threshold: 144; child: Picture preview_picture {height-request: 144; can-shrink: true; content-fit: contain; paintable: bind icon_image.paintable;};}
++ }
++ Box {spacing: 12; margin-top: 12; margin-bottom: 12; margin-start: 16; margin-end: 16;
++ Stack icon_stack {
+                     halign: center;
+                     valign: start;
+                     hhomogeneous: false;
+@@ -153,80 +120,105 @@
+                       };
+                     }
+                   }
+-                }
+-
+-                Box {
+-                  orientation: vertical;
+-                  spacing: 6;
+-
+-                  Label name_value_label {
+-                    selectable: true;
+-                    ellipsize: end;
+-                    max-width-chars: 24;
+-                    wrap: true;
+-                    wrap-mode: word_char;
+-                    lines: 3;
+-                    justify: center;
+-
+-                    styles [
+-                      "title-3",
+-                    ]
+-                  }
+-
+-                  Label type_value_label {
+-                    ellipsize: end;
+-                    selectable: true;
+-                    visible: false;
+-                  }
+-
+-                  Label type_file_system_label {
++ Box {orientation: vertical; spacing: 4; hexpand: true;
++ Label name_value_label {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; styles ["luma-about-name"]}
++ Label type_value_label {visible: false; selectable: true; wrap: true; xalign: 0; styles ["dim-label"]}
++ Label type_file_system_label {
+                     ellipsize: end;
+                     label: _("Unknown Filesystem");
+                     selectable: true;
+                     visible: false;
+                   }
+-
+-                  Label size_value_label {
++ Box rename_editor {visible: false; orientation: vertical; spacing: 8;
++ Entry rename_entry {hexpand: true; activates-default: false; activate => $about_rename_apply(template); accessibility {label: _("File name");}}
++ Box {spacing: 8; halign: end;
++ Button rename_cancel_button {label: _("Cancel"); clicked => $about_rename_cancel(template);}
++ Button rename_apply_button {label: _("Rename"); clicked => $about_rename_apply(template); styles ["suggested-action"]}
++ }
++ Label rename_status {visible: false; wrap: true; xalign: 0;}
++ }
++ }
++ Button rename_button {icon-name: "document-edit-symbolic"; valign: center; tooltip-text: _("Rename"); clicked => $about_rename_begin(template); styles ["flat"]}
++ }
++ Separator {}
++ Box facts_box {styles ["luma-about-facts"] spacing: 12; homogeneous: true; margin-top: 12; margin-bottom: 12; margin-start: 16; margin-end: 16;
++ Box dimensions_fact {visible: false; orientation: vertical; spacing: 4;
++ Label dimensions_value {xalign: 0; selectable: true; styles ["heading"]}
++ Label {label: _("Dimensions · pixels"); xalign: 0; styles ["caption", "dim-label"]}
++ }
++ Box {orientation: vertical; spacing: 4;
++ Label size_value_label {
+                     visible: false;
+                     selectable: true;
+                     ellipsize: end;
+ 
+                     styles [
+-                      "caption",
++                      "heading",
+                     ]
+                   }
+-
+-                  Box contents_box {
+-                    halign: center;
++ Box contents_box {
++                    halign: start;
+                     visible: false;
+                     spacing: 12;
+ 
+                     Label contents_value_label {
+                       selectable: true;
+                       ellipsize: end;
+-                      justify: center;
++                      justify: left;
+                     }
+ 
+                     Adw.Spinner contents_spinner {
+                       visible: false;
+                     }
+                   }
+-
+-                  Label free_space_value_label {
+-                    visible: false;
+-                    selectable: true;
+-                    ellipsize: end;
+-                    max-width-chars: 24;
+-
+-                    styles [
+-                      "caption",
+-                    ]
+-                  }
+-                }
+-              }
+-            }
+-
+-            Adw.PreferencesGroup disk_group {
++ Label facts_size_caption {label: _("File size"); xalign: 0; styles ["caption", "dim-label"]}
++ }
++ Box profile_fact {visible: false; orientation: vertical; spacing: 4;
++ Label profile_value {xalign: 0; selectable: true; styles ["heading"]}
++ Label {label: _("Color space"); xalign: 0; styles ["caption", "dim-label"]}
++ }
++ }
++ }
++ Box {orientation: vertical; styles ["luma-island", "luma-island-quiet", "luma-about-history"]
++ Adw.PreferencesGroup locations_group {visible: false;
++ Adw.ActionRow parent_folder_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Location"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label parent_folder_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ [suffix] Button {icon-name: "folder-open-symbolic"; valign: center; tooltip-text: _("Open Parent Folder"); clicked => $open_parent_folder() swapped; styles ["flat"]}
++ }
++ }
++ Adw.PreferencesGroup times_group {visible: false;
++ Adw.ActionRow modified_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Modified"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label modified_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ 
++ }
++ Adw.ActionRow created_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Created"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label created_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ 
++ }
++ }
++ }
++ Adw.PreferencesGroup extension_models_group {
++              visible: false;
++
++              ListBox extension_models_list_box {
++                selection-mode: none;
++
++                styles [
++                  "boxed-list", "luma-island", "luma-island-quiet",
++                ]
++              }
++            }
++ ListBox {selection-mode: none; styles ["boxed-list", "luma-island", "luma-island-quiet"]
++ Adw.ExpanderRow access_expander {title: _("Access &amp; advanced"); expanded: false;
++ [suffix] Label permissions_value_label {ellipsize: end; styles ["caption", "dim-label"]}
++ Box {orientation: vertical; spacing: 8; margin-start: 16; margin-end: 16; margin-bottom: 12;
++ Adw.PreferencesGroup disk_group {
+               visible: false;
+ 
+               Adw.PreferencesRow volume_usage_row {
+@@ -338,11 +330,35 @@
+                 activated => $open_in_disks(template);
+               }
+             }
+-
+-            Adw.PreferencesGroup locations_group {
++ Adw.PreferencesGroup trashed_group {
+               visible: false;
+ 
+-              Adw.ActionRow link_target_row {
++              Adw.ActionRow original_folder_row {
++                title: _("Original Folder");
++                selectable: false;
++                subtitle-selectable: true;
++                use-markup: false;
++
++                styles [
++                  "property",
++                ]
++              }
++
++              Adw.ActionRow trashed_on_row {
++                title: _("Trashed On");
++                selectable: false;
++                subtitle-selectable: true;
++                subtitle-lines: 1;
++                use-markup: false;
++
++                styles [
++                  "property",
++                  "numeric",
++                ]
++              }
++            }
++ Adw.PreferencesGroup {
++ Adw.ActionRow link_target_row {
+                 title: _("_Link Target");
+                 visible: false;
+                 selectable: false;
+@@ -368,162 +384,64 @@
+                   ]
+                 }
+               }
+-
+-              Adw.ActionRow parent_folder_row {
+-                title: _("Parent _Folder");
+-                visible: false;
+-                selectable: false;
+-                subtitle-selectable: true;
+-                use-underline: true;
+-                use-markup: false;
+-
+-                styles [
+-                  "property",
+-                ]
+-
+-                activate => $open_parent_folder() swapped;
+-
+-                [suffix]
+-                Button open_parent_folder_button {
+-                  tooltip-text: _("Open Parent Folder");
+-                  icon-name: "folder-open-symbolic";
+-                  valign: center;
+-                  clicked => $open_parent_folder() swapped;
+-
+-                  styles [
+-                    "flat",
+-                  ]
+-                }
+-              }
+-            }
+-
+-            Adw.PreferencesGroup trashed_group {
++ Adw.ActionRow accessed_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Accessed"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label accessed_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ 
++ }
++ Adw.ActionRow exact_modified_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Modified (exact)"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label exact_modified_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ 
++ }
++ Adw.ActionRow exact_created_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Created (exact)"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label exact_created_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ 
++ }
++ Adw.ActionRow full_location_row {
++ title: ""; visible: false; activatable: false; styles ["luma-about-metadata-row"]
++ [prefix] Label {label: _("Full location"); xalign: 0; width-request: 84; styles ["dim-label"]}
++ [suffix] Label full_location_row_value {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; hexpand: true;}
++ 
++ }
++ }
++ Label free_space_value_label {
++                    visible: false;
++                    selectable: true;
++                    ellipsize: end;
++                    max-width-chars: 24;
++
++                    styles [
++                      "caption",
++                    ]
++                  }
++ Box {spacing: 8;
++ Button star_button {
+               visible: false;
+-
+-              Adw.ActionRow original_folder_row {
+-                title: _("Original Folder");
+-                selectable: false;
+-                subtitle-selectable: true;
+-                use-markup: false;
+-
+-                styles [
+-                  "property",
+-                ]
+-              }
+-
+-              Adw.ActionRow trashed_on_row {
+-                title: _("Trashed On");
+-                selectable: false;
+-                subtitle-selectable: true;
+-                subtitle-lines: 1;
+-                use-markup: false;
+-
+-                styles [
+-                  "property",
+-                  "numeric",
+-                ]
+-              }
+-            }
+-
+-            Adw.PreferencesGroup times_group {
++              valign: center;
++              clicked => $star_clicked() swapped;
++
++              styles [
++                "star",
++              ]
++            }
++ Button popout_button {
+               visible: false;
+-
+-              Adw.ActionRow accessed_row {
+-                title: _("Accessed");
+-                visible: false;
+-                selectable: false;
+-                subtitle-selectable: true;
+-                subtitle-lines: 1;
+-                use-markup: false;
+-
+-                styles [
+-                  "property",
+-                  "numeric",
+-                ]
+-              }
+-
+-              Adw.ActionRow modified_row {
+-                title: _("Modified");
+-                visible: false;
+-                selectable: false;
+-                subtitle-selectable: true;
+-                subtitle-lines: 1;
+-                use-markup: false;
+-
+-                styles [
+-                  "property",
+-                  "numeric",
+-                ]
+-              }
+-
+-              Adw.ActionRow created_row {
+-                title: _("Created");
+-                visible: false;
+-                selectable: false;
+-                subtitle-selectable: true;
+-                subtitle-lines: 1;
+-                use-markup: false;
+-
+-                styles [
+-                  "property",
+-                  "numeric",
+-                ]
+-              }
+-            }
+-
+-            Adw.PreferencesGroup {
+-              Adw.ActionRow permissions_navigation_row {
+-                activatable: true;
+-                selectable: false;
+-                title: _("_Permissions");
+-                use-underline: true;
+-                activated => $navigate_permissions_page(template);
+-
+-                Label permissions_value_label {
+-                  ellipsize: end;
+-
+-                  styles [
+-                    "dim-label",
+-                  ]
+-                }
+-
+-                Image {
+-                  icon-name: "go-next-symbolic";
+-                }
+-              }
+-
+-              Adw.SwitchRow execution_row {
+-                visible: false;
+-                activatable: true;
+-                title: _("_Executable as Program");
+-                use-underline: true;
+-              }
+-            }
+-
+-            Adw.PreferencesGroup extension_models_group {
+-              visible: false;
+-
+-              ListBox extension_models_list_box {
+-                selection-mode: none;
+-
+-                styles [
+-                  "boxed-list",
+-                ]
+-              }
+-            }
+-          };
+-        };
+-      }
+-
+-      Adw.NavigationPage {
+-        tag: "permissions";
+-        title: _("Set Custom Permissions");
+-
+-        child: Adw.ToolbarView {
+-          [top]
+-          Adw.HeaderBar {}
+-
+-          content: Stack permissions_stack {
++              icon-name: "external-link-symbolic";
++              clicked => $popout_window_clicked(template);
++            }
++ }
++ ListBox {selection-mode: none; styles ["boxed-list"]
++ Adw.ActionRow permissions_navigation_row {visible: false; title: _("Edit permissions…"); activatable: true; activated => $navigate_permissions_page(template);}
++ }
++ Label permission_status {label: ""; wrap: true; xalign: 0;}
++ Button {label: _("Remove Custom Icon"); visible: bind reset_icon_button.visible; clicked => $reset_icon() swapped;}
++ Box permissions_editor {visible: false; orientation: vertical; spacing: 8;
++ Stack permissions_stack {
+             StackPage {
+               name: "permission-indeterminable";
+ 
+@@ -544,7 +462,7 @@
+                   title: _("Only the owner can edit these permissions");
+                 }
+ 
+-                Adw.PreferencesPage {
++                Box { orientation: vertical; spacing: 8;
+                   Adw.PreferencesGroup {
+                     Adw.ComboRow owner_row {
+                       activatable: false;
+@@ -661,10 +579,30 @@
+                 }
+               };
+             }
+-          };
+-        };
+-      }
+-
++          }
++ Box execution_choices {orientation: vertical; spacing: 8;
++ CheckButton owner_exec {label: _("Owner can execute"); toggled => $about_execution_changed(template);}
++ CheckButton group_exec {label: _("Group can execute"); toggled => $about_execution_changed(template);}
++ CheckButton others_exec {label: _("Others can execute"); toggled => $about_execution_changed(template);}
++ }
++ Adw.SwitchRow execution_row {
++                visible: false;
++                activatable: true;
++                title: _("_Executable as Program");
++                use-underline: true;
++              }
++ Box {halign: end; spacing: 8;
++ Button permission_cancel {label: _("Cancel"); clicked => $about_permissions_cancel(template);}
++ Button permission_apply {label: _("Apply"); clicked => $about_permissions_apply(template); styles ["suggested-action"]}
++ }
++ }
++ }
++ }
++ }
++ };
++ };
++ };
++ }
+       Adw.NavigationPage {
+         tag: "extension";
+ 
+@@ -685,6 +623,7 @@
+           };
+         };
+       }
+-    };
+-  };
++
++};
++};
+ }
+--- a/test/automated/meson.build
++++ b/test/automated/meson.build
+@@ -26,3 +26,9 @@
+ if get_option('tests') == 'all'
+   subdir('display')
+ endif
++
++# Native About mutations use the same library and resources as the application.
++about_test = executable('test-properties-about', 'test-properties-about.c',
++  dependencies: [libnautilus_dep, libtestutils_dep])
++test('test-properties-about', about_test, env: test_env,
++  suite: ['display'], is_parallel: false, timeout: 120)
+--- /dev/null
++++ b/test/automated/test-properties-about.c
+@@ -0,0 +1,124 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include <adwaita.h>
++#include <glib/gstdio.h>
++#include <sys/stat.h>
++#include "nautilus-application.h"
++#include "nautilus-properties.h"
++#include "nautilus-file.h"
++#include "nautilus-tag-manager.h"
++#include "nautilus-resources.h"
++
++static void spin (guint milliseconds)
++{
++    gint64 end=g_get_monotonic_time()+milliseconds*1000;
++    do {while(g_main_context_iteration(NULL,FALSE));g_usleep(1000);} while(g_get_monotonic_time()<end);
++}
++static GtkWidget *find (GtkWidget *root,const char *id)
++{
++    if(GTK_IS_BUILDABLE(root) && !g_strcmp0(gtk_buildable_get_buildable_id(GTK_BUILDABLE(root)),id))return root;
++    for(GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c))
++    {GtkWidget *r=find(c,id);if(r)return r;}
++    return NULL;
++}
++static GtkWidget *required (GtkWidget *root,const char *id)
++{GtkWidget *w=find(root,id);g_assert_nonnull(w);return w;}
++static void click (GtkWidget *root,const char *id)
++{g_signal_emit_by_name(required(root,id),"clicked");spin(50);}
++static guint32 mode (const char *path)
++{struct stat s;g_assert_cmpint(g_stat(path,&s),==,0);return s.st_mode&07777;}
++static GtkWindow *open_paths (const char *first,const char *second)
++{
++    GList *files=NULL;
++    g_autoptr(GFile) loc=g_file_new_for_path(first);
++    NautilusFile *file=nautilus_file_get(loc);files=g_list_append(files,file);
++    if(second){g_autoptr(GFile) next=g_file_new_for_path(second);files=g_list_append(files,nautilus_file_get(next));}
++    GtkWindow *window=nautilus_properties_present_window(files,NULL);
++    g_list_free_full(files,g_object_unref);
++    for(guint i=0;i<200;i++){spin(20);GtkWidget *name=find(GTK_WIDGET(window),"name_value_label");if(name && *gtk_label_get_text(GTK_LABEL(name)))return window;}
++    g_error("About window did not finish loading");return NULL;
++}
++static void begin_permissions(GtkWidget *w)
++{adw_expander_row_set_expanded(ADW_EXPANDER_ROW(required(w,"access_expander")),TRUE);spin(50);g_signal_emit_by_name(required(w,"permissions_navigation_row"),"activated");spin(30);g_assert_true(gtk_widget_get_visible(required(w,"permissions_editor")));}
++static void fixture(void)
++{
++    g_autofree char *dir=g_dir_make_tmp("luma-about-test-XXXXXX",NULL);
++    g_autofree char *file=g_build_filename(dir,"build.sh",NULL);
++    g_autofree char *renamed=g_build_filename(dir,"renamed.sh",NULL);
++    g_autofree char *conflict=g_build_filename(dir,"occupied.sh",NULL);
++    g_assert_true(g_file_set_contents(file,"#!/bin/sh\n",-1,NULL));g_assert_cmpint(g_chmod(file,02641),==,0);
++    g_assert_true(g_file_set_contents(conflict,"keep",-1,NULL));
++    GtkWindow *window=open_paths(file,NULL);GtkWidget *w=GTK_WIDGET(window);
++    g_assert_cmpstr(gtk_window_get_title(window),==,"About build.sh");
++    g_assert_false(gtk_widget_get_visible(required(w,"preview_box")));
++    g_assert_false(gtk_widget_get_visible(required(w,"profile_fact")));
++    g_assert_false(gtk_widget_get_visible(required(w,"permissions_editor")));
++    begin_permissions(w);
++    struct stat initial; g_assert_cmpint(g_stat(file,&initial),==,0);
++    const char *ownership_rows[]={"owner_row","group_row"};
++    for(guint r=0;r<2;r++) {
++        AdwComboRow *row=ADW_COMBO_ROW(required(w,ownership_rows[r]));
++        GListModel *model=adw_combo_row_get_model(row); guint original=adw_combo_row_get_selected(row);
++        if(model && g_list_model_get_n_items(model)>1 && original!=GTK_INVALID_LIST_POSITION) {
++            adw_combo_row_set_selected(row,(original+1)%g_list_model_get_n_items(model));
++            adw_combo_row_set_selected(row,original);
++        }
++    }
++    click(w,"permission_apply");spin(200);
++    struct stat reverted;g_assert_cmpint(g_stat(file,&reverted),==,0);
++    g_assert_cmpuint(reverted.st_uid,==,initial.st_uid);g_assert_cmpuint(reverted.st_gid,==,initial.st_gid);
++    begin_permissions(w);
++    GtkCheckButton *group=GTK_CHECK_BUTTON(required(w,"group_exec"));
++    g_assert_false(gtk_check_button_get_active(group));
++    gtk_check_button_set_active(group,TRUE);spin(50);
++    g_assert_cmpuint(mode(file),==,02641);
++    click(w,"permission_cancel");g_assert_cmpuint(mode(file),==,02641);
++    begin_permissions(w);gtk_check_button_set_active(group,TRUE);click(w,"permission_apply");
++    for(guint i=0;i<200 && mode(file)!=02651;i++)spin(20);
++    g_assert_cmpuint(mode(file),==,02651);
++    spin(200);
++    click(w,"rename_button");gtk_editable_set_text(GTK_EDITABLE(required(w,"rename_entry")),"cancelled.sh");click(w,"rename_cancel_button");
++    g_assert_true(g_file_test(file,G_FILE_TEST_EXISTS));
++    click(w,"rename_button");gtk_editable_set_text(GTK_EDITABLE(required(w,"rename_entry")),"occupied.sh");click(w,"rename_apply_button");
++    for(guint i=0;i<200 && !gtk_widget_get_sensitive(required(w,"rename_editor"));i++)spin(20);
++    g_assert_true(g_file_test(file,G_FILE_TEST_EXISTS));
++    g_assert_cmpstr(gtk_window_get_title(window),==,"About build.sh");
++    gtk_editable_set_text(GTK_EDITABLE(required(w,"rename_entry")),"renamed.sh");click(w,"rename_apply_button");
++    for(guint i=0;i<200 && !g_file_test(renamed,G_FILE_TEST_EXISTS);i++)spin(20);
++    g_assert_true(g_file_test(renamed,G_FILE_TEST_EXISTS));spin(200);
++    g_assert_cmpstr(gtk_window_get_title(window),==,"About renamed.sh");
++    begin_permissions(w);gtk_check_button_set_active(group,FALSE);
++    g_assert_cmpint(g_chmod(renamed,0644),==,0);spin(700);click(w,"permission_apply");
++    g_assert_cmpuint(mode(renamed),==,0644);
++    g_assert_nonnull(strstr(gtk_label_get_text(GTK_LABEL(required(w,"permission_status"))),"changed"));
++    for(guint i=0;i<200 && !gtk_widget_get_sensitive(required(w,"permissions_editor"));i++)spin(20);
++    click(w,"permission_cancel");begin_permissions(w);
++    g_assert_false(gtk_check_button_get_active(group));
++    gtk_check_button_set_active(group,TRUE);click(w,"permission_apply");
++    for(guint i=0;i<200 && mode(renamed)!=0654;i++)spin(20);
++    g_assert_cmpuint(mode(renamed),==,0654);
++    gtk_window_destroy(window);spin(50);
++    g_chmod(conflict,0701);
++    window=open_paths(renamed,conflict);w=GTK_WIDGET(window);
++    g_assert_cmpstr(gtk_window_get_title(window),==,"About 2 items");
++    g_assert_false(gtk_widget_get_visible(required(w,"rename_button")));
++    begin_permissions(w);g_assert_true(gtk_check_button_get_inconsistent(GTK_CHECK_BUTTON(required(w,"owner_exec"))));
++    click(w,"permission_cancel");gtk_window_destroy(window);spin(50);
++    window=open_paths(dir,NULL);w=GTK_WIDGET(window);
++    begin_permissions(w);g_assert_false(gtk_widget_get_visible(required(w,"execution_choices")));
++    gtk_window_destroy(window);spin(50);
++    g_remove(renamed);g_remove(conflict);g_rmdir(dir);
++}
++int main(int argc,char **argv)
++{
++    g_test_init(&argc,&argv,G_TEST_OPTION_ISOLATE_DIRS,NULL);
++    g_setenv("XDG_DATA_DIRS", "/usr/local/share:/usr/share", TRUE);
++    adw_init();
++    nautilus_register_resource();
++    /* Match upstream display fixtures: star indexing is outside this mutation test. */
++    g_autoptr(NautilusTagManager) tag_manager=nautilus_tag_manager_new_dummy();
++    g_autoptr(NautilusApplication) app=nautilus_application_new();
++    g_application_set_flags(G_APPLICATION(app),G_APPLICATION_NON_UNIQUE);
++    g_autoptr(GError) error=NULL;g_assert_true(g_application_register(G_APPLICATION(app),NULL,&error));
++    g_test_add_func("/luma/about/native-mutations",fixture);
++    return g_test_run();
++}

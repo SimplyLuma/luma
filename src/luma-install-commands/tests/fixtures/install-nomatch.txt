@@ -1,0 +1,4 @@
+Failed to resolve the transaction:
+No match for argument: nosuchpkg
+You can try to add to command line:
+  --skip-unavailable to skip unavailable packages

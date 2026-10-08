@@ -1,0 +1,99 @@
+From baab3244b38695308010c8df677dcd0be5ec84fc Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:22:59 +0000
+Subject: [PATCH] Filer: contain native fixture navigation and background
+ search
+
+---
+ src/nautilus-application.c           | 10 ++++++++--
+ src/nautilus-localsearch-utilities.c |  7 +++++++
+ src/nautilus-search-engine.c         |  7 +++++--
+ src/nautilus-window-slot.c           | 12 ++++++++++++
+ 4 files changed, 32 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+index 03514f6..d17c9fe 100644
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -810,11 +810,17 @@ nautilus_application_init (NautilusApplication *self)
+     /* Retain a mount monitor so GIO's caching works. This helps to speed
+      * up various filesystem queries, e.g. those determining whether to
+      * recurse during searches. */
+-    self->mount_monitor = g_unix_mount_monitor_get ();
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        self->mount_monitor = g_unix_mount_monitor_get ();
++    }
+ 
+     self->dbus_launcher = nautilus_dbus_launcher_new ();
+ 
+-    nautilus_localsearch_setup_miner_fs_connection ();
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        nautilus_localsearch_setup_miner_fs_connection ();
++    }
+ 
+     g_application_add_main_option_entries (G_APPLICATION (self), options);
+ 
+diff --git a/src/nautilus-localsearch-utilities.c b/src/nautilus-localsearch-utilities.c
+index d22b5d9..17d64c4 100644
+--- a/src/nautilus-localsearch-utilities.c
++++ b/src/nautilus-localsearch-utilities.c
+@@ -83,6 +83,13 @@ nautilus_localsearch_setup_miner_fs_connection (void)
+ {
+     static gsize tried_tracker_init = FALSE;
+ 
++    /* The fixture is a private file tree. Do not activate the session indexer,
++     * whose crawl roots can include the real home even on a private bus. */
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        return;
++    }
++
+     if (tracker_miner_fs_connection != NULL)
+     {
+         /* The connection was already established */
+diff --git a/src/nautilus-search-engine.c b/src/nautilus-search-engine.c
+index 555b0f4..3be1335 100644
+--- a/src/nautilus-search-engine.c
++++ b/src/nautilus-search-engine.c
+@@ -270,8 +270,11 @@ nautilus_search_engine_set_search_type (NautilusSearchEngine *self,
+ 
+     self->search_type = search_type;
+ 
+-    setup_provider (self, &self->localsearch, NAUTILUS_SEARCH_TYPE_LOCALSEARCH,
+-                    (CreateFunc) nautilus_search_engine_localsearch_new);
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        setup_provider (self, &self->localsearch, NAUTILUS_SEARCH_TYPE_LOCALSEARCH,
++                        (CreateFunc) nautilus_search_engine_localsearch_new);
++    }
+     setup_provider (self, &self->model, NAUTILUS_SEARCH_TYPE_MODEL,
+                     (CreateFunc) nautilus_search_engine_model_new);
+     setup_provider (self, &self->recent, NAUTILUS_SEARCH_TYPE_RECENT,
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+index 89b39cd..9371cc4 100644
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -1760,6 +1760,18 @@ begin_location_change (NautilusWindowSlot         *self,
+               || type == NAUTILUS_LOCATION_CHANGE_FORWARD
+               || distance == 0);
+ 
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        g_autoptr (GFile) root = g_file_new_for_path (fixture_root);
++
++        if (!g_file_equal (location, root) && !g_file_has_prefix (location, root))
++        {
++            g_warning ("Filer fixture refused navigation outside its root");
++            return;
++        }
++    }
++
+     /* We are going to change the location, so make sure we stop any loading
+      * or searching of the previous view, so we avoid to be slow */
+     nautilus_window_slot_stop_loading (self);
+-- 
+2.55.0
+

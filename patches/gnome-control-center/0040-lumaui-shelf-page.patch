@@ -1,0 +1,472 @@
+From 9eac2b25f71e4be70608285936199b6b9e77f3eb Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:02:26 +0000
+Subject: [PATCH] Settings: compose Shelf preview, presets and arrangement
+ controls
+
+---
+ shell/cc-luma-fixture.c      |   4 +-
+ shell/cc-luma-view-private.h |   4 +
+ shell/cc-luma-view-shelf.c   | 194 +++++++++++++++++++++++++++++++++++
+ shell/cc-luma-view.c         |  37 ++++---
+ shell/meson.build            |   3 +-
+ shell/test-luma-view.c       |  43 ++++++++
+ 6 files changed, 269 insertions(+), 16 deletions(-)
+ create mode 100644 shell/cc-luma-view-shelf.c
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 1337f8b..b75a032 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -370,8 +370,8 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+           g_autofree char *file = g_strconcat (id, ".png", NULL);
+           return g_build_filename (self->resource_dir, file, NULL);
+         }
+-  const char *apps[] = { "write", "viola", "messages" };
+-  const char *artwork[] = { "documents", "browser", "messages" };
++  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos" };
++  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos" };
+   if (self->resource_dir && id)
+     for (guint i = 0; i < G_N_ELEMENTS (apps); i++)
+       if (g_str_equal (id, apps[i]))
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index cff2ced..270610e 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -47,3 +47,7 @@ void cc_luma_view_report_error (View *v, const GError *error);
+ 
+ GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, const char *accessible);
+ void cc_luma_view_windows_render (View *v);
++
++GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target);
++GtkWidget *cc_luma_view_picker (View *v, const char *key, const char * const *choices);
++void cc_luma_view_shelf_render (View *v);
+diff --git a/shell/cc-luma-view-shelf.c b/shell/cc-luma-view-shelf.c
+new file mode 100644
+index 0000000..4d4ecd9
+--- /dev/null
++++ b/shell/cc-luma-view-shelf.c
+@@ -0,0 +1,194 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++#include "cc-luma-desktop.h"
++
++static void arrangement_changed (LumaSegmentedControl *control, const char *value, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *key = g_object_get_data (G_OBJECT (control), "cf-key");
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_shelf_set_choice (v->model, key, value, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static GtkWidget *segments (View *v, const char *key, const char *caption, const char * const *values)
++{
++  GtkWidget *control = luma_segmented_control_new ();
++  for (guint i = 0; values[i]; i += 2)
++    luma_segmented_control_append (LUMA_SEGMENTED_CONTROL (control), values[i], values[i + 1]);
++  luma_segmented_control_set_selected (LUMA_SEGMENTED_CONTROL (control), cc_luma_view_text (v, key));
++  gtk_accessible_update_property (GTK_ACCESSIBLE (control), GTK_ACCESSIBLE_PROPERTY_LABEL, caption, -1);
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  gtk_widget_set_name (control, name);
++  g_object_set_data_full (G_OBJECT (control), "cf-key", g_strdup (key), g_free);
++  g_signal_connect_object (control, "changed", G_CALLBACK (arrangement_changed), v->root, 0);
++  return control;
++}
++static void preset_clicked (GtkButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  g_autoptr (GError) error = NULL;
++  const char *id = g_object_get_data (G_OBJECT (button), "cf-preset");
++  if (cc_luma_shelf_set_preset (v->model, id, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static GtkWidget *preset_buttons (View *v)
++{
++  GtkWidget *flow = gtk_flow_box_new ();
++  gtk_flow_box_set_selection_mode (GTK_FLOW_BOX (flow), GTK_SELECTION_NONE);
++  gtk_flow_box_set_min_children_per_line (GTK_FLOW_BOX (flow), 1);
++  gtk_flow_box_set_max_children_per_line (GTK_FLOW_BOX (flow), 8);
++  gtk_flow_box_set_row_spacing (GTK_FLOW_BOX (flow), 4);
++  gtk_flow_box_set_column_spacing (GTK_FLOW_BOX (flow), 4);
++  gtk_widget_set_halign (flow, GTK_ALIGN_CENTER);
++  gtk_widget_set_margin_top (flow, 14);
++  JsonArray *catalog = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFPRE");
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    {
++      JsonArray *entry = json_array_get_array_element (catalog, i);
++      const char *id = json_array_get_string_element (entry, 0);
++      GtkWidget *button = gtk_toggle_button_new_with_label (json_array_get_string_element (entry, 1));
++      gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), g_str_equal (id, cc_luma_view_text (v, "preset")));
++      g_autofree char *name = g_strconcat ("cf-preset-", id, NULL);
++      gtk_widget_set_name (button, name);
++      g_object_set_data_full (G_OBJECT (button), "cf-preset", g_strdup (id), g_free);
++      g_signal_connect_object (button, "clicked", G_CALLBACK (preset_clicked), v->root, 0);
++      gtk_flow_box_insert (GTK_FLOW_BOX (flow), button, -1);
++    }
++  return flow;
++}
++static GtkWidget *shelf_island (View *v, gboolean vertical, gboolean with_apps, gboolean with_clock)
++{
++  GtkWidget *content = gtk_box_new (vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL, 4);
++  const char *apps[] = { "filer", "viola", "tide", "messages", "charlie", "photos", "write" };
++  if (with_apps)
++    for (guint i = 0; i < G_N_ELEMENTS (apps); i++)
++      {
++        GtkWidget *image = cc_luma_view_image (v, apps[i], 36, 36);
++        gtk_widget_set_size_request (image, vertical ? 16 : 18, vertical ? 16 : 18);
++        gtk_box_append (GTK_BOX (content), image);
++      }
++  if (with_clock)
++    {
++      if (with_apps)
++        {
++          GtkWidget *space = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++          gtk_widget_set_hexpand (space, !vertical);
++          gtk_widget_set_vexpand (space, vertical);
++          gtk_box_append (GTK_BOX (content), space);
++        }
++      g_autoptr (GDateTime) now = g_date_time_new_now_local ();
++      g_autofree char *clock = g_date_time_format (now, "%l:%M");
++      gtk_box_append (GTK_BOX (content), cc_luma_view_label (g_strstrip (clock), "caption", FALSE));
++    }
++  /* These miniature islands are app-only diagrams, composed from kit cards. */
++  GtkWidget *card = luma_card_new (content, FALSE);
++  gtk_widget_set_margin_start (content, 5); gtk_widget_set_margin_end (content, 5);
++  gtk_widget_set_margin_top (content, 5); gtk_widget_set_margin_bottom (content, 5);
++  return card;
++}
++static void place_island (GtkOverlay *desk, GtkWidget *island, gboolean vertical, gboolean right, GtkAlign along, gboolean attached)
++{
++  gtk_widget_set_halign (island, vertical ? (right ? GTK_ALIGN_END : GTK_ALIGN_START) : along);
++  gtk_widget_set_valign (island, vertical ? along : GTK_ALIGN_END);
++  if (vertical)
++    {
++      if (right) gtk_widget_set_margin_end (island, attached ? 0 : 8);
++      else gtk_widget_set_margin_start (island, attached ? 0 : 8);
++      if (along == GTK_ALIGN_END) gtk_widget_set_margin_bottom (island, 8);
++      else if (along == GTK_ALIGN_FILL) { gtk_widget_set_margin_top (island, attached ? 0 : 8); gtk_widget_set_margin_bottom (island, attached ? 0 : 8); }
++    }
++  else
++    {
++      gtk_widget_set_margin_bottom (island, attached ? 0 : 8);
++      if (along == GTK_ALIGN_END) gtk_widget_set_margin_end (island, attached ? 0 : 10);
++      else if (along == GTK_ALIGN_FILL) { gtk_widget_set_margin_start (island, attached ? 0 : 8); gtk_widget_set_margin_end (island, attached ? 0 : 8); }
++    }
++  gtk_overlay_add_overlay (desk, island);
++}
++static GtkWidget *desk_preview (View *v)
++{
++  gboolean vertical = !g_str_equal (cc_luma_view_text (v, "edge"), "bottom");
++  gboolean right = g_str_equal (cc_luma_view_text (v, "edge"), "right");
++  gboolean joined = g_str_equal (cc_luma_view_text (v, "joined"), "joined");
++  gboolean attached = g_str_equal (cc_luma_view_text (v, "float"), "edge");
++  gboolean spread = g_str_equal (cc_luma_view_text (v, "spread"), "spread");
++  const char *preset = cc_luma_view_text (v, "preset");
++  GtkWidget *desk = gtk_overlay_new ();
++  gtk_widget_set_name (desk, "cf-desk");
++  gtk_widget_set_size_request (desk, -1, 200);
++  gtk_overlay_set_child (GTK_OVERLAY (desk), cc_luma_view_image (v, cc_luma_view_text (v, "wall"), 1040, 400));
++  GtkWidget *apps = shelf_island (v, vertical, TRUE, joined);
++  place_island (GTK_OVERLAY (desk), apps, vertical, right, joined && spread ? GTK_ALIGN_FILL : GTK_ALIGN_CENTER, attached);
++  if (!joined)
++    {
++      GtkWidget *clock = shelf_island (v, vertical, FALSE, TRUE);
++      place_island (GTK_OVERLAY (desk), clock, vertical, right, spread ? GTK_ALIGN_END : GTK_ALIGN_CENTER, attached);
++      if (g_str_equal (preset, "split"))
++        { gtk_widget_set_halign (clock, GTK_ALIGN_CENTER); gtk_widget_set_valign (clock, GTK_ALIGN_START); gtk_widget_set_margin_top (clock, attached ? 0 : 8); }
++      else if (g_str_equal (preset, "free"))
++        { gtk_widget_set_halign (apps, GTK_ALIGN_START); gtk_widget_set_margin_start (apps, 18); gtk_widget_set_margin_bottom (apps, 14); gtk_widget_set_halign (clock, GTK_ALIGN_END); gtk_widget_set_valign (clock, GTK_ALIGN_START); gtk_widget_set_margin_top (clock, 14); gtk_widget_set_margin_end (clock, 18); }
++      else if (!spread)
++        {
++          /* v70 places the two adjacent islands at fixed diagram coordinates. */
++          gtk_widget_set_halign (apps, GTK_ALIGN_START); gtk_widget_set_valign (apps, vertical ? GTK_ALIGN_START : GTK_ALIGN_END);
++          gtk_widget_set_halign (clock, vertical ? (right ? GTK_ALIGN_END : GTK_ALIGN_START) : GTK_ALIGN_START);
++          if (vertical) { gtk_widget_set_margin_top (apps, 14); gtk_widget_set_valign (clock, GTK_ALIGN_START); gtk_widget_set_margin_top (clock, 166); }
++          else { gtk_widget_set_margin_start (apps, 152); gtk_widget_set_margin_start (clock, 318); }
++        }
++    }
++  GtkWidget *clamp = adw_clamp_new ();
++  adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 520);
++  adw_clamp_set_child (ADW_CLAMP (clamp), desk);
++  return clamp;
++}
++static void size_changed (GtkRange *range, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  gint64 size = (gint64) gtk_range_get_value (range);
++  g_autoptr (GError) error = NULL;
++  if (!cc_luma_shelf_set_size (v->model, size, &error)) { cc_luma_view_report_error (v, error); return; }
++  g_autofree char *caption = g_strdup_printf ("%" G_GINT64_FORMAT " px", size);
++  gtk_label_set_text (g_object_get_data (G_OBJECT (range), "cf-output"), caption);
++}
++void cc_luma_view_shelf_render (View *v)
++{
++  const char *edge[] = { "bottom", "Bottom", "left", "Left", "right", "Right", NULL };
++  const char *spread[] = { "together", "Together", "spread", "Spread", NULL };
++  const char *joined[] = { "separate", "Separate", "joined", "One bar", NULL };
++  const char *floating[] = { "floating", "Floating", "edge", "Attached", NULL };
++  const char *hiding[] = { "never", "Never", "touch", "When a window touches it", "always", "Until you point at it", NULL };
++  const char *label = "Custom", *preset = cc_luma_view_text (v, "preset");
++  JsonArray *catalog = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFPRE");
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    { JsonArray *entry = json_array_get_array_element (catalog, i); if (g_str_equal (json_array_get_string_element (entry, 0), preset)) label = json_array_get_string_element (entry, 1); }
++  const char *hide = cc_luma_view_text (v, "hide");
++  g_autofree char *meta = g_strdup_printf ("%s · %s", label, g_str_equal (hide, "never") ? "always shown" : g_str_equal (hide, "touch") ? "hides when a window touches it" : "hides until you point at it");
++  cc_luma_view_header (v, "Shelf", meta, NULL);
++  GtkWidget *hero_body = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++  gtk_box_append (GTK_BOX (hero_body), desk_preview (v)); gtk_box_append (GTK_BOX (hero_body), preset_buttons (v));
++  GtkWidget *hero = luma_card_new (hero_body, TRUE); luma_card_set_recessed (LUMA_CARD (hero), TRUE);
++  gtk_widget_set_margin_top (hero, 20); gtk_box_append (v->body, hero);
++  GtkBox *rows = cc_luma_view_group (v, "Arrangement");
++  cc_luma_view_row (rows, "Position", NULL, segments (v, "edge", "Position", edge));
++  cc_luma_view_row (rows, "Islands", "Together in the middle, or spread to the ends", segments (v, "spread", "Islands", spread));
++  cc_luma_view_row (rows, "Surface", NULL, segments (v, "joined", "Surface", joined));
++  cc_luma_view_row (rows, "Edge", "Float above the edge, or grow out of it", segments (v, "float", "Edge", floating));
++  rows = cc_luma_view_group (v, "Behaviour");
++  cc_luma_view_row (rows, "Hide the shelf", NULL, cc_luma_view_picker (v, "hide", hiding));
++  GtkWidget *range = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL, 32, 56, 4);
++  gtk_scale_set_draw_value (GTK_SCALE (range), FALSE); gtk_widget_set_size_request (range, 140, -1);
++  gint64 size = json_node_get_int (cc_luma_fixture_get (v->model, "isz")); gtk_range_set_value (GTK_RANGE (range), size);
++  gtk_widget_set_name (range, "cf-isz"); gtk_accessible_update_property (GTK_ACCESSIBLE (range), GTK_ACCESSIBLE_PROPERTY_LABEL, "Icon size", -1);
++  GtkWidget *size_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
++  g_autofree char *caption = g_strdup_printf ("%" G_GINT64_FORMAT " px", size);
++  GtkWidget *output = cc_luma_view_label (caption, "caption", TRUE);
++  gtk_box_append (GTK_BOX (size_box), range); gtk_box_append (GTK_BOX (size_box), output);
++  g_object_set_data (G_OBJECT (range), "cf-output", output); g_signal_connect_object (range, "value-changed", G_CALLBACK (size_changed), v->root, 0);
++  cc_luma_view_row (rows, "Icon size", NULL, size_box);
++  rows = cc_luma_view_group (v, "Status island");
++  cc_luma_view_row (rows, "Clock", "Format, weekday and seconds", cc_luma_view_link (v, "", "datetime"));
++  cc_luma_view_row (rows, "Battery percentage", NULL, cc_luma_view_link (v, cc_luma_view_flag (v, "pct") ? "Shown" : "Hidden", "power"));
++}
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 6595d06..8fe8582 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -82,7 +82,7 @@ static void navigate (GtkButton *button, View *v)
+   v->page = g_strdup (target);
+   render (v);
+ }
+-static GtkWidget *link_button (View *v, const char *caption, const char *target)
++GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target)
+ {
+   GtkWidget *button = gtk_button_new_with_label (caption);
+   g_object_set_data_full (G_OBJECT (button), "cf-target", g_strdup (target), g_free);
+@@ -131,7 +131,8 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   g_variant_get (parameter, "(&s&s)", &key, &value);
+   if (!picker_value_allowed (key, value)) return;
+   json_node_set_string (n, value);
+-  if (cc_luma_fixture_set (v->model, key, n, &error)) cc_luma_view_queue_refresh (v);
++  gboolean changed = g_str_equal (key, "hide") ? cc_luma_shelf_set_choice (v->model, key, value, &error) : cc_luma_fixture_set (v->model, key, n, &error);
++  if (changed) cc_luma_view_queue_refresh (v);
+   else g_warning ("%s", error->message);
+ }
+ static void open_picker (GtkButton *button, View *v)
+@@ -147,7 +148,7 @@ static void open_picker (GtkButton *button, View *v)
+     }
+   luma_floating_menu_popup (LUMA_FLOATING_MENU (menu), GTK_WIDGET (button));
+ }
+-static GtkWidget *picker (View *v, const char *key, const char * const *choices)
++GtkWidget *cc_luma_view_picker (View *v, const char *key, const char * const *choices)
+ {
+   Pick *pick = g_new0 (Pick, 1);
+   GtkWidget *button, *content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+@@ -237,13 +238,14 @@ static GtkWidget *nav_row (View *v, GtkBox *rows, const char *title, const char
+   gtk_box_append (rows, r);
+   return r;
+ }
++static const char * const hiding_choices[] = { "never", "Never", "touch", "When a window touches it", "always", "Until you point at it", NULL };
+ static const char * const metered_choices[] = { "auto", "Automatic", "yes", "Yes", "no", "No", NULL };
+ static const char * const band_choices[] = { "auto", "Automatic", "5", "5 GHz", "2", "2.4 GHz", NULL };
+ static const char * const proxy_choices[] = { "off", "Off", "auto", "Automatic", "manual", "Manual", NULL };
+ static gboolean picker_value_allowed (const char *key, const char *value)
+ {
+   const char * const *choices = g_str_equal (key, "metered") ? metered_choices :
+-    g_str_equal (key, "hsBand") ? band_choices : g_str_equal (key, "proxy") ? proxy_choices : NULL;
++    g_str_equal (key, "hsBand") ? band_choices : g_str_equal (key, "proxy") ? proxy_choices : g_str_equal (key, "hide") ? hiding_choices : NULL;
+   if (!choices) return FALSE;
+   for (guint i = 0; choices[i]; i += 2)
+     if (g_str_equal (value, choices[i])) return TRUE;
+@@ -461,7 +463,7 @@ static void wifi (View *v)
+             g_str_equal (cc_luma_view_text (v, "metered"), "yes") ? "Metered" : "Unlimited data");
+           gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words (network, detail));
+           gtk_box_append (GTK_BOX (hero_body), cc_luma_view_command (v, "Share", G_CALLBACK (share_clicked)));
+-          gtk_box_append (GTK_BOX (hero_body), link_button (v, "Details", "wifi-net"));
++          gtk_box_append (GTK_BOX (hero_body), cc_luma_view_link (v, "Details", "wifi-net"));
+         }
+       else
+         gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words ("Not connected", "Pick a network below"));
+@@ -516,12 +518,12 @@ static GtkWidget *fixed_value (View *v, const char *value, const char *name, con
+ static void wifi_details (View *v)
+ {
+   GtkBox *settings, *connection, *addresses;
+-  gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
++  gtk_box_append (v->body, cc_luma_view_link (v, "Wi‑Fi", "wifi"));
+   cc_luma_view_header (v, *cc_luma_view_text (v, "net") ? cc_luma_view_text (v, "net") : "Network", "Connected · WPA3 · 5 GHz", NULL);
+   settings = cc_luma_view_group (v, NULL);
+   cc_luma_view_row (settings, "Join automatically", NULL, cc_luma_view_toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
+   cc_luma_view_row (settings, "Available to everyone on this computer", NULL, cc_luma_view_toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
+-  cc_luma_view_row (settings, "Metered", "Luma holds back big downloads on metered networks", picker (v, "metered", metered_choices));
++  cc_luma_view_row (settings, "Metered", "Luma holds back big downloads on metered networks", cc_luma_view_picker (v, "metered", metered_choices));
+   connection = cc_luma_view_group (v, "Connection");
+   cc_luma_view_row (connection, "Signal", NULL, cc_luma_view_label ("Excellent", "body", TRUE));
+   cc_luma_view_row (connection, "Speed", NULL, cc_luma_view_label ("1.2 Gb/s", "body", TRUE));
+@@ -544,7 +546,7 @@ static void known_networks (View *v)
+   JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNETS");
+   g_autofree char *meta = g_strdup_printf ("%u networks", json_array_get_length (known));
+   GtkBox *rows;
+-  gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
++  gtk_box_append (v->body, cc_luma_view_link (v, "Wi‑Fi", "wifi"));
+   cc_luma_view_header (v, "Known networks", meta, NULL);
+   rows = cc_luma_view_group (v, NULL);
+   for (guint i = 0; i < json_array_get_length (known); i++)
+@@ -559,12 +561,12 @@ static void known_networks (View *v)
+ static void hotspot (View *v)
+ {
+   GtkBox *rows;
+-  gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
++  gtk_box_append (v->body, cc_luma_view_link (v, "Wi‑Fi", "wifi"));
+   cc_luma_view_header (v, "Hotspot", cc_luma_view_flag (v, "hotspot") ? "Other devices can join this computer" : "Off", "hotspot");
+   rows = cc_luma_view_group (v, NULL);
+   cc_luma_view_row (rows, "Network name", NULL, entry (v, "hsName", "Network name"));
+   cc_luma_view_row (rows, "Password", NULL, entry (v, "hsPass", "Password"));
+-  cc_luma_view_row (rows, "Band", NULL, picker (v, "hsBand", band_choices));
++  cc_luma_view_row (rows, "Band", NULL, cc_luma_view_picker (v, "hsBand", band_choices));
+ }
+ static void network (View *v)
+ {
+@@ -578,7 +580,7 @@ static void network (View *v)
+   cc_luma_view_row (vpn, "Studio North VPN", cc_luma_view_flag (v, "vpn") ? "Connected" : "WireGuard", cc_luma_view_toggle (v, "vpn", "cf-vpn", "Studio North VPN"));
+   gtk_box_append (vpn, luma_add_row_new ("Add a VPN", "plus", NULL));
+   proxy = cc_luma_view_group (v, "Proxy");
+-  cc_luma_view_row (proxy, "Proxy", "For networks that require one", picker (v, "proxy", proxy_choices));
++  cc_luma_view_row (proxy, "Proxy", "For networks that require one", cc_luma_view_picker (v, "proxy", proxy_choices));
+ }
+ static void render (View *v)
+ {
+@@ -598,6 +600,7 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "network")) network (v);
+   else if (g_str_equal (v->page, "bluetooth")) cc_luma_view_bluetooth_render (v);
+   else if (g_str_equal (v->page, "windows")) cc_luma_view_windows_render (v);
++  else if (g_str_equal (v->page, "shelf")) cc_luma_view_shelf_render (v);
+ }
+ static void view_free (View *v)
+ {
+@@ -675,13 +678,14 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   View *v;
+   if (!page) page = "wifi";
+   if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
+-      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows"))
++      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows") && !g_str_equal (page, "shelf"))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+     }
+   if (!valid_wifi_model (model) || (g_str_equal (page, "bluetooth") && !cc_luma_bluetooth_validate (model)) ||
+-      (g_str_equal (page, "windows") && !cc_luma_windows_validate (model)))
++      (g_str_equal (page, "windows") && !cc_luma_windows_validate (model)) ||
++      (g_str_equal (page, "shelf") && !cc_luma_shelf_validate (model)))
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings fixture contains invalid Wi-Fi data");
+       return NULL;
+@@ -717,6 +721,13 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   luma_action_center_attach (v->center, luma_pane_get_child (LUMA_PANE (v->root)));
+   g_signal_connect (v->center, "state-changed", G_CALLBACK (center_changed), NULL);
+   render (v);
++  if (v->image_error)
++    {
++      g_propagate_error (error, g_error_copy (v->image_error));
++      g_object_ref_sink (v->root);
++      g_object_unref (v->root);
++      return NULL;
++    }
+   if (g_str_equal (page, "bluetooth")) cc_luma_view_bluetooth_start (v);
+   return v->root;
+ }
+diff --git a/shell/meson.build b/shell/meson.build
+index 0b7750c..a167c10 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -71,6 +71,7 @@ common_sources = files(
+   'cc-luma-view-image.c',
+   'cc-luma-view-bluetooth.c',
+   'cc-luma-view-windows.c',
++  'cc-luma-view-shelf.c',
+ )
+ 
+ 
+@@ -196,7 +197,7 @@ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 9fc11c4..b383b9a 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -324,6 +324,48 @@ static void remove_asset_fixture (const char *dir)
+   if (g_file_test (image, G_FILE_TEST_EXISTS)) g_assert_cmpint (g_remove (image), ==, 0);
+   g_assert_cmpint (g_rmdir (dir), ==, 0);
+ }
++static void shelf_view (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  const char *files[] = { "prism.png", "luma-v3-documents.svg", "luma-v3-browser.svg", "luma-v3-messages.svg", "luma-v3-files.svg", "luma-v3-music.svg", "luma-v3-mail.svg", "luma-v3-photos.svg" };
++  for (guint i = 0; i < G_N_ELEMENTS (files); i++)
++    { g_autofree char *p = g_build_filename (dir, files[i], NULL); g_assert_true (g_file_set_contents (p, art, -1, NULL)); }
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "shelf", NULL));
++  g_assert_nonnull (find_name (view, "cf-desk"));
++  g_assert_true (has_text (view, "Luma · always shown"));
++  g_signal_emit_by_name (find_name (view, "cf-preset-one"), "clicked"); drain ();
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "joined")), ==, "joined");
++  g_assert_true (has_text (view, "One bar · always shown"));
++  LumaSegmentedControl *edge = LUMA_SEGMENTED_CONTROL (find_name (view, "cf-edge"));
++  luma_segmented_control_set_selected (edge, "right"); drain ();
++  g_assert_true (has_text (view, "Custom · always shown"));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "edge")), ==, "right");
++  gtk_widget_activate_action (view, "cf.pick", "(ss)", "hide", "always"); drain ();
++  g_assert_true (has_text (view, "Custom · hides until you point at it"));
++  GtkWidget *size = find_name (view, "cf-isz");
++  gtk_range_set_value (GTK_RANGE (size), 56); drain ();
++  g_assert_true (size == find_name (view, "cf-isz"));
++  g_assert_true (has_text (view, "56 px"));
++  g_signal_emit_by_name (find_name (view, "cf-preset-side"), "clicked"); drain ();
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "isz")), ==, 56);
++  g_assert_true (has_text (view, "Side · hides until you point at it"));
++  wait_ms (100); g_assert_null (cc_luma_view_get_error (view));
++  GtkWidget *orphan = g_object_ref (find_name (view, "cf-preset-free"));
++  g_object_unref (view); g_signal_emit_by_name (orphan, "clicked"); g_object_unref (orphan); wait_ms (100);
++  for (guint i = 1; i < G_N_ELEMENTS (files); i++)
++    { g_autofree char *p = g_build_filename (dir, files[i], NULL); g_assert_cmpint (g_remove (p), ==, 0); }
++  remove_asset_fixture (dir);
++  /* An unknown asset fails during construction as well as asynchronous I/O. */
++  g_autoptr (JsonNode) wrong = json_node_init_string (json_node_alloc (), "private");
++  g_assert_true (cc_luma_fixture_set (model, "wall", wrong, NULL));
++  g_autoptr (GError) error = NULL;
++  g_assert_null (cc_luma_view_new (model, "shelf", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++}
+ static void windows_view (void)
+ {
+   g_autofree char *dir = asset_fixture ();
+@@ -438,6 +480,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/copy-addresses", copy_addresses);
+   g_test_add_func ("/settings/view/asset-loading", asset_loading);
+   g_test_add_func ("/settings/view/windows", windows_view);
++  g_test_add_func ("/settings/view/shelf", shelf_view);
+   g_test_add_func ("/settings/view/missing-asset", missing_asset);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

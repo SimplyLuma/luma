@@ -1,0 +1,68 @@
+{
+  "schema": "org.luma.mod/v0.1",
+  "identity": {
+    "id": "org.kde.plasma.luma-experience",
+    "version": "0.1.0",
+    "kind": "experience",
+    "name": "KDE Plasma Experience Pilot",
+    "summary": "Planning contract for a complete KDE Plasma session integrated with Luma.",
+    "license": ["GPL-2.0-or-later"],
+    "publisher": {"id": "org.projectluma", "name": "Project Luma Pilot Lab"}
+  },
+  "compatibility": {
+    "luma_base": ">=0.1.0 <1.0.0",
+    "architectures": ["x86_64", "aarch64"],
+    "presentations": ["desktop", "tablet"],
+    "hardware": [],
+    "kernel_releases": [],
+    "install_modes": ["running-system", "image-compose"]
+  },
+  "dependencies": [],
+  "capabilities": {
+    "provides": [
+      {"id": "org.luma.session.compositor", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides KWin as the selected compositor."},
+      {"id": "org.luma.session.shell", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides Plasma Shell as the selected session shell."},
+      {"id": "org.luma.session.screen-locker", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides the selected KDE session locker."},
+      {"id": "org.luma.session.notifications", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides the selected notification presenter."},
+      {"id": "org.luma.session.polkit-agent", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides the selected graphical authorization agent."},
+      {"id": "org.luma.session.secret-service", "version": "1.0.0", "ownership": "selectable", "reason": "Provides KDE secret storage integration."},
+      {"id": "org.luma.session.power", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides the selected session power policy."},
+      {"id": "org.luma.session.accessibility", "version": "1.0.0", "ownership": "exclusive", "reason": "Provides the selected accessibility integration."},
+      {"id": "org.luma.portal.desktop", "version": "1.0.0", "ownership": "selectable", "reason": "Provides KDE desktop portal integration."}
+    ],
+    "requires": [
+      {"id": "org.luma.platform.session-contract", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Integrates with Luma session activation and recovery."},
+      {"id": "org.luma.apps.core", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Retains the same responsive Luma core applications and package release."}
+    ],
+    "conflicts": [],
+    "replaces": [
+      {"id": "org.luma.session.compositor", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects KWin in place of the active compositor when this experience is activated."},
+      {"id": "org.luma.session.shell", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects Plasma Shell in place of the active shell when this experience is activated."},
+      {"id": "org.luma.session.screen-locker", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects the KDE locker in place of the active session locker."},
+      {"id": "org.luma.session.notifications", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects the KDE notification presenter without running duplicate agents."},
+      {"id": "org.luma.session.polkit-agent", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects the KDE authorization agent without running duplicate agents."},
+      {"id": "org.luma.session.secret-service", "version": ">=1.0.0 <2.0.0", "ownership": "selectable", "reason": "Selects KDE secret storage for the KDE session while retaining other installed providers."},
+      {"id": "org.luma.session.power", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects the KDE session power policy without running duplicate agents."},
+      {"id": "org.luma.session.accessibility", "version": ">=1.0.0 <2.0.0", "ownership": "exclusive", "reason": "Selects KDE accessibility integration for the KDE session."},
+      {"id": "org.luma.portal.desktop", "version": ">=1.0.0 <2.0.0", "ownership": "selectable", "reason": "Selects the KDE desktop portal for the KDE session while retaining other installed providers."}
+    ]
+  },
+  "effects": {
+    "settings": [], "files": [], "packages": [], "services": [],
+    "dbus_names": [], "portals": [], "devices": [],
+    "configuration_domains": [], "kernel_modules": [], "firmware": [],
+    "boot_arguments": [], "user_data": [], "initramfs": false,
+    "secure_boot": "none"
+  },
+  "payloads": [],
+  "recovery": {
+    "previous_composition_retained": true,
+    "health_gate": "session-contract-v1",
+    "user_data": "retain"
+  },
+  "evidence": {
+    "source": "none:planning-only-no-executable-payload",
+    "source_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "signatures": []
+}

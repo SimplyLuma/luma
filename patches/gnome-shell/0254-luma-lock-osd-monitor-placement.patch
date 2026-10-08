@@ -1,0 +1,24 @@
+From: Project Luma
+Subject: [PATCH] Shell: place lock and login OSDs on their actual monitor
+
+A hidden Quick Options actor still has its old or zero allocation and must
+not anchor an OSD. Use its shelf placement only while mapped and unlocked;
+login/lock requests use the requested monitor's bottom-center work area.
+Brightness/volume requests and controls retain their native service APIs.
+
+--- a/js/ui/osdWindow.js
++++ b/js/ui/osdWindow.js
+@@ -551,9 +551,11 @@
+         const [, , width, height] = this.get_preferred_size();
+         const quick = Main.panel?.statusArea?.quickSettings;
+         let place = null;
+-        if (quick && Main.layoutManager.findIndexForActor(quick) === this._monitorIndex)
++        const locked = Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
++        if (!locked && quick?.mapped &&
++            Main.layoutManager.findIndexForActor(quick) === this._monitorIndex)
+             place = placeShelfSurface(quick, {width, height});
+-        let edge = place?.edge ?? shelfEdge();
++        let edge = place?.edge ?? (locked ? 'bottom' : shelfEdge());
+         if (!place) {
+             const monitor = Main.layoutManager.monitors[this._monitorIndex];
+             const work = Main.layoutManager.getWorkAreaForMonitor(this._monitorIndex);

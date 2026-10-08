@@ -1,0 +1,66 @@
+From 3f2ac0e303329205c837e60e3e88e18181fd6e25 Mon Sep 17 00:00:00 2001
+From: Luma Project <luma@project.invalid>
+Date: Fri, 21 Aug 2026 17:30:00 -0500
+Subject: [PATCH] firmware: qcom: log bounded SHM bridge and QSEE load state
+
+Record only the facts needed to distinguish a TrustZone transport failure
+from an application-identity rejection.  Do not log application contents,
+listener buffers, biometric data, or physical addresses.
+
+The messages are deliberately limited to bridge enablement, registered-area
+size, application image lengths, and the three existing secure-world response
+words.  This patch is diagnostic-only and is not a release configuration.
+---
+ drivers/firmware/qcom/qcom_scm.c   | 8 +++++++-
+ drivers/firmware/qcom/qcom_tzmem.c | 6 +++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 311425f99..6c4d83bc1 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2524,9 +2524,16 @@ int qcom_scm_qseecom_app_load(void *img, size_t mdt_len, size_t img_len,
+ 
+ 	desc.args[2] = img_phys;
+ 
++	dev_info(__scm->dev,
++		 "qseecom: bounded app load: mdt_len=%zu img_len=%zu\n",
++		 mdt_len, img_len);
+ 	status = qcom_scm_qseecom_call(&desc, &res);
+-	if (status)
++	if (status) {
++		dev_err(__scm->dev,
++			"qseecom: bounded app load transport failure: status=%d result=%llu type=%llu data=%llu\n",
++			status, res.result, res.resp_type, res.data);
+ 		return status;
++	}
+ 
+ 	if (res.result != QSEECOM_RESULT_SUCCESS) {
+ 		dev_dbg(__scm->dev,
+diff --git a/drivers/firmware/qcom/qcom_tzmem.c b/drivers/firmware/qcom/qcom_tzmem.c
+index 9bd8f1870..26cfb5384 100644
+--- a/drivers/firmware/qcom/qcom_tzmem.c
++++ b/drivers/firmware/qcom/qcom_tzmem.c
+@@ -100,8 +100,10 @@ static int qcom_tzmem_init(void)
+ 	if (ret == -EOPNOTSUPP)
+ 		goto notsupp;
+ 
+-	if (!ret)
++	if (!ret) {
+ 		qcom_tzmem_using_shm_bridge = true;
++		dev_info(qcom_tzmem_dev, "SHM Bridge enabled\n");
++	}
+ 
+ 	return ret;
+ 
+@@ -176,6 +178,8 @@ static int qcom_tzmem_init_area(struct qcom_tzmem_area *area)
+ 	if (ret)
+ 		return ret;
+ 
++	dev_info(qcom_tzmem_dev, "SHM Bridge area ready: size=%zu\n", area->size);
++
+ 	area->priv = no_free_ptr(handle);
+ 
+ 	return 0;
+-- 
+2.50.1

@@ -1,0 +1,80 @@
+# Packages a faithful Luma Emulator factory image must carry.
+#
+# These are product roles expressed as package names, exactly as
+# config/shared/application-packages.txt does. Versions and releases are NOT
+# written here: the exporter resolves them from config/desktop/inputs.env and
+# the mobile composition inputs at export time, so this file cannot drift into
+# a second, silently stale package pin.
+#
+# Format:  <scope> <requirement> <package> [family]
+#   scope        shared | desktop | mobile
+#   requirement  required | optional
+#   family       optional. Packages sharing a family come from one source
+#                package and MUST be admitted at the same release. The first
+#                member listed is the family's primary; the others follow it.
+#                Without this a subpackage can be resolved to a release its
+#                parent was never built at, and the transaction fails — or
+#                worse, half-applies.
+#
+# "required" means the emulator refuses to call an image faithful without it.
+# "optional" means the image is still faithful if the package is absent, and
+# the absence is recorded in the manifest rather than hidden.
+
+# --- Toolkit and design system -------------------------------------------
+# Luma's downstream GTK, libadwaita and libhandy carry the design system that
+# every window is drawn with. Without them the emulator renders stock Adwaita
+# and every screenshot lies about spacing, colour and control geometry.
+shared   required  gtk4
+shared   required  gtk3
+shared   required  libadwaita
+shared   required  libhandy
+
+# --- Typography ----------------------------------------------------------
+# Figtree is the interface face. Fontconfig will happily substitute something
+# else and produce a plausible-looking screenshot with the wrong metrics, so
+# this is required, not optional.
+shared   required  google-figtree-fonts
+shared   optional  ibm-plex-mono-fonts
+
+# --- Luma Developer Platform and AppKit ----------------------------------
+shared   required  luma-developer-platform            luma-developer-platform
+shared   optional  luma-developer-platform-sdk        luma-developer-platform
+
+# --- Luma-owned applications ---------------------------------------------
+shared   required  prairie-core-apps
+
+# --- Shared identity assets ----------------------------------------------
+shared   required  prairie-icon-theme
+shared   optional  luma-backgrounds
+
+# --- Desktop presentation ------------------------------------------------
+desktop  required  gnome-shell                        gnome-shell
+desktop  required  gnome-shell-common                 gnome-shell
+desktop  optional  luma-shell-state
+desktop  optional  gnome-shell-extension-luma-handheld
+desktop  optional  gnome-shell-extension-luma-tiling-toggle
+desktop  optional  gnome-shell-extension-tiling-shell
+desktop  optional  luma-search
+desktop  optional  nautilus                           nautilus
+desktop  optional  nautilus-extensions                nautilus
+desktop  optional  gnome-calculator
+
+# --- Handheld presentation -----------------------------------------------
+# `phosh` is Fedora's package, not a Luma one, and it is here on purpose:
+# luma-phosh extends a specific base version (Requires: phosh = 0.55.0) and
+# Fedora's updates repository has already moved past it. Carrying the pinned
+# base in the bundle is what keeps the handheld shell installable at the
+# release Luma actually accepted, instead of silently drifting to whatever
+# Fedora shipped this week.
+mobile   required  phosh
+mobile   required  luma-phosh
+mobile   required  phoc
+
+# Deliberately absent:
+#   Compatibility engines are opt-in through export-luma-bundle's
+#   --with-compatibility and --android-image-cache arguments. The default
+#   continues to prove native core operation with the engines absent.
+#   plymouth*             Boot splash. A virtual machine's boot chain is not
+#                         evidence about a device's, so carrying it would only
+#                         invite a claim the emulator cannot support.
+#   The optional Windows execution engine is available on x86_64 only.

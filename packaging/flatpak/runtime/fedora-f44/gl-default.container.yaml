@@ -1,0 +1,31 @@
+flatpak:
+    id: org.fedoraproject.Platform.GL.default
+    build-extension: true
+    runtime-version: f44
+    name: f44/mesa
+    component: mesa-flatpak
+    branch: f44
+    packages:
+    - mesa-libEGL
+    - mesa-libGL
+    - mesa-dri-drivers
+    - mesa-vulkan-drivers
+    - mesa-flatpak-config
+    # basic dependencies
+    - libdisplay-info
+    - libdrm
+    - lm_sensors-libs
+    # for cleanup-commands (part of runtime)
+    - coreutils-single
+    - sed
+    cleanup-commands: |
+        mkdir -p /app/lib /app/share
+        for l in libdisplay-info libdrm_* libEGL_mesa libgallium-* libGLX_mesa \
+                 libVkLayer_MESA* libvulkan_* libsensors ; \
+            do mv /usr/lib64/$l.so* /app/lib/; \
+        done
+        mv /usr/lib64/libLLVM* /app/lib/
+        mv /usr/lib64/{dri,gbm}/ /app/lib/
+        mv /usr/share/{drirc.d,glvnd,vulkan}/ /app/share/
+        ln -s share/glvnd share/vulkan /app/
+        sed -i -e 's|/usr/lib64/|&GL/default/lib/|' /app/share/vulkan/icd.d/*

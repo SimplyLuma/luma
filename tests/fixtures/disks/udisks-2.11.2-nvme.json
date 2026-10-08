@@ -1,0 +1,332 @@
+{
+  "/org/freedesktop/UDisks2/drives/recorded": {
+    "org.freedesktop.UDisks2.NVMe.Controller": {
+      "SmartUpdated": 1790111758,
+      "SmartCriticalWarning": [],
+      "SmartPowerOnHours": 86,
+      "SmartTemperature": 316
+    },
+    "org.freedesktop.UDisks2.Drive": {
+      "Size": 512110190592,
+      "ConnectionBus": "",
+      "Removable": false,
+      "Ejectable": false,
+      "CanPowerOff": false,
+      "Model": "Recorded NVMe drive"
+    }
+  },
+  "/org/freedesktop/UDisks2/block_devices/recorded3": {
+    "org.freedesktop.UDisks2.Filesystem": {
+      "MountPoints": [
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ],
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ],
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ],
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ],
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ],
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ]
+      ],
+      "Size": 509332160512
+    },
+    "org.freedesktop.UDisks2.Partition": {
+      "Number": 3,
+      "Offset": 2777677824,
+      "Size": 509332160512,
+      "Table": "/org/freedesktop/UDisks2/block_devices/recorded0",
+      "IsContainer": false,
+      "IsContained": false
+    },
+    "org.freedesktop.UDisks2.Block": {
+      "Size": 509332160512,
+      "ReadOnly": false,
+      "Drive": "/org/freedesktop/UDisks2/drives/recorded",
+      "MDRaid": "/",
+      "MDRaidMember": "/",
+      "IdUsage": "filesystem",
+      "IdType": "btrfs",
+      "CryptoBackingDevice": "/",
+      "HintSystem": true,
+      "Device": [
+        47,
+        100,
+        101,
+        118,
+        47,
+        114,
+        101,
+        99,
+        111,
+        114,
+        100,
+        101,
+        100,
+        51,
+        0
+      ],
+      "IdLabel": "Recorded volume",
+      "IdUUID": "recorded-uuid"
+    }
+  },
+  "/org/freedesktop/UDisks2/block_devices/recorded1": {
+    "org.freedesktop.UDisks2.Filesystem": {
+      "MountPoints": [
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ]
+      ],
+      "Size": 0
+    },
+    "org.freedesktop.UDisks2.Partition": {
+      "Number": 1,
+      "Offset": 1048576,
+      "Size": 629145600,
+      "Table": "/org/freedesktop/UDisks2/block_devices/recorded0",
+      "IsContainer": false,
+      "IsContained": false
+    },
+    "org.freedesktop.UDisks2.Block": {
+      "Size": 629145600,
+      "ReadOnly": false,
+      "Drive": "/org/freedesktop/UDisks2/drives/recorded",
+      "MDRaid": "/",
+      "MDRaidMember": "/",
+      "IdUsage": "filesystem",
+      "IdType": "vfat",
+      "CryptoBackingDevice": "/",
+      "HintSystem": true,
+      "Device": [
+        47,
+        100,
+        101,
+        118,
+        47,
+        114,
+        101,
+        99,
+        111,
+        114,
+        100,
+        101,
+        100,
+        49,
+        0
+      ],
+      "IdLabel": "Recorded volume",
+      "IdUUID": "recorded-uuid"
+    }
+  },
+  "/org/freedesktop/UDisks2/block_devices/recorded0": {
+    "org.freedesktop.UDisks2.PartitionTable": {
+      "Type": "gpt"
+    },
+    "org.freedesktop.UDisks2.Block": {
+      "Size": 512110190592,
+      "ReadOnly": false,
+      "Drive": "/org/freedesktop/UDisks2/drives/recorded",
+      "MDRaid": "/",
+      "MDRaidMember": "/",
+      "IdUsage": "",
+      "IdType": "",
+      "CryptoBackingDevice": "/",
+      "HintSystem": true,
+      "Device": [
+        47,
+        100,
+        101,
+        118,
+        47,
+        114,
+        101,
+        99,
+        111,
+        114,
+        100,
+        101,
+        100,
+        48,
+        0
+      ],
+      "IdLabel": "Recorded volume",
+      "IdUUID": "recorded-uuid"
+    }
+  },
+  "/org/freedesktop/UDisks2/block_devices/recorded2": {
+    "org.freedesktop.UDisks2.Filesystem": {
+      "MountPoints": [
+        [
+          47,
+          114,
+          101,
+          99,
+          111,
+          114,
+          100,
+          101,
+          100,
+          45,
+          109,
+          111,
+          117,
+          110,
+          116,
+          0
+        ]
+      ],
+      "Size": 2147483648
+    },
+    "org.freedesktop.UDisks2.Partition": {
+      "Number": 2,
+      "Offset": 630194176,
+      "Size": 2147483648,
+      "Table": "/org/freedesktop/UDisks2/block_devices/recorded0",
+      "IsContainer": false,
+      "IsContained": false
+    },
+    "org.freedesktop.UDisks2.Block": {
+      "Size": 2147483648,
+      "ReadOnly": false,
+      "Drive": "/org/freedesktop/UDisks2/drives/recorded",
+      "MDRaid": "/",
+      "MDRaidMember": "/",
+      "IdUsage": "filesystem",
+      "IdType": "ext4",
+      "CryptoBackingDevice": "/",
+      "HintSystem": true,
+      "Device": [
+        47,
+        100,
+        101,
+        118,
+        47,
+        114,
+        101,
+        99,
+        111,
+        114,
+        100,
+        101,
+        100,
+        50,
+        0
+      ],
+      "IdLabel": "Recorded volume",
+      "IdUUID": "recorded-uuid"
+    }
+  }
+}

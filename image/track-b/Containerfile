@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Laboratory provisioning only. This makes the bootc candidate remotely
+# testable in exactly the same way as the Track A blueprint. It is not a Luma
+# product customization and must not be treated as one.
+RUN systemctl enable sshd.service && \
+    firewall-offline-cmd --zone=public --add-service=ssh
+
+LABEL org.projectluma.purpose="M0 disposable baseline provisioning"

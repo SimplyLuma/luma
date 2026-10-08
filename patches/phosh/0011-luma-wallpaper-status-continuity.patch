@@ -1,0 +1,82 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 11:24:00 -0500
+Subject: [PATCH] shell: keep quiet status regions on the shared wallpaper
+
+The foreground application remains activated behind both Home and the native
+lockscreen. Treating that hidden toplevel as visible status-surface ownership
+left a solid app-coloured band above Home, and retained semantic surface
+classes could still colour the bar after the lock path requested transparency.
+
+Home and Presence own the visible canvas in those states. Clear any projected
+application surface while locked and derive ordinary transparency from Home's
+actual folded state. A folded Home still gives the foreground application its
+semantic status colour, while the unfolded Home and lockscreen let the shared
+wallpaper continue behind the system indicators.
+---
+ src/shell.c | 31 ++++++-------------------------
+ 1 file changed, 6 insertions(+), 25 deletions(-)
+
+diff --git a/src/shell.c b/src/shell.c
+--- a/src/shell.c
++++ b/src/shell.c
+@@ -321,27 +321,6 @@
+   phosh_shell_set_state (self, PHOSH_STATE_SETTINGS, state == PHOSH_TOP_PANEL_STATE_UNFOLDED);
+ }
+ 
+-static gboolean
+-has_activated_toplevel (PhoshShell *self)
+-{
+-  PhoshShellPrivate *priv = phosh_shell_get_instance_private (self);
+-  guint n_toplevels;
+-
+-  if (!priv->toplevel_manager)
+-    return FALSE;
+-
+-  n_toplevels = phosh_toplevel_manager_get_num_toplevels (priv->toplevel_manager);
+-  for (guint i = 0; i < n_toplevels; i++) {
+-    PhoshToplevel *toplevel = phosh_toplevel_manager_get_toplevel (priv->toplevel_manager, i);
+-
+-    if (phosh_toplevel_is_activated (toplevel))
+-      return TRUE;
+-  }
+-
+-  return FALSE;
+-}
+-
+-
+ static char *
+ get_foreground_status_surface (PhoshShell *self,
+                                gboolean    allow_unactivated)
+@@ -412,6 +391,9 @@
+     return;
+ 
+   if (priv->locked) {
++    phosh_top_panel_set_bar_surface (PHOSH_TOP_PANEL (priv->top_panel), NULL);
++    if (priv->home)
++      phosh_home_set_bar_surface (PHOSH_HOME (priv->home), NULL);
+     phosh_top_panel_set_bar_transparent (PHOSH_TOP_PANEL (priv->top_panel), TRUE);
+     return;
+   }
+@@ -422,16 +404,15 @@
+     : 0;
+   surface = get_foreground_status_surface (
+     self,
+-    state == PHOSH_HOME_STATE_FOLDED ||
+-    n_toplevels == 1);
++    state == PHOSH_HOME_STATE_FOLDED);
+   g_debug ("Luma status projection: state=%d toplevels=%u surface=%s",
+            state, n_toplevels, surface ?: "none");
+   phosh_top_panel_set_bar_surface (PHOSH_TOP_PANEL (priv->top_panel), surface);
+   phosh_home_set_bar_surface (PHOSH_HOME (priv->home), surface);
+ 
++  /* An activated toplevel remains activated behind an unfolded Home. */
+   phosh_top_panel_set_bar_transparent (PHOSH_TOP_PANEL (priv->top_panel),
+-                                       (state != PHOSH_HOME_STATE_FOLDED) &&
+-                                       !has_activated_toplevel (self));
++                                       state != PHOSH_HOME_STATE_FOLDED);
+ }
+ 
+ 
+ 
+-- 
+2.53.0

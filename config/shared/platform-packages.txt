@@ -1,0 +1,9 @@
+# Shared Project Luma platform contracts.
+#
+# These roles are architecture-independent and must be present in both desktop
+# and handheld compositions. They are not applications and must not acquire a
+# form-factor-specific data store.
+
+luma-shell-state
+luma-search
+luma-backgrounds

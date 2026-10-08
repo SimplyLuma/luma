@@ -1,0 +1,12 @@
+[Desktop Entry]
+NoDisplay=true
+Type=Application
+Name=Displays
+Comment=Arrange your displays and name the arrangements you use
+Exec=org.projectluma.Displays
+Icon=org.projectluma.Displays
+Terminal=false
+Categories=Settings;HardwareSettings;GTK;
+StartupNotify=true
+DBusActivatable=true
+Keywords=Monitor;Screen;Display;Arrange;Mirror;Extend;Resolution;Refresh;Rotate;Projector;TV;

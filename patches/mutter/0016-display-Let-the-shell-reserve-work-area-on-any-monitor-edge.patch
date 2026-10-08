@@ -1,0 +1,240 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 19 Sep 2026 09:00:00 -0500
+Subject: [PATCH] display: Let the shell reserve work area on any monitor edge
+
+Mutter drops a strut on a monitor edge that touches another monitor. With
+three displays side by side, the middle display's left and right edges are
+both shared, so a dock the shell places there could not keep maximized and
+tiled windows out from under it.
+
+meta_display_set_monitor_edge_reservation() keeps one monitor's work area a
+given depth away from one of its edges, shared or not, and
+meta_display_clear_monitor_edge_reservations() removes them all. Struts
+stay the mechanism for outer edges; the shell uses a reservation only where
+a strut would be dropped. The margin of meta_display_set_work_area_inset()
+applies only to edges nothing else has moved the work area in from, as
+before.
+---
+diff --git a/src/core/display-private.h b/src/core/display-private.h
+index 5d90da8c..e5cfd380 100644
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -74,6 +74,10 @@ struct _MetaDisplay
+   /* Logical pixels every monitor's work area keeps from edges no strut covers. */
+   int work_area_inset;
+ 
++  /* Work area the shell reserves on a monitor edge, honoured even on an
++   * edge shared with another monitor, where struts are dropped. */
++  GArray *edge_reservations;
++
+   MetaX11Display *x11_display;
+ 
+   int clutter_event_filter;
+@@ -332,3 +336,8 @@ void meta_display_maybe_update_sticky_mouse_focus (MetaDisplay *display);
+ 
+ void meta_display_handle_sticky_mouse_focus_event (MetaDisplay        *display,
+                                                    const ClutterEvent *event);
++
++void meta_display_apply_monitor_edge_reservations (MetaDisplay        *display,
++                                                   int                 monitor_number,
++                                                   const MtkRectangle *monitor,
++                                                   MtkRectangle       *work_area);
+diff --git a/src/core/display.c b/src/core/display.c
+index 880dff3e..d0cbeae7 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -1089,6 +1089,7 @@ meta_display_close (MetaDisplay *display,
+   g_clear_object (&display->bell);
+   g_clear_object (&display->startup_notification);
+   g_clear_object (&display->workspace_manager);
++  g_clear_pointer (&display->edge_reservations, g_array_unref);
+   g_clear_object (&display->sound_player);
+ 
+   meta_clipboard_manager_shutdown (display);
+@@ -2331,6 +2332,148 @@ meta_display_set_work_area_inset (MetaDisplay *display,
+     meta_workspace_invalidate_work_area (l->data);
+ }
+ 
++typedef struct
++{
++  int monitor;
++  MetaSide side;
++  int depth;
++} MetaEdgeReservation;
++
++static void
++invalidate_all_work_areas (MetaDisplay *display)
++{
++  GList *l;
++
++  for (l = meta_workspace_manager_get_workspaces (display->workspace_manager); l; l = l->next)
++    meta_workspace_invalidate_work_area (l->data);
++}
++
++/**
++ * meta_display_set_monitor_edge_reservation:
++ * @display: a #MetaDisplay
++ * @monitor: the logical monitor index
++ * @side: the monitor edge
++ * @depth: logical pixels to keep free of maximized and tiled windows, 0 to
++ *   remove the reservation
++ *
++ * Keeps @monitor's work area at least @depth away from its @side edge.
++ * Unlike a strut, the reservation holds on an edge the monitor shares with
++ * another monitor: a shell whose chrome sits on such an edge (a dock on the
++ * inner edge of the middle display) uses it so windows never go under that
++ * chrome. Struts remain the mechanism for outer edges.
++ */
++void
++meta_display_set_monitor_edge_reservation (MetaDisplay *display,
++                                           int          monitor,
++                                           MetaSide     side,
++                                           int          depth)
++{
++  guint i;
++
++  g_return_if_fail (META_IS_DISPLAY (display));
++  g_return_if_fail (side == META_SIDE_LEFT || side == META_SIDE_RIGHT ||
++                    side == META_SIDE_TOP || side == META_SIDE_BOTTOM);
++
++  depth = CLAMP (depth, 0, 1000);
++  if (!display->edge_reservations)
++    display->edge_reservations = g_array_new (FALSE, FALSE, sizeof (MetaEdgeReservation));
++
++  for (i = 0; i < display->edge_reservations->len; i++)
++    {
++      MetaEdgeReservation *r = &g_array_index (display->edge_reservations,
++                                               MetaEdgeReservation, i);
++
++      if (r->monitor != monitor || r->side != side)
++        continue;
++      if (r->depth == depth)
++        return;
++      if (depth == 0)
++        g_array_remove_index (display->edge_reservations, i);
++      else
++        r->depth = depth;
++      invalidate_all_work_areas (display);
++      return;
++    }
++
++  if (depth == 0)
++    return;
++  g_array_append_val (display->edge_reservations,
++                      ((MetaEdgeReservation) { monitor, side, depth }));
++  invalidate_all_work_areas (display);
++}
++
++/**
++ * meta_display_clear_monitor_edge_reservations:
++ * @display: a #MetaDisplay
++ *
++ * Removes every reservation made with
++ * meta_display_set_monitor_edge_reservation().
++ */
++void
++meta_display_clear_monitor_edge_reservations (MetaDisplay *display)
++{
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  if (!display->edge_reservations || display->edge_reservations->len == 0)
++    return;
++  g_array_set_size (display->edge_reservations, 0);
++  invalidate_all_work_areas (display);
++}
++
++/* Called while a workspace computes a monitor's work area: moves the work
++ * area in from each reserved edge of that monitor. */
++void
++meta_display_apply_monitor_edge_reservations (MetaDisplay        *display,
++                                              int                 monitor_number,
++                                              const MtkRectangle *monitor,
++                                              MtkRectangle       *work_area)
++{
++  guint i;
++
++  if (!display->edge_reservations)
++    return;
++
++  for (i = 0; i < display->edge_reservations->len; i++)
++    {
++      MetaEdgeReservation *r = &g_array_index (display->edge_reservations,
++                                               MetaEdgeReservation, i);
++      int limit;
++
++      if (r->monitor != monitor_number)
++        continue;
++
++      switch (r->side)
++        {
++        case META_SIDE_LEFT:
++          limit = monitor->x + r->depth;
++          if (work_area->x < limit)
++            {
++              work_area->width -= limit - work_area->x;
++              work_area->x = limit;
++            }
++          break;
++        case META_SIDE_RIGHT:
++          limit = monitor->x + monitor->width - r->depth;
++          if (work_area->x + work_area->width > limit)
++            work_area->width = limit - work_area->x;
++          break;
++        case META_SIDE_TOP:
++          limit = monitor->y + r->depth;
++          if (work_area->y < limit)
++            {
++              work_area->height -= limit - work_area->y;
++              work_area->y = limit;
++            }
++          break;
++        case META_SIDE_BOTTOM:
++          limit = monitor->y + monitor->height - r->depth;
++          if (work_area->y + work_area->height > limit)
++            work_area->height = limit - work_area->y;
++          break;
++        }
++    }
++}
++
+ /**
+  * meta_display_get_size:
+  * @display: A #MetaDisplay
+diff --git a/src/core/workspace.c b/src/core/workspace.c
+index 45933e39..ae3721f4 100644
+--- a/src/core/workspace.c
++++ b/src/core/workspace.c
+@@ -1000,6 +1000,12 @@ meta_workspace_ensure_work_areas_validated (MetaWorkspace *workspace)
+                                        FIXED_DIRECTION_NONE,
+                                        &work_area);
+ 
++      /* The shell's reservations hold on every edge, shared or not. */
++      meta_display_apply_monitor_edge_reservations (workspace->display,
++                                                    logical_monitor->number,
++                                                    &logical_monitor->rect,
++                                                    &work_area);
++
+       if (workspace->display->work_area_inset > 0)
+         {
+           const MtkRectangle *monitor = &logical_monitor->rect;
+diff --git a/src/meta/display.h b/src/meta/display.h
+index 608333af..e45bf7d4 100644
+--- a/src/meta/display.h
++++ b/src/meta/display.h
+@@ -191,6 +191,15 @@ META_EXPORT
+ void meta_display_set_work_area_inset (MetaDisplay *display,
+                                        int          inset);
+ 
++META_EXPORT
++void meta_display_set_monitor_edge_reservation (MetaDisplay *display,
++                                                int          monitor,
++                                                MetaSide     side,
++                                                int          depth);
++
++META_EXPORT
++void meta_display_clear_monitor_edge_reservations (MetaDisplay *display);
++
+ META_EXPORT
+ void meta_display_get_size (MetaDisplay *display,
+                             int         *width,

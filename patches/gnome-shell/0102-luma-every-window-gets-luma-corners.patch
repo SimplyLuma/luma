@@ -1,0 +1,199 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: every application window gets Luma's corners
+
+GTK and libadwaita windows round their own corners; Electron, Chromium,
+Qt and undecorated X11 windows draw a plain rectangle, so Discord, Claude
+and ChatGPT sat on the desktop with sharp corners beside rounded windows.
+The compositor now masks every window that is not a GTK application to the
+toolkit's 15px radius, on its frame, so a client's own shadow is left as it
+is. Mutter-framed X11 windows, fullscreen windows and Android windows are
+left as they are.
+
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -34,6 +34,7 @@
+ import * as LookingGlass from './lookingGlass.js';
+ import * as LumaSearch from './lumaSearch.js';
+ import * as LumaDisplayArrival from './lumaDisplayArrival.js';
++import * as LumaWindowCorners from './lumaWindowCorners.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -67,6 +68,7 @@
+ export let overview = null;
+ export let lumaSearch = null;
+ export let lumaDisplayArrival = null;
++export let lumaWindowCorners = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
+ export let welcomeDialog = null;
+@@ -253,6 +255,13 @@
+             logError(error, 'Failed to watch for new display arrangements');
+         }
+     }
++    if (sessionMode.hasOverview) {
++        try {
++            lumaWindowCorners = new LumaWindowCorners.WindowCorners();
++        } catch (error) {
++            logError(error, 'Failed to round window corners');
++        }
++    }
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -85,6 +85,7 @@
+     <file>ui/lumaSurfaceMaterials.js</file>
+     <file>ui/lumaSearch.js</file>
+     <file>ui/lumaDisplayArrival.js</file>
++    <file>ui/lumaWindowCorners.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>
+--- /dev/null
++++ b/js/ui/lumaWindowCorners.js
+@@ -0,0 +1,143 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Every application window gets Luma's corners.
++//
++// GTK and libadwaita windows round themselves. Electron and Chromium apps
++// (Discord, Claude, ChatGPT), Qt apps and undecorated X11 windows draw a
++// plain rectangle, so on one desktop some windows were cards and others were
++// sheets of glass with sharp corners. The compositor masks those windows'
++// corners to the same 15px radius the toolkit uses.
++//
++// GTK windows (which round themselves) are left alone. Everything else is
++// masked on its frame: Chromium and Electron draw a shadow around a square
++// frame, so the mask cuts the frame's corners and leaves that shadow as it
++// is. Fullscreen windows (games, video) stay square, and so do Android
++// windows and Mutter-framed X11 windows, which draw their own.
++
++import GObject from 'gi://GObject';
++import GLib from 'gi://GLib';
++import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
++import Cogl from 'gi://Cogl';
++
++const RADIUS = 15;
++const EFFECT_NAME = 'luma-window-corners';
++const MASKED_TYPES = new Set([
++    Meta.WindowType.NORMAL,
++    Meta.WindowType.DIALOG,
++    Meta.WindowType.MODAL_DIALOG,
++    Meta.WindowType.UTILITY,
++]);
++
++const DECLARATIONS = `
++uniform vec2 size;
++uniform vec4 bounds;
++uniform float radius;
++uniform float scale;
++`;
++
++// A rounded-rectangle distance field over the window, measured in logical
++// pixels and softened over one device pixel so the curve is antialiased at
++// every display scale. Colour is premultiplied, so scaling it fades a corner.
++// bounds is the frame inside the actor (x1, y1, x2, y2); outside it -- a
++// client's own shadow -- nothing is touched.
++const CODE = `
++vec2 point = cogl_tex_coord_in[0].st * size;
++if (point.x >= bounds.x && point.y >= bounds.y && point.x <= bounds.z && point.y <= bounds.w) {
++  vec2 half_size = (bounds.zw - bounds.xy) * 0.5;
++  vec2 inner = abs(point - (bounds.xy + half_size)) - (half_size - vec2(radius));
++  float distance = length(max(inner, vec2(0.0))) + min(max(inner.x, inner.y), 0.0) - radius;
++  cogl_color_out *= clamp(0.5 - distance * scale, 0.0, 1.0);
++}
++`;
++
++const WindowCornerMask = GObject.registerClass(
++class WindowCornerMask extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT, DECLARATIONS, CODE, false);
++    }
++});
++
++function wantsMask(window) {
++    if (window.is_override_redirect() || !MASKED_TYPES.has(window.get_window_type()))
++        return false;
++    if (window.is_fullscreen())
++        return false;
++    if ((window.get_wm_class() ?? '').toLowerCase().startsWith('waydroid'))
++        return false;
++    if (window.get_client_type() === Meta.WindowClientType.X11 && window.decorated)
++        return false;
++    // GTK and libadwaita round their own windows to the same radius.
++    if (window.get_gtk_application_id())
++        return false;
++    const frame = window.get_frame_rect();
++    return frame.width > 2 * RADIUS && frame.height > 2 * RADIUS;
++}
++
++export class WindowCorners {
++    constructor() {
++        global.display.connectObject('window-created',
++            (_display, window) => this._track(window), this);
++        for (const actor of global.get_window_actors())
++            this._track(actor.meta_window);
++    }
++
++    _track(window) {
++        const actor = window.get_compositor_private();
++        if (!actor) {
++            GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++                if (window.get_compositor_private())
++                    this._track(window);
++                return GLib.SOURCE_REMOVE;
++            });
++            return;
++        }
++        if (actor._lumaCornersTracked)
++            return;
++        actor._lumaCornersTracked = true;
++        const sync = () => this._sync(window, actor);
++        window.connectObject(
++            'size-changed', sync,
++            'notify::fullscreen', sync,
++            'notify::decorated', sync, actor);
++        actor.connectObject(
++            'notify::width', sync,
++            'notify::height', sync, this);
++        // A client's first commit settles its frame and buffer sizes.
++        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            sync();
++            return GLib.SOURCE_REMOVE;
++        });
++        sync();
++    }
++
++    _sync(window, actor) {
++        let effect = actor.get_effect(EFFECT_NAME);
++        if (!wantsMask(window)) {
++            if (effect)
++                actor.remove_effect(effect);
++            return;
++        }
++        if (!effect) {
++            try {
++                effect = new WindowCornerMask();
++                actor.add_effect_with_name(EFFECT_NAME, effect);
++            } catch (error) {
++                // Without a shader path the window keeps square corners, which
++                // is how it drew before; it must never fail to draw.
++                logError(error, 'Luma window corners unavailable');
++                return;
++            }
++        }
++        const [width, height] = actor.get_size();
++        const frame = window.get_frame_rect();
++        const buffer = window.get_buffer_rect();
++        const x = frame.x - buffer.x;
++        const y = frame.y - buffer.y;
++        effect.set_uniform_float(effect.get_uniform_location('size'), 2, [width, height]);
++        effect.set_uniform_float(effect.get_uniform_location('bounds'), 4,
++            [x, y, x + frame.width, y + frame.height]);
++        effect.set_uniform_float(effect.get_uniform_location('radius'), 1, [RADIUS]);
++        effect.set_uniform_float(effect.get_uniform_location('scale'), 1, [actor.get_resource_scale()]);
++        effect.queue_repaint();
++    }
++}

@@ -1,0 +1,119 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: pack every clock-side island against the clock
+
+With the media player and a live extension island both on the shelf, only
+the gap before the status cluster was pinned, so the live island took half
+the slack on each side and floated between the dock and the player. The
+islands that belong to the clock now pack against it as one group, and the
+slack goes to the gap by the dock.
+
+--- a/js/ui/mediaSelection.js
++++ b/js/ui/mediaSelection.js
+@@ -43,31 +43,37 @@
+ }
+ 
+ // Media's boundary with status is fixed; spare space belongs to other gaps.
+-export function shelfGaps(children, media, status, gap, spare = 0) {
+-    // The status cluster is anchored at the end of the shelf, so whatever sits
+-    // immediately before it belongs against it: one padding away, with the
+-    // slack spent on the gaps further back. Only the media island used to be
+-    // treated that way, by name. A live extension island landing in that same
+-    // position was handed an even share of the leftover space on both sides
+-    // instead, which is why it read as floating loose between the dock and the
+-    // clock rather than belonging to the clock. Pinning by position covers the
+-    // media island exactly as before and anything else that lands there.
+-    const mediaPair = children.findIndex((child, index) =>
+-        child === media && children[index + 1] === status);
++export function shelfGaps(children, media, status, gap, spare = 0, live = null) {
++    // The status cluster is anchored at the end of the shelf, and the islands
++    // that belong to it -- the media player and the live extension island --
++    // sit against it, one padding apart, as one group. The slack is spent on
++    // the gaps further back, towards the dock.
++    //
++    // Only the gap directly before the status cluster used to be pinned. With
++    // media and a live island both showing, the live island was then handed
++    // an even share of the slack on each side and floated in the middle of the
++    // shelf between the dock and the media player, and flew back beside the
++    // clock the moment the player closed.
+     const gaps = children.slice(0, -1);
+-    // Pinning the gap before the status cluster is what keeps a live extension
+-    // island against the clock. But on a shelf holding only the dock and the
+-    // clock that same gap is the only thing there is, and the slack inside it
+-    // is what carries the cluster to the right edge of the screen -- pinning it
+-    // tight left the clock sitting next to the dock in the middle of the shelf.
+-    // So it is only pinned when some earlier gap can take the slack instead.
+-    // The media island keeps its own pin either way: the allocation treats a
+-    // lone media-and-status pair as right-anchored already, so it needs no
+-    // slack of its own.
+-    const pinned = mediaPair >= 0
+-        ? mediaPair
+-        : (gaps.length > 1 ? children.indexOf(status) - 1 : -1);
+-    const flexible = gaps.length - (pinned >= 0 ? 1 : 0);
+-    return gaps.map((_child, index) => index === pinned
++    const statusIndex = children.indexOf(status);
++    const pinned = new Set();
++    for (let index = statusIndex - 1;
++        index >= 0 && (children[index] === media || (live && children[index] === live));
++        index--)
++        pinned.add(index);
++    // Whatever else sits before the cluster still hugs it -- but on a shelf
++    // holding only the dock and the clock that single gap is what carries the
++    // clock to the right edge, so it keeps the slack instead of being pinned.
++    if (!pinned.size && statusIndex > 0 && gaps.length > 1)
++        pinned.add(statusIndex - 1);
++    const flexible = gaps.length - pinned.size;
++    return gaps.map((_child, index) => pinned.has(index)
+         ? gap : gap + (flexible ? spare / flexible : 0));
+ }
++
++// Whether every island on the shelf belongs with the status cluster, in which
++// case nothing takes the slack and the whole group is anchored at the end.
++export function anchoredToStatus(children, media, status, live = null) {
++    return children.length > 1 && children[children.length - 1] === status &&
++        children.slice(0, -1).every(child => child === media || (live && child === live));
++}
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -8,7 +8,7 @@
+ import * as Main from './main.js';
+ import {ShelfMedia} from './shelfMedia.js';
+ import {LumaIconMask} from './iconMask.js';
+-import {shelfGaps} from './mediaSelection.js';
++import {anchoredToStatus, shelfGaps} from './mediaSelection.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {DASH_TILE_SIZE, runningIndicatorGeometry} from './shelfMetrics.js';
+ 
+@@ -94,7 +94,8 @@
+             ? child.get_preferred_height(container._thickness * scale)[1]
+             : child.get_preferred_width(container._thickness * scale)[1]);
+         const gap = container._separate ? container._padding : 0;
+-        const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap)
++        const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap, 0,
++            container._liveIsland)
+             .map(value => value * scale);
+         return {children, sizes, gap, scale, length: sizes.reduce((a, b) => a + b, 0) +
+             gaps.reduce((a, b) => a + b, 0), thickness: container._thickness * scale};
+@@ -115,10 +116,10 @@
+         const vertical = container._vertical;
+         const available = vertical ? box.get_height() : box.get_width();
+         const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap,
+-            Math.max(0, available - length) / scale).map(value => value * scale);
++            Math.max(0, available - length) / scale, container._liveIsland).map(value => value * scale);
+         const rtl = !vertical && container.text_direction === Clutter.TextDirection.RTL;
+-        const onlyPinnedPair = children.length === 2 && children[0] === container._mediaIsland
+-            && children[1] === container._statusIsland;
++        const onlyPinnedPair = anchoredToStatus(children, container._mediaIsland,
++            container._statusIsland, container._liveIsland);
+         let offset = rtl ? (onlyPinnedPair ? length : available)
+             : (onlyPinnedPair ? Math.max(0, available - length) : 0);
+         let remaining = available;
+@@ -607,6 +608,9 @@
+                 this._liveMaterial = new St.Bin({child: this._liveScroll});
+                 this._liveIsland = new ShelfIsland(
+                     'luma-shelf-live-island', this._liveMaterial);
++                // The layout packs the live island with the clock, as it does
++                // the media island, so it needs to know which actor it is.
++                this._group._liveIsland = this._liveIsland;
+                 liveIndicator.connectObject('notify::width', () => this._queueDockWidth(),
+                     'notify::height', () => this._queueDockWidth(), this);
+                 liveIndicator.connectObject('notify::visible', () => {

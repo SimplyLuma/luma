@@ -1,0 +1,102 @@
+From 4dcb9656444ce3d5dabb995e497dd939116a223c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 21:38:11 +0200
+Subject: [PATCH 40/41] tee: qseecom: restate why this driver exists as a case
+ analysis
+
+Framing QSEECOM as the interface for platforms too old for smcinvoke invites
+the question of why the driver is needed now that QTEE is upstream, and answers
+it badly: the deciding factor is which interface an application was built
+against, not the age of the SoC. Set the three cases out together.
+
+Assisted-by: Claude:claude-opus-5
+---
+ Documentation/tee/qseecom.rst | 47 ++++++++++++++++++++++-------------
+ drivers/tee/qseecom/Kconfig   | 11 +++++---
+ 2 files changed, 37 insertions(+), 21 deletions(-)
+
+diff --git a/Documentation/tee/qseecom.rst b/Documentation/tee/qseecom.rst
+index 8c86d8df5..7ed98e944 100644
+--- a/Documentation/tee/qseecom.rst
++++ b/Documentation/tee/qseecom.rst
+@@ -9,28 +9,41 @@ the command-based QSEECOM interface, through the TEE subsystem.
+ 
+ The implementation reports ``TEE_IMPL_ID_QSEECOM``.
+ 
+-Relationship to the QTEE driver
+-===============================
+-
+-Qualcomm's secure world can be reached through two different interfaces, and
+-the distinction decides which driver a given application needs.
++Why this driver
++===============
+ 
++Qualcomm's secure world can be reached through two different interfaces.
+ QSEECOM is command-based: load an application by name, send it a numbered
+ command with a request and a response buffer, and service the listener requests
+-it raises while it works. smcinvoke, served by the QTEE driver
+-(:doc:`qtee`), is object-based: services are objects carrying operations that
+-return results and further objects.
++it raises while it works. smcinvoke, served by the QTEE driver (:doc:`qtee`),
++is object-based: services are objects carrying operations that return results
++and further objects.
+ 
+-These are not two routes to the same thing. A trusted application is built
++They are not two routes to the same thing. A trusted application is built
+ against one interface or the other, and one that answers commands over QSEECOM
+-is not reachable as an smcinvoke object. A SoC may well offer both -- the
+-interfaces coexist -- so QTEE being available on a platform says nothing about
+-whether the applications in that platform's firmware can be reached through it.
+-
+-This driver therefore is not a fallback for hardware too old for smcinvoke. It
+-is for the QSEECOM-era applications that ship in firmware and remain the only
+-implementation of the functions they provide on those devices, including on
+-SoCs new enough to support smcinvoke as well.
++is not reachable as an smcinvoke object. Which driver a system needs is
++therefore decided by the applications in its firmware, not by the age of its
++SoC. Three cases arise, and this driver is what serves the first two:
++
++Platforms predating smcinvoke
++	QSEECOM is the only interface they have.
++
++Platforms offering both
++	The common case, and the one the "legacy" label obscures. smcinvoke has
++	been available on Qualcomm SoCs for a long time, but applications
++	continued to be built against QSEECOM, so a platform that supports
++	smcinvoke may still carry firmware that only answers over QSEECOM. The
++	SM8250 this driver was developed against is such a platform: it exposes
++	both interfaces, and its fingerprint application answers only on
++	QSEECOM.
++
++Platforms where smcinvoke has displaced QSEECOM entirely
++	Served by the QTEE driver; this one is not needed.
++
++So the driver is not a fallback for old hardware. It is what makes the
++QSEECOM-era applications shipped in a platform's firmware reachable at all, and
++on many devices those remain the only implementation of the functions they
++provide.
+ 
+ Devices
+ =======
+diff --git a/drivers/tee/qseecom/Kconfig b/drivers/tee/qseecom/Kconfig
+index a15dc01b9..3e29a095e 100644
+--- a/drivers/tee/qseecom/Kconfig
++++ b/drivers/tee/qseecom/Kconfig
+@@ -13,10 +13,13 @@ config TEE_QSEECOM
+ 	  This is the command-based Qualcomm interface, as distinct from the
+ 	  object-based smcinvoke interface served by the QCOMTEE driver. The
+ 	  two are not alternative routes to the same applications: a trusted
+-	  application is built against one or the other, and a SoC may offer
+-	  both. Say Y if the firmware carries applications that answer over
+-	  QSEECOM, which is the case on many platforms that also support
+-	  smcinvoke.
++	  application is built against one or the other, so what a system needs
++	  is decided by the applications in its firmware rather than by the age
++	  of its SoC. Platforms offering both interfaces are common, and may
++	  still carry applications that answer only over QSEECOM.
++
++	  Say Y if the firmware carries such applications. See
++	  Documentation/tee/qseecom.rst.
+ 
+ 	  Note that the driver cannot validate what a command means, because it
+ 	  does not know any application's payload format: anyone who can open

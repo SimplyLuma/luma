@@ -1,0 +1,112 @@
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -317,55 +317,68 @@
+ // controls, while source-integrated Luma apps converge with Luma AppKit.
+ window.luma-files-window headerbar.luma-titlebar windowcontrols,
+ window.luma-calculator-window headerbar.luma-calculator-titlebar windowcontrols,
+-window.luma-app-window headerbar.luma-titlebar windowcontrols {
++window.luma-app-window headerbar.luma-titlebar windowcontrols,
++windowcontrols.luma-window-controls {
++  min-height: 20px;
++  margin-top: 9px;
++  margin-bottom: 9px;
+   padding: 2px;
+-  border-spacing: 1px;
++  border-spacing: 0;
+   border-radius: 999px;
+   background-color: unquote("@luma_content");
+-  box-shadow: inset 0 0 0 1px RGB(33 37 43 / 5.5%),
+-              0 2px 5px RGB(25 27 31 / 16%),
+-              0 18px 36px -16px RGB(25 27 31 / 48%);
++  box-shadow: none;
++
++  > button,
++  > button.image-button {
++    min-width: 20px;
++    min-height: 20px;
++    padding: 0;
++    border-radius: 999px;
++    background-color: transparent;
++    box-shadow: none;
++  }
+ 
+   > button > image,
+   > button.image-button > image {
++    -gtk-icon-size: 11px;
++    padding: 0;
+     color: unquote("@luma_muted");
+     background-color: transparent;
+     box-shadow: none;
+   }
+ 
+-  > button:hover > image,
+-  > button.image-button:hover > image {
++  > button.minimize > image,
++  > button.minimize.image-button > image {
++    -gtk-icon-size: 12px;
++  }
++
++  > button:hover,
++  > button.image-button:hover {
+     background-color: unquote("@luma_hover");
+   }
+ 
+-  > button:active > image,
+-  > button.image-button:active > image {
++  > button:active,
++  > button.image-button:active {
+     background-color: unquote("@luma_selected");
+   }
+ 
+-  > button.close:hover > image,
+-  > button.close:active > image {
++  > button.close:hover,
++  > button.close:active {
+     color: #9f4037;
+     background-color: RGB(189 90 78 / 16%);
+   }
+ 
+-  > button.minimize:hover > image,
+-  > button.minimize:active > image {
++  > button.minimize:hover,
++  > button.minimize:active {
+     color: #8c5b1e;
+     background-color: RGB(176 120 43 / 16%);
+   }
+ 
+-  > button.maximize:hover > image,
+-  > button.maximize:active > image {
++  > button.maximize:hover,
++  > button.maximize:active {
+     color: #376f3a;
+     background-color: RGB(79 138 82 / 16%);
+   }
+-
+-  @media (prefers-color-scheme: dark) {
+-    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 5.5%),
+-                0 2px 6px RGB(0 0 0 / 42%),
+-                0 20px 38px -15px RGB(0 0 0 / 78%);
+-  }
+ }
+ 
+ /******************
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -40,6 +40,15 @@
+               0 1px 2px unquote("@luma_island_shadow");
+ }
+ 
++// Opted-in split views use their child surfaces as the visible work islands.
++// The libadwaita pane bins must therefore remain transparent; painting the
++// stock sidebar surface here creates a second, false sidebar behind the app.
++.luma-island-split > .sidebar-pane,
++.luma-island-split > .content-pane {
++  background-color: transparent;
++  box-shadow: none;
++}
++
+ // Luma product windows opt into the simulator's shared elevation. Keep this
+ // class-scoped: ordinary libadwaita applications retain upstream decoration.
+ window.luma-files-window,

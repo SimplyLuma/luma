@@ -1,0 +1,55 @@
+From: Project Luma
+Subject: [PATCH] luma: Well glyphs let go of tray indicators that were recreated
+
+Every Shell run that locked the screen and then used or closed the Well
+logged "No signal connection N found" from makeGlyph, once per glyph (7 at
+Shell shutdown in the Beam oracle runs on .90 and .91). The appindicator
+extension is disabled and enabled again around the lock screen and at
+shutdown; the indicator it drops clears all of its handlers, and each glyph
+then disconnected from it again when the glyph was destroyed (the Well
+popover refilling, the bar item going, the Shell exiting). A glyph now keeps
+the indicator it connected to, disconnects only while still connected, and
+removes a queued icon refresh when it is destroyed, so no refresh runs for a
+glyph that is gone.
+
+Generated against the Shell .91 tree (0133 applied; lumaWell.js as 0131 left
+it) for release .92.
+---
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -182,12 +182,28 @@
+         box.connect('style-changed', applyInk);
+         host?.connectObject('notify::gicon', sync, 'notify::content', sync, box);
+         if (this.sni) {
+-            const id = this.sni.connect('icon', () => GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+-                if (box.get_stage())
+-                    sync();
+-                return GLib.SOURCE_REMOVE;
+-            }));
+-            box.connect('destroy', () => this.sni.disconnect(id));
++            // Tray icons are recreated when the appindicator extension is
++            // disabled and enabled again (the lock screen, Shell shutdown),
++            // and the old indicator drops every handler as it goes. Disconnect
++            // from the indicator this glyph used, only while still connected,
++            // and never run a queued refresh for a glyph that is gone.
++            const sni = this.sni;
++            let idleId = 0;
++            const id = sni.connect('icon', () => {
++                idleId ||= GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++                    idleId = 0;
++                    if (box.get_stage())
++                        sync();
++                    return GLib.SOURCE_REMOVE;
++                });
++            });
++            box.connect('destroy', () => {
++                if (idleId)
++                    GLib.source_remove(idleId);
++                idleId = 0;
++                if (sni.signalHandlerIsConnected?.(id) ?? true)
++                    sni.disconnect(id);
++            });
+         }
+         sync();
+         return box;

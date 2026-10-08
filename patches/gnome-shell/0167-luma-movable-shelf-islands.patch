@@ -1,0 +1,3905 @@
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 19 Sep 2026 04:30:00 -0500
+Subject: [PATCH] luma: movable shelf islands (ADR-044)
+
+Any shelf island -- the dock, the live and media islands, the
+notifications island, the Well, Quick Options and the clock -- can be held
+for 400 ms and dragged to any edge or corner, on its own or attached to
+another island's group.
+
+The Shelf is now a controller over groups of attached islands, one tracked
+chrome actor per group, placed by a pure model (shelfArrangement.js): the
+twelve snap zones, free positions, the band solver (24 px between groups,
+the dock the only island that shortens), status fusion (the Well, the
+control grid and the clock adjacent in one group draw as today's single
+island), drop-target resolution, keyboard steps, announcements, one strut
+per occupied edge per monitor, and displays (pinned groups fall back to the
+primary while their display is absent). The arrangement is the new
+shell-state key shelf-arrangement; empty means today's layout, derived from
+the v1 keys.
+
+Arrange mode (shelfArrange.js) is entered by a still hold, from the Shelf
+menu (right-click an island: Arrange Islands..., Reset Island Layout, Shelf
+Settings...) or with Ctrl+Alt+arrow on a focused island. It dims the
+desktop, draws group outlines, grips and the empty zones, and a card with
+Reset and Done; the attach preview opens a real gap with a caret, the snap
+and free previews a ghost footprint. Esc cancels a drag, Ctrl+Z undoes a
+drop, and every move is announced to screen readers.
+
+Surfaces open away from their own island's edge; notification cards avoid
+every band.
+---
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index d18cbf7..48a966b 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1842,3 +1842,98 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+   background-color: transparent;
+   border-color: transparent;
+   box-shadow: none; }
++
++/* ── Movable islands: arrange mode (ADR-044 §10) ─────────────────────────
++ * The scrim dims the desktop under the islands; every group gets a hairline
++ * outline 6px out, every empty zone a dashed placeholder, the active zone and
++ * the attach caret the state fill of ADR-043. Nothing depends on colour
++ * alone: the attach preview is a real gap with a caret, the snap preview a
++ * filled zone plus a ghost footprint, the free preview a ghost and a guide. */
++.luma-arrange-scrim { background-color: rgba(0, 0, 0, 0.28); }
++.luma-arrange-scrim.luma-arrange-light { background-color: rgba(20, 24, 30, 0.18); }
++
++.luma-arrange-outline {
++  border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 21px; }
++.luma-arrange-light .luma-arrange-outline { border-color: rgba(25, 27, 31, 0.20); }
++.luma-arrange-frost .luma-arrange-outline,
++.luma-arrange-glass .luma-arrange-outline { border-color: rgba(255, 255, 255, 0.26); }
++
++.luma-arrange-zone {
++  color: rgba(255, 255, 255, 0.22); -luma-line-width: 1px; -luma-dash: 6; border-radius: 15px; }
++.luma-arrange-light .luma-arrange-zone { color: rgba(25, 27, 31, 0.20); }
++.luma-arrange-frost .luma-arrange-zone,
++.luma-arrange-glass .luma-arrange-zone { color: rgba(255, 255, 255, 0.26); }
++.luma-arrange-zone.luma-arrange-zone-active {
++  color: #8a99a8; -luma-line-width: 1.5px; -luma-dash: 0; background-color: rgba(138, 153, 168, 0.18); }
++.luma-arrange-light .luma-arrange-zone.luma-arrange-zone-active {
++  color: #61728a; background-color: rgba(97, 114, 138, 0.18); }
++.luma-arrange-frost .luma-arrange-zone.luma-arrange-zone-active,
++.luma-arrange-glass .luma-arrange-zone.luma-arrange-zone-active {
++  color: #a9b5c1; background-color: rgba(169, 181, 193, 0.18); }
++
++.luma-arrange-ghost { color: #8a99a8; -luma-line-width: 1.5px; -luma-dash: 6; border-radius: 15px; }
++.luma-arrange-light .luma-arrange-ghost { color: #61728a; }
++.luma-arrange-frost .luma-arrange-ghost, .luma-arrange-glass .luma-arrange-ghost { color: #a9b5c1; }
++.luma-arrange-guide { background-color: rgba(138, 153, 168, 0.55); }
++.luma-arrange-light .luma-arrange-guide { background-color: rgba(97, 114, 138, 0.55); }
++.luma-arrange-frost .luma-arrange-guide, .luma-arrange-glass .luma-arrange-guide { background-color: rgba(169, 181, 193, 0.55); }
++
++/* The gap an attach preview opens in a row, and its caret on the seam. */
++.luma-arrange-gap-footprint { color: rgba(255, 255, 255, 0.40); -luma-line-width: 1.5px; -luma-dash: 6; border-radius: 15px; }
++.luma-arrange-gap.luma-arrange-light .luma-arrange-gap-footprint { color: rgba(25, 27, 31, 0.36); }
++.luma-arrange-caret { background-color: #8a99a8; border-radius: 1px; }
++.luma-arrange-gap.luma-arrange-light .luma-arrange-caret { background-color: #61728a; }
++.luma-arrange-gap.luma-arrange-frost .luma-arrange-caret,
++.luma-arrange-gap.luma-arrange-glass .luma-arrange-caret { background-color: #a9b5c1; }
++
++.luma-arrange-grip {
++  border-radius: 3px; background-color: rgba(255, 255, 255, 0.55); }
++.luma-arrange-grip:hover, .luma-arrange-grip:active { background-color: #ffffff; }
++.luma-arrange-grip:focus { box-shadow: 0 0 0 2px #8a99a8; }
++.luma-arrange-light .luma-arrange-grip { background-color: rgba(25, 27, 31, 0.45); }
++.luma-arrange-light .luma-arrange-grip:hover { background-color: #191b1f; }
++
++/* The lifted island: the deeper far shadow (+50% opacity). */
++.luma-island-lifted .luma-shelf-shadow-far { box-shadow: 0 72px 128px -28px rgba(9, 11, 14, 1); }
++.luma-island-lifted .luma-shelf-shadow-far.luma-surface-light { box-shadow: 0 60px 118px -26px rgba(25, 27, 31, 0.84); }
++.luma-shelf-dragging .luma-shelf-shadow-far { box-shadow: 0 72px 128px -28px rgba(9, 11, 14, 1); }
++
++/* The arrange card: the treatment's menu surface and ink. */
++.luma-arrange-card {
++  font-family: Figtree, sans-serif; width: 340px; padding: 18px 20px 16px; spacing: 4px;
++  border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.09);
++  background-color: #252a30; color: #e7e9e8;
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.luma-arrange-card.luma-surface-light { background-color: #fbfbfa; color: #191b1f; border-color: rgba(39, 48, 56, 0.10); }
++.luma-arrange-card.luma-surface-frost { background-color: rgba(28, 33, 40, 0.88); color: #ffffff; border-color: rgba(255, 255, 255, 0.12); }
++.luma-arrange-card.luma-surface-glass { background-color: rgba(14, 19, 26, 0.82); color: #ffffff; border-color: rgba(255, 255, 255, 0.15); }
++.luma-arrange-card-title { font-size: 13px; font-weight: 700; }
++.luma-arrange-card-body { font-size: 11px; font-weight: 500; color: rgba(231, 233, 232, 0.72); padding-bottom: 12px; }
++.luma-arrange-card.luma-surface-light .luma-arrange-card-body { color: rgba(25, 27, 31, 0.66); }
++.luma-arrange-card.luma-surface-frost .luma-arrange-card-body,
++.luma-arrange-card.luma-surface-glass .luma-arrange-card-body { color: rgba(255, 255, 255, 0.82); }
++.luma-arrange-button {
++  min-height: 28px; padding: 0 22px; border-radius: 8px; font-size: 11px; font-weight: 650;
++  background-color: rgba(255, 255, 255, 0.08); color: inherit; }
++.luma-arrange-button:hover { background-color: rgba(255, 255, 255, 0.13); }
++.luma-arrange-button:focus { box-shadow: 0 0 0 2px #8a99a8; }
++.luma-arrange-button-default { background-color: #8a99a8; color: #15181c; }
++.luma-arrange-button-default:hover { background-color: #9aa8b6; }
++.luma-arrange-card.luma-surface-light .luma-arrange-button { background-color: rgba(35, 39, 45, 0.06); }
++.luma-arrange-card.luma-surface-light .luma-arrange-button:hover { background-color: rgba(35, 39, 45, 0.11); }
++.luma-arrange-card.luma-surface-light .luma-arrange-button-default { background-color: #61728a; color: #ffffff; }
++.luma-arrange-card.luma-surface-frost .luma-arrange-button-default,
++.luma-arrange-card.luma-surface-glass .luma-arrange-button-default { background-color: #a9b5c1; color: #15181c; }
++
++/* The spoken target, shown beside the pointer. */
++.luma-arrange-hint {
++  font-family: Figtree, sans-serif; font-size: 11px; font-weight: 650;
++  padding: 5px 10px; border-radius: 999px; background-color: rgba(37, 42, 48, 0.94); color: #e7e9e8; }
++.luma-arrange-light .luma-arrange-hint { background-color: rgba(251, 251, 250, 0.96); color: #191b1f; }
++
++/* A clock standing alone is one action: the island washes, not the clock. */
++.luma-shelf-clock-island .luma-status-clock { background-color: transparent; }
++.luma-shelf-clock-button { padding: 0; }
++/* The Shelf menu's rule is a rule, not a 32px row. */
++.luma-shelf-menu .popup-separator-menu-item { min-height: 0; padding: 5px 7px; }
++.luma-arrange-button:insensitive { opacity: 0.45; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 223eb7e..d0b8fce 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -145,6 +145,8 @@
+     <file>ui/lumaStickyDock.js</file>
+     <file>ui/shelf.js</file>
+     <file>ui/shelfMetrics.js</file>
++    <file>ui/shelfArrangement.js</file>
++    <file>ui/shelfArrange.js</file>
+     <file>ui/scripting.js</file>
+     <file>ui/search.js</file>
+     <file>ui/searchController.js</file>
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index 9df4651..64151af 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -684,8 +684,11 @@ class NotificationTray extends St.BoxLayout {
+                 width: 0, height: 0,
+             };
+         }
++        // Away from the notifications island's own edge (ADR-044).
++        const edge = anchor ? Main.shelf?.edgeForActor?.(anchor) ?? null : null;
+         const place = placePopover({
+             anchor: box,
++            edge,
+             monitor,
+             reserve,
+             size: {width, height: natural},
+@@ -696,7 +699,7 @@ class NotificationTray extends St.BoxLayout {
+         const height = Math.min(natural, Math.floor(usable * TRAY_MAX_HEIGHT), place.maxHeight);
+         this.set_height(height);
+         const final = placePopover({
+-            anchor: box, monitor, reserve,
++            anchor: box, edge, monitor, reserve,
+             size: {width, height},
+             gap: ISLAND_GAP * scale,
+             lift: anchor ? ISLAND_PADDING * scale : 0,
+diff --git a/js/ui/lumaPopoverPlacement.js b/js/ui/lumaPopoverPlacement.js
+index deb2080..84af43d 100644
+--- a/js/ui/lumaPopoverPlacement.js
++++ b/js/ui/lumaPopoverPlacement.js
+@@ -25,8 +25,10 @@ const clamp = (value, low, high) => Math.max(low, Math.min(value, Math.max(low,
+ // the popover; gap: from the item's island to the popover; lift: from the
+ // item to its island's edge; inset: the closest the popover may come to a
+ // monitor edge. Returns {x, y, maxHeight}; height is clamped by the caller.
+-export function placePopover({anchor, monitor, reserve, size, gap, lift = 0, inset}) {
+-    const edge = shelfEdge(reserve);
++export function placePopover({anchor, monitor, reserve, size, gap, lift = 0, inset, edge: fixedEdge = null}) {
++    // The island's own edge when the caller knows it (islands can sit on
++    // any edge, ADR-044); otherwise the edge the shelf reserves most of.
++    const edge = fixedEdge ?? shelfEdge(reserve);
+     const left = monitor.x + inset;
+     const right = monitor.x + monitor.width - inset;
+     const top = monitor.y + inset;
+diff --git a/js/ui/lumaShelfSurface.js b/js/ui/lumaShelfSurface.js
+index 6044ff1..bda887b 100644
+--- a/js/ui/lumaShelfSurface.js
++++ b/js/ui/lumaShelfSurface.js
+@@ -54,7 +54,8 @@ export function shelfSurfaceSource(actor) {
+         return null;
+     return {
+         island,
+-        edge: shelfEdge(),
++        // Away from the island's own edge: islands can sit on any edge.
++        edge: Main.shelf?.edgeForActor?.(island) ?? shelfEdge(),
+         anchor: stageRect(actor),
+         islandRect: stageRect(island),
+         monitor,
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index 52d85b5..db0d66d 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -1056,6 +1056,21 @@ export const MessageTray = GObject.registerClass({
+     shelfReserve(monitor) {
+         const reserve = {top: 0, bottom: 0, left: 0, right: 0};
+         const shelf = Main.shelf;
++        // Islands can sit on every edge (ADR-044): every band the shelf
++        // draws on this monitor is avoided.
++        if (shelf?.bandReserve) {
++            if (shelf !== this._watchedShelf) {
++                this._watchedShelf?.disconnectObject(this);
++                this._watchedShelf = shelf;
++                shelf.connectObject('layout-changed', () => this._queuePlacement(),
++                    'notify::visible', () => this._queuePlacement(),
++                    'destroy', () => {
++                        this._watchedShelf = null;
++                        this._queuePlacement();
++                    }, this);
++            }
++            return shelf.bandReserve(monitor);
++        }
+         if (shelf !== this._watchedShelf) {
+             this._watchedShelf?.disconnectObject(this);
+             this._watchedShelf = shelf;
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 4c59da8..de45524 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1267,7 +1267,9 @@ class QuickSettings extends PanelMenu.Button {
+             // this button, but only the grid and the clock read as it. Moving
+             // across the rest -- up from the Well to its own popover -- must
+             // not switch an open shelf menu to Quick Settings.
+-            this.menu.hoverTargets = [this._statusControls, this._statusClock];
++            this.menu.hoverTargets = [this._statusControls, this._statusClock]
++                .filter(part => (this._statusOrder ?? ['controls', 'clock'])
++                    .includes(part === this._statusClock ? 'clock' : 'controls'));
+             this.accessible_role = Atk.Role.PUSH_BUTTON;
+             this.set_cursor_type(Clutter.CursorType.POINTER);
+             dateMenu.setStatusOnly(true);
+@@ -1371,7 +1373,7 @@ class QuickSettings extends PanelMenu.Button {
+         this._statusWell = well;
+         this._statusWellSeam = new St.Widget({style_class: 'luma-status-seam luma-status-well-seam'});
+         well.connectObject('notify::visible', () => {
+-            this._statusWellSeam.visible = well.visible;
++            this._syncStatusSeams();
+             this.queue_relayout();
+         }, this);
+         this._clickGesture.connect('may-recognize', () => !this._pressIsInWell());
+@@ -1381,7 +1383,8 @@ class QuickSettings extends PanelMenu.Button {
+ 
+     _pressIsInWell() {
+         const well = this._statusWell;
+-        if (!well?.visible)
++        // A Well that has an island of its own (ADR-044) is not in this button.
++        if (!well?.visible || !this.contains(well))
+             return false;
+         const {x, y} = this._clickGesture.get_coords_abs();
+         const extents = well.get_transformed_extents();
+@@ -1389,6 +1392,36 @@ class QuickSettings extends PanelMenu.Button {
+             x < extents.get_x() + extents.get_width() && y < extents.get_y() + extents.get_height();
+     }
+ 
++    // Quick Options splits into the Well, the control grid and the clock
++    // (ADR-044). `order` names the parts this button draws, in physical
++    // order; it always holds 'controls'. Parts left out are hosted by islands
++    // of their own (Shelf), and re-fuse here when they are dropped back
++    // beside the grid. `clockVertical`: the clock's own edge is a side edge.
++    setStatusParts(order, clockVertical = null) {
++        order = order.filter(part => ['well', 'controls', 'clock'].includes(part));
++        if (!order.includes('controls'))
++            order.push('controls');
++        this._statusOrder = order;
++        this._statusClockVertical = clockVertical;
++        if (!this._statusActive)
++            return;
++        this.menu.hoverTargets = [this._statusControls, this._statusClock]
++            .filter(part => part && order.includes(part === this._statusClock ? 'clock' : 'controls'));
++        this._styleStatusCluster();
++        this._updateStatusName();
++    }
++
++    // The parts this button draws, never fewer than the grid.
++    get statusParts() {
++        return [...(this._statusOrder ?? ['well', 'controls', 'clock'])];
++    }
++
++    // A rule between two parts shows only while both of them do.
++    _syncStatusSeams() {
++        for (const [seam, before, after] of this._statusSeamPairs ?? [])
++            seam.visible = Boolean(before?.visible && after?.visible);
++    }
++
+     releaseStatusCluster() {
+         if (!this._statusActive)
+             return;
+@@ -1487,7 +1520,9 @@ class QuickSettings extends PanelMenu.Button {
+         const battery = this.menu._lumaBatteryLabel?.text;
+         if (this.menu._lumaBattery?.visible && battery)
+             names.push(_('Battery') + ' ' + battery);
+-        this.accessible_name = `${this._statusTime.text}, ${this._statusDateLabel.text}. ` +
++        const clock = (this._statusOrder ?? ['clock']).includes('clock')
++            ? `${this._statusTime.text}, ${this._statusDateLabel.text}. ` : '';
++        this.accessible_name = clock +
+             ([...new Set(names)].join(', ') || _('System status')) + '. ' + _('Quick options');
+     }
+ 
+@@ -1545,21 +1580,33 @@ class QuickSettings extends PanelMenu.Button {
+             const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+             return `rgba(${rgb.join(',')},${strength})`;
+         };
+-        // The clock is always the last thing in the shelf.
+-        const right = false;
++        // The parts in the order the shelf places them (setStatusParts);
++        // today's cluster is Well, grid, clock. A part given an island of its
++        // own is left out, and the rules between parts follow the parts.
+         this._statusBox.text_direction = this.text_direction;
+         this._statusBox.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._statusBox.remove_all_children();
+-        const parts = right ? [this._statusClock, this._statusControls] : [this._statusControls, this._statusClock];
+-        if (this._statusWell) {
+-            this._statusWell.get_parent()?.remove_child(this._statusWell);
+-            this._statusBox.add_child(this._statusWell);
+-            this._statusBox.add_child(this._statusWellSeam);
+-            this._statusWellSeam.visible = this._statusWell.visible;
+-        }
+-        this._statusBox.add_child(parts[0]);
+-        this._statusBox.add_child(this._statusSeam);
+-        this._statusBox.add_child(parts[1]);
++        const order = this._statusOrder ?? ['well', 'controls', 'clock'];
++        const actorOf = {well: this._statusWell, controls: this._statusControls, clock: this._statusClock};
++        const members = order.map(part => actorOf[part]).filter(Boolean);
++        const parts = members.filter(part => part !== this._statusWell);
++        const spareSeams = [this._statusSeam, this._statusWellSeam].filter(Boolean);
++        this._statusSeamPairs = [];
++        members.forEach((part, index) => {
++            if (index > 0) {
++                const before = members[index - 1];
++                const touchesWell = before === this._statusWell || part === this._statusWell;
++                const seam = touchesWell && spareSeams.includes(this._statusWellSeam)
++                    ? this._statusWellSeam : spareSeams.find(s => s !== this._statusWellSeam) ?? spareSeams[0];
++                spareSeams.splice(spareSeams.indexOf(seam), 1);
++                this._statusBox.add_child(seam);
++                this._statusSeamPairs.push([seam, before, part]);
++            }
++            part.get_parent()?.remove_child(part);
++            this._statusBox.add_child(part);
++        });
++        this._syncStatusSeams();
++        const clockVertical = this._statusClockVertical ?? vertical;
+         const rtl = !vertical && this.text_direction === Clutter.TextDirection.RTL;
+         const visual = rtl ? [...parts].reverse() : parts;
+         const padding = s.get_int('shelf-padding');
+@@ -1574,18 +1621,22 @@ class QuickSettings extends PanelMenu.Button {
+             if (joined) {
+                 radii = [...corner];
+                 const first = part === visual[0];
+-                for (const i of vertical ? (first ? [2, 3] : [0, 1]) : (first ? [1, 2] : [0, 3])) radii[i] = 0;
++                if (visual.length > 1)
++                    for (const i of vertical ? (first ? [2, 3] : [0, 1]) : (first ? [1, 2] : [0, 3])) radii[i] = 0;
+             }
+-            const innerSide = vertical ? (part === visual[0] ? 'bottom' : 'top') : (part === visual[0] ? 'right' : 'left');
++            const innerSide = visual.length < 2 ? null
++                : vertical ? (part === visual[0] ? 'bottom' : 'top') : (part === visual[0] ? 'right' : 'left');
+             // An unframed part leaves its fill to the stylesheet, which draws
+             // the hover and pressed states. The clock is padded 0 4.
+             part.set_style(`border: ${framed && stroked ? 1 : 0}px solid ${line}; ` +
+                 `border-radius: ${radii.map(n => `${n}px`).join(' ')}; ` +
+                 `${framed && filled ? `background-color: ${rgba(isClock ? 'status-clock-fill' : 'status-controls-fill')}; ` : ''}` +
+-                `padding: ${flush ? `${padding}px` : isClock ? '0 4px' : '0'}; ${joined ? `border-${innerSide}: 0;` : ''} ${joined && !flush ? `padding-${innerSide}: ${padding}px;` : ''}`);
++                `padding: ${flush ? `${padding}px` : isClock ? '0 4px' : '0'}; ${joined && innerSide ? `border-${innerSide}: 0;` : ''} ${joined && !flush && innerSide ? `padding-${innerSide}: ${padding}px;` : ''}`);
+         }
++        // A clock with an island of its own is a plain part of that island.
++        if (!parts.includes(this._statusClock))
++            this._statusClock.set_style('padding: 0 4px;');
+         const seam = s.get_boolean('status-divider');
+-        this._statusSeam.visible = true;
+         // A 1 x 24 rule, 8 from the parts on each side. Joined parts meet
+         // along a rule as long as they are.
+         const length = joined ? '' : `${vertical ? 'width' : 'height'}: ${SHELF_DIVIDER_LENGTH}px; `;
+@@ -1606,10 +1657,10 @@ class QuickSettings extends PanelMenu.Button {
+         for (const label of [this._statusTime, this._statusDateLabel]) {
+             this._setStatusLineHeight(label);
+             const textWidth = DASH_TILE_SIZE - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
+-            label.set_width(vertical ? textWidth * textScale : -1);
+-            label.clutter_text.single_line_mode = !vertical;
++            label.set_width(clockVertical ? textWidth * textScale : -1);
++            label.clutter_text.single_line_mode = !clockVertical;
+             label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+-            label.clutter_text.line_wrap = vertical;
++            label.clutter_text.line_wrap = clockVertical;
+             label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+             label.clutter_text.line_alignment = Pango.Alignment.CENTER;
+         }
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 23b5a5b..c153cde 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -12,12 +12,13 @@ import {ShelfMedia} from './shelfMedia.js';
+ import {MediaIslandGuard} from './lumaMediaIslandGuard.js';
+ import {Well} from './lumaWell.js';
+ import {FocusVisible} from './lumaFocusVisible.js';
+-import {NotificationBeacon} from './lumaNotificationBeacon.js';
++import {NotificationBeacon, getNotificationTray} from './lumaNotificationBeacon.js';
+ import {LumaIconMask} from './iconMask.js';
+-import {anchoredToStatus, shelfGaps} from './mediaSelection.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {WindowMarks} from './lumaDockWindows.js';
+ import {DASH_TILE_SIZE, SHELF_INSET, SHELF_ISLAND_RADIUS, windowMarkRow} from './shelfMetrics.js';
++import * as Arrangement from './shelfArrangement.js';
++import {ShelfArrange, DashedOutline} from './shelfArrange.js';
+ 
+ const DASH_PADDING = 10;
+ // Every application on the dock is drawn to the same silhouette, whatever
+@@ -107,6 +108,12 @@ const BEACON_MOTION_TIME = 200;
+ // With reduced motion the island only fades in and out.
+ const BEACON_FADE_TIME = 150;
+ 
++// One row of attached islands (ADR-044): ISLAND_GAP apart, in physical order
++// (left to right, top to bottom; RTL does not reverse a placed row). A row
++// that spans its edge (shelf-span-full) gives its slack to the gaps beside
++// the dock, which keeps today's spanning shelf: the dock at one end, the
++// status cluster and its companions at the other. A spanning row without a
++// dock sits at the band's end, as the status cluster alone did.
+ const ShelfGroupLayout = GObject.registerClass(
+ class ShelfGroupLayout extends Clutter.LayoutManager {
+     _measure(container) {
+@@ -115,12 +122,9 @@ class ShelfGroupLayout extends Clutter.LayoutManager {
+         const sizes = children.map(child => container._vertical
+             ? child.get_preferred_height(container._thickness * scale)[1]
+             : child.get_preferred_width(container._thickness * scale)[1]);
+-        const gap = container._separate ? container._padding : 0;
+-        const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap, 0,
+-            container._liveIsland, container._beaconIsland)
+-            .map(value => value * scale);
+-        return {children, sizes, gap, scale, length: sizes.reduce((a, b) => a + b, 0) +
+-            gaps.reduce((a, b) => a + b, 0), thickness: container._thickness * scale};
++        const gap = (container._separate ? container._gap ?? Arrangement.ISLAND_GAP : 0) * scale;
++        const length = sizes.reduce((a, b) => a + b, 0) + gap * Math.max(0, children.length - 1);
++        return {children, sizes, gap, scale, length, thickness: container._thickness * scale};
+     }
+ 
+     vfunc_get_preferred_width(container, _forHeight) {
+@@ -134,46 +138,45 @@ class ShelfGroupLayout extends Clutter.LayoutManager {
+     }
+ 
+     vfunc_allocate(container, box) {
+-        const {children, sizes, gap, scale, length} = this._measure(container);
++        const {children, sizes, gap, length} = this._measure(container);
+         const vertical = container._vertical;
+         const available = vertical ? box.get_height() : box.get_width();
+-        // A shelf sized to its content is centred by that size. When an island
+-        // appears, hides or changes width without the shelf resizing, the old
+-        // size no longer matches and the content sat off centre; ask again.
++        // A row sized to its content is placed by that size. When an island
++        // appears, hides or changes length without the row being placed
++        // again, the old size no longer matches; ask again, once per size.
++        // An island whose text changes (a cast going from "Connecting…" to
++        // its screen's name) is a new length, and asks again.
+         if (container._fitsContent && Math.abs(available - length) > 1 &&
+                 (container._askedFor !== available || container._askedLength !== length)) {
+-            // Once per size: a shelf clamped to its monitor stays shorter than its content.
+-            // An island whose text changes (a cast going from "Connecting…" to
+-            // its screen's name) is a new length, and asks again.
+             container._askedFor = available;
+             container._askedLength = length;
+             container._lengthChanged?.();
+         }
+-        const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap,
+-            Math.max(0, available - length) / scale, container._liveIsland,
+-            container._beaconIsland).map(value => value * scale);
+-        const rtl = !vertical && container.text_direction === Clutter.TextDirection.RTL;
+-        const onlyPinnedPair = anchoredToStatus(children, container._mediaIsland,
+-            container._statusIsland, container._liveIsland, container._beaconIsland);
+-        let offset = rtl ? (onlyPinnedPair ? length : available)
+-            : (onlyPinnedPair ? Math.max(0, available - length) : 0);
+-        let remaining = available;
++        const spare = Math.max(0, available - length);
++        const gaps = children.slice(0, -1).map(() => gap);
++        let lead = 0;
++        if (spare > 0 && !container._fitsContent) {
++            const dock = children.indexOf(container._dockIsland);
++            const flexible = dock < 0 ? [] : [dock - 1, dock].filter(i => i >= 0 && i < gaps.length);
++            if (flexible.length)
++                flexible.forEach(i => (gaps[i] += spare / flexible.length));
++            else
++                lead = spare;
++        }
++        let offset = lead;
++        let remaining = available - lead;
++        const cross = vertical ? box.get_width() : box.get_height();
+         children.forEach((child, i) => {
+             const spacing = gaps[i] ?? 0;
+-            const size = Math.min(sizes[i], Math.max(0, remaining));
++            const size = Math.max(0, Math.min(sizes[i], remaining));
+             remaining -= size + spacing;
+-            if (rtl)
+-                offset -= size;
+-            const cross = vertical ? box.get_width() : box.get_height();
+-            const mediaCross = cross;
+-            const inset = (cross - mediaCross) / 2;
+             child.allocate(new Clutter.ActorBox({
+-                x1: vertical ? inset : offset,
+-                y1: vertical ? offset : inset,
+-                x2: vertical ? inset + mediaCross : offset + size,
+-                y2: vertical ? offset + size : inset + mediaCross,
++                x1: vertical ? 0 : offset,
++                y1: vertical ? offset : 0,
++                x2: vertical ? cross : offset + size,
++                y2: vertical ? offset + size : cross,
+             }));
+-            offset += rtl ? -spacing : size + spacing;
++            offset += size + spacing;
+         });
+     }
+ });
+@@ -288,6 +291,13 @@ class ShelfIsland extends St.Widget {
+     }
+ 
+     setOrientation(vertical, padding, outer = false) {
++        // Unchanged, nothing is restyled: a drag previews by syncing the
++        // shelf, and groups it does not touch must not lay out again.
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const key = `${vertical}:${padding}:${outer}:${scale}:${this._content._statusFlush}`;
++        if (this._orientationKey === key)
++            return;
++        this._orientationKey = key;
+         this._vertical = vertical;
+         this._padding = padding;
+         this._thickness = DASH_TILE_SIZE + 2 * padding;
+@@ -330,6 +340,8 @@ class ShelfIsland extends St.Widget {
+     }
+ 
+     setCornerRadii(radii) {
++        if (this._radii && radii.join() === this._radii.join() && !this._content._statusActive)
++            return;
+         this._radii = radii;
+         this._materialBinding.setCornerRadii(radii);
+         if (this._content._statusActive) {
+@@ -364,6 +376,9 @@ class ShelfIsland extends St.Widget {
+     }
+ 
+     setSurfaceVisible(visible, castShadows) {
++        if (this._surfaceKey === `${visible}:${castShadows}`)
++            return;
++        this._surfaceKey = `${visible}:${castShadows}`;
+         this._shadows.forEach(actor => actor.visible = visible && castShadows);
+         this._stroke.visible = visible;
+         this._materialBinding.setEnabled(visible);
+@@ -389,6 +404,65 @@ class ShelfIsland extends St.Widget {
+     }
+ });
+ 
++// A placed group of islands (ADR-044). Each group is its own tracked chrome
++// actor, so a fullscreen window hides only the groups on its monitor, and it
++// takes input only where its islands are.
++const ShelfGroupActor = GObject.registerClass(
++class ShelfGroupActor extends St.Widget {
++    _init() {
++        super._init({
++            style_class: 'luma-shelf-group-actor',
++            reactive: false,
++            layout_manager: new Clutter.BinLayout(),
++        });
++        this.row = new St.Widget({
++            style_class: 'luma-shelf-group',
++            layout_manager: new ShelfGroupLayout(),
++            x_expand: true,
++            y_expand: true,
++        });
++        this.surface = new ShelfIsland('luma-shelf-root', this.row);
++        this.add_child(this.surface);
++        this.placement = null;
++        this._positioned = false;
++    }
++
++    // The islands in this row, in physical order, visible or not.
++    get islands() {
++        return this.row.get_children().filter(child => child.islandId);
++    }
++});
++
++// The gap an attach preview opens in a row: as long as the island being
++// dragged, with a 2px caret on the seam beside the island it attaches to.
++const ShelfGapLayout = GObject.registerClass(
++class ShelfGapLayout extends Clutter.LayoutManager {
++    vfunc_get_preferred_width(container) {
++        const length = container._length ?? 0;
++        return [length, container._vertical ? container._thickness : length];
++    }
++
++    vfunc_get_preferred_height(container) {
++        const length = container._length ?? 0;
++        return [0, container._vertical ? length : container._thickness];
++    }
++
++    vfunc_allocate(container, box) {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const caret = container._caret;
++        const size = 2 * scale;
++        // The caret sits in the middle of the island gap on the seam side.
++        const gap = Arrangement.ISLAND_GAP * scale;
++        const along = container._caretBefore ? -gap / 2 - size / 2
++            : (container._vertical ? box.get_height() : box.get_width()) + gap / 2 - size / 2;
++        caret.allocate(container._vertical
++            ? new Clutter.ActorBox({x1: 0, y1: along, x2: box.get_width(), y2: along + size})
++            : new Clutter.ActorBox({x1: along, y1: 0, x2: along + size, y2: box.get_height()}));
++        container._footprint.allocate(new Clutter.ActorBox({x1: 0, y1: 0,
++            x2: box.get_width(), y2: box.get_height()}));
++    }
++});
++
+ /**
+  * Shelf
+  *
+@@ -396,17 +470,21 @@ class ShelfIsland extends St.Widget {
+  * independent: a future trusted mod may provide another implementation by
+  * claiming the same Shelf capability, without monkey-patching this actor.
+  */
+-export const Shelf = GObject.registerClass(
+-class Shelf extends St.Widget {
++export const Shelf = GObject.registerClass({
++    Signals: {
++        'layout-changed': {},
++        'arrange-changed': {param_types: [GObject.TYPE_BOOLEAN]},
++    },
++}, class Shelf extends St.Widget {
+     _init() {
+         super._init({
+             name: 'lumaShelf',
+             style_class: 'luma-shelf',
+             reactive: false,
+-            // Only the target edge geometry participates in struts. Animation
+-            // is confined to the visual child, never the work-area actor.
+-            layout_manager: new Clutter.BinLayout(),
++            // The shelf covers the stage and places its groups (ADR-044); it
++            // never takes input itself. Struts are separate actors.
+         });
++        this._groups = [];
+ 
+         this._settings = new Gio.Settings({
+             schema_id: 'org.project_luma.shell-state',
+@@ -430,15 +508,6 @@ class Shelf extends St.Widget {
+             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._sync());
+         }, this);
+         Main.layoutManager.connectObject('monitors-changed', () => this._sync(), this);
+-        this._group = new St.Widget({
+-            style_class: 'luma-shelf-group',
+-            layout_manager: new ShelfGroupLayout(),
+-            x_expand: true,
+-            y_expand: true,
+-        });
+-        this._surface = new ShelfIsland('luma-shelf-root', this._group);
+-        this.add_child(this._surface);
+-
+         // The overview Dash already owns favorites, drag/drop, Show Apps, and
+         // keyboard state. Adopt that one actor instead of running a second
+         // competing dock model during Activity View.
+@@ -514,8 +583,6 @@ class Shelf extends St.Widget {
+         this._mediaMaterial._lumaMedia = true;
+         this._mediaIsland = new ShelfIsland('luma-shelf-media-island', this._mediaMaterial);
+         this._mediaIsland.visible = false;
+-        this._group._mediaIsland = this._mediaIsland;
+-        this._group._statusIsland = this._actionsIsland;
+         this._mediaGuard = new MediaIslandGuard(this._mediaIsland, this._media,
+             {vertical: () => this._vertical, sync: () => { this._sync(); this._queueDockWidth(); }});
+         this._media.connectObject('eligibility-changed', () => {
+@@ -569,7 +636,6 @@ class Shelf extends St.Widget {
+         this._beaconIsland = new ShelfIsland('luma-shelf-beacon-island',
+             new St.Bin({child: this._beacon}));
+         this._beaconIsland.visible = false;
+-        this._group._beaconIsland = this._beaconIsland;
+         this._beaconIsland.setBody(this._beacon);
+         this._beacon.connectObject('notify::visible', () => this._syncBeaconIsland(),
+             'notify::width', () => this._queueDockWidth(), this);
+@@ -604,41 +670,36 @@ class Shelf extends St.Widget {
+             }
+             if (this._adoptLaterId) GLib.source_remove(this._adoptLaterId);
+             this._adoptLaterId = 0;
+-            this._workArea?.destroy();
++            this._arrange?.destroy();
++            this._arrange = null;
+             // At shutdown the layout manager destroys uiGroup's children, the
+-            // insets among them, before the shelf; only destroy what is left.
+-            for (const actor of [...(this._liveEdgeInsets ?? [])]) actor.destroy();
++            // struts among them, before the shelf; only destroy what is left.
++            const struts = [...(this._strutActors?.values() ?? [])];
++            this._strutActors = null;
++            for (const actor of struts) actor.destroy();
+             global.display.set_work_area_inset?.(0);
+             if (this._syncAgainId) GLib.source_remove(this._syncAgainId);
+             this._syncAgainId = 0;
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+-            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland])
++            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland])
+                 if (island && !island.get_parent()) island.destroy();
+         });
+ 
+-        // A native chrome strut touches the physical monitor edge even when
+-        // the visual islands float inward. It is invisible and nonreactive;
+-        // Mutter applies it only to work-area operations such as maximize.
+-        this._workArea = new St.Widget({name: 'lumaShelfWorkArea', reactive: false});
+-        this._workArea.connect('destroy', () => { this._workArea = null; });
+-        Main.layoutManager.addChrome(this._workArea, {
+-            affectsStruts: true,
+-            trackFullscreen: true,
+-        });
+-        this._liveEdgeInsets = new Set();
+-        this._edgeInsets = Array.from({length: 3}, () => {
+-            const actor = new St.Widget({name: 'lumaDesktopEdgeInset', reactive: false});
+-            this._liveEdgeInsets.add(actor);
+-            actor.connect('destroy', () => this._liveEdgeInsets.delete(actor));
+-            Main.layoutManager.addChrome(actor, {affectsStruts: true, trackFullscreen: true});
+-            return actor;
+-        });
++        // Native chrome struts touch the physical monitor edges even when the
++        // visual islands float inward: one per occupied edge per monitor, and
++        // the floating margin on that monitor's other edges. They are
++        // invisible and nonreactive; Mutter applies them only to work-area
++        // operations such as maximize.
++        this._strutActors = new Map();
+         this._workAreaTracked = true;
++        // The shelf itself is a stage-sized container that takes no input:
++        // each placed group is tracked as chrome of its own.
+         Main.layoutManager.addChrome(this, {
+             affectsStruts: false,
+-            trackFullscreen: true,
++            trackFullscreen: false,
+         });
++        this._arrange = new ShelfArrange(this);
+         Main.ctrlAltTabManager.addGroup(
+             this, _('Dash'), 'shell-focus-dash-symbolic');
+ 
+@@ -664,15 +725,22 @@ class Shelf extends St.Widget {
+         }
+         // Fade the previous shape out before relayout, then reveal the new
+         // shape. The 220ms transition owns no duplicate interactive actors.
+-        this._surface.remove_all_transitions();
+-        this._surface.ease({opacity: 0, duration: 110,
++        const surfaces = this._groups.map(group => group.surface);
++        surfaces.forEach(surface => surface.remove_all_transitions());
++        surfaces.forEach((surface, index) => surface.ease({opacity: 0, duration: 110,
+             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+             onComplete: () => {
++                if (index > 0)
++                    return;
+                 this._sync();
+-                this._surface.opacity = 0;
+-                this._surface.ease({opacity: 255, duration: 110,
+-                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+-            }});
++                for (const group of this._groups) {
++                    group.surface.opacity = 0;
++                    group.surface.ease({opacity: 255, duration: 110,
++                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++                }
++            }}));
++        if (!surfaces.length)
++            this._sync();
+     }
+ 
+     _keepsWorkArea() {
+@@ -749,7 +817,13 @@ class Shelf extends St.Widget {
+             'quickSettings', 'liveExtensions', ...actionRoles]);
+         const extraRoles = Object.keys(indicators).filter(role =>
+             !shellRoles.has(role) && indicators[role]?.container);
+-        const arrowSide = St.Side[this._edge.toUpperCase()];
++        // Every surface opens away from its own island's edge.
++        const sideOf = id => St.Side[this.edgeOfIsland(id).toUpperCase()];
++        const arrowSide = sideOf('quick-options');
++        const wellSide = sideOf(this._actionsParts?.includes('well') === false ? 'well' : 'quick-options');
++        const wellVertical = Arrangement.isVertical(this.edgeOfIsland(
++            this._actionsParts?.includes('well') === false ? 'well' : 'quick-options'));
++        const quickVertical = Arrangement.isVertical(this.edgeOfIsland('quick-options'));
+ 
+         const quick = indicators.quickSettings;
+         quick.container.get_parent()?.remove_child(quick.container);
+@@ -758,13 +832,13 @@ class Shelf extends St.Widget {
+             quick.get_parent()?.remove_child(quick);
+             this._actionsIsland.insert_child_below(quick, this._actionsIsland._stroke);
+         }
+-        quick.setStatusCluster(indicators.dateMenu, this._settings, this._vertical);
++        quick.setStatusCluster(indicators.dateMenu, this._settings, quickVertical);
+         this._setMenuSide(quick, arrowSide);
+         quick._statusArrowSide = arrowSide;
+-        this._auxBox.orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+-        this._well.arrowSide = arrowSide;
+-        // On a left or right shelf the Well stacks its items, like the dock.
+-        this._well.orientation = this._vertical
++        this._auxBox.orientation = wellVertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._well.arrowSide = wellSide;
++        // On a left or right edge the Well stacks its items, like the dock.
++        this._well.orientation = wellVertical
+             ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._adoptRecordingIndicator(quick);
+         for (const role of [...actionRoles, ...extraRoles]) {
+@@ -786,7 +860,7 @@ class Shelf extends St.Widget {
+             }
+             if (adopted) {
+                 indicator.setShelfPresentation?.(true);
+-                indicator.setShelfOrientation?.(this._vertical);
++                indicator.setShelfOrientation?.(wellVertical);
+                 continue;
+             }
+             const container = indicator.container;
+@@ -809,14 +883,12 @@ class Shelf extends St.Widget {
+             }
+             container.visible = indicator.visible;
+             indicator.setShelfPresentation?.(true);
+-            indicator.setShelfOrientation?.(this._vertical);
+-            this._setMenuSide(indicator, arrowSide);
++            indicator.setShelfOrientation?.(wellVertical);
++            this._setMenuSide(indicator, wellSide);
+         }
+ 
+         // Anything that could not go into the Well keeps the secondary island.
+         this._auxIsland.visible = this._auxBox.get_children().some(child => child.visible);
+-        if (this._auxIsland.visible && this._settings.get_boolean('shelf-actions-visible'))
+-            this._group.add_child(this._auxIsland);
+ 
+         const liveIndicator = indicators.liveExtensions;
+         const live = liveIndicator?.container;
+@@ -831,9 +903,6 @@ class Shelf extends St.Widget {
+                 this._liveMaterial = new St.Bin({child: this._liveScroll});
+                 this._liveIsland = new ShelfIsland(
+                     'luma-shelf-live-island', this._liveMaterial);
+-                // The layout packs the live island with the clock, as it does
+-                // the media island, so it needs to know which actor it is.
+-                this._group._liveIsland = this._liveIsland;
+                 this._registerIsland('live', this._liveIsland);
+                 liveIndicator.connectObject('notify::width', () => this._queueDockWidth(),
+                     'notify::height', () => this._queueDockWidth(), this);
+@@ -856,18 +925,9 @@ class Shelf extends St.Widget {
+                 live.get_parent()?.remove_child(live);
+                 this._liveContent.add_child(live);
+             }
+-            if (this._liveIsland.get_parent() !== this._group) {
+-                this._liveIsland.get_parent()?.remove_child(this._liveIsland);
+-                this._group.insert_child_at_index(this._liveIsland, 1);
+-            }
+             this._liveIsland.visible = liveIndicator.visible;
+-            liveIndicator.setShelfOrientation(this._vertical);
+-            // Next to the clock, not at the other end of the shelf. The index
+-            // this was inserted at is decided before the actions island even
+-            // exists, so the position is settled here by sibling instead —
+-            // which also survives the islands being added in another order.
+-            if (this._actionsIsland?.get_parent() === this._group)
+-                this._group.set_child_below_sibling(this._liveIsland, this._actionsIsland);
++            this._liveIndicator = liveIndicator;
++            liveIndicator.setShelfOrientation(Arrangement.isVertical(this.edgeOfIsland('live')));
+         }
+     }
+ 
+@@ -908,10 +968,11 @@ class Shelf extends St.Widget {
+             island.disconnect(this._beaconGrowId);
+             this._beaconGrowId = 0;
+         }
+-        island.set_pivot_point(this._vertical ? 0.5 : 1, this._vertical ? 1 : 0.5);
++        const vertical = Arrangement.isVertical(this.edgeOfIsland('notifications'));
++        island.set_pivot_point(vertical ? 0.5 : 1, vertical ? 1 : 0.5);
+         const collapsed = {
+-            scale_x: this._vertical || !animate ? 1 : 0.01,
+-            scale_y: this._vertical && animate ? 0.01 : 1,
++            scale_x: vertical || !animate ? 1 : 0.01,
++            scale_y: vertical && animate ? 0.01 : 1,
+         };
+         if (show) {
+             island._lumaLeaving = false;
+@@ -968,7 +1029,7 @@ class Shelf extends St.Widget {
+     _easeIslandsAside(time) {
+         if (!time)
+             return;
+-        const before = new Map(this._group.get_children()
++        const before = new Map((this._beaconIsland.get_parent()?.get_children() ?? [])
+             .filter(actor => actor.visible && actor !== this._beaconIsland && actor.get_stage())
+             .map(actor => [actor, actor.get_transformed_position()]));
+         for (const [actor, [x0, y0]] of before) {
+@@ -1051,6 +1112,147 @@ class Shelf extends St.Widget {
+         Main.layoutManager.panelBox.show();
+     }
+ 
++    // ------------------------------------------------ ADR-044 arrangement
++
++    get canArrange() {
++        return this._settings.settings_schema.has_key('shelf-arrangement');
++    }
++
++    // The stored arrangement, normalised: an empty one is today's layout
++    // from the v1 keys. A downgraded shell-state without the key keeps the
++    // default layout and turns arrange mode off (logged once).
++    _readArrangement() {
++        const v1 = {
++            edge: this._settings.get_string('shelf-edge'),
++            dockAnchor: this._settings.get_string('shelf-dock-anchor'),
++            actionsAnchor: this._settings.get_string('shelf-actions-anchor'),
++            groupLayout: this._settings.get_string('shelf-group-layout'),
++            // Today's spanning shelf of separate islands: the dock at the
++            // start, the rest at the end.
++            spanSplit: this._settings.get_boolean('shelf-span-full') &&
++                this._settings.get_string('shelf-surface-mode') === 'separate',
++        };
++        let raw = [];
++        if (this.canArrange) {
++            try {
++                raw = this._settings.get_value('shelf-arrangement').recursiveUnpack();
++            } catch (error) {
++                logError(error, 'Luma Shelf: unreadable shelf-arrangement, using the default layout');
++            }
++        } else if (!this._missingKeyLogged) {
++            this._missingKeyLogged = true;
++            console.warn('[luma-shelf] shell-state has no shelf-arrangement key: default layout, arrange mode off');
++        }
++        const result = Arrangement.normalizeArrangement(raw, v1);
++        // The default row mirrors in RTL as it always has; a placed row is
++        // physical and never does.
++        if (result.isDefault && Clutter.get_default_text_direction() === Clutter.TextDirection.RTL) {
++            const mirror = {start: 'end', end: 'start'};
++            result.groups.forEach(group => {
++                group.islands.reverse();
++                group.anchor = mirror[group.anchor] ?? group.anchor;
++            });
++        }
++        return result;
++    }
++
++    get arrangement() {
++        return Arrangement.cloneArrangement(this._arrangement ?? []);
++    }
++
++    get arrangementIsDefault() {
++        return !!this._arrangementIsDefault;
++    }
++
++    // Write the arrangement once; the shelf follows through the settings
++    // signal. Returns whether anything changed.
++    writeArrangement(groups) {
++        if (!this.canArrange)
++            return false;
++        const variant = new GLib.Variant('aa{sv}', groups.map(group => ({
++            display: new GLib.Variant('s', group.display ?? ''),
++            edge: new GLib.Variant('s', group.edge),
++            anchor: new GLib.Variant('s', group.anchor),
++            position: new GLib.Variant('d', Number(group.position ?? 0.5)),
++            islands: new GLib.Variant('as', group.islands.filter(id => !id.startsWith('gap:'))),
++        })));
++        const before = this._settings.get_value('shelf-arrangement');
++        if (before.equal(variant))
++            return false;
++        this._settings.set_value('shelf-arrangement', variant);
++        console.log(`[luma-shelf] arrangement: ${groups.map(g =>
++            `${g.display || 'primary'}/${g.edge}/${g.anchor}${g.anchor === 'free' ? `@${g.position}` : ''}[${g.islands.join(',')}]`).join(' ')}`);
++        return true;
++    }
++
++    resetArrangement() {
++        if (!this.canArrange)
++            return;
++        console.log('[luma-shelf] arrangement reset to the default layout');
++        this._settings.reset('shelf-arrangement');
++    }
++
++    // Arrange mode's preview: the groups as the drop would leave them, and
++    // the dragged group. Nothing is written and no strut moves.
++    setPreview(preview) {
++        this._preview = preview;
++        this._slideTime = preview ? 180 : null;
++        this._sync();
++    }
++
++    // Ctrl+Alt+arrow outside arrange mode: when a shelf island holds key
++    // focus, the workspace bindings move the island (Shift: its group) and
++    // commit at once. Returns whether the key was used.
++    moveFocusedIsland(bindingName, event) {
++        const match = /^(switch|move)-to-workspace-(left|right|up|down)$/.exec(bindingName ?? '');
++        if (!match || !this._arrange || !this.canArrange)
++            return false;
++        const state = event?.get_state?.() ?? 0;
++        if (!(state & Clutter.ModifierType.CONTROL_MASK))
++            return false;
++        const focus = global.stage.get_key_focus();
++        if (!focus || !this.contains(focus) || !this.groupForActor(focus))
++            return false;
++        const id = this._arrange.idForActor(focus);
++        if (!id)
++            return false;
++        this._arrange.moveByKey(id, match[2], match[1] === 'move');
++        return true;
++    }
++
++    // The monitors, with the identity a group is pinned by and the edges
++    // they share with each other.
++    _monitorInfo() {
++        const layout = Main.layoutManager;
++        const monitors = layout.monitors.map(m => ({index: m.index, x: m.x, y: m.y,
++            width: m.width, height: m.height, primary: m.index === layout.primaryIndex,
++            id: this._monitorId(m.index)}));
++        for (const monitor of monitors)
++            monitor.sharedEdges = Arrangement.sharedEdges(monitor, monitors);
++        return monitors;
++    }
++
++    get monitors() {
++        return this._monitors ?? [];
++    }
++
++    // connector|vendor|product|serial, from the first physical monitor of a
++    // logical monitor; the connector alone when EDID says nothing.
++    _monitorId(index) {
++        try {
++            const logical = global.backend.get_monitor_manager().get_logical_monitors()
++                .find(l => l.get_number() === index);
++            const monitor = logical?.get_monitors()[0];
++            if (!monitor)
++                return `monitor-${index}`;
++            return [monitor.get_connector(), monitor.get_vendor(), monitor.get_product(),
++                monitor.get_serial()].map(value => value ?? '').join('|');
++        } catch (error) {
++            logError(error, 'Luma Shelf: monitor identity');
++            return `monitor-${index}`;
++        }
++    }
++
+     // A sync can be asked for from inside a sync: taking an island off the
+     // row stops its transitions, a Well glyph is re-adopted, and their
+     // handlers sync again. That nested sync rebuilt the row while Clutter
+@@ -1080,13 +1282,17 @@ class Shelf extends St.Widget {
+     }
+ 
+     _syncNow() {
+-        this._previousVisualPosition = [this.x + this._surface.translation_x,
+-            this.y + this._surface.translation_y];
+-        this._surface.remove_all_transitions();
+-        this._surface.opacity = 255;
+-        this._surface.translation_x = 0;
+-        this._surface.translation_y = 0;
++        // A group caught mid-slide keeps where it is drawn now as the place
++        // its next slide starts from, and never keeps a stale offset.
++        for (const group of this._groups) {
++            group._visualFrom = [group.x + group.surface.translation_x, group.y + group.surface.translation_y];
++            group.surface.remove_all_transitions();
++            group.surface.set({opacity: 255, translation_x: 0, translation_y: 0});
++        }
+         if (!this._isDesktopSession()) {
++            // Locking, the greeter or a mode change end arrange mode, keeping
++            // whatever was already dropped.
++            this._arrange?.end({reason: 'session'});
+             Main.layoutManager.setChromeHidden(this, true);
+             this._restorePanelActors();
+             // The lock screen covers a running desktop: keep its work area, so
+@@ -1104,25 +1310,47 @@ class Shelf extends St.Widget {
+         Main.layoutManager.panelBox.hide();
+         Main.layoutManager.setChromeHidden(this, false);
+ 
+-        const dockVisible = this._settings.get_boolean('shelf-dock-visible');
+-        const actionsVisible = this._settings.get_boolean('shelf-actions-visible');
+-        const surfaceMode = this._settings.get_string('shelf-surface-mode');
+-        const material = this._settings.get_string('shelf-material');
++        this._dockVisible = this._settings.get_boolean('shelf-dock-visible');
++        this._actionsVisible = this._settings.get_boolean('shelf-actions-visible');
++        this._surfaceMode = this._settings.get_string('shelf-surface-mode');
++        this._material = this._settings.get_string('shelf-material');
+         this._padding = this._settings.get_int('shelf-padding');
+         this._thickness = DASH_TILE_SIZE + 2 * this._padding;
+-        this._group._padding = this._padding;
+-        this._group._thickness = this._thickness;
+-        this._edge = this._settings.get_string('shelf-edge');
+-        this._vertical = this._edge === 'left' || this._edge === 'right';
+         this._protrude = this._settings.get_string('shelf-edge-mode') === 'protruding';
+         this._span = this._settings.get_boolean('shelf-span-full');
+-        this._group._fitsContent = !this._span;
+-        this._group._lengthChanged ??= () => this._queueDockWidth();
+         this._floatEnds = this._settings.get_boolean('shelf-float-ends');
+-        this._group._vertical = this._vertical;
+-        this._group._separate = surfaceMode === 'separate';
++
++        // Where every island is: the stored arrangement (an empty one is
++        // today's layout, derived from the v1 keys), or arrange mode's
++        // preview while an island is being dragged.
++        const stored = this._readArrangement();
++        this._arrangement = stored.groups;
++        this._arrangementIsDefault = stored.isDefault;
++        this._monitors = this._monitorInfo();
++        const layout = Main.layoutManager;
++        const shared = new Map(this._monitors.map(m => [m.index, m.sharedEdges]));
++        const groups = this._preview?.groups ?? this._arrangement;
++        this._resolved = layout.primaryMonitor
++            ? Arrangement.resolveDisplays(groups, this._monitors, layout.primaryIndex, shared) : [];
++        if (this._preview?.drag)
++            this._resolved.push({...this._preview.drag, source: [], drag: true});
++        this._islandEdges = new Map();
++        for (const placed of this._resolved)
++            placed.islands.forEach(id => this._islandEdges.set(id, placed.edge));
++        // Status fusion decides where the Well and the clock live: inside
++        // Quick Options when attached beside it, in islands of their own
++        // otherwise.
++        const quickGroup = this._resolved.find(placed => placed.islands.includes('quick-options'));
++        const fused = quickGroup
++            ? Arrangement.fuseStatus(quickGroup.islands).find(entry => entry.fused?.includes('quick-options'))?.fused ?? ['quick-options']
++            : ['quick-options'];
++        this._actionsParts = fused.map(id => (id === 'quick-options' ? 'controls' : id));
++
++        // The dock's edge is the shelf's edge for everything that asks for
++        // one (window motion, the Capture bar, the dash itself).
++        this._edge = this._islandEdges.get('dock') ?? this._islandEdges.get('quick-options') ?? 'bottom';
++        this._vertical = Arrangement.isVertical(this._edge);
+         const orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+-        this._actionsBox.orientation = orientation;
+         this._dockContent.orientation = orientation;
+         this._dash.setShelfEdge(this._edge);
+         this._dockIndicators.queue_relayout();
+@@ -1132,75 +1360,341 @@ class Shelf extends St.Widget {
+         this._dockPadding.set_style(this._vertical
+             ? `padding: 0 ${this._padding}px;`
+             : `padding: ${this._padding}px 0;`);
+-        this._surface.set_style_class_name(`luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
+-            `luma-shelf-${this._edge} ${this._vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
+-            `${this._protrude ? 'luma-shelf-attached' : ''} ${this._span && !this._floatEnds ? 'luma-shelf-flush' : ''}`);
+-        // Islands that float keep their elevation, including on a spanning
+-        // shelf whose ends float; only islands touching an edge drop it.
+-        const castShadows = !this._protrude && (!this._span || this._floatEnds);
+-        this._surface.setSurfaceVisible(surfaceMode === 'connected', castShadows);
+-
+-        // One at a time from a copy: a handler that runs as an island leaves
+-        // the row must not invalidate the walk over it.
+-        for (const island of this._group.get_children())
+-            this._group.remove_child(island);
+-        if (dockVisible)
+-            this._group.add_child(this._dockIsland);
+-        if (actionsVisible)
+-            this._group.add_child(this._actionsIsland);
+-        this._group.set_style_class_name(
+-            `luma-shelf-group luma-shelf-material luma-shelf-${surfaceMode} luma-shelf-material-${material}`);
+ 
+         this._adoptPanelActors();
+-        if (actionsVisible && this._mediaIsland.visible) {
+-            const index = this._group.get_children().indexOf(this._actionsIsland);
+-            this._group.insert_child_at_index(this._mediaIsland, index);
++        this._syncGroups();
++        this._syncDockWidth();
++    }
++
++    // The row holding Quick Options, for code written when the shelf was one
++    // row (tests and older callers read `_group`).
++    get _group() {
++        const holder = this._groups.find(group => group.row.contains(this._actionsIsland)) ?? this._groups[0];
++        return holder?.row ?? null;
++    }
++
++    // Which of an island's forms it takes, from its own edge.
++    edgeOfIsland(id) {
++        return this._islandEdges?.get(id) ?? this._edge ?? 'bottom';
++    }
++
++    // The group actor holding an actor, or null.
++    groupForActor(actor) {
++        for (let parent = actor; parent; parent = parent.get_parent()) {
++            if (parent instanceof ShelfGroupActor)
++                return parent;
+         }
+-        // The notification island is the last island of the row: it pushes
+-        // Quick Options and its clock towards the dock (owner, 2026-09-18).
+-        // With Quick Options hidden it still ends the row.
+-        if (this._beaconIsland.visible)
+-            this._group.add_child(this._beaconIsland);
+-        this._beacon.setVertical(this._vertical);
+-        this._media.setVertical(this._vertical);
+-        const visibleIslands = this._group.get_children().filter(actor => actor.visible);
+-        const physicalIslands = [...visibleIslands];
+-        if (!this._vertical && this._group.text_direction === Clutter.TextDirection.RTL)
+-            physicalIslands.reverse();
++        return null;
++    }
++
++    // The edge of the island an actor sits in: every surface opened from an
++    // island opens away from that island's own edge.
++    edgeForActor(actor) {
++        return this.groupForActor(actor)?.placement?.edge ?? this._edge ?? 'bottom';
++    }
++
++    // The island actor drawn for an id right now. A status part fused into
++    // Quick Options is drawn by the Quick Options island.
++    islandActorFor(id) {
++        if (id === 'well' && this._wellIsland && !this._actionsParts?.includes('well'))
++            return this._wellIsland;
++        if (id === 'clock' && this._clockIsland && !this._actionsParts?.includes('clock'))
++            return this._clockIsland;
++        if (['well', 'clock', 'quick-options'].includes(id))
++            return this._actionsIsland;
++        return this.getIsland(id);
++    }
++
++    // What a status part is drawn with inside the fused island, for hit
++    // tests and the lift; the island itself for everything else.
++    partActorFor(id) {
++        const quick = this._actionsMaterial;
++        if (id === 'well' && this._actionsParts?.includes('well'))
++            return this._well;
++        if (id === 'clock' && this._actionsParts?.includes('clock'))
++            return quick._statusClock;
++        return this.islandActorFor(id);
++    }
++
++    _islandShown(id) {
++        if (id === 'dock')
++            return this._dockVisible;
++        if (id === 'notifications')
++            return true;
++        return this._actionsVisible;
++    }
++
++    // Build or reuse one group actor per placed group and put each island in
++    // its row. Only rows whose islands changed are touched.
++    _syncGroups() {
++        const layout = Main.layoutManager;
++        const surfaceMode = this._surfaceMode;
+         const flushEnds = this._span && !this._floatEnds;
+-        this._surface.setCornerRadii(surfaceMode === 'connected'
+-            ? dashCornerRadii(this._edge, this._protrude, flushEnds, flushEnds)
+-            : [0, 0, 0, 0]);
+-        for (const island of this._group.get_children()) {
+-            island.remove_style_class_name('luma-shelf-divider-after');
+-            if (surfaceMode === 'connected' && island !== visibleIslands.at(-1))
+-                island.add_style_class_name('luma-shelf-divider-after');
+-            const first = island === physicalIslands[0];
+-            const last = island === physicalIslands.at(-1);
+-            let radii = surfaceMode === 'separate'
+-                ? dashCornerRadii(this._edge, this._protrude, flushEnds && first, flushEnds && last)
+-                : [0, 0, 0, 0];
+-            if (surfaceMode === 'connected' && island === this._actionsIsland && this._actionsMaterial._statusFlush) {
+-                radii = dashCornerRadii(this._edge, this._protrude, flushEnds && first, flushEnds && last);
+-                if (!first) for (const i of this._vertical ? [0, 1] : [0, 3]) radii[i] = 0;
+-                if (!last) for (const i of this._vertical ? [2, 3] : [1, 2]) radii[i] = 0;
++        const castShadows = !this._protrude && (!this._span || this._floatEnds);
++        while (this._groups.length > this._resolved.length) {
++            const group = this._groups.pop();
++            for (const island of [...group.row.get_children()])
++                group.row.remove_child(island);
++            group.destroy();
++        }
++        while (this._groups.length < this._resolved.length) {
++            const group = new ShelfGroupActor();
++            this.add_child(group);
++            layout.trackChrome(group, {affectsStruts: false, trackFullscreen: true});
++            this._groups.push(group);
++        }
++
++        const quick = this._actionsMaterial;
++        const clockEdge = this.edgeOfIsland('clock');
++        quick.setStatusParts?.(this._actionsParts, Arrangement.isVertical(clockEdge));
++        this._syncStandaloneParts();
++
++        // One gap actor serves an attach preview.
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._resolved.forEach((placed, index) => {
++            const group = this._groups[index];
++            const vertical = Arrangement.isVertical(placed.edge);
++            const previous = group.placement;
++            group.placement = placed;
++            // Only the dragged group is lifted; a group actor reused for a
++            // placed group never keeps the lift.
++            if (group.dragging && !placed.drag) {
++                group.remove_transition('scale-x');
++                group.remove_transition('scale-y');
++                group.set_scale(1, 1);
+             }
+-            island.setCornerRadii(radii);
+-            island.setOrientation(this._vertical, this._padding);
+-            island.setSurfaceVisible(surfaceMode === 'separate', castShadows);
++            group.dragging = !!placed.drag;
++            const row = group.row;
++            row._vertical = vertical;
++            row._padding = this._padding;
++            row._thickness = this._thickness;
++            row._separate = surfaceMode === 'separate';
++            row._gap = Arrangement.ISLAND_GAP;
++            row._dockIsland = this._dockIsland;
++            row._lengthChanged ??= () => this._queueDockWidth();
++            row._fitsContent = !this._spansGroup(placed);
++
++            const actors = [];
++            for (const entry of Arrangement.fuseStatus(placed.islands)) {
++                if (entry.fused) {
++                    if (this._actionsVisible)
++                        actors.push(this._actionsIsland);
++                    continue;
++                }
++                const id = entry.id;
++                if (id.startsWith('gap:')) {
++                    actors.push(this._gapActor(placed, id, scale));
++                    continue;
++                }
++                if (!this._islandShown(id))
++                    continue;
++                const actor = this.islandActorFor(id);
++                if (!actor)
++                    continue;
++                // The applets the Well cannot adopt are drawn just before the Well.
++                if (id === 'well' || (id === 'quick-options' && this._actionsParts.includes('well'))) {
++                    if (this._auxIsland.visible && !actors.includes(this._auxIsland))
++                        actors.push(this._auxIsland);
++                }
++                if (!actors.includes(actor))
++                    actors.push(actor);
++            }
++            if (this._actionsParts.includes('well') && actors.includes(this._actionsIsland) &&
++                    this._auxIsland.visible && !actors.includes(this._auxIsland))
++                actors.splice(actors.indexOf(this._actionsIsland), 0, this._auxIsland);
++            this._reconcileRow(row, actors);
++
++            const surfaceClass = `luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
++                `luma-shelf-${placed.edge} ${vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
++                `${this._protrude ? 'luma-shelf-attached' : ''} ` +
++                `${flushEnds && this._spansGroup(placed) ? 'luma-shelf-flush' : ''} ` +
++                `${placed.drag ? 'luma-shelf-dragging' : ''}`;
++            if (group.surface.style_class !== surfaceClass)
++                group.surface.set_style_class_name(surfaceClass);
++            group.surface.setSurfaceVisible(surfaceMode === 'connected', castShadows || !!placed.drag);
++            const rowClass = `luma-shelf-group luma-shelf-material luma-shelf-${surfaceMode} luma-shelf-material-${this._material}`;
++            if (!row._rowClass || row._rowClass !== rowClass) {
++                row._rowClass = rowClass;
++                row.set_style_class_name(rowClass);
++            }
++            const flush = flushEnds && this._spansGroup(placed);
++            group.surface.setCornerRadii(surfaceMode === 'connected'
++                ? dashCornerRadii(placed.edge, this._protrude, flush, flush)
++                : [0, 0, 0, 0]);
++            const visibleIslands = row.get_children().filter(actor => actor.visible);
++            for (const island of row.get_children()) {
++                if (!(island instanceof ShelfIsland))
++                    continue;
++                if (!placed.drag && island.has_style_class_name('luma-island-lifted'))
++                    island.remove_style_class_name('luma-island-lifted');
++                const divider = surfaceMode === 'connected' && island !== visibleIslands.at(-1);
++                if (divider !== island.has_style_class_name('luma-shelf-divider-after')) {
++                    if (divider)
++                        island.add_style_class_name('luma-shelf-divider-after');
++                    else
++                        island.remove_style_class_name('luma-shelf-divider-after');
++                }
++                const first = island === visibleIslands[0];
++                const last = island === visibleIslands.at(-1);
++                let radii = surfaceMode === 'separate'
++                    ? dashCornerRadii(placed.edge, this._protrude, flush && first, flush && last)
++                    : [0, 0, 0, 0];
++                if (surfaceMode === 'connected' && island === this._actionsIsland && this._actionsMaterial._statusFlush) {
++                    radii = dashCornerRadii(placed.edge, this._protrude, flush && first, flush && last);
++                    if (!first) for (const i of vertical ? [0, 1] : [0, 3]) radii[i] = 0;
++                    if (!last) for (const i of vertical ? [2, 3] : [1, 2]) radii[i] = 0;
++                }
++                island.setCornerRadii(radii);
++                island.setOrientation(vertical, this._padding);
++                island.setSurfaceVisible(surfaceMode === 'separate', castShadows || !!placed.drag);
++            }
++            group.surface.setOrientation(vertical, this._padding, true);
++            if (previous && previous.edge !== placed.edge)
++                group._edgeChanged = true;
++        });
++
++        this._beacon.setVertical(Arrangement.isVertical(this.edgeOfIsland('notifications')));
++        this._media.setVertical(Arrangement.isVertical(this.edgeOfIsland('media')));
++        this._liveIndicator?.setShelfOrientation?.(Arrangement.isVertical(this.edgeOfIsland('live')));
++        this._syncActionsWashNow?.();
++    }
++
++    // Put exactly `actors`, in order, in `row`; islands that belong nowhere
++    // now are taken out of their old rows.
++    _reconcileRow(row, actors) {
++        for (const child of row.get_children()) {
++            if (!actors.includes(child))
++                row.remove_child(child);
+         }
+-        this._surface.setOrientation(this._vertical, this._padding, true);
+-        this._syncDockWidth();
++        actors.forEach((actor, index) => {
++            const parent = actor.get_parent();
++            if (parent !== row) {
++                parent?.remove_child(actor);
++                row.insert_child_at_index(actor, index);
++            } else if (row.get_child_at_index(index) !== actor) {
++                row.set_child_at_index(actor, index);
++            }
++        });
++        // Islands that are placed nowhere (hidden by a setting) leave the
++        // shelf until they are placed again.
++    }
++
++    // shelf-span-full stretches the dock's group between the other groups
++    // of its band; a dock standing alone keeps its own length.
++    _spansGroup(placed) {
++        return this._span && this._surfaceMode === 'connected' && !placed.drag && placed.islands.includes('dock') &&
++            placed.islands.filter(id => !id.startsWith('gap:')).length > 1;
++    }
++
++    // The Well and the clock in islands of their own when they are not
++    // fused into Quick Options.
++    _syncStandaloneParts() {
++        const quick = this._actionsMaterial;
++        const wellAlone = !this._actionsParts.includes('well');
++        const clockAlone = !this._actionsParts.includes('clock');
++        if (wellAlone) {
++            if (!this._wellIsland) {
++                this._wellMaterial = new St.Bin({style_class: 'luma-shelf-well-material',
++                    reactive: true, track_hover: true});
++                this._wellIsland = new ShelfIsland('luma-shelf-well-island', this._wellMaterial);
++                this._registerIsland('well', this._wellIsland);
++                this._well.connectObject('notify::visible', () => {
++                    if (this._wellIsland && !this._actionsParts?.includes('well'))
++                        this._wellIsland.visible = this._well.visible;
++                    this._queueDockWidth();
++                }, this);
++                this._syncPartWash(this._wellIsland, this._wellMaterial);
++            }
++            if (this._well.get_parent() !== this._wellMaterial) {
++                this._well.get_parent()?.remove_child(this._well);
++                this._wellMaterial.set_child(this._well);
++            }
++            this._wellIsland.visible = this._well.visible;
++        } else if (this._wellMaterial?.get_child() === this._well) {
++            this._wellMaterial.set_child(null);
++        }
++        const clock = quick._statusClock;
++        if (clockAlone && clock) {
++            if (!this._clockIsland) {
++                this._clockButton = new St.Button({style_class: 'luma-shelf-clock-button',
++                    can_focus: true, reactive: true, track_hover: true,
++                    accessible_role: Atk.Role.PUSH_BUTTON});
++                this._clockButton.connect('clicked', () =>
++                    getNotificationTray().toggle(this._actionsMaterial._statusClock));
++                this._clockIsland = new ShelfIsland('luma-shelf-clock-island', this._clockButton);
++                this._registerIsland('clock', this._clockIsland);
++                this._clockIsland.setBody(this._clockButton);
++                const name = () => {
++                    const q = this._actionsMaterial;
++                    this._clockButton.accessible_name =
++                        `${q._statusTime?.text ?? ''}, ${q._statusDateLabel?.text ?? ''}. ${_('Notifications')}`;
++                };
++                quick._statusTime?.connectObject('notify::text', name, this);
++                name();
++            }
++            if (clock.get_parent() !== this._clockButton) {
++                clock.get_parent()?.remove_child(clock);
++                this._clockButton.set_child(clock);
++            }
++        } else if (this._clockButton?.get_child() === clock) {
++            this._clockButton.set_child(null);
++        }
++    }
++
++    // A Well standing alone is one surface: it washes as a whole while
++    // hovered, stays pressed while one of its menus is open, and rings as a
++    // whole for keyboard focus, as Quick Options does (0161).
++    _syncPartWash(island, material) {
++        const sync = () => {
++            const focus = global.stage.get_key_focus();
++            const inside = !!focus && material.contains(focus);
++            const pressed = material.get_children().some(child =>
++                [child, ...(child.get_children?.() ?? [])].some(a =>
++                    a.has_style_pseudo_class?.('checked') || a.has_style_pseudo_class?.('active')));
++            const hovered = material.hover && !pressed;
++            const focused = inside && (this._focusVisible?.keyboard ?? true) && !pressed && !hovered;
++            for (const [name, on] of [['luma-island-press', pressed],
++                ['luma-island-hover', hovered], ['luma-island-focus', focused]]) {
++                if (on)
++                    material.add_style_class_name(name);
++                else
++                    material.remove_style_class_name(name);
++            }
++        };
++        material.connectObject('notify::hover', sync, 'notify::pseudo-class', sync, this);
++        global.stage.connectObject('notify::key-focus', sync, this);
++        sync();
++    }
++
++    // The placeholder an attach preview opens: the dragged island's length.
++    _gapActor(placed, id, scale) {
++        if (!this._gap) {
++            this._gap = new St.Widget({style_class: 'luma-arrange-gap', layout_manager: new ShelfGapLayout()});
++            this._gap._footprint = new DashedOutline({style_class: 'luma-arrange-gap-footprint'});
++            this._gap._caret = new St.Widget({style_class: 'luma-arrange-caret'});
++            this._gap.add_child(this._gap._footprint);
++            this._gap.add_child(this._gap._caret);
++        }
++        const gap = this._gap;
++        gap.set_style_class_name(`luma-arrange-gap luma-arrange-${SurfaceMaterials.effectiveTreatment()}`);
++        gap.show();
++        gap._vertical = Arrangement.isVertical(placed.edge);
++        gap._thickness = this._thickness * scale;
++        gap._length = Math.round(Number(id.slice(4)) || 56 * scale);
++        const index = placed.islands.indexOf(id);
++        gap._caretBefore = index > 0;
++        gap.queue_relayout();
++        return gap;
+     }
+ 
+     _chromeAlive() {
+-        return Boolean(this._workArea) && this._liveEdgeInsets.size === this._edgeInsets.length;
++        return this._strutActors !== null;
+     }
+ 
+     _trackWorkArea(enabled) {
+         if (enabled === this._workAreaTracked || !this._chromeAlive())
+             return;
+-        for (const actor of [this._workArea, ...this._edgeInsets]) {
++        for (const actor of this._strutActors.values()) {
+             Main.layoutManager.untrackChrome(actor);
+             Main.layoutManager.trackChrome(actor, {
+                 affectsStruts: enabled,
+@@ -1221,51 +1715,219 @@ class Shelf extends St.Widget {
+         global.display.set_work_area_inset?.(inset);
+     }
+ 
++    _metrics(scale) {
++        return {
++            inset: this._protrude ? 0 : SHELF_INSET * scale,
++            thickness: this._thickness * scale,
++            margin: this._protrude ? 0 : this._padding * scale,
++            gutter: !this._span || this._floatEnds ? SHELF_INSET * scale : 0,
++            scale,
++        };
++    }
++
++    // Every monitor's bands, from which edges hold a placed group. A band
++    // stays reserved while it holds any placed island, even a hidden one,
++    // so maximized windows do not move when music starts or a call ends.
++    _computeBands(scale) {
++        const metrics = this._metrics(scale);
++        const occupied = new Map();
++        for (const placed of this._resolved) {
++            if (placed.drag || !placed.islands.some(id => !id.startsWith('gap:') && this._islandShown(id)))
++                continue;
++            if (!occupied.has(placed.monitor))
++                occupied.set(placed.monitor, new Set());
++            occupied.get(placed.monitor).add(placed.edge);
++        }
++        const bands = new Map();
++        for (const monitor of this._monitors) {
++            const edges = occupied.get(monitor.index) ?? new Set();
++            const depth = Arrangement.bandGeometry(monitor, 'bottom', metrics).depth;
++            // A side band's ends sit just inside the top and bottom bands, so a
++            // side group never collides with a corner group.
++            const reserved = {top: depth, bottom: depth};
++            const perEdge = {};
++            for (const edge of Arrangement.EDGES) {
++                if (monitor.sharedEdges.includes(edge))
++                    continue;
++                perEdge[edge] = Arrangement.bandGeometry(monitor, edge, metrics, reserved);
++            }
++            bands.set(monitor.index, perEdge);
++        }
++        return {metrics, occupied, bands};
++    }
++
++    // The struts: one per occupied edge per monitor, and the floating margin
++    // on that monitor's other edges. Never changed during a drag.
++    _syncStruts(occupied, metrics) {
++        if (!this._chromeAlive())
++            return;
++        const wanted = Arrangement.reservations(this._monitors, occupied, metrics);
++        const keys = new Set();
++        for (const reservation of wanted) {
++            const key = `${reservation.monitor}:${reservation.edge}`;
++            keys.add(key);
++            let actor = this._strutActors.get(key);
++            if (!actor) {
++                actor = new St.Widget({name: reservation.band ? 'lumaShelfWorkArea' : 'lumaDesktopEdgeInset',
++                    reactive: false});
++                actor.connect('destroy', () => {
++                    if (this._strutActors?.get(key) === actor)
++                        this._strutActors.delete(key);
++                });
++                Main.layoutManager.addChrome(actor, {affectsStruts: this._workAreaTracked, trackFullscreen: true});
++                this._strutActors.set(key, actor);
++            }
++            actor.name = reservation.band ? 'lumaShelfWorkArea' : 'lumaDesktopEdgeInset';
++            const {x, y, width, height} = reservation.rect;
++            if (actor.x !== x || actor.y !== y)
++                actor.set_position(x, y);
++            if (actor.width !== width || actor.height !== height)
++                actor.set_size(width, height);
++        }
++        for (const [key, actor] of [...this._strutActors]) {
++            if (!keys.has(key)) {
++                this._strutActors.delete(key);
++                actor.destroy();
++            }
++        }
++    }
++
++    // Place every group: the band solver per monitor edge, then the struts.
+     _syncGeometry() {
+         const monitor = Main.layoutManager.primaryMonitor;
+         if (!monitor)
+             return;
+-
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const natural = this._vertical
+-            ? this._group.get_preferred_height(this._thickness * scale)[1]
+-            : this._group.get_preferred_width(this._thickness * scale)[1];
+-        const geometry = dashGeometry(monitor, this._edge, this._protrude,
+-            this._span, this._floatEnds, natural, scale, this._padding);
++        this.set_position(0, 0);
++        this.set_size(global.stage.width, global.stage.height);
++        const {metrics, occupied, bands} = this._computeBands(scale);
++        this._bands = bands;
+         this._syncWorkAreaInset(scale);
+-        const explicitChange = this._previousVisualPosition !== null && this._previousVisualPosition !== undefined;
+-        const moved = this.x !== geometry.x || this.y !== geometry.y;
+-        const [oldX, oldY] = this._previousVisualPosition ??
+-            [this.x + this._surface.translation_x, this.y + this._surface.translation_y];
+-        this._previousVisualPosition = null;
+-        this.set_position(geometry.x, geometry.y);
+-        this.set_size(geometry.width, geometry.height);
+-        // The outer visual actor follows the strut actor's full bounds. Its
+-        // group still measures its natural length independently for content-hug.
+-        this._surface.set_size(geometry.width, geometry.height);
+-        if (this._isDesktopSession()) {
+-            this._trackWorkArea(this._group.get_children().some(actor => actor.visible));
+-        } else if (!this._keepsWorkArea()) {
++        const animate = St.Settings.get().enable_animations;
++        const measure = (actor, vertical) => vertical
++            ? actor.get_preferred_height(this._thickness * scale)[1]
++            : actor.get_preferred_width(this._thickness * scale)[1];
++
++        // Solve each band.
++        const byBand = new Map();
++        this._groups.forEach((group, index) => {
++            const placed = this._resolved[index];
++            if (!placed || placed.drag)
++                return;
++            const key = `${placed.monitor}:${placed.edge}`;
++            if (!byBand.has(key))
++                byBand.set(key, []);
++            byBand.get(key).push(group);
++        });
++        for (const [key, groups] of byBand) {
++            const [monitorIndex, edge] = key.split(':');
++            const band = bands.get(Number(monitorIndex))?.[edge];
++            if (!band)
++                continue;
++            const vertical = band.vertical;
++            const specs = groups.map(group => {
++                const natural = measure(group.row, vertical);
++                const dock = group.row.contains(this._dockIsland) && this._dockIsland.visible;
++                const dockNatural = dock ? this._dockNatural ?? 0 : 0;
++                return {
++                    anchor: group.placement.anchor,
++                    position: group.placement.position,
++                    length: natural,
++                    minLength: dock ? Math.max(0, natural - dockNatural + DASH_TILE_SIZE * scale) : undefined,
++                    span: this._spansGroup(group.placement),
++                    natural,
++                    dockNatural,
++                };
++            });
++            const solved = Arrangement.solveBand(band.length, specs, Arrangement.GROUP_SEPARATION * scale);
++            groups.forEach((group, i) => {
++                const {start, length} = solved[i];
++                const spec = specs[i];
++                // The dock is the only island that gives up length: when its
++                // band is short its viewport shortens and scrolls.
++                if (spec.dockNatural && length < spec.natural && !spec.span) {
++                    const dockLength = Math.max(DASH_TILE_SIZE * scale, spec.dockNatural - (spec.natural - length));
++                    this._setDockLength(dockLength, true);
++                }
++                const along = band.along[0] + start;
++                const x = Math.round(vertical ? band.rect.x : along);
++                const y = Math.round(vertical ? along : band.rect.y);
++                const width = Math.round(vertical ? band.rect.width : length);
++                const height = Math.round(vertical ? length : band.rect.height);
++                this._placeGroup(group, x, y, width, height, animate);
++            });
++        }
++
++        if (this._preview)
++            return;
++        // A lock screen keeps the work area it had; otherwise the struts
++        // follow the placed groups.
++        if (this._isDesktopSession())
++            this._trackWorkArea(occupied.size > 0);
++        else if (!this._keepsWorkArea())
+             this._trackWorkArea(false);
++        this._syncStruts(occupied, metrics);
++        this.emit('layout-changed');
++    }
++
++    _placeGroup(group, x, y, width, height, animate) {
++        const [oldX, oldY] = group._visualFrom ??
++            [group.x + group.surface.translation_x, group.y + group.surface.translation_y];
++        group._visualFrom = null;
++        const moved = group.x !== x || group.y !== y;
++        const edgeChanged = group._edgeChanged;
++        group._edgeChanged = false;
++        group.set_position(x, y);
++        group.set_size(width, height);
++        group.surface.set_size(width, height);
++        if (!animate || !group._positioned) {
++            group._positioned = true;
++            return;
+         }
+-        if (!this._chromeAlive())
++        if (edgeChanged) {
++            // Into its vertical or horizontal form: out, relayout, in.
++            group.surface.remove_all_transitions();
++            group.surface.set({translation_x: 0, translation_y: 0, opacity: 0});
++            group.surface.ease({opacity: 255, duration: 110, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+             return;
+-        const workArea = geometry.workArea;
+-        this._workArea.set_position(workArea.x, workArea.y);
+-        this._workArea.set_size(workArea.width, workArea.height);
+-        geometry.edgeInsets.forEach((rect, index) => {
+-            this._edgeInsets[index].set_position(rect.x, rect.y);
+-            this._edgeInsets[index].set_size(rect.width, rect.height);
+-        });
+-        if (this._positioned && St.Settings.get().enable_animations &&
+-            (moved || explicitChange) && (oldX !== geometry.x || oldY !== geometry.y)) {
+-            this._surface.remove_all_transitions();
+-            this._surface.translation_x = oldX - geometry.x;
+-            this._surface.translation_y = oldY - geometry.y;
+-            this._surface.ease({translation_x: 0, translation_y: 0,
+-                duration: 220, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+         }
+-        this._positioned = true;
++        if (moved && (oldX !== x || oldY !== y)) {
++            group.surface.remove_transition('translation-x');
++            group.surface.remove_transition('translation-y');
++            group.surface.translation_x = oldX - x;
++            group.surface.translation_y = oldY - y;
++            group.surface.ease({translation_x: 0, translation_y: 0,
++                duration: this._slideTime ?? 220, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        }
++    }
++
++    // How far every visible band reaches into a monitor, for surfaces that
++    // must stay clear of the shelf (notification cards, the tray). A hidden
++    // group reserves nothing.
++    bandReserve(monitor) {
++        const reserve = {top: 0, bottom: 0, left: 0, right: 0};
++        if (!this.visible || !this.get_stage())
++            return reserve;
++        for (const group of this._groups) {
++            const placed = group.placement;
++            if (!placed || placed.drag || !group.visible || !group.row.get_children().some(a => a.visible))
++                continue;
++            const [x, y] = group.get_transformed_position();
++            const [width, height] = group.get_transformed_size();
++            if (!(width > 0 && height > 0))
++                continue;
++            const cx = x + width / 2, cy = y + height / 2;
++            if (cx < monitor.x || cx >= monitor.x + monitor.width || cy < monitor.y || cy >= monitor.y + monitor.height)
++                continue;
++            const depth = {
++                bottom: monitor.y + monitor.height - y,
++                top: y + height - monitor.y,
++                right: monitor.x + monitor.width - x,
++                left: x + width - monitor.x,
++            }[placed.edge];
++            reserve[placed.edge] = Math.max(reserve[placed.edge], Math.max(0, depth));
++        }
++        return reserve;
+     }
+ 
+     _normaliseDockIcons() {
+@@ -1349,6 +2011,25 @@ class Shelf extends St.Widget {
+         });
+     }
+ 
++    // The dock's viewport along its edge; `clip` when it is shorter than the
++    // dock and scrolls.
++    _setDockLength(length, clip) {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        // An unread badge on the first or last icon reaches a few pixels past
++        // the dock's content along the shelf. The viewport clips only a dock
++        // that scrolls, where its ends fade anyway.
++        this._dockContent.clip_to_view = clip;
++        if (this._vertical)
++            this._dockScroll.set_size(this._thickness * scale, length);
++        else
++            this._dockScroll.set_size(length, -1);
++        const fade = Math.min(this._padding, DASH_TILE_SIZE / 2) * scale;
++        this._dockScroll.update_fade_effect(new Clutter.Margin({
++            top: this._vertical ? fade : 0, bottom: this._vertical ? fade : 0,
++            left: this._vertical ? 0 : fade, right: this._vertical ? 0 : fade,
++        }));
++    }
++
+     _syncDockWidth() {
+         // The dash rebuilds its items when favourites change, which changes
+         // its width, which is why this runs here rather than on a signal of
+@@ -1356,76 +2037,58 @@ class Shelf extends St.Widget {
+         // icons added later.
+         this._normaliseDockIcons();
+         const monitor = Main.layoutManager.primaryMonitor;
+-        if (!monitor || !this._dockIsland.visible)
++        if (!monitor || !this._isDesktopSession())
+             return;
+ 
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const measure = actor => this._vertical
++        const measure = (actor, vertical) => vertical
+             ? actor.get_preferred_height(this._thickness * scale)[1]
+             : actor.get_preferred_width(this._thickness * scale)[1];
+-        const naturalDock = measure(this._dash);
+-        const edgeLength = this._vertical ? monitor.height : monitor.width;
+-        const gutter = !this._span || this._floatEnds ? 2 * SHELF_INSET * scale : 0;
+-        const available = Math.max(1, edgeLength - gutter);
+-        const setViewport = (scroll, length, cross) => {
+-            scroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+-            scroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
+-            scroll.set_size(this._vertical ? cross : length,
+-                this._vertical ? length : -1);
++        // Everything along one edge of the island's monitor, less its ends.
++        const edgeLength = id => {
++            const placed = this._resolved?.find(p => p.islands.includes(id));
++            const m = Main.layoutManager.monitors[placed?.monitor] ?? monitor;
++            return Math.max(1, (Arrangement.isVertical(this.edgeOfIsland(id)) ? m.height : m.width) -
++                2 * SHELF_INSET * scale);
++        };
++        const setViewport = (scroll, vertical, length, cross) => {
++            scroll.hscrollbar_policy = vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
++            scroll.vscrollbar_policy = vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
++            scroll.set_size(vertical ? cross : length, vertical ? length : -1);
+         };
++        // The dock at its natural length; a band too short for it shortens
++        // its viewport when the groups are placed (_syncGeometry).
++        this._dockNatural = this._dockIsland.visible ? measure(this._dash, this._vertical) : 0;
++        this._setDockLength(this._dockNatural, false);
++
+         // Keep all status controls reachable on a short/narrow display. Both
+         // adopted panel content and the dock use native scrollable boundaries;
+         // no child is silently discarded to satisfy geometry.
+-        let liveSize = 0;
+         if (this._liveIsland?.visible) {
+-            this._liveContent.orientation = this._vertical
++            const vertical = Arrangement.isVertical(this.edgeOfIsland('live'));
++            this._liveContent.orientation = vertical
+                 ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+             this._liveScroll.set_size(-1, -1);
+-            const liveNatural = measure(this._liveContent);
+-            liveSize = Math.min(liveNatural + 2 * this._padding * scale, available / 3);
+-            setViewport(this._liveScroll, Math.max(1, liveSize - 2 * this._padding * scale), DASH_TILE_SIZE * scale);
+-            liveSize = measure(this._liveIsland);
+-            if (GLib.getenv('LUMA_LIVE_DEBUG')) {
+-                log(`luma-live: natural=${Math.round(liveNatural)} ` +
+-                    `viewport=${Math.round(Math.max(1, liveSize - 2 * this._padding * scale))} ` +
+-                    `island=${Math.round(liveSize)} padding=${this._padding} scale=${scale} ` +
+-                    `available=${Math.round(available)} ` +
+-                    `content.w=${Math.round(this._liveContent.width)} ` +
+-                    `scroll.w=${Math.round(this._liveScroll.width)} ` +
+-                    `island.visible=${this._liveIsland.visible}`);
+-            }
++            const liveNatural = measure(this._liveContent, vertical);
++            const liveSize = Math.min(liveNatural + 2 * this._padding * scale, edgeLength('live') / 3);
++            setViewport(this._liveScroll, vertical, Math.max(1, liveSize - 2 * this._padding * scale),
++                DASH_TILE_SIZE * scale);
++            if (GLib.getenv('LUMA_LIVE_DEBUG'))
++                log(`luma-live: natural=${Math.round(liveNatural)} island=${Math.round(liveSize)}`);
+         }
+-        const others = this._group.get_children().filter(actor => actor !== this._dockIsland && actor.visible);
+-        const gap = this._group._separate ? others.length * this._padding * scale : 0;
++        const quickVertical = Arrangement.isVertical(this.edgeOfIsland('quick-options'));
+         this._actionsScroll.set_size(-1, -1);
+-        const actionsBudget = Math.max(1, available - liveSize - (this._mediaIsland.get_parent() ? measure(this._mediaIsland) : 0) - gap - this._thickness * scale);
+         const flushStatus = this._actionsMaterial._statusFlush;
+-        const actionsPadding = flushStatus ? 0 : 2 * this._padding * scale;
+         const statusCross = (flushStatus ? this._thickness : DASH_TILE_SIZE) * scale;
+         // Measure wrapped clock labels at the actual content width, not the
+         // material width including padding. Otherwise a vertical shelf clips
+         // its last status row after labels wrap during allocation.
+-        const statusNatural = this._vertical
++        const statusNatural = quickVertical
+             ? this._actionsBox.get_preferred_height(statusCross)[1]
+             : this._actionsBox.get_preferred_width(DASH_TILE_SIZE * scale)[1];
+-        const actionsLength = Math.min(statusNatural, Math.max(1, actionsBudget - actionsPadding));
+-        setViewport(this._actionsScroll, actionsLength, statusCross);
+-        const otherSize = others.reduce((sum, actor) => sum + measure(actor), 0);
+-        const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - 2 * this._padding * scale);
+-        const length = Math.min(naturalDock, maxLength);
+-        // An unread badge on the first or last icon reaches a few pixels past
+-        // the dock's content along the shelf. The viewport clips only a dock
+-        // that scrolls, where its ends fade anyway.
+-        this._dockContent.clip_to_view = naturalDock > maxLength;
+-        if (this._vertical)
+-            this._dockScroll.set_size(this._thickness * scale, length);
+-        else
+-            this._dockScroll.set_size(length, -1);
+-        const fade = Math.min(this._padding, DASH_TILE_SIZE / 2) * scale;
+-        this._dockScroll.update_fade_effect(new Clutter.Margin({
+-            top: this._vertical ? fade : 0, bottom: this._vertical ? fade : 0,
+-            left: this._vertical ? 0 : fade, right: this._vertical ? 0 : fade,
+-        }));
++        const actionsLength = Math.min(statusNatural,
++            Math.max(1, edgeLength('quick-options') - 2 * this._thickness * scale));
++        setViewport(this._actionsScroll, quickVertical, actionsLength, statusCross);
+         this._syncGeometry();
+     }
+ });
+diff --git a/js/ui/shelfArrange.js b/js/ui/shelfArrange.js
+new file mode 100644
+index 0000000..e9c8f33
+--- /dev/null
++++ b/js/ui/shelfArrange.js
+@@ -0,0 +1,1272 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Arrange mode for movable shelf islands (ADR-044, section 4 and 5).
++//
++// Entry: hold an island still for 400 ms, choose Arrange Islands… from the
++// Shelf menu (right-click, Shift+F10 or Menu on an island), or press
++// Ctrl+Alt+arrow on a keyboard-focused island to move it directly.
++//
++// While arranging, a modal layer covers the stage above the shelf; the
++// desktop sits under a scrim, every empty zone shows a dashed placeholder,
++// every group an outline and (two islands or more) a grip, and a card offers
++// Reset and Done. Dragging an island moves that island only; dragging a grip
++// moves its whole group. The drop target is resolved continuously by the
++// model (shelfArrangement.js): attach beside a group (the group opens a real
++// gap with a caret), snap to a zone (the zone fills, a ghost shows the
++// footprint), or a free position on an edge (a ghost and a guide line).
++// Esc cancels a drag, Ctrl+Z undoes the last drop, and Esc, Enter, Done or a
++// click on empty desktop ends arrange mode.
++
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as PopupMenu from './popupMenu.js';
++import * as BoxPointer from './boxpointer.js';
++import * as Util from '../misc/util.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import * as Arrangement from './shelfArrangement.js';
++import {getNotificationTray} from './lumaNotificationBeacon.js';
++
++const LIFT_SCALE = 1.04;
++const HOLD_SCALE = 1.02;
++const LIFT_TIME = 150;
++const DROP_TIME = 240;
++const OUTLINE_OFFSET = 6;
++const GRIP_OFFSET = 8;
++
++// St draws only solid borders. The dashed placeholders of arrange mode (empty
++// zones, the ghost footprint, the gap an attach opens) are drawn here: the
++// stroke takes the style's `color`, `-luma-line-width` and `-luma-dash`
++// (0 draws a solid line), the corner radius its border-radius; a fill comes
++// from the ordinary background-color.
++export const DashedOutline = GObject.registerClass(
++class DashedOutline extends St.DrawingArea {
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const node = this.get_theme_node();
++        const [width, height] = this.get_surface_size();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const line = (node.lookup_length('-luma-line-width', false)[1] || scale);
++        const [hasDash, dash] = node.lookup_double('-luma-dash', false);
++        const radius = Math.min(node.get_border_radius(St.Corner.TOPLEFT), width / 2, height / 2);
++        const color = node.get_foreground_color();
++        const inset = line / 2;
++        const w = width - line, h = height - line;
++        const r = Math.max(0, radius - inset);
++        cr.newSubPath();
++        cr.arc(inset + w - r, inset + r, r, -Math.PI / 2, 0);
++        cr.arc(inset + w - r, inset + h - r, r, 0, Math.PI / 2);
++        cr.arc(inset + r, inset + h - r, r, Math.PI / 2, Math.PI);
++        cr.arc(inset + r, inset + r, r, Math.PI, 3 * Math.PI / 2);
++        cr.closePath();
++        cr.setSourceRGBA(color.red / 255, color.green / 255, color.blue / 255, color.alpha / 255);
++        cr.setLineWidth(line);
++        if (hasDash && dash > 0)
++            cr.setDash([dash * scale, dash * 0.66 * scale], 0);
++        cr.stroke();
++        cr.$dispose();
++    }
++});
++
++// The names islands are spoken and shown by.
++export function islandNames() {
++    return {
++        dock: _('Dock'),
++        live: _('Live activity'),
++        media: _('Media'),
++        notifications: _('Notifications'),
++        well: _('Status icons'),
++        'quick-options': _('Quick Options'),
++        clock: _('Clock'),
++    };
++}
++
++const EDGE_WORDS = () => ({top: _('top edge'), bottom: _('bottom edge'), left: _('left edge'), right: _('right edge')});
++
++// "Attach to the right of Dock", "Top edge, left corner", "Free position".
++function targetText(target, names) {
++    if (!target)
++        return _('Nothing can be placed on an edge shared with another display');
++    const vertical = Arrangement.isVertical(target.edge);
++    if (target.kind === 'attach') {
++        const name = names[target.neighbour] ?? target.neighbour;
++        if (vertical)
++            return (target.side === 'before' ? _('Attach above %s') : _('Attach below %s')).replace('%s', name);
++        return (target.side === 'before' ? _('Attach to the left of %s') : _('Attach to the right of %s')).replace('%s', name);
++    }
++    const edge = EDGE_WORDS()[target.edge];
++    const cap = edge.charAt(0).toUpperCase() + edge.slice(1);
++    if (target.kind === 'free')
++        return `${cap}, ${_('free position')}`;
++    const where = target.anchor === 'center' ? _('centre')
++        : vertical ? (target.anchor === 'start' ? _('top end') : _('bottom end'))
++            : (target.anchor === 'start' ? _('left corner') : _('right corner'));
++    return `${cap}, ${where}`;
++}
++
++function extentsOf(actor) {
++    const e = actor.get_transformed_extents();
++    return {x: e.get_x(), y: e.get_y(), width: e.get_width(), height: e.get_height()};
++}
++
++const contains = (r, x, y) => x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height;
++
++export class ShelfArrange {
++    constructor(shelf) {
++        this._shelf = shelf;
++        this._active = false;
++        this._undo = [];
++        this._hold = null;
++        Main.overview.connectObject('showing', () => this.end({reason: 'overview'}), this);
++        Main.layoutManager.connectObject('monitors-changed', () => this.end({reason: 'monitors'}), this);
++        // Only reactive actors see captured events, and the shelf itself is
++        // not reactive (it covers the stage): watch the stage, and act only
++        // on events aimed inside the shelf, or while a hold is running.
++        global.stage.connectObject('captured-event', (_stage, event) => {
++            if (!this._hold && !this._targetsShelf(event))
++                return Clutter.EVENT_PROPAGATE;
++            return this._onShelfEvent(event);
++        }, this);
++        shelf.connectObject('layout-changed', () => this._queueDecorate(), this);
++    }
++
++    get active() {
++        return this._active;
++    }
++
++    destroy() {
++        this.end({reason: 'destroy'});
++        this._cancelHold();
++        Main.overview.disconnectObject(this);
++        Main.layoutManager.disconnectObject(this);
++        global.stage.disconnectObject(this);
++        this._shelf.disconnectObject(this);
++        this._menu?.destroy();
++        this._menu = null;
++    }
++
++    // ------------------------------------------------------------ hit tests
++
++    // The island id under a stage point: a status part fused into Quick
++    // Options is found by its own part.
++    _islandAt(x, y) {
++        const shelf = this._shelf;
++        for (const group of shelf._groups) {
++            if (!group.visible || !group.placement || group.dragging)
++                continue;
++            for (const island of group.row.get_children()) {
++                if (!island.visible || !island.islandId || !contains(extentsOf(island), x, y))
++                    continue;
++                if (island === shelf._actionsIsland) {
++                    for (const part of ['well', 'clock']) {
++                        const actor = shelf._actionsParts?.includes(part) ? shelf.partActorFor(part) : null;
++                        if (actor?.visible && contains(extentsOf(actor), x, y))
++                            return part;
++                    }
++                    return 'quick-options';
++                }
++                return island.islandId;
++            }
++        }
++        return null;
++    }
++
++    // Whether a press on `target` belongs to a control with its own menu
++    // (a dock app icon, a Well item), which keeps its own right-click.
++    _ownsContextMenu(target) {
++        for (let actor = target; actor && actor !== this._shelf; actor = actor.get_parent()) {
++            if (actor._delegate?.app || actor.has_style_class_name?.('luma-well-item') ||
++                actor.has_style_class_name?.('app-well-app'))
++                return true;
++        }
++        return false;
++    }
++
++    _isDockIcon(target) {
++        for (let actor = target; actor && actor !== this._shelf; actor = actor.get_parent()) {
++            if (actor._delegate?.app)
++                return true;
++        }
++        return false;
++    }
++
++    // ------------------------------------------------------------- hold
++
++    _targetsShelf(event) {
++        switch (event.type()) {
++        case Clutter.EventType.BUTTON_PRESS:
++        case Clutter.EventType.TOUCH_BEGIN:
++        case Clutter.EventType.KEY_PRESS: {
++            const source = event.type() === Clutter.EventType.KEY_PRESS
++                ? global.stage.get_key_focus() : pickAt(event);
++            return !!source && this._shelf.contains(source);
++        }
++        default:
++            return false;
++        }
++    }
++
++    _onShelfEvent(event) {
++        if (this._active || !this._shelf.canArrange || !this._shelf._isDesktopSession())
++            return Clutter.EVENT_PROPAGATE;
++        const type = event.type();
++        const [x, y] = event.get_coords();
++        switch (type) {
++        case Clutter.EventType.BUTTON_PRESS: {
++            const button = event.get_button();
++            const id = this._islandAt(x, y);
++            if (GLib.getenv('LUMA_SHELF_DEBUG'))
++                console.log(`[luma-shelf] press ${button} at ${x},${y} on ${id}`);
++            if (!id)
++                return Clutter.EVENT_PROPAGATE;
++            if (button === Clutter.BUTTON_SECONDARY && !this._ownsContextMenu(pickAt(event))) {
++                this.openMenu(this._shelf.islandActorFor(id), id, x, y);
++                return Clutter.EVENT_STOP;
++            }
++            if (button === Clutter.BUTTON_PRIMARY)
++                this._startHold(id, x, y, null);
++            return Clutter.EVENT_PROPAGATE;
++        }
++        case Clutter.EventType.TOUCH_BEGIN: {
++            const id = this._islandAt(x, y);
++            // A long-press on a dock icon still opens its app menu, whose
++            // last item is Arrange Islands…
++            if (id && !(id === 'dock' && this._isDockIcon(pickAt(event))))
++                this._startHold(id, x, y, event.get_event_sequence());
++            return Clutter.EVENT_PROPAGATE;
++        }
++        case Clutter.EventType.MOTION:
++        case Clutter.EventType.TOUCH_UPDATE:
++            if (this._hold && Math.hypot(x - this._hold.x, y - this._hold.y) > Arrangement.DRAG_THRESHOLD)
++                this._cancelHold();
++            return Clutter.EVENT_PROPAGATE;
++        case Clutter.EventType.BUTTON_RELEASE:
++        case Clutter.EventType.TOUCH_END:
++        case Clutter.EventType.TOUCH_CANCEL:
++            this._cancelHold();
++            return Clutter.EVENT_PROPAGATE;
++        case Clutter.EventType.KEY_PRESS: {
++            const symbol = event.get_key_symbol();
++            const shift = (event.get_state() & Clutter.ModifierType.SHIFT_MASK) !== 0;
++            if (symbol === Clutter.KEY_Menu || (shift && symbol === Clutter.KEY_F10)) {
++                const focus = global.stage.get_key_focus();
++                if (!focus || this._ownsContextMenu(focus))
++                    return Clutter.EVENT_PROPAGATE;
++                const id = this.idForActor(focus);
++                if (!id)
++                    return Clutter.EVENT_PROPAGATE;
++                const r = extentsOf(focus);
++                this.openMenu(this._shelf.islandActorFor(id), id, r.x + r.width / 2, r.y + r.height / 2);
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        }
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    // The island id an actor belongs to.
++    idForActor(actor) {
++        const shelf = this._shelf;
++        for (let a = actor; a && a !== shelf; a = a.get_parent()) {
++            if (a === shelf._actionsMaterial._statusClock && shelf._actionsParts?.includes('clock'))
++                return 'clock';
++            if (a === shelf._well && shelf._actionsParts?.includes('well'))
++                return 'well';
++            if (a.islandId && a.islandId !== 'aux')
++                return a.islandId;
++            if (a.islandId === 'aux')
++                return 'well';
++        }
++        return null;
++    }
++
++    _startHold(id, x, y, sequence) {
++        this._cancelHold();
++        const actor = this._shelf.islandActorFor(id);
++        this._hold = {id, x, y, sequence, actor, started: GLib.get_monotonic_time()};
++        // From 150 ms the island begins a quiet 1.00 → 1.02 scale.
++        this._hold.feedbackId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Arrangement.HOLD_FEEDBACK_TIME, () => {
++            this._hold.feedbackId = 0;
++            if (St.Settings.get().enable_animations && actor) {
++                actor.set_pivot_point(0.5, 0.5);
++                actor.ease({scale_x: HOLD_SCALE, scale_y: HOLD_SCALE,
++                    duration: Arrangement.HOLD_TIME - Arrangement.HOLD_FEEDBACK_TIME,
++                    mode: Clutter.AnimationMode.LINEAR});
++            }
++            return GLib.SOURCE_REMOVE;
++        });
++        this._hold.liftId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Arrangement.HOLD_TIME, () => {
++            this._hold.liftId = 0;
++            const hold = this._hold;
++            // A menu that opened on press takes the pointer's events, so the
++            // release may never reach the shelf: ask the seat whether the
++            // button is still down and the pointer still where it was.
++            if (!hold.sequence) {
++                const [px, py, mods] = global.get_pointer();
++                if (GLib.getenv('LUMA_SHELF_DEBUG'))
++                    console.log(`[luma-shelf] hold check ${px},${py} mods=${mods} from ${hold.x},${hold.y}`);
++                if (!(mods & Clutter.ModifierType.BUTTON1_MASK) ||
++                    Math.hypot(px - hold.x, py - hold.y) > Arrangement.DRAG_THRESHOLD) {
++                    this._cancelHold();
++                    return GLib.SOURCE_REMOVE;
++                }
++            }
++            this._hold = null;
++            this._resetHoldScale(hold.actor);
++            this.begin({grab: hold.id, x: hold.x, y: hold.y, pressed: true});
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _cancelHold() {
++        if (!this._hold)
++            return;
++        for (const key of ['feedbackId', 'liftId']) {
++            if (this._hold[key])
++                GLib.source_remove(this._hold[key]);
++        }
++        this._resetHoldScale(this._hold.actor);
++        this._hold = null;
++    }
++
++    _resetHoldScale(actor) {
++        if (!actor)
++            return;
++        actor.remove_transition('scale-x');
++        actor.remove_transition('scale-y');
++        actor.set_scale(1, 1);
++    }
++
++    // ------------------------------------------------------------- menu
++
++    // The Shelf menu: Arrange Islands…, Reset Island Layout, Shelf Settings…
++    openMenu(sourceActor, id, x, y) {
++        if (!sourceActor)
++            return;
++        this._menu?.destroy();
++        const side = St.Side[this._shelf.edgeForActor(sourceActor).toUpperCase()];
++        const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, side);
++        menu.actor.add_style_class_name('luma-shelf-menu');
++        menu.addAction(_('Arrange Islands…'), () => this.begin({select: id}));
++        const reset = menu.addAction(_('Reset Island Layout'), () => this.reset());
++        reset.setSensitive(!this._shelf.arrangementIsDefault);
++        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        menu.addAction(_('Shelf Settings…'), () => this._openSettings());
++        Main.uiGroup.add_child(menu.actor);
++        menu.actor.hide();
++        this._menuManager ??= new PopupMenu.PopupMenuManager(this._shelf, {actionMode: Shell.ActionMode.NORMAL});
++        this._menuManager.addMenu(menu);
++        menu.connect('open-state-changed', (_m, open) => {
++            if (!open)
++                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++                    if (this._menu === menu && !menu.isOpen) {
++                        menu.destroy();
++                        this._menu = null;
++                    }
++                    return GLib.SOURCE_REMOVE;
++                });
++        });
++        this._menu = menu;
++        menu.open(BoxPointer.PopupAnimation.FULL);
++        console.log(`[luma-shelf] shelf menu opened on ${id}`);
++    }
++
++    _openSettings() {
++        const app = Shell.AppSystem.get_default().lookup_app('gnome-dash-panel.desktop');
++        if (app)
++            app.activate();
++        else
++            Util.spawn(['gnome-control-center', 'dash']);
++    }
++
++    reset() {
++        const before = this._shelf.arrangement;
++        if (!this._shelf.arrangementIsDefault)
++            this._undo.push(before);
++        this._slideAll(() => this._shelf.resetArrangement());
++        this._announce(_('Islands reset to the default layout'));
++    }
++
++    // ------------------------------------------------------------ session
++
++    // Enter arrange mode. grab: an island to drag straight away (the hold),
++    // with the button still pressed; select: an island to select for the
++    // keyboard.
++    begin({grab = null, x = 0, y = 0, pressed = false, select = null} = {}) {
++        if (this._active || !this._shelf.canArrange || Main.overview.visible ||
++                !this._shelf._isDesktopSession())
++            return false;
++        Main.panel.menuManager?.activeMenu?.close(BoxPointer.PopupAnimation.NONE);
++        this._menu?.close(BoxPointer.PopupAnimation.NONE);
++        this._closeShelfSurfaces();
++        this._active = true;
++        this._undo = [];
++        this._selected = select ?? grab ?? null;
++        this._buildLayer();
++        this._grab = Main.pushModal(this._layer, {actionMode: Shell.ActionMode.POPUP});
++        const seatState = this._grab?.get_seat_state?.();
++        if (!this._grab || (seatState !== undefined && Clutter.GrabState && seatState === Clutter.GrabState.NONE)) {
++            Main.popModal(this._grab);
++            this._grab = null;
++            this._destroyLayer();
++            this._active = false;
++            return false;
++        }
++        this._layer.grab_key_focus();
++        this._shelf.emit('arrange-changed', true);
++        this._decorate();
++        this._syncSelection();
++        this._announce(_('Arrange islands. Drag an island, or press Control Alt and an arrow key to move the selected island. Escape to finish.'));
++        console.log(`[luma-shelf] arrange mode on${grab ? ` holding ${grab}` : ''}`);
++        if (grab) {
++            this._pending = {ids: [grab], grab, x, y, pressed, lifted: true};
++            this._liftActor(this._shelf.islandActorFor(grab), true);
++        }
++        return true;
++    }
++
++    // Quick Options, a dock menu or the tray may have opened on the press
++    // that became the hold; arranging starts with none of them open.
++    _closeShelfSurfaces() {
++        Main.panel.statusArea.quickSettings?.menu?.close(BoxPointer.PopupAnimation.NONE);
++        getNotificationTray().close();
++    }
++
++    end({reason = 'done'} = {}) {
++        if (!this._active)
++            return;
++        if (this._drag)
++            this._cancelDrag(false);
++        this._active = false;
++        this._pending = null;
++        this._clearSelection();
++        if (this._grab) {
++            Main.popModal(this._grab);
++            this._grab = null;
++        }
++        this._destroyLayer();
++        this._shelf.emit('arrange-changed', false);
++        if (reason !== 'destroy' && reason !== 'session')
++            this._announce(_('Islands arranged'));
++        console.log(`[luma-shelf] arrange mode off (${reason})`);
++    }
++
++    // -------------------------------------------------------------- layer
++
++    _buildLayer() {
++        const treatment = SurfaceMaterials.effectiveTreatment?.() ?? 'dark';
++        this._scrim = new St.Widget({style_class: `luma-arrange-scrim luma-arrange-${treatment}`,
++            reactive: false, opacity: 0});
++        this._scrim.add_constraint(new Clutter.BindConstraint({source: global.stage,
++            coordinate: Clutter.BindCoordinate.SIZE}));
++        Main.layoutManager.uiGroup.insert_child_below(this._scrim, this._shelf);
++        this._layer = new St.Widget({style_class: `luma-arrange-layer luma-arrange-${treatment}`,
++            reactive: true, can_focus: true, accessible_role: Atk.Role.PANEL,
++            accessible_name: _('Arrange islands')});
++        this._layer.add_constraint(new Clutter.BindConstraint({source: global.stage,
++            coordinate: Clutter.BindCoordinate.SIZE}));
++        Main.layoutManager.uiGroup.insert_child_above(this._layer, this._shelf);
++        this._decorations = new St.Widget({reactive: false});
++        this._layer.add_child(this._decorations);
++        this._overlay = new St.Widget({reactive: false});
++        this._layer.add_child(this._overlay);
++        this._buildCard(treatment);
++        this._hint = new St.Label({style_class: 'luma-arrange-hint', visible: false});
++        this._layer.add_child(this._hint);
++        this._layer.connect('button-press-event', (_a, event) => this._onPress(event));
++        this._layer.connect('touch-event', (_a, event) => this._onTouch(event));
++        this._layer.connect('motion-event', (_a, event) => this._onMotion(event));
++        this._layer.connect('button-release-event', (_a, event) => this._onRelease(event));
++        this._layer.connect('key-press-event', (_a, event) => this._onKey(event));
++        const animate = St.Settings.get().enable_animations;
++        this._scrim.ease({opacity: 255, duration: animate ? 150 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        this._decorations.opacity = 0;
++        this._decorations.ease({opacity: 255, duration: animate ? 150 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    _buildCard(treatment) {
++        const card = new St.BoxLayout({style_class: `luma-arrange-card luma-arrange-${treatment}`,
++            orientation: Clutter.Orientation.VERTICAL, reactive: true,
++            accessible_role: Atk.Role.DIALOG, accessible_name: _('Arrange islands')});
++        card.add_child(new St.Label({style_class: 'luma-arrange-card-title', text: _('Arrange islands')}));
++        card.add_child(new St.Label({style_class: 'luma-arrange-card-body',
++            text: _('Drag to move. Drop beside an island to attach it.')}));
++        const row = new St.BoxLayout({style_class: 'luma-arrange-card-buttons'});
++        const reset = new St.Button({style_class: 'luma-arrange-button', label: _('Reset'), can_focus: true});
++        reset.connect('clicked', () => this.reset());
++        const done = new St.Button({style_class: 'luma-arrange-button luma-arrange-button-default',
++            label: _('Done'), can_focus: true});
++        done.connect('clicked', () => this.end({reason: 'done'}));
++        row.add_child(reset);
++        row.add_child(new St.Widget({x_expand: true}));
++        row.add_child(done);
++        card.add_child(row);
++        this._cardBinding = SurfaceMaterials.bindSurface(card, {cornerRadii: 14});
++        this._card = card;
++        this._cardReset = reset;
++        this._layer.add_child(card);
++        card.connect('notify::width', () => this._placeCard());
++        card.connect('notify::height', () => this._placeCard());
++        this._placeCard();
++    }
++
++    _placeCard() {
++        if (!this._card)
++            return;
++        const layout = Main.layoutManager;
++        const work = layout.getWorkAreaForMonitor(layout.primaryIndex);
++        this._card.set_position(Math.round(work.x + (work.width - this._card.width) / 2),
++            Math.round(work.y + (work.height - this._card.height) / 2));
++    }
++
++    _destroyLayer() {
++        this._clearTargetVisuals();
++        this._shelf._gap?.hide();
++        const scrim = this._scrim, layer = this._layer;
++        this._scrim = this._layer = this._card = this._decorations = this._overlay = this._hint = null;
++        this._cardBinding?.destroy?.();
++        this._cardBinding = null;
++        if (this._decorateLaterId) {
++            GLib.source_remove(this._decorateLaterId);
++            this._decorateLaterId = 0;
++        }
++        const animate = St.Settings.get().enable_animations;
++        for (const actor of [scrim, layer].filter(Boolean)) {
++            actor.reactive = false;
++            actor.ease({opacity: 0, duration: animate ? 150 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                onStopped: () => actor.destroy()});
++        }
++    }
++
++    _queueDecorate() {
++        if (!this._active || this._decorateLaterId)
++            return;
++        this._decorateLaterId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
++            this._decorateLaterId = 0;
++            this._decorate();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    // The groups as they are drawn now, in the model's terms.
++    _context(exclude = []) {
++        const shelf = this._shelf;
++        const monitors = shelf.monitors.map(m => ({...m, bands: shelf._bands?.get(m.index) ?? {}}));
++        const groups = [];
++        shelf._groups.forEach(group => {
++            const placed = group.placement;
++            if (!placed || placed.drag || !group.visible)
++                return;
++            const islands = [];
++            for (const island of group.row.get_children()) {
++                if (!island.visible || !island.islandId)
++                    continue;
++                const box = island.get_allocation_box();
++                const rect = {x: group.x + box.x1, y: group.y + box.y1, width: box.get_width(), height: box.get_height()};
++                let ids = [island.islandId];
++                if (island === shelf._actionsIsland)
++                    ids = placed.islands.filter(id => ['well', 'quick-options', 'clock'].includes(id) &&
++                        (id === 'quick-options' || shelf._actionsParts.includes(id)));
++                if (island.islandId === 'aux')
++                    continue;
++                if (ids.every(id => exclude.includes(id)))
++                    continue;
++                islands.push({id: island.islandId === 'quick-options' ? 'quick-options' : ids[0], ids, rect});
++            }
++            const rect = {x: group.x, y: group.y, width: group.width, height: group.height};
++            groups.push({index: placed.source[0], source: placed.source, monitor: placed.monitor,
++                edge: placed.edge, rect, islands, actor: group});
++        });
++        return {monitors, groups};
++    }
++
++    // Outlines, grips and empty zones.
++    _decorate() {
++        if (!this._active || !this._decorations)
++            return;
++        this._decorations.destroy_all_children();
++        this._grips = [];
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const {monitors, groups} = this._context(this._drag?.ids ?? []);
++        const names = islandNames();
++        for (const group of groups) {
++            if (!group.islands.length)
++                continue;
++            const off = OUTLINE_OFFSET * scale;
++            const outline = new St.Widget({style_class: 'luma-arrange-outline', reactive: false});
++            outline.set_position(group.rect.x - off, group.rect.y - off);
++            outline.set_size(group.rect.width + 2 * off, group.rect.height + 2 * off);
++            this._decorations.add_child(outline);
++            if (group.islands.length < 2)
++                continue;
++            const vertical = Arrangement.isVertical(group.edge);
++            const grip = new St.Button({style_class: 'luma-arrange-grip', reactive: true, can_focus: true,
++                accessible_role: Atk.Role.PUSH_BUTTON,
++                accessible_name: _('Move the %s group').replace('%s', names[group.islands[0].id] ?? group.islands[0].id)});
++            grip.set_size((vertical ? 6 : 24) * scale, (vertical ? 24 : 6) * scale);
++            const g = GRIP_OFFSET * scale, r = group.rect;
++            const pos = {
++                bottom: [r.x + r.width / 2 - 12 * scale, r.y - g - 6 * scale],
++                top: [r.x + r.width / 2 - 12 * scale, r.y + r.height + g],
++                left: [r.x + r.width + g, r.y + r.height / 2 - 12 * scale],
++                right: [r.x - g - 6 * scale, r.y + r.height / 2 - 12 * scale],
++            }[group.edge];
++            grip.set_position(Math.round(pos[0]), Math.round(pos[1]));
++            grip._group = group;
++            grip.connect('button-press-event', (_a, event) => {
++                const [x, y] = event.get_coords();
++                this._pending = {ids: this._storedGroupIds(group), grab: group.islands[0].id, x, y, pressed: true, group: true};
++                return Clutter.EVENT_STOP;
++            });
++            this._decorations.add_child(grip);
++            this._grips.push(grip);
++        }
++        // Every empty zone on every monitor.
++        for (const monitor of monitors) {
++            for (const edge of Arrangement.EDGES) {
++                const band = monitor.bands[edge];
++                if (!band || monitor.sharedEdges.includes(edge))
++                    continue;
++                for (const anchor of Arrangement.ZONE_ANCHORS) {
++                    const rect = Arrangement.zoneRect(band, anchor, scale);
++                    const taken = groups.some(group => group.monitor === monitor.index &&
++                        group.islands.length && rectsMeet(group.rect, rect));
++                    if (taken)
++                        continue;
++                    const zone = new DashedOutline({style_class: 'luma-arrange-zone', reactive: false});
++                    zone.set_position(rect.x, rect.y);
++                    zone.set_size(rect.width, rect.height);
++                    zone._zone = {monitor: monitor.index, edge, anchor};
++                    this._decorations.add_child(zone);
++                }
++            }
++        }
++        this._zones = this._decorations.get_children().filter(a => a._zone);
++        this._placeCard();
++        this._cardReset?.set_reactive(!this._shelf.arrangementIsDefault || this._undo.length > 0);
++    }
++
++    // The stored ids of a drawn group, hidden islands included.
++    _storedGroupIds(group) {
++        const stored = this._shelf.arrangement;
++        return group.source.flatMap(index => stored[index]?.islands ?? []);
++    }
++
++    // --------------------------------------------------------- selection
++
++    _orderedIds() {
++        const {groups} = this._context();
++        const rank = {bottom: 0, top: 1, left: 2, right: 3};
++        return groups.sort((a, b) => a.monitor - b.monitor || rank[a.edge] - rank[b.edge] ||
++            (Arrangement.isVertical(a.edge) ? a.rect.y - b.rect.y : a.rect.x - b.rect.x))
++            .flatMap(group => group.islands.flatMap(island => island.ids));
++    }
++
++    _syncSelection() {
++        this._clearSelection();
++        if (!this._selected)
++            return;
++        const actor = this._shelf.islandActorFor(this._selected);
++        const material = actor?._content;
++        if (material) {
++            material.add_style_class_name('luma-island-focus');
++            this._selectedMaterial = material;
++        }
++    }
++
++    _clearSelection() {
++        this._selectedMaterial?.remove_style_class_name('luma-island-focus');
++        this._selectedMaterial = null;
++    }
++
++    // ------------------------------------------------------------ pointer
++
++    _onPress(event) {
++        if (event.get_button() !== Clutter.BUTTON_PRIMARY)
++            return Clutter.EVENT_STOP;
++        const [x, y] = event.get_coords();
++        if (this._card && contains(extentsOf(this._card), x, y))
++            return Clutter.EVENT_PROPAGATE;
++        const id = this._islandAt(x, y);
++        this._pending = id ? {ids: [id], grab: id, x, y, pressed: true} : {empty: true, x, y, pressed: true};
++        if (id) {
++            this._selected = id;
++            this._syncSelection();
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    _onTouch(event) {
++        const [x, y] = event.get_coords();
++        switch (event.type()) {
++        case Clutter.EventType.TOUCH_BEGIN: {
++            const id = this._islandAt(x, y);
++            this._pending = id ? {ids: [id], grab: id, x, y, pressed: true} : {empty: true, x, y, pressed: true};
++            break;
++        }
++        case Clutter.EventType.TOUCH_UPDATE:
++            this._pointerMoved(x, y);
++            break;
++        case Clutter.EventType.TOUCH_END:
++            this._pointerReleased(x, y);
++            break;
++        case Clutter.EventType.TOUCH_CANCEL:
++            this._cancelDrag(true);
++            break;
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    _onMotion(event) {
++        const [x, y] = event.get_coords();
++        this._pointerMoved(x, y);
++        return Clutter.EVENT_STOP;
++    }
++
++    _onRelease(event) {
++        if (event.get_button() !== Clutter.BUTTON_PRIMARY)
++            return Clutter.EVENT_STOP;
++        const [x, y] = event.get_coords();
++        this._pointerReleased(x, y);
++        return Clutter.EVENT_STOP;
++    }
++
++    _pointerMoved(x, y) {
++        if (this._drag) {
++            this._dragTo(x, y);
++            return;
++        }
++        const pending = this._pending;
++        if (!pending?.pressed || pending.empty)
++            return;
++        if (pending.lifted || Math.hypot(x - pending.x, y - pending.y) > Arrangement.DRAG_THRESHOLD) {
++            this._pending = null;
++            this._startDrag(pending, x, y);
++        }
++    }
++
++    _pointerReleased(x, y) {
++        if (this._drag) {
++            this._drop();
++            return;
++        }
++        const pending = this._pending;
++        this._pending = null;
++        if (pending?.lifted)
++            this._liftActor(this._shelf.islandActorFor(pending.grab), false);
++        // A click on empty desktop leaves arrange mode.
++        if (pending?.empty && Math.hypot(x - pending.x, y - pending.y) <= Arrangement.DRAG_THRESHOLD)
++            this.end({reason: 'click'});
++    }
++
++    _liftActor(actor, lifted) {
++        if (!actor)
++            return;
++        const animate = St.Settings.get().enable_animations;
++        actor.set_pivot_point(0.5, 0.5);
++        actor.ease({scale_x: lifted ? LIFT_SCALE : 1, scale_y: lifted ? LIFT_SCALE : 1,
++            duration: animate ? LIFT_TIME : 0, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        for (const island of [actor])
++            (lifted ? island.add_style_class_name : island.remove_style_class_name).call(island, 'luma-island-lifted');
++    }
++
++    // ---------------------------------------------------------------- drag
++
++    _startDrag(pending, x, y) {
++        const shelf = this._shelf;
++        const stored = shelf.arrangement;
++        const ids = pending.ids;
++        const sourceIndex = Arrangement.groupIndexOf(stored, ids[0]);
++        const source = stored[sourceIndex];
++        if (!source)
++            return;
++        // Where the dragged island is drawn now, and how long it is.
++        const actor = pending.group ? null : shelf.partActorFor(pending.grab);
++        const group = shelf.groupForActor(shelf.islandActorFor(pending.grab));
++        const rect = pending.group ? extentsOf(group) : extentsOf(actor ?? group);
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const thickness = shelf._thickness * scale;
++        const edge = group?.placement?.edge ?? source.edge;
++        const along = Arrangement.isVertical(edge) ? rect.height : rect.width;
++        this._liftActor(shelf.islandActorFor(pending.grab), false);
++        const monitorIndex = group?.placement?.monitor ?? Main.layoutManager.primaryIndex;
++        this._drag = {
++            ids, grab: pending.grab, group: !!pending.group, stored, sourceIndex, edge,
++            // Held where it was pressed, not where the drag was noticed.
++            offset: [pending.x - (rect.x + rect.width / 2), pending.y - (rect.y + rect.height / 2)],
++            length: {horizontal: Arrangement.isVertical(edge) ? thickness * 2 : along,
++                vertical: Arrangement.isVertical(edge) ? along : thickness * 2},
++            along, origin: {x: rect.x, y: rect.y}, target: undefined, monitor: monitorIndex,
++        };
++        const base = Arrangement.applyMove(stored, ids, {kind: 'free', edge: source.edge, position: 0.5}, source.display)
++            .filter(g => !(g.islands.length === ids.length && g.islands.every(id => ids.includes(id))));
++        this._drag.base = base;
++        this._dragPreview(null);
++        const dragGroup = this._dragGroup();
++        if (dragGroup) {
++            dragGroup.set_pivot_point(0.5, 0.5);
++            dragGroup.set_scale(1, 1);
++            dragGroup.ease({scale_x: LIFT_SCALE, scale_y: LIFT_SCALE,
++                duration: St.Settings.get().enable_animations ? LIFT_TIME : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++            dragGroup.row.get_children().forEach(island => island.add_style_class_name?.('luma-island-lifted'));
++        }
++        this._decorate();
++        this._dragTo(x, y);
++        console.log(`[luma-shelf] drag ${ids.join(',')} from ${source.edge}/${source.anchor}`);
++    }
++
++    _dragGroup() {
++        return this._shelf._groups.find(group => group.dragging) ?? null;
++    }
++
++    // Apply the preview for a target: the base arrangement (without the
++    // dragged islands) plus, for an attach, the gap in the target group.
++    _dragPreview(target) {
++        const drag = this._drag;
++        const groups = Arrangement.cloneArrangement(drag.base);
++        if (target?.kind === 'attach') {
++            const host = groups[target.storedGroup];
++            if (host)
++                host.islands.splice(target.storedIndex, 0, `gap:${Math.round(target.gapLength ?? drag.along)}`);
++        }
++        this._shelf.setPreview({
++            groups,
++            drag: {monitor: drag.monitor, edge: drag.edge, anchor: 'free', position: 0.5, islands: [...drag.ids]},
++        });
++    }
++
++    _dragTo(x, y) {
++        const drag = this._drag;
++        const dragGroup = this._dragGroup();
++        const cx = x - drag.offset[0], cy = y - drag.offset[1];
++        if (dragGroup) {
++            const [, w] = dragGroup.get_preferred_width(-1);
++            const [, h] = dragGroup.get_preferred_height(-1);
++            dragGroup.set_position(Math.round(cx - w / 2), Math.round(cy - h / 2));
++            Main.layoutManager.uiGroup.set_child_above_sibling(this._layer, null);
++        }
++        const {monitors, groups} = this._context(drag.ids);
++        const raw = Arrangement.resolveTarget([cx, cy], drag.length, monitors, groups, drag.ids,
++            St.ThemeContext.get_for_stage(global.stage).scale_factor);
++        const target = raw ? this._storedTarget(raw, groups) : null;
++        this._showHint(target, x, y);
++        const previous = drag.target;
++        drag.target = target;
++        // A free position moves with the pointer: only the ghost follows it.
++        // The groups are laid out again only when the target itself changes
++        // (another zone, another attach slot, another edge).
++        if (sameTarget(target, previous)) {
++            if (target?.kind === 'free')
++                this._showTarget(target);
++            return;
++        }
++        drag.monitor = target?.monitor ?? drag.monitor;
++        this._dragPreview(target);
++        this._showTarget(target);
++        this._announce(targetText(target, islandNames()));
++    }
++
++    // A target in terms of the stored (base) arrangement: the group and the
++    // index among its stored islands, hidden ones included.
++    _storedTarget(raw, groups) {
++        if (raw.kind !== 'attach')
++            return raw;
++        const group = groups.find(g => g.index === raw.group);
++        if (!group)
++            return null;
++        const base = this._drag.base;
++        const storedGroup = raw.group;
++        const host = base[storedGroup];
++        if (!host)
++            return null;
++        const islands = group.islands.filter(island => !island.ids.every(id => this._drag.ids.includes(id)));
++        let storedIndex;
++        if (raw.index < islands.length)
++            storedIndex = host.islands.indexOf(islands[raw.index].ids[0]);
++        else
++            storedIndex = host.islands.indexOf(islands.at(-1).ids.at(-1)) + 1;
++        if (storedIndex < 0)
++            storedIndex = host.islands.length;
++        return {...raw, storedGroup, storedIndex, group: storedGroup, index: storedIndex, gapLength: this._drag.along};
++    }
++
++    _showHint(target, x, y) {
++        if (!this._hint)
++            return;
++        this._hint.text = targetText(target, islandNames());
++        this._hint.show();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const [, w] = this._hint.get_preferred_width(-1);
++        const [, h] = this._hint.get_preferred_height(-1);
++        let hx = x + 24 * scale, hy = y - h - 24 * scale;
++        hx = Math.min(hx, global.stage.width - w - 8 * scale);
++        hy = Math.max(8 * scale, hy);
++        this._hint.set_position(Math.round(hx), Math.round(hy));
++    }
++
++    _clearTargetVisuals() {
++        this._activeZone?.remove_style_class_name('luma-arrange-zone-active');
++        this._activeZone?.queue_repaint();
++        this._activeZone = null;
++        this._overlay?.destroy_all_children();
++        this._ghost = null;
++    }
++
++    // The snap and free previews: the zone fills, and a ghost outline shows
++    // the island's final footprint (with a guide line when free).
++    _showTarget(target) {
++        this._clearTargetVisuals();
++        if (!target || target.kind === 'attach' || !this._overlay)
++            return;
++        const shelf = this._shelf;
++        const band = shelf._bands?.get(target.monitor)?.[target.edge];
++        if (!band)
++            return;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const vertical = Arrangement.isVertical(target.edge);
++        const length = vertical ? this._drag.length.vertical : this._drag.length.horizontal;
++        const thickness = shelf._thickness * scale;
++        const along = target.kind === 'snap'
++            ? Arrangement.zonePoints(band, length)[target.anchor]
++            : band.along[0] + target.position * band.length;
++        const start = Math.max(band.along[0], Math.min(along - length / 2, band.along[1] - length));
++        const rect = vertical
++            ? {x: band.rect.x, y: start, width: thickness, height: length}
++            : {x: start, y: band.rect.y, width: length, height: thickness};
++        if (target.kind === 'snap') {
++            this._activeZone = this._zones?.find(z => z._zone.monitor === target.monitor &&
++                z._zone.edge === target.edge && z._zone.anchor === target.anchor) ?? null;
++            this._activeZone?.add_style_class_name('luma-arrange-zone-active');
++            this._activeZone?.queue_repaint();
++        } else {
++            const guide = new St.Widget({style_class: 'luma-arrange-guide', reactive: false});
++            if (vertical) {
++                guide.set_position(Math.round(band.rect.x + thickness / 2), band.along[0]);
++                guide.set_size(1, band.length);
++            } else {
++                guide.set_position(band.along[0], Math.round(band.rect.y + thickness / 2));
++                guide.set_size(band.length, 1);
++            }
++            this._overlay.add_child(guide);
++        }
++        const ghost = new DashedOutline({style_class: 'luma-arrange-ghost', reactive: false});
++        ghost.set_position(Math.round(rect.x), Math.round(rect.y));
++        ghost.set_size(Math.round(rect.width), Math.round(rect.height));
++        this._overlay.add_child(ghost);
++        this._ghost = ghost;
++    }
++
++    _drop() {
++        const drag = this._drag;
++        const target = drag.target;
++        if (GLib.getenv('LUMA_SHELF_DEBUG'))
++            console.log(`[luma-shelf] drop ${drag.ids} on ${JSON.stringify(target)} base ${JSON.stringify(drag.base)}`);
++        this._hint?.hide();
++        this._clearTargetVisuals();
++        if (!target) {
++            this._cancelDrag(true);
++            return;
++        }
++        const shelf = this._shelf;
++        const display = Arrangement.displayFor(target.monitor, shelf.monitors, Main.layoutManager.primaryIndex);
++        // The move counts against the arrangement as stored before the drag.
++        let next;
++        if (target.kind === 'attach') {
++            const host = drag.base[target.storedGroup];
++            // Find the host group in the stored arrangement by one of its
++            // islands, then insert at the same stored neighbour.
++            const anchorId = host.islands[target.storedIndex] ?? null;
++            const lastId = host.islands.at(-1);
++            const stored = Arrangement.cloneArrangement(drag.stored);
++            const without = stored.map(g => ({...g, islands: g.islands.filter(id => !drag.ids.includes(id))}));
++            const hostIndex = without.findIndex(g => g.islands.includes(anchorId ?? lastId));
++            const index = anchorId ? without[hostIndex].islands.indexOf(anchorId)
++                : without[hostIndex].islands.indexOf(lastId) + 1;
++            next = Arrangement.applyMove(drag.stored, drag.ids, {kind: 'attach', group: hostIndex, index});
++        } else {
++            next = Arrangement.applyMove(drag.stored, drag.ids, target, display);
++        }
++        this._commit(next, drag);
++        this._announce(Arrangement.describePlacement(next, drag.grab, islandNames(), _));
++    }
++
++    // Write the arrangement once, end the preview, and let the dropped
++    // islands travel from where they were let go to their place.
++    _commit(next, drag = null) {
++        const shelf = this._shelf;
++        const before = drag?.stored ?? shelf.arrangement;
++        const from = drag ? this._dragOrigins() : null;
++        const edgeBefore = drag?.edge;
++        this._drag = null;
++        this._undo.push(before);
++        shelf._preview = null;
++        shelf._slideTime = 180;
++        const changed = shelf.writeArrangement(next);
++        if (!changed)
++            shelf._sync();
++        if (from)
++            this._travel(from, edgeBefore);
++        shelf._slideTime = null;
++        this._queueDecorate();
++    }
++
++    // Where each dragged island is on screen now, before it is put back.
++    _dragOrigins() {
++        const dragGroup = this._dragGroup();
++        const origins = new Map();
++        for (const island of dragGroup?.row.get_children() ?? []) {
++            if (island.islandId)
++                origins.set(island, extentsOf(island));
++        }
++        return origins;
++    }
++
++    // Each dropped island animates from the pointer to its final place
++    // (240 ms, ease-out cubic); into a new orientation it cross-fades.
++    _travel(origins, edgeBefore) {
++        const animate = St.Settings.get().enable_animations;
++        for (const [island, from] of origins) {
++            island.remove_style_class_name('luma-island-lifted');
++            island.set_scale(1, 1);
++            const vertical = Arrangement.isVertical(this._shelf.edgeForActor(island));
++            if (!animate)
++                continue;
++            if (vertical !== Arrangement.isVertical(edgeBefore)) {
++                island.opacity = 0;
++                island.ease({opacity: 255, duration: 110, delay: 110, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++                continue;
++            }
++            let id = 0;
++            const run = () => {
++                if (id)
++                    island.disconnect(id);
++                id = 0;
++                const to = extentsOf(island);
++                const dx = from.x - (to.x - island.translation_x);
++                const dy = from.y - (to.y - island.translation_y);
++                if (Math.abs(dx) < 1 && Math.abs(dy) < 1)
++                    return;
++                island.remove_transition('translation-x');
++                island.remove_transition('translation-y');
++                island.translation_x = dx;
++                island.translation_y = dy;
++                island.ease({translation_x: 0, translation_y: 0, duration: DROP_TIME,
++                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++            };
++            id = island.connect('notify::allocation', run);
++            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 80, () => {
++                if (id)
++                    run();
++                return GLib.SOURCE_REMOVE;
++            });
++        }
++    }
++
++    // Esc during a drag: the island travels back and nothing is written.
++    _cancelDrag(announce) {
++        const drag = this._drag;
++        if (!drag)
++            return;
++        const from = this._dragOrigins();
++        this._drag = null;
++        this._hint?.hide();
++        this._clearTargetVisuals();
++        this._shelf._slideTime = 180;
++        this._shelf.setPreview(null);
++        this._shelf._slideTime = null;
++        this._travel(from, drag.edge);
++        this._queueDecorate();
++        if (announce)
++            this._announce(_('Move cancelled'));
++        console.log('[luma-shelf] drag cancelled');
++    }
++
++    _slideAll(write) {
++        this._shelf._slideTime = 240;
++        write();
++        this._shelf._slideTime = null;
++        this._queueDecorate();
++    }
++
++    // ------------------------------------------------------------ keyboard
++
++    _onKey(event) {
++        const symbol = event.get_key_symbol();
++        const state = event.get_state();
++        const ctrl = (state & Clutter.ModifierType.CONTROL_MASK) !== 0;
++        const alt = (state & Clutter.ModifierType.MOD1_MASK) !== 0;
++        const shift = (state & Clutter.ModifierType.SHIFT_MASK) !== 0;
++        if (symbol === Clutter.KEY_Escape) {
++            if (this._drag)
++                this._cancelDrag(true);
++            else
++                this.end({reason: 'escape'});
++            return Clutter.EVENT_STOP;
++        }
++        if (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter) {
++            const focus = global.stage.get_key_focus();
++            if (focus instanceof St.Button && this._card?.contains(focus))
++                return Clutter.EVENT_PROPAGATE;
++            this.end({reason: 'enter'});
++            return Clutter.EVENT_STOP;
++        }
++        if (ctrl && !alt && (symbol === Clutter.KEY_z || symbol === Clutter.KEY_Z)) {
++            this.undo();
++            return Clutter.EVENT_STOP;
++        }
++        if (symbol === Clutter.KEY_Tab || symbol === Clutter.KEY_ISO_Left_Tab) {
++            const ids = this._orderedIds();
++            if (ids.length) {
++                const at = ids.indexOf(this._selected);
++                const step = symbol === Clutter.KEY_ISO_Left_Tab || shift ? -1 : 1;
++                this._selected = ids[(at + step + ids.length) % ids.length] ?? ids[0];
++                this._syncSelection();
++                this._announce(Arrangement.describePlacement(this._shelf.arrangement, this._selected, islandNames(), _));
++            }
++            return Clutter.EVENT_STOP;
++        }
++        const direction = {
++            [Clutter.KEY_Left]: 'left', [Clutter.KEY_Right]: 'right',
++            [Clutter.KEY_Up]: 'up', [Clutter.KEY_Down]: 'down',
++        }[symbol];
++        if (direction && ctrl && alt) {
++            if (!this._selected)
++                this._selected = this._orderedIds()[0];
++            this.moveByKey(this._selected, direction, shift);
++            return Clutter.EVENT_STOP;
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    undo() {
++        const previous = this._undo.pop();
++        if (!previous)
++            return;
++        this._slideAll(() => {
++            if (!this._shelf.writeArrangement(previous))
++                this._shelf._sync();
++        });
++        this._announce(_('Move undone'));
++    }
++
++    // Ctrl+Alt+arrow: the selected island (or with Shift its whole group)
++    // steps to the next drop target in that direction, committed at once.
++    moveByKey(id, direction, wholeGroup = false) {
++        const shelf = this._shelf;
++        const stored = shelf.arrangement;
++        const index = Arrangement.groupIndexOf(stored, id);
++        if (index < 0)
++            return false;
++        const ids = wholeGroup ? [...stored[index].islands] : [id];
++        const actor = shelf.islandActorFor(id);
++        const group = shelf.groupForActor(actor);
++        if (!group?.placement)
++            return false;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const {monitors, groups} = this._context(ids);
++        const monitor = monitors.find(m => m.index === group.placement.monitor);
++        if (!monitor)
++            return false;
++        const rect = wholeGroup ? extentsOf(group) : extentsOf(shelf.partActorFor(id) ?? actor);
++        const edge = group.placement.edge;
++        const vertical = Arrangement.isVertical(edge);
++        const alongLength = vertical ? rect.height : rect.width;
++        const length = {horizontal: vertical ? shelf._thickness * scale * 2 : alongLength,
++            vertical: vertical ? alongLength : shelf._thickness * scale * 2};
++        const band = monitor.bands[edge];
++        const centre = vertical ? rect.y + rect.height / 2 : rect.x + rect.width / 2;
++        const fraction = band ? (centre - band.along[0]) / Math.max(1, band.length) : 0.5;
++        const targets = Arrangement.orderedTargets(monitor, groups, ids, length);
++        // The island's own place, so the step goes past it.
++        let here = null;
++        const own = groups.find(g => g.actor === group);
++        if (own) {
++            const i = own.islands.findIndex(island => island.ids.some(x => ids.includes(x)));
++            if (i >= 0)
++                here = {kind: 'attach', group: own.index, index: i, edge, monitor: monitor.index};
++        }
++        const step = Arrangement.stepTarget(targets, {edge, along: centre, fraction, target: here}, direction, monitor);
++        if (!step) {
++            this._announce(_('No place further in that direction'));
++            return false;
++        }
++        let next;
++        if (step.kind === 'attach') {
++            const target = groups.find(g => g.index === step.group);
++            const islands = target.islands.filter(island => !island.ids.every(x => ids.includes(x)));
++            const without = stored.map(g => ({...g, islands: g.islands.filter(x => !ids.includes(x))}));
++            const anchorId = islands[step.index]?.ids[0] ?? null;
++            const lastId = islands.at(-1)?.ids.at(-1);
++            const hostIndex = without.findIndex(g => g.islands.includes(anchorId ?? lastId));
++            if (hostIndex < 0)
++                return false;
++            const at = anchorId ? without[hostIndex].islands.indexOf(anchorId)
++                : without[hostIndex].islands.indexOf(lastId) + 1;
++            next = Arrangement.applyMove(stored, ids, {kind: 'attach', group: hostIndex, index: at});
++        } else {
++            const display = Arrangement.displayFor(step.monitor, shelf.monitors, Main.layoutManager.primaryIndex);
++            next = Arrangement.applyMove(stored, ids, step, display);
++        }
++        this._undo.push(stored);
++        this._slideAll(() => {
++            if (!shelf.writeArrangement(next))
++                shelf._sync();
++        });
++        this._selected = id;
++        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
++            this._syncSelection();
++            return GLib.SOURCE_REMOVE;
++        });
++        this._announce(Arrangement.describePlacement(next, id, islandNames(), _));
++        console.log(`[luma-shelf] key move ${ids.join(',')} ${direction}`);
++        return true;
++    }
++
++    // --------------------------------------------------------- announce
++
++    _announce(text) {
++        this._lastAnnouncement = text;
++        const actor = this._card ?? this._shelf;
++        const accessible = actor.get_accessible?.();
++        try {
++            accessible?.emit('notification', text, Atk.Live.POLITE);
++        } catch (error) {
++            logError(error, 'Luma Shelf: announcement');
++        }
++        console.log(`[luma-shelf] announce: ${text}`);
++    }
++
++    get lastAnnouncement() {
++        return this._lastAnnouncement ?? null;
++    }
++}
++
++// The reactive actor under an event's point (Clutter no longer hands a
++// captured event its source).
++function pickAt(event) {
++    const [x, y] = event.get_coords();
++    return global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
++}
++
++function rectsMeet(a, b) {
++    return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
++}
++
++function sameTarget(a, b) {
++    if (!a || !b)
++        return a === b;
++    if (a.kind !== b.kind || a.edge !== b.edge || a.monitor !== b.monitor)
++        return false;
++    if (a.kind === 'attach')
++        return a.storedGroup === b.storedGroup && a.storedIndex === b.storedIndex;
++    if (a.kind === 'snap')
++        return a.anchor === b.anchor;
++    return true;
++}
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+new file mode 100644
+index 0000000..9adcdf5
+--- /dev/null
++++ b/js/ui/shelfArrangement.js
+@@ -0,0 +1,705 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Movable shelf islands (ADR-044): the placement model and its solver.
++//
++// Pure: no St, no Clutter, no settings. The Shelf (shelf.js) and arrange mode
++// (shelfArrange.js) hand this module plain rectangles and read plain answers
++// back, so every rule here runs under gjs without a session.
++//
++// Vocabulary:
++//   island     one painted, rounded surface on the shelf ('dock', 'clock', …)
++//   group      islands attached in a row, ISLAND_GAP apart; a free island is
++//              a group of one
++//   placement  where a group sits: display, edge, anchor, position
++//   zone       one of the twelve snap placements, edge × start/center/end
++//   band       the strip along one edge of one monitor holding its groups
++//
++// start/end are physical: left/right on horizontal edges, top/bottom on
++// vertical ones, in RTL too.
++
++export const ISLAND_IDS = Object.freeze(['dock', 'live', 'media', 'well',
++    'quick-options', 'clock', 'notifications']);
++// Shell .114's row: the dock, the live and media islands against Quick
++// Options, then the notification island at the far end.
++export const DEFAULT_ORDER = ISLAND_IDS;
++// The three parts Quick Options splits into. Adjacent in one group, they are
++// drawn as one fused island, today's status cluster.
++export const STATUS_PARTS = Object.freeze(['well', 'quick-options', 'clock']);
++export const EDGES = Object.freeze(['top', 'bottom', 'left', 'right']);
++export const ANCHORS = Object.freeze(['start', 'center', 'end', 'free']);
++export const ZONE_ANCHORS = Object.freeze(['start', 'center', 'end']);
++
++// Logical pixels; the caller multiplies by the display scale.
++export const ISLAND_GAP = 9;          // the kit's island_gap: attached islands
++export const GROUP_SEPARATION = 24;   // separate groups on one band, at least
++export const ATTACH_DISTANCE = 40;    // along a group's run, to attach to it
++export const SNAP_DISTANCE = 32;      // from a zone's point, to snap to it
++export const ZONE_LENGTH = 120;       // the dashed placeholder of an empty zone
++export const DRAG_THRESHOLD = 8;
++export const HOLD_FEEDBACK_TIME = 150;
++export const HOLD_TIME = 400;
++
++export function isVertical(edge) {
++    return edge === 'left' || edge === 'right';
++}
++
++const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
++
++function cleanPosition(value) {
++    const number = Number(value);
++    return Number.isFinite(number) ? clamp(number, 0, 1) : 0.5;
++}
++
++// The v1 keys (shelf-edge, shelf-dock-anchor, shelf-actions-anchor,
++// shelf-group-layout) describe today's layout; an empty arrangement means
++// exactly that layout.
++export function defaultArrangement(v1 = {}, order = DEFAULT_ORDER) {
++    const edge = EDGES.includes(v1.edge) ? v1.edge : 'bottom';
++    const anchor = value => ZONE_ANCHORS.includes(value) ? value : 'center';
++    // A shelf that spans its edge with separate islands draws the dock at
++    // one end and everything else at the other: exactly two groups.
++    if (v1.spanSplit) {
++        return [
++            {display: '', edge, anchor: 'start', position: 0.5, islands: ['dock']},
++            {display: '', edge, anchor: 'end', position: 0.5, islands: order.filter(id => id !== 'dock')},
++        ];
++    }
++    if (v1.groupLayout === 'split-ends') {
++        const rest = order.filter(id => id !== 'dock');
++        return [
++            {display: '', edge, anchor: anchor(v1.dockAnchor ?? 'start'), position: 0.5, islands: ['dock']},
++            {display: '', edge, anchor: anchor(v1.actionsAnchor ?? 'end'), position: 0.5, islands: rest},
++        ].filter(group => group.islands.length);
++    }
++    return [{display: '', edge, anchor: 'center', position: 0.5, islands: [...order]}];
++}
++
++// Normalise whatever was read from settings. Unknown ids are dropped,
++// duplicates keep their first placement, a group on an unknown edge is
++// discarded, a position is clamped, and every placeable island missing from
++// the arrangement joins its default group beside its default neighbour. A
++// corrupt value therefore never loses the clock or the dock.
++export function normalizeArrangement(raw, v1 = {}, order = DEFAULT_ORDER) {
++    const fallback = defaultArrangement(v1, order);
++    if (!Array.isArray(raw) || raw.length === 0)
++        return {groups: fallback, isDefault: true};
++    const seen = new Set();
++    const groups = [];
++    for (const entry of raw) {
++        if (!entry || typeof entry !== 'object' || !EDGES.includes(entry.edge))
++            continue;
++        const islands = (Array.isArray(entry.islands) ? entry.islands : [])
++            .filter(id => order.includes(id) && !seen.has(id));
++        islands.forEach(id => seen.add(id));
++        if (!islands.length)
++            continue;
++        groups.push({
++            display: typeof entry.display === 'string' ? entry.display : '',
++            edge: entry.edge,
++            anchor: ANCHORS.includes(entry.anchor) ? entry.anchor : 'center',
++            position: cleanPosition(entry.position),
++            islands,
++        });
++    }
++    if (!groups.length)
++        return {groups: fallback, isDefault: true};
++    for (const id of order) {
++        if (seen.has(id))
++            continue;
++        insertBesideDefaultNeighbour(groups, id, order, fallback);
++        seen.add(id);
++    }
++    return {groups, isDefault: false};
++}
++
++function insertBesideDefaultNeighbour(groups, id, order, fallback) {
++    const home = fallback.find(group => group.islands.includes(id));
++    const siblings = home.islands;
++    const at = siblings.indexOf(id);
++    // The nearest default neighbour already placed, looking back first, so
++    // the clock missing from a status group lands after Quick Options.
++    for (let distance = 1; distance < siblings.length; distance++) {
++        for (const [index, after] of [[at - distance, true], [at + distance, false]]) {
++            const neighbour = siblings[index];
++            if (!neighbour)
++                continue;
++            const group = groups.find(g => g.islands.includes(neighbour));
++            if (!group)
++                continue;
++            const position = group.islands.indexOf(neighbour);
++            group.islands.splice(after ? position + 1 : position, 0, id);
++            return;
++        }
++    }
++    groups.push({display: '', edge: home.edge, anchor: home.anchor, position: 0.5, islands: [id]});
++}
++
++export function cloneArrangement(groups) {
++    return groups.map(group => ({...group, islands: [...group.islands]}));
++}
++
++export function sameArrangement(a, b) {
++    return JSON.stringify(a) === JSON.stringify(b);
++}
++
++export function groupIndexOf(groups, id) {
++    return groups.findIndex(group => group.islands.includes(id));
++}
++
++// Status fusion: maximal runs of adjacent status parts that include Quick
++// Options are drawn as one island hosted by Quick Options. Returns the row's
++// entries in order: {id} for an island drawn alone, {fused: [ids]} for a run.
++export function fuseStatus(islands) {
++    const entries = [];
++    let run = [];
++    const flush = () => {
++        if (!run.length)
++            return;
++        if (run.includes('quick-options') && run.length > 1)
++            entries.push({fused: run});
++        else
++            run.forEach(id => entries.push({id}));
++        run = [];
++    };
++    for (const id of islands) {
++        if (STATUS_PARTS.includes(id))
++            run.push(id);
++        else {
++            flush();
++            entries.push({id});
++        }
++    }
++    flush();
++    return entries;
++}
++
++// ---------------------------------------------------------------- geometry
++
++// The band along one edge of one monitor. metrics: {inset, thickness,
++// margin, scale}; reserved: {top, bottom} depths of the horizontal bands on
++// this monitor, so a side band's ends sit just inside them.
++//   rect      the painted strip, where the band's groups sit
++//   along     [start, end] of usable length, stage coordinates
++//   depth     the work area the band reserves from the monitor edge
++export function bandGeometry(monitor, edge, metrics, reserved = {}) {
++    const {inset, thickness, margin} = metrics;
++    const vertical = isVertical(edge);
++    const depth = inset + thickness + margin;
++    let start, end;
++    if (vertical) {
++        start = monitor.y + Math.max(inset, reserved.top ?? 0);
++        end = monitor.y + monitor.height - Math.max(inset, reserved.bottom ?? 0);
++    } else {
++        start = monitor.x + inset;
++        end = monitor.x + monitor.width - inset;
++    }
++    const cross = {
++        top: monitor.y + inset,
++        bottom: monitor.y + monitor.height - inset - thickness,
++        left: monitor.x + inset,
++        right: monitor.x + monitor.width - inset - thickness,
++    }[edge];
++    const rect = vertical
++        ? {x: cross, y: start, width: thickness, height: Math.max(0, end - start)}
++        : {x: start, y: cross, width: Math.max(0, end - start), height: thickness};
++    const work = {
++        top: {x: monitor.x, y: monitor.y, width: monitor.width, height: depth},
++        bottom: {x: monitor.x, y: monitor.y + monitor.height - depth, width: monitor.width, height: depth},
++        left: {x: monitor.x, y: monitor.y, width: depth, height: monitor.height},
++        right: {x: monitor.x + monitor.width - depth, y: monitor.y, width: depth, height: monitor.height},
++    }[edge];
++    return {edge, vertical, rect, along: [start, end], length: Math.max(0, end - start), depth, work};
++}
++
++// Where the groups of one band sit. groups: [{anchor, position, length,
++// minLength, span}] with lengths along the band; separation: the least
++// distance between two groups. Returns [{start, length}] relative to the
++// band's start, in the same order.
++//
++//   1. Start groups sit against the start, end groups against the end,
++//      centre groups centred on the band, free groups at their position.
++//   2. Groups keep `separation` apart: centre and free groups shift away from
++//      their neighbours, staying as close to their ideal as they allow.
++//   3. When the band is still too short, the compressible group (the dock's)
++//      shortens to what is left, down to its minimum.
++//   4. A spanning group (shelf-span-full) stretches between its neighbours.
++//   5. Anything left over is clipped by the band, never by the screen.
++export function solveBand(bandLength, groups, separation = GROUP_SEPARATION) {
++    const n = groups.length;
++    if (!n)
++        return [];
++    const lengths = groups.map(group => Math.max(0, group.length));
++    const total = lengths.reduce((sum, length) => sum + length, 0) + separation * (n - 1);
++    let overflow = total - bandLength;
++    if (overflow > 0) {
++        groups.forEach((group, index) => {
++            if (overflow <= 0 || group.minLength === undefined)
++                return;
++            const shrink = Math.min(overflow, Math.max(0, lengths[index] - group.minLength));
++            lengths[index] -= shrink;
++            overflow -= shrink;
++        });
++    }
++    const ideal = groups.map((group, index) => {
++        const length = lengths[index];
++        switch (group.anchor) {
++        case 'start': return 0;
++        case 'end': return bandLength - length;
++        case 'free': return clamp(cleanPosition(group.position) * bandLength - length / 2, 0,
++            Math.max(0, bandLength - length));
++        default: return (bandLength - length) / 2;
++        }
++    });
++    // Order by where each group wants to be; anchored ends win ties.
++    const rank = {start: 0, center: 1, free: 1, end: 2};
++    const order = [...groups.keys()].sort((a, b) =>
++        (ideal[a] + lengths[a] / 2) - (ideal[b] + lengths[b] / 2) ||
++        rank[groups[a].anchor] - rank[groups[b].anchor] || a - b);
++    const starts = order.map(index => ideal[index]);
++    const len = order.map(index => lengths[index]);
++    const fixed = order.map(index => groups[index].anchor === 'start' || groups[index].anchor === 'end');
++    // Push forwards, then back, then forwards again: groups that must move
++    // move away from the fixed ends, and never past the band's start.
++    for (let i = 1; i < order.length; i++)
++        starts[i] = Math.max(starts[i], starts[i - 1] + len[i - 1] + separation);
++    for (let i = order.length - 1; i >= 0; i--) {
++        const limit = i === order.length - 1 ? bandLength : starts[i + 1] - separation;
++        if (!fixed[i] || starts[i] + len[i] > limit)
++            starts[i] = Math.min(starts[i], limit - len[i]);
++    }
++    for (let i = 0; i < order.length; i++) {
++        const limit = i === 0 ? 0 : starts[i - 1] + len[i - 1] + separation;
++        starts[i] = Math.max(starts[i], limit);
++    }
++    // A spanning group fills the room between its neighbours.
++    order.forEach((index, i) => {
++        if (!groups[index].span)
++            return;
++        const from = i === 0 ? 0 : starts[i - 1] + len[i - 1] + separation;
++        const to = i === order.length - 1 ? bandLength : starts[i + 1] - separation;
++        starts[i] = from;
++        len[i] = Math.max(len[i], to - from);
++    });
++    const result = new Array(n);
++    order.forEach((index, i) => {
++        const start = Math.round(starts[i]);
++        const length = Math.max(0, Math.round(Math.min(len[i], bandLength - start)));
++        result[index] = {start, length, clipped: length < Math.round(len[i])};
++    });
++    return result;
++}
++
++// The three snap points of an edge for an island of `length`: its centre
++// when it sits at the start, the centre or the end of the band.
++export function zonePoints(band, length) {
++    const [start, end] = band.along;
++    const half = Math.min(length, band.length) / 2;
++    return {start: start + half, center: (start + end) / 2, end: end - half};
++}
++
++// The dashed placeholder of a zone, in stage coordinates.
++export function zoneRect(band, anchor, scale = 1) {
++    const zone = Math.min(ZONE_LENGTH * scale, band.length);
++    const [start, end] = band.along;
++    const from = anchor === 'start' ? start : anchor === 'end' ? end - zone : (start + end - zone) / 2;
++    return band.vertical
++        ? {x: band.rect.x, y: Math.round(from), width: band.rect.width, height: Math.round(zone)}
++        : {x: Math.round(from), y: band.rect.y, width: Math.round(zone), height: band.rect.height};
++}
++
++function centreOf(rect) {
++    return [rect.x + rect.width / 2, rect.y + rect.height / 2];
++}
++
++function alongOf(point, vertical) {
++    return vertical ? point[1] : point[0];
++}
++
++function crossOf(point, vertical) {
++    return vertical ? point[0] : point[1];
++}
++
++// The monitor edge nearest a point, among those that offer zones.
++export function nearestEdge(point, monitor, sharedEdges = []) {
++    const [x, y] = point;
++    const distances = {
++        top: y - monitor.y,
++        bottom: monitor.y + monitor.height - y,
++        left: x - monitor.x,
++        right: monitor.x + monitor.width - x,
++    };
++    return EDGES.filter(edge => !sharedEdges.includes(edge))
++        .sort((a, b) => distances[a] - distances[b])[0] ?? null;
++}
++
++export function monitorAt(point, monitors) {
++    const [x, y] = point;
++    return monitors.find(m => x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height) ??
++        monitors.reduce((best, m) => {
++            const [cx, cy] = [clamp(x, m.x, m.x + m.width), clamp(y, m.y, m.y + m.height)];
++            const d = Math.hypot(cx - x, cy - y);
++            return !best || d < best.d ? {m, d} : best;
++        }, null)?.m ?? null;
++}
++
++// Resolve the drop target for an island (or a whole group) being dragged.
++//
++// point:    the dragged island's centre, stage coordinates
++// length:   its length along a horizontal edge and along a vertical one
++//           ({horizontal, vertical}), for the zone points
++// monitors: [{index, x, y, width, height, sharedEdges: [...],
++//             bands: {edge: band}}]  (bandGeometry for every non-shared edge)
++// groups:   [{index, monitor, edge, rect, islands: [{id, rect}]}], the
++//           groups as they are drawn without the dragged islands
++// dragged:  ids being dragged (so a group never attaches to itself)
++//
++// Returns, in priority order:
++//   {kind: 'attach', group, index, neighbour, side}
++//   {kind: 'snap',   monitor, edge, anchor}
++//   {kind: 'free',   monitor, edge, position}
++// or null on a shared edge, where nothing may be dropped.
++export function resolveTarget(point, length, monitors, groups, dragged = [], scale = 1) {
++    const monitor = monitorAt(point, monitors);
++    if (!monitor)
++        return null;
++    // 1. Attach: within ATTACH_DISTANCE of a group's run along its axis and
++    //    inside its band across it.
++    let best = null;
++    for (const group of groups) {
++        if (group.monitor !== monitor.index || !group.islands.length)
++            continue;
++        if (group.islands.every(island => dragged.includes(island.id)))
++            continue;
++        const band = monitor.bands[group.edge];
++        if (!band)
++            continue;
++        const vertical = isVertical(group.edge);
++        const along = alongOf(point, vertical);
++        const cross = crossOf(point, vertical);
++        const bandCross = vertical ? [band.work.x, band.work.x + band.work.width]
++            : [band.work.y, band.work.y + band.work.height];
++        if (cross < bandCross[0] || cross > bandCross[1])
++            continue;
++        const reach = ATTACH_DISTANCE * scale;
++        const islands = group.islands.filter(island => !dragged.includes(island.id));
++        if (!islands.length)
++            continue;
++        // Distance to the nearest island of the run, not to the group's
++        // box: a spanning group's slack between the dock and the status
++        // cluster is open band, where an island is placed freely.
++        const spans = islands.map(island => vertical
++            ? [island.rect.y, island.rect.y + island.rect.height]
++            : [island.rect.x, island.rect.x + island.rect.width]);
++        const distance = Math.min(...spans.map(([from, to]) =>
++            along < from ? from - along : along > to ? along - to : 0));
++        if (distance > reach)
++            continue;
++        // Insert before the first island whose centre is past the point.
++        let index = islands.findIndex(island => alongOf(centreOf(island.rect), vertical) > along);
++        if (index < 0)
++            index = islands.length;
++        const side = index === 0 ? 'before' : 'after';
++        const neighbour = index === 0 ? islands[0].id : islands[index - 1].id;
++        if (!best || distance < best.distance)
++            best = {kind: 'attach', group: group.index, index, neighbour, side, edge: group.edge,
++                monitor: monitor.index, distance};
++    }
++    if (best) {
++        delete best.distance;
++        return best;
++    }
++    // 2. Snap, 3. free: on the nearest edge that offers zones.
++    const edge = nearestEdge(point, monitor, monitor.sharedEdges ?? []);
++    if (!edge)
++        return null;
++    const band = monitor.bands[edge];
++    if (!band)
++        return null;
++    const vertical = isVertical(edge);
++    const islandLength = vertical ? length.vertical : length.horizontal;
++    const points = zonePoints(band, islandLength);
++    const along = alongOf(point, vertical);
++    for (const anchor of ZONE_ANCHORS) {
++        if (Math.abs(along - points[anchor]) <= SNAP_DISTANCE * scale)
++            return {kind: 'snap', monitor: monitor.index, edge, anchor};
++    }
++    const position = band.length > 0 ? clamp((along - band.along[0]) / band.length, 0, 1) : 0.5;
++    return {kind: 'free', monitor: monitor.index, edge, position};
++}
++
++// ------------------------------------------------------------------ moves
++
++// The display a monitor stands for in the arrangement: '' follows the
++// primary monitor, anything else pins the group to that display.
++export function displayFor(monitorIndex, monitors, primaryIndex) {
++    if (monitorIndex === primaryIndex)
++        return '';
++    return monitors.find(m => m.index === monitorIndex)?.id ?? '';
++}
++
++function removeIslands(groups, ids) {
++    for (const group of groups)
++        group.islands = group.islands.filter(id => !ids.includes(id));
++    return groups.filter(group => group.islands.length);
++}
++
++function placementFor(target, display) {
++    return {
++        display,
++        edge: target.edge,
++        anchor: target.kind === 'snap' ? target.anchor : 'free',
++        position: target.kind === 'free' ? Math.round(target.position * 10000) / 10000 : 0.5,
++    };
++}
++
++// Move islands `ids` (one island, or a whole group's islands in order) to a
++// resolved target. groups are the stored arrangement; target.group indexes
++// into them. Returns a new arrangement; the input is not changed.
++export function applyMove(groups, ids, target, display = '') {
++    let next = cloneArrangement(groups);
++    if (!target)
++        return next;
++    if (target.kind === 'attach') {
++        const host = next[target.group];
++        if (!host)
++            return next;
++        // The index was counted without the dragged islands.
++        const islands = host.islands.filter(id => !ids.includes(id));
++        islands.splice(Math.min(target.index, islands.length), 0, ...ids);
++        for (const group of next) {
++            if (group !== host)
++                group.islands = group.islands.filter(id => !ids.includes(id));
++        }
++        host.islands = islands;
++        return next.filter(group => group.islands.length);
++    }
++    next = removeIslands(next, ids);
++    next.push({...placementFor(target, display), islands: [...ids]});
++    return next;
++}
++
++// ---------------------------------------------------------------- keyboard
++
++// Every drop target on the monitor's edges, in the order the pointer meets
++// them along each edge: attach slots and zones. `groups` as for
++// resolveTarget. Returns [{target, edge, monitor, along}].
++export function orderedTargets(monitor, groups, dragged, length) {
++    const targets = [];
++    for (const edge of EDGES) {
++        const band = monitor.bands[edge];
++        if (!band || (monitor.sharedEdges ?? []).includes(edge))
++            continue;
++        const vertical = isVertical(edge);
++        const islandLength = vertical ? length.vertical : length.horizontal;
++        const points = zonePoints(band, islandLength);
++        const occupied = groups.filter(g => g.monitor === monitor.index && g.edge === edge &&
++            g.islands.some(island => !dragged.includes(island.id)));
++        for (const anchor of ZONE_ANCHORS) {
++            // A zone a group already covers is reached through its attach
++            // slots instead.
++            const covered = occupied.some(group => {
++                const from = vertical ? group.rect.y : group.rect.x;
++                const to = from + (vertical ? group.rect.height : group.rect.width);
++                return points[anchor] >= from - ISLAND_GAP && points[anchor] <= to + ISLAND_GAP;
++            });
++            if (!covered)
++                targets.push({target: {kind: 'snap', monitor: monitor.index, edge, anchor}, edge, along: points[anchor]});
++        }
++        for (const group of occupied) {
++            const islands = group.islands.filter(island => !dragged.includes(island.id));
++            for (let index = 0; index <= islands.length; index++) {
++                const before = islands[index - 1], after = islands[index];
++                const along = before && after
++                    ? (alongOf(centreOf(before.rect), vertical) + alongOf(centreOf(after.rect), vertical)) / 2
++                    : after ? (vertical ? after.rect.y : after.rect.x)
++                        : (vertical ? before.rect.y + before.rect.height : before.rect.x + before.rect.width);
++                targets.push({target: {kind: 'attach', group: group.index, index,
++                    neighbour: index === 0 ? islands[0].id : islands[index - 1].id,
++                    side: index === 0 ? 'before' : 'after', edge, monitor: monitor.index}, edge, along});
++            }
++        }
++    }
++    const edgeRank = {bottom: 0, top: 1, left: 2, right: 3};
++    return targets.sort((a, b) => edgeRank[a.edge] - edgeRank[b.edge] || a.along - b.along);
++}
++
++function sameTarget(a, b) {
++    if (!a || !b || a.kind !== b.kind || a.edge !== b.edge || a.monitor !== b.monitor)
++        return false;
++    if (a.kind === 'attach')
++        return a.group === b.group && a.index === b.index;
++    if (a.kind === 'snap')
++        return a.anchor === b.anchor;
++    return Math.abs(a.position - b.position) < 0.001;
++}
++
++// The next target from `current` for an arrow key. Along the current edge the
++// arrow steps through the ordered targets; across it, it jumps to the nearest
++// target on the edge in that direction: Up from the bottom-left corner goes
++// to the left edge's end, Up from the bottom centre to the top centre.
++// current: {edge, along} where the island is now (its centre along the edge,
++// and its fraction along the band for the jump).
++export function stepTarget(targets, current, direction, monitor) {
++    const vertical = isVertical(current.edge);
++    const alongKeys = vertical ? ['up', 'down'] : ['left', 'right'];
++    if (alongKeys.includes(direction)) {
++        const forward = direction === alongKeys[1];
++        const onEdge = targets.filter(t => t.edge === current.edge);
++        if (!onEdge.length)
++            return null;
++        const ahead = forward
++            ? onEdge.filter(t => t.along > current.along + 0.5 && !sameTarget(t.target, current.target))
++            : onEdge.filter(t => t.along < current.along - 0.5 && !sameTarget(t.target, current.target)).reverse();
++        return ahead[0]?.target ?? null;
++    }
++    // Across the edge: Up from the bottom-left corner goes to the left
++    // edge's end, Up from the bottom centre to the top centre; sideways off
++    // a side edge goes to the opposite side at the same height.
++    const fraction = current.fraction ?? 0.5;
++    const third = fraction < 1 / 3 ? 'start' : fraction > 2 / 3 ? 'end' : 'center';
++    const side = {start: 'left', end: 'right', center: null};
++    const jumps = {
++        bottom: {up: side[third] ?? 'top'},
++        top: {down: side[third] ?? 'bottom'},
++        left: {right: 'right'},
++        right: {left: 'left'},
++    };
++    const edge = jumps[current.edge]?.[direction];
++    const band = edge && monitor.bands[edge];
++    if (!band)
++        return null;
++    const onEdge = targets.filter(t => t.edge === edge);
++    if (!onEdge.length)
++        return null;
++    let wanted;
++    if (current.edge === 'bottom' && isVertical(edge))
++        wanted = band.along[1];
++    else if (current.edge === 'top' && isVertical(edge))
++        wanted = band.along[0];
++    else
++        wanted = band.along[0] + fraction * band.length;
++    return onEdge.reduce((best, t) =>
++        !best || Math.abs(t.along - wanted) < Math.abs(best.along - wanted) ? t : best, null).target;
++}
++
++// --------------------------------------------------------- announcements
++
++const EDGE_NAMES = {top: 'top edge', bottom: 'bottom edge', left: 'left edge', right: 'right edge'};
++
++// "Clock, attached to the right of Dock, bottom edge" or
++// "Media, top edge, left corner". names: id → display name; translate: _.
++export function describePlacement(groups, id, names, translate = s => s) {
++    const t = translate;
++    const group = groups.find(g => g.islands.includes(id));
++    const name = names[id] ?? id;
++    if (!group)
++        return name;
++    const vertical = isVertical(group.edge);
++    const edge = t(EDGE_NAMES[group.edge]);
++    const parts = [name];
++    if (group.islands.length > 1) {
++        const index = group.islands.indexOf(id);
++        const [neighbour, relation] = index > 0
++            ? [group.islands[index - 1], vertical ? t('attached below %s') : t('attached to the right of %s')]
++            : [group.islands[1], vertical ? t('attached above %s') : t('attached to the left of %s')];
++        parts.push(relation.replace('%s', names[neighbour] ?? neighbour));
++    }
++    parts.push(edge);
++    if (group.islands.length === 1) {
++        if (group.anchor === 'free')
++            parts.push(t('free position'));
++        else if (group.anchor === 'center')
++            parts.push(t('centre'));
++        else if (vertical)
++            parts.push(group.anchor === 'start' ? t('top end') : t('bottom end'));
++        else
++            parts.push(group.anchor === 'start' ? t('left corner') : t('right corner'));
++    }
++    return parts.join(', ');
++}
++
++// ---------------------------------------------------------- work area
++
++// One strut per occupied edge per monitor, the band's full depth along the
++// whole edge; the monitor's other edges keep the floating margin. Returns
++// [{monitor, edge, rect}] for struts and margins alike. `occupied`:
++// Map monitorIndex → Set of edges holding a placed group.
++export function reservations(monitors, occupied, metrics) {
++    const out = [];
++    for (const monitor of monitors) {
++        const edges = occupied.get(monitor.index);
++        if (!edges?.size)
++            continue;
++        for (const edge of EDGES) {
++            if ((monitor.sharedEdges ?? []).includes(edge))
++                continue;
++            if (edges.has(edge)) {
++                out.push({monitor: monitor.index, edge, rect: bandGeometry(monitor, edge, metrics).work, band: true});
++            } else if (metrics.margin > 0) {
++                const m = metrics.margin;
++                const rect = {
++                    top: {x: monitor.x, y: monitor.y, width: monitor.width, height: m},
++                    bottom: {x: monitor.x, y: monitor.y + monitor.height - m, width: monitor.width, height: m},
++                    left: {x: monitor.x, y: monitor.y, width: m, height: monitor.height},
++                    right: {x: monitor.x + monitor.width - m, y: monitor.y, width: m, height: monitor.height},
++                }[edge];
++                out.push({monitor: monitor.index, edge, rect, band: false});
++            }
++        }
++    }
++    return out;
++}
++
++// Which edges of a monitor touch another monitor. Mutter ignores struts
++// there, and a pointer would slide into the neighbour before reaching an
++// island, so a shared edge offers no zone.
++export function sharedEdges(monitor, monitors) {
++    const out = [];
++    const overlaps = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0) > 0;
++    for (const other of monitors) {
++        if (other === monitor)
++            continue;
++        if (other.x + other.width === monitor.x && overlaps(monitor.y, monitor.y + monitor.height, other.y, other.y + other.height))
++            out.push('left');
++        if (monitor.x + monitor.width === other.x && overlaps(monitor.y, monitor.y + monitor.height, other.y, other.y + other.height))
++            out.push('right');
++        if (other.y + other.height === monitor.y && overlaps(monitor.x, monitor.x + monitor.width, other.x, other.x + other.width))
++            out.push('top');
++        if (monitor.y + monitor.height === other.y && overlaps(monitor.x, monitor.x + monitor.width, other.x, other.x + other.width))
++            out.push('bottom');
++    }
++    return [...new Set(out)];
++}
++
++// Where each stored group is drawn now. monitors: [{index, id, primary}].
++// A group pinned to an absent display is drawn on the primary monitor at
++// the same edge and anchor, and joins a group already there; a saved edge
++// that became shared falls back to the bottom. The stored arrangement is not
++// rewritten, so the group goes back when its display returns.
++// Returns [{source: [stored group indexes], monitor, edge, anchor, position,
++// islands}].
++export function resolveDisplays(groups, monitors, primaryIndex, shared = new Map()) {
++    const byId = new Map(monitors.filter(m => m.id).map(m => [m.id, m.index]));
++    const resolved = [];
++    groups.forEach((group, index) => {
++        let monitor = group.display ? byId.get(group.display) : primaryIndex;
++        const absent = monitor === undefined;
++        if (absent)
++            monitor = primaryIndex;
++        let edge = group.edge;
++        if ((shared.get(monitor) ?? []).includes(edge))
++            edge = 'bottom';
++        const zone = group.anchor;
++        const host = absent && zone !== 'free'
++            ? resolved.find(r => r.monitor === monitor && r.edge === edge && r.anchor === zone)
++            : null;
++        if (host) {
++            host.islands.push(...group.islands);
++            host.source.push(index);
++            return;
++        }
++        resolved.push({source: [index], monitor, edge, anchor: group.anchor,
++            position: group.position, islands: [...group.islands], fallback: absent});
++    });
++    return resolved;
++}
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index cded059..5ad3642 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1892,6 +1892,10 @@ export class WindowManager {
+     }
+ 
+     _showWorkspaceSwitcher(display, window, event, binding) {
++        // Ctrl+Alt(+Shift)+arrow on a keyboard-focused shelf island moves the
++        // island (or its group) instead of switching workspaces (ADR-044).
++        if (Main.shelf?.moveFocusedIsland?.(binding.get_name(), event))
++            return;
+         const workspaceManager = display.get_workspace_manager();
+ 
+         if (!Main.sessionMode.hasWorkspaces)

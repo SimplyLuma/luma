@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* App-only year covers; shared media and controls are owned by the kit. */
+.ph-viewer-title { color: @luma_on_media_ink; }
+.ph-viewer-meta, .ph-day-meta { color: @luma_muted; }
+.ph-import-thumb { border-radius: var(--lumaui-status-radius); }
+.ph-import-more { border-radius: var(--lumaui-status-radius); background: @luma_fill; color: @luma_ink_secondary; font-weight: var(--lumaui-t-label-weight); }
+.ph-year-grid > flowboxchild, .ph-preset-grid > flowboxchild { padding: 0; margin: 0; }
+/* v71 phone: the Memories row and its player, the viewer's filmstrip. Layout and tokens only.
+   Shared media tokens set the memory corners and current filmstrip frame. */
+.ph-memory { padding: 0; border: none; border-radius: var(--lumaui-media-memory-radius); background: @luma_media_shadow; }
+.ph-memory-shade { background: linear-gradient(to bottom, transparent 40%, alpha(@luma_media_shadow, .7)); }
+.ph-memory-ink { color: @luma_on_media_ink; }
+.ph-memory-player { background: @luma_media_viewport_black; }
+.ph-strip-photo { padding: 0; min-width: 0; min-height: 0; border: none; border-radius: var(--lumaui-media-strip-radius); background: @luma_media_shadow; opacity: .72; }
+.ph-strip-photo.on { border-radius: var(--lumaui-media-strip-current-radius); opacity: 1; box-shadow: 0 0 0 var(--lumaui-media-strip-ring) @luma_on_media_ink; }
+.ph-thumb { border-radius: var(--lumaui-media-tile-library-radius); }
+.ph-faved image { color: @luma_love; }

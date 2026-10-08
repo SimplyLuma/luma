@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+{
+  "appstream-compose": false,
+  "id": "org.projectluma.Camera",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "prairie-camera",
+  "finish-args": [
+    "--env=LUMA_CAMERA_STYLE_PATH=/app/share/prairie-core/camera.css",
+    "--metadata=X-Luma=app-data-schema=camera-v1",
+    "--metadata=X-Luma=min-host-installer=60",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--share=network",
+    "--talk-name=org.projectluma.AppData1",
+    "--socket=pulseaudio",
+    "--filesystem=xdg-data/luma-photos:create",
+    "--filesystem=xdg-pictures:create",
+    "--filesystem=xdg-config/user-dirs.dirs:ro",
+    "--talk-name=org.projectluma.ApplicationDirectory1"
+  ],
+  "modules": [
+    {
+      "name": "camera",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core",
+        "cp -a src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/",
+        "install -Dm755 src/prairie-core/bin/prairie-camera /app/bin/prairie-camera-real",
+        "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup prairie-camera-real \"$@\"\\n' > /app/bin/prairie-camera",
+        "chmod 755 /app/bin/prairie-camera",
+        "install -Dm644 src/prairie-core/data/org.projectluma.Camera.desktop /app/share/applications/org.projectluma.Camera.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Camera.svg",
+        "cp -a src/prairie-core/style/. /app/share/prairie-core/",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Camera.metainfo.xml",
+        "install -Dm644 depot-media/e43ddbf5a430a32d6795ceaf8a464da64db4550a9a16ab9d04e69d2f119cb4e7.png /app/share/luma-app-media/e43ddbf5a430a32d6795ceaf8a464da64db4550a9a16ab9d04e69d2f119cb4e7.png",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Camera/LICENSE.md"
+      ]
+    }
+  ]
+}

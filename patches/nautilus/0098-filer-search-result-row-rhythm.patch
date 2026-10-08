@@ -1,0 +1,48 @@
+From 56af70a87df10d43949f4078894e4dc046b776f1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:47:18 +0000
+Subject: [PATCH] Filer: give search result rows room for metadata
+
+---
+ src/nautilus-list-view.c | 8 ++++++++
+ src/resources/style.css  | 5 +++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 28ee618..b090072 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -716,6 +716,14 @@ nautilus_list_view_setup_directory (NautilusListBase  *list_base,
+     {
+         self->search_directory = g_object_ref (NAUTILUS_SEARCH_DIRECTORY (new_directory));
+     }
++    if (self->search_directory != NULL)
++    {
++        gtk_widget_add_css_class (GTK_WIDGET (self), "search-results");
++    }
++    else
++    {
++        gtk_widget_remove_css_class (GTK_WIDGET (self), "search-results");
++    }
+ 
+     if (self->search_directory != NULL)
+     {
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 7573c83..c2d1e22 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1083,6 +1083,11 @@ window.luma-files-window .nautilus-list-view columnview > listview > row {
+   border-radius: 10px;
+ }
+ 
++/* Search results carry a name, path and optional excerpt in one row. */
++window.luma-files-window .nautilus-list-view.search-results columnview > listview > row {
++  min-height: var(--lumaui-sidebar-row-height);
++}
++
+ /* Hover and focus render identically, as everywhere else in Luma. An accent
+  * ring on top of the fill is a second visual language for one state. */
+ window.luma-files-window .nautilus-column-view listview > row:focus-visible,
+-- 
+2.55.0
+

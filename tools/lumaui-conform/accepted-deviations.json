@@ -1,0 +1,286 @@
+{
+  "about": "Documented GTK limits (docs/developer/kit/lumaui-deviations.md) that lumaui-conform reports as 'accepted' instead of failing. Each entry is narrow: optional states, group, subject and prop regexes, and max_delta (the largest difference it forgives). Add one only with a matching row in lumaui-deviations.md.",
+  "deviations": [
+    {
+      "id": "no-backdrop-blur",
+      "doc": "lumaui-deviations.md: Toast, action bar, content-lit card, scrim / Action center",
+      "reason": "GTK has no backdrop-filter; the kit paints a denser token surface, so the sampled surface colour differs a little.",
+      "subject": "corner pill|toast|bar",
+      "prop": "surface colour",
+      "max_delta": 8
+    },
+    {
+      "id": "named-hues",
+      "doc": "lumaui-deviations.md: Event card, content-lit header wash / Person avatar",
+      "reason": "No runtime oklch(): avatars and the hero wash use the five category hues, not the person's exact hue.",
+      "subject": "^(box|generic) \"[A-Z]{1,2}\"$|hero light",
+      "prop": "surface colour|colour"
+    },
+    {
+      "id": "hero-field-30",
+      "doc": "lumaui-deviations.md: Hero title field",
+      "reason": "In edit mode the name field stays 30/700 (hero role) instead of v70's 26 px input.",
+      "states": [
+        "edit"
+      ],
+      "subject": "Priya Raman",
+      "prop": "font size|font weight"
+    },
+    {
+      "id": "no-corner-shape",
+      "doc": "lumaui-deviations.md: Count badge, pill, stacked button",
+      "reason": "GTK has no corner-shape: round; plain radii stand in.",
+      "subject": "^(button|box|card) \"(Message|Call|Video|Email|On Luma)\"$",
+      "prop": "radius",
+      "max_delta": 4
+    },
+    {
+      "id": "pending-block",
+      "doc": "lumaui-deviations.md: Pending decisions / Block in the more menu",
+      "reason": "Nick hasn't decided whether Block ships; the more menu leaves it out until he does.",
+      "group": "menu",
+      "subject": "^(button|text) \"Block\"|^icon shield$",
+      "prop": "missing"
+    },
+    {
+      "id": "pending-video-calling",
+      "doc": "lumaui-deviations.md: Pending decisions / Video for Luma people",
+      "reason": "There is no Luma calling service yet, so the Video tile stays disabled where v70 shows it enabled.",
+      "group": "action tiles",
+      "subject": "Video|^icon video$",
+      "prop": "colour|surface colour|shadow"
+    },
+    {
+      "id": "pending-block-offset",
+      "doc": "lumaui-deviations.md: Pending decisions / Block in the more menu",
+      "reason": "With Block left out, the rows below it in the more menu sit one row (36 px) higher.",
+      "group": "menu",
+      "subject": "Delete contact|trash-2",
+      "prop": "position",
+      "max_delta": 37
+    },
+    {
+      "id": "whole-pixel-lines-cards",
+      "doc": "lumaui-deviations.md: Whole-pixel lines",
+      "reason": "GTK allocates whole pixels; v70's 1.45 line boxes and rows are fractional (49.525, 16.675), so rows drift by up to half a pixel each. The tokens round so a card's or list's first and last rows stay close; what is left is at most 3 px.",
+      "group": "cards",
+      "prop": "^(position|size)$",
+      "max_delta": 3
+    },
+    {
+      "id": "whole-pixel-lines-sidebar",
+      "doc": "lumaui-deviations.md: Whole-pixel lines",
+      "reason": "GTK allocates whole pixels; v70's 1.45 line boxes and rows are fractional (49.525, 16.675), so rows drift by up to half a pixel each. The tokens round so a card's or list's first and last rows stay close; what is left is at most 3 px.",
+      "group": "sidebar",
+      "prop": "^(position|size)$",
+      "max_delta": 3
+    },
+    {
+      "id": "lcd-system-mono",
+      "doc": "lumaui-deviations.md: Media transport LCD",
+      "reason": "v70's LCD asks for var(--mono, ui-monospace); outside Terminal --mono is unset (the LCD, hex colour codes), so Chromium draws the Mac's ui-monospace. Luma's system monospace is IBM Plex Mono (v70 line 745, TY1 mono), which the kit uses.",
+      "subject": "^text \"#?[0-9A-Fa-f:.]+\"$",
+      "prop": "font family"
+    },
+    {
+      "id": "system-mono-face",
+      "doc": "lumaui-deviations.md: Media transport LCD (the same decision: Luma's system monospace)",
+      "reason": "v70 asks for ui-monospace, the Mac's system monospace; Chromium resolves it to a platform face. Luma's system monospace is IBM Plex Mono (v70 line 745, TY1 mono), which the kit's mono role draws. Only that pair is accepted: a mono spec face against IBM Plex Mono.",
+      "prop": "font family",
+      "spec_value": "ui-monospace|monospace|mono|menlo|courier",
+      "gtk_value": "^IBM Plex Mono"
+    },
+    {
+      "id": "system-mono-metrics",
+      "doc": "lumaui-deviations.md: Media transport LCD (system monospace)",
+      "reason": "The same texts as system-mono-face: IBM Plex Mono's advance differs from the face Chromium draws for ui-monospace, so a mono value's width, and what follows it on its line, differ by that much. Settings' values only.",
+      "apps": [
+        "settings"
+      ],
+      "prop": "^(width|position)$",
+      "subject": "^text \"(lantern-orbit-42|Luma Shell 1\\.0 on Wayland|Intel Core Ultra 7 155U × 14|N3XET47W \\(1\\.22\\)|Intel Arc \\(MTL\\)|Linux 6\\.16\\.8-luma1|Samsung PM9C1a 512 GB|1\\.0 nightly 20260923|[0-9]{1,3}(\\.[0-9]{1,3}){3}|([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2})\"$"
+    },
+    {
+      "id": "glyph-fallback-family",
+      "doc": "lumaui-deviations.md: Glyph fallback family",
+      "reason": "A character Figtree lacks (U+23CE ⏎) falls back on both sides; the spec reports the CSS family, GTK the face that drew it.",
+      "subject": "^text \"[\\u2190-\\u23ff\\u2700-\\u27bf]\"$",
+      "prop": "^font family$"
+    },
+    {
+      "id": "nb-hyphen-fallback",
+      "doc": "lumaui-deviations.md: Glyph fallback family",
+      "reason": "Figtree has no non-breaking hyphen (U+2011, v70's \"Wi‑Fi\"); Pango draws it from the next face in the stack and Chromium from its own fallback, whose advances differ by a few px. The rest of the string is Figtree on both sides.",
+      "subject": "^text \".*‑.*\"$",
+      "prop": "^(width|position)$",
+      "max_delta": 4
+    },
+    {
+      "id": "pending-identity-menu",
+      "doc": "lumaui-deviations.md: Pending decisions / Identity menu",
+      "reason": "Pending Nick: v70's identity is plain header content (no role) in Contacts; the kit's is the app menu's button.",
+      "group": "title row",
+      "subject": "^button \"[^\"]+\"$",
+      "prop": "extra"
+    },
+    {
+      "id": "identity-name-advance",
+      "doc": "lumaui-deviations.md: The window frame / Identity name",
+      "reason": "Pango lays Figtree 600 about 5 px narrower than Chromium; the chevron after the name moves with it.",
+      "group": "title row",
+      "subject": "^text \"[^\"]+\"$|^icon chevron-down$",
+      "prop": "width|position",
+      "max_delta": 6
+    },
+    {
+      "id": "frost-backdrop",
+      "doc": "lumaui-deviations.md: The window frame / Frost frame",
+      "reason": "The Frost frame's blur is the compositor's; a headless capture has neither blur nor wallpaper behind it.",
+      "states": [
+        "frost"
+      ],
+      "subject": "^frame ",
+      "prop": "surface colour"
+    },
+    {
+      "id": "whole-pixel-lines-text-buttons",
+      "doc": "lumaui-deviations.md: Whole-pixel lines",
+      "reason": "GTK gives each text button a whole-pixel width (its label's ceil); a row of them (a mode switch) and the bar holding only it grow by up to 1 px a button.",
+      "group": [
+        "clock places",
+        "clock places bar"
+      ],
+      "prop": "^(position|size)$",
+      "max_delta": 3
+    },
+    {
+      "id": "pending-reading-serif",
+      "doc": "lumaui-deviations.md: Pending decisions / Reading serif",
+      "reason": "v70 names Newsreader/Literata for cover art and reading surfaces; neither font is available yet (Nick's decision pending), so both sides fall back to a system serif.",
+      "subject": "^text ",
+      "prop": "^(font family|width)$",
+      "group": [
+        "cover",
+        "covers",
+        "cover art",
+        "reader",
+        "reading",
+        "hero",
+        "shelf"
+      ]
+    },
+    {
+      "id": "frost-backdrop-ink",
+      "doc": "lumaui-deviations.md: The window frame / Frost frame",
+      "reason": "The Frost frame's ink is translucent (v70 rgba(242,243,246,.84)); it composites over the blurred wallpaper in v70 and over nothing in a headless capture.",
+      "states": [
+        "frost"
+      ],
+      "group": "window controls",
+      "subject": "^icon ",
+      "prop": "^colour$",
+      "max_delta": 6
+    },
+    {
+      "id": "frost-backdrop-ink-title",
+      "doc": "lumaui-deviations.md: The window frame / Frost frame",
+      "reason": "The Frost frame's ink is translucent (v70 rgba(242,243,246,.84)); it composites over the blurred wallpaper in v70 and over nothing in a headless capture.",
+      "states": [
+        "frost"
+      ],
+      "group": "title row",
+      "subject": "^icon ",
+      "prop": "^colour$",
+      "max_delta": 6
+    },
+    {
+      "id": "calc-linux-shortcut-spec",
+      "doc": "lumaui-deviations.md: Calculator Linux identity shortcuts",
+      "reason": "The v70 macOS glyphs are represented by working Ctrl+1 and Ctrl+2 accelerators with visible Linux Ctrl keycaps.",
+      "apps": [
+        "calc"
+      ],
+      "states": [
+        "menu"
+      ],
+      "group": "menu",
+      "subject": "^text \"⌘[12]\"$",
+      "prop": "^missing$",
+      "requires_shortcut_pair": true,
+      "max_count": 2
+    },
+    {
+      "id": "calc-linux-shortcut-gtk",
+      "doc": "lumaui-deviations.md: Calculator Linux identity shortcuts",
+      "reason": "The visible Ctrl keycaps describe the actual Linux accelerators for Basic and Scientific.",
+      "apps": [
+        "calc"
+      ],
+      "states": [
+        "menu"
+      ],
+      "group": "menu",
+      "subject": "^text \"Ctrl\"$",
+      "prop": "^extra$",
+      "requires_shortcut_pair": true,
+      "max_count": 2
+    },
+    {
+      "id": "calc-linux-shortcut-digit",
+      "doc": "lumaui-deviations.md: Calculator Linux identity shortcuts",
+      "reason": "The 1 and 2 keycaps complete the visible Ctrl+1 and Ctrl+2 Linux shortcuts on their respective menu rows.",
+      "apps": [
+        "calc"
+      ],
+      "states": [
+        "menu"
+      ],
+      "group": "menu",
+      "subject": "^text \"[12]\"$",
+      "prop": "^extra$",
+      "requires_shortcut_pair": true,
+      "max_count": 2
+    },
+    {
+      "id": "hinted-figtree-advance",
+      "doc": "lumaui-deviations.md: Hinted glyph advances",
+      "reason": "The device hints Figtree (Nick's setting, the real one): GTK rounds each glyph's advance to whole pixels where Chromium keeps fractions, so a run comes out up to about 3% wider. Text-run width only, Figtree runs only; never boxes, positions of other parts, size or weight.",
+      "prop": "^width$",
+      "subject": "^text ",
+      "max_ratio": 0.03,
+      "gtk_family": "figtree"
+    },
+    {
+      "id": "hinted-figtree-anchor",
+      "doc": "lumaui-deviations.md: Hinted glyph advances",
+      "reason": "The same hinted advances: an end-aligned Figtree run keeps its right edge, so its start moves by exactly its own width difference (up to 3%) and nowhere else. Only that shift of that text; never other parts.",
+      "prop": "^position$",
+      "subject": "^text ",
+      "max_ratio": 0.03,
+      "gtk_family": "figtree",
+      "requires": [
+        "end_anchored"
+      ]
+    },
+    {
+      "id": "pending-nb-hyphen-line",
+      "doc": "lumaui-deviations.md: Non-breaking hyphen (pending the font)",
+      "reason": "PENDING google-figtree-fonts 1.luma.4 (U+2010/U+2011 mapped to Figtree's hyphen). Until it ships, a line holding U+2011 draws its fallback face's taller line box, 1 px, and what follows on Settings' Wi‑Fi pages sits up to 2.5 px lower. Remove when the font is on the ThinkPad.",
+      "apps": [
+        "settings"
+      ],
+      "state_pattern": "^wifi",
+      "prop": "^position$",
+      "max_delta": 3.2
+    },
+    {
+      "id": "placeholder-ink-dark",
+      "doc": "lumaui-deviations.md: Unstyled input placeholder, dark",
+      "reason": "v70 leaves some inputs on Chromium's placeholder grey #757575, 3.8:1 on the dark well; the coordinator ruled an AA dark value, so @luma_placeholder_ink is #85878b in dark. Only that pair.",
+      "subject": "^text ",
+      "prop": "^colou?r$",
+      "spec_value": "#757575",
+      "gtk_value": "#85878b"
+    }
+  ]
+}

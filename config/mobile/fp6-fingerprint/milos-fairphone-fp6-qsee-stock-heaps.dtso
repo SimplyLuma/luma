@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: Apache-2.0
+/dts-v1/;
+/plugin/;
+
+/*
+ * FP6 stock-compatible QSEECOM heap topology.
+ *
+ * Fairphone's exact Android 16 vendor DT gives QSEECOM a separate 20 MiB apps
+ * heap and 16 MiB TA heap, each 4 MiB aligned and below 4 GiB.  Its published
+ * securemsm driver registers both complete heaps with SHM Bridge before QSEE
+ * initialization and skips APP_REGION_NOTIFICATION because AppsBL already
+ * supports QSEECOM.
+ *
+ * Keep both pools non-reusable so CONFIG_DMA_CMA remains disabled and every
+ * installed module retains the accepted ABI.  The SCM device consumes the TA
+ * pool as its coherent DMA pool.  The inert qcom,qseecom node mirrors the
+ * stock phandle/property contract for AppsBL; the mainline driver still
+ * initializes the TEE interface from Qualcomm SCM.
+ */
+
+&{/reserved-memory} {
+	qseecom_apps_pool: qseecom-apps-pool {
+		compatible = "shared-dma-pool";
+		size = <0x0 0x01400000>;
+		alignment = <0x0 0x00400000>;
+		alloc-ranges = <0x0 0x80000000 0x0 0x80000000>;
+		no-map;
+	};
+};
+
+&{/firmware/scm} {
+	qcom,tzmem-whole-pool-shmbridge;
+	qcom,qseecom-apps-region = <&qseecom_apps_pool>;
+};
+
+&{/soc@0} {
+	qseecom@c1700000 {
+		compatible = "qcom,qseecom";
+		memory-region = <&qseecom_apps_pool>;
+		qseecom_mem = <&qseecom_apps_pool>;
+		qseecom_ta_mem = <&qseecom_ta_pool>;
+		qcom,no-user-contig-mem-support;
+		qcom,hlos-num-ce-hw-instances = <1>;
+		qcom,hlos-ce-hw-instance = <0>;
+		qcom,qsee-ce-hw-instance = <0>;
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,no-clock-support;
+		qcom,appsbl-qseecom-support;
+		qcom,commonlib64-loaded-by-uefi;
+		qcom,qsee-reentrancy-support = <2>;
+	};
+};

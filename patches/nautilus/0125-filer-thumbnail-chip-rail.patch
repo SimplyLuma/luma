@@ -1,0 +1,79 @@
+From b0ebe8b62c2d224d22daab07185927158257922b Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 03:47:30 +0000
+Subject: [PATCH] Filer thumbnail chip and compact rail
+
+---
+ src/nautilus-window.c                | 6 +++---
+ src/resources/style.css              | 1 +
+ src/resources/ui/nautilus-window.blp | 4 ++--
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 8498a65..d7bdd76 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -891,7 +891,7 @@ update_action_center (NautilusWindow *window)
+         };
+         g_autoptr (GdkPaintable) preview = nautilus_file_get_icon_paintable (
+             file, 42, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
+-            NAUTILUS_FILE_ICON_FLAGS_NONE);
++            NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS);
+         if (preview != NULL)
+             luma_bar_item_chip_set_paintable (items[0], preview);
+         g_signal_connect (items[3], "activated", G_CALLBACK (on_bar_share), window);
+@@ -2379,7 +2379,7 @@ set_sidebar_width (NautilusWindow *window,
+     AdwOverlaySplitView *split_view = ADW_OVERLAY_SPLIT_VIEW (window->split_view);
+     gdouble current_width;
+ 
+-    width = CLAMP (width, 88.0, 480.0);
++    width = CLAMP (width, 78.0, 480.0);
+     current_width = adw_overlay_split_view_get_max_sidebar_width (split_view);
+ 
+     /* Keep min <= max throughout the update so libadwaita never clamps an
+@@ -2579,7 +2579,7 @@ sidebar_resize_drag_update (GtkGestureDrag *gesture,
+         offset_x = -offset_x;
+     }
+ 
+-    width = CLAMP (window->sidebar_resize_start_width + offset_x, 88.0, 480.0);
++    width = CLAMP (window->sidebar_resize_start_width + offset_x, 78.0, 480.0);
+     window->sidebar_resize_current_width = width;
+     set_sidebar_width (window, width);
+ }
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 35e5960..6262520 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -44,6 +44,7 @@
+   background-color: @luma_content;
+ }
+ .luma-files-window #filer-location-scope image { -gtk-icon-size: 0px; }
++.luma-files-window row.luma-live-rail-row { padding-left: 3px; padding-right: 3px; }
+ 
+ /* Filer uses a deliberate two-row native title composition. */
+ .luma-files-window:not(.luma-native-file-chooser) headerbar.luma-titlebar {
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 96e6467..00937b1 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -210,7 +210,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           hexpand: true;
+           enable-show-gesture: false;
+           enable-hide-gesture: false;
+-          min-sidebar-width: 88;
++          min-sidebar-width: 78;
+           max-sidebar-width: 480;
+           sidebar-width-unit: px;
+           sidebar-width-fraction: 0.25;
+@@ -221,7 +221,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           ]
+ 
+           sidebar: Adw.ToolbarView sidebar_action_surface {
+-            width-request: 88;
++            width-request: 78;
+             reveal-bottom-bars: bind progress_indicator.reveal;
+             margin-top: 0;
+             margin-bottom: 0;
+-- 
+2.55.0
+

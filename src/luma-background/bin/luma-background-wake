@@ -1,0 +1,6 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MPL-2.0
+# org.projectluma.BackgroundWake1: wakes a sleeping computer for an alarm (system bus, polkit-guarded).
+from luma_background.wake import main
+
+raise SystemExit(main())

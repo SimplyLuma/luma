@@ -1,0 +1,53 @@
+/* SPDX-License-Identifier: Apache-2.0
+ * MONITOR-only surfaces (§2.2). Shared LumaUI parts are never restyled. */
+.mn-app-row, .mn-process-row, .mn-group, .mn-disclosure {
+  border: none; padding: 0;
+  color: @luma_ink;
+}
+.mn-app-row { border-radius: var(--lumaui-account-radius); }
+.mn-process-row { border-radius: var(--lumaui-account-recessed-row-radius); }
+.mn-process-row.mn-child-process { border-radius: var(--lumaui-nav-tree-row-radius); }
+.mn-group { border-radius: var(--lumaui-details-radius); }
+.mn-disclosure { border-radius: var(--lumaui-details-action-radius); }
+.mn-app-row.mn-idle:hover, .mn-process-row.mn-idle:hover, .mn-group:hover, .mn-disclosure:hover { background: @luma_hover; }
+.mn-app-name { font-size: var(--lumaui-ac-prompt-font-size); color: @luma_ink; }
+.mn-title-flow > flowboxchild { padding: 0; margin: 0; }
+.mn-subtitle { font-size: var(--lumaui-ac-context-size); color: @luma_muted; }
+.mn-value { font-size: var(--lumaui-t-body-size); font-feature-settings: "tnum"; }
+.mn-hero-subtitle { font-size: var(--lumaui-ac-prompt-font-size); color: @luma_ink_secondary; }
+.mn-chart { border-radius: var(--lumaui-monitor-chart-radius); }
+.mn-chart-caption { font-size: var(--lumaui-media-tile-badge-size); font-weight: var(--lumaui-t-body-weight); color: @luma_muted; }
+.mn-mono { font-size: var(--lumaui-trail-meta-size); }
+.mn-reveal { border-radius: var(--lumaui-card-radius); color: @luma_ink_secondary; background: none; }
+.mn-properties { border-radius: var(--lumaui-account-radius); background: @luma_line; }
+
+.mn-app-row.mn-idle, .mn-process-row.mn-idle, .mn-group, .mn-disclosure { background: none; box-shadow: none; }
+
+.mn-tag { font-size: var(--lumaui-media-tile-badge-size); font-weight: var(--lumaui-count-weight); padding: var(--lumaui-media-tile-badge-padding-y) var(--lumaui-media-tile-badge-padding-x); border-radius: var(--lumaui-media-tile-badge-radius); background: @luma_control_fill; color: @luma_ink_secondary; }
+
+.mn-disclosure-glyph { min-width: 0; min-height: 0; color: @luma_muted; }
+.mn-disclosure { min-width: 0; min-height: 0; }
+
+.mn-core-caption { font-size: var(--lumaui-media-transport-lcd-label-size); color: @luma_muted; }
+.mn-core-meter { border-radius: var(--lumaui-monitor-core-radius); background: @luma_well; }
+
+.mn-property-cell { background: @luma_island; }
+.mn-advanced-value { font-size: var(--lumaui-t-body-size); }
+
+.mn-sheet-value { font-size: var(--lumaui-trail-meta-size); line-height: normal; }
+.mn-sheet-subtitle { font-size: var(--lumaui-ac-context-size); }
+.mn-sheet-row { padding: 0; }
+
+.mn-group-rule { background: @luma_line; }
+
+/* v71 phone (under 560): the figures are inset wells, the rows are quieter, the story is 22/650. */
+.mn-cell-value { margin-top: 6px; font-feature-settings: "tnum"; }
+.mn-phone-row .mn-app-name { font-size: var(--lumaui-t-title-2-size); }
+.mn-details-name { font-size: var(--lumaui-t-title-2-size); }
+.mn-details-key { color: @luma_muted; font-size: var(--lumaui-t-body-size); }
+.mn-details-value { font-size: var(--lumaui-t-body-size); }
+.mn-details-value.mn-mono { font-size: var(--lumaui-t-caption-size); color: @luma_ink_secondary; }
+
+.mn-series-marker { border-radius: 3px; }
+.mn-series-marker.primary { background: @luma_monitor_chart_primary; }
+.mn-series-marker.secondary { background: @luma_monitor_chart_secondary; }

@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "application_id": "@APP_ID@",
+  "tested_at": null,
+  "source_revision": null,
+  "architectures": {
+    "x86_64": false,
+    "aarch64": false
+  },
+  "presentations": {
+    "desktop": false,
+    "mobile": false
+  },
+  "lanes": {
+    "accessibility": false,
+    "adaptive_layout": false,
+    "keyboard": false,
+    "portals": false,
+    "reduced_motion": false,
+    "sandbox": false,
+    "semantics": false,
+    "uninstall": false,
+    "update_and_rollback": false
+  },
+  "artifacts": {
+    "sbom": null,
+    "test_report": null
+  }
+}

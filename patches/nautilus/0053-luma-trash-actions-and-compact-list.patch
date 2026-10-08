@@ -1,0 +1,150 @@
+--- a/src/nautilus-location-banner.c
++++ b/src/nautilus-location-banner.c
+@@ -21,6 +21,7 @@
+ #include <glib/gi18n.h>
+ #include <gtk/gtk.h>
+ #include <adwaita.h>
++#include <luma-ui.h>
+ #include <string.h>
+ 
+ #include "nautilus-dbus-launcher.h"
+@@ -90,6 +91,37 @@
+     nautilus_file_operations_empty_trash (window, TRUE, NULL);
+ }
+ 
++/* The banner retains location state; Trash uses the shared compact action bar. */
++GtkWidget *
++nautilus_location_banner_create_trash_bar (AdwBanner *banner)
++{
++    GtkWidget *bar = luma_action_bar_new ();
++    GtkWidget *empty = gtk_button_new_with_mnemonic (_("_Empty Trash…"));
++    GtkWidget *settings = gtk_button_new_from_icon_name ("emblem-system-symbolic");
++
++    luma_action_bar_set_title (LUMA_ACTION_BAR (bar), _("Items in Trash"));
++    luma_action_bar_add_leading (LUMA_ACTION_BAR (bar),
++                                gtk_image_new_from_icon_name ("user-trash-symbolic"));
++    gtk_widget_set_tooltip_text (settings, _("Trash Settings"));
++    gtk_accessible_update_property (GTK_ACCESSIBLE (settings),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL, _("Trash Settings"), -1);
++    luma_action_bar_add_trailing (LUMA_ACTION_BAR (bar), settings);
++    luma_action_bar_add_trailing (LUMA_ACTION_BAR (bar), empty);
++    gtk_widget_set_margin_start (bar, 12);
++    gtk_widget_set_margin_end (bar, 12);
++    gtk_widget_set_margin_top (bar, 6);
++    gtk_widget_set_margin_bottom (bar, 6);
++    gtk_widget_set_visible (bar, FALSE);
++    g_signal_connect_object (empty, "clicked", G_CALLBACK (on_trash_clear_clicked),
++                             banner, G_CONNECT_SWAPPED);
++    g_signal_connect_object (settings, "clicked", G_CALLBACK (on_trash_auto_emptied_clicked),
++                             banner, G_CONNECT_SWAPPED);
++    g_object_set_data (G_OBJECT (bar), "empty-button", empty);
++    g_object_set_data (G_OBJECT (bar), "settings-button", settings);
++    g_object_set_data_full (G_OBJECT (banner), "trash-bar", g_object_ref_sink (bar), g_object_unref);
++    return bar;
++}
++
+ static gchar *
+ parse_old_files_age_preferences_value (void)
+ {
+@@ -117,6 +149,11 @@
+ {
+     g_autofree gchar *message = parse_old_files_age_preferences_value ();
+ 
++    GtkWidget *bar = g_object_get_data (G_OBJECT (banner), "trash-bar");
++    if (bar != NULL)
++    {
++        gtk_widget_set_tooltip_text (bar, message);
++    }
+     adw_banner_set_title (banner, message);
+ }
+ 
+@@ -192,7 +229,12 @@
+ static void
+ update_trash_banner_visibility (AdwBanner *banner)
+ {
+-    adw_banner_set_revealed (banner, !nautilus_trash_monitor_is_empty ());
++    GtkWidget *bar = g_object_get_data (G_OBJECT (banner), "trash-bar");
++    if (bar != NULL)
++    {
++        gtk_widget_set_sensitive (g_object_get_data (G_OBJECT (bar), "empty-button"),
++                                  !nautilus_trash_monitor_is_empty ());
++    }
+ }
+ 
+ static void
+@@ -202,6 +244,21 @@
+     const char *button_label = NULL;
+     GCallback callback = NULL;
+     gboolean banner_is_revealed = TRUE;
++
++    GtkWidget *bar = g_object_get_data (G_OBJECT (banner), "trash-bar");
++    gboolean is_trash = mode == NAUTILUS_LOCATION_BANNER_TRASH ||
++                        mode == NAUTILUS_LOCATION_BANNER_TRASH_AUTO_EMPTIED;
++    if (bar != NULL)
++    {
++        gtk_widget_set_visible (bar, is_trash);
++        gtk_widget_set_visible (g_object_get_data (G_OBJECT (bar), "settings-button"),
++                                mode == NAUTILUS_LOCATION_BANNER_TRASH_AUTO_EMPTIED);
++        luma_action_bar_set_title (LUMA_ACTION_BAR (bar),
++                                   mode == NAUTILUS_LOCATION_BANNER_TRASH_AUTO_EMPTIED ?
++                                   _("Automatic cleanup is on") : _("Items in Trash"));
++        gtk_widget_set_tooltip_text (bar, NULL);
++        update_trash_banner_visibility (banner);
++    }
+ 
+     /* Reset signal handlers. */
+     g_signal_handlers_disconnect_by_data (banner, &nautilus_location_banner_load);
+@@ -285,6 +342,10 @@
+ 
+         case NAUTILUS_LOCATION_BANNER_TRASH_AUTO_EMPTIED:
+         {
++            g_signal_connect_object (nautilus_trash_monitor_get (),
++                                     "trash-state-changed",
++                                     G_CALLBACK (update_trash_banner_visibility),
++                                     banner, G_CONNECT_SWAPPED);
+             set_auto_emptied_message (banner);
+             button_label = _("_Trash Settings");
+             callback = G_CALLBACK (on_trash_auto_emptied_clicked);
+@@ -307,7 +368,7 @@
+     }
+ 
+     adw_banner_set_button_label (banner, button_label);
+-    adw_banner_set_revealed (banner, banner_is_revealed);
++    adw_banner_set_revealed (banner, banner_is_revealed && !(is_trash && bar != NULL));
+ 
+     if (callback != NULL)
+     {
+--- a/src/nautilus-location-banner.h
++++ b/src/nautilus-location-banner.h
+@@ -27,4 +27,6 @@
+ void nautilus_location_banner_load (AdwBanner *banner,
+                                     GFile     *location);
+ 
++GtkWidget *nautilus_location_banner_create_trash_bar (AdwBanner *banner);
++
+ G_END_DECLS
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -1030,6 +1030,9 @@
+     self->banner = ADW_BANNER (adw_banner_new (""));
+     gtk_box_append (GTK_BOX (self->vbox),
+                     GTK_WIDGET (self->banner));
++
++    gtk_box_append (GTK_BOX (self->vbox),
++                    nautilus_location_banner_create_trash_bar (self->banner));
+ 
+     self->system_banner = ADW_BANNER (adw_banner_new (
+         _("You’re in Luma’s system files. Changes here can stop your computer from starting.")));
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -969,9 +969,7 @@
+                             cell, "icon-size",
+                             G_BINDING_SYNC_CREATE);
+ 
+-    nautilus_name_cell_set_path (NAUTILUS_NAME_CELL (cell),
+-                                 self->path_attribute_q,
+-                                 self->file_path_base_location);
++    /* Locations belong in the optional location column, not a second name row. */
+     if (self->search_directory != NULL)
+     {
+         nautilus_name_cell_show_snippet (NAUTILUS_NAME_CELL (cell));

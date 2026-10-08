@@ -1,0 +1,62 @@
+From 72b255d00c55a6d8dfd39eda542e16967aea997e Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:48:21 +0000
+Subject: [PATCH] Filer: use search columns and fixture kind and date labels
+
+---
+ src/nautilus-file.c      | 12 ++++++++++++
+ src/nautilus-list-view.c |  8 ++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/src/nautilus-file.c b/src/nautilus-file.c
+index 1750b1f..dddac5b 100644
+--- a/src/nautilus-file.c
++++ b/src/nautilus-file.c
+@@ -22,6 +22,7 @@
+ 
+ #include <luma-1/luma-ui/luma-application-icon.h>
+ #include "nautilus-file.h"
++#include "nautilus-filer-fixture.h"
+ 
+ #ifndef NAUTILUS_COMPILATION
+ #define NAUTILUS_COMPILATION
+@@ -6605,6 +6606,17 @@ nautilus_file_get_string_attribute_q (NautilusFile *file,
+ {
+     char *extension_attribute;
+ 
++    if (attribute_q == attribute_type_q || attribute_q == attribute_date_modified_q)
++    {
++        g_autofree char *fixture_value = nautilus_filer_fixture_info (nautilus_file_get_display_name (file),
++                                                                       attribute_q == attribute_type_q ? "kind" : "modified");
++
++        if (fixture_value != NULL && fixture_value[0] != '\0')
++        {
++            return g_steal_pointer (&fixture_value);
++        }
++    }
++
+     if (attribute_q == attribute_name_q)
+     {
+         return g_strdup (nautilus_file_get_display_name (file));
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index ba09a7f..7887361 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -429,6 +429,14 @@ update_columns_settings_from_metadata_and_preferences (NautilusListView *self)
+     g_auto (GStrv) column_order = nautilus_column_get_column_order (file);
+     g_auto (GStrv) visible_columns = nautilus_column_get_visible_columns (file);
+ 
++    if (self->search_directory != NULL)
++    {
++        char *search_columns[] = { "name", "type", "date_modified", NULL };
++
++        apply_columns_settings (self, search_columns, search_columns);
++        return;
++    }
++
+     apply_columns_settings (self, column_order, visible_columns);
+ }
+ 
+-- 
+2.55.0
+

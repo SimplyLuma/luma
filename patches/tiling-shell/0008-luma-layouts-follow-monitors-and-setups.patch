@@ -1,0 +1,205 @@
+From: Project Luma
+Subject: [PATCH] luma: tiling layouts follow the monitor and the monitor setup
+
+Tiling Shell stored one layout per workspace per monitor position, so when
+monitors reconnected in another order, one was unplugged, or the laptop
+moved between desks, layouts landed on the wrong screens. Layouts chosen
+by the person are now remembered for each combination of connected
+monitors and for each physical monitor (maker, model and serial). When the
+monitors change the setup's own layouts come back, and a setup never seen
+before gives each monitor its most recent layouts. The memory lives in
+~/.local/share/luma/tiling-layout-memory.json.
+
+--- a/extension.js
++++ b/extension.js
+@@ -59,6 +59,7 @@
+ import Settings from "./settings/settings.js";
+ import SignalHandling from "./utils/signalHandling.js";
+ import GlobalState from "./utils/globalState.js";
++import * as LumaLayoutMemory from "./utils/lumaLayoutMemory.js";
+ import Indicator from "./indicator/indicator.js";
+ import DBus from "./dbus.js";
+ import { KeyBindingsDirection, FocusSwitchDirection } from "./keybindings.js";
+@@ -196,6 +197,20 @@
+     );
+   }
+ 
++  _lumaRestoreLayouts() {
++    if (this._lumaRestoreId) return;
++    this._lumaRestoreId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++      this._lumaRestoreId = 0;
++      try {
++        GlobalState.get().validate_selected_layouts();
++        LumaLayoutMemory.restore(GlobalState.get().layouts);
++      } catch (e) {
++        console.log(`[luma-tiling] layout memory unavailable: ${e}`);
++      }
++      return GLib.SOURCE_REMOVE;
++    });
++  }
++
+   _createTilingManagers() {
+     debug("building a tiling manager for each monitor");
+     this._tilingManagers.forEach((tm) => tm.destroy());
+@@ -207,10 +222,14 @@
+ 
+   _setupSignals() {
+     if (!this._signals) return;
++    // Luma: layouts follow the monitors and the setup, not monitor positions.
++    this._signals.connect(Main.layoutManager, "monitors-changed", () => this._lumaRestoreLayouts());
++    this._lumaRestoreLayouts();
+     this._signals.connect(global.display, "workareas-changed", () => {
+       const allMonitors = getMonitors();
+       if (this._tilingManagers.length !== allMonitors.length) {
+         GlobalState.get().validate_selected_layouts();
++        this._lumaRestoreLayouts();
+         this._createTilingManagers();
+       } else {
+         this._tilingManagers.forEach((tm, index) => {
+@@ -608,6 +627,8 @@
+     this._keybindings = null;
+     this._signals?.disconnect();
+     this._signals = null;
++    if (this._lumaRestoreId) GLib.source_remove(this._lumaRestoreId);
++    this._lumaRestoreId = 0;
+     this._indicator?.destroy();
+     this._indicator = null;
+     this._tilingManagers.forEach((tm) => tm.destroy());
+--- a/utils/globalState.js
++++ b/utils/globalState.js
+@@ -8,6 +8,7 @@
+ import * as Main from "resource:///org/gnome/shell/ui/main.js";
+ import { logger } from "./logger.js";
+ import { getWindows } from "./ui.js";
++import * as LumaLayoutMemory from "./lumaLayoutMemory.js";
+ const debug = logger("GlobalState");
+ const _GlobalState = class _GlobalState extends GObject.Object {
+   _signals;
+@@ -259,6 +260,12 @@
+       }
+     }
+     Settings.save_selected_layouts(selected);
++    // Luma: a layout chosen by the person is remembered for this monitor and setup.
++    try {
++      LumaLayoutMemory.remember();
++    } catch (e) {
++      console.log(`[luma-tiling] layout memory not updated: ${e}`);
++    }
+   }
+ };
+ registerGObjectClass(_GlobalState, {
+--- a/utils/lumaLayoutMemory.js
++++ b/utils/lumaLayoutMemory.js
+@@ -0,0 +1,112 @@
++// Project Luma: tiling layouts remembered by monitor and by monitor setup.
++//
++// Tiling Shell keeps one layout per workspace per monitor *position*. When
++// monitors reconnect in another order, one is unplugged, or a laptop moves
++// between desks, positions change meaning and layouts land on the wrong
++// screens. This remembers, for every combination of connected monitors, the
++// layouts chosen on each physical monitor (identified by maker, model and
++// serial), and for each monitor its most recent layouts in any setup. When
++// the monitors change, the setup's own layouts come back; in a setup never
++// seen before, each monitor gets the layouts it last had.
++//
++// Only a person's choices are remembered: a layout picked from the menu, the
++// switcher, a shortcut or Quick Settings. Tiling Shell's own padding and
++// trimming while monitors come and go never overwrites a choice.
++import { Gio, GLib } from "../gi/ext.js";
++import * as Main from "resource:///org/gnome/shell/ui/main.js";
++import Settings from "../settings/settings.js";
++
++const FILE = GLib.build_filenamev([GLib.get_user_data_dir(), "luma", "tiling-layout-memory.json"]);
++const MAX_SETUPS = 64;
++
++function load() {
++  try {
++    const [ok, bytes] = GLib.file_get_contents(FILE);
++    if (ok) {
++      const value = JSON.parse(new TextDecoder().decode(bytes));
++      if (value && typeof value === "object")
++        return { setups: value.setups ?? {}, monitors: value.monitors ?? {}, order: value.order ?? [] };
++    }
++  } catch (e) {
++  }
++  return { setups: {}, monitors: {}, order: [] };
++}
++
++function save(memory) {
++  try {
++    GLib.mkdir_with_parents(GLib.path_get_dirname(FILE), 448);
++    GLib.file_set_contents(FILE, JSON.stringify(memory));
++  } catch (e) {
++    console.log(`[luma-tiling] layout memory not saved: ${e}`);
++  }
++}
++
++// Monitor keys by Main.layoutManager index: maker, model and serial of the
++// physical monitors behind each logical monitor.
++function monitorKeys() {
++  const keys = [];
++  const manager = global.backend.get_monitor_manager();
++  for (const logical of manager.get_logical_monitors()) {
++    const physical = logical.get_monitors().map((m) =>
++      [m.get_vendor(), m.get_product(), m.get_serial()].map((v) => v ?? "").join("|")
++    ).sort();
++    keys[logical.get_number()] = physical.join("+") || `index-${logical.get_number()}`;
++  }
++  for (let i = 0; i < Main.layoutManager.monitors.length; i++)
++    keys[i] ??= `index-${i}`;
++  return keys.slice(0, Main.layoutManager.monitors.length);
++}
++
++function setupKey(keys) {
++  return [...keys].sort().join(",");
++}
++
++// The person chose these layouts: remember them for this setup and monitor.
++export function remember() {
++  const selected = Settings.get_selected_layouts();
++  const keys = monitorKeys();
++  if (selected.length === 0 || keys.length === 0) return;
++  const memory = load();
++  const setup = setupKey(keys);
++  const perMonitor = memory.setups[setup] ?? {};
++  keys.forEach((key, index) => {
++    const layouts = selected.map((workspace) => workspace[index]).filter((id) => typeof id === "string");
++    if (layouts.length === 0) return;
++    perMonitor[key] = layouts;
++    memory.monitors[key] = layouts;
++  });
++  memory.setups[setup] = perMonitor;
++  memory.order = [setup, ...memory.order.filter((s) => s !== setup)].slice(0, MAX_SETUPS);
++  for (const stale of Object.keys(memory.setups))
++    if (!memory.order.includes(stale)) delete memory.setups[stale];
++  save(memory);
++}
++
++// The monitors changed: bring back what this setup, or each monitor, had.
++export function restore(knownLayouts) {
++  const keys = monitorKeys();
++  const selected = Settings.get_selected_layouts();
++  if (keys.length === 0 || selected.length === 0) return;
++  const memory = load();
++  const setup = memory.setups[setupKey(keys)] ?? {};
++  const known = new Set(knownLayouts.map((layout) => layout.id));
++  let changed = false;
++  const restored = selected.map((workspace, w) => {
++    const next = [...workspace];
++    keys.forEach((key, index) => {
++      const layouts = setup[key] ?? memory.monitors[key];
++      if (!layouts || layouts.length === 0) return;
++      const id = layouts[Math.min(w, layouts.length - 1)];
++      if (known.has(id) && next[index] !== id) {
++        next[index] = id;
++        changed = true;
++      }
++    });
++    return next;
++  });
++  if (changed) {
++    console.log(`[luma-tiling] restored layouts for ${keys.length} monitor(s)`);
++    Settings.save_selected_layouts(restored);
++  }
++  if (!memory.setups[setupKey(keys)]) remember();
++}

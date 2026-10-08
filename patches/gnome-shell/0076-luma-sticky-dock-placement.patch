@@ -1,0 +1,79 @@
+From 989df4add7527432fdac4b641ee9627b1a1178bf Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 23:01:08 -0500
+Subject: [PATCH] luma: keep the sticky notes dock on the screen edge
+
+---
+ js/ui/windowManager.js | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index af4d496..c10f4cb 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -44,6 +44,13 @@ const MIN_NUM_WORKSPACES = 2;
+ 
+ const WINDOW_DIMMER_EFFECT_NAME = 'gnome-shell-window-dimmer';
+ 
++// Sticky Notes' dock is a rail meant to live against the screen edge. The
++// handheld lane can ask for that with wlr-layer-shell; Mutter has no such
++// protocol, so on the desktop the session grants it rather than the client
++// asking for it. See _adoptLumaEdgeDock.
++const LUMA_EDGE_DOCK_ID = 'org.projectluma.StickyNotes.desktop';
++const LUMA_EDGE_DOCK_INSET = 8;
++
+ Gio._promisify(Shell, 'util_start_systemd_unit');
+ Gio._promisify(Shell, 'util_stop_systemd_unit');
+ 
+@@ -1463,6 +1470,7 @@ export class WindowManager {
+     }
+ 
+     async _mapWindow(shellwm, actor) {
++        this._adoptLumaEdgeDock(actor.meta_window);
+         actor._windowType = actor.meta_window.get_window_type();
+         actor.meta_window.connectObject('notify::window-type', () => {
+             const type = actor.meta_window.get_window_type();
+@@ -1551,6 +1559,40 @@ export class WindowManager {
+         }
+     }
+ 
++    // The dock is recognised by its application and by being the one surface
++    // that application never lets the user resize, rather than by its title,
++    // which is one note's name away from being wrong. It is put on the edge,
++    // kept above, and shown on every workspace. Nothing here focuses it: a rail
++    // that takes the keyboard when it appears is worse than one that is covered.
++    _adoptLumaEdgeDock(window) {
++        if (!window || window.get_window_type() !== Meta.WindowType.NORMAL)
++            return;
++        const app = Shell.WindowTracker.get_default().get_window_app(window);
++        if (app?.get_id() !== LUMA_EDGE_DOCK_ID || window.allows_resize())
++            return;
++
++        window.make_above();
++        window.stick();
++
++        const place = () => this._placeLumaEdgeDock(window);
++        place();
++        // The rail widens when a note peeks out of it and changes height as
++        // notes come and go, so the anchor is re-applied rather than set once.
++        window.connectObject('size-changed', place, window);
++        Main.layoutManager.connectObject('monitors-changed', place, window);
++    }
++
++    _placeLumaEdgeDock(window) {
++        const monitor = window.get_monitor();
++        if (monitor < 0)
++            return;
++        const area = Main.layoutManager.getWorkAreaForMonitor(monitor);
++        const frame = window.get_frame_rect();
++        window.move_frame(false,
++            area.x + area.width - frame.width - LUMA_EDGE_DOCK_INSET,
++            area.y + Math.round((area.height - frame.height) / 2));
++    }
++
+     _destroyWindow(shellwm, actor) {
+         const window = actor.meta_window;
+         window.disconnectObject(actor);
+-- 
+2.55.0
+

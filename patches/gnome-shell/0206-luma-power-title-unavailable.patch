@@ -1,0 +1,19 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: tolerate an unavailable power-service title
+
+The native proxy can exist before UPower initializes the battery title.
+Keep the existing visibility policy and render empty text until it is ready.
+GPL-2.0-or-later, following GNOME Shell upstream.
+
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -461,7 +461,7 @@
+             const seconds = proxy.State === UPower.DeviceState.CHARGING ? proxy.TimeToFull : proxy.TimeToEmpty;
+             const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
+             const remaining = seconds > 0 ? (hours ? _('%d h %d min').format(hours, minutes) : _('%d min').format(minutes)) : '';
+-            const percentage = GLib.markup_escape_text(this._powerToggle.title, -1);
++            const percentage = GLib.markup_escape_text(this._powerToggle.title ?? '', -1);
+             const suffix = remaining ? ` · ${remaining} ` +
+                 (proxy.State === UPower.DeviceState.CHARGING ? _('until full') : _('left')) : '';
+             label.clutter_text.set_markup(`<span weight="650" alpha="65535">${percentage}</span>${GLib.markup_escape_text(suffix, -1)}`);

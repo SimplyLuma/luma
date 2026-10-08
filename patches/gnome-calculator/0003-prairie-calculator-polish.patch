@@ -1,0 +1,84 @@
+diff --git a/src/ui/math-display.blp b/src/ui/math-display.blp
+index b802be1..9402881 100644
+--- a/src/ui/math-display.blp
++++ b/src/ui/math-display.blp
+@@ -15,8 +15,8 @@ template $MathDisplay: Box {
+         accepts-tab: "False";
+         left-margin: "14";
+         right-margin: "14";
+-        pixels-above-lines: "8";
+-        pixels-below-lines: "2";
++        pixels-above-lines: "0";
++        pixels-below-lines: "0";
+         justification: "right";
+         name: "displayitem";
+         width-request: "20";
+diff --git a/src/ui/math-window.blp b/src/ui/math-window.blp
+index d0dc1e9..2d4a699 100644
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -27,6 +27,7 @@ template $MathWindow: Adw.ApplicationWindow {
+ 
+         styles [
+           "luma-calculator-title",
++          "luma-title-label",
+         ]
+       }
+     }
+diff --git a/src/ui/style.css b/src/ui/style.css
+index 11db1bd..0f2ade8 100644
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -356,6 +356,6 @@ button.action-button {
+   .luma-calculator-window,
+   .luma-calculator-surface {
+-    background-color: @window_bg_color;
++    background-color: @sidebar_bg_color;
+     color: @window_fg_color;
+     font-family: "Figtree";
+   }
+@@ -466,7 +466,8 @@ button.action-button {
+   }
+ 
+   .sourceview {
+-    padding: 18px 16px 7px;
++    padding: 12px 16px;
++    font-family: "Figtree";
+     color: @view_fg_color;
+     font-size: 34px;
+     font-weight: 500;
+@@ -474,6 +475,7 @@ button.action-button {
+ 
+   .display-zero {
+     color: @view_fg_color;
++    font-family: "Figtree";
+     font-size: 34px;
+     font-weight: 500;
+     font-feature-settings: "tnum";
+@@ -516,5 +518,6 @@ button.action-button {
+     color: @view_fg_color;
+     box-shadow: none;
++    font-family: "Figtree";
+     font-size: 18px;
+     font-weight: 500;
+   }
+@@ -558,16 +561,16 @@ button.action-button {
+   }
+ 
+   .math-buttons grid.buttons button.function-button {
+-    background-color: #e8eaee;
+-    color: #374151;
++    background-color: @view_bg_color;
++    color: @luma_secondary_fg_color;
+   }
+ 
+   .math-buttons grid.buttons button.function-button:hover {
+     background-color: @luma_hover_bg_color;
+   }
+ 
+   .math-buttons grid.buttons button.function-button:active {
+-    background-color: #dfe2e6;
++    background-color: @luma_active_bg_color;
+   }
+ 
+   .math-buttons grid.buttons button.operator-button {

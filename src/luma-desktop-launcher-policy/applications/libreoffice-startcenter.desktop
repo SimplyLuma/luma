@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=LibreOffice
+Exec=libreoffice %U
+NoDisplay=true

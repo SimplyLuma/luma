@@ -1,0 +1,772 @@
+From: Project Luma
+Subject: [PATCH] luma: Settings › Displays › Cast (ADR-034)
+
+A Cast row in Displays opens a page with the choices that apply to every
+cast, bound to org.projectluma.cast (shipped by luma-cast):
+- Silence Notifications (silence-notifications): the Shell holds banners as
+  runtime state while casting.
+- Sound (default-audio): on the screen you cast to, or on this computer.
+- Allow Screens That Connect Directly (allow-wifi-direct).
+
+Remembered Screens lists GetRememberedDevices from org.projectluma.Cast1 with
+the last choice, when it was used and whether it is nearby; each can be pinned
+(SetPinned) or forgotten (ForgetDevice, after a confirmation). The list
+follows DevicesChanged. Without luma-cast the page says casting isn't
+available and offers nothing that does nothing.
+
+`gnome-control-center display cast` (Quick Settings › Cast › Cast Settings)
+opens Displays directly on the Cast page.
+
+On top of 0001-0014; 0015 is reserved for the audio-policy series.
+---
+diff --git a/panels/display/cc-cast-page.c b/panels/display/cc-cast-page.c
+new file mode 100644
+index 0000000..0c5f366
+--- /dev/null
++++ b/panels/display/cc-cast-page.c
+@@ -0,0 +1,550 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
++ *
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++/*
++ * Settings › Displays › Cast (Project Luma ADR-034).
++ *
++ * The screens this computer remembers, and the three choices that apply to
++ * every cast: silence notifications, where sound plays, and whether screens
++ * that need Wi-Fi Direct are offered. Choices live in the org.projectluma.cast
++ * schema shipped by luma-cast; remembered screens belong to the service
++ * (org.projectluma.Cast1) and are only shown and forgotten here.
++ */
++
++#include <config.h>
++#include <glib/gi18n.h>
++
++#include "cc-cast-page.h"
++
++#define CAST_BUS_NAME "org.projectluma.Cast1"
++#define CAST_OBJECT_PATH "/org/projectluma/Cast1"
++#define CAST_INTERFACE "org.projectluma.Cast1"
++#define CAST_SCHEMA "org.projectluma.cast"
++
++struct _CcCastPage
++{
++  AdwBin parent_instance;
++
++  GCancellable *cancellable;
++  GDBusConnection *connection;
++  GSettings *settings;
++  guint devices_changed_id;
++  guint name_watch_id;
++
++  AdwPreferencesGroup *casting_group;
++  AdwSwitchRow *silence_row;
++  AdwComboRow *sound_row;
++  AdwPreferencesGroup *screens_group;
++  AdwSwitchRow *direct_row;
++  AdwPreferencesGroup *remembered_group;
++  GPtrArray *remembered_rows;
++};
++
++G_DEFINE_TYPE (CcCastPage, cc_cast_page, ADW_TYPE_BIN)
++
++static void refresh (CcCastPage *self);
++
++/* -- Values ------------------------------------------------------------- */
++
++static const char *
++lookup_string (GVariant *device, const char *key)
++{
++  const char *value = NULL;
++  if (device == NULL || !g_variant_lookup (device, key, "&s", &value))
++    return "";
++  return value;
++}
++
++static gboolean
++lookup_bool (GVariant *device, const char *key)
++{
++  gboolean value = FALSE;
++  if (device != NULL)
++    g_variant_lookup (device, key, "b", &value);
++  return value;
++}
++
++static const char *
++kind_icon (const char *kind)
++{
++  if (g_str_equal (kind, "tv"))
++    return "luma-cast-tv-symbolic";
++  if (g_str_equal (kind, "speaker-display"))
++    return "luma-cast-speaker-display-symbolic";
++  if (g_str_equal (kind, "computer"))
++    return "luma-cast-laptop-symbolic";
++  if (g_str_equal (kind, "conference-room") || g_str_equal (kind, "projector"))
++    return "luma-cast-presentation-symbolic";
++  return "luma-cast-monitor-symbolic";
++}
++
++static const char *
++source_label (const char *source)
++{
++  if (g_str_equal (source, "extend"))
++    return _("Separate screen");
++  if (g_str_equal (source, "display"))
++    return _("One display");
++  if (g_str_equal (source, "app"))
++    return _("One app");
++  if (g_str_equal (source, "screen"))
++    return _("Entire screen");
++  return NULL;
++}
++
++static char *
++describe_last_used (gint64 usec)
++{
++  g_autoptr(GDateTime) then = NULL;
++  g_autoptr(GDateTime) now = g_date_time_new_now_local ();
++  GTimeSpan elapsed;
++
++  if (usec <= 0)
++    return NULL;
++  then = g_date_time_new_from_unix_local_usec (usec);
++  if (then == NULL)
++    return NULL;
++  elapsed = g_date_time_difference (now, then);
++  if (g_date_time_get_day_of_year (now) == g_date_time_get_day_of_year (then) &&
++      g_date_time_get_year (now) == g_date_time_get_year (then))
++    return g_strdup (_("Used today"));
++  if (elapsed < 2 * G_TIME_SPAN_DAY)
++    return g_strdup (_("Used yesterday"));
++  if (elapsed < 7 * G_TIME_SPAN_DAY)
++    {
++      int days = (int) (elapsed / G_TIME_SPAN_DAY);
++      return g_strdup_printf (ngettext ("Used %d day ago", "Used %d days ago", days), days);
++    }
++  {
++    g_autofree char *date = g_date_time_format (then, "%x");
++    /* Translators: %s is a date */
++    return g_strdup_printf (_("Used %s"), date);
++  }
++}
++
++/* -- Settings --------------------------------------------------------------- */
++
++static gboolean
++sound_get_mapping (GValue *value, GVariant *variant, gpointer user_data)
++{
++  const char *audio = g_variant_get_string (variant, NULL);
++  g_value_set_uint (value, g_str_equal (audio, "local") ? 1 : 0);
++  return TRUE;
++}
++
++static GVariant *
++sound_set_mapping (const GValue *value, const GVariantType *expected_type, gpointer user_data)
++{
++  return g_variant_new_string (g_value_get_uint (value) == 1 ? "local" : "receiver");
++}
++
++static void
++bind_settings (CcCastPage *self)
++{
++  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++  g_autoptr(GSettingsSchema) schema = NULL;
++
++  if (source != NULL)
++    schema = g_settings_schema_source_lookup (source, CAST_SCHEMA, TRUE);
++
++  if (schema == NULL)
++    {
++      /* Without luma-cast there is nothing to cast with; say so rather than
++       * offer switches that do nothing. */
++      adw_preferences_group_set_description (self->casting_group,
++                                             _("Casting isn’t available on this computer."));
++      gtk_widget_set_sensitive (GTK_WIDGET (self->casting_group), FALSE);
++      gtk_widget_set_sensitive (GTK_WIDGET (self->screens_group), FALSE);
++      return;
++    }
++
++  self->settings = g_settings_new_full (schema, NULL, NULL);
++  g_settings_bind (self->settings, "silence-notifications",
++                   self->silence_row, "active", G_SETTINGS_BIND_DEFAULT);
++  g_settings_bind (self->settings, "allow-wifi-direct",
++                   self->direct_row, "active", G_SETTINGS_BIND_DEFAULT);
++  g_settings_bind_with_mapping (self->settings, "default-audio",
++                                self->sound_row, "selected", G_SETTINGS_BIND_DEFAULT,
++                                sound_get_mapping, sound_set_mapping, NULL, NULL);
++}
++
++/* -- Remembered screens ------------------------------------------------------ */
++
++typedef struct
++{
++  CcCastPage *page;
++  char *device_id;
++  char *name;
++} ForgetRequest;
++
++static void
++call_done (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    return;
++  if (reply == NULL)
++    g_warning ("Cast service call failed: %s", error->message);
++  /* The service's list is the truth, whatever happened. */
++  refresh (CC_CAST_PAGE (user_data));
++}
++
++static void
++forget_response (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  ForgetRequest *request = user_data;
++  const char *response = adw_alert_dialog_choose_finish (ADW_ALERT_DIALOG (source), result);
++
++  if (g_str_equal (response, "forget") && request->page->connection != NULL)
++    g_dbus_connection_call (request->page->connection, CAST_BUS_NAME, CAST_OBJECT_PATH,
++                            CAST_INTERFACE, "ForgetDevice",
++                            g_variant_new ("(s)", request->device_id), NULL,
++                            G_DBUS_CALL_FLAGS_NONE, 10000, request->page->cancellable,
++                            call_done, request->page);
++  g_object_unref (request->page);
++  g_free (request->device_id);
++  g_free (request->name);
++  g_free (request);
++}
++
++static void
++forget_clicked (GtkButton *button, CcCastPage *self)
++{
++  const char *device_id = g_object_get_data (G_OBJECT (button), "device-id");
++  const char *name = g_object_get_data (G_OBJECT (button), "device-name");
++  g_autofree char *heading = g_strdup_printf (_("Forget %s?"), name);
++  AdwDialog *dialog = adw_alert_dialog_new (heading,
++    _("Its pairing and the choices you made for it are removed. "
++      "If it’s nearby, it still appears in Cast."));
++  ForgetRequest *request = g_new0 (ForgetRequest, 1);
++
++  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog),
++                                  "cancel", _("_Cancel"),
++                                  "forget", _("_Forget"),
++                                  NULL);
++  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "forget",
++                                            ADW_RESPONSE_DESTRUCTIVE);
++  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "cancel");
++  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
++  request->page = g_object_ref (self);
++  request->device_id = g_strdup (device_id);
++  request->name = g_strdup (name);
++  adw_alert_dialog_choose (ADW_ALERT_DIALOG (dialog), GTK_WIDGET (self), NULL,
++                           forget_response, request);
++}
++
++static void
++pin_toggled (GtkToggleButton *button, CcCastPage *self)
++{
++  const char *device_id = g_object_get_data (G_OBJECT (button), "device-id");
++  gboolean pinned = gtk_toggle_button_get_active (button);
++
++  gtk_button_set_icon_name (GTK_BUTTON (button), pinned ? "starred-symbolic" : "non-starred-symbolic");
++  if (g_object_get_data (G_OBJECT (button), "updating") != NULL || self->connection == NULL)
++    return;
++  g_dbus_connection_call (self->connection, CAST_BUS_NAME, CAST_OBJECT_PATH,
++                          CAST_INTERFACE, "SetPinned",
++                          g_variant_new ("(sb)", device_id, pinned), NULL,
++                          G_DBUS_CALL_FLAGS_NONE, 10000, self->cancellable,
++                          call_done, self);
++}
++
++static GtkWidget *
++remembered_row_new (CcCastPage *self, GVariant *device)
++{
++  const char *id = lookup_string (device, "id");
++  const char *name = lookup_string (device, "name");
++  gboolean present = lookup_bool (device, "present");
++  gboolean pinned = lookup_bool (device, "pinned");
++  gint64 last_used = 0;
++  g_autoptr(GVariant) choices = g_variant_lookup_value (device, "last-choices", G_VARIANT_TYPE_VARDICT);
++  g_autoptr(GPtrArray) parts = g_ptr_array_new_with_free_func (g_free);
++  g_autofree char *subtitle = NULL;
++  g_autofree char *pin_label = NULL;
++  g_autofree char *forget_label = NULL;
++  AdwActionRow *row = ADW_ACTION_ROW (adw_action_row_new ());
++  GtkWidget *icon, *pin, *forget;
++  const char *source;
++
++  g_variant_lookup (device, "last-used", "x", &last_used);
++
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), name);
++  adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), FALSE);
++
++  icon = gtk_image_new_from_icon_name (kind_icon (lookup_string (device, "kind")));
++  gtk_widget_add_css_class (icon, "luma-cast-device-icon");
++  adw_action_row_add_prefix (row, icon);
++
++  if (lookup_bool (device, "direct"))
++    g_ptr_array_add (parts, g_strdup (_("Connects directly")));
++  source = choices != NULL ? source_label (lookup_string (choices, "source")) : NULL;
++  if (source != NULL)
++    g_ptr_array_add (parts, g_strdup (source));
++  {
++    char *when = describe_last_used (last_used);
++    if (when != NULL)
++      g_ptr_array_add (parts, when);
++  }
++  if (!present)
++    g_ptr_array_add (parts, g_strdup (_("Not nearby")));
++  g_ptr_array_add (parts, NULL);
++  subtitle = g_strjoinv (" · ", (char **) parts->pdata);
++  adw_action_row_set_subtitle (row, subtitle);
++  gtk_widget_set_opacity (icon, present ? 1.0 : 0.55);
++
++  pin = gtk_toggle_button_new ();
++  gtk_button_set_icon_name (GTK_BUTTON (pin), pinned ? "starred-symbolic" : "non-starred-symbolic");
++  gtk_widget_set_valign (pin, GTK_ALIGN_CENTER);
++  gtk_widget_add_css_class (pin, "flat");
++  g_object_set_data_full (G_OBJECT (pin), "device-id", g_strdup (id), g_free);
++  g_object_set_data (G_OBJECT (pin), "updating", GINT_TO_POINTER (1));
++  gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pin), pinned);
++  g_object_set_data (G_OBJECT (pin), "updating", NULL);
++  gtk_widget_set_tooltip_text (pin, pinned ? _("Unpin") : _("Pin to the top of Cast"));
++  pin_label = g_strdup_printf (_("Pin %s"), name);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (pin), GTK_ACCESSIBLE_PROPERTY_LABEL, pin_label, -1);
++  g_signal_connect (pin, "toggled", G_CALLBACK (pin_toggled), self);
++  adw_action_row_add_suffix (row, pin);
++
++  forget = gtk_button_new_with_mnemonic (_("_Forget"));
++  gtk_widget_set_valign (forget, GTK_ALIGN_CENTER);
++  gtk_widget_add_css_class (forget, "flat");
++  g_object_set_data_full (G_OBJECT (forget), "device-id", g_strdup (id), g_free);
++  g_object_set_data_full (G_OBJECT (forget), "device-name", g_strdup (name), g_free);
++  forget_label = g_strdup_printf (_("Forget %s"), name);
++  /* The mnemonic label would otherwise name every button just "Forget". */
++  gtk_accessible_reset_relation (GTK_ACCESSIBLE (forget), GTK_ACCESSIBLE_RELATION_LABELLED_BY);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (forget), GTK_ACCESSIBLE_PROPERTY_LABEL, forget_label, -1);
++  g_signal_connect (forget, "clicked", G_CALLBACK (forget_clicked), self);
++  adw_action_row_add_suffix (row, forget);
++
++  return GTK_WIDGET (row);
++}
++
++static void
++apply_devices (CcCastPage *self, GVariant *devices, gboolean service_present)
++{
++  GVariantIter iter;
++  GVariant *device;
++
++  for (guint i = 0; i < self->remembered_rows->len; i++)
++    adw_preferences_group_remove (self->remembered_group, g_ptr_array_index (self->remembered_rows, i));
++  g_ptr_array_set_size (self->remembered_rows, 0);
++
++  if (devices != NULL)
++    {
++      g_variant_iter_init (&iter, devices);
++      while ((device = g_variant_iter_next_value (&iter)) != NULL)
++        {
++          if (*lookup_string (device, "id") != '\0')
++            {
++              GtkWidget *row = remembered_row_new (self, device);
++              adw_preferences_group_add (self->remembered_group, row);
++              g_ptr_array_add (self->remembered_rows, row);
++            }
++          g_variant_unref (device);
++        }
++    }
++
++  if (!service_present && self->settings != NULL)
++    adw_preferences_group_set_description (self->remembered_group,
++                                           _("Remembered screens aren’t available right now."));
++  else if (self->remembered_rows->len == 0)
++    adw_preferences_group_set_description (self->remembered_group,
++                                           _("Screens you cast to are remembered here, with the choices you made for each."));
++  else
++    adw_preferences_group_set_description (self->remembered_group, NULL);
++}
++
++static void
++remembered_done (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  g_autoptr(GVariant) devices = NULL;
++
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    return;
++  if (reply == NULL)
++    {
++      apply_devices (CC_CAST_PAGE (user_data), NULL, FALSE);
++      return;
++    }
++  devices = g_variant_get_child_value (reply, 0);
++  apply_devices (CC_CAST_PAGE (user_data), devices, TRUE);
++}
++
++static void
++refresh (CcCastPage *self)
++{
++  if (self->connection == NULL || self->settings == NULL)
++    {
++      apply_devices (self, NULL, FALSE);
++      return;
++    }
++  g_dbus_connection_call (self->connection, CAST_BUS_NAME, CAST_OBJECT_PATH,
++                          CAST_INTERFACE, "GetRememberedDevices", NULL, G_VARIANT_TYPE ("(aa{sv})"),
++                          G_DBUS_CALL_FLAGS_NONE, 10000, self->cancellable,
++                          remembered_done, self);
++}
++
++static void
++devices_changed (GDBusConnection *connection, const char *sender, const char *path,
++                 const char *interface, const char *signal, GVariant *parameters,
++                 gpointer user_data)
++{
++  refresh (user_data);
++}
++
++static void
++name_vanished (GDBusConnection *connection, const char *name, gpointer user_data)
++{
++  /* The service exits when idle; the list stays as it was last read. */
++}
++
++static void
++bus_ready (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr(GError) error = NULL;
++  GDBusConnection *connection = g_bus_get_finish (result, &error);
++  CcCastPage *self;
++
++  if (connection == NULL)
++    {
++      if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++        g_warning ("No session bus: %s", error->message);
++      return;
++    }
++  self = user_data;
++  self->connection = connection;
++  self->devices_changed_id =
++    g_dbus_connection_signal_subscribe (connection, CAST_BUS_NAME, CAST_INTERFACE,
++                                        "DevicesChanged", CAST_OBJECT_PATH, NULL,
++                                        G_DBUS_SIGNAL_FLAGS_NONE, devices_changed, self, NULL);
++  self->name_watch_id =
++    g_bus_watch_name_on_connection (connection, CAST_BUS_NAME, G_BUS_NAME_WATCHER_FLAGS_NONE,
++                                    NULL, name_vanished, self, NULL);
++  if (gtk_widget_get_mapped (GTK_WIDGET (self)))
++    refresh (self);
++}
++
++static void
++page_map (GtkWidget *widget)
++{
++  GTK_WIDGET_CLASS (cc_cast_page_parent_class)->map (widget);
++  /* Reading the list starts the service; only do it when someone looks. */
++  refresh (CC_CAST_PAGE (widget));
++}
++
++static void
++cc_cast_page_dispose (GObject *object)
++{
++  CcCastPage *self = CC_CAST_PAGE (object);
++
++  g_cancellable_cancel (self->cancellable);
++  g_clear_handle_id (&self->name_watch_id, g_bus_unwatch_name);
++  if (self->connection != NULL && self->devices_changed_id != 0)
++    g_dbus_connection_signal_unsubscribe (self->connection, self->devices_changed_id);
++  self->devices_changed_id = 0;
++  g_clear_object (&self->connection);
++  g_clear_object (&self->settings);
++  g_clear_object (&self->cancellable);
++  g_clear_pointer (&self->remembered_rows, g_ptr_array_unref);
++
++  G_OBJECT_CLASS (cc_cast_page_parent_class)->dispose (object);
++}
++
++static void
++cc_cast_page_class_init (CcCastPageClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
++
++  object_class->dispose = cc_cast_page_dispose;
++  widget_class->map = page_map;
++}
++
++static void
++cc_cast_page_init (CcCastPage *self)
++{
++  AdwPreferencesPage *page = ADW_PREFERENCES_PAGE (adw_preferences_page_new ());
++  GtkStringList *sound_model;
++
++  self->cancellable = g_cancellable_new ();
++  self->remembered_rows = g_ptr_array_new ();
++
++  adw_preferences_page_set_description (page,
++    _("Show your screen on a TV, a display or a conference room from Cast in Quick Settings."));
++
++  self->casting_group = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  adw_preferences_group_set_title (self->casting_group, _("While Casting"));
++
++  self->silence_row = ADW_SWITCH_ROW (adw_switch_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->silence_row), _("Silence _Notifications"));
++  adw_preferences_row_set_use_underline (ADW_PREFERENCES_ROW (self->silence_row), TRUE);
++  adw_action_row_set_subtitle (ADW_ACTION_ROW (self->silence_row),
++    _("No banners appear while you cast. They wait in Notifications, and nothing is shown on a shared screen either way."));
++  adw_switch_row_set_active (self->silence_row, TRUE);
++  adw_preferences_group_add (self->casting_group, GTK_WIDGET (self->silence_row));
++
++  self->sound_row = ADW_COMBO_ROW (adw_combo_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->sound_row), _("_Sound"));
++  adw_preferences_row_set_use_underline (ADW_PREFERENCES_ROW (self->sound_row), TRUE);
++  adw_action_row_set_subtitle (ADW_ACTION_ROW (self->sound_row),
++                               _("Where sound plays when a cast starts. You can change it while casting."));
++  sound_model = gtk_string_list_new ((const char * const []) {
++    _("On the Screen"),
++    _("On This Computer"),
++    NULL,
++  });
++  adw_combo_row_set_model (self->sound_row, G_LIST_MODEL (sound_model));
++  g_object_unref (sound_model);
++  adw_preferences_group_add (self->casting_group, GTK_WIDGET (self->sound_row));
++  adw_preferences_page_add (page, self->casting_group);
++
++  self->screens_group = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  adw_preferences_group_set_title (self->screens_group, _("Screens"));
++  self->direct_row = ADW_SWITCH_ROW (adw_switch_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->direct_row),
++                                 _("Allow Screens That _Connect Directly"));
++  adw_preferences_row_set_use_underline (ADW_PREFERENCES_ROW (self->direct_row), TRUE);
++  adw_action_row_set_subtitle (ADW_ACTION_ROW (self->direct_row),
++    _("Some TVs, projectors and meeting-room adapters use Wi-Fi Direct. While casting to one, some Wi-Fi networks can’t be used."));
++  adw_switch_row_set_active (self->direct_row, TRUE);
++  adw_preferences_group_add (self->screens_group, GTK_WIDGET (self->direct_row));
++  adw_preferences_page_add (page, self->screens_group);
++
++  self->remembered_group = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  adw_preferences_group_set_title (self->remembered_group, _("Remembered Screens"));
++  adw_preferences_page_add (page, self->remembered_group);
++
++  adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (page));
++
++  bind_settings (self);
++  g_bus_get (G_BUS_TYPE_SESSION, self->cancellable, bus_ready, self);
++}
++
++CcCastPage *
++cc_cast_page_new (void)
++{
++  return g_object_new (CC_TYPE_CAST_PAGE, NULL);
++}
+diff --git a/panels/display/cc-cast-page.h b/panels/display/cc-cast-page.h
+new file mode 100644
+index 0000000..3430c78
+--- /dev/null
++++ b/panels/display/cc-cast-page.h
+@@ -0,0 +1,18 @@
++/*
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#pragma once
++
++#include <adwaita.h>
++
++G_BEGIN_DECLS
++
++#define CC_TYPE_CAST_PAGE (cc_cast_page_get_type ())
++G_DECLARE_FINAL_TYPE (CcCastPage, cc_cast_page, CC, CAST_PAGE, AdwBin)
++
++CcCastPage *cc_cast_page_new (void);
++
++G_END_DECLS
+diff --git a/panels/display/cc-display-panel.blp b/panels/display/cc-display-panel.blp
+index 70499b0..7636ee5 100644
+--- a/panels/display/cc-display-panel.blp
++++ b/panels/display/cc-display-panel.blp
+@@ -154,6 +154,17 @@ template $CcDisplayPanel: $CcPanel {
+             action-target: "'night-light'";
+           }
+         }
++
++        Adw.PreferencesGroup {
++          $CcListRow cast_row {
++            title: _("_Cast");
++            subtitle: _("Show this screen on a TV, display or meeting room");
++            icon-name: "luma-cast-symbolic";
++            show-arrow: true;
++            action-name: "navigation.push";
++            action-target: "'cast'";
++          }
++        }
+       };
+     };
+   }
+@@ -206,6 +217,19 @@ template $CcDisplayPanel: $CcPanel {
+     };
+   }
+ 
++  [subpage]
++  Adw.NavigationPage cast_page {
++    tag: "cast";
++    title: _("Cast");
++
++    child: Adw.ToolbarView {
++      [top]
++      Adw.HeaderBar {}
++
++      content: $CcCastPage {};
++    };
++  }
++
+   [subpage]
+   Adw.NavigationPage display_settings_page {
+     tag: "display-settings";
+diff --git a/panels/display/cc-display-panel.c b/panels/display/cc-display-panel.c
+index dad0bca..7cdccfc 100644
+--- a/panels/display/cc-display-panel.c
++++ b/panels/display/cc-display-panel.c
+@@ -34,6 +34,7 @@
+ #include "cc-display-config.h"
+ #include "cc-display-arrangement.h"
+ #include "cc-night-light-page.h"
++#include "cc-cast-page.h"
+ #include "cc-display-resources.h"
+ #include "cc-display-settings.h"
+ 
+@@ -96,6 +97,7 @@ struct _CcDisplayPanel
+   AdwBin         *display_settings_bin;
+   GtkWidget      *display_settings_group;
+   AdwNavigationPage *display_settings_page;
++  AdwNavigationPage *cast_page;
+   AdwComboRow    *primary_display_row;
+   AdwPreferencesGroup *single_display_settings_group;
+ 
+@@ -107,6 +109,7 @@ struct _CcDisplayPanel
+ enum {
+   PROP_0,
+   PROP_SHOWING_APPLY_TITLEBAR,
++  PROP_PARAMETERS,
+ };
+ 
+ CC_PANEL_REGISTER (CcDisplayPanel, cc_display_panel)
+@@ -461,6 +464,51 @@ cc_display_panel_get_property (GObject    *object,
+   }
+ }
+ 
++static gboolean
++push_cast_page_idle (gpointer user_data)
++{
++  CcDisplayPanel *self = CC_DISPLAY_PANEL (user_data);
++
++  if (self->cast_page != NULL &&
++      cc_panel_get_visible_subpage (CC_PANEL (self)) != self->cast_page)
++    cc_panel_push_subpage (CC_PANEL (self), self->cast_page);
++  return G_SOURCE_REMOVE;
++}
++
++static void
++cc_display_panel_set_property (GObject      *object,
++                               guint         prop_id,
++                               const GValue *value,
++                               GParamSpec   *pspec)
++{
++  switch (prop_id) {
++  case PROP_PARAMETERS: {
++    GVariant *parameters = g_value_get_variant (value);
++    g_autoptr(GVariant) first = NULL;
++
++    if (parameters == NULL || g_variant_n_children (parameters) == 0)
++      break;
++    first = g_variant_get_child_value (parameters, 0);
++    if (g_variant_is_of_type (first, G_VARIANT_TYPE_VARIANT))
++      {
++        GVariant *inner = g_variant_get_variant (first);
++        g_variant_unref (first);
++        first = inner;
++      }
++    /* `gnome-control-center display cast`: Quick Settings › Cast › Cast Settings.
++     * The navigation view is ready once construction finishes. */
++    if (g_variant_is_of_type (first, G_VARIANT_TYPE_STRING) &&
++        g_str_equal (g_variant_get_string (first, NULL), "cast"))
++      g_idle_add_full (G_PRIORITY_DEFAULT, push_cast_page_idle,
++                       g_object_ref (object), g_object_unref);
++    break;
++  }
++  default:
++    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
++    break;
++  }
++}
++
+ static void
+ on_arrangement_selected_ouptut_changed_cb (CcDisplayPanel *self)
+ {
+@@ -572,12 +620,16 @@ cc_display_panel_class_init (CcDisplayPanelClass *klass)
+ 
+   g_type_ensure (CC_TYPE_LIST_ROW);
+   g_type_ensure (CC_TYPE_NIGHT_LIGHT_PAGE);
++  g_type_ensure (CC_TYPE_CAST_PAGE);
+ 
+   panel_class->get_help_uri = cc_display_panel_get_help_uri;
+ 
+   object_class->constructed = cc_display_panel_constructed;
+   object_class->dispose = cc_display_panel_dispose;
+   object_class->get_property = cc_display_panel_get_property;
++  object_class->set_property = cc_display_panel_set_property;
++
++  g_object_class_override_property (object_class, PROP_PARAMETERS, "parameters");
+ 
+   g_object_class_install_property (object_class,
+                                    PROP_SHOWING_APPLY_TITLEBAR,
+@@ -601,6 +653,7 @@ cc_display_panel_class_init (CcDisplayPanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, display_settings_bin);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, display_settings_group);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, display_settings_page);
++  gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, cast_page);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, escape_shortcut);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, night_light_page);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, night_light_row);
+diff --git a/panels/display/meson.build b/panels/display/meson.build
+index 39d0ee8..03ae2f1 100644
+--- a/panels/display/meson.build
++++ b/panels/display/meson.build
+@@ -28,6 +28,7 @@ blueprints = custom_target(
+ )
+ 
+ sources = files(
++  'cc-cast-page.c',
+   'cc-display-panel.c',
+   'cc-display-arrangement.c',
+   'cc-display-config.c',
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index 58393ac..a3233ee 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -37,6 +37,7 @@ panels/common/cc-permission-infobar.c
+ panels/common/cc-timelike-editor.blp
+ panels/common/cc-util.c
+ panels/common/hostname-helper.c
++panels/display/cc-cast-page.c
+ panels/display/cc-display-panel.blp
+ panels/display/cc-display-panel.c
+ panels/display/cc-display-settings.blp

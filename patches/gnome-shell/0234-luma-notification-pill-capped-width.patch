@@ -1,0 +1,37 @@
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -19,6 +19,7 @@
+ 
+ const MORPH_TIME = 460;
+ const RETRACT_TIME = 6500;
++const PILL_MAX_WIDTH = 392;
+ 
+ function records() {
+     const CLOSED = new Set([MessageTray.NotificationLifecycleState.ACTED,
+@@ -308,8 +309,10 @@
+         box.add_child(stack);
+         const count = this._records?.length ?? 0;
+         const title = new St.Label({style_class: 'luma-lip-pill-title',
+-            text: big ? this._records[0].title : String(count), y_align: Clutter.ActorAlign.CENTER});
++            text: big ? this._records[0].title : String(count), y_align: Clutter.ActorAlign.CENTER,
++            x_expand: true, x_align: Clutter.ActorAlign.FILL});
+         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        title.clutter_text.single_line_mode = true;
+         box.add_child(title);
+         if (big && count > 1) box.add_child(new St.Label({style_class: 'luma-lip-pill-more',
+             text: _('and %d more').format(count - 1), y_align: Clutter.ActorAlign.CENTER}));
+@@ -366,8 +369,11 @@
+             height = (this._engaged() ? 9 : 5) * scale;
+         } else {
+             width = (this._state === 'tray' ? 400 : 392) * scale;
+-            if (this._state === 'pill') [, width] = this._surface.child.get_preferred_width(-1);
+-            width = Math.min(width, monitor.width - 60 * scale);
++            if (this._state === 'pill') {
++                [, width] = this._surface.child.get_preferred_width(-1);
++                width = Math.min(width, PILL_MAX_WIDTH * scale);
++            }
++            width = Math.min(width, Math.max(1, monitor.width - 60 * scale));
+             [, height] = this._surface.child.get_preferred_height(width);
+             height = Math.min(height, monitor.height - (top - monitor.y) - 24 * scale);
+         }

@@ -1,0 +1,736 @@
+--- a/src/nautilus-file-chooser.c
++++ b/src/nautilus-file-chooser.c
+@@ -65,11 +65,11 @@
+     AdwBreakpoint *breakpoint;
+     GtkWidget *bottom_toolbar;
+ 
+-    /* v71 on a phone: the two-row bar (place, Search, Grid/List; then
++    /* Shared picker at every width: the two-row bar (place, Search, Grid/List; then
+      * Cancel and Open "name"). */
+-    LumaActionCenter *phone_bar;
+-    LumaBarItem *phone_search;
+-    GtkWidget *phone_accept;
++    LumaActionCenter *action_center;
++    LumaBarItem *search_item;
++    GtkWidget *accept_control;
+     gboolean phone;
+ };
+ 
+@@ -643,7 +643,7 @@
+ static void
+ nautilus_file_chooser_dispose (GObject *object)
+ {
+-    g_clear_object (&NAUTILUS_FILE_CHOOSER (object)->phone_search);
++    g_clear_object (&NAUTILUS_FILE_CHOOSER (object)->search_item);
+     NautilusFileChooser *self = (NautilusFileChooser *) object;
+ 
+     if (self->slot != NULL)
+@@ -778,7 +778,7 @@
+         gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-touch");
+ }
+ 
+-/* ── v71: the picker on a phone ────────────────────────────────────────────
++/* ── Shared picker action center at every width ────────────────────────────────────────────
+  * Full screen over the asking app, the bar two rows: where you're looking
+  * (it grows Recent, Places and what to show), Search and Grid/List; under it
+  * Cancel and Open "name" (or Choose "folder", or Save). Composed from LumaUI-1
+@@ -882,7 +882,7 @@
+ chooser_run_search (gpointer data)
+ {
+     NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (data);
+-    const char *text = self->phone_search != NULL ? luma_bar_item_search_get_text (self->phone_search) : NULL;
++    const char *text = self->search_item != NULL ? luma_bar_item_search_get_text (self->search_item) : NULL;
+     if (text == NULL || *text == '\0')
+     {
+         g_action_group_change_action_state (nautilus_window_slot_get_action_group (self->slot),
+@@ -927,21 +927,37 @@
+ }
+ 
+ static void
+-chooser_update_phone_bar (NautilusFileChooser *self)
+-{
+-    if (self->phone_bar == NULL || !self->phone)
++chooser_update_bar (NautilusFileChooser *self)
++{
++    if (self->action_center == NULL)
+         return;
++    /* Release the old default before its foot row is replaced. */
++    gtk_window_set_default_widget (GTK_WINDOW (self), NULL);
+     GFile *location = nautilus_window_slot_get_location (self->slot);
+     g_autofree char *place = location != NULL ? g_file_get_basename (location) : g_strdup (_("Home"));
+     g_autoptr (LumaBarItem) where = luma_bar_item_new_action ("folder", place, NULL);
+     luma_bar_item_set_keep_label (where, TRUE);
++    luma_bar_item_set_dropdown (where, TRUE, FALSE);
+     luma_bar_item_set_tooltip (where, _("Where you're looking"));
+     luma_bar_item_set_panel (where, "place", chooser_place_panel, self, NULL);
+     g_autoptr (LumaBarItem) spacer = luma_bar_item_new_spacer ();
+     g_autoptr (LumaBarItem) view = luma_bar_item_new_action ("layout-grid", NULL, "picker.view");
+     luma_bar_item_set_tooltip (view, _("Grid or list"));
+-    LumaBarItem *items[] = { where, spacer, self->phone_search, view };
+-    luma_action_center_show_bar (self->phone_bar, items, G_N_ELEMENTS (items), NULL);
++    g_autoptr (GPtrArray) items = g_ptr_array_new ();
++    g_autoptr (LumaBarItem) back = luma_bar_item_new_action ("chevron-left", NULL, "slot.back");
++    g_autoptr (LumaBarItem) forward = luma_bar_item_new_action ("chevron-right", NULL, "slot.forward");
++    luma_bar_item_set_tooltip (back, _("Back"));
++    luma_bar_item_set_tooltip (forward, _("Forward"));
++    if (!self->phone) { g_ptr_array_add (items, back); g_ptr_array_add (items, forward); }
++    g_ptr_array_add (items, where);
++    g_ptr_array_add (items, spacer);
++    g_ptr_array_add (items, self->search_item);
++    g_ptr_array_add (items, view);
++    g_autoptr (LumaBarItem) new_folder = luma_bar_item_new_action ("folder-plus", NULL, "view.new-folder");
++    luma_bar_item_set_tooltip (new_folder, _("New Folder"));
++    if (gtk_widget_get_visible (self->new_folder_button)) g_ptr_array_add (items, new_folder);
++    luma_bar_item_search_set_collapsed (self->search_item, self->phone);
++    luma_action_center_show_bar (self->action_center, (LumaBarItem *const *) items->pdata, items->len, NULL);
+ 
+     /* Row 2: Cancel and the key, sharing the width. */
+     g_autofree char *words = chooser_accept_words (self);
+@@ -951,12 +967,14 @@
+     luma_bar_item_set_keep_label (cancel, TRUE);
+     luma_bar_item_set_keep_label (accept, TRUE);
+     GtkWidget *foot = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+-    gtk_box_set_homogeneous (GTK_BOX (foot), TRUE);
++    gtk_box_set_homogeneous (GTK_BOX (foot), self->phone);
++    gtk_widget_set_halign (foot, self->phone ? GTK_ALIGN_FILL : GTK_ALIGN_END);
+     gtk_widget_set_hexpand (foot, TRUE);
+     gtk_box_append (GTK_BOX (foot), luma_bar_item_create_control (cancel, "bar"));
+-    self->phone_accept = luma_bar_item_create_control (accept, "bar");
+-    gtk_box_append (GTK_BOX (foot), self->phone_accept);
+-    luma_action_center_set_foot (self->phone_bar, foot);
++    self->accept_control = luma_bar_item_create_control (accept, "bar");
++    gtk_box_append (GTK_BOX (foot), self->accept_control);
++    luma_action_center_set_foot (self->action_center, foot);
++    gtk_window_set_default_widget (GTK_WINDOW (self), self->accept_control);
+ }
+ 
+ static void
+@@ -965,36 +983,61 @@
+                          NautilusFileChooser *self)
+ {
+     self->phone = tier == LUMA_TIER_PHONE;
+-    gtk_widget_set_visible (self->bottom_toolbar, !self->phone);
+-    if (self->phone)
+-        chooser_update_phone_bar (self);
+-    else if (self->phone_bar != NULL)
+-        luma_action_center_hide_bar (self->phone_bar);
+-}
+-
+-static void
+-chooser_setup_phone (NautilusFileChooser *self)
++    gtk_widget_set_visible (self->bottom_toolbar, FALSE);
++    chooser_update_bar (self);
++}
++
++static void
++action_picker_edit_location (GSimpleAction *action, GVariant *parameter, gpointer data)
++{
++    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (data);
++    const char *name = g_action_get_name (G_ACTION (action));
++    g_autofree char *native_action = g_strconcat ("toolbar.", name, NULL);
++    gtk_widget_activate_action (GTK_WIDGET (self->toolbar), native_action, NULL);
++}
++
++static void
++chooser_setup_bar (NautilusFileChooser *self)
+ {
+     static const GActionEntry entries[] = {
+         { .name = "place", .parameter_type = "s", .activate = action_picker_place },
+         { .name = "show", .parameter_type = "s", .activate = action_picker_show },
+         { .name = "view", .activate = action_picker_view },
++        { .name = "edit-location", .activate = action_picker_edit_location },
++        { .name = "prompt-root-location", .activate = action_picker_edit_location },
++        { .name = "prompt-home-location", .activate = action_picker_edit_location },
+     };
+     g_autoptr (GSimpleActionGroup) group = g_simple_action_group_new ();
+     g_action_map_add_action_entries (G_ACTION_MAP (group), entries, G_N_ELEMENTS (entries), self);
+     gtk_widget_insert_action_group (GTK_WIDGET (self), "picker", G_ACTION_GROUP (group));
+ 
++    nautilus_toolbar_set_location_entry_only (NAUTILUS_TOOLBAR (self->toolbar), TRUE);
++    gtk_widget_set_visible (self->bottom_toolbar, FALSE);
++    GtkShortcutController *shortcuts = GTK_SHORTCUT_CONTROLLER (gtk_shortcut_controller_new ());
++    static const struct { const char *key, *action; } keys[] = {
++        { "<Control>l", "picker.edit-location" },
++        { "slash", "picker.prompt-root-location" },
++        { "asciitilde", "picker.prompt-home-location" },
++    };
++    for (guint i = 0; i < G_N_ELEMENTS (keys); i++)
++        gtk_shortcut_controller_add_shortcut (shortcuts,
++            gtk_shortcut_new (gtk_shortcut_trigger_parse_string (keys[i].key),
++                             gtk_named_action_new (keys[i].action)));
++    gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (shortcuts));
+     luma_layer_host_install (GTK_WINDOW (self));
+-    self->phone_bar = LUMA_ACTION_CENTER (luma_action_center_new (NULL));
+-    gtk_widget_set_name (GTK_WIDGET (self->phone_bar), "picker-action-center");
+-    luma_action_center_attach (self->phone_bar, GTK_WIDGET (self));
+-    self->phone_search = luma_bar_item_new_search (_("Search"));
+-    luma_bar_item_search_set_collapsed (self->phone_search, TRUE);
+-    g_signal_connect (self->phone_search, "search-changed", G_CALLBACK (on_picker_search_changed), self);
+-    g_signal_connect_object (self->slot, "notify::location", G_CALLBACK (chooser_update_phone_bar),
++    self->action_center = LUMA_ACTION_CENTER (luma_action_center_new (NULL));
++    gtk_widget_set_name (GTK_WIDGET (self->action_center), "picker-action-center");
++    luma_action_center_attach (self->action_center, GTK_WIDGET (self));
++    self->search_item = luma_bar_item_new_search (_("Search"));
++    luma_bar_item_search_set_collapsed (self->search_item, TRUE);
++    g_signal_connect (self->search_item, "search-changed", G_CALLBACK (on_picker_search_changed), self);
++    g_signal_connect_object (self->slot, "notify::location", G_CALLBACK (chooser_update_bar),
+                              self, G_CONNECT_SWAPPED);
+-    g_signal_connect_object (self->slot, "notify::selection", G_CALLBACK (chooser_update_phone_bar),
++    g_signal_connect_object (self->slot, "notify::selection", G_CALLBACK (chooser_update_bar),
+                              self, G_CONNECT_SWAPPED);
++    g_signal_connect_object (self->filters_dropdown, "notify::model", G_CALLBACK (chooser_update_bar), self, G_CONNECT_SWAPPED);
++    g_signal_connect_object (self->filters_dropdown, "notify::selected", G_CALLBACK (chooser_update_bar), self, G_CONNECT_SWAPPED);
++    chooser_update_bar (self);
+     g_signal_connect_object (luma_width_watch_get (GTK_WIDGET (self)), "tier-changed",
+                              G_CALLBACK (on_chooser_tier_changed), self, 0);
+ }
+@@ -1069,7 +1112,7 @@
+                     "(ii)", &width, &height);
+     gtk_window_set_default_size (GTK_WINDOW (self), width, height);
+ 
+-    chooser_setup_phone (self);
++    chooser_setup_bar (self);
+ }
+ 
+ const GActionEntry chooser_action_entries[] =
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -61,6 +61,7 @@
+     GMenu *compact_menu;
+ 
+     gboolean show_location_entry;
++    gboolean location_entry_only;
+     GtkWidget *focus_before_location_entry;
+ 
+     GtkWidget *sidebar_button;
+@@ -194,6 +195,9 @@
+                             (self->show_new_folder_button ||
+                              (self->window_slot != NULL &&
+                               nautilus_window_slot_get_mode (self->window_slot) == NAUTILUS_MODE_BROWSE)));
++
++    if (self->location_entry_only)
++        gtk_widget_set_visible (GTK_WIDGET (self), show_location_entry);
+ 
+     compact_chrome_visible = self->compact && !search_visible && !show_location_entry;
+     gtk_widget_set_visible (self->compact_back_button, compact_chrome_visible);
+@@ -807,3 +811,13 @@
+     gtk_box_append (GTK_BOX (self->information_button_host),
+                     luma_details_pane_info_button (pane));
+ }
++
++/* Keep Nautilus' address editor and its native activation/cancel semantics,
++ * while the shared picker bar owns normal browsing chrome. */
++void
++nautilus_toolbar_set_location_entry_only (NautilusToolbar *self, gboolean enabled)
++{
++    g_return_if_fail (NAUTILUS_IS_TOOLBAR (self));
++    self->location_entry_only = enabled;
++    toolbar_update_appearance (self);
++}
+--- a/src/nautilus-toolbar.h
++++ b/src/nautilus-toolbar.h
+@@ -46,4 +46,6 @@
+                                        NautilusWindowSlot *window_slot);
+ void nautilus_toolbar_set_information_pane (NautilusToolbar *self,
+                                              LumaDetailsPane *pane);
++void nautilus_toolbar_set_location_entry_only (NautilusToolbar *self, gboolean enabled);
++
+ G_END_DECLS
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -2188,6 +2188,8 @@
+         undo_label = g_strdup (_("_Undo"));
+     }
+     undo_menu_item = g_menu_item_new (undo_label, "win.undo");
++    g_autoptr (GIcon) undo_icon = g_themed_icon_new ("lumaui-undo-2-symbolic");
++    g_menu_item_set_icon (undo_menu_item, undo_icon);
+     g_menu_append_item (updated_section, undo_menu_item);
+     action = g_action_map_lookup_action (G_ACTION_MAP (window), "undo");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action), undo_active);
+@@ -2198,6 +2200,8 @@
+         redo_label = g_strdup (_("_Redo"));
+     }
+     redo_menu_item = g_menu_item_new (redo_label, "win.redo");
++    g_autoptr (GIcon) redo_icon = g_themed_icon_new ("lumaui-redo-symbolic");
++    g_menu_item_set_icon (redo_menu_item, redo_icon);
+     g_menu_append_item (updated_section, redo_menu_item);
+     action = g_action_map_lookup_action (G_ACTION_MAP (window), "redo");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action), redo_active);
+@@ -2600,6 +2604,44 @@
+     }
+ }
+ 
++/* Preserve native tab closing, drag/reorder, overflow and context actions;
++ * shared LumaUI owns the surrounding command-row surface. */
++static void
++on_tab_strip_revealed (AdwTabBar *tabs, GParamSpec *property, GtkWidget *strip)
++{
++    gtk_widget_set_visible (strip, adw_tab_bar_get_tabs_revealed (tabs));
++}
++
++static void
++setup_tab_strip (NautilusWindow *window)
++{
++    GtkWidget *tabs = GTK_WIDGET (window->tab_bar);
++    AdwToolbarView *host = ADW_TOOLBAR_VIEW (gtk_widget_get_ancestor (tabs, ADW_TYPE_TOOLBAR_VIEW));
++    g_return_if_fail (host != NULL);
++    g_object_ref (tabs);
++    adw_toolbar_view_remove (host, tabs);
++    GtkWidget *strip = luma_action_center_new (NULL);
++    luma_action_center_set_toolbar (LUMA_ACTION_CENTER (strip), TRUE);
++    gtk_widget_set_name (strip, "filer-tab-strip");
++    gtk_widget_set_margin_start (strip, 8);
++    gtk_widget_set_margin_end (strip, 8);
++    gtk_widget_set_margin_top (strip, 8);
++    gtk_widget_set_margin_bottom (strip, 4);
++    gtk_widget_set_hexpand (tabs, TRUE);
++    g_autoptr (LumaBarItem) native_tabs = luma_bar_item_new_widget (tabs);
++    LumaBarItem *items[] = { native_tabs };
++    luma_action_center_show_bar (LUMA_ACTION_CENTER (strip), items, G_N_ELEMENTS (items), NULL);
++    /* The tab row precedes the current-location heading, as before. */
++    g_object_ref (window->location_row);
++    adw_toolbar_view_remove (host, window->location_row);
++    adw_toolbar_view_add_top_bar (host, strip);
++    adw_toolbar_view_add_top_bar (host, window->location_row);
++    g_object_unref (window->location_row);
++    g_signal_connect_object (tabs, "notify::tabs-revealed", G_CALLBACK (on_tab_strip_revealed), strip, 0);
++    on_tab_strip_revealed (ADW_TAB_BAR (tabs), NULL, strip);
++    g_object_unref (tabs);
++}
++
+ static void
+ nautilus_window_constructed (GObject *self)
+ {
+@@ -2632,6 +2674,7 @@
+                                  NAUTILUS_WINDOW_DEFAULT_HEIGHT);
+ 
+     setup_tab_view (window);
++    setup_tab_strip (window);
+ 
+     /* Only allow tab DnD in Wayland.  We are using a hack in list-base to
+      * get the preferred action which we can not replicate here because we
+--- a/src/resources/ui/nautilus-file-chooser.blp
++++ b/src/resources/ui/nautilus-file-chooser.blp
+@@ -181,14 +181,16 @@
+               label: _("_Cancel");
+               use-underline: true;
+               action-name: "window.close";
+-              styles ["lumaui-text-button", "raised"]
++              valign: center;
++              styles ["lumaui-text-button", "raised", "small"]
+             }
+             [accept-button]
+             Button accept_button {
+               label: "_Select";
+               use-underline: true;
+               action-name: "chooser.accept";
+-              styles ["lumaui-text-button", "key"]
++              valign: center;
++              styles ["lumaui-text-button", "key", "small"]
+             }
+             [filter-dropdown]
+             DropDown filters_dropdown {
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -6,6 +6,7 @@
+     item {
+       label: _("New _Folder");
+       action: "view.new-folder";
++      icon: "lumaui-folder-plus-symbolic";
+       accel: "<control><shift>n";
+       hidden-when: "action-disabled";
+     }
+@@ -13,13 +14,15 @@
+     item {
+       label: _("New _Window");
+       action: "app.clone-window";
+-      verb-icon: "window-new-symbolic";
++      icon: "lumaui-app-window-symbolic";
++      verb-icon: "lumaui-app-window-symbolic";
+     }
+ 
+     item {
+       label: _("New _Tab");
+       action: "win.new-tab";
+-      verb-icon: "tab-new-symbolic";
++      icon: "lumaui-plus-symbolic";
++      verb-icon: "lumaui-plus-symbolic";
+     }
+   }
+ 
+@@ -29,54 +32,38 @@
+     item {
+       label: _("Home");
+       action: "win.go-home";
++      icon: "lumaui-house-symbolic";
+     }
+ 
+     item {
+       label: _("Recent");
+       action: "slot.open-location";
++      icon: "lumaui-history-symbolic";
+       target: "'recent:///'";
+     }
+ 
+     item {
+       label: _("Starred");
+       action: "slot.open-location";
++      icon: "lumaui-star-symbolic";
+       target: "'starred:///'";
+     }
+ 
+     item {
+       label: _("Applications");
+       action: "slot.open-location";
++      icon: "lumaui-layout-grid-symbolic";
+       target: "'applications:///'";
+     }
+   }
+ 
+   section {
+     label: _("View");
+-
+-    item {
+-      label: _("As _Grid");
+-      action: "slot.files-view-mode";
+-      target: "uint32 2";
+-      accel: "<control>1";
+-    }
+-
+-    item {
+-      label: _("As _List");
+-      action: "slot.files-view-mode";
+-      target: "uint32 1";
+-      accel: "<control>2";
+-    }
+-
+-    item {
+-      label: _("As _Columns");
+-      action: "slot.files-view-mode";
+-      target: "uint32 4";
+-      accel: "<control>3";
+-    }
+ 
+     item {
+       label: _("Show _Hidden Files");
+       action: "view.show-hidden-files";
++      icon: "lumaui-eye-symbolic";
+       accel: "<control>h";
+     }
+   }
+@@ -89,11 +76,13 @@
+     item {
+       label: _("_Undo");
+       action: "win.undo";
++      icon: "lumaui-undo-2-symbolic";
+     }
+ 
+     item {
+       label: _("_Redo");
+       action: "win.redo";
++      icon: "lumaui-redo-symbolic";
+     }
+   }
+ 
+@@ -101,26 +90,31 @@
+     item {
+       label: _("_Preferences");
+       action: "app.preferences";
++      icon: "lumaui-settings-symbolic";
+     }
+ 
+     item {
+       label: _("_Keyboard Shortcuts");
+       action: "app.shortcuts";
++      icon: "lumaui-keyboard-symbolic";
+     }
+ 
+     item {
+       label: _("_Help");
+       action: "app.help";
++      icon: "lumaui-circle-help-symbolic";
+     }
+ 
+     item {
+       label: _("_About Filer");
+       action: "app.about";
++      icon: "lumaui-info-symbolic";
+     }
+ 
+     item {
+       label: _("_Quit Filer");
+       action: "app.quit";
++      icon: "lumaui-log-out-symbolic";
+       accel: "<control>q";
+     }
+   }
+@@ -131,11 +125,13 @@
+     item {
+       label: _("_New Tab");
+       action: "win.new-tab";
++      icon: "lumaui-plus-symbolic";
+     }
+ 
+     item {
+       label: _("Re_store Closed Tab");
+       action: "win.restore-tab";
++      icon: "lumaui-history-symbolic";
+     }
+   }
+ 
+@@ -143,18 +139,21 @@
+     item {
+       label: _("Move Tab to New _Window");
+       action: "win.tab-move-new-window";
++      icon: "lumaui-app-window-symbolic";
+     }
+ 
+     item {
+       /* Translators: use “Move Tab _Right” for RTL languages */
+       label: _("Move Tab _Left");
+       action: "win.tab-move-left";
++      icon: "lumaui-chevron-left-symbolic";
+     }
+ 
+     item {
+       /* Translators: use “Move Tab _Left” for RTL languages */
+       label: _("Move Tab _Right");
+       action: "win.tab-move-right";
++      icon: "lumaui-chevron-right-symbolic";
+     }
+   }
+ 
+@@ -162,11 +161,13 @@
+     item {
+       label: _("_Close Tab");
+       action: "win.close-current-view";
++      icon: "lumaui-x-symbolic";
+     }
+ 
+     item {
+       label: _("Close _Other Tabs");
+       action: "win.close-other-tabs";
++      icon: "lumaui-x-symbolic";
+     }
+   }
+ }
+--- a/test/automated/display/test-luma-empty-picker.c
++++ b/test/automated/display/test-luma-empty-picker.c
+@@ -2,6 +2,9 @@
+ #include <nautilus-application.h>
+ #include <nautilus-file-chooser.h>
+ #include <nautilus-resources.h>
++#include <nautilus-toolbar.h>
++#include <nautilus-location-entry.h>
++#include <nautilus-window-slot.h>
+ #include <nautilus-tag-manager.h>
+ #include <luma-ui.h>
+ #include <glib/gstdio.h>
+@@ -41,11 +44,52 @@
+                           gtk_widget_get_width(widget), gtk_widget_get_height(widget));
+     GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+     g_assert_nonnull(node);
+-    GskRenderer *renderer = gtk_native_get_renderer(GTK_NATIVE(widget));
++    GskRenderer *renderer = gtk_native_get_renderer(gtk_widget_get_native(widget));
+     g_autoptr(GdkTexture) texture = gsk_renderer_render_texture(renderer, node, NULL);
+     g_autofree char *path = g_build_filename(directory, name, NULL);
+     g_assert_true(gdk_texture_save_to_png(texture, path));
+     gsk_render_node_unref(node);
++}
++static GtkWidget *find_type(GtkWidget *widget, GType type) {
++    if (G_TYPE_CHECK_INSTANCE_TYPE(widget, type)) return widget;
++    for (GtkWidget *child=gtk_widget_get_first_child(widget); child; child=gtk_widget_get_next_sibling(child)) {
++        GtkWidget *found=find_type(child,type); if(found) return found;
++    }
++    return NULL;
++}
++static gboolean menu_has_action(GMenuModel *model, const char *wanted) {
++    if (!model) return FALSE;
++    for (int n=0;n<g_menu_model_get_n_items(model);n++) {
++        g_autofree char *action=NULL;
++        if (g_menu_model_get_item_attribute(model,n,G_MENU_ATTRIBUTE_ACTION,"s",&action) && g_strcmp0(action,wanted)==0) return TRUE;
++        g_autoptr(GMenuModel) section=g_menu_model_get_item_link(model,n,G_MENU_LINK_SECTION);
++        g_autoptr(GMenuModel) submenu=g_menu_model_get_item_link(model,n,G_MENU_LINK_SUBMENU);
++        if (menu_has_action(section,wanted) || menu_has_action(submenu,wanted)) return TRUE;
++    }
++    return FALSE;
++}
++static GtkMenuButton *find_app_menu(GtkWidget *widget) {
++    if (GTK_IS_MENU_BUTTON(widget) && gtk_widget_get_mapped(widget) && menu_has_action(gtk_menu_button_get_menu_model(GTK_MENU_BUTTON(widget)),"view.show-hidden-files")) return GTK_MENU_BUTTON(widget);
++    for(GtkWidget *child=gtk_widget_get_first_child(widget);child;child=gtk_widget_get_next_sibling(child)) {
++        GtkMenuButton *found=find_app_menu(child);if(found) return found;
++    }
++    return NULL;
++}
++static void require_menu_icons(GMenuModel *model, GtkIconTheme *theme) {
++    for(int i=0;i<g_menu_model_get_n_items(model);i++) {
++        g_autoptr(GMenuModel) section=g_menu_model_get_item_link(model,i,G_MENU_LINK_SECTION);
++        if(section) {require_menu_icons(section,theme);continue;}
++        g_autofree char *action=NULL;
++        if(!g_menu_model_get_item_attribute(model,i,G_MENU_ATTRIBUTE_ACTION,"s",&action)) continue;
++        g_assert_cmpstr(action,!=,"slot.files-view-mode");
++        g_autoptr(GVariant) value=g_menu_model_get_item_attribute_value(model,i,G_MENU_ATTRIBUTE_ICON,NULL);
++        g_assert_nonnull(value);
++        g_autoptr(GIcon) icon=g_icon_deserialize(value);
++        g_assert_true(G_IS_THEMED_ICON(icon));
++        const char *const *names=g_themed_icon_get_names(G_THEMED_ICON(icon));
++        g_assert_true(g_str_has_prefix(names[0],"lumaui-"));
++        g_assert_true(gtk_icon_theme_has_icon(theme,names[0]));
++    }
+ }
+ static void accepted(NautilusFileChooser *chooser, GList *locations,
+                      GtkFileFilter *filter, GFile **result) {
+@@ -74,12 +118,12 @@
+         g_autofree char *path = g_build_filename(filtered, name, NULL);
+         g_assert_true(g_file_set_contents(path, "fixture", -1, NULL));
+     }
++    /* Native Shell appearance owns the surface treatment. */
++    g_autoptr(GSettings) appearance=g_settings_new("org.project_luma.shell-state");
+     const int widths[] = {360, 500, 1024, 1440};
+-    /* The canonical Shell policy owns native appearance. Direct Adw force flags
+-     * are overridden by that policy and can produce mislabeled Light captures. */
+-    g_autoptr(GSettings) appearance = g_settings_new("org.project_luma.shell-state");
+     for (int dark = 0; dark < 2; dark++) {
+-        g_assert_true(g_settings_set_string(appearance, "surface-treatment", dark ? "dark" : "light"));
++        g_assert_true(g_settings_set_string(appearance,"surface-treatment",dark ? "dark" : "light"));
++        g_settings_sync();
+         settle();
+         g_assert_cmpint(adw_style_manager_get_dark(adw_style_manager_get_default()), ==, dark);
+         for (int save = 0; save < 2; save++) {
+@@ -115,12 +159,19 @@
+                 g_assert_nonnull(header);
+                 g_assert_cmpstr(adw_header_bar_get_decoration_layout(ADW_HEADER_BAR(header)), ==, ":close");
+                 g_assert_false(gtk_widget_has_css_class(header, "luma-no-automatic-identity"));
+-                /* The primary action uses the actual shared native key-button
+-                 * contract, rather than the retired blue compatibility style. */
+                 g_assert_true(gtk_widget_has_css_class(accept, "lumaui-text-button"));
+-                g_assert_true(gtk_widget_has_css_class(accept, "key"));
++                g_assert_true(gtk_widget_has_css_class(accept, "small"));
+                 g_assert_false(gtk_widget_has_css_class(accept, "suggested-action"));
+-                g_assert_false(gtk_widget_has_css_class(accept, "luma-button"));
++                GtkWidget *response=gtk_window_get_default_widget(GTK_WINDOW(window));
++                g_assert_nonnull(response);
++                g_assert_true(gtk_widget_has_css_class(response,"lumaui-bar-button"));
++                g_assert_true(gtk_widget_has_css_class(response,"primary"));
++                g_assert_cmpstr(gtk_actionable_get_action_name(GTK_ACTIONABLE(response)),==,"chooser.accept");
++                g_assert_true(gtk_widget_is_visible(response));
++                GtkWidget *native_toolbar=GTK_WIDGET(gtk_widget_get_template_child(window,NAUTILUS_TYPE_FILE_CHOOSER,"toolbar"));
++                GtkWidget *legacy_footer=GTK_WIDGET(gtk_widget_get_template_child(window,NAUTILUS_TYPE_FILE_CHOOSER,"bottom_toolbar"));
++                g_assert_false(gtk_widget_get_visible(native_toolbar));
++                g_assert_false(gtk_widget_get_visible(legacy_footer));
+                 g_assert_cmpstr(gtk_window_get_title(GTK_WINDOW(window)), ==, save ? "Save image" : "Open image");
+                 /* Exercise resize after native initial geometry restoration. */
+                 gtk_window_set_default_size(GTK_WINDOW(window), widths[n], 560);
+@@ -142,8 +193,11 @@
+                 if (save && n == 2) {
+                     GFile *result = NULL;
+                     g_signal_connect(chooser, "accepted", G_CALLBACK(accepted), &result);
+-                    g_assert_true(gtk_widget_activate_action(window, "chooser.accept", NULL));
+-                    settle();
++                    /* The actual shared default control invokes the native chooser response. */
++                    g_assert_true(gtk_widget_is_sensitive(response));
++                    g_assert_true(gtk_widget_activate(response));
++                    gint64 response_deadline=g_get_monotonic_time()+2000000;
++                    while(result==NULL && g_get_monotonic_time()<response_deadline) settle();
+                     g_assert_nonnull(result);
+                     g_autofree char *name = g_file_get_basename(result);
+                     g_assert_cmpstr(name, ==, "result.png");
+@@ -171,12 +225,24 @@
+     gtk_window_present(GTK_WINDOW(chooser));
+     wait_text(GTK_WIDGET(chooser), "Nothing here this app can open");
+     capture(GTK_WIDGET(chooser), "open-filtered-dark.png");
+-    nautilus_file_chooser_set_current_filter(chooser, 1);
++    g_assert_true(gtk_widget_activate_action(GTK_WIDGET(chooser), "picker.show", "s", "1"));
+     wait_text(GTK_WIDGET(chooser), "file0.txt");
+     GtkWidget *title = find_text(GTK_WIDGET(chooser), "Nothing here this app can open");
+     g_assert_true(title == NULL || !gtk_widget_is_visible(title));
+-    nautilus_file_chooser_set_current_filter(chooser, 0);
++    g_assert_true(gtk_widget_activate_action(GTK_WIDGET(chooser), "picker.show", "s", "0"));
+     wait_text(GTK_WIDGET(chooser), "Nothing here this app can open");
++    /* CtrlL's installed picker action exposes the original Nautilus address
++     * editor. Its real entry activation navigates and folds that transient row. */
++    g_assert_true(gtk_widget_activate_action(GTK_WIDGET(chooser),"picker.edit-location",NULL));
++    settle();
++    GtkWidget *path_toolbar=GTK_WIDGET(gtk_widget_get_template_child(GTK_WIDGET(chooser),NAUTILUS_TYPE_FILE_CHOOSER,"toolbar"));
++    g_assert_true(gtk_widget_is_visible(path_toolbar));
++    GtkWidget *entry=find_type(path_toolbar,NAUTILUS_TYPE_LOCATION_ENTRY);
++    g_assert_nonnull(entry);
++    gtk_editable_set_text(GTK_EDITABLE(entry),empty);
++    g_signal_emit_by_name(entry,"activate");
++    wait_text(GTK_WIDGET(chooser),"empty is empty");
++    g_assert_false(gtk_widget_get_visible(path_toolbar));
+     g_assert_true(gtk_widget_activate_action(GTK_WIDGET(chooser), "window.close", NULL));
+     settle();
+     for (int n = 0; n < 4; n++) {
+@@ -196,7 +262,42 @@
+     g_autoptr(GFileEnumerator) empty_entries = g_file_enumerate_children(browse_folder, G_FILE_ATTRIBUTE_STANDARD_NAME, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+     g_assert_nonnull(empty_entries);
+     g_assert_null(g_file_enumerator_next_file(empty_entries, NULL, NULL));
++    NautilusToolbar *toolbar=NAUTILUS_TOOLBAR(find_type(GTK_WIDGET(filer),NAUTILUS_TYPE_TOOLBAR));
++    g_assert_nonnull(toolbar);
++    g_autoptr(GMenuModel) app_menu=NULL;
++    g_object_get(toolbar,"main-menu",&app_menu,NULL);
++    require_menu_icons(app_menu,gtk_icon_theme_get_for_display(gtk_widget_get_display(GTK_WIDGET(filer))));
+     capture(GTK_WIDGET(filer), "filer-empty-dark.png");
++    g_assert_true(gtk_widget_activate_action(GTK_WIDGET(filer),"win.new-tab",NULL));
++    settle();
++    AdwTabView *tabs=ADW_TAB_VIEW(find_type(GTK_WIDGET(filer),ADW_TYPE_TAB_VIEW));
++    AdwTabBar *native_tabs=ADW_TAB_BAR(find_type(GTK_WIDGET(filer),ADW_TYPE_TAB_BAR));
++    g_assert_cmpint(adw_tab_view_get_n_pages(tabs),==,2);
++    g_assert_nonnull(gtk_widget_get_ancestor(GTK_WIDGET(native_tabs),LUMA_TYPE_ACTION_CENTER));
++    g_assert_true(adw_tab_view_reorder_page(tabs,adw_tab_view_get_selected_page(tabs),0));
++    settle();
++    capture(GTK_WIDGET(filer),"filer-tabs-dark.png");
++    g_assert_true(gtk_widget_activate_action(GTK_WIDGET(filer),"win.close-current-view",NULL));
++    settle();
++    g_assert_cmpint(adw_tab_view_get_n_pages(tabs),==,1);
++    g_assert_false(adw_tab_bar_get_tabs_revealed(native_tabs));
++    GtkMenuButton *identity=find_app_menu(GTK_WIDGET(filer));
++    g_assert_nonnull(identity);
++    gtk_menu_button_popup(identity);
++    settle();
++    GtkPopover *menu=gtk_menu_button_get_popover(identity);
++    g_assert_nonnull(menu);
++    g_assert_true(gtk_widget_is_visible(GTK_WIDGET(menu)));
++    /* GtkPopover is a separate native surface. Capture its actual content
++     * widget, which GtkWidgetPaintable supports, after native allocation. */
++    GtkWidget *menu_body=gtk_popover_get_child(menu);
++    for(int n=0;n<10 && (!gtk_widget_get_mapped(GTK_WIDGET(menu)) || gtk_widget_get_width(menu_body)==0);n++) settle();
++    g_assert_true(gtk_widget_get_mapped(GTK_WIDGET(menu)));
++    /* The popover has its own native surface; parent WidgetPaintable does not
++     * snapshot it. Allocation/visible actions are checked here. Full private
++     * display capture is an external diagnostic, not fabricated pixels. */
++    g_assert_cmpint(gtk_widget_get_width(menu_body),>,0);
++    gtk_menu_button_popdown(identity);
+     gtk_window_destroy(filer);
+     g_assert_cmpint(g_rmdir(filtered), ==, 0);
+     g_assert_cmpint(g_rmdir(empty), ==, 0);
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -196,6 +196,16 @@
+     {GtkWidget *r=find_css(c,css);if(r)return r;}
+     return NULL;
+ }
++/* More than one shared bar can exist: native tabs and file actions. Select
++ * the actual semantic owner rather than the first decoration class match. */
++static LumaActionCenter *file_action_center(GtkWidget *widget)
++{
++    if(LUMA_IS_ACTION_CENTER(widget) && !g_strcmp0(gtk_widget_get_name(widget),"filer-action-center"))return LUMA_ACTION_CENTER(widget);
++    for(GtkWidget *child=gtk_widget_get_first_child(widget);child;child=gtk_widget_get_next_sibling(child)) {
++        LumaActionCenter *found=file_action_center(child);if(found)return found;
++    }
++    return NULL;
++}
+ static gboolean contains_label(GtkWidget *widget,const char *text)
+ {
+     if(GTK_IS_LABEL(widget) && !g_strcmp0(gtk_label_get_label(GTK_LABEL(widget)),text))return TRUE;
+@@ -300,7 +310,8 @@
+     gtk_window_set_default_size(GTK_WINDOW(window),402,740);spin(300);
+     nautilus_window_open_location_full(window,home,0,selection);spin(600);
+     g_list_free_full(selection,g_object_unref);
+-    LumaActionCenter *center=LUMA_ACTION_CENTER(find_css(GTK_WIDGET(window),"lumaui-action-center"));
++    LumaActionCenter *center=file_action_center(GTK_WIDGET(window));
++    g_assert_nonnull(center);
+     GtkWidget *details=NULL,*copy=NULL;
+     for(guint i=0;i<6;i++) {
+         GtkWidget *control=luma_action_center_get_bar_control(center,i);

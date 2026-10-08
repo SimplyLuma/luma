@@ -1,0 +1,32 @@
+[Unit]
+Description=Retire a stale Tide dev-preview launch override, if any
+Documentation=file:///usr/share/doc/luma-tide/README.md
+Before=dbus.service graphical-session-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-tide-retire-preview-overrides
+# StateDirectory (unlike a bare ReadWritePaths entry) creates
+# %h/.local/state/luma-tide itself and makes it writable, so the backup
+# destination doesn't need to already exist -- only leading paths already
+# exist on a fresh account.
+StateDirectory=luma-tide
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# The "-" prefix is required: most accounts have neither of these two
+# directories (only ones that ever ran a dev-preview override do), and
+# without it systemd refuses to even start this unit (226/NAMESPACE) when
+# a listed ReadWritePaths entry doesn't exist -- which, since this unit is
+# WantedBy=graphical-session-pre.target, would otherwise fail at every
+# single login on almost every account.
+ReadWritePaths=-%h/.local/share/dbus-1/services -%h/.local/share/applications
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=graphical-session-pre.target

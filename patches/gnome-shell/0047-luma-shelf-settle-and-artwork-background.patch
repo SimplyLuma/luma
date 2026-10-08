@@ -1,0 +1,87 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shell: settle Shelf artwork without stock tile residue
+
+The upstream Dash paints a background on BaseIcon's overview-icon for every
+pseudo-state. That container remains underneath Luma's clipped application
+artwork, producing a square tile after a pointer sweep. Clear both the solid
+and gradient answers at the Shelf boundary while retaining the intentional
+artwork elevation. Cancel superseded input transitions before applying the
+latest transform, and snap the status hover layer to its resolved state when
+its transition completes.
+
+---
+ data/theme/luma-shelf.css | 30 ++++++++++++++++++++++++++++++
+ js/ui/dash.js             |  1 +
+ js/ui/panel.js            |  6 +++++-
+ 3 files changed, 36 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -35,6 +35,7 @@ class DashIcon extends AppDisplay.AppIcon {
+         const artwork = this.icon;
+         artwork.set_pivot_point(0.5, 0.5);
+         const scale = this._dragging ? 1.12 : this.pressed ? 0.94 : 1;
+         const lift = this.hover && !this._dragging ? 3 * St.ThemeContext.get_for_stage(global.stage).scale_factor : 0;
++        artwork.remove_all_transitions();
+         artwork.ease({
+             translation_x: edge === 'left' ? lift : edge === 'right' ? -lift : 0,
+             translation_y: edge === 'top' ? lift : edge === 'bottom' ? -lift : 0,
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -714,9 +714,13 @@ class QuickSettings extends PanelMenu.Button {
+ 
+     _syncStatusHover() {
+         if (!this._statusActive) return;
+-        this._statusHover.ease({opacity: this.hover || this.has_key_focus() || this.menu.isOpen ? 255 : 0,
++        const active = this.hover || this.has_key_focus() || this.menu.isOpen;
++        this._statusHover.remove_all_transitions();
++        this._statusHover.ease({opacity: active ? 255 : 0,
+             duration: St.Settings.get().enable_animations ? 120 : 0,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onComplete: () => (this._statusHover.opacity = active ? 255 : 0),
++        });
+     }
+ 
+     _watchStatus(child) {
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -534,3 +534,33 @@
+   -barlevel-background-color: rgba(10,20,33,0.20);
+   -barlevel-active-background-color: #f2f5f7;
+   -slider-handle-border-color: rgba(24,34,47,0.72); }
++
++/* Upstream Dash fills overview-icon rather than overview-tile. Clear every
++ * reachable state at the Shelf boundary; otherwise a stock square remains
++ * behind the clipped artwork after hover or keyboard focus moves away. */
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:active .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:checked .overview-icon {
++  background-color: transparent;
++  background-gradient-start: transparent;
++  background-gradient-end: transparent; }
++
++/* Focus is still communicated by the artwork's own elevation and the running
++ * indicator. GNOME's important inset focus ring is a second rectangular
++ * object, so explicitly remove it only inside the production Shelf. */
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus:hover .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:active:focus .overview-icon {
++  box-shadow: inset 0 1px 0 rgba(255,255,255,0.42),
++              inset 0 0 0 1px rgba(255,255,255,0.12),
++              inset 0 -9px 15px rgba(10,14,20,0.13),
++              0 2px 3px rgba(12,17,24,0.28),
++              0 6px 12px -3px rgba(12,17,24,0.46) !important; }
++
++/* The hover overlay is the only transient status fill. It must not inherit a
++ * transition of its own after the JS actor has returned to zero opacity. */
++.luma-status-hover {
++  transition-duration: 0ms;
++  box-shadow: none; }
+-- 
+2.54.0

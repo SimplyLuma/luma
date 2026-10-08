@@ -1,0 +1,23 @@
+schema_version = "0.1"
+
+[application]
+id = "org.projectluma.Displays"
+name = "Displays"
+version = "0.1.0"
+entrypoint = "data/org.projectluma.Displays.in"
+
+[platform]
+ui_contract = "1"
+semantics_contract = "1"
+
+[responsive]
+adaptive = true
+test_widths = [360, 500, 1024]
+input_modes = ["pointer", "touch", "keyboard"]
+presentation_modes = ["windowed"]
+
+[conformance]
+accessibility = true
+keyboard = true
+semantics = false
+reduced_motion = true

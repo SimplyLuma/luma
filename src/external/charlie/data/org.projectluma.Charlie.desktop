@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Name=Charlie
+Comment=Read and send mail without the nonsense
+Exec=org.projectluma.Charlie %U
+Icon=org.projectluma.Charlie
+Terminal=false
+Categories=Network;Email;GTK;
+MimeType=x-scheme-handler/mailto;x-scheme-handler/charlie;message/rfc822;
+StartupNotify=true
+DBusActivatable=true
+Keywords=Mail;Email;Inbox;IMAP;SMTP;
+Actions=Compose;
+
+[Desktop Action Compose]
+Name=New Message
+Exec=org.projectluma.Charlie mailto:
+Icon=mail-message-new-symbolic

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Signs Hub's catalog snapshots with the Depot catalog key and publishes them.
+# Installed by scripts/depot/install-catalog-timer.sh.
+[Unit]
+Description=Sign and publish the Depot catalog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/luma-depot/catalog.env
+ExecStart=/bin/bash ${DEPOT_CHECKOUT}/scripts/depot/run-catalog-signer.sh
+Nice=10
+TimeoutStartSec=15min

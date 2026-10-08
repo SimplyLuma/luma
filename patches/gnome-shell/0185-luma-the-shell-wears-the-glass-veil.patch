@@ -1,0 +1,235 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 21:30:00 -0400
+Subject: [PATCH] luma: the Shell wears the glass veil applications wear
+
+In Frost and Glass the Shelf islands, Quick Options, the calendar and the
+dock were one veil (80%/62%) and Shell popup menus, dock labels, previews and
+folders another (88%/80%), and neither was the veil application windows use
+for their title band, context menus and popovers (90%/85%). Quick Options and
+an application context menu, open side by side, were visibly two materials.
+
+luma-shelf.css now states the veil once, for every one of those surfaces:
+Frost rgba(248,249,250,0.90) and Glass rgba(250,250,251,0.85), the values in
+config/shared/design-tokens.json. The rules that used to paint each surface
+keep their border, ink and shadow and no longer set a fill, so there is one
+place to change it. Text on the veil carries no shadow. The ink ledger in
+lumaSurfaceMaterials.js carries the same values, so its contrast gate
+measures what is painted.
+---
+ data/theme/gnome-shell-light.css |  4 +-
+ data/theme/luma-shelf.css        | 74 ++++++++++++++++----------------
+ js/ui/lumaSurfaceMaterials.js    |  9 ++--
+ 3 files changed, 46 insertions(+), 41 deletions(-)
+
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 8ac3c51..0c4e638 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4581,11 +4581,11 @@ StScrollBar {
+  * measured 2.66:1 on the menu. 72% holds 5.9:1 on the menu and its hover row. */
+ .popup-menu-item.luma-menu-heading { color: rgba(37, 43, 49, 0.72); }
+ 
++/* Frost and Glass menus are painted with the glass veil in luma-shelf.css,
++ * the one definition the Shelf, Quick Options and the calendar share. */
+ .popup-menu.luma-surface-frost .popup-menu-content {
+-  background-color: rgba(248, 249, 250, 0.88);
+   border-color: rgba(255, 255, 255, 0.55); }
+ .popup-menu.luma-surface-glass .popup-menu-content {
+-  background-color: rgba(250, 250, 251, 0.80);
+   border-color: rgba(255, 255, 255, 0.62); }
+ .popup-menu.luma-surface-frost .luma-popup-shadow,
+ .popup-menu.luma-surface-glass .luma-popup-shadow { background-color: rgba(248, 249, 250, 0.01); }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index ab01030..ab20d61 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -308,14 +308,8 @@
+ .luma-shelf-material.luma-surface-light {
+   background-color: #eef0f2;
+   color: #191b1f; }
+-.luma-shelf-material.luma-surface-frost {
+-  background-color: rgba(246, 247, 249, 0.80);
+-  color: #1f262d;
+-}
+-.luma-shelf-material.luma-surface-glass {
+-  background-color: rgba(250, 250, 251, 0.62);
+-  color: #161b20;
+-}
++.luma-shelf-material.luma-surface-frost { color: #1f262d; }
++.luma-shelf-material.luma-surface-glass { color: #161b20; }
+ 
+ .luma-shelf-material.luma-surface-dark {
+   background-color: #21252b;
+@@ -329,18 +323,46 @@
+ .luma-shelf-material.luma-surface-light {
+   background-color: #f1f2f3;
+   color: #34383d; }
+-.luma-shelf-material.luma-surface-frost {
+-  background-color: rgba(246, 247, 249, 0.80);
+-  color: #1f262d;
+-}
+-.luma-shelf-material.luma-surface-glass {
+-  background-color: rgba(250, 250, 251, 0.62);
+-  color: #161b20;
+-}
++.luma-shelf-material.luma-surface-frost { color: #1f262d; }
++.luma-shelf-material.luma-surface-glass { color: #161b20; }
+ .luma-shelf-material.luma-surface-dark {
+   background-color: #21252b;
+   color: #e7e9e8; }
+ 
++/* The glass veil: the one definition. In Frost and Glass every Shell surface
++ * that stands or floats over the desktop -- the Shelf islands (the dock, the
++ * clock, live chips), Quick Options, the clock's calendar, every Shell popup
++ * menu, and the dock's labels, previews and folders -- is painted with the
++ * veil application windows use for their title band, context menus and
++ * popovers (config/shared/design-tokens.json, surface_treatments.*.surface_veil),
++ * so Quick Options and an application's context menu are one material. No
++ * other rule paints these surfaces in Frost or Glass: the rules above only
++ * carry border, ink and shadow. ProjectLuma's tools/check-shell-veil.py fails
++ * the build if another rule does, or if these values drift from the tokens.
++ * Text on the veil is plain; the veil carries its own contrast. */
++.luma-shelf-material.luma-surface-frost,
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-frost,
++.popup-menu.luma-surface-frost .popup-menu-content,
++.popup-menu.luma-surface-frost .popup-menu-content.luma-quick-options,
++.dash-label.luma-surface-frost,
++.luma-dock-preview.luma-surface-frost,
++.luma-dockf-surface.luma-surface-frost {
++  background-color: rgba(248, 249, 250, 0.90);
++  text-shadow: none; }
++.luma-shelf-material.luma-surface-glass,
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-glass,
++.popup-menu.luma-surface-glass .popup-menu-content,
++.popup-menu.luma-surface-glass .popup-menu-content.luma-quick-options,
++.dash-label.luma-surface-glass,
++.luma-dock-preview.luma-surface-glass,
++.luma-dockf-surface.luma-surface-glass {
++  background-color: rgba(250, 250, 251, 0.85);
++  text-shadow: none; }
++
+ .luma-shelf-stroke.luma-surface-light,
+ .luma-shelf-stroke.luma-surface-frost,
+ .luma-shelf-stroke.luma-surface-glass { border-color: rgba(255,255,255,0.82); }
+@@ -396,13 +418,11 @@
+   box-shadow: 0 4px 14px -5px rgba(10,14,19,0.45); }
+ .dash-label.luma-surface-frost {
+   border-color: rgba(39,48,56,0.10);
+-  background-color: rgba(248, 249, 250, 0.88);
+   color: #1f262d;
+   box-shadow: 0 4px 14px -5px rgba(10,14,19,0.45);
+ }
+ .dash-label.luma-surface-glass {
+   border-color: rgba(39,48,56,0.10);
+-  background-color: rgba(250, 250, 251, 0.80);
+   color: #161b20;
+   box-shadow: 0 4px 14px -5px rgba(10,14,19,0.45);
+ }
+@@ -450,16 +470,6 @@
+   background-color: #f1f2f3; }
+ .luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+ .luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-frost {
+-  background-color: rgba(246, 247, 249, 0.80);
+-}
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+-.luma-shelf-material.luma-status-cluster.luma-surface-glass {
+-  background-color: rgba(250, 250, 251, 0.62);
+-}
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
+-.luma-shelf-actions-island >
+ .luma-shelf-material.luma-status-cluster.luma-surface-dark {
+   background-color: #21252b; }
+ 
+@@ -492,13 +502,11 @@
+   box-shadow: 0 4px 12px rgba(14,18,24,0.20); }
+ .popup-menu.luma-surface-frost .popup-menu-content.luma-quick-options {
+   border-color: rgba(255,255,255,0.72);
+-  background-color: rgba(246, 247, 249, 0.80);
+   color: #1f262d;
+   box-shadow: 0 4px 12px rgba(14,18,24,0.20);
+ }
+ .popup-menu.luma-surface-glass .popup-menu-content.luma-quick-options {
+   border-color: rgba(255,255,255,0.72);
+-  background-color: rgba(250, 250, 251, 0.62);
+   color: #161b20;
+   box-shadow: 0 4px 12px rgba(14,18,24,0.20);
+ }
+@@ -1267,12 +1275,10 @@ as on dark. */
+ .dash-label.luma-surface-light { background-color: #f6f7f8; color: #34383d;
+   box-shadow: 0 4px 12px rgba(12, 16, 21, 0.2); }
+ .dash-label.luma-surface-frost {
+-  background-color: rgba(248, 249, 250, 0.88);
+   color: #1f262d;
+   box-shadow: 0 4px 12px rgba(12, 16, 21, 0.2);
+ }
+ .dash-label.luma-surface-glass {
+-  background-color: rgba(250, 250, 251, 0.80);
+   color: #161b20;
+   box-shadow: 0 4px 12px rgba(12, 16, 21, 0.2);
+ }
+@@ -1474,12 +1480,10 @@ as on dark. */
+   border-color: rgba(255, 255, 255, 0.82); background-color: #f6f7f8; color: #34383d; }
+ .luma-dock-preview.luma-surface-frost {
+   border-color: rgba(255, 255, 255, 0.82);
+-  background-color: rgba(248, 249, 250, 0.88);
+   color: #1f262d;
+ }
+ .luma-dock-preview.luma-surface-glass {
+   border-color: rgba(255, 255, 255, 0.82);
+-  background-color: rgba(250, 250, 251, 0.80);
+   color: #161b20;
+ }
+ 
+@@ -2451,11 +2455,9 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+   border-color: rgba(255, 255, 255, 0.82); background-color: #fbfbfa; color: #283038; }
+ .luma-dockf-surface.luma-surface-frost {
+   border-color: rgba(255, 255, 255, 0.82);
+-  background-color: rgba(251, 251, 250, 0.88);
+   color: #1f262d; }
+ .luma-dockf-surface.luma-surface-glass {
+   border-color: rgba(255, 255, 255, 0.82);
+-  background-color: rgba(250, 250, 251, 0.80);
+   color: #161b20; }
+ 
+ /* Header: the mark, the name and a true count, the arrangement, and the ways
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+index d2bfe8a..177d2fb 100644
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -30,7 +30,10 @@ const RECIPES = {
+ // is ever a dark smoke.
+ //
+ // `veil` is the island fill, `veilRaised` a popup, menu or sheet that sits one
+-// step denser, and `veilCard` a notification card. `ink` is body text and
++// step denser, and `veilCard` a notification card. In Frost and Glass `veil`
++// and `veilRaised` are one value, the veil application windows use for their
++// title band and menus (config/shared/design-tokens.json surface_veil), which
++// data/theme/luma-shelf.css states once for every Shell surface. `ink` is body text and
+ // chrome glyphs, `ink2` the secondary line (dates, subtitles, source names),
+ // `accent` a glyph that has to stay recognisably amber, and `line` one
+ // hairline. `recess` is the inset the Well sinks its glyphs into, and `hover`
+@@ -72,7 +75,7 @@ export const SURFACE_INK = {
+         shadow: null,
+     },
+     frost: {
+-        veil: 'rgba(246,247,249,0.80)', veilRaised: 'rgba(248,249,250,0.88)',
++        veil: 'rgba(248,249,250,0.90)', veilRaised: 'rgba(248,249,250,0.90)',
+         veilCard: 'rgba(250,250,251,0.88)',
+         recess: 'rgba(37,46,54,0.05)',
+         ink: '#1f262d', ink2: '#394047',
+@@ -85,7 +88,7 @@ export const SURFACE_INK = {
+         shadow: null,
+     },
+     glass: {
+-        veil: 'rgba(250,250,251,0.62)', veilRaised: 'rgba(250,250,251,0.80)',
++        veil: 'rgba(250,250,251,0.85)', veilRaised: 'rgba(250,250,251,0.85)',
+         veilCard: 'rgba(252,252,253,0.76)',
+         recess: 'rgba(37,46,54,0.04)',
+         ink: '#161b20', ink2: '#1f242a',

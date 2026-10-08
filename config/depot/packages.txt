@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Exact optional Office, Creative and Studio package inputs.
+# These are checked against their source specs and retained for Depot builds.
+# They are not composed into the desktop image; that reads config/desktop/packages.txt.
+
+luma-canvas-preview-0.1.0-8.luma.1.creator20261004.1.fc44.noarch
+luma-darkroom-0.1.0-1.luma.11.creator20261004.1.fc44.noarch
+luma-grid-preview-0.1.0-9.creator20261004.1.fc44.x86_64
+luma-reel-0.1.0-1.luma.9.creator20261004.1.fc44.noarch
+luma-session-0.1.0-1.luma.19.creator20261004.1.fc44.x86_64
+luma-session-instruments-1.0-1.luma.2.fc44.noarch
+sfizz-1.2.3-1.luma.1.fc44.x86_64
+luma-stage-preview-0.1.0-33.creator20261004.1.fc44.x86_64
+luma-tide-0.1.0-2.luma.33.creator20261007.1.fc44.noarch
+luma-write-0.1.0-1.luma.13.creator20261004.1.fc44.x86_64

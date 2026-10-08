@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="@APP_ID@">
+  <enum id="@APP_ID@.PasteMode">
+    <value nick="match-destination" value="0"/>
+    <value nick="keep-source" value="1"/>
+    <value nick="text-only" value="2"/>
+  </enum>
+  <schema id="@APP_ID@" path="@SETTINGS_PATH@">
+    <key name="recent-files" type="as">
+      <default>[]</default>
+      <summary>Recently opened or explicitly saved documents</summary>
+    </key>
+    <key name="pinned-files" type="as">
+      <default>[]</default>
+      <summary>Pinned recent documents</summary>
+    </key>
+    <key name="autosave-minutes" type="i">
+      <range min="1" max="60"/>
+      <default>2</default>
+      <summary>Recovery snapshot interval in minutes</summary>
+    </key>
+    <key name="default-paste-mode" enum="@APP_ID@.PasteMode">
+      <default>'match-destination'</default>
+      <summary>Default rich-paste behavior</summary>
+    </key>
+    <key name="show-navigator" type="b">
+      <default>true</default>
+      <summary>Show the Navigator in document windows</summary>
+    </key>
+    <key name="show-inspector" type="b">
+      <default>false</default>
+      <summary>Show the contextual Inspector in document windows</summary>
+    </key>
+    <key name="last-save-format" type="s">
+      <default>'docx'</default>
+      <summary>Last deliberate format selected for a new document</summary>
+    </key>
+    <key name="zoom" type="d">
+      <range min="0.2" max="8.0"/>
+      <default>1.0</default>
+      <summary>Last document zoom factor</summary>
+    </key>
+    <key name="page-theme" type="s">
+      <choices>
+        <choice value="auto"/>
+        <choice value="moon"/>
+        <choice value="sun"/>
+      </choices>
+      <default>'auto'</default>
+      <summary>How the page is shown</summary>
+      <description>Moon shows a dark page with light text; Sun shows white paper, true to print. Auto follows the appearance: Dark and Glass use Moon. Only the view changes; printing and export always use the document's own colours.</description>
+    </key>
+    <key name="recent-fonts" type="as">
+      <default>[]</default>
+      <summary>Typefaces applied most recently, newest first</summary>
+    </key>
+    <key name="show-advanced" type="b">
+      <default>false</default>
+      <summary>Show the Advanced tab in the inspector</summary>
+    </key>
+    <key name="show-welcome" type="b"><default>true</default><summary>Show the Creative collection welcome screen</summary></key>
+  </schema>
+</schemalist>

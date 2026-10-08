@@ -1,0 +1,187 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 11:00:00 -0500
+Subject: [PATCH] luma: frost and glass menus are smoked veils with white ink
+
+0150 gave every surface over the wallpaper one ink and one shadow: under
+frost and glass, white ink with a drop shadow, inherited from the
+luma-surface class the material controller stamps on each surface root.
+Popup menus carry that class too (the desktop menu, the dock and Well menus,
+the calendar), but kept 0045's light frosted veils and their dark ink. The
+shadow then smeared dark menu text into a blur, and labels that took the
+inherited white ink (the calendar's date header) vanished on the light veil.
+
+Frost and glass menus now use the same smoked veils as Quick Options
+(rgba(28, 33, 40, 0.88) and rgba(14, 19, 26, 0.82)), white ink, the ledger's
+smoked hover and pressed fills, and white separators, headings, ornaments
+and sub-menus, in both variant sheets.
+---
+ data/theme/gnome-shell-dark.css  | 44 +++++++++++++++++++++++++---------------
+ data/theme/gnome-shell-light.css | 44 +++++++++++++++++++++++++---------------
+ 2 files changed, 56 insertions(+), 32 deletions(-)
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 01e02ca..5139aad 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3808,16 +3808,23 @@ StScrollBar {
+   background-color: #252a30;
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++/* Frost and glass menus are the same smoked veils as Quick Options, with the
++ * ledger's white ink and its shadow (0150): a light veil under that ink left
++ * dark text smeared by the shadow and white text on paper. */
+ .popup-menu.luma-surface-frost .popup-menu-content {
+-  background-color: rgba(251, 251, 250, 0.90);
+-  color: #2c343a; }
++  background-color: rgba(28, 33, 40, 0.88);
++  border-color: rgba(255, 255, 255, 0.18);
++  color: #ffffff; }
+ .popup-menu.luma-surface-frost .luma-popup-shadow {
+-  background-color: rgba(241, 242, 243, 0.01); }
++  background-color: rgba(14, 19, 26, 0.01);
++  box-shadow: 0 24px 56px -18px rgba(14, 18, 24, 0.62); }
+ .popup-menu.luma-surface-glass .popup-menu-content {
+-  background-color: rgba(246, 244, 240, 0.82);
+-  color: #2c343a; }
++  background-color: rgba(14, 19, 26, 0.82);
++  border-color: rgba(255, 255, 255, 0.22);
++  color: #ffffff; }
+ .popup-menu.luma-surface-glass .luma-popup-shadow {
+-  background-color: rgba(255, 255, 255, 0.01); }
++  background-color: rgba(14, 19, 26, 0.01);
++  box-shadow: 0 24px 56px -18px rgba(9, 15, 25, 0.76); }
+ .background-menu { -arrow-rise: 0; }
+ .background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+@@ -3842,11 +3849,12 @@ StScrollBar {
+ .popup-menu-ornament { icon-size: 14px; color: rgba(242, 244, 246, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(242, 244, 246, 0.58); }
+ 
+-/* Frost and Glass use shared light ink; nested panes do not own blur. */
++/* Frost and Glass menus carry the ledger's white ink; nested panes do not own
++ * blur. Hover, focus and the checked row take the ledger's smoked hover fill. */
+ .popup-menu.luma-surface-frost .popup-menu-item,
+ .popup-menu.luma-surface-frost .popup-inactive-menu-item,
+ .popup-menu.luma-surface-glass .popup-menu-item,
+-.popup-menu.luma-surface-glass .popup-inactive-menu-item { color: #2c343a; }
++.popup-menu.luma-surface-glass .popup-inactive-menu-item { color: #ffffff; }
+ .popup-menu.luma-surface-frost .popup-menu-item:hover,
+ .popup-menu.luma-surface-frost .popup-menu-item:focus,
+ .popup-menu.luma-surface-frost .popup-menu-item:selected,
+@@ -3855,20 +3863,24 @@ StScrollBar {
+ .popup-menu.luma-surface-glass .popup-menu-item:focus,
+ .popup-menu.luma-surface-glass .popup-menu-item:selected,
+ .popup-menu.luma-surface-glass .popup-menu-item:checked {
+-  color: #2c343a; background-color: rgba(37, 46, 54, 0.06); }
++  color: #ffffff; background-color: rgba(255, 255, 255, 0.07); }
++.popup-menu.luma-surface-frost .popup-menu-item:active,
++.popup-menu.luma-surface-glass .popup-menu-item:active { background-color: rgba(255, 255, 255, 0.11); }
+ .popup-menu.luma-surface-frost .popup-menu-item:insensitive,
+-.popup-menu.luma-surface-glass .popup-menu-item:insensitive { color: rgba(44, 52, 58, 0.38); }
++.popup-menu.luma-surface-glass .popup-menu-item:insensitive { color: rgba(255, 255, 255, 0.45); }
+ .popup-menu.luma-surface-frost .popup-menu-item.luma-menu-heading,
+-.popup-menu.luma-surface-glass .popup-menu-item.luma-menu-heading { color: rgba(44, 52, 58, 0.46); }
++.popup-menu.luma-surface-glass .popup-menu-item.luma-menu-heading { color: rgba(255, 255, 255, 0.72); }
+ .popup-menu.luma-surface-frost .popup-menu-ornament,
+-.popup-menu.luma-surface-glass .popup-menu-ornament { color: rgba(44, 52, 58, 0.72); }
++.popup-menu.luma-surface-glass .popup-menu-ornament { color: rgba(255, 255, 255, 0.84); }
+ .popup-menu.luma-surface-frost .popup-menu-arrow,
+-.popup-menu.luma-surface-glass .popup-menu-arrow { color: rgba(44, 52, 58, 0.58); }
++.popup-menu.luma-surface-glass .popup-menu-arrow { color: rgba(255, 255, 255, 0.76); }
+ .popup-menu.luma-surface-frost .popup-separator-menu-item .popup-separator-menu-item-separator,
+ .popup-menu.luma-surface-glass .popup-separator-menu-item .popup-separator-menu-item-separator {
+-  background-color: rgba(37, 46, 54, 0.105); }
+-.popup-menu.luma-surface-frost .popup-sub-menu { background-color: rgba(251, 251, 250, 0.94); }
+-.popup-menu.luma-surface-glass .popup-sub-menu { background-color: rgba(246, 244, 240, 0.88); }
++  background-color: rgba(255, 255, 255, 0.14); }
++.popup-menu.luma-surface-frost .popup-sub-menu,
++.popup-menu.luma-surface-glass .popup-sub-menu {
++  background-color: rgba(255, 255, 255, 0.05);
++  border-color: rgba(255, 255, 255, 0.10); }
+ 
+ /* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
+  * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 2246cee..e4dc950 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3996,16 +3996,23 @@ StScrollBar {
+   background-color: #f6f7f8;
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++/* Frost and glass menus are the same smoked veils as Quick Options, with the
++ * ledger's white ink and its shadow (0150): a light veil under that ink left
++ * dark text smeared by the shadow and white text on paper. */
+ .popup-menu.luma-surface-frost .popup-menu-content {
+-  background-color: rgba(251, 251, 250, 0.90);
+-  color: #2c343a; }
++  background-color: rgba(28, 33, 40, 0.88);
++  border-color: rgba(255, 255, 255, 0.18);
++  color: #ffffff; }
+ .popup-menu.luma-surface-frost .luma-popup-shadow {
+-  background-color: rgba(241, 242, 243, 0.01); }
++  background-color: rgba(14, 19, 26, 0.01);
++  box-shadow: 0 24px 56px -18px rgba(14, 18, 24, 0.62); }
+ .popup-menu.luma-surface-glass .popup-menu-content {
+-  background-color: rgba(246, 244, 240, 0.82);
+-  color: #2c343a; }
++  background-color: rgba(14, 19, 26, 0.82);
++  border-color: rgba(255, 255, 255, 0.22);
++  color: #ffffff; }
+ .popup-menu.luma-surface-glass .luma-popup-shadow {
+-  background-color: rgba(255, 255, 255, 0.01); }
++  background-color: rgba(14, 19, 26, 0.01);
++  box-shadow: 0 24px 56px -18px rgba(9, 15, 25, 0.76); }
+ .background-menu { -arrow-rise: 0; }
+ .background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+@@ -4030,11 +4037,12 @@ StScrollBar {
+ .popup-menu-ornament { icon-size: 14px; color: rgba(37, 43, 49, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(37, 43, 49, 0.58); }
+ 
+-/* Frost and Glass use shared light ink; nested panes do not own blur. */
++/* Frost and Glass menus carry the ledger's white ink; nested panes do not own
++ * blur. Hover, focus and the checked row take the ledger's smoked hover fill. */
+ .popup-menu.luma-surface-frost .popup-menu-item,
+ .popup-menu.luma-surface-frost .popup-inactive-menu-item,
+ .popup-menu.luma-surface-glass .popup-menu-item,
+-.popup-menu.luma-surface-glass .popup-inactive-menu-item { color: #2c343a; }
++.popup-menu.luma-surface-glass .popup-inactive-menu-item { color: #ffffff; }
+ .popup-menu.luma-surface-frost .popup-menu-item:hover,
+ .popup-menu.luma-surface-frost .popup-menu-item:focus,
+ .popup-menu.luma-surface-frost .popup-menu-item:selected,
+@@ -4043,20 +4051,24 @@ StScrollBar {
+ .popup-menu.luma-surface-glass .popup-menu-item:focus,
+ .popup-menu.luma-surface-glass .popup-menu-item:selected,
+ .popup-menu.luma-surface-glass .popup-menu-item:checked {
+-  color: #2c343a; background-color: rgba(37, 46, 54, 0.06); }
++  color: #ffffff; background-color: rgba(255, 255, 255, 0.07); }
++.popup-menu.luma-surface-frost .popup-menu-item:active,
++.popup-menu.luma-surface-glass .popup-menu-item:active { background-color: rgba(255, 255, 255, 0.11); }
+ .popup-menu.luma-surface-frost .popup-menu-item:insensitive,
+-.popup-menu.luma-surface-glass .popup-menu-item:insensitive { color: rgba(44, 52, 58, 0.38); }
++.popup-menu.luma-surface-glass .popup-menu-item:insensitive { color: rgba(255, 255, 255, 0.45); }
+ .popup-menu.luma-surface-frost .popup-menu-item.luma-menu-heading,
+-.popup-menu.luma-surface-glass .popup-menu-item.luma-menu-heading { color: rgba(44, 52, 58, 0.46); }
++.popup-menu.luma-surface-glass .popup-menu-item.luma-menu-heading { color: rgba(255, 255, 255, 0.72); }
+ .popup-menu.luma-surface-frost .popup-menu-ornament,
+-.popup-menu.luma-surface-glass .popup-menu-ornament { color: rgba(44, 52, 58, 0.72); }
++.popup-menu.luma-surface-glass .popup-menu-ornament { color: rgba(255, 255, 255, 0.84); }
+ .popup-menu.luma-surface-frost .popup-menu-arrow,
+-.popup-menu.luma-surface-glass .popup-menu-arrow { color: rgba(44, 52, 58, 0.58); }
++.popup-menu.luma-surface-glass .popup-menu-arrow { color: rgba(255, 255, 255, 0.76); }
+ .popup-menu.luma-surface-frost .popup-separator-menu-item .popup-separator-menu-item-separator,
+ .popup-menu.luma-surface-glass .popup-separator-menu-item .popup-separator-menu-item-separator {
+-  background-color: rgba(37, 46, 54, 0.105); }
+-.popup-menu.luma-surface-frost .popup-sub-menu { background-color: rgba(251, 251, 250, 0.94); }
+-.popup-menu.luma-surface-glass .popup-sub-menu { background-color: rgba(246, 244, 240, 0.88); }
++  background-color: rgba(255, 255, 255, 0.14); }
++.popup-menu.luma-surface-frost .popup-sub-menu,
++.popup-menu.luma-surface-glass .popup-sub-menu {
++  background-color: rgba(255, 255, 255, 0.05);
++  border-color: rgba(255, 255, 255, 0.10); }
+ 
+ /* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
+  * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
+-- 
+2.55.0

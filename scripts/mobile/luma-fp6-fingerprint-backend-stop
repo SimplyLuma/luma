@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+set -Eeuo pipefail
+umask 077
+
+runtime=${LUMA_FP6_RUNTIME_ROOT:-/usr/lib/luma/fp6-fingerprint}
+stage=${LUMA_FP6_ENROLLMENT_STAGE:-/run/luma/fp6-fingerprint}
+phase=/sys/bus/platform/devices/qcomtee/luma_focal_phase
+firmware_path=/sys/module/firmware_class/parameters/path
+normal_firmware_path=/lib/firmware/postmarketos
+expected_original_focal_sha=be860585db2c68ca80b3ee9e5e4929413c0d7207f9524ba489f974c46e26d051
+
+event() { printf 'event=luma_fp6_fingerprint_backend_stop %s\n' "$*"; }
+fail() { event state=failed reason="$1" >&2; exit 1; }
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ -d $runtime && ! -L $runtime && -d $stage && ! -L $stage ]] || fail runtime_identity
+[[ -r $stage/listener.pid ]] || fail listener_pid_missing
+listener_pid=$(<"$stage/listener.pid")
+[[ $listener_pid =~ ^[0-9]+$ ]] || fail listener_pid_invalid
+
+if [[ -r $phase ]]; then
+  printf '%s\n' abort >"$phase" 2>/dev/null || true
+fi
+if kill -0 "$listener_pid" 2>/dev/null; then
+  kill -TERM "$listener_pid"
+  for _ in $(seq 1 100); do
+    ! kill -0 "$listener_pid" 2>/dev/null && break
+    sleep 0.1
+  done
+  kill -0 "$listener_pid" 2>/dev/null && fail listener_term_timeout
+fi
+
+"$runtime/fp6-focal-driver-stage" cleanup
+rmmod qcomtee
+printf '%s' "$normal_firmware_path" >"$firmware_path"
+rmmod focaltech_fp
+modprobe focaltech_fp
+installed_focal=$(modinfo -n focaltech_fp)
+[[ $(sha256sum "$installed_focal" | cut -d' ' -f1) == "$expected_original_focal_sha" ]] || fail restored_focal_hash
+[[ -c /dev/focaltech_fp ]] || fail restored_focal_device
+[[ ! -e /dev/luma-fp6-fingerprint && ! -e /dev/luma-fp6-qsee-listener ]] || fail transport_retained
+find "$stage" -depth -delete
+event state=inactive normal_driver_restored=true sigkill_used=0

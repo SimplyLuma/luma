@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sticky Notes
+Comment=Keep short notes docked against the edge of the screen
+Exec=org.projectluma.StickyNotes
+Icon=org.projectluma.StickyNotes
+Terminal=false
+Categories=Utility;TextTools;GTK;
+StartupNotify=true
+DBusActivatable=true
+Keywords=Sticky;Note;Notes;Reminder;Memo;Scratch;Todo;

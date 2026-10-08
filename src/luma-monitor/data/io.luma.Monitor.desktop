@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Monitor
+Comment=This computer
+Exec=io.luma.Monitor
+Icon=luma-v3-monitor
+Terminal=false
+Categories=System;Monitor;
+Keywords=task manager;system monitor;processes;cpu;memory;
+StartupNotify=true
+DBusActivatable=true
+Actions=this-machine;
+
+[Desktop Action this-machine]
+Name=This machine
+Exec=io.luma.Monitor --this-machine

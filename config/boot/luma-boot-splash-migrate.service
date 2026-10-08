@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Move an unedited Luma boot splash setting to the current default
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/etc/plymouth
+ConditionPathExists=/etc/plymouth/plymouthd.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-boot-splash-migrate
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/plymouth
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX

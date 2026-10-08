@@ -1,0 +1,53 @@
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -129,7 +129,7 @@
+             layout_manager: new Clutter.BinLayout(),
+         });
+         this._content = child;
+-        this._decorations = [];
++        this._shadows = [];
+ 
+         for (const shadowClass of ['far', 'middle', 'near']) {
+             const shadow = new St.Widget({
+@@ -140,7 +140,7 @@
+                 coordinate: Clutter.BindCoordinate.ALL,
+             }));
+             this.add_child(shadow);
+-            this._decorations.push(shadow);
++            this._shadows.push(shadow);
+         }
+ 
+         child.add_style_class_name('luma-shelf-material');
+@@ -155,7 +155,12 @@
+             coordinate: Clutter.BindCoordinate.ALL,
+         }));
+         this.add_child(stroke);
+-        this._decorations.push(stroke);
++        this._stroke = stroke;
++    }
++
++    setSurfaceVisible(visible, castShadows) {
++        this._shadows.forEach(actor => actor.visible = visible && castShadows);
++        this._stroke.visible = visible;
+     }
+ 
+     // Constraint-backed shadow actors deliberately do not participate in
+@@ -445,7 +450,8 @@
+         this._surface.set_style_class_name(`luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
+             `luma-shelf-${this._edge} ${this._vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
+             `${this._protrude ? 'luma-shelf-attached' : ''} ${this._span && !this._floatEnds ? 'luma-shelf-flush' : ''}`);
+-        this._surface._decorations.forEach(actor => actor.visible = surfaceMode === 'connected');
++        const castShadows = !this._protrude && !this._span;
++        this._surface.setSurfaceVisible(surfaceMode === 'connected', castShadows);
+ 
+         this._group.remove_all_children();
+         if (dockVisible)
+@@ -462,7 +468,7 @@
+             if (surfaceMode === 'connected' && island !== visibleIslands.at(-1))
+                 island.add_style_class_name('luma-shelf-divider-after');
+             island._vertical = this._vertical;
+-            island._decorations.forEach(actor => actor.visible = surfaceMode === 'separate');
++            island.setSurfaceVisible(surfaceMode === 'separate', castShadows);
+         }
+         this._surface._vertical = this._vertical;
+         this._syncDockWidth();

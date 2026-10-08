@@ -1,0 +1,80 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: start phone autofocus near a tuned position
+
+Sweeping the entire actuator range whenever a camera pipeline starts is slow,
+visibly ratcheted, and can strike a phone module's noisy end positions. Allow
+sensor tuning to provide a known-good startup position and begin with the
+existing bounded local search around it. Explicit AF triggers retain the full
+sweep, and continuous focus retains its local recovery behavior.
+
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -43,6 +43,7 @@
+ 	double stepDivisor_;
+ 	double fineStepMin_;
+ 	double localRadius_;
++	double startupPosition_;
+ 	double focusLossThreshold_;
+ 	uint32_t settleSkip_;
+ 	uint32_t localSettleSkip_;
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -42,7 +42,7 @@
+ 	: steps_(0), sweepStart_(kDefaultSweepStart),
+ 	  sweepStop_(kDefaultSweepStop), coarseStep_(kDefaultCoarseStep),
+ 	  stepDivisor_(kDefaultStepDivisor), fineStepMin_(kDefaultFineStepMin),
+-	  localRadius_(kDefaultLocalRadius),
++	  localRadius_(kDefaultLocalRadius), startupPosition_(50.0),
+ 	  focusLossThreshold_(kDefaultFocusLossThreshold),
+ 	  settleSkip_(kDefaultSettleSkip),
+ 	  localSettleSkip_(kDefaultLocalSettleSkip),
+@@ -61,6 +61,8 @@
+ 	stepDivisor_ = tuningData["stepDivisor"].get<double>(kDefaultStepDivisor);
+ 	fineStepMin_ = tuningData["fineStepMin"].get<double>(kDefaultFineStepMin);
+ 	localRadius_ = tuningData["localRadius"].get<double>(kDefaultLocalRadius);
++	startupPosition_ = tuningData["startupPosition"].get<double>(
++		(sweepStart_ + sweepStop_) / 2.0);
+ 	focusLossThreshold_ = tuningData["focusLossThreshold"].get<double>(
+ 		kDefaultFocusLossThreshold);
+ 	settleSkip_ = tuningData["settleFrames"].get<uint32_t>(kDefaultSettleSkip);
+@@ -76,6 +78,7 @@
+ 	    sweepStart_ >= sweepStop_ || coarseStep_ <= 0.0 ||
+ 	    coarseStep_ >= sweepStop_ - sweepStart_ || stepDivisor_ <= 1.0 ||
+ 	    fineStepMin_ <= 0.0 || localRadius_ < coarseStep_ ||
++	    startupPosition_ < sweepStart_ || startupPosition_ > sweepStop_ ||
+ 	    focusLossThreshold_ <= 0.0 || focusLossThreshold_ >= 1.0 ||
+ 	    settleSkip_ == 0 || localSettleSkip_ == 0 ||
+ 	    localSettleSkip_ > settleSkip_ || focusLossFrames_ == 0) {
+@@ -92,12 +95,13 @@
+ 		ControlInfo(controls::AfTriggerValues,
+ 			    ControlValue(static_cast<int32_t>(controls::AfTriggerStart)));
+ 	context.ctrlMap[&controls::LensPosition] = ControlInfo(
+-		0.0f, 100.0f, static_cast<float>((sweepStart_ + sweepStop_) / 2.0));
++		0.0f, 100.0f, static_cast<float>(startupPosition_));
+ 	LOG(IPASoftAutoFocus, Info)
+ 		<< "AF tuning range " << sweepStart_ << "-" << sweepStop_
+ 		<< ", coarse " << coarseStep_ << ", settle " << settleSkip_
+ 		<< ", local settle " << localSettleSkip_
+ 		<< ", local radius " << localRadius_
++		<< ", startup " << startupPosition_
+ 		<< ", continuous " << defaultContinuous_;
+ 	return 0;
+ }
+@@ -108,7 +112,7 @@
+ 	context.activeState.knobs.af_mode = defaultContinuous_
+ 		? controls::AfModeContinuous : controls::AfModeAuto;
+ 	context.activeState.knobs.focus_sweep = false;
+-	context.activeState.knobs.focus_pos = (sweepStart_ + sweepStop_) / 2.0;
++	context.activeState.knobs.focus_pos = startupPosition_;
+ 	context.configuration.focus.skip = settleSkip_;
+ 	refocusCooldown_ = 0;
+ 
+@@ -119,7 +123,7 @@
+ 	 */
+ 	if (context.configuration.focus.available &&
+ 	    context.activeState.knobs.af_mode != controls::AfModeManual)
+-		restart(context, false);
++		restart(context, true);
+ 
+ 	return 0;
+ }

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Tide (LumaUI preview)
+Comment=Tide rebuilt on LumaUI
+Exec=@PREVIEW_PREFIX@/bin/run
+Icon=org.projectluma.Tide
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupNotify=true
+StartupWMClass=org.projectluma.Tide.LumaUIPreview
+DBusActivatable=false

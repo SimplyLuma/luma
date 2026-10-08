@@ -1,0 +1,21 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] stylesheet: keep the Light title gradient out of Glass
+
+Glass and Frost intentionally ask libadwaita for light foreground semantics.
+That makes prefers-color-scheme: light true, but it does not make the selected
+surface treatment Light. Scope Filer's deliberate opaque Light gradient to the
+actual Light treatment class so the shared AppKit can expose the single
+translucent root material in Frost and Glass.
+
+---
+ src/resources/style.css | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -22,1 +22,1 @@
+-  .luma-files-window headerbar.luma-titlebar {
++  .luma-files-window.luma-treatment-light headerbar.luma-titlebar {
+-- 
+2.54.0

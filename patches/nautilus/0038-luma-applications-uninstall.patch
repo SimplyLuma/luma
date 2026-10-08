@@ -1,0 +1,71 @@
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -6807,8 +6807,45 @@
+     }
+ }
+ 
++static void
++on_application_uninstall_requested (GObject *source, GAsyncResult *result, gpointer data)
++{
++    g_autoptr (NautilusFilesView) self = data;
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++    if (error != NULL)
++    {
++        nautilus_show_ok_dialog (_("Unable to open Install"), error->message,
++                                 gtk_widget_get_root (GTK_WIDGET (self)) ? GTK_WIDGET (self) : NULL);
++    }
++}
++
++static void
++action_uninstall_application (GSimpleAction *action, GVariant *state, gpointer user_data)
++{
++    NautilusFilesView *self = NAUTILUS_FILES_VIEW (user_data);
++    g_autolist (NautilusFile) selection = nautilus_files_view_get_selection (self);
++    g_autofree char *identity = NULL;
++    GDBusConnection *connection;
++
++    if (selection == NULL || selection->next != NULL ||
++        !nautilus_file_is_in_applications (selection->data))
++    {
++        return;
++    }
++    identity = g_strdup (nautilus_file_get_name (selection->data));
++    connection = g_application_get_dbus_connection (g_application_get_default ());
++    g_dbus_connection_call (connection, "org.projectluma.ApplicationInstaller2",
++                            "/org/projectluma/ApplicationInstaller2",
++                            "org.projectluma.ApplicationInstaller2", "RequestUninstall",
++                            g_variant_new ("(s)", identity), NULL,
++                            G_DBUS_CALL_FLAGS_NONE, 10000, NULL,
++                            on_application_uninstall_requested, g_object_ref (self));
++}
++
+ const GActionEntry view_entries[] =
+ {
++    { .name = "uninstall-application", .activate = action_uninstall_application },
+     /* Toolbar menu */
+     { .name = "zoom-in", .activate = action_zoom_in },
+     { .name = "zoom-out", .activate = action_zoom_out },
+@@ -7266,6 +7301,10 @@
+     view_action_group = self->view_action_group;
+ 
+     selection = nautilus_files_view_get_selection (self);
++    action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group), "uninstall-application");
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
++                                 selection != NULL && selection->next == NULL &&
++                                 nautilus_file_is_in_applications (selection->data));
+     selection_contains_home_dir = home_dir_in_selection (selection);
+     selection_contains_recent = showing_recent_directory (self);
+     selection_contains_starred = showing_starred_directory (self);
+--- a/src/resources/menu/nautilus-files-view-context-menus.ui
++++ b/src/resources/menu/nautilus-files-view-context-menus.ui
+@@ -22,4 +22,9 @@
+   <menu id="applications-selection-menu">
+     <section>
++      <item>
++        <attribute name="label" translatable="yes">_Uninstall…</attribute>
++        <attribute name="action">view.uninstall-application</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
+       <item>
+         <attribute name="label" translatable="yes">_Open</attribute>

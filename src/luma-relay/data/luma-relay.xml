@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.microsoft.portable-executable">
+    <comment>Windows portable executable</comment>
+    <sub-class-of type="application/x-executable"/>
+    <magic priority="80">
+      <match type="string" value="MZ" offset="0"/>
+    </magic>
+    <glob pattern="*.exe" weight="80"/>
+    <glob pattern="*.EXE" weight="80"/>
+  </mime-type>
+  <mime-type type="application/x-msi">
+    <comment>Windows Installer package</comment>
+    <glob pattern="*.msi" weight="80"/>
+    <glob pattern="*.MSI" weight="80"/>
+  </mime-type>
+</mime-info>

@@ -1,0 +1,14 @@
+[Unit]
+Description=Project Luma shared shell state
+PartOf=graphical-session.target
+After=graphical-session-pre.target dbus.service
+
+[Service]
+Type=dbus
+BusName=org.project_luma.ShellState1
+ExecStart=/usr/libexec/luma-shell-state-service
+Restart=on-failure
+RestartSec=1s
+
+[Install]
+WantedBy=graphical-session.target

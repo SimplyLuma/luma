@@ -1,0 +1,865 @@
+From 5820e1f2679ef5642964f687f05b5833cf72b248 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 11:02:49 -0500
+Subject: [PATCH] Settings: wire native Screen lock through scoped preference
+ adapters
+
+---
+ panels/privacy/meson.build             |   2 +
+ panels/privacy/screen/cc-screen-page.c | 253 +++----------------------
+ shell/cc-luma-view-live-lock.c         | 167 ++++++++++++++++
+ shell/cc-luma-view-private.h           |  13 ++
+ shell/cc-luma-view.c                   |  48 ++++-
+ shell/cc-luma-view.h                   |   8 +
+ shell/meson.build                      |   3 +
+ shell/test-luma-view.c                 | 114 +++++++++++
+ 8 files changed, 371 insertions(+), 237 deletions(-)
+ create mode 100644 shell/cc-luma-view-live-lock.c
+
+diff --git a/panels/privacy/meson.build b/panels/privacy/meson.build
+index 4360b10..058c17b 100644
+--- a/panels/privacy/meson.build
++++ b/panels/privacy/meson.build
+@@ -90,6 +90,8 @@ cflags += [
+ 
+ deps = common_deps + [
+   dependency('libgtop-2.0'),
++  json_glib_dep,
++  dependency('luma-ui-1'),
+ ]
+ 
+ deps = deps + [
+diff --git a/panels/privacy/screen/cc-screen-page.c b/panels/privacy/screen/cc-screen-page.c
+index bacb894..1b32324 100644
+--- a/panels/privacy/screen/cc-screen-page.c
++++ b/panels/privacy/screen/cc-screen-page.c
+@@ -1,242 +1,37 @@
+-/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
+- *
+- * Copyright (C) 2018 Red Hat, Inc
++/* Copyright (C) 2018 Red Hat, Inc
+  * Copyright (C) 2020 Collabora Ltd.
+  * Copyright (C) 2021-2022 Canonical Ltd.
+- *
+- * This program is free software; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License as published by
+- * the Free Software Foundation; either version 2 of the License, or
+- * (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, see <http://www.gnu.org/licenses/>.
+- *
+  * Author: Matthias Clasen <mclasen@redhat.com>
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ * Luma presentation composes public kit parts while retaining GNOME's exact
++ * screen-lock/session/notification preference ownership.
+  */
+-
+ #include "cc-screen-page.h"
+-#include "cc-number-row.h"
+-
+-#include "panels/display/cc-display-config-manager.h"
+-
+-#include <gio/gdesktopappinfo.h>
+-
+-struct _CcScreenPage
+-{
+-  AdwNavigationPage       parent_instance;
+-
+-  CcDisplayConfigManager *display_config_manager;
+-
+-  GSettings     *lock_settings;
+-  GSettings     *notification_settings;
+-  GSettings     *privacy_settings;
+-  GSettings     *session_settings;
+-
+-  GCancellable  *cancellable;
+-
+-  CcNumberRow         *blank_screen_row;
+-  CcNumberRow         *lock_after_row;
+-  AdwPreferencesGroup *screen_privacy_group;
+-  GDBusProxy          *usb_proxy;
+-  AdwSwitchRow        *automatic_screen_lock_row;
+-  AdwSwitchRow        *privacy_screen_row;
+-  AdwSwitchRow        *show_notifications_row;
+-  AdwSwitchRow        *usb_protection_row;
+-};
++#include "../../../shell/cc-luma-view.h"
++#include <luma-ui.h>
+ 
++struct _CcScreenPage { AdwNavigationPage parent_instance; };
+ G_DEFINE_TYPE (CcScreenPage, cc_screen_page, ADW_TYPE_NAVIGATION_PAGE)
+ 
+-static void
+-on_usb_protection_properties_changed_cb (GDBusProxy   *usb_proxy,
+-                                         GVariant     *changed_properties,
+-                                         GStrv         invalidated_properties,
+-                                         CcScreenPage *self)
++static void failed (GtkWidget *view, const GError *error, gpointer unused)
+ {
+-  gboolean available = FALSE;
+-
+-  if (self->usb_proxy)
+-    {
+-      g_autoptr(GVariant) variant = NULL;
+-
+-      variant = g_dbus_proxy_get_cached_property (self->usb_proxy, "Available");
+-      if (variant != NULL)
+-        available = g_variant_get_boolean (variant);
+-    }
+-
+-  /* Show the USB protection row only if the required daemon is up and running */
+-  gtk_widget_set_visible (GTK_WIDGET (self->usb_protection_row), available);
++  if (gtk_widget_get_root (view)) luma_toast_show (view, error->message, "error");
+ }
+-
+-static void
+-on_usb_protection_param_ready (GObject      *source_object,
+-                               GAsyncResult *res,
+-                               gpointer      user_data)
++static void cc_screen_page_class_init (CcScreenPageClass *klass) {}
++static void cc_screen_page_init (CcScreenPage *self)
+ {
++  adw_navigation_page_set_title (ADW_NAVIGATION_PAGE (self), "Screen lock");
++  adw_navigation_page_set_tag (ADW_NAVIGATION_PAGE (self), "screenlock");
+   g_autoptr(GError) error = NULL;
+-  CcScreenPage *self;
+-  GDBusProxy *proxy;
+-
+-  self = user_data;
+-  proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
+-  if (error)
+-    {
+-      if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-        {
+-          g_warning ("Failed to connect to SettingsDaemon.UsbProtection: %s",
+-                     error->message);
+-        }
+-
+-      gtk_widget_set_visible (GTK_WIDGET (self->usb_protection_row), FALSE);
+-      return;
+-    }
+-  self->usb_proxy = proxy;
+-
+-  g_signal_connect_object (self->usb_proxy,
+-                           "g-properties-changed",
+-                           G_CALLBACK (on_usb_protection_properties_changed_cb),
+-                           self,
+-                           0);
+-  on_usb_protection_properties_changed_cb (self->usb_proxy, NULL, NULL, self);
+-}
+-
+-static void
+-cc_screen_page_finalize (GObject *object)
+-{
+-  CcScreenPage *self = CC_SCREEN_PAGE (object);
+-
+-  g_cancellable_cancel (self->cancellable);
+-  g_clear_object (&self->cancellable);
+-  g_clear_object (&self->display_config_manager);
+-  g_clear_object (&self->lock_settings);
+-  g_clear_object (&self->notification_settings);
+-  g_clear_object (&self->session_settings);
+-  g_clear_object (&self->usb_proxy);
+-
+-  G_OBJECT_CLASS (cc_screen_page_parent_class)->finalize (object);
+-}
+-
+-static void
+-cc_screen_page_class_init (CcScreenPageClass *klass)
+-{
+-  GObjectClass *oclass = G_OBJECT_CLASS (klass);
+-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+-
+-  oclass->finalize = cc_screen_page_finalize;
+-
+-  g_type_ensure (CC_TYPE_NUMBER_ROW);
+-
+-  gtk_widget_class_set_template_from_resource (widget_class, "/org/gnome/control-center/privacy/screen/cc-screen-page.ui");
+-
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, automatic_screen_lock_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, blank_screen_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, lock_after_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, privacy_screen_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, screen_privacy_group);
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, show_notifications_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcScreenPage, usb_protection_row);
+-}
+-
+-static void
+-update_display_config (CcScreenPage *self)
+-{
+-  g_autoptr (CcDisplayConfig) config = NULL;
+-  gboolean any_privacy_screen = FALSE;
+-  gboolean any_configurable_privacy_screen = FALSE;
+-  GList *monitors;
+-  GList *l;
+-
+-  config = cc_display_config_manager_get_current (self->display_config_manager);
+-  monitors = config ? cc_display_config_get_monitors (config) : NULL;
+-
+-  for (l = monitors; l; l = l->next)
+-    {
+-      CcDisplayMonitor *monitor = CC_DISPLAY_MONITOR (l->data);
+-      CcDisplayMonitorPrivacy privacy = cc_display_monitor_get_privacy (monitor);
+-
+-      if (privacy != CC_DISPLAY_MONITOR_PRIVACY_UNSUPPORTED)
+-        {
+-          any_privacy_screen = TRUE;
+-
+-          if (!(privacy & CC_DISPLAY_MONITOR_PRIVACY_LOCKED))
+-            any_configurable_privacy_screen = TRUE;
+-        }
+-    }
+-
+-  gtk_widget_set_visible (GTK_WIDGET (self->screen_privacy_group),
+-                          any_privacy_screen);
+-  gtk_widget_set_sensitive (GTK_WIDGET (self->privacy_screen_row),
+-                            any_configurable_privacy_screen);
+-}
+-
+-static void
+-cc_screen_page_init (CcScreenPage *self)
+-{
+-  gtk_widget_init_template (GTK_WIDGET (self));
+-
+-  self->cancellable = g_cancellable_new ();
+-
+-  self->lock_settings = g_settings_new ("org.gnome.desktop.screensaver");
+-  self->privacy_settings = g_settings_new ("org.gnome.desktop.privacy");
+-  self->notification_settings = g_settings_new ("org.gnome.desktop.notifications");
+-  self->session_settings = g_settings_new ("org.gnome.desktop.session");
+-
+-  g_settings_bind (self->lock_settings,
+-                   "lock-enabled",
+-                   self->automatic_screen_lock_row,
+-                   "active",
+-                   G_SETTINGS_BIND_DEFAULT);
+-
+-  g_settings_bind (self->lock_settings,
+-                   "lock-enabled",
+-                   self->lock_after_row,
+-                   "sensitive",
+-                   G_SETTINGS_BIND_GET);
+-
+-  cc_number_row_bind_settings (self->lock_after_row,
+-                               self->lock_settings,
+-                               "lock-delay");
+-
+-  g_settings_bind (self->notification_settings,
+-                   "show-in-lock-screen",
+-                   self->show_notifications_row,
+-                   "active",
+-                   G_SETTINGS_BIND_DEFAULT);
+-
+-  cc_number_row_bind_settings (self->blank_screen_row,
+-                               self->session_settings,
+-                               "idle-delay");
+-
+-  g_settings_bind (self->privacy_settings,
+-                   "usb-protection",
+-                   self->usb_protection_row,
+-                   "active",
+-                   G_SETTINGS_BIND_DEFAULT);
+-
+-  self->display_config_manager = cc_display_config_manager_new ();
+-  g_signal_connect_object (self->display_config_manager, "changed",
+-                           G_CALLBACK (update_display_config), self,
+-                           G_CONNECT_SWAPPED);
+-
+-  update_display_config (self);
+-  g_settings_bind (self->privacy_settings,
+-                   "privacy-screen",
+-                   self->privacy_screen_row,
+-                   "active",
+-                   G_SETTINGS_BIND_DEFAULT);
+-
+-  g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION,
+-                            G_DBUS_PROXY_FLAGS_NONE,
+-                            NULL,
+-                            "org.gnome.SettingsDaemon.UsbProtection",
+-                            "/org/gnome/SettingsDaemon/UsbProtection",
+-                            "org.gnome.SettingsDaemon.UsbProtection",
+-                            self->cancellable,
+-                            on_usb_protection_param_ready,
+-                            self);
++  g_autoptr(CcLumaPreferences) lock = cc_luma_preferences_new_native (CC_LUMA_PREFS_SCREEN_LOCK, &error);
++  g_autoptr(CcLumaPreferences) session = lock ? cc_luma_preferences_new_native (CC_LUMA_PREFS_SESSION_IDLE, &error) : NULL;
++  g_autoptr(CcLumaPreferences) notifications = session ? cc_luma_preferences_new_native (CC_LUMA_PREFS_NOTIFICATIONS, &error) : NULL;
++  g_autofree char *backup = g_build_filename (g_get_user_data_dir (), "luma", "settings", "backups", NULL);
++  GtkWidget *view = notifications ? cc_luma_view_new_screen_lock (lock, session, notifications, backup, &error) : NULL;
++  if (view) cc_luma_view_set_error_handler (view, failed, NULL);
++  else {
++    view = gtk_label_new (error ? error->message : "Screen lock preferences are unavailable");
++    luma_ui_apply_type_full (view, "body", FALSE); gtk_label_set_wrap (GTK_LABEL (view), TRUE);
++  }
++  adw_navigation_page_set_child (ADW_NAVIGATION_PAGE (self), view);
+ }
+diff --git a/shell/cc-luma-view-live-lock.c b/shell/cc-luma-view-live-lock.c
+new file mode 100644
+index 0000000..1b3076e
+--- /dev/null
++++ b/shell/cc-luma-view-live-lock.c
+@@ -0,0 +1,167 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++
++struct _CcLumaLiveLock {
++  CcLumaPreferences *prefs[3];
++  GCancellable *write;
++  char *backup, *blank, *delay;
++  gboolean ready, automatic, notifications;
++  guint idle_seconds, delay_seconds;
++};
++static void changed (CcLumaPreferences *source, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v && v->live_lock) cc_luma_view_queue_refresh (v);
++}
++CcLumaLiveLock *cc_luma_live_lock_new (CcLumaPreferences *lock,
++  CcLumaPreferences *session, CcLumaPreferences *notifications,
++  const char *backup, GError **error)
++{
++  if (g_getenv ("LUMA_SETTINGS_FIXTURE") || !CC_IS_LUMA_PREFERENCES (lock) ||
++      !CC_IS_LUMA_PREFERENCES (session) || !CC_IS_LUMA_PREFERENCES (notifications) ||
++      lock == session || lock == notifications || session == notifications ||
++      !backup || !g_path_is_absolute (backup)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++      "Live Screen lock requires dedicated native observers and a recovery directory outside fixture mode");
++    return NULL;
++  }
++  CcLumaLiveLock *self = g_new0 (CcLumaLiveLock, 1);
++  self->prefs[0] = g_object_ref (lock); self->prefs[1] = g_object_ref (session);
++  self->prefs[2] = g_object_ref (notifications); self->backup = g_strdup (backup);
++  return self;
++}
++void cc_luma_live_lock_start (View *v)
++{
++  for (guint i = 0; i < 3; i++) {
++    g_signal_connect_object (v->live_lock->prefs[i], "changed", G_CALLBACK (changed), v->root, 0);
++    cc_luma_preferences_start (v->live_lock->prefs[i]);
++  }
++}
++void cc_luma_live_lock_free (CcLumaLiveLock *self)
++{
++  if (!self) return;
++  if (self->write) g_cancellable_cancel (self->write);
++  g_clear_object (&self->write);
++  for (guint i = 0; i < 3; i++) { cc_luma_preferences_stop (self->prefs[i]); g_object_unref (self->prefs[i]); }
++  g_free (self->backup); g_free (self->blank); g_free (self->delay); g_free (self);
++}
++const char *cc_luma_live_lock_text (CcLumaLiveLock *self, const char *key)
++{
++  return g_str_equal (key, "lock.blank") ? self->blank ? self->blank : "" :
++    g_str_equal (key, "lock.delay") ? self->delay ? self->delay : "" : "";
++}
++gboolean cc_luma_live_lock_flag (CcLumaLiveLock *self, const char *key)
++{
++  return self->ready && (g_str_equal (key, "lock.auto") ? self->automatic :
++    g_str_equal (key, "lock.notes") && self->notifications);
++}
++static gint owner_key (const char *key, const char **native)
++{
++  if (g_str_equal (key, "lock.auto")) { *native = "lock-enabled"; return 0; }
++  if (g_str_equal (key, "lock.delay")) { *native = "lock-delay"; return 0; }
++  if (g_str_equal (key, "lock.blank")) { *native = "idle-delay"; return 1; }
++  if (g_str_equal (key, "lock.notes")) { *native = "show-in-lock-screen"; return 2; }
++  return -1;
++}
++gboolean cc_luma_live_lock_editable (CcLumaLiveLock *self, const char *key)
++{
++  const char *native = NULL; gint owner = owner_key (key, &native); gboolean writable = FALSE;
++  if (!self->ready || self->write || owner < 0) return FALSE;
++  g_autoptr(GVariant) values = cc_luma_preferences_dup_writable (self->prefs[owner]);
++  return values && g_variant_lookup (values, native, "b", &writable) && writable;
++}
++typedef struct { GWeakRef root; GCancellable *cancel; } LockWrite;
++static void written (GObject *source, GAsyncResult *result, gpointer data)
++{
++  LockWrite *write = data; g_autoptr(GError) error = NULL;
++  gboolean success = cc_luma_preferences_set_finish (CC_LUMA_PREFERENCES (source), result, &error);
++  g_autoptr(GtkWidget) root = g_weak_ref_get (&write->root);
++  View *v = root ? g_object_get_data (G_OBJECT (root), "cf-view") : NULL;
++  if (v && v->live_lock && v->live_lock->write == write->cancel) {
++    g_clear_object (&v->live_lock->write);
++    if (!success && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) cc_luma_view_report_error (v, error);
++    cc_luma_view_queue_refresh (v);
++  }
++  g_weak_ref_clear (&write->root); g_object_unref (write->cancel); g_free (write);
++}
++void cc_luma_live_lock_edit (View *v, const char *key, GVariant *value)
++{
++  CcLumaLiveLock *self = v->live_lock; const char *native = NULL;
++  gint owner = owner_key (key, &native);
++  if (owner < 0 || !cc_luma_live_lock_editable (self, key)) {
++    g_autoptr(GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++      "This native Screen lock preference is unavailable, locked or already being edited");
++    cc_luma_view_report_error (v, error); cc_luma_view_queue_refresh (v); return;
++  }
++  self->write = g_cancellable_new (); LockWrite *write = g_new0 (LockWrite, 1);
++  g_weak_ref_init (&write->root, v->root); write->cancel = g_object_ref (self->write);
++  cc_luma_preferences_set_async (self->prefs[owner], native, value, self->backup,
++    self->write, written, write); cc_luma_view_queue_refresh (v);
++}
++void cc_luma_live_lock_pick (View *v, const char *key, const char *value)
++{
++  const char * const blanks[] = { "0", "1", "2", "3", "5", "8", "10", "15", NULL };
++  const char * const delays[] = { "0", "30", "60", "300", NULL };
++  const char * const *allowed = g_str_equal (key, "lock.blank") ? blanks :
++    g_str_equal (key, "lock.delay") ? delays : NULL;
++  for (guint i = 0; allowed && allowed[i]; i++) if (g_str_equal (value, allowed[i])) {
++    guint seconds = (guint) g_ascii_strtoull (value, NULL, 10);
++    if (allowed == blanks) seconds *= 60;
++    g_autoptr(GVariant) native = g_variant_ref_sink (g_variant_new_uint32 (seconds));
++    cc_luma_live_lock_edit (v, key, native); return;
++  }
++  /* An uncommon existing value is displayed exactly, never normalized. Its
++   * menu item is a no-op; only an explicit standard selection edits it. */
++  if (allowed && g_str_equal (value, cc_luma_live_lock_text (v->live_lock, key))) return;
++  g_autoptr(GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++    "Invalid or cross-page native Screen lock selection");
++  cc_luma_view_report_error (v, error);
++}
++static GtkWidget *duration (View *v, const char *key, const char * const *choices, guint seconds)
++{
++  const char *current = cc_luma_live_lock_text (v->live_lock, key);
++  gboolean known = FALSE; guint count = 0;
++  for (; choices[count]; count += 2) if (g_str_equal (choices[count], current)) known = TRUE;
++  g_autoptr(GPtrArray) items = g_ptr_array_new_with_free_func (g_free);
++  for (guint i = 0; i < count; i++) g_ptr_array_add (items, g_strdup (choices[i]));
++  if (!known) {
++    g_ptr_array_add (items, g_strdup (current));
++    g_ptr_array_add (items, g_strdup_printf ("%u seconds", seconds));
++  }
++  g_ptr_array_add (items, NULL);
++  GtkWidget *picker = cc_luma_view_picker (v, key, (const char * const *) items->pdata);
++  gtk_widget_set_sensitive (picker, cc_luma_live_lock_editable (v->live_lock, key));
++  return picker;
++}
++void cc_luma_live_lock_render (View *v)
++{
++  CcLumaLiveLock *self = v->live_lock;
++  g_autoptr(GVariant) lock = cc_luma_preferences_dup_values (self->prefs[0]);
++  g_autoptr(GVariant) session = cc_luma_preferences_dup_values (self->prefs[1]);
++  g_autoptr(GVariant) notifications = cc_luma_preferences_dup_values (self->prefs[2]);
++  self->ready = FALSE;
++  if (!lock || !session || !notifications) {
++    cc_luma_view_header (v, "Screen lock", "Loading…", NULL); return;
++  }
++  if (!g_variant_lookup (lock, "lock-enabled", "b", &self->automatic) ||
++      !g_variant_lookup (lock, "lock-delay", "u", &self->delay_seconds) ||
++      !g_variant_lookup (session, "idle-delay", "u", &self->idle_seconds) ||
++      !g_variant_lookup (notifications, "show-in-lock-screen", "b", &self->notifications)) {
++    g_autoptr(GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
++      "Native Screen lock preferences have missing or incompatible fields");
++    cc_luma_view_header (v, "Screen lock", error->message, NULL); cc_luma_view_report_error (v, error); return;
++  }
++  self->ready = TRUE; g_free (self->blank); g_free (self->delay);
++  self->blank = self->idle_seconds % 60 ? g_strdup_printf ("native:%u", self->idle_seconds) : g_strdup_printf ("%u", self->idle_seconds / 60);
++  self->delay = g_strdup_printf ("%u", self->delay_seconds);
++  cc_luma_view_header (v, "Screen lock", self->automatic ? "Locks when the screen turns off" : "Locks only when you lock it", NULL);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  const char * const blanks[] = { "1", "1 minute", "2", "2 minutes", "3", "3 minutes", "5", "5 minutes", "8", "8 minutes", "10", "10 minutes", "15", "15 minutes", "0", "Never", NULL };
++  const char * const delays[] = { "0", "Straight away", "30", "30 seconds", "60", "1 minute", "300", "5 minutes", NULL };
++  cc_luma_view_row (rows, "Turn the screen off after", NULL, duration (v, "lock.blank", blanks, self->idle_seconds));
++  cc_luma_view_row (rows, "Lock when the screen turns off", NULL,
++    cc_luma_view_toggle (v, "lock.auto", "cf-lock.auto", "Lock when the screen turns off"));
++  if (self->automatic) cc_luma_view_row (rows, "Lock after", "Time to wake it without your password", duration (v, "lock.delay", delays, self->delay_seconds));
++  cc_luma_view_row (rows, "Notifications on the lock screen", NULL,
++    cc_luma_view_toggle (v, "lock.notes", "cf-lock.notes", "Notifications on the lock screen"));
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 618fb04..65aa1bf 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -3,11 +3,14 @@
+ #include "cc-luma-view.h"
+ #include "cc-luma-displays.h"
+ #include "cc-luma-privacy.h"
++#include "cc-luma-preferences.h"
+ #include <luma-ui.h>
+ #include <string.h>
+ 
++typedef struct _CcLumaLiveLock CcLumaLiveLock;
+ typedef struct {
+   CcLumaFixture *model;
++  CcLumaLiveLock *live_lock;
+   GtkBox *body;
+   GtkBox *tiles_host;
+   GtkLabel *subtitle;
+@@ -39,6 +42,16 @@ typedef struct {
+   CcLumaViewErrorFunc error_handler;
+   gpointer error_data;
+ } View;
++CcLumaLiveLock *cc_luma_live_lock_new (CcLumaPreferences *lock, CcLumaPreferences *session,
++  CcLumaPreferences *notifications, const char *backup, GError **error);
++void cc_luma_live_lock_start (View *v);
++void cc_luma_live_lock_free (CcLumaLiveLock *self);
++void cc_luma_live_lock_render (View *v);
++const char *cc_luma_live_lock_text (CcLumaLiveLock *self, const char *key);
++gboolean cc_luma_live_lock_flag (CcLumaLiveLock *self, const char *key);
++gboolean cc_luma_live_lock_editable (CcLumaLiveLock *self, const char *key);
++void cc_luma_live_lock_edit (View *v, const char *key, GVariant *value);
++void cc_luma_live_lock_pick (View *v, const char *key, const char *value);
+ void cc_luma_view_queue_refresh (View *v);
+ const char *cc_luma_view_text (View *v, const char *key);
+ gboolean cc_luma_view_flag (View *v, const char *key);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index a9a19c3..44d713f 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -32,11 +32,13 @@ void cc_luma_view_queue_refresh (View *v)
+ }
+ const char *cc_luma_view_text (View *v, const char *key)
+ {
++  if (v->live_lock) return cc_luma_live_lock_text (v->live_lock, key);
+   JsonNode *n = cc_luma_fixture_get (v->model, key);
+   return n && json_node_get_value_type (n) == G_TYPE_STRING ? json_node_get_string (n) : "";
+ }
+ gboolean cc_luma_view_flag (View *v, const char *key)
+ {
++  if (v->live_lock) return cc_luma_live_lock_flag (v->live_lock, key);
+   JsonNode *n = cc_luma_fixture_get (v->model, key);
+   return n && json_node_get_value_type (n) == G_TYPE_BOOLEAN && json_node_get_boolean (n);
+ }
+@@ -95,6 +97,13 @@ static void go_to (GtkWidget *root, const char *target)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v) return;
++  if (v->live_lock) {
++    if (!g_str_equal (target, "p-lock")) {
++      g_autoptr(GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Live Settings backend is not connected for page: %s", target);
++      cc_luma_view_report_error (v, error);
++    }
++    return;
++  }
+   if (v->search_locations && !g_str_equal (target, "search-places")) {
+     g_autoptr(GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+       "Live Settings backend is not connected for page: %s", target);
+@@ -126,6 +135,8 @@ void cc_luma_view_navigate (View *v, const char *target)
+ }
+ static void trail_back (LumaNavigationTrailBar *trail, GtkWidget *root)
+ {
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v && v->live_lock) { gtk_widget_activate_action (root, "navigation.pop", NULL); return; }
+   go_to (root, g_object_get_data (G_OBJECT (trail), "cf-target"));
+ }
+ GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target)
+@@ -144,6 +155,10 @@ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, GtkWidget *roo
+   const char *owner_page = g_object_get_data (G_OBJECT (widget), "cf-owner-page");
+   if (!owner_page || !g_str_equal (owner_page, v->page)) return;
+   const char *key = g_object_get_data (G_OBJECT (widget), "cf-key");
++  if (v->live_lock) {
++    g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_boolean (gtk_switch_get_active (widget)));
++    cc_luma_live_lock_edit (v, key, value); return;
++  }
+   g_autoptr (GError) error = NULL;
+   if (cc_luma_privacy_page (v->page)) {
+     g_autoptr(JsonNode) value = json_node_init_boolean (json_node_alloc (), gtk_switch_get_active (widget));
+@@ -176,6 +191,7 @@ GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, cons
+   gtk_widget_set_valign (w, GTK_ALIGN_CENTER);
+   gtk_widget_set_name (w, name);
+   gtk_switch_set_active (GTK_SWITCH (w), cc_luma_view_flag (v, key));
++  if (v->live_lock) gtk_widget_set_sensitive (w, cc_luma_live_lock_editable (v->live_lock, key));
+   g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
+   g_object_set_data_full (G_OBJECT (w), "cf-owner-page", g_strdup (v->page), g_free);
+   gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+@@ -193,6 +209,7 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   g_autoptr (JsonNode) n = json_node_new (JSON_NODE_VALUE);
+   g_autoptr (GError) error = NULL;
+   g_variant_get (parameter, "(&s&s)", &key, &value);
++  if (v->live_lock) { cc_luma_live_lock_pick (v, key, value); return; }
+   if (cc_luma_privacy_page (v->page)) {
+     json_node_set_string (n, value);
+     if (cc_luma_privacy_set (v->model, v->page, key, n, &error)) cc_luma_view_queue_refresh (v);
+@@ -385,9 +402,9 @@ static gboolean picker_value_allowed (const char *key, const char *value)
+ }
+ void cc_luma_view_header (View *v, const char *title, const char *subtitle, const char *switch_key)
+ {
+-  JsonArray *pages = cc_luma_fixture_get_pages (v->model);
++  JsonArray *pages = v->model ? cc_luma_fixture_get_pages (v->model) : NULL;
+   const char *parent = NULL, *parent_title = NULL;
+-  for (guint i = 0; i < json_array_get_length (pages); i++) {
++  for (guint i = 0; pages && i < json_array_get_length (pages); i++) {
+     JsonObject *page = json_array_get_object_element (pages, i);
+     if (!g_str_equal (json_object_get_string_member (page, "id"), v->page)) continue;
+     JsonNode *node = json_object_get_member (page, "parent");
+@@ -395,7 +412,8 @@ void cc_luma_view_header (View *v, const char *title, const char *subtitle, cons
+     break;
+   }
+   if (g_str_has_prefix (v->page, "app:")) parent = "apps";
+-  if (parent) for (guint i = 0; i < json_array_get_length (pages); i++) {
++  if (v->live_lock) { parent = "privacy"; parent_title = "Privacy & Security"; }
++  if (parent && pages) for (guint i = 0; i < json_array_get_length (pages); i++) {
+     JsonObject *page = json_array_get_object_element (pages, i);
+     if (!g_str_equal (json_object_get_string_member (page, "id"), parent)) continue;
+     JsonNode *node = json_object_get_member (page, "title");
+@@ -768,7 +786,8 @@ static void render (View *v)
+   v->subtitle = NULL;
+   while ((child = gtk_widget_get_first_child (GTK_WIDGET (v->body))))
+     gtk_box_remove (v->body, child);
+-  if (g_str_equal (v->page, "wifi")) wifi (v);
++  if (v->live_lock) cc_luma_live_lock_render (v);
++  else if (g_str_equal (v->page, "wifi")) wifi (v);
+   else if (g_str_equal (v->page, "wifi-net")) wifi_details (v);
+   else if (g_str_equal (v->page, "wifi-known")) known_networks (v);
+   else if (g_str_equal (v->page, "hotspot")) hotspot (v);
+@@ -797,6 +816,7 @@ static void render (View *v)
+ }
+ static void view_free (View *v)
+ {
++  cc_luma_live_lock_free (v->live_lock);
+   if (v->folder_cancel) g_cancellable_cancel (v->folder_cancel);
+   g_clear_object (&v->folder_cancel);
+   if (v->search_write_cancel) g_cancellable_cancel (v->search_write_cancel);
+@@ -819,7 +839,7 @@ static void view_free (View *v)
+   cc_luma_view_bluetooth_stop (v);
+   g_object_unref (v->center);
+   g_object_unref (v->actions);
+-  g_object_unref (v->model);
++  g_clear_object (&v->model);
+   g_free (v->page);
+   g_free (v);
+ }
+@@ -896,7 +916,7 @@ static gboolean page_valid (CcLumaFixture *model, const char *page)
+   if (g_str_equal (page, "sound") || g_str_equal (page, "sound-levels") || g_str_equal (page, "sound-alert")) return cc_luma_sound_validate (model);
+   return valid_wifi_model (model);
+ }
+-GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error)
++static GtkWidget *new_view (CcLumaFixture *model, const char *page, CcLumaLiveLock *live_lock, GError **error)
+ {
+   GtkWidget *scroll, *clamp;
+   View *v;
+@@ -906,13 +926,14 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+     }
+-  if (!page_valid (model, page))
++  if (!live_lock && !page_valid (model, page))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Invalid Settings data for page: %s", page);
+       return NULL;
+     }
+   v = g_new0 (View, 1);
+-  v->model = g_object_ref (model);
++  v->model = model ? g_object_ref (model) : NULL;
++  v->live_lock = live_lock;
+   v->page = g_strdup (page);
+   v->body = GTK_BOX (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
+   gtk_widget_set_name (GTK_WIDGET (v->body), "cf-page");
+@@ -956,6 +977,7 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   luma_action_center_attach (v->center, luma_pane_get_child (LUMA_PANE (v->root)));
+   g_signal_connect_object (v->center, "state-changed", G_CALLBACK (center_changed), v->root, 0);
+   render (v);
++  if (v->live_lock) cc_luma_live_lock_start (v);
+   if (v->image_error)
+     {
+       g_propagate_error (error, g_error_copy (v->image_error));
+@@ -966,6 +988,16 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   if (g_str_equal (page, "bluetooth")) cc_luma_view_bluetooth_start (v);
+   return v->root;
+ }
++GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error)
++{
++  return new_view (model, page, NULL, error);
++}
++GtkWidget *cc_luma_view_new_screen_lock (CcLumaPreferences *lock, CcLumaPreferences *session,
++  CcLumaPreferences *notifications, const char *backup_dir, GError **error)
++{
++  CcLumaLiveLock *binding = cc_luma_live_lock_new (lock, session, notifications, backup_dir, error);
++  return binding ? new_view (NULL, "p-lock", binding, error) : NULL;
++}
+ 
+ static GtkWidget *named_widget (GtkWidget *root, const char *name)
+ {
+diff --git a/shell/cc-luma-view.h b/shell/cc-luma-view.h
+index b8fbff3..1ca54ec 100644
+--- a/shell/cc-luma-view.h
++++ b/shell/cc-luma-view.h
+@@ -2,6 +2,7 @@
+ #pragma once
+ #include <gtk/gtk.h>
+ #include "cc-luma-fixture.h"
++#include "cc-luma-preferences.h"
+ G_BEGIN_DECLS
+ /* The view consumes only its supplied model. Service adapters belong outside it. */
+ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error);
+@@ -15,4 +16,11 @@ gboolean cc_luma_view_add_search_folder (GtkWidget *view, GFile *folder, GError
+ /* Explicit production binding. Fixture mode never binds a live backend. */
+ gboolean cc_luma_view_bind_search_locations (GtkWidget *view, GSettings *settings,
+   const char *backup_dir, GError **error);
++/* No fixture model is accepted or loaded. The view owns start/stop of these
++ * dedicated observers; injected memory settings support isolated tests.
++ * Production passes SCREEN_LOCK, SESSION_IDLE and NOTIFICATIONS catalogs.
++ * Existing uncommon timeout values are displayed without normalization. */
++GtkWidget *cc_luma_view_new_screen_lock (CcLumaPreferences *lock,
++  CcLumaPreferences *session, CcLumaPreferences *notifications,
++  const char *backup_dir, GError **error);
+ G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index e300df4..7eda3af 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -96,6 +96,7 @@ common_sources = files(
+   'cc-luma-view-nightlight.c',
+   'cc-luma-view-devices.c',
+   'cc-luma-view-privacy.c',
++  'cc-luma-view-live-lock.c',
+   'cc-luma-view-keyboard.c',
+   'cc-luma-view-application-options.c',
+ )
+@@ -276,6 +277,8 @@ applications_test = executable('test-luma-applications',
+ test('luma-settings-applications', applications_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ fixture_view_sources = ['cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-privacy.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-privacy.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c']
++fixture_view_sources += ['cc-luma-view-live-lock.c', 'cc-luma-preferences.c']
++fixture_view_sources += ['../panels/privacy/screen/cc-screen-page.c']
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')]
+ fixture_view_test = executable('test-luma-view', ['test-luma-view.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+ folder_portal_test = executable('test-luma-folder-portal', ['test-luma-folder-portal.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index e3e8e73..edb051f 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1,5 +1,6 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-view-private.h"
++#include "../panels/privacy/screen/cc-screen-page.h"
+ #include <string.h>
+ #include <luma-ui.h>
+ #include <glib/gstdio.h>
+@@ -1270,6 +1271,117 @@ static void adaptive_padding (void)
+   g_assert_cmpint (gtk_widget_get_margin_start (body), ==, 16);
+   gtk_window_destroy (GTK_WINDOW (window)); drain ();
+ }
++static void native_screen_lock_route (void)
++{
++  g_assert_cmpstr (g_getenv ("GSETTINGS_BACKEND"), ==, "memory");
++  g_autoptr(GSettings) settings = g_settings_new ("org.gnome.desktop.screensaver");
++  g_assert_true (g_settings_set_boolean (settings, "lock-enabled", FALSE));
++  GtkWidget *window = gtk_window_new ();
++  AdwNavigationView *navigation = ADW_NAVIGATION_VIEW (adw_navigation_view_new ());
++  AdwNavigationPage *parent = adw_navigation_page_new (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0), "Privacy & Security");
++  adw_navigation_view_add (navigation, parent);
++  /* Construct the actual upstream page type, as CcPrivacyPanel does. */
++  AdwNavigationPage *page = g_object_new (cc_screen_page_get_type (), NULL);
++  g_assert_cmpstr (adw_navigation_page_get_tag (page), ==, "screenlock");
++  GtkWidget *view = adw_navigation_page_get_child (page);
++  g_assert_true (LUMA_IS_PANE (view));
++  adw_navigation_view_add (navigation, page);
++  gtk_window_set_child (GTK_WINDOW (window), GTK_WIDGET (navigation));
++  luma_layer_host_install (GTK_WINDOW (window));
++  gtk_window_set_default_size (GTK_WINDOW (window), 390, 740);
++  adw_navigation_view_push (navigation, page);
++  gtk_window_present (GTK_WINDOW (window)); wait_ms (500);
++  g_assert_cmpint (gtk_widget_get_width (window), ==, 390);
++  g_assert_false (gtk_switch_get_active (GTK_SWITCH (find_name (view, "cf-lock.auto"))));
++  g_assert_false (g_settings_get_boolean (settings, "lock-enabled"));
++  g_assert_null (cc_luma_view_get_error (view));
++  GtkWidget *trail = find_name (view, "cf-go-privacy"); g_assert_nonnull (trail);
++  g_signal_emit_by_name (trail, "back"); wait_ms (500);
++  g_assert_true (adw_navigation_view_get_visible_page (navigation) == parent);
++  GtkWidget *weak = view; g_object_add_weak_pointer (G_OBJECT (view), (gpointer *) &weak);
++  gtk_window_destroy (GTK_WINDOW (window)); wait_ms (100); g_assert_null (weak);
++}
++static void live_screen_lock (void)
++{
++  g_assert_cmpstr (g_getenv ("GSETTINGS_BACKEND"), ==, "memory");
++  g_autoptr(GSettings) lock = g_settings_new ("org.gnome.desktop.screensaver");
++  g_autoptr(GSettings) session = g_settings_new ("org.gnome.desktop.session");
++  g_autoptr(GSettings) notifications = g_settings_new ("org.gnome.desktop.notifications");
++  const char * const lock_keys[] = { "lock-enabled", "lock-delay", NULL };
++  const char * const idle_keys[] = { "idle-delay", NULL };
++  const char * const notification_keys[] = { "show-in-lock-screen", NULL };
++  g_autofree char *backup = g_dir_make_tmp ("settings-live-lock-XXXXXX", NULL);
++  g_assert_nonnull (backup);
++  for (guint width = 0; width < 2; width++) {
++    g_assert_true (g_settings_set_boolean (lock, "lock-enabled", TRUE));
++    g_assert_true (g_settings_set_uint (lock, "lock-delay", 47));
++    g_assert_true (g_settings_set_uint (session, "idle-delay", 123));
++    g_assert_true (g_settings_set_boolean (notifications, "show-in-lock-screen", FALSE));
++    g_assert_true (g_settings_set_boolean (notifications, "show-banners", FALSE));
++    g_autoptr(CcLumaPreferences) lp = cc_luma_preferences_new (lock, lock_keys, NULL);
++    g_autoptr(CcLumaPreferences) sp = cc_luma_preferences_new (session, idle_keys, NULL);
++    g_autoptr(CcLumaPreferences) np = cc_luma_preferences_new (notifications, notification_keys, NULL);
++    g_setenv ("LUMA_SETTINGS_FIXTURE", "", TRUE);
++    g_autoptr(GError) error = NULL;
++    g_assert_null (cc_luma_view_new_screen_lock (lp, sp, np, backup, &error));
++    g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT); g_clear_error (&error);
++    g_unsetenv ("LUMA_SETTINGS_FIXTURE");
++    GtkWidget *window = gtk_window_new ();
++    GtkWidget *view = cc_luma_view_new_screen_lock (lp, sp, np, backup, &error);
++    g_assert_no_error (error); g_assert_nonnull (view);
++    g_assert_true (has_text (view, "Loading…"));
++    g_assert_null (find_name (view, "cf-lock.auto"));
++    gtk_window_set_child (GTK_WINDOW (window), view);
++    LumaLayerHost *host = luma_layer_host_install (GTK_WINDOW (window));
++    gtk_window_set_default_size (GTK_WINDOW (window), width ? 390 : 1180, 740);
++    gtk_window_present (GTK_WINDOW (window)); wait_ms (150);
++    g_assert_cmpint (gtk_widget_get_width (window), ==, width ? 390 : 1180);
++    g_assert_cmpint (gtk_widget_get_width (GTK_WIDGET (host)), ==, width ? 390 : 1180);
++    g_assert_true (has_text (view, "123 seconds")); g_assert_true (has_text (view, "47 seconds"));
++    /* Opening follows real values and performs no timeout normalization. */
++    g_assert_cmpuint (g_settings_get_uint (session, "idle-delay"), ==, 123);
++    g_assert_cmpuint (g_settings_get_uint (lock, "lock-delay"), ==, 47);
++    GtkWidget *orphan = g_object_ref (find_name (view, "cf-lock.auto"));
++    g_assert_true (g_settings_set_boolean (lock, "lock-enabled", FALSE)); drain ();
++    g_assert_null (find_name (view, "cf-lock.delay"));
++    gtk_switch_set_active (GTK_SWITCH (orphan), FALSE);
++    gtk_switch_set_active (GTK_SWITCH (orphan), TRUE); drain ();
++    g_assert_false (g_settings_get_boolean (lock, "lock-enabled")); g_object_unref (orphan);
++    g_assert_true (g_settings_set_boolean (lock, "lock-enabled", TRUE)); drain ();
++    wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-lock.blank"), "clicked"); wait_ms (100);
++    GtkWidget *menu = find_type (window, width ? LUMA_TYPE_MENU_DRAWER : LUMA_TYPE_FLOATING_MENU);
++    g_test_message ("Live lock menu window=%d view=%d floating=%p drawer=%p", gtk_widget_get_width (window), gtk_widget_get_width (view), find_type (window, LUMA_TYPE_FLOATING_MENU), find_type (window, LUMA_TYPE_MENU_DRAWER));
++    g_assert_nonnull (menu);
++    GtkWidget *five = find_button_caption (menu, "5 minutes"); g_assert_nonnull (five);
++    g_signal_emit_by_name (five, "clicked"); wait_ms (500);
++    gint64 deadline = g_get_monotonic_time () + 5000000;
++    while (g_settings_get_uint (session, "idle-delay") != 300 && g_get_monotonic_time () < deadline) wait_ms (10);
++    g_assert_cmpuint (g_settings_get_uint (session, "idle-delay"), ==, 300); wait_ms (100);
++    g_assert_cmpuint (g_settings_get_uint (lock, "lock-delay"), ==, 47);
++    g_assert_false (g_settings_get_boolean (notifications, "show-banners"));
++    gtk_widget_activate_action (view, "cf.pick", "(ss)", "lock.delay", "30");
++    deadline = g_get_monotonic_time () + 5000000;
++    while (g_settings_get_uint (lock, "lock-delay") != 30 && g_get_monotonic_time () < deadline) wait_ms (10);
++    g_assert_cmpuint (g_settings_get_uint (lock, "lock-delay"), ==, 30); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-lock.notes")), TRUE);
++    deadline = g_get_monotonic_time () + 5000000;
++    while (!g_settings_get_boolean (notifications, "show-in-lock-screen") && g_get_monotonic_time () < deadline) wait_ms (10);
++    g_assert_true (g_settings_get_boolean (notifications, "show-in-lock-screen")); wait_ms (100);
++    g_assert_false (g_settings_get_boolean (notifications, "show-banners"));
++    g_assert_null (cc_luma_view_get_error (view));
++    GtkWidget *weak = view; g_object_add_weak_pointer (G_OBJECT (view), (gpointer *) &weak);
++    /* Pending recovery work must not retain the native view or its window. */
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-lock.auto")), FALSE);
++    gtk_window_destroy (GTK_WINDOW (window)); wait_ms (100); g_assert_null (weak);
++    g_assert_null (cc_luma_preferences_dup_values (lp));
++    g_assert_null (cc_luma_preferences_dup_values (sp));
++    g_assert_null (cc_luma_preferences_dup_values (np));
++  }
++  g_autoptr(GDir) files = g_dir_open (backup, 0, NULL); const char *name; guint count = 0;
++  while ((name = g_dir_read_name (files))) { g_autofree char *path = g_build_filename (backup, name, NULL); g_assert_cmpint (g_remove (path), ==, 0); count++; }
++  g_assert_cmpuint (count, >=, 3); g_clear_pointer (&files, g_dir_close); g_assert_cmpint (g_rmdir (backup), ==, 0);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -1282,6 +1394,8 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/apps", apps_view);
+   g_test_add_func ("/settings/view/accessibility", accessibility_view);
+   g_test_add_func ("/settings/view/privacy", privacy_view);
++  g_test_add_func ("/settings/view/live-screen-lock", live_screen_lock);
++  g_test_add_func ("/settings/view/native-screen-lock-route", native_screen_lock_route);
+   g_test_add_func ("/settings/view/displays", displays_view);
+   g_test_add_func ("/settings/view/sound", sound_views);
+   g_test_add_func ("/settings/view/nightlight", nightlight_view);
+-- 
+2.55.0
+

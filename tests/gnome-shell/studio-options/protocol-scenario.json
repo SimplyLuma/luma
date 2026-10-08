@@ -1,0 +1,60 @@
+{
+  "shell": {
+    "size": "1440x900",
+    "settle": 3,
+    "reset": [],
+    "protocol": true,
+    "states": [
+      {
+        "name": "setup",
+        "eval": [
+          "import('resource:///org/gnome/shell/ui/lumaStudioVisualFixtures.js').then(m => {global.lumaStudioFixture = m;}); true"
+        ],
+        "wait": 1000
+      },
+      {
+        "name": "wire-replacement",
+        "eval": [
+          "global.lumaStudioFixture.wireNotification(); true"
+        ],
+        "wait": 500
+      },
+      {
+        "name": "wire-activate",
+        "eval": [
+          "global.lumaStudioFixture.wireActionNotification('activation').activate();true"
+        ],
+        "wait": 500
+      },
+      {
+        "name": "wire-action",
+        "eval": [
+          "global.lumaStudioFixture.wireActionNotification('action').actions[0].activate();true"
+        ],
+        "wait": 500
+      },
+      {
+        "name": "wire-reply-error",
+        "eval": [
+          "global.lumaStudioFixture.wireReplyNotReady().then(()=>global.wireReplyReadyToRetry=true).catch(e=>global.wireError=e.message);true"
+        ],
+        "wait": 500
+      },
+      {
+        "name": "wire-reply",
+        "eval": [
+          "if(!global.wireReplyReadyToRetry)throw Error(global.wireError||'pre-dispatch reply still pending');global.lumaStudioFixture.wireReply().then(()=>global.wireReplyPassed=true).catch(e=>global.wireError=e.message);true"
+        ],
+        "wait": 500
+      },
+      {
+        "name": "wire-dismiss",
+        "before_wait": 1100,
+        "eval": [
+          "if(!global.wireReplyPassed)throw Error(global.wireError||'reply still pending');global.lumaStudioFixture.wireDismissed();true"
+        ],
+        "wait": 500
+      }
+    ]
+  }
+}

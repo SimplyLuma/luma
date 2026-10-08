@@ -1,0 +1,84 @@
+--- a/libadwaita.spec
++++ b/libadwaita.spec
+@@ -16,13 +16,57 @@
+ 
+ Name:           libadwaita
+ Version:        1.9.3
+-Release:        %autorelease
++Release:        1.luma.55.creator20261005.1%{?dist}
+ Summary:        Building blocks for modern GNOME applications
+ 
+ # part of src/adw-spring-animation.c is MIT
+ License:        LGPL-2.1-or-later AND MIT
+ URL:            https://gitlab.gnome.org/GNOME/libadwaita
+ Source0:        https://download.gnome.org/sources/%{name}/1.9/%{name}-%{tarball_version}.tar.xz
++Patch1000:      0001-luma-light-design-system.patch
++Patch1001:      0002-luma-title-label-metrics.patch
++Patch1002:      0003-luma-title-label-baseline.patch
++Patch1003:      0004-prairie-generic-headerbar-contract.patch
++Patch1004:      0005-luma-application-components.patch
++Patch1005:      0006-stylesheet-add-shared-Luma-work-islands.patch
++Patch1006:      0007-luma-application-window-elevation.patch
++Patch1007:      0008-luma-connected-window-controls.patch
++Patch1008:      0009-luma-appkit-component-boundaries.patch
++Patch1009:      0010-luma-native-surface-integrity-and-global-chrome.patch
++Patch1010:      0011-luma-native-command-surfaces.patch
++Patch1011:      0012-luma-generic-application-identity.patch
++Patch1012:      0013-luma-stable-backdrop-materials.patch
++Patch1013:      0014-luma-native-application-surfaces.patch
++Patch1014:      0015-luma-application-identity-resolution.patch
++Patch1015:      0016-luma-generic-command-row.patch
++Patch1016:      0017-luma-native-surface-rhythm.patch
++Patch1017:      0018-luma-identity-title-duplicates.patch
++Patch1018:      0019-luma-dark-design-system.patch
++Patch1019:      0020-luma-title-slot-and-sidebar-islands.patch
++Patch1020:      0021-luma-split-island-shadows.patch
++Patch1021:      0022-luma-sidebar-pane-command-host.patch
++Patch1022:      0023-luma-one-title-row-per-window.patch
++Patch1023:      0024-luma-menu-contract.patch
++Patch1024:      0025-luma-decision-sheets.patch
++Patch1025:      0026-luma-shared-preferences-surfaces.patch
++Patch1026:      0027-luma-quiet-workflow-surfaces.patch
++Patch1027:      0028-test-fixtures-use-fat-object-links.patch
++Patch1028:      0029-luma-adaptive-navigation-contrast.patch
++Patch1029:      0030-luma-shared-navigation-islands.patch
++Patch1030:      0031-luma-native-workflow-material-ownership.patch
++Patch1031:      0032-luma-focus-invariant-window-elevation.patch
++Patch1032:      0033-luma-compact-menu-width.patch
++Patch1033:      0034-luma-maximized-window-corners.patch
++Patch1034:      0036-luma-tiled-window-corners.patch
++Patch1035:      0037-luma-identity-inset-and-pointer-state.patch
++Patch1036:      0038-luma-header-ink-and-tiled-stroke.patch
++Patch1037:      0039-luma-quiet-filled-controls.patch
++Patch1038:      0040-luma-frost-glass-light-title-rows.patch
++Patch1039:      0041-luma-frost-glass-frosted-title-band.patch
++Patch1040:      0042-luma-one-glass-material-for-every-window.patch
++Patch1041:      0043-luma-preserve-generic-client-layout.patch
++Source9000:     generic-client.py
++BuildRequires:  python3-gobject xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon libXtst
+ 
+ BuildRequires:  desktop-file-utils
+ BuildRequires:  gcc
+@@ -87,6 +131,7 @@
+ 
+ %build
+ %meson \
++    -Dc_link_args="%{build_ldflags} %{build_cflags} -flto=1" \
+     -Ddocumentation=true \
+     %{nil}
+ %meson_build
+@@ -100,6 +145,14 @@
+ %check
+ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.xml
+ desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
++LD_LIBRARY_PATH=%{buildroot}%{_libdir} GI_TYPELIB_PATH=%{buildroot}%{_libdir}/girepository-1.0 \
++  xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
++  python3 %{SOURCE9000} adw
++LD_LIBRARY_PATH=%{buildroot}%{_libdir} GI_TYPELIB_PATH=%{buildroot}%{_libdir}/girepository-1.0 \
++  xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
++  python3 %{SOURCE9000} adw-plain
++xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
++  meson test -C %{_vpath_builddir} --print-errorlogs
+ 
+ 
+ %files -f %{name}.lang

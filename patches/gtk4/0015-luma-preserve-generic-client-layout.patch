@@ -1,0 +1,56 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] Keep generic native header actions and content layout
+
+Use the existing opt-out surface contract by default for ordinary clients.
+Explicit LumaUI frames retain source ownership and compatibility callers can
+opt into the legacy treatment deliberately. Preserve identity, controls,
+engine fixes and standard GTK accessibility/input behavior.
+
+--- a/gtk/gtkapplicationwindow.c
++++ b/gtk/gtkapplicationwindow.c
+@@ -643,6 +643,10 @@
+   priv->menubar_section = g_menu_new ();
+ 
+   gtk_widget_add_css_class (GTK_WIDGET (window), "luma-native-window");
++  /* Generic clients keep their own header actions and content hierarchy.
++   * LumaUI owns its explicit frame; native callers may opt into the legacy
++   * surface contract by removing this documented escape class. */
++  gtk_widget_add_css_class (GTK_WIDGET (window), "luma-no-native-surfaces");
+ 
+   gtk_widget_insert_action_group (GTK_WIDGET (window), "win", G_ACTION_GROUP (priv->actions));
+ 
+--- a/gtk/gtkwindow.c
++++ b/gtk/gtkwindow.c
+@@ -7054,7 +7054,8 @@
+   if (priv->child == child)
+     return;
+ 
+-  if (priv->child && GTK_IS_APPLICATION_WINDOW (window))
++  if (priv->child && GTK_IS_APPLICATION_WINDOW (window) &&
++      g_object_get_data (G_OBJECT (priv->child), "gtk-luma-work-surface-overflow"))
+     {
+       gpointer saved = g_object_get_data (G_OBJECT (priv->child), "gtk-luma-work-surface-overflow");
+ 
+@@ -7073,7 +7074,8 @@
+       /* libadwaita windows mark their own content; their direct child is an
+        * internal dialog host, never the application's work surface. */
+       if (GTK_IS_APPLICATION_WINDOW (window) &&
+-          !gtk_widget_has_css_class (GTK_WIDGET (window), "luma-adw-native-window"))
++          !gtk_widget_has_css_class (GTK_WIDGET (window), "luma-adw-native-window") &&
++          !gtk_widget_has_css_class (GTK_WIDGET (window), "luma-no-native-surfaces"))
+         {
+           /* The work surface owns its rounded clip so no child can overpaint
+            * the island border or corners. The prior overflow is restored when
+--- a/gtk/gtkheaderbar.c
++++ b/gtk/gtkheaderbar.c
+@@ -551,7 +551,9 @@
+ {
+   GtkWidget *widget = GTK_WIDGET (window);
+ 
+-  return !gtk_widget_has_css_class (widget, "luma-app-window") &&
++  /* A plain GtkWindow has never opted into the native surface contract. */
++  return gtk_widget_has_css_class (widget, "luma-native-window") &&
++         !gtk_widget_has_css_class (widget, "luma-app-window") &&
+          !gtk_widget_has_css_class (widget, "luma-files-window") &&
+          !gtk_widget_has_css_class (widget, "luma-calculator-window") &&
+          !gtk_widget_has_css_class (widget, "luma-no-native-surfaces");

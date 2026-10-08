@@ -1,0 +1,176 @@
+From: Project Luma
+Subject: [PATCH] theme: token-derived, focus-invariant window elevation
+
+The actual toolkit decoration owner draws three shadows and an independent
+inset stroke. GTK computes native surface extents. Inner islands are unchanged.
+
+--- a/src/stylesheet/widgets/_window.scss
++++ b/src/stylesheet/widgets/_window.scss
+@@ -1,81 +1,103 @@
+ window {
+   &.csd {
+-    // One quiet slate falloff matches the dock instead of stacking two dark
+-    // upstream shadows. The shared neutral hairline defines the edge.
+-    box-shadow: 0 5px 16px RGB(30 41 59 / 4%),
+-                0 0 0 1px RGB(17 24 39 / 10%);
+-    margin: 0px;
+-    border-radius: var(--window-radius);
+-
+-    // A neutral hairline replaces upstream's light-catching white rim.
+-    outline: 1px solid color-mix(in srgb, #111827 10%, transparent);
+-    outline-offset: -1px;
+-
+-    @media (prefers-contrast: more) {
+-      outline-color: $window_outline_color_hc;
+-      box-shadow: 0 0 14px 5px RGB(0 0 0 / 15%),
+-                  0 0 5px 2px RGB(0 0 0 / 10%),
+-                  0 0 0 1px RGB(0 0 0 / 80%);
++    // Focused and unfocused window elevation is deliberately identical.
++    // GTK computes invisible native surface extents from these shadows.
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82), 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56);
++    transition: none;
++    &:backdrop {
++      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82), 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56);
++      transition: none;
+     }
+-
+-    &:backdrop {
+-      // the transparent shadow here is to enforce that the shadow extents don't
+-      // change when we go to backdrop, to prevent jumping windows.
+-      // The biggest shadow should be in the same order then in the active state
+-      // or the jumping will happen during the transition.
+-      box-shadow: 0 5px 16px RGB(30 41 59 / 2%),
+-                  0 0 0 1px RGB(17 24 39 / 8%);
+-      transition: box-shadow $backdrop_transition;
+-
+-      @media (prefers-contrast: more) {
+-        box-shadow: 0 0 14px 5px transparent,
+-                    0 0 10px 5px RGB(0 0 0 / 8%),
+-                    0 0 0 1px RGB(0 0 0 / 80%);
++    @media (prefers-color-scheme: dark) {
++      // Focused and unfocused window elevation is deliberately identical.
++      // GTK computes invisible native surface extents from these shadows.
++      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82);
++      transition: none;
++      &:backdrop {
++        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82);
++        transition: none;
+       }
+     }
+-
+-    &.dialog.message,
+-    &.messagedialog {
+-      box-shadow: 0 0 14px 2px RGB(0 0 6 / 3%),
+-                  0 0 5px 2px RGB(0 0 6 / 10%),
+-                  0 0 0 1px RGB(0 0 0 / 5%);
+-
+-      @media (prefers-contrast: more) {
+-        box-shadow: 0 0 14px 2px RGB(0 0 6 / 3%),
+-                    0 0 5px 2px RGB(0 0 6 / 10%),
+-                    0 0 0 1px RGB(0 0 0 / 80%);
++    margin: 0;
++    border-radius: 15px;
++    outline: none; // The inset stroke is the only ordinary window edge.
++    @media (prefers-contrast: more) {
++      outline: 1px solid $window_outline_color_hc;
++      outline-offset: -1px;
++    }
++    &.luma-treatment-light:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) {
++      // Focused and unfocused window elevation is deliberately identical.
++      // GTK computes invisible native surface extents from these shadows.
++      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82), 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56);
++      transition: none;
++      &:backdrop {
++        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82), 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56);
++        transition: none;
+       }
+     }
+-
++    &.luma-treatment-dark:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) {
++      // Focused and unfocused window elevation is deliberately identical.
++      // GTK computes invisible native surface extents from these shadows.
++      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82);
++      transition: none;
++      &:backdrop {
++        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82);
++        transition: none;
++      }
++    }
++    &.luma-treatment-frost:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) {
++      // Focused and unfocused window elevation is deliberately identical.
++      // GTK computes invisible native surface extents from these shadows.
++      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62), 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56);
++      transition: none;
++      &:backdrop {
++        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62), 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56);
++        transition: none;
++      }
++    }
++    &.luma-treatment-glass:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) {
++      // Focused and unfocused window elevation is deliberately identical.
++      // GTK computes invisible native surface extents from these shadows.
++      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48), 0 3px 8px rgba(25, 27, 31, 0.2), 0 22px 52px -15px rgba(25, 27, 31, 0.48), 0 64px 120px -30px rgba(25, 27, 31, 0.62);
++      transition: none;
++      &:backdrop {
++        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48), 0 3px 8px rgba(25, 27, 31, 0.2), 0 22px 52px -15px rgba(25, 27, 31, 0.48), 0 64px 120px -30px rgba(25, 27, 31, 0.62);
++        transition: none;
++      }
++    }
++    // Disabling outer elevation preserves the independent inset stroke.
++    @media (prefers-color-scheme: light) {
++      &.luma-no-frame-shadow:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom), &.luma-no-frame-shadow:backdrop:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82); }
++    }
++    @media (prefers-color-scheme: dark) {
++      &.luma-no-frame-shadow:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom), &.luma-no-frame-shadow:backdrop:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045); }
++    }
++    &.luma-treatment-light.luma-no-frame-shadow:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom), &.luma-treatment-light.luma-no-frame-shadow:backdrop:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82); }
++    &.luma-treatment-dark.luma-no-frame-shadow:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom), &.luma-treatment-dark.luma-no-frame-shadow:backdrop:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045); }
++    &.luma-treatment-frost.luma-no-frame-shadow:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom), &.luma-treatment-frost.luma-no-frame-shadow:backdrop:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62); }
++    &.luma-treatment-glass.luma-no-frame-shadow:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom), &.luma-treatment-glass.luma-no-frame-shadow:backdrop:not(.maximized):not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48); }
++    // Edge-attached windows have no outer elevation in either focus state.
++    &.maximized,
++    &.maximized:backdrop,
++    &.fullscreen,
++    &.fullscreen:backdrop,
+     &.tiled,
++    &.tiled:backdrop,
+     &.tiled-top,
++    &.tiled-top:backdrop,
+     &.tiled-left,
++    &.tiled-left:backdrop,
+     &.tiled-right,
+-    &.tiled-bottom {
++    &.tiled-right:backdrop,
++    &.tiled-bottom,
++    &.tiled-bottom:backdrop {
++      border-radius: 0;
++      box-shadow: none;
++      transition: none;
+       --window-radius: 0px;
+       outline: none;
+-
+-      box-shadow: 0 0 0 1px $border_color,
+-                  0 0 0 20px transparent; //transparent control workaround -- #3670
+-
+-      &:backdrop {
+-        box-shadow: 0 0 0 1px $border_color,
+-                    0 0 0 20px transparent;
+-      }
+     }
+-
+-    &.maximized,
+-    &.fullscreen {
+-      --window-radius: 0px;
+-      outline: none;
+-      box-shadow: none;
+-      transition: none;
+-    }
+-
+-    &.ssd-frame {
+-      border-bottom-left-radius: 0;
+-      border-bottom-right-radius: 0;
+-    }
++    &.ssd-frame { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+   }
+ 
+   &.solid-csd {

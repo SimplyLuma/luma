@@ -1,0 +1,12 @@
+Luma public source baseline
+
+Original Luma material is copyright its respective contributors.
+Component copyright notices and license files are retained in the source tree.
+Downstream patches preserve their upstream authors and controlling licenses.
+See LICENSE.md, LICENSES/, THIRD-PARTY-SOURCES.md and the adjacent component
+notices for attribution and licensing. Inclusion in one Git repository does
+not transfer ownership or apply Apache-2.0 to third-party material.
+
+Luma names and marks and third-party trademarks are not licensed by the
+copyright licenses. Public OAuth desktop-client identifiers are client
+metadata; user credentials and release-signing private keys are not included.

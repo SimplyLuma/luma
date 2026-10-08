@@ -1,0 +1,1729 @@
+{
+  "app": "settings",
+  "title": "Settings",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=settings",
+    "window": "#w-settings",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "settings",
+    "fixtures": [
+      "tests/fixtures/settings-v70.json",
+      "assets/wallpapers/prism.png",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-documents.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-browser.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-messages.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-files.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-music.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-mail.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-photos.svg",
+      "assets/wallpapers/meadow.png",
+      "assets/wallpapers/ember.png",
+      "src/luma-platform/ui/luma-creatives.png",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-calendar.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-phone.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-clock.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-app-store.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-maps.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-settings.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-calculator.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-contacts.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-notes.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-terminal.svg",
+      "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Tasks.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-video-editor.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-camera.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-ari.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-designer.svg",
+      "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg"
+    ],
+    "env": {
+      "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-v70.json",
+      "GSETTINGS_BACKEND": "memory",
+      "XDG_CURRENT_DESKTOP": "GNOME"
+    },
+    "app_id": "org.luma.Settings.Fixture",
+    "binary": "bin/gnome-control-center",
+    "build": {
+      "patched_upstream": "gnome-control-center",
+      "patches": "patches/gnome-control-center",
+      "patch_series": [
+        "0001-luma-preferred-choice-order.patch",
+        "0002-luma-touchpad-gestures-section.patch",
+        "0003-luma-shared-preferences-layout.patch",
+        "0004-luma-native-islands-persistent-search.patch",
+        "0005-luma-native-identity-centered-navigation.patch",
+        "0006-luma-dash-settings-panel.patch",
+        "0007-luma-dash-preview-physical-corners.patch",
+        "0008-luma-dash-padding-control.patch",
+        "0009-luma-dash-status-settings.patch",
+        "0010-luma-status-divider-preview.patch",
+        "0011-appearance-Add-native-Luma-surface-treatments.patch",
+        "0012-luma-settings-material-navigation-sections.patch",
+        "0013-luma-displays-panel-composition.patch",
+        "0014-luma-background-activity-page.patch",
+        "0015-luma-sound-new-devices-and-network-outputs.patch",
+        "0016-luma-cast-settings-page.patch",
+        "0017-luma-about-names-luma.patch",
+        "0018-luma-device-name-static-slug.patch",
+        "0019-luma-about-legacy-os-release.patch",
+        "0020-luma-notifications-badge-app-icon.patch",
+        "0021-luma-mouse-trackpoint-page.patch",
+        "0022-luma-dash-allow-free-placement.patch",
+        "0023-luma-dash-span-and-float-follow-islands.patch",
+        "0024-luma-dash-dock-folders.patch",
+        "0025-users-Saved-passwords-follow-a-password-change.patch",
+        "0026-mouse-Scroll-Speed-for-the-mouse-and-the-touchpad.patch",
+        "0027-lumaui-sidebar-foot.patch",
+        "0028-lumaui-fixture-model.patch",
+        "0029-lumaui-fixture-startup-wifi.patch",
+        "0030-lumaui-network-actions-draft.patch",
+        "0031-lumaui-wifi-join-undo.patch",
+        "0032-lumaui-wifi-capture-variants.patch",
+        "0033-lumaui-bluetooth-fixture.patch",
+        "0034-lumaui-page-modules.patch",
+        "0035-lumaui-windows-model.patch",
+        "0036-lumaui-network-copy.patch",
+        "0037-lumaui-fixture-assets.patch",
+        "0038-lumaui-windows-page.patch",
+        "0039-lumaui-shelf-model.patch",
+        "0040-lumaui-shelf-page.patch",
+        "0041-lumaui-appearance-model.patch",
+        "0042-lumaui-appearance-page.patch",
+        "0043-lumaui-discovery-model.patch",
+        "0044-lumaui-discovery-pages.patch",
+        "0045-lumaui-adaptive-padding-and-navigation.patch",
+        "0046-lumaui-live-network-adapter.patch",
+        "0047-lumaui-display-draft-model.patch",
+        "0048-settings-add-native-read-adapters-and-isolated-fixtu.patch",
+        "0049-settings-fix-fixture-artwork-and-verify-native-surfa.patch",
+        "0050-settings-add-Apps-fixture-routes-and-scoped-action-c.patch",
+        "0051-settings-add-accessibility-routes-and-bounded-native-reader-action.patch",
+        "0052-settings-add-scoped-native-preference-edits-with-durable-recovery.patch",
+        "0053-settings-compose-scoped-Privacy-routes-and-native-schema-contracts.patch",
+        "0054-settings-scoped-native-permission-edits.patch",
+        "0055-settings-native-screen-lock-view.patch",
+        "0056-settings-native-permission-views.patch",
+        "0057-settings-empty-native-permission-list.patch"
+      ],
+      "meson_options": [
+        "-Dtests=false",
+        "-Ddocumentation=false",
+        "-Dmalcontent=false",
+        "-Dsnap=false",
+        "-Dlocation-services=enabled"
+      ]
+    }
+  },
+  "gtk_note": "Patched GNOME Control Center 50.4 uses org.luma.Settings.Fixture with isolated supplied fixture data; never activate installed Settings as a capture fallback. Append-only source through0050 includes partial network, Bluetooth, Appearance, Shelf/Windows, notification/search/folder, Displays/Night Light, Sound, Power, pointer/keyboard, default/media and Apps views. Apps list and18details have38actual desktop/phone mapped-artwork/closed-window smoke passes; permission/storage/uninstall actions are fixture-scoped and Open lacks native launch wiring. Full unskipped native check1080 remains10/11 with shared text-only Displays API failure; prior intermittent Apps teardown failure is unresolved. Nonempty QUERY and remaining pages fail explicitly until implemented. All79states and79phone states are retained; partial fixture routes are not completed live inventory. Earlier default-server attempt0938 failed before capture because inactive0024-users was selected. This scenario now lists the installed spec active26 followed by appended0027–0057 once each; installed server support remains unverified (kit request05). Four full app PASS reports do not exist. Shared paint/keycaps/text actions/exact Memos art remain tracked in requests08-11. Production Luma chrome and all live page/action adapters remain incomplete; no safe installed preview or visual parity is claimed.",
+  "states": [
+    {
+      "name": "wifi",
+      "about": "Settings page: Wi\u2011Fi",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi"
+          }
+        }
+      ]
+    },
+    {
+      "name": "network",
+      "about": "Settings page: Network",
+      "spec": [
+        {
+          "click": "[data-cfp=\"network\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "network"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bluetooth",
+      "about": "Settings page: Bluetooth",
+      "spec": [
+        {
+          "click": "[data-cfp=\"bluetooth\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "bluetooth"
+          }
+        }
+      ]
+    },
+    {
+      "name": "appearance",
+      "about": "Settings page: Appearance",
+      "spec": [
+        {
+          "click": "[data-cfp=\"appearance\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "appearance"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shelf",
+      "about": "Settings page: Shelf",
+      "spec": [
+        {
+          "click": "[data-cfp=\"shelf\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "shelf"
+          }
+        }
+      ]
+    },
+    {
+      "name": "windows",
+      "about": "Settings page: Windows & Workspaces",
+      "spec": [
+        {
+          "click": "[data-cfp=\"windows\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "windows"
+          }
+        }
+      ]
+    },
+    {
+      "name": "notifications",
+      "about": "Settings page: Notifications",
+      "spec": [
+        {
+          "click": "[data-cfp=\"notifications\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "notifications"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "about": "Settings page: Search",
+      "spec": [
+        {
+          "click": "[data-cfp=\"search\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "search"
+          }
+        }
+      ]
+    },
+    {
+      "name": "displays",
+      "about": "Settings page: Displays",
+      "spec": [
+        {
+          "click": "[data-cfp=\"displays\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "displays"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sound",
+      "about": "Settings page: Sound",
+      "spec": [
+        {
+          "click": "[data-cfp=\"sound\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "sound"
+          }
+        }
+      ]
+    },
+    {
+      "name": "power",
+      "about": "Settings page: Power",
+      "spec": [
+        {
+          "click": "[data-cfp=\"power\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "power"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mouse",
+      "about": "Settings page: Mouse & Touchpad",
+      "spec": [
+        {
+          "click": "[data-cfp=\"mouse\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "mouse"
+          }
+        }
+      ]
+    },
+    {
+      "name": "keyboard",
+      "about": "Settings page: Keyboard",
+      "spec": [
+        {
+          "click": "[data-cfp=\"keyboard\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "keyboard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "printers",
+      "about": "Settings page: Printers",
+      "spec": [
+        {
+          "click": "[data-cfp=\"printers\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "printers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "apps",
+      "about": "Settings page: Apps",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "apps"
+          }
+        }
+      ]
+    },
+    {
+      "name": "accounts",
+      "about": "Settings page: Online Accounts",
+      "spec": [
+        {
+          "click": "[data-cfp=\"accounts\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "accounts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "privacy",
+      "about": "Settings page: Privacy & Security",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "privacy"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wellbeing",
+      "about": "Settings page: Wellbeing",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wellbeing\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wellbeing"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a11y",
+      "about": "Settings page: Accessibility",
+      "spec": [
+        {
+          "click": "[data-cfp=\"a11y\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "a11y"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sharing",
+      "about": "Settings page: Sharing",
+      "spec": [
+        {
+          "click": "[data-cfp=\"sharing\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "sharing"
+          }
+        }
+      ]
+    },
+    {
+      "name": "region",
+      "about": "Settings page: Region & Language",
+      "spec": [
+        {
+          "click": "[data-cfp=\"region\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "region"
+          }
+        }
+      ]
+    },
+    {
+      "name": "datetime",
+      "about": "Settings page: Date & Time",
+      "spec": [
+        {
+          "click": "[data-cfp=\"datetime\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "datetime"
+          }
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "about": "Settings page: Users",
+      "spec": [
+        {
+          "click": "[data-cfp=\"users\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "users"
+          }
+        }
+      ]
+    },
+    {
+      "name": "remote",
+      "about": "Settings page: Remote Desktop",
+      "spec": [
+        {
+          "click": "[data-cfp=\"remote\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "remote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ssh",
+      "about": "Settings page: Secure Shell",
+      "spec": [
+        {
+          "click": "[data-cfp=\"ssh\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "ssh"
+          }
+        }
+      ]
+    },
+    {
+      "name": "about",
+      "about": "Settings page: About",
+      "spec": [
+        {
+          "click": "[data-cfp=\"about\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "about"
+          }
+        }
+      ]
+    },
+    {
+      "name": "me",
+      "about": "Settings page: Luma account",
+      "spec": [
+        {
+          "click": "[data-cfp=\"me\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-net",
+      "about": "Settings page: Studio North",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfp=\"wifi-net\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi-net"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-known",
+      "about": "Settings page: Known networks",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfp=\"wifi-known\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi-known"
+          }
+        }
+      ]
+    },
+    {
+      "name": "hotspot",
+      "about": "Settings page: Hotspot",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfp=\"hotspot\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "hotspot"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-places",
+      "about": "Settings page: Folders to search",
+      "spec": [
+        {
+          "click": "[data-cfp=\"search\"]"
+        },
+        {
+          "click": "[data-cfp=\"search-places\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "search-places"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nightlight",
+      "about": "Settings page: Night Light",
+      "spec": [
+        {
+          "click": "[data-cfp=\"displays\"]"
+        },
+        {
+          "click": "[data-cfp=\"nightlight\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "nightlight"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sound-levels",
+      "about": "Settings page: Volume by app",
+      "spec": [
+        {
+          "click": "[data-cfp=\"sound\"]"
+        },
+        {
+          "click": "[data-cfp=\"sound-levels\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "sound-levels"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sound-alert",
+      "about": "Settings page: Alert sound",
+      "spec": [
+        {
+          "click": "[data-cfp=\"sound\"]"
+        },
+        {
+          "click": "[data-cfp=\"sound-alert\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "sound-alert"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shortcuts",
+      "about": "Settings page: Keyboard shortcuts",
+      "spec": [
+        {
+          "click": "[data-cfp=\"keyboard\"]"
+        },
+        {
+          "click": "[data-cfp=\"shortcuts\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "shortcuts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "defaults",
+      "about": "Settings page: Default apps",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"defaults\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "defaults"
+          }
+        }
+      ]
+    },
+    {
+      "name": "media",
+      "about": "Settings page: Removable media",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"media\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "media"
+          }
+        }
+      ]
+    },
+    {
+      "name": "acct-fm",
+      "about": "Settings page: Fastmail",
+      "spec": [
+        {
+          "click": "[data-cfp=\"accounts\"]"
+        },
+        {
+          "click": "[data-cfp=\"acct-fm\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "acct-fm"
+          }
+        }
+      ]
+    },
+    {
+      "name": "acct-nc",
+      "about": "Settings page: Nextcloud",
+      "spec": [
+        {
+          "click": "[data-cfp=\"accounts\"]"
+        },
+        {
+          "click": "[data-cfp=\"acct-nc\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "acct-nc"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-lock",
+      "about": "Settings page: Screen lock",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-lock\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-lock"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-loc",
+      "about": "Settings page: Location",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-loc\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-loc"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-cam",
+      "about": "Settings page: Camera",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-cam\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-cam"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-mic",
+      "about": "Settings page: Microphone",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-mic\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-mic"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-files",
+      "about": "Settings page: File history and trash",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-files\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-files"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-diag",
+      "about": "Settings page: Problem reports",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-diag\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-diag"
+          }
+        }
+      ]
+    },
+    {
+      "name": "p-dev",
+      "about": "Settings page: Device security",
+      "spec": [
+        {
+          "click": "[data-cfp=\"privacy\"]"
+        },
+        {
+          "click": "[data-cfp=\"p-dev\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "p-dev"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a-see",
+      "about": "Settings page: Seeing",
+      "spec": [
+        {
+          "click": "[data-cfp=\"a11y\"]"
+        },
+        {
+          "click": "[data-cfp=\"a-see\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "a-see"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a-hear",
+      "about": "Settings page: Hearing",
+      "spec": [
+        {
+          "click": "[data-cfp=\"a11y\"]"
+        },
+        {
+          "click": "[data-cfp=\"a-hear\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "a-hear"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a-type",
+      "about": "Settings page: Typing",
+      "spec": [
+        {
+          "click": "[data-cfp=\"a11y\"]"
+        },
+        {
+          "click": "[data-cfp=\"a-type\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "a-type"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a-point",
+      "about": "Settings page: Pointing and clicking",
+      "spec": [
+        {
+          "click": "[data-cfp=\"a11y\"]"
+        },
+        {
+          "click": "[data-cfp=\"a-point\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "a-point"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a-zoom",
+      "about": "Settings page: Zoom",
+      "spec": [
+        {
+          "click": "[data-cfp=\"a11y\"]"
+        },
+        {
+          "click": "[data-cfp=\"a-zoom\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "a-zoom"
+          }
+        }
+      ]
+    },
+    {
+      "name": "user-priya",
+      "about": "Settings page: Priya Raman",
+      "spec": [
+        {
+          "click": "[data-cfp=\"users\"]"
+        },
+        {
+          "click": "[data-cfp=\"user-priya\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "user-priya"
+          }
+        }
+      ]
+    },
+    {
+      "name": "about-sys",
+      "about": "Settings page: System details",
+      "spec": [
+        {
+          "click": "[data-cfp=\"about\"]"
+        },
+        {
+          "click": "[data-cfp=\"about-sys\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "about-sys"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-filer",
+      "about": "Settings page: app:filer",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:filer\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:filer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-photos",
+      "about": "Settings page: app:photos",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:photos\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:photos"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-viola",
+      "about": "Settings page: app:viola",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:viola\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:viola"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-write",
+      "about": "Settings page: app:write",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:write\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:write"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-tide",
+      "about": "Settings page: app:tide",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:tide\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:tide"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-messages",
+      "about": "Settings page: app:messages",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:messages\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:messages"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-notes",
+      "about": "Settings page: app:notes",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:notes\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:notes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-contacts",
+      "about": "Settings page: app:contacts",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:contacts\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:contacts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-calendar",
+      "about": "Settings page: app:calendar",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:calendar\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:calendar"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-charlie",
+      "about": "Settings page: app:charlie",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:charlie\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:charlie"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-maps",
+      "about": "Settings page: app:maps",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:maps\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:maps"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-camera",
+      "about": "Settings page: app:camera",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:camera\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:camera"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-memos",
+      "about": "Settings page: app:memos",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:memos\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:memos"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-ari",
+      "about": "Settings page: app:ari",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:ari\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:ari"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-canvas",
+      "about": "Settings page: app:canvas",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:canvas\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:canvas"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-reel",
+      "about": "Settings page: app:reel",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:reel\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:reel"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-term",
+      "about": "Settings page: app:term",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:term\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:term"
+          }
+        }
+      ]
+    },
+    {
+      "name": "app-depot",
+      "about": "Settings page: app:depot",
+      "spec": [
+        {
+          "click": "[data-cfp=\"apps\"]"
+        },
+        {
+          "click": "[data-cfp=\"app:depot\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "app:depot"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-off",
+      "about": "Wi-Fi disabled",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfsw=\"wifi\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi",
+            "LUMA_SETTINGS_VARIANT": "wifi-off"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-join",
+      "about": "Secured nearby network password entry",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfnet=\"Priya\u2019s phone\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi",
+            "LUMA_SETTINGS_VARIANT": "wifi-join"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-hidden",
+      "about": "Hidden network entry grows the action center",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfact=\"hidden\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi",
+            "LUMA_SETTINGS_VARIANT": "wifi-hidden"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-share",
+      "about": "Share network code in the action center",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfact=\"qr\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi",
+            "LUMA_SETTINGS_VARIANT": "wifi-share"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-metered",
+      "about": "Metered connection picker",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfp=\"wifi-net\"]"
+        },
+        {
+          "click": "[data-cfpk=\"metered\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi-net",
+            "LUMA_SETTINGS_VARIANT": "wifi-metered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wifi-forget",
+      "about": "Forget current network confirmation",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "click": "[data-cfp=\"wifi-net\"]"
+        },
+        {
+          "click": "[data-cfact=\"forget\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi-net",
+            "LUMA_SETTINGS_VARIANT": "wifi-forget"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-results",
+      "about": "Search rows in place",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "eval": "document.querySelector('#cf-q').value = \"Pointer speed\"; document.querySelector('#cf-q').dispatchEvent(new Event('input', {bubbles: true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi",
+            "LUMA_SETTINGS_QUERY": "Pointer speed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-empty",
+      "about": "No matching rows",
+      "spec": [
+        {
+          "click": "[data-cfp=\"wifi\"]"
+        },
+        {
+          "eval": "document.querySelector('#cf-q').value = \"no-such-setting-zzzz\"; document.querySelector('#cf-q').dispatchEvent(new Event('input', {bubbles: true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "wifi",
+            "LUMA_SETTINGS_QUERY": "no-such-setting-zzzz"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "wifi",
+    "network",
+    "bluetooth",
+    "appearance",
+    "shelf",
+    "windows",
+    "notifications",
+    "search",
+    "displays",
+    "sound",
+    "power",
+    "mouse",
+    "keyboard",
+    "printers",
+    "apps",
+    "accounts",
+    "privacy",
+    "wellbeing",
+    "a11y",
+    "sharing",
+    "region",
+    "datetime",
+    "users",
+    "remote",
+    "ssh",
+    "about",
+    "me",
+    "wifi-net",
+    "wifi-known",
+    "hotspot",
+    "search-places",
+    "nightlight",
+    "sound-levels",
+    "sound-alert",
+    "shortcuts",
+    "defaults",
+    "media",
+    "acct-fm",
+    "acct-nc",
+    "p-lock",
+    "p-loc",
+    "p-cam",
+    "p-mic",
+    "p-files",
+    "p-diag",
+    "p-dev",
+    "a-see",
+    "a-hear",
+    "a-type",
+    "a-point",
+    "a-zoom",
+    "user-priya",
+    "about-sys",
+    "app-filer",
+    "app-photos",
+    "app-viola",
+    "app-write",
+    "app-tide",
+    "app-messages",
+    "app-notes",
+    "app-contacts",
+    "app-calendar",
+    "app-charlie",
+    "app-maps",
+    "app-camera",
+    "app-memos",
+    "app-ari",
+    "app-canvas",
+    "app-reel",
+    "app-term",
+    "app-depot",
+    "wifi-off",
+    "wifi-join",
+    "wifi-hidden",
+    "wifi-share",
+    "wifi-metered",
+    "wifi-forget",
+    "search-results",
+    "search-empty"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-settings > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#cf-top"
+    },
+    {
+      "name": "account card",
+      "spec": "#cf-nav .lacct"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#cf-side .lfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#cf-side"
+    },
+    {
+      "name": "page header",
+      "spec": "#cf-body .cfhd"
+    },
+    {
+      "name": "hero",
+      "spec": "#cf-body .cfhero"
+    },
+    {
+      "name": "row groups",
+      "spec": "#cf-body .cfgrp"
+    },
+    {
+      "name": "action center",
+      "spec": "#cf-sheet"
+    },
+    {
+      "name": "confirmation bar",
+      "spec": "#cf-bar"
+    },
+    {
+      "name": "picker",
+      "spec": "#cf-pop"
+    },
+    {
+      "name": "main",
+      "spec": "#cf-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#cf-side",
+      "gtk": "cf-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#cf-side .lfoot",
+      "gtk": "cf-foot",
+      "name": "sidebar foot"
+    },
+    {
+      "spec": "#cf-q",
+      "gtk": "cf-search",
+      "name": "search field"
+    },
+    {
+      "spec": "#cf-main",
+      "gtk": "cf-main",
+      "name": "main island"
+    },
+    {
+      "spec": "#cf-body",
+      "gtk": "cf-body",
+      "name": "page scroller"
+    },
+    {
+      "spec": "#cf-nav .lacct",
+      "gtk": "cf-account",
+      "name": "account card"
+    },
+    {
+      "spec": "#cf-sheet",
+      "gtk": "cf-action-center",
+      "name": "action center"
+    }
+  ]
+}

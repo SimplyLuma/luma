@@ -1,0 +1,11 @@
+[Desktop Entry]
+NoDisplay=true
+Categories=GNOME;GTK;Utility;TextEditor;
+DBusActivatable=true
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=gnome-text-editor --file-forwarding org.gnome.TextEditor @@u %U @@
+MimeType=text/plain;application/x-zerosize;
+Name=Text Editor
+Icon=org.gnome.TextEditor
+StartupNotify=true
+Terminal=false
+Type=Application

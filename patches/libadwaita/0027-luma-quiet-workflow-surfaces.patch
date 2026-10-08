@@ -1,0 +1,46 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] stylesheet: add explicit shared quiet workflow variant
+
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -562,3 +562,39 @@
+     border-spacing: 10px;
+   }
+ }
++
++// Explicit quiet surface variant: shared by native transient workflows.
++// Existing application islands keep their established elevation and rhythm.
++:root {
++  --luma-quiet-gap: 8px;
++  --luma-quiet-radius: 10px;
++  --luma-quiet-control-height: 36px;
++  --luma-quiet-touch-height: 44px;
++  --luma-quiet-shadow: 0 1px 2px RGB(25 27 31 / 12%);
++}
++
++.luma-island.luma-island-quiet {
++  border-radius: var(--luma-quiet-radius);
++  border: 1px solid unquote("@luma_line");
++  background-color: unquote("@luma_content");
++  box-shadow: var(--luma-quiet-shadow);
++
++  @media (prefers-contrast: more) {
++    border-color: currentColor;
++    box-shadow: none;
++  }
++}
++
++.luma-controls-quiet button,
++.luma-controls-quiet entry,
++.luma-controls-quiet dropdown > button {
++  min-height: calc(var(--luma-quiet-control-height) - 12px);
++  padding: 5px 10px;
++  border-width: 1px;
++}
++
++.luma-touch .luma-controls-quiet button,
++.luma-touch .luma-controls-quiet entry,
++.luma-touch .luma-controls-quiet dropdown > button {
++  min-height: calc(var(--luma-quiet-touch-height) - 12px);
++}

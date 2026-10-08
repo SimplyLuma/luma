@@ -1,0 +1,3 @@
+#!/usr/bin/python3
+from luma_depot.window import main
+raise SystemExit(main())

@@ -1,0 +1,12 @@
+#!/usr/bin/python3 -s
+# SPDX-License-Identifier: Apache-2.0
+
+import sys
+
+if "--agent" in sys.argv[1:]:
+    # The background agent (ADR-033) loads no GTK: decide before importing the window.
+    from prairie_apps.phone_agent import main
+else:
+    from prairie_apps.phone import main
+
+raise SystemExit(main())

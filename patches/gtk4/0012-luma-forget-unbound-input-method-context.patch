@@ -1,0 +1,36 @@
+From: Project Luma
+Subject: [PATCH] imcontextwayland: forget a context that loses focus before text input is bound
+
+A text field focused as a window opens, and destroyed before the Wayland
+text-input manager is bound, left the input method's current context
+pointing at freed memory: focus_out looked the context up through a helper
+that returns nothing until text input exists, so it never cleared it. The
+next text-input event dereferenced it and the application crashed.
+
+--- a/gtk/gtkimcontextwayland.c
++++ b/gtk/gtkimcontextwayland.c
+@@ -813,11 +813,19 @@
+   GtkIMContextWayland *self = GTK_IM_CONTEXT_WAYLAND (context);
+   GtkIMContextWaylandGlobal *global;
+ 
+-  global = gtk_im_context_wayland_get_global (self);
+-  if (global == NULL)
+-    return;
+-
+-  if (global->focused)
++  if (self->widget == NULL)
++    return;
++
++  /* Not gtk_im_context_wayland_get_global(): it returns NULL until the
++   * text-input manager is bound. A context focused before then, and
++   * destroyed before then, stayed global->current after it was freed, and
++   * the next text-input event used it. */
++  global = g_object_get_data (G_OBJECT (gtk_widget_get_display (self->widget)),
++                              "gtk-im-context-wayland-global");
++  if (global == NULL || global->current != context)
++    return;
++
++  if (global->text_input != NULL && global->focused)
+     disable (self, global);
+ 
+   global->current = NULL;

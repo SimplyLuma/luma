@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Prepare the packaged Luma Android support images
+Wants=dev-binderfs.mount
+Conflicts=waydroid-container.service
+After=dev-binderfs.mount waydroid-container.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -m luma_android.initialize
+TimeoutStartSec=210
+# Upstream's ordinary users read its generated configuration and properties.
+# Keep the standard initializer permissions; it owns private data separately.
+UMask=0022

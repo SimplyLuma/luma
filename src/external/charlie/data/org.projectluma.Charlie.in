@@ -1,0 +1,22 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+import sys
+
+if sys.argv[1:2] == ["--agent"]:
+    # The windowless background agent must never load GTK or the application.
+    from charlie_luma.mail_agent import main
+else:
+    from pathlib import Path
+    if Path("/.flatpak-info").exists():
+        from luma_appkit.migration_startup import prepare, show_failure
+        try:
+            prepare()
+        except RuntimeError as error:
+            show_failure(str(error))
+            raise SystemExit(1)
+    else:
+        from luma_installer.native_app_roles import launch_if_owned
+        launch_if_owned("org.projectluma.Charlie")
+    from charlie_luma.application import main
+
+raise SystemExit(main())

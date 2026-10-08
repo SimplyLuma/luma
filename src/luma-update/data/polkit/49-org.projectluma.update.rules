@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// An administrator (wheel) at the computer may change channels, enroll in
+// early updates and roll back without retyping a password, as Fedora's
+// rpm-ostree rules allow for rebase and rollback.
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.projectluma.update.set-channel" ||
+         action.id == "org.projectluma.update.enroll-preview" ||
+         action.id == "org.projectluma.update.rollback") &&
+        subject.active == true && subject.local == true &&
+        subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

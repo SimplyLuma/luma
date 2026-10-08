@@ -1,0 +1,80 @@
+From 73a32cb1ea80d4b7c8df667e663db844168e8791 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:15:05 +0000
+Subject: [PATCH] Filer: leave search results unselected until user acts
+
+---
+ src/nautilus-files-view.c | 35 +++--------------------------------
+ 1 file changed, 3 insertions(+), 32 deletions(-)
+
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+index e0c56c4..26891f4 100644
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -771,18 +771,6 @@ nautilus_files_view_select_all (NautilusFilesView *self)
+     gtk_selection_model_select_all (GTK_SELECTION_MODEL (self->model));
+ }
+ 
+-static void
+-nautilus_files_view_select_first (NautilusFilesView *self,
+-                                  gboolean           is_auto)
+-{
+-    if (g_list_model_get_n_items (G_LIST_MODEL (self->model)) > 0)
+-    {
+-        self->in_auto_selection = is_auto;
+-        nautilus_list_base_set_cursor (self->list_base, 0, TRUE, TRUE);
+-        self->in_auto_selection = FALSE;
+-    }
+-}
+-
+ static void
+ nautilus_files_view_call_set_selection (NautilusFilesView *self,
+                                         NautilusFileList  *selection,
+@@ -3885,21 +3873,15 @@ done_loading (NautilusFilesView *self,
+ 
+     if (!self->in_destruction)
+     {
+-        g_autoptr (GtkBitset) selection = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (self->model));
+-        gboolean no_selection = gtk_bitset_is_empty (selection);
+-
+         remove_loading_floating_bar (self);
+         schedule_update_context_menus (self);
+         schedule_update_status (self);
+         nautilus_files_view_update_toolbar_menus (self);
+         reset_update_interval (self);
+ 
+-        if (nautilus_files_view_is_searching (self) &&
+-            all_files_seen && no_selection && self->pending_selection == NULL)
+-        {
+-            nautilus_files_view_select_first (self, TRUE);
+-        }
+-        else if (self->pending_selection != NULL && all_files_seen)
++        /* v70 search results start unselected; preserve only explicit
++         * selections requested by navigation or the caller. */
++        if (self->pending_selection != NULL && all_files_seen)
+         {
+             g_autolist (NautilusFile) pending_selection = NULL;
+             pending_selection = g_steal_pointer (&self->pending_selection);
+@@ -4443,19 +4425,8 @@ display_pending_files (NautilusFilesView *view)
+ {
+     search_transition_emit_delayed_signals_if_pending (view);
+ 
+-    /* Get selection after delayed signals are emitted. */
+-    g_autoptr (GtkBitset) selection = gtk_selection_model_get_selection (GTK_SELECTION_MODEL (view->model));
+-    gboolean no_selection = gtk_bitset_is_empty (selection);
+-
+     process_pending_files (view);
+ 
+-    if (no_selection &&
+-        !view->pending_selection &&
+-        nautilus_files_view_is_searching (view))
+-    {
+-        nautilus_files_view_select_first (view, TRUE);
+-    }
+-
+     if (view->model != NULL
+         && nautilus_directory_are_all_files_seen (view->directory))
+     {
+-- 
+2.55.0
+

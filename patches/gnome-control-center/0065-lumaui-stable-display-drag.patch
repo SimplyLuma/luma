@@ -1,0 +1,247 @@
+diff --git a/shell/cc-luma-view-displays.c b/shell/cc-luma-view-displays.c
+index a7cfa9c..1f57b86 100644
+--- a/shell/cc-luma-view-displays.c
++++ b/shell/cc-luma-view-displays.c
+@@ -10,7 +10,7 @@
+ /* Fixture: v70's two displays, the second draggable. Live: every display
+  * Mutter reports, each draggable; where it lands snaps in the owner (as
+  * GNOME's arrangement does). @k: diagram pixels per layout pixel. */
+-typedef struct { GtkWidget parent; CcLumaFixture *model; GtkWidget *monitors[MAX_DISPLAYS]; CcLumaPreviewRect rects[MAX_DISPLAYS]; guint n; int dragged; double offset, dx, dy, k; gboolean mirror, live; } Arrangement;
++typedef struct { GtkWidget parent; CcLumaFixture *model; GtkWidget *monitors[MAX_DISPLAYS]; CcLumaPreviewRect rects[MAX_DISPLAYS]; guint n; int dragged; double offset, dx, dy, k; gboolean mirror, live, draggable[MAX_DISPLAYS]; GtkWidget *view_root; } Arrangement;
+ typedef struct { GtkWidgetClass parent; } ArrangementClass;
+ GType cc_luma_arrangement_get_type (void);
+ G_DEFINE_TYPE (Arrangement, cc_luma_arrangement, GTK_TYPE_WIDGET)
+@@ -46,26 +46,54 @@ static void arrangement_dispose (GObject *object)
+ {
+   Arrangement *self = (Arrangement *) object;
+   for (guint i = 0; i < MAX_DISPLAYS; i++) if (self->monitors[i]) { gtk_widget_unparent (self->monitors[i]); self->monitors[i] = NULL; }
++  g_clear_weak_pointer (&self->view_root);
+   g_clear_object (&self->model); G_OBJECT_CLASS (cc_luma_arrangement_parent_class)->dispose (object);
+ }
+ static void monitor_clicked (GtkButton *button, Arrangement *self)
+ {
+   if (!self->mirror) g_signal_emit (self, arrangement_signals[0], 0, g_object_get_data (G_OBJECT (button), "cf-display"));
+ }
++static void drag_finish (Arrangement *self)
++{
++  View *v = self->view_root ? g_object_get_data (G_OBJECT (self->view_root), "cf-view") : NULL;
++  if (v) v->display_dragging = FALSE;
++  self->dx = self->dy = 0;
++  gtk_widget_queue_allocate (GTK_WIDGET (self));
++}
++static void drag_cancel (GtkGesture *gesture, GdkEventSequence *sequence, Arrangement *self)
++{
++  drag_finish (self);
++  self->dragged = -1;
++}
++static void drag_unmap (GtkWidget *widget, Arrangement *self)
++{
++  drag_finish (self);
++  self->dragged = -1;
++}
+ static void drag_begin (GtkGestureDrag *gesture, double x, double y, Arrangement *self)
+ {
+-  GtkWidget *button = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+-  for (guint i = 0; i < self->n; i++) if (self->monitors[i] == button) self->dragged = i;
++  /* Measure against the stationary diagram, never the monitor being moved. */
++  self->dragged = -1;
++  self->dx = self->dy = 0;
++  for (guint i = 0; i < self->n; i++) {
++    CcLumaPreviewRect r = self->rects[i];
++    if (self->draggable[i] && x >= r.x + self->offset && x < r.x + self->offset + r.width &&
++        y >= r.y && y < r.y + r.height) { self->dragged = i; break; }
++  }
++  if (self->dragged < 0) { gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED); return; }
++  View *v = self->view_root ? g_object_get_data (G_OBJECT (self->view_root), "cf-view") : NULL;
++  if (v) v->display_dragging = TRUE;
+ }
+ static void drag_update (GtkGestureDrag *gesture, double dx, double dy, Arrangement *self)
+ {
+-  if (self->mirror) return;
++  if (self->mirror || self->dragged < 0) return;
+   if (fabs (dx) + fabs (dy) > 3) gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+   self->dx = dx; self->dy = dy; gtk_widget_queue_allocate (GTK_WIDGET (self));
+ }
+ static void drag_end (GtkGestureDrag *gesture, double dx, double dy, Arrangement *self)
+ {
+-  if (self->mirror || fabs (dx) + fabs (dy) <= 3) { self->dx = self->dy = 0; return; }
++  if (self->mirror || self->dragged < 0 || fabs (dx) + fabs (dy) <= 3) { drag_finish (self); return; }
++  drag_finish (self);
+   if (self->live)
+     {
+       GtkWidget *button = self->monitors[self->dragged];
+@@ -95,11 +123,12 @@ static void cc_luma_arrangement_class_init (ArrangementClass *klass)
+   /* Live: a display's id and how far it moved, in layout pixels. */
+   arrangement_signals[2] = g_signal_new ("moved", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT);
+ }
+-static void cc_luma_arrangement_init (Arrangement *self) { gtk_widget_set_overflow (GTK_WIDGET (self), GTK_OVERFLOW_HIDDEN); self->dragged = 1; }
++static void cc_luma_arrangement_init (Arrangement *self) { gtk_widget_set_overflow (GTK_WIDGET (self), GTK_OVERFLOW_HIDDEN); self->dragged = -1; }
+ static GtkWidget *arrangement_new (View *v)
+ {
+   Arrangement *self = g_object_new (cc_luma_arrangement_get_type (), NULL);
+   self->model = g_object_ref (v->model);
++  g_set_weak_pointer (&self->view_root, v->root);
+   gboolean live = cc_luma_fixture_is_live (v->model);
+   const char *ids[MAX_DISPLAYS] = { "int", "ext" };
+   JsonObject *catalog = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFDISP");
+@@ -142,14 +171,17 @@ static GtkWidget *arrangement_new (View *v)
+     gtk_widget_set_parent (button, GTK_WIDGET (self)); self->monitors[i] = button;
+     g_autofree char *pos_key = g_strdup_printf ("d.%s.pos", id);
+     /* Live: dragging only once the move is proven in the VM; never a hand-off to GNOME. */
+-    if ((!live && i == 1) || (live && !self->mirror && self->n >= 2 && cc_luma_fixture_key_verified (v->model, pos_key))) {
+-      GtkGesture *drag = gtk_gesture_drag_new ();
+-      g_signal_connect_object (drag, "drag-begin", G_CALLBACK (drag_begin), self, 0);
+-      g_signal_connect_object (drag, "drag-update", G_CALLBACK (drag_update), self, 0);
+-      g_signal_connect_object (drag, "drag-end", G_CALLBACK (drag_end), self, 0);
+-      gtk_widget_add_controller (button, GTK_EVENT_CONTROLLER (drag));
+-    }
++    self->draggable[i] = (!live && i == 1) ||
++      (live && !self->mirror && self->n >= 2 && cc_luma_fixture_key_verified (v->model, pos_key));
+   }
++  GtkGesture *drag = gtk_gesture_drag_new ();
++  gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (drag), GTK_PHASE_CAPTURE);
++  g_signal_connect_object (drag, "drag-begin", G_CALLBACK (drag_begin), self, 0);
++  g_signal_connect_object (drag, "drag-update", G_CALLBACK (drag_update), self, 0);
++  g_signal_connect_object (drag, "drag-end", G_CALLBACK (drag_end), self, 0);
++  g_signal_connect_object (drag, "cancel", G_CALLBACK (drag_cancel), self, 0);
++  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (drag));
++  g_signal_connect (self, "unmap", G_CALLBACK (drag_unmap), self);
+   return GTK_WIDGET (self);
+ }
+ static void display_bar (View *v);
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 6b126b2..34d817d 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -20,6 +20,7 @@ typedef struct {
+   char *page;
+   CcLumaDisplayDraft *display_draft;
+   guint display_timer;
++  gboolean display_dragging;
+   guint sound_test_timer;
+   guint refresh;
+   guint connection;
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 6b7a567..3d9668b 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -24,7 +24,8 @@ static gboolean refresh_view (gpointer data)
+   View *v = data;
+   v->refresh = 0;
+   /* An owner's report while a picker's menu is open would leave the menu choosing for a page that is gone. */
+-  if (v->open_menu && luma_floating_menu_get_is_open (LUMA_FLOATING_MENU (v->open_menu)))
++  if (v->display_dragging ||
++      (v->open_menu && luma_floating_menu_get_is_open (LUMA_FLOATING_MENU (v->open_menu))))
+     { v->refresh = g_timeout_add (150, refresh_view, v); return G_SOURCE_REMOVE; }
+   render (v);
+   return G_SOURCE_REMOVE;
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index ce82a75..357b1d8 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -695,7 +695,8 @@ static void displays_view (void)
+   GtkWidget *window = gtk_window_new ();
+   GtkWidget *view = cc_luma_view_new (model, "displays", NULL);
+   gtk_window_set_child (GTK_WINDOW (window), view);
+-  gtk_window_set_default_size (GTK_WINDOW (window), 1180, 740);
++  const char *test_width = g_getenv ("LUMA_SETTINGS_TEST_WIDTH");
++  gtk_window_set_default_size (GTK_WINDOW (window), test_width ? atoi (test_width) : 1180, 740);
+   gtk_window_present (GTK_WINDOW (window)); wait_ms (100);
+   View *v = g_object_get_data (G_OBJECT (view), "cf-view");
+   g_assert_true (has_text (view, "Two displays · one desk across both"));
+@@ -725,12 +726,34 @@ static void displays_view (void)
+   g_assert_true (has_text (view, "Both displays"));
+   g_assert_null (find_name (view, "cf-d.ext.primary"));
+   pick_mode (find_name (view, "cf-join"), "join"); drain ();
++  wait_ms (100); /* Finish the new diagram allocation before pointer coordinates. */
+   GtkWidget *external = find_name (view, "cf-display-ext");
+-  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (external);
++  GtkWidget *diagram = gtk_widget_get_parent (external);
++  graphene_rect_t start, moved;
++  g_assert_true (gtk_widget_compute_bounds (external, diagram, &start));
++  g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (diagram);
+   gboolean dragged = FALSE;
+   for (guint i = 0; i < g_list_model_get_n_items (controllers); i++) {
+     g_autoptr (GObject) controller = g_list_model_get_item (controllers, i);
+-    if (GTK_IS_GESTURE_DRAG (controller)) { g_signal_emit_by_name (controller, "drag-end", -300.0, 100.0); dragged = TRUE; break; }
++    if (GTK_IS_GESTURE_DRAG (controller)) {
++      g_signal_emit_by_name (controller, "drag-begin", start.origin.x + start.size.width / 2, start.origin.y + start.size.height / 2);
++      g_assert_true (v->display_dragging);
++      for (int step = 1; step <= 3; step++) {
++        g_signal_emit_by_name (controller, "drag-update", -40.0 * step, 15.0 * step);
++        wait_ms (40);
++        g_assert_true (gtk_widget_compute_bounds (external, diagram, &moved));
++        g_assert_cmpfloat_with_epsilon (moved.origin.x - start.origin.x, -40.0 * step, 1.0);
++        g_assert_cmpfloat_with_epsilon (moved.origin.y - start.origin.y, 15.0 * step, 1.0);
++        /* Live owner notifications must not recreate the moving tile. */
++        g_signal_emit_by_name (model, "changed"); wait_ms (200);
++        g_assert_true (external == find_name (view, "cf-display-ext"));
++        g_assert_true (gtk_widget_compute_bounds (external, diagram, &moved));
++        g_assert_cmpfloat_with_epsilon (moved.origin.x - start.origin.x, -40.0 * step, 1.0);
++      }
++      g_signal_emit_by_name (controller, "drag-end", -300.0, 100.0);
++      g_assert_false (v->display_dragging);
++      dragged = TRUE; break;
++    }
+   }
+   g_assert_true (dragged); drain ();
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "arr.side")), ==, "left");
+@@ -739,6 +762,22 @@ static void displays_view (void)
+   gtk_window_set_default_size (GTK_WINDOW (window), 390, 740); wait_ms (100);
+   g_assert_cmpint (gtk_widget_get_width (window), ==, 390);
+   g_assert_cmpint (gtk_widget_get_margin_start (find_name (view, "cf-page")), ==, 16);
++  external = find_name (view, "cf-display-ext");
++  diagram = gtk_widget_get_parent (external);
++  g_assert_true (gtk_widget_compute_bounds (external, diagram, &start));
++  g_clear_object (&controllers);
++  controllers = gtk_widget_observe_controllers (diagram);
++  for (guint i = 0; i < g_list_model_get_n_items (controllers); i++) {
++    g_autoptr (GObject) controller = g_list_model_get_item (controllers, i);
++    if (!GTK_IS_GESTURE_DRAG (controller)) continue;
++    g_signal_emit_by_name (controller, "drag-begin", start.origin.x + start.size.width / 2, start.origin.y + start.size.height / 2);
++    g_signal_emit_by_name (controller, "drag-update", 25.0, 10.0); wait_ms (40);
++    g_signal_emit_by_name (controller, "cancel", NULL); wait_ms (40);
++    g_assert_false (v->display_dragging);
++    g_assert_true (gtk_widget_compute_bounds (external, diagram, &moved));
++    g_assert_cmpfloat_with_epsilon (moved.origin.x, start.origin.x, 1.0);
++    g_assert_cmpfloat_with_epsilon (moved.origin.y, start.origin.y, 1.0);
++  }
+   gtk_window_destroy (GTK_WINDOW (window)); wait_ms (100);
+ }
+ static void sound_views (void)
+@@ -1664,6 +1703,27 @@ static GtkWidget *phone_window (GtkWidget *view)
+   gtk_widget_queue_resize (view); wait_ms (50); /* a fatal layout warning now would be the page's own */
+   return window;
+ }
++static void phone_search_visibility (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  g_setenv ("LUMA_FORM_FACTOR", "phone", TRUE);
++  load_settings_style ();
++  GtkWidget *view = cc_luma_view_new (model, "wifi", NULL);
++  GtkWidget *window = phone_window (view);
++  GtkWidget *island = find_name (window, "cf-island");
++  g_assert_true (gtk_widget_get_mapped (island));
++  cc_luma_view_search (view, "display"); wait_ms (200);
++  const int widths[] = {360, 720, 402, 1180, 402};
++  for (guint i = 0; i < G_N_ELEMENTS (widths); i++) {
++    gtk_window_set_default_size (GTK_WINDOW (window), widths[i], 874); wait_ms (200);
++    g_assert_false (gtk_widget_get_mapped (island));
++  }
++  cc_luma_view_search (view, ""); wait_ms (200);
++  g_assert_true (gtk_widget_get_mapped (island));
++  gtk_window_destroy (GTK_WINDOW (window)); drain ();
++  g_unsetenv ("LUMA_FORM_FACTOR");
++}
++
+ static void phone_device (void)
+ {
+   g_autoptr (CcLumaFixture) model = load ();
+@@ -1951,6 +2011,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/system", system_pages);
+   /* Last: it loads the full style sheets for the rest of the process. */
+   g_test_add_func ("/settings/view/phone-device", phone_device);
++  g_test_add_func ("/settings/view/phone-search-visibility", phone_search_visibility);
+   g_test_add_func ("/settings/view/no-spill", no_spill);
+   return g_test_run ();
+ }

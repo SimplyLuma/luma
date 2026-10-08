@@ -1,0 +1,283 @@
+From 28c2eb04f9e24fd66ab19fe9afa57f55582185d9 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:17:23 +0000
+Subject: [PATCH] Settings: validate notification duration and reorder search
+ providers safely
+
+---
+ shell/cc-luma-discovery.c | 134 ++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-discovery.h |  13 ++++
+ shell/meson.build         |   5 +-
+ shell/test-luma-fixture.c |  51 +++++++++++++++
+ 4 files changed, 201 insertions(+), 2 deletions(-)
+ create mode 100644 shell/cc-luma-discovery.c
+ create mode 100644 shell/cc-luma-discovery.h
+
+diff --git a/shell/cc-luma-discovery.c b/shell/cc-luma-discovery.c
+new file mode 100644
+index 0000000..31a3e3e
+--- /dev/null
++++ b/shell/cc-luma-discovery.c
+@@ -0,0 +1,134 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-discovery.h"
++#include <gio/gio.h>
++#include <string.h>
++
++const char *cc_luma_app_name (CcLumaFixture *model, const char *id)
++{
++  JsonNode *info = json_object_get_member (cc_luma_fixture_get_data (model), "CFAPPINFO");
++  if (!info || !JSON_NODE_HOLDS_OBJECT (info) || !id) return NULL;
++  JsonNode *app = json_object_get_member (json_node_get_object (info), id);
++  if (!app || !JSON_NODE_HOLDS_OBJECT (app)) return NULL;
++  JsonNode *name = json_object_get_member (json_node_get_object (app), "name");
++  return name && json_node_get_value_type (name) == G_TYPE_STRING && *json_node_get_string (name) ? json_node_get_string (name) : NULL;
++}
++static gboolean is_flag (CcLumaFixture *model, const char *key)
++{
++  JsonNode *n = cc_luma_fixture_get (model, key);
++  return n && json_node_get_value_type (n) == G_TYPE_BOOLEAN;
++}
++static gboolean invalid (GError **error)
++{
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid notification or search setting");
++  return FALSE;
++}
++static gboolean duration_allowed (gint64 seconds)
++{
++  return seconds == 0 || seconds == 4 || seconds == 6 || seconds == 10;
++}
++gboolean cc_luma_notifications_validate (CcLumaFixture *model)
++{
++  if (!is_flag (model, "dnd") || !is_flag (model, "lockN")) return FALSE;
++  JsonNode *nshow = cc_luma_fixture_get (model, "nshow"), *apps = cc_luma_fixture_get (model, "na");
++  if (!nshow || json_node_get_value_type (nshow) != G_TYPE_STRING ||
++      !(g_str_equal (json_node_get_string (nshow), "0") || g_str_equal (json_node_get_string (nshow), "4") || g_str_equal (json_node_get_string (nshow), "6") || g_str_equal (json_node_get_string (nshow), "10")) || !apps || !JSON_NODE_HOLDS_OBJECT (apps)) return FALSE;
++  JsonObject *values = json_node_get_object (apps);
++  g_autoptr (GList) ids = json_object_get_members (values);
++  for (GList *i = ids; i; i = i->next)
++    {
++      JsonNode *value = json_object_get_member (values, i->data);
++      if (!cc_luma_app_name (model, i->data) || json_node_get_value_type (value) != G_TYPE_BOOLEAN) return FALSE;
++    }
++  return TRUE;
++}
++gboolean cc_luma_notifications_set_duration (CcLumaFixture *model, gint64 seconds, GError **error)
++{
++  if (!cc_luma_notifications_validate (model) || !duration_allowed (seconds)) return invalid (error);
++  g_autofree char *value = g_strdup_printf ("%" G_GINT64_FORMAT, seconds);
++  g_autoptr (JsonNode) n = json_node_init_string (json_node_alloc (), value);
++  return cc_luma_fixture_set (model, "nshow", n, error);
++}
++static JsonArray *search_apps (CcLumaFixture *model)
++{
++  JsonNode *n = cc_luma_fixture_get (model, "sa");
++  return n && JSON_NODE_HOLDS_ARRAY (n) ? json_node_get_array (n) : NULL;
++}
++gboolean cc_luma_search_validate (CcLumaFixture *model)
++{
++  if (!is_flag (model, "askAri")) return FALSE;
++  JsonArray *apps = search_apps (model);
++  JsonNode *places = cc_luma_fixture_get (model, "sl");
++  if (!apps || !places || !JSON_NODE_HOLDS_OBJECT (places)) return FALSE;
++  g_autoptr (GHashTable) ids = g_hash_table_new (g_str_hash, g_str_equal);
++  for (guint i = 0; i < json_array_get_length (apps); i++)
++    {
++      JsonNode *n = json_array_get_element (apps, i);
++      if (!JSON_NODE_HOLDS_ARRAY (n)) return FALSE;
++      JsonArray *pair = json_node_get_array (n);
++      if (json_array_get_length (pair) != 2) return FALSE;
++      JsonNode *id = json_array_get_element (pair, 0), *enabled = json_array_get_element (pair, 1);
++      if (json_node_get_value_type (id) != G_TYPE_STRING || !cc_luma_app_name (model, json_node_get_string (id)) || json_node_get_value_type (enabled) != G_TYPE_BOOLEAN || g_hash_table_contains (ids, json_node_get_string (id))) return FALSE;
++      g_hash_table_add (ids, (gpointer) json_node_get_string (id));
++    }
++  JsonObject *values = json_node_get_object (places);
++  g_autoptr (GList) names = json_object_get_members (values);
++  for (GList *i = names; i; i = i->next)
++    if (!*(char *) i->data || json_node_get_value_type (json_object_get_member (values, i->data)) != G_TYPE_BOOLEAN) return FALSE;
++  return TRUE;
++}
++static gint find_app (JsonArray *apps, const char *id)
++{
++  if (!id) return -1;
++  for (guint i = 0; i < json_array_get_length (apps); i++)
++    if (g_str_equal (json_array_get_string_element (json_array_get_array_element (apps, i), 0), id)) return i;
++  return -1;
++}
++gboolean cc_luma_search_set_app (CcLumaFixture *model, const char *id, gboolean enabled, GError **error)
++{
++  if (!cc_luma_search_validate (model)) return invalid (error);
++  JsonArray *apps = search_apps (model);
++  gint index = find_app (apps, id);
++  if (index < 0) return invalid (error);
++  json_node_set_boolean (json_array_get_element (json_array_get_array_element (apps, index), 1), enabled);
++  return TRUE;
++}
++gboolean cc_luma_search_move_app (CcLumaFixture *model, const char *id, guint target, GError **error)
++{
++  if (!cc_luma_search_validate (model)) return invalid (error);
++  JsonArray *apps = search_apps (model);
++  gint index = find_app (apps, id);
++  if (index < 0 || target >= json_array_get_length (apps)) return invalid (error);
++  if ((guint) index == target) return TRUE;
++  /* Copy only array order. Pair values, including disabled apps, are retained. */
++  g_autoptr (JsonArray) order = json_array_new ();
++  JsonNode *moving = json_array_get_element (apps, index);
++  for (guint i = 0, source = 0; i < json_array_get_length (apps); i++)
++    {
++      if (i == target) json_array_add_element (order, json_node_copy (moving));
++      else
++        {
++          if (source == (guint) index) source++;
++          json_array_add_element (order, json_node_copy (json_array_get_element (apps, source++)));
++        }
++    }
++  while (json_array_get_length (apps)) json_array_remove_element (apps, 0);
++  for (guint i = 0; i < json_array_get_length (order); i++) json_array_add_element (apps, json_node_copy (json_array_get_element (order, i)));
++  return TRUE;
++}
++guint cc_luma_search_app_count (CcLumaFixture *model)
++{
++  if (!cc_luma_search_validate (model)) return 0;
++  guint count = 0;
++  JsonArray *apps = search_apps (model);
++  for (guint i = 0; i < json_array_get_length (apps); i++) if (json_array_get_boolean_element (json_array_get_array_element (apps, i), 1)) count++;
++  return count;
++}
++guint cc_luma_search_place_count (CcLumaFixture *model)
++{
++  if (!cc_luma_search_validate (model)) return 0;
++  guint count = 0;
++  JsonObject *places = json_node_get_object (cc_luma_fixture_get (model, "sl"));
++  g_autoptr (GList) names = json_object_get_members (places);
++  for (GList *i = names; i; i = i->next) if (json_object_get_boolean_member (places, i->data)) count++;
++  return count;
++}
+diff --git a/shell/cc-luma-discovery.h b/shell/cc-luma-discovery.h
+new file mode 100644
+index 0000000..ac117c6
+--- /dev/null
++++ b/shell/cc-luma-discovery.h
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include "cc-luma-fixture.h"
++G_BEGIN_DECLS
++const char *cc_luma_app_name (CcLumaFixture *model, const char *id);
++gboolean cc_luma_notifications_validate (CcLumaFixture *model);
++gboolean cc_luma_notifications_set_duration (CcLumaFixture *model, gint64 seconds, GError **error);
++gboolean cc_luma_search_validate (CcLumaFixture *model);
++gboolean cc_luma_search_set_app (CcLumaFixture *model, const char *id, gboolean enabled, GError **error);
++gboolean cc_luma_search_move_app (CcLumaFixture *model, const char *id, guint target, GError **error);
++guint cc_luma_search_app_count (CcLumaFixture *model);
++guint cc_luma_search_place_count (CcLumaFixture *model);
++G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index 682762a..40dba39 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -67,6 +67,7 @@ common_sources = files(
+   'cc-luma-fixture.c',
+   'cc-luma-bluetooth.c',
+   'cc-luma-desktop.c',
++  'cc-luma-discovery.c',
+   'cc-luma-view.c',
+   'cc-luma-view-image.c',
+   'cc-luma-view-bluetooth.c',
+@@ -192,7 +193,7 @@ install_data (
+ # The fixture model has no GTK or system-service dependency.
+ fixture_test = executable(
+   'test-luma-fixture',
+-  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
++  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c'],
+   dependencies: [json_glib_dep, gio_dep],
+ )
+ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+@@ -201,7 +202,7 @@ subdir('test-fixture-schemas')
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index 899bd88..aaabc7f 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -2,6 +2,7 @@
+ #include "cc-luma-fixture.h"
+ #include "cc-luma-bluetooth.h"
+ #include "cc-luma-desktop.h"
++#include "cc-luma-discovery.h"
+ #include <gio/gio.h>
+ 
+ static const char fixture[] = "{\"version\":1,\"settings\":{\"wifi\":true,\"d\":{\"ext\":{\"scale\":\"150\"}},\"vol\":62},\"data\":{\"CFAPPS\":[\"tide\"]},\"pages\":[{\"id\":\"wifi\"}]}";
+@@ -268,6 +269,55 @@ static void appearance_model (void)
+   g_assert_false (cc_luma_appearance_set_wall (model, "prism", NULL));
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "wall")), ==, "blue-fog");
+ }
++static void discovery_model (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_cmpstr (cc_luma_app_name (model, "charlie"), ==, "Charlie");
++  g_assert_cmpstr (cc_luma_app_name (model, "calc"), ==, "Calculator");
++  g_assert_null (cc_luma_app_name (model, "absent"));
++  g_assert_true (cc_luma_notifications_validate (model));
++  const gint64 legal[] = { 0, 4, 6, 10 };
++  for (guint i = 0; i < G_N_ELEMENTS (legal); i++) g_assert_true (cc_luma_notifications_set_duration (model, legal[i], NULL));
++  g_assert_false (cc_luma_notifications_set_duration (model, 5, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "nshow")), ==, "10");
++  g_assert_true (cc_luma_fixture_set_flag (model, "na.messages", FALSE, NULL));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "na.calendar")));
++  g_assert_true (cc_luma_search_validate (model));
++  g_assert_cmpuint (cc_luma_search_app_count (model), ==, 9);
++  g_assert_cmpuint (cc_luma_search_place_count (model), ==, 6);
++  g_assert_true (cc_luma_search_set_app (model, "filer", FALSE, NULL));
++  g_assert_cmpuint (cc_luma_search_app_count (model), ==, 8);
++  g_assert_true (cc_luma_fixture_set_flag (model, "sl.Archive HD", TRUE, NULL));
++  g_assert_cmpuint (cc_luma_search_place_count (model), ==, 7);
++  g_assert_false (cc_luma_search_set_app (model, "missing", FALSE, NULL));
++  g_assert_false (cc_luma_search_move_app (model, "filer", 10, NULL));
++  JsonArray *initial = json_node_get_array (cc_luma_fixture_get (model, "sa"));
++  guint n = json_array_get_length (initial);
++  for (guint from = 0; from < n; from++)
++    for (guint to = 0; to < n; to++)
++      {
++        g_autoptr (CcLumaFixture) copy = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++        const char *id = json_array_get_string_element (json_array_get_array_element (initial, from), 0);
++        g_assert_true (cc_luma_search_set_app (copy, "filer", FALSE, NULL));
++        g_assert_true (cc_luma_search_move_app (copy, id, to, NULL));
++        JsonArray *actual = json_node_get_array (cc_luma_fixture_get (copy, "sa"));
++        g_assert_cmpuint (json_array_get_length (actual), ==, n);
++        g_assert_cmpstr (json_array_get_string_element (json_array_get_array_element (actual, to), 0), ==, id);
++        for (guint i = 0, j = 0; i < n; i++)
++          if (i != to)
++            {
++              if (j == from) j++;
++              g_assert_cmpstr (json_array_get_string_element (json_array_get_array_element (actual, i), 0), ==, json_array_get_string_element (json_array_get_array_element (initial, j++), 0));
++            }
++        g_assert_cmpuint (cc_luma_search_app_count (copy), ==, 8);
++        g_assert_true (json_node_get_boolean (cc_luma_fixture_get (copy, "na.messages")));
++      }
++  JsonArray *last = json_array_get_array_element (initial, n - 1);
++  json_node_set_string (json_array_get_element (last, 0), "filer");
++  g_assert_false (cc_luma_search_validate (model));
++  g_assert_false (cc_luma_search_set_app (model, "filer", TRUE, NULL));
++  g_assert_false (json_array_get_boolean_element (json_array_get_array_element (initial, 0), 1));
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -285,6 +335,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/windows", windows_model);
+       g_test_add_func ("/settings/fixture/shelf", shelf_model);
+       g_test_add_func ("/settings/fixture/appearance", appearance_model);
++      g_test_add_func ("/settings/fixture/discovery", discovery_model);
+     }
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

@@ -1,0 +1,27 @@
+From: Project Luma
+Subject: [PATCH] windows: settle corner ownership after the first client commit
+
+Do not cache an uninitialized process/window as a compatibility window.
+Preserve client chrome, existing frame geometry and all mask exclusions.
+
+--- a/js/ui/lumaWindowCorners.js
++++ b/js/ui/lumaWindowCorners.js
+@@ -186,11 +186,14 @@
+         return false;
+     if (window.get_client_type() === Meta.WindowClientType.X11 && window.decorated)
+         return false;
++    const frame = window.get_frame_rect();
++    // window-created precedes the first client commit. A zero-sized surface or
++    // a process whose PID has not arrived cannot settle decoration ownership:
++    // caching false here would mask a later self-rounded libadwaita window.
++    if (frame.width <= 2 * RADIUS || frame.height <= 2 * RADIUS || window.get_pid() <= 0)
++        return false;
+     window._lumaRoundsItself ??= roundsItself(window);
+-    if (window._lumaRoundsItself)
+-        return false;
+-    const frame = window.get_frame_rect();
+-    return frame.width > 2 * RADIUS && frame.height > 2 * RADIUS;
++    return !window._lumaRoundsItself;
+ }
+ 
+ export class WindowCorners {

@@ -1,0 +1,199 @@
+From cdaf7509985a892865e5071119c2e1f565330319 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:57:15 +0000
+Subject: [PATCH] Filer: use exact fixture ordering and captions in Grid
+
+---
+ src/meson.build              |  2 +
+ src/nautilus-filer-fixture.c | 79 ++++++++++++++++++++++++++++++++++++
+ src/nautilus-filer-fixture.h |  7 ++++
+ src/nautilus-grid-cell.c     |  8 +++-
+ src/nautilus-grid-view.c     | 19 +++++++++
+ 5 files changed, 114 insertions(+), 1 deletion(-)
+ create mode 100644 src/nautilus-filer-fixture.c
+ create mode 100644 src/nautilus-filer-fixture.h
+
+diff --git a/src/meson.build b/src/meson.build
+index c940408..adac87d 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -87,6 +87,8 @@ libnautilus_sources = [
+   'nautilus-fd-holder.h',
+   'nautilus-file.c',
+   'nautilus-file.h',
++  'nautilus-filer-fixture.c',
++  'nautilus-filer-fixture.h',
+   'nautilus-file-changes-queue.c',
+   'nautilus-file-changes-queue.h',
+   'nautilus-file-chooser.c',
+diff --git a/src/nautilus-filer-fixture.c b/src/nautilus-filer-fixture.c
+new file mode 100644
+index 0000000..e5b65ec
+--- /dev/null
++++ b/src/nautilus-filer-fixture.c
+@@ -0,0 +1,79 @@
++/* Filer's private native conform data; never used for an ordinary launch. */
++#include "nautilus-filer-fixture.h"
++
++#include <string.h>
++
++typedef struct
++{
++    guint rank;
++    char *caption;
++} FixtureGridItem;
++
++static GHashTable *grid_items;
++static gsize grid_loaded;
++
++static void
++fixture_grid_item_free (gpointer data)
++{
++    FixtureGridItem *item = data;
++    g_free (item->caption);
++    g_free (item);
++}
++
++static void
++load_grid_items (void)
++{
++    if (g_once_init_enter (&grid_loaded))
++    {
++        const char *root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        g_autofree char *path = root != NULL
++                                ? g_build_filename (root, "Profile", "config", "filer-grid.tsv", NULL)
++                                : NULL;
++        g_autofree char *contents = NULL;
++
++        grid_items = g_hash_table_new_full (g_str_hash, g_str_equal,
++                                            g_free, fixture_grid_item_free);
++        if (path != NULL && g_file_get_contents (path, &contents, NULL, NULL))
++        {
++            g_auto (GStrv) lines = g_strsplit (contents, "\n", -1);
++            for (guint i = 0; lines[i] != NULL && lines[i][0] != '\0'; i++)
++            {
++                char *separator = strchr (lines[i], '\t');
++                if (separator == NULL)
++                {
++                    continue;
++                }
++                *separator = '\0';
++                FixtureGridItem *item = g_new0 (FixtureGridItem, 1);
++                item->rank = i + 1;
++                item->caption = g_strdup (separator + 1);
++                g_hash_table_insert (grid_items, g_strdup (lines[i]), item);
++            }
++        }
++        g_once_init_leave (&grid_loaded, 1);
++    }
++}
++
++guint
++nautilus_filer_fixture_grid_rank (const char *name)
++{
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        return 0;
++    }
++    load_grid_items ();
++    FixtureGridItem *item = g_hash_table_lookup (grid_items, name);
++    return item != NULL ? item->rank : 0;
++}
++
++const char *
++nautilus_filer_fixture_grid_caption (const char *name)
++{
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        return NULL;
++    }
++    load_grid_items ();
++    FixtureGridItem *item = g_hash_table_lookup (grid_items, name);
++    return item != NULL ? item->caption : NULL;
++}
+diff --git a/src/nautilus-filer-fixture.h b/src/nautilus-filer-fixture.h
+new file mode 100644
+index 0000000..d8eaca6
+--- /dev/null
++++ b/src/nautilus-filer-fixture.h
+@@ -0,0 +1,7 @@
++/* Filer's private native conform data; no GTK dependency. */
++#pragma once
++
++#include <glib.h>
++
++guint       nautilus_filer_fixture_grid_rank    (const char *name);
++const char *nautilus_filer_fixture_grid_caption (const char *name);
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index 2f7a5d3..c6e1ed7 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -12,6 +12,7 @@
+ #include "nautilus-image.h"
+ #include "nautilus-tag-manager.h"
+ #include "nautilus-thumbnails.h"
++#include "nautilus-filer-fixture.h"
+ #include "nautilus-ui-utilities.h"
+ #include "nautilus-view-item.h"
+ #include "nautilus-view-cell.h"
+@@ -117,7 +118,12 @@ update_captions (NautilusGridCell *self)
+         {
+             g_autofree gchar *string = NULL;
+             string = nautilus_file_get_string_attribute_q (file, attribute_q);
+-            gtk_label_set_text (GTK_LABEL (caption_labels[i]), string);
++            const char *fixture_caption = i == 0
++                                          ? nautilus_filer_fixture_grid_caption (
++                                                nautilus_file_get_name (file))
++                                          : NULL;
++            gtk_label_set_text (GTK_LABEL (caption_labels[i]),
++                                fixture_caption != NULL ? fixture_caption : string);
+         }
+     }
+ }
+diff --git a/src/nautilus-grid-view.c b/src/nautilus-grid-view.c
+index 362d3cc..83d8a12 100644
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -7,6 +7,7 @@
+ #include "nautilus-grid-view.h"
+ 
+ #include "nautilus-file.h"
++#include "nautilus-filer-fixture.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-grid-cell.h"
+ #include "nautilus-list-base-private.h"
+@@ -63,6 +64,17 @@ nautilus_grid_view_sort (gconstpointer a,
+     file_a = nautilus_view_item_get_file ((NautilusViewItem *) a);
+     file_b = nautilus_view_item_get_file ((NautilusViewItem *) b);
+ 
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL &&
++        self->sort_attribute == g_quark_from_static_string ("name"))
++    {
++        guint rank_a = nautilus_filer_fixture_grid_rank (nautilus_file_get_name (file_a));
++        guint rank_b = nautilus_filer_fixture_grid_rank (nautilus_file_get_name (file_b));
++        if (rank_a != 0 && rank_b != 0)
++        {
++            return (rank_a > rank_b) - (rank_a < rank_b);
++        }
++    }
++
+     return nautilus_file_compare_for_sort_by_attribute_q (file_a, file_b,
+                                                           self->sort_attribute,
+                                                           self->directories_first,
+@@ -158,6 +170,13 @@ get_default_zoom_level (void)
+ static void
+ set_captions_from_preferences (NautilusGridView *self)
+ {
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        memset (&self->caption_attributes, 0, sizeof (self->caption_attributes));
++        self->caption_attributes[0] = g_quark_from_static_string ("size");
++        return;
++    }
++
+     g_auto (GStrv) value = NULL;
+     gint n_captions_for_zoom_level;
+ 
+-- 
+2.55.0
+

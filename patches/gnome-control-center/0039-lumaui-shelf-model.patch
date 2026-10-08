@@ -1,0 +1,196 @@
+From 370c3b5864e679942b37210c81cc0dd192732696 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:55:12 +0000
+Subject: [PATCH] Settings: validate Shelf presets and preserve unrelated
+ settings
+
+---
+ shell/cc-luma-desktop.c   | 104 ++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-desktop.h   |   4 ++
+ shell/test-luma-fixture.c |  38 ++++++++++++++
+ 3 files changed, 146 insertions(+)
+
+diff --git a/shell/cc-luma-desktop.c b/shell/cc-luma-desktop.c
+index 2316b8d..2eba9ca 100644
+--- a/shell/cc-luma-desktop.c
++++ b/shell/cc-luma-desktop.c
+@@ -73,3 +73,107 @@ gboolean cc_luma_windows_rects (CcLumaFixture *model, CcLumaPreviewRect rects[3]
+     }
+   return TRUE;
+ }
++
++static const char *arrangement[] = { "edge", "spread", "joined", "float" };
++static gboolean shelf_choice_allowed (const char *key, const char *value)
++{
++  if (!key || !value) return FALSE;
++  return (g_str_equal (key, "edge") && (g_str_equal (value, "bottom") || g_str_equal (value, "left") || g_str_equal (value, "right"))) ||
++    (g_str_equal (key, "spread") && (g_str_equal (value, "together") || g_str_equal (value, "spread"))) ||
++    (g_str_equal (key, "joined") && (g_str_equal (value, "separate") || g_str_equal (value, "joined"))) ||
++    (g_str_equal (key, "float") && (g_str_equal (value, "floating") || g_str_equal (value, "edge"))) ||
++    (g_str_equal (key, "hide") && (g_str_equal (value, "never") || g_str_equal (value, "touch") || g_str_equal (value, "always")));
++}
++static JsonArray *presets (CcLumaFixture *model)
++{
++  JsonNode *n = json_object_get_member (cc_luma_fixture_get_data (model), "CFPRE");
++  return n && JSON_NODE_HOLDS_ARRAY (n) ? json_node_get_array (n) : NULL;
++}
++static const char *array_text (JsonArray *array, guint i)
++{
++  JsonNode *n = json_array_get_element (array, i);
++  return n && json_node_get_value_type (n) == G_TYPE_STRING ? json_node_get_string (n) : NULL;
++}
++gboolean cc_luma_shelf_validate (CcLumaFixture *model)
++{
++  const char *keys[] = { "edge", "spread", "joined", "float", "hide" };
++  for (guint i = 0; i < G_N_ELEMENTS (keys); i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (model, keys[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_STRING || !shelf_choice_allowed (keys[i], json_node_get_string (n))) return FALSE;
++    }
++  JsonNode *size = cc_luma_fixture_get (model, "isz"), *preset = cc_luma_fixture_get (model, "preset");
++  if (!size || json_node_get_value_type (size) != G_TYPE_INT64 || json_node_get_int (size) < 32 || json_node_get_int (size) > 56 || json_node_get_int (size) % 4 != 0 ||
++      !preset || json_node_get_value_type (preset) != G_TYPE_STRING) return FALSE;
++  JsonArray *catalog = presets (model);
++  if (!catalog || json_array_get_length (catalog) == 0) return FALSE;
++  gboolean found = g_str_equal (json_node_get_string (preset), "custom");
++  g_autoptr (GHashTable) ids = g_hash_table_new (g_str_hash, g_str_equal);
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    {
++      JsonNode *n = json_array_get_element (catalog, i);
++      if (!JSON_NODE_HOLDS_ARRAY (n)) return FALSE;
++      JsonArray *entry = json_node_get_array (n);
++      if (json_array_get_length (entry) != 3) return FALSE;
++      const char *id = array_text (entry, 0), *name = array_text (entry, 1);
++      JsonNode *map = json_array_get_element (entry, 2);
++      if (!id || !*id || !name || !*name || g_str_equal (id, "custom") || !JSON_NODE_HOLDS_OBJECT (map) || g_hash_table_contains (ids, id)) return FALSE;
++      g_hash_table_add (ids, (gpointer) id);
++      JsonObject *values = json_node_get_object (map);
++      if (json_object_get_size (values) != G_N_ELEMENTS (arrangement)) return FALSE;
++      for (guint k = 0; k < G_N_ELEMENTS (arrangement); k++)
++        {
++          JsonNode *v = json_object_get_member (values, arrangement[k]);
++          if (!v || json_node_get_value_type (v) != G_TYPE_STRING || !shelf_choice_allowed (arrangement[k], json_node_get_string (v))) return FALSE;
++        }
++      if (g_str_equal (id, json_node_get_string (preset))) found = TRUE;
++    }
++  return found;
++}
++static gboolean set_text (CcLumaFixture *model, const char *key, const char *value, GError **error)
++{
++  g_autoptr (JsonNode) n = json_node_init_string (json_node_alloc (), value);
++  return cc_luma_fixture_set (model, key, n, error);
++}
++gboolean cc_luma_shelf_set_preset (CcLumaFixture *model, const char *preset, GError **error)
++{
++  if (!cc_luma_shelf_validate (model) || !preset) return invalid (error);
++  JsonArray *catalog = presets (model);
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    {
++      JsonArray *entry = json_array_get_array_element (catalog, i);
++      if (!g_str_equal (array_text (entry, 0), preset)) continue;
++      JsonObject *values = json_array_get_object_element (entry, 2);
++      /* Every field and its type is checked before any of the fields change. */
++      for (guint k = 0; k < G_N_ELEMENTS (arrangement); k++)
++        if (!set_text (model, arrangement[k], json_object_get_string_member (values, arrangement[k]), error)) return FALSE;
++      return set_text (model, "preset", preset, error);
++    }
++  return invalid (error);
++}
++gboolean cc_luma_shelf_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error)
++{
++  if (!cc_luma_shelf_validate (model) || !shelf_choice_allowed (key, value)) return invalid (error);
++  if (!set_text (model, key, value, error)) return FALSE;
++  if (g_str_equal (key, "hide")) return TRUE;
++  JsonArray *catalog = presets (model);
++  const char *matched = "custom";
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    {
++      JsonArray *entry = json_array_get_array_element (catalog, i);
++      const char *id = array_text (entry, 0);
++      if (g_str_equal (id, "split") || g_str_equal (id, "free")) continue;
++      JsonObject *values = json_array_get_object_element (entry, 2);
++      gboolean same = TRUE;
++      for (guint k = 0; k < G_N_ELEMENTS (arrangement); k++)
++        if (!g_str_equal (json_node_get_string (cc_luma_fixture_get (model, arrangement[k])), json_object_get_string_member (values, arrangement[k]))) same = FALSE;
++      if (same) { matched = id; break; }
++    }
++  return set_text (model, "preset", matched, error);
++}
++gboolean cc_luma_shelf_set_size (CcLumaFixture *model, gint64 size, GError **error)
++{
++  if (!cc_luma_shelf_validate (model) || size < 32 || size > 56 || size % 4 != 0) return invalid (error);
++  g_autoptr (JsonNode) n = json_node_init_int (json_node_alloc (), size);
++  return cc_luma_fixture_set (model, "isz", n, error);
++}
+diff --git a/shell/cc-luma-desktop.h b/shell/cc-luma-desktop.h
+index 411dd34..f8d57dc 100644
+--- a/shell/cc-luma-desktop.h
++++ b/shell/cc-luma-desktop.h
+@@ -7,4 +7,8 @@ gboolean cc_luma_windows_validate (CcLumaFixture *model);
+ gboolean cc_luma_windows_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error);
+ gboolean cc_luma_windows_set_number (CcLumaFixture *model, const char *key, gint64 value, GError **error);
+ gboolean cc_luma_windows_rects (CcLumaFixture *model, CcLumaPreviewRect rects[3], GError **error);
++gboolean cc_luma_shelf_validate (CcLumaFixture *model);
++gboolean cc_luma_shelf_set_preset (CcLumaFixture *model, const char *preset, GError **error);
++gboolean cc_luma_shelf_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error);
++gboolean cc_luma_shelf_set_size (CcLumaFixture *model, gint64 size, GError **error);
+ G_END_DECLS
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index b466eba..fd1bc32 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -212,6 +212,43 @@ static void windows_model (void)
+   g_assert_cmpfloat (rects[0].x + rects[0].width, >, rects[1].x);
+   g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "gap")), ==, 24);
+ }
++static void shelf_model (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_true (cc_luma_shelf_validate (model));
++  g_assert_true (cc_luma_shelf_set_choice (model, "hide", "always", NULL));
++  g_assert_true (cc_luma_shelf_set_size (model, 56, NULL));
++  JsonArray *catalog = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFPRE");
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    {
++      JsonArray *p = json_array_get_array_element (catalog, i);
++      const char *id = json_array_get_string_element (p, 0);
++      JsonObject *values = json_array_get_object_element (p, 2);
++      g_assert_true (cc_luma_shelf_set_preset (model, id, NULL));
++      const char *keys[] = { "edge", "spread", "joined", "float" };
++      for (guint k = 0; k < G_N_ELEMENTS (keys); k++)
++        g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, keys[k])), ==, json_object_get_string_member (values, keys[k]));
++      g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "hide")), ==, "always");
++      g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "isz")), ==, 56);
++      g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++    }
++  g_assert_true (cc_luma_shelf_set_preset (model, "split", NULL));
++  g_assert_true (cc_luma_shelf_set_choice (model, "edge", "bottom", NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "preset")), ==, "luma");
++  g_assert_true (cc_luma_shelf_set_choice (model, "edge", "right", NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "preset")), ==, "custom");
++  g_assert_false (cc_luma_shelf_set_preset (model, "missing", NULL));
++  g_assert_false (cc_luma_shelf_set_choice (model, "wall", "prism", NULL));
++  g_assert_false (cc_luma_shelf_set_choice (model, "joined", "bad", NULL));
++  g_assert_false (cc_luma_shelf_set_size (model, 33, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "edge")), ==, "right");
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "isz")), ==, 56);
++  /* A malformed later preset must be rejected before an earlier field changes. */
++  JsonObject *bad = json_array_get_object_element (json_array_get_array_element (catalog, 0), 2);
++  json_object_set_string_member (bad, "float", "bad");
++  g_assert_false (cc_luma_shelf_set_preset (model, "one", NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "edge")), ==, "right");
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -227,6 +264,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/network-undo", network_undo);
+       g_test_add_func ("/settings/fixture/bluetooth", bluetooth_model);
+       g_test_add_func ("/settings/fixture/windows", windows_model);
++      g_test_add_func ("/settings/fixture/shelf", shelf_model);
+     }
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

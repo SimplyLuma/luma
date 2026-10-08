@@ -1,0 +1,19 @@
+/* Frost and Glass for GTK 4 applications that do not link libadwaita.
+ *
+ * A libadwaita application follows the treatment through the style manager
+ * (libadwaita Patch0042). A plain GTK 4 application has no style manager and
+ * no treatment class, so it takes the same defined opaque stand-in the GTK 3
+ * theme uses. The value is appearance.glass_header_opaque in
+ * config/shared/design-tokens.json.
+ */
+@import url("luma-base.css");
+
+@define-color luma_header_opaque #f7f8f8;
+
+headerbar,
+.titlebar,
+headerbar:backdrop,
+.titlebar:backdrop {
+  background-color: @luma_header_opaque;
+  background-image: none;
+}

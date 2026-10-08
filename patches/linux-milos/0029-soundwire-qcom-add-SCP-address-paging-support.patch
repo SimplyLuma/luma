@@ -1,0 +1,51 @@
+From 8ed47c2b0ad9ae9170d213b8eb84d62e16da9d68 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 5 Jul 2026 02:52:32 +0200
+Subject: [PATCH] soundwire: qcom: add SCP address paging support
+
+The Qualcomm SoundWire controller driver ignored the paging fields of
+struct sdw_msg, so any register access above the 16-bit address space
+(e.g. the SDCA control space used by the WCD9378 codec) silently read
+the low 15 bits only. The core already splits the address into
+addr_page1/addr_page2 and sets msg->page; write the two SCP_AddrPage
+registers through the command FIFO before the transfer, as the vendor
+swr-mstr-ctrl driver does.
+
+Verified on Fairphone 6 (SM7635): WCD9378 SDCA registers (0x40000000+)
+read back their documented reset defaults; without this every paged
+read returned zeros.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ drivers/soundwire/qcom.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/soundwire/qcom.c b/drivers/soundwire/qcom.c
+index 3d8f5a8..9d8aa6a 100644
+--- a/drivers/soundwire/qcom.c
++++ b/drivers/soundwire/qcom.c
+@@ -976,6 +976,20 @@ static enum sdw_command_response qcom_swrm_xfer_msg(struct sdw_bus *bus,
+ 	struct qcom_swrm_ctrl *ctrl = to_qcom_sdw(bus);
+ 	int ret, i, len;
+ 
++	if (msg->page) {
++		ret = qcom_swrm_cmd_fifo_wr_cmd(ctrl, msg->addr_page1,
++						msg->dev_num,
++						SDW_SCP_ADDRPAGE1);
++		if (ret)
++			return SDW_CMD_IGNORED;
++
++		ret = qcom_swrm_cmd_fifo_wr_cmd(ctrl, msg->addr_page2,
++						msg->dev_num,
++						SDW_SCP_ADDRPAGE2);
++		if (ret)
++			return SDW_CMD_IGNORED;
++	}
++
+ 	if (msg->flags == SDW_MSG_FLAG_READ) {
+ 		for (i = 0; i < msg->len;) {
+ 			len = min(msg->len - i, QCOM_SWRM_MAX_RD_LEN);
+-- 
+2.54.0 (Apple Git-157)
+

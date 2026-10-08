@@ -1,0 +1,176 @@
+From 2cb1ec32c9c054413a309c73a4d37ef2774d6180 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 10:30:00 -0500
+Subject: [PATCH] stylesheet: make Luma chrome and surface integrity native
+
+Use the downstream toolkit as the single owner of Luma window chrome for
+libadwaita applications. Keep native GtkWindowControls and application
+actions, but give every header bar the shared geometry and connected control
+surface. A real island border cannot be overpainted by an opaque child, and
+the final sidebars stylesheet suppresses the pane edge that would otherwise
+show behind opted-in sibling islands.
+
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index 59a1bc1..23e6eee 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -35,9 +35,10 @@ $dialog_radius: $button_radius + 6;
+ 
+ .luma-island {
+   background-color: unquote("@luma_content");
++  border: 1px solid unquote("@luma_line");
+   border-radius: 10px;
+-  box-shadow: inset 0 0 0 1px unquote("@luma_line"),
+-              0 1px 2px unquote("@luma_island_shadow");
++  box-shadow: 0 2px 5px RGB(25 27 31 / 16%),
++              0 18px 36px -16px RGB(25 27 31 / 48%);
+ }
+ 
+ // Opted-in split views use their child surfaces as the visible work islands.
+@@ -46,7 +47,8 @@ $dialog_radius: $button_radius + 6;
+ .luma-island-split > .sidebar-pane,
+ .luma-island-split > .content-pane {
+   background-color: transparent;
+-  box-shadow: none;
++  border: none;
++  outline: none;
+ }
+ 
+ // Luma product windows opt into the simulator's shared elevation. Keep this
+@@ -74,6 +76,13 @@ window.luma-app-window {
+   }
+ }
+ 
++@media (prefers-color-scheme: dark) {
++  .luma-island {
++    box-shadow: 0 2px 6px RGB(0 0 0 / 42%),
++                0 20px 38px -15px RGB(0 0 0 / 78%);
++  }
++}
++
+ dnd {
+   color: var(--window-fg-color);
+ }
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index aa6e61e..257bec6 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -1,8 +1,9 @@
+ headerbar {
+-  min-height: 34px;
++  min-height: 42px;
+   background-color: var(--headerbar-bg-color);
+   color: var(--headerbar-fg-color);
+-  box-shadow: inset 0 -1px var(--headerbar-shade-color);
++  box-shadow: none;
++  font-family: "Figtree", sans-serif;
+ 
+   @media (prefers-contrast: more) {
+     box-shadow: inset 0 -1px $headerbar_border_color;
+@@ -176,7 +177,7 @@ window:not(.ssd-frame) > {
+ 
+   headerbar.titlebar,
+   .titlebar headerbar {
+-    min-height: 34px;
++    min-height: 42px;
+ 
+     > windowhandle > box {
+       padding-bottom: 1px;
+@@ -197,7 +198,7 @@ window:not(.ssd-frame) > {
+   box-shadow: none;
+   color: inherit;
+ 
+-  min-height: 34px;
++  min-height: 42px;
+ 
+   > windowhandle > box {
+     padding-bottom: 1px;
+@@ -230,7 +231,7 @@ window:not(.ssd-frame) > {
+ }
+ 
+ %headerbar-shrunk {
+-  min-height: 34px;
++  min-height: 42px;
+ 
+   > windowhandle > box {
+     padding-top: 0;
+@@ -312,12 +313,10 @@ windowcontrols {
+   }
+ }
+ 
+-// Luma product windows use one quiet connected control island. Keep this
+-// class-scoped so ordinary libadwaita applications retain the upstream window
+-// controls, while source-integrated Luma apps converge with Luma AppKit.
+-window.luma-files-window headerbar.luma-titlebar windowcontrols,
+-window.luma-calculator-window headerbar.luma-calculator-titlebar windowcontrols,
+-window.luma-app-window headerbar.luma-titlebar windowcontrols,
++// Luma's native libadwaita chrome is one connected control island. This is a
++// toolkit rule so an installed application retains its real actions and
++// identity while matching the operating system without a runtime theme.
++headerbar windowcontrols,
+ windowcontrols.luma-window-controls {
+   min-height: 20px;
+   margin-top: 9px;
+@@ -324,7 +323,9 @@ windowcontrols.luma-window-controls {
+   border-spacing: 0;
+   border-radius: 999px;
+   background-color: unquote("@luma_content");
+-  box-shadow: none;
++  box-shadow: inset 0 0 0 1px RGB(33 37 43 / 5.5%),
++              0 2px 5px RGB(25 27 31 / 16%),
++              0 18px 36px -16px RGB(25 27 31 / 48%);
+ 
+   > button,
+   > button.image-button {
+@@ -380,6 +381,12 @@ windowcontrols.luma-window-controls {
+     color: #376f3a;
+     background-color: RGB(79 138 82 / 16%);
+   }
++
++  @media (prefers-color-scheme: dark) {
++    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 5.5%),
++                0 2px 6px RGB(0 0 0 / 42%),
++                0 20px 38px -15px RGB(0 0 0 / 78%);
++  }
+ }
+ 
+ /******************
+diff --git a/src/stylesheet/widgets/_misc.scss b/src/stylesheet/widgets/_misc.scss
+index 51300d7..3ebf3d9 100644
+--- a/src/stylesheet/widgets/_misc.scss
++++ b/src/stylesheet/widgets/_misc.scss
+@@ -238,3 +238,9 @@ navigation-view,
+ overlay-split-view {
+   @include transition-shadows();
+ }
++
++overlay-split-view.luma-island-split > shadow,
++overlay-split-view.luma-island-split > border {
++  background: none;
++  background-image: none;
++}
+diff --git a/src/stylesheet/widgets/_sidebars.scss b/src/stylesheet/widgets/_sidebars.scss
+index e690a4e..e9b8c1b 100644
+--- a/src/stylesheet/widgets/_sidebars.scss
++++ b/src/stylesheet/widgets/_sidebars.scss
+@@ -87,6 +87,18 @@
+   color: inherit;
+ }
+ 
++// Opted-in Luma split views present the actual sidebar and content widgets as
++// independent islands. This block lives after the stock pane rules so their
++// direction-specific inset edge cannot leak into the workspace gap.
++.luma-island-split > .sidebar-pane,
++.luma-island-split > .content-pane {
++  background-color: transparent;
++  border: none;
++  outline: none;
++  box-shadow: none;
++  --shade-color: transparent;
++}
++
+ stacksidebar row {
+   padding: 10px 4px;
+ 
+-- 
+2.54.0

@@ -1,0 +1,449 @@
+From 332959beae3cfdada4ed363eb5674b9ec801aa43 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 18:54:14 -0400
+Subject: [PATCH 1/3] luma: one placement rule for every surface opened from
+ the shelf
+
+Quick Options, the clock, dock tooltips, dock menus, window previews and the
+Well's popover and menus each measured their distance from something
+different: the status button plus the popover's beak (14px), the dock icon
+(tooltips), the island with a Math.max against the theme gap, or a local
+8 * scale. They did not line up, and a height-limited menu such as a Well
+item's opened 31px above its island.
+
+There is now one rule and one constant. SHELF_SURFACE_GAP (8, logical) sits
+with the other shelf metrics in shelfMetrics.js, and shelfSurfacePlacement()
+puts a surface that far beyond the desktop-facing edge of the painted island
+holding the control that opened it, centred on that control; when centring
+would cross the 14px inset it aligns with the island's edge instead.
+lumaShelfSurface.js finds the island (the 0062 parent walk, generalised to
+every island, or the whole shelf when it paints one connected surface) and is
+the only way a surface is placed:
+
+- BoxPointer menus opened from an island are marked luma-shelf-surface, have
+  no beak, and are placed from the size they are allocated, replacing the
+  0062 override and its Math.max(gap, 8 * scale).
+- Dock tooltips are placed by the rule and follow their final size; the
+  -y-offset: 16px rule is gone.
+- Window previews use the shared rule and constants instead of 8 * scale.
+- The -boxpointer-gap: 8px rule for the Well and shelf menus is gone.
+
+Dropping this patch restores each surface's previous placement.
+---
+ data/theme/luma-shelf.css     | 11 ++---
+ js/js-resources.gresource.xml |  1 +
+ js/ui/boxpointer.js           | 62 ++++++++++++++++++----------
+ js/ui/dash.js                 | 34 +++++++++++++++
+ js/ui/lumaDockWindows.js      | 17 ++++----
+ js/ui/lumaShelfSurface.js     | 78 +++++++++++++++++++++++++++++++++++
+ js/ui/lumaWell.js             |  3 +-
+ js/ui/shelfMetrics.js         | 44 ++++++++++++++------
+ 8 files changed, 202 insertions(+), 48 deletions(-)
+ create mode 100644 js/ui/lumaShelfSurface.js
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 7093e02..b071916 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -915,10 +915,10 @@
+   box-shadow: 0 1px 2px rgba(12, 17, 24, 0.22); }
+ .luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover .overview-icon {
+   box-shadow: 0 1px 2px rgba(12, 17, 24, 0.22); }
+-/* The tooltip: 24 high, 8 above the island, on the menu surface. */
++/* The tooltip: 24 high, on the menu surface. Where it sits is the shelf
++ * surface rule (lumaShelfSurface.js), not a stylesheet offset. */
+ .dash-label, .dash-label.luma-surface-dark, .dash-label.luma-surface-light,
+ .dash-label.luma-surface-frost, .dash-label.luma-surface-glass {
+-  -y-offset: 16px;
+   padding: 5px 9px;
+   border: 0;
+   border-radius: 8px;
+@@ -936,9 +936,10 @@
+ .luma-well-popover .popup-menu-content, .luma-shelf-menu .popup-menu-content {
+   padding: 6px; border-radius: 15px; background-color: #252a30;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
+-/* St draws one shadow per actor, so the menu keeps the deeper one. The 8px
+- * gap above the island is the boxpointer's rise, with no arrow drawn. */
+-.luma-well-popover, .luma-shelf-menu { -arrow-rise: 0; -arrow-base: 0; -boxpointer-gap: 8px; }
++/* St draws one shadow per actor, so the menu keeps the deeper one. */
++/* Every menu opened from a shelf island has no beak, so the visible gap is
++ * exactly the shelf surface gap (SHELF_SURFACE_GAP in shelfMetrics.js). */
++.popup-menu-boxpointer.luma-shelf-surface { -arrow-rise: 0; -arrow-base: 0; }
+ .luma-shelf-menu .popup-menu-item { min-height: 32px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 550; }
+ .luma-shelf-menu .popup-separator-menu-item { padding: 5px 7px; }
+ .luma-shelf-menu .luma-well-menu-heading { min-height: 22px; font-size: 9px; font-weight: 700; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 68a6c0a..50a7c18 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -103,6 +103,7 @@
+     <file>ui/mediaSelection.js</file>
+     <file>ui/liveActivity.js</file>
+     <file>ui/lumaPopoverPlacement.js</file>
++    <file>ui/lumaShelfSurface.js</file>
+     <file>ui/mediaArtwork.js</file>
+     <file>ui/iconMask.js</file>
+     <file>ui/shelfMedia.js</file>
+diff --git a/js/ui/boxpointer.js b/js/ui/boxpointer.js
+index 931959d..8d4f426 100644
+--- a/js/ui/boxpointer.js
++++ b/js/ui/boxpointer.js
+@@ -4,6 +4,7 @@ import GObject from 'gi://GObject';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import {placeShelfSurface, shelfIslandFor} from './lumaShelfSurface.js';
+ 
+ export const PopupAnimation = {
+     NONE:  0,
+@@ -476,6 +477,14 @@ export const BoxPointer = GObject.registerClass({
+ 
+         this._arrowAlignment = Math.clamp(alignment, 0.0, 1.0);
+ 
++        // A menu opened from a shelf island is a shelf surface: no beak, and
++        // placed by the shared shelf surface rule rather than by its source.
++        this._lumaShelfSurface = shelfIslandFor(sourceActor) !== null;
++        if (this._lumaShelfSurface)
++            this.add_style_class_name('luma-shelf-surface');
++        else
++            this.remove_style_class_name('luma-shelf-surface');
++
+         this.queue_relayout();
+     }
+ 
+@@ -496,6 +505,9 @@ export const BoxPointer = GObject.registerClass({
+         this._sourceExtents = sourceActor.get_transformed_extents();
+         this._workArea = Main.layoutManager.getWorkAreaForMonitor(monitorIndex);
+ 
++        if (this._lumaShelfSurface && this._repositionOnShelf(allocationBox))
++            return;
++
+         // Position correctly relative to the sourceActor
+         const sourceAllocation = sourceActor.get_allocation_box();
+         const sourceContentBox = sourceActor instanceof St.Widget
+@@ -520,28 +532,7 @@ export const BoxPointer = GObject.registerClass({
+         const borderRadius = themeNode.get_length('-arrow-border-radius');
+         const margin = 4 * borderRadius + borderWidth + arrowBase;
+ 
+-        let gap = themeNode.get_length('-boxpointer-gap');
+-        // Shelf menus point along the thing clicked, but clear the painted
+-        // island on the perpendicular axis: every menu opens 8px beyond the
+-        // island that owns it, never over its padding.
+-        for (let parent = sourceActor.get_parent(); parent; parent = parent.get_parent()) {
+-            if (!parent.has_style_class_name?.('luma-shelf-island') ||
+-                parent.has_style_class_name('luma-shelf-root'))
+-                continue;
+-            const bounds = parent.get_transformed_extents();
+-            const first = bounds.get_top_left();
+-            const last = bounds.get_bottom_right();
+-            if (this._arrowSide === St.Side.TOP || this._arrowSide === St.Side.BOTTOM) {
+-                sourceTopLeft.y = first.y;
+-                sourceBottomRight.y = last.y;
+-            } else {
+-                sourceTopLeft.x = first.x;
+-                sourceBottomRight.x = last.x;
+-            }
+-            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-            gap = Math.max(gap, 8 * scale);
+-            break;
+-        }
++        const gap = themeNode.get_length('-boxpointer-gap');
+         const padding = themeNode.get_length('-arrow-rise');
+ 
+         let resX, resY;
+@@ -635,6 +626,33 @@ export const BoxPointer = GObject.registerClass({
+         allocationBox.set_origin(Math.floor(x), Math.floor(y));
+     }
+ 
++    // One rule for every surface opened from the shelf: SHELF_SURFACE_GAP
++    // beyond the painted island's desktop-facing edge, centred on the control
++    // that opened it (lumaShelfSurface.js).
++    _repositionOnShelf(allocationBox) {
++        const sourceActor = this._sourceActor;
++        // The size this allocation will have, which a height-limited menu
++        // makes smaller than its preferred size.
++        const place = placeShelfSurface(sourceActor,
++            {width: allocationBox.get_width(), height: allocationBox.get_height()});
++        if (!place)
++            return false;
++        const {anchor} = place.source;
++        const vertical = place.edge === 'left' || place.edge === 'right';
++        this.setArrowOrigin(vertical
++            ? anchor.y + anchor.height / 2 - place.y
++            : anchor.x + anchor.width / 2 - place.x);
++
++        let parent = this.get_parent();
++        let success, x, y;
++        while (!success) {
++            [success, x, y] = parent.transform_stage_point(place.x, place.y);
++            parent = parent.get_parent();
++        }
++        allocationBox.set_origin(Math.round(x), Math.round(y));
++        return true;
++    }
++
+     // @origin: Coordinate specifying middle of the arrow, along
+     // the Y axis for St.Side.LEFT, St.Side.RIGHT from the top and X axis from
+     // the left for St.Side.TOP and St.Side.BOTTOM.
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index 9385156..3286698 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -12,6 +12,7 @@ import * as DND from './dnd.js';
+ import * as IconGrid from './iconGrid.js';
+ import * as DockWindows from './lumaDockWindows.js';
+ import * as Main from './main.js';
++import {placeShelfSurface} from './lumaShelfSurface.js';
+ import * as Overview from './overview.js';
+ import {DASH_TILE_GAP, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
+ 
+@@ -181,6 +182,27 @@ class DashItemContainer extends St.Widget {
+         this.label.opacity = 0;
+         this.label.show();
+ 
++        // On the shelf the tooltip is a shelf surface: measured from the
++        // island's edge, not from the icon, so a launch button and an app
++        // icon of another size put it in the same place.
++        this._shelfLabelAnchor = anchor;
++        if (this._placeShelfLabel()) {
++            // The label's final size is known only once St has styled and
++            // allocated it; a right or bottom aligned label follows it.
++            if (!this._shelfLabelFollowsSize) {
++                this._shelfLabelFollowsSize = true;
++                this.label.connectObject(
++                    'notify::width', () => this._placeShelfLabel(),
++                    'notify::height', () => this._placeShelfLabel(), this);
++            }
++            this.label.ease({
++                opacity: 255,
++                duration: DASH_ITEM_LABEL_SHOW_TIME,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            });
++            return;
++        }
++
+         const [stageX, stageY] = anchor.get_transformed_position();
+ 
+         const itemWidth = anchor.width;
+@@ -211,6 +233,18 @@ class DashItemContainer extends St.Widget {
+         });
+     }
+ 
++    _placeShelfLabel() {
++        const anchor = this._shelfLabelAnchor;
++        if (!anchor || !this.label.visible)
++            return false;
++        const place = placeShelfSurface(anchor,
++            {width: this.label.get_width(), height: this.label.get_height()});
++        if (!place)
++            return false;
++        this.label.set_position(place.x, place.y);
++        return true;
++    }
++
+     setLabelText(text) {
+         this._labelText = text;
+         this.child.accessible_name = text;
+diff --git a/js/ui/lumaDockWindows.js b/js/ui/lumaDockWindows.js
+index 906be90..f0ff514 100644
+--- a/js/ui/lumaDockWindows.js
++++ b/js/ui/lumaDockWindows.js
+@@ -18,7 +18,8 @@ import St from 'gi://St';
+ import * as Main from './main.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {smoothOffscreenSampling} from './iconMask.js';
+-import {previewPlacement, windowMarkKinds} from './shelfMetrics.js';
++import {placeShelfSurface, shelfIslandFor} from './lumaShelfSurface.js';
++import {SHELF_INSET, SHELF_SURFACE_GAP, shelfSurfacePlacement, windowMarkKinds} from './shelfMetrics.js';
+ 
+ // Windows' taskbar thumbnails wait about as long; a preview already open, or
+ // a tooltip already showing, moves to the next icon at once.
+@@ -1039,9 +1040,9 @@ class DockPreview {
+         }
+         const scale = scaleFactor();
+         const edge = this._edge();
+-        const islandActor = Main.shelf?._dockIsland;
++        const islandActor = shelfIslandFor(this._icon);
+         const island = islandActor?.mapped ? actorRect(islandActor) : actorRect(this._icon);
+-        const inset = 14 * scale, gap = 8 * scale;
++        const inset = SHELF_INSET * scale, gap = SHELF_SURFACE_GAP * scale;
+         const maxWidth = edge === 'left'
+             ? monitor.x + monitor.width - inset - (island.x + island.width + gap)
+             : edge === 'right' ? island.x - gap - monitor.x - inset : monitor.width - 2 * inset;
+@@ -1062,13 +1063,15 @@ class DockPreview {
+ 
+     _placement() {
+         const popover = this._popover;
++        const [, , width, height] = popover.get_preferred_size();
++        const place = placeShelfSurface(this._icon, {width, height});
++        if (place)
++            return [place.x, place.y];
+         const icon = actorRect(this._icon);
+-        const islandActor = Main.shelf?._dockIsland;
+-        const island = islandActor?.mapped ? actorRect(islandActor) : icon;
++        const island = icon;
+         const monitor = Main.layoutManager.monitors[
+             Main.layoutManager.findIndexForActor(this._icon)] ?? Main.layoutManager.primaryMonitor;
+-        const [, , width, height] = popover.get_preferred_size();
+-        const position = previewPlacement(this._edge(), icon, island, {width, height},
++        const position = shelfSurfacePlacement(this._edge(), icon, island, {width, height},
+             monitor, scaleFactor());
+         return [position.x, position.y];
+     }
+diff --git a/js/ui/lumaShelfSurface.js b/js/ui/lumaShelfSurface.js
+new file mode 100644
+index 0000000..d079b03
+--- /dev/null
++++ b/js/ui/lumaShelfSurface.js
+@@ -0,0 +1,78 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// The one placement rule for surfaces that open from the shelf. Given the
++// actor that opened a surface, find the painted island holding it and put the
++// surface SHELF_SURFACE_GAP beyond that island's desktop-facing edge (see
++// shelfSurfacePlacement in shelfMetrics.js). Every shelf surface goes through
++// here; a new one is added here rather than given its own offset.
++
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import {SHELF_SURFACE_GAP, shelfSurfacePlacement} from './shelfMetrics.js';
++
++export {SHELF_SURFACE_GAP};
++
++function stageRect(actor) {
++    const [x, y] = actor.get_transformed_position();
++    const [width, height] = actor.get_transformed_size();
++    return {x, y, width, height};
++}
++
++// The island an actor sits in: the dock, the status cluster, a live or media
++// island, the Well's island. When the shelf paints one connected surface, the
++// painted island is that surface, so its edges are the ones measured.
++export function shelfIslandFor(actor) {
++    for (let parent = actor?.get_parent?.(); parent; parent = parent.get_parent()) {
++        if (!parent.has_style_class_name?.('luma-shelf-island'))
++            continue;
++        if (parent.has_style_class_name('luma-shelf-root'))
++            return null;
++        for (let root = parent.get_parent(); root; root = root.get_parent()) {
++            if (root.has_style_class_name?.('luma-shelf-root'))
++                return root.has_style_class_name('luma-shelf-connected') ? root : parent;
++        }
++        return parent;
++    }
++    return null;
++}
++
++// Which side of its monitor the shelf is on.
++export function shelfEdge() {
++    return Main.shelf?._edge ?? Main.overview?.dash?._shelfEdge ?? 'bottom';
++}
++
++// Everything a surface opened by `actor` is placed from, or null when the
++// actor is not in a shown shelf island.
++export function shelfSurfaceSource(actor) {
++    const island = shelfIslandFor(actor);
++    if (!island?.mapped)
++        return null;
++    const index = Main.layoutManager.findIndexForActor(island);
++    const monitor = Main.layoutManager.monitors[index] ?? Main.layoutManager.primaryMonitor;
++    if (!monitor)
++        return null;
++    return {
++        island,
++        edge: shelfEdge(),
++        anchor: stageRect(actor),
++        islandRect: stageRect(island),
++        monitor,
++        monitorIndex: index,
++        scale: St.ThemeContext.get_for_stage(global.stage).scale_factor,
++    };
++}
++
++// Stage position {x, y} for a surface of `size` opened by `actor`, or null
++// when the actor is not in a shown shelf island.
++export function placeShelfSurface(actor, size) {
++    const source = shelfSurfaceSource(actor);
++    if (!source)
++        return null;
++    return {
++        ...shelfSurfacePlacement(source.edge, source.anchor, source.islandRect,
++            size, source.monitor, source.scale),
++        edge: source.edge,
++        source,
++    };
++}
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index 511c80d..4aa9490 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -607,7 +607,8 @@ export const Well = GObject.registerClass({
+     // ── The Well opened ──────────────────────────────────────────────────
+     _togglePopover() {
+         if (!this._popover) {
+-            // Left-aligned to the Well itself, not to the count that opened it.
++            // Placed from the Well itself, not the count that opened it, by the
++            // shelf surface rule (lumaShelfSurface.js).
+             this._popover = new PopupMenu.PopupMenu(this, 0, this.arrowSide);
+             this._popover.actor.add_style_class_name('luma-well-popover');
+             // The popover's source is the whole Well, but only the count is
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+index 56487f5..79a3e37 100644
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -97,23 +97,41 @@ export function windowMarkRow(edge, width, height, center, marks, scale = 1, pad
+     };
+ }
+ 
+-// Where the window preview sits: 8 beyond the dock island's outer edge, like
+-// the tooltip, centred on the icon along the shelf and kept 14 inside the
+-// monitor. Rectangles are {x, y, width, height} in stage pixels.
+-export function previewPlacement(edge, icon, island, size, monitor, scale = 1) {
+-    const gap = 8 * scale;
++// Every surface that opens from the shelf -- Quick Options, the clock, dock
++// tooltips, dock menus, window previews, the Well's popover and menus, Beam --
++// sits this far beyond the painted edge of the island it opened from, on the
++// side facing the desktop. Logical pixels; display scale multiplies it.
++export const SHELF_SURFACE_GAP = 8;
++
++// Where a shelf surface sits. edge: the shelf's side of its monitor; anchor:
++// the control that opened the surface; island: the painted island holding
++// that control; size: the surface's; monitor: the island's. All rectangles
++// are {x, y, width, height} in stage pixels.
++//
++// Across the shelf the surface is SHELF_SURFACE_GAP beyond the island's
++// desktop-facing edge, never measured from the control or the monitor edge.
++// Along the shelf it is centred on the control; when that would cross the
++// SHELF_INSET margin, its edge lines up with the edge of the island instead.
++export function shelfSurfacePlacement(edge, anchor, island, size, monitor, scale = 1) {
++    const gap = SHELF_SURFACE_GAP * scale;
+     const inset = SHELF_INSET * scale;
+-    const clamp = (value, min, max) => Math.max(min, Math.min(value, Math.max(min, max)));
+-    const centerX = icon.x + icon.width / 2;
+-    const centerY = icon.y + icon.height / 2;
++    const vertical = edge === 'left' || edge === 'right';
++    const along = (start, length, islandStart, islandLength, monitorStart, monitorLength, extent) => {
++        let position = start + length / 2 - extent / 2;
++        if (position < monitorStart + inset)
++            position = islandStart;
++        else if (position + extent > monitorStart + monitorLength - inset)
++            position = islandStart + islandLength - extent;
++        return position;
++    };
+     let x, y;
+-    if (edge === 'left' || edge === 'right') {
++    if (vertical) {
+         x = edge === 'left' ? island.x + island.width + gap : island.x - gap - size.width;
+-        y = clamp(centerY - size.height / 2, monitor.y + inset,
+-            monitor.y + monitor.height - inset - size.height);
++        y = along(anchor.y, anchor.height, island.y, island.height,
++            monitor.y, monitor.height, size.height);
+     } else {
+-        x = clamp(centerX - size.width / 2, monitor.x + inset,
+-            monitor.x + monitor.width - inset - size.width);
++        x = along(anchor.x, anchor.width, island.x, island.width,
++            monitor.x, monitor.width, size.width);
+         y = edge === 'top' ? island.y + island.height + gap : island.y - gap - size.height;
+     }
+     return {x: Math.round(x), y: Math.round(y)};

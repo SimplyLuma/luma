@@ -1,0 +1,52 @@
+From: Project Luma <codex@project-luma.local>
+Date: Fri, 28 Aug 2026 15:20:00 -0500
+Subject: [PATCH] netlink: preserve completion callback before transaction removal
+
+The transaction hash table owns its Transaction values. Removing a completed
+entry therefore calls transaction_free() immediately, but
+transaction_complete() subsequently dereferences tr->completion_fn. Preserve
+the callback before removal so a successful qmap link acknowledgement cannot
+call through freed memory.
+
+Also decode NLMSG_ERROR relative to the message currently being iterated,
+rather than the first message in a multi-message receive buffer.
+---
+ src/mm-netlink.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/mm-netlink.c b/src/mm-netlink.c
+index 7d366ec0..87377be4 100644
+--- a/src/mm-netlink.c
++++ b/src/mm-netlink.c
+@@ -229,9 +229,11 @@ transaction_complete (Transaction     *tr,
+ {
+     GTask *task;
+     guint32 sequence_id;
++    MsgFunc completion_fn;
+ 
+     task = g_steal_pointer (&tr->completion_task);
+     sequence_id = tr->sequence_id;
++    completion_fn = tr->completion_fn;
+ 
+     g_hash_table_remove (tr->self->transactions,
+                          GUINT_TO_POINTER (tr->sequence_id));
+@@ -239,7 +241,7 @@ transaction_complete (Transaction     *tr,
+     if (!saved_errno) {
+         GError *error = NULL;
+ 
+-        if (!tr->completion_fn (task, hdr, &error))
++        if (!completion_fn (task, hdr, &error))
+             g_task_return_error (task, error);
+     } else {
+         g_task_return_new_error (task, G_IO_ERROR, g_io_error_from_errno (saved_errno),
+@@ -522,7 +524,7 @@ netlink_messages_cb (GSocket      *socket,
+ 
+         switch (hdr->nlmsg_type) {
+         case NLMSG_ERROR:
+-            err = NLMSG_DATA (buf);
++            err = NLMSG_DATA (hdr);
+             nlerr = err->error;
+             break;
+         case RTM_NEWLINK:
+-- 
+2.51.0

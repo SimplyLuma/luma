@@ -1,0 +1,16 @@
+{
+  "shell": {
+    "size": "1440x900",
+    "settle": 4,
+    "startup_only": true,
+    "reset": [],
+    "settings": {
+      "org/project-luma/shell-state": {
+        "shelf-arrangement": "[{'display': <''>, 'edge': <'bottom'>, 'anchor': <'center'>, 'islands': <['dock', 'folders', 'live', 'media', 'well', 'quick-options', 'clock']>}, {'display': <''>, 'edge': <'top'>, 'anchor': <'center'>, 'islands': <['notifications']>}]"
+      }
+    },
+    "states": [],
+    "expect_notifications_top": true,
+    "expect_notifications_only": true
+  }
+}

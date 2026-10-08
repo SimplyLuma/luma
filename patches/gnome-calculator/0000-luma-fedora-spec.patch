@@ -1,0 +1,25 @@
+--- a/gnome-calculator.spec
++++ b/gnome-calculator.spec
+@@ -17,7 +17,7 @@
+ 
+ Name:           gnome-calculator
+ Version:        50.0
+-Release:        %autorelease
++Release:        1.luma.9%{?dist}
+ Summary:        A desktop calculator
+ 
+ License:        GPL-3.0-or-later AND CC-BY-SA-3.0 AND CC0-1.0
+@@ -25,4 +25,13 @@
+ URL:            https://wiki.gnome.org/Apps/Calculator
+ Source0:        https://download.gnome.org/sources/%{name}/50/%{name}-%{tarball_version}.tar.xz
++Patch1000:      0001-luma-calculator-aesthetic-v1.patch
++Patch1001:      0002-prairie-basic-product.patch
++Patch1002:      0003-prairie-calculator-polish.patch
++Patch1003:      0004-prairie-readout-presentation.patch
++Patch1004:      0005-prairie-readout-input-boundary.patch
++Patch1005:      0006-luma-appkit-convergence.patch
++Patch1006:      0007-luma-shared-component-boundaries.patch
++Patch1007:      0008-luma-preserve-island-elevation-overflow.patch
++Patch1008:      0009-luma-advanced-mode-and-readout.patch
+ 
+ BuildRequires:  blueprint-compiler

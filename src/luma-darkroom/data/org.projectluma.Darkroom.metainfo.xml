@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Darkroom</id>
+  <name>Darkroom</name>
+  <summary>Develop and edit images non-destructively</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <description>
+    <p>Darkroom is Luma's source-owned image editor. It preserves originals while providing color adjustments, reversible crop, layers, editable masks, retouching, history, snapshots, and full-resolution export.</p>
+    <p>The same adaptive application runs in desktop windows and Luma's handheld presentation.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Darkroom.desktop</launchable>
+  <provides><binary>luma-darkroom</binary></provides>
+  <categories><category>Graphics</category><category>Photography</category></categories>
+  <url type="homepage">https://projectluma.org/apps/darkroom</url>
+  <releases><release version="0.1.0" date="2026-08-30"/></releases>
+</component>
+

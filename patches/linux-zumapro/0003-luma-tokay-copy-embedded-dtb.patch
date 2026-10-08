@@ -1,0 +1,38 @@
+From: Project Luma <luma@example.invalid>
+Subject: [PATCH] arm64: copy embedded Tokay diagnostic DTB before unflatten
+
+The accepted diagnostic linked its FDT in .init.rodata, so unflattened
+property values were overwritten with POISON_FREE_INITMEM after PID 1 began.
+The attempted move to persistent .rodata changed the early image layout and
+did not produce a physical native-execution marker.
+
+Keep the physically accepted init-section placement.  Linux already provides
+unflatten_and_copy_device_tree() specifically for an FDT built into kernel
+init memory.  Select that path only for the explicit Luma Tokay diagnostic;
+the disabled configuration retains the normal arm64 firmware-FDT behavior.
+
+SPDX-License-Identifier: GPL-2.0-only
+---
+ arch/arm64/kernel/setup.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/kernel/setup.c b/arch/arm64/kernel/setup.c
+--- a/arch/arm64/kernel/setup.c
++++ b/arch/arm64/kernel/setup.c
+@@ -338,8 +338,12 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
+ 	/* Parse the ACPI tables for possible boot-time configuration */
+ 	acpi_boot_table_init();
+ 
+-	if (acpi_disabled)
++	if (acpi_disabled) {
++		if (IS_ENABLED(CONFIG_LUMA_TOKAY_EMBEDDED_DIAGNOSTIC))
++			unflatten_and_copy_device_tree();
++		else
++			unflatten_device_tree();
++	}
+-		unflatten_device_tree();
+ 
+ 	bootmem_init();
+ 
+-- 
+2.51.0

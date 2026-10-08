@@ -1,0 +1,271 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Thu, 17 Sep 2026 00:57:53 -0400
+Subject: [PATCH] nautilus: remember Column view zoom level across launches
+
+Column view (patch 0017) hard-codes its zoom level to
+NAUTILUS_LIST_ZOOM_LEVEL_SMALL on every construction and never reads or
+writes a org.gnome.nautilus.*.default-zoom-level key the way List and
+Icon view do, so a zoom change made in Column view is silently lost the
+next time Filer opens. Give Column view its own default-zoom-level key,
+reusing the existing ListZoomLevel enum, and bind it the same way
+nautilus-list-view.c already does, so Column view zoom now persists
+globally like the other two views. Adds test-luma-column-view-zoom to
+cover the default, the write-back on zoom change, and that a fresh
+Column view instance picks up a zoom level set by a previous one.
+---
+ data/org.gnome.nautilus.gschema.xml           |  12 +++
+ src/nautilus-column-view.c                    |  25 ++++-
+ src/nautilus-global-preferences.c             |   2 +
+ src/nautilus-global-preferences.h             |   4 +
+ test/automated/display/meson.build            |   3 +
+ .../display/test-luma-column-view-zoom.c      | 101 ++++++++++++++++++
+ 6 files changed, 146 insertions(+), 1 deletion(-)
+ create mode 100644 test/automated/display/test-luma-column-view-zoom.c
+
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index 55595f8..942af52 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -74,6 +74,7 @@
+     <child schema="org.gnome.nautilus.compression" name="compression"/>
+     <child schema="org.gnome.nautilus.icon-view" name="icon-view"/>
+     <child schema="org.gnome.nautilus.list-view" name="list-view"/>
++    <child schema="org.gnome.nautilus.column-view" name="column-view"/>
+     <child schema="org.gnome.nautilus.window-state" name="window-state"/>
+   </schema>
+ 
+@@ -221,6 +222,17 @@
+     </key>
+   </schema>
+ 
++  <schema path="/org/gnome/nautilus/column-view/" id="org.gnome.nautilus.column-view" gettext-domain="nautilus">
++    <key name="default-zoom-level" enum="org.gnome.nautilus.ListZoomLevel">
++      <aliases>
++        <alias value='standard' target='small'/>
++      </aliases>
++      <default>'small'</default>
++      <summary>Default Column view zoom level</summary>
++      <description>Project Luma: the last zoom level chosen in Filer's Column view, remembered the same way List and Icon view zoom already are.</description>
++    </key>
++  </schema>
++
+   <schema path="/org/gnome/nautilus/list-view/" id="org.gnome.nautilus.list-view" gettext-domain="nautilus">
+     <key name="default-zoom-level" enum="org.gnome.nautilus.ListZoomLevel">
+       <aliases>
+diff --git a/src/nautilus-column-view.c b/src/nautilus-column-view.c
+index d5a851b..eb3b865 100644
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -92,6 +92,20 @@ real_get_zoom_level (NautilusListBase *list_base)
+     return NAUTILUS_COLUMN_VIEW (list_base)->zoom_level;
+ }
+ 
++/* Project Luma: Column view remembers its own zoom level the same way List
++ * and Icon view already do, instead of always starting back at the
++ * hard-coded standard size. */
++static gint
++get_default_zoom_level (void)
++{
++    gint default_zoom_level = g_settings_get_enum (nautilus_column_view_preferences,
++                                                    NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL);
++
++    return CLAMP (default_zoom_level,
++                  column_view_info.zoom_level_min,
++                  column_view_info.zoom_level_max);
++}
++
+ static void
+ real_set_zoom_level (NautilusListBase *list_base,
+                      int               zoom_level)
+@@ -101,6 +115,15 @@ real_set_zoom_level (NautilusListBase *list_base,
+     self->zoom_level = CLAMP (zoom_level,
+                               column_view_info.zoom_level_min,
+                               column_view_info.zoom_level_max);
++
++    if (g_settings_get_enum (nautilus_column_view_preferences,
++                             NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL) != self->zoom_level)
++    {
++        g_settings_set_enum (nautilus_column_view_preferences,
++                             NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL,
++                             self->zoom_level);
++    }
++
+     g_object_notify (G_OBJECT (self), "icon-size");
+ }
+ 
+@@ -852,7 +875,7 @@ nautilus_column_view_init (NautilusColumnView *self)
+     GtkEventController *shortcuts;
+     GtkShortcut *shortcut;
+ 
+-    self->zoom_level = NAUTILUS_LIST_ZOOM_LEVEL_SMALL;
++    self->zoom_level = get_default_zoom_level ();
+     self->sort_attribute = g_quark_from_static_string ("name");
+     self->directories_first = TRUE;
+ 
+diff --git a/src/nautilus-global-preferences.c b/src/nautilus-global-preferences.c
+index eaf6401..ec1947d 100644
+--- a/src/nautilus-global-preferences.c
++++ b/src/nautilus-global-preferences.c
+@@ -31,6 +31,7 @@ GSettings *nautilus_preferences;
+ GSettings *nautilus_compression_preferences;
+ GSettings *nautilus_icon_view_preferences;
+ GSettings *nautilus_list_view_preferences;
++GSettings *nautilus_column_view_preferences;
+ GSettings *nautilus_window_state;
+ GSettings *gtk_filechooser_preferences;
+ GSettings *gnome_lockdown_preferences;
+@@ -103,6 +104,7 @@ nautilus_global_preferences_init (void)
+     nautilus_window_state = g_settings_new ("org.gnome.nautilus.window-state");
+     nautilus_icon_view_preferences = g_settings_new ("org.gnome.nautilus.icon-view");
+     nautilus_list_view_preferences = g_settings_new ("org.gnome.nautilus.list-view");
++    nautilus_column_view_preferences = g_settings_new ("org.gnome.nautilus.column-view");
+     /* Some settings such as show hidden files are shared between Nautilus and GTK file chooser */
+     gtk_filechooser_preferences = g_settings_new_with_path ("org.gtk.gtk4.Settings.FileChooser",
+                                                             "/org/gtk/gtk4/settings/file-chooser/");
+diff --git a/src/nautilus-global-preferences.h b/src/nautilus-global-preferences.h
+index 053cb2f..7696ba6 100644
+--- a/src/nautilus-global-preferences.h
++++ b/src/nautilus-global-preferences.h
+@@ -76,6 +76,9 @@ typedef enum
+ /* Icon View */
+ #define NAUTILUS_PREFERENCES_ICON_VIEW_DEFAULT_ZOOM_LEVEL		"default-zoom-level"
+ 
++/* Column View (Project Luma) */
++#define NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL		"default-zoom-level"
++
+ /* Which text attributes appear beneath icon names */
+ #define NAUTILUS_PREFERENCES_ICON_VIEW_CAPTIONS				"captions"
+ 
+@@ -145,6 +148,7 @@ extern GSettings *nautilus_preferences;
+ extern GSettings *nautilus_compression_preferences;
+ extern GSettings *nautilus_icon_view_preferences;
+ extern GSettings *nautilus_list_view_preferences;
++extern GSettings *nautilus_column_view_preferences;
+ extern GSettings *nautilus_window_state;
+ extern GSettings *gtk_filechooser_preferences;
+ extern GSettings *gnome_lockdown_preferences;
+diff --git a/test/automated/display/meson.build b/test/automated/display/meson.build
+index 97bcd8d..8b5b1a4 100644
+--- a/test/automated/display/meson.build
++++ b/test/automated/display/meson.build
+@@ -9,6 +9,9 @@ tests = {
+   'test-sidebar': {
+     'is_parallel' : false,
+   },
++  'test-luma-column-view-zoom': {
++    'is_parallel': false,
++  },
+   'test-luma-empty-picker': {
+     'is_parallel': false,
+   },
+diff --git a/test/automated/display/test-luma-column-view-zoom.c b/test/automated/display/test-luma-column-view-zoom.c
+new file mode 100644
+index 0000000..e69c9ab
+--- /dev/null
++++ b/test/automated/display/test-luma-column-view-zoom.c
+@@ -0,0 +1,101 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#define G_LOG_DOMAIN "test-luma-column-view-zoom"
++
++#include <nautilus-application.h>
++#include <nautilus-column-view.h>
++#include <nautilus-file-utilities.h>
++#include <nautilus-global-preferences.h>
++#include <nautilus-list-base.h>
++#include <nautilus-resources.h>
++#include <nautilus-tag-manager.h>
++
++#include <test-utilities.h>
++
++#include <glib.h>
++#include <gtk/gtk.h>
++
++/* Project Luma: Column view must remember the zoom level the person picked,
++ * the same way List and Icon view already do (see 0047-luma-remember-
++ * column-view-zoom.patch). A fresh Column view should read whatever was
++ * last written to org.gnome.nautilus.column-view default-zoom-level,
++ * and changing the zoom on one view must persist for the next one. */
++
++static void
++test_column_view_zoom_defaults_to_schema (void)
++{
++    g_settings_reset (nautilus_column_view_preferences,
++                      NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL);
++
++    g_autoptr (NautilusColumnView) view = nautilus_column_view_new ();
++    g_object_ref_sink (view);
++
++    g_assert_cmpint (nautilus_list_base_get_zoom_level (NAUTILUS_LIST_BASE (view)),
++                     ==,
++                     g_settings_get_enum (nautilus_column_view_preferences,
++                                         NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL));
++}
++
++static void
++test_column_view_zoom_change_writes_gsettings (void)
++{
++    g_autoptr (NautilusColumnView) view = nautilus_column_view_new ();
++    g_object_ref_sink (view);
++
++    nautilus_list_base_set_zoom_level (NAUTILUS_LIST_BASE (view), NAUTILUS_LIST_ZOOM_LEVEL_LARGE);
++
++    g_assert_cmpint (g_settings_get_enum (nautilus_column_view_preferences,
++                                         NAUTILUS_PREFERENCES_COLUMN_VIEW_DEFAULT_ZOOM_LEVEL),
++                     ==,
++                     NAUTILUS_LIST_ZOOM_LEVEL_LARGE);
++}
++
++static void
++test_column_view_zoom_survives_new_instance (void)
++{
++    /* Simulate quitting and reopening Filer: a change made on one Column
++     * view instance must be picked up by the next one, which is the
++     * behavior Nick reported as broken for view mode in general. */
++    g_autoptr (NautilusColumnView) first = nautilus_column_view_new ();
++    g_object_ref_sink (first);
++    nautilus_list_base_set_zoom_level (NAUTILUS_LIST_BASE (first), NAUTILUS_LIST_ZOOM_LEVEL_SMALL);
++
++    g_autoptr (NautilusColumnView) second = nautilus_column_view_new ();
++    g_object_ref_sink (second);
++    g_assert_cmpint (nautilus_list_base_get_zoom_level (NAUTILUS_LIST_BASE (second)),
++                     ==,
++                     NAUTILUS_LIST_ZOOM_LEVEL_SMALL);
++
++    nautilus_list_base_set_zoom_level (NAUTILUS_LIST_BASE (second), NAUTILUS_LIST_ZOOM_LEVEL_LARGE);
++
++    g_autoptr (NautilusColumnView) third = nautilus_column_view_new ();
++    g_object_ref_sink (third);
++    g_assert_cmpint (nautilus_list_base_get_zoom_level (NAUTILUS_LIST_BASE (third)),
++                     ==,
++                     NAUTILUS_LIST_ZOOM_LEVEL_LARGE);
++}
++
++int
++main (int   argc,
++     char *argv[])
++{
++    g_autoptr (NautilusTagManager) tag_manager = NULL;
++
++    gtk_test_init (&argc, &argv, G_TEST_OPTION_ISOLATE_DIRS, NULL);
++
++    nautilus_register_resource ();
++    nautilus_ensure_extension_points ();
++    nautilus_global_preferences_init ();
++    tag_manager = nautilus_tag_manager_new_dummy ();
++    test_init_config_dir ();
++
++    g_autoptr (NautilusApplication) app = nautilus_application_new ();
++
++    g_test_add_func ("/column-view-zoom/defaults_to_schema",
++                     test_column_view_zoom_defaults_to_schema);
++    g_test_add_func ("/column-view-zoom/change_writes_gsettings",
++                     test_column_view_zoom_change_writes_gsettings);
++    g_test_add_func ("/column-view-zoom/survives_new_instance",
++                     test_column_view_zoom_survives_new_instance);
++
++    return g_test_run ();
++}
+-- 
+2.55.0
+

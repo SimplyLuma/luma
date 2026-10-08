@@ -1,0 +1,205 @@
+{
+  "source": "luma-next-70.html const DSK",
+  "default_disk": "nvme",
+  "default_volume": 2,
+  "drives": [
+    {
+      "id": "nvme",
+      "n": "Luma SSD",
+      "grp": "In this computer",
+      "kind": "ssd",
+      "model": "NVMe SSD, 512 GB",
+      "dev": "/dev/nvme0n1",
+      "size": 512,
+      "scheme": "GPT",
+      "fixed": true,
+      "health": [
+        "ok",
+        "Healthy",
+        [
+          [
+            "Bad sectors",
+            "0"
+          ],
+          [
+            "Last self-test",
+            "Passed · today, 21:14"
+          ],
+          [
+            "Powered on",
+            "2 yr 4 mo"
+          ],
+          [
+            "Temperature",
+            "38 °C"
+          ],
+          [
+            "Written",
+            "41 TB"
+          ],
+          [
+            "Spare blocks",
+            "100%"
+          ]
+        ]
+      ],
+      "speed": [
+        3400,
+        2100
+      ],
+      "vols": [
+        {
+          "n": "EFI",
+          "c": "amber",
+          "size": 0.63,
+          "used": 0.015,
+          "fs": "FAT32",
+          "mount": "/boot/efi",
+          "part": "p1",
+          "uuid": "6B35-F4BE",
+          "role": "The firmware reads this one first when the computer starts.",
+          "sys": true
+        },
+        {
+          "n": "Boot",
+          "c": "violet",
+          "size": 2.1,
+          "used": 1.4,
+          "fs": "Ext4",
+          "mount": "/boot",
+          "part": "p2",
+          "uuid": "8c1a33fe-b902-71dd-4c0a-90fe21b7c455",
+          "role": "How this computer starts up.",
+          "sys": true
+        },
+        {
+          "n": "Luma",
+          "c": "blue",
+          "size": 509,
+          "used": 214,
+          "fs": "Btrfs",
+          "mount": "/",
+          "part": "p3",
+          "uuid": "4f7b21c8-9ea3-4d1e-bb70-2c5f9e18a4d2",
+          "role": "Luma, your apps, and everything in your Home folder.",
+          "sys": true
+        }
+      ]
+    },
+    {
+      "id": "ext",
+      "n": "Archive HD",
+      "grp": "Plugged in",
+      "kind": "hdd",
+      "model": "USB hard drive, 2 TB",
+      "dev": "/dev/sda",
+      "size": 2000,
+      "scheme": "GPT",
+      "health": [
+        "warn",
+        "Needs attention",
+        [
+          [
+            "Bad sectors",
+            "3",
+            "warn"
+          ],
+          [
+            "Last self-test",
+            "Passed · 12 Sep"
+          ],
+          [
+            "Powered on",
+            "6 yr 1 mo"
+          ],
+          [
+            "Temperature",
+            "44 °C"
+          ],
+          [
+            "Written",
+            "96 TB"
+          ],
+          [
+            "Spare blocks",
+            "91%",
+            "warn"
+          ]
+        ]
+      ],
+      "speed": [
+        118,
+        104
+      ],
+      "vols": [
+        {
+          "n": "Archive",
+          "c": "green",
+          "size": 1400,
+          "used": 1180,
+          "fs": "Btrfs",
+          "mount": "/run/media/nick/Archive",
+          "part": "1",
+          "uuid": "a91e77d2-0c3b-4a55-9f18-6d2e40bb7c31",
+          "role": "Your backups and finished projects."
+        },
+        {
+          "n": "Vault",
+          "c": "slate",
+          "size": 180,
+          "used": 64,
+          "fs": "Btrfs",
+          "luks": true,
+          "locked": true,
+          "mount": null,
+          "part": "2",
+          "uuid": "3d0f88aa-51e2-4c7b-8a02-7e11c9a3f6d4",
+          "role": "Encrypted. Nothing on it can be read without the passphrase."
+        },
+        {
+          "n": "Scratch",
+          "c": "pink",
+          "size": 400,
+          "used": 12,
+          "fs": "exFAT",
+          "mount": null,
+          "part": "3",
+          "uuid": "9C4A-11D7",
+          "role": "Readable on Windows and Macs as well."
+        }
+      ]
+    },
+    {
+      "id": "usb",
+      "n": "USB stick",
+      "grp": "Plugged in",
+      "kind": "usb",
+      "model": "USB flash drive, 64 GB",
+      "dev": "/dev/sdb",
+      "size": 64,
+      "scheme": "MBR",
+      "health": [
+        "none",
+        "Not reported",
+        []
+      ],
+      "speed": [
+        152,
+        41
+      ],
+      "vols": [
+        {
+          "n": "LUMA-1.0",
+          "c": "amber",
+          "size": 6.2,
+          "used": 5.9,
+          "fs": "ISO 9660",
+          "mount": null,
+          "part": "1",
+          "uuid": "2026-09-22-18-00-00-00",
+          "role": "A Luma installer written to this stick. It can start a computer."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+--- a/gtk/gtkframe.c
++++ b/gtk/gtkframe.c
+@@ -32,6 +32,7 @@
+ #include "gtkbuildable.h"
+ #include "gtkwidgetpath.h"
+ #include "gtkcssnodeprivate.h"
++#include "gtkroundedboxprivate.h"
+ #include "gtkcsscustomgadgetprivate.h"
+ #include "gtkwidgetprivate.h"
+ #include "gtkcontainerprivate.h"
+@@ -773,7 +774,27 @@
+ 
+   cairo_restore (cr);
+ 
++  /* Opt-in child clipping is a toolkit-owned surface contract. Radius comes
++   * from the existing CSS box, not an application-specific numeric value. */
++  cairo_save (cr);
++  if (gtk_style_context_has_class (gtk_widget_get_style_context (widget),
++                                  "luma-clip-children"))
++    {
++      GtkAllocation border_box;
++      GtkRoundedBox rounded_box;
++
++      gtk_css_gadget_get_border_box (gadget, &border_box);
++      _gtk_rounded_box_init_rect (&rounded_box, border_box.x, border_box.y,
++                                  border_box.width, border_box.height);
++      _gtk_rounded_box_apply_border_radius_for_style (&rounded_box,
++                                                      gtk_css_gadget_get_style (gadget),
++                                                      GTK_JUNCTION_NONE);
++      _gtk_rounded_box_path (&rounded_box, cr);
++      cairo_clip (cr);
++    }
++
+   GTK_WIDGET_CLASS (gtk_frame_parent_class)->draw (widget, cr);
++  cairo_restore (cr);
+ 
+   return FALSE;
+ }

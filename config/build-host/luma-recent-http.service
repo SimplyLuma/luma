@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Project Luma signed Recent update archive
+Documentation=https://github.com/SimplyLuma/luma/blob/stage/docs/build/recent-ostree-channel.md
+After=network.target
+ConditionPathIsSymbolicLink=/srv/luma-build/updates/webroot/current
+
+[Service]
+Type=simple
+User=nginx
+Group=nginx
+RuntimeDirectory=luma-recent-nginx
+RuntimeDirectoryMode=0750
+ExecStartPre=/usr/sbin/nginx -t -e stderr -c /etc/luma/recent-nginx.conf
+ExecStart=/usr/sbin/nginx -e stderr -c /etc/luma/recent-nginx.conf -g "daemon off;"
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadOnlyPaths=/srv/luma-build/updates/webroot /etc/luma/recent-nginx.conf /etc/luma/recent-tls
+RestrictAddressFamilies=AF_INET AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

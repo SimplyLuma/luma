@@ -1,0 +1,322 @@
+From 5801616ae7c3826e8bf621bff124946a77f82143 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:15:04 +0000
+Subject: [PATCH] Settings: compose Appearance controls with memory-only
+ surface policy
+
+---
+ shell/cc-luma-view-appearance.c               | 136 ++++++++++++++++++
+ shell/cc-luma-view-private.h                  |   2 +
+ shell/cc-luma-view.c                          |   6 +-
+ shell/meson.build                             |  10 +-
+ .../luma-test.gschema.xml                     |   6 +
+ shell/test-fixture-schemas/meson.build        |   2 +
+ shell/test-luma-view.c                        |  37 +++++
+ 7 files changed, 194 insertions(+), 5 deletions(-)
+ create mode 100644 shell/cc-luma-view-appearance.c
+ create mode 100644 shell/test-fixture-schemas/luma-test.gschema.xml
+ create mode 100644 shell/test-fixture-schemas/meson.build
+
+diff --git a/shell/cc-luma-view-appearance.c b/shell/cc-luma-view-appearance.c
+new file mode 100644
+index 0000000..c23b77c
+--- /dev/null
++++ b/shell/cc-luma-view-appearance.c
+@@ -0,0 +1,136 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++#include "cc-luma-desktop.h"
++#include <luma-appearance.h>
++
++static void mode_clicked (GtkButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *mode = g_object_get_data (G_OBJECT (button), "cf-mode");
++  /* The fixture entry point selects memory before any kit/settings object.
++   * Refuse a persistent backend if this view is reused outside that contract. */
++  if (g_strcmp0 (g_getenv ("GSETTINGS_BACKEND"), "memory") != 0)
++    {
++      g_autoptr (GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Fixture theme requires memory settings");
++      cc_luma_view_report_error (v, error);
++      return;
++    }
++  g_autoptr (LumaSurfacePolicy) policy = luma_surface_policy_new (LUMA_SURFACE_TARGET_APPLICATION);
++  g_autoptr (GError) error = NULL;
++  if (luma_surface_policy_select (policy, mode, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static GtkWidget *mini_frame (View *v)
++{
++  GtkWidget *preview = gtk_overlay_new ();
++  gtk_widget_set_size_request (preview, 210, 128);
++  gtk_overlay_set_child (GTK_OVERLAY (preview), cc_luma_view_image (v, cc_luma_view_text (v, "wall"), 420, 256));
++  GtkWidget *parts = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 5);
++  GtkWidget *side = luma_card_new (NULL, FALSE);
++  gtk_widget_set_size_request (side, 34, -1);
++  GtkWidget *content = luma_card_new (NULL, FALSE);
++  luma_card_set_recessed (LUMA_CARD (content), TRUE);
++  gtk_widget_set_hexpand (content, TRUE);
++  gtk_box_append (GTK_BOX (parts), side); gtk_box_append (GTK_BOX (parts), content);
++  GtkWidget *window = luma_card_new (parts, FALSE);
++  gtk_widget_set_margin_start (parts, 5); gtk_widget_set_margin_end (parts, 5);
++  gtk_widget_set_margin_top (parts, 5); gtk_widget_set_margin_bottom (parts, 5);
++  gtk_widget_set_margin_start (window, 20); gtk_widget_set_margin_end (window, 20);
++  gtk_widget_set_margin_top (window, 16); gtk_widget_set_margin_bottom (window, 26);
++  gtk_overlay_add_overlay (GTK_OVERLAY (preview), window);
++  /* TODO(kit-request settings-06-color-swatch-and-fixture-accent.md):
++   * explicit light/dark diagram tokens and miniature frame paint parity. */
++  return preview;
++}
++static GtkWidget *modes (View *v)
++{
++  const char *ids[] = { "light", "dark" }, *names[] = { "Light", "Dark" };
++  gboolean dark = adw_style_manager_get_dark (adw_style_manager_get_default ());
++  GtkWidget *group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 18);
++  gtk_widget_set_halign (group, GTK_ALIGN_CENTER);
++  for (guint i = 0; i < G_N_ELEMENTS (ids); i++)
++    {
++      GtkWidget *button = gtk_toggle_button_new ();
++      GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8);
++      gtk_box_append (GTK_BOX (content), mini_frame (v));
++      GtkWidget *label = cc_luma_view_label (names[i], "caption", FALSE);
++      gtk_label_set_xalign (GTK_LABEL (label), .5);
++      gtk_box_append (GTK_BOX (content), label);
++      gtk_button_set_child (GTK_BUTTON (button), content);
++      gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), (i == 1) == dark);
++      g_autofree char *name = g_strconcat ("cf-mode-", ids[i], NULL);
++      gtk_widget_set_name (button, name);
++      g_object_set_data (G_OBJECT (button), "cf-mode", (gpointer) ids[i]);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, names[i], -1);
++      g_signal_connect_object (button, "clicked", G_CALLBACK (mode_clicked), v->root, 0);
++      gtk_box_append (GTK_BOX (group), button);
++    }
++  return group;
++}
++static void wallpaper_clicked (GtkButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *wall = g_object_get_data (G_OBJECT (button), "cf-wall");
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_appearance_set_wall (v->model, wall, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static void add_wallpaper (GtkButton *button, GtkWidget *root)
++{
++  if (g_object_get_data (G_OBJECT (root), "cf-view")) luma_toast_show (root, "Choose a picture in Filer", "success");
++}
++static GtkWidget *wallpapers (View *v)
++{
++  GtkWidget *grid = gtk_grid_new ();
++  gtk_grid_set_column_homogeneous (GTK_GRID (grid), TRUE);
++  gtk_grid_set_column_spacing (GTK_GRID (grid), 10);
++  JsonArray *catalog = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFWALL");
++  for (guint i = 0; i < json_array_get_length (catalog); i++)
++    {
++      JsonArray *pair = json_array_get_array_element (catalog, i);
++      const char *id = json_array_get_string_element (pair, 0), *caption = json_array_get_string_element (pair, 1);
++      GtkWidget *button = gtk_toggle_button_new ();
++      GtkWidget *picture = cc_luma_view_image (v, id, 160, 100);
++      gtk_widget_set_size_request (picture, 40, 25);
++      gtk_button_set_child (GTK_BUTTON (button), picture);
++      gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), g_str_equal (id, cc_luma_view_text (v, "wall")));
++      gtk_widget_set_tooltip_text (button, caption);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, caption, -1);
++      g_autofree char *name = g_strconcat ("cf-wall-", id, NULL);
++      gtk_widget_set_name (button, name);
++      g_object_set_data_full (G_OBJECT (button), "cf-wall", g_strdup (id), g_free);
++      g_signal_connect_object (button, "clicked", G_CALLBACK (wallpaper_clicked), v->root, 0);
++      gtk_grid_attach (GTK_GRID (grid), button, i, 0, 1, 1);
++    }
++  GtkWidget *add = gtk_button_new ();
++  g_signal_connect_object (add, "clicked", G_CALLBACK (add_wallpaper), v->root, 0);
++  gtk_button_set_child (GTK_BUTTON (add), luma_ui_icon_new ("plus"));
++  gtk_widget_set_name (add, "cf-wall-add");
++  gtk_widget_set_tooltip_text (add, "Add a picture");
++  gtk_accessible_update_property (GTK_ACCESSIBLE (add), GTK_ACCESSIBLE_PROPERTY_LABEL, "Add a picture", -1);
++  gtk_grid_attach (GTK_GRID (grid), add, json_array_get_length (catalog), 0, 1, 1);
++  return grid;
++}
++void cc_luma_view_appearance_render (View *v)
++{
++  JsonObject *data = cc_luma_fixture_get_data (v->model);
++  JsonArray *accents = json_object_get_array_member (data, "CFACC"), *walls = json_object_get_array_member (data, "CFWALL");
++  const char *accent = "", *wall = "";
++  for (guint i = 0; i < json_array_get_length (accents); i++)
++    { JsonArray *p = json_array_get_array_element (accents, i); if (json_array_get_int_element (p, 0) == json_node_get_int (cc_luma_fixture_get (v->model, "acc"))) accent = json_array_get_string_element (p, 1); }
++  for (guint i = 0; i < json_array_get_length (walls); i++)
++    { JsonArray *p = json_array_get_array_element (walls, i); if (g_str_equal (json_array_get_string_element (p, 0), cc_luma_view_text (v, "wall"))) wall = json_array_get_string_element (p, 1); }
++  g_autofree char *meta = g_strdup_printf ("%s · %s accent · %s", adw_style_manager_get_dark (adw_style_manager_get_default ()) ? "Dark" : "Light", accent, wall);
++  cc_luma_view_header (v, "Appearance", meta, NULL);
++  GtkWidget *hero = luma_card_new (modes (v), TRUE);
++  luma_card_set_recessed (LUMA_CARD (hero), TRUE); gtk_widget_set_margin_top (hero, 20); gtk_box_append (v->body, hero);
++  /* TODO(kit-request settings-06-color-swatch-and-fixture-accent.md):
++   * compose the Accent group once the C semantic swatch API lands. */
++  GtkBox *rows = cc_luma_view_group (v, "Background");
++  gtk_box_append (rows, wallpapers (v));
++  rows = cc_luma_view_group (v, "Windows");
++  cc_luma_view_row (rows, "Tint windows with what they hold", "A frame takes a little colour from its album, photo or folder",
++    cc_luma_view_toggle (v, "tint", "cf-tint", "Tint windows with what they hold"));
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 270610e..869c905 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -51,3 +51,5 @@ void cc_luma_view_windows_render (View *v);
+ GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target);
+ GtkWidget *cc_luma_view_picker (View *v, const char *key, const char * const *choices);
+ void cc_luma_view_shelf_render (View *v);
++
++void cc_luma_view_appearance_render (View *v);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 8fe8582..a13274f 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -601,6 +601,7 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "bluetooth")) cc_luma_view_bluetooth_render (v);
+   else if (g_str_equal (v->page, "windows")) cc_luma_view_windows_render (v);
+   else if (g_str_equal (v->page, "shelf")) cc_luma_view_shelf_render (v);
++  else if (g_str_equal (v->page, "appearance")) cc_luma_view_appearance_render (v);
+ }
+ static void view_free (View *v)
+ {
+@@ -678,14 +679,15 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   View *v;
+   if (!page) page = "wifi";
+   if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
+-      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows") && !g_str_equal (page, "shelf"))
++      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows") && !g_str_equal (page, "shelf") && !g_str_equal (page, "appearance"))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+     }
+   if (!valid_wifi_model (model) || (g_str_equal (page, "bluetooth") && !cc_luma_bluetooth_validate (model)) ||
+       (g_str_equal (page, "windows") && !cc_luma_windows_validate (model)) ||
+-      (g_str_equal (page, "shelf") && !cc_luma_shelf_validate (model)))
++      (g_str_equal (page, "shelf") && !cc_luma_shelf_validate (model)) ||
++      (g_str_equal (page, "appearance") && !cc_luma_appearance_validate (model)))
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings fixture contains invalid Wi-Fi data");
+       return NULL;
+diff --git a/shell/meson.build b/shell/meson.build
+index a167c10..682762a 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -72,6 +72,7 @@ common_sources = files(
+   'cc-luma-view-bluetooth.c',
+   'cc-luma-view-windows.c',
+   'cc-luma-view-shelf.c',
++  'cc-luma-view-appearance.c',
+ )
+ 
+ 
+@@ -129,6 +130,7 @@ shell_deps = common_deps + [
+   libwidgets_dep,
+   libshell_dep,
+   dependency('luma-ui-1'),
++  dependency('luma-appearance-1'),
+ ]
+ 
+ if host_is_linux_not_s390
+@@ -195,10 +197,12 @@ fixture_test = executable(
+ )
+ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+ 
++subdir('test-fixture-schemas')
++
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
+-  dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1')],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
++  dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+-test('luma-settings-view', fixture_view_test, env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals'])
++test('luma-settings-view', fixture_view_test, env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
+diff --git a/shell/test-fixture-schemas/luma-test.gschema.xml b/shell/test-fixture-schemas/luma-test.gschema.xml
+new file mode 100644
+index 0000000..0ffde90
+--- /dev/null
++++ b/shell/test-fixture-schemas/luma-test.gschema.xml
+@@ -0,0 +1,6 @@
++<schemalist>
++<schema id="org.project_luma.shell-state" path="/org/project-luma/shell-state/">
++<key name="surface-treatment" type="s"><default>'light'</default>
++<choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices></key>
++<key name="reduce-transparency" type="b"><default>false</default></key>
++</schema></schemalist>
+diff --git a/shell/test-fixture-schemas/meson.build b/shell/test-fixture-schemas/meson.build
+new file mode 100644
+index 0000000..b3c8f29
+--- /dev/null
++++ b/shell/test-fixture-schemas/meson.build
+@@ -0,0 +1,2 @@
++# Noninstalled, memory-only fixture schema; matches the kit's policy fixture.
++gnome.compile_schemas(build_by_default: true)
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index b383b9a..cafb46b 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -3,6 +3,7 @@
+ #include <string.h>
+ #include <luma-ui.h>
+ #include <glib/gstdio.h>
++#include <luma-appearance.h>
+ 
+ static GtkWidget *find_name (GtkWidget *root, const char *name)
+ {
+@@ -324,6 +325,41 @@ static void remove_asset_fixture (const char *dir)
+   if (g_file_test (image, G_FILE_TEST_EXISTS)) g_assert_cmpint (g_remove (image), ==, 0);
+   g_assert_cmpint (g_rmdir (dir), ==, 0);
+ }
++static void appearance_view (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  const char *files[] = { "prism.png", "meadow.png", "blue-fog.png", "ember.png", "luma-creatives.png" };
++  for (guint i = 0; i < G_N_ELEMENTS (files); i++)
++    { g_autofree char *p = g_build_filename (dir, files[i], NULL); g_assert_true (g_file_set_contents (p, art, -1, NULL)); }
++  AdwStyleManager *manager = adw_style_manager_get_default ();
++  g_autoptr (GSettings) treatment = g_settings_new ("org.project_luma.shell-state");
++  g_autoptr (GVariant) before = g_settings_get_user_value (treatment, "surface-treatment");
++  g_autoptr (LumaSurfacePolicy) policy = luma_surface_policy_new (LUMA_SURFACE_TARGET_APPLICATION);
++  g_assert_true (luma_surface_policy_select (policy, "dark", NULL));
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "appearance", NULL));
++  g_assert_true (has_text (view, "Dark · Blue accent · Prism"));
++  g_signal_emit_by_name (find_name (view, "cf-mode-light"), "clicked"); drain ();
++  g_assert_false (adw_style_manager_get_dark (manager));
++  g_assert_true (has_text (view, "Light · Blue accent · Prism"));
++  g_signal_emit_by_name (find_name (view, "cf-wall-meadow"), "clicked"); drain ();
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "wall")), ==, "meadow");
++  g_assert_true (has_text (view, "Light · Blue accent · Meadow"));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-tint")), FALSE); drain ();
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "tint")));
++  wait_ms (100); g_assert_null (cc_luma_view_get_error (view));
++  GtkWidget *button = g_object_ref (find_name (view, "cf-mode-dark"));
++  g_object_unref (view); g_signal_emit_by_name (button, "clicked"); g_object_unref (button); wait_ms (100);
++  g_assert_false (adw_style_manager_get_dark (manager));
++  if (before) g_settings_set_value (treatment, "surface-treatment", before);
++  else g_settings_reset (treatment, "surface-treatment");
++  for (guint i = 1; i < G_N_ELEMENTS (files); i++)
++    { g_autofree char *p = g_build_filename (dir, files[i], NULL); g_assert_cmpint (g_remove (p), ==, 0); }
++  remove_asset_fixture (dir);
++}
+ static void shelf_view (void)
+ {
+   g_autofree char *dir = asset_fixture ();
+@@ -481,6 +517,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/asset-loading", asset_loading);
+   g_test_add_func ("/settings/view/windows", windows_view);
+   g_test_add_func ("/settings/view/shelf", shelf_view);
++  g_test_add_func ("/settings/view/appearance", appearance_view);
+   g_test_add_func ("/settings/view/missing-asset", missing_asset);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

@@ -1,0 +1,35 @@
+{
+  "app": "rows-progress",
+  "title": "DT3 ProgressLine, tile size (vs Leaf's book progress)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=leaf",
+    "window": "#w-leaf .lfmeta .lfpr",
+    "exclude": []
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "leaf-progress"
+    }
+  },
+  "states": [
+    {
+      "name": "reading",
+      "about": "The book being read: 12% read",
+      "spec": [],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "progress",
+      "spec": "#w-leaf .lfmeta .lfpr"
+    }
+  ]
+}

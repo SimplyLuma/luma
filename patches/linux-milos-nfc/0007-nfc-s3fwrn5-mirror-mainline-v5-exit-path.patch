@@ -1,0 +1,77 @@
+From 1759fa5d3a2ff9a6363613e5221b9d61c0eefda6 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Wed, 12 Aug 2026 00:03:35 +0200
+Subject: [PATCH] nfc: s3fwrn5: mirror the mainline v5 exit-path and logging
+ shape
+
+Mirror of mainline v5 patch 5's nci.c delta (cover msgid
+20260811220135.472380-1): pre-allocation failure paths exit through a
+new out_sw label instead of passing kvfree(NULL), the
+update-announcement dev_info is dropped, and the success line logs at
+dev_dbg (Krzysztof Kozlowski's v4 review).
+---
+ drivers/nfc/s3fwrn5/nci.c | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/nfc/s3fwrn5/nci.c b/drivers/nfc/s3fwrn5/nci.c
+index f1877797d1..381aa7bf29 100644
+--- a/drivers/nfc/s3fwrn5/nci.c
++++ b/drivers/nfc/s3fwrn5/nci.c
+@@ -192,7 +192,7 @@ int s3fwrn5_nci_rf_configure_dual(struct s3fwrn5_info *info,
+ 	struct device *dev = &info->ndev->nfc_dev->dev;
+ 	const struct firmware *hw_fw, *sw_fw;
+ 	size_t merged_size, i, len;
+-	u8 *merged = NULL;
++	u8 *merged;
+ 	u8 stop_cmd[3];
+ 	u32 checksum;
+ 	u8 sub_oid;
+@@ -216,7 +216,7 @@ int s3fwrn5_nci_rf_configure_dual(struct s3fwrn5_info *info,
+ 	    merged_size > 256 * NCI_PROP_DUAL_SECTION_SIZE) {
+ 		dev_err(dev, "invalid calibration data size: %zu\n", merged_size);
+ 		ret = -EINVAL;
+-		goto out;
++		goto out_sw;
+ 	}
+ 
+ 	/*
+@@ -232,13 +232,13 @@ int s3fwrn5_nci_rf_configure_dual(struct s3fwrn5_info *info,
+ 	if (s3fwrn5_nci_dual_cal_current(info, hw_fw, sw_fw)) {
+ 		dev_dbg(dev, "calibration data already current\n");
+ 		ret = 0;
+-		goto out;
++		goto out_sw;
+ 	}
+ 
+ 	merged = kvmalloc(merged_size, GFP_KERNEL);
+ 	if (!merged) {
+ 		ret = -ENOMEM;
+-		goto out;
++		goto out_sw;
+ 	}
+ 	memcpy(merged, hw_fw->data, hw_fw->size);
+ 	memcpy(merged + hw_fw->size, sw_fw->data, sw_fw->size);
+@@ -247,8 +247,6 @@ int s3fwrn5_nci_rf_configure_dual(struct s3fwrn5_info *info,
+ 	for (i = 0; i + 4 <= merged_size; i += 4)
+ 		checksum += get_unaligned_le32(merged + i);
+ 
+-	dev_info(dev, "calibration data update: %s + %s\n", hw_name, sw_name);
+-
+ 	/* START_UPDATE */
+ 	sub_oid = NCI_PROP_DUAL_SUB_START_UPDATE;
+ 	ret = nci_prop_cmd(info->ndev, NCI_PROP_DUAL_OPTION, 1, &sub_oid);
+@@ -286,9 +284,10 @@ int s3fwrn5_nci_rf_configure_dual(struct s3fwrn5_info *info,
+ 		goto out;
+ 	}
+ 
+-	dev_info(dev, "calibration data update: success\n");
++	dev_dbg(dev, "calibration data update: success\n");
+ out:
+ 	kvfree(merged);
++out_sw:
+ 	release_firmware(sw_fw);
+ out_hw:
+ 	release_firmware(hw_fw);
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=Phone
+Comment=Make and receive calls
+Exec=prairie-phone
+MimeType=x-scheme-handler/tel;
+Icon=org.projectluma.Phone
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Network;Telephony;
+Keywords=Phone;Call;Dialer;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;
+X-Luma-Status-Surface=deep
+X-Luma-Status-Surfaces=deep;immersive;
+X-GNOME-UsesNotifications=true

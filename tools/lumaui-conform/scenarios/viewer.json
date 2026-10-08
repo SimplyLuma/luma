@@ -1,0 +1,753 @@
+{
+  "app": "viewer",
+  "title": "Viewer",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=viewer",
+    "window": "#w-viewer",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "luma_viewer.application",
+    "pythonpath": [
+      "src/luma-viewer"
+    ],
+    "fixtures": [
+      "tests/fixtures/viewer-v70.json",
+      "tests/fixtures/viewer-v70",
+      "tests/fixtures/viewer-v70-data"
+    ],
+    "env": {
+      "LUMA_VIEWER_FIXTURE": "{run}/fixtures/viewer-v70.json",
+      "LUMA_VIEWER_STYLE_PATH": "{run}/src/src/luma-viewer/viewer.css",
+      "XDG_DATA_HOME": "{run}/fixtures/viewer-v70-data",
+      "XDG_DATA_DIRS": "{run}/fixtures/viewer-v70-data:/usr/local/share:/usr/share"
+    }
+  },
+  "states": [
+    {
+      "name": "view",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "view",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "information",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwinfo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "information",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "markup",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwmode=\"markup\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "markup",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "markup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inline-editor",
+      "about": "The same actual annotation textbox opens at a document point on desktop and phone; keyboard/focus commit and cancel are tested natively.",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwmode=\"markup\"]"
+        },
+        {
+          "click": "[data-vwtool=\"text\"]"
+        },
+        {
+          "eval": "(() => { const s=document.querySelector('#vw-ann'),r=s.getBoundingClientRect();s.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,clientX:r.left+r.width*.2,clientY:r.top+r.height*.2})); })()"
+        },
+        {
+          "eval": "(() => { const input=document.querySelector('#vw-tin'); if (!input || !input.getClientRects().length || input.placeholder!=='Type here' || input.getAttribute('aria-label')!=='Text to place' || input.value!=='') throw new Error('Annotation editor did not open'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "inline-editor",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "markup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "style",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwmode=\"markup\"]"
+        },
+        {
+          "click": "[data-vwsty]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "style",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "markup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "save-menu",
+      "spec": [
+        {
+          "click": "[data-vwmode=\"markup\"]"
+        },
+        {
+          "click": "[data-vwtool=\"rect\"]"
+        },
+        {
+          "eval": "const s=document.querySelector('#vw-ann'),r=s.getBoundingClientRect();s.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,clientX:r.left+r.width*.2,clientY:r.top+r.height*.2}));document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:r.left+r.width*.4,clientY:r.top+r.height*.4}));document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));"
+        },
+        {
+          "click": "[data-vwsavem]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "save-menu",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "markup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "adjust",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwmode=\"adjust\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "adjust",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "adjust"
+          }
+        }
+      ]
+    },
+    {
+      "name": "crop",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwmode=\"adjust\"]"
+        },
+        {
+          "click": "[data-vwcrop]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "crop",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "adjust"
+          }
+        }
+      ]
+    },
+    {
+      "name": "frame",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"frame\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "frame",
+            "LUMA_VIEWER_SELECTED": "frame",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "terrace",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"terrace\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "terrace",
+            "LUMA_VIEWER_SELECTED": "terrace",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "receipt",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"receipt\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "receipt",
+            "LUMA_VIEWER_SELECTED": "receipt",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "text",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"receipt\"]"
+        },
+        {
+          "click": "[data-vwlive]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "text",
+            "LUMA_VIEWER_SELECTED": "receipt",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "text-tel",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"receipt\"]"
+        },
+        {
+          "click": "[data-vwlive]"
+        },
+        {
+          "click": "[data-vwdd=\"tel\"]"
+        },
+        {
+          "eval": "(() => { const menu=document.querySelector('#vw-pop'); if (!menu || !menu.getClientRects().length) throw new Error('Detected-text actions did not open'); const actions=menu.querySelectorAll('[data-vwddgo]'); if (actions.length < 2 || !menu.textContent.includes('Copy')) throw new Error('Detected-text actions missing'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "text-tel",
+            "LUMA_VIEWER_SELECTED": "receipt",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ],
+      "about": "Desktop detected-text menu; at 390px the kit opens the same actions in its phone drawer. Capture assertions check each action and Copy."
+    },
+    {
+      "name": "text-addr",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"receipt\"]"
+        },
+        {
+          "click": "[data-vwlive]"
+        },
+        {
+          "click": "[data-vwdd=\"addr\"]"
+        },
+        {
+          "eval": "(() => { const menu=document.querySelector('#vw-pop'); if (!menu || !menu.getClientRects().length) throw new Error('Detected-text actions did not open'); const actions=menu.querySelectorAll('[data-vwddgo]'); if (actions.length < 2 || !menu.textContent.includes('Copy')) throw new Error('Detected-text actions missing'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "text-addr",
+            "LUMA_VIEWER_SELECTED": "receipt",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ],
+      "about": "Desktop detected-text menu; at 390px the kit opens the same actions in its phone drawer. Capture assertions check each action and Copy."
+    },
+    {
+      "name": "text-date",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"receipt\"]"
+        },
+        {
+          "click": "[data-vwlive]"
+        },
+        {
+          "click": "[data-vwdd=\"date\"]"
+        },
+        {
+          "eval": "(() => { const menu=document.querySelector('#vw-pop'); if (!menu || !menu.getClientRects().length) throw new Error('Detected-text actions did not open'); const actions=menu.querySelectorAll('[data-vwddgo]'); if (actions.length < 2 || !menu.textContent.includes('Copy')) throw new Error('Detected-text actions missing'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "text-date",
+            "LUMA_VIEWER_SELECTED": "receipt",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ],
+      "about": "Desktop detected-text menu; at 390px the kit opens the same actions in its phone drawer. Capture assertions check each action and Copy."
+    },
+    {
+      "name": "text-money",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"receipt\"]"
+        },
+        {
+          "click": "[data-vwlive]"
+        },
+        {
+          "click": "[data-vwdd=\"money\"]"
+        },
+        {
+          "eval": "(() => { const menu=document.querySelector('#vw-pop'); if (!menu || !menu.getClientRects().length) throw new Error('Detected-text actions did not open'); const actions=menu.querySelectorAll('[data-vwddgo]'); if (actions.length < 2 || !menu.textContent.includes('Copy')) throw new Error('Detected-text actions missing'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "text-money",
+            "LUMA_VIEWER_SELECTED": "receipt",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ],
+      "about": "Desktop detected-text menu; at 390px the kit opens the same actions in its phone drawer. Capture assertions check each action and Copy."
+    },
+    {
+      "name": "pdf",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"lease\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "pdf",
+            "LUMA_VIEWER_SELECTED": "lease",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pdf-markup",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"lease\"]"
+        },
+        {
+          "click": "[data-vwmode=\"markup\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "pdf-markup",
+            "LUMA_VIEWER_SELECTED": "lease",
+            "LUMA_VIEWER_MODE": "markup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pdf-page-2",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"lease\"]"
+        },
+        {
+          "click": "[data-vwpage=\"2\"]",
+          "wait": 600
+        },
+        {
+          "eval": "(async () => { const button=document.querySelector('[data-vwpage=\"2\"]'); if (!button.classList.contains('on')) throw new Error('Page 2 did not select'); const page=document.querySelector('.vwpage[data-page=\"2\"]'), scroll=document.querySelector('#vw-pscroll'), target=page.offsetTop-60, deadline=performance.now()+2000; let settled=0; while (performance.now()<deadline && settled<2) { settled=Math.abs(scroll.scrollTop-target)<=2 ? settled+1 : 0; await new Promise(resolve=>setTimeout(resolve,16)); } if (!button.classList.contains('on')) throw new Error('Page 2 did not stay selected'); if (settled<2 || Math.abs(scroll.scrollTop-target)>2) throw new Error('Page 2 did not scroll: '+JSON.stringify({actual:scroll.scrollTop,target,maximum:scroll.scrollHeight-scroll.clientHeight})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "pdf-page-2",
+            "LUMA_VIEWER_SELECTED": "lease",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        },
+        {
+          "activate": "vw-page-thumbnail-2"
+        }
+      ],
+      "about": "Desktop and phone activate the visible page 2 thumbnail, scroll to that PDF page and update the page counter; no substituted phone state."
+    },
+    {
+      "name": "pdf-page-3",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"lease\"]"
+        },
+        {
+          "click": "[data-vwpage=\"3\"]",
+          "wait": 600
+        },
+        {
+          "eval": "(async () => { const button=document.querySelector('[data-vwpage=\"3\"]'); if (!button.classList.contains('on')) throw new Error('Page 3 did not select'); const page=document.querySelector('.vwpage[data-page=\"3\"]'), scroll=document.querySelector('#vw-pscroll'), target=page.offsetTop-60, deadline=performance.now()+2000; let settled=0; while (performance.now()<deadline && settled<2) { settled=Math.abs(scroll.scrollTop-target)<=2 ? settled+1 : 0; await new Promise(resolve=>setTimeout(resolve,16)); } if (!button.classList.contains('on')) throw new Error('Page 3 did not stay selected'); if (settled<2 || Math.abs(scroll.scrollTop-target)>2) throw new Error('Page 3 did not scroll: '+JSON.stringify({actual:scroll.scrollTop,target,maximum:scroll.scrollHeight-scroll.clientHeight})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "pdf-page-3",
+            "LUMA_VIEWER_SELECTED": "lease",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        },
+        {
+          "activate": "vw-page-thumbnail-3"
+        }
+      ],
+      "about": "Desktop and phone activate the visible page 3 thumbnail, scroll to that PDF page and update the page counter; no substituted phone state."
+    },
+    {
+      "name": "pdf-filled",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"lease\"]"
+        },
+        {
+          "eval": "(() => { const values = {tenant: 'Nick Field', orig: '01/01/2026', date: '09/25/2026'}; for (const [key, value] of Object.entries(values)) { const entry = document.querySelector('[data-vwfld=\"' + key + '\"]'); entry.value = value; entry.dispatchEvent(new Event('input', {bubbles: true})); } })()"
+        },
+        {
+          "eval": "(() => { for (const [key,value] of Object.entries({tenant:'Nick Field',orig:'01/01/2026',date:'09/25/2026'})) { if (document.querySelector('[data-vwfld=\"'+key+'\"]').value!==value) throw new Error('PDF field '+key+' not filled'); } })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "pdf-filled",
+            "LUMA_VIEWER_SELECTED": "lease",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ],
+      "about": "The same three editable PDF fields retain entered values on desktop and phone; no substituted phone state. Capture assertions inspect native field values."
+    },
+    {
+      "name": "open-in",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "[data-vwopenin]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "open-in",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "share",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "#vw-corner [data-share]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "share",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "compare",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"v7\"]"
+        },
+        {
+          "eval": "document.querySelector('[data-vwopen=\"v6\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "compare",
+            "LUMA_VIEWER_SELECTED": "v7",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "compare-side",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"v7\"]"
+        },
+        {
+          "eval": "document.querySelector('[data-vwopen=\"v6\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))"
+        },
+        {
+          "click": "[data-vwcmpm=\"side\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "compare-side",
+            "LUMA_VIEWER_SELECTED": "v7",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "compare-diff",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"v7\"]"
+        },
+        {
+          "eval": "document.querySelector('[data-vwopen=\"v6\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,ctrlKey:true}))"
+        },
+        {
+          "click": "[data-vwcmpm=\"diff\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "compare-diff",
+            "LUMA_VIEWER_SELECTED": "v7",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sidebar",
+      "spec": [
+        {
+          "click": "[data-vwopen=\"offsite\"]"
+        },
+        {
+          "click": "#vw-top [data-lside]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_VIEWER_STATE": "sidebar",
+            "LUMA_VIEWER_SELECTED": "offsite",
+            "LUMA_VIEWER_MODE": "view"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "view",
+    "information",
+    "markup",
+    "inline-editor",
+    "style",
+    "save-menu",
+    "adjust",
+    "crop",
+    "frame",
+    "terrace",
+    "receipt",
+    "text",
+    "text-tel",
+    "text-addr",
+    "text-date",
+    "text-money",
+    "pdf",
+    "pdf-markup",
+    "pdf-page-2",
+    "pdf-page-3",
+    "pdf-filled",
+    "open-in",
+    "share",
+    "compare",
+    "compare-side",
+    "compare-diff",
+    "sidebar"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-viewer > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#vw-top"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#vw-side .vwfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#vw-side"
+    },
+    {
+      "name": "corner pill",
+      "spec": "#vw-corner"
+    },
+    {
+      "name": "information",
+      "spec": "#vw-info"
+    },
+    {
+      "name": "tool palette",
+      "spec": "#vw-pal"
+    },
+    {
+      "name": "adjustment panel",
+      "spec": "#vw-adj"
+    },
+    {
+      "name": "action center",
+      "spec": "#vw-bar"
+    },
+    {
+      "name": "menu",
+      "spec": "#lmenu"
+    },
+    {
+      "name": "share",
+      "spec": "#lshare"
+    },
+    {
+      "name": "stage",
+      "spec": "#vw-stage"
+    },
+    {
+      "name": "main",
+      "spec": "#vw-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#vw-side",
+      "gtk": "vw-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#vw-main",
+      "gtk": "vw-island",
+      "name": "island"
+    },
+    {
+      "spec": "#vw-stage",
+      "gtk": "vw-stage",
+      "name": "document stage"
+    },
+    {
+      "spec": "#vw-corner",
+      "gtk": "vw-corner",
+      "name": "corner pill"
+    },
+    {
+      "spec": "#vw-bar",
+      "gtk": "vw-action-center",
+      "name": "action center"
+    },
+    {
+      "spec": "#vw-pal",
+      "gtk": "vw-palette",
+      "name": "tool palette"
+    },
+    {
+      "spec": "#vw-adj",
+      "gtk": "vw-adjustments",
+      "name": "adjustments"
+    }
+  ]
+}

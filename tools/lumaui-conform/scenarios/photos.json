@@ -1,0 +1,990 @@
+{
+  "app": "photos",
+  "title": "Photos",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=photos",
+    "window": "#w-photos",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone",
+      "#w-photos.viewing #p-ttl",
+      "#w-photos.viewing #p-body"
+    ]
+  },
+  "gtk": {
+    "module": "photos",
+    "fixtures": [
+      "tests/fixtures/photos-v70.json",
+      "tests/fixtures/photos-v70",
+      "tests/fixtures/photos-v70-data"
+    ],
+    "env": {
+      "LUMA_PHOTOS_FIXTURE": "{run}/fixtures/photos-v70.json",
+      "XDG_DATA_HOME": "{run}/fixtures/photos-v70-data"
+    }
+  },
+  "states": [
+    {
+      "name": "library",
+      "about": "library",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "fav",
+      "about": "fav",
+      "spec": [
+        {
+          "click": "[data-pview=\"fav\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEW": "fav"
+          }
+        }
+      ]
+    },
+    {
+      "name": "people",
+      "about": "people",
+      "spec": [
+        {
+          "click": "[data-pview=\"people\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEW": "people"
+          }
+        }
+      ]
+    },
+    {
+      "name": "places",
+      "about": "places",
+      "spec": [
+        {
+          "click": "[data-pview=\"places\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEW": "places"
+          }
+        }
+      ]
+    },
+    {
+      "name": "launch",
+      "about": "launch",
+      "spec": [
+        {
+          "click": "[data-pview=\"launch\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEW": "launch"
+          }
+        }
+      ]
+    },
+    {
+      "name": "walls",
+      "about": "walls",
+      "spec": [
+        {
+          "click": "[data-pview=\"walls\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEW": "walls"
+          }
+        }
+      ]
+    },
+    {
+      "name": "deleted",
+      "about": "deleted",
+      "spec": [
+        {
+          "click": "[data-pview=\"deleted\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEW": "deleted"
+          }
+        }
+      ]
+    },
+    {
+      "name": "years",
+      "about": "years",
+      "spec": [
+        {
+          "click": "[data-pzoom=\"years\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_ZOOM": "years"
+          }
+        }
+      ]
+    },
+    {
+      "name": "months",
+      "about": "months",
+      "spec": [
+        {
+          "click": "[data-pzoom=\"months\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_ZOOM": "months"
+          }
+        }
+      ]
+    },
+    {
+      "name": "all",
+      "about": "all",
+      "spec": [
+        {
+          "click": "[data-pzoom=\"all\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_ZOOM": "all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "viewer",
+      "about": "viewer",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "information",
+      "about": "information",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pinfo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_INFO": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "about": "more",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_MENU": "more"
+          }
+        }
+      ]
+    },
+    {
+      "name": "removed-favourite",
+      "about": "removed favourite",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pfav]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_FAVOURITE_ACTION": "remove"
+          }
+        }
+      ]
+    },
+    {
+      "name": "added-favourite",
+      "about": "added favourite",
+      "spec": [
+        {
+          "click": "[data-photo=\"1\"]"
+        },
+        {
+          "click": "[data-pfav]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "1",
+            "LUMA_PHOTOS_FAVOURITE_ACTION": "add"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-light",
+      "about": "edit light",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"light\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "light"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-looks",
+      "about": "edit looks",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"looks\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "looks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-colour",
+      "about": "edit colour",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"colour\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "colour"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-crop",
+      "about": "edit crop",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"crop\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "crop"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-auto",
+      "about": "edit auto",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pauto]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "light",
+            "LUMA_PHOTOS_AUTO": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "import",
+      "about": "import",
+      "spec": [
+        {
+          "click": "[data-pimport]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_MENU": "import"
+          }
+        }
+      ]
+    },
+    {
+      "name": "new-album",
+      "about": "new album",
+      "spec": [
+        {
+          "click": "[data-pnewalbum]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_MENU": "new-album"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sidebar-closed",
+      "about": "sidebar closed",
+      "spec": [
+        {
+          "click": "#w-photos [data-lside]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_SIDEBAR": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "share",
+      "about": "share",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "#p-corner [data-share]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_MENU": "share"
+          }
+        }
+      ]
+    },
+    {
+      "name": "delete",
+      "about": "delete",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pmore]"
+        },
+        {
+          "click": "[data-pdel]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_DELETE": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "saved-auto",
+      "about": "saved-auto",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pauto]"
+        },
+        {
+          "click": "[data-peddone]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_SAVE_AUTO": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancelled-auto",
+      "about": "cancelled-auto",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pauto]"
+        },
+        {
+          "click": "[data-pedx]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_CANCEL_AUTO": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "about": "search",
+      "spec": [
+        {
+          "eval": "const q=document.querySelector('#p-q');q.value='Lisbon';q.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_QUERY": "Lisbon"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-empty",
+      "about": "search-empty",
+      "spec": [
+        {
+          "eval": "const q=document.querySelector('#p-q');q.value='missing';q.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_QUERY": "missing"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-rotate",
+      "about": "edit-rotate",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"crop\"]"
+        },
+        {
+          "click": "[data-prot]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "crop",
+            "LUMA_PHOTOS_ROTATE": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-flip",
+      "about": "edit-flip",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"crop\"]"
+        },
+        {
+          "click": "[data-pflip]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "crop",
+            "LUMA_PHOTOS_FLIP": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-revert",
+      "about": "edit-revert",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pauto]"
+        },
+        {
+          "click": "[data-prevert]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "light",
+            "LUMA_PHOTOS_AUTO": "1",
+            "LUMA_PHOTOS_REVERT": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit-mono",
+      "about": "edit-mono",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"looks\"]"
+        },
+        {
+          "click": "[data-ppre=\"mono\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "looks",
+            "LUMA_PHOTOS_PRESET": "mono"
+          }
+        }
+      ]
+    },
+    {
+      "name": "new-album-empty",
+      "about": "new-album-empty",
+      "spec": [
+        {
+          "click": "[data-pnewalbum]"
+        },
+        {
+          "click": "[data-palmk]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_NEW_ALBUM": "New album"
+          }
+        }
+      ]
+    },
+    {
+      "name": "delete-undo",
+      "about": "delete-undo",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pmore]"
+        },
+        {
+          "click": "[data-pdel]"
+        },
+        {
+          "click": "[data-lui-undo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_DELETE": "1",
+            "LUMA_PHOTOS_UNDO_DELETE": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "open-in",
+      "about": "open-in",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pmore]"
+        },
+        {
+          "click": "[data-popenin]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_MENU": "open-in"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add-to-album",
+      "about": "add-to-album",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pmore]"
+        },
+        {
+          "click": "[data-palbum]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_MENU": "add-to-album"
+          }
+        }
+      ]
+    },
+    {
+      "name": "import-all",
+      "about": "import-all",
+      "spec": [
+        {
+          "click": "[data-pimport]"
+        },
+        {
+          "click": "[data-pimpall]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_MENU": "import-all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "import-folder",
+      "about": "import-folder",
+      "spec": [
+        {
+          "click": "[data-pimport]"
+        },
+        {
+          "click": "[data-pimpfolder]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_MENU": "import-folder"
+          }
+        }
+      ]
+    },
+    {
+      "name": "crop-guidance",
+      "about": "crop-guidance",
+      "spec": [
+        {
+          "click": "[data-photo=\"0\"]"
+        },
+        {
+          "click": "[data-pedit]"
+        },
+        {
+          "click": "[data-pedtab=\"crop\"]"
+        },
+        {
+          "click": "[data-pcrop]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_PHOTOS_VIEWER": "0",
+            "LUMA_PHOTOS_EDIT": "crop",
+            "LUMA_PHOTOS_MENU": "crop-guidance"
+          }
+        }
+      ]
+    },
+    {
+      "name": "saved-information",
+      "about": "Information records saved edits while retaining the original",
+      "spec": [
+        {"click": "[data-photo=\"0\"]"},
+        {"click": "[data-pedit]"},
+        {"click": "[data-pauto]"},
+        {"click": "[data-peddone]"},
+        {"click": "[data-pinfo]"}
+      ],
+      "gtk": [
+        {"env": {
+          "LUMA_PHOTOS_VIEWER": "0",
+          "LUMA_PHOTOS_SAVE_AUTO": "1",
+          "LUMA_PHOTOS_INFO": "1"
+        }}
+      ]
+    }
+  ],
+  "phone_states": [
+    "library",
+    "fav",
+    "people",
+    "places",
+    "launch",
+    "walls",
+    "deleted",
+    "years",
+    "months",
+    "all",
+    "viewer",
+    "information",
+    "more",
+    "removed-favourite",
+    "added-favourite",
+    "edit-light",
+    "edit-looks",
+    "edit-colour",
+    "edit-crop",
+    "edit-auto",
+    "import",
+    "new-album",
+    "sidebar-closed",
+    "share",
+    "delete",
+    "saved-auto",
+    "cancelled-auto",
+    "search",
+    "search-empty",
+    "edit-rotate",
+    "edit-flip",
+    "edit-revert",
+    "edit-mono",
+    "new-album-empty",
+    "delete-undo",
+    "open-in",
+    "add-to-album",
+    "import-all",
+    "import-folder",
+    "crop-guidance",
+    "saved-information"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-photos > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#w-photos > .tbar"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#p-rail"
+    },
+    {
+      "name": "corner pill",
+      "spec": "#p-corner"
+    },
+    {
+      "name": "information",
+      "spec": "#p-det"
+    },
+    {
+      "name": "editor",
+      "spec": "#p-ed"
+    },
+    {
+      "name": "action center",
+      "spec": "#p-bar"
+    },
+    {
+      "name": "menu",
+      "spec": "#w-photos > .pop"
+    },
+    {
+      "name": "viewer",
+      "spec": "#p-main .viewer"
+    },
+    {
+      "name": "page title",
+      "spec": "#w-photos:not(.viewing) #p-ttl"
+    },
+    {
+      "name": "photo groups",
+      "spec": "#w-photos:not(.viewing) #p-body"
+    },
+    {
+      "name": "main",
+      "spec": "#p-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#p-rail",
+      "gtk": "ph-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#p-main",
+      "gtk": "ph-island",
+      "name": "main island"
+    },
+    {
+      "spec": "#w-photos:not(.viewing) #p-ttl",
+      "gtk": "ph-title",
+      "name": "page title"
+    },
+    {
+      "spec": "#w-photos:not(.viewing) #p-body",
+      "gtk": "ph-body",
+      "name": "photo groups"
+    },
+    {
+      "spec": "#p-bar",
+      "gtk": "ph-action-center",
+      "name": "action center"
+    },
+    {
+      "spec": "#p-corner",
+      "gtk": "ph-corner",
+      "name": "photo actions"
+    },
+    {
+      "spec": "#p-det",
+      "gtk": "ph-details",
+      "name": "information"
+    },
+    {
+      "spec": "#p-ed",
+      "gtk": "ph-editor",
+      "name": "photo editor"
+    },
+    {
+      "spec": "#p-img",
+      "gtk": "ph-image",
+      "name": "viewed photo"
+    }
+  ]
+}

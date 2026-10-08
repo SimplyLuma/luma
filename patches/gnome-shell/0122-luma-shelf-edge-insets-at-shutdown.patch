@@ -1,0 +1,66 @@
+From: Project Luma
+Subject: [PATCH] luma: shelf leaves already-destroyed edge insets alone at shutdown
+
+Every Shell exit logged three Gjs-CRITICAL "Object St.Widget ... has been
+already disposed" from shelf.js. At shutdown the layout manager destroys
+uiGroup's children, including the three desktop edge-inset strut actors,
+before the shelf itself; the shelf's destroy handler then called destroy() on
+the disposed insets.
+
+The shelf now keeps the live insets in a set that each inset leaves when it is
+destroyed (as the work-area actor already clears its own reference), destroys
+only what is left, and skips re-tracking and positioning struts once its
+chrome is gone.
+
+Generated against the Shell .82 tree (0121 applied) for release .83.
+---
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 0153d4f..02ece49 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -533,7 +533,9 @@ class Shelf extends St.Widget {
+             if (this._adoptLaterId) GLib.source_remove(this._adoptLaterId);
+             this._adoptLaterId = 0;
+             this._workArea?.destroy();
+-            for (const actor of this._edgeInsets ?? []) actor.destroy();
++            // At shutdown the layout manager destroys uiGroup's children, the
++            // insets among them, before the shelf; only destroy what is left.
++            for (const actor of [...(this._liveEdgeInsets ?? [])]) actor.destroy();
+             global.display.set_work_area_inset?.(0);
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+@@ -550,8 +552,11 @@ class Shelf extends St.Widget {
+             affectsStruts: true,
+             trackFullscreen: true,
+         });
++        this._liveEdgeInsets = new Set();
+         this._edgeInsets = Array.from({length: 3}, () => {
+             const actor = new St.Widget({name: 'lumaDesktopEdgeInset', reactive: false});
++            this._liveEdgeInsets.add(actor);
++            actor.connect('destroy', () => this._liveEdgeInsets.delete(actor));
+             Main.layoutManager.addChrome(actor, {affectsStruts: true, trackFullscreen: true});
+             return actor;
+         });
+@@ -865,8 +870,12 @@ class Shelf extends St.Widget {
+         this._syncDockWidth();
+     }
+ 
++    _chromeAlive() {
++        return Boolean(this._workArea) && this._liveEdgeInsets.size === this._edgeInsets.length;
++    }
++
+     _trackWorkArea(enabled) {
+-        if (enabled === this._workAreaTracked)
++        if (enabled === this._workAreaTracked || !this._chromeAlive())
+             return;
+         for (const actor of [this._workArea, ...this._edgeInsets]) {
+             Main.layoutManager.untrackChrome(actor);
+@@ -913,6 +922,8 @@ class Shelf extends St.Widget {
+         this._surface.set_size(geometry.width, geometry.height);
+         this._trackWorkArea(this._isDesktopSession() &&
+             this._group.get_children().some(actor => actor.visible));
++        if (!this._chromeAlive())
++            return;
+         const workArea = geometry.workArea;
+         this._workArea.set_position(workArea.x, workArea.y);
+         this._workArea.set_size(workArea.width, workArea.height);

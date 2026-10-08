@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.rhyme.viola</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only AND BSD-3-Clause</project_license>
+  <name>Viola</name>
+  <summary>Browse the web with native Luma windows</summary>
+  <description>
+    <p>Viola combines its Chromium browser engine with native Luma windows, tabs, downloads and page controls. Your existing browser profile stays available across independent application updates.</p>
+  </description>
+  <launchable type="desktop-id">com.rhyme.viola.desktop</launchable>
+  <developer id="com.rhyme">
+    <name>Rhyme</name>
+  </developer>
+  <url type="homepage">https://github.com/nmcmil/Viola</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.2.10" date="2026-10-07" />
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Viola browsing a web page</caption>
+      <image type="source" width="982" height="693">https://dl.simplyluma.com/media/com.rhyme.viola/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png</image>
+    </screenshot>
+  </screenshots>
+</component>

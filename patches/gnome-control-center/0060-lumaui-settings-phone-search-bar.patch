@@ -1,0 +1,103 @@
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index bcdbdca..3836a98 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -50,6 +50,8 @@ typedef struct {
+   GtkWidget *shell;
+   GtkWidget *account;
+   GtkWidget *foot;
++  GtkWidget *search_center;
++  LumaBarItem *search_item;
+   GtkListBox *list;
+   GHashTable *rows; /* id → LumaNavigationRow */
+   GtkWidget *stack;  /* a phone: the list first (LumaListFirst) */
+@@ -60,6 +62,7 @@ typedef struct {
+ static void frame_free (Frame *f)
+ {
+   g_clear_object (&f->model);
++  g_clear_object (&f->search_item);
+   g_free (f->shown);
+   g_hash_table_unref (f->rows);
+   g_free (f);
+@@ -248,6 +251,22 @@ static void search_counts (GtkWidget *view, GHashTable *counts, gpointer data)
+ static void search_changed (GtkWidget *foot, const char *text, Frame *f)
+ {
+   cc_luma_shell_search (CC_LUMA_SHELL (f->shell), text, search_counts, f);
++  if (f->stack && f->search_item)
++    {
++      if (text && *text) luma_list_first_show_detail (LUMA_LIST_FIRST (f->stack));
++      else luma_list_first_show_list (LUMA_LIST_FIRST (f->stack));
++    }
++}
++
++static void list_showing (LumaListFirst *stack, const char *which, Frame *f)
++{
++  if (!f->search_center) return;
++  if (g_str_equal (which, "list") || (f->search_item && *luma_bar_item_search_get_text (f->search_item)))
++    {
++      LumaBarItem *items[] = { f->search_item };
++      luma_action_center_show_bar (LUMA_ACTION_CENTER (f->search_center), items, 1, NULL);
++    }
++  else luma_action_center_hide_bar (LUMA_ACTION_CENTER (f->search_center));
+ }
+ 
+ static void row_activated (GtkListBox *list, GtkListBoxRow *row, Frame *f)
+@@ -282,7 +301,7 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+   GtkWidget *window = luma_application_window_new (application, NULL);
+   GtkWidget *sidebar = luma_navigation_sidebar_new ("settings", NULL);
+   GtkWidget *island = luma_island_new (GTK_ORIENTATION_VERTICAL);
+-  GtkWidget *foot = luma_sidebar_foot_new ("Search settings");
++  GtkWidget *foot = phone_form_factor () ? NULL : luma_sidebar_foot_new ("Search settings");
+   g_autoptr (GMenu) menu = g_menu_new ();
+   JsonObject *data = model ? cc_luma_fixture_get_data (model) : NULL;
+   JsonArray *groups = data && json_object_has_member (data, "CFGRPS") ? json_object_get_array_member (data, "CFGRPS") : NULL;
+@@ -337,10 +356,13 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+   g_signal_connect (f->list, "row-selected", G_CALLBACK (row_selected), f);
+ 
+   f->foot = foot;
+-  g_signal_connect (foot, "search-changed", G_CALLBACK (search_changed), f);
+-  gtk_widget_set_name (foot, "cf-foot");
+-  gtk_widget_set_name (luma_sidebar_foot_get_entry (LUMA_SIDEBAR_FOOT (foot)), "cf-search");
+-  luma_navigation_sidebar_append_footer (LUMA_NAVIGATION_SIDEBAR (sidebar), foot);
++  if (foot)
++    {
++      g_signal_connect (foot, "search-changed", G_CALLBACK (search_changed), f);
++      gtk_widget_set_name (foot, "cf-foot");
++      gtk_widget_set_name (luma_sidebar_foot_get_entry (LUMA_SIDEBAR_FOOT (foot)), "cf-search");
++      luma_navigation_sidebar_append_footer (LUMA_NAVIGATION_SIDEBAR (sidebar), foot);
++    }
+ 
+   gtk_widget_set_name (island, "cf-main");
+   gtk_box_append (GTK_BOX (island), f->shell);
+@@ -350,9 +372,17 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+       /* v71 phone ("list-first apps", LumaUI #14): Settings opens on its list, full screen, under a large
+        * title; picking a page pushes it, and the page's title island ‹ brings the list back. Navigation is
+        * the list, so there is no sidebar toggle. */
++      luma_application_window_set_phone_bleed (LUMA_APPLICATION_WINDOW (window), TRUE);
+       f->stack = luma_list_first_new (sidebar, island, "Settings");
+       gtk_widget_set_name (f->stack, "cf-list-first");
+       luma_application_window_set_body (LUMA_APPLICATION_WINDOW (window), f->stack);
++      f->search_center = luma_action_center_new (NULL);
++      f->search_item = luma_bar_item_new_search ("Search settings");
++      luma_bar_item_search_set_keep (f->search_item, TRUE);
++      g_signal_connect (f->search_item, "search-changed", G_CALLBACK (search_changed), f);
++      luma_action_center_attach (LUMA_ACTION_CENTER (f->search_center), window);
++      g_signal_connect (f->stack, "showing", G_CALLBACK (list_showing), f);
++      list_showing (LUMA_LIST_FIRST (f->stack), "list", f);
+       cc_luma_shell_set_list_handler (CC_LUMA_SHELL (f->shell), page_island, f);
+       if (g_getenv ("LUMA_SETTINGS_PAGE") && *g_getenv ("LUMA_SETTINGS_PAGE"))
+         luma_list_first_show_detail (LUMA_LIST_FIRST (f->stack)); /* asked for a page: open on it */
+@@ -382,7 +412,12 @@ void
+ cc_luma_window_search (GtkWindow *window, const char *text)
+ {
+   Frame *f = g_object_get_data (G_OBJECT (window), "cf-frame");
+-  GtkWidget *entry = f ? luma_sidebar_foot_get_entry (LUMA_SIDEBAR_FOOT (f->foot)) : NULL;
++  if (f && f->search_item)
++    {
++      luma_bar_item_search_set_text (f->search_item, text);
++      return;
++    }
++  GtkWidget *entry = f && f->foot ? luma_sidebar_foot_get_entry (LUMA_SIDEBAR_FOOT (f->foot)) : NULL;
+   if (!entry) return;
+   g_signal_handlers_block_by_func (f->foot, search_changed, f);
+   gtk_editable_set_text (GTK_EDITABLE (entry), text);

@@ -1,0 +1,1054 @@
+From 8c7661d8fff057401afcdde41da189816dcaa8e1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:02:02 +0000
+Subject: [PATCH] settings: add accessibility routes and bounded native reader
+ action
+
+---
+ shell/cc-luma-device-options.c |  41 +++++-
+ shell/cc-luma-device-options.h |   2 +
+ shell/cc-luma-fixture.c        |  18 +++
+ shell/cc-luma-fixture.h        |   5 +
+ shell/cc-luma-preferences.c    |  38 +++++-
+ shell/cc-luma-preferences.h    |  10 ++
+ shell/cc-luma-services.c       |  32 +++++
+ shell/cc-luma-services.h       |   7 ++
+ shell/cc-luma-view-devices.c   | 221 +++++++++++++++++++++++++++++++++
+ shell/cc-luma-view-private.h   |   1 +
+ shell/cc-luma-view.c           |  61 +++++++--
+ shell/meson.build              |   6 +-
+ shell/test-luma-fixture.c      |  56 +++++++++
+ shell/test-luma-properties.c   | 101 +++++++++++++++
+ shell/test-luma-view.c         | 112 +++++++++++++++++
+ 15 files changed, 698 insertions(+), 13 deletions(-)
+
+diff --git a/shell/cc-luma-device-options.c b/shell/cc-luma-device-options.c
+index d0b36ac..e1e2b40 100644
+--- a/shell/cc-luma-device-options.c
++++ b/shell/cc-luma-device-options.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-device-options.h"
+ #include <gio/gio.h>
++#include <math.h>
+ 
+ typedef struct { const char *key; GType type; gint64 low, high; const char *choices[10]; } Field;
+ /* Catalogues are the actual v70 control values. No battery, device or service
+@@ -27,8 +28,41 @@ static const Field pointer[] = {
+   { "tSec", G_TYPE_STRING, 0, 0, { "two", "corner", NULL } },
+   { "tScroll", G_TYPE_STRING, 0, 0, { "two", "edge", NULL } },
+ };
++static const Field accessibility[] = {
++  { .key = "a11yMenu", .type = G_TYPE_BOOLEAN },
++  { .key = "hc", .type = G_TYPE_BOOLEAN }, { .key = "motion", .type = G_TYPE_BOOLEAN },
++  { .key = "large", .type = G_TYPE_BOOLEAN }, { .key = "soundKeys", .type = G_TYPE_BOOLEAN },
++  { .key = "scrollbars", .type = G_TYPE_BOOLEAN }, { .key = "reader", .type = G_TYPE_BOOLEAN },
++  { .key = "vAlert", .type = G_TYPE_BOOLEAN }, { .key = "overamp", .type = G_TYPE_BOOLEAN },
++  { .key = "osk", .type = G_TYPE_BOOLEAN }, { .key = "rep", .type = G_TYPE_BOOLEAN },
++  { .key = "blink", .type = G_TYPE_BOOLEAN }, { .key = "sticky", .type = G_TYPE_BOOLEAN },
++  { .key = "slow", .type = G_TYPE_BOOLEAN }, { .key = "bounce", .type = G_TYPE_BOOLEAN },
++  { .key = "kbdA11y", .type = G_TYPE_BOOLEAN }, { .key = "mkeys", .type = G_TYPE_BOOLEAN },
++  { .key = "locate", .type = G_TYPE_BOOLEAN }, { .key = "hold", .type = G_TYPE_BOOLEAN },
++  { .key = "hover", .type = G_TYPE_BOOLEAN }, { .key = "zoom", .type = G_TYPE_BOOLEAN },
++  { .key = "cross", .type = G_TYPE_BOOLEAN }, { .key = "invert", .type = G_TYPE_BOOLEAN },
++  { "cursor", G_TYPE_STRING, 0, 0, { "default", "m", "l", "xl", "xxl", NULL } },
++  { "vAlertHow", G_TYPE_STRING, 0, 0, { "window", "screen", NULL } },
++  { "zoomF", G_TYPE_STRING, 0, 0, { "push", "center", "prop", NULL } },
++  { .key = "repDelay", .type = G_TYPE_INT64, .low = 0, .high = 100 },
++  { .key = "repSpeed", .type = G_TYPE_INT64, .low = 0, .high = 100 },
++  { .key = "blinkS", .type = G_TYPE_INT64, .low = 0, .high = 100 },
++  { .key = "dbl", .type = G_TYPE_INT64, .low = 0, .high = 100 },
++  { .key = "zoomX", .type = G_TYPE_DOUBLE, .low = 1, .high = 10 },
++};
+ static gboolean allowed (const Field *field, JsonNode *value)
+ {
++  /* Zoom is the sole fractional control in these v70 field catalogs. JSON
++   * may represent its initial 2 as an integer; subsequent half steps remain
++   * valid numeric values without relaxing other fields' exact types. */
++  if (field->type == G_TYPE_DOUBLE) {
++    if (!value || !JSON_NODE_HOLDS_VALUE (value)) return FALSE;
++    GType type = json_node_get_value_type (value);
++    if (type != G_TYPE_INT64 && type != G_TYPE_DOUBLE) return FALSE;
++    double number = json_node_get_double (value);
++    if (!isfinite (number) || number < field->low || number > field->high) return FALSE;
++    return number * 2 == (gint64) (number * 2);
++  }
+   if (!value || json_node_get_value_type (value) != field->type) return FALSE;
+   if (field->type == G_TYPE_BOOLEAN) return TRUE;
+   if (field->type == G_TYPE_INT64)
+@@ -48,8 +82,11 @@ static gboolean set (CcLumaFixture *model, const Field *fields, guint length,
+ {
+   if (key && validate (model, fields, length))
+     for (guint i = 0; i < length; i++)
+-      if (g_str_equal (key, fields[i].key) && allowed (&fields[i], value))
++      if (g_str_equal (key, fields[i].key) && allowed (&fields[i], value)) {
++        if (fields[i].type == G_TYPE_DOUBLE)
++          return cc_luma_fixture_set_number (model, key, json_node_get_double (value), error);
+         return cc_luma_fixture_set (model, key, value, error);
++      }
+   g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid Settings device preference");
+   return FALSE;
+ }
+@@ -97,3 +134,5 @@ gboolean cc_luma_power_fixture_validate (CcLumaFixture *model)
+ gboolean cc_luma_power_set (CcLumaFixture *model, const char *key, JsonNode *value, GError **error) { return set (model, power, G_N_ELEMENTS (power), key, value, error); }
+ gboolean cc_luma_pointer_validate (CcLumaFixture *model) { return validate (model, pointer, G_N_ELEMENTS (pointer)); }
+ gboolean cc_luma_pointer_set (CcLumaFixture *model, const char *key, JsonNode *value, GError **error) { return set (model, pointer, G_N_ELEMENTS (pointer), key, value, error); }
++gboolean cc_luma_a11y_validate (CcLumaFixture *model) { return validate (model, accessibility, G_N_ELEMENTS (accessibility)); }
++gboolean cc_luma_a11y_set (CcLumaFixture *model, const char *key, JsonNode *value, GError **error) { return set (model, accessibility, G_N_ELEMENTS (accessibility), key, value, error); }
+diff --git a/shell/cc-luma-device-options.h b/shell/cc-luma-device-options.h
+index b8ed823..40e072f 100644
+--- a/shell/cc-luma-device-options.h
++++ b/shell/cc-luma-device-options.h
+@@ -7,4 +7,6 @@ gboolean cc_luma_power_fixture_validate (CcLumaFixture *model);
+ gboolean cc_luma_power_set (CcLumaFixture *model, const char *key, JsonNode *value, GError **error);
+ gboolean cc_luma_pointer_validate (CcLumaFixture *model);
+ gboolean cc_luma_pointer_set (CcLumaFixture *model, const char *key, JsonNode *value, GError **error);
++gboolean cc_luma_a11y_validate (CcLumaFixture *model);
++gboolean cc_luma_a11y_set (CcLumaFixture *model, const char *key, JsonNode *value, GError **error);
+ G_END_DECLS
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 5c945fb..7bb1bf8 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-fixture.h"
+ #include <gio/gio.h>
++#include <math.h>
+ 
+ struct _CcLumaFixture
+ {
+@@ -151,6 +152,23 @@ cc_luma_fixture_set (CcLumaFixture *self, const char *key, JsonNode *value, GErr
+   json_object_set_member (object, leaf, json_node_copy (value));
+   return TRUE;
+ }
++gboolean
++cc_luma_fixture_set_number (CcLumaFixture *self, const char *key, double value, GError **error)
++{
++  g_autofree char *leaf = NULL;
++  JsonObject *object = parent_for_key (self, key, &leaf);
++  JsonNode *previous = object ? json_object_get_member (object, leaf) : NULL;
++  GType type = previous && JSON_NODE_HOLDS_VALUE (previous) ?
++    json_node_get_value_type (previous) : G_TYPE_INVALID;
++  if (!isfinite (value) || (type != G_TYPE_INT64 && type != G_TYPE_DOUBLE)) {
++    g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                 "Unknown or nonnumeric fixture setting: %s", key ? key : "(null)");
++    return FALSE;
++  }
++  JsonNode *number = json_node_init_double (json_node_alloc (), value);
++  json_object_set_member (object, leaf, number);
++  return TRUE;
++}
+ /* Radio dependencies follow v70 cfFx: airplane-on disables Wi-Fi and
+  * Bluetooth; enabling either radio clears airplane mode. Turning airplane
+  * off does not silently turn radios back on. Validate all keys first. */
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+index 1cf952b..0acc326 100644
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -12,6 +12,11 @@ CcLumaFixture *cc_luma_fixture_parse (const char *data, gssize length, GError **
+ JsonNode *cc_luma_fixture_get (CcLumaFixture *self, const char *key);
+ gboolean cc_luma_fixture_set (CcLumaFixture *self, const char *key,
+                               JsonNode *value, GError **error);
++/* Numeric fixture controls may cross integer/fractional representations;
++ * their owning domain still validates bounds and steps before this call.
++ * The ordinary scalar setter retains its exact-type contract. */
++gboolean cc_luma_fixture_set_number (CcLumaFixture *self, const char *key,
++                                     double value, GError **error);
+ gboolean cc_luma_fixture_set_flag (CcLumaFixture *self, const char *key,
+                                    gboolean value, GError **error);
+ gboolean cc_luma_fixture_connect_network (CcLumaFixture *self, const char *name, GError **error);
+diff --git a/shell/cc-luma-preferences.c b/shell/cc-luma-preferences.c
+index 4d66b80..58de64b 100644
+--- a/shell/cc-luma-preferences.c
++++ b/shell/cc-luma-preferences.c
+@@ -130,6 +130,33 @@ CcLumaPreferences *cc_luma_preferences_new_native (CcLumaPreferenceSet set, GErr
+     { "org.gnome.desktop.media-handling",
+       { "autorun-never", "autorun-x-content-start-app", "autorun-x-content-ignore", "autorun-x-content-open-folder", NULL },
+       { "b", "as", "as", "as", NULL } },
++    /* GNOME Control Center 50.4 panels/universal-access is the owner of
++     * these preferences. Reduced motion is the native string enum, not
++     * an inferred inverse of the desktop animation boolean. */
++    { "org.gnome.desktop.a11y",
++      { "always-show-universal-access-status", NULL }, { "b", NULL } },
++    { "org.gnome.desktop.a11y.interface",
++      { "high-contrast", "reduced-motion", NULL }, { "b", "s", NULL } },
++    { "org.gnome.desktop.interface",
++      { "cursor-blink", "cursor-blink-time", "locate-pointer", "cursor-size", "overlay-scrolling", "text-scaling-factor", NULL },
++      { "b", "i|u", "b", "i", "b", "d", NULL } },
++    { "org.gnome.desktop.a11y.applications",
++      { "screen-reader-enabled", "screen-keyboard-enabled", "screen-magnifier-enabled", NULL },
++      { "b", "b", "b", NULL } },
++    { "org.gnome.desktop.a11y.keyboard",
++      { "togglekeys-enable", "enable", "stickykeys-enable", "slowkeys-enable", "bouncekeys-enable", "mousekeys-enable", NULL },
++      { "b", "b", "b", "b", "b", "b", NULL } },
++    { "org.gnome.desktop.a11y.mouse",
++      { "secondary-click-enabled", "dwell-click-enabled", NULL }, { "b", "b", NULL } },
++    { "org.gnome.desktop.wm.preferences",
++      { "visual-bell", "visual-bell-type", NULL }, { "b", "s", NULL } },
++    { "org.gnome.desktop.sound",
++      { "allow-volume-above-100-percent", NULL }, { "b", NULL } },
++    { "org.gnome.desktop.a11y.magnifier",
++      { "mag-factor", "mouse-tracking", "show-cross-hairs", "invert-lightness", NULL },
++      { "d", "s", "b", "b", NULL } },
++    { "org.gnome.desktop.peripherals.keyboard",
++      { "repeat", "delay", "repeat-interval", NULL }, { "b", "i|u", "i|u", NULL } },
+   };
+   G_STATIC_ASSERT (G_N_ELEMENTS (native) == CC_LUMA_PREFS_COUNT);
+   if ((guint) set >= G_N_ELEMENTS (native)) {
+@@ -142,7 +169,16 @@ CcLumaPreferences *cc_luma_preferences_new_native (CcLumaPreferenceSet set, GErr
+   g_object_get (self->settings, "settings-schema", &schema, NULL);
+   for (guint i = 0; native[set].keys[i]; i++) {
+     g_autoptr(GSettingsSchemaKey) key = g_settings_schema_get_key (schema, native[set].keys[i]);
+-    if (!g_variant_type_equal (g_settings_schema_key_get_value_type (key), G_VARIANT_TYPE (native[set].types[i]))) {
++    const GVariantType *actual = g_settings_schema_key_get_value_type (key);
++    const char *expected = native[set].types[i];
++    /* The installed upstream inverted timing mapping deliberately accepts
++     * either signed or unsigned 32-bit milliseconds. Keep that exact
++     * numeric contract while retaining the original immutable native value. */
++    gboolean matches = g_str_equal (expected, "i|u") ?
++      g_variant_type_equal (actual, G_VARIANT_TYPE_INT32) ||
++      g_variant_type_equal (actual, G_VARIANT_TYPE_UINT32) :
++      g_variant_type_equal (actual, G_VARIANT_TYPE (expected));
++    if (!matches) {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Unexpected native Settings key type: %s", native[set].keys[i]);
+       return NULL;
+     }
+diff --git a/shell/cc-luma-preferences.h b/shell/cc-luma-preferences.h
+index 2441030..5b11d89 100644
+--- a/shell/cc-luma-preferences.h
++++ b/shell/cc-luma-preferences.h
+@@ -24,6 +24,16 @@ typedef enum {
+   CC_LUMA_PREFS_SESSION_IDLE,
+   CC_LUMA_PREFS_BATTERY_INDICATOR,
+   CC_LUMA_PREFS_REMOVABLE_MEDIA,
++  CC_LUMA_PREFS_A11Y_STATUS,
++  CC_LUMA_PREFS_A11Y_INTERFACE,
++  CC_LUMA_PREFS_A11Y_DESKTOP_INTERFACE,
++  CC_LUMA_PREFS_A11Y_APPLICATIONS,
++  CC_LUMA_PREFS_A11Y_KEYBOARD,
++  CC_LUMA_PREFS_A11Y_MOUSE,
++  CC_LUMA_PREFS_A11Y_VISUAL_BELL,
++  CC_LUMA_PREFS_A11Y_SOUND,
++  CC_LUMA_PREFS_A11Y_MAGNIFIER,
++  CC_LUMA_PREFS_A11Y_REPEAT,
+   CC_LUMA_PREFS_COUNT,
+ } CcLumaPreferenceSet;
+ CcLumaPreferences *cc_luma_preferences_new_native (CcLumaPreferenceSet set,
+diff --git a/shell/cc-luma-services.c b/shell/cc-luma-services.c
+index c56bdbf..49ce730 100644
+--- a/shell/cc-luma-services.c
++++ b/shell/cc-luma-services.c
+@@ -35,6 +35,38 @@ static const Contract *contract (CcLumaService service)
+   return (guint) service < G_N_ELEMENTS (contracts) ? &contracts[service] : NULL;
+ }
+ 
++static void reader_preferences_called (GObject *source, GAsyncResult *result, gpointer data)
++{
++  g_autoptr(GTask) task = data;
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  if (!reply) g_task_return_error (task, g_steal_pointer (&error));
++  else g_task_return_boolean (task, TRUE);
++}
++
++void cc_luma_services_reader_preferences_async (GDBusConnection *connection,
++  GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data)
++{
++  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
++  GTask *task = g_task_new (connection, cancellable, callback, user_data);
++  g_task_set_source_tag (task, cc_luma_services_reader_preferences_async);
++  if (g_task_return_error_if_cancelled (task)) { g_object_unref (task); return; }
++  /* Match cc-ua-seeing-page.c's existing Orca contract. DO_NOT_AUTO_START
++   * keeps owner absence an explicit failure instead of launching an app. */
++  g_dbus_connection_call (connection, "org.gnome.Orca.Service",
++    "/org/gnome/Orca/Service", "org.gnome.Orca.Service", "ShowPreferences",
++    NULL, G_VARIANT_TYPE_UNIT, G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000,
++    cancellable, reader_preferences_called, task);
++}
++
++gboolean cc_luma_services_reader_preferences_finish (GDBusConnection *connection,
++  GAsyncResult *result, GError **error)
++{
++  g_return_val_if_fail (g_task_is_valid (result, connection), FALSE);
++  g_return_val_if_fail (g_async_result_is_tagged (result, cc_luma_services_reader_preferences_async), FALSE);
++  return g_task_propagate_boolean (G_TASK (result), error);
++}
++
+ CcLumaProperties *
+ cc_luma_services_observe (CcLumaService service, GError **error)
+ {
+diff --git a/shell/cc-luma-services.h b/shell/cc-luma-services.h
+index b27d721..a02154a 100644
+--- a/shell/cc-luma-services.h
++++ b/shell/cc-luma-services.h
+@@ -13,4 +13,11 @@ typedef enum {
+ CcLumaProperties *cc_luma_services_observe (CcLumaService service, GError **error);
+ gboolean cc_luma_services_validate (CcLumaService service, GVariant *snapshot,
+                                      GError **error);
++/* GNOME 50.4's screen-reader preferences action. The caller supplies its
++ * session connection (a private connection in tests). Never auto-starts Orca;
++ * the async call is cancellable and bounded to five seconds. */
++void cc_luma_services_reader_preferences_async (GDBusConnection *connection,
++  GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data);
++gboolean cc_luma_services_reader_preferences_finish (GDBusConnection *connection,
++  GAsyncResult *result, GError **error);
+ G_END_DECLS
+diff --git a/shell/cc-luma-view-devices.c b/shell/cc-luma-view-devices.c
+index 8adee6f..ed2de00 100644
+--- a/shell/cc-luma-view-devices.c
++++ b/shell/cc-luma-view-devices.c
+@@ -206,3 +206,224 @@ void cc_luma_view_pointer_render (View *v)
+     cc_luma_view_row (rows, "Direction", "Natural moves the page with your fingers", segments (v, "tNat", direction));
+   }
+ }
++
++static View *a11y_view (GtkWidget *control, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  const char *page = g_object_get_data (G_OBJECT (control), "cf-a11y-page");
++  return v && page && g_str_equal (page, v->page) && gtk_widget_is_ancestor (control, root) ? v : NULL;
++}
++static void a11y_control (View *v, GtkWidget *control, const char *key, const char *title)
++{
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  gtk_widget_set_name (control, name);
++  g_object_set_data_full (G_OBJECT (control), "cf-key", g_strdup (key), g_free);
++  g_object_set_data_full (G_OBJECT (control), "cf-a11y-page", g_strdup (v->page), g_free);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (control), GTK_ACCESSIBLE_PROPERTY_LABEL, title, -1);
++}
++static void a11y_flag_changed (GtkSwitch *control, GParamSpec *pspec, GtkWidget *root)
++{
++  View *v = a11y_view (GTK_WIDGET (control), root);
++  if (!v) return;
++  g_autoptr(JsonNode) value = json_node_init_boolean (json_node_alloc (), gtk_switch_get_active (control));
++  g_autoptr(GError) error = NULL;
++  if (cc_luma_a11y_set (v->model, g_object_get_data (G_OBJECT (control), "cf-key"), value, &error))
++    cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static void a11y_flag (View *v, GtkBox *rows, const char *key, const char *title, const char *hint)
++{
++  GtkWidget *control = gtk_switch_new ();
++  gtk_switch_set_active (GTK_SWITCH (control), cc_luma_view_flag (v, key));
++  gtk_widget_set_valign (control, GTK_ALIGN_CENTER);
++  a11y_control (v, control, key, title);
++  g_signal_connect_object (control, "notify::active", G_CALLBACK (a11y_flag_changed), v->root, 0);
++  cc_luma_view_row (rows, title, hint, control);
++}
++static void a11y_range_changed (GtkRange *control, GtkWidget *root)
++{
++  View *v = a11y_view (GTK_WIDGET (control), root);
++  if (!v) return;
++  const char *key = g_object_get_data (G_OBJECT (control), "cf-key");
++  double number = gtk_range_get_value (control);
++  gboolean fractional = g_str_equal (key, "zoomX");
++  g_autoptr(JsonNode) value = fractional ? json_node_init_double (json_node_alloc (), number) :
++    json_node_init_int (json_node_alloc (), (gint64) number);
++  g_autoptr(GError) error = NULL;
++  if (!cc_luma_a11y_set (v->model, key, value, &error)) { cc_luma_view_report_error (v, error); return; }
++  /* Keep continuous input alive instead of rebuilding its emitting range. */
++  if (fractional) {
++    char buffer[G_ASCII_DTOSTR_BUF_SIZE];
++    g_ascii_dtostr (buffer, sizeof buffer, number);
++    g_autofree char *caption = g_strconcat (buffer, "×", NULL);
++    GtkLabel *label = g_object_get_data (G_OBJECT (control), "cf-a11y-number");
++    gtk_label_set_text (label, caption);
++    gtk_label_set_text (v->subtitle, cc_luma_view_flag (v, "zoom") ? caption : "Off · Super Alt = zooms in");
++  }
++}
++static void a11y_range (View *v, GtkBox *rows, const char *key, const char *title,
++                        const char *low, const char *high, gboolean fractional)
++{
++  GtkWidget *trail = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
++  GtkWidget *range = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL, fractional ? 1 : 0, fractional ? 10 : 100, fractional ? 0.5 : 1);
++  gtk_scale_set_draw_value (GTK_SCALE (range), FALSE);
++  gtk_scale_set_digits (GTK_SCALE (range), fractional ? 1 : 0);
++  gtk_range_set_value (GTK_RANGE (range), json_node_get_double (cc_luma_fixture_get (v->model, key)));
++  gtk_widget_set_size_request (range, 120, -1);
++  a11y_control (v, range, key, title);
++  if (low) gtk_box_append (GTK_BOX (trail), cc_luma_view_label (low, "small", TRUE));
++  gtk_box_append (GTK_BOX (trail), range);
++  if (high) gtk_box_append (GTK_BOX (trail), cc_luma_view_label (high, "small", TRUE));
++  if (fractional) {
++    char buffer[G_ASCII_DTOSTR_BUF_SIZE];
++    g_ascii_dtostr (buffer, sizeof buffer, json_node_get_double (cc_luma_fixture_get (v->model, key)));
++    g_autofree char *caption = g_strconcat (buffer, "×", NULL);
++    GtkWidget *number = cc_luma_view_label (caption, "body", FALSE);
++    gtk_box_append (GTK_BOX (trail), number);
++    g_object_set_data (G_OBJECT (range), "cf-a11y-number", number);
++  }
++  g_signal_connect_object (range, "value-changed", G_CALLBACK (a11y_range_changed), v->root, 0);
++  cc_luma_view_row (rows, title, NULL, trail);
++}
++static void a11y_segment_changed (LumaSegmentedControl *control, const char *selection, GtkWidget *root)
++{
++  View *v = a11y_view (GTK_WIDGET (control), root);
++  if (!v) return;
++  g_autoptr(JsonNode) value = json_node_init_string (json_node_alloc (), selection);
++  g_autoptr(GError) error = NULL;
++  if (cc_luma_a11y_set (v->model, "vAlertHow", value, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static void a11y_reader_options (GtkButton *button, View *v)
++{
++  if (!g_str_equal (v->page, "a-see") || !gtk_widget_is_ancestor (GTK_WIDGET (button), v->root)) return;
++  /* Exact v70 fixture action, without launching an installed reader. The
++   * production route must use org.gnome.Orca.Service.ShowPreferences and
++   * remains unported until the live view is connected to that owner. */
++  luma_toast_show (v->root, "Opens screen reader settings", "opening");
++}
++static void a11y_flash (GtkButton *button, View *v)
++{
++  if (!g_str_equal (v->page, "a-hear") || !cc_luma_view_flag (v, "vAlert") ||
++      !gtk_widget_is_ancestor (GTK_WIDGET (button), v->root)) return;
++  GtkNative *native = gtk_widget_get_native (v->root);
++  GdkSurface *surface = native ? gtk_native_get_surface (native) : NULL;
++  if (surface) gdk_surface_beep (surface);
++  else {
++    g_autoptr(GError) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "A visual alert needs a visible Settings window");
++    cc_luma_view_report_error (v, error);
++  }
++  /* Native GNOME uses the owning window's bell. Exact fixture cf-main
++   * white-half-opacity/400ms overlay paint still needs public tokens (08);
++   * this action is not claimed as fixture visual parity or live completion. */
++}
++static void a11y_navigate (LumaDetailsItem *item, GtkWidget *root)
++{
++  View *v = a11y_view (GTK_WIDGET (item), root);
++  if (v) cc_luma_view_navigate (v, g_object_get_data (G_OBJECT (item), "cf-target"));
++}
++static void a11y_link (View *v, GtkBox *rows, const char *target, const char *title,
++                       const char *hint, const char *icon, const char *status)
++{
++  GtkWidget *item = luma_details_item_new (title, hint, NULL);
++  luma_details_item_set_lead (LUMA_DETAILS_ITEM (item), luma_ui_icon_new (icon));
++  GtkWidget *trail = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++  if (status) gtk_box_append (GTK_BOX (trail), cc_luma_view_label (status, "body", TRUE));
++  gtk_box_append (GTK_BOX (trail), luma_ui_icon_new ("chevron-right"));
++  luma_details_item_set_trail (LUMA_DETAILS_ITEM (item), trail);
++  g_autofree char *name = g_strconcat ("cf-go-", target, NULL);
++  gtk_widget_set_name (item, name);
++  g_object_set_data_full (G_OBJECT (item), "cf-a11y-page", g_strdup (v->page), g_free);
++  g_object_set_data_full (G_OBJECT (item), "cf-target", g_strdup (target), g_free);
++  g_signal_connect_object (item, "clicked", G_CALLBACK (a11y_navigate), v->root, 0);
++  gtk_box_append (rows, item);
++}
++void cc_luma_view_a11y_render (View *v)
++{
++  GtkBox *rows;
++  if (g_str_equal (v->page, "a11y")) {
++    const char *flags[] = { "hc", "motion", "large", "reader", "osk", "sticky", "slow", "bounce", "mkeys", "zoom", "vAlert" };
++    guint count = 0;
++    for (guint i = 0; i < G_N_ELEMENTS (flags); i++) if (cc_luma_view_flag (v, flags[i])) count++;
++    g_autofree char *meta = count ? g_strdup_printf ("%u turned on", count) : g_strdup ("Nothing turned on");
++    cc_luma_view_header (v, "Accessibility", meta, NULL);
++    rows = cc_luma_view_group (v, NULL);
++    a11y_flag (v, rows, "a11yMenu", "In Quick Options", "Keep these settings one click away");
++    rows = cc_luma_view_group (v, NULL);
++    a11y_link (v, rows, "a-see", "Seeing", "Contrast, text size, motion, screen reader", "eye", NULL);
++    a11y_link (v, rows, "a-hear", "Hearing", "Visual alerts", "volume-2", NULL);
++    a11y_link (v, rows, "a-type", "Typing", "Screen keyboard, repeat keys, typing assist", "keyboard", NULL);
++    a11y_link (v, rows, "a-point", "Pointing and clicking", "Mouse keys, double-click, hover click", "mouse-pointer-2", NULL);
++    a11y_link (v, rows, "a-zoom", "Zoom", "Magnify part of the screen", "zoom-in", cc_luma_view_flag (v, "zoom") ? "On" : "Off");
++  } else if (g_str_equal (v->page, "a-see")) {
++    cc_luma_view_header (v, "Seeing", "Make things easier to see", NULL);
++    rows = cc_luma_view_group (v, NULL);
++    a11y_flag (v, rows, "hc", "High contrast", "Stronger edges and text");
++    a11y_flag (v, rows, "motion", "Less motion", "Fades instead of slides and zooms");
++    a11y_flag (v, rows, "large", "Larger text", NULL);
++    const char * const sizes[] = { "default", "Default", "m", "Medium", "l", "Large", "xl", "Larger", "xxl", "Largest", NULL };
++    cc_luma_view_row (rows, "Pointer size", NULL, cc_luma_view_picker (v, "cursor", sizes));
++    a11y_flag (v, rows, "scrollbars", "Always show scroll bars", NULL);
++    a11y_flag (v, rows, "soundKeys", "Sound for lock keys", "A beep when Caps Lock or Num Lock turns on or off");
++    rows = cc_luma_view_group (v, "Screen reader");
++    a11y_flag (v, rows, "reader", "Screen reader", "Reads out what’s on screen. Super Alt S turns it on or off.");
++    GtkWidget *open = cc_luma_view_command (v, "Open…", G_CALLBACK (a11y_reader_options));
++    gtk_widget_set_name (open, "cf-reader-options");
++    cc_luma_view_row (rows, "Voice and speed", NULL, open);
++  } else if (g_str_equal (v->page, "a-hear")) {
++    cc_luma_view_header (v, "Hearing", "See alerts as well as hear them", NULL);
++    rows = cc_luma_view_group (v, NULL);
++    a11y_flag (v, rows, "vAlert", "Visual alerts", "Flash when the alert sound plays");
++    if (cc_luma_view_flag (v, "vAlert")) {
++      GtkWidget *segments = luma_segmented_control_new ();
++      luma_segmented_control_append (LUMA_SEGMENTED_CONTROL (segments), "window", "The window");
++      luma_segmented_control_append (LUMA_SEGMENTED_CONTROL (segments), "screen", "The whole screen");
++      luma_segmented_control_set_selected (LUMA_SEGMENTED_CONTROL (segments), cc_luma_view_text (v, "vAlertHow"));
++      a11y_control (v, segments, "vAlertHow", "Flash");
++      g_signal_connect_object (segments, "changed", G_CALLBACK (a11y_segment_changed), v->root, 0);
++      cc_luma_view_row (rows, "Flash", NULL, segments);
++      GtkWidget *flash = cc_luma_view_command (v, "Flash", G_CALLBACK (a11y_flash));
++      gtk_widget_set_name (flash, "cf-flash");
++      cc_luma_view_row (rows, "Try it", NULL, flash);
++    }
++    a11y_flag (v, rows, "overamp", "Over-amplification", "Lets the volume go past 100%");
++  } else if (g_str_equal (v->page, "a-type")) {
++    cc_luma_view_header (v, "Typing", "Keyboard help", NULL);
++    rows = cc_luma_view_group (v, NULL);
++    a11y_flag (v, rows, "osk", "Screen keyboard", "Appears when you tap a text field");
++    rows = cc_luma_view_group (v, "Repeat keys");
++    a11y_flag (v, rows, "rep", "Repeat when held", NULL);
++    if (cc_luma_view_flag (v, "rep")) {
++      a11y_range (v, rows, "repDelay", "Delay", "Short", "Long", FALSE);
++      a11y_range (v, rows, "repSpeed", "Speed", "Slow", "Fast", FALSE);
++    }
++    rows = cc_luma_view_group (v, "Text cursor");
++    a11y_flag (v, rows, "blink", "Blinking", NULL);
++    if (cc_luma_view_flag (v, "blink")) a11y_range (v, rows, "blinkS", "Speed", "Slow", "Fast", FALSE);
++    rows = cc_luma_view_group (v, "Typing assist");
++    a11y_flag (v, rows, "sticky", "Sticky keys", "Press Ctrl, then C, instead of both at once");
++    a11y_flag (v, rows, "slow", "Slow keys", "A key has to be held a moment to count");
++    a11y_flag (v, rows, "bounce", "Bounce keys", "Ignores quick repeats of the same key");
++    a11y_flag (v, rows, "kbdA11y", "Turn these on from the keyboard", "Press Shift five times");
++  } else if (g_str_equal (v->page, "a-point")) {
++    cc_luma_view_header (v, "Pointing and clicking", "Mouse and click help", NULL);
++    rows = cc_luma_view_group (v, NULL);
++    a11y_flag (v, rows, "mkeys", "Mouse keys", "Move the pointer with the number pad");
++    a11y_flag (v, rows, "locate", "Find the pointer", "Press Ctrl to show where it is");
++    a11y_range (v, rows, "dbl", "Double-click speed", "Slow", "Fast", FALSE);
++    rows = cc_luma_view_group (v, "Click assist");
++    a11y_flag (v, rows, "hold", "Hold to right click", "Press and hold the main button");
++    a11y_flag (v, rows, "hover", "Hover click", "Clicks when the pointer rests");
++  } else if (g_str_equal (v->page, "a-zoom")) {
++    char buffer[G_ASCII_DTOSTR_BUF_SIZE];
++    g_ascii_dtostr (buffer, sizeof buffer, json_node_get_double (cc_luma_fixture_get (v->model, "zoomX")));
++    g_autofree char *meta = cc_luma_view_flag (v, "zoom") ? g_strconcat (buffer, "×", NULL) : g_strdup ("Off · Super Alt = zooms in");
++    cc_luma_view_header (v, "Zoom", meta, "zoom");
++    rows = cc_luma_view_group (v, NULL);
++    a11y_range (v, rows, "zoomX", "Magnification", NULL, NULL, TRUE);
++    const char * const following[] = { "push", "Push the view along", "center", "Keep it centred", "prop", "Move in proportion", NULL };
++    cc_luma_view_row (rows, "Follow the pointer", NULL, cc_luma_view_picker (v, "zoomF", following));
++    a11y_flag (v, rows, "cross", "Crosshairs", NULL);
++    a11y_flag (v, rows, "invert", "Invert colours", NULL);
++  }
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 2080f17..d955785 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -77,6 +77,7 @@ void cc_luma_view_sound_render (View *v);
+ void cc_luma_view_nightlight_render (View *v);
+ void cc_luma_view_power_render (View *v);
+ void cc_luma_view_pointer_render (View *v);
++void cc_luma_view_a11y_render (View *v);
+ void cc_luma_view_keyboard_render (View *v);
+ void cc_luma_view_defaults_render (View *v);
+ void cc_luma_view_media_render (View *v);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 53c6936..9c91de3 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -85,7 +85,7 @@ static gboolean page_supported (const char *page)
+ {
+   if (page && g_str_has_prefix (page, "app:")) return TRUE;
+   const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
+-    "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps" };
++    "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps", "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
+   for (guint i = 0; i < G_N_ELEMENTS (pages); i++)
+     if (g_strcmp0 (page, pages[i]) == 0) return TRUE;
+   return FALSE;
+@@ -139,9 +139,17 @@ GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target)
+ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  if (!v) return;
++  if (!v || !gtk_widget_is_ancestor (GTK_WIDGET (widget), root)) return;
++  const char *owner_page = g_object_get_data (G_OBJECT (widget), "cf-owner-page");
++  if (!owner_page || !g_str_equal (owner_page, v->page)) return;
+   const char *key = g_object_get_data (G_OBJECT (widget), "cf-key");
+   g_autoptr (GError) error = NULL;
++  if (g_str_equal (v->page, "a11y") || g_str_has_prefix (v->page, "a-")) {
++    g_autoptr(JsonNode) value = json_node_init_boolean (json_node_alloc (), gtk_switch_get_active (widget));
++    if (cc_luma_a11y_set (v->model, key, value, &error)) cc_luma_view_queue_refresh (v);
++    else cc_luma_view_report_error (v, error);
++    return;
++  }
+   if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
+     g_warning ("%s", error->message);
+   if (!cc_luma_view_flag (v, "wifi"))
+@@ -162,12 +170,13 @@ GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, cons
+   gtk_widget_set_name (w, name);
+   gtk_switch_set_active (GTK_SWITCH (w), cc_luma_view_flag (v, key));
+   g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
++  g_object_set_data_full (G_OBJECT (w), "cf-owner-page", g_strdup (v->page), g_free);
+   gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+   g_signal_connect_object (w, "notify::active", G_CALLBACK (switch_changed), v->root, 0);
+   return w;
+ }
+-typedef struct { char *key; char **choices; } Pick;
+-static void pick_free (Pick *pick) { g_free (pick->key); g_strfreev (pick->choices); g_free (pick); }
++typedef struct { char *key; char **choices; char *page; guint64 generation; } Pick;
++static void pick_free (Pick *pick) { g_free (pick->key); g_strfreev (pick->choices); g_free (pick->page); g_free (pick); }
+ static gboolean picker_value_allowed (const char *key, const char *value);
+ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget *root)
+ {
+@@ -177,6 +186,17 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   g_autoptr (JsonNode) n = json_node_new (JSON_NODE_VALUE);
+   g_autoptr (GError) error = NULL;
+   g_variant_get (parameter, "(&s&s)", &key, &value);
++  if (g_str_equal (v->page, "a11y") || g_str_has_prefix (v->page, "a-")) {
++    gboolean own = (g_str_equal (v->page, "a-see") && g_str_equal (key, "cursor")) ||
++      (g_str_equal (v->page, "a-zoom") && g_str_equal (key, "zoomF"));
++    json_node_set_string (n, value);
++    if (own && cc_luma_a11y_set (v->model, key, n, &error)) cc_luma_view_queue_refresh (v);
++    else {
++      if (!error) error = g_error_new_literal (G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "This picker does not belong to the current accessibility page");
++      cc_luma_view_report_error (v, error);
++    }
++    return;
++  }
+   if (g_str_has_prefix (key, "d.")) {
+     if (cc_luma_view_displays_pick (v, key, value, &error)) cc_luma_view_queue_refresh (v);
+     else if (error) cc_luma_view_report_error (v, error);
+@@ -215,16 +235,27 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   if (changed) cc_luma_view_queue_refresh (v);
+   else g_warning ("%s", error->message);
+ }
++static void pick_generation (GSimpleAction *action, GVariant *parameter, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  const char *key, *value, *page;
++  guint64 generation;
++  g_variant_get (parameter, "(&s&s&st)", &key, &value, &page, &generation);
++  if (!v || !gtk_widget_get_root (root) || v->generation != generation || !g_str_equal (v->page, page)) return;
++  g_autoptr(GVariant) selection = g_variant_ref_sink (g_variant_new ("(ss)", key, value));
++  pick_selected (action, selection, root);
++}
+ static void open_picker (GtkButton *button, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  if (!v) return;
++  if (!v || !gtk_widget_is_ancestor (GTK_WIDGET (button), root)) return;
+   Pick *pick = g_object_get_data (G_OBJECT (button), "cf-pick");
++  if (!pick || pick->generation != v->generation || !g_str_equal (pick->page, v->page)) return;
+   GtkWidget *menu = luma_floating_menu_new (pick->key);
+   for (guint i = 0; pick->choices[i]; i += 2)
+     {
+-      g_autofree char *action = g_action_print_detailed_name ("cf.pick",
+-        g_variant_new ("(ss)", pick->key, pick->choices[i]));
++      g_autoptr(GVariant) target = g_variant_ref_sink (g_variant_new ("(ssst)", pick->key, pick->choices[i], pick->page, pick->generation));
++      g_autofree char *action = g_action_print_detailed_name ("cf.pick-generation", target);
+       luma_floating_menu_add_item (LUMA_FLOATING_MENU (menu), pick->choices[i + 1], NULL, NULL, NULL,
+         action, g_str_equal (cc_luma_view_text (v, pick->key), pick->choices[i]));
+     }
+@@ -242,6 +273,7 @@ GtkWidget *cc_luma_view_picker (View *v, const char *key, const char * const *ch
+   gtk_box_append (GTK_BOX (content), luma_ui_icon_new ("chevron-down"));
+   gtk_button_set_child (GTK_BUTTON (button), content);
+   pick->key = g_strdup (key); pick->choices = g_strdupv ((char **) choices);
++  pick->page = g_strdup (v->page); pick->generation = v->generation;
+   g_object_set_data_full (G_OBJECT (button), "cf-pick", pick, (GDestroyNotify) pick_free);
+   g_signal_connect_object (button, "clicked", G_CALLBACK (open_picker), v->root, 0);
+   g_autofree char *name = g_strconcat ("cf-", key, NULL);
+@@ -462,19 +494,22 @@ static void share_clicked (GtkButton *button, View *v)
+   luma_action_editor_set_primary (editor, primary);
+   luma_action_center_grow (v->center);
+ }
+-typedef struct { GCallback callback; } Command;
++typedef struct { GCallback callback; char *page; guint64 generation; } Command;
++static void command_free (Command *command) { g_free (command->page); g_free (command); }
+ static void command_clicked (GtkButton *button, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   Command *command = g_object_get_data (G_OBJECT (button), "cf-command");
+-  if (v && command)
++  if (v && command && gtk_widget_is_ancestor (GTK_WIDGET (button), root) &&
++      command->generation == v->generation && g_str_equal (command->page, v->page))
+     ((void (*) (GtkButton *, View *)) command->callback) (button, v);
+ }
+ GtkWidget *cc_luma_view_command (View *v, const char *caption, GCallback callback)
+ {
+   GtkWidget *w = gtk_button_new_with_label (caption);
+   Command *command = g_new0 (Command, 1); command->callback = callback;
+-  g_object_set_data_full (G_OBJECT (w), "cf-command", command, g_free);
++  command->page = g_strdup (v->page); command->generation = v->generation;
++  g_object_set_data_full (G_OBJECT (w), "cf-command", command, (GDestroyNotify) command_free);
+   g_signal_connect_object (w, "clicked", G_CALLBACK (command_clicked), v->root, 0);
+   return w;
+ }
+@@ -739,6 +774,7 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "sound-alert")) cc_luma_view_sound_alert_render (v);
+   else if (g_str_equal (v->page, "power")) cc_luma_view_power_render (v);
+   else if (g_str_equal (v->page, "mouse")) cc_luma_view_pointer_render (v);
++  else if (g_str_equal (v->page, "a11y") || g_str_has_prefix (v->page, "a-")) cc_luma_view_a11y_render (v);
+   else if (g_str_equal (v->page, "keyboard")) cc_luma_view_keyboard_render (v);
+   else if (g_str_equal (v->page, "defaults")) cc_luma_view_defaults_render (v);
+   else if (g_str_equal (v->page, "media")) cc_luma_view_media_render (v);
+@@ -831,6 +867,7 @@ static gboolean page_valid (CcLumaFixture *model, const char *page)
+   if (g_str_has_prefix (page, "app:")) return cc_luma_fixture_prepare_app (model, page + 4, NULL);
+   if (g_str_equal (page, "power")) return cc_luma_power_fixture_validate (model);
+   if (g_str_equal (page, "mouse")) return cc_luma_pointer_validate (model);
++  if (g_str_equal (page, "a11y") || g_str_has_prefix (page, "a-")) return cc_luma_a11y_validate (model);
+   if (g_str_equal (page, "keyboard")) return cc_luma_keyboard_validate (model);
+   if (g_str_equal (page, "defaults") || g_str_equal (page, "media")) return cc_luma_application_options_validate (model);
+   if (g_str_equal (page, "displays")) return cc_luma_displays_validate (model);
+@@ -893,6 +930,10 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   g_signal_connect_object (pick, "activate", G_CALLBACK (pick_selected), v->root, 0);
+   g_action_map_add_action (G_ACTION_MAP (v->actions), G_ACTION (pick));
+   g_object_unref (pick);
++  GSimpleAction *scoped_pick = g_simple_action_new ("pick-generation", G_VARIANT_TYPE ("(ssst)"));
++  g_signal_connect_object (scoped_pick, "activate", G_CALLBACK (pick_generation), v->root, 0);
++  g_action_map_add_action (G_ACTION_MAP (v->actions), G_ACTION (scoped_pick));
++  g_object_unref (scoped_pick);
+   gtk_widget_insert_action_group (v->root, "cf", G_ACTION_GROUP (v->actions));
+   g_object_set_data_full (G_OBJECT (v->root), "cf-view", v, (GDestroyNotify) view_free);
+   v->center = g_object_ref_sink (LUMA_ACTION_CENTER (luma_action_center_new (NULL)));
+diff --git a/shell/meson.build b/shell/meson.build
+index 5e1eac9..a9c0b59 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -277,7 +277,11 @@ test('luma-settings-folder-portal', folder_portal_test,
+     'DBUS_SYSTEM_BUS_ADDRESS=unix:path=' + meson.current_build_dir() / 'luma-folder-private-missing',
+     'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
+ # The caller supplies a private display and the versioned v70 fixture.
+-test('luma-settings-view', fixture_view_test, env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
++# The expanded serial suite includes all eighteen Apps details at both widths
++# and real menu/dialog transitions. Give the runner time to execute every
++# assertion; the tests' 100 ms root-release deadline remains unchanged.
++test('luma-settings-view', fixture_view_test, timeout: 180,
++  env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
+ 
+ if host_is_linux
+   network_adapter_test = executable('test-luma-network',
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index b88e12d..8496026 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -700,6 +700,61 @@ static void apps_model (void)
+   }
+ }
+ 
++static void accessibility_model (void)
++{
++  g_autoptr(CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_nonnull (model);
++  g_assert_true (cc_luma_a11y_validate (model));
++  g_autofree char *data_before = json_to_string (
++    json_object_get_member (cc_luma_fixture_get_data (model), "CFSZ"), FALSE);
++  gboolean wifi_before = json_node_get_boolean (cc_luma_fixture_get (model, "wifi"));
++  gint64 volume_before = json_node_get_int (cc_luma_fixture_get (model, "vol"));
++  g_autoptr(JsonNode) enabled = json_node_init_boolean (json_node_alloc (), TRUE);
++  g_assert_true (cc_luma_a11y_set (model, "hc", enabled, NULL));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "hc")));
++  g_assert_false (cc_luma_a11y_set (model, "wifi", enabled, NULL));
++  g_assert_cmpint (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")), ==, wifi_before);
++  /* Initial zoom 2 is a JSON integer. Real half-step input must work without
++   * relaxing the ordinary exact-type setter or accepting arbitrary factors. */
++  g_autoptr(JsonNode) fractional = json_node_init_double (json_node_alloc (), 2.5);
++  g_assert_false (cc_luma_fixture_set (model, "zoomX", fractional, NULL));
++  g_assert_true (cc_luma_a11y_set (model, "zoomX", fractional, NULL));
++  g_assert_cmpfloat (json_node_get_double (cc_luma_fixture_get (model, "zoomX")), ==, 2.5);
++  const double invalid_factors[] = { 0.5, 1.25, 2.3, 10.5, NAN, INFINITY, -INFINITY };
++  for (guint i = 0; i < G_N_ELEMENTS (invalid_factors); i++) {
++    g_autoptr(JsonNode) value = json_node_init_double (json_node_alloc (), invalid_factors[i]);
++    g_autoptr(GError) error = NULL;
++    g_assert_false (cc_luma_a11y_set (model, "zoomX", value, &error));
++    g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++    g_assert_cmpfloat (json_node_get_double (cc_luma_fixture_get (model, "zoomX")), ==, 2.5);
++  }
++  const double endpoints[] = { 1, 1.5, 10 };
++  for (guint i = 0; i < G_N_ELEMENTS (endpoints); i++) {
++    g_autoptr(JsonNode) value = json_node_init_double (json_node_alloc (), endpoints[i]);
++    g_assert_true (cc_luma_a11y_set (model, "zoomX", value, NULL));
++    g_assert_cmpfloat (json_node_get_double (cc_luma_fixture_get (model, "zoomX")), ==, endpoints[i]);
++  }
++  g_autoptr(JsonNode) bad_integer = json_node_init_double (json_node_alloc (), 50.5);
++  g_assert_false (cc_luma_a11y_set (model, "repDelay", bad_integer, NULL));
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "repDelay")), ==, 50);
++  g_autoptr(JsonNode) bad_choice = json_node_init_string (json_node_alloc (), "unpublished-choice");
++  g_assert_false (cc_luma_a11y_set (model, "cursor", bad_choice, NULL));
++  g_assert_false (cc_luma_a11y_set (model, "zoomF", bad_choice, NULL));
++  g_assert_false (cc_luma_fixture_set_number (model, "hc", 1, NULL));
++  g_assert_false (cc_luma_fixture_set_number (model, "no-such-setting", 1, NULL));
++  g_assert_false (cc_luma_fixture_set_number (model, "zoomX", NAN, NULL));
++  /* A malformed peer is rejected before editing a valid boolean. */
++  g_autoptr(JsonNode) malformed = json_node_init_int (json_node_alloc (), 101);
++  g_assert_true (cc_luma_fixture_set (model, "repSpeed", malformed, NULL));
++  g_assert_false (cc_luma_a11y_validate (model));
++  g_assert_false (cc_luma_a11y_set (model, "reader", enabled, NULL));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "reader")));
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "vol")), ==, volume_before);
++  g_autofree char *data_after = json_to_string (
++    json_object_get_member (cc_luma_fixture_get_data (model), "CFSZ"), FALSE);
++  g_assert_cmpstr (data_after, ==, data_before);
++}
++
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -727,6 +782,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/keyboard", keyboard_model);
+       g_test_add_func ("/settings/fixture/application-options", application_options_model);
+       g_test_add_func ("/settings/fixture/apps", apps_model);
++      g_test_add_func ("/settings/fixture/accessibility", accessibility_model);
+     }
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-properties.c b/shell/test-luma-properties.c
+index 16148d9..3eafb02 100644
+--- a/shell/test-luma-properties.c
++++ b/shell/test-luma-properties.c
+@@ -2,6 +2,7 @@
+ #include "cc-luma-properties.h"
+ #include "cc-luma-services.h"
+ #include <math.h>
++#include <string.h>
+ #include "cc-object-storage.h"
+ #define NAME "org.project_luma.SettingsPropertiesTest"
+ #define PATH "/org/project_luma/SettingsPropertiesTest"
+@@ -156,6 +157,105 @@ static void service_contracts (void)
+   g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
+ }
+ 
++typedef struct { guint completed; gboolean success; GError *error; } ReaderSeen;
++static guint reader_calls;
++static gboolean reader_hold;
++static gboolean reader_error;
++static GDBusMethodInvocation *reader_pending;
++static void reader_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  ReaderSeen *seen = data;
++  seen->success = cc_luma_services_reader_preferences_finish (G_DBUS_CONNECTION (source), result, &seen->error);
++  seen->completed++;
++}
++static void reader_method (GDBusConnection *connection, const char *sender,
++  const char *path, const char *interface, const char *method,
++  GVariant *parameters, GDBusMethodInvocation *invocation, gpointer data)
++{
++  g_assert_cmpstr (method, ==, "ShowPreferences");
++  g_assert_cmpstr (path, ==, "/org/gnome/Orca/Service");
++  g_assert_cmpstr (interface, ==, "org.gnome.Orca.Service");
++  g_assert_true (g_variant_is_of_type (parameters, G_VARIANT_TYPE_UNIT));
++  reader_calls++;
++  if (reader_error) {
++    g_dbus_method_invocation_return_dbus_error (invocation, "org.gnome.Orca.Service.Error", "Private reader refused preferences");
++    return;
++  }
++  if (reader_hold) { g_assert_null (reader_pending); reader_pending = g_object_ref (invocation); }
++  else g_dbus_method_invocation_return_value (invocation, NULL);
++}
++static void reader_name (const char *method)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = g_dbus_connection_call_sync (service,
++    "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", method,
++    g_str_equal (method, "RequestName") ? g_variant_new ("(su)", "org.gnome.Orca.Service", 0u) :
++      g_variant_new ("(s)", "org.gnome.Orca.Service"),
++    G_VARIANT_TYPE ("(u)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
++  g_assert_no_error (error); g_assert_nonnull (reply);
++  guint code; g_variant_get (reply, "(u)", &code); g_assert_cmpuint (code, ==, 1);
++}
++static void reader_preferences (void)
++{
++  /* This name exists exclusively on GTestDBus. No installed reader or user
++   * session bus is contacted, including the absent-owner case. */
++  const char *xml = "<node><interface name='org.gnome.Orca.Service'><method name='ShowPreferences'/></interface></node>";
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GDBusNodeInfo) info = g_dbus_node_info_new_for_xml (xml, &error);
++  g_assert_no_error (error);
++  const GDBusInterfaceVTable vtable = { .method_call = reader_method };
++  guint registered = g_dbus_connection_register_object (service,
++    "/org/gnome/Orca/Service", info->interfaces[0], &vtable, NULL, NULL, &error);
++  g_assert_no_error (error); g_assert_cmpuint (registered, >, 0);
++  reader_name ("RequestName");
++  ReaderSeen seen = { 0 };
++  cc_luma_services_reader_preferences_async (service, NULL, reader_done, &seen);
++  g_assert_cmpuint (seen.completed, ==, 0);
++  until (&seen.completed, 1); g_assert_true (seen.success); g_assert_no_error (seen.error);
++  g_assert_cmpuint (reader_calls, ==, 1);
++  g_autoptr(GCancellable) cancel = g_cancellable_new ();
++  g_cancellable_cancel (cancel); seen = (ReaderSeen) { 0 };
++  cc_luma_services_reader_preferences_async (service, cancel, reader_done, &seen);
++  until (&seen.completed, 1); g_assert_false (seen.success);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_CANCELLED); g_clear_error (&seen.error);
++  g_assert_cmpuint (reader_calls, ==, 1);
++  g_cancellable_reset (cancel); reader_hold = TRUE; seen = (ReaderSeen) { 0 };
++  cc_luma_services_reader_preferences_async (service, cancel, reader_done, &seen);
++  until (&reader_calls, 2); g_assert_nonnull (reader_pending);
++  g_cancellable_cancel (cancel); until (&seen.completed, 1);
++  g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_CANCELLED);
++  g_clear_error (&seen.error);
++  g_dbus_method_invocation_return_value (reader_pending, NULL); g_clear_object (&reader_pending);
++  spin (100); g_assert_cmpuint (seen.completed, ==, 1); reader_hold = FALSE;
++  /* An owner that never replies must also finish. Keep this assertion
++   * independent of cancellation so the native five-second bound is tested. */
++  reader_hold = TRUE; seen = (ReaderSeen) { 0 };
++  gint64 started = g_get_monotonic_time ();
++  cc_luma_services_reader_preferences_async (service, NULL, reader_done, &seen);
++  until (&reader_calls, 3); g_assert_nonnull (reader_pending);
++  while (!seen.completed && g_get_monotonic_time () - started < 7000000) spin (1);
++  g_assert_cmpuint (seen.completed, ==, 1); g_assert_false (seen.success);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT); g_clear_error (&seen.error);
++  g_assert_cmpint (g_get_monotonic_time () - started, <, 7000000);
++  g_dbus_method_invocation_return_value (reader_pending, NULL); g_clear_object (&reader_pending);
++  spin (100); g_assert_cmpuint (seen.completed, ==, 1); reader_hold = FALSE;
++  reader_error = TRUE; seen = (ReaderSeen) { 0 };
++  cc_luma_services_reader_preferences_async (service, NULL, reader_done, &seen);
++  until (&seen.completed, 1); g_assert_false (seen.success); g_assert_nonnull (seen.error);
++  g_assert_true (g_dbus_error_is_remote_error (seen.error));
++  g_autofree char *remote = g_dbus_error_get_remote_error (seen.error);
++  g_assert_cmpstr (remote, ==, "org.gnome.Orca.Service.Error");
++  g_assert_nonnull (strstr (seen.error->message, "Private reader refused preferences"));
++  g_clear_error (&seen.error); reader_error = FALSE;
++  reader_name ("ReleaseName"); seen = (ReaderSeen) { 0 };
++  cc_luma_services_reader_preferences_async (service, NULL, reader_done, &seen);
++  until (&seen.completed, 1); g_assert_false (seen.success); g_assert_nonnull (seen.error);
++  g_assert_true (g_error_matches (seen.error, G_DBUS_ERROR, G_DBUS_ERROR_NAME_HAS_NO_OWNER) ||
++    g_error_matches (seen.error, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN));
++  g_clear_error (&seen.error); g_assert_cmpuint (reader_calls, ==, 4);
++  g_assert_true (g_dbus_connection_unregister_object (service, registered));
++}
++
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -174,6 +274,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/properties/missing-and-cancelled", missing_and_cancelled);
+   g_test_add_func ("/settings/properties/invalid", invalid);
+   g_test_add_func ("/settings/properties/native-contracts", service_contracts);
++  g_test_add_func ("/settings/services/reader-preferences", reader_preferences);
+   int status = g_test_run ();
+   cc_object_storage_destroy (); g_dbus_connection_unregister_object (service, registered);
+   g_dbus_connection_close_sync (service, NULL, NULL); g_clear_object (&service); spin (100); g_test_dbus_down (bus);
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 9d12930..f1043e5 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -917,6 +917,112 @@ static void wait_dialog_closed (GtkWidget *window)
+   g_assert_null (find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG));
+ }
+ 
++static void accessibility_view (void)
++{
++  const int widths[] = { 1180, 390 };
++  for (guint presentation = 0; presentation < G_N_ELEMENTS (widths); presentation++) {
++    g_autoptr(CcLumaFixture) model = load ();
++    g_autoptr(GError) error = NULL;
++    GtkWidget *window = gtk_window_new ();
++    GtkWidget *view = cc_luma_view_new (model, "a11y", &error);
++    g_assert_no_error (error); g_assert_nonnull (view);
++    View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++    gtk_window_set_child (GTK_WINDOW (window), view);
++    gtk_window_set_default_size (GTK_WINDOW (window), widths[presentation], 740);
++    gtk_window_present (GTK_WINDOW (window)); wait_ms (150);
++    g_assert_cmpint (gtk_widget_get_width (window), ==, widths[presentation]);
++    g_assert_true (gtk_widget_get_mapped (view));
++    g_assert_true (has_text (view, "Nothing turned on"));
++    const char *routes[] = { "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
++    for (guint i = 0; i < G_N_ELEMENTS (routes); i++) {
++      g_autofree char *name = g_strconcat ("cf-go-", routes[i], NULL);
++      g_assert_true (LUMA_IS_DETAILS_ITEM (find_name (view, name)));
++    }
++    g_signal_emit_by_name (find_name (view, "cf-go-a-see"), "clicked"); wait_ms (100);
++    g_assert_cmpstr (v->page, ==, "a-see");
++    g_signal_emit_by_name (find_name (view, "cf-reader-options"), "clicked"); drain ();
++    g_assert_true (has_text (window, "Opens screen reader settings"));
++    /* The public menu uses a real phone drawer. Changing a peer while its
++     * action is queued must not let an old selection overwrite new state. */
++    g_signal_emit_by_name (find_name (view, "cf-cursor"), "clicked"); wait_ms (100);
++    GtkWidget *menu = find_type (window, widths[presentation] == 390 ? LUMA_TYPE_MENU_DRAWER : LUMA_TYPE_FLOATING_MENU);
++    g_assert_nonnull (menu);
++    GtkWidget *medium = find_button_caption (menu, "Medium"); g_assert_nonnull (medium);
++    g_object_ref (medium);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-hc")), TRUE);
++    g_signal_emit_by_name (medium, "clicked"); g_object_unref (medium); wait_ms (500);
++    g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "cursor")), ==, "default");
++    g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "hc")));
++    g_signal_emit_by_name (find_name (view, "cf-cursor"), "clicked"); wait_ms (100);
++    menu = find_type (window, widths[presentation] == 390 ? LUMA_TYPE_MENU_DRAWER : LUMA_TYPE_FLOATING_MENU);
++    g_assert_nonnull (menu);
++    medium = find_button_caption (menu, "Medium"); g_assert_nonnull (medium);
++    g_signal_emit_by_name (medium, "clicked"); wait_ms (500);
++    g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "cursor")), ==, "m");
++    GtkWidget *old_contrast = g_object_ref (find_name (view, "cf-hc"));
++    g_signal_emit_by_name (find_name (view, "cf-go-a11y"), "back"); wait_ms (100);
++    g_assert_true (has_text (view, "1 turned on"));
++    g_signal_emit_by_name (find_name (view, "cf-go-a-hear"), "clicked"); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (old_contrast), FALSE); drain (); g_object_unref (old_contrast);
++    g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "hc")));
++    g_assert_null (find_name (view, "cf-flash"));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-vAlert")), TRUE); wait_ms (100);
++    GtkWidget *flash = find_name (view, "cf-flash"); g_assert_nonnull (flash);
++    g_signal_emit_by_name (find_name (view, "cf-vAlertHow"), "changed", "screen"); wait_ms (100);
++    g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "vAlertHow")), ==, "screen");
++    g_signal_emit_by_name (find_name (view, "cf-flash"), "clicked"); drain ();
++    /* This exercises the native private-window bell, not missing overlay paint. */
++    g_assert_null (cc_luma_view_get_error (view));
++    g_signal_emit_by_name (find_name (view, "cf-go-a11y"), "back"); wait_ms (100);
++    g_assert_true (has_text (view, "2 turned on"));
++    g_signal_emit_by_name (find_name (view, "cf-go-a-type"), "clicked"); wait_ms (100);
++    GtkWidget *old_delay = g_object_ref (find_name (view, "cf-repDelay"));
++    g_assert_true (GTK_IS_RANGE (old_delay));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-rep")), FALSE); wait_ms (100);
++    g_assert_null (find_name (view, "cf-repDelay")); g_assert_null (find_name (view, "cf-repSpeed"));
++    gtk_range_set_value (GTK_RANGE (old_delay), 95); drain (); g_object_unref (old_delay);
++    g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "repDelay")), ==, 50);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-rep")), TRUE); wait_ms (100);
++    GtkWidget *delay = find_name (view, "cf-repDelay");
++    gtk_range_set_value (GTK_RANGE (delay), 25); drain ();
++    g_assert_true (find_name (view, "cf-repDelay") == delay);
++    g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "repDelay")), ==, 25);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-blink")), FALSE); wait_ms (100);
++    g_assert_null (find_name (view, "cf-blinkS"));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-blink")), TRUE); wait_ms (100);
++    g_assert_true (GTK_IS_RANGE (find_name (view, "cf-blinkS")));
++    g_signal_emit_by_name (find_name (view, "cf-go-a11y"), "back"); wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-go-a-point"), "clicked"); wait_ms (100);
++    GtkWidget *double_click = find_name (view, "cf-dbl");
++    g_assert_true (GTK_IS_RANGE (double_click));
++    gtk_range_set_value (GTK_RANGE (double_click), 87); drain ();
++    g_assert_true (find_name (view, "cf-dbl") == double_click);
++    g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "dbl")), ==, 87);
++    g_assert_true (GTK_IS_SWITCH (find_name (view, "cf-hold")));
++    g_assert_true (GTK_IS_SWITCH (find_name (view, "cf-hover")));
++    g_signal_emit_by_name (find_name (view, "cf-go-a11y"), "back"); wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-go-a-zoom"), "clicked"); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-zoom")), TRUE); wait_ms (100);
++    GtkWidget *factor = find_name (view, "cf-zoomX");
++    g_assert_true (GTK_IS_RANGE (factor));
++    gtk_range_set_value (GTK_RANGE (factor), 2.5); drain ();
++    g_assert_true (find_name (view, "cf-zoomX") == factor);
++    g_assert_cmpfloat (json_node_get_double (cc_luma_fixture_get (model, "zoomX")), ==, 2.5);
++    g_assert_true (has_text (view, "2.5×"));
++    g_signal_emit_by_name (find_name (view, "cf-zoomF"), "clicked"); wait_ms (100);
++    menu = find_type (window, widths[presentation] == 390 ? LUMA_TYPE_MENU_DRAWER : LUMA_TYPE_FLOATING_MENU);
++    g_assert_nonnull (menu);
++    GtkWidget *center = find_button_caption (menu, "Keep it centred"); g_assert_nonnull (center);
++    g_signal_emit_by_name (center, "clicked"); wait_ms (500);
++    g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "zoomF")), ==, "center");
++    g_assert_cmpint (gtk_widget_get_width (window), ==, widths[presentation]);
++    g_assert_null (cc_luma_view_get_error (view));
++    gpointer weak_view = view; g_object_add_weak_pointer (G_OBJECT (view), &weak_view);
++    gtk_window_destroy (GTK_WINDOW (window)); wait_ms (100);
++    g_assert_null (weak_view);
++  }
++}
++
+ static void apps_view (void)
+ {
+   g_autofree char *dir = asset_fixture ();
+@@ -979,8 +1085,13 @@ static void apps_view (void)
+         g_assert_cmpstr (v->page, ==, target); g_assert_null (find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG));
+       }
+       g_assert_null (cc_luma_view_get_error (view));
++      GtkWidget *old_open = g_object_ref (find_name (view, "cf-app-open"));
+       GtkWidget *back = find_name (view, "cf-go-apps"); g_assert_true (LUMA_IS_NAVIGATION_TRAIL_BAR (back));
+       g_signal_emit_by_name (back, "back"); wait_ms (100); g_assert_cmpstr (v->page, ==, "apps");
++      /* Retaining an old action must not act on a different current page. */
++      g_signal_emit_by_name (old_open, "clicked"); drain ();
++      g_assert_null (cc_luma_view_get_error (view)); g_assert_cmpstr (v->page, ==, "apps");
++      g_object_unref (old_open);
+     }
+     /* A confirmation may not act on a newer page or generation. */
+     g_signal_emit_by_name (find_name (view, "cf-go-app:photos"), "clicked"); wait_ms (100);
+@@ -1070,6 +1181,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/keyboard", keyboard_view);
+   g_test_add_func ("/settings/view/application-options", application_options_view);
+   g_test_add_func ("/settings/view/apps", apps_view);
++  g_test_add_func ("/settings/view/accessibility", accessibility_view);
+   g_test_add_func ("/settings/view/displays", displays_view);
+   g_test_add_func ("/settings/view/sound", sound_views);
+   g_test_add_func ("/settings/view/nightlight", nightlight_view);
+-- 
+2.55.0
+

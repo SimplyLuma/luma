@@ -1,0 +1,114 @@
+From: Project Luma
+Subject: [PATCH] luma: keep the Shelf and note stack off the lock screen
+
+Fullscreen tracking set tracked chrome visible whenever displays or fullscreen state changed, so the dock showed over the lock screen after waking with different monitors. Owners can now put tracked chrome away, and the Shelf and note stack do so whenever the session is locked.
+---
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+index c0e011c..29bb3ae 100644
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -984,12 +984,32 @@ export const LayoutManager = GObject.registerClass({
+         if (!actorData.trackFullscreen)
+             return;
+ 
++        // Chrome that its owner has put away (the Shelf and the note stack on
++        // the lock screen, for instance) stays away. Deciding visibility from
++        // fullscreen state alone showed the dock over the lock screen whenever
++        // the displays changed while the session was locked.
++        if (actorData.actor._lumaChromeHidden) {
++            actorData.actor.visible = false;
++            return;
++        }
++
+         const monitor = this.findMonitorForActor(actorData.actor);
+         actorData.actor.visible = !(global.window_group.visible &&
+                                     monitor &&
+                                     monitor.inFullscreen);
+     }
+ 
++    // Shows or puts away tracked chrome on behalf of its owner, leaving the
++    // fullscreen rule in charge whenever the owner wants it shown.
++    setChromeHidden(actor, hidden) {
++        actor._lumaChromeHidden = hidden;
++        const actorData = this._trackedActors.find(data => data.actor === actor);
++        if (actorData?.trackFullscreen)
++            this._updateActorVisibility(actorData);
++        else
++            actor.visible = !hidden;
++    }
++
+     // Luma Grid shows every window as a card, so it hides the windows
+     // themselves exactly as the overview does.
+     setWindowsHiddenForGrid(hidden) {
+diff --git a/js/ui/lumaStickyDock.js b/js/ui/lumaStickyDock.js
+index c542cf9..5d342e8 100644
+--- a/js/ui/lumaStickyDock.js
++++ b/js/ui/lumaStickyDock.js
+@@ -124,6 +124,9 @@ class LumaStickyDock extends St.BoxLayout {
+         });
+         Main.layoutManager.connectObject('monitors-changed',
+             () => this._reposition(), this);
++        // The stack belongs to a person's desktop, never to the lock screen.
++        Main.sessionMode.connectObject('updated', () => this._syncVisible(), this);
++        this._syncVisible();
+ 
+         // Claimed before the application is asked for anything, so an
+         // application starting later sees it and leaves the stack to us.
+@@ -204,10 +207,16 @@ class LumaStickyDock extends St.BoxLayout {
+         // With no notes there are no edges to show, and hiding the button too
+         // would leave nothing on screen at all.
+         this._new.visible = this._open || this._tabs.length === 0;
+-        this.visible = true;
++        this._syncVisible();
+         this._reposition();
+     }
+ 
++    _syncVisible() {
++        Main.layoutManager.setChromeHidden(this,
++            Main.sessionMode.isLocked || Main.sessionMode.isGreeter ||
++            !Main.sessionMode.hasOverview);
++    }
++
+     // -- Resting and opening ----------------------------------------------
+ 
+     _hoverChanged() {
+@@ -265,5 +274,6 @@ class LumaStickyDock extends St.BoxLayout {
+         if (this._nameId)
+             Gio.bus_unown_name(this._nameId);
+         Main.layoutManager.disconnectObject(this);
++        Main.sessionMode.disconnectObject(this);
+     }
+ });
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 1b8622f..915dcee 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -374,6 +374,10 @@ class Shelf extends St.Widget {
+         St.ThemeContext.get_for_stage(global.stage).connectObject(
+             'notify::scale-factor', () => this._sync(), this);
+         Main.sessionMode.connectObject('updated', () => {
++            // Put the Shelf away the moment the session locks; the full
++            // relayout can wait for idle, the lock screen cannot.
++            if (!this._isDesktopSession())
++                Main.layoutManager.setChromeHidden(this, true);
+             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._sync());
+         }, this);
+         Main.layoutManager.connectObject('monitors-changed', () => this._sync(), this);
+@@ -745,7 +749,7 @@ class Shelf extends St.Widget {
+         this._surface.translation_y = 0;
+         if (!this._isDesktopSession()) {
+             this._trackWorkArea(false);
+-            this.hide();
++            Main.layoutManager.setChromeHidden(this, true);
+             this._restorePanelActors();
+             return;
+         }
+@@ -753,7 +757,7 @@ class Shelf extends St.Widget {
+         this._retireLegacyDesktopDock();
+         Main.panel.hide();
+         Main.layoutManager.panelBox.hide();
+-        this.show();
++        Main.layoutManager.setChromeHidden(this, false);
+ 
+         const dockVisible = this._settings.get_boolean('shelf-dock-visible');
+         const actionsVisible = this._settings.get_boolean('shelf-actions-visible');

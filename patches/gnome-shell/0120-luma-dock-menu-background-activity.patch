@@ -1,0 +1,245 @@
+From: Project Luma
+Subject: [PATCH] luma: "Run in the Background" in the dock menu (ADR-033)
+
+Apps with a background agent get a switch row in their dock menu, with the
+one sentence that says what the switch is for ("Get messages and calls when
+Messages is closed"). When an app people rely on is off, the sentence becomes
+what they are missing instead ("You won't get messages or calls while
+Messages is closed"). The state belongs to luma-background: the row reads it
+with org.projectluma.Background1.GetAgent when the menu opens, follows
+AgentChanged while it exists, and asks for changes with SetAllowed, then shows
+whatever the service answers. Apps without an agent, or a session without the
+service, get no row.
+
+Generated against the Shell .80 build tree and landed as 0120 on top of
+0117-0119 (release .81). It touches js/ui/appMenu.js only and uses existing
+theme classes (background-app-item, subtitle).
+---
+diff --git a/js/ui/appMenu.js b/js/ui/appMenu.js
+index 77dab40..50da2e4 100644
+--- a/js/ui/appMenu.js
++++ b/js/ui/appMenu.js
+@@ -1,6 +1,8 @@
++import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+@@ -11,6 +13,88 @@ import * as ParentalControlsManager from '../misc/parentalControlsManager.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SessionApplications from './sessionApplications.js';
+ 
++Gio._promisify(Gio.DBusConnection.prototype, 'call');
++
++const BACKGROUND_BUS_NAME = 'org.projectluma.Background1';
++const BACKGROUND_OBJECT_PATH = '/org/projectluma/Background1';
++const BACKGROUND_INTERFACE = 'org.projectluma.Background1';
++
++/*
++ * "Run in the Background" (ADR-033): a switch row for apps with a background
++ * agent, with the one sentence that says what the switch is for. The state
++ * belongs to luma-background; this row only shows it and asks for changes.
++ */
++const BackgroundActivityItem = GObject.registerClass({
++    Signals: {'toggled': {param_types: [GObject.TYPE_BOOLEAN]}},
++}, class BackgroundActivityItem extends PopupMenu.PopupBaseMenuItem {
++    _init() {
++        super._init({style_class: 'background-app-item app-menu-background-item'});
++
++        const box = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.add_child(box);
++
++        this.label = new St.Label({
++            text: _('Run in the Background'),
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        box.add_child(this.label);
++
++        // Wrapped to the width of an ordinary menu rather than widening it.
++        this._subtitle = new St.Label({style_class: 'subtitle', style: 'max-width: 16em;'});
++        this._subtitle.clutter_text.set({
++            line_wrap: true,
++            ellipsize: 0,
++        });
++        box.add_child(this._subtitle);
++
++        this._switch = new PopupMenu.Switch(false);
++        this._switch.set({
++            x_expand: false,
++            x_align: Clutter.ActorAlign.END,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.add_child(this._switch);
++
++        this.label_actor = this.label;
++        this.accessible_role = Atk.Role.CHECK_MENU_ITEM;
++    }
++
++    get state() {
++        return this._switch.state;
++    }
++
++    update(agent) {
++        const allowed = agent['allowed'];
++        this._switch.state = allowed;
++        // When an app people rely on is off, say what they are missing;
++        // otherwise say what the switch gives them.
++        const essentialAndOff = !allowed && agent['essential'];
++        this._subtitle.text = essentialAndOff ? agent['consequence'] : agent['explanation'];
++        this._subtitle.visible = this._subtitle.text !== '';
++        if (allowed)
++            this.add_accessible_state(Atk.StateType.CHECKED);
++        else
++            this.remove_accessible_state(Atk.StateType.CHECKED);
++        this.accessible_description = this._subtitle.text;
++    }
++
++    activate(event) {
++        if (this.reactive) {
++            this._switch.toggle();
++            this.emit('toggled', this._switch.state);
++        }
++        // Space toggles without closing the menu, as for any switch row.
++        if (event.type() === Clutter.EventType.KEY_PRESS &&
++            event.get_key_symbol() === Clutter.KEY_space)
++            return;
++        super.activate(event);
++    }
++});
++
+ export class AppMenu extends PopupMenu.PopupMenu {
+     /**
+      * @param {Clutter.Actor} sourceActor - actor the menu is attached to
+@@ -70,6 +154,21 @@ export class AppMenu extends PopupMenu.PopupMenu {
+             Main.overview.hide();
+         });
+ 
++        this._backgroundSeparator = new PopupMenu.PopupSeparatorMenuItem();
++        this.addMenuItem(this._backgroundSeparator);
++        this._backgroundItem = new BackgroundActivityItem();
++        this._backgroundItem.connect('toggled',
++            (item, state) => this._setBackgroundAllowed(state).catch(logError));
++        this.addMenuItem(this._backgroundItem);
++        this._backgroundAgent = null;
++        this._backgroundSignalId = 0;
++        this._backgroundRequest = 0;
++        this._updateBackgroundItem();
++        this.connect('open-state-changed', (menu, open) => {
++            if (open)
++                this._queryBackground().catch(logError);
++        });
++
+         this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+ 
+         this._toggleFavoriteItem = this.addAction('', () => {
+@@ -138,6 +237,81 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateGpuItem();
+     }
+ 
++    _backgroundAppId() {
++        const id = this._app?.get_id() ?? '';
++        return id.endsWith('.desktop') ? id.slice(0, -'.desktop'.length) : '';
++    }
++
++    _updateBackgroundItem() {
++        const agent = this._backgroundAgent;
++        const show = agent !== null;
++        this._backgroundItem.visible = show;
++        this._backgroundSeparator.visible = show;
++        if (show)
++            this._backgroundItem.update(agent);
++    }
++
++    async _queryBackground() {
++        const appId = this._backgroundAppId();
++        const request = ++this._backgroundRequest;
++        if (!appId) {
++            this._backgroundAgent = null;
++            this._updateBackgroundItem();
++            return;
++        }
++        this._watchBackground();
++        let agent = null;
++        try {
++            const reply = await Gio.DBus.session.call(
++                BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH, BACKGROUND_INTERFACE,
++                'GetAgent', new GLib.Variant('(s)', [appId]),
++                new GLib.VariantType('(a{sv})'),
++                Gio.DBusCallFlags.NO_AUTO_START, 2000, null);
++            agent = reply.recursiveUnpack()[0];
++        } catch (error) {
++            // No agent for this app, or no background service: no row.
++            agent = null;
++        }
++        if (request !== this._backgroundRequest || appId !== this._backgroundAppId())
++            return;
++        this._backgroundAgent = agent;
++        this._updateBackgroundItem();
++    }
++
++    _watchBackground() {
++        if (this._backgroundSignalId)
++            return;
++        this._backgroundSignalId = Gio.DBus.session.signal_subscribe(
++            BACKGROUND_BUS_NAME, BACKGROUND_INTERFACE, 'AgentChanged',
++            BACKGROUND_OBJECT_PATH, null, Gio.DBusSignalFlags.NONE,
++            (connection, sender, path, iface, signal, parameters) => {
++                const [appId, agent] = parameters.recursiveUnpack();
++                if (appId !== this._backgroundAppId())
++                    return;
++                this._backgroundAgent = agent;
++                this._updateBackgroundItem();
++            });
++    }
++
++    async _setBackgroundAllowed(allowed) {
++        const appId = this._backgroundAppId();
++        if (!appId)
++            return;
++        this._backgroundItem.reactive = false;
++        try {
++            await Gio.DBus.session.call(
++                BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH, BACKGROUND_INTERFACE,
++                'SetAllowed', new GLib.Variant('(sb)', [appId, allowed]),
++                null, Gio.DBusCallFlags.NONE, 10000, null);
++        } catch (error) {
++            logError(error, `Could not change background activity for ${appId}`);
++        } finally {
++            this._backgroundItem.reactive = true;
++            // The service's answer is the truth, whether or not the call worked.
++            await this._queryBackground();
++        }
++    }
++
+     _updateQuitItem() {
+         this._quitItem.visible = Boolean(this._app) &&
+             this._sessionApplications.isRunning(this._app);
+@@ -203,6 +377,10 @@ export class AppMenu extends PopupMenu.PopupMenu {
+ 
+     /** */
+     destroy() {
++        if (this._backgroundSignalId) {
++            Gio.DBus.session.signal_unsubscribe(this._backgroundSignalId);
++            this._backgroundSignalId = 0;
++        }
+         this.setApp(null);
+         super.destroy();
+     }
+@@ -251,6 +429,10 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateNewWindowItem();
+         this._updateFavoriteItem();
+         this._updateGpuItem();
++
++        this._backgroundAgent = null;
++        this._updateBackgroundItem();
++        this._queryBackground().catch(logError);
+     }
+ 
+     _queueUpdateWindowsSection() {

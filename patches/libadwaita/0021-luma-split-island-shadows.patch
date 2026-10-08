@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 15:30:00 -0500
+Subject: [PATCH] stylesheet: split-view pane islands keep their shadow off the neighbour
+
+Sidebar and content islands use a deep shadow whose negative spread is at least
+half its blur, so it never paints across the 9px gap onto the other pane.
+---
+
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index 333fbda..7e16baa 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -293,8 +293,10 @@ window.luma-native-window:not(.luma-app-window):not(.luma-files-window):not(.lum
+       background-color: unquote("@luma_content");
+       border: 1px solid unquote("@luma_line");
+       border-radius: 10px;
++      // Sibling islands: negative spread of at least half the blur keeps the
++      // deep shadow from painting across the 9px gap onto the next pane.
+       box-shadow: 0 2px 5px RGB(25 27 31 / 16%),
+-                  0 18px 36px -16px RGB(25 27 31 / 48%);
++                  0 10px 20px -14px RGB(25 27 31 / 40%);
+       outline: none;
+       --shade-color: transparent;
+       --sidebar-shade-color: transparent;
+@@ -337,7 +339,7 @@ window.luma-native-window:not(.luma-app-window):not(.luma-files-window):not(.lum
+       > .sidebar-pane,
+       > .content-pane {
+         box-shadow: 0 2px 6px RGB(0 0 0 / 42%),
+-                    0 20px 38px -15px RGB(0 0 0 / 78%);
++                    0 10px 22px -14px RGB(0 0 0 / 70%);
+       }
+     }
+   }

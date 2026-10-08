@@ -1,0 +1,20 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: give the shelf clock a gap wide enough to see
+
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1106,7 +1106,12 @@
+         this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+         // Use the shared inset rhythm instead of collapsing the gap when
+         // the configured font sizes consume the tile's nominal height.
+-        const clockGap = Math.max(3, Math.round(padding / 3));
++        //
++        // The floor is what decides this in practice, not the rhythm: at the
++        // default ten-pixel shelf padding the rhythm asks for three, so the
++        // floor was the answer at every setting anybody uses, and three pixels
++        // between a 13px time and a 9px date reads as no gap at all.
++        const clockGap = Math.max(7, Math.round(padding / 3));
+         this._statusClockBox.set_style(`padding: 0; spacing: ${clockGap}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],

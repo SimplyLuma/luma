@@ -1,0 +1,26 @@
+From e64ef5183deceb57854fab9e503759eaa4e9c711 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:37:22 +0000
+Subject: [PATCH] Filer: show fixture search results in list view
+
+---
+ src/nautilus-window.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 24f1cef..6efc03e 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1926,7 +1926,8 @@ apply_fixture_state (gpointer data)
+         return G_SOURCE_CONTINUE;
+     }
+ 
+-    if (g_str_has_prefix (state, "list"))
++    if (g_str_has_prefix (state, "list") ||
++        g_str_has_prefix (state, "search-"))
+     {
+         wanted_view = NAUTILUS_VIEW_LIST_ID;
+     }
+-- 
+2.55.0
+

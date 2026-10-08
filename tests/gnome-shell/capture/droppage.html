@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>drop</title>
+<style>html,body{margin:0;height:100%;font:16px sans-serif;background:#eef}#zone{position:fixed;inset:0;display:grid;place-items:center}</style>
+<div id="zone">Drop here</div>
+<script>
+// The window title carries the result for the oracle: "drop <target>" while
+// waiting, then "dropped <json>".
+const target = location.hash.slice(1) || 'chromium';
+document.title = `drop ${target}`;
+const zone = document.getElementById('zone');
+for (const type of ['dragenter', 'dragover'])
+  zone.addEventListener(type, e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+zone.addEventListener('drop', async e => {
+  e.preventDefault();
+  const dt = e.dataTransfer;
+  const files = [...dt.files].map(f => ({name: f.name, type: f.type, size: f.size}));
+  const result = {types: [...dt.types], files, uri: (dt.getData('text/uri-list') || '').slice(0, 120)};
+  document.title = `dropped ${JSON.stringify(result)}`;
+  zone.textContent = document.title;
+});
+</script>

@@ -1,0 +1,375 @@
+--- a/js/ui/workspace.js
++++ b/js/ui/workspace.js
+@@ -28,6 +28,11 @@
+ const LAYOUT_SPACE_WEIGHT = 0.1;
+ 
+ const BACKGROUND_CORNER_RADIUS_PIXELS = 30;
++
++const HANDHELD_CARD_WIDTH_RATIO = 0.78;
++const HANDHELD_CARD_HEIGHT_RATIO = 0.74;
++const HANDHELD_CARD_STEP_RATIO = 0.70;
++const HANDHELD_DISMISS_RATIO = 0.16;
+ 
+ // Window Thumbnail Layout Algorithm
+ // =================================
+@@ -426,6 +431,12 @@
+         this._lastBox = null;
+         this._windowSlots = [];
+         this._layout = null;
++
++        this._handheldSelectedIndex = -1;
++        this._handheldDragX = 0;
++        this._handheldDragY = 0;
++        this._handheldGestureAxis = null;
++        this._handheldAnimateNextAllocation = false;
+ 
+         this._needsLayout = true;
+ 
+@@ -445,6 +456,153 @@
+         this._workareasChangedId = 0;
+     }
+ 
++    get handheldMode() {
++        const monitor = Main.layoutManager.monitors[this._monitorIndex];
++        return GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld' &&
++            this._monitorIndex === Main.layoutManager.primaryIndex &&
++            monitor?.height > monitor?.width;
++    }
++
++    _ensureHandheldSelection() {
++        if (this._sortedWindows.length === 0) {
++            this._handheldSelectedIndex = -1;
++            return;
++        }
++
++        if (this._handheldSelectedIndex >= 0 &&
++            this._handheldSelectedIndex < this._sortedWindows.length)
++            return;
++
++        const focused = global.display.focus_window;
++        const focusedIndex = this._sortedWindows.findIndex(preview =>
++            this._windows.get(preview)?.metaWindow === focused);
++        if (focusedIndex >= 0) {
++            this._handheldSelectedIndex = focusedIndex;
++            return;
++        }
++
++        let newestIndex = 0;
++        let newestUserTime = -1;
++        this._sortedWindows.forEach((preview, index) => {
++            const userTime = this._windows.get(preview)?.metaWindow.get_user_time() ?? 0;
++            if (userTime >= newestUserTime) {
++                newestUserTime = userTime;
++                newestIndex = index;
++            }
++        });
++        this._handheldSelectedIndex = newestIndex;
++    }
++
++    _syncHandheldStacking() {
++        if (!this.handheldMode || !this._container)
++            return;
++
++        this._ensureHandheldSelection();
++        const windows = this._sortedWindows.slice().sort((a, b) => {
++            const aIndex = this._sortedWindows.indexOf(a);
++            const bIndex = this._sortedWindows.indexOf(b);
++            return Math.abs(bIndex - this._handheldSelectedIndex) -
++                Math.abs(aIndex - this._handheldSelectedIndex);
++        });
++
++        let sibling = null;
++        for (const window of windows) {
++            this._container.set_child_above_sibling(window, sibling);
++            sibling = window;
++        }
++    }
++
++    _getHandheldWindowSlots(containerBox) {
++        this._ensureHandheldSelection();
++
++        const width = containerBox.get_width();
++        const height = containerBox.get_height();
++        const centerX = containerBox.x1 + width / 2;
++        const centerY = containerBox.y1 + height * 0.47;
++        const maxCardWidth = width * HANDHELD_CARD_WIDTH_RATIO;
++        const maxCardHeight = height * HANDHELD_CARD_HEIGHT_RATIO;
++        const cardStep = width * HANDHELD_CARD_STEP_RATIO;
++
++        return this._sortedWindows.map((preview, index) => {
++            const bounds = preview.boundingBox;
++            const sourceWidth = Math.max(1, bounds.width);
++            const sourceHeight = Math.max(1, bounds.height);
++            const scale = Math.min(
++                maxCardWidth / sourceWidth,
++                maxCardHeight / sourceHeight,
++                WINDOW_PREVIEW_MAXIMUM_SCALE);
++            const cardWidth = Math.round(sourceWidth * scale);
++            const cardHeight = Math.round(sourceHeight * scale);
++            const selected = index === this._handheldSelectedIndex;
++            const x = Math.round(centerX - cardWidth / 2 +
++                (index - this._handheldSelectedIndex) * cardStep +
++                this._handheldDragX);
++            const y = Math.round(centerY - cardHeight / 2 +
++                (selected ? Math.min(0, this._handheldDragY) : 0));
++
++            return [x, y, cardWidth, cardHeight, preview];
++        });
++    }
++
++    beginHandheldGesture() {
++        if (!this.handheldMode)
++            return;
++        this._ensureHandheldSelection();
++        this._handheldDragX = 0;
++        this._handheldDragY = 0;
++        this._handheldGestureAxis = null;
++    }
++
++    updateHandheldGesture(x, y) {
++        if (!this.handheldMode)
++            return;
++
++        if (!this._handheldGestureAxis && Math.hypot(x, y) >= 12)
++            this._handheldGestureAxis = Math.abs(x) >= Math.abs(y) ? 'x' : 'y';
++
++        if (this._handheldGestureAxis === 'x') {
++            const atFirst = this._handheldSelectedIndex <= 0 && x > 0;
++            const atLast = this._handheldSelectedIndex >=
++                this._sortedWindows.length - 1 && x < 0;
++            this._handheldDragX = (atFirst || atLast) ? x * 0.28 : x;
++            this._handheldDragY = 0;
++        } else if (this._handheldGestureAxis === 'y') {
++            this._handheldDragX = 0;
++            this._handheldDragY = Math.min(0, y);
++        }
++        this.layout_changed();
++    }
++
++    endHandheldGesture(cancelled = false) {
++        if (!this.handheldMode)
++            return;
++
++        const width = this._container?.width ?? 0;
++        const height = this._container?.height ?? 0;
++        const dismiss = !cancelled && this._handheldGestureAxis === 'y' &&
++            this._handheldDragY < -height * HANDHELD_DISMISS_RATIO;
++        const move = !cancelled && this._handheldGestureAxis === 'x' &&
++            Math.abs(this._handheldDragX) > width * HANDHELD_DISMISS_RATIO;
++
++        if (move) {
++            const direction = this._handheldDragX < 0 ? 1 : -1;
++            this._handheldSelectedIndex = Math.clamp(
++                this._handheldSelectedIndex + direction,
++                0, this._sortedWindows.length - 1);
++        }
++
++        const selected = this._sortedWindows[this._handheldSelectedIndex];
++        this._handheldDragX = 0;
++        this._handheldDragY = 0;
++        this._handheldGestureAxis = null;
++        this._handheldAnimateNextAllocation = true;
++        this._syncHandheldStacking();
++        this.layout_changed();
++
++        if (dismiss)
++            selected?.requestClose();
++    }
++
+     _syncOpacity(actor, metaWindow) {
+         if (!metaWindow.showing_on_its_workspace())
+             actor.opacity = this._stateAdjustment.value * 255;
+@@ -651,7 +809,15 @@
+ 
+         const window = this._sortedWindows[0];
+ 
+-        if (inSessionTransition || !window) {
++        const handheldMode = this.handheldMode;
++        for (const preview of this._sortedWindows)
++            preview.setHandheldMode(handheldMode);
++
++        if (handheldMode) {
++            const [containerX, containerY] = containerBox.get_origin();
++            container.set_clip(containerX, containerY,
++                containerWidth, containerHeight);
++        } else if (inSessionTransition || !window) {
+             container.remove_clip();
+         } else {
+             const [, bottomOversize] = window.chromeHeights();
+@@ -667,7 +829,12 @@
+         }
+ 
+         let layoutChanged = false;
+-        if (!this._layoutFrozen || !this._lastBox) {
++        if (this.handheldMode) {
++            this._windowSlotsBox = box.copy();
++            this._windowSlots = this._getHandheldWindowSlots(this._windowSlotsBox);
++            layoutChanged = this._handheldAnimateNextAllocation;
++            this._handheldAnimateNextAllocation = false;
++        } else if (!this._layoutFrozen || !this._lastBox) {
+             if (this._needsLayout) {
+                 this._layout = this._createBestLayout(this._workarea);
+                 this._needsLayout = false;
+@@ -820,6 +987,11 @@
+         this._syncOverlay(window);
+         this._container.add_child(window);
+ 
++        if (this.handheldMode) {
++            this._handheldSelectedIndex = -1;
++            this._syncHandheldStacking();
++        }
++
+         this._needsLayout = true;
+         this.layout_changed();
+     }
+@@ -842,7 +1014,13 @@
+             window.remove_transition('allocation');
+ 
+         this._windows.delete(window);
+-        this._sortedWindows.splice(this._sortedWindows.indexOf(window), 1);
++        const sortedIndex = this._sortedWindows.indexOf(window);
++        this._sortedWindows.splice(sortedIndex, 1);
++        if (this.handheldMode && sortedIndex < this._handheldSelectedIndex)
++            this._handheldSelectedIndex--;
++        if (this.handheldMode &&
++            this._handheldSelectedIndex >= this._sortedWindows.length)
++            this._handheldSelectedIndex = this._sortedWindows.length - 1;
+ 
+         // The layout might be frozen and we might not update the windowSlots
+         // on the next allocation, so remove the slot now already
+@@ -855,6 +1033,7 @@
+             this._container.remove_child(window);
+ 
+         this._needsLayout = true;
++        this._syncHandheldStacking();
+         this.layout_changed();
+     }
+ 
+@@ -1059,6 +1238,28 @@
+         this._container.layout_manager = layoutManager;
+         this.add_child(this._container);
+ 
++        this._handheldPanGesture = new Clutter.PanGesture({
++            min_n_points: 1,
++            max_n_points: 1,
++        });
++        this._handheldPanGesture.set_begin_threshold(10);
++        this._handheldPanGesture.connect('may-recognize', () =>
++            layoutManager.handheldMode &&
++            Boolean(this.metaWorkspace?.active) &&
++            layoutManager.stateAdjustment.value > 0.92 &&
++            this._windows.length > 0);
++        this._handheldPanGesture.connect('recognize', () =>
++            layoutManager.beginHandheldGesture());
++        this._handheldPanGesture.connect('pan-update', gesture => {
++            const delta = gesture.get_accumulated_delta();
++            layoutManager.updateHandheldGesture(delta.get_x(), delta.get_y());
++        });
++        this._handheldPanGesture.connect('end', () =>
++            layoutManager.endHandheldGesture(false));
++        this._handheldPanGesture.connect('cancel', () =>
++            layoutManager.endHandheldGesture(true));
++        this._container.add_action(this._handheldPanGesture);
++
+         this.metaWorkspace = metaWorkspace;
+ 
+         this._overviewAdjustment = overviewAdjustment;
+--- a/js/ui/windowPreview.js
++++ b/js/ui/windowPreview.js
+@@ -438,6 +438,14 @@
+             window.delete(global.get_current_time());
+ 
+         this._closeRequested = true;
++    }
++
++    requestClose() {
++        this._deleteAll();
++    }
++
++    setHandheldMode(handheldMode) {
++        this._draggable.startGesture.set_enabled(!handheldMode);
+     }
+ 
+     addDialog(win) {
+--- a/js/ui/overviewControls.js
++++ b/js/ui/overviewControls.js
+@@ -25,6 +25,7 @@
+ const THUMBNAILS_SPACING_ADJUSTMENT_BOTTOM = 0.4;
+ 
+ const A11Y_SCHEMA = 'org.gnome.desktop.a11y.keyboard';
++const HANDHELD_ACTIVITY_VIEW_USES_DESKTOP_CHROME = false;
+ 
+ export const SIDE_CONTROLS_ANIMATION_TIME = 250;
+ 
+@@ -77,12 +78,26 @@
+         this._workAreaBox.set_size(workArea.width, workArea.height);
+     }
+ 
++    get _handheldMode() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        return GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld' &&
++            monitor?.height > monitor?.width;
++    }
++
+     _computeWorkspacesBoxForState(state, box, searchHeight, dashHeight, thumbnailsHeight, spacing) {
+         const workspaceBox = box.copy();
+         const [width, height] = workspaceBox.get_size();
+         const {y1: startY} = this._workAreaBox;
+         const {expandFraction} = this._workspacesThumbnails;
+ 
++        if (this._handheldMode &&
++            !HANDHELD_ACTIVITY_VIEW_USES_DESKTOP_CHROME &&
++            state === ControlsState.WINDOW_PICKER) {
++            workspaceBox.set_origin(...this._workAreaBox.get_origin());
++            workspaceBox.set_size(...this._workAreaBox.get_size());
++            return workspaceBox;
++        }
++
+         switch (state) {
+         case ControlsState.HIDDEN:
+             workspaceBox.set_origin(...this._workAreaBox.get_origin());
+@@ -161,8 +176,11 @@
+         const spacing = Math.round(height * VERTICAL_SPACING_RATIO);
+         let availableHeight = height;
+ 
+-        // Search entry
+-        const [searchHeight] = this._searchEntry.get_preferred_height(width);
++        // Search entry. Handheld Home owns application search, so Activity
++        // View dedicates the full work area to running application cards.
++        let [searchHeight] = this._searchEntry.get_preferred_height(width);
++        if (this._handheldMode)
++            searchHeight = 0;
+         childBox.set_origin(0, startY);
+         childBox.set_size(width, searchHeight);
+         this._searchEntry.allocate(childBox);
+@@ -170,7 +188,9 @@
+         availableHeight -= searchHeight + spacing;
+ 
+         // Dash
+-        const maxDashHeight = Math.round(box.get_height() * DASH_MAX_HEIGHT_RATIO);
++        const maxDashHeight = this._handheldMode
++            ? 0
++            : Math.round(box.get_height() * DASH_MAX_HEIGHT_RATIO);
+         this._dash.setMaxSize(width, maxDashHeight);
+ 
+         let [, dashHeight] = this._dash.get_preferred_height(width);
+@@ -183,7 +203,7 @@
+ 
+         // Workspace Thumbnails
+         let thumbnailsHeight = 0;
+-        if (this._workspacesThumbnails.visible) {
++        if (this._workspacesThumbnails.visible && !this._handheldMode) {
+             const {expandFraction} = this._workspacesThumbnails;
+             [thumbnailsHeight] =
+                 this._workspacesThumbnails.get_preferred_height(width);
+@@ -193,6 +213,10 @@
+             childBox.set_origin(0, startY + searchHeight + Math.round(spacing * THUMBNAILS_SPACING_ADJUSTMENT_TOP));
+             childBox.set_size(width, thumbnailsHeight);
+             this._workspacesThumbnails.allocate(childBox);
++        } else if (this._handheldMode) {
++            childBox.set_origin(0, startY);
++            childBox.set_size(0, 0);
++            this._workspacesThumbnails.allocate(childBox);
+         }
+ 
+         // Workspaces

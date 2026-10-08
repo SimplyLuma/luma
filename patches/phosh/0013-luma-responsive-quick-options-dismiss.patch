@@ -1,0 +1,28 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 17:45:00 -0500
+Subject: [PATCH] top-panel: make short upward dismissals intentional
+
+The full-height handheld settings surface required 30 percent travel before
+Phoc would keep an ordinary drag in the folded state. On the FP6 that makes a
+controlled short upward motion visibly follow the finger and then rebound,
+unless it also crosses the compositor's high-velocity fling gate.
+
+Keep the compositor-owned interactive drag and its direction/handle rules, but
+lower this surface's distance threshold to 18 percent. The change is local to
+Quick Options: application scrolling, lockscreen swipes and other draggable
+surfaces retain their existing thresholds.
+
+---
+--- a/src/top-panel.c
++++ b/src/top-panel.c
+@@ -42,7 +42,7 @@
+ #define CUSTOM_STATUS_ICONS_SCHEMA "mobi.phosh.shell.plugins"
+ #define CUSTOM_STATUS_ICONS_KEY "status-icons"
+ 
+-#define PHOSH_TOP_PANEL_DRAG_THRESHOLD 0.3
++#define PHOSH_TOP_PANEL_DRAG_THRESHOLD 0.18
+ 
+ /**
+  * PhoshTopPanel:
+-- 
+2.53.0

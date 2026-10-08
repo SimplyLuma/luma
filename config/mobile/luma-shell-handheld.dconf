@@ -1,0 +1,132 @@
+# Handheld-only Luma Shell defaults. Load this after the shared desktop profile.
+# Keep visual/product identity in config/desktop/dconf/db/luma.d/00-luma-desktop;
+# this overlay is only for capabilities required by a touch-only device.
+
+[org/gnome/desktop/a11y/applications]
+screen-keyboard-enabled=true
+
+[org/gnome/desktop/session]
+# An OLED handheld should never hold static Shell/app chrome indefinitely.
+# One minute matches normal phone behavior while remaining selectable through
+# Settings -> Power -> Screen Blank. This turns off only the display and locks;
+# networking, telephony, notifications, and background applications continue.
+idle-delay=uint32 60
+
+[org/gnome/desktop/screensaver]
+lock-enabled=true
+lock-delay=uint32 0
+# Phosh constructs its real lock-screen background even when an authenticated
+# greetd session begins unlocked. Keep that first native surface on the same
+# packaged Prism image instead of touching GNOME's absent slideshow default
+# during the compositor handoff.
+picture-uri='file:///usr/share/backgrounds/luma/luma-prism.png'
+picture-options='zoom'
+
+[org/gnome/settings-daemon/plugins/power]
+# The handheld Shell owns a short press as display sleep/wake. System shutdown
+# and restart remain deliberate actions in the authenticated power menu.
+power-button-action='nothing'
+# Keep display blanking and locking, but do not suspend the whole handset until
+# modem wake and IMS resume have passed physical incoming-call acceptance.
+# Full suspend currently drops Qualcomm modem enumeration, which would make a
+# sleeping phone unable to receive calls or notifications.
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+
+[org/gnome/desktop/interface]
+# The phone status bar is deliberately time-only. The shared desktop retains
+# its time/date pair; the full date remains in the handheld calendar surface.
+clock-show-date=false
+clock-show-weekday=false
+color-scheme='prefer-dark'
+
+[org/project-luma/shell-state]
+# Home is an ordered desktop, not the all-apps catalog. Folder entries are
+# native GNOME app-folder objects consumed directly by Luma's Phosh renderer.
+home-apps=['org.gnome.Nautilus.desktop', 'org.projectluma.Calendar.desktop', 'org.projectluma.Notes.desktop', 'org.projectluma.Contacts.desktop', 'org.projectluma.Clock.desktop', 'org.projectluma.Camera.desktop', 'org.projectluma.Weather.desktop', 'google-maps-geo-handler.desktop', 'folder:Work', 'folder:Create', 'folder:Depot', 'org.gnome.Calculator.desktop', 'org.gnome.Settings.desktop', 'org.projectluma.Viewer.desktop', 'org.projectluma.SystemReport.desktop', 'org.gnome.Ptyxis.desktop', 'org.projectluma.Phone.desktop', 'org.projectluma.Tasks.desktop', 'org.projectluma.VoiceMemos.desktop', 'org.projectluma.Photos.desktop']
+
+[org/gnome/desktop/app-folders]
+folder-children=['Work', 'Create', 'Depot']
+
+[org/gnome/desktop/app-folders/folders/Work]
+name='Work'
+apps=['org.projectluma.Contacts.desktop', 'org.projectluma.Calendar.desktop', 'org.projectluma.Tasks.desktop', 'org.projectluma.Weather.desktop']
+
+[org/gnome/desktop/app-folders/folders/Create]
+name='Create'
+apps=['org.projectluma.Camera.desktop', 'org.projectluma.Photos.desktop', 'org.projectluma.Notes.desktop', 'org.projectluma.VoiceMemos.desktop']
+
+[org/gnome/desktop/app-folders/folders/Depot]
+name='Depot'
+apps=['org.gnome.Settings.desktop', 'org.gnome.SystemMonitor.desktop', 'org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop']
+
+[org/gnome/desktop/input-sources]
+# Keep the shared English layout selected under Phosh. Stevia owns composition
+# through Phoc's native input-method path; the legacy IBus entry remains only
+# as a rollback for a GNOME Shell session and must not compete for focus.
+sources=[('xkb', 'us'), ('ibus', 'luma-latin')]
+current=uint32 0
+
+[mobi/phosh/osk]
+# Stevia is the native Phosh/Phoc input surface. Keep completion manually
+# available even when a toolkit forgets its completion hint. Do not combine
+# this with `hint`: Stevia 0.55 lets an absent toolkit hint disable the forced
+# completion state after focus. Input purpose still excludes sensitive fields.
+completion-mode=['manual']
+osk-features=['key-indicator']
+
+[mobi/phosh/osk/Completers]
+# The native Stevia adapter keeps Luma's local LatinIME decoder warm, displays
+# its ranked candidates, never replaces an exact valid word, and accepts an
+# invalid-word correction only after absolute confidence and runner-up margin
+# gates. An unambiguous multiword result may use a lower score floor but must
+# clear a larger margin and ratio; ambiguous candidates remain manual choices.
+# Hunspell remains compiled in as the rollback.
+default='luma'
+sources=['emoji', 'keyword']
+auto-space=true
+
+[org/gnome/shell]
+# The shared desktop extensions remain enabled. Handheld navigation is an
+# additional capability layer, not a replacement Shell or a separate profile.
+enabled-extensions=['dash-to-dock@micxgx.gmail.com', 'tiling-toggle@project-luma.local', 'handheld@project-luma.local']
+
+[sm/puri/phosh]
+# Luma exposes the same installed application catalog on handheld and desktop.
+# Phosh remains responsible for mobile presentation, but it must not filter out
+# valid desktop applications merely because their metadata predates adaptive
+# form-factor declarations. Favorites are projected live from the canonical
+# org.gnome.shell order by luma-shell-state.
+app-filter-mode=@as []
+shell-layout='device'
+
+[org/gnome/desktop/wm/preferences]
+# Handheld navigation owns close/switch/home actions. Keep client-side and
+# server-side titlebars free of desktop window-control buttons.
+button-layout=':'
+
+[org/gnome/mutter]
+# Ordinary applications should consume the usable handheld work area. The dock
+# remains outside that work area, so "maximized" is intentionally not the same
+# as exclusive fullscreen.
+auto-maximize=true
+
+[org/gnome/nautilus/preferences]
+# Keep the same Filer binary on every form factor. On handhelds, expose the
+# user's places plus removable/network storage, not Android/Linux system
+# partitions. Direct entry into / remains possible after a Prairie warning.
+personal-storage-only=true
+
+[org/gnome/shell/extensions/dash-to-dock]
+# Handheld Luma keeps its navigation surface visible, full-width, and large
+# enough for touch. Desktop retains its compact floating dock defaults.
+dock-fixed=true
+autohide=false
+intellihide=false
+extend-height=false
+# Four logical pixels on each side of the 496px FP6 logical panel. This is
+# intentionally narrower than the 8px bottom inset: the pill's curved ends add
+# optical whitespace, so equal mathematical insets look side-heavy on-device.
+height-fraction=0.984
+dash-max-icon-size=48
+icon-size-fixed=true

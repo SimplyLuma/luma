@@ -1,0 +1,39 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# One-shot physical-compositor Wkeys comparison. This session deliberately
+# avoids nesting Phoc inside GNOME Shell on the FP6 Adreno path. When Phoc or
+# its client exits, the same authenticated login immediately resumes Luma.
+
+set -eu
+
+config=/usr/libexec/luma-keyboard-labs/wkeys/phoc.ini
+client=/usr/local/libexec/luma-wkeys-direct-client
+for path in /usr/bin/phoc /usr/bin/systemd-inhibit "$config" "$client" \
+  /usr/local/bin/luma-shell-session; do
+  [ -x "$path" ] || [ -r "$path" ] || {
+    printf 'wkeys direct session: missing path: %s\n' "$path" >&2
+    exec /usr/local/bin/luma-shell-session
+  }
+done
+
+unset DISPLAY WAYLAND_DISPLAY
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_CLASS=user
+export XDG_SESSION_DESKTOP=luma-wkeys-lab
+export XDG_CURRENT_DESKTOP=Luma:Phoc
+export WLR_BACKENDS=drm,libinput
+export GDK_BACKEND=wayland
+
+set +e
+/usr/bin/systemd-inhibit \
+  --what=handle-power-key \
+  --who='Luma Wkeys Lab' \
+  --why='Keep the direct keyboard comparison recoverable' \
+  --mode=block \
+  /usr/bin/phoc --no-xwayland --config "$config" --exec "$client"
+status=$?
+set -e
+printf 'wkeys direct session: Phoc exited with status %s; resuming Luma\n' \
+  "$status" >&2
+exec /usr/local/bin/luma-shell-session

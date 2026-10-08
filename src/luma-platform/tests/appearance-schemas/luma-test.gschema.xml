@@ -1,0 +1,6 @@
+<schemalist>
+<schema id="org.project_luma.shell-state" path="/org/project-luma/shell-state/">
+<key name="surface-treatment" type="s"><default>'light'</default>
+<choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices></key>
+<key name="reduce-transparency" type="b"><default>false</default></key>
+</schema></schemalist>

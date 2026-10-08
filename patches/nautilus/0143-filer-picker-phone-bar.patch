@@ -1,0 +1,299 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Filer v71 <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 12:31:38 -0500
+Subject: [PATCH] Filer picker v71 on a phone: the two-row bar (rows-01)
+
+Under 560 the portal chooser's own bottom toolbar steps aside for LumaUI-1's
+bar: the place you're looking at (it grows Recent, Places, and Show choices
+from the app's filters), collapsed Search and the Grid/List toggle; under
+it Cancel and Open "name" (cut at 16), Choose "folder" or Save, sharing the
+width. Folders open with a tap (0140). The desktop layout is unchanged.
+---
+ src/nautilus-file-chooser.c | 236 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 236 insertions(+)
+
+diff --git a/src/nautilus-file-chooser.c b/src/nautilus-file-chooser.c
+index 65756a0..ee02fc1 100644
+--- a/src/nautilus-file-chooser.c
++++ b/src/nautilus-file-chooser.c
+@@ -26,6 +26,9 @@
+ #include "nautilus-toolbar.h"
+ #include "nautilus-view-item-filter.h"
+ #include "nautilus-window-slot.h"
++#include "nautilus-query.h"
++
++#include <luma-ui.h>
+ 
+ #include <gio/gdesktopappinfo.h>
+ 
+@@ -60,6 +63,14 @@ struct _NautilusFileChooser
+ 
+     NautilusFilenameValidator *validator;
+     AdwBreakpoint *breakpoint;
++    GtkWidget *bottom_toolbar;
++
++    /* v71 on a phone: the two-row bar (place, Search, Grid/List; then
++     * Cancel and Open "name"). */
++    LumaActionCenter *phone_bar;
++    LumaBarItem *phone_search;
++    GtkWidget *phone_accept;
++    gboolean phone;
+ };
+ 
+ G_DEFINE_FINAL_TYPE (NautilusFileChooser, nautilus_file_chooser, ADW_TYPE_WINDOW)
+@@ -632,6 +643,7 @@ title_widget_query_tooltip (GtkWidget  *widget,
+ static void
+ nautilus_file_chooser_dispose (GObject *object)
+ {
++    g_clear_object (&NAUTILUS_FILE_CHOOSER (object)->phone_search);
+     NautilusFileChooser *self = (NautilusFileChooser *) object;
+ 
+     if (self->slot != NULL)
+@@ -766,6 +778,227 @@ update_input_capabilities (NautilusFileChooser *self)
+         gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-touch");
+ }
+ 
++/* ── v71: the picker on a phone ────────────────────────────────────────────
++ * Full screen over the asking app, the bar two rows: where you're looking
++ * (it grows Recent, Places and what to show), Search and Grid/List; under it
++ * Cancel and Open "name" (or Choose "folder", or Save). Composed from LumaUI-1
++ * parts (rows-01); the desktop layout is unchanged. */
++
++static GFile *
++chooser_place_file (const char *key)
++{
++    static const struct { const char *key; GUserDirectory dir; } dirs[] = {
++        { "desktop", G_USER_DIRECTORY_DESKTOP },
++        { "documents", G_USER_DIRECTORY_DOCUMENTS },
++        { "downloads", G_USER_DIRECTORY_DOWNLOAD },
++        { "music", G_USER_DIRECTORY_MUSIC },
++        { "pictures", G_USER_DIRECTORY_PICTURES },
++        { "videos", G_USER_DIRECTORY_VIDEOS },
++    };
++    if (g_strcmp0 (key, "recent") == 0)
++        return g_file_new_for_uri ("recent:///");
++    for (guint i = 0; i < G_N_ELEMENTS (dirs); i++)
++    {
++        const char *path = g_strcmp0 (key, dirs[i].key) == 0 ? g_get_user_special_dir (dirs[i].dir) : NULL;
++        if (path != NULL)
++            return g_file_new_for_path (path);
++    }
++    return g_file_new_for_path (g_get_home_dir ());
++}
++
++static void
++action_picker_place (GSimpleAction *action,
++                     GVariant      *parameter,
++                     gpointer       user_data)
++{
++    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (user_data);
++    g_autoptr (GFile) where = chooser_place_file (g_variant_get_string (parameter, NULL));
++    nautilus_window_slot_open_location_full (self->slot, where, 0);
++}
++
++static void
++action_picker_show (GSimpleAction *action,
++                    GVariant      *parameter,
++                    gpointer       user_data)
++{
++    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (user_data);
++    guint64 index = g_ascii_strtoull (g_variant_get_string (parameter, NULL), NULL, 10);
++    gtk_drop_down_set_selected (self->filters_dropdown, (guint) index);
++}
++
++static void
++action_picker_view (GSimpleAction *action,
++                    GVariant      *parameter,
++                    gpointer       user_data)
++{
++    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (user_data);
++    g_action_group_activate_action (nautilus_window_slot_get_action_group (self->slot),
++                                    "files-view-mode-toggle", NULL);
++}
++
++static GtkWidget *
++chooser_place_panel (LumaBarItem *item,
++                     gpointer     user_data)
++{
++    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (user_data);
++    GtkWidget *panel = luma_bar_panel_new (NULL);
++    luma_bar_panel_add_row (panel, "clock", _("Recent"), "picker.place('recent')", FALSE);
++    luma_bar_panel_add_heading (panel, _("Places"));
++    static const struct { const char *key; const char *icon; const char *label; } places[] = {
++        { "home", "house", N_("Home") },
++        { "desktop", "monitor", N_("Desktop") },
++        { "documents", "file-text", N_("Documents") },
++        { "downloads", "download", N_("Downloads") },
++        { "music", "music", N_("Music") },
++        { "pictures", "image", N_("Pictures") },
++        { "videos", "film", N_("Videos") },
++    };
++    for (guint i = 0; i < G_N_ELEMENTS (places); i++)
++    {
++        g_autofree char *detailed = g_strdup_printf ("picker.place('%s')", places[i].key);
++        luma_bar_panel_add_row (panel, places[i].icon, _(places[i].label), detailed, FALSE);
++    }
++    /* TODO(filer): Devices (mounted drives) as in v71's place panel. */
++    GListModel *filters = gtk_drop_down_get_model (self->filters_dropdown);
++    guint n = filters != NULL ? g_list_model_get_n_items (filters) : 0;
++    if (n > 1)
++    {
++        luma_bar_panel_add_heading (panel, _("Show"));
++        GtkWidget *choices = luma_panel_choices_new ("picker.show");
++        for (guint i = 0; i < n; i++)
++        {
++            g_autoptr (GtkFileFilter) filter = g_list_model_get_item (filters, i);
++            g_autofree char *key = g_strdup_printf ("%u", i);
++            luma_panel_choices_add (choices, key, gtk_file_filter_get_name (filter), NULL);
++        }
++        g_autofree char *current = g_strdup_printf ("%u", gtk_drop_down_get_selected (self->filters_dropdown));
++        luma_panel_choices_set_selected (choices, current);
++        gtk_box_append (GTK_BOX (panel), choices);
++    }
++    return panel;
++}
++
++static gboolean
++chooser_run_search (gpointer data)
++{
++    NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (data);
++    const char *text = self->phone_search != NULL ? luma_bar_item_search_get_text (self->phone_search) : NULL;
++    if (text == NULL || *text == '\0')
++    {
++        g_action_group_change_action_state (nautilus_window_slot_get_action_group (self->slot),
++                                            "search-visible", g_variant_new_boolean (FALSE));
++        return G_SOURCE_REMOVE;
++    }
++    g_autoptr (NautilusQuery) query = nautilus_query_new ();
++    nautilus_query_set_text (query, text);
++    nautilus_query_set_location (query, nautilus_window_slot_get_location (self->slot));
++    nautilus_window_slot_search (self->slot, query);
++    return G_SOURCE_REMOVE;
++}
++
++static void
++on_picker_search_changed (LumaBarItem         *item,
++                          const char          *text,
++                          NautilusFileChooser *self)
++{
++    g_idle_add_full (G_PRIORITY_DEFAULT, chooser_run_search, g_object_ref (self), g_object_unref);
++}
++
++/* Open "name" (the name cut at 16), or Choose "folder", or the mode's word. */
++static char *
++chooser_accept_words (NautilusFileChooser *self)
++{
++    NautilusFileList *selection = self->slot != NULL ? nautilus_window_slot_get_selection (self->slot) : NULL;
++    gboolean folders = self->mode == NAUTILUS_MODE_OPEN_FOLDER || self->mode == NAUTILUS_MODE_OPEN_FOLDERS;
++    if (self->mode == NAUTILUS_MODE_SAVE_FILE || self->mode == NAUTILUS_MODE_SAVE_FILES)
++        return g_strdup (_("Save"));
++    const char *name = NULL;
++    g_autofree char *here = NULL;
++    if (selection != NULL && selection->next == NULL)
++        name = nautilus_file_get_display_name (NAUTILUS_FILE (selection->data));
++    else if (folders && self->slot != NULL)
++        name = here = g_file_get_basename (nautilus_window_slot_get_location (self->slot));
++    if (name == NULL)
++        return g_strdup (folders ? _("Choose") : _("Open"));
++    g_autofree char *cut = g_utf8_strlen (name, -1) > 16
++                           ? g_strconcat (g_utf8_substring (name, 0, 15), "…", NULL)
++                           : g_strdup (name);
++    return g_strdup_printf (folders ? _("Choose “%s”") : _("Open “%s”"), cut);
++}
++
++static void
++chooser_update_phone_bar (NautilusFileChooser *self)
++{
++    if (self->phone_bar == NULL || !self->phone)
++        return;
++    GFile *location = nautilus_window_slot_get_location (self->slot);
++    g_autofree char *place = location != NULL ? g_file_get_basename (location) : g_strdup (_("Home"));
++    g_autoptr (LumaBarItem) where = luma_bar_item_new_action ("folder", place, NULL);
++    luma_bar_item_set_keep_label (where, TRUE);
++    luma_bar_item_set_tooltip (where, _("Where you're looking"));
++    luma_bar_item_set_panel (where, "place", chooser_place_panel, self, NULL);
++    g_autoptr (LumaBarItem) spacer = luma_bar_item_new_spacer ();
++    g_autoptr (LumaBarItem) view = luma_bar_item_new_action ("layout-grid", NULL, "picker.view");
++    luma_bar_item_set_tooltip (view, _("Grid or list"));
++    LumaBarItem *items[] = { where, spacer, self->phone_search, view };
++    luma_action_center_show_bar (self->phone_bar, items, G_N_ELEMENTS (items), NULL);
++
++    /* Row 2: Cancel and the key, sharing the width. */
++    g_autofree char *words = chooser_accept_words (self);
++    g_autoptr (LumaBarItem) cancel = luma_bar_item_new_action (NULL, _("Cancel"), "window.close");
++    g_autoptr (LumaBarItem) accept = luma_bar_item_new_action (NULL, words, "chooser.accept");
++    luma_bar_item_set_primary (accept, TRUE);
++    luma_bar_item_set_keep_label (cancel, TRUE);
++    luma_bar_item_set_keep_label (accept, TRUE);
++    GtkWidget *foot = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
++    gtk_box_set_homogeneous (GTK_BOX (foot), TRUE);
++    gtk_widget_set_hexpand (foot, TRUE);
++    gtk_box_append (GTK_BOX (foot), luma_bar_item_create_control (cancel, "bar"));
++    self->phone_accept = luma_bar_item_create_control (accept, "bar");
++    gtk_box_append (GTK_BOX (foot), self->phone_accept);
++    luma_action_center_set_foot (self->phone_bar, foot);
++}
++
++static void
++on_chooser_tier_changed (LumaWidthWatch      *watch,
++                         LumaTier             tier,
++                         NautilusFileChooser *self)
++{
++    self->phone = tier == LUMA_TIER_PHONE;
++    gtk_widget_set_visible (self->bottom_toolbar, !self->phone);
++    if (self->phone)
++        chooser_update_phone_bar (self);
++    else if (self->phone_bar != NULL)
++        luma_action_center_hide_bar (self->phone_bar);
++}
++
++static void
++chooser_setup_phone (NautilusFileChooser *self)
++{
++    static const GActionEntry entries[] = {
++        { .name = "place", .parameter_type = "s", .activate = action_picker_place },
++        { .name = "show", .parameter_type = "s", .activate = action_picker_show },
++        { .name = "view", .activate = action_picker_view },
++    };
++    g_autoptr (GSimpleActionGroup) group = g_simple_action_group_new ();
++    g_action_map_add_action_entries (G_ACTION_MAP (group), entries, G_N_ELEMENTS (entries), self);
++    gtk_widget_insert_action_group (GTK_WIDGET (self), "picker", G_ACTION_GROUP (group));
++
++    luma_layer_host_install (GTK_WINDOW (self));
++    self->phone_bar = LUMA_ACTION_CENTER (luma_action_center_new (NULL));
++    gtk_widget_set_name (GTK_WIDGET (self->phone_bar), "picker-action-center");
++    luma_action_center_attach (self->phone_bar, GTK_WIDGET (self));
++    self->phone_search = luma_bar_item_new_search (_("Search"));
++    luma_bar_item_search_set_collapsed (self->phone_search, TRUE);
++    g_signal_connect (self->phone_search, "search-changed", G_CALLBACK (on_picker_search_changed), self);
++    g_signal_connect_object (self->slot, "notify::location", G_CALLBACK (chooser_update_phone_bar),
++                             self, G_CONNECT_SWAPPED);
++    g_signal_connect_object (self->slot, "notify::selection", G_CALLBACK (chooser_update_phone_bar),
++                             self, G_CONNECT_SWAPPED);
++    g_signal_connect_object (luma_width_watch_get (GTK_WIDGET (self)), "tier-changed",
++                             G_CALLBACK (on_chooser_tier_changed), self, 0);
++}
++
+ static void
+ nautilus_file_chooser_constructed (GObject *object)
+ {
+@@ -835,6 +1068,8 @@ nautilus_file_chooser_constructed (GObject *object)
+     g_settings_get (nautilus_window_state, NAUTILUS_WINDOW_STATE_INITIAL_SIZE_FILE_CHOOSER,
+                     "(ii)", &width, &height);
+     gtk_window_set_default_size (GTK_WINDOW (self), width, height);
++
++    chooser_setup_phone (self);
+ }
+ 
+ const GActionEntry chooser_action_entries[] =
+@@ -947,6 +1182,7 @@ nautilus_file_chooser_class_init (NautilusFileChooserClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, validator);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, title_widget);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, requester_label);
++    gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, bottom_toolbar);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, breakpoint);
+ 
+     gtk_widget_class_bind_template_callback (widget_class, open_filename_entry);
+-- 
+2.54.0 (Apple Git-157)
+

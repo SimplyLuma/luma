@@ -1,0 +1,126 @@
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -129,7 +129,7 @@
+ 
+     /* Banner */
+     AdwBanner *banner;
+-    AdwBanner *system_banner;
++    GtkWidget *system_banner;
+ 
+     /* Load state */
+     GCancellable *find_mount_cancellable;
+@@ -192,7 +192,7 @@
+ }
+ 
+ static void
+-system_banner_go_home (AdwBanner *banner, NautilusWindowSlot *self)
++system_banner_go_home (GtkButton *button, NautilusWindowSlot *self)
+ {
+     g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
+     nautilus_window_slot_open_location_full (self, home, NULL);
+@@ -259,7 +259,8 @@
+     RootWarningRequest *request = g_new0 (RootWarningRequest, 1);
+     AdwAlertDialog *dialog = ADW_ALERT_DIALOG (
+         adw_alert_dialog_new (_("This is where Luma lives"),
+-                              _("These folders keep your computer running. Moving, renaming, or deleting system files can stop it from starting. Your own files are in Home.\n\nDid someone send you here? If a person, message, or website told you to change these files, pause and check with someone you trust. Real support does not rush you.")));
++                              _("These folders keep your computer running. Moving, renaming, or deleting system files can stop it from starting. Your own files are in Home.\n\nDid someone send you here? If a person, message, or website told you to change these files, pause and check with someone you trust.")));
++    gtk_widget_add_css_class (GTK_WIDGET (dialog), "luma-system-warning");
+     GtkWidget *remember = gtk_check_button_new_with_label (_("Don’t show this again"));
+     adw_alert_dialog_set_extra_child (dialog, remember);
+     request->remember = g_object_ref (GTK_CHECK_BUTTON (remember));
+@@ -1034,13 +1035,29 @@
+     gtk_box_append (GTK_BOX (self->vbox),
+                     nautilus_location_banner_create_trash_bar (self->banner));
+ 
+-    self->system_banner = ADW_BANNER (adw_banner_new (
+-        _("You’re in Luma’s system files. Changes here can stop your computer from starting.")));
+-    adw_banner_set_button_label (self->system_banner, _("Go to Home"));
+-    gtk_widget_add_css_class (GTK_WIDGET (self->system_banner), "warning");
+-    g_signal_connect_object (self->system_banner, "button-clicked",
++    self->system_banner = luma_action_bar_new ();
++    gtk_widget_add_css_class (self->system_banner, "luma-system-notice");
++    gtk_widget_set_visible (self->system_banner, FALSE);
++    gtk_widget_set_margin_start (self->system_banner, 12);
++    gtk_widget_set_margin_end (self->system_banner, 12);
++    gtk_widget_set_margin_top (self->system_banner, 6);
++    gtk_widget_set_margin_bottom (self->system_banner, 6);
++    GtkWidget *warning_icon = gtk_image_new_from_icon_name ("dialog-warning-symbolic");
++    gtk_widget_add_css_class (warning_icon, "warning");
++    luma_action_bar_add_leading (LUMA_ACTION_BAR (self->system_banner), warning_icon);
++    GtkWidget *center = luma_action_bar_get_center (LUMA_ACTION_BAR (self->system_banner));
++    gtk_widget_set_visible (gtk_widget_get_first_child (center), FALSE);
++    GtkWidget *warning_label = gtk_label_new (
++        _("You’re in Luma’s system files. Changes here can stop your computer from starting."));
++    gtk_label_set_wrap (GTK_LABEL (warning_label), TRUE);
++    gtk_label_set_xalign (GTK_LABEL (warning_label), 0);
++    gtk_widget_set_hexpand (warning_label, TRUE);
++    gtk_box_append (GTK_BOX (center), warning_label);
++    GtkWidget *home_button = gtk_button_new_with_label (_("Go to Home"));
++    luma_action_bar_add_trailing (LUMA_ACTION_BAR (self->system_banner), home_button);
++    g_signal_connect_object (home_button, "clicked",
+                              G_CALLBACK (system_banner_go_home), self, 0);
+-    gtk_box_append (GTK_BOX (self->vbox), GTK_WIDGET (self->system_banner));
++    gtk_box_append (GTK_BOX (self->vbox), self->system_banner);
+ 
+     self->global_search_page = ADW_STATUS_PAGE (adw_status_page_new ());
+     luma_empty_state_configure (self->global_search_page, FALSE);
+@@ -1798,7 +1815,7 @@
+     self->location = g_object_ref (location);
+     if (self->system_banner != NULL)
+     {
+-        adw_banner_set_revealed (self->system_banner,
++        gtk_widget_set_visible (self->system_banner,
+                                 self->mode == NAUTILUS_MODE_BROWSE && is_system_location (location));
+     }
+ 
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1401,3 +1401,10 @@
+   font-family: "Figtree";
+   font-size: 13px;
+ }
++
++/* Alert extra children and the system notice use Luma’s standard body role. */
++.luma-system-warning,
++.luma-system-notice {
++  font-family: "Figtree";
++  font-size: 13px;
++}
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -50,7 +50,7 @@
+ }
+ static GtkWidget *find_system_banner(GtkWidget *root)
+ {
+-    if(ADW_IS_BANNER(root) && gtk_widget_has_css_class(root,"warning"))return root;
++    if(gtk_widget_has_css_class(root,"luma-system-notice"))return root;
+     for(GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c))
+     {GtkWidget *r=find_system_banner(c);if(r)return r;}
+     return NULL;
+@@ -75,6 +75,10 @@
+     AdwAlertDialog *dialog=ADW_ALERT_DIALOG(adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window)));
+     g_assert_nonnull(dialog);
+     g_assert_cmpstr(adw_alert_dialog_get_default_response(dialog),==,"home");
++    GtkWidget *remember = adw_alert_dialog_get_extra_child(dialog);
++    const PangoFontDescription *font = pango_context_get_font_description(gtk_widget_get_pango_context(remember));
++    g_assert_cmpstr(pango_font_description_get_family(font),==,"Figtree");
++    g_assert_null(strstr(adw_alert_dialog_get_body(dialog),"Real support does not rush you"));
+     warning_response(window,"Take me to Home");
+     g_assert_true(g_file_equal(nautilus_window_get_active_location(window),home));
+     nautilus_window_open_location_full(window,root,0,NULL);spin(100);
+@@ -85,12 +89,12 @@
+     g_assert_false(g_settings_get_boolean(nautilus_preferences,"show-system-folder-warning"));
+     g_assert_true(g_file_equal(nautilus_window_get_active_location(window),root));
+     GtkWidget *banner=find_system_banner(GTK_WIDGET(window));g_assert_nonnull(banner);
+-    g_assert_true(adw_banner_get_revealed(ADW_BANNER(banner)));
+-    g_signal_emit_by_name(banner,"button-clicked");
++    g_assert_true(gtk_widget_get_visible(banner));
++    g_signal_emit_by_name(find_button(banner,"Go to Home"),"clicked");
+     for(guint i=0;i<250 && !g_file_equal(nautilus_window_get_active_location(window),home);i++)spin(20);
+     g_test_message("Banner destination: %s; home: %s", g_file_peek_path(nautilus_window_get_active_location(window)), g_file_peek_path(home));
+     g_assert_true(g_file_equal(nautilus_window_get_active_location(window),home));
+-    g_assert_false(adw_banner_get_revealed(ADW_BANNER(banner)));
++    g_assert_false(gtk_widget_get_visible(banner));
+     gtk_window_destroy(GTK_WINDOW(window));spin(50);
+     g_settings_reset(nautilus_preferences,"show-system-folder-warning");
+ }

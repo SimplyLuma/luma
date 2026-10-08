@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Watch Luma system update status
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Path]
+PathChanged=/run/luma-update/status.json
+Unit=luma-update-notifier.service
+
+[Install]
+WantedBy=graphical-session.target

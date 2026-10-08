@@ -1,0 +1,60 @@
+From 122abb763c2fd085ab6e7d280ac25fcfdfe17c86 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 13:02:02 +0200
+Subject: [PATCH 36/41] firmware: qcom: scm: report the qseecom paths that
+ leave TZ parked
+
+Two error paths gave up on a listener request without saying what that costs.
+An out-of-range listener id returned -EINVAL and said nothing, though it leaves
+the application parked exactly like the unexpected-response-type case next to
+it, which does explain itself; report it and use -EPROTO to match. And the
+give-up answer at the end of the round limit had its return value dropped, so a
+failure to deliver it left the wedge the answer exists to prevent, silently.
+
+No functional change beyond the errno, which no caller distinguishes.
+
+Reported-by: Kimi K3
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/firmware/qcom/qcom_scm.c | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index c30cdd639..9c25ebac6 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2193,8 +2193,18 @@ static int qcom_scm_qseecom_service_listeners(struct qcom_scm_qseecom_resp *res)
+ 			return -EPROTO;
+ 		}
+ 
+-		if (res->data > U32_MAX)
+-			return -EINVAL;
++		if (res->data > U32_MAX) {
++			/*
++			 * A listener id that does not fit one. There is
++			 * nothing to answer -- responding needs a valid id --
++			 * so the application stays parked and the interface is
++			 * stuck until reboot, same as the case above.
++			 */
++			dev_err(__scm->dev,
++				"qseecom: listener id %llx out of range; the interface is now stuck until reboot\n",
++				res->data);
++			return -EPROTO;
++		}
+ 
+ 		id = res->data;
+ 
+@@ -2209,8 +2219,12 @@ static int qcom_scm_qseecom_service_listeners(struct qcom_scm_qseecom_resp *res)
+ 			dev_err(__scm->dev,
+ 				"qseecom: listener %u will not settle, failing it\n",
+ 				id);
+-			qcom_scm_qseecom_listener_respond(id,
++			ret = qcom_scm_qseecom_listener_respond(id,
+ 					QSEECOM_LISTENER_FAILURE, res);
++			if (ret)
++				dev_err(__scm->dev,
++					"qseecom: could not fail listener %u (%d); the application stays parked and the interface is stuck until reboot\n",
++					id, ret);
+ 			return -ELOOP;
+ 		}
+ 

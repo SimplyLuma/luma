@@ -1,0 +1,131 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 19:06:00 -0500
+Subject: [PATCH] lockscreen: let the carousel exclusively own unlock motion
+
+The earlier whole-surface tap recognizer ran in capture phase over the native
+vertical HdyCarousel. A fast drag could therefore be interpreted by both the
+tap transition and the carousel, briefly revealing the PIN page and then
+snapping back. That is not a single physical plane.
+
+The affordance now says Swipe to unlock, so remove the obsolete tap path and
+let HdyCarousel exclusively track, threshold, cancel, and reverse the gesture.
+Shorten only the settle animation to 280 ms; continuous travel remains exactly
+under the finger and authentication behavior is unchanged.
+
+---
+--- a/src/lockscreen.c
++++ b/src/lockscreen.c
+@@ -102,11 +102,6 @@
+   GtkWidget          *keypad;
+   GtkWidget          *entry_pin;
+   GtkGesture         *long_press_del_gesture;
+-  GtkGesture         *luma_unlock_tap;
+-  struct {
+-    double x;
+-    double y;
+-  } luma_tap_origin;
+   GtkWidget          *lbl_unlock_status;
+   GtkWidget          *btn_submit;
+   GtkWidget          *btn_keyboard;
+@@ -326,54 +321,6 @@
+   /* skip signal on init */
+   if (signals[WAKEUP_OUTPUT])
+     g_signal_emit (self, signals[WAKEUP_OUTPUT], 0);
+-}
+-
+-
+-static void
+-on_luma_unlock_press (PhoshLockscreen      *self,
+-                      int                   n_press,
+-                      double                x,
+-                      double                y,
+-                      GtkGestureMultiPress *gesture)
+-{
+-  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+-
+-  priv->luma_tap_origin.x = x;
+-  priv->luma_tap_origin.y = y;
+-  g_message ("luma-tap: pressed presses=%d page=%d", n_press,
+-             phosh_lockscreen_get_page (self));
+-}
+-
+-
+-static void
+-on_luma_unlock_cancelled (PhoshLockscreen  *self,
+-                          GdkEventSequence *sequence,
+-                          GtkGesture       *gesture)
+-{
+-  g_message ("luma-tap: sequence claimed elsewhere");
+-}
+-
+-
+-static void
+-on_luma_unlock_tap (PhoshLockscreen     *self,
+-                    int                  n_press,
+-                    double               x,
+-                    double               y,
+-                    GtkGestureMultiPress *gesture)
+-{
+-  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+-  double dx = x - priv->luma_tap_origin.x;
+-  double dy = y - priv->luma_tap_origin.y;
+-  /* A tap is a press that did not travel. Anything further is a drag and
+-   * belongs to the carousel, so the swipe keeps working as before. */
+-  gboolean moved = (dx * dx + dy * dy) > (32.0 * 32.0);
+-
+-  g_message ("luma-tap: released presses=%d moved=%s page=%d", n_press,
+-             moved ? "yes" : "no", phosh_lockscreen_get_page (self));
+-
+-  if (n_press == 1 && !moved &&
+-      phosh_lockscreen_get_page (self) == PHOSH_LOCKSCREEN_PAGE_INFO)
+-    show_unlock_page (self);
+ }
+ 
+ 
+@@ -1474,8 +1421,6 @@
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, lbl_unlock_status);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen,
+                                                 long_press_del_gesture);
+-  gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen,
+-                                                luma_unlock_tap);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, btn_submit);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, btn_keyboard);
+ 
+@@ -1499,9 +1444,6 @@
+   gtk_widget_class_bind_template_callback (widget_class, on_call_notification_activated);
+   gtk_widget_class_bind_template_callback (widget_class, on_info_reveal_child_changed);
+   gtk_widget_class_bind_template_callback (widget_class, show_unlock_page);
+-  gtk_widget_class_bind_template_callback (widget_class, on_luma_unlock_tap);
+-  gtk_widget_class_bind_template_callback (widget_class, on_luma_unlock_press);
+-  gtk_widget_class_bind_template_callback (widget_class, on_luma_unlock_cancelled);
+ 
+   /* plugin page */
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, widget_box);
+--- a/src/ui/lockscreen.ui
++++ b/src/ui/lockscreen.ui
+@@ -8,7 +8,7 @@
+       <object class="HdyCarousel" id="carousel">
+         <property name="visible">1</property>
+         <property name="orientation">vertical</property>
+-        <property name="animation-duration">400</property>
++        <property name="animation-duration">280</property>
+         <signal name="notify::position" handler="carousel_position_notified_cb" swapped="yes"/>
+         <signal name="page-changed" handler="carousel_page_changed_cb" swapped="yes"/>
+         <child>
+@@ -347,14 +347,6 @@
+       </object>
+     </child>
+   </template>
+-  <object class="GtkGestureMultiPress" id="luma_unlock_tap">
+-    <property name="widget">PhoshLockscreen</property>
+-    <property name="propagation-phase">capture</property>
+-    <property name="touch-only">0</property>
+-    <signal name="pressed" handler="on_luma_unlock_press" object="PhoshLockscreen" swapped="true"/>
+-    <signal name="released" handler="on_luma_unlock_tap" object="PhoshLockscreen" swapped="true"/>
+-    <signal name="cancel" handler="on_luma_unlock_cancelled" object="PhoshLockscreen" swapped="true"/>
+-  </object>
+   <object class="GtkGestureSwipe" id="swipe_gesture">
+     <property name="widget">PhoshLockscreen</property>
+     <property name="propagation-phase">capture</property>
+-- 
+2.53.0

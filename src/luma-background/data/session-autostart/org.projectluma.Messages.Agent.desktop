@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# GNOME's session reads $XDG_DATA_DIRS/gnome/autostart before /etc/xdg/autostart
+# and runs only the first entry of a name. This hidden entry stands in front of
+# the fallback autostart entry the app ships for systems without
+# luma-background, so the session does not start a copy of the agent that
+# would only exit again: luma-background starts the agent itself.
+[Desktop Entry]
+Type=Application
+Name=Messages
+Exec=true
+NoDisplay=true
+Hidden=true
+X-Luma-Background-Agent=org.projectluma.Messages.Agent

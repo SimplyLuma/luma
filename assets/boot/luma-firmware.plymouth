@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The firmware draws its own boot image before any of our code runs, and it is
+# not ours to replace: on UEFI machines it is published through the ACPI Boot
+# Graphics Resource Table, and where a vendor allows it to be changed at all
+# that is done in the firmware setup, per vendor. What an operating system can
+# do -- and what Fedora, Ubuntu and RHEL have all shipped for about a decade --
+# is keep that image as the boot background and put its own mark on it. This is
+# the two-step plugin's UseFirmwareBackground, and it is the reason to prefer
+# this presentation over one of our own on unknown hardware: it is correct on
+# every machine. Where a BGRT image exists the handoff from firmware to Luma is
+# seamless and the vendor's identity survives; where none exists the plugin
+# falls back to the background colours below, with no per-machine
+# configuration and nothing to detect.
+#
+# Every image in ImageDir is rendered from Luma's SVG sources at package build
+# by scripts/boot/render-firmware-theme.py, at the size it is drawn. This file
+# only places them. Handhelds use luma-loading-handheld, where there is no
+# firmware logo to inherit and the whole screen is ours by default.
+
+[Plymouth Theme]
+Name=Luma
+Description=Keeps the firmware's own boot image and adds the Luma loader and wordmark
+ModuleName=two-step
+
+[two-step]
+ImageDir=/usr/share/plymouth/themes/luma-firmware
+# The label plugin always draws with the system default font (Figtree on Luma)
+# and reads only the size from these; the family names keep dracut's font
+# lookup pointed at Figtree too.
+Font=Figtree 12
+TitleFont=Figtree 20
+
+# The firmware logo is centred 38.2 % down the screen (the Windows boot-screen
+# rule vendors design to). The loader sits midway between the bottom of a
+# typical logo and the wordmark, and the wordmark sits at the bottom centre,
+# where a firmware logo leaves room and where every other distribution's mark
+# sits, so it reads as branding rather than as something drawn over the
+# vendor's image.
+HorizontalAlignment=.5
+VerticalAlignment=.7
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.96
+
+# Prompts replace the firmware image with black, where the unlock field takes
+# the logo's place. Update screens put their title there too.
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.382
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.382
+ProgressBarHorizontalAlignment=.5
+ProgressBarVerticalAlignment=.5
+ProgressBarWidth=280
+ProgressBarHeight=4
+MessageBelowAnimation=true
+
+# No transition: anything that fades would fade the firmware's image too.
+Transition=none
+TransitionDuration=0.0
+
+# The background colours are only reached when the firmware published no
+# image: Luma's Ink surface, so a machine without BGRT still boots into
+# something of ours. With a firmware image, two-step uses black wherever the
+# image is not shown, which is the colour that image was designed on.
+BackgroundStartColor=0x21252b
+BackgroundEndColor=0x21252b
+ProgressBarBackgroundColor=0x3a3f46
+ProgressBarForegroundColor=0xf2f3f4
+
+DialogClearsFirmwareBackground=true
+
+[boot-up]
+UseFirmwareBackground=true
+UseAnimation=true
+UseProgressBar=false
+UseEndAnimation=false
+
+[shutdown]
+UseFirmwareBackground=true
+UseAnimation=true
+UseProgressBar=false
+UseEndAnimation=false
+
+[reboot]
+UseFirmwareBackground=true
+UseAnimation=true
+UseProgressBar=false
+UseEndAnimation=false
+
+# Offline update screens carry a title and a progress bar where the firmware
+# logo would be, so they use the plain background instead of the logo. The
+# strings are Plymouth's own so that its translations apply.
+[updates]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseAnimation=false
+UseProgressBar=true
+UseEndAnimation=false
+Title=Installing Updates...
+SubTitle=Do not turn off your computer
+
+[system-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseAnimation=false
+UseProgressBar=true
+UseEndAnimation=false
+Title=Upgrading System...
+SubTitle=Do not turn off your computer
+
+[firmware-upgrade]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseAnimation=false
+UseProgressBar=true
+UseEndAnimation=false
+Title=Upgrading Firmware...
+SubTitle=Do not turn off your computer
+
+[system-reset]
+SuppressMessages=true
+ProgressBarShowPercentComplete=true
+UseAnimation=false
+UseProgressBar=true
+UseEndAnimation=false
+Title=Resetting System...
+SubTitle=Do not turn off your computer

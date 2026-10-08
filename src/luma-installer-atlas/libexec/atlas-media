@@ -1,0 +1,308 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Copyright (C) 2026 Project Luma contributors
+"""Installer-medium actions for Atlas's last two steps. Output is JSON.
+
+  atlas-media eject                 eject the installer medium, only when the
+                                    running installer no longer reads from it
+  atlas-media save-logs [DISK...]   copy the installation logs onto a writable
+                                    removable drive that is neither the
+                                    installer nor any listed target disk
+  atlas-media prepare-restart      show native Plymouth before Anaconda closes
+
+Eject runs only after Anaconda reports the installation succeeded. It refuses
+while stage 2 is still read from the medium, because ejecting then would
+crash the installer (see pyanaconda.core.util.dracut_eject).
+"""
+
+import datetime
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+_PROBE_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "atlas-probe")
+_loader = importlib.machinery.SourceFileLoader("atlas_probe", _PROBE_PATH)
+_spec = importlib.util.spec_from_loader("atlas_probe", _loader)
+probe = importlib.util.module_from_spec(_spec)
+_loader.exec_module(probe)
+
+LOG_MOUNT = "/run/luma-atlas/log-drive"
+LOG_GLOBS = ("/tmp/anaconda.log", "/tmp/storage.log", "/tmp/program.log", "/tmp/packaging.log",
+             "/tmp/dbus.log", "/tmp/anaconda-webui.log", "/tmp/syslog", "/tmp/ifcfg.log", "/tmp/dnf.librepo.log",
+             "/tmp/luma-atlas-viewer.log")
+
+
+def emit(payload, code=0):
+    json.dump(payload, sys.stdout)
+    sys.stdout.write("\n")
+    return code
+
+
+def run(args):
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as error:
+        return subprocess.CompletedProcess(args, 127, "", str(error))
+
+
+LOCATION_INTENT = "/run/luma-atlas/setup-location.json"
+ZONEINFO = "/usr/share/zoneinfo"
+
+
+def location_record(zone, zoneinfo=ZONEINFO):
+    """The exact representative city chosen in Atlas, from offline tzdata."""
+    if not re.fullmatch(r"[A-Za-z0-9_+.-]+(?:/[A-Za-z0-9_+.-]+)*", zone) or ".." in zone.split("/"):
+        raise ValueError("invalid time zone")
+    if not os.path.isfile(os.path.join(zoneinfo, zone)):
+        raise ValueError("time zone is unavailable")
+    place = None
+    table = os.path.join(zoneinfo, "zone.tab")
+    if os.path.isfile(table):
+        with open(table, encoding="utf-8") as handle:
+            for line in handle:
+                fields = line.strip().split("\t")
+                if line.startswith("#") or len(fields) < 3 or fields[2] != zone:
+                    continue
+                match = re.fullmatch(r"([+-])(\d{2})(\d{2})(\d{2})?([+-])(\d{3})(\d{2})(\d{2})?", fields[1])
+                if not match:
+                    raise ValueError("unsupported tzdata coordinates")
+                ls, ld, lm, lsec, osign, od, om, osec = match.groups()
+                lat = (int(ld) + int(lm) / 60 + int(lsec or 0) / 3600) * (-1 if ls == "-" else 1)
+                lon = (int(od) + int(om) / 60 + int(osec or 0) / 3600) * (-1 if osign == "-" else 1)
+                if abs(lat) > 90 or abs(lon) > 180:
+                    raise ValueError("invalid tzdata coordinates")
+                country = fields[0]
+                countries = os.path.join(zoneinfo, "iso3166.tab")
+                if os.path.isfile(countries):
+                    with open(countries, encoding="utf-8") as names:
+                        for entry in names:
+                            code, _, name = entry.rstrip().partition("\t")
+                            if code == country:
+                                country = name
+                                break
+                place = {"name": zone.rsplit("/", 1)[-1].replace("_", " "), "region": "",
+                         "country": country, "latitude": lat, "longitude": lon, "timezone": zone}
+                break
+    return {"schema": 1, "source": "atlas", "timezone": zone, "place": place}
+
+
+def atomic_json(path, record):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = path + ".atlas"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        json.dump(record, handle)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def record_location(zone):
+    record = location_record(zone)
+    atomic_json(LOCATION_INTENT, record)
+    return emit({"ok": True, "timezone": record["timezone"]})
+
+
+def apply_location(root):
+    """Fresh-install only; copy verified intent after Anaconda's own tasks."""
+    root = os.path.abspath(root)
+    if root == "/" or not os.path.isdir(os.path.join(root, "etc")):
+        raise ValueError("not an installation target")
+    if not os.path.isfile(LOCATION_INTENT):
+        print("atlas: no explicit city choice recorded")
+        return 0
+    with open(LOCATION_INTENT, encoding="utf-8") as handle:
+        selected = json.load(handle)
+    # Re-derive all coordinates/labels instead of trusting arbitrary intent fields.
+    record = location_record(selected["timezone"])
+    zone = record["timezone"]
+    if not os.path.isfile(os.path.join(root, "usr/share/zoneinfo", zone)):
+        raise ValueError("selected time zone missing from installed system")
+    localtime = os.path.join(root, "etc/localtime")
+    temporary = localtime + ".atlas"
+    os.symlink("../usr/share/zoneinfo/" + zone, temporary)
+    os.replace(temporary, localtime)
+    if os.path.realpath(localtime) != os.path.realpath(os.path.join(root, "usr/share/zoneinfo", zone)):
+        raise ValueError("installed time zone readback differs")
+    target = os.path.join(root, "etc/luma/setup-location.json")
+    atomic_json(target, record)
+    subprocess.run(["chroot", root, "/usr/sbin/restorecon", "-F", "/etc/localtime", "/etc/luma/setup-location.json"], check=False)
+    print("atlas: installed selected time zone and city:", zone)
+    return 0
+
+
+def prepare_restart():
+    """Paint the existing native reboot surface; Anaconda still owns reboot."""
+    if not os.path.isfile('/run/anaconda/webui_script.pid'):
+        return emit({'ok': False, 'reason': 'not-installer'}, 1)
+    try:
+        result = subprocess.run(['systemctl', 'start', 'plymouth-reboot.service'],
+                                capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError) as error:
+        sys.stderr.write(f'Atlas reboot splash unavailable: {error}\n')
+        return emit({'ok': False, 'reason': 'splash-unavailable'}, 1)
+    if result.returncode:
+        sys.stderr.write(f'Atlas reboot splash unavailable: {result.stderr}\n')
+        return emit({'ok': False, 'reason': 'splash-unavailable'}, 1)
+    return emit({'ok': True})
+
+
+def medium_present(disk):
+    """False once the kernel reports no medium (or no device) for the disk."""
+    size_path = f"/sys/block/{disk}/size"
+    if not os.path.exists(f"/sys/block/{disk}"):
+        return False
+    try:
+        with open(size_path, encoding="utf-8") as handle:
+            return int(handle.read().strip() or "0") > 0
+    except (OSError, ValueError):
+        return False
+
+
+def eject():
+    sources = probe.mount_sources()
+    disks = probe.installer_disks(sources)
+    if not disks:
+        return emit({"ok": False, "reason": "no-medium"}, 1)
+    if not probe.stage2_in_memory(sources):
+        return emit({"disks": disks, "ok": False, "reason": "running-from-medium"}, 1)
+
+    run(["sync"])
+    # Deepest mounts first, only those that live on the medium.
+    medium_mounts = sorted(
+        (mount for mount, source in sources.items() if probe.parent_disk(source) in disks),
+        key=len, reverse=True)
+    for mount in medium_mounts:
+        result = run(["umount", mount])
+        if result.returncode != 0:
+            run(["umount", "--lazy", mount])
+
+    ejected = []
+    for disk in disks:
+        result = run(["eject", f"/dev/{disk}"])
+        if result.returncode != 0:
+            # USB mass storage without a tray: detach the device from the
+            # kernel so it can be pulled safely.
+            delete = f"/sys/block/{disk}/device/delete"
+            if os.path.exists(delete):
+                try:
+                    with open(delete, "w", encoding="utf-8") as handle:
+                        handle.write("1\n")
+                except OSError:
+                    pass
+        for _ in range(20):
+            if not medium_present(disk):
+                break
+            time.sleep(0.25)
+        if not medium_present(disk):
+            ejected.append(disk)
+
+    if len(ejected) != len(disks):
+        return emit({"disks": disks, "ejected": ejected, "ok": False, "reason": "eject-failed"}, 1)
+    return emit({"disks": disks, "ejected": ejected, "ok": True})
+
+
+def lsblk():
+    result = run(["lsblk", "--json", "--paths", "--output", "NAME,PKNAME,TYPE,FSTYPE,LABEL,RM,TRAN,RO,MOUNTPOINTS,SIZE"])
+    if result.returncode != 0:
+        return []
+    try:
+        return json.loads(result.stdout).get("blockdevices", [])
+    except ValueError:
+        return []
+
+
+def flatten(devices, parent=None):
+    for device in devices:
+        device = dict(device)
+        device["_disk"] = parent or device
+        yield device
+        yield from flatten(device.get("children") or [], parent or device)
+
+
+def candidate_log_drives(excluded):
+    for device in flatten(lsblk()):
+        disk = device["_disk"]
+        disk_name = os.path.basename(disk.get("name") or "")
+        if disk_name in excluded:
+            continue
+        removable = str(disk.get("rm")) in ("1", "True", "true") or disk.get("tran") == "usb"
+        if not removable or str(device.get("ro")) in ("1", "True", "true"):
+            continue
+        if device.get("fstype") not in ("vfat", "exfat", "ext4", "ext3", "ext2", "xfs", "btrfs", "ntfs", "ntfs3"):
+            continue
+        yield device
+
+
+def build_bundle(directory):
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+    bundle = os.path.join(directory, f"luma-install-log-{stamp}.tar.gz")
+    journal = os.path.join(tempfile.gettempdir(), "atlas-journal.txt")
+    with open(journal, "w", encoding="utf-8") as handle:
+        subprocess.run(["journalctl", "-b", "--no-pager"], stdout=handle, stderr=subprocess.DEVNULL, check=False, timeout=120)
+    with tarfile.open(bundle, "w:gz") as tar:
+        for path in LOG_GLOBS + (journal,):
+            if os.path.exists(path):
+                tar.add(path, arcname=os.path.basename(path))
+        for name in sorted(os.listdir("/tmp")):
+            if name.startswith("anaconda-tb-"):
+                tar.add(os.path.join("/tmp", name), arcname=name)
+    return bundle
+
+
+def save_logs(targets):
+    sources = probe.mount_sources()
+    excluded = set(probe.installer_disks(sources)) | {os.path.basename(target) for target in targets}
+    os.makedirs("/run/luma-atlas", exist_ok=True)
+    local = build_bundle("/run/luma-atlas")
+
+    for device in candidate_log_drives(excluded):
+        mounted_at = next((mount for mount in (device.get("mountpoints") or []) if mount), None)
+        mounted_here = False
+        if not mounted_at:
+            os.makedirs(LOG_MOUNT, exist_ok=True)
+            if run(["mount", device["name"], LOG_MOUNT]).returncode != 0:
+                continue
+            mounted_at = LOG_MOUNT
+            mounted_here = True
+        try:
+            destination = os.path.join(mounted_at, os.path.basename(local))
+            shutil.copyfile(local, destination)
+            run(["sync"])
+            return emit({"file": os.path.basename(local), "label": device.get("label") or os.path.basename(device["name"]), "ok": True})
+        except OSError:
+            continue
+        finally:
+            if mounted_here:
+                run(["umount", LOG_MOUNT])
+
+    return emit({"file": local, "ok": False, "reason": "no-drive"}, 1)
+
+
+def main(argv):
+    if len(argv) == 3 and argv[1] == "record-location":
+        return record_location(argv[2])
+    if len(argv) == 3 and argv[1] == "apply-location":
+        return apply_location(argv[2])
+    if len(argv) == 2 and argv[1] == 'prepare-restart':
+        return prepare_restart()
+    if len(argv) >= 2 and argv[1] == "eject":
+        return eject()
+    if len(argv) >= 2 and argv[1] == "save-logs":
+        return save_logs(argv[2:])
+    sys.stderr.write(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

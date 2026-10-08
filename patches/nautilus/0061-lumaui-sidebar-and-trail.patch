@@ -1,0 +1,302 @@
+From 754466edfb5b2ea91eeaf50be71b2f9385884b8a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:52:56 +0000
+Subject: [PATCH] Filer: compose sidebar toggle and location trail from LumaUI
+
+---
+ src/nautilus-toolbar.c                |  5 +-
+ src/nautilus-window.c                 | 99 ++++++++++++++++++++++++---
+ src/resources/ui/nautilus-toolbar.blp | 18 -----
+ src/resources/ui/nautilus-window.blp  | 11 ++-
+ 4 files changed, 99 insertions(+), 34 deletions(-)
+
+diff --git a/src/nautilus-toolbar.c b/src/nautilus-toolbar.c
+index 930c1ca..09d7bc1 100644
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -54,7 +54,6 @@ struct _NautilusToolbar
+     GtkWidget *search_button_placeholder;
+     GtkWidget *view_controls;
+     GtkWidget *information_button_host;
+-    GtkWidget *compact_sidebar_button;
+     GtkWidget *compact_back_button;
+     GtkWidget *compact_search_button;
+     GtkWidget *compact_overflow_button;
+@@ -197,7 +196,6 @@ toolbar_update_appearance (NautilusToolbar *self)
+                               nautilus_window_slot_get_mode (self->window_slot) == NAUTILUS_MODE_BROWSE)));
+ 
+     compact_chrome_visible = self->compact && !search_visible && !show_location_entry;
+-    gtk_widget_set_visible (self->compact_sidebar_button, compact_chrome_visible);
+     gtk_widget_set_visible (self->compact_back_button, compact_chrome_visible);
+     gtk_widget_set_visible (self->compact_search_button, compact_chrome_visible);
+     gtk_widget_set_visible (self->compact_overflow_button, compact_chrome_visible);
+@@ -350,7 +348,7 @@ nautilus_toolbar_init (NautilusToolbar *self)
+ 
+     self->compact_menu = g_menu_new ();
+     gtk_widget_init_template (GTK_WIDGET (self));
+-    gtk_widget_set_name (self->path_bar, "filer-location");
++    gtk_widget_set_name (self->path_bar, "filer-pathbar");
+     rebuild_compact_menu (self);
+ 
+     compact_popover = gtk_menu_button_get_popover (GTK_MENU_BUTTON (self->compact_overflow_button));
+@@ -659,7 +657,6 @@ nautilus_toolbar_class_init (NautilusToolbarClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, search_button_placeholder);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, view_controls);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, information_button_host);
+-    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_sidebar_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_back_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_search_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_overflow_button);
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 75fe7de..250a220 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -104,6 +104,12 @@ struct _NautilusWindow
+     NautilusWindowSlot *active_slot; /* weak reference */
+ 
+     GtkWidget *split_view;
++    GtkWidget *sidebar_toggle_desktop_host;
++    GtkWidget *sidebar_toggle_phone_host;
++    GtkWidget *location_row;
++    GtkWidget *trail_host;
++    LumaSidebarToggle *sidebar_toggle;
++    LumaNavigationTrailBar *location_trail;
+     GtkWidget *information_host;
+     LumaDetailsPane *information_pane;
+ 
+@@ -308,6 +314,56 @@ action_show_current_location_menu (GSimpleAction *action,
+     nautilus_toolbar_show_current_location_menu (NAUTILUS_TOOLBAR (self->toolbar));
+ }
+ 
++static void
++update_location_trail (NautilusWindow *window)
++{
++    GFile *location = window->active_slot != NULL
++                      ? nautilus_window_slot_get_location (window->active_slot) : NULL;
++    g_autoptr (GFile) parent = location != NULL ? g_file_get_parent (location) : NULL;
++    g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++    g_autofree char *parent_name = parent != NULL
++                                   ? g_file_get_basename (parent) : NULL;
++    const char *title = window->active_slot != NULL
++                        ? nautilus_window_slot_get_title (window->active_slot) : _("Files");
++
++    if (parent != NULL && g_file_equal (parent, home))
++    {
++        g_clear_pointer (&parent_name, g_free);
++        parent_name = g_strdup (_("Home"));
++    }
++    luma_navigation_trail_bar_set_place (window->location_trail,
++                                          parent_name, title != NULL ? title : _("Files"));
++}
++
++static void
++on_trail_back (LumaNavigationTrailBar *trail,
++               NautilusWindow         *window)
++{
++    gtk_widget_activate_action (GTK_WIDGET (window), "slot.up", NULL);
++}
++
++static void
++on_window_width_changed (NautilusWindow *window)
++{
++    GtkWidget *button = GTK_WIDGET (window->sidebar_toggle);
++    GtkWidget *target = gtk_widget_get_width (GTK_WIDGET (window)) > 0 &&
++                        gtk_widget_get_width (GTK_WIDGET (window)) < 640
++                        ? window->sidebar_toggle_phone_host
++                        : window->sidebar_toggle_desktop_host;
++    GtkWidget *parent = gtk_widget_get_parent (button);
++
++    if (parent != target)
++    {
++        g_object_ref (button);
++        if (parent != NULL)
++        {
++            gtk_box_remove (GTK_BOX (parent), button);
++        }
++        gtk_box_append (GTK_BOX (target), button);
++        g_object_unref (button);
++    }
++}
++
+ static void
+ update_information (NautilusWindow *window)
+ {
+@@ -378,6 +434,7 @@ static void
+ on_location_changed (NautilusWindow *window)
+ {
+     nautilus_window_sync_location_widgets (window);
++    update_location_trail (window);
+     update_information (window);
+ }
+ 
+@@ -392,6 +449,17 @@ on_slot_selection_changed (NautilusWindowSlot *slot,
+     }
+ }
+ 
++static void
++on_slot_title_changed (NautilusWindowSlot *slot,
++                       GParamSpec        *pspec,
++                       NautilusWindow    *window)
++{
++    if (window->active_slot == slot)
++    {
++        update_location_trail (window);
++    }
++}
++
+ static void
+ on_slot_location_changed (NautilusWindowSlot *slot,
+                           GParamSpec         *pspec,
+@@ -501,6 +569,8 @@ nautilus_window_create_and_init_slot (NautilusWindow *window)
+                       G_CALLBACK (on_slot_location_changed), window);
+     g_signal_connect (slot, "notify::selection",
+                       G_CALLBACK (on_slot_selection_changed), window);
++    g_signal_connect (slot, "notify::title",
++                      G_CALLBACK (on_slot_title_changed), window);
+ 
+     AdwTabPage *current = get_current_page (window);
+     AdwTabPage *page = adw_tab_view_add_page (window->tab_view, GTK_WIDGET (slot), current);
+@@ -732,10 +802,7 @@ action_toggle_sidebar (GSimpleAction *action,
+                        gpointer       user_data)
+ {
+     NautilusWindow *window = NAUTILUS_WINDOW (user_data);
+-    gboolean revealed;
+-
+-    revealed = adw_overlay_split_view_get_show_sidebar (ADW_OVERLAY_SPLIT_VIEW (window->split_view));
+-    adw_overlay_split_view_set_show_sidebar (ADW_OVERLAY_SPLIT_VIEW (window->split_view), !revealed);
++    luma_sidebar_toggle_toggle (window->sidebar_toggle);
+ }
+ 
+ static void
+@@ -1195,7 +1262,6 @@ static void
+ nautilus_window_initialize_actions (NautilusWindow *window)
+ {
+     GApplication *app;
+-    GAction *action;
+     gchar detailed_action[80];
+     gchar accel[80];
+     gint i;
+@@ -1217,7 +1283,6 @@ nautilus_window_initialize_actions (NautilusWindow *window)
+     nautilus_application_set_accelerator (app, "win.tab-move-right", "<shift><control>Page_Down");
+     nautilus_application_set_accelerator (app, "win.current-location-menu", "F10");
+     nautilus_application_set_accelerator (app, "win.restore-tab", "<shift><control>t");
+-    nautilus_application_set_accelerator (app, "win.toggle-sidebar", "F9");
+ 
+     /* Alt+N for the first 9 tabs */
+     for (i = 0; i < 9; ++i)
+@@ -1231,9 +1296,6 @@ nautilus_window_initialize_actions (NautilusWindow *window)
+ 
+ #undef ACCELS
+ 
+-    action = g_action_map_lookup_action (G_ACTION_MAP (window), "toggle-sidebar");
+-    g_object_bind_property (window->split_view, "collapsed",
+-                            action, "enabled", G_BINDING_SYNC_CREATE);
+ }
+ 
+ static gboolean
+@@ -1765,6 +1827,21 @@ nautilus_window_init (NautilusWindow *window)
+     gtk_widget_init_template (GTK_WIDGET (window));
+ 
+     luma_layer_host_install (GTK_WINDOW (window));
++    window->sidebar_toggle = LUMA_SIDEBAR_TOGGLE (
++        luma_sidebar_toggle_new (window->split_view, TRUE));
++    gtk_widget_set_name (GTK_WIDGET (window->sidebar_toggle), "filer-sidebar-toggle");
++    gtk_box_append (GTK_BOX (window->sidebar_toggle_desktop_host),
++                    GTK_WIDGET (window->sidebar_toggle));
++    g_signal_connect_swapped (window, "notify::width",
++                              G_CALLBACK (on_window_width_changed), window);
++    window->location_trail = LUMA_NAVIGATION_TRAIL_BAR (
++        luma_navigation_trail_bar_new (TRUE));
++    gtk_widget_set_name (GTK_WIDGET (window->location_trail), "filer-location");
++    gtk_box_append (GTK_BOX (window->trail_host),
++                    GTK_WIDGET (window->location_trail));
++    g_signal_connect (window->location_trail, "back",
++                      G_CALLBACK (on_trail_back), window);
++    gtk_widget_set_name (window->location_row, "filer-location-row");
+     window->information_pane = LUMA_DETAILS_PANE (
+         luma_details_pane_new (_("Information"), FALSE));
+     gtk_widget_set_name (GTK_WIDGET (window->information_pane), "filer-information");
+@@ -1909,6 +1986,10 @@ nautilus_window_class_init (NautilusWindowClass *class)
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, undo_redo_section);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, toolbar);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, split_view);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_toggle_desktop_host);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_toggle_phone_host);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, location_row);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, trail_host);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, information_host);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, places_sidebar);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_resize_handle);
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 0bdb5e4..ae2f121 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -15,24 +15,6 @@ template $NautilusToolbar: Adw.Bin {
+     Box {
+       hexpand: true;
+       spacing: 6;
+-      ToggleButton compact_sidebar_button {
+-            ShortcutController {
+-              scope: managed;
+-              Shortcut { trigger: "F9"; action: "activate"; }
+-            }
+-            visible: bind template.compact;
+-            active: bind template.sidebar-button-active bidirectional;
+-            icon-name: "sidebar-show-symbolic";
+-
+-            accessibility {
+-              label: _("Show Sidebar");
+-            }
+-
+-            styles [
+-              "luma-compact-toolbar-button",
+-            ]
+-          }
+-
+       Button compact_back_button {
+             visible: bind template.compact;
+             action-name: "slot.back";
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 5bd63d2..9358190 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -196,7 +196,8 @@ template $NautilusWindow: Adw.ApplicationWindow {
+             "luma-titlebar",
+           ]
+ 
+-
++          [start]
++          Box sidebar_toggle_desktop_host {}
+           title-widget: Box {
+             halign: center;
+ 
+@@ -286,12 +287,17 @@ template $NautilusWindow: Adw.ApplicationWindow {
+             }
+ 
+             [top]
++            Box location_row {
++              Box sidebar_toggle_phone_host {}
++              Box trail_host {}
++            }
++
++            [bottom]
+             $NautilusToolbar toolbar {
+               hexpand: true;
+               main-menu: app_menu;
+               show-view-controls: true;
+               show-history-controls: true;
+-              sidebar-button-active: bind split_view.show-sidebar bidirectional;
+               window-slot: bind template.active-slot;
+ 
+               styles [
+@@ -339,7 +345,6 @@ template $NautilusWindow: Adw.ApplicationWindow {
+       split_view.collapsed: true;
+       split_view.enable-show-gesture: true;
+       split_view.enable-hide-gesture: true;
+-      toolbar.show-sidebar-button: true;
+       toolbar.show-view-controls: false;
+       toolbar.show-history-controls: false;
+       toolbar.compact: true;
+-- 
+2.55.0
+

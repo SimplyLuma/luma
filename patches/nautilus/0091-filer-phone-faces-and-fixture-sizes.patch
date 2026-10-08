@@ -1,0 +1,117 @@
+From 4b5fa1cf75e43bca2185863a94f7f963eea813f1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:11:46 +0000
+Subject: [PATCH] Filer: match phone tile faces and fixture list sizes
+
+---
+ src/nautilus-file.c      |  8 ++++++--
+ src/nautilus-grid-cell.c | 10 +++++-----
+ src/nautilus-grid-view.c | 10 +++++++++-
+ src/resources/style.css  |  5 +++++
+ 4 files changed, 25 insertions(+), 8 deletions(-)
+
+diff --git a/src/nautilus-file.c b/src/nautilus-file.c
+index dddac5b..c343375 100644
+--- a/src/nautilus-file.c
++++ b/src/nautilus-file.c
+@@ -6606,10 +6606,14 @@ nautilus_file_get_string_attribute_q (NautilusFile *file,
+ {
+     char *extension_attribute;
+ 
+-    if (attribute_q == attribute_type_q || attribute_q == attribute_date_modified_q)
++    if (attribute_q == attribute_type_q ||
++        attribute_q == attribute_size_q ||
++        attribute_q == attribute_date_modified_q)
+     {
++        const char *key = attribute_q == attribute_type_q ? "kind" :
++                          attribute_q == attribute_size_q ? "size" : "modified";
+         g_autofree char *fixture_value = nautilus_filer_fixture_info (nautilus_file_get_display_name (file),
+-                                                                       attribute_q == attribute_type_q ? "kind" : "modified");
++                                                                       key);
+ 
+         if (fixture_value != NULL && fixture_value[0] != '\0')
+         {
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index bf8c979..7cecf1b 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -270,7 +270,7 @@ nautilus_grid_cell_measure (GtkWidget      *widget,
+     int width, side, child_min, child_nat;
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
+-    side = icon_size == 72 ? 12 : EMBLEMS_BOX_WIDTH;
++    side = icon_size == 88 ? 6 : EMBLEMS_BOX_WIDTH;
+     width = side + icon_size + side;
+ 
+     /* We always expect our layout to fit into this width. Check that
+@@ -309,11 +309,11 @@ nautilus_grid_cell_measure (GtkWidget      *widget,
+         }
+ 
+         /* At phone width, names wrap within a tile instead of widening the
+-         * grid past three columns. The 72px face plus 12px on each side is
++         * grid past three columns. The 88px face plus 6px on each side is
+          * the width the view reserves for each tile. */
+-        if (icon_size == 72)
++        if (icon_size == 88)
+         {
+-            width = MIN (width, 96);
++            width = MIN (width, 100);
+         }
+     }
+     else /* GTK_ORIENTATION_VERTICAL */
+@@ -369,7 +369,7 @@ nautilus_grid_cell_size_allocate (GtkWidget *widget,
+     int side;
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
+-    side = icon_size == 72 ? 12 : EMBLEMS_BOX_WIDTH;
++    side = icon_size == 88 ? 6 : EMBLEMS_BOX_WIDTH;
+ 
+     /* Put the icon at the top. Center it horizontally, with
+      * EMBLEMS_BOX_WIDTH horizontal margins on both sides.
+diff --git a/src/nautilus-grid-view.c b/src/nautilus-grid-view.c
+index 0448c69..26e1399 100644
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -348,7 +348,7 @@ real_get_icon_size (NautilusListBase *list_base_view)
+ 
+     if (self->phone_layout && self->zoom_level == NAUTILUS_GRID_ZOOM_LEVEL_MEDIUM)
+     {
+-        return 72;
++        return 88;
+     }
+ 
+     return get_icon_size_for_zoom_level (self->zoom_level);
+@@ -365,6 +365,14 @@ update_phone_layout (NautilusGridView *self)
+     if (self->phone_layout != phone_layout)
+     {
+         self->phone_layout = phone_layout;
++        if (phone_layout)
++        {
++            gtk_widget_add_css_class (GTK_WIDGET (self), "phone-layout");
++        }
++        else
++        {
++            gtk_widget_remove_css_class (GTK_WIDGET (self), "phone-layout");
++        }
+         g_object_notify (G_OBJECT (self), "icon-size");
+     }
+ }
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 95ffe3b..b582f04 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -360,6 +360,11 @@
+   border-spacing: 8px;
+ }
+ 
++.luma-files-window .nautilus-grid-view.phone-layout gridview {
++  padding-left: 10px;
++  padding-right: 10px;
++}
++
+ .luma-files-window .nautilus-grid-view gridview > child,
+ .luma-files-window .nautilus-grid-view .nautilus-view-cell {
+   border-radius: 10px;
+-- 
+2.55.0
+

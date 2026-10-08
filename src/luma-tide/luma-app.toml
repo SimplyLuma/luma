@@ -1,0 +1,24 @@
+schema_version = "0.1"
+
+[application]
+id = "org.projectluma.Tide"
+name = "Tide"
+version = "0.1.0"
+entrypoint = "data/org.projectluma.Tide.in"
+
+[platform]
+ui_contract = "1"
+semantics_contract = "1"
+
+[responsive]
+adaptive = true
+test_widths = [360, 500, 1024, 1280]
+input_modes = ["pointer", "touch", "keyboard"]
+presentation_modes = ["windowed", "fullscreen-mobile"]
+
+[conformance]
+accessibility = true
+keyboard = true
+semantics = true
+reduced_motion = true
+

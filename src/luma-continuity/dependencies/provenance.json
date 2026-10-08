@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Authlib",
+    "version": "1.7.2",
+    "url": "https://files.pythonhosted.org/packages/36/98/7d93f30d029643c0275dbc0bd6d5a6f670661ee6c9a94d93af7ab4887600/authlib-1.7.2.tar.gz",
+    "sha256": "2cea25fefcd4e7173bdf1372c0afc265c8034b23a8cd5dcb6a9164b826c64231",
+    "license": "BSD-3-Clause"
+  },
+  {
+    "name": "joserfc",
+    "version": "1.7.5",
+    "url": "https://files.pythonhosted.org/packages/19/94/80fea1514b7c6d7d37804d3fe9ca81455f633347fc98731bd71ffe1faa17/joserfc-1.7.5.tar.gz",
+    "sha256": "d5ff536e658e17664f8c1b1ab60dc4aa62aa973fcef1edd33cc44bda45d6f5ea",
+    "license": "BSD-3-Clause"
+  },
+  {
+    "name": "Authlib upstream tests/source",
+    "version": "v1.7.2",
+    "url": "https://codeload.github.com/authlib/authlib/tar.gz/refs/tags/v1.7.2",
+    "sha256": "939d7d4c1ea10e3747b03cc76c478f5158657a32645a496be38100c927ee6a4c"
+  }
+]

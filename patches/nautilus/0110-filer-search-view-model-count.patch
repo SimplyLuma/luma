@@ -1,0 +1,55 @@
+From 4aa9b5e3db56cef0a06c406c769f9945e4887f30 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 23:15:12 +0000
+Subject: [PATCH] Filer: count search results from Nautilus view model
+
+---
+ src/nautilus-window.c | 12 ++++--------
+ 1 file changed, 4 insertions(+), 8 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 76f27ea..da45ee2 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -68,7 +68,6 @@
+ #include "nautilus-module.h"
+ #include "nautilus-progress-indicator.h"
+ #include "nautilus-query.h"
+-#include "nautilus-search-directory.h"
+ #include "nautilus-scheme.h"
+ #include "nautilus-shortcut-manager.h"
+ #include "nautilus-sidebar.h"
+@@ -76,6 +75,7 @@
+ #include "nautilus-toolbar.h"
+ #include "nautilus-view-controls.h"
+ #include "nautilus-view-info.h"
++#include "nautilus-view-model.h"
+ #include "nautilus-trash-monitor.h"
+ #include "nautilus-ui-utilities.h"
+ #include "nautilus-window-slot.h"
+@@ -460,19 +460,15 @@ update_location_header (NautilusWindow *window)
+     guint count;
+     NautilusQuery *query = view != NULL ? nautilus_files_view_get_search_query (view) : NULL;
+     gboolean searching = query != NULL;
+-    g_autoptr (GObject) model = NULL;
+-    if (searching)
+-    {
+-        g_object_get (view, "model", &model, NULL);
+-    }
+-    if (window->search_model != model)
++    NautilusViewModel *model = searching ? nautilus_files_view_get_private_model (view) : NULL;
++    if (window->search_model != G_OBJECT (model))
+     {
+         if (window->search_model != NULL)
+         {
+             g_signal_handlers_disconnect_by_func (window->search_model,
+                                                   G_CALLBACK (on_search_results_changed), window);
+         }
+-        g_set_object (&window->search_model, model);
++        g_set_object (&window->search_model, G_OBJECT (model));
+         if (window->search_model != NULL)
+         {
+             g_signal_connect (window->search_model, "items-changed",
+-- 
+2.55.0
+

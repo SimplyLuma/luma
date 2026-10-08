@@ -1,0 +1,205 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: one type scale and dock-tile geometry across shelf islands
+
+The live extension, the media player and the clock each set their own
+text sizes -- six between them -- so an event title, a song title and the
+time never agreed. Titles and times are now 12px and what describes them
+10px. The calendar badge and album artwork are 36px squares with the dock
+icon's corner radius, and every island insets its content by the dock's
+10px.
+
+Opening from the shelf now asks the Shell to activate the application.
+A D-Bus raise or a launch without an activation token only produced an
+"is ready" notification on Wayland: the media player did not come
+forward and a live extension's application stayed behind. A live
+extension's passive open action is invoked as well, so the application
+can show what was clicked.
+
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -123,15 +123,15 @@
+     spacing: 4px; }
+   .luma-shelf-actions-box .luma-clock-time {
+     color: #e7e9e8;
+-    font-size: 11px;
+-    font-weight: 700; }
++    font-size: 12px;
++    font-weight: 650; }
+   .luma-shelf-actions-box .luma-clock-date {
+     color: rgba(231, 233, 232, 0.6);
+-    font-size: 8px;
+-    font-weight: 600; }
++    font-size: 10px;
++    font-weight: 500; }
+ 
+ .luma-shelf-live-island .luma-shelf-material {
+-  padding: 7px 10px; }
++  padding: 10px 12px 10px 10px; }
+ 
+ /* Native St.ScrollViewFade masks the viewport; fades consume no layout. */
+ .luma-shelf-running-indicator { background-color: #ffffff; }
+@@ -157,7 +157,7 @@
+  * 52px is the time's own width — wider leaves slack that shows up as a gap
+  * before the quick options. */
+ .luma-shelf-actions-island .luma-shelf-material {
+-  padding: 7px 9px 7px 12px; }
++  padding: 10px 10px 10px 12px; }
+ 
+ .luma-shelf-actions-box {
+   spacing: 6px; }
+@@ -645,10 +645,10 @@
+ .luma-media-module { min-width: 176px; height: 36px; padding: 0; spacing: 7px; border-radius: 10px; }
+ .luma-media-identity { padding: 0; border: 0; background-color: transparent; }
+ .luma-media-identity-box { spacing: 7px; }
+-.luma-media-copy { width: 68px; spacing: 1px; }
+-.luma-media-title { font-size: 10px; font-weight: 600; }
+-.luma-media-artist { font-size: 8px; opacity: 0.7; }
+-.luma-media-art { icon-size: 28px; border-radius: 8px; background-color: rgba(127,127,127,0.16); }
++.luma-media-copy { width: 132px; spacing: 2px; }
++.luma-media-title { font-size: 12px; font-weight: 650; }
++.luma-media-artist { font-size: 10px; font-weight: 500; opacity: 0.62; }
++.luma-media-art { icon-size: 36px; border-radius: 9px; background-color: rgba(127,127,127,0.16); }
+ .luma-media-controls { spacing: 0; }
+ .luma-media-control { min-width: 22px; min-height: 24px; padding: 0; border-radius: 7px; background-color: transparent; }
+ .luma-media-control:hover, .luma-media-control:focus { background-color: rgba(127,127,127,0.2); }
+@@ -705,22 +705,25 @@
+   box-shadow: none;
+ }
+ .luma-shelf-live-island .luma-live-extension-content {
+-  spacing: 9px;
+-  padding: 1px 2px;
++  spacing: 10px;
++  padding: 0;
+ }
+ .luma-shelf-live-island .luma-live-extension-text {
+   /* 180px was a fixed guess that cramped a title and stranded a short one. */
+   width: auto;
+   min-width: 96px;
+   max-width: 260px;
+-  spacing: 1px;
++  spacing: 2px;
+ }
++/* The shelf has two sizes of text. Titles and times -- an event, a song,
++ * the clock -- are 12px; everything that describes them -- when, who, the
++ * date -- is 10px. */
+ .luma-shelf-live-island .luma-live-extension-title {
+-  font-size: 11.5px;
++  font-size: 12px;
+   font-weight: 650;
+ }
+ .luma-shelf-live-island .luma-live-extension-subtitle {
+-  font-size: 9.5px;
++  font-size: 10px;
+   font-weight: 500;
+ }
+ .luma-shelf-live-island .luma-live-extension-icon { icon-size: 16px; }
+@@ -762,26 +765,32 @@
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-subtitle { color: rgba(44, 52, 58, 0.62); }
+ 
+ /* ── Live extension: the date badge, the time, and the action row ───────── */
++/* The badge is a dock tile: 36px square, the dock's corner, the dock's inset. */
+ .luma-shelf-live-island .luma-live-extension-badge {
+-  border-radius: 8px;
+-  padding: 2px 6px 3px 6px;
+-  min-width: 26px;
++  border-radius: 9px;
++  width: 36px;
++  height: 32px;
++  min-width: 0;
++  padding: 4px 0 0 0;
++  spacing: 0;
+   background-color: rgba(255, 255, 255, 0.10);
+ }
+ .luma-shelf-live-island .luma-live-extension-badge-month {
+-  font-size: 8px;
++  font-size: 10px;
+   font-weight: 700;
++  text-align: center;
+   color: rgba(231, 233, 232, 0.66);
+ }
+ .luma-shelf-live-island .luma-live-extension-badge-day {
+-  font-size: 15px;
++  font-size: 12px;
+   font-weight: 700;
++  text-align: center;
+   color: #e7e9e8;
+ }
+ .luma-shelf-live-island .luma-live-extension-time {
+-  font-size: 12.5px;
+-  font-weight: 600;
+-  padding: 0 2px 0 8px;
++  font-size: 12px;
++  font-weight: 650;
++  padding: 0 0 0 10px;
+   color: rgba(231, 233, 232, 0.62);
+ }
+ /* Unconstrained, this inherited a full-size icon and drew as a huge glyph. */
+--- a/js/ui/mpris.js
++++ b/js/ui/mpris.js
+@@ -91,7 +91,12 @@
+     get canPause() { return Boolean(this._playerProxy?.CanPause); }
+ 
+     raiseSource() {
+-        if (this._mprisProxy?.CanRaise)
++        // A player with a window is brought forward by the compositor itself.
++        // Asking it over D-Bus to raise itself carries no activation token, so
++        // on Wayland the Shell announced "is ready" instead of showing it.
++        if (this._app?.get_windows().length > 0)
++            this._app.activate();
++        else if (this._mprisProxy?.CanRaise)
+             this._mprisProxy.RaiseAsync().catch(logError);
+         else
+             this._app?.activate();
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -472,13 +472,29 @@
+     _openApplication() {
+         if (!this._current)
+             return;
+-        const application = Gio.DesktopAppInfo.new(
++        // The Shell activates the application itself: a launch without an
++        // activation token only told a running application to raise, which
++        // Wayland turns into an "is ready" notification. Then the
++        // publication's own passive open action, when it has one, asks the
++        // application to show the thing described -- the event, not just the
++        // calendar.
++        const app = Shell.AppSystem.get_default().lookup_app(
+             `${this._current.application_id}.desktop`);
+-        try {
+-            application?.launch([], null);
+-        } catch (error) {
+-            console.error(`Unable to open Live Extension application: ${error.message}`);
++        if (app) {
++            app.activate();
++        } else {
++            try {
++                Gio.DesktopAppInfo.new(`${this._current.application_id}.desktop`)
++                    ?.launch([], global.create_app_launch_context(0, -1));
++            } catch (error) {
++                console.error(`Unable to open Live Extension application: ${error.message}`);
++            }
+         }
++        const open = (this._current.extension?.actions ?? []).find(action =>
++            action?.enabled && action.risk === 'passive' &&
++            typeof action.id === 'string' && action.id.endsWith('.open'));
++        if (open)
++            this._invokeAction(open);
+     }
+ });
+ 
+--- a/js/ui/shelfMedia.js
++++ b/js/ui/shelfMedia.js
+@@ -21,10 +21,11 @@
+         this._artGeneration = 0;
+         this._identity = new St.Button({style_class: 'luma-media-identity', can_focus: true});
+         const identity = new St.BoxLayout({style_class: 'luma-media-identity-box'});
+-        this._art = new St.Icon({style_class: 'luma-media-art', icon_size: 28});
++        // Artwork is a dock tile: the same size, and the same corner.
++        this._art = new St.Icon({style_class: 'luma-media-art', icon_size: 36});
+         try {
+             const mask = new LumaIconMask();
+-            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [8 / 28]);
++            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [0.25]);
+             this._art.add_effect_with_name('luma-icon-mask', mask);
+         } catch (error) {
+             logError(error, 'Media artwork rounding unavailable');

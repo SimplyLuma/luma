@@ -1,0 +1,95 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shell: paint elevation on artwork, never its square bin
+
+IconGrid.BaseIcon is a Shell.SquareBin named overview-icon. A box shadow on
+that node is therefore a square surface regardless of the alpha channel in the
+application artwork it contains. Tag the real St.Icon returned by each Shelf
+icon factory, clear every paint answer on both container nodes, and apply the
+quiet elevation through St's alpha-aware icon-shadow property instead.
+
+This keeps the accessible button and focus state intact without manufacturing
+a second tile behind the application icon.
+
+---
+ data/theme/luma-shelf.css | 45 ++++++++++++++++++++++++++++++++++++++++
+ js/ui/dash.js             |  8 +++++++-
+ 2 files changed, 52 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -32,6 +32,12 @@ class DashIcon extends AppDisplay.AppIcon {
+             'notify::pressed', () => this._syncShelfArtwork(), this);
+     }
+ 
++    _createIcon(iconSize) {
++        const artwork = super._createIcon(iconSize);
++        artwork.add_style_class_name('luma-shelf-artwork');
++        return artwork;
++    }
++
+     _syncShelfArtwork() {
+         const edge = Main.overview.dash._shelfEdge;
+         if (!edge)
+@@ -287,7 +293,7 @@ class ShowAppsIcon extends DashItemContainer {
+         this._iconActor = new St.Icon({
+             icon_name: 'view-app-grid-symbolic',
+             icon_size: size,
+-            style_class: 'show-apps-icon',
++            style_class: 'show-apps-icon luma-shelf-artwork',
+             track_hover: true,
+         });
+         return this._iconActor;
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -564,3 +564,47 @@
+ .luma-status-hover {
+   transition-duration: 0ms;
+   box-shadow: none; }
++
++/* BaseIcon's overview-icon is a Shell.SquareBin, not the application artwork.
++ * Neither that bin nor its button may paint a tile in the production Shelf. */
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:active,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:checked,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:hover,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:focus,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:active,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:checked {
++  background-color: transparent !important;
++  background-gradient-start: transparent !important;
++  background-gradient-end: transparent !important;
++  border: none !important;
++  box-shadow: none !important; }
++
++.luma-shelf-dock-island #dash .dash-item-container .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:active .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:checked .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:hover .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:focus .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:active .overview-icon,
++.luma-shelf-dock-island #dash .dash-item-container .show-apps:checked .overview-icon {
++  background-color: transparent !important;
++  background-gradient-start: transparent !important;
++  background-gradient-end: transparent !important;
++  border: none !important;
++  box-shadow: none !important; }
++
++/* St.Icon computes icon-shadow from the artwork alpha channel, so elevation
++ * follows each installed icon instead of exposing its square allocation. */
++.luma-shelf-dock-island #dash .luma-shelf-artwork {
++  icon-shadow: 0 2px 4px rgba(12,17,24,0.34); }
++.luma-shelf-dock-island #dash .overview-tile:hover .luma-shelf-artwork,
++.luma-shelf-dock-island #dash .show-apps:hover .luma-shelf-artwork {
++  icon-shadow: 0 4px 7px rgba(12,17,24,0.40); }
++.luma-shelf-dock-island #dash .overview-tile:focus .luma-shelf-artwork,
++.luma-shelf-dock-island #dash .show-apps:focus .luma-shelf-artwork {
++  icon-shadow: 0 0 4px rgba(82,127,174,0.82); }
+-- 
+2.54.0

@@ -1,0 +1,190 @@
+{
+  "app": "notifications-options-1440",
+  "title": "Notifications and Quick Options \u00b7 Studio desktop 1440",
+  "spec": {
+    "url": "mockups/luma-next-70.html?desktop=1",
+    "window": "#nl",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "ready": "#lshell",
+    "init_script": "const query = Document.prototype.querySelector, queries = Document.prototype.querySelectorAll;\nDocument.prototype.querySelector=function(s){return query.call(this,s)||query.call(this,'#lshell')?.shadowRoot?.querySelector(s)||null;};\nDocument.prototype.querySelectorAll=function(s){const own=queries.call(this,s);return own.length?own:(query.call(this,'#lshell')?.shadowRoot?.querySelectorAll(s)||own);};\nconst timeout=window.setTimeout;window.setTimeout=(fn,delay,...args)=>[2600,44000,45000,110000,190000].includes(delay)?0:timeout(fn,delay,...args);",
+    "before": [
+      {
+        "eval": "const r=document.querySelector('#lshell').shadowRoot;r.querySelector('#nl').click();r.querySelector('[data-act=clear]')?.click();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));",
+        "wait": 800
+      },
+      {
+        "eval": "lumaDesk.mat('solid');lumaShell.mat('solid');"
+      }
+    ]
+  },
+  "states": [
+    {
+      "name": "idle",
+      "about": "idle",
+      "window": "#nl",
+      "spec": []
+    },
+    {
+      "name": "pill-small",
+      "about": "pill small",
+      "window": "#nl",
+      "spec": [
+        {
+          "eval": "lumaShell.notify({app:'calendar',title:'Launch walkthrough',body:'Today at 7:30 PM \u00b7 Studio',acts:['Snooze']});lumaShell.notify({app:'app-store',title:'Updates are ready',body:'Viola and 3 other apps can update tonight.',acts:['Update','Later']});",
+          "wait": 6900
+        }
+      ]
+    },
+    {
+      "name": "pill-big",
+      "about": "pill big",
+      "window": "#nl",
+      "spec": [
+        {
+          "eval": "lumaShell.notify({app:'calendar',title:'Launch walkthrough',body:'Today at 7:30 PM \u00b7 Studio',acts:['Snooze']});lumaShell.notify({app:'app-store',title:'Updates are ready',body:'Viola and 3 other apps can update tonight.',acts:['Update','Later']});",
+          "wait": 6900
+        },
+        {
+          "hover": "#nl"
+        }
+      ]
+    },
+    {
+      "name": "card-reply",
+      "about": "card reply",
+      "window": "#nl",
+      "spec": [
+        {
+          "eval": "lumaShell.notify({app:'messages',face:{n:'Priya Raman',face:['life-ari-street',.705,.2,5.2]},title:'Priya Raman',body:'Pushed the new shelf build. Want to try it before dinner?',reply:true});"
+        }
+      ]
+    },
+    {
+      "name": "card-actions",
+      "about": "card actions",
+      "window": "#nl",
+      "spec": [
+        {
+          "eval": "lumaShell.notify({app:'app-store',title:'Updates are ready',body:'Viola and 3 other apps can update tonight.',acts:['Update','Later']});"
+        }
+      ]
+    },
+    {
+      "name": "card-call",
+      "about": "card call",
+      "window": "#nl",
+      "spec": [
+        {
+          "eval": "lumaShell.notify({app:'phone',face:{n:'Priya Raman',face:['life-ari-street',.705,.2,5.2]},title:'Priya Raman',body:'Incoming voice call',urgent:true,acts:['Accept','Decline']});"
+        }
+      ]
+    },
+    {
+      "name": "tray-full",
+      "about": "tray full",
+      "window": "#nl",
+      "spec": [
+        {
+          "eval": "lumaShell.notify({app:'calendar',title:'Launch walkthrough',body:'Today at 7:30 PM \u00b7 Studio',acts:['Snooze']});lumaShell.notify({app:'app-store',title:'Updates are ready',body:'Viola and 3 other apps can update tonight.',acts:['Update','Later']});",
+          "wait": 6900
+        },
+        {
+          "click": "#nl"
+        }
+      ]
+    },
+    {
+      "name": "tray-empty",
+      "about": "tray empty",
+      "window": "#nl",
+      "spec": [
+        {
+          "click": "#nl"
+        }
+      ]
+    },
+    {
+      "name": "quick-main",
+      "about": "quick main",
+      "window": "#pop",
+      "spec": [
+        {
+          "click": "[data-act=qs]"
+        }
+      ]
+    },
+    {
+      "name": "quick-wifi",
+      "about": "quick wifi",
+      "window": "#pop",
+      "spec": [
+        {
+          "click": "[data-act=qs]"
+        },
+        {
+          "click": "[data-q2page=wifi]"
+        }
+      ]
+    },
+    {
+      "name": "quick-bluetooth",
+      "about": "quick bluetooth",
+      "window": "#pop",
+      "spec": [
+        {
+          "click": "[data-act=qs]"
+        },
+        {
+          "click": "[data-q2page=bt]"
+        }
+      ]
+    },
+    {
+      "name": "quick-output",
+      "about": "quick output",
+      "window": "#pop",
+      "spec": [
+        {
+          "click": "[data-act=qs]"
+        },
+        {
+          "click": "[data-q2page=out]"
+        }
+      ]
+    },
+    {
+      "name": "quick-power",
+      "about": "quick power",
+      "window": "#pop",
+      "spec": [
+        {
+          "click": "[data-act=qs]"
+        },
+        {
+          "click": "[data-q2page=power]"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "idle",
+    "pill-small",
+    "pill-big",
+    "card-reply",
+    "card-actions",
+    "card-call",
+    "tray-full",
+    "tray-empty",
+    "quick-main",
+    "quick-wifi",
+    "quick-bluetooth",
+    "quick-output",
+    "quick-power"
+  ],
+  "groups": [],
+  "pairs": [],
+  "text_aliases": {}
+}

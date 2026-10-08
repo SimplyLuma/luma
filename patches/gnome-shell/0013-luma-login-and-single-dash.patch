@@ -1,0 +1,193 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <build@projectluma.org>
+Date: Tue, 1 Sep 2026 16:20:00 -0500
+Subject: [PATCH] Make login state atomic and use one native desktop Dash
+
+The login avatar fills its rounded tile even when AccountsService supplies a
+transparent circular source. Authentication progress atomically replaces the
+submit glyph so the two never paint in the same frame.
+
+Desktop Shelf and Activity View now share GNOME Shell's one Dash actor and
+model. Handheld keeps its native Activity View Dash and does not construct the
+desktop Shelf.
+---
+
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index d0aabadc..37801aa2 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -537,6 +537,13 @@ export const AuthPrompt = GObject.registerClass({
+     setActorInDefaultButtonWell(actor, animate) {
+         actor ??= this._submitArrow;
+ 
++        const oldActor = this._defaultButtonWellActor;
++        // The submit glyph and verifier spinner occupy the same button well.
++        // Switch synchronously whenever progress enters or leaves so there is
++        // never a frame where both glyphs are painted on top of each other.
++        if (actor === this._spinner || oldActor === this._spinner)
++            animate = false;
++
+         if (actor === this._spinner)
+             this._spinner.play();
+ 
+@@ -544,8 +551,6 @@ export const AuthPrompt = GObject.registerClass({
+             !actor)
+             return;
+ 
+-        const oldActor = this._defaultButtonWellActor;
+-
+         if (oldActor)
+             oldActor.remove_all_transitions();
+ 
+diff --git a/js/ui/main.js b/js/ui/main.js
+index cc842ec1..30ea456d 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -248,8 +248,6 @@ async function _initializeUI() {
+ 
+     messageTray = new MessageTray.MessageTray();
+     panel = new Panel.Panel();
+-    if (!sessionMode.isGreeter)
+-        shelf = new Shelf.Shelf();
+     keyboard = new Keyboard.KeyboardManager();
+     notificationDaemon = new NotificationDaemon.NotificationDaemon();
+     windowAttentionHandler = new WindowAttentionHandler.WindowAttentionHandler();
+@@ -274,6 +272,9 @@ async function _initializeUI() {
+ 
+     layoutManager.init();
+     overview.init();
++    if (!sessionMode.isGreeter &&
++        GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld')
++        shelf = new Shelf.Shelf();
+ 
+     new PointerA11yTimeout.PointerA11yTimeout();
+ 
+diff --git a/js/ui/overviewControls.js b/js/ui/overviewControls.js
+index 61c1b460..3ee4ea4c 100644
+--- a/js/ui/overviewControls.js
++++ b/js/ui/overviewControls.js
+@@ -187,19 +187,23 @@ class ControlsManagerLayout extends Clutter.LayoutManager {
+ 
+         availableHeight -= searchHeight + spacing;
+ 
+-        // Dash
+-        const maxDashHeight = this._handheldMode
+-            ? 0
+-            : Math.round(box.get_height() * DASH_MAX_HEIGHT_RATIO);
+-        this._dash.setMaxSize(width, maxDashHeight);
+-
+-        let [, dashHeight] = this._dash.get_preferred_height(width);
+-        dashHeight = Math.min(dashHeight, maxDashHeight);
+-        childBox.set_origin(0, startY + height - dashHeight);
+-        childBox.set_size(width, dashHeight);
+-        this._dash.allocate(childBox);
+-
+-        availableHeight -= dashHeight + spacing;
++        // Desktop Luma adopts this actor into the persistent Shelf. Allocate
++        // it here only while Overview still owns it (including handheld).
++        const ownsDash = this._dash.get_parent() === container;
++        let dashHeight = 0;
++        if (ownsDash) {
++            const maxDashHeight = this._handheldMode
++                ? 0
++                : Math.round(box.get_height() * DASH_MAX_HEIGHT_RATIO);
++            this._dash.setMaxSize(width, maxDashHeight);
++
++            [, dashHeight] = this._dash.get_preferred_height(width);
++            dashHeight = Math.min(dashHeight, maxDashHeight);
++            childBox.set_origin(0, startY + height - dashHeight);
++            childBox.set_size(width, dashHeight);
++            this._dash.allocate(childBox);
++            availableHeight -= dashHeight + spacing;
++        }
+ 
+         // Workspace Thumbnails
+         let thumbnailsHeight = 0;
+@@ -866,16 +870,17 @@ class ControlsManager extends St.Widget {
+                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             }));
+ 
+-        // The Dash rises from the bottom. This is the last animation to finish,
+-        // so resolve the promise there.
+-        this.dash.translation_y = this.dash.height + this.dash.margin_bottom;
+-        startupPromises.push(
+-            this.dash.easeAsync({
+-                translation_y: 0,
+-                delay: STARTUP_ANIMATION_TIME,
+-                duration: STARTUP_ANIMATION_TIME,
+-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-            }));
++        if (this.dash.get_parent() === this) {
++            // The Dash rises from the bottom only when Overview owns it.
++            this.dash.translation_y = this.dash.height + this.dash.margin_bottom;
++            startupPromises.push(
++                this.dash.easeAsync({
++                    translation_y: 0,
++                    delay: STARTUP_ANIMATION_TIME,
++                    duration: STARTUP_ANIMATION_TIME,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                }));
++        }
+ 
+         return Promise.allSettled(startupPromises);
+     }
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 34970d41..a87ab127 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -4,7 +4,6 @@ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import St from 'gi://St';
+ 
+-import * as Dash from './dash.js';
+ import * as Main from './main.js';
+ 
+ const SHELF_HEIGHT = 50;
+@@ -131,14 +130,6 @@ class Shelf extends St.Widget {
+             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._sync());
+         }, this);
+         Main.layoutManager.connectObject('monitors-changed', () => this._sync(), this);
+-        Main.overview.connectObject(
+-            'showing', () => this.hide(),
+-            'hiding', () => {
+-                if (this._isDesktopSession())
+-                    this.show();
+-            },
+-            this);
+-
+         this._group = new St.BoxLayout({
+             style_class: 'luma-shelf-group',
+             x_align: Clutter.ActorAlign.CENTER,
+@@ -146,7 +137,11 @@ class Shelf extends St.Widget {
+         });
+         this.add_child(this._group);
+ 
+-        this._dash = new Dash.Dash();
++        // The overview Dash already owns favorites, drag/drop, Show Apps, and
++        // keyboard state. Adopt that one actor instead of running a second
++        // competing dock model during Activity View.
++        this._dash = Main.overview.dash;
++        this._dash.get_parent()?.remove_child(this._dash);
+         this._dash.setFixedIconSize(SHELF_ICON_SIZE);
+         this._dash.setShowAppsAtStart(true);
+         this._dockScroll = new St.ScrollView({
+diff --git a/js/ui/userWidget.js b/js/ui/userWidget.js
+index cbdca5e2..2491c40e 100644
+--- a/js/ui/userWidget.js
++++ b/js/ui/userWidget.js
+@@ -84,10 +84,14 @@ class Avatar extends St.Bin {
+ 
+         if (iconFile) {
+             this.child = null;
++            const cropSize = Math.round(this._iconSize * 1.45);
++            const cropOffset = Math.round((this._iconSize - cropSize) / 2);
+             this.add_style_class_name('user-avatar');
+             this.style = `
+                 background-image: url("${iconFile}");
+-                background-size: cover;`;
++                background-size: ${cropSize}px ${cropSize}px;
++                background-position: ${cropOffset}px ${cropOffset}px;
++                background-repeat: no-repeat;`;
+         } else if (this._showInitial) {
+             this.style = null;
+             this.remove_style_class_name('user-avatar');

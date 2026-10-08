@@ -1,0 +1,240 @@
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -8,9 +8,7 @@
+ 
+ import * as Main from './main.js';
+ 
+-const SHELF_HEIGHT = 50;
+-const SHELF_EDGE_INSET = 14;
+-const SHELF_ISLAND_GAP = 8;
++const DASH_PADDING = 10;
+ const SHELF_ICON_SIZE = 36;
+ // Every application on the dock is drawn to the same silhouette, whatever
+ // artwork it ships. Linux has spent a decade letting applications put whatever
+@@ -55,11 +53,11 @@
+ 
+ // Geometry is independent of St so every shape can be tested without changing
+ // a user's session. Left/right are physical monitor edges, including in RTL.
+-export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural, scale = 1) {
++export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural, scale = 1, padding = DASH_PADDING) {
+     const vertical = edge === 'left' || edge === 'right';
+-    const thickness = SHELF_HEIGHT * scale;
+-    const inset = protrude ? 0 : SHELF_EDGE_INSET * scale;
+-    const gutter = !span || floatEnds ? SHELF_EDGE_INSET * scale : 0;
++    const thickness = (SHELF_ICON_SIZE + 2 * padding) * scale;
++    const inset = protrude ? 0 : padding * scale;
++    const gutter = !span || floatEnds ? padding * scale : 0;
+     const available = Math.max(1, (vertical ? monitor.height : monitor.width) - 2 * gutter);
+     const length = span ? available : Math.min(available, natural);
+     const width = vertical ? thickness : length;
+@@ -98,11 +96,11 @@
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const children = container.get_children().filter(child => child.visible);
+         const sizes = children.map(child => container._vertical
+-            ? child.get_preferred_height(SHELF_HEIGHT * scale)[1]
+-            : child.get_preferred_width(SHELF_HEIGHT * scale)[1]);
+-        const gap = container._separate ? SHELF_ISLAND_GAP * scale : 0;
++            ? child.get_preferred_height(container._thickness * scale)[1]
++            : child.get_preferred_width(container._thickness * scale)[1]);
++        const gap = container._separate ? container._padding * scale : 0;
+         return {children, sizes, gap, length: sizes.reduce((a, b) => a + b, 0) +
+-            Math.max(0, sizes.length - 1) * gap, thickness: SHELF_HEIGHT * scale};
++            Math.max(0, sizes.length - 1) * gap, thickness: container._thickness * scale};
+     }
+ 
+     vfunc_get_preferred_width(container, _forHeight) {
+@@ -194,9 +192,13 @@
+         this._stroke = stroke;
+     }
+ 
+-    setOrientation(vertical) {
++    setOrientation(vertical, padding, outer = false) {
+         this._vertical = vertical;
+-        const thickness = SHELF_HEIGHT * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._padding = padding;
++        this._thickness = SHELF_ICON_SIZE + 2 * padding;
++        this._outer = outer;
++        this._updateStyle();
++        const thickness = this._thickness * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         // BinLayout may retain a material's natural cross-axis size even
+         // with FILL alignment. The material owns exactly the Dash thickness;
+         // only its content-driven length is left unconstrained.
+@@ -204,9 +206,23 @@
+     }
+ 
+     setCornerRadii(radii) {
++        this._radii = radii;
++        this._updateStyle();
++    }
++
++    _updateStyle() {
++        const radii = this._radii ?? [15, 15, 15, 15];
+         const style = `border-radius: ${radii.map(value => `${value}px`).join(' ')};`;
+-        for (const actor of [this._content, this._stroke, ...this._shadows])
++        for (const actor of [this._stroke, ...this._shadows])
+             actor.set_style(style);
++        const padding = this._outer ? 0 : this._padding ?? DASH_PADDING;
++        // Native Dash tiles already contribute half of the 5px inter-icon
++        // gap at each end. Absorb only those outer half-margins; preserve
++        // spacing between icons and measure padding to the artwork bounds.
++        const end = this.has_style_class_name('luma-shelf-dock-island')
++            ? padding - 2.5 : padding;
++        const insets = this._vertical ? `${end}px ${padding}px` : `${padding}px ${end}px`;
++        this._content.set_style(`${style} padding: ${insets};`);
+     }
+ 
+     setSurfaceVisible(visible, castShadows) {
+@@ -220,7 +236,7 @@
+     // through without their surface.
+     vfunc_get_preferred_width(forHeight) {
+         if (this._vertical) {
+-            const width = SHELF_HEIGHT * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            const width = this._thickness * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+             return [width, width];
+         }
+         return this._content.get_preferred_width(forHeight);
+@@ -228,8 +244,8 @@
+ 
+     vfunc_get_preferred_height(forWidth) {
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const height = this._vertical ? Math.max(SHELF_HEIGHT * scale,
+-            this._content.get_preferred_height(forWidth)[1]) : SHELF_HEIGHT * scale;
++        const height = this._vertical ? Math.max(this._thickness * scale,
++            this._content.get_preferred_height(forWidth)[1]) : this._thickness * scale;
+         return [height, height];
+     }
+ });
+@@ -484,6 +500,10 @@
+         const actionsVisible = this._settings.get_boolean('shelf-actions-visible');
+         const surfaceMode = this._settings.get_string('shelf-surface-mode');
+         const material = this._settings.get_string('shelf-material');
++        this._padding = this._settings.get_int('shelf-padding');
++        this._thickness = SHELF_ICON_SIZE + 2 * this._padding;
++        this._group._padding = this._padding;
++        this._group._thickness = this._thickness;
+         this._edge = this._settings.get_string('shelf-edge');
+         this._vertical = this._edge === 'left' || this._edge === 'right';
+         this._protrude = this._settings.get_string('shelf-edge-mode') === 'protruding';
+@@ -530,10 +550,10 @@
+                     flushEnds && island === physicalIslands[0],
+                     flushEnds && island === physicalIslands.at(-1))
+                 : [0, 0, 0, 0]);
+-            island.setOrientation(this._vertical);
++            island.setOrientation(this._vertical, this._padding);
+             island.setSurfaceVisible(surfaceMode === 'separate', castShadows);
+         }
+-        this._surface.setOrientation(this._vertical);
++        this._surface.setOrientation(this._vertical, this._padding, true);
+         this._syncDockWidth();
+     }
+ 
+@@ -544,10 +564,10 @@
+ 
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const natural = this._vertical
+-            ? this._group.get_preferred_height(SHELF_HEIGHT * scale)[1]
+-            : this._group.get_preferred_width(SHELF_HEIGHT * scale)[1];
++            ? this._group.get_preferred_height(this._thickness * scale)[1]
++            : this._group.get_preferred_width(this._thickness * scale)[1];
+         const geometry = dashGeometry(monitor, this._edge, this._protrude,
+-            this._span, this._floatEnds, natural, scale);
++            this._span, this._floatEnds, natural, scale, this._padding);
+         const explicitChange = this._previousVisualPosition !== null && this._previousVisualPosition !== undefined;
+         const moved = this.x !== geometry.x || this.y !== geometry.y;
+         const [oldX, oldY] = this._previousVisualPosition ??
+@@ -625,11 +645,11 @@
+ 
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const measure = actor => this._vertical
+-            ? actor.get_preferred_height(SHELF_HEIGHT * scale)[1]
+-            : actor.get_preferred_width(SHELF_HEIGHT * scale)[1];
++            ? actor.get_preferred_height(this._thickness * scale)[1]
++            : actor.get_preferred_width(this._thickness * scale)[1];
+         const naturalDock = measure(this._dash);
+         const edgeLength = this._vertical ? monitor.height : monitor.width;
+-        const gutter = !this._span || this._floatEnds ? 2 * SHELF_EDGE_INSET * scale : 0;
++        const gutter = !this._span || this._floatEnds ? 2 * this._padding * scale : 0;
+         const available = Math.max(1, edgeLength - gutter);
+         const setViewport = (scroll, length, cross) => {
+             scroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+@@ -645,19 +665,19 @@
+             this._liveContent.orientation = this._vertical
+                 ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+             this._liveScroll.set_size(-1, -1);
+-            liveSize = Math.min(measure(this._liveContent) + 20 * scale, available / 3);
+-            setViewport(this._liveScroll, Math.max(1, liveSize - 20 * scale), 36 * scale);
++            liveSize = Math.min(measure(this._liveContent) + 2 * this._padding * scale, available / 3);
++            setViewport(this._liveScroll, Math.max(1, liveSize - 2 * this._padding * scale), 36 * scale);
+             liveSize = measure(this._liveIsland);
+         }
+         const others = this._group.get_children().filter(actor => actor !== this._dockIsland && actor.visible);
+-        const gap = this._group._separate ? others.length * SHELF_ISLAND_GAP * scale : 0;
++        const gap = this._group._separate ? others.length * this._padding * scale : 0;
+         this._actionsScroll.set_size(-1, -1);
+-        const actionsBudget = Math.max(1, available - liveSize - gap - SHELF_HEIGHT * scale);
+-        const actionsPadding = (this._vertical ? 18 : 21) * scale;
++        const actionsBudget = Math.max(1, available - liveSize - gap - this._thickness * scale);
++        const actionsPadding = 2 * this._padding * scale;
+         const actionsLength = Math.min(measure(this._actionsBox), Math.max(1, actionsBudget - actionsPadding));
+         setViewport(this._actionsScroll, actionsLength, 36 * scale);
+         const otherSize = others.reduce((sum, actor) => sum + measure(actor), 0);
+-        const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - 14 * scale);
++        const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - (2 * this._padding - 5) * scale);
+         const length = Math.min(naturalDock, maxLength);
+         if (this._vertical)
+             this._dockScroll.set_size(SHELF_ICON_SIZE * scale, length);
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -12,7 +12,7 @@
+   spacing: 0; }
+ 
+ .luma-shelf-island {
+-  min-height: 50px; }
++  min-height: 0; }
+ 
+ .luma-shelf-material,
+ .luma-shelf-shadow,
+@@ -80,7 +80,7 @@
+   .luma-shelf-actions-box .panel-button {
+     -natural-hpadding: 0;
+     -minimum-hpadding: 0;
+-    min-height: 34px;
++    min-height: 36px;
+     margin: 0;
+     padding: 0;
+     border: 0;
+@@ -102,8 +102,8 @@
+       margin: 0;
+       padding: 0; }
+   .luma-shelf-actions-box .luma-shelf-status-button {
+-    min-width: 34px;
+-    min-height: 34px;
++    min-width: 36px;
++    min-height: 36px;
+     border-radius: 9px;
+     background-color: rgba(255, 255, 255, 0.085);
+     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055); }
+@@ -114,11 +114,11 @@
+     .luma-shelf-actions-box .luma-shelf-status-button:checked {
+       background-color: rgba(255, 255, 255, 0.18); }
+   .luma-shelf-actions-box .luma-shelf-status-grid {
+-    min-width: 34px;
+-    min-height: 34px; }
++    min-width: 36px;
++    min-height: 36px; }
+   .luma-shelf-actions-box .clock-display {
+     min-width: 42px;
+-    min-height: 34px; }
++    min-height: 36px; }
+   .luma-shelf-actions-box .clock-display-box {
+     spacing: 0; }
+   .luma-shelf-actions-box .luma-clock-content {
+@@ -166,7 +166,7 @@
+     padding: 0; }
+   .luma-shelf-actions-box .luma-clock-content {
+     min-width: 0;
+-    padding-top: 3px;
++    padding-top: 0;
+     padding-left: 0; }
+   .luma-shelf-actions-box .luma-clock-time,
+   .luma-shelf-actions-box .luma-clock-date {

@@ -1,0 +1,488 @@
+/* Existing Depot views still used for settings, release notes and support. */
+/* Depot — the catalogue, the shelves and the two kinds of update.
+ *
+ * Window, islands, toolbars, status bar and buttons come from the Application
+ * Kit. What is here is the shelf, the card, the featured banner, and the one
+ * place Luma uses a gold numeric badge: apps waiting to be updated. */
+
+/* Navigation itself is shared NavigationSidebar/NavigationRow. */
+.dp-badge {
+  min-width: 7px; min-height: 0; padding: 0 5px; border-radius: 999px;
+  background: @luma_amber; color: #231a08;
+  font-size: 13px; font-weight: 750;
+}
+
+/* ── Main ────────────────────────────────────────────────────────────── */
+
+.dp-bar { padding: 0 8px; }
+.dp-title { color: @luma_ink; font-size: 13px; font-weight: 700; }
+.dp-scroll { padding: 12px; }
+
+/* An app's mark. The tone comes from the catalogue, and app colour is the only
+   colour on this screen besides the banner. */
+.dp-icon { border-radius: 10px; background: @luma_passive; color: @luma_muted; }
+.dp-icon.large { border-radius: 10px; }
+.dp-icon.tone-blue { background: alpha(@luma_blue,.18); color: @luma_blue; }
+.dp-icon.tone-green { background: alpha(@luma_green,.18); color: @luma_green; }
+.dp-icon.tone-violet { background: alpha(@luma_violet,.18); color: @luma_violet; }
+.dp-icon.tone-amber { background: alpha(@luma_amber,.20); color: @luma_amber; }
+/* Real app artwork keeps its own shape: no tile behind it. */
+.dp-icon.artwork, .dp-icon.artwork.tone-blue, .dp-icon.artwork.tone-green,
+.dp-icon.artwork.tone-violet, .dp-icon.artwork.tone-amber { background: none; }
+
+.dp-hero {
+  /* 186 tall in the design. GTK measures min-height on the content box, so the
+   * number here is 186 less the 16px of padding on each side; stating 186 built
+   * a 218px banner. */
+  min-height: 154px; padding: 16px; border: 0; border-radius: 10px;
+  background: linear-gradient(160deg, alpha(@luma_violet,.55), alpha(@luma_blue,.75));
+  color: #ffffff; box-shadow: none;
+}
+.dp-hero.tone-green { background: linear-gradient(160deg, alpha(@luma_green,.55), alpha(@luma_blue,.75)); }
+.dp-hero.tone-amber { background: linear-gradient(160deg, alpha(@luma_amber,.55), alpha(@luma_violet,.7)); }
+.dp-hero:hover { background: linear-gradient(160deg, alpha(@luma_violet,.62), alpha(@luma_blue,.82)); }
+.dp-hero-eyebrow {
+  color: alpha(#ffffff,.78); font-size: 11px; font-weight: 700; letter-spacing: .11em;
+}
+.dp-hero-name { color: #ffffff; font-size: 21px; font-weight: 700; }
+.dp-hero-tagline { color: alpha(#ffffff,.86); font-size: 13px; font-weight: 500; }
+
+.dp-rail { margin-top: 16px; }
+.dp-cards { background: transparent; }
+.dp-cards flowboxchild { padding: 0; background: transparent; }
+.dp-card {
+  /* The 40px tile and 8px of padding make the design's 56px card; a min-height
+   * on top of the padding would make it 72. */
+  padding: 8px; border: 0; border-radius: 10px;
+  background: @luma_island; box-shadow: inset 0 0 0 1px @luma_border;
+  color: @luma_ink;
+}
+.dp-card:hover { background: @luma_hover; }
+.dp-card-name { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-card-summary { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-card-end { color: @luma_muted; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dp-card-end.have { color: @luma_green; }
+.dp-card-end.working { color: @luma_blue; }
+
+/* ── Detail ──────────────────────────────────────────────────────────── */
+
+.dp-head { margin-bottom: 16px; }
+.dp-head-name { color: @luma_ink; font-size: 21px; font-weight: 700; line-height: 25px; }
+.dp-head-developer { color: @luma_muted; font-size: 13px; font-weight: 600; line-height: 15px; }
+.dp-stars { color: @luma_muted; font-size: 13px; font-weight: 550; }
+.dp-stars-value { color: @luma_ink; font-size: 13px; font-weight: 700; }
+.dp-stars image { -gtk-icon-size: 11px; color: @luma_muted; }
+.dp-get { margin-top: 3px; }
+.dp-get-note { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-publisher-reason { font-size: 12px; font-weight: 500; line-height: 16px; }
+.dp-source { color: @luma_muted; font-size: 12px; font-weight: 550; line-height: 15px; }
+.dp-verified.small { min-width: 12px; min-height: 12px; -gtk-icon-size: 8px; }
+
+.dp-shots { margin-bottom: 16px; }
+.dp-shot {
+  border-radius: 10px; background: @luma_passive;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+
+.dp-section { margin-top: 16px; }
+.dp-section-body { color: @luma_ink; font-size: 13px; font-weight: 500; }
+
+/* "What it can reach" — the same words the installer uses. */
+.dp-access {
+  border-radius: 10px; background: @luma_island;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-acc { padding: 8px 12px; }
+.dp-acc-rule { min-height: 1px; background: @luma_border; margin: 0 12px; }
+.dp-accmark {
+  min-width: 26px; min-height: 26px; border-radius: 999px;
+  background: @luma_passive; color: @luma_muted;
+}
+.dp-accmark.notable { background: alpha(@luma_amber,.20); color: @luma_amber; }
+.dp-accmark image { -gtk-icon-size: 13px; }
+.dp-acc-title { color: @luma_ink; font-size: 13px; font-weight: 600; }
+.dp-acc-detail { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-acc-note { color: @luma_muted; font-size: 11px; font-weight: 550; margin-top: 6px; }
+
+.dp-facts { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-fact-label { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-fact-value { color: @luma_ink; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* ── Rows ────────────────────────────────────────────────────────────── */
+
+.dp-row {
+  /* Same reasoning as the card: the 34px tile and 8px of padding are the row. */
+  padding: 8px; border: 0; border-radius: 10px;
+  background: transparent; box-shadow: none;
+}
+.dp-row:hover { background: @luma_hover; }
+.dp-row-name { color: @luma_ink; font-size: 13px; font-weight: 600; }
+.dp-row-detail { color: @luma_muted; font-size: 11px; font-weight: 550; font-variant-numeric: tabular-nums; }
+
+/* ── Updates ─────────────────────────────────────────────────────────── */
+
+.dp-os {
+  padding: 16px; border-radius: 10px; background: @luma_island;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-os-kicker { color: @luma_muted; font-size: 11px; font-weight: 700; letter-spacing: .11em; line-height: 13px; }
+.dp-os-name { color: @luma_ink; font-size: 29px; font-weight: 700; line-height: 33.35px; }
+/* A state, not a version: it does not need display type. */
+.dp-os-status { color: @luma_ink; font-size: 19px; font-weight: 700; }
+.dp-os-meta { color: @luma_muted; font-size: 13px; font-weight: 550; line-height: 15px; }
+.dp-os-what { color: @luma_ink; font-size: 13px; font-weight: 500; }
+.dp-os-ready { color: @luma_green; font-size: 13px; font-weight: 650; }
+/* Kept deliberately quiet and green: it is a reassurance, not an alert. */
+.dp-os-rollback { color: @luma_green; font-size: 13px; font-weight: 600; }
+
+.dp-apps { margin-top: 24px; }
+.dp-appshead { padding: 0 2px 8px; }
+.dp-apps-title { color: @luma_ink; font-size: 14px; font-weight: 700; }
+.dp-apps-summary { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-uplist {
+  border-radius: 10px; background: @luma_island;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-uprow { padding: 12px; }
+.dp-up-name { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-up-detail { color: @luma_muted; font-size: 13px; font-weight: 500; }
+.dp-up-size { color: @luma_muted; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dp-up-state { color: @luma_muted; font-size: 11px; font-weight: 650; }
+.dp-up-state.failed { color: @luma_destructive; }
+
+/* The audit rows: a fixed key column so the values line up down the island,
+ * and value text at 12px -- a step under the 13px of a row's name, because a
+ * fact is read, not chosen. */
+.dp-factrow { padding: 9px 12px; min-height: 22px; }
+.dp-fact-key { color: @luma_muted; font-size: 12px; font-weight: 600; }
+.dp-fact-value {
+  color: @luma_ink; font-size: 12px; font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.dp-fact-value:selected { background: alpha(@luma_blue,.22); }
+
+/* A consequence line: what a choice would do, before it happens. Quiet, but
+ * ink rather than muted -- it is the thing being agreed to. */
+.dp-consequence { color: @luma_ink; font-size: 12px; font-weight: 500; }
+
+.dp-track { min-height: 3px; }
+.dp-track trough { min-height: 3px; border-radius: 999px; background: @luma_passive; }
+.dp-track progress { min-height: 3px; border-radius: 999px; background: @luma_blue; }
+.dp-progress-stage { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-progress-counts {
+  color: @luma_muted; font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dp-failed { color: @luma_destructive; font-size: 13px; font-weight: 600; }
+
+.dp-quiet {
+  margin-top: 16px; padding: 12px; border-radius: 10px; background: @luma_passive;
+}
+.dp-quiet image { -gtk-icon-size: 15px; color: @luma_muted; }
+.dp-quiet-title { color: @luma_ink; font-size: 13px; font-weight: 600; }
+.dp-quiet-detail { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-quiet-line { color: @luma_muted; font-size: 13px; font-weight: 550; }
+
+.dp-hero.artwork { padding: 0; min-height: 186px; background: @luma_passive; }
+.dp-hero.artwork > overlay { min-height: 186px; border-radius: 10px; }
+.dp-hero-shade { background: linear-gradient(0deg, alpha(#0a0e13,.84), alpha(#0a0e13,.12)); }
+.dp-os-art { border-radius: 22px; background: @luma_passive; }
+label.dp-section-body { line-height: 20.8px; }
+.dp-os-what { line-height: 20.15px; }
+.dp-acc-detail { line-height: 15.95px; }
+.dp-apps { margin-top: 24px; }
+
+.dp-section.first { margin-top: 0; }
+
+/* An application with no artwork of its own still has a name. The monogram
+ * inherits the tile's tone, so a shelf of them reads as one family rather
+ * than as a row of identical anonymous glyphs. */
+.dp-monogram {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .5px;
+  color: inherit;
+}
+.dp-monogram.large {
+  font-size: 26px;
+  letter-spacing: 1px;
+}
+
+/* ── Tiers, developers and trust ─────────────────────────────────────── */
+
+/* How much Luma stands behind an app. Quiet pills: a fact about the app, not
+ * a call to action. Listed stays neutral on purpose. */
+.dp-tier {
+  min-height: 0; padding: 1px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  background: @luma_passive; color: @luma_muted;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-tier.luma { background: alpha(@luma_blue,.16); color: @luma_blue; box-shadow: none; }
+.dp-tier.verified { background: alpha(@luma_green,.16); color: @luma_green; box-shadow: none; }
+.dp-verified {
+  min-width: 14px; min-height: 14px; border-radius: 999px;
+  background: @luma_blue; color: #ffffff; -gtk-icon-size: 10px;
+}
+
+.dp-stars .dp-star-row image,
+.dp-star-row image { -gtk-icon-size: 11px; }
+.dp-star-row image.filled { color: @luma_amber; }
+.dp-star-row image.empty { color: alpha(@luma_muted,.55); }
+
+/* Small facts that sit beside text: "Installed on Luma", a permission an
+ * update asks for. */
+.dp-chip {
+  padding: 0 6px; border-radius: 999px; min-height: 0;
+  background: @luma_passive; color: @luma_muted;
+  font-size: 11px; font-weight: 650;
+}
+.dp-chip.notable { background: alpha(@luma_amber,.18); color: @luma_amber; }
+
+/* ── Permissions ─────────────────────────────────────────────────────── */
+
+.dp-accmark.high { background: alpha(@luma_amber,.30); }
+.dp-change {
+  padding: 0 6px; border-radius: 999px; min-height: 0;
+  font-size: 10px; font-weight: 750; letter-spacing: .04em;
+  background: alpha(@luma_amber,.20); color: @luma_amber;
+}
+.dp-change.narrowed, .dp-change.removed { background: @luma_passive; color: @luma_muted; }
+.dp-acc.removed .dp-acc-title { color: @luma_muted; text-decoration-line: line-through; }
+.dp-signin { margin-top: 2px; }
+
+/* A notice worth reading before acting: an update that asks for more, or the
+ * apps chosen at installation arriving. */
+.dp-banner {
+  margin-bottom: 16px; padding: 12px; border-radius: 10px;
+  background: alpha(@luma_amber,.10); box-shadow: inset 0 0 0 1px alpha(@luma_amber,.28);
+}
+.dp-banner.dp-provision { background: alpha(@luma_blue,.10); box-shadow: inset 0 0 0 1px alpha(@luma_blue,.24); }
+.dp-banner.dp-provision image { color: @luma_green; -gtk-icon-size: 16px; }
+.dp-banner-title { color: @luma_ink; font-size: 13px; font-weight: 700; }
+.dp-banner-detail { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-permission-notice .dp-access { margin-top: 2px; }
+
+/* ── Screenshots waiting for their verified image ────────────────────── */
+
+.dp-shot.loading { background: @luma_passive; }
+
+/* ── Collections ─────────────────────────────────────────────────────── */
+
+.dp-collection-summary { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-collection-head { margin-bottom: 16px; }
+
+/* ── Ratings and reviews ─────────────────────────────────────────────── */
+
+.dp-rating-summary { padding: 2px 0 4px; }
+.dp-rating-big { color: @luma_ink; font-size: 29px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dp-rating-none { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-rating-count { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-review-list {
+  border-radius: 10px; background: @luma_island;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-review { padding: 12px; }
+.dp-review-title { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-review-meta { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.dp-review-body { color: @luma_ink; font-size: 13px; font-weight: 500; }
+label.dp-review-body { line-height: 19.5px; }
+.dp-review-reply {
+  margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: @luma_passive;
+}
+.dp-review-reply-author { color: @luma_muted; font-size: 11px; font-weight: 700; }
+
+.dp-composer { padding: 4px 16px 16px; }
+.dp-composer-label { color: @luma_muted; font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.dp-star-picker button { min-width: 32px; min-height: 32px; padding: 0; border-radius: 8px; color: alpha(@luma_muted,.7); }
+.dp-star-picker button.chosen { color: @luma_amber; }
+.dp-composer-text {
+  border-radius: 10px; background: @luma_island;
+  box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-composer-text textview, .dp-composer-text textview text { background: transparent; color: @luma_ink; }
+
+.dp-links { margin-top: 12px; }
+
+/* ── System and firmware updates ─────────────────────────────────────── */
+
+.dp-os-kicker.security { color: @luma_amber; }
+.dp-notes { color: @luma_muted; font-size: 11px; font-weight: 600; }
+.dp-notes > box > label { color: @luma_muted; }
+
+/* Updates page: attention first (updates_page.py). */
+.dp-attention-title { color: @luma_ink; font-size: 15px; font-weight: 700; margin: 4px 0 2px 2px; }
+.dp-attention-title + .dp-os, .dp-attention-title + .dp-apps { margin-top: 10px; }
+.dp-calm .dp-os-name { font-size: 20px; }
+
+/* ── What's new: one release's notes, in a sheet ─────────────────────── */
+
+.dp-rn { padding: 10px 24px 24px; }
+.dp-rn-title { color: @luma_ink; font-size: 21px; font-weight: 700; line-height: 25px; }
+.dp-rn-meta {
+  color: @luma_muted; font-size: 12px; font-weight: 550; margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.dp-rn-section { margin-top: 20px; }
+.dp-rn-sectionhead { padding: 0 2px 8px; }
+.dp-rn-section-title { color: @luma_ink; font-size: 14px; font-weight: 700; }
+.dp-rn-section-count {
+  color: @luma_muted; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums;
+}
+.dp-rn-dot { min-width: 8px; min-height: 8px; border-radius: 999px; background: @luma_muted; }
+.dp-rn-dot.tone-violet { background: @luma_violet; }
+.dp-rn-dot.tone-blue { background: @luma_blue; }
+.dp-rn-dot.tone-green { background: @luma_green; }
+.dp-rn-dot.tone-amber { background: @luma_amber; }
+.dp-rn-item { padding: 11px 12px 12px; }
+.dp-rn-headline { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-rn-details { color: @luma_muted; font-size: 12px; font-weight: 500; line-height: 17px; }
+.dp-rn-headline:selected, .dp-rn-details:selected { background: alpha(@luma_blue,.22); }
+.dp-rn-empty { margin-top: 20px; padding: 12px; border-radius: 10px; background: @luma_passive; }
+
+.dp-rn-tech { margin-top: 24px; }
+.dp-rn-tech > title > label { color: @luma_muted; font-size: 11px; font-weight: 650; }
+.dp-rn-tech > title > arrow { color: @luma_muted; -gtk-icon-size: 12px; min-width: 12px; min-height: 12px; }
+.dp-rn-tech-body { padding: 8px 2px 0; }
+.dp-rn-packages {
+  color: @luma_muted; font-family: monospace; font-size: 11px; font-weight: 500; line-height: 16px;
+}
+
+.dp-rn-state { padding: 32px 24px; }
+.dp-rn-state-mark {
+  min-width: 40px; min-height: 40px; border-radius: 999px;
+  background: @luma_passive; color: @luma_muted; margin-bottom: 6px;
+}
+.dp-rn-state-title { color: @luma_ink; font-size: 15px; font-weight: 700; }
+.dp-rn-state-detail { color: @luma_muted; font-size: 12px; font-weight: 550; }
+
+/* ── Hardware updates: before Install, when it fails, when it waits ───── */
+
+/* What must be true before Install, one line each. Amber marks a line that
+ * keeps Install unavailable; a muted one is said once and changes nothing. */
+.dp-fw-needs { margin-top: 4px; }
+/* Said once for the whole card: the computer or fwupd, not one device. */
+.dp-fw-card-needs {
+  margin: 0 0 10px; padding: 8px 12px; border-radius: 10px;
+  background: @luma_island; box-shadow: inset 0 0 0 1px @luma_border;
+}
+.dp-fw-need image { color: @luma_muted; }
+.dp-fw-need.blocking image { color: @luma_amber; }
+.dp-fw-need-text { color: @luma_ink; font-size: 12px; font-weight: 550; line-height: 16px; }
+.dp-fw-need.info .dp-fw-need-text { color: @luma_muted; }
+
+/* An offer Luma is holding back. The row stays readable; the reason is the
+ * point of it, so it is ink rather than muted. */
+.dp-fw-paused .dp-up-name, .dp-fw-paused .dp-up-detail { opacity: .62; }
+.dp-fw-paused .dp-accmark { opacity: .62; }
+.dp-fw-note image { color: @luma_muted; }
+.dp-fw-note-text { color: @luma_ink; font-size: 12px; font-weight: 550; line-height: 16px; }
+
+/* A failed install, under the row it belongs to. Before anything was written
+ * it is calm; while writing it is urgent and says so. */
+.dp-fw-failure {
+  margin: 2px 0 0 38px; padding: 10px 12px; border-radius: 9px;
+  background: @luma_passive;
+}
+.dp-fw-failure image { color: @luma_amber; }
+.dp-fw-failure-title { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.dp-fw-failure-body { color: @luma_muted; font-size: 12px; font-weight: 550; line-height: 16px; }
+.dp-fw-failure.urgent { background: alpha(@luma_destructive,.14); box-shadow: inset 0 0 0 1px alpha(@luma_destructive,.34); }
+.dp-fw-failure.urgent image,
+.dp-fw-failure.urgent .dp-fw-failure-title { color: @luma_destructive; }
+.dp-fw-failure.urgent .dp-fw-failure-body { color: @luma_ink; }
+
+/* Current catalogue views take precedence. */
+/* Depot's catalogue composition. Shared cards, controls, type, navigation,
+ * counts, tables, menus, dialogs and feedback are styled by LumaUI. */
+/* Depot's store navigation sits directly on the frame at compact density. */
+.luma-depot #dp-sidebar row.depot-nav-main > box.lumaui-row-line,
+.luma-depot #dp-sidebar row.depot-nav-category > box.lumaui-row-line { border-spacing: 11px; }
+.luma-depot #dp-sidebar row.depot-nav-main image.depot-nav-main-icon {
+  min-width: 16px; min-height: 16px; -gtk-icon-size: 16px; color: @luma_frame_muted;
+}
+.luma-depot #dp-sidebar row.depot-nav-main:selected image.depot-nav-main-icon { color: #a0c6ff; }
+.luma-depot #dp-sidebar row.depot-nav-category box.depot-nav-category-icon {
+  min-width: 22px; min-height: 22px; border-radius: 7px;
+  color: @luma_on_media_ink;
+}
+.luma-depot #dp-sidebar row.depot-nav-category box.depot-nav-category-icon image { -gtk-icon-size: 13px; }
+.luma-depot #dp-sidebar box.depot-nav-category-icon.create { background: #c25d58; }
+.luma-depot #dp-sidebar box.depot-nav-category-icon.work { background: #3a84ca; }
+.luma-depot #dp-sidebar box.depot-nav-category-icon.media { background: #ab61a5; }
+.luma-depot #dp-sidebar box.depot-nav-category-icon.play { background: #3b9555; }
+.luma-depot #dp-sidebar box.depot-nav-category-icon.tools { background: #00969f; }
+.luma-depot #dp-sidebar row.depot-nav-main { min-height: 34px; }
+.luma-depot #dp-sidebar row.depot-nav-category { min-height: 34px; }
+.luma-depot #dp-sidebar .luma-navigation-list > row.lumaui-row { margin-right: 2px; }
+.luma-depot #dp-sidebar > box.luma-navigation-footer { margin-right: 2px; }
+.luma-depot #dp-sidebar .luma-navigation-list > row.luma-navigation-section { margin-top: 25px; }
+.luma-depot #dp-body { border-spacing: 28px; }
+.luma-depot #dp-body.depot-view-home { border-spacing: 34px; }
+.luma-depot #dp-body.depot-view-category { border-spacing: 21px; }
+.luma-depot #dp-body.depot-view-mine { border-spacing: 8px; }
+.luma-depot #dp-body.depot-view-app { border-spacing: 14px; }
+.luma-depot #dp-body.depot-view-updates { border-spacing: 34px; }
+.luma-depot .depot-section-heading { border-spacing: 10px; }
+.luma-depot .depot-shelf-scroll { min-height: 202px; }
+.luma-depot .depot-wide-shelf { min-height: 232px; }
+.luma-depot .depot-category-shelf { min-height: 210px; }
+.luma-depot .depot-app-card {
+  min-width: 168px; min-height: 176px; border-radius: 16px;
+  /* Surface, border and depth belong to the shared Card. */
+}
+.luma-depot .depot-app-card:hover { background: alpha(@luma_ink, 0.11); }
+.luma-depot .depot-app-card .depot-get {
+  min-width: 40px;
+}
+.luma-depot .depot-section-link { color: @luma_accent_ink; font-weight: 600; }
+.luma-depot .depot-section-link label { color: @luma_accent_ink; }
+.luma-depot .depot-app-card-content { border-spacing: 3px; }
+.luma-depot .depot-list-row { padding: 3px 0; border-spacing: 12px; }
+.luma-depot .depot-list-row-wide { padding: 9px 0; border-spacing: 16px; }
+.luma-depot .depot-explore-card { min-height: 88px; }
+.luma-depot .depot-explore-card:hover { background: alpha(@luma_ink, 0.10); }
+.luma-depot .depot-list-grid > flowboxchild { padding: 0; }
+.luma-depot .depot-category-row { padding: 4px 0; border-spacing: 12px; }
+.luma-depot .depot-category-grid > flowboxchild { padding: 0; }
+.luma-depot .depot-category-card { min-width: 250px; min-height: 88px; }
+.luma-depot .depot-category-card:hover { background: alpha(@luma_ink, 0.10); }
+.luma-depot .depot-category-icon { min-width: 56px; min-height: 56px; border-radius: var(--lumaui-card-radius); }
+.luma-depot .depot-category-icon.create { background: @luma_cat_create_bg; color: @luma_cat_create_ink; }
+.luma-depot .depot-category-icon.work { background: @luma_cat_work_bg; color: @luma_cat_work_ink; }
+.luma-depot .depot-category-icon.media { background: @luma_cat_media_bg; color: @luma_cat_media_ink; }
+.luma-depot .depot-category-icon.play { background: @luma_cat_play_bg; color: @luma_cat_play_ink; }
+.luma-depot .depot-category-icon.tools { background: @luma_cat_tools_bg; color: @luma_cat_tools_ink; }
+.luma-depot .depot-category-icon.luma { background: @luma_cat_create_bg; color: @luma_cat_create_ink; }
+.luma-depot .depot-table-row { min-height: 40px; }
+.luma-depot .depot-get { min-width: 68px; }
+.luma-depot .depot-get-big { min-width: 88px; }
+.luma-depot .depot-feature {
+  border-spacing: 0; border-radius: var(--lumaui-sky-card-radius);
+  background: linear-gradient(to right, #8a7000, #4b3e06 54%, #17181c);
+}
+.luma-depot .depot-feature button.lumaui-text-button.key label { color: @luma_key_ink; }
+.luma-depot .depot-feature-copy { border-spacing: 10px; }
+.luma-depot .depot-feature-shot { margin: 0; }
+.luma-depot .depot-rating-stars { color: @luma_mark_yellow; }
+.luma-depot .depot-stories { border-spacing: 12px; }
+.luma-depot .depot-stories > flowboxchild { padding: 0; }
+.luma-depot .depot-story { min-height: 150px; border-radius: 16px; }
+.luma-depot .depot-story > box { border-radius: 16px; }
+.luma-depot .depot-story.create { background: @luma_cat_create_bg; }
+.luma-depot .depot-story.play { background: @luma_cat_play_bg; }
+.luma-depot .depot-system-update {
+  min-height: 148px; border-radius: var(--lumaui-card-radius);
+  background: linear-gradient(to right, #8d492d, #583a42 56%, #35343e);
+}
+.luma-depot .depot-system-update-copy label { color: #fff; }
+.luma-depot .depot-system-icon { border-radius: 16px; }
+.luma-depot .depot-note-grid > flowboxchild { padding: 0; }
+.luma-depot .depot-app-header { min-height: 254px; border-radius: var(--lumaui-card-radius); background: @luma_content; }
+.luma-depot .depot-verified-mark { color: @luma_accent; }
+.luma-depot .depot-installed-mark { color: @luma_good; }
+.luma-depot .depot-ready-check { color: @luma_good; }
+.luma-depot .depot-computer-fact { min-height: 33px; }
+.luma-depot .depot-screenshots { border-spacing: 12px; }
+.luma-depot .depot-detail-columns > box { min-width: 260px; }
+.luma-depot .depot-image-empty { background: @luma_passive; }

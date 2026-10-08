@@ -1,0 +1,98 @@
+#!/usr/bin/python3
+from __future__ import annotations
+
+import configparser
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+
+FP6_COMPATIBLE = b"fairphone,fp6"
+FP6_CANVAS_MARKER = "persist.luma.fp6_software_canvas"
+FP6_CANVAS_VALUE = "558x1088-sdl-2x-v1"
+FP6_PROPERTIES = {
+    "ro.hardware.gralloc": "default",
+    "ro.hardware.egl": "angle",
+    "ro.hardware.vulkan": "pastel",
+    # Keep the host compositor's FP6 Adreno workload bounded while Android is
+    # still using software rendering. These are upstream Waydroid properties,
+    # scoped to this exact device and never override an explicit lab choice.
+    # The nested app-area compositor negotiates this logical canvas on FP6.
+    # Matching it exactly is required by xdg-shell before the HWC may commit.
+    "persist.waydroid.no_background_subsurface": "true",
+    "persist.waydroid.use_subsurface": "false",
+    "persist.waydroid.cursor_on_subsurface": "false",
+}
+
+
+def main() -> int:
+    compatible_path = Path(
+        os.environ.get("LUMA_DEVICE_TREE_COMPATIBLE", "/proc/device-tree/compatible")
+    )
+    try:
+        compatible = compatible_path.read_bytes().split(b"\0")
+    except FileNotFoundError:
+        return 0
+    if FP6_COMPATIBLE not in compatible:
+        return 0
+
+    config_path = Path(
+        os.environ.get("LUMA_WAYDROID_CONFIG", "/var/lib/waydroid/waydroid.cfg")
+    )
+    if not config_path.is_file() or config_path.is_symlink():
+        return 0
+
+    # The root container manager and the unprivileged Waydroid presentation
+    # session both consume this file.  It contains runtime properties, not
+    # credentials; keeping it root-only makes a restarted user session load an
+    # empty configuration and lose its Binder/Wayland presentation link.
+    metadata = config_path.stat()
+    mode_needs_repair = metadata.st_mode & 0o777 != 0o644
+
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read(config_path, encoding="utf-8")
+    if not parser.has_section("properties"):
+        parser.add_section("properties")
+    changed = False
+    if parser.get("properties", FP6_CANVAS_MARKER, fallback=None) != FP6_CANVAS_VALUE:
+        # This bounded canvas is exactly half the FP6 app area's physical pixel
+        # allocation. SDL scales it by 2x and applies the inverse to touch.
+        parser.set("properties", "persist.waydroid.width", "558")
+        parser.set("properties", "persist.waydroid.height", "1088")
+        parser.set("properties", FP6_CANVAS_MARKER, FP6_CANVAS_VALUE)
+        changed = True
+    for key, value in FP6_PROPERTIES.items():
+        current = parser.get("properties", key, fallback=None)
+        if current is None:
+            parser.set("properties", key, value)
+            changed = True
+    if not changed:
+        if mode_needs_repair:
+            os.chmod(config_path, 0o644)
+        return 0
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=config_path.parent,
+        prefix=".luma-waydroid.",
+        delete=False,
+    ) as output:
+        temporary = Path(output.name)
+        parser.write(output)
+        output.flush()
+        os.fsync(output.fileno())
+    try:
+        os.chmod(temporary, 0o644)
+        os.chown(temporary, metadata.st_uid, metadata.st_gid)
+        os.replace(temporary, config_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    waydroid = os.environ.get("LUMA_WAYDROID_EXECUTABLE", "/usr/bin/waydroid")
+    subprocess.run([waydroid, "init", "-f"], check=True, timeout=120)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,50 @@
+{
+  "app": "canvas",
+  "title": "Canvas",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=canvas",
+    "window": "#w-canvas",
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "module": "luma_canvas",
+    "pythonpath": ["."],
+    "fixtures": ["tests/fixtures/canvas-v70.json"],
+    "env": {
+      "LUMA_CANVAS_FIXTURE": "{run}/fixtures/canvas-v70.json",
+      "LUMA_CANVAS_FIXTURE_ASSETS": "/design/social-luma/photos",
+      "GSETTINGS_BACKEND": "memory"
+    }
+  },
+  "states": [
+    {"name":"initial","about":"Launch kit with the Post headline selected","spec":[],"gtk":[]},
+    {"name":"assets","about":"Assets in the left panel","spec":[{"click":"[data-cvtab=assets]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"assets"}}]},
+    {"name":"export","about":"Selected headline export inspector","spec":[{"click":"[data-cvitab=export]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"export"}}]},
+    {"name":"nothing_selected","about":"No selection and no inspector","spec":[{"key":"Escape"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"nothing_selected"}}]},
+    {"name":"left_collapsed","about":"Layers folded to a pill","spec":[{"click":"[data-cvleft]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"left_collapsed"}}]},
+    {"name":"focus","about":"Panels hidden for focus","spec":[{"click":"[data-cvfocus]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"focus"}}]},
+    {"name":"zoom_menu","about":"Zoom pill menu","spec":[{"click":"[data-cvzoom]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"zoom_menu"}}]},
+    {"name":"shape_menu","about":"Bottom tool shape picker","spec":[{"click":"[data-cvtool=shape]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"shape_menu"}}]},
+    {"name":"share_menu","about":"Share the selected document","spec":[{"click":"#cv-topr [data-share]"}],"gtk":[{"env":{"LUMA_CANVAS_FIXTURE_STATE":"share_menu"}}]}
+  ],
+  "phone_states": ["initial", "nothing_selected", "focus"],
+  "groups": [
+    {"name":"window controls","spec":"#w-canvas > .wctl","info_only":true},
+    {"name":"title row","spec":"#cv-top"},
+    {"name":"layers","spec":"#cv-left"},
+    {"name":"inspector","spec":"#cv-right"},
+    {"name":"zoom pill","spec":"#cv-zoompill"},
+    {"name":"tool bar","spec":"#cv-bar"},
+    {"name":"document objects","spec":"#cv-space"},
+    {"name":"work surface","spec":"#cv-work"}
+  ],
+  "pairs": [
+    {"spec":"#cv-top","gtk":"cv-document-header","name":"title row"},
+    {"spec":"#cv-left","gtk":"cv-left-panel","name":"layers panel"},
+    {"spec":"#cv-right","gtk":"cv-right-panel","name":"inspector panel"},
+    {"spec":"#cv-work","gtk":"cv-work","name":"work surface"},
+    {"spec":"#cv-space","gtk":"cv-canvas","name":"canvas"},
+    {"spec":"#cv-bar","gtk":"cv-tools","name":"tool bar"},
+    {"spec":"#cv-zoompill","gtk":"cv-zoom","name":"zoom pill"}
+  ]
+}

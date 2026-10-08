@@ -1,0 +1,444 @@
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index ef9cedb..6c52b85 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4423,8 +4423,7 @@ StScrollBar {
+   font-family: "Figtree";
+   font-size: 148px;
+   font-weight: 700;
+-  letter-spacing: -0.055em;
+-  line-height: 0.84; }
++  letter-spacing: -0.055em; }
+ 
+ .poster-time-row {
+   spacing: 14px; }
+@@ -4462,6 +4461,12 @@ StScrollBar {
+ .poster-day.compact .poster-time {
+   font-size: 48px; }
+ 
++.poster-day.rtl .poster-weekday {
++  font-size: 104px; }
++
++.poster-day.rtl.compact .poster-weekday {
++  font-size: 72px; }
++
+ .poster-card {
+   padding: 26px 30px 22px;
+   border-radius: 24px;
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 95de0dd..eb5e515 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4681,8 +4681,7 @@ StScrollBar {
+   font-family: "Figtree";
+   font-size: 148px;
+   font-weight: 700;
+-  letter-spacing: -0.055em;
+-  line-height: 0.84; }
++  letter-spacing: -0.055em; }
+ 
+ .poster-time-row {
+   spacing: 14px; }
+@@ -4720,6 +4719,12 @@ StScrollBar {
+ .poster-day.compact .poster-time {
+   font-size: 48px; }
+ 
++.poster-day.rtl .poster-weekday {
++  font-size: 104px; }
++
++.poster-day.rtl.compact .poster-weekday {
++  font-size: 72px; }
++
+ .poster-card {
+   padding: 26px 30px 22px;
+   border-radius: 24px;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index ce5d78f..164a7d5 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4647,8 +4647,7 @@ StScrollBar {
+   font-family: "Figtree";
+   font-size: 148px;
+   font-weight: 700;
+-  letter-spacing: -0.055em;
+-  line-height: 0.84; }
++  letter-spacing: -0.055em; }
+ 
+ .poster-time-row {
+   spacing: 14px; }
+@@ -4686,6 +4685,12 @@ StScrollBar {
+ .poster-day.compact .poster-time {
+   font-size: 48px; }
+ 
++.poster-day.rtl .poster-weekday {
++  font-size: 104px; }
++
++.poster-day.rtl.compact .poster-weekday {
++  font-size: 72px; }
++
+ .poster-card {
+   padding: 26px 30px 22px;
+   border-radius: 24px;
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index 5512027..6307197 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -666,7 +666,7 @@ $_gdm_dialog_width: 25em;
+ .prairie-login-wallpaper { background-image: url("file:///usr/share/backgrounds/luma/prism.png"); background-position: 30% center; background-size: cover; }
+ .prairie-login-wallpaper-overlay { background-image: url("resource:///org/gnome/shell/theme/poster-photo-overlay.svg"); background-size: 100% 100%; }
+ .poster-day { spacing: 22px; color: white; text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25); }
+-.poster-weekday { font-family: "Figtree"; font-size: 148px; font-weight: 700; letter-spacing: -0.055em; line-height: 0.84; }
++.poster-weekday { font-family: "Figtree"; font-size: 148px; font-weight: 700; letter-spacing: -0.055em; }
+ .poster-time-row { spacing: 14px; }
+ .poster-time { font-family: "Figtree"; font-size: 64px; font-weight: 250; letter-spacing: -0.04em; font-feature-settings: "tnum"; }
+ .poster-ampm { font-family: "Figtree"; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.75); margin-left: -6px; }
+@@ -674,6 +674,8 @@ $_gdm_dialog_width: 25em;
+ .poster-date { font-family: "Figtree"; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.9); }
+ .poster-day.compact .poster-weekday { font-size: 104px; }
+ .poster-day.compact .poster-time { font-size: 48px; }
++.poster-day.rtl .poster-weekday { font-size: 104px; }
++.poster-day.rtl.compact .poster-weekday { font-size: 72px; }
+ .poster-card { padding: 26px 30px 22px; border-radius: 24px; background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg"); background-size: 100% 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6); color: #eceeed; }
+ .poster-card.poster-card-opaque { background-image: none; background-color: #26262a; }
+ .poster-status-row { spacing: 14px; }
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index fd3feb1..f36c588 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -197,7 +197,7 @@ export const AuthPrompt = GObject.registerClass({
+             style_class: 'login-dialog-prompt-layout prairie-login-input-well',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_align: Clutter.ActorAlign.CENTER,
+-            x_expand: true,
++            x_expand: false,
+         });
+         this.add_child(this._inputWell);
+         this._mainContent = this._inputWell;
+@@ -221,6 +221,7 @@ export const AuthPrompt = GObject.registerClass({
+             x_align: Clutter.ActorAlign.START,
+         });
+         this._message.clutter_text.line_wrap = true;
++        this._message.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+         this._message.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+         this._inputWell.add_child(this._message);
+ 
+@@ -775,6 +776,7 @@ export const AuthPrompt = GObject.registerClass({
+             showInitial: true,
+             styleClass: 'user-icon poster-avatar',
+         });
++        avatar.x_align = Clutter.ActorAlign.CENTER;
+         avatar.update();
+         identity.add_child(avatar);
+         this._greeting = new St.Label({style_class: 'poster-greeting'});
+diff --git a/js/gdm/loginDialog.js b/js/gdm/loginDialog.js
+index 428e7b4..83e6363 100644
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -852,17 +852,7 @@ export const LoginDialog = GObject.registerClass({
+         card.y2 = height - inset;
+         this._posterCard.allocate(card);
+ 
+-        if (width < 1100 * scale)
+-            this._prairieClock.add_style_class_name('compact');
+-        else
+-            this._prairieClock.remove_style_class_name('compact');
+-        const [, , clockWidth, clockHeight] = this._prairieClock.get_preferred_size();
+-        const clock = new Clutter.ActorBox();
+-        clock.x1 = rtl ? width - 64 * scale - clockWidth : 64 * scale;
+-        clock.x2 = clock.x1 + clockWidth;
+-        clock.y1 = height - 56 * scale - clockHeight;
+-        clock.y2 = clock.y1 + clockHeight;
+-        this._prairieClock.allocate(clock);
++        this._prairieClock.allocatePoster(width, height, cardWidth, scale, rtl);
+         for (const actor of [this._userSelectionBox,
+             this._bottomButtonGroup, this._logoBin])
+             actor.allocate(new Clutter.ActorBox());
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+index 7bd3d30..cc8ed7e 100644
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -15,24 +15,20 @@ import * as SystemActions from '../misc/systemActions.js';
+ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ 
+ export const Clock = GObject.registerClass(
+-class PrairieLoginClock extends St.BoxLayout {
++class PrairieLoginClock extends St.Widget {
+     _init() {
+         super._init({
+             style_class: 'poster-day',
+-            orientation: Clutter.Orientation.VERTICAL,
+             x_align: Clutter.ActorAlign.START,
+         });
+         this._weekday = new St.Label({style_class: 'poster-weekday'});
+-        this._row = new St.BoxLayout({style_class: 'poster-time-row'});
+-        this._row.set_text_direction(Clutter.TextDirection.LTR);
+         this._time = new St.Label({style_class: 'poster-time'});
+         this._ampm = new St.Label({style_class: 'poster-ampm'});
+         this._divider = new St.Widget({style_class: 'poster-time-divider'});
+         this._date = new St.Label({style_class: 'poster-date'});
+-        this.add_child(this._weekday);
+-        this.add_child(this._row);
+-        for (const actor of [this._time, this._ampm, this._divider, this._date])
+-            this._row.add_child(actor);
++        for (const actor of [this._weekday, this._time, this._ampm,
++            this._divider, this._date])
++            this.add_child(actor);
+ 
+         this._clockSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+         this._clockSettings.connectObject('changed::clock-format', this._updateClock.bind(this), this);
+@@ -59,6 +55,83 @@ class PrairieLoginClock extends St.BoxLayout {
+         this._date.text = formatDateWithCFormatString(now,
+             Shell.util_translate_time_string(N_('%B %-d')));
+     }
++
++    allocatePoster(width, height, cardWidth, scale, rtl) {
++        const compact = width < 1100 * scale;
++        if (compact)
++            this.add_style_class_name('compact');
++        else
++            this.remove_style_class_name('compact');
++        if (rtl)
++            this.add_style_class_name('rtl');
++        else
++            this.remove_style_class_name('rtl');
++
++        // The day owns the space beside the card. Its labels need explicit
++        // slots: the theme can report an incomplete preferred size while the
++        // clock and its font are still settling on the greeter.
++        const availableWidth = Math.max(0, width - cardWidth - 96 * scale);
++        const availableHeight = Math.max(0, height - 112 * scale);
++        const clockHeight = Math.min(availableHeight, (compact ? 210 : 280) * scale);
++        this._posterScale = scale;
++        this._posterCompact = compact;
++        const box = new Clutter.ActorBox();
++        box.x1 = rtl ? width - 64 * scale - availableWidth : 64 * scale;
++        box.x2 = box.x1 + availableWidth;
++        box.y2 = height - 56 * scale;
++        box.y1 = box.y2 - clockHeight;
++        this.allocate(box);
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const width = box.x2 - box.x1;
++        const height = box.y2 - box.y1;
++        const scale = this._posterScale ?? 1;
++        const compact = this._posterCompact ?? false;
++        const rowHeight = Math.min(height, (compact ? 64 : 88) * scale);
++        const weekdayHeight = Math.min(height - rowHeight,
++            (compact ? 132 : 176) * scale);
++        const gap = Math.max(0, height - weekdayHeight - rowHeight);
++
++        const weekdayBox = new Clutter.ActorBox();
++        weekdayBox.x1 = 0;
++        weekdayBox.x2 = width;
++        weekdayBox.y1 = 0;
++        weekdayBox.y2 = weekdayHeight;
++        this._weekday.allocate(weekdayBox);
++
++        const rowY = weekdayHeight + gap;
++        const allocatePart = (actor, x, y, partWidth, partHeight) => {
++            const partBox = new Clutter.ActorBox();
++            partBox.x1 = x;
++            partBox.x2 = x + Math.max(0, partWidth);
++            partBox.y1 = y;
++            partBox.y2 = y + Math.max(0, partHeight);
++            actor.allocate(partBox);
++        };
++        const [, naturalTimeWidth] = this._time.get_preferred_width(-1);
++        let x = Math.min(width, naturalTimeWidth, 240 * scale);
++        allocatePart(this._time, 0, rowY, x, rowHeight);
++        if (this._ampm.visible) {
++            const [, naturalAmPmWidth] = this._ampm.get_preferred_width(-1);
++            // Some themes report the available row width for this tiny label.
++            // Bound its slot so the divider and date stay beside the time.
++            const ampmWidth = Math.min(Math.max(0, width - x),
++                naturalAmPmWidth, 48 * scale);
++            allocatePart(this._ampm, x + 8 * scale,
++                rowY + rowHeight - 32 * scale, ampmWidth, 30 * scale);
++            x += ampmWidth + 8 * scale;
++        } else {
++            allocatePart(this._ampm, 0, 0, 0, 0);
++        }
++        x += 20 * scale;
++        allocatePart(this._divider, x, rowY + (rowHeight - 36 * scale) / 2,
++            1 * scale, 36 * scale);
++        x += 23 * scale;
++        allocatePart(this._date, x, rowY + rowHeight - 40 * scale,
++            width - x, 38 * scale);
++    }
+ });
+ 
+ export const PowerButton = GObject.registerClass(
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index a0f1429..64ddd65 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -39,6 +39,7 @@ class PosterNotifications extends St.BoxLayout {
+         });
+         this.add_child(this._well);
+         this._sources = new Map();
++        this._pending = new Map();
+         this._wakeUp = wakeUp;
+         this._clockSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+         this._clockSettings.connectObject('changed::clock-format', this._rebuild.bind(this), this);
+@@ -53,6 +54,7 @@ class PosterNotifications extends St.BoxLayout {
+                 source.policy.disconnect(id);
+             }
+             this._sources.clear();
++            this._pending.clear();
+             this._clockSettings.run_dispose();
+         });
+         this._rebuild();
+@@ -61,17 +63,25 @@ class PosterNotifications extends St.BoxLayout {
+     _watchSource(source) {
+         if (this._sources.has(source))
+             return;
++        const pending = new Set(source.notifications.filter(n => !n.acknowledged));
++        this._pending.set(source, pending);
+         source.connectObject(
+             'notify::count', this._rebuild.bind(this),
+             'notify::title', this._rebuild.bind(this),
+-            'notification-added', () => {
++            'notification-added', (_source, notification) => {
++                pending.add(notification);
+                 this._rebuild();
+                 if (source.policy.showInLockScreen)
+                     this._wakeUp();
+             },
++            'notification-removed', (_source, notification) => {
++                pending.delete(notification);
++                this._rebuild();
++            },
+             'destroy', () => {
+                 source.policy.disconnect(this._sources.get(source));
+                 this._sources.delete(source);
++                this._pending.delete(source);
+                 this._rebuild();
+             }, this);
+         const id = source.policy.connect('notify', () => this._rebuild());
+@@ -82,16 +92,18 @@ class PosterNotifications extends St.BoxLayout {
+         this._well.destroy_all_children();
+         const entries = [];
+         for (const source of this._sources.keys()) {
+-            if (!source.policy.showInLockScreen || source.unseenCount < 1)
++            const pending = [...(this._pending.get(source) ?? [])]
++                .filter(n => source.notifications.includes(n));
++            if (!source.policy.showInLockScreen || pending.length === 0)
+                 continue;
+-            const notification = [...source.notifications].reverse().find(n => !n.acknowledged);
++            const notification = pending.at(-1);
+             const details = source.policy.detailsInLockScreen;
+-            entries.push({source, notification, details});
++            entries.push({source, notification, details, count: pending.length});
+         }
+         entries.sort((a, b) =>
+             (b.notification?.datetime?.to_unix() ?? 0) -
+             (a.notification?.datetime?.to_unix() ?? 0));
+-        for (const {source, notification, details} of entries.slice(0, 3)) {
++        for (const {source, notification, details, count} of entries.slice(0, 3)) {
+             const row = new St.BoxLayout({style_class: 'poster-away-row'});
+             row.add_child(new St.Icon({gicon: source.icon,
+                 fallback_icon_name: 'application-x-executable',
+@@ -105,7 +117,7 @@ class PosterNotifications extends St.BoxLayout {
+                 ? notification.title : source.title;
+             const summary = details && notification?.body
+                 ? notification.body.replace(/\n/g, ' ')
+-                : _('%d new messages').format(source.unseenCount);
++                : _('%d new messages').format(count);
+             copy.add_child(new St.Label({style_class: 'poster-away-title', text: title}));
+             copy.add_child(new St.Label({style_class: 'poster-away-summary', text: summary}));
+             row.add_child(copy);
+@@ -148,21 +160,11 @@ class PrairieUnlockContentLayout extends Clutter.LayoutManager {
+         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+         const actorBox = new Clutter.ActorBox();
+ 
+-        const [, , clockWidth, clockHeight] = this._clock.get_preferred_size();
+-        if (width < 1100 * scaleFactor)
+-            this._clock.add_style_class_name('compact');
+-        else
+-            this._clock.remove_style_class_name('compact');
+         const rtl = container.get_text_direction() === Clutter.TextDirection.RTL;
+-        actorBox.x1 = rtl ? width - 64 * scaleFactor - clockWidth : 64 * scaleFactor;
+-        actorBox.y1 = height - 56 * scaleFactor - clockHeight;
+-        actorBox.x2 = actorBox.x1 + clockWidth;
+-        actorBox.y2 = actorBox.y1 + clockHeight;
+-        this._clock.allocate(actorBox);
+-
+         const inset = 20 * scaleFactor;
+         const cardWidth = Math.min(Math.max(0, width - 2 * inset),
+             Math.min(480 * scaleFactor, Math.max(380 * scaleFactor, width * 0.334)));
++        this._clock.allocatePoster(width, height, cardWidth, scaleFactor, rtl);
+         actorBox.x1 = rtl ? inset : width - inset - cardWidth;
+         actorBox.x2 = actorBox.x1 + cardWidth;
+         actorBox.y1 = inset;
+diff --git a/js/ui/userWidget.js b/js/ui/userWidget.js
+index 7f7811b..5044579 100644
+--- a/js/ui/userWidget.js
++++ b/js/ui/userWidget.js
+@@ -83,17 +83,20 @@ class Avatar extends St.Bin {
+             this._iconSize * scaleFactor);
+ 
+         if (iconFile) {
+-            this.child = null;
++            if (this.child)
++                this.child = null;
+             const cropSize = Math.round(this._iconSize * 1.45);
+             const cropOffset = Math.round((this._iconSize - cropSize) / 2);
+             this.add_style_class_name('user-avatar');
+-            this.style = `
++            const style = `
+                 background-image: url("${iconFile}");
+                 background-size: ${cropSize}px ${cropSize}px;
+                 background-position: ${cropOffset}px ${cropOffset}px;
+                 background-repeat: no-repeat;`;
++            if (this.style !== style)
++                this.style = style;
+         } else if (this._showInitial) {
+-            this.style = null;
++            let style = null;
+             if (this.has_style_class_name('poster-avatar')) {
+                 const palettes = [
+                     ['#8fa5d7', '#596dab', 'rgba(58, 79, 153, 0.8)'],
+@@ -107,25 +110,29 @@ class Avatar extends St.Bin {
+                 const hash = [...name].reduce((value, char) =>
+                     (value * 31 + char.codePointAt(0)) >>> 0, 0);
+                 const [light, dark, shadow] = palettes[hash % palettes.length];
+-                this.style = `background-gradient-direction: vertical;
++                style = `background-gradient-direction: vertical;
+                     background-gradient-start: ${light};
+                     background-gradient-end: ${dark};
+-                    box-shadow: inset 0 1px 0 rgba(255,255,255,.25),
+-                        0 0 0 5px rgba(255,255,255,.06),
+-                        0 16px 32px -12px ${shadow};`;
++                    box-shadow: 0 16px 32px -12px ${shadow};`;
+             }
++            // A style change calls update() again. Keep the inline style
++            // stable so an initial avatar cannot recurse indefinitely.
++            if (this.style !== style)
++                this.style = style;
+             this.remove_style_class_name('user-avatar');
+             const name = this._user?.get_real_name() ||
+                 this._user?.get_user_name() || '';
+             const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() ?? '';
+-            this.child = new St.Label({
+-                style_class: 'prairie-login-avatar-initial',
+-                text: initial,
+-                x_expand: true,
+-                y_expand: true,
+-                x_align: Clutter.ActorAlign.CENTER,
+-                y_align: Clutter.ActorAlign.CENTER,
+-            });
++            if (!(this.child instanceof St.Label) || this.child.text !== initial) {
++                this.child = new St.Label({
++                    style_class: 'prairie-login-avatar-initial',
++                    text: initial,
++                    x_expand: true,
++                    y_expand: true,
++                    x_align: Clutter.ActorAlign.CENTER,
++                    y_align: Clutter.ActorAlign.CENTER,
++                });
++            }
+         } else {
+             this.style = null;
+             this.child = new St.Icon({

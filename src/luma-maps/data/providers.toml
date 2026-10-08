@@ -1,0 +1,80 @@
+# Where Luma Maps gets its map, its search and its routes.
+#
+# Nothing in the application hardcodes an endpoint: every provider is read from
+# this file, and a copy at $XDG_CONFIG_HOME/luma-maps/providers.toml overrides
+# it key by key. That is what makes the local path a swap rather than a rewrite.
+#
+# `local = true` means the data comes off this machine. The footer chip reads
+# that flag and says so; it is a claim about where bytes come from, so nothing
+# but a genuinely local source may set it.
+
+[identity]
+# Nominatim and OSM's tile policy both require a genuine identifying
+# User-Agent with a way to reach whoever is running the software. A
+# distributor should replace the contact with their own.
+user_agent = "LumaMaps/0.1 (Project Luma; https://github.com/ProjectLuma/luma-maps)"
+
+[[tiles]]
+id = "openfreemap-liberty"
+name = "OpenFreeMap Liberty"
+kind = "vector"
+local = false
+style_url = "https://tiles.openfreemap.org/styles/liberty"
+attribution = "© OpenStreetMap contributors · OpenFreeMap"
+treatment = "light"
+default = true
+
+[[tiles]]
+id = "openfreemap-dark"
+name = "OpenFreeMap Dark"
+kind = "vector"
+local = false
+style_url = "https://tiles.openfreemap.org/styles/dark"
+attribution = "© OpenStreetMap contributors · OpenFreeMap"
+# The dark counterpart of the default. Maps follows the desktop's treatment
+# between the two rather than inverting one map into the other.
+treatment = "dark"
+
+[[tiles]]
+id = "osm-mapnik"
+name = "OpenStreetMap standard"
+kind = "raster"
+local = false
+# Development only. OSM's Tile Usage Policy forbids production use of these.
+development_only = true
+url_template = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+min_zoom = 0
+max_zoom = 19
+tile_size = 256
+attribution = "© OpenStreetMap contributors"
+
+[[tiles]]
+id = "local-archive"
+name = "Downloaded region"
+kind = "pmtiles"
+local = true
+# A PMTiles archive on this machine. Empty until a region is downloaded; the
+# style is applied to whatever the archive contains.
+archive = ""
+style_url = ""
+attribution = "© OpenStreetMap contributors · local archive"
+
+[search]
+# Photon is built for search-as-you-type. Nominatim's policy forbids
+# autocomplete, so it is only ever asked precise questions, at most once a
+# second.
+autocomplete_url = "https://photon.komoot.io/api"
+geocode_url = "https://nominatim.openstreetmap.org/search"
+reverse_url = "https://nominatim.openstreetmap.org/reverse"
+autocomplete_debounce_ms = 350
+geocode_min_interval_s = 1.0
+local = false
+
+[routing]
+# OSRM's demo server is development only; its operators say so. Point this at
+# a self-hosted Valhalla or GraphHopper for anything real.
+engine = "osrm"
+url = "https://router.project-osrm.org/route/v1"
+development_only = true
+local = false
+modes = ["drive", "walk", "cycle"]

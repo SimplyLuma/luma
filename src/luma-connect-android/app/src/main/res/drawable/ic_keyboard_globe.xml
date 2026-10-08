@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Globe (next keyboard). Drawn for Luma Connect. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,2a10,10 0,1 0,0 20a10,10 0,0 0,0 -20zM19.9,11h-3.4a15.7,15.7 0,0 0,-1.4 -6.2A8,8 0,0 1,19.9 11zM12,4.1c1.1,1.5 2.3,4 2.5,6.9h-5c0.2,-2.9 1.4,-5.4 2.5,-6.9zM8.9,4.8A15.7,15.7 0,0 0,7.5 11H4.1A8,8 0,0 1,8.9 4.8zM4.1,13h3.4a15.7,15.7 0,0 0,1.4 6.2A8,8 0,0 1,4.1 13zM12,19.9c-1.1,-1.5 -2.3,-4 -2.5,-6.9h5c-0.2,2.9 -1.4,5.4 -2.5,6.9zM15.1,19.2a15.7,15.7 0,0 0,1.4 -6.2h3.4a8,8 0,0 1,-4.8 6.2z" />
+</vector>

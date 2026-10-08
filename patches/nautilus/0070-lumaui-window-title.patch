@@ -1,0 +1,35 @@
+From 50772d5aa0d2534aa3f55d2bf7d384180306867a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:00:27 +0000
+Subject: [PATCH] Filer: remove duplicate title from window chrome
+
+---
+ src/resources/ui/nautilus-window.blp | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 9358190..d7f6626 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -200,18 +200,6 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           Box sidebar_toggle_desktop_host {}
+           title-widget: Box {
+             halign: center;
+-
+-            styles [
+-              "luma-window-title",
+-              "luma-title-label",
+-              "title",
+-            ]
+-
+-            Label {
+-              label: bind template.active-slot as <$NautilusWindowSlot>.title;
+-              ellipsize: end;
+-            }
+-
+           };
+         }
+ 
+-- 
+2.55.0
+

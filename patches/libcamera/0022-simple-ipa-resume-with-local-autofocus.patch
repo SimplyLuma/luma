@@ -1,0 +1,28 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: resume autofocus with a bounded local search
+
+Touch clients without an AfTrigger binding briefly enter manual mode and then
+resume continuous autofocus to request a refocus.  Once a useful focus has
+already been measured, restarting the complete sensor travel is unnecessarily
+slow, visibly hunts past the subject, and makes the actuator noisy.  Preserve
+the full initial scan and explicit AfTrigger semantics, but resume a mode with
+the tuned local search around the current lens position.
+
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -120,12 +120,14 @@ void Af::queueRequest(typename Module::Context &context,
+ 	const auto &afMode = controls.get(controls::AfMode);
+ 	if (afMode.has_value() && afMode.value() != context.activeState.knobs.af_mode) {
++		const bool haveFocus = context.configuration.focus.sharpness_max != 0;
+ 		context.activeState.knobs.af_mode = afMode.value();
+ 		LOG(IPASoftAutoFocus, Debug) << "Setting AF mode to " << afMode.value();
+ 
+ 		if (afMode.value() == controls::AfModeManual)
+ 			context.activeState.knobs.focus_sweep = false;
+ 		else
+-			restart(context, false);
++			/* A resumed touch refocus must not hunt across full travel. */
++			restart(context, haveFocus);
+ 	}
+ 
+ 	const auto &lensPosition = controls.get(controls::LensPosition);

@@ -1,0 +1,131 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Run the GNOME Mobile bake-off candidate from its private prefix.  This keeps
+# Mutter 16 and GNOME Shell 48 completely separate from Luma's installed
+# Mutter 18 / GNOME Shell 50 desktop stack.
+
+set -eu
+
+prefix=/opt/luma/gnome-mobile-48
+marker=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/luma-gnome-mobile-session
+session_log=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/luma-gnome-mobile-session.log
+
+for path in \
+  "$prefix/bin/gnome-shell" \
+  "$prefix/lib64/libmutter-16.so.0" \
+  "$prefix/lib64/gnome-shell/libshell-16.so" \
+  "$prefix/share/gnome-shell/gnome-shell-osk-layouts.gresource" \
+  /usr/bin/ibus-daemon \
+  /usr/bin/systemd-inhibit \
+  /usr/lib/systemd/user/luma-shell-session.target; do
+  if [ ! -e "$path" ]; then
+    printf 'luma-gnome-mobile-session: required path is missing: %s\n' \
+      "$path" >&2
+    exit 1
+  fi
+done
+
+for variable in XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_RUNTIME_DIR; do
+  eval "value=\${$variable:-}"
+  if [ -z "$value" ]; then
+    printf 'luma-gnome-mobile-session: greetd did not provide %s\n' \
+      "$variable" >&2
+    exit 1
+  fi
+done
+
+unset DISPLAY WAYLAND_DISPLAY
+export PATH="$prefix/bin:$prefix/libexec:$PATH"
+export LD_LIBRARY_PATH="$prefix/lib64:$prefix/lib64/mutter-16:$prefix/lib64/gnome-shell${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export GI_TYPELIB_PATH="$prefix/lib64/gjs/girepository-1.0:$prefix/lib64/mutter-16:$prefix/lib64/gnome-shell:$prefix/lib64/gnome-shell/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+export XDG_DATA_DIRS="$prefix/share:/usr/local/share:/usr/share"
+export XDG_CONFIG_DIRS="$prefix/etc/xdg:/etc/xdg"
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_CLASS=user
+export XDG_SESSION_DESKTOP=gnome-mobile
+export XDG_CURRENT_DESKTOP=GNOME
+export DESKTOP_SESSION=gnome-mobile
+export GNOME_SHELL_SESSION_MODE=user
+export LUMA_DEVICE_CLASS=handheld
+export LUMA_GREETD_SESSION=1
+export GDK_BACKEND=wayland
+export MOZ_ENABLE_WAYLAND=1
+export GTK_IM_MODULE=ibus
+export QT_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+/usr/bin/systemctl --user unset-environment DISPLAY WAYLAND_DISPLAY
+/usr/bin/systemctl --user import-environment \
+  PATH LD_LIBRARY_PATH GI_TYPELIB_PATH XDG_DATA_DIRS XDG_CONFIG_DIRS \
+  XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_RUNTIME_DIR \
+  XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP \
+  XDG_CURRENT_DESKTOP DESKTOP_SESSION GNOME_SHELL_SESSION_MODE \
+  LUMA_DEVICE_CLASS LUMA_GREETD_SESSION GDK_BACKEND MOZ_ENABLE_WAYLAND \
+  GTK_IM_MODULE QT_IM_MODULE XMODIFIERS
+
+/usr/bin/ibus-daemon --panel disable --daemonize --replace
+/usr/bin/systemctl --user reset-failed xdg-desktop-portal-gtk.service || true
+/usr/bin/systemctl --user start luma-shell-session.target
+
+shell_pid=
+power_inhibitor_pid=
+rm -f "$marker"
+: >"$session_log"
+chmod 0600 "$session_log"
+printf 'launcher: shell=%s session=%s seat=%s vt=%s\n' \
+  "$prefix/bin/gnome-shell" "$XDG_SESSION_ID" "$XDG_SEAT" "$XDG_VTNR" \
+  >>"$session_log"
+
+stop_session() {
+  rm -f "$marker"
+  if [ -n "$shell_pid" ]; then
+    kill -TERM "$shell_pid" 2>/dev/null || true
+  fi
+  if [ -n "$power_inhibitor_pid" ]; then
+    kill -TERM "$power_inhibitor_pid" 2>/dev/null || true
+  fi
+  /usr/bin/systemctl --user stop luma-shell-session.target || true
+}
+trap stop_session EXIT HUP INT TERM
+
+/usr/bin/systemd-inhibit \
+  --what=handle-power-key \
+  --who='Luma GNOME Mobile bake-off' \
+  --why='Short press controls the handheld display' \
+  --mode=block \
+  /usr/bin/sleep infinity &
+power_inhibitor_pid=$!
+
+"$prefix/bin/gnome-shell" --wayland --display-server --mode=user \
+  >>"$session_log" 2>&1 &
+shell_pid=$!
+
+# Publish readiness only after the private compositor is alive and owns a
+# Wayland socket.  The bake-off controller rolls back to Phosh if this never
+# happens.
+attempt=0
+stable_ticks=0
+while [ "$attempt" -lt 300 ]; do
+  attempt=$((attempt + 1))
+  kill -0 "$shell_pid" 2>/dev/null || break
+  socket_ready=false
+  for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
+    [ -S "$socket" ] || continue
+    socket_ready=true
+    break
+  done
+  if "$socket_ready"; then
+    stable_ticks=$((stable_ticks + 1))
+    if [ "$stable_ticks" -ge 50 ]; then
+      : >"$marker"
+      chmod 0600 "$marker"
+      wait "$shell_pid"
+      exit $?
+    fi
+  else
+    stable_ticks=0
+  fi
+  sleep 0.1
+done
+
+wait "$shell_pid"

@@ -1,0 +1,193 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] sound: Luma new-device preferences and unchosen network outputs
+
+The Output Device list leaves out outputs that PipeWire's discovery modules
+create on their own (raop_sink., tunnel., rtp_session., snapcast), the same
+way it already leaves out role loopbacks, unless one of them is the active
+output. AirPlay receivers chosen in Luma (luma_airplay.) keep their row and
+show the network speaker icon from luma-audio-policy.
+
+A "New Output Devices" group binds the luma-audio-policy setting
+(org.projectluma.audio-devices) that decides whether headphones, headsets and
+Bluetooth audio take the sound as soon as they connect. Luma never asks about
+output devices, and displays and docks keep the sound where it is. The group
+stays hidden when the schema is not installed.
+
+---
+diff --git a/panels/sound/cc-device-combo-row.c b/panels/sound/cc-device-combo-row.c
+index 5c44604..57df49d 100644
+--- a/panels/sound/cc-device-combo-row.c
++++ b/panels/sound/cc-device-combo-row.c
+@@ -30,6 +30,36 @@ struct _CcDeviceComboRow
+ 
+ G_DEFINE_TYPE (CcDeviceComboRow, cc_device_combo_row, ADW_TYPE_COMBO_ROW)
+ 
++/* Luma (luma-audio-policy): outputs that PipeWire's discovery modules create
++ * on their own -- every AirPlay receiver, PulseAudio tunnel or Snapcast
++ * server nearby -- are not offered as devices unless one is already in use.
++ * AirPlay receivers the person chose are created by luma-audio-devices under
++ * the luma_airplay. prefix and are shown with a network speaker icon. */
++static const char * const luma_discovered_network_prefixes[] = {
++  "raop_sink.", "tunnel.", "rtp_session.", "snapcast", NULL
++};
++
++static GvcMixerStream *
++lookup_device_stream (CcDeviceComboRow *self,
++                      GvcMixerUIDevice *device)
++{
++  return gvc_mixer_control_lookup_stream_id (self->mixer_control,
++                                             gvc_mixer_ui_device_get_stream_id (device));
++}
++
++static gboolean
++luma_is_discovered_network_output (const char *name)
++{
++  if (name == NULL)
++    return FALSE;
++  for (guint i = 0; luma_discovered_network_prefixes[i] != NULL; i++)
++    {
++      if (g_str_has_prefix (name, luma_discovered_network_prefixes[i]))
++        return TRUE;
++    }
++  return FALSE;
++}
++
+ static void
+ selected_item_changed (CcDeviceComboRow *self,
+                        GParamSpec       *pspec,
+@@ -105,6 +135,7 @@ factory_bind_cb (CcDeviceComboRow *self,
+                  GtkListItem      *list_item)
+ {
+   GvcMixerUIDevice *device;
++  GvcMixerStream *stream;
+   GtkWidget *box;
+   GtkWidget *device_icon;
+   GtkWidget *label;
+@@ -117,7 +148,10 @@ factory_bind_cb (CcDeviceComboRow *self,
+   device_icon = gtk_widget_get_first_child (box);
+   label = gtk_widget_get_next_sibling (device_icon);
+ 
+-  if (gvc_mixer_ui_device_get_icon_name (device) != NULL)
++  stream = lookup_device_stream (self, device);
++  if (stream != NULL && g_str_has_prefix (gvc_mixer_stream_get_name (stream), "luma_airplay."))
++    icon_name = g_strdup ("luma-network-speaker-symbolic");
++  else if (gvc_mixer_ui_device_get_icon_name (device) != NULL)
+     icon_name = g_strdup_printf ("%s-symbolic", gvc_mixer_ui_device_get_icon_name (device));
+ 
+   gtk_image_set_from_icon_name (GTK_IMAGE (device_icon), icon_name);
+@@ -204,6 +238,11 @@ device_added_cb (CcDeviceComboRow *self,
+       /* Don't add role loopbacks as switching to them is not useful */
+       if (g_str_has_prefix (name, "input.loopback.sink.role."))
+ 	return;
++
++      if (self->is_output &&
++          luma_is_discovered_network_output (name) &&
++          stream != gvc_mixer_control_get_default_sink (self->mixer_control))
++        return;
+   }
+ 
+   g_signal_handlers_block_by_func (self, selection_changed_cb, self);
+@@ -233,6 +272,11 @@ device_update_cb (CcDeviceComboRow *self,
+ 
+   g_signal_handlers_block_by_func (self, selection_changed_cb, self);
+ 
++  /* A left-out network output became active some other way: show it. */
++  if (device != NULL && self->is_output &&
++      !g_list_store_find (self->device_list, device, &position))
++    g_list_store_append (self->device_list, device);
++
+   if (g_list_store_find (self->device_list, device, &position))
+     adw_combo_row_set_selected (ADW_COMBO_ROW (self), position);
+   else
+diff --git a/panels/sound/cc-sound-panel.blp b/panels/sound/cc-sound-panel.blp
+index ee4f177..3716252 100644
+--- a/panels/sound/cc-sound-panel.blp
++++ b/panels/sound/cc-sound-panel.blp
+@@ -137,6 +137,18 @@ template $CcSoundPanel: $CcPanel {
+           }
+         }
+ 
++        Adw.PreferencesGroup luma_new_devices_group {
++          title: _("New Output Devices");
++          description: _("Displays and docks keep sound where it is");
++          visible: false;
++
++          Adw.SwitchRow luma_headphones_row {
++            title: _("Switch to _Headphones");
++            subtitle: _("Play sound through headphones or Bluetooth audio as soon as they connect");
++            use-underline: true;
++          }
++        }
++
+         Adw.PreferencesGroup output_no_devices_group {
+           title: _("Output");
+ 
+diff --git a/panels/sound/cc-sound-panel.c b/panels/sound/cc-sound-panel.c
+index 635bde1..0c8b105 100644
+--- a/panels/sound/cc-sound-panel.c
++++ b/panels/sound/cc-sound-panel.c
+@@ -58,6 +58,8 @@ struct _CcSoundPanel
+   AdwPreferencesRow   *subwoofer_row;
+   CcSubwooferSlider   *subwoofer_slider;
+   AdwPreferencesGroup *output_no_devices_group;
++  AdwPreferencesGroup *luma_new_devices_group;
++  AdwSwitchRow        *luma_headphones_row;
+   AdwPreferencesGroup *input_group;
+   CcLevelBar          *input_level_bar;
+   CcDeviceComboRow    *input_device_combo_row;
+@@ -68,6 +70,7 @@ struct _CcSoundPanel
+ 
+   GvcMixerControl   *mixer_control;
+   GSettings         *sound_settings;
++  GSettings         *luma_audio_devices_settings;
+ };
+ 
+ CC_PANEL_REGISTER (CcSoundPanel, cc_sound_panel)
+@@ -79,6 +82,8 @@ enum
+ };
+ 
+ #define KEY_SOUNDS_SCHEMA "org.gnome.desktop.sound"
++/* Installed by luma-audio-policy; the group stays hidden without it. */
++#define LUMA_AUDIO_DEVICES_SCHEMA "org.projectluma.audio-devices"
+ 
+ static void
+ update_alert_sound_label (CcSoundPanel *self)
+@@ -226,6 +231,7 @@ cc_sound_panel_finalize (GObject *object)
+ 
+   g_clear_object (&self->mixer_control);
+   g_clear_object (&self->sound_settings);
++  g_clear_object (&self->luma_audio_devices_settings);
+ 
+   G_OBJECT_CLASS (cc_sound_panel_parent_class)->finalize (object);
+ }
+@@ -254,6 +260,8 @@ cc_sound_panel_class_init (CcSoundPanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, subwoofer_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, subwoofer_slider);
+   gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, output_no_devices_group);
++  gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, luma_new_devices_group);
++  gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, luma_headphones_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, input_group);
+   gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, input_level_bar);
+   gtk_widget_class_bind_template_child (widget_class, CcSoundPanel, input_device_combo_row);
+@@ -291,6 +299,21 @@ cc_sound_panel_init (CcSoundPanel *self)
+                            G_CONNECT_SWAPPED);
+   allow_amplified_changed_cb (self);
+ 
++  {
++    GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++    g_autoptr(GSettingsSchema) schema = NULL;
++
++    if (source != NULL)
++      schema = g_settings_schema_source_lookup (source, LUMA_AUDIO_DEVICES_SCHEMA, TRUE);
++    if (schema != NULL)
++      {
++        self->luma_audio_devices_settings = g_settings_new (LUMA_AUDIO_DEVICES_SCHEMA);
++        g_settings_bind (self->luma_audio_devices_settings, "switch-to-headphones",
++                         self->luma_headphones_row, "active", G_SETTINGS_BIND_DEFAULT);
++        gtk_widget_set_visible (GTK_WIDGET (self->luma_new_devices_group), TRUE);
++      }
++  }
++
+   self->mixer_control = gvc_mixer_control_new ("GNOME Settings");
+ 
+   cc_volume_slider_set_mixer_control (self->input_volume_slider, self->mixer_control);

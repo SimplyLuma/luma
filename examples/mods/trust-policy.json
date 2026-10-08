@@ -1,0 +1,12 @@
+{
+  "schema": "org.luma.mod-trust-policy/v0.1",
+  "publishers": [
+    {
+      "id": "org.projectluma",
+      "name": "Project Luma",
+      "level": "luma-core",
+      "identity": "https://github.com/SimplyLuma/luma/.github/workflows/release-mod.yml@refs/heads/main",
+      "issuer": "https://token.actions.githubusercontent.com"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -871,7 +871,7 @@
+         this._statusSeam.y_expand = !vertical;
+         this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);
+         this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+-        this._statusClockBox.set_style(`spacing: ${Math.max(0, Math.min(3, 36 - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
++        this._statusClockBox.set_style(`padding: ${vertical ? '0' : '0 3.5px'}; spacing: ${Math.max(0, Math.min(3, 36 - (stroked ? 2 : 0) - s.get_int('status-time-size') - s.get_int('status-date-size')))}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
+             [this._statusDateLabel, s.get_int('status-date-size')]]) {
+@@ -891,7 +891,6 @@
+         const columns = this._indicatorsLayout._columns(this._indicators);
+         const controlWidth = (7 + columns * 13 + (columns - 1) * 3) * scale;
+         this._statusControls.set_width(vertical ? -1 : controlWidth + (flush ? 2 * padding * scale : 0));
+-        this._statusClock.set_style(this._statusClock.get_style() + (vertical ? '' : 'min-width: 70px;'));
+         this._indicators.get_children().forEach(child => child.set_style(
+             s.get_boolean('status-glyph-tiles') ? `background-color: ${light ? 'rgba(25,27,31,0.05)' : 'rgba(255,255,255,0.08)'}; border-radius: 3px;` : null));
+         this.remove_style_class_name('luma-status-light');

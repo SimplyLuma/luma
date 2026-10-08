@@ -1,0 +1,56 @@
+{
+  "_doc": "Calculator R2-AT: v70 .cak key geometry, type and blue-accent surfaces. The shadow extends the shared chip colours with the light treatment's far edge. Expression ink is distinct from keypad operator ink in dark mode.",
+  "lumaui": {
+    "calc": {
+      "key_height": 58,
+      "key_radius": 22,
+      "superscript_size": 9.425,
+      "chip_highlight_y": 1,
+      "chip_ring_spread": 1,
+      "chip_shadow_y": 1,
+      "chip_shadow_blur": 2,
+      "chip_far_shadow_y": 3,
+      "chip_far_shadow_blur": 8,
+      "chip_far_shadow_spread": -3
+    },
+    "key_edge": {
+      "highlight_y": 1,
+      "ring_spread": 1,
+      "shadow_y": 1,
+      "shadow_blur": 3
+    },
+    "type_scale": {
+      "calc_digit": {"size": 24, "weight": 450, "line_height": 1.45, "tracking_em": 0},
+      "calc_function": {"size": 19, "weight": 450, "line_height": 1.45, "tracking_em": 0},
+      "calc_operator": {"size": 25, "weight": 450, "line_height": 1.45, "tracking_em": 0},
+      "calc_equals": {"size": 25, "weight": 500, "line_height": 1.45, "tracking_em": 0},
+      "calc_scientific": {"size": 14.5, "weight": 500, "line_height": 1.45, "tracking_em": 0, "family": "Figtree, Liberation Sans, Noto Sans Math, sans-serif"}
+    },
+    "colors": {
+      "light": {
+        "calc_operator_ink": "#0065b4",
+        "calc_expression_operator_ink": "#0f74c5",
+        "menu_compact_checked_fill": "rgba(20, 22, 27, 0.085)",
+        "calc_function_fill": "#f6f6f6",
+        "calc_operator_fill": "rgba(110, 160, 232, 0.14)",
+        "calc_chip_far_shadow": "rgba(20, 22, 26, 0.14)"
+      },
+      "dark": {
+        "calc_operator_ink": "#91c0ff",
+        "calc_expression_operator_ink": "#73b6fa",
+        "menu_compact_checked_fill": "rgba(255, 255, 255, 0.1)",
+        "calc_function_fill": "#505256",
+        "calc_operator_fill": "#4f5a6c",
+        "calc_chip_far_shadow": "transparent"
+      },
+      "high_contrast": {
+        "calc_operator_ink": "@accent_fg_color",
+        "calc_expression_operator_ink": "@accent_fg_color",
+        "menu_compact_checked_fill": "alpha(@window_fg_color, 0.18)",
+        "calc_function_fill": "@window_bg_color",
+        "calc_operator_fill": "@window_bg_color",
+        "calc_chip_far_shadow": "transparent"
+      }
+    }
+  }
+}

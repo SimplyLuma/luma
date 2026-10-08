@@ -1,0 +1,541 @@
+From: Project Luma
+Subject: [PATCH] luma: windows appear once, fully inside a work area, after monitor changes
+
+After resume or a dock change, windows were first painted where Mutter moved
+them for the new layout, sometimes across two monitors that are not next to
+each other, and window memory put them back only after the monitors had been
+stable for 1.5 s. A monitor change that arrived before logind's wake signal
+waited 30 s. A Wayland client that acknowledged an old configure late (Claude
+after resume) could land with its top far above the panel, and that place
+was then remembered.
+
+Windows are now put back before the first frame of each new layout (after
+the Shell updates its work areas) and confirmed when the monitors are
+stable. A monitor change after resume is recognized by the monotonic clock
+having stopped. A window moved for new monitors stays invisible until the
+client shows it in place (at most 1 s). Any window left alone, or moved off
+its work area by something other than the person, is brought fully inside
+the work area of the monitor it overlaps most in one move. A place off the
+work area is never remembered unless the person chose it.
+
+---
+--- a/components/lumaWindowMemory/windowMemory.js	2026-09-15 19:00:00
++++ b/components/lumaWindowMemory/windowMemory.js	2026-09-17 09:58:35
+@@ -11,13 +11,16 @@
+ //
+ // Launch: a strong habit wins; otherwise the last placement, however old; with
+ // no history nothing happens. A move kept for 3+ sessions demotes the old habit.
+-// Setup change: once the monitors have been stable for a moment, open windows go
+-// back to where they were left in that setup (windows opened since follow the
+-// launch rule). In a setup never seen before nothing
++// Setup change: open windows go back to where they were left in that setup
++// (windows opened since follow the launch rule) before the new layout is first
++// painted, and again, if anything differs, once the monitors have been stable
++// for a moment (a dock can report its monitors in several steps). In a setup never seen before nothing
+ // is scattered: windows keep still-connected monitors, and windows from a
+ // monitor that went away go to the new monitor with the same role.
+ // Dialogs, transients, popups and splash windows are never remembered or moved,
+-// and a window the person touches wins.
++// and a window the person touches wins. Whatever else moved it (Mutter on a
++// monitor change, a client that is slow to wake), a window never stays partly
++// off its monitor's work area: it is brought fully inside in one move.
+ import { Clutter, GLib, Gio, Meta, Shell, St } from "../../gi/ext.js";
+ import { buildRectangle } from "../../utils/ui.js";
+ import * as Main from "resource:///org/gnome/shell/ui/main.js";
+@@ -77,6 +80,11 @@
+ // later extensions, the Quick Settings switch, Shell shutdown).
+ const PAUSED = Symbol("luma-window-memory-paused");
+ const FRAME_SLACK = 2;
++// When window memory last placed a window; a later move by the person wins.
++const PLACED = Symbol("luma-window-memory-placed");
++// When a window was last brought inside a work area (at most once a second).
++const BROUGHT_INSIDE = Symbol("luma-window-memory-brought-inside");
++const INSIDE_QUEUED = Symbol("luma-window-memory-inside-queued");
+ // A disable and enable this close together is GNOME re-ordering extensions.
+ const REBASE_MS = 5000;
+ 
+@@ -180,6 +188,10 @@
+   return !!a && !!b && a.every((v, i) => Math.abs(v - b[i]) <= FRAME_SLACK);
+ }
+ 
++function insideArea(frame, area) {
++  return frame[0] >= area.x - FRAME_SLACK && frame[1] >= area.y - FRAME_SLACK && frame[0] + frame[2] <= area.x + area.width + FRAME_SLACK && frame[1] + frame[3] <= area.y + area.height + FRAME_SLACK;
++}
++
+ // Why a window is never remembered or moved, for the journal.
+ function notRememberableReason(window) {
+   if (window.is_override_redirect()) return "override-redirect";
+@@ -210,6 +222,8 @@
+     this._monitorsCache = null;
+     this._transition = null;
+     this._stableId = 0;
++    this._earlyId = 0;
++    this._changedAt = 0;
+     this._saveId = 0;
+     this._quietUntil = 0;
+     this._sleepSubscription = 0;
+@@ -227,8 +241,10 @@
+     this._connect(global.display, "grab-op-begin", (_d, window) => this.touch(window, "grab"));
+     this._connect(Main.layoutManager, "monitors-changed", () => this._beginTransition("monitors-changed"));
+     this._connect(global.display, "workareas-changed", () => {
+-      if (!this._stable && this._stableId) this._scheduleStable();
+-      else if (this._stable && !this._locked) this._reassertLockRestores("work area changed after unlock");
++      if (!this._stable && this._stableId) {
++        this._scheduleStable();
++        this._queueEarlyPlacement();
++      } else if (this._stable && !this._locked) this._reassertLockRestores("work area changed after unlock");
+     });
+     for (const signal of ["move-window", "span-window", "span-window-all-tiles", "untile-window", "move-window-center"]) {
+       if (this._keybindings)
+@@ -333,6 +349,8 @@
+     for (const id of this._sources) GLib.source_remove(id);
+     this._sources.clear();
+     this._stableId = 0;
++    if (this._earlyId) global.compositor.get_laters().remove(this._earlyId);
++    this._earlyId = 0;
+     if (this._saveId) {
+       GLib.source_remove(this._saveId);
+       this._saveId = 0;
+@@ -351,6 +369,7 @@
+ 
+   onPrepareForSleep(sleeping) {
+     vitals(sleeping ? "sleep" : "wake", sleeping ? "going to sleep; recording paused" : "woke up; waiting for monitors");
++    if (sleeping) this._sleepClock = GLib.get_real_time() - GLib.get_monotonic_time();
+     this._asleep = sleeping;
+     if (sleeping) this._beginTransition("sleep", this._setupKey, false);
+     else this._beginTransition("wake", this._transition?.from ?? this._setupKey);
+@@ -585,6 +604,7 @@
+     const monitor = monitors.find((m) => m.key === p.m);
+     if (!monitor || window.is_fullscreen()) return false;
+     window[OWN_UNTIL] = this._now() + this.timing.settle + 500;
++    window[PLACED] = this._now();
+     const [x, y, width, height] = p.r;
+     const maximized = window.maximizedHorizontally || window.maximizedVertically;
+     if (p.k === "max") {
+@@ -729,6 +749,7 @@
+       }
+     });
+     if (data.hold) this._revealHold(window, data, forget ? "closed while held" : "Tiling Shell stopping", { animate: false });
++    if (data.veil) this._unveil(window, forget ? "closed while hidden" : "Tiling Shell stopping");
+     data.settleId = this._clearTimeout(data.settleId);
+     data.launchId = this._clearTimeout(data.launchId);
+     if (data.actor && data.frameId) data.actor.disconnect(data.frameId);
+@@ -1009,6 +1030,9 @@
+   _onWindowChanged(window) {
+     const data = this._windows.get(window);
+     if (!data || !this._stable || !this._enabled) return;
++    // Something other than the person pushed it off its work area (a client
++    // acknowledging an old configure after sleep): fix it before it is painted.
++    if (data.mapped && !data.hold && !this._placedByPerson(window) && this._insideFrame(window)) this._queueKeepInside(window);
+     data.settleId = this._clearTimeout(data.settleId);
+     data.settleId = this._timeout(window[TOUCHED] ? this.timing.touchedSettle : this.timing.settle, () => {
+       data.settleId = 0;
+@@ -1050,6 +1074,11 @@
+     if (!this._recording() || !isRememberable(window) || !this._identify(window) || window[ORDINAL] < 0) return;
+     const data = this._windows.get(window);
+     if (!data?.mapped) return;
++    // Never learn a place off the work area that the person did not choose.
++    if (!this._placedByPerson(window) && this._insideFrame(window)) {
++      this._keepInside(window, "was off its work area when recorded", { limit: true });
++      return;
++    }
+     const p = this._placementOf(window, this._monitors());
+     if (!p) return;
+     const record = this._currentRecord();
+@@ -1155,6 +1184,14 @@
+   // ---- monitor setup changes ---------------------------------------------
+ 
+   _beginTransition(reason, from = this._setupKey, waitForStable = true) {
++    this._changedAt = this._now();
++    // Monitors often come back before logind says the system woke up: the
++    // monotonic clock stops during suspend, so a jump against the wall clock
++    // since PrepareForSleep means this change is the resume, not the way down.
++    if (this._asleep && waitForStable && this._resumed()) {
++      vitals("wake", `monitors changed after resume, before the wake signal (${reason}); waiting for monitors`);
++      this._asleep = false;
++    }
+     if (this._stable || !this._transition) {
+       const now = this._now();
+       this._transition = { from, start: now, reason };
+@@ -1175,10 +1212,170 @@
+       this._monitorsCache = null;
+       for (const data of this._windows.values()) data.settleId = this._clearTimeout(data.settleId);
+     }
+-    if (waitForStable) this._scheduleStable();
+-    else this._stableId = this._clearTimeout(this._stableId);
++    if (waitForStable) {
++      this._scheduleStable();
++      this._queueEarlyPlacement();
++    } else {
++      this._stableId = this._clearTimeout(this._stableId);
++    }
++  }
++
++  // The layout changed: put windows where they belong in it before the next
++  // frame is painted (after the Shell has updated its work areas), instead of
++  // showing where Mutter moved them until the monitors have been stable for a
++  // while. If the monitors change again, this runs again; _settle confirms.
++  _queueEarlyPlacement() {
++    if (this._earlyId || this._asleep || !this._enabled) return;
++    this._earlyId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++      this._earlyId = 0;
++      if (this._stable || !this._transition || this._asleep || /^(enable|re-enable)/.test(this._transition.reason)) return GLib.SOURCE_REMOVE;
++      try {
++        const monitors = this._monitors();
++        const counts = this._placeAll(false, this._transition, monitors, this._now());
++        if (counts.moved + counts.inside > 0)
++          vitals("placed-early", `${monitors.length} monitor(s) after ${this._transition.reason}: ${counts.moved} window(s) put back and ${counts.inside} brought inside before the first frame`, {
++            reason: this._transition.reason,
++            monitors: monitors.length,
++            moved: counts.moved,
++            inside: counts.inside
++          });
++      } catch (e) {
++        vitals("placed-early-failed", `placing windows for the new monitors failed: ${e}`);
++      }
++      return GLib.SOURCE_REMOVE;
++    });
++  }
++
++  _resumed() {
++    const hook = LumaWindowMemory.testHooks?.resumed;
++    if (hook) return hook();
++    return GLib.get_real_time() - GLib.get_monotonic_time() - (this._sleepClock ?? 0) > 2e6;
++  }
++
++  // The frame a placement gives this window now, for hiding it until it is there.
++  _expectedFrame(window, p, monitors) {
++    const monitor = monitors.find((m) => m.key === p.m);
++    if (!monitor) return null;
++    if (p.k === "max") {
++      const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
++      return [area.x, area.y, area.width, area.height];
++    }
++    if (p.k === "tile") return this._tileFrame(window, p, monitor)?.frame ?? this._floatFrame(p, monitor);
++    return this._floatFrame(p, monitor);
++  }
++
++  // A Wayland client resizes when it acknowledges a configure, so a window moved
++  // for new monitors can be painted first where Mutter put it, and a client that
++  // is slow after resume can show an outdated size or place. Keep a window that
++  // is not yet where it was sent invisible until it gets there (at most 1 s),
++  // so it appears once, in place.
++  _veil(window, expected, why) {
++    const data = this._windows.get(window);
++    const actor = window.get_compositor_private();
++    if (!expected || !data || !actor || data.hold || data.veil || !data.mapped || !actor.visible || actor.opacity !== 255 || window.minimized) return;
++    const near = () => {
++      const f = frameOf(window);
++      return Math.abs(f[0] - expected[0]) <= 8 && Math.abs(f[1] - expected[1]) <= 8 && Math.abs(f[2] - expected[2]) <= 48 && Math.abs(f[3] - expected[3]) <= 48;
++    };
++    if (near()) return;
++    const veil = data.veil = { ids: [], since: this._now(), why };
++    actor.opacity = 0;
++    const check = () => {
++      if (near()) this._unveil(window, "in place");
++    };
++    for (const signal of ["position-changed", "size-changed"]) veil.ids.push(window.connect(signal, check));
++    veil.timeoutId = this._timeout(1e3, () => {
++      veil.timeoutId = 0;
++      this._unveil(window, "not in place after 1 s; shown anyway");
++    });
++  }
++
++  _unveil(window, how) {
++    const data = this._windows.get(window);
++    const veil = data?.veil;
++    if (!veil) return;
++    data.veil = null;
++    veil.ids.forEach((id) => {
++      try {
++        window.disconnect(id);
++      } catch (e) {
++      }
++    });
++    this._clearTimeout(veil.timeoutId);
++    const actor = window.get_compositor_private();
++    if (actor) actor.opacity = 255;
++    if (how !== "in place")
++      vitals("veil", `${window[APP] ?? appIdentity(window) ?? "window"} ${how} (${veil.why})`, { app: window[APP] ?? appIdentity(window), reason: how });
++  }
++
++  // Did the person move this window after window memory or a monitor change last did?
++  _placedByPerson(window) {
++    return (window[TOUCHED] ?? 0) > Math.max(window[PLACED] ?? 0, this._changedAt);
++  }
++
++  // The frame that puts a window fully inside one monitor's work area (the one
++  // it overlaps most, else the nearest), or null when it already is inside one
++  // or is not a window that is ever moved.
++  _insideFrame(window) {
++    if (notRememberableReason(window) || window.minimized || window.is_fullscreen() || window.maximizedHorizontally || window.maximizedVertically) return null;
++    const frame = frameOf(window);
++    if (frame[2] <= 0 || frame[3] <= 0) return null;
++    const count = Main.layoutManager.monitors.length;
++    let best = null;
++    for (let index = 0; index < count; index++) {
++      const area = Main.layoutManager.getWorkAreaForMonitor(index);
++      if (!area || area.width <= 0 || area.height <= 0) continue;
++      if (insideArea(frame, area)) return null;
++      const overlap = Math.max(0, Math.min(frame[0] + frame[2], area.x + area.width) - Math.max(frame[0], area.x)) * Math.max(0, Math.min(frame[1] + frame[3], area.y + area.height) - Math.max(frame[1], area.y));
++      const cx = frame[0] + frame[2] / 2;
++      const cy = frame[1] + frame[3] / 2;
++      const distance = Math.hypot(Math.max(area.x - cx, 0, cx - area.x - area.width), Math.max(area.y - cy, 0, cy - area.y - area.height));
++      if (!best || overlap > best.overlap || overlap === best.overlap && distance < best.distance) best = { index, area, overlap, distance };
++    }
++    if (!best) return null;
++    const { area } = best;
++    const width = Math.min(frame[2], area.width);
++    const height = Math.min(frame[3], area.height);
++    const x = Math.max(area.x, Math.min(area.x + area.width - width, frame[0]));
++    const y = Math.max(area.y, Math.min(area.y + area.height - height, frame[1]));
++    return { index: best.index, frame: [x, y, width, height] };
++  }
++
++  // Move a window fully inside a work area in one move. Returns true if moved.
++  _keepInside(window, why, { limit = false } = {}) {
++    const target = this._insideFrame(window);
++    if (!target) return false;
++    const now = this._now();
++    // A window that cannot shrink to fit reports every refused resize: once a second is enough.
++    if (limit && now - (window[BROUGHT_INSIDE] ?? 0) < 1e3) return false;
++    window[BROUGHT_INSIDE] = now;
++    window[OWN_UNTIL] = now + this.timing.settle + 500;
++    window[PLACED] = now;
++    const before = frameOf(window);
++    const [x, y, width, height] = target.frame;
++    window.assignedTile = void 0;
++    if (width === before[2] && height === before[3]) window.move_frame(false, x, y);
++    else window.move_resize_frame(false, x, y, width, height);
++    this._veil(window, target.frame, why);
++    const monitor = this._monitors().find((m) => m.index === target.index);
++    vitals("brought-inside", `${window[APP] ?? appIdentity(window) ?? window.get_wm_class() ?? "window"} brought fully onto ${monitor?.key ?? `monitor ${target.index}`}: ${why} (${before.join(",")} -> ${target.frame.join(",")})`, {
++      app: window[APP] ?? appIdentity(window),
++      reason: why,
++      monitor: monitor?.key ?? `${target.index}`
++    });
++    return true;
+   }
+ 
++  _queueKeepInside(window) {
++    if (window[INSIDE_QUEUED]) return;
++    window[INSIDE_QUEUED] = true;
++    global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++      delete window[INSIDE_QUEUED];
++      if (this._windows.has(window) && this._stable && !this._placedByPerson(window)) this._keepInside(window, "moved off its work area without the person", { limit: true });
++      return GLib.SOURCE_REMOVE;
++    });
++  }
++
+   _scheduleStable() {
+     this._stableId = this._clearTimeout(this._stableId);
+     // Between PrepareForSleep and waking up, only settle if wake never arrives.
+@@ -1194,87 +1391,8 @@
+     const monitors = this._monitors();
+     const { key, set } = this._setupKeys(monitors);
+     const now = this._now();
+-    const previous = transition.from ? this._memory.setups[transition.from] : null;
+-    const { record: source, key: sourceKey, mode } = this._setupRecordFor(monitors);
+-    let moved = 0;
+-    let kept = 0;
+-    let touched = 0;
+-    const skipped = /* @__PURE__ */ new Map();
+-    const skip = (window, reason) => {
+-      skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
+-      vitals("restore-skipped", `${window[APP] ?? appIdentity(window) ?? window.get_wm_class() ?? "window"}${window[ORDINAL] >= 0 ? ` (${ordinalName(window[ORDINAL])})` : ""} left alone: ${reason}`, {
+-        app: window[APP] ?? appIdentity(window),
+-        reason
+-      });
+-    };
+-    if (this._enabled) {
+-      for (const window of this._windows.keys()) {
+-        const paused = window[PAUSED];
+-        delete window[PAUSED];
+-        const unfit = notRememberableReason(window);
+-        if (unfit) {
+-          if (window.get_window_type() === Meta.WindowType.NORMAL && !window.is_override_redirect()) skip(window, unfit);
+-          continue;
+-        }
+-        if (!this._identify(window)) {
+-          skip(window, "no app identity");
+-          continue;
+-        }
+-        if (window[ORDINAL] < 0) {
+-          skip(window, `more than ${MAX_ORDINALS} windows of this app`);
+-          continue;
+-        }
+-        if (window.minimized) {
+-          skip(window, "minimized");
+-          continue;
+-        }
+-        if ((window[TOUCHED] ?? 0) >= transition.start) {
+-          touched++;
+-          skip(window, "moved by the person while monitors changed");
+-          continue;
+-        }
+-        let target;
+-        if (paused && paused.setup === key) {
+-          if (!sameFrame(paused.frame, frameOf(window))) {
+-            skip(window, "moved while Tiling Shell was off");
+-            continue;
+-          }
+-          target = paused.p ? { p: paused.p, why: "as it was when Tiling Shell stopped" } : { p: null, why: "had no placement when Tiling Shell stopped" };
+-        } else if (!paused && /^(enable|re-enable)/.test(transition.reason) && this._windows.get(window)?.mapped) {
+-          skip(window, "opened while Tiling Shell was off");
+-          continue;
+-        } else {
+-          target = this._restoreTarget(window, monitors, source, sourceKey, previous, now);
+-        }
+-        if (!target.p) {
+-          skip(window, target.why);
+-          continue;
+-        }
+-        if (this._locked) {
+-          this._lockRestores ??= /* @__PURE__ */ new Map();
+-          this._lockRestores.set(window, target.p);
+-          this._lockRestoresAt = now;
+-        }
+-        const was = this._placementOf(window, monitors);
+-        if (this._exactlyAt(window, target.p, monitors)) {
+-          kept++;
+-          continue;
+-        }
+-        this._apply(window, target.p, monitors);
+-        if (target.p.k === "tile" && samePlacement(was, target.p)) {
+-          kept++;
+-          continue;
+-        }
+-        moved++;
+-        vitals("restored", `${window[APP]} (${ordinalName(window[ORDINAL])}) back to ${describe(target.p)} (${target.why})`, {
+-          app: window[APP],
+-          role: ordinalName(window[ORDINAL]),
+-          reason: target.why,
+-          kind: target.p.k,
+-          monitor: target.p.m
+-        });
+-      }
+-    }
++    const { mode } = this._setupRecordFor(monitors);
++    const { moved, kept, touched, inside, skipped } = this._placeAll(true, transition, monitors, now);
+     const record = this._memory.setups[key] ??= { set, seen: now, monitors: {}, apps: {} };
+     record.set = set;
+     record.seen = now;
+@@ -1285,13 +1403,14 @@
+     this._stable = true;
+     this._monitorsCache = null;
+     this._quietUntil = now + this.timing.quiet;
+-    vitals("setup-stable", `${monitors.length} monitor(s), ${mode} setup after ${transition.reason}: moved ${moved}, kept ${kept}, person moved ${touched}${skipped.size ? `, left alone ${[...skipped].map(([r, n]) => `${n} ${r}`).join("; ")}` : ""}`, {
++    vitals("setup-stable", `${monitors.length} monitor(s), ${mode} setup after ${transition.reason}: moved ${moved}, kept ${kept}, person moved ${touched}${inside ? `, brought inside ${inside}` : ""}${skipped.size ? `, left alone ${[...skipped].map(([r, n]) => `${n} ${r}`).join("; ")}` : ""}`, {
+       reason: transition.reason,
+       setup_mode: mode,
+       monitors: monitors.length,
+       moved,
+       kept,
+-      touched
++      touched,
++      inside
+     });
+     this._queueSave();
+     this._timeout(this.timing.quiet + 50, () => {
+@@ -1299,6 +1418,101 @@
+     });
+   }
+ 
++  // Put every open window where it belongs in the current monitors. final:
++  // the monitors are stable (log each decision, consume paused state, keep
++  // lock-screen restores); otherwise an early pass that changes no memory.
++  // Windows left alone that are not fully inside a work area are brought inside.
++  _placeAll(final, transition, monitors, now) {
++    const { key } = this._setupKeys(monitors);
++    const previous = transition.from ? this._memory.setups[transition.from] : null;
++    const { record: source, key: sourceKey } = this._setupRecordFor(monitors);
++    const counts = { moved: 0, kept: 0, touched: 0, inside: 0, skipped: /* @__PURE__ */ new Map() };
++    const skip = (window, reason, bringInside = true) => {
++      if (bringInside && this._keepInside(window, `left alone (${reason}) and not inside a work area`)) counts.inside++;
++      if (!final) return;
++      counts.skipped.set(reason, (counts.skipped.get(reason) ?? 0) + 1);
++      vitals("restore-skipped", `${window[APP] ?? appIdentity(window) ?? window.get_wm_class() ?? "window"}${window[ORDINAL] >= 0 ? ` (${ordinalName(window[ORDINAL])})` : ""} left alone: ${reason}`, {
++        app: window[APP] ?? appIdentity(window),
++        reason
++      });
++    };
++    if (!this._enabled) return counts;
++    for (const window of this._windows.keys()) {
++      const data = this._windows.get(window);
++      if (!final && data?.hold) continue;
++      const paused = window[PAUSED];
++      if (!final && paused) continue;
++      if (final) delete window[PAUSED];
++      const unfit = notRememberableReason(window);
++      if (unfit) {
++        if (final && window.get_window_type() === Meta.WindowType.NORMAL && !window.is_override_redirect()) skip(window, unfit, false);
++        continue;
++      }
++      if (window.minimized) {
++        skip(window, "minimized", false);
++        continue;
++      }
++      if ((window[TOUCHED] ?? 0) >= transition.start) {
++        if (final) counts.touched++;
++        skip(window, "moved by the person while monitors changed", false);
++        continue;
++      }
++      if (!this._identify(window)) {
++        skip(window, "no app identity");
++        continue;
++      }
++      if (window[ORDINAL] < 0) {
++        skip(window, `more than ${MAX_ORDINALS} windows of this app`);
++        continue;
++      }
++      let target;
++      if (paused && paused.setup === key) {
++        if (!sameFrame(paused.frame, frameOf(window))) {
++          skip(window, "moved while Tiling Shell was off", false);
++          continue;
++        }
++        target = paused.p ? { p: paused.p, why: "as it was when Tiling Shell stopped" } : { p: null, why: "had no placement when Tiling Shell stopped" };
++      } else if (!paused && /^(enable|re-enable)/.test(transition.reason) && data?.mapped) {
++        skip(window, "opened while Tiling Shell was off");
++        continue;
++      } else {
++        target = this._restoreTarget(window, monitors, source, sourceKey, previous, now);
++      }
++      if (!target.p) {
++        skip(window, target.why);
++        continue;
++      }
++      if (final && this._locked) {
++        this._lockRestores ??= /* @__PURE__ */ new Map();
++        this._lockRestores.set(window, target.p);
++        this._lockRestoresAt = now;
++      }
++      const was = this._placementOf(window, monitors);
++      if (this._exactlyAt(window, target.p, monitors)) {
++        counts.kept++;
++        continue;
++      }
++      const expected = this._expectedFrame(window, target.p, monitors);
++      this._apply(window, target.p, monitors);
++      this._veil(window, expected, `put back after ${transition.reason}`);
++      if (target.p.k === "tile" && samePlacement(was, target.p)) {
++        counts.kept++;
++        continue;
++      }
++      counts.moved++;
++      if (final) {
++        vitals("restored", `${window[APP]} (${ordinalName(window[ORDINAL])}) back to ${describe(target.p)} (${target.why})`, {
++          app: window[APP],
++          role: ordinalName(window[ORDINAL]),
++          reason: target.why,
++          kind: target.p.k,
++          monitor: target.p.m
++        });
++      }
++    }
++    return counts;
++  }
++
+   _restoreTarget(window, monitors, source, sourceKey, previous, now) {
+     const present = (p) => p && monitors.some((m) => m.key === p.m);
+     // Open when this setup was left: exactly as it was left.

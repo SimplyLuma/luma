@@ -1,0 +1,24 @@
+{
+  "home_label": "Oakland",
+  "initial_timer_seconds": 300,
+  "home_zone": "America/Chicago",
+  "world": [
+    {"uid": "00000000000000000000000000000001", "label": "New York", "zone": "America/New_York", "offset_hours": 3},
+    {"uid": "00000000000000000000000000000002", "label": "London", "zone": "Europe/London", "offset_hours": 8},
+    {"uid": "00000000000000000000000000000003", "label": "Lisbon", "zone": "Europe/Lisbon", "offset_hours": 8},
+    {"uid": "00000000000000000000000000000004", "label": "Tokyo", "zone": "Asia/Tokyo", "offset_hours": 16},
+    {"uid": "00000000000000000000000000000005", "label": "Sydney", "zone": "Australia/Sydney", "offset_hours": 17}
+  ],
+  "alarms": [
+    {"uid": "00000000000000000000000000000011", "hour": 6, "minute": 30, "label": "Wake up", "days": [0, 1, 2, 3, 4], "days_label": "Weekdays", "enabled": true},
+    {"uid": "00000000000000000000000000000012", "hour": 8, "minute": 0, "label": "Weekend", "days": [5, 6], "days_label": "Sat, Sun", "enabled": false},
+    {"uid": "00000000000000000000000000000013", "hour": 14, "minute": 15, "label": "Launch walkthrough", "days": [], "days_label": "Today", "enabled": true}
+  ],
+  "places": [
+    {"name": "Los Angeles", "region": "CA", "zone": "America/Los_Angeles"},
+    {"name": "Chicago", "region": "IL", "zone": "America/Chicago"},
+    {"name": "Paris", "region": "France", "zone": "Europe/Paris"},
+    {"name": "Berlin", "region": "Germany", "zone": "Europe/Berlin"},
+    {"name": "Mumbai", "region": "India", "zone": "Asia/Kolkata"}
+  ]
+}

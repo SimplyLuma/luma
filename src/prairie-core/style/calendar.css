@@ -1,0 +1,125 @@
+/* Calendar-only surfaces, using LumaUI tokens. Shared parts are never restyled. */
+.calendar-control { background: @luma_well; color: @luma_ink; border: none; box-shadow: none; border-radius: var(--lumaui-ac-control-radius); padding: var(--lumaui-ac-bar-padding); }
+.calendar-control:hover { background: @luma_hover; }
+.calendar-day { background: @luma_hover; border-radius: var(--lumaui-details-radius); padding: var(--lumaui-details-body-inset); }
+.calendar-day:hover { background: @luma_chip; }
+.calendar-day.today { background: @luma_accent_soft; }
+.calendar-day.selected { background: @luma_chip; }
+.calendar-day.today { box-shadow: inset 0 0 0 calc(var(--lumaui-details-section-gap-first) * .75) alpha(@luma_accent_ink, .6); }
+.calendar-day.selected:not(.today) { box-shadow: inset 0 calc(var(--lumaui-details-section-gap-first) / 2) 0 @luma_chip_highlight, 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_chip_ring, 0 calc(var(--lumaui-details-section-gap-first) / 2) var(--lumaui-details-section-gap-first) @luma_chip_shadow; }
+.calendar-day.today.selected { box-shadow: inset 0 calc(var(--lumaui-details-section-gap-first) / 2) 0 @luma_chip_highlight, 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_chip_ring, 0 calc(var(--lumaui-details-section-gap-first) / 2) var(--lumaui-details-section-gap-first) @luma_chip_shadow, inset 0 0 0 calc(var(--lumaui-details-section-gap-first) * .75) alpha(@luma_accent_ink, .6); }
+.calendar-day.today > label:first-child { color: @luma_accent_ink; }
+.calendar-event-chip { background: none; border: none; box-shadow: none; padding: 0 var(--lumaui-details-section-label-gap); border-radius: var(--lumaui-count-radius); min-width: 0; min-height: 0; }
+.calendar-event-block { border: none; padding: calc(var(--lumaui-details-row-radius) / 2) calc(var(--lumaui-details-body-inset) + var(--lumaui-details-section-gap-first) / 2) calc(var(--lumaui-details-body-inset) - var(--lumaui-details-section-gap-first)) calc(var(--lumaui-details-row-gap) + var(--lumaui-details-section-gap-first) / 2); border-radius: var(--lumaui-details-row-radius); min-width: 0; min-height: 0; }
+.calendar-event-block.tiny { padding-top: 0; padding-bottom: 0; }
+.calendar-event-chip.work.all-day, .calendar-event-chip.work.selected, .calendar-event-block.work { background: @luma_cat_work_bg; }
+.calendar-event-chip.play.all-day, .calendar-event-chip.play.selected, .calendar-event-block.play { background: @luma_cat_play_bg; }
+.calendar-event-chip.create.all-day, .calendar-event-chip.create.selected, .calendar-event-block.create { background: @luma_cat_create_bg; }
+.calendar-event-chip.media.all-day, .calendar-event-chip.media.selected, .calendar-event-block.media { background: @luma_cat_media_bg; }
+.calendar-event-chip.tools.all-day, .calendar-event-chip.tools.selected, .calendar-event-block.tools { background: @luma_cat_tools_bg; }
+.calendar-event-chip.work { color: @luma_cat_work_ink; }
+.calendar-event-chip.play { color: @luma_cat_play_ink; }
+.calendar-event-chip.create { color: @luma_cat_create_ink; }
+.calendar-event-chip.media { color: @luma_cat_media_ink; }
+.calendar-event-chip.tools { color: @luma_cat_tools_ink; }
+.calendar-event-stripe { min-width: var(--lumaui-ac-bar-padding); min-height: var(--lumaui-modes-button-height); border-radius: var(--lumaui-ac-bar-padding); }
+.calendar-event-stripe.work { background: @luma_cat_work_ink; }
+.calendar-event-stripe.play { background: @luma_cat_play_ink; }
+.calendar-event-stripe.create { background: @luma_cat_create_ink; }
+.calendar-event-stripe.media { background: @luma_cat_media_ink; }
+.calendar-event-stripe.tools { background: @luma_cat_tools_ink; }
+.calendar-hour-rule { background: @luma_line; }
+.calendar-now, .calendar-now-dot { background: @luma_calendar_now; }
+.calendar-now { box-shadow: 0 0 10px alpha(@luma_calendar_now, .8); }
+.calendar-now-dot { box-shadow: 0 0 8px @luma_calendar_now; }
+.calendar-now-dot { border-radius: var(--lumaui-corner-radius); }
+.calendar-track { background: @luma_hover; border-radius: var(--lumaui-details-radius); }
+.calendar-track.today { background: @luma_accent_soft; }
+.calendar-free-region { background: @luma_well; color: @luma_muted; border-radius: var(--lumaui-details-radius); }
+.calendar-free-row { background: @luma_well; min-height: 0; padding: var(--lumaui-details-body-inset) var(--lumaui-details-row-gap); border-radius: var(--lumaui-details-radius); }
+.calendar-day-summary { border-bottom: 1px solid @luma_line; padding-bottom: var(--lumaui-details-body-inset); }
+.calendar-day-empty { color: @luma_ink_secondary; }
+.calendar-free-section { border-top: 1px solid @luma_line; padding-top: var(--lumaui-details-body-inset); }
+.calendar-event-place { background: @luma_well; border-radius: var(--lumaui-details-row-radius); padding: var(--lumaui-details-body-inset) var(--lumaui-details-row-gap); }
+.calendar-event-place > image { color: @luma_muted; }
+.calendar-free-hold { opacity: 0; color: @luma_accent_ink; }
+.calendar-free-row, .calendar-free-region { background: repeating-linear-gradient(135deg, transparent 0 7px, @luma_fill 7px 8px); }
+.calendar-free-row:hover, .calendar-free-region:hover { background: @luma_accent_soft; }
+.calendar-free-row:hover .calendar-free-hold, .calendar-phone .calendar-free-hold { opacity: 1; }
+.calendar-free-row, .calendar-free-region { box-shadow: inset 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_line; }
+.calendar-night { background: @luma_well; padding: var(--lumaui-details-body-inset); border-radius: var(--lumaui-details-row-radius); box-shadow: inset 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_well_ring, inset 0 calc(var(--lumaui-details-section-gap-first) / 2) var(--lumaui-details-section-gap-first) @luma_well_shade, 0 calc(var(--lumaui-details-section-gap-first) / 2) 0 @luma_well_lip; }
+
+/* Shared raised/key buttons own month surfaces; only content and past-state
+   opacity are Calendar's. */
+.calendar-month-choice.past { opacity: .55; }
+.calendar-busy-dot { min-width: 5px; min-height: 5px; border-radius: 3px; background: @luma_hover; }
+.calendar-busy-dot.filled { background: @luma_accent_ink; }
+.calendar-month-choice.past .calendar-busy-dot.filled { background: @luma_faint; }
+
+.calendar-draft-field { background: none; border: none; box-shadow: none; padding: var(--lumaui-ac-bar-padding); min-width: 0; }
+.calendar-event-chip { border-left: var(--lumaui-details-section-gap-first) solid @luma_cat_work_ink; padding-left: var(--lumaui-details-fact-padding-y); padding-right: 0; }
+.calendar-event-chip.play { border-left-color: @luma_cat_play_ink; }
+.calendar-event-chip.create { border-left-color: @luma_cat_create_ink; }
+.calendar-event-chip.tools { border-left-color: @luma_cat_tools_ink; }
+.calendar-event-block.work { box-shadow: inset calc(var(--lumaui-details-section-gap-first) * 1.5) 0 @luma_cat_work_ink; }
+.calendar-event-block.play { box-shadow: inset calc(var(--lumaui-details-section-gap-first) * 1.5) 0 @luma_cat_play_ink; }
+.calendar-event-block.create { box-shadow: inset calc(var(--lumaui-details-section-gap-first) * 1.5) 0 @luma_cat_create_ink; }
+.calendar-event-block.media { box-shadow: inset calc(var(--lumaui-details-section-gap-first) * 1.5) 0 @luma_cat_media_ink; }
+.calendar-event-block.tools { box-shadow: inset calc(var(--lumaui-details-section-gap-first) * 1.5) 0 @luma_cat_tools_ink; }
+
+.calendar-calendars { background: none; min-height: var(--lumaui-ac-control-height); padding: 0 var(--lumaui-ac-control-padding-x); }
+
+.calendar-event-name { color: @luma_ink; }
+.calendar-event-meta { color: @luma_ink_secondary; }
+.calendar-event-chip:not(.all-day) { border-radius: calc(var(--lumaui-details-row-radius) / 2); }
+.calendar-event-chip.all-day { border-radius: calc(var(--lumaui-details-radius) / 2); }
+.calendar-past-number { color: @luma_muted; }
+.calendar-now-label { color: @luma_calendar_now_label; }
+.calendar-today-label { color: @luma_accent_ink; }
+.calendar-week-head { padding: 4px 0 0 var(--lumaui-details-body-inset); }
+.calendar-week-today { background: @luma_chip; border-radius: var(--lumaui-details-radius); box-shadow: inset 0 calc(var(--lumaui-details-section-gap-first) / 2) 0 @luma_chip_highlight, 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_chip_ring, 0 calc(var(--lumaui-details-section-gap-first) / 2) var(--lumaui-details-section-gap-first) @luma_chip_shadow; }
+.calendar-draft-field:focus, .calendar-draft-field:focus-within, .calendar-draft-field { background: none; border: none; box-shadow: none; outline: none; padding: 0; min-height: 0; }
+.calendar-draft-field placeholder { color: @luma_faint; }
+.calendar-draft-chip { min-height: var(--lumaui-details-action); padding: 0 var(--lumaui-details-row-gap); border-radius: var(--lumaui-ac-tool-radius); box-shadow: inset 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_well_ring, inset 0 calc(var(--lumaui-details-section-gap-first) / 2) var(--lumaui-details-section-gap-first) @luma_well_shade, 0 calc(var(--lumaui-details-section-gap-first) / 2) 0 @luma_well_lip; }
+.calendar-invitee-chip { background: @luma_chip; padding: 0 var(--lumaui-ac-bar-padding); border-radius: var(--lumaui-corner-radius); box-shadow: inset 0 calc(var(--lumaui-details-section-gap-first) / 2) 0 @luma_chip_highlight, 0 0 0 calc(var(--lumaui-details-section-gap-first) / 2) @luma_chip_ring, 0 calc(var(--lumaui-details-section-gap-first) / 2) var(--lumaui-details-section-gap-first) @luma_chip_shadow; }
+.calendar-invitee-remove { background: none; min-height: 0; min-width: 0; padding: 0; border-radius: var(--lumaui-details-action-radius); }
+.calendar-invitee-suggestions { background: @luma_chip; padding: var(--lumaui-ac-bar-padding); border-radius: var(--lumaui-details-radius); }
+.calendar-invitee-suggestion { background: none; min-height: var(--lumaui-ac-tool-button); padding: 0 var(--lumaui-details-body-inset); border-radius: var(--lumaui-ac-tool-radius); }
+.calendar-invitee-suggestion.first { background: @luma_hover; }
+
+.calendar-ink-primary { color: @luma_ink; }
+.calendar-ink-secondary { color: @luma_ink_secondary; }
+.calendar-ink-muted, .calendar-free-duration { color: @luma_muted; }
+.calendar-ink-faint { color: @luma_faint; }
+.calendar-free-hint { color: @luma_accent_ink; }
+.calendar-free-region:hover .calendar-free-duration { color: @luma_ink; }
+
+/* Calendar under 560 (v71 .calnarrow): the title island, the month of dots and the day's agenda, three days,
+   the two-row bar's Today key, Flow's now label. Layout and tokens only; the island and the bar are LumaUI's. */
+button.calendar-pday { min-height: 48px; padding: 4px 0 0; border: none; border-radius: 14px; background: none; box-shadow: none; }
+button.calendar-pday:hover { background: @luma_hover; }
+button.calendar-pday.outside { opacity: .3; }
+.calendar-pday-number { min-width: 36px; min-height: 36px; border-radius: 18px; font-size: 17px; font-weight: 500; color: @luma_ink; }
+button.calendar-pday.past:not(.today) .calendar-pday-number { color: @luma_ink_secondary; }
+button.calendar-pday.today .calendar-pday-number { color: @luma_accent_ink; font-weight: 700; }
+button.calendar-pday.selected .calendar-pday-number { background: shade(@luma_accent, 0.78); color: white; font-weight: 650; } /* literal: white numeral on the accent disc, v71 .pmd.on */
+.calendar-pday-dot { min-width: 5px; min-height: 5px; border-radius: 3px; background: @luma_cat_work_ink; }
+.calendar-pday-dot.play { background: @luma_cat_play_ink; }
+.calendar-pday-dot.create { background: @luma_cat_create_ink; }
+.calendar-pday-dot.media { background: @luma_cat_media_ink; }
+.calendar-pday-dot.tools { background: @luma_cat_tools_ink; }
+.calendar-pday-agenda { padding-top: 18px; border-top: 1px solid @luma_line; }
+button.calendar-pevent { min-height: 44px; padding: 10px 14px 10px 10px; border: none; border-radius: 18px; background: @luma_hover; box-shadow: none; }
+button.calendar-pevent:hover, .calendar-pevent.selected { background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow; }
+button.calendar-pevent.past { opacity: .55; }
+button.calendar-pevent .calendar-event-stripe { min-height: 0; border-radius: 2px; }
+button.calendar-pfree { min-height: 34px; border-radius: 16px; }
+.calendar-narrow .calendar-free-hold { opacity: 1; }
+button.calendar-padd { min-height: 52px; padding: 0 16px; border-radius: 16px; background: none; color: @luma_ink_secondary; box-shadow: inset 0 0 0 1px @luma_line; }
+button.calendar-padd:hover { background: @luma_hover; }
+.calendar-week-pinned { background: mix(@luma_window, @luma_ink, 0.035); }
+.calendar-now-pill { padding: 2px 5px; border-radius: 6px; background: mix(@luma_window, @luma_ink, 0.035); }
+button.calendar-today-key { min-width: 48px; min-height: 48px; padding: 0; border-radius: 20px; background: none; box-shadow: none; color: @luma_ink; }
+button.calendar-today-key:hover { background: @luma_hover; }
+.calendar-today-key-month { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; color: @luma_danger_ink; }
+.calendar-today-key-day { font-size: 17px; font-weight: 700; }

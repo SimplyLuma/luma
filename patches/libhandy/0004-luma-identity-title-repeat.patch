@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 15:30:00 -0500
+Subject: [PATCH] header-bar: one name per window
+
+Carry the Luma title rule into HdyHeaderBar: a built-in title that merely
+repeats the application name is not shown beside the identity trigger; a
+different title or any subtitle stays.
+---
+diff --git a/src/hdy-header-bar.c b/src/hdy-header-bar.c
+index c8d64fc..80dea28 100644
+--- a/src/hdy-header-bar.c
++++ b/src/hdy-header-bar.c
+@@ -167,6 +167,7 @@ static gboolean luma_command_row_active (HdyHeaderBar *self);
+ static void luma_command_row_measure (HdyHeaderBar *self, GtkOrientation orientation, gint for_size, gint *minimum, gint *natural);
+ static gint luma_command_row_height (HdyHeaderBar *self, gint width);
+ static void luma_host_title (HdyHeaderBar *self);
++static void luma_update_title_repeat (HdyHeaderBar *self);
+ static void luma_unhost_title (HdyHeaderBar *self);
+ #define LUMA_TITLE_ROW_CUSTOM(priv) ((priv)->luma_hosted_title ? NULL : (priv)->custom_title)
+ static void remove_automatic_luma_identity (HdyHeaderBar *self);
+@@ -2283,6 +2284,7 @@ add_automatic_luma_identity (HdyHeaderBar *self)
+   priv->luma_identity = create_luma_identity (application, GTK_WINDOW (toplevel));
+   priv->luma_identity_toplevel = toplevel;
+   hdy_header_bar_pack_start (self, priv->luma_identity);
++  luma_update_title_repeat (self);
+   gtk_container_child_set (GTK_CONTAINER (self), priv->luma_identity,
+                            "position", 0,
+                            NULL);
+@@ -2315,6 +2317,7 @@ remove_automatic_luma_identity (HdyHeaderBar *self)
+   priv->luma_identity = NULL;
+   priv->luma_identity_toplevel = NULL;
+   gtk_container_remove (GTK_CONTAINER (self), identity);
++  luma_update_title_repeat (self);
+ }
+ 
+ /* Luma command row (see gtkheaderbar.c in the Luma GTK 3 downstream).
+@@ -2484,6 +2487,44 @@ luma_unhost_title (HdyHeaderBar *self)
+   gtk_widget_queue_resize (GTK_WIDGET (self));
+ }
+ 
++/* Luma: the identity trigger already names the application.  A built-in title
++ * that merely repeats that name, with no subtitle, is not shown a second time. */
++static void
++luma_update_title_repeat (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GtkStyleContext *context = gtk_widget_get_style_context (GTK_WIDGET (self));
++  gboolean repeats = FALSE;
++
++  if (priv->label_box == NULL)
++    return;
++
++  if (priv->luma_identity && priv->title && *priv->title &&
++      !(priv->subtitle && *priv->subtitle)) {
++    GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
++    const gchar *identity = NULL;
++
++    if (GTK_IS_WINDOW (toplevel))
++      identity = gtk_window_get_title (GTK_WINDOW (toplevel));
++    if (!identity || !*identity)
++      identity = g_get_application_name ();
++    if (!identity || !*identity)
++      identity = g_get_prgname ();
++
++    repeats = identity && g_strcmp0 (identity, priv->title) == 0;
++  }
++
++  if (repeats)
++    gtk_style_context_add_class (context, "luma-repeats-identity");
++  else
++    gtk_style_context_remove_class (context, "luma-repeats-identity");
++
++  if (gtk_widget_get_visible (priv->label_box) == repeats) {
++    gtk_widget_set_visible (priv->label_box, !repeats);
++    gtk_widget_queue_resize (GTK_WIDGET (self));
++  }
++}
++
+ static void
+ luma_command_child_visibility (GObject      *child,
+                                GParamSpec   *pspec,
+@@ -2905,6 +2946,7 @@ hdy_header_bar_init (HdyHeaderBar *self)
+ 
+   init_sizing_box (self);
+   construct_label_box (self);
++      luma_update_title_repeat (self);
+ 
+   priv->controller = hdy_window_handle_controller_new (GTK_WIDGET (self));
+ 
+@@ -3010,6 +3052,7 @@ hdy_header_bar_set_title (HdyHeaderBar *self,
+     gtk_widget_queue_resize (GTK_WIDGET (self));
+   }
+ 
++  luma_update_title_repeat (self);
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_TITLE]);
+ }
+ 
+@@ -3070,6 +3113,7 @@ hdy_header_bar_set_subtitle (HdyHeaderBar *self,
+ 
+   gtk_widget_set_visible (priv->subtitle_sizing_label, priv->has_subtitle || (priv->subtitle && priv->subtitle[0]));
+ 
++  luma_update_title_repeat (self);
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_SUBTITLE]);
+ }
+ 

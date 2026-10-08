@@ -1,0 +1,15 @@
+# Icon names first-party code mentions that are never drawn, so
+# scripts/os/lib/icon_references.py does not require a theme to provide them.
+# NAME  [PATH-GLOB]  # reason (required)
+#
+# App Kit's AppWindow discards its icon_name argument: a window's identity
+# comes from its desktop entry's Icon=, which the check verifies separately.
+org.projectluma.AndroidInstaller  */luma_android/installer.py  # AppWindow(icon_name=...) is discarded; the launcher's Icon=application-x-apk is checked
+org.projectluma.RelayInstaller    */luma_relay/installer.py    # AppWindow(icon_name=...) is discarded; the launcher's Icon=org.projectluma.Relay is checked
+org.projectluma.Mods              */luma_mods/gallery.py       # AppWindow(icon_name=...) is discarded; the launcher's Icon=application-x-addon-symbolic is checked
+org.projectluma.ModReview         */luma_mods/review.py        # AppWindow(icon_name=...) is discarded; identity comes from the Mods desktop entry
+
+# Patches later in the Shell series rewrite a name an earlier patch introduced;
+# the earlier text is never what the built Shell draws.
+lumaui-hotspot-symbolic  *patches/gnome-shell/0203-luma-studio-measured-metrics.patch*  # 0232 replaces it with lumaui-radio-tower-symbolic (Studio draws hotspot as Lucide radio-tower); .156 verify block asserts the Shell never asks for hotspot
+fingerprint-symbolic  *patches/gnome-shell/0227-luma-poster-login.patch*  # 0240 replaces it with lumaui-fingerprint-symbolic (0227 stays byte-identical for the security review); the .208 verify block asserts the Shell never asks for fingerprint-symbolic

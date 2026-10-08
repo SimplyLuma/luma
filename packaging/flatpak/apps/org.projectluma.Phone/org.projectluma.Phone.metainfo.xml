@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8'?>
+<component type="desktop-application">
+  <id>org.projectluma.Phone</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <name>Phone</name>
+  <summary>Phone for Luma</summary>
+  <description>
+    <p>Browse your contacts and call history, choose a phone connection, and manage calls using Luma’s native phone services.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Phone.desktop</launchable>
+  <releases>
+    <release version="0.1.2" date="2026-10-08">
+      <description><p>Show verified Luma contacts without a telephone number, open their Messages conversation, and keep unavailable carrier calls disabled.</p></description>
+    </release>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <screenshots>
+    <screenshot type="default">
+      <caption>Contacts, favorites and call history</caption>
+      <image width="1014" height="730">https://dl.simplyluma.com/media/org.projectluma.Phone/fa2bce9454417e98358758c20aac625d6c4d7dea7284486b85aa4e365e58cffa.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://projectluma.org/apps/phone</url>
+</component>

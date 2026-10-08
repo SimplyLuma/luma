@@ -1,0 +1,425 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# atlas-viewer: put Atlas on the installer's screen, and never leave a silent
+# grey one.
+#
+#   atlas-viewer USER URL [NAME=VALUE...]
+#
+# webui-desktop runs this as root instead of starting the browser itself. USER
+# is the unprivileged installer user the viewer runs as; the NAME=VALUE pairs
+# are the viewer's session and display environment.
+#
+# Slitherer, Anaconda's viewer, is a Qt Quick window holding a Qt WebEngine
+# (Chromium) view. When the web view's frames never reach the Qt Quick scene
+# graph, only the empty window is drawn: a grey screen whose pointer still
+# turns into a hand over the page nobody can see. So:
+#
+# 1. The viewer draws without the GPU by default: Qt Quick's software
+#    renderer and Chromium's software compositor hand the compositor plain
+#    shared-memory buffers, which every graphics stack shows, nomodeset too.
+# 2. Atlas rewrites /run/luma-atlas/viewer-heartbeat from an animation frame
+#    every few seconds (src/system/viewer.js). If none arrives before the
+#    first-frame deadline, or the viewer exits first, it is stopped and started
+#    again in safe mode: software rendering, one process, no sandbox, no
+#    /dev/shm.
+# 3. If safe mode draws nothing either, or the viewer later stops on a crash,
+#    atlas-viewer-fallback (GTK, no web engine) says so, shows where the logs
+#    are, and can start the viewer again.
+#
+# Boot options:
+#   inst.luma.viewer=software|gpu|safe|fallback
+#       the first mode: software (default); gpu tries the GPU first; safe
+#       starts in safe mode; fallback shows the error screen at once, to
+#       check it
+#   inst.luma.viewer.first-frame=SECONDS
+#       how long Atlas has to draw its first frame, 5 to 600 (default 60)
+#
+# Everything goes to /tmp/luma-atlas-viewer.log (the viewer's own output
+# included) and to the journal as luma-atlas-viewer.
+
+set -u
+
+if [ "$#" -lt 2 ]; then
+    echo "usage: atlas-viewer USER URL [NAME=VALUE...]" >&2
+    exit 2
+fi
+user=$1
+url=$2
+shift 2
+environment=("$@")
+
+# The ATLAS_VIEWER_* variables exist for test/viewer/test-atlas-viewer.sh.
+log_file=${ATLAS_VIEWER_LOG:-/tmp/luma-atlas-viewer.log}
+state_dir=${ATLAS_VIEWER_STATE_DIR:-/run/luma-atlas}
+heartbeat=$state_dir/viewer-heartbeat
+cmdline_file=${ATLAS_VIEWER_CMDLINE:-/proc/cmdline}
+browser=${ATLAS_VIEWER_BROWSER:-slitherer}
+fallback=${ATLAS_VIEWER_FALLBACK:-/usr/libexec/luma-installer-atlas/atlas-viewer-fallback}
+poll=${ATLAS_VIEWER_POLL:-1}
+# Fullscreen explicitly: the kiosk only fills the screen with the first window,
+# so a restarted viewer would otherwise open as a small decorated window.
+browser_args=(--fullscreen)
+stall_after=30
+parent=$PPID
+
+browser_pid=
+fallback_pid=
+exit_status=0
+started=0
+last_mode=software
+start_mode=software
+first_frame=60
+homes=()
+failures=()
+failure=
+detail=
+mode_env=()
+
+log() {
+    printf '%s atlas-viewer: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$log_file" 2>/dev/null
+    printf 'atlas-viewer: %s\n' "$*" >&2
+    if command -v logger >/dev/null 2>&1; then
+        logger -t luma-atlas-viewer -- "$*" 2>/dev/null
+    fi
+    return 0
+}
+
+read_boot_options() {
+    local word value
+    local -a words=()
+    if [ -r "$cmdline_file" ]; then
+        read -r -a words <"$cmdline_file"
+    fi
+    for word in "${words[@]}"; do
+        case "$word" in
+            inst.luma.viewer=*)
+                start_mode=${word#*=}
+                ;;
+            inst.luma.viewer.first-frame=*)
+                value=${word#*=}
+                case "$value" in
+                    ''|*[!0-9]*|????*)
+                        log "ignoring inst.luma.viewer.first-frame=$value: give 5 to 600 seconds"
+                        ;;
+                    *)
+                        if [ "$value" -ge 5 ] && [ "$value" -le 600 ]; then
+                            first_frame=$value
+                        else
+                            log "ignoring inst.luma.viewer.first-frame=$value: give 5 to 600 seconds"
+                        fi
+                        ;;
+                esac
+                ;;
+        esac
+    done
+    first_frame=${ATLAS_VIEWER_FIRST_FRAME:-$first_frame}
+}
+
+parent_gone() {
+    [ "$parent" -gt 1 ] && ! kill -0 "$parent" 2>/dev/null
+}
+
+mode_environment() {
+    local flags="--enable-logging=stderr --log-level=1"
+    mode_env=(QT_WAYLAND_DISABLE_WINDOWDECORATION=1)
+    case "$1" in
+        software|safe)
+            flags+=" --disable-gpu --disable-gpu-compositing --disable-gpu-rasterization --disable-features=Vulkan"
+            mode_env+=(QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1)
+            ;;
+    esac
+    if [ "$1" = safe ]; then
+        flags+=" --no-sandbox --single-process --disable-dev-shm-usage"
+        mode_env+=(QTWEBENGINE_DISABLE_SANDBOX=1)
+    fi
+    mode_env+=("QTWEBENGINE_CHROMIUM_FLAGS=$flags")
+}
+
+stop_browser() {
+    local _
+    [ -n "$browser_pid" ] || return 0
+    if kill -0 "$browser_pid" 2>/dev/null; then
+        kill -TERM "$browser_pid" 2>/dev/null
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 "$browser_pid" 2>/dev/null || break
+            sleep 0.5
+        done
+        if kill -0 "$browser_pid" 2>/dev/null; then
+            log "the viewer did not stop; killing it"
+            kill -KILL "$browser_pid" 2>/dev/null
+        fi
+    fi
+    wait "$browser_pid" 2>/dev/null
+    browser_pid=
+}
+
+stop_fallback() {
+    [ -n "$fallback_pid" ] || return 0
+    kill -TERM "$fallback_pid" 2>/dev/null
+    wait "$fallback_pid" 2>/dev/null
+    fallback_pid=
+}
+
+finish() {
+    stop_browser
+    stop_fallback
+    rm -rf "${homes[@]}" 2>/dev/null
+    exit "$1"
+}
+
+log_diagnostics() {
+    local word card driver connector nodes memory
+    local -a words=() interesting=()
+    if [ -r "$cmdline_file" ]; then
+        read -r -a words <"$cmdline_file"
+    fi
+    for word in "${words[@]}"; do
+        case "$word" in
+            nomodeset|*modeset*|video=*|inst.luma.*|inst.text|inst.graphical|inst.sshd*|rd.live.ram*)
+                interesting+=("$word")
+                ;;
+        esac
+    done
+    log "boot options of interest: ${interesting[*]:-none}"
+    for card in /sys/class/drm/card[0-9] /sys/class/drm/card[0-9][0-9]; do
+        [ -e "$card" ] || continue
+        driver=$(readlink "$card/device/driver" 2>/dev/null)
+        log "graphics: ${card##*/} uses ${driver##*/}"
+        for connector in "$card"-*; do
+            [ -r "$connector/status" ] || continue
+            [ "$(cat "$connector/status" 2>/dev/null)" = connected ] || continue
+            log "graphics: ${connector##*/} is connected at $(head -n 1 "$connector/modes" 2>/dev/null)"
+        done
+    done
+    nodes=$(ls /dev/dri 2>/dev/null | tr '\n' ' ')
+    log "graphics: /dev/dri has ${nodes:-nothing}"
+    memory=$(grep -E '^(MemTotal|MemAvailable):' /proc/meminfo 2>/dev/null | tr -s ' ' | tr '\n' ' ')
+    log "memory: ${memory:-unknown}"
+    if command -v nc >/dev/null 2>&1; then
+        if nc -z 127.0.0.1 80 2>/dev/null; then
+            log "cockpit-ws answers on 127.0.0.1:80"
+        else
+            log "cockpit-ws does not answer on 127.0.0.1:80"
+        fi
+    fi
+    if [ -e /run/anaconda/backend_ready ]; then
+        log "Anaconda's backend is ready"
+    else
+        log "Anaconda's backend is not ready"
+    fi
+}
+
+start_browser() {
+    local mode=$1 home
+    mode_environment "$mode"
+    rm -f "$heartbeat"
+    if home=$(mktemp -d /tmp/atlas-viewer-home.XXXXXX 2>/dev/null); then
+        homes+=("$home")
+        chown "$user" "$home" 2>/dev/null
+    else
+        log "could not make a home directory for the viewer; using /tmp"
+        home=/tmp
+    fi
+    log "starting the viewer in $mode mode; Atlas has ${first_frame}s to draw"
+    local -a command=(env "${environment[@]}" HOME="$home" XDG_CURRENT_DESKTOP=GNOME "${mode_env[@]}"
+        "$browser" "${browser_args[@]}" "$url")
+    if [ "${ATLAS_VIEWER_RUNAS:-pkexec}" != direct ]; then
+        command=(pkexec --user "$user" "${command[@]}")
+    fi
+    # Background the command itself, never a shell function: $! must be the
+    # viewer (pkexec and env exec into it), not a subshell that would leave it
+    # orphaned when stopped.
+    "${command[@]}" >>"$log_file" 2>&1 </dev/null &
+    browser_pid=$!
+    started=$SECONDS
+    last_mode=$mode
+}
+
+# 0: Atlas drew a frame. 1: the viewer exited first. 2: the deadline passed.
+wait_first_frame() {
+    while :; do
+        if [ -s "$heartbeat" ]; then
+            return 0
+        fi
+        if ! kill -0 "$browser_pid" 2>/dev/null; then
+            wait "$browser_pid" 2>/dev/null
+            exit_status=$?
+            browser_pid=
+            return 1
+        fi
+        if parent_gone; then
+            log "webui-desktop has gone; closing"
+            finish 0
+        fi
+        if [ $((SECONDS - started)) -ge "$first_frame" ]; then
+            return 2
+        fi
+        sleep "$poll"
+    done
+}
+
+release_boot_splash() {
+    local policy=${ATLAS_VIEWER_HANDOFF_POLICY:-/usr/share/luma-installer-atlas/plymouth-handoff-policy}
+    [ -f "$policy" ] || return 0
+    local command=${ATLAS_VIEWER_PLYMOUTH:-plymouth}
+    if "$command" --ping >>"$log_file" 2>&1; then
+        log "the viewer owns the graphical frame; releasing native Plymouth"
+        "$command" quit >>"$log_file" 2>&1 || log "native Plymouth could not be released"
+    fi
+}
+
+# After the first frame: only log when Atlas stops drawing; never restart a
+# viewer that may be showing an installation in progress.
+watch_running() {
+    local stalled=0 now changed age
+    while kill -0 "$browser_pid" 2>/dev/null; do
+        if parent_gone; then
+            log "webui-desktop has gone; closing"
+            finish 0
+        fi
+        now=$(date +%s)
+        changed=$(stat -c %Y "$heartbeat" 2>/dev/null || echo "$now")
+        age=$((now - changed))
+        if [ "$stalled" = 0 ] && [ "$age" -ge "$stall_after" ]; then
+            stalled=1
+            log "Atlas has drawn nothing for ${age}s; the viewer is left running"
+        elif [ "$stalled" = 1 ] && [ "$age" -lt "$stall_after" ]; then
+            stalled=0
+            log "Atlas is drawing again"
+        fi
+        sleep "$poll"
+    done
+    wait "$browser_pid" 2>/dev/null
+    exit_status=$?
+    browser_pid=
+}
+
+# Tries each mode until Atlas draws. 0: the viewer later closed normally.
+# 1: something must be shown on the error screen (failure and detail set).
+run_modes() {
+    local mode
+    failures=()
+    for mode in "$@"; do
+        start_browser "$mode"
+        wait_first_frame
+        case $? in
+            0)
+                log "Atlas drew its first frame in $mode mode after $((SECONDS - started))s"
+                release_boot_splash
+                watch_running
+                if [ "$exit_status" = 0 ]; then
+                    log "the viewer closed"
+                    return 0
+                fi
+                log "the viewer stopped unexpectedly in $mode mode (exit status $exit_status)"
+                log_diagnostics
+                failure=crashed
+                detail="The viewer stopped in $mode mode with exit status $exit_status."
+                return 1
+                ;;
+            1)
+                log "the viewer exited in $mode mode before Atlas drew anything (exit status $exit_status)"
+                failures+=("$mode mode: the viewer exited with status $exit_status before drawing")
+                ;;
+            *)
+                log "Atlas drew nothing within ${first_frame}s in $mode mode; stopping the viewer"
+                stop_browser
+                failures+=("$mode mode: nothing drawn within ${first_frame}s")
+                ;;
+        esac
+        log_diagnostics
+    done
+    failure=no-frame
+    detail=$(printf '%s. ' "${failures[@]}")
+    detail=${detail% }
+    return 1
+}
+
+# 0: Try again was chosen. 1: the error screen was closed.
+show_fallback() {
+    local status tries=0
+    local -a command=("$fallback" --reason "$failure" --detail "$detail")
+    # The explicit error screen owns the failure UI; never leave it covered.
+    release_boot_splash
+    if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        command=(env GDK_BACKEND=wayland "${command[@]}")
+    fi
+    while :; do
+        log "showing the error screen: $failure. $detail"
+        "${command[@]}" >>"$log_file" 2>&1 </dev/null &
+        fallback_pid=$!
+        while kill -0 "$fallback_pid" 2>/dev/null; do
+            if parent_gone; then
+                log "webui-desktop has gone; closing"
+                finish 0
+            fi
+            sleep "$poll"
+        done
+        wait "$fallback_pid" 2>/dev/null
+        status=$?
+        fallback_pid=
+        case "$status" in
+            10)
+                log "the error screen asked to start the viewer again"
+                return 0
+                ;;
+            0)
+                log "the error screen was closed"
+                return 1
+                ;;
+        esac
+        tries=$((tries + 1))
+        log "the error screen could not be shown (exit status $status)"
+        if [ "$tries" -ge 3 ]; then
+            log "nothing can be drawn on this screen. Logs: $log_file, /tmp/anaconda.log, /tmp/program.log; press Ctrl+Alt+F2 for a shell"
+            while :; do
+                if parent_gone; then
+                    finish 0
+                fi
+                sleep 5
+            done
+        fi
+        sleep "$poll"
+    done
+}
+
+mkdir -p "$state_dir" 2>/dev/null && chmod 0755 "$state_dir" 2>/dev/null
+trap 'log "asked to close"; finish 0' TERM INT HUP
+read_boot_options
+log "starting Atlas for $user at $url (inst.luma.viewer=$start_mode)"
+
+case "$start_mode" in
+    software) modes=(software safe) ;;
+    gpu) modes=(gpu software safe) ;;
+    safe) modes=(safe) ;;
+    fallback) modes=() ;;
+    *)
+        log "ignoring inst.luma.viewer=$start_mode: give software, gpu, safe or fallback"
+        modes=(software safe)
+        ;;
+esac
+
+if [ "${#modes[@]}" -gt 0 ]; then
+    if run_modes "${modes[@]}"; then
+        finish 0
+    fi
+else
+    failure=preview
+    detail="Shown at once because of the boot option inst.luma.viewer=fallback."
+fi
+
+while show_fallback; do
+    case "$failure" in
+        crashed)
+            retry=("$last_mode")
+            [ "$last_mode" = safe ] || retry+=(safe)
+            ;;
+        preview) retry=(software safe) ;;
+        *) retry=(safe) ;;
+    esac
+    if run_modes "${retry[@]}"; then
+        finish 0
+    fi
+done
+finish 1

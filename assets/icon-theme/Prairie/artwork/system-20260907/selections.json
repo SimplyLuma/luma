@@ -1,0 +1,456 @@
+{
+  "0001": {
+    "name": "folder",
+    "selected": "B",
+    "file": "0001-folder/folder-b.svg"
+  },
+  "0007": {
+    "name": "folder-open",
+    "selected": "B",
+    "options": [
+      "0007-folder-open/folder-open-a.svg",
+      "0007-folder-open/folder-open-b.svg",
+      "0007-folder-open/folder-open-c.svg"
+    ],
+    "file": "0007-folder-open/folder-open-b.svg",
+    "revision": 2
+  },
+  "0005": {
+    "name": "folder-drag-accept",
+    "selected": "Same as 0001",
+    "file": "0001-folder/folder-b.svg"
+  },
+  "0003": {
+    "name": "folder-documents",
+    "selected": "Tonal inset",
+    "proposal": "0003-folder-documents/folder-documents.svg",
+    "file": "0003-folder-documents/folder-documents.svg",
+    "revision": 3
+  },
+  "0002": {
+    "name": "folder-bookmarks",
+    "selected": "Tonal inset",
+    "proposal": "0002-folder-bookmarks/folder-bookmarks.svg",
+    "file": "0002-folder-bookmarks/folder-bookmarks.svg"
+  },
+  "0004": {
+    "name": "folder-download",
+    "selected": "Tonal inset",
+    "proposal": "0004-folder-download/folder-download.svg",
+    "file": "0004-folder-download/folder-download.svg"
+  },
+  "0006": {
+    "name": "folder-music",
+    "selected": "Tonal inset",
+    "proposal": "0006-folder-music/folder-music.svg",
+    "lucide": "music-2",
+    "file": "0006-folder-music/folder-music.svg"
+  },
+  "0008": {
+    "name": "folder-pictures",
+    "selected": "Tonal inset",
+    "proposal": "0008-folder-pictures/folder-pictures.svg",
+    "lucide": "image",
+    "file": "0008-folder-pictures/folder-pictures.svg"
+  },
+  "0009": {
+    "name": "folder-publicshare",
+    "selected": "Tonal inset",
+    "proposal": "0009-folder-publicshare/folder-publicshare.svg",
+    "lucide": "users",
+    "file": "0009-folder-publicshare/folder-publicshare.svg"
+  },
+  "0012": {
+    "name": "folder-templates",
+    "selected": "Tonal inset",
+    "proposal": "0012-folder-templates/folder-templates.svg",
+    "lucide": "panels-top-left",
+    "file": "0012-folder-templates/folder-templates.svg"
+  },
+  "0013": {
+    "name": "folder-videos",
+    "selected": "Tonal inset",
+    "proposal": "0013-folder-videos/folder-videos.svg",
+    "lucide": "video",
+    "file": "0013-folder-videos/folder-videos.svg"
+  },
+  "0017": {
+    "name": "user-bookmarks",
+    "selected": "Tonal inset",
+    "proposal": "0017-user-bookmarks/user-bookmarks.svg",
+    "lucide": "bookmark",
+    "file": "0017-user-bookmarks/user-bookmarks.svg"
+  },
+  "0018": {
+    "name": "user-desktop",
+    "selected": "Tonal inset",
+    "proposal": "0018-user-desktop/user-desktop.svg",
+    "lucide": "monitor",
+    "file": "0018-user-desktop/user-desktop.svg"
+  },
+  "0019": {
+    "name": "user-home",
+    "selected": "Tonal inset",
+    "proposal": "0019-user-home/user-home.svg",
+    "lucide": "house",
+    "file": "0019-user-home/user-home.svg"
+  },
+  "0010": {
+    "name": "folder-remote",
+    "selected": "Tonal inset",
+    "proposal": "0010-folder-remote/folder-remote.svg",
+    "lucide": "network",
+    "file": "0010-folder-remote/folder-remote.svg"
+  },
+  "0011": {
+    "name": "folder-saved-search",
+    "selected": "Tonal inset",
+    "proposal": "0011-folder-saved-search/folder-saved-search.svg",
+    "lucide": "search",
+    "file": "0011-folder-saved-search/folder-saved-search.svg"
+  },
+  "0020": {
+    "name": "user-trash",
+    "selected": "B \u00b7 Porcelain",
+    "options": [
+      "0020-user-trash/user-trash-a.svg",
+      "0020-user-trash/user-trash-b.svg",
+      "0020-user-trash/user-trash-c.svg"
+    ],
+    "file": "0020-user-trash/user-trash-b.svg",
+    "revision": 5
+  },
+  "0070": {
+    "name": "phone",
+    "selected": "B \u00b7 Slate",
+    "options": [
+      "0070-phone/phone-a.svg",
+      "0070-phone/phone-b.svg",
+      "0070-phone/phone-c.svg"
+    ],
+    "file": "0070-phone/phone-b.svg",
+    "revision": 3
+  },
+  "0025": {
+    "name": "application-x-generic",
+    "selected": "Approved paper design",
+    "proposal": "0025-application-x-generic/application-x-generic.svg",
+    "file": "0025-application-x-generic/application-x-generic.svg",
+    "revision": 4
+  },
+  "0035": {
+    "name": "text-x-generic",
+    "selected": "Approved paper design",
+    "proposal": "0035-text-x-generic/text-x-generic.svg",
+    "file": "0035-text-x-generic/text-x-generic.svg",
+    "revision": 4
+  },
+  "0036": {
+    "name": "text-x-generic-template",
+    "selected": "Same as 0035",
+    "file": "0035-text-x-generic/text-x-generic.svg",
+    "revision": 4
+  },
+  "0037": {
+    "name": "text-x-preview",
+    "selected": "Same as 0035",
+    "file": "0035-text-x-generic/text-x-generic.svg",
+    "revision": 4
+  },
+  "0028": {
+    "name": "font-x-generic",
+    "selected": "A \u00b7 Classic serif",
+    "options": [
+      "0028-font-x-generic/font-x-generic-a.svg",
+      "0028-font-x-generic/font-x-generic-b.svg",
+      "0028-font-x-generic/font-x-generic-c.svg"
+    ],
+    "file": "0028-font-x-generic/font-x-generic-a.svg",
+    "revision": 3
+  },
+  "0034": {
+    "name": "text-html",
+    "selected": "A \u00b7 Code",
+    "options": [
+      "0034-text-html/text-html-a.svg",
+      "0034-text-html/text-html-b.svg",
+      "0034-text-html/text-html-c.svg"
+    ],
+    "file": "0034-text-html/text-html-a.svg",
+    "revision": 3
+  },
+  "0038": {
+    "name": "text-x-script",
+    "selected": "Script",
+    "proposal": "0038-text-x-script/text-x-script.svg",
+    "file": "0038-text-x-script/text-x-script.svg"
+  },
+  "0021": {
+    "name": "application-certificate",
+    "selected": "Certificate",
+    "proposal": "0021-application-certificate/application-certificate.svg",
+    "file": "0021-application-certificate/application-certificate.svg",
+    "revision": 2
+  },
+  "0066": {
+    "name": "media-flash",
+    "selected": "A \u00b7 Graphite",
+    "options": [
+      "0066-media-flash/media-flash-a.svg",
+      "0066-media-flash/media-flash-b.svg",
+      "0066-media-flash/media-flash-c.svg"
+    ],
+    "file": "0066-media-flash/media-flash-a.svg",
+    "revision": 3
+  },
+  "0068": {
+    "name": "media-removable",
+    "selected": "A \u00b7 Graphite",
+    "options": [
+      "0068-media-removable/media-removable-a.svg",
+      "0068-media-removable/media-removable-b.svg",
+      "0068-media-removable/media-removable-c.svg"
+    ],
+    "file": "0068-media-removable/media-removable-a.svg"
+  },
+  "0067": {
+    "name": "media-optical",
+    "selected": "A \u00b7 Silver",
+    "options": [
+      "0067-media-optical/media-optical-a.svg",
+      "0067-media-optical/media-optical-b.svg",
+      "0067-media-optical/media-optical-c.svg"
+    ],
+    "file": "0067-media-optical/media-optical-a.svg",
+    "revision": 2
+  },
+  "0069": {
+    "name": "microphone",
+    "selected": null,
+    "options": [
+      "0069-microphone/microphone-a.svg",
+      "0069-microphone/microphone-b.svg",
+      "0069-microphone/microphone-c.svg"
+    ]
+  },
+  "0064": {
+    "name": "input-mouse",
+    "selected": "B \u00b7 Mineral",
+    "options": [
+      "0064-input-mouse/input-mouse-a.svg",
+      "0064-input-mouse/input-mouse-b.svg",
+      "0064-input-mouse/input-mouse-c.svg"
+    ],
+    "file": "0064-input-mouse/input-mouse-b.svg",
+    "revision": 2
+  },
+  "0063": {
+    "name": "input-keyboard",
+    "selected": null,
+    "options": [
+      "0063-input-keyboard/input-keyboard-a.svg",
+      "0063-input-keyboard/input-keyboard-b.svg",
+      "0063-input-keyboard/input-keyboard-c.svg"
+    ]
+  },
+  "0062": {
+    "name": "input-gaming",
+    "selected": null,
+    "options": [
+      "0062-input-gaming/input-gaming-a.svg",
+      "0062-input-gaming/input-gaming-b.svg",
+      "0062-input-gaming/input-gaming-c.svg"
+    ]
+  },
+  "0071": {
+    "name": "printer",
+    "selected": null,
+    "options": [
+      "0071-printer/printer-a.svg",
+      "0071-printer/printer-b.svg",
+      "0071-printer/printer-c.svg"
+    ]
+  },
+  "0073": {
+    "name": "scanner",
+    "selected": null,
+    "options": [
+      "0073-scanner/scanner-a.svg",
+      "0073-scanner/scanner-b.svg",
+      "0073-scanner/scanner-c.svg"
+    ]
+  },
+  "0074": {
+    "name": "video-display",
+    "selected": "A \u00b7 Graphite",
+    "options": [
+      "0074-video-display/video-display-a.svg",
+      "0074-video-display/video-display-b.svg",
+      "0074-video-display/video-display-c.svg"
+    ],
+    "file": "0074-video-display/video-display-a.svg",
+    "revision": 2
+  },
+  "0061": {
+    "name": "ebook-reader",
+    "selected": "A \u00b7 Graphite",
+    "options": [
+      "0061-ebook-reader/ebook-reader-a.svg",
+      "0061-ebook-reader/ebook-reader-b.svg",
+      "0061-ebook-reader/ebook-reader-c.svg"
+    ],
+    "file": "0061-ebook-reader/ebook-reader-a.svg",
+    "revision": 2
+  },
+  "0057": {
+    "name": "drive-harddisk",
+    "selected": null,
+    "options": [
+      "0057-drive-harddisk/drive-harddisk-a.svg",
+      "0057-drive-harddisk/drive-harddisk-b.svg",
+      "0057-drive-harddisk/drive-harddisk-c.svg"
+    ],
+    "proposal": "0057-drive-harddisk/drive-harddisk-d.svg"
+  },
+  "0023": {
+    "name": "application-x-executable",
+    "selected": "B \u00b7 Four panes",
+    "options": [
+      "0023-application-x-executable/application-x-executable-a.svg",
+      "0023-application-x-executable/application-x-executable-b.svg",
+      "0023-application-x-executable/application-x-executable-c.svg"
+    ],
+    "file": "0023-application-x-executable/application-x-executable-b.svg"
+  },
+  "0022": {
+    "name": "application-x-addon",
+    "selected": "A \u00b7 Module",
+    "options": [
+      "0022-application-x-addon/application-x-addon-a.svg",
+      "0022-application-x-addon/application-x-addon-b.svg",
+      "0022-application-x-addon/application-x-addon-c.svg"
+    ],
+    "file": "0022-application-x-addon/application-x-addon-a.svg"
+  },
+  "0029": {
+    "name": "image-x-generic",
+    "selected": "B \u00b7 Outline",
+    "options": [
+      "0029-image-x-generic/image-x-generic-a.svg",
+      "0029-image-x-generic/image-x-generic-b.svg",
+      "0029-image-x-generic/image-x-generic-c.svg"
+    ],
+    "file": "0029-image-x-generic/image-x-generic-b.svg"
+  },
+  "0039": {
+    "name": "video-x-generic",
+    "selected": "Approved",
+    "proposal": "0039-video-x-generic/video-x-generic.svg",
+    "file": "0039-video-x-generic/video-x-generic.svg"
+  },
+  "0027": {
+    "name": "audio-x-generic",
+    "selected": "Approved",
+    "proposal": "0027-audio-x-generic/audio-x-generic.svg",
+    "file": "0027-audio-x-generic/audio-x-generic.svg"
+  },
+  "0043": {
+    "name": "x-office-document",
+    "selected": "Approved office design",
+    "proposal": "0043-x-office-document/x-office-document.svg",
+    "file": "0043-x-office-document/x-office-document.svg",
+    "revision": 1
+  },
+  "0044": {
+    "name": "x-office-document-template",
+    "selected": "Approved office design",
+    "proposal": "0043-x-office-document/x-office-document.svg",
+    "file": "0043-x-office-document/x-office-document.svg",
+    "revision": 1
+  },
+  "0045": {
+    "name": "x-office-drawing",
+    "selected": "Approved office design",
+    "proposal": "0045-x-office-drawing/x-office-drawing.svg",
+    "file": "0045-x-office-drawing/x-office-drawing.svg",
+    "revision": 2
+  },
+  "0046": {
+    "name": "x-office-drawing-template",
+    "selected": "Approved office design",
+    "proposal": "0045-x-office-drawing/x-office-drawing.svg",
+    "file": "0045-x-office-drawing/x-office-drawing.svg",
+    "revision": 2
+  },
+  "0047": {
+    "name": "x-office-presentation",
+    "selected": "Approved office design",
+    "proposal": "0047-x-office-presentation/x-office-presentation.svg",
+    "file": "0047-x-office-presentation/x-office-presentation.svg",
+    "revision": 1
+  },
+  "0048": {
+    "name": "x-office-presentation-template",
+    "selected": "Approved office design",
+    "proposal": "0047-x-office-presentation/x-office-presentation.svg",
+    "file": "0047-x-office-presentation/x-office-presentation.svg",
+    "revision": 1
+  },
+  "0049": {
+    "name": "x-office-spreadsheet",
+    "selected": "Approved office design",
+    "proposal": "0049-x-office-spreadsheet/x-office-spreadsheet.svg",
+    "file": "0049-x-office-spreadsheet/x-office-spreadsheet.svg",
+    "revision": 1
+  },
+  "0050": {
+    "name": "x-office-spreadsheet-template",
+    "selected": "Approved office design",
+    "proposal": "0049-x-office-spreadsheet/x-office-spreadsheet.svg",
+    "file": "0049-x-office-spreadsheet/x-office-spreadsheet.svg",
+    "revision": 1
+  },
+  "0051": {
+    "name": "x-package-repository",
+    "selected": "Archive zipper",
+    "file": "0051-x-package-repository/x-package-repository.svg",
+    "purpose": "ZIP and similar archives per user request"
+  },
+  "0033": {
+    "name": "package-x-generic",
+    "selected": "Same as 0051",
+    "file": "0051-x-package-repository/x-package-repository.svg"
+  },
+  "0026": {
+    "name": "application-x-sharedlib",
+    "selected": "Same as 0022",
+    "file": "0022-application-x-addon/application-x-addon-a.svg"
+  },
+  "0040": {
+    "name": "x-office-address-book",
+    "selected": "A \u00b7 Slate blue",
+    "options": [
+      "0040-x-office-address-book/x-office-address-book-a.svg",
+      "0040-x-office-address-book/x-office-address-book-b.svg",
+      "0040-x-office-address-book/x-office-address-book-c.svg"
+    ],
+    "file": "0040-x-office-address-book/x-office-address-book-a.svg"
+  },
+  "0041": {
+    "name": "x-office-addressbook",
+    "selected": "A \u00b7 Slate blue",
+    "options": [
+      "0040-x-office-address-book/x-office-address-book-a.svg",
+      "0040-x-office-address-book/x-office-address-book-b.svg",
+      "0040-x-office-address-book/x-office-address-book-c.svg"
+    ],
+    "file": "0040-x-office-address-book/x-office-address-book-a.svg"
+  },
+  "0056": {
+    "name": "computer",
+    "selected": "Graphite computer",
+    "proposal": "0056-computer/computer.svg",
+    "file": "0056-computer/computer.svg",
+    "revision": 2
+  }
+}

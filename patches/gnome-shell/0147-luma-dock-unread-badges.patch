@@ -1,0 +1,1034 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 12:30:00 -0400
+Subject: [PATCH] luma: unread badges on dock icons
+
+A dock icon shows an Ember pill with a count when its app has things waiting
+for the person, "99+" past 99, or a dot when the app has something new but no
+number. A badge never means an app or its background agent is running.
+
+The badge (lumaDockBadges.js, rules and geometry in lumaDockBadgeModel.js):
+- A 15px pill, at least 15 wide, 4px padding, Figtree 750 at 9.5px with
+  tabular figures, white on #f26a1b; or a 9px dot. Measured against the
+  reference 32px icon on the dock's 36px tile: the pill's top edge 5px above
+  and its right edge 5px past that icon, the dot 3px past its corner. The
+  right edge is fixed, so a wider count grows leftward and never reaches the
+  next icon. Sizes follow the icon size and the display scale.
+- A 2px ring in the shelf's own surface colour, read from the shelf material
+  around the icon (-luma-badge-ring names an opaque ring for Frost and
+  Glass), with a soft shadow under it.
+- It lives inside the icon, beside the masked artwork: it rides the hover
+  lift, the press, drag-to-rearrange (with the source shelf's ring) and the
+  launch zoom, and never changes the dock's layout. Top right at every dock
+  edge. The dock's viewport now clips along the shelf only when the dock
+  scrolls, so badges on the first and last icons are whole.
+- It pops (.6 -> 1.18 -> 1 over 340ms) when it appears or its count goes up;
+  decreases and removal are instant; no pop while hovered or without
+  animations.
+- The dock item's accessible name carries it: "Messages, 3 unread" with the
+  real number, "Calendar, new activity".
+
+Where counts come from, per app in this order:
+1. The standard `badge` value (an unsigned count or "dot") in an app's
+   org.projectluma.BackgroundAgent1 Values, read only from agents that
+   declare `badge` in `publishes`, only from the current owner of the
+   agent's name, and never by starting luma-background or an agent. An agent
+   publishing `badge`, including 0, owns its app's badge.
+2. com.canonical.Unity.LauncherEntry Update signals (count, count-visible,
+   urgent), merged across partial updates and cleared when the sending app
+   disconnects. A sandboxed (Flatpak) sender may badge only its own app ID.
+The notification-count fallback and a dot for urgent windows exist behind
+one-line switches in lumaDockBadgeModel.js and are off.
+
+org.gnome.shell dock-badges-disabled-apps lists app IDs whose badge the
+person turned off; the Shell drops their badge and stops listening to their
+agent. Do Not Disturb does not hide badges.
+
+Generated against the Shell .103 tree (0145 applied); applies unchanged on
+0146 for release .105.
+---
+diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+index 15fd270..9b725d9 100644
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -69,6 +69,15 @@
+         load all extensions regardless of the versions they claim to support.
+       </description>
+     </key>
++    <key name="dock-badges-disabled-apps" type="as">
++      <default>[]</default>
++      <summary>Apps whose dock icon shows no unread badge</summary>
++      <description>
++        Application IDs (desktop file names without “.desktop”) whose unread
++        badge is turned off in Settings › Notifications. The Shell stops
++        listening to those apps for badges.
++      </description>
++    </key>
+     <key name="favorite-apps" type="as">
+       <default>
+         @DASH_APPS@
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index b11601b..cbdd79c 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1528,3 +1528,17 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+   background-color: rgba(255, 255, 255, 0.08);
+   color: #e7e9e8;
+ }
++
++/* Unread badges on dock icons (lumaDockBadges.js). Size, placement, fill and
++ * ring colour are set by the badge from the icon's size and the shelf's
++ * surface; this is only the type and the shadow under the ring. */
++.luma-dock-badge {
++  padding: 0;
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-weight: 750;
++  font-feature-settings: "tnum";
++  box-shadow: 0 1px 2px rgba(12,17,24,0.28); }
++.luma-dock-badge-label { padding: 0; }
++/* Translucent surfaces name the opaque ring that reads as cut out of them. */
++.luma-shelf-material.luma-surface-frost { -luma-badge-ring: #e9ebed; }
++.luma-shelf-material.luma-surface-glass { -luma-badge-ring: rgba(246,247,248,0.82); }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 6a85d63..de92d46 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -92,6 +92,8 @@
+     <file>ui/lumaWindowCorners.js</file>
+     <file>ui/lumaWindowWatch.js</file>
+     <file>ui/lumaWell.js</file>
++    <file>ui/lumaDockBadgeModel.js</file>
++    <file>ui/lumaDockBadges.js</file>
+     <file>ui/lumaDockWindows.js</file>
+     <file>ui/lumaNotificationBeacon.js</file>
+     <file>ui/lumaCast.js</file>
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index fa6be69..a613290 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -10,6 +10,8 @@ import * as AppDisplay from './appDisplay.js';
+ import * as AppFavorites from './appFavorites.js';
+ import * as DND from './dnd.js';
+ import * as IconGrid from './iconGrid.js';
++import * as DockBadges from './lumaDockBadges.js';
++import {badgeAccessibleName} from './lumaDockBadgeModel.js';
+ import * as DockWindows from './lumaDockWindows.js';
+ import * as Main from './main.js';
+ import {placeShelfSurface} from './lumaShelfSurface.js';
+@@ -34,6 +36,39 @@ class DashIcon extends AppDisplay.AppIcon {
+             'notify::pressed', () => this._syncShelfArtwork(), this);
+         this.app.connectObject('windows-changed',
+             () => this._updateRunningStyle(), this);
++        this._badge = this._attachBadge();
++    }
++
++    // The unread badge is part of the icon, not the tile: it sits in a frame
++    // around the icon's artwork inside the icon, so it rides the hover lift,
++    // the press and the launch zoom, and never changes the dock's layout.
++    // The icon mask belongs to the artwork alone, so it never clips the badge.
++    _attachBadge() {
++        const baseIcon = this.icon;
++        const artworkBin = baseIcon._iconBin;
++        const frame = new St.Widget({x_align: artworkBin.x_align});
++        baseIcon._box.replace_child(artworkBin, frame);
++        frame.add_child(artworkBin);
++        return DockBadges.attachBadge(frame, artworkBin, this.app.get_id(), {
++            artwork: () => baseIcon.icon,
++            isHovered: () => this.hover,
++            onChanged: () => this._syncBadgeName(),
++        });
++    }
++
++    badgeAccessibleName(name) {
++        return badgeAccessibleName(name, this._badge?.badge ?? null, {
++            /* Translators: a dock item's name for screen readers, e.g. "Messages, 3 unread" */
++            count: _('%s, %d unread'),
++            /* Translators: a dock item's name when its app has something new, e.g. "Calendar, new activity" */
++            dot: _('%s, new activity'),
++        });
++    }
++
++    _syncBadgeName() {
++        const item = this.get_parent();
++        if (item?._labelText !== undefined && item.child === this)
++            item.setLabelText(item._labelText);
+     }
+ 
+     // In the dock an app is running when it has a window a person can see
+@@ -76,7 +111,14 @@ class DashIcon extends AppDisplay.AppIcon {
+     }
+ 
+     getDragActor() {
+-        const actor = super.getDragActor();
++        let actor = super.getDragActor();
++        // The badge rides the icon while it is dragged to a new place.
++        if (this._badge?.badge) {
++            const icon = actor;
++            actor = new St.Widget();
++            actor.add_child(icon);
++            DockBadges.attachBadge(actor, icon, this.app.get_id(), {isHovered: () => true, ringSource: this});
++        }
+         if (Main.overview.dash._shelfEdge) {
+             // StIcon cannot resolve its theme-backed size until DND attaches
+             // it to the stage. Apply the artwork transform at that boundary.
+@@ -247,7 +289,7 @@ class DashItemContainer extends St.Widget {
+ 
+     setLabelText(text) {
+         this._labelText = text;
+-        this.child.accessible_name = text;
++        this.child.accessible_name = this.child.badgeAccessibleName?.(text) ?? text;
+     }
+ 
+     hideLabel() {
+diff --git a/js/ui/lumaDockBadgeModel.js b/js/ui/lumaDockBadgeModel.js
+new file mode 100644
+index 0000000..3e4859f
+--- /dev/null
++++ b/js/ui/lumaDockBadgeModel.js
+@@ -0,0 +1,216 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Unread badges on dock icons: what a badge says and where it sits.
++//
++// No GI imports, so the rules can be checked with plain gjs at build time
++// (tests/gnome-shell/dock-badges.js). lumaDockBadges.js draws them.
++
++// The badge's fill and ink. Ember was chosen by eye from three styles; white on
++// #f26a1b measures about 3.1:1. If the owner darkens it for contrast, this is
++// the one place to change.
++export const BADGE_FILL = '#f26a1b';
++export const BADGE_INK = '#ffffff';
++
++// Interim product defaults, each one line to flip.
++// An app with no count API gets no badge from its notifications in the tray.
++export const NOTIFICATION_COUNT_FALLBACK = false;
++// A window asking for attention (the urgency hint) does not give its app a dot;
++// GNOME's "is ready" notification stays the only signal.
++export const URGENT_WINDOWS_DOT = false;
++
++export const COUNT_CAP = 99;
++
++// Logical pixels, drawn for the reference 32 icon on its 36 tile. The dock's
++// artwork fills the tile, so the reference icon is the artwork inset by
++// (TILE - ICON) / 2 on each side and the offsets are measured from it.
++export const DESKTOP_METRICS = Object.freeze({
++    tile: 36,
++    icon: 32,
++    pillHeight: 15,
++    pillMinWidth: 15,
++    pillPadding: 4,
++    pillOffset: 5,
++    dot: 9,
++    dotOffset: 3,
++    ring: 2,
++    fontSize: 9.5,
++});
++
++// The phone shell's 58px icons fill their tile.
++export const PHONE_METRICS = Object.freeze({
++    tile: 58,
++    icon: 58,
++    pillHeight: 22,
++    pillMinWidth: 22,
++    pillPadding: 6,
++    pillOffset: 5,
++    dot: 13,
++    dotOffset: 2,
++    ring: 2.5,
++    fontSize: 13,
++});
++
++// Pop: scale .6 -> 1.18 -> 1 over 340ms, cubic-bezier(.2,.8,.25,1) on each leg.
++export const POP_DURATION = 340;
++export const POP_KEYS = Object.freeze([[0, 0.6], [0.55, 1.18], [1, 1]]);
++const POP_CURVE = [0.2, 0.8, 0.25, 1];
++
++// A badge is null (nothing), {kind: 'dot'} or {kind: 'count', count}.
++const DOT = Object.freeze({kind: 'dot'});
++
++function wholeCount(value) {
++    if (typeof value === 'bigint')
++        value = Number(value);
++    if (typeof value !== 'number' || !Number.isFinite(value))
++        return null;
++    return Math.floor(value);
++}
++
++// The standard `badge` value an app's background agent publishes: an unsigned
++// count, or the string 'dot'. Anything else, zero or negative is no badge.
++export function badgeFromAgentValue(value) {
++    if (value === 'dot')
++        return DOT;
++    const count = wholeCount(value);
++    return count !== null && count > 0 ? {kind: 'count', count} : null;
++}
++
++// com.canonical.Unity.LauncherEntry: a visible positive count shows the count;
++// urgent without one shows a dot.
++export function badgeFromLauncherEntry(entry) {
++    if (!entry)
++        return null;
++    const count = wholeCount(entry['count']);
++    if (entry['count-visible'] && count !== null && count > 0)
++        return {kind: 'count', count};
++    return entry['urgent'] ? DOT : null;
++}
++
++// Precedence per app. An agent that publishes `badge` owns the app's badge,
++// including when it says there is none; only an app without that value falls
++// through to LauncherEntry, then to the opt-in fallbacks.
++export function resolveBadge({enabled = true, agent, launcher, notifications = 0, urgent = false} = {}) {
++    if (!enabled)
++        return null;
++    if (agent !== undefined)
++        return badgeFromAgentValue(agent);
++    const fromLauncher = badgeFromLauncherEntry(launcher);
++    if (fromLauncher)
++        return fromLauncher;
++    if (NOTIFICATION_COUNT_FALLBACK && notifications > 0)
++        return {kind: 'count', count: notifications};
++    if (URGENT_WINDOWS_DOT && urgent)
++        return DOT;
++    return null;
++}
++
++export function sameBadge(a, b) {
++    return (a?.kind ?? null) === (b?.kind ?? null) && (a?.count ?? 0) === (b?.count ?? 0);
++}
++
++// Pops when a badge appears or its count goes up; never when it goes down.
++export function badgeShouldPop(previous, next) {
++    if (!next)
++        return false;
++    if (!previous)
++        return true;
++    return next.kind === 'count' && (previous.kind !== 'count' || next.count > previous.count);
++}
++
++export function badgeText(badge) {
++    if (badge?.kind !== 'count')
++        return '';
++    return badge.count > COUNT_CAP ? `${COUNT_CAP}+` : String(badge.count);
++}
++
++// The dock item's accessible name carries the real number, not "99+".
++// `words` are the (translated) templates; %s is the app, %d the count.
++const ACCESSIBLE_WORDS = Object.freeze({count: '%s, %d unread', dot: '%s, new activity'});
++export function badgeAccessibleName(name, badge, words = ACCESSIBLE_WORDS) {
++    if (badge?.kind === 'count')
++        return words.count.replace('%s', name).replace('%d', String(badge.count));
++    if (badge?.kind === 'dot')
++        return words.dot.replace('%s', name);
++    return name;
++}
++
++// Where the badge sits, in the icon's coordinates. `artwork` is the icon's
++// box, `textWidth` the natural width of the count's text, both in device
++// pixels; `scale` converts logical to device pixels and already includes the
++// icon's size against the reference tile. The box includes the ring. The
++// right edge is fixed, so a wider count grows leftward.
++export function badgeBox(badge, artwork, textWidth, scale = 1, metrics = DESKTOP_METRICS) {
++    const inset = (metrics.tile - metrics.icon) / 2 * scale;
++    const iconRight = artwork.x + artwork.width - inset;
++    const iconTop = artwork.y + inset;
++    const ring = metrics.ring * scale;
++    let width, height, offset;
++    if (badge.kind === 'dot') {
++        width = height = metrics.dot * scale;
++        offset = metrics.dotOffset * scale;
++    } else {
++        height = metrics.pillHeight * scale;
++        width = Math.max(metrics.pillMinWidth * scale,
++            Math.ceil(textWidth) + 2 * metrics.pillPadding * scale);
++        offset = metrics.pillOffset * scale;
++    }
++    // Whole device pixels, so a 15px pill is 15 rows and the ring stays crisp.
++    height = Math.round(height);
++    width = Math.max(height, Math.round(width));
++    const right = Math.round(iconRight + offset);
++    const top = Math.round(iconTop - offset);
++    const ringPixels = Math.round(ring);
++    return {
++        x: right - width - ringPixels,
++        y: top - ringPixels,
++        width: width + 2 * ringPixels,
++        height: height + 2 * ringPixels,
++        ring: ringPixels,
++    };
++}
++
++function bezier(p1, p2, t) {
++    const u = 1 - t;
++    return 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t;
++}
++
++function bezierProgress(x) {
++    const [x1, y1, x2, y2] = POP_CURVE;
++    let lo = 0, hi = 1, t = x;
++    for (let i = 0; i < 24; i++) {
++        t = (lo + hi) / 2;
++        if (bezier(x1, x2, t) < x)
++            lo = t;
++        else
++            hi = t;
++    }
++    return bezier(y1, y2, t);
++}
++
++// The badge's scale at `progress` (0..1) through the pop.
++export function popScale(progress) {
++    const p = Math.min(1, Math.max(0, progress));
++    for (let i = 1; i < POP_KEYS.length; i++) {
++        const [start, from] = POP_KEYS[i - 1];
++        const [end, to] = POP_KEYS[i];
++        if (p <= end)
++            return from + (to - from) * bezierProgress((p - start) / (end - start));
++    }
++    return 1;
++}
++
++// Desktop file IDs from LauncherEntry's application://name.desktop URIs.
++export function desktopIdFromUri(uri) {
++    if (typeof uri !== 'string' || uri.length > 512)
++        return null;
++    const match = /^application:\/\/([A-Za-z0-9_.-]+\.desktop)$/.exec(uri);
++    return match ? match[1] : null;
++}
++
++// The desktop ID for an app ID as luma-background reports it.
++export function desktopIdForAppId(appId) {
++    return appId.endsWith('.desktop') ? appId : `${appId}.desktop`;
++}
++
++export function appIdForDesktopId(desktopId) {
++    return desktopId.endsWith('.desktop') ? desktopId.slice(0, -'.desktop'.length) : desktopId;
++}
+diff --git a/js/ui/lumaDockBadges.js b/js/ui/lumaDockBadges.js
+new file mode 100644
+index 0000000..dd3b833
+--- /dev/null
++++ b/js/ui/lumaDockBadges.js
+@@ -0,0 +1,609 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Unread badges on dock icons.
++//
++// A badge means something waits for the person: a count, or a dot when an app
++// has something new but no number. It never means an app or its background
++// agent is running, syncing or updating.
++//
++// One source merges, per app and in this order:
++//   1. The `badge` value an app's background agent publishes
++//      (org.projectluma.BackgroundAgent1 Values, ADR-033).
++//   2. com.canonical.Unity.LauncherEntry Update signals, which Electron and
++//      other apps already emit.
++// The rules live in lumaDockBadgeModel.js.
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Signals from '../misc/signals.js';
++import * as Main from './main.js';
++import * as Model from './lumaDockBadgeModel.js';
++
++Gio._promisify(Gio.DBusConnection.prototype, 'call');
++Gio._promisify(Gio.File.prototype, 'load_contents_async');
++
++const BACKGROUND_BUS_NAME = 'org.projectluma.Background1';
++const BACKGROUND_OBJECT_PATH = '/org/projectluma/Background1';
++const BACKGROUND_INTERFACE = 'org.projectluma.Background1';
++const AGENT_OBJECT_PATH = '/org/projectluma/BackgroundAgent1';
++const AGENT_INTERFACE = 'org.projectluma.BackgroundAgent1';
++const AGENT_BADGE_VALUE = 'badge';
++const LAUNCHER_ENTRY_INTERFACE = 'com.canonical.Unity.LauncherEntry';
++const SHELL_SCHEMA = 'org.gnome.shell';
++const DISABLED_KEY = 'dock-badges-disabled-apps';
++
++function log(message) {
++    console.log(`Luma dock badges: ${message}`);
++}
++
++class BadgeSource extends Signals.EventEmitter {
++    constructor() {
++        super();
++        this._bus = Gio.DBus.session;
++        this._badges = new Map();       // desktop id -> resolved badge
++        this._agents = new Map();       // app id -> {busName, watchId, signalId, owner, value}
++        this._launcher = new Map();     // desktop id -> {sender, entry}
++        this._senders = new Map();      // unique name -> {watchId, flatpakId: Promise<string|null>}
++        this._notifications = new Map();
++        this._urgent = new Map();
++        this._cancellable = new Gio.Cancellable();
++
++        this._settings = new Gio.Settings({schema_id: SHELL_SCHEMA});
++        this._disabled = new Set(this._settings.get_strv(DISABLED_KEY));
++        this._settings.connectObject(`changed::${DISABLED_KEY}`, () => this._syncDisabled(), this);
++
++        this._backgroundSignalIds = [
++            this._bus.signal_subscribe(BACKGROUND_BUS_NAME, BACKGROUND_INTERFACE, 'AgentsChanged',
++                BACKGROUND_OBJECT_PATH, null, Gio.DBusSignalFlags.NONE, () => this._listAgents()),
++            this._bus.signal_subscribe(BACKGROUND_BUS_NAME, BACKGROUND_INTERFACE, 'AgentChanged',
++                BACKGROUND_OBJECT_PATH, null, Gio.DBusSignalFlags.NONE,
++                (_c, _s, _p, _i, _n, params) => {
++                    const [appId, agent] = params.recursiveUnpack();
++                    this._trackAgent(appId, agent);
++                }),
++        ];
++        // Never auto-start luma-background or an agent to read a badge.
++        this._backgroundWatchId = Gio.bus_watch_name_on_connection(this._bus,
++            BACKGROUND_BUS_NAME, Gio.BusNameWatcherFlags.NONE,
++            () => this._listAgents(),
++            () => this._forgetAgents());
++
++        this._launcherSignalId = this._bus.signal_subscribe(null, LAUNCHER_ENTRY_INTERFACE, 'Update',
++            null, null, Gio.DBusSignalFlags.NONE,
++            (_c, sender, _p, _i, _n, params) => this._onLauncherUpdate(sender, params));
++
++        if (Model.NOTIFICATION_COUNT_FALLBACK)
++            this._watchNotifications();
++        if (Model.URGENT_WINDOWS_DOT)
++            this._watchUrgentWindows();
++    }
++
++    get(desktopId) {
++        return this._badges.get(desktopId) ?? null;
++    }
++
++    // Recompute one app's badge from everything known about it.
++    _resolve(desktopId) {
++        const appId = Model.appIdForDesktopId(desktopId);
++        const agent = this._agents.get(appId);
++        const badge = Model.resolveBadge({
++            enabled: !this._disabled.has(appId),
++            agent: agent?.value,
++            launcher: this._launcher.get(desktopId)?.entry,
++            notifications: this._notifications.get(desktopId) ?? 0,
++            urgent: (this._urgent.get(desktopId)?.size ?? 0) > 0,
++        });
++        const previous = this.get(desktopId);
++        if (Model.sameBadge(previous, badge))
++            return;
++        if (badge)
++            this._badges.set(desktopId, badge);
++        else
++            this._badges.delete(desktopId);
++        this.emit('changed', desktopId, badge, previous);
++    }
++
++    _syncDisabled() {
++        const before = this._disabled;
++        this._disabled = new Set(this._settings.get_strv(DISABLED_KEY));
++        for (const appId of new Set([...before, ...this._disabled])) {
++            if (before.has(appId) === this._disabled.has(appId))
++                continue;
++            // Off stops listening to that app's agent; on starts again.
++            if (this._disabled.has(appId))
++                this._untrackAgent(appId);
++            else
++                this._listAgents();
++            this._resolve(Model.desktopIdForAppId(appId));
++        }
++    }
++
++    // Background agents
++
++    async _listAgents() {
++        try {
++            const reply = await this._bus.call(BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH,
++                BACKGROUND_INTERFACE, 'ListAgents', null, new GLib.VariantType('(aa{sv})'),
++                Gio.DBusCallFlags.NO_AUTO_START, -1, this._cancellable);
++            const [agents] = reply.recursiveUnpack();
++            const seen = new Set();
++            for (const agent of agents) {
++                seen.add(agent['app-id']);
++                this._trackAgent(agent['app-id'], agent);
++            }
++            for (const appId of [...this._agents.keys()]) {
++                if (!seen.has(appId))
++                    this._untrackAgent(appId);
++            }
++        } catch (error) {
++            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                log(`could not list background agents: ${error.message}`);
++        }
++    }
++
++    _forgetAgents() {
++        for (const appId of [...this._agents.keys()])
++            this._untrackAgent(appId);
++    }
++
++    // Only agents that declare `badge` in `publishes` are listened to.
++    _trackAgent(appId, agent) {
++        if (typeof appId !== 'string' || !appId)
++            return;
++        const busName = typeof agent?.['agent'] === 'string' ? agent['agent'] : '';
++        const publishes = Array.isArray(agent?.['publishes']) ? agent['publishes'] : [];
++        const wanted = busName.startsWith(`${appId}.`) &&
++            publishes.includes(AGENT_BADGE_VALUE) && !this._disabled.has(appId);
++        const current = this._agents.get(appId);
++        if (!wanted) {
++            if (current)
++                this._untrackAgent(appId);
++            return;
++        }
++        if (current?.busName === busName)
++            return;
++        if (current)
++            this._untrackAgent(appId);
++
++        const record = {busName, watchId: 0, signalId: 0, owner: null, value: undefined};
++        this._agents.set(appId, record);
++        record.watchId = Gio.bus_watch_name_on_connection(this._bus, busName,
++            Gio.BusNameWatcherFlags.NONE,
++            (_c, _name, owner) => this._agentAppeared(appId, record, owner),
++            () => this._agentVanished(appId, record));
++    }
++
++    _untrackAgent(appId) {
++        const record = this._agents.get(appId);
++        if (!record)
++            return;
++        this._agents.delete(appId);
++        if (record.watchId)
++            Gio.bus_unwatch_name(record.watchId);
++        if (record.signalId)
++            this._bus.signal_unsubscribe(record.signalId);
++        record.watchId = record.signalId = 0;
++        this._resolve(Model.desktopIdForAppId(appId));
++    }
++
++    _agentAppeared(appId, record, owner) {
++        if (this._agents.get(appId) !== record)
++            return;
++        if (record.signalId)
++            this._bus.signal_unsubscribe(record.signalId);
++        record.owner = owner;
++        // Only the name's current owner can change the badge.
++        record.signalId = this._bus.signal_subscribe(owner, 'org.freedesktop.DBus.Properties',
++            'PropertiesChanged', AGENT_OBJECT_PATH, AGENT_INTERFACE, Gio.DBusSignalFlags.NONE,
++            (_c, _s, _p, _i, _n, params) => {
++                const [, changed, invalidated] = params.recursiveUnpack();
++                if ('Values' in changed)
++                    this._setAgentValues(appId, record, changed['Values']);
++                else if (invalidated.includes('Values'))
++                    this._readAgentValues(appId, record);
++            });
++        this._readAgentValues(appId, record);
++    }
++
++    _agentVanished(appId, record) {
++        if (this._agents.get(appId) !== record)
++            return;
++        if (record.signalId)
++            this._bus.signal_unsubscribe(record.signalId);
++        record.signalId = 0;
++        record.owner = null;
++        this._setAgentValues(appId, record, null);
++    }
++
++    async _readAgentValues(appId, record) {
++        const owner = record.owner;
++        try {
++            const reply = await this._bus.call(owner, AGENT_OBJECT_PATH,
++                'org.freedesktop.DBus.Properties', 'Get',
++                new GLib.Variant('(ss)', [AGENT_INTERFACE, 'Values']),
++                new GLib.VariantType('(v)'), Gio.DBusCallFlags.NO_AUTO_START, 5000, this._cancellable);
++            if (this._agents.get(appId) === record && record.owner === owner)
++                this._setAgentValues(appId, record, reply.recursiveUnpack()[0]);
++        } catch (error) {
++            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                log(`could not read ${appId}'s agent values: ${error.message}`);
++        }
++    }
++
++    _setAgentValues(appId, record, values) {
++        const value = values && typeof values === 'object' && AGENT_BADGE_VALUE in values
++            ? values[AGENT_BADGE_VALUE] : undefined;
++        if (record.value === value)
++            return;
++        record.value = value;
++        this._resolve(Model.desktopIdForAppId(appId));
++    }
++
++    // LauncherEntry
++
++    _onLauncherUpdate(sender, params) {
++        let uri, properties;
++        try {
++            [uri, properties] = params.recursiveUnpack();
++        } catch {
++            return;
++        }
++        const desktopId = Model.desktopIdFromUri(uri);
++        if (!desktopId || !properties || typeof properties !== 'object')
++            return;
++        this._checkSender(sender, desktopId).then(allowed => {
++            if (!allowed)
++                return;
++            const previous = this._launcher.get(desktopId);
++            // Updates carry only what changed; keep the rest.
++            const entry = previous?.sender === sender ? {...previous.entry} : {};
++            for (const key of ['count', 'count-visible', 'urgent']) {
++                if (key in properties)
++                    entry[key] = properties[key];
++            }
++            this._launcher.set(desktopId, {sender, entry});
++            this._resolve(desktopId);
++        });
++    }
++
++    // A sandboxed app may badge only itself. Unsandboxed processes already run
++    // with the person's full rights, so their app is not second-guessed.
++    _checkSender(sender, desktopId) {
++        let record = this._senders.get(sender);
++        if (!record) {
++            record = {watchId: 0, flatpakId: this._flatpakIdOf(sender)};
++            this._senders.set(sender, record);
++            record.watchId = Gio.bus_watch_name_on_connection(this._bus, sender,
++                Gio.BusNameWatcherFlags.NONE, null, () => this._senderVanished(sender));
++        }
++        return record.flatpakId.then(flatpakId => {
++            if (flatpakId === null || (flatpakId && Model.appIdForDesktopId(desktopId) === flatpakId))
++                return true;
++            log(`ignored a LauncherEntry update for ${desktopId} from ${flatpakId || sender}`);
++            return false;
++        });
++    }
++
++    async _flatpakIdOf(sender) {
++        try {
++            const reply = await this._bus.call('org.freedesktop.DBus', '/org/freedesktop/DBus',
++                'org.freedesktop.DBus', 'GetConnectionUnixProcessID', new GLib.Variant('(s)', [sender]),
++                new GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, 5000, this._cancellable);
++            const [pid] = reply.deepUnpack();
++            const file = Gio.File.new_for_path(`/proc/${pid}/root/.flatpak-info`);
++            const [contents] = await file.load_contents_async(this._cancellable);
++            const keyFile = new GLib.KeyFile();
++            keyFile.load_from_bytes(contents, GLib.KeyFileFlags.NONE);
++            return keyFile.get_string('Application', 'name');
++        } catch (error) {
++            // No Flatpak metadata in the process's root: not sandboxed.
++            if (error.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
++                return null;
++            // Anything else (the process is gone, its root is unreadable)
++            // is refused rather than guessed.
++            if (!error.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                log(`could not tell which app ${sender} is: ${error.message}`);
++            return '';
++        }
++    }
++
++    // The app quit: its LauncherEntry badges go with it.
++    _senderVanished(sender) {
++        const record = this._senders.get(sender);
++        if (record?.watchId)
++            Gio.bus_unwatch_name(record.watchId);
++        this._senders.delete(sender);
++        for (const [desktopId, launcher] of [...this._launcher]) {
++            if (launcher.sender !== sender)
++                continue;
++            this._launcher.delete(desktopId);
++            this._resolve(desktopId);
++        }
++    }
++
++    // Opt-in fallbacks (lumaDockBadgeModel.js)
++
++    _watchNotifications() {
++        const sync = source => {
++            const desktopId = (source.app ?? source._app)?.get_id?.();
++            if (!desktopId)
++                return;
++            const count = Main.messageTray.getSources()
++                .filter(s => (s.app ?? s._app)?.get_id?.() === desktopId)
++                .reduce((sum, s) => sum + s.notifications.length, 0);
++            this._notifications.set(desktopId, count);
++            this._resolve(desktopId);
++        };
++        const watch = source => source.connectObject(
++            'notification-added', () => sync(source),
++            'notification-removed', () => sync(source),
++            'destroy', () => GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++                sync(source);
++                return GLib.SOURCE_REMOVE;
++            }), this);
++        Main.messageTray.getSources().forEach(watch);
++        Main.messageTray.connectObject('source-added', (_tray, source) => watch(source), this);
++    }
++
++    _watchUrgentWindows() {
++        const tracker = Shell.WindowTracker.get_default();
++        const watched = new WeakSet();
++        const mark = window => {
++            const desktopId = tracker.get_window_app(window)?.get_id();
++            if (!desktopId)
++                return;
++            const windows = this._urgent.get(desktopId) ?? new Set();
++            if (window.demands_attention || window.urgent)
++                windows.add(window);
++            else
++                windows.delete(window);
++            this._urgent.set(desktopId, windows);
++            this._resolve(desktopId);
++        };
++        global.display.connectObject(
++            'window-demands-attention', (_d, window) => {
++                mark(window);
++                if (watched.has(window))
++                    return;
++                watched.add(window);
++                window.connectObject(
++                    'notify::demands-attention', () => mark(window),
++                    'notify::urgent', () => mark(window),
++                    'unmanaged', () => {
++                        for (const windows of this._urgent.values())
++                            windows.delete(window);
++                        mark(window);
++                    }, this);
++            },
++            'window-marked-urgent', (_d, window) => mark(window), this);
++    }
++}
++
++let source = null;
++
++export function getBadgeSource() {
++    source ??= new BadgeSource();
++    return source;
++}
++
++// Allocates an icon's content as before and its badge where the model puts
++// it, which may be outside the icon. The badge never changes the icon's size.
++// `artwork` returns the drawn icon, a descendant of the content (or the
++// content itself), whose box the badge is placed against.
++const BadgeLayout = GObject.registerClass(
++class BadgeLayout extends Clutter.LayoutManager {
++    _init(content, artwork, badge) {
++        super._init();
++        this._content = content;
++        this._artwork = artwork;
++        this._badge = badge;
++    }
++
++    vfunc_get_preferred_width(_container, forHeight) {
++        return this._content.get_preferred_width(forHeight);
++    }
++
++    vfunc_get_preferred_height(_container, forWidth) {
++        return this._content.get_preferred_height(forWidth);
++    }
++
++    vfunc_allocate(container, box) {
++        for (const child of container) {
++            if (child !== this._badge)
++                child.allocate(box);
++        }
++        if (!this._badge.visible)
++            return;
++        // Children are allocated synchronously, so the artwork's box is
++        // current: add up the allocations from the artwork to the container.
++        let actor = this._artwork() ?? this._content;
++        const artwork = actor.get_allocation_box();
++        let x = artwork.x1, y = artwork.y1;
++        actor = actor.get_parent();
++        while (actor && actor !== container) {
++            const parentBox = actor.get_allocation_box();
++            x += parentBox.x1;
++            y += parentBox.y1;
++            actor = actor.get_parent();
++        }
++        if (!actor)
++            ({x, y} = {x: box.x1, y: box.y1});
++        this._badge.allocate(this._badge.boxFor({
++            x, y, width: artwork.get_width(), height: artwork.get_height(),
++        }));
++    }
++});
++
++// The badge itself: a pill with a count, or a dot, ringed in the shelf's own
++// colour so it reads as cut out of any artwork.
++export const DockBadge = GObject.registerClass(
++class DockBadge extends St.Bin {
++    _init(params = {}) {
++        super._init({
++            style_class: 'luma-dock-badge',
++            visible: false,
++            reactive: false,
++            can_focus: false,
++        });
++        this._metrics = params.metrics ?? Model.DESKTOP_METRICS;
++        // Where to look for the shelf's surface when the badge is not on it,
++        // such as while its icon is being dragged.
++        this._ringSource = params.ringSource ?? null;
++        this._tileSize = params.tileSize ?? this._metrics.tile;
++        this._label = new St.Label({
++            style_class: 'luma-dock-badge-label',
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._label.clutter_text.set({x_align: Clutter.ActorAlign.CENTER});
++        this.set_child(this._label);
++        Shell.util_set_hidden_from_pick(this, true);
++        this.badge = null;
++        this._style = '';
++        this.connect('style-changed', () => this._syncStyle());
++        this.connect('destroy', () => {
++            this._stopPop();
++            if (this._resizeLater)
++                global.compositor.get_laters().remove(this._resizeLater);
++            this._resizeLater = 0;
++        });
++    }
++
++    // Logical to device pixels, including the icon's size against the tile.
++    get _scale() {
++        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
++        return scaleFactor * this._tileSize / this._metrics.tile;
++    }
++
++    setTileSize(size) {
++        if (this._tileSize === size)
++            return;
++        this._tileSize = size;
++        this._syncStyle();
++        this.queue_relayout();
++    }
++
++    setBadge(badge, {pop = false} = {}) {
++        this.badge = badge;
++        if (!badge) {
++            this._stopPop();
++            this.hide();
++            return;
++        }
++        this._label.text = Model.badgeText(badge);
++        this._label.visible = badge.kind === 'count';
++        this._syncStyle();
++        this.show();
++        this.queue_relayout();
++        if (pop)
++            this._pop();
++    }
++
++    boxFor(artwork) {
++        // Everything scales with the icon: follow the artwork's drawn size.
++        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
++        const tileSize = artwork.width / scaleFactor;
++        if (tileSize > 0 && Math.abs(tileSize - this._tileSize) > 0.5 && !this._resizeLater) {
++            this._resizeLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++                this._resizeLater = 0;
++                this.setTileSize(tileSize);
++                return GLib.SOURCE_REMOVE;
++            });
++        }
++        const [, textWidth] = this._label.visible ? this._label.get_preferred_width(-1) : [0, 0];
++        const box = Model.badgeBox(this.badge ?? {kind: 'dot'}, artwork, textWidth, this._scale, this._metrics);
++        this.set_pivot_point(0.5, 0.5);
++        return new Clutter.ActorBox({
++            x1: box.x, y1: box.y, x2: box.x + box.width, y2: box.y + box.height,
++        });
++    }
++
++    // The ring is the shelf's own surface colour, read from the nearest
++    // painted shelf material around the icon. A treatment whose material is
++    // translucent names an opaque ring (-luma-badge-ring); any other material
++    // gives its own colour, so a new treatment needs no badge change.
++    _ringColor() {
++        for (let actor = this._ringSource ?? this.get_parent(); actor; actor = actor.get_parent()) {
++            if (!actor.has_style_class_name?.('luma-shelf-material'))
++                continue;
++            const node = actor.get_theme_node();
++            const [found, ring] = node.lookup_color('-luma-badge-ring', false);
++            const color = found ? ring : node.get_background_color();
++            if (color.alpha === 0)
++                continue;
++            return `rgba(${color.red},${color.green},${color.blue},${(color.alpha / 255).toFixed(3)})`;
++        }
++        // Dragged, or not on the shelf: the light shelf's surface.
++        return '#f1f2f3';
++    }
++
++    _syncStyle() {
++        if (!this.badge)
++            return;
++        const scale = this._scale;
++        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
++        const logical = scale / scaleFactor;
++        const m = this._metrics;
++        const ring = Math.round(m.ring * scale) / scaleFactor;
++        const height = Math.round((this.badge.kind === 'dot' ? m.dot : m.pillHeight) * scale) / scaleFactor;
++        const style = [
++            `background-color: ${Model.BADGE_FILL}`,
++            `color: ${Model.BADGE_INK}`,
++            `border: ${ring}px solid ${this._ringColor()}`,
++            `border-radius: ${height / 2 + ring}px`,
++            `font-size: ${m.fontSize * logical}px`,
++            `letter-spacing: ${(-0.02 * m.fontSize * logical).toFixed(2)}px`,
++        ].join('; ');
++        if (style === this._style)
++            return;
++        this._style = style;
++        this.set_style(style);
++    }
++
++    _pop() {
++        this._stopPop();
++        if (!St.Settings.get().enable_animations)
++            return;
++        this._popTimeline = new Clutter.Timeline({actor: this, duration: Model.POP_DURATION});
++        this._popTimeline.connect('new-frame', timeline => {
++            const scale = Model.popScale(timeline.get_progress());
++            this.set_scale(scale, scale);
++        });
++        this._popTimeline.connect('stopped', () => {
++            this.set_scale(1, 1);
++            this._popTimeline = null;
++        });
++        this.set_scale(Model.POP_KEYS[0][1], Model.POP_KEYS[0][1]);
++        this._popTimeline.start();
++    }
++
++    _stopPop() {
++        if (!this._popTimeline)
++            return;
++        const timeline = this._popTimeline;
++        this._popTimeline = null;
++        timeline.stop();
++        this.set_scale(1, 1);
++    }
++});
++
++// Gives an icon (content inside `container`) a badge that follows `app`.
++// `isHovered` suppresses the pop while the pointer is on the icon.
++export function attachBadge(container, content, desktopId, {artwork = () => content, isHovered = () => false, onChanged = null, metrics, ringSource} = {}) {
++    const badge = new DockBadge({metrics, ringSource});
++    container.layout_manager = new BadgeLayout(content, artwork, badge);
++    container.add_child(badge);
++    const badges = getBadgeSource();
++    badge.setBadge(badges.get(desktopId));
++    badges.connectObject('changed', (_s, id, next, previous) => {
++        if (id !== desktopId)
++            return;
++        badge.setBadge(next, {pop: Model.badgeShouldPop(previous, next) && !isHovered()});
++        onChanged?.(next);
++    }, badge);
++    return badge;
++}
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index e5e70bf..d367183 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1151,6 +1151,10 @@ class Shelf extends St.Widget {
+         const otherSize = others.reduce((sum, actor) => sum + measure(actor), 0);
+         const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - 2 * this._padding * scale);
+         const length = Math.min(naturalDock, maxLength);
++        // An unread badge on the first or last icon reaches a few pixels past
++        // the dock's content along the shelf. The viewport clips only a dock
++        // that scrolls, where its ends fade anyway.
++        this._dockContent.clip_to_view = naturalDock > maxLength;
+         if (this._vertical)
+             this._dockScroll.set_size(this._thickness * scale, length);
+         else

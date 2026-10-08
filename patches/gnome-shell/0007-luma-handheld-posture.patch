@@ -1,0 +1,188 @@
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -439,6 +439,8 @@
+ 
+         this._sessionStyle = null;
+ 
++        this._isHandheldDevice = GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld';
++        this._handheldPosture = false;
+         this.statusArea = {};
+ 
+         this.menuManager = new PopupMenu.PopupMenuManager(this);
+@@ -474,10 +476,36 @@
+             this._updatePanel.bind(this),
+             this);
+ 
++        Main.layoutManager.connectObject('monitors-changed',
++            this._syncHandheldPosture.bind(this),
++            this);
+         global.display.connectObject('workareas-changed',
+-            () => this.queue_relayout(),
++            () => {
++                this._syncHandheldPosture();
++                this.queue_relayout();
++            },
+             this);
++        this._syncHandheldPosture();
+         this._updatePanel();
++    }
++
++    _syncHandheldPosture() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        const handheld = this._isHandheldDevice && monitor !== null &&
++            monitor.height > monitor.width;
++
++        if (handheld === this._handheldPosture)
++            return;
++
++        this._handheldPosture = handheld;
++        if (handheld) {
++            this.add_style_class_name('luma-handheld');
++            Main.uiGroup.add_style_class_name('luma-handheld');
++        } else {
++            this.remove_style_class_name('luma-handheld');
++            Main.uiGroup.remove_style_class_name('luma-handheld');
++        }
++        this.queue_relayout();
+     }
+ 
+     vfunc_get_preferred_width(_forHeight) {
+@@ -496,6 +524,7 @@
+         const allocHeight = box.y2 - box.y1;
+         const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const edgeInset = 14 * scaleFactor;
++        const cutoutHalfWidth = this._handheldPosture ? 28 * scaleFactor : 0;
+ 
+         const [, leftNaturalWidth] = this._leftBox.get_preferred_width(-1);
+         const [, centerNaturalWidth] = this._centerBox.get_preferred_width(-1);
+@@ -511,7 +540,9 @@
+             centerOffset = 2 * (workArea.x - monitor.x) + workArea.width - monitor.width;
+         }
+ 
+-        const sideWidth = Math.max(0, (allocWidth - centerWidth + centerOffset) / 2);
++        const stageCenter = (allocWidth + centerOffset) / 2;
++        const sideWidth = Math.max(0,
++            stageCenter - centerWidth / 2 - cutoutHalfWidth);
+ 
+         const childBox = new Clutter.ActorBox();
+ 
+@@ -530,7 +561,7 @@
+         }
+         this._leftBox.allocate(childBox);
+ 
+-        childBox.x1 = Math.ceil(sideWidth);
++        childBox.x1 = Math.ceil(stageCenter - centerWidth / 2);
+         childBox.y1 = 0;
+         childBox.x2 = childBox.x1 + centerWidth;
+         childBox.y2 = allocHeight;
+@@ -545,9 +576,10 @@
+                 allocWidth - edgeInset);
+         } else {
+             childBox.x2 = allocWidth - edgeInset;
++            const safeStart = stageCenter + centerWidth / 2 + cutoutHalfWidth;
+             childBox.x1 = Math.max(
+                 childBox.x2 - Math.min(Math.floor(sideWidth), rightNaturalWidth),
+-                edgeInset);
++                Math.max(edgeInset, safeStart));
+         }
+         this._rightBox.allocate(childBox);
+     }
+diff --git a/data/theme/gnome-shell-sass/widgets/_panel.scss b/data/theme/gnome-shell-sass/widgets/_panel.scss
+--- a/data/theme/gnome-shell-sass/widgets/_panel.scss
++++ b/data/theme/gnome-shell-sass/widgets/_panel.scss
+@@ -275,5 +275,29 @@
+     font-weight: 700;
+     font-feature-settings: "tnum";
+     text-align: center;
++  }
++}
++
++// Portrait handheld posture clears the camera cutout without turning the
++// entire top band into oversized chrome. Desktop geometry is unchanged.
++#panel.luma-handheld,
++#panel.luma-handheld:overview {
++  height: 42px;
++  background-color: #ffffff;
++  color: #202733;
++  box-shadow: 0 1px 0 rgba(30, 41, 59, 0.10);
++
++  .panel-button {
++    min-height: 38px;
++    color: #202733;
+   }
++
++  .panel-button .system-status-icon {
++    icon-size: 17px;
++  }
++
++  #panelRight .panel-button {
++    margin-top: 2px;
++    margin-bottom: 2px;
++  }
+ }
+diff --git a/data/theme/gnome-shell-sass/widgets/_keyboard.scss b/data/theme/gnome-shell-sass/widgets/_keyboard.scss
+--- a/data/theme/gnome-shell-sass/widgets/_keyboard.scss
++++ b/data/theme/gnome-shell-sass/widgets/_keyboard.scss
+@@ -59,6 +59,17 @@
+   StIcon { icon-size: $medium_scalable_icon_size; }
+ }
+ 
++.luma-handheld .keyboard-key {
++  // Touch down must paint in the same frame; keyboard feedback is state, not
++  // decoration, and must never wait behind an animation.
++  transition-duration: 0ms;
++
++  &:active {
++    background-color: #4d78b8;
++    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45);
++  }
++}
++
+ // long press on a key popup
+ .keyboard-subkeys-boxpointer {
+   -arrow-border-radius: $base_border_radius * 2 + $base_padding;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -2129,6 +2129,27 @@
+   font-feature-settings: "tnum";
+   text-align: center; }
+ 
++#panel.luma-handheld,
++#panel.luma-handheld:overview {
++  height: 42px;
++  background-color: #ffffff;
++  color: #202733;
++  box-shadow: 0 1px 0 rgba(30, 41, 59, 0.10); }
++
++#panel.luma-handheld .panel-button,
++#panel.luma-handheld:overview .panel-button {
++  min-height: 38px;
++  color: #202733; }
++
++#panel.luma-handheld .panel-button .system-status-icon,
++#panel.luma-handheld:overview .panel-button .system-status-icon {
++  icon-size: 17px; }
++
++#panel.luma-handheld #panelRight .panel-button,
++#panel.luma-handheld:overview #panelRight .panel-button {
++  margin-top: 2px;
++  margin-bottom: 2px; }
++
+ /* Activities Ripple */
+ .ripple-box {
+   background-color: rgba(255, 255, 255, 0.2);
+@@ -2944,6 +2965,12 @@
+   .keyboard-key StIcon {
+     icon-size: 1.6365em; }
+ 
++.luma-handheld .keyboard-key {
++  transition-duration: 0ms; }
++.luma-handheld .keyboard-key:active {
++    background-color: #4d78b8;
++    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45); }
++
+ .keyboard-subkeys-boxpointer {
+   -arrow-border-radius: 22px;
+   -arrow-background-color: #2e2e33;

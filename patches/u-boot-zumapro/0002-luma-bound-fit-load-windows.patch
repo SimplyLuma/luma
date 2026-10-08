@@ -1,0 +1,78 @@
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -176,6 +176,14 @@ static bool exynos_addr_in_dram(phys_addr_t addr, ulong size)
+ }
+ 
+ #ifdef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
++#define LUMA_KERNEL_LOAD		0x80000000UL
++#define LUMA_KERNEL_WINDOW_END		0x82000000UL
++#define LUMA_FDT_LOAD			0x82000000UL
++#define LUMA_FDT_WINDOW_END		0x82100000UL
++#define LUMA_INITRAMFS_LOAD		0x83000000UL
++#define LUMA_INITRAMFS_WINDOW_END	0x84000000UL
++#define LUMA_FIRST_RESERVED_START	0x90200000UL
++
+ static u64 exynos_fdt_get_addr(const void *fdt, int node, const char *name)
+ {
+ 	u64 value;
+@@ -203,6 +211,42 @@ static bool exynos_luma_digest_valid(const char *digest)
+ 	return true;
+ }
+ 
++static bool exynos_luma_ranges_overlap(phys_addr_t first_start,
++				       phys_addr_t first_end,
++				       phys_addr_t second_start,
++				       phys_addr_t second_end)
++{
++	return first_start < second_end && first_end > second_start;
++}
++
++static bool exynos_luma_fit_image_valid(const void *fit, const char *name,
++					phys_addr_t expected_load,
++					phys_addr_t window_end)
++{
++	ulong load;
++	int data_size;
++	int node;
++
++	node = fit_image_get_node(fit, name);
++	if (node < 0 || fit_image_get_load(fit, node, &load) ||
++	    fit_image_get_data_size(fit, node, &data_size))
++		return false;
++
++	if (load != expected_load || data_size <= 0 ||
++	    load + data_size < load || load + data_size > window_end)
++		return false;
++
++	return exynos_addr_in_dram(expected_load, window_end - expected_load);
++}
++
+ static int exynos_luma_ramboot_setup(void)
+ {
+ 	const char *expected = CONFIG_LUMA_EXPECTED_FIT_SHA256;
+@@ -232,6 +276,27 @@ static int exynos_luma_ramboot_setup(void)
+ 	if (fit_size != end - start)
+ 		return -EFBIG;
+ 
++	if (LUMA_INITRAMFS_WINDOW_END > LUMA_FIRST_RESERVED_START ||
++	    !exynos_luma_fit_image_valid(fit, "kernel", LUMA_KERNEL_LOAD,
++					 LUMA_KERNEL_WINDOW_END) ||
++	    !exynos_luma_fit_image_valid(fit, "fdt", LUMA_FDT_LOAD,
++					 LUMA_FDT_WINDOW_END) ||
++	    !exynos_luma_fit_image_valid(fit, "ramdisk", LUMA_INITRAMFS_LOAD,
++					 LUMA_INITRAMFS_WINDOW_END))
++		return -ERANGE;
++
++	/* Never let bootm overwrite the sole authenticated source FIT. */
++	if (exynos_luma_ranges_overlap(start, end, LUMA_KERNEL_LOAD,
++				       LUMA_KERNEL_WINDOW_END) ||
++	    exynos_luma_ranges_overlap(start, end, LUMA_FDT_LOAD,
++				       LUMA_FDT_WINDOW_END) ||
++	    exynos_luma_ranges_overlap(start, end, LUMA_INITRAMFS_LOAD,
++				       LUMA_INITRAMFS_WINDOW_END))
++		return -EXDEV;
++
+ 	env_set_hex("luma_fit_addr", start);
+ 	env_set_hex("luma_fit_size", fit_size);
+ 	env_set("luma_fit_bounds_ok", "1");

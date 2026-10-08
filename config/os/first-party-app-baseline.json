@@ -1,0 +1,29 @@
+{
+  "schema": "org.projectluma.os-app-baseline/v1",
+  "applications": [
+    "com.rhyme.viola",
+    "io.luma.Monitor",
+    "org.gnome.Nautilus",
+    "org.projectluma.Ari",
+    "org.projectluma.Calendar",
+    "org.projectluma.Camera",
+    "org.projectluma.Charlie",
+    "org.projectluma.Clock",
+    "org.projectluma.Connect",
+    "org.projectluma.Contacts",
+    "org.projectluma.Depot",
+    "org.projectluma.Displays",
+    "org.projectluma.Imager",
+    "org.projectluma.Leaf",
+    "org.projectluma.Messages",
+    "org.projectluma.Mods",
+    "org.projectluma.Notes",
+    "org.projectluma.Phone",
+    "org.projectluma.Photos",
+    "org.projectluma.Tasks",
+    "org.projectluma.Tide",
+    "org.projectluma.Viewer",
+    "org.projectluma.VoiceMemos",
+    "org.projectluma.Weather"
+  ]
+}

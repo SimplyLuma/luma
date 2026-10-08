@@ -1,0 +1,220 @@
+From eb14622e927492d116c8abcd3f21a331e3d1c268 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 19:55:58 -0500
+Subject: [PATCH] luma: screenshots show frost and glass surfaces as they are
+ on screen
+
+A screenshot that took in a frost or glass surface (the shelf's islands,
+Quick Options, Beam) showed it wrong: a pale slab with its ink gone, or a
+grey smear, while the screen looked right.
+
+ShellBlurEffect's background mode copies what lies under the actor from the
+framebuffer being painted. For the screen that is a stage view, whose scale
+and origin it applied. A screenshot or recording paints the stage into a
+framebuffer of its own, at the capture's scale and offset by the captured
+rectangle, and for that case the effect assumed scale 1 at the stage
+origin: on a scaled or second monitor it blurred another part of the
+screen (above an island, usually a white window, so the veil came out white
+and white ink vanished), and it copied from outside the framebuffer where
+the rectangle did not cover the surface.
+
+- The off-stage case takes its scale and origin from the viewport
+  clutter_stage_paint_to_framebuffer() sets on that framebuffer.
+- The copy is limited to the framebuffer, so nothing undefined is read.
+- A screenshot of part of the screen (the D-Bus Screenshot and
+  ScreenshotArea calls, and the colour picker) paints the whole stage at the
+  capture's scale and keeps the rectangle, so a blurred surface on its edge
+  has its whole backdrop.
+
+Capture's screenshots already paint the whole stage; they get the first two.
+---
+ src/shell-blur-effect.c | 60 +++++++++++++++++++++++++------
+ src/shell-screenshot.c  | 80 +++++++++++++++++++++++++++++++++++++----
+ 2 files changed, 122 insertions(+), 18 deletions(-)
+
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 04842a5..ac90bac 100644
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -403,9 +403,28 @@ update_actor_box (ShellBlurEffect     *self,
+         }
+       else
+         {
+-          /* If we're drawing off stage, just assume scale = 1, this won't work
+-           * with stage-view scaling though.
++          /* Luma: drawing off stage (a screenshot or a screen recording).
++           * The stage is painted into its own framebuffer at the capture's
++           * scale, offset by the captured rectangle's origin: both are in the
++           * viewport clutter_stage_paint_to_framebuffer() sets. Reading the
++           * backdrop at the actor's unscaled stage position blurred another
++           * part of the screen (a white window above a glass island left the
++           * island a white slab with its white ink gone), and anything but a
++           * full-stage capture at scale 1 was off.
+            */
++          CoglFramebuffer *framebuffer =
++            clutter_paint_context_get_framebuffer (paint_context);
++          ClutterActor *stage = clutter_actor_get_stage (self->actor);
++          float viewport[4];
++          float stage_width = stage ? clutter_actor_get_width (stage) : 0.f;
++
++          cogl_framebuffer_get_viewport4fv (framebuffer, viewport);
++          if (stage_width > 0.f && viewport[2] > 0.f)
++            {
++              box_scale_factor = viewport[2] / stage_width;
++              origin_x += viewport[0] / box_scale_factor;
++              origin_y += viewport[1] / box_scale_factor;
++            }
+         }
+ 
+       clutter_actor_box_set_origin (source_actor_box, origin_x, origin_y);
+@@ -521,15 +540,34 @@ paint_background (ShellBlurEffect     *self,
+ 
+   /* Blit node */
+   src = clutter_paint_context_get_framebuffer (paint_context);
+-  blit_node = clutter_blit_node_new (src);
+-  clutter_paint_node_set_static_name (blit_node, "ShellBlurEffect (blit)");
+-  clutter_paint_node_add_child (background_node, blit_node);
+-  clutter_blit_node_add_blit_rectangle (CLUTTER_BLIT_NODE (blit_node),
+-                                        transformed_x,
+-                                        transformed_y,
+-                                        0, 0,
+-                                        transformed_width,
+-                                        transformed_height);
++
++  /* Luma: only what lies inside the framebuffer is copied. An actor partly
++   * outside it (a capture of part of the screen, or an island at a monitor's
++   * edge) blitted from outside the framebuffer, which is undefined and came
++   * out as a grey smear.
++   */
++  {
++    float src_width = cogl_framebuffer_get_width (src);
++    float src_height = cogl_framebuffer_get_height (src);
++    float x1 = MAX (transformed_x, 0.f);
++    float y1 = MAX (transformed_y, 0.f);
++    float x2 = MIN (transformed_x + transformed_width, src_width);
++    float y2 = MIN (transformed_y + transformed_height, src_height);
++
++    if (x2 <= x1 || y2 <= y1)
++      return;
++
++    blit_node = clutter_blit_node_new (src);
++    clutter_paint_node_set_static_name (blit_node, "ShellBlurEffect (blit)");
++    clutter_paint_node_add_child (background_node, blit_node);
++    clutter_blit_node_add_blit_rectangle (CLUTTER_BLIT_NODE (blit_node),
++                                          x1,
++                                          y1,
++                                          x1 - transformed_x,
++                                          y1 - transformed_y,
++                                          x2 - x1,
++                                          y2 - y1);
++  }
+ }
+ 
+ static gboolean
+diff --git a/src/shell-screenshot.c b/src/shell-screenshot.c
+index 076eb2c..801e2c1 100644
+--- a/src/shell-screenshot.c
++++ b/src/shell-screenshot.c
+@@ -1,5 +1,7 @@
+ /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
+ 
++#include <math.h>
++
+ #include <clutter/clutter.h>
+ #include <cogl/cogl.h>
+ #include <meta/display.h>
+@@ -308,6 +310,68 @@ write_screenshot_thread (GTask        *result,
+     g_task_return_boolean (result, TRUE);
+ }
+ 
++static gboolean
++paint_area_of_full_stage (ClutterStage     *stage,
++                          MtkRectangle     *rect,
++                          float             scale,
++                          cairo_surface_t  *image,
++                          ClutterPaintFlag  paint_flags,
++                          GError          **error)
++{
++  float stage_width, stage_height;
++  MtkRectangle stage_rect;
++  cairo_surface_t *full;
++  int full_width, full_height;
++  cairo_t *cr;
++
++  clutter_actor_get_size (CLUTTER_ACTOR (stage), &stage_width, &stage_height);
++  stage_rect = (MtkRectangle) { 0, 0, (int) stage_width, (int) stage_height };
++
++  if (mtk_rectangle_equal (rect, &stage_rect) ||
++      !mtk_rectangle_contains_rect (&stage_rect, rect))
++    {
++      return clutter_stage_paint_to_buffer (stage, rect, scale,
++                                            cairo_image_surface_get_data (image),
++                                            cairo_image_surface_get_stride (image),
++                                            COGL_PIXEL_FORMAT_CAIRO_ARGB32_COMPAT,
++                                            NULL,
++                                            paint_flags,
++                                            error);
++    }
++
++  full_width = (int) roundf (stage_rect.width * scale);
++  full_height = (int) roundf (stage_rect.height * scale);
++  full = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, full_width, full_height);
++  if (cairo_surface_status (full) != CAIRO_STATUS_SUCCESS ||
++      !clutter_stage_paint_to_buffer (stage, &stage_rect, scale,
++                                      cairo_image_surface_get_data (full),
++                                      cairo_image_surface_get_stride (full),
++                                      COGL_PIXEL_FORMAT_CAIRO_ARGB32_COMPAT,
++                                      NULL,
++                                      paint_flags,
++                                      error))
++    {
++      if (error && !*error)
++        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                             "Could not allocate the stage image");
++      cairo_surface_destroy (full);
++      return FALSE;
++    }
++  cairo_surface_mark_dirty (full);
++
++  cr = cairo_create (image);
++  cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
++  cairo_set_source_surface (cr, full,
++                            -roundf (rect->x * scale),
++                            -roundf (rect->y * scale));
++  cairo_paint (cr);
++  cairo_destroy (cr);
++  cairo_surface_flush (image);
++  cairo_surface_destroy (full);
++
++  return TRUE;
++}
++
+ static void
+ do_grab_screenshot (ShellScreenshot     *screenshot,
+                     int                  x,
+@@ -336,13 +400,15 @@ do_grab_screenshot (ShellScreenshot     *screenshot,
+     paint_flags |= CLUTTER_PAINT_FLAG_FORCE_CURSORS;
+   else
+     paint_flags |= CLUTTER_PAINT_FLAG_NO_CURSORS;
+-  if (!clutter_stage_paint_to_buffer (stage, &screenshot_rect, scale,
+-                                      cairo_image_surface_get_data (image),
+-                                      cairo_image_surface_get_stride (image),
+-                                      COGL_PIXEL_FORMAT_CAIRO_ARGB32_COMPAT,
+-                                      NULL,
+-                                      paint_flags,
+-                                      &error))
++
++  /* Luma: a surface with a backdrop blur (the shelf's frost and glass
++   * islands, Quick Options, Beam) blurs what is painted under it. Painting
++   * only the captured rectangle gives it only the part of its backdrop
++   * inside that rectangle, so it came out unlike the screen. Paint the whole
++   * stage at the capture's scale and keep the rectangle.
++   */
++  if (!paint_area_of_full_stage (stage, &screenshot_rect, scale, image,
++                                 paint_flags, &error))
+     {
+       cairo_surface_destroy (image);
+       g_warning ("Failed to take screenshot: %s", error->message);
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,295 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <build@projectluma.org>
+Date: Sun, 30 Aug 2026 19:50:22 -0400
+Subject: [PATCH] Polish Luma login details
+
+---
+ data/theme/gnome-shell-dark.css                  | 16 ++++++++--------
+ data/theme/gnome-shell-high-contrast.css         | 16 ++++++++--------
+ data/theme/gnome-shell-light.css                 | 16 ++++++++--------
+ .../gnome-shell-sass/widgets/_login-lock.scss    | 16 ++++++++--------
+ data/theme/prairie-login-avatar.svg              |  8 ++++----
+ 5 files changed, 36 insertions(+), 36 deletions(-)
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index cf22ce9..c8cb10d 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3073,7 +3073,7 @@ StScrollBar {
+   background-gradient-end: rgba(4, 13, 13, 0.27); }
+ 
+ .prairie-login-clock {
+-  spacing: 16px;
++  spacing: 4px;
+   color: white;
+   font-family: "Figtree";
+   text-shadow: 0 3px 22px rgba(0, 0, 0, 0.34); }
+@@ -3124,7 +3124,7 @@ StScrollBar {
+       background-color: #4c6078;
+       background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
+       background-size: cover;
+-      box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6);
++      box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.42);
+       color: white; }
+     .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .prairie-login-avatar-initial {
+       color: white;
+@@ -3148,7 +3148,7 @@ StScrollBar {
+   border: 1px solid rgba(255, 255, 255, 0.045);
+   border-radius: 10px;
+   background-color: #21252b;
+-  box-shadow: 0 22px 52px -15px rgba(9, 11, 14, 0.4); }
++  box-shadow: 0 12px 28px -12px rgba(9, 11, 14, 0.3); }
+   .login-dialog-button-box.prairie-password-field:focus-within {
+     border-color: rgba(255, 255, 255, 0.25); }
+ 
+@@ -3183,14 +3183,14 @@ StScrollBar {
+   .login-dialog .login-dialog-prompt-entry StIcon.peek-password,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
+   .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password {
+-    icon-size: 19px;
++    icon-size: 15px;
+     padding: 0;
+-    color: #969da4; }
++    color: rgba(150, 157, 164, 0.72); }
+   .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
+   .login-dialog .login-dialog-prompt-entry StIcon.peek-password:hover,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
+   .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password:hover {
+-    color: #e7e9e8; }
++    color: rgba(231, 233, 232, 0.82); }
+   .login-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
+   .login-dialog .login-dialog-prompt-entry:focus,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
+@@ -3215,14 +3215,14 @@ StScrollBar {
+   border: 0;
+   border-radius: 10px;
+   background-color: rgba(255, 255, 255, 0.88);
+-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
++  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+   color: #242a30; }
+   .prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
+     background-color: white; }
+   .prairie-login-submit-button:active {
+     background-color: rgba(255, 255, 255, 0.8); }
+   .prairie-login-submit-button .prairie-login-submit-icon {
+-    icon-size: 18px;
++    icon-size: 15px;
+     color: #242a30; }
+   .prairie-login-submit-button .spinner {
+     color: #242a30; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 1c17ee9..8d40188 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -3403,7 +3403,7 @@ StScrollBar {
+   background-gradient-end: rgba(4, 13, 13, 0.27); }
+ 
+ .prairie-login-clock {
+-  spacing: 16px;
++  spacing: 4px;
+   color: white;
+   font-family: "Figtree";
+   text-shadow: 0 3px 22px rgba(0, 0, 0, 0.34); }
+@@ -3454,7 +3454,7 @@ StScrollBar {
+       background-color: #4c6078;
+       background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
+       background-size: cover;
+-      box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6);
++      box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.42);
+       color: white; }
+     .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .prairie-login-avatar-initial {
+       color: white;
+@@ -3478,7 +3478,7 @@ StScrollBar {
+   border: 1px solid rgba(255, 255, 255, 0.045);
+   border-radius: 10px;
+   background-color: #21252b;
+-  box-shadow: 0 22px 52px -15px rgba(9, 11, 14, 0.4); }
++  box-shadow: 0 12px 28px -12px rgba(9, 11, 14, 0.3); }
+   .login-dialog-button-box.prairie-password-field:focus-within {
+     border-color: rgba(255, 255, 255, 0.25); }
+ 
+@@ -3513,14 +3513,14 @@ StScrollBar {
+   .login-dialog .login-dialog-prompt-entry StIcon.peek-password,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
+   .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password {
+-    icon-size: 19px;
++    icon-size: 15px;
+     padding: 0;
+-    color: #969da4; }
++    color: rgba(150, 157, 164, 0.72); }
+   .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
+   .login-dialog .login-dialog-prompt-entry StIcon.peek-password:hover,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
+   .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password:hover {
+-    color: #e7e9e8; }
++    color: rgba(231, 233, 232, 0.82); }
+   .login-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
+   .login-dialog .login-dialog-prompt-entry:focus,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
+@@ -3545,14 +3545,14 @@ StScrollBar {
+   border: 0;
+   border-radius: 10px;
+   background-color: rgba(255, 255, 255, 0.88);
+-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
++  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+   color: #242a30; }
+   .prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
+     background-color: white; }
+   .prairie-login-submit-button:active {
+     background-color: rgba(255, 255, 255, 0.8); }
+   .prairie-login-submit-button .prairie-login-submit-icon {
+-    icon-size: 18px;
++    icon-size: 15px;
+     color: #242a30; }
+   .prairie-login-submit-button .spinner {
+     color: #242a30; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index d923c78..467a746 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3228,7 +3228,7 @@ StScrollBar {
+   background-gradient-end: rgba(4, 13, 13, 0.27); }
+ 
+ .prairie-login-clock {
+-  spacing: 16px;
++  spacing: 4px;
+   color: white;
+   font-family: "Figtree";
+   text-shadow: 0 3px 22px rgba(0, 0, 0, 0.34); }
+@@ -3279,7 +3279,7 @@ StScrollBar {
+       background-color: #4c6078;
+       background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
+       background-size: cover;
+-      box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6);
++      box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.42);
+       color: white; }
+     .login-dialog-prompt-layout.prairie-auth-card .user-widget.vertical .prairie-login-avatar-initial {
+       color: white;
+@@ -3303,7 +3303,7 @@ StScrollBar {
+   border: 1px solid rgba(255, 255, 255, 0.045);
+   border-radius: 10px;
+   background-color: #21252b;
+-  box-shadow: 0 22px 52px -15px rgba(9, 11, 14, 0.4); }
++  box-shadow: 0 12px 28px -12px rgba(9, 11, 14, 0.3); }
+   .login-dialog-button-box.prairie-password-field:focus-within {
+     border-color: rgba(255, 255, 255, 0.25); }
+ 
+@@ -3338,14 +3338,14 @@ StScrollBar {
+   .login-dialog .login-dialog-prompt-entry StIcon.peek-password,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password,
+   .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password {
+-    icon-size: 19px;
++    icon-size: 15px;
+     padding: 0;
+-    color: #969da4; }
++    color: rgba(150, 157, 164, 0.72); }
+   .login-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
+   .login-dialog .login-dialog-prompt-entry StIcon.peek-password:hover,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry StIcon.peek-password:hover,
+   .unlock-dialog .login-dialog-prompt-entry StIcon.peek-password:hover {
+-    color: #e7e9e8; }
++    color: rgba(231, 233, 232, 0.82); }
+   .login-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
+   .login-dialog .login-dialog-prompt-entry:focus,
+   .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry:focus,
+@@ -3370,14 +3370,14 @@ StScrollBar {
+   border: 0;
+   border-radius: 10px;
+   background-color: rgba(255, 255, 255, 0.88);
+-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
++  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+   color: #242a30; }
+   .prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
+     background-color: white; }
+   .prairie-login-submit-button:active {
+     background-color: rgba(255, 255, 255, 0.8); }
+   .prairie-login-submit-button .prairie-login-submit-icon {
+-    icon-size: 18px;
++    icon-size: 15px;
+     color: #242a30; }
+   .prairie-login-submit-button .spinner {
+     color: #242a30; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index 7cf6651..c8c0707 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -49,7 +49,7 @@ $_gdm_dialog_width: 25em;
+ }
+ 
+ .prairie-login-clock {
+-  spacing: 16px;
++  spacing: 4px;
+   color: white;
+   font-family: "Figtree";
+   text-shadow: 0 3px 22px rgba(0, 0, 0, 0.34);
+@@ -110,7 +110,7 @@ $_gdm_dialog_width: 25em;
+       background-color: #4c6078;
+       background-image: url("resource:///org/gnome/shell/theme/prairie-login-avatar.svg");
+       background-size: cover;
+-      box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.60);
++      box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.42);
+       color: white;
+     }
+ 
+@@ -139,7 +139,7 @@ $_gdm_dialog_width: 25em;
+   border: 1px solid rgba(255, 255, 255, 0.045);
+   border-radius: 10px;
+   background-color: #21252b;
+-  box-shadow: 0 22px 52px -15px rgba(9, 11, 14, 0.40);
++  box-shadow: 0 12px 28px -12px rgba(9, 11, 14, 0.30);
+ 
+   &:focus-within {
+     border-color: rgba(255, 255, 255, 0.25);
+@@ -174,12 +174,12 @@ $_gdm_dialog_width: 25em;
+     }
+ 
+     StIcon.peek-password {
+-      icon-size: 19px;
++      icon-size: 15px;
+       padding: 0;
+-      color: #969da4;
++      color: rgba(150, 157, 164, 0.72);
+     }
+ 
+-    StIcon.peek-password:hover { color: #e7e9e8; }
++    StIcon.peek-password:hover { color: rgba(231, 233, 232, 0.82); }
+ 
+     &:focus {
+       border: 0;
+@@ -208,14 +208,14 @@ $_gdm_dialog_width: 25em;
+   border: 0;
+   border-radius: 10px;
+   background-color: rgba(255, 255, 255, 0.88);
+-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
++  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+   color: #242a30;
+ 
+   &:hover, &:focus { background-color: white; }
+   &:active { background-color: rgba(255, 255, 255, 0.80); }
+ 
+   .prairie-login-submit-icon {
+-    icon-size: 18px;
++    icon-size: 15px;
+     color: #242a30;
+   }
+ 
+diff --git a/data/theme/prairie-login-avatar.svg b/data/theme/prairie-login-avatar.svg
+index b4ced67..d5ddf76 100644
+--- a/data/theme/prairie-login-avatar.svg
++++ b/data/theme/prairie-login-avatar.svg
+@@ -1,10 +1,10 @@
+ <svg xmlns="http://www.w3.org/2000/svg" width="66" height="66" viewBox="0 0 66 66">
+   <defs>
+     <linearGradient id="avatar" gradientUnits="userSpaceOnUse" x1="7" y1="4" x2="59" y2="62">
+-      <stop offset="0" stop-color="#7b9ecc"/>
+-      <stop offset=".5" stop-color="#4878b8"/>
+-      <stop offset="1" stop-color="#284265"/>
++      <stop offset="0" stop-color="#8794a3"/>
++      <stop offset=".5" stop-color="#667485"/>
++      <stop offset="1" stop-color="#465363"/>
+     </linearGradient>
+   </defs>
+-  <circle cx="33" cy="33" r="33" fill="url(#avatar)"/>
++  <rect width="66" height="66" rx="13" fill="url(#avatar)"/>
+ </svg>
+

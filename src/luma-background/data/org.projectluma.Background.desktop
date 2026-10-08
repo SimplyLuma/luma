@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Background Activity
+Comment=Apps that keep working when their windows are closed
+Icon=preferences-system-time-symbolic
+Exec=gnome-control-center applications
+NoDisplay=true
+X-GNOME-UsesNotifications=true

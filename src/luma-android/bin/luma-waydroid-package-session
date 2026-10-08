@@ -1,0 +1,272 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import os
+import grp
+import json
+import pwd
+import re
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import NoReturn
+
+
+PAYLOAD = re.compile(r"^luma-[0-9a-f]{32}-[0-9]{4}\.apk$")
+PACKAGE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
+LXC_PATH = "/var/lib/waydroid/lxc"
+LXC_NAME = "waydroid"
+
+
+def fail(message: str) -> NoReturn:
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def thaw_android() -> bool:
+    """Make the container attachable, returning whether it must be refrozen."""
+    try:
+        state = subprocess.check_output(
+            ["/usr/bin/lxc-info", "-P", LXC_PATH, "-n", LXC_NAME, "-sH"],
+            text=True,
+            timeout=8,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        if state != "FROZEN":
+            return False
+        subprocess.run(
+            ["/usr/bin/lxc-unfreeze", "-P", LXC_PATH, "-n", LXC_NAME],
+            check=True,
+            timeout=8,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError):
+        fail("Android is still finishing startup")
+
+
+def refreeze_android(required: bool) -> None:
+    if not required:
+        return
+    try:
+        subprocess.run(
+            ["/usr/bin/lxc-freeze", "-P", LXC_PATH, "-n", LXC_NAME],
+            check=True,
+            timeout=8,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Do not hide a completed transaction if the ordinary idle policy must
+        # perform the eventual refreeze.
+        pass
+
+
+def removal_command(arguments: list[str]) -> list[str] | None:
+    if not arguments or arguments[0] != "remove-package":
+        return None
+    if (len(arguments) != 3 or len(arguments[1]) > 255
+            or not PACKAGE.fullmatch(arguments[1])
+            or arguments[2] not in {"keep-data", "delete-data"}):
+        fail("invalid Android removal request")
+    return ["/system/bin/pm", "uninstall", *(["-k"] if arguments[2] == "keep-data" else []),
+            "--user", "0", arguments[1]]
+
+
+def main() -> int:
+    arguments = sys.argv[1:]
+    removal = removal_command(arguments)
+    list_request = arguments == ["installed-packages"]
+    profile_request = arguments == ["device-profile"]
+    charger_mode_request = arguments == ["boot-from-charger-mode"]
+    input_policy_request = (
+        len(arguments) == 2
+        and arguments[0] == "input-policy"
+        and arguments[1] in {"desktop", "tablet", "handheld"}
+    )
+    install_request = len(arguments) >= 6 and arguments[:5] == [
+        "pm", "install", "--user", "0", "-r"
+    ]
+    if (
+        not profile_request
+        and not charger_mode_request
+        and not input_policy_request
+        and not install_request
+        and removal is None
+        and not list_request
+    ):
+        fail("invalid Android package transaction")
+
+    try:
+        caller_uid = int(os.environ["PKEXEC_UID"])
+        caller = pwd.getpwuid(caller_uid)
+    except (KeyError, ValueError):
+        fail("cannot identify the requesting desktop user")
+
+    try:
+        wheel_gid = grp.getgrnam("wheel").gr_gid
+        caller_groups = os.getgrouplist(caller.pw_name, caller.pw_gid)
+    except KeyError:
+        fail("the privileged installer group is unavailable")
+    if wheel_gid not in caller_groups:
+        fail("the requesting user cannot manage Android compatibility")
+
+    def android_command(*command: str, capture: bool = False) -> str:
+        invocation = [
+            "/usr/bin/lxc-attach", "-P", LXC_PATH,
+            "-n", LXC_NAME, "--clear-env", "--", *command,
+        ]
+        refreeze = thaw_android()
+        try:
+            for attempt in range(3):
+                try:
+                    if capture:
+                        return subprocess.check_output(
+                            invocation,
+                            text=True,
+                            timeout=8,
+                            stderr=subprocess.DEVNULL,
+                        ).strip()
+                    subprocess.run(
+                        invocation,
+                        check=True,
+                        timeout=8,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    return ""
+                except (OSError, subprocess.SubprocessError):
+                    if attempt < 2:
+                        time.sleep(0.75)
+            fail("Android is still finishing startup")
+        finally:
+            refreeze_android(refreeze)
+
+    if list_request:
+        print(android_command("/system/bin/pm", "list", "packages", "--user", "0", capture=True))
+        return 0
+
+    if profile_request:
+        def android_output(*command: str) -> str:
+            return android_command(*command, capture=True)
+
+        abis = [
+            value for value in android_output(
+                "/system/bin/getprop", "ro.product.cpu.abilist"
+            ).split(",") if value
+        ]
+        density_output = android_output("/system/bin/wm", "density")
+        density_match = re.search(r"(?:Override|Physical) density:\s*([0-9]+)", density_output)
+        locale = android_output("/system/bin/getprop", "persist.sys.locale")
+        if not locale:
+            locale = android_output("/system/bin/getprop", "ro.product.locale")
+        if not abis or density_match is None or not locale:
+            fail("Android returned an incomplete compatibility profile")
+        print(json.dumps({
+            "abis": abis,
+            "density": int(density_match.group(1)),
+            "locale": locale,
+        }, sort_keys=True))
+        return 0
+
+    if charger_mode_request:
+        mode = android_command(
+            "/system/bin/getprop", "ro.boot.mode", capture=True
+        )
+        if mode == "charger":
+            android_command(
+                "/system/bin/setprop", "sys.boot_from_charger_mode", "1"
+            )
+            transitioned = android_command(
+                "/system/bin/getprop", "sys.boot_from_charger_mode", capture=True
+            )
+            if transitioned != "1":
+                fail("Android rejected the transition from charger mode")
+        return 0
+
+    if input_policy_request:
+        device_class = arguments[1]
+        # Waydroid presents a virtual hardware keyboard to Android even on a
+        # desktop. Android's supported secure setting is the authoritative
+        # policy surface for deciding whether its own IME should accompany
+        # that keyboard. Touch-first profiles keep the IME; the desktop uses
+        # the host keyboard and host input-method surface exclusively.
+        show_soft_keyboard = "0" if device_class == "desktop" else "1"
+        android_command(
+            "/system/bin/settings", "put", "secure",
+            "show_ime_with_hard_keyboard", show_soft_keyboard,
+        )
+        applied = android_command(
+            "/system/bin/settings", "get", "secure",
+            "show_ime_with_hard_keyboard", capture=True,
+        )
+        if applied != show_soft_keyboard:
+            fail("Android rejected the compatibility input policy")
+        # Every Android application is a resizable window on desktop and
+        # tablet, like every other application there. Apps that declare a
+        # fixed size or aspect ratio were otherwise letterboxed inside their
+        # window: bars beside the app after a resize that never went away.
+        if device_class != "handheld":
+            android_command(
+                "/system/bin/settings", "put", "global",
+                "force_resizable_activities", "1",
+            )
+        return 0
+
+    if removal is not None:
+        refreeze = thaw_android()
+        try:
+            completed = subprocess.run(
+                ["/usr/bin/lxc-attach", "-P", LXC_PATH, "-n", LXC_NAME,
+                 "--clear-env", "--", *removal],
+                capture_output=True, text=True, check=False, timeout=180)
+            print(completed.stdout, end="")
+            print(completed.stderr, end="", file=sys.stderr)
+            if completed.returncode != 0 or "Success" not in completed.stdout.splitlines():
+                return completed.returncode or 1
+            return 0
+        finally:
+            refreeze_android(refreeze)
+
+    android_paths = arguments[5:]
+    if len(android_paths) > 256:
+        fail("too many Android package payloads")
+    host_root = Path(caller.pw_dir) / ".local/share/waydroid/data/waydroid_tmp"
+    for android_path in android_paths:
+        name = Path(android_path).name
+        if android_path != f"/data/waydroid_tmp/{name}" or not PAYLOAD.fullmatch(name):
+            fail("invalid package payload path")
+        host_path = host_root / name
+        try:
+            metadata = host_path.lstat()
+        except OSError:
+            fail("package payload is unavailable")
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != caller_uid:
+            fail("package payload ownership is invalid")
+        if metadata.st_size <= 0 or metadata.st_size > 2 * 1024 * 1024 * 1024:
+            fail("package payload size is invalid")
+        if metadata.st_mode & 0o077:
+            fail("package payload is not private")
+
+    refreeze = thaw_android()
+    try:
+        completed = subprocess.run(
+            [
+                "/usr/bin/lxc-attach", "-P", LXC_PATH,
+                "-n", LXC_NAME, "--clear-env", "--", "/system/bin/pm",
+                "install", "--user", "0", "-r", *android_paths,
+            ],
+            check=False,
+        )
+        return completed.returncode
+    finally:
+        refreeze_android(refreeze)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

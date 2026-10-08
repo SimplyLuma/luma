@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+[Unit]
+Description=Userspace IMS/VoLTE daemon (SIP register + calls over the ims PDN)
+# needs the ims PDN (multiplexed netdev + global v6) — ims-pdn-up.sh
+# creates/connects the bearer through ModemManager and configures the netdev
+After=ModemManager.service network.target
+Wants=ModemManager.service
+
+[Service]
+Type=simple
+# bring up the ims PDN first; waits for modem + LTE attach, idempotent.
+# worst case ~4 min (modem wait + connect retries), hence TimeoutStartSec
+ExecStartPre=/usr/libexec/ims-pdn-up.sh
+TimeoutStartSec=600
+# /run/imsd.env: written by ims-pdn-up.sh (DEV= the connected ims netdev).
+# /etc/imsd.env: admin configuration — PCSCF= is REQUIRED (the carrier's
+# P-CSCF address; see the README's Configuration section) and wins over the
+# runtime-derived values.
+EnvironmentFile=-/run/imsd.env
+EnvironmentFile=-/etc/imsd.env
+# registration state (imsreg.state) + media stats live here
+StateDirectory=imsd
+ExecStart=/usr/bin/imsd
+# registration: resume an existing SA when possible (avoids fresh-SA
+# throttles); a failed bring-up exits nonzero and systemd retries
+Restart=on-failure
+RestartSec=120
+# SIGTERM: engine keeps the SA + registration state for the next resume
+KillMode=mixed
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

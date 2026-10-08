@@ -1,0 +1,40 @@
+--- a/src/ui/application.js
++++ b/src/ui/application.js
+@@ -80,8 +80,10 @@
+ 
+     get ParentHandle() { return this.Visible ? (this.application._parentHandle || '') : ''; }
+ 
+-    ShowFile(uri, windowHandle, closeIfAlreadyShown, activationToken) {
+-        this.application.showFile(uri, windowHandle, closeIfAlreadyShown, activationToken);
++    ShowFileAsync(params, invocation) {
++        this.application.showFile(...params);
++        this.application.watchPreviewOwner(invocation.get_connection(), invocation.get_sender());
++        invocation.return_value(null);
+     }
+ }
+ 
+@@ -127,6 +129,9 @@
+ 
+         this._mainWindow.connect('destroy', () => {
+             this._mainWindow = null;
++            if (this._previewOwnerWatch) Gio.bus_unwatch_name(this._previewOwnerWatch);
++            this._previewOwnerWatch = 0;
++            this._previewOwner = null;
+             this._skeleton2.impl.emit_property_changed(
+                 'Visible', new GLib.Variant('b', false));
+         });
+@@ -134,6 +139,14 @@
+ 
+     _defineStyleAndThemes() {
+         // Follow the system treatment; Quick View does not force a dark theme.
++    }
++
++    watchPreviewOwner(connection, owner) {
++        if (this._previewOwner === owner) return;
++        if (this._previewOwnerWatch) Gio.bus_unwatch_name(this._previewOwnerWatch);
++        this._previewOwner = owner;
++        this._previewOwnerWatch = Gio.bus_watch_name_on_connection(connection, owner,
++            Gio.BusNameWatcherFlags.NONE, null, () => this.close());
+     }
+ 
+     close() {

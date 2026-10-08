@@ -1,0 +1,99 @@
+{
+  "_doc": "Document editor visual layout from simulator v71 #n-doc and .peer; transient presentation does not enter saved content.",
+  "lumaui": {
+    "document_text": {
+      "paragraph_after": 12,
+      "list_gap": 3,
+      "list_indent": 22,
+      "check_indent": 30,
+      "heading_before": 26,
+      "heading_after": 8,
+      "quote_indent": 16,
+      "quote_before": 16,
+      "quote_after": 16,
+      "quote_family": "Newsreader, serif",
+      "quote_size": 17,
+      "quote_weight": 400,
+      "quote_line_height_ratio": 1.65,
+      "quote_rule_width": 2.5,
+      "quote_rule_lightness_ratio": 0.72,
+      "quote_rule_chroma_ratio": 0.13,
+      "quote_padding_y": 2
+    },
+    "document_caret": {
+      "width": 2,
+      "radius": 1,
+      "height_ratio": 1.2,
+      "label_size": 10.5,
+      "label_weight": 650,
+      "label_padding_x": 6,
+      "label_padding_y": 1,
+      "label_radius": 5,
+      "ink_lightness_ratio": 0.72,
+      "label_lightness_ratio": 0.6,
+      "chroma_ratio": 0.15,
+      "label_tracking": 0.105
+    },
+    "document_path": {
+      "height": 26,
+      "radius": 8,
+      "padding_start": 8,
+      "padding_end": 9,
+      "gap": 6,
+      "size": 12,
+      "weight": 500,
+      "tracking": 0.12,
+      "crumb_gap": 10
+    },
+    "document_presence": {
+      "height": 36,
+      "radius": 12,
+      "padding_start": 4,
+      "padding_end": 10,
+      "gap": 9,
+      "status_gap": 5,
+      "status_size": 12,
+      "status_tracking": 0.12,
+      "dot": 7,
+      "glow": 6
+    },
+    "document_add": {
+      "height": 32,
+      "gap": 7,
+      "padding_start": 8,
+      "padding_end": 10,
+      "radius": 10,
+      "icon": 15,
+      "label_size": 12.5,
+      "label_weight": 400
+    },
+    "type_scale": {
+      "document_title": {
+        "size": 32,
+        "weight": 700,
+        "line_height": 1.15,
+        "tracking_em": -0.03
+      },
+      "document_title_compact": {
+        "size": 26,
+        "weight": 700,
+        "line_height": 1.15,
+        "tracking_em": -0.03
+      }
+    },
+    "panel_person": {
+      "height": 48,
+      "padding_x": 6,
+      "radius": 12,
+      "lead": 34,
+      "icon": 17,
+      "title_size": 14.5,
+      "title_weight": 600,
+      "subtitle_size": 12,
+      "line_height_ratio": 1.25,
+      "presence_size": 7,
+      "presence_gap": 5,
+      "presence_glow": 6
+    }
+  }
+}

@@ -1,0 +1,105 @@
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -138,13 +138,41 @@
+                       resizable: false });
+ 
+         this.get_accessible().set_name('Quick View');
++        this.get_style_context().add_class('luma-preview-window');
++        this.get_style_context().add_class('luma-no-native-surfaces');
+         this.connect('destroy', () => { this._queryCancel?.cancel(); });
+ 
+-        this._titlebar = new Gtk.HeaderBar({ show_close_button: true,
+-                                             decoration_layout: _getDecorationLayout() });
++        this._titlebar = new Gtk.HeaderBar({ show_close_button: false,
++                                             has_subtitle: false });
++        this._titlebar.get_style_context().add_class('luma-no-automatic-identity');
++        this._titlebar.get_style_context().add_class('luma-no-command-row');
++        this._titlebar.get_style_context().add_class('luma-preview-titlebar');
++        const identity = new Gtk.Box({spacing: 10, valign: Gtk.Align.CENTER});
++        this._kindIcon = new Gtk.Image({pixel_size: 16});
++        identity.add(this._kindIcon);
++        const labels = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 0});
++        this._fileName = new Gtk.Label({xalign: 0, ellipsize: 3, max_width_chars: 32});
++        this._fileName.get_style_context().add_class('luma-preview-name');
++        this._fileFacts = new Gtk.Label({xalign: 0, ellipsize: 3, max_width_chars: 42});
++        this._fileFacts.get_style_context().add_class('luma-preview-facts');
++        labels.add(this._fileName); labels.add(this._fileFacts); identity.add(labels);
++        this._titlebar.pack_start(identity);
++        const close = Gtk.Button.new_from_icon_name('window-close-symbolic', Gtk.IconSize.MENU);
++        close.set_tooltip_text('Close'); close.get_accessible().set_name('Close');
++        close.set_valign(Gtk.Align.CENTER);
++        close.connect('clicked', () => this.destroy());
++        this._titlebar.pack_end(close);
++        this._fullButton = Gtk.Button.new_from_icon_name('view-fullscreen-symbolic', Gtk.IconSize.MENU);
++        this._fullButton.set_tooltip_text('Full screen');
++        this._fullButton.get_accessible().set_name('Full screen');
++        this._fullButton.set_valign(Gtk.Align.CENTER);
++        this._fullButton.connect('clicked', () => this.lookup_action('fullscreen').activate(null));
++        this._titlebar.pack_end(this._fullButton);
++        this._titlebar.set_custom_title(new Gtk.Box());
+         this.set_titlebar(this._titlebar);
+ 
+-        this._openButton = new Gtk.Button();
++        this._openButton = new Gtk.Button({valign: Gtk.Align.CENTER});
++        this._openButton.get_style_context().add_class('luma-preview-open');
+         this._openButton.connect('clicked', this._onFileOpenClicked.bind(this));
+         this._titlebar.pack_end(this._openButton);
+ 
+@@ -156,6 +184,7 @@
+         this.add(eventBox);
+ 
+         this._embed = new Embed();
++        this._embed.get_style_context().add_class('luma-preview-pane');
+         eventBox.add(this._embed);
+ 
+         // call show_all() early when there's still no child Renderer, because show_all() later
+@@ -271,6 +300,7 @@
+     }
+ 
+     _onRendererReady() {
++        this._updateFileFacts();
+         if (this._renderer.ready) {
+             this._resizeWindow();
+             this.queue_resize();
+@@ -383,6 +413,9 @@
+     }
+ 
+     _createView(fileInfo) {
++        this._fileInfo = fileInfo;
++        this._fileName.set_text(fileInfo.get_display_name());
++        this._kindIcon.set_from_gicon(fileInfo.get_icon(), Gtk.IconSize.MENU);
+         let klass = MimeHandler.getKlass(fileInfo.get_content_type());
+         let renderer = new klass(this.file, fileInfo);
+         this._embedRenderer(renderer);
+@@ -390,10 +423,31 @@
+         renderer.connect('error', (r, err) => { this._reportError(err); });
+         renderer.connect('notify::fullscreen', this._onRendererFullscreen.bind(this));
+         renderer.connect('notify::ready', this._onRendererReady.bind(this));
++        const buffer = renderer._view?.get_buffer?.();
++        if (buffer) buffer.connect('changed', () => { if (this._renderer === renderer) this._updateFileFacts(); });
+         this._onRendererReady();
+ 
+         this.set_resizable(this._fullView);
+         this.set_title(fileInfo.get_display_name());
++    }
++
++    _updateFileFacts() {
++        if (!this._fileInfo || !this._renderer) return;
++        const info = this._fileInfo;
++        const mime = info.get_content_type();
++        const names = {'text/markdown': 'Markdown', 'text/x-markdown': 'Markdown',
++            'text/html': 'Web page', 'text/plain': 'Plain text', 'inode/directory': 'Folder',
++            'application/pdf': 'PDF document', 'application/zip': 'ZIP archive'};
++        const facts = [names[mime] || Gio.content_type_get_description(mime)];
++        if (this._renderer._pix) {
++            facts.push(`${this._renderer._pix.get_width()} × ${this._renderer._pix.get_height()}`);
++        }
++        const document = this._renderer._model?.document;
++        if (document) facts.push(`${document.get_n_pages()} pages`);
++        const buffer = this._renderer._view?.get_buffer?.();
++        if (buffer?.get_char_count() > 0) facts.push(`${buffer.get_line_count()} lines`);
++        if (mime !== 'inode/directory') facts.push(GLib.format_size(info.get_size()));
++        this._fileFacts.set_text(facts.join(' · '));
+     }
+ 
+     _updateTitlebar() {

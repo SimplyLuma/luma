@@ -1,0 +1,155 @@
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+index 063aebc..3ba8de1 100644
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -316,8 +316,9 @@ nautilus_path_bar_init (NautilusPathBar *self)
+                                gtk_image_new_from_icon_name ("view-more-symbolic"));
+     gtk_widget_set_size_request (self->current_view_menu_button, 30, -1);
+     gtk_box_prepend (GTK_BOX (self), self->current_view_menu_button);
+-
+-    gtk_widget_set_tooltip_text (self->current_view_menu_button, _("Current Folder Menu"));
++    gtk_accessible_update_property (GTK_ACCESSIBLE (self->current_view_menu_button),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL, _("Current Folder Menu"),
++                                    -1);
+ 
+     builder = gtk_builder_new ();
+ 
+@@ -985,8 +986,9 @@ nautilus_path_bar_update_button_appearance (ButtonData *button_data,
+     if (button_data->label != NULL)
+     {
+         gtk_label_set_text (GTK_LABEL (button_data->label), dir_name);
+-
+-        gtk_widget_set_tooltip_text (button_data->button, dir_name);
++        gtk_accessible_update_property (GTK_ACCESSIBLE (button_data->button),
++                                        GTK_ACCESSIBLE_PROPERTY_LABEL, dir_name,
++                                        -1);
+ 
+         if (current_dir)
+         {
+diff --git a/src/nautilus-sidebar-row.c b/src/nautilus-sidebar-row.c
+index 6011251..887f0f7 100644
+--- a/src/nautilus-sidebar-row.c
++++ b/src/nautilus-sidebar-row.c
+@@ -341,6 +341,9 @@ nautilus_sidebar_row_set_property (GObject      *object,
+             g_free (self->label);
+             self->label = g_strdup (g_value_get_string (value));
+             gtk_label_set_text (GTK_LABEL (self->label_widget), self->label);
++            gtk_accessible_update_property (GTK_ACCESSIBLE (self),
++                                            GTK_ACCESSIBLE_PROPERTY_LABEL, self->label,
++                                            -1);
+             break;
+         }
+ 
+@@ -348,7 +351,6 @@ nautilus_sidebar_row_set_property (GObject      *object,
+         {
+             g_free (self->tooltip);
+             self->tooltip = g_strdup (g_value_get_string (value));
+-            gtk_widget_set_tooltip_text (GTK_WIDGET (self), self->tooltip);
+             break;
+         }
+ 
+diff --git a/src/resources/ui/nautilus-history-controls.blp b/src/resources/ui/nautilus-history-controls.blp
+index 1a3cb55..98aea4d 100644
+--- a/src/resources/ui/nautilus-history-controls.blp
++++ b/src/resources/ui/nautilus-history-controls.blp
+@@ -15,17 +15,23 @@ template $NautilusHistoryControls: Adw.Bin {
+     ]
+ 
+     Button back_button {
+-      tooltip-text: _("Back");
+       valign: center;
+       action-name: "slot.back";
+       icon-name: "go-previous-symbolic";
++
++      accessibility {
++        label: _("Back");
++      }
+     }
+ 
+     Button forward_button {
+-      tooltip-text: _("Forward");
+       valign: center;
+       action-name: "slot.forward";
+       icon-name: "go-next-symbolic";
++
++      accessibility {
++        label: _("Forward");
++      }
+     }
+   };
+ }
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 023abb4..8431f3a 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -41,11 +41,14 @@ template $NautilusToolbar: Adw.Bin {
+             transition-type: crossfade;
+ 
+             ToggleButton search_button {
+-              tooltip-text: _("Search");
+               valign: center;
+               action-name: "slot.search-global";
+               active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+ 
++              accessibility {
++                label: _("Search");
++              }
++
+               styles [
+                 "luma-search-field",
+               ]
+@@ -124,10 +127,13 @@ template $NautilusToolbar: Adw.Bin {
+ 
+     [end]
+     MenuButton {
+-      tooltip-text: _("Main Menu");
+       icon-name: "open-menu-symbolic";
+       menu-model: bind template.main-menu;
+ 
++      accessibility {
++        label: _("Main Menu");
++      }
++
+       styles [
+         "luma-main-menu",
+       ]
+diff --git a/src/resources/ui/nautilus-view-controls.blp b/src/resources/ui/nautilus-view-controls.blp
+index fb2bd2a..bd01646 100644
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -60,23 +60,32 @@ template $NautilusViewControls: Adw.Bin {
+ 
+     ToggleButton {
+       icon-name: "view-grid-symbolic";
+-      tooltip-text: _("Grid View");
+       action-name: "slot.files-view-mode";
+       action-target: "uint32 2";
++
++      accessibility {
++        label: _("Grid View");
++      }
+     }
+ 
+     ToggleButton {
+       icon-name: "view-list-symbolic";
+-      tooltip-text: _("List View");
+       action-name: "slot.files-view-mode";
+       action-target: "uint32 1";
++
++      accessibility {
++        label: _("List View");
++      }
+     }
+ 
+     MenuButton {
+       /* Translators: This is a noun, meaning the options pertaining to the view. */
+-      tooltip-text: _("View Options");
+       icon-name: "pan-down-symbolic";
+ 
++      accessibility {
++        label: _("View Options");
++      }
++
+       popover: PopoverMenu {
+         menu-model: view_menu;
+ 

@@ -1,0 +1,36 @@
+diff --git a/tests/test_protocol.c b/tests/test_protocol.c
+--- a/tests/test_protocol.c
++++ b/tests/test_protocol.c
+@@ -112,12 +112,31 @@ int main(void)
+ 	snprintf(file, sizeof(file), "%s/data/vendor/fpdump/a.so", root); assert(!stat(file, &st) && st.st_size == 6 && (st.st_mode & 0777) == 0600);
+ 	snprintf(file, sizeof(file), "%s/data/vendor/fpdump/a.so.bak", root); assert(!stat(file, &st) && st.st_size == 5);
+ 
++	/* A later offset-zero header refresh must preserve an existing tail. */
++	memset(b, 0, QS_GPFS_BUFFER_SIZE); p32(b, 1);
++	strcpy((char *)b + 4, "/data/vendor/fpdump/a.so");
++	p32(b + 0x104, 6); p32(b + 0x108, 4);
++	memcpy(b + 0x110, "tail", 4);
++	assert(!qs_gpfs_dispatch(&store, b, QS_GPFS_BUFFER_SIZE));
++	assert(u32(b + 4) == 0 && u32(b + 8) == 4);
++	memset(b, 0, QS_GPFS_BUFFER_SIZE); p32(b, 1);
++	strcpy((char *)b + 4, "/data/vendor/fpdump/a.so");
++	p32(b + 0x104, 0); p32(b + 0x108, 4);
++	memcpy(b + 0x110, "HEAD", 4);
++	assert(!qs_gpfs_dispatch(&store, b, QS_GPFS_BUFFER_SIZE));
++	assert(u32(b + 4) == 0 && u32(b + 8) == 4);
++	snprintf(file, sizeof(file), "%s/data/vendor/fpdump/a.so", root);
++	assert(!stat(file, &st) && st.st_size == 10);
++	assert((handle = open(file, O_RDONLY | O_CLOEXEC)) >= 0);
++	assert(read(handle, out, 10) == 10 && !memcmp(out, "HEADndtail", 10));
++	assert(!close(handle));
++
+ 	memset(b, 0, QS_GPFS_BUFFER_SIZE); p32(b, 3);
+ 	strcpy((char *)b + 4, "/data/vendor/fpdump/a.so");
+ 	strcpy((char *)b + 0x104, "/data/vendor/fpdump/moved.so");
+ 	assert(!qs_gpfs_dispatch(&store, b, QS_GPFS_BUFFER_SIZE)); assert(u32(b + 4) == 0);
+ 	snprintf(file, sizeof(file), "%s/data/vendor/fpdump/moved.so", root);
+-	assert(!stat(file, &st) && st.st_size == 6);
++	assert(!stat(file, &st) && st.st_size == 10);
+ 
+ 	/* A read reply must fit in the caller-provided listener buffer. */
+ 	memset(b, 0, 0x110); p32(b, 0);

@@ -1,0 +1,11 @@
+[Unit]
+Description=Update apps in the background, holding updates that ask for more
+Documentation=https://simplyluma.com/apps
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/luma-depot --update-apps
+Nice=10
+IOSchedulingClass=idle

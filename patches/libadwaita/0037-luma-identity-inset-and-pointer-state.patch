@@ -1,0 +1,512 @@
+From ab292445fba5036b2e871ad03e83d7a35682f67e Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Thu, 17 Sep 2026 19:51:00 -0500
+Subject: [PATCH] header-bar: inset the identity button, and stop it sticking
+ or stealing focus
+
+Give the automatic application-identity button (the app name and chevron in
+a window's top-left corner) the same 24px/5px min-height-and-padding rhythm
+every other header-bar button uses instead of a doubled 32px min-height on
+both the wrapper and its inner button, which made the highlight roughly 40px
+tall and let it touch the header bar's top and bottom edges.
+
+Also guard the identity button's pointer-driven state directly: a tiling
+resize's implicit pointer grab can end (Ctrl-break, then button release)
+without GTK ever routing a crossing event back to the button that was
+hovered when the grab started, leaving :hover/:active stuck lit. Clear those
+state flags on pointer leave, on focus leaving the button, and on
+GDK_GRAB_BROKEN/GDK_BUTTON_RELEASE instead of relying on a crossing event a
+grabbed gesture may never deliver.
+
+Finally, a freshly mapped window gives its first focusable widget initial
+keyboard focus, marked focus-visible so a keyboard user can see where they
+landed without pressing a key -- and the identity button is usually the
+first focusable widget in the header bar, ahead of the window's actual
+content, so it is the one seen lit with a focus ring the moment a window
+opens, with no keyboard used at all. Release exactly that first, silent
+focus assignment (and nothing after it) so GTK's own focus chain moves on to
+the window's content, while a later, genuine Tab or mnemonic to the button
+still focuses and rings it normally.
+
+All three fixes live in shared AdwHeaderBar code, so every Luma application
+gets them, not just the one where each was first reported.
+---
+ src/adw-header-bar-private.h            |  11 ++
+ src/adw-header-bar.c                    | 188 ++++++++++++++++++++++++
+ src/stylesheet/widgets/_header-bar.scss |  14 +-
+ tests/test-header-bar.c                 | 161 ++++++++++++++++++++
+ 4 files changed, 369 insertions(+), 5 deletions(-)
+
+diff --git a/src/adw-header-bar-private.h b/src/adw-header-bar-private.h
+index 44d085e..e1ac5bb 100644
+--- a/src/adw-header-bar-private.h
++++ b/src/adw-header-bar-private.h
+@@ -10,4 +10,15 @@ void adw_header_bar_luma_release_identity (AdwHeaderBar *self);
+ void adw_header_bar_luma_claim_identity   (AdwHeaderBar *self);
+ void adw_header_bar_luma_update_pane_role (AdwHeaderBar *self);
+ 
++/* Test-only: exercises the same pointer/focus/grab-broken state clearing the
++ * identity button's own event controllers trigger, without depending on
++ * synthesizing a real GDK grab-broken event. See tests/test-header-bar.c. */
++GtkWidget *adw_header_bar_luma_test_get_identity (AdwHeaderBar *self);
++void adw_header_bar_luma_test_break_identity_grab (AdwHeaderBar *self);
++
++/* Test-only: marks the root as having seen genuine keyboard/pointer input,
++ * disarming the guard that releases the identity button's first, silent
++ * initial-focus assignment. See tests/test-header-bar.c. */
++void adw_header_bar_luma_test_note_real_input (AdwHeaderBar *self);
++
+ G_END_DECLS
+diff --git a/src/adw-header-bar.c b/src/adw-header-bar.c
+index f2fd495..3d29232 100644
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -235,6 +235,9 @@ enum {
+ static GParamSpec *props[LAST_PROP] = { NULL, };
+ 
+ static const char luma_identity_owner_key[] = "adw-header-bar-luma-identity-owner";
++static const char luma_identity_focus_guard_key[] = "adw-header-bar-luma-identity-focus-guard";
++static const char luma_identity_input_watch_key[] = "adw-header-bar-luma-identity-input-watch";
++static void luma_identity_guard_initial_focus (GtkWidget *identity, GtkRoot *root);
+ static void add_automatic_luma_identity (AdwHeaderBar *self);
+ static void update_title (AdwHeaderBar *self);
+ static void luma_update_title_widget_duplicate (AdwHeaderBar *self);
+@@ -578,6 +581,92 @@ luma_create_application_icon (GtkApplication *application,
+   return icon;
+ }
+ 
++/* A tiling resize holds an implicit pointer grab for the whole gesture; if
++ * the person taps Ctrl to break the window out of its tile and releases the
++ * mouse without the pointer moving again afterwards, GTK never gets the
++ * crossing event it would normally use to drop a stale :hover/:active state.
++ * The identity button is the one most likely to have been hovered when the
++ * grab started (it sits where a resize or tile-break often begins), so it is
++ * the one that is seen stuck lit. Clear its pointer-driven state flags
++ * directly whenever the pointer leaves it, its focus changes, or any grab
++ * affecting it ends, instead of trusting a crossing event that a grabbed
++ * gesture may never deliver. */
++static void
++luma_identity_clear_pointer_state (GtkWidget *widget)
++{
++  if (!widget)
++    return;
++
++  gtk_widget_unset_state_flags (widget,
++                                GTK_STATE_FLAG_PRELIGHT |
++                                GTK_STATE_FLAG_ACTIVE);
++
++  /* GtkMenuButton parents its real toggle button as an actual widget child
++   * (the "button" CSS node the stylesheet targets with "> button"), so its
++   * own pointer state has to be cleared separately from the wrapper's. */
++  if (GTK_IS_MENU_BUTTON (widget)) {
++    GtkWidget *inner = gtk_widget_get_first_child (widget);
++
++    if (inner)
++      gtk_widget_unset_state_flags (inner,
++                                    GTK_STATE_FLAG_PRELIGHT |
++                                    GTK_STATE_FLAG_ACTIVE);
++  }
++}
++
++static void
++luma_identity_pointer_left (GtkEventControllerMotion *controller,
++                            gpointer                  user_data)
++{
++  luma_identity_clear_pointer_state (GTK_WIDGET (user_data));
++}
++
++static void
++luma_identity_focus_left (GtkEventControllerFocus *controller,
++                          gpointer                 user_data)
++{
++  luma_identity_clear_pointer_state (GTK_WIDGET (user_data));
++}
++
++static gboolean
++luma_identity_legacy_event (GtkEventControllerLegacy *controller,
++                            GdkEvent                 *event,
++                            gpointer                  user_data)
++{
++  GdkEventType event_type = gdk_event_get_event_type (event);
++
++  /* GDK_GRAB_BROKEN is exactly the "an implicit grab that was covering this
++   * widget just ended" notification; a plain button release is a cheap,
++   * harmless second chance to drop the highlight if the grab ended without
++   * one. Either way real hover is re-asserted by the very next motion event
++   * if the pointer genuinely is still over the button. */
++  if (event_type == GDK_GRAB_BROKEN || event_type == GDK_BUTTON_RELEASE)
++    luma_identity_clear_pointer_state (GTK_WIDGET (user_data));
++
++  return GDK_EVENT_PROPAGATE;
++}
++
++static void
++luma_identity_guard_pointer_state (GtkWidget *identity)
++{
++  GtkEventController *motion = gtk_event_controller_motion_new ();
++  GtkEventController *focus = gtk_event_controller_focus_new ();
++  GtkEventController *legacy = gtk_event_controller_legacy_new ();
++
++  g_signal_connect (motion, "leave",
++                    G_CALLBACK (luma_identity_pointer_left), identity);
++  gtk_widget_add_controller (identity, motion);
++
++  g_signal_connect (focus, "leave",
++                    G_CALLBACK (luma_identity_focus_left), identity);
++  gtk_widget_add_controller (identity, focus);
++
++  gtk_event_controller_set_propagation_phase (legacy, GTK_PHASE_CAPTURE);
++  g_signal_connect (legacy, "event",
++                    G_CALLBACK (luma_identity_legacy_event), identity);
++  gtk_widget_add_controller (identity, legacy);
++}
++
+ static GtkWidget *
+ create_luma_identity (GtkApplication  *application,
+                       GtkWindow       *window,
+@@ -656,6 +745,8 @@ create_luma_identity (GtkApplication  *application,
+   if (gtk_application_get_menubar (application))
+     gtk_menu_button_set_primary (GTK_MENU_BUTTON (button), TRUE);
+ 
++  luma_identity_guard_pointer_state (button);
++
+   return button;
+ }
+ 
+@@ -710,6 +801,7 @@ add_automatic_luma_identity (AdwHeaderBar *self)
+   gtk_box_insert_child_after (GTK_BOX (self->start_box),
+                               self->luma_identity,
+                               self->start_controls);
++  luma_identity_guard_initial_focus (self->luma_identity, root);
+   g_object_set_data (G_OBJECT (root), luma_identity_owner_key, self);
+   update_box_visibility (self->start_box);
+   update_title (self);
+@@ -717,6 +809,109 @@ add_automatic_luma_identity (AdwHeaderBar *self)
+   luma_enter_command_row (self);
+ }
+ 
++/* GTK gives a freshly-mapped window's first focusable widget initial
++ * keyboard focus, marked focus-visible, so a keyboard user can see where
++ * they landed without having pressed a key yet. The identity button is
++ * usually the first focusable widget in the header bar's start box, ahead
++ * of the window's actual content, so it is the one that silently lights up
++ * on open. Release exactly that first, silent focus assignment -- and
++ * nothing after it -- so GTK's own focus chain moves on to the window's
++ * content instead, and a later, genuine Tab or mnemonic to this button
++ * still focuses and rings it normally. */
++static void
++luma_identity_focus_changed (GObject    *root_object,
++                             GParamSpec *pspec,
++                             gpointer    user_data)
++{
++  GtkRoot *root = GTK_ROOT (root_object);
++  GtkWidget *identity = GTK_WIDGET (user_data);
++  GtkWidget *focus = GTK_WIDGET (gtk_root_get_focus (root));
++
++  (void) pspec;
++
++  if (focus != identity)
++    return;
++
++  if (g_object_get_data (G_OBJECT (root), luma_identity_focus_guard_key))
++    return;
++
++  gtk_root_set_focus (root, NULL);
++}
++
++/* GtkEventControllerLegacy::event returns gboolean: TRUE stops the event.
++ * This watcher sits on the window root in the capture phase, so it must
++ * always let the event through, or no widget in the window ever gets a
++ * click, a drag or a key. */
++static gboolean
++luma_identity_note_real_input (GtkEventControllerLegacy *controller,
++                               GdkEvent                 *event,
++                               gpointer                  user_data)
++{
++  GdkEventType event_type = gdk_event_get_event_type (event);
++
++  (void) controller;
++
++  if (event_type == GDK_KEY_PRESS ||
++      event_type == GDK_BUTTON_PRESS ||
++      event_type == GDK_TOUCH_BEGIN)
++    g_object_set_data (G_OBJECT (user_data), (gpointer) luma_identity_focus_guard_key,
++                       GINT_TO_POINTER (TRUE));
++
++  return GDK_EVENT_PROPAGATE;
++}
++
++static void
++luma_identity_guard_initial_focus (GtkWidget *identity,
++                                   GtkRoot   *root)
++{
++  g_signal_connect_object (root, "notify::focus-widget",
++                           G_CALLBACK (luma_identity_focus_changed), identity, 0);
++
++  /* One input watcher per root is enough even if the root has more than one
++   * identity button (a split view's second pane, say). */
++  if (!g_object_get_data (G_OBJECT (root), luma_identity_input_watch_key)) {
++    GtkEventController *input_watch = gtk_event_controller_legacy_new ();
++
++    gtk_event_controller_set_propagation_phase (input_watch, GTK_PHASE_CAPTURE);
++    g_signal_connect (input_watch, "event",
++                      G_CALLBACK (luma_identity_note_real_input), root);
++    gtk_widget_add_controller (GTK_WIDGET (root), input_watch);
++    g_object_set_data (G_OBJECT (root), luma_identity_input_watch_key,
++                       GINT_TO_POINTER (TRUE));
++  }
++}
++
++GtkWidget *
++adw_header_bar_luma_test_get_identity (AdwHeaderBar *self)
++{
++  g_return_val_if_fail (ADW_IS_HEADER_BAR (self), NULL);
++
++  return self->luma_identity;
++}
++
++void
++adw_header_bar_luma_test_break_identity_grab (AdwHeaderBar *self)
++{
++  g_return_if_fail (ADW_IS_HEADER_BAR (self));
++
++  /* Exercises exactly the state clearing luma_identity_legacy_event() does
++   * for a real GDK_GRAB_BROKEN, without needing to synthesize one. */
++  luma_identity_clear_pointer_state (self->luma_identity);
++}
++
++void
++adw_header_bar_luma_test_note_real_input (AdwHeaderBar *self)
++{
++  GtkRoot *root;
++
++  g_return_if_fail (ADW_IS_HEADER_BAR (self));
++
++  root = gtk_widget_get_root (GTK_WIDGET (self));
++  if (GTK_IS_ROOT (root))
++    g_object_set_data (G_OBJECT (root), (gpointer) luma_identity_focus_guard_key,
++                       GINT_TO_POINTER (TRUE));
++}
++
+ static void
+ remove_automatic_luma_identity (AdwHeaderBar *self)
+ {
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 145d951..6a36c8b 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -87,14 +87,18 @@ headerbar {
+ // Shared Luma application-identity trigger. Applications supply their real
+ // GMenuModel and registered icon; the toolkit owns reusable geometry only.
+ headerbar .luma-identity-button {
+-  min-height: 32px;
++  /* The wrapper never paints; it only floors the row height so a menu-less
++   * identity (below) still reserves the same row. The visible control is
++   * the same 24px/5px rhythm as every other header-bar button, inset from
++   * the bar's top and bottom instead of stretching to fill it. */
++  min-height: 24px;
+   padding: 0;
+   border-radius: 10px;
+ }
+ 
+ headerbar .luma-identity-button > button {
+-  min-height: 32px;
+-  padding: 4px 8px 4px 4px;
++  min-height: 24px;
++  padding: 5px 8px 5px 4px;
+   border-radius: 10px;
+   background: transparent;
+   box-shadow: none;
+@@ -116,8 +120,8 @@ headerbar .luma-identity-button > button:checked {
+ // geometry and Figtree weight as the menu-button form instead of inheriting
+ // generic label styling.
+ headerbar box.luma-identity-button {
+-  min-height: 32px;
+-  padding: 4px 8px 4px 4px;
++  min-height: 24px;
++  padding: 5px 8px 5px 4px;
+   border-radius: 10px;
+   color: var(--headerbar-fg-color);
+ }
+diff --git a/tests/test-header-bar.c b/tests/test-header-bar.c
+index 7fb31b8..e1f8875 100644
+--- a/tests/test-header-bar.c
++++ b/tests/test-header-bar.c
+@@ -6,6 +6,163 @@
+ 
+ #include <adwaita.h>
+ 
++#include "adw-header-bar-private.h"
++
++
++/* Luma: the automatic application-identity button (app name and chevron,
++ * top-left of the header bar) is built by create_luma_identity() in
++ * adw-header-bar.c and must stay inset from the bar like every other
++ * header-bar button, and must never stay lit after the pointer leaves,
++ * focus moves on, or a grab covering it ends. */
++
++static GtkWidget *
++luma_identity_test_window (GtkApplication **application_out,
++                           AdwHeaderBar    **bar_out)
++{
++  GtkApplication *application =
++    gtk_application_new ("org.projectluma.HeaderBarIdentityTest",
++                         G_APPLICATION_NON_UNIQUE);
++  GMenu *menubar = g_menu_new ();
++  GtkWidget *window;
++  AdwHeaderBar *bar;
++  AdwToolbarView *toolbar_view;
++
++  g_menu_append (menubar, "About", "app.about");
++  g_application_set_default (G_APPLICATION (application));
++  gtk_application_set_menubar (application, G_MENU_MODEL (menubar));
++  g_assert_true (g_application_register (G_APPLICATION (application), NULL, NULL));
++
++  window = g_object_new (ADW_TYPE_APPLICATION_WINDOW,
++                         "application", application,
++                         NULL);
++
++  bar = ADW_HEADER_BAR (adw_header_bar_new ());
++  adw_header_bar_set_show_title (bar, FALSE);
++
++  toolbar_view = ADW_TOOLBAR_VIEW (adw_toolbar_view_new ());
++  adw_toolbar_view_add_top_bar (toolbar_view, GTK_WIDGET (bar));
++  adw_toolbar_view_set_content (toolbar_view, gtk_label_new (""));
++  adw_application_window_set_content (ADW_APPLICATION_WINDOW (window),
++                                      GTK_WIDGET (toolbar_view));
++
++  /* The identity is only created once the header bar is rooted and the
++   * window's GtkApplication is resolvable. */
++  gtk_window_present (GTK_WINDOW (window));
++  while (g_main_context_iteration (NULL, FALSE));
++
++  *application_out = application;
++  *bar_out = bar;
++
++  return window;
++}
++
++static void
++test_luma_identity_button_inset_geometry (void)
++{
++  GtkApplication *application;
++  AdwHeaderBar *bar;
++  GtkWidget *window = luma_identity_test_window (&application, &bar);
++  GtkWidget *identity = adw_header_bar_luma_test_get_identity (bar);
++  int bar_min, bar_nat, identity_min, identity_nat;
++
++  g_assert_nonnull (identity);
++  g_assert_true (GTK_IS_MENU_BUTTON (identity));
++
++  gtk_widget_measure (GTK_WIDGET (bar), GTK_ORIENTATION_VERTICAL, -1,
++                     &bar_min, &bar_nat, NULL, NULL);
++  gtk_widget_measure (identity, GTK_ORIENTATION_VERTICAL, -1,
++                     &identity_min, &identity_nat, NULL, NULL);
++
++  /* The old stacked 32px-min-height rule on both the wrapper and its inner
++   * button measured 40px tall against a ~46-47px bar -- close enough to
++   * "touches the top and bottom" to read that way. The fixed rhythm (24px
++   * min-height plus 5px top/bottom padding, the same formula every other
++   * header-bar button uses) measures exactly 34px and leaves a clear,
++   * symmetric inset on both edges. */
++  g_assert_cmpint (identity_min, <=, identity_nat);
++  g_assert_cmpint (identity_nat, ==, 34);
++  g_assert_cmpint (identity_nat, <, bar_min);
++  g_assert_cmpint (identity_nat, <=, bar_nat);
++  g_assert_cmpint (bar_min - identity_nat, >=, 8);
++
++  gtk_window_destroy (GTK_WINDOW (window));
++  g_object_unref (application);
++}
++
++static void
++test_luma_identity_button_pointer_state_clears (void)
++{
++  GtkApplication *application;
++  AdwHeaderBar *bar;
++  GtkWidget *window = luma_identity_test_window (&application, &bar);
++  GtkWidget *identity = adw_header_bar_luma_test_get_identity (bar);
++  GtkStateFlags stuck = GTK_STATE_FLAG_PRELIGHT | GTK_STATE_FLAG_ACTIVE;
++
++  g_assert_nonnull (identity);
++
++  /* Simulate the button having been hovered and pressed when a tiling
++   * resize grabbed the pointer -- exactly the flags a Ctrl-break-then-
++   * release can leave stuck if the grab's end never reaches the widget as
++   * an ordinary crossing event. */
++  gtk_widget_set_state_flags (identity, stuck, FALSE);
++  g_assert_true ((gtk_widget_get_state_flags (identity) & stuck) == stuck);
++
++  adw_header_bar_luma_test_break_identity_grab (bar);
++
++  g_assert_cmpint (gtk_widget_get_state_flags (identity) & stuck, ==, 0);
++
++  gtk_window_destroy (GTK_WINDOW (window));
++  g_object_unref (application);
++}
++
++static void
++test_luma_identity_button_no_silent_initial_focus (void)
++{
++  GtkApplication *application;
++  AdwHeaderBar *bar;
++  GtkWidget *window = luma_identity_test_window (&application, &bar);
++  GtkWidget *identity = adw_header_bar_luma_test_get_identity (bar);
++
++  g_assert_nonnull (identity);
++
++  /* No real key press or click has happened yet. Whatever put focus on the
++   * identity button here stands in for GTK's own silent initial-focus pick
++   * on a freshly mapped window -- the guard must release it either way, so
++   * the window opens with no visible focus ring on its header bar. */
++  gtk_widget_grab_focus (identity);
++  g_assert_null (gtk_root_get_focus (GTK_ROOT (window)));
++  g_assert_false (gtk_widget_has_focus (identity));
++
++  gtk_window_destroy (GTK_WINDOW (window));
++  g_object_unref (application);
++}
++
++static void
++test_luma_identity_button_focuses_after_real_input (void)
++{
++  GtkApplication *application;
++  AdwHeaderBar *bar;
++  GtkWidget *window = luma_identity_test_window (&application, &bar);
++  GtkWidget *identity = adw_header_bar_luma_test_get_identity (bar);
++
++  g_assert_nonnull (identity);
++
++  /* The silent initial pick is released... */
++  gtk_widget_grab_focus (identity);
++  g_assert_false (gtk_widget_has_focus (identity));
++
++  /* ...but once the person has actually pressed a key or clicked, the guard
++   * steps aside and a real Tab/mnemonic to this button focuses it exactly
++   * like any other header-bar control. */
++  adw_header_bar_luma_test_note_real_input (bar);
++  gtk_widget_grab_focus (identity);
++  g_assert_true (gtk_widget_has_focus (identity));
++  g_assert_true (gtk_root_get_focus (GTK_ROOT (window)) == identity);
++
++  gtk_window_destroy (GTK_WINDOW (window));
++  g_object_unref (application);
++}
++
+ 
+ static void
+ test_adw_header_bar_pack (void)
+@@ -140,6 +297,10 @@ main (int   argc,
+   g_test_add_func("/Adwaita/HeaderBar/show_end_title_buttons", test_adw_header_bar_show_end_title_buttons);
+   g_test_add_func("/Adwaita/HeaderBar/decoration_layout", test_adw_header_bar_decoration_layout);
+   g_test_add_func("/Adwaita/HeaderBar/centering_policy", test_adw_header_bar_centering_policy);
++  g_test_add_func("/Adwaita/HeaderBar/luma_identity_button_inset_geometry", test_luma_identity_button_inset_geometry);
++  g_test_add_func("/Adwaita/HeaderBar/luma_identity_button_pointer_state_clears", test_luma_identity_button_pointer_state_clears);
++  g_test_add_func("/Adwaita/HeaderBar/luma_identity_button_no_silent_initial_focus", test_luma_identity_button_no_silent_initial_focus);
++  g_test_add_func("/Adwaita/HeaderBar/luma_identity_button_focuses_after_real_input", test_luma_identity_button_focuses_after_real_input);
+ 
+   return g_test_run();
+ }
+-- 
+2.54.0
+

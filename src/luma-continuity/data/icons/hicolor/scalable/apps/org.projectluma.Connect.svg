@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#45c9b0"/><stop offset="1" stop-color="#1f78b4"/></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".85"><stop stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#e2ecf5"/></linearGradient>
+    <filter id="lift" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#08223f" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#tile)"/>
+  <rect width="128" height="128" rx="32" fill="url(#bloom)"/>
+  <circle cx="64" cy="67" r="30" fill="none" stroke="#fff" stroke-opacity=".78" stroke-width="10"/>
+  <g filter="url(#lift)">
+    <circle cx="64" cy="37" r="15" fill="url(#node)"/>
+    <circle cx="38" cy="82" r="15" fill="url(#node)"/>
+    <circle cx="90" cy="82" r="15" fill="url(#node)"/>
+  </g>
+  <circle cx="64" cy="37" r="5.5" fill="#1f78b4"/>
+  <circle cx="38" cy="82" r="5.5" fill="#1f78b4"/>
+  <circle cx="90" cy="82" r="5.5" fill="#1f78b4"/>
+</svg>

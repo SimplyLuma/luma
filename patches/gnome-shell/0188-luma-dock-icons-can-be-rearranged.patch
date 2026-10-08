@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 20:30:00 -0500
+Subject: [PATCH] luma: Dock icons can be rearranged
+
+Dragging a dock icon to a new place never worked since the movable shelf
+islands (0167): the drag started, no gap opened, and the icon snapped
+back on release. Dragging a running app into the pinned apps was refused
+the same way.
+
+The work-area reservation for each shelf band is an invisible chrome
+actor, stacked above the Shelf. A drag picks every actor under the
+pointer, reactive or not, so the reservation was the drop target over
+the whole band: it has no drop handling, the Dash was never asked, and
+every drop was refused. The reservation is geometry only, so it is now
+hidden from pick. Clicks were unaffected, which is why nothing else
+showed it.
+
+While an icon is dragged, the icon left in its place is dimmed to 35% at
+its own size, the shared reorder feedback Filer's sidebar uses, instead
+of growing: the lifted copy follows the pointer and the gap shows where
+it will land.
+
+Oracle: tests/gnome-shell/dock-reorder (reorder, pin by drag, persistence
+across a restart, folders rail, arrange mode).
+---
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index 6abc02b..a59c464 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -23,6 +23,8 @@ const SHELF_ITEM_ANIMATION_TIME = 160;
+ const DASH_ITEM_LABEL_SHOW_TIME = 150;
+ const DASH_ITEM_LABEL_HIDE_TIME = 100;
+ const DASH_ITEM_HOVER_TIMEOUT = 300;
++// The icon a drag leaves behind: the shared reorder feedback's dimmed source.
++const DRAG_SOURCE_OPACITY = Math.round(0.35 * 255);
+ 
+ export const DashIcon = GObject.registerClass(
+ class DashIcon extends AppDisplay.AppIcon {
+@@ -91,7 +93,9 @@ class DashIcon extends AppDisplay.AppIcon {
+         const artwork = this.icon;
+         artwork.set_pivot_point(0.5, 0.5);
+         // Hover lifts the icon 2px and nothing else; a press dims it to 92%.
+-        const scale = this._dragging ? 1.12 : 1;
++        // While it is dragged, the icon left in its place is the dimmed
++        // source of the shared reorder feedback, as in Filer's sidebar: the
++        // lifted copy follows the pointer and the gap shows where it lands.
+         const lift = this.hover && !this._dragging ? 2 * St.ThemeContext.get_for_stage(global.stage).scale_factor : 0;
+         let pressed = artwork.get_effect('luma-pressed');
+         if (!pressed) {
+@@ -104,7 +108,8 @@ class DashIcon extends AppDisplay.AppIcon {
+         artwork.ease({
+             translation_x: edge === 'left' ? lift : edge === 'right' ? -lift : 0,
+             translation_y: edge === 'top' ? lift : edge === 'bottom' ? -lift : 0,
+-            scale_x: scale, scale_y: scale,
++            scale_x: 1, scale_y: 1,
++            opacity: this._dragging ? DRAG_SOURCE_OPACITY : 255,
+             duration: St.Settings.get().enable_animations ? 140 : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+         });
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 15a0494..d0fcfbf 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -2469,6 +2469,13 @@ export const Shelf = GObject.registerClass({
+             if (!actor) {
+                 actor = new St.Widget({name: reservation.band ? 'lumaShelfWorkArea' : 'lumaDesktopEdgeInset',
+                     reactive: false});
++                // A reservation is geometry for the work area and nothing
++                // else. It is chrome stacked above the Shelf, and a drag
++                // picks every actor, reactive or not: without this it is
++                // what a dragged dock icon lands on, which takes no drop,
++                // so reordering the dock and pinning by drag were refused
++                // with the pointer right over the icons.
++                Shell.util_set_hidden_from_pick(actor, true);
+                 actor.connect('destroy', () => {
+                     if (this._strutActors?.get(key) === actor)
+                         this._strutActors.delete(key);

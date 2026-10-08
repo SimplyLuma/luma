@@ -1,0 +1,98 @@
+{
+  "upstream": "lucide-static 1.39.0",
+  "license": "ISC AND MIT",
+  "source": "LumaDesign/studio/icons (approved Studio desktop glyphs)",
+  "conversion": "outline-symbolic.py; 24 to 16; outlined strokes, merged fills",
+  "icons": [
+    {
+      "source": "sun.svg",
+      "sha256": "9f8e98e311a0c744490c73ef5ce26243bcfca741cbefcd25db2a2cb1e1d3446b",
+      "output": "luma-sun-symbolic.svg"
+    },
+    {
+      "source": "sun-moon.svg",
+      "sha256": "c6acd40c86fcb71ee7df7cac9be3a713bec68e42a862b3e5a99f29eb464c3b8c",
+      "output": "luma-sun-moon-symbolic.svg"
+    },
+    {
+      "source": "sunset.svg",
+      "sha256": "2e660c6378bee6fe6aba12992f145968306e1e6460f5380381ced1e776945098",
+      "output": "luma-sunset-symbolic.svg"
+    },
+    {
+      "source": "leaf.svg",
+      "sha256": "57ec471d64979e597fe5d460955e9ccb6d96cf5c8b2c69120f4c2e640b436f83",
+      "output": "luma-leaf-symbolic.svg"
+    },
+    {
+      "source": "moon.svg",
+      "sha256": "a2d186db1c79ce3fec18fcc0aee05c5d30d76feb3f1f8c01ff64a94571506242",
+      "output": "luma-moon-symbolic.svg"
+    },
+    {
+      "source": "lock.svg",
+      "sha256": "d215ce145a3f65878308f2ceaa1163f8d8930b68eaf6106c6a7bb13de2793f40",
+      "output": "luma-lock-symbolic.svg"
+    },
+    {
+      "source": "power.svg",
+      "sha256": "a6444e9281bc624c4c9cb4775a6d4c680c84a9f45dc880d55a769dd3dd5ee471",
+      "output": "luma-power-symbolic.svg"
+    },
+    {
+      "source": "settings-2.svg",
+      "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10",
+      "output": "luma-settings-2-symbolic.svg"
+    },
+    {
+      "source": "speaker.svg",
+      "sha256": "9d8306313a64a33dbaa6a9e5068be7bedf7789ff657395d80781271a81c940c4",
+      "output": "luma-speaker-symbolic.svg"
+    },
+    {
+      "source": "monitor.svg",
+      "sha256": "633301885d97b3e571bb54395d78078e1236ba68b8c7ec5e1fc9a61cb251f43d",
+      "output": "luma-monitor-symbolic.svg"
+    },
+    {
+      "source": "battery.svg",
+      "sha256": "27c78b39e479ddbf9d98ad5a7bca534bbfe2909e455a81c14c43395ff7bacfbf",
+      "output": "luma-battery-symbolic.svg"
+    },
+    {
+      "source": "chevron-left.svg",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "output": "luma-chevron-left-symbolic.svg"
+    },
+    {
+      "source": "chevron-right.svg",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "output": "luma-chevron-right-symbolic.svg"
+    },
+    {
+      "source": "phone.svg",
+      "sha256": "8fbb0f7e2d1a48e6ceac883bb5f6d01ddd68f9ecf2629389011fc69891ca0121",
+      "output": "luma-phone-symbolic.svg"
+    },
+    {
+      "source": "phone-off.svg",
+      "sha256": "9929bfc90803b6e2253821d99781b51c077e5d3ec79f2b19e7de257e70ab9dd8",
+      "output": "luma-phone-off-symbolic.svg"
+    },
+    {
+      "source": "x.svg",
+      "sha256": "4a9cdab38fbb96162e7dace28e33f4ca0e49d8963a6162abc3d4691b7d675117",
+      "output": "luma-x-symbolic.svg"
+    },
+    {
+      "source": "wifi-off.svg",
+      "sha256": "fe728df7413f4830b61908cace85fd827089f701bd095065a386ab961756e64a",
+      "output": "luma-wifi-off-symbolic.svg"
+    },
+    {
+      "source": "volume-x.svg",
+      "sha256": "5ed2c5de361389d1fbaef3e0a8ae3fd564788e71ff1317a35c58e7ae6eb98c19",
+      "output": "luma-volume-x-symbolic.svg"
+    }
+  ]
+}

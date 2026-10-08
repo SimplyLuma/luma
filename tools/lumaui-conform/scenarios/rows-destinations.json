@@ -1,0 +1,47 @@
+{
+  "app": "rows-destinations",
+  "title": "SB1 sidebar rows, destinations variant (vs Tasks' sidebar)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=tasks",
+    "window": "#tk-side",
+    "exclude": [
+      "#tk-side .sfoot"
+    ],
+    "exclude_note": "The sidebar foot is F2's SidebarFoot, not a rows part.",
+    "accent_note": "The Studio tints its light mode with the wallpaper's hue (168); the kit's tokens are the default accent (258), so the spec is pinned to it."
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "tasks-side",
+      "LUMAUI_ROWS_PHOTOS": "{run}/fixtures/contacts-v70"
+    }
+  },
+  "states": [
+    {
+      "name": "views",
+      "about": "Tasks' views and lists, Today chosen (v70's opening state)",
+      "spec": [
+        {
+          "eval": "document.body.style.setProperty('--acc', '258')"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "destinations",
+      "spec": "#tk-side"
+    }
+  ],
+  "pairs_note": "No structure pair: the surface fills its window, so the window's own frame paint would be read as the sidebar's."
+}

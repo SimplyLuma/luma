@@ -1,0 +1,16 @@
+{
+  "cameras": [
+    {"id": "usb", "name": "Studio Cam", "subtitle": "4K USB camera", "raw": true, "zooms": [1, 2, 4], "image": "camera-v70/life-hero-studio.webp"},
+    {"id": "phone", "name": "Nick’s phone", "subtitle": "Main camera, 48 MP", "raw": true, "zooms": [0.5, 1, 2, 5], "image": "camera-v70/life-sync-terrace.webp", "phone": true},
+    {"id": "front", "name": "Built-in camera", "subtitle": "1080p, front", "raw": false, "zooms": [1], "image": "camera-v70/life-hero-writing.webp", "mirror": true}
+  ],
+  "modes": [["photo", "Photo"], ["portrait", "Portrait"], ["video", "Video"], ["time", "Time-lapse"], ["scan", "Scan"]],
+  "formats": {"raw": ["RAW + JPEG", "About 25 MB a photo"], "jpeg": ["JPEG", "About 4 MB a photo"], "heif": ["HEIF", "About 2 MB a photo"]},
+  "dials": [
+    ["iso", "ISO", ["Auto", "100", "200", "400", "800", "1600", "3200"]],
+    ["ss", "Shutter", ["Auto", "1/1000", "1/500", "1/250", "1/125", "1/60", "1/30"]],
+    ["wb", "White balance", ["Auto", "Daylight", "Cloudy", "Tungsten", "5600 K"]],
+    ["mf", "Focus", ["Auto", "Near", "1 m", "3 m", "∞"]]
+  ],
+  "initial": {"cam": "usb", "mode": "photo", "flash": "auto", "timer": 0, "grid": true, "fmt": "raw", "aspect": "4:3", "zoom": 1, "pro": false, "focus": null, "ev": 0, "rec": null, "shots": [], "strip": false, "pop": null, "iso": "Auto", "ss": "Auto", "wb": "Auto", "mf": "Auto", "sw": {"stab": true, "mirror": true, "loc": false}}
+}

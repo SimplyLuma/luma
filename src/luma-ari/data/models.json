@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-09-13",
+  "models": [
+    {
+      "id": "qwen3-1.7b-q8",
+      "family": "Qwen3",
+      "name": "Qwen3 1.7B",
+      "parameters": "1.7B",
+      "quantisation": "Q8_0",
+      "licence": "Apache-2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF",
+      "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf",
+      "revision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
+      "file": "Qwen3-1.7B-Q8_0.gguf",
+      "size": 1834426016,
+      "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+      "context": 32768,
+      "knowledge_cutoff": "2024",
+      "profile": "small",
+      "tiers": ["minimal"]
+    },
+    {
+      "id": "qwen3-4b-q4",
+      "family": "Qwen3",
+      "name": "Qwen3 4B",
+      "parameters": "4B",
+      "quantisation": "Q4_K_M",
+      "licence": "Apache-2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-4B-GGUF",
+      "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/bc640142c66e1fdd12af0bd68f40445458f3869b/Qwen3-4B-Q4_K_M.gguf",
+      "revision": "bc640142c66e1fdd12af0bd68f40445458f3869b",
+      "file": "Qwen3-4B-Q4_K_M.gguf",
+      "size": 2497280256,
+      "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+      "context": 32768,
+      "knowledge_cutoff": "2024",
+      "profile": "small",
+      "tiers": ["standard"]
+    },
+    {
+      "id": "qwen3-8b-q4",
+      "family": "Qwen3",
+      "name": "Qwen3 8B",
+      "parameters": "8B",
+      "quantisation": "Q4_K_M",
+      "licence": "Apache-2.0",
+      "source": "https://huggingface.co/Qwen/Qwen3-8B-GGUF",
+      "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/7c41481f57cb95916b40956ab2f0b139b296d974/Qwen3-8B-Q4_K_M.gguf",
+      "revision": "7c41481f57cb95916b40956ab2f0b139b296d974",
+      "file": "Qwen3-8B-Q4_K_M.gguf",
+      "size": 5027783488,
+      "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+      "context": 32768,
+      "knowledge_cutoff": "2024",
+      "profile": "medium",
+      "tiers": ["plus", "workstation"]
+    }
+  ]
+}

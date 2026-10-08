@@ -1,0 +1,415 @@
+{
+  "today": "2026-09-23",
+  "view": "today",
+  "selected": null,
+  "lists": [
+    {
+      "id": "personal",
+      "n": "Personal",
+      "h": 250,
+      "ppl": []
+    },
+    {
+      "id": "launch",
+      "n": "Launch",
+      "h": 45,
+      "ppl": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "secs": [
+        "Before launch",
+        "Launch day",
+        "After"
+      ]
+    },
+    {
+      "id": "home",
+      "n": "Home",
+      "h": 150,
+      "ppl": [
+        "AR"
+      ]
+    },
+    {
+      "id": "groc",
+      "n": "Groceries",
+      "h": 90,
+      "ppl": [
+        "AR"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t100",
+      "done": false,
+      "pri": 3,
+      "notes": "Milestones up front, pricing out. Priya owns the deck; Nick owns slide 7.",
+      "subs": [
+        [
+          "Milestones slide",
+          true
+        ],
+        [
+          "Homepage crop on slide 2",
+          true
+        ],
+        [
+          "ISO timeline on slide 7",
+          true
+        ],
+        [
+          "Cut the pricing section",
+          false
+        ],
+        [
+          "Speaker notes",
+          false
+        ]
+      ],
+      "who": [
+        "PR"
+      ],
+      "act": [
+        [
+          "PR",
+          "created this",
+          "2 days ago"
+        ],
+        [
+          "NF",
+          "finished “Homepage crop on slide 2”",
+          "Yesterday"
+        ],
+        [
+          "me",
+          "c",
+          "Timeline is on slide 7 now.",
+          "Yesterday"
+        ],
+        [
+          "PR",
+          "c",
+          "Perfect. Speaker notes tonight, then we’re done.",
+          "9:41 AM"
+        ]
+      ],
+      "t": "Finish the walkthrough deck",
+      "l": "launch",
+      "sec": 0,
+      "due": 0,
+      "time": "5:00 PM",
+      "flag": true
+    },
+    {
+      "id": "t101",
+      "done": false,
+      "pri": 2,
+      "notes": "",
+      "subs": [],
+      "who": [
+        "me",
+        "PR",
+        "NF"
+      ],
+      "act": [
+        [
+          "PR",
+          "created this",
+          "9:42 AM"
+        ]
+      ],
+      "t": "Dry run with Priya and Nora",
+      "l": "launch",
+      "sec": 0,
+      "due": 0,
+      "time": "7:30 PM"
+    },
+    {
+      "id": "t102",
+      "done": false,
+      "pri": 2,
+      "notes": "",
+      "subs": [],
+      "who": [],
+      "act": [
+        [
+          "me",
+          "created this",
+          "Monday"
+        ]
+      ],
+      "t": "Call Dad back",
+      "l": "personal",
+      "due": 0
+    },
+    {
+      "id": "t103",
+      "done": false,
+      "pri": 1,
+      "notes": "$48.20, due yesterday. Autopay failed because the card expired.",
+      "subs": [],
+      "who": [
+        "me"
+      ],
+      "act": [
+        [
+          "AR",
+          "assigned this to you",
+          "Sunday"
+        ]
+      ],
+      "t": "Pay the water bill",
+      "l": "home",
+      "due": -1
+    },
+    {
+      "id": "t104",
+      "done": false,
+      "pri": 2,
+      "notes": "",
+      "subs": [
+        [
+          "Script",
+          true
+        ],
+        [
+          "Screen capture",
+          false
+        ],
+        [
+          "Voiceover",
+          false
+        ]
+      ],
+      "who": [
+        "SK"
+      ],
+      "act": [],
+      "t": "Record the demo video",
+      "l": "launch",
+      "sec": 0,
+      "due": 1
+    },
+    {
+      "id": "t105",
+      "done": false,
+      "pri": 3,
+      "notes": "",
+      "subs": [
+        [
+          "Clean boot on the ThinkPad",
+          false
+        ],
+        [
+          "Depot channels point at stable",
+          false
+        ],
+        [
+          "Release notes signed off",
+          false
+        ],
+        [
+          "Checksums published",
+          false
+        ],
+        [
+          "Upgrade from the last nightly",
+          false
+        ]
+      ],
+      "who": [
+        "me"
+      ],
+      "act": [],
+      "t": "ISO sign-off checklist",
+      "l": "launch",
+      "sec": 1,
+      "due": 7,
+      "time": "10:00 AM",
+      "flag": true
+    },
+    {
+      "id": "t106",
+      "done": false,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [
+        "AR"
+      ],
+      "act": [],
+      "t": "Fix the kitchen light",
+      "l": "home",
+      "due": 3
+    },
+    {
+      "id": "t107",
+      "done": false,
+      "pri": 1,
+      "notes": "",
+      "subs": [],
+      "who": [],
+      "act": [],
+      "t": "Dessert for Maya’s dinner",
+      "l": "groc",
+      "due": 3
+    },
+    {
+      "id": "t108",
+      "done": false,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [],
+      "act": [],
+      "t": "Oat milk",
+      "l": "groc"
+    },
+    {
+      "id": "t109",
+      "done": false,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [],
+      "act": [],
+      "t": "Coffee beans",
+      "l": "groc"
+    },
+    {
+      "id": "t110",
+      "done": false,
+      "pri": 1,
+      "notes": "Photos are in Pictures › Documents.",
+      "subs": [],
+      "who": [],
+      "act": [],
+      "t": "Renew passport",
+      "l": "personal",
+      "due": 5
+    },
+    {
+      "id": "t111",
+      "done": false,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [
+        "NF"
+      ],
+      "act": [],
+      "t": "Press kit for the launch",
+      "l": "launch",
+      "sec": 2,
+      "due": 9
+    },
+    {
+      "id": "t112",
+      "done": false,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [],
+      "act": [],
+      "t": "Thank-you notes to the beta testers",
+      "l": "launch",
+      "sec": 2
+    },
+    {
+      "id": "t113",
+      "done": false,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [],
+      "act": [],
+      "t": "Book the dentist",
+      "l": "personal"
+    },
+    {
+      "id": "t114",
+      "done": true,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [
+        "NF"
+      ],
+      "act": [],
+      "t": "Homepage crop",
+      "l": "launch",
+      "sec": 0
+    },
+    {
+      "id": "t115",
+      "done": true,
+      "pri": 0,
+      "notes": "",
+      "subs": [],
+      "who": [
+        "me"
+      ],
+      "act": [],
+      "t": "Order the loft keys",
+      "l": "launch",
+      "sec": 0
+    }
+  ],
+  "people": {
+    "me": {
+      "n": "You",
+      "ini": "N",
+      "u": "nick",
+      "h": 250
+    },
+    "PR": {
+      "n": "Priya Raman",
+      "u": "priya",
+      "h": 330,
+      "on": true,
+      "face": [
+        "life-ari-street",
+        0.705,
+        0.2,
+        5.2
+      ]
+    },
+    "NF": {
+      "n": "Nora Feld",
+      "u": "nora",
+      "h": 45,
+      "on": true,
+      "face": [
+        "life-sync-terrace",
+        0.36,
+        0.27,
+        5
+      ]
+    },
+    "SK": {
+      "n": "Sam Kaur",
+      "u": "samk",
+      "h": 200,
+      "face": [
+        "life-suite-bg-write",
+        0.47,
+        0.3,
+        5
+      ]
+    },
+    "AR": {
+      "n": "Alex Ruiz",
+      "u": "alexr",
+      "h": 262,
+      "face": [
+        "life-professionals-loft",
+        0.55,
+        0.36,
+        5.2
+      ]
+    }
+  }
+}

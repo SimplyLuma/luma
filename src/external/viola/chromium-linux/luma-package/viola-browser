@@ -1,0 +1,73 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Viola for Luma: the native GTK host drives the packaged Viola engine. The
+# engine command line itself stays available as viola-browser-stable.
+set -euo pipefail
+
+# The signed baseline owns launch/service/MIME activation. Resolve before any
+# native profile or session writes; a missing signed owner requires repair.
+if [ ! -e /.flatpak-info ]; then
+  if target=$(/usr/bin/python3 -I -m luma_installer.native_app_roles --resolve com.rhyme.viola); then
+    status=0
+  else
+    status=$?
+  fi
+  case "$status" in
+    0) [ -z "$target" ] || exit 1 ;;
+    10)
+      [[ "$target" =~ ^app/com\.rhyme\.viola/(x86_64|aarch64)/(stable|beta|nightly)$ ]] || exit 1
+      exec /usr/bin/flatpak run --system "$target" "$@" ;;
+    *)
+      exec /usr/bin/python3 -I -c 'from luma_appkit.migration_startup import show_failure; show_failure("The signed browser installation needs repair. Open Depot or retry the Luma installer.")' ;;
+  esac
+fi
+
+if [ -e /.flatpak-info ]; then
+  [ "${FLATPAK_ID:-}" = com.rhyme.viola ] || exit 1
+  engine=/app/bin/viola-engine
+  host=/app/share/viola-browser/luma-host
+else
+  engine=/opt/viola/browser/chrome
+  host=/usr/share/viola-browser/luma-host
+fi
+data="${XDG_DATA_HOME:-$HOME/.local/share}/viola-luma"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/viola-luma"
+profile="$data/profile"
+legacy="${XDG_CONFIG_HOME:-$HOME/.config}/viola"
+
+log() { logger -t viola-browser -- "$*" 2>/dev/null || true; }
+
+mkdir -p -m 0700 "$data" "$state"
+mkdir -p "$state/sessions"
+
+# First start after an update from the standalone Viola window: copy (never
+# move) its profile once, unless that browser is still running.
+legacy_running() {
+  local lock pid
+  lock=$(readlink -- "$legacy/SingletonLock" 2>/dev/null) || return 1
+  pid=${lock##*-}
+  [ "${lock%-*}" = "$(uname -n)" ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+if [ -z "$(ls -A -- "$profile" 2>/dev/null)" ] && [ -f "$legacy/Local State" ]; then
+  if legacy_running; then
+    exec /usr/bin/python3 -I -c 'from luma_appkit.migration_startup import show_failure; show_failure("Close the standalone Viola browser before importing your existing profile. Your data is preserved."); raise SystemExit(1)'
+  else
+    staging=$(mktemp -d "$data/.profile-copy.XXXXXX")
+    if cp -a -- "$legacy/." "$staging/"; then
+      rm -f -- "$staging/SingletonLock" "$staging/SingletonSocket" "$staging/SingletonCookie"
+      chmod 0700 "$staging"
+      rmdir -- "$profile" 2>/dev/null || true
+      mv -T -- "$staging" "$profile"
+      log "copied the Viola profile from $legacy to $profile (original kept)"
+    else
+      rm -rf -- "$staging"
+      exec /usr/bin/python3 -I -c 'from luma_appkit.migration_startup import show_failure; show_failure("Your existing browser profile could not be imported. Your original data is preserved. Review the import in Depot before trying again."); raise SystemExit(1)'
+    fi
+  fi
+fi
+
+# Follow the installed Luma toolkit resources and live surface appearance.
+unset G_RESOURCE_OVERLAYS
+exec /usr/bin/python3 "$host/integrated_window.py" --engine "$engine" --profile "$profile" \
+  --work-root "$state/sessions" --interactive "$@"

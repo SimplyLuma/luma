@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Notes
+Comment=Write notes and edit text files
+Exec=prairie-notes %U
+Icon=org.projectluma.Notes
+Terminal=false
+Categories=Utility;TextEditor;
+Keywords=Note;Text;Markdown;Write;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;
+MimeType=text/plain;text/markdown;text/x-markdown;text/x-readme;

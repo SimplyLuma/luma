@@ -1,0 +1,15 @@
+# The Luma Connect daemon started on demand, by D-Bus activation of
+# org.projectluma.Connect1 (its service file names this unit, so a second daemon
+# is never started outside systemd). When Luma Connect's background agent runs
+# (luma-connect-daemon --agent, started by luma-background), the agent takes the
+# name over and this daemon exits.
+[Unit]
+Description=Luma Connect account and paired-device service
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.projectluma.Connect1
+ExecStart=/usr/bin/luma-connect-daemon
+Restart=on-failure
+RestartSec=3

@@ -1,0 +1,53 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 23:55:00 -0500
+Subject: [PATCH] drag-surface: commit the initial folded state on map
+
+The top panel's public state and the drag-surface private state both begin
+folded, so calling the ordinary fold helper during construction is a no-op.
+Phoc consequently retains its protocol default long enough to expose the full
+quick-options surface during the authenticated Presence-to-Home handoff.
+
+Send the already selected drag state together with the other initial protocol
+properties when the surface maps. This makes the first committed shell frame
+match the state Phosh already reports and removes the one-frame shade flash.
+
+---
+ src/drag-surface.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/drag-surface.c b/src/drag-surface.c
+index 0a7fa14..6817164 100644
+--- a/src/drag-surface.c
++++ b/src/drag-surface.c
+@@ -235,6 +235,8 @@ on_phosh_drag_surface_mapped (PhoshDragSurface *self, gpointer unused)
+ {
+   PhoshDragSurfacePrivate *priv = phosh_drag_surface_get_instance_private (self);
+   enum zphoc_draggable_layer_surface_v1_drag_mode drag_mode;
++  enum zphoc_draggable_layer_surface_v1_drag_end_state drag_state;
++  PhoshDragSurfaceState state;
+ 
+   g_return_if_fail (priv->drag_surface);
+ 
+@@ -250,5 +252,20 @@ on_phosh_drag_surface_mapped (PhoshDragSurface *self, gpointer unused)
+   zphoc_draggable_layer_surface_v1_set_exclusive (priv->drag_surface,
+                                                   priv->exclusive);
++  state = priv->drag_state;
++  switch (state) {
++  case PHOSH_DRAG_SURFACE_STATE_FOLDED:
++    drag_state = ZPHOC_DRAGGABLE_LAYER_SURFACE_V1_DRAG_END_STATE_FOLDED;
++    break;
++  case PHOSH_DRAG_SURFACE_STATE_UNFOLDED:
++    drag_state = ZPHOC_DRAGGABLE_LAYER_SURFACE_V1_DRAG_END_STATE_UNFOLDED;
++    break;
++  case PHOSH_DRAG_SURFACE_STATE_DRAGGED:
++  default:
++    g_warning ("Invalid initial drag-surface state %d; folding", state);
++    drag_state = ZPHOC_DRAGGABLE_LAYER_SURFACE_V1_DRAG_END_STATE_FOLDED;
++    break;
++  }
++  zphoc_draggable_layer_surface_v1_set_state (priv->drag_surface, drag_state);
+   phosh_layer_surface_wl_surface_commit (PHOSH_LAYER_SURFACE (self));
+ }
+ 
+-- 
+2.53.0

@@ -1,0 +1,38 @@
+{
+  "comment": "Optional downloadable launch collections. Office is not offered during creator preview until its applications are ready. Creative and Studio remain downloads from Depot, never installer payload bundles.",
+  "schema": 4,
+  "collections": [
+    {
+      "id": "creative",
+      "name": "Creative",
+      "summary": "Design, video and photos",
+      "applications": [
+        "canvas",
+        "reel",
+        "darkroom"
+      ]
+    },
+    {
+      "id": "studio",
+      "name": "Studio",
+      "summary": "Making music",
+      "applications": [
+        "session"
+      ]
+    }
+  ],
+  "applications": {
+    "canvas": {
+      "name": "Canvas"
+    },
+    "darkroom": {
+      "name": "Darkroom"
+    },
+    "reel": {
+      "name": "Reel"
+    },
+    "session": {
+      "name": "Session"
+    }
+  }
+}

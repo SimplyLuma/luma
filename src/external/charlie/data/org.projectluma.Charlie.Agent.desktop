@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Charlie
+Comment=Checks mail while Charlie is closed
+Exec=org.projectluma.Charlie --agent --autostart
+Icon=org.projectluma.Charlie
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-AutoRestart=false
+X-Luma-Background-Agent=org.projectluma.Charlie.Agent

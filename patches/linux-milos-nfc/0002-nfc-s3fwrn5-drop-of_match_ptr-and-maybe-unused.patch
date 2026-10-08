@@ -1,0 +1,44 @@
+From 02c4f951d627d487eb5d14a9b62cdf5333cdecdb Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sun, 19 Jul 2026 17:03:42 +0200
+Subject: [PATCH] nfc: s3fwrn5: drop of_match_ptr() and __maybe_unused from the
+ OF table
+
+Referencing the OF match table only through of_match_ptr() discards it
+on !CONFIG_OF builds and thus requires the __maybe_unused marking to
+keep such builds warning-free. Drop both: with the table always
+referenced, every configuration uses the same code, and the S3NRN4V
+support added later in this series carries its variant selector in
+this table's match data.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ drivers/nfc/s3fwrn5/i2c.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nfc/s3fwrn5/i2c.c b/drivers/nfc/s3fwrn5/i2c.c
+index 91b8d1445e..3387a394d4 100644
+--- a/drivers/nfc/s3fwrn5/i2c.c
++++ b/drivers/nfc/s3fwrn5/i2c.c
+@@ -210,7 +210,7 @@ static const struct i2c_device_id s3fwrn5_i2c_id_table[] = {
+ };
+ MODULE_DEVICE_TABLE(i2c, s3fwrn5_i2c_id_table);
+ 
+-static const struct of_device_id of_s3fwrn5_i2c_match[] __maybe_unused = {
++static const struct of_device_id of_s3fwrn5_i2c_match[] = {
+ 	{ .compatible = "samsung,s3fwrn5-i2c", },
+ 	{}
+ };
+@@ -219,7 +219,7 @@ MODULE_DEVICE_TABLE(of, of_s3fwrn5_i2c_match);
+ static struct i2c_driver s3fwrn5_i2c_driver = {
+ 	.driver = {
+ 		.name = S3FWRN5_I2C_DRIVER_NAME,
+-		.of_match_table = of_match_ptr(of_s3fwrn5_i2c_match),
++		.of_match_table = of_s3fwrn5_i2c_match,
+ 	},
+ 	.probe = s3fwrn5_i2c_probe,
+ 	.remove = s3fwrn5_i2c_remove,
+-- 
+2.54.0 (Apple Git-157)
+

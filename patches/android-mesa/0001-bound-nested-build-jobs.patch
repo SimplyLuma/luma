@@ -1,0 +1,9 @@
+diff --git a/android/mesa3d_cross.mk b/android/mesa3d_cross.mk
+--- a/android/mesa3d_cross.mk
++++ b/android/mesa3d_cross.mk
+@@ -101,4 +101,4 @@
+ 
+-MESON_BUILD := PATH=/usr/bin:/bin:/sbin:$$PATH ninja -C $(MESON_OUT_DIR)/build
++MESON_BUILD := PATH=/usr/bin:/bin:/sbin:$$PATH ninja $(if $(LUMA_BUILD_JOBS),-j$(LUMA_BUILD_JOBS)) -C $(MESON_OUT_DIR)/build
+ 
+ $(MESON_GEN_FILES_TARGET): MESON_CPU_FAMILY := $(subst arm64,aarch64,$(TARGET_$(M_TARGET_PREFIX)ARCH))

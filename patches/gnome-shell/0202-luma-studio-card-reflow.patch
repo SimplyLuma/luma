@@ -1,0 +1,103 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: measure card columns and reset inherited control geometry
+
+Keep wrapping notification text from compressing its action area, position
+metadata across the available header, and remove the old slider dividers.
+GPL-2.0-or-later, following GNOME Shell upstream.
+
+diff --git a/js/ui/messageList.js b/js/ui/messageList.js
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -26,6 +26,20 @@
+ const CARD_TILE_RADIUS = 10;
+ const CARD_BODY_LINES = 2;
+ const CARD_BODY_LINE_HEIGHT = 17 / 12.5;
++
++// BoxLayout's generic horizontal measurement gives every child the full
++// width. A card's text column has to measure after its leading tile and gap,
++// or a wrapping body steals space from the reply controls at allocation time.
++const CardColumnsLayout = GObject.registerClass(class CardColumnsLayout extends Clutter.BoxLayout {
++    vfunc_get_preferred_height(container, width) {
++        const [tile, column] = container.get_children();
++        const [, tileWidth] = tile.get_preferred_width(-1);
++        const columnWidth = width < 0 ? -1 : Math.max(0, width - tileWidth - this.spacing);
++        const [minimum, natural] = column.get_preferred_height(columnWidth);
++        const [, tileHeight] = tile.get_preferred_height(tileWidth);
++        return [Math.max(minimum, tileHeight), Math.max(natural, tileHeight)];
++    }
++});
+ const CARD_HOVER_TIME = 150;
+ // A heads-up or resting card offers at most two immediate actions; the rest
+ // belong to the application, which a click on the card opens.
+@@ -676,6 +690,7 @@
+         this._appBadge = new St.Icon({style_class: 'luma-lip-app-badge', icon_size: 16,
+             x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.END, visible: false});
+         this._tile.add_child(this._appBadge);
++        grid.layout_manager = new CardColumnsLayout({orientation: Clutter.Orientation.HORIZONTAL});
+         grid.add_child(this._tile);
+         grid.add_child(column);
+ 
+@@ -689,6 +704,7 @@
+             () => this._header.timeLabel._updateText(), this);
+         this._header.timeLabel.x_expand = false;
+         this._header.sourceTitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._header.sourceTitle.x_expand = true;
+         // Source and time sit on the tile's top edge, beside the dismiss
+         // control that sets the row's height.
+         this._header.timeLabel.y_align = Clutter.ActorAlign.START;
+@@ -1119,6 +1135,7 @@
+         this._replyEntry.accessible_name = _('Reply to %s').format(this.title);
+         this._replyButton = new St.Button({
+             style_class: 'luma-inline-reply-button',
++            y_align: Clutter.ActorAlign.CENTER,
+             label: _('Send'),
+             can_focus: true,
+         });
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5269,3 +5269,8 @@
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5493,3 +5493,8 @@
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5443,3 +5443,8 @@
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2881,3 +2881,8 @@
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+ .quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+ .quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }

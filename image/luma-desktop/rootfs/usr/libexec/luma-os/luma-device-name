@@ -1,0 +1,467 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MPL-2.0
+"""Give a Luma computer its name: "Nick’s ThinkPad" (nicks-thinkpad).
+
+The pretty hostname is "<first name>’s <model>", the static hostname its slug.
+The model is a known product line read from DMI, else the chassis type, else
+"Computer". A slug another machine already answers for on the local network
+(mDNS <slug>.local) gets "-2", "-3", ... appended.
+
+  luma-device-name install --root DIR [--user NAME]
+      At install time, against the installed system's deployment root: writes
+      DIR/etc/hostname and PRETTY_HOSTNAME in DIR/etc/machine-info. A name the
+      install already set is kept. With no user account yet, any placeholder
+      name is removed so the first login names the machine.
+
+  luma-device-name login --uid UID
+      At a person's login on a booted system (luma-device-name@.service):
+      names the machine through systemd-hostnamed, once, and only while it
+      still has a default name. Never renames a machine someone named.
+
+  luma-device-name show [--user NAME]
+      Print the name this computer would get, without changing anything.
+"""
+
+import argparse
+import json
+import os
+import pwd
+import random
+import re
+import select
+import socket
+import struct
+import subprocess
+import sys
+import time
+import unicodedata
+
+DMI = "/sys/class/dmi/id"
+STAMP = "/var/lib/luma/device-name/named"
+IDENTIFIER = "luma-device-name"
+APOSTROPHE = "’"
+MAX_HOSTNAME = 63
+MDNS_TIMEOUT = 1.0
+MAX_SUFFIX = 20
+
+# Static hostnames nobody chose: empty, Fedora's and the installer's
+# placeholders, and "luma", the default every Luma install shared before
+# machines were named.
+DEFAULT_STATIC = frozenset({
+    "", "fedora", "fedora.localdomain", "localhost", "localhost-live",
+    "localhost.localdomain", "luma",
+})
+
+# Product lines, as people know them. Found in DMI product_family,
+# product_version or product_name; the earliest match in a field wins, and at
+# the same position the longer one ("MacBook Pro" before "MacBook").
+PRODUCT_LINES = (
+    ("ThinkPad", r"think\s?pad"), ("ThinkCentre", r"think\s?centre"),
+    ("ThinkStation", r"think\s?station"), ("ThinkBook", r"think\s?book"),
+    ("IdeaPad", r"idea\s?pad"), ("IdeaCentre", r"idea\s?centre"), ("Yoga", r"yoga"),
+    ("Legion", r"legion"),
+    ("XPS", r"xps"), ("Latitude", r"latitude"), ("Inspiron", r"inspiron"),
+    ("Precision", r"precision"), ("Vostro", r"vostro"), ("OptiPlex", r"optiplex"),
+    ("Alienware", r"alienware"),
+    ("EliteBook", r"elite\s?book"), ("ProBook", r"pro\s?book"), ("ZBook", r"z\s?book"),
+    ("EliteDesk", r"elite\s?desk"), ("ProDesk", r"pro\s?desk"), ("Spectre", r"spectre"),
+    ("Envy", r"envy"), ("Pavilion", r"pavilion"), ("OMEN", r"omen"), ("Victus", r"victus"),
+    ("ZenBook", r"zen\s?book"), ("VivoBook", r"vivo\s?book"), ("ProArt", r"pro\s?art"),
+    ("ROG", r"rog"), ("TUF", r"tuf"),
+    ("Swift", r"swift"), ("Aspire", r"aspire"), ("Predator", r"predator"), ("Nitro", r"nitro"),
+    ("Galaxy Book", r"galaxy\s?book"), ("Blade", r"blade"), ("Surface Pro", r"surface\s?pro"),
+    ("Surface Laptop", r"surface\s?laptop"), ("Surface Book", r"surface\s?book"),
+    ("Surface Go", r"surface\s?go"), ("Surface", r"surface"),
+    ("MacBook Pro", r"mac\s?book\s?pro"), ("MacBook Air", r"mac\s?book\s?air"),
+    ("MacBook", r"mac\s?book"), ("iMac", r"imac"), ("Mac mini", r"mac\s?mini"),
+    ("Mac Pro", r"mac\s?pro"), ("Mac Studio", r"mac\s?studio"),
+    ("Chromebook", r"chromebook"), ("Pixelbook", r"pixelbook"), ("NUC", r"nuc"),
+    ("Librem", r"librem"), ("Framework Laptop", r"framework\s?laptop"),
+)
+_LINE_PATTERNS = [(name, re.compile(r"(?<![a-z0-9])" + pattern + r"(?![a-z])", re.I))
+                  for name, pattern in PRODUCT_LINES]
+
+# SMBIOS chassis types (DSP0134 7.4.1).
+CHASSIS = {
+    3: "Desktop", 4: "Desktop", 5: "Desktop", 6: "Desktop", 7: "Desktop", 13: "Desktop",
+    15: "Desktop", 16: "Desktop", 24: "Desktop", 35: "Desktop", 36: "Desktop",
+    8: "Laptop", 9: "Laptop", 10: "Laptop", 14: "Laptop", 31: "Laptop", 32: "Laptop",
+    11: "Tablet", 30: "Tablet",
+}
+
+
+def log(message):
+    print(f"{IDENTIFIER}: {message}", file=sys.stderr, flush=True)
+
+
+# --- The name ---------------------------------------------------------------
+
+def read_dmi(directory=DMI):
+    values = {}
+    for key in ("sys_vendor", "product_family", "product_version", "product_name", "chassis_type"):
+        try:
+            with open(os.path.join(directory, key), encoding="utf-8", errors="replace") as handle:
+                values[key] = handle.read().strip()
+        except OSError:
+            values[key] = ""
+    return values
+
+
+def model_name(dmi):
+    """The product line people know this computer by, else its chassis type."""
+    for field in ("product_family", "product_version", "product_name"):
+        text = dmi.get(field) or ""
+        found = []
+        for name, pattern in _LINE_PATTERNS:
+            match = pattern.search(text)
+            if match:
+                found.append((match.start(), -len(match.group(0)), name))
+        if found:
+            return min(found)[2]
+    if (dmi.get("sys_vendor") or "").strip().lower().startswith("framework"):
+        return "Framework Laptop"
+    try:
+        chassis = int((dmi.get("chassis_type") or "").strip())
+    except ValueError:
+        chassis = 0
+    return CHASSIS.get(chassis, "Computer")
+
+
+def first_name(gecos, username):
+    """The first word of the account's full name, else the capitalised username."""
+    full = (gecos or "").split(",", 1)[0].strip()
+    if full:
+        return full.split()[0]
+    username = (username or "").strip()
+    return username[:1].upper() + username[1:] if username else ""
+
+
+def pretty_name(first, model):
+    return f"{first}{APOSTROPHE}s {model}" if first else model
+
+
+def slugify(text, limit=MAX_HOSTNAME):
+    """A valid hostname label: a-z, 0-9 and '-', at most `limit` characters."""
+    text = re.sub(r"['‘’ʼ`]", "", text)
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.encode("ascii", "ignore").decode("ascii").lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return text[:limit].rstrip("-")
+
+
+def candidates(slug):
+    yield slug
+    for number in range(2, MAX_SUFFIX + 1):
+        suffix = f"-{number}"
+        yield slug[:MAX_HOSTNAME - len(suffix)].rstrip("-") + suffix
+
+
+def is_default(static, pretty):
+    """True while nobody has named the machine (the spec's default names)."""
+    return (static or "").strip().lower() in DEFAULT_STATIC and not (pretty or "").strip()
+
+
+# --- The local network ----------------------------------------------------
+
+def _encode_name(name):
+    out = b""
+    for label in name.split("."):
+        data = label.encode("ascii")
+        out += bytes([len(data)]) + data
+    return out + b"\0"
+
+
+def _read_name(packet, offset, depth=0):
+    labels = []
+    while True:
+        if offset >= len(packet) or depth > 16:
+            raise ValueError("truncated name")
+        length = packet[offset]
+        if length & 0xC0 == 0xC0:
+            pointer = struct.unpack_from("!H", packet, offset)[0] & 0x3FFF
+            name, _ = _read_name(packet, pointer, depth + 1)
+            labels.append(name)
+            return ".".join(label for label in labels if label), offset + 2
+        offset += 1
+        if length == 0:
+            return ".".join(labels), offset
+        labels.append(packet[offset:offset + length].decode("ascii", "replace"))
+        offset += length
+
+
+def answers_for(packet, fqdn):
+    """True when an mDNS response carries an address record for `fqdn`."""
+    try:
+        _, flags, qdcount, ancount, nscount, arcount = struct.unpack_from("!HHHHHH", packet, 0)
+        if not flags & 0x8000:
+            return False
+        offset = 12
+        for _ in range(qdcount):
+            _, offset = _read_name(packet, offset)
+            offset += 4
+        for _ in range(ancount + nscount + arcount):
+            name, offset = _read_name(packet, offset)
+            rtype, _, _, rdlength = struct.unpack_from("!HHIH", packet, offset)
+            offset += 10 + rdlength
+            if rtype in (1, 28) and name.rstrip(".").lower() == fqdn.lower():
+                return True
+    except (ValueError, struct.error):
+        return False
+    return False
+
+
+def mdns_name_taken(slug, timeout=MDNS_TIMEOUT):
+    """True when something on the local network answers for <slug>.local."""
+    fqdn = f"{slug}.local"
+    qid = random.randrange(1, 0xFFFF)
+    # A one-shot query from an ephemeral port: responders answer by unicast to
+    # that port (RFC 6762 6.7), so nothing needs port 5353.
+    question = _encode_name(fqdn)
+    query = struct.pack("!HHHHHH", qid, 0, 2, 0, 0, 0)
+    query += question + struct.pack("!HH", 1, 1) + question + struct.pack("!HH", 28, 1)
+    sockets = []
+    for family, group in ((socket.AF_INET, "224.0.0.251"), (socket.AF_INET6, "ff02::fb")):
+        sock = None
+        try:
+            sock = socket.socket(family, socket.SOCK_DGRAM)
+            if family == socket.AF_INET:
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+                sock.sendto(query, (group, 5353))
+            else:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
+                sock.sendto(query, (group, 5353, 0, 0))
+            sockets.append(sock)
+        except OSError:
+            if sock is not None:
+                sock.close()
+    try:
+        deadline = time.monotonic() + timeout
+        while sockets:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            ready, _, _ = select.select(sockets, [], [], remaining)
+            for sock in ready:
+                try:
+                    packet = sock.recv(9000)
+                except OSError:
+                    continue
+                if answers_for(packet, fqdn):
+                    return True
+        return False
+    finally:
+        for sock in sockets:
+            sock.close()
+
+
+def free_hostname(slug, taken=mdns_name_taken, own=None):
+    """The slug, or the first "-N" variant nobody else on the network answers for."""
+    for name in candidates(slug):
+        if own and name == own:
+            return name
+        if not taken(name):
+            return name
+    return name
+
+
+# --- Accounts ---------------------------------------------------------------
+
+def passwd_entries(path):
+    entries = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                fields = line.rstrip("\n").split(":")
+                if len(fields) >= 7 and fields[2].isdigit():
+                    entries.append((fields[0], int(fields[2]), fields[4], fields[6]))
+    except OSError:
+        pass
+    return entries
+
+
+def is_person(uid, shell=""):
+    return 1000 <= uid < 60000 and not shell.endswith(("/nologin", "/false"))
+
+
+def install_user(root, username=None):
+    """(username, gecos) of the install's person: the named one, else the first."""
+    people = [entry for entry in passwd_entries(os.path.join(root, "etc/passwd"))
+              if is_person(entry[1], entry[3])]
+    if username:
+        people = [entry for entry in people if entry[0] == username]
+    people.sort(key=lambda entry: entry[1])
+    return (people[0][0], people[0][2]) if people else None
+
+
+def derive(dmi, username, gecos, taken=mdns_name_taken, own=None):
+    """(pretty hostname, static hostname) for this computer and person."""
+    first = first_name(gecos, username)
+    model = model_name(dmi)
+    pretty = pretty_name(first, model)
+    # Built from its parts, so a name with no Latin letters ("李雷") still
+    # gives "<username>s-thinkpad" rather than "s-thinkpad".
+    person = slugify(first) or slugify(username or "")
+    model_slug = slugify(model) or "computer"
+    slug = slugify(f"{person}s-{model_slug}") if person else model_slug
+    return pretty, free_hostname(slug, taken, own)
+
+
+# --- Install time -----------------------------------------------------------
+
+def read_machine_info(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return handle.read().splitlines()
+    except OSError:
+        return []
+
+
+def machine_info_value(lines, key):
+    for line in lines:
+        if line.startswith(key + "="):
+            value = line.split("=", 1)[1].strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+            return value
+    return ""
+
+
+def _quote(value):
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`") + '"'
+
+
+def _write(path, text):
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    temporary = path + ".luma-device-name"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, path)
+
+
+def _relabel(root, *paths):
+    if os.geteuid() != 0 or not os.path.exists(os.path.join(root, "usr/sbin/restorecon")):
+        return
+    subprocess.run(["chroot", root, "/usr/sbin/restorecon", "-F", *paths],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+
+def install(root, username=None, dmi=None, taken=mdns_name_taken):
+    hostname_path = os.path.join(root, "etc/hostname")
+    info_path = os.path.join(root, "etc/machine-info")
+    try:
+        with open(hostname_path, encoding="utf-8", errors="replace") as handle:
+            static = handle.readline().strip()
+    except OSError:
+        static = ""
+    info = read_machine_info(info_path)
+    pretty_now = machine_info_value(info, "PRETTY_HOSTNAME")
+    if not is_default(static, pretty_now):
+        log(f"the new system keeps the name it was given: {pretty_now or static}")
+        return 0
+
+    person = install_user(root, username)
+    if person is None:
+        if static and os.path.exists(hostname_path):
+            os.remove(hostname_path)
+            log(f"no account yet; removed the placeholder name {static}, the first login names this computer")
+        else:
+            log("no account yet; the first login names this computer")
+        return 0
+
+    pretty, static_new = derive(dmi if dmi is not None else read_dmi(), person[0], person[1], taken)
+    _write(hostname_path, static_new + "\n")
+    kept = [line for line in info if not line.startswith("PRETTY_HOSTNAME=")]
+    _write(info_path, "\n".join(kept + ["PRETTY_HOSTNAME=" + _quote(pretty)]) + "\n")
+    _relabel(root, "/etc/hostname", "/etc/machine-info")
+    log(f"the new system is called {pretty} ({static_new}; was {static or 'unset'})")
+    return 0
+
+
+# --- First login on a booted system -----------------------------------------
+
+HOSTNAMED = ("org.freedesktop.hostname1", "/org/freedesktop/hostname1", "org.freedesktop.hostname1")
+
+
+def _busctl(*args):
+    return subprocess.run(["busctl", "--system", *args], capture_output=True, text=True, timeout=30)
+
+
+def hostnamed_get(prop):
+    result = _busctl("--json=short", "get-property", *HOSTNAMED, prop)
+    if result.returncode != 0:
+        raise RuntimeError(f"hostnamed did not answer {prop}: {result.stderr.strip()}")
+    return json.loads(result.stdout)["data"]
+
+
+def hostnamed_set(method, value):
+    result = _busctl("call", *HOSTNAMED, method, "sb", value, "false")
+    if result.returncode != 0:
+        raise RuntimeError(f"hostnamed refused {method}: {result.stderr.strip()}")
+
+
+def write_stamp(path, text):
+    try:
+        _write(path, text + "\n")
+    except OSError as error:
+        log(f"could not record that this computer is named: {error}")
+
+
+def login(uid, stamp=STAMP, getter=hostnamed_get, setter=hostnamed_set, dmi=None,
+          taken=mdns_name_taken, lookup=pwd.getpwuid):
+    if os.path.exists(stamp):
+        return 0
+    try:
+        account = lookup(uid)
+    except KeyError:
+        return 0
+    if not is_person(uid, account.pw_shell or ""):
+        return 0
+    static = getter("StaticHostname")
+    pretty_now = getter("PrettyHostname")
+    if not is_default(static, pretty_now):
+        write_stamp(stamp, f"kept {pretty_now or static}")
+        return 0
+    pretty, static_new = derive(dmi if dmi is not None else read_dmi(), account.pw_name,
+                                account.pw_gecos, taken)
+    setter("SetStaticHostname", static_new)
+    setter("SetPrettyHostname", pretty)
+    write_stamp(stamp, f"named {pretty} ({static_new}) at the login of {account.pw_name}")
+    log(f"named this computer {pretty} ({static_new}; was {static or 'unset'}) "
+        f"at the first login of {account.pw_name}")
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog=IDENTIFIER, description="Name this Luma computer.")
+    sub = parser.add_subparsers(dest="mode", required=True)
+    p_install = sub.add_parser("install", help="name a newly installed system")
+    p_install.add_argument("--root", required=True, help="the installed system's deployment root")
+    p_install.add_argument("--user", help="the account the name is derived from")
+    p_install.add_argument("--no-network", action="store_true", help="skip the local network check")
+    p_login = sub.add_parser("login", help="name this computer at a person's first login")
+    p_login.add_argument("--uid", required=True, type=int)
+    p_show = sub.add_parser("show", help="print the name, change nothing")
+    p_show.add_argument("--user", default=None)
+    p_show.add_argument("--no-network", action="store_true")
+    args = parser.parse_args(argv)
+
+    no_network = getattr(args, "no_network", False)
+    taken = (lambda _name: False) if no_network else mdns_name_taken
+    try:
+        if args.mode == "install":
+            return install(args.root, args.user, taken=taken)
+        if args.mode == "login":
+            return login(args.uid, taken=taken)
+        account = pwd.getpwnam(args.user) if args.user else pwd.getpwuid(os.getuid())
+        pretty, static = derive(read_dmi(), account.pw_name, account.pw_gecos, taken)
+        print(f"{pretty}\n{static}")
+        return 0
+    except Exception as error:  # the name is a nicety: never fail an install or a login over it
+        log(f"could not name this computer: {error}")
+        return 0 if args.mode in ("install", "login") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,173 @@
+--- Pin a folder to the Dock from Filer's context menu.
+Subject: [PATCH] luma: pin a folder to the Dock from Filer
+
+A folder's context menu gains Pin to Dock, beside Open Item Location. It is
+there only for a single native folder, and only when the Shell's state has
+the key to write, so an older Shell simply has no item rather than a dead
+one.
+
+It writes the Shell's dock-folders key rather than calling the Shell. The
+Shell watches that key and picks the folder up live, so this needs no D-Bus
+name, no running Shell and no agreement about a protocol -- only the key.
+
+Looking the schema up before constructing GSettings matters: constructing
+GSettings for a schema that is not installed aborts the process, which would
+turn "Luma Shell is not installed" into "Filer crashes on right-click".
+
+GSettings has no compare-and-set. The list is read immediately before it is
+written and read back after: a folder already pinned is never added twice,
+and a folder lost to a concurrent write is added once more.
+---
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -6932,6 +6932,119 @@
+     }
+ }
+ 
++/* Pin to Dock.
++ *
++ * The Shell keeps the pinned folders in one key of its own state, and picks
++ * up a change to it live, so this writes that key rather than calling the
++ * Shell. Nothing here assumes the Shell is running, or recent: a state
++ * without the key, or without the schema at all, simply has no menu item.
++ */
++#define LUMA_SHELL_STATE_SCHEMA "org.project_luma.shell-state"
++#define LUMA_DOCK_FOLDERS_KEY "dock-folders"
++
++static GSettings *
++luma_shell_state_settings (void)
++{
++    static gsize once = 0;
++    static GSettings *settings = NULL;
++
++    if (g_once_init_enter (&once))
++    {
++        GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++        g_autoptr (GSettingsSchema) schema = NULL;
++
++        /* Constructing GSettings for a schema that is not installed aborts
++         * the process, so the schema is looked up before anything else. */
++        if (source != NULL)
++        {
++            schema = g_settings_schema_source_lookup (source, LUMA_SHELL_STATE_SCHEMA, TRUE);
++        }
++        if (schema != NULL && g_settings_schema_has_key (schema, LUMA_DOCK_FOLDERS_KEY))
++        {
++            settings = g_settings_new_full (schema, NULL, NULL);
++        }
++        g_once_init_leave (&once, 1);
++    }
++    return settings;
++}
++
++static gboolean
++luma_can_pin_to_dock (GList *selection)
++{
++    NautilusFile *file;
++    g_autoptr (GFile) location = NULL;
++    GSettings *settings = luma_shell_state_settings ();
++
++    if (settings == NULL || selection == NULL || selection->next != NULL)
++    {
++        return FALSE;
++    }
++    if (!g_settings_is_writable (settings, LUMA_DOCK_FOLDERS_KEY))
++    {
++        return FALSE;
++    }
++    file = NAUTILUS_FILE (selection->data);
++    if (!nautilus_file_is_directory (file))
++    {
++        return FALSE;
++    }
++    location = nautilus_file_get_activation_location (file);
++    return location != NULL && g_file_is_native (location);
++}
++
++/* Appends the folder if it is not already pinned. GSettings has no
++ * compare-and-set, so the list is read immediately before it is written and
++ * read back after: another writer that lands in between loses nothing,
++ * because a folder already present is never added twice and a folder that
++ * did not survive the write is added once more. */
++static gboolean
++luma_pin_uri_once (GSettings *settings, const char *uri)
++{
++    g_auto (GStrv) pinned = g_settings_get_strv (settings, LUMA_DOCK_FOLDERS_KEY);
++    g_autoptr (GPtrArray) next = g_ptr_array_new ();
++
++    for (guint i = 0; pinned[i] != NULL; i++)
++    {
++        if (g_str_equal (pinned[i], uri))
++        {
++            return TRUE;
++        }
++        g_ptr_array_add (next, pinned[i]);
++    }
++    g_ptr_array_add (next, (gpointer) uri);
++    g_ptr_array_add (next, NULL);
++    g_settings_set_strv (settings, LUMA_DOCK_FOLDERS_KEY, (const char * const *) next->pdata);
++    return FALSE;
++}
++
++static void
++action_pin_folder_to_dock (GSimpleAction *action, GVariant *state, gpointer user_data)
++{
++    NautilusFilesView *self = NAUTILUS_FILES_VIEW (user_data);
++    g_autolist (NautilusFile) selection = nautilus_files_view_get_selection (self);
++    GSettings *settings = luma_shell_state_settings ();
++    g_autoptr (GFile) location = NULL;
++    g_autofree char *uri = NULL;
++
++    if (!luma_can_pin_to_dock (selection))
++    {
++        return;
++    }
++    location = nautilus_file_get_activation_location (NAUTILUS_FILE (selection->data));
++    uri = g_file_get_uri (location);
++    if (uri == NULL)
++    {
++        return;
++    }
++    if (luma_pin_uri_once (settings, uri))
++    {
++        return;
++    }
++    /* Read back: if a concurrent write replaced the list without this
++     * folder, add it once more and leave it there. */
++    luma_pin_uri_once (settings, uri);
++}
++
+ static void
+ on_application_uninstall_requested (GObject *source, GAsyncResult *result, gpointer data)
+ {
+@@ -6971,6 +7084,7 @@
+ const GActionEntry view_entries[] =
+ {
+     { .name = "uninstall-application", .activate = action_uninstall_application },
++    { .name = "pin-folder-to-dock", .activate = action_pin_folder_to_dock },
+     /* Toolbar menu */
+     { .name = "zoom-in", .activate = action_zoom_in },
+     { .name = "zoom-out", .activate = action_zoom_out },
+@@ -7428,6 +7542,8 @@
+     view_action_group = self->view_action_group;
+ 
+     selection = nautilus_files_view_get_selection (self);
++    action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group), "pin-folder-to-dock");
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), luma_can_pin_to_dock (selection));
+     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group), "uninstall-application");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
+                                  selection != NULL && selection->next == NULL &&
+--- a/src/resources/menu/nautilus-files-view-context-menus.ui
++++ b/src/resources/menu/nautilus-files-view-context-menus.ui
+@@ -162,6 +162,11 @@
+         </link>
+       </item>
+       <item>
++        <attribute name="label" translatable="yes">_Pin to Dock</attribute>
++        <attribute name="action">view.pin-folder-to-dock</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
++      <item>
+         <attribute name="label" translatable="yes">_Open Item Location</attribute>
+         <attribute name="action">view.open-item-location</attribute>
+         <attribute name="hidden-when">action-disabled</attribute>

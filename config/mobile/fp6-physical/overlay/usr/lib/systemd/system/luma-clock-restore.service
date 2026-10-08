@@ -1,0 +1,17 @@
+[Unit]
+Description=Restore the wall clock recorded before the last shutdown
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target greetd.service systemd-user-sessions.service
+ConditionPathExists=/var/lib/luma/clock
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Only ever moves the clock forward. A boot in the past makes PAM read the
+# account password as changed in the future, which refuses the autologin and
+# drops the phone back to the greeter.
+ExecStart=/bin/sh -c 'saved=$(cat /var/lib/luma/clock); now=$(date -u +%%s); [ "$saved" -gt "$now" ] && date -u -s "@$saved" || true'
+
+[Install]
+WantedBy=sysinit.target

@@ -1,0 +1,167 @@
+From: Project Luma
+Subject: [PATCH] Displays: use the native Luma panel composition
+
+Keep Mutter's real display configuration model and every existing apply,
+rollback, monitor, and Night Light path. Move only the presentation boundary:
+give the panel its simulator-matched identity row, real connected-display
+summary, and semantic section headings.
+
+--- a/panels/display/cc-display-panel.blp
++++ b/panels/display/cc-display-panel.blp
+@@ -48,6 +48,41 @@
+       [top]
+       Adw.HeaderBar displays_titlebar {
+         visible: bind template.showing-apply-titlebar inverted;
++        show-start-title-buttons: false;
++        show-end-title-buttons: false;
++        styles ["luma-settings-panel-header"]
++
++        [start]
++        Box {
++          spacing: 8;
++          valign: center;
++
++          Image {
++            icon-name: "org.gnome.Settings-display-symbolic";
++            pixel-size: 15;
++            styles ["luma-settings-panel-icon"]
++          }
++
++          Box {
++            orientation: vertical;
++            valign: center;
++
++            Label {
++              label: _("Displays");
++              xalign: 0;
++              styles ["luma-settings-panel-title"]
++            }
++
++            Label display_summary_label {
++              label: _("Connected display");
++              xalign: 0;
++              ellipsize: end;
++              styles ["luma-settings-panel-subtitle"]
++            }
++          }
++        }
++
++        title-widget: Box {};
+       }
+ 
+       content: Adw.PreferencesPage {
+@@ -62,6 +97,7 @@
+         }
+ 
+         Adw.PreferencesGroup display_multiple_displays {
++          title: _("Arrangement");
+           Adw.ActionRow config_type_switcher_row {
+             title: _("Multiple Displays");
+ 
+@@ -108,6 +144,7 @@
+         }
+ 
+         Adw.PreferencesGroup {
++          title: _("Color and Light");
+           $CcListRow night_light_row {
+             /* Translators: This is the redshift functionality where we suppress blue light when the sun has gone down */
+             title: _("_Night Light");
+--- a/panels/display/cc-display-panel.c
++++ b/panels/display/cc-display-panel.c
+@@ -79,6 +79,7 @@ struct _CcDisplayPanel
+   GtkWidget      *apply_button;
+   GtkWidget      *cancel_button;
+   AdwWindowTitle *apply_titlebar_title_widget;
++  GtkLabel       *display_summary_label;
+   gboolean        showing_apply_titlebar;
+ 
+   GListStore     *primary_display_list;
+@@ -590,5 +591,6 @@ cc_display_panel_class_init (CcDisplayPanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, apply_button);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, apply_titlebar_title_widget);
++  gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, display_summary_label);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, display_settings_disabled_group);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, arrangement_bin);
+   gtk_widget_class_bind_template_child (widget_class, CcDisplayPanel, arrangement_row);
+@@ -613,6 +615,38 @@ cc_display_panel_class_init (CcDisplayPanelClass *klass)
+   gtk_widget_class_bind_template_callback (widget_class, on_toplevel_escape_pressed_cb);
+ }
+ 
++static void
++update_display_identity (CcDisplayPanel   *self,
++                         CcDisplayMonitor *output)
++{
++  const gchar *name;
++  CcDisplayMode *mode;
++  g_autofree gchar *summary = NULL;
++  gint width = 0;
++  gint height = 0;
++
++  if (output == NULL)
++    {
++      gtk_label_set_label (self->display_summary_label, _("Display hardware"));
++      adw_preferences_group_set_title (self->single_display_settings_group,
++                                       _("Display"));
++      return;
++    }
++
++  name = cc_display_monitor_get_ui_name (output);
++  mode = cc_display_monitor_get_mode (output);
++  if (mode != NULL)
++    {
++      cc_display_mode_get_resolution (mode, &width, &height);
++      summary = g_strdup_printf ("%s · %d × %d", name, width, height);
++    }
++  else
++    summary = g_strdup (name);
++
++  gtk_label_set_label (self->display_summary_label, summary);
++  adw_preferences_group_set_title (self->single_display_settings_group, name);
++}
++
+ static void
+ set_current_output (CcDisplayPanel   *self,
+                     CcDisplayMonitor *output,
+@@ -629,6 +663,8 @@ set_current_output (CcDisplayPanel   *self,
+ 
+   self->current_output = output;
+ 
++  update_display_identity (self, output);
++
+   if (changed)
+     {
+       cc_display_settings_set_selected_output (self->settings, self->current_output);
+--- a/panels/display/display-arrangement.css
++++ b/panels/display/display-arrangement.css
+@@ -1,3 +1,31 @@
++.luma-settings-panel-header {
++  min-height: 46px;
++  padding-left: 12px;
++  padding-right: 12px;
++  border-bottom: 1px solid @luma_line;
++}
++
++.luma-settings-panel-icon {
++  min-width: 26px;
++  min-height: 26px;
++  border-radius: 8px;
++  background-color: alpha(@luma_green, 0.16);
++  color: @luma_green;
++  -gtk-icon-size: 15px;
++}
++
++.luma-settings-panel-title {
++  color: @luma_ink;
++  font-size: 13px;
++  font-weight: 700;
++}
++
++.luma-settings-panel-subtitle {
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 550;
++}
++
+ display-arrangement {
+   font-weight: bold;
+   font-size: larger;

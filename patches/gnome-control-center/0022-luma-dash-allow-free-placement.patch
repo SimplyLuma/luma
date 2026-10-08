@@ -1,0 +1,48 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 19 Sep 2026 09:30:00 -0500
+Subject: [PATCH] dash: Allow free placement of islands
+
+Movable islands (ADR-044) place an island beside another island or at an
+edge's start, centre or end. "Allow free placement" in the Shape group
+(shell-state shelf-free-placement, off by default) lets islands sit
+anywhere along an edge. The row only appears when the installed shell-state
+schema has the key.
+
+"Quick controls on right" is removed: the order of the clock and the quick
+controls is now set by arranging the islands, and the switch no longer did
+anything. The System status description says where that is done.
+---
+diff --git a/panels/dash/cc-dash-panel.c b/panels/dash/cc-dash-panel.c
+index f0293d31..610fe59f 100644
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -423,6 +423,16 @@ cc_dash_panel_init (CcDashPanel *self)
+               "shelf-span-full", NULL);
+   self->float_row = add_switch (self, shape, _("Float outer edges"), "",
+                                 "shelf-float-ends", NULL);
++  /* Movable islands (ADR-044): off, an island goes beside another island or
++   * to an edge's start, centre or end; on, anywhere along an edge. */
++  {
++    g_autoptr(GSettingsSchema) schema = NULL;
++    g_object_get (self->settings, "settings-schema", &schema, NULL);
++    if (schema && g_settings_schema_has_key (schema, "shelf-free-placement"))
++      add_switch (self, shape, _("Allow free placement"),
++                  _("Place islands anywhere along an edge, not only beside another island or at its start, center or end"),
++                  "shelf-free-placement", NULL);
++  }
+   adw_preferences_page_add (page, shape);
+   adw_preferences_group_set_title (appearance, _("Appearance"));
+   add_switch (self, appearance, _("Use islands"), _("Give the dock and status area separate surfaces"),
+@@ -443,9 +453,9 @@ cc_dash_panel_init (CcDashPanel *self)
+                                _("Joined"), _("Fill the area"), NULL };
+   const char *strength_labels[] = { _("Subtle"), _("Medium"), _("Solid"), NULL };
+   adw_preferences_group_set_title (status, _("System status"));
+-  adw_preferences_group_set_description (status, _("The clock and status indicators open Quick Options together."));
+-  add_switch (self, status, _("Quick controls on right"), _("Swap the clock and quick controls"),
+-              "status-controls-right", NULL);
++  adw_preferences_group_set_description (status, _("The clock and status indicators open Quick Options together. To change their order, right-click the Dash and choose Arrange Islands…"));
++  /* The order of the clock and the quick controls is set by arranging the
++   * islands (right-click the Dash: Arrange Islands…), not by a switch. */
+   add_choice (self, status, _("Clock frame"), "status-frame", frames, frame_labels);
+   add_choice (self, status, _("Frame holds"), "status-frame-scope", scopes, scope_labels);
+   add_size (self, status, _("Time size"), "status-time-size", 10, 20);

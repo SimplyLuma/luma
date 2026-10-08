@@ -1,0 +1,736 @@
+{
+  "schema": "org.projectluma.public-package-license-expressions/v1",
+  "source_snapshot_sha256": "6fd2a4fccad0a356c8659c70c75ae5a014cbaa56852170ac56472276290a594a",
+  "note": "Package aggregate licenses include fetched upstream dependency licenses, not blanket relicensing instructions. LicenseRef labels need their existing project descriptions preserved; removed Office/Creative/Imager recipes should be omitted from the OS monorepo. SPDX exceptions require exception texts as well as license texts. Source file notices remain controlling.",
+  "license_and_exception_identifiers": [
+    "AFL-2.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    "Apache-2.0",
+    "Autoconf-exception-3.0",
+    "BSD-2-Clause",
+    "BSD-2-Clause-Views",
+    "BSD-3-Clause",
+    "BSD-Source-Code",
+    "BSL-1.0",
+    "Bison-exception-2.2",
+    "CC-BY-SA-4.0",
+    "CC0-1.0",
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "ICU",
+    "IJG",
+    "ISC",
+    "LGPL-2.0-only",
+    "LGPL-2.1-only",
+    "LGPL-2.1-or-later",
+    "LLVM-exception",
+    "LicenseRef-LJSpeech-Public-Domain",
+    "LicenseRef-Luma-Project-Asset",
+    "LicenseRef-Luma-System-Artwork-Pending",
+    "LicenseRef-Waydroid-Android-Image",
+    "MIT",
+    "MPL-1.1",
+    "MPL-2.0",
+    "NCSA",
+    "OFL-1.1",
+    "OpenSSL",
+    "SunPro",
+    "Unicode-3.0",
+    "Unlicense",
+    "bzip2-1.0.6"
+  ],
+  "packages": [
+    {
+      "source_path": "packaging/rpm/prairie-icon-theme.spec",
+      "package_names": [
+        "prairie-icon-theme"
+      ],
+      "license_expressions": [
+        "CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/python-authlib.spec",
+      "package_names": [
+        "python-authlib"
+      ],
+      "license_expressions": [
+        "BSD-3-Clause"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/python-joserfc.spec",
+      "package_names": [
+        "python-joserfc"
+      ],
+      "license_expressions": [
+        "BSD-3-Clause"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/python-websockets.spec",
+      "package_names": [
+        "python-%{pypi_name}"
+      ],
+      "license_expressions": [
+        "BSD-3-Clause"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/rmtfs-fp6.spec",
+      "package_names": [
+        "rmtfs"
+      ],
+      "license_expressions": [
+        "BSD-3-Clause"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/speech-dispatcher-luma.spec",
+      "package_names": [
+        "speech-dispatcher"
+      ],
+      "license_expressions": [
+        "GPL-2.0-or-later AND LGPL-2.1-only OR LGPL-2.0-only",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/viola-browser-stable.spec",
+      "package_names": [
+        "viola-browser-stable"
+      ],
+      "license_expressions": [
+        "GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/webkitgtk-luma.spec",
+      "package_names": [
+        "webkitgtk"
+      ],
+      "license_expressions": [
+        "LGPL-2.1-only AND BSD-2-Clause AND BSD-3-Clause AND ISC AND bzip2-1.0.6 AND NCSA AND MIT AND GPL-2.0-only AND MPL-1.1 AND SunPro AND Apache-2.0 AND GPL-3.0-or-later WITH Bison-exception-2.2 AND GPL-3.0-or-later WITH Autoconf-exception-3.0 AND MPL-2.0 AND OFL-1.1 AND (AFL-2.0 OR GPL-2.0-or-later) AND BSD-Source-Code AND BSD-2-Clause-Views AND LGPL-2.1-or-later AND (NCSA OR MIT) AND Apache-2.0 WITH LLVM-exception AND ICU AND BSL-1.0",
+        "MIT AND LGPL-2.1-only AND BSD-3-Clause AND (Apache-2.0 OR GPL-3.0-or-later)",
+        "MIT AND LGPL-2.1-only AND BSD-3-Clause AND (Apache-2.0 OR GPL-3.0-or-later)"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/ModemManager-fp6.spec",
+      "package_names": [
+        "ModemManager"
+      ],
+      "license_expressions": [
+        "GPL-2.0-or-later",
+        "LGPL-2.1-or-later",
+        "LGPL-2.1-or-later",
+        "LGPL-2.1-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/gnome-shell-extension-luma-energy.spec",
+      "package_names": [
+        "gnome-shell-extension-luma-energy"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/gnome-shell-extension-luma-handheld.spec",
+      "package_names": [
+        "gnome-shell-extension-luma-handheld"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/gnome-shell-extension-luma-tiling-toggle.spec",
+      "package_names": [
+        "gnome-shell-extension-luma-tiling-toggle"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/gnome-shell-extension-tiling-shell.spec",
+      "package_names": [
+        "gnome-shell-extension-tiling-shell"
+      ],
+      "license_expressions": [
+        "GPL-3.0-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/intel-crashlog.spec",
+      "package_names": [
+        "intel-crashlog"
+      ],
+      "license_expressions": [
+        "MIT AND (MIT OR Apache-2.0) AND Unicode-3.0 AND (Unlicense OR MIT)"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/libqmi-fp6.spec",
+      "package_names": [
+        "libqmi"
+      ],
+      "license_expressions": [
+        "LGPL-2.1-or-later",
+        "GPL-2.0-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/lpac-fp6.spec",
+      "package_names": [
+        "lpac-fp6"
+      ],
+      "license_expressions": [
+        "AGPL-3.0-only AND LGPL-2.1-only AND MIT AND CC0-1.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-agenda.spec",
+      "package_names": [
+        "luma-agenda"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-android-images-reference.spec",
+      "package_names": [
+        "luma-android-images"
+      ],
+      "license_expressions": [
+        "LicenseRef-Waydroid-Android-Image"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-android-images.spec",
+      "package_names": [
+        "luma-android-images"
+      ],
+      "license_expressions": [
+        "LicenseRef-Waydroid-Android-Image"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-android-runtime.spec",
+      "package_names": [
+        "luma-android-runtime"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-apk-metadata.spec",
+      "package_names": [
+        "luma-apk-metadata"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND MIT AND Unicode-3.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-appimage-compat.spec",
+      "package_names": [
+        "luma-appimage-compat"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-application-installer.spec",
+      "package_names": [
+        "luma-application-installer"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-ari-runtime.spec",
+      "package_names": [
+        "luma-ari-runtime"
+      ],
+      "license_expressions": [
+        "MIT"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-ari.spec",
+      "package_names": [
+        "luma-ari"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-audio-policy.spec",
+      "package_names": [
+        "luma-audio-policy"
+      ],
+      "license_expressions": [
+        "MPL-2.0 AND CC-BY-SA-4.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-background.spec",
+      "package_names": [
+        "luma-background"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-backgrounds.spec",
+      "package_names": [
+        "luma-backgrounds"
+      ],
+      "license_expressions": [
+        "LicenseRef-Luma-Project-Asset"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-boot-theme.spec",
+      "package_names": [
+        "luma-boot-theme"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND MPL-2.0 AND OFL-1.1"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-cage.spec",
+      "package_names": [
+        "cage"
+      ],
+      "license_expressions": [
+        "MIT"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-calculator.spec",
+      "package_names": [
+        "luma-calculator"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-calls.spec",
+      "package_names": [
+        "luma-calls"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-charlie.spec",
+      "package_names": [
+        "luma-charlie"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-continuity.spec",
+      "package_names": [
+        "luma-continuity"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-darkroom.spec",
+      "package_names": [
+        "luma-darkroom"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND ISC"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-desktop-launcher-policy.spec",
+      "package_names": [
+        "luma-desktop-launcher-policy"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-developer-platform.spec",
+      "package_names": [
+        "luma-developer-platform"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-disks.spec",
+      "package_names": [
+        "luma-disks"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-displays.spec",
+      "package_names": [
+        "luma-displays"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-energy.spec",
+      "package_names": [
+        "luma-energy"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-greetd-session.spec",
+      "package_names": [
+        "luma-greetd-session"
+      ],
+      "license_expressions": [
+        "GPL-3.0-only AND Apache-2.0 AND MIT"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-greeter.spec",
+      "package_names": [
+        "luma-greeter"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-homebrew.spec",
+      "package_names": [
+        "luma-homebrew"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-imsd.spec",
+      "package_names": [
+        "luma-imsd"
+      ],
+      "license_expressions": [
+        "GPL-3.0-only AND Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-install-commands.spec",
+      "package_names": [
+        "luma-install-commands"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-installer-atlas.spec",
+      "package_names": [
+        "luma-installer-atlas"
+      ],
+      "license_expressions": [
+        "LGPL-2.1-or-later AND MIT AND OFL-1.1"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-keyring.spec",
+      "package_names": [
+        "luma-keyring"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-leaf.spec",
+      "package_names": [
+        "luma-leaf"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND MIT AND ISC"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-logos.spec",
+      "package_names": [
+        "luma-logos"
+      ],
+      "license_expressions": [
+        "Apache-2.0",
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-maps.spec",
+      "package_names": [
+        "luma-maps"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-media-bridge.spec",
+      "package_names": [
+        "luma-media-bridge"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-messages-bridges.spec",
+      "package_names": [
+        "luma-messages-bridges"
+      ],
+      "license_expressions": [
+        "AGPL-3.0-or-later AND GPL-3.0-or-later AND MPL-2.0 AND Apache-2.0 AND MIT AND BSD-3-Clause AND BSD-2-Clause AND ISC"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-messages-e2ee.spec",
+      "package_names": [
+        "luma-messages-e2ee"
+      ],
+      "license_expressions": [
+        "MPL-2.0 AND (MIT OR Apache-2.0) AND MIT AND Apache-2.0 AND Unicode-3.0 AND BSD-3-Clause AND (Unlicense OR MIT) AND (BSD-2-Clause OR Apache-2.0 OR MIT)"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-mod-recovery-drill.spec",
+      "package_names": [
+        "luma-mod-recovery-drill"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-mods.spec",
+      "package_names": [
+        "luma-mods"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-monitor.spec",
+      "package_names": [
+        "luma-monitor"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-natural-voices.spec",
+      "package_names": [
+        "luma-natural-voices"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND GPL-3.0-or-later AND LGPL-2.1-or-later AND BSD-2-Clause AND MIT AND LicenseRef-LJSpeech-Public-Domain"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-phoc.spec",
+      "package_names": [
+        "phoc"
+      ],
+      "license_expressions": [
+        "GPL-3.0-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-phosh.spec",
+      "package_names": [
+        "luma-phosh"
+      ],
+      "license_expressions": [
+        "GPL-3.0-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-portal.spec",
+      "package_names": [
+        "luma-portal"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-quick-view.spec",
+      "package_names": [
+        "luma-quick-view"
+      ],
+      "license_expressions": [
+        "GPL-2.0-or-later"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-relay.spec",
+      "package_names": [
+        "luma-relay"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-release.spec",
+      "package_names": [
+        "luma-release"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND MIT"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-search.spec",
+      "package_names": [
+        "luma-search"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-shell-state.spec",
+      "package_names": [
+        "luma-shell-state"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-sound-theme.spec",
+      "package_names": [
+        "luma-sound-theme"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-sticky-notes.spec",
+      "package_names": [
+        "luma-sticky-notes"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-terminal.spec",
+      "package_names": [
+        "luma-terminal"
+      ],
+      "license_expressions": [
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-tide.spec",
+      "package_names": [
+        "luma-tide"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-update.spec",
+      "package_names": [
+        "luma-update"
+      ],
+      "license_expressions": [
+        "Apache-2.0",
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-viewer.spec",
+      "package_names": [
+        "luma-viewer"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-vitals.spec",
+      "package_names": [
+        "luma-vitals"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND MPL-2.0",
+        "MPL-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/luma-wifi-guard.spec",
+      "package_names": [
+        "luma-wifi-guard"
+      ],
+      "license_expressions": [
+        "Apache-2.0"
+      ]
+    },
+    {
+      "source_path": "packaging/rpm/prairie-core-apps.spec",
+      "package_names": [
+        "prairie-core-apps"
+      ],
+      "license_expressions": [
+        "Apache-2.0 AND CC-BY-SA-4.0"
+      ]
+    },
+    {
+      "source_path": "packaging/flatpak/runtime/flatpak-runtime-config/flatpak-runtime-config.spec",
+      "package_names": [
+        "flatpak-runtime-config"
+      ],
+      "license_expressions": [
+        "MIT"
+      ]
+    }
+  ]
+}

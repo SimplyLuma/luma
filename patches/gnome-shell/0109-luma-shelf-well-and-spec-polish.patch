@@ -1,0 +1,1145 @@
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -131,7 +131,7 @@
+     font-weight: 500; }
+ 
+ .luma-shelf-live-island .luma-shelf-material {
+-  padding: 10px 12px 10px 10px; }
++  padding: 8px 10px 8px 8px; }
+ 
+ /* Native St.ScrollViewFade masks the viewport; fades consume no layout. */
+ .luma-shelf-running-indicator { background-color: #ffffff; }
+@@ -290,7 +290,7 @@
+   background-color: #22272b;
+   box-shadow: 0 0 0 2px #91b6d2;
+ }
+-.luma-status-cluster .system-status-icon { icon-size: 13px; padding: 0; margin: 0; }
++.luma-status-cluster .system-status-icon { icon-size: 14px; padding: 0; margin: 0; }
+ .luma-status-cluster .panel-status-indicators-box { spacing: 0; }
+ /* _setStatusLineHeight pins each label's line box to exactly its font size, so
+  * neither line carries any leading and the two sit flush without a spacing. */
+@@ -642,15 +642,16 @@
+   icon-shadow: 0 0 4px rgba(82,127,174,0.82); }
+ 
+ /* Native MPRIS media island; material is supplied by ShelfIsland. */
+-.luma-media-module { min-width: 176px; height: 36px; padding: 0; spacing: 7px; border-radius: 10px; }
++.luma-media-module { min-width: 176px; height: 36px; padding: 0 2px 0 0; spacing: 10px; border-radius: 10px; }
+ .luma-media-identity { padding: 0; border: 0; background-color: transparent; }
+-.luma-media-identity-box { spacing: 7px; }
++.luma-media-identity-box { spacing: 10px; }
+ .luma-media-copy { width: 132px; spacing: 2px; }
+-.luma-media-title { font-size: 12px; font-weight: 650; }
+-.luma-media-artist { font-size: 10px; font-weight: 500; opacity: 0.62; }
+-.luma-media-art { icon-size: 36px; border-radius: 9px; background-color: rgba(127,127,127,0.16); }
+-.luma-media-controls { spacing: 0; }
+-.luma-media-control { min-width: 22px; min-height: 24px; padding: 0; border-radius: 7px; background-color: transparent; }
++.luma-media-title { font-size: 13px; font-weight: 650; }
++.luma-media-artist { font-size: 11px; font-weight: 550; opacity: 0.62; font-feature-settings: "tnum"; }
++.luma-media-art { icon-size: 36px; border-radius: 10px; background-color: rgba(127,127,127,0.16); }
++.luma-media-controls { spacing: 2px; }
++.luma-media-control { min-width: 28px; min-height: 28px; padding: 0; border-radius: 8px; background-color: transparent; }
++.luma-media-control StIcon { icon-size: 16px; }
+ .luma-media-control:hover, .luma-media-control:focus { background-color: rgba(127,127,127,0.2); }
+ .luma-media-module.vertical { min-width: 0; height: 138px; width: 36px; padding: 0; }
+ 
+@@ -719,20 +720,21 @@
+  * the clock -- are 12px; everything that describes them -- when, who, the
+  * date -- is 10px. */
+ .luma-shelf-live-island .luma-live-extension-title {
+-  font-size: 12px;
++  font-size: 13px;
+   font-weight: 650;
+ }
+ .luma-shelf-live-island .luma-live-extension-subtitle {
+-  font-size: 10px;
+-  font-weight: 500;
++  font-size: 11px;
++  font-weight: 550;
++  font-feature-settings: "tnum";
+ }
+ .luma-shelf-live-island .luma-live-extension-icon { icon-size: 16px; }
+-.luma-shelf-live-island .luma-live-extension-actions { spacing: 5px; }
++.luma-shelf-live-island .luma-live-extension-actions { spacing: 2px; }
+ .luma-shelf-live-island .luma-live-extension-action {
+-  min-width: 24px; min-height: 24px;
++  min-width: 28px; min-height: 28px;
+   padding: 0;
+   border: 0;
+-  border-radius: 999px;
++  border-radius: 8px;
+   box-shadow: none;
+ }
+ 
+@@ -744,11 +746,12 @@
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-icon,
+ .luma-shelf-live-island .luma-live-extension-icon { color: #91b6d2; }
+ .luma-shelf-live-island .luma-live-extension-action {
+-  background-color: rgba(255, 255, 255, 0.09);
++  background-color: transparent;
++  color: rgba(231, 233, 232, 0.60);
++}
++.luma-shelf-live-island .luma-live-extension-action:hover {
++  background-color: rgba(255, 255, 255, 0.08);
+   color: #e7e9e8;
+-}
+-.luma-shelf-live-island .luma-live-extension-action:hover {
+-  background-color: rgba(255, 255, 255, 0.16);
+ }
+ 
+ /* The light treatments, taken from the same values the materials use. */
+@@ -756,8 +759,8 @@
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-subtitle { color: rgba(25, 27, 31, 0.60); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-icon { color: #4878b8; }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action {
+-  background-color: rgba(25, 27, 31, 0.07);
+-  color: #191b1f;
++  background-color: transparent;
++  color: rgba(52, 56, 61, 0.62);
+ }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-title,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-title { color: #2c343a; }
+@@ -766,35 +769,38 @@
+ 
+ /* ── Live extension: the date badge, the time, and the action row ───────── */
+ /* The badge is a dock tile: 36px square, the dock's corner, the dock's inset. */
++/* The date tile: the calendar's identity blue at 16% with a 20% rim. */
+ .luma-shelf-live-island .luma-live-extension-badge {
+-  border-radius: 9px;
++  border-radius: 10px;
+   width: 36px;
+-  height: 32px;
++  height: 36px;
+   min-width: 0;
+   padding: 4px 0 0 0;
+   spacing: 0;
+-  background-color: rgba(255, 255, 255, 0.10);
++  background-color: rgba(128, 168, 210, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(128, 168, 210, 0.20);
+ }
+ .luma-shelf-live-island .luma-live-extension-badge-month {
+-  font-size: 10px;
++  font-size: 8px;
++  font-weight: 800;
++  text-align: center;
++  color: #80a8d2;
++}
++.luma-shelf-live-island .luma-live-extension-badge-day {
++  font-size: 15px;
+   font-weight: 700;
+   text-align: center;
+-  color: rgba(231, 233, 232, 0.66);
+-}
+-.luma-shelf-live-island .luma-live-extension-badge-day {
+-  font-size: 12px;
+-  font-weight: 700;
+-  text-align: center;
+-  color: #e7e9e8;
++  color: #80a8d2;
+ }
+ .luma-shelf-live-island .luma-live-extension-time {
+-  font-size: 12px;
++  font-size: 11px;
+   font-weight: 650;
++  font-feature-settings: "tnum";
+   padding: 0 0 0 10px;
+-  color: rgba(231, 233, 232, 0.62);
++  color: rgba(231, 233, 232, 0.60);
+ }
+ /* Unconstrained, this inherited a full-size icon and drew as a huge glyph. */
+-.luma-shelf-live-island .luma-live-extension-action-icon { icon-size: 14px; }
++.luma-shelf-live-island .luma-live-extension-action-icon { icon-size: 16px; }
+ 
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge {
+   background-color: rgba(20, 26, 34, 0.07);
+@@ -845,3 +851,40 @@
+   font-size: 12px;
+   font-weight: 600;
+   font-feature-settings: "tnum"; }
++
++/* The Well: application status icons, recessed at the start of the status island. */
++.luma-well { height: 36px; padding: 0 4px; spacing: 2px; border-radius: 10px;
++  background-color: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 2px rgba(0,0,0,0.35); }
++.luma-status-light .luma-well { background-color: rgba(25,27,31,0.05); box-shadow: inset 0 0 0 1px rgba(25,27,31,0.07), inset 0 1px 2px rgba(25,27,31,0.10); }
++.luma-well-item { min-width: 28px; height: 28px; padding: 0 6px; border-radius: 8px; color: #e7e9e8; }
++.luma-status-light .luma-well-item { color: #34383d; }
++.luma-well-item:hover, .luma-well-item:focus { background-color: rgba(255,255,255,0.08); }
++.luma-well-item:active { background-color: rgba(255,255,255,0.14); }
++.luma-status-light .luma-well-item:hover { background-color: rgba(25,27,31,0.07); }
++.luma-well-item-row { spacing: 5px; }
++.luma-well-glyph { width: 16px; height: 16px; }
++.luma-well-readout { font-size: 13px; font-weight: 650; font-feature-settings: "tnum"; }
++.luma-well-dot { width: 6px; height: 6px; margin: 4px; border-radius: 999px; background-color: #e7e9e8; border: 2px solid #21252b; }
++.luma-well-dot.recording { width: 7px; height: 7px; margin: 3px; background-color: #e0716b; }
++.luma-well-count { height: 24px; padding: 0 8px; margin: 0 2px; border-radius: 999px; font-size: 11px; font-weight: 750;
++  font-feature-settings: "tnum"; color: #e7e9e8; background-color: rgba(255,255,255,0.08); }
++.luma-status-light .luma-well-count { color: #34383d; background-color: rgba(25,27,31,0.07); }
++.luma-well-count:checked, .luma-well-count:pulse { color: #21252b; background-color: #e7e9e8; }
++.luma-well-insertion { width: 2px; height: 20px; border-radius: 1px; background-color: #e7e9e8; }
++.luma-well-popover .popup-menu-content { padding: 6px; border-radius: 15px; }
++.luma-well-popover-head { height: 22px; padding: 0 8px; }
++.luma-well-popover-title { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: rgba(231,233,232,0.46); }
++.luma-well-tile { width: 84px; height: 76px; border-radius: 10px; padding: 8px 4px 0; }
++.luma-well-popover-count { min-width: 16px; text-align: right; }
++.luma-well-tile-name { margin-top: 6px; }
++.luma-well-tile:hover, .luma-well-tile:focus { background-color: rgba(255,255,255,0.06); }
++.luma-well-tile-plate { width: 32px; height: 32px; border-radius: 10px; background-color: rgba(255,255,255,0.08); }
++.luma-well-tile-name { font-size: 11px; font-weight: 600; }
++.luma-well-tile-status { font-size: 9px; font-weight: 600; color: rgba(231,233,232,0.55); }
++.luma-well-popover-rule { height: 1px; margin: 5px 7px; background-color: rgba(255,255,255,0.10); }
++.luma-well-popover-hint { padding: 4px 8px 6px; font-size: 11px; color: rgba(231,233,232,0.60); }
++.luma-well-menu-heading { font-size: 9px; font-weight: 700; letter-spacing: 1px; }
++.luma-well-menu-heading .popup-menu-item-label, .luma-well-menu-status { color: rgba(231,233,232,0.46); }
++
++.luma-status-cluster .luma-status-clock { min-width: 64px; }
++.luma-status-cluster .luma-status-time, .luma-status-cluster .luma-status-date { font-feature-settings: "tnum"; }
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -87,6 +87,7 @@
+     <file>ui/lumaDisplayArrival.js</file>
+     <file>ui/lumaWindowCorners.js</file>
+     <file>ui/lumaWindowWatch.js</file>
++    <file>ui/lumaWell.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>
+--- /dev/null
++++ b/js/ui/lumaWell.js
+@@ -0,0 +1,620 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// The Well: the status icons applications publish, given a quiet home at the
++// start of the status island.
++//
++// Applications still speak StatusNotifierItem to the AppIndicator host, which
++// keeps owning the protocol: activation, scrolling and every menu go through
++// it unchanged. Only the presentation is Luma's. Each icon becomes a 16px glyph
++// in the island's ink, a few chosen ones stay in view, and the rest wait behind
++// a count.
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as DND from './dnd.js';
++import * as Main from './main.js';
++import * as PopupMenu from './popupMenu.js';
++
++export const PIN_LIMIT = 4;
++export const ATTENTION_LIMIT = 2;
++export const ATTENTION_LINGER_MS = 3000;
++export const READOUT_MAX_CHARS = 6;
++const GLYPH_SIZE = 16;
++const STORE_PATH = GLib.build_filenamev([GLib.get_user_data_dir(), 'luma', 'well.json']);
++
++// What the Well keeps across restarts: the pinned apps in their order, the
++// apps hidden while idle, and every app it has ever seen, so a new one can
++// announce itself once.
++export class WellStore {
++    constructor(path = STORE_PATH) {
++        this._path = path;
++        this.pins = [];
++        this.hiddenWhenIdle = [];
++        this.seen = [];
++        try {
++            const [, bytes] = GLib.file_get_contents(path);
++            const value = JSON.parse(new TextDecoder().decode(bytes));
++            const strings = list => Array.isArray(list) ? list.filter(item => typeof item === 'string').slice(0, 256) : [];
++            this.pins = strings(value.pins);
++            this.hiddenWhenIdle = strings(value.hiddenWhenIdle);
++            this.seen = strings(value.seen);
++        } catch {
++        }
++    }
++
++    save() {
++        try {
++            GLib.mkdir_with_parents(GLib.path_get_dirname(this._path), 0o700);
++            GLib.file_set_contents(this._path, JSON.stringify({
++                pins: this.pins, hiddenWhenIdle: this.hiddenWhenIdle, seen: this.seen}));
++        } catch (e) {
++            console.warn(`[luma-well] could not save: ${e.message}`);
++        }
++    }
++}
++
++// Which items the Well shows, in order, and how many wait behind the count.
++// Pure, so every rule in the handoff is testable without a Shell.
++export function arrange(items, {pins, hiddenWhenIdle, pinLimit = PIN_LIMIT, now = Date.now()}) {
++    const shown = [];
++    const byKey = new Map(items.map(item => [item.key, item]));
++    for (const key of pins.slice(0, pinLimit)) {
++        const item = byKey.get(key);
++        if (item && !(item.status === 'Passive' && hiddenWhenIdle.includes(key)))
++            shown.push(item);
++    }
++    const asking = items.filter(item => !shown.includes(item) &&
++        (item.status === 'NeedsAttention' || (item.attentionUntil ?? 0) > now));
++    shown.push(...asking.slice(0, ATTENTION_LIMIT));
++    shown.push(...items.filter(item => !shown.includes(item) && item.recording));
++    const rest = items.filter(item => !shown.includes(item) &&
++        !(item.status === 'Passive' && hiddenWhenIdle.includes(item.key)));
++    return {shown, rest};
++}
++
++export function readoutText(label) {
++    const text = (label ?? '').trim();
++    return text.length > 0 && text.length <= READOUT_MAX_CHARS ? text : '';
++}
++
++// Paints anything, whatever its colours, as its own shape in one ink.
++const Silhouette = GObject.registerClass(
++class LumaWellSilhouette extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
++            'uniform vec4 well_ink;',
++            'cogl_color_out = vec4(well_ink.rgb, 1.0) * (cogl_color_out.a * well_ink.a);',
++            false);
++    }
++
++    setInk(color) {
++        this.set_uniform_float(this.get_uniform_location('well_ink'), 4,
++            [color.red / 255, color.green / 255, color.blue / 255, color.alpha / 255]);
++    }
++});
++
++const iconTheme = new St.IconTheme();
++
++// One application's status icon, as the AppIndicator host holds it.
++class WellSource {
++    constructor(indicator) {
++        this.indicator = indicator;
++        this.sni = indicator._indicator ?? null;
++        this.tray = this.sni ? null : indicator;
++        this.attentionUntil = 0;
++        this.recording = false;
++    }
++
++    get key() {
++        if (this.sni)
++            return (this.sni.id || this.sni.title || this.sni.uniqueId || '').toLowerCase();
++        return (this.tray?._icon?.wm_class || this.tray?.uniqueId || 'tray').toLowerCase();
++    }
++
++    get name() {
++        if (this.sni)
++            return this.sni.title || this.sni.id || _('Application');
++        return this.tray?._icon?.title || this.tray?._icon?.wm_class || _('Application');
++    }
++
++    get status() {
++        return this.sni?.status ?? 'Active';
++    }
++
++    get label() {
++        return this.sni?.label ?? '';
++    }
++
++    get detail() {
++        let tooltip = this.sni?._proxy?.ToolTip;
++        if (tooltip instanceof GLib.Variant)
++            tooltip = tooltip.deepUnpack();
++        const title = Array.isArray(tooltip) ? `${tooltip[2] ?? ''}` : '';
++        return title || (this.label && !readoutText(this.label) ? this.label : '');
++    }
++
++    get menu() {
++        return this.indicator.menu?.numMenuItems ? this.indicator.menu : null;
++    }
++
++    // The 16px glyph: the theme's symbolic variant, else a glyph Luma ships
++    // for the app, else the host's own rendering of the icon, drawn as its
++    // shape in ink. Colours never show.
++    makeGlyph() {
++        const box = new St.Bin({style_class: 'luma-well-glyph', y_align: Clutter.ActorAlign.CENTER});
++        const effect = new Silhouette();
++        const applyInk = () => {
++            if (box.get_stage())
++                effect.setInk(box.get_theme_node().get_foreground_color());
++        };
++        const host = this.indicator._icon;
++        const sync = () => {
++            const name = this.sni?.icon?.name;
++            const candidates = [name ? `${name}-symbolic` : null, `luma-tray-${this.key}-symbolic`].filter(Boolean);
++            const symbolic = candidates.find(candidate => iconTheme.has_icon(candidate));
++            let glyph;
++            if (symbolic) {
++                glyph = new St.Icon({icon_name: symbolic, icon_size: GLYPH_SIZE});
++            } else if (host?.content && !host.gicon) {
++                // A pixmap the application sent: the host has already turned it into image content.
++                glyph = new Clutter.Actor({content: host.content, width: GLYPH_SIZE, height: GLYPH_SIZE,
++                    content_gravity: Clutter.ContentGravity.RESIZE_ASPECT});
++                glyph.add_effect_with_name('luma-well-silhouette', effect);
++            } else if (host?.gicon || (name && iconTheme.has_icon(name))) {
++                glyph = new St.Icon({gicon: host?.gicon ?? null, icon_name: host?.gicon ? null : name, icon_size: GLYPH_SIZE});
++                glyph.add_effect_with_name('luma-well-silhouette', effect);
++            } else if (this.tray) {
++                glyph = new Clutter.Clone({source: host, width: GLYPH_SIZE, height: GLYPH_SIZE});
++                glyph.add_effect_with_name('luma-well-silhouette', effect);
++            } else {
++                glyph = new St.Icon({icon_name: 'application-x-executable-symbolic', icon_size: GLYPH_SIZE});
++            }
++            glyph.get_parent()?.remove_child(glyph);
++            box.child?.remove_effect?.(effect);
++            box.child = glyph;
++            applyInk();
++        };
++        box.connect('style-changed', applyInk);
++        host?.connectObject('notify::gicon', sync, 'notify::content', sync, box);
++        if (this.sni) {
++            const id = this.sni.connect('icon', () => GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++                if (box.get_stage())
++                    sync();
++                return GLib.SOURCE_REMOVE;
++            }));
++            box.connect('destroy', () => this.sni.disconnect(id));
++        }
++        sync();
++        return box;
++    }
++
++    activate(event) {
++        if (!this.sni) {
++            this.tray?._icon?.click?.(event);
++            return;
++        }
++        const [x, y] = event.get_coords();
++        // An app whose icon is only a menu opens that menu on a click too.
++        if (this.sni.supportsActivation === false && this.menu)
++            return false;
++        this.sni.open(x, y, event.get_time());
++        return true;
++    }
++
++    secondaryActivate(event) {
++        if (this.sni)
++            this.sni.secondaryActivate(event.get_time(), ...event.get_coords());
++        else
++            this.tray?._icon?.click?.(event);
++    }
++
++    scroll(dx, dy) {
++        this.sni?.scroll(dx, dy);
++    }
++}
++
++// The app's own menu, verbatim, with the Well's section after it.
++function openItemMenu(well, source, anchor) {
++    const menu = source.indicator.menu;
++    if (!menu)
++        return;
++    well.closeMenus();
++    const added = [];
++    const heading = new PopupMenu.PopupMenuItem(source.name.toUpperCase(), {reactive: false, can_focus: false});
++    heading.add_style_class_name('luma-well-menu-heading');
++    if (source.detail) {
++        const status = new St.Label({text: source.detail, style_class: 'luma-well-menu-status',
++            x_expand: true, x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.CENTER});
++        heading.add_child(status);
++    }
++    menu.addMenuItem(heading, 0);
++    added.push(heading);
++    if (menu.numMenuItems > 1) {
++        const separator = new PopupMenu.PopupSeparatorMenuItem();
++        menu.addMenuItem(separator);
++        added.push(separator);
++    }
++    const section = new PopupMenu.PopupMenuItem(_('In the Bar').toUpperCase(), {reactive: false, can_focus: false});
++    section.add_style_class_name('luma-well-menu-heading');
++    menu.addMenuItem(section);
++    added.push(section);
++    const keep = new PopupMenu.PopupMenuItem(_('Keep in the bar'));
++    keep.setOrnament(well.isPinned(source.key) ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT);
++    keep.connect('activate', () => well.setPinned(source.key, !well.isPinned(source.key)));
++    menu.addMenuItem(keep);
++    added.push(keep);
++    const idle = new PopupMenu.PopupMenuItem(_('Hide when idle'));
++    idle.setOrnament(well.isHiddenWhenIdle(source.key) ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT);
++    idle.connect('activate', () => well.setHiddenWhenIdle(source.key, !well.isHiddenWhenIdle(source.key)));
++    menu.addMenuItem(idle);
++    added.push(idle);
++    menu.sourceActor = anchor;
++    menu.setArrowSide(well.arrowSide);
++    const id = menu.connect('open-state-changed', (_menu, open) => {
++        if (open)
++            return;
++        menu.disconnect(id);
++        // After the close animation, so the menu never visibly loses rows.
++        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            for (const item of added)
++                item.destroy();
++            return GLib.SOURCE_REMOVE;
++        });
++    });
++    menu.open(true);
++}
++
++function wireEvents(actor, well, source, {onPrimary}) {
++    actor.connect('button-release-event', (_actor, event) => {
++        const button = event.get_button();
++        if (button === Clutter.BUTTON_SECONDARY) {
++            openItemMenu(well, source, actor);
++        } else if (button === Clutter.BUTTON_MIDDLE) {
++            source.secondaryActivate(event);
++        } else if (button === Clutter.BUTTON_PRIMARY) {
++            onPrimary?.();
++            if (source.activate(event) === false)
++                openItemMenu(well, source, actor);
++        }
++        return Clutter.EVENT_STOP;
++    });
++    actor.connect('scroll-event', (_actor, event) => {
++        if (event.get_scroll_direction() === Clutter.ScrollDirection.SMOOTH) {
++            const [dx, dy] = event.get_scroll_delta();
++            source.scroll(dx, dy);
++        }
++        return Clutter.EVENT_STOP;
++    });
++    actor.connect('key-press-event', (_actor, event) => {
++        const key = event.get_key_symbol();
++        if (key === Clutter.KEY_Menu || (key === Clutter.KEY_F10 && event.get_state() & Clutter.ModifierType.SHIFT_MASK)) {
++            openItemMenu(well, source, actor);
++            return Clutter.EVENT_STOP;
++        }
++        return Clutter.EVENT_PROPAGATE;
++    });
++}
++
++const WellItem = GObject.registerClass(
++class LumaWellItem extends St.Widget {
++    _init(well, source) {
++        super._init({style_class: 'luma-well-item', reactive: true, can_focus: true, track_hover: true,
++            layout_manager: new Clutter.BinLayout(), accessible_role: Atk.Role.PUSH_BUTTON});
++        this.source = source;
++        this._well = well;
++        const row = new St.BoxLayout({style_class: 'luma-well-item-row', x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER});
++        row.add_child(source.makeGlyph());
++        this._readout = new St.Label({style_class: 'luma-well-readout', y_align: Clutter.ActorAlign.CENTER});
++        row.add_child(this._readout);
++        this.add_child(row);
++        this._dot = new St.Widget({style_class: 'luma-well-dot', x_align: Clutter.ActorAlign.END,
++            y_align: Clutter.ActorAlign.START, visible: false});
++        this.add_child(this._dot);
++        wireEvents(this, well, source, {});
++        this._delegate = this;
++        this._draggable = DND.makeDraggable(this, {dragActorOpacity: 180});
++        this._draggable.connect('drag-end', (_d, _time, snapback) => {
++            // Dropped anywhere but the Well: it no longer stays in the bar.
++            if (snapback)
++                well.setPinned(source.key, false);
++        });
++        this.sync();
++    }
++
++    getDragActor() {
++        return this.source.makeGlyph();
++    }
++
++    getDragActorSource() {
++        return this;
++    }
++
++    sync() {
++        const readout = readoutText(this.source.label);
++        this._readout.text = readout;
++        this._readout.visible = readout !== '';
++        const recording = this.source.recording;
++        const asking = this.source.status === 'NeedsAttention';
++        this._dot.visible = recording || asking;
++        this._dot.remove_style_class_name('recording');
++        if (recording)
++            this._dot.add_style_class_name('recording');
++        const status = recording ? _('recording') : this.source.detail || this.source.label;
++        this.accessible_name = status ? `${this.source.name}, ${status}` : this.source.name;
++        this.set_tooltip_text?.(this.source.label && !readout ? `${this.source.name} · ${this.source.label}` : this.source.name);
++    }
++});
++
++const WellTile = GObject.registerClass(
++class LumaWellTile extends St.Widget {
++    _init(well, source) {
++        super._init({style_class: 'luma-well-tile', reactive: true, can_focus: true, track_hover: true,
++            layout_manager: new Clutter.BoxLayout({orientation: Clutter.Orientation.VERTICAL})});
++        this.source = source;
++        const plate = new St.Bin({style_class: 'luma-well-tile-plate', x_align: Clutter.ActorAlign.CENTER,
++            child: source.makeGlyph()});
++        this.add_child(plate);
++        this.add_child(new St.Label({text: source.name, style_class: 'luma-well-tile-name',
++            x_align: Clutter.ActorAlign.CENTER}));
++        this.add_child(new St.Label({text: source.detail || ' ', style_class: 'luma-well-tile-status',
++            x_align: Clutter.ActorAlign.CENTER}));
++        this.accessible_name = source.detail ? `${source.name}, ${source.detail}` : source.name;
++        wireEvents(this, well, source, {onPrimary: () => well.closeMenus()});
++        this._delegate = this;
++        DND.makeDraggable(this, {dragActorOpacity: 220});
++    }
++
++    getDragActor() {
++        return this.source.makeGlyph();
++    }
++
++    getDragActorSource() {
++        return this;
++    }
++});
++
++export const Well = GObject.registerClass({
++    Signals: {'changed': {}},
++}, class LumaWell extends St.BoxLayout {
++    _init() {
++        super._init({style_class: 'luma-well', reactive: true, y_align: Clutter.ActorAlign.CENTER,
++            accessible_role: Atk.Role.TOOL_BAR, accessible_name: _('Status bar apps')});
++        this._store = new WellStore();
++        this._sources = new Map();
++        this._items = new Map();
++        this.arrowSide = St.Side.BOTTOM;
++        this._insertion = new St.Widget({style_class: 'luma-well-insertion', visible: false});
++        this._chip = new St.Button({style_class: 'luma-well-count', can_focus: true, y_align: Clutter.ActorAlign.CENTER});
++        this._chip.connect('clicked', () => this._togglePopover());
++        this._delegate = this;
++        this._popover = null;
++        this._attentionTimer = 0;
++        // The host draws each icon only while its own actor is on stage, so its
++        // actors stay mapped here: transparent, zero-sized and never picked.
++        this._host = new St.Widget({opacity: 0, width: 0, height: 0, clip_to_allocation: true});
++        Shell.util_set_hidden_from_pick(this._host, true);
++        this.connect('destroy', () => {
++            if (this._attentionTimer)
++                GLib.source_remove(this._attentionTimer);
++            this._attentionTimer = 0;
++            this._popover?.destroy();
++        });
++        this.visible = false;
++    }
++
++    // Takes over the presentation of a panel status indicator from the
++    // AppIndicator host. Returns false for anything that isn't one.
++    adopt(indicator) {
++        const isStatusIcon = indicator?._indicator?.uniqueId !== undefined ||
++            indicator?.constructor?.name === 'IndicatorTrayIcon';
++        if (!isStatusIcon)
++            return false;
++        const container = indicator.container;
++        if (container.get_parent() !== this._host) {
++            container.get_parent()?.remove_child(container);
++            this._host.add_child(container);
++        }
++        if (this._sources.has(indicator))
++            return true;
++        const source = new WellSource(indicator);
++        this._sources.set(indicator, source);
++        const changed = () => {
++            if (source.sni?.status !== 'NeedsAttention' && source._wasAsking)
++                source.attentionUntil = Date.now() + ATTENTION_LINGER_MS;
++            source._wasAsking = source.sni?.status === 'NeedsAttention';
++            this._scheduleAttention();
++            this._rebuild();
++        };
++        if (source.sni) {
++            const ids = ['status', 'label', 'ready'].map(signal => source.sni.connect(signal, changed));
++            indicator.connectObject('destroy', () => ids.forEach(id => source.sni.disconnect(id)), this);
++        }
++        indicator.connectObject('destroy', () => {
++            this._sources.delete(indicator);
++            this._items.get(indicator)?.destroy();
++            this._items.delete(indicator);
++            this._rebuild();
++        }, this);
++        if (source.key && !this._store.seen.includes(source.key)) {
++            this._store.seen.push(source.key);
++            this._store.save();
++            this._pulse = true;
++        }
++        this._rebuild();
++        return true;
++    }
++
++    isPinned(key) {
++        return this._store.pins.includes(key);
++    }
++
++    setPinned(key, pinned, index = -1) {
++        const pins = this._store.pins.filter(pin => pin !== key);
++        if (pinned)
++            pins.splice(index < 0 ? pins.length : Math.min(index, pins.length), 0, key);
++        this._store.pins = pins;
++        this._store.save();
++        this._rebuild();
++    }
++
++    isHiddenWhenIdle(key) {
++        return this._store.hiddenWhenIdle.includes(key);
++    }
++
++    setHiddenWhenIdle(key, hidden) {
++        this._store.hiddenWhenIdle = this._store.hiddenWhenIdle.filter(item => item !== key);
++        if (hidden)
++            this._store.hiddenWhenIdle.push(key);
++        this._store.save();
++        this._rebuild();
++    }
++
++    setRecordingApps(keys) {
++        for (const source of this._sources.values())
++            source.recording = keys.has(source.key);
++        this._rebuild();
++    }
++
++    closeMenus() {
++        this._popover?.close();
++        for (const source of this._sources.values())
++            source.indicator.menu?.close?.();
++    }
++
++    _scheduleAttention() {
++        if (this._attentionTimer)
++            return;
++        this._attentionTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ATTENTION_LINGER_MS + 100, () => {
++            this._attentionTimer = 0;
++            this._rebuild();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _ready() {
++        // An item is shown once it has said who it is. The host's own readiness
++        // also waits for a menu, which some applications never publish.
++        return [...this._sources.values()].filter(source => source.sni ? Boolean(source.sni.id) : true);
++    }
++
++    _rebuild() {
++        const sources = this._ready();
++        const {shown, rest} = arrange(sources, this._store);
++        for (const child of this.get_children())
++            this.remove_child(child);
++        for (const source of shown) {
++            let item = this._items.get(source.indicator);
++            if (!item) {
++                item = new WellItem(this, source);
++                this._items.set(source.indicator, item);
++            }
++            item.get_parent()?.remove_child(item);
++            item.sync();
++            this.add_child(item);
++        }
++        for (const [indicator, item] of this._items) {
++            if (!shown.some(source => source.indicator === indicator)) {
++                item.destroy();
++                this._items.delete(indicator);
++            }
++        }
++        this._rest = rest;
++        this._chip.label = `+${rest.length}`;
++        this._chip.accessible_name = rest.length === 1
++            ? _('1 more app in the background')
++            : _('%d more apps in the background').format(rest.length);
++        if (rest.length > 0)
++            this.add_child(this._chip);
++        this.add_child(this._insertion);
++        this.add_child(this._host);
++        this.visible = sources.length > 0;
++        if (this._pulse && rest.length > 0) {
++            this._pulse = false;
++            this._chip.add_style_pseudo_class('pulse');
++            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
++                this._chip.remove_style_pseudo_class('pulse');
++                return GLib.SOURCE_REMOVE;
++            });
++        }
++        if (this._popover?.isOpen)
++            this._fillPopover();
++        this.emit('changed');
++    }
++
++    // ── The Well opened ──────────────────────────────────────────────────
++    _togglePopover() {
++        if (!this._popover) {
++            // Left-aligned to the Well itself, not to the count that opened it.
++            this._popover = new PopupMenu.PopupMenu(this, 0, this.arrowSide);
++            this._popover.actor.add_style_class_name('luma-well-popover');
++            Main.uiGroup.add_child(this._popover.actor);
++            this._popover.actor.hide();
++            Main.panel.menuManager.addMenu(this._popover);
++            this._popover.connect('open-state-changed', (_menu, open) => {
++                if (open)
++                    this._chip.add_style_pseudo_class('checked');
++                else
++                    this._chip.remove_style_pseudo_class('checked');
++            });
++        }
++        this._popover.setArrowSide(this.arrowSide);
++        this._popover.setSourceAlignment(0);
++        if (this._popover.isOpen) {
++            this._popover.close();
++            return;
++        }
++        this._fillPopover();
++        this._popover.open(true);
++    }
++
++    _fillPopover() {
++        const box = this._popover.box;
++        box.destroy_all_children();
++        const head = new St.BoxLayout({style_class: 'luma-well-popover-head'});
++        head.add_child(new St.Label({text: _('In the Background').toUpperCase(), x_expand: true,
++            style_class: 'luma-well-popover-title'}));
++        head.add_child(new St.Label({text: `${this._rest.length}`, style_class: 'luma-well-popover-title luma-well-popover-count'}));
++        box.add_child(head);
++        const layout = new Clutter.GridLayout({column_homogeneous: true, row_spacing: 0, column_spacing: 0});
++        const grid = new St.Widget({style_class: 'luma-well-grid', layout_manager: layout});
++        this._rest.forEach((source, index) =>
++            layout.attach(new WellTile(this, source), index % 4, Math.floor(index / 4), 1, 1));
++        box.add_child(grid);
++        box.add_child(new St.Widget({style_class: 'luma-well-popover-rule'}));
++        box.add_child(new St.Label({text: _('Drag into the bar to keep one visible'),
++            style_class: 'luma-well-popover-hint'}));
++    }
++
++    // ── Pinning by dragging ──────────────────────────────────────────────
++    // x is in the Well's own coordinates, as DND hands it to a drop target.
++    _dropIndex(x) {
++        const items = this.get_children().filter(child => child instanceof WellItem);
++        return items.filter(item => item.x + item.width / 2 < x).length;
++    }
++
++    handleDragOver(source, _actor, x, _y) {
++        if (!source?.source?.key)
++            return DND.DragMotionResult.CONTINUE;
++        const index = this._dropIndex(x);
++        const items = this.get_children().filter(child => child instanceof WellItem);
++        this._insertion.visible = true;
++        this.set_child_at_index(this._insertion, Math.min(index, items.length));
++        return DND.DragMotionResult.MOVE_DROP;
++    }
++
++    acceptDrop(source, _actor, x, _y) {
++        this._insertion.visible = false;
++        if (!source?.source?.key)
++            return false;
++        const index = this._dropIndex(x);
++        this.setPinned(source.source.key, true, index);
++        this._popover?.close();
++        return true;
++    }
++});
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -75,6 +75,10 @@
+     ['screen-share', 'screen-shared-symbolic'],
+ ]);
+ const LUMA_LIVE_EXTENSION_TOOLTIP_DELAY = 300;
++// The status grid: 14px glyphs, 8 apart across and 6 apart down.
++const STATUS_GLYPH = 14;
++const STATUS_COLUMN_GAP = 8;
++const STATUS_ROW_GAP = 6;
+ const LUMA_LIVE_EXTENSION_TOOLTIP_GAP = 6;
+ 
+ const LiveExtensionsIndicator = GObject.registerClass(
+@@ -283,7 +287,9 @@
+         const actions = this._validActions(item);
+         if (actions.length === 1 && actions[0].risk === 'passive')
+             return [];
+-        return actions;
++        // Only controls with a glyph of their own are drawn; there are no
++        // overflow buttons in a live extension.
++        return actions.filter(action => LUMA_LIVE_EXTENSION_ACTION_ICONS.has(action.id));
+     }
+ 
+     // An action is only renderable when the broker gave us everything needed
+@@ -783,7 +789,7 @@
+     }
+ 
+     _columns(container) {
+-        return this._vertical ? 2 : Math.max(2,
++        return this._vertical ? 2 : Math.max(3,
+             Math.ceil(this._visibleChildren(container).length / 2));
+     }
+ 
+@@ -809,9 +815,8 @@
+ 
+         const scale = this._scale();
+         const columns = this._columns(container);
+-        const width = Math.max(DASH_TILE_SIZE,
+-            7 + columns * 13 + (columns - 1) * 3) * scale;
+-        return [(columns * 13 + (columns - 1) * 3) * scale, width];
++        const glyphs = columns * STATUS_GLYPH + (columns - 1) * STATUS_COLUMN_GAP;
++        return [glyphs * scale, Math.max(DASH_TILE_SIZE, 12 + glyphs) * scale];
+     }
+ 
+     vfunc_get_preferred_height(container, forWidth) {
+@@ -827,8 +832,8 @@
+         }
+ 
+         const rows = Math.max(2, Math.ceil(this._visibleChildren(container).length / this._columns(container)));
+-        const height = (7 + rows * 13 + (rows - 1) * 3) * this._scale();
+-        return [(rows * 13 + (rows - 1) * 3) * this._scale(), height];
++        const glyphs = rows * STATUS_GLYPH + (rows - 1) * STATUS_ROW_GAP;
++        return [glyphs * this._scale(), Math.max(DASH_TILE_SIZE, glyphs) * this._scale()];
+     }
+ 
+     vfunc_allocate(container, box) {
+@@ -856,22 +861,23 @@
+         const scale = this._scale();
+         const columns = this._columns(container);
+         const rows = Math.max(2, Math.ceil(children.length / columns));
+-        const cell = 13 * scale;
+-        const gap = 3 * scale;
+-        const contentWidth = columns * cell + (columns - 1) * gap;
++        const cell = STATUS_GLYPH * scale;
++        const columnGap = STATUS_COLUMN_GAP * scale;
++        const rowGap = STATUS_ROW_GAP * scale;
++        const contentWidth = columns * cell + (columns - 1) * columnGap;
+         const width = box.x2 - box.x1;
+         const height = box.y2 - box.y1;
+         const startX = Math.floor((width - contentWidth) / 2);
+-        const startY = Math.floor((height - (rows * cell + (rows - 1) * gap)) / 2);
++        const startY = Math.floor((height - (rows * cell + (rows - 1) * rowGap)) / 2);
+ 
+         children.forEach((child, index) => {
+             const column = index % columns;
+             const row = Math.floor(index / columns);
+             const childBox = new Clutter.ActorBox({
+-                x1: startX + column * (cell + gap),
+-                y1: startY + row * (cell + gap),
+-                x2: startX + column * (cell + gap) + cell,
+-                y2: startY + row * (cell + gap) + cell,
++                x1: startX + column * (cell + columnGap),
++                y1: startY + row * (cell + rowGap),
++                x2: startX + column * (cell + columnGap) + cell,
++                y2: startY + row * (cell + rowGap) + cell,
+             });
+             child.allocate(childBox);
+         });
+@@ -985,6 +991,30 @@
+         this._updateStatusName();
+     }
+ 
++    // The Well sits first in the cluster, with its own targets: a press on it
++    // must never also open Quick Settings.
++    setStatusWell(well) {
++        this._statusWell = well;
++        this._statusWellSeam = new St.Widget({style_class: 'luma-status-seam luma-status-well-seam'});
++        well.connectObject('notify::visible', () => {
++            this._statusWellSeam.visible = well.visible;
++            this.queue_relayout();
++        }, this);
++        this._clickGesture.connect('may-recognize', () => !this._pressIsInWell());
++        if (this._statusActive)
++            this._styleStatusCluster();
++    }
++
++    _pressIsInWell() {
++        const well = this._statusWell;
++        if (!well?.visible)
++            return false;
++        const {x, y} = this._clickGesture.get_coords_abs();
++        const extents = well.get_transformed_extents();
++        return x >= extents.get_x() && y >= extents.get_y() &&
++            x < extents.get_x() + extents.get_width() && y < extents.get_y() + extents.get_height();
++    }
++
+     releaseStatusCluster() {
+         if (!this._statusActive)
+             return;
+@@ -1016,8 +1046,9 @@
+ 
+     _setStatusLineHeight(label) {
+         const size = this._statusSettings.get_int(label === this._statusTime ? 'status-time-size' : 'status-date-size');
++        const floor = label === this._statusTime ? 13 : 11;
+         const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
+-        attrs.change(Pango.attr_line_height_new_absolute(size *
++        attrs.change(Pango.attr_line_height_new_absolute(Math.max(floor, size) *
+             St.ThemeContext.get_for_stage(global.stage).scale_factor * Pango.SCALE));
+         label.clutter_text.set_attributes(attrs);
+     }
+@@ -1155,11 +1186,18 @@
+             const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+             return `rgba(${rgb.join(',')},${strength})`;
+         };
+-        const right = s.get_boolean('status-controls-right');
++        // The clock is always the last thing in the shelf.
++        const right = false;
+         this._statusBox.text_direction = this.text_direction;
+         this._statusBox.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._statusBox.remove_all_children();
+         const parts = right ? [this._statusClock, this._statusControls] : [this._statusControls, this._statusClock];
++        if (this._statusWell) {
++            this._statusWell.get_parent()?.remove_child(this._statusWell);
++            this._statusBox.add_child(this._statusWell);
++            this._statusBox.add_child(this._statusWellSeam);
++            this._statusWellSeam.visible = this._statusWell.visible;
++        }
+         this._statusBox.add_child(parts[0]);
+         this._statusBox.add_child(this._statusSeam);
+         this._statusBox.add_child(parts[1]);
+@@ -1188,10 +1226,11 @@
+         const seam = s.get_boolean('status-divider');
+         this._statusSeam.visible = true;
+         this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: 1px; margin: ${joined ? '0' : vertical ? `${padding}px 0` : `0 ${padding}px`};`);
++        this._statusWellSeam?.set_style(this._statusSeam.get_style());
+         this._statusSeam.x_expand = vertical;
+         this._statusSeam.y_expand = !vertical;
+         this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);
+-        this._statusDateLabel.set_style(`font-size: ${s.get_int('status-date-size')}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
++        this._statusDateLabel.set_style(`font-size: ${Math.max(11, s.get_int('status-date-size'))}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+         // Use the shared inset rhythm instead of collapsing the gap when
+         // the configured font sizes consume the tile's nominal height.
+         //
+@@ -1203,7 +1242,7 @@
+         this._statusClockBox.set_style(`padding: 0; spacing: ${clockGap}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
+-            [this._statusDateLabel, s.get_int('status-date-size')]]) {
++            [this._statusDateLabel, Math.max(11, s.get_int('status-date-size'))]]) {
+             const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
+             attrs.change(Pango.attr_line_height_new_absolute(size * textScale * Pango.SCALE));
+             label.clutter_text.set_attributes(attrs);
+@@ -1218,7 +1257,7 @@
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         this._statusControls.set_height(vertical ? -1 : (DASH_TILE_SIZE - (scope === 'all' && stroked ? 2 : 0) + (flush ? 2 * padding : 0)) * scale);
+         const columns = this._indicatorsLayout._columns(this._indicators);
+-        const controlWidth = Math.max(DASH_TILE_SIZE, 7 + columns * 13 + (columns - 1) * 3) * scale;
++        const controlWidth = Math.max(DASH_TILE_SIZE, 12 + columns * STATUS_GLYPH + (columns - 1) * STATUS_COLUMN_GAP) * scale;
+         this._statusControls.set_width(vertical ? -1 : controlWidth + (flush ? 2 * padding * scale : 0));
+         this._indicators.get_children().forEach(child => child.set_style(
+             s.get_boolean('status-glyph-tiles') ? `background-color: ${light ? 'rgba(25,27,31,0.05)' : 'rgba(255,255,255,0.08)'}; border-radius: 3px;` : null));
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -7,10 +7,11 @@
+ 
+ import * as Main from './main.js';
+ import {ShelfMedia} from './shelfMedia.js';
++import {Well} from './lumaWell.js';
+ import {LumaIconMask} from './iconMask.js';
+ import {anchoredToStatus, shelfGaps} from './mediaSelection.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+-import {DASH_TILE_SIZE, runningIndicatorGeometry} from './shelfMetrics.js';
++import {DASH_TILE_SIZE, SHELF_INSET, runningIndicatorGeometry} from './shelfMetrics.js';
+ 
+ const DASH_PADDING = 10;
+ // Every application on the dock is drawn to the same silhouette, whatever
+@@ -36,7 +37,9 @@
+ export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural, scale = 1, padding = DASH_PADDING) {
+     const vertical = edge === 'left' || edge === 'right';
+     const thickness = (DASH_TILE_SIZE + 2 * padding) * scale;
+-    const inset = protrude ? 0 : padding * scale;
++    // Islands float SHELF_INSET from the screen; windows keep the padding.
++    const inset = protrude ? 0 : SHELF_INSET * scale;
++    const margin = protrude ? 0 : padding * scale;
+     const gutter = !span || floatEnds ? padding * scale : 0;
+     const available = Math.max(1, (vertical ? monitor.height : monitor.width) - 2 * gutter);
+     const length = span ? available : Math.min(available, natural);
+@@ -52,7 +55,7 @@
+         : monitor.y + (edge === 'top' ? inset : monitor.height - inset - height));
+     // A floating Dash still consumes maximized work area through the physical
+     // edge gap. A separate nonreactive chrome actor owns these static bounds.
+-    const reserved = thickness + 2 * inset;
++    const reserved = thickness + inset + margin;
+     const workArea = {
+         x: edge === 'right' ? monitor.x + monitor.width - reserved : monitor.x,
+         y: edge === 'bottom' ? monitor.y + monitor.height - reserved : monitor.y,
+@@ -60,10 +63,10 @@
+         height: vertical ? monitor.height : reserved,
+     };
+     const edgeInsets = [
+-        {x: monitor.x, y: monitor.y, width: monitor.width, height: inset},
+-        {x: monitor.x, y: monitor.y, width: inset, height: monitor.height},
+-        {x: monitor.x + monitor.width - inset, y: monitor.y, width: inset, height: monitor.height},
+-        {x: monitor.x, y: monitor.y + monitor.height - inset, width: monitor.width, height: inset},
++        {x: monitor.x, y: monitor.y, width: monitor.width, height: margin},
++        {x: monitor.x, y: monitor.y, width: margin, height: monitor.height},
++        {x: monitor.x + monitor.width - margin, y: monitor.y, width: margin, height: monitor.height},
++        {x: monitor.x, y: monitor.y + monitor.height - margin, width: monitor.width, height: margin},
+     ].filter((_rect, index) => ['top', 'left', 'right', 'bottom'][index] !== edge);
+     return {x, y, width, height, vertical, available, workArea, edgeInsets};
+ }
+@@ -195,8 +198,11 @@
+             if (!ok)
+                 continue;
+             const center = vertical ? centerY : centerX;
++            const app = tile._delegate?.app;
++            const focused = Boolean(app) && Shell.WindowTracker.get_default().focus_app === app;
++            bar.opacity = focused ? 255 : 140;
+             const geometry = runningIndicatorGeometry(shelf._edge,
+-                box.get_width(), box.get_height(), center, scale);
++                box.get_width(), box.get_height(), center, scale, focused, shelf._padding ?? 8);
+             bar.allocate(new Clutter.ActorBox({x1: geometry.x, y1: geometry.y,
+                 x2: geometry.x + geometry.width, y2: geometry.y + geometry.height}));
+         }
+@@ -422,6 +428,7 @@
+         for (const adjustment of [this._dockScroll.hadjustment, this._dockScroll.vadjustment])
+             adjustment.connectObject('notify::value', () => this._queueIndicatorLayout(), this);
+         this._dash._box.connectObject('notify::allocation', () => this._queueIndicatorLayout(), this);
++        Shell.WindowTracker.get_default().connectObject('notify::focus-app', () => this._queueIndicatorLayout(), this);
+ 
+ 
+         // Keep secondary accessibility/input applets reachable in their own
+@@ -436,6 +443,11 @@
+             'luma-shelf-actions-island', this._actionsMaterial);
+         this._actionsMaterial.setStatusCluster(Main.panel.statusArea.dateMenu,
+             this._settings, false);
++        // Application status icons live in the status island's Well, not in an
++        // island of their own.
++        this._well = new Well();
++        this._actionsMaterial.setStatusWell?.(this._well);
++        this._well.connectObject('changed', () => this._queueDockWidth(), this);
+         this._actionsBox = this._actionsMaterial._statusBox;
+         this._actionsScroll = this._actionsMaterial._statusViewport;
+         this._media = new ShelfMedia();
+@@ -616,9 +628,12 @@
+         this._setMenuSide(quick, arrowSide);
+         quick._statusArrowSide = arrowSide;
+         this._auxBox.orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._well.arrowSide = arrowSide;
+         for (const role of [...actionRoles, ...extraRoles]) {
+             const indicator = indicators[role];
+             if (!indicator)
++                continue;
++            if (!actionRoles.includes(role) && this._well.adopt(indicator))
+                 continue;
+             const container = indicator.container;
+             if (!actionRoles.includes(role) && !container._lumaShelfExtra) {
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -1,18 +1,30 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ // Native Dash and status geometry share one logical tile size. Display scale
+ // multiplies these logical measurements; it is not a second size policy.
++// The values are the shelf specification's: 36 content, 6 between dock icons,
++// 14 from the screen's edges.
+ export const DASH_TILE_SIZE = 36;
+-export const DASH_TILE_GAP = 5;
++export const DASH_TILE_GAP = 6;
++export const SHELF_INSET = 14;
+ 
+-export function runningIndicatorGeometry(edge, width, height, center, scale = 1) {
+-    const length = 18 * scale;
+-    const depth = 3 * scale;
++// A running app is a 4x4 dot 2px beneath its icon, inside the island's
++// padding; the focused app's dot stretches to a 12x4 pill.
++export function runningIndicatorGeometry(edge, width, height, center, scale = 1, focused = false, padding = 8) {
++    const length = (focused ? 12 : 4) * scale;
++    const depth = 4 * scale;
+     const vertical = edge === 'left' || edge === 'right';
+-    const radii = {bottom: [2, 2, 0, 0], top: [0, 0, 2, 2],
+-        left: [0, 2, 2, 0], right: [2, 0, 0, 2]}[edge];
++    const clearance = (padding - 2) * scale;
++    const radii = [2, 2, 2, 2];
++    let x, y;
++    if (vertical) {
++        x = edge === 'left' ? clearance - depth : width - clearance;
++        y = center - length / 2;
++    } else {
++        x = center - length / 2;
++        y = edge === 'top' ? clearance - depth : height - clearance;
++    }
+     return {
+-        x: vertical ? (edge === 'left' ? 0 : width - depth) : center - length / 2,
+-        y: vertical ? center - length / 2 : (edge === 'top' ? 0 : height - depth),
++        x, y,
+         width: vertical ? depth : length,
+         height: vertical ? length : depth,
+         radii,

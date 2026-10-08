@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sound
+Comment=Choose where sound plays when a new device connects
+Icon=audio-volume-high-symbolic
+Exec=/usr/libexec/luma-audio-devices --gapplication-service
+DBusActivatable=true
+NoDisplay=true
+Terminal=false
+Categories=Settings;HardwareSettings;
+X-GNOME-UsesNotifications=true

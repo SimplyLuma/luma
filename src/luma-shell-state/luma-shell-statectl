@@ -1,0 +1,67 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Small client for inspecting and changing canonical Luma shell state."""
+
+from __future__ import annotations
+
+import argparse
+import json
+
+from gi.repository import Gio, GLib
+
+
+BUS_NAME = "org.project_luma.ShellState1"
+OBJECT_PATH = "/org/project_luma/ShellState1"
+INTERFACE = BUS_NAME
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(prog="luma-shell-statectl")
+    commands = result.add_subparsers(dest="command", required=True)
+    commands.add_parser("get")
+    for name in ("favorites", "home-apps"):
+        command = commands.add_parser(name)
+        command.add_argument("application_ids", nargs="*")
+    wallpaper = commands.add_parser("wallpaper")
+    wallpaper.add_argument("uri")
+    appearance = commands.add_parser("appearance")
+    appearance.add_argument("value", choices=("default", "prefer-light", "prefer-dark"))
+    idle = commands.add_parser("idle-delay")
+    idle.add_argument("seconds", type=int)
+    return result
+
+
+def call(proxy: Gio.DBusProxy, method: str, variant: GLib.Variant | None = None):
+    return proxy.call_sync(method, variant, Gio.DBusCallFlags.NONE, 5000, None)
+
+
+def main() -> int:
+    args = parser().parse_args()
+    proxy = Gio.DBusProxy.new_for_bus_sync(
+        Gio.BusType.SESSION,
+        Gio.DBusProxyFlags.NONE,
+        None,
+        BUS_NAME,
+        OBJECT_PATH,
+        INTERFACE,
+        None,
+    )
+    if args.command == "get":
+        payload = call(proxy, "GetSnapshot").unpack()[0]
+        print(json.dumps(json.loads(payload), indent=2, ensure_ascii=False, sort_keys=True))
+    elif args.command == "favorites":
+        call(proxy, "SetFavorites", GLib.Variant("(as)", (args.application_ids,)))
+    elif args.command == "home-apps":
+        call(proxy, "SetHomeApps", GLib.Variant("(as)", (args.application_ids,)))
+    elif args.command == "wallpaper":
+        call(proxy, "SetWallpaper", GLib.Variant("(s)", (args.uri,)))
+    elif args.command == "appearance":
+        call(proxy, "SetAppearance", GLib.Variant("(s)", (args.value,)))
+    elif args.command == "idle-delay":
+        call(proxy, "SetIdleDelay", GLib.Variant("(u)", (args.seconds,)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calls on your computer over Bluetooth (bluetooth.bond). Kept apart so the feature can be removed together. -->
+<resources>
+    <string name="channel_calls">Calls on your computer</string>
+
+    <string name="calls_bond_notification_title">Use %1$s for calls</string>
+    <string name="calls_bond_notification_text">Tap to pair over Bluetooth. Call audio stays on this phone until you choose the computer.</string>
+    <string name="calls_bond_notification_public">Your computer is waiting to pair for calls</string>
+
+    <string name="calls_bond_title">Use %1$s for calls</string>
+    <string name="calls_bond_explain">This pairs your phone with %1$s over Bluetooth, so you can see, answer and place your phone\'s calls on the computer.</string>
+    <string name="calls_bond_audio">Call audio stays on this phone. It moves to the computer only when you answer there or choose to use the computer for that call.</string>
+    <string name="calls_bond_code">Android will show a pairing code. Pair only if %1$s shows the same code.</string>
+    <string name="calls_bond_contacts">Android may also ask whether to share contacts and call history. Luma doesn\'t read them over Bluetooth yet, so you can leave that off.</string>
+    <string name="calls_bond_permission">Luma Connect will ask for permission to connect to nearby Bluetooth devices. It uses it only to pair with this computer.</string>
+    <string name="calls_bond_expires">Expires in %1$d seconds</string>
+    <string name="calls_bond_pair">Pair</string>
+    <string name="calls_bond_not_now">Not now</string>
+    <string name="calls_bond_close">Close</string>
+
+    <string name="calls_bond_waiting">Waiting for pairing… Confirm the code on this phone and on %1$s.</string>
+    <string name="calls_bond_done">Paired. %1$s will finish setting up calls.</string>
+    <string name="calls_bond_failed">Pairing didn\'t finish. Try again from your computer.</string>
+    <string name="calls_bond_already">This phone is already paired with that Bluetooth device. If calls don\'t work, remove %1$s in Bluetooth settings, then try again from your computer.</string>
+    <string name="calls_bond_expired">This request has expired. Try again from your computer.</string>
+    <string name="calls_bond_denied">Without Bluetooth permission this phone can\'t pair with %1$s. You can allow it in Settings, then try again from your computer.</string>
+    <string name="calls_bond_bluetooth_off">Turn on Bluetooth, then try again from your computer.</string>
+    <string name="calls_bond_unavailable">This phone has no Bluetooth that Luma Connect can use.</string>
+</resources>

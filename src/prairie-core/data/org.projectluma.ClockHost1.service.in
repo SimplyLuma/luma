@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.ClockHost1
+Exec=/usr/bin/false
+SystemdService=app-org.projectluma.Clock-agent.service

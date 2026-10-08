@@ -1,0 +1,13 @@
+[Unit]
+Description=Luma Fairphone power-key display broker
+After=luma-shell-session.target
+PartOf=luma-shell-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-power-key-broker
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=luma-shell-session.target

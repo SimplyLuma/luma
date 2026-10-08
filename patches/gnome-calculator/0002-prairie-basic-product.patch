@@ -1,0 +1,1717 @@
+diff --git a/src/buttons-basic.vala b/src/buttons-basic.vala
+index 991baba..1c915fc 100644
+--- a/src/buttons-basic.vala
++++ b/src/buttons-basic.vala
+@@ -15,16 +15,10 @@ public class BasicButtonPanel : Adw.Bin
+     private unowned Gtk.Widget basic;
+     [GtkChild]
+     private unowned Gtk.Button calc_numeric_point_button;
+-    [GtkChild]
+-    private unowned Gtk.MenuButton calc_memory_button;
+-    [GtkChild]
+-    private unowned Gtk.MenuButton calc_function_button;
+ 
+     public BasicButtonPanel (MathButtons buttons)
+     {
+         basic.set_direction (Gtk.TextDirection.LTR);
+         calc_numeric_point_button.set_label (buttons.equation.serializer.get_radix ().to_string ());
+-        calc_memory_button.popover = new MathVariablePopover (buttons.equation);
+-        calc_function_button.popover = new MathFunctionPopover (buttons.equation);
+     }
+ }
+diff --git a/src/gnome-calculator.vala b/src/gnome-calculator.vala
+index fc342c3..9bd48dc 100644
+--- a/src/gnome-calculator.vala
++++ b/src/gnome-calculator.vala
+@@ -15,11 +15,8 @@ public class Calculator : Adw.Application
+     private MathWindow last_opened_window;
+     private static string program_name = null;
+     private static string equation_string = null;
+-    private static string mode_string = null;
+ 
+     private const OptionEntry[] option_entries = {
+-        /* Translators: Do not translate possible mode names basic, advanced, financial, programming, keyboard and conversion */
+-        { "mode", 'm', 0, OptionArg.STRING, ref mode_string, N_("Start in given mode (basic, advanced, financial, programming, keyboard, conversion)"), "mode" },
+         { "solve", 's', 0, OptionArg.STRING, null, N_("Solve given equation"), "equation" },
+         { "equation", 'e', 0, OptionArg.STRING, ref equation_string, N_("Start with given equation"), "equation"},
+         { "version", 'v', 0, OptionArg.NONE, null, N_("Show release version"), null },
+@@ -45,16 +42,10 @@ public class Calculator : Adw.Application
+     private MathWindow create_new_window (Settings settings)
+     {
+         var accuracy = settings.get_int ("accuracy");
+-        var word_size = settings.get_int ("word-size");
+-        var number_base = settings.get_int ("base");
+         var show_tsep = settings.get_boolean ("show-thousands");
+         var show_zeroes = settings.get_boolean ("show-zeroes");
+         var number_format = (DisplayFormat) settings.get_enum ("number-format");
+         var angle_units = (AngleUnit) settings.get_enum ("angle-units");
+-        var button_mode = (ButtonMode) settings.get_enum ("button-mode");
+-        var unit_category = settings.get_string ("unit-category");
+-        var source_units = settings.get_strv ("source-units");
+-        var target_units = settings.get_strv ("target-units");
+         var precision = settings.get_int ("precision");
+         var maximized = settings.get_boolean ("window-maximized");
+         int width, height;
+@@ -62,7 +53,6 @@ public class Calculator : Adw.Application
+ 
+         var equation = new MathEquation ();
+         equation.accuracy = accuracy;
+-        equation.word_size = word_size;
+         equation.show_thousands_separators = show_tsep;
+         equation.show_trailing_zeroes = show_zeroes;
+         equation.number_format = number_format;
+@@ -77,27 +67,13 @@ public class Calculator : Adw.Application
+         current_window.maximized = maximized;
+         current_window.set_default_size (width, height);
+ 
+-        var converter = current_window.converter;
+-        converter.source_units = source_units;
+-        converter.target_units = target_units;
+-        converter.set_category (unit_category);
+-
+         var buttons = current_window.buttons;
+-        buttons.programming_base = number_base;
+-        buttons.mode = button_mode;
+-
+-        set_accels_for_action ("win.mode::basic", {"<control><alt>B"});
+-        set_accels_for_action ("win.mode::advanced", {"<control><alt>A"});
+-        set_accels_for_action ("win.mode::financial", {"<control><alt>F"});
+-        set_accels_for_action ("win.mode::programming", {"<control><alt>P"});
+-        set_accels_for_action ("win.mode::keyboard", {"<control><alt>K", "<control><alt>T"});
+-        set_accels_for_action ("win.mode::conversion", {"<control><alt>C"});
++        buttons.mode = ButtonMode.BASIC;
++
+         set_accels_for_action ("win.copy", {"<control>C", "Copy"});
+         set_accels_for_action ("win.paste", {"<control>V", "Paste"});
+         set_accels_for_action ("win.undo", {"<control>Z", "Undo"});
+         set_accels_for_action ("win.redo", {"<control><shift>Z", "Redo"});
+-        set_accels_for_action ("win.clear", {"<control>Escape"});
+-        set_accels_for_action ("win.preferences", {"<control>comma"});
+         set_accels_for_action ("win.close", {"<control>W"});
+ 
+         set_accels_for_action ("app.quit", {"<control>Q"});
+@@ -116,14 +92,6 @@ public class Calculator : Adw.Application
+         settings = new Settings ("org.gnome.calculator");
+         settings.delay ();
+         last_opened_window = create_new_window (settings);
+-        CurrencyManager.get_default ().refresh_interval = settings.get_int ("refresh-interval");
+-        CurrencyManager.get_default ().refresh_async ();
+-
+-        settings.changed["refresh-interval"].connect(() => {
+-            CurrencyManager.get_default ().refresh_interval = settings.get_int ("refresh-interval");
+-            CurrencyManager.get_default ().refresh_async ();
+-        });
+-        settings.bind ("favorite-currencies", CurrencyManager.get_default (), "favorite_currencies", SettingsBindFlags.GET);
+     }
+ 
+     protected override void activate ()
+@@ -142,46 +110,11 @@ public class Calculator : Adw.Application
+                     last_opened_window.equation.solve ();
+             }
+         }
+-        if (mode_string != "" && mode_string != null)
+-        {
+-            var mode = ButtonMode.BASIC;
+-
+-            switch (mode_string)
+-            {
+-            case "basic":
+-                mode = ButtonMode.BASIC;
+-                break;
+-            case "advanced":
+-                mode = ButtonMode.ADVANCED;
+-                break;
+-            case "financial":
+-                mode = ButtonMode.FINANCIAL;
+-                break;
+-            case "programming":
+-                mode = ButtonMode.PROGRAMMING;
+-                break;
+-            case "keyboard":
+-                mode = ButtonMode.KEYBOARD;
+-                break;
+-            case "conversion":
+-                mode = ButtonMode.CONVERSION;
+-                break;
+-            }
+-            last_opened_window.buttons.mode = mode;
+-        }
+     }
+ 
+     protected override void shutdown ()
+     {
+         var window = last_opened_window;
+-        var converter = window.converter;
+-        var buttons = window.buttons;
+-
+-        settings.set_enum ("button-mode", buttons.mode);
+-        settings.set_string ("unit-category", converter.get_category ());
+-        settings.set_strv ("source-units", converter.source_units);
+-        settings.set_strv ("target-units", converter.target_units);
+-        settings.set_int ("base", buttons.programming_base);
+         settings.set_boolean ("window-maximized", window.maximized);
+         int width, height;
+         window.get_default_size(out width, out height);
+diff --git a/src/math-buttons.vala b/src/math-buttons.vala
+index b93afd6..14c09a8 100644
+--- a/src/math-buttons.vala
++++ b/src/math-buttons.vala
+@@ -21,6 +21,8 @@ public enum ButtonMode
+ public class MathButtons : Adw.Bin
+ {
+     public MathEquation equation { get; construct set; }
++    /* Retained for source compatibility with upstream's uninstantiated mode
++     * panels. Prairie's product surface is Basic-only. */
+     public MathConverter converter { get; construct set; }
+ 
+     private ButtonMode _mode = -1;
+@@ -54,11 +56,8 @@ public class MathButtons : Adw.Bin
+ 
+     private Gtk.Stack panel_stack = new Gtk.Stack ();
+     private Gtk.Widget bas_panel;
+-    private Gtk.Widget adv_panel;
+-    private Gtk.Widget fin_panel;
+-    private Gtk.Widget prog_panel;
+-    private Gtk.Widget conv_panel;
+     private bool solved_using_button;
++    private bool initialized;
+ 
+     private SimpleActionGroup action_group = new SimpleActionGroup ();
+     private const ActionEntry[] action_entries = {
+@@ -78,26 +77,29 @@ public class MathButtons : Adw.Bin
+         {"undo",                 on_undo                                 },
+         {"clear",                on_clear                                },
+         {"solve",                on_solve                                },
++        {"change-sign",          on_change_sign                          },
+         {"set-number-mode",      on_set_number_mode,      "s", "'normal'"},
+     };
+ 
++    /* Kept so the uninstantiated upstream Financial panel still compiles. */
+     public signal void currency_conversion();
+ 
+-    public MathButtons (MathEquation equation, MathConverter converter)
++    public MathButtons (MathEquation equation)
+     {
+-        Object (equation: equation, converter: converter);
++        Object (equation: equation);
+     }
+ 
+     construct
+     {
+         notify["equation"].connect (construct_finish);
+-        notify["converter"].connect (construct_finish);
++        construct_finish ();
+     }
+ 
+     private void construct_finish ()
+     {
+-        if (equation == null || converter == null)
++        if (equation == null || initialized)
+             return;
++        initialized = true;
+ 
+         vexpand_set = true;
+         panel_stack.hhomogeneous = false;
+@@ -114,56 +116,18 @@ public class MathButtons : Adw.Bin
+ 
+     private void update_buttons ()
+     {
+-        if (mode == ButtonMode.PROGRAMMING)
+-            equation.number_base = _programming_base;
+-        else
+-            equation.number_base = 10;
+-
+-        if (mode != ButtonMode.KEYBOARD)
+-            panel_stack.visible_child = load_mode (mode);
++        equation.number_base = 10;
++        panel_stack.visible_child = load_mode (ButtonMode.BASIC);
+     }
+ 
+     private Gtk.Widget load_mode (ButtonMode mode)
+     {
+-        switch (mode)
++        if (bas_panel == null)
+         {
+-        default:
+-        case ButtonMode.BASIC:
+-            if (bas_panel == null)
+-            {
+-                bas_panel = new BasicButtonPanel (this);
+-                panel_stack.add_child (bas_panel);
+-            }
+-            return bas_panel;
+-        case ButtonMode.ADVANCED:
+-            if (adv_panel == null)
+-            {
+-                adv_panel = new AdvancedButtonPanel (this);
+-                panel_stack.add_child (adv_panel);
+-            }
+-            return adv_panel;
+-        case ButtonMode.FINANCIAL:
+-            if (fin_panel == null)
+-            {
+-                fin_panel = new FinancialButtonPanel (this);
+-                panel_stack.add_child (fin_panel);
+-            }
+-            return fin_panel;
+-        case ButtonMode.PROGRAMMING:
+-            if (prog_panel == null)
+-            {
+-                prog_panel = new ProgrammingButtonPanel (this);
+-                panel_stack.add_child (prog_panel);
+-            }
+-            return prog_panel;
+-        case ButtonMode.CONVERSION:
+-            if (conv_panel == null)
+-            {
+-                conv_panel = new ConversionButtonPanel (this);
+-                panel_stack.add_child (conv_panel);
+-            }
+-            return conv_panel;
++            bas_panel = new BasicButtonPanel (this);
++            panel_stack.add_child (bas_panel);
+         }
++        return bas_panel;
+     }
+ 
+     private void on_insert (SimpleAction action, Variant? param)
+@@ -264,6 +228,26 @@ public class MathButtons : Adw.Bin
+         solved_using_button = true;
+     }
+ 
++    private void on_change_sign ()
++    {
++        var text = equation.display;
++
++        if (text == "" || text == "0")
++        {
++            equation.display_selected ("−");
++            return;
++        }
++
++        if (text.has_prefix ("−(") && text.has_suffix (")"))
++            equation.display_selected (text.substring ("−(".length, text.length - "−(".length - 1));
++        else if (text.has_prefix ("−"))
++            equation.display_selected (text.substring ("−".length));
++        else if (text.has_prefix ("-"))
++            equation.display_selected (text.substring (1));
++        else
++            equation.display_selected ("−(" + text + ")");
++    }
++
+     private void on_set_number_mode (SimpleAction action, Variant? param)
+     {
+         if (param.get_string () == action.state.get_string ())
+diff --git a/src/math-display.vala b/src/math-display.vala
+index f0c00f9..56714b6 100644
+--- a/src/math-display.vala
++++ b/src/math-display.vala
+@@ -20,18 +20,22 @@ public class MathDisplay : Gtk.Box
+     [GtkChild]
+     unowned GtkSource.View source_view;
+ 
++    [GtkChild]
++    unowned Gtk.Label zero_label;
++
+     /* Buffer that shows errors etc */
+     [GtkChild]
+     unowned Gtk.TextView info_view;
+ 
++    [GtkChild]
++    unowned Gtk.Box info_box;
++
+     [GtkChild]
+     unowned Gtk.EventControllerKey event_controller;
+ 
+     /* Spinner widget that shows if we're calculating a response */
+     [GtkChild]
+     unowned Adw.Spinner spinner;
+-    [GtkChild]
+-    unowned Gtk.Button backspace_button;
+ 
+     private HashTable<string, GtkSource.CompletionProvider> providers;
+     private string[] _enabled_completions = {};
+@@ -78,7 +82,10 @@ public class MathDisplay : Gtk.Box
+         ((MathWindow) root).buttons.notify["mode"].connect (base_label_changed_cb);
+         equation.notify["base-label"].connect (base_label_changed_cb);
+         equation.notify["status"].connect (status_changed_cb);
++        equation.notify["display"].connect (update_result_scale);
++        source_view.notify["width"].connect (update_result_scale);
+         status_changed_cb ();
++        update_result_scale ();
+ 
+         equation.notify["error-token-end"].connect (error_status_changed_cb);
+ 
+@@ -117,7 +124,6 @@ public class MathDisplay : Gtk.Box
+             source_view.right_margin = enable_osk ? 14 : 0;
+         else
+             source_view.left_margin = enable_osk ? 14 : 0;
+-        backspace_button.visible = !enable_osk;
+     }
+ 
+     public void display_text (string prev_eq)
+@@ -501,6 +507,7 @@ public class MathDisplay : Gtk.Box
+             else
+                 info_view.buffer.text = "";
+         }
++        info_box.visible = info_view.buffer.text != "";
+     }
+ 
+     private void status_changed_cb ()
+@@ -530,6 +537,28 @@ public class MathDisplay : Gtk.Box
+             spinner.set_visible (false);
+             info_view.left_margin = info_view.right_margin = 12;
+         }
++        info_box.visible = equation.in_solve || info_view.buffer.text != "";
++    }
++
++    private void update_result_scale ()
++    {
++        zero_label.visible = equation.is_empty;
++        source_view.remove_css_class ("result-medium");
++        source_view.remove_css_class ("result-small");
++
++        var width = source_view.get_width () - 32;
++        if (width <= 0 || equation.display == "")
++            return;
++
++        var layout = source_view.create_pango_layout (equation.display);
++        int text_width;
++        int text_height;
++        layout.get_pixel_size (out text_width, out text_height);
++
++        if (text_width * 26 > width * 34)
++            source_view.add_css_class ("result-small");
++        else if (text_width > width)
++            source_view.add_css_class ("result-medium");
+     }
+ 
+     private void error_status_changed_cb ()
+@@ -553,11 +582,6 @@ public class MathDisplay : Gtk.Box
+         source_view.grab_focus ();
+     }
+ 
+-    [GtkCallback]
+-    private void backspace_cb ()
+-    {
+-        equation.backspace ();
+-    }
+ }
+ 
+ public class CompletionProposal : GLib.Object, GtkSource.CompletionProposal
+diff --git a/src/math-window.vala b/src/math-window.vala
+index 36fa5c8..b89f635 100644
+--- a/src/math-window.vala
++++ b/src/math-window.vala
+@@ -14,54 +14,26 @@ public class MathWindow : Adw.ApplicationWindow
+ {
+     public MathEquation equation { get; construct set; }
+ 
+-    private ulong changed_handler;
+-    private int forked_row_index = 0;
+-    private string saved_eq = null;
+-
+-    [GtkChild]
+-    private unowned HistoryView history;
+     [GtkChild]
+     private unowned MathDisplay _display;
+     public MathDisplay display { get { return _display; } }
+-    [GtkChild]
+-    private unowned MathConverter _converter;
+-    public MathConverter converter { get { return _converter; } }
++
+     [GtkChild]
+     private unowned MathButtons _buttons;
+     public MathButtons buttons { get { return _buttons; } }
+ 
+-    [GtkChild]
+-    private unowned Gtk.MenuButton menu_button;
+-    [GtkChild]
+-    private unowned Gtk.Button undo_button;
+-    [GtkChild]
+-    private unowned Gtk.Button redo_button;
+-    [GtkChild]
+-    private unowned Gtk.Button back_button;
+-    [GtkChild]
+-    private unowned Gtk.Box display_box;
+-
+-    private Gtk.EventControllerKey event_controller;
+-    private MathPreferencesDialog preferences_dialog;
+-
+     private const ActionEntry[] window_entries =
+     {
+         { "copy", copy_cb, null, null, null },
+         { "paste", paste_cb, null, null, null },
+         { "undo", undo_cb, null, null, null },
+         { "redo", redo_cb, null, null, null },
+-        { "mode", mode_cb, "s", "\"basic\"", null },
+-        { "clear", clear_cb, null, null, null },
+-        { "back", back_cb, null, null, null },
+-        { "preferences", show_preferences_cb, null, null, null },
+-        { "close",close, null, null, null },
++        { "close", close, null, null, null },
+     };
+ 
+     public MathWindow (Gtk.Application app, MathEquation equation)
+     {
+-        typeof (HistoryView).ensure ();
+         typeof (MathDisplay).ensure ();
+-        typeof (MathConverter).ensure ();
+         typeof (MathButtons).ensure ();
+         Object (application: app, equation: equation);
+     }
+@@ -77,152 +49,30 @@ public class MathWindow : Adw.ApplicationWindow
+             return;
+ 
+         add_action_entries (window_entries, this);
++
+         var settings = new Settings ("org.gnome.calculator");
+         add_action (settings.create_action ("number-format"));
++        settings.bind ("number-format", equation, "number_format", SettingsBindFlags.DEFAULT);
++        settings.bind ("accuracy", equation, "accuracy", SettingsBindFlags.DEFAULT);
++        settings.bind ("show-zeroes", equation, "show_trailing_zeroes", SettingsBindFlags.DEFAULT);
++        settings.bind ("show-thousands", equation, "show_thousands_separators", SettingsBindFlags.DEFAULT);
++
+         var undo_action = (SimpleAction) lookup_action ("undo");
+         var redo_action = (SimpleAction) lookup_action ("redo");
+         undo_action.set_enabled (false);
+         redo_action.set_enabled (false);
+ 
+-        equation.notify["display"].connect(() => {
++        equation.notify["display"].connect (() => {
+             undo_action.set_enabled (equation.has_undo_action);
+             redo_action.set_enabled (equation.has_redo_action);
+         });
+-        settings.bind ("number-format", equation, "number_format", SettingsBindFlags.DEFAULT);
+-        settings.bind ("accuracy", equation, "accuracy", SettingsBindFlags.DEFAULT);
+-        settings.bind ("show-zeroes", equation, "show_trailing_zeroes", SettingsBindFlags.DEFAULT);
+-        settings.bind ("show-thousands", equation, "show_thousands_separators", SettingsBindFlags.DEFAULT);
+-        settings.bind ("angle-units", equation, "angle_units", SettingsBindFlags.DEFAULT);
+-        settings.bind ("word-size", equation, "word_size", SettingsBindFlags.DEFAULT);
+ 
+-        event_controller = new Gtk.EventControllerKey ();
+-        (this as Gtk.Widget).add_controller (event_controller);
+-        event_controller.key_pressed.connect (key_press_cb);
+-        event_controller.key_released.connect (key_release_cb);
++        _buttons.mode = ButtonMode.BASIC;
+ 
+-        _display.equation.display_changed.connect (history.set_serializer);
+-        _display.equation.history_signal.connect (this.update_history);
+-
+-        history.answer_clicked.connect (_display.insert_text);
+-        history.equation_clicked.connect (_display.display_text);
+-        history.row_added.connect (this.eq_changed_cb);
+-        history.set_serializer (_display.equation.serializer);
+-
+-        _display.arr_key_pressed.connect (this.arr_key_pressed_cb);
+-        changed_handler = _display.equation.changed.connect (this.eq_changed_cb);
+-
+-        _buttons.currency_conversion.connect (() => back_button.visible = true);
+-        _buttons.notify["mode"].connect (mode_changed_cb);
+-        mode_changed_cb ();
+-
+-        if (DEVELOPMENT_BUILD) {
++        if (DEVELOPMENT_BUILD)
+             add_css_class ("devel");
+-        }
+-        _display.grab_focus ();
+-    }
+-
+-    private void clear_cb ()
+-    {
+-        history.clear ();
+-    }
+-
+-    private void mode_changed_cb ()
+-    {
+-        var action = (SimpleAction) lookup_action ("mode");
+-
+-        switch (buttons.mode)
+-        {
+-        default:
+-        case ButtonMode.BASIC:
+-            menu_button.label = _("Basic");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (480, null);
+-            action.set_state (new Variant.string ("basic"));
+-            break;
+-
+-        case ButtonMode.ADVANCED:
+-            menu_button.label = _("Advanced");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+-            action.set_state (new Variant.string ("advanced"));
+-            break;
+-
+-        case ButtonMode.FINANCIAL:
+-            menu_button.label = _("Financial");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+-            action.set_state (new Variant.string ("financial"));
+-            break;
+-
+-        case ButtonMode.PROGRAMMING:
+-            menu_button.label = _("Programming");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+-            action.set_state (new Variant.string ("programming"));
+-            break;
+-
+-        case ButtonMode.KEYBOARD:
+-            menu_button.label = _("Keyboard");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+-            action.set_state (new Variant.string ("keyboard"));
+-            break;
+-
+-        case ButtonMode.CONVERSION:
+-            menu_button.label = _("Conversion");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (480, null);
+-            action.set_state (new Variant.string ("conversion"));
+-            break;
+-        }
+-
+-        if (_buttons.mode == ButtonMode.PROGRAMMING)
+-            display_box.add_css_class ("programming");
+-        else
+-            display_box.remove_css_class ("programming");
+-
+-        _display.set_enable_osk (_buttons.mode == ButtonMode.KEYBOARD);
+-        _buttons.set_visible (_buttons.mode != ButtonMode.KEYBOARD);
+-
+-        converter.set_visible (_buttons.mode == ButtonMode.CONVERSION);
+-        display_box.set_visible (_buttons.mode != ButtonMode.CONVERSION);
+-        undo_button.set_visible (_buttons.mode != ButtonMode.CONVERSION);
+-        redo_button.set_visible (_buttons.mode != ButtonMode.CONVERSION);
+-        var copy_action = (SimpleAction) lookup_action ("copy");
+-        copy_action.set_enabled (_buttons.mode != ButtonMode.CONVERSION);
+-        var clear_action = (SimpleAction) lookup_action ("clear");
+-        clear_action.set_enabled (_buttons.mode != ButtonMode.CONVERSION);
+-        back_button.set_visible (false);
+-    }
+ 
+-    protected bool key_press_cb (Gtk.EventControllerKey controller, uint keyval, uint keycode, Gdk.ModifierType state)
+-    {
+-        if (keyval == Gdk.Key.Shift_L || keyval == Gdk.Key.Shift_R)
+-            buttons.inverse = true;
+-
+-        if (buttons.mode == ButtonMode.PROGRAMMING && (state & Gdk.ModifierType.CONTROL_MASK) == Gdk.ModifierType.CONTROL_MASK)
+-        {
+-            switch (keyval)
+-            {
+-            /* Binary */
+-            case Gdk.Key.b:
+-                equation.number_base = 2;
+-                return true;
+-            /* Octal */
+-            case Gdk.Key.o:
+-                equation.number_base = 8;
+-                return true;
+-            /* Decimal */
+-            case Gdk.Key.d:
+-                equation.number_base = 10;
+-                return true;
+-            /* Hexdecimal */
+-            case Gdk.Key.h:
+-                equation.number_base = 16;
+-                return true;
+-            }
+-        }
+-        return false;
+-    }
+-
+-    protected void key_release_cb (Gtk.EventControllerKey controller, uint keyval, uint keycode, Gdk.ModifierType state)
+-    {
+-        if (keyval == Gdk.Key.Shift_L || keyval == Gdk.Key.Shift_R)
+-            buttons.inverse = false;
++        _display.grab_focus ();
+     }
+ 
+     private void copy_cb ()
+@@ -232,131 +82,16 @@ public class MathWindow : Adw.ApplicationWindow
+ 
+     private void paste_cb ()
+     {
+-        if (buttons.mode != ButtonMode.CONVERSION)
+-            equation.paste ();
+-        else
+-            converter.paste ();
++        equation.paste ();
+     }
+ 
+     private void undo_cb ()
+     {
+-        if (buttons.mode != ButtonMode.CONVERSION)
+-            equation.undo ();
++        equation.undo ();
+     }
+ 
+     private void redo_cb ()
+     {
+-        if (buttons.mode != ButtonMode.CONVERSION)
+-            equation.redo ();
+-    }
+-
+-    private void mode_cb (SimpleAction action, Variant? parameter)
+-        requires (parameter != null)
+-        requires (parameter.is_of_type (VariantType.STRING))
+-    {
+-        menu_button.popdown ();
+-
+-        _display.grab_focus ();
+-
+-        var mode = ButtonMode.BASIC;
+-        var mode_str = parameter.get_string (null);
+-
+-        if (mode_str == "basic")
+-            mode = ButtonMode.BASIC;
+-        else if (mode_str == "advanced")
+-            mode = ButtonMode.ADVANCED;
+-        else if (mode_str == "financial")
+-            mode = ButtonMode.FINANCIAL;
+-        else if (mode_str == "programming")
+-            mode = ButtonMode.PROGRAMMING;
+-        else if (mode_str == "keyboard")
+-            mode = ButtonMode.KEYBOARD;
+-        else if (mode_str == "conversion")
+-            mode = ButtonMode.CONVERSION;
+-        else assert_not_reached ();
+-
+-        buttons.mode = mode;
+-    }
+-
+-    private void arr_key_pressed_cb (uint keyval)
+-    {
+-        switch (keyval)
+-        {
+-        case Gdk.Key.Left:
+-            previous_in_history ();
+-            break;
+-        case Gdk.Key.Right:
+-            next_in_history ();
+-            break;
+-        }
+-    }
+-
+-    private void eq_changed_cb ()
+-    {
+-        forked_row_index = history.current + 1;
+-        saved_eq = null;
+-    }
+-
+-    private void previous_in_history ()
+-    {
+-        var entry = history.get_entry_at (forked_row_index - 1);
+-        if (entry == null)
+-        {
+-            _display.keynav_failed (Gtk.DirectionType.UP);
+-            return;
+-        }
+-        else if (saved_eq == null)
+-        {
+-            Gtk.TextIter start, end;
+-            if (!equation.get_selection_bounds (out start, out end))
+-                equation.get_bounds (out start, out end);
+-
+-            saved_eq = equation.get_text (start, end, false);
+-        }
+-        forked_row_index--;
+-        set_display_text (entry.equation_label.get_text ());
+-    }
+-
+-    private void next_in_history ()
+-    {
+-        var entry = history.get_entry_at (forked_row_index + 1);
+-        if (entry == null)
+-        {
+-            if (saved_eq != null)
+-            {
+-                set_display_text (saved_eq);
+-                eq_changed_cb ();
+-            } else _display.keynav_failed (Gtk.DirectionType.DOWN);
+-            return;
+-        }
+-        set_display_text (entry.equation_label.get_text ());
+-        forked_row_index++;
+-    }
+-
+-    private void set_display_text (string text)
+-    {
+-        SignalHandler.block (_display.equation, changed_handler);
+-        _display.display_text (text);
+-        SignalHandler.unblock (_display.equation, changed_handler);
+-    }
+-
+-    public void update_history (string answer, Number number, int number_base, uint representation_base)
+-    {
+-        /* Recieves signal emitted by a MathEquation object for updating history-view */
+-        history.insert_entry (answer, number, number_base, representation_base); /* Sends current equation and answer for updating History-View */
+-    }
+-
+-    private void back_cb ()
+-    {
+-        buttons.mode = ButtonMode.FINANCIAL;
+-    }
+-
+-    private void show_preferences_cb ()
+-    {
+-        if (preferences_dialog == null)
+-            preferences_dialog = new MathPreferencesDialog (equation);
+-        preferences_dialog.pop_subpage ();
+-        preferences_dialog.get_visible_page ().scroll_to_top ();
+-        preferences_dialog.present (this);
++        equation.redo ();
+     }
+ }
+diff --git a/src/ui/buttons-basic.blp b/src/ui/buttons-basic.blp
+index 81408a8..ce5136a 100644
+--- a/src/ui/buttons-basic.blp
++++ b/src/ui/buttons-basic.blp
+@@ -8,408 +8,185 @@ template $BasicButtonPanel: Adw.Bin {
+ 
+   Grid basic {
+     hexpand: true;
++    vexpand: true;
+     row-homogeneous: true;
+     column-homogeneous: true;
+-
+     styles [
+       "buttons",
+     ]
+ 
+-    Button calc_clear_button {
++    Button {
+       label: "C";
+       focus-on-click: false;
+       tooltip-text: _("Clear Display [Escape]");
+       action-name: "cal.clear";
+-
+-      styles [
+-        "clear-button",
+-      ]
+-
+-      layout {
+-        column: "0";
+-        row: "0";
+-      }
++      styles ["function-button"]
++      layout { column: "0"; row: "0"; }
+     }
+ 
+-    ToggleButton calc_superscript_button {
+-      label: "↑n";
++    Button {
++      label: "±";
+       focus-on-click: false;
+-      tooltip-text: _("Superscript Mode [Ctrl]");
+-      action-name: "cal.set-number-mode";
+-      action-target: "'superscript'";
+-
+-      styles [
+-        "function-button",
+-      ]
+-
+-      layout {
+-        column: "1";
+-        row: "0";
+-      }
++      tooltip-text: _("Change Sign");
++      action-name: "cal.change-sign";
++      styles ["function-button"]
++      layout { column: "1"; row: "0"; }
+     }
+ 
+-    ToggleButton calc_subscript_button {
+-      label: "↓n";
++    Button {
++      label: "%";
+       focus-on-click: false;
+-      tooltip-text: _("Subscript Mode [Alt]");
+-      action-name: "cal.set-number-mode";
+-      action-target: "'subscript'";
+-
+-      styles [
+-        "function-button",
+-      ]
++      tooltip-text: _("Percentage [%]");
++      action-name: "cal.insert-general";
++      action-target: "'%'";
++      styles ["function-button"]
++      layout { column: "2"; row: "0"; }
++    }
+ 
+-      layout {
+-        column: "2";
+-        row: "0";
+-      }
++    Button {
++      label: "÷";
++      focus-on-click: false;
++      tooltip-text: _("Divide [/]");
++      action-name: "cal.insert-general";
++      action-target: "'÷'";
++      styles ["operator-button"]
++      layout { column: "3"; row: "0"; }
+     }
+ 
+-    Button calc_7_button {
++    Button {
+       label: "7";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "7";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "0";
+-        row: "1";
+-      }
++      styles ["number-button"]
++      layout { column: "0"; row: "1"; }
+     }
+ 
+-    Button calc_8_button {
++    Button {
+       label: "8";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "8";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "1";
+-        row: "1";
+-      }
++      styles ["number-button"]
++      layout { column: "1"; row: "1"; }
+     }
+ 
+-    Button calc_9_button {
++    Button {
+       label: "9";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "9";
++      styles ["number-button"]
++      layout { column: "2"; row: "1"; }
++    }
+ 
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "2";
+-        row: "1";
+-      }
++    Button {
++      label: "×";
++      focus-on-click: false;
++      tooltip-text: _("Multiply [*]");
++      action-name: "cal.insert-general";
++      action-target: "'×'";
++      styles ["operator-button"]
++      layout { column: "3"; row: "1"; }
+     }
+ 
+-    Button calc_4_button {
++    Button {
+       label: "4";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "4";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "0";
+-        row: "2";
+-      }
++      styles ["number-button"]
++      layout { column: "0"; row: "2"; }
+     }
+ 
+-    Button calc_5_button {
++    Button {
+       label: "5";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "5";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "1";
+-        row: "2";
+-      }
++      styles ["number-button"]
++      layout { column: "1"; row: "2"; }
+     }
+ 
+-    Button calc_6_button {
++    Button {
+       label: "6";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "6";
++      styles ["number-button"]
++      layout { column: "2"; row: "2"; }
++    }
+ 
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "2";
+-        row: "2";
+-      }
++    Button {
++      label: "−";
++      focus-on-click: false;
++      tooltip-text: _("Subtract [-]");
++      action-name: "cal.subtract";
++      styles ["operator-button"]
++      layout { column: "3"; row: "2"; }
+     }
+ 
+-    Button calc_1_button {
++    Button {
+       label: "1";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "1";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "0";
+-        row: "3";
+-      }
++      styles ["number-button"]
++      layout { column: "0"; row: "3"; }
+     }
+ 
+-    Button calc_2_button {
++    Button {
+       label: "2";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "2";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "1";
+-        row: "3";
+-      }
++      styles ["number-button"]
++      layout { column: "1"; row: "3"; }
+     }
+ 
+-    Button calc_3_button {
++    Button {
+       label: "3";
+       focus-on-click: false;
+       action-name: "cal.insert-digit";
+       action-target: "3";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "2";
+-        row: "3";
+-      }
+-    }
+-
+-    Button calc_0_button {
+-      label: "0";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "0";
+-
+-      styles [
+-        "number-button",
+-      ]
+-
+-      layout {
+-        column: "0";
+-        row: "4";
+-      }
+-    }
+-
+-    Button calc_numeric_point_button {
+-      label: ".";
+-      focus-on-click: false;
+-      action-name: "cal.insert-numeric-point";
+-
+-      styles [
+-        "numeric-point-button",
+-      ]
+-
+-      layout {
+-        column: "1";
+-        row: "4";
+-      }
++      styles ["number-button"]
++      layout { column: "2"; row: "3"; }
+     }
+ 
+-    MenuButton calc_memory_button {
+-      /* Translators: The label on the memory button */
+-      label: _("x");
+-      focus-on-click: false;
+-      can-shrink: true;
+-      tooltip-text: _("Variables and Constants");
+-      direction: up;
+-
+-      styles [
+-        "function-button",
+-      ]
+-
+-      layout {
+-        column: "2";
+-        row: "4";
+-      }
+-    }
+-
+-    MenuButton calc_function_button {
+-      label: "f(x)";
+-      focus-on-click: false;
+-      can-shrink: true;
+-      tooltip-text: _("Additional Functions");
+-      direction: up;
+-
+-      styles [
+-        "function-button",
+-      ]
+-
+-      layout {
+-        column: "3";
+-        row: "4";
+-      }
+-    }
+-
+-    Button calc_divide_button {
+-      label: "÷";
+-      focus-on-click: false;
+-      tooltip-text: _("Divide [/]");
+-      action-name: "cal.insert-general";
+-      action-target: "'÷'";
+-
+-      styles [
+-        "operator-button",
+-      ]
+-
+-      layout {
+-        column: "3";
+-        row: "0";
+-      }
+-    }
+-
+-    Button calc_multiply_button {
+-      label: "×";
+-      focus-on-click: false;
+-      tooltip-text: _("Multiply [*]");
+-      action-name: "cal.insert-general";
+-      action-target: "'×'";
+-
+-      styles [
+-        "operator-button",
+-      ]
+-
+-      layout {
+-        column: "3";
+-        row: "1";
+-      }
+-    }
+-
+-    Button calc_subtract_button {
+-      label: "−";
+-      focus-on-click: false;
+-      tooltip-text: _("Subtract [-]");
+-      action-name: "cal.subtract";
+-
+-      styles [
+-        "operator-button",
+-      ]
+-
+-      layout {
+-        column: "3";
+-        row: "2";
+-      }
+-    }
+-
+-    Button calc_add_button {
++    Button {
+       label: "+";
+       focus-on-click: false;
+       tooltip-text: _("Add [+]");
+       action-name: "cal.insert-general";
+       action-target: "'+'";
+-
+-      styles [
+-        "operator-button",
+-      ]
+-
+-      layout {
+-        column: "3";
+-        row: "3";
+-      }
++      styles ["operator-button"]
++      layout { column: "3"; row: "3"; }
+     }
+ 
+-    Button calc_modulus_divide_button {
+-      label: "mod";
+-      focus-on-click: false;
+-      tooltip-text: _("Modulus Divide");
+-      action-name: "cal.insert-alpha";
+-      action-target: "'mod'";
+-
+-      styles [
+-        "function-button",
+-      ]
+-
+-      layout {
+-        column: "4";
+-        row: "0";
+-      }
+-    }
+-
+-    Button calc_percentage_button {
+-      label: "%";
++    Button {
++      label: "0";
+       focus-on-click: false;
+-      tooltip-text: _("Percentage [%]");
+-      action-name: "cal.insert-general";
+-      action-target: "'%'";
+-
+-      styles [
+-        "percent-button",
+-      ]
+-
+-      layout {
+-        column: "4";
+-        row: "1";
+-      }
++      action-name: "cal.insert-digit";
++      action-target: "0";
++      styles ["number-button"]
++      layout { column: "0"; column-span: "2"; row: "4"; }
+     }
+ 
+-    Button calc_group_button {
+-      label: "‎( )";
++    Button calc_numeric_point_button {
++      label: ".";
+       focus-on-click: false;
+-      tooltip-text: _("Group [()]");
+-      action-name: "cal.insert-brackets";
+-      action-target: "('(',')')";
+-
+-      styles [
+-        "parenthesis-button",
+-      ]
+-
+-      layout {
+-        column: "4";
+-        row: "2";
+-      }
++      action-name: "cal.insert-numeric-point";
++      styles ["number-button"]
++      layout { column: "2"; row: "4"; }
+     }
+ 
+-    Button calc_result_button {
+-      /* Translators: Label on the solve button (clicking this solves the displayed calculation) */
++    Button {
+       label: _("=");
+       focus-on-click: false;
+       tooltip-text: _("Calculate Result");
+       action-name: "cal.solve";
+-
+-      styles [
+-        "suggested-action",
+-        "result-button",
+-      ]
+-
+-      layout {
+-        column: "4";
+-        row: "3";
+-        row-span: "2";
+-      }
++      styles ["suggested-action", "result-button"]
++      layout { column: "3"; row: "4"; }
+     }
+   }
+ }
+diff --git a/src/ui/math-display.blp b/src/ui/math-display.blp
+index 911a779..b802be1 100644
+--- a/src/ui/math-display.blp
++++ b/src/ui/math-display.blp
+@@ -4,7 +4,7 @@ using Adw 1;
+ template $MathDisplay: Box {
+   orientation: vertical;
+ 
+-  Box {
++  Overlay {
+     ScrolledWindow display_scrolled {
+       hexpand: true;
+       vscrollbar-policy: never;
+@@ -24,6 +24,7 @@ template $MathDisplay: Box {
+         width-request: "20";
+         height-request: "45";
+         input-hints: "no-emoji|no-spellcheck|inhibit-osk";
++        cursor-visible: false;
+         buffer: bind template.equation;
+ 
+         EventControllerKey event_controller {
+@@ -38,23 +39,24 @@ template $MathDisplay: Box {
+       }
+     }
+ 
+-    Button backspace_button {
++    [overlay]
++    Label zero_label {
++      label: "0";
++      halign: end;
+       valign: center;
+-      use-underline: true;
+-      focus-on-click: false;
+-      tooltip-text: _("Backspace");
+-      icon-name: "edit-clear-symbolic";
+-      clicked => $backspace_cb();
++      margin-end: 16;
++      can-target: false;
+ 
+       styles [
+-        "circular",
+-        "flat",
++        "display-zero",
+       ]
+     }
++
+   }
+ 
+   Box info_box {
+     spacing: 6;
++    visible: false;
+ 
+     Adw.Spinner spinner {
+       margin-start: 12;
+diff --git a/src/ui/math-window.blp b/src/ui/math-window.blp
+index 357a7d1..d0dc1e9 100644
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -1,122 +1,12 @@
+ using Gtk 4.0;
+ using Adw 1;
+ 
+-menu window_menu {
+-  section {
+-    item {
+-      label: _("_Basic");
+-      action: "win.mode";
+-      target: "basic";
+-    }
+-
+-    item {
+-      label: _("_Advanced");
+-      action: "win.mode";
+-      target: "advanced";
+-    }
+-
+-    item {
+-      label: _("_Financial");
+-      action: "win.mode";
+-      target: "financial";
+-    }
+-
+-    item {
+-      label: _("_Programming");
+-      action: "win.mode";
+-      target: "programming";
+-    }
+-
+-    item {
+-      label: _("_Keyboard");
+-      action: "win.mode";
+-      target: "keyboard";
+-    }
+-
+-    item {
+-      label: _("_Conversion");
+-      action: "win.mode";
+-      target: "conversion";
+-    }
+-  }
+-}
+-
+-menu primary_menu {
+-  section {
+-    item {
+-      label: _("_New Window");
+-      action: "app.new-window";
+-    }
+-  }
+-
+-  section {
+-    item {
+-      label: _("_Clear History");
+-      action: "win.clear";
+-      hidden-when: "action-disabled";
+-    }
+-  }
+-
+-  section {
+-    label: _("Result Format");
+-
+-    item {
+-      /* Translators: entry of the Setup submenu of the hamburger menu (with a mnemonic that appears when pressing Alt); set result format to "automatic"; other possible options are "_Fixed", "_Scientific" and "_Engineering" */
+-      label: _("_Automatic");
+-      action: "win.number-format";
+-      target: "automatic";
+-    }
+-
+-    item {
+-      /* Translators: entry of the Setup submenu of the hamburger menu (with a mnemonic that appears when pressing Alt); set result format to "fixed"; other possible options are "_Automatic", "_Scientific" and "_Engineering" */
+-      label: _("_Fixed");
+-      action: "win.number-format";
+-      target: "fixed";
+-    }
+-
+-    item {
+-      /* Translators: entry of the Setup submenu of the hamburger menu (with a mnemonic that appears when pressing Alt); set result format to "scientific"; other possible options are "_Fixed", "_Automatic" and "_Engineering" */
+-      label: _("_Scientific");
+-      action: "win.number-format";
+-      target: "scientific";
+-    }
+-
+-    item {
+-      /* Translators: entry of the Setup submenu of the hamburger menu (with a mnemonic that appears when pressing Alt); set result format to "engineering"; other possible options are "_Fixed", "_Scientific" and "_Automatic" */
+-      label: _("_Engineering");
+-      action: "win.number-format";
+-      target: "engineering";
+-    }
+-  }
+-
+-  section {
+-    id: "help-section";
+-
+-    item {
+-      label: _("_Preferences");
+-      action: "win.preferences";
+-    }
+-
+-    item {
+-      label: _("_Keyboard Shortcuts");
+-      action: "app.shortcuts";
+-    }
+-
+-    item {
+-      label: _("_Help");
+-      action: "app.help";
+-    }
+-
+-    item {
+-      label: _("A_bout Calculator");
+-      action: "app.about";
+-    }
+-  }
+-}
+-
+ template $MathWindow: Adw.ApplicationWindow {
+   title: _("Calculator");
+-  height-request: 616;
++  default-width: 320;
++  default-height: 440;
++  width-request: 300;
++  height-request: 420;
+ 
+   styles [
+     "luma-calculator-window",
+@@ -124,7 +14,7 @@ template $MathWindow: Adw.ApplicationWindow {
+ 
+   Adw.ToolbarView {
+     [top]
+-    Adw.HeaderBar headerbar {
++    Adw.HeaderBar {
+       centering-policy: strict;
+ 
+       styles [
+@@ -142,137 +32,30 @@ template $MathWindow: Adw.ApplicationWindow {
+       }
+     }
+ 
+-    [top]
+-    Adw.HeaderBar {
+-      show-start-title-buttons: false;
+-      show-end-title-buttons: false;
+-
+-      styles [
+-        "luma-calculator-actionbar",
+-      ]
+-
+-      [title]
+-      Box {}
+-
+-      [start]
+-      Box {
+-        spacing: 9;
+-
+-        Box {
+-          styles [
+-            "linked",
+-            "luma-calculator-history-controls",
+-          ]
+-
+-          Button undo_button {
+-            icon-name: "edit-undo-symbolic";
+-            focus-on-click: false;
+-            action-name: "win.undo";
+-            tooltip-text: _("Undo");
+-
+-            styles [
+-              "luma-action-control",
+-            ]
+-          }
+-
+-          Button redo_button {
+-            icon-name: "edit-redo-symbolic";
+-            focus-on-click: false;
+-            action-name: "win.redo";
+-            tooltip-text: _("Redo");
+-
+-            styles [
+-              "luma-action-control",
+-            ]
+-          }
+-
+-          Button back_button {
+-            icon-name: "go-previous-symbolic";
+-            action-name: "win.back";
+-            tooltip-text: _("Financial");
+-
+-            styles [
+-              "luma-action-control",
+-            ]
+-          }
+-        }
+-
+-        MenuButton menu_button {
+-          menu-model: window_menu;
+-          focus-on-click: false;
+-          always-show-arrow: true;
+-          can-shrink: true;
+-          tooltip-text: _("Mode Selection");
+-
+-          styles [
+-            "luma-action-control",
+-            "luma-mode-control",
+-          ]
+-        }
+-      }
+-
+-      [end]
+-      MenuButton primary_menu_button {
+-        icon-name: "open-menu-symbolic";
+-        receives-default: false;
+-        menu-model: primary_menu;
+-        primary: true;
+-        tooltip-text: _("Main Menu");
+-
+-        styles [
+-          "luma-action-control",
+-        ]
+-      }
+-    }
+-
+-    content: Adw.Clamp {
+-      /* 10*64px button width + 9*4px spacing + 2*12px margin = 700 width.
+-         Update the panel size in CSS accordingly. */
+-      maximum-size: 700;
+-      tightening-threshold: 700;
+-      unit: px;
++    content: Box {
++      vexpand: true;
++      orientation: vertical;
+ 
+       styles [
+         "luma-calculator-surface",
+       ]
+ 
+       Box {
+-        vexpand: true;
++        overflow: hidden;
+         orientation: vertical;
+ 
+-        Box display_box {
+-          overflow: hidden;
+-          orientation: vertical;
+-          vexpand: false;
+-
+-          styles [
+-            "card",
+-            "display-container",
+-          ]
+-
+-          $HistoryView history {
+-            overflow: "hidden";
+-          }
+-
+-          $MathDisplay _display {
+-            equation: bind template.equation;
+-          }
+-        }
++        styles [
++          "display-container",
++        ]
+ 
+-        $MathConverter _converter {
++        $MathDisplay _display {
+           equation: bind template.equation;
+-
+-          styles [
+-            "card",
+-            "display-container",
+-          ]
+         }
++      }
+ 
+-        $MathButtons _buttons {
+-          vexpand: true;
+-          equation: bind template.equation;
+-          converter: "_converter";
+-        }
++      $MathButtons _buttons {
++        vexpand: true;
++        equation: bind template.equation;
+       }
+     };
+   }
+diff --git a/src/ui/style.css b/src/ui/style.css
+index b0370be..11db1bd 100644
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -356,10 +356,11 @@ button.action-button {
+   .luma-calculator-surface {
+     background-color: @window_bg_color;
+     color: @window_fg_color;
++    font-family: "Figtree";
+   }
+ 
+   headerbar.luma-calculator-titlebar {
+-    min-height: 34px;
++    min-height: 38px;
+     background-color: @headerbar_bg_color;
+     background-image: linear-gradient(to bottom, #f2f3f5, #e8eaee);
+     color: @headerbar_fg_color;
+@@ -434,7 +435,7 @@ button.action-button {
+   }
+ 
+   .display-container {
+-    min-height: 132px;
++    min-height: 76px;
+     margin: 14px 14px 0;
+     background-color: @view_bg_color;
+     color: @view_fg_color;
+@@ -454,7 +455,7 @@ button.action-button {
+   }
+ 
+   mathdisplay {
+-    min-height: 112px;
++    min-height: 74px;
+     border-top: none;
+   }
+ 
+@@ -465,24 +466,42 @@ button.action-button {
+   }
+ 
+   .sourceview {
+-    padding: 50px 16px 12px;
++    padding: 18px 16px 7px;
++    color: @view_fg_color;
++    font-size: 34px;
++    font-weight: 500;
++    font-feature-settings: "tnum";
++  }
++
++  .display-zero {
+     color: @view_fg_color;
+     font-size: 34px;
+     font-weight: 500;
+     font-feature-settings: "tnum";
+   }
+ 
++  .sourceview.result-medium {
++    font-size: 26px;
++  }
++
++  .sourceview.result-small {
++    font-size: 20px;
++  }
++
++  mathdisplay.error .sourceview {
++    color: #c0483c;
++  }
++
+   .info-view {
+-    min-height: 18px;
+-    padding: 0 0 6px;
++    padding: 0 0 5px;
+     color: @luma_secondary_fg_color;
+     font-size: 12px;
+     font-weight: 400;
+   }
+ 
+   .math-buttons grid.buttons {
+-    min-height: calc(58px * 5 + 8px * 4);
+-    min-width: calc(64px * 5 + 8px * 4);
++    min-height: calc(52px * 5 + 8px * 4);
++    min-width: calc(64px * 4 + 8px * 3);
+   }
+ 
+   box.math-buttons,
+@@ -531,11 +550,25 @@ button.action-button {
+   .math-buttons grid.buttons button:disabled,
+   .math-buttons grid.buttons menubutton > button:disabled {
+     color: @luma_faint_fg_color;
++    opacity: 0.4;
+   }
+ 
+-  .math-buttons grid.buttons button.function-button:checked {
+-    background-color: @luma_soft_accent_bg_color;
+-    color: @accent_color;
++  .math-buttons grid.buttons button:focus-visible,
++  .math-buttons grid.buttons menubutton > button:focus-visible {
++    box-shadow: 0 0 0 2px alpha(@accent_bg_color, 0.40);
++  }
++
++  .math-buttons grid.buttons button.function-button {
++    background-color: #e8eaee;
++    color: #374151;
++  }
++
++  .math-buttons grid.buttons button.function-button:hover {
++    background-color: @luma_hover_bg_color;
++  }
++
++  .math-buttons grid.buttons button.function-button:active {
++    background-color: #dfe2e6;
+   }
+ 
+   .math-buttons grid.buttons button.operator-button {
+

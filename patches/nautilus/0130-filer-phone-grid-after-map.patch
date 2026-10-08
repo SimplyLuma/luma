@@ -1,0 +1,48 @@
+From 7081f13ec5c778a1fbf67daf4fa960ce7dad87a9 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 06:13:13 +0000
+Subject: [PATCH] Recheck Filer phone grid after map
+
+---
+ src/nautilus-grid-view.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/nautilus-grid-view.c b/src/nautilus-grid-view.c
+index 26e1399..a1f8372 100644
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -377,6 +377,23 @@ update_phone_layout (NautilusGridView *self)
+     }
+ }
+ 
++static gboolean
++update_phone_layout_after_map (gpointer data)
++{
++    update_phone_layout (NAUTILUS_GRID_VIEW (data));
++    return G_SOURCE_REMOVE;
++}
++
++static void
++queue_phone_layout_after_map (NautilusGridView *self)
++{
++    /* A view opened by a fixture or restored tab can map before its root has
++     * its final width. Recheck after the first layout so selection does not
++     * fall back to two oversized columns at phone width. */
++    g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, update_phone_layout_after_map,
++                     g_object_ref (self), g_object_unref);
++}
++
+ static int
+ real_get_zoom_level (NautilusListBase *list_base_view)
+ {
+@@ -608,6 +625,7 @@ nautilus_grid_view_init (NautilusGridView *self)
+     gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-grid-view");
+     g_signal_connect_swapped (self, "notify::width", G_CALLBACK (update_phone_layout), self);
+     g_signal_connect_swapped (self, "notify::root", G_CALLBACK (update_phone_layout), self);
++    g_signal_connect_swapped (self, "map", G_CALLBACK (queue_phone_layout_after_map), self);
+ 
+     set_captions_from_preferences (self);
+     g_signal_connect_object (nautilus_icon_view_preferences,
+-- 
+2.55.0
+

@@ -1,0 +1,58 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 23:24:00 -0500
+Subject: [PATCH] compositor: append Presence after shield callback
+
+The startup shield is submitted from the renderer's render-end signal rather
+than through the ordinary output-bling list. Append the trusted Presence view
+after that callback so it becomes the final full-screen element in the same
+render pass while the preparing user session remains concealed.
+---
+ src/render.c | 25 +++++++++++++++----------
+ 1 file changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/src/render.c b/src/render.c
+index 0c0fc3d..8cfc22a 100644
+--- a/src/render.c
++++ b/src/render.c
+@@ -631,9 +631,16 @@ phoc_renderer_render_output (PhocRenderer *self, PhocOutput *output, PhocRenderC
+ 
+   render_output_blings (output, ctx);
+ 
+-  /* Presence owns the display until it exits after the first complete Home
+-   * frame. Rendering it after Phoc's startup shield makes that reveal a
+-   * single compositor commit without exposing the preparing user session. */
++  wlr_output_add_software_cursors_to_render_pass (wlr_output, ctx->render_pass, damage);
++
++  if (G_UNLIKELY (phoc_server_check_debug_flags (server, PHOC_SERVER_DEBUG_FLAG_TOUCH_POINTS)))
++    render_touch_points (ctx);
++
++  g_signal_emit (self, signals[RENDER_END], 0, ctx);
++
++  /* The startup shield is a render-end callback rather than an output bling.
++   * Append Presence only after those callbacks so the trusted pre-session
++   * surface is the final full-screen element in this same compositor pass. */
+   if (!handoff_view) {
+     for (GList *l = phoc_workspace_get_views (workspace)->head; l; l = l->next) {
+       PhocView *view = PHOC_VIEW (l->data);
+@@ -645,18 +652,12 @@ phoc_renderer_render_output (PhocRenderer *self, PhocOutput *output, PhocRenderC
+   }
+   if (handoff_view && phoc_desktop_view_check_visibility (desktop, handoff_view)) {
+     if (!logged_handoff_render) {
+-      g_message ("Rendering Luma Presence above startup shield");
++      g_message ("Rendering Luma Presence after startup shield callback");
+       logged_handoff_render = TRUE;
+     }
+     render_view (output, handoff_view, ctx);
+   }
+ 
+-  wlr_output_add_software_cursors_to_render_pass (wlr_output, ctx->render_pass, damage);
+-
+-  if (G_UNLIKELY (phoc_server_check_debug_flags (server, PHOC_SERVER_DEBUG_FLAG_TOUCH_POINTS)))
+-    render_touch_points (ctx);
+-
+-  g_signal_emit (self, signals[RENDER_END], 0, ctx);
+   if (G_UNLIKELY (phoc_server_check_debug_flags (server, PHOC_SERVER_DEBUG_FLAG_DAMAGE_TRACKING)))
+     render_damage (self, ctx);
+ 
+-- 
+2.51.0

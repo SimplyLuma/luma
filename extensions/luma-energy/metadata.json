@@ -1,0 +1,7 @@
+{
+  "uuid": "energy@project-luma.local",
+  "name": "Luma Energy attention state",
+  "description": "Tells Luma Energy which applications the person can actually see, so the system can spend power on those and not on the ones buried behind them. Reports only; it changes nothing by itself.",
+  "shell-version": ["50"],
+  "version": 1
+}

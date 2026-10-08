@@ -1,0 +1,244 @@
+diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
+index 514bf200..b2d969ef 100644
+--- a/arch/arm/Kconfig
++++ b/arch/arm/Kconfig
+@@ -751,16 +751,16 @@ config ARCH_EXYNOS
+ 	select DM
+ 	select DM_GPIO
+ 	select DM_I2C
+-	select DM_KEYBOARD
++	select DM_KEYBOARD if !LUMA_RAMBOOT_DIAGNOSTIC
+ 	select DM_SERIAL
+-	select DM_SPI
+-	select DM_SPI_FLASH
+-	select MTD
+-	select SPI
++	select DM_SPI if !LUMA_RAMBOOT_DIAGNOSTIC
++	select DM_SPI_FLASH if !LUMA_RAMBOOT_DIAGNOSTIC
++	select MTD if !LUMA_RAMBOOT_DIAGNOSTIC
++	select SPI if !LUMA_RAMBOOT_DIAGNOSTIC
+ 	select GPIO_EXTRA_HEADER
+ 	imply SYS_THUMB_BUILD
+ 	imply CMD_DM
+-	imply FAT_WRITE
++	imply FAT_WRITE if !LUMA_RAMBOOT_DIAGNOSTIC
+ 
+ config ARCH_S5PC1XX
+ 	bool "Samsung S5PC1XX"
+diff --git a/board/samsung/exynos-mobile/Kconfig b/board/samsung/exynos-mobile/Kconfig
+index ed7d16b8..c3e497eb 100644
+--- a/board/samsung/exynos-mobile/Kconfig
++++ b/board/samsung/exynos-mobile/Kconfig
+@@ -15,4 +15,21 @@ config SYS_CONFIG_NAME
+ config SYS_VENDOR
+ 	default "samsung"
+ 
++config LUMA_RAMBOOT_DIAGNOSTIC
++	bool "Luma read-only previous-bootloader FIT handoff"
++	default n
++	help
++	  Build a non-interactive diagnostic loader which accepts exactly one
++	  in-memory FIT passed as the Android boot image ramdisk. The board code
++	  validates both prior-stage initrd bounds and never initializes block or
++	  USB update interfaces. This is not a general-purpose U-Boot mode.
++
++config LUMA_EXPECTED_FIT_SHA256
++	string "Expected diagnostic FIT SHA-256"
++	depends on LUMA_RAMBOOT_DIAGNOSTIC
++	default ""
++	help
++	  Lowercase SHA-256 digest of the complete in-memory FIT. The diagnostic
++	  autoboot command refuses to execute a payload with any other digest.
++
+ endif # TARGET_EXYNOS_MOBILE
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index fc27087e..a0d47f6f 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -39,6 +39,7 @@ DECLARE_GLOBAL_DATA_PTR;
+ #define lmb_alloc(size, addr) \
+ 	lmb_alloc_mem(LMB_MEM_ALLOC_ANY, SZ_2M, addr, size, LMB_NONE)
+ 
++#ifndef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
+ struct efi_fw_image fw_images[] = {
+ 	{
+ 		.fw_name = u"UBOOT_BOOT_PARTITION",
+@@ -51,6 +52,7 @@ struct efi_capsule_update_info update_info = {
+ 	.images = fw_images,
+ 	.num_images = ARRAY_SIZE(fw_images),
+ };
++#endif
+ 
+ /*
+  * The memory mapping includes all DRAM banks, along with the
+@@ -97,6 +99,7 @@ struct mm_region *mem_map = exynos_mem_map;
+ #define EXYNOS_DRAM_MAP_COUNT (CONFIG_NR_DRAM_BANKS + 1)
+ 
+ static bool exynos_is_google_zumapro(void);
++static const void *exynos_get_prev_bl_fdt(void);
+ 
+ phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
+ {
+@@ -157,6 +160,9 @@ static bool exynos_addr_in_dram(phys_addr_t addr, ulong size)
+ {
+ 	int i;
+ 
++	if (!size || addr + size < addr)
++		return false;
++
+ 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+ 		phys_addr_t start = gd->bd->bi_dram[i].start;
+ 		phys_size_t len = gd->bd->bi_dram[i].size;
+@@ -170,6 +176,73 @@ static bool exynos_addr_in_dram(phys_addr_t addr, ulong size)
+ 	return false;
+ }
+ 
++#ifdef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
++static u64 exynos_fdt_get_addr(const void *fdt, int node, const char *name)
++{
++	u64 value;
++
++	value = fdtdec_get_uint64(fdt, node, name, 0);
++	if (!value)
++		value = fdtdec_get_uint(fdt, node, name, 0);
++
++	return value;
++}
++
++static bool exynos_luma_digest_valid(const char *digest)
++{
++	int i;
++
++	if (strlen(digest) != 64)
++		return false;
++
++	for (i = 0; i < 64; i++)
++		if (!isdigit(digest[i]) &&
++		    !(digest[i] >= 'a' && digest[i] <= 'f'))
++			return false;
++
++	return true;
++}
++
++static int exynos_luma_ramboot_setup(void)
++{
++	const char *expected = CONFIG_LUMA_EXPECTED_FIT_SHA256;
++	const void *prev_bl_fdt = exynos_get_prev_bl_fdt();
++	const void *fit;
++	phys_addr_t start, end;
++	ulong fit_size;
++	int chosen;
++
++	if (!prev_bl_fdt || !exynos_luma_digest_valid(expected))
++		return -EINVAL;
++
++	chosen = fdt_path_offset(prev_bl_fdt, "/chosen");
++	if (chosen < 0)
++		return -ENOENT;
++
++	start = exynos_fdt_get_addr(prev_bl_fdt, chosen,
++				    "linux,initrd-start");
++	end = exynos_fdt_get_addr(prev_bl_fdt, chosen, "linux,initrd-end");
++	if (!start || end <= start || !exynos_addr_in_dram(start, end - start))
++		return -ERANGE;
++
++	fit = (const void *)start;
++	if (fdt_check_header(fit) < 0)
++		return -EINVAL;
++
++	fit_size = fdt_totalsize(fit);
++	if (fit_size != end - start)
++		return -EFBIG;
++
++	env_set_hex("luma_fit_addr", start);
++	env_set_hex("luma_fit_size", fit_size);
++	env_set("luma_fit_bounds_ok", "1");
++	env_set("luma_expected_fit_sha256", expected);
++
++	return 0;
++}
++#endif
++
++#ifndef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
+ static const char *exynos_prev_bl_get_bootargs(void)
+ {
+ 	phys_addr_t prev_bl_fdt_addr = get_prev_bl_fdt_addr();
+@@ -206,6 +279,7 @@ static const char *exynos_prev_bl_get_bootargs(void)
+ 
+ 	return bootargs_prop->data;
+ }
++#endif
+ 
+ static const void *exynos_get_prev_bl_fdt(void)
+ {
+@@ -294,6 +368,7 @@ static void exynos_google_zumapro_early_init(void)
+ 	writel(val, (void *)(ZUMAPRO_WDT_CL1_BASE + ZUMAPRO_WDT_WTCON));
+ }
+ 
++#ifndef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
+ static void exynos_env_setup(void)
+ {
+ 	const char *bootargs = exynos_prev_bl_get_bootargs();
+@@ -486,6 +561,7 @@ static int exynos_fastboot_setup(void)
+ 
+ 	return 0;
+ }
++#endif
+ 
+ int board_fdt_blob_setup(void **fdtp)
+ {
+@@ -566,6 +642,15 @@ int misc_init_r(void)
+ {
+ 	int ret;
+ 
++#ifdef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
++	{
++		ret = exynos_luma_ramboot_setup();
++		if (ret)
++			log_err("%s: bounded in-memory FIT rejected (%d)\n",
++				__func__, ret);
++		return 0;
++	}
++#else
+ 	exynos_env_setup();
+ 
+ 	ret = exynos_blk_env_setup();
+@@ -575,6 +660,7 @@ int misc_init_r(void)
+ 	ret = exynos_fastboot_setup();
+ 	if (ret)
+ 		log_warning("%s: fastboot setup skipped (%d)\n", __func__, ret);
++#endif
+ 
+ 	return 0;
+ }
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.env b/board/samsung/exynos-mobile/exynos-mobile.env
+index 065e68e4..ef553d63 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.env
++++ b/board/samsung/exynos-mobile/exynos-mobile.env
+@@ -1,3 +1,18 @@
++#ifdef CONFIG_LUMA_RAMBOOT_DIAGNOSTIC
++bootdelay=-2
++
++stdin=nulldev
++stdout=vidconsole
++stderr=vidconsole
++
++bootcmd=if test "${luma_fit_bounds_ok}" = "1"; then \
++	hash sha256 ${luma_fit_addr} ${luma_fit_size} luma_fit_digest; \
++	if test "${luma_fit_digest}" = "${luma_expected_fit_sha256}"; then \
++		bootm ${luma_fit_addr}; \
++	fi; \
++fi; \
++reset
++#else
+ bootdelay=0
+ bootretry=1
+ 
+@@ -30,4 +45,5 @@ bootmenu_8=Drop to shell=setenv bootretry -1
+ bootmenu_9=Reset device=reset
+ 
+ button_cmd_0_name=Volume Down Key
+-button_cmd_0=run menucmd
+\ No newline at end of file
++button_cmd_0=run menucmd
++#endif

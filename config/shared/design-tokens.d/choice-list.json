@@ -1,0 +1,13 @@
+{
+  "_source": "v71 described single-selection rows (.dskfs), regular and grown panel variants.",
+  "lumaui": {
+    "colors": {"light":{"choice_selected":"oklch(from @luma_accent 0.7 0.13 h)"},"dark":{"choice_selected":"oklch(from @luma_accent 0.7 0.13 h)"}},
+    "choice_list": {"gap":4,"bottom":10,"padding_y":9,"padding_x":12,"radius":12,"panel_padding":10,"panel_radius":16,"content_gap":12,"indicator":16,"indicator_top":2,"indicator_ring":1.5,"indicator_selected_ring":5},
+    "type_scale": {
+      "choice_title":{"size":13,"weight":600,"line_height":1.45,"tracking_em":0},
+      "choice_detail":{"size":11.5,"weight":400,"line_height":1.45,"tracking_em":0.01,"tone":"muted"},
+      "choice_panel_detail":{"size":12,"weight":400,"line_height":1.4,"tracking_em":0.01,"tone":"muted"},
+      "form_title":{"size":18,"weight":700,"line_height":1.45,"tracking_em":-0.015}
+    }
+  }
+}

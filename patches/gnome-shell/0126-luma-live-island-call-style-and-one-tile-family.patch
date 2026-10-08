@@ -1,0 +1,1003 @@
+From 3ff69edf97abe91a3c803a7fb18fa15cc74f644d Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 13:20:47 -0400
+Subject: [PATCH] luma: a call looks like a call, and every live island
+ leads with one tile
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A voice call in Claude Desktop drew as a calendar entry: a "SEP 16" date
+tile, "Claude · 03:23" as an eyebrow and "11:40 AM" on the right. Luma
+Calls published exactly what it should -- category "call", the call's
+start, a mute that works and an end-call it cannot perform -- but the
+island never read the category. Any publication with a start was dressed
+as an event, so a call's answer time became a meeting date. Its controls
+were dropped too, because "call.mute" had no glyph under that exact name.
+
+liveActivity.js now decides the dress from the category, and the calendar
+dress needs both category "event" and a start it can place. A call is the
+kit's call: the application's icon (the running application Luma Calls
+names, never a guess) or the caller's initials on an identity tint, a live
+dot, "Call · 00:42" counted by the Shell every second, a microphone that is
+green while live and ink-2 when muted, and red end-call -- each only when
+the application really offers it. Anything else, including a category the
+Shell does not know, is generic: the publisher's icon or the activity's
+glyph, never a date. When several are live, a call outranks recording,
+navigation, timers, transfers, installs, media and upcoming events.
+
+Every leading tile -- call, timer, anything else, and media artwork -- is
+now the dock icon's 36px at radius 10. Media artwork was masked at 9px and
+fitted inside the square, so a 16:9 thumbnail drew short with its corners
+on empty background; it is now cropped to fill the square (decoded no
+larger than three tiles across) with the kit's light rim.
+---
+ data/theme/luma-shelf.css     | 196 +++++++++++++++++++++++++
+ js/js-resources.gresource.xml |   1 +
+ js/ui/iconMask.js             |   5 +
+ js/ui/liveActivity.js         | 230 +++++++++++++++++++++++++++++
+ js/ui/mediaArtwork.js         |  27 +++-
+ js/ui/panel.js                | 269 +++++++++++++++++++++++++++-------
+ js/ui/shelfMedia.js           |  17 ++-
+ 7 files changed, 685 insertions(+), 60 deletions(-)
+ create mode 100644 js/ui/liveActivity.js
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 547fe2e..ffabe4d 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1186,3 +1186,199 @@
+ .luma-surface-light .luma-dock-preview-heading { color: rgba(52, 56, 61, 0.46); }
+ .luma-surface-frost .luma-dock-preview-heading { color: rgba(33, 37, 43, 0.46); }
+ .luma-surface-glass .luma-dock-preview-heading { color: rgba(255, 255, 255, 0.46); }
++
++/* ── Live island: one leading tile, and the kit's call ─────────────────── */
++/* Every live island leads with the same 36 x 36 tile at radius 10 -- the
++ * dock icon's size and corner -- whether it holds artwork, a date, an
++ * application icon, a caller's initials or an activity's glyph, so they read
++ * as one family. A call is the kit's: application or initials with a live dot,
++ * the caller, "Call · 00:42", then a microphone (green while live, ink-2 when
++ * muted) and end-call (red), each only when the application really offers it.
++ * Controls are 28 at radius 8 with no fill at rest, as media's are. */
++.luma-shelf-live-island .luma-live-extension-leading {
++  width: 36px;
++  height: 36px;
++  border-radius: 10px;
++}
++.luma-shelf-live-island .luma-live-extension-leading-initials .luma-live-extension-initials {
++  font-size: 12px;
++  font-weight: 750;
++}
++.luma-shelf-live-island .luma-live-extension-presence {
++  width: 10px;
++  height: 10px;
++  border-radius: 999px;
++}
++.luma-shelf-live-island .luma-live-extension-call .luma-live-extension-text {
++  width: 96px;
++  min-width: 96px;
++  max-width: 96px;
++}
++.luma-shelf-vertical .luma-shelf-live-island .luma-live-extension-call .luma-live-extension-text {
++  width: 36px;
++  min-width: 0;
++}
++.luma-media-art-tile { width: 36px; height: 36px; border-radius: 10px; }
++.luma-media-art-rim { border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
++
++/* Dark */
++.luma-shelf-live-island .luma-live-extension-leading-glyph,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-leading-glyph {
++  background-color: rgba(255, 255, 255, 0.08);
++  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
++}
++.luma-shelf-live-island .luma-live-extension-leading-glyph .luma-live-extension-leading-icon,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-leading-glyph .luma-live-extension-leading-icon { color: #e7e9e8; }
++.luma-shelf-live-island .luma-live-extension-presence,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-presence {
++  background-color: #65b58c;
++  box-shadow: 0 0 0 2px #21252b;
++}
++.luma-shelf-live-island .luma-live-extension-tint-0,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-0 {
++  background-color: rgba(128, 168, 210, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(128, 168, 210, 0.20);
++}
++.luma-shelf-live-island .luma-live-extension-tint-0 .luma-live-extension-initials,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-0 .luma-live-extension-initials { color: rgb(128, 168, 210); }
++.luma-shelf-live-island .luma-live-extension-tint-1,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-1 {
++  background-color: rgba(101, 181, 140, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(101, 181, 140, 0.20);
++}
++.luma-shelf-live-island .luma-live-extension-tint-1 .luma-live-extension-initials,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-1 .luma-live-extension-initials { color: rgb(101, 181, 140); }
++.luma-shelf-live-island .luma-live-extension-tint-2,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-2 {
++  background-color: rgba(169, 154, 216, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(169, 154, 216, 0.20);
++}
++.luma-shelf-live-island .luma-live-extension-tint-2 .luma-live-extension-initials,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-2 .luma-live-extension-initials { color: rgb(169, 154, 216); }
++.luma-shelf-live-island .luma-live-extension-tint-3,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-3 {
++  background-color: rgba(217, 165, 95, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(217, 165, 95, 0.20);
++}
++.luma-shelf-live-island .luma-live-extension-tint-3 .luma-live-extension-initials,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-tint-3 .luma-live-extension-initials { color: rgb(217, 165, 95); }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-mic-live,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-mic-live,
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-mic-live:hover,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-mic-live:hover { color: #65b58c; }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-mic-muted,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(231, 233, 232, 0.60); }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-end,
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end:hover,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-end:hover { color: #e0716b; }
++.luma-shelf-live-island .luma-live-extension-action:hover,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.08); }
++/* Light */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-leading-glyph {
++  background-color: rgba(25, 27, 31, 0.07);
++  box-shadow: inset 0 0 0 1px rgba(25, 27, 31, 0.12);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-leading-glyph .luma-live-extension-leading-icon { color: #34383d; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-presence {
++  background-color: #3b8967;
++  box-shadow: 0 0 0 2px #f1f2f3;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-0 {
++  background-color: rgba(82, 127, 174, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(82, 127, 174, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-0 .luma-live-extension-initials { color: rgb(82, 127, 174); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-1 {
++  background-color: rgba(59, 137, 103, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(59, 137, 103, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-1 .luma-live-extension-initials { color: rgb(59, 137, 103); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-2 {
++  background-color: rgba(111, 95, 168, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(111, 95, 168, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-2 .luma-live-extension-initials { color: rgb(111, 95, 168); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-3 {
++  background-color: rgba(154, 106, 38, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(154, 106, 38, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-tint-3 .luma-live-extension-initials { color: rgb(154, 106, 38); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-mic-live,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-mic-live:hover { color: #3b8967; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(52, 56, 61, 0.62); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-end,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-end:hover { color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action:hover { background-color: rgba(25, 27, 31, 0.07); }
++/* Frost */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-leading-glyph {
++  background-color: rgba(25, 27, 31, 0.08);
++  box-shadow: inset 0 0 0 1px rgba(25, 27, 31, 0.13);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-leading-glyph .luma-live-extension-leading-icon { color: #21252b; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-presence {
++  background-color: #3b8967;
++  box-shadow: 0 0 0 2px #eceef0;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-0 {
++  background-color: rgba(82, 127, 174, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(82, 127, 174, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-0 .luma-live-extension-initials { color: rgb(82, 127, 174); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-1 {
++  background-color: rgba(59, 137, 103, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(59, 137, 103, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-1 .luma-live-extension-initials { color: rgb(59, 137, 103); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-2 {
++  background-color: rgba(111, 95, 168, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(111, 95, 168, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-2 .luma-live-extension-initials { color: rgb(111, 95, 168); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-3 {
++  background-color: rgba(154, 106, 38, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(154, 106, 38, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-tint-3 .luma-live-extension-initials { color: rgb(154, 106, 38); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-mic-live,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-mic-live:hover { color: #3b8967; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(33, 37, 43, 0.62); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-end,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-end:hover { color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action:hover { background-color: rgba(25, 27, 31, 0.08); }
++/* Glass */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-leading-glyph {
++  background-color: rgba(25, 27, 31, 0.08);
++  box-shadow: inset 0 0 0 1px rgba(25, 27, 31, 0.13);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-leading-glyph .luma-live-extension-leading-icon { color: #2c343a; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-presence {
++  background-color: #3b8967;
++  box-shadow: 0 0 0 2px #e4e8ec;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-0 {
++  background-color: rgba(82, 127, 174, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(82, 127, 174, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-0 .luma-live-extension-initials { color: rgb(82, 127, 174); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-1 {
++  background-color: rgba(59, 137, 103, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(59, 137, 103, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-1 .luma-live-extension-initials { color: rgb(59, 137, 103); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-2 {
++  background-color: rgba(111, 95, 168, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(111, 95, 168, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-2 .luma-live-extension-initials { color: rgb(111, 95, 168); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-3 {
++  background-color: rgba(154, 106, 38, 0.16);
++  box-shadow: inset 0 0 0 1px rgba(154, 106, 38, 0.20);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-tint-3 .luma-live-extension-initials { color: rgb(154, 106, 38); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-mic-live,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-mic-live:hover { color: #3b8967; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(44, 52, 58, 0.62); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-end,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-end:hover { color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action:hover { background-color: rgba(25, 27, 31, 0.08); }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 5153b2e..674fa49 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -101,6 +101,7 @@
+     <file>ui/mpris.js</file>
+     <file>ui/sessionApplications.js</file>
+     <file>ui/mediaSelection.js</file>
++    <file>ui/liveActivity.js</file>
+     <file>ui/mediaArtwork.js</file>
+     <file>ui/iconMask.js</file>
+     <file>ui/shelfMedia.js</file>
+diff --git a/js/ui/iconMask.js b/js/ui/iconMask.js
+index 86f6db6..464e1e8 100644
+--- a/js/ui/iconMask.js
++++ b/js/ui/iconMask.js
+@@ -26,6 +26,11 @@ export function smoothOffscreenSampling(effect) {
+     pipeline?.set_layer_filters(0, Cogl.PipelineFilter.LINEAR, Cogl.PipelineFilter.LINEAR);
+ }
+ 
++// Every 36px leading tile in the shelf -- a dock icon, media artwork, a call's
++// application, a timer's icon -- is drawn at the spec's radius 10 on 36, so
++// they read as one family. Stated as a fraction so it holds at every size.
++export const ICON_CORNER_RATIO = 10 / 36;
++
+ export const LumaIconMask = GObject.registerClass(
+ class LumaIconMask extends Shell.GLSLEffect {
+     vfunc_build_pipeline() {
+diff --git a/js/ui/liveActivity.js b/js/ui/liveActivity.js
+new file mode 100644
+index 0000000..26a453d
+--- /dev/null
++++ b/js/ui/liveActivity.js
+@@ -0,0 +1,230 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// How the live island dresses a Live Extension. Pure, so it can be tested
++// without a Shell.
++//
++// The broker validates a `category` on every publication and the island used
++// to ignore it: whatever carried a `starts_at` was drawn as a calendar entry,
++// month over day in a date tile with a clock time beside it. A call carries a
++// start too -- when it was answered -- so a voice call was drawn as an event
++// dated today. The category now decides the dress, and the calendar dress is
++// only ever given to an event that states a start.
++
++// The dresses the island knows. Anything else is `generic`: the publisher's
++// icon, its title and its subtitle, and no date and no clock, because a date
++// the provider never meant as a date is exactly how a call became a meeting.
++export const Style = Object.freeze({
++    CALL: 'call',
++    EVENT: 'event',
++    GENERIC: 'generic',
++});
++
++// Which publication owns the island when several are live at once. What the
++// person is doing right now outranks what is merely running, which outranks
++// what is coming up: a call beats a recording, a recording beats a timer, and
++// an upcoming meeting only shows when nothing is in progress. Media has its
++// own island; a media Live Extension only fills this one when nothing else is
++// live.
++const PRIORITY = Object.freeze({
++    call: 0,
++    recording: 1,
++    navigation: 2,
++    timer: 3,
++    transfer: 4,
++    installation: 5,
++    media: 6,
++    event: 7,
++    generic: 8,
++});
++const UNKNOWN_PRIORITY = 9;
++
++// The glyph for a category when the publisher has no icon the Shell can find.
++const CATEGORY_ICONS = Object.freeze({
++    call: 'call-start-symbolic',
++    recording: 'media-record-symbolic',
++    navigation: 'mark-location-symbolic',
++    timer: 'alarm-symbolic',
++    transfer: 'folder-download-symbolic',
++    installation: 'system-software-install-symbolic',
++    media: 'audio-x-generic-symbolic',
++    event: 'x-office-calendar-symbolic',
++});
++export const GENERIC_ICON = 'emblem-synchronizing-symbolic';
++
++// Glyphs for the action vocabulary. Providers namespace their actions
++// ("call.mute"), so the last segment is what is looked up. The Shell draws
++// nothing it has no glyph for.
++const ACTION_ICONS = new Map([
++    ['mute', 'audio-input-microphone-symbolic'],
++    ['mute-microphone', 'audio-input-microphone-symbolic'],
++    ['microphone-mute', 'audio-input-microphone-symbolic'],
++    ['unmute', 'microphone-disabled-symbolic'],
++    ['microphone', 'audio-input-microphone-symbolic'],
++    ['mic', 'audio-input-microphone-symbolic'],
++    ['camera', 'camera-web-symbolic'],
++    ['video', 'camera-web-symbolic'],
++    ['camera-off', 'camera-disabled-symbolic'],
++    ['mute-camera', 'camera-disabled-symbolic'],
++    ['camera-mute', 'camera-disabled-symbolic'],
++    ['end-call', 'call-stop-symbolic'],
++    ['hang-up', 'call-stop-symbolic'],
++    ['hangup', 'call-stop-symbolic'],
++    ['answer', 'call-start-symbolic'],
++    ['answer-call', 'call-start-symbolic'],
++    ['hold', 'media-playback-pause-symbolic'],
++    ['speaker', 'audio-volume-high-symbolic'],
++    ['share-screen', 'screen-shared-symbolic'],
++    ['screen-share', 'screen-shared-symbolic'],
++]);
++
++const MICROPHONE_ACTIONS = new Set(['mute', 'mute-microphone', 'microphone-mute', 'unmute', 'microphone', 'mic']);
++const CAMERA_ACTIONS = new Set(['camera', 'video', 'camera-off', 'mute-camera', 'camera-mute']);
++const HANGUP_ACTIONS = new Set(['end-call', 'hang-up', 'hangup']);
++
++// Parse an ISO 8601 instant to milliseconds, or null. Only a full date with a
++// time and a zone counts: a start the island cannot place exactly is no start.
++export function parseInstant(value) {
++    if (typeof value !== 'string' ||
++        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/.test(value))
++        return null;
++    const ms = Date.parse(value);
++    return Number.isFinite(ms) ? ms : null;
++}
++
++export function categoryOf(item) {
++    const category = item?.extension?.category;
++    return typeof category === 'string' && category in PRIORITY ? category : 'generic';
++}
++
++export function styleOf(item) {
++    const category = categoryOf(item);
++    if (category === 'call')
++        return Style.CALL;
++    if (category === 'event' && parseInstant(item.extension.starts_at) !== null)
++        return Style.EVENT;
++    return Style.GENERIC;
++}
++
++export function priorityOf(item) {
++    const category = item?.extension?.category;
++    return typeof category === 'string' && category in PRIORITY
++        ? PRIORITY[category] : UNKNOWN_PRIORITY;
++}
++
++export function categoryIcon(item) {
++    return CATEGORY_ICONS[categoryOf(item)] ?? GENERIC_ICON;
++}
++
++// The one publication the island shows: highest priority first, then the one
++// that started (or starts) soonest, then the one that expires soonest.
++export function pickActivity(items) {
++    const when = item => parseInstant(item.extension.starts_at) ??
++        parseInstant(item.extension.expires_at) ?? Number.MAX_SAFE_INTEGER;
++    return [...items].sort((a, b) =>
++        priorityOf(a) - priorityOf(b) || when(a) - when(b))[0] ?? null;
++}
++
++// A call's elapsed time, MM:SS, widening to H:MM:SS after an hour. Null while
++// the call has not started -- ringing, dialling -- so no clock is invented.
++export function elapsedText(startMs, nowMs) {
++    if (startMs === null || !Number.isFinite(startMs) || nowMs < startMs)
++        return null;
++    const total = Math.floor((nowMs - startMs) / 1000);
++    const hours = Math.floor(total / 3600);
++    const minutes = Math.floor(total / 60) % 60;
++    const seconds = total % 60;
++    const two = n => String(n).padStart(2, '0');
++    return hours ? `${hours}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
++}
++
++export function actionVerb(id) {
++    return typeof id === 'string' ? id.slice(id.lastIndexOf('.') + 1) : '';
++}
++
++export function actionIcon(action) {
++    const verb = actionVerb(action?.id);
++    if (MICROPHONE_ACTIONS.has(verb))
++        return isMuted(action) ? 'microphone-disabled-symbolic' : 'audio-input-microphone-symbolic';
++    return ACTION_ICONS.get(verb) ?? null;
++}
++
++// A microphone action states the mute it would undo: an "unmute" verb, or a
++// label that offers to unmute ("Unmute microphone"). Anything else is live.
++export function isMuted(action) {
++    const verb = actionVerb(action?.id);
++    if (!MICROPHONE_ACTIONS.has(verb))
++        return false;
++    return verb === 'unmute' || /^\s*unmute\b/i.test(action?.label ?? '');
++}
++
++export function actionRole(action) {
++    const verb = actionVerb(action?.id);
++    if (MICROPHONE_ACTIONS.has(verb))
++        return 'microphone';
++    if (CAMERA_ACTIONS.has(verb))
++        return 'camera';
++    if (HANGUP_ACTIONS.has(verb))
++        return 'hangup';
++    return 'other';
++}
++
++// The controls the island draws for an activity. A call shows only what the
++// application really lets the system do -- the kit's microphone and end-call,
++// each only when it works. A control the provider marks unavailable is not
++// drawn on a call; it stays in the right-click menu with its reason, because a
++// dead hang-up in the middle of a call reads as a broken one. Microphone
++// first, end-call last, as in the kit.
++export function shownActions(item, actions) {
++    const drawable = actions.filter(action => actionIcon(action) !== null);
++    if (styleOf(item) !== Style.CALL) {
++        // A lone passive action only repeats the island's own click.
++        if (actions.length === 1 && actions[0].risk === 'passive')
++            return [];
++        return drawable;
++    }
++    const order = {microphone: 0, camera: 1, other: 2, hangup: 3};
++    return drawable.filter(action => action.enabled === true)
++        .sort((a, b) => order[actionRole(a)] - order[actionRole(b)]);
++}
++
++// The kit's call subtitle: "Call · 00:42".
++export function callSubtitle(label, elapsed) {
++    return `${label} · ${elapsed}`;
++}
++
++// Up to two initials for a caller with no application icon to show: the first
++// letter of the first and last words, or the first two characters of a single
++// word; a number shows its last two digits. Letters are upper-cased in the
++// locale's own way.
++export function initialsOf(title) {
++    const text = typeof title === 'string' ? title.trim() : '';
++    if (!text)
++        return '';
++    const digits = text.replace(/[^0-9]/g, '');
++    if (/^[+0-9()\s.-]+$/.test(text) && digits.length)
++        return digits.slice(-2);
++    const words = text.split(/\s+/u).filter(word => /\p{L}/u.test(word));
++    if (!words.length)
++        return [...text][0].toLocaleUpperCase();
++    const first = [...words[0].replace(/^[^\p{L}]+/u, '')];
++    if (words.length === 1)
++        return first.slice(0, 2).join('').toLocaleUpperCase();
++    const last = [...words[words.length - 1].replace(/^[^\p{L}]+/u, '')];
++    return `${first[0]}${last[0]}`.toLocaleUpperCase();
++}
++
++// A stable identity tint for a caller: the same name is always the same tint.
++export const TINT_COUNT = 4;
++export function tintOf(title) {
++    let hash = 0;
++    for (const character of typeof title === 'string' ? title : '')
++        hash = (hash * 31 + character.codePointAt(0)) >>> 0;
++    return hash % TINT_COUNT;
++}
++
++// Whether the call's microphone is muted, when the provider says so; null when
++// it does not expose a microphone control at all.
++export function microphoneMuted(actions) {
++    const mic = actions.find(action => actionRole(action) === 'microphone');
++    return mic ? isMuted(mic) : null;
++}
+diff --git a/js/ui/mediaArtwork.js b/js/ui/mediaArtwork.js
+index 6610265..871eb99 100644
+--- a/js/ui/mediaArtwork.js
++++ b/js/ui/mediaArtwork.js
+@@ -38,15 +38,38 @@ async function boundedBytes(stream, cancellable) {
+     return GLib.Bytes.new(data);
+ }
+ 
++// The shelf tile is 36 logical pixels; 108 covers it at 3x without the 2x
++// display the owner uses reading soft.
++const ART_SIZE = 108;
++
++// The tile is square and its artwork fills it, the way CSS `cover` does. A
++// thumbnail that is not square -- a 16:9 video frame, a wide podcast banner --
++// used to be scaled to fit inside the square, so it drew short, and the tile's
++// rounded corners fell on empty background rather than on the picture.
++export function coverCrop(width, height, size = ART_SIZE) {
++    const scale = size / Math.min(width, height);
++    const scaledWidth = Math.max(size, Math.round(width * scale));
++    const scaledHeight = Math.max(size, Math.round(height * scale));
++    return {scaledWidth, scaledHeight,
++        x: Math.floor((scaledWidth - size) / 2), y: Math.floor((scaledHeight - size) / 2)};
++}
++
+ async function decode(bytes, cancellable) {
+     const input = Gio.MemoryInputStream.new_from_bytes(bytes);
+-    const pixbuf = await new Promise((resolve, reject) => {
+-        GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(input, 56, 56, true, cancellable,
++    const source = await new Promise((resolve, reject) => {
++        // Decoded no larger than three tiles across, never at the file's own
++        // size: a small file can still declare an enormous image. Even a
++        // 3:1 banner keeps a short side of 108 at this bound.
++        GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(input, 3 * ART_SIZE, 3 * ART_SIZE, true, cancellable,
+             (_object, result) => {
+                 try { resolve(GdkPixbuf.Pixbuf.new_from_stream_finish(result)); }
+                 catch (error) { reject(error); }
+             });
+     });
++    const crop = coverCrop(source.get_width(), source.get_height());
++    const scaled = source.scale_simple(crop.scaledWidth, crop.scaledHeight,
++        GdkPixbuf.InterpType.BILINEAR);
++    const pixbuf = scaled.new_subpixbuf(crop.x, crop.y, ART_SIZE, ART_SIZE);
+     const [ok, png] = pixbuf.save_to_bufferv('png', [], []);
+     return ok ? new Gio.BytesIcon({bytes: GLib.Bytes.new(png)}) : null;
+ }
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 904aa63..dee6d69 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -20,6 +20,8 @@ import * as Main from './main.js';
+ import {DASH_TILE_SIZE, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
+ import * as Util from '../misc/util.js';
+ import * as DateUtils from '../misc/dateUtils.js';
++import * as LiveActivity from './liveActivity.js';
++import {ICON_CORNER_RATIO, LumaIconMask} from './iconMask.js';
+ 
+ import * as RemoteAccessStatus from './status/remoteAccess.js';
+ import * as PowerProfileStatus from './status/powerProfiles.js';
+@@ -53,29 +55,12 @@ const LUMA_LIVE_EXTENSIONS_INTERFACE = 'org.projectluma.SemanticBroker1';
+ // names an action; the Shell decides the glyph, the size, and whether the
+ // control can be pressed at all. Applications never ship artwork here.
+ const LUMA_LIVE_EXTENSION_MAX_ACTIONS = 3;
+-const LUMA_LIVE_EXTENSION_ACTION_ICON = 'view-more-symbolic';
+-const LUMA_LIVE_EXTENSION_ACTION_ICONS = new Map([
+-    ['mute', 'microphone-disabled-symbolic'],
+-    ['mute-microphone', 'microphone-disabled-symbolic'],
+-    ['microphone-mute', 'microphone-disabled-symbolic'],
+-    ['unmute', 'audio-input-microphone-symbolic'],
+-    ['microphone', 'audio-input-microphone-symbolic'],
+-    ['mic', 'audio-input-microphone-symbolic'],
+-    ['camera', 'camera-web-symbolic'],
+-    ['video', 'camera-web-symbolic'],
+-    ['camera-off', 'camera-disabled-symbolic'],
+-    ['mute-camera', 'camera-disabled-symbolic'],
+-    ['camera-mute', 'camera-disabled-symbolic'],
+-    ['end-call', 'call-stop-symbolic'],
+-    ['hang-up', 'call-stop-symbolic'],
+-    ['hangup', 'call-stop-symbolic'],
+-    ['answer', 'call-start-symbolic'],
+-    ['answer-call', 'call-start-symbolic'],
+-    ['hold', 'media-playback-pause-symbolic'],
+-    ['speaker', 'audio-volume-high-symbolic'],
+-    ['share-screen', 'screen-shared-symbolic'],
+-    ['screen-share', 'screen-shared-symbolic'],
+-]);
++// Luma Calls publishes a call on behalf of whichever application holds the
++// microphone, and names that application -- from its own desktop entry -- in
++// the title. Its publications are the only ones whose icon and click belong to
++// an application other than the publisher.
++const LUMA_CALLS_APPLICATION_ID = 'org.projectluma.Calls';
++const LUMA_LIVE_LEADING_SIZE = 36;
+ const LUMA_LIVE_EXTENSION_TOOLTIP_DELAY = 300;
+ // The status grid: 14px glyphs, 8 apart across and 6 apart down.
+ const STATUS_GLYPH = 14;
+@@ -125,11 +110,52 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         });
+         this._badge.add_child(this._badgeMonth);
+         this._badge.add_child(this._badgeDay);
+-        this._icon = new St.Icon({
+-            style_class: 'luma-live-extension-icon',
+-            icon_name: 'x-office-calendar-symbolic',
++        // Everything that is not a calendar entry leads with the same 36px
++        // tile as a dock icon and media artwork, at the same radius: the
++        // application's icon, clipped like the dock's; initials on an identity
++        // tint for a caller with no application to show; or the activity's
++        // glyph on a quiet tile. A call's tile carries the live dot.
++        this._leadingIcon = new St.Icon({
++            style_class: 'luma-live-extension-leading-icon',
++            x_expand: true,
++            y_expand: true,
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        try {
++            const mask = new LumaIconMask();
++            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [ICON_CORNER_RATIO]);
++            this._leadingIcon.add_effect_with_name('luma-icon-mask', mask);
++        } catch (error) {
++            logError(error, 'Live island icon rounding unavailable');
++        }
++        this._leadingInitials = new St.Label({
++            style_class: 'luma-live-extension-initials',
++            x_expand: true,
++            y_expand: true,
++            x_align: Clutter.ActorAlign.CENTER,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
++        this._presence = new St.Widget({
++            style_class: 'luma-live-extension-presence',
++            x_expand: true,
++            y_expand: true,
++            x_align: Clutter.ActorAlign.END,
++            y_align: Clutter.ActorAlign.END,
++        });
++        this._leading = new St.Widget({
++            style_class: 'luma-live-extension-leading',
++            layout_manager: new Clutter.BinLayout(),
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._leading.add_child(this._leadingIcon);
++        this._leading.add_child(this._leadingInitials);
++        this._leading.add_child(this._presence);
++        this._leadingTint = null;
++        this._style = null;
++        this._tickId = 0;
++        this._callStart = null;
+         this._title = new St.Label({
+             style_class: 'luma-live-extension-title',
+             y_align: Clutter.ActorAlign.CENTER,
+@@ -151,6 +177,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         text.add_child(this._subtitle);
+         text.add_child(this._title);
+         text.x_expand = true;
++        this._text = text;
+         this._time = new St.Label({
+             style_class: 'luma-live-extension-time',
+             y_align: Clutter.ActorAlign.CENTER,
+@@ -165,7 +192,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             style_class: 'luma-live-extension-content',
+         });
+         content.add_child(this._badge);
+-        content.add_child(this._icon);
++        content.add_child(this._leading);
+         content.add_child(text);
+         content.add_child(this._time);
+         content.add_child(this._actions);
+@@ -202,10 +229,18 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             if (this._signal)
+                 Gio.DBus.session.signal_unsubscribe(this._signal);
+             this._signal = 0;
++            this._stopTicking();
+             this._hideTooltip();
+             this._tooltip?.destroy();
+             this._tooltip = null;
+         });
++        // A call names its application only once that application is running
++        // (a call can be published a moment before its window maps), so the
++        // tile is looked at again whenever applications start and stop.
++        Shell.AppSystem.get_default().connectObject('app-state-changed', () => {
++            if (this._current && this._style === LiveActivity.Style.CALL)
++                this._setExtension(this._current);
++        }, this);
+         this.hide();
+         this._refresh();
+     }
+@@ -227,10 +262,9 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+                     const extensions = Array.isArray(reply)
+                         ? reply.filter(item => this._isValidExtension(item))
+                         : [];
+-                    extensions.sort((a, b) =>
+-                        (a.extension.starts_at ?? a.extension.expires_at).localeCompare(
+-                            b.extension.starts_at ?? b.extension.expires_at));
+-                    this._setExtension(extensions[0] ?? null);
++                    // What the person is doing now outranks what is coming
++                    // up: a call is shown over a meeting that starts later.
++                    this._setExtension(LiveActivity.pickActivity(extensions));
+                 } catch (error) {
+                     console.debug(`Luma Live Extensions unavailable: ${error}`);
+                     this._setExtension(null);
+@@ -257,17 +291,48 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         this._current = item;
+         this._syncActions(item);
+         if (!item || this._handheld) {
++            this._stopTicking();
+             this.hide();
+             return;
+         }
+         const extension = item.extension;
++        const style = LiveActivity.styleOf(item);
++        if (style !== this._style) {
++            if (this._style)
++                this.remove_style_class_name(`luma-live-extension-${this._style}`);
++            this.add_style_class_name(`luma-live-extension-${style}`);
++            this._style = style;
++            // Only the calendar reads its eyebrow first ("Up next · 20 min"
++            // over the event); a call and everything else read title first.
++            if (style === LiveActivity.Style.EVENT)
++                this._text.set_child_above_sibling(this._title, this._subtitle);
++            else
++                this._text.set_child_above_sibling(this._subtitle, this._title);
++            console.debug(`Luma live island: ${item.application_id} ` +
++                `category=${LiveActivity.categoryOf(item)} style=${style}`);
++        }
+         this._title.text = extension.title;
+         this._subtitle.text = extension.subtitle ?? '';
+         this._subtitle.visible = Boolean(extension.subtitle);
+-        this._setSchedule(extension.starts_at);
+-        this.accessible_name = extension.subtitle
+-            ? `${extension.title}, ${extension.subtitle}`
+-            : extension.title;
++        // The calendar dress -- the date tile and a clock time -- belongs to
++        // an event and nothing else. A start on anything else is not a date.
++        this._setSchedule(style === LiveActivity.Style.EVENT ? extension.starts_at : null);
++        this._leading.visible = style !== LiveActivity.Style.EVENT;
++        this._presence.visible = false;
++        if (style === LiveActivity.Style.CALL) {
++            this._presentCall(item);
++        } else {
++            this._stopTicking();
++            if (style === LiveActivity.Style.GENERIC) {
++                const app = this._sourceApp(item);
++                if (app)
++                    this._setLeading({gicon: app.get_icon()});
++                else
++                    this._setLeading({iconName: LiveActivity.categoryIcon(item)});
++            }
++        }
++        this.accessible_name = this._subtitle.visible
++            ? `${extension.title}, ${this._subtitle.text}` : extension.title;
+         this.show();
+         // An island that draws its material but no writing has been reported
+         // more than once, and the payload is only one of four places it can
+@@ -282,6 +347,99 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         }
+     }
+ 
++    // The kit's call: the application the call is in (or the caller's
++    // initials), the caller, "Call · 00:42" counting up, then a microphone
++    // and an end-call control -- each only when the application really lets
++    // the system do it. The clock is the Shell's own, stepping every second;
++    // before a call is answered there is none, and the provider's own words
++    // ("Incoming call", "Ringing") stay as the subtitle.
++    _presentCall(item) {
++        const extension = item.extension;
++        const app = this._sourceApp(item);
++        if (app)
++            this._setLeading({gicon: app.get_icon()});
++        else
++            this._setLeading({initials: LiveActivity.initialsOf(extension.title)});
++        this._presence.visible = true;
++        this._callStart = LiveActivity.parseInstant(extension.starts_at);
++        const elapsed = LiveActivity.elapsedText(this._callStart, Date.now());
++        if (elapsed !== null) {
++            this._subtitle.text = LiveActivity.callSubtitle(_('Call'), elapsed);
++            this._subtitle.visible = true;
++            this._startTicking();
++        } else {
++            this._stopTicking();
++        }
++    }
++
++    // One tile, three contents: an application icon full-bleed, initials on
++    // an identity tint, or a glyph on a quiet tile.
++    _setLeading({gicon = null, iconName = null, initials = null}) {
++        const mode = gicon ? 'app' : initials ? 'initials' : 'glyph';
++        for (const name of ['app', 'initials', 'glyph'])
++            this._leading.remove_style_class_name(`luma-live-extension-leading-${name}`);
++        this._leading.add_style_class_name(`luma-live-extension-leading-${mode}`);
++        if (this._leadingTint !== null)
++            this._leading.remove_style_class_name(`luma-live-extension-tint-${this._leadingTint}`);
++        this._leadingTint = null;
++        this._leadingIcon.visible = mode !== 'initials';
++        this._leadingInitials.visible = mode === 'initials';
++        if (mode === 'app') {
++            this._leadingIcon.icon_size = LUMA_LIVE_LEADING_SIZE;
++            this._leadingIcon.gicon = gicon;
++        } else if (mode === 'glyph') {
++            this._leadingIcon.icon_size = 16;
++            this._leadingIcon.icon_name = iconName;
++        } else {
++            this._leadingInitials.text = initials;
++            this._leadingTint = LiveActivity.tintOf(this._current?.extension?.title);
++            this._leading.add_style_class_name(`luma-live-extension-tint-${this._leadingTint}`);
++        }
++    }
++
++    _startTicking() {
++        if (this._tickId)
++            return;
++        // Land each tick just after the second turns over, so the clock steps
++        // with the seconds instead of up to a second behind them.
++        const schedule = () => {
++            const delay = 1000 - ((Date.now() - (this._callStart ?? 0)) % 1000) + 20;
++            this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
++                const elapsed = LiveActivity.elapsedText(this._callStart, Date.now());
++                if (elapsed === null || this._style !== LiveActivity.Style.CALL || !this.visible) {
++                    this._tickId = 0;
++                    return GLib.SOURCE_REMOVE;
++                }
++                this._subtitle.text = LiveActivity.callSubtitle(_('Call'), elapsed);
++                schedule();
++                return GLib.SOURCE_REMOVE;
++            });
++            GLib.Source.set_name_by_id(this._tickId, '[gnome-shell] lumaLiveCallClock');
++        };
++        schedule();
++    }
++
++    _stopTicking() {
++        if (this._tickId)
++            GLib.source_remove(this._tickId);
++        this._tickId = 0;
++    }
++
++    // The application a publication is about: normally the publisher, which
++    // the broker has authenticated. For Luma Calls it is the running
++    // application its title names -- and only when exactly one running
++    // application has that name; otherwise no icon is claimed at all.
++    _sourceApp(item) {
++        if (!item)
++            return null;
++        const appSystem = Shell.AppSystem.get_default();
++        if (item.application_id !== LUMA_CALLS_APPLICATION_ID)
++            return appSystem.lookup_app(`${item.application_id}.desktop`);
++        const title = item.extension?.title;
++        const matches = appSystem.get_running().filter(app => app.get_name() === title);
++        return matches.length === 1 ? matches[0] : null;
++    }
++
+     // A start is stated in ISO 8601 or not at all. An unparseable one leaves
+     // the badge and the time hidden rather than guessed at, because a badge
+     // showing the wrong day is worse than an island without one.
+@@ -296,21 +454,14 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         }
+         this._badge.visible = local !== null;
+         this._time.visible = local !== null;
+-        this._icon.visible = local === null;
+     }
+ 
+-    // A lone passive action is the island's own gesture spelled a second time:
+-    // clicking the island already opens the application, so a button that does
+-    // no more than that is noise -- and with no icon mapped for it, it drew as
+-    // an unexplained three-dot glyph. The controls the row exists for, the
+-    // consequential and destructive ones, are untouched.
++    // What is drawn as a button is the classifier's decision: a lone passive
++    // action repeats the island's own click, only actions with a glyph are
++    // drawn (there are no overflow buttons in a live extension), and a call
++    // draws only the controls that really work.
+     _shownActions(item) {
+-        const actions = this._validActions(item);
+-        if (actions.length === 1 && actions[0].risk === 'passive')
+-            return [];
+-        // Only controls with a glyph of their own are drawn; there are no
+-        // overflow buttons in a live extension.
+-        return actions.filter(action => LUMA_LIVE_EXTENSION_ACTION_ICONS.has(action.id));
++        return LiveActivity.shownActions(item, this._validActions(item));
+     }
+ 
+     // An action is only renderable when the broker gave us everything needed
+@@ -340,6 +491,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         const actions = this._shownActions(item);
+         const key = JSON.stringify([
+             item?.publication_id ?? '',
++            LiveActivity.styleOf(item),
+             actions.map(action =>
+                 [action.id, action.label, action.enabled, action.description ?? '']),
+         ]);
+@@ -363,14 +515,23 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             style_class: 'luma-live-extension-action',
+             child: new St.Icon({
+                 style_class: 'luma-live-extension-action-icon',
+-                icon_name: LUMA_LIVE_EXTENSION_ACTION_ICONS.get(action.id) ??
+-                    LUMA_LIVE_EXTENSION_ACTION_ICON,
++                icon_name: LiveActivity.actionIcon(action),
+             }),
+             can_focus: false,
+             track_hover: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+-        const hint = action.description || action.label;
++        // A call's microphone is green while live and ink-2 when muted; its
++        // end-call control is red. Neither has a fill at rest.
++        const role = LiveActivity.actionRole(action);
++        if (role === 'hangup')
++            button.add_style_class_name('luma-live-extension-action-end');
++        else if (role === 'microphone')
++            button.add_style_class_name(LiveActivity.isMuted(action)
++                ? 'luma-live-extension-action-mic-muted' : 'luma-live-extension-action-mic-live');
++        // The label names what a press does ("Unmute microphone"); the
++        // description explains a control that cannot work.
++        const hint = action.enabled ? action.label : action.description || action.label;
+         button.accessible_name = hint;
+         if (!action.enabled)
+             button.add_style_class_name('luma-live-extension-action-unavailable');
+@@ -509,7 +670,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         }
+         const menu = this._options;
+         menu.removeAll();
+-        const app = Shell.AppSystem.get_default().lookup_app(`${this._current.application_id}.desktop`);
++        const app = this._sourceApp(this._current);
+         const open = menu.addAction(app ? _('Open %s').format(app.get_name()) : _('Open'), () => this._openApplication());
+         open.sensitive = app !== null;
+         const actions = this._validActions(this._current);
+@@ -534,11 +695,11 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         // publication's own passive open action, when it has one, asks the
+         // application to show the thing described -- the event, not just the
+         // calendar.
+-        const app = Shell.AppSystem.get_default().lookup_app(
+-            `${this._current.application_id}.desktop`);
++        // A call opens the application the call is in, never Luma Calls.
++        const app = this._sourceApp(this._current);
+         if (app) {
+             app.activate();
+-        } else {
++        } else if (this._current.application_id !== LUMA_CALLS_APPLICATION_ID) {
+             try {
+                 Gio.DesktopAppInfo.new(`${this._current.application_id}.desktop`)
+                     ?.launch([], global.create_app_launch_context(0, -1));
+diff --git a/js/ui/shelfMedia.js b/js/ui/shelfMedia.js
+index c150b3f..2a17c19 100644
+--- a/js/ui/shelfMedia.js
++++ b/js/ui/shelfMedia.js
+@@ -7,7 +7,7 @@ import Pango from 'gi://Pango';
+ import St from 'gi://St';
+ import * as Mpris from './mpris.js';
+ import {MediaSelection} from './mediaSelection.js';
+-import {LumaIconMask} from './iconMask.js';
++import {ICON_CORNER_RATIO, LumaIconMask} from './iconMask.js';
+ 
+ export const ShelfMedia = GObject.registerClass({
+     Signals: {'eligibility-changed': {}},
+@@ -21,15 +21,24 @@ export const ShelfMedia = GObject.registerClass({
+         this._artGeneration = 0;
+         this._identity = new St.Button({style_class: 'luma-media-identity', can_focus: true});
+         const identity = new St.BoxLayout({style_class: 'luma-media-identity-box'});
+-        // Artwork is a dock tile: the same size, and the same corner.
++        // Artwork is a dock tile: the same size, and the same corner. The mask
++        // used to cut at 0.25 of the width -- 9px -- where every other 36px
++        // tile in the shelf is 10, and the art is now always square (see
++        // mediaArtwork.js), so the rounded corners land on the image itself.
++        // The spec's 1px light rim sits over the image, as it does in the kit.
+         this._art = new St.Icon({style_class: 'luma-media-art', icon_size: 36});
+         try {
+             const mask = new LumaIconMask();
+-            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [0.25]);
++            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [ICON_CORNER_RATIO]);
+             this._art.add_effect_with_name('luma-icon-mask', mask);
+         } catch (error) {
+             logError(error, 'Media artwork rounding unavailable');
+         }
++        this._artTile = new St.Widget({style_class: 'luma-media-art-tile',
++            layout_manager: new Clutter.BinLayout(), y_align: Clutter.ActorAlign.CENTER});
++        this._artTile.add_child(this._art);
++        this._artTile.add_child(new St.Widget({style_class: 'luma-media-art-rim',
++            x_expand: true, y_expand: true}));
+         this._copy = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
+             style_class: 'luma-media-copy', y_align: Clutter.ActorAlign.CENTER});
+         this._title = new St.Label({style_class: 'luma-media-title'});
+@@ -38,7 +47,7 @@ export const ShelfMedia = GObject.registerClass({
+             label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+             this._copy.add_child(label);
+         }
+-        identity.add_child(this._art);
++        identity.add_child(this._artTile);
+         this._copyStack = new St.Widget({layout_manager: new Clutter.BinLayout(),
+             style_class: 'luma-media-copy', y_align: Clutter.ActorAlign.CENTER});
+         this._copyStack.add_child(this._copy);
+-- 
+2.55.0
+

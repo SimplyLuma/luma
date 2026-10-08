@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.Connect1
+Exec=/usr/bin/luma-connect-daemon
+SystemdService=luma-connect.service

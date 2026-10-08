@@ -1,0 +1,6 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+from prairie_apps.camera import main
+
+raise SystemExit(main())

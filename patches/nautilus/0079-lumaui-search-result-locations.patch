@@ -1,0 +1,59 @@
+From 716d1e376c1f707c91ab380bdf3ae169f9139311 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:07:45 +0000
+Subject: [PATCH] Filer: show search hit locations under their names
+
+---
+ src/nautilus-list-view.c |  4 +++-
+ src/nautilus-name-cell.c | 16 ++++++++++++++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 49b15dd..fda2e57 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -970,10 +970,12 @@ setup_name_cell (GtkSignalListItemFactory *factory,
+                             cell, "icon-size",
+                             G_BINDING_SYNC_CREATE);
+ 
+-    /* Locations belong in the optional location column, not a second name row. */
++    /* v70 search rows keep their location with the result's name and snippet. */
+     if (self->search_directory != NULL)
+     {
+         nautilus_name_cell_show_snippet (NAUTILUS_NAME_CELL (cell));
++        nautilus_name_cell_set_path (NAUTILUS_NAME_CELL (cell),
++                                    self->path_attribute_q, NULL);
+     }
+ 
+     if (self->expand_as_a_tree)
+diff --git a/src/nautilus-name-cell.c b/src/nautilus-name-cell.c
+index 5ccd209..908a87d 100644
+--- a/src/nautilus-name-cell.c
++++ b/src/nautilus-name-cell.c
+@@ -57,7 +57,23 @@ get_path_text (NautilusFile *file,
+     }
+ 
+     g_autofree gchar *path = nautilus_file_get_string_attribute_q (file, path_attribute_q);
++    if (path == NULL || *path == '\0')
++    {
++        return NULL;
++    }
+     g_autoptr (GFile) dir_location = g_file_new_for_commandline_arg (path);
++    const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++
++    if (fixture_root != NULL)
++    {
++        g_autoptr (GFile) root = g_file_new_for_path (fixture_root);
++        g_autofree char *relative = g_file_get_relative_path (root, dir_location);
++        if (relative != NULL)
++        {
++            g_auto (GStrv) components = g_strsplit (relative, "/", -1);
++            return g_strjoinv (" › ", components);
++        }
++    }
+ 
+     if (base_location != NULL && g_file_equal (base_location, dir_location))
+     {
+-- 
+2.55.0
+

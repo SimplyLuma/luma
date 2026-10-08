@@ -1,0 +1,28 @@
+From: Luma UI maintainers <noreply@projectluma.org>
+Subject: [PATCH] Release desktop content margins on phone
+
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1510,9 +1510,21 @@
+-    gboolean show = filer_is_phone (window) && !searching;
++    gboolean phone = filer_is_phone (window);
++    gboolean show = phone && !searching;
++    /* The native frame owns the phone edge. Desktop content keeps its inset. */
++    GtkWidget *toolbar = gtk_widget_get_ancestor (GTK_WIDGET (window->tab_view),
++                                                 ADW_TYPE_TOOLBAR_VIEW);
++    if (toolbar != NULL)
++    {
++        gtk_widget_set_margin_start (toolbar, phone ? 0 : 9);
++        gtk_widget_set_margin_end (toolbar, phone ? 0 : 9);
++        gtk_widget_set_margin_bottom (toolbar, phone ? 0 : 9);
++    }
+     gtk_widget_set_visible (GTK_WIDGET (window->title_island), show);
+     /* The island names the place; the page's own heading steps aside for it
+      * and leaves the island its room. */
+     gtk_widget_set_visible (window->location_title, !show);
+     gtk_widget_set_visible (window->location_meta, !show);
+     gtk_widget_set_size_request (window->location_box, -1, show ? 48 : -1);
++    gtk_widget_set_margin_top (window->location_box, show ? 8 : 22);
++    gtk_widget_set_margin_bottom (window->location_box, show ? 6 : 10);
+     if (!show)
+         return;

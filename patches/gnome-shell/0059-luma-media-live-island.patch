@@ -1,0 +1,763 @@
+diff --git a/data/dbus-interfaces/org.mpris.MediaPlayer2.Player.xml b/data/dbus-interfaces/org.mpris.MediaPlayer2.Player.xml
+--- a/data/dbus-interfaces/org.mpris.MediaPlayer2.Player.xml
++++ b/data/dbus-interfaces/org.mpris.MediaPlayer2.Player.xml
+@@ -5,6 +5,8 @@
+     <method name="Previous"/>
+     <property name="CanGoNext" type="b" access="read"/>
+     <property name="CanGoPrevious" type="b" access="read"/>
++    <property name="CanPause" type="b" access="read"/>
++    <property name="CanControl" type="b" access="read"/>
+     <property name="CanPlay" type="b" access="read"/>
+     <property name="Metadata" type="a{sv}" access="read"/>
+     <property name="PlaybackStatus" type="s" access="read"/>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -634,3 +634,17 @@
+ .luma-shelf-dock-island #dash .overview-tile:focus .luma-shelf-artwork,
+ .luma-shelf-dock-island #dash .show-apps:focus .luma-shelf-artwork {
+   icon-shadow: 0 0 4px rgba(82,127,174,0.82); }
++
++/* Native MPRIS media island; material is supplied by ShelfIsland. */
++.luma-media-module { min-width: 176px; height: 36px; padding: 0; spacing: 7px; border-radius: 10px; }
++.luma-media-identity { padding: 0; border: 0; background-color: transparent; }
++.luma-media-identity-box { spacing: 7px; }
++.luma-media-copy { width: 68px; spacing: 1px; }
++.luma-media-title { font-size: 10px; font-weight: 600; }
++.luma-media-artist { font-size: 8px; opacity: 0.7; }
++.luma-media-art { icon-size: 28px; border-radius: 8px; background-color: rgba(127,127,127,0.16); }
++.luma-media-controls { spacing: 0; }
++.luma-media-control { min-width: 22px; min-height: 24px; padding: 0; border-radius: 7px; background-color: transparent; }
++.luma-media-control:hover, .luma-media-control:focus { background-color: rgba(127,127,127,0.2); }
++.luma-media-module.vertical { min-width: 0; height: 138px; width: 36px; padding: 0; }
++
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -90,6 +90,10 @@
+     <file>ui/messageTray.js</file>
+     <file>ui/modalDialog.js</file>
+     <file>ui/mpris.js</file>
++    <file>ui/mediaSelection.js</file>
++    <file>ui/mediaArtwork.js</file>
++    <file>ui/iconMask.js</file>
++    <file>ui/shelfMedia.js</file>
+     <file>ui/notificationDaemon.js</file>
+     <file>ui/osdMonitorLabeler.js</file>
+     <file>ui/osdWindow.js</file>
+diff --git a/js/ui/iconMask.js b/js/ui/iconMask.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/iconMask.js
+@@ -0,0 +1,29 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Shared shelf artwork mask, extracted unchanged from the existing dock.
++import Cogl from 'gi://Cogl';
++import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
++
++const ICON_MASK_DECLARATIONS = `
++uniform float radius;
++`;
++
++// Runs after the default fragment stage, so cogl_color_out already holds the
++// sampled texel and the mask only has to attenuate it. Colour is premultiplied,
++// so scaling the whole vector is the correct way to fade a corner out.
++const ICON_MASK_CODE = `
++vec2 uv = cogl_tex_coord_in[0].st;
++vec2 edge = min(uv, vec2(1.0) - uv);
++float corner = length(max(vec2(radius) - edge, vec2(0.0)));
++cogl_color_out *= 1.0 - smoothstep(radius - 0.02, radius + 0.02, corner);
++`;
++
++export const LumaIconMask = GObject.registerClass(
++class LumaIconMask extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(
++            Cogl.SnippetHook.FRAGMENT,
++            ICON_MASK_DECLARATIONS, ICON_MASK_CODE, false);
++    }
++});
++
+diff --git a/js/ui/mediaArtwork.js b/js/ui/mediaArtwork.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/mediaArtwork.js
+@@ -0,0 +1,112 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GdkPixbuf from 'gi://GdkPixbuf';
++import Soup from 'gi://Soup';
++
++const MAX_BYTES = 2 * 1024 * 1024;
++const cache = new Map();
++const session = new Soup.Session({timeout: 10, max_conns: 2, max_conns_per_host: 1});
++
++function readChunk(stream, cancellable) {
++    return new Promise((resolve, reject) => {
++        stream.read_bytes_async(65536, GLib.PRIORITY_DEFAULT, cancellable, (object, result) => {
++            try { resolve(object.read_bytes_finish(result)); } catch (error) { reject(error); }
++        });
++    });
++}
++
++async function boundedBytes(stream, cancellable) {
++    const parts = [];
++    let total = 0;
++    try {
++        while (true) {
++            const chunk = await readChunk(stream, cancellable);
++            if (!chunk.get_size()) break;
++            total += chunk.get_size();
++            if (total > MAX_BYTES) throw new Error('Artwork exceeds size limit');
++            parts.push(chunk.get_data());
++        }
++    } finally {
++        stream.close_async(GLib.PRIORITY_DEFAULT, null, (object, result) => {
++            try { object.close_finish(result); } catch { /* Already closed. */ }
++        });
++    }
++    const data = new Uint8Array(total);
++    let offset = 0;
++    for (const part of parts) { data.set(part, offset); offset += part.length; }
++    return GLib.Bytes.new(data);
++}
++
++async function decode(bytes, cancellable) {
++    const input = Gio.MemoryInputStream.new_from_bytes(bytes);
++    const pixbuf = await new Promise((resolve, reject) => {
++        GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(input, 56, 56, true, cancellable,
++            (_object, result) => {
++                try { resolve(GdkPixbuf.Pixbuf.new_from_stream_finish(result)); }
++                catch (error) { reject(error); }
++            });
++    });
++    const [ok, png] = pixbuf.save_to_bufferv('png', [], []);
++    return ok ? new Gio.BytesIcon({bytes: GLib.Bytes.new(png)}) : null;
++}
++
++export async function loadShelfArtwork(url, cancellable) {
++    if (!url || url.length > MAX_BYTES * 2) return null;
++    if (cache.has(url)) {
++        const icon = cache.get(url);
++        cache.delete(url); cache.set(url, icon);
++        return icon;
++    }
++    let bytes;
++    if (/^data:image\/(png|jpeg|webp|gif);base64,/i.test(url)) {
++        const data = GLib.base64_decode(url.slice(url.indexOf(',') + 1));
++        if (data.length > MAX_BYTES) return null;
++        bytes = GLib.Bytes.new(data);
++    } else {
++        const uri = GLib.Uri.parse(url, GLib.UriFlags.NONE);
++        if (uri.get_userinfo()) return null;
++        let stream;
++        if (uri.get_scheme() === 'file' && (!uri.get_host() || uri.get_host() === 'localhost')) {
++            const file = Gio.File.new_for_uri(url);
++            const info = await new Promise((resolve, reject) => {
++                file.query_info_async('standard::type,standard::size', Gio.FileQueryInfoFlags.NONE,
++                    GLib.PRIORITY_DEFAULT, cancellable, (object, result) => {
++                        try { resolve(object.query_info_finish(result)); } catch (error) { reject(error); }
++                    });
++            });
++            if (info.get_file_type() !== Gio.FileType.REGULAR || info.get_size() > MAX_BYTES)
++                return null;
++            stream = await new Promise((resolve, reject) => {
++                file.read_async(GLib.PRIORITY_DEFAULT, cancellable, (object, result) => {
++                    try { resolve(object.read_finish(result)); } catch (error) { reject(error); }
++                });
++            });
++        } else if (uri.get_scheme() === 'https') {
++            const message = Soup.Message.new('GET', url);
++            // No credentials, cookies or insecure redirect fallback.
++            message.connect('restarted', () => {
++                if (message.get_uri().get_scheme() !== 'https' || message.get_uri().get_userinfo())
++                    cancellable.cancel();
++            });
++            stream = await new Promise((resolve, reject) => {
++                session.send_async(message, GLib.PRIORITY_DEFAULT, cancellable, (object, result) => {
++                    try { resolve(object.send_finish(result)); } catch (error) { reject(error); }
++                });
++            });
++            if (message.status_code !== 200) {
++                stream.close(null);
++                return null;
++            }
++        } else {
++            return null;
++        }
++        bytes = await boundedBytes(stream, cancellable);
++    }
++    const icon = await decode(bytes, cancellable);
++    if (icon) {
++        cache.set(url, icon);
++        while (cache.size > 24) cache.delete(cache.keys().next().value);
++    }
++    return icon;
++}
+diff --git a/js/ui/mediaSelection.js b/js/ui/mediaSelection.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/mediaSelection.js
+@@ -0,0 +1,51 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// MPRIS is authoritative. Do not infer eligibility from metadata or status.
++export function isEligible(player) {
++    return Boolean(player?.canPlay);
++}
++
++export function pickPlayer(players) {
++    return [...players].filter(entry => isEligible(entry.player)).sort((a, b) =>
++        Number(b.player.status === 'Playing') - Number(a.player.status === 'Playing') ||
++        b.played - a.played || b.appeared - a.appeared)[0]?.player ?? null;
++}
++
++export class MediaSelection {
++    constructor() {
++        this.entries = new Map();
++        this.serial = 0;
++        this.selected = null;
++    }
++
++    update(player) {
++        let entry = this.entries.get(player);
++        if (!entry) {
++            entry = {player, appeared: ++this.serial, played: 0, status: null};
++            this.entries.set(player, entry);
++        }
++        const started = player.status === 'Playing' && entry.status !== 'Playing';
++        if (started)
++            entry.played = ++this.serial;
++        entry.status = player.status;
++        if (started && isEligible(player))
++            this.selected = player;
++        else if (!isEligible(this.selected))
++            this.selected = pickPlayer(this.entries.values());
++        return this.selected;
++    }
++
++    remove(player) {
++        this.entries.delete(player);
++        if (this.selected === player)
++            this.selected = pickPlayer(this.entries.values());
++        return this.selected;
++    }
++}
++
++// Media's boundary with status is fixed; spare space belongs to other gaps.
++export function shelfGaps(children, media, status, gap, spare = 0) {
++    const pinned = children.findIndex((child, index) => child === media && children[index + 1] === status);
++    const flexible = Math.max(0, children.length - 1 - Number(pinned >= 0));
++    return children.slice(0, -1).map((_child, index) => index === pinned
++        ? gap : gap + (flexible ? spare / flexible : 0));
++}
+diff --git a/js/ui/messageList.js b/js/ui/messageList.js
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -1628,7 +1628,7 @@
+     _nUrgent = 0;
+ 
+     _playerToMessage = new Map();
+-    _mediaSource = new Mpris.MprisSource();
++    _mediaSource = Mpris.getDefaultSource();
+ 
+     constructor() {
+         // Add an overlay that will be placed below the expanded group message
+diff --git a/js/ui/mpris.js b/js/ui/mpris.js
+--- a/js/ui/mpris.js
++++ b/js/ui/mpris.js
+@@ -14,6 +14,13 @@
+ 
+ const MprisPlayerIface = loadInterfaceXML('org.mpris.MediaPlayer2.Player');
+ const MprisPlayerProxy = Gio.DBusProxy.makeProxyWrapper(MprisPlayerIface);
++
++export {loadShelfArtwork} from './mediaArtwork.js';
++
++let defaultSource;
++export function getDefaultSource() {
++    return defaultSource ??= new MprisSource();
++}
+ 
+ const MPRIS_PLAYER_PREFIX = 'org.mpris.MediaPlayer2.';
+ 
+@@ -51,7 +58,7 @@
+     }
+ 
+     get status() {
+-        return this._playerProxy.PlaybackStatus;
++        return this._playerProxy?.PlaybackStatus;
+     }
+ 
+     get trackArtists() {
+@@ -68,6 +75,18 @@
+ 
+     get app() {
+         return this._app;
++    }
++
++    get shelfTitle() { return this._shelfTitle ?? ''; }
++    get shelfArtists() { return this._shelfArtists ?? []; }
++    get canControl() { return Boolean(this._playerProxy?.CanControl); }
++    get canPause() { return Boolean(this._playerProxy?.CanPause); }
++
++    raiseSource() {
++        if (this._mprisProxy?.CanRaise)
++            this._mprisProxy.RaiseAsync().catch(logError);
++        else
++            this._app?.activate();
+     }
+ 
+     playPause() {
+@@ -100,6 +119,12 @@
+     }
+ 
+     _close() {
++        if (this._closed) return;
++        this._closed = true;
++        if (this._canPlay) {
++            this._canPlay = false;
++            this.notify('can-play');
++        }
+         this._mprisProxy.disconnectObject(this);
+         this._mprisProxy = null;
+ 
+@@ -107,7 +132,11 @@
+         this._playerProxy = null;
+     }
+ 
+-    _onMprisProxyReady() {
++    _onMprisProxyReady(_proxy, error) {
++        if (this._closed || error) { this._close(); return; }
++        this._mprisProxy.connectObject('g-properties-changed', () => {
++            if (this._playerReady) this._updateState();
++        }, this);
+         this._mprisProxy.connectObject('notify::g-name-owner',
+             () => {
+                 if (!this._mprisProxy.g_name_owner)
+@@ -120,16 +149,24 @@
+             this._close();
+     }
+ 
+-    _onPlayerProxyReady() {
++    _onPlayerProxyReady(_proxy, error) {
++        if (this._closed || error) { this._close(); return; }
++        this._playerReady = true;
+         this._playerProxy.connectObject(
+             'g-properties-changed', this._updateState.bind(this), this);
+         this._updateState();
+     }
+ 
+     _updateState() {
++        if (this._closed) return;
+         const metadata = {};
+         for (const prop in this._playerProxy.Metadata)
+             metadata[prop] = this._playerProxy.Metadata[prop].deepUnpack();
++
++        this._shelfTitle = typeof metadata['xesam:title'] === 'string'
++            ? metadata['xesam:title'].trim() : '';
++        this._shelfArtists = Array.isArray(metadata['xesam:artist'])
++            ? metadata['xesam:artist'].filter(value => typeof value === 'string' && value.trim()) : [];
+ 
+         // Validate according to the spec; some clients send buggy metadata:
+         // https://www.freedesktop.org/wiki/Specifications/mpris-spec/metadata
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1,5 +1,4 @@
+ import Clutter from 'gi://Clutter';
+-import Cogl from 'gi://Cogl';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+@@ -7,6 +6,9 @@
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import {ShelfMedia} from './shelfMedia.js';
++import {LumaIconMask} from './iconMask.js';
++import {shelfGaps} from './mediaSelection.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {DASH_TILE_SIZE, runningIndicatorGeometry} from './shelfMetrics.js';
+ 
+@@ -26,29 +28,6 @@
+ // icon size. 0.25 is the radius every Prairie application icon is drawn at,
+ // so the mask agrees with the artwork instead of cutting into it.
+ const ICON_CORNER_RATIO = 0.25;
+-const ICON_MASK_DECLARATIONS = `
+-uniform float radius;
+-`;
+-
+-// Runs after the default fragment stage, so cogl_color_out already holds the
+-// sampled texel and the mask only has to attenuate it. Colour is premultiplied,
+-// so scaling the whole vector is the correct way to fade a corner out.
+-const ICON_MASK_CODE = `
+-vec2 uv = cogl_tex_coord_in[0].st;
+-vec2 edge = min(uv, vec2(1.0) - uv);
+-float corner = length(max(vec2(radius) - edge, vec2(0.0)));
+-cogl_color_out *= 1.0 - smoothstep(radius - 0.02, radius + 0.02, corner);
+-`;
+-
+-const LumaIconMask = GObject.registerClass(
+-class LumaIconMask extends Shell.GLSLEffect {
+-    vfunc_build_pipeline() {
+-        this.add_glsl_snippet(
+-            Cogl.SnippetHook.FRAGMENT,
+-            ICON_MASK_DECLARATIONS, ICON_MASK_CODE, false);
+-    }
+-});
+-
+ const LEGACY_DESKTOP_DOCK_UUID = 'dash-to-dock@micxgx.gmail.com';
+ const SHELF_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-shelf.css';
+ 
+@@ -114,9 +93,11 @@
+         const sizes = children.map(child => container._vertical
+             ? child.get_preferred_height(container._thickness * scale)[1]
+             : child.get_preferred_width(container._thickness * scale)[1]);
+-        const gap = container._separate ? container._padding * scale : 0;
+-        return {children, sizes, gap, length: sizes.reduce((a, b) => a + b, 0) +
+-            Math.max(0, sizes.length - 1) * gap, thickness: container._thickness * scale};
++        const gap = container._separate ? container._padding : 0;
++        const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap)
++            .map(value => value * scale);
++        return {children, sizes, gap, scale, length: sizes.reduce((a, b) => a + b, 0) +
++            gaps.reduce((a, b) => a + b, 0), thickness: container._thickness * scale};
+     }
+ 
+     vfunc_get_preferred_width(container, _forHeight) {
+@@ -130,24 +111,31 @@
+     }
+ 
+     vfunc_allocate(container, box) {
+-        const {children, sizes, gap, length} = this._measure(container);
++        const {children, sizes, gap, scale, length} = this._measure(container);
+         const vertical = container._vertical;
+         const available = vertical ? box.get_height() : box.get_width();
+-        const spacing = children.length > 1
+-            ? gap + Math.max(0, available - length) / (children.length - 1) : 0;
++        const gaps = shelfGaps(children, container._mediaIsland, container._statusIsland, gap,
++            Math.max(0, available - length) / scale).map(value => value * scale);
+         const rtl = !vertical && container.text_direction === Clutter.TextDirection.RTL;
+-        let offset = rtl ? available : 0;
++        const onlyPinnedPair = children.length === 2 && children[0] === container._mediaIsland
++            && children[1] === container._statusIsland;
++        let offset = rtl ? (onlyPinnedPair ? length : available)
++            : (onlyPinnedPair ? Math.max(0, available - length) : 0);
+         let remaining = available;
+         children.forEach((child, i) => {
++            const spacing = gaps[i] ?? 0;
+             const size = Math.min(sizes[i], Math.max(0, remaining));
+             remaining -= size + spacing;
+             if (rtl)
+                 offset -= size;
++            const cross = vertical ? box.get_width() : box.get_height();
++            const mediaCross = cross;
++            const inset = (cross - mediaCross) / 2;
+             child.allocate(new Clutter.ActorBox({
+-                x1: vertical ? 0 : offset,
+-                y1: vertical ? offset : 0,
+-                x2: vertical ? box.get_width() : offset + size,
+-                y2: vertical ? offset + size : box.get_height(),
++                x1: vertical ? inset : offset,
++                y1: vertical ? offset : inset,
++                x2: vertical ? inset + mediaCross : offset + size,
++                y2: vertical ? offset + size : inset + mediaCross,
+             }));
+             offset += rtl ? -spacing : size + spacing;
+         });
+@@ -438,13 +426,49 @@
+             this._settings, false);
+         this._actionsBox = this._actionsMaterial._statusBox;
+         this._actionsScroll = this._actionsMaterial._statusViewport;
++        this._media = new ShelfMedia();
++        this._mediaMaterial = new St.Bin({child: this._media});
++        this._mediaMaterial._lumaMedia = true;
++        this._mediaIsland = new ShelfIsland('luma-shelf-media-island', this._mediaMaterial);
++        this._mediaIsland.visible = false;
++        this._group._mediaIsland = this._mediaIsland;
++        this._group._statusIsland = this._actionsIsland;
++        this._media.connectObject('eligibility-changed', () => {
++            const show = this._media.eligible;
++            const property = this._vertical ? 'height' : 'width';
++            this._mediaIsland.remove_all_transitions();
++            if (show) {
++                this._mediaIsland.visible = true;
++                this._mediaIsland[property] = -1;
++                this._sync();
++                const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++                const target = this._vertical
++                    ? this._mediaIsland.get_preferred_height(50 * scale)[1]
++                    : this._mediaIsland.get_preferred_width(50 * scale)[1];
++                this._mediaIsland[property] = 0;
++                this._mediaIsland.opacity = 0;
++                this._mediaIsland.ease({[property]: target, opacity: 255, duration: 200,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                    onComplete: () => { this._mediaIsland[property] = -1; this._sync(); }});
++            } else {
++                this._mediaIsland.ease({[property]: 0, opacity: 0, duration: 200,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                    onComplete: () => {
++                        this._mediaIsland.visible = false;
++                        this._mediaIsland[property] = -1;
++                        this._sync();
++                    }});
++            }
++        }, this);
++        this._mediaIsland.connectObject('notify::width', () => this._queueDockWidth(),
++            'notify::height', () => this._queueDockWidth(), this);
+ 
+         this.connect('destroy', () => {
+             this._workArea?.destroy();
+             for (const actor of this._edgeInsets ?? []) actor.destroy();
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+-            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland])
++            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland])
+                 if (island && !island.get_parent()) island.destroy();
+         });
+ 
+@@ -679,6 +703,11 @@
+             `luma-shelf-group luma-shelf-material luma-shelf-${surfaceMode} luma-shelf-material-${material}`);
+ 
+         this._adoptPanelActors();
++        if (actionsVisible && this._mediaIsland.visible) {
++            const index = this._group.get_children().indexOf(this._actionsIsland);
++            this._group.insert_child_at_index(this._mediaIsland, index);
++        }
++        this._media.setVertical(this._vertical);
+         const visibleIslands = this._group.get_children().filter(actor => actor.visible);
+         const physicalIslands = [...visibleIslands];
+         if (!this._vertical && this._group.text_direction === Clutter.TextDirection.RTL)
+@@ -733,6 +762,19 @@
+             : this._group.get_preferred_width(this._thickness * scale)[1];
+         const geometry = dashGeometry(monitor, this._edge, this._protrude,
+             this._span, this._floatEnds, natural, scale, this._padding);
++        // Anchor the status end while media consumes space on its inner side.
++        if (!this._span && this._mediaIsland.get_parent() === this._group) {
++            const mediaSize = this._vertical ? this._mediaIsland.get_preferred_height(50 * scale)[1]
++                : this._mediaIsland.get_preferred_width(50 * scale)[1];
++            const base = dashGeometry(monitor, this._edge, this._protrude,
++                false, this._floatEnds, Math.max(1, natural - mediaSize - (this._group._separate ? this._padding : 0) * scale), scale, this._padding);
++            if (this._vertical)
++                geometry.y = base.y + base.height - geometry.height;
++            else if (this._group.text_direction === Clutter.TextDirection.RTL)
++                geometry.x = base.x;
++            else
++                geometry.x = base.x + base.width - geometry.width;
++        }
+         const explicitChange = this._previousVisualPosition !== null && this._previousVisualPosition !== undefined;
+         const moved = this.x !== geometry.x || this.y !== geometry.y;
+         const [oldX, oldY] = this._previousVisualPosition ??
+@@ -865,7 +907,7 @@
+         const others = this._group.get_children().filter(actor => actor !== this._dockIsland && actor.visible);
+         const gap = this._group._separate ? others.length * this._padding * scale : 0;
+         this._actionsScroll.set_size(-1, -1);
+-        const actionsBudget = Math.max(1, available - liveSize - gap - this._thickness * scale);
++        const actionsBudget = Math.max(1, available - liveSize - (this._mediaIsland.get_parent() ? measure(this._mediaIsland) : 0) - gap - this._thickness * scale);
+         const flushStatus = this._actionsMaterial._statusFlush;
+         const actionsPadding = flushStatus ? 0 : 2 * this._padding * scale;
+         const statusCross = (flushStatus ? this._thickness : DASH_TILE_SIZE) * scale;
+diff --git a/js/ui/shelfMedia.js b/js/ui/shelfMedia.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/shelfMedia.js
+@@ -0,0 +1,199 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Pango from 'gi://Pango';
++import St from 'gi://St';
++import * as Mpris from './mpris.js';
++import {MediaSelection} from './mediaSelection.js';
++import {LumaIconMask} from './iconMask.js';
++
++export const ShelfMedia = GObject.registerClass({
++    Signals: {'eligibility-changed': {}},
++}, class ShelfMedia extends St.BoxLayout {
++    _init() {
++        super._init({style_class: 'luma-media-module', y_align: Clutter.ActorAlign.CENTER});
++        this.selection = new MediaSelection();
++        this._source = Mpris.getDefaultSource();
++        this._players = new Set();
++        this._pending = 0;
++        this._artGeneration = 0;
++        this._identity = new St.Button({style_class: 'luma-media-identity', can_focus: true});
++        const identity = new St.BoxLayout({style_class: 'luma-media-identity-box'});
++        this._art = new St.Icon({style_class: 'luma-media-art', icon_size: 28});
++        try {
++            const mask = new LumaIconMask();
++            mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [8 / 28]);
++            this._art.add_effect_with_name('luma-icon-mask', mask);
++        } catch (error) {
++            logError(error, 'Media artwork rounding unavailable');
++        }
++        this._copy = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-media-copy', y_align: Clutter.ActorAlign.CENTER});
++        this._title = new St.Label({style_class: 'luma-media-title'});
++        this._artist = new St.Label({style_class: 'luma-media-artist'});
++        for (const label of [this._title, this._artist]) {
++            label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++            this._copy.add_child(label);
++        }
++        identity.add_child(this._art);
++        this._copyStack = new St.Widget({layout_manager: new Clutter.BinLayout(),
++            style_class: 'luma-media-copy', y_align: Clutter.ActorAlign.CENTER});
++        this._copyStack.add_child(this._copy);
++        identity.add_child(this._copyStack);
++        this._identity.set_child(identity);
++        this._identity.connect('clicked', () => this.selection.selected?.raiseSource());
++        this.add_child(this._identity);
++        this._controls = new St.BoxLayout({style_class: 'luma-media-controls',
++            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++        this._previous = this._button('media-skip-backward-symbolic', () => this.selection.selected?.previous());
++        this._toggle = this._button('media-playback-start-symbolic', () => this.selection.selected?.playPause());
++        this._next = this._button('media-skip-forward-symbolic', () => this.selection.selected?.next());
++        this.add_child(this._controls);
++        this._source.connectObject('player-added', (_source, player) => this._add(player),
++            'player-removed', (_source, player) => this._remove(player), this);
++        St.Settings.get().connectObject('notify::enable-animations', () => this._render(), this);
++        this.connect('destroy', () => {
++            this._disposed = true;
++            if (this._pending) GLib.source_remove(this._pending);
++            this._cancellable?.cancel();
++            for (const player of this._players) player.disconnectObject(this);
++            this._players.clear();
++        });
++        this._source.players.forEach(player => this._add(player));
++        this._render();
++    }
++
++    setVertical(vertical) {
++        this.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._identity.child.orientation = this.orientation;
++        this._controls.orientation = this.orientation;
++        this._copy.visible = true;
++        this._copy.set_style(vertical ? "width: 36px;" : null);
++        this._copyStack.set_style(vertical ? "width: 36px;" : null);
++        if (vertical) this.add_style_class_name('vertical');
++        else this.remove_style_class_name('vertical');
++    }
++
++    _button(icon, action) {
++        const button = new St.Button({style_class: 'luma-media-control', can_focus: true,
++            child: new St.Icon({icon_name: icon, icon_size: 14})});
++        button.connect('clicked', action);
++        this._controls.add_child(button);
++        return button;
++    }
++
++    _add(player) {
++        if (!this._players.has(player)) {
++            this._players.add(player);
++            player.connectObject('changed', () => {
++                this.selection.update(player);
++                this._queue();
++            }, this);
++        }
++        this.selection.update(player);
++        this._queue();
++    }
++
++    _remove(player) {
++        player.disconnectObject(this);
++        this._players.delete(player);
++        this.selection.remove(player);
++        this._queue();
++    }
++
++    _queue() {
++        if (this._pending) return;
++        this._pending = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._pending = 0;
++            this._render();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _render() {
++        if (this._disposed) return;
++        const player = this.selection.selected;
++        const eligible = Boolean(player);
++        if (this.eligible !== eligible) {
++            this.eligible = eligible;
++            this.emit('eligibility-changed');
++        }
++        if (!player) {
++            this._artKey = null;
++            this._artGeneration++;
++            this._cancellable?.cancel();
++            this._playing = false;
++            return;
++        }
++        const appName = player.source.title || _('Media player');
++        const title = player.shelfTitle || appName;
++        const artist = player.shelfArtists.join(', ') || appName;
++        const changed = this._title.text !== title || this._artist.text !== artist;
++        this._oldCopy?.destroy();
++        this._oldCopy = null;
++        if (changed && this._title.text && St.Settings.get().enable_animations) {
++            const old = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
++                style_class: 'luma-media-copy'});
++            old.set_style(this._copy.get_style());
++            for (const [value, style] of [[this._title.text, 'luma-media-title'],
++                [this._artist.text, 'luma-media-artist']]) {
++                const label = new St.Label({text: value, style_class: style});
++                label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++                old.add_child(label);
++            }
++            this._oldCopy = old;
++            this._copyStack.add_child(old);
++            old.ease({opacity: 0, duration: 160, onComplete: () => {
++                if (this._oldCopy === old) this._oldCopy = null;
++                old.destroy();
++            }});
++        }
++        this._title.text = title;
++        this._artist.text = artist;
++        this._identity.accessible_name = _('Now playing: %s by %s, in %s').format(title, artist, appName);
++        this._playing = player.status === 'Playing';
++        this._toggle.child.icon_name = this._playing
++            ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic';
++        this._toggle.accessible_name = (this._playing ? _('Pause %s') : _('Play %s')).format(title);
++        this._previous.accessible_name = _('Previous track');
++        this._next.accessible_name = _('Next track');
++        for (const [button, enabled] of [[this._previous, player.canGoPrevious],
++            [this._next, player.canGoNext], [this._toggle, player.canControl &&
++                (this._playing ? player.canPause : player.canPlay)]]) {
++            button.reactive = Boolean(enabled);
++            button.can_focus = Boolean(enabled);
++            button.opacity = enabled ? 255 : 85;
++        }
++        if (changed && St.Settings.get().enable_animations) {
++            this._copy.remove_all_transitions();
++            this._copy.opacity = 0;
++            this._copy.ease({opacity: 255, duration: 160});
++        }
++        this._updateArt(player);
++    }
++
++    _updateArt(player) {
++        const fallback = player.app?.get_icon() ?? new Gio.ThemedIcon({name: 'audio-x-generic-symbolic'});
++        const url = player.trackCoverUrl || '';
++        const key = `${player.source.title}\n${url}`;
++        if (this._artKey === key) return;
++        this._artKey = key;
++        const generation = ++this._artGeneration;
++        this._cancellable?.cancel();
++        this._cancellable = new Gio.Cancellable();
++        this._art.gicon = fallback;
++        // Local artwork is handed to the existing async St icon loader. Remote
++        // artwork is supplied by the bounded shared loader, never fetched here.
++        Mpris.loadShelfArtwork(url, this._cancellable).then(icon => {
++            if (this._disposed || this._artGeneration !== generation || !icon) return;
++            this._art.gicon = icon;
++            if (St.Settings.get().enable_animations) {
++                this._art.opacity = 0;
++                this._art.ease({opacity: 255, duration: 160});
++            }
++        }).catch(() => {}); // Keep the source icon when artwork is unavailable.
++    }
++
++});

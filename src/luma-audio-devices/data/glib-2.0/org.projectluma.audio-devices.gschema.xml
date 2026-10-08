@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<schemalist gettext-domain="luma-audio-devices">
+  <schema id="org.projectluma.audio-devices" path="/org/projectluma/audio-devices/">
+    <key name="switch-to-headphones" type="b">
+      <default>true</default>
+      <summary>Switch to headphones and Bluetooth audio when they connect</summary>
+      <description>Play sound through headphones, earbuds, a headset or a Bluetooth audio device as soon as it connects. When off, the sound stays where it is. Displays, docks and other outputs never take the sound on their own either way.</description>
+    </key>
+  </schema>
+</schemalist>

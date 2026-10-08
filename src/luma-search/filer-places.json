@@ -1,0 +1,95 @@
+{
+ "version": 1,
+ "comment": "Filer's places, offered by Search by name and by the words people type. 'label' is Filer's own sidebar string, translated through Filer's gettext domain so Search shows what Filer shows; a place without one (the standard folders) takes the folder's own name, as Filer's sidebar does. 'uri' is the location Filer's sidebar opens; 'xdg' names a standard folder and 'home' the home folder. 'when' is a condition Filer also applies before showing the place. The user's own bookmarks are added at run time. Filer 50 has no Other Locations page: Network replaced it, so those words lead there.",
+ "domain": "nautilus",
+ "places": [
+  {
+   "id": "home",
+   "label": "Home",
+   "home": true,
+   "icon": "user-home-symbolic",
+   "keywords": ["home folder", "personal folder", "my files"]
+  },
+  {
+   "id": "recent",
+   "label": "Recent",
+   "uri": "recent:///",
+   "icon": "document-open-recent-symbolic",
+   "keywords": ["recent files", "recently used", "recents"],
+   "when": "remember-recent-files"
+  },
+  {
+   "id": "starred",
+   "label": "Starred",
+   "uri": "starred:///",
+   "icon": "starred-symbolic",
+   "keywords": ["starred files", "favorites", "favourites", "stars"]
+  },
+  {
+   "id": "applications",
+   "label": "Applications",
+   "uri": "applications:///",
+   "icon": "view-app-grid-symbolic",
+   "keywords": ["apps", "installed apps", "installed applications", "programs"]
+  },
+  {
+   "id": "desktop",
+   "label": "Desktop",
+   "xdg": "DESKTOP",
+   "icon": "user-desktop-symbolic",
+   "keywords": ["desktop folder"]
+  },
+  {
+   "id": "documents",
+   "xdg": "DOCUMENTS",
+   "icon": "folder-documents-symbolic",
+   "keywords": ["documents", "docs"]
+  },
+  {
+   "id": "downloads",
+   "xdg": "DOWNLOAD",
+   "icon": "folder-download-symbolic",
+   "keywords": ["downloads"]
+  },
+  {
+   "id": "music",
+   "xdg": "MUSIC",
+   "icon": "folder-music-symbolic",
+   "keywords": ["music", "songs"]
+  },
+  {
+   "id": "pictures",
+   "xdg": "PICTURES",
+   "icon": "folder-pictures-symbolic",
+   "keywords": ["pictures", "photos", "images"]
+  },
+  {
+   "id": "videos",
+   "xdg": "VIDEOS",
+   "icon": "folder-videos-symbolic",
+   "keywords": ["videos", "movies"]
+  },
+  {
+   "id": "network",
+   "label": "Network",
+   "uri": "x-network-view:///",
+   "icon": "network-computer-symbolic",
+   "keywords": ["other locations", "network locations", "servers", "connect to server", "shares"]
+  },
+  {
+   "id": "trash",
+   "label": "Trash",
+   "uri": "trash:///",
+   "icon": "user-trash-symbolic",
+   "keywords": ["bin", "recycle bin", "rubbish bin", "wastebasket", "deleted files"]
+  },
+  {
+   "id": "system-disk",
+   "label": "System Disk",
+   "uri": "file:///",
+   "icon": "drive-harddisk-symbolic",
+   "keywords": ["root", "file system", "filesystem"],
+   "when": "not-personal-storage-only"
+  }
+ ]
+}

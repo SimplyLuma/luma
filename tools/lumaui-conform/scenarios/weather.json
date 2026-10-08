@@ -1,0 +1,386 @@
+{
+  "app": "weather",
+  "title": "Weather",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=weather",
+    "window": "#w-weather",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "weather",
+    "fixtures": [
+      "tests/fixtures/weather-v70.json"
+    ],
+    "env": {
+      "LUMA_WEATHER_FIXTURE": "{run}/fixtures/weather-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "oakland",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lisbon",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        },
+        {
+          "click": "[data-wxp=\"lis\"]"
+        },
+        {
+          "eval": "(() => { const w = document.querySelector('#w-weather'); if (w.classList.contains('phone') && w.classList.contains('navopen')) document.querySelector('#wx-top [data-navtoggle]').click(); })()"
+        },
+        {
+          "eval": "(() => { const w = document.querySelector('#w-weather'); if (document.querySelector('.wxhero h1').textContent !== 'Lisbon' || w.dataset.sky !== 'g' || (w.classList.contains('phone') && w.classList.contains('navopen'))) throw new Error('Weather lisbon selection, sky or drawer assertion failed'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_SELECT": "lis"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tokyo",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        },
+        {
+          "click": "[data-wxp=\"tok\"]"
+        },
+        {
+          "eval": "(() => { const w = document.querySelector('#w-weather'); if (w.classList.contains('phone') && w.classList.contains('navopen')) document.querySelector('#wx-top [data-navtoggle]').click(); })()"
+        },
+        {
+          "eval": "(() => { const w = document.querySelector('#w-weather'); if (document.querySelector('.wxhero h1').textContent !== 'Tokyo' || w.dataset.sky !== 'r' || (w.classList.contains('phone') && w.classList.contains('navopen'))) throw new Error('Weather tokyo selection, sky or drawer assertion failed'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_SELECT": "tok"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rain",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,18,30,0])); } static now() { return new D(2026,8,23,18,30,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "1110"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dusk",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,6,40,0])); } static now() { return new D(2026,8,23,6,40,0).getTime(); } }; })()"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        },
+        {
+          "eval": "(() => { const w = document.querySelector('#w-weather'); if (w.classList.contains('phone') && w.classList.contains('navopen')) document.querySelector('#wx-top [data-navtoggle]').click(); })()"
+        },
+        {
+          "eval": "(() => { const w = document.querySelector('#w-weather'); if (document.querySelector('.wxhero h1').textContent !== 'Oakland' || w.dataset.sky !== 'g' || (w.classList.contains('phone') && w.classList.contains('navopen'))) throw new Error('Weather dusk selection, sky or drawer assertion failed'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "400",
+            "LUMA_WEATHER_SELECT": "oak"
+          }
+        }
+      ]
+    },
+    {
+      "name": "night",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,22,0,0])); } static now() { return new D(2026,8,23,22,0,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "1320"
+          }
+        }
+      ]
+    },
+    {
+      "name": "forecast-bottom",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        },
+        {
+          "eval": "document.querySelector('#wb-body').scrollTop = 10000"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_SCROLL": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "name": "zip-search",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        },
+        {
+          "eval": "(() => { const i = document.querySelector('[data-wxq]'); i.value = \"64105\"; i.dispatchEvent(new Event('input', {bubbles:true})); i.focus(); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_QUERY": "64105",
+            "LUMA_WEATHER_DRAWER": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "no-match",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        },
+        {
+          "eval": "(() => { const i = document.querySelector('[data-wxq]'); i.value = \"zzzzzz\"; i.dispatchEvent(new Event('input', {bubbles:true})); i.focus(); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_QUERY": "zzzzzz",
+            "LUMA_WEATHER_DRAWER": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "added-city",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        },
+        {
+          "eval": "(() => { const i = document.querySelector('[data-wxq]'); i.value = \"64105\"; i.dispatchEvent(new Event('input', {bubbles:true})); i.focus(); })()"
+        },
+        {
+          "eval": "document.querySelector('[data-wxq]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_QUERY": "64105",
+            "LUMA_WEATHER_PICK": "1",
+            "LUMA_WEATHER_DRAWER": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "places-drawer",
+      "spec": [
+        {
+          "eval": "(() => { const D = Date; window.Date = class extends D { constructor(...a) { super(...(a.length ? a : [2026,8,23,10,40,0])); } static now() { return new D(2026,8,23,10,40,0).getTime(); } }; })()"
+        },
+        {
+          "click": "[data-wxp=\"oak\"]"
+        },
+        {
+          "eval": "if (document.querySelector('#w-weather').classList.contains('phone')) document.querySelector('#wx-top [data-navtoggle]').click()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_WEATHER_SELECTED": "oak",
+            "LUMA_WEATHER_FIXTURE_MINUTE": "640",
+            "LUMA_WEATHER_DRAWER": "1"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "oakland",
+    "lisbon",
+    "tokyo",
+    "rain",
+    "dusk",
+    "night",
+    "forecast-bottom",
+    "zip-search",
+    "no-match",
+    "added-city",
+    "places-drawer"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-weather > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#wx-top"
+    },
+    {
+      "name": "place suggestions",
+      "spec": "#wx-sug"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#wx-side .lfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#wx-side"
+    },
+    {
+      "name": "hero",
+      "spec": ".wxhero"
+    },
+    {
+      "name": "hours",
+      "spec": ".wxhours"
+    },
+    {
+      "name": "forecast",
+      "spec": ".wxgrid"
+    },
+    {
+      "name": "main",
+      "spec": "#wb-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#wx-side",
+      "gtk": "wx-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#wb-main",
+      "gtk": "wx-island",
+      "name": "island"
+    },
+    {
+      "spec": "#wx-sky",
+      "gtk": "wx-sky",
+      "name": "sky"
+    },
+    {
+      "spec": ".wxhero",
+      "gtk": "wx-hero",
+      "name": "hero"
+    },
+    {
+      "spec": ".wxhours",
+      "gtk": "wx-hours",
+      "name": "hours"
+    },
+    {
+      "spec": ".wxgrid",
+      "gtk": "wx-grid",
+      "name": "forecast"
+    }
+  ],
+  "app_icon": {
+    "spec_src": "luma-v3-weather.svg",
+    "gtk": "^org\\.projectluma\\.|^application-x-executable$"
+  }
+}

@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* luma-appkit.css remains a useful standalone Light sheet and therefore
+ * imports the Light token set. Reassert Frost after that import in the same
+ * provider so its definitions win at GTK's actual cascade priority. */
+@import url("luma-appkit.css");
+@import url("luma-appkit-frost-tokens.css");
+
+/* Ink-filled controls (play, the primary button) print their label in the
+ * surface colour. On frost and glass the surface roles are translucent layers,
+ * so a label in one would let the dark plate through; it takes the paper the
+ * layers stand for instead. */
+.luma-play,
+.luma-app-window button.luma-play,
+.luma-application-window button.luma-play,
+.luma-button.primary,
+button.luma-media-play {
+  color: #fbfbfa;
+}

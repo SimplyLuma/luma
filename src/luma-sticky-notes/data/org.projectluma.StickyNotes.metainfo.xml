@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.StickyNotes</id>
+  <name>Sticky Notes</name>
+  <summary>Short notes, colour-coded, docked against the screen edge</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="org.projectluma">
+    <name translate="no">Project Luma</name>
+  </developer>
+  <description>
+    <p>Sticky Notes keeps each note as a colour-coded tab stacked against the edge of the screen. A tab slides its note out when you point at it and opens it in a small window when you click it.</p>
+    <p>Notes are stored in a private SQLite database in your own data directory. Completing a note is a state it keeps, and deleting one puts it in a trash you can undo from for thirty days.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.StickyNotes.desktop</launchable>
+  <url type="homepage">https://projectluma.org/apps/sticky-notes</url>
+  <provides><binary>org.projectluma.StickyNotes</binary></provides>
+  <supports><control>keyboard</control><control>pointing</control><control>touch</control></supports>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="0.1.0" date="2026-09-11"/></releases>
+</component>

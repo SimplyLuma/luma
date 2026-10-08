@@ -1,0 +1,154 @@
+From ac5ff252da0fae882c76b93f8ba5b7bd2416c7ff Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:18:50 +0000
+Subject: [PATCH] Filer: show document extension and video duration on grid art
+
+---
+ src/nautilus-grid-cell.c | 59 +++++++++++++++++++++++++++++++++++++++-
+ src/resources/style.css  | 12 ++++++++
+ 2 files changed, 70 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index 7cecf1b..4337664 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -17,6 +17,8 @@
+ #include "nautilus-view-item.h"
+ #include "nautilus-view-cell.h"
+ 
++#include <string.h>
++
+ struct _NautilusGridCell
+ {
+     NautilusViewCell parent_instance;
+@@ -31,12 +33,41 @@ struct _NautilusGridCell
+     GtkWidget *first_caption;
+     GtkWidget *second_caption;
+     GtkWidget *third_caption;
++    GtkWidget *extension_badge;
++    GtkWidget *duration_badge;
+ 
+     gboolean in_file_change;
+ };
+ 
+ G_DEFINE_TYPE (NautilusGridCell, nautilus_grid_cell, NAUTILUS_TYPE_VIEW_CELL)
+ 
++static void
++update_art_badges (NautilusGridCell *self,
++                   NautilusFile     *file)
++{
++    const char *name = nautilus_file_get_display_name (file);
++    const char *dot = name != NULL ? strrchr (name, '.') : NULL;
++    const char *extension = dot != NULL ? dot + 1 : NULL;
++    gboolean show_extension = extension != NULL &&
++                              (g_ascii_strcasecmp (extension, "stage") == 0 ||
++                               g_ascii_strcasecmp (extension, "grid") == 0 ||
++                               g_ascii_strcasecmp (extension, "write") == 0 ||
++                               g_ascii_strcasecmp (extension, "md") == 0 ||
++                               g_ascii_strcasecmp (extension, "pdf") == 0 ||
++                               g_ascii_strcasecmp (extension, "ogg") == 0);
++    g_autofree char *duration = nautilus_filer_fixture_info (name, "length");
++
++    if (show_extension)
++    {
++        g_autofree char *upper = g_ascii_strup (extension, -1);
++
++        gtk_label_set_text (GTK_LABEL (self->extension_badge), upper);
++    }
++    gtk_widget_set_visible (self->extension_badge, show_extension);
++    gtk_label_set_text (GTK_LABEL (self->duration_badge), duration);
++    gtk_widget_set_visible (self->duration_badge, duration != NULL && duration[0] != '\0');
++}
++
+ static void
+ update_icon (NautilusGridCell *self)
+ {
+@@ -47,6 +78,10 @@ update_icon (NautilusGridCell *self)
+ 
+     g_object_get (item, "is-cut", &is_cut, NULL);
+ 
++    NautilusFile *file = nautilus_view_item_get_file (item);
++
++    update_art_badges (self, file);
++
+     if (is_cut)
+     {
+         gtk_widget_set_visible (self->icon, FALSE);
+@@ -56,7 +91,6 @@ update_icon (NautilusGridCell *self)
+     }
+ 
+     g_autoptr (GdkPaintable) icon_paintable = NULL;
+-    NautilusFile *file = nautilus_view_item_get_file (item);
+     guint icon_size;
+     gint scale_factor = gtk_widget_get_scale_factor (GTK_WIDGET (self));
+     NautilusFileIconFlags flags = NAUTILUS_FILE_ICON_FLAGS_NONE;
+@@ -246,6 +280,8 @@ nautilus_grid_cell_dispose (GObject *object)
+ {
+     NautilusGridCell *self = (NautilusGridCell *) object;
+ 
++    gtk_widget_unparent (self->extension_badge);
++    gtk_widget_unparent (self->duration_badge);
+     gtk_widget_dispose_template (GTK_WIDGET (self), NAUTILUS_TYPE_GRID_CELL);
+     g_clear_object (&self->item_signal_group);
+ 
+@@ -382,6 +418,17 @@ nautilus_grid_cell_size_allocate (GtkWidget *widget,
+     };
+     gtk_widget_size_allocate (self->icon, &child_allocation, -1);
+ 
++    child_allocation = (GtkAllocation) {
++        side, MAX (0, icon_size - 25),
++        width - side * 2, 14
++    };
++    gtk_widget_size_allocate (self->extension_badge, &child_allocation, -1);
++    child_allocation = (GtkAllocation) {
++        MAX (0, width - side - 40), MAX (0, icon_size - 18),
++        40, 14
++    };
++    gtk_widget_size_allocate (self->duration_badge, &child_allocation, -1);
++
+     /* Put the emblems_box into the "end" margin. */
+     child_allocation.width = side;
+     if (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_LTR)
+@@ -481,6 +528,16 @@ nautilus_grid_cell_init (NautilusGridCell *self)
+ {
+     gtk_widget_init_template (GTK_WIDGET (self));
+ 
++    self->extension_badge = gtk_label_new (NULL);
++    gtk_widget_add_css_class (self->extension_badge, "filer-extension-badge");
++    gtk_widget_set_visible (self->extension_badge, FALSE);
++    gtk_widget_set_parent (self->extension_badge, GTK_WIDGET (self));
++    self->duration_badge = gtk_label_new (NULL);
++    gtk_widget_add_css_class (self->duration_badge, "filer-duration-badge");
++    gtk_label_set_xalign (GTK_LABEL (self->duration_badge), 1.0);
++    gtk_widget_set_visible (self->duration_badge, FALSE);
++    gtk_widget_set_parent (self->duration_badge, GTK_WIDGET (self));
++
+     g_signal_connect (self, "notify::icon-size",
+                       G_CALLBACK (on_icon_size_changed), NULL);
+     g_signal_connect (self, "notify::scale-factor", G_CALLBACK (on_icon_size_changed), NULL);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index b582f04..307d443 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -397,6 +397,18 @@
+   font-feature-settings: "tnum";
+ }
+ 
++.luma-files-window .nautilus-grid-view .filer-extension-badge {
++  color: @luma_muted;
++  font-size: calc(var(--lumaui-t-caption-size) * .74);
++  font-weight: var(--lumaui-t-label-weight);
++}
++
++.luma-files-window .nautilus-grid-view .filer-duration-badge {
++  color: @luma_ink;
++  font-size: calc(var(--lumaui-t-caption-size) * .83);
++  font-weight: var(--lumaui-t-label-weight);
++}
++
+ /* Native List presentation. GtkColumnView remains the one column/sort model. */
+ .luma-files-window .nautilus-list-view columnview {
+   padding-left: 12px;
+-- 
+2.55.0
+

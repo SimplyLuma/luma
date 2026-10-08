@@ -1,0 +1,865 @@
+flatpak:
+    id: org.fedoraproject.Platform
+    build-runtime: true
+    name: f44/flatpak-runtime
+    component: flatpak-runtime
+    branch: f44
+    sdk: org.fedoraproject.Sdk
+    add-extensions:
+        org.fedoraproject.Platform.CL:
+            directory: lib64/OpenCL
+            add-ld-path: lib
+            merge-dirs: lib/clc;vendors
+            subdirectories: true
+            autodelete: false
+            no-autodownload: true
+            download-if: active-gl-driver
+        org.fedoraproject.Platform.GL:
+            directory: lib64/GL
+            versions: f44;1.4
+            add-ld-path: lib
+            merge-dirs: egl/egl_external_platform.d;glvnd/egl_vendor.d;lib/dri;lib/gbm;vdpau;vulkan/explicit_layer.d;vulkan/icd.d;vulkan/implicit_layer.d
+            subdirectories: true
+            autodelete: false
+            no-autodownload: true
+            download-if: active-gl-driver
+            enable-if: active-gl-driver
+            autoprune-unless: active-gl-driver
+        org.freedesktop.Platform.GL:
+            directory: lib64/GL
+            version: '1.4'
+            add-ld-path: lib
+            merge-dirs: egl/egl_external_platform.d;glvnd/egl_vendor.d;lib/gbm;vulkan/icd.d;vulkan/implicit_layer.d
+            subdirectories: true
+            autodelete: false
+            no-autodownload: true
+            enable-if: active-gl-driver
+        org.fedoraproject.Platform.VAAPI.Intel:
+            directory: lib64/dri-intel-vaapi
+            add-ld-path: lib
+            autodelete: false
+            no-autodownload: true
+            download-if: have-intel-gpu
+            autoprune-unless: have-intel-gpu
+        org.fedoraproject.Platform.VAAPI.nvidia:
+            directory: lib64/dri-nvidia-vaapi
+            autodelete: false
+            no-autodownload: true
+            download-if: have-kernel-module-nvidia
+            autoprune-unless: have-kernel-module-nvidia
+        org.fedoraproject.Platform.VulkanLayer:
+            directory: lib64/vulkan
+            add-ld-path: lib
+            merge-dirs: share/vulkan/implicit_layer.d;share/vulkan/explicit_layer.d;
+            subdirectories: true
+            no-autodownload: true
+        org.fedoraproject.Platform.Locale:
+            directory: share/runtime/locale
+            autodelete: true
+        org.fedoraproject.Platform.Codecs:
+            directory: lib64/codecs
+            add-ld-path: lib
+            merge-dirs: bin;lib/dri;lib/gstreamer-1.0;lib/libheif;share/gstreamer-1.0/presets
+            subdirectories: true
+            no-autodownload: true
+        org.fedoraproject.Platform.tessdata:
+            directory: share/tesseract/tessdata
+            no-autodownload: true
+        org.fedoraproject.Gtk3theme:
+            directory: share/runtime/share/themes
+            version: '3.22'
+            subdirectories: true
+            subdirectory-suffix: gtk-3.0
+            no-autodownload: true
+            download-if: active-gtk-theme
+    finish-args: >
+        --env=ALSA_CONFIG_DIR=/usr/share/alsa --env=ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf
+        --env=GI_TYPELIB_PATH=/app/lib64/girepository-1.0 --env=GST_PLUGIN_SYSTEM_PATH=/app/lib64/gstreamer-1.0:/usr/lib64/codecs/lib/gstreamer-1.0:/usr/lib64/gstreamer-1.0
+        --env=GST_PRESET_PATH=/usr/lib64/codecs/share/gstreamer-1.0/presets --env=LIBHEIF_PLUGIN_PATH=/usr/lib64/codecs/lib/libheif:/usr/lib64/libheif
+        --env=LIBVA_DRIVERS_PATH=/usr/lib64/codecs/lib/dri:/usr/lib64/dri-intel-vaapi:/usr/lib64/dri-nvidia-vaapi:/usr/lib64/GL/lib/dri
+        --env=LUA_PATH="/app/share/lua/5.4/?.lua;/app/share/lua/5.4/?/init.lua;/app/lib64/lua/5.4/?.lua;/app/lib64/lua/5.4/?/init.lua;;"
+        --env=LUA_CPATH="/app/lib64/lua/5.4/?.so;;" --env=PATH=/app/bin:/app/sbin:/usr/lib64/codecs/bin:/usr/bin
+        --env=PINENTRY_BINARY=/usr/bin/pinentry-gnome3 --env=PYTHONUSERBASE=/var/data/python
+        --env=TCLLIBPATH=/app/lib64/tcl9.0 --env=XDG_DATA_DIRS=/app/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share
+    cleanup-commands: |
+        appstream-compose --verbose   \
+            --prefix=/usr             \
+            --basename=org.fedoraproject.Platform \
+            --origin=flatpak          \
+            org.fedoraproject.Platform 1>&2
+
+        mv -f /usr/bin/flatpak-xdg-email /usr/bin/xdg-email
+        mv -f /usr/bin/flatpak-xdg-open /usr/bin/xdg-open
+
+        rm -rf /etc/flatpak-builder/
+        rm -fr /usr/lib/systemd/
+        rm -fr /usr/share/{doc,info,man}
+
+        # SSH error: Bad owner or permissions on /etc/ssh/ssh_config.d/50-redhat.conf
+        rm -f /etc/ssh/ssh_config.d/*
+
+        # enable dynamic ld.so.cache generation
+        [ -e /usr/bin/ldconfig ] || ln -s ../sbin/ldconfig /usr/bin/ldconfig
+        cat /etc/ld.so.conf.d/*.conf > /etc/ld.so.conf
+        rm -f /etc/ld.so.conf.d/*.conf
+
+        # User ALSA configuration can conflict with flatpak setup
+        # https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/issues/857
+        sed -e '/~\/\.asoundrc/d' -e 's|/alsa/asoundrc|/asound.conf|' /usr/share/alsa/alsa.conf
+
+        # Create symlinks to expected locations from CL extensions
+        rm -fr /etc/OpenCL/vendors
+        ln -s ../../lib64/OpenCL/vendors /etc/OpenCL/
+        ln -s OpenCL/lib/clc /usr/lib64/
+
+        # Create symlinks to expected locations from GL extensions
+        rm -fr /etc/{egl,glvnd,vulkan}
+        rm -fr /usr/lib64/{dri,gbm,vdpau}/
+        ln -s ../lib64/GL/{egl,glvnd,vulkan} /etc/
+        ln -s GL/lib/{dri,gbm} GL/vdpau /usr/lib64/
+        # Provide driver implementations with GL extensions
+        rm -f /usr/lib64/libdrm_*.so*
+
+        # Create symlinks to expected locations from Vulkan extensions
+        rm -fr /usr/share/vulkan
+        ln -s ../lib64/vulkan/share/vulkan /usr/share/vulkan
+
+        # Create symlinks to expected locations from VAAPI.Intel extension
+        if [ $(arch) = x86_64 ]; then
+           ln -s dri-intel-vaapi/lib/{libmfx-gen,mfx} /usr/lib64/
+           ln -s ../lib64/dri-intel-vaapi/share/mfx /usr/share/
+        fi
+
+        # Only needed for %post of legacy fonts
+        rm -f /usr/bin/mkfont{dir,scale} /usr/lib64/libfontenc.so*
+
+        # Prepare mountpoint for tessdata extension
+        rm -fr /usr/share/tesseract/tessdata/*
+
+        touch -d @0 /usr/share/fonts /usr/share/fonts/*
+        fc-cache -rs
+
+        cd /usr/lib/locale
+        for d in *; do
+            l=`echo $d | sed -e 's/\([^-_\.]*\)[-_\.].*/\1/'`
+            case $l in C|en) continue ;; esac
+            find $d -delete
+            ln -sf ../../share/runtime/locale/$l/lib/$d .
+        done
+
+        cd /usr/share/hunspell
+        for f in *; do
+            l=`echo $f | sed -e 's/\([^-_\.]*\)[-_\.].*/\1/'`
+            case $l in en) continue ;; esac
+            rm -f $f
+            ln -sf ../runtime/locale/$l/hunspell/$f .
+        done
+        cd /usr/share/hyphen
+        for f in *; do
+            l=`echo $f | sed -e 's/hyph_\([^-_\.]*\)[-_\.].*/\1/'`
+            case $l in en) continue ;; esac
+            rm -f $f
+            ln -sf ../runtime/locale/$l/hyphen/$f .
+        done
+        cd /usr/share/mythes
+        mv th_eo{,_v2}.dat
+        mv th_eo{,_v2}.idx
+        for f in *; do
+            l=`echo $f | sed -e 's/th_\([^-_\.]*\)[-_\.].*/\1/'`
+            case $l in en) continue ;; esac
+            rm -f $f
+            ln -sf ../runtime/locale/$l/mythes/$f .
+        done
+        cd /usr/share/qt6/translations
+        for f in *.qm; do
+            l=`echo $f | sed -e 's/[^-_\.]*_\([^-_\.]*\)[-_\.].*/\1/'`
+            case $l in en) continue ;; esac
+            rm -f $f
+            ln -sf ../../runtime/locale/$l/qt6/$f .
+        done
+    packages:
+    - abattis-cantarell-vf-fonts
+    - abseil-cpp
+    - acl
+    - adwaita-cursor-theme
+    - adwaita-icon-theme
+    - adwaita-icon-theme-legacy
+    - adwaita-mono-fonts
+    - adwaita-sans-fonts
+    - alsa-lib
+    - alsa-plugins-arcamav
+    - alsa-plugins-oss
+    - alsa-plugins-pulseaudio
+    - alsa-plugins-upmix
+    - alsa-plugins-usbstream
+    - alsa-plugins-vdownmix
+    - alternatives
+    - appstream
+    - aribb24
+    - at-spi2-atk
+    - at-spi2-core
+    - atk
+    - attr
+    - audit-libs
+    - authselect
+    - authselect-libs
+    - avahi-glib
+    - avahi-libs
+    - bash
+    - bash-completion
+    - bluez-libs
+    - bsdcat
+    - bsdcpio
+    - bsdtar
+    - bsdunzip
+    - bubblewrap
+    - bzip2
+    - bzip2-libs
+    - ca-certificates
+    - cairo
+    - cairo-gobject
+    - cdparanoia-libs
+    - cjson
+    - cmake-filesystem
+    - codec2
+    - colord-libs
+    - coreutils-single
+    - cracklib
+    - cracklib-dicts
+    - crypto-policies
+    - cups-client
+    - cups-filesystem
+    - cups-libs
+    - curl
+    - cyrus-sasl-gssapi
+    - cyrus-sasl-lib
+    - cyrus-sasl-md5
+    - cyrus-sasl-plain
+    - cyrus-sasl-scram
+    - dbus
+    - dbus-common
+    - dbus-libs
+    - dbus-tools
+    - default-fonts-core-sans
+    - dejavu-sans-fonts
+    - dejavu-sans-mono-fonts
+    - dejavu-serif-fonts
+    - desktop-file-utils
+    - diffutils
+    - dns-root-data
+    - double-conversion
+    - duktape
+    - e2fsprogs-libs
+    - elfutils-debuginfod-client
+    - elfutils-default-yama-scope
+    - elfutils-libelf
+    - elfutils-libs
+    - emacs-filesystem
+    - enchant2
+    - expat
+    - faad2-libs
+    - fcitx5-gtk
+    - fcitx5-gtk3
+    - fcitx5-gtk4
+    - fcitx5-qt6
+    - fdk-aac-free
+    - fedora-gpg-keys
+    - fedora-release-common
+    - fedora-release-flatpak
+    - fedora-release-identity-flatpak
+    - fedora-repos
+    - ffmpeg-free
+    - fftw-libs-double
+    - fftw-libs-single
+    - file
+    - file-libs
+    - filesystem
+    - findutils
+    - flac
+    - flac-libs
+    - flatpak-runtime-config
+    - flatpak-spawn
+    - flatpak-xdg-utils
+    - flite
+    - fmt
+    - fontconfig
+    - fonts-filesystem
+    - freeglut
+    - freetype
+    - frei0r-plugins
+    - fribidi
+    - game-music-emu
+    - gavl
+    - gawk
+    - gcr-libs
+    - gdbm-libs
+    - gdk-pixbuf2
+    - geoclue2-libs
+    - gettext
+    - gettext-envsubst
+    - gettext-libs
+    - gettext-runtime
+    - giflib
+    - gjs
+    - glib-networking
+    - glib2
+    - glibc
+    - glibc-common
+    - glibc-gconv-extra
+    - glibc-langpack-*
+    - glibc-minimal-langpack
+    - glx-utils
+    - glycin-gtk4-libs
+    - glycin-libs
+    - glycin-loaders
+    - glycin-thumbnailer
+    - gmp
+    - gmp-c++
+    - gnu-free-fonts-common
+    - gnu-free-mono-fonts
+    - gnu-free-sans-fonts
+    - gnu-free-serif-fonts
+    - gnupg2
+    - gnupg2-dirmngr
+    - gnupg2-gpg-agent
+    - gnupg2-gpgconf
+    - gnupg2-keyboxd
+    - gnupg2-scdaemon
+    - gnupg2-smime
+    - gnupg2-utils
+    - gnupg2-verify
+    - gnupg2-wks
+    - gnutls
+    - gnutls-c++
+    - gnutls-dane
+    - gnutls-utils
+    - gobject-introspection
+    - google-carlito-fonts
+    - google-crosextra-caladea-fonts
+    - google-noto-color-emoji-fonts
+    - google-noto-fonts-common
+    - google-noto-sans-mono-vf-fonts
+    - google-noto-sans-vf-fonts
+    - google-noto-serif-vf-fonts
+    - gpgme
+    - gpgmepp
+    - graphene
+    - graphite2
+    - grep
+    - gsettings-desktop-schemas
+    - gsm
+    - gssdp
+    - gstreamer1
+    - gstreamer1-plugin-dav1d
+    - gstreamer1-plugin-gif
+    - gstreamer1-plugin-gtk4
+    - gstreamer1-plugin-libav
+    - gstreamer1-plugins-bad-free
+    - gstreamer1-plugins-bad-free-libs
+    - gstreamer1-plugins-base
+    - gstreamer1-plugins-good
+    - gstreamer1-plugins-good-gtk
+    - gtk-immodules-imsettings
+    - gtk-update-icon-cache
+    - gtk3
+    - gtk3-immodule-xim
+    - gtk3-immodules
+    - gtk4
+    - gtksourceview5
+    - gupnp
+    - gupnp-igd
+    - gvfs-client
+    - gzip
+    - harfbuzz
+    - harfbuzz-icu
+    - hicolor-icon-theme
+    - hidapi
+    - highway
+    - hiredis
+    - hostname
+    - hunspell
+    - hunspell-??
+    - hunspell-??-*
+    - hunspell-???
+    - hunspell-en-US
+    - hunspell-filesystem
+    - hwdata
+    - hyphen
+    - hyphen-??
+    - hyphen-??-*
+    - hyphen-???
+    - ibus-gtk3
+    - ibus-gtk4
+    - ibus-libs
+    - ilbc
+    - iso-codes
+    - jansson
+    - javascriptcoregtk4.1
+    - javascriptcoregtk6.0
+    - jbigkit-libs
+    - json-c
+    - json-glib
+    - keyutils-libs
+    - krb5-libs
+    - ladspa
+    - lame
+    - lame-libs
+    - lcms2
+    - leptonica
+    - less
+    - libacl
+    - libadwaita
+    - libaom
+    - libappstream-glib
+    - libarchive
+    - libaribcaption
+    - libasan
+    - libass
+    - libassuan
+    - libasyncns
+    - libatomic
+    - libattr
+    - libavc1394
+    - libavcodec-free
+    - libavdevice-free
+    - libavfilter-free
+    - libavformat-free
+    - libavif
+    - libavutil-free
+    - libb2
+    - libblkid
+    - libbluray
+    - libbrotli
+    - libbs2b
+    - libcaca
+    - libcanberra
+    - libcanberra-gtk3
+    - libcap
+    - libcap-ng
+    - libcbor
+    - libcdio
+    - libcdio-paranoia
+    - libchromaprint
+    - libcloudproviders
+    - libcom_err
+    - libcurl
+    - libdatrie
+    - libdav1d
+    - libdc1394
+    - libdecor
+    - libdex
+    - libdovi
+    - libdrm
+    - libdvbv5
+    - libdvdnav
+    - libdvdread
+    - libebur128
+    - libeconf
+    - libedit
+    - libei
+    - libeis
+    - libepoxy
+    - liberation-mono-fonts
+    - liberation-sans-fonts
+    - liberation-serif-fonts
+    - libevdev
+    - libevent
+    - libexif
+    - libfdisk
+    - libffi
+    - libfido2
+    - libfl2
+    - libfontenc
+    - libfyaml
+    - libgcab1
+    - libgcc
+    - libgcrypt
+    - libgdither
+    - libgee
+    - libgfortran
+    - libglvnd
+    - libglvnd-egl
+    - libglvnd-gles
+    - libglvnd-glx
+    - libglvnd-opengl
+    - libgomp
+    - libgpg-error
+    - libgudev
+    - libgusb
+    - libhandy
+    - libheif
+    - libheif-tools
+    -   name: libhwasan
+        platforms:
+            only:
+            - aarch64
+            - x86_64
+    - libICE
+    - libicu
+    - libidn2
+    - libiec61883
+    - libinput
+    - libitm
+    - libjpeg-turbo
+    - libjpeg-turbo-utils
+    - libjxl
+    - libkadm5
+    - libklvanc
+    - libksba
+    - liblastlog2
+    - liblc3
+    - libldac
+    - libldb
+    - liblerc
+    - liblsan
+    - libmanette
+    - libmodplug
+    - libmount
+    - libmysofa
+    - libnghttp2
+    - libnghttp3
+    - libnice
+    - libnice-gstreamer1
+    - libnotify
+    - libnsl2
+    - libobjc
+    - liboeffis
+    - libogg
+    - libopenjph
+    - libopenmpt
+    - libpciaccess
+    - libpkgconf
+    - libplacebo
+    - libpng
+    - libproxy
+    - libpsl
+    -   name: libquadmath
+        platforms:
+            only:
+            - ppc64le
+            - x86_64
+    - librabbitmq
+    - libraw1394
+    - librist
+    - librsvg2
+    - libsamplerate
+    - libsbc
+    - libseccomp
+    - libsecret
+    - libselinux
+    - libsemanage
+    - libsepol
+    - libshaderc
+    - libshout
+    - libSM
+    - libsmartcols
+    - libsmbclient
+    - libsndfile
+    - libsodium
+    - libsoup3
+    - libsrtp
+    - libss
+    - libssh
+    - libssh-config
+    - libstdc++
+    - libstemmer
+    - libswresample-free
+    - libswscale-free
+    - libtalloc
+    - libtasn1
+    - libtdb
+    - libtevent
+    - libtextstyle
+    - libthai
+    - libtheora
+    - libtiff
+    - libtinysparql
+    - libtirpc
+    - libtommath
+    - libtool-ltdl
+    - libtsan
+    - libubsan
+    - libudfread
+    - libunibreak
+    - libunistring
+    - libunwind
+    - liburing
+    - libusb1
+    - libutempter
+    - libuuid
+    - libv4l
+    - libva
+    - libvdpau
+    - libverto
+    - libvisual
+    -   name: libvmaf
+        platforms:
+            only:
+            - x86_64
+    - libvorbis
+    -   name: libvpl
+        platforms:
+            only:
+            - x86_64
+    - libvpx
+    - libwacom
+    - libwacom-data
+    - libwayland-client
+    - libwayland-cursor
+    - libwayland-egl
+    - libwayland-server
+    - libwbclient
+    - libwebp
+    - libwebp-tools
+    - libX11
+    - libX11-common
+    - libX11-xcb
+    - libXau
+    - libxcb
+    - libXcomposite
+    - libxcrypt
+    - libXcursor
+    - libXdamage
+    - libXdmcp
+    - libXext
+    - libXfixes
+    - libXft
+    - libXi
+    - libXinerama
+    - libxkbcommon
+    - libxkbcommon-x11
+    - libxkbfile
+    - libxml2
+    - libxmlb
+    - libXpm
+    - libXrandr
+    - libXrender
+    - libXScrnSaver
+    - libxshmfence
+    - libxslt
+    - libXtst
+    - libXv
+    - libXxf86vm
+    - libyaml
+    - libyuv
+    - libzstd
+    - lilv-libs
+    - lmdb-libs
+    - lpcnetfreedv
+    - lua
+    - lua-libs
+    - lz4
+    - lz4-libs
+    - lzip
+    - lzo
+    - mailcap
+    - mesa-filesystem
+    - mesa-libgbm
+    - mesa-libGLU
+    - mkfontscale
+    - mozjs140
+    - mpdecimal
+    - mpfr
+    - mpg123-libs
+    - mtdev
+    - mythes
+    - mythes-??
+    - mythes-??-*
+    - nano
+    - ncompress
+    - ncurses
+    - ncurses-base
+    - ncurses-libs
+    - ncurses-term
+    - nettle
+    - ngtcp2
+    - ngtcp2-crypto-gnutls
+    - ngtcp2-crypto-ossl
+    - noopenh264
+    - npth
+    - nspr
+    - nss
+    - nss-softokn
+    - nss-softokn-freebl
+    - nss-sysinit
+    - nss-util
+    - nss_db
+    - nss_hesiod
+    - openal-soft
+    - openapv-libs
+    - opencl-filesystem
+    - OpenCL-ICD-Loader
+    - opencore-amr
+    - openjpeg
+    - openjpeg-tools
+    - openldap
+    - openpgm
+    - openssh
+    - openssh-clients
+    - openssh-keysign
+    - openssl-libs
+    - opus
+    - opusfile
+    - orc
+    - p11-kit
+    - p11-kit-client
+    - p11-kit-trust
+    - pam-libs
+    - pango
+    - pciutils-libs
+    - pcre2
+    - pcre2-syntax
+    - pcre2-utf16
+    - pcre2-utf32
+    - pinentry
+    - pinentry-gnome3
+    - pipewire-alsa
+    - pipewire-gstreamer
+    - pipewire-jack-audio-connection-kit
+    - pipewire-jack-audio-connection-kit-libs
+    - pipewire-libs
+    - pixman
+    - pkcs11-provider
+    - pkgconf
+    - pkgconf-m4
+    - pkgconf-pkg-config
+    - plutosvg
+    - plutovg
+    - popt
+    - procps-ng
+    - protobuf-c
+    - publicsuffix-list-dafsa
+    - pulseaudio-libs
+    - pulseaudio-libs-glib2
+    - python-pip-wheel
+    - python-unversioned-command
+    - python3
+    - python3-brotli
+    - python3-cairo
+    - python3-gobject
+    - python3-gobject-base
+    - python3-gstreamer1
+    - python3-libdex
+    - python3-libs
+    - python3-libxml2
+    - python3-libxslt
+    - python3-mako
+    - python3-markdown
+    - python3-markupsafe
+    - python3-packaging
+    - python3-setuptools
+    - python3-tkinter
+    - qrencode-libs
+    - qt6-filesystem
+    - qt6-qtbase
+    - qt6-qtbase-common
+    - qt6-qtbase-gui
+    - qt6-qtdeclarative
+    - qt6-qtsvg
+    - qt6-qttranslations
+    - qt6-qtwayland
+    - qt6-qtwayland-adwaita-decoration
+    - rav1e-libs
+    - readline
+    - rpm
+    - rpm-libs
+    - rpm-sequoia
+    - rubberband-libs
+    - samba-client-libs
+    - samba-common
+    - samba-core-libs
+    - samba-ndr-libs
+    - sdl2-compat
+    - SDL2_image
+    - SDL2_mixer
+    - SDL2_net
+    - SDL2_ttf
+    - SDL3
+    - SDL3_image
+    - SDL3_ttf
+    - sed
+    - serd
+    - setup
+    - sgml-common
+    - shadow-utils
+    - shared-mime-info
+    - slang
+    - snappy
+    - sord
+    - sound-theme-freedesktop
+    - soundtouch
+    - soxr
+    - spandsp
+    - speech-dispatcher-libs
+    - speex
+    - speexdsp
+    - spirv-tools-libs
+    - sqlite-libs
+    - sratom
+    - srt-libs
+    - svt-av1-libs
+    - systemd-libs
+    - systemd-standalone-sysusers
+    - systemd-standalone-tmpfiles
+    - taglib
+    - tar
+    - tcl
+    - tesseract-common
+    - tesseract-langpack-eng
+    - tesseract-libs
+    - tesseract-tessdata-doc
+    - tk
+    - tpm2-tss
+    - tslib
+    - turbojpeg
+    - twolame-libs
+    - tzdata
+    - tzdata-java
+    - unbound-libs
+    - unzip
+    - util-linux
+    - util-linux-core
+    - util-linux-script
+    - vid.stab
+    - vo-amrwbenc
+    - vulkan-loader
+    - wavpack
+    - wcurl
+    - webkit2gtk4.1
+    - webkitgtk6.0
+    - webrtc-audio-processing
+    - wget2
+    - wget2-libs
+    - wget2-wget
+    - which
+    - xcb-util
+    - xcb-util-cursor
+    - xcb-util-image
+    - xcb-util-keysyms
+    - xcb-util-renderutil
+    - xcb-util-wm
+    - xdg-dbus-proxy
+    - xdg-user-dirs
+    - xdg-utils
+    - xevd-libs
+    - xeve-libs
+    - xkbcomp
+    - xkeyboard-config
+    - xml-common
+    - xprop
+    - xvidcore
+    - xxhash-libs
+    - xz
+    - xz-libs
+    - xz-lzma-compat
+    - yelp
+    - yelp-libs
+    - yelp-xsl
+    - zeromq
+    - zimg
+    - zip
+    - zix
+    - zlib-ng
+    - zlib-ng-compat
+    - zstd
+    - zvbi

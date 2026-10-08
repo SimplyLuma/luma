@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: the status island joins the centred Shelf row
+
+Studio Desktop's luma preset centres the dock, the live tiles and the status
+island as one row, ten pixels apart, instead of holding the status island at
+the far end of the screen. Notifications still drop from the top-centre lip.
+
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index fba0e0a..2cc6cfc 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -131,17 +131,15 @@ export function defaultArrangement(v1 = {}, order = DEFAULT_ORDER) {
+         ];
+     }
+     if (v1.groupLayout === 'luma') {
+-        const middle = order.filter(id => ['dock', 'folders', 'live', 'media'].includes(id));
+-        const status = order.filter(id => ['well', 'quick-options', 'clock'].includes(id));
+-        const other = order.filter(id => !middle.includes(id) && !status.includes(id) && id !== 'notifications');
++        // Studio Desktop's luma preset (align: center): the dock, the live
++        // tiles and the status island are one centred row, ten pixels apart;
++        // notifications drop from a separate top-centre lip.
++        const row = order.filter(id => id !== 'notifications');
+         return [
+-            {display: '', edge, anchor: 'center', position: 0.5, islands: middle},
+-            {display: '', edge, anchor: 'end', position: 0.5, islands: status},
+-            // Incoming notifications drop from a separate top-centre lip.
++            {display: '', edge, anchor: 'center', position: 0.5, islands: row},
+             ...(order.includes('notifications')
+                 ? [{display: '', edge: 'top', anchor: 'center', position: 0.5, islands: ['notifications']}]
+                 : []),
+-            ...other.map(id => ({display: '', edge, anchor: 'end', position: 0.5, islands: [id]})),
+         ].filter(group => group.islands.length);
+     }
+     if (v1.groupLayout === 'split-ends') {

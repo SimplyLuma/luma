@@ -1,0 +1,19 @@
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -862,11 +862,11 @@
+             part.set_style(`border: ${framed && stroked ? 1 : 0}px solid ${line}; ` +
+                 `border-radius: ${radii.map(n => `${n}px`).join(' ')}; ` +
+                 `background-color: ${framed && filled ? rgba(isClock ? 'status-clock-fill' : 'status-controls-fill') : 'transparent'}; ` +
+-                `padding: ${flush ? padding : 0}px; ${joined ? `border-${innerSide}: 0;` : ''}`);
+-        }
+-        const seam = s.get_boolean('status-divider') && (frame !== 'none' || flush);
+-        this._statusSeam.visible = !joined || seam;
+-        this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: ${joined ? 1 : 1}px; margin: ${joined ? '0' : vertical ? '3px 0' : '0 3px'};`);
++                `padding: ${flush ? padding : 0}px; ${joined ? `border-${innerSide}: 0;` : ''} ${joined && !flush ? `padding-${innerSide}: ${padding}px;` : ''}`);
++        }
++        const seam = s.get_boolean('status-divider');
++        this._statusSeam.visible = true;
++        this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: 1px; margin: ${joined ? '0' : vertical ? `${padding}px 0` : `0 ${padding}px`};`);
+         this._statusSeam.x_expand = vertical;
+         this._statusSeam.y_expand = !vertical;
+         this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);

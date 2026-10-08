@@ -1,0 +1,324 @@
+From: Project Luma
+Subject: [PATCH] theme: one quiet state fill for checked controls, and ringed scale handles
+
+Luma ADR-043. Ink is the one emphasis a view keeps (a suggested action);
+every on state takes one quieter fill. Native apps (Filer, Settings, Quick
+View) had three different answers for "on": a checked button was a wash of
+its own ink (currentColor 30%, about 1.9:1 from the window), a toggle group's
+selected segment was a raised white pill on a grey track (about 1.1:1 from
+the off segments), and a scale ran its value in the accent under a white
+handle on a 1px hairline. None of the three kept on and off 3:1 apart, and
+the kit's own apps did something else again: a near-black block.
+
+The state is now one set of custom properties on :root, the same values as
+the app kit's luma_state tokens:
+
+              --luma-state  --luma-state-ink  --luma-knob  --luma-knob-ring
+  light       #61728a       #ffffff           #ffffff      #61728a
+  dark        #8a99a8       #161a1f           #2a2e34      #8a99a8
+  frost hdr   #a9b5c1       #161a1f           #1f252d      #a9b5c1
+  glass hdr   #a9b5c1       #161a1f           #151a21      #a9b5c1
+
+A checked button, raised or flat, and a toggle group's selected toggle fill
+with --luma-state and write --luma-state-ink; a scale's highlight is
+--luma-state and its handle is a --luma-knob disc with a 2px inset
+--luma-knob-ring. Frost and glass headers are the smoked veil (0038), where
+the light slate stands only about 3:1 from the veil, so they redefine the
+four properties on the headerbar; window bodies keep the light values.
+
+Measured (WCAG, composited; frost and glass over pure white and pure black),
+worst case over the window, view, card, header, sidebar and popover fills and
+their hover and active washes: state vs its ground 3.92:1 in light, 4.11:1 in
+dark, 4.91:1 on a frost header and 4.27:1 on a glass one; glyph on state
+4.90:1 light, 5.99:1 dark, 8.38:1 smoked. The ring is the state colour, so it
+measures the same against the surface. Suggested,
+destructive, opaque and OSD buttons keep their own fills.
+
+Menus, in the same pass. 0024 drew a group's heading and a row's description
+at 46% of the ink, a shortcut cap at 68% and a disabled row at 38%. On a
+light menu the heading measured 2.59:1 and a disabled row 2.14:1. They now
+take three measured colours, @luma_menu_heading, @luma_menu_shortcut and
+@luma_menu_disabled:
+
+              heading   shortcut  disabled
+  light       #666c72   #666c72   #8b9094    4.95 / 4.61 / 3.01
+  dark        #9ea2a6   #a7abae   #7b8084    4.75 / 4.70 / 3.06
+
+worst case on the menu, its raised hover row and, for the shortcut, the
+passive cap. The app kit redefines them for frost and glass menus (white at
+60%, 68% and 40%: 5.64/5.33/3.16 frost, 5.72/5.28/3.19 glass).
+
+Compiled with sassc against pristine libadwaita-1.9.3 plus 0001-0038.
+
+Generated against the 0038 tree for release .48.
+---
+diff --git a/src/stylesheet/_colors.scss b/src/stylesheet/_colors.scss
+--- a/src/stylesheet/_colors.scss
++++ b/src/stylesheet/_colors.scss
+@@ -115,6 +115,11 @@
+ @define-color luma_menu_border RGB(35 44 52 / 9%);
+ @define-color luma_menu_shadow #0c1015;
+ @define-color luma_menu_passive RGB(39 48 56 / 4%);
++// Menu section headings and descriptions, shortcut caps, disabled rows
++// (ADR-043): measured colours, not opacity of the ink.
++@define-color luma_menu_heading #666c72;
++@define-color luma_menu_shortcut #666c72;
++@define-color luma_menu_disabled #8b9094;
+ @define-color luma_menu_pressed RGB(39 48 56 / 10.5%);
+ @define-color luma_menu_destructive #b75048;
+ 
+@@ -202,6 +207,9 @@
+   @define-color luma_menu_border RGB(255 255 255 / 7.5%);
+   @define-color luma_menu_shadow #0c1015;
+   @define-color luma_menu_passive RGB(255 255 255 / 3.8%);
++  @define-color luma_menu_heading #9ea2a6;
++  @define-color luma_menu_shortcut #a7abae;
++  @define-color luma_menu_disabled #7b8084;
+   @define-color luma_menu_pressed RGB(255 255 255 / 10.8%);
+   @define-color luma_menu_destructive #e97870;
+ }
+@@ -302,6 +310,16 @@
+   --active-toggle-bg-color: #ffffff;
+   --active-toggle-fg-color: #1f2937;
+ 
++  // Filled controls (Luma ADR-043). Ink is the one emphasis a view keeps;
++  // every on state -- a checked button, a selected toggle, a view switcher,
++  // a scale's value -- takes this quieter slate, 3:1 or more from the surface
++  // and the off state, with its glyph at 4.5:1. A scale's handle is a disc of
++  // the surface ringed in it. The same values as the app kit's luma_state.
++  --luma-state: #61728a;
++  --luma-state-ink: #ffffff;
++  --luma-knob: #ffffff;
++  --luma-knob-ring: #61728a;
++
+   --overview-bg-color: #f3f3f5;
+   --overview-fg-color: #1f2937;
+ }
+@@ -311,6 +329,11 @@
+     --active-toggle-bg-color: rgb(255 255 255 / 20%);
+     --active-toggle-fg-color: #ffffff;
+ 
++    --luma-state: #8a99a8;
++    --luma-state-ink: #161a1f;
++    --luma-knob: #2a2e34;
++    --luma-knob-ring: #8a99a8;
++
+     --overview-bg-color: #28282c;
+     --overview-fg-color: #ffffff;
+   }
+diff --git a/src/stylesheet/widgets/_buttons.scss b/src/stylesheet/widgets/_buttons.scss
+--- a/src/stylesheet/widgets/_buttons.scss
++++ b/src/stylesheet/widgets/_buttons.scss
+@@ -41,16 +41,19 @@
+         background-color: $button_active_color;
+       }
+ 
++      // Luma ADR-043: a checked button is the state slate, not a wash of
++      // its own ink.
+       &:checked {
+-        background-color: $button_checked_color;
++        background-color: var(--luma-state);
++        color: var(--luma-state-ink);
+ 
+         &:hover {
+-          background-color: $button_checked_hover_color;
++          background-color: var(--luma-state);
+         }
+ 
+         &.keyboard-activating,
+         &:active {
+-          background-color: $button_checked_active_color;
++          background-color: color-mix(in srgb, var(--luma-state) 88%, var(--luma-state-ink));
+         }
+       }
+     }
+@@ -256,16 +259,19 @@
+       background: $active_color;
+     }
+ 
++    // Luma ADR-043: a toggled flat button (a panel or sidebar toggle) is
++    // the state slate, so on and off differ by 3:1 or more.
+     &:checked {
+-      background: $selected_color;
++      background: var(--luma-state);
++      color: var(--luma-state-ink);
+ 
+       &:hover {
+-        background: $selected_hover_color;
++        background: var(--luma-state);
+       }
+ 
+       &.keyboard-activating,
+       &:active {
+-        background: $selected_active_color;
++        background: color-mix(in srgb, var(--luma-state) 88%, var(--luma-state-ink));
+       }
+     }
+ 
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -124,6 +124,17 @@
+   --headerbar-fg-color: #ffffff;
+ }
+ 
++// A checked button in a smoked header takes the smoked state slate
++// (ADR-043): a light-mode slate stands only ~3:1 from the veil there.
++window.csd.luma-treatment-frost headerbar,
++window.csd.luma-treatment-glass headerbar {
++  --luma-state: #a9b5c1;
++  --luma-state-ink: #161a1f;
++  --luma-knob-ring: #a9b5c1;
++}
++window.csd.luma-treatment-frost headerbar { --luma-knob: #1f252d; }
++window.csd.luma-treatment-glass headerbar { --luma-knob: #151a21; }
++
+ window.csd.luma-treatment-frost headerbar,
+ window.csd.luma-treatment-glass headerbar {
+   // The light gradient above is scoped to prefers-color-scheme: light, so it
+diff --git a/src/stylesheet/widgets/_menus.scss b/src/stylesheet/widgets/_menus.scss
+--- a/src/stylesheet/widgets/_menus.scss
++++ b/src/stylesheet/widgets/_menus.scss
+@@ -320,14 +320,16 @@
+     background-color: unquote("@luma_menu_border");
+   }
+ 
+-  // A group's heading: small, tracked, at reduced opacity of the ink.
++  // A group's heading: small, tracked, in the menu's secondary ink. It
++  // was the ink at 46% opacity, 2.59:1 on a light menu; the ledger colour
++  // holds 4.5:1 in every mode (ADR-043).
+   label.title {
+     min-height: 18px;
+     padding: 4px 8px 0;
+     font-size: 11px;
+     font-weight: 700;
+     letter-spacing: 0.11em;
+-    opacity: 0.46;
++    color: unquote("@luma_menu_heading");
+   }
+ 
+   // Rows: the toolkit's model button, and the kit's custom row for what the
+@@ -355,8 +357,10 @@
+ 
+     &:active { background-color: unquote("@luma_menu_pressed"); }
+ 
++    // Disabled reads as disabled, not as missing: 3:1 rather than the
++    // ink at 38% (2.14:1 on a light menu).
+     &:disabled {
+-      opacity: 0.38;
++      color: unquote("@luma_menu_disabled");
+       background-color: transparent;
+     }
+ 
+@@ -373,7 +377,7 @@
+   .luma-menu-description {
+     font-size: 11px;
+     font-weight: 500;
+-    opacity: 0.46;
++    color: unquote("@luma_menu_heading");
+   }
+ 
+   // Calm at rest; red only under the pointer or focus.
+@@ -395,9 +399,8 @@
+     padding: 1px 5px;
+     border-radius: 6px;
+     background-color: unquote("@luma_menu_passive");
+-    color: unquote("@luma_ink");
++    color: unquote("@luma_menu_shortcut");
+     font-size: 11px;
+     font-weight: 600;
+-    opacity: 0.68;
+   }
+ }
+diff --git a/src/stylesheet/widgets/_scale.scss b/src/stylesheet/widgets/_scale.scss
+--- a/src/stylesheet/widgets/_scale.scss
++++ b/src/stylesheet/widgets/_scale.scss
+@@ -12,8 +12,9 @@
+ %scale_highlight {
+   transition: $button_transition;
+   border-radius: 99px;
+-  background-color: var(--accent-bg-color);
+-  color: var(--accent-fg-color);
++  // Luma ADR-043: the value runs in the state slate.
++  background-color: var(--luma-state);
++  color: var(--luma-state-ink);
+ }
+ 
+ scale {
+@@ -28,11 +29,9 @@
+ 
+   @include focus-ring("> trough > slider", $offset: 0);
+ 
+-  ---slider-border-color: RGB(0 0 6 / 10%);
+-
+-  @media (prefers-contrast: more) {
+-    ---slider-border-color: RGB(0 0 6 / 35%);
+-  }
++  // Luma ADR-043: the handle is a disc of the surface with a 2px ring in the
++  // state slate, 3:1 or more from the surface, not a white dot on a hairline.
++  ---slider-border-color: var(--luma-knob-ring);
+ 
+   > trough {
+     @extend %scale_trough;
+@@ -47,8 +46,8 @@
+     }
+ 
+     > slider {
+-      background-color: $slider_color;
+-      box-shadow: 0 0 0 1px var(---slider-border-color), 0 2px 4px RGB(0 0 6 / 20%);
++      background-color: var(--luma-knob);
++      box-shadow: inset 0 0 0 2px var(---slider-border-color), 0 1px 2px RGB(0 0 6 / 20%);
+ 
+       border-radius: 100%;
+ 
+@@ -72,7 +71,7 @@
+       }
+ 
+       > slider {
+-        background-color: $slider_hover_color;
++        background-color: var(--luma-knob);
+       }
+     }
+   }
+@@ -81,7 +80,7 @@
+     filter: Opacity(var(--disabled-opacity));
+ 
+     > trough > slider {
+-      box-shadow: 0 0 0 1px var(---slider-border-color), 0 2px 4px transparent;
++      box-shadow: inset 0 0 0 2px var(---slider-border-color), 0 1px 2px transparent;
+       outline-color: RGB(0 0 6 / 20%);
+ 
+       @media (prefers-contrast: more) {
+@@ -102,10 +101,10 @@
+ 
+       // Adjust box-shadow for the 45deg rotation, for 0px 2px we ideally want
+       // 1/√2px 1/√2px, round that to 1px 1px
+-      box-shadow: 0 0 0 1px var(---slider-border-color), 1px 1px 4px RGB(0 0 6 / 20%);
++      box-shadow: inset 0 0 0 2px var(---slider-border-color), 1px 1px 4px RGB(0 0 6 / 20%);
+ 
+       &:disabled {
+-        box-shadow: 0 0 0 1px var(---slider-border-color), 1px 1px 4px transparent;
++        box-shadow: inset 0 0 0 2px var(---slider-border-color), 1px 1px 4px transparent;
+       }
+     }
+   }
+diff --git a/src/stylesheet/widgets/_toggle-group.scss b/src/stylesheet/widgets/_toggle-group.scss
+--- a/src/stylesheet/widgets/_toggle-group.scss
++++ b/src/stylesheet/widgets/_toggle-group.scss
+@@ -76,11 +76,12 @@
+       }
+     }
+ 
++    // Luma ADR-043: the selected segment is the state slate. A raised
++    // white pill on a grey track measured about 1.1:1 against the off state.
+     &:checked {
+-      background-color: var(--active-toggle-bg-color);
+-      color: var(--active-toggle-fg-color);
+-      box-shadow: 0 1px 3px 1px RGB(0 0 6 / 7%),
+-                  0 2px 6px 2px RGB(0 0 6 / 3%);
++      background-color: var(--luma-state);
++      color: var(--luma-state-ink);
++      box-shadow: none;
+ 
+       &:disabled {
+         background-color: color-mix(in srgb, var(--active-toggle-bg-color) var(--disabled-opacity), transparent);

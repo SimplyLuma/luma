@@ -1,0 +1,139 @@
+From 9286e6c10e65adfe9d29cae997f2c469b230b91d Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:19:24 +0000
+Subject: [PATCH] Filer: use LumaUI table header and selection in List view
+
+---
+ data/org.gnome.nautilus.gschema.xml             |  2 +-
+ src/nautilus-list-view.c                        | 11 ++++++++---
+ src/resources/style.css                         | 17 -----------------
+ .../display/test-luma-column-header-menu.c      | 15 +++++++++++++++
+ 4 files changed, 24 insertions(+), 21 deletions(-)
+
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index 9339222..51683f4 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -268,7 +268,7 @@
+       <summary>Default list view zoom level</summary>
+     </key>
+     <key type="as" name="default-visible-columns">
+-      <default>[ 'name', 'size', 'date_modified' ]</default>
++      <default>[ 'name', 'type', 'size', 'date_modified' ]</default>
+       <summary>Columns visible in list view</summary>
+     </key>
+     <key type="as" name="default-column-order">
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 6417f77..49b15dd 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -10,6 +10,7 @@
+ 
+ /* Needed for NautilusColumn. */
+ #include <nautilus-extension.h>
++#include <luma-ui.h>
+ 
+ #include "nautilus-list-base-private.h"
+ #include "nautilus-list-view.h"
+@@ -1124,7 +1125,6 @@ setup_view_columns (NautilusListView *self)
+         NautilusColumn *nautilus_column = NAUTILUS_COLUMN (l->data);
+         g_autofree gchar *name = NULL;
+         g_autofree gchar *label = NULL;
+-        g_autofree gchar *header_label = NULL;
+         GQuark attribute_q = 0;
+         GtkSortType sort_order;
+         g_autoptr (GtkCustomSorter) sorter = NULL;
+@@ -1145,8 +1145,10 @@ setup_view_columns (NautilusListView *self)
+         view_column = gtk_column_view_column_new (NULL, factory);
+         gtk_column_view_column_set_expand (view_column, FALSE);
+         gtk_column_view_column_set_resizable (view_column, TRUE);
+-        header_label = g_utf8_strup (label, -1);
+-        gtk_column_view_column_set_title (view_column, header_label);
++        /* The shared table header owns casing, sort arrows and accessible
++         * state. Keep the column's semantic label in its normal case. */
++        gtk_column_view_column_set_title (view_column,
++                                          g_str_equal (name, "type") ? _("Kind") : label);
+         gtk_column_view_column_set_sorter (view_column, GTK_SORTER (sorter));
+ 
+         if (!strcmp (name, "name"))
+@@ -1243,6 +1245,9 @@ nautilus_list_view_init (NautilusListView *self)
+     nautilus_list_base_setup_gestures (NAUTILUS_LIST_BASE (self));
+ 
+     setup_view_columns (self);
++    gtk_widget_set_name (GTK_WIDGET (self->view_ui), "filer-list");
++    luma_table_header_for_column_view (self->view_ui);
++    luma_selection_apply (GTK_WIDGET (self->view_ui));
+ 
+     column_view_sorter = gtk_column_view_get_sorter (self->view_ui);
+     g_signal_connect (column_view_sorter, "changed", G_CALLBACK (on_sorter_changed), self);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 8c9f6d6..d610eec 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -452,16 +452,6 @@
+   font-feature-settings: "tnum";
+ }
+ 
+-.luma-files-window .nautilus-list-view columnview > header > button {
+-  min-height: 26px;
+-  padding: 0 8px;
+-  color: @luma_muted;
+-}
+-
+-.luma-files-window .nautilus-list-view columnview > header > button:checked {
+-  color: @luma_ink;
+-}
+-
+ /* Columns is a first-class NautilusListBase presentation over the same live
+  * NautilusViewModel. The three panes are spatial work islands; rows remain
+  * ordinary native list items with the shared hover/selection/focus states. */
+@@ -1233,13 +1223,6 @@ window.luma-files-window .nautilus-list-view .luma-column-symbolic-folder {
+   -gtk-icon-size: 14px;
+   color: var(--accent-color);
+ }
+-window.luma-files-window .nautilus-list-view columnview > header > button > box > label {
+-  font-family: "Figtree";
+-  font-size: 11px;
+-  font-weight: 700;
+-  letter-spacing: 0.08em;
+-  color: @luma_muted;
+-}
+ window.luma-files-window .nautilus-list-view .nautilus-view-cell > label,
+ window.luma-files-window .nautilus-list-view label.dim-label {
+   font-family: "Figtree";
+diff --git a/test/automated/display/test-luma-column-header-menu.c b/test/automated/display/test-luma-column-header-menu.c
+index 74a859f..33ae8b0 100644
+--- a/test/automated/display/test-luma-column-header-menu.c
++++ b/test/automated/display/test-luma-column-header-menu.c
+@@ -120,6 +120,20 @@ test_header_columns (void)
+     g_assert_true (g_file_delete (location, NULL, NULL));
+ }
+ 
++static void
++test_v70_table_labels (void)
++{
++    g_autoptr (NautilusListView) list = nautilus_list_view_new ();
++    g_object_ref_sink (list);
++    GtkColumnView *view = find_columns (GTK_WIDGET (list));
++    g_assert_nonnull (view);
++    g_assert_cmpstr (gtk_widget_get_name (GTK_WIDGET (view)), ==, "filer-list");
++
++    g_autoptr (GtkColumnViewColumn) kind = find_column (view, "type");
++    g_assert_nonnull (kind);
++    g_assert_cmpstr (gtk_column_view_column_get_title (kind), ==, "Kind");
++}
++
+ static GtkWidget *
+ find_details (GtkWidget *widget)
+ {
+@@ -394,6 +408,7 @@ main (int argc, char **argv)
+ 
+     g_autoptr (NautilusApplication) app = nautilus_application_new ();
+     g_log_set_always_fatal (G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING);
++    test_v70_table_labels ();
+     test_header_columns ();
+     test_details_selection ();
+     test_favorites ();
+-- 
+2.55.0
+

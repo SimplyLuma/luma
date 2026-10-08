@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+[D-BUS Service]
+Name=org.projectluma.SemanticBroker1
+SystemdService=luma-semantic-broker.service

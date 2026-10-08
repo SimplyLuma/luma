@@ -1,0 +1,776 @@
+From 58bef2e7255b39667f34665217a7b6b6e2aa7213 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:42:54 +0000
+Subject: [PATCH] Settings: isolate fixture startup and begin Wi-Fi page
+ composition
+
+Compose the initial Wi-Fi, connection, known-network and hotspot views from the C LumaUI card and type APIs. Keep this partial view separate from live service adapters and reject pages which are not ported yet. Use an isolated application ID and force the memory settings backend before startup; never instantiate the GNOME panel loader in fixture mode. Exercise widget-driven radio dependencies, independent fixture copies and queued redraw destruction in a private display.
+---
+ shell/cc-application.c                      |  85 ++++-
+ shell/cc-luma-fixture.c                     |  31 ++
+ shell/cc-luma-fixture.h                     |   2 +
+ shell/cc-luma-view.c                        | 325 ++++++++++++++++++++
+ shell/cc-luma-view.h                        |   8 +
+ shell/gnome-control-center.gresource.xml.in |   1 +
+ shell/luma-settings.css                     |   2 +
+ shell/main.c                                |   6 +
+ shell/meson.build                           |  12 +-
+ shell/test-luma-view.c                      |  85 +++++
+ 10 files changed, 552 insertions(+), 5 deletions(-)
+ create mode 100644 shell/cc-luma-view.c
+ create mode 100644 shell/cc-luma-view.h
+ create mode 100644 shell/luma-settings.css
+ create mode 100644 shell/test-luma-view.c
+
+diff --git a/shell/cc-application.c b/shell/cc-application.c
+index f00e51c..365309e 100644
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -31,6 +31,8 @@
+ #include "cc-object-storage.h"
+ #include "cc-panel-loader.h"
+ #include "cc-window.h"
++#include "cc-luma-view.h"
++#include <luma-ui.h>
+ 
+ struct _CcApplication
+ {
+@@ -39,6 +41,10 @@ struct _CcApplication
+   CcShellModel   *model;
+ 
+   CcWindow       *window;
++  GtkWindow     *fixture_window;
++  CcLumaFixture *fixture;
++  gboolean       fixture_mode;
++  gboolean       fixture_failed;
+ };
+ 
+ static void cc_application_quit    (GSimpleAction *simple,
+@@ -96,7 +102,9 @@ help_activated (GSimpleAction *action,
+   g_autoptr(GtkUriLauncher) launcher = NULL;
+   const char *uri = NULL;
+ 
+-  if (self->window)
++  if (self->fixture_mode)
++    window = GTK_WIDGET (self->fixture_window);
++  else if (self->window)
+     {
+       window = cc_shell_get_toplevel (CC_SHELL (self->window));
+       panel = cc_shell_get_active_panel (CC_SHELL (self->window));
+@@ -126,7 +134,7 @@ about_activated (GSimpleAction *action,
+   adw_about_dialog_set_translator_credits (ADW_ABOUT_DIALOG (about_dialog), _("translator-credits"));
+   adw_about_dialog_set_copyright (ADW_ABOUT_DIALOG (about_dialog), g_strdup_printf (_("© 1998 %s"), developer_name));
+ 
+-  adw_dialog_present (about_dialog, GTK_WIDGET (self->window));
++  adw_dialog_present (about_dialog, self->fixture_mode ? GTK_WIDGET (self->fixture_window) : GTK_WIDGET (self->window));
+ }
+ 
+ static gboolean
+@@ -150,6 +158,12 @@ launch_panel_activated (GSimpleAction *action,
+   g_autoptr(GError) error = NULL;
+   gchar *panel_id;
+ 
++  if (self->fixture_mode)
++    {
++      g_printerr ("GNOME panel actions are unavailable in Settings fixture mode\n");
++      return;
++    }
++
+   g_variant_get (parameter, "(&s@av)", &panel_id, &parameters);
+ 
+   g_debug ("gnome-control-center: 'launch-panel' activated for panel '%s' with %"G_GSIZE_FORMAT" arguments",
+@@ -171,6 +185,9 @@ launch_single_panel_mode_activated (GSimpleAction *action,
+ 
+   g_application_activate (G_APPLICATION (self));
+ 
++  if (self->fixture_mode)
++    return;
++
+   cc_window_enable_single_panel_mode (self->window);
+ 
+   launch_panel_activated (action, parameter, user_data);
+@@ -216,6 +233,26 @@ cc_application_handle_local_options (GApplication *application,
+       return 0;
+     }
+ 
++  if (CC_APPLICATION (application)->fixture_mode)
++    {
++      CcApplication *self = CC_APPLICATION (application);
++      g_autoptr (GError) error = NULL;
++      const char *page = g_getenv ("LUMA_SETTINGS_PAGE");
++      self->fixture = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_FIXTURE"), &error);
++      if (!self->fixture)
++        {
++          g_printerr ("Settings fixture: %s\n", error->message);
++          return 1;
++        }
++      if (page && !cc_luma_fixture_has_page (self->fixture, page))
++        {
++          g_printerr ("Unknown Settings fixture page: %s\n", page);
++          return 1;
++        }
++      /* Do not enumerate GNOME panels or run their static service probes. */
++      return -1;
++    }
++
+   if (!is_supported_desktop ())
+     {
+       g_printerr ("Running gnome-control-center is only supported under GNOME and Unity, exiting\n");
+@@ -252,6 +289,9 @@ cc_application_command_line (GApplication            *application,
+ 
+   g_application_activate (application);
+ 
++  if (self->fixture_mode)
++    return self->fixture_failed ? 1 : 0;
++
+   if (g_variant_dict_lookup (options, "search", "&s", &search_str))
+     {
+       cc_window_set_search_item (self->window, search_str);
+@@ -300,6 +340,8 @@ cc_application_quit (GSimpleAction *simple,
+ 
+   if (self->window)
+     gtk_window_destroy (GTK_WINDOW (self->window));
++  if (self->fixture_window)
++    gtk_window_destroy (self->fixture_window);
+ }
+ 
+ 
+@@ -308,6 +350,30 @@ cc_application_activate (GApplication *application)
+ {
+   CcApplication *self = CC_APPLICATION (application);
+ 
++  if (self->fixture_mode)
++    {
++      if (!self->fixture_window)
++        {
++          g_autoptr (GError) error = NULL;
++          GtkWidget *body = cc_luma_view_new (self->fixture, g_getenv ("LUMA_SETTINGS_PAGE"), &error);
++          if (!body)
++            {
++              g_printerr ("Settings fixture: %s\n", error->message);
++              self->fixture_failed = TRUE;
++              g_application_quit (application);
++              return;
++            }
++          self->fixture_window = GTK_WINDOW (luma_application_window_new (GTK_APPLICATION (self), NULL));
++          g_object_add_weak_pointer (G_OBJECT (self->fixture_window), (gpointer *) &self->fixture_window);
++          gtk_window_set_title (self->fixture_window, "Settings");
++          gtk_window_set_default_size (self->fixture_window, 1180, 740);
++          gtk_widget_set_name (GTK_WIDGET (self->fixture_window), "cf-window");
++          luma_application_window_set_body (LUMA_APPLICATION_WINDOW (self->fixture_window), body);
++        }
++      gtk_window_present (self->fixture_window);
++      return;
++    }
++
+   if (!self->window)
+     self->window = cc_window_new (GTK_APPLICATION (application), self->model);
+ 
+@@ -333,6 +399,13 @@ cc_application_startup (GApplication *application)
+   gtk_application_set_accels_for_action (GTK_APPLICATION (application),
+                                          "app.help", help_accels);
+ 
++  if (self->fixture_mode)
++    {
++      luma_init ();
++      luma_ui_add_style_resource ("/org/gnome/Settings/gtk/luma-settings.css", GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
++      return;
++    }
++
+   self->model = cc_shell_model_new ();
+ 
+   provider = gtk_css_provider_new ();
+@@ -345,6 +418,8 @@ cc_application_startup (GApplication *application)
+ static void
+ cc_application_finalize (GObject *object)
+ {
++  g_clear_object (&CC_APPLICATION (object)->fixture);
++
+   /* Destroy the object storage cache when finalizing */
+   cc_object_storage_destroy ();
+ 
+@@ -387,6 +462,7 @@ cc_application_class_init (CcApplicationClass *klass)
+ static void
+ cc_application_init (CcApplication *self)
+ {
++  self->fixture_mode = g_getenv ("LUMA_SETTINGS_FIXTURE") != NULL;
+   cc_object_storage_initialize ();
+ 
+   g_application_add_main_option_entries (G_APPLICATION (self), all_options);
+@@ -396,8 +472,9 @@ GtkApplication *
+ cc_application_new (void)
+ {
+   return g_object_new (CC_TYPE_APPLICATION,
+-                       "application-id", APPLICATION_ID,
+-                       "flags", G_APPLICATION_HANDLES_COMMAND_LINE,
++                       "application-id", g_getenv ("LUMA_SETTINGS_FIXTURE") ? "org.luma.Settings.Fixture" : APPLICATION_ID,
++                       "flags", G_APPLICATION_HANDLES_COMMAND_LINE |
++                         (g_getenv ("LUMA_SETTINGS_FIXTURE") ? G_APPLICATION_NON_UNIQUE : 0),
+                        NULL);
+ }
+ 
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 058c4a1..6c42fa9 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -143,6 +143,37 @@ cc_luma_fixture_set (CcLumaFixture *self, const char *key, JsonNode *value, GErr
+   json_object_set_member (object, leaf, json_node_copy (value));
+   return TRUE;
+ }
++/* Radio dependencies follow v70 cfFx: airplane-on disables Wi-Fi and
++ * Bluetooth; enabling either radio clears airplane mode. Turning airplane
++ * off does not silently turn radios back on. Validate all keys first. */
++gboolean
++cc_luma_fixture_set_flag (CcLumaFixture *self, const char *key, gboolean value, GError **error)
++{
++  const char *keys[3] = { key, NULL, NULL };
++  gboolean values[3] = { value, FALSE, FALSE };
++  guint count = 1;
++  if (g_strcmp0 (key, "airplane") == 0 && value)
++    { keys[1] = "wifi"; keys[2] = "bt"; count = 3; }
++  else if ((g_strcmp0 (key, "wifi") == 0 || g_strcmp0 (key, "bt") == 0) && value)
++    { keys[1] = "airplane"; count = 2; }
++  for (guint i = 0; i < count; i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (self, keys[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_BOOLEAN)
++        {
++          g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                       "Unknown or non-boolean setting: %s", keys[i] ? keys[i] : "(null)");
++          return FALSE;
++        }
++    }
++  for (guint i = 0; i < count; i++)
++    {
++      g_autoptr (JsonNode) n = json_node_new (JSON_NODE_VALUE);
++      json_node_set_boolean (n, values[i]);
++      if (!cc_luma_fixture_set (self, keys[i], n, error)) return FALSE;
++    }
++  return TRUE;
++}
+ JsonObject *
+ cc_luma_fixture_get_data (CcLumaFixture *self)
+ {
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+index d87ec11..da548d2 100644
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -12,6 +12,8 @@ CcLumaFixture *cc_luma_fixture_parse (const char *data, gssize length, GError **
+ JsonNode *cc_luma_fixture_get (CcLumaFixture *self, const char *key);
+ gboolean cc_luma_fixture_set (CcLumaFixture *self, const char *key,
+                               JsonNode *value, GError **error);
++gboolean cc_luma_fixture_set_flag (CcLumaFixture *self, const char *key,
++                                   gboolean value, GError **error);
+ JsonObject *cc_luma_fixture_get_data (CcLumaFixture *self);
+ JsonArray *cc_luma_fixture_get_pages (CcLumaFixture *self);
+ gboolean cc_luma_fixture_has_page (CcLumaFixture *self, const char *page);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+new file mode 100644
+index 0000000..87352b0
+--- /dev/null
++++ b/shell/cc-luma-view.c
+@@ -0,0 +1,325 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view.h"
++#include <luma-ui.h>
++#include <string.h>
++
++typedef struct {
++  CcLumaFixture *model;
++  GtkBox *body;
++  char *page;
++  guint refresh;
++} View;
++
++static void render (View *view);
++static gboolean refresh_view (gpointer data)
++{
++  View *v = data;
++  v->refresh = 0;
++  render (v);
++  return G_SOURCE_REMOVE;
++}
++
++static const char *text (View *v, const char *key)
++{
++  JsonNode *n = cc_luma_fixture_get (v->model, key);
++  return n && json_node_get_value_type (n) == G_TYPE_STRING ? json_node_get_string (n) : "";
++}
++static gboolean flag (View *v, const char *key)
++{
++  JsonNode *n = cc_luma_fixture_get (v->model, key);
++  return n && json_node_get_value_type (n) == G_TYPE_BOOLEAN && json_node_get_boolean (n);
++}
++static GtkWidget *label (const char *value, const char *role, gboolean muted)
++{
++  GtkWidget *w = gtk_label_new (value);
++  gtk_label_set_xalign (GTK_LABEL (w), 0);
++  gtk_label_set_wrap (GTK_LABEL (w), TRUE);
++  luma_ui_apply_type_full (w, role, muted);
++  return w;
++}
++static GtkWidget *words (const char *title, const char *subtitle)
++{
++  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
++  gtk_widget_set_hexpand (box, TRUE);
++  gtk_box_append (GTK_BOX (box), label (title, "body", FALSE));
++  if (subtitle && *subtitle)
++    gtk_box_append (GTK_BOX (box), label (subtitle, "caption", TRUE));
++  return box;
++}
++static GtkBox *group (View *v, const char *title)
++{
++  GtkWidget *rows = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++  GtkWidget *card = luma_card_new (rows, FALSE);
++  gtk_widget_set_margin_top (card, title ? 8 : 26);
++  if (title)
++    {
++      GtkWidget *heading = label (title, "label", TRUE);
++      gtk_widget_set_margin_top (heading, 26);
++      gtk_box_append (v->body, heading);
++    }
++  gtk_box_append (v->body, card);
++  return GTK_BOX (rows);
++}
++static GtkWidget *row (GtkBox *rows, const char *title, const char *subtitle, GtkWidget *trail)
++{
++  GtkWidget *r = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
++  gtk_widget_add_css_class (r, "cf-setting-row");
++  gtk_box_append (GTK_BOX (r), words (title, subtitle));
++  if (trail)
++    gtk_box_append (GTK_BOX (r), trail);
++  gtk_box_append (rows, r);
++  return r;
++}
++static void navigate (GtkButton *button, View *v)
++{
++  const char *target = g_object_get_data (G_OBJECT (button), "cf-target");
++  g_free (v->page);
++  v->page = g_strdup (target);
++  render (v);
++}
++static GtkWidget *link_button (View *v, const char *caption, const char *target)
++{
++  GtkWidget *button = gtk_button_new_with_label (caption);
++  g_object_set_data_full (G_OBJECT (button), "cf-target", g_strdup (target), g_free);
++  g_signal_connect (button, "clicked", G_CALLBACK (navigate), v);
++  return button;
++}
++static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, View *v)
++{
++  const char *key = g_object_get_data (G_OBJECT (widget), "cf-key");
++  g_autoptr (GError) error = NULL;
++  if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
++    g_warning ("%s", error->message);
++  /* Avoid destroying the emitting widget inside its notification. */
++  if (!v->refresh)
++    v->refresh = g_idle_add (refresh_view, v);
++}
++static GtkWidget *toggle (View *v, const char *key, const char *name, const char *accessible)
++{
++  GtkWidget *w = gtk_switch_new ();
++  gtk_widget_set_valign (w, GTK_ALIGN_CENTER);
++  gtk_widget_set_name (w, name);
++  gtk_switch_set_active (GTK_SWITCH (w), flag (v, key));
++  g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
++  g_signal_connect (w, "notify::active", G_CALLBACK (switch_changed), v);
++  return w;
++}
++static void header (View *v, const char *title, const char *subtitle, const char *switch_key)
++{
++  GtkWidget *head = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
++  GtkWidget *titles = gtk_box_new (GTK_ORIENTATION_VERTICAL, 3);
++  gtk_widget_set_hexpand (titles, TRUE);
++  gtk_box_append (GTK_BOX (titles), label (title, "title-1", FALSE));
++  gtk_box_append (GTK_BOX (titles), label (subtitle, "caption", TRUE));
++  gtk_box_append (GTK_BOX (head), titles);
++  if (switch_key)
++    gtk_box_append (GTK_BOX (head), toggle (v, switch_key, g_str_equal (switch_key, "wifi") ? "cf-wifi" : "cf-hotspot", title));
++  gtk_box_append (v->body, head);
++}
++static void wifi (View *v)
++{
++  gboolean enabled = flag (v, "wifi");
++  const char *network = text (v, "net");
++  g_autofree char *meta = !enabled ? g_strdup ("Wi‑Fi is off") :
++    *network ? g_strdup_printf ("Connected to %s", network) : g_strdup ("6 networks nearby");
++  GtkWidget *hero, *hero_body;
++  JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNETS");
++  JsonArray *known = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFKNOWN");
++  header (v, "Wi‑Fi", meta, "wifi");
++  hero_body = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
++  gtk_box_append (GTK_BOX (hero_body), luma_ui_icon_new ("wifi"));
++  if (!enabled)
++    gtk_box_append (GTK_BOX (hero_body), words ("Wi‑Fi is off", NULL));
++  else if (!*network)
++    gtk_box_append (GTK_BOX (hero_body), words ("Not connected", "Pick a network below"));
++  else
++    {
++      JsonObject *current = NULL;
++      const char *signals[] = { "Weak", "Fair", "Good", "Excellent" };
++      for (guint i = 0; i < json_array_get_length (nets); i++)
++        {
++          JsonObject *n = json_array_get_object_element (nets, i);
++          if (g_str_equal (json_object_get_string_member (n, "n"), network))
++            current = n;
++        }
++      if (current)
++        {
++          gint signal = CLAMP (json_object_get_int_member (current, "sig"), 1, 4);
++          g_autofree char *detail = g_strdup_printf ("%s signal · %s · %s", signals[signal - 1],
++            json_object_get_boolean_member (current, "lock") ? "Secured" : "Open",
++            g_str_equal (text (v, "metered"), "yes") ? "Metered" : "Unlimited data");
++          gtk_box_append (GTK_BOX (hero_body), words (network, detail));
++          gtk_box_append (GTK_BOX (hero_body), link_button (v, "Details", "wifi-net"));
++        }
++      else
++        gtk_box_append (GTK_BOX (hero_body), words ("Not connected", "Pick a network below"));
++    }
++  hero = luma_card_new (hero_body, TRUE);
++  luma_card_set_recessed (LUMA_CARD (hero), TRUE);
++  gtk_widget_set_margin_top (hero, 20);
++  gtk_widget_set_name (hero, "cf-wifi-current");
++  gtk_box_append (v->body, hero);
++  if (enabled)
++    {
++      GtkBox *near = group (v, "Nearby");
++      for (guint i = 0; i < json_array_get_length (nets); i++)
++        {
++          JsonObject *n = json_array_get_object_element (nets, i);
++          const char *name = json_object_get_string_member (n, "n");
++          if (!g_str_equal (name, network))
++            row (near, name,
++              json_object_has_member (n, "known") && json_object_get_boolean_member (n, "known") ? "Saved" : NULL,
++              json_object_get_boolean_member (n, "lock") ? luma_ui_icon_new ("lock") : NULL);
++        }
++      row (near, "Hidden network", "Join a network that doesn’t show its name", NULL);
++    }
++  {
++    GtkBox *more = group (v, "More");
++    g_autofree char *count = g_strdup_printf ("%u", json_array_get_length (known));
++    row (more, "Known networks", "Networks this computer joins on its own", link_button (v, count, "wifi-known"));
++    row (more, "Hotspot", "Share this computer’s connection", link_button (v, flag (v, "hotspot") ? "On" : "Off", "hotspot"));
++    row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", toggle (v, "airplane", "cf-airplane", "Airplane mode"));
++  }
++}
++static void wifi_details (View *v)
++{
++  GtkBox *settings, *connection, *addresses;
++  gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
++  header (v, *text (v, "net") ? text (v, "net") : "Network", "Connected · WPA3 · 5 GHz", NULL);
++  settings = group (v, NULL);
++  row (settings, "Join automatically", NULL, toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
++  row (settings, "Available to everyone on this computer", NULL, toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
++  row (settings, "Metered", "Luma holds back big downloads on metered networks", label (text (v, "metered"), "body", TRUE));
++  connection = group (v, "Connection");
++  row (connection, "Signal", NULL, label ("Excellent", "body", TRUE));
++  row (connection, "Speed", NULL, label ("1.2 Gb/s", "body", TRUE));
++  row (connection, "Security", NULL, label ("WPA3", "body", TRUE));
++  row (connection, "Band", NULL, label ("5 GHz, channel 149", "body", TRUE));
++  addresses = group (v, "Addresses");
++  row (addresses, "IPv4", NULL, label ("192.168.10.24", "numeric", TRUE));
++  row (addresses, "IPv6", NULL, label ("fe80::9a3b:2cff:fe41:7d10", "numeric", TRUE));
++  row (addresses, "Router", NULL, label ("192.168.10.1", "numeric", TRUE));
++  row (addresses, "DNS", NULL, label ("Automatic", "body", TRUE));
++}
++static void known_networks (View *v)
++{
++  JsonArray *known = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFKNOWN");
++  JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNETS");
++  g_autofree char *meta = g_strdup_printf ("%u networks", json_array_get_length (known));
++  GtkBox *rows;
++  gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
++  header (v, "Known networks", meta, NULL);
++  rows = group (v, NULL);
++  for (guint i = 0; i < json_array_get_length (known); i++)
++    {
++      const char *name = json_array_get_string_element (known, i);
++      gboolean nearby = FALSE;
++      for (guint j = 0; j < json_array_get_length (nets); j++)
++        nearby |= g_str_equal (name, json_object_get_string_member (json_array_get_object_element (nets, j), "n"));
++      row (rows, name, g_str_equal (name, text (v, "net")) ? "Connected" : nearby ? "In range" : "Not nearby", NULL);
++    }
++}
++static void hotspot (View *v)
++{
++  GtkBox *rows;
++  gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
++  header (v, "Hotspot", flag (v, "hotspot") ? "Other devices can join this computer" : "Off", "hotspot");
++  rows = group (v, NULL);
++  row (rows, "Network name", NULL, label (text (v, "hsName"), "body", FALSE));
++  row (rows, "Password", NULL, label (text (v, "hsPass"), "numeric", FALSE));
++  row (rows, "Band", NULL, label ("Automatic", "body", TRUE));
++}
++static void render (View *v)
++{
++  GtkWidget *child;
++  while ((child = gtk_widget_get_first_child (GTK_WIDGET (v->body))))
++    gtk_box_remove (v->body, child);
++  if (g_str_equal (v->page, "wifi")) wifi (v);
++  else if (g_str_equal (v->page, "wifi-net")) wifi_details (v);
++  else if (g_str_equal (v->page, "wifi-known")) known_networks (v);
++  else if (g_str_equal (v->page, "hotspot")) hotspot (v);
++}
++static void view_free (View *v)
++{
++  if (v->refresh)
++    g_source_remove (v->refresh);
++  g_object_unref (v->model);
++  g_free (v->page);
++  g_free (v);
++}
++static gboolean valid_wifi_model (CcLumaFixture *model)
++{
++  const char *booleans[] = { "wifi", "bt", "airplane", "hotspot", "autoJoin", "allUsers" };
++  const char *strings[] = { "net", "metered", "hsName", "hsPass" };
++  JsonObject *data = cc_luma_fixture_get_data (model);
++  JsonNode *nets = json_object_get_member (data, "CFNETS");
++  JsonNode *known = json_object_get_member (data, "CFKNOWN");
++  if (!nets || !JSON_NODE_HOLDS_ARRAY (nets) || !known || !JSON_NODE_HOLDS_ARRAY (known))
++    return FALSE;
++  for (guint i = 0; i < G_N_ELEMENTS (booleans); i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (model, booleans[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_BOOLEAN) return FALSE;
++    }
++  for (guint i = 0; i < G_N_ELEMENTS (strings); i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (model, strings[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_STRING) return FALSE;
++    }
++  for (guint i = 0; i < json_array_get_length (json_node_get_array (nets)); i++)
++    {
++      JsonNode *n = json_array_get_element (json_node_get_array (nets), i);
++      JsonObject *o;
++      JsonNode *name, *sig, *lock, *saved;
++      if (!JSON_NODE_HOLDS_OBJECT (n)) return FALSE;
++      o = json_node_get_object (n);
++      name = json_object_get_member (o, "n"); sig = json_object_get_member (o, "sig");
++      lock = json_object_get_member (o, "lock"); saved = json_object_get_member (o, "known");
++      if (!name || json_node_get_value_type (name) != G_TYPE_STRING ||
++          !sig || json_node_get_value_type (sig) != G_TYPE_INT64 ||
++          json_node_get_int (sig) < 1 || json_node_get_int (sig) > 4 ||
++          !lock || json_node_get_value_type (lock) != G_TYPE_BOOLEAN ||
++          (saved && json_node_get_value_type (saved) != G_TYPE_BOOLEAN)) return FALSE;
++    }
++  for (guint i = 0; i < json_array_get_length (json_node_get_array (known)); i++)
++    if (json_node_get_value_type (json_array_get_element (json_node_get_array (known), i)) != G_TYPE_STRING)
++      return FALSE;
++  return TRUE;
++}
++GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error)
++{
++  GtkWidget *scroll, *clamp;
++  View *v;
++  if (!page) page = "wifi";
++  if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
++      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot"))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
++      return NULL;
++    }
++  if (!valid_wifi_model (model))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings fixture contains invalid Wi-Fi data");
++      return NULL;
++    }
++  v = g_new0 (View, 1);
++  v->model = g_object_ref (model);
++  v->page = g_strdup (page);
++  v->body = GTK_BOX (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
++  gtk_widget_set_name (GTK_WIDGET (v->body), "cf-page");
++  gtk_widget_set_margin_start (GTK_WIDGET (v->body), 32);
++  gtk_widget_set_margin_end (GTK_WIDGET (v->body), 32);
++  gtk_widget_set_margin_top (GTK_WIDGET (v->body), 30);
++  gtk_widget_set_margin_bottom (GTK_WIDGET (v->body), 120);
++  clamp = adw_clamp_new ();
++  adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 680);
++  adw_clamp_set_child (ADW_CLAMP (clamp), GTK_WIDGET (v->body));
++  scroll = gtk_scrolled_window_new ();
++  gtk_widget_set_name (scroll, "cf-body");
++  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
++  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroll), clamp);
++  g_object_set_data_full (G_OBJECT (scroll), "cf-view", v, (GDestroyNotify) view_free);
++  render (v);
++  return scroll;
++}
+diff --git a/shell/cc-luma-view.h b/shell/cc-luma-view.h
+new file mode 100644
+index 0000000..5ce7f42
+--- /dev/null
++++ b/shell/cc-luma-view.h
+@@ -0,0 +1,8 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include <gtk/gtk.h>
++#include "cc-luma-fixture.h"
++G_BEGIN_DECLS
++/* The view consumes only its supplied model. Service adapters belong outside it. */
++GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error);
++G_END_DECLS
+diff --git a/shell/gnome-control-center.gresource.xml.in b/shell/gnome-control-center.gresource.xml.in
+index a4a72b2..d78baa6 100644
+--- a/shell/gnome-control-center.gresource.xml.in
++++ b/shell/gnome-control-center.gresource.xml.in
+@@ -5,6 +5,7 @@
+     <file preprocess="xml-stripblanks">cc-panel-list.ui</file>
+     <file preprocess="xml-stripblanks">cc-window.ui</file>
+     <file>style.css</file>
++    <file>luma-settings.css</file>
+   </gresource>
+ 
+   <!-- Panel icons -->
+diff --git a/shell/luma-settings.css b/shell/luma-settings.css
+new file mode 100644
+index 0000000..f664f5e
+--- /dev/null
++++ b/shell/luma-settings.css
+@@ -0,0 +1,2 @@
++/* Settings-only row composition; shared parts own all paint. */
++.cf-setting-row { min-height: 34px; padding: 9px 16px; }
+diff --git a/shell/main.c b/shell/main.c
+index c63fe19..baaf4a5 100644
+--- a/shell/main.c
++++ b/shell/main.c
+@@ -42,6 +42,12 @@ main (gint    argc,
+   setlocale (LC_ALL, "");
+   cc_log_init ();
+ 
++  /* Fixture mode must never use the desktop settings backend, even if the
++   * caller forgot to set GSETTINGS_BACKEND. This affects only this process. */
++  if (g_getenv ("LUMA_SETTINGS_FIXTURE"))
++    g_setenv ("GSETTINGS_BACKEND", "memory", TRUE);
++
++  g_set_application_name (_("Settings"));
+   application = cc_application_new ();
+ 
+   return g_application_run (G_APPLICATION (application), argc, argv);
+diff --git a/shell/meson.build b/shell/meson.build
+index 7d582e8..9346154 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -64,6 +64,8 @@ common_sources = files(
+   'cc-shell.c',
+   'cc-panel-list.c',
+   'cc-window.c',
++  'cc-luma-fixture.c',
++  'cc-luma-view.c',
+ )
+ 
+ 
+@@ -112,7 +114,7 @@ libshell_dep = declare_dependency(
+ # gnome-control-center #
+ ########################
+ 
+-shell_sources = common_sources + files('main.c', 'cc-luma-fixture.c')
++shell_sources = common_sources + files('main.c')
+ 
+ shell_deps = common_deps + [
+   json_glib_dep,
+@@ -186,3 +188,11 @@ fixture_test = executable(
+   dependencies: [json_glib_dep, gio_dep],
+ )
+ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
++
++fixture_view_test = executable(
++  'test-luma-view',
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-fixture.c'],
++  dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1')],
++)
++# The caller supplies a private display and the versioned v70 fixture.
++test('luma-settings-view', fixture_view_test, env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals'])
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+new file mode 100644
+index 0000000..4b8052e
+--- /dev/null
++++ b/shell/test-luma-view.c
+@@ -0,0 +1,85 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view.h"
++#include <string.h>
++
++static GtkWidget *find_name (GtkWidget *root, const char *name)
++{
++  if (g_str_equal (gtk_widget_get_name (root), name)) return root;
++  for (GtkWidget *w = gtk_widget_get_first_child (root); w; w = gtk_widget_get_next_sibling (w))
++    {
++      GtkWidget *found = find_name (w, name);
++      if (found) return found;
++    }
++  return NULL;
++}
++static gboolean has_text (GtkWidget *root, const char *text)
++{
++  if (GTK_IS_LABEL (root) && g_str_equal (gtk_label_get_text (GTK_LABEL (root)), text)) return TRUE;
++  for (GtkWidget *w = gtk_widget_get_first_child (root); w; w = gtk_widget_get_next_sibling (w))
++    if (has_text (w, text)) return TRUE;
++  return FALSE;
++}
++static CcLumaFixture *load (void)
++{
++  g_autoptr (GError) error = NULL;
++  CcLumaFixture *model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), &error);
++  g_assert_no_error (error);
++  g_assert_nonnull (model);
++  return model;
++}
++static void radio_bindings (void)
++{
++  g_autoptr (CcLumaFixture) first = load ();
++  g_autoptr (CcLumaFixture) second = load ();
++  g_autoptr (GError) error = NULL;
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (first, "wifi", &error));
++  GtkWidget *airplane;
++  g_assert_no_error (error);
++  g_assert_true (has_text (view, "Connected to Studio North"));
++  g_assert_true (has_text (view, "Studio North Guest"));
++  airplane = find_name (view, "cf-airplane");
++  g_assert_true (GTK_IS_SWITCH (airplane));
++  gtk_switch_set_active (GTK_SWITCH (airplane), TRUE);
++  while (g_main_context_iteration (NULL, FALSE)) {}
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (first, "airplane")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (first, "wifi")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (first, "bt")));
++  g_assert_true (has_text (view, "Wi‑Fi is off"));
++  g_assert_false (has_text (view, "Nearby"));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (second, "wifi")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (second, "airplane")));
++  /* Disabling airplane mode must not implicitly enable either radio. */
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-airplane")), FALSE);
++  while (g_main_context_iteration (NULL, FALSE)) {}
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (first, "wifi")));
++  /* Re-enable Wi-Fi; this does not re-enable Bluetooth. */
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-wifi")), TRUE);
++  while (g_main_context_iteration (NULL, FALSE)) {}
++  g_assert_true (has_text (view, "Nearby"));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (first, "bt")));
++  g_object_unref (view);
++}
++static void reject_unported (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  g_autoptr (GError) error = NULL;
++  g_assert_null (cc_luma_view_new (model, "about", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED);
++}
++static void cancel_pending_refresh (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-airplane")), TRUE);
++  g_object_unref (view);
++  while (g_main_context_iteration (NULL, FALSE)) {}
++}
++int main (int argc, char **argv)
++{
++  g_test_init (&argc, &argv, NULL);
++  gtk_init ();
++  g_test_add_func ("/settings/view/radio-bindings", radio_bindings);
++  g_test_add_func ("/settings/view/reject-unported", reject_unported);
++  g_test_add_func ("/settings/view/cancel-pending-refresh", cancel_pending_refresh);
++  return g_test_run ();
++}
+-- 
+2.55.0
+

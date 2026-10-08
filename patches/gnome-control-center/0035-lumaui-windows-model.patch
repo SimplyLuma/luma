@@ -1,0 +1,202 @@
+From 4a8471c494378548af5ade64a9cf648bb2415710 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:30:36 +0000
+Subject: [PATCH] Settings: validate Windows choices and calculate fixture
+ preview geometry
+
+---
+ shell/cc-luma-desktop.c   | 75 +++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-desktop.h   | 10 ++++++
+ shell/meson.build         |  3 +-
+ shell/test-luma-fixture.c | 41 +++++++++++++++++++++
+ 4 files changed, 128 insertions(+), 1 deletion(-)
+ create mode 100644 shell/cc-luma-desktop.c
+ create mode 100644 shell/cc-luma-desktop.h
+
+diff --git a/shell/cc-luma-desktop.c b/shell/cc-luma-desktop.c
+new file mode 100644
+index 0000000..2316b8d
+--- /dev/null
++++ b/shell/cc-luma-desktop.c
+@@ -0,0 +1,75 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-desktop.h"
++#include <gio/gio.h>
++#include <string.h>
++
++static gboolean choice_allowed (const char *key, const char *value)
++{
++  if (!key || !value) return FALSE;
++  return (g_str_equal (key, "ws") && (g_str_equal (value, "dynamic") || g_str_equal (value, "fixed"))) ||
++    (g_str_equal (key, "wsMon") && (g_str_equal (value, "primary") || g_str_equal (value, "all"))) ||
++    (g_str_equal (key, "swi") && (g_str_equal (value, "current") || g_str_equal (value, "all")));
++}
++static gboolean number_allowed (const char *key, gint64 value)
++{
++  return key && ((g_str_equal (key, "gap") && value >= 0 && value <= 24 && value % 2 == 0) ||
++    (g_str_equal (key, "wsN") && value >= 1 && value <= 9));
++}
++static gboolean invalid (GError **error)
++{
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid window setting or fixture data");
++  return FALSE;
++}
++gboolean cc_luma_windows_validate (CcLumaFixture *model)
++{
++  const char *booleans[] = { "tile", "edgeTile", "hot", "edges" };
++  const char *choices[] = { "ws", "wsMon", "swi" };
++  const char *numbers[] = { "gap", "wsN" };
++  for (guint i = 0; i < G_N_ELEMENTS (booleans); i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (model, booleans[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_BOOLEAN) return FALSE;
++    }
++  for (guint i = 0; i < G_N_ELEMENTS (choices); i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (model, choices[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_STRING || !choice_allowed (choices[i], json_node_get_string (n))) return FALSE;
++    }
++  for (guint i = 0; i < G_N_ELEMENTS (numbers); i++)
++    {
++      JsonNode *n = cc_luma_fixture_get (model, numbers[i]);
++      if (!n || json_node_get_value_type (n) != G_TYPE_INT64 || !number_allowed (numbers[i], json_node_get_int (n))) return FALSE;
++    }
++  return TRUE;
++}
++gboolean cc_luma_windows_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error)
++{
++  if (!cc_luma_windows_validate (model) || !choice_allowed (key, value)) return invalid (error);
++  g_autoptr (JsonNode) n = json_node_init_string (json_node_alloc (), value);
++  return cc_luma_fixture_set (model, key, n, error);
++}
++gboolean cc_luma_windows_set_number (CcLumaFixture *model, const char *key, gint64 value, GError **error)
++{
++  if (!cc_luma_windows_validate (model) || !number_allowed (key, value)) return invalid (error);
++  g_autoptr (JsonNode) n = json_node_init_int (json_node_alloc (), value);
++  return cc_luma_fixture_set (model, key, n, error);
++}
++gboolean cc_luma_windows_rects (CcLumaFixture *model, CcLumaPreviewRect rects[3], GError **error)
++{
++  if (!cc_luma_windows_validate (model) || !rects) return invalid (error);
++  const double width = 360, height = 176;
++  double gap = json_node_get_int (cc_luma_fixture_get (model, "gap")) * .6 + 2;
++  if (json_node_get_boolean (cc_luma_fixture_get (model, "tile")))
++    {
++      rects[0] = (CcLumaPreviewRect) { gap, gap, width * .56 - gap * 1.5, height - gap * 2 };
++      rects[1] = (CcLumaPreviewRect) { width * .56 + gap * .5, gap, width * .44 - gap * 1.5, height / 2 - gap * 1.5 };
++      rects[2] = (CcLumaPreviewRect) { width * .56 + gap * .5, height / 2 + gap * .5, width * .44 - gap * 1.5, height / 2 - gap * 1.5 };
++    }
++  else
++    {
++      rects[0] = (CcLumaPreviewRect) { 22, 18, 200, 120 };
++      rects[1] = (CcLumaPreviewRect) { 120, 44, 190, 112 };
++      rects[2] = (CcLumaPreviewRect) { 70, 70, 160, 92 };
++    }
++  return TRUE;
++}
+diff --git a/shell/cc-luma-desktop.h b/shell/cc-luma-desktop.h
+new file mode 100644
+index 0000000..411dd34
+--- /dev/null
++++ b/shell/cc-luma-desktop.h
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include "cc-luma-fixture.h"
++G_BEGIN_DECLS
++typedef struct { double x, y, width, height; } CcLumaPreviewRect;
++gboolean cc_luma_windows_validate (CcLumaFixture *model);
++gboolean cc_luma_windows_set_choice (CcLumaFixture *model, const char *key, const char *value, GError **error);
++gboolean cc_luma_windows_set_number (CcLumaFixture *model, const char *key, gint64 value, GError **error);
++gboolean cc_luma_windows_rects (CcLumaFixture *model, CcLumaPreviewRect rects[3], GError **error);
++G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index c9f25d1..0793823 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -66,6 +66,7 @@ common_sources = files(
+   'cc-window.c',
+   'cc-luma-fixture.c',
+   'cc-luma-bluetooth.c',
++  'cc-luma-desktop.c',
+   'cc-luma-view.c',
+   'cc-luma-view-bluetooth.c',
+ )
+@@ -186,7 +187,7 @@ install_data (
+ # The fixture model has no GTK or system-service dependency.
+ fixture_test = executable(
+   'test-luma-fixture',
+-  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c'],
++  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
+   dependencies: [json_glib_dep, gio_dep],
+ )
+ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index cd64f19..b466eba 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-fixture.h"
+ #include "cc-luma-bluetooth.h"
++#include "cc-luma-desktop.h"
+ #include <gio/gio.h>
+ 
+ static const char fixture[] = "{\"version\":1,\"settings\":{\"wifi\":true,\"d\":{\"ext\":{\"scale\":\"150\"}},\"vol\":62},\"data\":{\"CFAPPS\":[\"tide\"]},\"pages\":[{\"id\":\"wifi\"}]}";
+@@ -172,6 +173,45 @@ static void bluetooth_model (void)
+   g_assert_false (cc_luma_bluetooth_connect (model, "hp", TRUE, &error));
+   g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
+ }
++static void windows_model (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_autoptr (GError) error = NULL;
++  CcLumaPreviewRect rects[3];
++  g_assert_true (cc_luma_windows_validate (model));
++  /* Every allowed gap keeps three non-overlapping windows inside the desk. */
++  for (gint64 gap = 0; gap <= 24; gap += 2)
++    {
++      g_assert_true (cc_luma_windows_set_number (model, "gap", gap, NULL));
++      g_assert_true (cc_luma_windows_rects (model, rects, NULL));
++      for (guint i = 0; i < 3; i++)
++        {
++          g_assert_cmpfloat (rects[i].x, >=, 0); g_assert_cmpfloat (rects[i].y, >=, 0);
++          g_assert_cmpfloat (rects[i].width, >, 0); g_assert_cmpfloat (rects[i].height, >, 0);
++          g_assert_cmpfloat (rects[i].x + rects[i].width, <=, 360);
++          g_assert_cmpfloat (rects[i].y + rects[i].height, <=, 176);
++        }
++      g_assert_cmpfloat (rects[0].x + rects[0].width, <, rects[1].x);
++      g_assert_cmpfloat (rects[1].y + rects[1].height, <, rects[2].y);
++    }
++  const gint64 invalid_gaps[] = { -2, 1, 25, 26 };
++  for (guint i = 0; i < G_N_ELEMENTS (invalid_gaps); i++)
++    {
++      g_assert_false (cc_luma_windows_set_number (model, "gap", invalid_gaps[i], &error));
++      g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT); g_clear_error (&error);
++      g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "gap")), ==, 24);
++    }
++  g_assert_true (cc_luma_windows_set_choice (model, "ws", "fixed", NULL));
++  g_assert_false (cc_luma_windows_set_choice (model, "ws", "invented", &error)); g_clear_error (&error);
++  g_assert_false (cc_luma_windows_set_choice (model, "hsPass", "fixed", &error)); g_clear_error (&error);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "ws")), ==, "fixed");
++  g_assert_false (cc_luma_windows_set_number (model, "wsN", 0, &error)); g_clear_error (&error);
++  g_assert_true (cc_luma_fixture_set_flag (model, "tile", FALSE, NULL));
++  g_assert_true (cc_luma_windows_rects (model, rects, NULL));
++  /* Free-window overlap belongs to the spec; changing modes keeps the gap. */
++  g_assert_cmpfloat (rects[0].x + rects[0].width, >, rects[1].x);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "gap")), ==, 24);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -186,6 +226,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/networks", networks);
+       g_test_add_func ("/settings/fixture/network-undo", network_undo);
+       g_test_add_func ("/settings/fixture/bluetooth", bluetooth_model);
++      g_test_add_func ("/settings/fixture/windows", windows_model);
+     }
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Search
+Comment=Choose what Search can find
+Exec=/usr/libexec/luma-search-settings
+Icon=edit-find-symbolic
+Terminal=false
+Type=Application
+NoDisplay=true
+Categories=GNOME;GTK;Settings;X-GNOME-SystemSettings;
+Keywords=Search;Find;Provider;Files;Applications;Privacy;
+StartupNotify=true

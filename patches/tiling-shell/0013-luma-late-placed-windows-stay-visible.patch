@@ -1,0 +1,77 @@
+From: Project Luma
+Subject: [PATCH] luma: a window placed after it is shown is never left invisible
+
+0012 shows a window that is not yet in its place when the hold runs out, then
+moves it there. The reveal started the map animation (opacity 0 and scale
+0.01 easing in) and the move went through the tiling manager, whose
+_easeWindowRect calls remove_all_transitions() on the actor: the reveal ease
+was cut off and the window stayed at opacity 0 on the desktop while the
+overview's clones, which ignore the actor's opacity, still showed it. Tide
+opened invisible every time.
+
+A window placed late is now shown at once at full opacity and scale, then
+moved. Every reveal also ends with a guard: when the reveal ease stops for
+any reason, and again 400 ms later, a mapped, unminimized window left
+transparent or shrunk is set back to opacity 255 and scale 1, with a
+warning in the log.
+---
+--- a/components/lumaWindowMemory/windowMemory.js
++++ b/components/lumaWindowMemory/windowMemory.js
+@@ -969,9 +969,14 @@ export default class LumaWindowMemory {
+     data.mapped = true;
+     this._onWindowChanged(window);
+     const waited = this._now() - hold.start;
++    // A window that is not in its place yet is shown at once, without the map
++    // animation, and then moved: the tiling manager's move calls
++    // remove_all_transitions() on the actor, which would cut a running reveal
++    // ease short and leave the window invisible (opacity 0, scale 0.01).
++    const late = placeAfter && why !== "in place";
+     try {
+       actor.remove_all_transitions();
+-      if (animate && St.Settings.get().enable_animations && !window.minimized) {
++      if (!late && animate && St.Settings.get().enable_animations && !window.minimized) {
+         // The Shell's own map animation, now at the window's place.
+         actor.set_pivot_point(0.5, 1);
+         actor.scale_x = 0.01;
+@@ -982,7 +987,8 @@ export default class LumaWindowMemory {
+           scale_x: 1,
+           scale_y: 1,
+           duration: 150,
+-          mode: Clutter.AnimationMode.EASE_OUT_EXPO
++          mode: Clutter.AnimationMode.EASE_OUT_EXPO,
++          onStopped: () => this._ensureVisible(window, actor, "reveal ended")
+         });
+       } else {
+         actor.opacity = 255;
+@@ -991,6 +997,8 @@ export default class LumaWindowMemory {
+       }
+     } catch (e) {
+     }
++    // Whatever interrupts the reveal, the window ends up visible.
++    this._timeout(400, () => this._ensureVisible(window, actor, "reveal guard"));
+     const { target, why: reason, confidence, mode } = hold.decision;
+     const placed = why === "in place";
+     data.revealedAfter = waited;
+@@ -1024,6 +1032,22 @@ export default class LumaWindowMemory {
+     }
+   }
+ 
++  // A revealed window is never left transparent or shrunk: the reveal ease can
++  // be cut short by anything that clears the actor's transitions.
++  _ensureVisible(window, actor, why) {
++    try {
++      const data = this._windows.get(window);
++      if (!data || data.hold || data.veil || window.minimized || !actor || actor.is_destroyed?.()) return;
++      if (actor.get_transition("opacity") || actor.get_transition("scale-x")) return;
++      if (actor.opacity === 255 && actor.scale_x === 1 && actor.scale_y === 1) return;
++      vitals("launch-reveal-repaired", `${window[APP]} was left at opacity ${actor.opacity}, scale ${actor.scale_x.toFixed(2)} after its reveal (${why}); shown`, { app: window[APP], reveal: why }, GLib.LogLevelFlags.LEVEL_WARNING);
++      actor.opacity = 255;
++      actor.scale_x = 1;
++      actor.scale_y = 1;
++    } catch (e) {
++    }
++  }
++
+   // A window that was not in its place when the hold ran out is shown where it
+   // is, then moved there with Tiling Shell's own animation.
+   _placeAfterReveal(window, hold) {

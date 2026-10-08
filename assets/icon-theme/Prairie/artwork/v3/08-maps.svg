@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#7bd98d"/><stop offset=".52" stop-color="#4ebc70"/><stop offset="1" stop-color="#279253"/></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="pin" x1="340" y1="200" x2="676" y2="846" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".28" stop-color="#f9faf7"/><stop offset=".61" stop-color="#dfe7de"/><stop offset=".82" stop-color="#f3f5f1"/><stop offset="1" stop-color="#a9b9a7"/></linearGradient>
+    <radialGradient id="pinLight" cx="404" cy="300" r="390" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity=".86"/><stop offset=".5" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="ember" cx=".3" cy=".2" r=".86"><stop stop-color="#ff9d59"/><stop offset=".56" stop-color="#ff6f20"/><stop offset="1" stop-color="#d94708"/></radialGradient>
+    <filter id="moldShadow" x="-35%" y="-35%" width="170%" height="170%"><feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#171713" flood-opacity=".32"/></filter>
+    <path id="pinShape" d="M512 186c-124 0-224 100-224 224 0 142 150 290 218 424 4 8 7 14 10 18 2 4 6 4 8 0 3-4 6-10 10-18 68-134 218-282 218-424 0-124-100-224-224-224Z"/>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+  <g filter="url(#moldShadow)"><use href="#pinShape" fill="url(#pin)" stroke="#fff" stroke-opacity=".48" stroke-width="12"/><use href="#pinShape" fill="url(#pinLight)"/></g>
+  <circle cx="512" cy="410" r="92" fill="url(#ember)" stroke="#ffad72" stroke-opacity=".45" stroke-width="8" filter="url(#moldShadow)"/>
+</svg>

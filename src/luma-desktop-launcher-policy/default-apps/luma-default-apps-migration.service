@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Once per account: hand PDFs and images whose personal default names a
+# replaced stock viewer, a missing application or a browser's claim back to
+# Viewer. The stamp makes every later login skip it without starting it.
+[Unit]
+Description=Make Viewer the default for PDFs and images (once)
+ConditionPathExists=!%S/luma/default-apps-migration/viewer-1
+ConditionPathExists=/usr/share/applications/org.projectluma.Viewer.desktop
+Before=graphical-session-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-default-apps-migration
+
+[Install]
+WantedBy=default.target

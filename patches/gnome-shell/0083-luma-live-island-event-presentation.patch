@@ -1,0 +1,207 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: present a calendar island the way the design states it
+
+Three faults in one island. It carried a generic icon and no date, with
+the qualifying eyebrow printed under the thing it qualifies rather than
+above it. Its single passive action -- open the application, which is
+already what clicking the island does -- drew as an unexplained and
+unsized three-dot glyph, because no icon is mapped for that action and
+the shelf never constrained the action icon. And it sat adrift between
+the dock and the clock: shelfGaps only ever pinned the media island to
+the status cluster by name, so an island in that same position was given
+an even share of the leftover space on either side of it.
+
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -19,6 +19,7 @@
+ import * as Main from './main.js';
+ import {DASH_TILE_SIZE} from './shelfMetrics.js';
+ import * as Util from '../misc/util.js';
++import * as DateUtils from '../misc/dateUtils.js';
+ 
+ import * as RemoteAccessStatus from './status/remoteAccess.js';
+ import * as PowerProfileStatus from './status/powerProfiles.js';
+@@ -88,6 +89,26 @@
+         this._tooltipTarget = null;
+         this._tooltipTimeoutId = 0;
+ 
++        // A date is what a calendar entry leads with, so the island states it
++        // the way a calendar does: the month over the day, in its own badge.
++        // It stands in for the generic icon whenever the provider gave a
++        // start, and the icon comes back when it did not.
++        this._badgeMonth = new St.Label({
++            style_class: 'luma-live-extension-badge-month',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._badgeDay = new St.Label({
++            style_class: 'luma-live-extension-badge-day',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._badge = new St.BoxLayout({
++            style_class: 'luma-live-extension-badge',
++            vertical: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._badge.add_child(this._badgeMonth);
++        this._badge.add_child(this._badgeDay);
+         this._icon = new St.Icon({
+             style_class: 'luma-live-extension-icon',
+             icon_name: 'x-office-calendar-symbolic',
+@@ -109,8 +130,16 @@
+             style_class: 'luma-live-extension-text',
+             vertical: true,
+         });
+-        text.add_child(this._title);
++        // The subtitle is an eyebrow -- "Up next, 42 minutes" -- and it reads
++        // above the thing it qualifies, not below it.
+         text.add_child(this._subtitle);
++        text.add_child(this._title);
++        text.x_expand = true;
++        this._time = new St.Label({
++            style_class: 'luma-live-extension-time',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
+         this._actions = new St.BoxLayout({
+             style_class: 'luma-live-extension-actions',
+             y_align: Clutter.ActorAlign.CENTER,
+@@ -119,8 +148,10 @@
+         const content = this._shelfContent = new St.BoxLayout({
+             style_class: 'luma-live-extension-content',
+         });
++        content.add_child(this._badge);
+         content.add_child(this._icon);
+         content.add_child(text);
++        content.add_child(this._time);
+         content.add_child(this._actions);
+         this.add_child(content);
+ 
+@@ -208,6 +239,7 @@
+         this._title.text = extension.title;
+         this._subtitle.text = extension.subtitle ?? '';
+         this._subtitle.visible = Boolean(extension.subtitle);
++        this._setSchedule(extension.starts_at);
+         this.accessible_name = extension.subtitle
+             ? `${extension.title}, ${extension.subtitle}`
+             : extension.title;
+@@ -225,6 +257,35 @@
+         }
+     }
+ 
++    // A start is stated in ISO 8601 or not at all. An unparseable one leaves
++    // the badge and the time hidden rather than guessed at, because a badge
++    // showing the wrong day is worse than an island without one.
++    _setSchedule(startsAt) {
++        const parsed = typeof startsAt === 'string'
++            ? GLib.DateTime.new_from_iso8601(startsAt, null) : null;
++        const local = parsed?.to_local() ?? null;
++        if (local) {
++            this._badgeMonth.text = local.format('%b').toLocaleUpperCase();
++            this._badgeDay.text = `${local.get_day_of_month()}`;
++            this._time.text = DateUtils.formatTime(local, {timeOnly: true});
++        }
++        this._badge.visible = local !== null;
++        this._time.visible = local !== null;
++        this._icon.visible = local === null;
++    }
++
++    // A lone passive action is the island's own gesture spelled a second time:
++    // clicking the island already opens the application, so a button that does
++    // no more than that is noise -- and with no icon mapped for it, it drew as
++    // an unexplained three-dot glyph. The controls the row exists for, the
++    // consequential and destructive ones, are untouched.
++    _shownActions(item) {
++        const actions = this._validActions(item);
++        if (actions.length === 1 && actions[0].risk === 'passive')
++            return [];
++        return actions;
++    }
++
+     // An action is only renderable when the broker gave us everything needed
+     // to invoke it later: the publication that owns it and a well formed
+     // action record. Anything else is dropped rather than drawn as a control
+@@ -249,7 +310,7 @@
+     // the buttons on every update would drop hover and press state under the
+     // pointer, so the row is only rebuilt when the actions themselves change.
+     _syncActions(item) {
+-        const actions = this._validActions(item);
++        const actions = this._shownActions(item);
+         const key = JSON.stringify([
+             item?.publication_id ?? '',
+             actions.map(action =>
+diff --git a/js/ui/mediaSelection.js b/js/ui/mediaSelection.js
+--- a/js/ui/mediaSelection.js
++++ b/js/ui/mediaSelection.js
+@@ -44,8 +44,17 @@
+ 
+ // Media's boundary with status is fixed; spare space belongs to other gaps.
+ export function shelfGaps(children, media, status, gap, spare = 0) {
+-    const pinned = children.findIndex((child, index) => child === media && children[index + 1] === status);
+-    const flexible = Math.max(0, children.length - 1 - Number(pinned >= 0));
+-    return children.slice(0, -1).map((_child, index) => index === pinned
++    // The status cluster is anchored at the end of the shelf, so whatever sits
++    // immediately before it belongs against it: one padding away, with the
++    // slack spent on the gaps further back. Only the media island used to be
++    // treated that way, by name. A live extension island landing in that same
++    // position was handed an even share of the leftover space on both sides
++    // instead, which is why it read as floating loose between the dock and the
++    // clock rather than belonging to the clock. Pinning by position covers the
++    // media island exactly as before and anything else that lands there.
++    const beforeStatus = children.indexOf(status) - 1;
++    const gaps = children.slice(0, -1);
++    const flexible = gaps.length - (beforeStatus >= 0 ? 1 : 0);
++    return gaps.map((_child, index) => index === beforeStatus
+         ? gap : gap + (flexible ? spare / flexible : 0));
+ }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -760,3 +760,46 @@
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-title { color: #2c343a; }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-subtitle,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-subtitle { color: rgba(44, 52, 58, 0.62); }
++
++/* ── Live extension: the date badge, the time, and the action row ───────── */
++.luma-shelf-live-island .luma-live-extension-badge {
++  border-radius: 8px;
++  padding: 2px 6px 3px 6px;
++  min-width: 26px;
++  background-color: rgba(255, 255, 255, 0.10);
++}
++.luma-shelf-live-island .luma-live-extension-badge-month {
++  font-size: 8px;
++  font-weight: 700;
++  color: rgba(231, 233, 232, 0.66);
++}
++.luma-shelf-live-island .luma-live-extension-badge-day {
++  font-size: 15px;
++  font-weight: 700;
++  color: #e7e9e8;
++}
++.luma-shelf-live-island .luma-live-extension-time {
++  font-size: 12.5px;
++  font-weight: 600;
++  padding: 0 2px 0 8px;
++  color: rgba(231, 233, 232, 0.62);
++}
++/* Unconstrained, this inherited a full-size icon and drew as a huge glyph. */
++.luma-shelf-live-island .luma-live-extension-action-icon { icon-size: 14px; }
++
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge {
++  background-color: rgba(20, 26, 34, 0.07);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge-month { color: rgba(25, 27, 31, 0.62); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge-day { color: #191b1f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-time { color: rgba(25, 27, 31, 0.60); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-badge,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-badge {
++  background-color: rgba(28, 36, 44, 0.09);
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-badge-month,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-badge-month { color: rgba(44, 52, 58, 0.64); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-badge-day,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-badge-day { color: #2c343a; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-time,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-time { color: rgba(44, 52, 58, 0.62); }

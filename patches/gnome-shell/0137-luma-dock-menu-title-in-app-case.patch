@@ -1,0 +1,83 @@
+From 03eaa98691721abd3def9709380ece2337efcc33 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 23:30:21 -0400
+Subject: [PATCH] luma: the dock menu is titled with the app name as people
+ know it
+
+The dock menu\x27s title read DISCORD in the uppercase section heading style.
+It is a title, not a section: the app\x27s name in its own case, 13px at weight
+700 (a step above the rows\x27 600) in the rows\x27 ink. The kit\x27s menu contract has
+no separate title style, so this is its row type a step bolder.
+
+Dropping this patch restores the uppercase heading.
+---
+ data/theme/luma-shelf.css |  4 ++++
+ js/ui/appMenu.js          | 19 ++++++++++++++++---
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index b071916..99127de 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -940,6 +940,10 @@
+ /* Every menu opened from a shelf island has no beak, so the visible gap is
+  * exactly the shelf surface gap (SHELF_SURFACE_GAP in shelfMetrics.js). */
+ .popup-menu-boxpointer.luma-shelf-surface { -arrow-rise: 0; -arrow-base: 0; }
++/* A context menu's title: the name of the thing it is for, in its own case,
++ * a step bolder than the rows and in the rows' ink. Not a section heading. */
++.app-menu .popup-menu-item.luma-menu-title > StLabel,
++.popup-menu-item.luma-menu-title > StLabel { font-size: 13px; font-weight: 700; }
+ .luma-shelf-menu .popup-menu-item { min-height: 32px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 550; }
+ .luma-shelf-menu .popup-separator-menu-item { padding: 5px 7px; }
+ .luma-shelf-menu .luma-well-menu-heading { min-height: 22px; font-size: 9px; font-weight: 700; }
+diff --git a/js/ui/appMenu.js b/js/ui/appMenu.js
+index 17a5a40..9dd998e 100644
+--- a/js/ui/appMenu.js
++++ b/js/ui/appMenu.js
+@@ -161,7 +161,7 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         // app's name, then its windows, what it can open, how it starts, and
+         // the system's actions. A rule sits only between groups that show.
+         this._titleItem = new PopupMenu.PopupMenuItem('', {reactive: false, can_focus: false});
+-        this._titleItem.add_style_class_name('luma-menu-heading');
++        this._titleItem.add_style_class_name('luma-menu-title');
+         this.addMenuItem(this._titleItem);
+ 
+         this._windowSection = new PopupMenu.PopupMenuSection();
+@@ -203,6 +203,7 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this.connect('open-state-changed', (menu, open) => {
+             if (!open)
+                 return;
++            this._syncTitleInk();
+             this._syncGroups();
+             this._queryBackground().catch(logError);
+             this._queryLogin().catch(logError);
+@@ -281,6 +282,18 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateGpuItem();
+     }
+ 
++    // The title cannot be chosen, but it is not a disabled row: it takes the
++    // ink of the menu's rows in whatever surface the menu is drawn in.
++    _syncTitleInk() {
++        const row = [this._quitItem, this._toggleFavoriteItem, this._detailsItem]
++            .find(item => item.visible && item.label?.get_stage()) ?? this._quitItem;
++        const node = row.label?.get_stage() ? row.label.get_theme_node() : null;
++        if (!node)
++            return;
++        const ink = node.get_foreground_color();
++        this._titleItem.label.style = `color: rgba(${ink.red}, ${ink.green}, ${ink.blue}, ${ink.alpha / 255});`;
++    }
++
+     // A rule between two groups that both show something, and nowhere else.
+     _syncGroups() {
+         if (!this._groups)
+@@ -574,8 +587,8 @@ export class AppMenu extends PopupMenu.PopupMenu {
+         this._updateFavoriteItem();
+         this._updateGpuItem();
+ 
+-        // The heading is the app, never one of its windows.
+-        this._titleItem.label.text = (app?.get_name() ?? '').toLocaleUpperCase();
++        // The title is the app's name as people know it, never one of its windows.
++        this._titleItem.label.text = app?.get_name() ?? '';
+         this._titleItem.visible = Boolean(app);
+ 
+         this._backgroundAgent = null;

@@ -1,0 +1,108 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<node>
+  <!--
+    org.projectluma.AudioDevices1: Luma's sound output devices service.
+
+    Session bus name org.projectluma.AudioDevices, object
+    /org/projectluma/AudioDevices. Used by the Shell's sound menu and by
+    Settings. Receivers and devices are dictionaries so fields can be added
+    without a new interface version; clients ignore keys they do not know.
+  -->
+  <interface name="org.projectluma.AudioDevices1">
+    <!--
+      Version: 1 for this interface.
+    -->
+    <property name="Version" type="u" access="read"/>
+
+    <!--
+      AirPlayAvailable: false when there is no Avahi daemon, so no receiver can
+      be found. The picker says so instead of looking forever.
+    -->
+    <property name="AirPlayAvailable" type="b" access="read"/>
+
+    <!--
+      AirPlayBrowsing: true while at least one client keeps the picker open.
+    -->
+    <property name="AirPlayBrowsing" type="b" access="read"/>
+
+    <!--
+      HiddenOutputs: node names of network outputs nobody chose (created by
+      PipeWire discovery modules a person turned back on). Sound menus leave
+      them out unless one is the current output.
+    -->
+    <property name="HiddenOutputs" type="as" access="read"/>
+
+    <!--
+      StartAirPlayBrowsing: the caller opened the picker. Browsing continues
+      until StopAirPlayBrowsing, until the caller leaves the bus, or for at most
+      three minutes; call again to keep a long-open picker current.
+    -->
+    <method name="StartAirPlayBrowsing"/>
+    <method name="StopAirPlayBrowsing"/>
+
+    <!--
+      GetAirPlayReceivers: remembered receivers, plus every receiver on the
+      network while browsing. Keys:
+        id (s)                stable device id, never an address
+        name (s)              the receiver's own name
+        model (s)             model identifier, may be empty
+        kind (s)              "computer", "speaker" or "tv"
+        state (s)             "available", "connecting", "connected", "unavailable"
+        remembered (b)
+        requires_password (b) the receiver announces a password
+        supported (b)         false when it cannot play PCM or ALAC
+        node_name (s)         the PipeWire sink node name while connected
+        error (s)             last failure: "password-required",
+                              "password-incorrect", "denied", "unreachable",
+                              "unsupported", "not-found", "failed" or ""
+    -->
+    <method name="GetAirPlayReceivers">
+      <arg name="receivers" type="aa{sv}" direction="out"/>
+    </method>
+
+    <!--
+      ConnectAirPlayReceiver: check that the receiver accepts a stream, create
+      its output, make it the default and remember it. Pass an empty password
+      unless the person just typed one. Fails with
+      org.projectluma.AudioDevices1.Error.PasswordRequired, .PasswordIncorrect,
+      .Denied, .Unreachable, .Unsupported, .NotFound, .Busy or .Failed; the
+      message is a sentence fit to show.
+    -->
+    <method name="ConnectAirPlayReceiver">
+      <arg name="id" type="s" direction="in"/>
+      <arg name="password" type="s" direction="in"/>
+    </method>
+
+    <!--
+      ForgetAirPlayReceiver: remove the output, the memory and any stored
+      password.
+    -->
+    <method name="ForgetAirPlayReceiver">
+      <arg name="id" type="s" direction="in"/>
+    </method>
+
+    <!--
+      GetOutputDevices: local output devices this account has used. Keys:
+        key (s)     stable device key (bluez:, usb:, display:, card:)
+        name (s)    display name
+        icon (s)    symbolic icon name
+        auto_switch (b) false when the person moved the sound away from it the
+                    last time it was connected, so it no longer takes the
+                    sound when it connects (headphones and Bluetooth audio)
+        present (b)
+        last_seen (x) seconds since the epoch
+    -->
+    <method name="GetOutputDevices">
+      <arg name="devices" type="aa{sv}" direction="out"/>
+    </method>
+
+    <method name="ForgetOutputDevice">
+      <arg name="key" type="s" direction="in"/>
+    </method>
+
+    <signal name="AirPlayReceiversChanged"/>
+    <signal name="OutputDevicesChanged"/>
+  </interface>
+</node>

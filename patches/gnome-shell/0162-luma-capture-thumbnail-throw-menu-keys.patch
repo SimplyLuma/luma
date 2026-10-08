@@ -1,0 +1,1045 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 22:32:00 -0500
+Subject: [PATCH] luma: throw away, menu and keys for the screenshot thumbnail
+
+Throwing the thumbnail toward the right edge of the screen dismisses it at
+once, and the dragged picture carries on the way it was thrown. A throw
+is a drag that no app took, ending at least 40 px right of where it began,
+mostly level, whose fastest 24 ms stretch in its last 150 ms of movement
+reached 0.6 px/ms, and that did not rest before the release (a pointer
+thrown into the edge may rest there briefly). A short or slow drag springs
+back, and dropping onto an app still delivers the file.
+
+Right-clicking it (or Shift+F10 or the Menu key) opens a menu: Open; Open
+With, the default application first, then the others for the type and
+Other Application... (the portal's chooser); Copy (the image; recordings
+omit it); Copy File; Show in Filer; Rename..., which edits the name in
+place; and Move to Trash, after which the thumbnail becomes a pill with
+Undo for six seconds. The thumbnail stays while its menu is open, while it
+is renamed and while it has keyboard focus.
+
+Keys: Delete moves it to the Trash, Escape dismisses it, Enter opens it.
+It joins Ctrl+Alt+Tab. Every action is logged under [luma-capture].
+---
+ data/luma-capture-drag.js   |  18 +-
+ data/theme/luma-capture.css |  61 +++
+ js/ui/lumaCapture.js        | 728 ++++++++++++++++++++++++++++++++++--
+ 3 files changed, 780 insertions(+), 27 deletions(-)
+
+diff --git a/data/luma-capture-drag.js b/data/luma-capture-drag.js
+index fa52888..765e41a 100644
+--- a/data/luma-capture-drag.js
++++ b/data/luma-capture-drag.js
+@@ -18,7 +18,8 @@
+ // Events leave on stdout, one JSON object per line:
+ //   {"event": "ready"}  {"event": "mapped", "serial": n}
+ //   {"event": "hover", "value": bool}  {"event": "click", "serial": n}
+-//   {"event": "drag-begin", "serial": n}
++//   {"event": "menu", "serial": n}  (the secondary button)
++//   {"event": "drag-begin", "serial": n, "x": px, "y": px}  (where it was pressed)
+ //   {"event": "drag-end", "serial": n, "dropped": bool, "reason": string|null}
+ // With no thumbnail for a while the helper exits; the Shell starts it again.
+ 
+@@ -101,12 +102,23 @@ class DragHelper {
+         });
+         this._area.add_controller(click);
+ 
++        // The secondary button opens the Shell's menu for the thumbnail.
++        const menu = new Gtk.GestureClick({button: Gdk.BUTTON_SECONDARY});
++        menu.connect('pressed', () => {
++            if (!this._dragging && this._current)
++                emit({event: 'menu', serial: this._current.serial});
++        });
++        this._area.add_controller(menu);
++
+         const drag = new Gtk.DragSource({actions: Gdk.DragAction.COPY});
+         drag.connect('prepare', (source, x, y) => this._prepare(source, x, y));
+         drag.connect('drag-begin', () => {
+             this._dragging = true;
+             click.set_state(Gtk.EventSequenceState.DENIED);
+-            emit({event: 'drag-begin', serial: this._current?.serial ?? 0});
++            // The Shell tells a throw toward the screen edge from a drag into
++            // an app by where the pointer went from here.
++            emit({event: 'drag-begin', serial: this._current?.serial ?? 0,
++                x: this._pressX, y: this._pressY});
+         });
+         drag.connect('drag-cancel', (_source, _drag, reason) => {
+             this._cancelReason = Object.keys(Gdk.DragCancelReason)
+@@ -207,6 +219,8 @@ class DragHelper {
+     }
+ 
+     _prepare(source, x, y) {
++        this._pressX = x;
++        this._pressY = y;
+         const current = this._current;
+         if (!current || !current.file.query_exists(null))
+             return null;
+diff --git a/data/theme/luma-capture.css b/data/theme/luma-capture.css
+index 2f09ff5..e1b7876 100644
+--- a/data/theme/luma-capture.css
++++ b/data/theme/luma-capture.css
+@@ -353,3 +353,64 @@
+ .luma-surface-dark .luma-capture-thumb-where { color: #969da4; }
+ .luma-surface-glass .luma-capture-thumb-where,
+ .luma-surface-frost .luma-capture-thumb-where { color: rgba(255, 255, 255, 0.90); }
++
++/* Its menu is the Shell's own, opened where it was asked for. */
++.luma-capture-thumb-menu { -arrow-rise: 0; }
++
++/* Rename… edits the name in place, on the surface's control fill. */
++.luma-capture-thumb-rename {
++  margin-top: 5px;
++  padding: 3px 6px;
++  min-height: 0;
++  border-radius: 7px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  background-color: rgba(35, 44, 52, 0.072);
++  box-shadow: none;
++  color: #30343a;
++  caret-color: #30343a;
++  selection-background-color: rgba(48, 52, 58, 0.22);
++  selected-color: #30343a;
++  font-size: 12.5px;
++  font-weight: 700; }
++.luma-capture-thumb-rename:focus { border-color: rgba(48, 52, 58, 0.55); }
++.luma-capture-thumb-rename:error { border-color: #e5484d; }
++.luma-surface-dark .luma-capture-thumb-rename,
++.luma-surface-glass .luma-capture-thumb-rename,
++.luma-surface-frost .luma-capture-thumb-rename {
++  border-color: rgba(255, 255, 255, 0.15);
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #ffffff;
++  caret-color: #ffffff;
++  selection-background-color: rgba(255, 255, 255, 0.28);
++  selected-color: #ffffff; }
++.luma-surface-dark .luma-capture-thumb-rename { color: #e9ebec; caret-color: #e9ebec; selected-color: #e9ebec; }
++.luma-surface-dark .luma-capture-thumb-rename:focus,
++.luma-surface-glass .luma-capture-thumb-rename:focus,
++.luma-surface-frost .luma-capture-thumb-rename:focus { border-color: rgba(255, 255, 255, 0.55); }
++.luma-surface-dark .luma-capture-thumb-rename:error,
++.luma-surface-glass .luma-capture-thumb-rename:error,
++.luma-surface-frost .luma-capture-thumb-rename:error { border-color: #e5484d; }
++
++/* After Move to Trash: a small pill that can undo it. */
++.luma-capture-thumb-undo { spacing: 8px; padding: 6px 6px 6px 14px; }
++.luma-capture-thumb-undo-label { font-size: 12.5px; font-weight: 700; }
++.luma-capture-thumb-undo-button {
++  height: 30px;
++  padding: 0 14px;
++  border-radius: 10px;
++  background-color: #30343a;
++  color: #f1f2f3;
++  font-size: 12.5px;
++  font-weight: 700; }
++.luma-capture-thumb-undo-button:hover { background-color: #3d4249; }
++.luma-capture-thumb-undo-button:focus { box-shadow: inset 0 0 0 2px rgba(241, 242, 243, 0.8) !important; }
++.luma-surface-dark .luma-capture-thumb-undo-button,
++.luma-surface-glass .luma-capture-thumb-undo-button,
++.luma-surface-frost .luma-capture-thumb-undo-button { background-color: #ffffff; color: #161d28; }
++.luma-surface-dark .luma-capture-thumb-undo-button { background-color: #e9ebec; color: #21252b; }
++.luma-surface-dark .luma-capture-thumb-undo-button:hover,
++.luma-surface-glass .luma-capture-thumb-undo-button:hover,
++.luma-surface-frost .luma-capture-thumb-undo-button:hover { background-color: #d9dcdf; }
++.luma-surface-dark .luma-capture-thumb-undo-button:focus,
++.luma-surface-glass .luma-capture-thumb-undo-button:focus,
++.luma-surface-frost .luma-capture-thumb-undo-button:focus { box-shadow: inset 0 0 0 2px rgba(22, 29, 40, 0.8) !important; }
+diff --git a/js/ui/lumaCapture.js b/js/ui/lumaCapture.js
+index 24bc3bc..e8732a6 100644
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -21,6 +21,7 @@ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import GdkPixbuf from 'gi://GdkPixbuf';
+ import Gio from 'gi://Gio';
++import GioUnix from 'gi://GioUnix';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+@@ -28,7 +29,9 @@ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Config from '../misc/config.js';
++import * as BoxPointer from './boxpointer.js';
+ import * as Main from './main.js';
++import * as PopupMenu from './popupMenu.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {placeFromShelfBar, placeShelfBar} from './lumaShelfSurface.js';
+ 
+@@ -64,12 +67,17 @@ export function modeTarget(mode) {
+ export const TIMERS = [0, 5, 10];
+ export const MIN_SELECTION = 24;
+ const THUMBNAIL_SECONDS = 5;
++const UNDO_SECONDS = 6;
++const OPEN_WITH_LIMIT = 8;
+ const BAR_DISTANCE = 8;
+ const THUMBNAIL_DISTANCE = 18;
+ 
+ export const reduceMotion = () => !St.Settings.get().enable_animations;
+ const stageScale = () => St.ThemeContext.get_for_stage(global.stage).scale_factor;
+ const log = (message, data) => console.log(`Luma Capture: ${message}${data ? ` ${JSON.stringify(data)}` : ''}`);
++// One line per thing a person did with a capture (Luma Vitals).
++const vitals = (action, data) =>
++    console.log(`[luma-capture] ${action}${data ? ` ${JSON.stringify(data)}` : ''}`);
+ 
+ let stylesheetLoaded = false;
+ export function loadStylesheet() {
+@@ -1197,9 +1205,13 @@ export class ThumbnailDragBridge {
+             if (event.serial === this._serial)
+                 this._handlers.click?.();
+             break;
++        case 'menu':
++            if (event.serial === this._serial)
++                this._handlers.menu?.();
++            break;
+         case 'drag-begin':
+             log('drag begin', {serial: event.serial});
+-            this._handlers.dragBegin?.();
++            this._handlers.dragBegin?.(event);
+             break;
+         case 'drag-end':
+             log('drag end', {serial: event.serial, dropped: event.dropped, reason: event.reason});
+@@ -1274,6 +1286,11 @@ export class ThumbnailDragBridge {
+         }
+     }
+ 
++    // The thumbnail's stage rectangle at rest, while the helper is over it.
++    get rect() {
++        return this._rect;
++    }
++
+     // rect: the thumbnail's stage rectangle at rest.
+     show({file, preview, mime, rect}) {
+         if (!this.available || !this._ensure())
+@@ -1298,6 +1315,142 @@ export class ThumbnailDragBridge {
+ 
+ // ── Floating thumbnail ─────────────────────────────────────────────────────
+ 
++// Throwing the thumbnail toward the screen's right edge puts it away, as a
++// flick does on a phone. A throw is a drag that ends moving right, fast and
++// mostly level, far enough from where it started, and that no app took; any
++// other drag that ends over nothing springs back. Distances are logical
++// pixels, speeds logical pixels per millisecond.
++export const FLING_MIN_DISTANCE = 40;
++export const FLING_MIN_SPEED = 0.6;
++const FLING_MAX_SLOPE = 0.8;
++// The throw's speed is its fastest stretch of at least FLING_SPAN_US in the
++// last FLING_WINDOW_US of movement: the thumbnail sits near the right edge,
++// so a real throw is short and the pointer stops at the edge.
++const FLING_SPAN_US = 24000;
++const FLING_WINDOW_US = 150000;
++// How long the pointer may rest before the release and still be throwing: a
++// pointer thrown at the edge stops there, so it may rest longer.
++const FLING_REST_US = 100000;
++const FLING_EDGE_REST_US = 250000;
++const FLING_SAMPLE_MS = 8;
++const FLING_SAMPLES = 64;
++
++// samples: [{t (µs), x, y}] in stage pixels, oldest first; start: {x, y}
++// where the drag was pressed. Returns the verdict and what it saw.
++export function flingVerdict(samples, start, {scale = 1, rightEdge = Infinity, endTime = null} = {}) {
++    if (!start || samples.length < 2)
++        return {fling: false, reason: 'too few samples'};
++    const last = samples.at(-1);
++    const dx = (last.x - start.x) / scale;
++    const dy = (last.y - start.y) / scale;
++    // The last sample at which the pointer was still moving.
++    let moved = samples.length - 1;
++    while (moved > 0 && Math.abs(samples[moved].x - samples[moved - 1].x) < 0.5 &&
++        Math.abs(samples[moved].y - samples[moved - 1].y) < 0.5)
++        moved--;
++    let speed = 0;
++    for (let i = moved; i > 0 && samples[moved].t - samples[i].t <= FLING_WINDOW_US; i--) {
++        let j = i - 1;
++        while (j > 0 && samples[i].t - samples[j].t < FLING_SPAN_US)
++            j--;
++        const dt = (samples[i].t - samples[j].t) / 1000;
++        if (dt > 0)
++            speed = Math.max(speed, (samples[i].x - samples[j].x) / scale / dt);
++    }
++    const atEdge = last.x >= rightEdge - 2;
++    const rest = (endTime ?? last.t) - samples[moved].t;
++    const verdict = {
++        dx: Math.round(dx),
++        dy: Math.round(dy),
++        speed: Math.round(speed * 100) / 100,
++        restMs: Math.round(rest / 1000),
++        atEdge,
++    };
++    let reason = null;
++    if (dx < FLING_MIN_DISTANCE)
++        reason = 'short';
++    else if (Math.abs(dy) > dx * FLING_MAX_SLOPE)
++        reason = 'not level';
++    else if (speed < FLING_MIN_SPEED)
++        reason = 'slow';
++    else if (rest > (atEdge ? FLING_EDGE_REST_US : FLING_REST_US))
++        reason = 'stopped';
++    return {fling: reason === null, reason, ...verdict};
++}
++
++const trashAsync = file => new Promise((resolve, reject) =>
++    file.trash_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
++        try {
++            resolve(f.trash_finish(res));
++        } catch (e) {
++            reject(e);
++        }
++    }));
++
++// The newest item in the trash that was `path`, through GVfs's trash:///
++// (its trash::orig-path), put back where it was. Without GVfs, the home
++// trash as the freedesktop.org Trash specification lays it out.
++export async function restoreFromTrash(path) {
++    const target = Gio.File.new_for_path(path);
++    if (Gio.Vfs.get_default().get_supported_uri_schemes().includes('trash')) {
++        try {
++            const trash = Gio.File.new_for_uri('trash:///');
++            const children = await new Promise((resolve, reject) =>
++                trash.enumerate_children_async('standard::name,trash::orig-path,trash::deletion-date',
++                    Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, GLib.PRIORITY_DEFAULT, null, (f, res) => {
++                        try {
++                            resolve(f.enumerate_children_finish(res));
++                        } catch (e) {
++                            reject(e);
++                        }
++                    }));
++            let best = null;
++            for (let info = children.next_file(null); info; info = children.next_file(null)) {
++                if (info.get_attribute_byte_string('trash::orig-path') !== path)
++                    continue;
++                const date = info.get_deletion_date()?.to_unix() ?? 0;
++                if (!best || date >= best.date)
++                    best = {file: children.get_child(info), date};
++            }
++            children.close(null);
++            if (best) {
++                best.file.move(target, Gio.FileCopyFlags.NONE, null, null);
++                return 'trash:///';
++            }
++        } catch (e) {
++            logError(e, 'Luma Capture: trash:/// restore');
++        }
++    }
++    const home = GLib.build_filenamev([GLib.get_user_data_dir(), 'Trash']);
++    const infoDir = Gio.File.new_for_path(GLib.build_filenamev([home, 'info']));
++    if (!infoDir.query_exists(null))
++        return null;
++    let best = null;
++    const children = infoDir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
++    for (let info = children.next_file(null); info; info = children.next_file(null)) {
++        const name = info.get_name();
++        if (!name.endsWith('.trashinfo'))
++            continue;
++        const keyFile = new GLib.KeyFile();
++        try {
++            keyFile.load_from_file(GLib.build_filenamev([infoDir.get_path(), name]), GLib.KeyFileFlags.NONE);
++            const where = GLib.uri_unescape_string(keyFile.get_string('Trash Info', 'Path'), null);
++            const date = keyFile.get_string('Trash Info', 'DeletionDate');
++            if (where === path && (!best || date >= best.date))
++                best = {name: name.slice(0, -'.trashinfo'.length), date};
++        } catch {
++            continue;
++        }
++    }
++    children.close(null);
++    if (!best)
++        return null;
++    Gio.File.new_for_path(GLib.build_filenamev([home, 'files', best.name]))
++        .move(target, Gio.FileCopyFlags.NONE, null, null);
++    infoDir.get_child(`${best.name}.trashinfo`).delete(null);
++    return 'trash info';
++}
++
+ export const CaptureThumbnail = GObject.registerClass(
+ class CaptureThumbnail extends Surface {
+     _init() {
+@@ -1334,23 +1487,87 @@ class CaptureThumbnail extends Surface {
+         this._name = new St.Label({style_class: 'luma-capture-thumb-name'});
+         this._name.clutter_text.ellipsize = 3; // Pango.EllipsizeMode.END
+         box.add_child(this._name);
++        // Rename… edits the name in place.
++        this._nameEntry = new St.Entry({
++            style_class: 'luma-capture-thumb-rename',
++            can_focus: true,
++            x_expand: true,
++            visible: false,
++        });
++        this._nameEntry.clutter_text.connect('activate', () => this._commitRename());
++        this._nameEntry.clutter_text.connect('key-press-event', (_text, event) => {
++            if (event.get_key_symbol() !== Clutter.KEY_Escape)
++                return Clutter.EVENT_PROPAGATE;
++            this._endRename();
++            return Clutter.EVENT_STOP;
++        });
++        this._nameEntry.clutter_text.connect('text-changed', () =>
++            this._nameEntry.remove_style_pseudo_class('error'));
++        box.add_child(this._nameEntry);
+         this._where = new St.Label({style_class: 'luma-capture-thumb-where'});
+         this._where.clutter_text.ellipsize = 3;
+         box.add_child(this._where);
+ 
++        // After Move to Trash the thumbnail is a small pill that can undo it.
++        this._undoRow = new St.BoxLayout({
++            style_class: 'luma-capture-thumb-undo',
++            x_expand: true,
++            visible: false,
++        });
++        this._undoLabel = new St.Label({
++            style_class: 'luma-capture-thumb-undo-label',
++            text: _('Moved to Trash'),
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._undoLabel.clutter_text.ellipsize = 3;
++        this._undoRow.add_child(this._undoLabel);
++        this._undoButton = new St.Button({
++            style_class: 'luma-capture-thumb-undo-button',
++            label: _('Undo'),
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._undoButton.connect('clicked', () => this._undoTrash().catch(e =>
++            logError(e, 'Luma Capture: undo')));
++        this._undoRow.add_child(this._undoButton);
++        this.setContent(this._undoRow);
++
+         this._file = null;
++        this._kind = null;
++        this._mime = null;
++        this._showArgs = null;
++        this._place = null;
+         this._timeoutId = 0;
+         this._helperHover = false;
+         this._dragging = false;
++        this._menuOpen = false;
++        this._renaming = false;
++        this._trashed = null;
++        this._samples = [];
++        this._pollId = 0;
++        this._releaseTime = null;
++        this._dragStart = null;
+         this._button.connect('clicked', () => this._open());
++        this._button.connect('key-press-event', (_actor, event) => this._onKeyPress(event));
++        this._undoButton.connect('key-press-event', (_actor, event) => this._onKeyPress(event));
++        this._button.connect('button-press-event', (_actor, event) => {
++            if (event.get_button() !== Clutter.BUTTON_SECONDARY)
++                return Clutter.EVENT_PROPAGATE;
++            this._openMenu();
++            return Clutter.EVENT_STOP;
++        });
+         this.connect('notify::hover', () => this._syncHover());
++        global.stage.connectObject('notify::key-focus', () => this._syncHover(), this);
+         Main.layoutManager.addTopChrome(this);
++        // Ctrl+Alt+Tab reaches it, as it does the panel and the dash.
++        Main.ctrlAltTabManager.addGroup(this, _('Screenshot'), 'luma-capture-screen-symbolic');
+ 
+         // Dragging the thumbnail into an app goes through a helper window laid
+         // over it; while that window is there it takes the pointer.
+         this._drag = new ThumbnailDragBridge({
+             active: () => {
+-                if (!this.visible || this._leaving)
++                if (!this.visible || this._leaving || this._renaming || this._trashed)
+                     return;
+                 Shell.util_set_hidden_from_pick(this, true);
+             },
+@@ -1358,25 +1575,34 @@ class CaptureThumbnail extends Surface {
+                 Shell.util_set_hidden_from_pick(this, false);
+                 this._helperHover = false;
+                 this._dragging = false;
++                this._stopSampling();
+             },
+             hover: value => {
+                 this._helperHover = value;
+                 this._syncHover();
+             },
+             click: () => this._open(),
+-            dragBegin: () => {
++            menu: () => this._openMenu(),
++            dragBegin: event => {
+                 this._dragging = true;
+                 this._clearTimeout();
++                this._startSampling(event);
+                 this.remove_all_transitions();
+                 this.ease({opacity: 110, duration: 120, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+             },
+             dragEnd: dropped => {
+                 this._dragging = false;
++                const verdict = this._stopSampling();
++                vitals('drag end', {dropped, ...verdict});
+                 if (dropped) {
+                     // The file stays where it was saved; the thumbnail leaves.
+                     this.dismiss();
+                     return;
+                 }
++                if (verdict.fling) {
++                    this._fling();
++                    return;
++                }
+                 this.remove_all_transitions();
+                 this.ease({opacity: 255, duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+                 this._syncHover();
+@@ -1388,12 +1614,36 @@ class CaptureThumbnail extends Surface {
+         return this._drag;
+     }
+ 
++    get menu() {
++        return this._menu ?? null;
++    }
++
++    get renaming() {
++        return this._renaming;
++    }
++
++    get trashed() {
++        return this._trashed;
++    }
++
++    _hasKeyFocus() {
++        const focus = global.stage.key_focus;
++        return focus !== null && focus !== this && this.contains(focus);
++    }
++
++    // Held open while the pointer is over it, its menu is open, its name is
++    // being edited or it has the keyboard.
++    _held() {
++        return this.hover || this._helperHover || this._dragging || this._menuOpen ||
++            this._renaming || this._hasKeyFocus();
++    }
++
+     _syncHover() {
+         if (!this.visible || this._leaving || this._dragging)
+             return;
+-        if (this.hover || this._helperHover)
++        if (this._held())
+             this._clearTimeout();
+-        else
++        else if (!this._timeoutId)
+             this._scheduleHide();
+     }
+ 
+@@ -1412,7 +1662,13 @@ class CaptureThumbnail extends Surface {
+     // Shows the thumbnail for a capture. `preview` is a PNG path.
+     present({kind, preview, file, name, where, place}) {
+         this._clearTimeout();
++        this._menu?.close(BoxPointer.PopupAnimation.NONE);
++        this._endRename({resume: false});
++        this._showPreview(true);
++        this._trashed = null;
+         this._file = file;
++        this._kind = kind;
++        this._place = place;
+         this._leaving = false;
+         this._image.style = preview ? `background-image: url("file://${preview}");` : null;
+         this._play.visible = kind === 'recording';
+@@ -1420,25 +1676,17 @@ class CaptureThumbnail extends Surface {
+         this._where.text = where;
+         this._button.reactive = file !== null;
+         this.surface.accessible_name = `${name}, ${where}`;
++        this._mime = kind === 'recording'
++            ? file?.get_basename().endsWith('.mp4') ? 'video/mp4' : 'video/webm'
++            : 'image/png';
++        this._showArgs = file ? {preview, mime: this._mime} : null;
+         this.remove_all_transitions();
+         this.show();
+-        const [, , width, height] = this.get_preferred_size();
+-        const slot = place({width, height});
+-        if (slot)
+-            this.set_position(slot.x, slot.y);
+-        Shell.util_set_hidden_from_pick(this, false);
++        const slot = this._placeNow();
+         this._helperHover = false;
+         this._dragging = false;
+-        if (file && slot) {
+-            this._drag.show({
+-                file,
+-                preview,
+-                mime: kind === 'recording'
+-                    ? file.get_basename().endsWith('.mp4') ? 'video/mp4' : 'video/webm'
+-                    : 'image/png',
+-                rect: {x: slot.x, y: slot.y, width, height},
+-            });
+-        }
++        if (slot)
++            this._showHelper(slot);
+         const distance = reduceMotion() ? 0 : THUMBNAIL_DISTANCE * stageScale();
+         this.set({opacity: 0, translation_x: distance});
+         this.ease({
+@@ -1450,11 +1698,38 @@ class CaptureThumbnail extends Surface {
+         this._scheduleHide();
+     }
+ 
++    // Places it by the shelf rule at its size now; returns its rectangle.
++    _placeNow() {
++        const [, , width, height] = this.get_preferred_size();
++        const slot = this._place?.({width, height});
++        if (slot)
++            this.set_position(slot.x, slot.y);
++        return slot ? {x: slot.x, y: slot.y, width, height} : null;
++    }
++
++    // The drag helper over the thumbnail at rest (not while renaming or
++    // offering Undo: the Shell takes the pointer then).
++    _showHelper(rect = {x: this.x, y: this.y, width: this.width, height: this.height}) {
++        Shell.util_set_hidden_from_pick(this, false);
++        if (!this._file || !this._showArgs || this._renaming || this._trashed)
++            return;
++        if (rect.width <= 0)
++            return;
++        this._drag.show({file: this._file, rect, ...this._showArgs});
++    }
++
++    _hideHelper() {
++        this._drag.hide();
++        Shell.util_set_hidden_from_pick(this, false);
++        this._helperHover = false;
++    }
++
+     _scheduleHide() {
+         this._clearTimeout();
+-        this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, THUMBNAIL_SECONDS, () => {
++        const seconds = this._trashed ? UNDO_SECONDS : THUMBNAIL_SECONDS;
++        this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, () => {
+             this._timeoutId = 0;
+-            if (this.hover || this._helperHover || this._dragging)
++            if (this._held())
+                 return GLib.SOURCE_REMOVE;
+             this.dismiss();
+             return GLib.SOURCE_REMOVE;
+@@ -1466,24 +1741,200 @@ class CaptureThumbnail extends Surface {
+         this._clearTimeout();
+         if (this._dragging)
+             return;
++        this._menu?.close(BoxPointer.PopupAnimation.NONE);
++        this._endRename({resume: false});
+         this._drag.hide();
+         Shell.util_set_hidden_from_pick(this, false);
+         if (!this.visible)
+             return;
++        this._leave(reduceMotion() ? 0 : THUMBNAIL_DISTANCE * stageScale(), 200,
++            Clutter.AnimationMode.EASE_OUT_QUAD);
++    }
++
++    _leave(distance, duration, mode) {
++        if (this._hasKeyFocus())
++            global.stage.set_key_focus(null);
+         this._leaving = true;
+         this.remove_all_transitions();
+         this.ease({
+             opacity: 0,
+-            translation_x: reduceMotion() ? 0 : THUMBNAIL_DISTANCE * stageScale(),
+-            duration: reduceMotion() ? 0 : 200,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            translation_x: distance,
++            duration: reduceMotion() ? 0 : duration,
++            mode,
+             onComplete: () => {
+                 this.hide();
+                 this._leaving = false;
++                this._trashed = null;
++                this._showPreview(true);
+             },
+         });
+     }
+ 
++    // ── Throwing it away ──
++
++    _startSampling(event) {
++        this._stopSampling();
++        const rect = this._drag.rect;
++        const scale = stageScale();
++        this._dragStart = rect && Number.isFinite(event?.x)
++            ? {x: rect.x + event.x * scale, y: rect.y + event.y * scale}
++            : null;
++        this._samples = [];
++        this._releaseTime = null;
++        const sample = () => {
++            const [x, y, mods] = global.get_pointer();
++            const t = GLib.get_monotonic_time();
++            if (!(mods & Clutter.ModifierType.BUTTON1_MASK)) {
++                this._releaseTime ??= t;
++                return;
++            }
++            this._dragStart ??= {x, y};
++            this._samples.push({t, x, y});
++            if (this._samples.length > FLING_SAMPLES)
++                this._samples.shift();
++        };
++        sample();
++        this._pollId = GLib.timeout_add(GLib.PRIORITY_HIGH, FLING_SAMPLE_MS, () => {
++            if (this._releaseTime === null)
++                sample();
++            return GLib.SOURCE_CONTINUE;
++        });
++        GLib.Source.set_name_by_id(this._pollId, '[gnome-shell] Capture thumbnail throw');
++    }
++
++    _stopSampling() {
++        if (!this._pollId)
++            return {fling: false, reason: 'not dragging'};
++        GLib.source_remove(this._pollId);
++        this._pollId = 0;
++        const monitor = Main.layoutManager.findMonitorForActor(this);
++        return flingVerdict(this._samples, this._dragStart, {
++            scale: stageScale(),
++            rightEdge: monitor ? monitor.x + monitor.width : Infinity,
++            endTime: this._releaseTime ?? GLib.get_monotonic_time(),
++        });
++    }
++
++    _fling() {
++        const monitor = Main.layoutManager.findMonitorForActor(this);
++        const distance = monitor ? monitor.x + monitor.width - this.x + 24 * stageScale()
++            : this.width * 1.5;
++        // The picture being dragged goes on the way it was thrown instead of
++        // gliding back to where the drag began.
++        for (const actor of global.top_window_group.get_children()) {
++            if (actor.constructor.$gtype.name === 'MetaDnDActor')
++                actor.ease({translation_x: distance, duration: 220, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        }
++        vitals('flung away', {path: this._file?.get_path() ?? null});
++        this._drag.hide();
++        Shell.util_set_hidden_from_pick(this, false);
++        this._menu?.close(BoxPointer.PopupAnimation.NONE);
++        this._leave(reduceMotion() ? 0 : distance, 240, Clutter.AnimationMode.EASE_OUT_CUBIC);
++    }
++
++    // ── Keyboard ──
++
++    _onKeyPress(event) {
++        const key = event.get_key_symbol();
++        const shift = (event.get_state() & Clutter.ModifierType.SHIFT_MASK) !== 0;
++        if (key === Clutter.KEY_Escape) {
++            vitals('dismissed', {by: 'Escape'});
++            this.dismiss();
++            return Clutter.EVENT_STOP;
++        }
++        if (this._trashed || !this._file)
++            return Clutter.EVENT_PROPAGATE;
++        if (key === Clutter.KEY_Delete || key === Clutter.KEY_KP_Delete) {
++            this._trash().catch(e => logError(e, 'Luma Capture: trash'));
++            return Clutter.EVENT_STOP;
++        }
++        if (key === Clutter.KEY_Menu || (shift && key === Clutter.KEY_F10)) {
++            this._openMenu({fromKeyboard: true});
++            return Clutter.EVENT_STOP;
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    // ── The menu ──
++
++    _ensureMenu() {
++        if (this._menu)
++            return;
++        // Opened where it was asked for, like the desktop's own menu.
++        this._menuAnchor = new St.Widget({width: 0, height: 0});
++        Main.uiGroup.add_child(this._menuAnchor);
++        this._menu = new PopupMenu.PopupMenu(this._menuAnchor, 0, St.Side.TOP);
++        this._menu.actor.add_style_class_name('luma-capture-thumb-menu');
++        Main.uiGroup.add_child(this._menu.actor);
++        this._menu.actor.hide();
++        this._menuManager = new PopupMenu.PopupMenuManager(this._menuAnchor);
++        this._menuManager.addMenu(this._menu);
++        this._menu.connect('open-state-changed', (_menu, open) => {
++            this._menuOpen = open;
++            vitals(open ? 'menu opened' : 'menu closed');
++            if (open)
++                this._clearTimeout();
++            else
++                this._syncHover();
++        });
++    }
++
++    _openMenu({fromKeyboard = false} = {}) {
++        if (!this._file || this._trashed || this._renaming || this._leaving || !this.visible)
++            return;
++        this._ensureMenu();
++        this._buildMenu();
++        let [x, y] = global.get_pointer();
++        if (fromKeyboard) {
++            const [tx, ty] = this.get_transformed_position();
++            [x, y] = [tx + this.width / 2, ty + this.height / 2];
++        }
++        this._menuAnchor.set_position(x, y);
++        Main.uiGroup.set_child_above_sibling(this._menuAnchor, null);
++        Main.uiGroup.set_child_above_sibling(this._menu.actor, null);
++        this._menu.open(BoxPointer.PopupAnimation.FULL);
++        if (fromKeyboard)
++            this._menu.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
++    }
++
++    _buildMenu() {
++        const menu = this._menu;
++        menu.removeAll();
++        const item = (label, action, callback) => menu.addAction(label, () => {
++            vitals(action, {path: this._file?.get_path() ?? null});
++            callback();
++        });
++        item(_('Open'), 'open', () => this._open());
++        const apps = this._appsForFile();
++        const openWith = new PopupMenu.PopupSubMenuMenuItem(_('Open With'));
++        for (const app of apps) {
++            openWith.menu.addAction(app.get_name(), () => this._openWith(app), app.get_icon() ?? undefined);
++        }
++        openWith.menu.addAction(_('Other Application…'), () => this._openWithOther());
++        menu.addMenuItem(openWith);
++        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        if (this._kind !== 'recording')
++            item(_('Copy'), 'copy', () => this._copyImage());
++        item(_('Copy File'), 'copy file', () => this._copyFile());
++        item(_('Show in Filer'), 'show in filer', () => this._showInFiler());
++        item(_('Rename…'), 'rename', () => this._startRename());
++        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        item(_('Move to Trash'), 'move to trash', () =>
++            this._trash().catch(e => logError(e, 'Luma Capture: trash')));
++    }
++
++    // Apps for the capture's type, its default app first.
++    _appsForFile() {
++        const type = this._mime;
++        const first = Gio.AppInfo.get_default_for_type(type, false);
++        const apps = first ? [first] : [];
++        for (const app of Gio.AppInfo.get_all_for_type(type)) {
++            if (app.should_show() && !apps.some(a => a.get_id() === app.get_id()))
++                apps.push(app);
++        }
++        return apps.slice(0, OPEN_WITH_LIMIT);
++    }
++
+     _open() {
+         if (!this._file)
+             return;
+@@ -1497,6 +1948,233 @@ class CaptureThumbnail extends Surface {
+         this.dismiss();
+     }
+ 
++    _openWith(app) {
++        vitals('open with', {app: app.get_id(), path: this._file.get_path()});
++        try {
++            app.launch([this._file], global.create_app_launch_context(0, -1));
++        } catch (e) {
++            logError(e, `Luma Capture: ${app.get_id()} did not open the capture`);
++        }
++        this.dismiss();
++    }
++
++    // The desktop portal's app chooser (OpenFile with "ask"), the same one
++    // apps show for Open With.
++    _openWithOther() {
++        const file = this._file;
++        vitals('open with other', {path: file.get_path()});
++        let stream;
++        try {
++            stream = file.read(null);
++            const fds = new Gio.UnixFDList();
++            const index = fds.append(GioUnix.FileDescriptorBased.prototype.get_fd.call(stream));
++            Gio.DBus.session.call_with_unix_fd_list('org.freedesktop.portal.Desktop',
++                '/org/freedesktop/portal/desktop', 'org.freedesktop.portal.OpenURI', 'OpenFile',
++                new GLib.Variant('(sha{sv})', ['', index, {
++                    'ask': new GLib.Variant('b', true),
++                    'writable': new GLib.Variant('b', false),
++                }]),
++                null, Gio.DBusCallFlags.NONE, -1, fds, null, (connection, result) => {
++                    stream.close(null);
++                    try {
++                        connection.call_with_unix_fd_list_finish(result);
++                    } catch (e) {
++                        logError(e, 'Luma Capture: the app chooser did not open');
++                    }
++                });
++        } catch (e) {
++            stream?.close(null);
++            logError(e, 'Luma Capture: the app chooser did not open');
++        }
++        this.dismiss();
++    }
++
++    _copyImage() {
++        try {
++            const [, contents] = this._file.load_contents(null);
++            St.Clipboard.get_default().set_content(St.ClipboardType.CLIPBOARD, this._mime,
++                new GLib.Bytes(contents));
++            this._flashWhere(_('Copied'));
++        } catch (e) {
++            logError(e, 'Luma Capture: could not copy the capture');
++        }
++    }
++
++    _copyFile() {
++        St.Clipboard.get_default().set_content(St.ClipboardType.CLIPBOARD, 'text/uri-list',
++            new GLib.Bytes(new TextEncoder().encode(`${this._file.get_uri()}\r\n`)));
++        this._flashWhere(_('Copied'));
++    }
++
++    _showInFiler() {
++        Gio.DBus.session.call('org.freedesktop.FileManager1', '/org/freedesktop/FileManager1',
++            'org.freedesktop.FileManager1', 'ShowItems',
++            new GLib.Variant('(ass)', [[this._file.get_uri()], '']),
++            null, Gio.DBusCallFlags.NONE, -1, null, (connection, result) => {
++                try {
++                    connection.call_finish(result);
++                } catch (e) {
++                    logError(e, 'Luma Capture: Filer did not show the capture');
++                }
++            });
++        this.dismiss();
++    }
++
++    // The "where" line says what just happened for a moment.
++    _flashWhere(text) {
++        const where = this._whereSaved ?? this._where.text;
++        this._whereSaved = where;
++        this._where.text = text;
++        if (this._flashId)
++            GLib.source_remove(this._flashId);
++        this._flashId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1400, () => {
++            this._flashId = 0;
++            this._where.text = where;
++            this._whereSaved = null;
++            return GLib.SOURCE_REMOVE;
++        });
++        announce(this.surface, text);
++    }
++
++    // ── Rename ──
++
++    _startRename() {
++        if (!this._file || this._renaming || this._trashed)
++            return;
++        this._renaming = true;
++        this._clearTimeout();
++        this._hideHelper();
++        this._button.reactive = false;
++        const name = this._file.get_basename();
++        this._nameEntry.text = name;
++        this._nameEntry.remove_style_pseudo_class('error');
++        this._name.hide();
++        this._nameEntry.show();
++        // After the menu has closed and given the keyboard back.
++        global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            if (!this._renaming)
++                return GLib.SOURCE_REMOVE;
++            this._nameEntry.grab_key_focus();
++            const dot = name.lastIndexOf('.');
++            this._nameEntry.clutter_text.set_selection(0, dot > 0 ? dot : name.length);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _commitRename() {
++        if (!this._renaming)
++            return;
++        const old = this._file.get_basename();
++        let text = this._nameEntry.text.trim();
++        const dot = old.lastIndexOf('.');
++        const extension = dot > 0 ? old.slice(dot) : '';
++        if (text && extension && !text.toLowerCase().endsWith(extension.toLowerCase()))
++            text += extension;
++        if (!text || text === old || text === extension) {
++            this._endRename();
++            return;
++        }
++        if (text.includes('/') || text === '.' || text === '..') {
++            this._nameEntry.add_style_pseudo_class('error');
++            return;
++        }
++        try {
++            const renamed = this._file.set_display_name(text, null);
++            vitals('renamed', {from: this._file.get_path(), to: renamed.get_path()});
++            this._file = renamed;
++            this._name.text = renamed.get_basename();
++            this.surface.accessible_name = `${this._name.text}, ${this._where.text}`;
++        } catch (e) {
++            vitals('rename failed', {to: text, error: e.message});
++            this._nameEntry.add_style_pseudo_class('error');
++            return;
++        }
++        this._endRename({keepFocus: true});
++    }
++
++    _endRename({keepFocus = false, resume = true} = {}) {
++        if (!this._renaming)
++            return;
++        const hadFocus = this._nameEntry.clutter_text.has_key_focus();
++        this._renaming = false;
++        this._nameEntry.hide();
++        this._name.show();
++        this._button.reactive = this._file !== null;
++        if (hadFocus) {
++            if (keepFocus)
++                this._button.grab_key_focus();
++            else
++                global.stage.set_key_focus(null);
++        }
++        if (resume && this.visible && !this._leaving) {
++            this._showHelper();
++            this._syncHover();
++        }
++    }
++
++    // ── Trash and Undo ──
++
++    _showPreview(visible) {
++        this._button.visible = visible;
++        this._undoRow.visible = !visible;
++    }
++
++    async _trash() {
++        const file = this._file;
++        if (!file || this._trashed)
++            return;
++        this._endRename({resume: false});
++        const path = file.get_path();
++        const focused = this._hasKeyFocus();
++        try {
++            await trashAsync(file);
++        } catch (e) {
++            vitals('trash failed', {path, error: e.message});
++            this._flashWhere(_('Could not move to Trash'));
++            return;
++        }
++        vitals('moved to trash', {path});
++        if (!this.visible || this._leaving)
++            return;
++        this._trashed = {path};
++        this._hideHelper();
++        this._undoLabel.text = _('Moved to Trash');
++        this._showPreview(false);
++        this.surface.accessible_name = _('Moved to Trash');
++        announce(this.surface, _('Moved to Trash'));
++        this._placeNow();
++        if (focused)
++            this._undoButton.grab_key_focus();
++        this._scheduleHide();
++    }
++
++    async _undoTrash() {
++        const trashed = this._trashed;
++        if (!trashed)
++            return;
++        let via = null;
++        try {
++            via = await restoreFromTrash(trashed.path);
++        } catch (e) {
++            logError(e, 'Luma Capture: restore from trash');
++        }
++        vitals(via ? 'restored from trash' : 'restore failed', {path: trashed.path, via});
++        if (!via) {
++            this._undoLabel.text = _('Could not restore');
++            return;
++        }
++        const focused = this._hasKeyFocus();
++        this._trashed = null;
++        this._file = Gio.File.new_for_path(trashed.path);
++        this._showPreview(true);
++        this.surface.accessible_name = `${this._name.text}, ${this._where.text}`;
++        this._placeNow();
++        if (focused)
++            this._button.grab_key_focus();
++        this._showHelper();
++        this._scheduleHide();
++    }
++
+     _clearTimeout() {
+         if (this._timeoutId)
+             GLib.source_remove(this._timeoutId);

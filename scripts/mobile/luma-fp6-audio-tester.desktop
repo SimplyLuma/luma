@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FP6 Audio Test
+Comment=Test the Fairphone 6 speaker and earpiece
+Exec=/home/luma/.local/libexec/luma-fp6-audio-tester.py /home/luma/.local/share/luma-audio-test/Money.mp3
+Icon=audio-speakers-symbolic
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=true

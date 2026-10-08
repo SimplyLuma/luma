@@ -1,0 +1,31 @@
+From: Isaac J. Manjarres <isaacmanjarres@google.com>
+Subject: [PATCH 2/2] mm: shmem: Use memfd ashmem shim ioctl handler
+
+Adapted from Android common-kernel commit 6e4f491 for Linux 7.1.2 context.
+
+diff --git a/mm/shmem.c b/mm/shmem.c
+--- a/mm/shmem.c
++++ b/mm/shmem.c
+@@ -87,6 +87,10 @@
+ 
+ #include "internal.h"
+ 
++#ifdef CONFIG_MEMFD_ASHMEM_SHIM
++#include "memfd-ashmem-shim.h"
++#endif
++
+ #define VM_ACCT(size)    (PAGE_ALIGN(size) >> PAGE_SHIFT)
+ 
+ /* Pretend that each entry is of this size in directory's i_size */
+@@ -5231,5 +5235,11 @@ static const struct file_operations shmem_file_operations = {
+ 	.setlease	= generic_setlease,
+ #endif
++#ifdef CONFIG_MEMFD_ASHMEM_SHIM
++	.unlocked_ioctl	= memfd_ashmem_shim_ioctl,
++#ifdef CONFIG_COMPAT
++	.compat_ioctl	= memfd_ashmem_shim_compat_ioctl,
++#endif
++#endif
+ };
+ 
+ static const struct inode_operations shmem_inode_operations = {

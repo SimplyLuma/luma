@@ -1,0 +1,519 @@
+From: Project Luma
+Subject: [PATCH] theme: one glass material for every window
+
+Owner, 2026-09-22: in Glass every window had a slightly different title bar,
+and the content inside a window -- a month grid, a sidebar, an event chip --
+could be read through the surfaces on top of it.
+
+Two faults, both in how the treatment reached an application.
+
+A window learned its treatment only from LumaSurfaceBackdrop, which only the
+application kit's window class creates. Every other window carried no
+treatment class at all, so none of the Frost or Glass rules selected it and it
+kept the opaque Light title bar. Worse, the class the backdrop did apply came
+from a policy gated on whether that one surface had negotiated its own blur
+region, so two kit windows could disagree as well. The style manager now makes
+the decision once per display and applies it to every toplevel, which needs no
+compositor protocol; the blur region stays per window, where it belongs, and
+no longer changes what colour anything is painted.
+
+Luma's palette reaches this stylesheet as '@luma_*' named colours, and GTK
+named colours are global: they cannot be restated per window. A Frost or Glass
+window therefore carried the light values for every role except the ones an
+application redefined by loading the kit's token sheet -- and '@luma_chrome',
+which the title band of 0040 names, was never defined here at all, so in an
+application without the kit GTK dropped the band without a word. The material
+is restated as custom properties on the window, which are scoped to a
+selector, so every application follows the appearance whether or not it knows
+the kit exists.
+
+With that in place the material itself is one value per role: the title band,
+context menus, popovers and sheets all take one veil (they were 37%/46% for
+the band and 88%/80% for menus), islands and content panes are the light
+family's opaque paper so nothing is read through them, and text is plain --
+no shadow, no icon shadow -- because a veil thick enough to carry its own
+
+The veil is sized by measurement, not by eye. A Shell panel blurs the
+wallpaper behind it and not the windows, so over a window the only thing
+between a reader and the text underneath is the veil's own alpha: at 80% a
+black-on-white paragraph behind Quick Options still stood at 1.62:1, which is
+legible, and that is what the owner was looking at. At 85% on glass and 90% on
+frost and in dark it falls to 1.42:1, 1.26:1 and 1.45:1 -- below anything that
+reads as text -- while the treatment ink still holds 11.8:1, 11.6:1 and 8.3:1
+on the veil over the worst wallpaper there is.
+---
+diff --git a/src/adw-style-manager.c b/src/adw-style-manager.c
+--- a/src/adw-style-manager.c
++++ b/src/adw-style-manager.c
+@@ -78,10 +78,19 @@
+   guint animation_timeout_id;
+ 
+   gboolean changing_gtk_settings;
++
++  /* Luma's surface treatment, applied to every toplevel on this display. */
++  GSettings *luma_settings;
++  GSettings *luma_a11y_settings;
++  GListModel *luma_toplevels;
++  gulong luma_toplevels_changed;
++  GtkCssProvider *luma_provider;
+ };
+ 
+ G_DEFINE_FINAL_TYPE (AdwStyleManager, adw_style_manager, G_TYPE_OBJECT);
+ 
++static void luma_update_treatments (AdwStyleManager *self);
++
+ enum {
+   PROP_0,
+   PROP_DISPLAY,
+@@ -244,6 +253,10 @@
+   if (!self->display)
+     return;
+ 
++  /* The treatment follows the colour scheme and the contrast setting, both of
++   * which arrive here. */
++  luma_update_treatments (self);
++
+   if (self->animation_timeout_id)
+     g_clear_handle_id (&self->animation_timeout_id, g_source_remove);
+ 
+@@ -464,6 +477,250 @@
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_HIGH_CONTRAST]);
+ }
+ 
++
++/* The surface treatment a window is painted in.
++ *
++ * Luma's application kit gives a window its treatment class through
++ * LumaSurfaceBackdrop, which only a kit window owns. Every other window --
++ * an AdwApplicationWindow an application built itself, a plain
++ * GtkApplicationWindow, anything upstream -- carried no class at all, so the
++ * Frost and Glass rules in this stylesheet never selected it and it kept the
++ * opaque Light title bar. That is why no two windows on one desktop had the
++ * same header: half of them were not in the treatment.
++ *
++ * What colour a window is painted is one decision for the whole display, and
++ * this is where it is made, for every toplevel. It costs nothing to apply and
++ * needs no compositor protocol. Whether a given surface also gets a live blur
++ * region is a separate, per-window matter that the platform's backdrop owns
++ * and that must not change the colour: deciding the colour per window, from
++ * whether that window's own handshake had landed, is exactly how two windows
++ * on one desktop became two colours.
++ */
++
++static const char *const luma_treatments[] = {
++  "light", "dark", "frost", "glass",
++};
++
++static GSettings *
++luma_optional_settings (const char *schema_id,
++                        const char *key)
++{
++  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++  g_autoptr (GSettingsSchema) schema = NULL;
++
++  if (source == NULL)
++    return NULL;
++
++  schema = g_settings_schema_source_lookup (source, schema_id, TRUE);
++
++  if (schema == NULL || !g_settings_schema_has_key (schema, key))
++    return NULL;
++
++  return g_settings_new_full (schema, NULL, NULL);
++}
++
++static const char *
++luma_effective_treatment (AdwStyleManager *self)
++{
++  const char *chosen = NULL;
++  gboolean dark = adw_style_manager_get_dark (self);
++  gboolean high_contrast = adw_style_manager_get_high_contrast (self);
++
++  if (self->luma_settings != NULL) {
++    g_autoptr (GVariant) value =
++      g_settings_get_user_value (self->luma_settings, "surface-treatment");
++
++    if (value != NULL) {
++      const char *name = g_variant_get_string (value, NULL);
++      guint i;
++
++      for (i = 0; i < G_N_ELEMENTS (luma_treatments); i++)
++        if (g_str_equal (name, luma_treatments[i]))
++          chosen = luma_treatments[i];
++    }
++  }
++
++  if (chosen == NULL)
++    return dark ? "dark" : "light";
++
++  /* The same two refusals the platform's policy makes: a translucent surface
++   * is not offered when transparency is reduced or contrast is raised. A
++   * renderer that cannot blur is the compositor's refusal, not ours, and it
++   * reaches a kit window through its backdrop. */
++  if (g_str_equal (chosen, "frost") || g_str_equal (chosen, "glass")) {
++    gboolean reduce = self->luma_settings != NULL &&
++      g_settings_get_boolean (self->luma_settings, "reduce-transparency");
++
++    if (high_contrast)
++      return dark ? "dark" : "light";
++
++    if (reduce)
++      return "light";
++  } else if (high_contrast) {
++    return dark ? "dark" : "light";
++  }
++
++  return chosen;
++}
++
++static void
++luma_apply_treatment (GtkWidget  *widget,
++                      const char *treatment)
++{
++  guint i;
++
++  for (i = 0; i < G_N_ELEMENTS (luma_treatments); i++) {
++    g_autofree char *css_class =
++      g_strconcat ("luma-treatment-", luma_treatments[i], NULL);
++
++    if (g_str_equal (luma_treatments[i], treatment))
++      gtk_widget_add_css_class (widget, css_class);
++    else
++      gtk_widget_remove_css_class (widget, css_class);
++  }
++}
++
++/* Luma's palette reaches this stylesheet as `@luma_*` named colours (0005),
++ * and every Luma rule in it paints with those names. Named colours are global
++ * and cannot be restated per window, so there is one set -- the light one, and
++ * a dark one under prefers-color-scheme -- and a Frost or Glass window was
++ * painted in light colours by every rule except the handful an application
++ * redefined for itself by loading the application kit's token sheet. Hence
++ * islands that were see-through in one application and solid in the next.
++ * `@luma_chrome`, which the title band names, was never defined here at all,
++ * so GTK dropped the band without a word wherever the kit was absent.
++ *
++ * Being global is also the way out: a provider above the theme redefines the
++ * names for the treatment in force, and every existing rule follows without
++ * being touched. The application kit loads the same values at theme priority
++ * for its own windows, so a kit window and a plain one are now the same
++ * colours by construction rather than by agreement.
++ */
++static const char luma_frost_colours[] =
++  "@define-color luma_window rgba(242,243,245,0.62);"
++  "@define-color luma_content #fbfbfa;"
++  "@define-color luma_island #ffffff;"
++  "@define-color luma_chrome rgba(248,249,250,0.90);"
++  "@define-color luma_chrome_secondary rgba(248,249,250,0.90);"
++  "@define-color luma_menu rgba(248,249,250,0.90);"
++  "@define-color luma_ink #1f262d;"
++  "@define-color luma_muted #394047;"
++  "@define-color luma_faint #394047;"
++  "@define-color luma_line rgba(37,46,54,0.10);"
++  "@define-color luma_fill rgba(37,46,54,0.045);"
++  "@define-color luma_hover rgba(37,46,54,0.06);"
++  "@define-color luma_selected rgba(37,46,54,0.10);";
++
++static const char luma_glass_colours[] =
++  "@define-color luma_window rgba(255,255,255,0.30);"
++  "@define-color luma_content #fbfbfa;"
++  "@define-color luma_island #ffffff;"
++  "@define-color luma_chrome rgba(250,250,251,0.85);"
++  "@define-color luma_chrome_secondary rgba(250,250,251,0.85);"
++  "@define-color luma_menu rgba(250,250,251,0.85);"
++  "@define-color luma_ink #161b20;"
++  "@define-color luma_muted #1f242a;"
++  "@define-color luma_faint #1f242a;"
++  "@define-color luma_line rgba(37,46,54,0.10);"
++  "@define-color luma_fill rgba(37,46,54,0.04);"
++  "@define-color luma_hover rgba(37,46,54,0.05);"
++  "@define-color luma_selected rgba(37,46,54,0.09);";
++
++static void
++luma_update_colours (AdwStyleManager *self,
++                     const char      *treatment)
++{
++  const char *colours = "";
++
++  if (self->luma_provider == NULL)
++    return;
++
++  if (g_str_equal (treatment, "frost"))
++    colours = luma_frost_colours;
++  else if (g_str_equal (treatment, "glass"))
++    colours = luma_glass_colours;
++
++  gtk_css_provider_load_from_string (self->luma_provider, colours);
++}
++
++static void
++luma_update_treatments (AdwStyleManager *self)
++{
++  const char *treatment;
++  guint i, n;
++
++  if (self->display == NULL || self->luma_toplevels == NULL)
++    return;
++
++  treatment = luma_effective_treatment (self);
++  luma_update_colours (self, treatment);
++  n = g_list_model_get_n_items (self->luma_toplevels);
++
++  for (i = 0; i < n; i++) {
++    g_autoptr (GtkWindow) window = g_list_model_get_item (self->luma_toplevels, i);
++
++    if (window == NULL)
++      continue;
++
++    if (gtk_widget_get_display (GTK_WIDGET (window)) != self->display)
++      continue;
++
++    luma_apply_treatment (GTK_WIDGET (window), treatment);
++  }
++}
++
++static void
++luma_toplevels_changed_cb (GListModel      *model,
++                           guint            position,
++                           guint            removed,
++                           guint            added,
++                           AdwStyleManager *self)
++{
++  luma_update_treatments (self);
++}
++
++static void
++luma_settings_changed_cb (GSettings       *settings,
++                          const char      *key,
++                          AdwStyleManager *self)
++{
++  luma_update_treatments (self);
++}
++
++static void
++luma_treatments_init (AdwStyleManager *self)
++{
++  if (self->display == NULL)
++    return;
++
++  self->luma_settings =
++    luma_optional_settings ("org.project_luma.shell-state", "surface-treatment");
++  self->luma_a11y_settings =
++    luma_optional_settings ("org.gnome.desktop.a11y.interface", "high-contrast");
++
++  if (self->luma_settings != NULL)
++    g_signal_connect (self->luma_settings, "changed",
++                      G_CALLBACK (luma_settings_changed_cb), self);
++
++  if (self->luma_a11y_settings != NULL)
++    g_signal_connect (self->luma_a11y_settings, "changed",
++                      G_CALLBACK (luma_settings_changed_cb), self);
++
++  self->luma_toplevels = gtk_window_get_toplevels ();
++  self->luma_toplevels_changed =
++    g_signal_connect (self->luma_toplevels, "items-changed",
++                      G_CALLBACK (luma_toplevels_changed_cb), self);
++
++  /* Above the theme, so the names it defines win, and below application
++   * composition, so an application can still say something of its own. */
++  self->luma_provider = gtk_css_provider_new ();
++  gtk_style_context_add_provider_for_display (self->display,
++                                              GTK_STYLE_PROVIDER (self->luma_provider),
++                                              GTK_STYLE_PROVIDER_PRIORITY_SETTINGS);
++
++  luma_update_treatments (self);
++}
++
+ static void
+ adw_style_manager_constructed (GObject *object)
+ {
+@@ -570,6 +827,8 @@
+   update_fonts (self);
+   update_stylesheet (self, UPDATE_ALL);
+ 
++  luma_treatments_init (self);
++
+   if (self->provider) {
+     gtk_css_provider_load_from_resource (self->provider,
+                                          "/org/gnome/Adwaita/styles/gtk.css");
+@@ -589,6 +848,17 @@
+   g_clear_pointer (&self->document_font_name, g_free);
+   g_clear_pointer (&self->monospace_font_name, g_free);
+ 
++  if (self->luma_toplevels != NULL && self->luma_toplevels_changed != 0)
++    g_clear_signal_handler (&self->luma_toplevels_changed, self->luma_toplevels);
++  g_clear_object (&self->luma_toplevels);
++  if (self->luma_settings != NULL)
++    g_signal_handlers_disconnect_by_data (self->luma_settings, self);
++  if (self->luma_a11y_settings != NULL)
++    g_signal_handlers_disconnect_by_data (self->luma_a11y_settings, self);
++  g_clear_object (&self->luma_provider);
++  g_clear_object (&self->luma_settings);
++  g_clear_object (&self->luma_a11y_settings);
++
+   G_OBJECT_CLASS (adw_style_manager_parent_class)->dispose (object);
+ }
+ 
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -782,3 +782,159 @@
+     --dim-opacity: 90%;
+   }
+ }
++
++// One material, stated where every application can see it.
++//
++// Luma's palette reaches libadwaita as `@luma_*` named colours (0005). GTK
++// named colours are global: there is one set, and it cannot be restated per
++// window, so a Frost or Glass window carried the *light* values for every
++// role except the handful an application redefined for itself by loading the
++// kit's token sheet. Two consequences, both visible on one desktop:
++//
++//   * `@luma_chrome` was never defined here at all. The title band of 0040
++//     names it, so in an application that loads the kit the band is drawn and
++//     in an application that does not, GTK drops the declaration without a
++//     word and the band is missing. Same window, same treatment, two colours.
++//   * `.luma-island` paints `@luma_content`, which is opaque paper here and
++//     translucent in the kit's Frost and Glass sheets, so islands were
++//     see-through in one application and solid in the next.
++//
++// Custom properties are scoped to a selector, which named colours are not, so
++// the treatment's material is restated as properties on the window. Every
++// application then follows the appearance whether or not it knows the kit
++// exists, and there is one value per role rather than one per application.
++window.luma-treatment-frost {
++  --luma-veil: rgba(248, 249, 250, 0.90);
++  --luma-material-frame: rgba(242, 243, 245, 0.62);
++  --luma-paper: #fbfbfa;
++  --luma-paper-raised: #ffffff;
++  --luma-material-ink: #1f262d;
++}
++
++window.luma-treatment-glass {
++  --luma-veil: rgba(250, 250, 251, 0.85);
++  --luma-material-frame: rgba(255, 255, 255, 0.30);
++  --luma-paper: #fbfbfa;
++  --luma-paper-raised: #ffffff;
++  --luma-material-ink: #161b20;
++}
++
++// The title band. One layer, one colour, painted by the window and by nobody
++// else: the header bar and the top bar paint nothing (0041), so what a
++// titlebar is made of no longer depends on which widget an application put
++// there. 42px is the Luma title row.
++window.luma-treatment-frost,
++window.luma-treatment-glass,
++window.luma-treatment-frost:backdrop,
++window.luma-treatment-glass:backdrop {
++  background-image: linear-gradient(to bottom, var(--luma-veil), var(--luma-veil));
++  background-size: 100% 42px;
++  background-position: top;
++  background-repeat: no-repeat;
++}
++
++// Islands are opaque. The window's own surface is the material -- the frame,
++// the title band and the gaps between islands -- and the content surfaces
++// standing on it are paper, as they are in Light. A month grid or a sidebar
++// the wallpaper shows through is not a material; it is one text on top of
++// another.
++window.luma-treatment-frost .luma-island,
++window.luma-treatment-glass .luma-island,
++window.luma-treatment-frost .luma-island:backdrop,
++window.luma-treatment-glass .luma-island:backdrop {
++  background-color: var(--luma-paper);
++}
++
++window.luma-treatment-frost .luma-island.luma-raised,
++window.luma-treatment-glass .luma-island.luma-raised,
++window.luma-treatment-frost .luma-card,
++window.luma-treatment-glass .luma-card {
++  background-color: var(--luma-paper-raised);
++}
++
++// Floating surfaces -- context menus, popovers, sheets, the application menu
++// -- are the same veil as the title band, so a menu and a header read as one
++// material. They were 88% and 80% against the band's 37% and 46% before.
++window.luma-treatment-frost popover > contents,
++window.luma-treatment-glass popover > contents,
++window.luma-treatment-frost popover > arrow,
++window.luma-treatment-glass popover > arrow {
++  background-color: var(--luma-veil);
++}
++
++// Text on a translucent surface is plain text: the treatment's ink and
++// nothing behind it. A shadow or an outline behind a glyph is what a surface
++// reaches for when it is too thin to carry its own text. The veil is thick
++// enough now, so the rescue comes off everywhere rather than in the places
++// somebody happened to notice.
++window.luma-treatment-frost,
++window.luma-treatment-glass,
++window.luma-treatment-frost *,
++window.luma-treatment-glass * {
++  text-shadow: none;
++  -gtk-icon-shadow: none;
++}
++
++// The title row paints nothing of its own, whoever put it there.
++//
++// Three things were still painting it. Patch0041 zeroes --headerbar-bg-color
++// only on `window.csd`, and a window is not always `.csd` -- an X11 window
++// without a compositor is `solid-csd`, and then the light headerbar colour
++// came back. The stock sheet also paints `headerbar` with a light gradient
++// under prefers-color-scheme, which no custom property switches off. And
++// Patch0014 paints a kit window's title row `@luma_window` at a specificity
++// no plain `headerbar` rule reaches. So all three are named here.
++window.luma-treatment-frost,
++window.luma-treatment-glass {
++  --headerbar-bg-color: transparent;
++  --headerbar-backdrop-color: transparent;
++}
++
++window.luma-treatment-frost headerbar,
++window.luma-treatment-glass headerbar,
++window.luma-treatment-frost headerbar:backdrop,
++window.luma-treatment-glass headerbar:backdrop,
++window.luma-treatment-frost headerbar.luma-titlebar,
++window.luma-treatment-glass headerbar.luma-titlebar,
++window.luma-treatment-frost headerbar.luma-titlebar:backdrop,
++window.luma-treatment-glass headerbar.luma-titlebar:backdrop,
++window.luma-treatment-frost .titlebar,
++window.luma-treatment-glass .titlebar,
++window.luma-treatment-frost toolbarview > .top-bar,
++window.luma-treatment-glass toolbarview > .top-bar,
++window.luma-treatment-frost toolbarview > .top-bar:backdrop,
++window.luma-treatment-glass toolbarview > .top-bar:backdrop {
++  background: none;
++  background-color: transparent;
++  background-image: none;
++  box-shadow: none;
++}
++
++// The window's own surface is the material. Patch0014 and Patch0017 paint it
++// `@luma_window`, which is now the treatment's frame, so those rules are
++// already right; this covers a window neither of them names -- a plain
++// GtkApplicationWindow, or an AdwApplicationWindow an application built
++// itself -- which had libadwaita's opaque window colour.
++window.luma-treatment-frost,
++window.luma-treatment-glass,
++window.luma-treatment-frost:backdrop,
++window.luma-treatment-glass:backdrop {
++  background-color: unquote("@luma_window");
++}
++
++// Only the window paints the material. A kit window puts a toolbar view and a
++// padded body between the window and its islands; both took the window colour
++// as well, so the frame was painted twice and a kit window was a denser glass
++// than the window beside it -- 52% against 30%.
++window.luma-treatment-frost toolbarview,
++window.luma-treatment-glass toolbarview,
++window.luma-treatment-frost toolbarview:backdrop,
++window.luma-treatment-glass toolbarview:backdrop,
++window.luma-treatment-frost .luma-window-body,
++window.luma-treatment-glass .luma-window-body,
++window.luma-treatment-frost .luma-window-body:backdrop,
++window.luma-treatment-glass .luma-window-body:backdrop {
++  background: none;
++  background-color: transparent;
++  background-image: none;
++}

@@ -1,0 +1,297 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: use UPower symbolic battery and refine Poster wide controls
+
+The hand-composed battery background and percentage fill render malformed on
+Nick's ultrawide greeter. Render the UPower display-device IconName through
+St.Icon, as the adjacent Wi-Fi indicator does, preserving charge state and
+theme ownership. Remove the unused SVG resource. Keep status controls as a
+compact group and bring the wide password and submit row back into proportion.
+
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index 9ec73d2..96ca724 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -18,7 +18,6 @@
+     <file>prairie-login-avatar.svg</file>
+     <file>poster-photo-overlay.svg</file>
+     <file>poster-card-glass.svg</file>
+-    <file>poster-battery.svg</file>
+     <file>workspace-placeholder.svg</file>
+   </gresource>
+ </gresources>
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 7b5f9b9..133f8ed 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4784,15 +4784,8 @@ StScrollBar {
+   color: #eceeed; }
+ 
+ .poster-battery {
+-  width: 32px;
+-  height: 14px;
+-  background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
+-  background-size: 32px 14px; }
+-
+-.poster-battery-fill {
+-  height: 7px;
+-  background-color: #eceeed;
+-  border-radius: 1px; }
++  icon-size: 15px;
++  color: #eceeed; }
+ 
+ .poster-status-divider {
+   width: 1px;
+@@ -4990,22 +4983,23 @@ StScrollBar {
+ .login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
+ .prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
+ .prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
+-.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row { spacing: 10px; }
+ .poster-card.wide .poster-status-row .a11y-button,
+ .poster-card.wide .poster-status-row .login-dialog-session-list-button,
+-.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
+-.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
+-.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .prairie-login-power-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 10px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 17px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 17px; }
++.poster-card.wide .poster-battery { icon-size: 17px; }
+ .poster-card.wide .poster-greeting { font-size: 34px; }
+ .poster-card.wide .poster-avatar { icon-size: 96px; }
+ .poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
+ .poster-card.wide .prairie-auth-card,
+-.poster-card.wide .prairie-login-input-well { width: 560px; }
+-.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
+-.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
+-.poster-card.wide .prairie-login-input-row { spacing: 16px; }
+-.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
+-.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.wide .prairie-login-input-well { width: 460px; }
++.poster-card.wide .prairie-password-field { width: 400px; height: 48px; border-radius: 13px; }
++.poster-card.wide .prairie-login-entry { min-height: 40px; font-size: 15px; }
++.poster-card.wide .prairie-login-input-row { spacing: 12px; }
++.poster-card.wide .prairie-login-submit-button { width: 48px; height: 48px; min-width: 48px; min-height: 48px; border-radius: 12px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 18px; }
+ .poster-card.compact { padding: 18px 16px; }
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 4008490..ac7e1a8 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5042,15 +5042,8 @@ StScrollBar {
+   color: #eceeed; }
+ 
+ .poster-battery {
+-  width: 32px;
+-  height: 14px;
+-  background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
+-  background-size: 32px 14px; }
+-
+-.poster-battery-fill {
+-  height: 7px;
+-  background-color: #eceeed;
+-  border-radius: 1px; }
++  icon-size: 15px;
++  color: #eceeed; }
+ 
+ .poster-status-divider {
+   width: 1px;
+@@ -5248,22 +5241,23 @@ StScrollBar {
+ .login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
+ .prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
+ .prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
+-.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row { spacing: 10px; }
+ .poster-card.wide .poster-status-row .a11y-button,
+ .poster-card.wide .poster-status-row .login-dialog-session-list-button,
+-.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
+-.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
+-.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .prairie-login-power-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 10px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 17px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 17px; }
++.poster-card.wide .poster-battery { icon-size: 17px; }
+ .poster-card.wide .poster-greeting { font-size: 34px; }
+ .poster-card.wide .poster-avatar { icon-size: 96px; }
+ .poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
+ .poster-card.wide .prairie-auth-card,
+-.poster-card.wide .prairie-login-input-well { width: 560px; }
+-.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
+-.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
+-.poster-card.wide .prairie-login-input-row { spacing: 16px; }
+-.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
+-.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.wide .prairie-login-input-well { width: 460px; }
++.poster-card.wide .prairie-password-field { width: 400px; height: 48px; border-radius: 13px; }
++.poster-card.wide .prairie-login-entry { min-height: 40px; font-size: 15px; }
++.poster-card.wide .prairie-login-input-row { spacing: 12px; }
++.poster-card.wide .prairie-login-submit-button { width: 48px; height: 48px; min-width: 48px; min-height: 48px; border-radius: 12px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 18px; }
+ .poster-card.compact { padding: 18px 16px; }
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 6c3174e..906226b 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5008,15 +5008,8 @@ StScrollBar {
+   color: #eceeed; }
+ 
+ .poster-battery {
+-  width: 32px;
+-  height: 14px;
+-  background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
+-  background-size: 32px 14px; }
+-
+-.poster-battery-fill {
+-  height: 7px;
+-  background-color: #eceeed;
+-  border-radius: 1px; }
++  icon-size: 15px;
++  color: #eceeed; }
+ 
+ .poster-status-divider {
+   width: 1px;
+@@ -5214,22 +5207,23 @@ StScrollBar {
+ .login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
+ .prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
+ .prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
+-.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row { spacing: 10px; }
+ .poster-card.wide .poster-status-row .a11y-button,
+ .poster-card.wide .poster-status-row .login-dialog-session-list-button,
+-.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
+-.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
+-.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .prairie-login-power-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 10px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 17px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 17px; }
++.poster-card.wide .poster-battery { icon-size: 17px; }
+ .poster-card.wide .poster-greeting { font-size: 34px; }
+ .poster-card.wide .poster-avatar { icon-size: 96px; }
+ .poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
+ .poster-card.wide .prairie-auth-card,
+-.poster-card.wide .prairie-login-input-well { width: 560px; }
+-.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
+-.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
+-.poster-card.wide .prairie-login-input-row { spacing: 16px; }
+-.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
+-.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.wide .prairie-login-input-well { width: 460px; }
++.poster-card.wide .prairie-password-field { width: 400px; height: 48px; border-radius: 13px; }
++.poster-card.wide .prairie-login-entry { min-height: 40px; font-size: 15px; }
++.poster-card.wide .prairie-login-input-row { spacing: 12px; }
++.poster-card.wide .prairie-login-submit-button { width: 48px; height: 48px; min-width: 48px; min-height: 48px; border-radius: 12px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 18px; }
+ .poster-card.compact { padding: 18px 16px; }
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index 26d2299..07a275f 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -682,8 +682,7 @@ $_gdm_dialog_width: 25em;
+ .poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 16px; background-color: transparent; box-shadow: none; color: #eceeed; }
+ .poster-status-row .a11y-button:hover, .poster-status-row .a11y-button:focus, .poster-status-row .login-dialog-session-list-button:hover, .poster-status-row .login-dialog-session-list-button:focus { background-color: rgba(255, 255, 255, 0.08); }
+ .poster-wifi-icon { icon-size: 15px; color: #eceeed; }
+-.poster-battery { width: 32px; height: 14px; background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg"); background-size: 32px 14px; }
+-.poster-battery-fill { height: 7px; background-color: #eceeed; border-radius: 1px; }
++.poster-battery { icon-size: 15px; color: #eceeed; }
+ .poster-status-divider { width: 1px; height: 18px; background-color: rgba(255, 255, 255, 0.1); }
+ .poster-card .prairie-login-power-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; background-color: transparent; box-shadow: none; }
+ .poster-card .prairie-login-power-button .prairie-login-power-icon { icon-size: 15px; }
+@@ -728,22 +727,23 @@ $_gdm_dialog_width: 25em;
+ .login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
+ .prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
+ .prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
+-.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row { spacing: 10px; }
+ .poster-card.wide .poster-status-row .a11y-button,
+ .poster-card.wide .poster-status-row .login-dialog-session-list-button,
+-.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
+-.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
+-.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .prairie-login-power-button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-radius: 10px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 17px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 17px; }
++.poster-card.wide .poster-battery { icon-size: 17px; }
+ .poster-card.wide .poster-greeting { font-size: 34px; }
+ .poster-card.wide .poster-avatar { icon-size: 96px; }
+ .poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
+ .poster-card.wide .prairie-auth-card,
+-.poster-card.wide .prairie-login-input-well { width: 560px; }
+-.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
+-.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
+-.poster-card.wide .prairie-login-input-row { spacing: 16px; }
+-.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
+-.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.wide .prairie-login-input-well { width: 460px; }
++.poster-card.wide .prairie-password-field { width: 400px; height: 48px; border-radius: 13px; }
++.poster-card.wide .prairie-login-entry { min-height: 40px; font-size: 15px; }
++.poster-card.wide .prairie-login-input-row { spacing: 12px; }
++.poster-card.wide .prairie-login-submit-button { width: 48px; height: 48px; min-width: 48px; min-height: 48px; border-radius: 12px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 18px; }
+ .poster-card.compact { padding: 18px 16px; }
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+diff --git a/data/theme/meson.build b/data/theme/meson.build
+index 6985906..326a348 100644
+--- a/data/theme/meson.build
++++ b/data/theme/meson.build
+@@ -3,7 +3,6 @@ theme_sources = files([
+   'prairie-login-avatar.svg',
+   'poster-photo-overlay.svg',
+   'poster-card-glass.svg',
+-  'poster-battery.svg',
+   'gnome-shell-high-contrast.scss',
+   'gnome-shell-dark.scss',
+   'gnome-shell-light.scss',
+diff --git a/data/theme/poster-battery.svg b/data/theme/poster-battery.svg
+deleted file mode 100644
+index 37334c2..0000000
+--- a/data/theme/poster-battery.svg
++++ /dev/null
+@@ -1,4 +0,0 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="23" height="10" viewBox="0 0 23 10">
+-  <rect x=".625" y=".625" width="18.75" height="8.75" rx="3.5" fill="none" stroke="#eceeed" stroke-width="1.25"/>
+-  <path d="M21 3.5h.5q1 0 1 1v1q0 1-1 1H21z" fill="#eceeed"/>
+-</svg>
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+index 11b582e..f00a6e2 100644
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -322,11 +322,11 @@ class PosterCard extends St.BoxLayout {
+         this._wifi = new St.Icon({icon_name: 'network-wireless-offline-symbolic',
+             style_class: 'poster-wifi-icon', visible: false});
+         status.add_child(this._wifi);
+-        this._battery = new St.Widget({style_class: 'poster-battery',
+-            layout_manager: new Clutter.FixedLayout()});
+-        this._batteryFill = new St.Widget({style_class: 'poster-battery-fill',
+-            x: 3.5, y: 3.5, height: 7});
+-        this._battery.add_child(this._batteryFill);
++        // UPower owns the percentage and charging-state glyph. Use the same
++        // symbolic icon path as the other status controls instead of painting
++        // a fill actor over an SVG background at a different scale.
++        this._battery = new St.Icon({icon_name: 'battery-full-symbolic',
++            style_class: 'poster-battery', visible: false});
+         status.add_child(this._battery);
+         status.add_child(new St.Widget({style_class: 'poster-status-divider'}));
+         status.add_child(powerButton);
+@@ -476,11 +476,12 @@ class PosterCard extends St.BoxLayout {
+ 
+     _syncBattery() {
+         const proxy = this._powerProxy;
+-        this._battery.visible = !!proxy?.IsPresent;
+-        if (!this._battery.visible)
++        if (!proxy?.IsPresent) {
++            this._battery.visible = false;
+             return;
+-        const percentage = Math.max(0, Math.min(100, proxy.Percentage));
+-        this._batteryFill.width = Math.round(21 * percentage / 100);
++        }
++        this._battery.icon_name = proxy.IconName || 'battery-full-symbolic';
++        this._battery.visible = true;
+     }
+ });
+ 

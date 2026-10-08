@@ -1,0 +1,31 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Fix StButton pressed getter gesture target
+
+st_button_get_pressed() incorrectly casts the StButton itself to a
+ClutterPressGesture, producing critical warnings whenever mobile page
+indicators query their pressed state. Read the button's click gesture, as the
+property getter already does.
+---
+ src/st/st-button.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/st/st-button.c b/src/st/st-button.c
+index 8a3b3d6..75aadfd 100644
+--- a/src/st/st-button.c
++++ b/src/st/st-button.c
+@@ -745,9 +745,12 @@ st_button_set_checked (StButton *button,
+ gboolean
+ st_button_get_pressed (StButton *button)
+ {
++  StButtonPrivate *priv;
++
+   g_return_val_if_fail (ST_IS_BUTTON (button), FALSE);
+ 
+-  return clutter_press_gesture_get_pressed (CLUTTER_PRESS_GESTURE (button));
++  priv = st_button_get_instance_private (button);
++  return clutter_press_gesture_get_pressed (CLUTTER_PRESS_GESTURE (priv->click_gesture));
+ }
+ 
+ /**
+-- 
+2.51.0

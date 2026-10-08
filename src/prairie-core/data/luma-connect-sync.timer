@@ -1,0 +1,14 @@
+[Unit]
+Description=Sync with the Luma Hub every 15 minutes, and on waking if one was missed
+
+[Timer]
+OnStartupSec=2min
+# Wall-clock times, not time since the last run: a monotonic timer does not
+# count time asleep, so a laptop that slept through a sync waited up to fifteen
+# more minutes after waking. Persistent runs a missed one as soon as it wakes.
+OnCalendar=*:0/15
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,32 @@
+# Fedora 44 host tools required by the canonical Luma package builders.
+# Keep this list minimal: build dependencies belong in pinned containers.
+coreutils
+cockpit-machines
+cpio
+curl
+dnf5
+findutils
+fuse-overlayfs
+git
+git-lfs
+gzip
+jq
+guestfs-tools
+libvirt-client
+libxml2
+nginx
+openssh-clients
+passt
+podman
+policycoreutils
+policycoreutils-python-utils
+qemu-img
+rpm-build
+rsync
+shadow-utils
+shadow-utils-subid
+slirp4netns
+systemd
+tar
+util-linux
+virt-install

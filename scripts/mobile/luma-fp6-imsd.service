@@ -1,0 +1,22 @@
+[Unit]
+Description=Project Luma FP6 userspace IMS and VoLTE service
+After=ModemManager.service network.target luma-fp6-primary-gw-session.service
+Wants=ModemManager.service luma-fp6-primary-gw-session.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/libexec/luma-fp6-ims-pdn-up
+ExecStartPre=/usr/libexec/luma-fp6-ims-state-guard
+TimeoutStartSec=600
+EnvironmentFile=-/run/imsd.env
+EnvironmentFile=-/etc/imsd.env
+StateDirectory=imsd
+ExecStart=/usr/sbin/imsd
+UMask=0077
+Restart=on-failure
+RestartSec=30
+KillMode=mixed
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

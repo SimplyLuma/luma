@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#8bd5df"/><stop offset=".52" stop-color="#63a8c7"/><stop offset="1" stop-color="#5168a8"/></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".82"><stop stop-color="#fff" stop-opacity=".24"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="glass" x1=".12" y1="0" x2=".88" y2="1"><stop stop-color="#c2f0e8"/><stop offset=".46" stop-color="#70c0cf"/><stop offset="1" stop-color="#3b6b91"/></linearGradient>
+    <linearGradient id="frame" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#3e423e"/><stop offset="1" stop-color="#111310"/></linearGradient>
+    <mask id="loupe"><rect width="1024" height="1024" fill="#000"/><circle cx="412" cy="412" r="258" fill="#fff"/><circle cx="412" cy="412" r="174" fill="#000"/><path d="M568 540 850 822C903 875 823 955 770 902L488 620Z" fill="#fff"/></mask>
+    <filter id="shadow" x="-30%" y="-30%" width="170%" height="180%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#171713" flood-opacity=".22"/></filter>
+
+  <clipPath id="lumaTile"><rect width="1024" height="1024" rx="256.0" ry="256.0"/></clipPath>
+  </defs>
+  <g clip-path="url(#lumaTile)">
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+  <g filter="url(#shadow)" transform="translate(-16 -26)">
+    <circle cx="412" cy="412" r="174" fill="url(#glass)"/>
+    <path d="M278 304c58-72 152-96 238-58-64 2-126 28-174 76-46 46-72 104-78 166-24-64-18-132 14-184Z" fill="#fff" opacity=".18"/>
+    <rect x="120" y="120" width="800" height="800" fill="url(#frame)" mask="url(#loupe)"/>
+  </g>
+</g>
+</svg>

@@ -1,0 +1,16 @@
+--- a/test/automated/displayless/meson.build
++++ b/test/automated/displayless/meson.build
+@@ -1,5 +1,3 @@
+-tracker_sandbox = find_program('localsearch')
+-
+ tests = {
+   'test-bookmarks': {},
+   'test-directory': {},
+@@ -37,6 +35,7 @@
+   if extra_args.get('tracker', false)
+     # Tests that read and write from the Tracker index are run using 'tracker-sandbox'
+     # script to use a temporary instance of tracker-miner-fs instead of the session one.
++    tracker_sandbox = find_program('localsearch')
+     exe = tracker_sandbox
+     args = ['test-sandbox', '--store-tmpdir', '--index-recursive-tmpdir', test_exe]
+   else

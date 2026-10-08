@@ -1,0 +1,188 @@
+{
+  "scenarios": [
+    {
+      "id": "normal",
+      "summary": "Return the guest to its ordinary state: network on, no shaping, default appearance and accessibility settings, no scenario environment.",
+      "interface": "NetworkManager, org.gnome.desktop.* settings",
+      "supported": true,
+      "script": "nmcli networking on >/dev/null 2>&1 || true\nsudo tc qdisc del dev enp0s1 root >/dev/null 2>&1 || true\ngsettings reset org.gnome.desktop.interface text-scaling-factor || true\ngsettings reset org.gnome.desktop.interface enable-animations || true\ngsettings reset org.gnome.desktop.interface color-scheme || true\ngsettings reset org.gnome.desktop.a11y.interface high-contrast || true\ngsettings reset org.gnome.desktop.a11y.applications screen-keyboard-enabled || true\nrm -f \"$HOME/.local/share/luma-emulator/scenario.env\"\necho 'guest returned to normal'"
+    },
+    {
+      "id": "offline",
+      "summary": "Disconnect the guest from every network through NetworkManager, exactly as a user losing connectivity would.",
+      "interface": "NetworkManager",
+      "supported": true,
+      "script": "nmcli networking off\nsleep 1\nnmcli -t -f STATE general"
+    },
+    {
+      "id": "weak-network",
+      "summary": "Apply 400 ms latency, 120 ms jitter and 8% loss to the guest interface using the kernel's own traffic control.",
+      "interface": "Linux tc/netem",
+      "supported": true,
+      "script": "iface=$(ip -o -4 route show default | awk '{print $5}' | head -1)\ntest -n \"$iface\" || { echo 'no default route in the guest' >&2; exit 1; }\nsudo tc qdisc replace dev \"$iface\" root netem delay 400ms 120ms loss 8%\ntc qdisc show dev \"$iface\""
+    },
+    {
+      "id": "incoming-message",
+      "summary": "Publish one incoming-message notification through the freedesktop notification service the shell actually listens to.",
+      "interface": "org.freedesktop.Notifications",
+      "supported": true,
+      "script": "gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify 'Messages' 0 'org.projectluma.Messages' 'Avery Chen' 'Are we still on for tomorrow?' '[]' '{}' 8000"
+    },
+    {
+      "id": "multiple-notifications",
+      "summary": "Publish four notifications in sequence so stacking, grouping and overflow presentation can be inspected.",
+      "interface": "org.freedesktop.Notifications",
+      "supported": true,
+      "script": "set -e\nnotify() { gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify \"$1\" 0 \"$2\" \"$3\" \"$4\" '[]' '{}' 12000 >/dev/null; }\nnotify Messages org.projectluma.Messages 'Avery Chen' 'Are we still on for tomorrow?'\nnotify Messages org.projectluma.Messages 'Rowan Patel' 'Sent the file over.'\nnotify Calendar org.projectluma.Calendar 'Design review' 'Starts in 10 minutes'\nnotify Tasks org.projectluma.Tasks 'Water the plants' 'Due today'\necho 'four notifications published'"
+    },
+    {
+      "id": "calendar-reminder",
+      "summary": "Publish one calendar reminder notification.",
+      "interface": "org.freedesktop.Notifications",
+      "supported": true,
+      "script": "gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify 'Calendar' 0 'org.projectluma.Calendar' 'Design review' 'Starts in 10 minutes, Studio 2' '[]' '{}' 10000"
+    },
+    {
+      "id": "large-text",
+      "summary": "Raise the interface text scaling factor to 1.5 through the desktop settings schema; running applications follow immediately.",
+      "interface": "org.gnome.desktop.interface text-scaling-factor",
+      "supported": true,
+      "script": "gsettings set org.gnome.desktop.interface text-scaling-factor 1.5\ngsettings get org.gnome.desktop.interface text-scaling-factor"
+    },
+    {
+      "id": "high-contrast",
+      "summary": "Turn on the accessibility high-contrast preference.",
+      "interface": "org.gnome.desktop.a11y.interface high-contrast",
+      "supported": true,
+      "script": "gsettings set org.gnome.desktop.a11y.interface high-contrast true\ngsettings get org.gnome.desktop.a11y.interface high-contrast"
+    },
+    {
+      "id": "reduced-motion",
+      "summary": "Disable animations. Luma's AppKit motion_duration() reads the same toolkit preference, so component transitions collapse to zero.",
+      "interface": "org.gnome.desktop.interface enable-animations",
+      "supported": true,
+      "script": "gsettings set org.gnome.desktop.interface enable-animations false\ngsettings get org.gnome.desktop.interface enable-animations"
+    },
+    {
+      "id": "dark",
+      "summary": "Ask for the dark appearance through the desktop colour-scheme preference.",
+      "interface": "org.gnome.desktop.interface color-scheme",
+      "supported": true,
+      "script": "gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'\ngsettings get org.gnome.desktop.interface color-scheme"
+    },
+    {
+      "id": "light",
+      "summary": "Ask for the light appearance through the desktop colour-scheme preference.",
+      "interface": "org.gnome.desktop.interface color-scheme",
+      "supported": true,
+      "script": "gsettings set org.gnome.desktop.interface color-scheme 'prefer-light'\ngsettings get org.gnome.desktop.interface color-scheme"
+    },
+    {
+      "id": "software-keyboard",
+      "summary": "Enable the on-screen keyboard preference the handheld shell uses to raise the software keyboard.",
+      "interface": "org.gnome.desktop.a11y.applications screen-keyboard-enabled",
+      "supported": true,
+      "script": "gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true\ngsettings get org.gnome.desktop.a11y.applications screen-keyboard-enabled"
+    },
+    {
+      "id": "rtl",
+      "summary": "Launch subsequent previews in a right-to-left locale. Applies to previews started after the scenario, because text direction is fixed at application start.",
+      "interface": "POSIX locale, honoured by GTK text direction",
+      "supported": true,
+      "script": "mkdir -p \"$HOME/.local/share/luma-emulator\"\nprintf 'export LANG=ar_EG.UTF-8\\nexport LC_ALL=ar_EG.UTF-8\\nexport LANGUAGE=ar\\n' > \"$HOME/.local/share/luma-emulator/scenario.env\"\necho 'right-to-left locale armed for the next preview launch'"
+    },
+    {
+      "id": "long-localization",
+      "summary": "Launch subsequent previews in a locale with long translated strings, to expose truncation and wrapping.",
+      "interface": "POSIX locale",
+      "supported": true,
+      "script": "mkdir -p \"$HOME/.local/share/luma-emulator\"\nprintf 'export LANG=de_DE.UTF-8\\nexport LC_ALL=de_DE.UTF-8\\nexport LANGUAGE=de\\n' > \"$HOME/.local/share/luma-emulator/scenario.env\"\necho 'long-string locale armed for the next preview launch'"
+    },
+    {
+      "id": "landscape",
+      "summary": "Rotate the handheld output to landscape through the compositor's own output management.",
+      "interface": "wlr-randr (handheld sessions only)",
+      "supported": true,
+      "script": "command -v wlr-randr >/dev/null 2>&1 || { echo 'wlr-randr is only meaningful in a wlroots (handheld) session' >&2; exit 1; }\noutput=$(wlr-randr | head -1 | awk '{print $1}')\nwlr-randr --output \"$output\" --transform 90\nwlr-randr | head -3"
+    },
+    {
+      "id": "portrait",
+      "summary": "Return the handheld output to portrait.",
+      "interface": "wlr-randr (handheld sessions only)",
+      "supported": true,
+      "script": "command -v wlr-randr >/dev/null 2>&1 || { echo 'wlr-randr is only meaningful in a wlroots (handheld) session' >&2; exit 1; }\noutput=$(wlr-randr | head -1 | awk '{print $1}')\nwlr-randr --output \"$output\" --transform normal\nwlr-randr | head -3"
+    },
+    {
+      "id": "low-battery",
+      "summary": "Present the shell and applications with a nearly empty battery.",
+      "interface": "UPower",
+      "supported": false,
+      "gap": "UPower exposes no supported injection point. Doing this honestly needs a development-only umockdev power-supply adapter outside the production packages; it is not built yet.",
+      "script": ""
+    },
+    {
+      "id": "charging",
+      "summary": "Present the shell and applications with a charging battery.",
+      "interface": "UPower",
+      "supported": false,
+      "gap": "Same UPower gap as low-battery.",
+      "script": ""
+    },
+    {
+      "id": "incoming-call",
+      "summary": "Ring an incoming call through the real telephony path.",
+      "interface": "ModemManager / Prairie Phone daemon",
+      "supported": false,
+      "gap": "There is no modem in the guest and no development call adapter on the Prairie Phone daemon's D-Bus surface yet. A notification would look convincing and prove nothing, so it is not offered.",
+      "script": ""
+    },
+    {
+      "id": "missed-call",
+      "summary": "Show a missed call.",
+      "interface": "ModemManager / Prairie Phone daemon",
+      "supported": false,
+      "gap": "Same telephony gap as incoming-call.",
+      "script": ""
+    },
+    {
+      "id": "active-call",
+      "summary": "Show an in-progress call with call audio routing.",
+      "interface": "ModemManager / Prairie Phone daemon / PipeWire",
+      "supported": false,
+      "gap": "Same telephony gap as incoming-call, and call audio routing is a physical-device claim the emulator cannot make.",
+      "script": ""
+    },
+    {
+      "id": "empty-state",
+      "summary": "Show each application with no user content.",
+      "interface": "Per-application backends",
+      "supported": false,
+      "gap": "Needs development-only fixtures behind each app's own backend module. The emulator will not reach into application storage directly.",
+      "script": ""
+    },
+    {
+      "id": "loading",
+      "summary": "Hold each application in its loading state.",
+      "interface": "Per-application backends",
+      "supported": false,
+      "gap": "Same per-application adapter gap as empty-state.",
+      "script": ""
+    },
+    {
+      "id": "service-unavailable",
+      "summary": "Make a backing service fail so error presentation can be inspected.",
+      "interface": "Per-service D-Bus",
+      "supported": false,
+      "gap": "Same per-application adapter gap as empty-state.",
+      "script": ""
+    },
+    {
+      "id": "permission-denied",
+      "summary": "Deny a capability so the refusal path can be inspected.",
+      "interface": "Portals / polkit",
+      "supported": false,
+      "gap": "Needs a development-only portal policy overlay; not built yet.",
+      "script": ""
+    }
+  ]
+}

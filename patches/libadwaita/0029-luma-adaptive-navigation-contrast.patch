@@ -1,0 +1,48 @@
+From: Luma downstream maintainers
+Subject: [PATCH] sidebar: restore adaptive foreground and neutral state tokens
+
+Use the existing dark/light sidebar foreground and upstream neutral state
+colors. Preserve all focus/high-contrast borders, geometry and functionality.
+
+--- a/src/stylesheet/widgets/_sidebars.scss
++++ b/src/stylesheet/widgets/_sidebars.scss
+@@ -131,12 +131,12 @@
+   }
+ 
+   row.activatable, child.activatable, flowboxchild {
+-    &:hover { background-color: RGB(44 49 56 / 5%); }
++    &:hover { background-color: $hover_color; }
+ 
+     &:active { background-color: $active_color; }
+ 
+     // this is for indicating which row generated a popover see https://bugzilla.gnome.org/show_bug.cgi?id=754411
+-    &.has-open-popup { background-color: RGB(44 49 56 / 5%); }
++    &.has-open-popup { background-color: $hover_color; }
+ 
+     &:selected {
+       &:hover { background-color: $selected_hover_color; }
+@@ -196,19 +196,16 @@
+     min-height: 14px;
+     padding: 7px 11px;
+     margin: 1px 10px;
+-    color: #374151;
++    color: var(--sidebar-fg-color);
+     font-size: 12.5px;
+ 
+     &:selected {
+-      background-color: var(--accent-bg-color);
+-      color: var(--accent-fg-color);
++      background-color: $selected_color;
++      color: var(--sidebar-fg-color);
+ 
+       &:hover,
+-      &:active,
+-      &.has-open-popup {
+-        background-color: var(--accent-bg-color);
+-        color: var(--accent-fg-color);
+-      }
++      &.has-open-popup { background-color: $selected_hover_color; }
++      &:active { background-color: $selected_active_color; }
+     }
+   }
+ 

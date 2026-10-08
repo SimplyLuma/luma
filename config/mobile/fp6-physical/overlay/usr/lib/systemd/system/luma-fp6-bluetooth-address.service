@@ -1,0 +1,28 @@
+[Unit]
+Description=Load the FP6 factory Bluetooth address
+Documentation=https://project-luma.local/docs/research/fp6-linux-hardware-readiness
+After=bluetooth.service
+Wants=bluetooth.service
+ConditionPathExists=/proc/device-tree/model
+ConditionPathIsBlockDevice=/dev/disk/by-partlabel/persist
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-fp6-bluetooth-address
+TimeoutStartSec=30s
+RemainAfterExit=yes
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN
+NoNewPrivileges=yes
+PrivateMounts=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_BLUETOOTH
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

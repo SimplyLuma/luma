@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Luma
+Comment=Shared Project Luma GTK 3 and Phosh presentation
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=Luma
+IconTheme=Prairie
+CursorTheme=Adwaita
+ButtonLayout=:minimize,maximize,close

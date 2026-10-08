@@ -1,0 +1,844 @@
+From 812b6eaa684e3bf3849131a1dd15fea4906d2750 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 18:26:51 -0400
+Subject: [PATCH] headerbar: complete the generic Luma application frame
+
+Resolve the compatibility identity through GDesktopAppInfo (localized name and
+registered icon, with window/default icon names, the application-ID icon, and
+the generic executable icon as ordered fallbacks), clip tile icons to the 6px
+identity radius, and hide a synthesized title that repeats the identity.
+
+A GtkHeaderBar that is the titlebar (or the leading child of the vertical box
+content) of a generic application window and owns the automatic identity keeps
+the clean 42px title row and re-hosts its packed start/end children on the
+Luma command row directly below; pack/remove keep routing there, the
+default-decoration heuristic sees the re-hosted children, and the
+luma-no-command-row escape class opts out. The work surface owns its rounded
+clip and begins 9px below the title row, or flush under a command row.
+libadwaita windows (luma-adw-native-window) mark their own content, so GTK no
+longer marks their internal dialog host. The theme pins the 24px connected
+control pill, the command-group geometry, the identity spacing, and stable
+backdrop chrome for generic windows in both the maintained SCSS and the
+generated release CSS.
+---
+ gtk/gtkheaderbar.c                  | 417 ++++++++++++++++++++++++++--
+ gtk/gtkwindow.c                     |  26 +-
+ gtk/theme/Default/Default-dark.css  |  51 ++++
+ gtk/theme/Default/Default-light.css |  51 ++++
+ gtk/theme/Default/_common.scss      | 101 +++++++
+ 5 files changed, 624 insertions(+), 22 deletions(-)
+
+diff --git a/gtk/gtkheaderbar.c b/gtk/gtkheaderbar.c
+index 8d90844..de49187 100644
+--- a/gtk/gtkheaderbar.c
++++ b/gtk/gtkheaderbar.c
+@@ -37,8 +37,15 @@
+ #include "gtkwindowhandle.h"
+ #include "gtkwindow.h"
+ #include "gtkbuilderprivate.h"
++#include "gtkboxlayout.h"
++#include "gtkicontheme.h"
++#include "gtkorientable.h"
++#include "gtkrevealer.h"
+ 
+ #include <string.h>
++#ifdef G_OS_UNIX
++#include <gio/gdesktopappinfo.h>
++#endif
+ 
+ /**
+  * GtkHeaderBar:
+@@ -138,6 +145,10 @@ struct _GtkHeaderBar
+ 
+   GtkWidget *luma_identity;
+   GtkRoot *luma_identity_root;
++  char *luma_identity_name;
++  GtkWidget *luma_command_bar;
++  GtkWidget *luma_command_start;
++  GtkWidget *luma_command_end;
+ 
+   char *decoration_layout;
+ 
+@@ -166,6 +177,9 @@ static GParamSpec *header_bar_props[LAST_PROP] = { NULL, };
+ 
+ static const char luma_identity_owner_key[] = "gtk-header-bar-luma-identity-owner";
+ static void add_automatic_luma_identity (GtkHeaderBar *bar);
++static void update_title (GtkHeaderBar *bar);
++static void luma_enter_command_row (GtkHeaderBar *bar);
++static void luma_leave_command_row (GtkHeaderBar *bar);
+ 
+ static void gtk_header_bar_buildable_init (GtkBuildableIface *iface);
+ static void update_default_decoration (GtkHeaderBar *bar);
+@@ -238,29 +252,142 @@ create_luma_fallback_menu (GtkApplication *application,
+   return G_MENU_MODEL (menu);
+ }
+ 
++/* The desktop entry is the user-visible identity authority: it carries the
++ * localized application name and the registered icon. GtkApplication only
++ * knows the application ID, so resolve through GDesktopAppInfo before falling
++ * back to process metadata. */
++static GDesktopAppInfo *
++luma_lookup_desktop_info (GtkApplication *application)
++{
++#ifdef G_OS_UNIX
++  const char *application_id = g_application_get_application_id (G_APPLICATION (application));
++  char *desktop_id;
++  GDesktopAppInfo *info;
++
++  if (!application_id || !*application_id)
++    return NULL;
++
++  desktop_id = g_strconcat (application_id, ".desktop", NULL);
++  info = g_desktop_app_info_new (desktop_id);
++  g_free (desktop_id);
++
++  return info;
++#else
++  return NULL;
++#endif
++}
++
++static char *
++luma_resolve_application_name (GtkApplication *application,
++                               GtkWindow      *window)
++{
++  GDesktopAppInfo *info = luma_lookup_desktop_info (application);
++  const char *application_name = NULL;
++  char *result;
++
++  if (info)
++    application_name = g_app_info_get_display_name (G_APP_INFO (info));
++  if (!application_name || !*application_name)
++    application_name = g_get_application_name ();
++  if (!application_name || !*application_name)
++    application_name = gtk_window_get_title (window);
++  if (!application_name || !*application_name)
++    application_name = g_get_prgname ();
++  if (!application_name || !*application_name)
++    application_name = g_dgettext (GETTEXT_PACKAGE, "Application");
++
++  result = g_strdup (application_name);
++  g_clear_object (&info);
++
++  return result;
++}
++
++static gboolean
++luma_theme_has_icon (GtkWindow  *window,
++                     const char *icon_name)
++{
++  GtkIconTheme *theme;
++
++  if (!icon_name || !*icon_name)
++    return FALSE;
++
++  theme = gtk_icon_theme_get_for_display (gtk_widget_get_display (GTK_WIDGET (window)));
++
++  return gtk_icon_theme_has_icon (theme, icon_name);
++}
++
+ static GtkWidget *
+-create_luma_identity (GtkApplication *application,
+-                      GtkWindow      *window)
++luma_create_application_icon (GtkApplication *application,
++                              GtkWindow      *window)
++{
++  GDesktopAppInfo *info = luma_lookup_desktop_info (application);
++  const char *application_id = g_application_get_application_id (G_APPLICATION (application));
++  const char *icon_name;
++  GtkWidget *icon = NULL;
++
++  icon_name = gtk_window_get_icon_name (window);
++  if (luma_theme_has_icon (window, icon_name))
++    icon = gtk_image_new_from_icon_name (icon_name);
++
++  if (!icon)
++    {
++      icon_name = gtk_window_get_default_icon_name ();
++      if (luma_theme_has_icon (window, icon_name))
++        icon = gtk_image_new_from_icon_name (icon_name);
++    }
++
++  if (!icon && info)
++    {
++      GIcon *gicon = g_app_info_get_icon (G_APP_INFO (info));
++
++      if (G_IS_THEMED_ICON (gicon))
++        {
++          const char * const *names = g_themed_icon_get_names (G_THEMED_ICON (gicon));
++          guint i;
++
++          for (i = 0; names && names[i] && !icon; i++)
++            if (luma_theme_has_icon (window, names[i]))
++              icon = gtk_image_new_from_icon_name (names[i]);
++        }
++      else if (gicon)
++        {
++          icon = gtk_image_new_from_gicon (gicon);
++        }
++    }
++
++  if (!icon && luma_theme_has_icon (window, application_id))
++    icon = gtk_image_new_from_icon_name (application_id);
++
++  if (!icon)
++    icon = gtk_image_new_from_icon_name ("application-x-executable");
++
++  gtk_image_set_pixel_size (GTK_IMAGE (icon), 20);
++  g_clear_object (&info);
++
++  return icon;
++}
++
++static GtkWidget *
++create_luma_identity (GtkApplication  *application,
++                      GtkWindow       *window,
++                      char           **name_out)
+ {
+   GMenuModel *fallback_menu = NULL;
+   GMenuModel *menu_model;
+-  const char *application_id;
++  char *resolved_name;
+   const char *application_name;
+   GtkWidget *box;
++  GtkWidget *icon_box;
+   GtkWidget *icon;
+   GtkWidget *label;
+   GtkWidget *chevron;
+   GtkWidget *button;
+ 
+-  application_name = g_get_application_name ();
+-  if (!application_name || !*application_name)
+-    application_name = gtk_window_get_title (window);
+-  if (!application_name || !*application_name)
+-    application_name = g_get_prgname ();
+-  if (!application_name || !*application_name)
+-    application_name = g_dgettext (GETTEXT_PACKAGE, "Application");
++  resolved_name = luma_resolve_application_name (application, window);
++  application_name = resolved_name;
++  if (name_out)
++    *name_out = g_strdup (resolved_name);
+ 
+-  application_id = g_application_get_application_id (G_APPLICATION (application));
+   menu_model = gtk_application_get_menubar (application);
+   if (!menu_model)
+     {
+@@ -270,13 +397,16 @@ create_luma_identity (GtkApplication *application,
+ 
+   box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+   gtk_widget_add_css_class (box, "luma-identity-content");
++  gtk_widget_set_valign (box, GTK_ALIGN_CENTER);
+ 
+-  icon = gtk_image_new_from_icon_name (application_id && *application_id
+-                                       ? application_id
+-                                       : "application-x-executable-symbolic");
+-  gtk_image_set_pixel_size (GTK_IMAGE (icon), 20);
+-  gtk_widget_add_css_class (icon, "luma-identity-icon");
+-  gtk_box_append (GTK_BOX (box), icon);
++  icon_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (icon_box, "luma-identity-icon");
++  gtk_widget_set_overflow (icon_box, GTK_OVERFLOW_HIDDEN);
++  gtk_widget_set_valign (icon_box, GTK_ALIGN_CENTER);
++  gtk_widget_set_size_request (icon_box, 20, 20);
++  icon = luma_create_application_icon (application, window);
++  gtk_box_append (GTK_BOX (icon_box), icon);
++  gtk_box_append (GTK_BOX (box), icon_box);
+ 
+   label = gtk_label_new (application_name);
+   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+@@ -293,6 +423,8 @@ create_luma_identity (GtkApplication *application,
+       gtk_accessible_update_property (GTK_ACCESSIBLE (box),
+                                       GTK_ACCESSIBLE_PROPERTY_LABEL, application_name,
+                                       -1);
++      gtk_widget_set_valign (box, GTK_ALIGN_CENTER);
++      g_free (resolved_name);
+       return box;
+     }
+ 
+@@ -310,8 +442,10 @@ create_luma_identity (GtkApplication *application,
+                                   -1);
+   gtk_menu_button_set_child (GTK_MENU_BUTTON (button), box);
+   gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (button), menu_model);
++  gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
+ 
+   g_clear_object (&fallback_menu);
++  g_free (resolved_name);
+ 
+   return button;
+ }
+@@ -353,13 +487,17 @@ add_automatic_luma_identity (GtkHeaderBar *bar)
+   if (!application)
+     return;
+ 
+-  bar->luma_identity = create_luma_identity (application, GTK_WINDOW (root));
++  g_clear_pointer (&bar->luma_identity_name, g_free);
++  bar->luma_identity = create_luma_identity (application, GTK_WINDOW (root),
++                                             &bar->luma_identity_name);
+   bar->luma_identity_root = root;
+   gtk_box_insert_child_after (GTK_BOX (bar->start_box),
+                               bar->luma_identity,
+                               bar->start_window_controls);
+   g_object_set_data (G_OBJECT (root), luma_identity_owner_key, bar);
+   update_default_decoration (bar);
++  update_title (bar);
++  luma_enter_command_row (bar);
+ }
+ 
+ static void
+@@ -379,9 +517,216 @@ remove_automatic_luma_identity (GtkHeaderBar *bar)
+       g_object_get_data (G_OBJECT (bar->luma_identity_root), luma_identity_owner_key) == bar)
+     g_object_set_data (G_OBJECT (bar->luma_identity_root), luma_identity_owner_key, NULL);
+ 
++  luma_leave_command_row (bar);
+   gtk_box_remove (GTK_BOX (bar->start_box), bar->luma_identity);
+   bar->luma_identity = NULL;
+   bar->luma_identity_root = NULL;
++  g_clear_pointer (&bar->luma_identity_name, g_free);
++  update_default_decoration (bar);
++  update_title (bar);
++}
++
++
++/* Luma command row.
++ *
++ * A window-level GtkHeaderBar that owns the automatic application identity
++ * keeps the clean title row (identity, title, native window controls) and
++ * re-hosts its packed start/end children on a secondary command surface
++ * directly below. The widgets, their actions, signals, tooltips, accessible
++ * names and visibility are untouched; gtk_header_bar_pack_start/pack_end and
++ * gtk_header_bar_remove keep working. Only structurally safe patterns opt in:
++ * the header bar must be the window titlebar or the first child of a vertical
++ * GtkBox that is the window child, in a non-transient application window that
++ * is not an explicit Luma product window, and must not carry the
++ * luma-no-command-row escape class.
++ */
++
++static gboolean
++luma_window_is_generic (GtkWindow *window)
++{
++  GtkWidget *widget = GTK_WIDGET (window);
++
++  return !gtk_widget_has_css_class (widget, "luma-app-window") &&
++         !gtk_widget_has_css_class (widget, "luma-files-window") &&
++         !gtk_widget_has_css_class (widget, "luma-calculator-window") &&
++         !gtk_widget_has_css_class (widget, "luma-no-native-surfaces");
++}
++
++static gboolean
++luma_command_row_allowed (GtkHeaderBar *bar)
++{
++  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (bar));
++  GtkWidget *parent;
++
++  if (!bar->luma_identity ||
++      !GTK_IS_WINDOW (root) ||
++      gtk_widget_has_css_class (GTK_WIDGET (bar), "luma-no-command-row") ||
++      gtk_widget_has_css_class (GTK_WIDGET (bar), "luma-no-automatic-identity") ||
++      !luma_window_is_generic (GTK_WINDOW (root)))
++    return FALSE;
++
++  if (gtk_window_get_titlebar (GTK_WINDOW (root)) == GTK_WIDGET (bar))
++    return TRUE;
++
++  parent = gtk_widget_get_parent (GTK_WIDGET (bar));
++  if (GTK_IS_BOX (parent) &&
++      gtk_orientable_get_orientation (GTK_ORIENTABLE (parent)) == GTK_ORIENTATION_VERTICAL &&
++      gtk_widget_get_first_child (parent) == GTK_WIDGET (bar) &&
++      gtk_window_get_child (GTK_WINDOW (root)) == parent)
++    return TRUE;
++
++  return FALSE;
++}
++
++static gboolean
++luma_is_title_row_child (GtkHeaderBar *bar,
++                         GtkWidget    *child)
++{
++  return child == bar->start_window_controls ||
++         child == bar->end_window_controls ||
++         child == bar->luma_identity;
++}
++
++static void
++luma_update_group_visibility (GtkWidget *group)
++{
++  GtkWidget *child;
++  gboolean has_visible = FALSE;
++
++  for (child = gtk_widget_get_first_child (group);
++       child;
++       child = gtk_widget_get_next_sibling (child))
++    {
++      if (gtk_widget_get_visible (child))
++        {
++          has_visible = TRUE;
++          break;
++        }
++    }
++
++  gtk_widget_set_visible (group, has_visible);
++}
++
++static void
++luma_update_command_bar_visibility (GtkHeaderBar *bar)
++{
++  if (!bar->luma_command_bar)
++    return;
++
++  gtk_widget_set_visible (bar->luma_command_bar,
++                          gtk_widget_get_visible (bar->luma_command_start) ||
++                          gtk_widget_get_visible (bar->luma_command_end));
++}
++
++static void
++luma_move_children (GtkHeaderBar *bar,
++                    GtkWidget    *from,
++                    GtkWidget    *to,
++                    GtkWidget    *before,
++                    gboolean      track)
++{
++  GtkWidget *child = gtk_widget_get_first_child (from);
++  GtkWidget *anchor = before ? gtk_widget_get_prev_sibling (before) : NULL;
++  gboolean anchored = before != NULL;
++
++  while (child)
++    {
++      GtkWidget *next = gtk_widget_get_next_sibling (child);
++
++      if (!luma_is_title_row_child (bar, child))
++        {
++          g_object_ref (child);
++          g_signal_handlers_disconnect_by_func (child, luma_update_group_visibility, from);
++          gtk_box_remove (GTK_BOX (from), child);
++          if (anchored)
++            {
++              gtk_box_insert_child_after (GTK_BOX (to), child, anchor);
++              anchor = child;
++            }
++          else
++            {
++              gtk_box_append (GTK_BOX (to), child);
++            }
++          if (track)
++            g_signal_connect_swapped (child, "notify::visible",
++                                      G_CALLBACK (luma_update_group_visibility), to);
++          g_object_unref (child);
++        }
++
++      child = next;
++    }
++}
++
++static void
++luma_enter_command_row (GtkHeaderBar *bar)
++{
++  GtkRoot *root;
++
++  if (bar->luma_command_bar || !luma_command_row_allowed (bar))
++    return;
++
++  root = gtk_widget_get_root (GTK_WIDGET (bar));
++
++  bar->luma_command_start = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (bar->luma_command_start, "luma-command-group");
++  gtk_widget_set_valign (bar->luma_command_start, GTK_ALIGN_CENTER);
++  bar->luma_command_end = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (bar->luma_command_end, "luma-command-group");
++  gtk_widget_set_valign (bar->luma_command_end, GTK_ALIGN_CENTER);
++
++  bar->luma_command_bar = gtk_center_box_new ();
++  gtk_widget_add_css_class (bar->luma_command_bar, "luma-command-bar");
++  gtk_center_box_set_start_widget (GTK_CENTER_BOX (bar->luma_command_bar), bar->luma_command_start);
++  gtk_center_box_set_end_widget (GTK_CENTER_BOX (bar->luma_command_bar), bar->luma_command_end);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (bar->luma_command_bar),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL,
++                                  g_dgettext (GETTEXT_PACKAGE, "Toolbar"),
++                                  -1);
++
++  g_signal_connect_swapped (bar->luma_command_start, "notify::visible",
++                            G_CALLBACK (luma_update_command_bar_visibility), bar);
++  g_signal_connect_swapped (bar->luma_command_end, "notify::visible",
++                            G_CALLBACK (luma_update_command_bar_visibility), bar);
++
++  gtk_widget_set_layout_manager (GTK_WIDGET (bar),
++                                 gtk_box_layout_new (GTK_ORIENTATION_VERTICAL));
++  gtk_widget_insert_after (bar->luma_command_bar, GTK_WIDGET (bar), bar->handle);
++  gtk_widget_add_css_class (GTK_WIDGET (bar), "luma-command-host");
++  gtk_widget_add_css_class (GTK_WIDGET (root), "luma-has-command-row");
++
++  luma_move_children (bar, bar->start_box, bar->luma_command_start, NULL, TRUE);
++  luma_move_children (bar, bar->end_box, bar->luma_command_end, NULL, TRUE);
++  luma_update_group_visibility (bar->luma_command_start);
++  luma_update_group_visibility (bar->luma_command_end);
++  luma_update_command_bar_visibility (bar);
++  update_default_decoration (bar);
++}
++
++static void
++luma_leave_command_row (GtkHeaderBar *bar)
++{
++  GtkRoot *root;
++
++  if (!bar->luma_command_bar)
++    return;
++
++  root = gtk_widget_get_root (GTK_WIDGET (bar));
++  if (GTK_IS_WINDOW (root))
++    gtk_widget_remove_css_class (GTK_WIDGET (root), "luma-has-command-row");
++
++  g_signal_handlers_disconnect_by_func (bar->luma_command_start,
++                                        luma_update_command_bar_visibility, bar);
++  g_signal_handlers_disconnect_by_func (bar->luma_command_end,
++                                        luma_update_command_bar_visibility, bar);
++
++  luma_move_children (bar, bar->luma_command_start, bar->start_box, NULL, FALSE);
++  luma_move_children (bar, bar->luma_command_end, bar->end_box, bar->end_window_controls, FALSE);
++
++  gtk_widget_remove_css_class (GTK_WIDGET (bar), "luma-command-host");
++  g_clear_pointer (&bar->luma_command_bar, gtk_widget_unparent);
++  bar->luma_command_start = NULL;
++  bar->luma_command_end = NULL;
++  gtk_widget_set_layout_manager (GTK_WIDGET (bar), gtk_bin_layout_new ());
+   update_default_decoration (bar);
+ }
+ 
+@@ -453,6 +798,11 @@ update_default_decoration (GtkHeaderBar *bar)
+                 break;
+               }
+           }
++
++      if (!have_children && bar->luma_command_start &&
++          (_gtk_widget_get_first_child (bar->luma_command_start) ||
++           _gtk_widget_get_first_child (bar->luma_command_end)))
++        have_children = TRUE;
+     }
+ 
+   if (have_children || bar->title_widget != NULL)
+@@ -492,6 +842,9 @@ update_title (GtkHeaderBar *bar)
+     title = g_get_prgname ();
+ 
+   gtk_label_set_text (GTK_LABEL (bar->title_label), title);
++  gtk_widget_set_visible (bar->title_label,
++                          !(bar->luma_identity && bar->luma_identity_name &&
++                            title && g_str_equal (title, bar->luma_identity_name)));
+ }
+ 
+ static void
+@@ -619,6 +972,10 @@ gtk_header_bar_dispose (GObject *object)
+   bar->start_box = NULL;
+   bar->end_box = NULL;
+ 
++  g_clear_pointer (&bar->luma_identity_name, g_free);
++  g_clear_pointer (&bar->luma_command_bar, gtk_widget_unparent);
++  bar->luma_command_start = NULL;
++  bar->luma_command_end = NULL;
+   g_clear_pointer (&bar->handle, gtk_widget_unparent);
+ 
+   G_OBJECT_CLASS (gtk_header_bar_parent_class)->dispose (object);
+@@ -705,7 +1062,21 @@ gtk_header_bar_pack (GtkHeaderBar *bar,
+ {
+   g_return_if_fail (gtk_widget_get_parent (widget) == NULL);
+ 
+-  if (pack_type == GTK_PACK_START)
++  if (bar->luma_command_bar)
++    {
++      GtkWidget *group = pack_type == GTK_PACK_START ? bar->luma_command_start
++                                                     : bar->luma_command_end;
++
++      if (pack_type == GTK_PACK_START)
++        gtk_box_append (GTK_BOX (group), widget);
++      else
++        gtk_box_prepend (GTK_BOX (group), widget);
++
++      g_signal_connect_swapped (widget, "notify::visible",
++                                G_CALLBACK (luma_update_group_visibility), group);
++      luma_update_group_visibility (group);
++    }
++  else if (pack_type == GTK_PACK_START)
+     {
+       gtk_box_append (GTK_BOX (bar->start_box), widget);
+     }
+@@ -754,6 +1125,14 @@ gtk_header_bar_remove (GtkHeaderBar *bar,
+       gtk_center_box_set_center_widget (GTK_CENTER_BOX (bar->center_box), NULL);
+       removed = TRUE;
+     }
++  else if (parent && bar->luma_command_bar &&
++           (parent == bar->luma_command_start || parent == bar->luma_command_end))
++    {
++      g_signal_handlers_disconnect_by_func (child, luma_update_group_visibility, parent);
++      gtk_box_remove (GTK_BOX (parent), child);
++      luma_update_group_visibility (parent);
++      removed = TRUE;
++    }
+ 
+   if (removed && bar->track_default_decoration)
+     update_default_decoration (bar);
+diff --git a/gtk/gtkwindow.c b/gtk/gtkwindow.c
+index ae62273..e9e564d 100644
+--- a/gtk/gtkwindow.c
++++ b/gtk/gtkwindow.c
+@@ -7009,14 +7009,34 @@ gtk_window_set_child (GtkWindow *window,
+     return;
+ 
+   if (priv->child && GTK_IS_APPLICATION_WINDOW (window))
+-    gtk_widget_remove_css_class (priv->child, "luma-native-work-surface");
++    {
++      gpointer saved = g_object_get_data (G_OBJECT (priv->child), "gtk-luma-work-surface-overflow");
++
++      gtk_widget_remove_css_class (priv->child, "luma-native-work-surface");
++      if (saved)
++        {
++          gtk_widget_set_overflow (priv->child, GPOINTER_TO_INT (saved) - 1);
++          g_object_set_data (G_OBJECT (priv->child), "gtk-luma-work-surface-overflow", NULL);
++        }
++    }
+ 
+   g_clear_pointer (&priv->child, gtk_widget_unparent);
+ 
+   if (child)
+     {
+-      if (GTK_IS_APPLICATION_WINDOW (window))
+-        gtk_widget_add_css_class (child, "luma-native-work-surface");
++      /* libadwaita windows mark their own content; their direct child is an
++       * internal dialog host, never the application's work surface. */
++      if (GTK_IS_APPLICATION_WINDOW (window) &&
++          !gtk_widget_has_css_class (GTK_WIDGET (window), "luma-adw-native-window"))
++        {
++          /* The work surface owns its rounded clip so no child can overpaint
++           * the island border or corners. The prior overflow is restored when
++           * the child leaves the window. */
++          g_object_set_data (G_OBJECT (child), "gtk-luma-work-surface-overflow",
++                             GINT_TO_POINTER (gtk_widget_get_overflow (child) + 1));
++          gtk_widget_set_overflow (child, GTK_OVERFLOW_HIDDEN);
++          gtk_widget_add_css_class (child, "luma-native-work-surface");
++        }
+ 
+       priv->child = child;
+       gtk_widget_insert_before (child, GTK_WIDGET (window), priv->title_box);
+diff --git a/gtk/theme/Default/Default-dark.css b/gtk/theme/Default/Default-dark.css
+index b39db3d..c6504e5 100644
+--- a/gtk/theme/Default/Default-dark.css
++++ b/gtk/theme/Default/Default-dark.css
+@@ -1949,3 +1949,54 @@ read if you used those and something break with a version upgrade you're on your
+ @define-color content_view_bg #2d2d2d;
+ /* Very contrasty background for text views (@theme_text_color foreground) */
+ @define-color text_view_bg #1e1e1e;
++
++/* Luma generic application frame: identity, title row, command row, surface rhythm. */
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar { padding: 0 8px 0 12px; background: #21252b; box-shadow: none; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar:backdrop { background: #21252b; color: #e4e8ea; transition: none; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar:backdrop > windowhandle { filter: none; transition: none; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host { padding: 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host > windowhandle { min-height: 42px; padding: 0 8px 0 12px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host > .luma-command-bar { min-height: 40px; margin: 0 9px 8px; padding: 0 8px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background-color: #2a2e34; color: #e4e8ea; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.32), 0 16px 32px -18px rgba(0, 0, 0, 0.72); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group { margin: 5px 0; border-radius: 8px; background-color: rgba(255, 255, 255, 0.038); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton { margin: 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button { min-width: 30px; min-height: 30px; padding: 0 9px; margin: 0; border: none; border-right: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: transparent; box-shadow: none; color: #e4e8ea; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button > image, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button > image { -gtk-icon-size: 14px; color: inherit; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:hover, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:hover { background-color: rgba(255, 255, 255, 0.06); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:active, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:checked, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:active, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:checked { background-color: rgba(255, 255, 255, 0.108); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:disabled, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:disabled { color: #8b949c; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > :first-child, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton:first-child > button { border-radius: 8px 0 0 8px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > :last-child, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton:last-child > button { border-right: none; border-radius: 0 8px 8px 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > :only-child, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton:only-child > button { border-right: none; border-radius: 8px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-button, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-label { font-weight: 650; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-content { border-spacing: 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-icon { min-width: 20px; min-height: 20px; border-radius: 6px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-icon > image { -gtk-icon-size: 20px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols { margin-top: 9px; margin-bottom: 9px; padding: 2px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button.image-button { min-width: 20px; min-height: 20px; padding: 0; margin: 0; border-radius: 9999px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button > image, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button.image-button > image { min-width: 20px; min-height: 20px; padding: 0; -gtk-icon-size: 11px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin-top: 9px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces).luma-has-command-row > .luma-native-work-surface { margin-top: 0; }
+diff --git a/gtk/theme/Default/Default-light.css b/gtk/theme/Default/Default-light.css
+index fe2858e..bdee743 100644
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -1961,3 +1961,54 @@ read if you used those and something break with a version upgrade you're on your
+ @define-color content_view_bg #ffffff;
+ /* Very contrasty background for text views (@theme_text_color foreground) */
+ @define-color text_view_bg #ffffff;
++
++/* Luma generic application frame: identity, title row, command row, surface rhythm. */
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar { padding: 0 8px 0 12px; background: #f1f2f3; box-shadow: none; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar:backdrop { background: #f1f2f3; color: #283038; transition: none; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar:backdrop > windowhandle { filter: none; transition: none; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host { padding: 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host > windowhandle { min-height: 42px; padding: 0 8px 0 12px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host > .luma-command-bar { min-height: 40px; margin: 0 9px 8px; padding: 0 8px; border: 1px solid rgba(39, 48, 56, 0.095); border-radius: 10px; background-color: #fbfbfa; color: #283038; box-shadow: 0 2px 5px rgba(25, 27, 31, 0.12), 0 14px 30px -18px rgba(25, 27, 31, 0.42); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group { margin: 5px 0; border-radius: 8px; background-color: rgba(39, 48, 56, 0.04); box-shadow: inset 0 0 0 1px rgba(39, 48, 56, 0.095); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton { margin: 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button { min-width: 30px; min-height: 30px; padding: 0 9px; margin: 0; border: none; border-right: 1px solid rgba(39, 48, 56, 0.095); border-radius: 0; background: transparent; box-shadow: none; color: #283038; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button > image, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button > image { -gtk-icon-size: 14px; color: inherit; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:hover, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:hover { background-color: rgba(39, 48, 56, 0.06); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:active, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:checked, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:active, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:checked { background-color: rgba(39, 48, 56, 0.105); }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > button:disabled, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton > button:disabled { color: #757e87; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > :first-child, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton:first-child > button { border-radius: 8px 0 0 8px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > :last-child, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton:last-child > button { border-right: none; border-radius: 0 8px 8px 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > :only-child, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar.luma-command-host .luma-command-group > menubutton:only-child > button { border-right: none; border-radius: 8px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-button, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-label { font-weight: 650; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-content { border-spacing: 0; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-icon { min-width: 20px; min-height: 20px; border-radius: 6px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar .luma-identity-icon > image { -gtk-icon-size: 20px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols { margin-top: 9px; margin-bottom: 9px; padding: 2px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button.image-button { min-width: 20px; min-height: 20px; padding: 0; margin: 0; border-radius: 9999px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button > image, window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) headerbar windowcontrols > button.image-button > image { min-width: 20px; min-height: 20px; padding: 0; -gtk-icon-size: 11px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin-top: 9px; }
++
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces).luma-has-command-row > .luma-native-work-surface { margin-top: 0; }
+diff --git a/gtk/theme/Default/_common.scss b/gtk/theme/Default/_common.scss
+index 31bb218..5d95b73 100644
+--- a/gtk/theme/Default/_common.scss
++++ b/gtk/theme/Default/_common.scss
+@@ -4611,3 +4611,104 @@ menubutton {
+     }
+   }
+ }
++
++// Luma generic application frame: identity typography and icon clip, title-row
++// geometry, the command row hosted by the window's header bar, and the work
++// surface rhythm. Kept in sync with Default-light.css / Default-dark.css.
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) {
++  headerbar {
++    padding: 0 8px 0 12px;
++    background: if($variant == 'light', #f1f2f3, #21252b);
++    box-shadow: none;
++
++    &:backdrop {
++      background: if($variant == 'light', #f1f2f3, #21252b);
++      color: if($variant == 'light', #283038, #e4e8ea);
++      transition: none;
++
++      > windowhandle { filter: none; transition: none; }
++    }
++
++    &.luma-command-host {
++      padding: 0;
++
++      > windowhandle { min-height: 42px; padding: 0 8px 0 12px; }
++
++      > .luma-command-bar {
++        min-height: 40px;
++        margin: 0 9px 8px;
++        padding: 0 8px;
++        border: 1px solid if($variant == 'light', rgba(39, 48, 56, 0.095), rgba(255, 255, 255, 0.08));
++        border-radius: 10px;
++        background-color: if($variant == 'light', #fbfbfa, #2a2e34);
++        color: if($variant == 'light', #283038, #e4e8ea);
++        box-shadow: if($variant == 'light',
++                       (0 2px 5px rgba(25, 27, 31, 0.12), 0 14px 30px -18px rgba(25, 27, 31, 0.42)),
++                       (0 2px 6px rgba(0, 0, 0, 0.32), 0 16px 32px -18px rgba(0, 0, 0, 0.72)));
++      }
++
++      .luma-command-group {
++        margin: 5px 0;
++        border-radius: 8px;
++        background-color: if($variant == 'light', rgba(39, 48, 56, 0.04), rgba(255, 255, 255, 0.038));
++        box-shadow: inset 0 0 0 1px if($variant == 'light', rgba(39, 48, 56, 0.095), rgba(255, 255, 255, 0.08));
++      }
++
++      // GTK's stock header rule gives every button and menubutton 6px vertical
++      // margins; the connected group owns its own 30px targets.
++      .luma-command-group > menubutton { margin: 0; }
++
++      .luma-command-group > button,
++      .luma-command-group > menubutton > button {
++        min-width: 30px;
++        min-height: 30px;
++        padding: 0 9px;
++        margin: 0;
++        border: none;
++        border-right: 1px solid if($variant == 'light', rgba(39, 48, 56, 0.095), rgba(255, 255, 255, 0.08));
++        border-radius: 0;
++        background: transparent;
++        box-shadow: none;
++        color: if($variant == 'light', #283038, #e4e8ea);
++
++        > image { -gtk-icon-size: 14px; color: inherit; }
++        &:hover { background-color: if($variant == 'light', rgba(39, 48, 56, 0.06), rgba(255, 255, 255, 0.06)); }
++        &:active, &:checked { background-color: if($variant == 'light', rgba(39, 48, 56, 0.105), rgba(255, 255, 255, 0.108)); }
++        &:disabled { color: if($variant == 'light', #757e87, #8b949c); }
++      }
++
++      .luma-command-group > :first-child,
++      .luma-command-group > menubutton:first-child > button { border-radius: 8px 0 0 8px; }
++      .luma-command-group > :last-child,
++      .luma-command-group > menubutton:last-child > button { border-right: none; border-radius: 0 8px 8px 0; }
++      .luma-command-group > :only-child,
++      .luma-command-group > menubutton:only-child > button { border-right: none; border-radius: 8px; }
++    }
++
++    .luma-identity-button, .luma-identity-label { font-weight: 650; }
++    .luma-identity-content { border-spacing: 0; }
++    .luma-identity-icon { min-width: 20px; min-height: 20px; border-radius: 6px; }
++    .luma-identity-icon > image { -gtk-icon-size: 20px; }
++
++    // The connected control pill is 24px tall inside the 42px row; the stock
++    // image-button width and the row-filling height must not apply to it.
++    windowcontrols {
++      margin-top: 9px;
++      margin-bottom: 9px;
++      padding: 2px;
++
++      > button, > button.image-button {
++        min-width: 20px;
++        min-height: 20px;
++        padding: 0;
++        margin: 0;
++        border-radius: 9999px;
++
++        > image { min-width: 20px; min-height: 20px; padding: 0; -gtk-icon-size: 11px; }
++      }
++    }
++  }
++
++  > .luma-native-work-surface { margin-top: 9px; }
++  &.luma-has-command-row > .luma-native-work-surface { margin-top: 0; }
++}

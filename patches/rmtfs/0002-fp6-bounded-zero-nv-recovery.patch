@@ -1,0 +1,237 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <project-luma@localhost>
+Date: Wed, 26 Aug 2026 19:15:00 -0500
+Subject: [PATCH] rmtfs: add bounded recovery for blank modemst partitions
+
+Keep normal -r behavior unchanged. A new -R option, valid only with -r -P
+and the default partition root, lets the modem persist writes to a modemst
+partition only when the entire 10 MiB partition was zero at open time. Every
+other partition, including fsg, fsc, study and tuning, remains RAM-shadowed.
+---
+ rmtfs.c   | 14 ++++++++++++--
+ rmtfs.h   |  3 ++-
+ storage.c | 62 ++++++++++++++++++++++++++++++++++++++++++++++++++------------
+ 3 files changed, 64 insertions(+), 15 deletions(-)
+
+diff --git a/rmtfs.c b/rmtfs.c
+index 0d697b5..3722b83 100644
+--- a/rmtfs.c
++++ b/rmtfs.c
+@@ -499,12 +499,13 @@ int main(int argc, char **argv)
+ 	struct sigaction action;
+ 	bool use_partitions = false;
+ 	bool read_only = false;
++	bool recover_blank_modemst = false;
+ 	int rprocfd = -1;
+ 	int ret;
+ 	int option;
+ 	const char *storage_root = NULL;
+ 
+-	while ((option = getopt(argc, argv, "o:Prsv")) != -1) {
++	while ((option = getopt(argc, argv, "o:PRrsv")) != -1) {
+ 		switch (option) {
+ 		/*
+ 		 * -o sets the directory where EFS images are stored,
+@@ -520,6 +521,11 @@ int main(int argc, char **argv)
+ 			use_partitions = true;
+ 			break;
+ 
++		/* -R persists modemst writes only when the partition is all zero */
++		case 'R':
++			recover_blank_modemst = true;
++			break;
++
+ 		/* -r to avoid writing to storage */
+ 		case 'r':
+ 			read_only = true;
+@@ -546,6 +552,9 @@ int main(int argc, char **argv)
+ 		}
+ 	}
+ 
++	if (recover_blank_modemst && (!read_only || !use_partitions || storage_root))
++		err(1, "-R requires -r -P and forbids -o");
++
+ 	sigemptyset(&action.sa_mask);
+ 	action.sa_handler = sig_int_handler;
+ 	action.sa_flags = 0;
+@@ -557,7 +566,7 @@ int main(int argc, char **argv)
+ 	if (!rmem)
+ 		return 1;
+ 
+-	ret = storage_init(storage_root, read_only, use_partitions);
++	ret = storage_init(storage_root, read_only, use_partitions, recover_blank_modemst);
+ 	if (ret) {
+ 		fprintf(stderr, "failed to initialize storage system\n");
+ 		goto close_rmtfs_mem;
+diff --git a/rmtfs.h b/rmtfs.h
+index fa4b806..0381443 100644
+--- a/rmtfs.h
++++ b/rmtfs.h
+@@ -25,7 +25,8 @@ ssize_t rmtfs_mem_write(struct rmtfs_mem *rmem, unsigned long phys_address, cons
+ 
+ struct rmtfd;
+ 
+-int storage_init(const char *storage_root, bool read_only, bool use_partitions);
++int storage_init(const char *storage_root, bool read_only, bool use_partitions,
++		 bool recover_blank_modemst);
+ struct rmtfd *storage_open(unsigned node, const char *path);
+ struct rmtfd *storage_get(unsigned node, int caller_id);
+ void storage_close(struct rmtfd *rmtfd);
+diff --git a/storage.c b/storage.c
+index 001464d..5e32414 100644
+--- a/storage.c
++++ b/storage.c
+@@ -1,7 +1,9 @@
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#include <sys/ioctl.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <linux/fs.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -28,6 +28,7 @@ struct rmtfd {
+ 	unsigned dev_error;
+ 	const struct partition *partition;
+ 
++	int persistent;
+ 	void *shadow_buf;
+ 	size_t shadow_len;
+ };
+@@ -35,6 +36,7 @@ struct rmtfd {
+ static const char *storage_dir = "/boot";
+ static int storage_read_only;
+ static int storage_use_partitions;
++static int storage_recover_blank_modemst;
+ 
+ static const struct partition partition_table[] = {
+ 	{ "/boot/modem_fs1", "modem_fs1", "modemst1" },
+@@ -51,10 +53,50 @@ static struct rmtfd rmtfds[MAX_CALLERS];
+ 
+ static int storage_populate_shadow_buf(struct rmtfd *rmtfd, const char *file);
+ 
+-int storage_init(const char *storage_root, bool read_only, bool use_partitions)
++static int partition_is_modemst(const struct partition *part)
++{
++	return !strcmp(part->partlabel, "modemst1") ||
++	       !strcmp(part->partlabel, "modemst2");
++}
++
++static int fd_is_all_zero(int fd)
++{
++	unsigned char buf[4096];
++	uint64_t size;
++	ssize_t n;
++	off_t offset;
++	size_t i;
++
++	if (ioctl(fd, BLKGETSIZE64, &size) < 0 || size != 10 * 1024 * 1024) {
++		errno = EINVAL;
++		return 0;
++	}
++
++	for (offset = 0; offset < (off_t)size; offset += n) {
++		n = pread(fd, buf, sizeof(buf), offset);
++		if (n <= 0)
++			return 0;
++		for (i = 0; i < (size_t)n; i++) {
++			if (buf[i]) {
++				errno = EEXIST;
++				return 0;
++			}
++		}
++	}
++
++	return 1;
++}
++
++int storage_init(const char *storage_root, bool read_only, bool use_partitions,
++		 bool recover_blank_modemst)
+ {
+ 	int i;
+ 
++	if (recover_blank_modemst && (!read_only || !use_partitions || storage_root)) {
++		errno = EINVAL;
++		return -1;
++	}
++
+ 	if (storage_root)
+ 		storage_dir = storage_root;
+ 
+@@ -65,6 +107,7 @@ int storage_init(const char *storage_root, bool read_only, bool use_partitions)
+ 	}
+ 
+ 	storage_read_only = read_only;
++	storage_recover_blank_modemst = recover_blank_modemst;
+ 
+ 	for (i = 0; i < MAX_CALLERS; i++) {
+ 		rmtfds[i].id = i;
+@@ -123,7 +166,7 @@ found:
+ 	pathlen = strlen(storage_dir) + strlen(file) + 2;
+ 	fspath = alloca(pathlen);
+ 	snprintf(fspath, pathlen, "%s/%s", storage_dir, file);
+-	if (!storage_read_only) {
++	if (!storage_read_only || (storage_recover_blank_modemst && partition_is_modemst(part))) {
+ 		fd = open(fspath, O_RDWR);
+ 		if (fd < 0) {
+ 			saved_errno = errno;
+@@ -132,9 +175,21 @@ found:
+ 			errno = saved_errno;
+ 			return NULL;
+ 		}
++		if (storage_recover_blank_modemst && !fd_is_all_zero(fd)) {
++			saved_errno = errno;
++			close(fd);
++			fprintf(stderr,
++				"[storage] refusing persistent recovery for nonblank or invalid '%s': %s\n",
++				fspath, strerror(saved_errno));
++			goto shadow;
++		}
+ 		rmtfd->fd = fd;
++		rmtfd->persistent = 1;
+ 		rmtfd->shadow_len = 0;
++		if (storage_recover_blank_modemst)
++			fprintf(stderr, "[storage] bounded blank-NV recovery enabled for '%s'\n", fspath);
+ 	} else {
++shadow:
+ 		ret = storage_populate_shadow_buf(rmtfd, fspath);
+ 		if (ret < 0) {
+ 			saved_errno = errno;
+@@ -157,6 +212,7 @@ void storage_close(struct rmtfd *rmtfd)
+ 		close(rmtfd->fd);
+ 		rmtfd->fd = -1;
+ 	}
++	rmtfd->persistent = 0;
+ 
+ 	free(rmtfd->shadow_buf);
+ 	rmtfd->shadow_buf = NULL;
+@@ -201,7 +257,7 @@ ssize_t storage_pread(const struct rmtfd *rmtfd, void *buf, size_t nbyte, off_t
+ {
+ 	ssize_t n;
+ 
+-	if (!storage_read_only) {
++	if (rmtfd->persistent) {
+ 		n = pread(rmtfd->fd, buf, nbyte, offset);
+ 	} else {
+ 		n = MIN((ssize_t)nbyte, (ssize_t)rmtfd->shadow_len - offset);
+@@ -222,7 +278,7 @@ ssize_t storage_pwrite(struct rmtfd *rmtfd, const void *buf, size_t nbyte, off_t
+ 	size_t new_len = offset + nbyte;
+ 	void *new_buf;
+ 
+-	if (!storage_read_only)
++	if (rmtfd->persistent)
+ 		return pwrite(rmtfd->fd, buf, nbyte, offset);
+ 
+ 	if (new_len >= STORAGE_MAX_SIZE) {
+@@ -249,7 +305,7 @@ ssize_t storage_pwrite(struct rmtfd *rmtfd, const void *buf, size_t nbyte, off_t
+ 
+ int storage_sync(struct rmtfd *rmtfd)
+ {
+-	if (storage_read_only)
++	if (!rmtfd->persistent)
+ 		return 0;
+ 	
+ 	return fdatasync(rmtfd->fd);
+-- 
+2.51.0

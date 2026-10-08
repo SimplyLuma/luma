@@ -1,0 +1,81 @@
+{
+  "app": "bar-stage",
+  "title": "Document header and the share sheet against Stage",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=stage",
+    "window": "#w-stage",
+    "exclude": [
+      "#w-stage *:not(:has(#st-top)):not(:has(#lshare)):not(#st-top):not(#st-top *):not(#lshare):not(#lshare *)",
+      "#w-stage > .wctl"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "stage",
+      "LUMAUI_BAR_FACES": "{run}/fixtures/contacts-v70"
+    },
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ]
+  },
+  "states": [
+    {
+      "name": "header",
+      "about": "The title row: Stage's document, who is here, Share, Present, More",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "header"
+          }
+        }
+      ]
+    },
+    {
+      "name": "share",
+      "about": "Share opened from the title row: Work together",
+      "spec": [
+        {
+          "click": "#st-top [data-share]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "share"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "header",
+    "share"
+  ],
+  "groups": [
+    {
+      "name": "share sheet",
+      "spec": "#lshare"
+    },
+    {
+      "name": "header",
+      "spec": "#st-top"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#lshare",
+      "gtk": "share-sheet",
+      "name": "share sheet"
+    }
+  ],
+  "app_icon": {
+    "spec_src": "presentations.svg",
+    "gtk": "^org\\.projectluma\\.Stage$"
+  }
+}

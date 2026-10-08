@@ -1,0 +1,427 @@
+From 3c9c76597f8b1d627fddd5c961522c375c34bf9a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:46:40 +0000
+Subject: [PATCH] Settings: load fixture images asynchronously with generation
+ cancellation
+
+---
+ shell/cc-application.c       | 14 +++++++
+ shell/cc-application.h       |  1 +
+ shell/cc-luma-fixture.c      | 26 +++++++++++-
+ shell/cc-luma-fixture.h      |  1 +
+ shell/cc-luma-view-image.c   | 62 ++++++++++++++++++++++++++++
+ shell/cc-luma-view-private.h |  8 ++++
+ shell/cc-luma-view.c         | 28 +++++++++++++
+ shell/cc-luma-view.h         |  3 ++
+ shell/main.c                 |  3 +-
+ shell/meson.build            |  3 +-
+ shell/test-luma-view.c       | 79 +++++++++++++++++++++++++++++++++++-
+ 11 files changed, 224 insertions(+), 4 deletions(-)
+ create mode 100644 shell/cc-luma-view-image.c
+
+diff --git a/shell/cc-application.c b/shell/cc-application.c
+index 05e64c8..e3e9a4f 100644
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -345,6 +345,19 @@ cc_application_quit (GSimpleAction *simple,
+ }
+ 
+ 
++static void fixture_view_failed (GtkWidget *view, const GError *error, gpointer data)
++{
++  CcApplication *self = CC_APPLICATION (data);
++  self->fixture_failed = TRUE;
++  g_printerr ("Settings fixture: %s\n", error->message);
++  if (self->fixture_window) gtk_window_destroy (self->fixture_window);
++  g_application_quit (G_APPLICATION (self));
++}
++gboolean cc_application_fixture_failed (CcApplication *self)
++{
++  return self->fixture_failed;
++}
++
+ static void
+ cc_application_activate (GApplication *application)
+ {
+@@ -369,6 +382,7 @@ cc_application_activate (GApplication *application)
+           gtk_window_set_default_size (self->fixture_window, 1180, 740);
+           gtk_widget_set_name (GTK_WIDGET (self->fixture_window), "cf-window");
+           luma_application_window_set_body (LUMA_APPLICATION_WINDOW (self->fixture_window), body);
++          cc_luma_view_set_error_handler (body, fixture_view_failed, self);
+           if (!cc_luma_view_set_variant (body, g_getenv ("LUMA_SETTINGS_VARIANT"), &error))
+             {
+               g_printerr ("Settings fixture: %s\n", error->message);
+diff --git a/shell/cc-application.h b/shell/cc-application.h
+index 395a851..b787d36 100644
+--- a/shell/cc-application.h
++++ b/shell/cc-application.h
+@@ -32,4 +32,5 @@ GtkApplication        *cc_application_new                    (void);
+ 
+ CcShellModel          *cc_application_get_model              (CcApplication *self);
+ 
++gboolean cc_application_fixture_failed (CcApplication *self);
+ G_END_DECLS
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 6beb4ae..981479d 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -6,6 +6,7 @@ struct _CcLumaFixture
+ {
+   GObject parent_instance;
+   JsonNode *root;
++  char *resource_dir;
+ };
+ G_DEFINE_TYPE (CcLumaFixture, cc_luma_fixture, G_TYPE_OBJECT)
+ 
+@@ -14,6 +15,7 @@ cc_luma_fixture_finalize (GObject *object)
+ {
+   CcLumaFixture *self = CC_LUMA_FIXTURE (object);
+   g_clear_pointer (&self->root, json_node_free);
++  g_free (self->resource_dir);
+   G_OBJECT_CLASS (cc_luma_fixture_parent_class)->finalize (object);
+ }
+ static void
+@@ -90,7 +92,13 @@ cc_luma_fixture_load (const char *path, GError **error)
+     }
+   if (!g_file_get_contents (path, &contents, &length, error))
+     return NULL;
+-  return cc_luma_fixture_parse (contents, length, error);
++  CcLumaFixture *self = cc_luma_fixture_parse (contents, length, error);
++  if (self)
++    {
++      g_autofree char *absolute = g_canonicalize_filename (path, NULL);
++      self->resource_dir = g_path_get_dirname (absolute);
++    }
++  return self;
+ }
+ 
+ static JsonObject *
+@@ -349,3 +357,19 @@ cc_luma_network_undo_free (CcLumaNetworkUndo *undo)
+   g_free (undo->name);
+   g_free (undo);
+ }
++
++/* Assets must be explicitly supplied beside the fixture. No installed-data or
++ * user-directory fallback is permitted. IDs never become arbitrary paths. */
++char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **error)
++{
++  const char *known[] = { "prism", "meadow", "blue-fog", "ember", "luma-creatives" };
++  if (self->resource_dir && id)
++    for (guint i = 0; i < G_N_ELEMENTS (known); i++)
++      if (g_str_equal (id, known[i]))
++        {
++          g_autofree char *file = g_strconcat (id, ".png", NULL);
++          return g_build_filename (self->resource_dir, file, NULL);
++        }
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown fixture asset or no fixture resource directory");
++  return NULL;
++}
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+index 9babdf6..a0854d5 100644
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -23,4 +23,5 @@ void cc_luma_network_undo_free (CcLumaNetworkUndo *undo);
+ JsonObject *cc_luma_fixture_get_data (CcLumaFixture *self);
+ JsonArray *cc_luma_fixture_get_pages (CcLumaFixture *self);
+ gboolean cc_luma_fixture_has_page (CcLumaFixture *self, const char *page);
++char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **error);
+ G_END_DECLS
+diff --git a/shell/cc-luma-view-image.c b/shell/cc-luma-view-image.c
+new file mode 100644
+index 0000000..1e92493
+--- /dev/null
++++ b/shell/cc-luma-view-image.c
+@@ -0,0 +1,62 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++
++typedef struct {
++  GWeakRef root;
++  GWeakRef picture;
++  char *path;
++  int width, height;
++  guint64 generation;
++} ImageJob;
++static void image_job_free (ImageJob *job)
++{
++  g_weak_ref_clear (&job->root);
++  g_weak_ref_clear (&job->picture);
++  g_free (job->path);
++  g_free (job);
++}
++static void decode_image (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++{
++  ImageJob *job = data;
++  g_autoptr (GError) error = NULL;
++  GdkPixbuf *image = gdk_pixbuf_new_from_file_at_scale (job->path, job->width, job->height, TRUE, &error);
++  if (!image) g_task_return_error (task, g_steal_pointer (&error));
++  else g_task_return_pointer (task, image, g_object_unref);
++}
++static void image_decoded (GObject *source, GAsyncResult *result, gpointer unused)
++{
++  GTask *task = G_TASK (result);
++  ImageJob *job = g_task_get_task_data (task);
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GdkPixbuf) image = g_task_propagate_pointer (task, &error);
++  g_autoptr (GtkWidget) root = g_weak_ref_get (&job->root);
++  g_autoptr (GtkWidget) picture = g_weak_ref_get (&job->picture);
++  if (!root || !picture) return;
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v || v->generation != job->generation || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
++  if (!image) { cc_luma_view_report_error (v, error); return; }
++  g_autoptr (GdkTexture) texture = gdk_texture_new_for_pixbuf (image);
++  gtk_picture_set_paintable (GTK_PICTURE (picture), GDK_PAINTABLE (texture));
++}
++GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height)
++{
++  GtkWidget *picture = gtk_picture_new ();
++  gtk_picture_set_content_fit (GTK_PICTURE (picture), GTK_CONTENT_FIT_COVER);
++  gtk_picture_set_can_shrink (GTK_PICTURE (picture), TRUE);
++  ImageJob *job = g_new0 (ImageJob, 1);
++  g_weak_ref_init (&job->root, v->root);
++  g_weak_ref_init (&job->picture, picture);
++  g_autoptr (GError) error = NULL;
++  job->path = cc_luma_fixture_asset_path (v->model, asset, &error);
++  if (!job->path)
++    {
++      image_job_free (job);
++      cc_luma_view_report_error (v, error);
++      return picture;
++    }
++  job->width = width; job->height = height; job->generation = v->generation;
++  g_autoptr (GTask) task = g_task_new (NULL, v->images_cancel, image_decoded, NULL);
++  g_task_set_task_data (task, job, (GDestroyNotify) image_job_free);
++  g_task_run_in_thread (task, decode_image);
++  return picture;
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 905329c..c57d704 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -21,6 +21,11 @@ typedef struct {
+   GtkWidget *root;
+   GSimpleActionGroup *actions;
+   LumaActionCenter *center;
++  GCancellable *images_cancel;
++  guint64 generation;
++  GError *image_error;
++  CcLumaViewErrorFunc error_handler;
++  gpointer error_data;
+ } View;
+ void cc_luma_view_queue_refresh (View *v);
+ const char *cc_luma_view_text (View *v, const char *key);
+@@ -34,3 +39,6 @@ GtkWidget *cc_luma_view_command (View *v, const char *caption, GCallback callbac
+ void cc_luma_view_bluetooth_start (View *v);
+ void cc_luma_view_bluetooth_stop (View *v);
+ void cc_luma_view_bluetooth_render (View *v);
++
++GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height);
++void cc_luma_view_report_error (View *v, const GError *error);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 92f25f2..f7e9175 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -18,6 +18,9 @@ static gboolean refresh_view (gpointer data)
+ 
+ void cc_luma_view_queue_refresh (View *v)
+ {
++  /* Invalidate now: a completed task may run before the redraw idle. */
++  v->generation++;
++  if (v->images_cancel) g_cancellable_cancel (v->images_cancel);
+   if (!v->refresh) v->refresh = g_idle_add (refresh_view, v);
+ }
+ const char *cc_luma_view_text (View *v, const char *key)
+@@ -576,6 +579,10 @@ static void network (View *v)
+ static void render (View *v)
+ {
+   GtkWidget *child;
++  if (v->images_cancel) g_cancellable_cancel (v->images_cancel);
++  g_clear_object (&v->images_cancel);
++  v->images_cancel = g_cancellable_new ();
++  v->generation++;
+   while ((child = gtk_widget_get_first_child (GTK_WIDGET (v->body))))
+     gtk_box_remove (v->body, child);
+   if (g_str_equal (v->page, "wifi")) wifi (v);
+@@ -587,6 +594,9 @@ static void render (View *v)
+ }
+ static void view_free (View *v)
+ {
++  if (v->images_cancel) g_cancellable_cancel (v->images_cancel);
++  g_clear_object (&v->images_cancel);
++  g_clear_error (&v->image_error);
+   if (v->refresh)
+     g_source_remove (v->refresh);
+   if (v->connection) g_source_remove (v->connection);
+@@ -755,3 +765,21 @@ gboolean cc_luma_view_set_variant (GtkWidget *root, const char *variant, GError
+   else v->variant_tick = gtk_widget_add_tick_callback (root, capture_variant, NULL, NULL);
+   return TRUE;
+ }
++
++void cc_luma_view_set_error_handler (GtkWidget *root, CcLumaViewErrorFunc handler, gpointer data)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  v->error_handler = handler;
++  v->error_data = data;
++}
++const GError *cc_luma_view_get_error (GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  return v->image_error;
++}
++void cc_luma_view_report_error (View *v, const GError *error)
++{
++  g_clear_error (&v->image_error);
++  v->image_error = g_error_copy (error);
++  if (v->error_handler) v->error_handler (v->root, v->image_error, v->error_data);
++}
+diff --git a/shell/cc-luma-view.h b/shell/cc-luma-view.h
+index db81d48..c890dce 100644
+--- a/shell/cc-luma-view.h
++++ b/shell/cc-luma-view.h
+@@ -7,4 +7,7 @@ G_BEGIN_DECLS
+ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error);
+ /* Capture selector, accepted only for a supported page/state pair. */
+ gboolean cc_luma_view_set_variant (GtkWidget *view, const char *variant, GError **error);
++typedef void (*CcLumaViewErrorFunc) (GtkWidget *view, const GError *error, gpointer data);
++void cc_luma_view_set_error_handler (GtkWidget *view, CcLumaViewErrorFunc handler, gpointer data);
++const GError *cc_luma_view_get_error (GtkWidget *view);
+ G_END_DECLS
+diff --git a/shell/main.c b/shell/main.c
+index baaf4a5..1a2db49 100644
+--- a/shell/main.c
++++ b/shell/main.c
+@@ -50,5 +50,6 @@ main (gint    argc,
+   g_set_application_name (_("Settings"));
+   application = cc_application_new ();
+ 
+-  return g_application_run (G_APPLICATION (application), argc, argv);
++  int status = g_application_run (G_APPLICATION (application), argc, argv);
++  return cc_application_fixture_failed (CC_APPLICATION (application)) ? 1 : status;
+ }
+diff --git a/shell/meson.build b/shell/meson.build
+index 0793823..fca3ab1 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -68,6 +68,7 @@ common_sources = files(
+   'cc-luma-bluetooth.c',
+   'cc-luma-desktop.c',
+   'cc-luma-view.c',
++  'cc-luma-view-image.c',
+   'cc-luma-view-bluetooth.c',
+ )
+ 
+@@ -194,7 +195,7 @@ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-bluetooth.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 8f7851f..6d837d0 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1,7 +1,8 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+-#include "cc-luma-view.h"
++#include "cc-luma-view-private.h"
+ #include <string.h>
+ #include <luma-ui.h>
++#include <glib/gstdio.h>
+ 
+ static GtkWidget *find_name (GtkWidget *root, const char *name)
+ {
+@@ -302,6 +303,80 @@ static void copy_addresses (void)
+   g_signal_emit_by_name (button, "clicked");
+   g_object_unref (button); drain ();
+ }
++static char *asset_fixture (void)
++{
++  g_autoptr (GError) error = NULL;
++  char *dir = g_dir_make_tmp ("luma-settings-assets-XXXXXX", &error);
++  g_assert_no_error (error);
++  g_autofree char *contents = NULL;
++  g_assert_true (g_file_get_contents (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), &contents, NULL, &error));
++  g_assert_no_error (error);
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_assert_true (g_file_set_contents (json, contents, -1, &error));
++  g_assert_no_error (error);
++  return dir;
++}
++static void remove_asset_fixture (const char *dir)
++{
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autofree char *image = g_build_filename (dir, "prism.png", NULL);
++  g_assert_cmpint (g_remove (json), ==, 0);
++  if (g_file_test (image, G_FILE_TEST_EXISTS)) g_assert_cmpint (g_remove (image), ==, 0);
++  g_assert_cmpint (g_rmdir (dir), ==, 0);
++}
++static void asset_loading (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  JsonObject *codes = json_object_get_object_member (wifi, "share_codes");
++  const char *art = json_object_get_string_member (codes, "Studio North");
++  g_autofree char *path = g_build_filename (dir, "prism.png", NULL);
++  g_assert_true (g_file_set_contents (path, art, -1, NULL));
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++  GtkWidget *picture = cc_luma_view_image (v, "prism", 128, 128);
++  gtk_box_append (v->body, picture);
++  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
++  while (!gtk_picture_get_paintable (GTK_PICTURE (picture)) && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  GdkPaintable *paintable = gtk_picture_get_paintable (GTK_PICTURE (picture));
++  g_assert_nonnull (paintable);
++  g_assert_cmpint (gdk_paintable_get_intrinsic_width (paintable), ==, 128);
++  g_assert_null (cc_luma_view_get_error (view));
++  g_autoptr (GError) error = NULL;
++  g_assert_null (cc_luma_fixture_asset_path (model, "../../private-data", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++  g_object_unref (view); drain ();
++  remove_asset_fixture (dir);
++}
++static void missing_asset (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++  GtkWidget *picture = cc_luma_view_image (v, "prism", 128, 128);
++  gtk_box_append (v->body, picture);
++  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
++  while (!cc_luma_view_get_error (view) && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  g_assert_nonnull (cc_luma_view_get_error (view));
++  g_assert_null (gtk_picture_get_paintable (GTK_PICTURE (picture)));
++  g_object_unref (view); drain ();
++  /* Results from a superseded generation cannot surface an obsolete error. */
++  view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  v = g_object_get_data (G_OBJECT (view), "cf-view");
++  picture = cc_luma_view_image (v, "prism", 128, 128);
++  gtk_box_append (v->body, picture);
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-airplane")), TRUE);
++  wait_ms (100);
++  g_assert_null (cc_luma_view_get_error (view));
++  picture = cc_luma_view_image (v, "prism", 128, 128);
++  gtk_box_append (v->body, picture);
++  g_object_unref (view); wait_ms (100);
++  remove_asset_fixture (dir);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -317,5 +392,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/bluetooth", bluetooth_view);
+   g_test_add_func ("/settings/view/bluetooth-pairing", bluetooth_pairing);
+   g_test_add_func ("/settings/view/copy-addresses", copy_addresses);
++  g_test_add_func ("/settings/view/asset-loading", asset_loading);
++  g_test_add_func ("/settings/view/missing-asset", missing_asset);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

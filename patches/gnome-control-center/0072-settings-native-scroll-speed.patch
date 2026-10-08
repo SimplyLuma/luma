@@ -1,0 +1,332 @@
+From: Project Luma
+Subject: [PATCH] Settings: restore mouse and touchpad scroll speed in native LumaUI
+
+The active native page replaced the legacy mouse panel without exposing its
+existing Mutter-owned scroll settings. Reuse its logarithmic conversion and
+shared range controls, keeping wheel and finger scrolling independent.
+
+diff --git a/shell/cc-luma-live-gsettings.h b/shell/cc-luma-live-gsettings.h
+--- a/shell/cc-luma-live-gsettings.h
++++ b/shell/cc-luma-live-gsettings.h
+@@ -15,6 +15,7 @@
+   CC_LUMA_GS_CHOICE,    /* any scalar ↔ string: choices = { model, gsettings, … } in GVariant text */
+   CC_LUMA_GS_CHOICE_INT,/* same, model side is an integer */
+   CC_LUMA_GS_LINEAR,    /* number ↔ integer model = round (value * scale + offset), clamped to low…high */
++  CC_LUMA_GS_SCROLL,    /* factor .25…4 ↔ log2 slider -100…100; zero is normal */
+   CC_LUMA_GS_DOUBLE,    /* d ↔ double */
+   CC_LUMA_GS_MINUTES,   /* seconds (i/u) ↔ string of whole minutes */
+   CC_LUMA_GS_HOURS,     /* hours (d) ↔ "HH:MM" */
+diff --git a/shell/cc-luma-live-gsettings.c b/shell/cc-luma-live-gsettings.c
+--- a/shell/cc-luma-live-gsettings.c
++++ b/shell/cc-luma-live-gsettings.c
+@@ -3,6 +3,7 @@
+ #include "cc-luma-displays.h"
+ #include "cc-luma-device-options.h"
+ #include <math.h>
++#include "../panels/mouse/cc-scroll-speed.h"
+ #include <stdio.h>
+ 
+ typedef struct {
+@@ -96,6 +97,12 @@
+         double number = number_of (value) * row->scale + row->offset;
+         if (!isfinite (number)) break;
+         return json_node_init_int (node, (gint64) round (CLAMP (number, row->low, row->high)));
++      }
++    case CC_LUMA_GS_SCROLL:
++      {
++        double factor = number_of (value);
++        if (!isfinite (factor) || factor < CC_SCROLL_SPEED_MIN || factor > CC_SCROLL_SPEED_MAX) break;
++        return json_node_init_int (node, (gint64) round (cc_scroll_speed_to_slider (factor) * 50));
+       }
+     case CC_LUMA_GS_DOUBLE:
+       if (!isfinite (number_of (value))) break;
+@@ -159,6 +166,13 @@
+         double model = json_node_get_double (value);
+         if (!isfinite (model) || model < row->low || model > row->high || row->scale == 0) return NULL;
+         return number_as (b->type, (model - row->offset) / row->scale);
++      }
++    case CC_LUMA_GS_SCROLL:
++      {
++        if (type != G_TYPE_INT64 && type != G_TYPE_DOUBLE) return NULL;
++        double position = json_node_get_double (value);
++        if (!isfinite (position) || position < -100 || position > 100) return NULL;
++        return number_as (b->type, cc_scroll_speed_from_slider (position / 50));
+       }
+     case CC_LUMA_GS_DOUBLE:
+       if (type != G_TYPE_INT64 && type != G_TYPE_DOUBLE) return NULL;
+@@ -385,11 +399,13 @@
+   { "mSpeed", MOUSE, "speed", CC_LUMA_GS_LINEAR, NULL, 100, 0, -100, 100 },
+   { "mAccel", MOUSE, "accel-profile", CC_LUMA_GS_UNLESS, accel },
+   { "mNat", MOUSE, "natural-scroll", CC_LUMA_GS_BOOLEAN },
++  { "mScrollSpeed", "org.projectluma.peripherals.mouse", "scroll-speed", CC_LUMA_GS_SCROLL },
+   { "tp", TOUCHPAD, "send-events", CC_LUMA_GS_UNLESS, send_events },
+   { "tpType", TOUCHPAD, "disable-while-typing", CC_LUMA_GS_BOOLEAN },
+   { "tSpeed", TOUCHPAD, "speed", CC_LUMA_GS_LINEAR, NULL, 100, 0, -100, 100 },
+   { "tTap", TOUCHPAD, "tap-to-click", CC_LUMA_GS_BOOLEAN },
+   { "tNat", TOUCHPAD, "natural-scroll", CC_LUMA_GS_BOOLEAN },
++  { "tScrollSpeed", "org.projectluma.peripherals.touchpad", "scroll-speed", CC_LUMA_GS_SCROLL },
+   { "tSec", TOUCHPAD, "click-method", CC_LUMA_GS_CHOICE, click_method },
+   /* Keyboard */
+   { "perWin", "org.gnome.desktop.input-sources", "per-window", CC_LUMA_GS_CHOICE, per_window },
+diff --git a/shell/cc-luma-device-options.c b/shell/cc-luma-device-options.c
+--- a/shell/cc-luma-device-options.c
++++ b/shell/cc-luma-device-options.c
+@@ -22,6 +22,8 @@
+   { "mBtn", G_TYPE_STRING, 0, 0, { "left", "right", NULL } },
+   { .key = "mSpeed", .type = G_TYPE_INT64, .low = -100, .high = 100 },
+   { .key = "tSpeed", .type = G_TYPE_INT64, .low = -100, .high = 100 },
++  { .key = "mScrollSpeed", .type = G_TYPE_INT64, .low = -100, .high = 100 },
++  { .key = "tScrollSpeed", .type = G_TYPE_INT64, .low = -100, .high = 100 },
+   { .key = "mAccel", .type = G_TYPE_BOOLEAN }, { .key = "mNat", .type = G_TYPE_BOOLEAN },
+   { .key = "tp", .type = G_TYPE_BOOLEAN }, { .key = "tpType", .type = G_TYPE_BOOLEAN },
+   { .key = "tTap", .type = G_TYPE_BOOLEAN }, { .key = "tNat", .type = G_TYPE_BOOLEAN },
+@@ -99,6 +101,10 @@
+   for (guint i = 0; i < length; i++)
+     {
+       JsonNode *value = cc_luma_fixture_get (model, fields[i].key);
++      /* Older fixtures and systems without Luma's Mutter schema have no
++       * scroll owner. Omit those controls without inventing a speed. */
++      if ((!value || JSON_NODE_HOLDS_NULL (value)) &&
++          (g_str_equal (fields[i].key, "mScrollSpeed") || g_str_equal (fields[i].key, "tScrollSpeed"))) continue;
+       if (cc_luma_fixture_is_live (model) && (!value || JSON_NODE_HOLDS_NULL (value))) continue;
+       if (!allowed_in (model, &fields[i], value)) return FALSE;
+     }
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -144,6 +144,9 @@
+                                                         "susAc", "mBtn",
+                                                         /* VM 29 Sep (run 20260929T070512-ld5-writes): written by a
+                                                          * click, in GSettings and shown again after reopening */
++                                                        /* Creator 5 Oct: separate schema write/readback and native
++                                                         * libinput finger/wheel .5/1/2 delivery under Mutter12. */
++                                                        "mScrollSpeed", "tScrollSpeed",
+                                                         "mSpeed", "mAccel", "mNat", "osk", "rep", "blink", "sticky", "slow",
+                                                         "bounce", "mkeys", "locate", "hold", "hover", "vAlert", "cross",
+                                                         "invert", "hc", "motion", "scrollbars", "soundKeys",
+diff --git a/shell/cc-luma-view-devices.c b/shell/cc-luma-view-devices.c
+--- a/shell/cc-luma-view-devices.c
++++ b/shell/cc-luma-view-devices.c
+@@ -651,6 +651,12 @@
+   return demo;
+ }
+ 
++static char *scroll_speed_label (double position)
++{
++  if (fabs (position) < 2.5) return g_strdup ("Normal");
++  return g_strdup_printf ("%.2g×", exp2 (position / 50));
++}
++
+ void cc_luma_view_pointer_render (View *v)
+ {
+   const char * const device[] = { "mouse", "Mouse", "touchpad", "Touchpad", NULL };
+@@ -673,6 +679,8 @@
+       cc_luma_dev_rg (v, card, "mSpeed", "Pointer speed", NULL, -100, 100, 1, "Slow", "Fast", NULL, pointer_set);
+       cc_luma_dev_sw (v, card, "mAccel", "Acceleration", "The pointer goes further when you move quickly", NULL, pointer_set);
+       cc_luma_dev_sg (v, card, "mNat", "Scrolling", NULL, direction, TRUE, pointer_set);
++      cc_luma_dev_rg (v, card, "mScrollSpeed", "Scroll speed", "How far the page moves with the wheel",
++                       -100, 100, 1, NULL, NULL, scroll_speed_label, pointer_set);
+       cc_luma_dev_prune (v);
+       return;
+     }
+@@ -686,6 +694,8 @@
+   card = cf_group (v, "Scrolling", NULL);
+   cc_luma_dev_sg (v, card, "tScroll", "Scroll with", NULL, scroll, FALSE, pointer_set);
+   cc_luma_dev_sg (v, card, "tNat", "Direction", "Natural moves the page with your fingers", direction, TRUE, pointer_set);
++  cc_luma_dev_rg (v, card, "tScrollSpeed", "Scroll speed", "How far the page moves with your fingers",
++                   -100, 100, 1, NULL, NULL, scroll_speed_label, pointer_set);
+   cc_luma_dev_prune (v);
+ }
+ 
+diff --git a/shell/test-luma-live-gsettings.c b/shell/test-luma-live-gsettings.c
+--- a/shell/test-luma-live-gsettings.c
++++ b/shell/test-luma-live-gsettings.c
+@@ -2,6 +2,7 @@
+ /* The GSettings table against memory settings: never the real dconf. */
+ #include "cc-luma-live-gsettings.h"
+ #include "cc-luma-displays.h"
++#include "cc-luma-device-options.h"
+ 
+ void cc_luma_live_ready (CcLumaFixture *model, const char *adapter) { cc_luma_fixture_changed (model); }
+ 
+@@ -137,6 +138,47 @@
+   cc_luma_adapter_gsettings.stop (state);
+ }
+ 
++static void
++test_scroll_speed (void)
++{
++  /* Mandatory installed Luma compositor schema: absence must fail, not skip. */
++  g_assert_true (has_schema ("org.projectluma.peripherals.mouse"));
++  g_assert_true (has_schema ("org.projectluma.peripherals.touchpad"));
++  gpointer state;
++  g_autoptr (CcLumaFixture) model = model_new (&state);
++  g_autoptr (GSettings) mouse = g_settings_new ("org.projectluma.peripherals.mouse");
++  g_autoptr (GSettings) pad = g_settings_new ("org.projectluma.peripherals.touchpad");
++  g_autoptr (GError) error = NULL;
++  const int positions[] = { -100, -50, 0, 50, 100 };
++  const double factors[] = { .25, .5, 1, 2, 4 };
++  g_assert_true (cc_luma_pointer_validate (model));
++  for (guint i = 0; i < G_N_ELEMENTS (positions); i++) {
++    g_autoptr (JsonNode) value = json_node_init_int (json_node_alloc (), positions[i]);
++    g_assert_true (cc_luma_pointer_set (model, "tScrollSpeed", value, &error));
++    g_assert_no_error (error);
++    g_assert_cmpfloat (g_settings_get_double (pad, "scroll-speed"), ==, factors[i]);
++    g_assert_cmpfloat (g_settings_get_double (mouse, "scroll-speed"), ==, 1);
++  }
++  g_autoptr (JsonNode) half = json_node_init_int (json_node_alloc (), -50);
++  g_assert_true (cc_luma_pointer_set (model, "mScrollSpeed", half, &error));
++  g_assert_cmpfloat (g_settings_get_double (mouse, "scroll-speed"), ==, .5);
++  g_assert_cmpfloat (g_settings_get_double (pad, "scroll-speed"), ==, 4);
++  /* External owner changes and a recreated page/model read actual settings. */
++  g_assert_true (g_settings_set_double (pad, "scroll-speed", .5));
++  spin ();
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "tScrollSpeed")), ==, -50);
++  g_autoptr (JsonNode) invalid = json_node_init_int (json_node_alloc (), 101);
++  g_assert_false (cc_luma_pointer_set (model, "tScrollSpeed", invalid, &error));
++  g_clear_error (&error);
++  g_assert_cmpfloat (g_settings_get_double (pad, "scroll-speed"), ==, .5);
++  cc_luma_adapter_gsettings.stop (state);
++  gpointer reopened_state;
++  g_autoptr (CcLumaFixture) reopened = model_new (&reopened_state);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (reopened, "mScrollSpeed")), ==, -50);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (reopened, "tScrollSpeed")), ==, -50);
++  cc_luma_adapter_gsettings.stop (reopened_state);
++}
++
+ int
+ main (int argc, char **argv)
+ {
+@@ -145,5 +187,6 @@
+   g_test_add_func ("/luma/live/gsettings/night", test_night);
+   g_test_add_func ("/luma/live/gsettings/power", test_power_rows);
+   g_test_add_func ("/luma/live/gsettings/accent-a11y", test_accent_and_a11y);
++  g_test_add_func ("/luma/live/gsettings/scroll-speed", test_scroll_speed);
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -8,6 +8,7 @@
+ #include <luma-appearance.h>
+ #include "cc-luma-discovery.h"
+ #include "cc-luma-search-locations.h"
++#include "cc-luma-device-options.h"
+ 
+ static GtkWidget *find_name (GtkWidget *root, const char *name)
+ {
+@@ -1994,9 +1995,17 @@
+   {
+     /* A layout must never claim more height than it naturally takes (GTK warns, and rows jump). */
+     int vmin = 0, vnat = 0, width = gtk_widget_get_width (w);
++    /* GTK measure expects the border box; get_width() excludes CSS padding. */
++    graphene_rect_t border;
++    if (gtk_widget_compute_bounds (w, w, &border)) width = (int) ceilf (border.size.width);
+     if (width > 0)
+       {
+-        gtk_widget_measure (w, GTK_ORIENTATION_VERTICAL, width, &vmin, &vnat, NULL, NULL);
++        /* Clipped drawing pieces may be narrower than their minimum; asking
++           * GTK for an impossible width itself emits a sizing warning. Actual
++           * un-clipped overflow is checked from bounds above. */
++        int horizontal_minimum = 0;
++        gtk_widget_measure (w, GTK_ORIENTATION_HORIZONTAL, -1, &horizontal_minimum, NULL, NULL, NULL);
++        gtk_widget_measure (w, GTK_ORIENTATION_VERTICAL, MAX (width, horizontal_minimum), &vmin, &vnat, NULL, NULL);
+         if (vmin > vnat)
+           {
+             g_autoptr (GString) classes = g_string_new (NULL);
+@@ -2103,6 +2112,88 @@
+   if (g_getenv ("LUMA_SPILL_REPORT")) g_file_set_contents (g_getenv ("LUMA_SPILL_REPORT"), out->str, -1, NULL);
+   if (out->len) g_test_message ("spills:\n%s", out->str);
+   g_assert_cmpuint (out->len, ==, 0);
++}
++
++static void scroll_speed_view (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  g_autoptr (JsonNode) normal = json_node_init_int (json_node_alloc (), 0);
++  cc_luma_fixture_publish (model, "mScrollSpeed", normal);
++  cc_luma_fixture_publish (model, "tScrollSpeed", normal);
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "mouse", NULL));
++  pick_mode (find_name (view, "cf-mtab"), "mouse"); drain ();
++  GtkWidget *mouse = find_name (view, "cf-mScrollSpeed");
++  g_assert_true (GTK_IS_SCALE (mouse));
++  g_assert_true (has_text (view, "Normal"));
++  gtk_range_set_value (GTK_RANGE (mouse), -50);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "mScrollSpeed")), ==, -50);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "tScrollSpeed")), ==, 0);
++  g_assert_true (mouse == find_name (view, "cf-mScrollSpeed"));
++  g_assert_true (has_text (view, "0.5×"));
++  g_autoptr (JsonNode) tab = json_node_init_string (json_node_alloc (), "touchpad");
++  g_assert_true (cc_luma_pointer_set (model, "mtab", tab, NULL));
++  cc_luma_view_queue_refresh (g_object_get_data (G_OBJECT (view), "cf-view")); drain ();
++  GtkWidget *pad = find_name (view, "cf-tScrollSpeed");
++  g_assert_true (GTK_IS_SCALE (pad));
++  gtk_range_set_value (GTK_RANGE (pad), 50);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "tScrollSpeed")), ==, 50);
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "mScrollSpeed")), ==, -50);
++  g_assert_true (has_text (view, "2×"));
++  gtk_range_set_value (GTK_RANGE (pad), 0);
++  g_assert_true (has_text (view, "Normal"));
++  cc_luma_view_queue_refresh (g_object_get_data (G_OBJECT (view), "cf-view")); drain ();
++  g_assert_cmpfloat (gtk_range_get_value (GTK_RANGE (find_name (view, "cf-tScrollSpeed"))), ==, 0);
++  g_object_unref (view);
++  load_settings_style ();
++  const int widths[] = { 360, 500, 1024, 1366 };
++  for (guint dark = 0; dark < 2; dark++) {
++    adw_style_manager_set_color_scheme (adw_style_manager_get_default (),
++        dark ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT);
++    for (guint i = 0; i < G_N_ELEMENTS (widths); i++) for (guint device = 0; device < 2; device++) {
++      g_autoptr (JsonNode) mode = json_node_init_string (json_node_alloc (), device ? "touchpad" : "mouse");
++      g_assert_true (cc_luma_pointer_set (model, "mtab", mode, NULL));
++      GtkWidget *window = gtk_window_new ();
++      gtk_window_set_default_size (GTK_WINDOW (window), widths[i], 900);
++      view = cc_luma_view_new (model, "mouse", NULL);
++      gtk_window_set_child (GTK_WINDOW (window), view);
++      /* Like phone_window(), let the first frame select its responsive
++       * breakpoint, then require all settled layout and input to fit. */
++      GLogLevelFlags fatal = g_log_set_always_fatal (G_LOG_FATAL_MASK);
++      gtk_window_present (GTK_WINDOW (window)); wait_ms (300);
++      g_log_set_always_fatal (fatal);
++      int minimum = 0;
++      gtk_widget_measure (view, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, NULL, NULL, NULL);
++      g_assert_cmpint (minimum, <=, widths[i]);
++      gtk_widget_queue_resize (view); wait_ms (50);
++      GtkWidget *range = find_name (view, device ? "cf-tScrollSpeed" : "cf-mScrollSpeed");
++      g_assert_true (GTK_IS_SCALE (range));
++      gtk_range_set_value (GTK_RANGE (range), device ? 50 : -50); wait_ms (100);
++      g_assert_true (range == find_name (view, device ? "cf-tScrollSpeed" : "cf-mScrollSpeed"));
++      g_autoptr (GString) spills = g_string_new (NULL);
++      spill_walk (view, view, spills, "scroll-speed");
++      g_assert_cmpuint (spills->len, ==, 0);
++      GtkWidget *scroll = gtk_widget_get_ancestor (range, GTK_TYPE_SCROLLED_WINDOW);
++      g_assert_true (GTK_IS_SCROLLED_WINDOW (scroll));
++      GtkAdjustment *vertical = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (scroll));
++      gtk_adjustment_set_value (vertical, gtk_adjustment_get_upper (vertical) - gtk_adjustment_get_page_size (vertical));
++      wait_ms (100);
++      const char *capture_dir = g_getenv ("LUMA_SCROLL_CAPTURE_DIR");
++      if (capture_dir) {
++        g_autoptr (GdkPaintable) paintable = gtk_widget_paintable_new (window);
++        GtkSnapshot *snapshot = gtk_snapshot_new ();
++        gdk_paintable_snapshot (paintable, GDK_SNAPSHOT (snapshot),
++            gtk_widget_get_width (window), gtk_widget_get_height (window));
++        GskRenderNode *node = gtk_snapshot_free_to_node (snapshot);
++        g_assert_nonnull (node);
++        g_autoptr (GdkTexture) texture = gsk_renderer_render_texture (
++            gtk_native_get_renderer (GTK_NATIVE (window)), node, NULL);
++        g_autofree char *path = g_strdup_printf ("%s/%s-%s-%d.png", capture_dir, dark ? "dark" : "light", device ? "touchpad" : "mouse", widths[i]);
++        g_assert_true (gdk_texture_save_to_png (texture, path));
++        gsk_render_node_unref (node);
++      }
++      gtk_window_destroy (GTK_WINDOW (window)); drain ();
++    }
++  }
+ }
+ 
+ int main (int argc, char **argv)
+@@ -2149,5 +2240,6 @@
+   g_test_add_func ("/settings/view/phone-device", phone_device);
+   g_test_add_func ("/settings/view/phone-search-visibility", phone_search_visibility);
+   g_test_add_func ("/settings/view/no-spill", no_spill);
++  g_test_add_func ("/settings/view/scroll-speed", scroll_speed_view);
+   return g_test_run ();
+ }

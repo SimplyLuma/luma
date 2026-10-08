@@ -1,0 +1,154 @@
+{
+  "app": "contacts",
+  "title": "Contacts",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=contacts",
+    "window": "#w-contacts",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "contacts",
+    "fixtures": [
+      "tests/fixtures/contacts-v70.json",
+      "tests/fixtures/contacts-v70",
+      "tests/fixtures/contacts-v70-data"
+    ],
+    "env": {
+      "LUMA_CONTACTS_FIXTURE": "{run}/fixtures/contacts-v70.json",
+      "XDG_DATA_HOME": "{run}/fixtures/contacts-v70-data"
+    }
+  },
+  "states": [
+    {
+      "name": "card",
+      "about": "Priya Raman selected (v70's opening state)",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "edit",
+      "about": "Priya's card in edit mode",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "click": "[data-cedit]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CONTACTS_EDIT": "1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "about": "The corner pill's More menu open",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "click": "[data-cmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ct-more"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "card"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-contacts > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#c-top"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#c-side .sfoot"
+    },
+    {
+      "name": "my card",
+      "spec": "#c-side .cmecard"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#c-side"
+    },
+    {
+      "name": "corner pill",
+      "spec": "#c-float"
+    },
+    {
+      "name": "menu",
+      "spec": "#w-contacts > .pop"
+    },
+    {
+      "name": "action tiles",
+      "spec": "#c-body .chero .lstks"
+    },
+    {
+      "name": "hero",
+      "spec": "#c-body .chero"
+    },
+    {
+      "name": "cards",
+      "spec": "#c-body .cgrid"
+    },
+    {
+      "name": "main",
+      "spec": "#c-main"
+    }
+  ],
+  "groups_note": "Items take the first group whose spec box contains them, so list inner regions before outer ones. info_only groups are reported, never failed.",
+  "text_aliases": {
+    "Just now": "10:40 AM"
+  },
+  "text_aliases_note": "v70 renders some times relative to now; the fixture pins them.",
+  "pairs": [
+    {
+      "spec": "#c-side",
+      "gtk": "ct-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#c-main",
+      "gtk": "ct-island",
+      "name": "island (main)"
+    },
+    {
+      "spec": "#c-float",
+      "gtk": "ct-corner",
+      "name": "corner pill"
+    },
+    {
+      "spec": "#c-light",
+      "gtk": "ct-light",
+      "name": "hero light"
+    }
+  ],
+  "pairs_note": "Structure with no text of its own: spec element id -> GTK widget name (Gtk.Widget.set_name).",
+  "app_icon": {
+    "spec_src": "luma-v3-contacts.svg",
+    "gtk": "^org\\.projectluma\\.|^application-x-executable$"
+  }
+}

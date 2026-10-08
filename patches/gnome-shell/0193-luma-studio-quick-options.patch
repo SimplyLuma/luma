@@ -1,0 +1,1065 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: Arrange live system controls into Studio Quick Options
+
+Downstream GNOME Shell 50.3; upstream GPL-2.0-or-later. New bundled
+Lucide glyphs retain ISC/MIT provenance in ProjectLuma source register.
+
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -321,7 +321,7 @@
+                 this.menu.open();
+         });
+         this.menu.connect('open-state-changed', (menu, open) => {
+-            this._menuButton.child.child.icon_name = open
++            if (!this.menu._studioPage) this._menuButton.child.child.icon_name = open
+                 ? DISCLOSURE_OPEN : DISCLOSURE_CLOSED;
+         });
+         trackSheetOwner(this.menu, this);
+@@ -514,7 +514,7 @@
+                 this.menu.open();
+         });
+         this.menu.connect('open-state-changed', (menu, open) => {
+-            this._menuButton.child.child.icon_name = open
++            if (!this.menu._studioPage) this._menuButton.child.child.icon_name = open
+                 ? DISCLOSURE_OPEN : DISCLOSURE_CLOSED;
+         });
+         trackSheetOwner(this.menu, this._menuButton);
+@@ -535,8 +535,7 @@
+         }).format(this.slider.value);
+         // "44% · Buds4 Pro": where the sound is going, without opening
+         // anything.
+-        this._valueLabel.text = this.levelDetail
+-            ? `${percent} · ${this.levelDetail}` : percent;
++        this._valueLabel.text = percent;
+     }
+ });
+ 
+@@ -749,7 +748,7 @@
+ 
+         this._titleLabel.text = title;
+         this.setCount(subtitle);
+-        this._titleRow.show();
++        this._titleRow.visible = !this._studioPage;
+     }
+ 
+     setCount(text) {
+@@ -777,6 +776,11 @@
+ 
+         this.actor.show();
+         this.isOpen = true;
++        if (this._studioPage) {
++            this.actor.height = -1; this.box.opacity = 255;
++            this.emit('open-state-changed', true);
++            return;
++        }
+ 
+         const previousHeight = this.actor.height;
+         this.actor.height = -1;
+@@ -807,6 +811,11 @@
+         if (!this.isOpen)
+             return;
+ 
++        if (this._studioPage) {
++            this.isOpen = false; this.actor.hide();
++            this.emit('open-state-changed', false); this.emit('menu-closed');
++            return;
++        }
+         const {opacity} = this.box;
+         const duration = animate !== PopupAnimation.NONE
+             ? POPUP_ANIMATION_TIME / 2
+@@ -1305,6 +1314,179 @@
+         this.box.add_child(this._grid);
+         this._grid.add_child(this._sheetFrame);
+         this._grid.add_child(this._itemsStart);
++        this._pageHost = new St.BoxLayout({style_class: 'luma-options-page',
++            orientation: Clutter.Orientation.VERTICAL, visible: false});
++        const header = new St.BoxLayout({style_class: 'luma-options-page-header'});
++        this._back = new St.Button({can_focus: true, accessible_name: _('Back'),
++            style_class: 'luma-options-back', child: new St.Icon({icon_name: 'luma-chevron-left-symbolic', icon_size: 16})});
++        this._back.connect('clicked', () => this._activeMenu?.close());
++        header.add_child(this._back);
++        this._pageHeading = new St.Label({style_class: 'luma-options-page-title', x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER}); header.add_child(this._pageHeading);
++        this._pageSwitch = new St.Button({style_class: 'luma-options-page-switch', can_focus: true,
++            child: new St.Widget({style_class: 'toggle-switch'})});
++        this._pageSwitch.connect('clicked', () => this._activeMenu?._studioRadio?.emit('clicked', 1));
++        this._pageSwitch.connect('notify::checked', () => {
++            if (this._pageSwitch.checked) this._pageSwitch.child.add_style_pseudo_class('checked');
++            else this._pageSwitch.child.remove_style_pseudo_class('checked');
++        });
++        header.add_child(this._pageSwitch); this._pageHost.add_child(header);
++        this.box.add_child(this._pageHost);
++    }
++
++    // The Studio page arrangement reuses GNOME's live indicator actors. No
++    // second NetworkManager, audio, brightness or UPower model is created.
++    configureStudio(indicators) {
++        this.box.add_style_class_name('luma-studio-options');
++        this._materialBinding.setCornerRadii(22);
++        this._materialBinding.setTranslucentRecipe({radius: 40, saturation: 1.4});
++        this._lumaHeader.hide();
++        this._grid.hide();
++        this._mainPage = new St.BoxLayout({style_class: 'luma-options-main',
++            orientation: Clutter.Orientation.VERTICAL, x_expand: true});
++        this.box.insert_child_below(this._mainPage, this._pageHost);
++        const move = (item, parent, cls) => {
++            if (!item) return;
++            item.get_parent()?.remove_child(item);
++            item.add_style_class_name(cls);
++            parent.add_child(item);
++        };
++        const row = cls => new St.BoxLayout({style_class: cls, x_expand: true});
++        const levels = new St.BoxLayout({style_class: 'luma-options-levels', orientation: Clutter.Orientation.VERTICAL});
++        this._mainPage.add_child(levels);
++        const volume = indicators._volumeOutput.quickSettingsItems[0];
++        const brightness = indicators._brightness.quickSettingsItems[0];
++        for (const item of [volume, brightness]) {
++            move(item, levels, 'luma-options-slider');
++            // Value sits after the live Slider, not in a second line before it.
++            item._levelHeader.hide();
++            const box = item.child;
++            item._levelHeader.remove_child(item._valueLabel);
++            box.insert_child_below(item._valueLabel, item._menuSlot);
++            item._valueLabel.y_align = Clutter.ActorAlign.CENTER;
++            item._menuButton.add_style_class_name('luma-options-level-key');
++        }
++        volume._menuButton.child.child.icon_name = 'luma-headphones-symbolic';
++        const output = volume._control;
++        const syncOutput = () => {
++            const stream = output?.get_default_sink?.();
++            const icon = stream?.get_form_factor?.() ?? 'speaker';
++            volume._menuButton.child.child.icon_name = /headphone|headset/.test(icon)
++                ? 'luma-headphones-symbolic' : /display|hdmi/.test(icon)
++                    ? 'luma-monitor-symbolic' : 'luma-speaker-symbolic';
++        };
++        output?.connectObject('default-sink-changed', syncOutput, this.actor);
++        syncOutput();
++        const powerSettings = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.plugins.power'});
++        const auto = new St.Button({style_class: 'luma-options-level-key', label: _('Auto'),
++            can_focus: true, toggle_mode: true, accessible_name: _('Automatic brightness')});
++        powerSettings.bind('ambient-enabled', auto, 'checked', Gio.SettingsBindFlags.DEFAULT);
++        brightness._menuSlot.child = auto;
++        brightness._menuButton.hide();
++        auto.connect('destroy', () => powerSettings.run_dispose());
++        // GNOME can still expose per-monitor brightness from the keyboard.
++        const radios = row('luma-options-radios'); this._mainPage.add_child(radios);
++        for (const item of [indicators._network?._wirelessToggle, indicators._bluetooth?.quickSettingsItems[0]]) {
++            move(item, radios, 'luma-options-radio');
++            if (!item) continue;
++            item.x_expand = true;
++            item.setPill(false);
++            item._menuButton.child.child.icon_name = 'luma-chevron-right-symbolic';
++            item.menu._studioTitle = item === indicators._network?._wirelessToggle ? _('Wi-Fi') : _('Bluetooth');
++            item.menu._studioRadio = item;
++
++        }
++        const toggles = new St.BoxLayout({style_class: 'luma-options-toggles', orientation: Clutter.Orientation.VERTICAL});
++        this._mainPage.add_child(toggles);
++        const utilities = [indicators._doNotDisturb, indicators._nightLight,
++            indicators._powerProfiles, indicators._darkMode].map(i => i.quickSettingsItems[0]);
++        for (let i = 0; i < utilities.length; i += 2) {
++            const group = row('luma-options-toggle-row'); toggles.add_child(group);
++            for (const item of utilities.slice(i, i + 2)) {
++                move(item, group, 'luma-options-utility'); item.x_expand = true;
++                item.setPill?.(true);
++                if (item._menuButton) item._menuButton.hide();
++            }
++        }
++        const night = utilities[1], dark = utilities[3];
++        night.title = _('Night Light'); night.iconName = 'luma-sunset-symbolic';
++        dark.title = _('Dark Style'); dark.iconName = 'luma-sun-moon-symbolic';
++        // Reuse the input stream's live mute operation. The strip is present
++        // only while GNOME's recording indicator says an app is using it.
++        const input = indicators._volumeInput.quickSettingsItems[0];
++        const mic = row('luma-options-mic'); this._mainPage.add_child(mic);
++        const micIcon = new St.Icon({icon_name: 'luma-mic-symbolic', icon_size: 16}); mic.add_child(micIcon);
++        const micCopy = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
++        const micTitle = new St.Label({style_class: 'luma-options-mic-title'});
++        const micApp = new St.Label({style_class: 'luma-options-mic-app'});
++        micCopy.add_child(micTitle); micCopy.add_child(micApp); mic.add_child(micCopy);
++        const mute = new St.Button({style_class: 'luma-options-mute', can_focus: true}); mic.add_child(mute);
++        mute.connect('clicked', () => input.emit('icon-clicked'));
++        const syncMic = () => {
++            mic.visible = input.visible;
++            const stream = input._stream;
++            const muted = stream?.is_muted ?? false;
++            micIcon.icon_name = muted ? 'luma-mic-off-symbolic' : 'luma-mic-symbolic';
++            micTitle.text = muted ? _('Microphone muted') : _('Microphone in use');
++            mute.label = muted ? _('Unmute') : _('Mute');
++            const apps = input._control?.get_source_outputs?.() ?? [];
++            micApp.text = apps.map(s => s.get_name()).filter(Boolean).join(', ');
++            micApp.visible = !!micApp.text;
++        };
++        input.connectObject('notify::visible', syncMic, 'stream-updated', syncMic, this.actor);
++        input.slider.connectObject('notify::value', syncMic, this.actor);
++        input._control?.connectObject('stream-added', syncMic, 'stream-removed', syncMic, this.actor);
++        // The hidden input slider continues tracking the stream and drives
++        // its existing mute operation; it is not duplicated in the page.
++        syncMic();
++        const system = indicators._system.quickSettingsItems[0];
++        move(system, this._mainPage, 'luma-options-system');
++        system.menu._studioTitle = _('Power');
++        const wifi = indicators._network?._wirelessToggle;
++        if (wifi) {
++            const air = indicators._rfkill.quickSettingsItems[0];
++            move(air, wifi.menu.box, 'luma-options-switch-row');
++            air.setPill?.(true); air.title = _('Airplane mode');
++            const settingsLink = wifi.menu.box.get_children().find(a => a.has_style_class_name?.('luma-sheet-link'));
++            if (settingsLink) wifi.menu.box.set_child_below_sibling(air, settingsLink);
++        }
++        this.actor.connect('key-press-event', (_a, e) => {
++            if (e.get_key_symbol() === Clutter.KEY_Escape && this._activeMenu) {
++                this.close(); return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++    }
++
++    _showStudioPage(item, open) {
++        const menu = item.menu;
++        if (open) {
++            if (this._activeMenu !== menu) this._activeMenu?.close(PopupAnimation.NONE);
++            this._activeMenu = menu;
++            this._mainPage?.hide(); this._pageHost.show();
++            this._pageHeading.text = menu._studioTitle ?? item.title ?? menu._titleLabel.text;
++            const radio = menu._studioRadio;
++            this._pageSwitch.visible = !!radio;
++            this._pageSwitch.checked = radio?.checked ?? false;
++            this._pageRadioBinding?.unbind();
++            this._pageRadioBinding = radio?.bind_property('checked', this._pageSwitch, 'checked', GObject.BindingFlags.SYNC_CREATE);
++            this._pageHost.translation_x = 6 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            this._pageHost.opacity = 0;
++            this._pageHost.ease({translation_x: 0, opacity: 255,
++                duration: St.Settings.get().enable_animations ? 220 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUART});
++            this._back.grab_key_focus();
++        } else if (this._activeMenu === menu) {
++            this._activeMenu = null;
++            this._pageRadioBinding?.unbind(); this._pageRadioBinding = null;
++            this._pageHost.hide(); this._mainPage?.show();
++            if (this._mainPage) {
++                this._mainPage.translation_x = -6 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++                this._mainPage.opacity = 0;
++                this._mainPage.ease({translation_x: 0, opacity: 255,
++                    duration: St.Settings.get().enable_animations ? 220 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUART});
++            }
++            item.getSheetAnchor?.()?.grab_key_focus();
++        }
+     }
+ 
+     _updateLumaHeader() {
+@@ -1343,32 +1525,17 @@
+             this._grid, item, 'column-span', colSpan);
+ 
+         if (item.menu) {
+-            item.menu.box.add_style_class_name('luma-quick-detail');
+-            // A detail sheet is a pane inside Quick Options, not another
+-            // physical sheet over the desktop. The root panel alone owns the
+-            // compositor backdrop; the detail retains only its pane fill.
++            item.menu._studioPage = true;
++            item.menu.box.add_style_class_name('luma-options-detail');
+             item.menu._materialBinding?.setEnabled(false);
+-
+-            // In flow, in the grid, under its owner's row: the grid places
+-            // it, so GNOME's constraint pinning it under the owner goes.
+             const sheet = item.menu.actor;
+             sheet.clear_constraints();
+-            this._grid.insert_child_above(sheet, this._sheetFrame);
+-            this._grid.layout_manager.addSheet(sheet, item);
++            this._pageHost.add_child(sheet);
++            sheet.hide();
++            item.menu._titleRow.hide();
++            item.menu.connect('open-state-changed', (_m, open) => this._showStudioPage(item, open));
+             item.connect('destroy', () => {
+-                this._grid.layout_manager.removeSheet(sheet);
+-                if (this._activeMenu === item.menu)
+-                    this._activeMenu = null;
+-            });
+-
+-            item.menu.connect('open-state-changed', (m, isOpen) => {
+-                // Only one sheet is open at a time.
+-                if (isOpen && this._activeMenu !== item.menu)
+-                    this._activeMenu?.close();
+-                if (isOpen)
+-                    this._activeMenu = item.menu;
+-                else if (this._activeMenu === item.menu)
+-                    this._activeMenu = null;
++                if (this._activeMenu === item.menu) this._activeMenu = null;
+             });
+         }
+     }
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1847,6 +1847,7 @@
+         this._system.quickSettingsItems.forEach(
+             item => this.menu.addItem(item, N_QUICK_SETTINGS_COLUMNS));
+ 
++        this.menu.configureStudio(this);
+         this._indicatorsReady = true;
+         const pending = [...this._pendingExternal ?? []];
+         this._pendingExternal?.clear();
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -273,7 +273,7 @@
+         if (!this._settingsApp)
+             console.warn('Missing required core component Settings, expect trouble…');
+ 
+-        this.child.icon_name = 'emblem-system-symbolic';
++        this.child.icon_name = 'luma-settings-2-symbolic';
+         this.accessible_name = this._settingsApp?.get_name() ?? null;
+ 
+         this.connect('clicked', () => {
+@@ -300,24 +300,19 @@
+             style_class: 'icon-button',
+             hasMenu: true,
+             canFocus: true,
+-            icon_name: 'system-shutdown-symbolic',
++            icon_name: 'luma-power-symbolic',
+             accessible_name: _('Power Off Menu'),
+         });
+ 
+         this._systemActions = new SystemActions.getDefault();
+         this._items = [];
+ 
+-        this.menu.setHeader('system-shutdown-symbolic', C_('title', 'Power off'));
++        this.menu.setHeader('luma-power-symbolic', C_('title', 'Power off'));
+         // The sheet hangs from this button, as a level's hangs from its
+         // disclosure.
+         trackSheetOwner(this.menu, this);
+ 
+-        this._addSystemAction(_('Lock'), 'can-lock-screen', () => {
+-            Main.panel.closeQuickSettings();
+-            this._systemActions.activateLockScreen();
+-        });
+-
+-        this._addSystemAction(_('Suspend'), 'can-suspend', () => {
++        this._addSystemAction(_('Sleep'), 'can-suspend', () => {
+             this._systemActions.activateSuspend();
+             Main.panel.closeQuickSettings();
+         });
+@@ -334,15 +329,12 @@
+ 
+         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+ 
+-        this._addSystemAction(_('Log out…'), 'can-logout', () => {
++        this._addSystemAction(_('Sign out…'), 'can-logout', () => {
+             this._systemActions.activateLogout();
+             Main.panel.closeQuickSettings();
+         });
+ 
+-        this._addSystemAction(_('Switch user…'), 'can-switch-user', () => {
+-            this._systemActions.activateSwitchUser();
+-            Main.panel.closeQuickSettings();
+-        });
++        this.menu.addSettingsAction(_('Power settings'), 'gnome-power-panel.desktop');
+ 
+         // Whether shutdown is available or not depends on both lockdown
+         // settings (disable-log-out) and Polkit policy - the latter doesn't
+@@ -382,7 +374,7 @@
+         super._init({
+             style_class: 'icon-button',
+             can_focus: true,
+-            icon_name: 'system-lock-screen-symbolic',
++            icon_name: 'luma-lock-symbolic',
+             accessible_name: C_('action', 'Lock Screen'),
+         });
+ 
+@@ -446,8 +438,26 @@
+         }
+         if (this._identitySlot.child)
+             return;
+-        this._identitySlot.child = new LumaIdentity();
+-        this._privateItems = [new LumaAboutItem(), new LumaSearchItem(), new SettingsItem()];
++        const battery = new St.BoxLayout({style_class: 'luma-options-battery', x_expand: true});
++        const icon = new St.Icon({icon_name: 'luma-battery-symbolic', icon_size: 18});
++        const label = new St.Label({style_class: 'luma-options-battery-text', y_align: Clutter.ActorAlign.CENTER});
++        battery.add_child(icon); battery.add_child(label);
++        const key = new St.Button({child: battery, can_focus: true, x_expand: true, accessible_name: _('Power settings')});
++        key.connect('clicked', () => this._powerToggle.emit('clicked', 1));
++        const syncBattery = () => {
++            const proxy = this._powerToggle._proxy;
++            const seconds = proxy.State === UPower.DeviceState.CHARGING ? proxy.TimeToFull : proxy.TimeToEmpty;
++            const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
++            const remaining = seconds > 0 ? (hours ? _('%d h %d min').format(hours, minutes) : _('%d min').format(minutes)) : '';
++            label.text = this._powerToggle.title + (remaining ? ` · ${remaining} ` +
++                (proxy.State === UPower.DeviceState.CHARGING ? _('until full') : _('left')) : '');
++            key.visible = this._powerToggle.visible;
++        };
++        this._powerToggle._proxy.connectObject('g-properties-changed', syncBattery, key);
++        this._powerToggle.connectObject('notify::title', syncBattery, 'notify::visible', syncBattery, key);
++        syncBattery();
++        this._identitySlot.child = key;
++        this._privateItems = [new SettingsItem(), new LockItem()];
+         this._privateItems.forEach((item, index) => {
+             item.add_style_class_name('luma-quick-action');
+             this._actions.insert_child_at_index(item, index);
+diff --git a/js/ui/status/doNotDisturb.js b/js/ui/status/doNotDisturb.js
+--- a/js/ui/status/doNotDisturb.js
++++ b/js/ui/status/doNotDisturb.js
+@@ -18,7 +18,7 @@
+     constructor() {
+         super({
+             title: _('Do Not Disturb'),
+-            iconName: 'notifications-disabled-symbolic',
++            iconName: 'luma-moon-symbolic',
+             toggleMode: true,
+             menuButtonAccessibleName: _('Choose notification corner'),
+         });
+diff --git a/js/ui/status/powerProfiles.js b/js/ui/status/powerProfiles.js
+--- a/js/ui/status/powerProfiles.js
++++ b/js/ui/status/powerProfiles.js
+@@ -42,7 +42,7 @@
+ class PowerProfilesToggle extends QuickMenuToggle {
+     _init() {
+         super._init({
+-            title: C_('Quick settings button title', 'Power Mode'),
++            title: _('Battery Saver'),
+             menuButtonAccessibleName: _('Open power profiles menu'),
+         });
+ 
+@@ -51,7 +51,7 @@
+         this.connect('clicked', () => {
+             this._proxy.ActiveProfile = this.checked
+                 ? 'balanced'
+-                : global.settings.get_string(LAST_PROFILE_KEY);
++                : 'power-saver';
+         });
+ 
+         this._proxy = new PowerProfilesProxy(Gio.DBus.system, BUS_NAME, OBJECT_PATH,
+@@ -124,7 +124,8 @@
+         const {name: subtitle, iconName} = PROFILE_PARAMS[activeProfile] ?? FALLBACK_PARAMS;
+         this.set({subtitle, iconName});
+ 
+-        this.checked = activeProfile !== 'balanced';
++        this.checked = activeProfile === 'power-saver';
++        this.iconName = 'luma-leaf-symbolic';
+ 
+         if (this.checked)
+             global.settings.set_string(LAST_PROFILE_KEY, activeProfile);
+diff --git a/js/ui/status/bluetooth.js b/js/ui/status/bluetooth.js
+--- a/js/ui/status/bluetooth.js
++++ b/js/ui/status/bluetooth.js
+@@ -1,6 +1,7 @@
+ import 'gi://GnomeBluetooth?version=3.0';
+ 
+ import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GnomeBluetooth from 'gi://GnomeBluetooth';
+@@ -9,6 +10,8 @@
+ import St from 'gi://St';
+ 
+ import * as PopupMenu from '../popupMenu.js';
++import {Spinner} from '../animation.js';
++import * as Main from '../main.js';
+ import {QuickMenuToggle, QuickSheetRow, SystemIndicator} from '../quickSettings.js';
+ 
+ import {loadInterfaceXML} from '../../misc/fileUtils.js';
+@@ -22,6 +25,147 @@
+ const rfkillManagerInfo = Gio.DBusInterfaceInfo.new_for_xml(RfkillManagerInterface);
+ 
+ Gio._promisify(GnomeBluetooth.Client.prototype, 'connect_service');
++Gio._promisify(Gio.DBusConnection.prototype, 'call');
++// BlueZ's public Agent1 contract, registered only for a user-initiated pairing.
++// Never become the default agent or automatically authorize another device.
++const PairingAgentXML = `<node><interface name="org.bluez.Agent1">
++<method name="Release"/><method name="Cancel"/>
++<method name="RequestPinCode"><arg type="o" direction="in"/><arg type="s" direction="out"/></method>
++<method name="DisplayPinCode"><arg type="o" direction="in"/><arg type="s" direction="in"/></method>
++<method name="RequestPasskey"><arg type="o" direction="in"/><arg type="u" direction="out"/></method>
++<method name="DisplayPasskey"><arg type="o" direction="in"/><arg type="u" direction="in"/><arg type="q" direction="in"/></method>
++<method name="RequestConfirmation"><arg type="o" direction="in"/><arg type="u" direction="in"/></method>
++<method name="RequestAuthorization"><arg type="o" direction="in"/></method>
++<method name="AuthorizeService"><arg type="o" direction="in"/><arg type="s" direction="in"/></method>
++</interface></node>`;
++const AGENT_PATH = '/org/gnome/Shell/LumaBluetoothAgent';
++
++class PairingAgent {
++    constructor(toggle) {
++        this._toggle = toggle;
++        this._ownerProxy = Gio.DBusProxy.new_sync(Gio.DBus.system,
++            Gio.DBusProxyFlags.DO_NOT_AUTO_START, null, 'org.bluez', '/org/bluez', 'org.bluez.AgentManager1', null);
++        this._object = Gio.DBusExportedObject.wrapJSObject(PairingAgentXML, this);
++    }
++    async pair(device) {
++        if (this._device) return;
++        this._device = device;
++        this._path = device.get_object_path();
++        this._cancellable = new Gio.Cancellable();
++        this._object.export(Gio.DBus.system, AGENT_PATH);
++        let registered = false;
++        try {
++            await Gio.DBus.system.call('org.bluez', '/org/bluez', 'org.bluez.AgentManager1', 'RegisterAgent',
++                new GLib.Variant('(os)', [AGENT_PATH, 'KeyboardDisplay']), null, Gio.DBusCallFlags.NONE, 10000, this._cancellable);
++            registered = true;
++            await Gio.DBus.system.call('org.bluez', this._path, 'org.bluez.Device1', 'Pair',
++                null, null, Gio.DBusCallFlags.NONE, 120000, this._cancellable);
++            await this._toggle._client.toggleDevice(device);
++        } catch (error) {
++            // No device address, passkey or remote exception is logged.
++            if (!this._cancellable.is_cancelled()) this._toggle._nearStatus.text = _('Pairing failed. Try again.');
++        } finally {
++            this._rejectPending();
++            if (registered) {
++                try { await Gio.DBus.system.call('org.bluez', '/org/bluez', 'org.bluez.AgentManager1',
++                    'UnregisterAgent', new GLib.Variant('(o)', [AGENT_PATH]), null, Gio.DBusCallFlags.NONE, 10000, null); }
++                catch { /* Daemon may have disappeared; exported object still goes. */ }
++            }
++            this._object.unexport();
++            this._device = null; this._path = null;
++            this._toggle._pairCode.destroy_all_children(); this._toggle._pairCode.hide();
++            this._toggle._syncNearby();
++        }
++    }
++    cancel() {
++        this._rejectPending();
++        this._cancellable?.cancel();
++        if (this._path) Gio.DBus.system.call('org.bluez', this._path, 'org.bluez.Device1', 'CancelPairing',
++            null, null, Gio.DBusCallFlags.NONE, 5000, null).catch(() => {});
++    }
++    _check(path, invocation) {
++        if (path !== this._path || invocation.get_sender() !== this._ownerProxy.g_name_owner) {
++            invocation.return_dbus_error('org.bluez.Error.Rejected', 'No pairing was requested for this device');
++            return false;
++        }
++        return true;
++    }
++    _rejectPending() {
++        if (this._pending) this._pending.return_dbus_error('org.bluez.Error.Canceled', 'Pairing canceled');
++        this._pending = null;
++    }
++    _code(code, entered = 0, confirm = false) {
++        const box = this._toggle._pairCode;
++        box.destroy_all_children(); box.show();
++        box.add_child(new St.Label({text: (confirm ? _('Does this code match the one on %s?')
++                : _('Type this on %s, then press Enter.')).format(this._device.alias),
++            style_class: 'luma-options-pair-instruction'}));
++        const digits = new St.BoxLayout({style_class: 'luma-options-passkey'});
++        [...String(code).padStart(6, '0')].forEach((digit, i) => {
++            const label = new St.Label({text: digit, style_class: 'luma-options-passkey-digit'});
++            if (i < entered) label.add_style_class_name('entered');
++            digits.add_child(label);
++        });
++        box.add_child(digits);
++    }
++    _confirm(path, code, invocation) {
++        if (!this._check(path, invocation)) return;
++        this._rejectPending(); this._pending = invocation;
++        if (code === null) {
++            this._toggle._pairCode.destroy_all_children(); this._toggle._pairCode.show();
++            this._toggle._pairCode.add_child(new St.Label({text: _('Pair with %s?').format(this._device.alias)}));
++        } else this._code(code, 0, true);
++        const row = new St.BoxLayout({style_class: 'luma-options-pair-actions'});
++        for (const [label, accept] of [[_('Pair'), true], [_('Cancel'), false]]) {
++            const b = new St.Button({label, can_focus: true});
++            b.connect('clicked', () => {
++                if (!this._pending) return;
++                if (accept) this._pending.return_value(null);
++                else this._pending.return_dbus_error('org.bluez.Error.Rejected', 'Pairing declined');
++                this._pending = null;
++            }); row.add_child(b);
++        }
++        this._toggle._pairCode.add_child(row);
++    }
++    RequestPinCodeAsync([path], invocation) {
++        if (!this._check(path, invocation)) return;
++        const pin = String(GLib.random_int_range(100000, 1000000));
++        this._code(pin); invocation.return_value(new GLib.Variant('(s)', [pin]));
++    }
++    DisplayPinCodeAsync([path, code], invocation) {
++        if (!this._check(path, invocation)) return;
++        this._code(code); invocation.return_value(null);
++    }
++    DisplayPasskeyAsync([path, code, entered], invocation) {
++        if (!this._check(path, invocation)) return;
++        this._code(code, entered); invocation.return_value(null);
++    }
++    RequestConfirmationAsync([path, code], invocation) { this._confirm(path, code, invocation); }
++    RequestAuthorizationAsync([path], invocation) { this._confirm(path, null, invocation); }
++    RequestPasskeyAsync([path], invocation) {
++        if (!this._check(path, invocation)) return;
++        this._rejectPending(); this._pending = invocation;
++        const box = this._toggle._pairCode; box.destroy_all_children(); box.show();
++        const entry = new St.Entry({hint_text: _('Passkey'), can_focus: true, style_class: 'luma-options-passkey-entry'});
++        box.add_child(entry);
++        entry.clutter_text.connect('activate', () => {
++            const text = entry.get_text();
++            if (!/^\d{1,6}$/.test(text) || !this._pending) return;
++            this._pending.return_value(new GLib.Variant('(u)', [Number(text)])); this._pending = null;
++        }); entry.grab_key_focus();
++    }
++    AuthorizeServiceAsync([path], invocation) {
++        if (this._check(path, invocation)) invocation.return_value(null);
++    }
++    CancelAsync(_params, invocation) {
++        if (invocation.get_sender() !== this._ownerProxy.g_name_owner) {
++            invocation.return_dbus_error('org.bluez.Error.Rejected', 'Unknown agent caller'); return;
++        }
++        this._rejectPending(); invocation.return_value(null);
++    }
++    ReleaseAsync(params, invocation) { this.CancelAsync(params, invocation); }
++}
++
+ 
+ const STATE_CHANGE_FAILED_TIMEOUT_MS = 30 * 1000;
+ 
+@@ -152,8 +296,7 @@
+             console.debug(`Device "${device.name}" ${
+                 connect ? 'connected' : 'disconnected'}`);
+         } catch (e) {
+-            console.error(`Failed to ${connect
+-                ? 'connect' : 'disconnect'} device "${device.name}": ${e.message}`);
++            throw e;
+         }
+     }
+ 
+@@ -208,6 +351,8 @@
+         });
+ 
+         this._device = device;
++        this._busySpinner = new Spinner(16, {hideOnStop: true});
++        this.add_child(this._busySpinner);
+         this._client = client;
+         this._busy = false;
+ 
+@@ -255,6 +400,10 @@
+         if (!connected)
+             return _('Not connected');
+         const battery = this._battery();
++        const output = Main.panel?.statusArea.quickSettings?._volumeOutput?.quickSettingsItems[0]?._stream;
++        const name = output?.get_name()?.toUpperCase().replaceAll('_', ':') ?? '';
++        const playing = this._device.address && name.includes(this._device.address.toUpperCase());
++        if (playing) return battery === null ? _('Playing sound') : _('Playing sound · %d%%').format(battery);
+         return battery === null
+             ? _('Connected')
+             // Translators: a connected Bluetooth device and its battery level
+@@ -262,6 +411,7 @@
+     }
+ 
+     _sync() {
++        if (this._busy) this._busySpinner.play(); else this._busySpinner.stop();
+         this.setIcon(this._device.icon || 'bluetooth-active-symbolic');
+         this.setTitle(this._device.alias);
+         this.setState(this._state());
+@@ -332,7 +482,7 @@
+             'device-removed', (c, path) => this._removeDevice(path),
+             this);
+ 
+-        this.menu.connect('open-state-changed', isOpen => {
++        this.menu.connect('open-state-changed', (_m, isOpen) => {
+             // We don't reorder the list while the menu is open,
+             // so do it now to start with the proper order
+             if (isOpen)
+@@ -343,9 +493,78 @@
+ 
+         this._updatePlaceholder();
+         this._sync();
++        this._setupNearby();
++    }
++
++    _setupNearby() {
++        this._nearHeading = new PopupMenu.PopupBaseMenuItem({reactive: false});
++        this._nearHeading.add_child(new St.Label({text: _('Nearby'), x_expand: true}));
++        this._nearStatus = new St.Label({style_class: 'luma-options-looking'});
++        this._nearHeading.add_child(this._nearStatus);
++        this._lookAgain = new St.Button({label: _('Look again'), can_focus: true});
++        this._lookAgain.connect('clicked', () => this._scanNearby());
++        this._nearHeading.add_child(this._lookAgain);
++        this._nearSection = new PopupMenu.PopupMenuSection();
++        this._pairCode = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-options-pair-code', visible: false});
++        // Keep the settings link at the bottom of the page.
++        this.menu.addMenuItem(this._nearHeading, this.menu.length - 1);
++        this.menu.addMenuItem(this._nearSection, this.menu.length - 1);
++        this.menu.box.insert_child_below(this._pairCode, this.menu.box.get_last_child());
++        this._pairAgent = new PairingAgent(this);
++        this.menu.connectObject('open-state-changed', (_m, open) => {
++            if (open && this._client.active) this._scanNearby();
++            else this._stopNearby();
++        }, this);
++        this._client.connectObject('devices-changed', () => this._syncNearby(), this);
++        this.connect('destroy', () => this._stopNearby());
++        this._syncNearby();
++    }
++    _scanNearby() {
++        if (!this._client.active || this._scanId) return;
++        this._client._client.default_adapter_setup_mode = true;
++        this._nearStatus.text = _('Looking'); this._lookAgain.hide();
++        this._scanId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 8000, () => {
++            this._scanId = 0; this._finishScan(); return GLib.SOURCE_REMOVE;
++        });
++        this._syncNearby();
++    }
++    _finishScan() {
++        this._client._client.default_adapter_setup_mode = false;
++        this._nearStatus.text = ''; this._lookAgain.show(); this._syncNearby();
++    }
++    _stopNearby() {
++        if (this._scanId) GLib.source_remove(this._scanId);
++        this._scanId = 0;
++        this._finishScan(); this._pairAgent.cancel();
++    }
++    _syncNearby() {
++        this._nearSection.removeAll();
++        const store = this._client._client.get_devices();
++        let count = 0;
++        if (this._client.active) for (let i = 0; i < store.get_n_items(); i++) {
++            const device = store.get_item(i);
++            if (device.paired || device.trusted || !device.alias) continue;
++            count++;
++            const item = new QuickSheetRow();
++            item.setTitle(device.alias);
++            item.setState(this._pairAgent._device === device ? _('Pairing…') : _('Tap to pair'));
++            item.setIcon(device.icon ?? 'bluetooth-symbolic');
++            item.connect('activate', () => this._pairAgent.pair(device));
++            this._nearSection.addMenuItem(item);
++        }
++        if (!count && !this._scanId) {
++            const empty = new PopupMenu.PopupMenuItem(_('Nothing new nearby. Put a device in pairing mode.'), {reactive: false});
++            empty.label.clutter_text.line_wrap = true;
++            this._nearSection.addMenuItem(empty);
++        }
++        this._nearHeading.visible = this._client.active;
++        this._nearSection.actor.visible = this._client.active;
++        this._placeholderItem.label.text = this._client.active ? _('No devices') : _('Bluetooth is off');
+     }
+ 
+     _onActiveChanged() {
++        if (!this._client.active) this._stopNearby();
+         this._updatePlaceholder();
+ 
+         this._deviceItems.forEach(item => item.destroy());
+@@ -425,7 +644,7 @@
+         else if (nConnected === 1)
+             this.subtitle = connectedDevices[0].alias;
+         else
+-            this.subtitle = null;
++            this.subtitle = this._client.active ? _('No devices') : _('Off');
+ 
+         const nListed = devices.filter(dev => dev.connectable).length;
+         if (nConnected > 0)
+diff --git a/js/ui/status/network.js b/js/ui/status/network.js
+--- a/js/ui/status/network.js
++++ b/js/ui/status/network.js
+@@ -1819,9 +1819,66 @@
+         this.menu.addHeaderSuffix(this._scanningSpinner);
+         this.menu.addSettingsAction(_('Wi-Fi settings'),
+             'gnome-wifi-panel.desktop');
++        this._setupHotspot();
++    }
++
++    _setupHotspot() {
++        this._hotspot = new PopupMenu.PopupSwitchMenuItem(_('Hotspot'), false);
++        this._hotspot.connect('toggled', (_item, enabled) => this._toggleHotspot(enabled));
++        this.menu.addMenuItem(this._hotspot, this.menu.length - 1);
++        this._wifiOff = new PopupMenu.PopupMenuItem(_('Wi-Fi is off'), {reactive: false});
++        this.menu.addMenuItem(this._wifiOff, 0);
++        this.connectObject('notify::checked', () => this._syncHotspot(), this);
++        this._syncHotspot();
++    }
++    _syncHotspot() {
++        if (!this._hotspot) return;
++        const hotspot = [...this._items.values()].some(i => i.is_hotspot);
++        this._hotspot.setToggleState(hotspot);
++        this._hotspot.reactive = this.checked && !this._hotspotBusy;
++        this._wifiOff.visible = !this.checked;
++        // The radio switch remains reachable while hotspot mode is active.
++        this.menuEnabled = this.visible;
++    }
++    async _toggleHotspot(enabled) {
++        if (this._hotspotBusy || !this._client) return;
++        this._hotspotBusy = true; this._syncHotspot();
++        try {
++            if (!enabled) {
++                for (const item of this._items.values()) if (item.is_hotspot) item.activate();
++            } else {
++                const device = [...this._items.keys()].find(d =>
++                    d.get_capabilities() & NM.DeviceCapabilities.SUPPORTED &&
++                    d.get_wireless_capabilities() & NM.DeviceWifiCapabilities.AP);
++                if (!device) throw new Error('No hotspot-capable adapter');
++                let connection = this._client.get_connections().find(c => c.get_setting_wireless()?.mode === 'ap');
++                if (connection) {
++                    await new Promise((resolve, reject) => this._client.activate_connection_async(connection, device, null, null, (client, result) => {
++                        try { resolve(client.activate_connection_finish(result)); } catch (error) { reject(error); }
++                    }));
++                } else {
++                    connection = new NM.SimpleConnection();
++                    connection.add_setting(new NM.SettingConnection({id: _('Luma Hotspot'), uuid: GLib.uuid_string_random(),
++                        type: '802-11-wireless', autoconnect: false}));
++                    connection.add_setting(new NM.SettingWireless({ssid: new GLib.Bytes(new TextEncoder().encode(_('Luma Hotspot'))), mode: 'ap'}));
++                    connection.add_setting(new NM.SettingWirelessSecurity({key_mgmt: 'wpa-psk',
++                        psk: GLib.uuid_string_random().replaceAll('-', '')}));
++                    connection.add_setting(new NM.SettingIP4Config({method: 'shared'}));
++                    connection.add_setting(new NM.SettingIP6Config({method: 'disabled'}));
++                    await new Promise((resolve, reject) => this._client.add_and_activate_connection_async(connection, device, null, null, (client, result) => {
++                        try { resolve(client.add_and_activate_connection_finish(result)); } catch (error) { reject(error); }
++                    }));
++                }
++            }
++        } catch {
++            this._hotspot.label.text = _('Hotspot unavailable. Check Wi-Fi settings.');
++        } finally {
++            this._hotspotBusy = false; this._syncHotspot();
++        }
+     }
+ 
+     _syncCount() {
++        this._syncHotspot();
+         const n = [...this._items.values()]
+             .reduce((sum, item) => sum + (item.nVisibleNetworks ?? 0), 0);
+         this.menu.setCount(this._client?.wireless_enabled && n > 0
+@@ -1841,11 +1898,7 @@
+     }
+ 
+     activate() {
+-        const primaryItem = this._itemBinding.source;
+-        if (primaryItem?.is_hotspot)
+-            primaryItem.activate();
+-        else
+-            this._client.wireless_enabled = !this._client.wireless_enabled;
++        if (this._client) this._client.wireless_enabled = !this._client.wireless_enabled;
+     }
+ 
+     async _scanDevice(device) {
+diff --git a/data/gnome-shell-icons.gresource.xml b/data/gnome-shell-icons.gresource.xml
+--- a/data/gnome-shell-icons.gresource.xml
++++ b/data/gnome-shell-icons.gresource.xml
+@@ -69,6 +69,25 @@
+     <file preprocess="xml-stripblanks">scalable/status/switch-off-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/switch-on-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/wellbeing-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-sun-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-sun-moon-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-sunset-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-leaf-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-moon-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-lock-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-power-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-settings-2-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-speaker-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-monitor-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-battery-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-chevron-left-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-chevron-right-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-phone-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-phone-off-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-x-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-wifi-off-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-volume-x-symbolic.svg</file>
++    <file>LUMA-STUDIO-ICONS-LICENSE.txt</file>
+   </gresource>
+ </gresources>
+ 
+diff --git a/data/icons/hicolor/LUMA-STUDIO-ICONS-LICENSE.txt b/data/icons/hicolor/LUMA-STUDIO-ICONS-LICENSE.txt
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/LUMA-STUDIO-ICONS-LICENSE.txt
+@@ -0,0 +1,43 @@
++ISC License
++
++Copyright (c) 2026 Lucide Icons and Contributors
++
++Permission to use, copy, modify, and/or distribute this software for any
++purpose with or without fee is hereby granted, provided that the above
++copyright notice and this permission notice appear in all copies.
++
++THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++
++---
++
++The following Lucide icons are derived from the Feather project:
++
++airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
++
++The MIT License (MIT) (for the icons listed above)
++
++Copyright (c) 2013-present Cole Bemis
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/data/icons/hicolor/scalable/status/luma-battery-symbolic.svg b/data/icons/hicolor/scalable/status/luma-battery-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-battery-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M2.667,3.333 L10.667,3.333 Q12.667,3.333 12.667,5.333 L12.667,10.667 Q12.667,12.667 10.667,12.667 L2.667,12.667 Q0.667,12.667 0.667,10.667 L0.667,5.333 Q0.667,3.333 2.667,3.333 Z M2.667,4.667 Q2,4.667 2,5.333 L2,10.667 Q2,11.333 2.667,11.333 L10.667,11.333 Q11.333,11.333 11.333,10.667 L11.333,5.333 Q11.333,4.667 10.667,4.667 Z M14,9.333 L14,6.667 Q14,6.391 14.195,6.195 Q14.391,6 14.667,6 Q14.943,6 15.138,6.195 Q15.333,6.391 15.333,6.667 L15.333,9.333 Q15.333,9.609 15.138,9.805 Q14.943,10 14.667,10 Q14.391,10 14.195,9.805 Q14,9.609 14,9.333 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-chevron-left-symbolic.svg b/data/icons/hicolor/scalable/status/luma-chevron-left-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-chevron-left-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M9.529,12.471 L5.529,8.471 Q5.333,8.276 5.333,8 Q5.333,7.724 5.529,7.529 L9.529,3.529 Q9.724,3.333 10,3.333 Q10.276,3.333 10.471,3.529 Q10.667,3.724 10.667,4 Q10.667,4.276 10.471,4.471 L6.943,8 L10.471,11.529 Q10.667,11.724 10.667,12 Q10.667,12.276 10.471,12.471 Q10.276,12.667 10,12.667 Q9.724,12.667 9.529,12.471 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-chevron-right-symbolic.svg b/data/icons/hicolor/scalable/status/luma-chevron-right-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-chevron-right-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M5.529,11.529 L9.057,8 L5.529,4.471 Q5.333,4.276 5.333,4 Q5.333,3.724 5.529,3.529 Q5.724,3.333 6,3.333 Q6.276,3.333 6.471,3.529 L10.471,7.529 Q10.667,7.724 10.667,8 Q10.667,8.276 10.471,8.471 L6.471,12.471 Q6.276,12.667 6,12.667 Q5.724,12.667 5.529,12.471 Q5.333,12.276 5.333,12 Q5.333,11.724 5.529,11.529 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-leaf-symbolic.svg b/data/icons/hicolor/scalable/status/luma-leaf-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-leaf-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M7.333,14 Q5.254,14.005 3.72,12.602 Q3.34,12.255 3.043,11.866 Q1.999,12.599 2,14 Q2,14.276 1.805,14.471 Q1.609,14.667 1.333,14.667 Q1.057,14.667 0.862,14.471 Q0.667,14.276 0.667,14 Q0.666,11.803 2.376,10.702 Q2.078,9.969 2.005,9.125 Q1.827,7.053 3.099,5.406 Q4.371,3.76 6.411,3.411 Q6.728,3.352 7.339,3.252 Q10.416,2.751 11.607,1.192 Q12.103,0.54 12.91,0.689 Q13.716,0.839 13.947,1.625 Q14.668,4.095 14.667,6.667 Q14.667,9.704 12.519,11.852 Q10.371,13.999 7.335,14 Z M11.576,10.909 Q13.333,9.152 13.333,6.667 Q13.335,4.285 12.667,2 Q11.154,3.981 7.554,4.568 Q6.958,4.665 6.656,4.722 Q5.107,4.987 4.154,6.221 Q3.2,7.456 3.334,9.011 Q3.384,9.593 3.577,10.106 Q3.814,10.003 4.091,9.886 Q5.625,9.238 6.903,8.157 Q7.114,7.979 7.389,8.002 Q7.664,8.025 7.843,8.236 Q8.021,8.447 7.998,8.722 Q7.975,8.997 7.764,9.176 Q6.331,10.387 4.61,11.114 Q4.43,11.19 4.269,11.259 Q4.43,11.446 4.619,11.619 Q5.771,12.671 7.331,12.667 L7.335,12.667 Q9.819,12.666 11.576,10.909 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-lock-symbolic.svg b/data/icons/hicolor/scalable/status/luma-lock-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-lock-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M3.333,6.667 L4,6.667 L4,4.667 Q4,3.01 5.171,1.838 Q6.343,0.667 8,0.667 Q9.657,0.667 10.829,1.838 Q12,3.01 12,4.667 L12,6.667 L12.667,6.667 Q14.667,6.667 14.667,8.667 L14.667,13.333 Q14.667,15.333 12.667,15.333 L3.333,15.333 Q1.333,15.333 1.333,13.333 L1.333,8.667 Q1.333,6.667 3.333,6.667 Z M3.333,8 Q2.667,8 2.667,8.667 L2.667,13.333 Q2.667,14 3.333,14 L12.667,14 Q13.333,14 13.333,13.333 L13.333,8.667 Q13.333,8 12.667,8 Z M5.333,6.667 L10.667,6.667 L10.667,4.667 Q10.667,2 8,2 Q5.333,2 5.333,4.667 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-monitor-symbolic.svg b/data/icons/hicolor/scalable/status/luma-monitor-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-monitor-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M2.667,1.333 L13.333,1.333 Q15.333,1.333 15.333,3.333 L15.333,10 Q15.333,12 13.333,12 L8.667,12 L8.667,13.333 L10.667,13.333 Q10.943,13.333 11.138,13.529 Q11.333,13.724 11.333,14 Q11.333,14.276 11.138,14.471 Q10.943,14.667 10.667,14.667 L5.333,14.667 Q5.057,14.667 4.862,14.471 Q4.667,14.276 4.667,14 Q4.667,13.724 4.862,13.529 Q5.057,13.333 5.333,13.333 L7.333,13.333 L7.333,12 L2.667,12 Q0.667,12 0.667,10 L0.667,3.333 Q0.667,1.333 2.667,1.333 Z M2.667,2.667 Q2,2.667 2,3.333 L2,10 Q2,10.667 2.667,10.667 L13.333,10.667 Q14,10.667 14,10 L14,3.333 Q14,2.667 13.333,2.667 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-moon-symbolic.svg b/data/icons/hicolor/scalable/status/luma-moon-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-moon-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M14.656,8.36 Q14.511,11.047 12.541,12.881 Q10.57,14.715 7.879,14.666 Q5.188,14.618 3.285,12.715 Q1.382,10.812 1.333,8.121 Q1.285,5.43 3.118,3.459 Q4.951,1.489 7.639,1.343 Q8.283,1.309 8.565,1.898 Q8.811,2.414 8.507,2.899 Q7.103,5.147 8.977,7.022 Q10.853,8.897 13.101,7.491 Q13.586,7.188 14.101,7.433 Q14.691,7.715 14.656,8.36 Z M13.254,8.935 Q10.427,10.357 8.035,7.965 Q5.643,5.573 7.065,2.745 Q5.335,3.034 4.094,4.368 Q2.627,5.944 2.666,8.097 Q2.705,10.249 4.228,11.772 Q5.75,13.295 7.903,13.333 Q10.056,13.372 11.632,11.905 Q12.965,10.664 13.254,8.935 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-phone-off-symbolic.svg b/data/icons/hicolor/scalable/status/luma-phone-off-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-phone-off-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M15.138,1.805 L7.694,9.249 Q8.517,9.955 9.5,10.439 L9.737,10.129 Q10.333,9.333 11.333,9.333 L13.333,9.333 Q15.333,9.333 15.333,11.333 L15.333,13.333 Q15.333,15.333 13.333,15.333 Q8.423,15.333 4.859,12.084 L1.805,15.138 Q1.609,15.333 1.333,15.333 Q1.057,15.333 0.862,15.138 Q0.667,14.943 0.667,14.667 Q0.667,14.391 0.862,14.195 L14.195,0.862 Q14.391,0.667 14.667,0.667 Q14.943,0.667 15.138,0.862 Q15.333,1.057 15.333,1.333 Q15.333,1.609 15.138,1.805 Z M2.609,9.409 Q0.666,6.318 0.667,2.667 Q0.667,0.667 2.667,0.667 L4.667,0.667 Q6.667,0.667 6.667,2.667 L6.667,4.667 Q6.667,5.667 5.867,6.267 L5.559,6.497 Q5.631,6.643 5.709,6.788 Q5.841,7.031 5.761,7.295 Q5.683,7.56 5.439,7.691 Q5.197,7.823 4.932,7.743 Q4.667,7.665 4.536,7.421 Q4.446,7.254 4.361,7.081 Q3.882,6.1 4.755,5.434 L5.067,5.2 Q5.333,5 5.333,4.667 L5.333,2.667 Q5.333,2 4.667,2 L2.667,2 Q2,2 2,2.667 Q1.999,5.934 3.738,8.7 Q3.885,8.934 3.823,9.203 Q3.762,9.472 3.528,9.619 Q3.294,9.766 3.025,9.705 Q2.756,9.643 2.609,9.409 Z M6.749,10.194 L5.803,11.14 Q8.976,14 13.333,14 Q14,14 14,13.333 L14,11.333 Q14,10.667 13.333,10.667 L11.333,10.667 Q11,10.667 10.797,10.938 L10.561,11.247 Q9.913,12.097 8.943,11.651 Q8.935,11.647 8.928,11.644 Q7.738,11.06 6.749,10.194 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-phone-symbolic.svg b/data/icons/hicolor/scalable/status/luma-phone-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-phone-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M9.5,10.439 L9.737,10.129 Q10.333,9.333 11.333,9.333 L13.333,9.333 Q15.333,9.333 15.333,11.333 L15.333,13.333 Q15.333,15.333 13.333,15.333 Q8.087,15.333 4.377,11.623 Q0.667,7.913 0.667,2.667 Q0.667,0.667 2.667,0.667 L4.667,0.667 Q6.667,0.667 6.667,2.667 L6.667,4.667 Q6.667,5.667 5.867,6.267 L5.559,6.497 Q6.859,9.137 9.5,10.439 Z M8.918,11.639 Q5.865,10.137 4.361,7.081 Q3.882,6.1 4.755,5.434 L5.067,5.2 Q5.333,5 5.333,4.667 L5.333,2.667 Q5.333,2 4.667,2 L2.667,2 Q2,2 2,2.667 Q2,7.361 5.319,10.681 Q8.639,14 13.333,14 Q14,14 14,13.333 L14,11.333 Q14,10.667 13.333,10.667 L11.333,10.667 Q11,10.667 10.797,10.938 L10.561,11.247 Q9.917,12.091 8.955,11.657 L8.935,11.647 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-power-symbolic.svg b/data/icons/hicolor/scalable/status/luma-power-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-power-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M12.738,3.929 Q14.687,5.879 14.69,8.636 Q14.693,11.393 12.747,13.347 Q10.801,15.3 8.044,15.309 Q5.287,15.317 3.329,13.376 Q1.371,11.435 1.357,8.677 Q1.342,5.921 3.279,3.958 Q3.473,3.762 3.749,3.76 Q4.025,3.758 4.222,3.952 Q4.418,4.146 4.42,4.423 Q4.422,4.699 4.228,4.895 Q2.678,6.465 2.69,8.671 Q2.702,10.876 4.268,12.429 Q5.834,13.982 8.04,13.975 Q10.245,13.968 11.802,12.405 Q13.359,10.843 13.357,8.637 Q13.355,6.431 11.795,4.871 Q11.6,4.676 11.6,4.4 Q11.6,4.124 11.795,3.929 Q11.991,3.733 12.267,3.733 Q12.543,3.733 12.738,3.929 Z M8.667,1.333 L8.667,8 Q8.667,8.276 8.471,8.471 Q8.276,8.667 8,8.667 Q7.724,8.667 7.529,8.471 Q7.333,8.276 7.333,8 L7.333,1.333 Q7.333,1.057 7.529,0.862 Q7.724,0.667 8,0.667 Q8.276,0.667 8.471,0.862 Q8.667,1.057 8.667,1.333 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-settings-2-symbolic.svg b/data/icons/hicolor/scalable/status/luma-settings-2-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-settings-2-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M14,11.333 Q14,14 11.333,14 Q9.024,14 8.715,12 L3.333,12 Q3.057,12 2.862,11.805 Q2.667,11.609 2.667,11.333 Q2.667,11.057 2.862,10.862 Q3.057,10.667 3.333,10.667 L8.715,10.667 Q9.024,8.667 11.333,8.667 Q14,8.667 14,11.333 Z M12.667,5.333 L7.285,5.333 Q6.976,7.333 4.667,7.333 Q3.562,7.333 2.781,6.552 Q2,5.771 2,4.667 Q2,3.562 2.781,2.781 Q3.562,2 4.667,2 Q6,2 6.667,2.667 Q7.155,3.155 7.285,4 L12.667,4 Q12.943,4 13.138,4.195 Q13.333,4.391 13.333,4.667 Q13.333,4.943 13.138,5.138 Q12.943,5.333 12.667,5.333 Z M12.667,11.333 Q12.667,10 11.333,10 Q10,10 10,11.333 Q10,12.667 11.333,12.667 Q12.667,12.667 12.667,11.333 Z M6,4.667 Q6,4 5.667,3.667 Q5.333,3.333 4.667,3.333 Q4.115,3.333 3.724,3.724 Q3.333,4.115 3.333,4.667 Q3.333,5.219 3.724,5.609 Q4.115,6 4.667,6 Q6,6 6,4.667 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-speaker-symbolic.svg b/data/icons/hicolor/scalable/status/luma-speaker-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-speaker-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M4,0.667 L12,0.667 Q14,0.667 14,2.667 L14,13.333 Q14,15.333 12,15.333 L4,15.333 Q2,15.333 2,13.333 L2,2.667 Q2,0.667 4,0.667 Z M4,2 Q3.333,2 3.333,2.667 L3.333,13.333 Q3.333,14 4,14 L12,14 Q12.667,14 12.667,13.333 L12.667,2.667 Q12.667,2 12,2 Z M11.333,9.333 Q11.333,10.714 10.357,11.691 Q9.381,12.667 8,12.667 Q6.619,12.667 5.643,11.691 Q4.667,10.714 4.667,9.333 Q4.667,7.953 5.643,6.976 Q6.619,6 8,6 Q9.381,6 10.357,6.976 Q11.333,7.953 11.333,9.333 Z M10,9.333 Q10,7.333 8,7.333 Q6,7.333 6,9.333 Q6,11.333 8,11.333 Q10,11.333 10,9.333 Z M8,3.333 L8.007,3.333 Q8.283,3.333 8.478,3.529 Q8.673,3.724 8.673,4 Q8.673,4.276 8.478,4.471 Q8.283,4.667 8.007,4.667 L8,4.667 Q7.724,4.667 7.529,4.471 Q7.333,4.276 7.333,4 Q7.333,3.724 7.529,3.529 Q7.724,3.333 8,3.333 Z M8,8.667 L8.007,8.667 Q8.283,8.667 8.478,8.862 Q8.673,9.057 8.673,9.333 Q8.673,9.609 8.478,9.805 Q8.283,10 8.007,10 L8,10 Q7.724,10 7.529,9.805 Q7.333,9.609 7.333,9.333 Q7.333,9.057 7.529,8.862 Q7.724,8.667 8,8.667 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-sun-moon-symbolic.svg b/data/icons/hicolor/scalable/status/luma-sun-moon-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-sun-moon-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M10.54,11.077 Q10.143,12.755 8.749,13.771 Q7.357,14.787 5.638,14.653 Q3.919,14.52 2.699,13.301 Q1.481,12.082 1.347,10.363 Q1.213,8.644 2.229,7.251 Q3.245,5.858 4.922,5.46 Q5.731,5.269 6.127,6.035 Q6.423,6.609 6.164,7.206 Q5.625,8.453 6.586,9.414 Q7.547,10.375 8.795,9.835 Q9.391,9.577 9.965,9.873 Q10.731,10.268 10.54,11.077 Z M9.143,11.133 Q7.175,11.888 5.643,10.357 Q4.111,8.825 4.867,6.857 Q2.469,7.609 2.676,10.259 Q2.897,13.103 5.741,13.324 Q8.392,13.53 9.143,11.133 Z M10,8 Q10,6 8,6 Q7.724,6 7.529,5.805 Q7.333,5.609 7.333,5.333 Q7.333,5.057 7.529,4.862 Q7.724,4.667 8,4.667 Q9.381,4.667 10.357,5.643 Q11.333,6.619 11.333,8 Q11.333,8.276 11.138,8.471 Q10.943,8.667 10.667,8.667 Q10.391,8.667 10.195,8.471 Q10,8.276 10,8 Z M13.333,7.333 L14.667,7.333 Q14.943,7.333 15.138,7.529 Q15.333,7.724 15.333,8 Q15.333,8.276 15.138,8.471 Q14.943,8.667 14.667,8.667 L13.333,8.667 Q13.057,8.667 12.862,8.471 Q12.667,8.276 12.667,8 Q12.667,7.724 12.862,7.529 Q13.057,7.333 13.333,7.333 Z M8.667,1.333 L8.667,2.667 Q8.667,2.943 8.471,3.138 Q8.276,3.333 8,3.333 Q7.724,3.333 7.529,3.138 Q7.333,2.943 7.333,2.667 L7.333,1.333 Q7.333,1.057 7.529,0.862 Q7.724,0.667 8,0.667 Q8.276,0.667 8.471,0.862 Q8.667,1.057 8.667,1.333 Z M13.138,3.805 L12.301,4.642 Q12.105,4.837 11.829,4.837 Q11.553,4.837 11.358,4.642 Q11.163,4.447 11.163,4.171 Q11.163,3.895 11.358,3.699 L12.195,2.862 Q12.391,2.667 12.667,2.667 Q12.943,2.667 13.138,2.862 Q13.333,3.057 13.333,3.333 Q13.333,3.609 13.138,3.805 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-sun-symbolic.svg b/data/icons/hicolor/scalable/status/luma-sun-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-sun-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M11.333,8 Q11.333,9.381 10.357,10.357 Q9.381,11.333 8,11.333 Q6.619,11.333 5.643,10.357 Q4.667,9.381 4.667,8 Q4.667,6.619 5.643,5.643 Q6.619,4.667 8,4.667 Q9.381,4.667 10.357,5.643 Q11.333,6.619 11.333,8 Z M10,8 Q10,6 8,6 Q6,6 6,8 Q6,10 8,10 Q10,10 10,8 Z M8.667,13.333 L8.667,14.667 Q8.667,14.943 8.471,15.138 Q8.276,15.333 8,15.333 Q7.724,15.333 7.529,15.138 Q7.333,14.943 7.333,14.667 L7.333,13.333 Q7.333,13.057 7.529,12.862 Q7.724,12.667 8,12.667 Q8.276,12.667 8.471,12.862 Q8.667,13.057 8.667,13.333 Z M13.333,7.333 L14.667,7.333 Q14.943,7.333 15.138,7.529 Q15.333,7.724 15.333,8 Q15.333,8.276 15.138,8.471 Q14.943,8.667 14.667,8.667 L13.333,8.667 Q13.057,8.667 12.862,8.471 Q12.667,8.276 12.667,8 Q12.667,7.724 12.862,7.529 Q13.057,7.333 13.333,7.333 Z M8.667,1.333 L8.667,2.667 Q8.667,2.943 8.471,3.138 Q8.276,3.333 8,3.333 Q7.724,3.333 7.529,3.138 Q7.333,2.943 7.333,2.667 L7.333,1.333 Q7.333,1.057 7.529,0.862 Q7.724,0.667 8,0.667 Q8.276,0.667 8.471,0.862 Q8.667,1.057 8.667,1.333 Z M1.333,7.333 L2.667,7.333 Q2.943,7.333 3.138,7.529 Q3.333,7.724 3.333,8 Q3.333,8.276 3.138,8.471 Q2.943,8.667 2.667,8.667 L1.333,8.667 Q1.057,8.667 0.862,8.471 Q0.667,8.276 0.667,8 Q0.667,7.724 0.862,7.529 Q1.057,7.333 1.333,7.333 Z M4.698,12.245 L3.758,13.185 Q3.563,13.38 3.287,13.38 Q3.011,13.38 2.815,13.185 Q2.62,12.989 2.62,12.713 Q2.62,12.437 2.815,12.242 L3.755,11.302 Q3.951,11.107 4.227,11.107 Q4.503,11.107 4.698,11.302 Q4.893,11.497 4.893,11.773 Q4.893,12.049 4.698,12.245 Z M13.185,3.758 L12.245,4.698 Q12.049,4.893 11.773,4.893 Q11.497,4.893 11.302,4.698 Q11.107,4.503 11.107,4.227 Q11.107,3.951 11.302,3.755 L12.242,2.815 Q12.437,2.62 12.713,2.62 Q12.989,2.62 13.185,2.815 Q13.38,3.011 13.38,3.287 Q13.38,3.563 13.185,3.758 Z M12.245,11.302 L13.185,12.242 Q13.38,12.437 13.38,12.713 Q13.38,12.989 13.185,13.185 Q12.989,13.38 12.713,13.38 Q12.437,13.38 12.242,13.185 L11.302,12.245 Q11.107,12.049 11.107,11.773 Q11.107,11.497 11.302,11.302 Q11.497,11.107 11.773,11.107 Q12.049,11.107 12.245,11.302 Z M3.758,2.815 L4.698,3.755 Q4.893,3.951 4.893,4.227 Q4.893,4.503 4.698,4.698 Q4.503,4.893 4.227,4.893 Q3.951,4.893 3.755,4.698 L2.815,3.758 Q2.62,3.563 2.62,3.287 Q2.62,3.011 2.815,2.815 Q3.011,2.62 3.287,2.62 Q3.563,2.62 3.758,2.815 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-sunset-symbolic.svg b/data/icons/hicolor/scalable/status/luma-sunset-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-sunset-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M14.667,15.333 L1.333,15.333 Q1.057,15.333 0.862,15.138 Q0.667,14.943 0.667,14.667 Q0.667,14.391 0.862,14.195 Q1.057,14 1.333,14 L14.667,14 Q14.943,14 15.138,14.195 Q15.333,14.391 15.333,14.667 Q15.333,14.943 15.138,15.138 Q14.943,15.333 14.667,15.333 Z M11.138,4.471 L8.471,7.138 Q8.276,7.333 8,7.333 Q7.724,7.333 7.529,7.138 L4.862,4.471 Q4.667,4.276 4.667,4 Q4.667,3.724 4.862,3.529 Q5.057,3.333 5.333,3.333 Q5.609,3.333 5.805,3.529 L7.333,5.057 L7.333,1.333 Q7.333,1.057 7.529,0.862 Q7.724,0.667 8,0.667 Q8.276,0.667 8.471,0.862 Q8.667,1.057 8.667,1.333 L8.667,5.057 L10.195,3.529 Q10.391,3.333 10.667,3.333 Q10.943,3.333 11.138,3.529 Q11.333,3.724 11.333,4 Q11.333,4.276 11.138,4.471 Z M10,12 Q10,10 8,10 Q6,10 6,12 Q6,12.276 5.805,12.471 Q5.609,12.667 5.333,12.667 Q5.057,12.667 4.862,12.471 Q4.667,12.276 4.667,12 Q4.667,10.619 5.643,9.643 Q6.619,8.667 8,8.667 Q9.381,8.667 10.357,9.643 Q11.333,10.619 11.333,12 Q11.333,12.276 11.138,12.471 Q10.943,12.667 10.667,12.667 Q10.391,12.667 10.195,12.471 Q10,12.276 10,12 Z M13.333,11.333 L14.667,11.333 Q14.943,11.333 15.138,11.529 Q15.333,11.724 15.333,12 Q15.333,12.276 15.138,12.471 Q14.943,12.667 14.667,12.667 L13.333,12.667 Q13.057,12.667 12.862,12.471 Q12.667,12.276 12.667,12 Q12.667,11.724 12.862,11.529 Q13.057,11.333 13.333,11.333 Z M1.333,11.333 L2.667,11.333 Q2.943,11.333 3.138,11.529 Q3.333,11.724 3.333,12 Q3.333,12.276 3.138,12.471 Q2.943,12.667 2.667,12.667 L1.333,12.667 Q1.057,12.667 0.862,12.471 Q0.667,12.276 0.667,12 Q0.667,11.724 0.862,11.529 Q1.057,11.333 1.333,11.333 Z M13.185,7.758 L12.245,8.698 Q12.049,8.893 11.773,8.893 Q11.497,8.893 11.302,8.698 Q11.107,8.503 11.107,8.227 Q11.107,7.951 11.302,7.755 L12.242,6.815 Q12.437,6.62 12.713,6.62 Q12.989,6.62 13.185,6.815 Q13.38,7.011 13.38,7.287 Q13.38,7.563 13.185,7.758 Z M3.758,6.815 L4.698,7.755 Q4.893,7.951 4.893,8.227 Q4.893,8.503 4.698,8.698 Q4.503,8.893 4.227,8.893 Q3.951,8.893 3.755,8.698 L2.815,7.758 Q2.62,7.563 2.62,7.287 Q2.62,7.011 2.815,6.815 Q3.011,6.62 3.287,6.62 Q3.563,6.62 3.758,6.815 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-volume-x-symbolic.svg b/data/icons/hicolor/scalable/status/luma-volume-x-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-volume-x-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M8,3.139 L8,12.853 Q8.015,13.625 7.301,13.921 Q6.587,14.217 6.059,13.669 L3.803,11.412 Q3.724,11.333 3.611,11.333 L2,11.333 Q0.667,11.333 0.667,10 L0.667,6 Q0.667,4.667 2,4.667 L3.613,4.667 Q3.724,4.667 3.804,4.587 L6.052,2.339 Q6.588,1.785 7.3,2.08 Q8.009,2.373 8,3.139 Z M6.667,3.61 L4.747,5.529 Q4.277,6.002 3.609,6 L2,6 L2,10 L3.611,10 Q4.277,9.998 4.748,10.472 L6.667,12.391 Z M10.529,9.195 L11.724,8 L10.529,6.805 Q10.333,6.609 10.333,6.333 Q10.333,6.057 10.529,5.862 Q10.724,5.667 11,5.667 Q11.276,5.667 11.471,5.862 L12.667,7.057 L13.862,5.862 Q14.057,5.667 14.333,5.667 Q14.609,5.667 14.805,5.862 Q15,6.057 15,6.333 Q15,6.609 14.805,6.805 L13.609,8 L14.805,9.195 Q15,9.391 15,9.667 Q15,9.943 14.805,10.138 Q14.609,10.333 14.333,10.333 Q14.057,10.333 13.862,10.138 L12.667,8.943 L11.471,10.138 Q11.276,10.333 11,10.333 Q10.724,10.333 10.529,10.138 Q10.333,9.943 10.333,9.667 Q10.333,9.391 10.529,9.195 Z M7.011,3.266 L7.004,3.273 Q7.007,3.27 7.011,3.266 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-wifi-off-symbolic.svg b/data/icons/hicolor/scalable/status/luma-wifi-off-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-wifi-off-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M5.2,10.477 Q6.367,9.333 8,9.333 Q8.208,9.333 8.409,9.352 L6.564,7.507 Q4.981,7.891 3.8,9.049 Q3.603,9.242 3.327,9.239 Q3.051,9.237 2.857,9.039 Q2.664,8.842 2.667,8.566 Q2.669,8.29 2.867,8.097 Q4.023,6.963 5.494,6.437 L3.972,4.914 Q2.774,5.486 1.778,6.377 Q1.572,6.561 1.296,6.545 Q1.021,6.53 0.837,6.325 Q0.652,6.119 0.668,5.843 Q0.683,5.567 0.889,5.383 Q1.852,4.522 2.979,3.922 L0.862,1.805 Q0.667,1.609 0.667,1.333 Q0.667,1.057 0.862,0.862 Q1.057,0.667 1.333,0.667 Q1.609,0.667 1.805,0.862 L4.552,3.61 Q4.593,3.644 4.627,3.684 L7.222,6.279 Q7.259,6.311 7.29,6.347 L15.138,14.195 Q15.333,14.391 15.333,14.667 Q15.333,14.943 15.138,15.138 Q14.943,15.333 14.667,15.333 Q14.391,15.333 14.195,15.138 L10.616,11.559 Q10.49,11.618 10.34,11.619 Q10.064,11.622 9.867,11.429 Q8,9.599 6.133,11.429 Q5.936,11.622 5.66,11.619 Q5.384,11.617 5.191,11.419 Q4.997,11.222 5,10.946 Q5.003,10.67 5.2,10.477 Z M14.222,6.377 Q11.217,3.689 7.199,4.035 Q6.923,4.059 6.712,3.881 Q6.501,3.703 6.477,3.428 Q6.453,3.153 6.631,2.941 Q6.809,2.73 7.084,2.707 Q11.676,2.311 15.111,5.383 Q15.317,5.567 15.332,5.843 Q15.348,6.119 15.163,6.325 Q14.979,6.53 14.704,6.545 Q14.428,6.561 14.222,6.377 Z M12.2,9.049 Q11.656,8.515 10.996,8.135 Q10.757,7.997 10.685,7.731 Q10.613,7.464 10.751,7.225 Q10.889,6.985 11.155,6.913 Q11.422,6.842 11.661,6.98 Q12.469,7.445 13.133,8.097 Q13.331,8.29 13.333,8.566 Q13.336,8.842 13.143,9.039 Q12.949,9.237 12.673,9.239 Q12.397,9.242 12.2,9.049 Z M8,12.667 L8.007,12.667 Q8.283,12.667 8.478,12.862 Q8.673,13.057 8.673,13.333 Q8.673,13.609 8.478,13.805 Q8.283,14 8.007,14 L8,14 Q7.724,14 7.529,13.805 Q7.333,13.609 7.333,13.333 Q7.333,13.057 7.529,12.862 Q7.724,12.667 8,12.667 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-x-symbolic.svg b/data/icons/hicolor/scalable/status/luma-x-symbolic.svg
+new file mode 100644
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-x-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg xmlns="http://www.w3.org/2000/svg" width="16px" height="16px" viewBox="0 0 16 16">
++  <path fill="#2e3436" d="M12.471,4.471 L8.943,8 L12.471,11.529 Q12.667,11.724 12.667,12 Q12.667,12.276 12.471,12.471 Q12.276,12.667 12,12.667 Q11.724,12.667 11.529,12.471 L8,8.943 L4.471,12.471 Q4.276,12.667 4,12.667 Q3.724,12.667 3.529,12.471 Q3.333,12.276 3.333,12 Q3.333,11.724 3.529,11.529 L7.057,8 L3.529,4.471 Q3.333,4.276 3.333,4 Q3.333,3.724 3.529,3.529 Q3.724,3.333 4,3.333 Q4.276,3.333 4.471,3.529 L8,7.057 L11.529,3.529 Q11.724,3.333 12,3.333 Q12.276,3.333 12.471,3.529 Q12.667,3.724 12.667,4 Q12.667,4.276 12.471,4.471 Z"/>
++</svg>

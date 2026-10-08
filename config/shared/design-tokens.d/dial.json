@@ -1,0 +1,55 @@
+{
+  "_doc": "Reusable dialing keys and call text from v71 Phone .pnkeys/.pnbig/.pncc.",
+  "lumaui": {
+    "dial_key": {
+      "size": 76,
+      "phone_size": 80,
+      "tone_size": 56,
+      "tone_phone_size": 76,
+      "radius": 999,
+      "digit_size": 28,
+      "tone_digit_size": 22,
+      "digit_weight": 400,
+      "legend_size": 9.5,
+      "legend_weight": 700,
+      "legend_tracking": 1.33,
+      "legend_height": 11,
+      "legend_gap": 3,
+      "icon_size": 26,
+      "call_icon_size": 28,
+      "tone_alpha_ratio": 0.1,
+      "tone_phone_alpha_ratio": 0.14,
+      "call_shadow_y": 8,
+      "call_shadow_blur": 20,
+      "call_shadow_spread": -8,
+      "disabled_alpha_ratio": 0.45,
+      "call_line_height_ratio": 1.45,
+      "chip_lip": 1,
+      "chip_ring": 1,
+      "chip_shadow_y": 1,
+      "chip_shadow_blur": 2
+    },
+    "type_scale": {
+      "call_heading": {
+        "size": 32,
+        "phone_size": 30,
+        "weight": 700,
+        "line_height": 1.45,
+        "tracking_em": -0.006
+      },
+      "call_timer": {
+        "size": 16,
+        "phone_size": 15,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": -0.006
+      },
+      "dial_prompt": {
+        "size": 18,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0.0444444444
+      }
+    }
+  }
+}

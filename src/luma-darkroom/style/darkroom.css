@@ -1,0 +1,70 @@
+/* Darkroom-only photographic surfaces. Shared LumaUI parts keep their kit CSS. */
+.dr-library { padding: var(--lumaui-sidebar-inset); padding-bottom: var(--lumaui-details-body-padding-bottom); }
+.lumaui-creative-workspace.dr-library-workspace { background-color: @luma_content; }
+.dr-library-workspace .dr-stage { background-color: @luma_content; }
+.dr-window-subtitle { color: @luma_muted; }
+.dr-library-title { padding: 0; margin: 0; background: none; box-shadow: none; color: @luma_ink; }
+.dr-library > label { margin-bottom: var(--lumaui-details-section-gap); }
+.dr-tile-meta { padding: var(--lumaui-sidebar-row-padding-y); color: @luma_muted; }
+.dr-pick { color: @luma_good; }
+.dr-reject { color: @luma_destructive; }
+.dr-rating { color: @luma_muted; }
+.dr-bar-thumb { border-radius: 7px; }
+.dr-rating-star { min-width: 0; min-height: 0; padding: 0; background: none; box-shadow: none; color: @luma_faint; }
+.dr-rating-star.on { color: @luma_amber; }
+.dr-labels { margin: 0; padding: 0 8px; }
+.dr-label { min-width: 16px; min-height: 16px; padding: 0; border-radius: 50%; background: @luma_faint; box-shadow: none; }
+.dr-tile-meta .dr-label { min-width: var(--lumaui-media-tile-library-gap); min-height: var(--lumaui-media-tile-library-gap); }
+.dr-label.red { background: @luma_destructive; }
+.dr-label.amber { background: @luma_amber; }
+.dr-label.green { background: @luma_green; }
+.dr-label.blue { background: @luma_blue; }
+.dr-label.on { outline: var(--lumaui-sidebar-edge) solid @luma_ink; outline-offset: var(--lumaui-sidebar-edge); }
+.dr-info-picture { min-height: var(--lumaui-details-photo-radius); }
+.dr-keywords { margin: var(--lumaui-details-section-label-gap); }
+.dr-keywords label { padding: var(--lumaui-sidebar-row-padding-y); border-radius: var(--lumaui-sidebar-row-radius); background: @luma_fill; }
+.dr-stage { background: @luma_media_surface; }
+.dr-edit-work { background: @luma_media_surface; }
+.dr-canvas { background: @luma_media_surface; color: @luma_on_media; }
+.dr-compare-label { padding: var(--lumaui-sidebar-row-padding-y) var(--lumaui-sidebar-heading-gap); border-radius: var(--lumaui-sidebar-row-radius); background: alpha(@luma_media_scrim, 0.55); color: @luma_on_media; }
+.dr-split-handle { min-width: var(--lumaui-foot-height); min-height: var(--lumaui-foot-height); padding: 0; border-radius: var(--lumaui-foot-height); background: @luma_on_media; color: @luma_media_surface; }
+.dr-filmstrip { background: @luma_island; }
+.dr-filmstrip .dr-strip-photo { margin: var(--lumaui-media-tile-ring-offset) var(--lumaui-media-tile-library-gap); padding: 0; border-radius: var(--lumaui-media-tile-library-radius); background: none; box-shadow: none; }
+.dr-filmstrip .dr-strip-photo picture { border-radius: var(--lumaui-media-tile-library-radius); }
+.dr-filmstrip .dr-strip-photo.on { outline: var(--lumaui-media-tile-ring-width) solid @luma_creative_selection; outline-offset: var(--lumaui-media-tile-ring-offset); }
+.dr-filmstrip .dr-strip-photo.rej { opacity: var(--lumaui-media-tile-dim-opacity); }
+.dr-inspector-body { padding: var(--lumaui-sidebar-inset); }
+.dr-histogram { padding: var(--lumaui-sidebar-inset); border-bottom: var(--lumaui-sidebar-edge) solid @luma_line_faint; }
+.dr-looks, .dr-ratios, .dr-masks { margin: var(--lumaui-sidebar-row-padding-y); }
+.dr-look { background: none; box-shadow: none; padding: var(--lumaui-sidebar-row-padding-y); }
+.dr-look.on, .dr-ratios button:checked, .dr-masks button.on { background: @luma_chip; color: @luma_ink; }
+
+/* The library is a compact floating collection list, not a frame sidebar. */
+#dr-left { margin-left: 16px; }
+#dr-left box.lumaui-creative-panel-card { min-width: 244px; background: @luma_creative_panel_surface; }
+#dr-navigation.lumaui-sidebar-destinations { padding: 0 8px 8px; margin: 0; background: none; }
+#dr-navigation.lumaui-sidebar-destinations .luma-navigation-list > row.lumaui-row {
+  min-height: 30px; padding: 0 6px; margin: 0; border-radius: 8px;
+}
+#dr-navigation.lumaui-sidebar-destinations .luma-navigation-list > row.luma-navigation-section {
+  margin: 10px 4px 4px; min-height: 16px;
+}
+#dr-navigation.lumaui-sidebar-destinations row.lumaui-row label.lumaui-row-title { font-weight: 400; color: @luma_ink_secondary; }
+#dr-navigation.lumaui-sidebar-destinations row.lumaui-row:selected { background: @luma_chip; }
+#dr-navigation.lumaui-sidebar-destinations row.lumaui-row:selected label.lumaui-row-title { color: @luma_ink; }
+#dr-navigation.lumaui-sidebar-destinations row.lumaui-row image.lead-icon { color: @luma_muted; }
+#dr-navigation.lumaui-sidebar-destinations row.lumaui-row:selected image.lead-icon { color: @luma_muted; }
+
+.dr-library { padding-top: 18px; }
+.dr-library > label.dr-library-title { margin-bottom: 0; }
+.dr-library > label:not(.dr-library-title) { margin-bottom: 14px; }
+
+#dr-right box.lumaui-creative-panel-card { min-width: 280px; }
+#dr-right .dr-histogram { padding: 6px 12px 4px; }
+#dr-right .dr-inspector-body { padding: 0 6px 8px; }
+#dr-right .dr-crop-inspector { padding-top: 12px; }
+#dr-right .dr-crop-inspector .dr-ratios { margin-bottom: 19px; }
+#dr-right .dr-crop-inspector .dr-crop-angle { margin-bottom: 34px; }
+#dr-bar .lumaui-bar-subject { min-width: 116px; }
+#dr-bar .dr-rating { padding: 0 6px; }
+#dr-bar button.lumaui-bar-button.icon { min-width: 36px; min-height: 36px; }

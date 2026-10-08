@@ -1,0 +1,56 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Launch Fedora's unmodified Plasma Mobile session for the FP6 shell bake-off.
+# The surrounding greetd controller owns readiness and Phosh recovery; this
+# wrapper supplies only an explicit session identity and a private diagnostic
+# log around Fedora's packaged session command.
+
+set -eu
+
+session_log=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/luma-plasma-mobile-session.log
+
+for path in \
+  /usr/libexec/plasma-dbus-run-session-if-needed \
+  /usr/bin/startplasmamobile \
+  /usr/bin/startplasma-wayland \
+  /usr/bin/kwin_wayland \
+  /usr/bin/plasmashell; do
+  if [ ! -x "$path" ]; then
+    printf 'luma-plasma-mobile-session: required executable is missing: %s\n' \
+      "$path" >&2
+    exit 1
+  fi
+done
+
+for variable in XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_RUNTIME_DIR; do
+  eval "value=\${$variable:-}"
+  if [ -z "$value" ]; then
+    printf 'luma-plasma-mobile-session: greetd did not provide %s\n' \
+      "$variable" >&2
+    exit 1
+  fi
+done
+
+unset DISPLAY WAYLAND_DISPLAY
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_CLASS=user
+export XDG_SESSION_DESKTOP=plasma-mobile
+export XDG_CURRENT_DESKTOP=KDE
+export DESKTOP_SESSION=plasma-mobile
+export LUMA_DEVICE_CLASS=handheld
+
+/usr/bin/systemctl --user unset-environment DISPLAY WAYLAND_DISPLAY
+/usr/bin/systemctl --user import-environment \
+  XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_RUNTIME_DIR \
+  XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP \
+  XDG_CURRENT_DESKTOP DESKTOP_SESSION LUMA_DEVICE_CLASS
+
+: >"$session_log"
+chmod 0600 "$session_log"
+printf 'launcher: session=%s seat=%s vt=%s command=%s\n' \
+  "$XDG_SESSION_ID" "$XDG_SEAT" "$XDG_VTNR" \
+  /usr/bin/startplasmamobile >>"$session_log"
+
+exec /usr/libexec/plasma-dbus-run-session-if-needed \
+  /usr/bin/startplasmamobile >>"$session_log" 2>&1

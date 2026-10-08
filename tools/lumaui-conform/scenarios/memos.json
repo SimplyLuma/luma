@@ -1,0 +1,45 @@
+{
+  "app": "memos",
+  "title": "Memos",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=memos",
+    "window": "#w-memos",
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "module": "voice_memos",
+    "fixtures": ["tests/fixtures/memos-v70.json", "tests/fixtures/memos-v70"],
+    "env": {"LUMA_MEMOS_FIXTURE": "{run}/fixtures/memos-v70.json"}
+  },
+  "states": [
+    {"name": "memo", "about": "Launch dry run, the opening state", "spec": [], "gtk": []},
+    {"name": "search", "about": "Search inside spoken words", "spec": [{"eval": "(() => { const e=document.querySelector('#me-side [data-meq]'); e.value='notification lip'; e.dispatchEvent(new Event('input',{bubbles:true})); })()"}], "gtk": [{"env": {"LUMA_MEMOS_SEARCH": "notification lip"}}]},
+    {"name": "music", "about": "A recording with no speech", "spec": [{"click": "[data-meopen=\"hum\"]"}], "gtk": [{"env": {"LUMA_MEMOS_STATE": "music"}}]},
+    {"name": "filter-menu", "about": "Sidebar foot filter menu", "spec": [{"click": "#me-side [data-lui-filter]"}], "gtk": [{"activate": "me-filter"}]},
+    {"name": "favourites", "about": "Sidebar foot filter and its list heading", "spec": [{"click": "#me-side [data-lui-filter]"}, {"click": "[data-meview=\"fav\"]"}], "gtk": [{"env": {"LUMA_MEMOS_STATE": "favourites"}}]},
+    {"name": "deleted-empty", "about": "Recently deleted empty state", "spec": [{"click": "#me-side [data-lui-filter]"}, {"click": "[data-meview=\"deleted\"]"}], "gtk": [{"env": {"LUMA_MEMOS_STATE": "deleted-empty"}}]},
+    {"name": "more", "about": "The current memo's More menu", "spec": [{"click": "[data-memore]"}], "gtk": [{"activate": "me-more"}]},
+    {"name": "share", "about": "Share the current memo", "spec": [{"click": "[data-meshare]"}], "gtk": [{"activate": "me-share"}]},
+    {"name": "speed", "about": "Playback speed menu", "spec": [{"click": "[data-mespeed]"}], "gtk": [{"activate": "me-speed"}]},
+    {"name": "recording", "about": "Recording at 1.4 seconds with its first live word", "spec": [{"eval": "(async()=>{const raf=requestAnimationFrame.bind(window),cancel=cancelAnimationFrame.bind(window);let hold=false;const pending=new Set;window.requestAnimationFrame=cb=>{if(hold)return 0;let id=raf(t=>{pending.delete(id);cb(t)});pending.add(id);return id};document.querySelector('[data-merec]').click();await new Promise(resolve=>{const check=()=>{const sub=document.querySelector('#me-body .metime.big small'),word=document.querySelector('#me-body .metx.live span');if(sub?.textContent.trim()==='.4'&&word?.textContent.includes('Reminder')){hold=true;for(const id of pending)cancel(id);resolve()}else raf(check)};check()})})()"}], "gtk": [{"env": {"LUMA_MEMOS_STATE": "recording"}}]}
+  ],
+  "phone_states": ["memo", "search", "music", "filter-menu", "favourites", "deleted-empty", "share", "recording"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-memos > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#me-top"},
+    {"name": "sidebar foot", "spec": "#me-side .sfoot"},
+    {"name": "sidebar", "spec": "#me-side"},
+    {"name": "corner", "spec": "#me-corner"},
+    {"name": "recording deck", "spec": "#me-body .medeck"},
+    {"name": "transcript", "spec": "#me-body .metx"},
+    {"name": "action bar", "spec": "#me-bar"},
+    {"name": "menu", "spec": "#w-memos > .pop, #w-memos > .crpop"},
+    {"name": "main", "spec": "#me-main"}
+  ],
+  "pairs": [
+    {"spec": "#me-side", "gtk": "me-sidebar", "name": "sidebar"},
+    {"spec": "#me-main", "gtk": "me-island", "name": "island"},
+    {"spec": "#me-corner", "gtk": "me-corner", "name": "corner pill"},
+    {"spec": "#me-bar", "gtk": "me-action", "name": "action center"}
+  ]
+}

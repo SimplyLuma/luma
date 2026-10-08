@@ -1,0 +1,36 @@
+{
+  "app": "media-transport-tide",
+  "title": "MediaTransport, deck (Tide's deck controls and scrub)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=tide",
+    "window": "#t-bot .dctlw"
+  },
+  "gtk": {
+    "module": "pages_media",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_MEDIA_CONFORM": "transport-deck"
+    }
+  },
+  "states": [
+    {
+      "name": "opening",
+      "about": "Tide's opening state: the deck's keys and scrub",
+      "spec": [
+        {
+          "click": "[data-tpp]"
+        },
+        {
+          "eval": "const r = document.querySelector('#t-rng'); r.value = 66; r.dispatchEvent(new Event('input', {bubbles: true})); r.dispatchEvent(new Event('change', {bubbles: true}));"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [
+    "opening"
+  ],
+  "groups": []
+}

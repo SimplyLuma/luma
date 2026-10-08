@@ -1,0 +1,2509 @@
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index a067fda..9ec73d2 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -16,6 +16,9 @@
+     <file>pad-osd.css</file>
+     <file>prairie-daybreak.svg</file>
+     <file>prairie-login-avatar.svg</file>
++    <file>poster-photo-overlay.svg</file>
++    <file>poster-card-glass.svg</file>
++    <file>poster-battery.svg</file>
+     <file>workspace-placeholder.svg</file>
+   </gresource>
+ </gresources>
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 081a098..e1d14e9 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5362,3 +5362,271 @@ StScrollBar {
+ 
+ .luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+   background-color: rgba(37, 46, 54, 0.08); }
++
++/* Poster: the same native GDM and unlock actors share this composition. */
++.login-dialog, .unlock-dialog, #lockDialogGroup,
++.prairie-login-background {
++  background-color: #0d0d0f;
++  color: #eceeed; }
++
++.prairie-login-wallpaper {
++  background-image: url("file:///usr/share/backgrounds/luma/prism.png");
++  background-position: 30% center;
++  background-size: cover; }
++
++.prairie-login-wallpaper-overlay {
++  background-image: url("resource:///org/gnome/shell/theme/poster-photo-overlay.svg");
++  background-size: 100% 100%; }
++
++.poster-day {
++  spacing: 22px;
++  color: white;
++  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25); }
++
++.poster-weekday {
++  font-family: "Figtree";
++  font-size: 148px;
++  font-weight: 700;
++  letter-spacing: -0.055em;
++  line-height: 0.84; }
++
++.poster-time-row {
++  spacing: 14px; }
++
++.poster-time {
++  font-family: "Figtree";
++  font-size: 64px;
++  font-weight: 250;
++  letter-spacing: -0.04em;
++  font-feature-settings: "tnum"; }
++
++.poster-ampm {
++  font-family: "Figtree";
++  font-size: 18px;
++  font-weight: 600;
++  letter-spacing: 0.02em;
++  color: rgba(255, 255, 255, 0.75);
++  margin-left: -6px; }
++
++.poster-time-divider {
++  width: 1px;
++  height: 36px;
++  margin: 0 6px;
++  background-color: rgba(255, 255, 255, 0.35); }
++
++.poster-date {
++  font-family: "Figtree";
++  font-size: 22px;
++  font-weight: 500;
++  color: rgba(255, 255, 255, 0.9); }
++
++.poster-day.compact .poster-weekday {
++  font-size: 104px; }
++
++.poster-day.compact .poster-time {
++  font-size: 48px; }
++
++.poster-card {
++  padding: 26px 30px 22px;
++  border-radius: 24px;
++  background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg");
++  background-size: 100% 100%;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6);
++  color: #eceeed; }
++
++.poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26262a; }
++
++.poster-status-row {
++  spacing: 14px; }
++
++.poster-wifi-icon {
++  icon-size: 15px;
++  color: #eceeed; }
++
++.poster-battery {
++  width: 23px;
++  height: 10px;
++  background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
++  background-size: 23px 10px; }
++
++.poster-battery-fill {
++  height: 5px;
++  background-color: #eceeed;
++  border-radius: 1px; }
++
++.poster-status-divider {
++  width: 1px;
++  height: 18px;
++  background-color: rgba(255, 255, 255, 0.1); }
++
++.poster-card .prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 0;
++  background-color: transparent;
++  box-shadow: none; }
++
++.poster-card .prairie-login-power-button .prairie-login-power-icon {
++  icon-size: 15px; }
++
++.poster-card .prairie-login-power-button:hover, .poster-card .prairie-login-power-button:focus {
++  background-color: rgba(255, 255, 255, 0.08); }
++
++.prairie-login-power-menu .popup-menu-content {
++  min-width: 200px;
++  padding: 5px;
++  border-radius: 16px;
++  background-color: #2c2c32; }
++
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 36px;
++  border-radius: 10px; }
++
++.poster-power-progress {
++  background-color: rgba(0, 0, 0, 0.82); }
++
++.poster-power-progress-label {
++  font-family: "Figtree";
++  font-size: 18px;
++  font-weight: 500;
++  color: white; }
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 320px;
++  padding: 0;
++  spacing: 0;
++  border: 0;
++  background-color: transparent;
++  box-shadow: none; }
++
++.poster-identity {
++  spacing: 0; }
++
++.poster-avatar {
++  icon-size: 76px;
++  border-radius: 99px;
++  border: 0;
++  background-color: #627eae;
++  background-image: none;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++
++.poster-avatar .prairie-login-avatar-initial {
++  font-family: "Figtree";
++  font-size: 30px;
++  font-weight: 650;
++  color: white; }
++
++.poster-greeting {
++  margin-top: 20px;
++  margin-bottom: 22px;
++  font-family: "Figtree";
++  font-size: 26px;
++  font-weight: 650;
++  letter-spacing: -0.025em;
++  color: #eceeed;
++  text-align: center; }
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 320px;
++  spacing: 0; }
++
++.login-dialog-button-box.prairie-password-field {
++  width: 320px;
++  height: 44px;
++  padding: 0 5px 0 14px;
++  spacing: 0;
++  border: 0;
++  border-radius: 13px;
++  background-color: rgba(0, 0, 0, 0.28);
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++
++.login-dialog-button-box.prairie-password-field:focus-within {
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry {
++  min-height: 34px;
++  font-size: 14px; }
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  border-radius: 9px;
++  background-gradient-direction: vertical;
++  background-gradient-start: #edeef0;
++  background-gradient-end: #d8d9dc;
++  color: #29292d; }
++
++.prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
++  background-color: #f4f5f7; }
++
++.prairie-login-submit-button .prairie-login-submit-icon {
++  icon-size: 16px;
++  color: #29292d; }
++
++.poster-fingerprint-hint {
++  spacing: 7px;
++  margin-top: 14px;
++  color: rgba(236, 238, 237, 0.42);
++  font-family: "Figtree";
++  font-size: 12.5px; }
++
++.poster-fingerprint-icon {
++  icon-size: 15px;
++  color: rgba(236, 238, 237, 0.42); }
++
++.prairie-login-error, .login-dialog-message-warning.prairie-login-error {
++  margin-top: 8px;
++  font-size: 12.5px;
++  text-align: center; }
++
++.poster-away {
++  spacing: 8px; }
++
++.poster-away-heading {
++  font-family: "Figtree";
++  font-size: 11.5px;
++  font-weight: 600;
++  color: rgba(236, 238, 237, 0.42); }
++
++.poster-away-well {
++  padding: 4px;
++  border-radius: 16px;
++  background-color: rgba(0, 0, 0, 0.28);
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++
++.poster-away-row {
++  spacing: 12px;
++  padding: 10px; }
++
++.poster-away-row + .poster-away-row {
++  border-top: 1px solid rgba(255, 255, 255, 0.1); }
++
++.poster-away-icon {
++  icon-size: 32px; }
++
++.poster-away-copy {
++  spacing: 1px; }
++
++.poster-away-title {
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 650;
++  color: #eceeed; }
++
++.poster-away-summary {
++  font-family: "Figtree";
++  font-size: 12px;
++  color: rgba(236, 238, 237, 0.64); }
++
++.poster-away-time {
++  font-family: "Figtree";
++  font-size: 11.5px;
++  color: rgba(236, 238, 237, 0.42);
++  font-feature-settings: "tnum"; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 7d426a9..3efeb6f 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5536,3 +5536,271 @@ StScrollBar {
+ 
+ .luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+   background-color: rgba(37, 46, 54, 0.08); }
++
++/* Poster: the same native GDM and unlock actors share this composition. */
++.login-dialog, .unlock-dialog, #lockDialogGroup,
++.prairie-login-background {
++  background-color: #0d0d0f;
++  color: #eceeed; }
++
++.prairie-login-wallpaper {
++  background-image: url("file:///usr/share/backgrounds/luma/prism.png");
++  background-position: 30% center;
++  background-size: cover; }
++
++.prairie-login-wallpaper-overlay {
++  background-image: url("resource:///org/gnome/shell/theme/poster-photo-overlay.svg");
++  background-size: 100% 100%; }
++
++.poster-day {
++  spacing: 22px;
++  color: white;
++  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25); }
++
++.poster-weekday {
++  font-family: "Figtree";
++  font-size: 148px;
++  font-weight: 700;
++  letter-spacing: -0.055em;
++  line-height: 0.84; }
++
++.poster-time-row {
++  spacing: 14px; }
++
++.poster-time {
++  font-family: "Figtree";
++  font-size: 64px;
++  font-weight: 250;
++  letter-spacing: -0.04em;
++  font-feature-settings: "tnum"; }
++
++.poster-ampm {
++  font-family: "Figtree";
++  font-size: 18px;
++  font-weight: 600;
++  letter-spacing: 0.02em;
++  color: rgba(255, 255, 255, 0.75);
++  margin-left: -6px; }
++
++.poster-time-divider {
++  width: 1px;
++  height: 36px;
++  margin: 0 6px;
++  background-color: rgba(255, 255, 255, 0.35); }
++
++.poster-date {
++  font-family: "Figtree";
++  font-size: 22px;
++  font-weight: 500;
++  color: rgba(255, 255, 255, 0.9); }
++
++.poster-day.compact .poster-weekday {
++  font-size: 104px; }
++
++.poster-day.compact .poster-time {
++  font-size: 48px; }
++
++.poster-card {
++  padding: 26px 30px 22px;
++  border-radius: 24px;
++  background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg");
++  background-size: 100% 100%;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6);
++  color: #eceeed; }
++
++.poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26262a; }
++
++.poster-status-row {
++  spacing: 14px; }
++
++.poster-wifi-icon {
++  icon-size: 15px;
++  color: #eceeed; }
++
++.poster-battery {
++  width: 23px;
++  height: 10px;
++  background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
++  background-size: 23px 10px; }
++
++.poster-battery-fill {
++  height: 5px;
++  background-color: #eceeed;
++  border-radius: 1px; }
++
++.poster-status-divider {
++  width: 1px;
++  height: 18px;
++  background-color: rgba(255, 255, 255, 0.1); }
++
++.poster-card .prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 0;
++  background-color: transparent;
++  box-shadow: none; }
++
++.poster-card .prairie-login-power-button .prairie-login-power-icon {
++  icon-size: 15px; }
++
++.poster-card .prairie-login-power-button:hover, .poster-card .prairie-login-power-button:focus {
++  background-color: rgba(255, 255, 255, 0.08); }
++
++.prairie-login-power-menu .popup-menu-content {
++  min-width: 200px;
++  padding: 5px;
++  border-radius: 16px;
++  background-color: #2c2c32; }
++
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 36px;
++  border-radius: 10px; }
++
++.poster-power-progress {
++  background-color: rgba(0, 0, 0, 0.82); }
++
++.poster-power-progress-label {
++  font-family: "Figtree";
++  font-size: 18px;
++  font-weight: 500;
++  color: white; }
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 320px;
++  padding: 0;
++  spacing: 0;
++  border: 0;
++  background-color: transparent;
++  box-shadow: none; }
++
++.poster-identity {
++  spacing: 0; }
++
++.poster-avatar {
++  icon-size: 76px;
++  border-radius: 99px;
++  border: 0;
++  background-color: #627eae;
++  background-image: none;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++
++.poster-avatar .prairie-login-avatar-initial {
++  font-family: "Figtree";
++  font-size: 30px;
++  font-weight: 650;
++  color: white; }
++
++.poster-greeting {
++  margin-top: 20px;
++  margin-bottom: 22px;
++  font-family: "Figtree";
++  font-size: 26px;
++  font-weight: 650;
++  letter-spacing: -0.025em;
++  color: #eceeed;
++  text-align: center; }
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 320px;
++  spacing: 0; }
++
++.login-dialog-button-box.prairie-password-field {
++  width: 320px;
++  height: 44px;
++  padding: 0 5px 0 14px;
++  spacing: 0;
++  border: 0;
++  border-radius: 13px;
++  background-color: rgba(0, 0, 0, 0.28);
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++
++.login-dialog-button-box.prairie-password-field:focus-within {
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry {
++  min-height: 34px;
++  font-size: 14px; }
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  border-radius: 9px;
++  background-gradient-direction: vertical;
++  background-gradient-start: #edeef0;
++  background-gradient-end: #d8d9dc;
++  color: #29292d; }
++
++.prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
++  background-color: #f4f5f7; }
++
++.prairie-login-submit-button .prairie-login-submit-icon {
++  icon-size: 16px;
++  color: #29292d; }
++
++.poster-fingerprint-hint {
++  spacing: 7px;
++  margin-top: 14px;
++  color: rgba(236, 238, 237, 0.42);
++  font-family: "Figtree";
++  font-size: 12.5px; }
++
++.poster-fingerprint-icon {
++  icon-size: 15px;
++  color: rgba(236, 238, 237, 0.42); }
++
++.prairie-login-error, .login-dialog-message-warning.prairie-login-error {
++  margin-top: 8px;
++  font-size: 12.5px;
++  text-align: center; }
++
++.poster-away {
++  spacing: 8px; }
++
++.poster-away-heading {
++  font-family: "Figtree";
++  font-size: 11.5px;
++  font-weight: 600;
++  color: rgba(236, 238, 237, 0.42); }
++
++.poster-away-well {
++  padding: 4px;
++  border-radius: 16px;
++  background-color: rgba(0, 0, 0, 0.28);
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++
++.poster-away-row {
++  spacing: 12px;
++  padding: 10px; }
++
++.poster-away-row + .poster-away-row {
++  border-top: 1px solid rgba(255, 255, 255, 0.1); }
++
++.poster-away-icon {
++  icon-size: 32px; }
++
++.poster-away-copy {
++  spacing: 1px; }
++
++.poster-away-title {
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 650;
++  color: #eceeed; }
++
++.poster-away-summary {
++  font-family: "Figtree";
++  font-size: 12px;
++  color: rgba(236, 238, 237, 0.64); }
++
++.poster-away-time {
++  font-family: "Figtree";
++  font-size: 11.5px;
++  color: rgba(236, 238, 237, 0.42);
++  font-feature-settings: "tnum"; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 1e12b13..1dfc11f 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5586,3 +5586,271 @@ StScrollBar {
+ 
+ .luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+   background-color: rgba(37, 46, 54, 0.08); }
++
++/* Poster: the same native GDM and unlock actors share this composition. */
++.login-dialog, .unlock-dialog, #lockDialogGroup,
++.prairie-login-background {
++  background-color: #0d0d0f;
++  color: #eceeed; }
++
++.prairie-login-wallpaper {
++  background-image: url("file:///usr/share/backgrounds/luma/prism.png");
++  background-position: 30% center;
++  background-size: cover; }
++
++.prairie-login-wallpaper-overlay {
++  background-image: url("resource:///org/gnome/shell/theme/poster-photo-overlay.svg");
++  background-size: 100% 100%; }
++
++.poster-day {
++  spacing: 22px;
++  color: white;
++  text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25); }
++
++.poster-weekday {
++  font-family: "Figtree";
++  font-size: 148px;
++  font-weight: 700;
++  letter-spacing: -0.055em;
++  line-height: 0.84; }
++
++.poster-time-row {
++  spacing: 14px; }
++
++.poster-time {
++  font-family: "Figtree";
++  font-size: 64px;
++  font-weight: 250;
++  letter-spacing: -0.04em;
++  font-feature-settings: "tnum"; }
++
++.poster-ampm {
++  font-family: "Figtree";
++  font-size: 18px;
++  font-weight: 600;
++  letter-spacing: 0.02em;
++  color: rgba(255, 255, 255, 0.75);
++  margin-left: -6px; }
++
++.poster-time-divider {
++  width: 1px;
++  height: 36px;
++  margin: 0 6px;
++  background-color: rgba(255, 255, 255, 0.35); }
++
++.poster-date {
++  font-family: "Figtree";
++  font-size: 22px;
++  font-weight: 500;
++  color: rgba(255, 255, 255, 0.9); }
++
++.poster-day.compact .poster-weekday {
++  font-size: 104px; }
++
++.poster-day.compact .poster-time {
++  font-size: 48px; }
++
++.poster-card {
++  padding: 26px 30px 22px;
++  border-radius: 24px;
++  background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg");
++  background-size: 100% 100%;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6);
++  color: #eceeed; }
++
++.poster-card.poster-card-opaque {
++  background-image: none;
++  background-color: #26262a; }
++
++.poster-status-row {
++  spacing: 14px; }
++
++.poster-wifi-icon {
++  icon-size: 15px;
++  color: #eceeed; }
++
++.poster-battery {
++  width: 23px;
++  height: 10px;
++  background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
++  background-size: 23px 10px; }
++
++.poster-battery-fill {
++  height: 5px;
++  background-color: #eceeed;
++  border-radius: 1px; }
++
++.poster-status-divider {
++  width: 1px;
++  height: 18px;
++  background-color: rgba(255, 255, 255, 0.1); }
++
++.poster-card .prairie-login-power-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 0;
++  background-color: transparent;
++  box-shadow: none; }
++
++.poster-card .prairie-login-power-button .prairie-login-power-icon {
++  icon-size: 15px; }
++
++.poster-card .prairie-login-power-button:hover, .poster-card .prairie-login-power-button:focus {
++  background-color: rgba(255, 255, 255, 0.08); }
++
++.prairie-login-power-menu .popup-menu-content {
++  min-width: 200px;
++  padding: 5px;
++  border-radius: 16px;
++  background-color: #2c2c32; }
++
++.prairie-login-power-menu .popup-menu-item {
++  min-height: 36px;
++  border-radius: 10px; }
++
++.poster-power-progress {
++  background-color: rgba(0, 0, 0, 0.82); }
++
++.poster-power-progress-label {
++  font-family: "Figtree";
++  font-size: 18px;
++  font-weight: 500;
++  color: white; }
++
++.login-dialog-prompt-layout.prairie-auth-card {
++  width: 320px;
++  padding: 0;
++  spacing: 0;
++  border: 0;
++  background-color: transparent;
++  box-shadow: none; }
++
++.poster-identity {
++  spacing: 0; }
++
++.poster-avatar {
++  icon-size: 76px;
++  border-radius: 99px;
++  border: 0;
++  background-color: #627eae;
++  background-image: none;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++
++.poster-avatar .prairie-login-avatar-initial {
++  font-family: "Figtree";
++  font-size: 30px;
++  font-weight: 650;
++  color: white; }
++
++.poster-greeting {
++  margin-top: 20px;
++  margin-bottom: 22px;
++  font-family: "Figtree";
++  font-size: 26px;
++  font-weight: 650;
++  letter-spacing: -0.025em;
++  color: #eceeed;
++  text-align: center; }
++
++.login-dialog-prompt-layout.prairie-login-input-well {
++  width: 320px;
++  spacing: 0; }
++
++.login-dialog-button-box.prairie-password-field {
++  width: 320px;
++  height: 44px;
++  padding: 0 5px 0 14px;
++  spacing: 0;
++  border: 0;
++  border-radius: 13px;
++  background-color: rgba(0, 0, 0, 0.28);
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++
++.login-dialog-button-box.prairie-password-field:focus-within {
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry {
++  min-height: 34px;
++  font-size: 14px; }
++
++.prairie-login-submit-button {
++  width: 34px;
++  height: 34px;
++  min-width: 34px;
++  min-height: 34px;
++  border-radius: 9px;
++  background-gradient-direction: vertical;
++  background-gradient-start: #edeef0;
++  background-gradient-end: #d8d9dc;
++  color: #29292d; }
++
++.prairie-login-submit-button:hover, .prairie-login-submit-button:focus {
++  background-color: #f4f5f7; }
++
++.prairie-login-submit-button .prairie-login-submit-icon {
++  icon-size: 16px;
++  color: #29292d; }
++
++.poster-fingerprint-hint {
++  spacing: 7px;
++  margin-top: 14px;
++  color: rgba(236, 238, 237, 0.42);
++  font-family: "Figtree";
++  font-size: 12.5px; }
++
++.poster-fingerprint-icon {
++  icon-size: 15px;
++  color: rgba(236, 238, 237, 0.42); }
++
++.prairie-login-error, .login-dialog-message-warning.prairie-login-error {
++  margin-top: 8px;
++  font-size: 12.5px;
++  text-align: center; }
++
++.poster-away {
++  spacing: 8px; }
++
++.poster-away-heading {
++  font-family: "Figtree";
++  font-size: 11.5px;
++  font-weight: 600;
++  color: rgba(236, 238, 237, 0.42); }
++
++.poster-away-well {
++  padding: 4px;
++  border-radius: 16px;
++  background-color: rgba(0, 0, 0, 0.28);
++  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++
++.poster-away-row {
++  spacing: 12px;
++  padding: 10px; }
++
++.poster-away-row + .poster-away-row {
++  border-top: 1px solid rgba(255, 255, 255, 0.1); }
++
++.poster-away-icon {
++  icon-size: 32px; }
++
++.poster-away-copy {
++  spacing: 1px; }
++
++.poster-away-title {
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 650;
++  color: #eceeed; }
++
++.poster-away-summary {
++  font-family: "Figtree";
++  font-size: 12px;
++  color: rgba(236, 238, 237, 0.64); }
++
++.poster-away-time {
++  font-family: "Figtree";
++  font-size: 11.5px;
++  color: rgba(236, 238, 237, 0.42);
++  font-feature-settings: "tnum"; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index 2cbe30f..b960a30 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -659,3 +659,57 @@ $_gdm_dialog_width: 25em;
+     }
+   }
+ }
++
++/* Poster: the same native GDM and unlock actors share this composition. */
++.login-dialog, .unlock-dialog, #lockDialogGroup,
++.prairie-login-background { background-color: #0d0d0f; color: #eceeed; }
++.prairie-login-wallpaper { background-image: url("file:///usr/share/backgrounds/luma/prism.png"); background-position: 30% center; background-size: cover; }
++.prairie-login-wallpaper-overlay { background-image: url("resource:///org/gnome/shell/theme/poster-photo-overlay.svg"); background-size: 100% 100%; }
++.poster-day { spacing: 22px; color: white; text-shadow: 0 2px 30px rgba(0, 0, 0, 0.25); }
++.poster-weekday { font-family: "Figtree"; font-size: 148px; font-weight: 700; letter-spacing: -0.055em; line-height: 0.84; }
++.poster-time-row { spacing: 14px; }
++.poster-time { font-family: "Figtree"; font-size: 64px; font-weight: 250; letter-spacing: -0.04em; font-feature-settings: "tnum"; }
++.poster-ampm { font-family: "Figtree"; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.75); margin-left: -6px; }
++.poster-time-divider { width: 1px; height: 36px; margin: 0 6px; background-color: rgba(255, 255, 255, 0.35); }
++.poster-date { font-family: "Figtree"; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.9); }
++.poster-day.compact .poster-weekday { font-size: 104px; }
++.poster-day.compact .poster-time { font-size: 48px; }
++.poster-card { padding: 26px 30px 22px; border-radius: 24px; background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg"); background-size: 100% 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6); color: #eceeed; }
++.poster-card.poster-card-opaque { background-image: none; background-color: #26262a; }
++.poster-status-row { spacing: 14px; }
++.poster-wifi-icon { icon-size: 15px; color: #eceeed; }
++.poster-battery { width: 23px; height: 10px; background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg"); background-size: 23px 10px; }
++.poster-battery-fill { height: 5px; background-color: #eceeed; border-radius: 1px; }
++.poster-status-divider { width: 1px; height: 18px; background-color: rgba(255, 255, 255, 0.1); }
++.poster-card .prairie-login-power-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; background-color: transparent; box-shadow: none; }
++.poster-card .prairie-login-power-button .prairie-login-power-icon { icon-size: 15px; }
++.poster-card .prairie-login-power-button:hover, .poster-card .prairie-login-power-button:focus { background-color: rgba(255, 255, 255, 0.08); }
++.prairie-login-power-menu .popup-menu-content { min-width: 200px; padding: 5px; border-radius: 16px; background-color: #2c2c32; }
++.prairie-login-power-menu .popup-menu-item { min-height: 36px; border-radius: 10px; }
++.poster-power-progress { background-color: rgba(0, 0, 0, 0.82); }
++.poster-power-progress-label { font-family: "Figtree"; font-size: 18px; font-weight: 500; color: white; }
++.login-dialog-prompt-layout.prairie-auth-card { width: 320px; padding: 0; spacing: 0; border: 0; background-color: transparent; box-shadow: none; }
++.poster-identity { spacing: 0; }
++.poster-avatar { icon-size: 76px; border-radius: 99px; border: 0; background-color: #627eae; background-image: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
++.poster-avatar .prairie-login-avatar-initial { font-family: "Figtree"; font-size: 30px; font-weight: 650; color: white; }
++.poster-greeting { margin-top: 20px; margin-bottom: 22px; font-family: "Figtree"; font-size: 26px; font-weight: 650; letter-spacing: -0.025em; color: #eceeed; text-align: center; }
++.login-dialog-prompt-layout.prairie-login-input-well { width: 320px; spacing: 0; }
++.login-dialog-button-box.prairie-password-field { width: 320px; height: 44px; padding: 0 5px 0 14px; spacing: 0; border: 0; border-radius: 13px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++.login-dialog-button-box.prairie-password-field:focus-within { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
++.login-dialog .login-dialog-prompt-entry.prairie-login-entry, .unlock-dialog .login-dialog-prompt-entry.prairie-login-entry { min-height: 34px; font-size: 14px; }
++.prairie-login-submit-button { width: 34px; height: 34px; min-width: 34px; min-height: 34px; border-radius: 9px; background-gradient-direction: vertical; background-gradient-start: #edeef0; background-gradient-end: #d8d9dc; color: #29292d; }
++.prairie-login-submit-button:hover, .prairie-login-submit-button:focus { background-color: #f4f5f7; }
++.prairie-login-submit-button .prairie-login-submit-icon { icon-size: 16px; color: #29292d; }
++.poster-fingerprint-hint { spacing: 7px; margin-top: 14px; color: rgba(236, 238, 237, 0.42); font-family: "Figtree"; font-size: 12.5px; }
++.poster-fingerprint-icon { icon-size: 15px; color: rgba(236, 238, 237, 0.42); }
++.prairie-login-error, .login-dialog-message-warning.prairie-login-error { margin-top: 8px; font-size: 12.5px; text-align: center; }
++.poster-away { spacing: 8px; }
++.poster-away-heading { font-family: "Figtree"; font-size: 11.5px; font-weight: 600; color: rgba(236, 238, 237, 0.42); }
++.poster-away-well { padding: 4px; border-radius: 16px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
++.poster-away-row { spacing: 12px; padding: 10px; }
++.poster-away-row + .poster-away-row { border-top: 1px solid rgba(255, 255, 255, 0.1); }
++.poster-away-icon { icon-size: 32px; }
++.poster-away-copy { spacing: 1px; }
++.poster-away-title { font-family: "Figtree"; font-size: 13px; font-weight: 650; color: #eceeed; }
++.poster-away-summary { font-family: "Figtree"; font-size: 12px; color: rgba(236, 238, 237, 0.64); }
++.poster-away-time { font-family: "Figtree"; font-size: 11.5px; color: rgba(236, 238, 237, 0.42); font-feature-settings: "tnum"; }
+diff --git a/data/theme/meson.build b/data/theme/meson.build
+index 0605f84..6985906 100644
+--- a/data/theme/meson.build
++++ b/data/theme/meson.build
+@@ -1,6 +1,9 @@
+ theme_sources = files([
+   'prairie-daybreak.svg',
+   'prairie-login-avatar.svg',
++  'poster-photo-overlay.svg',
++  'poster-card-glass.svg',
++  'poster-battery.svg',
+   'gnome-shell-high-contrast.scss',
+   'gnome-shell-dark.scss',
+   'gnome-shell-light.scss',
+diff --git a/data/theme/poster-battery.svg b/data/theme/poster-battery.svg
+new file mode 100644
+index 0000000..37334c2
+--- /dev/null
++++ b/data/theme/poster-battery.svg
+@@ -0,0 +1,4 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="23" height="10" viewBox="0 0 23 10">
++  <rect x=".625" y=".625" width="18.75" height="8.75" rx="3.5" fill="none" stroke="#eceeed" stroke-width="1.25"/>
++  <path d="M21 3.5h.5q1 0 1 1v1q0 1-1 1H21z" fill="#eceeed"/>
++</svg>
+diff --git a/data/theme/poster-card-glass.svg b/data/theme/poster-card-glass.svg
+new file mode 100644
+index 0000000..cb4b1d1
+--- /dev/null
++++ b/data/theme/poster-card-glass.svg
+@@ -0,0 +1,14 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="480" height="860" viewBox="0 0 480 860" preserveAspectRatio="none">
++  <defs>
++    <linearGradient id="smoke" x2="0" y2="1">
++      <stop stop-color="#26262a" stop-opacity=".76"/>
++      <stop offset="1" stop-color="#1a1a1e" stop-opacity=".86"/>
++    </linearGradient>
++    <radialGradient id="warm" cx="0" cy="1" r="1.2" gradientTransform="matrix(1 0 0 .6 0 .4)">
++      <stop stop-color="#78481e" stop-opacity=".22"/>
++      <stop offset=".7" stop-color="#78481e" stop-opacity="0"/>
++    </radialGradient>
++  </defs>
++  <path fill="url(#smoke)" d="M0 0h480v860H0z"/>
++  <path fill="url(#warm)" d="M0 0h480v860H0z"/>
++</svg>
+diff --git a/data/theme/poster-photo-overlay.svg b/data/theme/poster-photo-overlay.svg
+new file mode 100644
+index 0000000..50fba60
+--- /dev/null
++++ b/data/theme/poster-photo-overlay.svg
+@@ -0,0 +1,16 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" preserveAspectRatio="none">
++  <defs>
++    <linearGradient id="horizontal">
++      <stop stop-color="#0c0804" stop-opacity=".55"/>
++      <stop offset=".45" stop-color="#0c0804" stop-opacity=".1"/>
++      <stop offset=".7" stop-color="#0c0804" stop-opacity=".35"/>
++      <stop offset="1" stop-color="#0c0804" stop-opacity=".6"/>
++    </linearGradient>
++    <linearGradient id="vertical" x2="0" y2="1">
++      <stop offset=".5" stop-color="#0c0804" stop-opacity="0"/>
++      <stop offset="1" stop-color="#0c0804" stop-opacity=".65"/>
++    </linearGradient>
++  </defs>
++  <path fill="url(#horizontal)" d="M0 0h1440v900H0z"/>
++  <path fill="url(#vertical)" d="M0 0h1440v900H0z"/>
++</svg>
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index ee6567f..8c8ded6 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -1,5 +1,6 @@
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
++import GnomeDesktop from 'gi://GnomeDesktop';
+ import GLib from 'gi://GLib';
+ import Atk from 'gi://Atk';
+ import GObject from 'gi://GObject';
+@@ -185,8 +186,8 @@ export const AuthPrompt = GObject.registerClass({
+         this.connect('destroy', this._onDestroy.bind(this));
+ 
+         this._userWell = new St.Bin({
+-            x_expand: true,
+-            y_expand: true,
++            x_expand: false,
++            y_expand: false,
+         });
+         this.add_child(this._userWell);
+ 
+@@ -220,6 +221,16 @@ export const AuthPrompt = GObject.registerClass({
+         this._message.clutter_text.line_wrap = true;
+         this._message.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+         this._inputWell.add_child(this._message);
++
++        this._fingerprintHint = new St.BoxLayout({style_class: 'poster-fingerprint-hint'});
++        this._fingerprintHint.add_child(new St.Icon({icon_name: 'fingerprint-symbolic',
++            style_class: 'poster-fingerprint-icon'}));
++        this._fingerprintHint.add_child(new St.Label({
++            text: _('Or touch the fingerprint sensor'),
++        }));
++        this._inputWell.add_child(this._fingerprintHint);
++        this._greetingClock = new GnomeDesktop.WallClock({time_only: true});
++        this._greetingClock.connectObject('notify::clock', this._updateGreeting.bind(this), this);
+     }
+ 
+     _createUserVerifier(gdmClient, params) {
+@@ -231,6 +242,8 @@ export const AuthPrompt = GObject.registerClass({
+         this._inactiveEntry = null;
+         this._userVerifier.destroy();
+         this._userVerifier = null;
++        this._greetingClock.disconnectObject(this);
++        this._greetingClock.run_dispose();
+         this._entry = null;
+     }
+ 
+@@ -394,6 +407,11 @@ export const AuthPrompt = GObject.registerClass({
+     }
+ 
+     _activateNext(shouldSpin) {
++        if (this._entry === this._passwordEntry && !this._entry.text) {
++            wiggle(this._mainBox, {duration: 60, wiggleCount: 3}).catch(logError);
++            this._entry.grab_key_focus();
++            return;
++        }
+         this.verificationStatus = AuthPromptStatus.VERIFICATION_IN_PROGRESS;
+         this.updateSensitivity(false);
+ 
+@@ -517,7 +535,7 @@ export const AuthPrompt = GObject.registerClass({
+ 
+         if (wasQueryingService) {
+             this._queryingService = null;
+-            this.clear();
++            this.clear({preserveEntry: serviceName === GdmUtil.PASSWORD_SERVICE_NAME});
+         }
+ 
+         this.updateSensitivity(canRetry);
+@@ -526,8 +544,12 @@ export const AuthPrompt = GObject.registerClass({
+         if (!canRetry)
+             this.verificationStatus = AuthPromptStatus.VERIFICATION_FAILED;
+ 
+-        // Prairie keeps an authentication error in place; it does not shake
+-        // or otherwise move the password field.
++        if (serviceName === GdmUtil.PASSWORD_SERVICE_NAME && canRetry) {
++            this._preservePasswordOnReset = true;
++            wiggle(this._mainBox, {duration: 60, wiggleCount: 3}).catch(logError);
++            this.setMessage(_('Wrong password'), GdmUtil.MessageType.ERROR);
++            this._entry.clutter_text.set_selection(0, -1);
++        }
+     }
+ 
+     _onVerificationComplete() {
+@@ -605,9 +627,11 @@ export const AuthPrompt = GObject.registerClass({
+         this.setActorInDefaultButtonWell(null, false);
+     }
+ 
+-    clear() {
+-        this._entry.text = '';
+-        this._inactiveEntry.text = '';
++    clear({preserveEntry = false} = {}) {
++        if (!preserveEntry) {
++            this._entry.text = '';
++            this._inactiveEntry.text = '';
++        }
+         this.stopSpinning();
+         this._authList.clear();
+         this._authList.hide();
+@@ -736,29 +760,65 @@ export const AuthPrompt = GObject.registerClass({
+         if (oldChild)
+             oldChild.destroy();
+ 
+-        const userWidget = new UserWidget.UserWidget(user, Clutter.Orientation.VERTICAL);
+-        this._userWell.set_child(userWidget);
+-
++        const identity = new St.BoxLayout({
++            style_class: 'poster-identity',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        const avatar = new UserWidget.Avatar(user, {
++            iconSize: 76,
++            showInitial: true,
++            styleClass: 'user-icon poster-avatar',
++        });
++        avatar.update();
++        identity.add_child(avatar);
++        this._greeting = new St.Label({style_class: 'poster-greeting'});
++        identity.add_child(this._greeting);
++        this._userWell.set_child(identity);
++        this._user = user;
++        if (user)
++            user.connectObject('changed', this._updateGreeting.bind(this), identity);
++        this._updateGreeting();
+         if (!user)
+             this._updateEntry(false);
+     }
+ 
++    _updateGreeting() {
++        if (!this._greeting)
++            return;
++        const name = this._user?.get_real_name() ||
++            this._user?.get_user_name() || '';
++        const firstName = name.trim().split(/\s+/)[0] || name;
++        const hour = new Date().getHours();
++        const greeting = hour < 12 ? _('Good morning, %s')
++            : hour < 18 ? _('Good afternoon, %s')
++                : _('Good evening, %s');
++        this._greeting.text = greeting.format(firstName);
++    }
++
+     reset() {
+         const oldStatus = this.verificationStatus;
+         this.verificationStatus = AuthPromptStatus.NOT_VERIFYING;
+         this.cancelButton.reactive = this._hasCancelButton;
+         this.cancelButton.can_focus = this._hasCancelButton;
+         this._preemptiveAnswer = null;
++        const preservePassword = !!this._preservePasswordOnReset &&
++            oldStatus !== AuthPromptStatus.VERIFICATION_CANCELLED;
++        this._preservePasswordOnReset = false;
+ 
+         if (this._userVerifier)
+             this._userVerifier.cancel();
+ 
+         this._queryingService = null;
+-        this.clear();
++        this.clear({preserveEntry: preservePassword});
+         this._message.opacity = 0;
+         this.setUser(null);
+         this._updateEntry(true);
+         this.stopSpinning();
++        if (preservePassword) {
++            this.setMessage(_('Wrong password'), GdmUtil.MessageType.ERROR);
++            this._entry.clutter_text.set_selection(0, -1);
++        }
+ 
+         if (oldStatus === AuthPromptStatus.VERIFICATION_FAILED)
+             this.emit('failed');
+diff --git a/js/gdm/loginDialog.js b/js/gdm/loginDialog.js
+index 6119e30..4c4a4a5 100644
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -608,13 +608,14 @@ export const LoginDialog = GObject.registerClass({
+         this._authPrompt.connect('prompted', this._onPrompted.bind(this));
+         this._authPrompt.connect('reset', this._onReset.bind(this));
+         this._authPrompt.hide();
+-        this.add_child(this._authPrompt);
++        this._prairiePowerButton = new PrairieLogin.PowerButton();
++        this._posterCard = new PrairieLogin.Card(this._authPrompt, this._prairiePowerButton);
++        this._posterCard.setPromptFocusTarget(this._authPrompt);
++        this.add_child(this._posterCard);
+ 
+         this._prairieClock = new PrairieLogin.Clock();
+         this.add_child(this._prairieClock);
+ 
+-        this._prairiePowerButton = new PrairieLogin.PowerButton();
+-        this.add_child(this._prairiePowerButton);
+ 
+         // translators: this message is shown below the user list on the
+         // login screen. It can be activated to reveal an entry for
+@@ -815,170 +816,34 @@ export const LoginDialog = GObject.registerClass({
+         backgroundAllocation.y2 = dialogBox.y2 - dialogBox.y1;
+         this._prairieBackgrounds.allocate(backgroundAllocation);
+ 
+-        const themeNode = this.get_theme_node();
+-        dialogBox = themeNode.get_content_box(dialogBox);
+-
+-        const dialogWidth = dialogBox.x2 - dialogBox.x1;
+-        const dialogHeight = dialogBox.y2 - dialogBox.y1;
+-        const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scaleFactor;
+-
+-        const [, , clockWidth, clockHeight] =
+-            this._prairieClock.get_preferred_size();
+-        const clockAllocation = new Clutter.ActorBox();
+-        clockAllocation.x1 = dialogBox.x1 + 24 * scaleFactor;
+-        clockAllocation.y1 = dialogBox.y2 - 24 * scaleFactor - clockHeight;
+-        clockAllocation.x2 = clockAllocation.x1 + clockWidth;
+-        clockAllocation.y2 = clockAllocation.y1 + clockHeight;
+-
+-        const [, , powerWidth, powerHeight] =
+-            this._prairiePowerButton.get_preferred_size();
+-        const powerAllocation = new Clutter.ActorBox();
+-        powerAllocation.x1 = dialogBox.x2 - (24 * scaleFactor) - powerWidth;
+-        powerAllocation.y1 = dialogBox.y2 - (24 * scaleFactor) - powerHeight;
+-        powerAllocation.x2 = powerAllocation.x1 + powerWidth;
+-        powerAllocation.y2 = powerAllocation.y1 + powerHeight;
+-
+-        // First find out what space the children require
+-        let bannerAllocation = null;
+-        let bannerHeight = 0;
+-        if (this._bannerView.visible) {
+-            bannerAllocation = this._getBannerAllocation(dialogBox);
+-            bannerHeight = bannerAllocation.y2 - bannerAllocation.y1;
+-        }
+-
+-        let authPromptAllocation = null;
+-        let authPromptWidth = 0;
+-        if (this._authPrompt.visible) {
+-            authPromptAllocation = this._getCenterActorAllocation(dialogBox, this._authPrompt);
+-            authPromptWidth = authPromptAllocation.x2 - authPromptAllocation.x1;
+-            const authPromptHeight = authPromptAllocation.y2 - authPromptAllocation.y1;
+-            const targetCenterY = dialogBox.y1 + dialogHeight * 0.49;
+-            authPromptAllocation.y1 = Math.floor(targetCenterY - authPromptHeight / 2);
+-            authPromptAllocation.y2 = authPromptAllocation.y1 + authPromptHeight;
+-        }
+-
+-        let userSelectionAllocation = null;
+-        let userSelectionHeight = 0;
+-        if (this._userSelectionBox.visible) {
+-            userSelectionAllocation = this._getCenterActorAllocation(dialogBox, this._userSelectionBox);
+-            userSelectionHeight = userSelectionAllocation.y2 - userSelectionAllocation.y1;
+-        }
+-
+-        let logoAllocation = null;
+-        let logoHeight = 0;
+-        if (this._logoBin.visible) {
+-            logoAllocation = this._getLogoBinAllocation(dialogBox);
+-            logoHeight = logoAllocation.y2 - logoAllocation.y1;
+-        }
+-
+-        let bottomButtonGroupAllocation = null;
+-        if (this._bottomButtonGroup.visible)
+-            bottomButtonGroupAllocation = this._getBottomButtonGroupAllocation(dialogBox);
+-
+-        // Then figure out if we're overly constrained and need to
+-        // try a different layout, or if we have what extra space we
+-        // can hand out
+-        if (bannerAllocation) {
+-            let bannerSpace;
+-
+-            if (authPromptAllocation)
+-                bannerSpace = authPromptAllocation.y1 - bannerAllocation.y1;
+-            else
+-                bannerSpace = 0;
+-
+-            let leftOverYSpace = bannerSpace - bannerHeight;
+-
+-            if (leftOverYSpace > 0) {
+-                // First figure out how much left over space is up top
+-                const leftOverTopSpace = leftOverYSpace / 2;
+-
+-                // Then, shift the banner into the middle of that extra space
+-                const yShift = Math.floor(leftOverTopSpace / 2);
+-
+-                bannerAllocation.y1 += yShift;
+-                bannerAllocation.y2 += yShift;
+-            } else {
+-                // Then figure out how much space there would be if we switched to a
+-                // wide layout with banner on one side and authprompt on the other.
+-                const leftOverXSpace = dialogWidth - authPromptWidth;
+-
+-                // In a wide view, half of the available space goes to the banner,
+-                // and the other half goes to the margins.
+-                const wideBannerWidth = leftOverXSpace / 2;
+-                const wideSpacing  = leftOverXSpace - wideBannerWidth;
+-
+-                // If we do go with a wide layout, we need there to be at least enough
+-                // space for the banner and the auth prompt to be the same width,
+-                // so it doesn't look unbalanced.
+-                if (authPromptWidth > 0 && wideBannerWidth > authPromptWidth) {
+-                    const centerX = dialogBox.x1 + dialogWidth / 2;
+-                    const centerY = dialogBox.y1 + dialogHeight / 2;
+-
+-                    // A small portion of the spacing goes down the center of the
+-                    // screen to help delimit the two columns of the wide view
+-                    const centerGap = wideSpacing / 8;
+-
+-                    // place the banner along the left edge of the center margin
+-                    bannerAllocation.x2 = Math.floor(centerX - centerGap / 2);
+-                    bannerAllocation.x1 = Math.floor(bannerAllocation.x2 - wideBannerWidth);
+-
+-                    // figure out how tall it would like to be and try to accommodate
+-                    // but don't let it get too close to the logo
+-                    let [, wideBannerHeight] = this._bannerView.get_preferred_height(wideBannerWidth);
+-
+-                    const maxWideHeight = dialogHeight - 3 * logoHeight;
+-                    wideBannerHeight = Math.min(maxWideHeight, wideBannerHeight);
+-                    bannerAllocation.y1 = Math.floor(centerY - wideBannerHeight / 2);
+-                    bannerAllocation.y2 = bannerAllocation.y1 + wideBannerHeight;
+-
+-                    // place the auth prompt along the right edge of the center margin
+-                    authPromptAllocation.x1 = Math.floor(centerX + centerGap / 2);
+-                    authPromptAllocation.x2 = authPromptAllocation.x1 + authPromptWidth;
+-                } else {
+-                    // If we aren't going to do a wide view, then we need to limit
+-                    // the height of the banner so it will present scrollbars
+-
+-                    // First figure out how much space there is without the banner
+-                    leftOverYSpace += bannerHeight;
+-
+-                    // Then figure out how much of that space is up top
+-                    const availableTopSpace = Math.floor(leftOverYSpace / 2);
+-
+-                    // Then give all of that space to the banner
+-                    bannerAllocation.y2 = bannerAllocation.y1 + availableTopSpace;
+-                }
+-            }
+-        } else if (userSelectionAllocation) {
+-            // Grow the user list to fill the space
+-            const leftOverYSpace = dialogHeight - userSelectionHeight - logoHeight;
+-
+-            if (leftOverYSpace > 0) {
+-                const topExpansion = Math.floor(leftOverYSpace / 2);
+-                const bottomExpansion = topExpansion;
+-
+-                userSelectionAllocation.y1 -= topExpansion;
+-                userSelectionAllocation.y2 += bottomExpansion;
+-            }
+-        }
+-
+-        // Finally hand out the allocations
+-        if (bannerAllocation)
+-            this._bannerView.allocate(bannerAllocation);
+-
+-        if (authPromptAllocation)
+-            this._authPrompt.allocate(authPromptAllocation);
+-
+-        if (userSelectionAllocation)
+-            this._userSelectionBox.allocate(userSelectionAllocation);
+-
+-        if (logoAllocation)
+-            this._logoBin.allocate(logoAllocation);
+-
+-        if (bottomButtonGroupAllocation)
+-            this._bottomButtonGroup.allocate(bottomButtonGroupAllocation);
+-
+-        this._prairieClock.allocate(clockAllocation);
+-        this._prairiePowerButton.allocate(powerAllocation);
++        const width = dialogBox.x2 - dialogBox.x1;
++        const height = dialogBox.y2 - dialogBox.y1;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scaleFactor;
++        const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
++        const inset = 20 * scale;
++        const cardWidth = Math.min(Math.max(0, width - 2 * inset),
++            Math.min(480 * scale, Math.max(380 * scale, width * 0.334)));
++        const card = new Clutter.ActorBox();
++        card.x1 = rtl ? inset : width - inset - cardWidth;
++        card.x2 = card.x1 + cardWidth;
++        card.y1 = inset;
++        card.y2 = height - inset;
++        this._posterCard.allocate(card);
++
++        if (width < 1100 * scale)
++            this._prairieClock.add_style_class_name('compact');
++        else
++            this._prairieClock.remove_style_class_name('compact');
++        const [, , clockWidth, clockHeight] = this._prairieClock.get_preferred_size();
++        const clock = new Clutter.ActorBox();
++        clock.x1 = rtl ? width - 64 * scale - clockWidth : 64 * scale;
++        clock.x2 = clock.x1 + clockWidth;
++        clock.y1 = height - 56 * scale - clockHeight;
++        clock.y2 = clock.y1 + clockHeight;
++        this._prairieClock.allocate(clock);
++        for (const actor of [this._userSelectionBox, this._bannerView,
++            this._bottomButtonGroup, this._logoBin])
++            actor.allocate(new Clutter.ActorBox());
+     }
+ 
+     _ensureUserListLoaded() {
+@@ -997,7 +862,7 @@ export const LoginDialog = GObject.registerClass({
+     }
+ 
+     _updateDisableUserList() {
+-        let disableUserList = this._settings.get_boolean(GdmUtil.DISABLE_USER_LIST_KEY);
++        let disableUserList = true;
+ 
+         // Disable user list when there are no users.
+         if (this._userListLoaded && this._userList.numItems() === 0)
+@@ -1169,19 +1034,13 @@ export const LoginDialog = GObject.registerClass({
+             this._authPrompt.setUser(this._user);
+             this._authPrompt.begin({userName: previousUser.get_user_name()});
+         } else if (beginRequest === AuthPrompt.BeginRequestType.PROVIDE_USERNAME) {
+-            if (!this._disableUserList) {
+-                if (this._userListLoaded) {
+-                    const onlyItem = this._userList.getOnlyItem();
+-                    if (onlyItem)
+-                        this._onUserListActivated(onlyItem);
+-                    else
+-                        this._showUserList();
+-                } else {
+-                    this._hideUserList();
+-                    this._ensureUserListLoaded();
+-                }
+-            } else {
+-                this._hideUserListAskForUsernameAndBeginVerification();
++            if (!this._userListLoaded) {
++                this._ensureUserListLoaded();
++            } else if (this._posterUser) {
++                const item = this._userList.getItemFromUserName(
++                    this._posterUser.get_user_name());
++                if (item)
++                    this._onUserListActivated(item);
+             }
+         } else {
+             this._hideUserListAndBeginVerification();
+@@ -1349,7 +1208,16 @@ export const LoginDialog = GObject.registerClass({
+     _startSession(serviceName) {
+         // Keep the completed Prairie authentication surface stable until GDM
+         // replaces it with the user session; do not darken it first.
+-        this._greeter.call_start_session_when_ready_sync(serviceName, true, null);
++        this._prairieClock.ease({opacity: 0, translation_y: 12,
++            duration: St.Settings.get().enable_animations ? 400 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        for (const background of this._prairieBackgrounds.get_children())
++            background.settle();
++        this._posterCard.ease({opacity: 0, translation_x: 24,
++            duration: St.Settings.get().enable_animations ? 600 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++            onComplete: () => this._greeter.call_start_session_when_ready_sync(
++                serviceName, true, null)});
+     }
+ 
+     async _findConflictingSession(startingSessionId) {
+@@ -1556,14 +1424,8 @@ export const LoginDialog = GObject.registerClass({
+     }
+ 
+     _showUserList() {
+-        this._ensureUserListLoaded();
+-        this._authPrompt.hide();
+-        this._hideBannerView();
+-        this._sessionMenuButton.close();
+-        this._sessionMenuButton.hide();
+-        this._setUserListExpanded(true);
+-        this._notListedButton.show();
+-        this._userList.grab_key_focus();
++        // Poster has one person; no alternate account chooser is displayed.
++        this._userSelectionBox.hide();
+     }
+ 
+     _beginVerificationForItem(item) {
+@@ -1584,11 +1446,9 @@ export const LoginDialog = GObject.registerClass({
+         if (this._conflictingSessionNotification)
+             this._conflictingSessionNotification.destroy();
+ 
+-        const batch = new Batch.ConcurrentBatch(this, [
+-            GdmUtil.cloneAndFadeOutActor(this._userSelectionBox),
+-            this._beginVerificationForItem(activatedItem),
+-        ]);
+-        batch.run();
++        this._userSelectionBox.hide();
++        this._authPrompt.setUser(this._user);
++        this._authPrompt.begin({userName: this._user.get_user_name()});
+     }
+ 
+     _onDestroy() {
+@@ -1615,14 +1475,13 @@ export const LoginDialog = GObject.registerClass({
+ 
+         this._updateDisableUserList();
+ 
+-        const onlyItem = this._userList.getOnlyItem();
+-        if (onlyItem) {
++        this._posterUser = users.find(user => !user.locked) ?? null;
++        if (this._posterUser) {
++            const item = this._userList.getItemFromUserName(this._posterUser.get_user_name());
+             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
+-                if (!this._authPrompt.visible)
+-                    this._onUserListActivated(onlyItem);
++                if (item && !this._authPrompt.visible)
++                    this._onUserListActivated(item);
+             });
+-        } else {
+-            this._showUserList();
+         }
+ 
+         this._userManager.connectObject(
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+index 2e4e1f3..a37fab2 100644
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -7,56 +7,58 @@ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
++import NM from 'gi://NM';
+ 
+ import {formatDateWithCFormatString} from '../misc/dateUtils.js';
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SystemActions from '../misc/systemActions.js';
++import {loadInterfaceXML} from '../misc/fileUtils.js';
+ 
+ export const Clock = GObject.registerClass(
+ class PrairieLoginClock extends St.BoxLayout {
+     _init() {
+         super._init({
+-            style_class: 'prairie-login-clock',
++            style_class: 'poster-day',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_align: Clutter.ActorAlign.START,
+         });
++        this._weekday = new St.Label({style_class: 'poster-weekday'});
++        this._row = new St.BoxLayout({style_class: 'poster-time-row'});
++        this._row.set_text_direction(Clutter.TextDirection.LTR);
++        this._time = new St.Label({style_class: 'poster-time'});
++        this._ampm = new St.Label({style_class: 'poster-ampm'});
++        this._divider = new St.Widget({style_class: 'poster-time-divider'});
++        this._date = new St.Label({style_class: 'poster-date'});
++        this.add_child(this._weekday);
++        this.add_child(this._row);
++        for (const actor of [this._time, this._ampm, this._divider, this._date])
++            this._row.add_child(actor);
+ 
+-        this._time = new St.Label({
+-            style_class: 'prairie-login-clock-time',
+-            x_align: Clutter.ActorAlign.START,
+-        });
+-        this._date = new St.Label({
+-            style_class: 'prairie-login-clock-date',
+-            x_align: Clutter.ActorAlign.START,
+-        });
+-        this.add_child(this._time);
+-        this.add_child(this._date);
+-
++        this._clockSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
++        this._clockSettings.connectObject('changed::clock-format', this._updateClock.bind(this), this);
+         this._wallClock = new GnomeDesktop.WallClock({time_only: true});
+-        this._wallClock.connectObject(
+-            'notify::clock', this._updateClock.bind(this), this);
++        this._wallClock.connectObject('notify::clock', this._updateClock.bind(this), this);
+         this._updateClock();
+-        // connectObject registered the signals above against this widget, so
+-        // the signal tracker disconnects them when it is destroyed. Disposing
+-        // the clock from a second destroy handler raced that cleanup, and
+-        // whichever ran last found the object already gone. The exception it
+-        // threw escaped into the middle of ScreenShield._completeDeactivate(),
+-        // which then never reached _setLocked(false) — so a *successful*
+-        // password unlock left the shield up and the screen appeared to load
+-        // forever, until the prompt was cancelled and retried. Dropping the
+-        // tracked signals before disposing makes both orders equivalent.
+         this.connect('destroy', () => {
+             this._wallClock.disconnectObject(this);
+             this._wallClock.run_dispose();
++            this._clockSettings.run_dispose();
+         });
+     }
+ 
+     _updateClock() {
+-        this._time.text = this._wallClock.clock.trim();
+-        const dateFormat = Shell.util_translate_time_string(
+-            N_('%A, %B %-d'));
+-        this._date.text = formatDateWithCFormatString(new Date(), dateFormat);
++        const now = new Date();
++        const use24 = this._clockSettings.get_string('clock-format') === '24h';
++        const timeFormat = Shell.util_translate_time_string(use24 ? N_('%H:%M') : N_('%l:%M'));
++        this._time.text = formatDateWithCFormatString(now, timeFormat).trim();
++        this._ampm.text = use24 ? '' : formatDateWithCFormatString(now,
++            Shell.util_translate_time_string(N_('%p')));
++        this._ampm.visible = !use24 && !!this._ampm.text;
++        this._weekday.text = formatDateWithCFormatString(now,
++            Shell.util_translate_time_string(N_('%A')));
++        this._date.text = formatDateWithCFormatString(now,
++            Shell.util_translate_time_string(N_('%B %-d')));
+     }
+ });
+ 
+@@ -75,7 +77,7 @@ class PrairieLoginPowerButton extends St.Button {
+         });
+ 
+         this._systemActions = SystemActions.getDefault();
+-        this._menu = new PopupMenu.PopupMenu(this, 1.0, St.Side.TOP);
++        this._menu = new PopupMenu.PopupMenu(this, 1.0, St.Side.BOTTOM);
+         this._menu.actor.add_style_class_name('prairie-login-power-menu');
+         Main.uiGroup.add_child(this._menu.actor);
+         this._menu.actor.hide();
+@@ -85,12 +87,13 @@ class PrairieLoginPowerButton extends St.Button {
+         this._menuManager.addMenu(this._menu);
+ 
+         this._items = [];
+-        this._addSystemAction(_('Suspend'), 'can-suspend',
+-            () => this._systemActions.activateSuspend());
+-        this._addSystemAction(_('Restart…'), 'can-restart',
+-            () => this._systemActions.activateRestart());
+-        this._addSystemAction(_('Shut Down…'), 'can-power-off',
+-            () => this._systemActions.activatePowerOff());
++        this._addSystemAction(_('Sleep'), 'can-suspend', 'weather-clear-night-symbolic',
++            _('Sleeping…'), () => this._systemActions.activateSuspend());
++        this._addSystemAction(_('Restart'), 'can-restart', 'view-refresh-symbolic',
++            _('Restarting…'), () => this._systemActions.activateRestart());
++        this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        this._addSystemAction(_('Shut down'), 'can-power-off', 'system-shutdown-symbolic',
++            _('Shutting down…'), () => this._systemActions.activatePowerOff());
+ 
+         this.connect('clicked', () => {
+             this._systemActions.forceUpdate();
+@@ -104,14 +107,34 @@ class PrairieLoginPowerButton extends St.Button {
+                 this.grab_key_focus();
+             }
+         });
+-        this.connect('destroy', () => this._menu.destroy());
++        this._progressOverlay = new St.Widget({
++            style_class: 'poster-power-progress',
++            layout_manager: new Clutter.BinLayout(),
++            visible: false,
++            reactive: true,
++        });
++        this._progressLabel = new St.Label({style_class: 'poster-power-progress-label',
++            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++        this._progressOverlay.add_child(this._progressLabel);
++        Main.uiGroup.add_child(this._progressOverlay);
++        this.connect('destroy', () => {
++            this._menu.destroy();
++            this._progressOverlay.destroy();
++        });
+     }
+ 
+-    _addSystemAction(label, property, callback) {
++    _addSystemAction(label, property, iconName, progress, callback) {
+         const item = this._menu.addAction(label, () => {
+             this._menu.close();
+-            callback();
++            this._showProgress(progress);
++            try {
++                callback();
++            } catch (error) {
++                this._progressOverlay.hide();
++                logError(error, 'Poster power action failed');
++            }
+         });
++        item.insert_child_at_index(new St.Icon({icon_name: iconName, icon_size: 16}), 0);
+         this._items.push(item);
+         this._systemActions.bind_property(property, item, 'visible',
+             GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE);
+@@ -119,6 +142,16 @@ class PrairieLoginPowerButton extends St.Button {
+         this._sync();
+     }
+ 
++    _showProgress(text) {
++        this._progressLabel.text = text;
++        this._progressOverlay.set_size(global.stage.width, global.stage.height);
++        this._progressOverlay.opacity = 0;
++        this._progressOverlay.show();
++        this._progressOverlay.ease({opacity: 255,
++            duration: St.Settings.get().enable_animations ? 400 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
+     _sync() {
+         const available = this._items.some(item => item.visible);
+         this.reactive = available;
+@@ -126,14 +159,190 @@ class PrairieLoginPowerButton extends St.Button {
+     }
+ });
+ 
++const PowerManagerProxy = Gio.DBusProxy.makeProxyWrapper(
++    loadInterfaceXML('org.freedesktop.UPower.Device'));
++
++export const Card = GObject.registerClass(
++class PosterCard extends St.BoxLayout {
++    _init(prompt, powerButton, notifications = null) {
++        super._init({
++            style_class: 'poster-card',
++            orientation: Clutter.Orientation.VERTICAL,
++            reactive: true,
++        });
++        this._surfaceSettings = null;
++        this._a11ySettings = new Gio.Settings({schema_id: 'org.gnome.desktop.a11y.interface'});
++        this._a11ySettings.connectObject('changed::high-contrast',
++            this._syncTransparency.bind(this), this);
++        const schema = Gio.SettingsSchemaSource.get_default()?.lookup(
++            'org.project_luma.shell-state', true);
++        if (schema?.has_key('reduce-transparency')) {
++            this._surfaceSettings = new Gio.Settings({settings_schema: schema});
++            this._surfaceSettings.connectObject('changed::reduce-transparency',
++                this._syncTransparency.bind(this), this);
++        }
++        this._blur = new Shell.BlurEffect({
++            mode: Shell.BlurMode.BACKGROUND,
++            radius: 40,
++            brightness: 1,
++        });
++        this._blur.corner_radius_top_left = 24;
++        this._blur.corner_radius_top_right = 24;
++        this._blur.corner_radius_bottom_right = 24;
++        this._blur.corner_radius_bottom_left = 24;
++        this.add_effect_with_name('poster-card-backdrop', this._blur);
++        this._syncTransparency();
++
++        const status = new St.BoxLayout({style_class: 'poster-status-row'});
++        status.add_child(new St.Widget({x_expand: true}));
++        this._wifi = new St.Icon({icon_name: 'network-wireless-offline-symbolic',
++            style_class: 'poster-wifi-icon'});
++        status.add_child(this._wifi);
++        this._battery = new St.Widget({style_class: 'poster-battery',
++            layout_manager: new Clutter.FixedLayout()});
++        this._batteryFill = new St.Widget({style_class: 'poster-battery-fill',
++            x: 2.5, y: 2.5, height: 5});
++        this._battery.add_child(this._batteryFill);
++        status.add_child(this._battery);
++        status.add_child(new St.Widget({style_class: 'poster-status-divider'}));
++        status.add_child(powerButton);
++        this._powerButton = powerButton;
++        this.add_child(status);
++
++        prompt.y_expand = true;
++        prompt.y_align = Clutter.ActorAlign.CENTER;
++        this.add_child(prompt);
++        if (notifications)
++            this.add_child(notifications);
++
++        // Only the status is duplicated; it never changes network or power
++        // state. Actions remain in GNOME's native system and GDM interfaces.
++        NM.Client.new_async(null, (source, result) => {
++            try {
++                const client = NM.Client.new_finish(result);
++                if (!this.get_parent())
++                    return;
++                this._networkClient = client;
++                client.connectObject('notify::primary-connection',
++                    this._syncWifi.bind(this),
++                    'notify::wireless-enabled', this._syncWifi.bind(this), this);
++                this._syncWifi();
++            } catch (error) {
++                logError(error, 'Poster Wi-Fi status unavailable');
++            }
++        });
++
++        this._powerProxy = new PowerManagerProxy(Gio.DBus.system,
++            'org.freedesktop.UPower',
++            '/org/freedesktop/UPower/devices/DisplayDevice',
++            (proxy, error) => {
++                if (error)
++                    logError(error, 'Poster battery status unavailable');
++                else
++                    proxy.connectObject('g-properties-changed', this._syncBattery.bind(this), this);
++                this._syncBattery();
++            });
++        this.connect('destroy', () => {
++            this._surfaceSettings?.run_dispose();
++            this._a11ySettings.run_dispose();
++        });
++    }
++
++    setPromptFocusTarget(prompt) {
++        if (this._focusPrompt === prompt)
++            return;
++        this._focusPrompt = prompt;
++        prompt.connect('destroy', () => {
++            if (this._focusPrompt === prompt)
++                this._focusPrompt = null;
++        });
++        prompt._submitButton.connect('key-press-event', (_button, event) => {
++            if (event.get_key_symbol() === Clutter.KEY_Tab &&
++                !(event.get_state() & Clutter.ModifierType.SHIFT_MASK)) {
++                this._powerButton.grab_key_focus();
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++        if (!this._powerFocusConnected) {
++            this._powerFocusConnected = true;
++            this._powerButton.connect('key-press-event', (_button, event) => {
++                if (event.get_key_symbol() !== Clutter.KEY_Tab || !this._focusPrompt)
++                    return Clutter.EVENT_PROPAGATE;
++                if (event.get_state() & Clutter.ModifierType.SHIFT_MASK)
++                    this._focusPrompt._submitButton.grab_key_focus();
++                else
++                    this._focusPrompt._entry.grab_key_focus();
++                return Clutter.EVENT_STOP;
++            });
++        }
++    }
++
++    _syncTransparency() {
++        const reduced = (this._surfaceSettings?.get_boolean('reduce-transparency') ?? false) ||
++            this._a11ySettings.get_boolean('high-contrast');
++        this._blur.enabled = !reduced;
++        if (reduced)
++            this.add_style_class_name('poster-card-opaque');
++        else
++            this.remove_style_class_name('poster-card-opaque');
++    }
++
++    _syncWifi() {
++        const client = this._networkClient;
++        const hasWifi = client.get_devices().some(device => device.get_device_type() === NM.DeviceType.WIFI);
++        this._wifi.visible = hasWifi;
++        if (!hasWifi)
++            return;
++        const connection = client.get_primary_connection();
++        const connected = client.wireless_enabled &&
++            connection?.get_connection_type() === '802-11-wireless';
++        this._wifi.icon_name = connected
++            ? 'network-wireless-signal-good-symbolic'
++            : 'network-wireless-offline-symbolic';
++    }
++
++    _syncBattery() {
++        const proxy = this._powerProxy;
++        this._battery.visible = !!proxy?.IsPresent;
++        if (!this._battery.visible)
++            return;
++        const percentage = Math.max(0, Math.min(100, proxy.Percentage));
++        this._batteryFill.width = Math.round(15 * percentage / 100);
++    }
++});
++
+ const LOGIN_WALLPAPER = '/usr/share/backgrounds/luma/prism.png';
+ let loginWallpaper = null;
++let pictureSettings = null;
++
++function setLoginWallpaper() {
++    let file = Gio.File.new_for_path(LOGIN_WALLPAPER);
++    if (pictureSettings) {
++        let uri = pictureSettings.lock.get_string('picture-uri');
++        if (!uri)
++            uri = pictureSettings.wallpaper.get_string('picture-uri');
++        if (uri) {
++            const candidate = Gio.File.new_for_uri(uri);
++            if (candidate.is_native() && candidate.query_exists(null))
++                file = candidate;
++        }
++    }
++    loginWallpaper.set_file(file, GDesktopEnums.BackgroundStyle.ZOOM);
++}
+ 
+ function getLoginWallpaper() {
+     if (!loginWallpaper) {
+         loginWallpaper = new Meta.Background({meta_display: global.display});
+-        loginWallpaper.set_file(Gio.File.new_for_path(LOGIN_WALLPAPER),
+-            GDesktopEnums.BackgroundStyle.ZOOM);
++        if (!Main.sessionMode.isGreeter) {
++            pictureSettings = {
++                lock: new Gio.Settings({schema_id: 'org.gnome.desktop.screensaver'}),
++                wallpaper: new Gio.Settings({schema_id: 'org.gnome.desktop.background'}),
++            };
++            for (const settings of Object.values(pictureSettings))
++                settings.connect('changed::picture-uri', setLoginWallpaper);
++        }
++        setLoginWallpaper();
+     }
+     return loginWallpaper;
+ }
+@@ -178,19 +387,11 @@ class PrairieLoginBackground extends St.Widget {
+             y_expand: true,
+             x_align: Clutter.ActorAlign.FILL,
+             y_align: Clutter.ActorAlign.FILL,
+-            scale_x: 1,
+-            scale_y: 1,
++            scale_x: 1.03,
++            scale_y: 1.03,
+         });
+         this._wallpaper.set_pivot_point(0.5, 0.5);
+-        this._wallpaper.add_effect_with_name('luma-login-blur',
+-            new Shell.BlurEffect({
+-                mode: Shell.BlurMode.ACTOR,
+-                radius: 28,
+-                // brightness is a factor from 0 to 1 and only darkens. The
+-                // 1.025 set here was always refused by GObject, with a
+-                // warning each time a login or unlock wallpaper was made,
+-                // so the wallpaper has only ever been drawn at 1.
+-            }));
++        this._wallpaper.set_scale(1.03, 1.03);
+         this.add_child(this._wallpaper);
+ 
+         this._overlay = new St.Widget({
+@@ -202,6 +403,15 @@ class PrairieLoginBackground extends St.Widget {
+         });
+         this.add_child(this._overlay);
+     }
++
++    settle() {
++        this._wallpaper.ease({
++            scale_x: 1,
++            scale_y: 1,
++            duration: St.Settings.get().enable_animations ? 1200 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++        });
++    }
+ });
+ 
+ const MODIFIERS = Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK |
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index 37b53ed..a549e27 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -10,356 +10,129 @@ import St from 'gi://St';
+ 
+ import * as Layout from './layout.js';
+ import * as Main from './main.js';
+-import * as MessageTray from './messageTray.js';
+ import * as PrairieLogin from './prairieLogin.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import {TimeLimitsState} from '../misc/timeLimitsManager.js';
+ import * as AuthPrompt from '../gdm/authPrompt.js';
+ import {AuthPromptStatus} from '../gdm/authPrompt.js';
+-import {MprisSource} from './mpris.js';
+-import {MediaMessage} from './messageList.js';
+ 
+ // The timeout before going back automatically to the lock screen (in seconds)
+ const IDLE_TIMEOUT = 2 * 60;
+ 
+ const CROSSFADE_TIME = 300;
+ const FADE_OUT_SCALE = 0.3;
+-const NotificationsBox = GObject.registerClass({
+-    Signals: {'wake-up-screen': {}},
+-}, class NotificationsBox extends St.BoxLayout {
++const PosterNotifications = GObject.registerClass(
++class PosterNotifications extends St.BoxLayout {
+     _init() {
+         super._init({
++            style_class: 'poster-away',
+             orientation: Clutter.Orientation.VERTICAL,
+-            name: 'unlockDialogNotifications',
++            visible: false,
+         });
+-
+-        this._notificationBox = new St.BoxLayout({
++        this.add_child(new St.Label({
++            style_class: 'poster-away-heading',
++            text: _('While you were away'),
++        }));
++        this._well = new St.BoxLayout({
++            style_class: 'poster-away-well',
+             orientation: Clutter.Orientation.VERTICAL,
+-            style_class: 'unlock-dialog-notifications-container',
+-        });
+-
+-        this._scrollView = new St.ScrollView({
+-            child: this._notificationBox,
+-        });
+-        this.add_child(this._scrollView);
+-
+-        this._players = new Map();
+-        this._mediaSource = new MprisSource();
+-        this._mediaSource.connectObject(
+-            'player-added', (o, player) => this._addPlayer(player),
+-            'player-removed', (o, player) => this._removePlayer(player),
+-            this);
+-        this._mediaSource.players.forEach(player => {
+-            this._addPlayer(player);
+         });
+-
+-        this._settings = new Gio.Settings({
+-            schema_id: 'org.gnome.desktop.notifications',
+-        });
+-
++        this.add_child(this._well);
+         this._sources = new Map();
+-        Main.messageTray.getSources().forEach(source => {
+-            this._sourceAdded(Main.messageTray, source, true);
+-        });
+-        this._updateVisibility();
+-
+-        Main.messageTray.connectObject('source-added',
+-            this._sourceAdded.bind(this), this);
+-
+-        this.connect('destroy', this._onDestroy.bind(this));
+-    }
+-
+-    _onDestroy() {
+-        const items = this._sources.entries();
+-        for (const [source, obj] of items)
+-            this._removeSource(source, obj);
+-
+-        for (const player of this._players.keys())
+-            this._removePlayer(player);
+-    }
+-
+-    _updateVisibility() {
+-        this._notificationBox.visible =
+-            this._notificationBox.get_children().some(a => a.visible);
+-
+-        this.visible = this._notificationBox.visible;
+-    }
+-
+-    _makeNotificationSource(source, box) {
+-        const iconActor = new St.Icon({
+-            style_class: 'unlock-dialog-notification-icon',
+-            fallback_icon_name: 'application-x-executable',
+-        });
+-        source.bind_property('icon', iconActor, 'gicon', GObject.BindingFlags.SYNC_CREATE);
+-        box.add_child(iconActor);
+-
+-        const textBox = new St.BoxLayout({
+-            x_expand: true,
+-            y_expand: true,
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        box.add_child(textBox);
+-
+-        const title = new St.Label({
+-            style_class: 'unlock-dialog-notification-label',
+-            x_expand: true,
+-            x_align: Clutter.ActorAlign.START,
+-        });
+-        source.bind_property('title',
+-            title, 'text',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        textBox.add_child(title);
+-
+-        const count = source.unseenCount;
+-        const countLabel = new St.Label({
+-            text: `${count}`,
+-            visible: count > 1,
+-            style_class: 'unlock-dialog-notification-count-text',
+-        });
+-        textBox.add_child(countLabel);
+-
+-        box.visible = count !== 0;
+-        return [title, countLabel];
+-    }
+-
+-    _makeNotificationDetailedSource(source, box) {
+-        const iconActor = new St.Icon({
+-            style_class: 'unlock-dialog-notification-icon',
+-            fallback_icon_name: 'application-x-executable',
+-        });
+-        source.bind_property('icon', iconActor, 'gicon', GObject.BindingFlags.SYNC_CREATE);
+-        box.add_child(iconActor);
+-
+-        const textBox = new St.BoxLayout({
+-            orientation: Clutter.Orientation.VERTICAL,
+-        });
+-        box.add_child(textBox);
+-
+-        const title = new St.Label({
+-            style_class: 'unlock-dialog-notification-label',
+-        });
+-        source.bind_property_full('title',
+-            title, 'text',
+-            GObject.BindingFlags.SYNC_CREATE,
+-            (bind, sourceVal) => [true, sourceVal?.replace(/\n/g, ' ') ?? ''],
+-            null);
+-        textBox.add_child(title);
+-
+-        let visible = false;
+-        for (let i = 0; i < source.notifications.length; i++) {
+-            const n = source.notifications[i];
+-
+-            if (n.acknowledged)
+-                continue;
+-
+-            let body = '';
+-            if (n.body) {
+-                const bodyText = n.body.replace(/\n/g, ' ');
+-                body = n.useBodyMarkup
+-                    ? bodyText
+-                    : GLib.markup_escape_text(bodyText, -1);
++        this._clockSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
++        this._clockSettings.connectObject('changed::clock-format', this._rebuild.bind(this), this);
++        Main.messageTray.getSources().forEach(source => this._watchSource(source));
++        Main.messageTray.connectObject('source-added', (_tray, source) => {
++            this._watchSource(source);
++            this._rebuild();
++        }, this);
++        this.connect('destroy', () => {
++            for (const [source, id] of this._sources) {
++                source.disconnectObject(this);
++                source.policy.disconnect(id);
+             }
+-
+-            const label = new St.Label({style_class: 'unlock-dialog-notification-count-text'});
+-            label.clutter_text.set_markup(`<b>${n.title}</b> ${body}`);
+-            textBox.add_child(label);
+-
+-            visible = true;
+-        }
+-
+-        box.visible = visible;
+-        return [title, null];
+-    }
+-
+-    _shouldShowDetails(source) {
+-        return source.policy.detailsInLockScreen ||
+-               source.narrowestPrivacyScope === MessageTray.PrivacyScope.SYSTEM;
+-    }
+-
+-    _updateSourceBoxStyle(source, obj, box) {
+-        const hasCriticalNotification =
+-            source.notifications.some(n => n.urgency === MessageTray.Urgency.CRITICAL);
+-
+-        if (hasCriticalNotification !== obj.hasCriticalNotification) {
+-            obj.hasCriticalNotification = hasCriticalNotification;
+-
+-            if (hasCriticalNotification)
+-                box.add_style_class_name('critical');
+-            else
+-                box.remove_style_class_name('critical');
+-        }
+-    }
+-
+-    _showSource(source, obj, box) {
+-        if (obj.detailed)
+-            [obj.titleLabel, obj.countLabel] = this._makeNotificationDetailedSource(source, box);
+-        else
+-            [obj.titleLabel, obj.countLabel] = this._makeNotificationSource(source, box);
+-
+-        box.visible = obj.visible && (source.unseenCount > 0);
+-
+-        this._updateSourceBoxStyle(source, obj, box);
++            this._sources.clear();
++            this._clockSettings.run_dispose();
++        });
++        this._rebuild();
+     }
+ 
+-    _wakeUpScreenForSource(source) {
+-        if (!this._settings.get_boolean('show-banners'))
++    _watchSource(source) {
++        if (this._sources.has(source))
+             return;
+-        const obj = this._sources.get(source);
+-        if (obj?.sourceBox.visible)
+-            this.emit('wake-up-screen');
+-    }
+-
+-    _addPlayer(player) {
+-        const message = new MediaMessage(player);
+-        this._players.set(player, message);
+-        this._notificationBox.insert_child_at_index(message, 0);
+-        this._updateVisibility();
+-    }
+-
+-    _removePlayer(player) {
+-        const message = this._players.get(player);
+-        this._players.delete(player);
+-        message.destroy();
+-        this._updateVisibility();
+-    }
+-
+-    _sourceAdded(tray, source, initial) {
+-        const obj = {
+-            visible: source.policy.showInLockScreen,
+-            detailed: this._shouldShowDetails(source),
+-            sourceBox: null,
+-            titleLabel: null,
+-            countLabel: null,
+-            hasCriticalNotification: false,
+-        };
+-
+-        obj.sourceBox = new St.BoxLayout({
+-            style_class: 'unlock-dialog-notification-source',
+-            x_expand: true,
+-        });
+-        this._showSource(source, obj, obj.sourceBox);
+-        this._notificationBox.insert_child_at_index(obj.sourceBox, this._players.size);
+-
+         source.connectObject(
+-            'notify::count', () => this._countChanged(source, obj),
+-            'notify::title', () => this._titleChanged(source, obj),
++            'notify::count', this._rebuild.bind(this),
++            'notify::title', this._rebuild.bind(this),
+             'destroy', () => {
+-                this._removeSource(source, obj);
+-                this._updateVisibility();
++                source.policy.disconnect(this._sources.get(source));
++                this._sources.delete(source);
++                this._rebuild();
+             }, this);
+-        obj.policyChangedId = source.policy.connect('notify', (policy, pspec) => {
+-            if (pspec.name === 'show-in-lock-screen')
+-                this._visibleChanged(source, obj);
+-            else
+-                this._detailedChanged(source, obj);
+-        });
+-
+-        this._sources.set(source, obj);
+-
+-        if (!initial) {
+-            // block scrollbars while animating, if they're not needed now
+-            const boxHeight = this._notificationBox.height;
+-            if (this._scrollView.height >= boxHeight)
+-                this._scrollView.vscrollbar_policy = St.PolicyType.NEVER;
+-
+-            const widget = obj.sourceBox;
+-            const [, natHeight] = widget.get_preferred_height(-1);
+-            widget.height = 0;
+-            widget.ease({
+-                height: natHeight,
+-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-                duration: 250,
+-                onComplete: () => {
+-                    this._scrollView.vscrollbar_policy = St.PolicyType.AUTOMATIC;
+-                    widget.set_height(-1);
+-                },
+-            });
+-
+-            this._updateVisibility();
+-            this._wakeUpScreenForSource(source);
+-        }
++        const id = source.policy.connect('notify', () => this._rebuild());
++        this._sources.set(source, id);
+     }
+ 
+-    _titleChanged(source, obj) {
+-        obj.titleLabel.text = source.title;
+-    }
+-
+-    _countChanged(source, obj) {
+-        // A change in the number of notifications may change whether we show
+-        // details.
+-        const newDetailed = this._shouldShowDetails(source);
+-        const oldDetailed = obj.detailed;
+-
+-        obj.detailed = newDetailed;
+-
+-        if (obj.detailed || oldDetailed !== newDetailed) {
+-            // A new notification was pushed, or a previous notification was destroyed.
+-            // Give up, and build the list again.
+-
+-            obj.sourceBox.destroy_all_children();
+-            obj.titleLabel = obj.countLabel = null;
+-            this._showSource(source, obj, obj.sourceBox);
+-        } else {
+-            const count = source.unseenCount;
+-            obj.countLabel.text = `${count}`;
+-            obj.countLabel.visible = count > 1;
++    _rebuild() {
++        this._well.destroy_all_children();
++        const entries = [];
++        for (const source of this._sources.keys()) {
++            if (!source.policy.showInLockScreen || source.unseenCount < 1)
++                continue;
++            const notification = [...source.notifications].reverse().find(n => !n.acknowledged);
++            const details = source.policy.detailsInLockScreen;
++            entries.push({source, notification, details});
+         }
+-
+-        obj.sourceBox.visible = obj.visible && (source.unseenCount > 0);
+-
+-        this._updateVisibility();
+-        this._wakeUpScreenForSource(source);
+-    }
+-
+-    _visibleChanged(source, obj) {
+-        if (obj.visible === source.policy.showInLockScreen)
+-            return;
+-
+-        obj.visible = source.policy.showInLockScreen;
+-        obj.sourceBox.visible = obj.visible && source.unseenCount > 0;
+-
+-        this._updateVisibility();
+-        this._wakeUpScreenForSource(source);
+-    }
+-
+-    _detailedChanged(source, obj) {
+-        const newDetailed = this._shouldShowDetails(source);
+-        if (obj.detailed === newDetailed)
+-            return;
+-
+-        obj.detailed = newDetailed;
+-
+-        obj.sourceBox.destroy_all_children();
+-        obj.titleLabel = obj.countLabel = null;
+-        this._showSource(source, obj, obj.sourceBox);
+-    }
+-
+-    _removeSource(source, obj) {
+-        obj.sourceBox.destroy();
+-        obj.sourceBox = obj.titleLabel = obj.countLabel = null;
+-
+-        source.policy.disconnect(obj.policyChangedId);
+-
+-        this._sources.delete(source);
++        entries.sort((a, b) =>
++            (b.notification?.datetime?.to_unix() ?? 0) -
++            (a.notification?.datetime?.to_unix() ?? 0));
++        for (const {source, notification, details} of entries.slice(0, 3)) {
++            const row = new St.BoxLayout({style_class: 'poster-away-row'});
++            row.add_child(new St.Icon({gicon: source.icon,
++                fallback_icon_name: 'application-x-executable',
++                style_class: 'poster-away-icon'}));
++            const copy = new St.BoxLayout({
++                style_class: 'poster-away-copy',
++                orientation: Clutter.Orientation.VERTICAL,
++                x_expand: true,
++            });
++            const title = details && notification?.title
++                ? notification.title : source.title;
++            const summary = details && notification?.body
++                ? notification.body.replace(/\n/g, ' ')
++                : _('%d new messages').format(source.unseenCount);
++            copy.add_child(new St.Label({style_class: 'poster-away-title', text: title}));
++            copy.add_child(new St.Label({style_class: 'poster-away-summary', text: summary}));
++            row.add_child(copy);
++            if (notification?.datetime) {
++                const format = this._clockSettings.get_string('clock-format') === '24h'
++                    ? '%H:%M' : '%l:%M %p';
++                row.add_child(new St.Label({
++                    style_class: 'poster-away-time',
++                    text: notification.datetime.format(format).trim(),
++                }));
++            }
++            this._well.add_child(row);
++        }
++        this.visible = this._well.get_n_children() > 0;
+     }
+ });
+ 
+ const PrairieUnlockContentLayout = GObject.registerClass(
+ class PrairieUnlockContentLayout extends Clutter.LayoutManager {
+-    _init(clock, prompt) {
++    _init(clock, card) {
+         super._init();
+         this._clock = clock;
+-        this._prompt = prompt;
++        this._card = card;
+     }
+ 
+     vfunc_get_preferred_width(container, forHeight) {
+-        const [, promptWidth] = this._prompt.get_preferred_width(forHeight);
++        const [, promptWidth] = this._card.get_preferred_width(forHeight);
+         const [, clockWidth] = this._clock.get_preferred_width(forHeight);
+         return [Math.max(promptWidth, clockWidth), Math.max(promptWidth, clockWidth)];
+     }
+ 
+     vfunc_get_preferred_height(container, forWidth) {
+-        const [, promptHeight] = this._prompt.get_preferred_height(forWidth);
++        const [, promptHeight] = this._card.get_preferred_height(forWidth);
+         const [, clockHeight] = this._clock.get_preferred_height(forWidth);
+         return [promptHeight + clockHeight, promptHeight + clockHeight];
+     }
+@@ -370,30 +143,34 @@ class PrairieUnlockContentLayout extends Clutter.LayoutManager {
+         const actorBox = new Clutter.ActorBox();
+ 
+         const [, , clockWidth, clockHeight] = this._clock.get_preferred_size();
+-        actorBox.x1 = 24 * scaleFactor;
+-        actorBox.y1 = height - 24 * scaleFactor - clockHeight;
++        if (width < 1100 * scaleFactor)
++            this._clock.add_style_class_name('compact');
++        else
++            this._clock.remove_style_class_name('compact');
++        const rtl = container.get_text_direction() === Clutter.TextDirection.RTL;
++        actorBox.x1 = rtl ? width - 64 * scaleFactor - clockWidth : 64 * scaleFactor;
++        actorBox.y1 = height - 56 * scaleFactor - clockHeight;
+         actorBox.x2 = actorBox.x1 + clockWidth;
+         actorBox.y2 = actorBox.y1 + clockHeight;
+         this._clock.allocate(actorBox);
+ 
+-        const [, , promptWidth, promptHeight] = this._prompt.get_preferred_size();
+-        actorBox.x1 = Math.floor((width - promptWidth) / 2);
+-        actorBox.y1 = Math.floor(height * 0.49 - promptHeight / 2);
+-        actorBox.x2 = actorBox.x1 + promptWidth;
+-        actorBox.y2 = actorBox.y1 + promptHeight;
+-        this._prompt.allocate(actorBox);
++        const inset = 20 * scaleFactor;
++        const cardWidth = Math.min(Math.max(0, width - 2 * inset),
++            Math.min(480 * scaleFactor, Math.max(380 * scaleFactor, width * 0.334)));
++        actorBox.x1 = rtl ? inset : width - inset - cardWidth;
++        actorBox.x2 = actorBox.x1 + cardWidth;
++        actorBox.y1 = inset;
++        actorBox.y2 = height - inset;
++        this._card.allocate(actorBox);
+     }
+ });
+ 
+ const UnlockDialogLayout = GObject.registerClass(
+ class UnlockDialogLayout extends Clutter.LayoutManager {
+-    _init(stack, notifications, switchUserButton, powerButton) {
++    _init(stack, switchUserButton) {
+         super._init();
+-
+         this._stack = stack;
+-        this._notifications = notifications;
+         this._switchUserButton = switchUserButton;
+-        this._powerButton = powerButton;
+     }
+ 
+     vfunc_get_preferred_width(container, forHeight) {
+@@ -406,30 +183,13 @@ class UnlockDialogLayout extends Clutter.LayoutManager {
+ 
+     vfunc_allocate(container, box) {
+         const [width, height] = box.get_size();
+-
+-        const actorBox = new Clutter.ActorBox();
+-        actorBox.x1 = 0;
+-        actorBox.y1 = 0;
+-        actorBox.x2 = 0;
+-        actorBox.y2 = 0;
+-        this._notifications.allocate(actorBox);
+-
+-        actorBox.x1 = 0;
+-        actorBox.y1 = 0;
+-        actorBox.x2 = width;
+-        actorBox.y2 = height;
+-        this._stack.allocate(actorBox);
+-
++        const stackBox = new Clutter.ActorBox();
++        stackBox.x1 = 0;
++        stackBox.y1 = 0;
++        stackBox.x2 = width;
++        stackBox.y2 = height;
++        this._stack.allocate(stackBox);
+         this._switchUserButton.allocate(new Clutter.ActorBox());
+-
+-        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+-        const [, , powerWidth, powerHeight] =
+-            this._powerButton.get_preferred_size();
+-        actorBox.x1 = width - 24 * scaleFactor - powerWidth;
+-        actorBox.y1 = height - 24 * scaleFactor - powerHeight;
+-        actorBox.x2 = actorBox.x1 + powerWidth;
+-        actorBox.y2 = actorBox.y1 + powerHeight;
+-        this._powerButton.allocate(actorBox);
+     }
+ });
+ 
+@@ -520,22 +280,19 @@ export const UnlockDialog = GObject.registerClass({
+         });
+         this._promptBox.set_pivot_point(0.5, 0.5);
+         this._promptBox.hide();
+-        this._stack.add_child(this._promptBox);
++
+ 
+         this._clock = new PrairieLogin.Clock();
+         this._clock.set_pivot_point(0.5, 0.5);
+         this._stack.add_child(this._clock);
+-        this._stack.layout_manager = new PrairieUnlockContentLayout(
+-            this._clock, this._promptBox);
++
+ 
+         this.allowCancel = false;
+ 
+         Main.ctrlAltTabManager.addGroup(this, _('Unlock Window'), 'dialog-password-symbolic');
+ 
+         // Notifications
+-        this._notificationsBox = new NotificationsBox();
+-        this._notificationsBox.connect('wake-up-screen', () => this.emit('wake-up-screen'));
+-        this._notificationsBox.hide();
++        this._notificationsBox = new PosterNotifications();
+ 
+         // Switch User button
+         this._otherUserButton = new St.Button({
+@@ -569,6 +326,11 @@ export const UnlockDialog = GObject.registerClass({
+         this._otherUserButton.hide();
+ 
+         this._prairiePowerButton = new PrairieLogin.PowerButton();
++        this._posterCard = new PrairieLogin.Card(
++            this._promptBox, this._prairiePowerButton, this._notificationsBox);
++        this._stack.add_child(this._posterCard);
++        this._stack.layout_manager = new PrairieUnlockContentLayout(
++            this._clock, this._posterCard);
+ 
+         // When parental controls session limits are enabled, the screen will be
+         // locked upon reaching the time limit. In those cases, tweak the lock screen,
+@@ -582,14 +344,9 @@ export const UnlockDialog = GObject.registerClass({
+         const mainBox = new St.Widget();
+         mainBox.add_constraint(new Layout.MonitorConstraint({primary: true}));
+         mainBox.add_child(this._stack);
+-        mainBox.add_child(this._notificationsBox);
+         mainBox.add_child(this._otherUserButton);
+-        mainBox.add_child(this._prairiePowerButton);
+         mainBox.layout_manager = new UnlockDialogLayout(
+-            this._stack,
+-            this._notificationsBox,
+-            this._otherUserButton,
+-            this._prairiePowerButton);
++            this._stack, this._otherUserButton);
+         this.add_child(mainBox);
+ 
+         this._idleMonitor = global.backend.get_core_idle_monitor();
+@@ -676,6 +433,7 @@ export const UnlockDialog = GObject.registerClass({
+             this._authPrompt.connect('cancelled', this._fail.bind(this));
+             this._authPrompt.connect('reset', this._onReset.bind(this));
+             this._promptBox.add_child(this._authPrompt);
++            this._posterCard.setPromptFocusTarget(this._authPrompt);
+         }
+ 
+         const {verificationStatus} = this._authPrompt;
+@@ -857,7 +615,17 @@ export const UnlockDialog = GObject.registerClass({
+             return;
+         }
+ 
+-        this._authPrompt.finish(onComplete);
++        this._authPrompt.finish(() => {
++            this._posterCard.ease({opacity: 0, translation_x: 24,
++                duration: St.Settings.get().enable_animations ? 600 : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++                onComplete});
++            this._clock.ease({opacity: 0, translation_y: 12,
++                duration: St.Settings.get().enable_animations ? 400 : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            for (const background of this._backgroundGroup.get_children())
++                background.settle();
++        });
+     }
+ 
+     open() {
+diff --git a/js/ui/userWidget.js b/js/ui/userWidget.js
+index ae78e62..7f7811b 100644
+--- a/js/ui/userWidget.js
++++ b/js/ui/userWidget.js
+@@ -94,6 +94,26 @@ class Avatar extends St.Bin {
+                 background-repeat: no-repeat;`;
+         } else if (this._showInitial) {
+             this.style = null;
++            if (this.has_style_class_name('poster-avatar')) {
++                const palettes = [
++                    ['#8fa5d7', '#596dab', 'rgba(58, 79, 153, 0.8)'],
++                    ['#a998d0', '#7563a5', 'rgba(88, 61, 146, 0.8)'],
++                    ['#81baa6', '#4e887b', 'rgba(45, 111, 92, 0.8)'],
++                    ['#d5a379', '#a57453', 'rgba(145, 80, 43, 0.8)'],
++                    ['#b894b6', '#896a8c', 'rgba(113, 57, 116, 0.8)'],
++                    ['#8db6cf', '#597f9f', 'rgba(52, 99, 137, 0.8)'],
++                ];
++                const name = this._user?.get_user_name() ?? '';
++                const hash = [...name].reduce((value, char) =>
++                    (value * 31 + char.codePointAt(0)) >>> 0, 0);
++                const [light, dark, shadow] = palettes[hash % palettes.length];
++                this.style = `background-gradient-direction: vertical;
++                    background-gradient-start: ${light};
++                    background-gradient-end: ${dark};
++                    box-shadow: inset 0 1px 0 rgba(255,255,255,.25),
++                        0 0 0 5px rgba(255,255,255,.06),
++                        0 16px 32px -12px ${shadow};`;
++            }
+             this.remove_style_class_name('user-avatar');
+             const name = this._user?.get_real_name() ||
+                 this._user?.get_user_name() || '';

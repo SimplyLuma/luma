@@ -1,0 +1,5 @@
+[Default Applications]
+image/jpeg=org.projectluma.Viewer.desktop
+image/png=org.projectluma.Viewer.desktop
+image/webp=org.projectluma.Viewer.desktop
+application/pdf=org.projectluma.Viewer.desktop

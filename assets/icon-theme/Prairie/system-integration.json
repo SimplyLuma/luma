@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "snapshot": "system-20260907",
+  "aliases": [
+    {
+      "destination": "scalable/apps/user-trash.svg",
+      "source_name": "user-trash",
+      "reason": "Existing dock Applications-context alias; identical to approved Places artwork."
+    },
+    {
+      "destination": "scalable/mimetypes/application-x-apk.svg",
+      "source_name": "package-x-generic",
+      "reason": "Android Application Installer launcher (Icon=application-x-apk); an APK is an installable package, so it takes the approved package artwork."
+    },
+    {
+      "destination": "scalable/mimetypes/application-vnd.android.package-archive.svg",
+      "source_name": "package-x-generic",
+      "reason": "Android package files (application/vnd.android.package-archive) in Filer and Open With; same approved package artwork as the installer."
+    }
+  ],
+  "snapshot_metadata_sha256": {
+    "STYLE.md": "ea5bebb28cd79d4825122e90d441882f265cef56f9e0ddfa98d96618f0f1ed08",
+    "selections.json": "8bb28cf07e74298d5414cc57a2848edea6a45d2c2b7bcf794275350ea243cf74",
+    "inventory.json": "c29eb6a88737753791751096cf6ee93a854ba623d0502f2cb6065510c01f35cc"
+  },
+  "license_notice": "upstream/lucide/LUCIDE_REFERENCE_LICENSE.txt",
+  "artwork_release_license_gate": "Original supplied artwork authorship and redistribution authorization require owner certification before public release; no legal/DCO signoff inferred.",
+  "lucide_reference_sha256": {
+    "house.svg": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e",
+    "recycle.svg": "21ce80a29ae558e16406dfb9143cf7b107c2d76b0174624328ff0e7abeaed7e2",
+    "panels-top-left.svg": "321a2a5500f2b814a2e62eb73c4b01dc65c7334fe2e6f7d77517239383e26bb1",
+    "network.svg": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792",
+    "monitor.svg": "d1a443233345724859de8e4fb48968ba91e885e12ddbd710701548bd91b39428"
+  }
+}

@@ -1,0 +1,32 @@
+From 1aa1dbe9a6123557136ff02aa8e07a3cf7433620 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 05:51:52 +0000
+Subject: [PATCH] Filer: accept preinitialized GTK in native capture
+
+---
+ src/nautilus-application.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+index 45dfe63..ecb85d3 100644
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -988,11 +988,13 @@ nautilus_application_startup (GApplication *app)
+     /* Initialize GDK display (for wayland-x11-interop protocol) before GTK does
+      * it during the chain-up. */
+     g_autoptr (GError) error = NULL;
+-    GdkDisplay *display = init_external_window_display (&error);
++    GdkDisplay *display = gtk_is_initialized ()
++                          ? gdk_display_get_default ()
++                          : init_external_window_display (&error);
+     if (display == NULL || error != NULL)
+     {
+         g_message ("Failed to initialize display server connection: %s",
+-                   error->message);
++                   error != NULL ? error->message : "no display");
+     }
+ 
+     /* Chain up to the GtkApplication implementation early, so that gtk_init()
+-- 
+2.55.0
+

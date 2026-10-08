@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Mobile Input & Display
+Comment=Choose display sleep and virtual keyboard behavior
+Exec=/usr/libexec/luma-mobile-input-settings
+Icon=input-keyboard-symbolic
+Categories=Settings;HardwareSettings;
+Keywords=Keyboard;Input;Display;Sleep;Power;Mobile;
+OnlyShowIn=Luma;GNOME;

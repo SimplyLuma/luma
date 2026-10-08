@@ -1,0 +1,11 @@
+{
+  "luma_base": "0.1.0",
+  "architecture": "x86_64",
+  "presentation": "desktop",
+  "hardware": [],
+  "capabilities": {
+    "org.luma.apps.core": "1.0.0"
+  },
+  "installed_mods": {},
+  "effect_owners": {}
+}

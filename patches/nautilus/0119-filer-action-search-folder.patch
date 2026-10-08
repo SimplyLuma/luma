@@ -1,0 +1,85 @@
+From 073c68fc9e40cd1ad5ab6aaef335fb15cd14f15a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:48:17 +0000
+Subject: [PATCH] Name native action center and search current folder
+
+---
+ src/nautilus-window.c | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 1a782a7..7d206be 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -141,6 +141,7 @@ struct _NautilusWindow
+     gboolean temporary_navigation_bar;
+     LumaActionCenter *action_center;
+     LumaBarItem *action_search_item;
++    char *action_search_placeholder;
+     LumaBarItem *action_modes_item;
+     LumaModeSwitch *action_modes;
+     gboolean action_bar_selected;
+@@ -855,11 +856,44 @@ update_action_center (NautilusWindow *window)
+     window->action_bar_selected = FALSE;
+ }
+ 
++static void
++update_action_search_placeholder (NautilusWindow *window)
++{
++    if (window->active_slot == NULL || window->action_search_item == NULL)
++        return;
++
++    GFile *location = window->search_origin != NULL
++                      ? window->search_origin
++                      : nautilus_window_slot_get_location (window->active_slot);
++    if (location == NULL)
++        return;
++    g_autofree char *name = g_file_get_basename (location);
++    if (name == NULL || *name == '\0')
++        return;
++    g_autofree char *placeholder = g_strdup_printf (_("Search %s"), name);
++    if (g_strcmp0 (placeholder, window->action_search_placeholder) == 0)
++        return;
++
++    g_autofree char *text = g_strdup (luma_bar_item_search_get_text (window->action_search_item));
++    LumaBarItem *item = luma_bar_item_new_search (placeholder);
++    if (text != NULL && *text != '\0')
++        luma_bar_item_search_set_text (item, text);
++    g_signal_connect (item, "search-changed",
++                      G_CALLBACK (on_bar_search_changed), window);
++    g_signal_connect (item, "search-activated",
++                      G_CALLBACK (on_bar_search_activated), window);
++    g_clear_object (&window->action_search_item);
++    window->action_search_item = item;
++    g_free (window->action_search_placeholder);
++    window->action_search_placeholder = g_strdup (placeholder);
++}
++
+ static void
+ on_location_changed (NautilusWindow *window)
+ {
+     nautilus_window_sync_location_widgets (window);
+     update_location_header (window);
++    update_action_search_placeholder (window);
+     update_information (window);
+     update_action_center (window);
+ }
+@@ -1917,6 +1951,7 @@ nautilus_window_finalize (GObject *object)
+     }
+     g_clear_handle_id (&window->action_search_timer, g_source_remove);
+     g_clear_object (&window->action_search_item);
++    g_clear_pointer (&window->action_search_placeholder, g_free);
+     g_clear_object (&window->action_modes_item);
+ 
+     g_clear_object (&window->selected_file);
+@@ -2515,6 +2550,7 @@ nautilus_window_init (NautilusWindow *window)
+      * the kit draws the one floating bar for browsing and selection. */
+     gtk_widget_set_visible (window->toolbar, FALSE);
+     window->action_center = LUMA_ACTION_CENTER (luma_action_center_new (NULL));
++    gtk_widget_set_name (GTK_WIDGET (window->action_center), "filer-action-center");
+     luma_action_center_attach (window->action_center, action_host);
+     window->action_search_item = luma_bar_item_new_search (_("Search files"));
+     g_signal_connect (window->action_search_item, "search-changed",
+-- 
+2.55.0
+

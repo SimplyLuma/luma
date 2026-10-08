@@ -1,0 +1,41 @@
+{
+  "id": "io.luma.Monitor",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "io.luma.Monitor",
+  "finish-args": [
+    "--metadata=X-Luma=app-data-schema=monitor-v1",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--talk-name=org.projectluma.MonitorHost1",
+    "--env=LUMA_MONITOR_STYLE_PATH=/app/share/luma-monitor/monitor.css",
+    "--metadata=X-Luma=min-host-monitor=16",
+    "--metadata=X-Luma=min-host-installer=57"
+  ],
+  "modules": [
+    {
+      "name": "monitor",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin",
+        "cp -a src/luma-monitor/luma_monitor /app/lib/python3.14/site-packages/",
+        "printf '#!/bin/sh\\nexec python3 -m luma_monitor.application \"$@\"\\n' > /app/bin/io.luma.Monitor",
+        "chmod 755 /app/bin/io.luma.Monitor",
+        "install -Dm644 src/luma-monitor/data/io.luma.Monitor.desktop /app/share/applications/io.luma.Monitor.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/io.luma.Monitor.svg",
+        "sed -i 's/^Icon=.*/Icon=io.luma.Monitor/' /app/share/applications/io.luma.Monitor.desktop",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/io.luma.Monitor.metainfo.xml",
+        "install -Dm644 LICENSE.md /app/share/licenses/io.luma.Monitor/LICENSE.md",
+        "install -d /app/share/luma-monitor",
+        "cp -a src/luma-monitor/data/. /app/share/luma-monitor/",
+        "install -d /app/share/dbus-1/services",
+        "printf '[D-BUS Service]\\nName=io.luma.Monitor\\nExec=/app/bin/io.luma.Monitor\\n' > /app/share/dbus-1/services/io.luma.Monitor.service",
+        "install -Dm644 depot-media/0b9c9c9c6c7fbff3596edf45195a7f0d4e749053e878aa1f1eaddc3f2a8efaa0.png /app/share/luma-app-media/0b9c9c9c6c7fbff3596edf45195a7f0d4e749053e878aa1f1eaddc3f2a8efaa0.png"
+      ]
+    }
+  ],
+  "appstream-compose": false
+}

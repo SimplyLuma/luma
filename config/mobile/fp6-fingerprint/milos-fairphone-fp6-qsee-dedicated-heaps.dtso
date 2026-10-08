@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+/dts-v1/;
+/plugin/;
+
+/*
+ * Give QSEECom its stock TA and apps heaps without turning the global SCM
+ * device into their allocator. The offline composer removes SCM's inherited
+ * memory-region property from the accepted base DTB before applying this
+ * overlay; only the dynamically-created QSEECom TEE child binds these pools.
+ */
+
+&{/reserved-memory} {
+	qseecom_apps_pool: qseecom-apps-pool {
+		compatible = "shared-dma-pool";
+		size = <0x0 0x01400000>;
+		alignment = <0x0 0x00400000>;
+		alloc-ranges = <0x0 0x80000000 0x0 0x80000000>;
+		no-map;
+	};
+};
+
+&{/firmware/scm} {
+	qseecom-tee-heaps {
+		compatible = "luma,qseecom-tee-heaps";
+		luma,dedicated-heaps;
+		memory-region = <&qseecom_ta_pool>, <&qseecom_apps_pool>;
+		memory-region-names = "ta", "apps";
+	};
+};

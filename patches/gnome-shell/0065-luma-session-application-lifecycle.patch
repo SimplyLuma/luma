@@ -1,0 +1,375 @@
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -92,2 +92,3 @@
+     <file>ui/mpris.js</file>
++    <file>ui/sessionApplications.js</file>
+     <file>ui/mediaSelection.js</file>
+diff --git a/js/ui/sessionApplications.js b/js/ui/sessionApplications.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/sessionApplications.js
+@@ -0,0 +1,190 @@
++import Gio from 'gi://Gio';
++import GObject from 'gi://GObject';
++import Shell from 'gi://Shell';
++
++import {loadInterfaceXML} from '../misc/fileUtils.js';
++import * as Mpris from './mpris.js';
++
++const DBusIface = loadInterfaceXML('org.freedesktop.DBus');
++const DBusProxy = Gio.DBusProxy.makeProxyWrapper(DBusIface);
++const MPRIS_PREFIX = 'org.mpris.MediaPlayer2.';
++
++function appId(app) {
++    return app?.get_id() ?? null;
++}
++
++export function mergePids(...groups) {
++    return [...new Set(groups.flat().filter(pid => Number.isInteger(pid) && pid > 0))]
++        .sort((a, b) => a - b);
++}
++
++export const SessionApplicationTracker = GObject.registerClass({
++    Signals: {
++        'changed': {param_types: [GObject.TYPE_STRING]},
++    },
++}, class SessionApplicationTracker extends GObject.Object {
++    _init() {
++        super._init();
++
++        this._appSystem = Shell.AppSystem.get_default();
++        this._registrations = new Map();
++        this._mpris = Mpris.getDefaultSource();
++        this._mpris.connectObject(
++            'player-added', (_source, player) => this._addMprisPlayer(player),
++            'player-removed', (_source, player) => this._removeMprisPlayer(player),
++            this);
++        for (const player of this._mpris.players)
++            this._addMprisPlayer(player);
++
++        this._proxy = new DBusProxy(Gio.DBus.session,
++            'org.freedesktop.DBus', '/org/freedesktop/DBus',
++            this._onProxyReady.bind(this));
++    }
++
++    isRegistered(app) {
++        const id = appId(app);
++        return id !== null && [...this._registrations.values()]
++            .some(registration => appId(registration.app) === id);
++    }
++
++    isRunning(app) {
++        return Boolean(app) &&
++            (app.state !== Shell.AppState.STOPPED || this.isRegistered(app));
++    }
++
++    getRunning() {
++        const apps = new Map(this._appSystem.get_running()
++            .map(app => [appId(app), app]));
++        for (const {app} of this._registrations.values())
++            apps.set(appId(app), app);
++        apps.delete(null);
++        return [...apps.values()];
++    }
++
++    getPids(app) {
++        const id = appId(app);
++        const registered = [...this._registrations.values()]
++            .filter(registration => appId(registration.app) === id)
++            .map(registration => registration.pid);
++        return mergePids(app?.get_pids() ?? [], registered);
++    }
++
++    async requestQuit(app) {
++        if (!this.isRunning(app))
++            return false;
++
++        if (app.state !== Shell.AppState.STOPPED)
++            return Boolean(app.request_quit());
++
++        if (!this.isRegistered(app))
++            return false;
++
++        try {
++            await app.activate_action('quit', null, 0, -1, null);
++            return true;
++        } catch (error) {
++            logError(error, `Failed to request quit for ${appId(app)}`);
++            return false;
++        }
++    }
++
++    async _onProxyReady(_proxy, error) {
++        if (error) {
++            logError(error, 'Failed to connect session application tracker');
++            return;
++        }
++
++        // Subscribe before taking the snapshot so ownership changes cannot be
++        // lost between ListNames and signal hookup.
++        this._proxy.connectSignal('NameOwnerChanged',
++            this._onNameOwnerChanged.bind(this));
++        try {
++            const [names] = await this._proxy.ListNamesAsync();
++            await Promise.all(names.map(name => this._addBusName(name)));
++        } catch (listError) {
++            logError(listError, 'Failed to list session application names');
++        }
++    }
++
++    _appForBusName(name) {
++        if (name.startsWith(':') || name.startsWith(MPRIS_PREFIX))
++            return null;
++        const app = this._appSystem.lookup_app(`${name}.desktop`);
++        if (!app?.app_info?.get_boolean?.('DBusActivatable'))
++            return null;
++        return app;
++    }
++
++    async _addBusName(name, knownOwner = null) {
++        const app = this._appForBusName(name);
++        if (!app)
++            return;
++        try {
++            const owner = knownOwner ?? (await this._proxy.GetNameOwnerAsync(name))[0];
++            this._setRegistration(`dbus:${name}`, app, owner);
++        } catch (error) {
++            // The owner can disappear after ListNames; NameOwnerChanged has
++            // already been subscribed and supplies the authoritative state.
++            if (knownOwner)
++                logError(error, `Failed to inspect D-Bus app ${name}`);
++        }
++    }
++
++    _onNameOwnerChanged(_proxy, _sender, [name, _oldOwner, newOwner]) {
++        const key = `dbus:${name}`;
++        if (!newOwner) {
++            this._removeRegistration(key);
++            return;
++        }
++        this._addBusName(name, newOwner);
++    }
++
++    _addMprisPlayer(player) {
++        if (!player.app || !player.busName || !player.nameOwner)
++            return;
++        this._setRegistration(`mpris:${player.busName}`,
++            player.app, player.nameOwner);
++    }
++
++    _removeMprisPlayer(player) {
++        if (player.busName)
++            this._removeRegistration(`mpris:${player.busName}`);
++    }
++
++    _setRegistration(key, app, owner) {
++        const old = this._registrations.get(key);
++        if (old?.owner === owner && old.app === app)
++            return;
++        if (old)
++            this.emit('changed', appId(old.app));
++        this._registrations.set(key, {app, owner, pid: 0});
++        this.emit('changed', appId(app));
++        this._resolvePid(key, owner);
++    }
++
++    async _resolvePid(key, owner) {
++        try {
++            const [pid] = await this._proxy.GetConnectionUnixProcessIDAsync(owner);
++            const registration = this._registrations.get(key);
++            if (!registration || registration.owner !== owner)
++                return;
++            registration.pid = pid;
++            this.emit('changed', appId(registration.app));
++        } catch (error) {
++            // A disappearing owner is handled by NameOwnerChanged/MPRIS.
++        }
++    }
++
++    _removeRegistration(key) {
++        const registration = this._registrations.get(key);
++        if (!registration)
++            return;
++        this._registrations.delete(key);
++        this.emit('changed', appId(registration.app));
++    }
++});
++
++let defaultTracker;
++export function getDefault() {
++    return defaultTracker ??= new SessionApplicationTracker();
++}
+diff --git a/js/ui/mpris.js b/js/ui/mpris.js
+--- a/js/ui/mpris.js
++++ b/js/ui/mpris.js
+@@ -75,5 +75,13 @@
+     get app() {
+         return this._app;
+     }
++
++    get busName() {
++        return this._busName;
++    }
++
++    get nameOwner() {
++        return this._mprisProxy?.g_name_owner ?? null;
++    }
+ 
+     get shelfTitle() { return this._shelfTitle ?? ''; }
+diff --git a/js/ui/appDisplay.js b/js/ui/appDisplay.js
+--- a/js/ui/appDisplay.js
++++ b/js/ui/appDisplay.js
+@@ -19,4 +19,5 @@
+ import * as PopupMenu from './popupMenu.js';
+ import * as Search from './search.js';
++import * as SessionApplications from './sessionApplications.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import * as SystemActions from '../misc/systemActions.js';
+@@ -2966,6 +2967,11 @@
+         this._menu = null;
+         this._menuManager = new PopupMenu.PopupMenuManager(this);
+ 
++        this._sessionApplications = SessionApplications.getDefault();
+         this.app.connectObject('notify::state',
+             () => this._updateRunningStyle(), this);
++        this._sessionApplications.connectObject('changed', (_tracker, id) => {
++            if (id === this.app.get_id())
++                this._updateRunningStyle();
++        }, this);
+         this._updateRunningStyle();
+@@ -3003,7 +3009,7 @@
+     }
+ 
+     _updateRunningStyle() {
+-        if (this.app.state !== Shell.AppState.STOPPED)
++        if (this._sessionApplications.isRunning(this.app))
+             this._dot.show();
+         else
+             this._dot.hide();
+diff --git a/js/ui/appMenu.js b/js/ui/appMenu.js
+--- a/js/ui/appMenu.js
++++ b/js/ui/appMenu.js
+@@ -9,6 +9,7 @@
+ import * as Main from './main.js';
+ import * as ParentalControlsManager from '../misc/parentalControlsManager.js';
+ import * as PopupMenu from './popupMenu.js';
++import * as SessionApplications from './sessionApplications.js';
+ 
+ export class AppMenu extends PopupMenu.PopupMenu {
+     /**
+@@ -96,8 +97,12 @@
+ 
+         this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+ 
+-        this._quitItem =
+-            this.addAction(_('Quit'), () => this._app.request_quit());
++        this._sessionApplications = SessionApplications.getDefault();
++        this._quitItem = this.addAction(_('Quit'), () => {
++            this._sessionApplications.requestQuit(this._app);
++        });
++        this._sessionApplications.connectObject('changed',
++            () => this._updateQuitItem(), this.actor);
+ 
+         this._appSystem.connectObject(
+             'installed-changed', () => this._updateDetailsVisibility(),
+@@ -134,7 +139,8 @@
+     }
+ 
+     _updateQuitItem() {
+-        this._quitItem.visible = this._app?.state === Shell.AppState.RUNNING;
++        this._quitItem.visible = Boolean(this._app) &&
++            this._sessionApplications.isRunning(this._app);
+     }
+ 
+     _updateNewWindowItem() {
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -12,6 +12,7 @@
+ import * as IconGrid from './iconGrid.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
++import * as SessionApplications from './sessionApplications.js';
+ import {DASH_TILE_GAP} from './shelfMetrics.js';
+ 
+ export const DASH_ANIMATION_TIME = 200;
+@@ -461,10 +462,13 @@
+         this._workId = Main.initializeDeferredWork(this._box, this._redisplay.bind(this));
+ 
+         this._appSystem = Shell.AppSystem.get_default();
++        this._sessionApplications = SessionApplications.getDefault();
+         this._appSystem.connectObject(
+             'installed-changed', () => this._queueRedisplay(),
+             'app-state-changed', () => this._queueRedisplay(),
+             this);
++        this._sessionApplications.connectObject('changed',
++            () => this._queueRedisplay(), this);
+ 
+         AppFavorites.getAppFavorites().connectObject('changed',
+             () => this._queueRedisplay(), this);
+@@ -799,7 +803,7 @@
+     _redisplay() {
+         const favorites = AppFavorites.getAppFavorites().getFavoriteMap();
+ 
+-        const running = this._appSystem.get_running();
++        const running = this._sessionApplications.getRunning();
+ 
+         const children = this._box.get_children().filter(actor => {
+             return actor.child &&
+diff --git a/js/misc/introspect.js b/js/misc/introspect.js
+--- a/js/misc/introspect.js
++++ b/js/misc/introspect.js
+@@ -13,4 +13,5 @@
+ 
+ import {loadInterfaceXML} from './fileUtils.js';
+ import {DBusSenderChecker} from './util.js';
++import * as SessionApplications from '../ui/sessionApplications.js';
+ 
+@@ -34,3 +35,7 @@
+ 
+         this._appSystem = Shell.AppSystem.get_default();
++        this._sessionApplications = SessionApplications.getDefault();
++        this._sessionApplications.connect('changed', () => {
++            this._runningApplicationsDirty = true;
++        });
+         this._appSystem.connect('app-state-changed', () => {
+@@ -137,6 +142,7 @@
+         }
+         const apps = {};
+-        for (const app of this._appSystem.get_running()) {
+-            if (this._isStandaloneApp(app))
+-                apps[app.get_id()] = app.get_pids().filter(pid => pid > 0);
++        for (const app of this._sessionApplications.getRunning()) {
++            if (this._isStandaloneApp(app) ||
++                this._sessionApplications.isRegistered(app))
++                apps[app.get_id()] = this._sessionApplications.getPids(app);
+         }
+@@ -152,16 +158,20 @@
+         }
+         const [appId, expectedPids] = params;
+-        const app = this._appSystem.get_running().find(a => a.get_id() === appId);
++        const app = this._sessionApplications.getRunning()
++            .find(a => a.get_id() === appId);
+         // Refuse stale selections or a different instance of the same app.
+-        const currentPids = app?.get_pids() ?? [];
+-        const matches = expectedPids.length > 0 && currentPids.length > 0 &&
+-            currentPids.every(pid => expectedPids.includes(pid));
++        const currentPids = this._sessionApplications.getPids(app);
++        const matches = expectedPids.length > 0 &&
++            currentPids.length === expectedPids.length &&
++            currentPids.every(pid => expectedPids.includes(pid));
+         // ShellApp requests app.quit or normal window deletion. It never kills
+         // the process, so application save/cancel prompts retain their meaning.
+         let requested = false;
+-        if (matches && this._isStandaloneApp(app)) {
++        if (matches && (this._isStandaloneApp(app) ||
++            this._sessionApplications.isRegistered(app))) {
+             // Activate the existing window before asking it to close, so an
+             // application-owned save/cancel prompt is visible above Monitor.
+-            app.activate_full(-1, global.display.get_current_time_roundtrip());
+-            requested = app.request_quit();
++            if (this._isStandaloneApp(app))
++                app.activate_full(-1, global.display.get_current_time_roundtrip());
++            requested = await this._sessionApplications.requestQuit(app);
+         }

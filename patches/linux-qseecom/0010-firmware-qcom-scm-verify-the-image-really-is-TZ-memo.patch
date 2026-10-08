@@ -1,0 +1,42 @@
+From b7086012cd7e467cba1b4d4d9b690a1062a38681 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:21:11 +0200
+Subject: [PATCH 10/41] firmware: qcom: scm: verify the image really is TZ
+ memory
+
+qcom_scm_qseecom_app_load() documents that the image must come from a TZ memory
+pool and then handed qcom_tzmem_to_phys()'s return straight to TZ without
+looking at it. That returns 0 for a pointer outside a pool, so a caller that got
+it wrong had 0 sent as the image address rather than an error.
+qcom_scm_qseecom_listener_register() already checks; make them agree.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/firmware/qcom/qcom_scm.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 231bec95a..311425f99 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2490,6 +2490,7 @@ EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_get_id);
+ int qcom_scm_qseecom_app_load(void *img, size_t mdt_len, size_t img_len,
+ 			      u32 *app_id)
+ {
++	phys_addr_t img_phys;
+ 	struct qcom_scm_qseecom_resp res = {};
+ 	struct qcom_scm_desc desc = {};
+ 	int status;
+@@ -2508,7 +2509,11 @@ int qcom_scm_qseecom_app_load(void *img, size_t mdt_len, size_t img_len,
+ 	desc.arginfo = QCOM_SCM_ARGS(3);
+ 	desc.args[0] = mdt_len;
+ 	desc.args[1] = img_len;
+-	desc.args[2] = qcom_tzmem_to_phys(img);
++	img_phys = qcom_tzmem_to_phys(img);
++	if (!img_phys)
++		return -EINVAL;
++
++	desc.args[2] = img_phys;
+ 
+ 	status = qcom_scm_qseecom_call(&desc, &res);
+ 	if (status)

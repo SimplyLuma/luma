@@ -1,0 +1,15 @@
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -45,7 +45,12 @@
+ .luma-shelf-dock-island .luma-shelf-material {
+   padding: 7px; }
+ 
++/* An empty favorites/running list still needs a nonzero offscreen surface.
++ * Dash owns ALWAYS offscreen redirection; a zero-width viewport trips Cogl.
++ * This does not change the natural size of any populated dock. */
+ .luma-shelf-dock-island #dash {
++  min-width: 1px;
++  min-height: 1px;
+   padding: 0; }
+   .luma-shelf-dock-island #dash .dash-background {
+     background-color: transparent;

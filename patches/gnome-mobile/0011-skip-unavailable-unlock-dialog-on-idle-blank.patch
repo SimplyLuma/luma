@@ -1,0 +1,36 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Skip unavailable unlock dialog on greetd idle blank
+
+The mobile idle-blank action creates ScreenShield's unlock dialog before it
+checks whether locking is enabled. Merely constructing that dialog starts a
+GDM reauthentication request, which cannot succeed in the explicit greetd
+bake-off session.
+
+Evaluate the existing lock policy before activating ScreenShield. The display
+still dims and powers off, the user-active watch is still installed, and wake
+still restores the display. Ordinary GNOME sessions retain the full lock path.
+---
+ js/misc/powerManager.js | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/js/misc/powerManager.js b/js/misc/powerManager.js
+--- a/js/misc/powerManager.js
++++ b/js/misc/powerManager.js
+@@ -774,13 +774,13 @@ export class PowerManager {
+                         () => this._onUserActive().catch(e => console.error(e)));
+                 }
+ 
+-                Main.screenShield.activate(false);
+-
+                 if (cancellable.is_cancelled())
+                     return;
+ 
+                 if (!this._lockEnabled())
+                     return;
++
++                Main.screenShield.activate(false);
+ 
+                 // try to become modal now already, so that we fail before LOCK_DELAY
+                 // in case becoming modal fails
+-- 
+2.51.0

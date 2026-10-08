@@ -1,0 +1,37 @@
+{
+  "id": "org.projectluma.Ari",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "org.projectluma.Ari",
+  "finish-args": [
+    "--metadata=X-Luma=app-data-schema=ari-host-v1",
+    "--metadata=X-Luma=min-host-installer=57",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--talk-name=org.projectluma.Ari1",
+    "--metadata=X-Luma=min-host-ari=15"
+  ],
+  "modules": [
+    {
+      "name": "ari-ui",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin",
+        "cp -a src/luma-ari/ari_ui /app/lib/python3.14/site-packages/",
+        "printf '#!/bin/sh\\nexec python3 -m ari_ui.app \"$@\"\\n' > /app/bin/org.projectluma.Ari",
+        "chmod 755 /app/bin/org.projectluma.Ari",
+        "install -d /app/share/dbus-1/services",
+        "printf '[D-BUS Service]\\nName=org.projectluma.Ari\\nExec=/app/bin/org.projectluma.Ari\\n' > /app/share/dbus-1/services/org.projectluma.Ari.service",
+        "install -Dm644 src/luma-ari/data/org.projectluma.Ari.desktop /app/share/applications/org.projectluma.Ari.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Ari.svg",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Ari.metainfo.xml",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Ari/LICENSE.md",
+        "install -Dm644 depot-media/eb4536550cc8d32ed547aa760a8a122ad3e14b472a75ba31455286025ec24592.png /app/share/luma-app-media/eb4536550cc8d32ed547aa760a8a122ad3e14b472a75ba31455286025ec24592.png"
+      ]
+    }
+  ],
+  "appstream-compose": false
+}

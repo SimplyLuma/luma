@@ -1,0 +1,841 @@
+#!/usr/bin/python3 -s
+# SPDX-License-Identifier: Apache-2.0
+
+"""Present incoming native VoLTE calls while the Phone window is closed.
+
+imsd holds a terminating call for the full ring window waiting for Accept on
+its system-bus interface.  Nothing in Prairie Core subscribed to CallAdded, so
+an incoming call rang nowhere and expired unanswered. This service is that
+consumer: it publishes persistent shell actions while unlocked, raises the
+full-screen lock-safe surface while locked, drives feedbackd, and maps every
+action onto the native call service.
+
+The peer address is displayed and never logged, never placed in a subprocess
+argument, and never written to disk by this process.
+"""
+
+from __future__ import annotations
+
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+gi.require_version("Gio", "2.0")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+from luma_appkit import Avatar, install_appkit, motion_duration  # noqa: E402
+from prairie_ui import install_theme  # noqa: E402
+
+# wlr-layer-shell lets the call surface sit on the overlay layer, which phosh
+# renders ABOVE the lockscreen. Without it a ringing call is hidden behind the
+# lock and the user must unlock before they can even see who is calling.
+# Optional: a missing library degrades to an ordinary window, still ringing.
+try:
+    gi.require_version("Gtk4LayerShell", "1.0")
+    from gi.repository import Gtk4LayerShell  # noqa: E402
+except (ValueError, ImportError):  # pragma: no cover - platform dependent
+    Gtk4LayerShell = None
+
+from prairie_apps.phone_backend import (  # noqa: E402
+    CallStore,
+    ImsVoiceTransport,
+    IncomingCallMonitor,
+    audio_input_muted,
+    audio_output_route,
+    classify_call_outcome,
+    format_phone_number,
+    set_audio_input_muted,
+    set_audio_output_route,
+)
+from prairie_apps.eds_backend import load_contacts  # noqa: E402
+from prairie_apps.messages_backend import MessageStore  # noqa: E402
+from prairie_apps.phone import install_phone_theme  # noqa: E402
+from prairie_apps.phone_system import (  # noqa: E402
+    ActiveCallIndicator,
+    IncomingCallIndicator,
+    TransientShellSurface,
+)
+
+APP_ID = "org.projectluma.PhoneDaemon"
+
+
+def lockscreen_identity_visible() -> bool:
+    """Honor the desktop notification privacy policy on the locked surface."""
+    source = Gio.SettingsSchemaSource.get_default()
+    if source is None:
+        return False
+    schema = source.lookup("org.gnome.desktop.notifications", True)
+    if schema is None or not schema.has_key("show-in-lock-screen"):
+        return False
+    return Gio.Settings.new_full(schema, None, None).get_boolean(
+        "show-in-lock-screen"
+    )
+
+
+from prairie_apps.phone_feedback import Ringer
+
+
+class ScreenWaker:
+    """Undim/unblank the display for an incoming call.
+
+    phosh owns org.gnome.ScreenSaver; SetActive(false) dismisses the blanker so
+    the ringing surface is actually visible. The device stays locked -- only the
+    call surface is exposed, never the rest of the session.
+    """
+
+    def __init__(self) -> None:
+        self._proxy = None
+        try:
+            self._proxy = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, None,
+                "org.gnome.ScreenSaver", "/org/gnome/ScreenSaver",
+                "org.gnome.ScreenSaver", None,
+            )
+        except GLib.Error:
+            self._proxy = None
+
+    def wake(self) -> None:
+        if self._proxy is None:
+            return
+        try:
+            self._proxy.call_sync(
+                "SetActive", GLib.Variant("(b)", (False,)),
+                Gio.DBusCallFlags.NONE, 5_000, None,
+            )
+        except GLib.Error:
+            pass
+
+    def locked(self) -> bool:
+        if self._proxy is None:
+            return True
+        try:
+            result = self._proxy.call_sync(
+                "GetActive",
+                None,
+                Gio.DBusCallFlags.NONE,
+                2_000,
+                None,
+            )
+            return bool(result.unpack()[0]) if result is not None else True
+        except GLib.Error:
+            return True
+
+
+class CallWindow(Adw.Window):
+    """Lock-safe incoming and active surface using the shared Phone language."""
+
+    def __init__(
+        self,
+        caller: str,
+        number: str,
+        last_spoke: str,
+        last_text: str,
+        on_accept,
+        on_hangup,
+        on_mute,
+    ) -> None:
+        super().__init__(title="Incoming call")
+        self._layered = False
+        self._connected_at = 0
+        self._timer_source = 0
+        self._last_state = "incoming"
+        self._updating_audio_route = False
+        if Gtk4LayerShell is not None:
+            try:
+                Gtk4LayerShell.init_for_window(self)
+                Gtk4LayerShell.set_layer(self, Gtk4LayerShell.Layer.OVERLAY)
+                Gtk4LayerShell.set_keyboard_mode(
+                    self, Gtk4LayerShell.KeyboardMode.EXCLUSIVE)
+                for edge in (
+                    Gtk4LayerShell.Edge.TOP,
+                    Gtk4LayerShell.Edge.BOTTOM,
+                    Gtk4LayerShell.Edge.LEFT,
+                    Gtk4LayerShell.Edge.RIGHT,
+                ):
+                    Gtk4LayerShell.set_anchor(self, edge, True)
+                Gtk4LayerShell.set_namespace(self, "prairie-call")
+                self._layered = True
+            except Exception as exc:
+                print(f"prairie-phone: layer-shell init failed: {exc}", flush=True)
+        print(f"prairie-phone: call surface layered={self._layered}", flush=True)
+        self._on_accept = on_accept
+        self._on_hangup = on_hangup
+        self._on_mute = on_mute
+        self.set_default_size(420, 640)
+        self.set_size_request(360, 480)
+
+        surface = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            hexpand=True,
+            vexpand=True,
+        )
+        surface.add_css_class("phone-call-surface")
+        identity = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=7,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+            vexpand=True,
+        )
+        self._status = Gtk.Label(label="INCOMING CALL")
+        self._status.add_css_class("phone-call-state")
+        identity.append(self._status)
+        identity.append(Avatar(caller, large=True))
+        name = Gtk.Label(label=caller)
+        name.add_css_class("phone-call-name")
+        identity.append(name)
+        self._number_label = Gtk.Label(label=number if number != caller else "")
+        self._number_label.add_css_class("phone-call-number")
+        identity.append(self._number_label)
+        self._timer = Gtk.Label(label="Ringing")
+        self._timer.add_css_class("phone-call-timer")
+        self._timer.set_visible(False)
+        identity.append(self._timer)
+        context = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        context.add_css_class("phone-call-context")
+        context.append(self._context_row("Last spoke", last_spoke))
+        context.append(self._context_row("Last text", last_text))
+        identity.append(context)
+        surface.append(identity)
+
+        self._actions = Gtk.Stack(
+            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_duration=motion_duration(160),
+        )
+        incoming = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=32,
+            halign=Gtk.Align.CENTER,
+        )
+        incoming.add_css_class("phone-incoming-actions")
+        self._decline = self._action_button(
+            "luma-phone-hangup-symbolic", "Decline", "phone-decline-button", self._do_hangup
+        )
+        self._accept = self._action_button(
+            "luma-phone-call-symbolic", "Accept", "phone-accept-button", self._do_accept
+        )
+        incoming.append(self._decline)
+        incoming.append(self._accept)
+        self._actions.add_named(incoming, "incoming")
+
+        active = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=9)
+        controls = Gtk.Grid(row_spacing=8, column_spacing=8, halign=Gtk.Align.CENTER)
+        self._controls = controls
+        self._mute = self._control(controls, 0, 0, "luma-phone-mic-symbolic", "Mute")
+        self._mute.connect("toggled", lambda button: self._on_mute(button.get_active()))
+        try:
+            self._mute.set_active(audio_input_muted())
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            pass
+        for column, row, icon, label in (
+            (1, 0, "luma-phone-dialer-symbolic", "Keypad"),
+            (0, 1, "luma-phone-hold-symbolic", "Hold"),
+            (1, 1, "luma-phone-add-symbolic", "Add call"),
+            (2, 1, "luma-phone-video-symbolic", "Video"),
+        ):
+            button = self._control(controls, column, row, icon, label)
+            button.set_sensitive(False)
+            button.set_tooltip_text("Not supported by the current native call service")
+        self._speaker = self._control(
+            controls, 2, 0, "luma-phone-speaker-symbolic", "Speaker"
+        )
+        self._speaker.connect("toggled", self._on_speaker)
+        try:
+            route = audio_output_route()
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            route = "unknown"
+        self._updating_audio_route = True
+        self._speaker.set_active(route == "speaker")
+        self._updating_audio_route = False
+        self._speaker.set_sensitive(route in {"speaker", "earpiece"})
+        if route not in {"speaker", "earpiece"}:
+            self._speaker.set_tooltip_text("Speaker routing is not available on this device")
+        active.append(controls)
+        end = Gtk.Button(halign=Gtk.Align.CENTER)
+        self._end = end
+        end.add_css_class("phone-end-button")
+        end_content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=5,
+            halign=Gtk.Align.CENTER,
+        )
+        end_icon = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        end_icon.add_css_class("phone-end-icon")
+        end_icon.append(Gtk.Image(icon_name="luma-phone-hangup-symbolic", pixel_size=23))
+        end_content.append(end_icon)
+        end_content.append(Gtk.Label(label="End"))
+        end.set_child(end_content)
+        end.connect("clicked", self._do_hangup)
+        end.update_property([Gtk.AccessibleProperty.LABEL], ["End call"])
+        active.append(end)
+        self._actions.add_named(active, "active")
+        self._actions.set_visible_child_name("incoming")
+        surface.append(self._actions)
+        self.set_content(surface)
+
+    @staticmethod
+    def _context_row(label: str, value: str) -> Gtk.Box:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        key = Gtk.Label(label=label, xalign=0, hexpand=True)
+        key.add_css_class("phone-call-context-key")
+        detail = Gtk.Label(label=value, xalign=1)
+        detail.add_css_class("phone-call-context-value")
+        row.append(key)
+        row.append(detail)
+        return row
+
+    @staticmethod
+    def _action_button(icon: str, label: str, css_class: str, callback) -> Gtk.Button:
+        button = Gtk.Button()
+        button.add_css_class("phone-incoming-button")
+        content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=6,
+            halign=Gtk.Align.CENTER,
+        )
+        icon_well = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        icon_well.add_css_class("phone-incoming-icon")
+        icon_well.add_css_class(css_class)
+        icon_well.append(Gtk.Image(icon_name=icon, pixel_size=23))
+        content.append(icon_well)
+        content.append(Gtk.Label(label=label))
+        button.set_child(content)
+        button.connect("clicked", callback)
+        button.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        return button
+
+    @staticmethod
+    def _control(grid, column: int, row: int, icon: str, label: str) -> Gtk.ToggleButton:
+        button = Gtk.ToggleButton()
+        button.add_css_class("phone-call-control")
+        content = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=5,
+            halign=Gtk.Align.CENTER,
+        )
+        icon_well = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        icon_well.add_css_class("phone-call-control-icon")
+        icon_well.append(Gtk.Image(icon_name=icon, pixel_size=20))
+        content.append(icon_well)
+        content.append(Gtk.Label(label=label))
+        button.set_child(content)
+        button.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        grid.attach(button, column, row, 1, 1)
+        return button
+
+    def _do_accept(self, _button) -> None:
+        self._accept.set_sensitive(False)
+        self._decline.set_sensitive(False)
+        self._status.set_label("CONNECTING")
+        self._timer.set_label("Connecting")
+        self._on_accept()
+
+    def _on_speaker(self, button) -> None:
+        if self._updating_audio_route:
+            return
+        try:
+            set_audio_output_route("speaker" if button.get_active() else "earpiece")
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+            self._updating_audio_route = True
+            button.set_active(not button.get_active())
+            self._updating_audio_route = False
+
+    def _do_hangup(self, _button) -> None:
+        self._accept.set_sensitive(False)
+        self._decline.set_sensitive(False)
+        self._on_hangup()
+
+    def show_active(self) -> None:
+        self.show_state("active")
+
+    def show_state(self, state: str) -> None:
+        labels = {
+            "connecting": "CONNECTING",
+            "active": "IN CALL",
+            "held": "ON HOLD",
+            "waiting": "CALL WAITING",
+            "ending": "ENDING",
+        }
+        if state not in labels:
+            return
+        self._status.set_label(labels[state])
+        if (
+            state != self._last_state
+            and hasattr(self._status, "announce")
+            and hasattr(Gtk, "AccessibleAnnouncementPriority")
+        ):
+            self._status.announce(
+                labels[state].title(), Gtk.AccessibleAnnouncementPriority.HIGH
+            )
+        self._last_state = state
+        self._actions.set_visible_child_name("active")
+        self._number_label.set_visible(False)
+        self._timer.set_visible(True)
+        self._controls.set_sensitive(state == "active")
+        self._end.set_sensitive(state != "ending")
+        if state == "active":
+            if not self._connected_at:
+                self._connected_at = int(time.time())
+            self._update_timer()
+            if not self._timer_source:
+                self._timer_source = GLib.timeout_add_seconds(1, self._update_timer)
+        elif not self._connected_at:
+            self._timer.set_label(labels[state].title())
+
+    def _update_timer(self) -> bool:
+        elapsed = max(0, int(time.time()) - self._connected_at)
+        minutes, seconds = divmod(elapsed, 60)
+        self._timer.set_label(f"{minutes}:{seconds:02d}")
+        return GLib.SOURCE_CONTINUE
+
+    def stop(self) -> None:
+        if self._timer_source:
+            GLib.source_remove(self._timer_source)
+            self._timer_source = 0
+
+
+class PhoneDaemon:
+    """Headless call presenter driven by a plain GLib main loop.
+
+    A Gtk/Adw Application is the wrong lifecycle here: with no window open at
+    startup it has nothing to hold it alive, and IS_SERVICE never runs
+    do_activate at all, so the process exited immediately. The daemon owns its
+    own main loop and creates a window only when a call arrives.
+    """
+
+    def __init__(self, loop) -> None:
+        self._loop = loop
+        self._window = None
+        self._call_id = None
+        self._number = ""
+        self._started_at = 0
+        self._connected_at = 0
+        self._declined = False
+        self._last_reason = ""
+        self._incoming_locked = False
+        self._ringer = Ringer()
+        self._waker = ScreenWaker()
+        self._store = CallStore()
+        self._messages = MessageStore()
+        self._contacts = load_contacts()
+        self._transport = None
+        self._shell_surface = TransientShellSurface(
+            "org.projectluma.Phone.desktop"
+        )
+        self._calls = {}
+        self._indicator_call_id = ""
+        self._indicator = ActiveCallIndicator(
+            on_return=self._return_to_call,
+            on_mute=self._set_muted,
+            on_end=self._end_indicator_call,
+        )
+        self._incoming_indicator = IncomingCallIndicator(
+            on_expand=self._show_incoming_surface,
+            on_answer=self._answer_from_indicator,
+            on_decline=self._hangup,
+        )
+        self._monitor = IncomingCallMonitor(
+            on_added=self._on_added,
+            on_incoming=self._on_incoming,
+            on_state=self._on_state,
+            on_ended=self._on_ended,
+            on_owner=self._owner_changed,
+        )
+
+    # -- lifecycle -------------------------------------------------------
+    def start(self) -> None:
+        # Subscribe first; the monitor snapshots each appearing IMS owner.
+        # An absent owner at boot is normal, not a fatal graphical failure.
+        self._monitor.start()
+
+    def _owner_changed(self, _owner):
+        self._transport = None
+        self._calls.clear()
+        self._ringer.stop()
+        self._incoming_indicator.withdraw()
+        self._indicator.withdraw()
+        self._indicator_call_id = ""
+        self._teardown()
+
+    def close(self) -> None:
+        self._shell_surface.clear()
+        self._ringer.stop()
+        self._incoming_indicator.withdraw()
+        self._indicator.withdraw()
+        self._monitor.stop()
+        if self._window is not None:
+            self._window.stop()
+            self._window.destroy()
+            self._window = None
+        self._store.close()
+        self._messages.close()
+
+    def _ims(self):
+        if self._transport is None:
+            self._transport = ImsVoiceTransport()
+        return self._transport
+
+    # -- signal handlers -------------------------------------------------
+    def _on_added(self, call_id: str, direction: str, number: str) -> None:
+        self._calls[call_id] = {
+            "direction": direction,
+            "number": number,
+            "started": int(time.time()),
+            "connected": 0,
+            "reason": "",
+            "declined": False,
+        }
+
+    def _on_incoming(self, call_id: str, number: str) -> None:
+        if self._call_id is not None:
+            return  # one terminating call is already owned by this presenter
+        self._call_id = call_id
+        self._number = number
+        self._started_at = int(time.time())
+        self._connected_at = 0
+        self._declined = False
+        self._last_reason = ""
+        caller = self._caller_for(number)
+        self._ringer.start()
+        self._incoming_locked = self._waker.locked()
+        if not self._incoming_locked:
+            self._incoming_indicator.publish(caller)
+            return
+        self._show_incoming_surface()
+
+    def _show_incoming_surface(self) -> None:
+        if self._window is not None or not self._call_id:
+            return
+        disclose = not self._incoming_locked or lockscreen_identity_visible()
+        caller = self._caller_for(self._number) if disclose else "Incoming call"
+        number = format_phone_number(self._number) if disclose else ""
+        last_spoke = self._last_spoke(self._number) if disclose else "Unlock to view"
+        last_text = self._last_text(self._number) if disclose else "Unlock to view"
+        self._window = CallWindow(
+            caller,
+            number,
+            last_spoke,
+            last_text,
+            self._accept,
+            self._hangup,
+            self._set_muted,
+        )
+        self._window.connect("close-request", self._on_close)
+        self._shell_surface.set("immersive")
+        self._incoming_indicator.withdraw()
+        self._waker.wake()
+        self._window.present()
+
+    def _answer_from_indicator(self) -> None:
+        self._accept()
+        self._return_to_call()
+
+    def _on_state(self, call_id: str, state: str, reason: str) -> None:
+        info = self._calls.get(call_id)
+        if info is not None:
+            info["reason"] = reason
+        if state == "active":
+            connected = int(time.time())
+            if info is not None:
+                if not info["connected"]:
+                    info["connected"] = connected
+                connected = info["connected"]
+            self._indicator_call_id = call_id
+            number = str(info.get("number", "")) if info else ""
+            try:
+                muted = audio_input_muted()
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                muted = False
+            self._indicator.publish(self._caller_for(number), connected, muted=muted)
+            self._incoming_indicator.withdraw()
+        elif state in {"held", "waiting", "connecting"} and call_id == self._indicator_call_id:
+            number = str(info.get("number", "")) if info else ""
+            connected = int(info.get("connected", 0)) if info else 0
+            self._indicator.publish(self._caller_for(number), connected)
+        if call_id != self._call_id or self._window is None:
+            return
+        self._last_reason = reason
+        if state == "active":
+            if not self._connected_at:
+                self._connected_at = int(time.time())
+            self._ringer.stop()
+        self._window.show_state(state)
+
+    def _on_ended(self, call_id: str) -> None:
+        info = self._calls.pop(call_id, None)
+        if info is not None and info.get("number"):
+            connected = int(info.get("connected", 0))
+            direction = str(info.get("direction", "outgoing"))
+            outcome = classify_call_outcome(
+                direction=direction,
+                connected_at=connected,
+                reason=str(info.get("reason", "")),
+                declined=bool(info.get("declined")),
+            )
+            try:
+                self._store.add(
+                    str(info["number"]),
+                    direction=direction,
+                    started=int(info.get("started", 0)) or None,
+                    duration=max(0, int(time.time()) - connected) if connected else 0,
+                    outcome=outcome,
+                    uid=call_id,
+                )
+            except (OSError, ValueError):
+                pass
+            if outcome == "missed":
+                self._publish_missed_call(str(info["number"]))
+            elif outcome == "failed" and direction == "outgoing":
+                self._publish_failed_call(str(info["number"]))
+        if call_id == self._indicator_call_id:
+            self._indicator.withdraw()
+            self._indicator_call_id = ""
+        if call_id == self._call_id:
+            self._incoming_indicator.withdraw()
+        if call_id != self._call_id:
+            return
+        self._teardown()
+
+    def _on_close(self, _window) -> bool:
+        self._shell_surface.clear()
+        self._hangup()
+        return True
+
+    # -- actions ---------------------------------------------------------
+    def _accept(self) -> None:
+        self._ringer.stop()
+        self._incoming_indicator.withdraw()
+        try:
+            self._ims().accept(self._call_id)
+        except Exception:
+            self._teardown("failed")
+
+    def _hangup(self) -> None:
+        self._ringer.stop()
+        self._incoming_indicator.withdraw()
+        active = bool(self._connected_at)
+        self._declined = not active
+        info = self._calls.get(self._call_id)
+        if info is not None:
+            info["declined"] = not active
+        try:
+            self._ims().hangup(self._call_id)
+        except Exception:
+            pass
+        self._teardown("completed" if active else "rejected")
+
+    def _set_muted(self, muted: bool) -> None:
+        try:
+            set_audio_input_muted(muted)
+            self._indicator.set_muted(muted)
+        except (OSError, RuntimeError, subprocess.SubprocessError):
+            pass
+
+    def _end_indicator_call(self) -> None:
+        if not self._indicator_call_id:
+            return
+        try:
+            self._ims().hangup(self._indicator_call_id)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _return_to_call() -> None:
+        application = Gio.DesktopAppInfo.new("org.projectluma.Phone.desktop")
+        if application is not None:
+            try:
+                application.launch([], None)
+            except GLib.Error:
+                pass
+
+    @staticmethod
+    def _normalized(value: str) -> str:
+        leading = "+" if value.strip().startswith("+") else ""
+        return leading + "".join(character for character in value if character.isdigit())
+
+    @staticmethod
+    def _moment(timestamp: int) -> str:
+        return time.strftime("%b %-d · %-I:%M %p", time.localtime(timestamp))
+
+    def _caller_for(self, number: str) -> str:
+        contact = next(
+            (
+                item
+                for item in self._contacts
+                if self._normalized(item.phone) == self._normalized(number)
+            ),
+            None,
+        )
+        return contact.name if contact else format_phone_number(number) or "Call in progress"
+
+    def _last_spoke(self, number: str) -> str:
+        normalized = self._normalized(number)
+        record = next(
+            (
+                item
+                for item in self._store.list()
+                if self._normalized(item.address) == normalized
+            ),
+            None,
+        )
+        return self._moment(record.started) if record else "No earlier calls"
+
+    def _last_text(self, number: str) -> str:
+        try:
+            messages = self._messages.thread(number)
+        except (OSError, ValueError):
+            messages = ()
+        return self._moment(messages[-1].timestamp) if messages else "No messages yet"
+
+    def _teardown(self, outcome: str | None = None) -> None:
+        self._shell_surface.clear()
+        self._ringer.stop()
+        self._incoming_indicator.withdraw()
+        if self._call_id == self._indicator_call_id:
+            self._indicator.withdraw()
+            self._indicator_call_id = ""
+        if self._window is not None:
+            self._window.stop()
+            self._window.destroy()
+            self._window = None
+        if outcome and self._call_id is not None and self._number:
+            try:
+                duration = (
+                    max(0, int(time.time()) - self._connected_at)
+                    if self._connected_at else 0
+                )
+                self._store.add(
+                    self._number,
+                    direction="incoming",
+                    started=self._started_at or None,
+                    duration=duration,
+                    outcome=outcome,
+                    uid=self._call_id,
+                )
+            except Exception:
+                pass
+            if outcome == "missed":
+                self._publish_missed_call(self._number)
+        self._call_id = None
+        self._number = ""
+        self._started_at = 0
+        self._connected_at = 0
+        self._declined = False
+        self._last_reason = ""
+        self._incoming_locked = False
+
+    @staticmethod
+    def _publish_missed_call(number: str) -> None:
+        """Publish actionable shell state without putting the number in argv."""
+
+        def wait_for_action() -> None:
+            try:
+                result = subprocess.run(
+                    [
+                        "notify-send",
+                        "--urgency=normal",
+                        "--action=callback=Call Back",
+                        "--action=message=Message",
+                        "Missed call",
+                        "Open Phone to respond",
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return
+            action = result.stdout.strip()
+            def launch(uri: str) -> bool:
+                try:
+                    Gio.AppInfo.launch_default_for_uri(uri, None)
+                except GLib.Error:
+                    pass
+                return GLib.SOURCE_REMOVE
+            if action == "callback":
+                GLib.idle_add(launch, f"tel:{number}")
+            elif action == "message":
+                GLib.idle_add(launch, f"sms:{number}")
+
+        threading.Thread(target=wait_for_action, name="missed-call-action", daemon=True).start()
+
+    @staticmethod
+    def _publish_failed_call(number: str) -> None:
+        """Offer a private retry without exposing the destination in argv."""
+
+        def wait_for_action() -> None:
+            try:
+                result = subprocess.run(
+                    [
+                        "notify-send",
+                        "--urgency=normal",
+                        "--action=retry=Try Again",
+                        "--action=message=Message",
+                        "Call failed",
+                        "The network could not complete the call",
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return
+            action = result.stdout.strip()
+
+            def launch(uri: str) -> bool:
+                try:
+                    Gio.AppInfo.launch_default_for_uri(uri, None)
+                except GLib.Error:
+                    pass
+                return GLib.SOURCE_REMOVE
+
+            if action == "retry":
+                GLib.idle_add(launch, f"tel:{number}")
+            elif action == "message":
+                GLib.idle_add(launch, f"sms:{number}")
+
+        threading.Thread(target=wait_for_action, name="failed-call-action", daemon=True).start()
+
+
+def main() -> int:
+    # Calls must ring while Phosh is locked, but the presenter still belongs to
+    # the graphical session and its compositor. Do not keep a half-initialized
+    # GTK process alive if the display disappears during session recovery: it
+    # could subscribe to IMS without being able to construct the call surface.
+    # Returning failure lets systemd reconnect to the session's real display.
+    if not Gtk.init_check():
+        print("prairie-phone: display unavailable; retrying", flush=True)
+        return 1
+    Adw.init()
+    install_theme()
+    install_appkit()
+    install_phone_theme()
+    print(f"prairie-phone: layer-shell available={Gtk4LayerShell is not None}", flush=True)
+    loop = GLib.MainLoop()
+    daemon = PhoneDaemon(loop)
+    try:
+        daemon.start()
+    except GLib.Error as error:
+        print(f"prairie-phone: startup failed domain={error.domain} code={error.code}", flush=True)
+        daemon.close()
+        return 1
+    signal.signal(signal.SIGTERM, lambda *_: loop.quit())
+    signal.signal(signal.SIGINT, lambda *_: loop.quit())
+    try:
+        loop.run()
+    finally:
+        daemon.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,36 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# quick-details.sh OUT: headless Shell running quick-details.js over every Quick
+# Options detail. QD_OVERLAY=dir loads dir/js/ui and dir/data/theme over the Shell.
+set -u
+T=$(cd "$(dirname "$0")" && pwd)
+export QD_OUT=${1:-/tmp/quick-details}
+[ -n "${QD_OVERLAY:-}" ] && export G_RESOURCE_OVERLAYS="/org/gnome/shell/ui=$QD_OVERLAY/js/ui:/org/gnome/shell/theme=$QD_OVERLAY/data/theme"
+export XDG_RUNTIME_DIR=/tmp/qd-run; rm -rf $XDG_RUNTIME_DIR; mkdir -m 700 -p $XDG_RUNTIME_DIR
+export HOME=/tmp/qd-home; rm -rf $HOME; mkdir -p $HOME/.config/glib-2.0/settings
+cat > $HOME/.config/glib-2.0/settings/keyfile <<'K'
+[org/project-luma/shell-state]
+surface-treatment='light'
+shelf-edge='bottom'
+shelf-surface-mode='separate'
+status-controls-right=true
+
+[org/gnome/desktop/interface]
+color-scheme='default'
+
+[org/gnome/shell]
+enabled-extensions=['tilingshell@ferrarodomenico.com', 'tiling-toggle@project-luma.local']
+disable-user-extensions=false
+welcome-dialog-last-shown-version='999'
+K
+export GSETTINGS_BACKEND=keyfile LIBGL_ALWAYS_SOFTWARE=1 LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1
+rm -rf "$QD_OUT"; mkdir -p "$QD_OUT"
+mkdir -p /run/dbus
+dbus-send --system --print-reply --dest=org.freedesktop.DBus / org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1 ||
+  { rm -f /run/dbus/system_bus_socket /run/dbus/pid; dbus-daemon --system --fork 2>/dev/null; }
+rm -rf /run/systemd/seats
+timeout 240 dbus-run-session -- gnome-shell --headless --no-x11 --virtual-monitor 2560x1440 \
+  --virtual-monitor 1920x1200 --virtual-monitor 1600x900 --automation-script=$T/quick-details.js > "$QD_OUT/shell.log" 2>&1
+echo "exit $?"
+grep -E "\[quickdetails\]" "$QD_OUT/shell.log" | cut -c1-400
+grep -c "JS ERROR" "$QD_OUT/shell.log"

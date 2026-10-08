@@ -1,0 +1,34 @@
+From: Project Luma
+Subject: [PATCH] Dash: constrain each material to the shared cross-axis size
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -179,6 +179,15 @@
+         }));
+         this.add_child(stroke);
+         this._stroke = stroke;
++    }
++
++    setOrientation(vertical) {
++        this._vertical = vertical;
++        const thickness = SHELF_HEIGHT * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        // BinLayout may retain a material's natural cross-axis size even
++        // with FILL alignment. The material owns exactly the Dash thickness;
++        // only its content-driven length is left unconstrained.
++        this._content.set_size(vertical ? thickness : -1, vertical ? -1 : thickness);
+     }
+ 
+     setCornerRadii(radii) {
+@@ -508,10 +517,10 @@
+                     flushEnds && island === physicalIslands[0],
+                     flushEnds && island === physicalIslands.at(-1))
+                 : [0, 0, 0, 0]);
+-            island._vertical = this._vertical;
++            island.setOrientation(this._vertical);
+             island.setSurfaceVisible(surfaceMode === 'separate', castShadows);
+         }
+-        this._surface._vertical = this._vertical;
++        this._surface.setOrientation(this._vertical);
+         this._syncDockWidth();
+     }
+ 

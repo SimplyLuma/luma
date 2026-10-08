@@ -1,0 +1,14 @@
+[terminal]
+vt = 1
+switch = true
+
+[general]
+source_profile = true
+
+[initial_session]
+command = "/usr/local/bin/luma-plasma-mobile-session"
+user = "luma"
+
+[default_session]
+command = "agreety --cmd /usr/local/bin/luma-plasma-mobile-session"
+user = "greetd"

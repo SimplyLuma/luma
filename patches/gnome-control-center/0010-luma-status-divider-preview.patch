@@ -1,0 +1,12 @@
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -155,8 +155,7 @@
+             cairo_arc (cr, gx+6.5, gy+6.5, 3.5, 0, 2*G_PI);
+             cairo_stroke (cr);
+           }
+-      if (i == 0 && g_settings_get_boolean (self->settings, "status-divider") &&
+-          (!g_str_equal (frame, "none") || flush))
++      if (i == 0 && g_settings_get_boolean (self->settings, "status-divider"))
+         {
+           cairo_set_source_rgba (cr, light ? .1 : 1, light ? .1 : 1, light ? .1 : 1, .16);
+           if (vertical) { cairo_move_to (cr, x, y+ph+gap/2); cairo_line_to (cr, x+pw, y+ph+gap/2); }

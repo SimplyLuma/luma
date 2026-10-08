@@ -1,0 +1,82 @@
+--- a/panels/mouse/cc-mouse-panel.blp
++++ b/panels/mouse/cc-mouse-panel.blp
+@@ -135,12 +135,12 @@
+ 
+               $CcSplitRow mouse_scroll_direction_row {
+                 title: _("Scroll Direction");
+-                default-option-title: _("Tra_ditional");
+-                default-option-subtitle: _("Scrolling moves the view");
+-                default-illustration-resource: "/org/gnome/control-center/mouse/assets/scroll-traditional.webm";
+-                alternative-option-title: _("_Natural");
+-                alternative-option-subtitle: _("Scrolling moves the content");
+-                alternative-illustration-resource: "/org/gnome/control-center/mouse/assets/scroll-natural.webm";
++                default-option-title: _("_Natural");
++                default-option-subtitle: _("Scrolling moves the content");
++                default-illustration-resource: "/org/gnome/control-center/mouse/assets/scroll-natural.webm";
++                alternative-option-title: _("Tra_ditional");
++                alternative-option-subtitle: _("Scrolling moves the view");
++                alternative-illustration-resource: "/org/gnome/control-center/mouse/assets/scroll-traditional.webm";
+               }
+             }
+ 
+@@ -257,12 +257,12 @@
+ 
+               $CcSplitRow touchpad_scroll_direction_row {
+                 title: _("Scroll Direction");
+-                default-option-title: _("T_raditional");
+-                default-option-subtitle: _("Scrolling moves the view");
+-                default-illustration-resource: "/org/gnome/control-center/mouse/assets/touch-scroll-traditional.webm";
+-                alternative-option-title: _("_Natural");
+-                alternative-option-subtitle: _("Scrolling moves the content");
+-                alternative-illustration-resource: "/org/gnome/control-center/mouse/assets/touch-scroll-natural.webm";
++                default-option-title: _("_Natural");
++                default-option-subtitle: _("Scrolling moves the content");
++                default-illustration-resource: "/org/gnome/control-center/mouse/assets/touch-scroll-natural.webm";
++                alternative-option-title: _("T_raditional");
++                alternative-option-subtitle: _("Scrolling moves the view");
++                alternative-illustration-resource: "/org/gnome/control-center/mouse/assets/touch-scroll-traditional.webm";
+               }
+             }
+ 
+--- a/panels/mouse/cc-mouse-panel.c
++++ b/panels/mouse/cc-mouse-panel.c
+@@ -286,7 +286,7 @@
+ 
+   g_settings_bind (self->mouse_settings, "natural-scroll",
+                    self->mouse_scroll_direction_row, "use-default",
+-                   G_SETTINGS_BIND_INVERT_BOOLEAN);
++                   G_SETTINGS_BIND_DEFAULT);
+ 
+   /* Mouse section */
+   gtk_widget_set_visible (GTK_WIDGET (self->mouse_group), self->have_mouse);
+@@ -321,7 +321,7 @@
+ 
+   g_settings_bind (self->touchpad_settings, "natural-scroll",
+                    self->touchpad_scroll_direction_row, "use-default",
+-                   G_SETTINGS_BIND_INVERT_BOOLEAN |
++                   G_SETTINGS_BIND_DEFAULT |
+                    G_SETTINGS_BIND_NO_SENSITIVITY);
+ 
+   g_settings_bind (self->touchpad_settings, "speed",
+--- a/panels/system/datetime/cc-datetime-page.blp
++++ b/panels/system/datetime/cc-datetime-page.blp
+@@ -140,15 +140,15 @@
+               notify::active => $change_clock_settings_cb(template);
+ 
+               Adw.Toggle {
+-                label: _("_24-hour");
++                label: _("AM / _PM");
+                 use-underline: true;
+-                name: "twenty-four";
++                name: "am-pm";
+               }
+ 
+               Adw.Toggle {
+-                label: _("AM / _PM");
++                label: _("_24-hour");
+                 use-underline: true;
+-                name: "am-pm";
++                name: "twenty-four";
+               }
+             }
+           }

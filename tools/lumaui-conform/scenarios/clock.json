@@ -1,0 +1,280 @@
+{
+  "app": "clock",
+  "title": "Clock",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=clock",
+    "window": "#w-clock",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "clock",
+    "fixtures": [
+      "tests/fixtures/clock-v70.json",
+      "tests/fixtures/clock-v70-data"
+    ],
+    "env": {
+      "LUMA_CLOCK_FIXTURE": "{run}/fixtures/clock-v70.json",
+      "LUMA_CLOCK_NOW": "2026-09-25T16:11:47-05:00",
+      "LUMA_CLOCK_CAPTURE_TIME": "1",
+      "XDG_DATA_HOME": "{run}/fixtures/clock-v70-data"
+    }
+  },
+  "states": [
+    {
+      "name": "world",
+      "about": "Local time, five other cities and Add a city",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "add-city",
+      "about": "Place search expanded in the last city card",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckaddcity]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-add-button"
+        }
+      ]
+    },
+    {
+      "name": "alarms",
+      "about": "Next alarm, three alarm rows and New alarm action",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"alarms\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-alarm"
+        }
+      ]
+    },
+    {
+      "name": "alarms-new",
+      "about": "New one-time 7:00 alarm with a Tomorrow subtitle",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"alarms\"]"
+        },
+        {
+          "click": "[data-cknew]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-alarm"
+        },
+        {
+          "activate": "ck-action-primary"
+        }
+      ]
+    },
+    {
+      "name": "stopwatch",
+      "about": "Stopped stopwatch and its action bar",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"sw\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-stopwatch"
+        }
+      ]
+    },
+    {
+      "name": "stopwatch-running",
+      "about": "Stopwatch in motion",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"sw\"]"
+        },
+        {
+          "eval": "Object.defineProperty(performance, 'now', {value: () => 1000, configurable: true})"
+        },
+        {
+          "click": "[data-cksw=\"toggle\"]"
+        },
+        {
+          "eval": "Object.defineProperty(performance, 'now', {value: () => 2050, configurable: true})"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-stopwatch"
+        },
+        {
+          "activate": "ck-action-primary"
+        }
+      ]
+    },
+    {
+      "name": "stopwatch-lap",
+      "about": "A recorded stopwatch lap and its table",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"sw\"]"
+        },
+        {
+          "eval": "Object.defineProperty(performance, 'now', {value: () => 1000, configurable: true})"
+        },
+        {
+          "click": "[data-cksw=\"toggle\"]"
+        },
+        {
+          "eval": "Object.defineProperty(performance, 'now', {value: () => 2050, configurable: true})"
+        },
+        {
+          "click": "[data-cksw=\"lap\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-stopwatch"
+        },
+        {
+          "activate": "ck-action-primary"
+        },
+        {
+          "activate": "ck-action-secondary"
+        }
+      ]
+    },
+    {
+      "name": "timer",
+      "about": "Five-minute timer, quick choices and controls",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"tm\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-timer"
+        }
+      ]
+    },
+    {
+      "name": "timer-running",
+      "about": "Timer counting down",
+      "spec": [
+        {
+          "eval": "(() => { const RealDate = Date; const fixed = RealDate.parse('2026-09-25T21:11:47Z'); window.Date = class extends RealDate { constructor(...args) { if (args.length) super(...args); else super(fixed); } static now() { return fixed; } }; document.querySelector('[data-ckm=\"clock\"]').click(); })()"
+        },
+        {
+          "click": "[data-ckm=\"tm\"]"
+        },
+        {
+          "eval": "Object.defineProperty(performance, 'now', {value: () => 1000, configurable: true})"
+        },
+        {
+          "click": "[data-cktm2=\"toggle\"]"
+        },
+        {
+          "eval": "Object.defineProperty(performance, 'now', {value: () => 2050, configurable: true})"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "ck-mode-timer"
+        },
+        {
+          "activate": "ck-action-primary"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "world",
+    "add-city",
+    "alarms",
+    "alarms-new",
+    "stopwatch",
+    "stopwatch-running",
+    "stopwatch-lap",
+    "timer",
+    "timer-running"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-clock > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#ck-top"
+    },
+    {
+      "name": "mode and action bar",
+      "spec": "#cb-bar"
+    },
+    {
+      "name": "hero",
+      "spec": "#cb-body .ckhero"
+    },
+    {
+      "name": "city cards",
+      "spec": "#cb-world"
+    },
+    {
+      "name": "content",
+      "spec": "#cb-body"
+    },
+    {
+      "name": "main",
+      "spec": "#cb-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#cb-main",
+      "gtk": "ck-island",
+      "name": "main island"
+    },
+    {
+      "spec": "#cb-bar",
+      "gtk": "ck-action",
+      "name": "action bar"
+    },
+    {
+      "spec": "#cb-body",
+      "gtk": "ck-body",
+      "name": "body scroll"
+    }
+  ]
+}

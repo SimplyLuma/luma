@@ -1,0 +1,733 @@
+From: Project Luma
+Subject: [PATCH] luma: shelf parity with the spec screens
+
+Spanning shelves keep 14 at both ends and their island shadows. Extension
+indicators join the Well as 28px items instead of a second island after the
+clock. Status dividers are 1x24 in the line colour, the Well is 36 high with
+its dot in the item's corner, and the quick-settings glyphs are outlined
+Lucide icons. The clock centres time over date at 13/16 and 11/14, hover
+fills only the grid or the clock, shelf text is Figtree, the running dot is
+ink, pinned and running-only apps are divided, and media controls use Lucide
+glyphs at 16 with an "Artist · Source" subtitle.
+---
+diff --git a/data/icons/hicolor/scalable/status/luma-battery-medium-symbolic.svg b/data/icons/hicolor/scalable/status/luma-battery-medium-symbolic.svg
+new file mode 100644
+index 0000000..c6cc546
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-battery-medium-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M9,14 L9,10 Q9,9.586 9.293,9.293 Q9.586,9 10,9 Q10.414,9 10.707,9.293 Q11,9.586 11,10 L11,14 Q11,14.414 10.707,14.707 Q10.414,15 10,15 Q9.586,15 9.293,14.707 Q9,14.414 9,14 Z" fill="#2e3436"/>
++  <path d="M21,14 L21,10 Q21,9.586 21.293,9.293 Q21.586,9 22,9 Q22.414,9 22.707,9.293 Q23,9.586 23,10 L23,14 Q23,14.414 22.707,14.707 Q22.414,15 22,15 Q21.586,15 21.293,14.707 Q21,14.414 21,14 Z" fill="#2e3436"/>
++  <path d="M5,14 L5,10 Q5,9.586 5.293,9.293 Q5.586,9 6,9 Q6.414,9 6.707,9.293 Q7,9.586 7,10 L7,14 Q7,14.414 6.707,14.707 Q6.414,15 6,15 Q5.586,15 5.293,14.707 Q5,14.414 5,14 Z" fill="#2e3436"/>
++  <path d="M4,5 L16,5 Q19,5 19,8 L19,16 Q19,19 16,19 L4,19 Q1,19 1,16 L1,8 Q1,5 4,5 Z M4,7 Q3,7 3,8 L3,16 Q3,17 4,17 L16,17 Q17,17 17,16 L17,8 Q17,7 16,7 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-pause-symbolic.svg b/data/icons/hicolor/scalable/status/luma-pause-symbolic.svg
+new file mode 100644
+index 0000000..e9dcc99
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-pause-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M15,2 L18,2 Q20,2 20,4 L20,20 Q20,22 18,22 L15,22 Q13,22 13,20 L13,4 Q13,2 15,2 Z M15,4 L15,20 L18,20 L18,4 Z" fill="#2e3436"/>
++  <path d="M6,2 L9,2 Q11,2 11,4 L11,20 Q11,22 9,22 L6,22 Q4,22 4,20 L4,4 Q4,2 6,2 Z M6,4 L6,20 L9,20 L9,4 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-play-symbolic.svg b/data/icons/hicolor/scalable/status/luma-play-symbolic.svg
+new file mode 100644
+index 0000000..1c72d5c
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-play-symbolic.svg
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M4,5 Q4,3.263 5.506,2.398 Q7.012,1.533 8.512,2.408 L20.509,9.406 Q22,10.271 22.001,11.997 Q22.003,13.723 20.511,14.592 L8.512,21.592 Q7.012,22.467 5.506,21.602 Q3.999,20.737 4,19 L4,5 Z M6,19 Q6,19.579 6.502,19.868 Q7.004,20.156 7.504,19.864 L19.505,12.864 Q20.002,12.574 20.001,11.999 Q20.001,11.424 19.501,11.134 L7.504,4.136 Q7.004,3.844 6.502,4.132 Q6,4.421 6,5 L6,19 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-skip-back-symbolic.svg b/data/icons/hicolor/scalable/status/luma-skip-back-symbolic.svg
+new file mode 100644
+index 0000000..04dc8ad
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-skip-back-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M17.456,3.428 Q18.956,2.528 20.478,3.389 Q22,4.251 22,6 L22,18 Q22,19.749 20.478,20.611 Q18.956,21.472 17.457,20.572 L7.46,14.575 Q6.001,13.703 6,12.003 Q5.998,10.302 7.457,9.427 Z M18.485,5.142 L8.485,11.143 Q7.999,11.434 8,12.001 Q8,12.568 8.488,12.859 L18.486,18.858 Q18.985,19.157 19.493,18.87 Q20,18.583 20,18 L20,6 Q20,5.417 19.493,5.13 Q18.985,4.843 18.485,5.142 Z" fill="#2e3436"/>
++  <path d="M2,20 L2,4 Q2,3.586 2.293,3.293 Q2.586,3 3,3 Q3.414,3 3.707,3.293 Q4,3.586 4,4 L4,20 Q4,20.414 3.707,20.707 Q3.414,21 3,21 Q2.586,21 2.293,20.707 Q2,20.414 2,20 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-skip-forward-symbolic.svg b/data/icons/hicolor/scalable/status/luma-skip-forward-symbolic.svg
+new file mode 100644
+index 0000000..d35a0fb
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-skip-forward-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M22,4 L22,20 Q22,20.414 21.707,20.707 Q21.414,21 21,21 Q20.586,21 20.293,20.707 Q20,20.414 20,20 L20,4 Q20,3.586 20.293,3.293 Q20.586,3 21,3 Q21.414,3 21.707,3.293 Q22,3.586 22,4 Z" fill="#2e3436"/>
++  <path d="M6.543,3.428 L16.543,9.427 Q18.002,10.302 18,12.003 Q17.999,13.703 16.54,14.575 L6.543,20.572 Q5.044,21.472 3.522,20.611 Q2,19.749 2,18 L2,6 Q2,4.251 3.522,3.389 Q5.044,2.528 6.543,3.428 Z M5.514,5.142 Q5.015,4.843 4.507,5.13 Q4,5.417 4,6 L4,18 Q4,18.583 4.507,18.87 Q5.015,19.157 5.515,18.858 L15.512,12.859 Q16,12.568 16,12.001 Q16.001,11.434 15.515,11.143 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-volume-2-symbolic.svg b/data/icons/hicolor/scalable/status/luma-volume-2-symbolic.svg
+new file mode 100644
+index 0000000..61e5911
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-volume-2-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M12,4.702 L12,19.297 Q12.002,20.437 10.948,20.874 Q9.894,21.311 9.089,20.504 L5.704,17.118 Q5.586,17 5.416,17 L3,17 Q1,17 1,15 L1,9 Q1,7 3,7 L5.419,7 Q5.586,7 5.706,6.88 L9.091,3.496 Q9.896,2.693 10.947,3.128 Q11.998,3.563 12,4.701 Z M10,5.415 L7.12,8.294 Q6.415,9.003 5.413,9 L3,9 L3,15 L5.416,15 Q6.415,14.997 7.122,15.708 L10,18.587 L10,5.415 Z" fill="#2e3436"/>
++  <path d="M16.8,8.4 Q19.5,12 16.8,15.6 Q16.551,15.931 16.141,15.99 Q15.731,16.049 15.4,15.8 Q15.069,15.551 15.01,15.141 Q14.951,14.731 15.2,14.4 Q17,12 15.2,9.6 Q14.951,9.269 15.01,8.859 Q15.069,8.449 15.4,8.2 Q15.731,7.951 16.141,8.01 Q16.551,8.069 16.8,8.4 Z" fill="#2e3436"/>
++  <path d="M18.657,17.657 Q21,15.314 21,12 Q21,8.686 18.657,6.343 Q18.364,6.05 18.364,5.636 Q18.364,5.222 18.657,4.929 Q18.95,4.636 19.364,4.636 Q19.778,4.636 20.071,4.929 Q23,7.858 23,12 Q23,16.142 20.071,19.071 Q19.778,19.364 19.364,19.364 Q18.95,19.364 18.657,19.071 Q18.364,18.778 18.364,18.364 Q18.364,17.95 18.657,17.657 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-wifi-symbolic.svg b/data/icons/hicolor/scalable/status/luma-wifi-symbolic.svg
+new file mode 100644
+index 0000000..c329e1c
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-wifi-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M12,19 L12.01,19 Q12.424,19 12.717,19.293 Q13.01,19.586 13.01,20 Q13.01,20.414 12.717,20.707 Q12.424,21 12.01,21 L12,21 Q11.586,21 11.293,20.707 Q11,20.414 11,20 Q11,19.586 11.293,19.293 Q11.586,19 12,19 Z" fill="#2e3436"/>
++  <path d="M1.333,8.075 Q5.889,4 12,4 Q18.111,4 22.667,8.075 Q22.975,8.351 22.998,8.764 Q23.021,9.178 22.745,9.487 Q22.469,9.795 22.056,9.818 Q21.642,9.841 21.333,9.565 Q17.348,6 12,6 Q6.652,6 2.667,9.565 Q2.358,9.841 1.944,9.818 Q1.531,9.795 1.255,9.487 Q0.979,9.178 1.002,8.764 Q1.025,8.351 1.333,8.075 Z" fill="#2e3436"/>
++  <path d="M4.3,12.145 Q7.508,9 12,9 Q16.492,9 19.7,12.145 Q19.996,12.435 20,12.849 Q20.004,13.263 19.714,13.559 Q19.424,13.855 19.01,13.859 Q18.596,13.863 18.3,13.573 Q15.675,11 12,11 Q8.325,11 5.7,13.573 Q5.404,13.863 4.99,13.859 Q4.576,13.855 4.286,13.559 Q3.996,13.263 4,12.849 Q4.004,12.435 4.3,12.145 Z" fill="#2e3436"/>
++  <path d="M7.8,15.715 Q9.55,14 12,14 Q14.45,14 16.2,15.715 Q16.496,16.005 16.5,16.419 Q16.504,16.833 16.214,17.129 Q15.924,17.425 15.51,17.429 Q15.096,17.433 14.8,17.143 Q12,14.399 9.2,17.143 Q8.904,17.433 8.49,17.429 Q8.076,17.425 7.786,17.129 Q7.496,16.833 7.5,16.419 Q7.504,16.005 7.8,15.715 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index f7b81fc..5e9e122 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -937,3 +937,136 @@
+ .luma-shelf-menu .popup-menu-item { min-height: 32px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 550; }
+ .luma-shelf-menu .popup-separator-menu-item { padding: 5px 7px; }
+ .luma-shelf-menu .luma-well-menu-heading { min-height: 22px; font-size: 9px; font-weight: 700; }
++
++/* ── Shelf spec: parity pass ──────────────────────────────────────────── */
++/* The shelf is set in Figtree whatever the interface font is. */
++.luma-shelf-island,
++.luma-well-popover,
++.luma-shelf-menu { font-family: Figtree, sans-serif; }
++
++/* The running dot (55%) and the focused pill (100%) are the island's ink. */
++.luma-shelf-running-indicator,
++.luma-surface-dark .luma-shelf-running-indicator { background-color: #e7e9e8; }
++.luma-surface-light .luma-shelf-running-indicator { background-color: #34383d; }
++.luma-surface-frost .luma-shelf-running-indicator { background-color: #21252b; }
++.luma-surface-glass .luma-shelf-running-indicator { background-color: #ffffff; }
++
++/* Pinned | running: a 1 x 24 rule in `line`; the dock's 6 gap either side. */
++.luma-shelf-dock-island #dash .dash-separator {
++  width: 1px;
++  height: 24px;
++  margin: 0;
++  padding: 0;
++  background-color: rgba(255, 255, 255, 0.10); }
++.luma-shelf-dock-island.luma-surface-light #dash .dash-separator { background-color: rgba(25, 27, 31, 0.12); }
++.luma-shelf-dock-island.luma-surface-frost #dash .dash-separator { background-color: rgba(25, 27, 31, 0.13); }
++.luma-shelf-dock-island.luma-surface-glass #dash .dash-separator { background-color: rgba(255, 255, 255, 0.24); }
++
++/* The Well is 36 high with its 1px line inside that height, not around it:
++ * St has one box-shadow (the inner shade), so the line is a border and the
++ * height and padding give back its pixel. */
++.luma-well { height: 34px; padding: 0 3px; }
++
++/* Quick settings and the clock are the hover targets, not the island. */
++.luma-status-cluster .luma-status-controls,
++.luma-status-cluster .luma-status-clock { transition-duration: 120ms; }
++/* Min width 64 is the clock button's, its 0 4 padding included. */
++.luma-status-cluster .luma-status-clock { min-width: 56px; }
++.luma-status-cluster .luma-status-controls:hover,
++.luma-status-cluster .luma-status-controls:focus,
++.luma-status-cluster .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.08); }
++.luma-status-cluster .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.14); }
++.luma-status-cluster.luma-surface-light .luma-status-controls:hover,
++.luma-status-cluster.luma-surface-light .luma-status-controls:focus,
++.luma-status-cluster.luma-surface-light .luma-status-clock:hover { background-color: rgba(25, 27, 31, 0.07); }
++.luma-status-cluster.luma-surface-light .luma-status-controls:checked { background-color: rgba(25, 27, 31, 0.12); }
++.luma-status-cluster.luma-surface-frost .luma-status-controls:hover,
++.luma-status-cluster.luma-surface-frost .luma-status-controls:focus,
++.luma-status-cluster.luma-surface-frost .luma-status-clock:hover { background-color: rgba(25, 27, 31, 0.08); }
++.luma-status-cluster.luma-surface-frost .luma-status-controls:checked { background-color: rgba(25, 27, 31, 0.13); }
++.luma-status-cluster.luma-surface-glass .luma-status-controls:hover,
++.luma-status-cluster.luma-surface-glass .luma-status-controls:focus,
++.luma-status-cluster.luma-surface-glass .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.14); }
++.luma-status-cluster.luma-surface-glass .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.22); }
++
++/* An extension's own indicator in the Well: a Well item, 28 high, padding
++ * 0 6, radius 8, a 16px glyph in ink. */
++.luma-well .luma-well-extension { height: 28px; }
++/* PanelMenu.ButtonBox measures itself from its child and these paddings. */
++.luma-well .luma-well-extension .panel-button {
++  -natural-hpadding: 6px;
++  -minimum-hpadding: 6px;
++  margin: 0;
++  padding: 0;
++  border: 0;
++  border-radius: 8px;
++  background-color: transparent;
++  box-shadow: none;
++  color: #e7e9e8;
++  transition-duration: 120ms; }
++.luma-well .luma-well-extension .panel-button:hover,
++.luma-well .luma-well-extension .panel-button:focus { background-color: rgba(255, 255, 255, 0.08); }
++.luma-well .luma-well-extension .panel-button:active,
++.luma-well .luma-well-extension .panel-button:checked { background-color: rgba(255, 255, 255, 0.14); }
++.luma-status-light .luma-well .luma-well-extension .panel-button { color: #34383d; }
++.luma-status-light .luma-well .luma-well-extension .panel-button:hover,
++.luma-status-light .luma-well .luma-well-extension .panel-button:focus { background-color: rgba(25, 27, 31, 0.07); }
++.luma-status-light .luma-well .luma-well-extension .panel-button:active,
++.luma-status-light .luma-well .luma-well-extension .panel-button:checked { background-color: rgba(25, 27, 31, 0.12); }
++.luma-well .luma-well-extension .panel-button StIcon {
++  -st-icon-style: symbolic;
++  icon-size: 16px; }
++.luma-well .luma-well-extension .panel-button StLabel {
++  font-size: 13px;
++  font-weight: 650;
++  font-feature-settings: "tnum"; }
++.luma-well .luma-well-extension .panel-button StBoxLayout { spacing: 5px; }
++
++/* Media controls: 28 square, radius 8, no fill at rest; idle glyphs in ink-2,
++ * play/pause in ink; hover fills with `hover` and inks the glyph. */
++.luma-shelf-media-island .luma-media-control { color: rgba(231, 233, 232, 0.60); transition-duration: 120ms; }
++.luma-shelf-media-island .luma-media-control.luma-media-primary,
++.luma-shelf-media-island .luma-media-control:hover,
++.luma-shelf-media-island .luma-media-control:focus { color: #e7e9e8; }
++.luma-shelf-media-island .luma-media-control:hover,
++.luma-shelf-media-island .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.08); }
++.luma-shelf-media-island.luma-surface-light .luma-media-control { color: rgba(52, 56, 61, 0.62); }
++.luma-shelf-media-island.luma-surface-light .luma-media-control.luma-media-primary,
++.luma-shelf-media-island.luma-surface-light .luma-media-control:hover,
++.luma-shelf-media-island.luma-surface-light .luma-media-control:focus { color: #34383d; }
++.luma-shelf-media-island.luma-surface-light .luma-media-control:hover,
++.luma-shelf-media-island.luma-surface-light .luma-media-control:focus { background-color: rgba(25, 27, 31, 0.07); }
++.luma-shelf-media-island.luma-surface-frost .luma-media-control { color: rgba(33, 37, 43, 0.62); }
++.luma-shelf-media-island.luma-surface-frost .luma-media-control.luma-media-primary,
++.luma-shelf-media-island.luma-surface-frost .luma-media-control:hover,
++.luma-shelf-media-island.luma-surface-frost .luma-media-control:focus { color: #21252b; }
++.luma-shelf-media-island.luma-surface-frost .luma-media-control:hover,
++.luma-shelf-media-island.luma-surface-frost .luma-media-control:focus { background-color: rgba(25, 27, 31, 0.08); }
++.luma-shelf-media-island.luma-surface-glass .luma-media-control { color: rgba(255, 255, 255, 0.72); }
++.luma-shelf-media-island.luma-surface-glass .luma-media-control.luma-media-primary,
++.luma-shelf-media-island.luma-surface-glass .luma-media-control:hover,
++.luma-shelf-media-island.luma-surface-glass .luma-media-control:focus { color: #ffffff; }
++.luma-shelf-media-island.luma-surface-glass .luma-media-control:hover,
++.luma-shelf-media-island.luma-surface-glass .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.14); }
++
++/* Well dots: the attention dot's 6 (recording: 7) sit 4 (3) in from the
++ * item's top-right corner; the 2px ring in `bg` lies outside that. Frost and
++ * Glass drop the ring. */
++/* The item's 0 6 padding lives on its row, so the dot measures from the
++ * item's own corner. */
++.luma-well-item { padding: 0; }
++.luma-well-item-row { padding: 0 6px; }
++.luma-well-dot { margin: 2px; }
++.luma-well-dot.recording { margin: 1px; }
++.luma-status-light .luma-well-dot { background-color: #34383d; border-color: #f1f2f3; }
++.luma-status-light .luma-well-dot.recording { background-color: #b9544f; }
++.luma-surface-frost .luma-well-dot,
++.luma-surface-glass .luma-well-dot { border-width: 0; margin: 4px; }
++.luma-surface-frost .luma-well-dot.recording,
++.luma-surface-glass .luma-well-dot.recording { margin: 3px; }
++.luma-surface-frost .luma-well-dot { background-color: #21252b; }
++.luma-surface-glass .luma-well-dot { background-color: #ffffff; }
++.luma-surface-glass .luma-well-dot.recording { background-color: #ff8f87; }
++
++/* A left or right shelf: the Well is a 36-wide column. */
++.luma-shelf-vertical .luma-well { width: 34px; height: auto; padding: 3px 0; }
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index 8c92b0d..f222e28 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -13,7 +13,7 @@ import * as IconGrid from './iconGrid.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
+ import * as SessionApplications from './sessionApplications.js';
+-import {DASH_TILE_GAP} from './shelfMetrics.js';
++import {DASH_TILE_GAP, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
+ 
+ export const DASH_ANIMATION_TIME = 200;
+ const SHELF_ITEM_ANIMATION_TIME = 160;
+@@ -963,8 +963,7 @@ export const Dash = GObject.registerClass({
+             if (this._dragPlaceholder)
+                 pos++;
+             this._box.set_child_at_index(this._separator, pos);
+-            if (this._shelfEdge)
+-                this._separator.hide();
++            this._syncShelfSeparator();
+         } else if (this._separator) {
+             this._separator.destroy();
+             this._separator = null;
+@@ -1226,7 +1225,7 @@ export const Dash = GObject.registerClass({
+         const orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._box.layout_manager.orientation = orientation;
+         this._box.layout_manager.spacing = DASH_TILE_GAP * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        this._separator?.hide();
++        this._syncShelfSeparator();
+         for (const item of this._box.get_children()) {
+             item._shelfItem = true;
+             item.child?._syncShelfArtwork?.();
+@@ -1237,6 +1236,25 @@ export const Dash = GObject.registerClass({
+         this._clearDragPlaceholder();
+     }
+ 
++    // On the shelf, pinned and running-but-not-pinned apps are divided by a
++    // 1 x 24 rule, with the dock's own gap on each side of it.
++    _syncShelfSeparator() {
++        const separator = this._separator;
++        if (!separator)
++            return;
++        if (!this._shelfEdge) {
++            separator.set_size(-1, this.iconSize);
++            return;
++        }
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const vertical = this._shelfEdge === 'left' || this._shelfEdge === 'right';
++        separator.set_size((vertical ? SHELF_DIVIDER_LENGTH : 1) * scale,
++            (vertical ? 1 : SHELF_DIVIDER_LENGTH) * scale);
++        separator.x_align = Clutter.ActorAlign.CENTER;
++        separator.y_align = Clutter.ActorAlign.CENTER;
++        separator.show();
++    }
++
+     setFixedIconSize(size) {
+         this._fixedIconSize = true;
+         this.iconSize = size;
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index 58d2fcf..45e9e5d 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -306,7 +306,7 @@ const WellItem = GObject.registerClass(
+ class LumaWellItem extends St.Widget {
+     _init(well, source) {
+         super._init({style_class: 'luma-well-item', reactive: true, can_focus: true, track_hover: true,
+-            layout_manager: new Clutter.BinLayout(), accessible_role: Atk.Role.PUSH_BUTTON});
++            y_align: Clutter.ActorAlign.CENTER, layout_manager: new Clutter.BinLayout(), accessible_role: Atk.Role.PUSH_BUTTON});
+         this.source = source;
+         this._well = well;
+         const row = new St.BoxLayout({style_class: 'luma-well-item-row', x_align: Clutter.ActorAlign.CENTER,
+@@ -315,8 +315,10 @@ class LumaWellItem extends St.Widget {
+         this._readout = new St.Label({style_class: 'luma-well-readout', y_align: Clutter.ActorAlign.CENTER});
+         row.add_child(this._readout);
+         this.add_child(row);
+-        this._dot = new St.Widget({style_class: 'luma-well-dot', x_align: Clutter.ActorAlign.END,
+-            y_align: Clutter.ActorAlign.START, visible: false});
++        // BinLayout honours a corner alignment only for a child that expands;
++        // without it the dot sat centred on the glyph, ink on ink, unseen.
++        this._dot = new St.Widget({style_class: 'luma-well-dot', x_expand: true, y_expand: true,
++            x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START, visible: false});
+         this.add_child(this._dot);
+         wireEvents(this, well, source, {});
+         this._delegate = this;
+@@ -452,6 +454,32 @@ export const Well = GObject.registerClass({
+         return true;
+     }
+ 
++    // An extension's own panel indicator -- a layout switcher, a hardware
++    // monitor, an editor's Save button -- is not a StatusNotifierItem, so there
++    // is nothing to re-present. Its real actor moves into the Well instead,
++    // keeping every click, scroll and menu the extension wired to it; the Well
++    // only gives it a place, the item's size and the island's ink.
++    adoptExtension(indicator) {
++        const container = indicator?.container;
++        if (!container)
++            return false;
++        this._extensions ??= new Map();
++        if (!this._extensions.has(indicator)) {
++            this._extensions.set(indicator, container);
++            container.add_style_class_name('luma-well-extension');
++            container.y_align = Clutter.ActorAlign.CENTER;
++            indicator.connectObject(
++                'notify::visible', () => this._rebuild(),
++                'destroy', () => {
++                    this._extensions.delete(indicator);
++                    this._rebuild();
++                }, this);
++        }
++        indicator.menu?.setArrowSide?.(this.arrowSide);
++        this._rebuild();
++        return true;
++    }
++
+     isPinned(key) {
+         return this._store.pins.includes(key);
+     }
+@@ -519,8 +547,12 @@ export const Well = GObject.registerClass({
+     _rebuild() {
+         const sources = this._ready();
+         const {shown, rest} = arrange(sources, this._store);
+-        for (const child of this.get_children())
+-            this.remove_child(child);
++        const extensions = [...(this._extensions ?? new Map()).entries()];
++        const extensionActors = new Set(extensions.map(([, container]) => container));
++        for (const child of this.get_children()) {
++            if (!extensionActors.has(child))
++                this.remove_child(child);
++        }
+         for (const source of shown) {
+             let item = this._items.get(source.indicator);
+             if (!item) {
+@@ -537,6 +569,18 @@ export const Well = GObject.registerClass({
+                 this._items.delete(indicator);
+             }
+         }
++        // Extension indicators follow the items and come before the count.
++        let index = shown.length;
++        for (const [indicator, container] of extensions) {
++            container.visible = indicator.visible;
++            if (container.get_parent() !== this) {
++                container.get_parent()?.remove_child(container);
++                this.insert_child_at_index(container, index);
++            } else {
++                this.set_child_at_index(container, index);
++            }
++            index++;
++        }
+         this._rest = rest;
+         this._chip.label = `+${rest.length}`;
+         this._chip.accessible_name = rest.length === 1
+@@ -546,7 +590,7 @@ export const Well = GObject.registerClass({
+             this.add_child(this._chip);
+         this.add_child(this._insertion);
+         this.add_child(this._host);
+-        this.visible = sources.length > 0;
++        this.visible = sources.length > 0 || extensions.some(([indicator]) => indicator.visible);
+         if (this._pulse && rest.length > 0) {
+             this._pulse = false;
+             this._chip.add_style_pseudo_class('pulse');
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 6515e65..127e124 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -17,7 +17,7 @@ import * as PopupMenu from './popupMenu.js';
+ import * as PanelMenu from './panelMenu.js';
+ import {QuickSettingsMenu, QuickUtilityRow, SystemIndicator} from './quickSettings.js';
+ import * as Main from './main.js';
+-import {DASH_TILE_SIZE} from './shelfMetrics.js';
++import {DASH_TILE_SIZE, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
+ import * as Util from '../misc/util.js';
+ import * as DateUtils from '../misc/dateUtils.js';
+ 
+@@ -79,6 +79,16 @@ const LUMA_LIVE_EXTENSION_TOOLTIP_DELAY = 300;
+ const STATUS_GLYPH = 14;
+ const STATUS_COLUMN_GAP = 8;
+ const STATUS_ROW_GAP = 6;
++// Ink, secondary ink and rules of the status island, per surface treatment.
++const STATUS_INK = {
++    light: {ink: '#34383d', ink2: 'rgba(52,56,61,0.62)', line: 'rgba(25,27,31,0.12)'},
++    dark: {ink: '#e7e9e8', ink2: 'rgba(231,233,232,0.60)', line: 'rgba(255,255,255,0.10)'},
++    frost: {ink: '#21252b', ink2: 'rgba(33,37,43,0.62)', line: 'rgba(25,27,31,0.13)'},
++    glass: {ink: '#ffffff', ink2: 'rgba(255,255,255,0.72)', line: 'rgba(255,255,255,0.24)'},
++};
++// Clock lines: time 13/16 over date 11/14, two apart.
++const STATUS_CLOCK_LEADING = 3;
++const STATUS_CLOCK_GAP = 2;
+ const LUMA_LIVE_EXTENSION_TOOLTIP_GAP = 6;
+ 
+ const LiveExtensionsIndicator = GObject.registerClass(
+@@ -969,15 +979,21 @@ class QuickSettings extends PanelMenu.Button {
+             this._statusViewport = new St.ScrollView({child: this._statusBox,
+                 enable_mouse_scrolling: true, overlay_scrollbars: true,
+                 hscrollbar_policy: St.PolicyType.EXTERNAL, vscrollbar_policy: St.PolicyType.NEVER});
+-            this._statusClock = new St.Bin({style_class: 'luma-status-clock'});
+-            this._statusControls = new St.Bin({style_class: 'luma-status-controls'});
++            // Hover and pressed fills belong to the part under the pointer --
++            // the quick-settings grid or the clock -- never to the island.
++            this._statusClock = new St.Bin({style_class: 'luma-status-clock',
++                reactive: true, track_hover: true});
++            this._statusControls = new St.Bin({style_class: 'luma-status-controls',
++                reactive: true, track_hover: true});
+             this._statusSeam = new St.Widget({style_class: 'luma-status-seam'});
+             this._statusClockBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
+                 style_class: 'luma-status-clock-text', y_align: Clutter.ActorAlign.CENTER});
++            // Time over date, centred on each other: each label takes its own
++            // width, centred in the clock, rather than the clock's full width.
+             this._statusTime = new St.Label({style_class: 'luma-status-time',
+-                y_align: Clutter.ActorAlign.CENTER});
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+             this._statusDateLabel = new St.Label({style_class: 'luma-status-date',
+-                y_align: Clutter.ActorAlign.CENTER});
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+             this._statusClockBox.add_child(this._statusTime);
+             this._statusClockBox.add_child(this._statusDateLabel);
+             this._statusClock.child = this._statusClockBox;
+@@ -1023,8 +1039,11 @@ class QuickSettings extends PanelMenu.Button {
+             this._notificationRoutes.show();
+         }
+         this._statusVertical = vertical;
+-        this._indicatorsLayout._vertical = vertical;
+-        this._indicatorsLayout.layout_changed();
++        // Both grids turn to 2 x 3 on a left or right shelf.
++        for (const layout of [this._indicatorsLayout, this._statusSlots.layout_manager]) {
++            layout._vertical = vertical;
++            layout.layout_changed();
++        }
+         this.setShelfPresentation(true);
+         this._styleStatusCluster();
+         this._updateStatusName();
+@@ -1049,6 +1068,7 @@ class QuickSettings extends PanelMenu.Button {
+             slot.add_child(slot.icon);
+             if (name === 'mic') {
+                 slot.dot = new St.Widget({style_class: 'luma-status-recording', visible: false,
++                    x_expand: true, y_expand: true,
+                     x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
+                 slot.add_child(slot.dot);
+             }
+@@ -1095,13 +1115,13 @@ class QuickSettings extends PanelMenu.Button {
+             slot.opacity = on ? 255 : 89;
+         };
+         const wifi = this._network?._primaryIndicator;
+-        set('wifi', wifi?.visible && wifi.icon_name ? wifi.icon_name : 'network-wireless-signal-none-symbolic', Boolean(wifi?.visible));
++        set('wifi', 'luma-wifi-symbolic', Boolean(wifi?.visible));
+         set('bluetooth', 'luma-bluetooth-symbolic', Boolean(this._bluetooth?._indicator?.visible));
+         const volume = this._volumeOutput?._indicator?.icon_name ?? 'audio-volume-high-symbolic';
+-        set('volume', volume, !volume.includes('muted'));
++        set('volume', 'luma-volume-2-symbolic', !volume.includes('muted'));
+         set('power', 'luma-gauge-symbolic', Boolean(this._powerProfiles?._indicator));
+         const battery = this._system?._indicator;
+-        set('battery', battery?.visible && battery.icon_name ? battery.icon_name : 'battery-missing-symbolic', Boolean(battery?.visible));
++        set('battery', 'luma-battery-medium-symbolic', Boolean(battery?.visible));
+         const stream = this._volumeInput?._input?.stream;
+         const muted = Boolean(stream?.is_muted);
+         set('mic', muted ? 'luma-mic-off-symbolic' : 'luma-mic-symbolic', !muted);
+@@ -1163,11 +1183,16 @@ class QuickSettings extends PanelMenu.Button {
+             radii.map(r => r*scale));
+     }
+ 
++    _statusFontSize(label) {
++        const s = this._statusSettings;
++        return label === this._statusTime
++            ? s.get_int('status-time-size') : Math.max(11, s.get_int('status-date-size'));
++    }
++
+     _setStatusLineHeight(label) {
+-        const size = this._statusSettings.get_int(label === this._statusTime ? 'status-time-size' : 'status-date-size');
+-        const floor = label === this._statusTime ? 13 : 11;
+         const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
+-        attrs.change(Pango.attr_line_height_new_absolute(Math.max(floor, size) *
++        attrs.change(Pango.attr_line_height_new_absolute(
++            (this._statusFontSize(label) + STATUS_CLOCK_LEADING) *
+             St.ThemeContext.get_for_stage(global.stage).scale_factor * Pango.SCALE));
+         label.clutter_text.set_attributes(attrs);
+     }
+@@ -1179,13 +1204,15 @@ class QuickSettings extends PanelMenu.Button {
+ 
+     _syncStatusHover() {
+         if (!this._statusActive) return;
+-        const active = this.hover || this.has_key_focus() || this.menu.isOpen;
+-        this._statusHover.remove_all_transitions();
+-        this._statusHover.ease({opacity: active ? 255 : 0,
+-            duration: St.Settings.get().enable_animations ? 120 : 0,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-            onComplete: () => (this._statusHover.opacity = active ? 255 : 0),
+-        });
++        // The parts track their own hover; the grid also shows keyboard focus
++        // and stays pressed while Quick Settings is open. The island-wide
++        // overlay is no longer drawn.
++        this._statusHover.opacity = 0;
++        const controls = this._statusControls;
++        if (this.has_key_focus()) controls.add_style_pseudo_class('focus');
++        else controls.remove_style_pseudo_class('focus');
++        if (this.menu.isOpen) controls.add_style_pseudo_class('checked');
++        else controls.remove_style_pseudo_class('checked');
+     }
+ 
+     _watchStatus(child) {
+@@ -1298,7 +1325,8 @@ class QuickSettings extends PanelMenu.Button {
+         const strength = Number(s.get_string('status-fill-strength')) / 100;
+         const treatment = this._lumaSurfaceTreatment ?? s.get_string('surface-treatment');
+         const light = ['light', 'frost'].includes(treatment);
+-        const line = light ? 'rgba(25,27,31,0.14)' : 'rgba(255,255,255,0.16)';
++        const ink = STATUS_INK[treatment] ?? STATUS_INK.dark;
++        const line = ink.line;
+         const rgba = key => {
+             const raw = s.get_string(key);
+             const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw : '#7f8892';
+@@ -1337,34 +1365,34 @@ class QuickSettings extends PanelMenu.Button {
+                 for (const i of vertical ? (first ? [2, 3] : [0, 1]) : (first ? [1, 2] : [0, 3])) radii[i] = 0;
+             }
+             const innerSide = vertical ? (part === visual[0] ? 'bottom' : 'top') : (part === visual[0] ? 'right' : 'left');
++            // An unframed part leaves its fill to the stylesheet, which draws
++            // the hover and pressed states. The clock is padded 0 4.
+             part.set_style(`border: ${framed && stroked ? 1 : 0}px solid ${line}; ` +
+                 `border-radius: ${radii.map(n => `${n}px`).join(' ')}; ` +
+-                `background-color: ${framed && filled ? rgba(isClock ? 'status-clock-fill' : 'status-controls-fill') : 'transparent'}; ` +
+-                `padding: ${flush ? padding : 0}px; ${joined ? `border-${innerSide}: 0;` : ''} ${joined && !flush ? `padding-${innerSide}: ${padding}px;` : ''}`);
++                `${framed && filled ? `background-color: ${rgba(isClock ? 'status-clock-fill' : 'status-controls-fill')}; ` : ''}` +
++                `padding: ${flush ? `${padding}px` : isClock ? '0 4px' : '0'}; ${joined ? `border-${innerSide}: 0;` : ''} ${joined && !flush ? `padding-${innerSide}: ${padding}px;` : ''}`);
+         }
+         const seam = s.get_boolean('status-divider');
+         this._statusSeam.visible = true;
+-        this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: 1px; margin: ${joined ? '0' : vertical ? `${padding}px 0` : `0 ${padding}px`};`);
++        // A 1 x 24 rule, 8 from the parts on each side. Joined parts meet
++        // along a rule as long as they are.
++        const length = joined ? '' : `${vertical ? 'width' : 'height'}: ${SHELF_DIVIDER_LENGTH}px; `;
++        this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: 1px; ${length}margin: ${joined ? '0' : vertical ? `${padding}px 0` : `0 ${padding}px`};`);
+         this._statusWellSeam?.set_style(this._statusSeam.get_style());
+-        this._statusSeam.x_expand = vertical;
+-        this._statusSeam.y_expand = !vertical;
+-        this._statusTime.set_style(`font-size: ${s.get_int('status-time-size')}px; font-weight: 700; color: ${light ? '#191b1f' : '#e3e6e8'};`);
+-        this._statusDateLabel.set_style(`font-size: ${Math.max(11, s.get_int('status-date-size'))}px; font-weight: 600; color: ${light ? 'rgba(25,27,31,0.6)' : 'rgba(227,230,232,0.6)'};`);
+-        // Use the shared inset rhythm instead of collapsing the gap when
+-        // the configured font sizes consume the tile's nominal height.
+-        //
+-        // The floor is what decides this in practice, not the rhythm: at the
+-        // default ten-pixel shelf padding the rhythm asks for three, so the
+-        // floor was the answer at every setting anybody uses, and three pixels
+-        // between a 13px time and a 9px date reads as no gap at all.
+-        const clockGap = Math.max(7, Math.round(padding / 3));
+-        this._statusClockBox.set_style(`padding: 0; spacing: ${clockGap}px;`);
++        for (const divider of [this._statusSeam, this._statusWellSeam].filter(Boolean)) {
++            divider.x_expand = vertical && joined;
++            divider.y_expand = !vertical && joined;
++            divider.x_align = vertical && joined ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
++            divider.y_align = !vertical && joined ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
++        }
++        this._statusTime.set_style(`font-size: ${this._statusFontSize(this._statusTime)}px; font-weight: 700; color: ${ink.ink};`);
++        this._statusDateLabel.set_style(`font-size: ${this._statusFontSize(this._statusDateLabel)}px; font-weight: 600; color: ${ink.ink2};`);
++        // Time 13/16 over date 11/14, 2 apart: the lines carry their own
++        // leading, so the gap between them is the spec's two pixels.
++        this._statusClockBox.set_style(`padding: 0; spacing: ${STATUS_CLOCK_GAP}px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        for (const [label, size] of [[this._statusTime, s.get_int('status-time-size')],
+-            [this._statusDateLabel, Math.max(11, s.get_int('status-date-size'))]]) {
+-            const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
+-            attrs.change(Pango.attr_line_height_new_absolute(size * textScale * Pango.SCALE));
+-            label.clutter_text.set_attributes(attrs);
++        for (const label of [this._statusTime, this._statusDateLabel]) {
++            this._setStatusLineHeight(label);
+             const textWidth = DASH_TILE_SIZE - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
+             label.set_width(vertical ? textWidth * textScale : -1);
+             label.clutter_text.single_line_mode = !vertical;
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 034edca..1b8622f 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -41,7 +41,9 @@ export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural,
+     // Islands float SHELF_INSET from the screen; windows keep the padding.
+     const inset = protrude ? 0 : SHELF_INSET * scale;
+     const margin = protrude ? 0 : padding * scale;
+-    const gutter = !span || floatEnds ? padding * scale : 0;
++    // A shelf that spans its edge keeps the same 14 from the screen's ends
++    // as a floating one, so the dock and the clock sit where the spec does.
++    const gutter = !span || floatEnds ? SHELF_INSET * scale : 0;
+     const available = Math.max(1, (vertical ? monitor.height : monitor.width) - 2 * gutter);
+     const length = span ? available : Math.min(available, natural);
+     const width = vertical ? thickness : length;
+@@ -630,11 +632,17 @@ class Shelf extends St.Widget {
+         quick._statusArrowSide = arrowSide;
+         this._auxBox.orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._well.arrowSide = arrowSide;
++        // On a left or right shelf the Well stacks its items, like the dock.
++        this._well.orientation = this._vertical
++            ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         for (const role of [...actionRoles, ...extraRoles]) {
+             const indicator = indicators[role];
+             if (!indicator)
+                 continue;
+-            if (!actionRoles.includes(role) && this._well.adopt(indicator))
++            // Status icons from applications and extensions live in the
++            // Well, never in an island of their own.
++            if (!actionRoles.includes(role) &&
++                (this._well.adopt(indicator) || this._well.adoptExtension(indicator)))
+                 continue;
+             const container = indicator.container;
+             if (!actionRoles.includes(role) && !container._lumaShelfExtra) {
+@@ -781,7 +789,9 @@ class Shelf extends St.Widget {
+         this._surface.set_style_class_name(`luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
+             `luma-shelf-${this._edge} ${this._vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
+             `${this._protrude ? 'luma-shelf-attached' : ''} ${this._span && !this._floatEnds ? 'luma-shelf-flush' : ''}`);
+-        const castShadows = !this._protrude && !this._span;
++        // Islands that float keep their elevation, including on a spanning
++        // shelf whose ends float; only islands touching an edge drop it.
++        const castShadows = !this._protrude && (!this._span || this._floatEnds);
+         this._surface.setSurfaceVisible(surfaceMode === 'connected', castShadows);
+ 
+         this._group.remove_all_children();
+@@ -990,7 +1000,7 @@ class Shelf extends St.Widget {
+             : actor.get_preferred_width(this._thickness * scale)[1];
+         const naturalDock = measure(this._dash);
+         const edgeLength = this._vertical ? monitor.height : monitor.width;
+-        const gutter = !this._span || this._floatEnds ? 2 * this._padding * scale : 0;
++        const gutter = !this._span || this._floatEnds ? 2 * SHELF_INSET * scale : 0;
+         const available = Math.max(1, edgeLength - gutter);
+         const setViewport = (scroll, length, cross) => {
+             scroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+diff --git a/js/ui/shelfMedia.js b/js/ui/shelfMedia.js
+index 593aae0..c150b3f 100644
+--- a/js/ui/shelfMedia.js
++++ b/js/ui/shelfMedia.js
+@@ -48,9 +48,11 @@ export const ShelfMedia = GObject.registerClass({
+         this.add_child(this._identity);
+         this._controls = new St.BoxLayout({style_class: 'luma-media-controls',
+             x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+-        this._previous = this._button('media-skip-backward-symbolic', () => this.selection.selected?.previous());
+-        this._toggle = this._button('media-playback-start-symbolic', () => this.selection.selected?.playPause());
+-        this._next = this._button('media-skip-forward-symbolic', () => this.selection.selected?.next());
++        this._previous = this._button('luma-skip-back-symbolic', () => this.selection.selected?.previous());
++        this._toggle = this._button('luma-play-symbolic', () => this.selection.selected?.playPause());
++        // Play/pause is the primary control, drawn in ink; the others idle in ink-2.
++        this._toggle.add_style_class_name('luma-media-primary');
++        this._next = this._button('luma-skip-forward-symbolic', () => this.selection.selected?.next());
+         this.add_child(this._controls);
+         this._source.connectObject('player-added', (_source, player) => this._add(player),
+             'player-removed', (_source, player) => this._remove(player), this);
+@@ -79,7 +81,7 @@ export const ShelfMedia = GObject.registerClass({
+ 
+     _button(icon, action) {
+         const button = new St.Button({style_class: 'luma-media-control', can_focus: true,
+-            child: new St.Icon({icon_name: icon, icon_size: 14})});
++            child: new St.Icon({icon_name: icon, icon_size: 16})});
+         button.connect('clicked', action);
+         this._controls.add_child(button);
+         return button;
+@@ -130,7 +132,9 @@ export const ShelfMedia = GObject.registerClass({
+         }
+         const appName = player.source.title || _('Media player');
+         const title = player.shelfTitle || appName;
+-        const artist = player.shelfArtists.join(', ') || appName;
++        // "Artist · Source", or the source alone when the player names no one.
++        const artists = player.shelfArtists.join(', ');
++        const artist = artists ? `${artists} · ${appName}` : appName;
+         const changed = this._title.text !== title || this._artist.text !== artist;
+         this._oldCopy?.destroy();
+         this._oldCopy = null;
+@@ -153,10 +157,10 @@ export const ShelfMedia = GObject.registerClass({
+         }
+         this._title.text = title;
+         this._artist.text = artist;
+-        this._identity.accessible_name = _('Now playing: %s by %s, in %s').format(title, artist, appName);
++        this._identity.accessible_name = _('Now playing: %s by %s, in %s').format(title, artists || appName, appName);
+         this._playing = player.status === 'Playing';
+         this._toggle.child.icon_name = this._playing
+-            ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic';
++            ? 'luma-pause-symbolic' : 'luma-play-symbolic';
+         this._toggle.accessible_name = (this._playing ? _('Pause %s') : _('Play %s')).format(title);
+         this._previous.accessible_name = _('Previous track');
+         this._next.accessible_name = _('Next track');
+@@ -165,7 +169,7 @@ export const ShelfMedia = GObject.registerClass({
+                 (this._playing ? player.canPause : player.canPlay)]]) {
+             button.reactive = Boolean(enabled);
+             button.can_focus = Boolean(enabled);
+-            button.opacity = enabled ? 255 : 85;
++            button.opacity = enabled ? 255 : 89;
+         }
+         if (changed && St.Settings.get().enable_animations) {
+             this._copy.remove_all_transitions();
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+index 82ee1cd..d8d929e 100644
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -6,6 +6,8 @@
+ export const DASH_TILE_SIZE = 36;
+ export const DASH_TILE_GAP = 6;
+ export const SHELF_INSET = 14;
++// The rule between pinned and running apps, and between status parts.
++export const SHELF_DIVIDER_LENGTH = 24;
+ 
+ // A running app is a 4x4 dot 2px beneath its icon, inside the island's
+ // padding; the focused app's dot stretches to a 12x4 pill.

@@ -1,0 +1,15 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Install as lumaui-tide/bin/run after the shared kit sync. No Prairie import.
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+while read -r package expected; do
+    actual=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null) || actual=
+    if [ "$actual" != "$expected" ]; then
+        echo "Tide preview: $package does not match BASE-NVR; re-sync a matching preview." >&2
+        exit 3
+    fi
+done < "$here/BASE-NVR"
+export PYTHONPATH="$here/python:$here/app/tide"
+export LUMA_APPKIT_ICON_PATH="$here/python/icons"
+exec python3 -m luma_tide.preview "$@"

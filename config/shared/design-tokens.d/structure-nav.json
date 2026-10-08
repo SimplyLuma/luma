@@ -1,0 +1,180 @@
+{
+  "_doc": "LumaUI v71 navigation and structure (K-NAV): tiers, the title island (lNavTtl, .fisl/.nisl/.misl/.crisl), the phone drawer, the tab bar and the phone page header. Deep-merged into design-tokens.json's lumaui object. Every number is read off luma-next-71.html and desktop/phone.css; px unless the key says otherwise.",
+  "lumaui": {
+    "tiers": {
+      "_doc": "v71 2026-09-29 mobile layer: phone under 560 (layout.phone_max_width 559), compact 560 to 900, regular over 900.",
+      "phone_below": 560,
+      "regular_above": 900
+    },
+    "title_island": {
+      "_doc": "v71 5323-5433 and .fisl/.nisl/.misl: 48 tall, 16 round, the bar's material; a 48 lead with a 20 glyph, a full-height hairline, the title 15/650 over a 12/500 subtitle (line-height 1.2), padding 0 18 0 14; trailing buttons 44 x 48. At left 12, top 52 (6 under the 46 title row). Grown: menu min(320, w - 24) and 128 above the foot; details w - 24 on a phone, min(360, w - 24) in a window; the open shadow 0 32 80 -10 and 0 12 28, the page dimmed .24; once scrolled the header casts 0 8 16 -6. In light the island reads as the frame does (v71 .tbar: frame inks, the title 600).",
+      "height": 48,
+      "radius": 16,
+      "lead": 48,
+      "glyph": 20,
+      "text_padding_start": 14,
+      "text_padding_end": 18,
+      "title_size": 15,
+      "title_weight": 650,
+      "subtitle_size": 12,
+      "subtitle_weight": 400,
+      "faces_gap": 10,
+      "button_width": 44,
+      "left": 12,
+      "top": 6,
+      "menu_width": 320,
+      "details_width": 360,
+      "menu_foot": 128,
+      "details_foot": 150,
+      "panel_padding": 12,
+      "menu_panel_padding": 6,
+      "panel_gap": 10,
+      "scrim_alpha": 0.24,
+      "light_title_weight": 600,
+      "status_dot": 9
+    },
+    "phone_drawer": {
+      "_doc": "v71b 5806-5813 (phone places drawer): from the bottom-left corner, top 64 (level with the page title), width min(328, w - 52), square to the left and bottom edges, top-right corner 30; padding 16 12 40; rows 44 tall at 15px with a 19 glyph and 14 radius; headings 12.5 with 18 above; search 42 tall, 14 round, 16px type; the page dimmed .4; it slides in from the left over .34s.",
+      "top": 64,
+      "max_width": 328,
+      "side_room": 52,
+      "radius": 30,
+      "padding_top": 16,
+      "padding_x": 12,
+      "padding_bottom": 40,
+      "row_height": 44,
+      "row_size": 15,
+      "row_radius": 14,
+      "row_icon": 19,
+      "heading_size": 12.5,
+      "heading_top": 18,
+      "search_height": 42,
+      "search_radius": 14,
+      "search_size": 16,
+      "scrim_alpha": 0.4,
+      "enter_ms": 340
+    },
+    "list_first": {
+      "_doc": "phone.js stackStart and 5640-5666: the list full screen with a 32/750 large title (-0.03em, padding 4 6 12), its search 44 tall, 16 round, 16px type; rows at least 64; picking pushes the page in from 26% over .36s. The floating Back (.phback) is 44 square, 16 round, in the bar material, at the 16 gutter, 6 under the title row (top 50).",
+      "title_size": 32,
+      "title_line_height_px": 35.2,
+      "title_weight": 750,
+      "title_tracking": -0.96,
+      "search_height": 44,
+      "search_radius": 16,
+      "search_size": 16,
+      "row_min_height": 64,
+      "push_ms": 360,
+      "push_shift_pct": 26,
+      "title_padding_top": 4,
+      "title_padding_bottom": 12,
+      "back": 44,
+      "back_radius": 16,
+      "back_top": 6,
+      "back_glyph": 20
+    },
+    "tab_bar": {
+      "_doc": "phone.js tabBar and 5964-5972: three or more peer places become a full-width tab bar 16 from each side, padding 4; each place 56 tall, an icon (22) over its name (10.5/600), gap 3, 20 round; the chosen one lit on fill-1. Compact (v71 Clock .cktabbar, inside an action bar): icon-only 48 x 48 tabs, the chosen one the raised chip with its glyph lit, a count badge 3 in from the top right, a 7 px green dot 7 in while something runs. A floating bar sits 34 up.",
+      "side": 16,
+      "padding": 4,
+      "height": 56,
+      "radius": 20,
+      "icon": 22,
+      "label_size": 10.5,
+      "label_weight": 600,
+      "gap": 3,
+      "min_places": 3,
+      "bottom": 34,
+      "count_top": 4,
+      "count_shift": 28,
+      "compact_height": 48,
+      "compact_width": 48,
+      "compact_count_inset": 3,
+      "dot": 7,
+      "dot_inset": 7
+    },
+    "page_header": {
+      "_doc": "v71 .lnt (4486-4492) and its phone stack (5632-5635): title-1 (24/650) with its meta 12.5 beside it, gap 8; under 560 the title is 30/750 (-0.03em) and the meta takes its own line at 13, 3 apart.",
+      "gap": 8,
+      "phone_title_size": 30,
+      "phone_title_weight": 750,
+      "phone_title_tracking": -0.9,
+      "phone_meta_size": 13,
+      "phone_row_gap": 3,
+      "meta_size": 12.5,
+      "meta_gap": 7
+    },
+    "gutter": {
+      "_doc": "Changelog LumaUI rule 17: one side gutter on phones, 16; tile grids 8 (each tile carries 8 of its own).",
+      "phone": 16,
+      "phone_tiles": 8
+    },
+    "colors": {
+      "_doc": "v71 title island and phone drawer shadows and dims (5422-5433, 5808). The grown island's header casts island_scrolled_shadow once its list scrolls (.55 dark, .18 light). favourite: v71's lit star (Memos .ib.on, oklch(0.8 0.14 80)).",
+      "light": {
+        "island_shadow_far": "rgba(0, 0, 0, 0.85)",
+        "island_shadow_near": "rgba(0, 0, 0, 0.5)",
+        "island_scrim": "rgba(0, 0, 0, 0.24)",
+        "phone_drawer_scrim": "rgba(0, 0, 0, 0.4)",
+        "phone_drawer_shadow": "rgba(0, 0, 0, 0.55)",
+        "island_scrolled_shadow": "rgba(0, 0, 0, 0.18)",
+        "favourite": "#edb345"
+      },
+      "dark": {
+        "island_shadow_far": "rgba(0, 0, 0, 0.85)",
+        "island_shadow_near": "rgba(0, 0, 0, 0.5)",
+        "island_scrim": "rgba(0, 0, 0, 0.24)",
+        "phone_drawer_scrim": "rgba(0, 0, 0, 0.4)",
+        "phone_drawer_shadow": "rgba(0, 0, 0, 0.55)",
+        "island_scrolled_shadow": "rgba(0, 0, 0, 0.55)",
+        "favourite": "#edb345"
+      },
+      "high_contrast": {
+        "island_shadow_far": "rgba(0, 0, 0, 0.85)",
+        "island_shadow_near": "rgba(0, 0, 0, 0.5)",
+        "island_scrim": "rgba(0, 0, 0, 0.24)",
+        "phone_drawer_scrim": "rgba(0, 0, 0, 0.4)",
+        "phone_drawer_shadow": "rgba(0, 0, 0, 0.55)",
+        "island_scrolled_shadow": "rgba(0, 0, 0, 0.55)",
+        "favourite": "#edb345"
+      }
+    },
+    "phone_frame": {
+      "_doc": "v71 3194-3215: on a phone the window has no frame and no title bar; the content island is the screen, holding the safe areas (44 under the clock, 34 over the home bar); the title row's controls float as 44 glass pills in a 52 row at top 44, 16 from the sides; title islands at top 52, the list-first Back at 50, the list's title 12 under the clock.",
+      "status": 44,
+      "home": 34,
+      "row_top": 44,
+      "row_height": 52,
+      "row_padding_x": 16,
+      "pill": 44,
+      "pill_radius": 16,
+      "island_top": 52,
+      "back_top": 50,
+      "list_title_top": 16
+    },
+    "modes_large": {
+      "_doc": "v71 Calendar's answer (.calev .calrsvp): a 44 segmented control, a 14 frame and an 11 indicator concentric with its 3 inset; 14/600 labels.",
+      "height": 44,
+      "radius": 14,
+      "inset": 3,
+      "button_radius": 11,
+      "font_size": 14,
+      "font_weight": 600
+    },
+    "facts_card": {
+      "_doc": "v71 Calendar's details (.calev .ldpkv): one raised card (chip and chip edge), 16 round, 0 16 inside, rows at least 48 with a hairline between, the key ink-2 and the value 600.",
+      "radius": 16,
+      "padding_x": 16,
+      "row_height": 48,
+      "value_weight": 600
+    },
+    "structure": {
+      "corner": {
+        "search_width": 180,
+        "search_radius": 10,
+        "search_clear": 22,
+        "search_clear_radius": 6
+      }
+    }
+  }
+}

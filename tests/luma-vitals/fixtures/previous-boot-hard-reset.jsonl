@@ -1,0 +1,8 @@
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Started app-gnome-org.projectluma.Files-4410.scope - Application launched by gnome-shell.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "2104", "SYSLOG_IDENTIFIER": "gnome-shell", "MESSAGE": "Window manager warning: Buffer release timed out"}
+{"_PID": "1011", "SYSLOG_IDENTIFIER": "NetworkManager", "MESSAGE": "<info>  [1789786000.1234] dhcp4 (wlp0s20f3): state changed new lease"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Starting fwupd-refresh.service - Refresh fwupd metadata and update motd...", "MESSAGE_ID": "7d4958e842da4a758f6c1cdc7b36dcc5"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Finished fwupd-refresh.service - Refresh fwupd metadata and update motd.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "2104", "SYSLOG_IDENTIFIER": "gnome-shell", "MESSAGE": "JS ERROR: TypeError: this._actor is null"}
+{"_PID": "0", "SYSLOG_IDENTIFIER": "kernel", "MESSAGE": "i915 0000:00:02.0: [drm] GPU HANG: ecode 12:1:85dffffb, in gnome-shell [2104]"}
+{"_PID": "0", "SYSLOG_IDENTIFIER": "kernel", "MESSAGE": "i915 0000:00:02.0: [drm] Resetting chip for stopped heartbeat on rcs0"}

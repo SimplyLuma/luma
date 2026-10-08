@@ -1,0 +1,23 @@
+schema_version = "0.1"
+
+[application]
+id = "org.projectluma.Leaf"
+name = "Leaf"
+version = "0.1.0"
+entrypoint = "data/org.projectluma.Leaf.in"
+
+[platform]
+ui_contract = "1"
+semantics_contract = "1"
+
+[responsive]
+adaptive = true
+test_widths = [620, 760, 1160, 1440]
+input_modes = ["pointer", "keyboard"]
+presentation_modes = ["windowed"]
+
+[conformance]
+accessibility = true
+keyboard = true
+semantics = true
+reduced_motion = true

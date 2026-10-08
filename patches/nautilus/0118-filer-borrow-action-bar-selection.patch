@@ -1,0 +1,30 @@
+From f3dc78f467618711ae9eaaad9acdc70c91a4be24 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:33:41 +0000
+Subject: [PATCH] Keep action bar selection borrowed from window slot
+
+---
+ src/nautilus-window.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index ef1000d..1a782a7 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -803,9 +803,10 @@ update_action_center (NautilusWindow *window)
+ {
+     if (window->action_center == NULL)
+         return;
+-    g_autolist (NautilusFile) selection = window->active_slot != NULL
+-                                          ? nautilus_window_slot_get_selection (window->active_slot)
+-                                          : NULL;
++    /* The slot owns this list and its NautilusFile references. */
++    GList *selection = window->active_slot != NULL
++                       ? nautilus_window_slot_get_selection (window->active_slot)
++                       : NULL;
+     if (selection != NULL)
+     {
+         NautilusFile *file = NAUTILUS_FILE (selection->data);
+-- 
+2.55.0
+

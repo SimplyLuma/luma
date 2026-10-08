@@ -1,0 +1,59 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shell: restore status island material ownership
+
+The quick-settings actor is not a child inside the separate status material:
+it is the material actor itself.  It therefore carries luma-shelf-material,
+luma-status-cluster, and the effective luma-surface-* class on one actor.
+
+The generic status rules deliberately make an inner status cluster
+transparent, but their descendant selectors do not express this same-actor
+ownership.  Depending on theme cascade and state, the separate status island
+could consequently retain only its stroke while the wallpaper painted through
+its entire body.  The dock did not share the status-cluster class and remained
+filled, leaving the two sibling islands visibly inconsistent.
+
+Name the real owner explicitly in separate mode for all four treatments.
+Connected mode still clears that actor because the common Shelf surface is the
+single material owner there.
+
+---
+ data/theme/luma-shelf.css | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -417,5 +417,31 @@
+ .luma-surface-glass .luma-status-cluster:hover,
+ .luma-surface-glass .luma-status-cluster:active { background-color: transparent; }
++
++/* In separate mode the quick-settings/status actor is the island's material
++ * owner, not a child inside another material. Match those co-located roles so
++ * the material fill cannot be erased by generic panel-button/status rules. */
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-light {
++  background-color: #f1f2f3; }
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-dark {
++  background-color: #21252b; }
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-frost {
++  background-color: rgba(241, 242, 243, 0.73); }
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-glass {
++  background-color: rgba(255, 255, 255, 0.31); }
++
++/* Connected mode owns one material on the outer Shelf surface. */
++.luma-shelf-root.luma-shelf-connected > .luma-shelf-group >
++.luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster {
++  background-color: transparent; }
+ .luma-surface-light .luma-status-hover,
+ .luma-surface-frost .luma-status-hover { background-color: rgba(25,27,31,0.14); }
+ .luma-surface-dark .luma-status-hover,
+-- 
+2.54.0

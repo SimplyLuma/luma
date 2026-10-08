@@ -1,0 +1,22 @@
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1192,19 +1192,6 @@
+ window.luma-files-window .luma-view-controls button:checked image,
+ window.luma-files-window .luma-view-mode-controls button:checked image {
+   color: @luma_content;
+-}
+-
+-/* ADR-043: the selected view is a state, not the toolbar's emphasis. It takes
+- * the shared state slate from libadwaita (0039), in every appearance mode. */
+-window.luma-files-window .luma-view-controls button:checked,
+-window.luma-files-window .luma-view-mode-controls button:checked {
+-  background-color: var(--luma-state);
+-  color: var(--luma-state-ink);
+-}
+-
+-window.luma-files-window .luma-view-controls button:checked image,
+-window.luma-files-window .luma-view-mode-controls button:checked image {
+-  color: var(--luma-state-ink);
+ }
+ 
+ /* Reviewed against the desktop Filer simulator: compact native list rows,

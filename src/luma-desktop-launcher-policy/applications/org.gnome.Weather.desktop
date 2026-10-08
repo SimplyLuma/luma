@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Type=Application
+Name=Weather
+Icon=org.gnome.Weather
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=gapplication org.gnome.Weather launch org.gnome.Weather
+DBusActivatable=true
+StartupNotify=true
+Categories=GNOME;GTK;Utility;Core;

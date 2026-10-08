@@ -1,0 +1,58 @@
+{
+  "app": "darkroom",
+  "title": "Darkroom",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=darkroom",
+    "window": "#w-darkroom",
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "build": {},
+    "pythonpath": ["src/luma-darkroom", "src/luma-platform/appkit"],
+    "module": "luma_darkroom.application",
+    "fixtures": ["tests/fixtures/darkroom-v70.json", "tests/fixtures/darkroom-v70"],
+    "env": {
+      "GI_TYPELIB_PATH": "/opt/conform/lumaui/lib64/girepository-1.0",
+      "LD_LIBRARY_PATH": "/opt/conform/lumaui/lib64",
+      "LUMA_DARKROOM_FIXTURE": "{run}/fixtures/darkroom-v70.json",
+      "XDG_DATA_HOME": "{run}/data",
+      "XDG_STATE_HOME": "{run}/state"
+    }
+  },
+  "states": [
+    {"name": "library", "about": "Terrace shoot with its first photo selected", "spec": [], "gtk": []},
+    {"name": "information", "about": "The selected photo's information pane", "spec": [{"click": "[data-drinfo]"}], "gtk": [{"activate": "dr-info-toggle"}]},
+    {"name": "more", "about": "The title row's More menu", "spec": [{"click": "[data-drmore]"}], "gtk": [{"activate": "dr-more"}]},
+    {"name": "multiselect", "about": "Two selected library photos", "spec": [{"eval": "document.querySelector('[data-drtile=\"1\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,metaKey:true}))"}], "gtk": [{"env": {"LUMA_DARKROOM_STATE": "multiselect"}}]},
+    {"name": "empty_selection", "about": "Library selection cleared and Information closed", "spec": [{"click": "[data-drinfo]"}, {"click": ".drlibh"}], "gtk": [{"env": {"LUMA_DARKROOM_STATE": "empty_selection"}}]},
+    {"name": "edit", "about": "Edit mode, Adjust and Light group", "spec": [{"click": "[data-drmode=\"edit\"]"}], "gtk": [{"activate": "dr-mode-edit"}]},
+    {"name": "filmstrip", "about": "Edit mode with the shoot's photo strip open", "spec": [{"click": "[data-drmode=\"edit\"]"}, {"click": "[data-drleft]"}], "gtk": [{"activate": "dr-mode-edit"}, {"activate": "css:button.lumaui-creative-pill"}]},
+    {"name": "crop", "about": "Edit mode with crop handles and crop inspector", "spec": [{"click": "[data-drmode=\"edit\"]"}, {"click": "[data-drtool=\"crop\"]"}], "gtk": [{"activate": "dr-mode-edit"}, {"activate": "dr-tool-crop"}]},
+    {"name": "looks", "about": "Edit mode with look preview choices", "spec": [{"click": "[data-drmode=\"edit\"]"}, {"click": "[data-drtool=\"looks\"]"}], "gtk": [{"activate": "dr-mode-edit"}, {"activate": "dr-tool-looks"}]},
+    {"name": "masks", "about": "Edit mode with mask choices", "spec": [{"click": "[data-drmode=\"edit\"]"}, {"click": "[data-drtool=\"mask\"]"}], "gtk": [{"activate": "dr-mode-edit"}, {"activate": "dr-tool-mask"}]},
+    {"name": "heal", "about": "Edit mode with healing controls", "spec": [{"click": "[data-drmode=\"edit\"]"}, {"click": "[data-drtool=\"heal\"]"}], "gtk": [{"activate": "dr-mode-edit"}, {"activate": "dr-tool-heal"}]},
+    {"name": "compare", "about": "Edit mode with before and after divider", "spec": [{"click": "[data-drmode=\"edit\"]"}, {"click": "[data-drcmp]"}], "gtk": [{"activate": "dr-mode-edit"}, {"activate": "dr-compare"}]}
+  ],
+  "phone_states": ["library", "information", "edit", "filmstrip", "crop", "looks", "masks", "heal", "compare"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-darkroom > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#dr-top"},
+    {"name": "photo details", "spec": "#dr-info"},
+    {"name": "sidebar", "spec": "#dr-left"},
+    {"name": "inspector", "spec": "#dr-right"},
+    {"name": "action center", "spec": "#dr-bar"},
+    {"name": "photo", "spec": "#dr-pic"},
+    {"name": "main content", "spec": "#dr-body"},
+    {"name": "island", "spec": "#dr-work"}
+  ],
+  "pairs": [
+    {"spec": "#dr-top", "gtk": "dr-top", "name": "title row"},
+    {"spec": "#dr-left", "gtk": "dr-left", "name": "library sidebar or edit filmstrip"},
+    {"spec": "#dr-right", "gtk": "dr-right", "name": "edit inspector"},
+    {"spec": "#dr-info", "gtk": "dr-info", "name": "information details pane"},
+    {"spec": "#dr-bar", "gtk": "dr-bar", "name": "action center"},
+    {"spec": "#dr-body", "gtk": "dr-body", "name": "library or photo stage"},
+    {"spec": "#dr-work", "gtk": "dr-work", "name": "main island"},
+    {"spec": "#dr-pic", "gtk": "dr-pic", "name": "edited photo"}
+  ]
+}

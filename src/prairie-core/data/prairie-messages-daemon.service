@@ -1,0 +1,12 @@
+[Unit]
+Description=Project Luma incoming message service
+After=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/prairie-messages-daemon
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

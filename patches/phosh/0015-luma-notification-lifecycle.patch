@@ -1,0 +1,308 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 20:10:00 -0500
+Subject: [PATCH] notifications: make the shared lifecycle explicit
+
+Record queued, arriving, waiting, seen, acted, dismissed, expired, and replaced
+as native notification state. Banner timeout now rests an ordinary record,
+opening Quick Options marks unresolved records seen without removing them, and
+actions/producer close paths retain the freedesktop close reason contract.
+
+--- a/src/notifications/notification.h
++++ b/src/notifications/notification.h
+@@ -36,7 +36,29 @@
+   PHOSH_NOTIFICATION_REASON_UNDEFINED = 4,
+ } PhoshNotificationReason;
+ 
++/**
++ * PhoshNotificationLifecycleState:
++ * @PHOSH_NOTIFICATION_LIFECYCLE_QUEUED: accepted and waiting for policy
++ * @PHOSH_NOTIFICATION_LIFECYCLE_ARRIVING: visible as a heads-up banner
++ * @PHOSH_NOTIFICATION_LIFECYCLE_WAITING: retained in the collection
++ * @PHOSH_NOTIFICATION_LIFECYCLE_SEEN: collection opened by the user
++ * @PHOSH_NOTIFICATION_LIFECYCLE_ACTED: an action or default target was used
++ * @PHOSH_NOTIFICATION_LIFECYCLE_DISMISSED: explicitly removed by the user
++ * @PHOSH_NOTIFICATION_LIFECYCLE_EXPIRED: withdrawn or expired by policy
++ * @PHOSH_NOTIFICATION_LIFECYCLE_REPLACED: superseded in place
++ */
++typedef enum {
++  PHOSH_NOTIFICATION_LIFECYCLE_QUEUED = 0,
++  PHOSH_NOTIFICATION_LIFECYCLE_ARRIVING,
++  PHOSH_NOTIFICATION_LIFECYCLE_WAITING,
++  PHOSH_NOTIFICATION_LIFECYCLE_SEEN,
++  PHOSH_NOTIFICATION_LIFECYCLE_ACTED,
++  PHOSH_NOTIFICATION_LIFECYCLE_DISMISSED,
++  PHOSH_NOTIFICATION_LIFECYCLE_EXPIRED,
++  PHOSH_NOTIFICATION_LIFECYCLE_REPLACED,
++} PhoshNotificationLifecycleState;
+ 
++
+ #define PHOSH_NOTIFICATION_DEFAULT_ACTION "default"
+ #define PHOSH_NOTIFICATION_DEFAULT_TIMEOUT 5000 /* ms */
+ 
+@@ -102,6 +124,9 @@
+ void                      phosh_notification_set_urgency   (PhoshNotification        *self,
+                                                             PhoshNotificationUrgency  urgency);
+ PhoshNotificationUrgency  phosh_notification_get_urgency   (PhoshNotification        *self);
++void                      phosh_notification_set_lifecycle_state (PhoshNotification   *self,
++                                                                  PhoshNotificationLifecycleState state);
++PhoshNotificationLifecycleState phosh_notification_get_lifecycle_state (PhoshNotification *self);
+ void                      phosh_notification_set_actions   (PhoshNotification        *self,
+                                                             GStrv                     actions);
+ GStrv                     phosh_notification_get_actions   (PhoshNotification        *self);
+--- a/src/notifications/notification.c
++++ b/src/notifications/notification.c
+@@ -40,6 +40,7 @@
+   PROP_CATEGORY,
+   PROP_PROFILE,
+   PROP_TIMESTAMP,
++  PROP_LIFECYCLE_STATE,
+   PROP_SOUND_FILE,
+   LAST_PROP
+ };
+@@ -71,6 +72,7 @@
+   char                     *category;
+   char                     *profile;
+   char                     *sound_file;
++  PhoshNotificationLifecycleState lifecycle_state;
+ 
+   guint                     timeout;
+ } PhoshNotificationPrivate;
+@@ -132,6 +134,9 @@
+     case PROP_SOUND_FILE:
+       phosh_notification_set_sound_file (self, g_value_get_string (value));
+       break;
++    case PROP_LIFECYCLE_STATE:
++      phosh_notification_set_lifecycle_state (self, g_value_get_uint (value));
++      break;
+     default:
+       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+       break;
+@@ -192,6 +197,9 @@
+       break;
+     case PROP_SOUND_FILE:
+       g_value_set_string (value, phosh_notification_get_sound_file (self));
++      break;
++    case PROP_LIFECYCLE_STATE:
++      g_value_set_uint (value, phosh_notification_get_lifecycle_state (self));
+       break;
+     default:
+       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+@@ -367,6 +375,13 @@
+                          NULL,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+ 
++  props[PROP_LIFECYCLE_STATE] =
++    g_param_spec_uint ("lifecycle-state", "", "",
++                       PHOSH_NOTIFICATION_LIFECYCLE_QUEUED,
++                       PHOSH_NOTIFICATION_LIFECYCLE_REPLACED,
++                       PHOSH_NOTIFICATION_LIFECYCLE_QUEUED,
++                       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
++
+   g_object_class_install_properties (object_class, LAST_PROP, props);
+ 
+   /**
+@@ -420,6 +435,7 @@
+   PhoshNotificationPrivate *priv = phosh_notification_get_instance_private (self);
+ 
+   priv->app_name = g_strdup (_("Notification"));
++  priv->lifecycle_state = PHOSH_NOTIFICATION_LIFECYCLE_QUEUED;
+ }
+ 
+ 
+@@ -819,6 +835,38 @@
+   priv = phosh_notification_get_instance_private (self);
+ 
+   return priv->urgency;
++}
++
++
++void
++phosh_notification_set_lifecycle_state (PhoshNotification               *self,
++                                        PhoshNotificationLifecycleState  state)
++{
++  PhoshNotificationPrivate *priv;
++
++  g_return_if_fail (PHOSH_IS_NOTIFICATION (self));
++  g_return_if_fail (state >= PHOSH_NOTIFICATION_LIFECYCLE_QUEUED &&
++                    state <= PHOSH_NOTIFICATION_LIFECYCLE_REPLACED);
++  priv = phosh_notification_get_instance_private (self);
++
++  if (priv->lifecycle_state == state)
++    return;
++
++  priv->lifecycle_state = state;
++  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_LIFECYCLE_STATE]);
++}
++
++
++PhoshNotificationLifecycleState
++phosh_notification_get_lifecycle_state (PhoshNotification *self)
++{
++  PhoshNotificationPrivate *priv;
++
++  g_return_val_if_fail (PHOSH_IS_NOTIFICATION (self),
++                        PHOSH_NOTIFICATION_LIFECYCLE_QUEUED);
++  priv = phosh_notification_get_instance_private (self);
++
++  return priv->lifecycle_state;
+ }
+ 
+ /**
+@@ -1052,6 +1100,8 @@
+ {
+   g_return_if_fail (PHOSH_IS_NOTIFICATION (self));
+ 
++  phosh_notification_set_lifecycle_state (
++    self, PHOSH_NOTIFICATION_LIFECYCLE_ACTED);
+   g_signal_emit (self, signals[SIGNAL_ACTIONED], 0, action);
+ }
+ 
+@@ -1069,6 +1119,9 @@
+ 
+   priv->timeout = 0;
+ 
++  phosh_notification_set_lifecycle_state (
++    self, PHOSH_NOTIFICATION_LIFECYCLE_EXPIRED);
++
+   g_signal_emit (self, signals[SIGNAL_EXPIRED], 0);
+ 
+   return G_SOURCE_REMOVE;
+@@ -1117,6 +1170,15 @@
+   if (priv->timeout != 0) {
+     g_source_remove (priv->timeout);
+     priv->timeout = 0;
++  }
++
++  if (priv->lifecycle_state != PHOSH_NOTIFICATION_LIFECYCLE_ACTED) {
++    PhoshNotificationLifecycleState state =
++      reason == PHOSH_NOTIFICATION_REASON_DISMISSED
++      ? PHOSH_NOTIFICATION_LIFECYCLE_DISMISSED
++      : PHOSH_NOTIFICATION_LIFECYCLE_EXPIRED;
++
++    phosh_notification_set_lifecycle_state (self, state);
+   }
+ 
+   g_signal_emit (self, signals[SIGNAL_CLOSED], 0, reason);
+--- a/src/notifications/notification-banner.c
++++ b/src/notifications/notification-banner.c
+@@ -84,6 +84,9 @@
+ {
+   self->timeout_id = 0;
+ 
++  phosh_notification_set_lifecycle_state (
++    self->notification, PHOSH_NOTIFICATION_LIFECYCLE_WAITING);
++
+   /* Resting is presentation state, not protocol expiry.  Fade only the layer
+    * surface and leave the record in PhoshNotifyManager's collection. */
+   if (gtk_widget_get_mapped (GTK_WIDGET (self))) {
+--- a/src/notifications/notify-manager.h
++++ b/src/notifications/notify-manager.h
+@@ -34,6 +34,7 @@
+                                                                       PhoshNotificationReason  reason);
+ void                   phosh_notify_manager_close_all_notifications  (PhoshNotifyManager      *self,
+                                                                       PhoshNotificationReason  reaseon);
++void                   phosh_notify_manager_mark_all_seen            (PhoshNotifyManager      *self);
+ gboolean               phosh_notify_manager_get_show_notification_banner (PhoshNotifyManager *self,
+                          PhoshNotification  *notification);
+ 
+--- a/src/notifications/notify-manager.c
++++ b/src/notifications/notify-manager.c
+@@ -527,7 +527,12 @@
+   escaped_body = phosh_util_escape_markup (body, TRUE);
+ 
+   if (notification) {
++    PhoshNotificationLifecycleState previous_state =
++      phosh_notification_get_lifecycle_state (notification);
++
+     id = replaces_id;
++    phosh_notification_set_lifecycle_state (
++      notification, PHOSH_NOTIFICATION_LIFECYCLE_REPLACED);
+ 
+     g_object_set (notification,
+                   "app_name", app_name,
+@@ -541,6 +546,13 @@
+                   "timestamp", NULL,
+                   "sound-file", sound_file,
+                   NULL);
++    phosh_notification_set_lifecycle_state (
++      notification,
++      previous_state == PHOSH_NOTIFICATION_LIFECYCLE_SEEN
++      ? PHOSH_NOTIFICATION_LIFECYCLE_SEEN
++      : previous_state == PHOSH_NOTIFICATION_LIFECYCLE_ARRIVING
++        ? PHOSH_NOTIFICATION_LIFECYCLE_ARRIVING
++        : PHOSH_NOTIFICATION_LIFECYCLE_WAITING);
+   } else {
+     g_autoptr (PhoshDBusNotification) dbus_notification = NULL;
+ 
+@@ -971,6 +983,34 @@
+       if (phosh_notification_get_urgency (notification) !=
+           PHOSH_NOTIFICATION_URGENCY_CRITICAL)
+         phosh_notification_close (notification, reason);
++    }
++  }
++}
++
++
++void
++phosh_notify_manager_mark_all_seen (PhoshNotifyManager *self)
++{
++  GListModel *source_list;
++
++  g_return_if_fail (PHOSH_IS_NOTIFY_MANAGER (self));
++  source_list = G_LIST_MODEL (phosh_notify_manager_get_list (self));
++
++  for (guint i = 0; i < g_list_model_get_n_items (source_list); i++) {
++    g_autoptr (GListModel) notifications =
++      G_LIST_MODEL (g_list_model_get_object (source_list, i));
++
++    for (guint j = 0; j < g_list_model_get_n_items (notifications); j++) {
++      g_autoptr (PhoshNotification) notification =
++        PHOSH_NOTIFICATION (g_list_model_get_object (notifications, j));
++      PhoshNotificationLifecycleState state =
++        phosh_notification_get_lifecycle_state (notification);
++
++      if (state == PHOSH_NOTIFICATION_LIFECYCLE_QUEUED ||
++          state == PHOSH_NOTIFICATION_LIFECYCLE_ARRIVING ||
++          state == PHOSH_NOTIFICATION_LIFECYCLE_WAITING)
++        phosh_notification_set_lifecycle_state (
++          notification, PHOSH_NOTIFICATION_LIFECYCLE_SEEN);
+     }
+   }
+ }
+--- a/src/shell.c
++++ b/src/shell.c
+@@ -320,8 +320,10 @@
+   priv = phosh_shell_get_instance_private (self);
+ 
+   state = phosh_top_panel_get_state (PHOSH_TOP_PANEL (priv->top_panel));
+-  if (state == PHOSH_TOP_PANEL_STATE_UNFOLDED)
++  if (state == PHOSH_TOP_PANEL_STATE_UNFOLDED) {
++    phosh_notify_manager_mark_all_seen (phosh_notify_manager_get_default ());
+     clear_notification_banners (self);
++  }
+   phosh_shell_set_state (self, PHOSH_STATE_SETTINGS, state == PHOSH_TOP_PANEL_STATE_UNFOLDED);
+ }
+ 
+@@ -961,6 +963,9 @@
+       phosh_top_panel_get_state (PHOSH_TOP_PANEL (priv->top_panel)) == PHOSH_TOP_PANEL_STATE_FOLDED &&
+       !priv->locked && priv->notification_banners->len < 3) {
+     GtkWidget *banner = phosh_notification_banner_new (notification);
++
++    phosh_notification_set_lifecycle_state (
++      notification, PHOSH_NOTIFICATION_LIFECYCLE_ARRIVING);
+ 
+     g_ptr_array_insert (priv->notification_banners, 0, banner);
+     g_signal_connect (banner, "destroy",
+@@ -969,6 +974,9 @@
+       phosh_notification_banner_set_stack_position (
+         PHOSH_NOTIFICATION_BANNER (g_ptr_array_index (priv->notification_banners, i)), i);
+     gtk_widget_set_visible (banner, TRUE);
++  } else {
++    phosh_notification_set_lifecycle_state (
++      notification, PHOSH_NOTIFICATION_LIFECYCLE_WAITING);
+   }
+ }
+ 
+-- 
+2.54.0
+

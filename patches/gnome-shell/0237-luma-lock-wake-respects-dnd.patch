@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: a notification does not wake the locked screen in Do
+ Not Disturb
+
+The lock screen woke the display for every new notification its source
+may show there, even with Do Not Disturb on. Check org.gnome.desktop.notifications
+show-banners first, as the banners themselves do.
+
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index e68169b..ddb7ca5 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -60,6 +60,11 @@ class PosterNotifications extends St.BoxLayout {
+         this._rebuild();
+     }
+ 
++    _bannersShown() {
++        this._notificationSettings ??= new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
++        return this._notificationSettings.get_boolean('show-banners');
++    }
++
+     _watchSource(source) {
+         if (this._sources.has(source))
+             return;
+@@ -71,7 +76,9 @@ class PosterNotifications extends St.BoxLayout {
+             'notification-added', (_source, notification) => {
+                 pending.add(notification);
+                 this._rebuild();
+-                if (source.policy.showInLockScreen)
++                // Do Not Disturb holds banners back, and it holds the screen
++                // dark too: only wake it while banners are shown.
++                if (source.policy.showInLockScreen && this._bannersShown())
+                     this._wakeUp();
+             },
+             'notification-removed', (_source, notification) => {

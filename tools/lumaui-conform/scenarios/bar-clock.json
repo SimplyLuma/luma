@@ -1,0 +1,53 @@
+{
+  "app": "bar-clock",
+  "title": "Modes in the bar against Clock's places",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=clock",
+    "window": "#w-clock",
+    "exclude": [
+      "#w-clock *:not(:has(#cb-bar)):not(#cb-bar):not(#cb-bar *)"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "clock",
+      "LUMAUI_BAR_HOST": "8,46,1164,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774"
+    }
+  },
+  "states": [
+    {
+      "name": "places",
+      "about": "World, Alarms, Stopwatch, Timer at the start of the bar",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "places"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "places"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#cb-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#cb-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

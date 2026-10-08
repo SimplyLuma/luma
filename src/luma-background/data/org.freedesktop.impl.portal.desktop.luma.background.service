@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.luma.background
+Exec=/usr/libexec/luma-background-service
+SystemdService=luma-background.service

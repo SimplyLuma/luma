@@ -1,0 +1,89 @@
+From 4f75eff99e6930d9f6505f9d1424bf85ea7eb8b9 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 18:45:55 -0400
+Subject: [PATCH] stylesheet: derive the dark named palette from the Luma
+ design tokens
+
+Mirror the light design-system patch for dark: window, view, header bar,
+sidebar, card, dialog, popover and thumbnail named colors now come from the
+shared dark tokens so generic dark applications paint on the same surfaces as
+the Luma frame instead of stock Adwaita greys.
+---
+ src/stylesheet/_colors.scss | 40 ++++++++++++++++++-------------------
+ 1 file changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/src/stylesheet/_colors.scss b/src/stylesheet/_colors.scss
+index 27d8bf9..e929825 100644
+--- a/src/stylesheet/_colors.scss
++++ b/src/stylesheet/_colors.scss
+@@ -122,50 +122,50 @@
+   @define-color error_color oklab(from @error_bg_color max(l, 0.85) a b);
+ 
+   // Window
+-  @define-color window_bg_color #222226;
+-  @define-color window_fg_color white;
++  @define-color window_bg_color #21252b;
++  @define-color window_fg_color #e4e8ea;
+ 
+   // Views - e.g. text view or tree view
+-  @define-color view_bg_color #1d1d20;
+-  @define-color view_fg_color white;
++  @define-color view_bg_color #2a2e34;
++  @define-color view_fg_color #e4e8ea;
+ 
+   // Header bar, search bar, tab bar
+-  @define-color headerbar_bg_color #2e2e32;
+-  @define-color headerbar_fg_color white;
++  @define-color headerbar_bg_color #21252b;
++  @define-color headerbar_fg_color #e4e8ea;
+   @define-color headerbar_border_color white;
+   @define-color headerbar_shade_color RGB(0 0 6 / 36%);
+   @define-color headerbar_darker_shade_color RGB(0 0 12 / 90%);
+ 
+   // Split pane views
+-  @define-color sidebar_bg_color #2e2e32;
+-  @define-color sidebar_fg_color white;
+-  @define-color sidebar_backdrop_color #28282c;
++  @define-color sidebar_bg_color #21252b;
++  @define-color sidebar_fg_color #e4e8ea;
++  @define-color sidebar_backdrop_color #21252b;
+   @define-color sidebar_shade_color RGB(0 0 6 / 25%);
+   @define-color sidebar_border_color RGB(0 0 6 / 36%);
+ 
+-  @define-color secondary_sidebar_bg_color #28282c;
+-  @define-color secondary_sidebar_fg_color white;
+-  @define-color secondary_sidebar_backdrop_color #252529;
++  @define-color secondary_sidebar_bg_color #252a30;
++  @define-color secondary_sidebar_fg_color #e4e8ea;
++  @define-color secondary_sidebar_backdrop_color #252a30;
+   @define-color secondary_sidebar_shade_color RGB(0 0 6 / 25%);
+   @define-color secondary_sidebar_border_color RGB(0 0 6 / 36%);
+ 
+   // Cards, boxed lists
+-  @define-color card_bg_color RGB(255 255 255 / 8%);
+-  @define-color card_fg_color white;
++  @define-color card_bg_color RGB(255 255 255 / 3.5%);
++  @define-color card_fg_color #e4e8ea;
+   @define-color card_shade_color RGB(0 0 6 / 36%);
+ 
+   // Dialogs
+-  @define-color dialog_bg_color #36363a;
+-  @define-color dialog_fg_color white;
++  @define-color dialog_bg_color #2a2e34;
++  @define-color dialog_fg_color #e4e8ea;
+ 
+   // Popovers
+-  @define-color popover_bg_color #36363a;
+-  @define-color popover_fg_color white;
++  @define-color popover_bg_color #252a30;
++  @define-color popover_fg_color #e4e8ea;
+   @define-color popover_shade_color RGB(0 0 6 / 25%);
+ 
+   // Thumbnails
+-  @define-color thumbnail_bg_color #39393d;
+-  @define-color thumbnail_fg_color white;
++  @define-color thumbnail_bg_color #30363d;
++  @define-color thumbnail_fg_color #e4e8ea;
+ 
+   // Miscellaneous
+   @define-color shade_color RGB(0 0 6 / 25%);

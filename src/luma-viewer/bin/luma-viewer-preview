@@ -1,0 +1,20 @@
+#!/bin/sh
+# Run the isolated scratch preview, beside the installed Viewer.
+set -eu
+viewer_preview_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ ! -f "$viewer_preview_root/python/luma_viewer/application.py" ]; then
+    echo 'Viewer preview has not been staged in its scratch prefix.' >&2
+    exit 2
+fi
+unset LUMA_VIEWER_FIXTURE LUMA_VIEWER_STATE LUMA_VIEWER_SELECTED LUMA_VIEWER_MODE
+export LUMA_VIEWER_PREVIEW=1
+export LUMA_VIEWER_PREVIEW_STATE_ROOT="$viewer_preview_root/state"
+export PYTHONPATH="$viewer_preview_root/python"
+export LUMA_APPKIT_ICON_PATH="$viewer_preview_root/python/icons"
+export LUMA_VIEWER_STYLE_PATH="$viewer_preview_root/share/luma-viewer/viewer.css"
+export LUMA_VIEWER_ICON_PATH="$viewer_preview_root/share/luma-viewer/icons"
+if [ -d "$viewer_preview_root/native/lib" ] && [ -d "$viewer_preview_root/native/typelib" ]; then
+    export LD_LIBRARY_PATH="$viewer_preview_root/native/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export GI_TYPELIB_PATH="$viewer_preview_root/native/typelib${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+fi
+exec python3 -m luma_viewer.application "$@"

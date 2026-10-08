@@ -1,0 +1,104 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: MPL-2.0
+#
+# Give /etc/plymouth/plymouthd.conf back to the administrator on machines where
+# Luma once used it, without ever overriding an administrator.
+#
+# Luma selects its boot splash in /usr/share/plymouth/plymouthd.defaults
+# (Luma's plymouth package), and /etc/plymouth/plymouthd.conf is a template
+# with no settings (ADR-045). Earlier releases put Theme= lines in /etc, where
+# OSTree's three-way merge keeps any file it considers edited, and a
+# client-side plymouth override replaced the image's copy with Fedora's stock
+# template. This compares the file with every file Luma, or its plymouth, has
+# put there: an exact match is replaced with the current template, so the
+# /usr default applies; anything else is somebody's choice and is left alone.
+# Package scriptlets cannot do this on an OSTree system, where they never see
+# the machine's real /etc.
+#
+# Each default is applied at most once. The marker beside the file records the
+# default this machine has been reconciled with, so an administrator who later
+# picks an earlier Luma setting again keeps it; the next time Luma's default
+# changes, the file is looked at once more.
+#
+# The running boot has already drawn its splash from the initramfs. The
+# luma-boot-splash dracut module asks this helper (--check) when an initramfs
+# is built, so an initramfs regenerated locally before this runs already
+# carries the setting this boot is about to write.
+#
+# usage: luma-boot-splash-migrate          apply, at most once per default
+#        luma-boot-splash-migrate --check  exit 0 if the file would be replaced
+
+set -euo pipefail
+
+config=${LUMA_PLYMOUTHD_CONF:-/etc/plymouth/plymouthd.conf}
+default=${LUMA_PLYMOUTHD_DEFAULT:-/usr/share/luma/boot/plymouthd.conf}
+previous=${LUMA_PLYMOUTHD_PREVIOUS:-/usr/share/luma/boot/plymouthd.conf.previous}
+marker=${LUMA_PLYMOUTHD_MARKER:-$(dirname -- "$config")/.luma-boot-splash-default}
+
+check=0
+case ${1:-} in
+  '') ;;
+  --check) check=1 ;;
+  *) printf 'usage: %s [--check]\n' "${0##*/}" >&2; exit 2 ;;
+esac
+
+digest() {
+  sha256sum -- "$1" | cut -d ' ' -f 1
+}
+
+# In --check mode: 0 means "would replace", 1 means "would leave it".
+leave() {
+  ((check)) && exit 1
+  exit 0
+}
+
+# Remember that this default has been dealt with. Only a real file in a real
+# directory is recorded; nothing is created where there was nothing.
+remember() {
+  local staged
+  staged=$(mktemp -- "$(dirname -- "$marker")/.luma-boot-splash.XXXXXX")
+  printf '%s\n' "$default_digest" >"$staged"
+  chmod 0644 "$staged"
+  chcon --reference="$config" -- "$staged" 2>/dev/null || :
+  mv -f -- "$staged" "$marker"
+}
+
+# A missing or linked file, or a missing default, is not a shipped setting.
+[[ -f $config && ! -L $config && -f $default && -f $previous ]] || leave
+
+default_digest=$(digest "$default")
+if [[ -f $marker && ! -L $marker && $(head -n 1 -- "$marker") == "$default_digest" ]]; then
+  leave
+fi
+
+current=$(digest "$config")
+if [[ $current == "$default_digest" ]]; then
+  ((check)) && exit 1
+  remember
+  exit 0
+fi
+
+if ! grep -Eq "^${current}([[:space:]]|\$)" "$previous"; then
+  ((check)) && exit 1
+  printf '%s is not a setting Luma shipped; leaving it unchanged\n' "$config"
+  remember
+  exit 0
+fi
+
+((check)) && exit 0
+
+directory=$(dirname -- "$config")
+staged=$(mktemp -- "$directory/.plymouthd.conf.luma.XXXXXX")
+trap 'rm -f -- "$staged"' EXIT
+cat -- "$default" >"$staged"
+chmod 0644 "$staged"
+chown --reference="$config" -- "$staged"
+# Label the new file as the one it replaces before it takes that name.
+chcon --reference="$config" -- "$staged" 2>/dev/null || :
+sync -- "$staged"
+mv -f -- "$staged" "$config"
+trap - EXIT
+remember
+sync -- "$directory"
+printf 'Updated %s from an earlier Luma default (%s) to the current one\n' \
+  "$config" "$current"

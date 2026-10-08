@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Cloudflare Worker for dl.simplyluma.com (ADR-028 sections 9 and 12).
+# Deploy: npx wrangler deploy (see docs/depot/publishing-runbook.md).
+name = "luma-depot-dl"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+routes = [{ pattern = "dl.simplyluma.com", custom_domain = true }]
+
+[vars]
+# Public, read-only object storage the remote is synced to.
+ORIGIN_URL = "https://luma-depot.nyc3.digitaloceanspaces.com"
+HUB_COUNTER_URL = "https://hub.simplyluma.com/api/depot/counters"
+
+# Secret, set with: npx wrangler secret put DEPOT_COUNTER_SECRET
+# (the same value Hub checks on POST /api/depot/counters)

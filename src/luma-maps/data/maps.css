@@ -1,0 +1,136 @@
+/* Maps-only cartographic content. LumaUI owns all chrome around it.
+   These labels and marks are geographic data drawn over the v70 fixture scene;
+   the live scene remains a Shumate map with its source attribution. */
+.mp-fixture-map .mp-poi-icon { color: @luma_danger_fill_ink; }
+.mp-result-pin {
+  min-width: 34px; min-height: 34px; padding: 0;
+  border-radius: 999px; background: @luma_float_surface;
+  box-shadow: inset 0 0 0 1px @luma_float_ring,
+              0 2px 6px @luma_float_shadow_near;
+}
+.mp-result-pin image { color: @luma_ink; }
+
+/* The photo and four actions belong to Maps' place card (kit request 02: APP). */
+.mp-place-card {
+  background: @luma_float_surface;
+  border-radius: 20px;
+  box-shadow: inset 0 0 0 1px @luma_float_ring,
+              0 12px 32px -8px @luma_float_shadow,
+              0 2px 6px @luma_float_shadow_near;
+}
+.mp-place-close {
+  min-width: 30px; min-height: 30px; border-radius: 999px;
+  background: alpha(@luma_media_shadow, .45); color: @luma_on_media_ink;
+}
+.mp-place-body { padding: 14px 16px 6px; }
+.mp-place-title { margin-bottom: 3px; }
+.mp-place-meta { border-spacing: 3px; }
+.mp-place-meta label { color: @luma_ink_secondary; }
+.mp-place-meta label.mp-place-rating { color: @luma_warning_ink; }
+.mp-place-hours { margin-top: 4px; }
+.mp-place-actions { margin-top: 14px; margin-bottom: 16px; border-spacing: 6px; }
+.mp-place-action {
+  min-height: 56px; padding: 0 2px; border-radius: 14px;
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_chip_ring,
+              0 2px 5px -3px @luma_chip_shadow;
+}
+.mp-place-action label { color: @luma_ink; }
+.mp-place-action box { border-spacing: 4px; }
+.mp-place-action image { -gtk-icon-size: 17px; }
+.mp-place-action.lit image { color: @luma_warning_ink; }
+.mp-place-fact {
+  padding: 10px 0; border-top: 1px solid @luma_hairline;
+  border-spacing: 2px;
+}
+.mp-place-card.drawer {
+  padding-top: 12px;
+  padding-bottom: 3px;
+  border-radius: var(--lumaui-drawer-radius) var(--lumaui-drawer-radius) 0 0;
+}
+.mp-place-card.drawer .mp-place-body { padding-bottom: 0; }
+.mp-place-card.drawer .mp-place-actions { margin-bottom: 15px; }
+
+/* Maps-only route card, with shared modes, actions and details steps. */
+.mp-route-card {
+  background: @luma_float_surface; border-radius: 20px;
+  box-shadow: inset 0 0 0 1px @luma_float_ring,
+              0 12px 32px -8px @luma_float_shadow,
+              0 2px 6px @luma_float_shadow_near;
+}
+.mp-route-card.drawer {
+  padding-top: 10px;
+  padding-bottom: 3px;
+  border-radius: var(--lumaui-drawer-radius) var(--lumaui-drawer-radius) 0 0;
+}
+.mp-route-header { padding: 12px 10px 6px; border-spacing: 8px; }
+.mp-route-modes { margin: 6px 12px; border-spacing: 4px; }
+.mp-route-mode {
+  min-width: 0; padding: 8px 0; border: none;
+  border-radius: var(--lumaui-modes-radius);
+  background: transparent; box-shadow: none;
+}
+.mp-route-mode box { border-spacing: 3px; }
+.mp-route-mode label, .mp-route-mode image { color: @luma_ink_secondary; }
+.mp-route-mode.on {
+  background: @luma_chip;
+  box-shadow: inset 0 0 0 1px @luma_chip_ring,
+              0 2px 5px -3px @luma_chip_shadow;
+}
+.mp-route-mode.on label, .mp-route-mode.on image { color: @luma_ink; }
+.mp-route-summary {
+  margin: 2px 12px 8px; padding: 12px 12px 12px 14px; border-spacing: 10px;
+  border-radius: 14px; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring;
+}
+.mp-route-card.drawer .mp-route-summary { margin-top: 1px; }
+.mp-route-minutes { color: @luma_ink; }
+.mp-route-via { color: @luma_ink_secondary; }
+.mp-route-eta { color: @luma_green; }
+.mp-route-steps { margin: 0 12px 14px; }
+.mp-route-card.drawer .mp-route-steps { margin-top: 0; margin-bottom: 7px; }
+.mp-route-step {
+  min-height: 34px; padding: 0 4px; border-spacing: 10px;
+  border-bottom: 1px solid @luma_hairline;
+}
+.mp-route-card.drawer .mp-route-step { min-height: 35px; }
+.mp-route-step.last { border-bottom: none; }
+.mp-route-step-icon { color: @luma_muted; }
+.mp-guidance-card {
+  border-radius: var(--lumaui-dialog-radius); background: oklch(0.45 0.12 150);
+  color: @luma_well_on_ink;
+  box-shadow: 0 16px 40px -10px @luma_float_shadow;
+}
+.mp-guidance-row { padding: 14px 18px; border-spacing: 14px; }
+.mp-guidance-icon { color: @luma_well_on_ink; }
+.mp-guidance-card label { color: @luma_well_on_ink; }
+.mp-guidance-card label.mp-guidance-next { color: alpha(@luma_well_on_ink, .8); }
+
+/* Guides (v71): Maps' own photo surfaces. */
+.mp-guide-strip { margin: 0 -2px; }
+.mp-guide-card {
+  padding: 0; min-width: 150px; min-height: 104px; margin: 0 8px 6px 2px;
+  border-radius: 16px; border: none; background: @luma_well;
+}
+.mp-guide-shade { background-image: linear-gradient(to bottom, transparent 35%, alpha(@luma_media_shadow, .7)); }
+.mp-guide-words { padding: 10px; border-spacing: 1px; }
+.mp-guide-words label { color: @luma_on_media_ink; }
+.mp-guide-card .mp-guide-words label.caption { color: alpha(@luma_on_media_ink, .85); }
+.mp-guide-header { border-radius: 18px; }
+.mp-guide-header .mp-guide-words { padding: 12px; border-spacing: 4px; }
+.mp-guide-by { border-spacing: 6px; }
+.mp-guide-number {
+  border-radius: 999px; background: @luma_danger_fill; color: @luma_danger_fill_ink;
+}
+.mp-guide-note { margin: 2px 6px 4px; color: @luma_ink_secondary; }
+.mp-hours-open { color: @luma_green; }
+.mp-guide-card .mp-guide-title { font-size: 13.5px; }
+.mp-guide-header .mp-guide-title { font-size: 19px; }
+.mp-guide-number { font-size: 13px; }
+.mp-guide-actions { margin-top: 6px; border-spacing: 6px; }
+.mp-guide-actions button { min-height: 44px; border-radius: 16px; }
+.mp-guide-note { margin-bottom: 4px; }
+.mp-place-panel .mp-place-hours, .mp-place-panel .mp-place-meta label { color: @luma_ink_secondary; }
+.mp-place-panel .mp-place-hours.mp-hours-open { color: @luma_green; }
+.mp-place-panel .mp-place-rating { color: @luma_warning_ink; }
+.mp-place-photo { border-radius: 20px; }

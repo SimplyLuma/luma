@@ -1,0 +1,410 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# atlas-viewer-fallback: the screen shown when Atlas's own screen cannot be.
+#
+#   atlas-viewer-fallback --reason no-frame|crashed|preview [--detail TEXT]
+#
+# atlas-viewer runs this as root on the installer's Wayland display when the
+# web viewer drew nothing in software and in safe mode, or stopped on a crash.
+# It is GTK 3 with no web engine and no GPU use, so it draws where Chromium
+# could not. It never touches the drives being installed to: "Save the logs"
+# runs atlas-media, which writes only to a removable drive. Exit status 10
+# asks atlas-viewer to start the viewer again.
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+from string import Template
+
+FONT_DIR = "/usr/share/cockpit/anaconda-webui/fonts"
+LIBEXEC = "/usr/libexec/luma-installer-atlas"
+TRY_AGAIN = 10
+
+LOGS = (
+    ("This screen", "/tmp/luma-atlas-viewer.log"),
+    ("Installer", "/tmp/anaconda.log"),
+    ("Programs", "/tmp/program.log"),
+    ("Web interface", "/tmp/anaconda-webui.log"),
+    ("Everything else", "journalctl -b"),
+)
+
+WORDS = {
+    "no-frame": (
+        "The installer screen didn’t start.",
+        "Luma’s installer is running, but this computer could not draw its screen. "
+        "Nothing has been written to your drives.",
+        "Try again",
+    ),
+    "crashed": (
+        "The installer screen closed.",
+        "It stopped unexpectedly. If Luma was already being installed, that keeps "
+        "running: let it finish before you restart the computer.",
+        "Open it again",
+    ),
+    "preview": (
+        "The installer screen didn’t start.",
+        "This is the screen Luma shows when that happens. It was asked for with the "
+        "boot option inst.luma.viewer=fallback, and nothing is wrong.",
+        "Start the installer",
+    ),
+}
+
+PALETTES = {
+    "paper": {
+        "bg": "#f1f2f3", "ink": "#283038", "muted": "rgba(40, 48, 56, 0.72)",
+        "faint": "rgba(40, 48, 56, 0.5)", "hair": "rgba(40, 48, 56, 0.1)", "panel": "#ffffff",
+        "tile": "rgba(40, 48, 56, 0.045)", "tile_hi": "rgba(40, 48, 56, 0.075)",
+        "tile_top": "rgba(40, 48, 56, 0.12)", "fill": "#283038", "fill_hi": "#3a444e",
+        "fill_ink": "#ffffff", "focus": "rgba(40, 48, 56, 0.46)", "shadow": "rgba(12, 16, 20, 0.22)",
+    },
+    "ink": {
+        "bg": "#14171a", "ink": "#eff1f3", "muted": "rgba(239, 241, 243, 0.62)",
+        "faint": "rgba(239, 241, 243, 0.42)", "hair": "rgba(255, 255, 255, 0.08)", "panel": "#1b1f24",
+        "tile": "rgba(255, 255, 255, 0.05)", "tile_hi": "rgba(255, 255, 255, 0.09)",
+        "tile_top": "rgba(255, 255, 255, 0.14)", "fill": "#eff1f3", "fill_hi": "#ffffff",
+        "fill_ink": "#14171a", "focus": "rgba(239, 241, 243, 0.5)", "shadow": "rgba(0, 0, 0, 0.6)",
+    },
+    "slate": {
+        "bg": "#2c3239", "ink": "#eff1f3", "muted": "rgba(239, 241, 243, 0.62)",
+        "faint": "rgba(239, 241, 243, 0.42)", "hair": "rgba(255, 255, 255, 0.09)", "panel": "#20262c",
+        "tile": "rgba(255, 255, 255, 0.06)", "tile_hi": "rgba(255, 255, 255, 0.1)",
+        "tile_top": "rgba(255, 255, 255, 0.15)", "fill": "#eff1f3", "fill_hi": "#ffffff",
+        "fill_ink": "#2c3239", "focus": "rgba(239, 241, 243, 0.5)", "shadow": "rgba(0, 0, 0, 0.5)",
+    },
+}
+
+CSS = Template("""
+window.atlas, window.atlas scrolledwindow, window.atlas viewport {
+    background-color: $bg;
+    background-image: none;
+}
+window.atlas label {
+    color: $ink;
+    font-family: Figtree, "Noto Sans", Cantarell, sans-serif;
+}
+window.atlas label.muted { color: $muted; }
+window.atlas label.faint { color: $faint; }
+window.atlas label.mono { font-family: "Noto Sans Mono", "DejaVu Sans Mono", "Liberation Mono", monospace; }
+window.atlas .tile {
+    background-color: $tile;
+    border-radius: 10px;
+}
+window.atlas button {
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+    border-radius: 999px;
+    min-height: 44px;
+    padding: 0 22px;
+    outline-color: $focus;
+    outline-style: solid;
+    outline-width: 2px;
+    outline-offset: 2px;
+    -gtk-outline-radius: 999px;
+}
+window.atlas button label { font-weight: 600; font-size: 14px; }
+window.atlas button.primary { background-color: $fill; }
+window.atlas button.primary label { color: $fill_ink; }
+window.atlas button.primary:hover { background-color: $fill_hi; }
+window.atlas button.quiet { background-color: $tile_hi; }
+window.atlas button.quiet:hover { background-color: $tile_top; }
+window.atlas button:disabled { opacity: 0.55; }
+window.atlas label selection { background-color: $tile_top; color: $ink; }
+""")
+
+# The same without what older GTK 3 releases may not parse.
+CSS_PLAIN = Template("""
+window.atlas, window.atlas scrolledwindow, window.atlas viewport { background-color: $bg; background-image: none; }
+window.atlas label { color: $ink; }
+window.atlas label.muted { color: $muted; }
+window.atlas label.faint { color: $faint; }
+window.atlas .tile { background-color: $tile; border-radius: 10px; }
+window.atlas button { background-image: none; border: none; box-shadow: none; border-radius: 999px; min-height: 44px; }
+window.atlas button.primary { background-color: $fill; }
+window.atlas button.primary label { color: $fill_ink; }
+window.atlas button.quiet { background-color: $tile_hi; }
+""")
+
+
+def use_atlas_font():
+    """Let fontconfig find Atlas's Figtree, which lives outside its font path."""
+    if "FONTCONFIG_FILE" in os.environ or not os.path.isdir(FONT_DIR):
+        return
+    try:
+        directory = tempfile.mkdtemp(prefix="atlas-fallback-fonts.")
+        path = os.path.join(directory, "fonts.conf")
+        with open(path, "w", encoding="utf-8") as conf:
+            conf.write(
+                '<?xml version="1.0"?>\n'
+                '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+                "<fontconfig>\n"
+                '  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>\n'
+                f"  <dir>{FONT_DIR}</dir>\n"
+                f"  <cachedir>{directory}/cache</cachedir>\n"
+                "</fontconfig>\n"
+            )
+        os.environ["FONTCONFIG_FILE"] = path
+    except OSError as error:
+        print(f"atlas-viewer-fallback: Figtree is not available: {error}", file=sys.stderr)
+
+
+use_atlas_font()
+
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+
+
+def boot_words():
+    try:
+        with open("/proc/cmdline", encoding="utf-8") as cmdline:
+            return cmdline.read().split()
+    except OSError:
+        return []
+
+
+def surface(words):
+    for word in words:
+        if word.startswith("inst.luma.surface="):
+            value = word.split("=", 1)[1]
+            if value == "ink":
+                return "ink"
+            if value in ("slate", "contrast"):
+                return "slate"
+    return "paper"
+
+
+def addresses():
+    try:
+        output = subprocess.run(["ip", "-4", "-o", "addr", "show", "scope", "global"],
+                                capture_output=True, text=True, timeout=5, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    found = []
+    for line in output.splitlines():
+        parts = line.split()
+        if "inet" in parts and parts.index("inet") + 1 < len(parts):
+            found.append(parts[parts.index("inet") + 1].split("/")[0])
+    return found
+
+
+def escape(text):
+    return GLib.markup_escape_text(text)
+
+
+def label(markup, *classes, selectable=False, width=62):
+    widget = Gtk.Label()
+    widget.set_markup(markup)
+    widget.set_xalign(0)
+    widget.set_line_wrap(True)
+    widget.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+    widget.set_max_width_chars(width)
+    widget.set_selectable(selectable)
+    widget.set_can_focus(False)
+    for name in classes:
+        widget.get_style_context().add_class(name)
+    return widget
+
+
+class Fallback:
+    def __init__(self, reason, detail, words):
+        self.code = 0
+        title, lede, again = WORDS[reason]
+
+        self.window = Gtk.Window(title="Install Luma")
+        self.window.get_style_context().add_class("atlas")
+        self.window.set_default_size(1280, 800)
+        self.window.connect("delete-event", self.on_close)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.window.add(scroller)
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outer.set_halign(Gtk.Align.CENTER)
+        outer.set_valign(Gtk.Align.CENTER)
+        outer.set_margin_top(64)
+        outer.set_margin_bottom(64)
+        outer.set_margin_start(32)
+        outer.set_margin_end(32)
+        scroller.add(outer)
+
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        column.set_size_request(640, -1)
+        outer.pack_start(column, False, False, 0)
+
+        kicker = label('<span size="8250" weight="700" letter_spacing="1600">LUMA INSTALLER</span>', "muted")
+        kicker.set_margin_bottom(20)
+        column.pack_start(kicker, False, False, 0)
+
+        heading = label(f'<span size="32000" weight="600" letter_spacing="-700">{escape(title)}</span>', width=26)
+        heading.set_margin_bottom(18)
+        column.pack_start(heading, False, False, 0)
+
+        intro = label(f'<span size="12000">{escape(lede)}</span>', "muted", width=58)
+        intro.set_margin_bottom(32)
+        column.pack_start(intro, False, False, 0)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        column.pack_start(actions, False, False, 0)
+
+        self.again_button = self.button(again, "primary", self.on_again)
+        self.save_button = self.button("Save the logs", "quiet", self.on_save)
+        restart_button = self.button("Restart the computer", "quiet", self.on_restart)
+        actions.pack_start(self.again_button, False, False, 0)
+        actions.pack_start(self.save_button, False, False, 0)
+        actions.pack_end(restart_button, False, False, 0)
+
+        self.status = label("", "muted")
+        self.status.set_no_show_all(True)
+        self.status.set_margin_top(14)
+        column.pack_start(self.status, False, False, 0)
+
+        help_heading = label('<span size="10000" weight="600">If someone is helping you</span>')
+        help_heading.set_margin_top(36)
+        help_heading.set_margin_bottom(6)
+        column.pack_start(help_heading, False, False, 0)
+
+        help_text = label(
+            '<span size="10500">These logs say what happened. Press Ctrl+Alt+F2 for a terminal '
+            "where they can be read, and Ctrl+Alt+F6 to come back here.</span>", "muted")
+        help_text.set_margin_bottom(14)
+        column.pack_start(help_text, False, False, 0)
+
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        column.pack_start(rows, False, False, 0)
+        for name, where in LOGS:
+            # GTK 3 paints a box's background over its allocation, which holds
+            # its children's margins but not border_width: pad with margins.
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            row.get_style_context().add_class("tile")
+            key = label(f'<span size="9750" weight="600">{escape(name)}</span>', "muted", width=16)
+            key.set_size_request(132, -1)
+            value = label(f'<span size="9750">{escape(where)}</span>', "mono", selectable=True, width=40)
+            for widget in (key, value):
+                widget.set_valign(Gtk.Align.CENTER)
+                widget.set_margin_top(11)
+                widget.set_margin_bottom(11)
+            key.set_margin_start(16)
+            key.set_margin_end(12)
+            value.set_margin_end(16)
+            row.pack_start(key, False, False, 0)
+            row.pack_start(value, True, True, 0)
+            rows.pack_start(row, False, False, 0)
+
+        remote = label(f'<span size="10500">{escape(self.remote_words(words))}</span>', "muted")
+        remote.set_margin_top(14)
+        column.pack_start(remote, False, False, 0)
+
+        if detail:
+            technical = label(f'<span size="9000">{escape(detail)}</span>', "faint", selectable=True)
+            technical.set_margin_top(24)
+            column.pack_start(technical, False, False, 0)
+
+        self.window.show_all()
+        self.window.fullscreen()
+        self.again_button.grab_focus()
+
+    @staticmethod
+    def remote_words(words):
+        found = addresses()
+        where = f"ssh root@{found[0]}" if found else "ssh root@ followed by this computer’s address"
+        if any(word == "inst.sshd" or word.startswith("inst.sshd=") for word in words):
+            if found:
+                return f"To read them from another computer on this network: {where}"
+            return "To read them from another computer, connect this one to a network first; the installer accepts ssh."
+        return ("To read them from another computer, restart, press e in the boot menu, add inst.sshd "
+                f"to the end of the line that starts with linux, press Ctrl+X, then connect with {where}.")
+
+    def button(self, text, kind, handler):
+        widget = Gtk.Button(label=text)
+        widget.get_style_context().add_class(kind)
+        widget.set_can_focus(True)
+        widget.connect("clicked", handler)
+        return widget
+
+    def set_status(self, text):
+        self.status.set_markup(f'<span size="10500">{escape(text)}</span>')
+        self.status.show()
+
+    def on_again(self, _button):
+        self.code = TRY_AGAIN
+        Gtk.main_quit()
+
+    def on_close(self, *_args):
+        Gtk.main_quit()
+        return False
+
+    def on_restart(self, _button):
+        self.set_status("Restarting…")
+        try:
+            # Native Plymouth owns the reboot display before the fallback closes.
+            subprocess.run([os.path.join(os.path.dirname(__file__), "atlas-media"), "prepare-restart"],
+                           check=False, timeout=4)
+            subprocess.Popen(["systemctl", "reboot"])
+        except (OSError, subprocess.SubprocessError) as error:
+            self.set_status(f"The computer could not be restarted: {error}")
+
+    def on_save(self, _button):
+        self.save_button.set_sensitive(False)
+        self.set_status("Saving the logs…")
+        threading.Thread(target=self.save_worker, daemon=True).start()
+
+    def save_worker(self):
+        message = "The logs could not be saved. Plug in a USB drive, then try again."
+        try:
+            output = subprocess.run([f"{LIBEXEC}/atlas-media", "save-logs"], capture_output=True,
+                                    text=True, timeout=300, check=False).stdout.strip().splitlines()
+            result = json.loads(output[-1]) if output else {}
+            if result.get("ok"):
+                message = f"Saved to {result.get('label')} as {result.get('file')}."
+            else:
+                message = "Plug in a USB drive to save the logs to, then try again."
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"atlas-viewer-fallback: saving the logs failed: {error}", file=sys.stderr)
+        GLib.idle_add(self.finish_save, message)
+
+    def finish_save(self, message):
+        self.set_status(message)
+        self.save_button.set_sensitive(True)
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Show why Atlas's screen could not be shown.")
+    parser.add_argument("--reason", choices=sorted(WORDS), default="no-frame")
+    parser.add_argument("--detail", default="")
+    args = parser.parse_args()
+
+    words = boot_words()
+    palette = PALETTES[surface(words)]
+    provider = Gtk.CssProvider()
+    try:
+        provider.load_from_data(CSS.substitute(palette).encode())
+    except GLib.Error as error:
+        print(f"atlas-viewer-fallback: using plain styles: {error}", file=sys.stderr)
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS_PLAIN.substitute(palette).encode())
+    screen = Gdk.Screen.get_default()
+    if screen is None:
+        print("atlas-viewer-fallback: no display", file=sys.stderr)
+        return 3
+    Gtk.StyleContext.add_provider_for_screen(screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    fallback = Fallback(args.reason, args.detail, words)
+    print(f"atlas-viewer-fallback: showing {args.reason}", flush=True)
+    Gtk.main()
+    return fallback.code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,639 @@
+{
+  "resources": [
+    [
+      "cpu",
+      "CPU",
+      "cpu"
+    ],
+    [
+      "mem",
+      "Memory",
+      "layers"
+    ],
+    [
+      "disk",
+      "Disk",
+      "hard-drive"
+    ],
+    [
+      "net",
+      "Network",
+      "wifi"
+    ],
+    [
+      "en",
+      "Energy",
+      "battery-medium"
+    ]
+  ],
+  "apps": [
+    {
+      "id": "viola",
+      "n": "Viola",
+      "ic": "browser",
+      "sub": "3 windows · 14 tabs",
+      "cpu": 16,
+      "mem": 2150,
+      "disk": 0.4,
+      "net": 1.4,
+      "en": 38,
+      "th": 61,
+      "procs": [
+        [
+          "viola",
+          3410,
+          3.1,
+          420
+        ],
+        [
+          "viola-gpu",
+          3422,
+          5.6,
+          380
+        ],
+        [
+          "tab: simplyluma.com",
+          3440,
+          4.2,
+          310
+        ],
+        [
+          "tab: Photos — Offsite",
+          3451,
+          2.4,
+          290
+        ],
+        [
+          "tab: 11 more",
+          0,
+          0.7,
+          750
+        ]
+      ]
+    },
+    {
+      "id": "photos",
+      "n": "Photos",
+      "ic": "photos",
+      "sub": "Importing 42 photos",
+      "cpu": 11,
+      "mem": 1240,
+      "disk": 36,
+      "net": 0,
+      "en": 22,
+      "th": 24,
+      "procs": [
+        [
+          "luma-photos",
+          3502,
+          4.1,
+          690
+        ],
+        [
+          "photos-thumbnailer",
+          3519,
+          6.9,
+          550
+        ]
+      ]
+    },
+    {
+      "id": "terminal",
+      "n": "Terminal",
+      "ic": "terminal",
+      "sub": "2 tabs · cargo build",
+      "cpu": 8,
+      "mem": 610,
+      "disk": 4,
+      "net": 0,
+      "en": 14,
+      "th": 18,
+      "procs": [
+        [
+          "luma-terminal",
+          3301,
+          0.3,
+          120
+        ],
+        [
+          "zsh",
+          3310,
+          0,
+          12
+        ],
+        [
+          "cargo",
+          3388,
+          1.2,
+          180
+        ],
+        [
+          "rustc",
+          3391,
+          6.5,
+          298
+        ]
+      ]
+    },
+    {
+      "id": "filer",
+      "n": "Filer",
+      "ic": "files",
+      "sub": "Copying 3.1 GB to Backup",
+      "cpu": 3,
+      "mem": 280,
+      "disk": 84,
+      "net": 0,
+      "en": 9,
+      "th": 11,
+      "procs": [
+        [
+          "luma-filer",
+          3120,
+          1.1,
+          210
+        ],
+        [
+          "filer-copy",
+          3701,
+          1.9,
+          70
+        ]
+      ]
+    },
+    {
+      "id": "depot",
+      "n": "Depot",
+      "ic": "app-store",
+      "sub": "Updating 3 apps",
+      "cpu": 2,
+      "mem": 320,
+      "disk": 6,
+      "net": 4.2,
+      "en": 7,
+      "th": 14,
+      "procs": [
+        [
+          "luma-depot",
+          3620,
+          0.6,
+          230
+        ],
+        [
+          "flatpak-system-helper",
+          1290,
+          1.4,
+          90
+        ]
+      ]
+    },
+    {
+      "id": "tide",
+      "n": "Tide",
+      "ic": "music",
+      "sub": "Playing · keeping the screen awake",
+      "cpu": 2.5,
+      "mem": 410,
+      "disk": 0.2,
+      "net": 0.3,
+      "en": 11,
+      "th": 19,
+      "awake": true,
+      "procs": [
+        [
+          "luma-tide",
+          3208,
+          2.1,
+          380
+        ],
+        [
+          "tide-decoder",
+          3215,
+          0.4,
+          30
+        ]
+      ]
+    },
+    {
+      "id": "write",
+      "n": "Write",
+      "ic": "documents",
+      "sub": "2 documents",
+      "cpu": 0.6,
+      "mem": 380,
+      "disk": 0,
+      "net": 0,
+      "en": 3,
+      "th": 12,
+      "procs": [
+        [
+          "luma-write",
+          3160,
+          0.6,
+          380
+        ]
+      ]
+    },
+    {
+      "id": "messages",
+      "n": "Messages",
+      "ic": "messages",
+      "sub": "Connected",
+      "cpu": 0.4,
+      "mem": 260,
+      "disk": 0,
+      "net": 0.05,
+      "en": 2,
+      "th": 18,
+      "procs": [
+        [
+          "luma-messages",
+          3809,
+          0.4,
+          260
+        ]
+      ]
+    },
+    {
+      "id": "charlie",
+      "n": "Charlie",
+      "ic": "mail",
+      "sub": "Up to date",
+      "cpu": 0.2,
+      "mem": 190,
+      "disk": 0,
+      "net": 0.02,
+      "en": 1,
+      "th": 5,
+      "procs": [
+        [
+          "luma-charlie",
+          3802,
+          0.2,
+          190
+        ]
+      ]
+    },
+    {
+      "id": "calendar",
+      "n": "Calendar",
+      "ic": "calendar",
+      "sub": "In the background",
+      "cpu": 0,
+      "mem": 120,
+      "disk": 0,
+      "net": 0,
+      "en": 0,
+      "th": 13,
+      "procs": [
+        [
+          "luma-calendar",
+          2959,
+          0,
+          120
+        ]
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "sys",
+      "n": "Luma system",
+      "why": "The desktop, sound, networking and the other parts that make Luma run",
+      "total": 38,
+      "p": [
+        [
+          "gnome-shell",
+          3113,
+          "nick",
+          5.4,
+          610,
+          27
+        ],
+        [
+          "pipewire",
+          3780,
+          "nick",
+          0.9,
+          22,
+          6
+        ],
+        [
+          "pipewire-pulse",
+          3793,
+          "nick",
+          0.3,
+          18,
+          3
+        ],
+        [
+          "wireplumber",
+          3785,
+          "nick",
+          0.2,
+          31,
+          5
+        ],
+        [
+          "NetworkManager",
+          988,
+          "root",
+          0.2,
+          19,
+          4
+        ],
+        [
+          "luma-shelf",
+          3131,
+          "nick",
+          0.4,
+          48,
+          6
+        ],
+        [
+          "Xwayland",
+          3140,
+          "nick",
+          0.1,
+          64,
+          5
+        ],
+        [
+          "gnome-settings-daemon",
+          3170,
+          "nick",
+          0,
+          36,
+          8
+        ],
+        [
+          "bluetoothd",
+          1003,
+          "root",
+          0,
+          7,
+          1
+        ],
+        [
+          "upowerd",
+          1121,
+          "root",
+          0,
+          9,
+          3
+        ],
+        [
+          "polkitd",
+          972,
+          "polkitd",
+          0,
+          11,
+          4
+        ],
+        [
+          "gdm",
+          1195,
+          "root",
+          0,
+          12,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "bg",
+      "n": "Background services",
+      "why": "Helpers that start on their own: indexing, updates, printing, sync",
+      "total": 243,
+      "p": [
+        [
+          "tracker-miner-fs-3",
+          3422,
+          "nick",
+          1.8,
+          96,
+          7
+        ],
+        [
+          "systemd-journald",
+          612,
+          "root",
+          0.3,
+          44,
+          1
+        ],
+        [
+          "systemd-oomd",
+          811,
+          "systemd-oom",
+          0,
+          5,
+          1
+        ],
+        [
+          "flatpak-portal",
+          3250,
+          "nick",
+          0,
+          14,
+          4
+        ],
+        [
+          "xdg-desktop-portal",
+          3241,
+          "nick",
+          0.1,
+          22,
+          6
+        ],
+        [
+          "evolution-data-server",
+          3290,
+          "nick",
+          0,
+          48,
+          9
+        ],
+        [
+          "cupsd",
+          1042,
+          "root",
+          0,
+          8,
+          1
+        ],
+        [
+          "packagekitd",
+          2210,
+          "root",
+          0.4,
+          120,
+          3
+        ],
+        [
+          "chronyd",
+          944,
+          "chrony",
+          0,
+          4,
+          1
+        ],
+        [
+          "avahi-daemon",
+          951,
+          "avahi",
+          0,
+          3,
+          1
+        ],
+        [
+          "fwupd",
+          2402,
+          "root",
+          0,
+          62,
+          5
+        ],
+        [
+          "udisksd",
+          1188,
+          "root",
+          0,
+          16,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "kern",
+      "n": "Linux kernel",
+      "why": "Work the kernel does itself. These can’t be ended",
+      "total": 402,
+      "kernel": true,
+      "p": [
+        [
+          "kworker/u16:2-events_unbound",
+          245,
+          "root",
+          0.6,
+          0,
+          1
+        ],
+        [
+          "irq/128-nvme0q1",
+          302,
+          "root",
+          0.4,
+          0,
+          1
+        ],
+        [
+          "ksoftirqd/0",
+          15,
+          "root",
+          0.2,
+          0,
+          1
+        ],
+        [
+          "rcu_preempt",
+          16,
+          "root",
+          0.1,
+          0,
+          1
+        ],
+        [
+          "kswapd0",
+          98,
+          "root",
+          0,
+          0,
+          1
+        ],
+        [
+          "migration/0",
+          18,
+          "root",
+          0,
+          0,
+          1
+        ],
+        [
+          "btrfs-transaction",
+          540,
+          "root",
+          0.3,
+          0,
+          1
+        ],
+        [
+          "jbd2/nvme0n1p2",
+          511,
+          "root",
+          0,
+          0,
+          1
+        ],
+        [
+          "kthreadd",
+          2,
+          "root",
+          0,
+          0,
+          1
+        ],
+        [
+          "khugepaged",
+          101,
+          "root",
+          0,
+          0,
+          1
+        ],
+        [
+          "i915/signal:0",
+          377,
+          "root",
+          0.2,
+          0,
+          1
+        ],
+        [
+          "card0-crtc0",
+          388,
+          "root",
+          0.1,
+          0,
+          1
+        ]
+      ]
+    }
+  ],
+  "totals": {
+    "mem": 16384,
+    "disk": 512
+  },
+  "priorities": [
+    [
+      "-15",
+      "Very high"
+    ],
+    [
+      "-5",
+      "High"
+    ],
+    [
+      "0",
+      "Normal"
+    ],
+    [
+      "5",
+      "Low"
+    ],
+    [
+      "15",
+      "Very low"
+    ]
+  ]
+}

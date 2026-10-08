@@ -1,0 +1,25 @@
+[Unit]
+Description=Sync Notes, Contacts, Photos, Clocks and Weather with the Luma Hub
+# Nothing to do until this device has been connected with a Hub code.
+ConditionPathExists=%h/.local/share/luma/connect/device.json
+After=network-online.target
+# Retries are paced by RestartSec below, never cut off by the start limit.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+# --settle lets a burst of edits finish and repeats if edits land mid-push.
+# Unchanged snapshots are skipped locally, so timer runs cost no network.
+ExecStart=/usr/bin/luma-connect-sync push --settle 20
+# Offline, rate-limited or hub trouble (exit 1): back off from 1 to 30 minutes.
+# A revoked device (exit 3) must be enrolled again; retrying cannot help.
+Restart=on-failure
+RestartSec=1min
+RestartSteps=5
+RestartMaxDelaySec=30min
+RestartPreventExitStatus=3
+TimeoutStartSec=10min
+Environment=PYTHONUNBUFFERED=1
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes

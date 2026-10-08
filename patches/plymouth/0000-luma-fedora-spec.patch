@@ -1,0 +1,68 @@
+--- a/plymouth.spec
++++ b/plymouth.spec
+@@ -11,7 +11,7 @@
+ Summary: Graphical Boot Animation and Logger
+ Name: plymouth
+ Version: 24.004.60
+-Release: %autorelease
++Release: 24.luma.3%{?dist}
+ License: GPL-2.0-or-later
+ URL: http://www.freedesktop.org/wiki/Software/Plymouth
+ 
+@@ -127,6 +127,19 @@
+ # https://gitlab.freedesktop.org/plymouth/plymouth/-/commit/45655f12fa2d5553ab4ba509f2e203c249191664
+ Patch: 0001-ply-keyboard-Fix-hang-on-read-of-incomplete-terminal.patch
+ 
++# Project Luma: preserve the real details stream on a light diagnostic ground.
++Patch1000: 0001-prairie-light-details.patch
++# Project Luma: let script themes take over from the firmware boot logo.
++Patch1001: 0002-script-firmware-background.patch
++# Project Luma: let script themes time animation by the clock.
++Patch1002: 0003-script-get-time.patch
++# Project Luma: retry a DRM device whose outputs are not ready yet, so the
++# splash is not lost for DeviceTimeout when a GPU driver replaces SimpleDRM.
++Patch1003: 0004-device-manager-retry-drm-outputs.patch
++
++# The splash plymouthd.defaults selects.
++Recommends: luma-boot-theme
++
+ BuildRequires: meson
+ BuildRequires: system-logos
+ BuildRequires: gcc libtool git
+@@ -343,6 +356,12 @@
+ sed -i -e 's/spinner/bgrt/g' src/plymouthd.defaults
+ # Use simpledrm /dev/dri/card# by default, except when LUKS disk encrpytion is used
+ echo UseSimpledrmNoLuks=1 >> src/plymouthd.defaults
++# Project Luma: the boot splash is part of the OS image, so it is selected
++# here in /usr. /etc/plymouth/plymouthd.conf stays the administrator's file:
++# a package reinstall or a client-side override puts the stock template back
++# there, which must not take Luma's splash away (ADR-045).
++sed -i -e 's/^Theme=.*/Theme=luma-loading/' src/plymouthd.defaults
++grep -Fxq Theme=luma-loading src/plymouthd.defaults
+ 
+ %if 0%{?rhel} > 9
+ find -type f -exec sed -i -e 's/Cantarell/Red Hat Text/g' {} \;
+@@ -375,6 +394,23 @@
+ rm -rf $RPM_BUILD_ROOT%{_datadir}/plymouth/themes/glow
+ 
+ 
++%check
++# Project Luma: the defaults select Luma's splash, keep Fedora's timing, and
++# the script plugin carries the firmware-logo and clock API the splash uses.
++defaults=%{buildroot}%{_datadir}/plymouth/plymouthd.defaults
++grep -Fxq Theme=luma-loading "$defaults"
++grep -Fxq ShowDelay=0 "$defaults"
++grep -Fxq UseSimpledrmNoLuks=1 "$defaults"
++test "$(grep -c '^Theme=' "$defaults")" -eq 1
++for symbol in HasFirmwareBackground SetFirmwareBackgroundOpacity GetFirmwareBackgroundOpacity \
++  GetTime GetMode; do
++  strings %{buildroot}%{_libdir}/plymouth/script.so | grep -Fx -- "$symbol" >/dev/null
++done
++strings %{buildroot}%{_libdir}/plymouth/details.so |
++  grep -F "using Prairie light details palette" >/dev/null
++strings %{buildroot}%{_libdir}/libply-splash-core.so.* |
++  grep -F "will retry DRM device" >/dev/null
++
+ %ldconfig_scriptlets core-libs
+ 
+ %ldconfig_scriptlets graphics-libs

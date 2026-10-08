@@ -1,0 +1,124 @@
+From 8f1f7d54361cff18521c502e2960247500923aa1 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 22:00:00 -0500
+Subject: [PATCH] stylesheet: own native Luma command surfaces centrally
+
+Move the reusable command-row and connected command-group geometry into the
+toolkit boundary. Source-integrated applications still provide their own real
+actions, menu models and adaptive composition; they opt into one shared set of
+classes instead of copying visual declarations into each application.
+
+The rules are additive and do not restructure arbitrary applications.
+---
+ src/stylesheet/_common.scss | 96 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 96 insertions(+)
+
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index 23e6eee..9d610a7 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -40,6 +40,102 @@ $dialog_radius: $button_radius + 6;
+   box-shadow: 0 2px 5px RGB(25 27 31 / 16%),
+               0 18px 36px -16px RGB(25 27 31 / 48%);
+ }
++
++// Source-integrated applications share one native frame surface while keeping
++// their own application IDs, actions, menus, and responsive content trees.
++window.luma-app-window {
++  background-color: unquote("@luma_window");
++  color: unquote("@luma_ink");
++  font-family: "Figtree", sans-serif;
++}
++
++window.luma-app-window headerbar.luma-titlebar {
++  min-height: 42px;
++  padding: 0;
++  border: none;
++  background-color: unquote("@luma_window");
++  background-image: none;
++  color: unquote("@luma_ink");
++  box-shadow: none;
++}
++
++window.luma-app-window headerbar.luma-titlebar > windowhandle > box {
++  padding: 0 8px 0 12px;
++}
++
++window.luma-app-window .luma-window-title {
++  color: unquote("@luma_ink");
++  font-size: 13px;
++  font-weight: 650;
++}
++
++// A Luma command surface presents an application's real actions between the
++// identity row and work area. Applications own placement and semantics; the
++// toolkit owns geometry, material, states, and connected control boundaries.
++.luma-command-bar {
++  min-height: 40px;
++  margin: 0 9px 8px;
++  padding: 0 8px;
++  border: 1px solid unquote("@luma_line");
++  border-radius: 10px;
++  background-color: unquote("@luma_content");
++  color: unquote("@luma_ink");
++  box-shadow: 0 2px 5px RGB(25 27 31 / 12%),
++              0 14px 30px -18px RGB(25 27 31 / 42%);
++}
++
++.luma-command-group {
++  margin: 5px 0;
++  border-radius: 8px;
++  background-color: unquote("@luma_fill");
++  box-shadow: inset 0 0 0 1px unquote("@luma_line");
++}
++
++.luma-command-group > button,
++.luma-command-group > menubutton > button {
++  min-width: 30px;
++  min-height: 30px;
++  padding: 0 9px;
++  border: none;
++  border-right: 1px solid unquote("@luma_line");
++  border-radius: 0;
++  background: transparent;
++  box-shadow: none;
++  color: unquote("@luma_ink");
++}
++
++.luma-command-group > button:first-child,
++.luma-command-group > menubutton:first-child > button {
++  border-radius: 8px 0 0 8px;
++}
++
++.luma-command-group > button:last-child,
++.luma-command-group > menubutton:last-child > button {
++  border-right: none;
++  border-radius: 0 8px 8px 0;
++}
++
++.luma-command-group > button:only-child,
++.luma-command-group > menubutton:only-child > button {
++  border-right: none;
++  border-radius: 8px;
++}
++
++.luma-command-group button:hover {
++  background-color: unquote("@luma_hover");
++}
++
++.luma-command-group button:checked,
++.luma-command-group button:active {
++  background-color: unquote("@luma_selected");
++}
++
++@media (prefers-color-scheme: dark) {
++  .luma-command-bar {
++    box-shadow: 0 2px 6px RGB(0 0 0 / 32%),
++                0 16px 32px -18px RGB(0 0 0 / 72%);
++  }
++}
+ 
+ // Opted-in split views use their child surfaces as the visible work islands.
+ // The libadwaita pane bins must therefore remain transparent; painting the
+-- 
+2.54.0

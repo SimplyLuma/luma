@@ -1,0 +1,6 @@
+# Exact classes permitted to cross from the verified postmarketOS control
+# filesystem into the Fedora P5 candidate. The assembler implements these
+# entries directly and rejects every other control-rootfs path.
+
+/lib/modules/7.1.2
+/lib/firmware

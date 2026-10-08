@@ -1,0 +1,27 @@
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -255,6 +255,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+ 
+           styles [
+             "luma-files-workspace",
++            "luma-island-split",
+           ]
+ 
+           sidebar: Adw.ToolbarView sidebar_action_surface {
+@@ -262,6 +263,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+             margin-top: 9;
+             margin-bottom: 9;
+             margin-start: 9;
++            overflow: hidden;
+ 
+             styles [
+               "luma-sidebar-surface",
+@@ -304,6 +306,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+             margin-bottom: 9;
+             margin-start: 9;
+             margin-end: 9;
++            overflow: hidden;
+ 
+             styles [
+               "luma-content-surface",

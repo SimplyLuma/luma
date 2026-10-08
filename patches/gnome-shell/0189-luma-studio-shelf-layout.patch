@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: size and place the default shelf like Studio Desktop
+
+Use forty pixel dock and live pictures with fourteen pixel island padding,
+sixteen pixel screen inset, ten pixel island gaps and sixteen pixel corners.
+The luma arrangement holds the dock and live islands in the centre while the
+status parts hug the right edge. Preserve the older arrangements for people
+who selected them explicitly.
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index ab20d61..956a21f 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2655,3 +2655,37 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-dockf-rail:drop .luma-dockf-placeholder {
+   border-color: rgba(128, 168, 210, 0.85);
+   background-color: rgba(128, 168, 210, 0.16); }
++
++/* Studio Desktop, luma preset: forty pixel artwork in sixty-eight pixel islands. */
++.luma-shelf-material, .luma-shelf-shadow, .luma-shelf-stroke { border-radius: 16px; }
++.luma-shelf-dock-island .luma-shelf-material { padding: 14px; }
++.luma-shelf-live-island .luma-shelf-material { padding: 14px; }
++.luma-shelf-actions-island .luma-shelf-material { padding: 14px; }
++.luma-status-cluster .luma-status-clock, .luma-status-cluster .luma-status-controls { height: 40px; }
++.luma-status-cluster .luma-status-clock-text { spacing: 2px; }
++.luma-status-cluster .luma-status-clock { min-width: 78px; }
++.luma-status-cluster .luma-status-date { color: rgba(231,233,232,0.62); font-weight: 500; }
++.luma-status-cluster.luma-surface-light .luma-status-date { color: rgba(43,48,54,0.62); }
++.luma-status-slot .system-status-icon { icon-size: 15px; }
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group > .luma-shelf-actions-island >
++.luma-shelf-material.luma-status-cluster.luma-surface-light { background-color: #eceef1; }
++.luma-shelf-dock-scroll { min-height: 40px; }
++.luma-shelf-apps-divider { background-color: rgba(255,255,255,0.22); margin: 0 8px; }
++.luma-surface-light .luma-shelf-apps-divider { background-color: rgba(30,34,39,0.22); }
++.luma-shelf-dock-island #dash .show-apps:hover { background-color: rgba(255,255,255,0.10) !important; }
++.luma-shelf-dock-island #dash .show-apps:active { background-color: rgba(255,255,255,0.16) !important; }
++.luma-media-module { height: 40px; }
++.luma-media-art { icon-size: 40px; border-radius: 11px; }
++.luma-shelf-live-island .luma-live-extension-leading,
++.luma-shelf-live-island .luma-live-extension-badge { width: 40px; height: 40px; border-radius: 11px; }
++.luma-shelf-live-island .luma-live-extension-text { max-width: 170px; }
++.luma-shelf-live-island .luma-live-extension-action,
++.luma-media-control { min-width: 32px; min-height: 32px; border-radius: 99px; }
++.luma-media-control { background-color: rgba(255,255,255,0.10); }
++.luma-media-control.luma-media-primary { min-width: 34px; min-height: 34px; background-color: rgba(255,255,255,0.20); }
++.luma-shelf-live-island .luma-live-extension-action { background-color: rgba(255,255,255,0.10); }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end {
++  min-width: 34px; min-height: 34px; background-color: rgba(255,255,255,0.20); color: #d9534f; }
++.luma-shelf-material.luma-surface-light { background-color: #eceef1; }
++.luma-shelf-shadow-near.luma-surface-light { box-shadow: 0 3px 8px rgba(20,22,26,0.14); }
++.luma-shelf-shadow-middle.luma-surface-light { box-shadow: 0 22px 52px -15px rgba(20,22,26,0.40); }
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index 1fb27af..fba0e0a 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -34,7 +34,7 @@ export const ANCHORS = Object.freeze(['start', 'center', 'end', 'free']);
+ export const ZONE_ANCHORS = Object.freeze(['start', 'center', 'end']);
+ 
+ // Logical pixels; the caller multiplies by the display scale.
+-export const ISLAND_GAP = 9;          // the kit's island_gap: attached islands
++export const ISLAND_GAP = 10;          // the kit's island_gap: attached islands
+ export const GROUP_SEPARATION = 24;   // separate groups on one band, at least
+ export const ATTACH_DISTANCE = 40;    // along a group's run, to attach to it
+ // Beside any group, measured from its end along the band: the pointer in
+@@ -130,6 +130,20 @@ export function defaultArrangement(v1 = {}, order = DEFAULT_ORDER) {
+             {display: '', edge, anchor: 'end', position: 0.5, islands: away},
+         ];
+     }
++    if (v1.groupLayout === 'luma') {
++        const middle = order.filter(id => ['dock', 'folders', 'live', 'media'].includes(id));
++        const status = order.filter(id => ['well', 'quick-options', 'clock'].includes(id));
++        const other = order.filter(id => !middle.includes(id) && !status.includes(id) && id !== 'notifications');
++        return [
++            {display: '', edge, anchor: 'center', position: 0.5, islands: middle},
++            {display: '', edge, anchor: 'end', position: 0.5, islands: status},
++            // Incoming notifications drop from a separate top-centre lip.
++            ...(order.includes('notifications')
++                ? [{display: '', edge: 'top', anchor: 'center', position: 0.5, islands: ['notifications']}]
++                : []),
++            ...other.map(id => ({display: '', edge, anchor: 'end', position: 0.5, islands: [id]})),
++        ].filter(group => group.islands.length);
++    }
+     if (v1.groupLayout === 'split-ends') {
+         return [
+             {display: '', edge, anchor: anchor(v1.dockAnchor ?? 'start'), position: 0.5, islands: withDock},
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+index bf007cb..b344657 100644
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -1,11 +1,10 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ // Native Dash and status geometry share one logical tile size. Display scale
+ // multiplies these logical measurements; it is not a second size policy.
+-// The values are the shelf specification's: 36 content, 6 between dock icons,
+-// 14 from the screen's edges.
+-export const DASH_TILE_SIZE = 36;
+-export const DASH_TILE_GAP = 6;
+-export const SHELF_INSET = 14;
++// Studio Desktop uses 40px content, 8px between dock icons, and a 16px inset.
++export const DASH_TILE_SIZE = 40;
++export const DASH_TILE_GAP = 8;
++export const SHELF_INSET = 16;
+ // The rule between pinned and running apps, and between status parts.
+ export const SHELF_DIVIDER_LENGTH = 24;
+ // The divider between the parts of one island or bar, full height; its ink is
+@@ -107,7 +106,7 @@ export function windowMarkRow(edge, width, height, center, marks, scale = 1, pad
+ export const SHELF_SURFACE_GAP = 8;
+ 
+ // The corner radius of a shelf island, and of the surfaces drawn like one.
+-export const SHELF_ISLAND_RADIUS = 15;
++export const SHELF_ISLAND_RADIUS = 16;
+ 
+ // Where a shelf surface sits. edge: the shelf's side of its monitor; anchor:
+ // the control that opened the surface; island: the painted island holding

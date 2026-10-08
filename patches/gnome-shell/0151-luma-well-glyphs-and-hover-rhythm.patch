@@ -1,0 +1,763 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 20:35:04 -0500
+Subject: [PATCH] luma: one glyph size and one hover box for the shelf
+
+An application's or an extension's indicator in the Well was drawn at its
+own size and in its own colours beside system indicators drawn at 14px, so
+a tray logo sat in the row twice as heavy as the glyphs next to it.
+
+Every glyph in the row is now the system indicators' own 14px, in the
+surface's ink: the theme's symbolic variant of the icon where there is one,
+and otherwise the icon's own shape, holes and all, through the silhouette
+the Well's own items already use. No full-colour logos in this row (owner,
+2026-09-17). Luma's own Well items take the same size, so the row reads as
+one row.
+
+An icon with no transparency has no shape, so its silhouette is a filled
+block. It is drawn in ink all the same: a colour a third party chose is
+outside the ink contract and can land on the surface's own luminance, where
+an icon shadow cannot save it -- measured at 1.00:1 on the opaque
+treatments, which carry no icon shadow at all, and 1.03:1 to 1.24:1 on the
+smoked ones. A block of ink is always visible, and no information is lost
+because there was none. The Shell says so once in the journal, naming the
+application.
+
+The hover and pressed states along the shelf were the contents' own box, so
+the highlight ran up against the glyph it covered. The Well's items, an
+extension's indicator, the clock and Quick Options now share one box: 28
+high, radius 8, with 7px of air around a lone glyph and 8px beside text,
+inset 3px inside the Well's recess and 4px inside the island. The hit target
+keeps its full height; only the highlight is inset. Pressed is that box in
+the pressed fill. The dock's tiles keep their own language, where the
+artwork itself lifts and no fill is drawn behind it.
+
+Every fill is the ink ledger's hover or press for the appearance mode (Shell
+patch 0150), in place of the older per-widget fills. No ink, shadow, veil or
+recess value changes here. The one state that composites two fills -- Quick
+Options with its menu open and the pointer on it, since the cluster's hover
+wash is an actor over the button's own fill -- is added to the ledger gate's
+stacks, where it holds at 4.62:1 for secondary ink against 4.5.
+
+Focus on the shelf is drawn only while someone navigates by keyboard, the
+way :focus-visible works on the web (lumaFocusVisible.js). St marks a widget
+:focus whenever it holds key focus, and a menu hands key focus back to the
+button it came from when it closes, so after a click on Quick Options, the
+calendar or a menu the status island stayed ringed in pale blue, and a dock
+icon kept a blue glow around its artwork, as if selected. Key focus itself is
+unchanged, so the keyboard path works as before; inside the shelf the :focus
+pseudo-class is drawn after a navigation key and cleared by the next click or
+touch. What is drawn is a 2px ring in the treatment's ink, which clears the
+ledger's 3:1 for a glyph on every veil; the pale blue ring measured 1.9:1 on
+light paper.
+
+An island that is one action -- a notification on the beacon, a Live
+Extension that opens its application -- now highlights edge to edge at its
+own radius when that action is hovered or pressed, in the ledger's fills,
+with keyboard focus as a ring on the same edge; its own buttons highlight on
+top. The wash is the material's inset shadow over its veil, so the island's
+layout does not move. Before, only the inner button painted, inset by the
+island's padding, and on the light stylesheet (light, frost and glass) a
+Live Extension hovered in rgba(255,255,255,0.92) and pressed in a blue
+rgba(72,120,184,0.14) that the shelf never overrode. The now-playing island
+is several controls, so it takes no island wash; its controls highlight in
+the ledger's fills. The two stacks a wash under a button can present,
+hover under hover and hover under press, join the ledger gate's stacks.
+---
+ data/theme/luma-shelf.css     | 202 ++++++++++++++++++++++++++++++----
+ js/js-resources.gresource.xml |   1 +
+ js/ui/lumaFocusVisible.js     |  70 ++++++++++++
+ js/ui/lumaWell.js             | 143 +++++++++++++++++++++++-
+ js/ui/panel.js                |   5 +-
+ js/ui/shelf.js                |  38 +++++++
+ tests/unit/lumaSurfaceInk.js  |   8 ++
+ 7 files changed, 441 insertions(+), 26 deletions(-)
+ create mode 100644 js/ui/lumaFocusVisible.js
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -663,7 +663,7 @@
+ .luma-media-controls { spacing: 2px; }
+ .luma-media-control { min-width: 28px; min-height: 28px; padding: 0; border-radius: 8px; background-color: transparent; }
+ .luma-media-control StIcon { icon-size: 16px; }
+-.luma-media-control:hover, .luma-media-control:focus { background-color: rgba(127,127,127,0.2); }
++.luma-media-control:hover, .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.06); }
+ .luma-media-module.vertical { min-width: 0; height: 138px; width: 36px; padding: 0; }
+ 
+ 
+@@ -895,9 +895,9 @@
+  * silhouette effect recolours third-party icons to this value. */
+ .luma-surface-frost .luma-well-item,
+ .luma-surface-glass .luma-well-item { color: #ffffff; }
+-.luma-well-item:hover, .luma-well-item:focus { background-color: rgba(255,255,255,0.08); }
+-.luma-well-item:active { background-color: rgba(255,255,255,0.14); }
+-.luma-status-light .luma-well-item:hover { background-color: rgba(25,27,31,0.07); }
++.luma-well-item:hover, .luma-well-item:focus { background-color: rgba(255, 255, 255, 0.06); }
++.luma-well-item:active { background-color: rgba(255, 255, 255, 0.09); }
++.luma-status-light .luma-well-item:hover { background-color: rgba(25, 27, 31, 0.06); }
+ .luma-well-item-row { spacing: 5px; }
+ .luma-well-glyph { width: 16px; height: 16px; }
+ .luma-well-readout { font-size: 13px; font-weight: 650; font-feature-settings: "tnum"; }
+@@ -1019,20 +1019,20 @@ as on dark. */
+ .luma-status-cluster .luma-status-clock { min-width: 56px; }
+ .luma-status-cluster .luma-status-controls:hover,
+ .luma-status-cluster .luma-status-controls:focus,
+-.luma-status-cluster .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.08); }
+-.luma-status-cluster .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.14); }
++.luma-status-cluster .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.06); }
++.luma-status-cluster .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.09); }
+ .luma-status-cluster.luma-surface-light .luma-status-controls:hover,
+ .luma-status-cluster.luma-surface-light .luma-status-controls:focus,
+-.luma-status-cluster.luma-surface-light .luma-status-clock:hover { background-color: rgba(25, 27, 31, 0.07); }
+-.luma-status-cluster.luma-surface-light .luma-status-controls:checked { background-color: rgba(25, 27, 31, 0.12); }
++.luma-status-cluster.luma-surface-light .luma-status-clock:hover { background-color: rgba(25, 27, 31, 0.06); }
++.luma-status-cluster.luma-surface-light .luma-status-controls:checked { background-color: rgba(25, 27, 31, 0.09); }
+ .luma-status-cluster.luma-surface-frost .luma-status-controls:hover,
+ .luma-status-cluster.luma-surface-frost .luma-status-controls:focus,
+-.luma-status-cluster.luma-surface-frost .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.10); }
+-.luma-status-cluster.luma-surface-frost .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.22); }
++.luma-status-cluster.luma-surface-frost .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.07); }
++.luma-status-cluster.luma-surface-frost .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.11); }
+ .luma-status-cluster.luma-surface-glass .luma-status-controls:hover,
+ .luma-status-cluster.luma-surface-glass .luma-status-controls:focus,
+-.luma-status-cluster.luma-surface-glass .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.14); }
+-.luma-status-cluster.luma-surface-glass .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.22); }
++.luma-status-cluster.luma-surface-glass .luma-status-clock:hover { background-color: rgba(255, 255, 255, 0.07); }
++.luma-status-cluster.luma-surface-glass .luma-status-controls:checked { background-color: rgba(255, 255, 255, 0.11); }
+ 
+ /* An extension's own indicator in the Well: a Well item, 28 high, padding
+  * 0 6, radius 8, a 16px glyph in ink. */
+@@ -1050,14 +1050,14 @@ as on dark. */
+   color: #e7e9e8;
+   transition-duration: 120ms; }
+ .luma-well .luma-well-extension .panel-button:hover,
+-.luma-well .luma-well-extension .panel-button:focus { background-color: rgba(255, 255, 255, 0.08); }
++.luma-well .luma-well-extension .panel-button:focus { background-color: rgba(255, 255, 255, 0.06); }
+ .luma-well .luma-well-extension .panel-button:active,
+-.luma-well .luma-well-extension .panel-button:checked { background-color: rgba(255, 255, 255, 0.14); }
++.luma-well .luma-well-extension .panel-button:checked { background-color: rgba(255, 255, 255, 0.09); }
+ .luma-status-light .luma-well .luma-well-extension .panel-button { color: #34383d; }
+ .luma-status-light .luma-well .luma-well-extension .panel-button:hover,
+-.luma-status-light .luma-well .luma-well-extension .panel-button:focus { background-color: rgba(25, 27, 31, 0.07); }
++.luma-status-light .luma-well .luma-well-extension .panel-button:focus { background-color: rgba(25, 27, 31, 0.06); }
+ .luma-status-light .luma-well .luma-well-extension .panel-button:active,
+-.luma-status-light .luma-well .luma-well-extension .panel-button:checked { background-color: rgba(25, 27, 31, 0.12); }
++.luma-status-light .luma-well .luma-well-extension .panel-button:checked { background-color: rgba(25, 27, 31, 0.09); }
+ .luma-well .luma-well-extension .panel-button StIcon {
+   -st-icon-style: symbolic;
+   icon-size: 16px; }
+@@ -1074,25 +1074,25 @@ as on dark. */
+ .luma-shelf-media-island .luma-media-control:hover,
+ .luma-shelf-media-island .luma-media-control:focus { color: #e7e9e8; }
+ .luma-shelf-media-island .luma-media-control:hover,
+-.luma-shelf-media-island .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.08); }
++.luma-shelf-media-island .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.06); }
+ .luma-shelf-media-island.luma-surface-light .luma-media-control { color: rgba(52, 56, 61, 0.62); }
+ .luma-shelf-media-island.luma-surface-light .luma-media-control.luma-media-primary,
+ .luma-shelf-media-island.luma-surface-light .luma-media-control:hover,
+ .luma-shelf-media-island.luma-surface-light .luma-media-control:focus { color: #34383d; }
+ .luma-shelf-media-island.luma-surface-light .luma-media-control:hover,
+-.luma-shelf-media-island.luma-surface-light .luma-media-control:focus { background-color: rgba(25, 27, 31, 0.07); }
++.luma-shelf-media-island.luma-surface-light .luma-media-control:focus { background-color: rgba(25, 27, 31, 0.06); }
+ .luma-shelf-media-island.luma-surface-frost .luma-media-control { color: rgba(255, 255, 255, 0.88); }
+ .luma-shelf-media-island.luma-surface-frost .luma-media-control.luma-media-primary,
+ .luma-shelf-media-island.luma-surface-frost .luma-media-control:hover,
+ .luma-shelf-media-island.luma-surface-frost .luma-media-control:focus { color: #ffffff; }
+ .luma-shelf-media-island.luma-surface-frost .luma-media-control:hover,
+-.luma-shelf-media-island.luma-surface-frost .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.10); }
++.luma-shelf-media-island.luma-surface-frost .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.07); }
+ .luma-shelf-media-island.luma-surface-glass .luma-media-control { color: rgba(255, 255, 255, 0.90); }
+ .luma-shelf-media-island.luma-surface-glass .luma-media-control.luma-media-primary,
+ .luma-shelf-media-island.luma-surface-glass .luma-media-control:hover,
+ .luma-shelf-media-island.luma-surface-glass .luma-media-control:focus { color: #ffffff; }
+ .luma-shelf-media-island.luma-surface-glass .luma-media-control:hover,
+-.luma-shelf-media-island.luma-surface-glass .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.14); }
++.luma-shelf-media-island.luma-surface-glass .luma-media-control:focus { background-color: rgba(255, 255, 255, 0.07); }
+ 
+ /* Well dots: the attention dot's 6 (recording: 7) sit 4 (3) in from the
+  * item's top-right corner; the 2px ring in `bg` lies outside that. Frost and
+@@ -1313,7 +1313,7 @@ as on dark. */
+ .luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end:hover,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-end:hover { color: #e0716b; }
+ .luma-shelf-live-island .luma-live-extension-action:hover,
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.08); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.06); }
+ /* Light */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-leading-glyph {
+   background-color: rgba(25, 27, 31, 0.07);
+@@ -1349,7 +1349,7 @@ as on dark. */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(52, 56, 61, 0.62); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-end,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-end:hover { color: #b9544f; }
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action:hover { background-color: rgba(25, 27, 31, 0.07); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action:hover { background-color: rgba(25, 27, 31, 0.06); }
+ /* Frost */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-leading-glyph {
+   background-color: rgba(255, 255, 255, 0.10);
+@@ -1385,7 +1385,7 @@ as on dark. */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(255, 255, 255, 0.88); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-end,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-end:hover { color: #e0716b; }
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.10); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.07); }
+ /* Glass */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-leading-glyph {
+   background-color: rgba(255, 255, 255, 0.10);
+@@ -1421,7 +1421,7 @@ as on dark. */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-mic-muted { color: rgba(255, 255, 255, 0.88); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-end,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-end:hover { color: #e0716b; }
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.10); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action:hover { background-color: rgba(255, 255, 255, 0.07); }
+ 
+ /* ── Notification tray: header aligned with the cards ──────────────────── */
+ /* The heading starts where a card's tile starts (11 in) and Clear all's label
+@@ -1615,3 +1615,157 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-surface-frost StIcon,
+ .luma-surface-glass StIcon {
+   icon-shadow: 0 1px 3px rgba(6, 9, 13, 0.80); }
++
++/* One optical size, and one highlight box, for the whole status island (0151).
++ *
++ * The system indicators draw at 14px, so an application's or an extension's
++ * glyph in the Well draws at 14px too, in the surface's ink. A tray icon that
++ * exists only in colour keeps its colours in that same 14px box instead of its
++ * native size, so one row of icons reads as one row.
++ *
++ * Hover and pressed are the 28px hit target, inset from the surface they sit
++ * on: 3px inside the Well's 34px recess and 4px inside the island's 36. Radius
++ * 8 everywhere, 7px of air around a lone glyph and 8px beside text. The hit
++ * target keeps its full height; only the highlight is inset.
++ *
++ * The fills are the hover and pressed entries of the ink ledger in
++ * js/ui/lumaSurfaceMaterials.js, per appearance mode. Ink, shadow and veil
++ * values belong to 0150 and are untouched. */
++.luma-well { padding: 0 3px; spacing: 3px; }
++.luma-well-item { min-width: 28px; height: 28px; padding: 0 7px; border-radius: 8px; }
++.luma-well-glyph { width: 14px; height: 14px; }
++.luma-well-item-row { spacing: 5px; }
++
++.luma-well .luma-well-extension { height: 28px; }
++.luma-well .luma-well-extension .panel-button {
++  min-width: 28px;
++  height: 28px;
++  padding: 0 7px;
++  border-radius: 8px;
++  -natural-hpadding: 7px;
++  -minimum-hpadding: 7px; }
++.luma-well .luma-well-extension .panel-button StIcon { icon-size: 14px; }
++
++/* The clock and Quick Options are hover targets of the same height and radius
++ * as a Well item, with their own air around the text. */
++.luma-status-cluster .luma-status-controls,
++.luma-status-cluster .luma-status-clock {
++  height: 28px;
++  border-radius: 8px; }
++.luma-status-cluster .luma-status-controls { padding: 0 7px; }
++.luma-status-cluster .luma-status-clock { padding: 0 8px; min-width: 56px; }
++.luma-status-slot .system-status-icon { icon-size: 14px; }
++
++/* Hover and pressed, per appearance mode, from the ledger. One pair per mode
++ * for the Well, the clock and Quick Options; the recess needs no pair of its
++ * own because the veil under it carries the headroom. A dock tile has no fill
++ * in any state: its artwork lifts instead, which is its own language. */
++.luma-well-item:hover,
++.luma-well-item:focus { background-color: rgba(255, 255, 255, 0.06); }
++.luma-well-item:active { background-color: rgba(255, 255, 255, 0.09); }
++.luma-status-light .luma-well-item:hover,
++.luma-status-light .luma-well-item:focus { background-color: rgba(25, 27, 31, 0.06); }
++.luma-status-light .luma-well-item:active { background-color: rgba(25, 27, 31, 0.09); }
++.luma-surface-frost .luma-well-item:hover,
++.luma-surface-frost .luma-well-item:focus,
++.luma-surface-glass .luma-well-item:hover,
++.luma-surface-glass .luma-well-item:focus { background-color: rgba(255, 255, 255, 0.07); }
++.luma-surface-frost .luma-well-item:active,
++.luma-surface-glass .luma-well-item:active { background-color: rgba(255, 255, 255, 0.11); }
++.luma-well .luma-well-extension .panel-button:active { background-color: rgba(255, 255, 255, 0.09); }
++.luma-status-light .luma-well .luma-well-extension .panel-button:active { background-color: rgba(25, 27, 31, 0.09); }
++.luma-surface-frost .luma-well .luma-well-extension .panel-button:hover,
++.luma-surface-frost .luma-well .luma-well-extension .panel-button:focus,
++.luma-surface-glass .luma-well .luma-well-extension .panel-button:hover,
++.luma-surface-glass .luma-well .luma-well-extension .panel-button:focus { background-color: rgba(255, 255, 255, 0.07); }
++.luma-surface-frost .luma-well .luma-well-extension .panel-button:active,
++.luma-surface-glass .luma-well .luma-well-extension .panel-button:active { background-color: rgba(255, 255, 255, 0.11); }
++.luma-status-cluster .luma-status-clock:active,
++.luma-status-cluster .luma-status-controls:active { background-color: rgba(255, 255, 255, 0.09); }
++.luma-status-cluster.luma-surface-light .luma-status-clock:active,
++.luma-status-cluster.luma-surface-light .luma-status-controls:active { background-color: rgba(25, 27, 31, 0.09); }
++.luma-status-cluster.luma-surface-frost .luma-status-clock:active,
++.luma-status-cluster.luma-surface-frost .luma-status-controls:active,
++.luma-status-cluster.luma-surface-glass .luma-status-clock:active,
++.luma-status-cluster.luma-surface-glass .luma-status-controls:active { background-color: rgba(255, 255, 255, 0.11); }
++
++/* Keyboard focus (0151). lumaFocusVisible.js lets St draw :focus inside the
++ * shelf only while someone navigates by keyboard, so a button that keeps key
++ * focus after a click closed its menu looks like every other button. What is
++ * drawn then is a 2px ring in the treatment's ink from the ledger, which
++ * clears 3:1 for a glyph on every veil; it replaces the pale blue ring around
++ * the status island (#91b6d2, 1.9:1 on light paper) and the dock's blue glow
++ * around the artwork, which a person could also see after a click. */
++.luma-shelf-actions-island.luma-surface-dark .luma-status-cluster:focus { box-shadow: 0 0 0 2px #e7e9e8; }
++.luma-shelf-actions-island.luma-surface-light .luma-status-cluster:focus { box-shadow: 0 0 0 2px #34383d; }
++.luma-shelf-actions-island.luma-surface-frost .luma-status-cluster:focus { box-shadow: 0 0 0 2px #ffffff; }
++.luma-shelf-actions-island.luma-surface-glass .luma-status-cluster:focus { box-shadow: 0 0 0 2px #ffffff; }
++.luma-well-item:focus,
++.luma-well .luma-well-extension .panel-button:focus { box-shadow: inset 0 0 0 2px #e7e9e8; }
++.luma-status-light .luma-well-item:focus,
++.luma-status-light .luma-well .luma-well-extension .panel-button:focus { box-shadow: inset 0 0 0 2px #34383d; }
++.luma-surface-frost .luma-well-item:focus,
++.luma-surface-frost .luma-well .luma-well-extension .panel-button:focus { box-shadow: inset 0 0 0 2px #ffffff; }
++.luma-surface-glass .luma-well-item:focus,
++.luma-surface-glass .luma-well .luma-well-extension .panel-button:focus { box-shadow: inset 0 0 0 2px #ffffff; }
++/* A dock icon keeps its artwork's own language: no fill, a lift on hover, and
++ * for keyboard focus the same ring, around the artwork. */
++.luma-shelf-dock-island.luma-surface-dark #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island.luma-surface-dark #dash .dash-item-container .show-apps:focus .overview-icon { box-shadow: 0 0 0 2px #e7e9e8 !important; }
++.luma-shelf-dock-island.luma-surface-light #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island.luma-surface-light #dash .dash-item-container .show-apps:focus .overview-icon { box-shadow: 0 0 0 2px #34383d !important; }
++.luma-shelf-dock-island.luma-surface-frost #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island.luma-surface-frost #dash .dash-item-container .show-apps:focus .overview-icon { box-shadow: 0 0 0 2px #ffffff !important; }
++.luma-shelf-dock-island.luma-surface-glass #dash .dash-item-container .overview-tile:focus .overview-icon,
++.luma-shelf-dock-island.luma-surface-glass #dash .dash-item-container .show-apps:focus .overview-icon { box-shadow: 0 0 0 2px #ffffff !important; }
++.luma-shelf-dock-island #dash .overview-tile:focus .luma-shelf-artwork,
++.luma-shelf-dock-island #dash .show-apps:focus .luma-shelf-artwork { icon-shadow: 0 4px 7px rgba(12,17,24,0.40); }
++
++/* The now-playing island (0151). The island itself never highlights as a
++ * whole: its artwork and title raise the player, and only its controls take a
++ * hover and a press, in the ledger's fills like every other control on the
++ * shelf. The same holds for a Live Extension's actions on the live island. */
++.luma-shelf-media-island .luma-media-control:active { background-color: rgba(255, 255, 255, 0.09); }
++.luma-shelf-media-island.luma-surface-light .luma-media-control:active { background-color: rgba(25, 27, 31, 0.09); }
++.luma-shelf-media-island.luma-surface-frost .luma-media-control:active { background-color: rgba(255, 255, 255, 0.11); }
++.luma-shelf-media-island.luma-surface-glass .luma-media-control:active { background-color: rgba(255, 255, 255, 0.11); }
++.luma-media-identity:hover,
++.luma-media-identity:active,
++.luma-media-identity:focus { background-color: transparent; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action:active { background-color: rgba(255, 255, 255, 0.09); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action:active { background-color: rgba(25, 27, 31, 0.09); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action:active { background-color: rgba(255, 255, 255, 0.11); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action:active { background-color: rgba(255, 255, 255, 0.11); }
++
++/* An island that is one action highlights edge to edge (0151). A notification,
++ * a message or a Live Extension that opens its application is one action, so
++ * hovering or pressing it washes the whole island at its own radius, in the
++ * ledger's hover and press; the action's own buttons highlight on top. The
++ * wash is the material's inset shadow over its veil, so nothing moves. The
++ * body itself no longer paints: that was an inner block inset by the island's
++ * padding, and on the light stylesheet (light, frost and glass) the Live
++ * Extension body hovered in rgba(255,255,255,0.92) and pressed in a blue
++ * rgba(72,120,184,0.14) that the shelf never overrode. The now-playing island
++ * is several controls, so it keeps no island wash. */
++.luma-shelf-live-island .luma-live-extension:hover,
++.luma-shelf-live-island .luma-live-extension:focus,
++.luma-shelf-live-island .luma-live-extension:active,
++.luma-shelf-live-island .luma-live-extension:checked,
++.luma-shelf-beacon-island .luma-shelf-material .luma-notification-beacon:hover,
++.luma-shelf-beacon-island .luma-shelf-material .luma-notification-beacon:focus,
++.luma-shelf-beacon-island .luma-shelf-material .luma-notification-beacon:active,
++.luma-shelf-beacon-island .luma-shelf-material .luma-notification-beacon:checked {
++  background-color: transparent;
++  box-shadow: none; }
++.luma-shelf-material.luma-surface-dark.luma-island-hover { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.06); }
++.luma-shelf-material.luma-surface-dark.luma-island-press { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.09); }
++.luma-shelf-material.luma-surface-dark.luma-island-focus { box-shadow: inset 0 0 0 2px #e7e9e8; }
++.luma-shelf-material.luma-surface-light.luma-island-hover { box-shadow: inset 0 0 0 200px rgba(25, 27, 31, 0.06); }
++.luma-shelf-material.luma-surface-light.luma-island-press { box-shadow: inset 0 0 0 200px rgba(25, 27, 31, 0.09); }
++.luma-shelf-material.luma-surface-light.luma-island-focus { box-shadow: inset 0 0 0 2px #34383d; }
++.luma-shelf-material.luma-surface-frost.luma-island-hover { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.07); }
++.luma-shelf-material.luma-surface-frost.luma-island-press { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.11); }
++.luma-shelf-material.luma-surface-frost.luma-island-focus { box-shadow: inset 0 0 0 2px #ffffff; }
++.luma-shelf-material.luma-surface-glass.luma-island-hover { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.07); }
++.luma-shelf-material.luma-surface-glass.luma-island-press { box-shadow: inset 0 0 0 200px rgba(255, 255, 255, 0.11); }
++.luma-shelf-material.luma-surface-glass.luma-island-focus { box-shadow: inset 0 0 0 2px #ffffff; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -91,6 +91,7 @@
+     <file>ui/lumaDisplayArrival.js</file>
+     <file>ui/lumaWindowCorners.js</file>
+     <file>ui/lumaWindowWatch.js</file>
++    <file>ui/lumaFocusVisible.js</file>
+     <file>ui/lumaWell.js</file>
+     <file>ui/lumaDockBadgeModel.js</file>
+     <file>ui/lumaDockBadges.js</file>
+diff --git a/js/ui/lumaFocusVisible.js b/js/ui/lumaFocusVisible.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/lumaFocusVisible.js
+@@ -0,0 +1,70 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Focus on the shelf is shown only while someone is driving it with the
++// keyboard, the way :focus-visible works on the web.
++//
++// St marks a widget :focus whenever it holds key focus, however it got it,
++// and a menu hands key focus back to the button it came from when it closes.
++// After a click on Quick Options, the calendar or a menu, that left the whole
++// status island ringed as if it were selected, and a dock icon glowing, with
++// nothing to say why. Now the shelf keeps key focus exactly as before (so the
++// keyboard path is unchanged), but inside the shelf the :focus pseudo-class
++// is only drawn after a navigation key, until the next click or touch.
++import Clutter from 'gi://Clutter';
++import St from 'gi://St';
++
++const NAVIGATION_KEYS = new Set([
++    Clutter.KEY_Tab, Clutter.KEY_ISO_Left_Tab,
++    Clutter.KEY_Left, Clutter.KEY_Right, Clutter.KEY_Up, Clutter.KEY_Down,
++    Clutter.KEY_Home, Clutter.KEY_End, Clutter.KEY_Page_Up, Clutter.KEY_Page_Down,
++    Clutter.KEY_F10,
++]);
++
++export class FocusVisible {
++    constructor(root) {
++        this._root = root;
++        this._keyboard = false;
++        this._eventId = global.stage.connect('captured-event', (_stage, event) => {
++            switch (event.type()) {
++            case Clutter.EventType.KEY_PRESS:
++                if (NAVIGATION_KEYS.has(event.get_key_symbol()))
++                    this._setKeyboard(true);
++                break;
++            case Clutter.EventType.BUTTON_PRESS:
++            case Clutter.EventType.TOUCH_BEGIN:
++                this._setKeyboard(false);
++                break;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++        this._focusId = global.stage.connect('notify::key-focus', () => this._sync());
++    }
++
++    get keyboard() {
++        return this._keyboard;
++    }
++
++    _setKeyboard(keyboard) {
++        if (this._keyboard === keyboard)
++            return;
++        this._keyboard = keyboard;
++        this._sync();
++    }
++
++    _sync() {
++        const focus = global.stage.get_key_focus();
++        if (!(focus instanceof St.Widget) || !this._root.contains(focus))
++            return;
++        if (this._keyboard)
++            focus.add_style_pseudo_class('focus');
++        else
++            focus.remove_style_pseudo_class('focus');
++    }
++
++    destroy() {
++        if (this._eventId)
++            global.stage.disconnect(this._eventId);
++        if (this._focusId)
++            global.stage.disconnect(this._focusId);
++        this._eventId = this._focusId = 0;
++    }
++}
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -10,6 +10,7 @@
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Cogl from 'gi://Cogl';
++import GdkPixbuf from 'gi://GdkPixbuf';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+@@ -24,7 +25,9 @@ export const PIN_LIMIT = 4;
+ export const ATTENTION_LIMIT = 2;
+ export const ATTENTION_LINGER_MS = 3000;
+ export const READOUT_MAX_CHARS = 6;
+-const GLYPH_SIZE = 16;
++// The optical size of every glyph in the Well row, Luma's own and an
++// extension's: the system indicators' own 14px, not an icon's native size.
++const GLYPH_SIZE = 14;
+ const STORE_PATH = GLib.build_filenamev([GLib.get_user_data_dir(), 'luma', 'well.json']);
+ 
+ // What the Well keeps across restarts: the pinned apps in their order, the
+@@ -484,6 +487,7 @@ export const Well = GObject.registerClass({
+             this._extensions.set(indicator, container);
+             container.add_style_class_name('luma-well-extension');
+             container.y_align = Clutter.ActorAlign.CENTER;
++            this._normaliseExtensionIcons(container, indicator);
+             indicator.connectObject(
+                 'notify::visible', () => this._rebuild(),
+                 'destroy', () => {
+@@ -496,6 +500,139 @@ export const Well = GObject.registerClass({
+         return true;
+     }
+ 
++    // Every glyph in the Well row is the optical size of the system
++    // indicators and drawn in the surface's ink: the theme's symbolic variant
++    // of the icon where there is one, and otherwise the icon's own shape,
++    // holes and all, through the same silhouette the Well's own items use. No
++    // full-colour logos in this row (owner, 2026-09-17).
++    _wellGlyphName(icon) {
++        const names = [];
++        if (icon.icon_name)
++            names.push(icon.icon_name);
++        const gicon = icon.gicon;
++        if (gicon instanceof Gio.ThemedIcon)
++            names.push(...gicon.get_names());
++        for (const name of names) {
++            if (name.endsWith('-symbolic'))
++                return name;
++        }
++        for (const name of names) {
++            const symbolic = `${name}-symbolic`;
++            if (iconTheme.has_icon(symbolic))
++                return symbolic;
++        }
++        return null;
++    }
++
++    _iconFile(icon) {
++        const gicon = icon.gicon;
++        if (gicon instanceof Gio.FileIcon)
++            return gicon.get_file().get_path();
++        const names = [];
++        if (icon.icon_name)
++            names.push(icon.icon_name);
++        if (gicon instanceof Gio.ThemedIcon)
++            names.push(...gicon.get_names());
++        for (const name of names) {
++            try {
++                const path = iconTheme.lookup_icon(name, GLYPH_SIZE, 0)?.get_filename?.();
++                if (path)
++                    return path;
++            } catch {
++                // An icon the theme cannot place is one we cannot measure.
++            }
++        }
++        return null;
++    }
++
++    // A shape needs air around it. An icon drawn as an opaque square has no
++    // alpha to silhouette from, so its silhouette is a filled block: still
++    // ink, still legible, but worth knowing about, because the application
++    // gave the Shell nothing to draw.
++    _hasShape(icon) {
++        const path = this._iconFile(icon);
++        if (!path)
++            return true; // A pixmap, or an embedded tray icon: it has alpha.
++        let pixbuf;
++        try {
++            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(path, 4 * GLYPH_SIZE, 4 * GLYPH_SIZE);
++        } catch {
++            return true;
++        }
++        if (!pixbuf.get_has_alpha())
++            return false;
++        const pixels = pixbuf.get_pixels();
++        const stride = pixbuf.get_rowstride();
++        const channels = pixbuf.get_n_channels();
++        let clear = 0;
++        const width = pixbuf.get_width(), height = pixbuf.get_height();
++        for (let y = 0; y < height; y++) {
++            for (let x = 0; x < width; x++) {
++                if (pixels[y * stride + x * channels + 3] < 32)
++                    clear++;
++            }
++        }
++        return clear / (width * height) > 0.04;
++    }
++
++    _inkGlyph(actor) {
++        if (actor._lumaWellInk)
++            return;
++        const effect = new Silhouette();
++        actor._lumaWellInk = effect;
++        const applyInk = () => {
++            if (actor.get_stage())
++                effect.setInk(actor.get_theme_node().get_foreground_color());
++        };
++        actor.add_effect_with_name('luma-well-silhouette', effect);
++        actor.connectObject('style-changed', applyInk,
++            'destroy', () => (actor._lumaWellInk = null), this);
++        applyInk();
++    }
++
++    _noteShapeless(name) {
++        this._shapeless ??= new Set();
++        if (this._shapeless.has(name))
++            return;
++        this._shapeless.add(name);
++        console.warn(`Luma Well: ${name} sends a status icon with no transparency, so its glyph is a filled block of ink`);
++    }
++
++    _normaliseExtensionIcons(container, indicator) {
++        const name = indicator?._indicator?.id || indicator?._indicator?.title ||
++            indicator?.constructor?.name || 'an extension';
++        const actors = [];
++        const walk = actor => {
++            if (actor instanceof St.Icon || actor instanceof Clutter.Clone || actor.content)
++                actors.push(actor);
++            actor.get_children?.().forEach(walk);
++        };
++        walk(container);
++        for (const actor of actors) {
++            if (actor instanceof St.Icon) {
++                const symbolic = this._wellGlyphName(actor);
++                if (symbolic) {
++                    actor.icon_name = symbolic;
++                    actor.gicon = null;
++                } else {
++                    // Ink either way: a colour a third party chose is outside
++                    // the ink contract and can land on the surface's own
++                    // luminance, where no shadow saves it.
++                    if (!this._hasShape(actor))
++                        this._noteShapeless(name);
++                    this._inkGlyph(actor);
++                }
++                actor.icon_size = GLYPH_SIZE;
++            } else {
++                // A pixmap the application sent, or an XEmbed tray icon.
++                actor.set_size(GLYPH_SIZE, GLYPH_SIZE);
++                if (actor.content)
++                    actor.content_gravity = Clutter.ContentGravity.RESIZE_ASPECT;
++                this._inkGlyph(actor);
++            }
++        }
++    }
++
+     isPinned(key) {
+         return this._store.pins.includes(key);
+     }
+@@ -564,6 +701,10 @@ export const Well = GObject.registerClass({
+         const sources = this._ready();
+         const {shown, rest} = arrange(sources, this._store);
+         const extensions = [...(this._extensions ?? new Map()).entries()];
++        // An application can swap its tray icon at any time; the row's size
++        // and ink are its own, not the icon's.
++        for (const [indicator, container] of extensions)
++            this._normaliseExtensionIcons(container, indicator);
+         const extensionActors = new Set(extensions.map(([, container]) => container));
+         for (const child of this.get_children()) {
+             if (!extensionActors.has(child))
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1234,6 +1234,9 @@ class QuickSettings extends PanelMenu.Button {
+                 label.connect_after('style-changed', () => this._setStatusLineHeight(label));
+             }
+             this.connectObject('notify::has-key-focus', () => this._syncStatusHover(), this);
++            // The shelf draws focus only for keyboard navigation (lumaFocusVisible.js),
++            // so the grid follows the drawn :focus, not merely held key focus.
++            this.connectObject('notify::pseudo-class', () => this._syncStatusHover(), this);
+             this.menu.connectObject('open-state-changed', () => this._syncStatusHover(), this);
+             this.connectObject('notify::hover', () => {
+                 this._syncStatusHover();
+@@ -1442,7 +1445,7 @@ class QuickSettings extends PanelMenu.Button {
+         // overlay is no longer drawn.
+         this._statusHover.opacity = 0;
+         const controls = this._statusControls;
+-        if (this.has_key_focus()) controls.add_style_pseudo_class('focus');
++        if (this.has_key_focus() && this.has_style_pseudo_class('focus')) controls.add_style_pseudo_class('focus');
+         else controls.remove_style_pseudo_class('focus');
+         if (this.menu.isOpen) controls.add_style_pseudo_class('checked');
+         else controls.remove_style_pseudo_class('checked');
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -11,6 +11,7 @@ import * as PanelMenu from './panelMenu.js';
+ import {ShelfMedia} from './shelfMedia.js';
+ import {MediaIslandGuard} from './lumaMediaIslandGuard.js';
+ import {Well} from './lumaWell.js';
++import {FocusVisible} from './lumaFocusVisible.js';
+ import {NotificationBeacon} from './lumaNotificationBeacon.js';
+ import {LumaIconMask} from './iconMask.js';
+ import {anchoredToStatus, shelfGaps} from './mediaSelection.js';
+@@ -291,6 +292,35 @@ class ShelfIsland extends St.Widget {
+         this._content.set_size(vertical ? thickness : -1, vertical ? -1 : thickness);
+     }
+ 
++    // An island that is one action washes edge to edge, at its own radius,
++    // while that action is hovered or pressed, and shows keyboard focus as a
++    // ring on the same edge. The wash is the material's inset shadow, so the
++    // island's padding and layout stay as they are.
++    setBody(body) {
++        if (this._body === body)
++            return;
++        this._body?.disconnectObject(this);
++        this._body = body;
++        if (!body)
++            return;
++        const sync = () => {
++            const pressed = body.has_style_pseudo_class('active') ||
++                body.has_style_pseudo_class('checked');
++            const hovered = body.hover && !pressed;
++            const focused = body.has_style_pseudo_class('focus') && !pressed && !hovered;
++            for (const [name, on] of [['luma-island-press', pressed],
++                ['luma-island-hover', hovered], ['luma-island-focus', focused]]) {
++                if (on)
++                    this._content.add_style_class_name(name);
++                else
++                    this._content.remove_style_class_name(name);
++            }
++        };
++        body.connectObject('notify::hover', sync, 'notify::pseudo-class', sync,
++            'destroy', () => (this._body = null), this);
++        sync();
++    }
++
+     setCornerRadii(radii) {
+         this._radii = radii;
+         this._materialBinding.setCornerRadii(radii);
+@@ -463,6 +493,8 @@ class Shelf extends St.Widget {
+             this._settings, false);
+         // Application status icons live in the status island's Well, not in an
+         // island of their own.
++        // Focus rings on the shelf are for keyboard navigation only.
++        this._focusVisible = new FocusVisible(this);
+         this._well = new Well();
+         this._actionsMaterial.setStatusWell?.(this._well);
+         this._well.connectObject('changed', () => this._queueDockWidth(), this);
+@@ -528,6 +560,7 @@ class Shelf extends St.Widget {
+             new St.Bin({child: this._beacon}));
+         this._beaconIsland.visible = false;
+         this._group._beaconIsland = this._beaconIsland;
++        this._beaconIsland.setBody(this._beacon);
+         this._beacon.connectObject('notify::visible', () => {
+             this._beaconIsland.visible = this._beacon.visible;
+             this._sync();
+@@ -545,6 +578,8 @@ class Shelf extends St.Widget {
+         };
+ 
+         this.connect('destroy', () => {
++            this._focusVisible?.destroy();
++            this._focusVisible = null;
+             this._mediaGuard?.destroy();
+             this._mediaGuard = null;
+             if (this._panelAddToStatusArea) {
+@@ -787,6 +822,9 @@ class Shelf extends St.Widget {
+             // island was then left holding nothing at all: it kept its
+             // material and its padding, measured zero, and drew as an empty
+             // slab beside the clock with the event nowhere to be seen.
++            // The Live Extension is one action that may carry buttons: its
++            // island washes as a whole and the buttons highlight on top.
++            this._liveIsland.setBody(liveIndicator);
+             if (live.get_parent() !== this._liveContent) {
+                 live.get_parent()?.remove_child(live);
+                 this._liveContent.add_child(live);
+diff --git a/tests/unit/lumaSurfaceInk.js b/tests/unit/lumaSurfaceInk.js
+--- a/tests/unit/lumaSurfaceInk.js
++++ b/tests/unit/lumaSurfaceInk.js
+@@ -81,6 +81,14 @@ const STACKS = [
+     ['recess'],
+     ['recess', 'hover'],
+     ['recess', 'press'],
++    // Two fills stack only where two actors each own one (Shell patch 0151):
++    // the status cluster's hover wash over a filled button, and a
++    // single-action island's wash under its own hovered or pressed button.
++    // A press on such a button does not press the island, so two presses
++    // never stack.
++    ['press', 'hover'],
++    ['hover', 'hover'],
++    ['hover', 'press'],
+ ];
+ 
+ describe('Luma surface ink ledger', () => {

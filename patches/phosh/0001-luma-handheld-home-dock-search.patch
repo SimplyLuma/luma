@@ -1,0 +1,2522 @@
+diff --git a/src/app-grid-button.c b/src/app-grid-button.c
+index 9c9ced2..e073c96 100644
+--- a/src/app-grid-button.c
++++ b/src/app-grid-button.c
+@@ -9,6 +9,7 @@
+ #include "phosh-config.h"
+ #include "app-tracker.h"
+ #include "app-grid-button.h"
++#include "app-grid-icon.h"
+ #include "clamp.h"
+ #include "fading-label.h"
+ #include "metainfo-cache.h"
+@@ -546,6 +547,7 @@ phosh_app_grid_button_init (PhoshAppGridButton *self)
+ 
+   g_type_ensure (PHOSH_TYPE_CLAMP);
+   g_type_ensure (PHOSH_TYPE_FADING_LABEL);
++  g_type_ensure (PHOSH_TYPE_APP_GRID_ICON);
+ 
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
+@@ -613,6 +615,7 @@ phosh_app_grid_button_set_app_info (PhoshAppGridButton *self,
+ {
+   PhoshFavoriteListModel *list = NULL;
+   PhoshAppGridButtonPrivate *priv;
++  g_autoptr (GIcon) fallback = NULL;
+   GIcon *icon;
+   const char *name;
+ 
+@@ -646,13 +649,14 @@ phosh_app_grid_button_set_app_info (PhoshAppGridButton *self,
+ 
+     icon = g_app_info_get_icon (priv->info);
+     if (G_UNLIKELY (icon == NULL)) {
+-      gtk_image_set_from_icon_name (GTK_IMAGE (priv->icon), PHOSH_APP_UNKNOWN_ICON, -1);
++      fallback = g_themed_icon_new (PHOSH_APP_UNKNOWN_ICON);
++      phosh_app_grid_icon_set_gicon (PHOSH_APP_GRID_ICON (priv->icon), fallback);
+     } else {
+       if (G_IS_THEMED_ICON (icon)) {
+         g_themed_icon_append_name (G_THEMED_ICON (icon),
+                                    PHOSH_APP_UNKNOWN_ICON);
+       }
+-      gtk_image_set_from_gicon (GTK_IMAGE (priv->icon), icon, -1);
++      phosh_app_grid_icon_set_gicon (PHOSH_APP_GRID_ICON (priv->icon), icon);
+     }
+ 
+     gtk_widget_set_sensitive (GTK_WIDGET (self), TRUE);
+@@ -692,7 +696,8 @@ phosh_app_grid_button_set_app_info (PhoshAppGridButton *self,
+     }
+   } else {
+     phosh_app_grid_base_button_set_label (PHOSH_APP_GRID_BASE_BUTTON (self), _("Application"));
+-    gtk_image_set_from_icon_name (GTK_IMAGE (priv->icon), PHOSH_APP_UNKNOWN_ICON, -1);
++    fallback = g_themed_icon_new (PHOSH_APP_UNKNOWN_ICON);
++    phosh_app_grid_icon_set_gicon (PHOSH_APP_GRID_ICON (priv->icon), fallback);
+ 
+     gtk_widget_set_sensitive (GTK_WIDGET (self), FALSE);
+   }
+diff --git a/src/app-grid-icon.c b/src/app-grid-icon.c
+new file mode 100644
+index 0000000..f7de6db
+--- /dev/null
++++ b/src/app-grid-icon.c
+@@ -0,0 +1,200 @@
++/*
++ * Copyright © 2026 Project Luma
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#define G_LOG_DOMAIN "phosh-app-grid-icon"
++
++#include "app-grid-icon.h"
++
++#define LUMA_ICON_SIZE 58
++#define LUMA_ICON_RADIUS 13.5
++
++struct _PhoshAppGridIcon {
++  GtkDrawingArea parent_instance;
++
++  GIcon *icon;
++  GdkPixbuf *pixbuf;
++  int pixbuf_scale;
++};
++
++G_DEFINE_TYPE (PhoshAppGridIcon, phosh_app_grid_icon, GTK_TYPE_DRAWING_AREA)
++
++static void
++rounded_rectangle (cairo_t *cr, double x, double y, double width, double height, double radius)
++{
++  const double degrees = G_PI / 180.0;
++
++  cairo_new_sub_path (cr);
++  cairo_arc (cr, x + width - radius, y + radius, radius, -90 * degrees, 0 * degrees);
++  cairo_arc (cr, x + width - radius, y + height - radius, radius, 0 * degrees, 90 * degrees);
++  cairo_arc (cr, x + radius, y + height - radius, radius, 90 * degrees, 180 * degrees);
++  cairo_arc (cr, x + radius, y + radius, radius, 180 * degrees, 270 * degrees);
++  cairo_close_path (cr);
++}
++
++static void
++clear_pixbuf (PhoshAppGridIcon *self)
++{
++  g_clear_object (&self->pixbuf);
++  self->pixbuf_scale = 0;
++}
++
++static void
++ensure_pixbuf (PhoshAppGridIcon *self)
++{
++  GtkIconTheme *theme;
++  GtkIconInfo *info;
++  g_autoptr (GError) error = NULL;
++  int scale;
++
++  if (self->icon == NULL)
++    return;
++
++  scale = MAX (1, gtk_widget_get_scale_factor (GTK_WIDGET (self)));
++  if (self->pixbuf != NULL && self->pixbuf_scale == scale)
++    return;
++
++  clear_pixbuf (self);
++  theme = gtk_icon_theme_get_for_screen (gtk_widget_get_screen (GTK_WIDGET (self)));
++  info = gtk_icon_theme_lookup_by_gicon (theme,
++                                         self->icon,
++                                         LUMA_ICON_SIZE * scale,
++                                         GTK_ICON_LOOKUP_FORCE_SIZE);
++  if (info == NULL)
++    return;
++
++  self->pixbuf = gtk_icon_info_load_icon (info, &error);
++  g_object_unref (info);
++  if (self->pixbuf == NULL) {
++    g_debug ("Unable to load launcher icon: %s", error->message);
++    return;
++  }
++
++  self->pixbuf_scale = scale;
++}
++
++static gboolean
++pixbuf_needs_canvas (GdkPixbuf *pixbuf)
++{
++  const guchar *pixels;
++  int width, height, stride, channels;
++  int min_x, min_y, max_x = -1, max_y = -1;
++
++  if (!gdk_pixbuf_get_has_alpha (pixbuf))
++    return FALSE;
++
++  width = gdk_pixbuf_get_width (pixbuf);
++  height = gdk_pixbuf_get_height (pixbuf);
++  stride = gdk_pixbuf_get_rowstride (pixbuf);
++  channels = gdk_pixbuf_get_n_channels (pixbuf);
++  pixels = gdk_pixbuf_get_pixels (pixbuf);
++  min_x = width;
++  min_y = height;
++
++  for (int y = 0; y < height; y++) {
++    for (int x = 0; x < width; x++) {
++      if (pixels[y * stride + x * channels + channels - 1] <= 16)
++        continue;
++      min_x = MIN (min_x, x);
++      min_y = MIN (min_y, y);
++      max_x = MAX (max_x, x);
++      max_y = MAX (max_y, y);
++    }
++  }
++
++  if (max_x < 0 || max_y < 0)
++    return TRUE;
++
++  return (max_x - min_x + 1) < width * 0.78 ||
++         (max_y - min_y + 1) < height * 0.78;
++}
++
++static gboolean
++phosh_app_grid_icon_draw (GtkWidget *widget, cairo_t *cr)
++{
++  PhoshAppGridIcon *self = PHOSH_APP_GRID_ICON (widget);
++  GtkAllocation allocation;
++  cairo_pattern_t *gradient;
++  double x, y;
++  int scale;
++
++  gtk_widget_get_allocation (widget, &allocation);
++  x = (allocation.width - LUMA_ICON_SIZE) / 2.0;
++  y = (allocation.height - LUMA_ICON_SIZE) / 2.0;
++  ensure_pixbuf (self);
++
++  /* A bounded, deliberately subtle shadow gives every launcher the same
++   * physical depth without modifying application-owned artwork. */
++  rounded_rectangle (cr, x + 0.5, y + 2.5, LUMA_ICON_SIZE - 1, LUMA_ICON_SIZE - 1,
++                     LUMA_ICON_RADIUS);
++  cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.31);
++  cairo_fill (cr);
++
++  cairo_save (cr);
++  rounded_rectangle (cr, x, y, LUMA_ICON_SIZE, LUMA_ICON_SIZE, LUMA_ICON_RADIUS);
++  cairo_clip (cr);
++
++  /* Only small, logo-like artwork receives a Prairie canvas. Authored
++   * full-size icons keep their own transparent rounded corners. */
++  if (self->pixbuf == NULL || pixbuf_needs_canvas (self->pixbuf)) {
++    gradient = cairo_pattern_create_linear (x, y, x + LUMA_ICON_SIZE, y + LUMA_ICON_SIZE);
++    cairo_pattern_add_color_stop_rgb (gradient, 0.0, 0.38, 0.58, 0.88);
++    cairo_pattern_add_color_stop_rgb (gradient, 1.0, 0.20, 0.31, 0.66);
++    cairo_set_source (cr, gradient);
++    cairo_paint (cr);
++    cairo_pattern_destroy (gradient);
++  }
++
++  if (self->pixbuf != NULL) {
++    scale = MAX (1, self->pixbuf_scale);
++    cairo_save (cr);
++    cairo_translate (cr, x, y);
++    cairo_scale (cr, 1.0 / scale, 1.0 / scale);
++    gdk_cairo_set_source_pixbuf (cr, self->pixbuf, 0, 0);
++    cairo_paint (cr);
++    cairo_restore (cr);
++  }
++  cairo_restore (cr);
++
++  return GDK_EVENT_STOP;
++}
++
++static void
++phosh_app_grid_icon_finalize (GObject *object)
++{
++  PhoshAppGridIcon *self = PHOSH_APP_GRID_ICON (object);
++
++  g_clear_object (&self->icon);
++  clear_pixbuf (self);
++  G_OBJECT_CLASS (phosh_app_grid_icon_parent_class)->finalize (object);
++}
++
++static void
++phosh_app_grid_icon_class_init (PhoshAppGridIconClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
++
++  object_class->finalize = phosh_app_grid_icon_finalize;
++  widget_class->draw = phosh_app_grid_icon_draw;
++  gtk_widget_class_set_css_name (widget_class, "phosh-app-grid-icon");
++}
++
++static void
++phosh_app_grid_icon_init (PhoshAppGridIcon *self)
++{
++  gtk_widget_set_size_request (GTK_WIDGET (self), LUMA_ICON_SIZE, LUMA_ICON_SIZE);
++}
++
++void
++phosh_app_grid_icon_set_gicon (PhoshAppGridIcon *self, GIcon *icon)
++{
++  g_return_if_fail (PHOSH_IS_APP_GRID_ICON (self));
++  g_return_if_fail (icon == NULL || G_IS_ICON (icon));
++
++  if (g_set_object (&self->icon, icon)) {
++    clear_pixbuf (self);
++    gtk_widget_queue_draw (GTK_WIDGET (self));
++  }
++}
+diff --git a/src/app-grid-icon.h b/src/app-grid-icon.h
+new file mode 100644
+index 0000000..633c7c9
+--- /dev/null
++++ b/src/app-grid-icon.h
+@@ -0,0 +1,18 @@
++/*
++ * Copyright © 2026 Project Luma
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include <gio/gio.h>
++#include <gtk/gtk.h>
++
++G_BEGIN_DECLS
++
++#define PHOSH_TYPE_APP_GRID_ICON phosh_app_grid_icon_get_type ()
++G_DECLARE_FINAL_TYPE (PhoshAppGridIcon, phosh_app_grid_icon, PHOSH, APP_GRID_ICON, GtkDrawingArea)
++
++void phosh_app_grid_icon_set_gicon (PhoshAppGridIcon *self, GIcon *icon);
++
++G_END_DECLS
+diff --git a/src/app-grid.c b/src/app-grid.c
+index cc2fe6f..09be01f 100644
+--- a/src/app-grid.c
++++ b/src/app-grid.c
+@@ -43,12 +43,20 @@ static guint signals[N_SIGNALS] = { 0 };
+ typedef struct _PhoshAppGridPrivate PhoshAppGridPrivate;
+ struct _PhoshAppGridPrivate {
+   GtkFilterListModel *model;
++  GListStore *home_model;
+ 
+   GtkWidget *deck;
+   GtkWidget *search;
++  GtkWidget *search_placeholder;
+   GtkWidget *apps;
+   GtkWidget *favs;
+   GtkWidget *favs_revealer;
++  GtkWidget *dock;
++  GtkWidget *dock_revealer;
++  GtkWidget *search_revealer;
++  GtkWidget *search_intro;
++  GtkGesture *search_swipe;
++  GtkGesture *search_background_tap;
+   GtkWidget *scrolled_window;
+   GtkWidget *btn_adaptive;
+   GtkWidget *btn_adaptive_img;
+@@ -68,10 +76,12 @@ struct _PhoshAppGridPrivate {
+   char *search_string;
+   gboolean filter_adaptive;
+   GSettings *settings;
++  GSettings *luma_settings;
+   GStrv force_adaptive;
+   GSimpleActionGroup *actions;
+   PhoshAppFilterModeFlags filter_mode;
+   guint debounce;
++  gboolean search_mode;
+ };
+ 
+ G_DEFINE_TYPE_WITH_PRIVATE (PhoshAppGrid, phosh_app_grid, GTK_TYPE_BOX)
+@@ -346,12 +356,7 @@ search_apps (gpointer item, gpointer data)
+ 
+   /* filter out favorites when not searching */
+   if (gm_str_is_null_or_empty (search)) {
+-    if (PHOSH_IS_FOLDER_INFO (info))
+-      return phosh_folder_info_refilter (PHOSH_FOLDER_INFO (info), search);
+-    if (phosh_favorite_list_model_app_is_favorite (NULL, info))
+-      return FALSE;
+-
+-    return TRUE;
++    return FALSE;
+   }
+ 
+   if (PHOSH_IS_FOLDER_INFO (info))
+@@ -373,18 +378,69 @@ create_favorite_launcher (gpointer item, gpointer self)
+   return btn;
+ }
+ 
++static GtkWidget *
++create_home_launcher (gpointer item, gpointer self)
++{
++  GtkWidget *btn;
++
++  if (PHOSH_IS_FOLDER_INFO (item)) {
++    btn = phosh_app_grid_folder_button_new_from_folder_info (item);
++    g_signal_connect (btn, "folder-launched", G_CALLBACK (folder_launched_cb), self);
++  } else {
++    btn = phosh_app_grid_button_new (G_APP_INFO (item));
++    g_signal_connect (btn, "app-launched", G_CALLBACK (app_launched_cb), self);
++  }
++  gtk_widget_set_visible (btn, TRUE);
++
++  return btn;
++}
++
+ static void
+-toggle_favorites_revealer (PhoshAppGrid *self)
++rebuild_home_model (PhoshAppGrid *self)
+ {
+   PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+-  PhoshFavoriteListModel *favorites = phosh_favorite_list_model_get_default ();
+-  gboolean criteria;
++  g_auto (GStrv) app_ids = g_settings_get_strv (priv->luma_settings, "home-apps");
++
++  g_list_store_remove_all (priv->home_model);
++  if (!app_ids[0]) {
++    g_strfreev (app_ids);
++    app_ids = g_settings_get_strv (priv->settings, "favorites");
++  }
+ 
+-  /* Hide favorites when there are none or a search is in progress */
+-  criteria = ((g_list_model_get_n_items (G_LIST_MODEL (favorites)) == 0) ||
+-              !gm_str_is_null_or_empty (priv->search_string));
++  for (int i = 0; app_ids[i]; i++) {
++    if (g_str_has_prefix (app_ids[i], "folder:")) {
++      g_autoptr (PhoshFolderInfo) folder =
++        phosh_folder_info_new_from_folder_path (app_ids[i] + strlen ("folder:"));
+ 
+-  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->favs_revealer), !criteria);
++      if (g_app_info_should_show (G_APP_INFO (folder)))
++        g_list_store_append (priv->home_model, folder);
++      continue;
++    }
++
++    g_autoptr (GDesktopAppInfo) info = g_desktop_app_info_new (app_ids[i]);
++
++    if (info)
++      g_list_store_append (priv->home_model, info);
++  }
++}
++
++static void
++on_home_apps_changed (GSettings *settings, const char *key, PhoshAppGrid *self)
++{
++  rebuild_home_model (self);
++}
++
++static void
++toggle_favorites_revealer (PhoshAppGrid *self)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  gboolean home_visible = !priv->search_mode;
++  gboolean intro_visible = priv->search_mode && gm_str_is_null_or_empty (priv->search_string);
++
++  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->favs_revealer), home_visible);
++  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->dock_revealer), home_visible);
++  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->search_revealer), priv->search_mode);
++  gtk_revealer_set_reveal_child (GTK_REVEALER (priv->search_intro), intro_visible);
+ }
+ 
+ 
+@@ -392,9 +448,13 @@ static void
+ favorites_changed (GListModel *list, guint pos, guint removed, guint added, PhoshAppGrid *self)
+ {
+   PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  g_auto (GStrv) home_apps = g_settings_get_strv (priv->luma_settings, "home-apps");
+ 
+   toggle_favorites_revealer (self);
+ 
++  if (!home_apps[0])
++    rebuild_home_model (self);
++
+   /* We don't show favorites in the main list, filter them out */
+   gtk_filter_list_model_refilter (priv->model);
+ }
+@@ -431,7 +491,17 @@ phosh_app_grid_init (PhoshAppGrid *self)
+ 
+   favorites = phosh_favorite_list_model_get_default ();
+ 
++  priv->settings = g_settings_new ("sm.puri.phosh");
++  priv->luma_settings = g_settings_new ("org.project_luma.shell-state");
++  priv->home_model = g_list_store_new (G_TYPE_APP_INFO);
++  rebuild_home_model (self);
++
+   gtk_flow_box_bind_model (GTK_FLOW_BOX (priv->favs),
++                           G_LIST_MODEL (priv->home_model),
++                           create_home_launcher,
++                           self,
++                           NULL);
++  gtk_flow_box_bind_model (GTK_FLOW_BOX (priv->dock),
+                            G_LIST_MODEL (favorites),
+                            create_favorite_launcher,
+                            self,
+@@ -440,6 +510,10 @@ phosh_app_grid_init (PhoshAppGrid *self)
+                     "items-changed",
+                     G_CALLBACK (favorites_changed),
+                     self);
++  g_signal_connect (priv->luma_settings,
++                    "changed::home-apps",
++                    G_CALLBACK (on_home_apps_changed),
++                    self);
+ 
+   /* fill the grid with apps */
+   sorted = gtk_sort_list_model_new (G_LIST_MODEL (phosh_app_list_model_get_default ()),
+@@ -457,7 +531,6 @@ phosh_app_grid_init (PhoshAppGrid *self)
+                            self,
+                            NULL);
+ 
+-  priv->settings = g_settings_new ("sm.puri.phosh");
+   g_object_connect (priv->settings,
+                     "swapped-signal::changed::force-adaptive", on_filter_setting_changed, self,
+                     "swapped-signal::changed::app-filter-mode", on_filter_setting_changed, self,
+@@ -482,7 +555,9 @@ phosh_app_grid_dispose (GObject *object)
+   g_clear_object (&priv->open_folder);
+   g_clear_object (&priv->actions);
+   g_clear_object (&priv->model);
++  g_clear_object (&priv->home_model);
+   g_clear_object (&priv->settings);
++  g_clear_object (&priv->luma_settings);
+   g_clear_handle_id (&priv->debounce, g_source_remove);
+ 
+   G_OBJECT_CLASS (phosh_app_grid_parent_class)->dispose (object);
+@@ -532,6 +607,7 @@ do_search (gpointer data)
+     search_active = FALSE;
+   }
+ 
++  phosh_util_toggle_style_class (GTK_WIDGET (self), ACTIVE_SEARCH_CLASS, priv->search_mode);
+   phosh_util_toggle_style_class (GTK_WIDGET (priv->apps), ACTIVE_SEARCH_CLASS, search_active);
+   toggle_favorites_revealer (self);
+   gtk_filter_list_model_refilter (priv->model);
+@@ -578,6 +654,8 @@ on_search_changed (GtkSearchEntry *entry,
+   PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+   const char *search = gtk_entry_get_text (GTK_ENTRY (entry));
+ 
++  gtk_widget_set_visible (priv->search_placeholder, gm_str_is_null_or_empty (search));
++
+   g_clear_pointer (&priv->search_string, g_free);
+ 
+   g_clear_handle_id (&priv->debounce, g_source_remove);
+@@ -664,12 +742,87 @@ on_search_gained_focus (GtkWidget    *widget,
+ {
+   PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+ 
++  priv->search_mode = TRUE;
++  toggle_favorites_revealer (self);
++
+   if (!gm_str_is_null_or_empty (priv->search_string))
+     phosh_util_toggle_style_class (GTK_WIDGET (priv->apps), ACTIVE_SEARCH_CLASS, TRUE);
+ 
+   return GDK_EVENT_PROPAGATE;
+ }
+ 
++static void
++on_search_swipe (PhoshAppGrid *self, double offset_x, double offset_y)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++
++  if (priv->search_mode && ABS (offset_x) > ABS (offset_y) && offset_x > 48) {
++    phosh_app_grid_reset (self);
++    return;
++  }
++
++  if (ABS (offset_y) <= ABS (offset_x))
++    return;
++
++  if (priv->search_mode && offset_y < -48) {
++    phosh_app_grid_reset (self);
++    return;
++  }
++
++  if (!priv->search_mode && offset_y > 72)
++    phosh_app_grid_focus_search (self);
++}
++
++static void
++on_search_background_released (PhoshAppGrid        *self,
++                               int                  n_press,
++                               double               x,
++                               double               y,
++                               GtkGestureMultiPress *gesture)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  const GdkEvent *event;
++  GtkWidget *event_widget;
++
++  if (!priv->search_mode || n_press != 1)
++    return;
++
++  event = gtk_gesture_get_last_event (GTK_GESTURE (gesture), NULL);
++  event_widget = event ? gtk_get_event_widget ((GdkEvent *) event) : NULL;
++  if (event_widget != NULL &&
++      (GTK_IS_BUTTON (event_widget) ||
++       gtk_widget_get_ancestor (event_widget, GTK_TYPE_BUTTON) != NULL ||
++       GTK_IS_FLOW_BOX_CHILD (event_widget) ||
++       gtk_widget_get_ancestor (event_widget, GTK_TYPE_FLOW_BOX_CHILD) != NULL))
++    return;
++
++  phosh_app_grid_reset (self);
++  gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
++}
++
++
++static void
++on_search_dismissed (PhoshAppGrid *self)
++{
++  phosh_app_grid_reset (self);
++}
++
++
++static void
++on_search_suggestion_clicked (GtkButton    *button,
++                              PhoshAppGrid *self)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  const char *suggestion = gtk_button_get_label (button);
++
++  if (gm_str_is_null_or_empty (suggestion))
++    return;
++
++  gtk_entry_set_text (GTK_ENTRY (priv->search), suggestion);
++  gtk_editable_set_position (GTK_EDITABLE (priv->search), -1);
++  phosh_app_grid_reset (self);
++}
++
+ 
+ static void
+ phosh_app_grid_class_init (PhoshAppGridClass *klass)
+@@ -715,6 +868,12 @@ phosh_app_grid_class_init (PhoshAppGridClass *klass)
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, empty_folder_label);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, favs);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, favs_revealer);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, dock);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, dock_revealer);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_revealer);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_intro);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_swipe);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_background_tap);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, folder_apps);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, folder_name_btn);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, folder_name_img);
+@@ -723,6 +882,7 @@ phosh_app_grid_class_init (PhoshAppGridClass *klass)
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, folder_stack);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, scrolled_window);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_placeholder);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_folder_edit_toggled);
+   gtk_widget_class_bind_template_callback (widget_class, on_folder_entry_activated);
+@@ -731,6 +891,10 @@ phosh_app_grid_class_init (PhoshAppGridClass *klass)
+   gtk_widget_class_bind_template_callback (widget_class, on_search_activated);
+   gtk_widget_class_bind_template_callback (widget_class, on_search_gained_focus);
+   gtk_widget_class_bind_template_callback (widget_class, on_search_lost_focus);
++  gtk_widget_class_bind_template_callback (widget_class, on_search_swipe);
++  gtk_widget_class_bind_template_callback (widget_class, on_search_background_released);
++  gtk_widget_class_bind_template_callback (widget_class, on_search_dismissed);
++  gtk_widget_class_bind_template_callback (widget_class, on_search_suggestion_clicked);
+   gtk_widget_class_bind_template_callback (widget_class, show_main_grid);
+ 
+   gtk_widget_class_set_css_name (widget_class, "phosh-app-grid");
+@@ -759,6 +923,9 @@ phosh_app_grid_reset (PhoshAppGrid *self)
+   gtk_adjustment_set_value (adjustment, 0);
+   gtk_entry_set_text (GTK_ENTRY (priv->search), "");
+   g_clear_pointer (&priv->search_string, g_free);
++  priv->search_mode = FALSE;
++  toggle_favorites_revealer (self);
++  gtk_widget_grab_focus (GTK_WIDGET (self));
+ 
+   /* Do not focus last folder */
+   priv->open_folder_idx = -1;
+@@ -777,6 +944,8 @@ phosh_app_grid_focus_search (PhoshAppGrid *self)
+ 
+   g_return_if_fail (PHOSH_IS_APP_GRID (self));
+   priv = phosh_app_grid_get_instance_private (self);
++  priv->search_mode = TRUE;
++  toggle_favorites_revealer (self);
+   gtk_widget_grab_focus (priv->search);
+ }
+ 
+diff --git a/src/brightness-settings.c b/src/brightness-settings.c
+index c1f0061..2739802 100644
+--- a/src/brightness-settings.c
++++ b/src/brightness-settings.c
+@@ -27,6 +27,7 @@ struct _PhoshBrightnessSettings {
+ 
+   GtkSwitch       *auto_switch;
+   GtkImage        *image;
++  GtkLabel        *percent_label;
+   GtkScale        *scale;
+   GtkToggleButton *toggle_btn;
+   GtkStack        *toggle_stack;
+@@ -43,6 +44,19 @@ on_auto_brightness_activated (PhoshBrightnessSettings *self, GtkListBoxRow *row)
+   gtk_switch_set_active (self->auto_switch, !gtk_switch_get_active (self->auto_switch));
+ }
+ 
++
++static void
++on_brightness_value_changed (GtkAdjustment *adjustment, PhoshBrightnessSettings *self)
++{
++  double lower = gtk_adjustment_get_lower (adjustment);
++  double upper = gtk_adjustment_get_upper (adjustment);
++  double value = gtk_adjustment_get_value (adjustment);
++  g_autofree char *text = NULL;
++
++  text = g_strdup_printf ("%.0f%%", upper > lower ? (value - lower) * 100.0 / (upper - lower) : 0.0);
++  gtk_label_set_label (self->percent_label, text);
++}
++
+ static void
+ on_auto_brightness_present_changed (PhoshBrightnessSettings *self,
+                                     GParamSpec              *unused,
+@@ -51,7 +65,7 @@ on_auto_brightness_present_changed (PhoshBrightnessSettings *self,
+   gboolean can_auto = phosh_brightness_manager_get_auto_brightness_present (manager);
+ 
+   g_debug ("Can AutoBrightness changed: %d", can_auto);
+-  gtk_widget_set_visible (GTK_WIDGET (self->toggle_btn), can_auto);
++  gtk_widget_set_visible (GTK_WIDGET (self->toggle_btn), FALSE);
+ 
+   /* toggle_stack's visible child is conveniently bound to the button's "active" */
+   if (!can_auto)
+@@ -83,6 +97,7 @@ phosh_brightness_settings_class_init (PhoshBrightnessSettingsClass *klass)
+ 
+   gtk_widget_class_bind_template_child (widget_class, PhoshBrightnessSettings, auto_switch);
+   gtk_widget_class_bind_template_child (widget_class, PhoshBrightnessSettings, image);
++  gtk_widget_class_bind_template_child (widget_class, PhoshBrightnessSettings, percent_label);
+   gtk_widget_class_bind_template_child (widget_class, PhoshBrightnessSettings, scale);
+   gtk_widget_class_bind_template_child (widget_class, PhoshBrightnessSettings, toggle_btn);
+   gtk_widget_class_bind_template_child (widget_class, PhoshBrightnessSettings, toggle_stack);
+@@ -122,6 +137,10 @@ phosh_brightness_settings_init (PhoshBrightnessSettings *self)
+   brightness_manager = phosh_shell_get_brightness_manager (shell);
+   adjustment = phosh_brightness_manager_get_adjustment (brightness_manager);
+   gtk_range_set_adjustment (GTK_RANGE (self->scale), adjustment);
++  g_signal_connect_object (adjustment, "value-changed",
++                           G_CALLBACK (on_brightness_value_changed), self,
++                           G_CONNECT_DEFAULT);
++  on_brightness_value_changed (adjustment, self);
+ 
+   g_signal_connect_swapped (brightness_manager,
+                             "notify::auto-brightness-present",
+diff --git a/src/home.c b/src/home.c
+index e889f26..6eb4248 100644
+--- a/src/home.c
++++ b/src/home.c
+@@ -368,6 +368,8 @@ toggle_overview_action (GSimpleAction *action, GVariant *param, gpointer data)
+ 
+   state = self->state == PHOSH_HOME_STATE_UNFOLDED ?
+     PHOSH_HOME_STATE_FOLDED : PHOSH_HOME_STATE_UNFOLDED;
++  if (state == PHOSH_HOME_STATE_UNFOLDED)
++    phosh_overview_set_activity_view (PHOSH_OVERVIEW (self->overview), TRUE);
+   phosh_home_set_state (self, state);
+ }
+ 
+@@ -382,6 +384,8 @@ toggle_application_view_action (GSimpleAction *action, GVariant *param, gpointer
+ 
+   state = self->state == PHOSH_HOME_STATE_UNFOLDED ?
+     PHOSH_HOME_STATE_FOLDED : PHOSH_HOME_STATE_UNFOLDED;
++  if (state == PHOSH_HOME_STATE_UNFOLDED)
++    phosh_overview_set_activity_view (PHOSH_OVERVIEW (self->overview), FALSE);
+   phosh_home_set_state (self, state);
+ 
+   /* Focus app search once unfolded */
+@@ -495,8 +499,10 @@ on_drag_state_changed (PhoshHome *self)
+     break;
+   case PHOSH_DRAG_SURFACE_STATE_DRAGGED:
+     state = PHOSH_HOME_STATE_TRANSITION;
+-    if (self->state == PHOSH_HOME_STATE_FOLDED)
++    if (self->state == PHOSH_HOME_STATE_FOLDED) {
++      phosh_overview_set_activity_view (PHOSH_OVERVIEW (self->overview), FALSE);
+       phosh_overview_refresh (PHOSH_OVERVIEW (self->overview));
++    }
+     break;
+   default:
+     g_return_if_reached ();
+diff --git a/src/meson.build b/src/meson.build
+index 7e11919..f7e78b3 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -120,6 +120,7 @@ phosh_tool_headers = files(
+   'app-auth-prompt.h',
+   'app-grid-base-button.h',
+   'app-grid-button.h',
++  'app-grid-icon.h',
+   'app-grid-folder-button.h',
+   'app-grid.h',
+   'app-list-model.h',
+@@ -200,6 +201,7 @@ phosh_tool_sources = files(
+   'app-auth-prompt.c',
+   'app-grid-base-button.c',
+   'app-grid-button.c',
++  'app-grid-icon.c',
+   'app-grid-folder-button.c',
+   'app-grid.c',
+   'app-list-model.c',
+diff --git a/src/overview.c b/src/overview.c
+index 8fae71c..3fc897f 100644
+--- a/src/overview.c
++++ b/src/overview.c
+@@ -59,6 +59,7 @@ typedef struct {
+   HdyCarousel        *carousel_running_activities;
+   GtkWidget          *app_grid;
+   PhoshActivity      *activity;
++  gboolean            activity_view;
+ 
+   PhoshAppTracker    *app_tracker;     /* unowned */
+   PhoshSplashManager *splash_manager;  /* unowned */
+@@ -79,6 +80,17 @@ static void           on_activity_clicked (PhoshOverview *self, PhoshActivity *a
+ static int            get_last_app_id_pos (PhoshOverview *self, const char *app_id);
+ 
+ 
++static void
++update_presentation (PhoshOverview *self)
++{
++  PhoshOverviewPrivate *priv = phosh_overview_get_instance_private (self);
++
++  gtk_widget_set_visible (GTK_WIDGET (priv->carousel_running_activities),
++                          priv->activity_view && priv->has_activities);
++  gtk_widget_set_visible (priv->app_grid, !priv->activity_view);
++}
++
++
+ static PhoshActivity *
+ find_activity_by_app_info (PhoshOverview *self, GAppInfo *needle)
+ {
+@@ -595,7 +607,7 @@ set_has_activities (PhoshOverview *self)
+     return;
+ 
+   priv->has_activities = has_activities;
+-  gtk_widget_set_visible (GTK_WIDGET (priv->carousel_running_activities), has_activities);
++  update_presentation (self);
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_HAS_ACTIVITIES]);
+ }
+ 
+@@ -834,6 +846,7 @@ phosh_overview_init (PhoshOverview *self)
+   PhoshOverviewPrivate *priv = phosh_overview_get_instance_private (self);
+ 
+   priv->has_activities = -1;
++  priv->activity_view = FALSE;
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
+   priv->app_tracker = phosh_shell_get_app_tracker (shell);
+@@ -883,6 +896,25 @@ phosh_overview_reset (PhoshOverview *self)
+ }
+ 
+ 
++void
++phosh_overview_set_activity_view (PhoshOverview *self, gboolean enabled)
++{
++  PhoshOverviewPrivate *priv;
++
++  g_return_if_fail (PHOSH_IS_OVERVIEW (self));
++  priv = phosh_overview_get_instance_private (self);
++
++  if (priv->activity_view == enabled)
++    return;
++
++  priv->activity_view = enabled;
++  update_presentation (self);
++
++  if (enabled && priv->activity)
++    scroll_to_activity (self, priv->activity);
++}
++
++
+ void
+ phosh_overview_focus_app_search (PhoshOverview *self)
+ {
+diff --git a/src/overview.h b/src/overview.h
+index 807df81..2ef3676 100644
+--- a/src/overview.h
++++ b/src/overview.h
+@@ -20,6 +20,7 @@ G_DECLARE_FINAL_TYPE (PhoshOverview, phosh_overview, PHOSH, OVERVIEW, GtkBox)
+ GtkWidget *phosh_overview_new (void);
+ void       phosh_overview_refresh (PhoshOverview *self);
+ void       phosh_overview_reset (PhoshOverview *self);
++void       phosh_overview_set_activity_view (PhoshOverview *self, gboolean enabled);
+ void       phosh_overview_focus_app_search (PhoshOverview *self);
+ gboolean   phosh_overview_has_running_activities (PhoshOverview *self);
+ gboolean   phosh_overview_handle_search (PhoshOverview *self, GdkEvent *event);
+diff --git a/src/quick-settings.c b/src/quick-settings.c
+index 1d69dfd..5fa63e0 100644
+--- a/src/quick-settings.c
++++ b/src/quick-settings.c
+@@ -39,6 +39,13 @@ struct _PhoshQuickSettings {
+   GtkBin parent;
+ 
+   PhoshQuickSettingsBox *box;
++  PhoshQuickSetting *luma_tiling_setting;
++  PhoshQuickSetting *luma_location_setting;
++  PhoshQuickSetting *luma_warm_setting;
++
++  GSettings *phoc_settings;
++  GSettings *location_settings;
++  GSettings *color_settings;
+ 
+   GSettings *plugin_settings;
+   PhoshPluginLoader *plugin_loader;
+@@ -186,6 +193,12 @@ on_torch_clicked (PhoshQuickSettings *self, PhoshQuickSetting *child)
+   phosh_torch_manager_toggle (manager);
+ }
+ 
++static void
++on_luma_toggle_clicked (PhoshQuickSettings *self, PhoshQuickSetting *child)
++{
++  phosh_quick_setting_set_active (child, !phosh_quick_setting_get_active (child));
++}
++
+ 
+ static void
+ on_docked_clicked (PhoshQuickSettings *self, PhoshQuickSetting *child)
+@@ -256,6 +269,9 @@ phosh_quick_settings_dispose (GObject *object)
+ 
+   g_clear_object (&self->plugin_settings);
+   g_clear_object (&self->plugin_loader);
++  g_clear_object (&self->phoc_settings);
++  g_clear_object (&self->location_settings);
++  g_clear_object (&self->color_settings);
+   if (self->custom_quick_settings) {
+     g_ptr_array_free (self->custom_quick_settings, TRUE);
+     self->custom_quick_settings = NULL;
+@@ -284,6 +300,9 @@ phosh_quick_settings_class_init (PhoshQuickSettingsClass *klass)
+                                                "/mobi/phosh/ui/quick-settings.ui");
+ 
+   gtk_widget_class_bind_template_child (widget_class, PhoshQuickSettings, box);
++  gtk_widget_class_bind_template_child (widget_class, PhoshQuickSettings, luma_tiling_setting);
++  gtk_widget_class_bind_template_child (widget_class, PhoshQuickSettings, luma_location_setting);
++  gtk_widget_class_bind_template_child (widget_class, PhoshQuickSettings, luma_warm_setting);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_wwan_clicked);
+   gtk_widget_class_bind_template_callback (widget_class, on_wifi_clicked);
+@@ -293,6 +312,7 @@ phosh_quick_settings_class_init (PhoshQuickSettingsClass *klass)
+   gtk_widget_class_bind_template_callback (widget_class, on_rotate_long_pressed);
+   gtk_widget_class_bind_template_callback (widget_class, on_feedback_clicked);
+   gtk_widget_class_bind_template_callback (widget_class, on_torch_clicked);
++  gtk_widget_class_bind_template_callback (widget_class, on_luma_toggle_clicked);
+   gtk_widget_class_bind_template_callback (widget_class, on_docked_clicked);
+   gtk_widget_class_bind_template_callback (widget_class, on_vpn_clicked);
+ }
+@@ -305,6 +325,20 @@ phosh_quick_settings_init (PhoshQuickSettings *self)
+ 
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
++  self->phoc_settings = g_settings_new ("sm.puri.phoc");
++  self->location_settings = g_settings_new ("org.gnome.system.location");
++  self->color_settings = g_settings_new ("org.gnome.settings-daemon.plugins.color");
++
++  g_settings_bind (self->phoc_settings, "auto-maximize",
++                   self->luma_tiling_setting,
++                   "active", G_SETTINGS_BIND_DEFAULT);
++  g_settings_bind (self->location_settings, "enabled",
++                   self->luma_location_setting,
++                   "active", G_SETTINGS_BIND_DEFAULT);
++  g_settings_bind (self->color_settings, "night-light-enabled",
++                   self->luma_warm_setting,
++                   "active", G_SETTINGS_BIND_DEFAULT);
++
+   g_object_bind_property (phosh_shell_get_default (), "locked",
+                           self->box, "can-show-status",
+                           G_BINDING_SYNC_CREATE | G_BINDING_INVERT_BOOLEAN);
+diff --git a/src/settings.c b/src/settings.c
+index a96d48a..23572ec 100644
+--- a/src/settings.c
++++ b/src/settings.c
+@@ -321,6 +321,7 @@ on_notification_frames_items_changed (PhoshSettings *self,
+ 
+   child_name = is_empty ? STACK_CHILD_NO_NOTIFICATIONS : STACK_CHILD_NOTIFICATIONS;
+   gtk_stack_set_visible_child_name (GTK_STACK (self->stack_notifications), child_name);
++  gtk_widget_set_visible (self->stack_notifications, !is_empty);
+   update_drag_handle_offset (self);
+ }
+ 
+diff --git a/src/settings/audio-settings.c b/src/settings/audio-settings.c
+index 232e11b..9175d70 100644
+--- a/src/settings/audio-settings.c
++++ b/src/settings/audio-settings.c
+@@ -50,6 +50,8 @@ struct _PhoshAudioSettings {
+   gboolean           setting_volume;
+   gboolean           is_headphone;
+   PhoshChannelBar   *output_vol_bar;
++  GtkImage          *route_image;
++  GtkLabel          *percent_label;
+ 
+   /* Device select */
+   GtkWidget         *stack_audio_details;
+@@ -78,6 +80,11 @@ update_output_vol_bar (PhoshAudioSettings *self)
+   adj = phosh_channel_bar_get_adjustment (self->output_vol_bar);
+   g_debug ("Adjusting volume to %d", gvc_mixer_stream_get_volume (self->output_stream));
+   gtk_adjustment_set_value (adj, gvc_mixer_stream_get_volume (self->output_stream));
++  {
++    g_autofree char *text = g_strdup_printf ("%.0f%%",
++                                              gtk_adjustment_get_value (adj) * 100.0 / PA_VOLUME_NORM);
++    gtk_label_set_label (self->percent_label, text);
++  }
+   self->setting_volume = FALSE;
+ }
+ 
+@@ -161,6 +168,7 @@ on_output_stream_port_changed (GvcMixerStream *stream, GParamSpec *pspec, gpoint
+     icon = "audio-speakers";
+ 
+   phosh_channel_bar_set_icon_name (self->output_vol_bar, icon);
++  gtk_image_set_from_icon_name (self->route_image, icon, GTK_ICON_SIZE_BUTTON);
+ 
+   if (is_headphone == self->is_headphone)
+     return;
+@@ -327,6 +335,8 @@ phosh_audio_settings_class_init (PhoshAudioSettingsClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, listbox_audio_input_devices);
+   gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, listbox_audio_output_devices);
+   gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, output_vol_bar);
++  gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, route_image);
++  gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, percent_label);
+   gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, stack_audio_details);
+   gtk_widget_class_bind_template_child (widget_class, PhoshAudioSettings, toggle_audio_details);
+ 
+diff --git a/src/settings/channel-bar.c b/src/settings/channel-bar.c
+index bf87503..de82876 100644
+--- a/src/settings/channel-bar.c
++++ b/src/settings/channel-bar.c
+@@ -70,7 +70,8 @@ update_image (PhoshChannelBar *self)
+     gtk_image_set_from_gicon (GTK_IMAGE (self->image), gicon, -1);
+   }
+ 
+-  gtk_widget_set_visible (self->image, self->icon_name != NULL);
++  /* Luma renders the current route icon beside the label, not inside the track. */
++  gtk_widget_set_visible (self->image, FALSE);
+ }
+ 
+ 
+diff --git a/src/shell-priv.h b/src/shell-priv.h
+index b62282f..6917e51 100644
+--- a/src/shell-priv.h
++++ b/src/shell-priv.h
+@@ -82,6 +82,7 @@ void                 phosh_shell_get_area        (PhoshShell *self, int *width,
+ void                 phosh_shell_set_locked      (PhoshShell *self, gboolean locked);
+ void                 phosh_shell_lock            (PhoshShell *self);
+ void                 phosh_shell_unlock          (PhoshShell *self);
++void                 phosh_shell_focus_app_search (PhoshShell *self);
+ void                 phosh_shell_set_primary_monitor (PhoshShell *self, PhoshMonitor *monitor);
+ 
+ /* Created by the shell on startup */
+diff --git a/src/shell.c b/src/shell.c
+index 9ddb87d..af0319e 100644
+--- a/src/shell.c
++++ b/src/shell.c
+@@ -348,6 +348,21 @@ on_home_state_changed (PhoshShell *self, GParamSpec *pspec, PhoshHome *home)
+   phosh_shell_set_state (self, PHOSH_STATE_OVERVIEW, state == PHOSH_HOME_STATE_UNFOLDED);
+ }
+ 
++void
++phosh_shell_focus_app_search (PhoshShell *self)
++{
++  PhoshShellPrivate *priv;
++  PhoshOverview *overview;
++
++  g_return_if_fail (PHOSH_IS_SHELL (self));
++  priv = phosh_shell_get_instance_private (self);
++  g_return_if_fail (PHOSH_IS_HOME (priv->home));
++
++  phosh_home_set_state (PHOSH_HOME (priv->home), PHOSH_HOME_STATE_UNFOLDED);
++  overview = phosh_home_get_overview (PHOSH_HOME (priv->home));
++  phosh_overview_focus_app_search (overview);
++}
++
+ 
+ static void
+ on_primary_monitor_power_mode_changed (PhoshShell *self, GParamSpec *pspec, PhoshMonitor *monitor)
+diff --git a/src/stylesheet/common.css b/src/stylesheet/common.css
+index 426d63d..e48f92e 100644
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -2,13 +2,13 @@
+  * Top panel and bar
+  */
+ phosh-top-panel {
+-  font-size: 15px;
++  font-size: 13px;
+   background: none;
+   color: @phosh_fg_color;
+ }
+ 
+ phosh-top-panel-bg {
+-  background: @phosh_bg_color;
++  background: #21252b;
+ }
+ 
+ #top-bar-bin {
+@@ -24,29 +24,35 @@ phosh-top-panel-bg {
+ }
+ 
+ #top-bar {
+-  padding-top: 4px;
+-  padding-bottom: 4px;
++  padding-top: 12px;
++  padding-bottom: 6px;
+ }
+ 
+ .phosh-wwan-indicator,
+ phosh-top-panel .indicators {
+-  font-size: 13px;
++  font-size: 12px;
+   font-weight: 800;
+   font-feature-settings: "tnum";
+ }
+ 
++phosh-top-panel .indicators {
++  opacity: .92;
++  margin-right: -10px;
++}
++
+ .phosh-topbar-clock {
+   font-weight: bold;
+   font-feature-settings: "tnum";
+ }
+ 
+ phosh-top-panel .phosh-topbar-clock {
+-  font-size: 16px;
++  font-size: 14px;
+ }
+ 
+ /* When moved to the left because of a cutout */
+ phosh-top-panel .phosh-topbar-clock.left {
+   padding-right: 6px;
++  margin-left: -10px;
+ }
+ 
+ /* When moved to the right because of a cutout */
+@@ -59,7 +65,32 @@ phosh-top-panel .phosh-topbar-date {
+ }
+ 
+ .phosh-clock-box {
+-  padding: 16px;
++  padding: 5px 18px;
++  background: #21252b;
++  border-bottom: 1px solid alpha(@phosh_fg_color, .12);
++}
++
++#luma-carrier-row {
++  border-bottom: 1px solid alpha(@phosh_fg_color, .12);
++}
++
++.phosh-clock-box > box {
++  min-height: 40px;
++}
++
++.luma-carrier-label {
++  font-size: .88rem;
++  font-weight: 600;
++}
++
++.phosh-clock-box .phosh-topbar-clock {
++  font-size: .96rem;
++  font-weight: 700;
++}
++
++.phosh-clock-box .phosh-topbar-date {
++  font-size: .82rem;
++  color: alpha(@phosh_fg_color, .62);
+ }
+ 
+ .phosh-topbar-button {
+@@ -72,16 +103,14 @@ phosh-top-panel .phosh-topbar-date {
+  */
+ 
+ widget.phosh-settings-menu > scrolledwindow {
+-    background-color: @phosh_bg_color;
+-    border-radius: 24px;
+-    margin-left: 6px;
+-    margin-right: 6px;
++    background-color: #21252b;
++    border-radius: 0;
++    margin: 0;
+ }
+ 
+ .phosh-settings-menu {
+-  background-color: @phosh_bg_color;
+-  border-bottom-right-radius: 12px;
+-  border-bottom-left-radius: 12px;
++  background-color: #21252b;
++  border-radius: 0;
+ }
+ 
+ .phosh-settings-menu button.circular:not(:hover):not(:active) {
+@@ -89,7 +118,7 @@ widget.phosh-settings-menu > scrolledwindow {
+ }
+ 
+ .phosh-settings-menu > scrolledwindow > viewport {
+-  padding: 0 12px;
++  padding: 0 16px;
+ }
+ 
+ .phosh-settings-menu separator {
+@@ -97,11 +126,11 @@ widget.phosh-settings-menu > scrolledwindow {
+ }
+ 
+ phosh-quick-setting {
+-  border-radius: 99px;
+-  border: 0;
+-  font-weight: bold;
+-  font-size: 10pt;
+-  background-color: @phosh_button_bg_color;
++  border-radius: 18px;
++  border: 1px solid alpha(@phosh_fg_color, .12);
++  font-weight: 600;
++  font-size: 9pt;
++  background-color: #30343a;
+ }
+ 
+ phosh-quick-setting button:hover {
+@@ -114,7 +143,7 @@ phosh-quick-setting:checked button:hover {
+ }
+ 
+ phosh-quick-setting:checked {
+-  background-color: @theme_selected_bg_color;
++  background-color: #34383d;
+   color: @theme_selected_fg_color;
+ }
+ 
+@@ -134,15 +163,15 @@ phosh-quick-setting:checked button:focus {
+ }
+ 
+ phosh-quick-setting button:first-child {
+-  border-radius: 99px 0px 0px 99px;
++  border-radius: 18px 0 0 18px;
+ }
+ 
+ phosh-quick-setting button:only-child {
+-  border-radius: 99px;
++  border-radius: 18px;
+ }
+ 
+ phosh-quick-setting button:last-child:not(:only-child) {
+-  border-radius: 0px 99px 99px 0px;
++  border-radius: 0 18px 18px 0;
+ }
+ 
+ phosh-quick-setting button {
+@@ -153,13 +182,89 @@ phosh-quick-setting button {
+   -gtk-icon-shadow: none;
+   padding: 0;
+   text-shadow: none;
+-  padding: 8px 12px;
++  padding: 7px 10px;
++}
++
++phosh-quick-setting.luma-primary-quick-setting {
++  min-height: 58px;
++}
++
++phosh-quick-setting.luma-compact-quick-setting {
++  min-height: 40px;
++  border-radius: 999px;
++  font-size: .78rem;
++}
++
++phosh-quick-setting.luma-compact-quick-setting button,
++phosh-quick-setting.luma-compact-quick-setting button:only-child {
++  border-radius: 999px;
++  padding: 5px 8px;
++}
++
++.luma-slider-label {
++  margin: 5px 0 0 30px;
++  font-size: .82rem;
++  font-weight: 700;
++  color: alpha(@phosh_fg_color, .9);
++}
++
++.luma-slider-percent {
++  font-size: .66rem;
++  color: alpha(@phosh_fg_color, .58);
++}
++
++.luma-slider-icon {
++  min-width: 28px;
++  min-height: 28px;
++  border-radius: 999px;
++  background: #30343a;
++}
++
++.luma-section-separator {
++  background: alpha(@phosh_fg_color, .10);
++}
++
++.luma-action-glyph {
++  font-weight: 700;
++}
++
++phosh-brightness-settings,
++phosh-audio-settings {
++  padding: 3px 0;
+ }
+ 
+ phosh-brightness-settings scale {
+   padding-right: 4px;
+ }
+ 
++.luma-user-pill {
++  padding: 4px 10px 4px 4px;
++  border-radius: 999px;
++  border: 1px solid alpha(@phosh_fg_color, .14);
++  background: #30343a;
++}
++
++.luma-user-avatar {
++  min-width: 28px;
++  min-height: 28px;
++  border-radius: 999px;
++  color: #30343a;
++  background: #e8ebee;
++  font-weight: 700;
++}
++
++.luma-user-name { font-size: .78rem; font-weight: 700; }
++.luma-user-role { font-size: .64rem; color: alpha(@phosh_fg_color, .58); }
++
++button.luma-round-action {
++  min-width: 34px;
++  min-height: 34px;
++  padding: 0;
++  border-radius: 999px;
++  border: 1px solid alpha(@phosh_fg_color, .14);
++  background: #30343a;
++}
++
+ /*
+  * Volume slider in settings
+  */
+@@ -250,6 +355,7 @@ phosh-status-page-placeholder > box > label.title {
+  */
+ #settings-gear {
+   background: none;
++  opacity: 0;
+ }
+ 
+ 
+@@ -370,15 +476,32 @@ phosh-home {
+ 
+ /* Search Bar */
+ .phosh-search-bar-box {
+-  margin: 6px 16px;
++  min-height: 64px;
++  margin: 8px 26px;
++  padding: 0 8px;
++  border-radius: 16px;
++  background: alpha(#2c3138, .96);
++}
++
++.phosh-search-bar,
++entry.phosh-search-bar,
++.phosh-search-bar:focus,
++entry.phosh-search-bar:focus {
++  min-height: 52px;
++  border-radius: 0;
++  padding: 6px 10px;
++  border: none;
++  box-shadow: none;
++  background: transparent;
++  background-color: transparent;
++  background-image: none;
++  color: inherit;
++  outline: none;
+ }
+ 
+-.phosh-search-bar {
+-  border-radius: 9999px;
+-  padding: 3px 18px 3px 14px;
+-  border: 1px solid transparent;
+-  background-color: alpha(@phosh_bg_color,.6);
+-  color: inherit;
++.luma-search-placeholder {
++  color: alpha(@phosh_fg_color, .50);
++  font-size: 1rem;
+ }
+ 
+ .phosh-search-bar > image {
+@@ -386,9 +509,33 @@ phosh-home {
+   opacity: 0.7;
+ }
+ 
+-.phosh-search-bar:focus {
+-  box-shadow: inset 0 0 0 1px @theme_selected_bg_color;
+-  border: 1px solid @theme_selected_bg_color;
++.luma-search-intro {
++  padding: 18px 12px 16px;
++  border-radius: 16px;
++  background: alpha(#2c3138, .96);
++}
++
++.luma-search-title {
++  font-weight: 700;
++}
++
++.luma-search-subtitle {
++  color: alpha(@phosh_fg_color, .66);
++}
++
++.luma-search-suggestions {
++  margin-top: 3px;
++}
++
++button.luma-search-suggestion,
++button.luma-search-suggestion:hover,
++button.luma-search-suggestion:active {
++  min-height: 0;
++  padding: 4px 11px;
++  border-radius: 999px;
++  background: alpha(@phosh_fg_color, .07);
++  color: alpha(@phosh_fg_color, .62);
++  font-size: .82rem;
+ }
+ 
+ phosh-app-grid {
+@@ -436,9 +583,41 @@ phosh-app-grid-folder-button button:focus {
+   background: alpha(@phosh_bg_color,.6);
+ }
+ 
++/* Luma Home keeps the folder preview in the same 58px tile rhythm as an app
++ * icon.  The label remains outside the tile, matching every other launcher. */
++.luma-home-grid phosh-app-grid-folder-button button,
++.luma-home-grid phosh-app-grid-folder-button button:hover,
++.luma-home-grid phosh-app-grid-folder-button button:focus {
++  background: none;
++}
++
++.luma-home-grid phosh-app-grid-folder-button grid {
++  min-width: 48px;
++  min-height: 48px;
++  padding: 5px;
++  border-radius: 13px;
++  background: alpha(#5275d5, .82);
++}
++
++/* Prairie launchers share one depth treatment even when their artwork comes
++ * from different application packages.  Corner normalization belongs in the
++ * icon renderer/theme contract; the shell must not rewrite third-party files. */
++.luma-home-grid phosh-app-grid-button image,
++.luma-home-dock phosh-app-grid-button image,
++.luma-folder-page phosh-app-grid-button image {
++  -gtk-icon-shadow: 0 2px 3px rgba(0, 0, 0, .34);
++}
++
++.luma-home-grid phosh-app-grid-button button:focus,
++.luma-home-grid phosh-app-grid-folder-button button:focus,
++.luma-home-dock phosh-app-grid-button button:focus {
++  box-shadow: none;
++  background: none;
++}
++
+ .search-active phosh-app-grid-button:first-child button {
+-  box-shadow: inset 0 0 0 2px @theme_selected_bg_color;
+-  background: alpha(@phosh_bg_color,.4);
++  box-shadow: none;
++  background: transparent;
+ }
+ 
+ #phosh-filter-adaptive-btn {
+diff --git a/src/top-panel-bg.c b/src/top-panel-bg.c
+index f2fe64b..b3d2123 100644
+--- a/src/top-panel-bg.c
++++ b/src/top-panel-bg.c
+@@ -13,7 +13,7 @@
+ #include "layersurface-priv.h"
+ #include "top-panel-bg.h"
+ 
+-#define PHOSH_TOP_PANEL_BG_MAX_OPACITY 0.9
++#define PHOSH_TOP_PANEL_BG_MAX_OPACITY 1.0
+ 
+ /**
+  * PhoshTopPanelBgBg:
+diff --git a/src/top-panel.c b/src/top-panel.c
+index 974e800..5ebd292 100644
+--- a/src/top-panel.c
++++ b/src/top-panel.c
+@@ -81,6 +81,7 @@ typedef struct _PhoshTopPanel {
+   GtkWidget *btn_lock;
+   GtkWidget *lbl_clock2;
+   GtkWidget *lbl_date;
++  GtkWidget *lbl_operator;
+ 
+   GtkWidget *stack;
+   GtkWidget *arrow;
+@@ -111,6 +112,7 @@ typedef struct _PhoshTopPanel {
+   GSettings      *kb_settings;
+ 
+   GtkGesture     *click_gesture; /* needed so that the gesture isn't destroyed immediately */
++  GtkGesture     *settings_swipe;
+ 
+   PhoshTopPanelBg *background;
+   GtkCssProvider  *cutout_css_provider;
+@@ -250,6 +252,18 @@ on_lockscreen_action (GSimpleAction *action,
+   phosh_top_panel_fold (self);
+ }
+ 
++static void
++on_search_action (GSimpleAction *action,
++                  GVariant      *parameter,
++                  gpointer       data)
++{
++  PhoshTopPanel *self = PHOSH_TOP_PANEL (data);
++
++  g_return_if_fail (PHOSH_IS_TOP_PANEL (self));
++  phosh_top_panel_fold (self);
++  phosh_shell_focus_app_search (phosh_shell_get_default ());
++}
++
+ 
+ static void
+ on_logout_action (GSimpleAction *action,
+@@ -351,6 +365,8 @@ wall_clock_notify_cb (PhoshTopPanel  *self,
+                       PhoshWallClock *wall_clock)
+ {
+   const char *str;
++  g_autoptr (GDateTime) now = NULL;
++  g_autofree char *date_prefix = NULL;
+   g_autofree char *date = NULL;
+ 
+   g_return_if_fail (PHOSH_IS_TOP_PANEL (self));
+@@ -359,11 +375,26 @@ wall_clock_notify_cb (PhoshTopPanel  *self,
+   str = phosh_wall_clock_get_clock (wall_clock, TRUE);
+   gtk_label_set_text (GTK_LABEL (self->lbl_clock2), str);
+ 
+-  date = phosh_wall_clock_local_date (wall_clock);
++  now = g_date_time_new_now_local ();
++  date_prefix = g_date_time_format (now, "%a, %b");
++  date = g_strdup_printf ("%s %d", date_prefix, g_date_time_get_day_of_month (now));
+   gtk_label_set_label (GTK_LABEL (self->lbl_date), date);
+ }
+ 
+ 
++static gboolean
++transform_operator_label (GBinding     *binding,
++                          const GValue *from_value,
++                          GValue       *to_value,
++                          gpointer      user_data)
++{
++  const char *operator = g_value_get_string (from_value);
++
++  g_value_set_string (to_value, (operator && *operator) ? operator : _("Mobile"));
++  return TRUE;
++}
++
++
+ static gboolean
+ needs_keyboard_label (PhoshTopPanel *self)
+ {
+@@ -472,6 +503,16 @@ released_cb (PhoshTopPanel *self, int n_press, double x, double y, GtkGestureMul
+     g_signal_emit (self, signals[ACTIVATED], 0);
+ }
+ 
++static void
++on_settings_swipe (PhoshTopPanel *self, double velocity_x, double velocity_y)
++{
++  if (self->state != PHOSH_TOP_PANEL_STATE_UNFOLDED)
++    return;
++
++  if (ABS (velocity_y) > ABS (velocity_x) && velocity_y < 0)
++    phosh_top_panel_fold (self);
++}
++
+ 
+ static void
+ toggle_message_tray_action (GSimpleAction *action, GVariant *param, gpointer data)
+@@ -650,6 +691,7 @@ static GActionEntry entries[] = {
+   { .name = "restart", .activate = on_restart_action },
+   { .name = "suspend", .activate = on_suspend_action },
+   { .name = "lockscreen", .activate = on_lockscreen_action },
++  { .name = "search", .activate = on_search_action },
+   { .name = "logout", .activate = on_logout_action },
+   { .name = "launch-panel", .activate = on_launch_panel_activated, .parameter_type = "(sav)" },
+   { .name = "launch-mobile-panel",
+@@ -690,6 +732,11 @@ phosh_top_panel_constructed (GObject *object)
+ 
+   wall_clock_notify_cb (self, NULL, wall_clock);
+ 
++  g_object_bind_property_full (phosh_shell_get_wwan (shell), "operator",
++                               self->lbl_operator, "label",
++                               G_BINDING_SYNC_CREATE,
++                               transform_operator_label, NULL, NULL, NULL);
++
+   gtk_window_set_title (GTK_WINDOW (self), "phosh panel");
+ 
+   /* language indicator */
+@@ -914,15 +961,18 @@ phosh_top_panel_class_init (PhoshTopPanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, lbl_clock);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, lbl_clock2);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, lbl_date);
++  gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, lbl_operator);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, lbl_lang);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, menu_system);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, settings);
++  gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, settings_swipe);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, stack);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, status_icons_box);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, top_bar_bin);
+   gtk_widget_class_bind_template_callback (widget_class, on_settings_drag_handle_offset_changed);
+   gtk_widget_class_bind_template_callback (widget_class, phosh_top_panel_fold);
+   gtk_widget_class_bind_template_callback (widget_class, released_cb);
++  gtk_widget_class_bind_template_callback (widget_class, on_settings_swipe);
+ 
+   binding_set = gtk_binding_set_by_class (klass);
+   gtk_binding_entry_add_signal (binding_set, GDK_KEY_Escape, 0, "activated", 0);
+@@ -969,7 +1019,6 @@ static void
+ set_clock_position (PhoshTopPanel *self, PhoshLayoutManager *layout_manager)
+ {
+   PhoshLayoutClockPosition pos;
+-  guint top_margin = 0;
+ 
+   /* Top-bar clock */
+   pos = phosh_layout_manager_get_clock_pos (layout_manager);
+@@ -995,9 +1044,8 @@ set_clock_position (PhoshTopPanel *self, PhoshLayoutManager *layout_manager)
+     g_assert_not_reached ();
+   }
+ 
+-  /* Shift down settings menu clock */
+-  top_margin = phosh_layout_manager_get_clock_box_shift (layout_manager);
+-  gtk_widget_set_margin_top (self->box_clock, top_margin);
++  /* The expanded Luma header already lays out either side of the cutout. */
++  gtk_widget_set_margin_top (self->box_clock, 0);
+ }
+ 
+ 
+diff --git a/src/top-panel.h b/src/top-panel.h
+index 1e4748a..ce79b41 100644
+--- a/src/top-panel.h
++++ b/src/top-panel.h
+@@ -13,7 +13,7 @@
+ 
+ G_DECLARE_FINAL_TYPE (PhoshTopPanel, phosh_top_panel, PHOSH, TOP_PANEL, PhoshDragSurface)
+ 
+-#define PHOSH_TOP_BAR_HEIGHT 32
++#define PHOSH_TOP_BAR_HEIGHT 48
+ #define PHOSH_TOP_BAR_ICON_PIXEL_SIZE 16
+ /* Minimum padding of network and indicator box to the left / right screen edge */
+ #define PHOSH_TOP_BAR_MIN_PADDING 9
+diff --git a/src/ui/app-grid-base-button.ui b/src/ui/app-grid-base-button.ui
+index 05453ed..35ab3af 100644
+--- a/src/ui/app-grid-base-button.ui
++++ b/src/ui/app-grid-base-button.ui
+@@ -6,10 +6,10 @@
+     <child>
+       <object class="PhoshClamp">
+         <property name="visible">1</property>
+-        <!-- This ensures all buttons request at least the same minimum size and maximum natural size. -->
+-        <!-- (360px screen width - 2*3px flowbox margins - (4-1)*6px column spacing) / 4 columns = 84px -->
+-        <property name="natural-size">84</property>
+-        <property name="width-request">84</property>
++        <!-- Luma's 58px tile sits in a bounded 68px column. This keeps four
++             launchers inside the FP6 logical viewport with a floating dock. -->
++        <property name="natural-size">68</property>
++        <property name="width-request">68</property>
+         <child>
+           <object class="GtkButton" id="button">
+             <property name="relief">none</property>
+diff --git a/src/ui/app-grid-button.ui b/src/ui/app-grid-button.ui
+index 03767ea..60fa9d9 100644
+--- a/src/ui/app-grid-button.ui
++++ b/src/ui/app-grid-button.ui
+@@ -5,10 +5,8 @@
+     <signal name="activate" handler="activate_cb"/>
+     <property name="child">icon</property>
+   </template>
+-  <object class="GtkImage" id="icon">
++  <object class="PhoshAppGridIcon" id="icon">
+     <property name="visible">1</property>
+-    <property name="pixel-size">64</property>
+-    <property name="icon-name">app-icon-unknown</property>
+   </object>
+   <object class="GtkGestureLongPress" id="long_gesture">
+     <property name="touch-only">1</property>
+diff --git a/src/ui/app-grid-folder-button.ui b/src/ui/app-grid-folder-button.ui
+index d012cd9..443214d 100644
+--- a/src/ui/app-grid-folder-button.ui
++++ b/src/ui/app-grid-folder-button.ui
+@@ -18,6 +18,6 @@
+     <!-- Fix height to 64, as that's what used by app-grid-button.
+          Useful to prevent the folder from shrinking when it is the only
+          element in grid (like during search) and it has only one icon. -->
+-    <property name="height-request">64</property>
++    <property name="height-request">58</property>
+   </object>
+ </interface>
+diff --git a/src/ui/app-grid.ui b/src/ui/app-grid.ui
+index 02b3095..6130665 100644
+--- a/src/ui/app-grid.ui
++++ b/src/ui/app-grid.ui
+@@ -6,6 +6,7 @@
+     <property name="visible">1</property>
+     <property name="hexpand">1</property>
+     <property name="vexpand">1</property>
++    <property name="can-focus">1</property>
+     <child>
+       <object class="HdyDeck" id="deck">
+         <property name="visible">1</property>
+@@ -16,28 +17,49 @@
+             <property name="visible">1</property>
+             <property name="orientation">vertical</property>
+             <child>
+-              <object class="GtkBox">
++              <object class="GtkRevealer" id="search_revealer">
+                 <property name="visible">1</property>
++                <property name="reveal-child">0</property>
++                <property name="transition-type">slide-down</property>
+                 <child>
+-                  <object class="GtkSearchEntry" id="search">
++                  <object class="GtkBox">
+                     <property name="visible">1</property>
+-                    <property name="halign">center</property>
+-                    <property name="hexpand">1</property>
+-                    <property name="placeholder-text" translatable="yes">Search apps…</property>
+-                    <property name="max-width-chars">48</property>
+-                    <signal name="search-changed" handler="on_search_changed" object="PhoshAppGrid" swapped="no"/>
+-                    <signal name="preedit-changed" handler="on_search_preedit_changed" object="PhoshAppGrid" swapped="no"/>
+-                    <signal name="activate" handler="on_search_activated" object="PhoshAppGrid" swapped="no"/>
+-                    <signal name="focus-in-event" handler="on_search_gained_focus" object="PhoshAppGrid" swapped="no"/>
+-                    <signal name="focus-out-event" handler="on_search_lost_focus" object="PhoshAppGrid" swapped="no"/>
++                    <child>
++                      <object class="GtkOverlay">
++                        <property name="visible">1</property>
++                        <child>
++                          <object class="GtkSearchEntry" id="search">
++                            <property name="visible">1</property>
++                            <property name="halign">center</property>
++                            <property name="hexpand">1</property>
++                            <property name="has-frame">0</property>
++                            <property name="max-width-chars">48</property>
++                            <signal name="search-changed" handler="on_search_changed" object="PhoshAppGrid" swapped="no"/>
++                            <signal name="preedit-changed" handler="on_search_preedit_changed" object="PhoshAppGrid" swapped="no"/>
++                            <signal name="activate" handler="on_search_activated" object="PhoshAppGrid" swapped="no"/>
++                            <signal name="focus-in-event" handler="on_search_gained_focus" object="PhoshAppGrid" swapped="no"/>
++                            <signal name="focus-out-event" handler="on_search_lost_focus" object="PhoshAppGrid" swapped="no"/>
++                            <style><class name="phosh-search-bar"/></style>
++                          </object>
++                        </child>
++                        <child type="overlay">
++                          <object class="GtkLabel" id="search_placeholder">
++                            <property name="visible">1</property>
++                            <property name="halign">start</property>
++                            <property name="valign">center</property>
++                            <property name="margin-start">52</property>
++                            <property name="label">Search Prairie</property>
++                            <style><class name="luma-search-placeholder"/></style>
++                          </object>
++                          <packing><property name="pass-through">1</property></packing>
++                        </child>
++                      </object>
++                    </child>
+                     <style>
+-                      <class name="phosh-search-bar"/>
++                      <class name="phosh-search-bar-box"/>
+                     </style>
+                   </object>
+                 </child>
+-                <style>
+-                  <class name="phosh-search-bar-box"/>
+-                </style>
+               </object>
+             </child>
+             <child>
+@@ -50,6 +72,109 @@
+                     <property name="visible">1</property>
+                     <property name="valign">start</property>
+                     <property name="orientation">vertical</property>
++                    <child>
++                      <object class="GtkRevealer" id="search_intro">
++                        <property name="visible">1</property>
++                        <property name="reveal-child">0</property>
++                        <child>
++                          <object class="GtkBox">
++                            <property name="visible">1</property>
++                            <property name="orientation">vertical</property>
++                            <property name="spacing">6</property>
++                            <property name="margin-start">26</property>
++                            <property name="margin-end">26</property>
++                            <property name="margin-top">0</property>
++                            <property name="margin-bottom">12</property>
++                            <child>
++                              <object class="GtkLabel">
++                                <property name="visible">1</property>
++                                <property name="label">Everything on this machine, in one place</property>
++                                <property name="wrap">1</property>
++                                <property name="justify">center</property>
++                                <style><class name="luma-search-title"/></style>
++                              </object>
++                            </child>
++                            <child>
++                              <object class="GtkLabel">
++                                <property name="visible">1</property>
++                                <property name="label">Applications and settings first, then your files, mail, people, days and music.</property>
++                                <property name="wrap">1</property>
++                                <property name="justify">center</property>
++                                <style><class name="luma-search-subtitle"/></style>
++                              </object>
++                            </child>
++                            <child>
++                              <object class="GtkFlowBox">
++                                <property name="visible">1</property>
++                                <property name="halign">center</property>
++                                <property name="selection-mode">none</property>
++                                <property name="activate-on-single-click">0</property>
++                                <property name="column-spacing">6</property>
++                                <property name="row-spacing">6</property>
++                                <property name="min-children-per-line">3</property>
++                                <property name="max-children-per-line">5</property>
++                                <child>
++                                  <object class="GtkButton">
++                                    <property name="visible">1</property>
++                                    <property name="can-focus">0</property>
++                                    <property name="label">Reel</property>
++                                    <signal name="clicked" handler="on_search_suggestion_clicked" object="PhoshAppGrid" swapped="no"/>
++                                    <style><class name="luma-search-suggestion"/></style>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="GtkButton">
++                                    <property name="visible">1</property>
++                                    <property name="can-focus">0</property>
++                                    <property name="label">dark</property>
++                                    <signal name="clicked" handler="on_search_suggestion_clicked" object="PhoshAppGrid" swapped="no"/>
++                                    <style><class name="luma-search-suggestion"/></style>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="GtkButton">
++                                    <property name="visible">1</property>
++                                    <property name="can-focus">0</property>
++                                    <property name="label">cursor size</property>
++                                    <signal name="clicked" handler="on_search_suggestion_clicked" object="PhoshAppGrid" swapped="no"/>
++                                    <style><class name="luma-search-suggestion"/></style>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="GtkButton">
++                                    <property name="visible">1</property>
++                                    <property name="can-focus">0</property>
++                                    <property name="label">Nora</property>
++                                    <signal name="clicked" handler="on_search_suggestion_clicked" object="PhoshAppGrid" swapped="no"/>
++                                    <style><class name="luma-search-suggestion"/></style>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="GtkButton">
++                                    <property name="visible">1</property>
++                                    <property name="can-focus">0</property>
++                                    <property name="label">wallpaper</property>
++                                    <signal name="clicked" handler="on_search_suggestion_clicked" object="PhoshAppGrid" swapped="no"/>
++                                    <style><class name="luma-search-suggestion"/></style>
++                                  </object>
++                                </child>
++                                <child>
++                                  <object class="GtkButton">
++                                    <property name="visible">1</property>
++                                    <property name="can-focus">0</property>
++                                    <property name="label">Retro</property>
++                                    <signal name="clicked" handler="on_search_suggestion_clicked" object="PhoshAppGrid" swapped="no"/>
++                                    <style><class name="luma-search-suggestion"/></style>
++                                  </object>
++                                </child>
++                                <style><class name="luma-search-suggestions"/></style>
++                              </object>
++                            </child>
++                            <style><class name="luma-search-intro"/></style>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
+                     <child>
+                       <object class="GtkRevealer" id="favs_revealer">
+                         <property name="visible">1</property>
+@@ -62,25 +187,21 @@
+                             <child>
+                               <object class="GtkFlowBox" id="favs">
+                                 <property name="visible">1</property>
+-                                <property name="margin-start">3</property>
+-                                <property name="margin-end">3</property>
+-                                <property name="margin-top">6</property>
++                                <property name="margin-start">12</property>
++                                <property name="margin-end">12</property>
++                                <property name="margin-top">28</property>
+                                 <property name="margin-bottom">12</property>
+                                 <property name="hexpand">1</property>
+                                 <property name="homogeneous">1</property>
+                                 <property name="selection-mode">none</property>
+                                 <property name="activate-on-single-click">0</property>
+                                 <property name="column-spacing">6</property>
+-                                <property name="row-spacing">6</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="GtkSeparator">
+-                                <property name="visible">1</property>
+-                                <property name="margin-start">6</property>
+-                                <property name="margin-end">6</property>
++                                <property name="row-spacing">16</property>
++                                <property name="min-children-per-line">4</property>
++                                <property name="max-children-per-line">4</property>
+                               </object>
+                             </child>
++                            <style><class name="luma-home-grid"/></style>
+                           </object>
+                         </child>
+                       </object>
+@@ -141,6 +262,35 @@
+                 </child>
+               </object>
+             </child>
++            <child>
++              <object class="GtkRevealer" id="dock_revealer">
++                <property name="visible">1</property>
++                <property name="reveal-child">1</property>
++                <property name="transition-type">crossfade</property>
++                <child>
++                  <object class="GtkBox">
++                    <property name="visible">1</property>
++                    <property name="halign">center</property>
++                    <property name="margin-start">22</property>
++                    <property name="margin-end">22</property>
++                    <property name="margin-top">8</property>
++                    <property name="margin-bottom">14</property>
++                    <child>
++                      <object class="GtkFlowBox" id="dock">
++                        <property name="visible">1</property>
++                        <property name="homogeneous">1</property>
++                        <property name="selection-mode">none</property>
++                        <property name="activate-on-single-click">0</property>
++                        <property name="min-children-per-line">4</property>
++                        <property name="max-children-per-line">4</property>
++                        <property name="column-spacing">4</property>
++                      </object>
++                    </child>
++                    <style><class name="luma-home-dock"/></style>
++                  </object>
++                </child>
++              </object>
++            </child>
+           </object>
+           <packing>
+             <property name="name">main_grid</property>
+@@ -295,4 +445,16 @@
+       </object>
+     </child>
+   </template>
++  <object class="GtkGestureDrag" id="search_swipe">
++    <property name="widget">PhoshAppGrid</property>
++    <property name="touch-only">1</property>
++    <property name="propagation-phase">capture</property>
++    <signal name="drag-end" handler="on_search_swipe" swapped="true"/>
++  </object>
++  <object class="GtkGestureMultiPress" id="search_background_tap">
++    <property name="widget">scrolled_window</property>
++    <property name="touch-only">1</property>
++    <property name="propagation-phase">bubble</property>
++    <signal name="released" handler="on_search_background_released" swapped="true"/>
++  </object>
+ </interface>
+diff --git a/src/ui/audio-settings.ui b/src/ui/audio-settings.ui
+index efb5243..108519a 100644
+--- a/src/ui/audio-settings.ui
++++ b/src/ui/audio-settings.ui
+@@ -9,15 +9,33 @@
+         <child>
+           <object class="GtkBox" id="box_ouput_vol_slider">
+             <property name="visible">1</property>
++            <property name="spacing">12</property>
++            <child>
++              <object class="GtkBox">
++                <property name="visible">1</property>
++                <property name="width-request">122</property>
++                <property name="spacing">8</property>
++                <child><object class="GtkImage" id="route_image"><property name="visible">1</property><property name="pixel-size">14</property><property name="valign">center</property><property name="icon-name">audio-speakers</property><style><class name="luma-slider-icon"/></style></object></child>
++                <child>
++                  <object class="GtkBox">
++                    <property name="visible">1</property><property name="orientation">vertical</property><property name="valign">center</property>
++                    <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label" translatable="yes">Volume</property><style><class name="luma-slider-label"/></style></object></child>
++                    <child><object class="GtkLabel" id="percent_label"><property name="visible">1</property><property name="halign">start</property><property name="label">0%</property><style><class name="luma-slider-percent"/></style></object></child>
++                  </object>
++                </child>
++              </object>
++            </child>
+             <child>
+               <object class="PhoshChannelBar" id="output_vol_bar">
+                 <property name="visible">1</property>
++                <property name="hexpand">1</property>
+                 <property name="icon-name">audio-speakers</property>
+               </object>
+             </child>
+             <child>
+               <object class="GtkToggleButton" id="toggle_audio_details">
+-                <property name="visible">1</property>
++                <property name="visible">0</property>
++                <property name="no-show-all">1</property>
+                 <property name="margin-start">6</property>
+                 <property name="focus-on-click">0</property>
+                 <style>
+diff --git a/src/ui/brightness-settings.ui b/src/ui/brightness-settings.ui
+index df31091..9b34cca 100644
+--- a/src/ui/brightness-settings.ui
++++ b/src/ui/brightness-settings.ui
+@@ -10,11 +10,29 @@
+           <object class="GtkBox">
+             <property name="visible">1</property>
+             <property name="hexpand">1</property>
+-            <property name="spacing">6</property>
++            <property name="spacing">12</property>
+             <child>
+-              <object class="GtkImage" id="image">
++              <object class="GtkBox">
+                 <property name="visible">1</property>
+-                <property name="pixel-size">16</property>
++                <property name="width-request">122</property>
++                <property name="spacing">8</property>
++                <child>
++                  <object class="GtkImage" id="image">
++                    <property name="visible">1</property>
++                    <property name="pixel-size">14</property>
++                    <property name="valign">center</property>
++                    <style><class name="luma-slider-icon"/></style>
++                  </object>
++                </child>
++                <child>
++                  <object class="GtkBox">
++                    <property name="visible">1</property>
++                    <property name="orientation">vertical</property>
++                    <property name="valign">center</property>
++                    <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label" translatable="yes">Brightness</property><style><class name="luma-slider-label"/></style></object></child>
++                    <child><object class="GtkLabel" id="percent_label"><property name="visible">1</property><property name="halign">start</property><property name="label">0%</property><style><class name="luma-slider-percent"/></style></object></child>
++                  </object>
++                </child>
+               </object>
+             </child>
+             <child>
+@@ -26,7 +44,8 @@
+             </child>
+             <child>
+               <object class="GtkToggleButton" id="toggle_btn">
+-                <property name="visible">1</property>
++                <property name="visible">0</property>
++                <property name="no-show-all">1</property>
+                 <property name="focus-on-click">0</property>
+                 <style>
+                   <class name="phosh-gear-button"/>
+diff --git a/src/ui/overview.ui b/src/ui/overview.ui
+index fc2cfb4..b175261 100644
+--- a/src/ui/overview.ui
++++ b/src/ui/overview.ui
+@@ -15,11 +15,13 @@
+         <property name="vexpand">1</property>
+         <property name="reveal-duration">200</property>
+         <property name="allow-long-swipes">1</property>
++        <property name="visible">0</property>
+       </object>
+     </child>
+     <child>
+       <object class="GtkEventBox" id="evbox_app_grid">
+         <property name="visible">1</property>
++        <property name="vexpand">1</property>
+         <child>
+           <object class="PhoshAppGrid" id="app_grid">
+             <signal name="app-launched" handler="on_app_launched" object="PhoshOverview" swapped="yes"/>
+diff --git a/src/ui/quick-settings.ui b/src/ui/quick-settings.ui
+index 147aa82..7d286f5 100644
+--- a/src/ui/quick-settings.ui
++++ b/src/ui/quick-settings.ui
+@@ -4,143 +4,97 @@
+   <template class="PhoshQuickSettings" parent="GtkBin">
+     <property name="visible">1</property>
+     <child>
+-      <object class="PhoshQuickSettingsBox" id="box">
++      <object class="GtkBox">
+         <property name="visible">1</property>
+-        <property name="spacing">6</property>
++        <property name="orientation">vertical</property>
++        <property name="spacing">8</property>
+         <child>
+-          <object class="PhoshQuickSetting">
++          <object class="PhoshQuickSettingsBox" id="box">
+             <property name="visible">1</property>
+-            <property name="sensitive" bind-source="wwaninfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">wwaninfo</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;wwan&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_wwan_clicked" object="PhoshQuickSettings" swapped="yes"/>
++            <property name="spacing">8</property>
++            <property name="max-columns">2</property>
++            <child>
++              <object class="PhoshQuickSetting">
++                <property name="visible">0</property>
++                <property name="sensitive" bind-source="wwaninfo" bind-property="present" bind-flags="sync-create"/>
++                <property name="status-icon">wwaninfo</property>
++                <signal name="clicked" handler="on_wwan_clicked" object="PhoshQuickSettings" swapped="yes"/>
++              </object>
++            </child>
++            <child>
++              <object class="PhoshQuickSetting">
++                <property name="visible">1</property>
++                <property name="sensitive" bind-source="wifiinfo" bind-property="present" bind-flags="sync-create"/>
++                <property name="status-icon">wifiinfo</property>
++                <property name="status-page">wifi_status_page</property>
++                <property name="long-press-action-name">panel.launch-panel</property>
++                <property name="long-press-action-target">(&quot;wifi&quot;, [&lt;&quot;&quot;&gt;])</property>
++                <signal name="clicked" handler="on_wifi_clicked" object="PhoshQuickSettings" swapped="yes"/>
++                <style><class name="luma-primary-quick-setting"/></style>
++              </object>
++            </child>
++            <child>
++              <object class="PhoshQuickSetting">
++                <property name="visible">1</property>
++                <property name="sensitive" bind-source="btinfo" bind-property="present" bind-flags="sync-create"/>
++                <property name="status-icon">btinfo</property>
++                <property name="status-page">bt_status_page</property>
++                <property name="long-press-action-name">panel.launch-panel</property>
++                <property name="long-press-action-target">(&quot;bluetooth&quot;, [&lt;&quot;&quot;&gt;])</property>
++                <signal name="clicked" handler="on_bt_clicked" object="PhoshQuickSettings" swapped="yes"/>
++                <style><class name="luma-primary-quick-setting"/></style>
++              </object>
++            </child>
+           </object>
+         </child>
+         <child>
+-          <object class="PhoshQuickSetting">
++          <object class="PhoshQuickSettingsBox" id="luma_compact_box">
+             <property name="visible">1</property>
+-            <property name="sensitive" bind-source="wifiinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">wifiinfo</property>
+-            <property name="status-page">wifi_status_page</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;wifi&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_wifi_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible">1</property>
+-            <property name="sensitive" bind-source="btinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">btinfo</property>
+-            <property name="status-page">bt_status_page</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;bluetooth&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_bt_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible">1</property>
+-            <property name="sensitive" bind-source="batteryinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">batteryinfo</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;power&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_battery_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible">1</property>
+-            <property name="sensitive" bind-source="rotateinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">rotateinfo</property>
+-            <signal name="clicked" handler="on_rotate_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-            <signal name="long-pressed" handler="on_rotate_long_pressed" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible" bind-source="feedbackinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">feedbackinfo</property>
+-            <property name="status-page">feedback_status_page</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;notifications&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_feedback_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible" bind-source="torchinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">torchinfo</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;power&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_torch_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible" bind-source="dockedinfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">dockedinfo</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;display&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_docked_clicked" object="PhoshQuickSettings" swapped="yes"/>
+-          </object>
+-        </child>
+-        <child>
+-          <object class="PhoshQuickSetting">
+-            <property name="visible" bind-source="vpninfo" bind-property="present" bind-flags="sync-create"/>
+-            <property name="status-icon">vpninfo</property>
+-            <property name="long-press-action-name">panel.launch-panel</property>
+-            <property name="long-press-action-target">(&quot;network&quot;, [&lt;&quot;&quot;&gt;])</property>
+-            <signal name="clicked" handler="on_vpn_clicked" object="PhoshQuickSettings" swapped="yes"/>
++            <property name="spacing">8</property>
++            <property name="max-columns">3</property>
++            <property name="can-show-status">0</property>
++            <child>
++              <object class="PhoshQuickSetting" id="luma_tiling_setting">
++                <property name="visible">1</property>
++                <property name="status-icon">luma_tiling_info</property>
++                <signal name="clicked" handler="on_luma_toggle_clicked" object="PhoshQuickSettings" swapped="yes"/>
++                <style><class name="luma-compact-quick-setting"/></style>
++              </object>
++            </child>
++            <child>
++              <object class="PhoshQuickSetting" id="luma_location_setting">
++                <property name="visible">1</property>
++                <property name="status-icon">luma_location_info</property>
++                <signal name="clicked" handler="on_luma_toggle_clicked" object="PhoshQuickSettings" swapped="yes"/>
++                <style><class name="luma-compact-quick-setting"/></style>
++              </object>
++            </child>
++            <child>
++              <object class="PhoshQuickSetting" id="luma_warm_setting">
++                <property name="visible">1</property>
++                <property name="status-icon">luma_warm_info</property>
++                <signal name="clicked" handler="on_luma_toggle_clicked" object="PhoshQuickSettings" swapped="yes"/>
++                <style><class name="luma-compact-quick-setting"/></style>
++              </object>
++            </child>
+           </object>
+         </child>
+       </object>
+     </child>
+   </template>
+-  <object class="PhoshWWanInfo" id="wwaninfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshWifiInfo" id="wifiinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshBtInfo" id="btinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshBatteryInfo" id="batteryinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshRotateInfo" id="rotateinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshFeedbackInfo" id="feedbackinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshTorchInfo" id="torchinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshDockedInfo" id="dockedinfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshVpnInfo" id="vpninfo">
+-    <property name="visible">1</property>
+-    <property name="pixel-size">16</property>
+-  </object>
+-  <object class="PhoshWifiStatusPage" id="wifi_status_page">
+-    <property name="visible">1</property>
+-  </object>
+-  <object class="PhoshBtStatusPage" id="bt_status_page">
+-    <property name="visible">1</property>
+-  </object>
+-  <object class="PhoshFeedbackStatusPage" id="feedback_status_page">
+-    <property name="visible">1</property>
+-  </object>
++  <object class="PhoshWWanInfo" id="wwaninfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshWifiInfo" id="wifiinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshBtInfo" id="btinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshBatteryInfo" id="batteryinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshRotateInfo" id="rotateinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshFeedbackInfo" id="feedbackinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshTorchInfo" id="torchinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshStatusIcon" id="luma_tiling_info"><property name="visible">1</property><property name="pixel-size">15</property><property name="icon-name">view-grid-symbolic</property><property name="info">Tiling</property></object>
++  <object class="PhoshStatusIcon" id="luma_location_info"><property name="visible">1</property><property name="pixel-size">15</property><property name="icon-name">location-services-active-symbolic</property><property name="info">Location</property></object>
++  <object class="PhoshStatusIcon" id="luma_warm_info"><property name="visible">1</property><property name="pixel-size">15</property><property name="icon-name">night-light-symbolic</property><property name="info">Warm light</property></object>
++  <object class="PhoshDockedInfo" id="dockedinfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshVpnInfo" id="vpninfo"><property name="visible">1</property><property name="pixel-size">16</property></object>
++  <object class="PhoshWifiStatusPage" id="wifi_status_page"><property name="visible">1</property></object>
++  <object class="PhoshBtStatusPage" id="bt_status_page"><property name="visible">1</property></object>
++  <object class="PhoshFeedbackStatusPage" id="feedback_status_page"><property name="visible">1</property></object>
+ </interface>
+diff --git a/src/ui/settings.ui b/src/ui/settings.ui
+index 942be59..fa6c96c 100644
+--- a/src/ui/settings.ui
++++ b/src/ui/settings.ui
+@@ -20,14 +20,30 @@
+               <object class="GtkBox" id="box_settings">
+                 <property name="visible">1</property>
+                 <property name="orientation">vertical</property>
++                <child>
++                  <object class="PhoshQuickSettings" id="quick_settings">
++                    <property name="visible">1</property>
++                    <property name="margin-top">8</property>
++                    <property name="margin-bottom">8</property>
++                  </object>
++                </child>
++                <child>
++                  <object class="GtkSeparator">
++                    <property name="visible">1</property>
++                    <property name="margin-start">20</property>
++                    <property name="margin-end">20</property>
++                    <style><class name="luma-section-separator"/></style>
++                  </object>
++                </child>
+                 <child>
+                   <object class="HdyClamp">
+                     <property name="visible">1</property>
+-                    <property name="maximum-size">360</property>
++                    <property name="maximum-size">720</property>
+                     <child>
+                       <object class="GtkBox" id="box_sliders">
+                         <property name="visible">1</property>
+                         <property name="orientation">vertical</property>
++                        <property name="spacing">8</property>
+                         <property name="margin-top">6</property>
+                         <property name="margin-bottom">6</property>
+                         <child>
+@@ -43,11 +59,6 @@
+                     </child>
+                   </object>
+                 </child>
+-                <child>
+-                  <object class="PhoshQuickSettings" id="quick_settings">
+-                    <property name="visible">1</property>
+-                  </object>
+-                </child>
+                 <child>
+                   <object class="GtkRevealer" id="revealer">
+                     <property name="visible">1</property>
+@@ -76,6 +87,34 @@
+                     </child>
+                   </object>
+                 </child>
++                <child>
++                  <object class="GtkBox" id="luma_actions_row">
++                    <property name="visible" bind-source="PhoshSettings" bind-property="on-lockscreen" bind-flags="sync-create|invert-boolean"/>
++                    <property name="spacing">8</property>
++                    <property name="margin-top">8</property>
++                    <property name="margin-bottom">10</property>
++                    <child>
++                      <object class="GtkBox">
++                        <property name="visible">1</property>
++                        <property name="hexpand">1</property>
++                        <property name="spacing">7</property>
++                        <style><class name="luma-user-pill"/></style>
++                        <child><object class="GtkLabel"><property name="visible">1</property><property name="label">N</property><style><class name="luma-user-avatar"/></style></object></child>
++                        <child>
++                          <object class="GtkBox">
++                            <property name="visible">1</property><property name="orientation">vertical</property>
++                            <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label">Nick</property><style><class name="luma-user-name"/></style></object></child>
++                            <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label">Administrator</property><style><class name="luma-user-role"/></style></object></child>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.launch-panel</property><property name="action-target">(&quot;about&quot;, [&lt;&quot;&quot;&gt;])</property><child><object class="GtkLabel"><property name="visible">1</property><property name="label">i</property><style><class name="luma-action-glyph"/></style></object></child><style><class name="luma-round-action"/></style></object></child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.search</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-search-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.launch-mobile-panel</property><property name="action-target">(&quot;topbar&quot;, [&lt;&quot;&quot;&gt;])</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">preferences-system-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
++                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.poweroff</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-shutdown-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
++                  </object>
++                </child>
+                 <child>
+                   <object class="HdyClamp">
+                     <property name="visible">1</property>
+@@ -98,9 +137,9 @@
+                             <property name="transition-type">crossfade</property>
+                             <child>
+                               <object class="GtkBox">
+-                                <property name="visible">1</property>
++                                <property name="visible">0</property>
+                                 <property name="orientation">vertical</property>
+-                                <property name="vexpand">1</property>
++                                <property name="vexpand">0</property>
+                                 <property name="valign">center</property>
+                                 <child>
+                                   <object class="GtkImage">
+diff --git a/src/ui/top-panel.ui b/src/ui/top-panel.ui
+index 2b45e03..7c27e6e 100644
+--- a/src/ui/top-panel.ui
++++ b/src/ui/top-panel.ui
+@@ -132,65 +132,54 @@
+         <child>
+           <object class="GtkBox" id="box_clock">
+             <property name="visible">1</property>
++            <property name="orientation">vertical</property>
++            <property name="spacing">0</property>
+             <style>
+               <class name="phosh-clock-box"/>
+             </style>
+             <child>
+-              <object class="GtkButton" id="btn_lock">
+-                <property name="visible" bind-source="PhoshTopPanel" bind-property="on-lockscreen" bind-flags="sync-create|invert-boolean"/>
+-                <property name="action-name">panel.lockscreen</property>
+-                <style>
+-                  <class name="phosh-topbar-button"/>
+-                </style>
+-                <child>
+-                  <object class="GtkImage">
+-                    <property name="visible">1</property>
+-                    <property name="icon-name">padlock-symbolic</property>
+-                  </object>
+-                </child>
+-              </object>
+-            </child>
+-            <child type="center">
+-              <object class="GtkBox">
++              <object class="GtkBox" id="luma_carrier_row">
+                 <property name="visible">1</property>
+-                <property name="orientation">vertical</property>
++                <property name="name">luma-carrier-row</property>
++                <property name="hexpand">1</property>
+                 <child>
+-                  <object class="GtkLabel" id="lbl_clock2">
++                  <object class="GtkLabel" id="lbl_operator">
+                     <property name="visible">1</property>
+-                    <property name="margin-top">2</property>
+-                    <style>
+-                      <class name="phosh-topbar-clock"/>
+-                    </style>
++                    <property name="halign">start</property>
++                    <property name="hexpand">1</property>
++                    <property name="label">Mobile</property>
++                    <style><class name="luma-carrier-label"/></style>
+                   </object>
+                 </child>
+                 <child>
+-                  <object class="GtkLabel" id="lbl_date">
++                  <object class="GtkBox">
+                     <property name="visible">1</property>
+-                    <style>
+-                      <class name="phosh-topbar-date"/>
+-                    </style>
++                    <property name="spacing">8</property>
++                    <child><object class="PhoshWifiInfo" id="shade_wifi"><property name="visible">1</property><property name="pixel-size">14</property></object></child>
++                    <child><object class="PhoshBatteryInfo" id="shade_battery_icon"><property name="visible">1</property><property name="pixel-size">14</property></object></child>
++                    <child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">security-high-symbolic</property><property name="pixel-size">14</property></object></child>
++                    <child><object class="PhoshLocationInfo" id="shade_location"><property name="visible">1</property><property name="pixel-size">14</property></object></child>
+                   </object>
++                  <packing><property name="pack-type">end</property></packing>
+                 </child>
+               </object>
+             </child>
+             <child>
+-              <object class="GtkMenuButton" id="btn_power">
+-                <property name="visible" bind-source="PhoshTopPanel" bind-property="on-lockscreen" bind-flags="sync-create|invert-boolean"/>
+-                <property name="popover">menu_system</property>
+-                <style>
+-                  <class name="phosh-topbar-button"/>
+-                </style>
++              <object class="GtkBox" id="luma_time_row">
++                <property name="visible">1</property>
++                <property name="spacing">8</property>
+                 <child>
+-                  <object class="GtkImage">
++                  <object class="GtkLabel" id="lbl_clock2">
+                     <property name="visible">1</property>
+-                    <property name="icon-name">system-shutdown-symbolic</property>
++                    <style><class name="phosh-topbar-clock"/></style>
+                   </object>
+                 </child>
++                <child><object class="GtkLabel" id="lbl_date"><property name="visible">1</property><style><class name="phosh-topbar-date"/></style></object></child>
++                <child><object class="PhoshBatteryInfo" id="shade_battery_detail"><property name="visible">1</property><property name="show-detail">1</property><property name="pixel-size">16</property></object><packing><property name="pack-type">end</property></packing></child>
+               </object>
+-              <packing>
+-                <property name="pack-type">end</property>
+-              </packing>
+             </child>
++            <child><object class="GtkButton" id="btn_lock"><property name="visible">0</property><property name="action-name">panel.lockscreen</property></object></child>
++            <child><object class="GtkMenuButton" id="btn_power"><property name="visible">0</property><property name="popover">menu_system</property></object></child>
+           </object>
+           <!-- box_clock -->
+         </child>
+@@ -217,10 +206,10 @@
+                     <property name="valign">end</property>
+                     <property name="name">top-bar</property>
+                     <!-- PHOSH_TOP_PANEL_HEIGHT -->
+-                    <property name="height-request">32</property>
++                    <property name="height-request">48</property>
+                     <child>
+                       <object class="GtkBox" id="box_network">
+-                        <property name="visible">1</property>
++                        <property name="visible">0</property>
+                         <child>
+                           <object class="PhoshRevealer">
+                             <property name="visible">1</property>
+@@ -289,45 +278,20 @@
+                             <property name="align">end</property>
+                             <child>
+                               <object class="GtkLabel" id="lbl_lang">
+-                                <property name="visible">1</property>
++                                <property name="visible">0</property>
+                                 <property name="margin-top">2</property>
+                                 <property name="justify">center</property>
+                               </object>
+                             </child>
+-                            <child>
+-                              <object class="PhoshRevealer">
+-                                <property name="visible">1</property>
+-                                <property name="show-child" bind-source="hks_info_mic" bind-property="blocked" bind-flags="sync-create"/>
+-                                <property name="child">hks_info_mic</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="PhoshRevealer">
+-                                <property name="visible">1</property>
+-                                <property name="show-child" bind-source="hks_info_camera" bind-property="blocked" bind-flags="sync-create"/>
+-                                <property name="child">hks_info_camera</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="PhoshRevealer">
+-                                <property name="visible">1</property>
+-                                <property name="show-child" bind-source="feedback_info" bind-property="muted" bind-flags="sync-create"/>
+-                                <property name="child">feedback_info</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="PhoshRevealer">
+-                                <property name="visible">1</property>
+-                                <property name="show-child" bind-source="location_info" bind-property="active" bind-flags="sync-create"/>
+-                                <property name="child">location_info</property>
+-                              </object>
+-                            </child>
++                            <child><object class="PhoshLocationInfo" id="top_location"><property name="visible">1</property><property name="pixel-size">13</property></object></child>
++                            <child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">security-high-symbolic</property><property name="pixel-size">13</property></object></child>
+                             <child>
+                               <object class="PhoshBatteryInfo" id="batteryinfo">
+                                 <property name="visible">1</property>
+-                                <property name="pixel-size">16</property>
++                                <property name="pixel-size">13</property>
+                               </object>
+                             </child>
++                            <child><object class="PhoshWifiInfo" id="top_wifi"><property name="visible">1</property><property name="pixel-size">13</property></object></child>
+                           </object>
+                         </child>
+                       </object>
+@@ -350,7 +314,7 @@
+                 <property name="visible">1</property>
+                 <child type="center">
+                   <object class="PhoshArrow" id="arrow">
+-                    <property name="visible">1</property>
++                    <property name="visible">0</property>
+                     <property name="vexpand">1</property>
+                     <property name="valign">end</property>
+                     <property name="margin-bottom">6</property>
+@@ -361,7 +325,8 @@
+                 </child>
+                 <child>
+                   <object class="GtkRevealer" id="launch_settings_revealer">
+-                    <property name="visible">1</property>
++                    <property name="visible">0</property>
++                    <property name="no-show-all">1</property>
+                     <property name="transition-type">crossfade</property>
+                     <child>
+                       <object class="GtkButton">
+@@ -444,4 +409,10 @@
+     <property name="propagation-phase">target</property>
+     <signal name="released" handler="released_cb" swapped="true"/>
+   </object>
++  <object class="GtkGestureSwipe" id="settings_swipe">
++    <property name="widget">PhoshTopPanel</property>
++    <property name="touch-only">1</property>
++    <property name="propagation-phase">capture</property>
++    <signal name="swipe" handler="on_settings_swipe" swapped="true"/>
++  </object>
+ </interface>

@@ -1,0 +1,670 @@
+From b941b908232b08d4680937f923441d393a450207 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 12:05:11 -0400
+Subject: [PATCH] luma: Capture's thumbnail can be dragged into apps
+
+The floating thumbnail after a screenshot or recording can be dragged, like a
+file, into any app: a chat, a document, a folder. A click still opens it, and
+a drop leaves the file where it was saved and puts the thumbnail away.
+
+The Shell cannot start a Wayland drag, so a small helper,
+luma-capture-drag (GTK 4, in libexecdir), is started as the Shell's own
+Wayland client (Meta.WaylandClient). Its window is hidden from the window
+list, kept above other windows and on every workspace, never keeps the
+keyboard, and is laid transparently over the thumbnail the Shell draws. It
+reports hover, clicks and drags on stdout and takes show and hide commands
+on stdin, and exits after two idle minutes.
+
+A drag offers the file (text/uri-list, and the portal file transfer where a
+portal runs) and GNOME's x-special/gnome-copied-files, with a small picture
+of the capture as the drag icon; Mutter carries the drag to Xwayland apps.
+It does not offer image/png: GTK apps that accept both, Files among them,
+take the image data and save "Dropped Image.png" instead of the file. The
+screenshot is still on the clipboard as image/png.
+
+Also: the thumbnail image no longer asks St for background-position: center,
+which St ignored with a warning.
+---
+ data/luma-capture-drag.js   | 263 +++++++++++++++++++++++++++++++++
+ data/meson.build            |   3 +
+ data/theme/luma-capture.css |   3 +-
+ js/ui/lumaCapture.js        | 287 +++++++++++++++++++++++++++++++++++-
+ 4 files changed, 548 insertions(+), 8 deletions(-)
+ create mode 100644 data/luma-capture-drag.js
+
+diff --git a/data/luma-capture-drag.js b/data/luma-capture-drag.js
+new file mode 100644
+index 0000000..fa52888
+--- /dev/null
++++ b/data/luma-capture-drag.js
+@@ -0,0 +1,263 @@
++#!/usr/bin/gjs -m
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Luma Capture's thumbnail, as something that can be dragged into apps.
++//
++// The Shell draws the floating thumbnail, but a Wayland drag can only start
++// from a client surface. The Shell starts this helper as its own Wayland
++// client (Meta.WaylandClient: hidden from the dock, the app switcher and the
++// overviews) and lays its window, transparent and undecorated, exactly over
++// the thumbnail. The window takes the pointer: a click opens the capture, a
++// drag carries it into another app as a file (text/uri-list and the portal's
++// file transfer) and as GNOME's copied-files target.
++//
++// Commands arrive on stdin, one JSON object per line:
++//   {"cmd": "show", "serial": n, "file": path, "preview": path|null,
++//    "mime": type, "width": px, "height": px}
++//   {"cmd": "hide"}   {"cmd": "quit"}
++// Events leave on stdout, one JSON object per line:
++//   {"event": "ready"}  {"event": "mapped", "serial": n}
++//   {"event": "hover", "value": bool}  {"event": "click", "serial": n}
++//   {"event": "drag-begin", "serial": n}
++//   {"event": "drag-end", "serial": n, "dropped": bool, "reason": string|null}
++// With no thumbnail for a while the helper exits; the Shell starts it again.
++
++import Gdk from 'gi://Gdk?version=4.0';
++import GdkPixbuf from 'gi://GdkPixbuf';
++import Gio from 'gi://Gio';
++import GioUnix from 'gi://GioUnix';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Gtk from 'gi://Gtk?version=4.0';
++
++const APP_ID = 'org.project_luma.CaptureDrag';
++const IDLE_EXIT_SECONDS = 120;
++const ICON_WIDTH = 120;
++
++const emit = event => {
++    print(JSON.stringify(event));
++};
++
++// A window that draws nothing never gets a buffer and is never shown, so it
++// is filled with an alpha too faint to see; the Shell's thumbnail is drawn over
++// it anyway.
++const CSS = `
++window.luma-capture-drag {
++    background-color: rgba(0, 0, 0, 0.004);
++    box-shadow: none;
++    border: none;
++}
++window.luma-capture-drag > * {
++    background: none;
++}
++`;
++
++class DragHelper {
++    constructor() {
++        this._app = new Gtk.Application({
++            application_id: APP_ID,
++            flags: Gio.ApplicationFlags.NON_UNIQUE,
++        });
++        this._app.connect('startup', () => this._startup());
++        this._app.connect('activate', () => {});
++        this._current = null;
++        this._idleId = 0;
++        this._mappedId = 0;
++    }
++
++    run() {
++        return this._app.run([]);
++    }
++
++    _startup() {
++        this._app.hold();
++        const provider = new Gtk.CssProvider();
++        provider.load_from_string(CSS);
++        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider,
++            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
++
++        this._window = new Gtk.Window({
++            application: this._app,
++            decorated: false,
++            resizable: false,
++            title: 'Capture',
++            css_classes: ['luma-capture-drag'],
++        });
++        this._area = new Gtk.Box({hexpand: true, vexpand: true});
++        this._window.set_child(this._area);
++        this._window.connect('close-request', () => true);
++
++        const motion = new Gtk.EventControllerMotion();
++        motion.connect('enter', () => emit({event: 'hover', value: true}));
++        motion.connect('leave', () => emit({event: 'hover', value: false}));
++        this._area.add_controller(motion);
++
++        const click = new Gtk.GestureClick({button: Gdk.BUTTON_PRIMARY});
++        click.connect('released', (gesture, nPress) => {
++            if (this._dragging || !this._current)
++                return;
++            if (nPress === 1)
++                emit({event: 'click', serial: this._current.serial});
++        });
++        this._area.add_controller(click);
++
++        const drag = new Gtk.DragSource({actions: Gdk.DragAction.COPY});
++        drag.connect('prepare', (source, x, y) => this._prepare(source, x, y));
++        drag.connect('drag-begin', () => {
++            this._dragging = true;
++            click.set_state(Gtk.EventSequenceState.DENIED);
++            emit({event: 'drag-begin', serial: this._current?.serial ?? 0});
++        });
++        drag.connect('drag-cancel', (_source, _drag, reason) => {
++            this._cancelReason = Object.keys(Gdk.DragCancelReason)
++                .find(key => Gdk.DragCancelReason[key] === reason) ?? `${reason}`;
++            return false;
++        });
++        drag.connect('drag-end', () => {
++            const dropped = this._cancelReason === null;
++            emit({event: 'drag-end', serial: this._current?.serial ?? 0, dropped,
++                reason: this._cancelReason});
++            this._dragging = false;
++            this._cancelReason = null;
++        });
++        this._area.add_controller(drag);
++        this._dragging = false;
++        this._cancelReason = null;
++
++        this._stdin = new Gio.DataInputStream({
++            base_stream: new GioUnix.InputStream({fd: 0, close_fd: false}),
++        });
++        this._readLine();
++        this._scheduleIdleExit();
++        emit({event: 'ready'});
++    }
++
++    _readLine() {
++        this._stdin.read_line_async(GLib.PRIORITY_DEFAULT, null, (stream, result) => {
++            let line;
++            try {
++                [line] = stream.read_line_finish_utf8(result);
++            } catch (e) {
++                logError(e, 'Luma Capture drag: stdin');
++                line = null;
++            }
++            if (line === null) {
++                this._app.quit();
++                return;
++            }
++            try {
++                this._command(JSON.parse(line));
++            } catch (e) {
++                logError(e, `Luma Capture drag: bad command ${line}`);
++            }
++            this._readLine();
++        });
++    }
++
++    _command(command) {
++        switch (command.cmd) {
++        case 'show':
++            this._show(command);
++            break;
++        case 'hide':
++            this._hide();
++            break;
++        case 'quit':
++            this._app.quit();
++            break;
++        }
++    }
++
++    _show(command) {
++        this._current = {
++            serial: command.serial,
++            file: Gio.File.new_for_path(command.file),
++            preview: command.preview ?? null,
++            mime: command.mime ?? 'image/png',
++        };
++        this._icon = null;
++        this._clearIdleExit();
++        this._window.set_default_size(Math.max(1, command.width), Math.max(1, command.height));
++        this._window.set_size_request(Math.max(1, command.width), Math.max(1, command.height));
++        this._window.present();
++        const surface = this._window.get_surface();
++        if (this._mappedId) {
++            surface?.disconnect(this._mappedId);
++            this._mappedId = 0;
++        }
++        if (surface?.get_mapped()) {
++            emit({event: 'mapped', serial: command.serial});
++            return;
++        }
++        this._mappedId = surface?.connect('notify::mapped', s => {
++            if (!s.get_mapped())
++                return;
++            s.disconnect(this._mappedId);
++            this._mappedId = 0;
++            emit({event: 'mapped', serial: this._current?.serial ?? command.serial});
++        }) ?? 0;
++    }
++
++    _hide() {
++        if (this._dragging)
++            return;
++        this._current = null;
++        this._window.set_visible(false);
++        this._scheduleIdleExit();
++    }
++
++    _prepare(source, x, y) {
++        const current = this._current;
++        if (!current || !current.file.query_exists(null))
++            return null;
++        const providers = [
++            Gdk.ContentProvider.new_for_value(Gdk.FileList.new_from_array([current.file])),
++            Gdk.ContentProvider.new_for_bytes('x-special/gnome-copied-files',
++                new GLib.Bytes(new TextEncoder().encode(`copy\n${current.file.get_uri()}`))),
++        ];
++        // No image/png here, though the clipboard has one: GTK apps that take
++        // both, Files among them, prefer the image data and would save
++        // "Dropped Image.png" instead of the screenshot's own file.
++        const icon = this._dragIcon(current);
++        if (icon) {
++            const scale = icon.get_width() / Math.max(1, this._window.get_width());
++            source.set_icon(icon, Math.round(x * scale), Math.round(y * scale));
++        }
++        return Gdk.ContentProvider.new_union(providers);
++    }
++
++    _dragIcon(current) {
++        if (this._icon !== null)
++            return this._icon || null;
++        this._icon = false;
++        const path = current.preview ?? (current.mime === 'image/png' ? current.file.get_path() : null);
++        if (!path)
++            return null;
++        try {
++            const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, ICON_WIDTH, ICON_WIDTH * 4, true);
++            this._icon = Gdk.Texture.new_for_pixbuf(pixbuf);
++        } catch (e) {
++            logError(e, 'Luma Capture drag: no drag icon');
++        }
++        return this._icon || null;
++    }
++
++    _scheduleIdleExit() {
++        this._clearIdleExit();
++        this._idleId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, IDLE_EXIT_SECONDS, () => {
++            this._idleId = 0;
++            if (!this._current)
++                this._app.quit();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _clearIdleExit() {
++        if (this._idleId)
++            GLib.source_remove(this._idleId);
++        this._idleId = 0;
++    }
++}
++
++GObject.type_ensure(Gdk.FileList.$gtype);
++new DragHelper().run();
+diff --git a/data/meson.build b/data/meson.build
+index 022704f..9f7e8cf 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -112,6 +112,9 @@ schema = configure_file(
+ install_data('00_org.gnome.shell.gschema.override', install_dir: schemadir)
+ # Luma Capture: the screenshot tool's Options (org.project_luma.capture).
+ install_data('org.project_luma.capture.gschema.xml', install_dir: schemadir)
++# Luma Capture: the helper that lets the floating thumbnail be dragged into apps.
++install_data('luma-capture-drag.js', install_dir: libexecdir, rename: 'luma-capture-drag',
++  install_mode: 'rwxr-xr-x')
+ 
+ if have_systemd
+   unitconf = configuration_data()
+diff --git a/data/theme/luma-capture.css b/data/theme/luma-capture.css
+index 9501616..27ded90 100644
+--- a/data/theme/luma-capture.css
++++ b/data/theme/luma-capture.css
+@@ -286,8 +286,7 @@
+   height: 118px;
+   border-radius: 10px;
+   background-color: #1b1f26;
+-  background-size: cover;
+-  background-position: center; }
++  background-size: cover; }
+ .luma-capture-thumb-play {
+   icon-size: 22px;
+   color: #ffffff;
+diff --git a/js/ui/lumaCapture.js b/js/ui/lumaCapture.js
+index 96aa5ae..a47ee2f 100644
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -27,6 +27,7 @@ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
++import * as Config from '../misc/config.js';
+ import * as Main from './main.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {placeFromShelfBar, placeShelfBar} from './lumaShelfSurface.js';
+@@ -1061,6 +1062,216 @@ export const RecordingPill = GObject.registerClass({
+     }
+ });
+ 
++// ── Dragging the thumbnail into apps ───────────────────────────────────────
++
++const DRAG_HELPER = 'luma-capture-drag';
++
++// The Shell cannot start a Wayland drag itself, so a small helper client
++// (data/luma-capture-drag.js) puts a transparent window exactly over the
++// thumbnail and does the drag. It is the Shell's own Wayland client, hidden
++// from the window list, kept above other windows and on every workspace,
++// and never given the keyboard. The Shell keeps drawing the thumbnail.
++export class ThumbnailDragBridge {
++    constructor(handlers) {
++        this._handlers = handlers;
++        this._client = null;
++        this._stdin = null;
++        this._window = null;
++        this._rect = null;
++        this._serial = 0;
++        this._mappedSerial = -1;
++        this._previousFocus = null;
++    }
++
++    get available() {
++        return GLib.file_test(this._helperPath(), GLib.FileTest.EXISTS);
++    }
++
++    // Whether the helper's window is over the thumbnail now.
++    get active() {
++        return this._window !== null && this._mappedSerial === this._serial;
++    }
++
++    _helperPath() {
++        return GLib.getenv('LUMA_CAPTURE_DRAG_HELPER') ??
++            GLib.build_filenamev([Config.LIBEXECDIR, DRAG_HELPER]);
++    }
++
++    _ensure() {
++        if (this._client)
++            return true;
++        try {
++            const launcher = new Gio.SubprocessLauncher({
++                flags: Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE,
++            });
++            if (GLib.getenv('LUMA_CAPTURE_DEBUG') === 'wayland')
++                launcher.setenv('WAYLAND_DEBUG', '1', true);
++            this._client = Meta.WaylandClient.new_subprocess(global.context, launcher,
++                ['gjs', '-m', this._helperPath()]);
++        } catch (e) {
++            logError(e, 'Luma Capture: the thumbnail drag helper did not start');
++            this._client = null;
++            return false;
++        }
++        const subprocess = this._client.get_subprocess();
++        this._stdin = subprocess.get_stdin_pipe();
++        this._stdout = new Gio.DataInputStream({base_stream: subprocess.get_stdout_pipe()});
++        this._readEvent(this._stdout);
++        subprocess.wait_async(null, () => this._onExited(subprocess));
++        this._windowCreatedId = global.display.connect('window-created',
++            (_display, window) => this._onWindowCreated(window));
++        log('drag helper started', {pid: subprocess.get_identifier()});
++        return true;
++    }
++
++    _onExited(subprocess) {
++        if (this._client?.get_subprocess() !== subprocess)
++            return;
++        log('drag helper exited', {status: subprocess.get_if_exited() ? subprocess.get_exit_status() : 'signal'});
++        global.display.disconnect(this._windowCreatedId);
++        this._client = null;
++        this._stdin = null;
++        this._stdout = null;
++        this._window = null;
++        this._mappedSerial = -1;
++        this._handlers.inactive?.();
++    }
++
++    _readEvent(stream) {
++        stream.read_line_async(GLib.PRIORITY_DEFAULT, null, (_stream, result) => {
++            let line = null;
++            try {
++                [line] = stream.read_line_finish_utf8(result);
++            } catch (e) {
++                logError(e, 'Luma Capture: drag helper output');
++            }
++            if (line === null || stream !== this._stdout)
++                return;
++            try {
++                this._onEvent(JSON.parse(line));
++            } catch (e) {
++                logError(e, `Luma Capture: drag helper said ${line}`);
++            }
++            this._readEvent(stream);
++        });
++    }
++
++    _onEvent(event) {
++        if (GLib.getenv('LUMA_CAPTURE_DEBUG'))
++            log('drag helper event', event);
++        switch (event.event) {
++        case 'mapped':
++            this._mappedSerial = event.serial;
++            this._place();
++            if (this.active)
++                this._handlers.active?.();
++            break;
++        case 'hover':
++            this._handlers.hover?.(event.value);
++            break;
++        case 'click':
++            if (event.serial === this._serial)
++                this._handlers.click?.();
++            break;
++        case 'drag-begin':
++            log('drag begin', {serial: event.serial});
++            this._handlers.dragBegin?.();
++            break;
++        case 'drag-end':
++            log('drag end', {serial: event.serial, dropped: event.dropped, reason: event.reason});
++            this._handlers.dragEnd?.(event.dropped);
++            break;
++        }
++    }
++
++    _onWindowCreated(window) {
++        if (!this._client?.owns_window(window))
++            return;
++        this._window = window;
++        window.hide_from_window_list();
++        const actor = window.get_compositor_private();
++        if (actor)
++            Main.wm.skipNextEffect(actor);
++        window.connect('unmanaged', () => {
++            if (this._window === window)
++                this._window = null;
++        });
++        window.connect('focus', () => this._giveBackFocus(window));
++        // Placed once it has a size of its own: moving a window that has not
++        // drawn yet leaves it without one.
++        window.connect('shown', () => {
++            if (!window.is_above())
++                window.make_above();
++            if (!window.is_on_all_workspaces())
++                window.stick();
++            this._place();
++        });
++        window.connect('size-changed', () => this._placeIfMoved());
++    }
++
++    _placeIfMoved() {
++        const window = this._window;
++        const rect = this._rect;
++        if (!window || !rect)
++            return;
++        const frame = window.get_frame_rect();
++        if (frame.width > 0 && (Math.abs(frame.x - rect.x) > 1 || Math.abs(frame.y - rect.y) > 1 ||
++            Math.abs(frame.width - rect.width) > 1 || Math.abs(frame.height - rect.height) > 1))
++            this._place();
++    }
++
++    // The helper never keeps the keyboard: whoever had it gets it back.
++    _giveBackFocus(window) {
++        const previous = this._previousFocus;
++        if (previous && previous !== window && !previous.minimized &&
++            previous.get_compositor_private())
++            previous.focus(global.get_current_time());
++    }
++
++    _place() {
++        const window = this._window;
++        const rect = this._rect;
++        if (!window || !rect)
++            return;
++        if (window.get_frame_rect().width <= 0)
++            return;
++        window.move_resize_frame(false, Math.round(rect.x), Math.round(rect.y),
++            Math.round(rect.width), Math.round(rect.height));
++        window.raise();
++    }
++
++    _send(command) {
++        if (!this._stdin)
++            return;
++        try {
++            this._stdin.write_all(new TextEncoder().encode(`${JSON.stringify(command)}\n`), null);
++        } catch (e) {
++            logError(e, 'Luma Capture: drag helper input');
++        }
++    }
++
++    // rect: the thumbnail's stage rectangle at rest.
++    show({file, preview, mime, rect}) {
++        if (!this.available || !this._ensure())
++            return;
++        const focus = global.display.focus_window;
++        if (focus && !this._client.owns_window(focus))
++            this._previousFocus = focus;
++        this._serial++;
++        this._rect = rect;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._send({cmd: 'show', serial: this._serial, file: file.get_path(), preview, mime,
++            width: Math.round(rect.width / scale), height: Math.round(rect.height / scale)});
++        this._place();
++    }
++
++    hide() {
++        this._rect = null;
++        this._mappedSerial = -1;
++        this._send({cmd: 'hide'});
++    }
++}
++
+ // ── Floating thumbnail ─────────────────────────────────────────────────────
+ 
+ export const CaptureThumbnail = GObject.registerClass(
+@@ -1105,14 +1316,61 @@ class CaptureThumbnail extends Surface {
+ 
+         this._file = null;
+         this._timeoutId = 0;
++        this._helperHover = false;
++        this._dragging = false;
+         this._button.connect('clicked', () => this._open());
+-        this.connect('notify::hover', () => {
+-            if (!this.hover && this.visible && !this._leaving)
+-                this._scheduleHide();
+-            else if (this.hover)
++        this.connect('notify::hover', () => this._syncHover());
++        Main.layoutManager.addTopChrome(this);
++
++        // Dragging the thumbnail into an app goes through a helper window laid
++        // over it; while that window is there it takes the pointer.
++        this._drag = new ThumbnailDragBridge({
++            active: () => {
++                if (!this.visible || this._leaving)
++                    return;
++                Shell.util_set_hidden_from_pick(this, true);
++            },
++            inactive: () => {
++                Shell.util_set_hidden_from_pick(this, false);
++                this._helperHover = false;
++                this._dragging = false;
++            },
++            hover: value => {
++                this._helperHover = value;
++                this._syncHover();
++            },
++            click: () => this._open(),
++            dragBegin: () => {
++                this._dragging = true;
+                 this._clearTimeout();
++                this.remove_all_transitions();
++                this.ease({opacity: 110, duration: 120, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            },
++            dragEnd: dropped => {
++                this._dragging = false;
++                if (dropped) {
++                    // The file stays where it was saved; the thumbnail leaves.
++                    this.dismiss();
++                    return;
++                }
++                this.remove_all_transitions();
++                this.ease({opacity: 255, duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++                this._syncHover();
++            },
+         });
+-        Main.layoutManager.addTopChrome(this);
++    }
++
++    get dragBridge() {
++        return this._drag;
++    }
++
++    _syncHover() {
++        if (!this.visible || this._leaving || this._dragging)
++            return;
++        if (this.hover || this._helperHover)
++            this._clearTimeout();
++        else
++            this._scheduleHide();
+     }
+ 
+     get file() {
+@@ -1144,6 +1402,19 @@ class CaptureThumbnail extends Surface {
+         const slot = place({width, height});
+         if (slot)
+             this.set_position(slot.x, slot.y);
++        Shell.util_set_hidden_from_pick(this, false);
++        this._helperHover = false;
++        this._dragging = false;
++        if (file && slot) {
++            this._drag.show({
++                file,
++                preview,
++                mime: kind === 'recording'
++                    ? file.get_basename().endsWith('.mp4') ? 'video/mp4' : 'video/webm'
++                    : 'image/png',
++                rect: {x: slot.x, y: slot.y, width, height},
++            });
++        }
+         const distance = reduceMotion() ? 0 : THUMBNAIL_DISTANCE * stageScale();
+         this.set({opacity: 0, translation_x: distance});
+         this.ease({
+@@ -1159,7 +1430,7 @@ class CaptureThumbnail extends Surface {
+         this._clearTimeout();
+         this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, THUMBNAIL_SECONDS, () => {
+             this._timeoutId = 0;
+-            if (this.hover)
++            if (this.hover || this._helperHover || this._dragging)
+                 return GLib.SOURCE_REMOVE;
+             this.dismiss();
+             return GLib.SOURCE_REMOVE;
+@@ -1169,6 +1440,10 @@ class CaptureThumbnail extends Surface {
+ 
+     dismiss() {
+         this._clearTimeout();
++        if (this._dragging)
++            return;
++        this._drag.hide();
++        Shell.util_set_hidden_from_pick(this, false);
+         if (!this.visible)
+             return;
+         this._leaving = true;
+-- 
+2.55.0
+

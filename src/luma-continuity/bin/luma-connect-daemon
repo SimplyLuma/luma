@@ -1,0 +1,3 @@
+#!/usr/bin/python3 -s
+from luma_continuity.daemon import main
+raise SystemExit(main())

@@ -1,0 +1,23 @@
+[Unit]
+Description=Promote a healthy Project Luma Mod deployment
+Documentation=https://github.com/SimplyLuma/luma
+After=graphical.target display-manager.service luma-mod-boot-observe.service
+Requires=display-manager.service
+ConditionPathExists=/var/lib/luma/mods/system-state.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-mod-system-health promote
+StateDirectory=luma/mods
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/luma/mods
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=graphical.target

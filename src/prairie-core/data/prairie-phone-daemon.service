@@ -1,0 +1,23 @@
+[Unit]
+Description=Project Luma incoming call service
+After=dbus.service
+PartOf=graphical-session.target
+# Give up rather than respawn forever. The daemon cannot start without
+# gtk4-layer-shell, and on a machine without it this unit restarted every five
+# seconds indefinitely, burning a core on a software-rendered guest and making
+# the whole shell feel broken. Five failures in a row is not bad luck.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# gtk4-layer-shell must be loaded before libwayland-client or its GTK4 hooks
+# never install and init_for_window silently does nothing -- the call surface
+# then renders as an ordinary window, i.e. behind phosh's lockscreen.
+Environment=LD_PRELOAD=/usr/lib64/libgtk4-layer-shell.so.0
+ExecStart=/usr/bin/prairie-phone-daemon
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=graphical-session.target

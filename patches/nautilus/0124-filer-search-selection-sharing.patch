@@ -1,0 +1,232 @@
+From 4bcf286f775159088b61c4290c67dff8695fb19a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 03:42:41 +0000
+Subject: [PATCH] Filer search selection and sharing controls
+
+---
+ src/nautilus-window.c                | 119 ++++++++++++++++++++++++++-
+ src/resources/style.css              |   7 ++
+ src/resources/ui/nautilus-window.blp |   3 +-
+ 3 files changed, 125 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index d0cd51d..8498a65 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -777,6 +777,70 @@ on_bar_selection_dismissed (LumaBarItem *item,
+         nautilus_files_view_set_selection (view, NULL, FALSE);
+ }
+ 
++static char *
++selected_file_links (NautilusWindow *window)
++{
++    if (window->active_slot == NULL)
++        return NULL;
++    GList *selection = nautilus_window_slot_get_selection (window->active_slot);
++    if (selection == NULL)
++        return NULL;
++    g_autoptr (GString) links = g_string_new (NULL);
++    for (GList *item = selection; item != NULL; item = item->next)
++    {
++        g_autoptr (GFile) file = nautilus_file_get_location (NAUTILUS_FILE (item->data));
++        if (file == NULL)
++            continue;
++        g_autofree char *uri = g_file_get_uri (file);
++        if (links->len > 0)
++            g_string_append_c (links, '\n');
++        g_string_append (links, uri);
++    }
++    return g_string_free (g_steal_pointer (&links), FALSE);
++}
++
++static void
++action_copy_file_links (GSimpleAction *action,
++                        GVariant      *parameter,
++                        gpointer       user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    g_autofree char *links = selected_file_links (window);
++    if (links == NULL || *links == '\0')
++        return;
++    gdk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (window)), links);
++    adw_toast_overlay_add_toast (window->toast_overlay, adw_toast_new (_("File link copied")));
++}
++
++static void
++action_email_file_links (GSimpleAction *action,
++                         GVariant      *parameter,
++                         gpointer       user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    g_autofree char *links = selected_file_links (window);
++    if (links == NULL || *links == '\0')
++        return;
++    g_autofree char *body = g_uri_escape_string (links, NULL, FALSE);
++    g_autofree char *uri = g_strdup_printf ("mailto:?body=%s", body);
++    g_app_info_launch_default_for_uri (uri, NULL, NULL);
++}
++
++static void
++on_bar_share (LumaBarItem *item,
++              NautilusWindow *window)
++{
++    GtkWidget *anchor = luma_bar_item_get_active_control (item);
++    if (anchor == NULL)
++        return;
++    LumaFloatingMenu *menu = LUMA_FLOATING_MENU (luma_floating_menu_new (_("Share")));
++    luma_floating_menu_add_item (menu, _("Copy file link"), "link", NULL, NULL,
++                                 "win.copy-file-links", FALSE);
++    luma_floating_menu_add_item (menu, _("Email file link"), "mail", NULL, NULL,
++                                 "win.email-file-links", FALSE);
++    luma_floating_menu_popup (menu, anchor);
++}
++
+ static void
+ on_bar_more (LumaBarItem *item,
+              NautilusWindow *window)
+@@ -790,6 +854,8 @@ on_bar_more (LumaBarItem *item,
+     luma_floating_menu_add_separator (menu);
+     luma_floating_menu_add_item (menu, _("Rename"), "pencil", NULL, NULL,
+                                  "view.rename", FALSE);
++    luma_floating_menu_add_item (menu, _("Duplicate"), "copy", NULL, NULL,
++                                 "win.duplicate-selection", FALSE);
+     luma_floating_menu_add_item (menu, _("Move to"), "folder-input", NULL, NULL,
+                                  "view.move-to", FALSE);
+     luma_floating_menu_add_item (menu, _("Compress"), "file-archive", NULL, NULL,
+@@ -823,7 +889,12 @@ update_action_center (NautilusWindow *window)
+             luma_bar_item_new_action ("info", NULL, NULL),
+             luma_bar_item_new_action ("ellipsis", NULL, NULL),
+         };
+-        luma_bar_item_set_sensitive (items[3], FALSE);
++        g_autoptr (GdkPaintable) preview = nautilus_file_get_icon_paintable (
++            file, 42, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
++            NAUTILUS_FILE_ICON_FLAGS_NONE);
++        if (preview != NULL)
++            luma_bar_item_chip_set_paintable (items[0], preview);
++        g_signal_connect (items[3], "activated", G_CALLBACK (on_bar_share), window);
+         luma_bar_item_set_tooltip (items[4], _("Information"));
+         luma_bar_item_set_tooltip (items[5], _("More"));
+         g_signal_connect (items[0], "dismissed", G_CALLBACK (on_bar_selection_dismissed), window);
+@@ -1747,6 +1818,44 @@ extra_drag_drop_cb (AdwTabBar    *self,
+     return nautilus_dnd_perform_drop (view, value, action, target_location);
+ }
+ 
++static void
++action_duplicate_selection (GSimpleAction *action,
++                            GVariant      *parameter,
++                            gpointer       user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    NautilusWindowSlot *slot = window->active_slot;
++    NautilusFilesView *view;
++    GFile *location;
++    GList *selection;
++    GList *uris = NULL;
++
++    if (slot == NULL ||
++        (view = nautilus_window_slot_get_current_view (slot)) == NULL ||
++        (location = nautilus_window_slot_get_location (slot)) == NULL)
++    {
++        return;
++    }
++
++    selection = nautilus_window_slot_get_selection (slot);
++    for (GList *item = selection; item != NULL; item = item->next)
++    {
++        g_autoptr (GFile) file = nautilus_file_get_location (NAUTILUS_FILE (item->data));
++        if (file != NULL)
++        {
++            uris = g_list_prepend (uris, g_file_get_uri (file));
++        }
++    }
++    if (uris != NULL)
++    {
++        g_autofree char *target = g_file_get_uri (location);
++        uris = g_list_reverse (uris);
++        nautilus_file_operations_copy_move (uris, target, GDK_ACTION_COPY,
++                                            GTK_WIDGET (view), NULL, NULL, NULL);
++    }
++    g_list_free_full (uris, g_free);
++}
++
+ const GActionEntry win_entries[] =
+ {
+     { .name = "current-location-menu", .activate = action_show_current_location_menu },
+@@ -1763,6 +1872,9 @@ const GActionEntry win_entries[] =
+     { .name = "go-to-tab", .parameter_type = "i", .state = "0", .change_state = action_go_to_tab },
+     { .name = "restore-tab", .activate = action_restore_tab },
+     { .name = "toggle-sidebar", .activate = action_toggle_sidebar },
++    { .name = "duplicate-selection", .activate = action_duplicate_selection },
++    { .name = "copy-file-links", .activate = action_copy_file_links },
++    { .name = "email-file-links", .activate = action_email_file_links },
+ };
+ 
+ static void
+@@ -2267,7 +2379,7 @@ set_sidebar_width (NautilusWindow *window,
+     AdwOverlaySplitView *split_view = ADW_OVERLAY_SPLIT_VIEW (window->split_view);
+     gdouble current_width;
+ 
+-    width = CLAMP (width, 120.0, 480.0);
++    width = CLAMP (width, 88.0, 480.0);
+     current_width = adw_overlay_split_view_get_max_sidebar_width (split_view);
+ 
+     /* Keep min <= max throughout the update so libadwaita never clamps an
+@@ -2421,6 +2533,7 @@ apply_fixture_state (gpointer data)
+             nautilus_query_set_location (query, home);
+         }
+         nautilus_window_slot_search (slot, query);
++        luma_bar_item_search_set_text (window->action_search_item, "press");
+         update_location_header (window);
+         g_object_set_data (G_OBJECT (window), "filer-fixture-search-started", GINT_TO_POINTER (1));
+         return G_SOURCE_CONTINUE;
+@@ -2466,7 +2579,7 @@ sidebar_resize_drag_update (GtkGestureDrag *gesture,
+         offset_x = -offset_x;
+     }
+ 
+-    width = CLAMP (window->sidebar_resize_start_width + offset_x, 120.0, 480.0);
++    width = CLAMP (window->sidebar_resize_start_width + offset_x, 88.0, 480.0);
+     window->sidebar_resize_current_width = width;
+     set_sidebar_width (window, width);
+ }
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 6cfb4a9..35e5960 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -38,6 +38,13 @@
+   color: @luma_ink;
+ }
+ 
++/* The location heading is part of the same inset content surface as the files. */
++.luma-files-window #filer-location-row,
++.luma-files-window .luma-action-toolbar-overlay headerbar.luma-secondary-toolbar {
++  background-color: @luma_content;
++}
++.luma-files-window #filer-location-scope image { -gtk-icon-size: 0px; }
++
+ /* Filer uses a deliberate two-row native title composition. */
+ .luma-files-window:not(.luma-native-file-chooser) headerbar.luma-titlebar {
+   min-height: 42px;
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index effa608..96e6467 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -210,7 +210,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           hexpand: true;
+           enable-show-gesture: false;
+           enable-hide-gesture: false;
+-          min-sidebar-width: 120;
++          min-sidebar-width: 88;
+           max-sidebar-width: 480;
+           sidebar-width-unit: px;
+           sidebar-width-fraction: 0.25;
+@@ -221,6 +221,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           ]
+ 
+           sidebar: Adw.ToolbarView sidebar_action_surface {
++            width-request: 88;
+             reveal-bottom-bars: bind progress_indicator.reveal;
+             margin-top: 0;
+             margin-bottom: 0;
+-- 
+2.55.0
+

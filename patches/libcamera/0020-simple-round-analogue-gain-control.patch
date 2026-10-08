@@ -1,0 +1,40 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: respect the sensor's minimum analogue gain step
+
+The S5KKD1SP front sensor exposes integer 1x gain steps. Simple IPA derives a
+generic minimum adjustment by dividing the whole gain range by 100, producing
+0.63x here. The first dark-scene correction therefore requests 6.63x, but the
+helper's integer gainCode() correctly quantizes that back to 6. Every following
+stats frame starts from 6x again, so AE never raises gain after exposure time
+reaches its frame-duration limit.
+
+Make the minimum adjustment at least the real-gain difference between adjacent
+sensor codes. This preserves proportional convergence for fine-grained sensors
+while guaranteeing forward progress for coarsely quantized controls.
+
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -6,5 +6,6 @@
+  */
+ 
++#include <cmath>
+ #include <chrono>
+ #include <stdint.h>
+ #include <sys/mman.h>
+@@ -245,11 +246,16 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ 	if (camHelper_) {
+ 		context_.configuration.agc.againMin = camHelper_->gain(againMin);
+ 		context_.configuration.agc.againMax = camHelper_->gain(againMax);
+ 		context_.configuration.agc.again10 = std::max(context_.configuration.agc.againMin, 1.0);
+ 		context_.configuration.agc.againMinStep =
+ 			(context_.configuration.agc.againMax -
+ 			 context_.configuration.agc.againMin) /
+ 			100.0;
++		if (againMax > againMin)
++			context_.configuration.agc.againMinStep = std::max(
++				context_.configuration.agc.againMinStep,
++				std::abs(camHelper_->gain(againMin + 1) -
++					 camHelper_->gain(againMin)));
+ 		if (camHelper_->blackLevel().has_value()) {
+ 			/*
+ 			 * The black level from camHelper_ is a 16 bit value, software ISP

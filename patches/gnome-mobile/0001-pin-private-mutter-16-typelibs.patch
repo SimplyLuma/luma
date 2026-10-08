@@ -1,0 +1,32 @@
+From: Project Luma <codex@local>
+Subject: [PATCH] shell: pin private Mutter 16 typelibs during bootstrap
+
+The bake-off deliberately coinstalls Mutter 16 with Luma desktop's Mutter 18.
+ES module dependencies are resolved before dependencies.js can execute its
+gi.require() calls, so unversioned imports select the newer system namespaces
+and register ClutterActor twice. Pin the bootstrap namespaces to the ABI this
+Shell was compiled against. This has no effect on single-version systems.
+
+--- a/js/ui/environment.js
++++ b/js/ui/environment.js
+@@ -5,15 +5,15 @@ import * as Gettext from 'gettext';
+ 
+ import Cairo from 'cairo';
+-import Clutter from 'gi://Clutter';
++import Clutter from 'gi://Clutter?version=16';
+ import Gdk from 'gi://Gdk';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+-import Meta from 'gi://Meta';
+-import Mtk from 'gi://Mtk';
++import Meta from 'gi://Meta?version=16';
++import Mtk from 'gi://Mtk?version=16';
+ import Polkit from 'gi://Polkit';
+-import Shell from 'gi://Shell';
+-import St from 'gi://St';
++import Shell from 'gi://Shell?version=16';
++import St from 'gi://St?version=16';
+ 
+ import * as SignalTracker from '../misc/signalTracker.js';
+ import {adjustAnimationTime} from '../misc/animationUtils.js';

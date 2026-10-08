@@ -1,0 +1,17 @@
+--- a/extension.js
++++ b/extension.js
+@@ -566,12 +566,12 @@
+   disable() {
+     this._keybindings?.destroy();
+     this._keybindings = null;
++    this._signals?.disconnect();
++    this._signals = null;
+     this._indicator?.destroy();
+     this._indicator = null;
+     this._tilingManagers.forEach((tm) => tm.destroy());
+     this._tilingManagers = [];
+-    this._signals?.disconnect();
+-    this._signals = null;
+     this._resizingManager?.destroy();
+     this._resizingManager = null;
+     this._windowBorderManager?.destroy();

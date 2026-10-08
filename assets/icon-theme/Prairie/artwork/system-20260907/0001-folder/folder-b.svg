@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><title>Folder — Chamfer</title><defs>
+<linearGradient id="rear" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#c4e5f2"/><stop offset="1" stop-color="#357ca5"/></linearGradient>
+<linearGradient id="face" x1="0" y1="0" x2=".35" y2="1"><stop stop-color="#a4d4e9"/><stop offset=".48" stop-color="#62a9cd"/><stop offset="1" stop-color="#357ca5"/></linearGradient>
+<radialGradient id="light" cx=".28" cy=".23" r=".86"><stop stop-color="#fff" stop-opacity=".23"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".65"/><stop offset=".45" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#153b62" stop-opacity=".3"/></linearGradient>
+<radialGradient id="shadow"><stop stop-color="#1b3044" stop-opacity=".25"/><stop offset="1" stop-color="#1b3044" stop-opacity="0"/></radialGradient>
+</defs><ellipse cx="130" cy="214" rx="99" ry="12" fill="url(#shadow)"/>
+<path d="M39 55 Q39 46 48 46 H96 Q102 46 106 50 L119 63 H207 Q217 63 217 73 V202 Q217 210 209 210 H47 Q39 210 39 202Z" fill="url(#rear)" stroke="#357ca5" stroke-width=".7"/>
+<path d="M39 55 Q39 46 48 46 H96 Q102 46 106 50 L119 63 H207 Q217 63 217 73 V202 Q217 210 209 210 H47 Q39 210 39 202Z" fill="none" stroke="url(#rim)" stroke-width="1"/>
+<path d="M39 88 Q39 81 47 81 H209 Q217 81 217 89 V202 Q217 210 209 210 H47 Q39 210 39 202Z" transform="translate(0,-1.5)" fill="#1a526e" opacity=".15"/>
+<path d="M39 88 Q39 81 47 81 H209 Q217 81 217 89 V202 Q217 210 209 210 H47 Q39 210 39 202Z" fill="url(#face)"/>
+<path d="M39 88 Q39 81 47 81 H209 Q217 81 217 89 V202 Q217 210 209 210 H47 Q39 210 39 202Z" fill="url(#light)"/>
+<path d="M39 88 Q39 81 47 81 H209 Q217 81 217 89 V202 Q217 210 209 210 H47 Q39 210 39 202Z" fill="none" stroke="url(#rim)" stroke-width="1.2"/><path d="M44 201 H212" fill="none" stroke="#235977" stroke-opacity=".16"/><path d="M44 203 H212" fill="none" stroke="#fff" stroke-opacity=".24"/></svg>

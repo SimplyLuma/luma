@@ -1,0 +1,27 @@
+From 47ac45793d8be5d96f87cc61b1736f5ba664df60 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:47:46 +0000
+Subject: [PATCH] Filer: show Viewer artwork on PDF grid tiles
+
+---
+ src/nautilus-grid-cell.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index 2f019af..a00d2a7 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -80,6 +80,10 @@ update_art_badges (NautilusGridCell *self,
+         {
+             app_icon = "org.projectluma.Notes";
+         }
++        else if (g_ascii_strcasecmp (extension, "pdf") == 0)
++        {
++            app_icon = "org.projectluma.Viewer";
++        }
+         else if (g_ascii_strcasecmp (extension, "ogg") == 0)
+         {
+             app_icon = "org.projectluma.VoiceMemos";
+-- 
+2.55.0
+

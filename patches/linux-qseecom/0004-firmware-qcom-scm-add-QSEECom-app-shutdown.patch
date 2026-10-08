@@ -1,0 +1,102 @@
+From 3dcb40b7e40d129cb4a5011c688ee8402b5f6a33 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:20:04 +0200
+Subject: [PATCH 04/41] firmware: qcom: scm: add QSEECom app shutdown
+
+TZ refuses to load an application that is already loaded, and nothing released
+one, so re-initialising meant rebooting. That matters because an application
+asks the normal world for its stored state during a first initialisation and
+never again, so anything that changes what it is served cannot be re-tested
+without a fresh load.
+
+The app manager service has a shutdown command at 2, between start at 1 and
+lookup at 3. Verified on an SM8250: with 'gfenu' resident and a load returning
+-EINVAL, issuing owner 50 / service 1 / command 2 with the app id returned
+success and echoed the id back in the response data, and the next load
+succeeded.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/firmware/qcom/qcom_scm.c       | 37 ++++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  6 +++++
+ 2 files changed, 43 insertions(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index e965945cd..231bec95a 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -121,6 +121,7 @@ enum qcom_scm_qseecom_tz_cmd_app {
+ 	 */
+ 	QSEECOM_TZ_CMD_APP_START		= 1,
+ 	QSEECOM_TZ_CMD_APP_SEND			= 1,
++	QSEECOM_TZ_CMD_APP_SHUTDOWN		= 2,
+ 	QSEECOM_TZ_CMD_APP_LOOKUP		= 3,
+ };
+ 
+@@ -2529,6 +2530,42 @@ int qcom_scm_qseecom_app_load(void *img, size_t mdt_len, size_t img_len,
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_load);
+ 
++/**
++ * qcom_scm_qseecom_app_shutdown() - Unload a QSEE application.
++ * @app_id: The ID of the application to unload.
++ *
++ * Unloads an application previously started with qcom_scm_qseecom_app_load(),
++ * releasing the secure-world memory it occupies and freeing its name for a
++ * later load. Without this, a second load of the same application is refused
++ * by TZ and only a reboot clears it.
++ *
++ * TZ echoes the application id back in the response data.
++ *
++ * Return: Zero on success, nonzero on failure.
++ */
++int qcom_scm_qseecom_app_shutdown(u32 app_id)
++{
++	struct qcom_scm_qseecom_resp res = {};
++	struct qcom_scm_desc desc = {};
++	int status;
++
++	desc.owner = QSEECOM_TZ_OWNER_QSEE_OS;
++	desc.svc = QSEECOM_TZ_SVC_APP_MGR;
++	desc.cmd = QSEECOM_TZ_CMD_APP_SHUTDOWN;
++	desc.arginfo = QCOM_SCM_ARGS(1);
++	desc.args[0] = app_id;
++
++	status = qcom_scm_qseecom_call(&desc, &res);
++	if (status)
++		return status;
++
++	if (res.result != QSEECOM_RESULT_SUCCESS)
++		return -EINVAL;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_shutdown);
++
+ /**
+  * qcom_scm_qseecom_app_send() - Send to and receive data from a given QSEE app.
+  * @app_id:   The ID of the target app.
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index 69500133f..ca588ade5 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -221,6 +221,7 @@ struct qcom_scm_qseecom_listener {
+ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id);
+ int qcom_scm_qseecom_app_load(void *img, size_t mdt_len, size_t img_len,
+ 			      u32 *app_id);
++int qcom_scm_qseecom_app_shutdown(u32 app_id);
+ int qcom_scm_qseecom_listener_register(struct qcom_scm_qseecom_listener *listener);
+ int qcom_scm_qseecom_listener_unregister(struct qcom_scm_qseecom_listener *listener);
+ int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
+@@ -239,6 +240,11 @@ static inline int qcom_scm_qseecom_app_load(void *img, size_t mdt_len,
+ 	return -EINVAL;
+ }
+ 
++static inline int qcom_scm_qseecom_app_shutdown(u32 app_id)
++{
++	return -EINVAL;
++}
++
+ static inline int qcom_scm_qseecom_app_send(u32 app_id,
+ 					    void *req, size_t req_size,
+ 					    void *rsp, size_t rsp_size)

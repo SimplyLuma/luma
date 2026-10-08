@@ -1,0 +1,48 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shelf: include hover travel in dock viewport
+
+Move cross-axis padding inside the scrollable child. Preserve overall dock
+size and longitudinal scrolling while keeping lift inside its viewport.
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -291,7 +291,11 @@
+         // One material inset on all four sides. Inter-tile spacing and the
+         // viewport's native fade effect never contribute to outer padding.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const insets = [padding, padding, padding, padding];
++        // Dock cross-axis padding belongs INSIDE the scroll viewport so lifted
++        // artwork is not clipped at its resting tile bounds.
++        const insets = this._content._lumaDock
++            ? (this._vertical ? [padding, 0, padding, 0] : [0, padding, 0, padding])
++            : [padding, padding, padding, padding];
+         // Connected-mode separators are real borders inside the material.
+         // Include them in the selected inset rather than adding another pixel.
+         const node = this._content.get_theme_node();
+@@ -404,6 +408,7 @@
+         this._dockContent.add_child(this._dash);
+         this._dockScroll.set_child(this._dockContent);
+         this._dockMaterial = new St.Bin({child: this._dockScroll});
++        this._dockMaterial._lumaDock = true;
+         this._dockIsland = new ShelfIsland('luma-shelf-dock-island', this._dockMaterial);
+         this._dockIndicators = new St.Widget({layout_manager: new DockIndicatorLayout(),
+             reactive: false});
+@@ -653,6 +658,9 @@
+         this._dockScroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+         this._dockScroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
+         this._dockScroll.set_size(-1, -1);
++        this._dockContent.set_style(this._vertical
++            ? `padding: 0 ${this._padding}px;`
++            : `padding: ${this._padding}px 0;`);
+         this._surface.set_style_class_name(`luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
+             `luma-shelf-${this._edge} ${this._vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
+             `${this._protrude ? 'luma-shelf-attached' : ''} ${this._span && !this._floatEnds ? 'luma-shelf-flush' : ''}`);
+@@ -870,7 +878,7 @@
+         const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - 2 * this._padding * scale);
+         const length = Math.min(naturalDock, maxLength);
+         if (this._vertical)
+-            this._dockScroll.set_size(DASH_TILE_SIZE * scale, length);
++            this._dockScroll.set_size(this._thickness * scale, length);
+         else
+             this._dockScroll.set_size(length, -1);
+         const fade = Math.min(this._padding, DASH_TILE_SIZE / 2) * scale;

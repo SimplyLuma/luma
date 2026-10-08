@@ -1,0 +1,159 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 12:30:00 -0400
+Subject: [PATCH] luma: no more "is ready" notifications
+
+A window asking for attention no longer posts GNOME's "“%s” is ready"
+notification. A window the person just launched (its startup notification
+still running, or a new window of an app the Shell started for them in the
+last 20 seconds) is focused instead: asking was only the launch losing its
+focus on the way. Anything else, and every urgency hint, stays quiet: the
+app's icon in the dock shows a dot until the window is seen.
+
+--- a/js/ui/windowAttentionHandler.js
++++ b/js/ui/windowAttentionHandler.js
+@@ -1,91 +1,60 @@
+-import GObject from 'gi://GObject';
++import GLib from 'gi://GLib';
+ import Shell from 'gi://Shell';
+ 
+ import * as Main from './main.js';
+-import * as MessageTray from './messageTray.js';
++
++// Luma: a window asking for attention never posts a notification ("“%s” is
++// ready"). A window the person just launched is focused instead, since
++// asking was only the launch losing its focus on the way. Any other request
++// stays quiet: the app's icon in the dock shows a dot until the window is
++// seen (the dock watches demands-attention and urgent itself).
++const LAUNCH_WINDOW_MS = 20000;
+ 
+ export class WindowAttentionHandler {
+     constructor() {
+         this._tracker = Shell.WindowTracker.get_default();
++        this._launched = new Map();
++        Shell.AppSystem.get_default().connectObject('app-state-changed', (_system, app) => {
++            if (app.state === Shell.AppState.STARTING)
++                this._launched.set(app, GLib.get_monotonic_time());
++        }, this);
+         global.display.connectObject(
+             'window-demands-attention', this._onWindowDemandsAttention.bind(this),
+             'window-marked-urgent', this._onWindowDemandsAttention.bind(this),
+             this);
+     }
+ 
+-    _getTitleAndBanner(app, window) {
+-        const title = app.get_name();
+-        const banner = _('“%s” is ready').format(window.get_title());
+-        return [title, banner];
++    // Launched by the person: its startup notification is still running, or
++    // it is a new window of an app the Shell started for them moments ago.
++    _launchedByPerson(window, app) {
++        const id = window.get_startup_id?.();
++        if (id && global.display.get_startup_notification().get_sequences()
++            .some(sequence => sequence.get_id() === id))
++            return true;
++        const started = app ? this._launched.get(app) : undefined;
++        if (started === undefined)
++            return false;
++        const age = (GLib.get_monotonic_time() - started) / 1000;
++        if (age > LAUNCH_WINDOW_MS) {
++            this._launched.delete(app);
++            return false;
++        }
++        return true;
+     }
+ 
+     _onWindowDemandsAttention(display, window) {
+-        // We don't want to show the notification when the window is already focused,
+-        // because this is rather pointless.
+-        // Some apps (like GIMP) do things like setting the urgency hint on the
+-        // toolbar windows which would result into a notification even though GIMP itself is
+-        // focused.
+-        // We are just ignoring the hint on skip_taskbar windows for now.
+-        // (Which is the same behaviour as with metacity + panel)
+-
++        // Nothing to do for a focused window, or a skip-taskbar one (GIMP-style
++        // tool windows set the urgency hint while the app is focused).
+         if (!window || window.has_focus() || window.is_skip_taskbar())
+             return;
+ 
+         const app = this._tracker.get_window_app(window);
+-        const source = new WindowAttentionSource(app, window);
+-        Main.messageTray.add(source);
+-
+-        let [title, body] = this._getTitleAndBanner(app, window);
+-
+-        const notification = new MessageTray.Notification({
+-            source,
+-            title,
+-            body,
+-            forFeedback: true,
+-        });
+-        notification.connect('activated', () => {
+-            source.open();
+-        });
+-
+-        source.addNotification(notification);
+-
+-        window.connectObject('notify::title', () => {
+-            [title, body] = this._getTitleAndBanner(app, window);
+-            notification.set({title, body});
+-        }, source);
+-    }
+-}
+-
+-const WindowAttentionSource = GObject.registerClass(
+-class WindowAttentionSource extends MessageTray.Source {
+-    constructor(app, window) {
+-        super({
+-            title: app.get_name(),
+-            icon: app.get_icon(),
+-            policy: MessageTray.NotificationPolicy.newForApp(app),
+-        });
+-
+-        this._window = window;
+-        this._window.connectObject(
+-            'notify::demands-attention', this._sync.bind(this),
+-            'notify::urgent', this._sync.bind(this),
+-            'focus', () => this.destroy(),
+-            'unmanaged', () => this.destroy(), this);
+-    }
+-
+-    _sync() {
+-        if (this._window.demands_attention || this._window.urgent)
++        if (window.urgent || !this._launchedByPerson(window, app)) {
++            console.log(`[luma-attention] ${app?.get_id() ?? 'a window'} asked for attention: dock only`);
+             return;
+-        this.destroy();
+-    }
+-
+-    destroy(params) {
+-        this._window.disconnectObject(this);
+-
+-        super.destroy(params);
++        }
++        this._launched.delete(app);
++        console.log(`[luma-attention] ${app?.get_id() ?? 'a window'} was just launched: focused`);
++        Main.activateWindow(window);
+     }
+-
+-    open() {
+-        Main.activateWindow(this._window);
+-    }
+-});
++}
+--- a/js/ui/lumaDockBadgeModel.js
++++ b/js/ui/lumaDockBadgeModel.js
+@@ -14,9 +14,9 @@
+ // Interim product defaults, each one line to flip.
+ // An app with no count API gets no badge from its notifications in the tray.
+ export const NOTIFICATION_COUNT_FALLBACK = false;
+-// A window asking for attention (the urgency hint) does not give its app a dot;
+-// GNOME's "is ready" notification stays the only signal.
+-export const URGENT_WINDOWS_DOT = false;
++// A window asking for attention gives its app a dot: the "is ready"
++// notification is never posted, so the dock is the quiet signal.
++export const URGENT_WINDOWS_DOT = true;
+ 
+ export const COUNT_CAP = 99;
+ 

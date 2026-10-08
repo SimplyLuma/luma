@@ -1,0 +1,23 @@
+[Default Applications]
+application/msword=org.projectluma.Write.desktop;
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=org.projectluma.Write.desktop;
+application/vnd.oasis.opendocument.text=org.projectluma.Write.desktop;
+application/pdf=org.projectluma.Viewer.desktop;
+application/x-bzpdf=org.projectluma.Viewer.desktop;
+application/x-gzpdf=org.projectluma.Viewer.desktop;
+application/x-xzpdf=org.projectluma.Viewer.desktop;
+application/x-ext-pdf=org.projectluma.Viewer.desktop;
+image/png=org.projectluma.Viewer.desktop;
+image/jpeg=org.projectluma.Viewer.desktop;
+image/gif=org.projectluma.Viewer.desktop;
+image/bmp=org.projectluma.Viewer.desktop;
+image/tiff=org.projectluma.Viewer.desktop;
+image/webp=org.projectluma.Viewer.desktop;
+image/avif=org.projectluma.Viewer.desktop;
+image/heif=org.projectluma.Viewer.desktop;
+image/svg+xml=org.projectluma.Viewer.desktop;
+x-scheme-handler/http=com.rhyme.viola.desktop;
+x-scheme-handler/https=com.rhyme.viola.desktop;
+text/html=com.rhyme.viola.desktop;
+application/xhtml+xml=com.rhyme.viola.desktop;
+application/xhtml_xml=com.rhyme.viola.desktop;

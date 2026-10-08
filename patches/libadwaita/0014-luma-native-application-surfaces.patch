@@ -1,0 +1,233 @@
+From 9d6baee85a8f924ddb0a1bbf97b5df8f8bdb3cb0 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 13:08:00 -0500
+Subject: [PATCH] application-window: make native work surfaces inherit Luma
+
+Mark ordinary AdwApplicationWindow content at the ownership boundary instead
+of recognizing individual applications in the stylesheet. A top-level
+AdwToolbarView retains every real application action and header control while
+its content becomes the shared Luma work surface. Freeform roots receive the
+same contract directly.
+
+Source-integrated Luma windows keep their explicit AppKit/Filer/Calculator
+composition and are excluded in CSS. Applications can use the documented
+luma-no-native-surfaces escape class when a custom renderer owns every pixel.
+---
+ src/adw-application-window.c        | 43 +++++++++++++++++++++++++++++
+ src/adw-toolbar-view.c              |  7 +++++
+ src/stylesheet/_common.scss         | 54 +++++++++++++++++++++++++++++++++++++
+ src/stylesheet/widgets/_toolbars.scss | 29 ++++++++++++++++++++
+ 4 files changed, 133 insertions(+)
+
+diff --git a/src/adw-application-window.c b/src/adw-application-window.c
+index cccde9c..a4f0c10 100644
+--- a/src/adw-application-window.c
++++ b/src/adw-application-window.c
+@@ -15,4 +15,5 @@
+ #include "adw-main-private.h"
++#include "adw-toolbar-view.h"
+ #include "adw-widget-utils-private.h"
+ 
+ /**
+@@ -293,6 +294,9 @@ adw_application_window_init (AdwApplicationWindow *self)
+ 
+   gtk_widget_set_size_request (GTK_WIDGET (self), 360, 200);
+ 
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-native-window");
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-adw-native-window");
++
+   gtk_application_window_set_show_menubar (GTK_APPLICATION_WINDOW (self), FALSE);
+ 
+   if (adw_is_adaptive_preview ())
+@@ -351,6 +353,33 @@ adw_application_window_new (GtkApplication *app)
+                        NULL);
+ }
+ 
++static void
++set_luma_content_classes (GtkWidget *content,
++                          gboolean   enabled)
++{
++  GtkWidget *work_surface = content;
++
++  if (!content)
++    return;
++
++  if (ADW_IS_TOOLBAR_VIEW (content)) {
++    work_surface = adw_toolbar_view_get_content (ADW_TOOLBAR_VIEW (content));
++
++    if (enabled)
++      gtk_widget_add_css_class (content, "luma-window-toolbar-view");
++    else
++      gtk_widget_remove_css_class (content, "luma-window-toolbar-view");
++  }
++
++  if (!work_surface)
++    return;
++
++  if (enabled)
++    gtk_widget_add_css_class (work_surface, "luma-native-work-surface");
++  else
++    gtk_widget_remove_css_class (work_surface, "luma-native-work-surface");
++}
++
+ /**
+  * adw_application_window_set_content:
+  * @self: an application window
+@@ -363,6 +394,7 @@ adw_application_window_set_content (AdwApplicationWindow *self,
+                                     GtkWidget            *content)
+ {
+   AdwApplicationWindowPrivate *priv;
++  GtkWidget *old_content;
+ 
+   g_return_if_fail (ADW_IS_APPLICATION_WINDOW (self));
+   g_return_if_fail (content == NULL || GTK_IS_WIDGET (content));
+@@ -372,10 +404,15 @@ adw_application_window_set_content (AdwApplicationWindow *self,
+   if (adw_application_window_get_content (self) == content)
+     return;
+ 
++  old_content = adw_application_window_get_content (self);
++  set_luma_content_classes (old_content, FALSE);
++
+   if (content)
+     g_return_if_fail (gtk_widget_get_parent (content) == NULL);
+ 
+   adw_breakpoint_bin_set_child (ADW_BREAKPOINT_BIN (priv->bin), content);
++
++  set_luma_content_classes (content, TRUE);
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_CONTENT]);
+ }
+diff --git a/src/adw-toolbar-view.c b/src/adw-toolbar-view.c
+index c5f8ee1..cf6a08d 100644
+--- a/src/adw-toolbar-view.c
++++ b/src/adw-toolbar-view.c
+@@ -844,13 +844,20 @@ adw_toolbar_view_set_content (AdwToolbarView *self,
+   if (content)
+     g_return_if_fail (gtk_widget_get_parent (content) == NULL);
+ 
++  if (self->content &&
++      gtk_widget_has_css_class (GTK_WIDGET (self), "luma-window-toolbar-view"))
++    gtk_widget_remove_css_class (self->content, "luma-native-work-surface");
++
+   if (self->content)
+     gtk_widget_unparent (self->content);
+ 
+   self->content = content;
+ 
+-  if (self->content)
++  if (self->content) {
+     gtk_widget_insert_before (self->content, GTK_WIDGET (self), self->top_bar);
++    if (gtk_widget_has_css_class (GTK_WIDGET (self), "luma-window-toolbar-view"))
++      gtk_widget_add_css_class (self->content, "luma-native-work-surface");
++  }
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_CONTENT]);
+ }
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index f587001..969d76c 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -139,6 +139,59 @@ window.luma-app-window .luma-command-group:backdrop > menubutton > button {
+   opacity: 1;
+ }
+ 
++// Ordinary libadwaita applications inherit the complete Luma frame without
++// app-name allowlists or runtime mutation. Product applications with an
++// explicit surface hierarchy keep that hierarchy, and custom renderers have
++// one deliberate escape class.
++window.luma-native-window:not(.luma-app-window):not(.luma-files-window):not(.luma-calculator-window):not(.luma-no-native-surfaces) {
++  background-color: unquote("@luma_window");
++  color: unquote("@luma_ink");
++  font-family: "Figtree", sans-serif;
++  border-radius: 15px;
++  box-shadow: inset 0 0 0 1px RGB(255 255 255 / 82%),
++              0 2px 5px RGB(25 27 31 / 18%),
++              0 18px 42px -14px RGB(25 27 31 / 42%),
++              0 54px 110px -28px RGB(25 27 31 / 56%);
++
++  &:backdrop {
++    background-color: unquote("@luma_window");
++    color: unquote("@luma_ink");
++    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 50%),
++                0 2px 5px RGB(25 27 31 / 10%),
++                0 18px 42px -14px RGB(25 27 31 / 22%);
++  }
++
++  .luma-native-work-surface {
++    margin: 0 9px 9px;
++    border: 1px solid unquote("@luma_line");
++    border-radius: 10px;
++    background-color: unquote("@luma_content");
++    color: unquote("@luma_ink");
++    box-shadow: 0 2px 5px RGB(25 27 31 / 16%),
++                0 18px 36px -16px RGB(25 27 31 / 48%);
++  }
++
++  &:backdrop .luma-native-work-surface {
++    background-color: unquote("@luma_content");
++    border-color: unquote("@luma_line");
++    color: unquote("@luma_ink");
++    filter: none;
++    opacity: 1;
++  }
++
++  @media (prefers-color-scheme: dark) {
++    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 4.5%),
++                0 3px 8px RGB(9 11 14 / 38%),
++                0 22px 52px -15px RGB(9 11 14 / 72%),
++                0 64px 120px -30px RGB(9 11 14 / 82%);
++
++    .luma-native-work-surface {
++      box-shadow: 0 2px 6px RGB(0 0 0 / 42%),
++                  0 20px 38px -15px RGB(0 0 0 / 78%);
++    }
++  }
++}
++
+ @media (prefers-color-scheme: dark) {
+   .luma-command-bar {
+     box-shadow: 0 2px 6px RGB(0 0 0 / 32%),
+diff --git a/src/stylesheet/widgets/_toolbars.scss b/src/stylesheet/widgets/_toolbars.scss
+index 435c686..052354c 100644
+--- a/src/stylesheet/widgets/_toolbars.scss
++++ b/src/stylesheet/widgets/_toolbars.scss
+@@ -351,4 +351,37 @@ toolbarview {
+     background-image: unset;
+     background-repeat: unset;
+   }
++
++  // A window-level toolbar remains the application's real command surface.
++  // Luma changes only its material and inactive state; actions, layout and
++  // adaptive behavior stay owned by the application.
++  &.luma-window-toolbar-view {
++    background-color: unquote("@luma_window");
++
++    > .top-bar,
++    > .bottom-bar,
++    > .top-bar.raised,
++    > .bottom-bar.raised {
++      background-color: unquote("@luma_window");
++      color: unquote("@luma_ink");
++      box-shadow: none;
++
++      &:backdrop {
++        background-color: unquote("@luma_window");
++        color: unquote("@luma_ink");
++        transition: none;
++      }
++
++      &:backdrop > windowhandle {
++        filter: none;
++        transition: none;
++      }
++    }
++
++    > .top-bar headerbar,
++    > .bottom-bar headerbar {
++      background: none;
++      box-shadow: none;
++    }
++  }
+ }
+-- 
+2.54.0

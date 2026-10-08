@@ -1,0 +1,153 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Publish the processor's energy counters as averages a session may read.
+
+The kernel's RAPL counters say how much energy the package, the cores, the
+graphics and the memory controller have used. They are readable only by root,
+because read thousands of times a second they leak what the processor is
+doing — the PLATYPUS result, CVE-2020-8694.
+
+An average over ten seconds leaks nothing of the sort and is exactly what a
+person's battery report needs, so that is what this publishes, and nothing
+else: /run/luma-vitals/energy.json, world readable, one object of watts per
+domain, rewritten every ten seconds and never faster.
+
+It measures only while the machine is discharging, because a meter running
+where there is nothing to measure is the very thing this work is against. On
+mains power it wakes every half minute to read one file, and on a machine
+with no battery at all it does not stay running.
+"""
+from __future__ import annotations
+
+import json
+import os
+import signal
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+POWERCAP = Path("/sys/class/powercap")
+POWER_SUPPLY = Path("/sys/class/power_supply")
+PUBLICATION = Path("/run/luma-vitals/energy.json")
+#: Averaging window. Never shorten this: it is the whole safety argument.
+INTERVAL = 10.0
+#: How often to look for the mains being pulled out. One small file each time.
+IDLE_INTERVAL = 30.0
+#: The kernel's own domain names, in the words a battery report uses.
+NAMES = {"package-0": "package", "core": "core", "uncore": "graphics",
+         "dram": "memory", "psys": "system"}
+
+
+def batteries() -> list[Path]:
+    return [path for path in sorted(POWER_SUPPLY.glob("BAT*"))
+            if (path / "status").exists()]
+
+
+def discharging(found: list[Path]) -> bool:
+    """True while the machine is running off a battery, and only then."""
+    for battery in found:
+        try:
+            if (battery / "status").read_text().strip() == "Discharging":
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def domains() -> dict[str, Path]:
+    """Domain name -> its directory, preferring the MSR counters over MMIO.
+
+    A machine exposes the same package twice, as intel-rapl and
+    intel-rapl-mmio; counting both would double the package's watts.
+    """
+    found: dict[str, Path] = {}
+    for directory in sorted(POWERCAP.glob("intel-rapl:*")):
+        try:
+            raw = (directory / "name").read_text().strip()
+        except OSError:
+            continue
+        name = NAMES.get(raw, raw)
+        found.setdefault(name, directory)
+    return found
+
+
+def counters(paths: dict[str, Path]) -> dict[str, tuple[int, int]]:
+    """Domain -> (microjoules used, the value at which the counter wraps)."""
+    values = {}
+    for name, directory in paths.items():
+        try:
+            used = int((directory / "energy_uj").read_text())
+            limit = int((directory / "max_energy_range_uj").read_text())
+        except (OSError, ValueError):
+            continue
+        values[name] = (used, limit)
+    return values
+
+
+def publish(watts: dict[str, float], when: float) -> None:
+    PUBLICATION.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps({"time": round(when, 1), "interval": INTERVAL,
+                          "watts": {name: round(value, 3) for name, value in watts.items()}})
+    # Written whole or not at all: a reader must never see half an object.
+    handle, temporary = tempfile.mkstemp(dir=str(PUBLICATION.parent), prefix=".energy-")
+    try:
+        with os.fdopen(handle, "w") as stream:
+            stream.write(payload)
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, PUBLICATION)
+    except OSError:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def main() -> int:
+    paths = domains()
+    if not paths:
+        print("no Intel RAPL energy counters on this machine", file=sys.stderr)
+        return 0  # nothing to do here is not a failure
+    packs = batteries()
+    if not packs:
+        print("no battery on this machine; nothing to account for", file=sys.stderr)
+        return 0
+    stop: list[bool] = []
+    signal.signal(signal.SIGTERM, lambda *_: stop.append(True))
+    previous: dict[str, tuple[int, int]] | None = None
+    when = time.monotonic()
+    while not stop:
+        if not discharging(packs):
+            # On mains there is nothing to account for. Drop the counters so the
+            # first window after unplugging is a window, not the hour before it.
+            previous = None
+            PUBLICATION.unlink(missing_ok=True)
+            time.sleep(IDLE_INTERVAL)
+            continue
+        if previous is None:
+            previous, when = counters(paths), time.monotonic()
+            time.sleep(INTERVAL)
+            continue
+        time.sleep(INTERVAL)
+        now = time.monotonic()
+        present = counters(paths)
+        elapsed = max(now - when, 1e-3)
+        watts = {}
+        for name, (used, limit) in present.items():
+            was = previous.get(name)
+            if was is None:
+                continue
+            spent = used - was[0]
+            if spent < 0:  # the counter wrapped; one window's worth is enough
+                spent += limit
+            watts[name] = spent / 1e6 / elapsed
+        previous, when = present, now
+        if watts:
+            try:
+                publish(watts, time.time())
+            except OSError as error:
+                print(f"cannot publish energy counters: {error}", file=sys.stderr)
+    PUBLICATION.unlink(missing_ok=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

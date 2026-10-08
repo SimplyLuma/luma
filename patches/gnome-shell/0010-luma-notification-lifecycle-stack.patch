@@ -1,0 +1,433 @@
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -21,7 +21,8 @@
+ const HIDE_TIMEOUT = 200;
+ const LONGER_HIDE_TIMEOUT = 600;
+ 
+-const MAX_NOTIFICATIONS_IN_QUEUE = 3;
++const MAX_NOTIFICATIONS_IN_QUEUE = 20;
++const MAX_VISIBLE_NOTIFICATIONS = 3;
+ const MAX_NOTIFICATIONS_PER_SOURCE = 10;
+ 
+ // We delay hiding of the tray if the mouse is within MOUSE_LEFT_ACTOR_THRESHOLD
+@@ -75,6 +76,18 @@
+     SYSTEM: 1,
+ };
+ 
++/** @enum {number} */
++export const NotificationLifecycleState = {
++    QUEUED: 0,
++    ARRIVING: 1,
++    WAITING: 2,
++    SEEN: 3,
++    ACTED: 4,
++    DISMISSED: 5,
++    EXPIRED: 6,
++    REPLACED: 7,
++};
++
+ class FocusGrabber {
+     constructor(actor) {
+         this._actor = actor;
+@@ -384,6 +397,19 @@
+         return this._actions;
+     }
+ 
++    get lifecycleState() {
++        return this._lifecycleState ?? NotificationLifecycleState.QUEUED;
++    }
++
++    set lifecycleState(state) {
++        if (!Object.values(NotificationLifecycleState).includes(state))
++            throw new Error('out of range');
++        if (this._lifecycleState === state)
++            return;
++        this._lifecycleState = state;
++        this.notify('lifecycle-state');
++    }
++
+     get iconName() {
+         if (this.gicon instanceof Gio.ThemedIcon)
+             return this.gicon.iconName;
+@@ -430,6 +456,7 @@
+     // @callback: the callback for the action
+     addAction(label, callback) {
+         const action = new Action(label, () => {
++            this.lifecycleState = NotificationLifecycleState.ACTED;
+             callback();
+ 
+             // We don't hide a resident notification when the user invokes one of its actions,
+@@ -475,6 +502,7 @@
+     activate() {
+         console.assert(!this._destroyed, 'Activating a destroyed notification');
+ 
++        this.lifecycleState = NotificationLifecycleState.ACTED;
+         this.emit('activated');
+ 
+         // Avoid double destruction after activation
+@@ -492,6 +520,16 @@
+     }
+ 
+     destroy(reason = NotificationDestroyedReason.DISMISSED) {
++        if (this.lifecycleState !== NotificationLifecycleState.ACTED) {
++            const state = {
++                [NotificationDestroyedReason.EXPIRED]: NotificationLifecycleState.EXPIRED,
++                [NotificationDestroyedReason.DISMISSED]: NotificationLifecycleState.DISMISSED,
++                [NotificationDestroyedReason.SOURCE_CLOSED]: NotificationLifecycleState.EXPIRED,
++                [NotificationDestroyedReason.REPLACED]: NotificationLifecycleState.REPLACED,
++            }[reason];
++            if (state !== undefined)
++                this.lifecycleState = state;
++        }
+         this.emit('destroy', reason);
+ 
+         this._destroyed = true;
+@@ -593,6 +631,9 @@
+             if (!notification.acknowledged)
+                 this.emit('notification-request-banner', notification);
+         });
++        notification.lifecycleState = notification.acknowledged
++            ? NotificationLifecycleState.SEEN
++            : NotificationLifecycleState.QUEUED;
+         this.notifications.push(notification);
+ 
+         this.emit('notification-added', notification);
+@@ -677,6 +718,11 @@
+             'acknowledged', null, null,
+             GObject.ParamFlags.READWRITE,
+             false),
++        'lifecycle-state': GObject.ParamSpec.int(
++            'lifecycle-state', null, null,
++            GObject.ParamFlags.READWRITE,
++            0, NotificationLifecycleState.REPLACED,
++            NotificationLifecycleState.QUEUED),
+         'resident': GObject.ParamSpec.boolean(
+             'resident', null, null,
+             GObject.ParamFlags.READWRITE,
+@@ -739,17 +785,18 @@
+         Main.layoutManager.connectObject('monitors-changed', updateMonitor, this);
+         updateMonitor();
+ 
+-        this._bannerBin = new St.Widget({
++        this._bannerBin = new St.BoxLayout({
+             name: 'notification-container',
++            style_class: 'luma-notification-stack',
++            vertical: true,
+             reactive: true,
+             track_hover: true,
+             y_align: Clutter.ActorAlign.END,
+             x_align: Clutter.ActorAlign.END,
+             y_expand: true,
+             x_expand: true,
+-            layout_manager: new Clutter.BinLayout(),
+         });
+-        this._bannerBin.set_style('margin: 14px;');
++        this._bannerBin.set_style('margin: 14px; spacing: 8px;');
+         this._bannerBin.connect('key-release-event',
+             this._onNotificationKeyRelease.bind(this));
+         this._bannerBin.connect('notify::hover',
+@@ -760,6 +807,7 @@
+         this._notificationQueue = [];
+         this._notification = null;
+         this._banner = null;
++        this._additionalBanners = [];
+ 
+         this._userActiveWhileNotificationShown = false;
+ 
+@@ -842,8 +890,17 @@
+ 
+     _onNotificationKeyRelease(actor, event) {
+         if (event.get_key_symbol() === Clutter.KEY_Escape && event.get_state() === 0) {
+-            this._expireNotification();
+-            return Clutter.EVENT_STOP;
++            const focusedActor = global.stage.get_key_focus();
++            const additional = this._additionalBanners.find(entry =>
++                focusedActor && entry.banner.contains(focusedActor));
++            const notification = additional?.notification ??
++                (focusedActor && this._banner?.contains(focusedActor)
++                    ? this._notification : null);
++
++            if (notification?.isTransient) {
++                notification.destroy(NotificationDestroyedReason.DISMISSED);
++                return Clutter.EVENT_STOP;
++            }
+         }
+ 
+         return Clutter.EVENT_PROPAGATE;
+@@ -928,6 +985,13 @@
+                 this._updateState();
+             }
+         } else {
++            const entry = this._additionalBanners.find(
++                candidate => candidate.notification === notification);
++            if (entry) {
++                this._removeAdditionalBanner(entry, false);
++                return;
++            }
++
+             const index = this._notificationQueue.indexOf(notification);
+             if (index !== -1) {
+                 this._notificationQueue.splice(index, 1);
+@@ -947,7 +1011,13 @@
+         if (!notification.source.policy.showBanners && notification.urgency !== Urgency.CRITICAL)
+             return;
+ 
+-        if (this._notification === notification) {
++        const additional = this._additionalBanners.find(
++            entry => entry.notification === notification);
++        if (additional) {
++            additional.notification.lifecycleState =
++                NotificationLifecycleState.ARRIVING;
++            this._updateAdditionalBannerTimeout(additional, NOTIFICATION_TIMEOUT);
++        } else if (this._notification === notification) {
+             // If a notification that is being shown is updated, we update
+             // how it is shown and extend the time until it auto-hides.
+             // If a new notification is updated while it is being hidden,
+@@ -957,9 +1027,11 @@
+             // If the queue is "full", we skip banner mode and just show a small
+             // indicator in the panel; however do make an exception for CRITICAL
+             // notifications, as only banner mode allows expansion.
+-            const bannerCount = this._notification ? 1 : 0;
++            const bannerCount = (this._notification ? 1 : 0) +
++                this._additionalBanners.length;
+             const full = this.queueCount + bannerCount >= MAX_NOTIFICATIONS_IN_QUEUE;
+             if (!full || notification.urgency === Urgency.CRITICAL) {
++                notification.lifecycleState = NotificationLifecycleState.QUEUED;
+                 this._notificationQueue.push(notification);
+                 this._notificationQueue.sort(
+                     (n1, n2) => n2.urgency - n1.urgency);
+@@ -1068,7 +1140,8 @@
+     // at the present time.
+     _updateState() {
+         const hasMonitor = Main.layoutManager.primaryMonitor != null;
+-        this.visible = !this._bannerBlocked && hasMonitor && this._banner != null;
++        this.visible = !this._bannerBlocked && hasMonitor &&
++            (this._banner != null || this._additionalBanners.length > 0);
+         if (this._bannerBlocked || !hasMonitor)
+             return;
+ 
+@@ -1120,6 +1193,12 @@
+             }
+         }
+ 
++        if (hasNotifications)
++            this._showAdditionalNotifications();
++        else
++            [...this._additionalBanners].forEach(
++                entry => this._removeAdditionalBanner(entry, false));
++
+         this._updatingState = false;
+ 
+         // Clean transient variables that are used to communicate actions
+@@ -1151,7 +1230,8 @@
+ 
+         this._bannerBin.add_child(this._banner);
+ 
+-        this._bannerBin.opacity = 0;
++        this._notification.lifecycleState = NotificationLifecycleState.ARRIVING;
++        this._banner.opacity = 0;
+         this._banner.translation_x = 26;
+         this.show();
+ 
+@@ -1176,7 +1256,7 @@
+     }
+ 
+     _updateShowingNotification() {
+-        this._notification.acknowledged = true;
++        this._notification.lifecycleState = NotificationLifecycleState.ARRIVING;
+         this._notification.playSound();
+ 
+         // We auto-expand notifications with CRITICAL urgency, or for which the relevant setting
+@@ -1197,13 +1277,9 @@
+         // notification is being shown.
+ 
+         this._notificationState = State.SHOWING;
+-        this._bannerBin.remove_all_transitions();
+-        this._bannerBin.ease({
+-            opacity: 255,
+-            duration: ANIMATION_TIME,
+-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-        });
++        this._banner.remove_all_transitions();
+         this._banner.ease({
++            opacity: 255,
+             translation_x: 0,
+             duration: ANIMATION_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+@@ -1254,24 +1330,120 @@
+ 
+         this._lastSeenMouseX = x;
+         this._lastSeenMouseY = y;
++    }
++
++    _showAdditionalNotifications() {
++        if (!this._notification || this._bannerBlocked ||
++            !Main.sessionMode.hasNotifications)
++            return;
++
++        while (1 + this._additionalBanners.length < MAX_VISIBLE_NOTIFICATIONS) {
++            const limited = this._busy ||
++                Main.layoutManager.primaryMonitor.inFullscreen;
++            const index = this._notificationQueue.findIndex(notification =>
++                !limited || notification.forFeedback ||
++                notification.urgency === Urgency.CRITICAL);
++            if (index < 0)
++                break;
++
++            const [notification] = this._notificationQueue.splice(index, 1);
++            this.emit('queue-changed');
++            if (notification.acknowledged)
++                continue;
++
++            const banner = new MessageList.NotificationMessage(notification);
++            banner.can_focus = true;
++            banner._header.expandButton.visible = false;
++            banner.add_style_class_name('notification-banner');
++            banner.opacity = 0;
++            banner.translation_x = 26;
++            this._bannerBin.add_child(banner);
++
++            const entry = {notification, banner, timeoutId: 0};
++            this._additionalBanners.push(entry);
++            notification.lifecycleState = NotificationLifecycleState.ARRIVING;
++            notification.playSound();
++
++            banner.ease({
++                opacity: 255,
++                translation_x: 0,
++                duration: ANIMATION_TIME,
++                mode: Clutter.AnimationMode.EASE_OUT_BACK,
++            });
++            if (notification.urgency !== Urgency.CRITICAL)
++                this._updateAdditionalBannerTimeout(entry, NOTIFICATION_TIMEOUT);
++        }
+     }
+ 
++    _updateAdditionalBannerTimeout(entry, timeout) {
++        if (entry.timeoutId) {
++            GLib.source_remove(entry.timeoutId);
++            entry.timeoutId = 0;
++        }
++        if (timeout <= 0)
++            return;
++
++        entry.timeoutId = GLib.timeout_add_once(
++            GLib.PRIORITY_DEFAULT, timeout, () => {
++                entry.timeoutId = 0;
++                const focusedActor = global.stage.get_key_focus();
++                if (entry.banner.hover ||
++                    (focusedActor && entry.banner.contains(focusedActor))) {
++                    this._updateAdditionalBannerTimeout(entry, 1000);
++                    return;
++                }
++                this._removeAdditionalBanner(entry, true);
++            });
++        GLib.Source.set_name_by_id(entry.timeoutId,
++            '[gnome-shell] additional notification timeout');
++    }
++
++    _removeAdditionalBanner(entry, timedOut) {
++        const index = this._additionalBanners.indexOf(entry);
++        if (index < 0)
++            return;
++        this._additionalBanners.splice(index, 1);
++
++        if (entry.timeoutId)
++            GLib.source_remove(entry.timeoutId);
++        entry.timeoutId = 0;
++
++        const {notification, banner} = entry;
++        if (timedOut && notification.isTransient) {
++            notification.destroy(NotificationDestroyedReason.EXPIRED);
++        } else if (notification.lifecycleState ===
++                   NotificationLifecycleState.ARRIVING) {
++            notification.lifecycleState = NotificationLifecycleState.WAITING;
++        }
++
++        banner.remove_all_transitions();
++        banner.ease({
++            opacity: 0,
++            translation_x: 26,
++            duration: ANIMATION_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_BACK,
++            onStopped: () => banner.destroy(),
++        });
++
++        this._showAdditionalNotifications();
++        if (!this._banner && this._additionalBanners.length === 0) {
++            global.compositor.enable_unredirect();
++            this.hide();
++        }
++    }
++
+     _hideNotification(animate) {
+         this._notificationFocusGrabber.ungrabFocus();
+ 
+         this._banner.disconnectObject(this);
+ 
+         this._resetNotificationLeftTimeout();
+-        this._bannerBin.remove_all_transitions();
++        this._banner.remove_all_transitions();
+ 
+         const duration = animate ? ANIMATION_TIME : 0;
+         this._notificationState = State.HIDING;
+-        this._bannerBin.ease({
+-            opacity: 0,
+-            duration,
+-            mode: Clutter.AnimationMode.EASE_OUT_BACK,
+-        });
+         this._banner.ease({
++            opacity: 0,
+             translation_x: 26,
+             duration,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+@@ -1286,16 +1458,22 @@
+     _hideNotificationCompleted() {
+         const notification = this._notification;
+         this._notification = null;
+-        if (!this._notificationRemoved && notification.isTransient)
+-            notification.destroy(NotificationDestroyedReason.EXPIRED);
++        if (!this._notificationRemoved) {
++            if (notification.isTransient)
++                notification.destroy(NotificationDestroyedReason.EXPIRED);
++            else
++                notification.lifecycleState = NotificationLifecycleState.WAITING;
++        }
+ 
+         this._pointerInNotification = false;
+         this._notificationRemoved = false;
+-        global.compositor.enable_unredirect();
++        if (this._additionalBanners.length === 0)
++            global.compositor.enable_unredirect();
+ 
+         this._banner.destroy();
+         this._banner = null;
+-        this.hide();
++        if (this._additionalBanners.length === 0)
++            this.hide();
+     }
+ 
+     _expandActiveNotification() {
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -1194,6 +1194,8 @@
+     vfunc_map() {
+         // Acknowledge all notifications once they are mapped
+         this._notificationToMessage.forEach((_, notification) => {
++            notification.lifecycleState =
++                MessageTray.NotificationLifecycleState.SEEN;
+             notification.acknowledged = true;
+         });
+         super.vfunc_map();
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -160,6 +160,8 @@
+         let source, notification;
+         if (replacesId !== 0 && this._notifications.has(replacesId)) {
+             notification = this._notifications.get(replacesId);
++            notification.lifecycleState =
++                MessageTray.NotificationLifecycleState.REPLACED;
+             source = notification.source;
+             id = replacesId;
+         } else {
+

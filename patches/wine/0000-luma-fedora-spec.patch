@@ -1,0 +1,62 @@
+--- a/wine.spec
++++ b/wine.spec
+@@ -47,5 +47,5 @@
+ 
+ Name:           wine
+ Version:        11.0
+-Release:        3%{?dist}
++Release:        3.luma.2%{?dist}
+ Summary:        A compatibility layer for windows applications
+@@ -92,4 +92,5 @@ Source502:      wine-README-tahoma
+ 
+ Patch511:       wine-cjk.patch
++Patch1000:      0001-luma-relay-native-notifications.patch
+ 
+ %if 0%{?wine_staging}
+@@ -378,5 +379,14 @@ Provides:       bundled(mingw-mpg123-libs) = 1.33.0
+ %description core
+ Wine core package includes the basic wine stuff needed by all other packages.
+ 
++%package luma-relay-explorer
++Summary:        Wine Explorer integration for Luma Relay
++Requires:       wine-core >= 11.0
++
++%description luma-relay-explorer
++A Relay-scoped build of Wine Explorer and its private PE-to-Unix transport for
++legacy Windows information balloons. The stock Wine Explorer remains unchanged
++outside Relay capsules; the unique transport module is dormant otherwise.
++
+ %package systemd
+ Summary:        Systemd config for the wine binfmt handler
+@@ -686,5 +696,6 @@ This package adds the opencl driver for wine.
+ %prep
+ %setup -qn wine-%{version}
+ %patch -P 511 -p1 -b.cjk
++%patch -P 1000 -p1 -b.luma-relay-notifications
+ 
+ %if 0%{?wine_staging}
+@@ -811,5 +822,11 @@ touch %{buildroot}%{_libdir}/wine/i386-windows/d3d11.dll
+ %endif
+ %endif
+ 
++# Relay overlays only this patched program inside its Bubblewrap capsule.
++for winepedir in %{winepedirs}; do
++  install -Dm0755 %{buildroot}%{_libdir}/wine/$winepedir/explorer.exe \
++    %{buildroot}%{_libexecdir}/luma-relay/wine/$winepedir/explorer.exe
++done
++
+ # remove rpath
+ chrpath --delete %{buildroot}%{_bindir}/wmc
+@@ -1122,5 +1139,12 @@ fi
+ %files
+ # meta package
+ 
++%files luma-relay-explorer
++%license LICENSE COPYING.LIB
++%doc AUTHORS README.md
++%{_libexecdir}/luma-relay/wine/*/explorer.exe
++%{_libdir}/wine/%{winepedirs}/luma_relay.dll
++%{_libdir}/wine/%{winesodir}/luma_relay.so
++
+ %files core
+ %license LICENSE

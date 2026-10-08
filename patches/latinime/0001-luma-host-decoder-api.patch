@@ -1,0 +1,187 @@
+diff --git a/native/jni/src/suggest/core/dictionary/dictionary.cpp b/native/jni/src/suggest/core/dictionary/dictionary.cpp
+index 5c9a139..feac296 100644
+--- a/native/jni/src/suggest/core/dictionary/dictionary.cpp
++++ b/native/jni/src/suggest/core/dictionary/dictionary.cpp
+@@ -41,7 +41,8 @@ Dictionary::Dictionary(JNIEnv *env, DictionaryStructureWithBufferPolicy::Structu
+         : mDictionaryStructureWithBufferPolicy(std::move(dictionaryStructureWithBufferPolicy)),
+           mGestureSuggest(new Suggest(GestureSuggestPolicyFactory::getGestureSuggestPolicy())),
+           mTypingSuggest(new Suggest(TypingSuggestPolicyFactory::getTypingSuggestPolicy())) {
+-    logDictionaryInfo(env);
++    if (env)
++        logDictionaryInfo(env);
+ }
+ 
+ void Dictionary::getSuggestions(ProximityInfo *proximityInfo, DicTraverseSession *traverseSession,
+diff --git a/native/jni/src/suggest/core/layout/proximity_info.cpp b/native/jni/src/suggest/core/layout/proximity_info.cpp
+index 933a5e1..56b69cb 100644
+--- a/native/jni/src/suggest/core/layout/proximity_info.cpp
++++ b/native/jni/src/suggest/core/layout/proximity_info.cpp
+@@ -31,6 +31,7 @@
+ 
+ namespace latinime {
+ 
++#ifndef HOST_TOOL
+ static AK_FORCE_INLINE void safeGetOrFillZeroIntArrayRegion(JNIEnv *env, jintArray jArray,
+         jsize len, jint *buffer) {
+     if (jArray && buffer) {
+@@ -94,11 +95,48 @@ ProximityInfo::ProximityInfo(JNIEnv *env, const int keyboardWidth, const int key
+     safeGetOrFillZeroFloatArrayRegion(env, sweetSpotRadii, KEY_COUNT, mSweetSpotRadii);
+     initializeG();
+ }
++#endif
+ 
+ ProximityInfo::~ProximityInfo() {
+     delete[] mProximityCharsArray;
+ }
+ 
++#ifdef HOST_TOOL
++ProximityInfo::ProximityInfo(const int keyboardWidth, const int keyboardHeight,
++        const int gridWidth, const int gridHeight, const int mostCommonKeyWidth,
++        const int mostCommonKeyHeight, const int *proximityChars, const int keyCount,
++        const int *keyXCoordinates, const int *keyYCoordinates, const int *keyWidths,
++        const int *keyHeights, const int *keyCharCodes, const float *sweetSpotCenterXs,
++        const float *sweetSpotCenterYs, const float *sweetSpotRadii)
++        : GRID_WIDTH(gridWidth), GRID_HEIGHT(gridHeight), MOST_COMMON_KEY_WIDTH(mostCommonKeyWidth),
++          MOST_COMMON_KEY_WIDTH_SQUARE(mostCommonKeyWidth * mostCommonKeyWidth),
++          NORMALIZED_SQUARED_MOST_COMMON_KEY_HYPOTENUSE(1.0f +
++                  GeometryUtils::SQUARE_FLOAT(static_cast<float>(mostCommonKeyHeight) /
++                          static_cast<float>(mostCommonKeyWidth))),
++          CELL_WIDTH((keyboardWidth + gridWidth - 1) / gridWidth),
++          CELL_HEIGHT((keyboardHeight + gridHeight - 1) / gridHeight),
++          KEY_COUNT(std::min(keyCount, MAX_KEY_COUNT_IN_A_KEYBOARD)),
++          KEYBOARD_WIDTH(keyboardWidth), KEYBOARD_HEIGHT(keyboardHeight),
++          KEYBOARD_HYPOTENUSE(hypotf(KEYBOARD_WIDTH, KEYBOARD_HEIGHT)),
++          HAS_TOUCH_POSITION_CORRECTION_DATA(keyCount > 0 && keyXCoordinates && keyYCoordinates
++                  && keyWidths && keyHeights && keyCharCodes && sweetSpotCenterXs
++                  && sweetSpotCenterYs && sweetSpotRadii),
++          mProximityCharsArray(new int[GRID_WIDTH * GRID_HEIGHT * MAX_PROXIMITY_CHARS_SIZE]),
++          mLowerCodePointToKeyMap() {
++    const int proximityCount = GRID_WIDTH * GRID_HEIGHT * MAX_PROXIMITY_CHARS_SIZE;
++    std::copy(proximityChars, proximityChars + proximityCount, mProximityCharsArray);
++    std::copy(keyXCoordinates, keyXCoordinates + KEY_COUNT, mKeyXCoordinates);
++    std::copy(keyYCoordinates, keyYCoordinates + KEY_COUNT, mKeyYCoordinates);
++    std::copy(keyWidths, keyWidths + KEY_COUNT, mKeyWidths);
++    std::copy(keyHeights, keyHeights + KEY_COUNT, mKeyHeights);
++    std::copy(keyCharCodes, keyCharCodes + KEY_COUNT, mKeyCodePoints);
++    std::copy(sweetSpotCenterXs, sweetSpotCenterXs + KEY_COUNT, mSweetSpotCenterXs);
++    std::copy(sweetSpotCenterYs, sweetSpotCenterYs + KEY_COUNT, mSweetSpotCenterYs);
++    std::copy(sweetSpotRadii, sweetSpotRadii + KEY_COUNT, mSweetSpotRadii);
++    initializeG();
++}
++#endif
++
+ bool ProximityInfo::hasSpaceProximity(const int x, const int y) const {
+     if (x < 0 || y < 0) {
+         if (DEBUG_DICT) {
+diff --git a/native/jni/src/suggest/core/layout/proximity_info.h b/native/jni/src/suggest/core/layout/proximity_info.h
+index f7c9076..2061a84 100644
+--- a/native/jni/src/suggest/core/layout/proximity_info.h
++++ b/native/jni/src/suggest/core/layout/proximity_info.h
+@@ -35,6 +35,15 @@ class ProximityInfo {
+             const jintArray keyYCoordinates, const jintArray keyWidths, const jintArray keyHeights,
+             const jintArray keyCharCodes, const jfloatArray sweetSpotCenterXs,
+             const jfloatArray sweetSpotCenterYs, const jfloatArray sweetSpotRadii);
++#ifdef HOST_TOOL
++    ProximityInfo(const int keyboardWidth, const int keyboardHeight,
++            const int gridWidth, const int gridHeight,
++            const int mostCommonKeyWidth, const int mostCommonKeyHeight,
++            const int *proximityChars, const int keyCount, const int *keyXCoordinates,
++            const int *keyYCoordinates, const int *keyWidths, const int *keyHeights,
++            const int *keyCharCodes, const float *sweetSpotCenterXs,
++            const float *sweetSpotCenterYs, const float *sweetSpotRadii);
++#endif
+     ~ProximityInfo();
+     bool hasSpaceProximity(const int x, const int y) const;
+     float getNormalizedSquaredDistanceFromCenterFloatG(
+diff --git a/native/jni/src/suggest/core/result/suggestion_results.cpp b/native/jni/src/suggest/core/result/suggestion_results.cpp
+index 312c9e7..f8a6935 100644
+--- a/native/jni/src/suggest/core/result/suggestion_results.cpp
++++ b/native/jni/src/suggest/core/result/suggestion_results.cpp
+@@ -16,7 +16,11 @@
+ 
+ #include "suggest/core/result/suggestion_results.h"
+ 
++#include <algorithm>
++
++#ifndef HOST_TOOL
+ #include "utils/jni_data_utils.h"
++#endif
+ 
+ namespace latinime {
+ 
+@@ -24,6 +28,16 @@ void SuggestionResults::outputSuggestions(JNIEnv *env, jintArray outSuggestionCo
+         jintArray outputCodePointsArray, jintArray outScoresArray, jintArray outSpaceIndicesArray,
+         jintArray outTypesArray, jintArray outAutoCommitFirstWordConfidenceArray,
+         jfloatArray outWeightOfLangModelVsSpatialModel) {
++#ifdef HOST_TOOL
++    (void)env;
++    (void)outSuggestionCount;
++    (void)outputCodePointsArray;
++    (void)outScoresArray;
++    (void)outSpaceIndicesArray;
++    (void)outTypesArray;
++    (void)outAutoCommitFirstWordConfidenceArray;
++    (void)outWeightOfLangModelVsSpatialModel;
++#else
+     int outputIndex = 0;
+     while (!mSuggestedWords.empty()) {
+         const SuggestedWord &suggestedWord = mSuggestedWords.top();
+@@ -46,7 +60,21 @@ void SuggestionResults::outputSuggestions(JNIEnv *env, jintArray outSuggestionCo
+     JniDataUtils::putIntToArray(env, outSuggestionCount, 0 /* index */, outputIndex);
+     JniDataUtils::putFloatToArray(env, outWeightOfLangModelVsSpatialModel, 0 /* index */,
+             mWeightOfLangModelVsSpatialModel);
++#endif
++}
++
++#ifdef HOST_TOOL
++std::vector<SuggestedWord> SuggestionResults::getSortedSuggestions() const {
++    std::vector<SuggestedWord> words;
++    auto copy = mSuggestedWords;
++    while (!copy.empty()) {
++        words.push_back(copy.top());
++        copy.pop();
++    }
++    std::reverse(words.begin(), words.end());
++    return words;
+ }
++#endif
+ 
+ void SuggestionResults::addPrediction(const int *const codePoints, const int codePointCount,
+         const int probability) {
+diff --git a/native/jni/src/suggest/core/result/suggestion_results.h b/native/jni/src/suggest/core/result/suggestion_results.h
+index 738c78a..dad4d84 100644
+--- a/native/jni/src/suggest/core/result/suggestion_results.h
++++ b/native/jni/src/suggest/core/result/suggestion_results.h
+@@ -53,6 +53,10 @@ class SuggestionResults {
+         return mSuggestedWords.size();
+     }
+ 
++#ifdef HOST_TOOL
++    std::vector<SuggestedWord> getSortedSuggestions() const;
++#endif
++
+  private:
+     DISALLOW_IMPLICIT_CONSTRUCTORS(SuggestionResults);
+ 
+diff --git a/native/jni/src/utils/log_utils.cpp b/native/jni/src/utils/log_utils.cpp
+index 5ab2b28..2a281ac 100644
+--- a/native/jni/src/utils/log_utils.cpp
++++ b/native/jni/src/utils/log_utils.cpp
+@@ -23,6 +23,10 @@
+ 
+ namespace latinime {
+     /* static */ void LogUtils::logToJava(JNIEnv *const env, const char *const format, ...) {
++#ifdef HOST_TOOL
++        (void)env;
++        (void)format;
++#else
+         static const char *TAG = "LatinIME:LogUtils";
+         const jclass androidUtilLogClass = env->FindClass("android/util/Log");
+         if (!androidUtilLogClass) {
+@@ -68,5 +72,6 @@ namespace latinime {
+         if (javaString) env->DeleteLocalRef(javaString);
+         if (javaTag) env->DeleteLocalRef(javaTag);
+         if (androidUtilLogClass) env->DeleteLocalRef(androidUtilLogClass);
++#endif
+     }
+ }

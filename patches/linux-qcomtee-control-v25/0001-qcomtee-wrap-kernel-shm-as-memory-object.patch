@@ -1,0 +1,81 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] qcomtee: wrap kernel shared memory as a memory object
+
+The QSEEComCompat listener service needs a callback memory object backed by a
+kernel-owned TEE allocation.  tee_shm_alloc_kernel_buf() intentionally does
+not install that allocation in the userspace IDR, so the existing OBJREF
+conversion helper cannot represent it.  Add an in-driver helper which consumes
+the caller's shm reference on success and otherwise leaves it untouched.
+
+---
+ drivers/tee/qcomtee/mem_obj.c | 39 +++++++++++++++++++++++++++++++++++++++
+ drivers/tee/qcomtee/qcomtee.h |  4 ++++
+ 2 files changed, 43 insertions(+)
+
+diff --git a/drivers/tee/qcomtee/mem_obj.c b/drivers/tee/qcomtee/mem_obj.c
+index 8f0ad57a1213..1f83c4ab86dc 100644
+--- a/drivers/tee/qcomtee/mem_obj.c
++++ b/drivers/tee/qcomtee/mem_obj.c
+@@ -119,6 +119,45 @@ int qcomtee_memobj_param_to_object(struct qcomtee_object **object,
+ 	return 0;
+ }
+ 
++/**
++ * qcomtee_memobj_shm_to_object() - Wrap kernel-owned TEE shared memory.
++ * @object: memory object returned
++ * @shm: shared-memory reference consumed on success
++ *
++ * Unlike qcomtee_memobj_param_to_object(), this path does not look the
++ * allocation up by an ID. Kernel TEE buffers use id -1 and are intentionally
++ * absent from the userspace IDR. The caller retains ownership on failure.
++ */
++int qcomtee_memobj_shm_to_object(struct qcomtee_object **object,
++				  struct tee_shm *shm)
++{
++	struct qcomtee_mem_object *mem_object;
++	phys_addr_t paddr;
++	int err;
++
++	if (!object || !shm)
++		return -EINVAL;
++	err = tee_shm_get_pa(shm, 0, &paddr);
++	if (err)
++		return err;
++	mem_object = kzalloc_obj(*mem_object);
++	if (!mem_object)
++		return -ENOMEM;
++	err = qcomtee_object_user_init(&mem_object->object,
++				       QCOMTEE_OBJECT_TYPE_CB,
++				       &qcomtee_mem_object_ops,
++				       "tee-kernel-shm");
++	if (err) {
++		kfree(mem_object);
++		return err;
++	}
++	mem_object->paddr = paddr;
++	mem_object->size = shm->size;
++	mem_object->shm = shm;
++	*object = &mem_object->object;
++	return 0;
++}
++
+ /* Reverse what qcomtee_memobj_param_to_object() does. */
+ int qcomtee_memobj_param_from_object(struct tee_param *param,
+ 				     struct qcomtee_object *object,
+diff --git a/drivers/tee/qcomtee/qcomtee.h b/drivers/tee/qcomtee/qcomtee.h
+index 3e6b29362f55..612d7b66eb03 100644
+--- a/drivers/tee/qcomtee/qcomtee.h
++++ b/drivers/tee/qcomtee/qcomtee.h
+@@ -162,6 +162,10 @@ int qcomtee_memobj_param_to_object(struct qcomtee_object **object,
+ 				   struct tee_param *param,
+ 				   struct tee_context *ctx);
+ 
++/* Wrap kernel-owned TEE shm; consumes the shm reference on success. */
++int qcomtee_memobj_shm_to_object(struct qcomtee_object **object,
++				  struct tee_shm *shm);
++
+ /* Reverse what qcomtee_memobj_param_to_object() does. */
+ int qcomtee_memobj_param_from_object(struct tee_param *param,
+ 				     struct qcomtee_object *object,
+-- 
+2.51.0

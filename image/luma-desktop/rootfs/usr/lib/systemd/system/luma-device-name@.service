@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Names a computer that still has a default name ("Nick’s ThinkPad",
+# nicks-thinkpad) at the first login of a person (uid %i). Pulled in by
+# user@.service without ordering, so a login never waits for it. Talks to
+# systemd-hostnamed rather than writing /etc, so SELinux labels stay right.
+[Unit]
+Description=Name this computer at the first login of user %i
+ConditionPathExists=!/var/lib/luma/device-name/named
+After=dbus.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-os/luma-device-name login --uid %i
+SyslogIdentifier=luma-device-name
+StateDirectory=luma/device-name
+TimeoutStartSec=90s
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=yes
+LockPersonality=yes

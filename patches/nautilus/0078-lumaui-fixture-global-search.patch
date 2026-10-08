@@ -1,0 +1,32 @@
+From 740779978bcb7129aad87c2f968f7f98266f86b6 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:05:00 +0000
+Subject: [PATCH] Filer: scope fixture Everywhere search to private Home
+
+---
+ src/nautilus-window.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index f25eed3..39c0c19 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1980,6 +1980,15 @@ apply_fixture_state (gpointer data)
+         {
+             nautilus_query_set_location (query, nautilus_window_slot_get_location (slot));
+         }
++        else
++        {
++            const char *root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++            g_autofree char *home_path = root != NULL
++                                         ? g_build_filename (root, "Home", NULL)
++                                         : g_strdup (g_get_home_dir ());
++            g_autoptr (GFile) home = g_file_new_for_path (home_path);
++            nautilus_query_set_location (query, home);
++        }
+         nautilus_window_slot_search (slot, query);
+     }
+ 
+-- 
+2.55.0
+

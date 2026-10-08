@@ -1,0 +1,73 @@
+From: Project Luma <luma@local>
+Date: Fri, 21 Aug 2026 12:45:00 -0500
+Subject: [PATCH] app-loader: report acquisition boundaries
+
+The loader's final acquire error deliberately preserves the original errno,
+but does not say whether it came from the unprivileged attach, the privileged
+load, or the post-load attach retry. That ambiguity is unsafe during first
+hardware acceptance: EINVAL from lookup must not be guessed to mean ENOENT.
+
+Log each attach/load open-session result. This changes no acquisition policy,
+device access, trusted-application command, or error handling.
+---
+ src/app_loader.c | 30 ++++++++++++++++++++++++------
+ 1 file changed, 24 insertions(+), 6 deletions(-)
+
+diff --git a/src/app_loader.c b/src/app_loader.c
+index 40164f1..e6a154b 100644
+--- a/src/app_loader.c
++++ b/src/app_loader.c
+@@ -96,27 +96,45 @@ static int open_named_session(int fd, const char *application,
+ static int attach_application(void *opaque, uint32_t *session)
+ {
+ 	struct loader_context *context = opaque;
++	int result;
+ 
+ 	if (context->client_fd < 0) {
+ 		context->client_fd = open_qseecom_device(false);
+-		if (context->client_fd < 0)
++		if (context->client_fd < 0) {
++			fprintf(stderr,
++				"event=acquire_step app=%s operation=attach-device result=%d\n",
++				context->application, -errno);
+ 			return -errno;
++		}
+ 	}
+-	return open_named_session(context->client_fd, context->application,
+-				  session);
++	result = open_named_session(context->client_fd, context->application,
++				    session);
++	fprintf(stderr,
++		"event=acquire_step app=%s operation=attach-session result=%d\n",
++		context->application, result);
++	return result;
+ }
+ 
+ static int load_application(void *opaque, uint32_t *session)
+ {
+ 	struct loader_context *context = opaque;
++	int result;
+ 
+ 	if (context->loader_fd < 0) {
+ 		context->loader_fd = open_qseecom_device(true);
+-		if (context->loader_fd < 0)
++		if (context->loader_fd < 0) {
++			fprintf(stderr,
++				"event=acquire_step app=%s operation=load-device result=%d\n",
++				context->application, -errno);
+ 			return -errno;
++		}
+ 	}
+-	return open_named_session(context->loader_fd, context->application,
+-				  session);
++	result = open_named_session(context->loader_fd, context->application,
++				    session);
++	fprintf(stderr,
++		"event=acquire_step app=%s operation=load-session result=%d\n",
++		context->application, result);
++	return result;
+ }
+ 
+ int main(int argc, char **argv)
+-- 
+2.51.0

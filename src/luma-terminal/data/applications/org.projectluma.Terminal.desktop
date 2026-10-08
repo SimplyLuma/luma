@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Comment=Run commands and work in a shell
+Exec=python3 -m luma_terminal
+Icon=org.projectluma.Terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=true

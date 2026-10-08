@@ -1,0 +1,38 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Treat the explicit greetd bake-off session as active
+
+The private candidate is launched directly by greetd so that the controller
+can roll back without replacing the system session stack. No
+org.gnome.SessionManager service exists in that bounded session, but logind
+still owns an active local seat. Allow the explicitly marked candidate to run
+its mobile idle-dim and blank policy.
+---
+ js/misc/powerManager.js | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/js/misc/powerManager.js b/js/misc/powerManager.js
+index 5b55f6d..187c119 100644
+--- a/js/misc/powerManager.js
++++ b/js/misc/powerManager.js
+@@ -135,8 +135,9 @@ export class PowerManager {
+             });
+ 
+         this._session = new GnomeSession.SessionManager();
++        this._isLumaGreetdSession = GLib.getenv('LUMA_GREETD_SESSION') === '1';
+         this._session.connect('g-properties-changed', () => this._sessionIsActiveChanged());
+-        this._sessionIsActive = this._session.SessionIsActive;
++        this._sessionIsActive = this._session.SessionIsActive || this._isLumaGreetdSession;
+ 
+         Main.screenShield.connect('wake-up-screen', async () => {
+             if (this._isInAction !== 'idle-blank' && this._isInAction !== 'blank')
+@@ -203,7 +204,7 @@ export class PowerManager {
+ 
+     _sessionIsActiveChanged() {
+         const sessionWasActive = this._sessionIsActive;
+-        this._sessionIsActive = this._session.SessionIsActive;
++        this._sessionIsActive = this._session.SessionIsActive || this._isLumaGreetdSession;
+         if (sessionWasActive === this._sessionIsActive)
+             return;
+ 
+-- 
+2.51.0

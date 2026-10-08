@@ -1,0 +1,113 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: clip Poster wallpaper to each display and size battery clearly
+
+Keep the entrance wallpaper zoom inside its own monitor, including when
+a second display is placed immediately to the left. Enlarge the battery
+outline and fill together so it reads at ultrawide login scale.
+
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -325,7 +325,7 @@
+         this._battery = new St.Widget({style_class: 'poster-battery',
+             layout_manager: new Clutter.FixedLayout()});
+         this._batteryFill = new St.Widget({style_class: 'poster-battery-fill',
+-            x: 2.5, y: 2.5, height: 5});
++            x: 3.5, y: 3.5, height: 7});
+         this._battery.add_child(this._batteryFill);
+         status.add_child(this._battery);
+         status.add_child(new St.Widget({style_class: 'poster-status-divider'}));
+@@ -480,7 +480,7 @@
+         if (!this._battery.visible)
+             return;
+         const percentage = Math.max(0, Math.min(100, proxy.Percentage));
+-        this._batteryFill.width = Math.round(15 * percentage / 100);
++        this._batteryFill.width = Math.round(21 * percentage / 100);
+     }
+ });
+ 
+@@ -542,6 +542,7 @@
+             ...widgetParams,
+             style_class: 'prairie-login-background',
+             layout_manager: new Clutter.BinLayout(),
++            clip_to_allocation: true,
+         });
+ 
+         // For a monitor, the wallpaper is drawn by Mutter's own background
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -682,8 +682,8 @@
+ .poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 16px; background-color: transparent; box-shadow: none; color: #eceeed; }
+ .poster-status-row .a11y-button:hover, .poster-status-row .a11y-button:focus, .poster-status-row .login-dialog-session-list-button:hover, .poster-status-row .login-dialog-session-list-button:focus { background-color: rgba(255, 255, 255, 0.08); }
+ .poster-wifi-icon { icon-size: 15px; color: #eceeed; }
+-.poster-battery { width: 23px; height: 10px; background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg"); background-size: 23px 10px; }
+-.poster-battery-fill { height: 5px; background-color: #eceeed; border-radius: 1px; }
++.poster-battery { width: 32px; height: 14px; background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg"); background-size: 32px 14px; }
++.poster-battery-fill { height: 7px; background-color: #eceeed; border-radius: 1px; }
+ .poster-status-divider { width: 1px; height: 18px; background-color: rgba(255, 255, 255, 0.1); }
+ .poster-card .prairie-login-power-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; background-color: transparent; box-shadow: none; }
+ .poster-card .prairie-login-power-button .prairie-login-power-icon { icon-size: 15px; }
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5466,13 +5466,13 @@
+   color: #eceeed; }
+ 
+ .poster-battery {
+-  width: 23px;
+-  height: 10px;
++  width: 32px;
++  height: 14px;
+   background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
+-  background-size: 23px 10px; }
++  background-size: 32px 14px; }
+ 
+ .poster-battery-fill {
+-  height: 5px;
++  height: 7px;
+   background-color: #eceeed;
+   border-radius: 1px; }
+ 
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5690,13 +5690,13 @@
+   color: #eceeed; }
+ 
+ .poster-battery {
+-  width: 23px;
+-  height: 10px;
++  width: 32px;
++  height: 14px;
+   background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
+-  background-size: 23px 10px; }
++  background-size: 32px 14px; }
+ 
+ .poster-battery-fill {
+-  height: 5px;
++  height: 7px;
+   background-color: #eceeed;
+   border-radius: 1px; }
+ 
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5042,13 +5042,13 @@
+   color: #eceeed; }
+ 
+ .poster-battery {
+-  width: 23px;
+-  height: 10px;
++  width: 32px;
++  height: 14px;
+   background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg");
+-  background-size: 23px 10px; }
++  background-size: 32px 14px; }
+ 
+ .poster-battery-fill {
+-  height: 5px;
++  height: 7px;
+   background-color: #eceeed;
+   border-radius: 1px; }
+ 

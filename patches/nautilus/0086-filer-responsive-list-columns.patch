@@ -1,0 +1,99 @@
+From a448accf8b1fc5d4e6f3ac2cb03cc5aa9bd2954f Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:54:08 +0000
+Subject: [PATCH] Filer: order list columns and trim phone table
+
+---
+ data/org.gnome.nautilus.gschema.xml |  2 +-
+ src/nautilus-column-utilities.c     |  2 +-
+ src/nautilus-list-view.c            | 25 +++++++++++++++++++++++++
+ 3 files changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index af48862..d5f1c56 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -272,7 +272,7 @@
+       <summary>Columns visible in list view</summary>
+     </key>
+     <key type="as" name="default-column-order">
+-      <default>[ 'name', 'size', 'type', 'owner', 'group', 'permissions', 'mime_type', 'where', 'date_modified', 'date_modified_with_time', 'date_accessed', 'date_created', 'recency', 'starred' ]</default>
++      <default>[ 'name', 'type', 'size', 'date_modified', 'owner', 'group', 'permissions', 'mime_type', 'where', 'date_modified_with_time', 'date_accessed', 'date_created', 'recency', 'starred' ]</default>
+       <summary>Column order in list view</summary>
+     </key>
+     <key type="b" name="use-tree-view">
+diff --git a/src/nautilus-column-utilities.c b/src/nautilus-column-utilities.c
+index 35637c7..2ef02f9 100644
+--- a/src/nautilus-column-utilities.c
++++ b/src/nautilus-column-utilities.c
+@@ -33,8 +33,8 @@
+ static const char *default_column_order[] =
+ {
+     "name",
+-    "size",
+     "type",
++    "size",
+     "owner",
+     "group",
+     "permissions",
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 7887361..1064e14 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -44,6 +44,7 @@ struct _NautilusListView
+     LumaCountBadge *search_heading_count;
+     NautilusViewModel *observed_model;
+     gulong items_changed_id;
++    gboolean phone_layout;
+ 
+     NautilusSearchDirectory *search_directory;
+ 
+@@ -183,6 +184,10 @@ apply_columns_settings (NautilusListView  *self,
+     /* Luma keeps starring in actions, never as a list column.
+      * Discard stale per-folder column preferences as well. */
+     g_hash_table_remove (visible_columns_hash, "starred");
++    if (self->phone_layout && self->search_directory == NULL)
++    {
++        g_hash_table_remove (visible_columns_hash, "date_modified");
++    }
+ 
+     old_view_columns_hash = g_hash_table_new_full (g_str_hash,
+                                                    g_str_equal,
+@@ -1387,14 +1392,34 @@ nautilus_list_view_finalize (GObject *object)
+     G_OBJECT_CLASS (nautilus_list_view_parent_class)->finalize (object);
+ }
+ 
++static void
++nautilus_list_view_size_allocate (GtkWidget *widget,
++                                  int        width,
++                                  int        height,
++                                  int        baseline)
++{
++    NautilusListView *self = NAUTILUS_LIST_VIEW (widget);
++    gboolean phone_layout = width <= 480;
++
++    GTK_WIDGET_CLASS (nautilus_list_view_parent_class)->size_allocate (widget, width, height, baseline);
++
++    if (self->phone_layout != phone_layout)
++    {
++        self->phone_layout = phone_layout;
++        update_columns_settings_from_metadata_and_preferences (self);
++    }
++}
++
+ static void
+ nautilus_list_view_class_init (NautilusListViewClass *klass)
+ {
+     GObjectClass *object_class = G_OBJECT_CLASS (klass);
++    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+     NautilusListBaseClass *list_base_view_class = NAUTILUS_LIST_BASE_CLASS (klass);
+ 
+     object_class->dispose = nautilus_list_view_dispose;
+     object_class->finalize = nautilus_list_view_finalize;
++    widget_class->size_allocate = nautilus_list_view_size_allocate;
+ 
+     list_base_view_class->get_backing_item = real_get_backing_item;
+     list_base_view_class->get_icon_size = real_get_icon_size;
+-- 
+2.55.0
+

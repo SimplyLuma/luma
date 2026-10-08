@@ -1,0 +1,571 @@
+{
+  "_doc": "Approved R2-AT ari-06 app surface metrics and type roles; v71 overrides: receipt header11/16/10, receipt title1.35, reply width min(88%,680), reply reading1.5. Shared components retain their own tokens.",
+  "lumaui": {
+    "ari": {
+      "user": {
+        "padding_y": 10,
+        "padding_x": 15,
+        "radius_top_start": 20,
+        "radius_top_end": 20,
+        "radius_bottom_end": 6,
+        "radius_bottom_start": 20,
+        "width_ratio": 0.72,
+        "phone_width_ratio": 0.8,
+        "phone_padding_top": 9,
+        "phone_padding_x": 14,
+        "phone_padding_bottom": 10
+      },
+      "mark": {
+        "reply_size": 26,
+        "reply_radius": 8,
+        "welcome_size": 64,
+        "welcome_radius": 19,
+        "reply_shadow_y": 1,
+        "reply_shadow_blur": 3,
+        "welcome_shadow_y": 14,
+        "welcome_shadow_blur": 30,
+        "welcome_shadow_spread": -12
+      },
+      "suggestion": {
+        "padding_y": 13,
+        "padding_x": 14,
+        "radius": 14,
+        "gap": 11,
+        "icon": 17
+      },
+      "receipt": {
+        "radius": 18,
+        "header_height": 46,
+        "compact_header_height": 44,
+        "header_padding_x": 16,
+        "header_gap": 10,
+        "steps_padding_top": 6,
+        "steps_padding_x": 8,
+        "steps_padding_bottom": 8,
+        "step_height": 38,
+        "compact_step_height": 34,
+        "step_gap": 12,
+        "step_padding_x": 8,
+        "step_radius": 10,
+        "lead": 22,
+        "lead_icon": 17,
+        "thumbnail_radius": 6,
+        "subtitle_gap": 10,
+        "check": 14,
+        "spinner": 11,
+        "state_gap": 6,
+        "header_padding_top": 11,
+        "header_padding_bottom": 10
+      },
+      "approval": {
+        "margin_top": 2,
+        "margin_end": 16,
+        "margin_bottom": 14,
+        "margin_start": 50,
+        "phone_margin_x": 12,
+        "phone_margin_bottom": 12,
+        "padding_top": 12,
+        "padding_x": 14,
+        "padding_bottom": 10,
+        "radius": 14,
+        "draft_gap": 2,
+        "actions_gap": 6,
+        "actions_top": 8,
+        "button_height": 30,
+        "button_padding_x": 12,
+        "button_radius": 9,
+        "quiet_padding_x": 8,
+        "quiet_margin_start": -8,
+        "undo_padding_y": 2,
+        "undo_padding_x": 6,
+        "undo_radius": 6
+      },
+      "local": {
+        "radius": 18,
+        "padding": 4,
+        "gap": 2,
+        "row_padding_y": 10,
+        "row_padding_start": 12,
+        "row_padding_end": 10,
+        "row_radius": 14,
+        "row_gap": 12,
+        "selected_padding_y": 3,
+        "selected_padding_x": 9,
+        "selected_radius": 8,
+        "use_height": 28,
+        "use_radius": 8,
+        "more_size": 30,
+        "more_radius": 9
+      },
+      "catalog": {
+        "card_radius": 18,
+        "card_padding": 16,
+        "provider_radius": 14,
+        "provider_padding": 14,
+        "gap": 10,
+        "header_gap": 12,
+        "chip_padding_y": 3,
+        "chip_padding_x": 8,
+        "chip_radius": 7,
+        "chip_gap": 4,
+        "fit_height": 8,
+        "fit_radius": 4,
+        "fit_top": 7,
+        "fit_text_gap": 1,
+        "installed_gap": 6,
+        "installed_check": 14,
+        "download_height": 32,
+        "download_radius": 10,
+        "download_padding_start": 12,
+        "small_download_width": 150,
+        "small_download_height": 6,
+        "small_download_radius": 3,
+        "content_gap": 12
+      },
+      "hero": {
+        "radius": 20,
+        "padding_y": 20,
+        "padding_x": 22,
+        "gap": 20,
+        "fit_width": 240,
+        "information_gap": 2,
+        "description_top": 2,
+        "button_height": 40,
+        "button_radius": 12,
+        "button_gap": 6,
+        "button_icon": 15,
+        "wash_width_ratio": 0.5,
+        "wash_height_ratio": 1.4,
+        "wash_origin_x_ratio": 0,
+        "wash_origin_y_ratio": 0.5,
+        "wash_end_ratio": 0.7
+      },
+      "monogram": {
+        "small_size": 34,
+        "small_radius": 9,
+        "regular_size": 36,
+        "regular_radius": 10,
+        "hero_size": 56,
+        "hero_radius": 16,
+        "corner_ratio": 0.3,
+        "mono_size_ratio": 0.5,
+        "light_ratio": 0.68,
+        "dark_ratio": 0.47,
+        "chroma_ratio": 0.13,
+        "gradient_degrees": 160,
+        "shadow_y": 1,
+        "shadow_blur": 2,
+        "logo_outline_width": 0.5,
+        "highlight_y": 1
+      },
+      "sheet": {
+        "padding_top": 18,
+        "padding_x": 18,
+        "padding_bottom": 16,
+        "header_gap": 10,
+        "header_button": 30,
+        "back_margin_start": -6,
+        "description_top": 6,
+        "description_bottom": 14,
+        "choices_gap": 2,
+        "choice_gap": 12,
+        "choice_padding_y": 8,
+        "choice_padding_start": 8,
+        "choice_padding_end": 10,
+        "choice_radius": 12,
+        "choice_disabled_opacity": 1,
+        "choice_chevron": 15,
+        "own_size": 36,
+        "own_radius": 11,
+        "own_icon": 17,
+        "field_top": 16,
+        "field_gap": 6,
+        "field_height": 40,
+        "field_radius": 12,
+        "field_padding_x": 12,
+        "hint_top": 8,
+        "status_top": 10,
+        "status_height": 22,
+        "status_gap": 7,
+        "status_check": 14,
+        "status_spinner": 12,
+        "models_heading_top": 12,
+        "models_heading_bottom": 6,
+        "models_gap": 2,
+        "model_padding_y": 7,
+        "model_padding_x": 8,
+        "model_radius": 10,
+        "model_gap": 10,
+        "checkbox_size": 18,
+        "checkbox_radius": 6,
+        "checkbox_border": 1.5,
+        "checkbox_icon": 12,
+        "actions_top": 20,
+        "actions_gap": 8
+      },
+      "metadata": {
+        "gap": 8,
+        "top": 10,
+        "where_gap": 5,
+        "where_icon": 13,
+        "copy_size": 28,
+        "copy_radius": 8,
+        "copy_icon": 14
+      },
+      "activity": {
+        "time_width": 60,
+        "gap": 12,
+        "row_bottom": 20,
+        "time_top": 14,
+        "source_top": 8,
+        "source_start": 16,
+        "source_gap": 6,
+        "source_icon": 13
+      },
+      "memory": {
+        "height": 14,
+        "radius": 7,
+        "legend_top": 9,
+        "legend_gap": 16,
+        "legend_line_gap": 6,
+        "legend_swatch": 8,
+        "legend_radius": 3,
+        "legend_swatch_gap": 6,
+        "marker_width": 2,
+        "marker_overhang": 5,
+        "marker_radius": 1,
+        "marker_label_gap": 3
+      },
+      "edge_width": 1,
+      "reply": {
+        "width_ratio": 0.88,
+        "max_width": 680,
+        "padding_top": 10,
+        "padding_x": 15,
+        "padding_bottom": 11,
+        "radius": 20,
+        "tail_radius": 6
+      }
+    },
+    "type_scale": {
+      "ari_heading": {
+        "size": 19,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": -0.015
+      },
+      "ari_day": {
+        "size": 12.5,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": -0.00624,
+        "tone": "muted"
+      },
+      "ari_user": {
+        "size": 14.5,
+        "weight": 400,
+        "line_height": 1.5,
+        "tracking_em": -0.005379310344827587
+      },
+      "ari_reading": {
+        "size": 15,
+        "weight": 400,
+        "line_height": 1.5,
+        "tracking_em": -0.0052
+      },
+      "ari_metadata": {
+        "size": 12,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "muted"
+      },
+      "ari_receipt_title": {
+        "size": 13.5,
+        "weight": 600,
+        "line_height": 1.35,
+        "tracking_em": -0.0057777777777777775
+      },
+      "ari_state": {
+        "size": 12,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "muted"
+      },
+      "ari_verb": {
+        "size": 13,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": -0.006,
+        "tone": "muted"
+      },
+      "ari_step_title": {
+        "size": 13,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": -0.006
+      },
+      "ari_subtitle": {
+        "size": 12,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "muted"
+      },
+      "ari_waiting": {
+        "size": 11.5,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_draft": {
+        "size": 13,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": -0.006
+      },
+      "ari_draft_title": {
+        "size": 13,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": -0.006
+      },
+      "ari_approval_action": {
+        "size": 12.5,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_undo": {
+        "size": 12,
+        "weight": 500,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "muted"
+      },
+      "ari_page_title": {
+        "size": 26,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": -0.02
+      },
+      "ari_description": {
+        "size": 13,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": -0.006,
+        "tone": "muted"
+      },
+      "ari_section": {
+        "size": 13,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": -0.006
+      },
+      "ari_local_title": {
+        "size": 14,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": -0.005571428571428572
+      },
+      "ari_model_title": {
+        "size": 14.5,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": -0.005379310344827587
+      },
+      "ari_capability": {
+        "size": 11.5,
+        "weight": 500,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "secondary"
+      },
+      "ari_recommended": {
+        "size": 11.5,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_hero_title": {
+        "size": 19,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": -0.01
+      },
+      "ari_fit": {
+        "size": 12,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_installed": {
+        "size": 12.5,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_selected": {
+        "size": 11.5,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_get": {
+        "size": 12,
+        "weight": 500,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_hero_get": {
+        "size": 13,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_welcome": {
+        "size": 13.5,
+        "weight": 400,
+        "line_height": 1.55,
+        "tracking_em": -0.0057777777777777775,
+        "tone": "muted"
+      },
+      "ari_suggestion": {
+        "size": 13.5,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0,
+        "tone": "secondary"
+      },
+      "ari_sheet_title": {
+        "size": 16,
+        "weight": 650,
+        "line_height": 1.35,
+        "tracking_em": -0.01
+      },
+      "ari_provider_title": {
+        "size": 13.5,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": -0.0057777777777777775
+      },
+      "ari_field_label": {
+        "size": 12,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "muted"
+      },
+      "ari_key": {
+        "size": 13.5,
+        "weight": 500,
+        "line_height": 1.45,
+        "tracking_em": 0,
+        "family": "IBM Plex Mono"
+      },
+      "ari_status": {
+        "size": 12.5,
+        "weight": 500,
+        "line_height": 1.45,
+        "tracking_em": -0.00624,
+        "tone": "muted"
+      },
+      "ari_result_title": {
+        "size": 13,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_result_subtitle": {
+        "size": 11.5,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0.01,
+        "tone": "muted"
+      },
+      "ari_connected": {
+        "size": 11.5,
+        "weight": 600,
+        "line_height": 1.45,
+        "tracking_em": 0.01
+      },
+      "ari_thinking": {
+        "size": 14.5,
+        "weight": 500,
+        "line_height": 1.45,
+        "tracking_em": -0.005379310344827587
+      },
+      "ari_time": {
+        "size": 13,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": -0.006,
+        "tabular": true,
+        "tone": "secondary"
+      },
+      "ari_monogram_small": {
+        "size": 17,
+        "weight": 700,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_monogram_regular": {
+        "size": 18,
+        "weight": 700,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_monogram_hero": {
+        "size": 28,
+        "weight": 700,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_monogram_picker": {
+        "size": 14,
+        "weight": 700,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "ari_user_phone": {
+        "size": 15,
+        "weight": 400,
+        "line_height": 1.42,
+        "tracking_em": -0.0052
+      }
+    },
+    "colors": {
+      "dark": {
+        "ari_mark_shadow": "rgba(0,0,0,.3)",
+        "ari_welcome_shadow": "rgba(0,0,0,.6)",
+        "ari_monogram_highlight": "rgba(255,255,255,.28)",
+        "ari_monogram_shadow": "rgba(0,0,0,.25)",
+        "ari_logo_shadow": "rgba(0,0,0,.25)",
+        "ari_waiting": "oklch(0.8 0.14 75)",
+        "ari_ask": "oklch(0.8 0.15 75)",
+        "ari_running": "oklch(0.8 0.1 258)",
+        "ari_hero_wash": "oklch(0.62 0.13 265 / .22)",
+        "ari_recommended": "oklch(0.78 0.1 258)",
+        "ari_selected_background": "oklch(0.72 0.12 258 / .15)",
+        "ari_checkbox_ink": "#ffffff",
+        "ari_provider_error": "oklch(0.7 0.16 25)"
+      },
+      "light": {
+        "ari_mark_shadow": "rgba(0,0,0,.3)",
+        "ari_welcome_shadow": "rgba(0,0,0,.6)",
+        "ari_monogram_highlight": "rgba(255,255,255,.28)",
+        "ari_monogram_shadow": "rgba(0,0,0,.25)",
+        "ari_logo_shadow": "rgba(0,0,0,.12)",
+        "ari_waiting": "oklch(0.55 0.14 65)",
+        "ari_ask": "oklch(0.55 0.14 65)",
+        "ari_running": "oklch(0.8 0.1 258)",
+        "ari_hero_wash": "oklch(0.62 0.13 265 / .22)",
+        "ari_recommended": "oklch(0.78 0.1 258)",
+        "ari_selected_background": "oklch(0.72 0.12 258 / .15)",
+        "ari_checkbox_ink": "#ffffff",
+        "ari_provider_error": "oklch(0.7 0.16 25)"
+      }
+    }
+  }
+}

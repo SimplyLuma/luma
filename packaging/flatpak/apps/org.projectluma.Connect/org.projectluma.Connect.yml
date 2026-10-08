@@ -1,0 +1,43 @@
+{
+  "id": "org.projectluma.Connect",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "luma-connect",
+  "finish-args": [
+    "--metadata=X-Luma=min-host-installer=57",
+    "--metadata=X-Luma=app-data-schema=connect-host-v1",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--talk-name=org.projectluma.Connect1",
+    "--talk-name=org.projectluma.AppData1",
+    "--metadata=X-Luma=min-host-continuity=63"
+  ],
+  "modules": [
+    {
+      "name": "connect-ui",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages/luma_continuity /app/bin",
+        "install -Dm644 src/luma-continuity/luma_continuity/__init__.py /app/lib/python3.14/site-packages/luma_continuity/__init__.py",
+        "install -Dm644 src/luma-continuity/luma_continuity/application.py /app/lib/python3.14/site-packages/luma_continuity/application.py",
+        "install -Dm644 src/luma-continuity/luma_continuity/cloud_sync.py /app/lib/python3.14/site-packages/luma_continuity/cloud_sync.py",
+        "install -Dm644 src/luma-continuity/luma_continuity/connect_view.py /app/lib/python3.14/site-packages/luma_continuity/connect_view.py",
+        "install -Dm644 src/luma-continuity/luma_continuity/phone_contract.py /app/lib/python3.14/site-packages/luma_continuity/phone_contract.py",
+        "install -Dm644 src/luma-continuity/luma_continuity/companion_contract.py /app/lib/python3.14/site-packages/luma_continuity/companion_contract.py",
+        "install -Dm755 src/luma-continuity/bin/luma-connect /app/bin/luma-connect-real",
+        "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup luma-connect-real \"$@\"\\n' > /app/bin/luma-connect",
+        "chmod 755 /app/bin/luma-connect",
+        "install -Dm644 src/luma-continuity/data/org.projectluma.Connect.desktop /app/share/applications/org.projectluma.Connect.desktop",
+        "cp -a src/luma-continuity/data/icons /app/share/",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Connect.metainfo.xml",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Connect/LICENSE.md",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Connect.svg",
+        "install -Dm644 depot-media/b64764c47c1618212201ea1c6ba465e94fa3b098588fd5cf56c3c5a65f6ce247.png /app/share/luma-app-media/b64764c47c1618212201ea1c6ba465e94fa3b098588fd5cf56c3c5a65f6ce247.png"
+      ]
+    }
+  ],
+  "appstream-compose": false
+}

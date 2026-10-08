@@ -1,0 +1,4 @@
+{
+  "_source": "v71 .pedsl and .phed .pedsl: 2px gap/8px bottom desktop; phone label13.5 with 4px extra label space, 14px bottom.",
+  "lumaui": {"media": {"editor": {"gap":2,"bottom":8,"phone_gap":6,"phone_bottom":14,"phone_label_size":13.5}}}
+}

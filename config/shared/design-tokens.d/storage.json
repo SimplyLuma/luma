@@ -1,0 +1,47 @@
+{
+  "_source": "Simulator v71 luma-next-71.html: DSKC line10312; map color-mix(in oklab) lines2073-2078. Base tone roles independent of theme. Background/used roles are precomputed Oklab mixes: dark28%tone+72%solid island #25282d and70%tone alpha; light25%tone+75%white and55%tone+45%white. No runtime or app-local color conversion.",
+  "lumaui": {
+    "colors": {
+      "light": {
+        "storage_tone_blue": "oklch(0.70000000 0.13000000 250.00000000)",
+        "storage_map_background_blue": "oklch(0.92500000 0.03250000 250.00000000)",
+        "storage_map_used_blue": "oklch(0.83500000 0.07150000 250.00000000)",
+        "storage_tone_violet": "oklch(0.70000000 0.13000000 295.00000000)",
+        "storage_map_background_violet": "oklch(0.92500000 0.03250000 295.00000000)",
+        "storage_map_used_violet": "oklch(0.83500000 0.07150000 295.00000000)",
+        "storage_tone_amber": "oklch(0.78000000 0.13000000 75.00000000)",
+        "storage_map_background_amber": "oklch(0.94500000 0.03250000 75.00000000)",
+        "storage_map_used_amber": "oklch(0.87900000 0.07150000 75.00000000)",
+        "storage_tone_green": "oklch(0.72000000 0.14000000 155.00000000)",
+        "storage_map_background_green": "oklch(0.93000000 0.03500000 155.00000000)",
+        "storage_map_used_green": "oklch(0.84600000 0.07700000 155.00000000)",
+        "storage_tone_pink": "oklch(0.72000000 0.14000000 350.00000000)",
+        "storage_map_background_pink": "oklch(0.93000000 0.03500000 350.00000000)",
+        "storage_map_used_pink": "oklch(0.84600000 0.07700000 350.00000000)",
+        "storage_tone_slate": "oklch(0.62000000 0.03000000 250.00000000)",
+        "storage_map_background_slate": "oklch(0.90500000 0.00750000 250.00000000)",
+        "storage_map_used_slate": "oklch(0.79100000 0.01650000 250.00000000)"
+      },
+      "dark": {
+        "storage_tone_blue": "oklch(0.70000000 0.13000000 250.00000000)",
+        "storage_map_background_blue": "oklch(0.39462745 0.04363859 251.79141706)",
+        "storage_map_used_blue": "oklch(0.70000000 0.13000000 250.00000000 / 0.7)",
+        "storage_tone_violet": "oklch(0.70000000 0.13000000 295.00000000)",
+        "storage_map_background_violet": "oklch(0.39462745 0.04266920 289.43377483)",
+        "storage_map_used_violet": "oklch(0.70000000 0.13000000 295.00000000 / 0.7)",
+        "storage_tone_amber": "oklch(0.78000000 0.13000000 75.00000000)",
+        "storage_map_background_amber": "oklch(0.41702745 0.02910046 73.56261372)",
+        "storage_map_used_amber": "oklch(0.78000000 0.13000000 75.00000000 / 0.7)",
+        "storage_tone_green": "oklch(0.72000000 0.14000000 155.00000000)",
+        "storage_map_background_green": "oklch(0.40022745 0.03787782 165.75890116)",
+        "storage_map_used_green": "oklch(0.72000000 0.14000000 155.00000000 / 0.7)",
+        "storage_tone_pink": "oklch(0.72000000 0.14000000 350.00000000)",
+        "storage_map_background_pink": "oklch(0.40022745 0.03997076 339.41191077)",
+        "storage_map_used_pink": "oklch(0.72000000 0.14000000 350.00000000 / 0.7)",
+        "storage_tone_slate": "oklch(0.62000000 0.03000000 250.00000000)",
+        "storage_map_background_slate": "oklch(0.37222745 0.01567673 254.99218593)",
+        "storage_map_used_slate": "oklch(0.62000000 0.03000000 250.00000000 / 0.7)"
+      }
+    }
+  }
+}

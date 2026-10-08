@@ -1,0 +1,37 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* App-only music surfaces. Shared LumaUI parts retain their kit styling. */
+.td-album-tile { padding: 0; background: transparent; border: none; box-shadow: none; }
+.td-album-tile:hover { background: transparent; }
+.td-song-row { border-radius: var(--lumaui-details-row-radius); }
+.td-album-song-row { padding: 0 var(--lumaui-sidebar-row-padding-x); }
+.td-song-row:hover { background: @luma_hover; }
+.td-song-row.playing .td-song-title { color: @luma_accent_ink; }
+.td-song-title { padding: 0; background: transparent; border: none; box-shadow: none; }
+.td-equalizer-bar { background: @luma_accent_ink; border-radius: var(--lumaui-thead-arrow); }
+.td-sleeve { padding: 0; background: transparent; border: none; box-shadow: none; }
+.td-credit { padding: 0; color: @luma_ink_secondary; background: transparent; border: none; box-shadow: none; }
+.td-credit:hover { text-decoration-line: underline; }
+.td-link { padding: 0; background: transparent; border: none; box-shadow: none; }
+#td-open-now-playing { min-width: 0; min-height: 0; }
+#td-player-love, #td-up-next { border: none; box-shadow: none; background: transparent; }
+#td-player-love:hover, #td-up-next:hover { background: @luma_hover; }
+.td-artist-tile { padding: 0; background: transparent; border: none; box-shadow: none; }
+.td-song-love { padding: 0; background: transparent; border: none; box-shadow: none; color: @luma_ink_secondary; opacity: 0; }
+.td-song-row:hover .td-song-love, .td-song-love:focus-visible { opacity: 1; }
+.td-song-love:checked { opacity: 1; color: @luma_love; }
+.td-artist-portrait {
+  border-radius: 100%;
+  box-shadow: 0 0 0 1px @luma_media_cover_ring,
+              0 14px 26px -12px @luma_media_cover_shadow;
+}
+/* The frame already supplies its outer gutter; keep the details island level
+   with the main island at the right and bottom edges. */
+#td-pane { margin-right: 0; margin-bottom: 0; }
+#td-album-grid, #td-artist-grid, #td-album-grid > flowboxchild, #td-artist-grid > flowboxchild { padding: 0; margin: 0; }
+.td-now-copy { color: @luma_on_media_ink; }
+.td-source-face { color: @luma_ink_secondary; }
+/* v71 phone: Listen now's features draw their album's light themselves; artist results are plain rows. */
+.td-feature, .td-artist-row { padding: 0; background: transparent; border: none; box-shadow: none; }
+.td-feature { border-radius: 16px; }
+.td-artist-row { border-radius: 14px; }
+.td-artist-row:hover { background: @luma_hover; }

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Canvas
+Icon=org.projectluma.Canvas
+Exec=true %f
+MimeType=image/jpeg;image/png;image/webp;application/pdf;
+NoDisplay=false

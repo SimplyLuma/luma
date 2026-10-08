@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# Exact sources attached by seal-first-party-source.py. No source-free build is admitted.
+{
+  "appstream-compose": false,
+  "id": "org.projectluma.Messages",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "prairie-messages",
+  "finish-args": [
+    "--env=LUMA_MESSAGES_STYLE_PATH=/app/share/prairie-core/messages.css",
+    "--env=PRAIRIE_STYLE_PATH=/app/share/prairie-core/prairie.css",
+    "--metadata=X-Luma=app-data-schema=messages-v1",
+    "--metadata=X-Luma=min-host-installer=66",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--share=network",
+    "--talk-name=org.projectluma.AppData1",
+    "--talk-name=org.projectluma.Connect1",
+    "--talk-name=org.projectluma.Background1",
+    "--metadata=X-Luma=min-host-core=99",
+    "--metadata=X-Luma=min-host-background=5",
+    "--talk-name=org.projectluma.ApplicationDirectory1"
+  ],
+  "modules": [
+    {
+      "name": "messages",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core",
+        "cp -a src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/",
+        "cp -a src/prairie-core/prairie_ui /app/lib/python3.14/site-packages/",
+        "install -Dm755 src/prairie-core/bin/prairie-messages /app/bin/prairie-messages-real",
+        "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup prairie-messages-real \"$@\"\\n' > /app/bin/prairie-messages",
+        "chmod 755 /app/bin/prairie-messages",
+        "install -Dm644 src/prairie-core/data/org.projectluma.Messages.desktop /app/share/applications/org.projectluma.Messages.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Messages.svg",
+        "cp -a src/prairie-core/style/. /app/share/prairie-core/",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Messages.metainfo.xml",
+        "install -Dm644 depot-media/582a2febf98c585bc088781c442e5376a354b5ca924f254d3bf244ade38a0b1c.png /app/share/luma-app-media/582a2febf98c585bc088781c442e5376a354b5ca924f254d3bf244ade38a0b1c.png",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Messages/LICENSE.md"
+      ]
+    }
+  ]
+}

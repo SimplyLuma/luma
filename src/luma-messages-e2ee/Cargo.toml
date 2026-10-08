@@ -1,0 +1,51 @@
+[package]
+name = "luma-mls"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MPL-2.0"
+description = "Luma Messages end-to-end encryption (ADR-051): MLS devices, groups, attachments and safety numbers, and the desktop helper"
+publish = false
+
+[lib]
+name = "luma_mls"
+path = "src/lib.rs"
+
+# The helper is the desktop client: the core plus the delivery service client,
+# sealed state on disk and luma-messages-bridge/1 on stdin and stdout. The
+# library alone (`--no-default-features`) has no networking, no files and no
+# threads, which is the surface an Android (UniFFI) or web (wasm32) client
+# builds on.
+[[bin]]
+name = "luma"
+path = "src/bin/luma/main.rs"
+required-features = ["helper"]
+
+[features]
+default = ["helper"]
+helper = ["dep:ureq", "dep:native-tls", "dep:libc"]
+
+[dependencies]
+openmls = "=0.6.0"
+openmls_rust_crypto = "=0.3.0"
+openmls_basic_credential = "=0.3.0"
+openmls_memory_storage = "=0.3.0"
+openmls_traits = "=0.3.0"
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+sha2 = "0.10"
+hkdf = "0.12"
+rand = "0.8"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1"
+ureq = { version = "2.12", default-features = false, features = ["native-tls", "json"], optional = true }
+native-tls = { version = "0.2", optional = true }
+libc = { version = "=0.2.189", optional = true }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

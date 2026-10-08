@@ -1,0 +1,89 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Viola-only content roles. Frame, titlebar, controls, menus and island remain
+ * entirely owned by the installed AppKit. No application palette is copied.
+ */
+.viola-sidebar { padding-top: 2px; }
+.viola-tab, .viola-favorite { border-radius: 10px; color: @luma_ink; }
+.viola-tab { min-height: 34px; padding: 0 6px 0 10px; }
+.viola-tab:hover, .viola-favorite:hover { background: @luma_hover; }
+.viola-tab.active, .viola-favorite.active {
+  background: @luma_content; box-shadow: inset 0 0 0 1px @luma_line, 0 1px 2px @luma_island_shadow;
+}
+.viola-tab-activate { padding: 0; border: 0; background: transparent; box-shadow: none; min-width: 0; min-height: 0; }
+.viola-tab-activate label { font-size: 13px; font-weight: 550; }
+.viola-tab.active label { font-weight: 650; }
+.viola-tab.sleeping label { color: @luma_muted; }
+.viola-tab-close { background: transparent; border: 0; box-shadow: none; padding: 0; margin: 8px 0; min-width: 18px; min-height: 18px; opacity: 0; }
+.viola-tab-close image { -gtk-icon-size: 10px; }
+.viola-tab:hover .viola-tab-close, .viola-tab.active .viola-tab-close { opacity: .5; }
+.viola-tab-close:hover { opacity: 1; }
+.viola-favorite { min-height: 42px; background: @luma_fill; }
+.viola-favorite .viola-tab-activate { padding: 0 12px; }
+.viola-workspace-header { min-height: 28px; padding: 0 6px 0 8px; background: transparent; border: 0; box-shadow: none; }
+.viola-workspace-header label { font-size: 9px; font-weight: 700; letter-spacing: .09em; color: @luma_muted; }
+.viola-group-header { min-height: 34px; padding: 0 10px; background: transparent; border: 0; box-shadow: none; }
+.viola-group-header label { font-size: 13px; font-weight: 600; }
+.viola-group-header .viola-group-count { font-size: 9px; color: @luma_muted; }
+.viola-workspace-dot { min-width: 8px; min-height: 8px; border-radius: 999px; }
+.viola-workspace-dot.blue { background: @luma_blue; }
+.viola-workspace-dot.green { background: @luma_green; }
+.viola-workspace-dot.amber { background: @luma_amber; }
+.viola-workspace-dot.violet { background: @luma_violet; }
+.viola-workspace-dot.red { background: @luma_destructive; }
+.viola-tab-group.expanded { background: @luma_fill; border-radius: 13px; padding: 4px; }
+.viola-workspace-switcher { min-height: 36px; padding: 0 10px; background: @luma_fill; border-radius: 10px; }
+.viola-workspace-switcher label { font-size: 13px; font-weight: 650; }
+.viola-workspace-switcher.active { background: @luma_pressed; }
+.viola-new-tab { min-height: 34px; padding: 0 10px; color: @luma_muted; background: transparent; border: 0; box-shadow: none; }
+.viola-new-tab label { font-size: 13px; font-weight: 550; }
+.viola-address { min-height: 28px; border-radius: 999px; background: @luma_fill; border: 1px solid @luma_line; padding: 0 2px 0 0; }
+.viola-address:focus-within { outline: 2px solid @luma_accent; background: @luma_content; }
+.viola-address entry { min-height: 26px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; box-shadow: none; font-size: 13px; font-weight: 600; }
+.viola-address entry:focus-within { outline: none; box-shadow: none; }
+.viola-address .luma-icon-button { min-width: 24px; min-height: 24px; padding: 0; }
+.viola-footer { padding: 4px; }
+.viola-notice-header { min-height: 22px; }
+.viola-notice-heading { font-size: 9px; font-weight: 700; letter-spacing: .09em; color: @luma_muted; }
+.viola-notice-count { min-width: 16px; min-height: 16px; border-radius: 999px; background: @luma_fill; font-size: 9px; }
+.viola-notice-clear { min-height: 0; padding: 0; background: transparent; box-shadow: none; border: 0; color: @luma_muted; font-size: 11px; font-weight: 600; }
+.viola-notice-card, .viola-player { border-radius: 15px; background: @luma_content; border: 1px solid @luma_line; box-shadow: 0 1px 2px @luma_island_shadow; }
+.viola-notice-card { padding: 10px 7px 10px 10px; }
+.viola-notice-icon { min-width: 30px; min-height: 30px; border-radius: 10px; background: @luma_fill; }
+.viola-notice-open { padding: 0; min-height: 0; border: 0; box-shadow: none; background: transparent; }
+.viola-notice-title, .viola-player-title { font-size: 13px; font-weight: 650; }
+.viola-notice-detail { font-size: 11px; font-weight: 550; color: @luma_muted; }
+.viola-player-row { padding: 9px 8px 10px 12px; }
+.viola-player-artist { font-size: 9px; color: @luma_muted; }
+.viola-player .viola-player-play { border-radius: 999px; background: @luma_ink; color: @luma_content; }
+.viola-workspace-dot.neutral { background: @luma_muted; }
+.viola-tab-activate:active,
+.viola-tab-activate:focus { background: transparent; box-shadow: none; }
+.viola-tab-activate:focus-visible {
+  outline: none;
+}
+
+/* Insertion hints use the current toolkit accent and never change row geometry. */
+.viola-drop-before { box-shadow: inset 0 2px @accent_color; }
+.viola-drop-after { box-shadow: inset 0 -2px @accent_color; }
+
+/* Put keyboard focus on the whole row, never around its text-sized button. */
+.viola-tab:focus-within, .viola-favorite:focus-within {
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+.viola-address-suggestions > contents { min-width: 0; }
+.viola-address-suggestions .luma-menu-row { min-width: 0; }
+
+.viola-tab.viewed-elsewhere label { color: @luma_muted; }
+.viola-favorite.viewed-elsewhere .viola-tab-favicon { opacity: .55; }
+.viola-tab-elsewhere { color: @luma_muted; }
+
+/* A favorite is a live tab too: retain its selected marker during focus. */
+.viola-favorite.active, .viola-favorite.active:focus-within {
+  box-shadow: inset 0 0 0 1px @luma_accent, inset 0 -3px @luma_accent;
+}
+
+/* Download progress remains readable without hover; reuse AppKit's palette. */
+.viola-download-status { font-size: 11px; font-weight: 650; color: @luma_accent; }
+.viola-download-progress trough { min-height: 6px; border-radius: 3px; background: @luma_fill; }
+.viola-download-progress progress { min-height: 6px; border-radius: 3px; background: @luma_accent; }
+.viola-download-progress.paused progress { background: @luma_muted; }

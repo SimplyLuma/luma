@@ -1,0 +1,51 @@
+{
+  "app": "term",
+  "title": "Terminal",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=term",
+    "window": "#w-term",
+    "clock": "2026-09-25T22:54:00",
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "pythonpath": ["src/luma-terminal", "src/luma-platform/appkit"],
+    "module": "luma_terminal",
+    "fixtures": ["tests/fixtures/term-v70.json"],
+    "env": {
+      "LUMA_TERM_FIXTURE": "{run}/fixtures/term-v70.json",
+      "XDG_DATA_DIRS": "{run}/src/src/luma-terminal/data:/usr/share"
+    }
+  },
+  "states": [
+    {"name": "home", "about": "One session, welcome block and command bar", "spec": [], "gtk": []},
+    {"name": "sessions", "about": "Sessions menu with New session add row",
+     "spec": [{"click": "[data-tmsess]"}], "gtk": [{"activate": "tm-sessions"}]},
+    {"name": "new-session", "about": "A new session starts in the active folder",
+     "spec": [{"click": "#tm-bar [data-tmnew]"}], "gtk": [{"activate": "tm-new"}]},
+    {"name": "sessions-two", "about": "Two sessions in the switcher, including the current count",
+     "spec": [{"click": "#tm-bar [data-tmnew]"}, {"click": "[data-tmsess]"}],
+     "gtk": [{"activate": "tm-new"}, {"activate": "tm-sessions"}]},
+    {"name": "split-right", "about": "A second terminal pane to the right",
+     "spec": [{"click": "[data-tmsplit=\"row\"]"}], "gtk": [{"activate": "tm-split-right"}]},
+    {"name": "split-down", "about": "A second terminal pane below",
+     "spec": [{"click": "[data-tmsplit=\"col\"]"}], "gtk": [{"activate": "tm-split-down"}]},
+    {"name": "block-selected", "about": "Welcome block selected, action bar switches to block actions",
+     "spec": [{"click": "#tm-panes .tb"}], "gtk": [{"activate": "tm-block-1"}]}
+  ],
+  "phone_states": ["home", "sessions", "new-session", "sessions-two", "split-right", "block-selected"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-term > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#tm-top"},
+    {"name": "action bar", "spec": "#tm-bar"},
+    {"name": "terminal panes", "spec": "#tm-panes"},
+    {"name": "sessions menu", "spec": "#w-term .tsesspop"}
+  ],
+  "pairs": [
+    {"spec": "#tm-panes .tpane:first-child", "gtk": "tm-pane-1", "name": "first terminal pane"},
+    {"spec": "#tm-panes .tpane:nth-child(2)", "gtk": "tm-pane-2", "name": "second terminal pane"},
+    {"spec": "#tm-bar", "gtk": "tm-bar", "name": "action bar"}
+  ],
+  "text_aliases": {
+    "Luma 1.0 · bash 5.2": "Luma 1.0 · bash 5.2"
+  }
+}

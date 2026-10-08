@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<component>
+  <name>org.project_luma.IBus.Latin</name>
+  <description>Luma native mobile input</description>
+  <exec>/usr/libexec/luma-ibus-latinime</exec>
+  <version>1.0</version>
+  <author>Project Luma</author>
+  <license>Apache-2.0</license>
+  <homepage>https://project-luma.local</homepage>
+  <textdomain>project-luma</textdomain>
+  <engines>
+    <engine>
+      <name>luma-latin</name>
+      <language>en</language>
+      <license>Apache-2.0</license>
+      <author>Project Luma</author>
+      <layout>us</layout>
+      <longname>Luma Keyboard</longname>
+      <description>Predictive Luma mobile keyboard</description>
+      <icon>input-keyboard-symbolic</icon>
+      <rank>100</rank>
+    </engine>
+  </engines>
+</component>

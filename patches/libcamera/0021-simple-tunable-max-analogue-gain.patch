@@ -1,0 +1,77 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: allow tuning to cap analogue gain
+
+Sensor control ranges describe electrical capability, not necessarily a useful
+image-quality range.  In particular, the FP6 front sensor permits 64x analogue
+gain, while the Simple CPU ISP has no calibrated chroma denoise stage and
+produces severe coloured shadow noise long before that point.
+
+Allow an Agc tuning block to set maxGain.  Zero or an omitted value preserves
+the sensor-reported limit; a positive value can only lower that limit.  Keep
+the hardware range in the shared configuration so metadata and other users
+remain truthful.
+
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -19,11 +19,14 @@ public:
+ 	Agc();
+ 	~Agc() = default;
+ 
++	int init(IPAContext &context, const ValueNode &tuningData) override;
++
+ 	void process(IPAContext &context, const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+ 		     ControlList &metadata) override;
+ 
+ private:
+ 	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
++	double maxGain_;
+ };
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -7,6 +7,7 @@
+ #include "agc.h"
+ 
+ #include <algorithm>
++#include <cerrno>
+ #include <cmath>
+ #include <stdint.h>
+ 
+@@ -63,11 +64,27 @@ static constexpr float kExpMaxStep = 0.15;
+ 
+ Agc::Agc()
++	: maxGain_(0.0)
+ {
+ }
+ 
++int Agc::init([[maybe_unused]] IPAContext &context,
++	      const ValueNode &tuningData)
++{
++	maxGain_ = tuningData["maxGain"].get<double>(0.0);
++	if (maxGain_ < 0.0) {
++		LOG(IPASoftExposure, Error) << "maxGain must not be negative";
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
+ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
+ {
+ 	int32_t &exposure = frameContext.sensor.exposure;
+ 	double &again = frameContext.sensor.gain;
++	const double againMax = maxGain_ > 0.0
++		? std::min(maxGain_, context.configuration.agc.againMax)
++		: context.configuration.agc.againMax;
+ 
+ 	double error = kExposureOptimal - exposureMSV;
+@@ -113,7 +127,7 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 	exposure = std::clamp(exposure, context.configuration.agc.exposureMin,
+ 			      context.configuration.agc.exposureMax);
+ 	again = std::clamp(again, context.configuration.agc.againMin,
+-			   context.configuration.agc.againMax);
++			   againMax);
+ 
+ 	context.activeState.agc.exposure = exposure;
+ 	context.activeState.agc.again = again;

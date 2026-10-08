@@ -1,0 +1,15 @@
+# Clock's alarms agent (ADR-033): Clock's own service mode, which rings alarms and
+# timers and exits when nothing is scheduled.
+# Installed as /usr/share/luma/background/org.projectluma.Clock.toml for luma-background.
+schema_version = "0.2"
+
+[application]
+id = "org.projectluma.Clock"
+name = "Clock"
+
+[background]
+agent = "org.projectluma.Clock.Agent"
+exec = "prairie-clock --agent"
+category = "alarms"
+wake = ["login", "resume", "schedule"]
+publishes = ["next-at", "next-kind", "scheduled", "ringing", "live-extension:org.projectluma.Clock.Next"]

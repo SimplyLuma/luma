@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Pure rebuilds with no user-visible change, exempt from release note fragments.
+# Fields: NAME VERSION-RELEASE REASON
+luma-stage-preview 0.1.0-18.test.20260916.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.67.
+luma-stage-preview 0.1.0-19.test.20260916.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.68.
+luma-stage-preview 0.1.0-21.test.20260918.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.72.
+luma-stage-preview 0.1.0-22.test.20260918.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.73.
+luma-stage-preview 0.1.0-23.test.20260918.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.74.
+luma-session-preview removed Replaced by luma-session, which obsoletes it; the rename is noted under luma-session.
+luma-sticky-notes removed Sticky Notes is withdrawn; the removal is noted in changes/sticky-notes-removed.md.
+luma-stage-preview 0.1.0-24.test.20260918.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.75.
+luma-vitals-crash-evidence 0.1.0-1.luma.11.fc44 Rebuilt unchanged with luma-vitals 1.luma.11; its payload is identical to 1.luma.9.
+luma-vitals-memory-guard 0.1.0-1.luma.11.fc44 Rebuilt unchanged with luma-vitals 1.luma.11; its payload is identical to 1.luma.9.
+luma-layouts removed Layouts is retired; the removal is noted in changes/layouts-removed.md.
+luma-vitals-crash-evidence 0.1.0-1.luma.12.fc44 Rebuilt unchanged with luma-vitals 1.luma.12; its payload is identical to 1.luma.11.
+luma-vitals-memory-guard 0.1.0-1.luma.12.fc44 Rebuilt unchanged with luma-vitals 1.luma.12; its payload is identical to 1.luma.11.
+luma-vitals-energy 0.1.0-1.luma.12.fc44 Rebuilt unchanged with luma-vitals 1.luma.12; its payload is identical to 1.luma.11.
+luma-stage-preview 0.1.0-26.test.20260922.fc44 Rebuilt unchanged against luma-developer-platform 1.luma.77; its platform requirement is now a minimum release.
+luma-maps-preview removed Replaced by luma-maps, which obsoletes it; the change is noted in changes/2026-09-28-maps-replaces-preview.md.
+# Default composition removals covered by the replacement-owner application note.
+gnome-calculator removed The default Calculator is now luma-calculator; covered in changes/creator-default-application-set-20261005.md.
+ptyxis removed The default Terminal is now luma-terminal; covered in changes/creator-default-application-set-20261005.md.
+luma-imager removed Imager remains an optional Depot application; covered in changes/creator-default-application-set-20261005.md.
+openemu-linux removed The optional emulator is omitted from the default install; covered in changes/creator-default-application-set-20261005.md.
+luma-session-instruments removed Studio instruments are installed separately; covered in changes/creator-default-application-set-20261005.md.
+sfizz removed The instrument engine is omitted with optional Studio instruments; covered in changes/creator-default-application-set-20261005.md.

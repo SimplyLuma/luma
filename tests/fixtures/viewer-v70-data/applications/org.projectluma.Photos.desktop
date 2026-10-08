@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Photos
+Icon=org.projectluma.Photos
+Exec=true %f
+MimeType=image/jpeg;image/png;image/webp;application/pdf;
+NoDisplay=false

@@ -1,0 +1,34 @@
+From: Luma UI maintainers <noreply@projectluma.org>
+Subject: [PATCH] Show compact phone thumbnails and use the file-row gap
+
+Phone lists use 24px artwork. The thumbnail cutoff previously suppressed
+actual file previews at that size, even when the user permits thumbnails.
+The existing icon-size notification also updates the responsive content gap.
+
+--- a/src/nautilus-name-cell.c
++++ b/src/nautilus-name-cell.c
+@@ -182,10 +182,15 @@
+     gboolean show_thumbnail;
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
++    GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
++    gboolean phone = root != NULL && gtk_widget_get_width (GTK_WIDGET (root)) > 0 &&
++                     gtk_widget_get_width (GTK_WIDGET (root)) < 560 && !self->column_mode;
++    gtk_box_set_spacing (GTK_BOX (self->content), phone ? 12 : 6);
+     rendered_icon_size = (self->column_mode || icon_size <= 20) ? 14 : icon_size;
+     gtk_image_set_pixel_size (GTK_IMAGE (self->symbolic_folder_icon), rendered_icon_size);
+     icon_paintable = nautilus_file_get_icon_paintable (file, rendered_icon_size, scale_factor, flags);
+-    show_thumbnail = icon_size >= NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE &&
++    show_thumbnail = (icon_size >= NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE ||
++                      (phone && icon_size >= 24)) &&
+                      nautilus_file_should_show_thumbnail (file);
+ 
+     gboolean use_symbolic_folder = (self->column_mode || icon_size <= 20) &&
+@@ -391,6 +396,7 @@
+     g_signal_connect (self, "notify::icon-size",
+                       G_CALLBACK (on_icon_size_changed), NULL);
+     g_signal_connect (self, "notify::scale-factor", G_CALLBACK (on_icon_size_changed), NULL);
++    g_signal_connect (self, "map", G_CALLBACK (on_icon_size_changed), NULL);
+ 
+     /* Connect automatically to an item. */
+     self->item_signal_group = g_signal_group_new (NAUTILUS_TYPE_VIEW_ITEM);

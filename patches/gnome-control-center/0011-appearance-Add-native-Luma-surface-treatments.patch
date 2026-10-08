@@ -1,0 +1,373 @@
+From 984956cc2dba48ad5a08a3fa2fd2d02074b13712 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 7 Sep 2026 18:47:59 -0500
+Subject: [PATCH] appearance: Add native Luma surface treatments
+
+---
+ panels/background/cc-background-panel.blp |  71 ++++++++++++-
+ panels/background/cc-background-panel.c   | 130 +++++++++++++++++++----
+ panels/background/meson.build             |   2 +
+ panels/background/preview.css             |  16 +++
+ 4 files changed, 197 insertions(+), 22 deletions(-)
+
+diff --git a/panels/background/cc-background-panel.blp b/panels/background/cc-background-panel.blp
+index ff2b3fb..fa9a0b4 100644
+--- a/panels/background/cc-background-panel.blp
++++ b/panels/background/cc-background-panel.blp
+@@ -66,7 +66,7 @@ template $CcBackgroundPanel: $CcPanel {
+                   }
+ 
+                   Label default_label {
+-                    label: _("_Default");
++                    label: _("_Light");
+                     use-underline: true;
+                     mnemonic-widget: default_toggle;
+ 
+@@ -111,11 +111,80 @@ template $CcBackgroundPanel: $CcPanel {
+                       row: 1;
+                     }
+                   }
++
++                  ToggleButton frost_toggle {
++                    group: default_toggle;
++                    accessibility {
++                      labelled-by: [ frost_label ];
++                    }
++                    notify::active => $on_color_scheme_toggle_active_cb(template);
++                    $CcBackgroundPreview frost_preview {}
++                    styles [ "background-preview-button", "luma-frost-preview" ]
++                    layout {
++                      column: 0;
++                      row: 2;
++                    }
++                  }
++
++                  Label frost_label {
++                    label: _("_Frost");
++                    use-underline: true;
++                    mnemonic-widget: frost_toggle;
++                    layout {
++                      column: 0;
++                      row: 3;
++                    }
++                  }
++
++                  ToggleButton glass_toggle {
++                    group: default_toggle;
++                    accessibility {
++                      labelled-by: [ glass_label ];
++                    }
++                    notify::active => $on_color_scheme_toggle_active_cb(template);
++                    $CcBackgroundPreview glass_preview {}
++                    styles [ "background-preview-button", "luma-glass-preview" ]
++                    layout {
++                      column: 1;
++                      row: 2;
++                    }
++                  }
++
++                  Label glass_label {
++                    label: _("_Glass");
++                    use-underline: true;
++                    mnemonic-widget: glass_toggle;
++                    layout {
++                      column: 1;
++                      row: 3;
++                    }
++                  }
++
++                  Label surface_status {
++                    xalign: 0;
++                    wrap: true;
++                    styles [ "dim-label", "caption" ]
++                    layout {
++                      column: 0;
++                      row: 4;
++                      column-span: 2;
++                    }
++                  }
+                 }
+               }
+             }
+           }
+ 
++          Adw.PreferencesGroup {
++            title: _("Transparency");
++
++            Adw.SwitchRow reduce_transparency_switch {
++              title: _("Reduce Transparency");
++              subtitle: _("Use solid, readable surfaces instead of Frost or Glass");
++              notify::active => $on_reduce_transparency_changed_cb(template);
++            }
++          }
++
+           Adw.PreferencesGroup {
+             title: _("Accent Color");
+ 
+diff --git a/panels/background/cc-background-panel.c b/panels/background/cc-background-panel.c
+index 201d2ab..c9cfc05 100644
+--- a/panels/background/cc-background-panel.c
++++ b/panels/background/cc-background-panel.c
+@@ -26,6 +26,8 @@
+ #include <glib/gstdio.h>
+ 
+ #include <gdesktop-enums.h>
++#include <luma-appearance.h>
++#include <luma-ui.h>
+ 
+ #include "cc-background-panel.h"
+ 
+@@ -46,6 +48,9 @@
+ #define INTERFACE_PATH_ID "org.gnome.desktop.interface"
+ #define INTERFACE_COLOR_SCHEME_KEY "color-scheme"
+ #define INTERFACE_ACCENT_COLOR_KEY "accent-color"
++#define LUMA_SHELL_STATE_ID "org.project_luma.shell-state"
++#define LUMA_SURFACE_TREATMENT_KEY "surface-treatment"
++#define LUMA_REDUCE_TRANSPARENCY_KEY "reduce-transparency"
+ 
+ struct _CcBackgroundPanel
+ {
+@@ -56,6 +61,9 @@ struct _CcBackgroundPanel
+   GSettings *settings;
+   GSettings *lock_settings;
+   GSettings *interface_settings;
++  GSettings *surface_settings;
++  LumaSurfacePolicy *surface_policy;
++  gboolean syncing_surface_controls;
+ 
+   GDBusProxy *proxy;
+ 
+@@ -65,8 +72,14 @@ struct _CcBackgroundPanel
+   CcBackgroundChooser *background_chooser;
+   CcBackgroundPreview *default_preview;
+   CcBackgroundPreview *dark_preview;
++  CcBackgroundPreview *frost_preview;
++  CcBackgroundPreview *glass_preview;
+   GtkToggleButton *default_toggle;
+   GtkToggleButton *dark_toggle;
++  GtkToggleButton *frost_toggle;
++  GtkToggleButton *glass_toggle;
++  AdwSwitchRow *reduce_transparency_switch;
++  GtkLabel *surface_status;
+ };
+ 
+ CC_PANEL_REGISTER (CcBackgroundPanel, cc_background_panel)
+@@ -233,25 +247,34 @@ reload_accent_color_toggles (CcBackgroundPanel *self)
+ }
+ 
+ static void
+-reload_color_scheme (CcBackgroundPanel *self)
++reload_surface_treatment (CcBackgroundPanel *self)
+ {
+-  GDesktopColorScheme scheme;
+-
+-  scheme = g_settings_get_enum (self->interface_settings, INTERFACE_COLOR_SCHEME_KEY);
+-
+-  if (scheme == G_DESKTOP_COLOR_SCHEME_DEFAULT)
+-    {
+-      gtk_toggle_button_set_active (self->default_toggle, TRUE);
+-    }
+-  else if (scheme == G_DESKTOP_COLOR_SCHEME_PREFER_DARK)
+-    {
+-      gtk_toggle_button_set_active (self->dark_toggle, TRUE);
+-    }
++  const char *requested = luma_surface_policy_get_requested (self->surface_policy);
++  gboolean available = luma_surface_policy_get_translucency_available (self->surface_policy);
++  gboolean locked = luma_surface_policy_get_locked (self->surface_policy);
++  gboolean reduce = g_settings_get_boolean (self->surface_settings,
++                                             LUMA_REDUCE_TRANSPARENCY_KEY);
++  self->syncing_surface_controls = TRUE;
++
++  gtk_toggle_button_set_active (self->default_toggle, g_str_equal (requested, "light"));
++  gtk_toggle_button_set_active (self->dark_toggle, g_str_equal (requested, "dark"));
++  gtk_toggle_button_set_active (self->frost_toggle, g_str_equal (requested, "frost"));
++  gtk_toggle_button_set_active (self->glass_toggle, g_str_equal (requested, "glass"));
++  gtk_widget_set_sensitive (GTK_WIDGET (self->frost_toggle), available);
++  gtk_widget_set_sensitive (GTK_WIDGET (self->glass_toggle), available);
++
++  if (locked)
++    gtk_label_set_text (self->surface_status,
++                        _("Frost and Glass are unavailable while High Contrast is enabled."));
++  else if (reduce)
++    gtk_label_set_text (self->surface_status,
++                        _("Frost and Glass currently use the opaque Light treatment."));
++  else if (!available)
++    gtk_label_set_text (self->surface_status,
++                        _("Frost and Glass need compositor blur and are unavailable on this renderer."));
+   else
+-    {
+-      gtk_toggle_button_set_active (self->default_toggle, FALSE);
+-      gtk_toggle_button_set_active (self->dark_toggle, FALSE);
+-    }
++    gtk_label_set_text (self->surface_status, "");
++  self->syncing_surface_controls = FALSE;
+ }
+ 
+ static void
+@@ -280,10 +302,46 @@ set_color_scheme (CcBackgroundPanel   *self,
+ static void
+ on_color_scheme_toggle_active_cb (CcBackgroundPanel *self)
+ {
++  const char *treatment = NULL;
++  GDesktopColorScheme scheme = G_DESKTOP_COLOR_SCHEME_DEFAULT;
++  g_autoptr(GError) error = NULL;
++  if (self->syncing_surface_controls)
++    return;
++
+   if (gtk_toggle_button_get_active (self->default_toggle))
+-    set_color_scheme (self, G_DESKTOP_COLOR_SCHEME_DEFAULT);
++    treatment = "light";
+   else if (gtk_toggle_button_get_active (self->dark_toggle))
+-    set_color_scheme (self, G_DESKTOP_COLOR_SCHEME_PREFER_DARK);
++    {
++      treatment = "dark";
++      scheme = G_DESKTOP_COLOR_SCHEME_PREFER_DARK;
++    }
++  else if (gtk_toggle_button_get_active (self->frost_toggle))
++    treatment = "frost";
++  else if (gtk_toggle_button_get_active (self->glass_toggle))
++    treatment = "glass";
++
++  if (treatment == NULL)
++    return;
++  if (!luma_surface_policy_select (self->surface_policy, treatment, &error))
++    {
++      reload_surface_treatment (self);
++      return;
++    }
++  set_color_scheme (self, scheme);
++}
++
++static void
++on_reduce_transparency_changed_cb (CcBackgroundPanel *self)
++{
++  gboolean active = adw_switch_row_get_active (self->reduce_transparency_switch);
++  if (self->syncing_surface_controls)
++    return;
++
++  if (active != g_settings_get_boolean (self->surface_settings,
++                                        LUMA_REDUCE_TRANSPARENCY_KEY))
++    g_settings_set_boolean (self->surface_settings,
++                            LUMA_REDUCE_TRANSPARENCY_KEY,
++                            active);
+ }
+ 
+ static void
+@@ -313,6 +365,8 @@ update_preview (CcBackgroundPanel *self)
+   current_background = self->current_background;
+   cc_background_preview_set_item (self->default_preview, current_background);
+   cc_background_preview_set_item (self->dark_preview, current_background);
++  cc_background_preview_set_item (self->frost_preview, current_background);
++  cc_background_preview_set_item (self->glass_preview, current_background);
+ }
+ 
+ static void
+@@ -491,6 +545,8 @@ cc_background_panel_dispose (GObject *object)
+   g_clear_object (&self->settings);
+   g_clear_object (&self->lock_settings);
+   g_clear_object (&self->interface_settings);
++  g_clear_object (&self->surface_settings);
++  g_clear_object (&self->surface_policy);
+   g_clear_object (&self->proxy);
+ 
+   G_OBJECT_CLASS (cc_background_panel_parent_class)->dispose (object);
+@@ -527,10 +583,17 @@ cc_background_panel_class_init (CcBackgroundPanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, background_chooser);
+   gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, default_preview);
+   gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, dark_preview);
++  gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, frost_preview);
++  gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, glass_preview);
+   gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, default_toggle);
+   gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, dark_toggle);
++  gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, frost_toggle);
++  gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, glass_toggle);
++  gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, reduce_transparency_switch);
++  gtk_widget_class_bind_template_child (widget_class, CcBackgroundPanel, surface_status);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_color_scheme_toggle_active_cb);
++  gtk_widget_class_bind_template_callback (widget_class, on_reduce_transparency_changed_cb);
+   gtk_widget_class_bind_template_callback (widget_class, on_chooser_background_chosen_cb);
+   gtk_widget_class_bind_template_callback (widget_class, on_add_picture_button_clicked_cb);
+ }
+@@ -558,6 +621,14 @@ cc_background_panel_init (CcBackgroundPanel *self)
+   g_settings_delay (self->lock_settings);
+ 
+   self->interface_settings = g_settings_new (INTERFACE_PATH_ID);
++  self->surface_settings = g_settings_new (LUMA_SHELL_STATE_ID);
++  self->surface_policy = luma_surface_policy_new (LUMA_SURFACE_TARGET_SHELL);
++  {
++    gboolean available = luma_surface_backdrop_display_is_available (
++      gtk_widget_get_display (GTK_WIDGET (self)));
++    luma_surface_policy_set_capabilities (self->surface_policy,
++                                          available, available, available);
++  }
+ 
+   /* Load the background */
+   reload_current_bg (self);
+@@ -567,12 +638,22 @@ cc_background_panel_init (CcBackgroundPanel *self)
+   g_signal_connect_object (self->settings, "changed", G_CALLBACK (on_settings_changed), self, G_CONNECT_SWAPPED);
+ 
+   /* Interface settings */
+-  reload_color_scheme (self);
++  reload_surface_treatment (self);
++  adw_switch_row_set_active (
++    self->reduce_transparency_switch,
++    g_settings_get_boolean (self->surface_settings,
++                            LUMA_REDUCE_TRANSPARENCY_KEY));
+   setup_accent_color_toggles (self);
+ 
+   g_signal_connect_object (self->interface_settings,
+                            "changed::" INTERFACE_COLOR_SCHEME_KEY,
+-                           G_CALLBACK (reload_color_scheme),
++                           G_CALLBACK (reload_surface_treatment),
++                           self,
++                           G_CONNECT_SWAPPED);
++
++  g_signal_connect_object (self->surface_policy,
++                           "changed",
++                           G_CALLBACK (reload_surface_treatment),
+                            self,
+                            G_CONNECT_SWAPPED);
+ 
+diff --git a/panels/background/meson.build b/panels/background/meson.build
+index 87c615b..f8f6b8f 100644
+--- a/panels/background/meson.build
++++ b/panels/background/meson.build
+@@ -75,6 +75,8 @@ deps = common_deps + [
+   gnome_bg_dep,
+   libxml_dep,
+   dependency('cairo-gobject'),
++  dependency('luma-appearance-1'),
++  dependency('luma-ui-1'),
+ ]
+ 
+ cflags += [
+diff --git a/panels/background/preview.css b/panels/background/preview.css
+index b93c829..c0f1cba 100644
+--- a/panels/background/preview.css
++++ b/panels/background/preview.css
+@@ -26,6 +26,22 @@ background-preview .window.dark {
+   --sidebar-border-color: rgb(0 0 0 / 36%);
+ }
+ 
++.luma-frost-preview background-preview .window {
++  --window-bg-color: rgba(241, 242, 243, 0.73);
++  --headerbar-bg-color: rgba(251, 251, 250, 0.90);
++  --sidebar-bg-color: rgba(255, 255, 255, 0.50);
++  --sidebar-backdrop-color: rgba(251, 251, 250, 0.90);
++  --sidebar-border-color: rgba(37, 46, 54, 0.105);
++}
++
++.luma-glass-preview background-preview .window {
++  --window-bg-color: rgba(255, 255, 255, 0.31);
++  --headerbar-bg-color: rgba(246, 244, 240, 0.82);
++  --sidebar-bg-color: rgba(255, 255, 255, 0.44);
++  --sidebar-backdrop-color: rgba(246, 244, 240, 0.82);
++  --sidebar-border-color: rgba(37, 46, 54, 0.105);
++}
++
+ background-preview .window .header-bar {
+   min-height: 15px;
+   box-shadow: 0 1px color-mix(in srgb, var(--headerbar-shade-color) 50%, transparent),
+-- 
+2.54.0 (Apple Git-157)

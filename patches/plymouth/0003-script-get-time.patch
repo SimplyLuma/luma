@@ -1,0 +1,33 @@
+diff --git a/src/plugins/splash/script/script-lib-plymouth.c b/src/plugins/splash/script/script-lib-plymouth.c
+index 9198415..659ab4c 100644
+--- a/src/plugins/splash/script/script-lib-plymouth.c
++++ b/src/plugins/splash/script/script-lib-plymouth.c
+@@ -58,6 +58,16 @@ static script_return_t plymouth_set_refresh_rate (script_state_t *state,
+         return script_return_obj_null ();
+ }
+ 
++/* Seconds on the monotonic clock. Refresh callbacks arrive at a nominal
++ * 50 Hz, but a frame that takes longer to draw delays the next one, so a
++ * theme that counts callbacks runs slow exactly when the machine is busy.
++ * With this a theme can time its animation by the clock instead. */
++static script_return_t plymouth_get_time (script_state_t *state,
++                                          void           *user_data)
++{
++        return script_return_obj (script_obj_new_number (ply_get_timestamp ()));
++}
++
+ static script_return_t plymouth_get_mode (script_state_t *state,
+                                           void           *user_data)
+ {
+@@ -240,6 +250,11 @@ script_lib_plymouth_data_t *script_lib_plymouth_setup (script_state_t        *st
+                                     plymouth_get_mode,
+                                     data,
+                                     NULL);
++        script_add_native_function (plymouth_hash,
++                                    "GetTime",
++                                    plymouth_get_time,
++                                    data,
++                                    NULL);
+         script_add_native_function (plymouth_hash,
+                                     "SetSystemUpdateFunction",
+                                     plymouth_set_function,

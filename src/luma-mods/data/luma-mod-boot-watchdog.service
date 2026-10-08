@@ -1,0 +1,19 @@
+[Unit]
+Description=Roll back an unpromoted Project Luma Mod deployment
+Documentation=https://github.com/SimplyLuma/luma
+After=luma-mod-boot-observe.service
+ConditionPathExists=/var/lib/luma/mods/system-state.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-mod-system-health watchdog
+StateDirectory=luma/mods
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/luma/mods /var/lib/rpm-ostree /boot
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes

@@ -1,0 +1,255 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 23:59:00 -0500
+Subject: [PATCH] lockscreen: use the Luma Presence quiet state
+
+Once a user session is authenticated, screen blanking must return to the same
+Luma Presence language as the pre-session greeter rather than exposing Phosh's
+stock oversized clock and slide affordance. Keep Phosh's native lock manager,
+PAM authentication, notifications, calls, and fingerprint boundary, but give
+its quiet surface the approved Presence geometry and tap transition.
+
+The tap gesture is bound as a template child alongside Phosh's existing swipe
+and long-press gestures. GtkBuilder finalizes template objects that nothing
+holds a reference to, so binding only the callback leaves the gesture destroyed
+immediately after construction and the surface never reacts to a tap at all.
+
+It also watches the whole lock surface in the capture phase rather than
+box_info in the bubble phase. box_info is largely covered by a scrolled
+notification list and sits inside both HdyCarousel's and HdyDeck's swipe
+trackers, so a bubble-phase gesture there never sees an uncontested tap. The
+gesture deliberately does not claim the sequence: a press that travels is a
+drag and stays with the carousel, so slide-to-unlock keeps working, while a
+press consumed by a notification cancels the tap instead of unlocking.
+
+---
+--- a/src/lockscreen.c
++++ b/src/lockscreen.c
+@@ -97,6 +97,11 @@
+   GtkWidget          *keypad;
+   GtkWidget          *entry_pin;
+   GtkGesture         *long_press_del_gesture;
++  GtkGesture         *luma_unlock_tap;
++  struct {
++    double x;
++    double y;
++  } luma_tap_origin;
+   GtkWidget          *lbl_unlock_status;
+   GtkWidget          *btn_submit;
+   GtkWidget          *btn_keyboard;
+@@ -319,6 +324,54 @@
+ }
+ 
+ 
++static void
++on_luma_unlock_press (PhoshLockscreen      *self,
++                      int                   n_press,
++                      double                x,
++                      double                y,
++                      GtkGestureMultiPress *gesture)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++
++  priv->luma_tap_origin.x = x;
++  priv->luma_tap_origin.y = y;
++  g_message ("luma-tap: pressed presses=%d page=%d", n_press,
++             phosh_lockscreen_get_page (self));
++}
++
++
++static void
++on_luma_unlock_cancelled (PhoshLockscreen  *self,
++                          GdkEventSequence *sequence,
++                          GtkGesture       *gesture)
++{
++  g_message ("luma-tap: sequence claimed elsewhere");
++}
++
++
++static void
++on_luma_unlock_tap (PhoshLockscreen     *self,
++                    int                  n_press,
++                    double               x,
++                    double               y,
++                    GtkGestureMultiPress *gesture)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++  double dx = x - priv->luma_tap_origin.x;
++  double dy = y - priv->luma_tap_origin.y;
++  /* A tap is a press that did not travel. Anything further is a drag and
++   * belongs to the carousel, so the swipe keeps working as before. */
++  gboolean moved = (dx * dx + dy * dy) > (32.0 * 32.0);
++
++  g_message ("luma-tap: released presses=%d moved=%s page=%d", n_press,
++             moved ? "yes" : "no", phosh_lockscreen_get_page (self));
++
++  if (n_press == 1 && !moved &&
++      phosh_lockscreen_get_page (self) == PHOSH_LOCKSCREEN_PAGE_INFO)
++    show_unlock_page (self);
++}
++
++
+ static gboolean
+ finish_shake_entry (PhoshLockscreen *self)
+ {
+@@ -552,12 +605,9 @@
+   PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+   const char *time;
+   g_autofree char *date = NULL;
+-  g_autofree char *stripped = NULL;
+ 
+   time = phosh_wall_clock_get_clock (wall_clock, TRUE);
+-
+-  stripped = phosh_wall_clock_strip_am_pm (wall_clock, time);
+-  gtk_label_set_text (GTK_LABEL (priv->lbl_clock), stripped);
++  gtk_label_set_text (GTK_LABEL (priv->lbl_clock), time);
+ 
+   date = phosh_wall_clock_local_date (wall_clock);
+   gtk_label_set_label (GTK_LABEL (priv->lbl_date), date);
+@@ -1160,6 +1210,8 @@
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, lbl_unlock_status);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen,
+                                                 long_press_del_gesture);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen,
++                                                luma_unlock_tap);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, btn_submit);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, btn_keyboard);
+ 
+@@ -1183,6 +1235,9 @@
+   gtk_widget_class_bind_template_callback (widget_class, on_call_notification_activated);
+   gtk_widget_class_bind_template_callback (widget_class, on_info_reveal_child_changed);
+   gtk_widget_class_bind_template_callback (widget_class, show_unlock_page);
++  gtk_widget_class_bind_template_callback (widget_class, on_luma_unlock_tap);
++  gtk_widget_class_bind_template_callback (widget_class, on_luma_unlock_press);
++  gtk_widget_class_bind_template_callback (widget_class, on_luma_unlock_cancelled);
+ 
+   /* plugin page */
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, widget_box);
+--- a/src/ui/lockscreen.ui
++++ b/src/ui/lockscreen.ui
+@@ -78,7 +78,7 @@
+                     <property name="orientation">vertical</property>
+                     <child>
+                       <object class="GtkImage" id="lock-arrow">
+-                        <property name="visible">1</property>
++                        <property name="visible">1</property>
+                         <property name="pixel-size">32</property>
+                         <property name="icon-name">swipe-arrow-symbolic</property>
+                         <style>
+@@ -92,9 +92,9 @@
+                         <property name="valign">end</property>
+                         <property name="margin-top">6</property>
+                         <property name="margin-bottom">32</property>
+-                        <property name="label" translatable="yes">Slide up to unlock</property>
++                        <property name="label" translatable="yes">Swipe to unlock</property>
+                         <style>
+-                          <class name="dim-label"/>
++                          <class name="luma-lock-hint"/>
+                         </style>
+                       </object>
+                     </child>
+@@ -103,14 +103,14 @@
+                     <property name="pack-type">end</property>
+                   </packing>
+                 </child>
+-                <child type="center">
++                <child>
+                   <object class="GtkBox" id="box_datetime">
+                     <property name="visible">1</property>
+-                    <property name="valign">center</property>
++                    <property name="valign">start</property>
+                     <property name="vexpand">1</property>
+                     <property name="orientation">vertical</property>
+                     <property name="spacing">5</property>
+-                    <property name="margin-bottom">16</property>
++                    <property name="margin-top">178</property>
+                     <style>
+                       <class name="p-large"/>
+                     </style>
+@@ -347,6 +347,14 @@
+       </object>
+     </child>
+   </template>
++  <object class="GtkGestureMultiPress" id="luma_unlock_tap">
++    <property name="widget">PhoshLockscreen</property>
++    <property name="propagation-phase">capture</property>
++    <property name="touch-only">0</property>
++    <signal name="pressed" handler="on_luma_unlock_press" object="PhoshLockscreen" swapped="true"/>
++    <signal name="released" handler="on_luma_unlock_tap" object="PhoshLockscreen" swapped="true"/>
++    <signal name="cancel" handler="on_luma_unlock_cancelled" object="PhoshLockscreen" swapped="true"/>
++  </object>
+   <object class="GtkGestureSwipe" id="swipe_gesture">
+     <property name="widget">PhoshLockscreen</property>
+     <property name="propagation-phase">capture</property>
+--- a/src/stylesheet/common.css
++++ b/src/stylesheet/common.css
+@@ -458,6 +458,7 @@
+ phosh-lockscreen {
+   background-color: transparent;
+   color: @phosh_fg_color;
++  font-family: "Figtree";
+ }
+ 
+ phosh-lockscreen-bg {
+@@ -472,32 +473,29 @@
+ 
+ /* Clock */
+ #phosh-lockscreen-clock {
+-  font-weight: 300;
+-  font-size: 84px;
++  font-weight: 500;
++  font-size: 46px;
+   font-feature-settings: "tnum";
+-  margin: 12px 0;
+-  transition: 200ms ease;
+-  padding-top: 40px;
+-  text-shadow: 1px 1px 1.1px rgba(0, 0, 0, 0.3);
++  letter-spacing: -1px;
++  margin: 0;
++  padding: 0;
++  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.28);
+ }
+ 
+ #phosh-lockscreen-date {
+-  font-weight: 400;
+-  font-size: 18px;
+-  margin: 6px 0;
+-  transition: 200ms ease;
+-  text-shadow: 1px 1px 1.1px rgba(0, 0, 0, 0.3);
++  font-weight: 600;
++  font-size: 13px;
++  margin: 0;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.34);
+ }
+ 
+ .p-small #phosh-lockscreen-clock {
+-  padding-top: 0px;
+-  font-size: 72px;
+-  transition: 200ms ease;
++  padding: 0;
++  font-size: 42px;
+ }
+ .p-small #phosh-lockscreen-date {
+-  font-size: 16px;
+-  margin-top: 0;
+-  transition: 200ms ease;
++  font-size: 13px;
++  margin: 0;
+ }
+ 
+ /* Lockscreen Arrow */
+@@ -511,6 +509,13 @@
+   text-shadow: 1px 1px 1.1px rgba(0, 0, 0, 0.3);
+ }
+ 
++.luma-lock-hint {
++  font-size: 13px;
++  font-weight: 600;
++  opacity: 0.82;
++  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36);
++}
++
+ .phosh-lockscreen-status-icons {
+   padding: 6px;
+ }
+-- 
+2.53.0

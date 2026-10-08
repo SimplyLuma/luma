@@ -1,0 +1,270 @@
+--- a/src/nautilus-list-base.c
++++ b/src/nautilus-list-base.c
+@@ -158,13 +158,219 @@
+     }
+ }
+ 
++/* This provider is owned by the native Filer drag source. Mutter requests
++ * ROOTWINDOW_DROP_MIME only on a committed root-window drop. A MIME request
++ * alone is insufficient: GdkDrag::dnd-finished must also succeed. */
++typedef struct
++{
++    GdkContentProvider parent_instance;
++    char *token;
++    gboolean requested;
++    gboolean ended;
++} LumaFileDragProvider;
++
++typedef GdkContentProviderClass LumaFileDragProviderClass;
++G_DEFINE_TYPE (LumaFileDragProvider, luma_file_drag_provider, GDK_TYPE_CONTENT_PROVIDER)
++
++#define FILE_DRAG_PROVIDER_KEY "luma-file-drag-provider"
++
++static void
++finish_shell_file_drag (LumaFileDragProvider *self,
++                        gboolean              succeeded)
++{
++    g_autoptr (GDBusConnection) bus = NULL;
++
++    if (self->ended || self->token == NULL)
++    {
++        return;
++    }
++    self->ended = TRUE;
++    bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++    if (bus != NULL)
++    {
++        g_dbus_connection_call (bus, SHELL_DBUS_NAME, SHELL_DBUS_PATH,
++                                SHELL_DBUS_INTERFACE, "EndFileDrag",
++                                g_variant_new ("(sb)", self->token, succeeded),
++                                NULL, G_DBUS_CALL_FLAGS_NO_AUTO_START, 1000,
++                                NULL, NULL, NULL);
++    }
++}
++
++static void
++luma_file_drag_provider_finalize (GObject *object)
++{
++    LumaFileDragProvider *self = (LumaFileDragProvider *) object;
++
++    finish_shell_file_drag (self, FALSE);
++    g_free (self->token);
++    G_OBJECT_CLASS (luma_file_drag_provider_parent_class)->finalize (object);
++}
++
++static GdkContentFormats *
++luma_file_drag_provider_ref_formats (GdkContentProvider *provider)
++{
++    const char *formats[] = { ROOTWINDOW_DROP_MIME };
++    return gdk_content_formats_new (formats, G_N_ELEMENTS (formats));
++}
++
++static void
++luma_file_drag_write_done (GObject      *stream,
++                           GAsyncResult *result,
++                           gpointer      user_data)
++{
++    g_autoptr (GTask) task = user_data;
++    LumaFileDragProvider *self = g_task_get_source_object (task);
++    g_autoptr (GError) error = NULL;
++
++    if (!g_output_stream_write_all_finish (G_OUTPUT_STREAM (stream), result, NULL, &error))
++    {
++        g_task_return_error (task, g_steal_pointer (&error));
++        return;
++    }
++    self->requested = TRUE;
++    g_task_return_boolean (task, TRUE);
++}
++
++static void
++luma_file_drag_provider_write_async (GdkContentProvider *provider,
++                                     const char         *mime_type,
++                                     GOutputStream      *stream,
++                                     int                 io_priority,
++                                     GCancellable       *cancellable,
++                                     GAsyncReadyCallback callback,
++                                     gpointer            user_data)
++{
++    LumaFileDragProvider *self = (LumaFileDragProvider *) provider;
++    GTask *task = g_task_new (provider, cancellable, callback, user_data);
++
++    if (self->ended || g_strcmp0 (mime_type, ROOTWINDOW_DROP_MIME) != 0)
++    {
++        g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                                 "Inactive or unsupported root-window transfer");
++        g_object_unref (task);
++        return;
++    }
++    /* GTask retains the provider/token through completion. No URI is published
++     * in this MIME payload; the authenticated D-Bus transaction owns the URIs. */
++    g_output_stream_write_all_async (stream, self->token, strlen (self->token),
++                                     io_priority, cancellable,
++                                     luma_file_drag_write_done, task);
++}
++
++static gboolean
++luma_file_drag_provider_write_finish (GdkContentProvider *provider,
++                                      GAsyncResult       *result,
++                                      GError            **error)
++{
++    g_return_val_if_fail (g_task_is_valid (result, provider), FALSE);
++    return g_task_propagate_boolean (G_TASK (result), error);
++}
++
++static void
++luma_file_drag_provider_class_init (LumaFileDragProviderClass *klass)
++{
++    G_OBJECT_CLASS (klass)->finalize = luma_file_drag_provider_finalize;
++    klass->ref_formats = luma_file_drag_provider_ref_formats;
++    klass->write_mime_type_async = luma_file_drag_provider_write_async;
++    klass->write_mime_type_finish = luma_file_drag_provider_write_finish;
++}
++
++static void
++luma_file_drag_provider_init (LumaFileDragProvider *self)
++{
++}
++
++static GdkContentProvider *
++begin_shell_file_drag (GList *files)
++{
++    g_autoptr (GDBusConnection) bus = NULL;
++    g_autoptr (GVariant) reply = NULL;
++    GVariantBuilder builder;
++    const char *token;
++
++    if (files == NULL || g_list_length (files) > 64)
++    {
++        return NULL;
++    }
++    g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(ss)"));
++    for (GList *item = files; item != NULL; item = item->next)
++    {
++        NautilusFile *file = item->data;
++        g_autoptr (GFile) location = nautilus_file_get_activation_location (file);
++        g_autofree char *uri = g_file_get_uri (location);
++        const char *mime = nautilus_file_get_mime_type (file);
++
++        if (!g_file_is_native (location) ||
++            nautilus_file_get_file_type (file) != G_FILE_TYPE_REGULAR ||
++            mime == NULL || strlen (uri) > 8192 || strlen (mime) > 256)
++        {
++            g_variant_builder_clear (&builder);
++            return NULL;
++        }
++        g_variant_builder_add (&builder, "(ss)", uri, mime);
++    }
++    bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++    if (bus == NULL)
++    {
++        g_variant_builder_clear (&builder);
++        return NULL;
++    }
++    reply = g_dbus_connection_call_sync (bus, SHELL_DBUS_NAME, SHELL_DBUS_PATH,
++                                         SHELL_DBUS_INTERFACE, "BeginFileDrag",
++                                         g_variant_new ("(a(ss))", &builder),
++                                         G_VARIANT_TYPE ("(s)"),
++                                         G_DBUS_CALL_FLAGS_NO_AUTO_START, 500,
++                                         NULL, NULL);
++    if (reply == NULL)
++    {
++        return NULL;
++    }
++    g_variant_get (reply, "(&s)", &token);
++    if (*token == '\0')
++    {
++        return NULL;
++    }
++    LumaFileDragProvider *provider = g_object_new (luma_file_drag_provider_get_type (), NULL);
++    provider->token = g_strdup (token);
++    return GDK_CONTENT_PROVIDER (provider);
++}
++
++static void
++on_file_drag_finished (GdkDrag              *drag,
++                       LumaFileDragProvider *provider)
++{
++    finish_shell_file_drag (provider, provider->requested);
++}
++
++static void
++on_item_drag_begin (GtkDragSource *source,
++                    GdkDrag       *drag,
++                    gpointer       user_data)
++{
++    LumaFileDragProvider *provider = g_object_get_data (G_OBJECT (source), FILE_DRAG_PROVIDER_KEY);
++
++    if (provider != NULL)
++    {
++        g_object_set_data_full (G_OBJECT (drag), FILE_DRAG_PROVIDER_KEY,
++                                g_object_ref (provider), g_object_unref);
++        /* Connected before GtkDragSource's finish handler, which emits
++         * drag-end. The generic end handler below can therefore only cancel. */
++        g_signal_connect_object (drag, "dnd-finished",
++                                  G_CALLBACK (on_file_drag_finished), provider, 0);
++    }
++}
++
+ static gboolean
+ on_item_drag_cancel (GtkDragSource       *source,
+                      GdkDrag             *drag,
+                      GdkDragCancelReason  reason,
+                      gpointer             user_data)
+ {
+-    (void) drag;
++    LumaFileDragProvider *provider = g_object_get_data (G_OBJECT (drag), FILE_DRAG_PROVIDER_KEY);
++    if (provider != NULL)
++    {
++        finish_shell_file_drag (provider, FALSE);
++    }
+     (void) user_data;
+ 
+     /* GTK reports root-window destinations as NO_TARGET on some Wayland
+@@ -184,7 +390,12 @@
+                   gboolean       delete_data,
+                   gpointer       user_data)
+ {
+-    (void) drag;
++    LumaFileDragProvider *provider = g_object_get_data (G_OBJECT (drag), FILE_DRAG_PROVIDER_KEY);
++    if (provider != NULL)
++    {
++        finish_shell_file_drag (provider, FALSE);
++    }
++    g_object_set_data (G_OBJECT (source), FILE_DRAG_PROVIDER_KEY, NULL);
+     (void) delete_data;
+     (void) user_data;
+ 
+@@ -532,6 +743,7 @@
+     GtkBitsetIter iter;
+     guint i;
+ 
++    g_object_set_data (G_OBJECT (source), FILE_DRAG_PROVIDER_KEY, NULL);
+     g_object_set_data_full (G_OBJECT (source), APPLICATION_DRAG_DATA_KEY, NULL, NULL);
+     g_object_set_data (G_OBJECT (source), APPLICATION_DRAG_ENDED_KEY, NULL);
+ 
+@@ -601,6 +813,16 @@
+         }
+     }
+ 
++    GdkContentProvider *root_provider = begin_shell_file_drag (selected_files);
++    if (root_provider != NULL)
++    {
++        GdkContentProvider *providers[] = { file_provider, root_provider };
++        g_object_set_data_full (G_OBJECT (source), FILE_DRAG_PROVIDER_KEY,
++                                g_object_ref (root_provider), g_object_unref);
++        /* Preserve the original FileList and its normal copy/move/link actions.
++         * Opening an app never requests deletion of the source files. */
++        return gdk_content_provider_new_union (providers, G_N_ELEMENTS (providers));
++    }
+     return file_provider;
+ }
+ 
+@@ -1078,6 +1300,7 @@
+     gtk_widget_add_controller (GTK_WIDGET (cell), controller);
+     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+     g_signal_connect (controller, "prepare", G_CALLBACK (on_item_drag_prepare), cell);
++    g_signal_connect (controller, "drag-begin", G_CALLBACK (on_item_drag_begin), NULL);
+     g_signal_connect (controller, "drag-cancel", G_CALLBACK (on_item_drag_cancel), NULL);
+     g_signal_connect (controller, "drag-end", G_CALLBACK (on_item_drag_end), NULL);
+ 

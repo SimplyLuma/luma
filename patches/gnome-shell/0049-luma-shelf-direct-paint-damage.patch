@@ -1,0 +1,33 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] shell: paint Shelf Dash children directly
+
+GNOME's overview Dash uses an always-offscreen actor because overview effects
+operate on its composed texture.  Luma reuses that same Dash as a child of the
+live backdrop Shelf.  During icon hover animation, partial damage to the
+transparent offscreen texture can then be composited as a full-height band
+over the Shelf material until a later full repaint.
+
+Disable the overview-only offscreen redirect while Dash is hosted by the
+Shelf, and restore it when the Shelf role is removed.  Icon animation now
+damages and paints the real child actors directly over the native Shelf
+backdrop instead of manufacturing an intermediate surface.
+
+---
+ js/ui/dash.js | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -1168,6 +1168,9 @@ export const Dash = GObject.registerClass({
+ 
+     setShelfEdge(edge) {
+         this._shelfEdge = edge;
++        this.set_offscreen_redirect(edge
++            ? Clutter.OffscreenRedirect.NEVER
++            : Clutter.OffscreenRedirect.ALWAYS);
+         const vertical = edge === 'left' || edge === 'right';
+         const orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._box.layout_manager.orientation = orientation;
+-- 
+2.54.0

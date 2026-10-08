@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <codex@project-luma.local>
+Date: Wed, 26 Aug 2026 23:28:00 -0500
+Subject: [PATCH] profile: accept 19-digit ICCID selectors
+
+Operational eSIM profiles may expose either a 19- or 20-digit ICCID. Keep the
+protected standard-input selector strict, but accept both standard lengths so
+the caller does not have to fall back to an ISD-P AID that a given eUICC may
+not accept for profile enablement.
+---
+ src/applet/profile/enable.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/applet/profile/enable.c b/src/applet/profile/enable.c
+index 1919426..9c271bd 100644
+--- a/src/applet/profile/enable.c
++++ b/src/applet/profile/enable.c
+@@ -39,7 +39,7 @@ static char *read_profile_id(void) {
+     id[strcspn(id, "\r\n")] = '\0';
+     length = strlen(id);
+ 
+-    if (length == 20) {
++    if (length == 19 || length == 20) {
+         for (size_t i = 0; i < length; i++) {
+             if (!isdigit((unsigned char)id[i])) {
+                 secure_profile_id_free(&id);
+-- 
+2.51.0

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luma-continuity"
+version = "0.1.0.dev1"
+description = "Private experimental Luma Connect native device boundary"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = ["websockets>=15.0.1,<18", "Authlib>=1.7.2,<1.8", "httpx>=0.28.1,<0.29", "joserfc>=1.7.5,<2"]
+
+[project.scripts]
+luma-connect = "luma_continuity.application:main"
+luma-connect-daemon = "luma_continuity.daemon:main"
+luma-connect-device = "luma_continuity.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["luma_continuity*"]

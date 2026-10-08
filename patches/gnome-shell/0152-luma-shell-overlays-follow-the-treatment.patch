@@ -1,0 +1,227 @@
+From: Project Luma
+Subject: [PATCH] luma: Shell overlays follow the appearance mode, not color-scheme
+
+The desktop's right-click menu, the search overlay, and every extension
+popover (the tiling picker among them) stayed dark in light mode. Nick's
+session prefers dark (sessionMode.colorScheme is 'prefer-dark'), and
+Settings' surface-treatment panel writes G_DESKTOP_COLOR_SCHEME_DEFAULT for
+light, frost and glass alike -- only its own dark toggle writes prefer-dark.
+getStyleVariant() resolved a color-scheme of 'default' under a
+session that prefers dark to the dark variant sheet, so every Shell surface
+the variant sheet owns (.popup-menu-content, .search-entry, .search-section,
+and by extension any third-party extension popover) loaded dark literals
+regardless of the chosen treatment. Application windows never had this
+problem: the app kit reads the same 'default' color-scheme as light directly,
+with no session preference in between.
+
+Every bound surface -- the Shelf, Quick Options, notifications, the Well --
+was already correct, because SurfaceMaterialController stamps a
+luma-surface-{light,dark,frost,glass} class from Luma's own effective
+treatment and 0150's ledger reads that class. The menus and the search
+overlay are the one path in the Shell that never asked the treatment
+controller anything: they inherit whatever base variant sheet main.js
+happened to load.
+
+lumaSurfaceMaterials.js exports effectiveTreatment() (evaluated fresh, not
+cached) and connectTreatmentChanged(callback). getStyleVariant() now asks it
+directly for 'prefer-dark'/'prefer-light' sessions instead of reading
+color-scheme, and main.js and extensionSystem.js both reload their
+stylesheets when the treatment changes, the same way they already reload on
+a color-scheme or high-contrast change. force-dark and force-light session
+modes (the greeter, the lock screen) and high-contrast are unaffected: they
+never consulted color-scheme and still don't.
+
+Frost and glass are smoked surfaces carrying white ink (0150), so they build
+on the dark variant sheet and let their own luma-surface rules re-tint what
+they bind -- unchanged from before. That is the one place a Shell surface
+still deliberately loads the dark sheet outside of an explicit dark choice,
+and it is stated here rather than left to be rediscovered: everything the
+dark sheet gives a bound frost/glass surface for free (dark literals meant to
+sit under a translucent smoked veil) is exactly what 0150's ledger overrides.
+An *unbound* surface under frost/glass -- if one exists -- would see the raw
+dark sheet, which is why this patch is paired with a survey of every Shell
+overlay rather than trusted on inspection alone.
+
+Surveyed and confirmed following the mode through this one mechanism, with no
+per-surface binding needed because their chrome comes from the base variant
+sheet: the desktop's right-click menu (backgroundMenu.js, PopupMenu.PopupMenu
+base), the dock's right-click menu (same base), Quick Options and the Well
+(already bound, unaffected by this patch, listed to say they were checked),
+and the search overlay (search.js, .search-entry/.search-section/
+.list-search-result-* in the variant sheet).
+
+Not fixed here, and said plainly rather than silently dropped: the Tiling
+Shell layout picker (gnome-shell-extension-tiling-shell). Its extension
+stylesheet now reloads on a treatment change exactly like every other
+extension's, through the mechanism this patch adds -- but whether that does
+anything depends on whether its stylesheet.css itself has light/dark rules to
+switch between, which needs the extension's own source. It is fetched from a
+zip at build time and is not vendored in this repository; the build host and
+the ThinkPad, the only two places that source or an installed copy exist,
+were both unreachable for the whole of this work. If Luma's fork of Tiling
+Shell has no light-mode rules of its own, the fix belongs in its own patch
+series, not here, and needs that source read first.
+
+Generated against the Shell .109 tree (0151 applied) for release .110.
+---
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -54,6 +54,7 @@
+ import {formatError} from '../misc/errorUtils.js';
+ import * as ParentalControlsManager from '../misc/parentalControlsManager.js';
+ import * as Util from '../misc/util.js';
++import * as LumaSurfaceMaterials from './lumaSurfaceMaterials.js';
+ 
+ const WELCOME_DIALOG_LAST_SHOWN_VERSION = 'welcome-dialog-last-shown-version';
+ // Make sure to mention the point release, otherwise it will show every time
+@@ -189,6 +190,10 @@
+ 
+     St.Settings.get().connect('notify::high-contrast', _loadDefaultStylesheet);
+     St.Settings.get().connect('notify::color-scheme', _loadDefaultStylesheet);
++    // Luma's appearance mode decides the variant (see getStyleVariant), and
++    // it can change without color-scheme changing -- Settings writes the same
++    // `default` for light, frost and glass.
++    LumaSurfaceMaterials.connectTreatmentChanged(_loadDefaultStylesheet);
+ 
+     // Initialize ParentalControlsManager before the UI
+     ParentalControlsManager.getDefault();
+@@ -511,18 +516,28 @@
+ 
+ /** @returns {string} */
+ export function getStyleVariant() {
+-    const {colorScheme} = St.Settings.get();
+     switch (sessionMode.colorScheme) {
+     case 'force-dark':
+         return 'dark';
+     case 'force-light':
+         return 'light';
+     case 'prefer-dark':
+-        return colorScheme === St.SystemColorScheme.PREFER_LIGHT
+-            ? 'light' : 'dark';
+-    case 'prefer-light':
+-        return colorScheme === St.SystemColorScheme.PREFER_DARK
+-            ? 'dark' : 'light';
++    case 'prefer-light':
++        // Luma's appearance mode is the one source of truth for the Shell's
++        // variant, not GNOME's color-scheme. The user session prefers dark, so
++        // upstream resolved a color-scheme of `default` to the dark sheet --
++        // and `default` is what Settings writes for the light treatment. Every
++        // overlay the variant sheet owns (the desktop menu, search, extension
++        // pickers) therefore stayed dark in light mode, while the apps, which
++        // read `default` as light, did not.
++        //
++        // The effective treatment already folds in color-scheme when no
++        // treatment is chosen, and high contrast and the renderer fallbacks,
++        // so nothing upstream relied on is lost. Frost and glass are smoked
++        // surfaces carrying white ink, so they build on the dark sheet and
++        // their own luma-surface rules re-tint what they bind.
++        return LumaSurfaceMaterials.effectiveTreatment() === 'light'
++            ? 'light' : 'dark';
+     default:
+         return '';
+     }
+diff --git a/js/ui/extensionSystem.js b/js/ui/extensionSystem.js
+--- a/js/ui/extensionSystem.js
++++ b/js/ui/extensionSystem.js
+@@ -14,6 +14,7 @@
+ import * as FileUtils from '../misc/fileUtils.js';
+ import * as Main from './main.js';
+ import * as MessageTray from './messageTray.js';
++import * as LumaSurfaceMaterials from './lumaSurfaceMaterials.js';
+ 
+ const ENABLED_EXTENSIONS_KEY = 'enabled-extensions';
+ const DISABLED_EXTENSIONS_KEY = 'disabled-extensions';
+@@ -43,6 +44,10 @@
+ 
+         St.Settings.get().connect('notify::color-scheme',
+             () => this._reloadExtensionStylesheets());
++        // Extension variant sheets follow the same appearance mode as the
++        // Shell's own, or a light-mode extension popover stays dark.
++        LumaSurfaceMaterials.connectTreatmentChanged(
++            () => this._reloadExtensionStylesheets());
+ 
+         Main.sessionMode.connect('updated', () => {
+             this._sessionUpdated().catch(logError);
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -121,6 +121,10 @@
+ class SurfaceMaterialController {
+     constructor() {
+         this._bindings = new Set();
++        // Anything that has to follow the appearance mode without being a
++        // bound surface -- the Shell's variant stylesheet, extension
++        // stylesheets -- listens here, so there is one source of truth.
++        this._listeners = new Set();
+         this._surfaceSettings = optionalSettings(
+             'org.project_luma.shell-state', 'surface-treatment');
+         this._interfaceSettings = optionalSettings(
+@@ -172,6 +176,7 @@
+     }
+ 
+     _sync() {
++        const previous = this._effective;
+         this._effective = this._effectiveTreatment();
+         const recipe = RECIPES[this._effective];
+ 
+@@ -188,9 +193,26 @@
+ 
+         for (const binding of this._bindings)
+             binding._sync(this._effective, recipe);
++
++        if (previous !== undefined && previous !== this._effective) {
++            for (const listener of this._listeners) {
++                try {
++                    listener(this._effective);
++                } catch (error) {
++                    logError(error, 'Unable to follow the Luma appearance mode');
++                }
++            }
++        }
+     }
+ 
+     bind(actor, options = {}) {
++        // The controller can now be built early, from main.js choosing its
++        // variant stylesheet, before the renderer can answer whether it is
++        // hardware accelerated. Re-evaluate when the first real surface binds,
++        // so an early answer is never the one the Shell keeps; if it changed,
++        // the listeners reload the stylesheet to match.
++        if (this._bindings.size === 0)
++            this._sync();
+         const binding = new SurfaceMaterialBinding(this, actor, options);
+         this._bindings.add(binding);
+         binding._sync(this._effective, RECIPES[this._effective]);
+@@ -291,3 +313,32 @@
+     controller ??= new SurfaceMaterialController();
+     return controller.bind(actor, options);
+ }
++
++/**
++ * The appearance mode the Shell is actually showing, after the accessibility
++ * and renderer fallbacks: 'light', 'dark', 'frost' or 'glass'.
++ *
++ * This, not GNOME's color-scheme, decides which variant stylesheet the Shell
++ * and its extensions load. The two used to disagree: the user session prefers
++ * dark, so a color-scheme of `default` -- which is what Settings writes for
++ * the light treatment -- loaded the dark stylesheet, and every overlay the
++ * variant sheet owns stayed dark in light mode.
++ *
++ * @returns {string}
++ */
++export function effectiveTreatment() {
++    controller ??= new SurfaceMaterialController();
++    // Evaluated fresh, never from the cache, so a stylesheet chosen before the
++    // first surface bound still reflects the renderer as it is now.
++    return controller._effectiveTreatment();
++}
++
++/**
++ * Call `callback(treatment)` whenever the effective appearance mode changes.
++ *
++ * @param {function(string):void} callback
++ */
++export function connectTreatmentChanged(callback) {
++    controller ??= new SurfaceMaterialController();
++    controller._listeners.add(callback);
++}

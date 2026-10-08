@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Tide</id>
+  <name>Tide</name>
+  <summary>Listen to your music</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Listen to your music, browse albums and artists, and manage music sources in Luma’s responsive music player.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Tide.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Music sources</caption>
+      <image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Tide/54e8384883b98ef609ad5a5361c7981928becd95ced88bc5080946a6c8d85611.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

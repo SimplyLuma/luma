@@ -1,0 +1,29 @@
+From 9141e1d6bc0554ff2686bd4f6c277b785d0ff6f5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:21:31 +0200
+Subject: [PATCH 15/41] tee: qseecom: unregister the device whose registration
+ failed
+
+The probe unwind jumped to the label that unregisters the client device when it
+was the supplicant device that failed, leaking the allocated one. Unreachable
+short of cdev_device_add() failing.
+
+Assisted-by: Claude:claude-opus-5
+Assisted-by: Kimi:kimi-k3
+---
+ drivers/tee/qseecom/core.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index d074e26bf..f8d6eb772 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -1597,7 +1597,7 @@ static int qseecom_tee_probe(struct platform_device *pdev)
+ 
+ 	ret = tee_device_register(qtee->supp_teedev);
+ 	if (ret)
+-		goto err_unreg_teedev;
++		goto err_unreg_supp_teedev;
+ 
+ 	platform_set_drvdata(pdev, qtee);
+ 

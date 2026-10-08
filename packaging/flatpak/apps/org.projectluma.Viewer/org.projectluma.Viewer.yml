@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Sealed sources required by the canonical first-party producer.
+{
+  "appstream-compose": false,
+  "id": "org.projectluma.Viewer",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "luma-viewer",
+  "finish-args": [
+    "--metadata=X-Luma=min-host-installer=62",
+    "--metadata=X-Luma=app-data-schema=viewer-v1",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--socket=pulseaudio",
+    "--env=LUMA_VIEWER_STYLE_PATH=/app/share/luma-viewer/viewer.css",
+    "--env=LUMA_VIEWER_ICON_PATH=/app/share/luma-viewer/icons",
+    "--env=LUMA_LEAF_DATA_DIR=/app/share/leaf",
+    "--talk-name=org.projectluma.ApplicationDirectory1",
+    "--talk-name=org.projectluma.AppData1"
+  ],
+  "modules": [
+    {
+      "name": "viewer",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin",
+        "cp -a src/luma-viewer/luma_viewer /app/lib/python3.14/site-packages/",
+        "install -Dm755 src/luma-viewer/bin/luma-viewer /app/bin/luma-viewer-real",
+        "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup luma-viewer-real \"$@\"\\n' > /app/bin/luma-viewer",
+        "chmod 755 /app/bin/luma-viewer",
+        "install -Dm644 src/luma-viewer/data/org.projectluma.Viewer.desktop /app/share/applications/org.projectluma.Viewer.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Viewer.svg",
+        "sed -i 's/^Icon=.*/Icon=org.projectluma.Viewer/' /app/share/applications/org.projectluma.Viewer.desktop",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Viewer.metainfo.xml",
+        "install -Dm644 depot-media/b9f82c293919cf6768328f95e473fc9ea74c0c738d5b29e584cfe73f0a76c634.png /app/share/luma-app-media/b9f82c293919cf6768328f95e473fc9ea74c0c738d5b29e584cfe73f0a76c634.png",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Viewer/LICENSE.md",
+        "install -Dm644 src/luma-viewer/viewer.css /app/share/luma-viewer/viewer.css",
+        "cp -a src/luma-leaf/luma_leaf /app/lib/python3.14/site-packages/",
+        "install -d /app/share/leaf",
+        "cp -a src/luma-leaf/data/. /app/share/leaf/",
+        "install -d /app/share/luma-viewer/icons",
+        "cp -a src/luma-viewer/data/icons/. /app/share/luma-viewer/icons/",
+        "install -d /app/share/dbus-1/services",
+        "printf '[D-BUS Service]\\nName=org.projectluma.Viewer\\nExec=/app/bin/luma-viewer\\n' > /app/share/dbus-1/services/org.projectluma.Viewer.service"
+      ]
+    }
+  ]
+}

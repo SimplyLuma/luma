@@ -1,0 +1,193 @@
+From dd84cd92e8bac2a054a91e11e58fd17574437e7d Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Fri, 4 Sep 2026 19:52:34 -0500
+Subject: [PATCH] stylesheet: give every menu the context-menu contract
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every GtkPopoverMenu — a text view's cut and paste, a menu button, the
+identity menu, an application's right-click — now draws to the numbers in
+docs/design/context-menu-contract.md: a 15px container with 8px padding, an
+inset ring and two shadows; 32px rows at 10px radius, 600/13, raised under
+the pointer or focus, kept in place at 0.38 when disabled; tracked 11px
+headings; a rule between every group; shortcuts drawn as key caps; and a
+destructive row that is calm at rest and red only under the pointer. The
+widths are fixed per variant and never content-derived; the application kit
+sets the variant class, and a menu without one is the application menu.
+
+The colours are new luma_menu tokens in both design systems, matching
+config/shared/design-tokens.json.
+---
+ src/stylesheet/_colors.scss        |  18 +++++
+ src/stylesheet/widgets/_menus.scss | 121 +++++++++++++++++++++++++++++
+ 2 files changed, 139 insertions(+)
+
+diff --git a/src/stylesheet/_colors.scss b/src/stylesheet/_colors.scss
+index e929825..c111944 100644
+--- a/src/stylesheet/_colors.scss
++++ b/src/stylesheet/_colors.scss
+@@ -109,6 +109,15 @@
+ @define-color luma_translucent_ink #2c343a;
+ @define-color luma_translucent_line RGB(37 46 54 / 10.5%);
+ 
++// The menu (docs/design/context-menu-contract.md)
++@define-color luma_menu #f6f7f8;
++@define-color luma_menu_raised #ffffff;
++@define-color luma_menu_border RGB(35 44 52 / 9%);
++@define-color luma_menu_shadow #0c1015;
++@define-color luma_menu_passive RGB(39 48 56 / 4%);
++@define-color luma_menu_pressed RGB(39 48 56 / 10.5%);
++@define-color luma_menu_destructive #b75048;
++
+ @media (prefers-color-scheme: dark) {
+   @define-color destructive_bg_color @red_4;
+   @define-color success_bg_color @green_5;
+@@ -186,6 +195,15 @@
+   @define-color luma_audio #d19447;
+   @define-color luma_code #65b58c;
+   @define-color luma_island_shadow RGB(0 0 0 / 22%);
++
++  // The menu (docs/design/context-menu-contract.md)
++  @define-color luma_menu #252a30;
++  @define-color luma_menu_raised #30363d;
++  @define-color luma_menu_border RGB(255 255 255 / 7.5%);
++  @define-color luma_menu_shadow #0c1015;
++  @define-color luma_menu_passive RGB(255 255 255 / 3.8%);
++  @define-color luma_menu_pressed RGB(255 255 255 / 10.8%);
++  @define-color luma_menu_destructive #e97870;
+ }
+ 
+ :root {
+diff --git a/src/stylesheet/widgets/_menus.scss b/src/stylesheet/widgets/_menus.scss
+index eb62214..44516fd 100644
+--- a/src/stylesheet/widgets/_menus.scss
++++ b/src/stylesheet/widgets/_menus.scss
+@@ -280,3 +280,124 @@ menubar {
+ }
+ 
+ %menubar-shrunk {}
++
++// Luma: the context-menu contract (docs/design/context-menu-contract.md).
++// Every GtkPopoverMenu — a text view's cut and paste, a menu button, the
++// identity menu, an application's right-click — draws to these numbers.
++// Widths are fixed per variant, never content-derived; the application kit
++// sets the variant class, and a menu without one is the application menu.
++popover.menu {
++  > contents {
++    min-width: 292px;
++    padding: 8px;
++    border: none;
++    border-radius: 15px;
++    background-color: unquote("@luma_menu");
++    color: unquote("@luma_ink");
++    box-shadow: inset 0 0 0 1px unquote("@luma_menu_border"),
++                0 4px 12px unquote("alpha(@luma_menu_shadow, 0.20)"),
++                0 24px 56px -18px unquote("alpha(@luma_menu_shadow, 0.68)");
++
++    > stack > box,
++    > scrolledwindow > viewport > stack > box {
++      padding: 0;
++    }
++  }
++
++  > arrow {
++    background-color: unquote("@luma_menu");
++    border-color: unquote("@luma_menu_border");
++  }
++
++  &.luma-menu-desktop > contents { min-width: 300px; }
++  &.luma-menu-dock > contents { min-width: 186px; padding: 6px; }
++  &.luma-menu-submenu > contents { min-width: 224px; padding: 6px; }
++
++  // A rule sits between every group.
++  separator {
++    min-height: 1px;
++    margin: 5px 7px;
++    background-color: unquote("@luma_menu_border");
++  }
++
++  // A group's heading: small, tracked, at reduced opacity of the ink.
++  label.title {
++    min-height: 18px;
++    padding: 4px 8px 0;
++    font-size: 11px;
++    font-weight: 700;
++    letter-spacing: 0.11em;
++    opacity: 0.46;
++  }
++
++  // Rows: the toolkit's model button, and the kit's custom row for what the
++  // model cannot say (a destructive command, a choice that explains itself).
++  modelbutton,
++  button.luma-menu-row {
++    min-height: 32px;
++    padding: 0 8px;
++    border: none;
++    border-radius: 10px;
++    background-color: transparent;
++    color: unquote("@luma_ink");
++    font-size: 13px;
++    font-weight: 600;
++    box-shadow: none;
++    outline: none;
++
++    &:hover,
++    &:selected,
++    &:focus,
++    &:focus-visible {
++      background-color: unquote("@luma_menu_raised");
++      outline: 0;
++    }
++
++    &:active { background-color: unquote("@luma_menu_pressed"); }
++
++    &:disabled {
++      opacity: 0.38;
++      background-color: transparent;
++    }
++
++    image { -gtk-icon-size: 16px; opacity: 0.88; }
++
++    check, radio, arrow { opacity: 0.5; }
++  }
++
++  button.luma-menu-row.two-line {
++    min-height: 44px;
++    padding: 4px 8px;
++  }
++
++  .luma-menu-description {
++    font-size: 11px;
++    font-weight: 500;
++    opacity: 0.46;
++  }
++
++  // Calm at rest; red only under the pointer or focus.
++  button.luma-menu-row.luma-menu-destructive {
++    color: unquote("@luma_ink");
++
++    &:hover,
++    &:focus,
++    &:focus-visible {
++      background-color: unquote("alpha(@luma_menu_destructive, 0.12)");
++      color: unquote("@luma_menu_destructive");
++    }
++  }
++
++  // A shortcut is drawn as the key it names: a cap on the passive surface.
++  accelerator {
++    min-width: 18px;
++    margin-left: 10px;
++    padding: 1px 5px;
++    border-radius: 6px;
++    background-color: unquote("@luma_menu_passive");
++    color: unquote("@luma_ink");
++    font-size: 11px;
++    font-weight: 600;
++    opacity: 0.68;
++  }
++}
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Luma desktop operating system image (ADR-030 section 3).
+#
+# The declared recipe for every Luma x86_64 desktop release: the official
+# Fedora Silverblue 44 bootable container, pinned by digest, plus Luma's exact
+# package set and system policy. The result is exported into Luma's signed
+# OSTree repository by scripts/os/export-ostree.sh; devices never pull this
+# container image directly.
+#
+# Build it with scripts/os/build-image.sh, which supplies:
+#   --build-context source=<source checkout>      (this repository)
+#   --build-context packages=<rpm-md repository>  (the verified Luma pins)
+# and the build arguments below. Nothing from the build contexts is copied into
+# the image except the files the scripts install explicitly.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG LUMA_BUILD_ID
+ARG LUMA_OS_VERSION
+ARG LUMA_OS_CHANNEL
+ARG LUMA_NIGHTLY_DATE
+ARG LUMA_BUILD_DATE
+ARG LUMA_SOURCE_REVISION
+ARG LUMA_SOURCE_DIRTY=false
+ARG LUMA_SOURCE_SNAPSHOT_SHA256
+ARG LUMA_RELEASE_CHECKS_SHA256
+ARG LUMA_APP_BASELINE_SHA256
+
+# 1. Packages: Luma's exact NEVRA set replaces and extends the Fedora base, the
+#    Fedora additions and application roles are resolved, and the packages
+#    Luma does not ship are removed.
+RUN --mount=type=bind,from=source,target=/run/luma/source \
+    --mount=type=bind,from=packages,target=/run/luma/packages \
+    --mount=type=tmpfs,target=/tmp \
+    /usr/bin/bash /run/luma/source/image/luma-desktop/scripts/install-packages.sh
+
+# 2. System policy: desktop defaults, update and trust policy, health checks,
+#    boot configuration.
+RUN --mount=type=bind,from=source,target=/run/luma/source \
+    --mount=type=bind,from=app-baseline,target=/run/luma/app-baseline \
+    --mount=type=tmpfs,target=/tmp \
+    LUMA_APP_BASELINE_SHA256="${LUMA_APP_BASELINE_SHA256}" \
+    /usr/bin/bash /run/luma/source/image/luma-desktop/scripts/configure-system.sh
+
+# 3. Identity and boot artifacts: os-release naming this release, the initramfs
+#    that carries the Luma boot theme, and a clean /var.
+RUN --mount=type=bind,from=source,target=/run/luma/source \
+    --mount=type=tmpfs,target=/tmp \
+    LUMA_BUILD_ID="${LUMA_BUILD_ID}" \
+    LUMA_OS_VERSION="${LUMA_OS_VERSION}" \
+    LUMA_OS_CHANNEL="${LUMA_OS_CHANNEL}" \
+    LUMA_NIGHTLY_DATE="${LUMA_NIGHTLY_DATE}" \
+    LUMA_BUILD_DATE="${LUMA_BUILD_DATE}" \
+    /usr/bin/bash /run/luma/source/image/luma-desktop/scripts/finalize-image.sh
+
+RUN bootc container lint
+
+LABEL org.opencontainers.image.title="Luma" \
+      org.opencontainers.image.vendor="Project Luma" \
+      org.opencontainers.image.url="https://simplyluma.com" \
+      org.opencontainers.image.version="${LUMA_OS_VERSION}" \
+      org.opencontainers.image.revision="${LUMA_SOURCE_REVISION}" \
+      org.opencontainers.image.created="${LUMA_BUILD_DATE}" \
+      org.projectluma.source-dirty="${LUMA_SOURCE_DIRTY}" \
+      org.projectluma.source-snapshot-sha256="${LUMA_SOURCE_SNAPSHOT_SHA256}" \
+      org.projectluma.release-checks-sha256="${LUMA_RELEASE_CHECKS_SHA256}" \
+      org.projectluma.build-id="${LUMA_BUILD_ID}" \
+      org.projectluma.channel="${LUMA_OS_CHANNEL}" \
+      containers.bootc="1" \
+      ostree.bootable="true"

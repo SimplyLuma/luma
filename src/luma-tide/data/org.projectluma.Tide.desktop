@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Tide
+Comment=Play music from every place it lives
+Exec=org.projectluma.Tide %U
+Icon=org.projectluma.Tide
+Terminal=false
+Categories=AudioVideo;Audio;Player;GTK;
+MimeType=audio/flac;audio/mpeg;audio/ogg;audio/opus;audio/x-wav;audio/mp4;
+StartupNotify=true
+DBusActivatable=true
+# Tide posts notifications through GApplication, so Settings lists it and its
+# per-application notification and badge switches reach it.
+X-GNOME-UsesNotifications=true
+Keywords=Music;Audio;Library;Player;Playlist;
+

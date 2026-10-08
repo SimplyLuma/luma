@@ -1,0 +1,12 @@
+--- a/gtk3.spec
++++ b/gtk3.spec
+@@ -35 +35 @@
+-Release: %autorelease
++Release: 2.luma.10%{?dist}
+@@ -43,0 +44,6 @@
++Patch1000: 0001-luma-generic-application-identity.patch
++Patch1001: 0002-luma-native-application-surfaces.patch
++Patch1002: 0003-luma-generic-command-row.patch
++Patch1003: 0004-luma-title-slot-and-paned-islands.patch
++Patch1004: 0005-luma-identity-title-and-window-gutter.patch
++Patch1005: 0006-luma-frame-child-clipping.patch

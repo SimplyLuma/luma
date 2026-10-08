@@ -1,0 +1,1 @@
+Provider marks copied from Studio v70 ARLOGO and arLogo. Official Simple Icons paths are CC0, unchanged; the gradient tiles are the approved Luma treatment. These are Ari content assets, not toolkit icons.

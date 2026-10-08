@@ -1,0 +1,644 @@
+From 3308b1ce0ee1f22c17adafafd75a0e6d78ebe3b7 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 06:21:09 -0500
+Subject: [PATCH] settings: add Apps fixture routes and scoped action coverage
+
+---
+ shell/cc-luma-fixture.c                  | 128 +++++++++++++++++-
+ shell/cc-luma-fixture.h                  |   8 ++
+ shell/cc-luma-view-application-options.c | 163 +++++++++++++++++++++++
+ shell/cc-luma-view-private.h             |   3 +
+ shell/cc-luma-view.c                     |  12 +-
+ shell/test-luma-fixture.c                |  52 ++++++++
+ shell/test-luma-view.c                   | 131 ++++++++++++++++++
+ 7 files changed, 494 insertions(+), 3 deletions(-)
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 949694d..5c945fb 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -219,6 +219,128 @@ cc_luma_fixture_has_page (CcLumaFixture *self, const char *page)
+   return FALSE;
+ }
+ 
++static const char * const app_default_permissions[] = { "notif", "search" };
++static JsonArray *app_permissions (CcLumaFixture *self, const char *app)
++{
++  JsonObject *data = cc_luma_fixture_get_data (self);
++  if (!member_type (data, "CFPERMS", JSON_NODE_OBJECT)) return NULL;
++  JsonNode *node = json_object_get_member (json_object_get_object_member (data, "CFPERMS"), app);
++  return node && JSON_NODE_HOLDS_ARRAY (node) ? json_node_get_array (node) : NULL;
++}
++guint cc_luma_fixture_app_permission_count (CcLumaFixture *self, const char *app)
++{
++  JsonArray *permissions = app_permissions (self, app);
++  return permissions ? json_array_get_length (permissions) : G_N_ELEMENTS (app_default_permissions);
++}
++const char *cc_luma_fixture_app_permission (CcLumaFixture *self, const char *app, guint index)
++{
++  JsonArray *permissions = app_permissions (self, app);
++  if (!permissions) return index < G_N_ELEMENTS (app_default_permissions) ? app_default_permissions[index] : NULL;
++  if (index >= json_array_get_length (permissions)) return NULL;
++  JsonNode *node = json_array_get_element (permissions, index);
++  return node && json_node_get_value_type (node) == G_TYPE_STRING ? json_node_get_string (node) : NULL;
++}
++const char *cc_luma_fixture_app_name (CcLumaFixture *self, const char *app)
++{
++  JsonObject *data = cc_luma_fixture_get_data (self);
++  if (!app || !member_type (data, "CFAPPINFO", JSON_NODE_OBJECT)) return NULL;
++  JsonObject *info = json_object_get_object_member (data, "CFAPPINFO");
++  if (!member_type (info, app, JSON_NODE_OBJECT)) return NULL;
++  JsonNode *name = json_object_get_member (json_object_get_object_member (info, app), "name");
++  return name && json_node_get_value_type (name) == G_TYPE_STRING ? json_node_get_string (name) : NULL;
++}
++static gboolean app_valid (CcLumaFixture *self, const char *app)
++{
++  if (!app || !*app || !g_regex_match_simple ("^[a-z][a-z0-9-]*$", app, 0, 0)) return FALSE;
++  g_autofree char *page = g_strconcat ("app:", app, NULL);
++  if (!cc_luma_fixture_has_page (self, page)) return FALSE;
++  const char *name = cc_luma_fixture_app_name (self, app);
++  if (!name || !*name) return FALSE;
++  JsonObject *data = cc_luma_fixture_get_data (self);
++  if (!member_type (data, "CFSZ", JSON_NODE_OBJECT) || !member_type (data, "CFPERMS", JSON_NODE_OBJECT) ||
++      !member_type (data, "CFPERM", JSON_NODE_OBJECT)) return FALSE;
++  JsonObject *sizes = json_object_get_object_member (data, "CFSZ");
++  if (!member_type (sizes, app, JSON_NODE_ARRAY)) return FALSE;
++  JsonArray *size = json_object_get_array_member (sizes, app);
++  if (json_array_get_length (size) != 3) return FALSE;
++  for (guint i = 0; i < 3; i++) {
++    JsonNode *n = json_array_get_element (size, i);
++    if (json_node_get_value_type (n) != G_TYPE_INT64 || json_node_get_int (n) < 0 ||
++        json_node_get_int (n) > G_MAXINT32) return FALSE;
++  }
++  JsonObject *permissions = json_object_get_object_member (data, "CFPERMS");
++  if (json_object_has_member (permissions, app) && !member_type (permissions, app, JSON_NODE_ARRAY)) return FALSE;
++  JsonObject *labels = json_object_get_object_member (data, "CFPERM");
++  guint count = cc_luma_fixture_app_permission_count (self, app);
++  if (count == 0 || count > 8) return FALSE;
++  for (guint i = 0; i < count; i++) {
++    const char *permission = cc_luma_fixture_app_permission (self, app, i);
++    const char * const known[] = { "notif", "search", "bg", "shot", "cam", "mic", "loc", "wall" };
++    gboolean found = FALSE;
++    for (guint j = 0; permission && j < G_N_ELEMENTS (known); j++) found |= g_str_equal (permission, known[j]);
++    if (!found || !member_type (labels, permission, JSON_NODE_ARRAY)) return FALSE;
++    for (guint j = 0; j < i; j++) if (g_str_equal (permission, cc_luma_fixture_app_permission (self, app, j))) return FALSE;
++    JsonArray *label = json_object_get_array_member (labels, permission);
++    if (json_array_get_length (label) != 2) return FALSE;
++    for (guint j = 0; j < 2; j++) if (json_node_get_value_type (json_array_get_element (label, j)) != G_TYPE_STRING) return FALSE;
++    g_autofree char *key = g_strconcat ("perm_", app, permission, NULL);
++    JsonNode *value = cc_luma_fixture_get (self, key);
++    if (value && !JSON_NODE_HOLDS_NULL (value) && json_node_get_value_type (value) != G_TYPE_BOOLEAN) return FALSE;
++  }
++  return TRUE;
++}
++gboolean cc_luma_fixture_apps_validate (CcLumaFixture *self)
++{
++  JsonObject *data = cc_luma_fixture_get_data (self);
++  if (!member_type (data, "CFAPPS", JSON_NODE_ARRAY)) return FALSE;
++  JsonArray *apps = json_object_get_array_member (data, "CFAPPS");
++  if (!json_array_get_length (apps)) return FALSE;
++  if (!member_type (data, "CFAPPCATS", JSON_NODE_OBJECT)) return FALSE;
++  JsonObject *categories = json_object_get_object_member (data, "CFAPPCATS");
++  g_autoptr(GList) category_apps = json_object_get_members (categories);
++  for (GList *item = category_apps; item; item = item->next) {
++    JsonNode *category = json_object_get_member (categories, item->data);
++    if (json_node_get_value_type (category) != G_TYPE_STRING) return FALSE;
++    const char *value = json_node_get_string (category);
++    const char *known[] = { "create", "work", "media", "play", "tools" };
++    gboolean found = FALSE;
++    for (guint i = 0; i < G_N_ELEMENTS (known); i++) found |= g_str_equal (value, known[i]);
++    if (!found || !app_valid (self, item->data)) return FALSE;
++  }
++  for (guint i = 0; i < json_array_get_length (apps); i++) {
++    JsonNode *app = json_array_get_element (apps, i);
++    if (json_node_get_value_type (app) != G_TYPE_STRING || !app_valid (self, json_node_get_string (app))) return FALSE;
++    for (guint j = 0; j < i; j++) if (g_str_equal (json_node_get_string (app), json_array_get_string_element (apps, j))) return FALSE;
++  }
++  return TRUE;
++}
++gboolean cc_luma_fixture_prepare_app (CcLumaFixture *self, const char *app, GError **error)
++{
++  if (!app_valid (self, app)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Invalid Settings fixture app metadata or permissions");
++    return FALSE;
++  }
++  JsonObject *settings = json_object_get_object_member (json_node_get_object (self->root), "settings");
++  for (guint i = 0; i < cc_luma_fixture_app_permission_count (self, app); i++) {
++    g_autofree char *key = g_strconcat ("perm_", app, cc_luma_fixture_app_permission (self, app, i), NULL);
++    JsonNode *previous = cc_luma_fixture_get (self, key);
++    if (!previous || JSON_NODE_HOLDS_NULL (previous)) json_object_set_boolean_member (settings, key, TRUE);
++  }
++  return TRUE;
++}
++char *cc_luma_fixture_format_size (gint64 megabytes)
++{
++  g_return_val_if_fail (megabytes >= 0, NULL);
++  if (megabytes < 1000) return g_strdup_printf ("%" G_GINT64_FORMAT " MB", megabytes);
++  /* cfGB first divides a JS Number by1000. Keep that binary64 result when
++   * rounding positive values:1150MB is1.1GB, while1250MB is1.3GB. An extended
++   * intermediate retains the exact binary64 value instead of rounding its
++   * multiplication by10 back to a half. Division also prevents overflow. */
++  gint64 tenths = (gint64) ((long double) ((double) megabytes / 1000.0) * 10.0L + 0.5L);
++  return tenths % 10 ? g_strdup_printf ("%" G_GINT64_FORMAT ".%" G_GINT64_FORMAT " GB", tenths / 10, tenths % 10) :
++    g_strdup_printf ("%" G_GINT64_FORMAT " GB", tenths / 10);
++}
++
+ /* These are fixture operations. They never open NetworkManager or a keyring. */
+ static JsonObject *
+ fixture_network (CcLumaFixture *self, const char *name)
+@@ -370,8 +492,8 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+           g_autofree char *file = g_strconcat (id, ".png", NULL);
+           return g_build_filename (self->resource_dir, file, NULL);
+         }
+-  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos", "calendar", "phone", "clock", "depot", "maps", "settings", "calc", "contacts", "notes", "term", "reel" };
+-  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos", "calendar", "phone", "clock", "app-store", "maps", "settings", "calculator", "contacts", "notes", "terminal", "video-editor" };
++  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos", "calendar", "phone", "clock", "depot", "maps", "settings", "calc", "contacts", "notes", "term", "reel", "camera", "ari", "canvas" };
++  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos", "calendar", "phone", "clock", "app-store", "maps", "settings", "calculator", "contacts", "notes", "terminal", "video-editor", "camera", "ari", "designer" };
+   if (self->resource_dir && id)
+     for (guint i = 0; i < G_N_ELEMENTS (apps); i++)
+       if (g_str_equal (id, apps[i]))
+@@ -381,6 +503,8 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+         }
+   if (self->resource_dir && g_strcmp0 (id, "tasks") == 0)
+     return g_build_filename (self->resource_dir, "org.projectluma.Tasks.svg", NULL);
++  if (self->resource_dir && g_strcmp0 (id, "memos") == 0)
++    return g_build_filename (self->resource_dir, "org.projectluma.VoiceMemos.svg", NULL);
+   g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown fixture asset or no fixture resource directory");
+   return NULL;
+ }
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+index a0854d5..1cf952b 100644
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -23,5 +23,13 @@ void cc_luma_network_undo_free (CcLumaNetworkUndo *undo);
+ JsonObject *cc_luma_fixture_get_data (CcLumaFixture *self);
+ JsonArray *cc_luma_fixture_get_pages (CcLumaFixture *self);
+ gboolean cc_luma_fixture_has_page (CcLumaFixture *self, const char *page);
++/* Strict fixture-only app data. Missing permission defaults are initialized
++ * atomically as cfAppPage does; this never changes installed app permissions. */
++gboolean cc_luma_fixture_prepare_app (CcLumaFixture *self, const char *app, GError **error);
++gboolean cc_luma_fixture_apps_validate (CcLumaFixture *self);
++const char *cc_luma_fixture_app_name (CcLumaFixture *self, const char *app);
++guint cc_luma_fixture_app_permission_count (CcLumaFixture *self, const char *app);
++const char *cc_luma_fixture_app_permission (CcLumaFixture *self, const char *app, guint index);
++char *cc_luma_fixture_format_size (gint64 megabytes);
+ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **error);
+ G_END_DECLS
+diff --git a/shell/cc-luma-view-application-options.c b/shell/cc-luma-view-application-options.c
+index cb2cfa6..11fa6b3 100644
+--- a/shell/cc-luma-view-application-options.c
++++ b/shell/cc-luma-view-application-options.c
+@@ -1,5 +1,168 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-view-private.h"
++
++static gboolean system_app (const char *app)
++{
++  const char * const ids[] = { "filer", "viola", "term", "depot", "settings" };
++  for (guint i = 0; i < G_N_ELEMENTS (ids); i++) if (g_str_equal (app, ids[i])) return TRUE;
++  return FALSE;
++}
++static gint64 app_total (View *v, const char *app)
++{
++  JsonObject *sizes = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFSZ");
++  JsonArray *values = json_object_get_array_member (sizes, app);
++  return json_array_get_int_element (values, 0) + json_array_get_int_element (values, 1) +
++    json_array_get_int_element (values, 2);
++}
++static void app_navigate (GtkButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v || !gtk_widget_is_ancestor (GTK_WIDGET (button), root)) return;
++  cc_luma_view_navigate (v, g_object_get_data (G_OBJECT (button), "cf-target"));
++}
++static GtkWidget *app_link (View *v, const char *title, const char *subtitle,
++                            const char *icon, const char *target)
++{
++  GtkWidget *item = luma_details_item_new (title, subtitle, icon);
++  g_autofree char *name = g_strconcat ("cf-go-", target, NULL);
++  gtk_widget_set_name (item, name);
++  g_object_set_data_full (G_OBJECT (item), "cf-target", g_strdup (target), g_free);
++  g_signal_connect_object (item, "clicked", G_CALLBACK (app_navigate), v->root, 0);
++  return item;
++}
++static GtkWidget *app_arrow (void)
++{
++  GtkWidget *arrow = luma_ui_icon_new ("chevron-right");
++  luma_ui_apply_type_full (arrow, "caption", TRUE);
++  return arrow;
++}
++void cc_luma_view_apps_render (View *v)
++{
++  JsonObject *data = cc_luma_fixture_get_data (v->model);
++  JsonArray *apps = json_object_get_array_member (data, "CFAPPS");
++  gint64 total = 0;
++  for (guint i = 0; i < json_array_get_length (apps); i++) total += app_total (v, json_array_get_string_element (apps, i));
++  g_autofree char *size = cc_luma_fixture_format_size (total);
++  g_autofree char *meta = g_strdup_printf ("%u apps · %s with their data", json_array_get_length (apps), size);
++  cc_luma_view_header (v, "Apps", meta, NULL);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  GtkWidget *defaults = app_link (v, "Default apps", "Which app opens links, mail, music and photos", "app-window", "defaults");
++  luma_details_item_set_trail (LUMA_DETAILS_ITEM (defaults), app_arrow ());
++  gtk_box_append (rows, defaults);
++  GtkWidget *media = app_link (v, "Removable media", "What happens when you plug in a drive or phone", "usb", "media");
++  luma_details_item_set_trail (LUMA_DETAILS_ITEM (media), app_arrow ());
++  gtk_box_append (rows, media);
++  rows = cc_luma_view_group (v, "Installed");
++  JsonNode *category_node = json_object_get_member (data, "CFAPPCATS");
++  JsonObject *categories = category_node && JSON_NODE_HOLDS_OBJECT (category_node) ? json_node_get_object (category_node) : NULL;
++  for (guint i = 0; i < json_array_get_length (apps); i++) {
++    const char *app = json_array_get_string_element (apps, i);
++    g_autofree char *target = g_strconcat ("app:", app, NULL);
++    GtkWidget *item = app_link (v, cc_luma_fixture_app_name (v->model, app), NULL, NULL, target);
++    luma_details_item_set_lead (LUMA_DETAILS_ITEM (item), cc_luma_view_image (v, app, 30, 30));
++    GtkWidget *trail = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
++    gtk_widget_set_valign (trail, GTK_ALIGN_CENTER);
++    JsonNode *category = categories ? json_object_get_member (categories, app) : NULL;
++    if (category && json_node_get_value_type (category) == G_TYPE_STRING)
++      gtk_box_append (GTK_BOX (trail), luma_category_pill_new (json_node_get_string (category)));
++    g_autofree char *app_size = cc_luma_fixture_format_size (app_total (v, app));
++    gtk_box_append (GTK_BOX (trail), cc_luma_view_label (app_size, "meta", TRUE));
++    gtk_box_append (GTK_BOX (trail), app_arrow ());
++    luma_details_item_set_trail (LUMA_DETAILS_ITEM (item), trail);
++    gtk_box_append (rows, item);
++  }
++}
++static void app_clear_cache (GtkButton *button, View *v)
++{
++  if (g_str_has_prefix (v->page, "app:")) luma_toast_show (v->root, "Cache cleared", "done");
++  /* cfclearcache is fixture-only feedback: CFSZ is unchanged in v70. Live
++   * cache/data deletion belongs to the actual app store, never this fixture. */
++}
++static void app_open (GtkButton *button, View *v)
++{
++  g_autoptr(GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++    "Native app launch is not connected for Settings page: %s", v->page);
++  cc_luma_view_report_error (v, error);
++}
++static void app_uninstall_confirmed (LumaDestructiveDialog *dialog, gboolean data, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  const char *page = g_object_get_data (G_OBJECT (dialog), "cf-app-page");
++  guint64 *generation = g_object_get_data (G_OBJECT (dialog), "cf-app-generation");
++  if (!v || !generation || *generation != v->generation || !gtk_widget_get_root (root) ||
++      g_strcmp0 (v->page, page) || !g_str_has_prefix (page, "app:") || system_app (page + 4)) return;
++  const char *name = cc_luma_fixture_app_name (v->model, page + 4);
++  g_autofree char *message = g_strdup_printf ("%s uninstalled%s", name,
++    data ? " with its data" : ". Its data is kept");
++  /* The mock navigates and reports the outcome; it does not mutate CFAPPS or
++   * remove real applications/data. Keep the fixture equally contained. */
++  cc_luma_view_navigate (v, "apps");
++  luma_toast_show (root, message, "deleted");
++}
++static void app_uninstall (GtkButton *button, View *v)
++{
++  if (!g_str_has_prefix (v->page, "app:") || system_app (v->page + 4)) return;
++  const char *name = cc_luma_fixture_app_name (v->model, v->page + 4);
++  g_autofree char *title = g_strdup_printf ("Uninstall %s?", name);
++  g_autofree char *body = g_strdup_printf ("%s is removed from this computer. You can get it again from Depot.", name);
++  LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title, body,
++    "Uninstall", "trash-2", "Also remove its data");
++  g_object_set_data_full (G_OBJECT (dialog), "cf-app-page", g_strdup (v->page), g_free);
++  guint64 *generation = g_new (guint64, 1);
++  *generation = v->generation;
++  g_object_set_data_full (G_OBJECT (dialog), "cf-app-generation", generation, g_free);
++  g_signal_connect_object (dialog, "confirmed", G_CALLBACK (app_uninstall_confirmed), v->root, 0);
++}
++void cc_luma_view_app_render (View *v)
++{
++  const char *app = v->page + 4;
++  const char *name = cc_luma_fixture_app_name (v->model, app);
++  JsonObject *data = cc_luma_fixture_get_data (v->model);
++  g_autofree char *size = cc_luma_fixture_format_size (app_total (v, app));
++  g_autofree char *meta = g_strdup_printf ("Version 1.0 · from Depot · %s", size);
++  cc_luma_view_header (v, name, meta, NULL);
++  GtkBox *hero = cc_luma_view_group (v, NULL);
++  GtkWidget *identity = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 20);
++  gtk_widget_set_margin_start (identity, 20); gtk_widget_set_margin_end (identity, 20);
++  gtk_widget_set_margin_top (identity, 20); gtk_widget_set_margin_bottom (identity, 20);
++  gtk_box_append (GTK_BOX (identity), cc_luma_view_image (v, app, 64, 64));
++  gtk_box_append (GTK_BOX (identity), cc_luma_view_words (name, "From Depot · updates with Luma"));
++  GtkWidget *open = cc_luma_view_command (v, "Open", G_CALLBACK (app_open));
++  gtk_widget_set_name (open, "cf-app-open"); gtk_widget_set_valign (open, GTK_ALIGN_CENTER);
++  gtk_box_append (GTK_BOX (identity), open); gtk_box_append (hero, identity);
++  GtkBox *rows = cc_luma_view_group (v, "Allowed to");
++  JsonObject *labels = json_object_get_object_member (data, "CFPERM");
++  for (guint i = 0; i < cc_luma_fixture_app_permission_count (v->model, app); i++) {
++    const char *permission = cc_luma_fixture_app_permission (v->model, app, i);
++    JsonArray *words = json_object_get_array_member (labels, permission);
++    g_autofree char *key = g_strconcat ("perm_", app, permission, NULL);
++    g_autofree char *id = g_strconcat ("cf-", key, NULL);
++    cc_luma_view_row (rows, json_array_get_string_element (words, 0), json_array_get_string_element (words, 1),
++      cc_luma_view_toggle (v, key, id, json_array_get_string_element (words, 0)));
++  }
++  rows = cc_luma_view_group (v, "Storage");
++  JsonArray *sizes = json_object_get_array_member (json_object_get_object_member (data, "CFSZ"), app);
++  const char * const titles[] = { "App", "Documents and data", "Cache" };
++  for (guint i = 0; i < 3; i++) {
++    g_autofree char *value = cc_luma_fixture_format_size (json_array_get_int_element (sizes, i));
++    cc_luma_view_row (rows, titles[i], NULL, cc_luma_view_label (value, "meta", TRUE));
++  }
++  GtkWidget *clear = cc_luma_view_command (v, "Clear", G_CALLBACK (app_clear_cache));
++  gtk_widget_set_name (clear, "cf-app-clear-cache");
++  cc_luma_view_row (rows, "Clear cache", "It fills up again as you use the app", clear);
++  rows = cc_luma_view_group (v, NULL);
++  if (system_app (app)) {
++    g_autofree char *subtitle = g_strdup_printf ("%s comes with the system and updates with it, so it can’t be uninstalled", name);
++    GtkWidget *row = cc_luma_view_row (rows, "Part of Luma", subtitle, NULL);
++    gtk_box_prepend (GTK_BOX (row), luma_ui_icon_new ("lock"));
++  } else {
++    g_autofree char *title = g_strdup_printf ("Uninstall %s", name);
++    GtkWidget *uninstall = cc_luma_view_command (v, "Uninstall…", G_CALLBACK (app_uninstall));
++    gtk_widget_set_name (uninstall, "cf-app-uninstall");
++    cc_luma_view_row (rows, title, "Keeps your documents unless you choose otherwise", uninstall);
++  }
++}
++
+ void cc_luma_view_defaults_render (View *v)
+ {
+   cc_luma_view_header (v, "Default apps", "Opens links, files and media", NULL);
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index ccb797f..2080f17 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -80,3 +80,6 @@ void cc_luma_view_pointer_render (View *v);
+ void cc_luma_view_keyboard_render (View *v);
+ void cc_luma_view_defaults_render (View *v);
+ void cc_luma_view_media_render (View *v);
++void cc_luma_view_apps_render (View *v);
++void cc_luma_view_app_render (View *v);
++void cc_luma_view_navigate (View *v, const char *target);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index c5628a4..53c6936 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -83,8 +83,9 @@ GtkWidget *cc_luma_view_row (GtkBox *rows, const char *title, const char *subtit
+ }
+ static gboolean page_supported (const char *page)
+ {
++  if (page && g_str_has_prefix (page, "app:")) return TRUE;
+   const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
+-    "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media" };
++    "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps" };
+   for (guint i = 0; i < G_N_ELEMENTS (pages); i++)
+     if (g_strcmp0 (page, pages[i]) == 0) return TRUE;
+   return FALSE;
+@@ -118,6 +119,10 @@ static void navigate (GtkButton *button, GtkWidget *root)
+ {
+   go_to (root, g_object_get_data (G_OBJECT (button), "cf-target"));
+ }
++void cc_luma_view_navigate (View *v, const char *target)
++{
++  if (v && target) go_to (v->root, target);
++}
+ static void trail_back (LumaNavigationTrailBar *trail, GtkWidget *root)
+ {
+   go_to (root, g_object_get_data (G_OBJECT (trail), "cf-target"));
+@@ -344,6 +349,7 @@ void cc_luma_view_header (View *v, const char *title, const char *subtitle, cons
+     if (node && json_node_get_value_type (node) == G_TYPE_STRING) parent = json_node_get_string (node);
+     break;
+   }
++  if (g_str_has_prefix (v->page, "app:")) parent = "apps";
+   if (parent) for (guint i = 0; i < json_array_get_length (pages); i++) {
+     JsonObject *page = json_array_get_object_element (pages, i);
+     if (!g_str_equal (json_object_get_string_member (page, "id"), parent)) continue;
+@@ -736,6 +742,8 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "keyboard")) cc_luma_view_keyboard_render (v);
+   else if (g_str_equal (v->page, "defaults")) cc_luma_view_defaults_render (v);
+   else if (g_str_equal (v->page, "media")) cc_luma_view_media_render (v);
++  else if (g_str_equal (v->page, "apps")) cc_luma_view_apps_render (v);
++  else if (g_str_has_prefix (v->page, "app:")) cc_luma_view_app_render (v);
+ }
+ static void view_free (View *v)
+ {
+@@ -819,6 +827,8 @@ static gboolean valid_wifi_model (CcLumaFixture *model)
+ }
+ static gboolean page_valid (CcLumaFixture *model, const char *page)
+ {
++  if (g_str_equal (page, "apps")) return cc_luma_fixture_apps_validate (model);
++  if (g_str_has_prefix (page, "app:")) return cc_luma_fixture_prepare_app (model, page + 4, NULL);
+   if (g_str_equal (page, "power")) return cc_luma_power_fixture_validate (model);
+   if (g_str_equal (page, "mouse")) return cc_luma_pointer_validate (model);
+   if (g_str_equal (page, "keyboard")) return cc_luma_keyboard_validate (model);
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index e0f3e12..b88e12d 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -649,6 +649,57 @@ static void pointer_model (void)
+   g_assert_true (cc_luma_pointer_validate (model));
+ }
+ 
++static void apps_model (void)
++{
++  g_autoptr(CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_nonnull (model);
++  g_assert_true (cc_luma_fixture_apps_validate (model));
++  JsonArray *apps = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFAPPS");
++  g_assert_cmpuint (json_array_get_length (apps), ==, 18);
++  for (guint i = 0; i < json_array_get_length (apps); i++) {
++    const char *app = json_array_get_string_element (apps, i);
++    g_assert_nonnull (cc_luma_fixture_app_name (model, app));
++    g_assert_true (cc_luma_fixture_prepare_app (model, app, NULL));
++    for (guint j = 0; j < cc_luma_fixture_app_permission_count (model, app); j++) {
++      const char *permission = cc_luma_fixture_app_permission (model, app, j);
++      g_autofree char *key = g_strconcat ("perm_", app, permission, NULL);
++      g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, key)));
++      g_assert_true (cc_luma_fixture_set_flag (model, key, FALSE, NULL));
++      g_assert_true (cc_luma_fixture_prepare_app (model, app, NULL));
++      g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, key)));
++    }
++    g_autofree char *unknown = g_strconcat ("perm_", app, "unknown", NULL);
++    g_assert_false (cc_luma_fixture_set_flag (model, unknown, TRUE, NULL));
++    g_assert_null (cc_luma_fixture_get (model, unknown));
++    g_assert_null (cc_luma_fixture_app_permission (model, app, 99));
++  }
++  g_assert_false (cc_luma_fixture_prepare_app (model, "../../real-app", NULL));
++  g_assert_false (cc_luma_fixture_prepare_app (model, "no-such-app", NULL));
++  g_assert_true (cc_luma_fixture_apps_validate (model));
++  g_autoptr(CcLumaFixture) malformed = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  JsonObject *permissions = json_object_get_object_member (cc_luma_fixture_get_data (malformed), "CFPERMS");
++  JsonArray *camera = json_object_get_array_member (permissions, "camera");
++  json_array_remove_element (camera, 1);
++  json_array_add_string_element (camera, "unknown");
++  g_assert_null (cc_luma_fixture_get (malformed, "perm_cameracam"));
++  g_assert_false (cc_luma_fixture_prepare_app (malformed, "camera", NULL));
++  /* A valid first permission must not be initialized before a later failure. */
++  g_assert_null (cc_luma_fixture_get (malformed, "perm_cameracam"));
++  g_assert_false (cc_luma_fixture_apps_validate (malformed));
++  g_autoptr(CcLumaFixture) bad_size = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  JsonObject *sizes = json_object_get_object_member (cc_luma_fixture_get_data (bad_size), "CFSZ");
++  json_node_set_int (json_array_get_element (json_object_get_array_member (sizes, "filer"), 0), -1);
++  g_assert_false (cc_luma_fixture_prepare_app (bad_size, "filer", NULL));
++  g_assert_null (cc_luma_fixture_get (bad_size, "perm_filersearch"));
++  g_assert_false (cc_luma_fixture_apps_validate (bad_size));
++  const gint64 amounts[] = { 0, 999, 1000, 1050, 1150, 1250, 1450, 2250, 2650, 18700, G_MAXINT64 };
++  const char *expected[] = { "0 MB", "999 MB", "1 GB", "1.1 GB", "1.1 GB", "1.3 GB", "1.4 GB", "2.3 GB", "2.6 GB", "18.7 GB", "9223372036854776 GB" };
++  for (guint i = 0; i < G_N_ELEMENTS (amounts); i++) {
++    g_autofree char *formatted = cc_luma_fixture_format_size (amounts[i]);
++    g_assert_cmpstr (formatted, ==, expected[i]);
++  }
++}
++
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -675,6 +726,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/pointer", pointer_model);
+       g_test_add_func ("/settings/fixture/keyboard", keyboard_model);
+       g_test_add_func ("/settings/fixture/application-options", application_options_model);
++      g_test_add_func ("/settings/fixture/apps", apps_model);
+     }
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 874f9ef..9d12930 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -909,6 +909,136 @@ static void application_options_view (void)
+   g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "def.photo")), ==, "darkroom");
+   g_assert_null (cc_luma_view_get_error (view)); gtk_window_destroy (GTK_WINDOW (window)); drain ();
+ }
++static void wait_dialog_closed (GtkWidget *window)
++{
++  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
++  while (find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG) && g_get_monotonic_time () < deadline)
++    wait_ms (10);
++  g_assert_null (find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG));
++}
++
++static void apps_view (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr(CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  JsonObject *data = cc_luma_fixture_get_data (model);
++  JsonArray *apps = json_object_get_array_member (data, "CFAPPS");
++  JsonObject *wifi = json_object_get_object_member (data, "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  g_assert_cmpuint (json_array_get_length (apps), ==, 18);
++  for (guint i = 0; i < json_array_get_length (apps); i++) {
++    g_autoptr(GError) error = NULL;
++    g_autofree char *path = cc_luma_fixture_asset_path (model, json_array_get_string_element (apps, i), &error);
++    g_assert_no_error (error); g_assert_nonnull (path);
++    g_assert_true (g_file_set_contents (path, art, -1, &error)); g_assert_no_error (error);
++  }
++  g_autofree char *sizes_before = json_to_string (json_object_get_member (data, "CFSZ"), FALSE);
++  const int widths[] = {1180, 390};
++  for (guint presentation = 0; presentation < G_N_ELEMENTS (widths); presentation++) {
++    GtkWidget *window = gtk_window_new ();
++    g_autoptr(GError) error = NULL;
++    GtkWidget *view = cc_luma_view_new (model, "apps", &error);
++    g_assert_no_error (error); g_assert_nonnull (view);
++    gtk_window_set_child (GTK_WINDOW (window), view);
++    gtk_window_set_default_size (GTK_WINDOW (window), widths[presentation], 740);
++    gtk_window_present (GTK_WINDOW (window)); wait_ms (150);
++    g_assert_cmpint (gtk_widget_get_width (window), ==, widths[presentation]);
++    g_assert_true (gtk_widget_get_mapped (view));
++    g_assert_nonnull (find_name (view, "cf-go-defaults")); g_assert_nonnull (find_name (view, "cf-go-media"));
++    View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++    for (guint i = 0; i < json_array_get_length (apps); i++) {
++      const char *app = json_array_get_string_element (apps, i);
++      g_autofree char *target = g_strconcat ("app:", app, NULL);
++      g_autofree char *link_name = g_strconcat ("cf-go-", target, NULL);
++      GtkWidget *link = find_name (view, link_name); g_assert_true (LUMA_IS_DETAILS_ITEM (link));
++      g_signal_emit_by_name (link, "clicked"); wait_ms (100); g_assert_cmpstr (v->page, ==, target);
++      g_assert_true (has_text (view, cc_luma_fixture_app_name (model, app)));
++      g_assert_nonnull (find_name (view, "cf-app-open")); g_assert_true (has_text (view, "Documents and data"));
++      for (guint permission = 0; permission < cc_luma_fixture_app_permission_count (model, app); permission++) {
++        g_autofree char *key = g_strconcat ("perm_", app, cc_luma_fixture_app_permission (model, app, permission), NULL);
++        g_autofree char *name = g_strconcat ("cf-", key, NULL);
++        GtkWidget *toggle = find_name (view, name); g_assert_true (GTK_IS_SWITCH (toggle));
++        g_assert_cmpint (gtk_switch_get_active (GTK_SWITCH (toggle)), ==, json_node_get_boolean (cc_luma_fixture_get (model, key)));
++        gtk_switch_set_active (GTK_SWITCH (toggle), FALSE); wait_ms (100);
++        g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, key)));
++      }
++      g_signal_emit_by_name (find_name (view, "cf-app-clear-cache"), "clicked"); drain ();
++      g_assert_nonnull (find_type (window, LUMA_TYPE_TOAST));
++      g_autofree char *sizes_after = json_to_string (json_object_get_member (data, "CFSZ"), FALSE);
++      g_assert_cmpstr (sizes_after, ==, sizes_before);
++      gboolean system = g_str_equal (app, "filer") || g_str_equal (app, "viola") || g_str_equal (app, "term") || g_str_equal (app, "depot");
++      GtkWidget *uninstall = find_name (view, "cf-app-uninstall");
++      if (system) { g_assert_null (uninstall); g_assert_true (has_text (view, "Part of Luma")); }
++      else {
++        g_assert_true (GTK_IS_BUTTON (uninstall)); g_signal_emit_by_name (uninstall, "clicked"); wait_ms (100);
++        GtkWidget *dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog);
++        g_assert_true (has_text (dialog, "Also remove its data"));
++        GtkWidget *cancel = find_button_caption (dialog, "Cancel"); g_assert_nonnull (cancel);
++        g_signal_emit_by_name (cancel, "clicked"); wait_dialog_closed (window);
++        g_assert_cmpstr (v->page, ==, target); g_assert_null (find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG));
++      }
++      g_assert_null (cc_luma_view_get_error (view));
++      GtkWidget *back = find_name (view, "cf-go-apps"); g_assert_true (LUMA_IS_NAVIGATION_TRAIL_BAR (back));
++      g_signal_emit_by_name (back, "back"); wait_ms (100); g_assert_cmpstr (v->page, ==, "apps");
++    }
++    /* A confirmation may not act on a newer page or generation. */
++    g_signal_emit_by_name (find_name (view, "cf-go-app:photos"), "clicked"); wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-app-uninstall"), "clicked"); wait_ms (100);
++    GtkWidget *stale = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (stale); g_object_ref (stale);
++    cc_luma_view_navigate (v, "app:messages"); wait_ms (100);
++    g_signal_emit_by_name (stale, "confirmed", TRUE); drain (); g_assert_cmpstr (v->page, ==, "app:messages");
++    GtkWidget *cancel = find_button_caption (stale, "Cancel"); g_assert_nonnull (cancel);
++    g_signal_emit_by_name (cancel, "clicked"); wait_dialog_closed (window); g_object_unref (stale);
++    g_signal_emit_by_name (find_name (view, "cf-app-uninstall"), "clicked"); wait_ms (100);
++    GtkWidget *dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog);
++    GtkWidget *confirm = find_button_caption (dialog, "Uninstall"); g_assert_nonnull (confirm);
++    g_signal_emit_by_name (confirm, "clicked"); wait_dialog_closed (window); g_assert_cmpstr (v->page, ==, "apps");
++    g_assert_true (has_text (window, "Messages uninstalled. Its data is kept"));
++    cc_luma_view_navigate (v, "app:photos"); wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-app-uninstall"), "clicked"); wait_ms (100);
++    dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog);
++    GtkWidget *option = find_type (dialog, GTK_TYPE_CHECK_BUTTON); g_assert_nonnull (option);
++    gtk_check_button_set_active (GTK_CHECK_BUTTON (option), TRUE);
++    g_assert_true (luma_destructive_dialog_get_option_checked (LUMA_DESTRUCTIVE_DIALOG (dialog)));
++    confirm = find_button_caption (dialog, "Uninstall"); g_assert_nonnull (confirm);
++    g_signal_emit_by_name (confirm, "clicked"); wait_dialog_closed (window);
++    g_assert_cmpstr (v->page, ==, "apps"); g_assert_true (has_text (window, "Photos uninstalled with its data"));
++    g_assert_cmpuint (json_array_get_length (apps), ==, 18);
++    g_autofree char *sizes_after = json_to_string (json_object_get_member (data, "CFSZ"), FALSE);
++    g_assert_cmpstr (sizes_after, ==, sizes_before); g_assert_null (cc_luma_view_get_error (view));
++    GtkWidget *orphan = g_object_ref (find_name (view, "cf-go-app:photos"));
++    gpointer weak_view = view; g_object_add_weak_pointer (G_OBJECT (view), &weak_view);
++    gtk_window_destroy (GTK_WINDOW (window)); wait_ms (100);
++    if (weak_view)
++    {
++      g_test_message ("Apps retained root: width=%d refs=%u parent=%s mapped=%d; orphan parent=%s",
++                      widths[presentation], G_OBJECT (weak_view)->ref_count,
++                      gtk_widget_get_parent (weak_view) ? G_OBJECT_TYPE_NAME (gtk_widget_get_parent (weak_view)) : "none",
++                      gtk_widget_get_mapped (weak_view),
++                      gtk_widget_get_parent (orphan) ? G_OBJECT_TYPE_NAME (gtk_widget_get_parent (orphan)) : "none");
++      gpointer observed = weak_view;
++      gint64 started = g_get_monotonic_time ();
++      g_object_add_weak_pointer (G_OBJECT (observed), &observed);
++      while (observed && g_get_monotonic_time () - started < 2 * G_USEC_PER_SEC)
++        wait_ms (10);
++      g_test_message ("Apps root observation after original deadline: released=%d elapsed-us=%" G_GINT64_FORMAT,
++                      observed == NULL, g_get_monotonic_time () - started);
++      if (observed) g_object_remove_weak_pointer (G_OBJECT (observed), &observed);
++      /* Observation must never turn the original 100 ms failure into a pass. */
++      g_error ("Apps view was retained at the original 100 ms teardown deadline");
++    }
++    g_assert_null (weak_view);
++    g_signal_emit_by_name (orphan, "clicked"); drain (); g_object_unref (orphan);
++    g_assert_cmpuint (json_array_get_length (apps), ==, 18);
++  }
++  for (guint i = 0; i < json_array_get_length (apps); i++) {
++    g_autofree char *path = cc_luma_fixture_asset_path (model, json_array_get_string_element (apps, i), NULL);
++    g_assert_cmpint (g_remove (path), ==, 0);
++  }
++  remove_asset_fixture (dir);
++}
++
+ static void adaptive_padding (void)
+ {
+   g_autoptr (CcLumaFixture) model = load ();
+@@ -939,6 +1069,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/device-options", device_options_view);
+   g_test_add_func ("/settings/view/keyboard", keyboard_view);
+   g_test_add_func ("/settings/view/application-options", application_options_view);
++  g_test_add_func ("/settings/view/apps", apps_view);
+   g_test_add_func ("/settings/view/displays", displays_view);
+   g_test_add_func ("/settings/view/sound", sound_views);
+   g_test_add_func ("/settings/view/nightlight", nightlight_view);
+-- 
+2.55.0
+

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma Media Bridge: players without MPRIS on the desktop's media controls
+PartOf=graphical-session.target
+After=graphical-session.target
+# The login screen is a graphical session too, run by a transient greeter
+# user that has no players to bridge.
+ConditionEnvironment=XDG_SESSION_CLASS=user
+
+[Service]
+ExecStart=/usr/libexec/luma-media-bridge
+Restart=on-failure
+RestartSec=10
+Nice=10
+CPUWeight=10
+MemoryHigh=32M
+MemoryMax=64M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

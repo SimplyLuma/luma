@@ -1,0 +1,857 @@
+diff -ruN before/src/buttons-basic.vala gnome-calculator-50.0/src/buttons-basic.vala
+--- a/src/buttons-basic.vala
++++ b/src/buttons-basic.vala
+@@ -14,11 +14,33 @@
+     [GtkChild]
+     private unowned Gtk.Widget basic;
+     [GtkChild]
++    private unowned Gtk.Widget scientific;
++    [GtkChild]
+     private unowned Gtk.Button calc_numeric_point_button;
++    [GtkChild]
++    private unowned Gtk.Button calc_clear_button;
++
++    /* Advanced adds the scientific keypad to the left of the basic one. The
++     * basic keypad itself never changes, so a calculation in progress keeps
++     * both its state and its position under the pointer. */
++    public bool advanced
++    {
++        get { return scientific.visible; }
++        set { scientific.visible = value; }
++    }
+ 
+     public BasicButtonPanel (MathButtons buttons)
+     {
+         basic.set_direction (Gtk.TextDirection.LTR);
++        scientific.set_direction (Gtk.TextDirection.LTR);
+         calc_numeric_point_button.set_label (buttons.equation.serializer.get_radix ().to_string ());
++
++        /* AC clears the whole calculation, C clears the entry being typed. The
++         * key says which one it is, and keeps its width either way. */
++        var equation = buttons.equation;
++        equation.notify["display"].connect (() => {
++            calc_clear_button.label = equation.is_empty ? "AC" : "C";
++        });
++        calc_clear_button.label = equation.is_empty ? "AC" : "C";
+     }
+ }
+diff -ruN before/src/math-buttons.vala gnome-calculator-50.0/src/math-buttons.vala
+--- a/src/math-buttons.vala
++++ b/src/math-buttons.vala
+@@ -55,7 +55,7 @@
+     public bool inverse { get; set; }
+ 
+     private Gtk.Stack panel_stack = new Gtk.Stack ();
+-    private Gtk.Widget bas_panel;
++    private BasicButtonPanel bas_panel;
+     private bool solved_using_button;
+     private bool initialized;
+ 
+@@ -117,7 +117,9 @@
+     private void update_buttons ()
+     {
+         equation.number_base = 10;
+-        panel_stack.visible_child = load_mode (ButtonMode.BASIC);
++        /* The panel is loaded for the mode that is actually set. Pinning this
++         * to Basic is what made the view setting inert. */
++        panel_stack.visible_child = load_mode (_mode);
+     }
+ 
+     private Gtk.Widget load_mode (ButtonMode mode)
+@@ -127,6 +129,10 @@
+             bas_panel = new BasicButtonPanel (this);
+             panel_stack.add_child (bas_panel);
+         }
++        /* Basic and Advanced are one keypad panel with the scientific block
++         * shown or hidden, not two panels: the basic keys must not move when
++         * the mode changes. */
++        bas_panel.advanced = mode == ButtonMode.ADVANCED;
+         return bas_panel;
+     }
+ 
+diff -ruN before/src/math-display.vala gnome-calculator-50.0/src/math-display.vala
+--- a/src/math-display.vala
++++ b/src/math-display.vala
+@@ -83,6 +83,11 @@
+         equation.notify["base-label"].connect (base_label_changed_cb);
+         equation.notify["status"].connect (status_changed_cb);
+         equation.notify["display"].connect (update_result_scale);
++        /* Changing the result format rewrites the answer without changing the
++         * buffer's length, so no display notification is emitted. The equation
++         * announces a reformat with this signal, which is what makes the
++         * Result Format setting visible in the readout. */
++        equation.display_changed.connect ((serializer) => { update_result_scale (); });
+         result_label.notify["width"].connect (update_result_scale);
+         status_changed_cb ();
+         update_result_scale ();
+diff -ruN before/src/math-window.vala gnome-calculator-50.0/src/math-window.vala
+--- a/src/math-window.vala
++++ b/src/math-window.vala
+@@ -22,6 +22,15 @@
+     private unowned MathButtons _buttons;
+     public MathButtons buttons { get { return _buttons; } }
+ 
++    /* The two window widths the design gives Calculator. Basic is the
++     * default; Advanced adds the scientific keypad and the width it needs. */
++    private const int BASIC_WIDTH = 360;
++    private const int ADVANCED_WIDTH = 620;
++    private const int WINDOW_HEIGHT = 470;
++
++    [GtkChild]
++    private unowned Gtk.Label identity_subtitle;
++
+     private const ActionEntry[] window_entries =
+     {
+         { "copy", copy_cb, null, null, null },
+@@ -52,6 +61,10 @@
+ 
+         var settings = new Settings ("org.gnome.calculator");
+         add_action (settings.create_action ("number-format"));
++        add_action (settings.create_action ("button-mode"));
++        settings.changed["button-mode"].connect (() => {
++            apply_button_mode (settings.get_string ("button-mode"));
++        });
+         settings.bind ("number-format", equation, "number_format", SettingsBindFlags.DEFAULT);
+         settings.bind ("accuracy", equation, "accuracy", SettingsBindFlags.DEFAULT);
+         settings.bind ("show-zeroes", equation, "show_trailing_zeroes", SettingsBindFlags.DEFAULT);
+@@ -67,7 +80,7 @@
+             redo_action.set_enabled (equation.has_redo_action);
+         });
+ 
+-        _buttons.mode = ButtonMode.BASIC;
++        apply_button_mode (settings.get_string ("button-mode"));
+ 
+         if (DEVELOPMENT_BUILD)
+             add_css_class ("devel");
+@@ -75,6 +88,23 @@
+         _display.grab_focus ();
+     }
+ 
++    /* Basic and Advanced are the same calculation seen at two widths. The
++     * equation is never touched here, so switching mode mid-sum keeps the
++     * sum; only the keypad and the window width change. */
++    private void apply_button_mode (string name)
++    {
++        var advanced = name == "advanced";
++        _buttons.mode = advanced ? ButtonMode.ADVANCED : ButtonMode.BASIC;
++        identity_subtitle.label = advanced ? _("Advanced") : _("Basic");
++
++        if (maximized || fullscreened)
++            return;
++
++        var width = advanced ? ADVANCED_WIDTH : BASIC_WIDTH;
++        if (default_width != width)
++            set_default_size (width, int.max (default_height, WINDOW_HEIGHT));
++    }
++
+     private void copy_cb ()
+     {
+         equation.copy ();
+diff -ruN before/src/ui/buttons-basic.blp gnome-calculator-50.0/src/ui/buttons-basic.blp
+--- a/src/ui/buttons-basic.blp
++++ b/src/ui/buttons-basic.blp
+@@ -6,187 +6,399 @@
+     "math-buttons",
+   ]
+ 
+-  Grid basic {
+-    hexpand: true;
+-    vexpand: true;
+-    row-homogeneous: true;
+-    column-homogeneous: true;
+-    styles [
+-      "buttons",
+-    ]
+-
+-    Button {
+-      label: "C";
+-      focus-on-click: false;
+-      tooltip-text: _("Clear Display [Escape]");
+-      action-name: "cal.clear";
+-      styles ["function-button"]
+-      layout { column: "0"; row: "0"; }
+-    }
+-
+-    Button {
+-      label: "±";
+-      focus-on-click: false;
+-      tooltip-text: _("Change Sign");
+-      action-name: "cal.change-sign";
+-      styles ["function-button"]
+-      layout { column: "1"; row: "0"; }
+-    }
+-
+-    Button {
+-      label: "%";
+-      focus-on-click: false;
+-      tooltip-text: _("Percentage [%]");
+-      action-name: "cal.insert-general";
+-      action-target: "'%'";
+-      styles ["function-button"]
+-      layout { column: "2"; row: "0"; }
+-    }
+-
+-    Button {
+-      label: "÷";
+-      focus-on-click: false;
+-      tooltip-text: _("Divide [/]");
+-      action-name: "cal.insert-general";
+-      action-target: "'÷'";
+-      styles ["operator-button"]
+-      layout { column: "3"; row: "0"; }
+-    }
+-
+-    Button {
+-      label: "7";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "7";
+-      styles ["number-button"]
+-      layout { column: "0"; row: "1"; }
+-    }
+-
+-    Button {
+-      label: "8";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "8";
+-      styles ["number-button"]
+-      layout { column: "1"; row: "1"; }
+-    }
+-
+-    Button {
+-      label: "9";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "9";
+-      styles ["number-button"]
+-      layout { column: "2"; row: "1"; }
+-    }
+-
+-    Button {
+-      label: "×";
+-      focus-on-click: false;
+-      tooltip-text: _("Multiply [*]");
+-      action-name: "cal.insert-general";
+-      action-target: "'×'";
+-      styles ["operator-button"]
+-      layout { column: "3"; row: "1"; }
+-    }
+-
+-    Button {
+-      label: "4";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "4";
+-      styles ["number-button"]
+-      layout { column: "0"; row: "2"; }
+-    }
+-
+-    Button {
+-      label: "5";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "5";
+-      styles ["number-button"]
+-      layout { column: "1"; row: "2"; }
+-    }
+-
+-    Button {
+-      label: "6";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "6";
+-      styles ["number-button"]
+-      layout { column: "2"; row: "2"; }
+-    }
+-
+-    Button {
+-      label: "−";
+-      focus-on-click: false;
+-      tooltip-text: _("Subtract [-]");
+-      action-name: "cal.subtract";
+-      styles ["operator-button"]
+-      layout { column: "3"; row: "2"; }
+-    }
+-
+-    Button {
+-      label: "1";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "1";
+-      styles ["number-button"]
+-      layout { column: "0"; row: "3"; }
+-    }
+-
+-    Button {
+-      label: "2";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "2";
+-      styles ["number-button"]
+-      layout { column: "1"; row: "3"; }
+-    }
+-
+-    Button {
+-      label: "3";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "3";
+-      styles ["number-button"]
+-      layout { column: "2"; row: "3"; }
+-    }
+-
+-    Button {
+-      label: "+";
+-      focus-on-click: false;
+-      tooltip-text: _("Add [+]");
+-      action-name: "cal.insert-general";
+-      action-target: "'+'";
+-      styles ["operator-button"]
+-      layout { column: "3"; row: "3"; }
+-    }
+-
+-    Button {
+-      label: "0";
+-      focus-on-click: false;
+-      action-name: "cal.insert-digit";
+-      action-target: "0";
+-      styles ["number-button"]
+-      layout { column: "0"; column-span: "2"; row: "4"; }
+-    }
+-
+-    Button calc_numeric_point_button {
+-      label: ".";
+-      focus-on-click: false;
+-      action-name: "cal.insert-numeric-point";
+-      styles ["number-button"]
+-      layout { column: "2"; row: "4"; }
+-    }
++  Box keypads {
++    spacing: 8;
+ 
+-    Button {
+-      label: _("=");
+-      focus-on-click: false;
+-      tooltip-text: _("Calculate Result");
+-      action-name: "cal.solve";
+-      styles ["suggested-action", "result-button"]
+-      layout { column: "3"; row: "4"; }
++    Grid scientific {
++      visible: false;
++      hexpand: true;
++      vexpand: true;
++      row-homogeneous: true;
++      column-homogeneous: true;
++
++      styles [
++        "buttons",
++        "scientific-buttons",
++      ]
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Square [Ctrl+2]");
++        action-name: "cal.square";
++        styles ["function-button"]
++        layout { column: "0"; row: "0"; }
++
++        child: Label {
++          label: "<i>x</i>²";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Cube");
++        action-name: "cal.insert-symbol-after";
++        action-target: "'³'";
++        styles ["function-button"]
++        layout { column: "1"; row: "0"; }
++
++        child: Label {
++          label: "<i>x</i>³";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Exponent [^]");
++        action-name: "cal.insert-symbol-after";
++        action-target: "'^'";
++        styles ["function-button"]
++        layout { column: "2"; row: "0"; }
++
++        child: Label {
++          label: "<i>x</i><sup><i>y</i></sup>";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Natural Exponent");
++        action-name: "cal.insert-exponent";
++        action-target: "'e'";
++        styles ["function-button"]
++        layout { column: "3"; row: "0"; }
++
++        child: Label {
++          label: "e<sup><i>x</i></sup>";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Square Root [Ctrl+R]");
++        action-name: "cal.insert-symbol-before";
++        action-target: "'√'";
++        styles ["function-button"]
++        layout { column: "0"; row: "1"; }
++
++        child: Label {
++          label: "√<i>x</i>";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Cube Root");
++        action-name: "cal.insert-symbol-before";
++        action-target: "'∛'";
++        styles ["function-button"]
++        layout { column: "1"; row: "1"; }
++
++        child: Label {
++          label: "∛<i>x</i>";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Reciprocal");
++        action-name: "cal.insert-symbol-after";
++        action-target: "'⁻¹'";
++        styles ["function-button"]
++        layout { column: "2"; row: "1"; }
++
++        child: Label {
++          label: "1/<i>x</i>";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Base 10 Exponent");
++        action-name: "cal.insert-exponent";
++        action-target: "'10'";
++        styles ["function-button"]
++        layout { column: "3"; row: "1"; }
++
++        child: Label {
++          label: "10<sup><i>x</i></sup>";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        label: "ln";
++        focus-on-click: false;
++        tooltip-text: _("Natural Logarithm");
++        action-name: "cal.insert-function";
++        action-target: "'ln'";
++        styles ["function-button"]
++        layout { column: "0"; row: "2"; }
++      }
++
++      Button {
++        label: "log";
++        focus-on-click: false;
++        tooltip-text: _("Logarithm");
++        action-name: "cal.insert-function";
++        action-target: "'log'";
++        styles ["function-button"]
++        layout { column: "1"; row: "2"; }
++      }
++
++      Button {
++        focus-on-click: false;
++        tooltip-text: _("Factorial [!]");
++        action-name: "cal.insert-symbol-after";
++        action-target: "'!'";
++        styles ["function-button"]
++        layout { column: "2"; row: "2"; }
++
++        child: Label {
++          label: "<i>n</i>!";
++          use-markup: true;
++        };
++      }
++
++      Button {
++        label: "π";
++        focus-on-click: false;
++        tooltip-text: _("Pi [Ctrl+P]");
++        action-name: "cal.insert-alpha";
++        action-target: "'π'";
++        styles ["function-button"]
++        layout { column: "3"; row: "2"; }
++      }
++
++      Button {
++        label: "sin";
++        focus-on-click: false;
++        tooltip-text: _("Sine");
++        action-name: "cal.insert-function";
++        action-target: "'sin'";
++        styles ["function-button"]
++        layout { column: "0"; row: "3"; }
++      }
++
++      Button {
++        label: "cos";
++        focus-on-click: false;
++        tooltip-text: _("Cosine");
++        action-name: "cal.insert-function";
++        action-target: "'cos'";
++        styles ["function-button"]
++        layout { column: "1"; row: "3"; }
++      }
++
++      Button {
++        label: "tan";
++        focus-on-click: false;
++        tooltip-text: _("Tangent");
++        action-name: "cal.insert-function";
++        action-target: "'tan'";
++        styles ["function-button"]
++        layout { column: "2"; row: "3"; }
++      }
++
++      Button {
++        label: "e";
++        focus-on-click: false;
++        tooltip-text: _("Euler’s Number");
++        action-name: "cal.insert-alpha";
++        action-target: "'e'";
++        styles ["function-button"]
++        layout { column: "3"; row: "3"; }
++      }
++    }
++
++      Grid basic {
++      hexpand: true;
++      vexpand: true;
++      row-homogeneous: true;
++      column-homogeneous: true;
++      styles [
++        "buttons",
++      ]
++
++      Button calc_clear_button {
++        label: "AC";
++        focus-on-click: false;
++        tooltip-text: _("Clear Display [Escape]");
++        action-name: "cal.clear";
++        styles ["function-button"]
++        layout { column: "0"; row: "0"; }
++      }
++
++      Button {
++        label: "±";
++        focus-on-click: false;
++        tooltip-text: _("Change Sign");
++        action-name: "cal.change-sign";
++        styles ["function-button"]
++        layout { column: "1"; row: "0"; }
++      }
++
++      Button {
++        label: "%";
++        focus-on-click: false;
++        tooltip-text: _("Percentage [%]");
++        action-name: "cal.insert-general";
++        action-target: "'%'";
++        styles ["function-button"]
++        layout { column: "2"; row: "0"; }
++      }
++
++      Button {
++        label: "÷";
++        focus-on-click: false;
++        tooltip-text: _("Divide [/]");
++        action-name: "cal.insert-general";
++        action-target: "'÷'";
++        styles ["operator-button"]
++        layout { column: "3"; row: "0"; }
++      }
++
++      Button {
++        label: "7";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "7";
++        styles ["number-button"]
++        layout { column: "0"; row: "1"; }
++      }
++
++      Button {
++        label: "8";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "8";
++        styles ["number-button"]
++        layout { column: "1"; row: "1"; }
++      }
++
++      Button {
++        label: "9";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "9";
++        styles ["number-button"]
++        layout { column: "2"; row: "1"; }
++      }
++
++      Button {
++        label: "×";
++        focus-on-click: false;
++        tooltip-text: _("Multiply [*]");
++        action-name: "cal.insert-general";
++        action-target: "'×'";
++        styles ["operator-button"]
++        layout { column: "3"; row: "1"; }
++      }
++
++      Button {
++        label: "4";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "4";
++        styles ["number-button"]
++        layout { column: "0"; row: "2"; }
++      }
++
++      Button {
++        label: "5";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "5";
++        styles ["number-button"]
++        layout { column: "1"; row: "2"; }
++      }
++
++      Button {
++        label: "6";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "6";
++        styles ["number-button"]
++        layout { column: "2"; row: "2"; }
++      }
++
++      Button {
++        label: "−";
++        focus-on-click: false;
++        tooltip-text: _("Subtract [-]");
++        action-name: "cal.subtract";
++        styles ["operator-button"]
++        layout { column: "3"; row: "2"; }
++      }
++
++      Button {
++        label: "1";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "1";
++        styles ["number-button"]
++        layout { column: "0"; row: "3"; }
++      }
++
++      Button {
++        label: "2";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "2";
++        styles ["number-button"]
++        layout { column: "1"; row: "3"; }
++      }
++
++      Button {
++        label: "3";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "3";
++        styles ["number-button"]
++        layout { column: "2"; row: "3"; }
++      }
++
++      Button {
++        label: "+";
++        focus-on-click: false;
++        tooltip-text: _("Add [+]");
++        action-name: "cal.insert-general";
++        action-target: "'+'";
++        styles ["operator-button"]
++        layout { column: "3"; row: "3"; }
++      }
++
++      Button {
++        label: "0";
++        focus-on-click: false;
++        action-name: "cal.insert-digit";
++        action-target: "0";
++        styles ["number-button"]
++        layout { column: "0"; column-span: "2"; row: "4"; }
++      }
++
++      Button calc_numeric_point_button {
++        label: ".";
++        focus-on-click: false;
++        action-name: "cal.insert-numeric-point";
++        styles ["number-button"]
++        layout { column: "2"; row: "4"; }
++      }
++
++      Button {
++        label: _("=");
++        focus-on-click: false;
++        tooltip-text: _("Calculate Result");
++        action-name: "cal.solve";
++        styles ["suggested-action", "result-button"]
++        layout { column: "3"; row: "4"; }
++      }
+     }
+   }
+ }
+diff -ruN before/src/ui/math-display.blp gnome-calculator-50.0/src/ui/math-display.blp
+--- a/src/ui/math-display.blp
++++ b/src/ui/math-display.blp
+@@ -58,8 +58,9 @@
+       valign: fill;
+       hexpand: true;
+       vexpand: true;
+-      yalign: 0.5;
+-      margin-end: 16;
++      yalign: 1;
++      margin-end: 12;
++      margin-bottom: 12;
+       can-target: false;
+       single-line-mode: true;
+       xalign: 1;
+diff -ruN before/src/ui/math-window.blp gnome-calculator-50.0/src/ui/math-window.blp
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -10,6 +10,22 @@
+   }
+ 
+   section {
++    label: _("View");
++
++    item {
++      label: _("_Basic");
++      action: "win.button-mode";
++      target: "basic";
++    }
++
++    item {
++      label: _("_Advanced");
++      action: "win.button-mode";
++      target: "advanced";
++    }
++  }
++
++  section {
+     label: _("Result Format");
+ 
+     item {
+@@ -57,10 +73,10 @@
+ 
+ template $MathWindow: Adw.ApplicationWindow {
+   title: _("Calculator");
+-  default-width: 320;
+-  default-height: 440;
++  default-width: 360;
++  default-height: 470;
+   width-request: 300;
+-  height-request: 420;
++  height-request: 410;
+ 
+   styles [
+     "luma-calculator-window",
+@@ -102,9 +118,25 @@
+             ]
+           }
+ 
+-          Label {
+-            label: _("Calculator");
+-            ellipsize: end;
++          Box {
++            orientation: vertical;
++            valign: center;
++
++            Label {
++              label: _("Calculator");
++              ellipsize: end;
++              xalign: 0;
++            }
++
++            Label identity_subtitle {
++              label: _("Basic");
++              ellipsize: end;
++              xalign: 0;
++
++              styles [
++                "luma-identity-subtitle",
++              ]
++            }
+           }
+ 
+           Image {
+diff -ruN before/src/ui/style.css gnome-calculator-50.0/src/ui/style.css
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -478,17 +478,20 @@
+     background-color: @view_bg_color;
+     color: @view_fg_color;
+     font-family: "Figtree";
+-    font-size: 34px;
+-    font-weight: 500;
++    /* The answer is the largest thing in the window. It steps down only when
++     * the number stops fitting, and never below the readable floor. */
++    font-size: 40px;
++    font-weight: 650;
++    letter-spacing: -0.02em;
+     font-feature-settings: "tnum";
+   }
+ 
+   .display-result.result-medium {
+-    font-size: 26px;
++    font-size: 34px;
+   }
+ 
+   .display-result.result-small {
+-    font-size: 20px;
++    font-size: 28px;
+   }
+ 
+   mathdisplay.error .display-result {
+@@ -659,6 +662,12 @@
+   font-family: "Figtree";
+ }
+ 
++.luma-calculator-surface .scientific-buttons button {
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 600;
++}
++
+ .luma-calculator-surface .info-view {
+   color: @luma_muted;
+ }

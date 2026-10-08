@@ -1,0 +1,248 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Chrome, islands, buttons, groups, segments, sidebar rows, status bars and
+ * sliders are defined once in luma-appkit-base.css and shared with the C kit.
+ * This sheet keeps only what is specific to the Python kit's own widgets:
+ * menus, popovers, dialogs, avatars, empty states, rename fields. */
+
+@import url("luma-appkit-tokens.css");
+
+.luma-connected-buttons.violet { background: alpha(@luma_violet, .06); box-shadow: inset 0 0 0 1px alpha(@luma_violet,.18); }
+.luma-connected-buttons.amber { background: alpha(@luma_amber, .06); box-shadow: inset 0 0 0 1px alpha(@luma_amber,.18); }
+.luma-connected-buttons.blue { background: alpha(@luma_blue, .06); box-shadow: inset 0 0 0 1px alpha(@luma_blue,.18); }
+.luma-save-status { color: @luma_muted; font-size: 11px; font-weight: 500; }
+.luma-save-status.error { color: @luma_destructive; }
+.luma-inline-rename {
+  min-height: 28px; padding: 0 6px; border: 1px solid @luma_accent;
+  border-radius: 7px; background: @luma_fill; box-shadow: none;
+}
+.luma-dialog-popover > contents {
+  padding: 10px; border: 1px solid @luma_menu_border; border-radius: 12px;
+  background: @luma_menu; color: @luma_ink;
+  box-shadow: 0 12px 34px alpha(@luma_island_shadow, .16);
+}
+.luma-dialog-popover entry {
+  min-height: 34px; border: 1px solid @luma_line_faint;
+  border-radius: 8px; background: @luma_fill; color: @luma_ink;
+}
+.luma-quick-action {
+  min-height: 62px; padding: 7px 5px; border: 0; border-right: 1px solid @luma_line_faint;
+  border-radius: 0; background: transparent; color: @luma_ink; font-size: 11px; font-weight: 600;
+}
+.luma-quick-action:last-child { border-right: 0; }
+.luma-quick-action:hover { background: @luma_menu_raised; }
+
+/* Navigation, identity, empty and status components.
+ *
+ * These styles were lost in the same integration that dropped their widget
+ * implementations, so the classes the widgets add resolved to nothing. They are
+ * restored verbatim from the revision that carried them and use only tokens the
+ * light and dark token files both still define. */
+.luma-section-label {
+  /* The design's sidebar heading and section heading are one thing: an 18px
+   * band with 4px above it, set in the meta size. It was 11px here, which is
+   * the label size — two steps of the ramp apart, and enough to make every
+   * heading in every application read as a title. Its colour is the ledger's
+   * section_label (ADR-043): 46% of the ink measured 2.50:1 on a light
+   * sidebar and 2.78:1 on glass; this holds 4.5:1 in every mode. */
+  min-height: 14px;
+  padding: 4px 8px 0;
+  color: @luma_section_label;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .11em;
+}
+@import url("luma-empty-state-tokens.css");
+/* A person's identity mark. Three sizes: the row (26), the default (32) and
+ * the hero a detail view opens with (72). `large` is the call screen's own
+ * size and stays as it is. The tone is chosen from the name by the kit, so the
+ * same person is the same colour in Contacts, Messages and Phone. */
+.luma-avatar {
+  min-width: 32px; min-height: 32px; border-radius: 10px;
+  background: @luma_fill; color: @luma_ink;
+}
+.luma-avatar.compact { min-width: 24px; min-height: 24px; border-radius: 10px; }
+.luma-avatar.hero { min-width: 76px; min-height: 76px; border-radius: 10px; }
+.luma-avatar.large { min-width: 88px; min-height: 88px; border-radius: 23px; }
+.luma-avatar-initials { font-size: 11px; font-weight: 700; }
+.luma-avatar.compact .luma-avatar-initials { font-size: 11px; }
+.luma-avatar.hero .luma-avatar-initials { font-size: 21px; font-weight: 700; }
+.luma-avatar.large .luma-avatar-initials { font-size: 28px; }
+/* A list row's identity, as Messages' conversations draw it. */
+.luma-avatar.medium { min-width: 40px; min-height: 40px; border-radius: 12px; }
+.luma-avatar.medium .luma-avatar-initials { font-size: 15px; font-weight: 650; letter-spacing: .01em; }
+/* Glyphs for a number, a business or a group: drawn in the tone, sized to the tile. */
+.luma-avatar-glyph { color: inherit; -gtk-icon-size: 16px; }
+.luma-avatar.compact .luma-avatar-glyph { -gtk-icon-size: 13px; }
+.luma-avatar.medium .luma-avatar-glyph { -gtk-icon-size: 20px; }
+.luma-avatar.hero .luma-avatar-glyph { -gtk-icon-size: 36px; }
+.luma-avatar.large .luma-avatar-glyph { -gtk-icon-size: 42px; }
+.luma-avatar.kind-photo { background: none; }
+.luma-avatar.tone-blue { background: alpha(@luma_blue,.26); color: mix(@luma_blue,@luma_ink,.08); }
+.luma-avatar.tone-green { background: alpha(@luma_green,.26); color: mix(@luma_green,@luma_ink,.08); }
+.luma-avatar.tone-violet { background: alpha(@luma_violet,.26); color: mix(@luma_violet,@luma_ink,.08); }
+.luma-avatar.tone-amber { background: alpha(@luma_amber,.30); color: mix(@luma_amber,@luma_ink,.08); }
+
+/* A labelled value. 104px label column, then the value; the row lifts on
+ * hover the way every other selectable line in the kit does. */
+.luma-field-row {
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 10px;
+}
+.luma-field-row:hover { background: @luma_hover; }
+.luma-field-label { min-width: 104px; color: @luma_muted; font-size: 13px; font-weight: 650; }
+.luma-field-value { color: @luma_ink; font-size: 13px; font-weight: 400; }
+.luma-field-value.numeric { font-variant-numeric: tabular-nums; }
+.luma-navigation-sidebar.compact { min-width: 178px; }
+.luma-navigation-list { padding: 6px; background: transparent; }
+/* Only the heading rows are cleared here. GTK takes a property from the last
+ * provider at a priority that sets it, whatever the specificity elsewhere, so
+ * a bare `row { background }` in this sheet silently beat the base sheet's
+ * hover and selected fills: no regular sidebar showed which view was open. */
+.luma-navigation-list > row.luma-navigation-section { background: transparent; }
+/* The design's sidebar heading: an 18px band (the label's own 14 + 4 above
+ * it) straight above its rows, its text on the rows' 8px inset. */
+.luma-navigation-section { min-height: 0; padding: 0; }
+/* Between groups, a hairline 7px in from the rows' edges with 5px either
+ * side of it, drawn by the kit's rule widget (NavigationSidebar). */
+.luma-navigation-rule { min-height: 1px; margin: 5px 7px; background: @luma_line; }
+
+.luma-navigation-row box { min-width: 0; }
+
+/* A row's subtitle (a time, a count, a detail) is secondary to its title. */
+.luma-navigation-row .luma-navigation-subtitle {
+  color: @luma_muted; font-size: 11px; font-variant-numeric: tabular-nums;
+}
+
+/* Opt-in content headings use the current semantic meta size. Existing
+ * sidebar/inspector callers retain their original band and inset. */
+.luma-section-label.content {
+  min-height: 0; padding: 0; color: @luma_muted; font-size: 11px; line-height: 13px;
+}
+
+/* Compact grouped navigation. Width is the widget's 178px outer request;
+ * do not add a second content minimum inside the native island stroke. */
+.luma-navigation-sidebar.compact { min-width: 0; }
+.luma-navigation-sidebar.compact .luma-navigation-section { min-height: 0; padding: 0; }
+.luma-navigation-sidebar.compact .luma-section-label { font-size: 11px; }
+.luma-navigation-sidebar.compact .luma-navigation-section.separated {
+  margin-top: 5px; padding-top: 5px; border-top: 1px solid @luma_line;
+}
+.luma-navigation-sidebar.compact .luma-navigation-row:selected {
+  background: @luma_selected;
+}
+
+/* The menu is the toolkit's: every GtkPopoverMenu takes the context-menu
+   contract from the libadwaita stylesheet (patch 0024), including the kit's
+   custom rows (.luma-menu-row, .two-line, .luma-menu-destructive). Nothing
+   about a menu is styled here. */
+
+/* Opt-in compact palettes; native buttons retain their keyboard and state API. */
+.luma-connected-buttons.compact {
+  padding: 2px; border-radius: 10px; background: @luma_fill; box-shadow: none;
+}
+.luma-connected-buttons.compact > button {
+  min-width: 26px; min-height: 24px; padding: 0; margin: 0; border: 0;
+  border-radius: 7px; background: transparent; color: @luma_muted; box-shadow: none;
+}
+.luma-connected-buttons.compact > button:hover { background: @luma_hover; color: @luma_ink; }
+.luma-connected-buttons.compact > button:checked { background: @luma_state; color: @luma_state_ink; }
+.luma-connected-buttons.compact > button image { -gtk-icon-size: 14px; }
+button.luma-color-swatch, .luma-connected-buttons.compact > button.luma-color-swatch {
+  min-width: 22px; min-height: 22px; padding: 0; margin: 0; border: 0;
+  border-radius: 999px; background: transparent; color: @luma_ink; box-shadow: none;
+}
+button.luma-color-swatch:checked { background: transparent; color: @luma_ink; }
+.luma-connected-buttons.compact.touch-targets > button,
+button.luma-color-swatch.touch-targets {
+  min-width: 44px; min-height: 44px;
+}
+/* LumaUI: sidebar (v70 ?app=contacts, ?app=memos). The sidebar stands on the
+ * window's frame, not in an island: no fill, ring or shadow of its own. Its
+ * rows sit 10px from the window edge and from the content island (the body's
+ * 9px gutter plus --lumaui-sidebar-edge), 50px tall with a 34px round face;
+ * the selected row is a raised chip; a heading carries a hairline beside its
+ * label. Every number is a lumaui.sidebar token. */
+.luma-navigation-sidebar.luma-sidebar-surface {
+  padding: var(--lumaui-sidebar-padding-top) var(--lumaui-sidebar-edge) var(--lumaui-sidebar-edge);
+  background: none; border: none; box-shadow: none;
+}
+.luma-sidebar-surface .luma-navigation-list { padding: 0; background: none; }
+.luma-sidebar-surface .luma-navigation-list > row.luma-navigation-row {
+  min-height: var(--lumaui-sidebar-row-content-height);
+  padding: var(--lumaui-sidebar-row-padding-y) var(--lumaui-sidebar-row-padding-x);
+  border-radius: var(--lumaui-sidebar-row-radius);
+  font-weight: normal;
+}
+/* The line's own spacing is 9; CSS adds to it. */
+.luma-sidebar-surface .luma-navigation-line { border-spacing: calc(var(--lumaui-sidebar-row-gap) - 9px); }
+.luma-sidebar-surface .luma-navigation-title {
+  font-size: var(--lumaui-sidebar-title-size); font-weight: var(--lumaui-sidebar-title-weight);
+}
+.luma-sidebar-surface .luma-navigation-subtitle {
+  color: @luma_frame_muted; /* on the frame: v70 light Solid's darker inks */ font-size: var(--lumaui-sidebar-subtitle-size); font-weight: normal;
+}
+.luma-sidebar-surface .luma-navigation-list > row.luma-navigation-row:selected {
+  background: @luma_chip; color: @luma_ink; font-weight: normal;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+.luma-sidebar-surface .luma-navigation-face {
+  min-width: var(--lumaui-sidebar-face); min-height: var(--lumaui-sidebar-face);
+  border-radius: 999px; background: @luma_control_fill;
+}
+.luma-sidebar-surface .luma-navigation-face > .luma-navigation-icon { color: @luma_frame_ink_secondary; }
+.luma-sidebar-surface .luma-navigation-line > .luma-avatar {
+  min-width: var(--lumaui-sidebar-face); min-height: var(--lumaui-sidebar-face);
+}
+.luma-sidebar-surface .luma-navigation-list > row.luma-navigation-section {
+  min-height: 0; padding: 0; background: none; box-shadow: none;
+  margin: var(--lumaui-sidebar-heading-top) var(--lumaui-sidebar-heading-inset) var(--lumaui-sidebar-heading-bottom);
+}
+.luma-sidebar-surface .luma-navigation-heading-line { border-spacing: var(--lumaui-sidebar-heading-gap); }
+.luma-sidebar-surface .luma-navigation-heading {
+  color: @luma_frame_muted;
+  font-size: var(--lumaui-sidebar-heading-size); font-weight: var(--lumaui-sidebar-heading-weight);
+}
+.luma-sidebar-surface .luma-navigation-heading-rule { min-height: 1px; background: @luma_line; }
+
+.luma-navigation-list .luma-navigation-row.thumbnail {
+  min-height: 38px; padding: 6px; margin-bottom: 2px;
+}
+.luma-navigation-row.thumbnail .luma-navigation-icon {
+  min-width: 38px; min-height: 38px; -gtk-icon-size: 38px;
+}
+.luma-navigation-row.thumbnail .luma-navigation-title { font-size: 11px; font-weight: 600; }
+.luma-navigation-row.thumbnail .luma-navigation-subtitle {
+  color: @luma_muted; font-size: 9px; font-weight: 550; font-variant-numeric: tabular-nums;
+}
+.luma-navigation-list .luma-navigation-row.thumbnail:selected { background: @luma_pressed; }
+
+/* The lightbox: a picture enlarged inside its window. It is dark in every
+   treatment, as photographs are best seen, with light controls over it. */
+.luma-lightbox-backdrop { background: alpha(@luma_media_scrim, .9); }
+.luma-lightbox-round {
+  min-width: 40px; min-height: 40px; margin: 14px; padding: 0;
+  border-radius: 999px; border: 0;
+  background: alpha(@luma_on_media, .12); color: @luma_on_media_ink;
+  -gtk-icon-size: 18px;
+}
+.luma-lightbox-round:hover { background: alpha(@luma_on_media, .22); }
+.luma-lightbox-round:active { background: alpha(@luma_on_media, .3); }
+.luma-lightbox-round:focus-visible { outline: 2px solid alpha(@luma_on_media, .85); outline-offset: 2px; }
+.luma-lightbox-bar {
+  min-height: 56px; margin: 0 12px 12px; padding: 8px 10px 8px 16px;
+  border-radius: 16px; background: alpha(@luma_media_surface, .82); color: @luma_on_media_ink;
+  box-shadow: inset 0 0 0 1px alpha(@luma_on_media, .08);
+}
+.luma-lightbox-title { font-size: 13px; font-weight: 650; color: @luma_on_media_ink; }
+.luma-lightbox-subtitle { font-size: 11px; font-weight: 500; color: alpha(@luma_on_media_ink, .66); font-feature-settings: "tnum"; }
+.luma-lightbox-action {
+  min-height: 32px; padding: 0 12px; border: 0; border-radius: 10px;
+  background: alpha(@luma_on_media, .1); color: @luma_on_media_ink; font-size: 12px; font-weight: 600;
+}
+.luma-lightbox-action:hover { background: alpha(@luma_on_media, .18); }
+.luma-lightbox-action:disabled { opacity: .4; }
+.luma-lightbox-action:focus-visible { outline: 2px solid alpha(@luma_on_media, .85); outline-offset: 1px; }
+.luma-lightbox-status-text { color: alpha(@luma_on_media_ink, .86); font-size: 14px; font-weight: 500; }
+.luma-lightbox-status spinner, .luma-lightbox-status .spinner { color: @luma_on_media_ink; }

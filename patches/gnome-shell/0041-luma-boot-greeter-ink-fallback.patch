@@ -1,0 +1,86 @@
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3225,15 +3225,15 @@
+ 
+ .login-dialog,
+ .unlock-dialog {
+-  background-color: #11151b;
++  background-color: #21252b;
+   color: white;
+   font-family: "Figtree"; }
+ 
+ #lockDialogGroup {
+-  background-color: #11151b; }
++  background-color: #21252b; }
+ 
+ .prairie-login-background {
+-  background-color: #11151b; }
++  background-color: #21252b; }
+ 
+ .prairie-login-wallpaper {
+   background-color: #173c78;
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3380,15 +3380,15 @@
+ 
+ .login-dialog,
+ .unlock-dialog {
+-  background-color: #11151b;
++  background-color: #21252b;
+   color: white;
+   font-family: "Figtree"; }
+ 
+ #lockDialogGroup {
+-  background-color: #11151b; }
++  background-color: #21252b; }
+ 
+ .prairie-login-background {
+-  background-color: #11151b; }
++  background-color: #21252b; }
+ 
+ .prairie-login-wallpaper {
+   background-color: #173c78;
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -3554,15 +3554,15 @@
+ 
+ .login-dialog,
+ .unlock-dialog {
+-  background-color: #11151b;
++  background-color: #21252b;
+   color: white;
+   font-family: "Figtree"; }
+ 
+ #lockDialogGroup {
+-  background-color: #11151b; }
++  background-color: #21252b; }
+ 
+ .prairie-login-background {
+-  background-color: #11151b; }
++  background-color: #21252b; }
+ 
+ .prairie-login-wallpaper {
+   background-color: #173c78;
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -23,17 +23,17 @@
+ // stylesheet owns the shared system-surface grammar only.
+ .login-dialog,
+ .unlock-dialog {
+-  background-color: #11151b;
++  background-color: #21252b;
+   color: white;
+   font-family: "Figtree";
+ }
+ 
+ #lockDialogGroup {
+-  background-color: #11151b;
++  background-color: #21252b;
+ }
+ 
+ .prairie-login-background {
+-  background-color: #11151b;
++  background-color: #21252b;
+ }
+ 
+ .prairie-login-wallpaper {

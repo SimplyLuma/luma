@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma background activity
+Documentation=https://projectluma.org/developer/kit/background-agents
+# Before the session's own autostart runs, so an app the Background portal
+# registered for autostart is started once, as an agent under its limits, and
+# not a second time by the XDG autostart target.
+After=dbus.socket
+Before=xdg-desktop-autostart.target graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.projectluma.Background1
+ExecStart=/usr/libexec/luma-background-service
+Restart=on-failure
+RestartSec=2s
+Slice=session.slice
+# The service needs /proc of the person's own processes to identify callers
+# and its runtime directory to write units, so it carries no mount-namespace
+# hardening; these only keep it from gaining privileges it does not have.
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+MemoryHigh=48M
+MemoryMax=96M
+
+[Install]
+WantedBy=graphical-session-pre.target

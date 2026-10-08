@@ -1,0 +1,9 @@
+{
+  "app": "media-transport-reel",
+  "title": "MediaTransport, attached (Reel's player bar)",
+  "spec": { "url": "mockups/luma-next-70.html?app=reel", "window": "#rl-ctl" },
+  "gtk": { "module": "pages_media", "pythonpath": ["src/luma-platform/tools/lumaui-gallery"], "env": { "LUMAUI_MEDIA_CONFORM": "transport-attached" } },
+  "states": [ { "name": "opening", "about": "Reel's opening state: the player bar under the picture", "spec": [], "gtk": [] } ],
+  "phone_states": ["opening"],
+  "groups": []
+}

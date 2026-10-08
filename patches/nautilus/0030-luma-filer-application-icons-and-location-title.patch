@@ -1,0 +1,89 @@
+--- a/meson.build
++++ b/meson.build
+@@ -99,6 +99,7 @@
+ gnome_desktop = dependency('gnome-desktop-4', version: '>= 43')
+ gtk = dependency('gtk4', version: '>= 4.20.0')
+ libadwaita = dependency('libadwaita-1', version: '>= 1.8.alpha')
++luma_ui = dependency('luma-ui-1', version: '>= 0.1.0')
+ libportal = dependency('libportal', version: '>= 0.7')
+ libportal_gtk4 = dependency('libportal-gtk4', version: '>= 0.5')
+ tinysparql = dependency('tinysparql-3.0', version: '>= 3.8')
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -287,6 +287,7 @@
+   icu_dep,
+   icu_i18n_dep,
+   libadwaita,
++  luma_ui.partial_dependency(links: true, link_args: true),
+   libportal,
+   libportal_gtk4,
+   nautilus_extension,
+--- a/src/nautilus-file.c
++++ b/src/nautilus-file.c
+@@ -20,6 +20,7 @@
+  */
+ #define G_LOG_DOMAIN "nautilus-file"
+ 
++#include <luma-1/luma-ui/luma-application-icon.h>
+ #include "nautilus-file.h"
+ 
+ #ifndef NAUTILUS_COMPILATION
+@@ -4952,7 +4953,14 @@
+ 
+     info = nautilus_file_get_icon (file, size, scale, flags);
+ 
+-    return nautilus_icon_info_get_paintable (info);
++    GdkPaintable *artwork = nautilus_icon_info_get_paintable (info);
++    if (artwork != NULL && nautilus_file_is_in_applications (file))
++    {
++        GdkPaintable *normalized = luma_application_icon_new (artwork);
++        g_object_unref (artwork);
++        return normalized;
++    }
++    return artwork;
+ }
+ 
+ GDateTime *
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -51,6 +51,7 @@
+ typedef enum
+ {
+     NORMAL_BUTTON,
++    APPLICATIONS_BUTTON,
+     ROOT_BUTTON,
+     ADMIN_ROOT_BUTTON,
+     HOME_BUTTON,
+@@ -1246,6 +1247,12 @@
+         button_data->type = HOME_BUTTON;
+         button_data->is_root = TRUE;
+     }
++    else if (g_file_has_uri_scheme (location, SCHEME_APPLICATIONS))
++    {
++        button_data->type = APPLICATIONS_BUTTON;
++        button_data->is_root = TRUE;
++        button_data->dir_name = g_strdup (_("Applications"));
++    }
+     else if (g_file_has_uri_scheme (location, SCHEME_RECENT))
+     {
+         button_data->type = RECENT_BUTTON;
+@@ -1422,6 +1429,7 @@
+ 
+     switch (button_data->type)
+     {
++        case APPLICATIONS_BUTTON:
+         case ROOT_BUTTON:
+         case ADMIN_ROOT_BUTTON:
+         case HOME_BUTTON:
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -210,9 +210,6 @@
+               ellipsize: end;
+             }
+ 
+-            Label {
+-              label: _(" — Filer");
+-            }
+           };
+         }
+ 

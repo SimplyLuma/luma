@@ -1,0 +1,153 @@
+From b0d271ddabd1439407567e9814e431973a6502b6 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:32:23 +0000
+Subject: [PATCH] Settings: apply phone breakpoint padding and reject unported
+ navigation
+
+---
+ shell/cc-luma-view.c   | 38 ++++++++++++++++++++++++++++++++------
+ shell/test-luma-view.c | 36 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 68 insertions(+), 6 deletions(-)
+
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index ff22f97..7660680 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -76,9 +76,26 @@ GtkWidget *cc_luma_view_row (GtkBox *rows, const char *title, const char *subtit
+   gtk_box_append (rows, r);
+   return r;
+ }
+-static void navigate (GtkButton *button, View *v)
++static gboolean page_supported (const char *page)
+ {
++  const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
++    "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places" };
++  for (guint i = 0; i < G_N_ELEMENTS (pages); i++)
++    if (g_strcmp0 (page, pages[i]) == 0) return TRUE;
++  return FALSE;
++}
++static void navigate (GtkButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   const char *target = g_object_get_data (G_OBJECT (button), "cf-target");
++  if (!v) return;
++  if (!page_supported (target))
++    {
++      g_autoptr (GError) error = g_error_new (G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++        "Settings page is not ported yet: %s", target);
++      cc_luma_view_report_error (v, error);
++      return;
++    }
+   g_free (v->page);
+   v->page = g_strdup (target);
+   render (v);
+@@ -89,7 +106,7 @@ GtkWidget *cc_luma_view_link (View *v, const char *caption, const char *target)
+   g_autofree char *name = g_strconcat ("cf-go-", target, NULL);
+   gtk_widget_set_name (button, name);
+   g_object_set_data_full (G_OBJECT (button), "cf-target", g_strdup (target), g_free);
+-  g_signal_connect (button, "clicked", G_CALLBACK (navigate), v);
++  g_signal_connect_object (button, "clicked", G_CALLBACK (navigate), v->root, 0);
+   return button;
+ }
+ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, GtkWidget *root)
+@@ -237,7 +254,7 @@ static GtkWidget *nav_row (View *v, GtkBox *rows, const char *title, const char
+   GtkWidget *r = luma_details_item_new (title, subtitle, NULL);
+   luma_details_item_set_trail (LUMA_DETAILS_ITEM (r), trail);
+   g_object_set_data_full (G_OBJECT (r), "cf-target", g_strdup (target), g_free);
+-  g_signal_connect (r, "clicked", G_CALLBACK (navigate), v);
++  g_signal_connect_object (r, "clicked", G_CALLBACK (navigate), v->root, 0);
+   gtk_box_append (rows, r);
+   return r;
+ }
+@@ -689,8 +706,7 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   GtkWidget *scroll, *clamp;
+   View *v;
+   if (!page) page = "wifi";
+-  if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
+-      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows") && !g_str_equal (page, "shelf") && !g_str_equal (page, "appearance") && !g_str_equal (page, "notifications") && !g_str_equal (page, "search") && !g_str_equal (page, "search-places"))
++  if (!page_supported (page))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+@@ -723,7 +739,17 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroll), clamp);
+   v->root = luma_pane_new ();
+   gtk_widget_set_name (v->root, "cf-main");
+-  luma_pane_set_child (LUMA_PANE (v->root), luma_layer_host_new (scroll));
++  GtkWidget *adaptive = adw_breakpoint_bin_new ();
++  gtk_widget_set_size_request (adaptive, 320, 240);
++  adw_breakpoint_bin_set_child (ADW_BREAKPOINT_BIN (adaptive), scroll);
++  AdwBreakpoint *phone = adw_breakpoint_new (adw_breakpoint_condition_parse ("max-width: 600px"));
++  adw_breakpoint_add_setters (phone,
++    G_OBJECT (v->body), "margin-start", 16,
++    G_OBJECT (v->body), "margin-end", 16,
++    G_OBJECT (v->body), "margin-top", 20,
++    G_OBJECT (v->body), "margin-bottom", 110, NULL);
++  adw_breakpoint_bin_add_breakpoint (ADW_BREAKPOINT_BIN (adaptive), phone);
++  luma_pane_set_child (LUMA_PANE (v->root), luma_layer_host_new (adaptive));
+   v->actions = g_simple_action_group_new ();
+   GSimpleAction *pick = g_simple_action_new ("pick", G_VARIANT_TYPE ("(ss)"));
+   g_signal_connect_object (pick, "activate", G_CALLBACK (pick_selected), v->root, 0);
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index e6bfc78..e691a8c 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -70,6 +70,19 @@ static void reject_unported (void)
+   g_assert_null (cc_luma_view_new (model, "about", &error));
+   g_assert_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED);
+ }
++static void reject_unported_navigation (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++  GtkWidget *link = g_object_ref_sink (cc_luma_view_link (v, "Power", "power"));
++  g_signal_emit_by_name (link, "clicked");
++  g_assert_error (cc_luma_view_get_error (view), G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED);
++  g_assert_true (has_text (view, "Connected to Studio North"));
++  g_object_unref (view);
++  g_signal_emit_by_name (link, "clicked");
++  g_object_unref (link);
++}
+ static void cancel_pending_refresh (void)
+ {
+   g_autoptr (CcLumaFixture) model = load ();
+@@ -558,12 +571,35 @@ static void missing_asset (void)
+   g_object_unref (view); wait_ms (100);
+   remove_asset_fixture (dir);
+ }
++static void adaptive_padding (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *window = gtk_window_new ();
++  GtkWidget *view = cc_luma_view_new (model, "wifi", NULL);
++  GtkWidget *body = find_name (view, "cf-page");
++  gtk_window_set_child (GTK_WINDOW (window), view);
++  gtk_window_set_default_size (GTK_WINDOW (window), 390, 740);
++  gtk_window_present (GTK_WINDOW (window)); wait_ms (150);
++  g_assert_cmpint (gtk_widget_get_margin_start (body), ==, 16);
++  g_assert_cmpint (gtk_widget_get_margin_end (body), ==, 16);
++  g_assert_cmpint (gtk_widget_get_margin_top (body), ==, 20);
++  g_assert_cmpint (gtk_widget_get_margin_bottom (body), ==, 110);
++  gtk_window_set_default_size (GTK_WINDOW (window), 1180, 740); wait_ms (150);
++  g_assert_cmpint (gtk_widget_get_margin_start (body), ==, 32);
++  g_assert_cmpint (gtk_widget_get_margin_top (body), ==, 30);
++  g_assert_cmpint (gtk_widget_get_margin_bottom (body), ==, 120);
++  gtk_window_set_default_size (GTK_WINDOW (window), 390, 740); wait_ms (150);
++  g_assert_cmpint (gtk_widget_get_margin_start (body), ==, 16);
++  gtk_window_destroy (GTK_WINDOW (window)); drain ();
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+   gtk_init ();
+   g_test_add_func ("/settings/view/radio-bindings", radio_bindings);
++  g_test_add_func ("/settings/view/adaptive-padding", adaptive_padding);
+   g_test_add_func ("/settings/view/reject-unported", reject_unported);
++  g_test_add_func ("/settings/view/reject-unported-navigation", reject_unported_navigation);
+   g_test_add_func ("/settings/view/cancel-pending-refresh", cancel_pending_refresh);
+   g_test_add_func ("/settings/view/picker-binding", picker_binding);
+   g_test_add_func ("/settings/view/missing-share-artwork", missing_share_artwork);
+-- 
+2.55.0
+

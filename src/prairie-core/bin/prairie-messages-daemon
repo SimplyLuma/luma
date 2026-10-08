@@ -1,0 +1,307 @@
+#!/usr/bin/python3 -s
+# SPDX-License-Identifier: Apache-2.0
+
+"""Event-driven native SMS import and delivery-state reconciliation."""
+
+from __future__ import annotations
+
+import signal
+import secrets
+import hmac
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+from prairie_apps.messages_backend import (  # noqa: E402
+    MessageStore,
+    ModemMessagingTransport,
+    incoming_transport_id,
+)
+from prairie_apps.messages_reply import ReplyEndpoint
+
+
+class MessagesNotificationPublisher:
+    """Publish actionable SMS notifications over the desktop notification API."""
+
+    BUS_NAME = "org.freedesktop.Notifications"
+    OBJECT_PATH = "/org/freedesktop/Notifications"
+    INTERFACE = "org.freedesktop.Notifications"
+    APPLICATION_ID = "org.projectluma.Messages"
+
+    def __init__(self, store: MessageStore) -> None:
+        self.store = store
+        self.proxy: Gio.DBusProxy | None = None
+        self.signal_handler = 0
+        self.notification_by_address: dict[str, int] = {}
+        self.address_by_notification: dict[int, str] = {}
+        self.reply_tokens: dict[int, str] = {}
+        self.reply_endpoint = None
+        self.owner_handler = 0
+
+    def _connect(self) -> Gio.DBusProxy | None:
+        if self.proxy is not None:
+            return self.proxy
+        try:
+            self.proxy = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SESSION,
+                Gio.DBusProxyFlags.NONE,
+                None,
+                self.BUS_NAME,
+                self.OBJECT_PATH,
+                self.INTERFACE,
+                None,
+            )
+            self.signal_handler = self.proxy.connect("g-signal", self._signal)
+            self.owner_handler = self.proxy.connect("notify::g-name-owner", self._notification_owner_changed)
+            self.reply_endpoint = ReplyEndpoint(self.proxy.get_connection(), self.store.path,
+                                                self._reply_address, self._notification_owner_changed)
+        except GLib.Error:
+            self.proxy = None
+        return self.proxy
+
+    def publish(self, address: str, display_name: str, body: str) -> None:
+        proxy = self._connect()
+        if proxy is None:
+            return
+        replaces_id = self.notification_by_address.get(address, 0)
+        reply_token = secrets.token_hex(16)
+        hints = {
+            "urgency": GLib.Variant("y", 1),
+            "category": GLib.Variant("s", "im.received"),
+            "desktop-entry": GLib.Variant("s", self.APPLICATION_ID),
+            "resident": GLib.Variant("b", False),
+            "transient": GLib.Variant("b", False),
+            "x-luma-inline-reply-path": GLib.Variant("o", ReplyEndpoint.PATH),
+            "x-luma-inline-reply-token": GLib.Variant("s", reply_token),
+        }
+        try:
+            result = proxy.call_sync(
+                "Notify",
+                GLib.Variant(
+                    "(susssasa{sv}i)",
+                    (
+                        "Luma Messages",
+                        replaces_id,
+                        self.APPLICATION_ID,
+                        display_name,
+                        body,
+                        ["default", "Open", "reply", "Reply", "mark-read", "Mark read"],
+                        hints,
+                        -1,
+                    ),
+                ),
+                Gio.DBusCallFlags.NONE,
+                -1,
+                None,
+            )
+        except GLib.Error:
+            return
+
+        notification_id = int(result.unpack()[0])
+        if replaces_id and replaces_id != notification_id:
+            self._forget(replaces_id)
+        self.notification_by_address[address] = notification_id
+        self.address_by_notification[notification_id] = address
+        self.reply_tokens[notification_id] = reply_token
+
+    def _reply_address(self, notification_id, token):
+        expected = self.reply_tokens.get(notification_id)
+        if expected is None or not hmac.compare_digest(expected, token):
+            return None
+        return self.address_by_notification.get(notification_id)
+
+    def _notification_owner_changed(self, *_args):
+        self.notification_by_address.clear()
+        self.address_by_notification.clear()
+        self.reply_tokens.clear()
+
+    def _signal(
+        self,
+        _proxy: Gio.DBusProxy,
+        _sender: str,
+        signal_name: str,
+        parameters: GLib.Variant,
+    ) -> None:
+        if signal_name == "ActionInvoked":
+            notification_id, action = parameters.unpack()
+            address = self.address_by_notification.get(int(notification_id))
+            if address is None:
+                return
+            if action in {"default", "reply"}:
+                try:
+                    Gio.AppInfo.launch_default_for_uri(f"sms:{address}", None)
+                except GLib.Error:
+                    return
+            elif action == "mark-read":
+                self.store.mark_read(address)
+                self._close_notification(int(notification_id))
+        elif signal_name == "NotificationClosed":
+            notification_id, _reason = parameters.unpack()
+            self._forget(int(notification_id))
+
+    def _close_notification(self, notification_id: int) -> None:
+        if self.proxy is None:
+            return
+        try:
+            self.proxy.call(
+                "CloseNotification",
+                GLib.Variant("(u)", (notification_id,)),
+                Gio.DBusCallFlags.NONE,
+                -1,
+                None,
+                None,
+            )
+        except GLib.Error:
+            pass
+        self._forget(notification_id)
+
+    def _forget(self, notification_id: int) -> None:
+        self.reply_tokens.pop(notification_id, None)
+        address = self.address_by_notification.pop(notification_id, None)
+        if (
+            address is not None
+            and self.notification_by_address.get(address) == notification_id
+        ):
+            self.notification_by_address.pop(address, None)
+
+    def close(self) -> None:
+        if self.reply_endpoint is not None:
+            self.reply_endpoint.close()
+        if self.proxy is not None and self.owner_handler:
+            self.proxy.disconnect(self.owner_handler)
+        if self.proxy is not None and self.signal_handler:
+            self.proxy.disconnect(self.signal_handler)
+        self.signal_handler = 0
+        self.proxy = None
+
+
+class MessageImporter:
+    """Synchronize the private store when ModemManager truth changes."""
+
+    def __init__(self) -> None:
+        self.store = MessageStore()
+        self.notifier = MessagesNotificationPublisher(self.store)
+        self.transport = ModemMessagingTransport()
+        self.loop = GLib.MainLoop()
+        self.connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.refresh_source = 0
+        self.retry_source = 0
+        self.retry_count = 0
+        self.subscriptions: list[int] = []
+
+    def start(self) -> None:
+        self.subscriptions.extend((
+            self.connection.signal_subscribe(
+                "org.freedesktop.ModemManager1",
+                "org.freedesktop.ModemManager1.Modem.Messaging", "Added",
+                None, None, Gio.DBusSignalFlags.NONE, self._changed,
+            ),
+            self.connection.signal_subscribe(
+                "org.freedesktop.ModemManager1",
+                "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                None, "org.freedesktop.ModemManager1.Sms",
+                Gio.DBusSignalFlags.NONE, self._changed,
+            ),
+            self.connection.signal_subscribe(
+                "org.freedesktop.ModemManager1",
+                "org.freedesktop.DBus.ObjectManager", "InterfacesAdded",
+                "/org/freedesktop/ModemManager1", None,
+                Gio.DBusSignalFlags.NONE, self._changed,
+            ),
+            self.connection.signal_subscribe(
+                "org.freedesktop.DBus", "org.freedesktop.DBus",
+                "NameOwnerChanged", "/org/freedesktop/DBus",
+                "org.freedesktop.ModemManager1", Gio.DBusSignalFlags.NONE,
+                self._changed,
+            ),
+        ))
+        GLib.unix_signal_add(
+            GLib.PRIORITY_DEFAULT, signal.SIGTERM, self.stop
+        )
+        GLib.unix_signal_add(
+            GLib.PRIORITY_DEFAULT, signal.SIGINT, self.stop
+        )
+        self.schedule()
+        self.loop.run()
+
+    def _changed(self, *_args) -> None:
+        self.retry_count = 0
+        self.schedule()
+
+    def schedule(self) -> None:
+        if not self.refresh_source:
+            self.refresh_source = GLib.timeout_add(120, self.sync)
+
+    def sync(self) -> bool:
+        self.refresh_source = 0
+        try:
+            snapshot = self.transport.snapshot()
+            self.store.reconcile_outgoing(snapshot)
+            for message in snapshot:
+                if message.direction != "incoming" or message.state not in {
+                    "received", "receiving",
+                }:
+                    continue
+                record = self.store.ingest(
+                    message.address, message.body,
+                    transport_id=incoming_transport_id(
+                        message.address, message.body, message.timestamp
+                    ),
+                    timestamp=message.timestamp,
+                )
+                if record is not None:
+                    thread = next(
+                        (
+                            item
+                            for item in self.store.threads()
+                            if item.address == record.address
+                        ),
+                        None,
+                    )
+                    self.notifier.publish(
+                        record.address,
+                        thread.display_name if thread is not None else record.address,
+                        record.body,
+                    )
+            self.retry_count = 0
+        except Exception:
+            # Modem startup can briefly expose an incomplete object. Retry a
+            # bounded number of times, then await the next D-Bus state event.
+            if self.retry_count < 3 and not self.retry_source:
+                self.retry_count += 1
+                self.retry_source = GLib.timeout_add_seconds(2, self._retry)
+        return GLib.SOURCE_REMOVE
+
+    def _retry(self) -> bool:
+        self.retry_source = 0
+        self.schedule()
+        return GLib.SOURCE_REMOVE
+
+    def stop(self) -> bool:
+        self.loop.quit()
+        return GLib.SOURCE_REMOVE
+
+    def close(self) -> None:
+        if self.refresh_source:
+            GLib.source_remove(self.refresh_source)
+        if self.retry_source:
+            GLib.source_remove(self.retry_source)
+        for subscription in self.subscriptions:
+            self.connection.signal_unsubscribe(subscription)
+        self.notifier.close()
+        self.store.close()
+
+
+def main() -> int:
+    importer = MessageImporter()
+    try:
+        importer.start()
+    finally:
+        importer.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

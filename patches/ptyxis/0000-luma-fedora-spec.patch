@@ -1,0 +1,43 @@
+--- a/ptyxis.spec
++++ b/ptyxis.spec
+@@ -19,13 +19,15 @@
+ 
+ Name:		ptyxis
+ Version:	50.1
+-Release:	%autorelease
++Release:	2.luma.3.preview20260905.1%{?dist}
+ Summary:	A container oriented terminal for GNOME
+ 
+ License:	GPL-2.0-or-later AND GPL-3.0-or-later AND LGPL-3.0-or-later AND LGPL-2.0-or-later AND CC0-1.0
+ URL:		https://gitlab.gnome.org/chergert/ptyxis
+ Source0:	https://download.gnome.org/sources/%{name}/50/%{name}-%{tarball_version}.tar.xz
+ Source1:	org.gnome.Ptyxis.fedora.gschema.override
++Patch1000:	0001-luma-terminal-native-kit.patch
++Patch1001:	0002-luma-terminal-flat-toolbar.patch
+ 
+ BuildRequires:	pkgconfig(gio-unix-2.0) >= %{glib2_version}
+ BuildRequires:	pkgconfig(gtk4) >= %{gtk4_version}
+@@ -34,12 +36,14 @@
+ BuildRequires:  pkgconfig(libportal-gtk4) >= %{libportal_gtk4_version}
+ BuildRequires:	pkgconfig(json-glib-1.0) >= %{json_glib_version}
+ BuildRequires:	desktop-file-utils
++BuildRequires:	pkgconfig(luma-ui-1)
+ BuildRequires:	gcc
+ BuildRequires:	itstool
+ BuildRequires:	meson
+ BuildRequires:	/usr/bin/appstream-util
+ 
+ Requires:	hicolor-icon-theme
++Requires:	luma-developer-platform
+ 
+ # https://fedoraproject.org/wiki/Changes/EncourageI686LeafRemoval
+ ExcludeArch:	%{ix86}
+@@ -55,7 +59,7 @@
+ 
+ 
+ %build
+-%meson -Dgeneric=terminal
++%meson -Dgeneric=terminal -Dc_link_args="%{build_ldflags} %{build_cflags} -flto=1"
+ %meson_build
+ 
+ 

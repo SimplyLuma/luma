@@ -1,0 +1,192 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: Quick Options menus size their rows to what they hold
+
+Every row in a Quick Options detail menu was forced to 30px. Anything
+richer than one line of text overflowed it: Tiling's layout grid painted
+over Edit Layouts, Display 2 and Tiling Settings so none of them could be
+clicked, and device and network rows put the icon below its name with
+blank space around the separator. Rows now take the height of their
+content, separators keep a small margin, secured and open networks line
+up, detail menus keep the grid's gap below them, and the keyboard
+backlight levels use the Quick Options control styling.
+
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4098,7 +4098,7 @@
+   color: #969da4; }
+ 
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0;
++  margin: 0 0 10px;
+   padding: 9px;
+   border: 1px solid rgba(255, 255, 255, 0.075);
+   border-radius: 10px;
+@@ -4119,10 +4119,35 @@
+     color: #969da4; }
+   .quick-toggle-menu.luma-quick-detail .popup-menu-item {
+     min-height: 0;
+-    height: 30px;
+-    padding: 6px 10px;
++    padding: 10px;
++    spacing: 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++  .quick-toggle-menu.luma-quick-detail .popup-separator-menu-item {
++    padding: 4px 10px; }
++  .quick-toggle-menu.luma-quick-detail .nm-network-item .wireless-secure-icon {
++    width: 7px; }
++  .quick-toggle-menu.luma-quick-detail .device-subtitle {
++    color: #969da4; }
++  .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level {
++    spacing: 6px; }
++    .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button {
++      height: 36px;
++      min-height: 0;
++      padding: 0;
++      border-radius: 10px;
++      background-color: rgba(255, 255, 255, 0.072);
++      color: #e9ebec; }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button StIcon {
++        icon-size: 16px; }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button:hover {
++        background-color: rgba(255, 255, 255, 0.12); }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button:checked {
++        background-color: #e6e9eb;
++        color: #242a30; }
++    .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level StLabel {
++      font-size: 12px;
++      color: #969da4; }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner {
+   min-height: 64px;
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4368,7 +4368,7 @@
+   color: #e9ebec; }
+ 
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0;
++  margin: 0 0 10px;
+   padding: 9px;
+   border: 1px solid #e9ebec;
+   border-radius: 10px;
+@@ -4389,10 +4389,35 @@
+     color: #e9ebec; }
+   .quick-toggle-menu.luma-quick-detail .popup-menu-item {
+     min-height: 0;
+-    height: 30px;
+-    padding: 6px 10px;
++    padding: 10px;
++    spacing: 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++  .quick-toggle-menu.luma-quick-detail .popup-separator-menu-item {
++    padding: 4px 10px; }
++  .quick-toggle-menu.luma-quick-detail .nm-network-item .wireless-secure-icon {
++    width: 7px; }
++  .quick-toggle-menu.luma-quick-detail .device-subtitle {
++    color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level {
++    spacing: 6px; }
++    .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button {
++      height: 36px;
++      min-height: 0;
++      padding: 0;
++      border-radius: 10px;
++      background-color: rgba(255, 255, 255, 0.072);
++      color: #e9ebec; }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button StIcon {
++        icon-size: 16px; }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button:hover {
++        background-color: rgba(255, 255, 255, 0.12); }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button:checked {
++        background-color: #e6e9eb;
++        color: #242a30; }
++    .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level StLabel {
++      font-size: 12px;
++      color: #e9ebec; }
+ 
+ /* Luma compact context menus; preserve high-contrast system colors. */
+ .popup-menu-content, .background-menu .popup-menu-content { min-width: 204px; padding: 7px; }
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4286,7 +4286,7 @@
+   color: #767b81; }
+ 
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0;
++  margin: 0 0 10px;
+   padding: 9px;
+   border: 1px solid rgba(35, 39, 45, 0.09);
+   border-radius: 10px;
+@@ -4307,10 +4307,35 @@
+     color: #767b81; }
+   .quick-toggle-menu.luma-quick-detail .popup-menu-item {
+     min-height: 0;
+-    height: 30px;
+-    padding: 6px 10px;
++    padding: 10px;
++    spacing: 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++  .quick-toggle-menu.luma-quick-detail .popup-separator-menu-item {
++    padding: 4px 10px; }
++  .quick-toggle-menu.luma-quick-detail .nm-network-item .wireless-secure-icon {
++    width: 7px; }
++  .quick-toggle-menu.luma-quick-detail .device-subtitle {
++    color: #767b81; }
++  .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level {
++    spacing: 6px; }
++    .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button {
++      height: 36px;
++      min-height: 0;
++      padding: 0;
++      border-radius: 10px;
++      background-color: rgba(35, 44, 52, 0.072);
++      color: #30343a; }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button StIcon {
++        icon-size: 16px; }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button:hover {
++        background-color: rgba(35, 44, 52, 0.115); }
++      .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button:checked {
++        background-color: #31373e;
++        color: #fff; }
++    .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level StLabel {
++      font-size: 12px;
++      color: #767b81; }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner {
+   min-height: 64px;
+--- a/data/theme/gnome-shell-sass/widgets/_quick-options.scss
++++ b/data/theme/gnome-shell-sass/widgets/_quick-options.scss
+@@ -140,11 +140,28 @@
+ .luma-quick-options .slider-bin:focus { box-shadow: 0 0 0 2px $q-active; }
+ .luma-quick-options StButton:insensitive { color: $q-muted; }
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0; padding: 9px; border: 1px solid $q-line; border-radius: 10px;
++  margin: 0 0 10px; padding: 9px; border: 1px solid $q-line; border-radius: 10px;
+   background-color: $q-raised; color: $q-ink;
+   .header { padding-bottom: 0; spacing-columns: 8px; }
+   .header .icon { icon-size: 18px; padding: 0; background-color: transparent; }
+   .header .title { font-size: 13px; font-weight: 700; }
+   .header .subtitle { font-size: 11px; color: $q-muted; }
+-  .popup-menu-item { min-height: 0; height: 30px; padding: 6px 10px; border-radius: 10px; font-size: 13px; }
++  // Rows are as tall as what they hold. A fixed row height clipped anything
++  // richer than one line -- Tiling's layout grid painted over the actions
++  // below it, and device rows put the icon below its name.
++  .popup-menu-item { min-height: 0; padding: 10px; spacing: 10px; border-radius: 10px; font-size: 13px; }
++  .popup-separator-menu-item { padding: 4px 10px; }
++  .nm-network-item .wireless-secure-icon { width: 7px; }
++  .device-subtitle { color: $q-muted; }
++  .keyboard-brightness-level {
++    spacing: 6px;
++    .button {
++      height: 36px; min-height: 0; padding: 0; border-radius: 10px;
++      background-color: $q-control; color: $q-ink;
++      StIcon { icon-size: 16px; }
++      &:hover { background-color: $q-hover; }
++      &:checked { background-color: $q-active; color: $q-active-ink; }
++    }
++    StLabel { font-size: 12px; color: $q-muted; }
++  }
+ }

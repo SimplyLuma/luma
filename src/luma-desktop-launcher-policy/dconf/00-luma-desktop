@@ -1,0 +1,125 @@
+# Project Luma desktop defaults. These are deliberately not locked.
+
+[org/gnome/shell]
+# The Luma toggle is always available. Tiling Shell is deliberately absent:
+# its presence in this list is the supported on/off state managed by the toggle.
+enabled-extensions=['tiling-toggle@project-luma.local', 'appindicatorsupport@rgcjonas.gmail.com']
+# Filer leads the default dock while retaining Nautilus's compatibility ID.
+# This is an unlocked fresh-profile default; user-reordered favorites persist.
+favorite-apps=['org.gnome.Nautilus.desktop', 'viola-browser.desktop', 'org.projectluma.Ari.desktop', 'org.projectluma.Notes.desktop', 'org.projectluma.Photos.desktop', 'org.projectluma.Tide.desktop', 'org.projectluma.Calendar.desktop', 'org.projectluma.Tasks.desktop', 'org.projectluma.Contacts.desktop', 'org.projectluma.Messages.desktop', 'org.projectluma.Phone.desktop', 'org.projectluma.Charlie.desktop', 'org.projectluma.Maps.desktop', 'org.projectluma.Weather.desktop', 'org.projectluma.Clock.desktop', 'org.projectluma.VoiceMemos.desktop', 'org.projectluma.Camera.desktop', 'io.luma.Monitor.desktop', 'org.projectluma.Leaf.desktop', 'org.projectluma.Depot.desktop', 'org.projectluma.Terminal.desktop', 'org.projectluma.Viewer.desktop', 'org.gnome.Settings.desktop']
+
+[org/project-luma/shell-state]
+# Shelf v1 is first-party GNOME Shell chrome. These defaults are unlocked and
+# use a versioned contract so a future trusted mod can claim the Shelf
+# capability without patching private actors or installing a startup script.
+shelf-layout-version=uint32 1
+shelf-edge='bottom'
+shelf-dock-anchor='center'
+shelf-actions-anchor='center'
+shelf-group-layout='luma'
+shelf-surface-mode='separate'
+shelf-edge-mode='floating'
+shelf-material='dark'
+shelf-monitor-mode='primary'
+shelf-overflow-mode='scroll'
+shelf-dock-visible=true
+shelf-actions-visible=true
+shelf-reserve-work-area=true
+shelf-auto-hide=false
+shelf-islands=['dock', 'actions']
+# The default groups place the dock and live tiles at center with system
+# controls at the end of the edge. Each island keeps its own surface.
+shelf-span-full=false
+shelf-float-ends=true
+shelf-padding=14
+
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+gtk-theme='Luma'
+clock-format='12h'
+clock-show-date=true
+clock-show-weekday=true
+# Figtree is Luma's interface and proportional document face. Monospace stays
+# on Fedora's real monospace default rather than synthesizing Figtree metrics.
+font-name='Figtree 11'
+document-font-name='Figtree 11'
+
+[org/gnome/desktop/background]
+# One packaged image serves both appearance variants. Keep selection unlocked.
+picture-uri='file:///usr/share/backgrounds/luma/prism.png'
+picture-uri-dark='file:///usr/share/backgrounds/luma/prism.png'
+picture-options='zoom'
+
+[org/gnome/desktop/wm/preferences]
+# A colon separates left-side controls from right-side controls. Keep the
+# shared Luma minimize, maximize, close group entirely on the right.
+button-layout=':minimize,maximize,close'
+
+[org/gnome/desktop/peripherals/mouse]
+natural-scroll=true
+# libinput's adaptive profile provides velocity-dependent pointer acceleration.
+accel-profile='adaptive'
+
+[org/gnome/desktop/peripherals/touchpad]
+natural-scroll=true
+# Two-finger tapping opens the context menu; the physical bottom-right
+# click area also right-clicks. Existing user preferences stay overridable.
+tap-to-click=true
+tap-button-map='lrm'
+click-method='areas'
+
+[org/gnome/desktop/default-applications/office/calendar]
+exec='prairie-calendar'
+needs-term=false
+
+[org/gnome/software]
+# Luma owns updates (ADR-030): system updates come from luma-update and apps and
+# firmware from Depot. GNOME Software must neither download nor announce
+# updates on machines that still carry it.
+allow-updates=false
+download-updates=false
+download-updates-notify=false
+
+[org/gnome/mutter]
+# Use Tiling Shell as Luma's sole tiling implementation when the user enables it.
+edge-tiling=false
+
+[org/gnome/shell/extensions/appindicator]
+# Tray icons sit on the shelf beside Luma's own symbolic controls: the same
+# 16px size, and desaturated so a colourful application logo reads as one of
+# the system's icons rather than a sticker on it.
+icon-size=16
+icon-saturation=1.0
+legacy-tray-enabled=true
+
+[org/gnome/mutter/wayland]
+# X11 programs -- every Windows game under Proton or Wine, Steam itself, older
+# toolkits -- do not scale their own interface. With a scaled display attached,
+# Xwayland's automatic factor doubled the X11 coordinate space for every
+# monitor: a 5120x1440 monitor at 100% was reported as 10240x2880, and games
+# drew at half size with a tiny cursor and title bar. At 1 they draw at their
+# intended size on every monitor and the compositor scales them where needed.
+xwayland-scaling-factor=1.0
+
+[org/gnome/mutter/keybindings]
+# Release Mutter's half-screen shortcuts so Tiling Shell can own them when on.
+toggle-tiled-left=@as []
+toggle-tiled-right=@as []
+
+[org/gnome/settings-daemon/plugins/media-keys]
+# Ari's quick popover: Super+J, and the Copilot key laptops now ship with
+# (it sends Shift+Super+F23). Unlocked; a person's own shortcuts replace these.
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari-assistant-key/']
+# Volume keys and knobs move 2% a press (GNOME's 6% jumps past quiet levels):
+# fifty steps from silent to full instead of seventeen.
+volume-step=2
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari]
+name='Ask Ari'
+command='org.projectluma.Ari --popover'
+binding='<Super>j'
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari-assistant-key]
+name='Ask Ari (assistant key)'
+command='org.projectluma.Ari --popover'
+binding='<Shift><Super>F23'

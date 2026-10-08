@@ -1,0 +1,61 @@
+{
+  "app": "bar-memos",
+  "title": "Recording bar against Voice Memos' bar",
+  "about": "Nick, 26 Sep: the live chip's red dot (not a hollow ring), its gaps, and the red Done key with a filled square. Paused at once so the time reads 0:00 on both sides.",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=memos",
+    "window": "#w-memos",
+    "exclude": [
+      "#w-memos *:not(:has(#me-bar)):not(#me-bar):not(#me-bar *)"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "memos",
+      "LUMAUI_BAR_HOST": "284,46,888,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774"
+    }
+  },
+  "states": [
+    {
+      "name": "recording",
+      "about": "Recording, paused: live chip, Resume, Done",
+      "spec": [
+        {
+          "click": "[data-merec]"
+        },
+        {
+          "click": "[data-mepause]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "recording"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "recording"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#me-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#me-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

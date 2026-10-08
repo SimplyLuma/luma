@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+# The engine is activated through D-Bus for an explicit Android operation.
+# Installed apps may keep the user's session warm under Luma's resource policy.
+disable waydroid-container.service

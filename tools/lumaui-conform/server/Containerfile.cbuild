@@ -1,0 +1,11 @@
+# lumaui-conform C/C++ route: localhost/lumaui-conform-thinkpad plus the toolchain and
+# the ThinkPad toolbox's -devel packages at the ThinkPad's versions (pin-cbuild.sh),
+# and the harness injector (preload/): an LD_PRELOAD library that starts Python in a
+# C app and loads lumaui_conform_harness, as sitecustomize.py does for Python apps.
+FROM localhost/lumaui-conform-thinkpad
+USER root
+COPY cbuild /tmp/cbuild
+RUN bash /tmp/cbuild/pin-cbuild.sh \
+ && gcc -shared -fPIC -O2 -o /usr/local/lib64/lumaui-conform-preload.so /tmp/cbuild/preload.c $(python3-config --cflags --embed --libs) \
+ && rm -rf /tmp/cbuild /var/cache/dnf /var/lib/dnf/repos /var/log/dnf*
+USER conform

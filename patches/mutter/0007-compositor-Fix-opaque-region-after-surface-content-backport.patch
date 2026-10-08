@@ -1,0 +1,31 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 8 Sep 2026 01:20:00 +0000
+Subject: [PATCH] compositor: Fix opaque region after surface-content backport
+
+The background-effect backport moves MetaSurfaceActor's shaped texture behind
+MetaSurfaceContent, but Fedora 50.4 retains one opaque-region accessor outside
+the upstream commit's original context. Resolve the texture through the public
+actor helper like the other adapted call sites.
+
+This is a narrow Fedora 50.4 compatibility fix; it adds no behavior beyond the
+upstream background-effect series.
+---
+ src/compositor/meta-surface-actor.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -855,9 +855,6 @@ MtkRegion *
+ meta_surface_actor_get_opaque_region (MetaSurfaceActor *self)
+ {
+-  MetaSurfaceActorPrivate *priv =
+-    meta_surface_actor_get_instance_private (self);
+-
+-  return meta_shaped_texture_get_opaque_region (priv->texture);
++  return meta_shaped_texture_get_opaque_region (meta_surface_actor_get_texture (self));
+ }
+ 
+ void
+-- 
+2.55.0

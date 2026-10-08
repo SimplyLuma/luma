@@ -1,0 +1,8 @@
+<!-- Lucide geometry, ISC; adapted to GTK 4.20+ symbolic stroke classes. -->
+<svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-share-2" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="18" cy="5" r="3" class="transparent-fill foreground-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="6" cy="12" r="3" class="transparent-fill foreground-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="18" cy="19" r="3" class="transparent-fill foreground-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M8.59 13.51L15.42 17.49" class="transparent-fill foreground-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M15.41 6.51L8.59 10.49" class="transparent-fill foreground-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

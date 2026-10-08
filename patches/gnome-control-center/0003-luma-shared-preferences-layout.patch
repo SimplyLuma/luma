@@ -1,0 +1,60 @@
+diff --git a/shell/cc-window.blp b/shell/cc-window.blp
+--- a/shell/cc-window.blp
++++ b/shell/cc-window.blp
+@@ -2,6 +2,8 @@
+ using Adw 1;
+ 
+ template $CcWindow: Adw.ApplicationWindow {
++  styles ["luma-preferences"]
++
+   default-width: 980;
+   default-height: 640;
+ 
+@@ -14,6 +16,10 @@
+   }
+ 
+   content: Adw.NavigationSplitView split_view {
++    min-sidebar-width: 178;
++    max-sidebar-width: 178;
++    sidebar-width-unit: sp;
++
+     notify::collapsed => $on_split_view_collapsed_changed_cb(template);
+ 
+     sidebar: Adw.NavigationPage {
+diff --git a/shell/cc-panel-list.blp b/shell/cc-panel-list.blp
+--- a/shell/cc-panel-list.blp
++++ b/shell/cc-panel-list.blp
+@@ -19,6 +19,7 @@
+ 
+         styles [
+           "navigation-sidebar",
++          "luma-preferences-navigation",
+         ]
+       };
+     }
+@@ -32,6 +33,7 @@
+ 
+         styles [
+           "navigation-sidebar",
++          "luma-preferences-navigation",
+         ]
+ 
+         [placeholder]
+diff --git a/shell/cc-panel-list.c b/shell/cc-panel-list.c
+--- a/shell/cc-panel-list.c
++++ b/shell/cc-panel-list.c
+@@ -256,11 +256,9 @@
+   /* Setup the row */
+   grid = gtk_grid_new ();
+   gtk_widget_set_hexpand (grid, TRUE);
+-  gtk_widget_set_margin_top (grid, 12);
+-  gtk_widget_set_margin_bottom (grid, 12);
+-  gtk_widget_set_margin_start (grid, 6);
+-  gtk_widget_set_margin_end (grid, 6);
+-  gtk_grid_set_column_spacing (GTK_GRID (grid), 12);
++  /* Geometry belongs to the shared native preference navigation style.
++   * Keep labels wrapping so translations and large text can grow rows. */
++  gtk_widget_add_css_class (grid, "luma-preferences-navigation-content");
+ 
+   /* Icon */
+   image = g_object_new (GTK_TYPE_IMAGE,

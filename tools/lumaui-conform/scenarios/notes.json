@@ -1,0 +1,2146 @@
+{
+  "app": "notes",
+  "title": "Notes",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=notes",
+    "window": "#w-notes",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "notes",
+    "fixtures": [
+      "tests/fixtures/notes-v70.json",
+      "tests/fixtures/notes-v70"
+    ],
+    "env": {
+      "LUMA_NOTES_FIXTURE": "{run}/fixtures/notes-v70.json",
+      "LUMA_NOTES_LIVE_SETTLED": "1"
+    }
+  },
+  "states": [
+    {
+      "name": "checklist",
+      "about": "Launch checklist, v70 opening state",
+      "spec": [
+        {
+          "wait": 10000
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "groceries",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nopen=\"2\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "quote",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-ntw=\"fpress\"]"
+        },
+        {
+          "click": "[data-nopen=\"3\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "3"
+          }
+        }
+      ]
+    },
+    {
+      "name": "image",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-ntw=\"frecipes\"]"
+        },
+        {
+          "click": "[data-nopen=\"4\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "4"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nested",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nopen=\"8\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "8"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shared",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nopen=\"11\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "11"
+          }
+        }
+      ]
+    },
+    {
+      "name": "style-menu",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nstyle]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-tool-text"
+        }
+      ]
+    },
+    {
+      "name": "insert-menu",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-ninsert]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-tool-insert"
+        }
+      ]
+    },
+    {
+      "name": "more-menu",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-more"
+        }
+      ]
+    },
+    {
+      "name": "new-note",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nnew]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-new"
+        }
+      ]
+    },
+    {
+      "name": "new-inside",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nnewin=\"1\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-new-inside"
+        }
+      ]
+    },
+    {
+      "name": "phone-sidebar",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#w-notes [data-lside]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-sidebar-toggle"
+        }
+      ]
+    },
+    {
+      "name": "share-sheet",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "eval": "const i=document.querySelector('#n-q');i.value='sourdough';i.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_QUERY": "sourdough"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-empty",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "eval": "const i=document.querySelector('#n-q');i.value='zzzz';i.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_QUERY": "zzzz"
+          }
+        }
+      ]
+    },
+    {
+      "name": "insert-image",
+      "about": "Image insertion with the v70 read-only sample",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-ninsert]"
+        },
+        {
+          "click": "[data-nphoto]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-tool-insert"
+        },
+        {
+          "activate": "css:button.lumaui-menu-rich"
+        }
+      ]
+    },
+    {
+      "name": "insert-file",
+      "about": "Read-only fixture file chooser message",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-ninsert]"
+        },
+        {
+          "click": "[data-nfile]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-tool-insert"
+        },
+        {
+          "activate": "nt-insert-file"
+        }
+      ]
+    },
+    {
+      "name": "selected-text",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "eval": "if(!(getSelection().toString().length===10&&document.querySelector('#n-sel [data-rtmore]')))throw new Error(\"selected-text assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "format-menu",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtmore]"
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('#lmenu [data-rtfmt]').length===5))throw new Error(\"format-menu assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-more"
+        }
+      ]
+    },
+    {
+      "name": "format-underline",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtmore]"
+        },
+        {
+          "click": "[data-rtfmt=\"underline\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lmenu')&&document.querySelector(\"#n-doc u\")))throw new Error(\"format-underline assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-more"
+        },
+        {
+          "activate": "nt-format-underline"
+        }
+      ]
+    },
+    {
+      "name": "format-strike",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtmore]"
+        },
+        {
+          "click": "[data-rtfmt=\"strikeThrough\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lmenu')&&document.querySelector(\"#n-doc strike,#n-doc s\")))throw new Error(\"format-strike assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-more"
+        },
+        {
+          "activate": "nt-format-strike"
+        }
+      ]
+    },
+    {
+      "name": "format-bulleted",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtmore]"
+        },
+        {
+          "click": "[data-rtfmt=\"insertUnorderedList\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lmenu')&&document.querySelector(\"#n-doc ul\")))throw new Error(\"format-bulleted assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-more"
+        },
+        {
+          "activate": "nt-format-bulleted"
+        }
+      ]
+    },
+    {
+      "name": "format-numbered",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtmore]"
+        },
+        {
+          "click": "[data-rtfmt=\"insertOrderedList\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lmenu')&&document.querySelector(\"#n-doc ol\")))throw new Error(\"format-numbered assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-more"
+        },
+        {
+          "activate": "nt-format-numbered"
+        }
+      ]
+    },
+    {
+      "name": "format-plain",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtfmt=\"bold\"]"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "eval": "const s=getSelection(),ed=document.querySelector('#n-doc');if(!s.rangeCount||s.toString().length!==10||!ed.contains(s.anchorNode)||!document.queryCommandState('bold'))throw new Error('format-plain bold precondition failed');window.__notesPlainSelection=s.toString();window.__notesPlainPeer=ed.querySelector('.peer')?.textContent??null;"
+        },
+        {
+          "click": "#n-sel [data-rtmore]"
+        },
+        {
+          "click": "[data-rtfmt=\"removeFormat\"]"
+        },
+        {
+          "eval": "const s=getSelection(),ed=document.querySelector('#n-doc');if(document.querySelector('#lmenu')||!s.rangeCount||s.toString()!==window.__notesPlainSelection||s.toString().length!==10||!ed.contains(s.anchorNode)||!ed.contains(s.focusNode)||document.queryCommandState('bold')||[...ed.querySelectorAll('b,strong')].some(x=>!x.closest('.peer[contenteditable=\"false\"]'))||(ed.querySelector('.peer')?.textContent??null)!==window.__notesPlainPeer)throw new Error(\"format-plain assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-bold"
+        },
+        {
+          "activate": "nt-selection-more"
+        },
+        {
+          "activate": "nt-format-plain"
+        }
+      ]
+    },
+    {
+      "name": "folder-mark-dot",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"f:launch\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#lpick [data-lptab=\"dot\"].on')))throw new Error(\"folder-mark-dot assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-folder-mark-launch"
+        }
+      ]
+    },
+    {
+      "name": "folder-mark-icon",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"f:launch\"]"
+        },
+        {
+          "click": "[data-lptab=\"icon\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#lpick [data-lptab=\"icon\"].on')))throw new Error(\"folder-mark-icon assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-folder-mark-launch"
+        },
+        {
+          "activate": "nt-mark-tab-icon"
+        }
+      ]
+    },
+    {
+      "name": "folder-mark-emoji",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"f:launch\"]"
+        },
+        {
+          "click": "[data-lptab=\"emoji\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#lpick [data-lptab=\"emoji\"].on')))throw new Error(\"folder-mark-emoji assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-folder-mark-launch"
+        },
+        {
+          "activate": "nt-mark-tab-emoji"
+        }
+      ]
+    },
+    {
+      "name": "page-mark-picker",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nmark=\"page\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#lpick')))throw new Error(\"page-mark-picker assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-mark"
+        }
+      ]
+    },
+    {
+      "name": "note-mark-picker",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"n:1\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#lpick')))throw new Error(\"note-mark-picker assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-note-mark-1"
+        }
+      ]
+    },
+    {
+      "name": "folder-form",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "#n-side [data-nnewfolder]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#n-fname')&&document.querySelectorAll('[data-nsw]').length===6&&document.querySelector('[data-nmkfolder]')))throw new Error(\"folder-form assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-new-folder"
+        }
+      ]
+    },
+    {
+      "name": "folder-created",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "#n-side [data-nnewfolder]"
+        },
+        {
+          "eval": "const f=document.querySelector('#n-fname');f.value='Trips';f.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-nmkfolder]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#n-fname')&&[...document.querySelectorAll('#n-side .lab')].some(n=>n.textContent==='Trips')))throw new Error(\"folder-created assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1",
+            "LUMA_NOTES_FOLDER_NAME": "Trips"
+          }
+        },
+        {
+          "activate": "nt-new-folder"
+        },
+        {
+          "activate": "nt-folder-create"
+        }
+      ]
+    },
+    {
+      "name": "nested-folder-form",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "eval": "const r=document.querySelector('#n-side [data-dropf=\"launch\"]');if(!r)throw new Error('Launch folder missing');const b=r.getBoundingClientRect();r.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:b.left+20,clientY:b.top+10}));"
+        },
+        {
+          "click": "[data-nfolderin=\"launch\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#n-fname')&&document.querySelectorAll('[data-nsw]').length===6&&document.querySelector('[data-nmkfolder]')&&document.querySelector('.nfpop').textContent.includes('New folder in Launch')))throw new Error(\"nested-folder-form assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1",
+            "LUMA_NOTES_CONTEXT_FOLDER": "launch"
+          }
+        },
+        {
+          "activate": "nt-command-folder-new-inside"
+        }
+      ]
+    },
+    {
+      "name": "nested-folder-created",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "eval": "const r=document.querySelector('#n-side [data-dropf=\"launch\"]');if(!r)throw new Error('Launch folder missing');const b=r.getBoundingClientRect();r.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:b.left+20,clientY:b.top+10}));"
+        },
+        {
+          "click": "[data-nfolderin=\"launch\"]"
+        },
+        {
+          "eval": "const f=document.querySelector('#n-fname');f.value='Trips';f.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-nmkfolder]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#n-fname')&&[...document.querySelectorAll('#n-side .lab')].some(n=>n.textContent==='Trips')))throw new Error(\"nested-folder-created assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1",
+            "LUMA_NOTES_CONTEXT_FOLDER": "launch",
+            "LUMA_NOTES_FOLDER_NAME": "Trips"
+          }
+        },
+        {
+          "activate": "nt-command-folder-new-inside"
+        },
+        {
+          "activate": "nt-folder-create"
+        }
+      ]
+    },
+    {
+      "name": "move-menu",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nmore]"
+        },
+        {
+          "click": "[data-nmove]"
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('[data-nmoveto]').length===5&&document.querySelector('[data-nmoveto=\"launch\"] .end')))throw new Error(\"move-menu assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-more"
+        },
+        {
+          "activate": "nt-command-note-move"
+        }
+      ]
+    },
+    {
+      "name": "move-applied",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nmore]"
+        },
+        {
+          "click": "[data-nmove]"
+        },
+        {
+          "click": "[data-nmoveto=\"personal\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#n-meta').textContent.includes('Personal')&&!document.querySelector('[data-nmoveto]')))throw new Error(\"move-applied assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-more"
+        },
+        {
+          "activate": "nt-command-note-move"
+        },
+        {
+          "activate": "nt-move-personal"
+        }
+      ]
+    },
+    {
+      "name": "share-copy-targets",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('[data-shapp]').length===5&&document.querySelector('[data-shnearby]')&&document.querySelectorAll('[data-shact]').length===3))throw new Error(\"share-copy-targets assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        }
+      ]
+    },
+    {
+      "name": "share-role-menu",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmenu=\"0\"]"
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('[data-shpick^=\"0:\"]').length===3))throw new Error(\"share-role-menu assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-role-0"
+        }
+      ]
+    },
+    {
+      "name": "share-role-changed",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmenu=\"0\"]"
+        },
+        {
+          "click": "[data-shpick=\"0:view\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shmenu=\"0\"]').textContent.includes('Can view')))throw new Error(\"share-role-changed result missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-role-0"
+        },
+        {
+          "activate": "nt-share-permission-view"
+        }
+      ]
+    },
+    {
+      "name": "share-link-menu",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmenu=\"link\"]"
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('[data-shpick^=\"link:\"]').length===3))throw new Error(\"share-link-menu assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-link-picker"
+        }
+      ]
+    },
+    {
+      "name": "share-link-changed",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmenu=\"link\"]"
+        },
+        {
+          "click": "[data-shpick=\"link:view\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shmenu=\"link\"]').textContent.includes('Anyone with the link can view')))throw new Error(\"share-link-changed result missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-link-picker"
+        },
+        {
+          "activate": "nt-share-access-view"
+        }
+      ]
+    },
+    {
+      "name": "share-invite-suggestion",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "eval": "const f=document.querySelector('[data-shq]');f.value=\"Ada\";f.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shadd=\"AC\"]')))throw new Error(\"share-invite-suggestion assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SHARE_QUERY": "Ada"
+          }
+        },
+        {
+          "activate": "nt-share"
+        }
+      ]
+    },
+    {
+      "name": "share-invite-added",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "eval": "const f=document.querySelector('[data-shq]');f.value=\"Ada\";f.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-shadd=\"AC\"]"
+        },
+        {
+          "eval": "if(!([...document.querySelectorAll('.shlist .shp b')].filter(n=>n.textContent==='Ada Chen').length===1))throw new Error(\"share-invite-added assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SHARE_QUERY": "Ada"
+          }
+        },
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-suggestion"
+        }
+      ]
+    },
+    {
+      "name": "share-invite-no-results",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "eval": "const f=document.querySelector('[data-shq]');f.value=\"zzzz\";f.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "eval": "if(!(document.querySelector('.shnone').textContent.includes('zzzz')))throw new Error(\"share-invite-no-results assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SHARE_QUERY": "zzzz"
+          }
+        },
+        {
+          "activate": "nt-share"
+        }
+      ]
+    },
+    {
+      "name": "share-person-sent",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shto=\"PR\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shto=\"PR\"]').classList.contains('sent')))throw new Error(\"share-person-sent assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-priya"
+        }
+      ]
+    },
+    {
+      "name": "share-copied",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shact=\"copy\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shact=\"copy\"] b').textContent==='Copied'))throw new Error(\"share-copied assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-action-copy"
+        }
+      ]
+    },
+    {
+      "name": "share-link-copied",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shcopy=\"link\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shcopy=\"link\"]').textContent.includes('Copied')))throw new Error(\"share-link-copied assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-copy-link"
+        }
+      ]
+    },
+    {
+      "name": "share-target-messages",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shapp=\"messages\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lshare')))throw new Error(\"share-target-messages assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-messages"
+        }
+      ]
+    },
+    {
+      "name": "share-target-mail",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shapp=\"charlie\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lshare')))throw new Error(\"share-target-mail assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-mail"
+        }
+      ]
+    },
+    {
+      "name": "share-target-notes",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shapp=\"notes\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lshare')))throw new Error(\"share-target-notes assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-notes"
+        }
+      ]
+    },
+    {
+      "name": "share-target-write",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shapp=\"write\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lshare')))throw new Error(\"share-target-write assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-write"
+        }
+      ]
+    },
+    {
+      "name": "share-target-ari",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shapp=\"ari\"]"
+        },
+        {
+          "eval": "if(!(!document.querySelector('#lshare')))throw new Error(\"share-target-ari assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-ari"
+        }
+      ]
+    },
+    {
+      "name": "share-nearby",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shnearby]"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('[data-shnear]').length===2))throw new Error(\"share-nearby assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-nearby"
+        }
+      ]
+    },
+    {
+      "name": "share-nearby-sent",
+      "about": "Desktop and 390px phone. Browser asserts state below; GTK action/state assertions: notes_lumaui_states_runtime.py. Pending during submission pause.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shnearby]"
+        },
+        {
+          "wait": 1500
+        },
+        {
+          "click": "[data-shnear=\"Nick\u2019s phone\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('[data-shnear=\"Nick\u2019s phone\"] em').textContent.includes('Sent')))throw new Error(\"share-nearby-sent assertion failed\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-target-nearby"
+        },
+        {
+          "activate": "nt-share-nearby-nicks-phone"
+        }
+      ]
+    },
+    {
+      "name": "selection-bold",
+      "about": "Apply actual selected-text bold on desktop and phone; strict runtime action assertion.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtfmt=\"bold\"]"
+        },
+        {
+          "eval": "const s=getSelection(),ed=document.querySelector('#n-doc');if(!s.rangeCount||s.toString().length!==10||!ed.contains(s.anchorNode)||!ed.contains(s.focusNode)||!document.queryCommandState('bold')||![...ed.querySelectorAll('b,strong')].some(x=>!x.closest('.peer[contenteditable=\"false\"]')&&s.getRangeAt(0).intersectsNode(x)))throw new Error(\"bold result missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-bold"
+        }
+      ]
+    },
+    {
+      "name": "selection-italic",
+      "about": "Apply actual selected-text italic on desktop and phone; strict runtime action assertion.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtfmt=\"italic\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector(\"#n-doc i,#n-doc em\")))throw new Error(\"italic result missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-italic"
+        }
+      ]
+    },
+    {
+      "name": "selection-highlight",
+      "about": "Apply actual selected-text highlight on desktop and phone; strict runtime action assertion.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtfmt=\"highlight\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#n-doc span[style*=\"background\"],#n-doc font[style*=\"background\"]')))throw new Error(\"selection-highlight result missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-highlight"
+        }
+      ]
+    },
+    {
+      "name": "selection-link",
+      "about": "Apply actual selected-text link on desktop and phone; strict runtime action assertion.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const ed=document.querySelector('#n-doc');ed.focus();const w=document.createTreeWalker(ed,NodeFilter.SHOW_TEXT),n=w.nextNode();if(!n||n.length<10)throw new Error('selection source');const r=document.createRange();r.setStart(n,0);r.setEnd(n,10);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "wait": 350
+        },
+        {
+          "click": "#n-sel [data-rtfmt=\"link\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#n-doc a[href=\"https://simplyluma.com\"]')))throw new Error(\"selection-link result missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:10"
+          }
+        },
+        {
+          "activate": "nt-selection-link"
+        }
+      ]
+    },
+    {
+      "name": "share-save",
+      "about": "Fixture save feedback on desktop and phone; no real destination, printer or data write.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shact=\"save\"]"
+        },
+        {
+          "eval": "if(document.querySelector('#lshare'))throw new Error('sharing action must close sheet');"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-action-save"
+        }
+      ]
+    },
+    {
+      "name": "share-print",
+      "about": "Fixture print feedback on desktop and phone; no real destination, printer or data write.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .bt[data-nshare]"
+        },
+        {
+          "click": "[data-shmode=\"copy\"]"
+        },
+        {
+          "click": "[data-shact=\"print\"]"
+        },
+        {
+          "eval": "if(document.querySelector('#lshare'))throw new Error('sharing action must close sheet');"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-share"
+        },
+        {
+          "activate": "nt-share-send-copy"
+        },
+        {
+          "activate": "nt-share-action-print"
+        }
+      ]
+    },
+    {
+      "name": "folder-mark-icon-applied",
+      "about": "Choose and persist actual folder mark; desktop/phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"f:launch\"]"
+        },
+        {
+          "click": "[data-lptab=\"icon\"]"
+        },
+        {
+          "click": "[data-lpicon=\"star\"]"
+        },
+        {
+          "eval": "if(document.querySelector('#lpick'))throw new Error('mark choice must close picker');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-folder-mark-launch"
+        },
+        {
+          "activate": "nt-mark-tab-icon"
+        },
+        {
+          "activate": "nt-mark-choice-star"
+        }
+      ]
+    },
+    {
+      "name": "folder-mark-emoji-applied",
+      "about": "Choose and persist actual folder mark; desktop/phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"f:launch\"]"
+        },
+        {
+          "click": "[data-lptab=\"emoji\"]"
+        },
+        {
+          "click": "[data-lpemoji=\"\ud83c\udf31\"]"
+        },
+        {
+          "eval": "if(document.querySelector('#lpick'))throw new Error('mark choice must close picker');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-folder-mark-launch"
+        },
+        {
+          "activate": "nt-mark-tab-emoji"
+        },
+        {
+          "activate": "nt-mark-choice-\ud83c\udf31"
+        }
+      ]
+    },
+    {
+      "name": "style-heading",
+      "about": "Apply block style to the actual current paragraph on desktop and phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const e=document.querySelector('#n-doc');e.focus();const n=document.createTreeWalker(e,NodeFilter.SHOW_TEXT).nextNode();const r=document.createRange();r.setStart(n,0);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);"
+        },
+        {
+          "click": "[data-nstyle]"
+        },
+        {
+          "click": "[data-nblock=\"h2\"]"
+        },
+        {
+          "eval": "if(!document.querySelector('#n-doc > h2'))throw new Error('block style missing');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:0"
+          }
+        },
+        {
+          "activate": "nt-tool-text"
+        },
+        {
+          "activate": "nt-style-heading"
+        }
+      ]
+    },
+    {
+      "name": "style-quote",
+      "about": "Apply block style to the actual current paragraph on desktop and phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const e=document.querySelector('#n-doc');e.focus();const n=document.createTreeWalker(e,NodeFilter.SHOW_TEXT).nextNode();const r=document.createRange();r.setStart(n,0);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);"
+        },
+        {
+          "click": "[data-nstyle]"
+        },
+        {
+          "click": "[data-nblock=\"blockquote\"]"
+        },
+        {
+          "eval": "if(!document.querySelector('#n-doc > blockquote'))throw new Error('block style missing');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:0"
+          }
+        },
+        {
+          "activate": "nt-tool-text"
+        },
+        {
+          "activate": "nt-style-quote"
+        }
+      ]
+    },
+    {
+      "name": "style-text",
+      "about": "Apply block style to the actual current paragraph on desktop and phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const e=document.querySelector('#n-doc');e.focus();const n=document.createTreeWalker(e,NodeFilter.SHOW_TEXT).nextNode();const r=document.createRange();r.setStart(n,0);r.collapse(true);getSelection().removeAllRanges();getSelection().addRange(r);"
+        },
+        {
+          "click": "[data-nstyle]"
+        },
+        {
+          "click": "[data-nblock=\"p\"]"
+        },
+        {
+          "eval": "if(!document.querySelector('#n-doc > p'))throw new Error('block style missing');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTION": "0:0"
+          }
+        },
+        {
+          "activate": "nt-tool-text"
+        },
+        {
+          "activate": "nt-style-text"
+        }
+      ]
+    },
+    {
+      "name": "presence-share",
+      "about": "Required actual shared state on desktop and390px phone; absence is a strict failure.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-float .npeople"
+        },
+        {
+          "eval": "if(!(document.querySelector('#lshare')))throw new Error(\"presence-share missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-presence"
+        }
+      ]
+    },
+    {
+      "name": "folder-path-move",
+      "about": "Required actual shared state on desktop and390px phone; absence is a strict failure.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "#n-meta [data-nmove]"
+        },
+        {
+          "eval": "if(!(document.querySelectorAll('[data-nmoveto]').length===5))throw new Error(\"folder-path-move missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "nt-folder-path"
+        }
+      ]
+    },
+    {
+      "name": "ancestor-open",
+      "about": "Required actual shared state on desktop and390px phone; absence is a strict failure.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "click": "[data-nopen=\"8\"]"
+        },
+        {
+          "click": "#n-meta [data-nopen=\"1\"]"
+        },
+        {
+          "eval": "if(!(document.querySelector('#n-title').textContent==='Launch checklist'))throw new Error(\"ancestor-open missing\");"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "8"
+          }
+        },
+        {
+          "activate": "nt-ancestor-1"
+        }
+      ]
+    },
+    {
+      "name": "folder-mark-dot-applied",
+      "about": "Choose actual Dot colour and retain folder document hue; desktop/phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "if(document.querySelector('#w-notes').getBoundingClientRect().width<=720)document.querySelector('#w-notes [data-lside]').click();"
+        },
+        {
+          "click": "[data-nmark=\"f:launch\"]"
+        },
+        {
+          "click": "[data-lphue=\"220\"]"
+        },
+        {
+          "eval": "if(document.querySelector('#lpick')||Number(document.querySelector('#w-notes').style.getPropertyValue('--nh'))!==220)throw new Error('Dot colour must apply to folder and close picker');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SIDEBAR": "1"
+          }
+        },
+        {
+          "activate": "nt-folder-mark-launch"
+        },
+        {
+          "activate": "nt-mark-hue-blue"
+        }
+      ]
+    },
+    {
+      "name": "insert-divider",
+      "about": "Actual Insert Divider action; preserves existing text and creates a divider on desktop and phone.",
+      "spec": [
+        {
+          "wait": 10000
+        },
+        {
+          "eval": "const d=document.querySelector('#n-doc');window.__notesDividerBefore=d.textContent;d.focus();const r=document.createRange();r.selectNodeContents(d);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r);document.dispatchEvent(new Event('selectionchange'));"
+        },
+        {
+          "click": "[data-ninsert]"
+        },
+        {
+          "click": "[data-ndiv]"
+        },
+        {
+          "eval": "const d=document.querySelector('#n-doc');if(!d.querySelector('hr')||d.textContent!==window.__notesDividerBefore)throw new Error('Divider insertion must preserve document text');"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_NOTES_SELECTED": "1",
+            "LUMA_NOTES_SELECTION": "265:265"
+          }
+        },
+        {
+          "activate": "nt-tool-insert"
+        },
+        {
+          "activate": "nt-insert-divider"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "checklist",
+    "groceries",
+    "quote",
+    "image",
+    "nested",
+    "shared",
+    "style-menu",
+    "insert-menu",
+    "more-menu",
+    "new-note",
+    "new-inside",
+    "phone-sidebar",
+    "share-sheet",
+    "search",
+    "search-empty",
+    "insert-image",
+    "insert-file",
+    "selected-text",
+    "format-menu",
+    "format-underline",
+    "format-strike",
+    "format-bulleted",
+    "format-numbered",
+    "format-plain",
+    "folder-mark-dot",
+    "folder-mark-icon",
+    "folder-mark-emoji",
+    "page-mark-picker",
+    "note-mark-picker",
+    "folder-form",
+    "folder-created",
+    "nested-folder-form",
+    "nested-folder-created",
+    "move-menu",
+    "move-applied",
+    "share-copy-targets",
+    "share-role-menu",
+    "share-role-changed",
+    "share-link-menu",
+    "share-link-changed",
+    "share-invite-suggestion",
+    "share-invite-added",
+    "share-invite-no-results",
+    "share-person-sent",
+    "share-copied",
+    "share-link-copied",
+    "share-target-messages",
+    "share-target-mail",
+    "share-target-notes",
+    "share-target-write",
+    "share-target-ari",
+    "share-nearby",
+    "share-nearby-sent",
+    "selection-bold",
+    "selection-italic",
+    "selection-highlight",
+    "selection-link",
+    "share-save",
+    "share-print",
+    "folder-mark-icon-applied",
+    "folder-mark-emoji-applied",
+    "style-heading",
+    "style-quote",
+    "style-text",
+    "presence-share",
+    "folder-path-move",
+    "ancestor-open",
+    "folder-mark-dot-applied",
+    "insert-divider"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-notes > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#n-top"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#n-side .sfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#n-side"
+    },
+    {
+      "name": "corner pill",
+      "spec": "#n-float"
+    },
+    {
+      "name": "metadata",
+      "spec": "#n-meta"
+    },
+    {
+      "name": "page icon",
+      "spec": "#n-pic"
+    },
+    {
+      "name": "title",
+      "spec": "#n-title"
+    },
+    {
+      "name": "document",
+      "spec": "#n-doc"
+    },
+    {
+      "name": "nested notes",
+      "spec": "#n-kids"
+    },
+    {
+      "name": "action center",
+      "spec": "#n-bar"
+    },
+    {
+      "name": "main",
+      "spec": "#n-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#n-side",
+      "gtk": "nt-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#n-main",
+      "gtk": "nt-island",
+      "name": "main island"
+    },
+    {
+      "spec": "#n-scroll",
+      "gtk": "nt-scroll",
+      "name": "document scroll"
+    },
+    {
+      "spec": "#n-title",
+      "gtk": "nt-title",
+      "name": "note title"
+    },
+    {
+      "spec": "#n-doc",
+      "gtk": "nt-doc",
+      "name": "document"
+    },
+    {
+      "spec": "#n-bar",
+      "gtk": "nt-bar",
+      "name": "action center"
+    }
+  ],
+  "text_aliases": {}
+}

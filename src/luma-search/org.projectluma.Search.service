@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.Search
+Exec=/usr/libexec/luma-search-service

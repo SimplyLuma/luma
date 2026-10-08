@@ -1,0 +1,244 @@
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -3,6 +3,8 @@
+  */
+ #include <config.h>
+ #include <math.h>
++#include <string.h>
++#include <stdlib.h>
+ #include <glib/gi18n.h>
+ #include <shell/cc-panel.h>
+ 
+@@ -54,6 +56,122 @@
+   cairo_arc (cr, x+bl, y+h-bl, bl, G_PI_2, G_PI);
+   cairo_arc (cr, x+tl, y+tl, tl, G_PI, G_PI+G_PI_2);
+   cairo_close_path (cr);
++}
++
++/* A compact illustration of the live status choices inside the same preview.
++ * It uses sample clock text, never fabricated machine status. */
++static void
++preview_status (CcDashPanel *self, cairo_t *cr, double cx, double cy, gboolean vertical)
++{
++  g_autofree char *scope = g_settings_get_string (self->settings, "status-frame-scope");
++  g_autofree char *frame = g_settings_get_string (self->settings, "status-frame");
++  g_autofree char *strength = g_settings_get_string (self->settings, "status-fill-strength");
++  g_autofree char *material = g_settings_get_string (self->settings, "shelf-material");
++  gboolean light = g_str_equal (material, "light") || g_str_equal (material, "frost");
++  gboolean flush = g_str_equal (scope, "flush");
++  gboolean joined = flush || g_str_equal (scope, "joined");
++  gboolean fill = flush || g_str_equal (frame, "fill") || g_str_equal (frame, "both");
++  gboolean stroke = !flush && (g_str_equal (frame, "stroke") || g_str_equal (frame, "both"));
++  gboolean right = g_settings_get_boolean (self->settings, "status-controls-right");
++  gboolean rtl = gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_RTL;
++  double pad = g_settings_get_int (self->settings, "shelf-padding");
++  double gap = joined ? 0 : 7, clock = vertical ? 62 : 70, controls = 36;
++  double length = clock + controls + gap + 2*pad, thickness = 36 + 2*pad;
++  double w = vertical ? thickness : length, h = vertical ? length : thickness;
++  cairo_save (cr);
++  cairo_translate (cr, cx-w/2, cy-h/2);
++  rounded_rect (cr, 0, 0, w, h, 15);
++  cairo_clip (cr);
++  cairo_set_source_rgb (cr, light ? .93 : .13, light ? .94 : .15, light ? .95 : .17);
++  cairo_paint (cr);
++  if (fill && g_str_equal (scope, "all"))
++    {
++      g_autofree char *color = g_settings_get_string (self->settings, "status-clock-fill");
++      GdkRGBA tint;
++      if (strlen (color) != 7 || color[0] != '#' || !gdk_rgba_parse (&tint, color))
++        gdk_rgba_parse (&tint, "#7f8892");
++      rounded_rect (cr, pad, pad, w-2*pad, h-2*pad, 10);
++      cairo_set_source_rgba (cr, tint.red, tint.green, tint.blue, atoi (strength)/100.);
++      cairo_fill (cr);
++    }
++  gboolean clock_first = vertical ? right : right != rtl;
++  double start = flush ? 0 : pad;
++  for (guint i = 0; i < 2; i++)
++    {
++      gboolean is_clock = (i == 0) == clock_first;
++      double len = (is_clock ? clock : controls) + (flush ? pad : 0);
++      double x = vertical ? (flush ? 0 : pad) : start;
++      double y = vertical ? start : (flush ? 0 : pad);
++      double pw = vertical ? (flush ? thickness : 36) : len;
++      double ph = vertical ? len : (flush ? thickness : 36);
++      gboolean framed = joined || g_str_equal (scope, "split") ||
++                         (!is_clock && g_str_equal (scope, "controls"));
++      g_autofree char *color = g_settings_get_string (self->settings,
++        is_clock ? "status-clock-fill" : "status-controls-fill");
++      GdkRGBA tint;
++      if (strlen (color) != 7 || color[0] != '#' || !gdk_rgba_parse (&tint, color))
++        gdk_rgba_parse (&tint, "#7f8892");
++      if (fill && framed)
++        {
++          rounded_rect (cr, x, y, pw, ph, joined ? 0 : 10);
++          cairo_set_source_rgba (cr, tint.red, tint.green, tint.blue, atoi (strength)/100.);
++          cairo_fill (cr);
++        }
++      if (stroke && framed)
++        {
++          rounded_rect (cr, x+.5, y+.5, pw-1, ph-1, joined ? 0 : 10);
++          cairo_set_source_rgba (cr, light ? .1 : 1, light ? .1 : 1, light ? .1 : 1, light ? .14 : .16);
++          cairo_stroke (cr);
++        }
++      cairo_set_source_rgb (cr, light ? .1 : .9, light ? .1 : .9, light ? .1 : .9);
++      if (is_clock)
++        {
++          cairo_text_extents_t ext;
++          int ts = g_settings_get_int (self->settings, "status-time-size");
++          int ds = g_settings_get_int (self->settings, "status-date-size");
++          cairo_select_font_face (cr, "Figtree", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
++          cairo_set_font_size (cr, ts);
++          const char *time = vertical ? "12:41" : "12:41 PM";
++          cairo_text_extents (cr, time, &ext);
++          cairo_move_to (cr, x+(pw-ext.width)/2-ext.x_bearing, y+ph/2-3);
++          cairo_show_text (cr, time);
++          cairo_set_font_size (cr, ds);
++          const char *date = vertical ? "Mon 7" : "Mon Sep 7";
++          cairo_text_extents (cr, date, &ext);
++          cairo_move_to (cr, x+(pw-ext.width)/2-ext.x_bearing, y+ph/2+ds);
++          cairo_show_text (cr, date);
++        }
++      else
++        for (guint k = 0; k < 4; k++)
++          {
++            double gx = x+(pw-29)/2+(k%2)*16, gy = y+(ph-29)/2+(k/2)*16;
++            if (g_settings_get_boolean (self->settings, "status-glyph-tiles"))
++              {
++                rounded_rect (cr, gx, gy, 13, 13, 3);
++                cairo_set_source_rgba (cr, light ? .1 : 1, light ? .1 : 1, light ? .1 : 1, light ? .05 : .08);
++                cairo_fill (cr);
++              }
++            cairo_set_source_rgba (cr, light ? .1 : .9, light ? .1 : .9, light ? .1 : .9, .8);
++            cairo_arc (cr, gx+6.5, gy+6.5, 3.5, 0, 2*G_PI);
++            cairo_stroke (cr);
++          }
++      if (i == 0 && g_settings_get_boolean (self->settings, "status-divider") &&
++          (!g_str_equal (frame, "none") || flush))
++        {
++          cairo_set_source_rgba (cr, light ? .1 : 1, light ? .1 : 1, light ? .1 : 1, .16);
++          if (vertical) { cairo_move_to (cr, x, y+ph+gap/2); cairo_line_to (cr, x+pw, y+ph+gap/2); }
++          else { cairo_move_to (cr, x+pw+gap/2, y); cairo_line_to (cr, x+pw+gap/2, y+ph); }
++          cairo_stroke (cr);
++        }
++      start += len+gap;
++    }
++  if (g_str_equal (scope, "all") && (stroke || fill))
++    {
++      rounded_rect (cr, pad+.5, pad+.5, w-2*pad-1, h-2*pad-1, 10);
++      if (stroke) { cairo_set_source_rgba (cr, light ? .1 : 1, light ? .1 : 1, light ? .1 : 1, .16); cairo_stroke (cr); }
++      else cairo_new_path (cr);
++    }
++  cairo_restore (cr);
+ }
+ 
+ /* This is an illustration, not a second Shell renderer. All colors derive
+@@ -107,6 +225,7 @@
+                     edge, attached, FALSE, span && !floating);
+       cairo_fill (cr);
+     }
++  preview_status (self, cr, sx+sw/2, sy+sh/2, vertical);
+ }
+ 
+ static void
+@@ -171,6 +290,71 @@
+     g_settings_bind (self->settings, key, row, "active",
+                      g_str_equal (key, "shelf-float-ends") ? G_SETTINGS_BIND_NO_SENSITIVITY : G_SETTINGS_BIND_DEFAULT);
+   return row;
++}
++
++static gboolean
++string_to_index (GValue *value, GVariant *variant, gpointer data)
++{
++  const char * const *values = data;
++  for (guint i = 0; values[i]; i++)
++    if (g_str_equal (g_variant_get_string (variant, NULL), values[i]))
++      { g_value_set_uint (value, i); return TRUE; }
++  return FALSE;
++}
++
++static GVariant *
++index_to_string (const GValue *value, const GVariantType *type, gpointer data)
++{
++  const char * const *values = data;
++  guint index = g_value_get_uint (value);
++  for (guint i = 0; values[i]; i++)
++    if (i == index) return g_variant_new_string (values[i]);
++  return NULL;
++}
++
++static void
++add_choice (CcDashPanel *self, AdwPreferencesGroup *group, const char *title,
++            const char *key, const char * const *values, const char * const *labels)
++{
++  g_autoptr(GtkStringList) model = gtk_string_list_new (labels);
++  AdwComboRow *row = ADW_COMBO_ROW (adw_combo_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
++  adw_combo_row_set_model (row, G_LIST_MODEL (model));
++  g_settings_bind_with_mapping (self->settings, key, row, "selected", G_SETTINGS_BIND_DEFAULT,
++                               string_to_index, index_to_string, (gpointer) values, NULL);
++  adw_preferences_group_add (group, GTK_WIDGET (row));
++}
++
++static GVariant *
++hex_to_setting (const GValue *value, const GVariantType *type, gpointer data)
++{
++  const char *text = g_value_get_string (value);
++  gboolean valid = text && strlen (text) == 7 && text[0] == '#';
++  for (guint i = 1; valid && i < 7; i++) valid = g_ascii_isxdigit (text[i]);
++  if (valid) gtk_widget_remove_css_class (GTK_WIDGET (data), "error");
++  else gtk_widget_add_css_class (GTK_WIDGET (data), "error");
++  return valid ? g_variant_new_string (text) : NULL;
++}
++
++static void
++add_color (CcDashPanel *self, AdwPreferencesGroup *group, const char *title, const char *key)
++{
++  AdwEntryRow *row = ADW_ENTRY_ROW (adw_entry_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
++  gtk_widget_set_tooltip_text (GTK_WIDGET (row), _("A six-digit colour, such as #7f8892"));
++  g_settings_bind_with_mapping (self->settings, key, row, "text", G_SETTINGS_BIND_DEFAULT,
++                               NULL, hex_to_setting, row, NULL);
++  adw_preferences_group_add (group, GTK_WIDGET (row));
++}
++
++static void
++add_size (CcDashPanel *self, AdwPreferencesGroup *group, const char *title,
++          const char *key, double min, double max)
++{
++  AdwSpinRow *row = ADW_SPIN_ROW (adw_spin_row_new_with_range (min, max, 1));
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
++  g_settings_bind (self->settings, key, row, "value", G_SETTINGS_BIND_DEFAULT);
++  adw_preferences_group_add (group, GTK_WIDGET (row));
+ }
+ 
+ static void
+@@ -251,6 +435,29 @@
+   g_settings_bind (self->settings, "shelf-padding", self->padding_row, "value", G_SETTINGS_BIND_DEFAULT);
+   adw_preferences_group_add (appearance, GTK_WIDGET (self->padding_row));
+   adw_preferences_page_add (page, appearance);
++  AdwPreferencesGroup *status = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  static const char * const frames[] = { "none", "stroke", "fill", "both", NULL };
++  static const char * const scopes[] = { "all", "controls", "split", "joined", "flush", NULL };
++  static const char * const strengths[] = { "14", "34", "100", NULL };
++  const char *frame_labels[] = { _("None"), _("Stroke"), _("Fill"), _("Fill and stroke"), NULL };
++  const char *scope_labels[] = { _("Clock and controls"), _("Controls only"), _("Each separately"),
++                               _("Joined"), _("Fill the area"), NULL };
++  const char *strength_labels[] = { _("Subtle"), _("Medium"), _("Solid"), NULL };
++  adw_preferences_group_set_title (status, _("System status"));
++  adw_preferences_group_set_description (status, _("The clock and status indicators open Quick Options together."));
++  add_switch (self, status, _("Quick controls on right"), _("Swap the clock and quick controls"),
++              "status-controls-right", NULL);
++  add_choice (self, status, _("Clock frame"), "status-frame", frames, frame_labels);
++  add_choice (self, status, _("Frame holds"), "status-frame-scope", scopes, scope_labels);
++  add_size (self, status, _("Time size"), "status-time-size", 10, 20);
++  add_size (self, status, _("Date size"), "status-date-size", 7, 14);
++  add_switch (self, status, _("Divider line"), _("Separate the clock and quick controls"), "status-divider", NULL);
++  add_switch (self, status, _("Quick option tiles"), _("Show a small background behind each status glyph"),
++              "status-glyph-tiles", NULL);
++  add_choice (self, status, _("Fill strength"), "status-fill-strength", strengths, strength_labels);
++  add_color (self, status, _("Clock fill"), "status-clock-fill");
++  add_color (self, status, _("Controls fill"), "status-controls-fill");
++  adw_preferences_page_add (page, status);
+   g_signal_connect_object (self->settings, "changed", G_CALLBACK (settings_changed), self, 0);
+   g_signal_connect_object (self->settings, "writable-changed", G_CALLBACK (sync_settings), self, G_CONNECT_SWAPPED);
+   sync_settings (self);

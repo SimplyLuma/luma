@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<node>
+  <interface name="org.projectluma.Search1">
+    <method name="Query">
+      <arg name="query" type="s" direction="in"/>
+      <arg name="generation" type="u" direction="in"/>
+      <arg name="limit" type="u" direction="in"/>
+      <arg name="results" type="aa{sv}" direction="out"/>
+    </method>
+    <method name="Activate">
+      <arg name="provider_id" type="s" direction="in"/>
+      <arg name="result_id" type="s" direction="in"/>
+      <arg name="terms" type="as" direction="in"/>
+      <arg name="timestamp" type="u" direction="in"/>
+    </method>
+    <method name="Reveal">
+      <arg name="provider_id" type="s" direction="in"/>
+      <arg name="result_id" type="s" direction="in"/>
+      <arg name="timestamp" type="u" direction="in"/>
+    </method>
+    <method name="ListProviders">
+      <arg name="providers" type="aa{sv}" direction="out"/>
+    </method>
+  </interface>
+</node>

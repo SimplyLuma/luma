@@ -1,0 +1,55 @@
+{
+  "schema": "org.luma.mod/v0.1",
+  "identity": {
+    "id": "org.projectluma.pilot.hardware.oneplus-cph2653",
+    "version": "0.1.0",
+    "kind": "hardware",
+    "name": "OnePlus 13 CPH2653 Qualification Pilot",
+    "summary": "Evidence-only image-composition contract for the exact OnePlus 13 CPH2653 product identity.",
+    "license": ["Apache-2.0"],
+    "publisher": {"id": "org.projectluma", "name": "Project Luma"}
+  },
+  "compatibility": {
+    "luma_base": ">=0.1.0 <1.0.0",
+    "architectures": ["aarch64"],
+    "presentations": ["handheld"],
+    "hardware": ["product:OnePlus:CPH2653"],
+    "kernel_releases": [],
+    "install_modes": ["image-compose"]
+  },
+  "dependencies": [],
+  "capabilities": {
+    "provides": [{
+      "id": "org.luma.hardware.qualification.oneplus-cph2653",
+      "version": "0.1.0",
+      "ownership": "shared",
+      "reason": "Reserves an exact device qualification identity without claiming a bootable port or functioning phone hardware."
+    }],
+    "requires": [{
+      "id": "org.luma.apps.core",
+      "version": ">=1.0.0 <2.0.0",
+      "ownership": "exclusive",
+      "reason": "A phone port must retain the same responsive Luma core application package as desktop."
+    }],
+    "conflicts": [],
+    "replaces": []
+  },
+  "effects": {
+    "settings": [], "files": [], "packages": [], "services": [],
+    "dbus_names": [], "portals": [], "devices": [],
+    "configuration_domains": [], "kernel_modules": [], "firmware": [],
+    "boot_arguments": [], "user_data": [], "initramfs": false,
+    "secure_boot": "none"
+  },
+  "payloads": [],
+  "recovery": {
+    "previous_composition_retained": false,
+    "health_gate": "hardware-qualification-v1",
+    "user_data": "retain"
+  },
+  "evidence": {
+    "source": "none:oneplus-cph2653-port-evidence-not-yet-captured",
+    "source_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "signatures": []
+}

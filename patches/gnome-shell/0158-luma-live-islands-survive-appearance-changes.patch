@@ -1,0 +1,96 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 13:10:00 -0500
+Subject: [PATCH] luma: the live islands stay on the shelf across appearance
+ changes
+
+0151 inks a Well glyph by following its style-changed signal. A pixmap or
+XEmbed tray icon is a plain Clutter actor, which has no such signal, so
+inking one threw. A tray icon that redraws itself as a new actor on a theme
+change (the AppIndicator extension's pixmap icons do) threw again on every
+shelf rebuild, and the throw left _adoptPanelActors before the live and
+now-playing islands were put back: switching Dark to Light emptied them off
+the shelf.
+
+A plain actor now takes its ink from the nearest St widget above it and
+follows that widget's style, and one indicator the Well cannot adopt is
+logged instead of taking the rest of the shelf with it. The light live
+island's subtitle ink moves from 60% to 66%, which lifts it from 4.36:1 to
+5.2:1 on the light surface.
+---
+ data/theme/luma-shelf.css |  2 +-
+ js/ui/lumaWell.js         | 20 ++++++++++++++++----
+ js/ui/shelf.js            | 10 +++++++++-
+ 3 files changed, 26 insertions(+), 6 deletions(-)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index a39c0ad..3951200 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -767,7 +767,7 @@
+ 
+ /* The light treatments, taken from the same values the materials use. */
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-title { color: #191b1f; }
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-subtitle { color: rgba(25, 27, 31, 0.60); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-subtitle { color: rgba(25, 27, 31, 0.66); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-icon { color: #4878b8; }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action {
+   background-color: transparent;
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index 2d2717b..df8b96e 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -578,15 +578,27 @@ export const Well = GObject.registerClass({
+     _inkGlyph(actor) {
+         if (actor._lumaWellInk)
+             return;
++        // A pixmap or XEmbed tray icon is a plain Clutter actor with no style
++        // of its own: it takes its ink from the nearest St widget above it and
++        // follows that widget's style. Connecting style-changed on the plain
++        // actor threw, and the throw ran through every shelf rebuild, so the
++        // live and now-playing islands dropped off the shelf at each
++        // appearance change.
++        let styled = actor;
++        while (styled && !(styled instanceof St.Widget))
++            styled = styled.get_parent();
+         const effect = new Silhouette();
+         actor._lumaWellInk = effect;
+         const applyInk = () => {
+-            if (actor.get_stage())
+-                effect.setInk(actor.get_theme_node().get_foreground_color());
++            if (styled?.get_stage())
++                effect.setInk(styled.get_theme_node().get_foreground_color());
+         };
+         actor.add_effect_with_name('luma-well-silhouette', effect);
+-        actor.connectObject('style-changed', applyInk,
+-            'destroy', () => (actor._lumaWellInk = null), this);
++        styled?.connectObject('style-changed', applyInk, actor);
++        actor.connectObject('destroy', () => {
++            actor._lumaWellInk = null;
++            styled?.disconnectObject(actor);
++        }, this);
+         applyInk();
+     }
+ 
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index fa1a4d9..5ed08c9 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -760,7 +760,15 @@ class Shelf extends St.Widget {
+             // keyboard layout -- live in the Well beside Quick Options, never
+             // in an island of their own. Their actors move as they are, so a
+             // click still stops the sharing or opens their menu.
+-            if (this._well.adopt(indicator) || this._well.adoptExtension(indicator)) {
++            // One indicator that cannot be adopted must never take the rest of
++            // the shelf with it: the islands after it are placed below.
++            let adopted = false;
++            try {
++                adopted = this._well.adopt(indicator) || this._well.adoptExtension(indicator);
++            } catch (error) {
++                logError(error, `Luma Well could not adopt ${role}`);
++            }
++            if (adopted) {
+                 indicator.setShelfPresentation?.(true);
+                 indicator.setShelfOrientation?.(this._vertical);
+                 continue;
+-- 
+2.55.0

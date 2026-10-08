@@ -1,0 +1,99 @@
+From 532de37e84dac82936b056e28fb71ce4c7af60d6 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Sat, 27 Jun 2026 00:19:05 +0200
+Subject: [PATCH] loc: add client identification TLVs to Register Events
+
+Newer Snapdragon GNSS engines (e.g. SM7635/milos, gnss8) gate
+positioning behind an application-framework ("AFW", i.e. the Android
+framework) client check: unless the client registers as an AFW client
+via QMI_LOC_REG_EVENTS, event registration fails with INVALID_ARGUMENT
+and QMI_LOC_START with GENERAL_FAILURE. The stock Android loc HAL
+sends three extra TLVs in Register Events that libqmi did not model:
+
+  0x10  Client String ID (string, max 4 chars, e.g. "MHAL")
+  0x11  Client Type (enum: AFW/NFW/Privileged)
+  0x12  Enable Positioning Request Notification (boolean)
+
+TLV names follow qmiLocRegEventsReqMsgT_v02 (clientStrId, clientType,
+enablePosRequestNotification) in the public location service API:
+https://github.com/qualcomm-linux/location-apis-qcom/blob/location.lnx.0.0/loc_api/loc_api_v02/location_service_v02.h
+
+Client Type is modeled as a new QmiLocClientType enum matching
+qmiLocClientTypeEnumT_v02 from the same header (AFW=1, NFW=2,
+PRIVILEGED=3; the engine defaults to NFW when the TLV is absent).
+
+Add them as optional inputs. libqmi serializes them only when a caller
+sets them, so this change does not alter any existing message on the
+wire.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ data/qmi-service-loc.json       | 20 +++++++++++++++++++-
+ src/libqmi-glib/qmi-enums-loc.h | 20 ++++++++++++++++++++
+ 2 files changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/data/qmi-service-loc.json b/data/qmi-service-loc.json
+index 314b4325..b6f079a5 100644
+--- a/data/qmi-service-loc.json
++++ b/data/qmi-service-loc.json
+@@ -84,7 +84,25 @@
+                      "type"          : "TLV",
+                      "since"         : "1.22",
+                      "format"        : "guint64",
+-                     "public-format" : "QmiLocEventRegistrationFlag" } ],
++                     "public-format" : "QmiLocEventRegistrationFlag" },
++                   { "name"          : "Client String ID",
++                     "id"            : "0x10",
++                     "type"          : "TLV",
++                     "since"         : "1.40",
++                     "format"        : "string",
++                     "max-size"      : "4" },
++                   { "name"          : "Client Type",
++                     "id"            : "0x11",
++                     "type"          : "TLV",
++                     "since"         : "1.40",
++                     "format"        : "guint32",
++                     "public-format" : "QmiLocClientType" },
++                   { "name"          : "Enable Positioning Request Notification",
++                     "id"            : "0x12",
++                     "type"          : "TLV",
++                     "since"         : "1.40",
++                     "format"        : "guint8",
++                     "public-format" : "gboolean" } ],
+      "output"  : [ { "common-ref" : "Operation Result" } ] },
+ 
+   // *********************************************************************************
+diff --git a/src/libqmi-glib/qmi-enums-loc.h b/src/libqmi-glib/qmi-enums-loc.h
+index 2fe76449..52b279bd 100644
+--- a/src/libqmi-glib/qmi-enums-loc.h
++++ b/src/libqmi-glib/qmi-enums-loc.h
+@@ -37,6 +37,26 @@
+  * interface.
+  */
+ 
++/*****************************************************************************/
++/* Helper enums for the 'QMI LOC Register Events' request */
++
++/**
++ * QmiLocClientType:
++ * @QMI_LOC_CLIENT_TYPE_AFW: Application framework client (i.e. the Android framework).
++ * @QMI_LOC_CLIENT_TYPE_NFW: Non-framework client.
++ * @QMI_LOC_CLIENT_TYPE_PRIVILEGED: Privileged client.
++ *
++ * Type of client registering with the location engine. If not specified,
++ * the engine treats the client as a non-framework client.
++ *
++ * Since: 1.40
++ */
++typedef enum { /*< since=1.40 >*/
++    QMI_LOC_CLIENT_TYPE_AFW        = 1,
++    QMI_LOC_CLIENT_TYPE_NFW        = 2,
++    QMI_LOC_CLIENT_TYPE_PRIVILEGED = 3,
++} QmiLocClientType;
++
+ /*****************************************************************************/
+ /* Helper enums for the 'QMI LOC Start' indication */
+ 
+-- 
+2.54.0 (Apple Git-157)
+

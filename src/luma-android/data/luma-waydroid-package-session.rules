@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.projectluma.waydroid-package-session" &&
+        subject.active && subject.local &&
+        subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

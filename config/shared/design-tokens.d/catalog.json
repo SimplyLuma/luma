@@ -1,0 +1,23 @@
+{
+  "_source": "Simulator v71 .dfc/.dfc.story lines4921-4922 and discoverPhone hues95/25/225 line8415. Editorial artwork surfaces retain the same palette in light and dark.",
+  "lumaui": {
+    "colors": {
+      "light": {
+        "catalog_feature_start": "oklch(0.5 0.12 95)",
+        "catalog_feature_end": "oklch(0.26 0.07 95)",
+        "catalog_story_create_start": "oklch(0.5 0.14 25)",
+        "catalog_story_create_end": "oklch(0.27 0.08 25)",
+        "catalog_story_play_start": "oklch(0.5 0.14 225)",
+        "catalog_story_play_end": "oklch(0.27 0.08 225)"
+      },
+      "dark": {
+        "catalog_feature_start": "oklch(0.5 0.12 95)",
+        "catalog_feature_end": "oklch(0.26 0.07 95)",
+        "catalog_story_create_start": "oklch(0.5 0.14 25)",
+        "catalog_story_create_end": "oklch(0.27 0.08 25)",
+        "catalog_story_play_start": "oklch(0.5 0.14 225)",
+        "catalog_story_play_end": "oklch(0.27 0.08 225)"
+      }
+    }
+  }
+}

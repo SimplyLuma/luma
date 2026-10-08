@@ -1,0 +1,27 @@
+From 6db49ca37a1c2dd5451f9a3f993e106f21d27836 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 06:32:29 +0000
+Subject: [PATCH] Hide duplicate Nautilus status footer in Filer
+
+---
+ src/nautilus-files-view.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+index 26891f4..2f10c92 100644
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -9856,6 +9856,10 @@ nautilus_files_view_init (NautilusFilesView *self)
+ 
+     g_type_ensure (NAUTILUS_TYPE_FLOATING_BAR);
+     gtk_widget_init_template (GTK_WIDGET (self));
++    /* Location count lives in Filer's heading and selection in the action
++     * center. The inherited Nautilus footer would duplicate both underneath
++     * the floating bar, especially on a narrow window. */
++    gtk_widget_set_visible (gtk_widget_get_parent (self->status_primary_label), FALSE);
+ 
+     g_signal_connect (self->floating_bar,
+                       "stop",
+-- 
+2.55.0
+

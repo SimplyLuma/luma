@@ -1,0 +1,32 @@
+# Project Luma desktop package repository.
+#
+# rpm-ostree records the rpm-md repositories a base commit was composed from
+# and needs them to resolve the *base* side of a replacement. Luma's own
+# packages used to be installed from local file paths, so after the composed
+# tree was exported they were base packages with no origin at all, and
+# `rpm-ostree override replace` of any of them was recorded and silently
+# dropped. See docs/design/luma-package-repository.md.
+#
+# The composing guest installs Luma packages from this repository, and the
+# repository itself is carried in the image at the same path, so the identifier
+# below appears in `rpmostree.rpmmd-repos` and stays resolvable for the life of
+# the image. The compose-time file and the shipped file are the same file; do
+# not give them different identifiers.
+#
+# gpgcheck: Project Luma has no RPM signing key, and this file deliberately
+# does not point at a network location. The repository is a file:// tree inside
+# the image, and its integrity is the integrity of the signed OSTree commit
+# that carries it; enabling gpgcheck here would require signing every Luma RPM
+# first. If this repository is ever published over HTTP(S) for a channel, sign
+# the packages and the metadata and set gpgcheck/repo_gpgcheck/gpgkey here
+# before changing the baseurl.
+#
+# skip_if_unavailable is False on purpose: a missing repository must be a loud
+# failure, not a silent return to unreplaceable Luma packages.
+[luma-desktop]
+name=Project Luma desktop packages
+baseurl=file:///var/lib/luma/package-repository
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+skip_if_unavailable=False

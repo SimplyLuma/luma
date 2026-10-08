@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectluma.org/schemas/live-extension/v0.1",
+  "title": "Luma Live Extension",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "app_id", "category", "title", "privacy", "actions"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string", "minLength": 1 },
+    "app_id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+){2,}$" },
+    "category": { "enum": ["call", "media", "timer", "navigation", "event", "transfer", "recording", "installation", "generic"] },
+    "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "subtitle": { "type": "string", "maxLength": 120 },
+    "privacy": { "enum": ["public", "private", "sensitive", "secret"] },
+    "progress": { "type": "number", "minimum": -1, "maximum": 1 },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "actions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "$ref": "luma-action-v0.1.schema.json" }
+    }
+  }
+}

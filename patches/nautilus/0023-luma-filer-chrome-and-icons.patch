@@ -1,0 +1,685 @@
+Correct Filer's chrome, and draw it from the Lucide set
+
+Filer built its own application identity in the title row. The toolkit draws
+one for every window now and resolves the application's menu, so the hand-built
+copy was a second "Filer" trigger sitting beside back and forward. It is
+removed, not hidden.
+
+The sidebar was squished against its own edge: its rows and its section
+headings were inset from different origins, so PLACES sat inboard of the rows
+it captions. The list now owns 6px and both own 8px inside it.
+
+The view pickers drew their chosen state as ink on ink — a blank block where
+the current view should read — and were rounded only at the leading pair. One
+of the three asked for view-dual-symbolic, which no installed theme has, so the
+Columns picker had nothing to draw at all.
+
+Twenty icons from the simulator's Lucide set ship in Nautilus's own resource
+path, answering only for Filer and replacing no icon theme.
+
+The stylesheet corrections carry `window.` before the window class so they hold
+wherever they land in the sheet, and sit outside the light-mode block, which the
+older Filer rules do not.
+
+diff --git a/src/resources/icons/scalable/actions/document-open-recent-symbolic.svg b/src/resources/icons/scalable/actions/document-open-recent-symbolic.svg
+--- a/src/resources/icons/scalable/actions/document-open-recent-symbolic.svg
++++ b/src/resources/icons/scalable/actions/document-open-recent-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/drive-harddisk-symbolic.svg b/src/resources/icons/scalable/actions/drive-harddisk-symbolic.svg
+--- a/src/resources/icons/scalable/actions/drive-harddisk-symbolic.svg
++++ b/src/resources/icons/scalable/actions/drive-harddisk-symbolic.svg
+@@ -0,0 +1,18 @@
++<!-- @license lucide-static v1.39.0 - ISC -->
++<svg
++  class="lucide lucide-hard-drive"
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M10 16h.01" />
++  <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
++  <path d="M21.946 12.013H2.054" />
++  <path d="M6 16h.01" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/edit-find-symbolic.svg b/src/resources/icons/scalable/actions/edit-find-symbolic.svg
+--- a/src/resources/icons/scalable/actions/edit-find-symbolic.svg
++++ b/src/resources/icons/scalable/actions/edit-find-symbolic.svg
+@@ -0,0 +1,14 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <circle cx="11" cy="11" r="8" />
++  <path d="m21 21-4.3-4.3" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/folder-documents-symbolic.svg b/src/resources/icons/scalable/actions/folder-documents-symbolic.svg
+--- a/src/resources/icons/scalable/actions/folder-documents-symbolic.svg
++++ b/src/resources/icons/scalable/actions/folder-documents-symbolic.svg
+@@ -0,0 +1,19 @@
++<!-- @license lucide-static v1.39.0 - ISC -->
++<svg
++  class="lucide lucide-file-text"
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
++  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
++  <path d="M10 9H8" />
++  <path d="M16 13H8" />
++  <path d="M16 17H8" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/folder-download-symbolic.svg b/src/resources/icons/scalable/actions/folder-download-symbolic.svg
+--- a/src/resources/icons/scalable/actions/folder-download-symbolic.svg
++++ b/src/resources/icons/scalable/actions/folder-download-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/folder-music-symbolic.svg b/src/resources/icons/scalable/actions/folder-music-symbolic.svg
+--- a/src/resources/icons/scalable/actions/folder-music-symbolic.svg
++++ b/src/resources/icons/scalable/actions/folder-music-symbolic.svg
+@@ -0,0 +1,14 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <circle cx="8" cy="18" r="4" />
++  <path d="M12 18V2l7 4" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/folder-pictures-symbolic.svg b/src/resources/icons/scalable/actions/folder-pictures-symbolic.svg
+--- a/src/resources/icons/scalable/actions/folder-pictures-symbolic.svg
++++ b/src/resources/icons/scalable/actions/folder-pictures-symbolic.svg
+@@ -0,0 +1,15 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
++  <circle cx="9" cy="9" r="2" />
++  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/folder-symbolic.svg b/src/resources/icons/scalable/actions/folder-symbolic.svg
+--- a/src/resources/icons/scalable/actions/folder-symbolic.svg
++++ b/src/resources/icons/scalable/actions/folder-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/folder-videos-symbolic.svg b/src/resources/icons/scalable/actions/folder-videos-symbolic.svg
+--- a/src/resources/icons/scalable/actions/folder-videos-symbolic.svg
++++ b/src/resources/icons/scalable/actions/folder-videos-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/media-removable-symbolic.svg b/src/resources/icons/scalable/actions/media-removable-symbolic.svg
+--- a/src/resources/icons/scalable/actions/media-removable-symbolic.svg
++++ b/src/resources/icons/scalable/actions/media-removable-symbolic.svg
+@@ -0,0 +1,18 @@
++<!-- @license lucide-static v1.39.0 - ISC -->
++<svg
++  class="lucide lucide-hard-drive"
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M10 16h.01" />
++  <path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
++  <path d="M21.946 12.013H2.054" />
++  <path d="M6 16h.01" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/network-workgroup-symbolic.svg b/src/resources/icons/scalable/actions/network-workgroup-symbolic.svg
+--- a/src/resources/icons/scalable/actions/network-workgroup-symbolic.svg
++++ b/src/resources/icons/scalable/actions/network-workgroup-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/pan-down-symbolic.svg b/src/resources/icons/scalable/actions/pan-down-symbolic.svg
+--- a/src/resources/icons/scalable/actions/pan-down-symbolic.svg
++++ b/src/resources/icons/scalable/actions/pan-down-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="m6 9 6 6 6-6" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/starred-symbolic.svg b/src/resources/icons/scalable/actions/starred-symbolic.svg
+--- a/src/resources/icons/scalable/actions/starred-symbolic.svg
++++ b/src/resources/icons/scalable/actions/starred-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/user-desktop-symbolic.svg b/src/resources/icons/scalable/actions/user-desktop-symbolic.svg
+--- a/src/resources/icons/scalable/actions/user-desktop-symbolic.svg
++++ b/src/resources/icons/scalable/actions/user-desktop-symbolic.svg
+@@ -0,0 +1,13 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/user-home-symbolic.svg b/src/resources/icons/scalable/actions/user-home-symbolic.svg
+--- a/src/resources/icons/scalable/actions/user-home-symbolic.svg
++++ b/src/resources/icons/scalable/actions/user-home-symbolic.svg
+@@ -0,0 +1,16 @@
++<!-- @license lucide-static v1.39.0 - ISC -->
++<svg
++  class="lucide lucide-house"
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
++  <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/user-trash-symbolic.svg b/src/resources/icons/scalable/actions/user-trash-symbolic.svg
+--- a/src/resources/icons/scalable/actions/user-trash-symbolic.svg
++++ b/src/resources/icons/scalable/actions/user-trash-symbolic.svg
+@@ -0,0 +1,19 @@
++<!-- @license lucide-static v1.39.0 - ISC -->
++<svg
++  class="lucide lucide-trash-2"
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M10 11v6" />
++  <path d="M14 11v6" />
++  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
++  <path d="M3 6h18" />
++  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/view-app-grid-symbolic.svg b/src/resources/icons/scalable/actions/view-app-grid-symbolic.svg
+--- a/src/resources/icons/scalable/actions/view-app-grid-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-app-grid-symbolic.svg
+@@ -0,0 +1,16 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <rect width="7" height="7" x="3" y="3" rx="1" />
++  <rect width="7" height="7" x="14" y="3" rx="1" />
++  <rect width="7" height="7" x="14" y="14" rx="1" />
++  <rect width="7" height="7" x="3" y="14" rx="1" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/view-dual-symbolic.svg b/src/resources/icons/scalable/actions/view-dual-symbolic.svg
+--- a/src/resources/icons/scalable/actions/view-dual-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-dual-symbolic.svg
+@@ -0,0 +1,15 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <rect width="18" height="18" x="3" y="3" rx="2" />
++  <path d="M9 3v18" />
++  <path d="M15 3v18" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/view-grid-symbolic.svg b/src/resources/icons/scalable/actions/view-grid-symbolic.svg
+--- a/src/resources/icons/scalable/actions/view-grid-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-grid-symbolic.svg
+@@ -0,0 +1,16 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <rect width="7" height="7" x="3" y="3" rx="1" />
++  <rect width="7" height="7" x="14" y="3" rx="1" />
++  <rect width="7" height="7" x="14" y="14" rx="1" />
++  <rect width="7" height="7" x="3" y="14" rx="1" />
++</svg>
+diff --git a/src/resources/icons/scalable/actions/view-list-symbolic.svg b/src/resources/icons/scalable/actions/view-list-symbolic.svg
+--- a/src/resources/icons/scalable/actions/view-list-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-list-symbolic.svg
+@@ -0,0 +1,18 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="16"
++  height="16"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M3 5h.01" />
++  <path d="M3 12h.01" />
++  <path d="M3 19h.01" />
++  <path d="M8 5h13" />
++  <path d="M8 12h13" />
++  <path d="M8 19h13" />
++</svg>
+diff --git a/src/resources/nautilus.gresource.xml.in b/src/resources/nautilus.gresource.xml.in
+--- a/src/resources/nautilus.gresource.xml.in
++++ b/src/resources/nautilus.gresource.xml.in
+@@ -50,6 +50,26 @@
+     <file>style.css</file>
+ 
+     <!-- Icons -->
++    <file preprocess="xml-stripblanks">icons/scalable/actions/document-open-recent-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/drive-harddisk-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/edit-find-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/folder-documents-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/folder-download-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/folder-music-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/folder-pictures-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/folder-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/folder-videos-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/media-removable-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/network-workgroup-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/pan-down-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/starred-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/user-desktop-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/user-home-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/user-trash-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/view-app-grid-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/view-dual-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/view-grid-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/view-list-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/prairie-folder-empty.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/luma-folder.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/arrow-next-symbolic-rtl.svg</file>
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1092,3 +1092,199 @@
+   -gtk-icon-size: 14px;
+   color: @luma_folder;
+ }
++
++/* ── Corrections from the design review ──────────────────────────────────
++ *
++ * Every rule here carries `window.` before the window class, so it holds
++ * wherever it lands in the sheet rather than depending on being the last rule
++ * of equal weight. They sit outside the light-mode block: Filer is read in
++ * both treatments and every value here is a token, not a colour. */
++
++/* The sidebar's list owns a 6px inset, and a section heading's text begins on
++ * the same left edge as a row's icon — 6 + 8 in both cases. Measured from
++ * different origins, the headings sat inboard of the rows they caption. */
++window.luma-files-window .navigation-sidebar:not(.luma-trash-list) {
++  padding: 6px;
++}
++
++window.luma-files-window .navigation-sidebar > row {
++  margin: 0;
++  padding: 0 8px;
++  min-height: 32px;
++  border-radius: 10px;
++}
++
++window.luma-files-window .luma-sidebar-section-heading {
++  padding: 4px 8px 0;
++  color: alpha(currentColor, 0.46);
++}
++
++/* Back and forward are quiet until looked for, and grey out rather than
++ * vanish: a control that disappears makes the toolbar jump. */
++window.luma-files-window .luma-history-controls button {
++  min-width: 28px;
++  min-height: 28px;
++  padding: 0;
++  background: none;
++  background-color: transparent;
++  border: none;
++  color: @luma_muted;
++  box-shadow: none;
++}
++
++window.luma-files-window .luma-history-controls button:hover {
++  background-color: @luma_hover;
++  color: @luma_ink;
++}
++
++window.luma-files-window .luma-history-controls button:disabled {
++  opacity: 0.38;
++}
++
++window.luma-files-window .luma-history-controls button image {
++  -gtk-icon-size: 14px;
++}
++
++/* Search is an icon, not a field dressed as a button. */
++window.luma-files-window .luma-search-field {
++  min-width: 28px;
++  min-height: 28px;
++  padding: 0;
++  background: none;
++  background-color: transparent;
++  border: none;
++  color: @luma_muted;
++  box-shadow: none;
++}
++
++window.luma-files-window .luma-search-field:hover,
++window.luma-files-window .luma-search-field:checked {
++  background-color: @luma_hover;
++  color: @luma_ink;
++  outline: none;
++}
++
++/* The three pickers are one segment: every corner rounded, not just the pair
++ * at the leading end, and the chosen one is ink so its glyph reads against it.
++ * It was drawing ink on ink, which is the blank block. */
++window.luma-files-window .luma-view-mode-controls {
++  padding: 2px;
++  border-radius: 10px;
++  background-color: alpha(@luma_ink, 0.04);
++  box-shadow: none;
++}
++
++window.luma-files-window .luma-view-controls button,
++window.luma-files-window .luma-view-mode-controls button {
++  min-width: 28px;
++  min-height: 26px;
++  padding: 0;
++  border: none;
++  border-radius: 8px;
++  background: none;
++  background-color: transparent;
++  color: @luma_muted;
++  box-shadow: none;
++}
++
++window.luma-files-window .luma-view-controls button:hover,
++window.luma-files-window .luma-view-mode-controls button:hover {
++  background-color: @luma_hover;
++  color: @luma_ink;
++}
++
++window.luma-files-window .luma-view-controls button:checked,
++window.luma-files-window .luma-view-mode-controls button:checked {
++  background-color: @luma_ink;
++  color: @luma_content;
++}
++
++window.luma-files-window .luma-view-controls button image,
++window.luma-files-window .luma-view-mode-controls button image {
++  -gtk-icon-size: 15px;
++}
++
++/* The breadcrumb is text on the toolbar, not a boxed control. */
++window.luma-files-window .nautilus-pathbar {
++  min-height: 24px;
++  background: none;
++  background-color: transparent;
++  border: none;
++  box-shadow: none;
++}
++
++window.luma-files-window .nautilus-path-button {
++  min-height: 24px;
++  margin: 0;
++  padding: 0 6px;
++  border-radius: 10px;
++  background: none;
++  background-color: transparent;
++  box-shadow: none;
++  font-size: 13px;
++  font-weight: 550;
++}
++
++window.luma-files-window .nautilus-path-button:hover {
++  background-color: @luma_hover;
++}
++
++window.luma-files-window .nautilus-path-button:not(.current-dir) {
++  color: @luma_muted;
++}
++
++window.luma-files-window .nautilus-path-button.current-dir {
++  color: @luma_ink;
++  font-weight: 700;
++}
++
++/* Figtree needed a one-pixel nudge at 12px inside the old boxed pathbar. At
++ * 13px on a flat toolbar it does not, and the nudge reads as misalignment. */
++window.luma-files-window .nautilus-path-button label {
++  transform: none;
++}
++
++/* The root crumb drew a folder mark in front of "Home". The breadcrumb is
++ * text; the mark was the one thing in it that was not. */
++window.luma-files-window .nautilus-path-button image {
++  -gtk-icon-size: 0;
++  min-width: 0;
++  margin: 0;
++}
++
++/* A column is an island in its own right: a lighter wash than the pane behind
++ * it, its own corner, and a flatter shadow than the window's lift. It had a
++ * minimum width and nothing else, so three columns read as one surface with
++ * gutters cut into it. */
++window.luma-files-window .nautilus-column-view .luma-column-island {
++  border-radius: 10px;
++  background-color: alpha(@luma_ink, 0.035);
++  box-shadow: inset 0 0 0 1px @luma_line,
++              0 1px 2px alpha(@luma_window, 0.07);
++}
++
++/* Rows are 32px and take the shared 10px corner in every view. */
++window.luma-files-window .nautilus-column-view listview > row,
++window.luma-files-window .nautilus-list-view columnview > listview > row {
++  min-height: 32px;
++  border-radius: 10px;
++}
++
++/* Hover and focus render identically, as everywhere else in Luma. An accent
++ * ring on top of the fill is a second visual language for one state. */
++window.luma-files-window .nautilus-column-view listview > row:focus-visible,
++window.luma-files-window .nautilus-list-view columnview > listview > row:focus-visible,
++window.luma-files-window .nautilus-grid-view gridview > child:focus-visible {
++  background-color: @luma_hover;
++  outline: none;
++}
++
++/* A tile's name and caption take the design's label and meta steps. */
++window.luma-files-window .nautilus-grid-view .icon-ui-labels-box > label:not(.caption) {
++  font-size: 11px;
++  font-weight: 650;
++}
++
++window.luma-files-window .nautilus-grid-view .icon-ui-labels-box > label.caption {
++  font-size: 9px;
++}
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -195,43 +195,6 @@
+             "luma-titlebar",
+           ]
+ 
+-          [start]
+-          MenuButton {
+-            menu-model: app_menu;
+-
+-            accessibility {
+-              label: _("Filer Menu");
+-            }
+-
+-            styles [
+-              "luma-identity-button",
+-            ]
+-
+-            child: Box {
+-              spacing: 8;
+-
+-              Image {
+-                icon-name: "org.gnome.Nautilus";
+-
+-                styles [
+-                  "luma-identity-icon",
+-                ]
+-              }
+-
+-              Label {
+-                label: _("Filer");
+-                ellipsize: end;
+-              }
+-
+-              Image {
+-                icon-name: "pan-down-symbolic";
+-
+-                styles [
+-                  "luma-identity-chevron",
+-                ]
+-              }
+-            };
+-          }
+ 
+           title-widget: Box {
+             halign: center;

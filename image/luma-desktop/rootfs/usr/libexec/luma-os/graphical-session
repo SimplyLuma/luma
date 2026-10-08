@@ -1,0 +1,28 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# Print "<session id> <class> <type> <user> <uid>" for the graphical session a
+# Luma health check should inspect: an active user session on seat0 when there
+# is one, otherwise the display manager's greeter. Exits 1 when neither exists.
+set -euo pipefail
+
+best=
+while read -r id _; do
+  [ -n "$id" ] || continue
+  props=$(loginctl show-session "$id" -p Type -p Class -p State -p Name -p User -p Remote 2>/dev/null) || continue
+  type=$(sed -n 's/^Type=//p' <<<"$props")
+  class=$(sed -n 's/^Class=//p' <<<"$props")
+  state=$(sed -n 's/^State=//p' <<<"$props")
+  name=$(sed -n 's/^Name=//p' <<<"$props")
+  uid=$(sed -n 's/^User=//p' <<<"$props")
+  remote=$(sed -n 's/^Remote=//p' <<<"$props")
+  case "$type" in wayland|x11) ;; *) continue ;; esac
+  [ "$remote" = no ] || continue
+  case "$state" in active|online) ;; *) continue ;; esac
+  case "$class" in
+    user) printf '%s %s %s %s %s\n' "$id" "$class" "$type" "$name" "$uid"; exit 0 ;;
+    greeter) [ -n "$best" ] || best="$id $class $type $name $uid" ;;
+  esac
+done < <(loginctl list-sessions --no-legend 2>/dev/null)
+[ -n "$best" ] || exit 1
+printf '%s\n' "$best"

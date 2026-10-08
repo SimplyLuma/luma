@@ -1,0 +1,335 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* LumaUI media family: MediaTile/MediaGrid, MediaTransport, VoiceClip, AudioWaveform,
+   CoverArt, the adjustment sliders, the image viewport and crop, colour choice, the
+   charts and measures, and the timeline. Colours are @luma_* roles; metrics are
+   --lumaui-media-* (config/shared/design-tokens.d/media.json). Parts that draw their
+   own pixels (tiles, waveforms, charts, the timeline) read the same roles through
+   media_style.colour(). */
+
+/* LumaUI: MediaTile / MediaGrid (v70 .pgrid > .pc, .drgrid > .drtile, .rlmedia) */
+lumaui-media-grid gridview.lumaui-media-view,
+lumaui-media-grid gridview.lumaui-media-view > child { background: none; padding: 0; margin: 0; border-radius: 0; box-shadow: none; outline: none; }
+lumaui-media-grid gridview.lumaui-media-view > child:focus-visible lumaui-media-tile { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+lumaui-media-tile:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+lumaui-media-tile.clip label.caption {
+  font-size: var(--lumaui-media-tile-clip-caption-size); font-weight: 500; letter-spacing: 0.01em;
+  color: @luma_ink_secondary;
+}
+lumaui-media-tile .lumaui-media-meta { min-height: var(--lumaui-media-tile-meta-height); }
+lumaui-media-tile:disabled { opacity: 0.35; }
+/* The selection ring sits outside the picture (v70 outline-offset): a scrolling grid keeps room for it. */
+lumaui-media-grid gridview.lumaui-media-view.library { padding: calc(var(--lumaui-media-tile-ring-offset) + var(--lumaui-media-tile-ring-width) + 1px); }
+lumaui-media-grid gridview.lumaui-media-view.clip { padding: calc(var(--lumaui-media-tile-clip-ring-offset) + var(--lumaui-media-tile-clip-ring-width)); }
+
+/* LumaUI: ImageViewport (IM3; snapshot paints this role across the full stage) */
+lumaui-image-viewport { background: @luma_media_viewport_black; }
+
+/* LumaUI: MediaTransport (v70 Tide .dctlw, Reel .rlctl, Session .selcd, Memos .medeck; play keys are the soft key, line 4200) */
+.lumaui-media-transport button.lumaui-media-key:not(.lumaui-media-play) {
+  min-width: var(--lumaui-media-transport-button); min-height: var(--lumaui-media-transport-button);
+  padding: 0; border-radius: var(--lumaui-media-transport-button-radius); border: none;
+  background: none; box-shadow: none; color: @luma_ink_secondary;
+  transition: background-color var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+.lumaui-media-transport button.lumaui-media-key:not(.lumaui-media-play):hover { background: @luma_hover; color: @luma_ink; }
+.lumaui-media-transport button.lumaui-media-key:not(.lumaui-media-play):active { background: @luma_control_fill; }
+.lumaui-media-transport button.lumaui-media-key.toggle.on { background: none; color: @luma_media_toggle_on; }
+.lumaui-media-transport.deck button.lumaui-media-key.toggle.on { color: @luma_media_progress; }
+.lumaui-media-transport button:disabled { opacity: 0.3; }
+.lumaui-media-transport button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+.lumaui-media-transport button.lumaui-media-play {
+  min-width: var(--lumaui-media-transport-play); min-height: var(--lumaui-media-transport-play);
+  padding: 0; border-radius: 9999px; border: none;
+  background: @luma_media_soft_key; color: @luma_media_soft_key_ink; box-shadow: none;
+  transition: background-color var(--lumaui-duration-hover) ease, transform var(--lumaui-duration-press) var(--lumaui-spring);
+}
+.lumaui-media-transport button.lumaui-media-play:hover { background: @luma_media_soft_key_hover; }
+.lumaui-media-transport button.lumaui-media-play:active { transform: scale(0.94); }
+
+/* Tide's deck: keys 6 apart over the scrub, which runs position · range · time left */
+.lumaui-media-transport.deck { border-spacing: var(--lumaui-media-transport-row-gap); }
+.lumaui-media-transport.deck .lumaui-media-keys { border-spacing: var(--lumaui-media-transport-gap); }
+.lumaui-media-transport.deck button.lumaui-media-play { margin: 0 var(--lumaui-media-transport-deck-play-margin); }
+.lumaui-media-transport .lumaui-media-scrub { border-spacing: var(--lumaui-media-transport-scrub-gap); min-width: var(--lumaui-media-transport-scrub-min-width); }
+.lumaui-media-transport.deck label.lumaui-media-time { min-width: var(--lumaui-media-transport-scrub-time-width); }
+.lumaui-media-transport label.lumaui-media-time {
+  font-size: var(--lumaui-media-transport-scrub-size); letter-spacing: 0.01em; font-feature-settings: "tnum";
+  color: @luma_ink_secondary;
+}
+scale.lumaui-media-range { min-height: var(--lumaui-media-transport-range-height); padding: 0; margin: 0; }
+scale.lumaui-media-range trough {
+  min-height: var(--lumaui-media-transport-track); border-radius: var(--lumaui-media-transport-track-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 1px @luma_well_shade; outline: none;
+}
+scale.lumaui-media-range highlight {
+  min-height: var(--lumaui-media-transport-track); border-radius: var(--lumaui-media-transport-track-radius);
+  background: @luma_media_progress; box-shadow: none;
+}
+scale.lumaui-media-range slider {
+  min-width: var(--lumaui-media-transport-thumb); min-height: var(--lumaui-media-transport-thumb);
+  margin: calc((var(--lumaui-media-transport-track) - var(--lumaui-media-transport-thumb)) / 2); border-radius: 9999px; border: none;
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+scale.lumaui-media-range:focus-visible slider { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+.lumaui-media-volume { border-spacing: var(--lumaui-media-transport-volume-gap); margin-left: 4px; color: @luma_ink_secondary; }
+.lumaui-media-volume scale.lumaui-media-range { min-width: var(--lumaui-media-transport-volume-width); }
+
+/* Reel's attached bar: 58 tall under the picture, the LCD at the start */
+.lumaui-media-transport.attached {
+  min-height: calc(var(--lumaui-media-transport-attached-height) - 1px);  /* v70's 58 includes the 1 px top edge */
+  padding: 0 var(--lumaui-media-transport-attached-padding-end) 0 var(--lumaui-media-transport-attached-padding-start);
+  border-top: 1px solid @luma_media_attached_edge; box-shadow: inset 0 1px 0 @luma_bar_highlight; background: @luma_bar_surface;
+}
+.lumaui-media-transport.attached .lumaui-media-keys { border-spacing: var(--lumaui-media-transport-attached-keys-gap); }
+/* v70's grid gap: when the LCD crowds the middle (a phone), the keys keep 8 px from it */
+.lumaui-media-transport.attached .lumaui-media-keys.middle { margin: 0 var(--lumaui-media-transport-attached-gap); }
+/* At phone width v70's grid lets the keys run into the end padding (the end keys are gone) */
+.lumaui-media-transport.attached.phone { padding-right: 0; }
+.lumaui-media-transport.attached.phone .lumaui-media-keys.middle { margin-right: 0; }
+.lumaui-media-transport.attached button.lumaui-media-key:not(.lumaui-media-play) { min-width: var(--lumaui-media-transport-attached-button); min-height: var(--lumaui-media-transport-attached-button); border-radius: var(--lumaui-media-transport-attached-radius); }
+.lumaui-media-transport.attached button.lumaui-media-play { margin: 0 var(--lumaui-media-transport-attached-play-margin); }
+
+/* The LCD (Reel's and Session's): a well of tabular mono readouts, their frames and dots dimmed */
+.lumaui-media-lcd {
+  min-height: var(--lumaui-media-transport-lcd-height); padding: 0 var(--lumaui-media-transport-lcd-padding-x);
+  border-spacing: var(--lumaui-media-transport-lcd-gap); border-radius: var(--lumaui-media-transport-lcd-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+.lumaui-media-lcd .value label {
+  font-family: "IBM Plex Mono", monospace; font-size: var(--lumaui-media-transport-lcd-value-size); font-weight: 600;
+  letter-spacing: -0.02em; font-feature-settings: "tnum"; color: @luma_ink; line-height: 1.1;
+}
+.lumaui-media-lcd .value label.dim { color: @luma_faint; }
+/* Placed by measurement: Plex Mono's taller line box would otherwise sit the digits 3 px high of v70's. */
+.lumaui-media-lcd > box.cell { padding-top: var(--lumaui-media-transport-lcd-value-top); }
+.lumaui-media-lcd label.caption { margin-top: 0; }
+.lumaui-media-lcd .value label.dot { margin: 0 var(--lumaui-media-transport-lcd-separator-margin); }
+.lumaui-media-lcd label.caption, .lumaui-media-readout label.caption {
+  font-size: var(--lumaui-media-transport-lcd-label-size); letter-spacing: 0.01em; color: @luma_muted;
+  margin-top: var(--lumaui-media-transport-lcd-label-gap); line-height: 1.1;
+}
+.lumaui-media-transport.lcd { border-spacing: 4px; }
+.lumaui-media-transport.lcd .lumaui-media-lcd { margin: 0 4px; }
+.lumaui-media-transport.lcd button.lumaui-media-key:not(.lumaui-media-play) { min-width: var(--lumaui-media-transport-lcd-button); min-height: var(--lumaui-media-transport-lcd-button); border-radius: var(--lumaui-media-transport-attached-radius); }
+button.lumaui-media-readout {
+  min-height: var(--lumaui-media-transport-lcd-height); padding: 0 var(--lumaui-media-transport-readout-padding-x);
+  border-radius: var(--lumaui-media-transport-lcd-radius); background: none; box-shadow: none; border: none;
+}
+button.lumaui-media-readout:hover { background: @luma_hover; }
+button.lumaui-media-readout label.value { font-size: var(--lumaui-media-transport-readout-value-size); font-weight: 600; font-feature-settings: "tnum"; color: @luma_ink; }
+button.lumaui-media-record {
+  min-width: var(--lumaui-media-transport-lcd-button); min-height: var(--lumaui-media-transport-lcd-button);
+  padding: 0; border-radius: 9999px; background: none; box-shadow: none; border: none;
+}
+button.lumaui-media-record:hover { background: @luma_hover; }
+button.lumaui-media-record .dot {
+  min-width: var(--lumaui-media-transport-record-dot); min-height: var(--lumaui-media-transport-record-dot);
+  border-radius: 9999px; background: @luma_media_recording;
+}
+button.lumaui-media-record.on .dot { box-shadow: 0 0 10px @luma_media_recording; }
+.lumaui-media-separator { min-width: 1px; min-height: 20px; margin: 0 4px; background: @luma_hairline; }
+
+/* A phone's Now Playing (v71 .now.tnowph, white inks over the artwork): the scrub (5 track), the times 18 under it,
+   the keys 14 down (48 · 60 · 78 round white · 60 · 48), the volume 18 down. */
+.lumaui-media-transport.now { border-spacing: 0; color: @luma_media_ink; }
+.lumaui-media-transport.now .lumaui-media-scrub-times { margin-top: 2px; }
+.lumaui-media-transport.now label.lumaui-media-time { font-size: 12px; color: alpha(white, 0.65); font-feature-settings: "tnum"; }
+.lumaui-media-transport.now .lumaui-media-keys { margin: 14px -6px 0; }
+.lumaui-media-transport.now button.lumaui-media-key:not(.lumaui-media-play) { min-width: 60px; min-height: 60px; border-radius: 999px; color: white; }
+.lumaui-media-transport.now button.lumaui-media-key.toggle { min-width: 48px; min-height: 48px; }
+.lumaui-media-transport.now button.lumaui-media-key.toggle.on { background: alpha(white, 0.12); color: @luma_media_progress; }
+.lumaui-media-transport.now button.lumaui-media-play {
+  min-width: 78px; min-height: 78px; border-radius: 999px; margin: 0; background: white; color: @luma_media_scrim; /* v71 ink #111 */
+  box-shadow: 0 10px 26px -8px alpha(black, 0.5);
+}
+.lumaui-media-transport.now .lumaui-media-volume { margin-top: 18px; border-spacing: 12px; color: alpha(white, 0.7); }
+/* Memos' deck: the recessed well, the waveform on top, time · keys · speed beneath */
+.lumaui-media-transport.waveform {
+  padding: var(--lumaui-media-transport-memo-padding-top) var(--lumaui-media-transport-memo-padding-x) var(--lumaui-media-transport-memo-padding-bottom);
+  border-radius: var(--lumaui-media-transport-memo-radius); background: @luma_media_deck;
+  box-shadow: inset 0 2px 6px @luma_media_deck_shade, inset 0 0 0 1px @luma_media_deck_ring, 0 1px 0 @luma_media_deck_lip;
+}
+.lumaui-media-transport.waveform .lumaui-media-controls { margin-top: var(--lumaui-media-transport-memo-controls-top); }
+.lumaui-media-transport.waveform .lumaui-media-keys { border-spacing: var(--lumaui-media-transport-memo-keys-gap); }
+.lumaui-media-transport.waveform button.lumaui-media-play { min-width: var(--lumaui-media-transport-memo-play); min-height: var(--lumaui-media-transport-memo-play); }
+.lumaui-media-transport.waveform label.lumaui-media-time { font-size: var(--lumaui-media-transport-memo-time-size); font-weight: 600; color: @luma_ink; font-feature-settings: "tnum"; letter-spacing: 0; }
+.lumaui-media-transport.waveform label.lumaui-media-total { font-size: var(--lumaui-media-transport-memo-time-size); font-weight: 500; color: @luma_muted; margin-left: 6px; font-feature-settings: "tnum"; }
+/* Under 560 (v71 .medeck / .medctl, @container win (max-width: 559px)): padding 18 14 16 and 24 corners; page placement belongs to its host;
+   the controls 18 down, the transport on its own row (gap 28; back/forward 52, play 68); time and speed on the
+   line under it, 14 down. */
+.lumaui-media-transport.waveform.phone { margin-top: 0; padding: 18px 14px 16px; border-radius: 24px; }
+.lumaui-media-transport.waveform.phone .lumaui-media-keys { border-spacing: 28px; margin-top: 18px; }
+.lumaui-media-transport.waveform.phone button.lumaui-media-key:not(.lumaui-media-play) { min-width: 52px; min-height: 52px; }
+.lumaui-media-transport.waveform.phone button.lumaui-media-play { min-width: 68px; min-height: 68px; }
+.lumaui-media-transport.waveform.phone .lumaui-media-controls { margin-top: 14px; }
+button.lumaui-media-speed {
+  min-height: var(--lumaui-media-transport-speed-height); padding: 0 var(--lumaui-media-transport-speed-padding-x);
+  border-radius: var(--lumaui-media-transport-speed-radius); border: none; box-shadow: none;
+  background: @luma_hover; color: @luma_ink_secondary;
+  font-size: var(--lumaui-media-transport-speed-size); letter-spacing: 0.01em; font-feature-settings: "tnum";
+}
+button.lumaui-media-speed:hover { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-media-speed > box { border-spacing: var(--lumaui-media-transport-speed-gap); }
+button.lumaui-media-speed .chevron { color: @luma_muted; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lumaui-media-transport button.lumaui-media-play:active { transform: none; }
+}
+
+/* LumaUI: AudioWaveform (v70 .mewave, .memini; the bars, head and marks are drawn, only focus is styled) */
+lumaui-waveform:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; border-radius: var(--lumaui-media-waveform-radius); }
+lumaui-waveform.deck:focus-visible { outline-offset: 6px; }
+
+/* LumaUI: ValueSlider / AdjustmentGroup / AdjustmentPanel (v70 .drsl, .vwsl, the range at line 4109, .drgrp, .vwadj) */
+lumaui-value-range { min-height: var(--lumaui-media-adjust-range-height); }
+lumaui-value-range > thumb {
+  min-width: var(--lumaui-media-adjust-thumb); min-height: var(--lumaui-media-adjust-thumb); border-radius: 9999px;
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+lumaui-value-range:focus-visible > thumb { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+lumaui-value-range:disabled { opacity: 0.35; }
+.lumaui-value-slider.row {
+  min-height: var(--lumaui-media-adjust-row-height); padding: 0 var(--lumaui-media-adjust-row-padding-x);
+  border-radius: var(--lumaui-media-adjust-row-radius); border-spacing: var(--lumaui-media-adjust-row-gap);
+  transition: background-color var(--lumaui-duration-hover) ease;
+}
+.lumaui-value-slider.row:hover { background: @luma_hover; }
+.lumaui-value-slider.row > label.name { min-width: var(--lumaui-media-adjust-label-width); }
+.lumaui-value-slider.row > label.value { min-width: var(--lumaui-media-adjust-value-width); }
+.lumaui-value-slider label.name { font-size: var(--lumaui-media-adjust-label-size); color: @luma_muted; }
+.lumaui-value-slider label.value { font-size: var(--lumaui-media-adjust-value-size); font-weight: 600; letter-spacing: 0.01em; font-feature-settings: "tnum"; color: @luma_muted; }
+.lumaui-value-slider.set label.name, .lumaui-value-slider.set label.value { color: @luma_ink; }
+.lumaui-value-slider.stacked { border-spacing: var(--lumaui-media-adjust-stacked-gap); margin-bottom: var(--lumaui-media-adjust-stacked-bottom); }
+.lumaui-value-slider.stacked label.name { font-weight: 500; color: @luma_ink; }
+.lumaui-value-slider.stacked label.value { font-size: var(--lumaui-media-adjust-label-size); font-weight: 400; letter-spacing: 0; }
+
+.lumaui-adjust-group {
+  padding: var(--lumaui-media-adjust-group-padding-y) var(--lumaui-media-adjust-group-padding-x);
+  border-top: 1px solid @luma_hairline;
+}
+.lumaui-adjust-group:first-child { border-top: none; }
+button.lumaui-adjust-heading {
+  min-height: var(--lumaui-media-adjust-group-header); padding: 0 var(--lumaui-media-adjust-group-header-padding-x);
+  border-radius: var(--lumaui-media-adjust-row-radius); background: none; box-shadow: none; border: none;
+}
+button.lumaui-adjust-heading > box { border-spacing: var(--lumaui-media-adjust-group-gap); }
+button.lumaui-adjust-heading label.title { font-size: var(--lumaui-media-adjust-group-header-size); font-weight: 600; color: @luma_ink_secondary; }
+.lumaui-adjust-group.open button.lumaui-adjust-heading label.title { color: @luma_ink; }
+button.lumaui-adjust-heading .dot {
+  min-width: var(--lumaui-media-adjust-group-dot); min-height: var(--lumaui-media-adjust-group-dot);
+  border-radius: 9999px; background: @luma_media_adjust_changed;
+}
+button.lumaui-adjust-heading .chevron { color: @luma_faint; transition: transform 200ms ease; transform: rotate(-90deg); }
+.lumaui-adjust-group.open button.lumaui-adjust-heading .chevron { transform: none; }
+button.lumaui-adjust-heading:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+.lumaui-adjust-sliders { border-spacing: var(--lumaui-media-adjust-group-sliders-gap); padding-bottom: var(--lumaui-media-adjust-group-sliders-bottom); }
+
+.lumaui-adjust-panel {
+  min-width: var(--lumaui-media-adjust-panel-width); border-radius: var(--lumaui-media-adjust-panel-radius);
+  background: @luma_bar_surface; box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 18px 40px -12px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+  opacity: 0; transform: translateX(calc(var(--lumaui-media-adjust-panel-width) + var(--lumaui-media-adjust-panel-slide)));
+  transition: transform var(--lumaui-duration-dialog-move) var(--lumaui-spring), opacity var(--lumaui-duration-fade) ease;
+}
+.lumaui-adjust-panel.shown { opacity: 1; transform: none; }
+.lumaui-adjust-panel.sheet {
+  border-radius: var(--lumaui-media-adjust-sheet-radius) var(--lumaui-media-adjust-sheet-radius) 0 0;
+  transform: translateY(var(--lumaui-media-adjust-panel-slide));
+}
+.lumaui-adjust-panel.sheet.shown { transform: none; }
+.lumaui-adjust-panel-head {
+  min-height: var(--lumaui-media-adjust-panel-header);
+  padding: 0 var(--lumaui-media-adjust-panel-header-padding-end) 0 var(--lumaui-media-adjust-panel-header-padding-start);
+  border-bottom: 1px solid @luma_hairline;
+}
+.lumaui-adjust-panel-head label.title { font-size: var(--lumaui-media-adjust-panel-title-size); font-weight: 650; color: @luma_ink; }
+button.lumaui-adjust-reset {
+  min-height: var(--lumaui-media-adjust-reset-height); padding: 0 var(--lumaui-media-adjust-reset-padding-x);
+  border-radius: var(--lumaui-media-adjust-reset-radius); background: none; box-shadow: none; border: none;
+  font-size: var(--lumaui-media-adjust-reset-size); color: @luma_ink_secondary;
+}
+button.lumaui-adjust-reset:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-adjust-reset:disabled { opacity: 0.35; }
+.lumaui-adjust-panel-body {
+  padding: var(--lumaui-media-adjust-panel-body-padding-top) var(--lumaui-media-adjust-panel-body-padding-x) var(--lumaui-media-adjust-panel-body-padding-bottom);
+}
+.lumaui-adjust-panel-body label.section {
+  font-size: var(--lumaui-media-adjust-panel-section-size); font-weight: 600; letter-spacing: 0.01em;
+  color: @luma_muted; margin-bottom: var(--lumaui-media-adjust-panel-section-bottom);
+}
+.lumaui-adjust-panel-body .rule { min-height: 1px; background: @luma_hairline; margin: 4px 0 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .lumaui-adjust-panel, .lumaui-adjust-panel.sheet { transform: none; transition: opacity var(--lumaui-duration-reduced-fade) ease; }
+  button.lumaui-adjust-heading .chevron { transition: none; }
+}
+
+/* LumaUI: CoverArt (v70 .cv, .lfcov; the cover is drawn, the node carries focus when a cover is a button's child) */
+lumaui-cover { border-radius: var(--lumaui-media-cover-album-radius); }
+lumaui-cover.book { border-radius: var(--lumaui-media-cover-book-radius-spine) var(--lumaui-media-cover-book-radius-edge) var(--lumaui-media-cover-book-radius-edge) var(--lumaui-media-cover-book-radius-spine); }
+
+/* LumaUI: VoiceClip (v70 .mvoice in Messages, .pnvm in Phone; the key is the soft key) */
+.lumaui-voice-clip.wave { border-spacing: var(--lumaui-media-voice-gap); min-width: var(--lumaui-media-voice-min-width); }
+.lumaui-voice-clip.bar { border-spacing: var(--lumaui-media-voice-big-gap); }
+button.lumaui-voice-key {
+  min-width: var(--lumaui-media-voice-key); min-height: var(--lumaui-media-voice-key); padding: 0;
+  border-radius: 9999px; border: none; box-shadow: none;
+  background: @luma_media_soft_key; color: @luma_media_soft_key_ink;
+  transition: background-color var(--lumaui-duration-hover) ease;
+}
+.lumaui-voice-clip.bar button.lumaui-voice-key { min-width: var(--lumaui-media-voice-big-key); min-height: var(--lumaui-media-voice-big-key); }
+button.lumaui-voice-key:hover { background: @luma_media_soft_key_hover; }
+button.lumaui-voice-key:focus-visible, lumaui-voice-bar:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+label.lumaui-voice-time { font-size: var(--lumaui-media-voice-time-size); letter-spacing: 0.01em; font-feature-settings: "tnum"; color: @luma_muted; }
+/* LumaUI: Timeline (MD3, shared Reel story / Session arrangement) */
+.lumaui-media-timeline { background: @luma_bar_surface; border-top: 1px solid @luma_hairline; }
+.lumaui-media-timeline .timeline-header { min-height: var(--lumaui-media-timeline-header); padding: 0 10px 0 16px; border-bottom: 1px solid @luma_hairline; }
+.lumaui-media-timeline .timeline-info { color: @luma_ink_secondary; font-size: var(--lumaui-media-timeline-info-size); font-variant-numeric: tabular-nums; }
+.lumaui-media-timeline .timeline-tools { background: @luma_well; border-radius: 11px; padding: 3px; }
+.lumaui-media-timeline .timeline-key { min-width: var(--lumaui-media-timeline-tool-width); min-height: var(--lumaui-media-timeline-tool-height); padding: 0; border-radius: var(--lumaui-media-timeline-tool-radius); border: none; background: none; color: @luma_ink_secondary; }
+.lumaui-media-timeline .timeline-key.on { background: @luma_control_fill; color: @luma_ink; }
+.lumaui-media-timeline .timeline-key:hover { background: @luma_hover; }
+.lumaui-media-timeline .timeline-key:focus-visible, .lumaui-media-timeline .timeline-clip:focus-visible,
+.lumaui-media-timeline .timeline-ruler:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+.lumaui-media-timeline .timeline-lanes { background: @luma_bar_surface; }
+.lumaui-media-timeline .timeline-ruler { border-radius: 0; border: none; border-bottom: 1px solid @luma_hairline; background: none; }
+.lumaui-media-timeline .timeline-tick { color: @luma_muted; font-size: var(--lumaui-media-timeline-tick-size); font-variant-numeric: tabular-nums; border-left: 1px solid @luma_hairline; padding-left: 4px; }
+.lumaui-media-timeline .timeline-marker { color: @luma_media_toggle_on; font-size: 8px; }
+.lumaui-media-timeline .timeline-lane { background: @luma_bar_surface; border-bottom: 1px solid @luma_hairline; }
+.lumaui-media-timeline .timeline-lane.main { background: @luma_media_deck; }
+.lumaui-media-timeline .timeline-clip { border: 1px solid @luma_hairline; border-radius: var(--lumaui-media-timeline-clip-radius); padding: 0 6px; font-size: var(--lumaui-media-timeline-clip-size); font-weight: 600; color: @luma_ink; background: @luma_control_fill; }
+.lumaui-media-timeline .timeline-clip.video { background: @luma_media_deck; }
+.lumaui-media-timeline .timeline-clip.title { background: @luma_media_toggle_on; color: @luma_key; }
+.lumaui-media-timeline .timeline-clip.audio, .lumaui-media-timeline .timeline-clip.music,
+.lumaui-media-timeline .timeline-clip.voice { background: @luma_media_progress; color: @luma_key; }
+.lumaui-media-timeline .timeline-clip.selected { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+.lumaui-media-timeline .timeline-transition { background: @luma_control_fill; }
+.lumaui-media-timeline .timeline-playhead { background: @luma_media_recording; }
+.lumaui-media-timeline progressbar { min-width: 120px; }
+@media (prefers-reduced-motion: reduce) { .lumaui-media-timeline * { transition: none; } }
+
+/* Collection covers share the photo loader, lower scrim and caption metrics. */
+button.lumaui-media-collection {
+  padding: 0; border: none; border-radius: var(--lumaui-media-collection-radius);
+  background: @luma_media_shadow; box-shadow: none; color: @luma_on_media_ink;
+}
+button.lumaui-media-collection label { color: @luma_on_media_ink; }
+
+/* Photo editors retain their own spacing; Viewer stacked sliders stay unchanged. */
+.lumaui-value-slider.editor { border-spacing: var(--lumaui-media-editor-gap); margin-bottom: var(--lumaui-media-editor-bottom); }
+.lumaui-value-slider.editor label { line-height: calc(var(--lumaui-media-adjust-label-size) * 1.45); }
+.lumaui-action-center.phone .lumaui-value-slider.editor { border-spacing: var(--lumaui-media-editor-phone-gap); margin-bottom: var(--lumaui-media-editor-phone-bottom); }
+.lumaui-action-center.phone .lumaui-value-slider.editor label { font-size: var(--lumaui-media-editor-phone-label-size); line-height: calc(var(--lumaui-media-editor-phone-label-size) * 1.45); }
+
+/* v71 compact playback identity; transport keys retain shared BarAction styles. */
+button.lumaui-media-mini-open { min-width: 0; min-height: var(--lumaui-media-mini-row-height); padding: 0 var(--lumaui-media-mini-padding-x); border: none; box-shadow: none; background: transparent; border-radius: var(--lumaui-media-mini-radius); color: @luma_ink; }
+button.lumaui-media-mini-open:hover { background: @luma_hover; }
+.lumaui-media-mini label.detail { color: @luma_muted; }
+/* The live transport readout can stand alone in a phone's secondary row. */
+button.lumaui-media-readout.chip {
+  min-width: calc(var(--lumaui-ac-phone-control) - 2 * var(--lumaui-media-transport-readout-padding-x));
+  min-height: var(--lumaui-ac-phone-control);
+  border-radius: var(--lumaui-ac-phone-control-radius);
+  background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}

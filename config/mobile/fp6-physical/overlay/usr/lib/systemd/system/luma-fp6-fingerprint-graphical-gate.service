@@ -1,0 +1,11 @@
+[Unit]
+Description=Luma Fairphone 6 fingerprint graphical readiness gate
+After=greetd.service
+ConditionKernelCommandLine=androidboot.slot_suffix=_b
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/luma-fp6-wait-graphical-session
+TimeoutStartSec=130
+

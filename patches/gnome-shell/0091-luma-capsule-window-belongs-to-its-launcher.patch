@@ -1,0 +1,94 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: a capsule application's window belongs to its launcher
+
+Applications installed from downloaded packages run inside Luma capsules.
+Their windows carry whatever class the packaged application chose --
+Electron's desktop name, a Flutter application ID -- which rarely names the
+launcher Luma wrote, so the dock showed the running window under a generic
+icon beside its launcher. Capsule processes are started with
+LUMA_CAPSULE_DESKTOP_ID naming the launcher, and the window tracker trusts it
+for Luma-installed launchers before guessing from the window class.
+
+--- a/src/shell-window-tracker.c
++++ b/src/shell-window-tracker.c
+@@ -374,6 +374,66 @@
+   return result;
+ }
+ 
++/*
++ * get_app_from_luma_capsule:
++ * @window: a #MetaWindow
++ *
++ * Luma runs applications installed from downloaded packages -- a .deb, an
++ * .rpm, an application folder -- inside capsules. Their windows carry whatever
++ * class the packaged application chose (Electron's desktop name, a Flutter
++ * application ID, "Figma"), which rarely names the launcher Luma wrote for it,
++ * so the dock showed the window under a generic icon apart from its launcher.
++ * Every capsule process is started with LUMA_CAPSULE_DESKTOP_ID naming that
++ * launcher; only Luma-installed launchers are accepted.
++ *
++ * Return value: (transfer full): A newly-referenced #ShellApp, or %NULL
++ */
++#define LUMA_CAPSULE_DESKTOP_ID "LUMA_CAPSULE_DESKTOP_ID="
++#define LUMA_INSTALLED_PREFIX "org.projectluma.Installed."
++
++static ShellApp *
++get_app_from_luma_capsule (MetaWindow *window)
++{
++  g_autofree char *path = NULL;
++  g_autofree char *contents = NULL;
++  gsize length = 0;
++  gsize offset = 0;
++  pid_t pid;
++
++  if (meta_window_is_remote (window))
++    return NULL;
++
++  pid = meta_window_get_pid (window);
++  if (pid < 1)
++    return NULL;
++
++  path = g_strdup_printf ("/proc/%d/environ", (int) pid);
++  if (!g_file_get_contents (path, &contents, &length, NULL))
++    return NULL;
++
++  while (offset < length)
++    {
++      const char *entry = contents + offset;
++      gsize entry_length = strnlen (entry, length - offset);
++
++      if (g_str_has_prefix (entry, LUMA_CAPSULE_DESKTOP_ID))
++        {
++          const char *id = entry + strlen (LUMA_CAPSULE_DESKTOP_ID);
++          ShellApp *app;
++
++          if (!g_str_has_prefix (id, LUMA_INSTALLED_PREFIX) || !g_str_has_suffix (id, ".desktop"))
++            return NULL;
++
++          app = shell_app_system_lookup_app (shell_app_system_get_default (), id);
++          return app != NULL ? g_object_ref (app) : NULL;
++        }
++
++      offset += entry_length + 1;
++    }
++
++  return NULL;
++}
++
+ /**
+  * get_app_for_window:
+  *
+@@ -412,6 +472,13 @@
+   if (meta_window_is_remote (window))
+     return _shell_app_new_for_window (window);
+ 
++  /* A window from a Luma application capsule belongs to the launcher Luma
++   * wrote for it, whatever class the packaged application gave it.
++   */
++  result = get_app_from_luma_capsule (window);
++  if (result != NULL)
++    return result;
++
+   /* Check if the app's WM_CLASS specifies an app; this is
+    * canonical if it does.
+    */

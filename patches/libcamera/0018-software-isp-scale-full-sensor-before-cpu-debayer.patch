@@ -1,0 +1,197 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] software_isp: scale the full sensor before CPU debayer
+
+The CPU debayer currently satisfies a smaller output request by taking an
+equally sized crop from the centre of the Bayer frame. On phone sensors this
+makes a 640x480 or 1920x1080 preview look heavily zoomed and discards most of
+the field of view.
+
+For packed RAW10 input, build a Bayer-phase-preserving nearest-neighbour input
+at the requested output size before running the existing threaded debayer.
+Map pairs of Bayer pixels rather than individual coordinates so the colour
+filter arrangement is retained. Only copy the eight most significant bits,
+which is equivalent to the existing packed-RAW10 CPU debayer path; that path
+does not consume the packed two-bit tail byte. Precompute all source byte and
+line offsets during configure so the per-frame pass contains no divisions.
+
+Crop only enough of the full sensor to match the requested aspect ratio. Add
+one packed Bayer group of horizontal padding for the existing interpolation
+code, and retain the previous centre-crop path for all other raw formats.
+
+--- a/src/libcamera/software_isp/debayer_cpu.h
++++ b/src/libcamera/software_isp/debayer_cpu.h
+@@ -126,6 +126,7 @@ private:
+ 	int setDebayerFunctions(PixelFormat inputFormat,
+ 				PixelFormat outputFormat,
+ 				bool ccmEnabled);
++	void downscaleRaw10(const uint8_t *src);
+ 	void updateGammaTable(const DebayerParams &params);
+ 	void updateLookupTables(const DebayerParams &params);
+ 
+@@ -154,6 +155,12 @@ private:
+ 	debayerFn debayer2_;
+ 	debayerFn debayer3_;
+ 	Rectangle window_;
++	Rectangle sourceRegion_;
++	unsigned int sourceStride_;
++	bool downscaleInput_;
++	std::vector<unsigned int> downscaleXOffsets_;
++	std::vector<unsigned int> downscaleYOffsets_;
++	std::vector<uint8_t> downscaledInput_;
+ 	std::unique_ptr<SwStatsCpu> stats_;
+ 	unsigned int xShift_; /* Offset of 0/1 applied to window_.x */
+ 
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -696,13 +696,91 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 	 */
+ 	params_.gamma = 1.0;
+ 
+-	window_.x = ((inputCfg.size.width - outputCfg.size.width) / 2) &
+-		    ~(inputConfig_.patternSize.width - 1);
+-	window_.y = ((inputCfg.size.height - outputCfg.size.height) / 2) &
+-		    ~(inputConfig_.patternSize.height - 1);
+-	window_.width = outputCfg.size.width;
+-	window_.height = outputCfg.size.height;
++	sourceStride_ = inputCfg.stride;
++	downscaleInput_ = false;
++	downscaleXOffsets_.clear();
++	downscaleYOffsets_.clear();
++	downscaledInput_.clear();
++
++	const BayerFormat bayer = BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
++	if (bayer.bitDepth == 10 &&
++	    bayer.packing == BayerFormat::Packing::CSI2 &&
++	    outputCfg.size.width >= 4 && outputCfg.size.height >= 2 &&
++	    (outputCfg.size.width < inputCfg.size.width ||
++	     outputCfg.size.height < inputCfg.size.height)) {
++		unsigned int cropWidth = inputCfg.size.width;
++		unsigned int cropHeight = inputCfg.size.height;
++
++		if (static_cast<uint64_t>(cropWidth) * outputCfg.size.height >
++		    static_cast<uint64_t>(cropHeight) * outputCfg.size.width)
++			cropWidth = static_cast<uint64_t>(cropHeight) *
++				    outputCfg.size.width / outputCfg.size.height;
++		else
++			cropHeight = static_cast<uint64_t>(cropWidth) *
++				     outputCfg.size.height / outputCfg.size.width;
++
++		/* Preserve the 2x2 colour-filter phase at every edge. */
++		cropWidth &= ~1U;
++		cropHeight &= ~1U;
++		sourceRegion_ = Rectangle(((inputCfg.size.width - cropWidth) / 2) & ~1U,
++					  ((inputCfg.size.height - cropHeight) / 2) & ~1U,
++					  cropWidth, cropHeight);
++
++		/*
++		 * Keep a complete packed Bayer group on each horizontal edge for
++		 * the existing interpolation code. The output size and the border
++		 * are both multiples of four pixels, so every line is whole RAW10
++		 * groups with no partial tail.
++		 */
++		const unsigned int border = inputConfig_.patternSize.width;
++		const unsigned int bufferWidth = outputCfg.size.width + 2 * border;
++		inputConfig_.stride = bufferWidth * inputConfig_.bpp / 8;
++		downscaledInput_.resize(inputConfig_.stride * outputCfg.size.height);
++		downscaleXOffsets_.resize(bufferWidth);
++		downscaleYOffsets_.resize(outputCfg.size.height);
++
++		const unsigned int outputCells = outputCfg.size.width / 2;
++		const unsigned int sourceCells = sourceRegion_.width / 2;
++		for (unsigned int x = 0; x < bufferWidth; ++x) {
++			unsigned int outputCell;
++			if (x < border)
++				outputCell = 0;
++			else if (x >= border + outputCfg.size.width)
++				outputCell = outputCells - 1;
++			else
++				outputCell = (x - border) / 2;
++
++			const unsigned int sourceCell =
++				static_cast<uint64_t>(outputCell) * sourceCells / outputCells;
++			const unsigned int sourceX = sourceRegion_.x +
++						     2 * sourceCell + (x & 1);
++			downscaleXOffsets_[x] = (sourceX / 4) * 5 + sourceX % 4;
++		}
++
++		const unsigned int outputRows = outputCfg.size.height / 2;
++		const unsigned int sourceRows = sourceRegion_.height / 2;
++		for (unsigned int y = 0; y < outputCfg.size.height; ++y) {
++			const unsigned int sourceRow =
++				static_cast<uint64_t>(y / 2) * sourceRows / outputRows;
++			const unsigned int sourceY = sourceRegion_.y +
++						    2 * sourceRow + (y & 1);
++			downscaleYOffsets_[y] = sourceY * sourceStride_;
++		}
++
++		window_ = Rectangle(border, 0, outputCfg.size.width,
++				    outputCfg.size.height);
++		downscaleInput_ = true;
++		LOG(Debayer, Info) << "Scaling RAW10 " << sourceRegion_.toString()
++				   << " to " << outputCfg.size.toString();
++	} else {
++		window_.x = ((inputCfg.size.width - outputCfg.size.width) / 2) &
++			    ~(inputConfig_.patternSize.width - 1);
++		window_.y = ((inputCfg.size.height - outputCfg.size.height) / 2) &
++			    ~(inputConfig_.patternSize.height - 1);
++		window_.width = outputCfg.size.width;
++		window_.height = outputCfg.size.height;
++	}
+ 
+ 	/*
+ 	 * Set the stats window to the whole processed window. Its coordinates are
+ 	 * relative to the debayered area since debayering passes only the part of
+@@ -785,6 +863,29 @@ DebayerCpu::strideAndFrameSize(const PixelFormat &outputFormat, const Size &size)
+ 	unsigned int stride = (size.width * config.bpp / 8 + 7) & ~7;
+ 
+ 	return std::make_tuple(stride, stride * size.height);
++}
++
++void DebayerCpu::downscaleRaw10(const uint8_t *src)
++{
++	const unsigned int bufferWidth = downscaleXOffsets_.size();
++
++	for (unsigned int y = 0; y < downscaleYOffsets_.size(); ++y) {
++		const uint8_t *sourceLine = src + downscaleYOffsets_[y];
++		uint8_t *destination = downscaledInput_.data() + y * inputConfig_.stride;
++
++		/*
++		 * CSI-2 RAW10 stores four eight-bit MSB samples followed by one
++		 * byte containing their two-bit tails. The existing CPU debayer
++		 * consumes only the MSB samples, so leave the new tail byte zero.
++		 */
++		for (unsigned int x = 0; x < bufferWidth; x += 4) {
++			*destination++ = sourceLine[downscaleXOffsets_[x]];
++			*destination++ = sourceLine[downscaleXOffsets_[x + 1]];
++			*destination++ = sourceLine[downscaleXOffsets_[x + 2]];
++			*destination++ = sourceLine[downscaleXOffsets_[x + 3]];
++			*destination++ = 0;
++		}
++	}
+ }
+ 
+ void DebayerCpuThread::setupInputMemcpy(const uint8_t *linePointers[])
+@@ -1090,6 +1191,12 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output,
+ 	}
+ 
+ 	stats_->startFrame(frame);
++
++	const uint8_t *inputData = in.planes()[0].data();
++	if (downscaleInput_) {
++		downscaleRaw10(inputData);
++		inputData = downscaledInput_.data();
++	}
+ 
+ 	workPendingMutex_.lock();
+ 	workPending_ = (1 << threads_.size()) - 1;
+@@ -1098,7 +1205,7 @@ void DebayerCpu::process(uint32_t frame, FrameBuffer *input, FrameBuffer *output,
+ 	for (auto &thread : threads_)
+ 		thread->invokeMethod(&DebayerCpuThread::process,
+ 				     ConnectionTypeQueued, frame,
+-				     in.planes()[0].data(), out.planes()[0].data());
++				     inputData, out.planes()[0].data());
+ 
+ 	{
+ 		MutexLocker locker(workPendingMutex_);
+-- 
+2.51.0

@@ -1,0 +1,106 @@
+--- a/gtk4.spec
++++ b/gtk4.spec
+@@ -1,3 +1,5 @@
++%bcond_without docs
++%global _lto_cflags -flto=2 -ffat-lto-objects
+ ## START: Set by rpmautospec
+ ## (rpmautospec version 0.8.4)
+ ## RPMAUTOSPEC: autorelease, autochangelog
+@@ -37,7 +39,7 @@
+ 
+ Name:           gtk4
+ Version:        4.22.4
+-Release:        %autorelease
++Release:        1.luma.23.creator20261006.1%{?dist}
+ Summary:        GTK graphical user interface library
+ 
+ # Most files are either LGPL-2.0-or-later or LGPL-2.1-or-later.
+@@ -85,6 +87,26 @@
+ 
+ # https://bugzilla.redhat.com/show_bug.cgi?id=2450986
+ Patch:          0001-gtkapplication-wayland-null-check.patch
++Patch1000:      0001-luma-calm-window-shadow.patch
++Patch1001:      0002-luma-native-window-elevation.patch
++Patch1002:      0003-luma-native-headerbar-chrome.patch
++Patch1003:      0004-luma-generic-application-identity.patch
++Patch1004:      0005-luma-application-identity-presentation.patch
++Patch1005:      0006-luma-native-application-surfaces.patch
++Patch1006:      0007-luma-generic-application-frame.patch
++Patch1007:      0008-luma-title-slot-and-paned-islands.patch
++Patch1008:      0009-luma-split-island-shadows.patch
++Patch1009:      0010-luma-native-menu-presentation.patch
++Patch1010:      0011-luma-grab-a-corner-where-it-is-drawn.patch
++Patch1011:      0012-luma-forget-unbound-input-method-context.patch
++Patch1012:      0013-gsk-restore-the-clip-when-a-first-node-is-rejected.patch
++Patch1013:      0014-gsk-cover-hinted-glyph-outlines.patch
++Patch1014:      0015-luma-preserve-generic-client-layout.patch
++Patch1015:      0016-luma-precompiled-native-menu-css.patch
++Patch1016:      0017-luma-maximized-shadow-extents.patch
++Source9000:     generic-client.py
++Source9001:     maximized-shadow.py
++BuildRequires:  python3-gobject xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon libXtst
+ 
+ BuildRequires:  cups-devel
+ BuildRequires:  desktop-file-utils
+@@ -171,6 +190,7 @@
+ This package contains the libraries and header files that are needed
+ for writing applications with version 4 of the GTK widget toolkit.
+ 
++%if %{with docs}
+ %package devel-docs
+ Summary: Developer documentation for GTK
+ BuildArch: noarch
+@@ -183,6 +203,8 @@
+ %description devel-docs
+ This package contains developer documentation for version 4 of the GTK
+ widget toolkit.
++
++%endif
+ 
+ %package devel-tools
+ Summary: Developer tools for GTK
+@@ -203,7 +225,12 @@
+         -Dsysprof=enabled \
+         -Dtracker=enabled \
+         -Dcolord=enabled \
++%if %{with docs}
+         -Ddocumentation=true \
++%else
++        -Ddocumentation=false \
++%endif
++        -Dbackend_max_links=1 \
+         -Dman-pages=true \
+         -Dbuild-testsuite=false \
+         -Dbuild-tests=false \
+@@ -226,6 +253,15 @@
+ %check
+ appstream-util validate-relax --nonet $RPM_BUILD_ROOT%{_metainfodir}/*.xml
+ desktop-file-validate $RPM_BUILD_ROOT%{_datadir}/applications/*.desktop
++LD_LIBRARY_PATH=%{buildroot}%{_libdir} GI_TYPELIB_PATH=%{buildroot}%{_libdir}/girepository-1.0 \
++  xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
++  python3 %{SOURCE9000} gtk
++LD_LIBRARY_PATH=%{buildroot}%{_libdir} GI_TYPELIB_PATH=%{buildroot}%{_libdir}/girepository-1.0 \
++  xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
++  python3 %{SOURCE9000} gtk-plain
++GDK_BACKEND=x11 GSK_RENDERER=cairo LD_LIBRARY_PATH=%{buildroot}%{_libdir} GI_TYPELIB_PATH=%{buildroot}%{_libdir}/girepository-1.0 \
++  xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
++  python3 %{SOURCE9001}
+ 
+ %files -f gtk40.lang
+ %license COPYING
+@@ -269,12 +299,15 @@
+ %{_mandir}/man1/gtk4-path-tool.1*
+ %{_mandir}/man1/gtk4-query-settings.1*
+ 
++%if %{with docs}
+ %files devel-docs
+ %{_datadir}/doc/gdk4/
+ %{_datadir}/doc/gdk4-wayland/
+ %{_datadir}/doc/gdk4-x11/
+ %{_datadir}/doc/gsk4/
+ %{_datadir}/doc/gtk4/
++
++%endif
+ 
+ %files devel-tools
+ %{_bindir}/gtk4-demo

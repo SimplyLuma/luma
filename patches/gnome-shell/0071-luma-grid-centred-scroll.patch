@@ -1,0 +1,111 @@
+From 44a52e422007ee92629b2195d51afebe3dcb35c2 Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 18:24:27 -0500
+Subject: [PATCH] luma: Grid opens centred on the window you left and scrolls
+ to matching ends
+
+---
+ js/ui/gridLayout.js |  2 +-
+ js/ui/lumaGrid.js   | 32 ++++++++++++++++++++++++--------
+ 2 files changed, 25 insertions(+), 9 deletions(-)
+
+diff --git a/js/ui/gridLayout.js b/js/ui/gridLayout.js
+index 115e2be..48d80d0 100644
+--- a/js/ui/gridLayout.js
++++ b/js/ui/gridLayout.js
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ // Logical-pixel geometry for Luma Grid. Input order is MRU and never changes.
+-export const GRID_GAP = 28;
++export const GRID_GAP = 42;
+ export const GRID_LABEL = 28; // 20px icon/text plus 8px to the preview.
+ // Grid is a single row. Previews are never shrunk to make everything fit:
+ // they hold a usable size and the row overflows, which is what turns the
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index fd7615b..91de7da 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -18,6 +18,8 @@ let activeGrid = null;
+ 
+ // How far a three-finger swipe must travel downward to dismiss Grid.
+ const DISMISS_TRAVEL = 64;
++// Breathing room outside the row, applied identically on both sides.
++const GRID_EDGE = 56;
+ 
+ // Keep the native handheld carousel unless Grid is explicitly invoked (Alt-Tab).
+ export function isDefault() {
+@@ -186,7 +188,9 @@ class GridPopup extends St.Widget {
+         // a click, or Escape, so the invoking modifier is deliberately ignored.
+         this._mask = 0;
+         this._scroll = 0;
+-        this._scrollX = 0;
++        this._scrollX = null;
++        this._scrollMin = 0;
++        this._scrollMax = 0;
+         this._cards = [];
+         this._selected = 0;
+         this._lastSize = '';
+@@ -205,7 +209,7 @@ class GridPopup extends St.Widget {
+             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+             this._scroll = Math.max(0, Math.min(this._panStart - delta.get_y() / scale,
+                 Math.max(0, this._geometry.height - this._contentHeight)));
+-            this._scrollX = Math.max(-this._overflowX / 2, Math.min(this._overflowX / 2,
++            this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax,
+                 this._panStartX - delta.get_x() / scale));
+             this.queue_relayout();
+         });
+@@ -372,7 +376,7 @@ class GridPopup extends St.Widget {
+         // scroll moves along it whichever way the fingers went. Three-finger
+         // gestures are left alone: those belong to the workspace switcher.
+         const travel = (dx + dy) * 60;
+-        this._scrollX = Math.max(-this._overflowX / 2, Math.min(this._overflowX / 2,
++        this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax,
+             this._scrollX + travel));
+         this.queue_relayout();
+         return Clutter.EVENT_STOP;
+@@ -410,7 +414,8 @@ class GridPopup extends St.Widget {
+         const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
+         const monitor = Main.layoutManager.primaryMonitor ?? area;
+         // Insets reserve lift/shadow and maintain the stage's outside slack.
+-        const width = Math.max(1, monitor.width / scale - 32);
++        const viewWidth = monitor.width / scale;
++        const width = Math.max(1, viewWidth - 2 * GRID_EDGE);
+         const height = Math.max(1, area.height / scale - 56);
+         this._contentHeight = height;
+         // Span the monitor across, clip to the work area down: the side struts
+@@ -424,9 +429,20 @@ class GridPopup extends St.Widget {
+                 width: c.dimensions.width / scale, height: c.dimensions.height / scale})),
+             width, height);
+             this._scroll = Math.min(this._scroll, Math.max(0, this._geometry.height - height));
+-            this._overflowX = Math.max(0, ...this._geometry.rows.map(row => row.width - width));
+-            this._scrollX = Math.max(-this._overflowX / 2,
+-                Math.min(this._overflowX / 2, this._scrollX));
++            // Scroll positions are expressed as 'what it takes to centre this
++            // card'. The travel therefore runs from centring the first card to
++            // centring the last, which gives both ends the same generous margin
++            // instead of one clean edge and one clipped one.
++            const items = this._geometry.items;
++            const centreOf = item => item.x + item.width / 2 - width / 2;
++            this._scrollMin = items.length ? centreOf(items[0]) : 0;
++            this._scrollMax = items.length ? centreOf(items[items.length - 1]) : 0;
++            if (this._scrollX === null)
++                // Open on the window you just left, so the arrangement reads the
++                // same every time and a neighbour can be reached from memory.
++                this._scrollX = this._scrollMin;
++            this._scrollX = Math.max(this._scrollMin,
++                Math.min(this._scrollMax, this._scrollX));
+         }
+         this._geometry.items.forEach((item, index) => {
+             const card = this._cards[index];
+@@ -437,7 +453,7 @@ class GridPopup extends St.Widget {
+             card.save_easing_state();
+             card.set_easing_duration(this._lastSize && reflow ? 220 : 0);
+             card.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
+-            allocate(card, (56 + item.x - this._scrollX) * scale,
++            allocate(card, (GRID_EDGE + item.x - this._scrollX) * scale,
+                 (28 + item.labelY - this._scroll) * scale,
+                 item.width * scale, (item.height + 28) * scale);
+             card.restore_easing_state();
+-- 
+2.55.0
+

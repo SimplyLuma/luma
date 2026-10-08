@@ -1,0 +1,34 @@
+From: Project Luma
+Subject: [PATCH] luma: build the Shelf only in sessions with an overview
+
+The Shelf adopts the overview's Dash. Initial setup has no overview, so
+building the Shelf threw during start-up, GDM gave up, and a machine with no
+account never reached a login screen. The Shelf is now skipped there, and a
+Shelf that fails to build is logged instead of taking the session down.
+---
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -313,9 +313,20 @@ async function _initializeUI() {
+ 
+     layoutManager.init();
+     overview.init();
+-    if (!sessionMode.isGreeter &&
++    // The Shelf adopts the overview's Dash, so it exists only in sessions that
++    // have an overview. Initial setup has none: building the Shelf there threw
++    // during start-up, GDM gave up, and a machine without an account never
++    // reached a login screen.
++    if (!sessionMode.isGreeter && sessionMode.hasOverview &&
+         GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld') {
+-        shelf = new Shelf.Shelf();
++        // Guarded for the same reason as the note stack below: a Shelf that
++        // cannot be built is a missing dock, never a missing session.
++        try {
++            shelf = new Shelf.Shelf();
++        } catch (e) {
++            shelf = null;
++            logError(e, 'the Shelf could not be built');
++        }
+         // The note stack lives on the same lanes the Shelf does: it is chrome
+         // for the same reason, and on the handheld lane the application can
+         // ask for a layer surface itself.

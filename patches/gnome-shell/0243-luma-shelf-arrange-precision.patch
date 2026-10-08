@@ -1,0 +1,201 @@
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 30 Sep 2026 13:30:00 -0500
+Subject: [PATCH] luma: steady, precise shelf arrangement
+
+Keep the pressed point on a carried island, freeze hit targets before the preview moves them, widen the join landing band, and distinguish the solid join slot from the dashed separate placement.
+
+---
+diff --git a/js/ui/shelfArrange.js b/js/ui/shelfArrange.js
+index 8ab3f26..42e6d7a 100644
+--- a/js/ui/shelfArrange.js
++++ b/js/ui/shelfArrange.js
+@@ -1199,8 +1199,12 @@ export class ShelfArrange {
+         const monitorIndex = group?.placement?.monitor ?? Main.layoutManager.primaryIndex;
+         this._drag = {
+             ids, grab: pending.grab, group: !!pending.group, stored, sourceIndex, edge,
+-            // Held where it was pressed, not where the drag was noticed.
+-            offset: [pending.x - (rect.x + rect.width / 2), pending.y - (rect.y + rect.height / 2)],
++            // Keep the point pressed inside the visible item, including a
++            // status part nested in a larger island. A centre offset stops
++            // describing that point as soon as the carried item changes
++            // size or turns into a column on a side edge.
++            grabFraction: [Math.max(0, Math.min(1, (pending.x - rect.x) / Math.max(1, rect.width))),
++                Math.max(0, Math.min(1, (pending.y - rect.y) / Math.max(1, rect.height)))],
+             length: {horizontal: Arrangement.isVertical(edge) ? thickness * 2 : along,
+                 vertical: Arrangement.isVertical(edge) ? along : thickness * 2},
+             along, origin: {x: rect.x, y: rect.y}, target: undefined, monitor: monitorIndex,
+@@ -1209,21 +1213,23 @@ export class ShelfArrange {
+             .filter(g => !(g.islands.length === ids.length && g.islands.every(id => ids.includes(id))));
+         this._drag.base = base;
+         this._dragPreview(null);
+-        // Once the layout without the dragged islands has been drawn, it is
+-        // what every target is measured against.
++        // First let the base layout allocate without the carried island.
++        // Capture that one settled geometry before opening any candidate
++        // slot; otherwise the preview becomes its own moving hit target.
+         const drag = this._drag;
+         const painted = global.stage.connect_after('after-paint', () => {
+             global.stage.disconnect(painted);
+-            drag.painted = true;
+-            // The groups as they sit without the dragged islands and with no
+-            // drop preview: the bands beside a group are measured against
+-            // this, so opening a slot never moves them under the pointer.
+-            drag.rest = new Map();
+-            for (const group of this._context(drag.ids).groups) {
+-                const key = group.islands[0]?.ids[0];
+-                if (key)
+-                    drag.rest.set(key, group.rect);
++            if (this._drag !== drag)
++                return;
++            drag.frozen = this._context(ids);
++            for (const rest of drag.frozen.groups) {
++                if (rest.islands.length) {
++                    rest.rect = unionRect(rest.islands.map(island => island.rect));
++                    rest.bandRect = rest.rect;
++                }
+             }
++            if (drag.pointer)
++                this._dragTo(...drag.pointer);
+         });
+         const dragGroup = this._dragGroup();
+         if (dragGroup) {
+@@ -1243,6 +1249,26 @@ export class ShelfArrange {
+         return this._shelf._groups.find(group => group.dragging) ?? null;
+     }
+ 
++    _positionDraggedGroup(x, y) {
++        const drag = this._drag;
++        const group = this._dragGroup();
++        if (!group)
++            return [x, y];
++        const part = drag.group || drag.ids.length > 1 ? group : this._shelf.partActorFor(drag.grab);
++        const held = part?.get_stage() && this._shelf.groupForActor(part) === group ? part : group;
++        const rect = extentsOf(held);
++        const turned = drag.formEdge && Arrangement.isVertical(drag.formEdge) !== Arrangement.isVertical(drag.edge);
++        const [fx, fy] = turned ? [...drag.grabFraction].reverse() : drag.grabFraction;
++        // Move by the stage-space error of the visible grab point. This also
++        // includes material padding and the lift transform, neither of which
++        // is represented by the group's preferred width or height.
++        const [gx, gy] = Arrangement.grabbedOrigin([group.x, group.y], rect, [fx, fy], [x, y]);
++        group.set_position(gx, gy);
++        Main.layoutManager.uiGroup.set_child_above_sibling(this._layer, null);
++        const placed = extentsOf(group);
++        return [placed.x + placed.width / 2, placed.y + placed.height / 2];
++    }
++
+     // Apply the preview for a target: the base arrangement (without the
+     // dragged islands) plus, for an attach, the gap in the target group.
+     // The island takes the form of the edge it would land on (vertical on
+@@ -1307,25 +1333,14 @@ export class ShelfArrange {
+ 
+     _dragTo(x, y) {
+         const drag = this._drag;
+-        const dragGroup = this._dragGroup();
+-        // Held at the same place of the island: carried in the other form
+-        // (a column on a side edge), the grab offset turns with it.
+-        const turned = drag.formEdge && Arrangement.isVertical(drag.formEdge) !== Arrangement.isVertical(drag.edge);
+-        const [ox, oy] = turned ? [drag.offset[1], drag.offset[0]] : drag.offset;
+-        const cx = x - ox, cy = y - oy;
+-        if (dragGroup) {
+-            const [, w] = dragGroup.get_preferred_width(-1);
+-            const [, h] = dragGroup.get_preferred_height(-1);
+-            dragGroup.set_position(Math.round(cx - w / 2), Math.round(cy - h / 2));
+-            Main.layoutManager.uiGroup.set_child_above_sibling(this._layer, null);
+-        }
++        drag.pointer = [x, y];
++        const [cx, cy] = this._positionDraggedGroup(x, y);
++        if (!drag.frozen)
++            return;
+         // Targets are measured against the layout as it was once the drag
+         // began (the dragged islands out), never against the preview, which
+         // moves as the target changes and would move the target again.
+-        const context = drag.frozen ?? this._context(drag.ids);
+-        if (!drag.frozen && drag.painted)
+-            drag.frozen = context;
+-        const {monitors, groups} = context;
++        const {monitors, groups} = drag.frozen;
+         const zones = (this._zones ?? []).map(z => z._zone);
+         const raw = Arrangement.resolveTarget([cx, cy], drag.length, monitors, groups, drag.ids,
+             St.ThemeContext.get_for_stage(global.stage).scale_factor,
+@@ -1341,10 +1356,14 @@ export class ShelfArrange {
+         if (sameTarget(target, previous)) {
+             if (target?.kind === 'free' && Math.abs(target.position - (previous.position ?? 0)) > 0.002)
+                 this._dragPreview(target);
++            this._positionDraggedGroup(x, y);
+             return;
+         }
+         drag.monitor = target?.monitor ?? drag.monitor;
+         this._dragPreview(target);
++        // The carried item may now have different padding or orientation.
++        // Keep the exact pressed point under the pointer after the relayout.
++        this._positionDraggedGroup(x, y);
+         this._showTarget(target);
+         this._announce(targetText(target, islandNames()));
+     }
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index b74c141..8013733 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -43,7 +43,10 @@ export const ATTACH_DISTANCE = 40;    // along a group's run, to attach to it
+ // and the dead band between them changes nothing, so the preview never
+ // flickers. Once one is shown it holds until the pointer is well into the
+ // other (JOIN_HOLD).
+-export const JOIN_BAND = 26;
++// Give a carried island a generous landing area. The preview stays attached
++// through the small gap between two surfaces, while a deliberate move farther
++// away still separates them. All distances are scaled below.
++export const JOIN_BAND = 38;
+ export const DEAD_BAND = 10;
+ export const SEPARATE_BAND = 96;
+ export const JOIN_HOLD = 8;
+@@ -52,7 +55,7 @@ export const SNAP_DISTANCE = 32;      // from a zone's point, to snap to it
+ // of a group's island attaches; at APART_REACH or more it is placed apart.
+ // Between the two nothing changes (the dead zone), so the preview never
+ // flickers between a caret and a ghost.
+-export const ATTACH_REACH = 20;
++export const ATTACH_REACH = 28;
+ export const APART_REACH = 56;
+ // A chosen target is kept until another is better by this much.
+ export const HYSTERESIS = 24;
+@@ -72,6 +75,16 @@ export const HOLD_TIME_TOUCH = 500;
+ // A press that follows a touch this recently is that touch, emulated.
+ export const TOUCH_EMULATION_GRACE = 800;
+ 
++// Stage-space correction for a lifted island. The held rect may be a nested
++// status control rather than the outer group, and may change size or turn as
++// it crosses an edge. Its pressed fraction stays under the pointer.
++export function grabbedOrigin(groupPosition, heldRect, fraction, pointer) {
++    return [
++        Math.round(groupPosition[0] + pointer[0] - heldRect.x - fraction[0] * heldRect.width),
++        Math.round(groupPosition[1] + pointer[1] - heldRect.y - fraction[1] * heldRect.height),
++    ];
++}
++
+ export function isVertical(edge) {
+     return edge === 'left' || edge === 'right';
+ }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index deb309b..02ceb08 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2224,7 +2224,9 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ 
+ 
+ /* The gap an attach preview opens in a row, and its caret on the seam. */
+-.luma-arrange-gap-footprint { color: rgba(255, 255, 255, 0.40); -luma-line-width: 1.5px; -luma-dash: 6; border-radius: 15px; }
++.luma-arrange-gap-footprint {
++  color: #a9b5c1; -luma-line-width: 2px; -luma-dash: 0;
++  border-radius: 15px; background-color: rgba(138, 153, 168, 0.22); }
+ .luma-arrange-gap.luma-arrange-light .luma-arrange-gap-footprint { color: rgba(25, 27, 31, 0.36); }
+ .luma-arrange-gap.luma-arrange-frost .luma-arrange-gap-footprint {
+   color: #575e65;
+@@ -2365,7 +2367,8 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-arrange-frost .luma-arrange-zone.luma-arrange-zone-active,
+ .luma-arrange-glass .luma-arrange-zone.luma-arrange-zone-active { -luma-line-width: 0; }
+ /* The ghost of a drop on a zone: the state ink, dashed. */
+-.luma-arrange-gap.luma-arrange-gap-ghost .luma-arrange-gap-footprint { color: #8a99a8; }
++.luma-arrange-gap.luma-arrange-gap-ghost .luma-arrange-gap-footprint {
++  color: #8a99a8; -luma-dash: 6; background-color: transparent; }
+ .luma-arrange-gap.luma-arrange-gap-ghost.luma-arrange-light .luma-arrange-gap-footprint,
+ .luma-arrange-gap.luma-arrange-gap-ghost.luma-arrange-frost .luma-arrange-gap-footprint,
+ .luma-arrange-gap.luma-arrange-gap-ghost.luma-arrange-glass .luma-arrange-gap-footprint { color: #4a5a6e; }

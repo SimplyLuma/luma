@@ -1,0 +1,781 @@
+{
+  "app": "camera",
+  "title": "Camera",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=camera",
+    "window": "#w-camera",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "camera",
+    "fixtures": [
+      "tests/fixtures/camera-v70.json",
+      "tests/fixtures/camera-v70",
+      "tests/fixtures/camera-v70-data"
+    ],
+    "env": {
+      "LUMA_CAMERA_FIXTURE": "{run}/fixtures/camera-v70.json",
+      "XDG_DATA_HOME": "{run}/fixtures/camera-v70-data"
+    }
+  },
+  "states": [
+    {
+      "name": "photo",
+      "about": "Opening state: Studio Cam, RAW + JPEG, grid, 4:3",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "modes",
+      "about": "All five capture modes",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-mode"
+        }
+      ]
+    },
+    {
+      "name": "cameras",
+      "about": "The three v70 sample camera sources",
+      "spec": [
+        {
+          "click": "[data-cmcams]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-cameras"
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "about": "Formats, manual controls, switches and values",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-settings"
+        }
+      ]
+    },
+    {
+      "name": "shape",
+      "about": "All four photo shapes",
+      "spec": [
+        {
+          "click": "[data-cmaspect]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-aspect"
+        }
+      ]
+    },
+    {
+      "name": "flash-on",
+      "about": "Flash auto to on",
+      "spec": [
+        {
+          "click": "[data-cmflash]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-flash"
+        }
+      ]
+    },
+    {
+      "name": "timer-3",
+      "about": "Three second timer annotation",
+      "spec": [
+        {
+          "click": "[data-cmtimer]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-timer"
+        }
+      ]
+    },
+    {
+      "name": "timer-10",
+      "about": "Ten second timer annotation",
+      "spec": [
+        {
+          "click": "[data-cmtimer]"
+        },
+        {
+          "click": "[data-cmtimer]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-timer"
+        },
+        {
+          "activate": "cm-timer"
+        }
+      ]
+    },
+    {
+      "name": "grid-off",
+      "about": "Composition grid turned off",
+      "spec": [
+        {
+          "click": "[data-cmgrid]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-grid"
+        }
+      ]
+    },
+    {
+      "name": "zoom-2",
+      "about": "Selected digital zoom with preview crop",
+      "spec": [
+        {
+          "click": "[data-cmzoom=\"2\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-zoom-2"
+        }
+      ]
+    },
+    {
+      "name": "portrait",
+      "about": "Capture mode portrait",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        },
+        {
+          "click": "[data-cmmode=\"portrait\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"mode\": \"portrait\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "video",
+      "about": "Capture mode video",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        },
+        {
+          "click": "[data-cmmode=\"video\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"mode\": \"video\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "time",
+      "about": "Capture mode time",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        },
+        {
+          "click": "[data-cmmode=\"time\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"mode\": \"time\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scan",
+      "about": "Capture mode scan",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        },
+        {
+          "click": "[data-cmmode=\"scan\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"mode\": \"scan\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "phone-camera",
+      "about": "Phone camera source with 0.5, 1, 2 and 5 zoom stops",
+      "spec": [
+        {
+          "click": "[data-cmcams]"
+        },
+        {
+          "click": "[data-cmcam=\"phone\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-cameras"
+        },
+        {
+          "activate": "cm-source-phone"
+        }
+      ]
+    },
+    {
+      "name": "front-camera",
+      "about": "Mirrored front camera, JPEG and one zoom stop",
+      "spec": [
+        {
+          "click": "[data-cmcams]"
+        },
+        {
+          "click": "[data-cmcam=\"front\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-cameras"
+        },
+        {
+          "activate": "cm-source-front"
+        }
+      ]
+    },
+    {
+      "name": "manual",
+      "about": "Four manual dials and All Auto",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmpro]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"pro\": true}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dial-iso",
+      "about": "Manual iso choice menu",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmpro]"
+        },
+        {
+          "click": "[data-cmdial=\"iso\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"pro\": true}"
+          }
+        },
+        {
+          "activate": "cm-dial-iso"
+        }
+      ]
+    },
+    {
+      "name": "dial-ss",
+      "about": "Manual ss choice menu",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmpro]"
+        },
+        {
+          "click": "[data-cmdial=\"ss\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"pro\": true}"
+          }
+        },
+        {
+          "activate": "cm-dial-ss"
+        }
+      ]
+    },
+    {
+      "name": "dial-wb",
+      "about": "Manual wb choice menu",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmpro]"
+        },
+        {
+          "click": "[data-cmdial=\"wb\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"pro\": true}"
+          }
+        },
+        {
+          "activate": "cm-dial-wb"
+        }
+      ]
+    },
+    {
+      "name": "dial-mf",
+      "about": "Manual mf choice menu",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmpro]"
+        },
+        {
+          "click": "[data-cmdial=\"mf\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"pro\": true}"
+          }
+        },
+        {
+          "activate": "cm-dial-mf"
+        }
+      ]
+    },
+    {
+      "name": "focus",
+      "about": "Focus reticle and exposure control",
+      "spec": [
+        {
+          "eval": "(() => { const e=document.querySelector(\"#cm-frame\"), r=e.getBoundingClientRect(); e.dispatchEvent(new MouseEvent(\"click\", {bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"focus\": [50, 50]}",
+            "LUMAUI_CONFORM_SETTLE_MS": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "session",
+      "about": "One in-memory photo in the session strip",
+      "spec": [
+        {
+          "click": "[data-cmshoot]"
+        },
+        {
+          "click": "[data-cmstrip]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-shutter"
+        },
+        {
+          "activate": "cm-session"
+        }
+      ]
+    },
+    {
+      "name": "recording",
+      "about": "Recording time, red stop shutter and disabled source/mode",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        },
+        {
+          "click": "[data-cmmode=\"video\"]"
+        },
+        {
+          "click": "[data-cmshoot]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"mode\": \"video\"}"
+          }
+        },
+        {
+          "activate": "cm-shutter"
+        }
+      ]
+    },
+    {
+      "name": "manual-values",
+      "about": "Non-automatic manual dial values and selected highlights",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmpro]"
+        },
+        {
+          "click": "[data-cmdial=\"iso\"]"
+        },
+        {
+          "click": "[data-cmdialset=\"400\"]"
+        },
+        {
+          "click": "[data-cmdial=\"ss\"]"
+        },
+        {
+          "click": "[data-cmdialset=\"1/125\"]"
+        },
+        {
+          "click": "[data-cmdial=\"wb\"]"
+        },
+        {
+          "click": "[data-cmdialset=\"Daylight\"]"
+        },
+        {
+          "click": "[data-cmdial=\"mf\"]"
+        },
+        {
+          "click": "[data-cmdialset=\"3 m\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"pro\": true, \"iso\": \"400\", \"ss\": \"1/125\", \"wb\": \"Daylight\", \"mf\": \"3 m\"}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "countdown",
+      "about": "Three-second photo timer during its countdown",
+      "spec": [
+        {
+          "click": "[data-cmtimer]"
+        },
+        {
+          "click": "[data-cmshoot]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"timer\":3}"
+          }
+        },
+        {
+          "activate": "cm-shutter"
+        }
+      ]
+    },
+    {
+      "name": "video-session",
+      "about": "Recorded clip thumbnail with duration and the session actions",
+      "spec": [
+        {
+          "click": "[data-cmmodes]"
+        },
+        {
+          "click": "[data-cmmode=\"video\"]"
+        },
+        {
+          "click": "[data-cmshoot]",
+          "wait": 50
+        },
+        {
+          "click": "[data-cmshoot]",
+          "wait": 50
+        },
+        {
+          "click": "[data-cmstrip]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"mode\":\"video\"}"
+          }
+        },
+        {
+          "activate": "cm-shutter"
+        },
+        {
+          "activate": "cm-shutter"
+        },
+        {
+          "activate": "cm-session"
+        }
+      ]
+    },
+    {
+      "name": "focus-faded",
+      "about": "Focus mark and exposure control dim after 2.5 seconds",
+      "spec": [
+        {
+          "eval": "(() => { const e=document.querySelector(\"#cm-frame\"), r=e.getBoundingClientRect(); e.dispatchEvent(new MouseEvent(\"click\", {bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2})); })()"
+        },
+        {
+          "wait": 2700
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"focus\": [50, 50]}",
+            "LUMAUI_CONFORM_SETTLE_MS": "3500"
+          }
+        }
+      ]
+    },
+    {
+      "name": "format-jpeg",
+      "about": "Selected JPEG format stays in the settings menu",
+      "spec": [
+        {
+          "click": "[data-cmset]"
+        },
+        {
+          "click": "[data-cmfmtset=\"jpeg\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-settings"
+        },
+        {
+          "activate": "cm-format-jpeg"
+        }
+      ]
+    },
+    {
+      "name": "aspect-wide",
+      "about": "Selected 16:9 aspect stays in the shape menu",
+      "spec": [
+        {
+          "click": "[data-cmaspect]"
+        },
+        {
+          "click": "[data-cmar=\"16:9\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "cm-aspect"
+        },
+        {
+          "activate": "cm-aspect-16-9"
+        }
+      ]
+    },
+    {
+      "name": "exposure-positive",
+      "about": "Focus exposure set to +1 EV",
+      "spec": [
+        {
+          "eval": "(() => { const e=document.querySelector(\"#cm-frame\"), r=e.getBoundingClientRect(); e.dispatchEvent(new MouseEvent(\"click\", {bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2})); const v=document.querySelector(\"[data-cmev]\"); v.value=1; v.dispatchEvent(new Event(\"input\", {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"focus\": [50, 50], \"ev\": 1}",
+            "LUMAUI_CONFORM_SETTLE_MS": "0"
+          }
+        }
+      ]
+    },
+    {
+      "name": "exposure-negative",
+      "about": "Focus exposure set to -1 EV",
+      "spec": [
+        {
+          "eval": "(() => { const e=document.querySelector(\"#cm-frame\"), r=e.getBoundingClientRect(); e.dispatchEvent(new MouseEvent(\"click\", {bubbles:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2})); const v=document.querySelector(\"[data-cmev]\"); v.value=-1; v.dispatchEvent(new Event(\"input\", {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_CAMERA_FIXTURE_STATE": "{\"focus\": [50, 50], \"ev\": -1}",
+            "LUMAUI_CONFORM_SETTLE_MS": "0"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "photo",
+    "modes",
+    "cameras",
+    "settings",
+    "shape",
+    "flash-on",
+    "timer-3",
+    "timer-10",
+    "grid-off",
+    "zoom-2",
+    "portrait",
+    "video",
+    "time",
+    "scan",
+    "phone-camera",
+    "front-camera",
+    "manual",
+    "dial-iso",
+    "dial-ss",
+    "dial-wb",
+    "dial-mf",
+    "focus",
+    "session",
+    "recording",
+    "manual-values",
+    "countdown",
+    "video-session",
+    "focus-faded",
+    "format-jpeg",
+    "aspect-wide",
+    "exposure-positive",
+    "exposure-negative"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-camera > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#cm-top"
+    },
+    {
+      "name": "menu",
+      "spec": "#cm-pop"
+    },
+    {
+      "name": "manual controls",
+      "spec": ".cmpro"
+    },
+    {
+      "name": "session strip",
+      "spec": ".cmstrip"
+    },
+    {
+      "name": "capture center",
+      "spec": "#cm-bar2"
+    },
+    {
+      "name": "camera picker",
+      "spec": ".cmcam.cmcorner"
+    },
+    {
+      "name": "session thumbnail",
+      "spec": ".cmlast.cmcorner"
+    },
+    {
+      "name": "focus",
+      "spec": ".cmfocus"
+    },
+    {
+      "name": "recording status",
+      "spec": ".cmtag"
+    },
+    {
+      "name": "viewfinder",
+      "spec": "#cm-frame"
+    },
+    {
+      "name": "island",
+      "spec": "#cm-body"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#cm-main",
+      "gtk": "cm-island",
+      "name": "camera island"
+    },
+    {
+      "spec": "#cm-vf",
+      "gtk": "cm-viewfinder",
+      "name": "viewfinder"
+    },
+    {
+      "spec": "#cm-frame",
+      "gtk": "cm-frame",
+      "name": "image frame"
+    },
+    {
+      "spec": "#cm-bar2",
+      "gtk": "cm-capture-center",
+      "name": "capture center"
+    },
+    {
+      "spec": ".cmgrid",
+      "gtk": "cm-grid-overlay",
+      "name": "thirds grid"
+    },
+    {
+      "spec": ".cmpro",
+      "gtk": "cm-manual",
+      "name": "manual controls"
+    },
+    {
+      "spec": ".cmstrip",
+      "gtk": "cm-strip",
+      "name": "session strip"
+    }
+  ]
+}

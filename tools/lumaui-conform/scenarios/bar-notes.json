@@ -1,0 +1,55 @@
+{
+  "app": "bar-notes",
+  "title": "Bar menu (the text style) against Notes' bar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=notes",
+    "window": "#w-notes",
+    "exclude": [
+      "#w-notes *:not(:has(#n-bar)):not(#n-bar):not(#n-bar *)",
+      "#n-bar > .ib",
+      "#n-bar > .vr"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "notes",
+      "LUMAUI_BAR_HOST": "284,46,888,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774"
+    }
+  },
+  "states": [
+    {
+      "name": "style",
+      "about": "The text style picker, then bold, italic and strikethrough",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "style"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "style"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#n-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#n-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

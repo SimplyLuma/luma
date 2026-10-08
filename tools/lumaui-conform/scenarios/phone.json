@@ -1,0 +1,820 @@
+{
+  "app": "phone",
+  "title": "Phone",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=phone",
+    "window": "#w-phone",
+    "exclude": [
+      ".grip"
+    ]
+  },
+  "gtk": {
+    "module": "phone",
+    "fixtures": [
+      "tests/fixtures/phone-v70.json",
+      "tests/fixtures/phone-v70",
+      "tests/fixtures/phone-v70-data"
+    ],
+    "env": {
+      "LUMA_PHONE_FIXTURE": "{run}/fixtures/phone-v70.json",
+      "XDG_DATA_HOME": "{run}/fixtures/phone-v70-data"
+    }
+  },
+  "states": [
+    {
+      "name": "keypad",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "number",
+      "spec": [
+        {
+          "key": "5"
+        },
+        {
+          "key": "1"
+        },
+        {
+          "key": "0"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-key-5"
+        },
+        {
+          "activate": "pn-key-1"
+        },
+        {
+          "activate": "pn-key-0"
+        }
+      ]
+    },
+    {
+      "name": "recents",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        }
+      ]
+    },
+    {
+      "name": "contacts",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"contacts\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-contacts"
+        }
+      ]
+    },
+    {
+      "name": "voicemail",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"vm\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-vm"
+        }
+      ]
+    },
+    {
+      "name": "voicemail-second",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"vm\"]"
+        },
+        {
+          "click": "#w-phone [data-pnvm=\"v2\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-vm"
+        },
+        {
+          "activate": "pn-main-vm-v2"
+        }
+      ]
+    },
+    {
+      "name": "spam",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r5\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r5"
+        }
+      ]
+    },
+    {
+      "name": "block",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r5\"]"
+        },
+        {
+          "click": "#w-phone [data-pnblock]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r5"
+        },
+        {
+          "activate": "pn-block"
+        }
+      ]
+    },
+    {
+      "name": "group",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r3\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r3"
+        }
+      ]
+    },
+    {
+      "name": "voice-call",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        }
+      ]
+    },
+    {
+      "name": "voice-muted",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pnmute]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-mute"
+        }
+      ]
+    },
+    {
+      "name": "call-keypad",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pnkp]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-call-keypad"
+        }
+      ]
+    },
+    {
+      "name": "audio-menu",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pnaudio]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-audio"
+        }
+      ]
+    },
+    {
+      "name": "video-call",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"video\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-video"
+        }
+      ]
+    },
+    {
+      "name": "video-camera-off",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"video\"]"
+        },
+        {
+          "click": "#w-phone [data-pncam]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-video"
+        },
+        {
+          "activate": "pn-camera"
+        }
+      ]
+    },
+    {
+      "name": "group-video",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r3\"]"
+        },
+        {
+          "click": "#w-phone [data-pncall=\"video\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r3"
+        },
+        {
+          "activate": "pn-call-video"
+        }
+      ]
+    },
+    {
+      "name": "video-effects",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"video\"]"
+        },
+        {
+          "click": "#w-phone [data-pnblur]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-video"
+        },
+        {
+          "activate": "pn-effects"
+        }
+      ]
+    },
+    {
+      "name": "video-sharing",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"video\"]"
+        },
+        {
+          "click": "#w-phone [data-pnshare]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-video"
+        },
+        {
+          "activate": "pn-share-screen"
+        }
+      ]
+    },
+    {
+      "name": "group-muted",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r3\"]"
+        },
+        {
+          "click": "#w-phone [data-pncall=\"video\"]"
+        },
+        {
+          "click": "#w-phone [data-pnmute]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r3"
+        },
+        {
+          "activate": "pn-call-video"
+        },
+        {
+          "activate": "pn-mute"
+        }
+      ]
+    },
+    {
+      "name": "voice-upgraded",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pnup]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-upgrade"
+        }
+      ]
+    },
+    {
+      "name": "voice-tone",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pnkp]"
+        },
+        {
+          "click": "#w-phone [data-pnkey=\"5\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-call-keypad"
+        },
+        {
+          "activate": "pn-tone-5"
+        }
+      ]
+    },
+    {
+      "name": "call-ended",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pnend]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-end"
+        }
+      ]
+    },
+    {
+      "name": "add-person",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-lui-ca=\"call\"]"
+        },
+        {
+          "click": "#w-phone [data-pntodo=\"Add someone to the call\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-main-recent-r1"
+        },
+        {
+          "activate": "pn-call-voice"
+        },
+        {
+          "activate": "pn-add-person"
+        }
+      ]
+    },
+    {
+      "name": "number-delete",
+      "spec": [
+        {
+          "key": "5"
+        },
+        {
+          "key": "1"
+        },
+        {
+          "key": "0"
+        },
+        {
+          "click": "#w-phone [data-pndel]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-key-5"
+        },
+        {
+          "activate": "pn-key-1"
+        },
+        {
+          "activate": "pn-key-0"
+        },
+        {
+          "activate": "pn-delete"
+        }
+      ]
+    },
+    {
+      "name": "voicemail-playing",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"vm\"]"
+        },
+        {
+          "click": "#w-phone [data-pnvmplay]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-vm"
+        },
+        {
+          "activate": "pn-main-vm-v1"
+        },
+        {
+          "activate": "pn-voicemail-play"
+        }
+      ]
+    },
+    {
+      "name": "voicemail-paused",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"vm\"]"
+        },
+        {
+          "click": "#w-phone [data-pnvmplay]"
+        },
+        {
+          "click": "#w-phone [data-pnvmplay]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-vm"
+        },
+        {
+          "activate": "pn-main-vm-v1"
+        },
+        {
+          "activate": "pn-voicemail-play"
+        },
+        {
+          "activate": "pn-voicemail-play"
+        }
+      ]
+    },
+    {
+      "name": "block-cancelled",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r5\"]"
+        },
+        {
+          "click": "#w-phone [data-pnblock]"
+        },
+        {
+          "click": "#w-phone [data-lui-cno]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r5"
+        },
+        {
+          "activate": "pn-block"
+        },
+        {
+          "activate": "pn-block-cancel"
+        }
+      ]
+    },
+    {
+      "name": "block-confirmed",
+      "spec": [
+        {
+          "click": "#w-phone [data-pntab=\"recents\"]"
+        },
+        {
+          "click": "#w-phone [data-pnr=\"r5\"]"
+        },
+        {
+          "click": "#w-phone [data-pnblock]"
+        },
+        {
+          "click": "#w-phone [data-lui-cok]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "pn-place-recents"
+        },
+        {
+          "activate": "pn-recent-r5"
+        },
+        {
+          "activate": "pn-block"
+        },
+        {
+          "activate": "pn-block-confirm"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "keypad",
+    "number",
+    "recents",
+    "contacts",
+    "voicemail",
+    "voicemail-second",
+    "spam",
+    "block",
+    "group",
+    "voice-call",
+    "voice-muted",
+    "call-keypad",
+    "audio-menu",
+    "video-call",
+    "video-camera-off",
+    "group-video",
+    "video-effects",
+    "video-sharing",
+    "group-muted",
+    "voice-upgraded",
+    "voice-tone",
+    "call-ended",
+    "add-person",
+    "number-delete",
+    "voicemail-playing",
+    "voicemail-paused",
+    "block-cancelled",
+    "block-confirmed"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-phone > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#pn-top"
+    },
+    {
+      "name": "favourite people",
+      "spec": ".pnfavs"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": ".pnfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#pn-side"
+    },
+    {
+      "name": "keypad",
+      "spec": ".pnpad"
+    },
+    {
+      "name": "voicemail player",
+      "spec": ".pnvm"
+    },
+    {
+      "name": "Together",
+      "spec": ".pnhist"
+    },
+    {
+      "name": "person",
+      "spec": ".pnperson"
+    },
+    {
+      "name": "call controls",
+      "spec": ".pnctrl"
+    },
+    {
+      "name": "call surface",
+      "spec": ".pncall"
+    },
+    {
+      "name": "places",
+      "spec": "#pn-bar"
+    },
+    {
+      "name": "menu",
+      "spec": "#lmenu"
+    },
+    {
+      "name": "dialog",
+      "spec": ".lconf"
+    },
+    {
+      "name": "main",
+      "spec": "#pn-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#pn-side",
+      "gtk": "pn-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#pn-main",
+      "gtk": "pn-island",
+      "name": "main island"
+    },
+    {
+      "spec": "#pn-body",
+      "gtk": "pn-body",
+      "name": "content"
+    },
+    {
+      "spec": "#pn-bar",
+      "gtk": "pn-places",
+      "name": "places"
+    }
+  ]
+}

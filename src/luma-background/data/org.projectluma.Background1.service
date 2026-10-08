@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.Background1
+Exec=/usr/libexec/luma-background-service
+SystemdService=luma-background.service

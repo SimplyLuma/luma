@@ -1,0 +1,15 @@
+{
+  "shell": {
+    "size": "1440x900",
+    "settle": 4,
+    "startup_only": true,
+    "reset": [],
+    "settings": {
+      "org/project-luma/shell-state": {
+        "shelf-arrangement": "[]"
+      }
+    },
+    "states": [],
+    "expect_notifications_top": false
+  }
+}

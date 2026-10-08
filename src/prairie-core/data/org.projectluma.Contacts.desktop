@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Contacts
+Comment=Manage people and contact details
+Exec=prairie-contacts
+Icon=org.projectluma.Contacts
+Terminal=false
+Categories=Office;ContactManagement;
+Keywords=Address Book;People;Email;Phone;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;

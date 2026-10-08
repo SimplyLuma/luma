@@ -1,0 +1,157 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 15:30:00 -0500
+Subject: [PATCH] headerbar, application-window: one name per window, one gutter per window
+
+A GtkHeaderBar that owns the automatic Luma identity no longer shows a
+built-in title that merely repeats the application name (no subtitle); a
+different title stays. The title box is toolkit-internal, so its visibility is
+the toolkit's decision, and the header carries luma-repeats-identity while it
+is suppressed. GtkApplicationWindow folds a legacy container border width into
+the Luma gutter so the native work surface is not inset twice; windows that opt
+out with luma-no-native-surfaces keep their border.
+---
+
+diff --git a/gtk/gtkapplicationwindow.c b/gtk/gtkapplicationwindow.c
+index 918ef1d..3c9431b 100644
+--- a/gtk/gtkapplicationwindow.c
++++ b/gtk/gtkapplicationwindow.c
+@@ -843,6 +843,24 @@ gtk_application_window_remove (GtkContainer *container,
+   GTK_CONTAINER_CLASS (gtk_application_window_parent_class)->remove (container, child);
+ }
+ 
++/* Luma owns the 9px window gutter.  A legacy container border on the
++ * application window would inset the native work surface a second time, so it
++ * is folded into the gutter.  Windows that opt out of native surfaces keep it. */
++static void
++luma_reset_border_width (GObject    *object,
++                         GParamSpec *pspec,
++                         gpointer    user_data)
++{
++  GtkContainer *container = GTK_CONTAINER (object);
++  GtkStyleContext *context = gtk_widget_get_style_context (GTK_WIDGET (object));
++
++  if (gtk_container_get_border_width (container) == 0 ||
++      gtk_style_context_has_class (context, "luma-no-native-surfaces"))
++    return;
++
++  gtk_container_set_border_width (container, 0);
++}
++
+ static void
+ gtk_application_window_init (GtkApplicationWindow *window)
+ {
+@@ -854,6 +872,8 @@ gtk_application_window_init (GtkApplicationWindow *window)
+ 
+   gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (window)),
+                                "luma-native-window");
++  g_signal_connect (window, "notify::border-width",
++                    G_CALLBACK (luma_reset_border_width), NULL);
+ 
+   gtk_widget_insert_action_group (GTK_WIDGET (window), "win", G_ACTION_GROUP (window->priv->actions));
+ 
+diff --git a/gtk/gtkheaderbar.c b/gtk/gtkheaderbar.c
+index 3f71c53..e6ff246 100644
+--- a/gtk/gtkheaderbar.c
++++ b/gtk/gtkheaderbar.c
+@@ -141,6 +141,7 @@ static gboolean luma_command_row_active (GtkHeaderBar *bar);
+ static void luma_command_row_measure (GtkHeaderBar *bar, GtkOrientation orientation, gint for_size, gint *minimum, gint *natural);
+ static gint luma_command_row_height (GtkHeaderBar *bar, gint width);
+ static void luma_host_title (GtkHeaderBar *bar);
++static void luma_update_title_repeat (GtkHeaderBar *bar);
+ static void luma_unhost_title (GtkHeaderBar *bar);
+ static void notify_child_cb (GObject *child, GParamSpec *pspec, GtkHeaderBar *bar);
+ /* The custom title stays the application's widget, but while it is hosted on
+@@ -1360,6 +1361,7 @@ gtk_header_bar_set_title (GtkHeaderBar *bar,
+       gtk_widget_queue_resize (GTK_WIDGET (bar));
+     }
+ 
++  luma_update_title_repeat (bar);
+   g_object_notify_by_pspec (G_OBJECT (bar), header_bar_props[PROP_TITLE]);
+ }
+ 
+@@ -1421,6 +1423,7 @@ gtk_header_bar_set_subtitle (GtkHeaderBar *bar,
+ 
+   gtk_widget_set_visible (priv->subtitle_sizing_label, priv->has_subtitle || (priv->subtitle && priv->subtitle[0]));
+ 
++  luma_update_title_repeat (bar);
+   g_object_notify_by_pspec (G_OBJECT (bar), header_bar_props[PROP_SUBTITLE]);
+ }
+ 
+@@ -1517,7 +1520,10 @@ gtk_header_bar_set_custom_title (GtkHeaderBar *bar,
+   else
+     {
+       if (priv->label_box == NULL)
+-        construct_label_box (bar);
++        {
++          construct_label_box (bar);
++          luma_update_title_repeat (bar);
++        }
+     }
+ 
+   gtk_widget_queue_resize (GTK_WIDGET (bar));
+@@ -2248,6 +2254,7 @@ add_automatic_luma_identity (GtkHeaderBar *bar)
+   priv->luma_identity = create_luma_identity (application, GTK_WINDOW (toplevel));
+   priv->luma_identity_toplevel = toplevel;
+   gtk_header_bar_pack_start (bar, priv->luma_identity);
++  luma_update_title_repeat (bar);
+   g_object_set_data (G_OBJECT (toplevel), luma_identity_owner_key, bar);
+   luma_enter_command_row (bar);
+ }
+@@ -2278,6 +2285,7 @@ remove_automatic_luma_identity (GtkHeaderBar *bar)
+   priv->luma_identity = NULL;
+   priv->luma_identity_toplevel = NULL;
+   gtk_container_remove (GTK_CONTAINER (bar), identity);
++  luma_update_title_repeat (bar);
+ }
+ 
+ /* Luma command row.
+@@ -2461,6 +2469,48 @@ luma_unhost_title (GtkHeaderBar *bar)
+   gtk_widget_queue_resize (GTK_WIDGET (bar));
+ }
+ 
++/* Luma: the identity trigger already names the application.  A built-in title
++ * that merely repeats that name, with no subtitle, is not shown a second time;
++ * a different title (a document, a device, a folder) stays.  The label box is
++ * toolkit-internal, so its visibility is the toolkit's to decide. */
++static void
++luma_update_title_repeat (GtkHeaderBar *bar)
++{
++  GtkHeaderBarPrivate *priv = gtk_header_bar_get_instance_private (bar);
++  GtkStyleContext *context = gtk_widget_get_style_context (GTK_WIDGET (bar));
++  gboolean repeats = FALSE;
++
++  if (priv->label_box == NULL)
++    return;
++
++  if (priv->luma_identity && priv->title && *priv->title &&
++      !(priv->subtitle && *priv->subtitle))
++    {
++      GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (bar));
++      const gchar *identity = NULL;
++
++      if (GTK_IS_WINDOW (toplevel))
++        identity = gtk_window_get_title (GTK_WINDOW (toplevel));
++      if (!identity || !*identity)
++        identity = g_get_application_name ();
++      if (!identity || !*identity)
++        identity = g_get_prgname ();
++
++      repeats = identity && g_strcmp0 (identity, priv->title) == 0;
++    }
++
++  if (repeats)
++    gtk_style_context_add_class (context, "luma-repeats-identity");
++  else
++    gtk_style_context_remove_class (context, "luma-repeats-identity");
++
++  if (gtk_widget_get_visible (priv->label_box) == repeats)
++    {
++      gtk_widget_set_visible (priv->label_box, !repeats);
++      gtk_widget_queue_resize (GTK_WIDGET (bar));
++    }
++}
++
+ static void
+ luma_command_child_visibility (GObject      *child,
+                                GParamSpec   *pspec,

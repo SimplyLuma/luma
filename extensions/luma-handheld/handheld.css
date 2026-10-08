@@ -1,0 +1,413 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* This file is explicitly loaded by extension.js. Keeping a non-standard name
+ * avoids GNOME Shell's one-time extension stylesheet discovery cache. */
+
+/* A compact 42px logical panel is 94.5 physical pixels at 225%, clearing the
+ * FP6 cutout without turning the whole top band into oversized chrome. */
+#panel.luma-handheld,
+#panel.luma-handheld:overview {
+  height: 42px;
+  background-color: #ffffff;
+  color: #202733;
+  box-shadow: 0 1px 0 rgba(30, 41, 59, 0.10);
+}
+
+#panel.luma-handheld .panel-button,
+#panel.luma-handheld:overview .panel-button {
+  min-height: 38px;
+  color: #202733;
+}
+
+#panel.luma-handheld .panel-button .system-status-icon,
+#panel.luma-handheld:overview .panel-button .system-status-icon {
+  icon-size: 17px;
+}
+
+/* Desktop keeps the paired time/date treatment. Portrait handheld chrome has
+ * only the immediately useful status datum and leaves the date in Calendar. */
+#panel.luma-handheld .luma-clock-date,
+#panel.luma-handheld:overview .luma-clock-date {
+  width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+}
+
+/* The wallpaper view is a real phone Home surface, not an empty compositor
+ * desktop and not GNOME's workspace overview. Four 108px-tall cells across
+ * preserve 64px artwork, readable labels, and generous finger hit regions. */
+.luma-handheld .luma-handheld-home {
+  /* Home is transparent desktop content; the configured GNOME/Luma wallpaper
+   * remains the sole background painter beneath it. */
+  background-color: transparent;
+}
+
+.luma-handheld .luma-handheld-home-scroll {
+  padding: 20px 14px 12px;
+}
+
+.luma-handheld .luma-handheld-launcher-grid {
+  spacing: 8px;
+}
+
+.luma-handheld .luma-handheld-launcher-row {
+  spacing: 6px;
+}
+
+.luma-handheld .luma-handheld-launcher-button {
+  padding: 5px 2px;
+  border-radius: 18px;
+  background-color: transparent;
+  color: #ffffff;
+  transition-duration: 0ms;
+}
+
+.luma-handheld .luma-handheld-launcher-button:hover,
+.luma-handheld .luma-handheld-launcher-button:focus,
+.luma-handheld .luma-handheld-launcher-button:active {
+  background-color: rgba(255, 255, 255, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.luma-handheld .luma-handheld-launcher-icon-box {
+  spacing: 5px;
+}
+
+.luma-handheld .luma-handheld-launcher-label {
+  max-width: 108px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(15, 23, 42, 0.78);
+}
+
+/* Swiping the dock upward turns it into this sheet. The favorite row is the
+ * raised dock; search and the vertically scrolling all-apps grid follow it. */
+.luma-handheld .luma-handheld-app-drawer {
+  background-color: transparent;
+}
+
+.luma-handheld .luma-handheld-app-drawer-sheet {
+  padding: 8px 14px 12px;
+  spacing: 10px;
+  border-radius: 30px 30px 0 0;
+  background-color: rgba(248, 250, 253, 0.97);
+  color: #202733;
+  box-shadow: 0 -10px 36px rgba(15, 23, 42, 0.24);
+}
+
+.luma-handheld .luma-handheld-app-drawer-handle {
+  width: 42px;
+  height: 5px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+  background-color: #9aa3b1;
+}
+
+.luma-handheld .luma-handheld-app-drawer-favorites {
+  height: 62px;
+  spacing: 12px;
+}
+
+.luma-handheld .luma-handheld-launcher-button.compact {
+  width: 58px;
+  height: 58px;
+  padding: 4px;
+  border-radius: 16px;
+  color: #202733;
+}
+
+.luma-handheld .luma-handheld-launcher-button.compact:hover,
+.luma-handheld .luma-handheld-launcher-button.compact:focus,
+.luma-handheld .luma-handheld-launcher-button.compact:active {
+  background-color: rgba(77, 120, 184, 0.16);
+}
+
+.luma-handheld .luma-handheld-app-drawer-search {
+  height: 48px;
+  padding: 0 15px;
+  border-radius: 24px;
+  background-color: #e9edf3;
+  color: #202733;
+  font-size: 16px;
+  caret-color: #315f9e;
+  selected-color: #ffffff;
+  selection-background-color: #4d78b8;
+}
+
+.luma-handheld .luma-handheld-app-drawer-search StIcon {
+  icon-size: 20px;
+  color: #687487;
+}
+
+.luma-handheld .luma-handheld-app-drawer-scroll {
+  padding-top: 4px;
+}
+
+.luma-handheld .luma-handheld-app-drawer .luma-handheld-launcher-button {
+  color: #202733;
+}
+
+.luma-handheld .luma-handheld-app-drawer .luma-handheld-launcher-label {
+  color: #202733;
+  text-shadow: none;
+}
+
+.luma-handheld .luma-handheld-app-drawer .luma-handheld-launcher-button:hover,
+.luma-handheld .luma-handheld-app-drawer .luma-handheld-launcher-button:focus,
+.luma-handheld .luma-handheld-app-drawer .luma-handheld-launcher-button:active {
+  background-color: rgba(77, 120, 184, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(77, 120, 184, 0.14);
+}
+
+/* Press feedback is interaction state and must paint in the touch-down frame. */
+.luma-handheld .keyboard-key {
+  transition-duration: 0ms;
+}
+
+.luma-handheld .keyboard-key:active,
+.luma-handheld .keyboard-key:checked,
+.luma-handheld .keyboard-key:hover {
+  background-color: #4d78b8;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45);
+}
+
+/* Luma's production mobile surface keeps Mutter's focus and delivery path but
+ * replaces the weak stock key geometry with the accepted four-row finalist:
+ * large targets, a dominant spacebar, immediate travel, and three native
+ * decoder candidates. It is an in-Shell surface, not a nested compositor. */
+.luma-handheld .luma-handheld-keyboard {
+  padding: 8px 10px 10px;
+  spacing: 6px;
+  background-color: #e8ebf0;
+  border-top: 1px solid rgba(31, 41, 55, 0.14);
+  box-shadow: 0 -6px 22px rgba(15, 23, 42, 0.12);
+}
+
+.luma-handheld .luma-handheld-candidates,
+.luma-handheld .luma-handheld-key-row {
+  spacing: 6px;
+}
+
+.luma-handheld .luma-handheld-keyboard .word-suggestions {
+  spacing: 6px;
+  padding: 0;
+}
+
+.luma-handheld .luma-handheld-keyboard .word-suggestions StButton {
+  margin: 0;
+  padding: 0 12px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.78);
+  color: #273244;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(31, 41, 55, 0.08);
+}
+
+.luma-handheld .luma-handheld-keyboard .word-suggestions StButton:active {
+  background-color: #dbe7f8;
+  color: #244e86;
+}
+
+/* Android's keyboard navigation band and iOS's home-indicator safe area solve
+ * the same ergonomic problem: typing ends above the physical screen edge.
+ * Luma keeps a quiet, dedicated band with explicit input-method and collapse
+ * controls while reserving its center for Home/app-switcher gestures. */
+.luma-handheld .luma-handheld-keyboard-navigation {
+  height: 54px;
+  spacing: 8px;
+  padding: 3px 2px 3px;
+  background-color: #e8ebf0;
+}
+
+.luma-handheld .luma-handheld-keyboard-navigation-button {
+  width: 48px;
+  height: 48px;
+  padding: 13px;
+  border-radius: 999px;
+  background-color: transparent;
+  color: #4c5666;
+  transition-duration: 0ms;
+}
+
+.luma-handheld .luma-handheld-keyboard-navigation-button StIcon {
+  icon-size: 22px;
+}
+
+.luma-handheld .luma-handheld-keyboard-navigation-button:hover,
+.luma-handheld .luma-handheld-keyboard-navigation-button:focus,
+.luma-handheld .luma-handheld-keyboard-navigation-button:active {
+  background-color: rgba(77, 120, 184, 0.18);
+  color: #315f9e;
+}
+
+.luma-handheld .luma-handheld-keyboard-gesture-area {
+  height: 48px;
+}
+
+.luma-handheld .luma-handheld-keyboard-gesture-pill {
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background-color: #727b89;
+}
+
+.luma-handheld .luma-handheld-candidate {
+  margin: 0;
+  padding: 0 8px;
+  border-radius: 11px;
+  background-color: rgba(255, 255, 255, 0.72);
+  color: #273244;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(31, 41, 55, 0.08);
+}
+
+.luma-handheld .luma-handheld-candidate:first-child {
+  color: #315f9e;
+}
+
+.luma-handheld .luma-handheld-candidate:hover,
+.luma-handheld .luma-handheld-candidate:active {
+  background-color: #dbe7f8;
+  color: #244e86;
+}
+
+.luma-handheld .luma-handheld-key {
+  margin: 0;
+  padding: 0;
+  border-radius: 10px;
+  background-color: #ffffff;
+  color: #202936;
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.16),
+              inset 0 0 0 1px rgba(31, 41, 55, 0.08);
+  transition-duration: 0ms;
+}
+
+.luma-handheld .luma-handheld-key StIcon {
+  icon-size: 22px;
+}
+
+.luma-handheld .luma-handheld-mode-key {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.luma-handheld .luma-handheld-key:hover,
+.luma-handheld .luma-handheld-key:active,
+.luma-handheld .luma-handheld-key:checked {
+  background-color: #4d78b8;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.40);
+}
+
+.luma-handheld .luma-handheld-space-key {
+  border-radius: 13px;
+}
+
+/* Immediate mobile character confirmation. This lives in Shell, so it has no
+ * toolkit round-trip and appears in the same frame as the pressed key. */
+.luma-handheld .luma-handheld-key-preview {
+  width: 56px;
+  height: 58px;
+  padding-top: 6px;
+  border-radius: 14px 14px 10px 10px;
+  background-color: #4d78b8;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.25);
+}
+
+/* Match the FP6 bottom-corner silhouette: equal left/right/bottom safe-area
+ * inset around one full-width pill. The dock's real ScrollView supplies
+ * horizontal touch panning, and its native fade effect marks clipped content. */
+.luma-handheld #dashtodockContainer.bottom,
+.luma-handheld #dashtodockContainer.bottom.dashtodock {
+  padding: 0 0 14px 0;
+}
+
+.luma-handheld #dashtodockContainer.bottom #dash,
+.luma-handheld #dashtodockContainer.bottom.dashtodock #dash {
+  margin: 0;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.luma-handheld #dashtodockContainer.bottom #dash .dash-background,
+.luma-handheld #dashtodockContainer.bottom.dashtodock #dash .dash-background {
+  margin: 0;
+  border-radius: 999px;
+}
+
+.luma-handheld #dashtodockContainer.bottom #dashtodockDashScrollview,
+.luma-handheld #dashtodockContainer.bottom.dashtodock #dashtodockDashScrollview {
+  -st-hfade-offset: 32px;
+}
+
+/* Home owns the floating pill. As soon as an application is visible, the
+ * dock and its icons do not move. A separate background actor starts at the
+ * pill's measured top edge and paints only the uncovered side/bottom region. */
+.luma-handheld .luma-handheld-dock-fill {
+  background-color: rgba(250, 250, 251, 0.9);
+  border-top: 1px solid rgba(17, 24, 39, 0.1);
+}
+
+.luma-handheld.luma-handheld-app-open #dashtodockContainer.bottom #dash .dash-background,
+.luma-handheld.luma-handheld-app-open #dashtodockContainer.bottom.dashtodock #dash .dash-background {
+  background-color: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Immediate, battery-neutral acknowledgement for cold launches. The surface
+ * exists only while Shell reports STARTING and is retired by the first mapped
+ * application window (with a bounded timeout for broken launchers). */
+.luma-handheld .luma-handheld-launch-surface {
+  background-color: #f3f5f8;
+}
+
+.luma-handheld .luma-handheld-launch-box {
+  spacing: 18px;
+}
+
+.luma-handheld .luma-handheld-launch-icon {
+  width: 80px;
+  height: 80px;
+}
+
+.luma-handheld .luma-handheld-launch-label {
+  color: #3a4351;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.luma-handheld .luma-handheld-launch-detail {
+  max-width: 360px;
+  color: #657083;
+  font-size: 13px;
+  text-align: center;
+}
+
+.luma-handheld .luma-handheld-keyboard-settings {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  padding: 7px;
+}
+
+.luma-handheld .luma-handheld-keyboard-settings:hover,
+.luma-handheld .luma-handheld-keyboard-settings:focus,
+.luma-handheld .luma-handheld-keyboard-settings:active {
+  background-color: #4d78b8;
+}

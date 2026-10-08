@@ -1,0 +1,260 @@
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index 3c14aa4..3c23600 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -240,6 +240,12 @@
+   </schema>
+ 
+   <schema path="/org/gnome/nautilus/window-state/" id="org.gnome.nautilus.window-state" gettext-domain="nautilus">
++    <key type="i" name="sidebar-width">
++      <range min="120" max="480"/>
++      <default>160</default>
++      <summary>Width of the navigation sidebar</summary>
++      <description>The saved width of the resizable navigation sidebar in pixels.</description>
++    </key>
+     <key type="(ii)" name="initial-size">
+       <default>(890, 550)</default>
+       <summary>Initial size of the window</summary>
+diff --git a/src/nautilus-global-preferences.h b/src/nautilus-global-preferences.h
+index ca08bfa..25e32d4 100644
+--- a/src/nautilus-global-preferences.h
++++ b/src/nautilus-global-preferences.h
+@@ -49,6 +49,7 @@ G_BEGIN_DECLS
+ /* Which views should be displayed for new windows */
+ #define NAUTILUS_WINDOW_STATE_INITIAL_SIZE			"initial-size"
+ #define NAUTILUS_WINDOW_STATE_MAXIMIZED				"maximized"
++#define NAUTILUS_WINDOW_STATE_SIDEBAR_WIDTH                     "sidebar-width"
+ 
+ #define NAUTILUS_WINDOW_STATE_INITIAL_SIZE_FILE_CHOOSER         "initial-size-file-chooser"
+ 
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index c122c42..b68b882 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -104,6 +104,7 @@ struct _NautilusWindow
+ 
+     /* Side Pane */
+     NautilusSidebar *places_sidebar;
++    GtkWidget *sidebar_resize_handle;
+     GVolume *selected_volume;     /* the selected volume in the sidebar popup callback */
+     GFile *selected_file;     /* the selected file in the sidebar popup callback */
+ 
+@@ -118,6 +119,9 @@ struct _NautilusWindow
+     GtkWidget *network_address_bar;
+ 
+     guint sidebar_width_handler_id;
++    gdouble sidebar_resize_start_width;
++    gdouble sidebar_resize_start_pointer_x;
++    gdouble sidebar_resize_current_width;
+ 
+     GQueue *tab_data_queue;
+ 
+@@ -1565,6 +1567,94 @@ on_click_gesture_pressed (GtkGestureClick *gesture,
+     }
+ }
+ 
++static void
++set_sidebar_width (NautilusWindow *window,
++                   gdouble         width)
++{
++    AdwOverlaySplitView *split_view = ADW_OVERLAY_SPLIT_VIEW (window->split_view);
++    gdouble current_width;
++
++    width = CLAMP (width, 120.0, 480.0);
++    current_width = adw_overlay_split_view_get_max_sidebar_width (split_view);
++
++    /* Keep min <= max throughout the update so libadwaita never clamps an
++     * intermediate invalid range and visibly relayouts twice. */
++    if (width > current_width)
++    {
++        adw_overlay_split_view_set_max_sidebar_width (split_view, width);
++        adw_overlay_split_view_set_min_sidebar_width (split_view, width);
++    }
++    else
++    {
++        adw_overlay_split_view_set_min_sidebar_width (split_view, width);
++        adw_overlay_split_view_set_max_sidebar_width (split_view, width);
++    }
++}
++
++static gboolean
++get_current_pointer_x (GtkGestureDrag *gesture,
++                       gdouble        *pointer_x)
++{
++    GdkEvent *event;
++    gdouble pointer_y;
++
++    event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (gesture));
++    return event != NULL && gdk_event_get_position (event, pointer_x, &pointer_y);
++}
++
++static void
++sidebar_resize_drag_begin (GtkGestureDrag *gesture,
++                           gdouble         start_x,
++                           gdouble         start_y,
++                           NautilusWindow *window)
++{
++    if (!get_current_pointer_x (gesture, &window->sidebar_resize_start_pointer_x))
++    {
++        window->sidebar_resize_start_pointer_x = start_x;
++    }
++
++    window->sidebar_resize_start_width =
++        gtk_widget_get_width (GTK_WIDGET (window->places_sidebar)) +
++        gtk_widget_get_width (window->sidebar_resize_handle);
++    window->sidebar_resize_current_width = window->sidebar_resize_start_width;
++}
++
++static void
++sidebar_resize_drag_update (GtkGestureDrag *gesture,
++                            gdouble         offset_x,
++                            gdouble         offset_y,
++                            NautilusWindow *window)
++{
++    gdouble pointer_x;
++    gdouble width;
++
++    if (!get_current_pointer_x (gesture, &pointer_x))
++    {
++        return;
++    }
++
++    offset_x = pointer_x - window->sidebar_resize_start_pointer_x;
++    if (gtk_widget_get_direction (GTK_WIDGET (window)) == GTK_TEXT_DIR_RTL)
++    {
++        offset_x = -offset_x;
++    }
++
++    width = CLAMP (window->sidebar_resize_start_width + offset_x, 120.0, 480.0);
++    window->sidebar_resize_current_width = width;
++    set_sidebar_width (window, width);
++}
++
++static void
++sidebar_resize_drag_end (GtkGestureDrag *gesture,
++                         gdouble         offset_x,
++                         gdouble         offset_y,
++                         NautilusWindow *window)
++{
++    g_settings_set_int (nautilus_window_state,
++                        NAUTILUS_WINDOW_STATE_SIDEBAR_WIDTH,
++                        (gint) (window->sidebar_resize_current_width + 0.5));
++}
++
+ static void
+ nautilus_window_init (NautilusWindow *window)
+ {
+@@ -1579,6 +1669,20 @@ nautilus_window_init (NautilusWindow *window)
+     g_type_ensure (NAUTILUS_TYPE_SHORTCUT_MANAGER);
+     gtk_widget_init_template (GTK_WIDGET (window));
+ 
++    set_sidebar_width (window,
++                       g_settings_get_int (nautilus_window_state,
++                                           NAUTILUS_WINDOW_STATE_SIDEBAR_WIDTH));
++    gtk_widget_set_cursor_from_name (window->sidebar_resize_handle, "col-resize");
++    controller = GTK_EVENT_CONTROLLER (gtk_gesture_drag_new ());
++    gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
++    g_signal_connect (controller, "drag-begin",
++                      G_CALLBACK (sidebar_resize_drag_begin), window);
++    g_signal_connect (controller, "drag-update",
++                      G_CALLBACK (sidebar_resize_drag_update), window);
++    g_signal_connect (controller, "drag-end",
++                      G_CALLBACK (sidebar_resize_drag_end), window);
++    gtk_widget_add_controller (window->sidebar_resize_handle, controller);
++
+     g_signal_connect (window, "notify::maximized",
+                       G_CALLBACK (on_is_maximized_changed), NULL);
+ 
+@@ -1699,6 +1803,7 @@ nautilus_window_class_init (NautilusWindowClass *class)
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, toolbar);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, split_view);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, places_sidebar);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_resize_handle);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, toast_overlay);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, tab_view);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, tab_bar);
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index e69f5ef..7cedfe9 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -53,11 +53,11 @@ template $NautilusToolbar: Adw.Bin {
+         transition-type: crossfade;
+ 
+         ToggleButton search_button {
+-          tooltip-text: _("Search Current Folder");
++          tooltip-text: _("Search");
+           halign: center;
+           valign: center;
+-          action-name: "slot.search-visible";
+-          icon-name: "nautilus-folder-search-symbolic";
++          action-name: "slot.search-global";
++          icon-name: "edit-find-symbolic";
+           active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+         }
+ 
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index c6af710..c50d279 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -114,47 +114,46 @@ template $NautilusWindow: Adw.ApplicationWindow {
+       child: Adw.OverlaySplitView split_view {
+         enable-show-gesture: false;
+         enable-hide-gesture: false;
+-        max-sidebar-width: 240;
++        min-sidebar-width: 120;
++        max-sidebar-width: 160;
+         sidebar-width-unit: px;
+-        sidebar-width-fraction: 0.2;
++        sidebar-width-fraction: 0.15;
+ 
+         sidebar: Adw.ToolbarView {
+           reveal-bottom-bars: bind progress_indicator.reveal;
+ 
+           [top]
+           Adw.HeaderBar {
+-            [start]
+-            ToggleButton {
+-              tooltip-text: _("Search Everywhere");
+-              action-name: "slot.search-global";
+-              icon-name: "edit-find-symbolic";
+-            }
+-
+-            title-widget: Adw.WindowTitle {
+-              title: _("Files");
+-            };
+ 
+             [end]
+             MenuButton {
+               tooltip-text: _("Main Menu");
+               icon-name: "open-menu-symbolic";
+               menu-model: app_menu;
+             }
+           }
+ 
+           [bottom]
+           Box {
+             styles [
+               "toolbar",
+             ]
+ 
+             $NautilusProgressIndicator progress_indicator {}
+           }
+ 
+-          content: $NautilusSidebar places_sidebar {
+-            vexpand: true;
+-            window-slot: bind template.active-slot;
++          content: Box {
++            $NautilusSidebar places_sidebar {
++              hexpand: true;
++              vexpand: true;
++              window-slot: bind template.active-slot;
++            }
++
++            Box sidebar_resize_handle {
++              width-request: 8;
++              visible: bind split_view.collapsed inverted;
++            }
+           };
+         };
+ 
+         content: Adw.ToolbarView {

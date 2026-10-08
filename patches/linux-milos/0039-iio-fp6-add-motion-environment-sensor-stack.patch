@@ -1,0 +1,1420 @@
+From af49850e65bdf5dc6f4a14fb9e8e5c5814522d33 Mon Sep 17 00:00:00 2001
+From: Project Luma <codex@local>
+Date: Wed, 19 Aug 2026 23:20:00 -0500
+Subject: [PATCH] iio: fp6: add motion and environment sensor stack
+
+Consolidate the final sensor state from Catcrafts combined-stable at
+af49850. The source series adds the QMC6308 magnetometer, an ICM-42631
+fallback for the FP6 ICM-42630-compatible IMU, SPL07-003 pressure
+support, STK36C61 ambient-light/proximity support, and the matching
+bit-banged FP6 I2C/SPI device-tree buses.
+
+Upstream commits: f2750740b74e, a01ea24ecc0b, 2220e81336d9,
+909458a93229, 587458fe6998, c2a1ae5241b8, bb538ee5c1ae,
+6cef99d4908e, c7f64bd563b3, 7d1d5238124b, ad947e6e4a07,
+6e1a1ab6feab, b91e924457f9, 40c5f87a75d7, ddb00ff3ee13,
+df5dd98fd2d5, c76b42e1897d, and 4405a0026a24.
+---
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+index 501220945..29a8e4fc3 100644
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -27,6 +27,89 @@ aliases {
+ 		serial1 = &uart11;
+ 	};
+ 
++	/*
++	 * The sensor I2C bus sits on TLMM eGPIO pads that have no AP QUP
++	 * function; on the stock OS it is driven by an island QUP of the
++	 * Snapdragon Sensor Core (ADSP). From the AP the pads are only
++	 * usable as software GPIOs, so bit-bang the bus.
++	 * Devices on the bus: QMC6308 magnetometer @ 0x2c, SPL07
++	 * barometer @ 0x76, STK36C61 ALS/proximity @ 0x48.
++	 */
++	i2c-sensors {
++		compatible = "i2c-gpio";
++		sda-gpios = <&tlmm 153 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
++		scl-gpios = <&tlmm 154 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
++		i2c-gpio,delay-us = <2>;
++		pinctrl-0 = <&sensor_i2c_default>;
++		pinctrl-names = "default";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		magnetometer@2c {
++			compatible = "qstcorp,qmc6308";
++			reg = <0x2c>;
++			vdd-supply = <&vreg_l10b>;
++			mount-matrix = "0", "-1", "0",
++				       "1", "0", "0",
++				       "0", "0", "1";
++		};
++
++		light-sensor@48 {
++			compatible = "sensortek,stk36c61", "sensortek,stk3310";
++			reg = <0x48>;
++		};
++
++		pressure-sensor@76 {
++			compatible = "goertek,spl07-003";
++			reg = <0x76>;
++			vdd-supply = <&vreg_l10b>;
++			vddio-supply = <&vreg_l10b>;
++		};
++	};
++
++	/*
++	 * Like the sensor I2C bus above, the IMU SPI bus sits on eGPIO
++	 * pads owned by the Sensor Core island QUP on the stock OS, so
++	 * bit-bang it. The ICM-42630 also answers I2C on the same pads
++	 * (0x68/0x69 with CS held high), but downstream runs it as
++	 * 4-wire SPI and all four pads are wired.
++	 */
++	spi-imu {
++		compatible = "spi-gpio";
++		sck-gpios = <&tlmm 157 GPIO_ACTIVE_HIGH>;
++		mosi-gpios = <&tlmm 156 GPIO_ACTIVE_HIGH>;
++		miso-gpios = <&tlmm 155 GPIO_ACTIVE_HIGH>;
++		cs-gpios = <&tlmm 158 GPIO_ACTIVE_LOW>;
++		num-chipselects = <1>;
++		pinctrl-0 = <&imu_spi_default>;
++		pinctrl-names = "default";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		imu@0 {
++			compatible = "invensense,icm42630", "invensense,icm42631";
++			reg = <0>;
++			spi-max-frequency = <9600000>;
++			interrupts-extended = <&tlmm 72 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "INT1";
++			pinctrl-0 = <&imu_int_default>;
++			pinctrl-names = "default";
++			vdd-supply = <&vreg_l10b>;
++			vddio-supply = <&vreg_l10b>;
++			/*
++			 * x/y signs follow iio-sensor-proxy's convention
++			 * (upright device reads 1g on -y): the vendor
++			 * registry .orient maps sensor (x,y,z) to device
++			 * (x,-y,-z) in the Android reaction-force frame,
++			 * which is x/y-negated relative to what
++			 * iio-sensor-proxy expects.
++			 */
++			mount-matrix = "-1", "0", "0",
++				       "0", "1", "0",
++				       "0", "0", "-1";
++		};
++	};
++
+ 	gpio-keys {
+ 		compatible = "gpio-keys";
+ 
+@@ -1130,6 +1213,30 @@ &tlmm {
+ 			       <13 1>, /* NC */
+ 			       <63 2>; /* WLAN UART */
+ 
++	imu_int_default: imu-int-default-state {
++		/* INT1, push-pull active-high */
++		pins = "gpio72";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	imu_spi_default: imu-spi-default-state {
++		/* MISO, MOSI, CLK, CS_N */
++		pins = "gpio155", "gpio156", "gpio157", "gpio158";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	sensor_i2c_default: sensor-i2c-default-state {
++		/* SDA, SCL; external pull-ups to vreg_l10b */
++		pins = "gpio153", "gpio154";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	ts_active: ts-irq-active-state {
+ 		pins = "gpio19";
+ 		function = "gpio";
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c b/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c
+index 76eb22488..6dd665a62 100644
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c
+@@ -5,6 +5,7 @@
+ 
+ #include <linux/kernel.h>
+ #include <linux/device.h>
++#include <linux/limits.h>
+ #include <linux/module.h>
+ #include <linux/slab.h>
+ #include <linux/delay.h>
+@@ -510,9 +511,18 @@ static int inv_icm42600_setup(struct inv_icm42600_state *st,
+ 	if (ret)
+ 		return ret;
+ 	if (val != hw->whoami) {
+-		dev_err(dev, "invalid whoami %#02x expected %#02x (%s)\n",
+-			val, hw->whoami, hw->name);
+-		return -ENODEV;
++		/*
++		 * SPI interface has no ack mechanism.
++		 * 0xFF or 0x00 whoami means no response from the device.
++		 */
++		if (val == U8_MAX || val == 0)
++			return dev_err_probe(dev, -ENODEV,
++					     "invalid whoami %#04x expected %#04x (%s)\n",
++					     val, hw->whoami, hw->name);
++
++		dev_info(dev,
++			 "device id %#04x is not the %#04x associated with the FW-specified device (%s), probably using a valid fallback compatible\n",
++			 val, hw->whoami, hw->name);
+ 	}
+ 	st->name = hw->name;
+ 
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c b/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c
+index 7e4d3ea68..2d234f573 100644
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c
+@@ -78,10 +78,10 @@ static const struct i2c_device_id inv_icm42600_id[] = {
+ 	{ "icm42600", INV_CHIP_ICM42600 },
+ 	{ "icm42602", INV_CHIP_ICM42602 },
+ 	{ "icm42605", INV_CHIP_ICM42605 },
+-	{ "icm42686", INV_CHIP_ICM42686 },
+ 	{ "icm42622", INV_CHIP_ICM42622 },
+-	{ "icm42688", INV_CHIP_ICM42688 },
+ 	{ "icm42631", INV_CHIP_ICM42631 },
++	{ "icm42686", INV_CHIP_ICM42686 },
++	{ "icm42688", INV_CHIP_ICM42688 },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, inv_icm42600_id);
+@@ -96,18 +96,18 @@ static const struct of_device_id inv_icm42600_of_matches[] = {
+ 	}, {
+ 		.compatible = "invensense,icm42605",
+ 		.data = (void *)INV_CHIP_ICM42605,
+-	}, {
+-		.compatible = "invensense,icm42686",
+-		.data = (void *)INV_CHIP_ICM42686,
+ 	}, {
+ 		.compatible = "invensense,icm42622",
+ 		.data = (void *)INV_CHIP_ICM42622,
+-	}, {
+-		.compatible = "invensense,icm42688",
+-		.data = (void *)INV_CHIP_ICM42688,
+ 	}, {
+ 		.compatible = "invensense,icm42631",
+ 		.data = (void *)INV_CHIP_ICM42631,
++	}, {
++		.compatible = "invensense,icm42686",
++		.data = (void *)INV_CHIP_ICM42686,
++	}, {
++		.compatible = "invensense,icm42688",
++		.data = (void *)INV_CHIP_ICM42688,
+ 	},
+ 	{ }
+ };
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c b/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c
+index 13e2e7d38..906362013 100644
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c
+@@ -75,10 +75,10 @@ static const struct spi_device_id inv_icm42600_id[] = {
+ 	{ "icm42600", INV_CHIP_ICM42600 },
+ 	{ "icm42602", INV_CHIP_ICM42602 },
+ 	{ "icm42605", INV_CHIP_ICM42605 },
+-	{ "icm42686", INV_CHIP_ICM42686 },
+ 	{ "icm42622", INV_CHIP_ICM42622 },
+-	{ "icm42688", INV_CHIP_ICM42688 },
+ 	{ "icm42631", INV_CHIP_ICM42631 },
++	{ "icm42686", INV_CHIP_ICM42686 },
++	{ "icm42688", INV_CHIP_ICM42688 },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(spi, inv_icm42600_id);
+@@ -93,18 +93,18 @@ static const struct of_device_id inv_icm42600_of_matches[] = {
+ 	}, {
+ 		.compatible = "invensense,icm42605",
+ 		.data = (void *)INV_CHIP_ICM42605,
+-	}, {
+-		.compatible = "invensense,icm42686",
+-		.data = (void *)INV_CHIP_ICM42686,
+ 	}, {
+ 		.compatible = "invensense,icm42622",
+ 		.data = (void *)INV_CHIP_ICM42622,
+-	}, {
+-		.compatible = "invensense,icm42688",
+-		.data = (void *)INV_CHIP_ICM42688,
+ 	}, {
+ 		.compatible = "invensense,icm42631",
+ 		.data = (void *)INV_CHIP_ICM42631,
++	}, {
++		.compatible = "invensense,icm42686",
++		.data = (void *)INV_CHIP_ICM42686,
++	}, {
++		.compatible = "invensense,icm42688",
++		.data = (void *)INV_CHIP_ICM42688,
+ 	},
+ 	{ }
+ };
+diff --git a/drivers/iio/light/stk3310.c b/drivers/iio/light/stk3310.c
+index a75a83594..edda9c06d 100644
+--- a/drivers/iio/light/stk3310.c
++++ b/drivers/iio/light/stk3310.c
+@@ -28,6 +28,11 @@
+ #define STK3310_REG_PS_DATA_LSB			0x12
+ #define STK3310_REG_ALS_DATA_MSB		0x13
+ #define STK3310_REG_ALS_DATA_LSB		0x14
++#define STK36C61_REG_RED_DATA_MSB		0x15
++#define STK36C61_REG_GREEN_DATA_MSB		0x17
++#define STK36C61_REG_BLUE_DATA_MSB		0x19
++#define STK36C61_REG_CLEAR_DATA_MSB		0x1B
++#define STK36C61_REG_CLEAR_DATA_LSB		0x1C
+ #define STK3310_REG_ID				0x3E
+ #define STK3310_MAX_REG				0x80
+ 
+@@ -42,6 +47,7 @@
+ #define STK3311S34_CHIP_ID_VAL			0x1E
+ #define STK3311X_CHIP_ID_VAL			0x12
+ #define STK3335_CHIP_ID_VAL			0x51
++#define STK36C61_CHIP_ID_VAL			0x95
+ #define STK3310_PSINT_EN			0x01
+ #define STK3310_PS_MAX_VAL			0xFFFF
+ 
+@@ -90,6 +96,7 @@ static const u8 stk3310_chip_ids[] = {
+ 	STK3311X_CHIP_ID_VAL,
+ 	STK3311_CHIP_ID_VAL,
+ 	STK3335_CHIP_ID_VAL,
++	STK36C61_CHIP_ID_VAL,
+ };
+ 
+ /* Estimate maximum proximity values with regard to measurement scale. */
+@@ -166,24 +173,71 @@ static const struct iio_chan_spec_ext_info stk3310_ext_info[] = {
+ 	{ }
+ };
+ 
++#define STK3310_LIGHT_CHANNEL {				\
++	.type = IIO_LIGHT,				\
++	.address = STK3310_REG_ALS_DATA_MSB,		\
++	.info_mask_separate =				\
++		BIT(IIO_CHAN_INFO_RAW) |		\
++		BIT(IIO_CHAN_INFO_SCALE) |		\
++		BIT(IIO_CHAN_INFO_INT_TIME),		\
++}
++
++#define STK3310_PROXIMITY_CHANNEL {			\
++	.type = IIO_PROXIMITY,				\
++	.address = STK3310_REG_PS_DATA_MSB,		\
++	.info_mask_separate =				\
++		BIT(IIO_CHAN_INFO_RAW) |		\
++		BIT(IIO_CHAN_INFO_SCALE) |		\
++		BIT(IIO_CHAN_INFO_INT_TIME),		\
++	.event_spec = stk3310_events,			\
++	.num_event_specs = ARRAY_SIZE(stk3310_events),	\
++	.ext_info = stk3310_ext_info,			\
++}
++
++#define STK36C61_INTENSITY_CHANNEL(_mod, _reg) {	\
++	.type = IIO_INTENSITY,				\
++	.modified = 1,					\
++	.channel2 = IIO_MOD_LIGHT_##_mod,		\
++	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),	\
++	.address = _reg,				\
++}
++
+ static const struct iio_chan_spec stk3310_channels[] = {
+-	{
+-		.type = IIO_LIGHT,
+-		.info_mask_separate =
+-			BIT(IIO_CHAN_INFO_RAW) |
+-			BIT(IIO_CHAN_INFO_SCALE) |
+-			BIT(IIO_CHAN_INFO_INT_TIME),
+-	},
+-	{
+-		.type = IIO_PROXIMITY,
+-		.info_mask_separate =
+-			BIT(IIO_CHAN_INFO_RAW) |
+-			BIT(IIO_CHAN_INFO_SCALE) |
+-			BIT(IIO_CHAN_INFO_INT_TIME),
+-		.event_spec = stk3310_events,
+-		.num_event_specs = ARRAY_SIZE(stk3310_events),
+-		.ext_info = stk3310_ext_info,
+-	}
++	STK3310_LIGHT_CHANNEL,
++	STK3310_PROXIMITY_CHANNEL,
++};
++
++static const struct iio_chan_spec stk36c61_channels[] = {
++	STK3310_LIGHT_CHANNEL,
++	STK3310_PROXIMITY_CHANNEL,
++	STK36C61_INTENSITY_CHANNEL(RED, STK36C61_REG_RED_DATA_MSB),
++	STK36C61_INTENSITY_CHANNEL(GREEN, STK36C61_REG_GREEN_DATA_MSB),
++	STK36C61_INTENSITY_CHANNEL(BLUE, STK36C61_REG_BLUE_DATA_MSB),
++	STK36C61_INTENSITY_CHANNEL(CLEAR, STK36C61_REG_CLEAR_DATA_MSB),
++};
++
++/**
++ * struct stk3310_chip_info - chip-specific data
++ * @name: device name reported to the IIO core
++ * @channels: channel specification
++ * @num_channels: number of channels
++ */
++struct stk3310_chip_info {
++	const char			*name;
++	const struct iio_chan_spec	*channels __counted_by_ptr(num_channels);
++	unsigned int			num_channels;
++};
++
++static const struct stk3310_chip_info stk3310_chip_info = {
++	.name = STK3310_DRIVER_NAME,
++	.channels = stk3310_channels,
++	.num_channels = ARRAY_SIZE(stk3310_channels),
++};
++
++static const struct stk3310_chip_info stk36c61_chip_info = {
++	.name = "stk36c61",
++	.channels = stk36c61_channels,
++	.num_channels = ARRAY_SIZE(stk36c61_channels),
+ };
+ 
+ static IIO_CONST_ATTR(in_illuminance_scale_available, STK3310_SCALE_AVAILABLE);
+@@ -342,25 +396,20 @@ static int stk3310_read_raw(struct iio_dev *indio_dev,
+ 			    struct iio_chan_spec const *chan,
+ 			    int *val, int *val2, long mask)
+ {
+-	u8 reg;
+ 	__be16 buf;
+ 	int ret;
+ 	unsigned int index;
+ 	struct stk3310_data *data = iio_priv(indio_dev);
+ 	struct i2c_client *client = data->client;
+ 
+-	if (chan->type != IIO_LIGHT && chan->type != IIO_PROXIMITY)
++	if (chan->type != IIO_LIGHT && chan->type != IIO_PROXIMITY &&
++	    chan->type != IIO_INTENSITY)
+ 		return -EINVAL;
+ 
+ 	switch (mask) {
+ 	case IIO_CHAN_INFO_RAW:
+-		if (chan->type == IIO_LIGHT)
+-			reg = STK3310_REG_ALS_DATA_MSB;
+-		else
+-			reg = STK3310_REG_PS_DATA_MSB;
+-
+ 		mutex_lock(&data->lock);
+-		ret = regmap_bulk_read(data->regmap, reg, &buf, 2);
++		ret = regmap_bulk_read(data->regmap, chan->address, &buf, 2);
+ 		if (ret < 0) {
+ 			dev_err(&client->dev, "register read failed\n");
+ 			mutex_unlock(&data->lock);
+@@ -372,8 +421,10 @@ static int stk3310_read_raw(struct iio_dev *indio_dev,
+ 	case IIO_CHAN_INFO_INT_TIME:
+ 		if (chan->type == IIO_LIGHT)
+ 			ret = regmap_field_read(data->reg_als_it, &index);
+-		else
++		else if (chan->type == IIO_PROXIMITY)
+ 			ret = regmap_field_read(data->reg_ps_it, &index);
++		else
++			return -EINVAL;
+ 		if (ret < 0)
+ 			return ret;
+ 
+@@ -383,8 +434,10 @@ static int stk3310_read_raw(struct iio_dev *indio_dev,
+ 	case IIO_CHAN_INFO_SCALE:
+ 		if (chan->type == IIO_LIGHT)
+ 			ret = regmap_field_read(data->reg_als_gain, &index);
+-		else
++		else if (chan->type == IIO_PROXIMITY)
+ 			ret = regmap_field_read(data->reg_ps_gain, &index);
++		else
++			return -EINVAL;
+ 		if (ret < 0)
+ 			return ret;
+ 
+@@ -515,6 +568,7 @@ static bool stk3310_is_volatile_reg(struct device *dev, unsigned int reg)
+ 	switch (reg) {
+ 	case STK3310_REG_ALS_DATA_MSB:
+ 	case STK3310_REG_ALS_DATA_LSB:
++	case STK36C61_REG_RED_DATA_MSB ... STK36C61_REG_CLEAR_DATA_LSB:
+ 	case STK3310_REG_PS_DATA_LSB:
+ 	case STK3310_REG_PS_DATA_MSB:
+ 	case STK3310_REG_FLAG:
+@@ -602,10 +656,22 @@ static irqreturn_t stk3310_irq_event_handler(int irq, void *private)
+ 
+ static int stk3310_probe(struct i2c_client *client)
+ {
++	const struct stk3310_chip_info *chip_info;
+ 	int ret;
+ 	struct iio_dev *indio_dev;
+ 	struct stk3310_data *data;
+ 
++	chip_info = i2c_get_match_data(client);
++	if (!chip_info) {
++		/*
++		 * Clients instantiated through the sysfs new_device
++		 * interface under the lowercase compatible-derived name
++		 * have no firmware node and do not match the uppercase
++		 * id table entries.
++		 */
++		chip_info = &stk3310_chip_info;
++	}
++
+ 	indio_dev = devm_iio_device_alloc(&client->dev, sizeof(*data));
+ 	if (!indio_dev)
+ 		return -ENOMEM;
+@@ -624,10 +690,10 @@ static int stk3310_probe(struct i2c_client *client)
+ 		return ret;
+ 
+ 	indio_dev->info = &stk3310_info;
+-	indio_dev->name = STK3310_DRIVER_NAME;
++	indio_dev->name = chip_info->name;
+ 	indio_dev->modes = INDIO_DIRECT_MODE;
+-	indio_dev->channels = stk3310_channels;
+-	indio_dev->num_channels = ARRAY_SIZE(stk3310_channels);
++	indio_dev->channels = chip_info->channels;
++	indio_dev->num_channels = chip_info->num_channels;
+ 
+ 	ret = stk3310_init(indio_dev);
+ 	if (ret < 0)
+@@ -695,28 +761,30 @@ static DEFINE_SIMPLE_DEV_PM_OPS(stk3310_pm_ops, stk3310_suspend,
+ 				stk3310_resume);
+ 
+ static const struct i2c_device_id stk3310_i2c_id[] = {
+-	{ "STK3013" },
+-	{ "STK3310" },
+-	{ "STK3311" },
+-	{ "STK3335" },
++	{ "STK3013", (kernel_ulong_t)&stk3310_chip_info },
++	{ "STK3310", (kernel_ulong_t)&stk3310_chip_info },
++	{ "STK3311", (kernel_ulong_t)&stk3310_chip_info },
++	{ "STK3335", (kernel_ulong_t)&stk3310_chip_info },
++	{ "STK36C61", (kernel_ulong_t)&stk36c61_chip_info },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, stk3310_i2c_id);
+ 
+ static const struct acpi_device_id stk3310_acpi_id[] = {
+-	{"STK3013", 0},
+-	{"STK3310", 0},
+-	{"STK3311", 0},
++	{"STK3013", (kernel_ulong_t)&stk3310_chip_info},
++	{"STK3310", (kernel_ulong_t)&stk3310_chip_info},
++	{"STK3311", (kernel_ulong_t)&stk3310_chip_info},
+ 	{ }
+ };
+ 
+ MODULE_DEVICE_TABLE(acpi, stk3310_acpi_id);
+ 
+ static const struct of_device_id stk3310_of_match[] = {
+-	{ .compatible = "sensortek,stk3013", },
+-	{ .compatible = "sensortek,stk3310", },
+-	{ .compatible = "sensortek,stk3311", },
+-	{ .compatible = "sensortek,stk3335", },
++	{ .compatible = "sensortek,stk3013", .data = &stk3310_chip_info },
++	{ .compatible = "sensortek,stk3310", .data = &stk3310_chip_info },
++	{ .compatible = "sensortek,stk3311", .data = &stk3310_chip_info },
++	{ .compatible = "sensortek,stk3335", .data = &stk3310_chip_info },
++	{ .compatible = "sensortek,stk36c61", .data = &stk36c61_chip_info },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, stk3310_of_match);
+diff --git a/drivers/iio/magnetometer/Kconfig b/drivers/iio/magnetometer/Kconfig
+index fb313e591..7cd4d751e 100644
+--- a/drivers/iio/magnetometer/Kconfig
++++ b/drivers/iio/magnetometer/Kconfig
+@@ -198,6 +198,17 @@ config INFINEON_TLV493D
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called tlv493d.
+ 
++config QMC6308
++	tristate "QST QMC6308 3-Axis Magnetic Sensor"
++	depends on I2C
++	select REGMAP_I2C
++	help
++	  Say Y here to add support for the QST QMC6308 3-Axis
++	  Magnetic Sensor.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called qmc6308.
++
+ config SENSORS_HMC5843
+ 	tristate
+ 	select IIO_BUFFER
+diff --git a/drivers/iio/magnetometer/Makefile b/drivers/iio/magnetometer/Makefile
+index 5bd227f8c..59ea5cf17 100644
+--- a/drivers/iio/magnetometer/Makefile
++++ b/drivers/iio/magnetometer/Makefile
+@@ -26,6 +26,8 @@ obj-$(CONFIG_IIO_ST_MAGN_SPI_3AXIS) += st_magn_spi.o
+ 
+ obj-$(CONFIG_INFINEON_TLV493D)		+= tlv493d.o
+ 
++obj-$(CONFIG_QMC6308)			+= qmc6308.o
++
+ obj-$(CONFIG_SENSORS_HMC5843)		+= hmc5843_core.o
+ obj-$(CONFIG_SENSORS_HMC5843_I2C)	+= hmc5843_i2c.o
+ obj-$(CONFIG_SENSORS_HMC5843_SPI)	+= hmc5843_spi.o
+diff --git a/drivers/iio/magnetometer/qmc6308.c b/drivers/iio/magnetometer/qmc6308.c
+new file mode 100644
+index 000000000..7d4df846b
+--- /dev/null
++++ b/drivers/iio/magnetometer/qmc6308.c
+@@ -0,0 +1,602 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Support for QST QMC6308 3-Axis Magnetic Sensor on I2C bus.
++ *
++ * Copyright (C) 2026 Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
++ *
++ * Datasheet available at
++ * <https://qstcorp.com/upload/pdf/202202/13-52-15%20QMC6308%20Datasheet%20Rev.%20F(1).pdf>
++ */
++
++#include <linux/array_size.h>
++#include <linux/bitfield.h>
++#include <linux/bits.h>
++#include <linux/cleanup.h>
++#include <linux/delay.h>
++#include <linux/dev_printk.h>
++#include <linux/err.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/pm_runtime.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++#include <linux/time.h>
++#include <linux/types.h>
++
++#include <asm/byteorder.h>
++
++#include <linux/iio/iio.h>
++
++#define QMC6308_REG_ID		0x00
++#define QMC6308_REG_X_LSB	0x01
++#define QMC6308_REG_STATUS	0x09
++#define QMC6308_REG_CTRL1	0x0A
++#define QMC6308_REG_CTRL2	0x0B
++#define QMC6308_REG_CTRL3	0x0D
++#define QMC6308_REG_CTRL4	0x29
++
++#define QMC6308_CHIP_ID		0x80
++
++/* Control register 1 */
++#define QMC6308_MODE_MASK	GENMASK(1, 0)
++#define QMC6308_ODR_MASK	GENMASK(3, 2)
++#define QMC6308_OSR1_MASK	GENMASK(5, 4)
++#define QMC6308_OSR2_MASK	GENMASK(7, 6)
++
++#define QMC6308_MODE_SUSPEND	0x00
++#define QMC6308_MODE_NORMAL	0x01
++
++#define QMC6308_ODR_10HZ	0x00
++#define QMC6308_ODR_50HZ	0x01
++#define QMC6308_ODR_100HZ	0x02
++#define QMC6308_ODR_200HZ	0x03
++
++#define QMC6308_OSR1_8		0x00
++#define QMC6308_OSR1_4		0x01
++#define QMC6308_OSR1_2		0x02
++#define QMC6308_OSR1_1		0x03
++
++/* Control register 2 */
++#define QMC6308_SET_RESET_MASK	GENMASK(1, 0)
++#define QMC6308_RNG_MASK	GENMASK(3, 2)
++#define QMC6308_SELF_TEST	BIT(6)
++#define QMC6308_SOFT_RST	BIT(7)
++
++#define QMC6308_SET_RESET_ON	0x00
++
++#define QMC6308_RNG_30G		0x00
++#define QMC6308_RNG_12G		0x01
++#define QMC6308_RNG_8G		0x02
++#define QMC6308_RNG_2G		0x03
++
++/* Status register */
++#define QMC6308_STATUS_DRDY	BIT(0)
++#define QMC6308_STATUS_OVFL	BIT(1)
++
++/* Power-on completion time (datasheet Table 7) */
++#define QMC6308_POR_US		250
++
++#define QMC6308_AUTOSUSPEND_DELAY_MS	500
++
++struct qmc6308_data {
++	struct regmap *regmap;
++	/* Protect data->range/odr/osr and serialize measurements */
++	struct mutex mutex;
++	struct iio_mount_matrix orientation;
++	u8 range;
++	u8 odr;
++	u8 osr;
++};
++
++enum qmc6308_axis {
++	QMC6308_AXIS_X,
++	QMC6308_AXIS_Y,
++	QMC6308_AXIS_Z,
++};
++
++static const int qmc6308_odr_avail[] = {
++	[QMC6308_ODR_10HZ] = 10,
++	[QMC6308_ODR_50HZ] = 50,
++	[QMC6308_ODR_100HZ] = 100,
++	[QMC6308_ODR_200HZ] = 200,
++};
++
++static const int qmc6308_osr1_avail[] = {
++	[QMC6308_OSR1_8] = 8,
++	[QMC6308_OSR1_4] = 4,
++	[QMC6308_OSR1_2] = 2,
++	[QMC6308_OSR1_1] = 1,
++};
++
++/*
++ * Sensitivity is 1000/2500/3750/15000 LSB/Gauss for the
++ * +-30/12/8/2 Gauss ranges respectively.
++ */
++static const int qmc6308_scales[][2] = {
++	[QMC6308_RNG_30G] = { 0, 1000000 },
++	[QMC6308_RNG_12G] = { 0, 400000 },
++	[QMC6308_RNG_8G] = { 0, 266667 },
++	[QMC6308_RNG_2G] = { 0, 66667 },
++};
++
++static int qmc6308_set_mode(struct qmc6308_data *data, unsigned int mode)
++{
++	return regmap_update_bits(data->regmap, QMC6308_REG_CTRL1,
++				  QMC6308_MODE_MASK,
++				  FIELD_PREP(QMC6308_MODE_MASK, mode));
++}
++
++static int qmc6308_take_measurement(struct iio_dev *indio_dev, int index,
++				    int *val)
++{
++	struct qmc6308_data *data = iio_priv(indio_dev);
++	struct device *dev = regmap_get_device(data->regmap);
++	unsigned int status;
++	__le16 buf[3];
++	int ret;
++
++	PM_RUNTIME_ACQUIRE_AUTOSUSPEND(dev, pm);
++	ret = PM_RUNTIME_ACQUIRE_ERR(&pm);
++	if (ret) {
++		dev_err(dev, "Failed to power on (%d)\n", ret);
++		return ret;
++	}
++
++	guard(mutex)(&data->mutex);
++
++	/*
++	 * Reading the status register clears DRDY, which is why the poll
++	 * and the data read stay under one mutex hold. A runtime resume
++	 * clears DRDY too, so a sample converted before the last suspend
++	 * is never returned here.
++	 *
++	 * The timeout is 50ms of headroom over the slowest ODR (10Hz).
++	 */
++	ret = regmap_read_poll_timeout(data->regmap, QMC6308_REG_STATUS,
++				       status,
++				       (status & QMC6308_STATUS_DRDY),
++				       2 * USEC_PER_MSEC,
++				       150 * USEC_PER_MSEC);
++	if (ret)
++		return ret;
++
++	ret = regmap_bulk_read(data->regmap, QMC6308_REG_X_LSB, buf,
++			       sizeof(buf));
++	if (ret)
++		return ret;
++
++	if (status & QMC6308_STATUS_OVFL)
++		return -ERANGE;
++
++	*val = (s16)le16_to_cpu(buf[index]);
++
++	return 0;
++}
++
++static int qmc6308_read_raw(struct iio_dev *indio_dev,
++			    const struct iio_chan_spec *chan,
++			    int *val, int *val2, long mask)
++{
++	struct qmc6308_data *data = iio_priv(indio_dev);
++	int ret;
++
++	switch (mask) {
++	case IIO_CHAN_INFO_RAW:
++		ret = qmc6308_take_measurement(indio_dev, chan->address, val);
++		if (ret)
++			return ret;
++		return IIO_VAL_INT;
++	case IIO_CHAN_INFO_SCALE: {
++		guard(mutex)(&data->mutex);
++
++		*val = qmc6308_scales[data->range][0];
++		*val2 = qmc6308_scales[data->range][1];
++
++		return IIO_VAL_INT_PLUS_NANO;
++	}
++	case IIO_CHAN_INFO_SAMP_FREQ: {
++		guard(mutex)(&data->mutex);
++
++		*val = qmc6308_odr_avail[data->odr];
++
++		return IIO_VAL_INT;
++	}
++	case IIO_CHAN_INFO_OVERSAMPLING_RATIO: {
++		guard(mutex)(&data->mutex);
++
++		*val = qmc6308_osr1_avail[data->osr];
++
++		return IIO_VAL_INT;
++	}
++	default:
++		return -EINVAL;
++	}
++}
++
++static int qmc6308_write_raw(struct iio_dev *indio_dev,
++			     const struct iio_chan_spec *chan,
++			     int val, int val2, long mask)
++{
++	struct qmc6308_data *data = iio_priv(indio_dev);
++	unsigned int status;
++	unsigned int i;
++	int ret;
++
++	switch (mask) {
++	case IIO_CHAN_INFO_SCALE: {
++		if (val != 0)
++			return -EINVAL;
++
++		for (i = 0; i < ARRAY_SIZE(qmc6308_scales); i++) {
++			if (val2 == qmc6308_scales[i][1])
++				break;
++		}
++		if (i == ARRAY_SIZE(qmc6308_scales))
++			return -EINVAL;
++
++		guard(mutex)(&data->mutex);
++
++		ret = regmap_update_bits(data->regmap, QMC6308_REG_CTRL2,
++					 QMC6308_RNG_MASK,
++					 FIELD_PREP(QMC6308_RNG_MASK, i));
++		if (ret)
++			return ret;
++
++		data->range = i;
++
++		/*
++		 * The data registers still hold (and DRDY still
++		 * advertises) a sample converted at the previous range;
++		 * discard it so that a read does not pair old-range data
++		 * with the new scale. A conversion already in flight may
++		 * still complete at the old range, so this narrows the
++		 * window rather than closing it. The range change itself
++		 * took effect, so only log a failure here: an error
++		 * would mislead userspace about an effective write.
++		 */
++		ret = regmap_read(data->regmap, QMC6308_REG_STATUS,
++				  &status);
++		if (ret)
++			dev_warn(regmap_get_device(data->regmap),
++				 "Failed to discard stale sample (%d)\n",
++				 ret);
++
++		return 0;
++	}
++	case IIO_CHAN_INFO_SAMP_FREQ: {
++		for (i = 0; i < ARRAY_SIZE(qmc6308_odr_avail); i++) {
++			if (val == qmc6308_odr_avail[i])
++				break;
++		}
++		if (i == ARRAY_SIZE(qmc6308_odr_avail))
++			return -EINVAL;
++
++		guard(mutex)(&data->mutex);
++
++		ret = regmap_update_bits(data->regmap, QMC6308_REG_CTRL1,
++					 QMC6308_ODR_MASK,
++					 FIELD_PREP(QMC6308_ODR_MASK, i));
++		if (ret)
++			return ret;
++
++		data->odr = i;
++
++		return 0;
++	}
++	case IIO_CHAN_INFO_OVERSAMPLING_RATIO: {
++		for (i = 0; i < ARRAY_SIZE(qmc6308_osr1_avail); i++) {
++			if (val == qmc6308_osr1_avail[i])
++				break;
++		}
++		if (i == ARRAY_SIZE(qmc6308_osr1_avail))
++			return -EINVAL;
++
++		guard(mutex)(&data->mutex);
++
++		ret = regmap_update_bits(data->regmap, QMC6308_REG_CTRL1,
++					 QMC6308_OSR1_MASK,
++					 FIELD_PREP(QMC6308_OSR1_MASK, i));
++		if (ret)
++			return ret;
++
++		data->osr = i;
++
++		return 0;
++	}
++	default:
++		return -EINVAL;
++	}
++}
++
++static int qmc6308_read_avail(struct iio_dev *indio_dev,
++			      struct iio_chan_spec const *chan,
++			      const int **vals, int *type, int *length,
++			      long mask)
++{
++	switch (mask) {
++	case IIO_CHAN_INFO_SAMP_FREQ:
++		*vals = qmc6308_odr_avail;
++		*type = IIO_VAL_INT;
++		*length = ARRAY_SIZE(qmc6308_odr_avail);
++		return IIO_AVAIL_LIST;
++	case IIO_CHAN_INFO_OVERSAMPLING_RATIO:
++		*vals = qmc6308_osr1_avail;
++		*type = IIO_VAL_INT;
++		*length = ARRAY_SIZE(qmc6308_osr1_avail);
++		return IIO_AVAIL_LIST;
++	case IIO_CHAN_INFO_SCALE:
++		*vals = (const int *)qmc6308_scales;
++		*type = IIO_VAL_INT_PLUS_NANO;
++		*length = ARRAY_SIZE(qmc6308_scales) * 2;
++		return IIO_AVAIL_LIST;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int qmc6308_write_raw_get_fmt(struct iio_dev *indio_dev,
++				     struct iio_chan_spec const *chan,
++				     long mask)
++{
++	switch (mask) {
++	case IIO_CHAN_INFO_SCALE:
++		return IIO_VAL_INT_PLUS_NANO;
++	default:
++		return IIO_VAL_INT;
++	}
++}
++
++static const struct iio_mount_matrix *
++qmc6308_get_mount_matrix(const struct iio_dev *indio_dev,
++			 const struct iio_chan_spec *chan)
++{
++	struct qmc6308_data *data = iio_priv(indio_dev);
++
++	return &data->orientation;
++}
++
++static const struct iio_chan_spec_ext_info qmc6308_ext_info[] = {
++	IIO_MOUNT_MATRIX(IIO_SHARED_BY_DIR, qmc6308_get_mount_matrix),
++	{ }
++};
++
++static const struct iio_info qmc6308_info = {
++	.read_raw = qmc6308_read_raw,
++	.write_raw = qmc6308_write_raw,
++	.read_avail = qmc6308_read_avail,
++	.write_raw_get_fmt = qmc6308_write_raw_get_fmt,
++};
++
++static int qmc6308_init(struct qmc6308_data *data)
++{
++	struct regmap *map = data->regmap;
++	unsigned int reg;
++	int ret;
++
++	ret = regmap_read(map, QMC6308_REG_ID, &reg);
++	if (ret)
++		return ret;
++
++	/* Allow unknown IDs so that fallback compatibles work */
++	if (reg != QMC6308_CHIP_ID)
++		dev_warn(regmap_get_device(map),
++			 "Unknown chip id: 0x%02x, continuing\n", reg);
++
++	/* The SOFT_RST bit is not auto-cleared and must be written back 0 */
++	ret = regmap_write(map, QMC6308_REG_CTRL2, QMC6308_SOFT_RST);
++	if (ret)
++		return ret;
++
++	/*
++	 * The datasheet gives no soft-reset completion figure; reuse the
++	 * power-on time as a conservative bound.
++	 */
++	fsleep(QMC6308_POR_US);
++
++	data->range = QMC6308_RNG_30G;
++	data->odr = QMC6308_ODR_50HZ;
++	data->osr = QMC6308_OSR1_8;
++
++	ret = regmap_write(map, QMC6308_REG_CTRL2,
++			   FIELD_PREP(QMC6308_SET_RESET_MASK,
++				      QMC6308_SET_RESET_ON) |
++			   FIELD_PREP(QMC6308_RNG_MASK, data->range));
++	if (ret)
++		return ret;
++
++	/* OSR2 (second-stage filter) set to its power-on default of 0 */
++	return regmap_write(map, QMC6308_REG_CTRL1,
++			    FIELD_PREP(QMC6308_MODE_MASK,
++				       QMC6308_MODE_NORMAL) |
++			    FIELD_PREP(QMC6308_ODR_MASK, data->odr) |
++			    FIELD_PREP(QMC6308_OSR1_MASK, data->osr) |
++			    FIELD_PREP(QMC6308_OSR2_MASK, 0));
++}
++
++static void qmc6308_power_down_action(void *priv)
++{
++	struct qmc6308_data *data = priv;
++
++	if (!pm_runtime_status_suspended(regmap_get_device(data->regmap)))
++		qmc6308_set_mode(data, QMC6308_MODE_SUSPEND);
++}
++
++static bool qmc6308_volatile_reg(struct device *dev, unsigned int reg)
++{
++	return reg >= QMC6308_REG_X_LSB && reg <= QMC6308_REG_STATUS;
++}
++
++static bool qmc6308_writable_reg(struct device *dev, unsigned int reg)
++{
++	switch (reg) {
++	case QMC6308_REG_CTRL1:
++	case QMC6308_REG_CTRL2:
++	case QMC6308_REG_CTRL3:
++	case QMC6308_REG_CTRL4:
++		return true;
++	default:
++		return false;
++	}
++}
++
++static const struct regmap_config qmc6308_regmap_config = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = QMC6308_REG_CTRL4,
++	.cache_type = REGCACHE_MAPLE,
++	.volatile_reg = qmc6308_volatile_reg,
++	.writeable_reg = qmc6308_writable_reg,
++};
++
++#define QMC6308_CHANNEL(_axis)                                 \
++	{                                                      \
++		.type = IIO_MAGN,                              \
++		.modified = 1,                                 \
++		.channel2 = IIO_MOD_##_axis,                   \
++		.address = QMC6308_AXIS_##_axis,               \
++		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),  \
++		.info_mask_shared_by_type =                    \
++			BIT(IIO_CHAN_INFO_SCALE) |             \
++			BIT(IIO_CHAN_INFO_SAMP_FREQ) |         \
++			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO), \
++		.info_mask_shared_by_type_available =          \
++			BIT(IIO_CHAN_INFO_SCALE) |             \
++			BIT(IIO_CHAN_INFO_SAMP_FREQ) |         \
++			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO), \
++		.ext_info = qmc6308_ext_info,                  \
++	}
++
++static const struct iio_chan_spec qmc6308_channels[] = {
++	QMC6308_CHANNEL(X),
++	QMC6308_CHANNEL(Y),
++	QMC6308_CHANNEL(Z),
++};
++
++static int qmc6308_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct qmc6308_data *data;
++	struct iio_dev *indio_dev;
++	struct regmap *map;
++	int ret;
++
++	indio_dev = devm_iio_device_alloc(dev, sizeof(*data));
++	if (!indio_dev)
++		return -ENOMEM;
++
++	i2c_set_clientdata(client, indio_dev);
++
++	map = devm_regmap_init_i2c(client, &qmc6308_regmap_config);
++	if (IS_ERR(map))
++		return dev_err_probe(dev, PTR_ERR(map),
++				     "regmap initialization failed\n");
++
++	ret = devm_regulator_get_enable(dev, "vdd");
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "Failed to enable VDD regulator\n");
++
++	fsleep(QMC6308_POR_US);
++
++	data = iio_priv(indio_dev);
++	data->regmap = map;
++
++	ret = devm_mutex_init(dev, &data->mutex);
++	if (ret)
++		return ret;
++
++	ret = iio_read_mount_matrix(dev, &data->orientation);
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "Failed to read mount matrix\n");
++
++	indio_dev->name = "qmc6308";
++	indio_dev->info = &qmc6308_info;
++	indio_dev->channels = qmc6308_channels;
++	indio_dev->num_channels = ARRAY_SIZE(qmc6308_channels);
++	indio_dev->modes = INDIO_DIRECT_MODE;
++
++	ret = qmc6308_init(data);
++	if (ret)
++		return dev_err_probe(dev, ret, "qmc6308 init failed\n");
++
++	ret = pm_runtime_set_active(dev);
++	if (ret)
++		return ret;
++
++	ret = devm_add_action_or_reset(dev, qmc6308_power_down_action, data);
++	if (ret)
++		return ret;
++
++	pm_runtime_use_autosuspend(dev);
++	pm_runtime_set_autosuspend_delay(dev, QMC6308_AUTOSUSPEND_DELAY_MS);
++	ret = devm_pm_runtime_enable(dev);
++	if (ret)
++		return ret;
++
++	return devm_iio_device_register(dev, indio_dev);
++}
++
++static int qmc6308_runtime_suspend(struct device *dev)
++{
++	struct iio_dev *indio_dev = dev_get_drvdata(dev);
++	struct qmc6308_data *data = iio_priv(indio_dev);
++
++	return qmc6308_set_mode(data, QMC6308_MODE_SUSPEND);
++}
++
++static int qmc6308_runtime_resume(struct device *dev)
++{
++	struct iio_dev *indio_dev = dev_get_drvdata(dev);
++	struct qmc6308_data *data = iio_priv(indio_dev);
++	unsigned int status;
++	int ret;
++
++	ret = qmc6308_set_mode(data, QMC6308_MODE_NORMAL);
++	if (ret)
++		return ret;
++
++	/*
++	 * DRDY may still be set for a sample converted before the last
++	 * suspend; reading the status register clears it so the next
++	 * measurement waits for fresh data.
++	 */
++	ret = regmap_read(data->regmap, QMC6308_REG_STATUS, &status);
++	if (ret) {
++		/* Best effort to leave the chip in a consistent state */
++		qmc6308_set_mode(data, QMC6308_MODE_SUSPEND);
++	}
++
++	return ret;
++}
++
++static DEFINE_RUNTIME_DEV_PM_OPS(qmc6308_pm_ops, qmc6308_runtime_suspend,
++				 qmc6308_runtime_resume, NULL);
++
++static const struct of_device_id qmc6308_match[] = {
++	{ .compatible = "qstcorp,qmc6308" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, qmc6308_match);
++
++static const struct i2c_device_id qmc6308_id[] = {
++	{ .name = "qmc6308" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, qmc6308_id);
++
++static struct i2c_driver qmc6308_driver = {
++	.driver = {
++		.name = "qmc6308",
++		.of_match_table = qmc6308_match,
++		.pm = pm_ptr(&qmc6308_pm_ops),
++	},
++	.id_table = qmc6308_id,
++	.probe = qmc6308_probe,
++};
++module_i2c_driver(qmc6308_driver);
++
++MODULE_DESCRIPTION("QST QMC6308 3-Axis Magnetic Sensor driver");
++MODULE_AUTHOR("Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/iio/pressure/dps310.c b/drivers/iio/pressure/dps310.c
+index 8edaa4d10..976fa750c 100644
+--- a/drivers/iio/pressure/dps310.c
++++ b/drivers/iio/pressure/dps310.c
+@@ -50,7 +50,7 @@
+ #define DPS310_CFG_REG		0x09
+ #define  DPS310_INT_HL		BIT(7)
+ #define  DPS310_TMP_SHIFT_EN	BIT(3)
+-#define  DPS310_PRS_SHIFT_EN	BIT(4)
++#define  DPS310_PRS_SHIFT_EN	BIT(2)
+ #define  DPS310_FIFO_EN		BIT(5)
+ #define  DPS310_SPI_EN		BIT(6)
+ #define DPS310_RESET		0x0c
+@@ -80,13 +80,30 @@ static const int scale_factors[] = {
+ 	2088960,
+ };
+ 
++/*
++ * The Goertek SPL07-003 is a derivative of the DPS310. Differences the
++ * driver must know about are held here: the SPL07 calibration adds the
++ * c31 and c40 pressure coefficients (COEF region grows from 18 to 21
++ * bytes), TMP_CFG bit 7 is part of a wider rate field rather than the
++ * temperature sensor select, and the DPS310 temperature-misread errata
++ * does not apply.
++ */
++struct dps310_chip_info {
++	const char *name;
++	unsigned int num_coef_bytes;
++	bool temp_ext;
++	bool temp_workaround;
++};
++
+ struct dps310_data {
+ 	struct i2c_client *client;
+ 	struct regmap *regmap;
+ 	struct mutex lock;	/* Lock for sequential HW access functions */
++	const struct dps310_chip_info *chip;
+ 
+ 	s32 c0, c1;
+ 	s32 c00, c10, c20, c30, c01, c11, c21;
++	s32 c31, c40;
+ 	s32 pressure_raw;
+ 	s32 temp_raw;
+ 	bool timeout_recovery_failed;
+@@ -111,13 +128,14 @@ static const struct iio_chan_spec dps310_channels[] = {
+ static int dps310_get_coefs(struct dps310_data *data)
+ {
+ 	int rc;
+-	u8 coef[18];
++	u8 coef[21];
+ 	u32 c0, c1;
+ 	u32 c00, c10, c20, c30, c01, c11, c21;
++	u32 c31, c40;
+ 
+ 	/* Read all sensor calibration coefficients from the COEF registers. */
+ 	rc = regmap_bulk_read(data->regmap, DPS310_COEF_BASE, coef,
+-			      sizeof(coef));
++			      data->chip->num_coef_bytes);
+ 	if (rc < 0)
+ 		return rc;
+ 
+@@ -157,6 +175,15 @@ static int dps310_get_coefs(struct dps310_data *data)
+ 	c30 = (coef[16] << 8) | coef[17];
+ 	data->c30 = sign_extend32(c30, 15);
+ 
++	/* SPL07-003 carries two more coefficients, 12 bit 2's complement */
++	if (data->chip->num_coef_bytes > 18) {
++		c31 = (coef[18] << 4) | (coef[19] >> 4);
++		data->c31 = sign_extend32(c31, 11);
++
++		c40 = ((coef[19] & GENMASK(3, 0)) << 8) | coef[20];
++		data->c40 = sign_extend32(c40, 11);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -170,6 +197,9 @@ static int dps310_temp_workaround(struct dps310_data *data)
+ 	int rc;
+ 	int reg;
+ 
++	if (!data->chip->temp_workaround)
++		return 0;
++
+ 	rc = regmap_read(data->regmap, 0x32, &reg);
+ 	if (rc < 0)
+ 		return rc;
+@@ -214,10 +244,13 @@ static int dps310_startup(struct dps310_data *data)
+ 		return rc;
+ 
+ 	/*
+-	 * Set up external (MEMS) temperature sensor in single sample, one
+-	 * measurement per second mode
++	 * Set up the temperature sensor in single sample, one measurement
++	 * per second mode. On the DPS310 select the external (MEMS) sensor;
++	 * on the SPL07-003 bit 7 is part of the rate field instead and there
++	 * is no sensor select at this position.
+ 	 */
+-	rc = regmap_write(data->regmap, DPS310_TMP_CFG, DPS310_TMP_EXT);
++	rc = regmap_write(data->regmap, DPS310_TMP_CFG,
++			  data->chip->temp_ext ? DPS310_TMP_EXT : 0);
+ 	if (rc)
+ 		return rc;
+ 
+@@ -628,6 +661,75 @@ static int dps310_write_raw(struct iio_dev *iio,
+ 	return rc;
+ }
+ 
++/*
++ * The SPL07-003 pressure polynomial has two terms more than the DPS310's:
++ *
++ *   P(Pa) = c00 + Praw_sc * (c10 + Praw_sc * (c20 + Praw_sc * (c30
++ *             + Praw_sc * c40)))
++ *         + Traw_sc * (c01 + Praw_sc * (c11 + Praw_sc * (c21
++ *             + Praw_sc * c31)))
++ *
++ * The DPS310 term-by-term scheme cannot be extended to the 4th-order
++ * term: Praw^4 * c40 overflows s64. Praw_sc and Traw_sc are <= 1 in
++ * magnitude over the calibrated range, so evaluate with Horner's method
++ * in Q39 fixed point instead, where every intermediate stays well inside
++ * s64 (the scaled ratios are clamped to |2| to keep that true for
++ * out-of-range raw values).
++ */
++static int dps310_calculate_pressure_spl07(struct dps310_data *data, int *val)
++{
++	int rc;
++	int t_ready;
++	int kpi;
++	int kti;
++	s64 ps;
++	s64 ts;
++	s64 p;
++	s64 t;
++
++	rc = dps310_get_pres_k(data, &kpi);
++	if (rc)
++		return rc;
++
++	rc = dps310_get_temp_k(data, &kti);
++	if (rc)
++		return rc;
++
++	/* Refresh temp if it's ready, otherwise just use the latest value */
++	if (mutex_trylock(&data->lock)) {
++		rc = regmap_read(data->regmap, DPS310_MEAS_CFG, &t_ready);
++		if (rc >= 0 && t_ready & DPS310_TMP_RDY)
++			dps310_read_temp_ready(data);
++
++		mutex_unlock(&data->lock);
++	}
++
++	ps = div_s64((s64)data->pressure_raw << 39, kpi);
++	ps = clamp_t(s64, ps, -(2LL << 39), 2LL << 39);
++	ts = div_s64((s64)data->temp_raw << 39, kti);
++	ts = clamp_t(s64, ts, -(2LL << 39), 2LL << 39);
++
++	p = data->c40;
++	p = ((p * ps) >> 39) + data->c30;
++	p = ((p * ps) >> 39) + data->c20;
++	p = ((p * ps) >> 39) + data->c10;
++	p = ((p * ps) >> 39) + data->c00;
++
++	t = data->c31;
++	t = ((t * ps) >> 39) + data->c21;
++	t = ((t * ps) >> 39) + data->c11;
++	t = ((t * ps) >> 39) + data->c01;
++
++	p += (t * ts) >> 39;
++
++	if (p < 0LL)
++		return -ERANGE;
++
++	*val = (int)min_t(s64, p, INT_MAX);
++
++	return 0;
++}
++
+ static int dps310_calculate_pressure(struct dps310_data *data, int *val)
+ {
+ 	int i;
+@@ -728,7 +830,10 @@ static int dps310_read_pressure(struct dps310_data *data, int *val, int *val2,
+ 		if (rc)
+ 			return rc;
+ 
+-		rc = dps310_calculate_pressure(data, val);
++		if (data->chip->num_coef_bytes > 18)
++			rc = dps310_calculate_pressure_spl07(data, val);
++		else
++			rc = dps310_calculate_pressure(data, val);
+ 		if (rc)
+ 			return rc;
+ 
+@@ -843,9 +948,20 @@ static const struct iio_info dps310_info = {
+ 	.write_raw = dps310_write_raw,
+ };
+ 
++static const struct dps310_chip_info dps310_chip_info = {
++	.name = DPS310_DEV_NAME,
++	.num_coef_bytes = 18,
++	.temp_ext = true,
++	.temp_workaround = true,
++};
++
++static const struct dps310_chip_info spl07_003_chip_info = {
++	.name = "spl07-003",
++	.num_coef_bytes = 21,
++};
++
+ static int dps310_probe(struct i2c_client *client)
+ {
+-	const struct i2c_device_id *id = i2c_client_get_device_id(client);
+ 	struct dps310_data *data;
+ 	struct iio_dev *iio;
+ 	int rc;
+@@ -858,7 +974,11 @@ static int dps310_probe(struct i2c_client *client)
+ 	data->client = client;
+ 	mutex_init(&data->lock);
+ 
+-	iio->name = id->name;
++	data->chip = i2c_get_match_data(client);
++	if (!data->chip)
++		data->chip = &dps310_chip_info;
++
++	iio->name = data->chip->name;
+ 	iio->channels = dps310_channels;
+ 	iio->num_channels = ARRAY_SIZE(dps310_channels);
+ 	iio->info = &dps310_info;
+@@ -887,11 +1007,19 @@ static int dps310_probe(struct i2c_client *client)
+ }
+ 
+ static const struct i2c_device_id dps310_id[] = {
+-	{ DPS310_DEV_NAME },
++	{ DPS310_DEV_NAME, (kernel_ulong_t)&dps310_chip_info },
++	{ "spl07-003", (kernel_ulong_t)&spl07_003_chip_info },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, dps310_id);
+ 
++static const struct of_device_id dps310_of_match[] = {
++	{ .compatible = "infineon,dps310", .data = &dps310_chip_info },
++	{ .compatible = "goertek,spl07-003", .data = &spl07_003_chip_info },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, dps310_of_match);
++
+ static const struct acpi_device_id dps310_acpi_match[] = {
+ 	{ "IFX3100" },
+ 	{ }
+@@ -901,6 +1029,7 @@ MODULE_DEVICE_TABLE(acpi, dps310_acpi_match);
+ static struct i2c_driver dps310_driver = {
+ 	.driver = {
+ 		.name = DPS310_DEV_NAME,
++		.of_match_table = dps310_of_match,
+ 		.acpi_match_table = dps310_acpi_match,
+ 	},
+ 	.probe = dps310_probe,

@@ -1,0 +1,24 @@
+From 54601fd07c0254c55cc63947ca37a9e04fbe3f89 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 04:16:32 +0000
+Subject: [PATCH] Filer selected chip width
+
+---
+ src/resources/style.css | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 6262520..478c250 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -44,6 +44,7 @@
+   background-color: @luma_content;
+ }
+ .luma-files-window #filer-location-scope image { -gtk-icon-size: 0px; }
++.luma-files-window box.lumaui-bar-chip { min-width: 243px; }
+ .luma-files-window row.luma-live-rail-row { padding-left: 3px; padding-right: 3px; }
+ 
+ /* Filer uses a deliberate two-row native title composition. */
+-- 
+2.55.0
+

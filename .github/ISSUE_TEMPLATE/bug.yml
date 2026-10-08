@@ -1,0 +1,27 @@
+name: Bug report
+description: Report an OS, app, or device issue.
+body:
+  - type: input
+    id: component
+    attributes:
+      label: App or component
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Build, architecture, and device
+      placeholder: Build ID, x86_64 or AArch64, device model
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected behavior, and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove personal data and credentials. Report security issues privately.

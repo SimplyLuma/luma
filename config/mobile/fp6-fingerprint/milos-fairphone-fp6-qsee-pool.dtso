@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0
+/dts-v1/;
+/plugin/;
+
+/*
+ * Fairphone 6 QSEE application-image staging pool.
+ *
+ * QSEE requires each application image at a 4 MiB-aligned physical address.
+ * focal64 is 3,595,661 bytes, so the loader requests PAGE_ALIGN(image) plus a
+ * 4 MiB alignment margin: 7,790,592 bytes. Without an early reservation this
+ * becomes an unreliable order-11 allocation after userspace has started.
+ *
+ * Keep CONFIG_DMA_CMA disabled: enabling it changes struct device and breaks
+ * the ABI of the installed non-CMA module set. Qualcomm SCM already binds a
+ * standard reserved-memory coherent pool through
+ * of_reserved_mem_device_init(). This 16 MiB region provides one 8 MiB
+ * allocator unit plus headroom for SCM and listener buffers. qcom_scm uses a
+ * 32-bit DMA window on this device, so alloc-ranges constrains early dynamic
+ * placement to System RAM between 2 and 4 GiB. It is deliberately non-reusable
+ * and assigned only to SCM; no biometric operation is enabled.
+ */
+
+&{/reserved-memory} {
+	qseecom_ta_pool: qseecom-ta-pool {
+		compatible = "shared-dma-pool";
+		size = <0x0 0x01000000>;
+		alignment = <0x0 0x00400000>;
+		alloc-ranges = <0x0 0x80000000 0x0 0x80000000>;
+		no-map;
+	};
+};
+
+&{/firmware/scm} {
+	memory-region = <&qseecom_ta_pool>;
+};

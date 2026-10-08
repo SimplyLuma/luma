@@ -1,0 +1,100 @@
+From d387b45800d954920ec597afcc7cee42f42659fd Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:25:43 +0000
+Subject: [PATCH] Filer: mark playable grid thumbnails and Write documents
+
+---
+ src/nautilus-grid-cell.c | 24 ++++++++++++++++++++++--
+ src/resources/style.css  |  6 ++++++
+ 2 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index fc0f69e..584b836 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -36,6 +36,7 @@ struct _NautilusGridCell
+     GtkWidget *extension_badge;
+     GtkWidget *duration_badge;
+     GtkWidget *document_app_icon;
++    GtkWidget *play_badge;
+ 
+     gboolean in_file_change;
+ };
+@@ -84,8 +85,13 @@ update_art_badges (NautilusGridCell *self,
+     }
+ 
+     GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (self));
+-    if (app_icon != NULL && display != NULL &&
+-        gtk_icon_theme_has_icon (gtk_icon_theme_get_for_display (display), app_icon))
++    GtkIconTheme *theme = display != NULL ? gtk_icon_theme_get_for_display (display) : NULL;
++    if (g_strcmp0 (app_icon, "io.luma.Write") == 0 && theme != NULL &&
++        !gtk_icon_theme_has_icon (theme, app_icon))
++    {
++        app_icon = "org.projectluma.Write";
++    }
++    if (app_icon != NULL && theme != NULL && gtk_icon_theme_has_icon (theme, app_icon))
+     {
+         gtk_image_set_from_icon_name (GTK_IMAGE (self->document_app_icon), app_icon);
+         gtk_widget_set_visible (self->document_app_icon, TRUE);
+@@ -104,6 +110,9 @@ update_art_badges (NautilusGridCell *self,
+     gtk_widget_set_visible (self->extension_badge, show_extension);
+     gtk_label_set_text (GTK_LABEL (self->duration_badge), duration);
+     gtk_widget_set_visible (self->duration_badge, duration != NULL && duration[0] != '\0');
++    const char *mime_type = nautilus_file_get_mime_type (file);
++    gtk_widget_set_visible (self->play_badge,
++                            mime_type != NULL && g_str_has_prefix (mime_type, "video/"));
+ }
+ 
+ static void
+@@ -321,6 +330,7 @@ nautilus_grid_cell_dispose (GObject *object)
+     gtk_widget_unparent (self->extension_badge);
+     gtk_widget_unparent (self->duration_badge);
+     gtk_widget_unparent (self->document_app_icon);
++    gtk_widget_unparent (self->play_badge);
+     gtk_widget_dispose_template (GTK_WIDGET (self), NAUTILUS_TYPE_GRID_CELL);
+     g_clear_object (&self->item_signal_group);
+ 
+@@ -472,6 +482,11 @@ nautilus_grid_cell_size_allocate (GtkWidget *widget,
+         26, 26
+     };
+     gtk_widget_size_allocate (self->document_app_icon, &child_allocation, -1);
++    child_allocation = (GtkAllocation) {
++        MAX (0, (width - 26) / 2), MAX (0, (icon_size - 26) / 2),
++        26, 26
++    };
++    gtk_widget_size_allocate (self->play_badge, &child_allocation, -1);
+ 
+     /* Put the emblems_box into the "end" margin. */
+     child_allocation.width = side;
+@@ -585,6 +600,11 @@ nautilus_grid_cell_init (NautilusGridCell *self)
+     gtk_image_set_pixel_size (GTK_IMAGE (self->document_app_icon), 26);
+     gtk_widget_set_visible (self->document_app_icon, FALSE);
+     gtk_widget_set_parent (self->document_app_icon, GTK_WIDGET (self));
++    self->play_badge = gtk_image_new_from_icon_name ("media-playback-start-symbolic");
++    gtk_image_set_pixel_size (GTK_IMAGE (self->play_badge), 14);
++    gtk_widget_add_css_class (self->play_badge, "filer-grid-play");
++    gtk_widget_set_visible (self->play_badge, FALSE);
++    gtk_widget_set_parent (self->play_badge, GTK_WIDGET (self));
+ 
+     g_signal_connect (self, "notify::icon-size",
+                       G_CALLBACK (on_icon_size_changed), NULL);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 307d443..7573c83 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -409,6 +409,12 @@
+   font-weight: var(--lumaui-t-label-weight);
+ }
+ 
++.luma-files-window .nautilus-grid-view .filer-grid-play {
++  color: @luma_ink;
++  background-color: @luma_content;
++  border-radius: 999px;
++}
++
+ /* Native List presentation. GtkColumnView remains the one column/sort model. */
+ .luma-files-window .nautilus-list-view columnview {
+   padding-left: 12px;
+-- 
+2.55.0
+

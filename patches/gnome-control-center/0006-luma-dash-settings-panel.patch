@@ -1,0 +1,328 @@
+--- /dev/null
++++ b/panels/dash/cc-dash-panel.c
+@@ -0,0 +1,244 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later
++ * Native Settings adapter for the renderer-independent Luma shell state.
++ */
++#include <config.h>
++#include <math.h>
++#include <glib/gi18n.h>
++#include <shell/cc-panel.h>
++
++#define CC_TYPE_DASH_PANEL (cc_dash_panel_get_type ())
++G_DECLARE_FINAL_TYPE (CcDashPanel, cc_dash_panel, CC, DASH_PANEL, CcPanel)
++
++struct _CcDashPanel
++{
++  CcPanel parent_instance;
++  GSettings *settings;
++  GtkWidget *preview;
++  AdwSwitchRow *float_row;
++  GtkCheckButton *positions[4];
++};
++
++CC_PANEL_REGISTER (CcDashPanel, cc_dash_panel)
++static const char *edges[] = { "bottom", "top", "left", "right" };
++
++static void
++rounded_rect (cairo_t *cr, double x, double y, double w, double h, double r)
++{
++  cairo_new_sub_path (cr);
++  cairo_arc (cr, x+w-r, y+r, r, -G_PI_2, 0);
++  cairo_arc (cr, x+w-r, y+h-r, r, 0, G_PI_2);
++  cairo_arc (cr, x+r, y+h-r, r, G_PI_2, G_PI);
++  cairo_arc (cr, x+r, y+r, r, G_PI, G_PI+G_PI_2);
++  cairo_close_path (cr);
++}
++
++static void
++surface_rect (cairo_t *cr, double x, double y, double w, double h,
++              const char *edge, gboolean attached, gboolean flush)
++{
++  double tl = 5, tr = 5, br = 5, bl = 5;
++  if (flush) tl = tr = br = bl = 0;
++  else if (attached)
++    {
++      if (g_str_equal (edge, "top")) tl = tr = 0;
++      if (g_str_equal (edge, "bottom")) bl = br = 0;
++      if (g_str_equal (edge, "left")) tl = bl = 0;
++      if (g_str_equal (edge, "right")) tr = br = 0;
++    }
++  cairo_new_sub_path (cr);
++  cairo_arc (cr, x+w-tr, y+tr, tr, -G_PI_2, 0);
++  cairo_arc (cr, x+w-br, y+h-br, br, 0, G_PI_2);
++  cairo_arc (cr, x+bl, y+h-bl, bl, G_PI_2, G_PI);
++  cairo_arc (cr, x+tl, y+tl, tl, G_PI, G_PI+G_PI_2);
++  cairo_close_path (cr);
++}
++
++/* This is an illustration, not a second Shell renderer. All colors derive
++ * from the current native foreground and work in light/dark/high contrast. */
++static void
++preview_draw (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
++{
++  CcDashPanel *self = data;
++  g_autofree char *edge = g_settings_get_string (self->settings, "shelf-edge");
++  g_autofree char *mode = g_settings_get_string (self->settings, "shelf-edge-mode");
++  g_autofree char *surface = g_settings_get_string (self->settings, "shelf-surface-mode");
++  gboolean vertical = g_str_equal (edge, "left") || g_str_equal (edge, "right");
++  gboolean attached = g_str_equal (mode, "protruding");
++  gboolean span = g_settings_get_boolean (self->settings, "shelf-span-full");
++  gboolean floating = g_settings_get_boolean (self->settings, "shelf-float-ends");
++  gboolean islands = g_str_equal (surface, "separate");
++  GdkRGBA fg;
++  double sw = MIN (width - 32, 300), sh = height - 24, sx = (width-sw)/2, sy = 12;
++  double inset = attached ? 0 : 7, gutter = !span || floating ? 7 : 0;
++  double available = (vertical ? sh : sw) - 2*gutter;
++  double length = span ? available : MIN (available, vertical ? 116 : 164);
++  double start = ((vertical ? sh : sw) - length)/2;
++  double x = vertical ? (g_str_equal (edge, "left") ? sx+inset : sx+sw-inset-20) : sx+start;
++  double y = vertical ? sy+start : (g_str_equal (edge, "top") ? sy+inset : sy+sh-inset-20);
++
++  gtk_widget_get_color (GTK_WIDGET (area), &fg);
++  cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, .1);
++  rounded_rect (cr, sx, sy, sw, sh, 10);
++  cairo_fill_preserve (cr);
++  cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, .45);
++  cairo_set_line_width (cr, 1);
++  cairo_stroke (cr);
++  cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, .85);
++  if (!islands)
++    {
++      surface_rect (cr, x, y, vertical ? 20 : length, vertical ? length : 20,
++                    edge, attached, span && !floating);
++      cairo_fill (cr);
++    }
++  else
++    {
++      double dock = span ? MIN (length * .55, 100) : length * .62;
++      double status = MIN (length-dock-4, vertical ? 36 : 48);
++      rounded_rect (cr, x, y, vertical ? 20 : dock, vertical ? dock : 20, 5);
++      cairo_fill (cr);
++      rounded_rect (cr, vertical ? x : x+length-status, vertical ? y+length-status : y,
++                    vertical ? 20 : status, vertical ? status : 20, 5);
++      cairo_fill (cr);
++    }
++}
++
++static void
++sync_settings (CcDashPanel *self)
++{
++  g_autofree char *edge = g_settings_get_string (self->settings, "shelf-edge");
++  gboolean span = g_settings_get_boolean (self->settings, "shelf-span-full");
++  for (guint i = 0; i < G_N_ELEMENTS (edges); i++)
++    gtk_check_button_set_active (self->positions[i], g_str_equal (edge, edges[i]));
++  gtk_widget_set_sensitive (GTK_WIDGET (self->float_row), span &&
++                            g_settings_is_writable (self->settings, "shelf-float-ends"));
++  adw_action_row_set_subtitle (ADW_ACTION_ROW (self->float_row), span ?
++    _("Leave a gap at each end of the Dash") : _("Turn on Span full edge to change this setting"));
++  gtk_widget_queue_draw (self->preview);
++}
++
++static void
++settings_changed (GSettings *settings, const char *key, CcDashPanel *self)
++{
++  sync_settings (self);
++}
++
++static void
++position_toggled (GtkCheckButton *button, CcDashPanel *self)
++{
++  if (gtk_check_button_get_active (button))
++    {
++      const char *edge = g_object_get_data (G_OBJECT (button), "dash-edge");
++      g_autofree char *current = g_settings_get_string (self->settings, "shelf-edge");
++      if (!g_str_equal (current, edge))
++        g_settings_set_string (self->settings, "shelf-edge", edge);
++    }
++}
++
++static gboolean
++string_to_active (GValue *value, GVariant *variant, gpointer data)
++{
++  const char * const *values = data;
++  g_value_set_boolean (value, g_str_equal (g_variant_get_string (variant, NULL), values[1]));
++  return TRUE;
++}
++
++static GVariant *
++active_to_string (const GValue *value, const GVariantType *type, gpointer data)
++{
++  const char * const *values = data;
++  return g_variant_new_string (values[g_value_get_boolean (value)]);
++}
++
++static AdwSwitchRow *
++add_switch (CcDashPanel *self, AdwPreferencesGroup *group, const char *title,
++            const char *subtitle, const char *key, const char * const *values)
++{
++  AdwSwitchRow *row = ADW_SWITCH_ROW (adw_switch_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
++  adw_action_row_set_subtitle (ADW_ACTION_ROW (row), subtitle);
++  adw_preferences_group_add (group, GTK_WIDGET (row));
++  if (values)
++    g_settings_bind_with_mapping (self->settings, key, row, "active", G_SETTINGS_BIND_DEFAULT,
++                                 string_to_active, active_to_string, (gpointer) values, NULL);
++  else
++    g_settings_bind (self->settings, key, row, "active",
++                     g_str_equal (key, "shelf-float-ends") ? G_SETTINGS_BIND_NO_SENSITIVITY : G_SETTINGS_BIND_DEFAULT);
++  return row;
++}
++
++static void
++cc_dash_panel_dispose (GObject *object)
++{
++  CcDashPanel *self = CC_DASH_PANEL (object);
++  g_clear_object (&self->settings);
++  G_OBJECT_CLASS (cc_dash_panel_parent_class)->dispose (object);
++}
++
++static void
++cc_dash_panel_class_init (CcDashPanelClass *klass)
++{
++  G_OBJECT_CLASS (klass)->dispose = cc_dash_panel_dispose;
++}
++
++static void
++cc_dash_panel_init (CcDashPanel *self)
++{
++  static const char * const protrude_values[] = { "floating", "protruding" };
++  static const char * const island_values[] = { "connected", "separate" };
++  const char *titles[] = { _("Bottom"), _("Top"), _("Left"), _("Right") };
++  AdwToolbarView *toolbar = ADW_TOOLBAR_VIEW (adw_toolbar_view_new ());
++  AdwPreferencesPage *page = ADW_PREFERENCES_PAGE (adw_preferences_page_new ());
++  AdwPreferencesGroup *preview = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  AdwPreferencesGroup *position = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  AdwPreferencesGroup *shape = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  AdwPreferencesGroup *appearance = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++
++  self->settings = g_settings_new ("org.project_luma.shell-state");
++  adw_navigation_page_set_title (ADW_NAVIGATION_PAGE (self), _("Dash"));
++  adw_navigation_page_set_child (ADW_NAVIGATION_PAGE (self), GTK_WIDGET (toolbar));
++  adw_toolbar_view_add_top_bar (toolbar, adw_header_bar_new ());
++  adw_toolbar_view_set_content (toolbar, GTK_WIDGET (page));
++  adw_preferences_group_set_description (preview,
++    _("The Dash contains your apps, clock, and quick options. Changes apply immediately on the primary desktop monitor."));
++  self->preview = gtk_drawing_area_new ();
++  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (self->preview), 190);
++  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (self->preview), preview_draw, self, NULL);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (self->preview),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL, _("Dash layout preview"), -1);
++  adw_preferences_group_add (preview, self->preview);
++  adw_preferences_page_add (page, preview);
++
++  adw_preferences_group_set_title (position, _("Position"));
++  for (guint i = 0; i < G_N_ELEMENTS (edges); i++)
++    {
++      AdwActionRow *row = ADW_ACTION_ROW (adw_action_row_new ());
++      self->positions[i] = GTK_CHECK_BUTTON (gtk_check_button_new ());
++      if (i) gtk_check_button_set_group (self->positions[i], self->positions[0]);
++      gtk_widget_set_valign (GTK_WIDGET (self->positions[i]), GTK_ALIGN_CENTER);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (self->positions[i]),
++                                      GTK_ACCESSIBLE_PROPERTY_LABEL, titles[i], -1);
++      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), titles[i]);
++      adw_action_row_add_suffix (row, GTK_WIDGET (self->positions[i]));
++      adw_action_row_set_activatable_widget (row, GTK_WIDGET (self->positions[i]));
++      adw_preferences_group_add (position, GTK_WIDGET (row));
++      g_object_set_data (G_OBJECT (self->positions[i]), "dash-edge", (gpointer) edges[i]);
++      g_settings_bind_writable (self->settings, "shelf-edge", self->positions[i], "sensitive", FALSE);
++      g_signal_connect_object (self->positions[i], "toggled", G_CALLBACK (position_toggled), self, 0);
++    }
++  adw_preferences_page_add (page, position);
++  adw_preferences_group_set_title (shape, _("Shape"));
++  add_switch (self, shape, _("Protrude from edge"), _("Attach the Dash to the screen edge"),
++              "shelf-edge-mode", protrude_values);
++  add_switch (self, shape, _("Span full edge"), _("Stretch along the selected edge"),
++              "shelf-span-full", NULL);
++  self->float_row = add_switch (self, shape, _("Float outer edges"), "",
++                                "shelf-float-ends", NULL);
++  adw_preferences_page_add (page, shape);
++  adw_preferences_group_set_title (appearance, _("Appearance"));
++  add_switch (self, appearance, _("Use islands"), _("Give the dock and status area separate surfaces"),
++              "shelf-surface-mode", island_values);
++  adw_preferences_page_add (page, appearance);
++  g_signal_connect_object (self->settings, "changed", G_CALLBACK (settings_changed), self, 0);
++  g_signal_connect_object (self->settings, "writable-changed", G_CALLBACK (sync_settings), self, G_CONNECT_SWAPPED);
++  sync_settings (self);
++}
+--- /dev/null
++++ b/panels/dash/gnome-dash-panel.desktop.in
+@@ -0,0 +1,12 @@
++[Desktop Entry]
++Name=Dash
++Comment=Arrange your apps, clock, and quick options
++Exec=gnome-control-center dash
++Icon=org.gnome.Settings-multitasking-symbolic
++Terminal=false
++Type=Application
++NoDisplay=true
++StartupNotify=true
++Categories=GNOME;GTK;Settings;DesktopSettings;X-GNOME-Settings-Panel;X-GNOME-PersonalizationSettings;
++OnlyShowIn=GNOME;
++Keywords=Dash;Dock;Position;Islands;Shelf;
+--- /dev/null
++++ b/panels/dash/meson.build
+@@ -0,0 +1,16 @@
++panels_list += cappletname
++i18n.merge_file(
++  type: 'desktop',
++  input: 'gnome-dash-panel.desktop.in',
++  output: 'gnome-dash-panel.desktop',
++  po_dir: po_dir,
++  install: true,
++  install_dir: control_center_desktopdir
++)
++panels_libs += static_library(
++  cappletname,
++  sources: files('cc-dash-panel.c'),
++  include_directories: [top_inc, common_inc],
++  dependencies: common_deps,
++  c_args: cflags
++)
+--- a/panels/meson.build
++++ b/panels/meson.build
+@@ -7,6 +7,7 @@
+ panels = [
+   'applications',
+   'background',
++  'dash',
+   'color',
+   'display',
+   'mouse',
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -301,3 +301,6 @@
+ shell/shortcuts-dialog.blp
+ # Please do not remove this file from POTFILES.in. Run "git submodule init && git submodule update" to get it.
+ subprojects/gvc/gvc-mixer-control.c
++
++panels/dash/cc-dash-panel.c
++panels/dash/gnome-dash-panel.desktop.in
+--- a/shell/cc-panel-list.c
++++ b/shell/cc-panel-list.c
+@@ -382,6 +382,7 @@
+   "power",
+   "multitasking",
+   "background",
++  "dash",
+ 
+   "separator",
+ 
+--- a/shell/cc-panel-loader.c
++++ b/shell/cc-panel-loader.c
+@@ -33,6 +33,7 @@
+ /* Extension points */
+ extern GType cc_applications_panel_get_type (void);
+ extern GType cc_background_panel_get_type (void);
++extern GType cc_dash_panel_get_type (void);
+ #ifdef BUILD_BLUETOOTH
+ extern GType cc_bluetooth_panel_get_type (void);
+ #endif /* BUILD_BLUETOOTH */
+@@ -87,6 +88,7 @@
+ static CcPanelLoaderVtable default_panels[] =
+ {
+   PANEL_TYPE("applications",     cc_applications_panel_get_type,         NULL),
++  PANEL_TYPE("dash", cc_dash_panel_get_type, NULL),
+   PANEL_TYPE("background",       cc_background_panel_get_type,           NULL),
+ #ifdef BUILD_BLUETOOTH
+   PANEL_TYPE("bluetooth",        cc_bluetooth_panel_get_type,            NULL),

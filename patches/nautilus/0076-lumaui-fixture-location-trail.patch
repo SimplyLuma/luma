@@ -1,0 +1,42 @@
+From 9c56b6f8147222635af7397aab48ef326c1d26e9 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 14:58:34 +0000
+Subject: [PATCH] Filer: anchor fixture breadcrumb to its Home and keep history
+ in bar
+
+---
+ src/nautilus-window.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 6fa7bed..f25eed3 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -326,7 +326,11 @@ update_location_trail (NautilusWindow *window)
+     GFile *location = window->active_slot != NULL
+                       ? nautilus_window_slot_get_location (window->active_slot) : NULL;
+     g_autoptr (GFile) parent = location != NULL ? g_file_get_parent (location) : NULL;
+-    g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++    const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++    g_autofree char *fixture_home = fixture_root != NULL
++                                    ? g_build_filename (fixture_root, "Home", NULL) : NULL;
++    g_autoptr (GFile) home = g_file_new_for_path (fixture_home != NULL
++                                                  ? fixture_home : g_get_home_dir ());
+     g_autofree char *parent_name = parent != NULL
+                                    ? g_file_get_basename (parent) : NULL;
+     g_autofree char *relative = parent != NULL
+@@ -345,8 +349,10 @@ update_location_trail (NautilusWindow *window)
+         g_clear_pointer (&parent_name, g_free);
+         parent_name = g_strdup (_("Home"));
+     }
++    /* History belongs to the action center; the location heading in v70
++     * does not carry a second Back affordance. */
+     luma_navigation_trail_bar_set_place (window->location_trail,
+-                                          parent_name, title != NULL ? title : _("Files"));
++                                          NULL, title != NULL ? title : _("Files"));
+     luma_navigation_trail_bar_clear_meta (window->location_trail);
+     if (relative != NULL && *relative != '\0')
+     {
+-- 
+2.55.0
+

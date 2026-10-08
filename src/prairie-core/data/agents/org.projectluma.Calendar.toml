@@ -1,0 +1,15 @@
+# Calendar's reminders agent (ADR-033): reminders for every calendar in Evolution
+# Data Server while Calendar is closed.
+# Installed as /usr/share/luma/background/org.projectluma.Calendar.toml for luma-background.
+schema_version = "0.2"
+
+[application]
+id = "org.projectluma.Calendar"
+name = "Calendar"
+
+[background]
+agent = "org.projectluma.Calendar.Agent"
+exec = "prairie-calendar --agent"
+category = "calendar"
+wake = ["login", "network", "resume", "schedule"]
+publishes = ["active-reminders", "snoozed-reminders", "live-extension:org.projectluma.Calendar.Reminders"]

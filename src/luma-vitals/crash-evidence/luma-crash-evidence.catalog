@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MPL-2.0
+# Luma crash evidence: journal catalog (journalctl -x shows this text).
+
+-- e6f1229b2154445eaaf8f207d149fb1f
+Subject: The computer restarted unexpectedly; the processor's Crash Log says why
+Defined-By: Luma
+Support: https://projectluma.org/vitals
+Documentation: file:///usr/share/doc/luma-vitals/026-luma-vitals.md
+
+Before this boot the machine was reset by its own firmware or platform
+controller, not shut down: typically a processor core or controller stopped
+responding and the platform restarted itself. Nothing reaches the journal when
+that happens. The firmware kept an Intel Crash Log in the ACPI Boot Error
+Record Table, and Intel's iclg decoded it at this boot.
+
+The LUMA_CRASHLOG_TRIAGE fields are iclg's cause tags, for example
+CORE_TIMEOUT.MULTIPLE_STUCK_TRANSACTIONS (a core stopped completing work) or
+RESET_CAUSE.GLOBAL_RESET.PMC_FW (the power management controller reset the
+platform). LUMA_CRASHLOG_IP names the processor's last instruction pointer as
+a kernel module and offset when the previous boot's module map was kept.
+
+The raw record (BERT, BERT.data), iclg's decoded JSON (crashlog-decoded.json),
+the triage (crashlog-triage.txt) and a summary (crashlog.json) are in
+LUMA_CRASH_DIRECTORY. Include them when reporting the problem. They describe
+processor and platform register state (addresses and status bits), not
+files or documents.
+
+The same record is decoded only once, however many boots the firmware keeps
+reporting it.

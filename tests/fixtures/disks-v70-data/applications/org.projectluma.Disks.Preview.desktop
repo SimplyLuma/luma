@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Disks
+Icon=org.projectluma.Disks.Preview
+Exec=true
+NoDisplay=true

@@ -1,0 +1,152 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * Open with. Three bands: a fixed head, a scrolling body, a fixed foot.
+ *
+ * Colour comes from the appkit tokens, so the dark treatment is not a second
+ * copy of this sheet with different numbers in it. Two values could not come
+ * from the old token set and had to be added to it: luma_accent_ink and
+ * luma_accent_soft. Mixing the accent toward black is what makes accent text
+ * read on a light ground and what makes it vanish on a dark one, so the dark
+ * treatment lifts toward white instead. That is a system-wide fact about the
+ * palette, not a local fix, which is why it lives in the tokens.
+ */
+
+.ow-dialog {
+  background-color: @luma_content;
+  border-radius: 14px;
+}
+
+/* ── Head ─────────────────────────────────────────────────────────────── */
+
+.ow-head {
+  padding: 13px 15px;
+  border-bottom: 1px solid @luma_line_faint;
+}
+.ow-file-name { font-size: 13.5px; font-weight: 600; color: @luma_ink; }
+.ow-file-kind { font-size: 11.5px; color: @luma_muted; }
+
+.ow-search {
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 9px;
+  border: 1px solid @luma_line;
+  background-color: @luma_island;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: @luma_ink;
+}
+.ow-search > text > placeholder { color: @luma_faint; }
+/* The toolkit's default focus ring here is amber, which reads as a warning on
+ * a field that is merely focused. Focus is the accent, as everywhere else. */
+.ow-search:focus-within {
+  border-color: @luma_accent;
+  outline: 2px solid alpha(@luma_accent, 0.45);
+  outline-offset: -1px;
+}
+.ow-list:focus-visible, .ow-row:focus-visible {
+  outline: 2px solid @luma_accent;
+  outline-offset: -2px;
+}
+
+.ow-close {
+  min-width: 28px; min-height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: @luma_muted;
+}
+.ow-close:hover { background-color: @luma_hover; }
+
+/* ── Body ─────────────────────────────────────────────────────────────── */
+
+.ow-body { padding: 6px 10px 12px; }
+.ow-caption {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: @luma_faint;
+  padding: 11px 10px 5px;
+}
+.ow-list { background: none; }
+
+.ow-row {
+  padding: 7px 10px;
+  border-radius: 10px;
+  min-height: 0;
+}
+.ow-row:hover { background-color: @luma_hover; }
+.ow-name { font-size: 13.5px; font-weight: 600; color: @luma_ink; }
+.ow-detail { font-size: 11.5px; color: @luma_muted; margin-top: 1px; }
+
+/* A handful of destinations, the same species as a sidebar: a solid accent
+ * fill is right here. This is not the hover-plus-inset-bar treatment that
+ * content lists use, and the two must not drift into each other. */
+.ow-row:selected { background-color: @luma_accent; }
+.ow-row:selected .ow-name { color: #ffffff; }
+.ow-row:selected .ow-detail { color: alpha(#ffffff, 0.82); }
+
+.ow-chip {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: @luma_accent_ink;
+  background-color: @luma_accent_soft;
+}
+.ow-row:selected .ow-chip {
+  color: #ffffff;
+  background-color: alpha(#ffffff, 0.24);
+}
+
+.ow-empty {
+  padding: 28px 10px;
+  font-size: 12.5px;
+  color: @luma_muted;
+}
+
+/* ── Foot ─────────────────────────────────────────────────────────────── */
+
+.ow-foot {
+  padding: 12px 15px;
+  border-top: 1px solid @luma_line_faint;
+}
+
+/* The escape hatch, not a third decision: a link, not a button. */
+.ow-browse {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: @luma_accent_link;
+}
+.ow-browse:hover { color: @luma_accent_link; text-decoration: underline; }
+
+.ow-secondary, .ow-primary {
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ow-secondary {
+  background-color: @luma_island;
+  border: 1px solid @luma_line;
+  color: @luma_ink;
+  box-shadow: none;
+}
+.ow-secondary:hover { background-color: @luma_hover; }
+
+/* The low-commitment action is the accent one. Swapping these is how people
+ * end up with defaults they never chose. */
+.ow-primary {
+  background-color: @luma_accent;
+  color: #ffffff;
+  border: 0;
+  box-shadow: none;
+}
+.ow-primary:hover { background-color: @luma_primary_hover; }
+.ow-primary:disabled, .ow-secondary:disabled { opacity: 0.5; }

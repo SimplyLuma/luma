@@ -1,0 +1,2605 @@
+--- /dev/null
++++ b/LUCIDE-LICENSE
+@@ -0,0 +1,15 @@
++ISC License
++
++Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
++
++Permission to use, copy, modify, and/or distribute this software for any
++purpose with or without fee is hereby granted, provided that the above
++copyright notice and this permission notice appear in all copies.
++
++THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -79,6 +79,31 @@
+   </schema>
+ 
+   <schema path="/org/gnome/nautilus/preferences/" id="org.gnome.nautilus.preferences" gettext-domain="nautilus">
++    <key type="as" name="sidebar-places-order">
++      <default>[]</default>
++      <summary>Order of Places entries</summary>
++    </key>
++    <key type="as" name="sidebar-favorites-order">
++      <default>[]</default>
++      <summary>Order of Favorites entries</summary>
++    </key>
++    <key type="as" name="sidebar-devices-order">
++      <default>[]</default>
++      <summary>Order of device entries</summary>
++    </key>
++    <key type="as" name="sidebar-cloud-order">
++      <default>[]</default>
++      <summary>Order of cloud entries</summary>
++    </key>
++    <key type="as" name="hidden-default-favorites">
++      <default>[]</default>
++      <summary>Standard folders removed from Favorites</summary>
++    </key>
++    <key type="b" name="show-system-folder-warning">
++      <default>true</default>
++      <summary>Confirm before browsing system folders</summary>
++      <description>Show an explanatory confirmation before entering operating-system folders. The system-folder reminder remains visible when this confirmation is disabled.</description>
++    </key>
+     <key type="b" name="personal-storage-only">
+       <default>false</default>
+       <summary>Show only personal and removable storage</summary>
+--- a/src/nautilus-bookmark-list.c
++++ b/src/nautilus-bookmark-list.c
+@@ -24,6 +24,7 @@
+ 
+ #include <config.h>
+ #include "nautilus-bookmark-list.h"
++#include "nautilus-global-preferences.h"
+ 
+ #include "nautilus-bookmark.h"
+ #include "nautilus-file-utilities.h"
+@@ -728,3 +729,53 @@
+ 
+     return bookmarks->list;
+ }
++
++/* Default favorites are preferences; custom ones remain GTK bookmarks. */
++static gboolean
++is_default_favorite (GFile *location)
++{
++    const GUserDirectory directories[] = {
++        G_USER_DIRECTORY_DESKTOP, G_USER_DIRECTORY_DOCUMENTS,
++        G_USER_DIRECTORY_DOWNLOAD, G_USER_DIRECTORY_MUSIC,
++        G_USER_DIRECTORY_PICTURES, G_USER_DIRECTORY_VIDEOS
++    };
++    for (guint i = 0; i < G_N_ELEMENTS (directories); i++)
++    {
++        const char *path = g_get_user_special_dir (directories[i]);
++        if (path == NULL || g_str_equal (path, g_get_home_dir ())) continue;
++        g_autoptr (GFile) folder = g_file_new_for_path (path);
++        if (g_file_equal (location, folder)) return TRUE;
++    }
++    return FALSE;
++}
++
++gboolean
++nautilus_bookmark_list_can_favorite (NautilusBookmarkList *self, GFile *location)
++{
++    if (is_default_favorite (location))
++    {
++        g_autofree char *uri = g_file_get_uri (location);
++        g_auto (GStrv) hidden = g_settings_get_strv (nautilus_preferences, "hidden-default-favorites");
++        return g_strv_contains ((const char * const *) hidden, uri);
++    }
++    return nautilus_bookmark_list_can_bookmark (self, location);
++}
++
++void
++nautilus_bookmark_list_add_favorite (NautilusBookmarkList *self, GFile *location)
++{
++    if (is_default_favorite (location))
++    {
++        g_autofree char *uri = g_file_get_uri (location);
++        g_auto (GStrv) hidden = g_settings_get_strv (nautilus_preferences, "hidden-default-favorites");
++        g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
++        for (guint i = 0; hidden[i] != NULL; i++)
++            if (!g_str_equal (hidden[i], uri)) g_strv_builder_add (builder, hidden[i]);
++        g_auto (GStrv) updated = g_strv_builder_end (builder);
++        g_settings_set_strv (nautilus_preferences, "hidden-default-favorites", (const char * const *) updated);
++    }
++    else if (nautilus_bookmark_list_can_bookmark (self, location))
++    {
++        nautilus_bookmark_list_add (self, location, -1);
++    }
++}
+--- a/src/nautilus-bookmark-list.h
++++ b/src/nautilus-bookmark-list.h
+@@ -62,4 +62,7 @@
+ nautilus_bookmark_list_remove (NautilusBookmarkList *bookmarks,
+                                GFile                *location);
+ 
++gboolean nautilus_bookmark_list_can_favorite (NautilusBookmarkList *self, GFile *location);
++void nautilus_bookmark_list_add_favorite (NautilusBookmarkList *self, GFile *location);
++
+ G_END_DECLS
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -7,6 +7,9 @@
+ #include "nautilus-column-view.h"
+ 
+ #include "nautilus-directory.h"
++#include "nautilus-application.h"
++#include "nautilus-bookmark-list.h"
++#include "nautilus-properties.h"
+ #include "nautilus-enum-types.h"
+ #include "nautilus-file.h"
+ #include "nautilus-global-preferences.h"
+@@ -28,6 +31,7 @@
+     GtkWidget *parent_island;
+     GtkWidget *current_island;
+     GtkWidget *details_island;
++    gboolean has_details;
+     GtkListView *parent_view;
+     GtkSingleSelection *parent_selection;
+     GListStore *parent_store;
+@@ -51,6 +55,7 @@
+     GtkWidget *details_open_button;
+     GtkWidget *details_share_button;
+ 
++    guint parent_update_id;
+     NautilusDirectory *parent_directory;
+     GFile *current_location;
+ 
+@@ -252,6 +257,11 @@
+ static void
+ clear_details (NautilusColumnView *self)
+ {
++    self->has_details = FALSE;
++    if (self->details_island != NULL)
++    {
++        gtk_widget_set_visible (self->details_island, FALSE);
++    }
+     gtk_image_clear (self->details_icon);
+     gtk_label_set_text (self->details_name, _("Nothing selected"));
+     gtk_label_set_text (self->details_summary, _("Select an item to see details"));
+@@ -279,7 +289,7 @@
+ 
+     gtk_widget_set_visible (self->parent_island,
+                             !compact_parent && self->parent_directory != NULL);
+-    gtk_widget_set_visible (self->details_island, !compact_details);
++    gtk_widget_set_visible (self->details_island, self->has_details && !compact_details);
+ }
+ 
+ static void
+@@ -406,6 +416,8 @@
+     gtk_widget_set_visible (self->details_tags, tags != NULL && tags[0] != NULL);
+     gtk_widget_set_sensitive (self->details_open_button, TRUE);
+     gtk_widget_set_sensitive (self->details_share_button, TRUE);
++    self->has_details = TRUE;
++    update_adaptive_presentation (self);
+ }
+ 
+ static void
+@@ -465,11 +477,100 @@
+     update_details (self);
+ }
+ 
++/* Use the same file-list transfer format as the current-location view.
++ * Read the bound item at drag time because GtkListItem rows are recycled. */
++static GdkContentProvider *
++prepare_parent_drag (GtkDragSource *source,
++                     double         x,
++                     double         y,
++                     GtkListItem   *list_item)
++{
++    NautilusFile *file = gtk_list_item_get_item (list_item);
++    g_autoptr (GFile) location = file != NULL ? nautilus_file_get_location (file) : NULL;
++    GdkFileList *files;
++    GdkContentProvider *provider;
++
++    if (location == NULL)
++    {
++        return NULL;
++    }
++    GdkDragAction actions = GDK_ACTION_COPY | GDK_ACTION_LINK;
++    if (nautilus_file_can_delete (file)) actions |= GDK_ACTION_MOVE;
++    gtk_drag_source_set_actions (source, actions);
++    g_autoptr (GdkPaintable) icon = nautilus_file_get_icon_paintable (file, 32, 1, NAUTILUS_FILE_ICON_FLAGS_NONE);
++    gtk_drag_source_set_icon (source, icon, 0, 0);
++    files = gdk_file_list_new_from_array (&location, 1);
++    provider = gdk_content_provider_new_typed (GDK_TYPE_FILE_LIST, files);
++    g_boxed_free (GDK_TYPE_FILE_LIST, files);
++    return provider;
++}
++
++static void
++parent_action (GSimpleAction *action, GVariant *parameter, gpointer data)
++{
++    GtkListItem *list_item = data;
++    NautilusFile *file = gtk_list_item_get_item (list_item);
++    if (file == NULL) return;
++    g_autoptr (GFile) location = nautilus_file_get_location (file);
++    GtkWidget *row = gtk_list_item_get_child (list_item);
++    const char *name = g_action_get_name (G_ACTION (action));
++    if (g_str_equal (name, "favorite"))
++    {
++        if (nautilus_file_is_directory (file))
++            nautilus_bookmark_list_add_favorite (
++                nautilus_application_get_bookmarks (nautilus_application_get_default ()), location);
++    }
++    else if (g_str_equal (name, "properties"))
++    {
++        GList files = { .data = file };
++        nautilus_properties_present_dialog (&files, row);
++    }
++    else if (g_str_equal (name, "new-tab"))
++    {
++        nautilus_application_open_location_full (nautilus_application_get_default (), location,
++                                                 NAUTILUS_OPEN_FLAG_NEW_TAB, NULL, NULL);
++    }
++    else
++    {
++        g_autofree char *uri = g_file_get_uri (location);
++        gtk_widget_activate_action (row, "slot.open-location", "s", uri);
++    }
++}
++
++static void
++parent_menu_pressed (GtkGestureClick *gesture, int n_press, double x, double y, GtkListItem *list_item)
++{
++    NautilusFile *file = gtk_list_item_get_item (list_item);
++    if (file == NULL) return;
++    GtkWidget *row = gtk_list_item_get_child (list_item);
++    GtkPopover *popover = g_object_get_data (G_OBJECT (row), "luma-parent-menu");
++    GActionMap *actions = g_object_get_data (G_OBJECT (row), "luma-parent-actions");
++    g_autoptr (GFile) location = nautilus_file_get_location (file);
++    gboolean directory = nautilus_file_is_directory (file);
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (actions, "favorite")),
++        directory && nautilus_bookmark_list_can_favorite (
++            nautilus_application_get_bookmarks (nautilus_application_get_default ()), location));
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (g_action_map_lookup_action (actions, "new-tab")), directory);
++    gtk_popover_set_pointing_to (popover, &(GdkRectangle) { x, y, 1, 1 });
++    gtk_popover_popup (popover);
++    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
++}
++
++static void
++teardown_parent_cell (GtkSignalListItemFactory *factory, GtkListItem *item, gpointer data)
++{
++    GtkWidget *row = gtk_list_item_get_child (item);
++    if (row == NULL) return;
++    GtkWidget *popover = g_object_get_data (G_OBJECT (row), "luma-parent-menu");
++    gtk_widget_unparent (popover);
++}
++
+ static void
+ setup_parent_cell (GtkSignalListItemFactory *factory,
+                    GtkListItem              *list_item,
+                    gpointer                  user_data)
+ {
++    GtkDragSource *drag = gtk_drag_source_new ();
+     GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
+     GtkWidget *icon = gtk_image_new ();
+     GtkWidget *label = gtk_label_new (NULL);
+@@ -487,6 +588,34 @@
+     g_object_set_data (G_OBJECT (row), "luma-icon", icon);
+     g_object_set_data (G_OBJECT (row), "luma-label", label);
+     g_object_set_data (G_OBJECT (row), "luma-chevron", chevron);
++    const GActionEntry entries[] = {
++        { .name = "open", .activate = parent_action },
++        { .name = "new-tab", .activate = parent_action },
++        { .name = "favorite", .activate = parent_action },
++        { .name = "properties", .activate = parent_action },
++    };
++    g_autoptr (GSimpleActionGroup) actions = g_simple_action_group_new ();
++    g_action_map_add_action_entries (G_ACTION_MAP (actions), entries, G_N_ELEMENTS (entries), list_item);
++    gtk_widget_insert_action_group (row, "parent", G_ACTION_GROUP (actions));
++    g_object_set_data (G_OBJECT (row), "luma-parent-actions", actions);
++    g_autoptr (GMenu) menu = g_menu_new ();
++    g_menu_append (menu, _("Open"), "parent.open");
++    g_menu_append (menu, _("Open in New Tab"), "parent.new-tab");
++    g_autoptr (GMenuItem) favorite = g_menu_item_new (_("Add to Favorites"), "parent.favorite");
++    g_menu_item_set_attribute (favorite, "hidden-when", "s", "action-disabled");
++    g_menu_append_item (menu, favorite);
++    g_menu_append (menu, _("Properties"), "parent.properties");
++    GtkWidget *popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (menu));
++    gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
++    gtk_widget_set_parent (popover, row);
++    g_object_set_data (G_OBJECT (row), "luma-parent-menu", popover);
++    GtkGesture *context = gtk_gesture_click_new ();
++    gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (context), GDK_BUTTON_SECONDARY);
++    g_signal_connect (context, "pressed", G_CALLBACK (parent_menu_pressed), list_item);
++    gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (context));
++    gtk_drag_source_set_actions (drag, GDK_ACTION_COPY | GDK_ACTION_MOVE | GDK_ACTION_LINK);
++    g_signal_connect (drag, "prepare", G_CALLBACK (prepare_parent_drag), list_item);
++    gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (drag));
+     gtk_list_item_set_child (list_item, row);
+ }
+ 
+@@ -535,10 +664,10 @@
+     g_autolist (NautilusFile) files = NULL;
+     guint selected = GTK_INVALID_LIST_POSITION;
+     guint i = 0;
+-
+-    g_list_store_remove_all (self->parent_store);
++    g_autoptr (GPtrArray) items = g_ptr_array_new ();
+     if (self->parent_directory == NULL)
+     {
++        g_list_store_remove_all (self->parent_store);
+         update_adaptive_presentation (self);
+         return;
+     }
+@@ -551,7 +680,7 @@
+         NautilusFile *file = l->data;
+         g_autoptr (GFile) location = nautilus_file_get_location (file);
+ 
+-        g_list_store_append (self->parent_store, file);
++        g_ptr_array_add (items, file);
+         if (self->current_location != NULL &&
+             location != NULL &&
+             g_file_equal (location, self->current_location))
+@@ -560,22 +689,42 @@
+         }
+     }
+ 
+-    if (selected != GTK_INVALID_LIST_POSITION)
+-    {
+-        gtk_single_selection_set_selected (self->parent_selection, selected);
+-    }
++    /* One model change per batch. Replacing one row at a time repeatedly
++     * invalidates selection, layout and accessibility for the whole column. */
++    g_list_store_splice (self->parent_store, 0,
++                         g_list_model_get_n_items (G_LIST_MODEL (self->parent_store)),
++                         items->pdata, items->len);
++    gtk_single_selection_set_selected (self->parent_selection, selected);
+ 
+     g_autofree char *count = g_strdup_printf ("%u", i);
+     gtk_label_set_text (self->parent_count, count);
+     update_adaptive_presentation (self);
+ }
+ 
++static gboolean
++flush_parent_update (gpointer data)
++{
++    NautilusColumnView *self = data;
++    self->parent_update_id = 0;
++    rebuild_parent_store (self);
++    return G_SOURCE_REMOVE;
++}
++
++static void
++queue_parent_update (NautilusColumnView *self)
++{
++    if (self->parent_update_id == 0)
++    {
++        self->parent_update_id = g_idle_add (flush_parent_update, self);
++    }
++}
++
+ static void
+ parent_directory_ready (NautilusDirectory *directory,
+                         GList             *files,
+                         gpointer           user_data)
+ {
+-    rebuild_parent_store (NAUTILUS_COLUMN_VIEW (user_data));
++    queue_parent_update (NAUTILUS_COLUMN_VIEW (user_data));
+ }
+ 
+ static void
+@@ -774,6 +923,7 @@
+     NAUTILUS_LIST_BASE_CLASS (nautilus_column_view_parent_class)->setup_directory (list_base,
+                                                                                    new_directory);
+ 
++    g_clear_handle_id (&self->parent_update_id, g_source_remove);
+     if (self->parent_directory != NULL)
+     {
+         nautilus_directory_file_monitor_remove (self->parent_directory, self);
+@@ -795,15 +945,14 @@
+         gtk_label_set_text (self->parent_title,
+                             parent_file != NULL ? nautilus_file_get_display_name (parent_file) : _("Parent"));
+         g_signal_connect_swapped (self->parent_directory, "files-added",
+-                                  G_CALLBACK (rebuild_parent_store), self);
++                                  G_CALLBACK (queue_parent_update), self);
+         g_signal_connect_swapped (self->parent_directory, "files-changed",
+-                                  G_CALLBACK (rebuild_parent_store), self);
++                                  G_CALLBACK (queue_parent_update), self);
+         nautilus_directory_file_monitor_add (self->parent_directory,
+                                              self,
+                                              FALSE,
+                                              NAUTILUS_FILE_ATTRIBUTE_INFO |
+-                                             NAUTILUS_FILE_ATTRIBUTE_MOUNT |
+-                                             NAUTILUS_FILE_ATTRIBUTES_FOR_ICON,
++                                             NAUTILUS_FILE_ATTRIBUTE_MOUNT,
+                                              parent_directory_ready,
+                                              self);
+     }
+@@ -830,6 +979,7 @@
+     {
+         g_signal_handlers_disconnect_by_data (self->current_model, self);
+     }
++    g_clear_handle_id (&self->parent_update_id, g_source_remove);
+     if (self->parent_directory != NULL)
+     {
+         nautilus_directory_file_monitor_remove (self->parent_directory, self);
+@@ -897,6 +1047,7 @@
+         G_LIST_MODEL (g_object_ref (self->parent_store)));
+     g_signal_connect (parent_factory, "setup", G_CALLBACK (setup_parent_cell), self);
+     g_signal_connect (parent_factory, "bind", G_CALLBACK (bind_parent_cell), self);
++    g_signal_connect (parent_factory, "teardown", G_CALLBACK (teardown_parent_cell), self);
+     self->parent_view = GTK_LIST_VIEW (gtk_list_view_new (
+                                                          GTK_SELECTION_MODEL (g_object_ref (self->parent_selection)),
+                                                          parent_factory));
+@@ -908,6 +1059,7 @@
+     self->parent_island = create_list_island (parent_header, GTK_WIDGET (self->parent_view));
+     self->current_island = create_list_island (current_header, GTK_WIDGET (self->current_view));
+     self->details_island = create_details_island (self);
++    gtk_widget_set_visible (self->details_island, FALSE);
+ 
+     self->workspace = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 9);
+     gtk_widget_add_css_class (self->workspace, "luma-columns-workspace");
+--- a/src/nautilus-enums.h
++++ b/src/nautilus-enums.h
+@@ -114,6 +114,7 @@
+ typedef enum {
+   NAUTILUS_SIDEBAR_SECTION_INVALID = 0,
+   NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS,
++  NAUTILUS_SIDEBAR_SECTION_FAVORITES,
+   NAUTILUS_SIDEBAR_SECTION_BOOKMARKS,
+   NAUTILUS_SIDEBAR_SECTION_CLOUD,
+   NAUTILUS_SIDEBAR_SECTION_MOUNTS,
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -39,6 +39,7 @@
+ #include <nautilus-extension.h>
+ 
+ #include "nautilus-application.h"
++#include "nautilus-bookmark-list.h"
+ #include "nautilus-app-chooser.h"
+ #include "nautilus-batch-rename-dialog.h"
+ #include "nautilus-batch-rename-utilities.h"
+@@ -6972,6 +6973,26 @@
+ }
+ 
+ static gboolean
++can_add_favorite (GList *selection)
++{
++    NautilusBookmarkList *bookmarks = nautilus_application_get_bookmarks (NAUTILUS_APPLICATION (g_application_get_default ()));
++    if (selection == NULL || selection->next != NULL ||
++        !nautilus_file_is_directory (selection->data)) return FALSE;
++    g_autoptr (GFile) location = nautilus_file_get_activation_location (selection->data);
++    return location != NULL && nautilus_bookmark_list_can_favorite (bookmarks, location);
++}
++
++static void
++action_add_favorite (GSimpleAction *action, GVariant *parameter, gpointer user_data)
++{
++    g_autolist (NautilusFile) selection = nautilus_files_view_get_selection (user_data);
++    if (!can_add_favorite (selection)) return;
++    g_autoptr (GFile) location = nautilus_file_get_activation_location (selection->data);
++    nautilus_bookmark_list_add_favorite (
++        nautilus_application_get_bookmarks (NAUTILUS_APPLICATION (g_application_get_default ())), location);
++}
++
++static gboolean
+ luma_can_pin_to_dock (GList *selection)
+ {
+     NautilusFile *file;
+@@ -7087,6 +7108,7 @@
+ const GActionEntry view_entries[] =
+ {
+     { .name = "uninstall-application", .activate = action_uninstall_application },
++    { .name = "add-to-favorites", .activate = action_add_favorite },
+     { .name = "pin-folder-to-dock", .activate = action_pin_folder_to_dock },
+     /* Toolbar menu */
+     { .name = "zoom-in", .activate = action_zoom_in },
+@@ -7545,6 +7567,8 @@
+     view_action_group = self->view_action_group;
+ 
+     selection = nautilus_files_view_get_selection (self);
++    action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group), "add-to-favorites");
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), can_add_favorite (selection));
+     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group), "pin-folder-to-dock");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action), luma_can_pin_to_dock (selection));
+     action = g_action_map_lookup_action (G_ACTION_MAP (view_action_group), "uninstall-application");
+--- a/src/nautilus-list-base.c
++++ b/src/nautilus-list-base.c
+@@ -170,6 +170,7 @@
+ } LumaFileDragProvider;
+ 
+ typedef GdkContentProviderClass LumaFileDragProviderClass;
++GType luma_file_drag_provider_get_type (void);
+ G_DEFINE_TYPE (LumaFileDragProvider, luma_file_drag_provider, GDK_TYPE_CONTENT_PROVIDER)
+ 
+ #define FILE_DRAG_PROVIDER_KEY "luma-file-drag-provider"
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -127,6 +127,8 @@
+     return self->zoom_level;
+ }
+ 
++static void update_column_header_menus (NautilusListView *self);
++
+ static void
+ apply_columns_settings (NautilusListView  *self,
+                         char             **column_order,
+@@ -237,6 +239,123 @@
+     for (GList *l = view_columns; l != NULL; l = l->next, column_i++)
+     {
+         gtk_column_view_insert_column (self->view_ui, column_i, l->data);
++    }
++
++    update_column_header_menus (self);
++}
++
++/* Use GTK's header-menu API for pointer and keyboard access. Column state and
++ * persistence remain owned by the existing Nautilus column utilities. */
++static void
++column_header_change_state (GSimpleAction *action,
++                            GVariant      *state,
++                            gpointer       user_data)
++{
++    NautilusListView *self = NAUTILUS_LIST_VIEW (user_data);
++    NautilusFile *file = nautilus_list_base_get_directory_as_file (NAUTILUS_LIST_BASE (self));
++    const char *name = g_object_get_data (G_OBJECT (action), "column-name");
++    g_auto (GStrv) visible = nautilus_column_get_visible_columns (file);
++    g_auto (GStrv) order = nautilus_column_get_column_order (file);
++    g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
++    g_auto (GStrv) updated = NULL;
++
++    if (g_str_equal (name, "name"))
++    {
++        return;
++    }
++
++    /* Start from the current view: metadata writes are asynchronous, so a
++     * second quick toggle must not restore the previous column selection. */
++    GListModel *columns = gtk_column_view_get_columns (self->view_ui);
++    for (guint i = 0; i < g_list_model_get_n_items (columns); i++)
++    {
++        g_autoptr (GtkColumnViewColumn) column = g_list_model_get_item (columns, i);
++        const char *id = gtk_column_view_column_get_id (column);
++        if (!g_str_equal (id, name) && gtk_column_view_column_get_visible (column))
++        {
++            g_strv_builder_add (builder, id);
++        }
++    }
++    /* Retain preferences belonging to extensions that are not loaded. */
++    for (guint i = 0; visible != NULL && visible[i] != NULL; i++)
++    {
++        gboolean known = FALSE;
++        for (guint j = 0; j < g_list_model_get_n_items (columns); j++)
++        {
++            g_autoptr (GtkColumnViewColumn) column = g_list_model_get_item (columns, j);
++            known |= g_strcmp0 (visible[i], gtk_column_view_column_get_id (column)) == 0;
++        }
++        if (!known)
++        {
++            g_strv_builder_add (builder, visible[i]);
++        }
++    }
++    if (g_variant_get_boolean (state))
++    {
++        g_strv_builder_add (builder, name);
++    }
++    updated = g_strv_builder_end (builder);
++    nautilus_column_save_metadata (file, order, updated);
++    g_simple_action_set_state (action, state);
++    apply_columns_settings (self, order, updated);
++}
++
++static void
++update_column_header_menus (NautilusListView *self)
++{
++    NautilusFile *file = nautilus_list_base_get_directory_as_file (NAUTILUS_LIST_BASE (self));
++    g_autolist (NautilusColumn) columns = nautilus_get_columns_for_file (file);
++    g_auto (GStrv) order = nautilus_column_get_column_order (file);
++    g_autoptr (GSimpleActionGroup) actions = g_simple_action_group_new ();
++    g_autoptr (GMenu) menu = g_menu_new ();
++    GListModel *view_columns = gtk_column_view_get_columns (self->view_ui);
++    guint index = 0;
++
++    columns = nautilus_sort_columns (columns, order);
++    for (GList *l = columns; l != NULL; l = l->next)
++    {
++        g_autofree char *name = NULL;
++        g_autofree char *label = NULL;
++        g_autofree char *action_name = NULL;
++        g_autofree char *detailed_action = NULL;
++        g_autoptr (GSimpleAction) action = NULL;
++        gboolean visible = FALSE;
++
++        g_object_get (l->data, "name", &name, "label", &label, NULL);
++        /* Luma deliberately omits the separate star column. */
++        if (g_str_equal (name, "starred"))
++        {
++            continue;
++        }
++        for (guint i = 0; i < g_list_model_get_n_items (view_columns); i++)
++        {
++            g_autoptr (GtkColumnViewColumn) column = g_list_model_get_item (view_columns, i);
++            if (g_strcmp0 (gtk_column_view_column_get_id (column), name) == 0)
++            {
++                visible = gtk_column_view_column_get_visible (column);
++                break;
++            }
++        }
++
++        /* Numeric action IDs also accommodate extension-defined column names. */
++        action_name = g_strdup_printf ("column-%u", index++);
++        detailed_action = g_strconcat ("header-columns.", action_name, NULL);
++        action = g_simple_action_new_stateful (action_name, NULL,
++                                              g_variant_new_boolean (visible));
++        g_object_set_data_full (G_OBJECT (action), "column-name", g_strdup (name), g_free);
++        g_simple_action_set_enabled (action, !g_str_equal (name, "name"));
++        g_signal_connect_object (action, "change-state",
++                                 G_CALLBACK (column_header_change_state), self, 0);
++        g_action_map_add_action (G_ACTION_MAP (actions), G_ACTION (action));
++        g_menu_append (menu, label, detailed_action);
++    }
++
++    gtk_widget_insert_action_group (GTK_WIDGET (self->view_ui), "header-columns",
++                                    G_ACTION_GROUP (actions));
++    for (guint i = 0; i < g_list_model_get_n_items (view_columns); i++)
++    {
++        g_autoptr (GtkColumnViewColumn) column = g_list_model_get_item (view_columns, i);
++        gtk_column_view_column_set_header_menu (column, G_MENU_MODEL (menu));
+     }
+ }
+ 
+--- a/src/nautilus-properties.c
++++ b/src/nautilus-properties.c
+@@ -4130,14 +4130,20 @@
+     guint count = g_list_length (self->files);
+     if (!count) return;
+     g_autofree char *title = count == 1
+-        ? g_strdup_printf (_("About %s"), nautilus_file_get_display_name (get_file (self)))
++        ? g_strdup_printf (_("About %s"), is_root_directory (get_file (self)) ? _("Luma") : nautilus_file_get_display_name (get_file (self)))
+         : g_strdup_printf (ngettext ("About %u item", "About %u items", count), count);
+     gtk_label_set_text (self->about_title, title);
+     adw_navigation_page_set_title (self->main_page, title);
+     if (gtk_widget_get_root(GTK_WIDGET(self)) && self->dialog) adw_dialog_set_title (self->dialog, title);
+     else if (GTK_IS_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))))
+         gtk_window_set_title (GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (self))), title);
+-    gtk_widget_set_visible (self->rename_button, count == 1);
++    gtk_widget_set_visible (self->rename_button, count == 1 &&
++                            !is_root_directory (get_file (self)) &&
++                            nautilus_file_can_rename (get_file (self)));
++    if (count == 1 && is_root_directory (get_file (self)))
++    {
++        gtk_label_set_text (GTK_LABEL (self->name_value_label), _("Luma"));
++    }
+     gtk_widget_set_sensitive (self->rename_button, count == 1 && nautilus_file_can_rename (get_file (self)));
+     gtk_widget_set_visible (self->popout_button, FALSE);
+     gtk_widget_set_visible (GTK_WIDGET (self->execution_row), FALSE);
+@@ -4153,6 +4159,34 @@
+     else gtk_label_set_text (GTK_LABEL (self->permissions_value_label), _("Multiple items"));
+     gtk_label_set_text (self->facts_size_caption,
+         count > 1 || nautilus_file_is_directory (get_file (self)) ? _("Contents") : _("File size"));
++    GtkWidget *size_fact = gtk_widget_get_parent (GTK_WIDGET (self->facts_size_caption));
++    GtkWidget *facts = gtk_widget_get_parent (size_fact);
++    gtk_widget_set_visible (size_fact, gtk_widget_get_visible (self->size_value_label) ||
++                                      gtk_widget_get_visible (self->contents_box));
++    gboolean has_facts = FALSE;
++    for (GtkWidget *child = gtk_widget_get_first_child (facts); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        has_facts |= gtk_widget_get_visible (child);
++    }
++    gtk_widget_set_visible (facts, has_facts);
++
++    if (count == 1)
++    {
++        g_autofree char *modified = nautilus_file_get_string_attribute (get_file (self), "date_modified");
++        g_autofree char *created = nautilus_file_get_string_attribute (get_file (self), "date_created");
++        gboolean show_modified = modified != NULL && !is_volume_properties (self);
++        gboolean show_created = created != NULL && !is_volume_properties (self);
++        gtk_widget_set_visible (self->modified_row, show_modified);
++        gtk_widget_set_visible (self->exact_modified_row, show_modified);
++        gtk_widget_set_visible (self->created_row, show_created);
++        gtk_widget_set_visible (self->exact_created_row, show_created);
++        gtk_widget_set_visible (self->times_group, show_modified || show_created ||
++                                gtk_widget_get_visible (self->accessed_row));
++    }
++    gtk_widget_set_visible (gtk_widget_get_parent (self->times_group),
++                            gtk_widget_get_visible (self->times_group) ||
++                            gtk_widget_get_visible (self->locations_group));
+ }
+ 
+ static void
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -326,6 +326,96 @@
+     g_signal_emit (sidebar, places_sidebar_signals[DRAG_PERFORM_DROP], 0,
+                    dest_file, source_file_list, action);
+ }
++static NautilusSidebarSectionType
++sidebar_category (NautilusSidebarSectionType section)
++{
++    return section == NAUTILUS_SIDEBAR_SECTION_BOOKMARKS ?
++           NAUTILUS_SIDEBAR_SECTION_FAVORITES : section;
++}
++
++static const char *
++sidebar_order_key (NautilusSidebarSectionType section)
++{
++    switch (sidebar_category (section))
++    {
++        case NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS: return "sidebar-places-order";
++        case NAUTILUS_SIDEBAR_SECTION_FAVORITES: return "sidebar-favorites-order";
++        case NAUTILUS_SIDEBAR_SECTION_MOUNTS: return "sidebar-devices-order";
++        case NAUTILUS_SIDEBAR_SECTION_CLOUD: return "sidebar-cloud-order";
++        default: return NULL;
++    }
++}
++
++static char *
++sidebar_row_id (GtkWidget *row)
++{
++    char *uri = NULL;
++    g_autoptr (GVolume) volume = NULL;
++    g_autoptr (GDrive) drive = NULL;
++    g_object_get (row, "uri", &uri, "volume", &volume, "drive", &drive, NULL);
++    if (uri != NULL) return uri;
++    if (volume != NULL)
++    {
++        g_autofree char *uuid = g_volume_get_identifier (volume, G_VOLUME_IDENTIFIER_KIND_UUID);
++        if (uuid != NULL) return g_strconcat ("volume:", uuid, NULL);
++        g_autofree char *device = g_volume_get_identifier (volume, G_VOLUME_IDENTIFIER_KIND_UNIX_DEVICE);
++        if (device != NULL) return g_strconcat ("device:", device, NULL);
++    }
++    if (drive != NULL)
++    {
++        g_autofree char *device = g_drive_get_identifier (drive, G_VOLUME_IDENTIFIER_KIND_UNIX_DEVICE);
++        if (device != NULL) return g_strconcat ("drive:", device, NULL);
++    }
++    return NULL;
++}
++
++static int
++sidebar_saved_position (const char * const *order, const char *id)
++{
++    for (int i = 0; order[i] != NULL; i++)
++        if (g_strcmp0 (order[i], id) == 0) return i;
++    return G_MAXINT;
++}
++
++static gboolean
++sidebar_reorder (NautilusSidebar *sidebar, GtkWidget *source, GtkWidget *target, gboolean after)
++{
++    NautilusSidebarSectionType from, to;
++    g_object_get (source, "section-type", &from, NULL);
++    g_object_get (target, "section-type", &to, NULL);
++    const char *key = sidebar_order_key (from);
++    g_autofree char *source_id = sidebar_row_id (source);
++    g_autofree char *target_id = sidebar_row_id (target);
++    if (key == NULL || sidebar_category (from) != sidebar_category (to) ||
++        source_id == NULL || target_id == NULL || source == target) return FALSE;
++
++    g_autoptr (GPtrArray) order = g_ptr_array_new_with_free_func (g_free);
++    for (GtkWidget *row = gtk_widget_get_first_child (sidebar->list_box); row;
++         row = gtk_widget_get_next_sibling (row))
++    {
++        if (!NAUTILUS_IS_SIDEBAR_ROW (row)) continue;
++        NautilusSidebarSectionType section;
++        g_object_get (row, "section-type", &section, NULL);
++        if (sidebar_category (section) != sidebar_category (from) || row == source) continue;
++        g_autofree char *id = sidebar_row_id (row);
++        if (id == NULL) continue;
++        if (row == target && !after) g_ptr_array_add (order, g_strdup (source_id));
++        g_ptr_array_add (order, g_strdup (id));
++        if (row == target && after) g_ptr_array_add (order, g_strdup (source_id));
++    }
++    /* Remember disconnected devices and temporarily unavailable cloud accounts. */
++    g_auto (GStrv) previous = g_settings_get_strv (nautilus_preferences, key);
++    for (guint i = 0; previous[i] != NULL; i++)
++    {
++        gboolean found = FALSE;
++        for (guint j = 0; j < order->len; j++)
++            found |= g_str_equal (previous[i], g_ptr_array_index (order, j));
++        if (!found) g_ptr_array_add (order, g_strdup (previous[i]));
++    }
++    g_ptr_array_add (order, NULL);
++    return g_settings_set_strv (nautilus_preferences, key, (const char * const *) order->pdata);
++}
++
+ static void
+ list_box_header_func (GtkListBoxRow *row,
+                       GtkListBoxRow *before,
+@@ -364,9 +454,13 @@
+         heading = _("DEVICES");
+     }
+ 
+-    /* Bookmarks remain part of Places in Luma. They are genuine locations,
+-     * and separating them under another administrative heading makes the
+-     * navigation noisier than the simulator's hierarchy. */
++    if ((row_section_type == NAUTILUS_SIDEBAR_SECTION_FAVORITES ||
++         row_section_type == NAUTILUS_SIDEBAR_SECTION_BOOKMARKS) &&
++        before_section_type != NAUTILUS_SIDEBAR_SECTION_FAVORITES &&
++        before_section_type != NAUTILUS_SIDEBAR_SECTION_BOOKMARKS)
++    {
++        heading = _("FAVORITES");
++    }
+     if (heading != NULL)
+     {
+         header = gtk_label_new (heading);
+@@ -514,30 +608,6 @@
+     return recent_files_setting_is_enabled (sidebar) && recent_scheme_is_supported ();
+ }
+ 
+-static gboolean
+-path_is_home_dir (const char *path)
+-{
+-    GFile *home_dir;
+-    GFile *location;
+-    const char *home_path;
+-    gboolean res;
+-
+-    home_path = g_get_home_dir ();
+-    if (!home_path)
+-    {
+-        return FALSE;
+-    }
+-
+-    home_dir = g_file_new_for_path (home_path);
+-    location = g_file_new_for_path (path);
+-    res = g_file_equal (home_dir, location);
+-
+-    g_object_unref (home_dir);
+-    g_object_unref (location);
+-
+-    return res;
+-}
+-
+ static char *
+ get_home_directory_uri (void)
+ {
+@@ -552,23 +622,6 @@
+     return g_filename_to_uri (home, NULL, NULL);
+ }
+ 
+-static char *
+-get_desktop_directory_uri (void)
+-{
+-    const char *name;
+-
+-    name = g_get_user_special_dir (G_USER_DIRECTORY_DESKTOP);
+-
+-    /* "To disable a directory, point it to the homedir."
+-     * See http://freedesktop.org/wiki/Software/xdg-user-dirs
+-     */
+-    if (path_is_home_dir (name))
+-    {
+-        return NULL;
+-    }
+-
+-    return g_filename_to_uri (name, NULL, NULL);
+-}
+ 
+ typedef struct
+ {
+@@ -689,6 +742,8 @@
+     GList *volumes;
+     GVolume *volume;
+     GList *bookmarks;
++    g_auto (GStrv) hidden_favorites = g_settings_get_strv (nautilus_preferences, "hidden-default-favorites");
++    g_autoptr (GHashTable) favorite_uris = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+     int index;
+     char *original_uri, *name, *identifier;
+     GtkListBoxRow *selected;
+@@ -721,6 +776,9 @@
+         original_uri = NULL;
+     }
+ 
++    if (sidebar->popover != NULL) gtk_popover_popdown (GTK_POPOVER (sidebar->popover));
++    sidebar->context_row = NULL;
++
+     /* Reset drag state, just in case we update the places while dragging or
+      * ending a drag */
+     stop_drop_feedback (sidebar);
+@@ -775,21 +833,34 @@
+                _("Browse Installed Applications"));
+     g_object_unref (start_icon);
+ 
+-    /* desktop */
+-    if (sidebar->show_desktop)
+-    {
+-        char *mount_uri = get_desktop_directory_uri ();
+-        if (mount_uri)
+-        {
+-            start_icon = g_themed_icon_new_with_default_fallbacks (ICON_NAME_DESKTOP);
+-            add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
+-                       NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS,
+-                       _("Desktop"), start_icon, NULL, mount_uri,
+-                       NULL, NULL, NULL, NULL, 0,
+-                       _("Open the contents of your desktop in a folder"));
+-            g_object_unref (start_icon);
+-            g_free (mount_uri);
+-        }
++    /* Standard folders use the user's XDG locations, never hard-coded paths
++     * or bookmark-file seeding. Disabled and missing folders stay absent. */
++    const struct { GUserDirectory directory; const char *icon; } favorites[] = {
++        { G_USER_DIRECTORY_DESKTOP, "user-desktop-symbolic" },
++        { G_USER_DIRECTORY_DOCUMENTS, "folder-documents-symbolic" },
++        { G_USER_DIRECTORY_DOWNLOAD, "folder-download-symbolic" },
++        { G_USER_DIRECTORY_MUSIC, "folder-music-symbolic" },
++        { G_USER_DIRECTORY_PICTURES, "folder-pictures-symbolic" },
++        { G_USER_DIRECTORY_VIDEOS, "folder-videos-symbolic" },
++    };
++    for (guint i = 0; i < G_N_ELEMENTS (favorites); i++)
++    {
++        const char *path = g_get_user_special_dir (favorites[i].directory);
++        if (path == NULL || g_str_equal (path, g_get_home_dir ()) ||
++            !g_file_test (path, G_FILE_TEST_IS_DIR))
++        {
++            continue;
++        }
++        g_autoptr (GFile) location = g_file_new_for_path (path);
++        g_autofree char *uri = g_file_get_uri (location);
++        if (g_hash_table_contains (favorite_uris, uri) ||
++            g_strv_contains ((const char * const *) hidden_favorites, uri)) continue;
++        g_autofree char *label = g_filename_display_basename (path);
++        g_autoptr (GIcon) icon = g_themed_icon_new_with_default_fallbacks (favorites[i].icon);
++        add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
++                   NAUTILUS_SIDEBAR_SECTION_FAVORITES, label, icon, NULL, uri,
++                   NULL, NULL, NULL, NULL, i, path);
++        g_hash_table_add (favorite_uris, g_steal_pointer (&uri));
+     }
+ 
+     /* Network view */
+@@ -864,7 +935,7 @@
+         start_icon = g_themed_icon_new_with_default_fallbacks ("drive-harddisk-symbolic");
+         add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
+                    NAUTILUS_SIDEBAR_SECTION_MOUNTS,
+-                   _("System Disk"), start_icon, NULL, "file:///",
++                   _("Luma"), start_icon, NULL, "file:///",
+                    NULL, NULL, NULL, NULL, 0,
+                    _("Open the system disk"));
+         g_object_unref (start_icon);
+@@ -1120,6 +1191,8 @@
+         GFile *location = nautilus_bookmark_get_location (l->data);
+         g_autofree char *mount_uri = nautilus_bookmark_get_uri (l->data);
+ 
++        if (g_hash_table_contains (favorite_uris, mount_uri)) continue;
++
+         gboolean is_native = g_file_is_native (location);
+         tooltip = is_native ? g_file_get_path (location) : g_uri_unescape_string (mount_uri, NULL);
+ 
+@@ -1138,9 +1211,9 @@
+     new_bookmark_icon = g_themed_icon_new ("bookmark-new-symbolic");
+     sidebar->new_bookmark_row = add_place (sidebar, NAUTILUS_SIDEBAR_ROW_NEW_BOOKMARK,
+                                            NAUTILUS_SIDEBAR_SECTION_BOOKMARKS,
+-                                           _("New bookmark"), new_bookmark_icon, NULL, NULL,
++                                           _("Add to Favorites"), new_bookmark_icon, NULL, NULL,
+                                            NULL, NULL, NULL, NULL, 0,
+-                                           _("Add a new bookmark"));
++                                           _("Drop folders here to add shortcuts to Favorites"));
+     gtk_widget_add_css_class (sidebar->new_bookmark_row, "sidebar-new-bookmark-row");
+     g_object_unref (new_bookmark_icon);
+ 
+@@ -1293,6 +1366,19 @@
+                   "file", &dest_file,
+                   NULL);
+ 
++    if (G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW))
++    {
++        GtkWidget *source = g_value_get_object (value);
++        NautilusSidebarSectionType source_section;
++        g_object_get (source, "section-type", &source_section, NULL);
++        g_autofree char *source_id = sidebar_row_id (source);
++        g_autofree char *target_id = sidebar_row_id (GTK_WIDGET (row));
++        g_free (uri);
++        return source_id != NULL && target_id != NULL &&
++               sidebar_order_key (section_type) != NULL &&
++               sidebar_category (source_section) == sidebar_category (section_type);
++    }
++
+     if (place_type == NAUTILUS_SIDEBAR_ROW_NEW_BOOKMARK)
+     {
+         g_free (uri);
+@@ -1395,6 +1481,13 @@
+ }
+ 
+ static void
++sidebar_drag_value_ready (GtkDropTarget *target, GParamSpec *pspec, NautilusSidebar *sidebar)
++{
++    const GValue *value = gtk_drop_target_get_value (target);
++    if (value != NULL) start_drop_feedback (sidebar, value);
++}
++
++static void
+ stop_drop_feedback (NautilusSidebar *sidebar)
+ {
+     update_possible_drop_targets (sidebar, NULL);
+@@ -1434,11 +1527,8 @@
+     GtkListBoxRow *row;
+     NautilusSidebarRowType place_type;
+     char *drop_target_uri = NULL;
+-    int row_index;
+-    int row_placeholder_index;
+     const GValue *value;
+     graphene_point_t start;
+-    graphene_point_t point_in_row;
+ 
+     sidebar->dragging_over = TRUE;
+     action = 0;
+@@ -1475,58 +1565,8 @@
+ 
+     if (G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW))
+     {
+-        /* Dragging bookmarks always moves them to another position in the bookmarks list */
+         action = GDK_ACTION_MOVE;
+-        if (sidebar->row_placeholder == NULL)
+-        {
+-            sidebar->row_placeholder = GTK_WIDGET (nautilus_sidebar_row_new_placeholder ());
+-        }
+-        else if (GTK_WIDGET (row) == sidebar->row_placeholder)
+-        {
+-            goto out;
+-        }
+-
+-        if (gtk_widget_get_parent (sidebar->row_placeholder) != NULL)
+-        {
+-            gtk_list_box_remove (GTK_LIST_BOX (sidebar->list_box), sidebar->row_placeholder);
+-        }
+-
+-        if (row != NULL)
+-        {
+-            g_object_get (row, "order-index", &row_index, NULL);
+-            g_object_get (sidebar->row_placeholder, "order-index", &row_placeholder_index, NULL);
+-            /* We order the bookmarks sections based on the bookmark index that we
+-             * set on the row as order-index property, but we have to deal with
+-             * the placeholder row wanting to be between two consecutive bookmarks,
+-             * with two consecutive order-index values which is the usual case.
+-             * For that, in the list box sort func we give priority to the placeholder row,
+-             * that means that if the index-order is the same as another bookmark
+-             * the placeholder row goes before. However if we want to show it after
+-             * the current row, for instance when the cursor is in the lower half
+-             * of the row, we need to increase the order-index.
+-             */
+-            row_placeholder_index = MAX (row_index - 1, 0);
+-
+-
+-            if (gtk_widget_compute_point (sidebar->list_box, GTK_WIDGET (row),
+-                                          &GRAPHENE_POINT_INIT (x, y), &point_in_row) &&
+-                point_in_row.y > sidebar->drag_row_height / 2 && row_index > 0)
+-            {
+-                row_placeholder_index++;
+-            }
+-        }
+-        else
+-        {
+-            /* If the user is dragging over an area that has no row, place the row
+-             * placeholder in the last position
+-             */
+-            row_placeholder_index = G_MAXINT32;
+-        }
+-
+-        g_object_set (sidebar->row_placeholder, "order-index", row_placeholder_index, NULL);
+-
+-        gtk_list_box_prepend (GTK_LIST_BOX (sidebar->list_box),
+-                              sidebar->row_placeholder);
++        gtk_list_box_drag_highlight_row (GTK_LIST_BOX (sidebar->list_box), row);
+     }
+     else if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
+     {
+@@ -1575,50 +1615,28 @@
+     return action;
+ }
+ 
+-/* Reorders the bookmark to the specified position */
+-static void
+-reorder_bookmarks (NautilusSidebar    *sidebar,
+-                   NautilusSidebarRow *row,
+-                   int                 new_position)
+-{
+-    g_autoptr (NautilusFile) file = NULL;
+-
+-    g_object_get (row, "file", &file, NULL);
+-
+-    g_autoptr (GFile) location = nautilus_file_get_location (file);
+-
+-    nautilus_bookmark_list_move_item (sidebar->bookmark_list, location, new_position);
+-}
+-
+-/* Creates bookmarks for the specified files at the given position in the bookmarks list */
+-static void
+-drop_files_as_bookmarks (NautilusSidebar *sidebar,
+-                         GSList          *files,
+-                         int              position)
+-{
+-    GSList *l;
+-
+-    for (l = files; l; l = l->next)
+-    {
+-        GFile *f = G_FILE (l->data);
+-        GFileInfo *info = g_file_query_info (f,
+-                                             G_FILE_ATTRIBUTE_STANDARD_TYPE,
+-                                             G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS,
+-                                             NULL,
+-                                             NULL);
+-
+-        if (info)
+-        {
+-            if ((g_file_info_get_file_type (info) == G_FILE_TYPE_DIRECTORY ||
+-                 g_file_info_get_file_type (info) == G_FILE_TYPE_MOUNTABLE ||
+-                 g_file_info_get_file_type (info) == G_FILE_TYPE_SHORTCUT ||
+-                 g_file_info_get_file_type (info) == G_FILE_TYPE_SYMBOLIC_LINK))
+-            {
+-                nautilus_bookmark_list_add (sidebar->bookmark_list, f, position++);
+-            }
+-
+-            g_object_unref (info);
+-        }
++static void
++favorite_drop_ready (NautilusFile *file, gpointer data)
++{
++    NautilusBookmarkList *bookmarks = data;
++    if (nautilus_file_is_directory (file))
++    {
++        g_autoptr (GFile) location = nautilus_file_get_activation_location (file);
++        if (location != NULL) nautilus_bookmark_list_add_favorite (bookmarks, location);
++    }
++    g_object_unref (bookmarks);
++    nautilus_file_unref (file);
++}
++
++/* Never block the UI querying a dropped network folder. */
++static void
++drop_files_as_bookmarks (NautilusSidebar *sidebar, GSList *files, int position)
++{
++    for (GSList *l = files; l != NULL; l = l->next)
++    {
++        NautilusFile *file = nautilus_file_get (l->data);
++        nautilus_file_call_when_ready (file, NAUTILUS_FILE_ATTRIBUTE_INFO,
++                                      favorite_drop_ready, g_object_ref (sidebar->bookmark_list));
+     }
+ }
+ 
+@@ -1657,22 +1675,12 @@
+ 
+     if (G_VALUE_HOLDS (value, NAUTILUS_TYPE_SIDEBAR_ROW))
+     {
+-        GtkWidget *source_row;
+-        /* A bookmark got reordered */
+-        if (target_section_type != NAUTILUS_SIDEBAR_SECTION_BOOKMARKS)
+-        {
+-            goto out;
+-        }
+-
+-        source_row = g_value_get_object (value);
+-
+-        if (sidebar->row_placeholder != NULL)
+-        {
+-            g_object_get (sidebar->row_placeholder, "order-index", &target_order_index, NULL);
+-        }
+-
+-        reorder_bookmarks (sidebar, NAUTILUS_SIDEBAR_ROW (source_row), target_order_index);
+-        result = TRUE;
++        GtkWidget *source = g_value_get_object (value);
++        graphene_point_t point;
++        gboolean after = gtk_widget_compute_point (sidebar->list_box, GTK_WIDGET (target_row),
++                                                    &GRAPHENE_POINT_INIT (x, y), &point) &&
++                         point.y > gtk_widget_get_height (GTK_WIDGET (target_row)) / 2;
++        result = sidebar_reorder (sidebar, source, GTK_WIDGET (target_row), after);
+     }
+     else if (G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
+     {
+@@ -1722,7 +1730,6 @@
+         g_assert_not_reached ();
+     }
+ 
+-out:
+     stop_drop_feedback (sidebar);
+ 
+     return result;
+@@ -2312,10 +2319,25 @@
+                   "file", &file,
+                   NULL);
+ 
+-    if (type == NAUTILUS_SIDEBAR_ROW_BOOKMARK)
++    NautilusSidebarSectionType section;
++    g_object_get (row, "section-type", &section, NULL);
++    if (section == NAUTILUS_SIDEBAR_SECTION_FAVORITES)
++    {
++        g_autofree char *uri = sidebar_row_id (GTK_WIDGET (row));
++        g_auto (GStrv) hidden = g_settings_get_strv (nautilus_preferences, "hidden-default-favorites");
++        g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
++        g_strv_builder_addv (builder, (const char **) hidden);
++        if (uri != NULL && !g_strv_contains ((const char * const *) hidden, uri))
++            g_strv_builder_add (builder, uri);
++        g_auto (GStrv) updated = g_strv_builder_end (builder);
++        g_settings_set_strv (nautilus_preferences, "hidden-default-favorites", (const char * const *) updated);
++    }
++    if (file != NULL && (type == NAUTILUS_SIDEBAR_ROW_BOOKMARK ||
++                         section == NAUTILUS_SIDEBAR_SECTION_FAVORITES))
+     {
+         g_autoptr (GFile) location = nautilus_file_get_location (file);
+-        nautilus_bookmark_list_remove (sidebar->bookmark_list, location);
++        if (nautilus_bookmark_list_contains (sidebar->bookmark_list, location))
++            nautilus_bookmark_list_remove (sidebar->bookmark_list, location);
+     }
+ 
+     g_object_unref (sidebar);
+@@ -2858,8 +2880,45 @@
+                                  GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (sidebar))));
+ }
+ 
++static GtkWidget *
++sidebar_neighbor (GtkWidget *row, gboolean down)
++{
++    NautilusSidebarSectionType section;
++    g_object_get (row, "section-type", &section, NULL);
++    for (GtkWidget *next = down ? gtk_widget_get_next_sibling (row) : gtk_widget_get_prev_sibling (row);
++         next; next = down ? gtk_widget_get_next_sibling (next) : gtk_widget_get_prev_sibling (next))
++    {
++        if (!NAUTILUS_IS_SIDEBAR_ROW (next)) continue;
++        NautilusSidebarSectionType other;
++        g_object_get (next, "section-type", &other, NULL);
++        if (sidebar_category (section) != sidebar_category (other)) return NULL;
++        g_autofree char *id = sidebar_row_id (next);
++        if (id != NULL && gtk_widget_get_visible (next)) return next;
++    }
++    return NULL;
++}
++
++static void
++move_sidebar_row (GSimpleAction *action, GVariant *parameter, gpointer data)
++{
++    NautilusSidebar *sidebar = data;
++    gboolean down = g_str_equal (g_action_get_name (G_ACTION (action)), "move-down");
++    GtkWidget *source = GTK_WIDGET (sidebar->context_row);
++    GtkWidget *target = sidebar_neighbor (source, down);
++    if (target != NULL) sidebar_reorder (sidebar, source, target, down);
++}
++
++static void
++restore_favorites (GSimpleAction *action, GVariant *parameter, gpointer data)
++{
++    g_settings_reset (nautilus_preferences, "hidden-default-favorites");
++}
++
+ static GActionEntry entries[] =
+ {
++    { .name = "move-up", .activate = move_sidebar_row },
++    { .name = "move-down", .activate = move_sidebar_row },
++    { .name = "restore-favorites", .activate = restore_favorites },
+     { .name = "open", .activate = open_shortcut_cb, .parameter_type = "i"},
+     { .name = "open-other", .activate = open_shortcut_cb, .parameter_type = "i"},
+     { .name = "remove", .activate = remove_shortcut_cb},
+@@ -3032,8 +3091,18 @@
+     }
+ #endif
+ 
++    NautilusSidebarSectionType section_type;
++    g_object_get (row, "section-type", &section_type, NULL);
+     action = g_action_map_lookup_action (G_ACTION_MAP (sidebar->row_actions), "remove");
+-    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), (type == NAUTILUS_SIDEBAR_ROW_BOOKMARK));
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action),
++                                 sidebar_category (section_type) == NAUTILUS_SIDEBAR_SECTION_FAVORITES);
++    action = g_action_map_lookup_action (G_ACTION_MAP (sidebar->row_actions), "move-up");
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), sidebar_neighbor (GTK_WIDGET (row), FALSE) != NULL);
++    action = g_action_map_lookup_action (G_ACTION_MAP (sidebar->row_actions), "move-down");
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), sidebar_neighbor (GTK_WIDGET (row), TRUE) != NULL);
++    g_auto (GStrv) hidden = g_settings_get_strv (nautilus_preferences, "hidden-default-favorites");
++    action = g_action_map_lookup_action (G_ACTION_MAP (sidebar->row_actions), "restore-favorites");
++    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), hidden[0] != NULL);
+     action = g_action_map_lookup_action (G_ACTION_MAP (sidebar->row_actions), "rename");
+     g_simple_action_set_enabled (G_SIMPLE_ACTION (action), (type == NAUTILUS_SIDEBAR_ROW_BOOKMARK));
+     action = g_action_map_lookup_action (G_ACTION_MAP (sidebar->row_actions), "open");
+@@ -3073,7 +3142,14 @@
+ 
+     section = g_menu_new ();
+ 
+-    item = g_menu_item_new (_("_Remove from Bookmarks"), "row.remove");
++    g_menu_append (section, _("Move Up"), "row.move-up");
++    g_menu_append (section, _("Move Down"), "row.move-down");
++    item = g_menu_item_new (_("Restore Default Favorites"), "row.restore-favorites");
++    g_menu_item_set_attribute (item, "hidden-when", "s", "action-disabled");
++    g_menu_append_item (section, item);
++    g_object_unref (item);
++
++    item = g_menu_item_new (_("_Remove from Favorites"), "row.remove");
+     g_menu_item_set_attribute (item, "hidden-when", "s", "action-disabled");
+     g_menu_append_item (section, item);
+     g_object_unref (item);
+@@ -3317,7 +3393,8 @@
+                   "section_type", &section_type,
+                   NULL);
+ 
+-    if (section_type == NAUTILUS_SIDEBAR_SECTION_BOOKMARKS)
++    g_autofree char *id = sidebar_row_id (GTK_WIDGET (row));
++    if (id != NULL && sidebar_order_key (section_type) != NULL)
+     {
+         sidebar->drag_row = GTK_WIDGET (row);
+         sidebar->drag_row_x = (int) x;
+@@ -3508,6 +3585,18 @@
+                   "section-type", &section_type_2,
+                   "order-index", &index_2,
+                   NULL);
++
++    section_type_1 = sidebar_category (section_type_1);
++    section_type_2 = sidebar_category (section_type_2);
++    if (section_type_1 == section_type_2 && sidebar_order_key (section_type_1) != NULL)
++    {
++        g_auto (GStrv) order = g_settings_get_strv (nautilus_preferences, sidebar_order_key (section_type_1));
++        g_autofree char *id1 = sidebar_row_id (GTK_WIDGET (row1));
++        g_autofree char *id2 = sidebar_row_id (GTK_WIDGET (row2));
++        int first = sidebar_saved_position ((const char * const *) order, id1);
++        int second = sidebar_saved_position ((const char * const *) order, id2);
++        if (first != second) return first < second ? -1 : 1;
++    }
+ 
+     if (section_type_1 != section_type_2)
+     {
+@@ -3754,6 +3843,7 @@
+     target = gtk_drop_target_new (G_TYPE_INVALID, GDK_ACTION_ALL);
+     gtk_drop_target_set_preload (target, TRUE);
+     gtk_drop_target_set_gtypes (target, (GType[2]) { NAUTILUS_TYPE_SIDEBAR_ROW, GDK_TYPE_FILE_LIST }, 2);
++    g_signal_connect (target, "notify::value", G_CALLBACK (sidebar_drag_value_ready), sidebar);
+     g_signal_connect (target, "enter", G_CALLBACK (drag_motion_callback), sidebar);
+     g_signal_connect (target, "motion", G_CALLBACK (drag_motion_callback), sidebar);
+     g_signal_connect (target, "drop", G_CALLBACK (drag_drop_callback), sidebar);
+@@ -3813,6 +3903,18 @@
+ 
+     /* populate the sidebar */
+     update_places (sidebar);
++
++    const char *order_keys[] = { "sidebar-places-order", "sidebar-favorites-order",
++                                "sidebar-devices-order", "sidebar-cloud-order", NULL };
++    for (guint i = 0; order_keys[i] != NULL; i++)
++    {
++        g_autofree char *signal = g_strconcat ("changed::", order_keys[i], NULL);
++        g_signal_connect_object (nautilus_preferences, signal,
++                                 G_CALLBACK (gtk_list_box_invalidate_sort), sidebar->list_box,
++                                 G_CONNECT_SWAPPED);
++    }
++    g_signal_connect_object (nautilus_preferences, "changed::hidden-default-favorites",
++                             G_CALLBACK (update_places), sidebar, G_CONNECT_SWAPPED);
+ 
+     sidebar->row_actions = G_ACTION_GROUP (g_simple_action_group_new ());
+     g_action_map_add_action_entries (G_ACTION_MAP (sidebar->row_actions),
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -49,6 +49,7 @@
+     GtkWidget *location_entry;
+     GtkWidget *search_button_stack;
+     GtkWidget *search_button;
++    GtkWidget *new_folder_button;
+     GtkWidget *search_button_placeholder;
+     GtkWidget *view_controls;
+     GtkWidget *compact_sidebar_button;
+@@ -183,6 +184,15 @@
+                                  search_global ? self->search_button_placeholder : self->search_button);
+     gtk_stack_set_visible_child (GTK_STACK (self->history_controls_stack),
+                                  search_global ? self->history_controls_placeholder : self->history_controls);
++    /* A hidden history stack must release its width, not leave a blank slot. */
++    gtk_widget_set_visible (self->history_controls_stack,
++                            self->show_history_controls && !search_global);
++
++    gtk_widget_set_visible (self->new_folder_button,
++                            !search_visible &&
++                            (self->show_new_folder_button ||
++                             (self->window_slot != NULL &&
++                              nautilus_window_slot_get_mode (self->window_slot) == NAUTILUS_MODE_BROWSE)));
+ 
+     compact_chrome_visible = self->compact && !search_visible && !show_location_entry;
+     gtk_widget_set_visible (self->compact_sidebar_button, compact_chrome_visible);
+@@ -495,6 +505,7 @@
+         case PROP_SHOW_NEW_FOLDER_BUTTON:
+         {
+             self->show_new_folder_button = g_value_get_boolean (value);
++            toolbar_update_appearance (self);
+         }
+         break;
+ 
+@@ -632,6 +643,7 @@
+     gtk_widget_class_set_template_from_resource (widget_class,
+                                                  "/org/gnome/nautilus/ui/nautilus-toolbar.ui");
+ 
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, new_folder_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, history_controls_stack);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, history_controls);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, history_controls_placeholder);
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -21,6 +21,7 @@
+ #define G_LOG_DOMAIN "nautilus-window"
+ 
+ #include "config.h"
++#include <luma-ui.h>
+ 
+ #include "nautilus-window-slot.h"
+ 
+@@ -128,6 +129,7 @@
+ 
+     /* Banner */
+     AdwBanner *banner;
++    AdwBanner *system_banner;
+ 
+     /* Load state */
+     GCancellable *find_mount_cancellable;
+@@ -170,6 +172,32 @@
+     { GTK_PAD_ACTION_BUTTON, 5, -1, N_("Forward"), "forward" },
+ };
+ 
++/* Presentation guidance, never a permission boundary. Keep personal and
++ * removable storage outside the warning even when it lives under /var. */
++static gboolean
++is_system_location (GFile *location)
++{
++    const char *paths[] = { "/usr", "/etc", "/boot", "/bin", "/sbin", "/lib",
++        "/lib64", "/opt", "/sys", "/proc", "/dev", "/var/lib", "/var/cache",
++        "/var/log", "/ostree", NULL };
++    if (location == NULL || !g_file_is_native (location)) return FALSE;
++    g_autofree char *path = g_file_get_path (location);
++    if (g_strcmp0 (path, "/") == 0 || g_strcmp0 (path, "/var") == 0) return TRUE;
++    for (guint i = 0; paths[i] != NULL; i++)
++    {
++        g_autoptr (GFile) system = g_file_new_for_path (paths[i]);
++        if (g_file_equal (location, system) || g_file_has_prefix (location, system)) return TRUE;
++    }
++    return FALSE;
++}
++
++static void
++system_banner_go_home (AdwBanner *banner, NautilusWindowSlot *self)
++{
++    g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++    nautilus_window_slot_open_location_full (self, home, NULL);
++}
++
+ static void nautilus_window_slot_force_reload (NautilusWindowSlot *self);
+ static void nautilus_window_slot_update_extra_location_widgets (NautilusWindowSlot *self);
+ static void create_and_bind_new_content_view (NautilusWindowSlot *self,
+@@ -180,11 +208,13 @@
+     NautilusWindowSlot *slot;
+     GFile *location;
+     NautilusFileList *selection;
++    GtkCheckButton *remember;
+ } RootWarningRequest;
+ 
+ static void
+ root_warning_request_free (RootWarningRequest *request)
+ {
++    g_clear_object (&request->remember);
+     g_clear_object (&request->slot);
+     g_clear_object (&request->location);
+     g_clear_list (&request->selection, g_object_unref);
+@@ -202,12 +232,22 @@
+ 
+     if (g_strcmp0 (response, "continue") == 0)
+     {
++        if (gtk_check_button_get_active (request->remember))
++        {
++            g_settings_set_boolean (nautilus_preferences, "show-system-folder-warning", FALSE);
++        }
+         request->slot->root_warning_bypass = TRUE;
+         nautilus_window_slot_open_location_full (request->slot,
+                                                  request->location,
+                                                  request->selection);
+     }
+ 
++    else
++    {
++        g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++        nautilus_window_slot_open_location_full (request->slot, home, NULL);
++    }
++
+     root_warning_request_free (request);
+ }
+ 
+@@ -218,19 +258,18 @@
+ {
+     RootWarningRequest *request = g_new0 (RootWarningRequest, 1);
+     AdwAlertDialog *dialog = ADW_ALERT_DIALOG (
+-        adw_alert_dialog_new (_("You’ve reached the system root"),
+-                              _("These are the files Prairie itself runs on. Moving, editing, or deleting anything here can keep your computer from starting up — and it’s hard to undo. If you’re not sure you need to be here, you probably don’t.")));
+-    GtkWidget *icon = gtk_image_new_from_icon_name ("security-high-symbolic");
+-
+-    gtk_image_set_pixel_size (GTK_IMAGE (icon), 32);
+-    adw_alert_dialog_set_extra_child (dialog, icon);
++        adw_alert_dialog_new (_("This is where Luma lives"),
++                              _("These folders keep your computer running. Moving, renaming, or deleting system files can stop it from starting. Your own files are in Home.\n\nDid someone send you here? If a person, message, or website told you to change these files, pause and check with someone you trust. Real support does not rush you.")));
++    GtkWidget *remember = gtk_check_button_new_with_label (_("Don’t show this again"));
++    adw_alert_dialog_set_extra_child (dialog, remember);
++    request->remember = g_object_ref (GTK_CHECK_BUTTON (remember));
+     adw_alert_dialog_add_responses (dialog,
+-                                    "back", _("Take me back"),
+-                                    "continue", _("I understand — continue"),
++                                    "home", _("Take me to Home"),
++                                    "continue", _("Show the files"),
+                                     NULL);
+-    adw_alert_dialog_set_default_response (dialog, "back");
+-    adw_alert_dialog_set_close_response (dialog, "back");
+-    adw_alert_dialog_set_response_appearance (dialog, "back", ADW_RESPONSE_SUGGESTED);
++    adw_alert_dialog_set_default_response (dialog, "home");
++    adw_alert_dialog_set_close_response (dialog, "home");
++    adw_alert_dialog_set_response_appearance (dialog, "home", ADW_RESPONSE_SUGGESTED);
+ 
+     request->slot = g_object_ref (self);
+     request->location = g_object_ref (location);
+@@ -992,7 +1031,16 @@
+     gtk_box_append (GTK_BOX (self->vbox),
+                     GTK_WIDGET (self->banner));
+ 
++    self->system_banner = ADW_BANNER (adw_banner_new (
++        _("You’re in Luma’s system files. Changes here can stop your computer from starting.")));
++    adw_banner_set_button_label (self->system_banner, _("Go to Home"));
++    gtk_widget_add_css_class (GTK_WIDGET (self->system_banner), "warning");
++    g_signal_connect_object (self->system_banner, "button-clicked",
++                             G_CALLBACK (system_banner_go_home), self, 0);
++    gtk_box_append (GTK_BOX (self->vbox), GTK_WIDGET (self->system_banner));
++
+     self->global_search_page = ADW_STATUS_PAGE (adw_status_page_new ());
++    luma_empty_state_configure (self->global_search_page, FALSE);
+     adw_status_page_set_icon_name (self->global_search_page, "edit-find-symbolic");
+     adw_status_page_set_title (self->global_search_page, _("Search Everywhere"));
+     adw_status_page_set_description (self->global_search_page, _("Find files and folders in all search locations"));
+@@ -1001,7 +1049,6 @@
+     GtkWidget *button = gtk_button_new_with_label (_("Search Settings"));
+     gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "app.search-settings");
+     gtk_widget_set_halign (button, GTK_ALIGN_CENTER);
+-    gtk_widget_add_css_class (button, "pill");
+     adw_status_page_set_child (self->global_search_page, button);
+ 
+     g_object_bind_property (self, "location",
+@@ -1529,19 +1576,12 @@
+                                          NautilusFileList   *new_selection)
+ {
+     GFile *old_location = nautilus_window_slot_get_location (self);
+-    g_autoptr (GFile) root = g_file_new_for_path ("/");
+-
+-    if (g_settings_get_boolean (nautilus_preferences,
+-                                NAUTILUS_PREFERENCES_PERSONAL_STORAGE_ONLY) &&
+-        g_file_equal (location, root))
+-    {
+-        if (!self->root_warning_bypass)
+-        {
+-            show_root_warning (self, location, new_selection);
+-            return;
+-        }
+-
+-        self->root_warning_bypass = FALSE;
++    if (self->mode == NAUTILUS_MODE_BROWSE && is_system_location (location) &&
++        g_settings_get_boolean (nautilus_preferences, "show-system-folder-warning") &&
++        !self->root_warning_bypass)
++    {
++        show_root_warning (self, location, new_selection);
++        return;
+     }
+ 
+     nautilus_window_slot_set_search_global (self, FALSE);
+@@ -1753,6 +1793,11 @@
+ 
+     old_location = self->location;
+     self->location = g_object_ref (location);
++    if (self->system_banner != NULL)
++    {
++        adw_banner_set_revealed (self->system_banner,
++                                self->mode == NAUTILUS_MODE_BROWSE && is_system_location (location));
++    }
+ 
+     nautilus_window_slot_update_title (self);
+ 
+--- a/src/resources/icons/scalable/actions/edit-find-symbolic.svg
++++ b/src/resources/icons/scalable/actions/edit-find-symbolic.svg
+@@ -9,6 +9,6 @@
+   stroke-linecap="round"
+   stroke-linejoin="round"
+ >
+-  <circle cx="11" cy="11" r="8" />
+-  <path d="m21 21-4.3-4.3" />
++  <circle class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="11" cy="11" r="8" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3" />
+ </svg>
+--- /dev/null
++++ b/src/resources/icons/scalable/actions/emblem-unwritable-symbolic.svg
+@@ -0,0 +1,15 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="24"
++  height="24"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <circle class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="16" r="1" />
++  <rect class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" x="3" y="10" width="18" height="12" rx="2" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 10V7a5 5 0 0 1 10 0v3" />
++</svg>
+--- /dev/null
++++ b/src/resources/icons/scalable/actions/luma-folder-plus-symbolic.svg
+@@ -0,0 +1,15 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  width="24"
++  height="24"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#2e3436"
++  stroke-width="2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 10v6" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 13h6" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
++</svg>
+--- a/src/resources/icons/scalable/actions/view-dual-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-dual-symbolic.svg
+@@ -9,7 +9,7 @@
+   stroke-linecap="round"
+   stroke-linejoin="round"
+ >
+-  <rect width="18" height="18" x="3" y="3" rx="2" />
+-  <path d="M9 3v18" />
+-  <path d="M15 3v18" />
++  <rect class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" x="3" y="3" rx="2" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 3v18" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M15 3v18" />
+ </svg>
+--- a/src/resources/icons/scalable/actions/view-grid-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-grid-symbolic.svg
+@@ -9,8 +9,8 @@
+   stroke-linecap="round"
+   stroke-linejoin="round"
+ >
+-  <rect width="7" height="7" x="3" y="3" rx="1" />
+-  <rect width="7" height="7" x="14" y="3" rx="1" />
+-  <rect width="7" height="7" x="14" y="14" rx="1" />
+-  <rect width="7" height="7" x="3" y="14" rx="1" />
++  <rect class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="7" height="7" x="3" y="3" rx="1" />
++  <rect class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="7" height="7" x="14" y="3" rx="1" />
++  <rect class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="7" height="7" x="14" y="14" rx="1" />
++  <rect class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="7" height="7" x="3" y="14" rx="1" />
+ </svg>
+--- a/src/resources/icons/scalable/actions/view-list-symbolic.svg
++++ b/src/resources/icons/scalable/actions/view-list-symbolic.svg
+@@ -9,10 +9,10 @@
+   stroke-linecap="round"
+   stroke-linejoin="round"
+ >
+-  <path d="M3 5h.01" />
+-  <path d="M3 12h.01" />
+-  <path d="M3 19h.01" />
+-  <path d="M8 5h13" />
+-  <path d="M8 12h13" />
+-  <path d="M8 19h13" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 5h.01" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12h.01" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 19h.01" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 5h13" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 12h13" />
++  <path class="stroke transparent-fill foreground-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 19h13" />
+ </svg>
+--- a/src/resources/menu/nautilus-files-view-context-menus.ui
++++ b/src/resources/menu/nautilus-files-view-context-menus.ui
+@@ -162,6 +162,11 @@
+         </link>
+       </item>
+       <item>
++        <attribute name="label" translatable="yes">Add to Favorites</attribute>
++        <attribute name="action">view.add-to-favorites</attribute>
++        <attribute name="hidden-when">action-disabled</attribute>
++      </item>
++      <item>
+         <attribute name="label" translatable="yes">_Pin to Dock</attribute>
+         <attribute name="action">view.pin-folder-to-dock</attribute>
+         <attribute name="hidden-when">action-disabled</attribute>
+--- a/src/resources/nautilus.gresource.xml.in
++++ b/src/resources/nautilus.gresource.xml.in
+@@ -50,6 +50,7 @@
+     <file>style.css</file>
+ 
+     <!-- Icons -->
++    <file preprocess="xml-stripblanks">icons/scalable/actions/emblem-unwritable-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/document-open-recent-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/drive-harddisk-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/edit-find-symbolic.svg</file>
+@@ -58,6 +59,7 @@
+     <file preprocess="xml-stripblanks">icons/scalable/actions/folder-music-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/folder-pictures-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/folder-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">icons/scalable/actions/luma-folder-plus-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/folder-videos-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/media-removable-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">icons/scalable/actions/network-workgroup-symbolic.svg</file>
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -456,9 +456,6 @@
+   min-height: 26px;
+   padding: 0 8px;
+   color: @luma_muted;
+-  font-size: 11px;
+-  font-weight: 700;
+-  letter-spacing: 0.08em;
+ }
+ 
+ .luma-files-window .nautilus-list-view columnview > header > button:checked {
+@@ -1236,8 +1233,7 @@
+   -gtk-icon-size: 14px;
+   color: var(--accent-color);
+ }
+-window.luma-files-window .nautilus-list-view columnview > header > button,
+-window.luma-files-window .nautilus-list-view columnview > header > button label {
++window.luma-files-window .nautilus-list-view columnview > header > button > box > label {
+   font-family: "Figtree";
+   font-size: 11px;
+   font-weight: 700;
+@@ -1398,3 +1394,10 @@
+ .nautilus-properties.luma-about-file .luma-about-history preferencesgroup + preferencesgroup {border-top: 1px solid @luma_line;}
+ .nautilus-properties.luma-about-file picture {background: @luma_fill; border-radius: 6px;}
+ .nautilus-properties.luma-about-file .icon-dropshadow {margin: 0; padding: 0;}
++
++/* Tabs use the same text role as the surrounding Filer controls. Their shape,
++ * scrolling, close affordances and focus treatment remain toolkit-owned. */
++window.luma-files-window tabbar tab label {
++  font-family: "Figtree";
++  font-size: 13px;
++}
+--- a/src/resources/ui/nautilus-properties-widget.blp
++++ b/src/resources/ui/nautilus-properties-widget.blp
+@@ -124,6 +124,7 @@
+  Label name_value_label {selectable: true; wrap: true; wrap-mode: word_char; xalign: 0; styles ["luma-about-name"]}
+  Label type_value_label {visible: false; selectable: true; wrap: true; xalign: 0; styles ["dim-label"]}
+  Label type_file_system_label {
++                    xalign: 0;
+                     ellipsize: end;
+                     label: _("Unknown Filesystem");
+                     selectable: true;
+@@ -140,7 +141,7 @@
+  }
+  Button rename_button {icon-name: "document-edit-symbolic"; valign: center; tooltip-text: _("Rename"); clicked => $about_rename_begin(template); styles ["flat"]}
+  }
+- Separator {}
++ Separator {visible: bind facts_box.visible;}
+  Box facts_box {styles ["luma-about-facts"] spacing: 12; homogeneous: true; margin-top: 12; margin-bottom: 12; margin-start: 16; margin-end: 16;
+  Box dimensions_fact {visible: false; orientation: vertical; spacing: 4;
+  Label dimensions_value {xalign: 0; selectable: true; styles ["heading"]}
+@@ -179,6 +180,122 @@
+  Label {label: _("Color space"); xalign: 0; styles ["caption", "dim-label"]}
+  }
+  }
++ }
++
++ Box {orientation: vertical; visible: bind disk_group.visible; styles ["luma-island", "luma-island-quiet"]
++ Adw.PreferencesGroup disk_group {
++              visible: false;
++
++              Adw.PreferencesRow volume_usage_row {
++                activatable: false;
++                selectable: false;
++
++                Box {
++                  margin-bottom: 12;
++                  margin-end: 12;
++                  margin-start: 12;
++                  margin-top: 18;
++                  spacing: 12;
++                  orientation: vertical;
++
++                  LevelBar disk_space_level_bar {
++                    hexpand: true;
++                  }
++
++                  Box {
++                    spacing: 6;
++                    orientation: vertical;
++                    halign: start;
++
++                    Box {
++                      spacing: 3;
++
++                      Label disk_space_capacity_value {
++                        styles [
++                          "dim-label",
++                        ]
++                      }
++
++                      Label {
++                        label: _("total");
++
++                        styles [
++                          "dim-label",
++                        ]
++                      }
++                    }
++
++                    Box {
++                      spacing: 3;
++
++                      Label {
++                        label: "●";
++                        accessible-role: presentation;
++
++                        styles [
++                          "disk-space-used",
++                        ]
++                      }
++
++                      Label disk_space_used_value {
++                        styles [
++                          "caption-style",
++                          "dim-label",
++                        ]
++                      }
++
++                      Label {
++                        /* Translators: Refers to the capacity of the filesystem */
++                        label: _("used");
++
++                        styles [
++                          "caption-style",
++                          "dim-label",
++                        ]
++                      }
++                    }
++
++                    Box {
++                      spacing: 3;
++
++                      Label {
++                        label: "●";
++                        accessible-role: presentation;
++
++                        styles [
++                          "disk-space-free",
++                        ]
++                      }
++
++                      Label disk_space_free_value {
++                        styles [
++                          "caption-style",
++                          "dim-label",
++                        ]
++                      }
++
++                      Label {
++                        /* Translators: Refers to the capacity of the filesystem */
++                        label: _("free");
++
++                        styles [
++                          "caption-style",
++                          "dim-label",
++                        ]
++                      }
++                    }
++                  }
++                }
++              }
++
++              Adw.ButtonRow open_in_disks_button_row {
++                /* Translators: Disks refers to GNOME Disks. */
++                title: _("_Open in Disks");
++                end-icon-name: "external-link-symbolic";
++                use-underline: true;
++                activated => $open_in_disks(template);
++              }
++            }
+  }
+  Box {orientation: vertical; styles ["luma-island", "luma-island-quiet", "luma-about-history"]
+  Adw.PreferencesGroup locations_group {visible: false;
+@@ -219,118 +336,7 @@
+  Adw.ExpanderRow access_expander {title: _("Access &amp; advanced"); expanded: false;
+  [suffix] Label permissions_value_label {ellipsize: end; styles ["caption", "dim-label"]}
+  Box {orientation: vertical; spacing: 8; margin-start: 16; margin-end: 16; margin-bottom: 12;
+- Adw.PreferencesGroup disk_group {
+-              visible: false;
+-
+-              Adw.PreferencesRow volume_usage_row {
+-                activatable: false;
+-                selectable: false;
+-
+-                Box {
+-                  margin-bottom: 12;
+-                  margin-end: 12;
+-                  margin-start: 12;
+-                  margin-top: 18;
+-                  spacing: 12;
+-                  orientation: vertical;
+-
+-                  LevelBar disk_space_level_bar {
+-                    hexpand: true;
+-                  }
+-
+-                  Box {
+-                    spacing: 12;
+-                    halign: center;
+-
+-                    Box {
+-                      spacing: 3;
+-
+-                      Label disk_space_capacity_value {
+-                        styles [
+-                          "dim-label",
+-                        ]
+-                      }
+-
+-                      Label {
+-                        label: _("total");
+-
+-                        styles [
+-                          "dim-label",
+-                        ]
+-                      }
+-                    }
+-
+-                    Box {
+-                      spacing: 3;
+-
+-                      Label {
+-                        label: "●";
+-                        accessible-role: presentation;
+-
+-                        styles [
+-                          "disk-space-used",
+-                        ]
+-                      }
+-
+-                      Label disk_space_used_value {
+-                        styles [
+-                          "caption-style",
+-                          "dim-label",
+-                        ]
+-                      }
+-
+-                      Label {
+-                        /* Translators: Refers to the capacity of the filesystem */
+-                        label: _("used");
+-
+-                        styles [
+-                          "caption-style",
+-                          "dim-label",
+-                        ]
+-                      }
+-                    }
+-
+-                    Box {
+-                      spacing: 3;
+-
+-                      Label {
+-                        label: "●";
+-                        accessible-role: presentation;
+-
+-                        styles [
+-                          "disk-space-free",
+-                        ]
+-                      }
+-
+-                      Label disk_space_free_value {
+-                        styles [
+-                          "caption-style",
+-                          "dim-label",
+-                        ]
+-                      }
+-
+-                      Label {
+-                        /* Translators: Refers to the capacity of the filesystem */
+-                        label: _("free");
+-
+-                        styles [
+-                          "caption-style",
+-                          "dim-label",
+-                        ]
+-                      }
+-                    }
+-                  }
+-                }
+-              }
+-
+-              Adw.ButtonRow open_in_disks_button_row {
+-                /* Translators: Disks refers to GNOME Disks. */
+-                title: _("_Open in Disks");
+-                end-icon-name: "external-link-symbolic";
+-                use-underline: true;
+-                activated => $open_in_disks(template);
+-              }
+-            }
++
+  Adw.PreferencesGroup trashed_group {
+               visible: false;
+ 
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -92,7 +92,7 @@
+ 
+                   ToggleButton search_button {
+                     valign: center;
+-                    icon-name: "luma-search-symbolic";
++                    icon-name: "edit-find-symbolic";
+                     action-name: "slot.search-global";
+                     active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+ 
+@@ -153,7 +153,7 @@
+ 
+       ToggleButton compact_search_button {
+             visible: bind template.compact;
+-            icon-name: "luma-search-symbolic";
++            icon-name: "edit-find-symbolic";
+             action-name: "slot.search-global";
+             active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
+ 
+@@ -167,8 +167,8 @@
+           }
+ 
+       Button new_folder_button {
+-            visible: bind template.show-new-folder-button;
+-            icon-name: "folder-new-symbolic";
++            visible: true;
++            icon-name: "luma-folder-plus-symbolic";
+             tooltip-text: _("New Folder");
+             action-name: "view.new-folder";
+             focus-on-click: false;
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -3,16 +3,8 @@
+ 
+ menu view_menu {
+   section {
+-    label: _("Icon Size");
+-    display-hint: "inline-buttons";
+-
+-    item {
+-      custom: "zoom-out";
+-    }
+-
+-    item {
+-      custom: "zoom-in";
+-    }
++    item { label: _("Larger Icons"); action: "view.zoom-in"; }
++    item { label: _("Smaller Icons"); action: "view.zoom-out"; }
+   }
+ 
+   section {
+@@ -66,8 +58,8 @@
+ 
+       ToggleButton {
+         child: Image {
+-          icon-name: "luma-layout-grid-symbolic";
+-          pixel-size: 13;
++          icon-name: "view-grid-symbolic";
++          pixel-size: 16;
+         };
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 2";
+@@ -79,8 +71,8 @@
+ 
+       ToggleButton {
+         child: Image {
+-          icon-name: "luma-list-symbolic";
+-          pixel-size: 13;
++          icon-name: "view-list-symbolic";
++          pixel-size: 16;
+         };
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 1";
+@@ -92,8 +84,8 @@
+ 
+       ToggleButton {
+         child: Image {
+-          icon-name: "luma-columns-three-symbolic";
+-          pixel-size: 13;
++          icon-name: "view-dual-symbolic";
++          pixel-size: 16;
+         };
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 4";
+@@ -119,27 +111,7 @@
+       popover: PopoverMenu {
+         menu-model: view_menu;
+ 
+-        [zoom-out]
+-        Button {
+-          icon-name: "zoom-out-symbolic";
+-          action-name: "view.zoom-out";
+-          tooltip-text: _("Zoom Out");
+ 
+-          styles [
+-            "flat",
+-          ]
+-        }
+-
+-        [zoom-in]
+-        Button {
+-          icon-name: "zoom-in-symbolic";
+-          action-name: "view.zoom-in";
+-          tooltip-text: _("Zoom In");
+-
+-          styles [
+-            "flat",
+-          ]
+-        }
+       };
+     }
+   };
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -275,6 +275,13 @@
+             ]
+ 
+             [top]
++            Adw.TabBar tab_bar {
++              view: tab_view;
++              expand-tabs: false;
++              autohide: true;
++            }
++
++            [top]
+             $NautilusToolbar toolbar {
+               hexpand: true;
+               main-menu: app_menu;
+@@ -288,10 +295,6 @@
+               ]
+             }
+ 
+-            [top]
+-            Adw.TabBar tab_bar {
+-              view: tab_view;
+-            }
+ 
+             content: Adw.TabView tab_view {
+               menu-model: tab_menu_model;
+--- a/test/automated/display/meson.build
++++ b/test/automated/display/meson.build
+@@ -1,4 +1,5 @@
+ tests = {
++  'test-luma-column-header-menu': {'is_parallel': false},
+   'test-nautilus-directory-async': {},
+   'test-file-operations-create': {},
+   'test-files-view': {
+--- /dev/null
++++ b/test/automated/display/test-luma-column-header-menu.c
+@@ -0,0 +1,345 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include <nautilus-application.h>
++#include <nautilus-column-view.h>
++#include <nautilus-sidebar.h>
++#include <nautilus-sidebar-row.h>
++#include <nautilus-bookmark-list.h>
++#include <nautilus-view-model.h>
++#include <nautilus-view-item.h>
++#include <nautilus-column-utilities.h>
++#include <nautilus-directory.h>
++#include <nautilus-file.h>
++#include <nautilus-file-utilities.h>
++#include <nautilus-global-preferences.h>
++#include <nautilus-list-base.h>
++#include <nautilus-list-view.h>
++#include <nautilus-resources.h>
++#include <nautilus-tag-manager.h>
++#include <test-utilities.h>
++#include <glib/gstdio.h>
++
++static GtkColumnView *
++find_columns (GtkWidget *widget)
++{
++    if (GTK_IS_COLUMN_VIEW (widget))
++        return GTK_COLUMN_VIEW (widget);
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkColumnView *found = find_columns (child);
++        if (found) return found;
++    }
++    return NULL;
++}
++
++static GtkColumnViewColumn *
++find_column (GtkColumnView *view, const char *name)
++{
++    GListModel *columns = gtk_column_view_get_columns (view);
++    for (guint i = 0; i < g_list_model_get_n_items (columns); i++)
++    {
++        GtkColumnViewColumn *column = g_list_model_get_item (columns, i);
++        if (g_strcmp0 (gtk_column_view_column_get_id (column), name) == 0)
++            return column;
++        g_object_unref (column);
++    }
++    g_assert_not_reached ();
++}
++
++static void
++toggle_column (GtkColumnView *view, const char *label)
++{
++    g_autoptr (GtkColumnViewColumn) name = find_column (view, "name");
++    GMenuModel *menu = gtk_column_view_column_get_header_menu (name);
++    g_assert_nonnull (menu);
++    g_assert_cmpint (g_menu_model_get_n_items (menu), >, 3);
++    for (int i = 0; i < g_menu_model_get_n_items (menu); i++)
++    {
++        g_autofree char *item_label = NULL;
++        g_autofree char *action = NULL;
++        g_menu_model_get_item_attribute (menu, i, G_MENU_ATTRIBUTE_LABEL, "s", &item_label);
++        if (g_strcmp0 (item_label, label) != 0) continue;
++        g_menu_model_get_item_attribute (menu, i, G_MENU_ATTRIBUTE_ACTION, "s", &action);
++        g_assert_true (gtk_widget_activate_action_variant (GTK_WIDGET (view), action, NULL));
++        return;
++    }
++    g_error ("Missing column menu item: %s", label);
++}
++
++static void
++settle_metadata (void)
++{
++    gint64 deadline = g_get_monotonic_time () + 500 * G_TIME_SPAN_MILLISECOND;
++    while (g_get_monotonic_time () < deadline)
++    {
++        while (g_main_context_iteration (NULL, FALSE));
++        g_usleep (1000);
++    }
++}
++
++static void
++test_header_columns (void)
++{
++    g_autofree char *path = g_dir_make_tmp ("filer-header-test-XXXXXX", NULL);
++    g_autoptr (GFile) location = g_file_new_for_path (path);
++    g_autoptr (NautilusDirectory) directory = nautilus_directory_get (location);
++    g_autoptr (NautilusFile) file = nautilus_directory_get_corresponding_file (directory);
++    char *initial[] = { "name", "size", "date_modified", NULL };
++    nautilus_column_save_metadata (file, initial, initial);
++    settle_metadata ();
++
++    g_autoptr (NautilusListView) first = nautilus_list_view_new ();
++    g_object_ref_sink (first);
++    nautilus_list_base_setup_directory (NAUTILUS_LIST_BASE (first), directory);
++    GtkColumnView *view = find_columns (GTK_WIDGET (first));
++    g_assert_nonnull (view);
++    g_autoptr (GtkColumnViewColumn) size = find_column (view, "size");
++    g_autoptr (GtkColumnViewColumn) name = find_column (view, "name");
++    g_autoptr (GtkColumnViewColumn) modified = find_column (view, "date_modified");
++    g_assert_true (gtk_column_view_column_get_visible (size));
++    toggle_column (view, "Size");
++    g_assert_false (gtk_column_view_column_get_visible (size));
++    settle_metadata ();
++    g_auto (GStrv) saved = nautilus_column_get_visible_columns (file);
++    g_assert_false (g_strv_contains ((const char * const *) saved, "size"));
++    g_assert_true (gtk_column_view_column_get_visible (modified));
++    g_assert_true (gtk_column_view_column_get_visible (name));
++    g_auto (GStrv) order = nautilus_column_get_column_order (file);
++    g_assert_cmpstrv (order, initial);
++
++    g_autoptr (NautilusListView) reopened = nautilus_list_view_new ();
++    g_object_ref_sink (reopened);
++    nautilus_list_base_setup_directory (NAUTILUS_LIST_BASE (reopened), directory);
++    GtkColumnView *second = find_columns (GTK_WIDGET (reopened));
++    g_autoptr (GtkColumnViewColumn) second_size = find_column (second, "size");
++    g_assert_false (gtk_column_view_column_get_visible (second_size));
++    toggle_column (second, "Size");
++    g_assert_true (gtk_column_view_column_get_visible (second_size));
++    g_assert_nonnull (gtk_column_view_column_get_header_menu (modified));
++    nautilus_column_save_metadata (file, NULL, NULL);
++    g_assert_true (g_file_delete (location, NULL, NULL));
++}
++
++static GtkWidget *
++find_details (GtkWidget *widget)
++{
++    if (gtk_widget_has_css_class (widget, "luma-details-island")) return widget;
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkWidget *found = find_details (child);
++        if (found) return found;
++    }
++    return NULL;
++}
++
++static void
++test_details_selection (void)
++{
++    g_autoptr (NautilusColumnView) view = nautilus_column_view_new ();
++    g_object_ref_sink (view);
++    GtkWidget *details = find_details (GTK_WIDGET (view));
++    g_assert_nonnull (details);
++    g_assert_false (gtk_widget_is_visible (details));
++    g_autoptr (NautilusViewModel) model = nautilus_view_model_new (FALSE);
++    nautilus_list_base_set_model (NAUTILUS_LIST_BASE (view), model);
++    g_autoptr (GFile) location = g_file_new_for_path (g_get_tmp_dir ());
++    g_autoptr (NautilusFile) file = nautilus_file_get (location);
++    g_autoptr (NautilusViewItem) item = nautilus_view_item_new (file);
++    nautilus_view_model_add_item (model, item);
++    g_assert_false (gtk_widget_is_visible (details));
++    gtk_selection_model_select_item (GTK_SELECTION_MODEL (model), 0, TRUE);
++    g_assert_true (gtk_widget_is_visible (details));
++    gtk_selection_model_unselect_all (GTK_SELECTION_MODEL (model));
++    g_assert_false (gtk_widget_is_visible (details));
++    gtk_selection_model_select_item (GTK_SELECTION_MODEL (model), 0, TRUE);
++    nautilus_view_model_remove_all_items (model);
++    g_assert_false (gtk_widget_is_visible (details));
++    g_print ("PASS: Details appears on selection and collapses on clear/removal\n");
++}
++
++static void
++test_favorites (void)
++{
++    g_autoptr (NautilusSidebar) sidebar = NAUTILUS_PLACES_SIDEBAR (nautilus_sidebar_new ());
++    g_object_ref_sink (sidebar);
++    GUserDirectory directories[] = { G_USER_DIRECTORY_DESKTOP, G_USER_DIRECTORY_DOCUMENTS,
++        G_USER_DIRECTORY_DOWNLOAD, G_USER_DIRECTORY_MUSIC, G_USER_DIRECTORY_PICTURES,
++        G_USER_DIRECTORY_VIDEOS };
++    for (guint i = 0; i < G_N_ELEMENTS (directories); i++)
++    {
++        g_autoptr (GFile) location = g_file_new_for_path (g_get_user_special_dir (directories[i]));
++        nautilus_sidebar_set_location (sidebar, location);
++        g_autoptr (GFile) actual = nautilus_sidebar_get_location (sidebar);
++        g_assert_nonnull (actual);
++        g_assert_true (g_file_equal (location, actual));
++    }
++    g_autoptr (GFile) root = g_file_new_for_path ("/");
++    nautilus_sidebar_set_location (sidebar, root);
++    g_autofree char *title = nautilus_sidebar_get_location_title (sidebar);
++    g_assert_cmpstr (title, ==, "Luma");
++    g_print ("PASS: six configured Favorites and Luma disk navigation\n");
++}
++
++static GtkWidget *
++find_row (GtkWidget *widget, const char *uri)
++{
++    if (NAUTILUS_IS_SIDEBAR_ROW (widget))
++    {
++        g_autofree char *actual = NULL;
++        g_object_get (widget, "uri", &actual, NULL);
++        if (g_strcmp0 (actual, uri) == 0) return widget;
++    }
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkWidget *found = find_row (child, uri);
++        if (found) return found;
++    }
++    return NULL;
++}
++
++static gboolean
++send_menu_key (GtkWidget *widget)
++{
++    g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (widget);
++    for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
++    {
++        g_autoptr (GObject) controller = g_list_model_get_item (controllers, i);
++        if (GTK_IS_EVENT_CONTROLLER_KEY (controller))
++        {
++            gboolean handled = FALSE;
++            g_signal_emit_by_name (controller, "key-pressed", GDK_KEY_Menu, 0, 0, &handled);
++            if (handled) return TRUE;
++        }
++    }
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++        if (send_menu_key (child)) return TRUE;
++    return FALSE;
++}
++
++static void
++test_sidebar_customization (void)
++{
++    GtkWidget *window = gtk_window_new ();
++    NautilusSidebar *sidebar = NAUTILUS_PLACES_SIDEBAR (nautilus_sidebar_new ());
++    gtk_window_set_child (GTK_WINDOW (window), GTK_WIDGET (sidebar));
++    gtk_window_set_default_size (GTK_WINDOW (window), 280, 900);
++    gtk_window_present (GTK_WINDOW (window));
++    settle_metadata ();
++    g_autoptr (GFile) documents = g_file_new_for_path (g_get_user_special_dir (G_USER_DIRECTORY_DOCUMENTS));
++    g_autofree char *uri = g_file_get_uri (documents);
++    GtkWidget *row = find_row (GTK_WIDGET (sidebar), uri);
++    g_assert_nonnull (row);
++    int original = gtk_list_box_row_get_index (GTK_LIST_BOX_ROW (row));
++    nautilus_sidebar_set_location (sidebar, documents);
++    g_assert_true (send_menu_key (GTK_WIDGET (sidebar)));
++    g_assert_true (gtk_widget_activate_action (GTK_WIDGET (sidebar), "row.move-up", NULL));
++    g_assert_cmpint (gtk_list_box_row_get_index (GTK_LIST_BOX_ROW (row)), ==, original - 1);
++    g_auto (GStrv) order = g_settings_get_strv (nautilus_preferences, "sidebar-favorites-order");
++    g_assert_cmpstr (order[0], ==, uri);
++    g_assert_true (gtk_widget_activate_action (GTK_WIDGET (sidebar), "row.remove", NULL));
++    g_assert_null (find_row (GTK_WIDGET (sidebar), uri));
++    g_assert_true (g_file_query_exists (documents, NULL));
++    NautilusBookmarkList *bookmarks = nautilus_application_get_bookmarks (NAUTILUS_APPLICATION (g_application_get_default ()));
++    g_assert_true (nautilus_bookmark_list_can_favorite (bookmarks, documents));
++    nautilus_bookmark_list_add_favorite (bookmarks, documents);
++    g_assert_nonnull (find_row (GTK_WIDGET (sidebar), uri));
++    g_assert_false (nautilus_bookmark_list_can_favorite (bookmarks, documents));
++    gtk_window_destroy (GTK_WINDOW (window));
++    g_autoptr (NautilusSidebar) reopened = NAUTILUS_PLACES_SIDEBAR (nautilus_sidebar_new ());
++    g_object_ref_sink (reopened);
++    row = find_row (GTK_WIDGET (reopened), uri);
++    g_assert_cmpint (gtk_list_box_row_get_index (GTK_LIST_BOX_ROW (row)), ==, original - 1);
++    g_settings_reset (nautilus_preferences, "sidebar-favorites-order");
++    g_print ("PASS: Favorites reorder persists, remove keeps folder, add restores shortcut\n");
++}
++
++static GtkDragSource *
++find_drag_source (GtkWidget *widget)
++{
++    g_autoptr (GListModel) controllers = gtk_widget_observe_controllers (widget);
++    for (guint i = 0; i < g_list_model_get_n_items (controllers); i++)
++    {
++        GObject *controller = g_list_model_get_item (controllers, i);
++        if (GTK_IS_DRAG_SOURCE (controller)) return GTK_DRAG_SOURCE (controller);
++        g_object_unref (controller);
++    }
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkDragSource *found = find_drag_source (child);
++        if (found) return found;
++    }
++    return NULL;
++}
++
++static void
++test_parent_drag (void)
++{
++    g_autofree char *parent = g_dir_make_tmp ("filer-parent-drag-XXXXXX", NULL);
++    g_autofree char *child = g_build_filename (parent, "Child", NULL);
++    g_assert_cmpint (g_mkdir (child, 0700), ==, 0);
++    g_autoptr (GFile) location = g_file_new_for_path (child);
++    g_autoptr (NautilusDirectory) directory = nautilus_directory_get (location);
++    NautilusColumnView *view = nautilus_column_view_new ();
++    g_autoptr (NautilusViewModel) model = nautilus_view_model_new (FALSE);
++    nautilus_list_base_set_model (NAUTILUS_LIST_BASE (view), model);
++    GtkWidget *window = gtk_window_new ();
++    gtk_window_set_default_size (GTK_WINDOW (window), 900, 600);
++    gtk_window_set_child (GTK_WINDOW (window), GTK_WIDGET (view));
++    nautilus_list_base_setup_directory (NAUTILUS_LIST_BASE (view), directory);
++    gtk_window_present (GTK_WINDOW (window));
++    settle_metadata ();
++    g_autoptr (GtkEventController) source = GTK_EVENT_CONTROLLER (find_drag_source (GTK_WIDGET (view)));
++    g_assert_nonnull (source);
++    g_autoptr (GdkContentProvider) provider = NULL;
++    g_signal_emit_by_name (source, "prepare", 2.0, 2.0, &provider);
++    g_assert_nonnull (provider);
++    GValue value = G_VALUE_INIT;
++    g_value_init (&value, GDK_TYPE_FILE_LIST);
++    g_assert_true (gdk_content_provider_get_value (provider, &value, NULL));
++    GSList *files = gdk_file_list_get_files (g_value_get_boxed (&value));
++    g_assert_cmpuint (g_slist_length (files), ==, 1);
++    g_assert_true (g_file_equal (files->data, location));
++    g_value_unset (&value);
++    gtk_window_destroy (GTK_WINDOW (window));
++    settle_metadata ();
++    g_rmdir (child); g_rmdir (parent);
++    g_print ("PASS: left column exports selected folder for native file drag\n");
++}
++
++int
++main (int argc, char **argv)
++{
++    g_autofree char *isolation = g_dir_make_tmp ("filer-test-config-XXXXXX", NULL);
++    g_setenv ("XDG_CONFIG_HOME", isolation, TRUE);
++    g_setenv ("XDG_DATA_HOME", isolation, TRUE);
++    g_setenv ("XDG_CACHE_HOME", isolation, TRUE);
++    const char *names[] = {"DESKTOP", "DOCUMENTS", "DOWNLOAD", "MUSIC", "PICTURES", "VIDEOS"};
++    g_autoptr (GString) dirs = g_string_new (NULL);
++    for (guint i = 0; i < G_N_ELEMENTS (names); i++)
++    {
++        g_autofree char *path = g_build_filename (isolation, names[i], NULL);
++        g_assert_cmpint (g_mkdir_with_parents (path, 0700), ==, 0);
++        g_string_append_printf (dirs, "XDG_%s_DIR=\"%s\"\n", names[i], path);
++    }
++    g_autofree char *config = g_build_filename (isolation, "user-dirs.dirs", NULL);
++    g_assert_true (g_file_set_contents (config, dirs->str, -1, NULL));
++    gtk_init ();
++    nautilus_register_resource ();
++    nautilus_ensure_extension_points ();
++    nautilus_global_preferences_init ();
++    g_autoptr (NautilusTagManager) tags = nautilus_tag_manager_new_dummy ();
++
++    g_autoptr (NautilusApplication) app = nautilus_application_new ();
++    g_log_set_always_fatal (G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING);
++    test_header_columns ();
++    test_details_selection ();
++    test_favorites ();
++    test_sidebar_customization ();
++    test_parent_drag ();
++    g_print ("PASS: header columns toggle, preserve order, and reopen\n");
++    return 0;
++}
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -4,6 +4,8 @@
+ #include <sys/stat.h>
+ #include "nautilus-application.h"
+ #include "nautilus-properties.h"
++#include "nautilus-window.h"
++#include "nautilus-global-preferences.h"
+ #include "nautilus-file.h"
+ #include "nautilus-tag-manager.h"
+ #include "nautilus-resources.h"
+@@ -39,6 +41,59 @@
+ }
+ static void begin_permissions(GtkWidget *w)
+ {adw_expander_row_set_expanded(ADW_EXPANDER_ROW(required(w,"access_expander")),TRUE);spin(50);g_signal_emit_by_name(required(w,"permissions_navigation_row"),"activated");spin(30);g_assert_true(gtk_widget_get_visible(required(w,"permissions_editor")));}
++static GtkWidget *find_button(GtkWidget *root,const char *label)
++{
++    if(GTK_IS_BUTTON(root) && !g_strcmp0(gtk_button_get_label(GTK_BUTTON(root)),label))return root;
++    for(GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c))
++    {GtkWidget *r=find_button(c,label);if(r)return r;}
++    return NULL;
++}
++static GtkWidget *find_system_banner(GtkWidget *root)
++{
++    if(ADW_IS_BANNER(root) && gtk_widget_has_css_class(root,"warning"))return root;
++    for(GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c))
++    {GtkWidget *r=find_system_banner(c);if(r)return r;}
++    return NULL;
++}
++static void warning_response(NautilusWindow *window,const char *label)
++{
++    AdwDialog *dialog=adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window));
++    g_assert_true(ADW_IS_ALERT_DIALOG(dialog));
++    GtkWidget *button=find_button(GTK_WIDGET(dialog),label);g_assert_nonnull(button);
++    g_signal_emit_by_name(button,"clicked");spin(500);
++}
++static void system_warning(void)
++{
++    g_assert_cmpint(g_mkdir_with_parents(g_get_home_dir(),0700),==,0);
++    g_settings_set_boolean(nautilus_preferences,"show-system-folder-warning",TRUE);
++    NautilusWindow *window=nautilus_window_new();
++    gtk_window_present(GTK_WINDOW(window));
++    g_autoptr(GFile) home=g_file_new_for_path(g_get_home_dir());
++    g_autoptr(GFile) root=g_file_new_for_path("/");
++    nautilus_window_open_location_full(window,home,0,NULL);spin(500);
++    nautilus_window_open_location_full(window,root,0,NULL);spin(100);
++    AdwAlertDialog *dialog=ADW_ALERT_DIALOG(adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window)));
++    g_assert_nonnull(dialog);
++    g_assert_cmpstr(adw_alert_dialog_get_default_response(dialog),==,"home");
++    warning_response(window,"Take me to Home");
++    g_assert_true(g_file_equal(nautilus_window_get_active_location(window),home));
++    nautilus_window_open_location_full(window,root,0,NULL);spin(100);
++    dialog=ADW_ALERT_DIALOG(adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window)));
++    g_assert_nonnull(dialog);
++    gtk_check_button_set_active(GTK_CHECK_BUTTON(adw_alert_dialog_get_extra_child(dialog)),TRUE);
++    warning_response(window,"Show the files");
++    g_assert_false(g_settings_get_boolean(nautilus_preferences,"show-system-folder-warning"));
++    g_assert_true(g_file_equal(nautilus_window_get_active_location(window),root));
++    GtkWidget *banner=find_system_banner(GTK_WIDGET(window));g_assert_nonnull(banner);
++    g_assert_true(adw_banner_get_revealed(ADW_BANNER(banner)));
++    g_signal_emit_by_name(banner,"button-clicked");
++    for(guint i=0;i<250 && !g_file_equal(nautilus_window_get_active_location(window),home);i++)spin(20);
++    g_test_message("Banner destination: %s; home: %s", g_file_peek_path(nautilus_window_get_active_location(window)), g_file_peek_path(home));
++    g_assert_true(g_file_equal(nautilus_window_get_active_location(window),home));
++    g_assert_false(adw_banner_get_revealed(ADW_BANNER(banner)));
++    gtk_window_destroy(GTK_WINDOW(window));spin(50);
++    g_settings_reset(nautilus_preferences,"show-system-folder-warning");
++}
+ static void fixture(void)
+ {
+     g_autofree char *dir=g_dir_make_tmp("luma-about-test-XXXXXX",NULL);
+@@ -106,13 +161,23 @@
+     window=open_paths(dir,NULL);w=GTK_WIDGET(window);
+     begin_permissions(w);g_assert_false(gtk_widget_get_visible(required(w,"execution_choices")));
+     gtk_window_destroy(window);spin(50);
++    window=open_paths("/",NULL);w=GTK_WIDGET(window);
++    g_assert_cmpstr(gtk_window_get_title(window),==,"About Luma");
++    g_assert_cmpstr(gtk_label_get_text(GTK_LABEL(required(w,"name_value_label"))),==,"Luma");
++    g_assert_false(gtk_widget_get_visible(required(w,"rename_button")));
++    g_assert_false(gtk_widget_get_visible(required(w,"facts_box")));
++    g_assert_false(gtk_widget_get_visible(required(w,"modified_row")));
++    g_assert_false(gtk_widget_get_visible(required(w,"created_row")));
++    g_assert_true(gtk_widget_is_visible(required(w,"disk_group")));
++    gtk_window_destroy(window);spin(50);
+     g_remove(renamed);g_remove(conflict);g_rmdir(dir);
+ }
+ int main(int argc,char **argv)
+ {
++    g_setenv("GIO_USE_VFS", "local", TRUE);
+     g_test_init(&argc,&argv,G_TEST_OPTION_ISOLATE_DIRS,NULL);
+     g_setenv("XDG_DATA_DIRS", "/usr/local/share:/usr/share", TRUE);
+-    adw_init();
++    /* Application startup initializes the selected display backend. */
+     nautilus_register_resource();
+     /* Match upstream display fixtures: star indexing is outside this mutation test. */
+     g_autoptr(NautilusTagManager) tag_manager=nautilus_tag_manager_new_dummy();
+@@ -120,5 +185,6 @@
+     g_application_set_flags(G_APPLICATION(app),G_APPLICATION_NON_UNIQUE);
+     g_autoptr(GError) error=NULL;g_assert_true(g_application_register(G_APPLICATION(app),NULL,&error));
+     g_test_add_func("/luma/about/native-mutations",fixture);
++    g_test_add_func("/luma/navigation/system-warning",system_warning);
+     return g_test_run();
+ }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<schemalist>
+  <schema id="org.projectluma.keyring" path="/org/projectluma/keyring/">
+    <key name="ask-about-login-keyring" type="b">
+      <default>true</default>
+      <summary>Say when the login keyring cannot be unlocked</summary>
+      <description>
+        Luma says once, per session, when the saved passwords are locked with
+        a password that is no longer the login password. Someone who says
+        never mind is not told again.
+      </description>
+    </key>
+  </schema>
+</schemalist>

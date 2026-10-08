@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<component type="desktop-application">
+  <id>org.projectluma.Contacts</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <name>Contacts</name>
+  <summary>Contacts for Luma</summary>
+  <description>
+    <p>Keep contact details and Luma usernames together, find the people you know, and choose how to reach them.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Contacts.desktop</launchable>
+  <releases>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <screenshots>
+    <screenshot type="default">
+      <caption>A saved Luma contact</caption>
+      <image width="1014" height="790">https://dl.simplyluma.com/media/org.projectluma.Contacts/8f4abf18eb9bf0c815aafd9416dd29fd9b5d2d46f94da8d0fa54a8bcc2638ede.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://projectluma.org/apps/contacts</url>
+</component>

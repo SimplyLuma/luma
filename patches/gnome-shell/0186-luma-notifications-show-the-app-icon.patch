@@ -1,0 +1,198 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 22:40:00 -0400
+Subject: [PATCH] luma: notifications show the app icon, not a glyph at tile
+ size
+
+The Shelf island and the notification cards lead with the notifying app:
+its full-colour icon, or a picture of the sender when the notification
+carries one. Three things put a small symbolic glyph there instead.
+
+The island decided glyph or artwork by asking whether any of the icon names
+ended in -symbolic. Gio.ThemedIcon adds a -symbolic variant of every name
+itself, so every app icon counted as a glyph and the island drew it at 16px
+in its ink on a grey tile, for every app. It also read St.Icon:is-symbolic,
+which the glyph style sets by loading the icon symbolic, so a glyph stayed
+a glyph. isGlyphIcon() decides from the name asked for (or the file name),
+and the card tile uses it too.
+
+The daemon placed the sender by its process first and by the desktop-entry
+hint only after that; a background agent, a portable app or a capsule runs
+where the window tracker cannot place it, so the card fell back to the icon
+the notification carried. The hint now comes first, and a name that is not
+an exact desktop ID is matched loosely (case, a trailing ID component, the
+window class, and for the app name the display name), counting only when a
+single installed app answers.
+
+A notification image replaced the card tile whenever it was not a themed
+-symbolic icon, so a symbolic file became the tile. Only a picture does now:
+image data, or a file that is not a symbolic asset. An app no one can name
+with only a symbolic icon keeps the glyph tile, at glyph size.
+---
+ js/ui/lumaNotificationBeacon.js |  7 +++--
+ js/ui/messageList.js            | 46 ++++++++++++++++++++++++------
+ js/ui/notificationDaemon.js     | 50 +++++++++++++++++++++++++--------
+ 3 files changed, 80 insertions(+), 23 deletions(-)
+
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index e71ba76..b55255a 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -441,10 +441,11 @@ class NotificationBeacon extends St.Button {
+         // Until the island is first shown its icon has not loaded, so a
+         // themed -symbolic name counts as a glyph as well (the first
+         // notification otherwise showed its glyph bare, as artwork).
++        // The app's own icon is artwork whatever the island showed before it;
++        // see MessageList.isGlyphIcon for why neither is-symbolic nor every
++        // themed name can decide that.
+         const gicon = this._markIcon.gicon;
+-        const named = gicon instanceof Gio.ThemedIcon &&
+-            gicon.get_names().some(name => name.endsWith('-symbolic'));
+-        const glyph = this._markIcon.is_symbolic || named || !gicon;
++        const glyph = MessageList.isGlyphIcon(gicon);
+         if (glyph && !this._markIcon.gicon)
+             this._markIcon.icon_name = 'luma-bell-symbolic';
+         this._mark.remove_style_class_name(glyph ? 'luma-notification-beacon-mark-art' : 'luma-notification-beacon-mark-glyph');
+diff --git a/js/ui/messageList.js b/js/ui/messageList.js
+index 8d8674e..40629e0 100644
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -463,6 +463,34 @@ class MessageHeader extends St.BoxLayout {
+     }
+ });
+ 
++const SYMBOLIC_FILE = /-symbolic(\.[a-z]+)?$/;
++
++// Whether an icon is a glyph (drawn small, in the ink colour, on a tile)
++// rather than artwork shown whole. Decided from the icon asked for, never from
++// St.Icon:is-symbolic: the glyph tile's own style loads its icon symbolic, so
++// reading that back kept a tile a glyph once it had been one. Nor from every
++// name a Gio.ThemedIcon carries: it adds a -symbolic variant of each name
++// itself, so "any name ends in -symbolic" was true of every app icon, and the
++// Shelf showed every app as a 16px glyph.
++export function isGlyphIcon(gicon) {
++    if (!gicon)
++        return true;
++    if (gicon instanceof Gio.ThemedIcon)
++        return gicon.get_names()[0]?.endsWith('-symbolic') ?? true;
++    if (gicon instanceof Gio.FileIcon)
++        return SYMBOLIC_FILE.test(gicon.get_file().get_basename() ?? '');
++    return false;
++}
++
++// A notification image that is a picture of something (an avatar, a photo),
++// rather than an icon: a file or image data, and not a symbolic asset.
++function isPicture(gicon) {
++    if (gicon instanceof Gio.ThemedIcon)
++        return false;
++    // Image data (Gio.BytesIcon, a GdkPixbuf) is always a picture.
++    return !isGlyphIcon(gicon);
++}
++
+ export const Message = GObject.registerClass({
+     Properties: {
+         'title': GObject.ParamSpec.string(
+@@ -678,8 +706,7 @@ export const Message = GObject.registerClass({
+                 logError(error, 'Luma notification tile mask unavailable');
+             }
+         }
+-        sourceIcon.connectObject('notify::is-symbolic', () => this._syncTile(),
+-            'notify::gicon', () => this._syncTile(), this);
++        sourceIcon.connectObject('notify::gicon', () => this._syncTile(), this);
+         this._icon.visible = false;
+         this._syncTile();
+ 
+@@ -733,16 +760,17 @@ export const Message = GObject.registerClass({
+             return;
+         const sourceIcon = this._header.sourceIcon;
+         const image = this._icon.gicon;
+-        // A person or content image stands in for the app tile; the source
+-        // row still names the app. A symbolic image is a glyph, not a photo,
+-        // and keeps the app's tile.
+-        const imageIsGlyph = image instanceof Gio.ThemedIcon &&
+-            image.get_names().some(name => name.endsWith('-symbolic'));
+-        const showImage = !!image && !imageIsGlyph;
++        // A person or content image -- a sender's avatar, a photo -- stands in
++        // for the app tile; the source row still names the app. Anything from
++        // the icon theme is a glyph or an app icon, not a picture, and keeps
++        // the app's full-colour tile, as does a symbolic image file: a glyph
++        // drawn at tile size is what made a mail notification's icon look
++        // tiny on its card.
++        const showImage = !!image && isPicture(image);
+         this._tileImage.gicon = showImage ? image : null;
+         this._tileImage.visible = showImage;
+         sourceIcon.visible = !showImage;
+-        const glyph = !showImage && sourceIcon.is_symbolic;
++        const glyph = !showImage && isGlyphIcon(sourceIcon.gicon);
+         this._tile.remove_style_class_name(glyph
+             ? 'luma-notification-tile-art' : 'luma-notification-tile-glyph');
+         this._tile.add_style_class_name(glyph
+diff --git a/js/ui/notificationDaemon.js b/js/ui/notificationDaemon.js
+index e068d5a..36a2e56 100644
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -87,18 +87,16 @@ class FdoNotificationDaemon {
+         return null;
+     }
+ 
++    // The app a notification belongs to decides the icon on its card, its
++    // title and its policy. The desktop-entry hint is the sender naming its
++    // own app, so it comes first: a background agent, a portable app or a
++    // capsule runs in a process the window tracker cannot place, or places
++    // under something else, and its card then showed whatever icon the
++    // notification carried -- often a symbolic glyph -- instead of the app.
+     _getApp(pid, appId, appName) {
+-        const appSys = Shell.AppSystem.get_default();
+-        let app;
+-
+-        app = Shell.WindowTracker.get_default().get_app_from_pid(pid);
+-        if (!app && appId)
+-            app = appSys.lookup_app(`${appId}.desktop`);
+-
+-        if (!app)
+-            app = appSys.lookup_app(`${appName}.desktop`);
+-
+-        return app;
++        return lookupNotifyingApp(appId) ??
++            Shell.WindowTracker.get_default().get_app_from_pid(pid) ??
++            lookupNotifyingApp(appName, {byName: true});
+     }
+ 
+     // Returns the source associated with an app.
+@@ -382,6 +380,36 @@ class FdoNotificationDaemon {
+     }
+ }
+ 
++// Resolve the app a notification names, by desktop ID first and then more
++// loosely: the ID in another case, an ID that ends in the given name
++// ("charlie" -> org.projectluma.Charlie), the window class, and with byName the
++// app's own display name ("Charlie"). A loose match counts only when exactly
++// one installed app answers it, so a guess never picks between two apps.
++export function lookupNotifyingApp(name, {byName = false} = {}) {
++    if (!name)
++        return null;
++    const appSys = Shell.AppSystem.get_default();
++    const id = name.replace(/\.desktop$/, '');
++    const exact = appSys.lookup_app(`${id}.desktop`);
++    if (exact)
++        return exact;
++
++    const wanted = id.toLowerCase();
++    const ids = new Set();
++    for (const info of appSys.get_installed()) {
++        const infoId = info.get_id();
++        if (!infoId)
++            continue;
++        const bare = infoId.replace(/\.desktop$/, '').toLowerCase();
++        const wmClass = info.get_startup_wm_class?.()?.toLowerCase() ?? '';
++        const shown = info.should_show?.() ?? true;
++        if (bare === wanted || bare.endsWith(`.${wanted}`) || wmClass === wanted ||
++            (byName && shown && info.get_name()?.toLowerCase() === wanted))
++            ids.add(infoId);
++    }
++    return ids.size === 1 ? appSys.lookup_app([...ids][0]) : null;
++}
++
+ export const FdoNotificationDaemonSource = GObject.registerClass(
+ class FdoNotificationDaemonSource extends MessageTray.Source {
+     constructor(sender, app) {

@@ -1,0 +1,193 @@
+--- a/src/libsushi/sushi-media-bin.c
++++ b/src/libsushi/sushi-media-bin.c
+@@ -209,7 +209,13 @@
+ }
+ 
+ /* Action handlers */
+-static void
++/**
++ * sushi_media_bin_toggle_playback:
++ * @self: a media bin
++ *
++ * Toggle playback using the same state transition as the media controls.
++ */
++void
+ sushi_media_bin_toggle_playback (SushiMediaBin *self)
+ {
+   if (SMB_PRIVATE (self)->state == GST_STATE_PLAYING)
+@@ -227,7 +233,11 @@
+   if (priv->audio_mode)
+     return;
+ 
+-  sushi_media_bin_set_fullscreen (self, !priv->fullscreen);
++  /* Luma keeps video in its parent preview and the shelf visible. */
++  GtkWidget *window = gtk_widget_get_toplevel (GTK_WIDGET (self));
++  if (G_IS_ACTION_GROUP (window) &&
++      g_action_group_has_action (G_ACTION_GROUP (window), "fullscreen"))
++    g_action_group_activate_action (G_ACTION_GROUP (window), "fullscreen", NULL);
+ }
+ 
+ static void
+--- a/src/libsushi/sushi-media-bin.h
++++ b/src/libsushi/sushi-media-bin.h
+@@ -67,6 +67,8 @@
+ GstTagList    *sushi_media_bin_get_audio_tags       (SushiMediaBin *self);
+ GstTagList    *sushi_media_bin_get_video_tags       (SushiMediaBin *self);
+ 
++void           sushi_media_bin_toggle_playback      (SushiMediaBin *self);
++
+ void           sushi_media_bin_play                 (SushiMediaBin *self);
+ void           sushi_media_bin_pause                (SushiMediaBin *self);
+ void           sushi_media_bin_stop                 (SushiMediaBin *self);
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -126,13 +126,16 @@
+         this._renderer = null;
+         this._lastWindowSize = [0, 0];
+         this.file = null;
++        this._fullView = false;
++        this._opening = false;
+ 
+         super._init({ type: Gtk.WindowType.TOPLEVEL,
+                       skipPagerHint: true,
+                       skipTaskbarHint: true,
+                       windowPosition: Gtk.WindowPosition.CENTER,
+                       gravity: Gdk.Gravity.CENTER,
+-                      application: application });
++                      application: application,
++                      resizable: false });
+ 
+         this.get_accessible().set_name('Quick View');
+         this.connect('destroy', () => { this._queryCancel?.cancel(); });
+@@ -170,7 +173,6 @@
+     _onRealize() {
+         // don't support maximize and minimize
+         this.get_window().set_functions(Gdk.WMFunction.MOVE |
+-                                        Gdk.WMFunction.RESIZE |
+                                         Gdk.WMFunction.CLOSE);
+     }
+ 
+@@ -179,12 +181,27 @@
+         quit.connect('activate', () => {
+             this.destroy();
+         });
+-        this.application.set_accels_for_action('win.quit', ['q', 'Escape', 'space']);
++        this.application.set_accels_for_action('win.quit', ['space']);
++        let escape = new Gio.SimpleAction({name: 'escape'});
++        escape.connect('activate', () => {
++            if (this._fullView) this._setFullView(false);
++            else this.destroy();
++        });
++        this.add_action(escape);
++        this.application.set_accels_for_action('win.escape', ['Escape']);
++        let open = new Gio.SimpleAction({name: 'open'});
++        open.connect('activate', () => this._onFileOpenClicked());
++        this.add_action(open);
++        this.application.set_accels_for_action('win.open', ['Return', 'KP_Enter', '<Primary>o']);
++        let playback = new Gio.SimpleAction({name: 'playback'});
++        playback.connect('activate', () => this._renderer?.togglePlayback?.());
++        this.add_action(playback);
++        this.application.set_accels_for_action('win.playback', ['k']);
+         this.add_action(quit);
+ 
+         let fullscreen = new Gio.SimpleAction({ name: 'fullscreen' });
+         fullscreen.connect('activate', () => {
+-            this._renderer.toggleFullscreen();
++            this._setFullView(!this._fullView);
+         });
+         this.application.set_accels_for_action('win.fullscreen', ['f', 'F11']);
+         this.add_action(fullscreen);
+@@ -229,11 +246,28 @@
+         this._embedRenderer(renderer);
+     }
+ 
++    _setFullView(enabled) {
++        if (this._fullView === enabled) return;
++        this._fullView = enabled;
++        if (this._renderer) {
++            this._renderer._fullscreen = enabled;
++            this._renderer.notify('fullscreen');
++        }
++        if (enabled) {
++            this._restoreSize = this.get_size();
++            // Native maximization respects compositor work-area/shelf reservations
++            // on Wayland as well as X11; display fullscreen would hide the shelf.
++            this.set_resizable(true);
++            this.maximize();
++        } else {
++            this.unmaximize();
++            this.set_resizable(false);
++            if (this._restoreSize) this.resize(...this._restoreSize);
++        }
++    }
++
+     _onRendererFullscreen() {
+-        if (this._renderer.fullscreen)
+-            this.fullscreen();
+-        else
+-            this.unfullscreen();
++        this._setFullView(this._renderer.fullscreen);
+     }
+ 
+     _onRendererReady() {
+@@ -281,7 +315,7 @@
+         if (!this._renderer)
+             return;
+ 
+-        if (this._renderer.fullscreen)
++        if (this._fullView)
+             return;
+ 
+         let maxSize = this._getMaxSize();
+@@ -358,7 +392,7 @@
+         renderer.connect('notify::ready', this._onRendererReady.bind(this));
+         this._onRendererReady();
+ 
+-        this.set_resizable(this._renderer.resizable);
++        this.set_resizable(this._fullView);
+         this.set_title(fileInfo.get_display_name());
+     }
+ 
+@@ -379,6 +413,8 @@
+     }
+ 
+     _onFileOpenClicked() {
++        if (!this.file || !this._hasHandler || this._renderer?.hideOpen || this._opening) return;
++        this._opening = true;
+         let ctx = this.get_display().get_app_launch_context();
+         ctx.set_timestamp(Gtk.get_current_event_time());
+         ctx.set_screen(this.get_screen());
+@@ -394,6 +430,7 @@
+                 Gio.AppInfo.launch_default_for_uri_finish(result);
+                 this.destroy();
+             } catch (e) {
++                this._opening = false;
+                 logError(e, `Failed to launch default handler for ${this.file.get_uri()}`);
+             }
+         });
+--- a/src/viewers/audio.js
++++ b/src/viewers/audio.js
+@@ -347,6 +347,10 @@
+         this.isReady();
+     }
+ 
++    togglePlayback() {
++        this._player.toggle_playback();
++    }
++
+     _onDestroy() {
+         if (this._autoplayId > 0) {
+             GLib.source_remove(this._autoplayId);
+--- a/src/viewers/gst.js
++++ b/src/viewers/gst.js
+@@ -60,6 +60,10 @@
+         this.connect('size-change', this.isReady.bind(this));
+     }
+ 
++    togglePlayback() {
++        this.toggle_playback();
++    }
++
+     _onDestroy() {
+         if (this._autoplayId > 0) {
+             GLib.source_remove(this._autoplayId);

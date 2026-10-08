@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma OS content on loopback over HTTPS (local CDN stand-in)
+After=network.target
+RequiresMountsFor=@ROOT@
+ConditionPathExists=@ROOT@/etc/tls/server.crt
+
+[Service]
+Type=simple
+Slice=luma-os.slice
+ExecStart=/usr/bin/python3 @ROOT@/src/nightly/scripts/os/lib/local_http.py --webroot @ROOT@/webroot/current --bind 127.0.0.1 --port 8872 --credentials @ROOT@/etc/preview-credentials.sha256 --cert @ROOT@/etc/tls/server.crt --key @ROOT@/etc/tls/server.key
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadOnlyPaths=@ROOT@
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

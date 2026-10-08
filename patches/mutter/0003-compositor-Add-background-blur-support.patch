@@ -1,0 +1,1469 @@
+From f906fd45c8ad9c755b2ed1166a08d954e0956d74 Mon Sep 17 00:00:00 2001
+From: Kristof Imeri <kristof@lanth.me>
+Date: Mon, 22 Jun 2026 13:18:16 +0200
+Subject: [PATCH 3/5] compositor: Add background blur support
+
+Add a MetaBackgroundBlur helper that owns the redraw-clip filter needed by
+framebuffer-sampled blur. Keeping construction and destruction in the
+background-effect module keeps the stage filter bookkeeping local to the
+effect implementation.
+
+Surface actors track the requested blur region, expand their paint volume
+to cover the sampled pixels, and paint the blurred background before
+painting the surface contents. Opaque-region culling is adjusted so
+background pixels needed by the blur are not discarded.
+
+Part-of: <https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/5071>
+---
+ src/backends/meta-stage-impl.c               |   4 +
+ src/backends/meta-stage-private.h            |  15 +
+ src/backends/meta-stage.c                    |  91 ++++
+ src/compositor/meta-background-effect.c      | 493 +++++++++++++++++++
+ src/compositor/meta-background-effect.h      |  43 ++
+ src/compositor/meta-shaped-texture-private.h |   6 +-
+ src/compositor/meta-shaped-texture.c         |  27 +-
+ src/compositor/meta-surface-actor.c          | 212 +++++++-
+ src/compositor/meta-surface-actor.h          |  11 +
+ src/compositor/meta-surface-content.c        | 150 ++++++
+ src/compositor/meta-surface-content.h        |  36 ++
+ src/meson.build                              |   4 +
+ 12 files changed, 1061 insertions(+), 31 deletions(-)
+ create mode 100644 src/compositor/meta-background-effect.c
+ create mode 100644 src/compositor/meta-background-effect.h
+ create mode 100644 src/compositor/meta-surface-content.c
+ create mode 100644 src/compositor/meta-surface-content.h
+
+diff --git a/src/backends/meta-stage-impl.c b/src/backends/meta-stage-impl.c
+index 762a480f4..e4cd05279 100644
+--- a/src/backends/meta-stage-impl.c
++++ b/src/backends/meta-stage-impl.c
+@@ -35,6 +35,7 @@
+ #include <math.h>
+ 
+ #include "backends/meta-renderer.h"
++#include "backends/meta-stage-private.h"
+ #include "backends/meta-stage-view-private.h"
+ #include "clutter/clutter-mutter.h"
+ #include "cogl/cogl.h"
+@@ -532,6 +533,9 @@ meta_stage_impl_redraw_view_primary (MetaStageImpl    *stage_impl,
+     cogl_context_has_winsys_feature (context, COGL_WINSYS_FEATURE_BUFFER_AGE);
+ 
+   redraw_clip = clutter_stage_view_take_accumulated_redraw_clip (stage_view);
++  meta_stage_apply_redraw_clip_filters (META_STAGE (stage_impl->wrapper),
++                                        stage_view,
++                                        redraw_clip);
+ 
+   /* NB: a NULL redraw clip == full stage redraw */
+   if (!redraw_clip)
+diff --git a/src/backends/meta-stage-private.h b/src/backends/meta-stage-private.h
+index b13571788..fe9df923d 100644
+--- a/src/backends/meta-stage-private.h
++++ b/src/backends/meta-stage-private.h
+@@ -26,6 +26,7 @@ G_BEGIN_DECLS
+ 
+ typedef struct _MetaStageWatch MetaStageWatch;
+ typedef struct _MetaOverlay    MetaOverlay;
++typedef struct _MetaStageRedrawClipFilter MetaStageRedrawClipFilter;
+ 
+ typedef enum
+ {
+@@ -43,6 +44,11 @@ typedef void (* MetaStageWatchFunc) (MetaStage        *stage,
+                                      ClutterFrame     *frame,
+                                      gpointer          user_data);
+ 
++typedef gboolean (* MetaStageRedrawClipFilterFunc) (MetaStage        *stage,
++                                                    ClutterStageView *stage_view,
++                                                    MtkRegion        *redraw_clip,
++                                                    gpointer          user_data);
++
+ ClutterActor     *meta_stage_new                     (MetaBackend *backend);
+ 
+ MetaOverlay      *meta_stage_create_cursor_overlay   (MetaStage   *stage);
+@@ -69,6 +75,15 @@ META_EXPORT_TEST
+ void meta_stage_remove_watch (MetaStage      *stage,
+                               MetaStageWatch *watch);
+ 
++MetaStageRedrawClipFilter * meta_stage_add_redraw_clip_filter (MetaStage                     *stage,
++                                                               MetaStageRedrawClipFilterFunc  filter_func,
++                                                               gpointer                       user_data,
++                                                               GDestroyNotify                 destroy_notify);
++void meta_stage_remove_redraw_clip_filter (MetaStageRedrawClipFilter *filter);
++void meta_stage_apply_redraw_clip_filters (MetaStage        *stage,
++                                           ClutterStageView *stage_view,
++                                           MtkRegion        *redraw_clip);
++
+ void meta_stage_rebuild_views (MetaStage *stage);
+ 
+ G_END_DECLS
+diff --git a/src/backends/meta-stage.c b/src/backends/meta-stage.c
+index 66b5aed5d..6d4b40c27 100644
+--- a/src/backends/meta-stage.c
++++ b/src/backends/meta-stage.c
+@@ -36,6 +36,14 @@ struct _MetaStageWatch
+   gpointer user_data;
+ };
+ 
++struct _MetaStageRedrawClipFilter
++{
++  MetaStage *stage;
++  MetaStageRedrawClipFilterFunc filter_func;
++  gpointer user_data;
++  GDestroyNotify destroy_notify;
++};
++
+ typedef struct _MetaOverlayViewState
+ {
+   graphene_rect_t painted_rect;
+@@ -65,6 +73,8 @@ struct _MetaStage
+ 
+   GPtrArray *watchers[META_N_WATCH_MODES];
+ 
++  GList *redraw_clip_filters;
++
+   GList *overlays;
+ };
+ 
+@@ -96,6 +106,15 @@ meta_overlay_free (MetaOverlay *overlay)
+   g_free (overlay);
+ }
+ 
++static void
++meta_stage_redraw_clip_filter_free (MetaStageRedrawClipFilter *filter)
++{
++  if (filter->destroy_notify)
++    filter->destroy_notify (filter->user_data);
++
++  g_free (filter);
++}
++
+ static void
+ meta_overlay_set (MetaOverlay             *overlay,
+                   CoglTexture             *texture,
+@@ -220,6 +239,9 @@ meta_stage_finalize (GObject *object)
+   for (i = 0; i < META_N_WATCH_MODES; i++)
+     g_clear_pointer (&stage->watchers[i], g_ptr_array_unref);
+ 
++  g_clear_list (&stage->redraw_clip_filters,
++                (GDestroyNotify) meta_stage_redraw_clip_filter_free);
++
+   G_OBJECT_CLASS (meta_stage_parent_class)->finalize (object);
+ }
+ 
+@@ -536,6 +558,75 @@ meta_stage_remove_watch (MetaStage      *stage,
+   g_assert (removed);
+ }
+ 
++MetaStageRedrawClipFilter *
++meta_stage_add_redraw_clip_filter (MetaStage                     *stage,
++                                   MetaStageRedrawClipFilterFunc  filter_func,
++                                   gpointer                       user_data,
++                                   GDestroyNotify                 destroy_notify)
++{
++  MetaStageRedrawClipFilter *filter;
++
++  g_return_val_if_fail (META_IS_STAGE (stage), NULL);
++  g_return_val_if_fail (filter_func != NULL, NULL);
++
++  filter = g_new0 (MetaStageRedrawClipFilter, 1);
++  filter->stage = stage;
++  filter->filter_func = filter_func;
++  filter->user_data = user_data;
++  filter->destroy_notify = destroy_notify;
++
++  stage->redraw_clip_filters = g_list_prepend (stage->redraw_clip_filters,
++                                               filter);
++
++  return filter;
++}
++
++void
++meta_stage_remove_redraw_clip_filter (MetaStageRedrawClipFilter *filter)
++{
++  MetaStage *stage;
++  GList *link;
++
++  stage = filter->stage;
++  link = g_list_find (stage->redraw_clip_filters, filter);
++  g_return_if_fail (link != NULL);
++
++  stage->redraw_clip_filters =
++    g_list_delete_link (stage->redraw_clip_filters, link);
++
++  meta_stage_redraw_clip_filter_free (filter);
++}
++
++void
++meta_stage_apply_redraw_clip_filters (MetaStage        *stage,
++                                      ClutterStageView *stage_view,
++                                      MtkRegion        *redraw_clip)
++{
++  gboolean changed;
++
++  g_return_if_fail (META_IS_STAGE (stage));
++  g_return_if_fail (CLUTTER_IS_STAGE_VIEW (stage_view));
++
++  if (!redraw_clip || !stage->redraw_clip_filters)
++    return;
++
++  do
++    {
++      changed = FALSE;
++
++      for (GList *l = stage->redraw_clip_filters; l; l = l->next)
++        {
++          MetaStageRedrawClipFilter *filter = l->data;
++
++          changed |= filter->filter_func (stage,
++                                          stage_view,
++                                          redraw_clip,
++                                          filter->user_data);
++        }
++    }
++  while (changed);
++}
++
+ void
+ meta_stage_rebuild_views (MetaStage *stage)
+ {
+diff --git a/src/compositor/meta-background-effect.c b/src/compositor/meta-background-effect.c
+new file mode 100644
+index 000000000..1a81bdc3d
+--- /dev/null
++++ b/src/compositor/meta-background-effect.c
+@@ -0,0 +1,493 @@
++/*
++ * Copyright (C) 2026 Kristof Imeri
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "config.h"
++
++#include "compositor/meta-background-effect.h"
++
++#include <math.h>
++
++#include "backends/meta-stage-private.h"
++#include "clutter/clutter-mutter.h"
++#include "clutter/clutter-paint-node-private.h"
++
++struct _MetaBackgroundBlur
++{
++  ClutterActor *actor;
++  MtkRegion *sample_region;
++  MetaStageRedrawClipFilter *redraw_clip_filter;
++};
++
++static int
++calculate_blur_sample_padding (float radius)
++{
++  return (int) ceilf (radius * 2.0f);
++}
++
++static MtkRegion *
++transform_region_to_stage (ClutterActor    *actor,
++                           MetaStage       *stage,
++                           const MtkRegion *region)
++{
++  graphene_matrix_t actor_to_stage;
++
++  clutter_actor_get_relative_transformation_matrix (actor,
++                                                    CLUTTER_ACTOR (stage),
++                                                    &actor_to_stage);
++  if (!graphene_matrix_is_2d (&actor_to_stage))
++    return NULL;
++
++  return mtk_region_apply_matrix_transform_expand (region, &actor_to_stage);
++}
++
++static gboolean
++regions_intersect (const MtkRegion *a,
++                   const MtkRegion *b)
++{
++  g_autoptr (MtkRegion) intersection = NULL;
++
++  intersection = mtk_region_copy (a);
++  mtk_region_intersect (intersection, b);
++
++  return !mtk_region_is_empty (intersection);
++}
++
++static gboolean
++union_region_changed (MtkRegion       *region,
++                      const MtkRegion *other)
++{
++  g_autoptr (MtkRegion) old_region = NULL;
++
++  old_region = mtk_region_copy (region);
++  mtk_region_union (region, other);
++
++  return !mtk_region_equal (old_region, region);
++}
++
++static gboolean
++meta_background_blur_expand_redraw_clip (MetaStage        *stage,
++                                         ClutterStageView *stage_view,
++                                         MtkRegion        *redraw_clip,
++                                         gpointer          user_data)
++{
++  MetaBackgroundBlur *blur = user_data;
++  g_autoptr (MtkRegion) sample_region = NULL;
++  MtkRectangle view_layout;
++
++  if (clutter_actor_get_stage (blur->actor) != CLUTTER_ACTOR (stage))
++    return FALSE;
++
++  if (!clutter_actor_is_effectively_on_stage_view (blur->actor, stage_view))
++    return FALSE;
++
++  clutter_stage_view_get_layout (stage_view, &view_layout);
++  sample_region = transform_region_to_stage (blur->actor,
++                                             stage,
++                                             blur->sample_region);
++  if (!sample_region)
++    return FALSE;
++
++  mtk_region_intersect_rectangle (sample_region, &view_layout);
++  if (mtk_region_is_empty (sample_region))
++    return FALSE;
++
++  if (!regions_intersect (redraw_clip, sample_region))
++    return FALSE;
++
++  return union_region_changed (redraw_clip, sample_region);
++}
++
++MetaBackgroundBlur *
++meta_background_blur_new (ClutterActor    *actor,
++                          const MtkRegion *sample_region)
++{
++  ClutterActor *stage_actor;
++  MetaBackgroundBlur *blur;
++
++  g_return_val_if_fail (CLUTTER_IS_ACTOR (actor), NULL);
++  g_return_val_if_fail (sample_region != NULL, NULL);
++
++  stage_actor = clutter_actor_get_stage (actor);
++  if (!stage_actor)
++    return NULL;
++
++  g_return_val_if_fail (META_IS_STAGE (stage_actor), NULL);
++
++  blur = g_new0 (MetaBackgroundBlur, 1);
++  blur->actor = actor;
++  blur->sample_region = mtk_region_copy (sample_region);
++  blur->redraw_clip_filter =
++    meta_stage_add_redraw_clip_filter (META_STAGE (stage_actor),
++                                       meta_background_blur_expand_redraw_clip,
++                                       blur,
++                                       NULL);
++
++  return blur;
++}
++
++void
++meta_background_blur_destroy (MetaBackgroundBlur *blur)
++{
++  g_clear_pointer (&blur->redraw_clip_filter,
++                   meta_stage_remove_redraw_clip_filter);
++  g_clear_pointer (&blur->sample_region, mtk_region_unref);
++  g_free (blur);
++}
++
++MtkRegion *
++meta_background_effect_create_blur_sample_region (const MtkRegion *blur_region,
++                                                  float            radius)
++{
++  g_autoptr (MtkRegion) sample_region = NULL;
++  int padding;
++  int n_rects;
++
++  sample_region = mtk_region_create ();
++  padding = calculate_blur_sample_padding (radius);
++  n_rects = mtk_region_num_rectangles (blur_region);
++
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle rect;
++      MtkRectangle sample_rect;
++
++      rect = mtk_region_get_rectangle (blur_region, i);
++      sample_rect = (MtkRectangle) {
++        .x = rect.x - padding,
++        .y = rect.y - padding,
++        .width = rect.width + 2 * padding,
++        .height = rect.height + 2 * padding,
++      };
++
++      mtk_region_union_rectangle (sample_region, &sample_rect);
++    }
++
++  return g_steal_pointer (&sample_region);
++}
++
++static gboolean
++actor_box_to_stage_rect (const ClutterActorBox *actor_box,
++                         graphene_matrix_t     *actor_to_stage,
++                         MtkRectangle          *stage_rect)
++{
++  graphene_rect_t actor_rect;
++  graphene_rect_t transformed_rect;
++
++  graphene_rect_init (&actor_rect,
++                      actor_box->x1,
++                      actor_box->y1,
++                      actor_box->x2 - actor_box->x1,
++                      actor_box->y2 - actor_box->y1);
++  graphene_matrix_transform_bounds (actor_to_stage,
++                                    &actor_rect,
++                                    &transformed_rect);
++  graphene_rect_round_extents (&transformed_rect, &transformed_rect);
++
++  *stage_rect = (MtkRectangle) {
++    .x = (int) transformed_rect.origin.x,
++    .y = (int) transformed_rect.origin.y,
++    .width = (int) transformed_rect.size.width,
++    .height = (int) transformed_rect.size.height,
++  };
++
++  return stage_rect->width > 0 && stage_rect->height > 0;
++}
++
++static gboolean
++stage_rect_to_actor_box (const MtkRectangle *stage_rect,
++                         graphene_matrix_t  *stage_to_actor,
++                         ClutterActorBox    *actor_box)
++{
++  graphene_rect_t stage_graphene_rect;
++  graphene_rect_t actor_graphene_rect;
++
++  stage_graphene_rect = mtk_rectangle_to_graphene_rect (stage_rect);
++  graphene_matrix_transform_bounds (stage_to_actor,
++                                    &stage_graphene_rect,
++                                    &actor_graphene_rect);
++
++  *actor_box = (ClutterActorBox) {
++    .x1 = actor_graphene_rect.origin.x,
++    .y1 = actor_graphene_rect.origin.y,
++    .x2 = actor_graphene_rect.origin.x + actor_graphene_rect.size.width,
++    .y2 = actor_graphene_rect.origin.y + actor_graphene_rect.size.height,
++  };
++
++  return actor_box->x2 > actor_box->x1 && actor_box->y2 > actor_box->y1;
++}
++
++static gboolean
++region_rect_to_actor_box (const MtkRectangle    *region_rect,
++                          const ClutterActorBox *content_box,
++                          int                    content_width,
++                          int                    content_height,
++                          ClutterActorBox       *actor_box)
++{
++  float x_scale;
++  float y_scale;
++
++  if (content_width <= 0 || content_height <= 0)
++    return FALSE;
++
++  x_scale = (content_box->x2 - content_box->x1) / content_width;
++  y_scale = (content_box->y2 - content_box->y1) / content_height;
++
++  *actor_box = (ClutterActorBox) {
++    .x1 = content_box->x1 + region_rect->x * x_scale,
++    .y1 = content_box->y1 + region_rect->y * y_scale,
++    .x2 = content_box->x1 + (region_rect->x + region_rect->width) * x_scale,
++    .y2 = content_box->y1 + (region_rect->y + region_rect->height) * y_scale,
++  };
++
++  return actor_box->x2 > actor_box->x1 && actor_box->y2 > actor_box->y1;
++}
++
++static gboolean
++expand_stage_rect_for_blur (const MtkRectangle *stage_rect,
++                            const MtkRectangle *view_layout,
++                            float               radius,
++                            MtkRectangle       *sample_rect)
++{
++  int padding;
++
++  padding = calculate_blur_sample_padding (radius);
++
++  *sample_rect = (MtkRectangle) {
++    .x = stage_rect->x - padding,
++    .y = stage_rect->y - padding,
++    .width = stage_rect->width + 2 * padding,
++    .height = stage_rect->height + 2 * padding,
++  };
++
++  return mtk_rectangle_intersect (sample_rect, view_layout, sample_rect);
++}
++
++static ClutterPaintNode *
++create_blur_node (CoglFramebuffer     *framebuffer,
++                  const MtkRectangle  *view_layout,
++                  float                view_scale,
++                  const MtkRectangle  *source_rect,
++                  float                radius,
++                  float                saturation,
++                  float                noise,
++                  uint8_t              opacity)
++{
++  int source_x;
++  int source_y;
++  int source_width;
++  int source_height;
++
++  source_x = (int) roundf ((source_rect->x - view_layout->x) * view_scale);
++  source_y = (int) roundf ((source_rect->y - view_layout->y) * view_scale);
++  source_width = MAX (1, (int) roundf (source_rect->width * view_scale));
++  source_height = MAX (1, (int) roundf (source_rect->height * view_scale));
++
++  return clutter_blur_node_new_from_framebuffer (framebuffer,
++                                                 source_x,
++                                                 source_y,
++                                                 source_width,
++                                                 source_height,
++                                                 radius * view_scale,
++                                                 saturation,
++                                                 noise,
++                                                 opacity);
++}
++
++static void
++add_blur_rectangle (ClutterPaintNode      *paint_node,
++                    const MtkRectangle    *source_rect,
++                    const MtkRectangle    *stage_rect,
++                    const ClutterActorBox *actor_box)
++{
++  float texture_x1;
++  float texture_y1;
++  float texture_x2;
++  float texture_y2;
++
++  texture_x1 =
++    CLAMP ((stage_rect->x - source_rect->x) / (float) source_rect->width,
++           0.0f,
++           1.0f);
++  texture_y1 =
++    CLAMP ((stage_rect->y - source_rect->y) / (float) source_rect->height,
++           0.0f,
++           1.0f);
++  texture_x2 =
++    CLAMP ((stage_rect->x + stage_rect->width - source_rect->x) /
++           (float) source_rect->width,
++           0.0f,
++           1.0f);
++  texture_y2 =
++    CLAMP ((stage_rect->y + stage_rect->height - source_rect->y) /
++           (float) source_rect->height,
++           0.0f,
++           1.0f);
++
++  clutter_paint_node_add_texture_rectangle (paint_node,
++                                            actor_box,
++                                            texture_x1,
++                                            texture_y1,
++                                            texture_x2,
++                                            texture_y2);
++}
++
++void
++meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
++                                          ClutterActor           *actor,
++                                          ClutterPaintContext    *paint_context,
++                                          const ClutterActorBox  *content_box,
++                                          int                     content_width,
++                                          int                     content_height,
++                                          const MtkRegion        *blur_region,
++                                          const MtkRegion        *clip_region,
++                                          float                   radius,
++                                          float                   saturation,
++                                          float                   noise,
++                                          uint8_t                 opacity)
++{
++  ClutterActor *stage;
++  ClutterStageView *stage_view;
++  CoglFramebuffer *source_framebuffer;
++  graphene_matrix_t actor_to_stage;
++  graphene_matrix_t stage_to_actor;
++  ClutterActorBox extents_actor_box;
++  MtkRectangle content_rect;
++  MtkRectangle effect_extents;
++  MtkRectangle extents_stage_rect;
++  MtkRectangle source_rect;
++  MtkRectangle view_layout;
++  g_autoptr (MtkRegion) effect_region = NULL;
++  g_autoptr (MtkRegion) paint_region = NULL;
++  g_autoptr (ClutterPaintNode) blur_node = NULL;
++  float view_scale;
++  int n_rects;
++  gboolean has_blur_rects = FALSE;
++
++  if (opacity == 0)
++    return;
++
++  if (clutter_actor_is_in_clone_paint (actor))
++    return;
++
++  stage = clutter_actor_get_stage (actor);
++  stage_view = clutter_paint_context_get_stage_view (paint_context);
++  if (!stage || !stage_view)
++    return;
++
++  source_framebuffer = clutter_stage_view_get_framebuffer (stage_view);
++  if (!source_framebuffer)
++    return;
++
++  clutter_actor_get_relative_transformation_matrix (actor,
++                                                    stage,
++                                                    &actor_to_stage);
++  if (!graphene_matrix_is_2d (&actor_to_stage) ||
++      !graphene_matrix_inverse (&actor_to_stage, &stage_to_actor))
++    return;
++
++  content_rect = (MtkRectangle) {
++    .width = content_width,
++    .height = content_height,
++  };
++
++  effect_region = mtk_region_copy (blur_region);
++  mtk_region_intersect_rectangle (effect_region, &content_rect);
++
++  if (mtk_region_is_empty (effect_region))
++    return;
++
++  paint_region = mtk_region_copy (effect_region);
++  if (clip_region)
++    mtk_region_intersect (paint_region, clip_region);
++
++  if (mtk_region_is_empty (paint_region))
++    return;
++
++  clutter_stage_view_get_layout (stage_view, &view_layout);
++  view_scale = clutter_stage_view_get_scale (stage_view);
++  effect_extents = mtk_region_get_extents (effect_region);
++
++  if (!region_rect_to_actor_box (&effect_extents,
++                                 content_box,
++                                 content_width,
++                                 content_height,
++                                 &extents_actor_box))
++    return;
++
++  if (!actor_box_to_stage_rect (&extents_actor_box,
++                                &actor_to_stage,
++                                &extents_stage_rect))
++    return;
++
++  if (!mtk_rectangle_intersect (&extents_stage_rect,
++                                &view_layout,
++                                &extents_stage_rect))
++    return;
++
++  if (!expand_stage_rect_for_blur (&extents_stage_rect,
++                                   &view_layout,
++                                   radius,
++                                   &source_rect))
++    return;
++
++  blur_node = create_blur_node (source_framebuffer,
++                                &view_layout,
++                                view_scale,
++                                &source_rect,
++                                radius,
++                                saturation,
++                                noise,
++                                opacity);
++  if (!blur_node)
++    return;
++
++  n_rects = mtk_region_num_rectangles (paint_region);
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle region_rect;
++      MtkRectangle stage_rect;
++      ClutterActorBox actor_box;
++
++      region_rect = mtk_region_get_rectangle (paint_region, i);
++      if (!region_rect_to_actor_box (&region_rect,
++                                     content_box,
++                                     content_width,
++                                     content_height,
++                                     &actor_box))
++        continue;
++
++      if (!actor_box_to_stage_rect (&actor_box,
++                                    &actor_to_stage,
++                                    &stage_rect))
++        continue;
++
++      if (!mtk_rectangle_intersect (&stage_rect, &view_layout, &stage_rect))
++        continue;
++
++      if (!stage_rect_to_actor_box (&stage_rect, &stage_to_actor, &actor_box))
++        continue;
++
++      add_blur_rectangle (blur_node,
++                          &source_rect,
++                          &stage_rect,
++                          &actor_box);
++      has_blur_rects = TRUE;
++    }
++
++  if (has_blur_rects)
++    clutter_paint_node_add_child (root_node, blur_node);
++}
+diff --git a/src/compositor/meta-background-effect.h b/src/compositor/meta-background-effect.h
+new file mode 100644
+index 000000000..75c7c3f21
+--- /dev/null
++++ b/src/compositor/meta-background-effect.h
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (C) 2026 Kristof Imeri
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "clutter/clutter.h"
++#include "mtk/mtk.h"
++
++typedef struct _MetaBackgroundBlur MetaBackgroundBlur;
++
++MtkRegion * meta_background_effect_create_blur_sample_region (const MtkRegion *blur_region,
++                                                              float            radius);
++
++MetaBackgroundBlur * meta_background_blur_new (ClutterActor    *actor,
++                                               const MtkRegion *sample_region);
++void meta_background_blur_destroy (MetaBackgroundBlur *blur);
++
++void meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
++                                               ClutterActor           *actor,
++                                               ClutterPaintContext    *paint_context,
++                                               const ClutterActorBox  *content_box,
++                                               int                     content_width,
++                                               int                     content_height,
++                                               const MtkRegion        *blur_region,
++                                               const MtkRegion        *clip_region,
++                                               float                   radius,
++                                               float                   saturation,
++                                               float                   noise,
++                                               uint8_t                 opacity);
+diff --git a/src/compositor/meta-shaped-texture-private.h b/src/compositor/meta-shaped-texture-private.h
+index 4e077506b..b1fcfa55e 100644
+--- a/src/compositor/meta-shaped-texture-private.h
++++ b/src/compositor/meta-shaped-texture-private.h
+@@ -31,7 +31,10 @@
+ 
+ MetaShapedTexture * meta_shaped_texture_new (ClutterContext    *clutter_context,
+                                              ClutterColorState *color_state);
+-
++void meta_shaped_texture_paint_content (MetaShapedTexture   *stex,
++                                        ClutterActor        *actor,
++                                        ClutterPaintNode    *root_node,
++                                        ClutterPaintContext *paint_context);
+ void meta_shaped_texture_set_texture (MetaShapedTexture *stex,
+                                       MetaMultiTexture  *multi_texture);
+ void meta_shaped_texture_set_color_state (MetaShapedTexture *stex,
+@@ -70,6 +73,7 @@ float meta_shaped_texture_get_unscaled_height (MetaShapedTexture *stex);
+ 
+ void meta_shaped_texture_set_clip_region (MetaShapedTexture *stex,
+                                           MtkRegion         *clip_region);
++MtkRegion * meta_shaped_texture_get_clip_region (MetaShapedTexture *stex);
+ void meta_shaped_texture_set_opaque_region (MetaShapedTexture *stex,
+                                             MtkRegion         *opaque_region);
+ 
+diff --git a/src/compositor/meta-shaped-texture.c b/src/compositor/meta-shaped-texture.c
+index a80818e3d..1c80249f9 100644
+--- a/src/compositor/meta-shaped-texture.c
++++ b/src/compositor/meta-shaped-texture.c
+@@ -319,6 +319,14 @@ meta_shaped_texture_set_clip_region (MetaShapedTexture *stex,
+     stex->clip_region = mtk_region_ref (clip_region);
+ }
+ 
++MtkRegion *
++meta_shaped_texture_get_clip_region (MetaShapedTexture *stex)
++{
++  g_return_val_if_fail (META_IS_SHAPED_TEXTURE (stex), NULL);
++
++  return stex->clip_region;
++}
++
+ static void
+ meta_shaped_texture_reset_pipelines (MetaShapedTexture *stex)
+ {
+@@ -1099,13 +1107,12 @@ do_paint_content (MetaShapedTexture   *stex,
+   g_clear_pointer (&blended_tex_region, mtk_region_unref);
+ }
+ 
+-static void
+-meta_shaped_texture_paint_content (ClutterContent      *content,
++void
++meta_shaped_texture_paint_content (MetaShapedTexture   *stex,
+                                    ClutterActor        *actor,
+                                    ClutterPaintNode    *root_node,
+                                    ClutterPaintContext *paint_context)
+ {
+-  MetaShapedTexture *stex = META_SHAPED_TEXTURE (content);
+   ClutterActorBox alloc;
+   uint8_t opacity;
+ 
+@@ -1136,6 +1143,18 @@ meta_shaped_texture_paint_content (ClutterContent      *content,
+   do_paint_content (stex, root_node, paint_context, &alloc, opacity);
+ }
+ 
++static void
++meta_shaped_texture_clutter_paint_content (ClutterContent      *content,
++                                           ClutterActor        *actor,
++                                           ClutterPaintNode    *root_node,
++                                           ClutterPaintContext *paint_context)
++{
++  meta_shaped_texture_paint_content (META_SHAPED_TEXTURE (content),
++                                     actor,
++                                     root_node,
++                                     paint_context);
++}
++
+ static gboolean
+ meta_shaped_texture_get_preferred_size (ClutterContent *content,
+                                         float          *width,
+@@ -1157,7 +1176,7 @@ meta_shaped_texture_get_preferred_size (ClutterContent *content,
+ static void
+ clutter_content_iface_init (ClutterContentInterface *iface)
+ {
+-  iface->paint_content = meta_shaped_texture_paint_content;
++  iface->paint_content = meta_shaped_texture_clutter_paint_content;
+   iface->get_preferred_size = meta_shaped_texture_get_preferred_size;
+ }
+ 
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index 86de40d6b..48057c692 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -21,8 +21,10 @@
+ 
+ #include "clutter/clutter.h"
+ #include "compositor/clutter-utils.h"
++#include "compositor/meta-background-effect.h"
+ #include "compositor/meta-cullable.h"
+ #include "compositor/meta-shaped-texture-private.h"
++#include "compositor/meta-surface-content.h"
+ #include "compositor/meta-window-actor-private.h"
+ #include "meta/meta-shaped-texture.h"
+ 
+@@ -40,9 +42,12 @@ static GParamSpec *obj_props[N_PROPS];
+ 
+ typedef struct _MetaSurfaceActorPrivate
+ {
+-  MetaShapedTexture *texture;
++  MetaSurfaceContent *content;
+ 
+   MtkRegion *input_region;
++  MtkRegion *background_blur_region;
++  MtkRegion *background_blur_sample_region;
++  MetaBackgroundBlur *background_blur;
+ 
+   /* MetaCullable regions, see that documentation for more details */
+   MtkRegion *unobscured_region;
+@@ -53,6 +58,10 @@ typedef struct _MetaSurfaceActorPrivate
+   gboolean is_frozen;
+ } MetaSurfaceActorPrivate;
+ 
++#define BACKGROUND_EFFECT_BLUR_RADIUS 24.0f
++#define BACKGROUND_EFFECT_SATURATION 1.25f
++#define BACKGROUND_EFFECT_NOISE 0.015f
++
+ static void cullable_iface_init (MetaCullableInterface *iface);
+ 
+ G_DEFINE_ABSTRACT_TYPE_WITH_CODE (MetaSurfaceActor, meta_surface_actor, CLUTTER_TYPE_ACTOR,
+@@ -116,11 +125,10 @@ update_is_obscured (MetaSurfaceActor *surface_actor)
+ static MtkRectangle
+ get_preferred_size_bounds (MetaSurfaceActor *surface_actor)
+ {
+-  MetaSurfaceActorPrivate *priv =
+-    meta_surface_actor_get_instance_private (surface_actor);
++  MetaShapedTexture *texture = meta_surface_actor_get_texture (surface_actor);
+   float width, height;
+ 
+-  clutter_content_get_preferred_size (CLUTTER_CONTENT (priv->texture),
++  clutter_content_get_preferred_size (CLUTTER_CONTENT (texture),
+                                       &width,
+                                       &height);
+ 
+@@ -161,9 +169,7 @@ static void
+ set_clip_region (MetaSurfaceActor *surface_actor,
+                  MtkRegion        *clip_region)
+ {
+-  MetaSurfaceActorPrivate *priv =
+-    meta_surface_actor_get_instance_private (surface_actor);
+-  MetaShapedTexture *stex = priv->texture;
++  MetaShapedTexture *texture = meta_surface_actor_get_texture (surface_actor);
+ 
+   if (clip_region && !mtk_region_is_empty (clip_region))
+     {
+@@ -172,11 +178,11 @@ set_clip_region (MetaSurfaceActor *surface_actor,
+ 
+       clip_region_copy = mtk_region_copy (clip_region);
+       mtk_region_intersect_rectangle (clip_region_copy, &bounds);
+-      meta_shaped_texture_set_clip_region (stex, clip_region_copy);
++      meta_shaped_texture_set_clip_region (texture, clip_region_copy);
+     }
+   else
+     {
+-      meta_shaped_texture_set_clip_region (stex, clip_region);
++      meta_shaped_texture_set_clip_region (texture, clip_region);
+     }
+ }
+ 
+@@ -233,7 +239,30 @@ static gboolean
+ meta_surface_actor_get_paint_volume (ClutterActor       *actor,
+                                      ClutterPaintVolume *volume)
+ {
+-  return clutter_paint_volume_set_from_allocation (volume, actor);
++  MetaSurfaceActor *surface_actor = META_SURFACE_ACTOR (actor);
++  MetaSurfaceActorPrivate *priv =
++    meta_surface_actor_get_instance_private (surface_actor);
++
++  if (!clutter_paint_volume_set_from_allocation (volume, actor))
++    return FALSE;
++
++  if (priv->background_blur_sample_region)
++    {
++      MtkRectangle sample_rect;
++      ClutterActorBox sample_box;
++
++      sample_rect = mtk_region_get_extents (priv->background_blur_sample_region);
++      sample_box = (ClutterActorBox) {
++        .x1 = sample_rect.x,
++        .y1 = sample_rect.y,
++        .x2 = sample_rect.x + sample_rect.width,
++        .y2 = sample_rect.y + sample_rect.height,
++      };
++
++      clutter_paint_volume_union_box (volume, &sample_box);
++    }
++
++  return TRUE;
+ }
+ 
+ static void
+@@ -277,14 +306,16 @@ meta_surface_actor_constructed (GObject *object)
+     clutter_actor_get_context (CLUTTER_ACTOR (surface_actor));
+   ClutterColorState *color_state =
+     clutter_actor_get_color_state (CLUTTER_ACTOR (surface_actor));
++  MetaShapedTexture *texture;
+ 
+   priv->is_obscured = TRUE;
+-  priv->texture = meta_shaped_texture_new (clutter_context, color_state);
+-  g_signal_connect_object (priv->texture, "size-changed",
++  priv->content = meta_surface_content_new (clutter_context, color_state);
++  texture = meta_surface_content_get_texture (priv->content);
++  g_signal_connect_object (texture, "size-changed",
+                            G_CALLBACK (texture_size_changed), surface_actor,
+                            G_CONNECT_DEFAULT);
+   clutter_actor_set_content (CLUTTER_ACTOR (surface_actor),
+-                             CLUTTER_CONTENT (priv->texture));
++                             CLUTTER_CONTENT (priv->content));
+   clutter_actor_set_request_mode (CLUTTER_ACTOR (surface_actor),
+                                   CLUTTER_REQUEST_CONTENT_SIZE);
+ 
+@@ -300,7 +331,12 @@ meta_surface_actor_dispose (GObject *object)
+ 
+   g_clear_pointer (&priv->pending_damage, mtk_region_unref);
+   g_clear_pointer (&priv->input_region, mtk_region_unref);
+-  g_clear_object (&priv->texture);
++  g_clear_pointer (&priv->background_blur,
++                   meta_background_blur_destroy);
++  g_clear_pointer (&priv->background_blur_region, mtk_region_unref);
++  g_clear_pointer (&priv->background_blur_sample_region, mtk_region_unref);
++  clutter_actor_set_content (CLUTTER_ACTOR (self), NULL);
++  g_clear_object (&priv->content);
+ 
+   set_unobscured_region (self, NULL);
+ 
+@@ -372,13 +408,22 @@ subtract_opaque_region (MetaSurfaceActor *surface_actor,
+ 
+   if (opacity == 0xff)
+     {
++      MetaShapedTexture *texture = meta_surface_actor_get_texture (surface_actor);
+       MtkRegion *opaque_region;
++      g_autoptr (MtkRegion) effective_opaque_region = NULL;
+ 
+-      opaque_region = meta_shaped_texture_get_opaque_region (priv->texture);
+-
++      opaque_region = meta_shaped_texture_get_opaque_region (texture);
+       if (!opaque_region)
+         return;
+ 
++      if (priv->background_blur_sample_region)
++        {
++          effective_opaque_region = mtk_region_copy (opaque_region);
++          mtk_region_subtract (effective_opaque_region,
++                               priv->background_blur_sample_region);
++          opaque_region = effective_opaque_region;
++        }
++
+       mtk_region_subtract (region, opaque_region);
+     }
+ }
+@@ -413,8 +458,41 @@ cullable_iface_init (MetaCullableInterface *iface)
+ }
+ 
+ static void
+-meta_surface_actor_init (MetaSurfaceActor *self)
++sync_background_blur (MetaSurfaceActor *surface_actor)
+ {
++  MetaSurfaceActorPrivate *priv =
++    meta_surface_actor_get_instance_private (surface_actor);
++  ClutterActor *actor = CLUTTER_ACTOR (surface_actor);
++
++  g_clear_pointer (&priv->background_blur,
++                   meta_background_blur_destroy);
++
++  if (!priv->background_blur_sample_region)
++    return;
++
++  if (!clutter_actor_is_mapped (actor))
++    return;
++
++  priv->background_blur =
++    meta_background_blur_new (actor,
++                              priv->background_blur_sample_region);
++}
++
++static void
++background_blur_mapped_changed (MetaSurfaceActor *surface_actor,
++                                GParamSpec       *pspec,
++                                gpointer          user_data)
++{
++  sync_background_blur (surface_actor);
++}
++
++static void
++meta_surface_actor_init (MetaSurfaceActor *surface_actor)
++{
++  g_signal_connect (surface_actor,
++                    "notify::mapped",
++                    G_CALLBACK (background_blur_mapped_changed),
++                    NULL);
+ }
+ 
+ MetaShapedTexture *
+@@ -423,7 +501,10 @@ meta_surface_actor_get_texture (MetaSurfaceActor *self)
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (self);
+ 
+-  return priv->texture;
++  if (!priv->content)
++    return NULL;
++
++  return meta_surface_content_get_texture (priv->content);
+ }
+ 
+ void
+@@ -444,12 +525,11 @@ void
+ meta_surface_actor_update_area (MetaSurfaceActor   *self,
+                                 const MtkRectangle *area)
+ {
+-  MetaSurfaceActorPrivate *priv =
+-    meta_surface_actor_get_instance_private (self);
++  MetaShapedTexture *texture = meta_surface_actor_get_texture (self);
+   gboolean repaint_scheduled = FALSE;
+   MtkRectangle clip;
+ 
+-  if (meta_shaped_texture_update_area (priv->texture, area, &clip))
++  if (meta_shaped_texture_update_area (texture, area, &clip))
+     {
+       MtkRegion *unobscured_region;
+ 
+@@ -524,9 +604,8 @@ meta_surface_actor_is_obscured_on_stage_view (MetaSurfaceActor *self,
+ 
+   if (unobscured_region)
+     {
+-      MetaSurfaceActorPrivate *priv =
+-        meta_surface_actor_get_instance_private (self);
+       ClutterActor *stage = clutter_actor_get_stage (CLUTTER_ACTOR (self));
++      MetaShapedTexture *texture = meta_surface_actor_get_texture (self);
+       g_autoptr (MtkRegion) intersection_region = NULL;
+       MtkRectangle stage_rect;
+       graphene_matrix_t transform;
+@@ -554,7 +633,7 @@ meta_surface_actor_is_obscured_on_stage_view (MetaSurfaceActor *self,
+       else if (!unobscurred_fraction)
+         return FALSE;
+ 
+-      clutter_content_get_preferred_size (CLUTTER_CONTENT (priv->texture),
++      clutter_content_get_preferred_size (CLUTTER_CONTENT (texture),
+                                           &bounds_width,
+                                           &bounds_height);
+       graphene_rect_init (&actor_bounds, 0, 0, bounds_width, bounds_height);
+@@ -597,6 +676,25 @@ meta_surface_actor_contains_rect (MetaSurfaceActor *surface_actor,
+                                       &bound_rect);
+ }
+ 
++static void
++queue_redraw_for_region (MetaSurfaceActor *surface_actor,
++                         MtkRegion        *region)
++{
++  int n_rects;
++
++  if (!region)
++    return;
++
++  n_rects = mtk_region_num_rectangles (region);
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle rect;
++
++      rect = mtk_region_get_rectangle (region, i);
++      clutter_actor_queue_redraw_with_clip (CLUTTER_ACTOR (surface_actor), &rect);
++    }
++}
++
+ void
+ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
+                                      MtkRegion        *region)
+@@ -615,11 +713,73 @@ meta_surface_actor_set_input_region (MetaSurfaceActor *self,
+ void
+ meta_surface_actor_set_opaque_region (MetaSurfaceActor *self,
+                                       MtkRegion        *region)
++{
++  MetaShapedTexture *texture = meta_surface_actor_get_texture (self);
++
++  meta_shaped_texture_set_opaque_region (texture, region);
++}
++
++void
++meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
++                                               MtkRegion        *region)
+ {
+   MetaSurfaceActorPrivate *priv =
+-    meta_surface_actor_get_instance_private (self);
++    meta_surface_actor_get_instance_private (surface_actor);
++
++  if (region && mtk_region_is_empty (region))
++    region = NULL;
++
++  if (mtk_region_equal (priv->background_blur_region, region))
++    return;
++
++  queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
++  g_clear_pointer (&priv->background_blur,
++                   meta_background_blur_destroy);
++
++  g_clear_pointer (&priv->background_blur_region, mtk_region_unref);
++  g_clear_pointer (&priv->background_blur_sample_region, mtk_region_unref);
++  if (region)
++    {
++      priv->background_blur_region = mtk_region_ref (region);
++      priv->background_blur_sample_region =
++        meta_background_effect_create_blur_sample_region (region,
++                                                          BACKGROUND_EFFECT_BLUR_RADIUS);
++    }
++
++  sync_background_blur (surface_actor);
++
++  clutter_actor_invalidate_paint_volume (CLUTTER_ACTOR (surface_actor));
++  queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
++}
++
++void
++meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
++                                             ClutterPaintNode    *root_node,
++                                             ClutterPaintContext *paint_context,
++                                             ClutterActorBox     *content_box,
++                                             int                  content_width,
++                                             int                  content_height,
++                                             MtkRegion           *clip_region,
++                                             uint8_t              opacity)
++{
++  MetaSurfaceActorPrivate *priv =
++    meta_surface_actor_get_instance_private (surface_actor);
++
++  if (!priv->background_blur_region)
++    return;
+ 
+-  meta_shaped_texture_set_opaque_region (priv->texture, region);
++  meta_background_effect_paint_blur_region (root_node,
++                                            CLUTTER_ACTOR (surface_actor),
++                                            paint_context,
++                                            content_box,
++                                            content_width,
++                                            content_height,
++                                            priv->background_blur_region,
++                                            clip_region,
++                                            BACKGROUND_EFFECT_BLUR_RADIUS,
++                                            BACKGROUND_EFFECT_SATURATION,
++                                            BACKGROUND_EFFECT_NOISE,
++                                            opacity);
+ }
+ 
+ MtkRegion *
+diff --git a/src/compositor/meta-surface-actor.h b/src/compositor/meta-surface-actor.h
+index ff3110199..84dfa44c8 100644
+--- a/src/compositor/meta-surface-actor.h
++++ b/src/compositor/meta-surface-actor.h
+@@ -46,6 +46,17 @@ void meta_surface_actor_set_opaque_region (MetaSurfaceActor *self,
+                                            MtkRegion        *region);
+ MtkRegion * meta_surface_actor_get_opaque_region (MetaSurfaceActor *self);
+ 
++void meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
++                                                    MtkRegion        *region);
++void meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
++                                                  ClutterPaintNode    *root_node,
++                                                  ClutterPaintContext *paint_context,
++                                                  ClutterActorBox     *content_box,
++                                                  int                  content_width,
++                                                  int                  content_height,
++                                                  MtkRegion           *clip_region,
++                                                  uint8_t              opacity);
++
+ void meta_surface_actor_schedule_update (MetaSurfaceActor *self);
+ 
+ void meta_surface_actor_process_damage (MetaSurfaceActor   *actor,
+diff --git a/src/compositor/meta-surface-content.c b/src/compositor/meta-surface-content.c
+new file mode 100644
+index 000000000..3b2ac11bf
+--- /dev/null
++++ b/src/compositor/meta-surface-content.c
+@@ -0,0 +1,150 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
++
++/*
++ * Copyright (C) 2026 Kristof Imeri
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "config.h"
++
++#include "compositor/meta-surface-content.h"
++
++#include "compositor/meta-surface-actor.h"
++
++struct _MetaSurfaceContent
++{
++  GObject parent;
++
++  MetaShapedTexture *texture;
++};
++
++static void clutter_content_iface_init (ClutterContentInterface *iface);
++
++G_DEFINE_FINAL_TYPE_WITH_CODE (MetaSurfaceContent,
++                               meta_surface_content,
++                               G_TYPE_OBJECT,
++                               G_IMPLEMENT_INTERFACE (CLUTTER_TYPE_CONTENT,
++                                                      clutter_content_iface_init))
++
++static void
++meta_surface_content_dispose (GObject *object)
++{
++  MetaSurfaceContent *content = META_SURFACE_CONTENT (object);
++
++  g_clear_object (&content->texture);
++
++  G_OBJECT_CLASS (meta_surface_content_parent_class)->dispose (object);
++}
++
++static gboolean
++meta_surface_content_get_preferred_size (ClutterContent *content,
++                                         float          *width,
++                                         float          *height)
++{
++  MetaSurfaceContent *surface_content = META_SURFACE_CONTENT (content);
++
++  return clutter_content_get_preferred_size (CLUTTER_CONTENT (surface_content->texture),
++                                             width,
++                                             height);
++}
++
++static void
++texture_size_changed (MetaShapedTexture  *texture,
++                      MetaSurfaceContent *content)
++{
++  clutter_content_invalidate_size (CLUTTER_CONTENT (content));
++  clutter_content_invalidate (CLUTTER_CONTENT (content));
++}
++
++static void
++meta_surface_content_paint_content (ClutterContent      *content,
++                                    ClutterActor        *actor,
++                                    ClutterPaintNode    *root_node,
++                                    ClutterPaintContext *paint_context)
++{
++  MetaSurfaceContent *surface_content = META_SURFACE_CONTENT (content);
++  MetaShapedTexture *texture = surface_content->texture;
++  MtkRegion *clip_region;
++  ClutterActorBox alloc;
++  uint8_t opacity;
++
++  g_return_if_fail (META_IS_SURFACE_ACTOR (actor));
++
++  clip_region = meta_shaped_texture_get_clip_region (texture);
++  if (clip_region && mtk_region_is_empty (clip_region))
++    return;
++
++  if (!meta_shaped_texture_get_texture (texture))
++    return;
++
++  opacity = clutter_actor_get_paint_opacity (actor);
++  clutter_actor_get_content_box (actor, &alloc);
++
++  meta_surface_actor_paint_background_effects (META_SURFACE_ACTOR (actor),
++                                               root_node,
++                                               paint_context,
++                                               &alloc,
++                                               meta_shaped_texture_get_width (texture),
++                                               meta_shaped_texture_get_height (texture),
++                                               clip_region,
++                                               opacity);
++  meta_shaped_texture_paint_content (texture,
++                                     actor,
++                                     root_node,
++                                     paint_context);
++}
++
++static void
++clutter_content_iface_init (ClutterContentInterface *iface)
++{
++  iface->get_preferred_size = meta_surface_content_get_preferred_size;
++  iface->paint_content = meta_surface_content_paint_content;
++}
++
++static void
++meta_surface_content_class_init (MetaSurfaceContentClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->dispose = meta_surface_content_dispose;
++}
++
++static void
++meta_surface_content_init (MetaSurfaceContent *content)
++{
++}
++
++MetaSurfaceContent *
++meta_surface_content_new (ClutterContext    *clutter_context,
++                          ClutterColorState *color_state)
++{
++  MetaSurfaceContent *content;
++
++  content = g_object_new (META_TYPE_SURFACE_CONTENT, NULL);
++  content->texture = meta_shaped_texture_new (clutter_context, color_state);
++  g_signal_connect_object (content->texture, "size-changed",
++                           G_CALLBACK (texture_size_changed), content,
++                           G_CONNECT_DEFAULT);
++
++  return content;
++}
++
++MetaShapedTexture *
++meta_surface_content_get_texture (MetaSurfaceContent *content)
++{
++  g_return_val_if_fail (META_IS_SURFACE_CONTENT (content), NULL);
++
++  return content->texture;
++}
+diff --git a/src/compositor/meta-surface-content.h b/src/compositor/meta-surface-content.h
+new file mode 100644
+index 000000000..a32ccca4e
+--- /dev/null
++++ b/src/compositor/meta-surface-content.h
+@@ -0,0 +1,36 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
++
++/*
++ * Copyright (C) 2026 Kristof Imeri
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "compositor/meta-shaped-texture-private.h"
++
++G_BEGIN_DECLS
++
++#define META_TYPE_SURFACE_CONTENT (meta_surface_content_get_type ())
++G_DECLARE_FINAL_TYPE (MetaSurfaceContent,
++                      meta_surface_content,
++                      META, SURFACE_CONTENT,
++                      GObject)
++
++MetaSurfaceContent * meta_surface_content_new (ClutterContext    *clutter_context,
++                                               ClutterColorState *color_state);
++MetaShapedTexture * meta_surface_content_get_texture (MetaSurfaceContent *content);
++
++G_END_DECLS
+diff --git a/src/meson.build b/src/meson.build
+index 9410646b5..2595d254a 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -282,6 +282,8 @@ mutter_sources = [
+   'compositor/meta-background-actor.c',
+   'compositor/meta-background-content.c',
+   'compositor/meta-background-content-private.h',
++  'compositor/meta-background-effect.c',
++  'compositor/meta-background-effect.h',
+   'compositor/meta-background.c',
+   'compositor/meta-background-group.c',
+   'compositor/meta-background-image.c',
+@@ -310,6 +312,8 @@ mutter_sources = [
+   'compositor/meta-shaped-texture-private.h',
+   'compositor/meta-surface-actor.c',
+   'compositor/meta-surface-actor.h',
++  'compositor/meta-surface-content.c',
++  'compositor/meta-surface-content.h',
+   'compositor/meta-texture-mipmap.c',
+   'compositor/meta-texture-mipmap.h',
+   'compositor/meta-window-actor.c',
+-- 
+2.54.0 (Apple Git-157)
+

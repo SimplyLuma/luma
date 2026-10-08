@@ -1,0 +1,84 @@
+From f57aa94590f7f3f8da46086b5bbca92f377d4897 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 02:42:40 +0200
+Subject: [PATCH 09/41] tee: qseecom: require CAP_SYS_ADMIN to open the
+ privileged device
+
+The privileged device loads code into the secure world and registers the
+services trusted applications call back into. The TEE core separates it from
+the client device by minor number and reports TEE_GEN_CAP_PRIVILEGED, but
+enforces nothing, so until now the entire guard was whatever mode and owner
+created the node -- and unprivileged access to this interface's character
+device has been an escalation step before now (CVE-2018-9411).
+
+Require the capability in the open path, so the guard does not depend on a
+distribution getting a udev rule right.
+
+Deliberately not applied to the client device. A daemon that talks to one
+trusted application has no business holding CAP_SYS_ADMIN, so that one stays a
+matter of file permissions and LSM policy, which the documentation now says
+rather than leaving "restrict it" as advice with no mechanism behind it.
+
+Assisted-by: Claude:claude-opus-5
+---
+ Documentation/tee/qseecom.rst | 19 ++++++++++++++-----
+ drivers/tee/qseecom/core.c    | 12 ++++++++++++
+ 2 files changed, 26 insertions(+), 5 deletions(-)
+
+diff --git a/Documentation/tee/qseecom.rst b/Documentation/tee/qseecom.rst
+index c0602cd83..dafd85f83 100644
+--- a/Documentation/tee/qseecom.rst
++++ b/Documentation/tee/qseecom.rst
+@@ -111,8 +111,17 @@ quiet corner.
+ 
+ Access to the device nodes is therefore part of the security boundary rather
+ than a packaging detail -- reaching the old character device from an
+-unprivileged context was itself an escalation step (CVE-2018-9411). Restrict
+-them deliberately rather than leaving a permissive default: the privileged
+-device to root, since it loads applications and registers listeners, and the
+-client device to whichever service requires it. Widening them turns a trustlet
+-bug into local privilege escalation.
++unprivileged context was itself an escalation step (CVE-2018-9411).
++
++The privileged device requires ``CAP_SYS_ADMIN`` to open. It loads code into
++the secure world and registers the services trusted applications call back
++into, which is not something to gate on file permissions alone; the TEE core
++separates it from the client device by minor number and reports
++``TEE_GEN_CAP_PRIVILEGED``, but enforces nothing itself.
++
++No such check is made on the client device, because a fingerprint or
++attestation daemon has no business running with ``CAP_SYS_ADMIN``. Guarding it
++is discretionary and mandatory access control instead: give it to the one
++service that needs it rather than leaving a permissive default, and label it in
++whatever LSM policy the system uses. Widening it turns a trustlet bug into
++local privilege escalation.
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 28066577e..a0ebf5a27 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -27,6 +27,7 @@
+ 
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+ 
++#include <linux/capability.h>
+ #include <linux/cleanup.h>
+ #include <linux/errno.h>
+ #include <linux/list.h>
+@@ -1036,6 +1037,17 @@ static int qseecom_tee_supp_open(struct tee_context *ctx)
+ 	struct qseecom_tee *qtee = tee_get_drvdata(ctx->teedev);
+ 	int ret;
+ 
++	/*
++	 * This device loads code into the secure world and registers the
++	 * services trusted applications call back into, so it is not something
++	 * to hand out on file permissions alone. The TEE core separates the
++	 * privileged device from the client one by minor number and says so in
++	 * TEE_IOC_VERSION, but enforces nothing itself, which leaves the whole
++	 * guard resting on whatever created the node.
++	 */
++	if (!capable(CAP_SYS_ADMIN))
++		return -EPERM;
++
+ 	ret = qseecom_tee_open(ctx);
+ 	if (ret)
+ 		return ret;

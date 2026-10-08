@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Photos
+Comment=Browse and view photos
+Exec=prairie-photos %U
+Icon=org.projectluma.Photos
+Terminal=false
+Categories=Graphics;Photography;
+MimeType=image/avif;image/heif;image/jpeg;image/png;image/webp;video/mp4;video/quicktime;video/webm;
+Keywords=Photo;Picture;Image;Gallery;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;

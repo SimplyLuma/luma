@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Exec=/usr/bin/true
+Icon=org.gnome.Ptyxis

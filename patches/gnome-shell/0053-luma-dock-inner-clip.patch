@@ -1,0 +1,15 @@
+From: Project Luma
+Subject: [PATCH] dash: delegate shelf clipping to its padded viewport
+
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -1190,6 +1190,9 @@
+ 
+     setShelfEdge(edge) {
+         this._shelfEdge = edge;
++        // Shelf owns scrolling and its padded viewport. The overview clip
++        // otherwise cuts off artwork lifted beyond the resting icon row.
++        this._box.clip_to_allocation = !edge;
+         this.set_offscreen_redirect(edge
+             ? Clutter.OffscreenRedirect.NEVER
+             : Clutter.OffscreenRedirect.ALWAYS);

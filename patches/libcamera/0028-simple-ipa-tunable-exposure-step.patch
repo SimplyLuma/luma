@@ -1,0 +1,51 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: make the maximum exposure step tunable
+
+The software ISP updates statistics at a deliberately sparse cadence on the
+FP6, because sensor controls take several frames to reach the image.  Keep that
+safe cadence, but let sensor tuning limit the size of each exposure correction.
+This reduces visibly ratcheted AE without sampling stale controls more often.
+
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -31,6 +31,7 @@ private:
+ 			    double exposureMSV, double brightFraction);
+ 	double maxGain_;
+ 	double maxBrightFraction_;
++	double maxExposureStep_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -65,5 +65,6 @@ static constexpr float kExpMaxStep = 0.20;
+ 
+ Agc::Agc()
+-	: maxGain_(0.0), maxBrightFraction_(0.0)
++	: maxGain_(0.0), maxBrightFraction_(0.0),
++	  maxExposureStep_(kExpMaxStep)
+ {
+ }
+@@ -88,5 +89,12 @@ int Agc::init(IPAContext &context,
+ 		return -EINVAL;
+ 	}
+ 
++	maxExposureStep_ = tuningData["maxExposureStep"].get<double>(kExpMaxStep);
++	if (maxExposureStep_ <= 0.0 || maxExposureStep_ > 0.5) {
++		LOG(IPASoftExposure, Error)
++			<< "maxExposureStep must be greater than zero and at most 0.5";
++		return -EINVAL;
++	}
++
+ 	return 0;
+ }
+@@ -129,7 +138,8 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+ 	float response = std::abs(error) >= 1.0
+ 		? kExpLargeErrorGain : kExpProportionalGain;
+ 	float step = std::clamp(static_cast<float>(error) * response,
+-				-kExpMaxStep, kExpMaxStep);
++				-static_cast<float>(maxExposureStep_),
++				static_cast<float>(maxExposureStep_));
+ 	float factor = 1.0f + step;
+ 
+ 	if (factor > 1.0f) {

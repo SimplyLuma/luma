@@ -1,0 +1,35 @@
+--- a/src/audio/pulse.c
++++ b/src/audio/pulse.c
+@@ -404,6 +404,32 @@
+ 
+ 	MSG(4, "draining to overlap %llu\n", (unsigned long long) overlap);
+ 
++	/* Full completion belongs to the server drain operation. Raw timing
++	 * indices can retain a fractional resampler tail under PipeWire even
++	 * after audible playback ends; polling them must not hold END forever.
++	 * Retain the timing path for overlap and the existing STOP/flush path. */
++	if (overlap == 0 && p->playing) {
++		p->operation_success = 0;
++		o = pa_stream_drain(p->stream, success_cb, p);
++		CHECK_SUCCESS_GOTO(p, rerror, o, unlock_and_fail);
++		while (p->playing && pa_operation_get_state(o) == PA_OPERATION_RUNNING) {
++			pa_threaded_mainloop_wait(p->mainloop);
++			CHECK_DEAD_GOTO(p, rerror, unlock_and_fail);
++		}
++		if (!p->playing) {
++			pa_operation_cancel(o);
++			pa_operation_unref(o);
++			o = NULL;
++			spd_pa_simple_do_flush(p, NULL);
++		} else {
++			CHECK_SUCCESS_GOTO(p, rerror, p->operation_success, unlock_and_fail);
++			pa_operation_unref(o);
++			o = NULL;
++		}
++		pa_threaded_mainloop_unlock(p->mainloop);
++		return 0;
++	}
++
+ 	/* Drain until requested overlap */
+ 	while(1) {
+ 		if (!p->playing) {

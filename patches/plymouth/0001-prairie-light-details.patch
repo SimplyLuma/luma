@@ -1,0 +1,18 @@
+diff --git a/src/plugins/splash/details/plugin.c b/src/plugins/splash/details/plugin.c
+--- a/src/plugins/splash/details/plugin.c
++++ b/src/plugins/splash/details/plugin.c
+@@ -259,6 +259,14 @@ add_text_display (ply_boot_splash_plugin_t *plugin,
+ 
+         terminal = ply_text_display_get_terminal (view->display);
+         ply_terminal_open (terminal);
++        /* Prairie keeps the real Plymouth details stream but presents it as
++         * a quiet light diagnostic surface. This changes only terminal
++         * palette selection, never message capture. */
++        ply_trace ("using Prairie light details palette");
++        ply_text_display_set_foreground_color (view->display,
++                                               PLY_TERMINAL_COLOR_BLACK);
++        ply_text_display_set_background_color (view->display,
++                                               PLY_TERMINAL_COLOR_WHITE);
+ 
+         ply_list_append_data (plugin->views, view);
+ 

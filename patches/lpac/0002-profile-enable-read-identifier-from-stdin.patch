@@ -1,0 +1,108 @@
+From 5380b03c1cb03d3a77531442555894c4ca0fac6d Mon Sep 17 00:00:00 2001
+From: Project Luma <codex@project-luma.local>
+Date: Wed, 26 Aug 2026 21:10:00 -0500
+Subject: [PATCH] profile: enable using a protected stdin identifier
+
+Profile identifiers should not be exposed in a privileged process argument
+vector. Accept '-' for the enable selector and read one validated ICCID or AID
+from standard input. Lock and explicitly clear the temporary buffer.
+---
+ src/applet/profile/enable.c | 66 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 66 insertions(+)
+
+diff --git a/src/applet/profile/enable.c b/src/applet/profile/enable.c
+index 9951ba3..1919426 100644
+--- a/src/applet/profile/enable.c
++++ b/src/applet/profile/enable.c
+@@ -6,11 +6,68 @@
+ #include <euicc/es10c.h>
+ 
+ #include <stdbool.h>
++#include <ctype.h>
+ #include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/mman.h>
++
++static const size_t profile_id_max = 32;
++
++static void secure_profile_id_free(char **id) {
++    if (id == NULL || *id == NULL)
++        return;
++    explicit_bzero(*id, profile_id_max + 2);
++    (void)munlock(*id, profile_id_max + 2);
++    free(*id);
++    *id = NULL;
++}
++
++static char *read_profile_id(void) {
++    char *id = calloc(profile_id_max + 2, 1);
++    if (id == NULL)
++        return NULL;
++
++    (void)mlock(id, profile_id_max + 2);
++    if (fgets(id, (int)profile_id_max + 2, stdin) == NULL) {
++        secure_profile_id_free(&id);
++        return NULL;
++    }
++
++    size_t length = strlen(id);
++    if (length == 0 || (length > profile_id_max && id[length - 1] != '\n')) {
++        secure_profile_id_free(&id);
++        return NULL;
++    }
++    id[strcspn(id, "\r\n")] = '\0';
++    length = strlen(id);
++
++    if (length == 20) {
++        for (size_t i = 0; i < length; i++) {
++            if (!isdigit((unsigned char)id[i])) {
++                secure_profile_id_free(&id);
++                return NULL;
++            }
++        }
++    } else if (length == 32) {
++        for (size_t i = 0; i < length; i++) {
++            if (!isxdigit((unsigned char)id[i])) {
++                secure_profile_id_free(&id);
++                return NULL;
++            }
++        }
++    } else {
++        secure_profile_id_free(&id);
++        return NULL;
++    }
++
++    return id;
++}
+ 
+ static int applet_main(int argc, char **argv) {
+     int ret;
+     const char *param;
++    char *profile_id_stdin = NULL;
+     bool refreshflag = false;
+ 
+     if (argc < 2) {
+@@ -20,11 +77,20 @@ static int applet_main(int argc, char **argv) {
+     }
+ 
+     param = argv[1];
++    if (strcmp(param, "-") == 0) {
++        profile_id_stdin = read_profile_id();
++        if (profile_id_stdin == NULL) {
++            jprint_error("read_profile_id", "expected one ICCID or AID on standard input");
++            return -1;
++        }
++        param = profile_id_stdin;
++    }
+ 
+     if (argc > 2)
+         refreshflag = str_to_bool(argv[2]) == true;
+ 
+     ret = es10c_enable_profile(&euicc_ctx, param, refreshflag);
++    secure_profile_id_free(&profile_id_stdin);
+ 
+     if (ret) {
+         const char *reason;
+-- 
+2.51.0

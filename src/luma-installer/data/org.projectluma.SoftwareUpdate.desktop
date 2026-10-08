@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Software Update
+Comment=System, firmware and app updates
+Exec=luma-depot --view updates
+Icon=org.projectluma.Depot
+Terminal=false
+# Preserve the update deep link; Depot owns the visible update experience.
+NoDisplay=true
+Categories=GNOME;GTK;Settings;X-GNOME-SystemSettings;
+Keywords=Update;Updates;Upgrade;System;Firmware;Channel;Beta;Restart;
+StartupNotify=false
+X-Purism-FormFactor=Workstation;Mobile;

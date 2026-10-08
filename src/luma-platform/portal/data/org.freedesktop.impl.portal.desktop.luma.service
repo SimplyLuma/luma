@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.luma
+Exec=/usr/libexec/luma-portal-appchooser
+SystemdService=luma-portal-appchooser.service

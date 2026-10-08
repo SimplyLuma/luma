@@ -1,0 +1,75 @@
+From ffdf3a39f10d2673e8fa033bb31ee26f88b971fa Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 00:54:47 +0000
+Subject: [PATCH] Place Filer sidebar toggle in shared title row
+
+---
+ src/nautilus-window.c | 38 +++++++++-----------------------------
+ 1 file changed, 9 insertions(+), 29 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index cc9b9d0..f4329b9 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -564,28 +564,6 @@ update_location_header (NautilusWindow *window)
+     gtk_box_append (GTK_BOX (window->location_meta), count_label);
+ }
+ 
+-static void
+-on_window_width_changed (NautilusWindow *window)
+-{
+-    GtkWidget *button = GTK_WIDGET (window->sidebar_toggle);
+-    GtkWidget *target = gtk_widget_get_width (GTK_WIDGET (window)) > 0 &&
+-                        gtk_widget_get_width (GTK_WIDGET (window)) < 640
+-                        ? window->sidebar_toggle_phone_host
+-                        : window->sidebar_toggle_desktop_host;
+-    GtkWidget *parent = gtk_widget_get_parent (button);
+-
+-    if (parent != target)
+-    {
+-        g_object_ref (button);
+-        if (parent != NULL)
+-        {
+-            gtk_box_remove (GTK_BOX (parent), button);
+-        }
+-        gtk_box_append (GTK_BOX (target), button);
+-        g_object_unref (button);
+-    }
+-}
+-
+ static void
+ update_information (NautilusWindow *window)
+ {
+@@ -1666,11 +1644,15 @@ nautilus_window_constructed (GObject *self)
+ 
+     /* The shared frame keeps NautilusWindow and every template child alive. */
+     luma_application_window_frame_adopt (ADW_APPLICATION_WINDOW (window));
+-    /* The toggle already belongs to Nautilus' top header. Until the shared
+-     * frame adapter selects that outer header, moving its parented host would
+-     * both abort under GTK's critical checks and place it in the lower toolbar.
+-     * TODO(kit-request filer-11-real-nautilus-frame-adapter.md): pack the
+-     * existing toggle into the selected native title row. */
++    /* The toggle is constructed in Nautilus' template host. Transfer the
++     * existing control to the kit's selected top title row, retaining its
++     * split-view action and avoiding an already-parented GTK critical. */
++    GtkWidget *toggle = GTK_WIDGET (window->sidebar_toggle);
++    g_object_ref (toggle);
++    gtk_box_remove (GTK_BOX (window->sidebar_toggle_desktop_host), toggle);
++    luma_application_window_frame_set_leading (ADW_APPLICATION_WINDOW (window),
++                                               toggle);
++    g_object_unref (toggle);
+     GMenuModel *main_menu = NULL;
+     g_object_get (window->toolbar, "main-menu", &main_menu, NULL);
+     luma_application_window_frame_set_menu_model (ADW_APPLICATION_WINDOW (window),
+@@ -2298,8 +2280,6 @@ nautilus_window_init (NautilusWindow *window)
+     gtk_widget_set_name (GTK_WIDGET (window->sidebar_toggle), "filer-sidebar-toggle");
+     gtk_box_append (GTK_BOX (window->sidebar_toggle_desktop_host),
+                     GTK_WIDGET (window->sidebar_toggle));
+-    g_signal_connect_swapped (window, "notify::width",
+-                              G_CALLBACK (on_window_width_changed), window);
+     GtkWidget *location = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+     gtk_widget_set_name (location, "filer-location");
+     gtk_widget_set_hexpand (location, TRUE);
+-- 
+2.55.0
+

@@ -1,0 +1,10 @@
+{
+  "_source": "v71 .year collection cover: 16/10, radius12, lower scrim from45% to black60%, title32/700 and detail12.5/500.",
+  "lumaui": {
+    "media": {"collection": {"radius":12,"hover_scale":1.03,"min_width":120,"title_left":18,"title_bottom":14,"detail_right":16,"detail_bottom":19,"shade_start":0.45,"shade_alpha":0.6}},
+    "type_scale": {
+      "media_collection_title": {"size":32,"weight":700,"line_height":1.45,"tracking_em":-0.035},
+      "media_collection_detail": {"size":12.5,"weight":500,"line_height":1.45,"tracking_em":0}
+    }
+  }
+}

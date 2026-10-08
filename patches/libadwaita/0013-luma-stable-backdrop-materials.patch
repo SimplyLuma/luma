@@ -1,0 +1,63 @@
+From f4bd83826c9f8b3ae17b18b0323a7c5ddae1fb86 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 22:35:00 -0500
+Subject: [PATCH] stylesheet: keep Luma materials stable in backdrop
+
+Do not let libadwaita's generic inactive-window opacity filter turn native
+Luma title and command surfaces into a pale frosted strip. Inactive product
+windows retain their semantic material, text contrast and island boundaries;
+window elevation remains the state cue.
+---
+ src/stylesheet/_common.scss | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index 9d610a7..f587001 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -102,6 +102,43 @@ window.luma-app-window .luma-window-title {
+   background-color: unquote("@luma_selected");
+ }
+ 
++// Luma product surfaces remain materially stable while their window is in
++// the background. Generic libadwaita chrome intentionally fades its
++// windowhandle; applying that filter to an AppKit title identity produces a
++// pale band that reads as translucent glass rather than an inactive window.
++window.luma-app-window headerbar.luma-titlebar:backdrop {
++  background-color: unquote("@luma_window");
++  color: unquote("@luma_ink");
++}
++
++window.luma-app-window headerbar.luma-titlebar:backdrop > windowhandle {
++  filter: none;
++  transition: none;
++}
++
++window.luma-app-window:backdrop toolbarview > .top-bar,
++window.luma-app-window:backdrop toolbarview > .bottom-bar {
++  background-color: unquote("@luma_window");
++  color: unquote("@luma_ink");
++}
++
++window.luma-app-window .luma-command-bar:backdrop,
++window.luma-app-window .luma-island:backdrop {
++  background-color: unquote("@luma_content");
++  border-color: unquote("@luma_line");
++  color: unquote("@luma_ink");
++  filter: none;
++  opacity: 1;
++}
++
++window.luma-app-window .luma-command-group:backdrop,
++window.luma-app-window .luma-command-group:backdrop > button,
++window.luma-app-window .luma-command-group:backdrop > menubutton > button {
++  color: unquote("@luma_ink");
++  filter: none;
++  opacity: 1;
++}
++
+ @media (prefers-color-scheme: dark) {
+   .luma-command-bar {
+     box-shadow: 0 2px 6px RGB(0 0 0 / 32%),
+-- 
+2.54.0

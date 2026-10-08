@@ -1,0 +1,1790 @@
+From 1bd3eb76bac9c7f3f31a5c089c1b9623496d498c Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 23:40:44 -0500
+Subject: [PATCH] luma: Beam finds files, folders and Settings pages in one
+ ranked list
+
+Beam (Luma Search) now shows files and folders from the LocalSearch index
+and Settings pages and options, and orders apps, settings, files and
+folders in a single list by score instead of one block per provider.
+
+- lumaSearchRanking.js scores names: exact, prefix, word prefix, substring,
+  then typos for longer words, accent-, case- and punctuation-insensitive
+  ("wifi" is "Wi-Fi"). Standard folders (Documents, Downloads, Pictures,
+  Music, Videos, Desktop), recently used files, results picked before and
+  shallow places under home rank higher. Backups, copies, dated, hashed and
+  versioned names and build, cache and dependency folders rank lower,
+  unless those words were typed.
+- lumaFileIndex.js asks LocalSearch (tinysparql) for names starting with
+  the typed words, shortest names and shortest paths, with prepared
+  statements and async cursors, and adds recently-used.xbel, Search picks
+  and the top of home. It honours remember-recent-files and
+  recent-files-max-age; without LocalSearch, Search works without files.
+- lumaFileSearch.js replaces Filer's D-Bus provider inside Beam. It checks
+  results still exist, honours the Files switch in Settings -> Search and
+  Luma Search's file kind, opens with the default app and shows the item
+  in Filer on Ctrl+Enter or the row's folder button.
+- lumaSettingsSearch.js reads luma-search's settings-pages.json (pages,
+  options and everyday words, e.g. "sleep" -> Power > Automatic Suspend)
+  and opens the panel through Settings' launch-panel action. Settings rows
+  stay together, one per name, at most four.
+- In compact mode apps, files and settings pages search at once and D-Bus
+  providers after 90 ms, instead of everything after 150 ms.
+---
+ data/theme/gnome-shell-dark.css          |  11 +
+ data/theme/gnome-shell-high-contrast.css |  12 +
+ data/theme/gnome-shell-light.css         |  11 +
+ js/js-resources.gresource.xml            |   4 +
+ js/ui/lumaFileIndex.js                   | 433 +++++++++++++++++++++++
+ js/ui/lumaFileSearch.js                  | 156 ++++++++
+ js/ui/lumaSearch.js                      |  17 +-
+ js/ui/lumaSearchRanking.js               | 414 ++++++++++++++++++++++
+ js/ui/lumaSettingsSearch.js              | 145 ++++++++
+ js/ui/search.js                          | 284 ++++++++++++++-
+ 10 files changed, 1475 insertions(+), 12 deletions(-)
+ create mode 100644 js/ui/lumaFileIndex.js
+ create mode 100644 js/ui/lumaFileSearch.js
+ create mode 100644 js/ui/lumaSearchRanking.js
+ create mode 100644 js/ui/lumaSettingsSearch.js
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index c7226d5..a3f2916 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -1611,6 +1611,17 @@ StScrollBar {
+     font-family: 'Figtree';
+     font-size: 10px;
+     font-weight: 600; }
++  .luma-search-dialog .luma-search-result-reveal {
++    width: 26px;
++    height: 26px;
++    padding: 0;
++    border-radius: 999px;
++    background-color: rgba(255, 255, 255, 0.08);
++    color: #ffffff; }
++    .luma-search-dialog .luma-search-result-reveal:hover {
++      background-color: rgba(255, 255, 255, 0.14); }
++    .luma-search-dialog .luma-search-result-reveal:active {
++      background-color: rgba(255, 255, 255, 0.2); }
+ 
+ 
+ .dialog-list {
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index fc1643f..34c615b 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -1721,6 +1721,18 @@ StScrollBar {
+     font-family: 'Figtree';
+     font-size: 10px;
+     font-weight: 600; }
++  .luma-search-dialog .luma-search-result-reveal {
++    width: 26px;
++    height: 26px;
++    padding: 0;
++    border-radius: 999px;
++    background-color: rgba(255, 255, 255, 0.08);
++    color: #ffffff;
++    border: 1px solid #ffffff; }
++    .luma-search-dialog .luma-search-result-reveal:hover {
++      background-color: rgba(255, 255, 255, 0.14); }
++    .luma-search-dialog .luma-search-result-reveal:active {
++      background-color: rgba(255, 255, 255, 0.2); }
+ 
+ 
+ .dialog-list {
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index a95e18d..e9fddfc 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -1632,6 +1632,17 @@ StScrollBar {
+     font-family: 'Figtree';
+     font-size: 10px;
+     font-weight: 600; }
++  .luma-search-dialog .luma-search-result-reveal {
++    width: 26px;
++    height: 26px;
++    padding: 0;
++    border-radius: 999px;
++    background-color: rgba(39, 48, 56, 0.06);
++    color: #222226; }
++    .luma-search-dialog .luma-search-result-reveal:hover {
++      background-color: rgba(39, 48, 56, 0.12); }
++    .luma-search-dialog .luma-search-result-reveal:active {
++      background-color: rgba(39, 48, 56, 0.16); }
+ 
+ 
+ .dialog-list {
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 50a7c18..5471fc2 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -83,7 +83,11 @@
+     <file>ui/locatePointer.js</file>
+     <file>ui/lookingGlass.js</file>
+     <file>ui/lumaSurfaceMaterials.js</file>
++    <file>ui/lumaFileIndex.js</file>
++    <file>ui/lumaFileSearch.js</file>
+     <file>ui/lumaSearch.js</file>
++    <file>ui/lumaSearchRanking.js</file>
++    <file>ui/lumaSettingsSearch.js</file>
+     <file>ui/lumaDisplayArrival.js</file>
+     <file>ui/lumaWindowCorners.js</file>
+     <file>ui/lumaWindowWatch.js</file>
+diff --git a/js/ui/lumaFileIndex.js b/js/ui/lumaFileIndex.js
+new file mode 100644
+index 0000000..5c3391d
+--- /dev/null
++++ b/js/ui/lumaFileIndex.js
+@@ -0,0 +1,433 @@
++// Files and folders for Luma Search, from the LocalSearch index.
++//
++// LocalSearch (tinysparql) already crawls the places chosen in Settings →
++// Search and skips hidden files and excluded folders, so Search keeps no
++// index of its own. This module asks it for names that start with the typed
++// words, adds recently used files and the top of the home folder, and ranks
++// everything with lumaSearchRanking.js. Nothing here blocks the main loop.
++//
++// No St or Shell imports: the ranking and query tests run it under gjs.
++
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++
++import * as Ranking from './lumaSearchRanking.js';
++
++const LOCALSEARCH_BUS_NAME = 'org.freedesktop.LocalSearch3';
++const CANDIDATE_LIMIT = 200;
++const SHALLOW_LIMIT = 100;
++const RESULT_LIMIT = 24;
++const PICKS_LIMIT = 300;
++const PRIVACY_SCHEMA = 'org.gnome.desktop.privacy';
++
++// Folder contents that are never worth offering, filtered in the index.
++const HIDDEN_URL_PARTS = ['/node_modules/', '/__pycache__/', '/site-packages/', '/.git/'];
++
++// Two orderings of the same matches: the shortest names (exact and prefix
++// matches) and the shortest paths (shallow places), so neither thousands of
++// short names deep in an archive nor long names near home crowd out the other.
++const sparql = (order, limit) => `
++SELECT ?url ?name ?modified WHERE {
++  GRAPH tracker:FileSystem {
++    ?file fts:match ~match ;
++          nfo:fileName ?name ;
++          nie:url ?url ;
++          nfo:fileLastModified ?modified .
++    ${HIDDEN_URL_PARTS.map(part => `FILTER (!CONTAINS(?url, "${part}"))`).join('\n    ')}
++  }
++}
++ORDER BY ${order}
++LIMIT ${limit}`;
++const QUERIES = [
++    sparql('STRLEN(?name)', CANDIDATE_LIMIT),
++    sparql('STRLEN(?url)', SHALLOW_LIMIT),
++];
++
++Gio._promisify(Gio.File.prototype, 'load_contents_async');
++Gio._promisify(Gio.File.prototype, 'query_info_async');
++Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
++Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async', 'replace_contents_finish');
++Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
++
++function cancelledError() {
++    return new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED, 'Operation was cancelled');
++}
++
++function throwIfCancelled(cancellable) {
++    if (cancellable?.is_cancelled())
++        throw cancelledError();
++}
++
++function isoToSeconds(value) {
++    if (!value)
++        return 0;
++    const date = GLib.DateTime.new_from_iso8601(value, GLib.TimeZone.new_utc());
++    return date ? date.to_unix() : 0;
++}
++
++function logWarning(message) {
++    console.warn(`Luma Search files: ${message}`);
++}
++
++export class LumaFileIndex {
++    constructor(params = {}) {
++        this._home = params.home ?? GLib.get_home_dir();
++        this._busName = params.busName ?? LOCALSEARCH_BUS_NAME;
++        this._connectionFactory = params.connectionFactory ?? null;
++        this._recentPath = params.recentPath ??
++            GLib.build_filenamev([GLib.get_user_data_dir(), 'recently-used.xbel']);
++        this._picksPath = params.picksPath ??
++            GLib.build_filenamev([GLib.get_user_state_dir(), 'luma', 'search-picks.json']);
++        this._now = params.now ?? (() => GLib.get_real_time() / 1000000);
++        this._privacy = params.privacySettings ?? this._loadPrivacySettings();
++
++        this._connection = null;
++        this._connectionPromise = null;
++        this._statements = null;
++        this._tsparql = null;
++        this._unavailableUntil = 0;
++
++        this._recent = new Map();
++        this._recentStamp = -1;
++        this._homeEntries = [];
++        this._homeStamp = -1;
++        this._picks = new Map();
++        this._picksLoaded = false;
++        this._picksSaveId = 0;
++
++        this._xdgFolders = new Set();
++        for (const key of Ranking.XDG_FOLDER_KEYS) {
++            const path = GLib.get_user_special_dir(GLib.UserDirectory[`DIRECTORY_${key}`]);
++            if (path && path !== this._home)
++                this._xdgFolders.add(path);
++        }
++        for (const path of params.xdgFolders ?? [])
++            this._xdgFolders.add(path);
++    }
++
++    _loadPrivacySettings() {
++        const source = Gio.SettingsSchemaSource.get_default();
++        return source?.lookup(PRIVACY_SCHEMA, true)
++            ? new Gio.Settings({schema_id: PRIVACY_SCHEMA})
++            : null;
++    }
++
++    get _rememberRecent() {
++        return this._privacy?.get_boolean('remember-recent-files') ?? true;
++    }
++
++    get _recentMaxAgeSeconds() {
++        const days = this._privacy?.get_int('recent-files-max-age') ?? -1;
++        return days < 0 ? Infinity : days * 86400;
++    }
++
++    // Prepare the connection and the cached lists before the first keystroke.
++    warmUp() {
++        this._ensureStatements(null).catch(() => {});
++        this._refreshRecent(null).catch(() => {});
++        this._refreshHome(null).catch(() => {});
++        this._loadPicks().catch(() => {});
++    }
++
++    async _ensureStatements(cancellable) {
++        if (this._statements)
++            return this._statements;
++        if (this._now() < this._unavailableUntil)
++            return null;
++        if (!this._connectionPromise) {
++            this._connectionPromise = (async () => {
++                if (this._connectionFactory)
++                    return this._connectionFactory();
++                // Load the typelib lazily: without tinysparql Search keeps
++                // working, it just has no files.
++                const {default: Tsparql} = await import('gi://Tsparql?version=3.0');
++                this._tsparql = Tsparql;
++                return new Promise((resolve, reject) => {
++                    Tsparql.SparqlConnection.bus_new_async(
++                        this._busName, null, null, null, (_source, result) => {
++                            try {
++                                resolve(Tsparql.SparqlConnection.bus_new_finish(result));
++                            } catch (e) {
++                                reject(e);
++                            }
++                        });
++                });
++            })();
++        }
++        try {
++            this._connection = await this._connectionPromise;
++            throwIfCancelled(cancellable);
++            this._statements = QUERIES.map(query => this._connection.query_statement(query, null));
++            return this._statements;
++        } catch (e) {
++            if (e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                throw e;
++            // LocalSearch is missing or failed to start. Try again later
++            // rather than on every keystroke.
++            logWarning(`index unavailable: ${e.message}`);
++            this._connectionPromise = null;
++            this._unavailableUntil = this._now() + 30;
++            return null;
++        }
++    }
++
++    async _runQuery(match, cancellable) {
++        const statements = await this._ensureStatements(cancellable);
++        if (!statements || !match)
++            return [];
++        const results = await Promise.all(
++            statements.map(statement => this._runStatement(statement, match, cancellable)));
++        return results.flat();
++    }
++
++    async _runStatement(statement, match, cancellable) {
++        statement.bind_string('match', match);
++        const cursor = await new Promise((resolve, reject) => {
++            statement.execute_async(cancellable, (_source, result) => {
++                try {
++                    resolve(statement.execute_finish(result));
++                } catch (e) {
++                    reject(e);
++                }
++            });
++        });
++        const rows = [];
++        try {
++            for (;;) {
++                // eslint-disable-next-line no-await-in-loop
++                const more = await new Promise((resolve, reject) => {
++                    cursor.next_async(cancellable, (_source, result) => {
++                        try {
++                            resolve(cursor.next_finish(result));
++                        } catch (e) {
++                            reject(e);
++                        }
++                    });
++                });
++                if (!more)
++                    break;
++                const [url] = cursor.get_string(0);
++                const [name] = cursor.get_string(1);
++                const [modified] = cursor.get_string(2);
++                if (!url?.startsWith('file://') || !name)
++                    continue;
++                const path = Gio.File.new_for_uri(url).get_path();
++                if (path)
++                    rows.push({path, name, uri: url, modified: isoToSeconds(modified)});
++            }
++        } finally {
++            cursor.close();
++        }
++        return rows;
++    }
++
++    async _refreshRecent(cancellable) {
++        if (!this._rememberRecent) {
++            this._recent.clear();
++            this._recentStamp = -1;
++            return;
++        }
++        const file = Gio.File.new_for_path(this._recentPath);
++        let stamp;
++        try {
++            const info = await file.query_info_async('time::modified,time::modified-usec',
++                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
++            stamp = info.get_attribute_uint64('time::modified') * 1e6 +
++                info.get_attribute_uint32('time::modified-usec');
++        } catch {
++            this._recent.clear();
++            return;
++        }
++        if (stamp === this._recentStamp)
++            return;
++        const [contents] = await file.load_contents_async(cancellable);
++        const bookmarks = new GLib.BookmarkFile();
++        bookmarks.load_from_data(contents);
++        const recent = new Map();
++        const now = this._now();
++        const maxAge = this._recentMaxAgeSeconds;
++        for (const uri of bookmarks.get_uris()) {
++            if (!uri.startsWith('file://'))
++                continue;
++            try {
++                const stampOf = read => {
++                    try {
++                        return read()?.to_unix() ?? 0;
++                    } catch {
++                        return 0;
++                    }
++                };
++                const visited = Math.max(
++                    stampOf(() => bookmarks.get_visited_date_time(uri)),
++                    stampOf(() => bookmarks.get_modified_date_time(uri)));
++                if (now - visited > maxAge)
++                    continue;
++                let visits = 0;
++                for (const app of bookmarks.get_applications(uri) ?? []) {
++                    const info = bookmarks.get_application_info(uri, app);
++                    visits += Number(info?.[2] ?? 0);
++                }
++                const gfile = Gio.File.new_for_uri(uri);
++                const path = gfile.get_path();
++                if (path)
++                    recent.set(path, {path, uri, name: gfile.get_basename(), visited, visits});
++            } catch {
++            }
++        }
++        this._recent = recent;
++        this._recentStamp = stamp;
++    }
++
++    async _refreshHome(cancellable) {
++        const home = Gio.File.new_for_path(this._home);
++        try {
++            const info = await home.query_info_async('time::modified',
++                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
++            const stamp = info.get_attribute_uint64('time::modified');
++            if (stamp === this._homeStamp)
++                return;
++            const enumerator = await home.enumerate_children_async(
++                'standard::name,standard::is-hidden,standard::is-backup',
++                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, GLib.PRIORITY_LOW, cancellable);
++            const entries = [];
++            for (;;) {
++                // eslint-disable-next-line no-await-in-loop
++                const infos = await enumerator.next_files_async(200, GLib.PRIORITY_LOW, cancellable);
++                if (!infos.length)
++                    break;
++                for (const child of infos) {
++                    if (child.get_is_hidden() || child.get_is_backup())
++                        continue;
++                    const name = child.get_name();
++                    entries.push({path: GLib.build_filenamev([this._home, name]), name});
++                }
++                if (entries.length > 2000)
++                    break;
++            }
++            enumerator.close(null);
++            this._homeEntries = entries;
++            this._homeStamp = stamp;
++        } catch (e) {
++            if (e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                throw e;
++        }
++    }
++
++    async _loadPicks() {
++        if (this._picksLoaded)
++            return;
++        this._picksLoaded = true;
++        try {
++            const [contents] = await Gio.File.new_for_path(this._picksPath).load_contents_async(null);
++            const data = JSON.parse(new TextDecoder().decode(contents));
++            for (const [path, value] of Object.entries(data?.picks ?? {})) {
++                if (typeof value?.count === 'number' && typeof value?.last === 'number')
++                    this._picks.set(path, value);
++            }
++        } catch {
++        }
++    }
++
++    // Remember a result the person opened, so it ranks higher next time.
++    recordPick(path) {
++        if (!this._rememberRecent || !path)
++            return;
++        const existing = this._picks.get(path);
++        this._picks.delete(path);
++        this._picks.set(path, {count: (existing?.count ?? 0) + 1, last: Math.round(this._now())});
++        while (this._picks.size > PICKS_LIMIT)
++            this._picks.delete(this._picks.keys().next().value);
++        if (this._picksSaveId)
++            return;
++        this._picksSaveId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, 2, () => {
++            this._picksSaveId = 0;
++            this._savePicks().catch(e => logWarning(`could not save picks: ${e.message}`));
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    async _savePicks() {
++        const file = Gio.File.new_for_path(this._picksPath);
++        GLib.mkdir_with_parents(GLib.path_get_dirname(this._picksPath), 0o700);
++        const data = JSON.stringify({version: 1, picks: Object.fromEntries(this._picks)});
++        await file.replace_contents_bytes_async(new GLib.Bytes(new TextEncoder().encode(data)),
++            null, false, Gio.FileCreateFlags.PRIVATE, null);
++    }
++
++    destroy() {
++        if (this._picksSaveId) {
++            GLib.source_remove(this._picksSaveId);
++            this._picksSaveId = 0;
++            this._savePicks().catch(() => {});
++        }
++        this._connection?.close_async?.(null, null);
++        this._statements = null;
++        this._connection = null;
++    }
++
++    _withUsage(candidate) {
++        const recent = this._rememberRecent ? this._recent.get(candidate.path) : null;
++        const pick = this._rememberRecent ? this._picks.get(candidate.path) : null;
++        return {
++            ...candidate,
++            visited: recent?.visited ?? 0,
++            visits: recent?.visits ?? 0,
++            picked: pick?.last ?? 0,
++            picks: pick?.count ?? 0,
++        };
++    }
++
++    // Returns ranked candidates: {path, uri, name, score, tier, evidence}.
++    async search(terms, cancellable = null) {
++        terms = terms.map(term => Ranking.foldText(term)).filter(Boolean);
++        if (!terms.length)
++            return [];
++        const context = {home: this._home, now: this._now(), xdgFolders: this._xdgFolders};
++        const local = () => [
++            ...this._homeEntries,
++            ...[...this._xdgFolders].map(path => ({path, name: GLib.path_get_basename(path)})),
++            ...(this._rememberRecent ? this._recent.values() : []),
++            ...(this._rememberRecent ? [...this._picks.keys()].map(path => ({path, name: GLib.path_get_basename(path)})) : []),
++        ];
++
++        // One letter matches a large share of any home folder; start asking
++        // the index from the second letter. Home, recent files and picks
++        // still answer the first.
++        const typed = terms.join('').length;
++        const [hits] = await Promise.all([
++            typed >= 2 ? this._runQuery(Ranking.ftsQuery(terms), cancellable) : [],
++            this._refreshRecent(cancellable).catch(e => {
++                if (e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                    throw e;
++            }),
++        ]);
++        throwIfCancelled(cancellable);
++        let ranked = Ranking.rankFiles([...local(), ...hits].map(c => this._withUsage(c)),
++            terms, context, RESULT_LIMIT);
++
++        // A typo in a longer word: look again with the first half of it.
++        const typoPossible = terms.some(term => term.length >= 5);
++        if (typoPossible && !ranked.some(item => item.tier >= Ranking.TIER_WORD)) {
++            const more = await this._runQuery(Ranking.ftsQuery(terms, {shorten: true}), cancellable);
++            throwIfCancelled(cancellable);
++            ranked = Ranking.rankFiles([...local(), ...hits, ...more].map(c => this._withUsage(c)),
++                terms, context, RESULT_LIMIT);
++        }
++        for (const item of ranked)
++            item.uri ??= Gio.File.new_for_path(item.path).get_uri();
++        return ranked;
++    }
++
++    shortParent(path) {
++        const parent = GLib.path_get_dirname(path);
++        if (parent === this._home)
++            return _('Home');
++        let display = parent.startsWith(`${this._home}/`)
++            ? `~/${parent.slice(this._home.length + 1)}`
++            : parent;
++        const parts = display.split('/');
++        if (parts.length > 4)
++            display = `${parts[0]}/…/${parts.slice(-2).join('/')}`;
++        return display;
++    }
++}
+diff --git a/js/ui/lumaFileSearch.js b/js/ui/lumaFileSearch.js
+new file mode 100644
+index 0000000..30e7d63
+--- /dev/null
++++ b/js/ui/lumaFileSearch.js
+@@ -0,0 +1,156 @@
++// The Files and Folders provider for Beam (Luma Search).
++//
++// It replaces the Filer (Nautilus) D-Bus search provider inside Beam so that
++// files and folders share one ranked list with apps and settings. Opening a
++// result uses the default app; Ctrl+Enter or the row's folder button shows
++// it in Filer.
++
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import {LumaFileIndex} from './lumaFileIndex.js';
++
++const FILER_DESKTOP_ID = 'org.gnome.Nautilus.desktop';
++const SEARCH_PROVIDERS_SCHEMA = 'org.gnome.desktop.search-providers';
++const LUMA_SEARCH_SCHEMA = 'org.projectluma.search';
++const INFO_ATTRIBUTES = [
++    'standard::type', 'standard::content-type', 'standard::icon',
++    'standard::symbolic-icon', 'standard::display-name', 'standard::is-hidden',
++].join(',');
++
++Gio._promisify(Gio.File.prototype, 'query_info_async');
++Gio._promisify(Gio.AppInfo, 'launch_default_for_uri_async');
++Gio._promisify(Gio.DBusConnection.prototype, 'call');
++
++function optionalSettings(schemaId) {
++    const source = Gio.SettingsSchemaSource.get_default();
++    return source?.lookup(schemaId, true) ? new Gio.Settings({schema_id: schemaId}) : null;
++}
++
++export class LumaFileSearchProvider {
++    constructor(params = {}) {
++        this.id = 'luma-files';
++        this.isRemoteProvider = false;
++        this.canLaunchSearch = false;
++        this.replacesProviderIds = [FILER_DESKTOP_ID];
++        this.lumaKind = 'file';
++        this.maxResults = 8;
++        // No appInfo: the provider belongs to the Shell, so the results view
++        // must not hide it when Filer's launcher is hidden in this session.
++        this.appInfo = null;
++
++        this._index = params.index ?? new LumaFileIndex();
++        this._found = new Map();
++        this._providerSettings = optionalSettings(SEARCH_PROVIDERS_SCHEMA);
++        this._lumaSettings = optionalSettings(LUMA_SEARCH_SCHEMA);
++    }
++
++    // Settings → Search can switch Files off, and Luma Search can hide the
++    // file kind; both are honoured before any lookup happens.
++    get enabled() {
++        if (this._lumaSettings &&
++            !this._lumaSettings.get_strv('enabled-kinds').includes('file'))
++            return false;
++        if (this._providerSettings?.get_strv('disabled').includes(FILER_DESKTOP_ID))
++            return false;
++        return true;
++    }
++
++    warmUp() {
++        if (this.enabled)
++            this._index.warmUp();
++    }
++
++    async _info(item, cancellable) {
++        try {
++            item.info = await Gio.File.new_for_uri(item.uri).query_info_async(INFO_ATTRIBUTES,
++                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable);
++        } catch (e) {
++            if (e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                throw e;
++            item.info = null;
++        }
++        return item;
++    }
++
++    async getInitialResultSet(terms, cancellable) {
++        if (!this.enabled)
++            return [];
++        const started = GLib.get_monotonic_time();
++        const ranked = await this._index.search(terms, cancellable);
++        // Check the best few still exist before showing them: the index can
++        // lag behind a delete or an unplugged drive.
++        const checked = await Promise.all(
++            ranked.slice(0, this.maxResults + 4).map(item => this._info(item, cancellable)));
++        const present = checked.filter(item => item.info && !item.info.get_is_hidden());
++        this._found = new Map(present.map(item => [item.uri, item]));
++        const elapsed = (GLib.get_monotonic_time() - started) / 1000;
++        if (elapsed > 50)
++            console.warn(`Luma Search files: slow lookup, ${present.length} results in ${elapsed.toFixed(1)} ms`);
++        return present.map(item => item.uri);
++    }
++
++    getSubsearchResultSet(_previousResults, terms, cancellable) {
++        // The index is fast enough to ask again, and a narrower query can
++        // surface names the broader one cut off.
++        return this.getInitialResultSet(terms, cancellable);
++    }
++
++    filterResults(results, maxNumber) {
++        return results.slice(0, maxNumber);
++    }
++
++    async getResultMetas(ids, cancellable) {
++        return Promise.all(ids.map(async uri => {
++            let item = this._found.get(uri);
++            if (!item?.info) {
++                const path = Gio.File.new_for_uri(uri).get_path() ?? '';
++                item = await this._info({uri, path, name: GLib.path_get_basename(path)}, cancellable);
++            }
++            const info = item.info;
++            const isFolder = info?.get_file_type() === Gio.FileType.DIRECTORY;
++            const gicon = info?.get_icon() ??
++                Gio.ThemedIcon.new(isFolder ? 'folder' : 'text-x-generic');
++            return {
++                id: uri,
++                name: info?.get_display_name() ?? item.name,
++                description: this._index.shortParent(item.path),
++                createIcon: size => new St.Icon({gicon, icon_size: size}),
++                lumaScore: item.score ?? 0,
++                lumaKindLabel: isFolder ? _('Folder') : _('File'),
++                lumaCanReveal: true,
++            };
++        }));
++    }
++
++    activateResult(uri, _terms) {
++        const item = this._found.get(uri);
++        this._index.recordPick(item?.path ?? Gio.File.new_for_uri(uri).get_path());
++        const context = global.create_app_launch_context(0, -1);
++        Gio.AppInfo.launch_default_for_uri_async(uri, context, null).catch(e => {
++            console.warn(`Luma Search files: could not open ${uri}: ${e.message}`);
++            this.revealResult(uri);
++        });
++    }
++
++    revealResult(uri) {
++        const item = this._found.get(uri);
++        this._index.recordPick(item?.path ?? Gio.File.new_for_uri(uri).get_path());
++        Gio.DBus.session.call(
++            'org.freedesktop.FileManager1',
++            '/org/freedesktop/FileManager1',
++            'org.freedesktop.FileManager1',
++            'ShowItems',
++            new GLib.Variant('(ass)', [[uri], '']),
++            null, Gio.DBusCallFlags.NONE, -1, null).catch(e => {
++            console.warn(`Luma Search files: could not show ${uri} in Filer: ${e.message}`);
++            Main.notifyError(_('Could not show the item in Filer'), e.message);
++        });
++    }
++
++    destroy() {
++        this._index.destroy();
++    }
++}
+diff --git a/js/ui/lumaSearch.js b/js/ui/lumaSearch.js
+index f405584..cdfd172 100644
+--- a/js/ui/lumaSearch.js
++++ b/js/ui/lumaSearch.js
+@@ -4,6 +4,8 @@ import GObject from 'gi://GObject';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
++import * as LumaFileSearch from './lumaFileSearch.js';
++import * as LumaSettingsSearch from './lumaSettingsSearch.js';
+ import * as Main from './main.js';
+ import * as ModalDialog from './modalDialog.js';
+ import * as Search from './search.js';
+@@ -149,6 +151,13 @@ class LumaSearchDialog extends ModalDialog.ModalDialog {
+         // activation paths as GNOME's mature Activity View search. Compact is
+         // presentation-only: it renders every provider as a Beam result row.
+         this._results = new Search.SearchResultsView({compact: true});
++        // Files and folders come straight from the LocalSearch index and
++        // are ranked together with apps and settings.
++        this._fileProvider = new LumaFileSearch.LumaFileSearchProvider();
++        this._results.addProvider(this._fileProvider);
++        // Settings pages and options, next to Settings' own panel results.
++        this._settingsProvider = new LumaSettingsSearch.LumaSettingsSearchProvider();
++        this._results.addProvider(this._settingsProvider);
+         this._results.y_expand = false;
+         this._results.connect('result-activated', () => this.close());
+         this._results.hide();
+@@ -180,6 +189,8 @@ class LumaSearchDialog extends ModalDialog.ModalDialog {
+         island.scale_x = animate ? 0.985 : 1;
+         island.scale_y = animate ? 0.985 : 1;
+         this._entry.text = '';
++        this._fileProvider.warmUp();
++        this._settingsProvider.warmUp();
+         const opened = super.open();
+         if (opened) {
+             this._entry.grab_key_focus();
+@@ -269,7 +280,11 @@ class LumaSearchDialog extends ModalDialog.ModalDialog {
+             return Clutter.EVENT_STOP;
+         case Clutter.KEY_Return:
+         case Clutter.KEY_KP_Enter:
+-            this._results.activateDefault();
++            // Ctrl+Enter shows a file or folder in Filer instead of opening it.
++            if (event.get_state() & Clutter.ModifierType.CONTROL_MASK)
++                this._results.revealDefault();
++            else
++                this._results.activateDefault();
+             return Clutter.EVENT_STOP;
+         case Clutter.KEY_Escape:
+             this.close();
+diff --git a/js/ui/lumaSearchRanking.js b/js/ui/lumaSearchRanking.js
+new file mode 100644
+index 0000000..77a1860
+--- /dev/null
++++ b/js/ui/lumaSearchRanking.js
+@@ -0,0 +1,414 @@
++// Luma Search ranking: one score for apps, settings, files and folders so
++// Beam can show a single list ordered by how well each result fits the query.
++//
++// This module has no imports so the same code runs in the Shell, under gjs
++// and under node for the ranking tests. luma-search (Python) implements the
++// same model; tests/search/ranking-vectors.json keeps the two in step.
++
++export const TIER_EXACT = 1000;
++export const TIER_PREFIX = 800;
++export const TIER_WORD = 600;
++export const TIER_SUBSTRING = 350;
++export const TIER_FUZZY = 150;
++
++const COMPLETION_BONUS = 100;
++const APP_NAME_BONUS = 150;
++const APP_EXACT_BONUS = 300;
++const SETTING_BONUS = 60;
++const XDG_BOOST = 200;
++const USAGE_BOOST_CAP = 180;
++const JUNK_PENALTY_CAP = 400;
++const JUNK_PATH_PENALTY = 450;
++const DEPTH_STEP = 30;
++const DEPTH_CAP = 180;
++const OUTSIDE_HOME_PENALTY = 120;
++const DAY = 86400;
++
++export const XDG_FOLDER_KEYS = ['DESKTOP', 'DOCUMENTS', 'DOWNLOAD', 'MUSIC', 'PICTURES', 'VIDEOS'];
++
++// Directories whose contents are build output, caches or tool state.
++export const JUNK_DIRECTORIES = new Set([
++    '.git', '.hg', '.svn', 'node_modules', '__pycache__', '.cache', 'cache',
++    'build', 'builddir', '_build', 'dist', 'target', 'obj', '.venv', 'venv',
++    'site-packages', '.tox', '.mypy_cache', '.pytest_cache', '.gradle',
++    '.flatpak-builder', 'buildroot', 'rpmbuild', 'cmakefiles', 'tmp', 'temp',
++    '.tmp', 'vendor', '.npm', '.cargo', '.rustup', 'deps',
++]);
++
++const JUNK_WORDS = new Map([
++    ['backup', 220], ['backups', 220], ['bak', 220], ['bck', 220], ['bkp', 220],
++    ['copy', 220], ['old', 200], ['orig', 180], ['tmp', 220], ['temp', 200],
++    ['autosave', 220], ['conflicted', 200], ['stale', 160], ['archived', 120],
++]);
++const JUNK_EXTENSIONS = new Set(['bak', 'old', 'orig', 'tmp', 'swp', 'swo', 'part', 'crdownload', 'rej']);
++
++export function foldText(value) {
++    return String(value ?? '')
++        .normalize('NFKD')
++        .replace(/[\u0300-\u036f]/g, '')
++        .toLowerCase();
++}
++
++export function splitTerms(query) {
++    return foldText(query).trim().split(/\s+/).filter(Boolean);
++}
++
++// Break a display name into lower-case words: separators, camelCase and
++// letter/digit changes all start a new word.
++export function nameWords(name) {
++    const spaced = String(name ?? '')
++        .replace(/([a-z\u00e0-\u024f])([A-Z])/g, '$1 $2')
++        .replace(/([A-Za-z])(\d)/g, '$1 $2')
++        .replace(/(\d)([A-Za-z])/g, '$1 $2');
++    return foldText(spaced).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
++}
++
++export function splitExtension(name) {
++    const text = String(name ?? '');
++    const dot = text.lastIndexOf('.');
++    // ".bashrc" has no extension; "archive.tar.gz" keeps "archive.tar".
++    if (dot <= 0 || dot === text.length - 1 || text.length - dot > 12)
++        return [text, ''];
++    return [text.slice(0, dot), text.slice(dot + 1)];
++}
++
++function editDistance(a, b, limit) {
++    // Optimal string alignment distance, stopping early past the limit.
++    if (Math.abs(a.length - b.length) > limit)
++        return limit + 1;
++    let before = null;
++    let previous = Array.from({length: b.length + 1}, (_, i) => i);
++    for (let i = 1; i <= a.length; i++) {
++        const current = [i];
++        let best = i;
++        for (let j = 1; j <= b.length; j++) {
++            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
++            let value = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + cost);
++            if (before && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1])
++                value = Math.min(value, before[j - 2] + 1);
++            current.push(value);
++            best = Math.min(best, value);
++        }
++        if (best > limit)
++            return limit + 1;
++        before = previous;
++        previous = current;
++    }
++    return previous[b.length];
++}
++
++function typoLimit(term) {
++    if (term.length >= 8)
++        return 2;
++    if (term.length >= 5)
++        return 1;
++    return 0;
++}
++
++function termTier(term, folded, words) {
++    if (folded === term)
++        return TIER_EXACT;
++    if (folded.startsWith(term))
++        return TIER_PREFIX;
++    if (words.some(word => word.startsWith(term)))
++        return TIER_WORD;
++    // One or two letters inside a word are noise, not a match.
++    if (term.length >= 3 && folded.includes(term))
++        return TIER_SUBSTRING;
++    const limit = typoLimit(term);
++    if (limit > 0) {
++        const candidates = [folded, ...words];
++        for (const candidate of candidates) {
++            // Compare with the same-length prefix too, so "documnts" still
++            // finds "Documents" and a typo while typing finds "Documents".
++            const head = candidate.slice(0, term.length);
++            if (editDistance(term, candidate, limit) <= limit ||
++                (candidate.length > term.length && editDistance(term, head, limit) <= limit))
++                return TIER_FUZZY;
++        }
++    }
++    return -1;
++}
++
++// How well a name matches the query terms. Returns {tier, score} or null.
++// The file extension is ignored for exact matches: "report" is an exact
++// match for "report.pdf".
++export function matchName(name, terms, {ignoreExtension = false} = {}) {
++    if (!terms.length || !name)
++        return null;
++    const [stem] = ignoreExtension ? splitExtension(name) : [name];
++    const foldedName = foldText(name);
++    const foldedStem = foldText(stem);
++    const words = nameWords(name);
++    const phrase = terms.join(' ');
++
++    // "wifi" is "Wi-Fi" and "nightlight" is "Night Light".
++    const compactName = foldedName.replace(/[^\p{L}\p{N}]+/gu, '');
++    const compactPhrase = phrase.replace(/[^\p{L}\p{N}]+/gu, '');
++
++    let tier;
++    if (foldedStem === phrase || foldedName === phrase ||
++        (compactPhrase.length >= 3 && compactName === compactPhrase)) {
++        tier = TIER_EXACT;
++    } else if ((terms.length > 1 && foldedName.startsWith(phrase)) ||
++        (compactPhrase.length >= 3 && compactName.startsWith(compactPhrase) &&
++         !foldedName.startsWith(phrase))) {
++        tier = TIER_PREFIX;
++    } else {
++        // Every term has to match. The weakest term decides the tier.
++        tier = TIER_EXACT;
++        for (const term of terms) {
++            const t = termTier(term, foldedStem === term ? term : foldedName, words);
++            if (t < 0)
++                return null;
++            tier = Math.min(tier, t);
++        }
++        if (terms.length > 1 && tier === TIER_EXACT)
++            tier = TIER_PREFIX;
++    }
++
++    let score = tier;
++    if (tier >= TIER_WORD) {
++        const matched = Math.min(phrase.replace(/\s+/g, '').length, foldedStem.length || 1);
++        score += Math.round(COMPLETION_BONUS * matched / Math.max(foldedStem.length, 1));
++    }
++    return {tier, score};
++}
++
++function termsTouch(word, terms) {
++    return terms.some(term => word.startsWith(term) || term.startsWith(word) ||
++        (term.length >= 3 && word.includes(term)));
++}
++
++// Names that look like backups, copies, versions or generated output.
++// Parts of the name the person actually typed are never held against it.
++export function junkPenalty(name, terms = []) {
++    const text = String(name ?? '');
++    const [stem, extension] = splitExtension(text);
++    const reasons = [];
++    let penalty = 0;
++    const add = (reason, value) => {
++        reasons.push(reason);
++        penalty += value;
++    };
++
++    if (text.endsWith('~') || /^#.*#$/.test(text))
++        add('editor-backup', 260);
++    if (extension && JUNK_EXTENSIONS.has(foldText(extension)) && !termsTouch(foldText(extension), terms))
++        add('backup-extension', 260);
++    if (/\(\d{1,3}\)\s*$/.test(stem) || /[\s_-]\(?copy(\s*\d+)?\)?$/i.test(stem))
++        add('duplicate', 200);
++
++    const words = nameWords(stem);
++    for (const word of words) {
++        const weight = JUNK_WORDS.get(word);
++        if (weight && !termsTouch(word, terms)) {
++            add(`word:${word}`, weight);
++            break;
++        }
++    }
++
++    const folded = foldText(stem);
++    const tokens = folded.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
++    const typedDigits = terms.some(term => /\d/.test(term));
++    if (!typedDigits) {
++        if (/(?:^|[^\d])(?:19|20)\d{2}[-_.]?(?:0[1-9]|1[0-2])[-_.]?(?:[0-2]\d|3[01])(?:[t_-]?\d{4,6})?(?:[^\d]|$)/.test(folded))
++            add('date', 120);
++        else if (/\d{5,}/.test(folded))
++            add('long-number', 160);
++        if (/(?:^|[^\d.])v?\d+\.\d+(?:\.\d+){0,2}(?:[^\d]|$)/.test(folded))
++            add('version', 80);
++    }
++    if (tokens.some(token => token.length >= 7 && token.length <= 40 &&
++        /^[0-9a-f]+$/.test(token) && /\d/.test(token) && /[a-f]/.test(token) &&
++        !termsTouch(token, terms)))
++        add('hash', 160);
++
++    return {penalty: Math.min(penalty, JUNK_PENALTY_CAP), reasons};
++}
++
++function pathParts(path) {
++    return String(path ?? '').split('/').filter(Boolean);
++}
++
++// Where the item lives: shallow places under home beat deep ones, and
++// hidden, cache and build directories count against it.
++export function locationAdjustment(path, home) {
++    const parts = pathParts(path);
++    const homeParts = pathParts(home);
++    const inHome = homeParts.length > 0 &&
++        homeParts.every((part, index) => parts[index] === part) &&
++        parts.length > homeParts.length;
++    const relative = inHome ? parts.slice(homeParts.length) : parts;
++    let adjustment = 0;
++    const reasons = [];
++    if (inHome) {
++        const depth = relative.length;
++        const depthPenalty = Math.min(DEPTH_CAP, DEPTH_STEP * Math.max(0, depth - 1));
++        if (depthPenalty) {
++            adjustment -= depthPenalty;
++            reasons.push(`depth:${depth}`);
++        }
++    } else {
++        adjustment -= OUTSIDE_HOME_PENALTY;
++        reasons.push('outside-home');
++    }
++    if (relative.some(part => part.startsWith('.') || JUNK_DIRECTORIES.has(foldText(part)))) {
++        adjustment -= JUNK_PATH_PENALTY;
++        reasons.push('generated-path');
++    }
++    return {adjustment, reasons, hidden: relative.some(part => part.startsWith('.'))};
++}
++
++function decay(ageSeconds, halfLifeDays) {
++    if (!Number.isFinite(ageSeconds) || ageSeconds < 0)
++        return ageSeconds < 0 ? 1 : 0;
++    return Math.pow(0.5, ageSeconds / (halfLifeDays * DAY));
++}
++
++// Recency and frequency: files people open, and results they pick in
++// Search, rise. The file's own modification time is a weak hint.
++export function usageBoost({visited = 0, visits = 0, picked = 0, picks = 0, modified = 0} = {}, now) {
++    let boost = 0;
++    if (visited)
++        boost += 120 * decay(now - visited, 10);
++    if (visits)
++        boost += Math.min(60, 15 * Math.log2(1 + visits));
++    if (picks)
++        boost += Math.min(120, 45 * picks) * Math.max(0.25, decay(now - picked, 30));
++    if (modified)
++        boost += 40 * decay(now - modified, 5);
++    return Math.min(USAGE_BOOST_CAP, Math.round(boost));
++}
++
++// candidate: {path, name, modified, visited, visits, picked, picks}
++// context: {home, now, xdgFolders: Set of paths}
++export function scoreFile(candidate, terms, context) {
++    const match = matchName(candidate.name, terms, {ignoreExtension: true});
++    if (!match)
++        return null;
++    const location = locationAdjustment(candidate.path, context.home);
++    const junk = junkPenalty(candidate.name, terms);
++    const xdg = context.xdgFolders?.has(candidate.path) ? XDG_BOOST : 0;
++    const usage = usageBoost(candidate, context.now ?? Date.now() / 1000);
++    const score = match.score + location.adjustment - junk.penalty + xdg + usage;
++    return {
++        score,
++        tier: match.tier,
++        evidence: [
++            `tier:${match.tier}`, ...location.reasons, ...junk.reasons,
++            ...(xdg ? ['xdg'] : []), ...(usage ? [`usage:${usage}`] : []),
++        ],
++    };
++}
++
++// app: {name, genericName, keywords: [], matchedElsewhere}
++export function scoreApp(app, terms) {
++    const byName = matchName(app.name, terms);
++    const candidates = [];
++    if (byName)
++        candidates.push(byName.score + (byName.tier === TIER_EXACT ? APP_EXACT_BONUS
++            : byName.tier >= TIER_WORD ? APP_NAME_BONUS : 0));
++    const generic = matchName(app.genericName, terms);
++    if (generic)
++        candidates.push(Math.round(generic.score * 0.75));
++    for (const keyword of app.keywords ?? []) {
++        const k = matchName(keyword, terms);
++        if (k)
++            candidates.push(Math.round(k.score * 0.7));
++    }
++    if (!candidates.length)
++        candidates.push(app.matchedElsewhere ? 250 : -1);
++    const best = Math.max(...candidates);
++    return best < 0 ? null : best;
++}
++
++// A Settings page or option from the Luma table: its title counts most,
++// then the words people use for it, then where it lives.
++// page: {title, path, keywords: []}
++export function scoreSettingPage(page, terms) {
++    const scores = [];
++    const title = matchName(page.title, terms);
++    if (title)
++        scores.push(title.score + SETTING_BONUS);
++    for (const keyword of page.keywords ?? []) {
++        const k = matchName(keyword, terms);
++        if (k && k.tier >= TIER_WORD)
++            scores.push(Math.round(k.score * 0.8));
++    }
++    const path = matchName(page.path, terms);
++    if (path && path.tier >= TIER_WORD)
++        scores.push(Math.round(path.score * 0.5));
++    return scores.length ? Math.max(...scores) : null;
++}
++
++export function rankSettingPages(pages, terms, limit = 5) {
++    return pages
++        .map((page, index) => ({page, index, score: scoreSettingPage(page, terms)}))
++        .filter(item => item.score !== null)
++        .sort((a, b) => (b.score - a.score) || (a.index - b.index))
++        .slice(0, limit);
++}
++
++// Results from other providers (Settings, Calculator, Characters, …). The
++// provider already decided they match; the name decides how well.
++export function scoreProviderResult(kind, name, terms, index = 0, providerId = '') {
++    const id = String(providerId).toLowerCase();
++    if (id.includes('calculator'))
++        return 1400 - index;
++    const match = matchName(name, terms);
++    const order = Math.min(index, 20) * 8;
++    if (kind === 'setting')
++        return (match ? match.score + SETTING_BONUS : 520) - order;
++    if (id.includes('software'))
++        return (match ? match.score - 250 : 150) - order;
++    return (match ? match.score : 300) - order;
++}
++
++const KIND_ORDER = ['app', 'setting', 'file', 'mail', 'contact', 'calendar', 'message', 'photo', 'music', 'place'];
++
++// entries: {score, kind, providerOrder, index}
++export function compareRanked(a, b) {
++    return (b.score - a.score) ||
++        (KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)) ||
++        ((a.providerOrder ?? 0) - (b.providerOrder ?? 0)) ||
++        ((a.index ?? 0) - (b.index ?? 0));
++}
++
++// Build the query for the file index: every word of the query as a prefix.
++export function ftsQuery(terms, {shorten = false} = {}) {
++    const tokens = [];
++    for (const term of terms) {
++        for (const token of term.split(/[^\p{L}\p{N}]+/u).filter(Boolean)) {
++            const cut = shorten && token.length >= 5
++                ? token.slice(0, Math.max(3, Math.floor(token.length / 2)))
++                : token;
++            tokens.push(`${cut}*`);
++        }
++    }
++    return tokens.join(' ');
++}
++
++// Rank file candidates. Duplicates (same path) keep their strongest usage
++// data; hidden items never appear.
++export function rankFiles(candidates, terms, context, limit = 20) {
++    const byPath = new Map();
++    for (const candidate of candidates) {
++        if (!candidate?.path || !candidate.name)
++            continue;
++        const existing = byPath.get(candidate.path);
++        byPath.set(candidate.path, existing ? {...existing, ...Object.fromEntries(
++            Object.entries(candidate).filter(([, v]) => v !== undefined && v !== 0 && v !== ''))} : candidate);
++    }
++    const ranked = [];
++    for (const candidate of byPath.values()) {
++        if (locationAdjustment(candidate.path, context.home).hidden)
++            continue;
++        const result = scoreFile(candidate, terms, context);
++        if (result)
++            ranked.push({...candidate, ...result});
++    }
++    ranked.sort((a, b) => (b.score - a.score) ||
++        (a.path.length - b.path.length) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
++    return ranked.slice(0, limit);
++}
+diff --git a/js/ui/lumaSettingsSearch.js b/js/ui/lumaSettingsSearch.js
+new file mode 100644
+index 0000000..2948845
+--- /dev/null
++++ b/js/ui/lumaSettingsSearch.js
+@@ -0,0 +1,145 @@
++// Settings pages and options for Beam (Luma Search).
++//
++// Settings' own search provider finds whole panels. This provider adds the
++// pages and options inside them ("Dark Style", "Night Light", "Automatic
++// Suspend", "Default Apps", Luma's Background Activity and Cast, Depot's
++// Updates) and the everyday words people type for them. The table ships with
++// luma-search as settings-pages.json and is ranked with the same model as
++// apps and files.
++
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import St from 'gi://St';
++
++import * as Ranking from './lumaSearchRanking.js';
++
++const SETTINGS_DESKTOP_ID = 'org.gnome.Settings.desktop';
++const PAGES_FILE = ['luma-search', 'settings-pages.json'];
++const LUMA_SEARCH_SCHEMA = 'org.projectluma.search';
++
++Gio._promisify(Gio.File.prototype, 'load_contents_async');
++Gio._promisify(Gio.DBusConnection.prototype, 'call');
++
++function panelInfo(panel) {
++    return Gio.DesktopAppInfo.new(`gnome-${panel}-panel.desktop`);
++}
++
++export class LumaSettingsSearchProvider {
++    constructor() {
++        this.id = 'luma-settings';
++        this.isRemoteProvider = false;
++        this.canLaunchSearch = false;
++        this.lumaKind = 'setting';
++        this.maxResults = 5;
++        // No appInfo: the provider belongs to the Shell (see lumaFileSearch.js).
++        this.appInfo = null;
++        this._settingsApp = Gio.DesktopAppInfo.new(SETTINGS_DESKTOP_ID);
++
++        this._pages = [];
++        this._byId = new Map();
++        this._loading = null;
++        const source = Gio.SettingsSchemaSource.get_default();
++        this._lumaSettings = source?.lookup(LUMA_SEARCH_SCHEMA, true)
++            ? new Gio.Settings({schema_id: LUMA_SEARCH_SCHEMA}) : null;
++    }
++
++    get enabled() {
++        return !this._lumaSettings ||
++            this._lumaSettings.get_strv('enabled-kinds').includes('setting');
++    }
++
++    warmUp() {
++        this._load().catch(e => console.warn(`Luma Search settings: ${e.message}`));
++    }
++
++    _load() {
++        this._loading ??= (async () => {
++            for (const dir of GLib.get_system_data_dirs()) {
++                const file = Gio.File.new_for_path(GLib.build_filenamev([dir, ...PAGES_FILE]));
++                let contents;
++                try {
++                    // eslint-disable-next-line no-await-in-loop
++                    [contents] = await file.load_contents_async(null);
++                } catch {
++                    continue;
++                }
++                const data = JSON.parse(new TextDecoder().decode(contents));
++                // Only pages whose panel or app is installed on this machine.
++                this._pages = (data.pages ?? []).filter(page =>
++                    page.id && page.title &&
++                    (page.panel ? panelInfo(page.panel) : Gio.DesktopAppInfo.new(page.desktop ?? '')));
++                this._byId = new Map(this._pages.map(page => [page.id, page]));
++                return;
++            }
++        })();
++        return this._loading;
++    }
++
++    async getInitialResultSet(terms, cancellable) {
++        if (!this.enabled)
++            return [];
++        await this._load();
++        if (cancellable?.is_cancelled())
++            throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED, 'Operation was cancelled');
++        const folded = Ranking.splitTerms(terms.join(' '));
++        this._scores = new Map();
++        return Ranking.rankSettingPages(this._pages, folded, this.maxResults).map(item => {
++            this._scores.set(item.page.id, item.score);
++            return item.page.id;
++        });
++    }
++
++    getSubsearchResultSet(_previousResults, terms, cancellable) {
++        return this.getInitialResultSet(terms, cancellable);
++    }
++
++    filterResults(results, maxNumber) {
++        return results.slice(0, maxNumber);
++    }
++
++    getResultMetas(ids) {
++        return Promise.resolve(ids.map(id => {
++            const page = this._byId.get(id);
++            const info = page.panel ? panelInfo(page.panel) : Gio.DesktopAppInfo.new(page.desktop);
++            const gicon = info?.get_icon() ?? Gio.ThemedIcon.new('preferences-system-symbolic');
++            return {
++                id,
++                name: page.title,
++                description: page.panel ? `${_('Settings')} › ${page.path}` : page.path,
++                createIcon: size => new St.Icon({gicon, icon_size: size}),
++                lumaScore: this._scores?.get(id) ?? 0,
++                lumaKindLabel: page.panel ? _('Setting') : _('App'),
++                lumaPanel: page.panel ?? null,
++            };
++        }));
++    }
++
++    activateResult(id) {
++        const page = this._byId.get(id);
++        if (!page)
++            return;
++        const context = global.create_app_launch_context(0, -1);
++        if (!page.panel) {
++            const app = Gio.DesktopAppInfo.new(page.desktop);
++            if (page.action)
++                app?.launch_action(page.action, context);
++            else
++                app?.launch([], context);
++            return;
++        }
++        // Settings is D-Bus activatable; launch-panel opens the exact panel
++        // and passes any parameters the panel understands.
++        const params = (page.params ?? []).map(value => new GLib.Variant('s', value));
++        Gio.DBus.session.call(
++            'org.gnome.Settings', '/org/gnome/Settings', 'org.gtk.Actions', 'Activate',
++            new GLib.Variant('(sava{sv})', [
++                'launch-panel',
++                [new GLib.Variant('(sav)', [page.panel, params])],
++                {'desktop-startup-id': new GLib.Variant('s', `_TIME${global.get_current_time()}`)},
++            ]),
++            null, Gio.DBusCallFlags.NONE, -1, null).catch(e => {
++            console.warn(`Luma Search settings: could not open ${page.panel}: ${e.message}`);
++            this._settingsApp?.launch([], context);
++        });
++    }
++}
+diff --git a/js/ui/search.js b/js/ui/search.js
+index b451193..f23cbb9 100644
+--- a/js/ui/search.js
++++ b/js/ui/search.js
+@@ -11,6 +11,7 @@ import St from 'gi://St';
+ import * as AppDisplay from './appDisplay.js';
+ import * as IconGrid from './iconGrid.js';
+ import * as Main from './main.js';
++import * as Ranking from './lumaSearchRanking.js';
+ import * as ParentalControlsManager from '../misc/parentalControlsManager.js';
+ import * as RemoteSearch from './remoteSearch.js';
+ import {ensureActorVisibleInScrollView} from '../misc/animationUtils.js';
+@@ -22,6 +23,12 @@ import {logErrorUnlessCancelled} from '../misc/errorUtils.js';
+ const SEARCH_PROVIDERS_SCHEMA = 'org.gnome.desktop.search-providers';
+ 
+ const MAX_LIST_SEARCH_RESULTS_ROWS = 5;
++// Beam starts looking in the in-process providers (apps, files) at once and
++// gives D-Bus providers a short pause so fast typing does not flood them.
++const LUMA_LOCAL_SEARCH_DELAY_MS = 0;
++const LUMA_REMOTE_SEARCH_DELAY_MS = 90;
++const LUMA_MAX_MERGED_ROWS = 14;
++const LUMA_MAX_SETTING_ROWS = 4;
+ const SEARCH_SPINNER_SIZE = 64;
+ 
+ function getProviderKind(provider) {
+@@ -94,6 +101,21 @@ class SearchResult extends St.Button {
+         this._resultsView.emit('result-activated');
+         Main.overview.hide();
+     }
++
++    get canReveal() {
++        return Boolean(this.metaInfo.lumaCanReveal && this.provider.revealResult);
++    }
++
++    // Show the item in its folder instead of opening it.
++    reveal() {
++        if (!this.canReveal) {
++            this.activate();
++            return;
++        }
++        this.provider.revealResult(this.metaInfo.id);
++        this._resultsView.emit('result-activated');
++        Main.overview.hide();
++    }
+ });
+ 
+ export const ListSearchResult = GObject.registerClass(
+@@ -226,11 +248,78 @@ class ListSearchResult extends SearchResult {
+             this._highlightTerms();
+         }
+         content.add_child(copy);
+-        content.add_child(new St.Label({
++        this._kindLabel = new St.Label({
+             style_class: 'luma-search-result-kind',
+-            text: label,
++            text: metaInfo.lumaKindLabel ?? label,
++            x_align: Clutter.ActorAlign.END,
+             y_align: Clutter.ActorAlign.CENTER,
+-        }));
++        });
++
++        if (!this.canReveal) {
++            content.add_child(this._kindLabel);
++            return;
++        }
++
++        // Files and folders swap the kind label for a "Show in Filer" button
++        // while the row is hovered or selected.
++        const trailing = new St.Widget({
++            layout_manager: new Clutter.BinLayout(),
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        trailing.add_child(this._kindLabel);
++        this._revealButton = new St.Button({
++            style_class: 'luma-search-result-reveal',
++            accessible_name: _('Show in Filer'),
++            can_focus: false,
++            reactive: false,
++            opacity: 0,
++            x_align: Clutter.ActorAlign.END,
++            y_align: Clutter.ActorAlign.CENTER,
++            child: new St.Icon({
++                icon_name: 'folder-open-symbolic',
++                icon_size: 14,
++            }),
++        });
++        this._revealButton.connect('clicked', () => this.reveal());
++        trailing.add_child(this._revealButton);
++        content.add_child(trailing);
++        this.connect('notify::hover', () => this._syncReveal());
++        this.connect('key-focus-in', () => this._syncReveal());
++        this.connect('key-focus-out', () => this._syncReveal());
++    }
++
++    setLumaSelected(selected) {
++        this._lumaSelected = selected;
++        this._syncReveal();
++    }
++
++    _syncReveal() {
++        if (!this._revealButton)
++            return;
++        const shown = Boolean(this.hover || this.has_key_focus() || this._lumaSelected);
++        this._revealButton.reactive = shown;
++        const duration = St.Settings.get().enable_animations ? 120 : 0;
++        this._revealButton.ease({
++            opacity: shown ? 255 : 0,
++            duration,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++        this._kindLabel.ease({
++            opacity: shown ? 0 : 255,
++            duration,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++    }
++
++    vfunc_key_press_event(event) {
++        const symbol = event.get_key_symbol();
++        if (this._resultsView.compact &&
++            (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter) &&
++            (event.get_state() & Clutter.ModifierType.CONTROL_MASK)) {
++            this.reveal();
++            return Clutter.EVENT_STOP;
++        }
++        return super.vfunc_key_press_event(event);
+     }
+ 
+     _highlightTerms() {
+@@ -432,10 +521,16 @@ class ListSearchResults extends SearchResultsBase {
+     }
+ 
+     _getMaxDisplayedResults() {
++        if (this._resultsView.compact && this.provider.maxResults)
++            return Math.min(this.provider.maxResults, 8);
+         return MAX_LIST_SEARCH_RESULTS_ROWS;
+     }
+ 
+     _clearResultDisplay() {
++        if (this._resultsView.compact) {
++            this._resultsView.removeMergedRows(this);
++            return;
++        }
+         this._content.remove_all_children();
+     }
+ 
+@@ -455,10 +550,16 @@ class ListSearchResults extends SearchResultsBase {
+     }
+ 
+     _addItem(display) {
++        if (this._resultsView.compact) {
++            this._resultsView.addMergedRow(this, display);
++            return;
++        }
+         this._content.add_child(display);
+     }
+ 
+     getFirstResult() {
++        if (this._resultsView.compact)
++            return this._resultsView.firstMergedRowOf(this);
+         if (this._content.get_n_children() > 0)
+             return this._content.get_child_at_index(0);
+         else
+@@ -709,6 +810,18 @@ export const SearchResultsView = GObject.registerClass({
+             x_expand: true,
+         });
+ 
++        // Beam shows one list for every provider, ordered by score, instead
++        // of a block per provider.
++        if (this._compact) {
++            this._merged = new St.BoxLayout({
++                style_class: 'list-search-results luma-search-merged',
++                orientation: Clutter.Orientation.VERTICAL,
++                x_expand: true,
++            });
++            this._content.add_child(this._merged);
++        }
++        this._localSearchId = 0;
++
+         this._scrollView = new St.ScrollView({
+             overlay_scrollbars: true,
+             style_class: this._compact
+@@ -782,9 +895,109 @@ export const SearchResultsView = GObject.registerClass({
+     }
+ 
+     addProvider(provider) {
++        this._providers
++            .filter(p => p.isRemoteProvider && provider.replacesProviderIds?.includes(p.id))
++            .forEach(p => this._unregisterProvider(p));
+         this._registerProvider(provider);
+     }
+ 
++    _rankFor(providerDisplay, display, index) {
++        const provider = providerDisplay.provider;
++        const meta = display.metaInfo;
++        const terms = Ranking.splitTerms(this._terms.join(' '));
++        const kind = provider.lumaKind ?? getProviderKind(provider).kind;
++        let score = null;
++        if (typeof meta.lumaScore === 'number') {
++            score = meta.lumaScore;
++        } else if (provider.id === 'applications' && meta.id.endsWith('.desktop')) {
++            const app = Shell.AppSystem.get_default().lookup_app(meta.id);
++            const info = app?.get_app_info();
++            score = Ranking.scoreApp({
++                name: app?.get_name() ?? meta.name,
++                genericName: info?.get_generic_name?.() ?? '',
++                keywords: info?.get_keywords?.() ?? [],
++                matchedElsewhere: true,
++            }, terms);
++        } else {
++            score = Ranking.scoreProviderResult(kind, meta.name, terms, index, provider.id);
++        }
++        return {
++            score: (score ?? 250) - (score === null ? index : 0),
++            kind: provider.id === 'applications' ? 'app' : kind,
++            providerOrder: this._providers.indexOf(provider),
++            index,
++        };
++    }
++
++    addMergedRow(providerDisplay, display) {
++        providerDisplay._lumaRows ??= [];
++        const index = providerDisplay._lumaRows.length;
++        providerDisplay._lumaRows.push(display);
++        if (!display._lumaTracked) {
++            // A provider destroys its result actors when it clears; forget
++            // them at once so the merged list never touches a disposed row.
++            display._lumaTracked = true;
++            display.connect('destroy', () => {
++                const rows = providerDisplay._lumaRows ?? [];
++                const at = rows.indexOf(display);
++                if (at >= 0)
++                    rows.splice(at, 1);
++                if (this._defaultResult === display)
++                    this._defaultResult = null;
++            });
++        }
++        display._lumaRank = this._rankFor(providerDisplay, display, index);
++        if (display.get_parent())
++            display.get_parent().remove_child(display);
++        this._merged.add_child(display);
++        this._sortMergedRows();
++    }
++
++    // One list by score. Settings stay together as one group, placed where
++    // their best row belongs, so a query never scatters them between files.
++    _sortMergedRows() {
++        const rows = this._merged.get_children();
++        const settingBest = Math.max(-Infinity, ...rows
++            .filter(row => row._lumaRank.kind === 'setting')
++            .map(row => row._lumaRank.score));
++        const groupScore = row => row._lumaRank.kind === 'setting' ? settingBest : row._lumaRank.score;
++        rows.sort((a, b) => (groupScore(b) - groupScore(a)) ||
++            Ranking.compareRanked(a._lumaRank, b._lumaRank));
++        rows.forEach((row, position) => this._merged.set_child_at_index(row, position));
++        this._syncMergedLimit();
++    }
++
++    removeMergedRows(providerDisplay) {
++        for (const row of providerDisplay._lumaRows ?? []) {
++            if (row.get_parent() === this._merged)
++                this._merged.remove_child(row);
++        }
++        providerDisplay._lumaRows = [];
++        this._syncMergedLimit();
++    }
++
++    firstMergedRowOf(providerDisplay) {
++        return providerDisplay._lumaRows?.find(row => row.get_parent() === this._merged) ?? null;
++    }
++
++    _syncMergedLimit() {
++        // Settings' own panels and Luma's pages can name the same thing;
++        // show it once, and show at most a handful of settings.
++        const seenSettings = new Set();
++        let shown = 0;
++        for (const row of this._merged.get_children()) {
++            let visible = shown < LUMA_MAX_MERGED_ROWS;
++            if (row._lumaRank.kind === 'setting') {
++                const key = Ranking.foldText(row.metaInfo.name);
++                visible &&= !seenSettings.has(key) && seenSettings.size < LUMA_MAX_SETTING_ROWS;
++                seenSettings.add(key);
++            }
++            row.visible = visible;
++            if (visible)
++                shown++;
++        }
++    }
++
+     _reloadRemoteProviders() {
+         if (this._brokerOnly)
+             return;
+@@ -804,6 +1017,10 @@ export const SearchResultsView = GObject.registerClass({
+         if (provider.appInfo && !this._parentalControlsManager.shouldShowApp(provider.appInfo))
+             return;
+ 
++        if (provider.isRemoteProvider &&
++            this._providers.some(p => p.replacesProviderIds?.includes(provider.id)))
++            return;
++
+         this._providers.push(provider);
+         this._ensureProviderDisplay(provider);
+     }
+@@ -821,6 +1038,10 @@ export const SearchResultsView = GObject.registerClass({
+             GLib.source_remove(this._searchTimeoutId);
+             this._searchTimeoutId = 0;
+         }
++        if (this._localSearchId > 0) {
++            GLib.source_remove(this._localSearchId);
++            this._localSearchId = 0;
++        }
+     }
+ 
+     _reset() {
+@@ -856,13 +1077,16 @@ export const SearchResultsView = GObject.registerClass({
+         }
+     }
+ 
+-    _doSearch() {
+-        this._startingSearch = false;
++    _doSearch(filter = null) {
++        const providers = filter ? this._providers.filter(filter) : this._providers;
++        if (!filter || providers.some(p => p.isRemoteProvider))
++            this._startingSearch = false;
+ 
+         const previousResults = this._results;
+-        this._results = {};
++        this._results = {...previousResults};
++        providers.forEach(provider => delete this._results[provider.id]);
+ 
+-        this._providers.forEach(provider => {
++        providers.forEach(provider => {
+             const previousProviderResults = previousResults[provider.id];
+             this._doProviderSearch(provider, previousProviderResults).catch(
+                 logErrorUnlessCancelled);
+@@ -870,11 +1094,16 @@ export const SearchResultsView = GObject.registerClass({
+ 
+         this._updateSearchProgress();
+ 
+-        this._clearSearchTimeout();
++        if (!filter)
++            this._clearSearchTimeout();
+     }
+ 
+     _onSearchTimeout() {
+         this._searchTimeoutId = 0;
++        if (this._compact) {
++            this._doSearch(p => p.isRemoteProvider);
++            return;
++        }
+         this._doSearch();
+     }
+ 
+@@ -906,8 +1135,21 @@ export const SearchResultsView = GObject.registerClass({
+         this._isSubSearch = isSubSearch;
+         this._updateSearchProgress();
+ 
+-        if (this._searchTimeoutId === 0)
++        if (this._compact) {
++            if (this._localSearchId === 0) {
++                this._localSearchId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
++                    LUMA_LOCAL_SEARCH_DELAY_MS, () => {
++                        this._localSearchId = 0;
++                        this._doSearch(p => !p.isRemoteProvider);
++                    });
++            }
++            if (this._searchTimeoutId === 0) {
++                this._searchTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
++                    LUMA_REMOTE_SEARCH_DELAY_MS, this._onSearchTimeout.bind(this));
++            }
++        } else if (this._searchTimeoutId === 0) {
+             this._searchTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT, 150, this._onSearchTimeout.bind(this));
++        }
+ 
+         this._highlighter = new Highlighter(this._terms);
+ 
+@@ -952,6 +1194,16 @@ export const SearchResultsView = GObject.registerClass({
+     _maybeSetInitialSelection() {
+         let newDefaultResult = null;
+ 
++        if (this._compact) {
++            newDefaultResult = this._merged.get_children().find(row => row.visible) ?? null;
++            if (newDefaultResult !== this._defaultResult) {
++                this._setSelected(this._defaultResult, false);
++                this._setSelected(newDefaultResult, this._highlightDefault);
++                this._defaultResult = newDefaultResult;
++            }
++            return;
++        }
++
+         const providers = this._providers;
+         for (let i = 0; i < providers.length; i++) {
+             const provider = providers[i];
+@@ -983,7 +1235,9 @@ export const SearchResultsView = GObject.registerClass({
+     }
+ 
+     _updateSearchProgress() {
+-        const haveResults = this._providers.some(provider => {
++        const haveResults = this._compact
++            ? this._merged.get_n_children() > 0
++            : this._providers.some(provider => {
+             const display = provider.display;
+             return display.getFirstResult() != null;
+         });
+@@ -1020,13 +1274,20 @@ export const SearchResultsView = GObject.registerClass({
+ 
+     activateDefault() {
+         // If we have a search queued up, force the search now.
+-        if (this._searchTimeoutId > 0)
++        if (this._searchTimeoutId > 0 || this._localSearchId > 0)
+             this._doSearch();
+ 
+         if (this._defaultResult)
+             this._defaultResult.activate();
+     }
+ 
++    revealDefault() {
++        if (this._searchTimeoutId > 0 || this._localSearchId > 0)
++            this._doSearch();
++
++        this._defaultResult?.reveal?.();
++    }
++
+     highlightDefault(highlight) {
+         this._highlightDefault = highlight;
+         this._setSelected(this._defaultResult, highlight);
+@@ -1066,6 +1327,7 @@ export const SearchResultsView = GObject.registerClass({
+         } else {
+             result.remove_style_pseudo_class('selected');
+         }
++        result.setLumaSelected?.(selected);
+     }
+ 
+     highlightTerms(description) {
+-- 
+2.54.0 (Apple Git-157)
+

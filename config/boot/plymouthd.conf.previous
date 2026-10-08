@@ -1,0 +1,11 @@
+# SHA-256 digests of every /etc/plymouth/plymouthd.conf that Luma's desktop
+# composition has shipped before the current config/boot/plymouthd.conf. A
+# machine whose file matches one of these still has Luma's own setting, not an
+# administrator's, and luma-boot-splash-migrate moves it to the current one.
+# Append the outgoing digest here whenever config/boot/plymouthd.conf changes;
+# never remove a line.
+7a010a2f2f022c1201f1e1550e385e46e532f056251f7e70b22605e1c48c00a2  2026-08-11 Theme=luma-loading (59d7740b, d446021e, 4ffe73a0)
+3af177bd45399680c1864738089fc02bf963f38c1d8c9224ef3c792e52f0e0c8  2026-09-12 Theme=luma-firmware, unfinished (6b7b7765)
+d6cc2af2c40da7add61d59f3a9fd47ad80756ac4bf3fdde71cc118134470d4ad  2026-09-15 Theme=luma-firmware (luma-boot-theme 1.luma.13 to 1.luma.15)
+aec89a07759eedaaf18d37ef5d918855e4b4db4b1064dc7f8b286e544e670d00  2026-09-17 Theme=luma-loading (luma-boot-theme 1.luma.16, 9b8809dd)
+0033f4915526f0484fa1ef48a75725074b03f5855e6e1d7dfd043f608aac7d95  Fedora plymouth's own template, no settings (a client-side plymouth override put it in /usr/etc)

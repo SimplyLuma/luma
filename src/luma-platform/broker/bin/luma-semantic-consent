@@ -1,0 +1,6 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+from luma_semantic_broker.consent import main
+
+raise SystemExit(main())

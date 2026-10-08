@@ -1,0 +1,50 @@
+; SPDX-License-Identifier: Apache-2.0
+; Dedicated application-capsule domain. Retain container and MCS confinement;
+; only this domain may connect to the display and filtered bus sockets mounted
+; by the launcher. Never grant these permissions to generic container_t.
+(block luma_application
+    (type process)
+    (roletype system_r process)
+    (typeattributeset domain (process))
+    (typeattributeset container_domain (process))
+    (typeattributeset sandbox_net_domain (process))
+    (typeattributeset svirt_sandbox_domain (process))
+    (typeattributeset mcs_constrained_type (process))
+    (allow process proc_type (file (getattr open read)))
+    (allow process cpu_online_t (file (getattr open read)))
+    ; X11 fence memfds need mmap. Wayland passes sealed format-table FDs
+    ; opened O_RDWR, so SELinux checks write on receipt even for read-only use.
+    ; No host runtime directory is mounted; Xauthority remains a read-only
+    ; bind. Do not grant directory search/create or executable mapping here.
+    (allow process tmpfs_t (file (map)))
+    (allow process user_tmp_t (file (getattr open read write map)))
+    (allow process user_tmp_t (sock_file (getattr write)))
+    (allow process unconfined_t (unix_stream_socket (connectto)))
+    (allow process xserver_t (unix_stream_socket (connectto)))
+    (allow process xserver_tmp_t (sock_file (getattr write)))
+    ; The person's own folders (Documents, Downloads, Pictures, ...) are bound
+    ; into every capsule at their real paths so a file chooser's answer means
+    ; the same thing inside and out. Only those binds are visible in the
+    ; capsule's mount namespace; the home directory itself, dotfiles and other
+    ; applications' data are never mounted. Files a capsule creates there get
+    ; the plain s0 level so the person and every other application can open
+    ; them, instead of this capsule's private categories.
+    (allow process user_home_t (dir (getattr search open read ioctl lock watch create write add_name remove_name rename reparent rmdir setattr)))
+    (allow process user_home_t (file (getattr open read write append create unlink rename link lock ioctl map setattr watch)))
+    (allow process user_home_t (lnk_file (getattr read create unlink rename setattr)))
+    (rangetransition process user_home_t dir ((s0) (s0)))
+    (rangetransition process user_home_t file ((s0) (s0)))
+    (rangetransition process user_home_t lnk_file ((s0) (s0)))
+    ; Applications that sandbox their own work (ChatGPT's Codex and Claude's
+    ; command runner use bubblewrap; browsers and Flatpak use namespaces too)
+    ; build a private root inside the capsule's user namespace: a fresh tmpfs
+    ; with proc and devpts, then detach the capsule's root beneath it. These
+    ; objects exist only inside that namespace.
+    (allow process tmpfs_t (filesystem (mount unmount)))
+    (allow process proc_t (filesystem (mount unmount)))
+    (allow process devpts_t (filesystem (mount unmount)))
+    (allow process container_file_t (filesystem (unmount)))
+    (allow process tmpfs_t (dir (getattr search open read write add_name remove_name create rmdir setattr mounton)))
+    (allow process tmpfs_t (file (getattr open read write create unlink setattr mounton)))
+    (allow process tmpfs_t (lnk_file (getattr read create unlink)))
+)

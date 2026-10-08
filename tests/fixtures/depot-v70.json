@@ -1,0 +1,526 @@
+{
+  "schema": "org.projectluma.depot.v70-fixture/1",
+  "featured": "tide",
+  "categories": {
+    "create": [
+      "Create",
+      "Make pictures, films and music",
+      25
+    ],
+    "work": [
+      "Work",
+      "Write, plan and talk",
+      250
+    ],
+    "media": [
+      "Media",
+      "Watch, listen and look",
+      330
+    ],
+    "play": [
+      "Play",
+      "Games and the places they live",
+      150
+    ],
+    "tools": [
+      "Tools",
+      "Keep the computer tidy",
+      200
+    ]
+  },
+  "category_icons": {
+    "create": "palette",
+    "work": "briefcase",
+    "media": "clapperboard",
+    "play": "gamepad-2",
+    "tools": "wrench"
+  },
+  "apps": [
+    {
+      "id": "tide",
+      "name": "Tide",
+      "tagline": "Your music, from everywhere you keep it",
+      "category": "media",
+      "size": "38 MB",
+      "rating": 4.9,
+      "reviews": 1204,
+      "luma": 1,
+      "icon": "music",
+      "shot": "tide",
+      "inst": 1,
+      "reach": [
+        [
+          "music-2",
+          "Your Music folder",
+          "Reads it to build your library"
+        ],
+        [
+          "headphones",
+          "Your music server",
+          "Only if you add one, like Navidrome"
+        ],
+        [
+          "shield-check",
+          "No account needed",
+          "Nothing about what you play leaves"
+        ]
+      ]
+    },
+    {
+      "id": "photos",
+      "name": "Photos",
+      "tagline": "Every photo you’ve taken, beautifully kept",
+      "category": "media",
+      "size": "44 MB",
+      "rating": 4.8,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "photos",
+      "shot": "photos",
+      "inst": 1
+    },
+    {
+      "id": "filer",
+      "name": "Filer",
+      "tagline": "Files, with a tray you can carry",
+      "category": "tools",
+      "size": "21 MB",
+      "rating": 4.8,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "files",
+      "shot": "filer",
+      "inst": 1
+    },
+    {
+      "id": "write",
+      "name": "Write",
+      "tagline": "Documents, beautifully set and easy to share",
+      "category": "work",
+      "size": "62 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "documents",
+      "shot": "write",
+      "inst": 1
+    },
+    {
+      "id": "viola",
+      "name": "Viola",
+      "tagline": "A calmer way to browse",
+      "category": "work",
+      "size": "118 MB",
+      "rating": 4.6,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "browser",
+      "shot": "viola",
+      "inst": 1
+    },
+    {
+      "id": "messages",
+      "name": "Messages",
+      "tagline": "Talk to anyone, privately",
+      "category": "work",
+      "size": "33 MB",
+      "rating": 4.8,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "messages",
+      "shot": "messages",
+      "inst": 1
+    },
+    {
+      "id": "notes",
+      "name": "Notes",
+      "tagline": "Catch a thought, share it with anyone",
+      "category": "work",
+      "size": "12 MB",
+      "rating": 4.9,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "notes",
+      "shot": "notes",
+      "inst": 1
+    },
+    {
+      "id": "calendar",
+      "name": "Calendar",
+      "tagline": "See what’s next and when you’re free",
+      "category": "work",
+      "size": "18 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "calendar",
+      "shot": "calendar",
+      "inst": 1
+    },
+    {
+      "id": "contacts",
+      "name": "Contacts",
+      "tagline": "Everyone you know, in one place",
+      "category": "work",
+      "size": "9 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "contacts",
+      "shot": "contacts",
+      "inst": 1
+    },
+    {
+      "id": "terminal",
+      "name": "Terminal",
+      "tagline": "A quiet, fast command line",
+      "category": "tools",
+      "size": "8 MB",
+      "rating": 4.9,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "terminal",
+      "shot": "term",
+      "inst": 1
+    },
+    {
+      "id": "stage",
+      "name": "Stage",
+      "tagline": "Presentations that look designed",
+      "category": "work",
+      "size": "71 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "presentations"
+    },
+    {
+      "id": "grid",
+      "name": "Grid",
+      "tagline": "Spreadsheets without the dread",
+      "category": "work",
+      "size": "54 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "spreadsheets"
+    },
+    {
+      "id": "canvas",
+      "name": "Canvas",
+      "tagline": "Design anything, from posters to apps",
+      "category": "create",
+      "size": "96 MB",
+      "rating": 4.8,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "designer"
+    },
+    {
+      "id": "darkroom",
+      "name": "Darkroom",
+      "tagline": "Develop your photos like film",
+      "category": "create",
+      "size": "88 MB",
+      "rating": 4.8,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "photo-editor",
+      "inst": 1
+    },
+    {
+      "id": "reel",
+      "name": "Reel",
+      "tagline": "Edit video on a timeline that stays out of the way",
+      "category": "create",
+      "size": "140 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "video-editor"
+    },
+    {
+      "id": "sessions",
+      "name": "Sessions",
+      "tagline": "Record, arrange and mix music",
+      "category": "create",
+      "size": "212 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "daw"
+    },
+    {
+      "id": "memo",
+      "name": "Memo",
+      "tagline": "Voice notes that write themselves down",
+      "category": "tools",
+      "size": "14 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "memo",
+      "inst": 1
+    },
+    {
+      "id": "camera",
+      "name": "Camera",
+      "tagline": "Photos and video from any camera",
+      "category": "media",
+      "size": "11 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "camera",
+      "inst": 1
+    },
+    {
+      "id": "maps",
+      "name": "Maps",
+      "tagline": "Find your way, without being followed",
+      "category": "tools",
+      "size": "46 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "maps"
+    },
+    {
+      "id": "weather",
+      "name": "Weather",
+      "tagline": "The sky, at a glance",
+      "category": "tools",
+      "size": "6 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "weather",
+      "inst": 1
+    },
+    {
+      "id": "vault",
+      "name": "Vault",
+      "tagline": "Passwords and passkeys, synced privately",
+      "category": "tools",
+      "size": "15 MB",
+      "rating": 4.9,
+      "reviews": 320,
+      "luma": 1,
+      "icon": "vault"
+    },
+    {
+      "id": "blender",
+      "name": "Blender",
+      "tagline": "Free and open 3D creation",
+      "category": "create",
+      "size": "477 MB",
+      "rating": 4.8,
+      "reviews": 2890,
+      "mono": [
+        "Bl",
+        30
+      ]
+    },
+    {
+      "id": "gimp",
+      "name": "GIMP",
+      "tagline": "High-end image editing",
+      "category": "create",
+      "size": "100 MB",
+      "rating": 4.3,
+      "reviews": 320,
+      "mono": [
+        "Gi",
+        45
+      ]
+    },
+    {
+      "id": "audacity",
+      "name": "Audacity",
+      "tagline": "Record and edit audio",
+      "category": "create",
+      "size": "24 MB",
+      "rating": 4.5,
+      "reviews": 320,
+      "mono": [
+        "Au",
+        260
+      ]
+    },
+    {
+      "id": "obsidian",
+      "name": "Obsidian",
+      "tagline": "Markdown notes that link together",
+      "category": "work",
+      "size": "231 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "mono": [
+        "Ob",
+        285
+      ],
+      "inst": 1,
+      "pk": "flatpak"
+    },
+    {
+      "id": "signal",
+      "name": "Signal",
+      "tagline": "Private messenger",
+      "category": "work",
+      "size": "165 MB",
+      "rating": 4.6,
+      "reviews": 320,
+      "mono": [
+        "Si",
+        235
+      ]
+    },
+    {
+      "id": "libre",
+      "name": "LibreOffice",
+      "tagline": "The office suite, free forever",
+      "category": "work",
+      "size": "327 MB",
+      "rating": 4.2,
+      "reviews": 320,
+      "mono": [
+        "Lo",
+        150
+      ]
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "tagline": "Online music streaming",
+      "category": "media",
+      "size": "180 MB",
+      "rating": 4.4,
+      "reviews": 320,
+      "mono": [
+        "Sp",
+        145
+      ],
+      "inst": 1,
+      "pk": "flatpak"
+    },
+    {
+      "id": "vlc",
+      "name": "VLC",
+      "tagline": "Plays everything",
+      "category": "media",
+      "size": "53 MB",
+      "rating": 4.7,
+      "reviews": 320,
+      "mono": [
+        "Vl",
+        55
+      ]
+    },
+    {
+      "id": "kodi",
+      "name": "Kodi",
+      "tagline": "Your media centre",
+      "category": "media",
+      "size": "96 MB",
+      "rating": 4.5,
+      "reviews": 320,
+      "mono": [
+        "Ko",
+        205
+      ]
+    },
+    {
+      "id": "obs",
+      "name": "OBS Studio",
+      "tagline": "Record and stream",
+      "category": "media",
+      "size": "199 MB",
+      "rating": 4.6,
+      "reviews": 320,
+      "mono": [
+        "Ob",
+        0,
+        1
+      ]
+    },
+    {
+      "id": "steam",
+      "name": "Steam",
+      "tagline": "Your games library",
+      "category": "play",
+      "size": "4 MB",
+      "rating": 4.6,
+      "reviews": 5120,
+      "mono": [
+        "St",
+        225
+      ],
+      "inst": 1,
+      "pk": "layered"
+    },
+    {
+      "id": "heroic",
+      "name": "Heroic",
+      "tagline": "Epic and GOG games",
+      "category": "play",
+      "size": "326 MB",
+      "rating": 4.5,
+      "reviews": 320,
+      "mono": [
+        "He",
+        250
+      ]
+    },
+    {
+      "id": "moonlight",
+      "name": "Moonlight",
+      "tagline": "Stream games from your PC",
+      "category": "play",
+      "size": "8 MB",
+      "rating": 4.6,
+      "reviews": 320,
+      "mono": [
+        "Mo",
+        180
+      ]
+    },
+    {
+      "id": "supertux",
+      "name": "SuperTux",
+      "tagline": "A classic side-scroller",
+      "category": "play",
+      "size": "160 MB",
+      "rating": 4.4,
+      "reviews": 320,
+      "mono": [
+        "Su",
+        95
+      ]
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "tagline": "Talk, play, hang out",
+      "category": "work",
+      "size": "92 MB",
+      "rating": 4.3,
+      "reviews": 320,
+      "mono": [
+        "Di",
+        265
+      ],
+      "inst": 1,
+      "upd": "1.0.160",
+      "pk": "deb"
+    }
+  ],
+  "system_update": {
+    "title": "Luma 1.0 · nightly September 22",
+    "summary": "Adjustable scroll speed for mice and touchpads, plus 14 more changes.",
+    "size": "312 MB",
+    "running": "Luma 1.0 · nightly September 16",
+    "channel": "Nightly",
+    "source": "dl.simplyluma.com",
+    "last_checked": "6 hours ago"
+  }
+}

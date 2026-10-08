@@ -1,0 +1,93 @@
+From c99a7bcaab7d010020bd4b3026e1d602558aacea Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 23:06:08 -0400
+Subject: [PATCH] luma: what Capture leaves on screen stays out of screen
+ shares and recordings
+
+Capture keeps its recording pill, countdown, flash and thumbnail out of
+screenshots, recordings and screen shares by painting them only into the
+stage views (CaptureHidden). That holds back an actor's children and
+content, but not its own background, border or effects, which Clutter
+paints around paint(). The countdown drew its dark disc and backdrop blur
+on itself, and the flash its white, so both went into every recording and
+screen share running at the time (in a recording of a timed screenshot, 76
+of 178 frames carried the disc and 12 the flash).
+
+The disc, its blur and the flash's white are now children. CaptureHidden
+says so for anything added to it later. On screen nothing changes.
+---
+ js/ui/lumaCapture.js | 26 ++++++++++++++++++++++----
+ 1 file changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/js/ui/lumaCapture.js b/js/ui/lumaCapture.js
+index a47ee2f..524afbc 100644
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -101,6 +101,9 @@ export function paintsOnScreen(paintContext) {
+         view.get_framebuffer() === framebuffer || view.get_onscreen() === framebuffer);
+ }
+ 
++// Only an actor's children and content are held back: its own background,
++// border and effects are painted around paint(), so everything a
++// CaptureHidden shows is drawn by a child, never styled on itself.
+ export const CaptureHidden = GObject.registerClass(
+ class CaptureHidden extends St.Widget {
+     vfunc_paint(paintContext) {
+@@ -889,20 +892,28 @@ export const Countdown = GObject.registerClass(
+ class Countdown extends CaptureHidden {
+     _init() {
+         super._init({
+-            style_class: 'luma-capture-countdown',
+             layout_manager: new Clutter.BinLayout(),
+             visible: false,
+             accessible_role: Atk.Role.NOTIFICATION,
+         });
+         Shell.util_set_hidden_from_pick(this, true);
++        // The circle and its blur are a child, so neither is in a screenshot,
++        // a recording or a screen share (see CaptureHidden).
++        this._disc = new St.Widget({
++            style_class: 'luma-capture-countdown',
++            layout_manager: new Clutter.BinLayout(),
++        });
++        this.add_child(this._disc);
+         this._blur = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 16, brightness: 1});
+-        this.add_effect_with_name('luma-capture-countdown-blur', this._blur);
++        this._disc.add_effect_with_name('luma-capture-countdown-blur', this._blur);
+         this._label = new St.Label({
+             style_class: 'luma-capture-countdown-label',
+             x_align: Clutter.ActorAlign.CENTER,
+             y_align: Clutter.ActorAlign.CENTER,
++            x_expand: true,
++            y_expand: true,
+         });
+-        this.add_child(this._label);
++        this._disc.add_child(this._label);
+         this._timeoutId = 0;
+         this._resolve = null;
+     }
+@@ -968,14 +979,21 @@ class Countdown extends CaptureHidden {
+ export function flash(rect) {
+     if (reduceMotion())
+         return;
++    // The white is a child, so it is never in a recording or a screen share
++    // (see CaptureHidden).
+     const actor = new CaptureHidden({
+-        style_class: 'luma-capture-flash',
++        layout_manager: new Clutter.BinLayout(),
+         x: rect.x,
+         y: rect.y,
+         width: rect.width,
+         height: rect.height,
+         opacity: 217,
+     });
++    actor.add_child(new St.Widget({
++        style_class: 'luma-capture-flash',
++        x_expand: true,
++        y_expand: true,
++    }));
+     Shell.util_set_hidden_from_pick(actor, true);
+     global.stage.add_child(actor);
+     actor.ease({
+-- 
+2.55.0
+

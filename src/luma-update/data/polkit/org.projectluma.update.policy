@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  Defaults follow PackageKit and GNOME Software for vendor-signed system
+  updates: a person at the computer may check for, download and apply Luma's
+  own signed updates without a password (PackageKit's
+  trigger-offline-update and system-update are allow_active=yes). Changing
+  what the computer follows or going back to an older version needs an
+  administrator, as rpm-ostree's rebase and rollback do; the companion rules
+  file lets an active local administrator do that without retyping a password.
+
+  apply does not imply logind's actions. luma-updated runs as root, for which
+  logind skips polkit, so Apply() separately checks that the caller is allowed
+  org.freedesktop.login1.reboot (or reboot-multiple-sessions when other people
+  are logged in) and restarts with logind's inhibitor checks.
+-->
+<policyconfig>
+  <vendor>Project Luma</vendor>
+  <vendor_url>https://simplyluma.com</vendor_url>
+  <icon_name>software-update-available</icon_name>
+
+  <action id="org.projectluma.update.check">
+    <description>Check for Luma updates</description>
+    <message>Authentication is required to check for Luma updates</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.projectluma.update.download">
+    <description>Download a Luma update</description>
+    <message>Authentication is required to download a Luma update</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.projectluma.update.apply">
+    <description>Restart to finish updating Luma</description>
+    <message>Authentication is required to restart and finish updating Luma</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.projectluma.update.set-channel">
+    <description>Change Luma's update channel</description>
+    <message>Authentication is required to change which Luma updates this computer receives</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.projectluma.update.enroll-preview">
+    <description>Get early Luma updates</description>
+    <message>Authentication is required to get early Luma updates on this computer</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.projectluma.update.rollback">
+    <description>Go back to the previous Luma version</description>
+    <message>Authentication is required to go back to the previous version of Luma</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

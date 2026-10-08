@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000038 Mon Sep 17 00:00:00 2001
+From: Project Luma <luma@local>
+Date: Wed, 19 Aug 2026 23:00:00 -0500
+Subject: [PATCH] arm64: dts: qcom: fp6: route ADC2 to TX SWR input 4
+
+The FP6 AMIC3 policy carries ADC2 on WCD9378 device port 2, channel 1 and
+SoundWire master port 2. LPASS TX macro v9.2 numbers the four channels of
+master port 1 as SWR_INPUT0..3 and master port 2 as SWR_INPUT4..7.
+
+After moving ADC2 from master port 1/channel 2 to master port 2/channel 1,
+leaving the card-level DAPM route on SWR_INPUT1 prevents ADC2_OUTPUT from
+powering. Physical active-state inspection then shows SmartMIC1 remaining in
+PS3 with exact-zero capture data. Route ADC2_OUTPUT to SWR_INPUT4 so selecting
+SWR_MIC4 powers the WCD9378 ADC2 sequencer and the corresponding SoundWire
+port.
+
+Signed-off-by: Project Luma <luma@local>
+---
+ arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+index 8e85e1e70000..a0974fe60000 100644
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -103,7 +103,7 @@ sound {
+ 				"AMIC2", "MIC BIAS2",
+ 				"AMIC3", "MIC BIAS3",
+ 				"TX SWR_INPUT0", "ADC1_OUTPUT",
+-				"TX SWR_INPUT1", "ADC2_OUTPUT",
++				"TX SWR_INPUT4", "ADC2_OUTPUT",
+ 				"TX SWR_INPUT2", "ADC3_OUTPUT";
+ 
+ 		pinctrl-0 = <&lpi_i2s2_active>;
+-- 
+2.54.0

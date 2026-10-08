@@ -1,0 +1,5 @@
+#%PAM-1.0
+# Luma checks a person's own login password before re-keying their keyring
+# to it; a wrong password here would lock them out at the next login.
+auth       include      system-auth
+account    include      system-auth

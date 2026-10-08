@@ -1,0 +1,58 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] Settings: let native service adapters run across session identities
+
+The Luma-native application owns its service adapters and must start in Phosh
+or a session without XDG_CURRENT_DESKTOP. Preserve GNOME's historical gate
+only for the explicitly selected legacy UI, and use one mode selector before
+startup and during startup. The main Luma Settings launcher has the same scope;
+GNOME panel launchers and all service/policy permissions stay unchanged.
+
+diff --git a/shell/cc-application.c b/shell/cc-application.c
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -220,6 +220,15 @@
+   launch_panel_activated (action, parameter, user_data);
+ }
+ 
++/* Native Luma Settings binds services through its own adapters. The historical
++ * GNOME session restriction belongs only to the explicitly selected legacy UI.
++ * Local options run before startup, so both paths must use the same selector. */
++static gboolean
++use_luma_ui (void)
++{
++  return g_strcmp0 (g_getenv ("LUMA_SETTINGS_LEGACY"), "1") != 0;
++}
++
+ static char **
+ get_current_desktops (void)
+ {
+@@ -280,7 +289,7 @@
+       return -1;
+     }
+ 
+-  if (!is_supported_desktop ())
++  if (!use_luma_ui () && !is_supported_desktop ())
+     {
+       g_printerr ("Running gnome-control-center is only supported under GNOME and Unity, exiting\n");
+       return 1;
+@@ -547,7 +556,7 @@
+   gtk_application_set_accels_for_action (GTK_APPLICATION (application),
+                                          "app.help", help_accels);
+ 
+-  self->luma_ui = g_strcmp0 (g_getenv ("LUMA_SETTINGS_LEGACY"), "1") != 0;
++  self->luma_ui = use_luma_ui ();
+   if (self->fixture_mode || self->luma_ui)
+     {
+       luma_init ();
+diff --git a/shell/org.gnome.Settings.desktop.in b/shell/org.gnome.Settings.desktop.in
+--- a/shell/org.gnome.Settings.desktop.in
++++ b/shell/org.gnome.Settings.desktop.in
+@@ -8,8 +8,6 @@
+ Type=Application
+ StartupNotify=true
+ Categories=GNOME;GTK;Settings;
+-# See also is_supported_desktop() in main.c
+-OnlyShowIn=GNOME;
+ # Translators: Search terms to find this app. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+ Keywords=Preferences;Settings;
+ # Translators: Do NOT translate or transliterate this text (these are enum types)!

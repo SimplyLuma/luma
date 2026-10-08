@@ -1,0 +1,51 @@
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -1208,7 +1208,8 @@
+     if (icon != NULL)
+     {
+         gtk_image_set_from_gicon (GTK_IMAGE (button_data->image), icon);
+-        gtk_widget_set_visible (GTK_WIDGET (button_data->image), TRUE);
++        /* Breadcrumbs expose the location as text in both presentation modes. */
++        gtk_widget_set_visible (GTK_WIDGET (button_data->image), FALSE);
+         g_object_unref (icon);
+     }
+     else
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -8,6 +8,7 @@
+ 
+     styles [
+       "luma-secondary-toolbar",
++      "luma-no-automatic-identity",
+     ]
+ 
+     [title]
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1288,3 +1288,23 @@
+ window.luma-files-window .nautilus-grid-view .icon-ui-labels-box > label.caption {
+   font-size: 9px;
+ }
++
++/* Let the window title row own the identity. The inner action bar opts out
++ * through libadwaita's existing luma-no-automatic-identity role. */
++
++/* Match the shared navigation row's left edge without a second row inset. */
++window.luma-files-window .navigation-sidebar > row {
++  padding-left: 0;
++  padding-right: 0;
++}
++window.luma-files-window .luma-sidebar-section-heading {
++  padding-left: 0;
++  padding-right: 0;
++}
++
++/* GtkImage can receive its own foreground from toolkit button rules. Set the
++ * selected symbol's foreground at that node, as well as on the button. */
++window.luma-files-window .luma-view-controls button:checked image,
++window.luma-files-window .luma-view-mode-controls button:checked image {
++  color: @luma_content;
++}

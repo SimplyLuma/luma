@@ -1,0 +1,44 @@
+From 26092cd5711b1046eba1556d707378bac8500f15 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local.invalid>
+Date: Sun, 27 Sep 2026 19:08:07 +0000
+Subject: [PATCH] Restore vertical Filer rail with readable labels
+
+---
+ src/nautilus-sidebar.c | 2 +-
+ src/nautilus-window.c  | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index 0140b9b..1e0d3cf 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -776,7 +776,7 @@ refresh_luma_file_sidebar (NautilusSidebar *sidebar)
+     if (split != NULL)
+     {
+         luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (split),
+-                                            GTK_WIDGET (sidebar), "narrow");
++                                            GTK_WIDGET (sidebar), "rail-wide");
+     }
+ }
+ 
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 5e74ed4..c3e4dbd 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -2729,10 +2729,10 @@ nautilus_window_init (NautilusWindow *window)
+     window->action_modes_item = luma_bar_item_new_modes (window->action_modes);
+     update_action_center (window);
+ 
+-    /* Use the shared navigation width so full destination names and live
+-     * device labels fit. Keep Nautilus' rows, volumes, bookmarks and DnD. */
++    /* Keep the vertical icon-and-label rail. Its wider shared variant wraps
++     * destination and device names without clipping them. */
+     luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (window->split_view),
+-                                        GTK_WIDGET (window->places_sidebar), "narrow");
++                                        GTK_WIDGET (window->places_sidebar), "rail-wide");
+     gtk_widget_set_visible (window->sidebar_resize_handle, FALSE);
+     controller = GTK_EVENT_CONTROLLER (gtk_gesture_drag_new ());
+     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+-- 
+2.55.0
+

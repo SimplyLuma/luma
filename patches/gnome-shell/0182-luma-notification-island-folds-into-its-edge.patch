@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 12:30:00 -0400
+Subject: [PATCH] luma: the notification island folds into its edge
+
+When the last notification went, the beacon hid first and the island shrank
+along the row with nothing in it: a blank sliver that then faded. Now the
+last notification stays drawn while the island folds into the edge it sits
+on, keeping its width and place, its height and opacity easing in together
+(150 ms, ease in). Only then do the other islands close the gap. With reduced
+motion it only fades. Something new arriving mid-fold brings it back.
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -129,6 +129,8 @@
+ const BEACON_MOTION_TIME = 200;
+ // With reduced motion the island only fades in and out.
+ const BEACON_FADE_TIME = 150;
++// Leaving is quicker than arriving (Luma motion: leave with a slight ease in).
++const BEACON_LEAVE_TIME = 150;
+ // Luma motion for the Dash moving and the windows following it: groups
+ // sliding, and tiled windows re-fitted when the work area changes
+ // (Main.shelf.workAreaMotion), on one curve and one duration.
+@@ -850,7 +852,10 @@
+             new St.Bin({child: this._beacon}));
+         this._beaconIsland.visible = false;
+         this._beaconIsland.setBody(this._beacon);
+-        this._beacon.connectObject('notify::visible', () => this._syncBeaconIsland(),
++        this._beacon.connectObject('notify::visible', () => {
++            if (!this._holdingBeacon)
++                this._syncBeaconIsland();
++        },
+             'notify::width', () => this._queueDockWidth(), this);
+ 
+         // The islands the shelf manages, by their ADR-044 ids. The live
+@@ -1207,11 +1212,14 @@
+     }
+ 
+     // The notification island grows in from the end of the shelf while the
+-    // other islands slide aside, and leaves the same way (about 200 ms).
++    // other islands slide aside (about 200 ms). It leaves by folding into the
++    // edge it sits on, keeping its width and place: its height and opacity
++    // ease out together (150 ms), and only then do the others close the gap.
+     // Reduced motion: it only fades, and nothing slides.
+     _syncBeaconIsland() {
+         const island = this._beaconIsland;
+-        const show = this._beacon.visible;
++        // A beacon held for the fold is not showing anything.
++        const show = this._beacon.visible && !this._beacon.held;
+         if (show === (island.visible && !island._lumaLeaving)) {
+             // Never left half-way: an island that shows but whose arrival
+             // was cut short (collapsed or transparent, nothing easing it)
+@@ -1271,15 +1279,29 @@
+             return;
+         }
+         island._lumaLeaving = true;
++        this._holdingBeacon = true;
++        this._beacon.hold();
++        this._holdingBeacon = false;
++        // Folding into the edge, not along the row: a top island rises, a
++        // bottom one sinks, a side one withdraws sideways, so it never
++        // narrows to a sliver of empty surface.
++        const edge = this.edgeOfIsland('notifications');
++        island.set_pivot_point(edge === 'left' ? 0 : edge === 'right' ? 1 : 0.5,
++            edge === 'top' ? 0 : edge === 'bottom' ? 1 : 0.5);
++        const folded = !animate ? {} : vertical ? {scale_x: 0.01} : {scale_y: 0.01};
+         island.ease({
+             opacity: 0,
+-            ...collapsed,
+-            ...fade,
++            ...folded,
++            duration: animate ? BEACON_LEAVE_TIME : BEACON_FADE_TIME,
++            animationRequired: true,
+             mode: Clutter.AnimationMode.EASE_IN_QUAD,
+             onStopped: () => {
+                 if (!island._lumaLeaving)
+                     return;
+                 island._lumaLeaving = false;
++                this._holdingBeacon = true;
++                this._beacon.release();
++                this._holdingBeacon = false;
+                 this._easeIslandsAside(time);
+                 island.visible = false;
+                 island.set({opacity: 255, scale_x: 1, scale_y: 1});
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -279,11 +279,36 @@
+         this._newest = newest;
+         this._syncHover();
+         const visible = count > 0;
+-        if (this.visible !== visible)
++        if (this._held) {
++            // Something new while the island folds away: it comes back.
++            if (visible) {
++                this._held = false;
++                this.notify('visible');
++            }
++        } else if (this.visible !== visible) {
+             this.visible = visible;
++        }
+         getNotificationTray().sync(records);
+     }
+ 
++    // The shelf keeps the last notification drawn while its island folds
++    // away, so the island never empties into a bare sliver of surface.
++    get held() {
++        return !!this._held;
++    }
++
++    hold() {
++        this._held = true;
++        this.visible = true;
++    }
++
++    release() {
++        if (!this._held)
++            return;
++        this._held = false;
++        this.visible = !!this._newest;
++    }
++
+     _syncHover() {
+         const newest = this._newest;
+         const engaged = this.hover || this.has_key_focus() ||

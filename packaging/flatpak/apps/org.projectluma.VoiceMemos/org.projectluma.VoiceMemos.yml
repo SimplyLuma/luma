@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# Exact sources attached by seal-first-party-source.py. No source-free build is admitted.
+{
+  "appstream-compose": false,
+  "id": "org.projectluma.VoiceMemos",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "prairie-voice-memos",
+  "finish-args": [
+    "--env=LUMA_MEMO_STYLE_PATH=/app/share/prairie-core/memo.css",
+    "--metadata=X-Luma=app-data-schema=voicememos-v1",
+    "--metadata=X-Luma=min-host-installer=60",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--share=network",
+    "--talk-name=org.projectluma.AppData1",
+    "--socket=pulseaudio",
+    "--filesystem=xdg-music/Voice Memos:create",
+    "--filesystem=~/Music/Voice Memos:create",
+    "--talk-name=org.projectluma.ApplicationDirectory1"
+  ],
+  "modules": [
+    {
+      "name": "voicememos",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core",
+        "cp -a src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/",
+        "install -Dm755 src/prairie-core/bin/prairie-voice-memos /app/bin/prairie-voice-memos-real",
+        "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup prairie-voice-memos-real \"$@\"\\n' > /app/bin/prairie-voice-memos",
+        "chmod 755 /app/bin/prairie-voice-memos",
+        "install -Dm644 src/prairie-core/data/org.projectluma.VoiceMemos.desktop /app/share/applications/org.projectluma.VoiceMemos.desktop",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.VoiceMemos.svg",
+        "cp -a src/prairie-core/style/. /app/share/prairie-core/",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.VoiceMemos.metainfo.xml",
+        "install -Dm644 depot-media/155e1ffceb389e4e151a1baea8e6996ebaec762c2350e40add562ae677f97536.png /app/share/luma-app-media/155e1ffceb389e4e151a1baea8e6996ebaec762c2350e40add562ae677f97536.png",
+        "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.VoiceMemos/LICENSE.md"
+      ]
+    }
+  ]
+}

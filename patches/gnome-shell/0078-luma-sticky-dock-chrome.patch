@@ -1,0 +1,366 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: draw the sticky note stack as shell chrome
+
+diff --git a/js/ui/lumaStickyDock.js b/js/ui/lumaStickyDock.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/lumaStickyDock.js
+@@ -0,0 +1,269 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// The sticky note stack, drawn by the session that owns the screen edge.
++//
++// Sticky Notes wants a rail against the edge that is always reachable and never
++// takes the keyboard. The handheld lane can ask for that with wlr-layer-shell;
++// Mutter offers no equivalent, and an ordinary window cannot approximate one:
++// the attempts went from a panel that covered other windows to a transparent
++// window that was invisible and still swallowed every click near the edge.
++//
++// Chrome has none of those problems. The shell draws the stack, the application
++// keeps the notes, the store and the note windows, and the two meet over
++// org.projectluma.StickyNotes.Dock. While this is on screen the shell owns
++// org.projectluma.Shell.StickyDock, which is how the application knows not to
++// draw a second stack of its own.
++
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++
++const BUS_NAME = 'org.projectluma.StickyNotes';
++const OBJECT_PATH = '/org/projectluma/StickyNotes';
++const SHELL_NAME = 'org.projectluma.Shell.StickyDock';
++
++const DockInterface = `
++<node>
++  <interface name="org.projectluma.StickyNotes.Dock">
++    <method name="ListNotes">
++      <arg type="a(sssbb)" name="notes" direction="out"/>
++    </method>
++    <method name="OpenNote"><arg type="s" name="note_id" direction="in"/></method>
++    <method name="CreateNote"/>
++    <signal name="NotesChanged"/>
++  </interface>
++</node>`;
++
++const DockProxy = Gio.DBusProxy.makeProxyWrapper(DockInterface);
++
++const EDGE_INSET = 6;
++// The stack shows only its edges until somebody reaches for it.
++const RESTING_WIDTH = 7;
++const OPEN_WIDTH = 34;
++const TAB_MIN_HEIGHT = 34;
++const TAB_MAX_HEIGHT = 128;
++const CLOSE_DELAY_MS = 260;
++
++const NoteTab = GObject.registerClass(
++class NoteTab extends St.Button {
++    _init(note, open) {
++        super._init({
++            style_class: 'luma-sticky-tab',
++            x_expand: false,
++            can_focus: true,
++        });
++        this.note = note;
++        this.add_style_class_name(`luma-sticky-${note.colour}`);
++        if (note.pinned)
++            this.add_style_class_name('pinned');
++        if (note.completed)
++            this.add_style_class_name('completed');
++        this._label = new St.Label({
++            text: note.title,
++            style_class: 'luma-sticky-tab-label',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        // GNOME has no rotated label, and a tab this narrow cannot carry
++        // horizontal text, so the name only appears once the stack is open.
++        this._label.visible = false;
++        this.set_child(this._label);
++        this.set_height(Math.min(TAB_MAX_HEIGHT,
++            Math.max(TAB_MIN_HEIGHT, 26 + note.title.length * 6)));
++        this.connect('clicked', () => open(note.id));
++        this.accessible_name = note.title;
++    }
++
++    setOpen(open) {
++        this._label.visible = open;
++        this.set_width(open ? OPEN_WIDTH : RESTING_WIDTH);
++    }
++});
++
++export const LumaStickyDock = GObject.registerClass(
++class LumaStickyDock extends St.BoxLayout {
++    _init() {
++        super._init({
++            style_class: 'luma-sticky-dock',
++            orientation: Clutter.Orientation.VERTICAL,
++            reactive: true,
++            track_hover: true,
++            x_expand: false,
++            y_expand: false,
++        });
++        this._tabs = [];
++        this._open = false;
++        this._closeSource = 0;
++        this._nameId = 0;
++
++        this._stack = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            style_class: 'luma-sticky-stack',
++        });
++        this.add_child(this._stack);
++
++        this._new = new St.Button({
++            style_class: 'luma-sticky-new',
++            child: new St.Icon({icon_name: 'list-add-symbolic', icon_size: 14}),
++            can_focus: true,
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._new.accessible_name = _('New note');
++        this._new.connect('clicked', () => this._create());
++        this.add_child(this._new);
++
++        this.connect('notify::hover', () => this._hoverChanged());
++        this.connect('destroy', () => this._onDestroy());
++
++        Main.layoutManager.addChrome(this, {
++            affectsStruts: false,
++            trackFullscreen: true,
++        });
++        Main.layoutManager.connectObject('monitors-changed',
++            () => this._reposition(), this);
++
++        // Claimed before the application is asked for anything, so an
++        // application starting later sees it and leaves the stack to us.
++        this._nameId = Gio.bus_own_name(Gio.BusType.SESSION, SHELL_NAME,
++            Gio.BusNameOwnerFlags.NONE, null, null, null);
++
++        this._watchId = Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
++            Gio.BusNameWatcherFlags.NONE,
++            () => this._connect(),
++            () => this._setNotes([]));
++
++        this._setOpen(false);
++        this._connect();
++    }
++
++    // -- The application --------------------------------------------------
++
++    _connect() {
++        if (this._proxy)
++            return;
++        // Never auto-started: an empty stack is not a reason to run somebody's
++        // note application at login. Pressing + starts it, because that is a
++        // person asking for it.
++        new DockProxy(Gio.DBus.session, BUS_NAME, OBJECT_PATH,
++            (proxy, error) => {
++                if (error) {
++                    this._setNotes([]);
++                    return;
++                }
++                this._proxy = proxy;
++                proxy.connectSignal('NotesChanged', () => this._reload());
++                this._reload();
++            }, null, Gio.DBusProxyFlags.DO_NOT_AUTO_START);
++    }
++
++    _reload() {
++        if (!this._proxy)
++            return;
++        this._proxy.ListNotesRemote(([notes], error) => {
++            this._setNotes(error ? [] : notes);
++        });
++    }
++
++    _create() {
++        // This call may start the application, which is the point of it.
++        Gio.DBus.session.call(BUS_NAME, OBJECT_PATH,
++            'org.projectluma.StickyNotes.Dock', 'CreateNote', null, null,
++            Gio.DBusCallFlags.NONE, -1, null,
++            (connection, result) => {
++                try {
++                    connection.call_finish(result);
++                } catch (e) {
++                    logError(e, 'Sticky Notes could not create a note');
++                }
++                this._connect();
++            });
++    }
++
++    _openNote(id) {
++        Gio.DBus.session.call(BUS_NAME, OBJECT_PATH,
++            'org.projectluma.StickyNotes.Dock', 'OpenNote',
++            new GLib.Variant('(s)', [id]), null,
++            Gio.DBusCallFlags.NONE, -1, null, null);
++    }
++
++    // -- The stack --------------------------------------------------------
++
++    _setNotes(rows) {
++        this._stack.remove_all_children();
++        this._tabs = [];
++        for (const [id, title, colour, pinned, completed] of rows) {
++            const tab = new NoteTab({id, title, colour, pinned, completed},
++                noteId => this._openNote(noteId));
++            tab.setOpen(this._open);
++            this._stack.add_child(tab);
++            this._tabs.push(tab);
++        }
++        // With no notes there are no edges to show, and hiding the button too
++        // would leave nothing on screen at all.
++        this._new.visible = this._open || this._tabs.length === 0;
++        this.visible = true;
++        this._reposition();
++    }
++
++    // -- Resting and opening ----------------------------------------------
++
++    _hoverChanged() {
++        if (this.hover) {
++            this._cancelClose();
++            this._setOpen(true);
++            return;
++        }
++        this._cancelClose();
++        // Crossing between two tabs leaves the dock briefly; a stack that snaps
++        // shut under the pointer cannot be used.
++        this._closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
++            CLOSE_DELAY_MS, () => {
++                this._closeSource = 0;
++                this._setOpen(false);
++                return GLib.SOURCE_REMOVE;
++            });
++    }
++
++    _cancelClose() {
++        if (this._closeSource) {
++            GLib.source_remove(this._closeSource);
++            this._closeSource = 0;
++        }
++    }
++
++    _setOpen(open) {
++        this._open = open;
++        if (open)
++            this.add_style_class_name('open');
++        else
++            this.remove_style_class_name('open');
++        for (const tab of this._tabs)
++            tab.setOpen(open);
++        this._new.visible = open || this._tabs.length === 0;
++        this._reposition();
++    }
++
++    _reposition() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        if (!monitor)
++            return;
++        const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
++        const [, width] = this.get_preferred_width(-1);
++        const [, height] = this.get_preferred_height(-1);
++        this.set_position(
++            area.x + area.width - width - EDGE_INSET,
++            area.y + Math.round((area.height - height) / 2));
++    }
++
++    _onDestroy() {
++        this._cancelClose();
++        if (this._watchId)
++            Gio.bus_unwatch_name(this._watchId);
++        if (this._nameId)
++            Gio.bus_unown_name(this._nameId);
++        Main.layoutManager.disconnectObject(this);
++    }
++});
+diff --git a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -26,6 +26,7 @@
+ import * as PadOsd from './padOsd.js';
+ import * as Panel from './panel.js';
+ import * as Shelf from './shelf.js';
++import * as LumaStickyDock from './lumaStickyDock.js';
+ import * as RunDialog from './runDialog.js';
+ import * as WelcomeDialog from './welcomeDialog.js';
+ import * as Layout from './layout.js';
+@@ -61,6 +62,7 @@
+ export let extensionManager = null;
+ export let panel = null;
+ export let shelf = null;
++export let stickyDock = null;
+ export let overview = null;
+ export let lumaSearch = null;
+ export let runDialog = null;
+@@ -291,8 +293,13 @@
+     layoutManager.init();
+     overview.init();
+     if (!sessionMode.isGreeter &&
+-        GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld')
++        GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld') {
+         shelf = new Shelf.Shelf();
++        // The note stack lives on the same lanes the Shelf does: it is chrome
++        // for the same reason, and on the handheld lane the application can
++        // ask for a layer surface itself.
++        stickyDock = new LumaStickyDock.LumaStickyDock();
++    }
+ 
+     new PointerA11yTimeout.PointerA11yTimeout();
+ 
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -114,6 +114,7 @@
+     <file>ui/runDialog.js</file>
+     <file>ui/screenShield.js</file>
+     <file>ui/screenshot.js</file>
++    <file>ui/lumaStickyDock.js</file>
+     <file>ui/shelf.js</file>
+     <file>ui/shelfMetrics.js</file>
+     <file>ui/scripting.js</file>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -654,3 +654,40 @@
+ .luma-media-control:hover, .luma-media-control:focus { background-color: rgba(127,127,127,0.2); }
+ .luma-media-module.vertical { min-width: 0; height: 138px; width: 36px; padding: 0; }
+ 
++
++/* ── The sticky note stack ─────────────────────────────────────────────── */
++/* Paper colours are the application's document data, repeated here because the
++ * shell draws the tabs; they are not system tokens and do not belong in the
++ * palette. */
++.luma-sticky-dock { spacing: 8px; }
++.luma-sticky-stack { spacing: 3px; }
++.luma-sticky-tab {
++  border-radius: 10px 0 0 10px;
++  border: 0;
++  padding: 0;
++  color: #2c2a24;
++  box-shadow: -6px 4px 16px rgba(0, 0, 0, 0.28);
++  transition-duration: 160ms;
++}
++.luma-sticky-tab:hover { margin-right: -3px; }
++.luma-sticky-tab:focus { outline: 2px solid #6ea8fe; outline-offset: 2px; }
++.luma-sticky-tab.completed { opacity: 0.55; }
++.luma-sticky-tab-label {
++  font-size: 9px;
++  font-weight: 700;
++  letter-spacing: 0.08em;
++  padding: 0 4px;
++}
++.luma-sticky-yellow { background-color: #f3e3a3; }
++.luma-sticky-coral  { background-color: #f4c3b4; }
++.luma-sticky-green  { background-color: #c3ddbf; }
++.luma-sticky-blue   { background-color: #bcd4e9; }
++.luma-sticky-purple { background-color: #d5c6e7; }
++.luma-sticky-new {
++  width: 30px; height: 30px;
++  border-radius: 99px;
++  background-color: rgba(32, 36, 42, 0.92);
++  color: #e7e9e8;
++  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.34);
++}
++.luma-sticky-new:hover { background-color: rgba(48, 54, 62, 0.96); }

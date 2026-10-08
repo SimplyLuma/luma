@@ -1,0 +1,21 @@
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 28 Sep 2026 03:20:00 +0000
+Subject: [PATCH] dash: hide Span full edge while islands are off
+
+With islands off, connected mode is already a continuous bar and the span
+switch cannot change it. Do not present a forced-on disabled switch. Preserve
+the stored span choice for when islands are enabled again.
+
+---
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -458,6 +458,9 @@
+       self->syncing_span = TRUE;
+       adw_switch_row_set_active (self->span_row, span);
+       self->syncing_span = FALSE;
++      /* A connected Dash is one bar by definition. Hide a switch that cannot
++       * change it; the saved span choice returns when islands are enabled. */
++      gtk_widget_set_visible (GTK_WIDGET (self->span_row), islands);
+       gtk_widget_set_sensitive (GTK_WIDGET (self->span_row), islands &&
+                                 g_settings_is_writable (self->settings, "shelf-span-full"));
+       adw_action_row_set_subtitle (ADW_ACTION_ROW (self->span_row), islands ?

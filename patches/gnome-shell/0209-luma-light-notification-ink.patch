@@ -1,0 +1,34 @@
+From: Luma Shell Notifications
+Subject: [PATCH] Restore light notification ink and center pill icons
+
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2979,3 +2979,13 @@
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-system { border-top-color: rgba(22,25,29,.10); }
+ .quick-settings.luma-studio-options .luma-options-battery-text { color: #e7e9e8; }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-battery-text { color: #16191d; }
++
++/* Keep light notification ink above the later dark presentation rules. */
++.luma-notification-lip .luma-lip-pill-more { font-weight: 500; color: rgba(231,233,232,.62); }
++.luma-notification-lip.luma-surface-light { color: #16191d; }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-box .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(22,25,29,.76); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-header .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(22,25,29,.56); }
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -290,9 +290,10 @@
+         const box = new St.BoxLayout({style_class: `luma-lip-pill${big ? ' big' : ''}`});
+         if (this.dnd) box.add_child(glyph('moon', 13));
+         const iconSize = big ? 18 : 14;
+-        const iconStep = big ? 12 : 9;
++        const iconStep = big ? 13 : 9;
+         const stack = new St.Widget({style_class: 'luma-lip-icon-stack',
+-            layout_manager: new Clutter.FixedLayout(), height: iconSize});
++            layout_manager: new Clutter.FixedLayout(), height: iconSize,
++            y_align: Clutter.ActorAlign.CENTER});
+         const apps = new Set();
+         for (const n of this._records ?? []) {
+             const source = n.source;

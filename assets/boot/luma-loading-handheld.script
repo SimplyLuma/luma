@@ -1,0 +1,740 @@
+// Generated from the shared renderer and validated build profile.
+global.background_red = 0.94901961;
+global.background_green = 0.95294118;
+global.background_blue = 0.95686275;
+global.ink_red = 0.12941176;
+global.ink_green = 0.14509804;
+global.ink_blue = 0.16862745;
+global.concept = "hearth";
+global.loader = "dots";
+global.lockup = "word";
+global.progress_mode = "indeterminate";
+global.handheld = 1;
+// SPDX-License-Identifier: Apache-2.0
+// Shared native renderer. Profile constants are generated at package build.
+Window.SetBackgroundTopColor(global.background_red, global.background_green, global.background_blue);
+Window.SetBackgroundBottomColor(global.background_red, global.background_green, global.background_blue);
+global.status = "normal";
+global.elapsed = 0.0;
+global.progress_fraction = 0.0;
+global.cycle_seconds = 1.15;
+global.stagger_seconds = 0.13;
+global.minimum_opacity = 0.22;
+global.logo_source = Image("luma-wordmark.png");
+global.stop_source = Image("luma-wordmark-stop.png");
+global.mark_source = Image("luma-mark.png");
+global.dot_source = Image("luma-loading-dot.png");
+global.track_source = Image("luma-track.png");
+global.logo_sprite = Sprite();
+global.stop_sprite = Sprite();
+global.mark_sprite = Sprite();
+global.track_sprite = Sprite();
+global.fill_sprite = Sprite();
+global.ring_sprite = Sprite();
+for (index = 0; index < 4; index++) global.dot[index].sprite = Sprite();
+if (global.loader == "ring") {
+    for (index = 0; index <= 60; index++) {
+        if (global.progress_mode == "determinate")
+            global.ring[index] = Image("ring-progress-" + index + ".png");
+        else
+            global.ring[index] = Image("ring-spin-" + index + ".png");
+    }
+}
+global.prompt_sprite = Sprite();
+global.message_sprite = Sprite();
+
+// The desktop presentation draws its unlock prompt and update screens from
+// artwork rendered for its profile at package build; the handheld keeps its
+// text prompt.
+global.desktop = !global.handheld;
+global.bullet_limit = 32;
+global.surface_opacity = 1.0;
+if (global.desktop) {
+    global.lock_source = Image("prompt-lock.png");
+    global.field_source = Image("prompt-field.png");
+    global.bullet_source = Image("prompt-bullet.png");
+    global.capslock_source = Image("prompt-capslock.png");
+    global.lock_sprite = Sprite();
+    global.field_sprite = Sprite();
+    global.answer_sprite = Sprite();
+    global.capslock_sprite = Sprite();
+    for (index = 0; index < global.bullet_limit; index++) global.bullet[index].sprite = Sprite();
+    global.title_sprite = Sprite();
+    global.subtitle_sprite = Sprite();
+    global.update_track_sprite = Sprite();
+    global.update_fill_sprite = Sprite();
+    global.percent_sprite = Sprite();
+}
+
+// Animation time. Plymouth calls refresh_callback at a nominal 50 Hz, but a
+// slow frame delays the next one, so counting calls runs slow exactly when the
+// machine is busy. Luma's Plymouth has a clock (Plymouth.GetTime); a long
+// stall is capped so it cannot skip a transition. Without the clock, each
+// call counts as one nominal frame.
+global.dt = 0.02;
+global.clock_last = -1;
+fun advance_clock() {
+    global.dt = 0.02;
+    if (Plymouth.GetTime) {
+        local.now = Plymouth.GetTime();
+        if (global.clock_last >= 0) global.dt = now - global.clock_last;
+        global.clock_last = now;
+        if (global.dt < 0) global.dt = 0;
+        if (global.dt > 0.1) global.dt = 0.1;
+    }
+}
+fun smoothstep(value) {
+    if (value < 0) value = 0;
+    if (value > 1) value = 1;
+    return value * value * (3 - 2 * value);
+}
+
+// The firmware's own boot logo is on screen when Plymouth starts. With a
+// Plymouth that can draw it (Window.HasFirmwareBackground), the desktop boot
+// splash begins on exactly that screen, with the Luma wordmark coming up at
+// its bottom, where every distribution's mark sits under a vendor logo. After
+// a short hold the vendor logo fades out while the wordmark rises into its
+// place in Luma's surface and the loader comes up under it, so the hand-off
+// neither flashes black nor moves the vendor logo. Without a firmware logo, or
+// on an unpatched Plymouth, the splash starts on Luma's surface. Shutdown,
+// reboot and update screens never start from a firmware screen (ADR-045).
+global.firmware_hold_seconds = 1.0;
+global.firmware_fade_seconds = 0.9;
+global.brand_in_seconds = 0.3;
+global.firmware_clock = 0.0;
+global.firmware_active = 0;
+global.brand_logo_sprite = Sprite();
+global.brand_stop_sprite = Sprite();
+global.brand_stop_visible = 1;
+if (global.desktop && Plymouth.GetMode() == "boot" && Window.HasFirmwareBackground) {
+    if (Window.HasFirmwareBackground()) {
+        global.firmware_active = 1;
+        global.surface_opacity = 0.0;
+        Window.SetFirmwareBackgroundOpacity(1.0);
+    }
+}
+
+// Plymouth draws every sprite on every display, offsetting each display so
+// that all of their centres line up. Window.GetX()/GetY() with no index are the
+// largest of those offsets and Window.GetWidth()/GetHeight() the largest size,
+// so adding the two put the splash off-centre on a wide display and off the
+// edge of a smaller one. Lay out inside the area every display shows instead:
+// it starts at the largest offset and is as large as the smallest display.
+fun update_region() {
+    global.region_x = Window.GetX();
+    global.region_y = Window.GetY();
+    global.region_width = Window.GetWidth();
+    global.region_height = Window.GetHeight();
+    for (index = 0; index < 16 && Window.GetWidth(index); index++) {
+        if (Window.GetWidth(index) < global.region_width) global.region_width = Window.GetWidth(index);
+        if (Window.GetHeight(index) < global.region_height) global.region_height = Window.GetHeight(index);
+    }
+}
+fun layout_normal_surface() {
+    update_region();
+    global.layout_width = global.region_width;
+    global.layout_height = global.region_height;
+    global.layout_x = global.region_x;
+    global.layout_y = global.region_y;
+    global.logical_scale = 1.0;
+    global.logo_width = Math.Int(global.region_width * 0.115);
+    if (global.logo_width < 104) global.logo_width = 104;
+    if (global.logo_width > 142) global.logo_width = 142;
+    if (global.handheld) {
+        global.logical_scale = global.region_width / 390.0;
+        if (global.region_height < global.region_width)
+            global.logical_scale = global.region_height / 390.0;
+        if (global.logical_scale < 1.0) global.logical_scale = 1.0;
+        if (global.logical_scale > 4.0) global.logical_scale = 4.0;
+        global.logo_width = Math.Int(120.0 * global.logical_scale);
+    }
+    global.logo_height = Math.Int(global.logo_width * 715.0 / 2219.0);
+    local.mark_height = 42 * global.logical_scale;
+    local.mark_width = 1.66 * mark_height;
+    local.lockup_height = global.logo_height;
+    local.lockup_width = global.logo_width;
+    if (global.lockup == "mark") {lockup_height=mark_height; lockup_width=mark_width;}
+    if (global.lockup == "stacked") {
+        lockup_height += mark_height + 14 * global.logical_scale;
+    }
+    if (global.lockup == "inline") {
+        lockup_width += mark_width + 16 * global.logical_scale;
+        if (mark_height > lockup_height) lockup_height=mark_height;
+    }
+    global.lockup_height = lockup_height;
+    global.dot_size = Math.Int(6.0 * global.logical_scale);
+    global.dot_gap = Math.Int(6.0 * global.logical_scale);
+    global.logo_dot_gap = Math.Int(24.0 * global.logical_scale);
+    global.loader_width = global.dot_size * 4 + global.dot_gap * 3;
+    global.loader_height = global.dot_size;
+    if (global.loader == "ring") {global.loader_width=26; global.loader_height=26;}
+    if (global.loader == "bar") {global.loader_width=196; global.loader_height=3;}
+    if (global.loader == "hairline") {global.loader_width=340; global.loader_height=1;}
+    if (global.loader_width > global.region_width - 48) global.loader_width=global.region_width-48;
+    local.group_height = lockup_height + global.logo_dot_gap + global.loader_height;
+    local.center_x = global.region_x + global.region_width/2;
+    local.group_y = global.region_y + global.region_height/2 - group_height/2;
+    if (global.handheld) group_y = global.region_y + global.region_height*0.48-group_height/2;
+    if (!global.handheld && global.concept == "paper") group_y = global.region_y+global.region_height*0.32;
+    // A prompt or an update screen keeps the lockup and puts its own content
+    // under it; the group is centred as a whole.
+    if (global.desktop && global.status != "normal") group_y = global.region_y + global.region_height/2 - (lockup_height + global.detail_gap + global.detail_height)/2;
+    if (group_y < global.region_y + 24) group_y = global.region_y + 24;
+    global.group_y = group_y;
+    local.logo_x = center_x-global.logo_width/2;
+    local.logo_y = group_y;
+    local.mark_x = center_x-mark_width/2;
+    local.mark_y = group_y;
+    if (global.lockup == "stacked") logo_y += mark_height+14*global.logical_scale;
+    if (global.lockup == "inline") {
+        mark_x = center_x-lockup_width/2;
+        mark_y += (lockup_height-mark_height)/2;
+        logo_x = mark_x+mark_width+16*global.logical_scale;
+        logo_y += (lockup_height-global.logo_height)/2;
+    }
+    // Rasterized from the canonical SVG at this exact layout size. A large
+    // source bitmap shrunk by Image.Scale loses antialiased edge coverage.
+    global.logo_image = Image("luma-wordmark-" + global.logo_width + ".png");
+    global.stop_image = Image("luma-wordmark-stop-" + global.logo_width + ".png");
+    global.logo_sprite.SetImage(global.logo_image);
+    global.stop_sprite.SetImage(global.stop_image);
+    global.logo_sprite.SetPosition(logo_x,logo_y,10000);
+    global.stop_sprite.SetPosition(logo_x,logo_y,10000);
+    global.logo_x = logo_x;
+    global.logo_y = logo_y;
+    // The brand copy shown under a firmware logo is the lockup's wordmark (or
+    // its mark, for a mark-only lockup), at the bottom centre where
+    // luma-firmware and two-step place their watermark. It rises to the
+    // lockup's own position and is then swapped for it.
+    local.brand_width = global.logo_width;
+    local.brand_height = global.logo_height;
+    global.brand_target_x = logo_x;
+    global.brand_target_y = logo_y;
+    if (global.lockup == "mark") {
+        brand_width = mark_width; brand_height = mark_height;
+        global.brand_target_x = mark_x; global.brand_target_y = mark_y;
+    }
+    global.brand_x = center_x - brand_width/2;
+    global.brand_y = Math.Int(global.region_y + (global.region_height - brand_height) * 0.96);
+    global.brand_height = brand_height;
+    if (global.firmware_active) {
+        if (global.lockup == "mark") {
+            global.brand_logo_sprite.SetImage(global.mark_source.Scale(mark_width, mark_height));
+            global.brand_stop_sprite.SetImage(global.stop_image);
+            global.brand_stop_visible = 0;
+        } else {
+            global.brand_logo_sprite.SetImage(global.logo_image);
+            global.brand_stop_sprite.SetImage(global.stop_image);
+            global.brand_stop_visible = 1;
+        }
+    }
+    layout_advanced_hint();
+    global.mark_sprite.SetImage(global.mark_source.Scale(mark_width,mark_height));
+    global.mark_sprite.SetPosition(mark_x,mark_y,10000);
+    global.loader_x = center_x-global.loader_width/2;
+    global.loader_y = group_y+lockup_height+global.logo_dot_gap;
+    local.dot_image = global.dot_source.Scale(global.dot_size,global.dot_size);
+    for (index=0; index<4; index++) {
+        global.dot[index].sprite.SetImage(dot_image);
+        global.dot[index].sprite.SetPosition(global.loader_x+index*(global.dot_size+global.dot_gap),global.loader_y,10000);
+    }
+    global.track_sprite.SetImage(global.track_source.Scale(global.loader_width,global.loader_height));
+    global.track_sprite.SetPosition(global.loader_x,global.loader_y,10000);
+    global.ring_sprite.SetPosition(global.loader_x,global.loader_y,10001);
+    // Scale ring frames only on layout changes, not at every animation tick.
+    if (global.loader == "ring") {
+        for (index=0; index<=60; index++)
+            global.scaled_ring[index]=global.ring[index].Scale(26,26);
+    }
+}
+fun hide_normal_surface() {
+    global.logo_sprite.SetOpacity(0); global.stop_sprite.SetOpacity(0);
+    global.mark_sprite.SetOpacity(0); global.track_sprite.SetOpacity(0);
+    global.fill_sprite.SetOpacity(0); global.ring_sprite.SetOpacity(0);
+    for (index=0; index<4; index++) global.dot[index].sprite.SetOpacity(0);
+}
+fun show_lockup() {
+    // While the firmware screen is up the wordmark is the rising brand copy.
+    local.o = global.surface_opacity;
+    if (global.firmware_active) o = 0;
+    if (global.lockup != "mark") {
+        global.logo_sprite.SetOpacity(o);
+        global.stop_sprite.SetOpacity(o);
+    }
+    if (global.lockup == "mark") global.mark_sprite.SetOpacity(o);
+    else if (global.lockup != "word") global.mark_sprite.SetOpacity(global.surface_opacity);
+    if (global.advanced_hint != "") global.hint_sprite.SetOpacity(0.64 * global.surface_opacity);
+}
+fun dot_opacity(stagger) {
+    local.phase=global.elapsed-stagger;
+    while (phase<0) phase+=global.cycle_seconds;
+    while (phase>=global.cycle_seconds) phase-=global.cycle_seconds;
+    return global.minimum_opacity+(1-global.minimum_opacity)*(1-Math.Cos(phase/global.cycle_seconds*6.2831853))/2;
+}
+
+// ---- Firmware hand-off -----------------------------------------------------
+fun firmware_tick() {
+    if (!global.firmware_active) return;
+    global.firmware_clock += global.dt;
+    // An unlock prompt or an update screen does not wait behind the vendor
+    // logo: the hand-off starts at once.
+    if (global.status != "normal" && global.firmware_clock < global.firmware_hold_seconds)
+        global.firmware_clock = global.firmware_hold_seconds;
+    local.fade = (global.firmware_clock - global.firmware_hold_seconds) / global.firmware_fade_seconds;
+    if (fade < 0) fade = 0;
+    if (fade > 1) fade = 1;
+    // Smoothstep: no visible start or stop in the cross-fade or the rise. In
+    // order: the vendor logo is gone by 70 % of the way, so the rising
+    // wordmark never lands on it; the wordmark is in place by 80 %; the loader
+    // (and any prompt or message) comes up under it in the last quarter, so
+    // nothing ever sits above the wordmark on its way up.
+    local.eased = smoothstep(fade / 0.8);
+    Window.SetFirmwareBackgroundOpacity(1 - smoothstep(fade / 0.7));
+    global.surface_opacity = smoothstep((fade - 0.75) / 0.25);
+    local.brand = smoothstep(global.firmware_clock / global.brand_in_seconds);
+    local.y = global.brand_y + (global.brand_target_y - global.brand_y) * eased;
+    local.x = global.brand_x + (global.brand_target_x - global.brand_x) * eased;
+    if (fade >= 1) { x = global.brand_target_x; y = global.brand_target_y; }
+    global.brand_logo_sprite.SetPosition(x, y, 10000);
+    global.brand_stop_sprite.SetPosition(x, y, 10000);
+    global.brand_logo_sprite.SetOpacity(brand);
+    global.brand_stop_sprite.SetOpacity(brand * global.brand_stop_visible);
+    if (fade >= 1) {
+        // The brand copy has reached the wordmark's own place: swap them.
+        global.firmware_active = 0;
+        global.surface_opacity = 1.0;
+        Window.SetFirmwareBackgroundOpacity(0);
+        global.brand_logo_sprite.SetOpacity(0);
+        global.brand_stop_sprite.SetOpacity(0);
+        show_lockup();
+    }
+    if (global.status != "normal") apply_detail_opacity();
+    if (global.message_visible) global.message_sprite.SetOpacity(global.surface_opacity);
+}
+
+// ---- Advanced startup hint (reserved) ---------------------------------------
+// A slot for one line such as "Press F8 for advanced startup" at the bottom of
+// the Luma surface. It is empty in this release, so nothing is drawn; the plan
+// that fills it is in docs/decisions/045-boot-presentation.md. Advanced startup
+// itself is GRUB's hidden menu (Esc, F8 or Shift before Plymouth starts).
+global.advanced_hint = "";
+global.hint_sprite = Sprite();
+fun layout_advanced_hint() {
+    if (global.advanced_hint == "") return;
+    local.image = Image.Text(global.advanced_hint, global.ink_red, global.ink_green,
+                             global.ink_blue, 1.0, "Figtree Medium 12");
+    global.hint_sprite.SetImage(image);
+    global.hint_sprite.SetPosition(global.region_x + global.region_width / 2 - image.GetWidth() / 2,
+                                   global.region_y + global.region_height - image.GetHeight() - 24, 10002);
+}
+
+// ---- Desktop prompt and update screen ---------------------------------------
+global.detail_gap = 32;
+global.detail_height = 0;
+global.prompt_label_gap = 16;
+global.field_row_width = 360;
+global.field_height = 36;
+global.lock_width = 60;
+global.field_width = 300;
+global.bullet_pitch = 16;
+global.capslock_gap = 12;
+global.capslock_width = 24;
+global.capslock_height = 28;
+global.bullets = 0;
+global.answer = "";
+global.prompt_text = "";
+
+fun hide_details() {
+    global.prompt_sprite.SetOpacity(0);
+    if (!global.desktop) return;
+    global.lock_sprite.SetOpacity(0); global.field_sprite.SetOpacity(0);
+    global.answer_sprite.SetOpacity(0); global.capslock_sprite.SetOpacity(0);
+    for (index = 0; index < global.bullet_limit; index++) global.bullet[index].sprite.SetOpacity(0);
+    global.title_sprite.SetOpacity(0); global.subtitle_sprite.SetOpacity(0);
+    global.update_track_sprite.SetOpacity(0); global.update_fill_sprite.SetOpacity(0);
+    global.percent_sprite.SetOpacity(0);
+}
+
+fun bounded_text(text, font, red, green, blue, width, height) {
+    local.image = Image.Text(text, red, green, blue, 1.0, font);
+    if (width < 1) width = 1;
+    if (height < 1) height = 1;
+    local.factor = 1.0;
+    if (image.GetWidth() > width) factor = width / image.GetWidth();
+    if (image.GetHeight() * factor > height) factor = height / image.GetHeight();
+    if (factor < 1.0) {
+        local.scaled_width = Math.Int(image.GetWidth() * factor);
+        local.scaled_height = Math.Int(image.GetHeight() * factor);
+        if (scaled_width < 1) scaled_width = 1;
+        if (scaled_height < 1) scaled_height = 1;
+        image = image.Scale(scaled_width, scaled_height);
+    }
+    return image;
+}
+
+fun is_update_mode() {
+    local.mode = Plymouth.GetMode();
+    return mode == "updates" || mode == "system-upgrade" || mode == "firmware-upgrade" || mode == "system-reset";
+}
+
+// Plymouth's own strings for these screens, as two-step shows them.
+fun update_title() {
+    local.mode = Plymouth.GetMode();
+    if (mode == "system-upgrade") return "Upgrading System...";
+    if (mode == "firmware-upgrade") return "Upgrading Firmware...";
+    if (mode == "system-reset") return "Resetting System...";
+    return "Installing Updates...";
+}
+
+fun layout_prompt() {
+    update_region();
+    local.available = global.region_width - 48;
+    global.row_scale = 1.0;
+    local.row_width = global.field_row_width + global.capslock_gap + global.capslock_width;
+    if (row_width > available) global.row_scale = available / row_width;
+    if (global.row_scale < 0.2) global.row_scale = 0.2;
+    local.label = bounded_text(global.prompt_text, "Figtree Medium 15", global.ink_red, global.ink_green,
+                               global.ink_blue, available, global.region_height / 4);
+    global.last_text = global.prompt_text;
+    global.prompt_source = label;
+    local.field_h = Math.Int(global.field_height * global.row_scale);
+    global.detail_height = label.GetHeight() + global.prompt_label_gap + field_h;
+    layout_normal_surface();
+    local.center_x = global.region_x + global.region_width / 2;
+    local.label_y = global.group_y + global.lockup_height + global.detail_gap;
+    global.prompt_sprite.SetImage(label);
+    global.prompt_sprite.SetPosition(center_x - label.GetWidth() / 2, label_y, 10001);
+    local.lock_w = Math.Int(global.lock_width * global.row_scale);
+    local.field_w = Math.Int(global.field_width * global.row_scale);
+    local.row_x = center_x - (lock_w + field_w) / 2;
+    local.row_y = label_y + label.GetHeight() + global.prompt_label_gap;
+    global.lock_sprite.SetImage(global.lock_source.Scale(lock_w, field_h));
+    global.lock_sprite.SetPosition(row_x, row_y, 10001);
+    global.field_x = row_x + lock_w;
+    global.field_y = row_y;
+    global.field_w = field_w;
+    global.field_h = field_h;
+    global.field_sprite.SetImage(global.field_source.Scale(field_w, field_h));
+    global.field_sprite.SetPosition(global.field_x, row_y, 10001);
+    local.caps_w = Math.Int(global.capslock_width * global.row_scale);
+    local.caps_h = Math.Int(global.capslock_height * global.row_scale);
+    global.capslock_sprite.SetImage(global.capslock_source.Scale(caps_w, caps_h));
+    global.capslock_sprite.SetPosition(global.field_x + field_w + Math.Int(global.capslock_gap * global.row_scale),
+                                       row_y + (field_h - caps_h) / 2, 10001);
+    local.pitch = Math.Int(global.bullet_pitch * global.row_scale);
+    if (pitch < 1) pitch = 1;
+    global.bullet_fit = Math.Int((field_w - pitch) / pitch);
+    if (global.bullet_fit > global.bullet_limit) global.bullet_fit = global.bullet_limit;
+    local.bullet_image = global.bullet_source.Scale(pitch, pitch);
+    for (index = 0; index < global.bullet_limit; index++) {
+        global.bullet[index].sprite.SetImage(bullet_image);
+        global.bullet[index].sprite.SetPosition(global.field_x + index * pitch, row_y + (field_h - pitch) / 2, 10002);
+    }
+    if (global.status == "question") {
+        local.answer_image = bounded_text(global.answer, "Figtree Medium 15", global.background_red,
+                                          global.background_green, global.background_blue,
+                                          field_w - pitch, field_h);
+        global.answer_text = global.answer;
+        global.answer_sprite.SetImage(answer_image);
+        global.answer_sprite.SetPosition(global.field_x, row_y + (field_h - answer_image.GetHeight()) / 2, 10002);
+    }
+    apply_detail_opacity();
+}
+
+fun layout_update() {
+    update_region();
+    local.available = global.region_width - 48;
+    local.title = bounded_text(update_title(), "Figtree Bold 20", global.ink_red, global.ink_green,
+                               global.ink_blue, available, global.region_height / 6);
+    local.subtitle = bounded_text("Do not turn off your computer", "Figtree Medium 12", global.ink_red,
+                                  global.ink_green, global.ink_blue, available, global.region_height / 6);
+    global.update_bar_width = 280;
+    if (global.update_bar_width > available) global.update_bar_width = available;
+    global.update_bar_height = 4;
+    global.detail_height = title.GetHeight() + 6 + subtitle.GetHeight() + 24 + global.update_bar_height + 12 + 20;
+    layout_normal_surface();
+    local.center_x = global.region_x + global.region_width / 2;
+    local.y = global.group_y + global.lockup_height + global.detail_gap;
+    global.title_sprite.SetImage(title);
+    global.title_sprite.SetPosition(center_x - title.GetWidth() / 2, y, 10001);
+    y += title.GetHeight() + 6;
+    global.subtitle_sprite.SetImage(subtitle);
+    global.subtitle_sprite.SetPosition(center_x - subtitle.GetWidth() / 2, y, 10001);
+    y += subtitle.GetHeight() + 24;
+    global.update_bar_x = center_x - global.update_bar_width / 2;
+    global.update_bar_y = y;
+    global.update_track_sprite.SetImage(global.track_source.Scale(global.update_bar_width, global.update_bar_height));
+    global.update_track_sprite.SetPosition(global.update_bar_x, y, 10001);
+    global.update_fill_width = -1;
+    global.percent_shown = -1;
+    global.percent_y = y + global.update_bar_height + 12;
+    render_update_progress();
+    apply_detail_opacity();
+}
+
+fun render_update_progress() {
+    local.width = Math.Int(global.update_bar_width * global.update_progress / 100);
+    if (width != global.update_fill_width) {
+        global.update_fill_width = width;
+        if (width > 0) {
+            global.update_fill_sprite.SetImage(global.track_source.Scale(width, global.update_bar_height));
+            global.update_fill_sprite.SetPosition(global.update_bar_x, global.update_bar_y, 10002);
+        }
+    }
+    local.percent = Math.Int(global.update_progress);
+    if (percent != global.percent_shown) {
+        global.percent_shown = percent;
+        local.image = Image.Text(percent + "%", global.ink_red, global.ink_green, global.ink_blue, 1.0, "Figtree Medium 12");
+        global.percent_sprite.SetImage(image);
+        global.percent_sprite.SetPosition(global.region_x + global.region_width / 2 - image.GetWidth() / 2,
+                                          global.percent_y, 10001);
+    }
+}
+
+// Every detail sprite follows the firmware cross-fade, so a prompt that
+// arrives while the firmware logo is still leaving never overlaps it.
+fun apply_detail_opacity() {
+    local.o = global.surface_opacity;
+    hide_details();
+    hide_normal_surface();
+    show_lockup();
+    if (global.status == "password" || global.status == "question") {
+        global.prompt_sprite.SetOpacity(o);
+        global.lock_sprite.SetOpacity(o);
+        global.field_sprite.SetOpacity(o);
+        if (global.status == "password") {
+            local.shown = global.bullets;
+            if (shown > global.bullet_fit) shown = global.bullet_fit;
+            for (index = 0; index < shown; index++) global.bullet[index].sprite.SetOpacity(o);
+            global.bullets_shown = shown;
+        } else {
+            global.answer_sprite.SetOpacity(o);
+        }
+        if (Plymouth.GetCapslockState) {
+            if (Plymouth.GetCapslockState()) global.capslock_sprite.SetOpacity(o);
+        }
+    } else if (global.status == "update") {
+        global.title_sprite.SetOpacity(o);
+        global.subtitle_sprite.SetOpacity(o);
+        global.update_track_sprite.SetOpacity(0.16 * o);
+        if (global.update_fill_width > 0) global.update_fill_sprite.SetOpacity(o);
+        global.percent_sprite.SetOpacity(o);
+    }
+}
+
+global.update_progress = 0;
+fun system_update_callback(progress) {
+    if (progress < 0) progress = 0;
+    if (progress > 100) progress = 100;
+    global.update_progress = progress;
+    if (global.desktop && global.status == "update") {
+        render_update_progress();
+        apply_detail_opacity();
+    }
+}
+
+fun refresh_callback() {
+    advance_clock();
+    update_region();
+    firmware_tick();
+    // plymouth change-mode switches a running splash to an update screen.
+    if (global.desktop && global.status == "normal" && is_update_mode()) {
+        global.status = "update";
+        layout_update();
+    }
+    if (global.layout_width != global.region_width || global.layout_height != global.region_height ||
+        global.layout_x != global.region_x || global.layout_y != global.region_y) {
+        if (global.desktop && (global.status == "password" || global.status == "question")) layout_prompt();
+        else if (global.desktop && global.status == "update") layout_update();
+        else {
+            layout_normal_surface();
+            if (global.status != "normal" && global.prompt_source) center_prompt(global.prompt_source);
+        }
+        if (global.message_visible) message_callback(global.message);
+    }
+    if (global.desktop && (global.status == "password" || global.status == "question")) {
+        // Caps Lock can change while the prompt waits.
+        if (Plymouth.GetCapslockState) {
+            local.caps = Plymouth.GetCapslockState();
+            if (caps != global.capslock_shown) { global.capslock_shown = caps; apply_detail_opacity(); }
+        }
+        return;
+    }
+    if (global.status != "normal") return;
+    global.elapsed += global.dt;
+    local.animation_cycle=global.cycle_seconds;
+    if (global.loader == "ring") animation_cycle=0.9;
+    if (global.loader == "bar" || global.loader == "hairline") animation_cycle=1.5;
+    while (global.elapsed >= animation_cycle) global.elapsed -= animation_cycle;
+    hide_normal_surface();
+    show_lockup();
+    if (global.loader == "dots") {
+        for (index=0; index<4; index++) {
+            local.opacity=dot_opacity(index*global.stagger_seconds);
+            if (global.progress_mode == "determinate") {
+                opacity=global.minimum_opacity;
+                if (global.progress_fraction >= (index+1)/4.0) opacity=1;
+            }
+            global.dot[index].sprite.SetOpacity(opacity * global.surface_opacity);
+        }
+    } else if (global.loader == "ring") {
+        local.frame=Math.Int(global.progress_fraction*60);
+        if (global.progress_mode == "indeterminate") {
+            local.phase=global.elapsed;
+            while (phase>=0.9) phase-=0.9;
+            frame=Math.Int(phase/0.9*60);
+        }
+        global.ring_sprite.SetImage(global.scaled_ring[frame]);
+        global.ring_sprite.SetOpacity(global.surface_opacity);
+    } else {
+        global.track_sprite.SetOpacity(0.16 * global.surface_opacity);
+        local.fraction=global.progress_fraction;
+        local.x=global.loader_x;
+        if (global.progress_mode == "indeterminate") {
+            fraction=0.34;
+            x+=(global.loader_width*(1-fraction))*(1-Math.Cos(global.elapsed/1.5*6.2831853))/2;
+        }
+        local.width=Math.Int(global.loader_width*fraction);
+        if (width>0) {
+            // Rebuild only when the fraction/layout changes, never to move a bar.
+            if (width != global.fill_width || global.loader_height != global.fill_height) {
+                global.fill_sprite.SetImage(global.track_source.Scale(width,global.loader_height));
+                global.fill_width=width; global.fill_height=global.loader_height;
+            }
+            global.fill_sprite.SetPosition(x,global.loader_y,10001);
+            global.fill_sprite.SetOpacity(global.surface_opacity);
+        }
+    }
+}
+fun boot_progress_callback(duration, fraction) {
+    // Use only Plymouth's reported fraction. No stopwatch or service claims.
+    if (fraction < 0) fraction=0;
+    if (fraction > 1) fraction=1;
+    global.progress_fraction=fraction;
+}
+fun center_prompt(image) {
+    update_region();
+    global.prompt_source = image;
+    // Bound long translated prompts and unusually long answers to the output.
+    local.width = global.region_width - 48;
+    local.height = global.region_height - 48;
+    if (width < 1) width = 1;
+    if (height < 1) height = 1;
+    local.factor = 1.0;
+    if (image.GetWidth() > width)
+        factor = width / image.GetWidth();
+    if (image.GetHeight() * factor > height)
+        factor = height / image.GetHeight();
+    if (factor < 1.0) {
+        local.scaled_width = Math.Int(image.GetWidth() * factor);
+        local.scaled_height = Math.Int(image.GetHeight() * factor);
+        if (scaled_width < 1) scaled_width = 1;
+        if (scaled_height < 1) scaled_height = 1;
+        image = image.Scale(scaled_width, scaled_height);
+    }
+    global.prompt_sprite.SetImage(image);
+    global.prompt_sprite.SetPosition(
+        global.region_x + global.region_width / 2 - image.GetWidth() / 2,
+        global.region_y + global.region_height / 2 - image.GetHeight() / 2,
+        10001);
+}
+
+fun display_normal_callback() {
+    global.status = "normal";
+    if (global.desktop && is_update_mode()) {
+        global.status = "update";
+        layout_update();
+        return;
+    }
+    hide_details();
+    layout_normal_surface();
+    show_lockup();
+}
+
+fun display_password_callback(prompt, bullets) {
+    if (global.desktop) {
+        local.relayout = global.status != "password" || prompt != global.prompt_text;
+        global.status = "password";
+        global.prompt_text = prompt;
+        global.bullets = bullets;
+        if (relayout) layout_prompt();
+        else apply_detail_opacity();
+        return;
+    }
+    global.status = "password";
+    hide_normal_surface();
+    local.mask = "";
+    // Keep the visual mask bounded; Plymouth alone owns the actual entry.
+    for (index = 0; index < bullets && index < 32; index++)
+        local.mask += "•";
+    local.image = Image.Text(prompt + "\n" + mask,
+                             global.ink_red, global.ink_green, global.ink_blue,
+                             1.0, "Figtree Medium 15");
+    center_prompt(image);
+    global.prompt_sprite.SetOpacity(1);
+}
+
+fun display_question_callback(prompt, entry) {
+    if (global.desktop) {
+        global.status = "question";
+        global.prompt_text = prompt;
+        global.answer = entry;
+        layout_prompt();
+        return;
+    }
+    global.status = "question";
+    hide_normal_surface();
+    local.image = Image.Text(prompt + "\n" + entry,
+                             global.ink_red, global.ink_green, global.ink_blue,
+                             1.0, "Figtree Medium 15");
+    center_prompt(image);
+    global.prompt_sprite.SetOpacity(1);
+}
+
+fun message_callback(message) {
+    update_region();
+    global.message = message;
+    global.message_visible = 1;
+    global.message_sprite.SetOpacity(global.surface_opacity);
+    local.image = Image.Text(message, global.ink_red, global.ink_green,
+                             global.ink_blue, 1.0, "Figtree Medium 12");
+    local.width = global.region_width - 48;
+    local.height = global.region_height/4 - 24;
+    if (width < 1) width=1;
+    if (height < 1) height=1;
+    local.factor=1.0;
+    if (image.GetWidth()>width) factor=width/image.GetWidth();
+    if (image.GetHeight()*factor>height) factor=height/image.GetHeight();
+    if (factor<1.0) {
+        local.scaled_width=Math.Int(image.GetWidth()*factor);
+        local.scaled_height=Math.Int(image.GetHeight()*factor);
+        if (scaled_width<1) scaled_width=1;
+        if (scaled_height<1) scaled_height=1;
+        image=image.Scale(scaled_width,scaled_height);
+    }
+    global.message_sprite.SetImage(image);
+    global.message_sprite.SetPosition(
+        global.region_x + global.region_width / 2 - image.GetWidth() / 2,
+        global.region_y + global.region_height - image.GetHeight() - 24, 10002);
+}
+
+fun hide_message_callback(message) {
+    if (message == global.message) {
+        global.message_visible = 0;
+        global.message_sprite.SetOpacity(0);
+    }
+}
+
+layout_normal_surface();
+if (global.desktop && is_update_mode()) {
+    global.status = "update";
+    layout_update();
+}
+Plymouth.SetBootProgressFunction(boot_progress_callback);
+Plymouth.SetDisplayMessageFunction(message_callback);
+Plymouth.SetHideMessageFunction(hide_message_callback);
+Plymouth.SetRefreshFunction(refresh_callback);
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+Plymouth.SetDisplayQuestionFunction(display_question_callback);
+Plymouth.SetSystemUpdateFunction(system_update_callback);

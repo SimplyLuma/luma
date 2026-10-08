@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/* Presence runs as the unprivileged greetd account before a user session
+ * exists.  Permit that one identity to ask logind to blank and restore the
+ * panel backlight.  No other login1 action is granted. */
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.login1.set-brightness" &&
+        subject.user == "greetd")
+        return polkit.Result.YES;
+});

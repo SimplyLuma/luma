@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 15:30:00 -0500
+Subject: [PATCH] theme: pane islands keep their elevation shadow off the neighbour
+
+Sibling islands in a split work surface use a deep shadow whose negative spread
+is at least half its blur, so it never paints across the 9px gap onto the next
+pane, in the maintained SCSS and the generated release CSS.
+---
+
+diff --git a/gtk/theme/Default/Default-dark.css b/gtk/theme/Default/Default-dark.css
+index a6afd30..8c6e65c 100644
+--- a/gtk/theme/Default/Default-dark.css
++++ b/gtk/theme/Default/Default-dark.css
+@@ -647,7 +647,7 @@ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfa
+ 
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > paned.luma-native-work-surface.luma-split-surface > separator { min-width: 9px; min-height: 9px; margin: 0; background: none; border: none; box-shadow: none; }
+ 
+-window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > paned.luma-native-work-surface.luma-split-surface > .luma-pane-island { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background-color: #2a2e34; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42), 0 20px 38px -15px rgba(0, 0, 0, 0.78); }
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > paned.luma-native-work-surface.luma-split-surface > .luma-pane-island { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background-color: #2a2e34; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42), 0 10px 22px -14px rgba(0, 0, 0, 0.70); }
+ 
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin: 0 9px 9px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; background-color: #2a2e34; color: #e4e8ea; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42), 0 20px 38px -15px rgba(0, 0, 0, 0.78); }
+ 
+diff --git a/gtk/theme/Default/Default-light.css b/gtk/theme/Default/Default-light.css
+index 1858434..a510aa3 100644
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -655,7 +655,7 @@ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfa
+ 
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > paned.luma-native-work-surface.luma-split-surface > separator { min-width: 9px; min-height: 9px; margin: 0; background: none; border: none; box-shadow: none; }
+ 
+-window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > paned.luma-native-work-surface.luma-split-surface > .luma-pane-island { border: 1px solid rgba(39, 48, 56, 0.095); border-radius: 10px; background-color: #fbfbfa; box-shadow: 0 2px 5px rgba(25, 27, 31, 0.16), 0 18px 36px -16px rgba(25, 27, 31, 0.48); }
++window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > paned.luma-native-work-surface.luma-split-surface > .luma-pane-island { border: 1px solid rgba(39, 48, 56, 0.095); border-radius: 10px; background-color: #fbfbfa; box-shadow: 0 2px 5px rgba(25, 27, 31, 0.16), 0 10px 20px -14px rgba(25, 27, 31, 0.40); }
+ 
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin: 0 9px 9px; border: 1px solid rgba(39, 48, 56, 0.095); border-radius: 10px; background-color: #fbfbfa; color: #283038; box-shadow: 0 2px 5px rgba(25, 27, 31, 0.16), 0 18px 36px -16px rgba(25, 27, 31, 0.48); }
+ 
+diff --git a/gtk/theme/Default/_common.scss b/gtk/theme/Default/_common.scss
+index f7ccc58..cef3fe9 100644
+--- a/gtk/theme/Default/_common.scss
++++ b/gtk/theme/Default/_common.scss
+@@ -1736,11 +1736,13 @@ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfa
+       border: 1px solid if($variant == 'light', rgba(39, 48, 56, 0.095), rgba(255, 255, 255, 0.08));
+       border-radius: 10px;
+       background-color: if($variant == 'light', #fbfbfa, #2a2e34);
++      // Sibling islands: the deep shadow keeps a negative spread of at least
++      // half its blur so it never paints across the 9px gap onto the next pane.
+       box-shadow: if($variant == 'light',
+                      (0 2px 5px rgba(25, 27, 31, 0.16),
+-                      0 18px 36px -16px rgba(25, 27, 31, 0.48)),
++                      0 10px 20px -14px rgba(25, 27, 31, 0.40)),
+                      (0 2px 6px rgba(0, 0, 0, 0.42),
+-                      0 20px 38px -15px rgba(0, 0, 0, 0.78)));
++                      0 10px 22px -14px rgba(0, 0, 0, 0.70)));
+     }
+   }
+ 

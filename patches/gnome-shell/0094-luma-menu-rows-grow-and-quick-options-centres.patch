@@ -1,0 +1,68 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: menu rows grow with their content; Quick Options opens centred
+
+Luma's compact context menus fixed every popup menu row at 32px. That
+applied to every menu in the Shell, not only context menus: Tiling's
+layout grid in Quick Options and Tiling Shell's own layout menu painted
+over the actions beneath them, and device and network rows put their
+icon below their name. Rows now have a 32px minimum and grow with what
+they hold; Quick Options detail rows keep their own compact sizing.
+
+Quick Options was anchored at its left edge to the centre of the clock
+and status island and extended off to its right. It now opens centred
+over the island, as the dock's menus do.
+
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3755,7 +3755,7 @@
+ .background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ .popup-menu-item {
+-  height: 32px; min-height: 0;
++  min-height: 32px;
+   padding: 0 8px; spacing: 10px;
+   border: none; border-radius: 10px;
+   color: #f2f4f6; background-color: transparent;
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3943,7 +3943,7 @@
+ .background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ .popup-menu-item {
+-  height: 32px; min-height: 0;
++  min-height: 32px;
+   padding: 0 8px; spacing: 10px;
+   border: none; border-radius: 10px;
+   color: #252b31; background-color: transparent;
+--- a/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
++++ b/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
+@@ -28,7 +28,7 @@
+ .background-menu .popup-menu-content { min-width: 284px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ .popup-menu-item {
+-  height: 32px; min-height: 0;
++  min-height: 32px;
+   padding: 0 8px; spacing: 10px;
+   border: none; border-radius: 10px;
+   color: #f2f4f6; background-color: transparent;
+@@ -76,7 +76,7 @@
+ .background-menu .popup-menu-content { min-width: 284px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ .popup-menu-item {
+-  height: 32px; min-height: 0;
++  min-height: 32px;
+   padding: 0 8px; spacing: 10px;
+   border: none; border-radius: 10px;
+   color: #252b31; background-color: transparent;
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -841,7 +841,8 @@
+ 
+ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+     constructor(sourceActor, nColumns = 1) {
+-        super(sourceActor, 0, St.Side.TOP);
++        // Centred on the island it opens from, as the dock's menus are.
++        super(sourceActor, 0.5, St.Side.TOP);
+ 
+         this.actor = new St.Widget({reactive: true, width: 0, height: 0});
+         this.actor.add_child(this._boxPointer);

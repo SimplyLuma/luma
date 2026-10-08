@@ -1,0 +1,168 @@
+From 71d989f27bb9c1db2705b68ed36d1f70b134ff82 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 23 Aug 2026 17:00:00 -0500
+Subject: [PATCH] qcomtee: add bounded FocalTech challenge cycle
+
+Extend the already accepted stock initialization and enumeration diagnostic
+with a separate, mutually exclusive mode that requests a pre-enrollment
+challenge and immediately closes it with post-enroll. The challenge contents
+are never logged or returned to userspace. This does not send enroll,
+authentication, capture, template-write, or raw-image commands.
+---
+
+--- a/drivers/tee/qcomtee/qcomtee-control.c
++++ b/drivers/tee/qcomtee/qcomtee-control.c
+@@ -8,7 +8,8 @@
+  * that client. Diagnostic modes mirror the acquisition/load boundary for
+  * Qualcomm-signed applications. The most advanced mode reproduces only the
+  * audited stock FocalTech initialization sequence through template-count
+- * enumeration; it contains no capture, enrollment, authentication,
++ * enumeration and a closed challenge cycle; it contains no capture,
++ * enrollment, authentication,
+  * template-write, or raw-image operation.
+  */
+ 
+@@ -53,6 +54,8 @@
+ #define LUMA_FOCAL_INITIALIZE_DEVICE 0x100bU
+ #define LUMA_FOCAL_SYNC_CONFIG 0x100dU
+ #define LUMA_FOCAL_INITIALIZE 0x1004U
++#define LUMA_FOCAL_PRE_ENROLL 0x2000U
++#define LUMA_FOCAL_POST_ENROLL 0x2002U
+ #define LUMA_FOCAL_ENUMERATE 0x2005U
+ #define LUMA_FOCAL_INITIALIZATION_BYTES 192U
+ #define LUMA_FOCAL_DEVICE_DATA_BYTES 60U
+@@ -101,6 +104,11 @@
+ MODULE_PARM_DESC(luma_focal_enumerate,
+ 		 "initialize focal64 and enumerate template metadata without capture");
+ 
++static bool luma_focal_challenge;
++module_param_named(luma_focal_challenge, luma_focal_challenge, bool, 0400);
++MODULE_PARM_DESC(luma_focal_challenge,
++		 "initialize focal64, enumerate, and close one pre-enroll challenge");
++
+ static bool luma_keymaster_lookup;
+ module_param_named(luma_keymaster_lookup, luma_keymaster_lookup, bool, 0400);
+ MODULE_PARM_DESC(luma_keymaster_lookup,
+@@ -1119,11 +1127,13 @@
+ 
+ static int luma_focal_initialize_and_enumerate(
+ 					struct qcomtee *qcomtee,
+-					struct qcomtee_object *controller)
++					struct qcomtee_object *controller,
++					bool challenge_cycle)
+ {
+ 	u8 initialization[LUMA_FOCAL_INITIALIZATION_BYTES] = { 0 };
+ 	u8 templates[sizeof(u32) +
+ 		LUMA_FOCAL_MAX_TEMPLATES * 2 * sizeof(u32)] = { 0 };
++	u8 challenge[sizeof(u64)] = { 0 };
+ 	u32 capacity = LUMA_FOCAL_MAX_TEMPLATES;
+ 	u32 count;
+ 	size_t response_size = 0;
+@@ -1156,8 +1166,35 @@
+ 	}
+ 	pr_info("luma-focal: enumeration accepted count=%u raw_images=0 templates_written=0\n",
+ 		count);
++
++	if (challenge_cycle) {
++		ret = luma_focal_exchange(qcomtee, controller,
++					  LUMA_FOCAL_PRE_ENROLL,
++					  NULL, 0, challenge,
++					  sizeof(challenge), &response_size);
++		if (ret)
++			goto out;
++		if (response_size != sizeof(challenge)) {
++			ret = -EPROTO;
++			goto out;
++		}
++		pr_info("luma-focal: pre-enroll challenge accepted bytes=%zu contents_logged=0 templates_written=0\n",
++			response_size);
++		ret = luma_focal_exchange(qcomtee, controller,
++					  LUMA_FOCAL_POST_ENROLL,
++					  NULL, 0, NULL, 0,
++					  &response_size);
++		if (ret)
++			goto out;
++		if (response_size) {
++			ret = -EPROTO;
++			goto out;
++		}
++		pr_info("luma-focal: post-enroll challenge cleanup accepted templates_written=0\n");
++	}
+ 	ret = 0;
+ out:
++	memzero_explicit(challenge, sizeof(challenge));
+ 	memzero_explicit(templates, sizeof(templates));
+ 	memzero_explicit(initialization, sizeof(initialization));
+ 	return ret;
+@@ -1287,7 +1324,8 @@
+ 			goto out;
+ 		}
+ 		ret = luma_focal_initialize_and_enumerate(
+-			session->qcomtee, session->controller);
++			session->qcomtee, session->controller,
++			luma_focal_challenge);
+ 		if (!ret)
+ 			session->stage = LUMA_FOCAL_STAGE_COMPLETE;
+ 	} else if (sysfs_streq(buffer, "abort")) {
+@@ -1587,7 +1625,8 @@
+ 	bool staged = false;
+ 	int ret, result = QCOMTEE_MSG_ERROR_UNAVAIL;
+ 	const char *app = luma_keymaster_lookup ? LUMA_KEYMASTER_APP :
+-		(luma_focal_identity || luma_focal_enumerate) ?
++		(luma_focal_identity || luma_focal_enumerate ||
++		 luma_focal_challenge) ?
+ 		LUMA_FINGERPRINT_APP : LUMA_CONTROL_APP;
+ 	u32 loader_uid = luma_standard_identity ?
+ 		LUMA_CONTROL_STANDARD_APP_LOADER_UID :
+@@ -1595,12 +1634,14 @@
+ 
+ 	if (!luma_control_identity && !luma_standard_identity &&
+ 	    !luma_focal_identity && !luma_focal_enumerate &&
++	    !luma_focal_challenge &&
+ 	    !luma_keymaster_lookup)
+ 		return;
+ 	if ((luma_control_identity ? 1 : 0) +
+ 	    (luma_standard_identity ? 1 : 0) +
+ 	    (luma_focal_identity ? 1 : 0) +
+ 	    (luma_focal_enumerate ? 1 : 0) +
++	    (luma_focal_challenge ? 1 : 0) +
+ 	    (luma_keymaster_lookup ? 1 : 0) != 1) {
+ 		pr_err("luma-control: mutually exclusive identity controls requested\n");
+ 		return;
+@@ -1726,7 +1767,7 @@
+ 		goto out;
+ 	}
+ 	controller = args[3].o;
+-	if (luma_focal_enumerate)
++	if (luma_focal_enumerate || luma_focal_challenge)
+ 		pr_info("luma-control: identity accepted app=%s distinguished_name=%.*s elf_bytes=%zu; bounded TA operations requested\n",
+ 			app, (int)args[2].b.size, distinguished_name,
+ 			elf_size);
+@@ -1734,8 +1775,8 @@
+ 		pr_info("luma-control: identity accepted app=%s distinguished_name=%.*s elf_bytes=%zu; no TA operation invoked\n",
+ 			app, (int)args[2].b.size, distinguished_name,
+ 			elf_size);
+-	if (luma_focal_enumerate) {
++	if (luma_focal_enumerate || luma_focal_challenge) {
+ 		ret = luma_focal_secure_prepare(
+ 			qcomtee, dev, loader, controller,
+ 			&luma_focal_session.gatekeeper);
+ 		if (ret) {
+@@ -1794,9 +1835,12 @@
+ 	luma_control_put_sync(qcomtee, &controller);
+ 	luma_control_put_sync(qcomtee, &loader);
+ 	luma_control_put_sync(qcomtee, &client_env);
+-	if (staged)
+-		pr_info("luma-control: staged stock_initialization=true biometric_commands=enumerate-only raw_images=0 templates_written=0\n");
+-	else
++	if (staged) {
++		if (luma_focal_challenge)
++			pr_info("luma-control: staged stock_initialization=true biometric_commands=enumerate,pre-enroll,post-enroll raw_images=0 templates_written=0\n");
++		else
++			pr_info("luma-control: staged stock_initialization=true biometric_commands=enumerate-only raw_images=0 templates_written=0\n");
++	} else
+ 		pr_info("luma-control: complete biometric_commands=0\n");
+ }
+ 
+-- 
+2.54.0 (Apple Git-157)

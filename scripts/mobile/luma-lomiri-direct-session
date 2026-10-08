@@ -1,0 +1,87 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# One-shot physical-compositor Lomiri Keyboard comparison. KWin and Lomiri run
+# from one internally consistent Ubuntu ARM64 runtime and replace Luma only for
+# the duration of the trial. This deliberately avoids nesting another GPU
+# compositor on the FP6. When the lab closes or fails, Luma resumes.
+
+set -eu
+
+runtime_root=/var/lib/luma-keyboard-labs/lomiri-questing
+ready_marker=$runtime_root/.luma-lomiri-1.1.0-ready
+engine=/usr/libexec/luma-kwin-keyboard-engine
+entry=/usr/libexec/luma-keyboard-lab-entry
+
+resume_luma() {
+  printf 'Lomiri direct session: resuming Luma\n' >&2
+  exec /usr/local/bin/luma-shell-session
+}
+
+for path in /usr/bin/bwrap /usr/bin/systemd-inhibit \
+  "$runtime_root/usr/bin/kwin_wayland" \
+  "$runtime_root/usr/bin/dbus-run-session" \
+  "$runtime_root/usr/bin/maliit-server" "$engine" "$entry" \
+  "$ready_marker" /usr/local/bin/luma-shell-session; do
+  [ -x "$path" ] || [ -r "$path" ] || {
+    printf 'Lomiri direct session: missing path: %s\n' "$path" >&2
+    resume_luma
+  }
+done
+
+unset DISPLAY WAYLAND_DISPLAY
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_CLASS=user
+export XDG_SESSION_DESKTOP=luma-lomiri-lab
+export XDG_CURRENT_DESKTOP=Luma:KWin
+
+runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+diagnostic_log=$runtime_dir/luma-lomiri-direct.log
+: >"$diagnostic_log"
+set +e
+/usr/bin/systemd-inhibit \
+  --what=handle-power-key \
+  --who='Luma Lomiri Keyboard Lab' \
+  --why='Keep the direct keyboard comparison recoverable' \
+  --mode=block \
+  /usr/bin/bwrap \
+    --ro-bind "$runtime_root" / \
+    --proc /proc \
+    --dev-bind /dev /dev \
+    --ro-bind /sys /sys \
+    --tmpfs /run \
+    --dir /run/dbus \
+    --ro-bind /run/dbus/system_bus_socket /run/dbus/system_bus_socket \
+    --ro-bind-try /run/systemd /run/systemd \
+    --ro-bind-try /run/udev /run/udev \
+    --dir /run/user \
+    --bind "$runtime_dir" "/run/user/$(id -u)" \
+    --dir /run/luma \
+    --ro-bind "$engine" /run/luma/luma-kwin-keyboard-engine \
+    --ro-bind "$entry" /run/luma/luma-keyboard-lab-entry \
+    --tmpfs /tmp \
+    --tmpfs /home \
+    --dir /home/luma \
+    --setenv HOME /home/luma \
+    --setenv USER luma \
+    --setenv LOGNAME luma \
+    --setenv LANG C.UTF-8 \
+    --setenv XDG_RUNTIME_DIR "/run/user/$(id -u)" \
+    --setenv XDG_SESSION_TYPE wayland \
+    --setenv XDG_CURRENT_DESKTOP Luma:KWin \
+    --setenv KWIN_COMPOSE Q \
+    --setenv LUMA_KWIN_KEYBOARD_ENGINE lomiri \
+    --setenv LUMA_LOMIRI_KEYBOARD_START_DELAY 2 \
+    /usr/bin/dbus-run-session -- \
+      /usr/bin/kwin_wayland \
+        --drm --socket wayland-0 \
+        --no-lockscreen --no-global-shortcuts --no-kactivities \
+        --inputmethod /run/luma/luma-kwin-keyboard-engine \
+        --exit-with-session '/run/luma/luma-keyboard-lab-entry lomiri' \
+    >"$diagnostic_log" 2>&1
+status=$?
+set -e
+printf 'Lomiri direct session: KWin exited with status %s\n' "$status" \
+  >>"$diagnostic_log"
+printf 'Lomiri direct session: KWin exited with status %s\n' "$status" >&2
+resume_luma

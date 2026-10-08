@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luma-tide"
+version = "0.1.0"
+description = "Native source-aware music library and player for Project Luma"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+
+[tool.setuptools.packages.find]
+include = ["luma_tide*"]
+

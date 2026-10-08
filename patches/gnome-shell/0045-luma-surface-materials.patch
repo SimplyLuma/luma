@@ -1,0 +1,743 @@
+From bce1c8ff92f40eea149da2ed4e7525feb6b9afd3 Mon Sep 17 00:00:00 2001
+From: Nick <nick@Nicks-MacBook-Pro.local>
+Date: Mon, 7 Sep 2026 19:25:34 -0500
+Subject: [PATCH] shell: add native Luma surface material ownership
+
+---
+ data/theme/gnome-shell-dark.css               |  38 ++++
+ data/theme/gnome-shell-light.css              |  38 ++++
+ .../widgets/_luma-context-menu.scss           |  42 ++++
+ data/theme/luma-shelf.css                     |  41 ++--
+ js/js-resources.gresource.xml                 |   1 +
+ js/ui/lumaSurfaceMaterials.js                 | 194 ++++++++++++++++++
+ js/ui/popupMenu.js                            |   5 +
+ js/ui/shelf.js                                |   7 +
+ src/shell-blur-effect.c                       |  92 ++++++++-
+ tests/meson.build                             |   1 +
+ tests/unit/lumaSurfaceMaterials.js            |  30 +++
+ 11 files changed, 470 insertions(+), 19 deletions(-)
+ create mode 100644 js/ui/lumaSurfaceMaterials.js
+ create mode 100644 tests/unit/lumaSurfaceMaterials.js
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 0a42f52..44a3c98 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3743,6 +3743,16 @@ StScrollBar {
+   background-color: #252a30;
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.popup-menu.luma-surface-frost .popup-menu-content {
++  background-color: rgba(251, 251, 250, 0.90);
++  color: #2c343a; }
++.popup-menu.luma-surface-frost .luma-popup-shadow {
++  background-color: rgba(241, 242, 243, 0.01); }
++.popup-menu.luma-surface-glass .popup-menu-content {
++  background-color: rgba(246, 244, 240, 0.82);
++  color: #2c343a; }
++.popup-menu.luma-surface-glass .luma-popup-shadow {
++  background-color: rgba(255, 255, 255, 0.01); }
+ .background-menu { -arrow-rise: 0; }
+ .background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+@@ -3767,6 +3777,34 @@ StScrollBar {
+ .popup-menu-ornament { icon-size: 14px; color: rgba(242, 244, 246, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(242, 244, 246, 0.58); }
+ 
++/* Frost and Glass use shared light ink; nested panes do not own blur. */
++.popup-menu.luma-surface-frost .popup-menu-item,
++.popup-menu.luma-surface-frost .popup-inactive-menu-item,
++.popup-menu.luma-surface-glass .popup-menu-item,
++.popup-menu.luma-surface-glass .popup-inactive-menu-item { color: #2c343a; }
++.popup-menu.luma-surface-frost .popup-menu-item:hover,
++.popup-menu.luma-surface-frost .popup-menu-item:focus,
++.popup-menu.luma-surface-frost .popup-menu-item:selected,
++.popup-menu.luma-surface-frost .popup-menu-item:checked,
++.popup-menu.luma-surface-glass .popup-menu-item:hover,
++.popup-menu.luma-surface-glass .popup-menu-item:focus,
++.popup-menu.luma-surface-glass .popup-menu-item:selected,
++.popup-menu.luma-surface-glass .popup-menu-item:checked {
++  color: #2c343a; background-color: rgba(37, 46, 54, 0.06); }
++.popup-menu.luma-surface-frost .popup-menu-item:insensitive,
++.popup-menu.luma-surface-glass .popup-menu-item:insensitive { color: rgba(44, 52, 58, 0.38); }
++.popup-menu.luma-surface-frost .popup-menu-item.luma-menu-heading,
++.popup-menu.luma-surface-glass .popup-menu-item.luma-menu-heading { color: rgba(44, 52, 58, 0.46); }
++.popup-menu.luma-surface-frost .popup-menu-ornament,
++.popup-menu.luma-surface-glass .popup-menu-ornament { color: rgba(44, 52, 58, 0.72); }
++.popup-menu.luma-surface-frost .popup-menu-arrow,
++.popup-menu.luma-surface-glass .popup-menu-arrow { color: rgba(44, 52, 58, 0.58); }
++.popup-menu.luma-surface-frost .popup-separator-menu-item .popup-separator-menu-item-separator,
++.popup-menu.luma-surface-glass .popup-separator-menu-item .popup-separator-menu-item-separator {
++  background-color: rgba(37, 46, 54, 0.105); }
++.popup-menu.luma-surface-frost .popup-sub-menu { background-color: rgba(251, 251, 250, 0.94); }
++.popup-menu.luma-surface-glass .popup-sub-menu { background-color: rgba(246, 244, 240, 0.88); }
++
+ /* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
+  * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
+  * Shared tokens: Figtree 14/13/11, window radius 15, island 10,
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 5b4d142..706bf33 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3898,6 +3898,16 @@ StScrollBar {
+   background-color: #f6f7f8;
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.popup-menu.luma-surface-frost .popup-menu-content {
++  background-color: rgba(251, 251, 250, 0.90);
++  color: #2c343a; }
++.popup-menu.luma-surface-frost .luma-popup-shadow {
++  background-color: rgba(241, 242, 243, 0.01); }
++.popup-menu.luma-surface-glass .popup-menu-content {
++  background-color: rgba(246, 244, 240, 0.82);
++  color: #2c343a; }
++.popup-menu.luma-surface-glass .luma-popup-shadow {
++  background-color: rgba(255, 255, 255, 0.01); }
+ .background-menu { -arrow-rise: 0; }
+ .background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+@@ -3922,6 +3932,34 @@ StScrollBar {
+ .popup-menu-ornament { icon-size: 14px; color: rgba(37, 43, 49, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(37, 43, 49, 0.58); }
+ 
++/* Frost and Glass use shared light ink; nested panes do not own blur. */
++.popup-menu.luma-surface-frost .popup-menu-item,
++.popup-menu.luma-surface-frost .popup-inactive-menu-item,
++.popup-menu.luma-surface-glass .popup-menu-item,
++.popup-menu.luma-surface-glass .popup-inactive-menu-item { color: #2c343a; }
++.popup-menu.luma-surface-frost .popup-menu-item:hover,
++.popup-menu.luma-surface-frost .popup-menu-item:focus,
++.popup-menu.luma-surface-frost .popup-menu-item:selected,
++.popup-menu.luma-surface-frost .popup-menu-item:checked,
++.popup-menu.luma-surface-glass .popup-menu-item:hover,
++.popup-menu.luma-surface-glass .popup-menu-item:focus,
++.popup-menu.luma-surface-glass .popup-menu-item:selected,
++.popup-menu.luma-surface-glass .popup-menu-item:checked {
++  color: #2c343a; background-color: rgba(37, 46, 54, 0.06); }
++.popup-menu.luma-surface-frost .popup-menu-item:insensitive,
++.popup-menu.luma-surface-glass .popup-menu-item:insensitive { color: rgba(44, 52, 58, 0.38); }
++.popup-menu.luma-surface-frost .popup-menu-item.luma-menu-heading,
++.popup-menu.luma-surface-glass .popup-menu-item.luma-menu-heading { color: rgba(44, 52, 58, 0.46); }
++.popup-menu.luma-surface-frost .popup-menu-ornament,
++.popup-menu.luma-surface-glass .popup-menu-ornament { color: rgba(44, 52, 58, 0.72); }
++.popup-menu.luma-surface-frost .popup-menu-arrow,
++.popup-menu.luma-surface-glass .popup-menu-arrow { color: rgba(44, 52, 58, 0.58); }
++.popup-menu.luma-surface-frost .popup-separator-menu-item .popup-separator-menu-item-separator,
++.popup-menu.luma-surface-glass .popup-separator-menu-item .popup-separator-menu-item-separator {
++  background-color: rgba(37, 46, 54, 0.105); }
++.popup-menu.luma-surface-frost .popup-sub-menu { background-color: rgba(251, 251, 250, 0.94); }
++.popup-menu.luma-surface-glass .popup-sub-menu { background-color: rgba(246, 244, 240, 0.88); }
++
+ /* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
+  * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
+  * Shared tokens: Figtree 14/13/11, window radius 15, island 10,
+diff --git a/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss b/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
+index d958100..c7b9373 100644
+--- a/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
++++ b/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
+@@ -14,6 +14,16 @@
+   background-color: #252a30;
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.popup-menu.luma-surface-frost .popup-menu-content {
++  background-color: rgba(251, 251, 250, 0.90);
++  color: #2c343a; }
++.popup-menu.luma-surface-frost .luma-popup-shadow {
++  background-color: rgba(241, 242, 243, 0.01); }
++.popup-menu.luma-surface-glass .popup-menu-content {
++  background-color: rgba(246, 244, 240, 0.82);
++  color: #2c343a; }
++.popup-menu.luma-surface-glass .luma-popup-shadow {
++  background-color: rgba(255, 255, 255, 0.01); }
+ .background-menu { -arrow-rise: 0; }
+ .background-menu .popup-menu-content { min-width: 284px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+@@ -52,6 +62,16 @@
+   background-color: #f6f7f8;
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.popup-menu.luma-surface-frost .popup-menu-content {
++  background-color: rgba(251, 251, 250, 0.90);
++  color: #2c343a; }
++.popup-menu.luma-surface-frost .luma-popup-shadow {
++  background-color: rgba(241, 242, 243, 0.01); }
++.popup-menu.luma-surface-glass .popup-menu-content {
++  background-color: rgba(246, 244, 240, 0.82);
++  color: #2c343a; }
++.popup-menu.luma-surface-glass .luma-popup-shadow {
++  background-color: rgba(255, 255, 255, 0.01); }
+ .background-menu { -arrow-rise: 0; }
+ .background-menu .popup-menu-content { min-width: 284px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+@@ -76,3 +96,25 @@
+ .popup-menu-ornament { icon-size: 14px; color: rgba(37, 43, 49, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(37, 43, 49, 0.58); }
+ }
++
++/* Frost and Glass always use the shared light ink recipe. Nested submenus are
++ * panes within the root blurred edge and must not own another blur effect. */
++.popup-menu.luma-surface-frost,
++.popup-menu.luma-surface-glass {
++  .popup-menu-item,
++  .popup-inactive-menu-item { color: #2c343a; }
++  .popup-menu-item:hover,
++  .popup-menu-item:focus,
++  .popup-menu-item:selected,
++  .popup-menu-item:checked { color: #2c343a; background-color: rgba(37, 46, 54, 0.06); }
++  .popup-menu-item:insensitive { color: rgba(44, 52, 58, 0.38); }
++  .popup-menu-item.luma-menu-heading { color: rgba(44, 52, 58, 0.46); }
++  .popup-menu-ornament { color: rgba(44, 52, 58, 0.72); }
++  .popup-menu-arrow { color: rgba(44, 52, 58, 0.58); }
++  .popup-separator-menu-item .popup-separator-menu-item-separator {
++    background-color: rgba(37, 46, 54, 0.105); }
++}
++.popup-menu.luma-surface-frost .popup-sub-menu {
++  background-color: rgba(251, 251, 250, 0.94); }
++.popup-menu.luma-surface-glass .popup-sub-menu {
++  background-color: rgba(246, 244, 240, 0.88); }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index ad37329..dc30063 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -135,8 +135,9 @@
+ 
+ /* Native St.ScrollViewFade masks the viewport; fades consume no layout. */
+ .luma-shelf-running-indicator { background-color: #ffffff; }
+-.luma-shelf-material-light .luma-shelf-running-indicator,
+-.luma-shelf-material-frost .luma-shelf-running-indicator { background-color: #21252b; }
++.luma-surface-light .luma-shelf-running-indicator,
++.luma-surface-frost .luma-shelf-running-indicator,
++.luma-surface-glass .luma-shelf-running-indicator { background-color: #21252b; }
+ 
+ /* Dock: the Apps tile is hidden by the Shelf itself, and its separator goes
+    with it, otherwise the separator and the empty container read as dead space
+@@ -304,18 +305,24 @@
+ .luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster:active,
+ .luma-shelf-connected .luma-shelf-actions-island .luma-status-cluster:focus { background-color: transparent; }
+ 
+-/* Status treatment tokens follow the owned Dash material, including merged
+- * surfaces. Frost/Glass keep the current opaque material fallback; this does
+- * not install a second blur compositor. */
+-.luma-shelf-group.luma-shelf-material-light,
+-.luma-shelf-group.luma-shelf-material-frost {
+-  background-color: #eef0f2; color: #191b1f;
+-}
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material-light,
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material-frost {
+-  background-color: transparent;
+-}
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-material-light > .luma-shelf-island > .luma-shelf-material,
+-.luma-shelf-root.luma-shelf-separate > .luma-shelf-material-frost > .luma-shelf-island > .luma-shelf-material {
+-  background-color: #eef0f2; color: #191b1f;
+-}
++/* The controller applies effective, not merely requested, treatment classes.
++ * This keeps accessibility and software-rendering fallbacks opaque without
++ * overwriting the user's selection. Only the one visible edge owns blur. */
++.luma-shelf-material.luma-surface-light {
++  background-color: #eef0f2;
++  color: #191b1f; }
++
++.luma-shelf-material.luma-surface-dark {
++  background-color: #21252b;
++  color: #e7e9e8; }
++
++.luma-shelf-material.luma-surface-frost {
++  background-color: rgba(241, 242, 243, 0.73);
++  color: #2c343a; }
++
++.luma-shelf-material.luma-surface-glass {
++  background-color: rgba(255, 255, 255, 0.31);
++  color: #2c343a; }
++
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group.luma-shelf-material {
++  background-color: transparent; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 3fb1ae6..dfd7315 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -82,6 +82,7 @@
+     <file>ui/listModes.js</file>
+     <file>ui/locatePointer.js</file>
+     <file>ui/lookingGlass.js</file>
++    <file>ui/lumaSurfaceMaterials.js</file>
+     <file>ui/lumaSearch.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+new file mode 100644
+index 0000000..06f0e31
+--- /dev/null
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -0,0 +1,200 @@
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import Shell from 'gi://Shell';
++
++const EFFECT_NAME = 'luma-surface-backdrop';
++const TREATMENTS = ['light', 'dark', 'frost', 'glass'];
++const TRANSLUCENT = new Set(['frost', 'glass']);
++
++const RECIPES = {
++    light: {radius: 0, saturation: 1},
++    dark: {radius: 0, saturation: 1},
++    frost: {radius: 38, saturation: 1.45},
++    glass: {radius: 24, saturation: 1.65},
++};
++
++function optionalSettings(schemaId, key) {
++    const source = Gio.SettingsSchemaSource.get_default();
++    const schema = source?.lookup(schemaId, true);
++    if (!schema?.has_key(key))
++        return null;
++    return new Gio.Settings({settings_schema: schema});
++}
++
++function isDark(settings) {
++    return settings?.get_string('color-scheme') === 'prefer-dark';
++}
++
++export function resolveTreatment({
++    requested,
++    dark = false,
++    highContrast = false,
++    reduceTransparency = false,
++    hardwareAccelerated = true,
++}) {
++    const chosen = TREATMENTS.includes(requested)
++        ? requested
++        : dark ? 'dark' : 'light';
++    if (highContrast)
++        return dark ? 'dark' : 'light';
++    if (TRANSLUCENT.has(chosen) &&
++        (reduceTransparency || !hardwareAccelerated))
++        return 'light';
++    return chosen;
++}
++
++class SurfaceMaterialController {
++    constructor() {
++        this._bindings = new Set();
++        this._surfaceSettings = optionalSettings(
++            'org.project_luma.shell-state', 'surface-treatment');
++        this._interfaceSettings = optionalSettings(
++            'org.gnome.desktop.interface', 'color-scheme');
++        this._a11ySettings = optionalSettings(
++            'org.gnome.desktop.a11y.interface', 'high-contrast');
++
++        for (const settings of [this._surfaceSettings,
++            this._interfaceSettings, this._a11ySettings]) {
++            settings?.connect('changed', () => this._sync());
++        }
++        this._sync();
++    }
++
++    _hardwareAccelerated() {
++        // Mutter keeps software blur unavailable by default. The emulator
++        // may opt into the same real compositor effect for measured visual
++        // previews; production sessions never set this variable.
++        if (GLib.getenv('LUMA_MUTTER_ALLOW_SOFTWARE_BLUR') === '1')
++            return true;
++        try {
++            return global.backend.is_rendering_hardware_accelerated();
++        } catch (error) {
++            logError(error, 'Unable to determine Luma surface renderer capability');
++            return false;
++        }
++    }
++
++    _requestedTreatment() {
++        if (!this._surfaceSettings)
++            return isDark(this._interfaceSettings) ? 'dark' : 'light';
++
++        const selected = this._surfaceSettings.get_user_value('surface-treatment');
++        if (!selected)
++            return isDark(this._interfaceSettings) ? 'dark' : 'light';
++        const treatment = selected.deep_unpack();
++        return TREATMENTS.includes(treatment) ? treatment : 'light';
++    }
++
++    _effectiveTreatment() {
++        return resolveTreatment({
++            requested: this._requestedTreatment(),
++            dark: isDark(this._interfaceSettings),
++            highContrast: this._a11ySettings?.get_boolean('high-contrast') ?? false,
++            reduceTransparency:
++                this._surfaceSettings?.get_boolean('reduce-transparency') ?? false,
++            hardwareAccelerated: this._hardwareAccelerated(),
++        });
++    }
++
++    _sync() {
++        this._effective = this._effectiveTreatment();
++        const recipe = RECIPES[this._effective];
++
++        // This is the compositor-owned parameter source for Wayland client
++        // background effects. Older Mutter builds intentionally expose no
++        // protocol; Luma applications then remain opaque.
++        try {
++            global.compositor.set_background_blur_params(
++                recipe.radius, recipe.saturation, 0);
++        } catch (error) {
++            if (TRANSLUCENT.has(this._effective))
++                logError(error, 'Luma client backdrop protocol is unavailable');
++        }
++
++        for (const binding of this._bindings)
++            binding._sync(this._effective, recipe);
++    }
++
++    bind(actor, options = {}) {
++        const binding = new SurfaceMaterialBinding(this, actor, options);
++        this._bindings.add(binding);
++        binding._sync(this._effective, RECIPES[this._effective]);
++        return binding;
++    }
++
++    _remove(binding) {
++        this._bindings.delete(binding);
++    }
++}
++
++class SurfaceMaterialBinding {
++    constructor(controller, actor, {
++        enabled = true,
++        cornerRadii = 15,
++        classActors = [],
++    } = {}) {
++        this._controller = controller;
++        this._actor = actor;
++        this._enabled = enabled;
++        this._classActors = [actor, ...classActors];
++        this._cornerRadii = Array.isArray(cornerRadii)
++            ? [...cornerRadii]
++            : [cornerRadii, cornerRadii, cornerRadii, cornerRadii];
++        this._effect = new Shell.BlurEffect({
++            mode: Shell.BlurMode.BACKGROUND,
++            brightness: 1,
++        });
++        actor.add_effect_with_name(EFFECT_NAME, this._effect);
++        actor.connect('destroy', () => {
++            this._controller._remove(this);
++            this._actor = null;
++            this._effect = null;
++        });
++    }
++
++    setEnabled(enabled) {
++        this._enabled = enabled;
++        this._sync(this._controller._effective,
++            RECIPES[this._controller._effective]);
++    }
++
++    setCornerRadii(radii) {
++        this._cornerRadii = Array.isArray(radii)
++            ? [...radii]
++            : [radii, radii, radii, radii];
++        this._setEffectGeometry();
++    }
++
++    _setEffectGeometry() {
++        if (!this._effect)
++            return;
++        const [topLeft, topRight, bottomRight, bottomLeft] = this._cornerRadii;
++        this._effect.corner_radius_top_left = topLeft;
++        this._effect.corner_radius_top_right = topRight;
++        this._effect.corner_radius_bottom_right = bottomRight;
++        this._effect.corner_radius_bottom_left = bottomLeft;
++    }
++
++    _sync(treatment, recipe) {
++        if (!this._actor || !this._effect)
++            return;
++        for (const actor of this._classActors) {
++            for (const name of TREATMENTS)
++                actor.remove_style_class_name(`luma-surface-${name}`);
++            actor.add_style_class_name(`luma-surface-${treatment}`);
++        }
++
++        const active = this._enabled && TRANSLUCENT.has(treatment);
++        this._effect.radius = recipe.radius;
++        this._effect.saturation = recipe.saturation;
++        this._effect.enabled = active;
++        this._setEffectGeometry();
++    }
++}
++
++let controller;
++
++export function bindSurface(actor, options = {}) {
++    controller ??= new SurfaceMaterialController();
++    return controller.bind(actor, options);
++}
+diff --git a/js/ui/popupMenu.js b/js/ui/popupMenu.js
+index 39dde84..b2b3343 100644
+--- a/js/ui/popupMenu.js
++++ b/js/ui/popupMenu.js
+@@ -9,6 +9,7 @@ import * as Signals from '../misc/signals.js';
+ 
+ import * as BoxPointer from './boxpointer.js';
+ import * as Main from './main.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import * as Params from '../misc/params.js';
+ 
+ /** @enum {number} */
+@@ -971,6 +972,10 @@ export class PopupMenu extends PopupMenuBase {
+ 
+         this._boxPointer.bin.set_child(this.box);
+         this.actor.add_style_class_name('popup-menu');
++        this._materialBinding = SurfaceMaterials.bindSurface(this.box, {
++            cornerRadii: 15,
++            classActors: [this.actor],
++        });
+ 
+         global.focus_manager.add_group(this.actor);
+         this.actor.reactive = true;
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 0cc5c8b..129a036 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -7,6 +7,7 @@ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {DASH_TILE_SIZE, runningIndicatorGeometry} from './shelfMetrics.js';
+ 
+ const DASH_PADDING = 10;
+@@ -225,6 +226,10 @@ class ShelfIsland extends St.Widget {
+ 
+         child.add_style_class_name('luma-shelf-material');
+         this.add_child(child);
++        this._materialBinding = SurfaceMaterials.bindSurface(child, {
++            enabled: false,
++            cornerRadii: 15,
++        });
+ 
+         const stroke = new St.Widget({
+             style_class: 'luma-shelf-stroke',
+@@ -256,6 +261,7 @@ class ShelfIsland extends St.Widget {
+ 
+     setCornerRadii(radii) {
+         this._radii = radii;
++        this._materialBinding.setCornerRadii(radii);
+         if (this._content._statusActive) {
+             this._content._statusRadii = radii;
+             this._content._styleStatusCluster();
+@@ -286,6 +292,7 @@ class ShelfIsland extends St.Widget {
+     setSurfaceVisible(visible, castShadows) {
+         this._shadows.forEach(actor => actor.visible = visible && castShadows);
+         this._stroke.visible = visible;
++        this._materialBinding.setEnabled(visible);
+     }
+ 
+     // Constraint-backed shadow actors deliberately do not participate in
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index d362b0a..04842a5 100644
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -45,10 +45,28 @@
+  */
+ 
+ static const gchar *brightness_glsl_declarations =
+-"uniform float brightness;                                                 \n";
++"uniform float brightness;                                                 \n"
++"uniform float luma_saturation;                                            \n"
++"uniform vec2 luma_size;                                                   \n"
++"uniform vec4 luma_corners;                                                \n";
+ 
+ static const gchar *brightness_glsl =
+-"  cogl_color_out.rgb *= brightness;                                       \n";
++"  float luma = dot(cogl_color_out.rgb, vec3(0.2126, 0.7152, 0.0722));        \n"
++"  cogl_color_out.rgb = clamp(mix(vec3(luma), cogl_color_out.rgb,             \n"
++"                                luma_saturation), 0.0, cogl_color_out.a); \n"
++"  cogl_color_out.rgb *= brightness;                                       \n"
++"  if (dot(luma_corners, vec4(1.0)) > 0.0) {                               \n"
++"    vec2 half_size = luma_size * 0.5;                                     \n"
++"    vec2 point = cogl_tex_coord_in[0].st * luma_size;                      \n"
++"    float r = point.x < half_size.x                                        \n"
++"      ? (point.y < half_size.y ? luma_corners.x : luma_corners.w)          \n"
++"      : (point.y < half_size.y ? luma_corners.y : luma_corners.z);         \n"
++"    r = min(r, min(half_size.x, half_size.y));                              \n"
++"    vec2 q = abs(point - half_size)                                        \n"
++"             - half_size + vec2(r);                                      \n"
++"    float d = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;      \n"
++"    cogl_color_out *= 1.0 - smoothstep(-0.5, 0.5, d);                       \n"
++"  }                                                                      \n";
+ 
+ #define MIN_DOWNSCALE_SIZE 256.f
+ #define MAX_RADIUS 12.f
+@@ -82,6 +100,8 @@ struct _ShellBlurEffect
+   FramebufferData background_fb;
+   FramebufferData brightness_fb;
+   int brightness_uniform;
++  int saturation_uniform, size_uniform, corners_uniform;
++  float saturation, corner_radii[4];
+ 
+   ShellBlurMode mode;
+   float downscale_factor;
+@@ -95,6 +115,11 @@ enum {
+   PROP_0,
+   PROP_RADIUS,
+   PROP_BRIGHTNESS,
++  PROP_SATURATION,
++  PROP_CORNER_RADIUS_TOP_LEFT,
++  PROP_CORNER_RADIUS_TOP_RIGHT,
++  PROP_CORNER_RADIUS_BOTTOM_RIGHT,
++  PROP_CORNER_RADIUS_BOTTOM_LEFT,
+   PROP_MODE,
+   N_PROPS
+ };
+@@ -163,6 +188,17 @@ update_brightness (ShellBlurEffect *self,
+                            paint_opacity / 255.0, paint_opacity / 255.0);
+   cogl_pipeline_set_color (self->brightness_fb.pipeline, &color);
+ 
++  float width, height;
++  clutter_actor_get_size (self->actor, &width, &height);
++  const float size[] = { width, height };
++  cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
++                                self->saturation_uniform, self->saturation);
++  cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
++                                   self->size_uniform, 2, 1, size);
++  cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
++                                   self->corners_uniform, 4, 1,
++                                   self->corner_radii);
++
+   if (self->brightness_uniform > -1)
+     {
+       cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
+@@ -735,6 +771,17 @@ shell_blur_effect_get_property (GObject    *object,
+       g_value_set_float (value, self->brightness);
+       break;
+ 
++    case PROP_SATURATION:
++      g_value_set_float (value, self->saturation);
++      break;
++    case PROP_CORNER_RADIUS_TOP_LEFT:
++    case PROP_CORNER_RADIUS_TOP_RIGHT:
++    case PROP_CORNER_RADIUS_BOTTOM_RIGHT:
++    case PROP_CORNER_RADIUS_BOTTOM_LEFT:
++      g_value_set_float (value,
++                         self->corner_radii[prop_id - PROP_CORNER_RADIUS_TOP_LEFT]);
++      break;
++
+     case PROP_MODE:
+       g_value_set_enum (value, self->mode);
+       break;
+@@ -762,6 +809,27 @@ shell_blur_effect_set_property (GObject      *object,
+       shell_blur_effect_set_brightness (self, g_value_get_float (value));
+       break;
+ 
++    case PROP_SATURATION:
++    case PROP_CORNER_RADIUS_TOP_LEFT:
++    case PROP_CORNER_RADIUS_TOP_RIGHT:
++    case PROP_CORNER_RADIUS_BOTTOM_RIGHT:
++    case PROP_CORNER_RADIUS_BOTTOM_LEFT:
++      {
++        float *field = prop_id == PROP_SATURATION
++          ? &self->saturation
++          : &self->corner_radii[prop_id - PROP_CORNER_RADIUS_TOP_LEFT];
++        float next = g_value_get_float (value);
++        if (*field != next)
++          {
++            *field = next;
++            self->cache_flags &= ~BLUR_APPLIED;
++            if (self->actor)
++              clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
++            g_object_notify_by_pspec (object, properties[prop_id]);
++          }
++      }
++      break;
++
+     case PROP_MODE:
+       shell_blur_effect_set_mode (self, g_value_get_enum (value));
+       break;
+@@ -796,6 +864,22 @@ shell_blur_effect_class_init (ShellBlurEffectClass *klass)
+                         0.f, 1.f, 1.f,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
+ 
++  properties[PROP_SATURATION] =
++    g_param_spec_float ("saturation", NULL, NULL, 0.f, 2.f, 1.f,
++                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
++  properties[PROP_CORNER_RADIUS_TOP_LEFT] =
++    g_param_spec_float ("corner-radius-top-left", NULL, NULL, 0.f, 256.f, 0.f,
++                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
++  properties[PROP_CORNER_RADIUS_TOP_RIGHT] =
++    g_param_spec_float ("corner-radius-top-right", NULL, NULL, 0.f, 256.f, 0.f,
++                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
++  properties[PROP_CORNER_RADIUS_BOTTOM_RIGHT] =
++    g_param_spec_float ("corner-radius-bottom-right", NULL, NULL, 0.f, 256.f, 0.f,
++                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
++  properties[PROP_CORNER_RADIUS_BOTTOM_LEFT] =
++    g_param_spec_float ("corner-radius-bottom-left", NULL, NULL, 0.f, 256.f, 0.f,
++                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | G_PARAM_EXPLICIT_NOTIFY);
++
+   properties[PROP_MODE] =
+     g_param_spec_enum ("mode", NULL, NULL,
+                        SHELL_TYPE_BLUR_MODE,
+@@ -811,12 +895,16 @@ shell_blur_effect_init (ShellBlurEffect *self)
+   self->mode = SHELL_BLUR_MODE_ACTOR;
+   self->radius = 0;
+   self->brightness = 1.f;
++  self->saturation = 1.f;
+ 
+   self->actor_fb.pipeline = create_base_pipeline ();
+   self->background_fb.pipeline = create_base_pipeline ();
+   self->brightness_fb.pipeline = create_brightness_pipeline ();
+   self->brightness_uniform =
+     cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "brightness");
++  self->saturation_uniform = cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "luma_saturation");
++  self->size_uniform = cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "luma_size");
++  self->corners_uniform = cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "luma_corners");
+ }
+ 
+ ShellBlurEffect *
+diff --git a/tests/meson.build b/tests/meson.build
+index b9b4f31..4253e3c 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -43,6 +43,7 @@ unit_tests = {
+   'insertSorted': {},
+   'jsParse': {},
+   'markup': {},
++  'lumaSurfaceMaterials': {},
+   'params': {},
+   'signalTracker': {},
+   'timeLimitsManager': {
+diff --git a/tests/unit/lumaSurfaceMaterials.js b/tests/unit/lumaSurfaceMaterials.js
+new file mode 100644
+index 0000000..18330b9
+--- /dev/null
++++ b/tests/unit/lumaSurfaceMaterials.js
+@@ -0,0 +1,30 @@
++import {resolveTreatment} from
++    'resource:///org/gnome/shell/ui/lumaSurfaceMaterials.js';
++
++describe('Luma surface treatment policy', () => {
++    it('preserves all four supported treatments on accelerated rendering', () => {
++        for (const treatment of ['light', 'dark', 'frost', 'glass']) {
++            expect(resolveTreatment({requested: treatment}))
++                .toEqual(treatment);
++        }
++    });
++
++    it('uses an opaque light fallback for translucent inaccessible paths', () => {
++        for (const requested of ['frost', 'glass']) {
++            expect(resolveTreatment({requested, reduceTransparency: true}))
++                .toEqual('light');
++            expect(resolveTreatment({requested, hardwareAccelerated: false}))
++                .toEqual('light');
++        }
++    });
++
++    it('honors the active opaque contrast theme', () => {
++        expect(resolveTreatment({requested: 'glass', highContrast: true}))
++            .toEqual('light');
++        expect(resolveTreatment({
++            requested: 'frost',
++            highContrast: true,
++            dark: true,
++        })).toEqual('dark');
++    });
++});
+-- 
+2.54.0 (Apple Git-157)

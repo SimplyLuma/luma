@@ -1,0 +1,93 @@
+From f4960d41c11a6dd48fb1b88ed1120933f9cfd5b7 Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 18:08:42 -0500
+Subject: [PATCH] luma: Grid spans the monitor, titles read as titles, swipe
+ down closes it
+
+---
+ js/ui/lumaGrid.js | 42 +++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 37 insertions(+), 5 deletions(-)
+
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index 253572d..fd7615b 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -16,6 +16,9 @@ import {gridLayout, gridNeighbor} from './gridLayout.js';
+ 
+ let activeGrid = null;
+ 
++// How far a three-finger swipe must travel downward to dismiss Grid.
++const DISMISS_TRAVEL = 64;
++
+ // Keep the native handheld carousel unless Grid is explicitly invoked (Alt-Tab).
+ export function isDefault() {
+     return GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld';
+@@ -85,13 +88,14 @@ class GridCard extends St.Widget {
+         this._rounded = new RoundedPreview();
+         this._body.add_effect(this._rounded);
+         this._edge = new St.Widget({reactive: false});
+-        this._header = new St.BoxLayout({clip_to_allocation: true, style: 'spacing: 6px; padding-right: 22px;'});
++        this._header = new St.BoxLayout({clip_to_allocation: true, style: 'spacing: 6px;'});
+         const app = Shell.WindowTracker.get_default().get_window_app(window);
+         const icon = app?.create_icon_texture(20) ?? new St.Icon({
+             icon_name: 'application-x-executable-symbolic', icon_size: 20});
+         this._header.add_child(icon);
+         this._name = new St.Label({text: app?.get_name() ?? window.title ?? _('Window'),
+-            x_expand: true, y_align: Clutter.ActorAlign.CENTER});
++            x_expand: true, y_align: Clutter.ActorAlign.CENTER,
++            style: 'font-weight: 700;'});
+         this._name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+         this._header.add_child(this._name);
+         this._time = new St.Label({y_align: Clutter.ActorAlign.CENTER,
+@@ -374,17 +378,45 @@ class GridPopup extends St.Widget {
+         return Clutter.EVENT_STOP;
+     }
+ 
++    vfunc_captured_event(event) {
++        // The modal grab routes events here, so this is the only place a
++        // three-finger swipe is observable while Grid owns the screen.
++        if (event.type() === Clutter.EventType.TOUCHPAD_SWIPE &&
++            event.get_touchpad_gesture_finger_count() === 3) {
++            const phase = event.get_gesture_phase();
++            if (phase === Clutter.TouchpadGesturePhase.BEGIN) {
++                this._swipeTravel = 0;
++            } else if (phase === Clutter.TouchpadGesturePhase.UPDATE) {
++                const [, dy] = event.get_gesture_motion_delta();
++                this._swipeTravel = (this._swipeTravel ?? 0) + dy;
++            } else if (phase === Clutter.TouchpadGesturePhase.END) {
++                const travelled = this._swipeTravel ?? 0;
++                this._swipeTravel = 0;
++                if (travelled > DISMISS_TRAVEL) {
++                    this.destroy();
++                    return Clutter.EVENT_STOP;
++                }
++            } else {
++                this._swipeTravel = 0;
++            }
++        }
++        return super.vfunc_captured_event(event);
++    }
++
+     vfunc_allocate(box) {
+         this.set_allocation(box);
+         allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
++        const monitor = Main.layoutManager.primaryMonitor ?? area;
+         // Insets reserve lift/shadow and maintain the stage's outside slack.
+-        const width = Math.max(1, area.width / scale - 112);
++        const width = Math.max(1, monitor.width / scale - 32);
+         const height = Math.max(1, area.height / scale - 56);
+         this._contentHeight = height;
+-        // Clip at the work area, leaving outside space for labels/lift/shadow.
+-        allocate(this._stage, area.x, area.y, area.width, area.height);
++        // Span the monitor across, clip to the work area down: the side struts
++        // reserve room for tiled windows, which a full-surface switcher
++        // replaces outright, while the panel and dock stay reachable.
++        allocate(this._stage, monitor.x, area.y, monitor.width, area.height);
+         const size = `${width}:${height}:${this._cards.length}`;
+         const reflow = this._dirty || this._lastSize !== size;
+         if (reflow) {
+-- 
+2.55.0
+

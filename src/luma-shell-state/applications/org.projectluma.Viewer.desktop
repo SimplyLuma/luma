@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Viewer
+Comment=Inspect certificates and protected files
+Exec=/usr/bin/gcr-viewer
+TryExec=/usr/bin/gcr-viewer
+Icon=gcr-viewer
+Terminal=false
+Type=Application
+NoDisplay=true
+Categories=Utility;

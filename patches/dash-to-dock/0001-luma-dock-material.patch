@@ -1,0 +1,685 @@
+diff --git a/_stylesheet.scss b/_stylesheet.scss
+index 2cfca2c..4d7f8ea 100644
+--- a/_stylesheet.scss
++++ b/_stylesheet.scss
+@@ -25,21 +25,126 @@ $dash_padding_gnome: $dash_padding;
+ $dash_edge_offset: $base_margin * 3;
+ 
+ // Dash to dock specifics
+-$dash_padding: $base_padding + 4px; // 10px
+-$dash_border_radius: $modal_radius * 1.5;
++$dash_padding: 4px;
++$dash_border_radius: 16px;
+ 
+-$dock_spacing: round($base_padding / 4);
++$dock_spacing: 0;
+ $dock_bottom_margin: $base_margin * 4;
+ $dock_start_margin: $dock_bottom_margin;
+-$dock_side_margin: $dock_start_margin / 4;
++$dock_side_margin: 12px;
+ $dock_edge_items_padding: $dash_padding - $dock_spacing;
+-$dock_fixed_inner_margin: $dock_side_margin;
+-$dock_icons_distance: 4px;
++$dock_fixed_inner_margin: 0;
++$dock_icons_distance: 0;
+ 
+ @function shrink($val) {
+     @return round($val / 4);
+ }
+ 
++// Project Luma light dock material. These rules compile into the packaged
++// extension stylesheet and style source actors owned by Dash to Dock.
++#dashtodockContainer.bottom.dashtodock #dash {
++    .dash-background {
++        // Shell.BlurEffect is rectangular and cannot clip to this rounded
++        // actor. Use the documented no-backdrop-filter fallback opacity.
++        background-color: rgba(250, 250, 251, 0.90);
++        border: 1px solid rgba(17, 24, 39, 0.10);
++        border-radius: 16px;
++        // A low-alpha, wider falloff gives the dock a calm lift without the
++        // dark near-edge band produced by a compact high-alpha shadow. Its
++        // tail reaches the output edge gently at the 12px dock offset.
++        box-shadow: 0 5px 16px rgba(30, 41, 59, 0.10);
++    }
++
++    #dashtodockDashContainer {
++        spacing: 4px;
++    }
++
++    #lumaDockAppBox {
++        spacing: 4px;
++    }
++
++    .dash-item-container {
++        > * {
++            margin-left: 0;
++            margin-right: 0;
++        }
++
++        .app-well-app,
++        .show-apps,
++        .overview-tile {
++            padding-left: 0;
++            padding-right: 0;
++        }
++    }
++
++    .luma-apps-divider {
++        width: 1px;
++        height: 30px;
++        background-color: rgba(17, 24, 39, 0.10);
++    }
++
++    .show-apps .overview-icon,
++    .show-apps:hover .overview-icon,
++    .show-apps:focus .overview-icon,
++    .show-apps:active .overview-icon,
++    .show-apps:checked .overview-icon {
++        background-color: transparent;
++        border: 0;
++        box-shadow: none;
++    }
++
++    // Trash is a full-colour Prairie Places tile. GIO also advertises a
++    // symbolic alternative, so keep this app-style dock surface regular.
++    .location-trash-icon {
++        -st-icon-style: regular;
++    }
++
++    .luma-trash-drop-target .location-trash-icon {
++        background-color: rgba(72, 120, 184, 0.12);
++        border-radius: 10px;
++    }
++
++    .luma-running-indicator {
++        width: 16px;
++        height: 3px;
++        border-radius: 2px 2px 0 0;
++        background-color: #9ca3af;
++    }
++
++    .luma-running-indicator.focused {
++        background-color: #1f2937;
++    }
++}
++
++// A supported semantic surface selected through Luma's preferences contract.
++// The Shell never evaluates Mod-provided CSS; it maps one validated token to
++// this built-in class and falls back to the Prairie material on any error.
++#dashtodockContainer.luma-dock-surface-green-glow.bottom.dashtodock #dash {
++    .dash-background {
++        background-color: rgba(224, 241, 229, 0.94);
++        border-color: rgba(44, 107, 66, 0.22);
++        box-shadow: 0 5px 18px rgba(37, 91, 55, 0.16);
++    }
++}
++
++#dashtodockContainer .show-apps-icon {
++    icon-size: 32px;
++    color: #4878b8;
++}
++
++#dashtodockContainer .notification-badge {
++    min-width: 16px;
++    height: 16px;
++    margin: 0;
++    padding: 0 2px;
++    border-radius: 5px;
++    background-color: #c2984e;
++    color: white;
++    font-size: 10px;
++    font-weight: 700;
++    text-align: center;
++}
++
+ @function shrink_light($val) {
+     @return round($val * 0.75);
+ }
+diff --git a/appIconIndicators.js b/appIconIndicators.js
+index 1b58865..f4a433c 100644
+--- a/appIconIndicators.js
++++ b/appIconIndicators.js
+@@ -26,6 +26,7 @@ const RunningIndicatorStyle = Object.freeze({
+     METRO: 7,
+     BINARY: 8,
+     DOT: 9,
++    LUMA: 10,
+ });
+ 
+ const MAX_WINDOWS_CLASSES = 4;
+@@ -45,7 +46,7 @@ export class AppIconIndicator {
+ 
+         const {settings} = Docking.DockManager;
+         if (settings.applyCustomTheme)
+-            runningIndicatorStyle = RunningIndicatorStyle.DOTS;
++            runningIndicatorStyle = RunningIndicatorStyle.LUMA;
+         else
+             ({runningIndicatorStyle} = settings);
+ 
+@@ -90,6 +91,10 @@ export class AppIconIndicator {
+             runningIndicator = new RunningIndicatorDot(source);
+             break;
+ 
++        case RunningIndicatorStyle.LUMA:
++            runningIndicator = new RunningIndicatorLuma(source);
++            break;
++
+         default:
+             runningIndicator = new RunningIndicatorBase(source);
+         }
+@@ -203,6 +208,30 @@ class RunningIndicatorDefault extends RunningIndicatorBase {
+     }
+ }
+ 
++// Prairie uses the native Shell dot actor and its existing geometry, while
++// giving it one semantic class for the source-owned activity bar material.
++class RunningIndicatorLuma extends RunningIndicatorBase {
++    constructor(source) {
++        super(source);
++        this._source._dot.add_style_class_name('luma-running-indicator');
++        this.update();
++    }
++
++    update() {
++        super.update();
++        if (this._source.focused)
++            this._source._dot.add_style_class_name('focused');
++        else
++            this._source._dot.remove_style_class_name('focused');
++    }
++
++    destroy() {
++        this._source._dot.remove_style_class_name('focused');
++        this._source._dot.remove_style_class_name('luma-running-indicator');
++        super.destroy();
++    }
++}
++
+ const IndicatorDrawingArea = GObject.registerClass(
+ class IndicatorDrawingArea extends St.DrawingArea {
+     vfunc_allocate(box) {
+diff --git a/appIcons.js b/appIcons.js
+index cb86627..03342d4 100644
+--- a/appIcons.js
++++ b/appIcons.js
+@@ -16,6 +16,7 @@ import {
+     AppFavorites,
+     BoxPointer,
+     Dash,
++    DND,
+     Main,
+     PopupMenu,
+ } from './dependencies/shell/ui.js';
+@@ -984,6 +985,79 @@ const DockLocationAppIcon = GObject.registerClass({
+         return this.app.location;
+     }
+ 
++    _canRemoveFavorite(source) {
++        if (!this.app.isTrash || !(source instanceof DockAppIcon) ||
++            !global.settings.is_writable('favorite-apps'))
++            return false;
++
++        return AppFavorites.getAppFavorites().isFavorite(source.app.get_id());
++    }
++
++    setTrashDropHover(active) {
++        if (!this.app.isTrash || this._trashDropHover === active)
++            return;
++
++        this._trashDropHover = active;
++        this.set_pivot_point(0.5, 0.5);
++        this.ease({
++            scale_x: active ? 1.1 : 1,
++            scale_y: active ? 1.1 : 1,
++            duration: 120,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++
++        if (active)
++            this.add_style_class_name('luma-trash-drop-target');
++        else
++            this.remove_style_class_name('luma-trash-drop-target');
++    }
++
++    handleDragOver(source) {
++        if (!this._canRemoveFavorite(source)) {
++            this.setTrashDropHover(false);
++            return DND.DragMotionResult.CONTINUE;
++        }
++
++        this.setTrashDropHover(true);
++
++        return DND.DragMotionResult.MOVE_DROP;
++    }
++
++    acceptDrop(source) {
++        if (!this._canRemoveFavorite(source)) {
++            this.setTrashDropHover(false);
++            return false;
++        }
++
++        const size = source.icon?.iconSize ?? 32;
++        const poof = source.app.create_icon_texture(size);
++        const [trashX, trashY] = this.get_transformed_position();
++        const [trashWidth, trashHeight] = this.get_transformed_size();
++        poof.set({
++            x: Math.round(trashX + (trashWidth - size) / 2),
++            y: Math.round(trashY + (trashHeight - size) / 2),
++            width: size,
++            height: size,
++            reactive: false,
++        });
++        poof.set_pivot_point(0.5, 0.5);
++        Main.uiGroup.add_child(poof);
++        poof.ease({
++            opacity: 0,
++            scale_x: 0.25,
++            scale_y: 0.25,
++            rotation_angle_z: 10,
++            duration: 180,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onComplete: () => poof.destroy(),
++        });
++
++        source._lumaRemovalPending = true;
++        this.setTrashDropHover(false);
++        AppFavorites.getAppFavorites().removeFavorite(source.app.get_id());
++        return true;
++    }
++
+     _updateFocusState() {
+         if (Docking.DockManager.settings.isolateLocations) {
+             super._updateFocusState();
+@@ -1442,7 +1516,11 @@ export const DockShowAppsIcon = GObject.registerClass({
+         this._iconActor = super._createIcon(size);
+         this._iconActor.fallbackIconName = this._iconActor.iconName;
+         this._iconActor.fallbackGicon = this._iconActor.gicon;
+-        this._iconActor.iconName = `view-app-grid-${Main.sessionMode.currentMode}-symbolic`;
++        const iconFile = Gio.File.new_for_uri(import.meta.url)
++            .get_parent()
++            .get_child('media')
++            .get_child('luma-apps-grid.svg');
++        this._iconActor.gicon = Gio.FileIcon.new(iconFile);
+         return this._iconActor;
+     }
+ 
+diff --git a/Makefile b/Makefile
+index c03b1da..f68c72b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -14,6 +14,7 @@ EXTRA_MODULES = \
+                 windowPreview.js \
+                 intellihide.js \
+                 prefs.js \
++                lumaPreferences.js \
+                 theming.js \
+                 utils.js \
+                 dbusmenuUtils.js \
+@@ -32,6 +32,7 @@ EXTRA_MEDIA = logo.svg \
+               glossy.svg \
+               highlight_stacked_bg.svg \
+-              highlight_stacked_bg_h.svg \
++              highlight_stacked_bg_h.svg \
++              luma-apps-grid.svg \
+               $(NULL)
+
+ MSGSRC = $(wildcard po/*.po)
+diff --git a/lumaPreferences.js b/lumaPreferences.js
+new file mode 100644
+index 0000000..fc1b8f4
+--- /dev/null
++++ b/lumaPreferences.js
+@@ -0,0 +1,105 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++import {
++    Gio,
++    GLib,
++} from './dependencies/gi.js';
++
++const DOMAIN = 'org.luma.shell.dock.appearance';
++const DEFAULT_SURFACE = 'prairie-default';
++const ALLOWED_SURFACES = new Set([DEFAULT_SURFACE, 'green-glow']);
++const MAX_PREFERENCES_BYTES = 64 * 1024;
++
++/**
++ * Read the bounded Luma preference contract and notify the dock manager.
++ *
++ * Mods write semantic values through luma-mods. This consumer never accepts
++ * CSS, selectors, paths, commands, or arbitrary style properties. Monitoring
++ * the parent directory also catches the backend's atomic rename.
++ */
++export class DockPreferenceMonitor {
++    constructor(callback) {
++        this._callback = callback;
++        this._surface = DEFAULT_SURFACE;
++        this._idleId = 0;
++        this._file = Gio.File.new_for_path(GLib.build_filenamev([
++            GLib.get_user_config_dir(),
++            'luma',
++            'preferences.json',
++        ]));
++        this._directory = this._file.get_parent();
++
++        try {
++            GLib.mkdir_with_parents(this._directory.get_path(), 0o700);
++            this._monitor = this._directory.monitor_directory(
++                Gio.FileMonitorFlags.NONE, null);
++            this._changedId = this._monitor.connect(
++                'changed', (_monitor, file, otherFile) => {
++                    if (file?.equal(this._file) || otherFile?.equal(this._file))
++                        this._queueRefresh();
++                });
++        } catch (error) {
++            console.warn(`Luma dock preferences are not monitored: ${error.message}`);
++        }
++
++        this._refresh();
++    }
++
++    get surface() {
++        return this._surface;
++    }
++
++    _queueRefresh() {
++        if (this._idleId)
++            return;
++        this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._idleId = 0;
++            this._refresh();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _readSurface() {
++        try {
++            const info = this._file.query_info(
++                'standard::type,standard::size',
++                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
++                null);
++            if (info.get_file_type() !== Gio.FileType.REGULAR ||
++                info.get_size() > MAX_PREFERENCES_BYTES)
++                return DEFAULT_SURFACE;
++            const [loaded, contents] = this._file.load_contents(null);
++            if (!loaded || contents.length > MAX_PREFERENCES_BYTES)
++                return DEFAULT_SURFACE;
++            const preferences = JSON.parse(new TextDecoder().decode(contents));
++            const value = preferences?.[DOMAIN];
++            if (!value || typeof value !== 'object' || Array.isArray(value) ||
++                Object.keys(value).length !== 1 ||
++                !ALLOWED_SURFACES.has(value.surface))
++                return DEFAULT_SURFACE;
++            return value.surface;
++        } catch (_error) {
++            return DEFAULT_SURFACE;
++        }
++    }
++
++    _refresh() {
++        const next = this._readSurface();
++        if (next === this._surface)
++            return;
++        this._surface = next;
++        this._callback(next);
++    }
++
++    destroy() {
++        if (this._idleId) {
++            GLib.source_remove(this._idleId);
++            this._idleId = 0;
++        }
++        if (this._changedId)
++            this._monitor.disconnect(this._changedId);
++        this._monitor?.cancel();
++        this._monitor = null;
++        this._callback = null;
++    }
++}
+diff --git a/media/luma-apps-grid.svg b/media/luma-apps-grid.svg
+new file mode 100644
+index 0000000..4d553c2
+--- /dev/null
++++ b/media/luma-apps-grid.svg
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
++<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
++  <g fill="#4878b8">
++    <circle cx="11" cy="11" r="3.5"/>
++    <circle cx="21" cy="11" r="3.5"/>
++    <circle cx="11" cy="21" r="3.5"/>
++    <circle cx="21" cy="21" r="3.5"/>
++  </g>
++</svg>
+diff --git a/dash.js b/dash.js
+index a650f38..b68d6a3 100644
+--- a/dash.js
++++ b/dash.js
+@@ -196,6 +196,7 @@ export const DockDash = GObject.registerClass({
+ 
+         const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
+         this._box = new St.BoxLayout({
++            name: 'lumaDockAppBox',
+             vertical: !this._isHorizontal,
+             clip_to_allocation: false,
+             ...!this._isHorizontal ? {layout_manager: new DockDashIconsVerticalLayout()} : {},
+@@ -224,6 +225,13 @@ export const DockDash = GObject.registerClass({
+         this._showAppsIcon.connect('menu-state-changed', (_icon, opened) => {
+             this._itemMenuStateChanged(this._showAppsIcon, opened);
+         });
++        this._lumaAppsDivider = new St.Widget({
++            style_class: 'luma-apps-divider',
++            x_align: this._isHorizontal
++                ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL,
++            y_align: this._isHorizontal
++                ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL,
++        });
+         this.updateShowAppsButton();
+ 
+         this._background = new St.Widget({
+@@ -348,11 +356,25 @@ export const DockDash = GObject.registerClass({
+     }
+ 
+     _endItemDrag(...args) {
++        this.getAppIcons().find(icon => icon.app?.isTrash)
++            ?.setTrashDropHover(false);
+         return Dash.Dash.prototype._endItemDrag.call(this, ...args);
+     }
+ 
+-    _onItemDragMotion(...args) {
+-        return Dash.Dash.prototype._onItemDragMotion.call(this, ...args);
++    _onItemDragMotion(dragEvent) {
++        const trashIcon = this.getAppIcons().find(icon => icon.app?.isTrash);
++        const trashHovered = dragEvent.targetActor
++            ? trashIcon?.contains(dragEvent.targetActor) ?? false
++            : false;
++
++        trashIcon?.setTrashDropHover(trashHovered);
++        if (trashHovered) {
++            this._clearDragPlaceholder();
++            this._showAppsIcon.setDragApp(null);
++            return DND.DragMotionResult.CONTINUE;
++        }
++
++        return Dash.Dash.prototype._onItemDragMotion.call(this, dragEvent);
+     }
+ 
+     _appIdListToHash(...args) {
+@@ -440,8 +462,44 @@ export const DockDash = GObject.registerClass({
+         return ret;
+     }
+ 
+-    acceptDrop(...args) {
+-        return Dash.Dash.prototype.acceptDrop.call(this, ...args);
++    acceptDrop(source) {
++        const app = Dash.getAppFromSource(source);
++        if (app == null || app.is_window_backed() ||
++            !global.settings.is_writable('favorite-apps'))
++            return false;
++
++        const id = app.get_id();
++        const appFavorites = AppFavorites.getAppFavorites();
++        const favorites = appFavorites.getFavoriteMap();
++        const srcIsFavorite = id in favorites;
++
++        let favPos = 0;
++        const children = this._box.get_children();
++        for (let i = 0; i < this._dragPlaceholderPos; i++) {
++            if (this._dragPlaceholder && children[i] === this._dragPlaceholder)
++                continue;
++
++            const childId = children[i].child._delegate.app.get_id();
++            if (childId === id)
++                continue;
++            if (childId in favorites)
++                favPos++;
++        }
++
++        if (!this._dragPlaceholder)
++            return true;
++
++        // Commit the favorite model before DND restores the source actor. This
++        // keeps one continuous visual transaction instead of briefly painting
++        // the icon at its old position and moving it on the following frame.
++        if (srcIsFavorite) {
++            source._lumaReorderPending = true;
++            appFavorites.moveFavoriteToPos(id, favPos);
++        } else {
++            appFavorites.addFavoriteAtPos(id, favPos);
++        }
++
++        return true;
+     }
+ 
+     _onWindowDragBegin(...args) {
+@@ -518,10 +576,13 @@ export const DockDash = GObject.registerClass({
+ 
+         if (appIcon._draggable) {
+             appIcon._draggable.connect('drag-begin', () => {
++                delete appIcon._lumaReorderPending;
++                delete appIcon._lumaRemovalPending;
+                 appIcon.opacity = 50;
+             });
+             appIcon._draggable.connect('drag-end', () => {
+-                appIcon.opacity = 255;
++                if (!appIcon._lumaReorderPending && !appIcon._lumaRemovalPending)
++                    appIcon.opacity = 255;
+             });
+         }
+ 
+@@ -1120,6 +1181,15 @@ export const DockDash = GObject.registerClass({
+             showAppsContainer.set_child_above_sibling(this._showAppsIcon, null);
+         }
+ 
++        this._lumaAppsDivider.get_parent()?.remove_child(this._lumaAppsDivider);
++        if (settings.showAppsAtTop) {
++            showAppsContainer.insert_child_above(
++                this._lumaAppsDivider, this._showAppsIcon);
++        } else {
++            showAppsContainer.insert_child_below(
++                this._lumaAppsDivider, this._showAppsIcon);
++        }
++
+         if (needsFirstLastChildWorkaround) {
+             this._signalsHandler.removeWithLabel(Labels.FIRST_LAST_CHILD_WORKAROUND);
+ 
+diff --git a/docking.js b/docking.js
+index b0d699f..6905084 100644
+--- a/docking.js
++++ b/docking.js
+@@ -30,5 +30,6 @@ import {
+     Intellihide,
+     LauncherAPI,
++    LumaPreferences,
+     Locations,
+     NotificationsMonitor,
+     Theming,
+@@ -163,8 +163,16 @@ const DashSlideContainer = GObject.registerClass({
+ 
+         this.child.allocate(childBox);
+ 
+-        this.child.set_clip(-childBox.x1, -childBox.y1,
+-            -childBox.x1 + availWidth, -childBox.y1 + availHeight);
++        // Sliding docks need an explicit viewport so hidden content cannot
++        // paint back onto the monitor. A fixed dock never slides, and keeping
++        // that viewport clips its rounded material shadow into a rectangle.
++        // Remove only our explicit clip in fixed mode; the monitor remains the
++        // natural final paint boundary.
++        if (DockManager.settings.dockFixed)
++            this.child.remove_clip();
++        else
++            this.child.set_clip(-childBox.x1, -childBox.y1,
++                -childBox.x1 + availWidth, -childBox.y1 + availHeight);
+     }
+ 
+     /**
+@@ -1754,6 +1763,18 @@ export class DockManager {
+         /* Array of all the docks created */
+         this._allDocks = [];
+         this._createDocks();
++
++        // Luma Mods exposes a deliberately finite preference contract. The
++        // monitor maps its semantic surface token to a built-in class and
++        // reapplies it whenever settings recreate the dock actors.
++        this._lumaDockSurface = 'prairie-default';
++        this._lumaPreferences = new LumaPreferences.DockPreferenceMonitor(
++            surface => {
++                this._lumaDockSurface = surface;
++                this._syncLumaDockSurface();
++            });
++        this._lumaDockSurface = this._lumaPreferences.surface;
++        this._syncLumaDockSurface();
+ 
+         this._overrideAppMenus();
+ 
+@@ -2111,9 +2132,19 @@ export class DockManager {
+         this.emit('docks-ready');
+     }
+ 
++    _syncLumaDockSurface(dock = null) {
++        const docks = dock ? [dock] : this._allDocks;
++        for (const item of docks) {
++            item.remove_style_class_name('luma-dock-surface-green-glow');
++            if (this._lumaDockSurface === 'green-glow')
++                item.add_style_class_name('luma-dock-surface-green-glow');
++        }
++    }
++
+     _createDock(params) {
+         const dock = new DockedDash(params);
+         this._allDocks.push(dock);
++        this._syncLumaDockSurface(dock);
+ 
+         // connect app icon into the view selector
+         dock.dash.showAppsButton.connectObject('notify::checked',
+@@ -2540,6 +2572,8 @@ export class DockManager {
+ 
+     destroy() {
+         this.emit('destroy');
++        this._lumaPreferences?.destroy();
++        this._lumaPreferences = null;
+         if (this._toggleLater) {
+             Utils.laterRemove(this._toggleLater);
+             delete this._toggleLater;
+diff --git a/imports.js b/imports.js
+index 2f14dc7..fd40ee8 100644
+--- a/imports.js
++++ b/imports.js
+@@ -12,4 +12,5 @@ export * as Intellihide from './intellihide.js';
+ export * as LauncherAPI from './launcherAPI.js';
++export * as LumaPreferences from './lumaPreferences.js';
+ export * as Locations from './locations.js';
+ export * as NotificationsMonitor from './notificationsMonitor.js';
+ export * as Theming from './theming.js';
+diff --git a/locations.js b/locations.js
+index 534466c..60fbe63 100644
+--- a/locations.js
++++ b/locations.js
+@@ -1136,6 +1136,7 @@ function makeLocationApp(params) {
+         iconSize,
+         gicon: shellApp.icon,
+         fallbackIconName,
++        styleClass: shellApp.isTrash ? 'location-trash-icon' : null,
+     }));
+ 
+     // FIXME: We need to add a new API to Nautilus to open new windows

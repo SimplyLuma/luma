@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: Apache-2.0
+# Luma SDK, branch 44: Fedora 44's Flatpak SDK package set plus Luma's
+# toolkit, platform kit and headers, matching org.projectluma.Platform. Rendered
+# by scripts/depot/runtime/generate-container-yaml.py; see docs/depot/distribution.md.
+base: fedora-f44/sdk.container.yaml
+upstream:
+  repository: https://src.fedoraproject.org/flatpaks/flatpak-runtime
+  branch: f44
+  commit: 0e52d4ebed5be1a50118f348146870c21ce0168c
+
+flatpak:
+  id: org.projectluma.Sdk
+  runtime: org.projectluma.Platform
+  sdk: org.projectluma.Sdk
+  branch: '44'
+  name: luma/sdk
+  component: luma-sdk
+
+rename:
+  org.fedoraproject.Platform: org.projectluma.Platform
+  org.fedoraproject.Sdk: org.projectluma.Sdk
+  org.fedoraproject.Gtk3theme: org.gtk.Gtk3theme
+
+extension-overrides:
+  org.projectluma.Platform.GL:
+    versions: 44;1.4
+  org.projectluma.Platform.Locale:
+    locale-subset: true
+
+remove-packages:
+  # luma-developer-platform declares Requires: systemd (for its user unit), and
+  # systemd conflicts with the standalone tmpfiles/sysusers tools Fedora's
+  # runtime uses. The runtime therefore carries systemd; cleanup removes its
+  # units. Dropping the hard dependency in packaging/rpm/luma-developer-platform.spec
+  # (user units need only systemd-rpm-macros) would let these two come back.
+  - systemd-standalone-tmpfiles
+  - systemd-standalone-sysusers
+
+add-packages:
+  # Luma's toolkit comes from the luma repository, which shadows Fedora's
+  # gtk4 and libadwaita builds by priority; these are the kit and look.
+  - luma-developer-platform
+  - prairie-icon-theme
+  - google-figtree-fonts
+  - google-caveat-fonts
+  - ibm-plex-sans-fonts
+  - ibm-plex-mono-fonts
+  # Media used by first-party apps (Fedora's SDK already carries poppler-glib)
+  - gst-editing-services
+  # Client ABI for Tasks/Calendar/Contacts/Phone to use the existing host EDS
+  # endpoints. The runtime removes the package's native factory/activation
+  # executables below; profiles, identities and service ownership stay native.
+  - evolution-data-server
+  # Data LibreOfficeKit's system libraries read from compiled-in /usr/share
+  # paths, and the OpenSymbol font fontconfig must see; the Office extension
+  # cannot provide them from its own prefix
+  - liblangtag-data
+  - libexttextcat
+  - libnumbertext
+  - libreoffice-opensymbol-fonts
+  # Headers and tools for building Luma apps against the platform
+  - luma-developer-platform-devel
+  - luma-developer-platform-sdk
+  - gst-editing-services-devel
+  - evolution-data-server-devel
+  - poppler-glib-devel
+  - libreofficekit-devel
+
+cleanup-replace:
+  # Fedora deletes every non-English locale and dictionary and leaves dangling
+  # links to an empty Locale extension. Luma moves them there instead, and the
+  # publisher splits share/runtime/locale into org.projectluma.Platform.Locale.
+  - from: "find $d -delete"
+    to: "mkdir -p /usr/share/runtime/locale/$l/lib && mv $d /usr/share/runtime/locale/$l/lib/"
+  - from: "rm -f $f\n    ln -sf ../runtime/locale/$l/hunspell/$f ."
+    to: "mkdir -p /usr/share/runtime/locale/$l/hunspell && mv $f /usr/share/runtime/locale/$l/hunspell/\n    ln -sf ../runtime/locale/$l/hunspell/$f ."
+  - from: "rm -f $f\n    ln -sf ../runtime/locale/$l/hyphen/$f ."
+    to: "mkdir -p /usr/share/runtime/locale/$l/hyphen && mv $f /usr/share/runtime/locale/$l/hyphen/\n    ln -sf ../runtime/locale/$l/hyphen/$f ."
+  - from: "rm -f $f\n    ln -sf ../runtime/locale/$l/mythes/$f ."
+    to: "mkdir -p /usr/share/runtime/locale/$l/mythes && mv $f /usr/share/runtime/locale/$l/mythes/\n    ln -sf ../runtime/locale/$l/mythes/$f ."
+  - from: "rm -f $f\n    ln -sf ../../runtime/locale/$l/qt6/$f ."
+    to: "mkdir -p /usr/share/runtime/locale/$l/qt6 && mv $f /usr/share/runtime/locale/$l/qt6/\n    ln -sf ../../runtime/locale/$l/qt6/$f ."
+
+cleanup-append: |
+  # Luma: icon caches for the platform's own theme (file triggers do not run
+  # for every theme in an install root)
+  gtk-update-icon-cache -qf /usr/share/icons/Prairie
+  gtk-update-icon-cache -qf /usr/share/icons/hicolor
+  glib-compile-schemas /usr/share/glib-2.0/schemas
+
+  # EDS is packaged by Fedora together with its host factories. Keep its
+  # client libraries/typelibs, never a second account registry or scheduler.
+  rm -f /usr/libexec/evolution-addressbook-factory /usr/libexec/evolution-addressbook-factory-subprocess
+  rm -f /usr/libexec/evolution-calendar-factory /usr/libexec/evolution-calendar-factory-subprocess
+  rm -f /usr/libexec/evolution-source-registry /usr/libexec/evolution-user-prompter
+  rm -rf /usr/libexec/evolution-data-server
+  rm -f /usr/share/dbus-1/services/org.gnome.evolution.dataserver.*.service
+  rm -f /etc/xdg/autostart/org.gnome.Evolution-alarm-notify.desktop
+  python3 - <<'PY_EDS'
+  import gi
+  from pathlib import Path
+  for name, version in [('EDataServer', '1.2'), ('ECal', '2.0'), ('EBook', '1.2'), ('EBookContacts', '1.2'), ('ICalGLib', '3.0')]:
+      gi.require_version(name, version)
+  from gi.repository import EDataServer, ECal, EBook, EBookContacts, ICalGLib
+  assert EDataServer.Source.__gtype__ and ECal.Client.__gtype__ and EBook.BookClient.__gtype__ and EBookContacts.Contact.__gtype__ and ICalGLib.Time.__gtype__
+  assert not list(Path('/usr/share/dbus-1/services').glob('org.gnome.evolution.dataserver.*.service'))
+  assert not Path('/usr/libexec/evolution-source-registry').exists()
+  assert not Path('/usr/libexec/evolution-data-server').exists()
+  print('EDS client ABI and native-only factory ownership PASS')
+  PY_EDS

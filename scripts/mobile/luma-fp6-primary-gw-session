@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Restore the volatile primary GSM/UMTS provisioning session for the enabled
+# FP6 eUICC profile before ModemManager starts. Subscriber identifiers remain
+# inside this root-only process and are never printed or persisted.
+
+set -Eeuo pipefail
+umask 077
+
+qmi_device=qrtr://0
+
+event() { printf 'event=luma_fp6_primary_gw_session %s\n' "$*"; }
+fail() { event "state=failed reason=$1 identifiers_logged=0" >&2; exit 1; }
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] || \
+  fail model
+
+for _ in $(seq 1 120); do
+  qmicli -d "$qmi_device" --device-open-qmi --dms-get-operating-mode \
+    >/dev/null 2>&1 && break
+  sleep 1
+done
+mode=$(qmicli -d "$qmi_device" --device-open-qmi --dms-get-operating-mode) || \
+  fail modem_timeout
+if ! grep -q "Mode: 'online'" <<<"$mode"; then
+  qmicli -d "$qmi_device" --device-open-qmi --dms-set-operating-mode=online \
+    >/dev/null || fail modem_online
+fi
+unset mode
+
+# DMS becomes reachable before the eUICC finishes ATR/application discovery.
+# Wait for either the already-active session or a usable USIM instead of
+# treating that normal boot window as a missing profile.
+status=
+for _ in $(seq 1 120); do
+  status=$(qmicli -d "$qmi_device" --device-open-qmi --uim-get-card-status \
+    2>/dev/null || true)
+  if grep -Eq "Primary GW:[[:space:]]+slot '2', application '[0-9]+'" <<<"$status" ||
+     grep -q "Application type:.*usim" <<<"$status"; then
+    break
+  fi
+  sleep 1
+done
+[[ -n $status ]] || fail card_status
+
+if grep -Eq "Primary GW:[[:space:]]+slot '2', application '[0-9]+'" <<<"$status"; then
+  unset status
+  event 'state=already-active identifiers_logged=0'
+  exit 0
+fi
+
+aid=$(awk '
+  /Application type:.*usim/ { wanted=1; next }
+  wanted && /Application ID:/ {
+    getline
+    gsub(/[^0-9A-Fa-f]/, "")
+    print
+    exit
+  }
+' <<<"$status")
+unset status
+[[ ${#aid} -ge 16 && ${#aid} -le 64 ]] || fail usim_identity
+
+qmicli -d "$qmi_device" --device-open-qmi \
+  --uim-change-provisioning-session="session-type=primary-gw-provisioning,activate=yes,slot=2,aid=$aid" \
+  >/dev/null || fail activation
+unset aid
+
+verify=$(qmicli -d "$qmi_device" --device-open-qmi --uim-get-card-status) || \
+  fail verification
+grep -Eq "Primary GW:[[:space:]]+slot '2', application '[0-9]+'" <<<"$verify" || \
+  fail inactive_after_activation
+unset verify
+
+event 'state=active identifiers_logged=0'

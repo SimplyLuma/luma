@@ -1,0 +1,34 @@
+diff --git a/js/ui/layout.js b/js/ui/layout.js
+index 72c24bc..d047ce4 100644
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -809,7 +809,7 @@ export const LayoutManager = GObject.registerClass({
+     }
+ 
+     async _startupAnimationSession() {
+-        if (Main.sessionMode.hasOverview) {
++        if (Main.sessionMode.showOverviewOnStartup) {
+             await Main.overview.runStartupAnimation();
+-        } else {
++        } else if (!Main.sessionMode.hasOverview) {
+             await this.uiGroup.easeAsync({
+diff --git a/js/ui/sessionMode.js b/js/ui/sessionMode.js
+index 44aa916..c72c87e 100644
+--- a/js/ui/sessionMode.js
++++ b/js/ui/sessionMode.js
+@@ -25,6 +25,7 @@ const _modes = {
+         stylesheetName: 'gnome-shell.css',
+         colorScheme: 'prefer-dark',
+         themeResourceName: 'gnome-shell-theme.gresource',
++        showOverviewOnStartup: false,
+         hasOverview: false,
+         showCalendarEvents: false,
+         showWelcomeDialog: false,
+@@ -79,6 +80,7 @@ const _modes = {
+     },
+ 
+     'user': {
++        showOverviewOnStartup: false,
+         hasOverview: true,
+         showCalendarEvents: true,
+         showWelcomeDialog: true,

@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Flatpak Example
+Exec=true
+Icon=org.example.FlatpakApp

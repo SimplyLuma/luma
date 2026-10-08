@@ -1,0 +1,11 @@
+{
+  "luma_base": "0.1.0",
+  "architecture": "x86_64",
+  "presentation": "desktop",
+  "kernel_release": "6.15.10-200.fc44.x86_64",
+  "install_mode": "running-system",
+  "hardware": ["dmi:LENOVO:20TH003HUS"],
+  "capabilities": {"org.luma.apps.core": "1.0.0"},
+  "installed_mods": {},
+  "effect_owners": {}
+}

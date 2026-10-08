@@ -1,0 +1,36 @@
+--- a/gnome-settings-daemon.spec
++++ b/gnome-settings-daemon.spec
+@@ -24,7 +24,7 @@
+ 
+ Name:           gnome-settings-daemon
+ Version:        50.1
+-Release:        %autorelease
++Release:        1.luma.2%{?dist}
+ Summary:        The daemon sharing settings from GNOME to GTK+/KDE applications
+ 
+ License:        GPL-2.0-or-later AND LGPL-2.1-or-later
+@@ -37,6 +37,11 @@
+ # gsetting overrides for the "Server with GUI" installation
+ Source100:    	org.gnome.settings-daemon.plugins.power.gschema.override
+ 
++# Project Luma: a volume change makes no sound; the on-screen level is the feedback.
++Patch1001:      0001-luma-media-keys-no-volume-change-sound.patch
++# Project Luma: the memory notice names the stopped app, once, from Monitor.
++Patch1002:      0002-luma-housekeeping-named-memory-notice.patch
++
+ BuildRequires:  gcc
+ BuildRequires:  gettext
+ BuildRequires:  meson >= 0.64.0
+@@ -126,6 +131,12 @@
+ 
+ %find_lang %{name} --with-gnome
+ 
++%check
++# Project Luma: the downstream tests (the memory notice); all five must run.
++%meson_test --suite luma
++luma_ok=$(grep -c '^ok [0-9]* /luma/' %{_vpath_builddir}/meson-logs/testlog.txt || :)
++test "$luma_ok" -ge 5 || { echo "Luma tests reached: $luma_ok of 5" >&2; exit 1; }
++
+ %post
+ %systemd_user_post %{systemd_units}
+ 

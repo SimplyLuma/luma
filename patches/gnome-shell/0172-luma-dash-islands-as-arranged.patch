@@ -1,0 +1,2547 @@
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 19 Sep 2026 18:00:00 -0500
+Subject: [PATCH] luma: Dash islands as arranged, on every edge and setting
+
+The owner's findings on .118 (ADR-044):
+
+- The live extensions glyph ships: luma-live-extensions-symbolic, a
+  fills-only symbolic in the Shell's hicolor icons (0171 named it and
+  nothing provided it).
+- Centre means centre: a centred group stays on the monitor's centre line;
+  when it would meet the groups at the ends, the dock gives up length on
+  both sides alike before anything moves.
+- Start and end reach the true ends of every edge: a side band stops short
+  of a corner only when a top or bottom band is there.
+- Free placement off: exactly the three zones per edge and nothing else.
+  On: no zone grid, one faint line per edge; an island lands exactly where
+  it is dropped, with soft snaps (12 px) at the ends and centres and an
+  attach right beside another island.
+- Attach or apart: an attach within 20 px of an island's end, apart from
+  56 px, and a dead zone between where the preview does not change; the
+  chosen target is kept until another is better by 24 px, and targets are
+  measured against the layout as it was when the drag began, never the
+  preview, so nothing jitters or swaps.
+- Live extensions are one family: the live island and what is playing sit
+  side by side in one slot and move together; split placements are joined
+  where the first one was.
+- Hidden islands take no length and hold no edge: an edge whose only
+  islands are hidden (notifications with nothing unread, no live activity)
+  reserves nothing, and is reserved again when one shows. Arrange mode
+  shows a ghost in each hidden slot (Live extensions, Notifications).
+  An empty edge reserves nothing at all (no margin strut, no work-area
+  inset), so tiles and maximized windows reach the screen there; windows
+  keep the padding only from a band, or from every edge with Reserve work
+  area off. Each change of what an edge reserves is logged for Vitals
+  (LUMA_SHELF_RESERVATIONS), per monitor and edge.
+- Use islands off: one bar the whole length of each occupied edge, its
+  groups laid out inside it by the band solver exactly as arranged, with a
+  divider between its parts, on all four edges alike. With islands, Span
+  full edge lets the end groups reach the screen's ends (Float off); no
+  island changes length, so arrange mode shows what the desktop shows.
+- One divider token, 2 px and the island's full height, for Quick Options'
+  parts and a bar's parts, in every mode.
+- Notifications come from their island: a click on the island opens the
+  notification drawer (and closes it again) instead of the newest
+  notification; the drawer opens on the island's inner side, and urgent
+  cards sit beside the island on its monitor, both moving in from the
+  island's edge, wherever it is placed.
+- A carried island keeps the point where it was grabbed when it turns into
+  the other form (a column on a side edge).
+.121, the owner's findings on .120:
+
+- Every edge's ends reach the corner: a side band stops short of one only
+  when something of the top or bottom band is at that end (a group anchored
+  there, or a bar, which runs its whole edge). At a corner two zone
+  placeholders overlap; the one whose centre is nearest the pointer wins.
+- Use islands off: a top or bottom bar runs into the corner and the side
+  bar starts just past it, square where they meet and with no rim across
+  the joint, so the two read as one L with no gap, overlap or doubled line.
+- The group handle is a 32 x 6 pill in a 48 x 22 target that says what it
+  does on hover; it moves the whole group, while an island dragged by
+  itself still moves alone (the live family together).
+- Arrange mode shows only the Live extensions and Notifications
+  placeholders, always in their own slot, and never a live extension, what
+  is playing or a real notification.
+- An item with nothing to show takes no length, no spacing, no separation
+  and no divider, as a group of its own too; it opens when it becomes
+  visible (the live island and the Well grow in as the notifications island
+  does) and the notifications island holds its slot only while something is
+  waiting.
+- Hovering the notifications island changes only its look: no actions are
+  swapped in, and a press whose release went elsewhere never leaves it
+  following the pointer.
+- Dropping into a group opens the slot under the pointer: the index is the
+  number of islands whose midpoint the pointer has passed, measured as they
+  sit without the preview's slot and without the carried island, so it is
+  right at both ends, for start, centre and end groups, on every edge.
+- Tiling Shell's panel button is never adopted into the Dash.
+- Windows follow the Dash: before it changes what it reserves it emits
+  work-area-changing with Main.shelf.workAreaNext, and Main.shelf.
+  workAreaMotion carries the Dash's own duration and curve (250 ms,
+  ease-out-quint, 0 with reduced motion). Main.wm.lumaGlideFrame moves and
+  resizes a window in one continuous glide with no cross-fade, so Tiling
+  Shell's re-tile runs with the island's animation instead of after it.
+
+---
+diff --git a/data/icons/hicolor/scalable/status/luma-live-extensions-symbolic.svg b/data/icons/hicolor/scalable/status/luma-live-extensions-symbolic.svg
+new file mode 100644
+index 0000000..7fabdf5
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-live-extensions-symbolic.svg
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma "live extensions": the live island as a capsule with a live dot and a line of status, drawn on the 24-unit Lucide grid (2-unit strokes, round ends) and outlined to fills for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path fill="#2e3436" fill-rule="evenodd" d="M7.5,5.5 H16.5 A6.5,6.5 0 0 1 16.5,18.5 H7.5 A6.5,6.5 0 0 1 7.5,5.5 Z M7.5,7.5 A4.5,4.5 0 0 0 7.5,16.5 H16.5 A4.5,4.5 0 0 0 16.5,7.5 Z M5.75,12 A1.75,1.75 0 1 0 9.25,12 A1.75,1.75 0 1 0 5.75,12 Z M12.5,11 H16.5 A1,1 0 0 1 16.5,13 H12.5 A1,1 0 0 1 12.5,11 Z"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-system-tray-symbolic.svg b/data/icons/hicolor/scalable/status/luma-system-tray-symbolic.svg
+new file mode 100644
+index 0000000..2b49a47
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-system-tray-symbolic.svg
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma "system tray": the tray as a rounded slot with the icons in it, drawn on the 24-unit Lucide grid (2-unit strokes, round ends) and outlined to fills for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path fill="#2e3436" fill-rule="evenodd" d="M5,5.5 H19 A3.5,3.5 0 0 1 22.5,9 V15 A3.5,3.5 0 0 1 19,18.5 H5 A3.5,3.5 0 0 1 1.5,15 V9 A3.5,3.5 0 0 1 5,5.5 Z M5,7.5 A1.5,1.5 0 0 0 3.5,9 V15 A1.5,1.5 0 0 0 5,16.5 H19 A1.5,1.5 0 0 0 20.5,15 V9 A1.5,1.5 0 0 0 19,7.5 Z M6.75,12 A1.25,1.25 0 1 0 9.25,12 A1.25,1.25 0 1 0 6.75,12 Z M10.75,12 A1.25,1.25 0 1 0 13.25,12 A1.25,1.25 0 1 0 10.75,12 Z M14.75,12 A1.25,1.25 0 1 0 17.25,12 A1.25,1.25 0 1 0 14.75,12 Z"/>
++</svg>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 5c3ffd0..47a9bae 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -263,16 +263,8 @@
+ }
+ 
+ 
+-.luma-shelf-horizontal .luma-shelf-divider-after > .luma-shelf-material {
+-  border-right: 1px solid rgba(255, 255, 255, 0.12);
+-}
+-.luma-shelf-horizontal:rtl .luma-shelf-divider-after > .luma-shelf-material {
+-  border-right-width: 0;
+-  border-left: 1px solid rgba(255, 255, 255, 0.12);
+-}
+-.luma-shelf-vertical .luma-shelf-divider-after > .luma-shelf-material {
+-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+-}
++/* The divider between the parts of a bar is drawn by ShelfIsland.setDivider
++   (DIVIDER_WIDTH, SURFACE_INK.divider), the same token as Quick Options'. */
+ 
+ /* One real clock/status button, including the material's padding. */
+ .luma-shelf-actions-island .luma-status-cluster {
+@@ -2247,15 +2239,21 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ 
+ 
+ .luma-arrange-grip {
+-  border-radius: 3px; background-color: rgba(255, 255, 255, 0.55); }
+-.luma-arrange-grip:hover, .luma-arrange-grip:active { background-color: #ffffff; }
++  border-radius: 11px; background-color: transparent; }
++.luma-arrange-grip:hover, .luma-arrange-grip:active { background-color: rgba(255, 255, 255, 0.14); }
+ .luma-arrange-grip:focus { box-shadow: 0 0 0 2px #8a99a8; }
+-.luma-arrange-light .luma-arrange-grip,
+-.luma-arrange-frost .luma-arrange-grip,
+-.luma-arrange-glass .luma-arrange-grip { background-color: rgba(25, 27, 31, 0.45); }
++.luma-arrange-grip-pill { border-radius: 3px; background-color: rgba(255, 255, 255, 0.72); }
++.luma-arrange-grip:hover .luma-arrange-grip-pill,
++.luma-arrange-grip:active .luma-arrange-grip-pill { background-color: #ffffff; }
+ .luma-arrange-light .luma-arrange-grip:hover,
+ .luma-arrange-frost .luma-arrange-grip:hover,
+-.luma-arrange-glass .luma-arrange-grip:hover { background-color: #191b1f; }
++.luma-arrange-glass .luma-arrange-grip:hover { background-color: rgba(25, 27, 31, 0.08); }
++.luma-arrange-light .luma-arrange-grip-pill,
++.luma-arrange-frost .luma-arrange-grip-pill,
++.luma-arrange-glass .luma-arrange-grip-pill { background-color: rgba(25, 27, 31, 0.55); }
++.luma-arrange-light .luma-arrange-grip:hover .luma-arrange-grip-pill,
++.luma-arrange-frost .luma-arrange-grip:hover .luma-arrange-grip-pill,
++.luma-arrange-glass .luma-arrange-grip:hover .luma-arrange-grip-pill { background-color: #191b1f; }
+ 
+ /* The lifted island: the deeper far shadow (+50% opacity). */
+ .luma-island-lifted .luma-shelf-shadow-far { box-shadow: 0 72px 128px -28px rgba(9, 11, 14, 1); }
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index 64151af..958f597 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -52,7 +52,6 @@ const FLING_MIN = 24;
+ const FLING_VELOCITY = 0.5; // logical px per ms
+ const SWIPE_OUT_TIME = 160;
+ const SWIPE_BACK_TIME = 200;
+-const MAX_ISLAND_ACTIONS = 2;
+ 
+ // The first line of a notification's body, as plain text.
+ function bodyLine(notification) {
+@@ -217,16 +216,17 @@ class NotificationBeacon extends St.Button {
+         this._content = content;
+ 
+         this._model = new RestingModel(records => this._sync(records));
++        // A click opens the notification drawer from the island, wherever it
++        // is placed (a newest notification opens from its card there), and
++        // closes it again.
+         this.connect('clicked', () => {
+             if (this._swiped) {
+                 this._swiped = false;
+                 return;
+             }
+-            const newest = this._newest;
+-            if (!newest)
+-                return;
+-            console.log('[luma-notifications] island opened the newest notification');
+-            newest.activate();
++            this._swipe = null;
++            console.log('[luma-notifications] island toggled the drawer');
++            getNotificationTray().toggle(this);
+         });
+         this.connect('notify::hover', () => this._syncHover());
+         this.connect('key-focus-in', () => this._syncHover());
+@@ -290,8 +290,11 @@ class NotificationBeacon extends St.Button {
+             this._dismiss.has_key_focus() || this._count.has_key_focus();
+         this._dismiss.opacity = engaged && newest ? 255 : 0;
+         this._dismiss.reactive = engaged && !!newest;
+-        const actions = engaged && !this._lumaColumn && newest
+-            ? newest.actions.slice(0, MAX_ISLAND_ACTIONS) : [];
++        // Hover and focus change only the island's look, never its size or
++        // place: the notification's actions are in the drawer, not swapped
++        // in here (they made the island grow and the Dash shift under the
++        // pointer).
++        const actions = [];
+         if (this._shownActionsFor !== (actions.length ? newest : null)) {
+             this._actions.destroy_all_children();
+             for (const action of actions) {
+@@ -346,6 +349,18 @@ class NotificationBeacon extends St.Button {
+         if (!swipe)
+             return Clutter.EVENT_PROPAGATE;
+         if (type === Clutter.EventType.MOTION) {
++            // Only a held button drags. A press whose release went elsewhere
++            // (the click opened the drawer, which took the pointer) must not
++            // leave the island following the pointer on the next hover.
++            if (!(event.get_state() & Clutter.ModifierType.BUTTON1_MASK)) {
++                this._swipe = null;
++                if (swipe.dragging) {
++                    const target = this._swipeTarget();
++                    target.ease({translation_x: 0, opacity: 255, duration: SWIPE_BACK_TIME,
++                        mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++                }
++                return Clutter.EVENT_PROPAGATE;
++            }
+             const dx = (x - swipe.x0) / scale;
+             swipe.samples.push([x, time]);
+             if (swipe.samples.length > 4)
+@@ -586,9 +601,16 @@ class NotificationTray extends St.BoxLayout {
+         this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+         this._markSeen();
+         this.opacity = 0;
+-        this.translation_y = TRAY_RISE * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        // It opens from the island's edge: up from the bottom, down from the
++        // top, inward from a side.
++        const rise = TRAY_RISE * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const edge = (anchor && Main.shelf?.edgeForActor?.(anchor)) ?? 'bottom';
++        this.translation_x = edge === 'left' ? -rise : edge === 'right' ? rise : 0;
++        this.translation_y = edge === 'top' ? -rise : edge === 'bottom' ? rise : 0;
++        this._openEdge = edge;
+         this.ease({
+             opacity: 255,
++            translation_x: 0,
+             translation_y: 0,
+             duration: TRAY_OPEN_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+index b0022d4..d2bfe8a 100644
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -52,6 +52,9 @@ export const SURFACE_INK = {
+         recess: 'rgba(25,27,31,0.05)',
+         ink: '#34383d', ink2: 'rgba(52,56,61,0.78)',
+         accent: '#8a5510', line: 'rgba(25,27,31,0.12)',
++        // The rule between the parts of one island or bar (DIVIDER_WIDTH;
++        // ShelfIsland.setDivider draws it between the parts of a bar).
++        divider: 'rgba(25,27,31,0.26)',
+         hover: 'rgba(25,27,31,0.06)', press: 'rgba(25,27,31,0.09)',
+         rim: 'rgba(255,255,255,0.82)',
+         shadow: null,
+@@ -61,6 +64,9 @@ export const SURFACE_INK = {
+         recess: 'rgba(255,255,255,0.05)',
+         ink: '#e7e9e8', ink2: 'rgba(231,233,232,0.80)',
+         accent: '#f5c26b', line: 'rgba(255,255,255,0.10)',
++        // The rule between the parts of one island or bar (DIVIDER_WIDTH;
++        // ShelfIsland.setDivider draws it between the parts of a bar).
++        divider: 'rgba(255,255,255,0.22)',
+         hover: 'rgba(255,255,255,0.06)', press: 'rgba(255,255,255,0.09)',
+         rim: 'rgba(255,255,255,0.045)',
+         shadow: null,
+@@ -71,6 +77,9 @@ export const SURFACE_INK = {
+         recess: 'rgba(37,46,54,0.05)',
+         ink: '#1f262d', ink2: '#394047',
+         accent: '#7a4a0c', line: 'rgba(37,46,54,0.10)',
++        // The rule between the parts of one island or bar (DIVIDER_WIDTH;
++        // ShelfIsland.setDivider draws it between the parts of a bar).
++        divider: 'rgba(37,46,54,0.28)',
+         hover: 'rgba(37,46,54,0.06)', press: 'rgba(37,46,54,0.10)',
+         rim: 'rgba(255,255,255,0.55)',
+         shadow: null,
+@@ -81,6 +90,9 @@ export const SURFACE_INK = {
+         recess: 'rgba(37,46,54,0.04)',
+         ink: '#161b20', ink2: '#1f242a',
+         accent: '#5f3908', line: 'rgba(37,46,54,0.10)',
++        // The rule between the parts of one island or bar (DIVIDER_WIDTH;
++        // ShelfIsland.setDivider draws it between the parts of a bar).
++        divider: 'rgba(37,46,54,0.28)',
+         hover: 'rgba(37,46,54,0.05)', press: 'rgba(37,46,54,0.08)',
+         rim: 'rgba(255,255,255,0.62)',
+         shadow: null,
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index db0d66d..c1288e5 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -37,6 +37,22 @@ export const NOTIFICATIONS_LIVE_IN_SHELF = true;
+ function shelfHoldsNotifications() {
+     return NOTIFICATIONS_LIVE_IN_SHELF && !!Main.shelf?._beaconIsland && !!Main.shelf.get_stage();
+ }
++// Where the notifications island is placed (ADR-044): its edge, its
++// monitor and its centre, hidden or not (a hidden island's group still
++// stands at its slot).
++function notificationIslandPlace() {
++    const shelf = Main.shelf;
++    const group = shelf?._groups?.find(g => g.placement?.islands.includes('notifications') && !g.placement.drag);
++    if (!group)
++        return null;
++    const placed = group.placement;
++    const monitor = Main.layoutManager.monitors[placed.monitor] ?? Main.layoutManager.primaryMonitor;
++    const island = shelf.getIsland('notifications');
++    const actor = island?.visible && island.get_stage() ? island : group;
++    const [x, y] = actor.get_transformed_position();
++    const [w, h] = actor.get_transformed_size();
++    return {edge: placed.edge, monitor, index: monitor.index, cx: x + w / 2, cy: y + h / 2};
++}
+ const MAX_NOTIFICATIONS_PER_SOURCE = 10;
+ 
+ // Desktop arrival geometry (logical px): clamp(268px, 26vw, 352px) wide,
+@@ -1014,10 +1030,22 @@ export const MessageTray = GObject.registerClass({
+     }
+ 
+     _corner() {
+-        // The few cards still shown (urgent ones, calls) sit above the
+-        // notification island at the end of the shelf.
+-        if (shelfHoldsNotifications())
+-            return {bottom: true, right: true, center: false};
++        // The few cards still shown (urgent ones, calls) come from the
++        // notifications island, wherever it is placed: beside it along its
++        // edge, arriving from that edge.
++        if (shelfHoldsNotifications()) {
++            const place = notificationIslandPlace();
++            if (!place)
++                return {bottom: true, right: true, center: false, edge: 'bottom'};
++            const m = place.monitor;
++            if (place.edge === 'left' || place.edge === 'right') {
++                return {bottom: (place.cy - m.y) / m.height > 0.5, right: place.edge === 'right',
++                    center: false, edge: place.edge};
++            }
++            const along = (place.cx - m.x) / m.width;
++            return {bottom: place.edge === 'bottom', right: along > 2 / 3,
++                center: along >= 1 / 3 && along <= 2 / 3, edge: place.edge};
++        }
+         // Top centre is where a banner is noticed without covering the Shelf
+         // or the corner the pointer lives in; a corner is still a choice.
+         const corner = this._shellSettings.get_string('notification-corner');
+@@ -1036,6 +1064,10 @@ export const MessageTray = GObject.registerClass({
+         if (this._cards.length + this._leavingCards.size > 0 &&
+             this._monitorIndex >= 0 && this._monitorIndex < monitors.length)
+             return this._monitorIndex;
++        // Cards from the notifications island come on its monitor.
++        const place = shelfHoldsNotifications() ? notificationIslandPlace() : null;
++        if (place && place.index >= 0 && place.index < monitors.length)
++            return peekCast()?.bannerMonitor(place.index) ?? place.index;
+         const focusWindow = global.display.get_focus_window();
+         let index = focusWindow?.get_monitor() ?? -1;
+         if (index < 0 || index >= monitors.length)
+@@ -1167,6 +1199,12 @@ export const MessageTray = GObject.registerClass({
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const corner = this._corner();
+         const travel = ARRIVAL_TRAVEL * scale;
++        // From the notifications island's edge: up from the bottom, down
++        // from the top, inward from a side.
++        if (corner.edge === 'bottom' || corner.edge === 'top')
++            return {x: 0, y: (corner.edge === 'bottom' ? 1 : -1) * travel};
++        if (corner.edge === 'left' || corner.edge === 'right')
++            return {x: (corner.edge === 'right' ? 1 : -1) * travel, y: 0};
+         if (corner.center)
+             return {x: 0, y: (corner.bottom ? 1 : -1) * travel};
+         return {x: (corner.right ? 1 : -1) * travel, y: 0};
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 5c4c51c..389ffbf 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -17,7 +17,7 @@ import * as PopupMenu from './popupMenu.js';
+ import * as PanelMenu from './panelMenu.js';
+ import {QuickMenuToggle, QuickSettingsMenu, QuickToggle, SystemIndicator} from './quickSettings.js';
+ import * as Main from './main.js';
+-import {DASH_TILE_SIZE, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
++import {DASH_TILE_SIZE, DIVIDER_WIDTH} from './shelfMetrics.js';
+ import {LIGHT_FAMILY, SURFACE_INK} from './lumaSurfaceMaterials.js';
+ import * as Util from '../misc/util.js';
+ import * as DateUtils from '../misc/dateUtils.js';
+@@ -1658,16 +1658,16 @@ class QuickSettings extends PanelMenu.Button {
+         if (!parts.includes(this._statusClock))
+             this._statusClock.set_style(clockVertical ? 'padding: 0;' : 'padding: 0 4px;');
+         const seam = s.get_boolean('status-divider');
+-        // A 1 x 24 rule, 8 from the parts on each side. Joined parts meet
+-        // along a rule as long as they are.
+-        const length = joined ? '' : `${vertical ? 'width' : 'height'}: ${SHELF_DIVIDER_LENGTH}px; `;
+-        this._statusSeam.set_style(`background-color: ${seam ? line : 'transparent'}; ${vertical ? 'height' : 'width'}: 1px; ${length}margin: ${joined ? '0' : vertical ? `${padding}px 0` : `0 ${padding}px`};`);
++        // The divider token: DIVIDER_WIDTH wide, the full height of the
++        // parts it divides, the Dash's divider ink.
++        const dividerInk = ink.divider ?? line;
++        this._statusSeam.set_style(`background-color: ${seam ? dividerInk : 'transparent'}; ${vertical ? 'height' : 'width'}: ${DIVIDER_WIDTH}px; margin: ${joined ? '0' : vertical ? `${padding}px 0` : `0 ${padding}px`};`);
+         this._statusWellSeam?.set_style(this._statusSeam.get_style());
+         for (const divider of [this._statusSeam, this._statusWellSeam].filter(Boolean)) {
+-            divider.x_expand = vertical && joined;
+-            divider.y_expand = !vertical && joined;
+-            divider.x_align = vertical && joined ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
+-            divider.y_align = !vertical && joined ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
++            divider.x_expand = vertical;
++            divider.y_expand = !vertical;
++            divider.x_align = vertical ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
++            divider.y_align = !vertical ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
+         }
+         this._statusTime.set_style(`font-size: ${this._statusFontSize(this._statusTime)}px; font-weight: 700; color: ${ink.ink};`);
+         this._statusDateLabel.set_style(`font-size: ${this._statusFontSize(this._statusDateLabel)}px; font-weight: 600; color: ${ink.ink2};`);
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 942d07b..30dbc68 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -17,7 +17,7 @@ import {NotificationBeacon, getNotificationTray} from './lumaNotificationBeacon.
+ import {LumaIconMask} from './iconMask.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {WindowMarks} from './lumaDockWindows.js';
+-import {DASH_TILE_SIZE, SHELF_INSET, SHELF_ISLAND_RADIUS, windowMarkRow} from './shelfMetrics.js';
++import {DASH_TILE_SIZE, DIVIDER_WIDTH, SHELF_INSET, SHELF_ISLAND_RADIUS, windowMarkRow} from './shelfMetrics.js';
+ import * as Arrangement from './shelfArrangement.js';
+ import {ShelfArrange, DashedOutline} from './shelfArrange.js';
+ 
+@@ -103,11 +103,35 @@ export function dashCornerRadii(edge, protrude, touchesStart, touchesEnd) {
+     return radius;
+ }
+ 
++// Islands that come and go with what is happening: they hold an edge only
++// while they show, and arrange mode shows a ghost in their slot otherwise.
++const TRANSIENT_ISLANDS = ['notifications', 'live', 'media'];
++// Panel indicators the Dash leaves in the (hidden) panel.
++const NEVER_ADOPTED = ['tilingshell@ferrarodomenico.com'];
++// The ghost each hidden slot shows in arrange mode.
++const GHOSTS = {
++    live: {label: () => _('Live extensions'), icon: 'luma-live-extensions-symbolic',
++        accessible: () => _('Live extensions: where live activities appear')},
++    notifications: {label: () => _('Notifications'), icon: 'luma-bell-symbolic',
++        accessible: () => _('Notifications: where new notifications appear')},
++    well: {label: () => _('System tray'), icon: 'luma-system-tray-symbolic',
++        fallback: 'view-grid-symbolic',
++        accessible: () => _('System tray: where app and system icons appear')},
++    // Only drawn where the dock's folders are built (Shell patch 0180).
++    folders: {label: () => _('Folders'), icon: 'luma-dock-folders-symbolic',
++        fallback: 'folder-symbolic',
++        accessible: () => _('Folders: where the folders pinned to the Dock appear')},
++};
++
+ // How long the notification island takes to grow in or leave, and the other
+ // islands to move aside.
+ const BEACON_MOTION_TIME = 200;
+ // With reduced motion the island only fades in and out.
+ const BEACON_FADE_TIME = 150;
++// Luma motion for the Dash moving and the windows following it: groups
++// sliding, and tiled windows re-fitted when the work area changes
++// (Main.shelf.workAreaMotion), on one curve and one duration.
++export const SHELF_MOTION_TIME = 250;
+ 
+ // One row of attached islands (ADR-044): ISLAND_GAP apart, in physical order
+ // (left to right, top to bottom; RTL does not reverse a placed row). A row
+@@ -138,6 +162,45 @@ class ShelfGroupLayout extends Clutter.LayoutManager {
+         return [0, container._vertical ? m.length : m.thickness];
+     }
+ 
++    // A bar without islands: each group a segment at its own anchor, placed
++    // by the band solver over the bar's length, exactly as the groups are
++    // placed on the band while arranging.
++    _allocateSegments(container, box, children, sizes, gap, available) {
++        const vertical = container._vertical;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const segments = container._segments.map(segment => ({...segment, members: []}));
++        const segmentOf = new Map();
++        segments.forEach(segment => segment.actors.forEach(actor => segmentOf.set(actor, segment)));
++        // A child no group names (the tray applets before the Well) goes
++        // with the child after it.
++        children.forEach((child, i) => {
++            let segment = segmentOf.get(child);
++            for (let j = i + 1; !segment && j < children.length; j++)
++                segment = segmentOf.get(children[j]);
++            (segment ?? segments.at(-1)).members.push(i);
++        });
++        const used = segments.filter(segment => segment.members.length);
++        const specs = used.map(segment => {
++            const length = segment.members.reduce((sum, i) => sum + sizes[i], 0) + gap * (segment.members.length - 1);
++            return {anchor: segment.anchor, position: segment.position, length};
++        });
++        const solved = Arrangement.solveBand(available, specs, Arrangement.GROUP_SEPARATION * scale);
++        const cross = vertical ? box.get_width() : box.get_height();
++        used.forEach((segment, k) => {
++            let offset = solved[k].start;
++            for (const i of segment.members) {
++                const size = sizes[i];
++                children[i].allocate(new Clutter.ActorBox({
++                    x1: vertical ? 0 : offset,
++                    y1: vertical ? offset : 0,
++                    x2: vertical ? cross : offset + size,
++                    y2: vertical ? offset + size : cross,
++                }));
++                offset += size + gap;
++            }
++        });
++    }
++
+     vfunc_allocate(container, box) {
+         const {children, sizes, gap, length} = this._measure(container);
+         const vertical = container._vertical;
+@@ -153,20 +216,15 @@ class ShelfGroupLayout extends Clutter.LayoutManager {
+             container._askedLength = length;
+             container._lengthChanged?.();
+         }
++        if (container._segments && !container._fitsContent) {
++            this._allocateSegments(container, box, children, sizes, gap, available);
++            return;
++        }
+         const spare = Math.max(0, available - length);
+         const gaps = children.slice(0, -1).map(() => gap);
+         let lead = 0;
+-        if (spare > 0 && !container._fitsContent) {
+-            const dock = children.indexOf(container._dockIsland);
+-            const boundaries = (container._boundaryActors ?? [])
+-                .map(actor => children.indexOf(actor)).filter(i => i >= 0 && i < gaps.length);
+-            const flexible = boundaries.length ? boundaries
+-                : dock < 0 ? [] : [dock - 1, dock].filter(i => i >= 0 && i < gaps.length);
+-            if (flexible.length)
+-                flexible.forEach(i => (gaps[i] += spare / flexible.length));
+-            else
+-                lead = spare;
+-        }
++        if (spare > 0 && !container._fitsContent)
++            lead = spare / 2;
+         let offset = lead;
+         let remaining = available - lead;
+         const cross = vertical ? box.get_width() : box.get_height();
+@@ -192,10 +250,26 @@ class ShelfIslandLayout extends Clutter.LayoutManager {
+     vfunc_allocate(container, box) {
+         container._content.allocate(box);
+         container._indicators?.allocate(box);
++        // The divider after this island in a bar: the full height of the
++        // island, at its trailing end.
++        const divider = container._divider;
++        if (divider?.visible) {
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            const w = box.get_width(), h = box.get_height(), d = DIVIDER_WIDTH * scale;
++            const rtl = container.text_direction === Clutter.TextDirection.RTL;
++            const b = container._dividerVertical
++                ? {x1: 0, y1: h - d, x2: w, y2: h}
++                : rtl ? {x1: 0, y1: 0, x2: d, y2: h} : {x1: w - d, y1: 0, x2: w, y2: h};
++            divider.allocate(new Clutter.ActorBox(b));
++        }
+         for (const actor of [container._stroke, ...container._shadows]) {
+             if (actor.visible)
+                 actor.allocate(box);
+         }
++        // The joint's rim copies are placed even while hidden: whether they
++        // show is decided from this allocation.
++        container._joinStrokes?.forEach(copy => copy.allocate(box));
++        container._clipJoins?.(box.get_width(), box.get_height());
+     }
+ });
+ 
+@@ -282,10 +356,21 @@ class ShelfIsland extends St.Widget {
+         // These painted layers must never intercept the real tile delegate.
+         Shell.util_set_hidden_from_pick(stroke, true);
+         this._stroke = stroke;
++        // A bar joined by a side bar at one of its ends (Use islands off)
++        // draws no rim across the joint, so the two read as one L: the rim
++        // is drawn by the main stroke away from the joint, and next to it by
++        // a copy that leaves out the inner side. Hidden otherwise.
++        this._joinStrokes = [0, 1, 2, 3].map(() => {
++            const copy = new St.Widget({style_class: 'luma-shelf-stroke', reactive: false, visible: false});
++            this.add_child(copy);
++            Shell.util_set_hidden_from_pick(copy, true);
++            return copy;
++        });
++        this._joins = null;
+         this._materialBinding = SurfaceMaterials.bindSurface(child, {
+             enabled: false,
+             cornerRadii: SHELF_ISLAND_RADIUS,
+-            classActors: [this, stroke, ...this._shadows],
++            classActors: [this, stroke, ...this._joinStrokes, ...this._shadows],
+             onTreatmentChanged: treatment => {
+                 this._content._lumaSurfaceTreatment = treatment;
+                 if (this._content._statusActive)
+@@ -343,6 +428,27 @@ class ShelfIsland extends St.Widget {
+         sync();
+     }
+ 
++    // The divider token between the parts of one bar (Use islands off).
++    setDivider(on, vertical) {
++        if (!on && !this._divider)
++            return;
++        if (!this._divider) {
++            this._divider = new St.Widget({style_class: 'luma-shelf-divider', reactive: false});
++            Shell.util_set_hidden_from_pick(this._divider, true);
++            this.add_child(this._divider);
++        }
++        const treatment = SurfaceMaterials.effectiveTreatment();
++        const ink = (SurfaceMaterials.SURFACE_INK[treatment] ?? SurfaceMaterials.SURFACE_INK.dark).divider;
++        const style = `background-color: ${ink};`;
++        if (this._divider.get_style() !== style)
++            this._divider.set_style(style);
++        this._divider.visible = on;
++        if (this._dividerVertical !== vertical) {
++            this._dividerVertical = vertical;
++            this.queue_relayout();
++        }
++    }
++
+     setCornerRadii(radii) {
+         if (this._radii && radii.join() === this._radii.join() && !this._content._statusActive)
+             return;
+@@ -359,8 +465,12 @@ class ShelfIsland extends St.Widget {
+     _updateStyle() {
+         const radii = this._radii ?? [15, 15, 15, 15];
+         const style = `border-radius: ${radii.map(value => `${value}px`).join(' ')};`;
+-        for (const actor of [this._stroke, ...this._shadows])
++        for (const actor of [...this._joinStrokes ?? [], ...this._shadows])
+             actor.set_style(style);
++        // A side bar joined at an end has no rim across that end.
++        const open = this._joins?.vertical
++            ? [this._joins.start ? 'top' : null, this._joins.end ? 'bottom' : null].filter(Boolean) : [];
++        this._stroke.set_style(`${style}${open.map(side => ` border-${side}-width: 0px;`).join('')}`);
+         const padding = this._outer || this._content._statusFlush ? 0 : this._padding ?? DASH_PADDING;
+         // One material inset on all four sides. Inter-tile spacing and the
+         // viewport's native fade effect never contribute to outer padding.
+@@ -379,12 +489,58 @@ class ShelfIsland extends St.Widget {
+         this._content.set_style(`${style} ${this._content._statusActive ? `transition-duration: ${St.Settings.get().enable_animations ? 120 : 0}ms;` : ''} padding: ${values.map(value => `${value}px`).join(' ')};`);
+     }
+ 
++    // joins: null, or {vertical, edge, start, end, depth}: which ends of a
++    // bar meet a bar on the adjacent edge, and how deep that bar is.
++    setJoins(joins) {
++        const key = JSON.stringify(joins ?? null);
++        if (key === this._joinsKey)
++            return;
++        this._joinsKey = key;
++        this._joins = joins && (joins.start || joins.end) ? joins : null;
++        this._updateStyle();
++        this.queue_relayout();
++    }
++
++    _clipJoins(width, height) {
++        const joins = this._joins;
++        const across = joins && !joins.vertical ? joins : null;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const rim = Math.max(1, Math.round(scale));
++        // The joint ends one rim short of the side bar's inner edge, so the
++        // side bar's inner rim and this bar's inner rim meet in one corner.
++        const start = across?.start ? Math.max(0, Math.min(width, across.depth - rim)) : 0;
++        const end = across?.end ? Math.max(0, Math.min(width, across.depth - rim)) : 0;
++        if (!start && !end) {
++            this._stroke.remove_clip();
++            this._joinStrokes.forEach(copy => (copy.visible = false));
++            return;
++        }
++        this._stroke.set_clip(start, 0, Math.max(0, width - start - end), height);
++        // Over the joint the copy draws everything but the inner side (the
++        // bottom of a top bar, the top of a bottom bar); a second copy keeps
++        // the outer rim's pixel in that row, so the outside runs unbroken.
++        const top = across.edge === 'top';
++        const body = top ? [0, height - rim] : [rim, height - rim];
++        const row = top ? height - rim : 0;
++        [[start, 0, 0], [end, width - end, width - rim]].forEach(([length, x, outerX], i) => {
++            const [copy, pixel] = [this._joinStrokes[2 * i], this._joinStrokes[2 * i + 1]];
++            const shown = length > 0 && this._stroke.visible;
++            copy.visible = pixel.visible = shown;
++            if (!shown)
++                return;
++            copy.set_clip(x, body[0], length, Math.max(0, body[1]));
++            pixel.set_clip(outerX, row, rim, rim);
++        });
++    }
++
+     setSurfaceVisible(visible, castShadows) {
+         if (this._surfaceKey === `${visible}:${castShadows}`)
+             return;
+         this._surfaceKey = `${visible}:${castShadows}`;
+         this._shadows.forEach(actor => actor.visible = visible && castShadows);
+         this._stroke.visible = visible;
++        this._joinStrokes.forEach(copy => (copy.visible = false));
++        this.queue_relayout();
+         this._materialBinding.setEnabled(visible);
+     }
+ 
+@@ -478,6 +634,15 @@ export const Shelf = GObject.registerClass({
+     Signals: {
+         'layout-changed': {},
+         'arrange-changed': {param_types: [GObject.TYPE_BOOLEAN]},
++        // The Dash is about to change what it reserves (Main.shelf.
++        // workAreaMotion says how, .workAreaNext where each monitor's work
++        // area will be): Tiling Shell moves the tiles there first, so Mutter
++        // never pushes a window out of a new band before the glide.
++        'work-area-changing': {},
++        // The arrangement was written: what is in its own group, and what
++        // sits beside what, has changed. Anything that keeps a setting in
++        // step with the arrangement (the dock's folders) follows this.
++        'arrangement-written': {},
+     },
+ }, class Shelf extends St.Widget {
+     _init() {
+@@ -688,7 +853,7 @@ export const Shelf = GObject.registerClass({
+             this._syncAgainId = 0;
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+-            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland, this._liveGhost])
++            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland, ...(this._ghosts?.values() ?? [])])
+                 if (island && !island.get_parent()) island.destroy();
+         });
+ 
+@@ -833,8 +998,10 @@ export const Shelf = GObject.registerClass({
+         // shows it.
+         const shellRoles = new Set(['activities', 'appMenu', 'dateMenu',
+             'quickSettings', 'liveExtensions', ...actionRoles]);
++        // Tiling Shell's own layout button never joins the Dash: tiling
++        // lives in Quick Options, even with its indicator turned back on.
+         const extraRoles = Object.keys(indicators).filter(role =>
+-            !shellRoles.has(role) && indicators[role]?.container);
++            !shellRoles.has(role) && !NEVER_ADOPTED.includes(role) && indicators[role]?.container);
+         // Every surface opens away from its own island's edge.
+         const sideOf = id => St.Side[this.edgeOfIsland(id).toUpperCase()];
+         const arrowSide = sideOf('quick-options');
+@@ -925,8 +1092,11 @@ export const Shelf = GObject.registerClass({
+                 liveIndicator.connectObject('notify::width', () => this._queueDockWidth(),
+                     'notify::height', () => this._queueDockWidth(), this);
+                 liveIndicator.connectObject('notify::visible', () => {
++                    const arriving = liveIndicator.visible && !this._liveIsland.visible;
+                     this._liveIsland.visible = liveIndicator.visible;
+                     this._queueDockWidth();
++                    if (arriving)
++                        this._growIsland(this._liveIsland, 'live');
+                 }, this);
+             }
+             // Every other adopted actor is re-parented on each sync; this
+@@ -956,6 +1126,29 @@ export const Shelf = GObject.registerClass({
+         island.islandId = id;
+         island.name = `lumaShelfIsland-${id}`;
+         this._islands.set(id, island);
++        // A transient island (notifications, live extensions, what is
++        // playing) holds its edge only while it shows: when it comes or
++        // goes, the bands and struts follow.
++        if (TRANSIENT_ISLANDS.includes(id))
++            island.connectObject('notify::visible', () => this._queueOccupancy(), this);
++    }
++
++    _queueOccupancy() {
++        if (this._occupancyId)
++            return;
++        this._occupancyId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++            this._occupancyId = 0;
++            const key = this._occupancyKey();
++            if (key !== this._lastOccupancyKey)
++                this._sync();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _occupancyKey() {
++        return (this._resolved ?? []).filter(p => !p.drag &&
++            p.islands.some(id => this._islandPresent(id)))
++            .map(p => `${p.monitor}:${p.edge}`).sort().join();
+     }
+ 
+     getIsland(id) {
+@@ -972,8 +1165,17 @@ export const Shelf = GObject.registerClass({
+     _syncBeaconIsland() {
+         const island = this._beaconIsland;
+         const show = this._beacon.visible;
+-        if (show === (island.visible && !island._lumaLeaving))
++        if (show === (island.visible && !island._lumaLeaving)) {
++            // Never left half-way: an island that shows but whose arrival
++            // was cut short (collapsed or transparent, nothing easing it)
++            // is finished now, so it never holds space it does not draw.
++            if (show && !this._beaconGrowId && !island.get_transition('opacity') &&
++                    (island.opacity < 255 || island.scale_x < 1 || island.scale_y < 1)) {
++                console.log('[luma-shelf] notification island was left half-shown; finished');
++                island.set({opacity: 255, scale_x: 1, scale_y: 1});
++            }
+             return;
++        }
+         const animate = St.Settings.get().enable_animations;
+         // The island grows from nothing at the shelf end on the same curve the
+         // others move aside on, so its edge follows theirs and never overlaps.
+@@ -1044,11 +1246,29 @@ export const Shelf = GObject.registerClass({
+     // it was: its old position is kept as a translation once the row has been
+     // laid out again, and eased away. (The row re-adds its islands on every
+     // sync, so an implicit allocation transition never runs.)
+-    _easeIslandsAside(time) {
++    // An island that was empty and now has something to show (a live
++    // extension, status icons) opens like the notifications island: its
++    // neighbours glide aside and it grows in from nothing, on one curve.
++    // Reduced motion: it simply appears. Never in arrange mode, which shows
++    // placeholders instead.
++    _growIsland(island, id) {
++        if (!St.Settings.get().enable_animations || this._arrange?.active || !island.get_stage())
++            return;
++        this._easeIslandsAside(SHELF_MOTION_TIME, island, Clutter.AnimationMode.EASE_OUT_QUINT);
++        const vertical = Arrangement.isVertical(this.edgeOfIsland(id));
++        island.remove_transition('opacity');
++        island.set_pivot_point(0.5, 0.5);
++        island.set({opacity: 0, scale_x: vertical ? 1 : 0.01, scale_y: vertical ? 0.01 : 1});
++        island.ease({opacity: 255, scale_x: 1, scale_y: 1, duration: SHELF_MOTION_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++            onStopped: () => island.set({opacity: 255, scale_x: 1, scale_y: 1})});
++    }
++
++    _easeIslandsAside(time, arriving = this._beaconIsland, mode = Clutter.AnimationMode.EASE_OUT_QUAD) {
+         if (!time)
+             return;
+-        const before = new Map((this._beaconIsland.get_parent()?.get_children() ?? [])
+-            .filter(actor => actor.visible && actor !== this._beaconIsland && actor.get_stage())
++        const before = new Map((arriving.get_parent()?.get_children() ?? [])
++            .filter(actor => actor.visible && actor !== arriving && actor.get_stage())
+             .map(actor => [actor, actor.get_transformed_position()]));
+         for (const [actor, [x0, y0]] of before) {
+             let id = 0;
+@@ -1071,7 +1291,7 @@ export const Shelf = GObject.registerClass({
+                 actor.ease({
+                     translation_x: 0, translation_y: 0,
+                     duration: time,
+-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                    mode,
+                 });
+             });
+             GLib.timeout_add(GLib.PRIORITY_DEFAULT, time + 300, () => {
+@@ -1200,6 +1420,7 @@ export const Shelf = GObject.registerClass({
+         if (before.equal(variant))
+             return false;
+         this._settings.set_value('shelf-arrangement', variant);
++        this.emit('arrangement-written');
+         console.log(`[luma-shelf] arrangement: ${groups.map(g =>
+             `${g.display || 'primary'}/${g.edge}/${g.anchor}${g.anchor === 'free' ? `@${g.position}` : ''}[${g.islands.join(',')}]`).join(' ')}`);
+         return true;
+@@ -1356,11 +1577,12 @@ export const Shelf = GObject.registerClass({
+         const groups = this._preview?.groups ?? this._arrangement;
+         this._resolved = layout.primaryMonitor
+             ? Arrangement.resolveDisplays(groups, this._monitors, layout.primaryIndex, shared) : [];
+-        // "Use islands" off with a spanning shelf: the groups on the dock's
+-        // band are drawn as one bar along the edge (not while arranging,
+-        // where each group stays a group of its own).
+-        if (this._surfaceMode === 'connected' && this._span && !this._preview && !this._arrange?.active)
+-            this._resolved = this._mergeSpanningBand(this._resolved);
++        // "Use islands" off: the groups on each edge are drawn as one bar the
++        // whole length of the edge, each group where it was placed inside it
++        // (not while arranging, where each group stays a group of its own
++        // at the same place).
++        if (this._surfaceMode === 'connected' && !this._preview && !this._arrange?.active)
++            this._resolved = this._mergeBands(this._resolved);
+         if (this._preview?.drag)
+             this._resolved.push({...this._preview.drag, source: [], drag: true});
+         this._islandEdges = new Map();
+@@ -1371,7 +1593,7 @@ export const Shelf = GObject.registerClass({
+         // otherwise.
+         const quickGroup = this._resolved.find(placed => placed.islands.includes('quick-options'));
+         const fused = quickGroup
+-            ? Arrangement.fuseStatus(quickGroup.islands).find(entry => entry.fused?.includes('quick-options'))?.fused ?? ['quick-options']
++            ? Arrangement.fuseStatus(quickGroup.islands, id => !this._ghostWanted(id)).find(entry => entry.fused?.includes('quick-options'))?.fused ?? ['quick-options']
+             : ['quick-options'];
+         this._actionsParts = fused.map(id => (id === 'quick-options' ? 'controls' : id));
+ 
+@@ -1425,8 +1647,8 @@ export const Shelf = GObject.registerClass({
+     // The island actor drawn for an id right now. A status part fused into
+     // Quick Options is drawn by the Quick Options island.
+     islandActorFor(id) {
+-        if (id === 'live' && this._liveGhostWanted())
+-            return this._liveGhostIsland();
++        if (this._ghostWanted(id))
++            return this._ghostIsland(id === 'media' ? 'live' : id);
+         if (id === 'well' && this._wellIsland && !this._actionsParts?.includes('well'))
+             return this._wellIsland;
+         if (id === 'clock' && this._clockIsland && !this._actionsParts?.includes('clock'))
+@@ -1436,55 +1658,138 @@ export const Shelf = GObject.registerClass({
+         return this.getIsland(id);
+     }
+ 
++    // The items drawn inside one island actor, in the order they sit:
++    // [{id, actor}]. The status island holds the tray, the controls and the
++    // clock; the dock island holds the applications and, while the folders
++    // are married to it, the folders rail. Arranging treats each of them as
++    // an item of its own, so any of them can be grabbed, dropped beside or
++    // between the others, and counted for the group handle.
++    islandParts(island) {
++        const parts = [];
++        const add = id => {
++            const actor = this.partActorFor(id);
++            if (actor && actor !== island && actor.visible && actor.get_stage())
++                parts.push({id, actor});
++        };
++        if (island === this._actionsIsland) {
++            for (const id of Arrangement.STATUS_PARTS) {
++                if (this._actionsParts?.includes(id === 'quick-options' ? 'controls' : id))
++                    add(id);
++            }
++        } else if (island === this._dockIsland && this.dockFolders && !this.dockFolders.separate) {
++            parts.push({id: 'dock', actor: this._dash ?? island});
++            add('folders');
++        }
++        return parts.length > 1 ? parts : [];
++    }
++
+     // What a status part is drawn with inside the fused island, for hit
+     // tests and the lift; the island itself for everything else.
+     partActorFor(id) {
+         const quick = this._actionsMaterial;
++        // The folders rail while it is married to the dock island.
++        if (id === 'folders' && this.dockFolders && !this.dockFolders.separate)
++            return this.dockFolders.rail;
+         if (id === 'well' && this._actionsParts?.includes('well'))
+             return this._well;
+         if (id === 'clock' && this._actionsParts?.includes('clock'))
+             return quick._statusClock;
++        // The controls inside the fused island, when it holds more than
++        // them: arranging treats every part as its own item.
++        if (id === 'quick-options' && quick?._statusControls?.visible &&
++                (this._actionsParts?.length ?? 0) > 1)
++            return quick._statusControls;
+         return this.islandActorFor(id);
+     }
+ 
+-    // Arrange mode shows the live island's slot even with no live extension
+-    // running: every live extension appears in that one slot.
++    // Arrange mode never shows live content: the two slots that can be
++    // empty -- Live extensions (the live island and what is playing, one
++    // family) and Notifications -- always show as their placeholder, in
++    // their real slot, and nothing else stands for them. What is live now
++    // (an activity, a notification, a stale banner) is not drawn there.
++    _ghostWanted(id) {
++        if (!this._arrange?.active)
++            return false;
++        if (id === 'live' || id === 'media')
++            return !!this._actionsVisible;
++        // The system tray is a placeholder too: arranging never shows the
++        // icons that happen to be in it, and nor are the dock's folders.
++        if (id === 'well')
++            return !!this._actionsVisible;
++        if (id === 'folders')
++            return !!this.dockFolders && !!GHOSTS.folders;
++        return id === 'notifications';
++    }
++
+     _liveGhostWanted() {
+-        return !!this._arrange?.active && this._actionsVisible && !this._liveIsland?.visible;
++        return this._ghostWanted('live');
+     }
+ 
+-    _liveGhostIsland() {
+-        if (!this._liveGhost) {
++    get _liveGhost() {
++        return this._ghosts?.get('live') ?? null;
++    }
++
++    get _beaconGhost() {
++        return this._ghosts?.get('notifications') ?? null;
++    }
++
++    _ghostIsland(id) {
++        this._ghosts ??= new Map();
++        let ghost = this._ghosts.get(id);
++        if (!ghost) {
++            const spec = GHOSTS[id];
+             const content = new St.Widget({layout_manager: new Clutter.BinLayout(),
+                 style_class: 'luma-live-ghost', x_expand: true, y_expand: true});
+             content.add_child(new DashedOutline({style_class: 'luma-live-ghost-outline',
+                 x_expand: true, y_expand: true}));
+             const box = new St.BoxLayout({style_class: 'luma-live-ghost-content',
+                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+-            box.add_child(new St.Icon({style_class: 'luma-live-ghost-icon',
+-                icon_name: 'luma-live-extensions-symbolic', fallback_icon_name: 'view-grid-symbolic'}));
+-            const label = new St.Label({style_class: 'luma-live-ghost-label', text: _('Live extensions'),
++            box.add_child(new St.Icon({style_class: 'luma-live-ghost-icon', icon_name: spec.icon,
++                fallback_icon_name: spec.fallback ?? null}));
++            const label = new St.Label({style_class: 'luma-live-ghost-label', text: spec.label(),
+                 y_align: Clutter.ActorAlign.CENTER});
+             box.add_child(label);
+             content.add_child(box);
+             const material = new St.Bin({child: content, style_class: 'luma-live-ghost-material'});
+-            this._liveGhost = new ShelfIsland('luma-shelf-live-ghost', material);
+-            this._liveGhost.islandId = 'live';
+-            this._liveGhost.name = 'lumaShelfIsland-live-ghost';
+-            this._liveGhost.accessible_name = _('Live extensions: where live activities appear');
+-            this._liveGhost._label = label;
++            ghost = new ShelfIsland(`luma-shelf-${id}-ghost`, material);
++            ghost.islandId = id;
++            ghost._isGhost = true;
++            ghost.name = `lumaShelfIsland-${id}-ghost`;
++            ghost.accessible_name = spec.accessible();
++            ghost._label = label;
++            this._ghosts.set(id, ghost);
+         }
+-        this._liveGhost._label.visible = !Arrangement.isVertical(this.edgeOfIsland('live'));
+-        this._liveGhost._content.get_child().set_style_class_name(
++        ghost._label.visible = !Arrangement.isVertical(this.edgeOfIsland(id));
++        ghost._content.get_child().set_style_class_name(
+             `luma-live-ghost luma-arrange-${SurfaceMaterials.effectiveTreatment()}`);
+-        return this._liveGhost;
++        return ghost;
++    }
++
++    _liveGhostIsland() {
++        return this._ghostIsland('live');
++    }
++
++    // Whether an island is on screen outside arrange mode: what holds an
++    // edge. A ghost never does.
++    _islandPresent(id) {
++        if (id.startsWith('gap:'))
++            return false;
++        if (id === 'dock')
++            return this._dockVisible;
++        if (id === 'notifications')
++            return !!this._beacon?.visible && !!this._beaconIsland?.visible;
++        if (id === 'live' || id === 'media')
++            return this._actionsVisible && !!this.getIsland(id)?.visible;
++        return this._actionsVisible;
+     }
+ 
+     _islandShown(id) {
+         if (id === 'dock')
+             return this._dockVisible;
++        // Notifications take space only while something is waiting (or the
++        // island is on its way out); a hidden or stale island takes none.
+         if (id === 'notifications')
+-            return true;
++            return !!this._beacon?.visible || !!this._beaconIsland?._lumaLeaving;
+         return this._actionsVisible;
+     }
+ 
+@@ -1492,6 +1797,14 @@ export const Shelf = GObject.registerClass({
+     // its row. Only rows whose islands changed are touched.
+     _syncGroups() {
+         const layout = Main.layoutManager;
++        if (this._beaconIsland && !this._syncingBeacon) {
++            this._syncingBeacon = true;
++            try {
++                this._syncBeaconIsland();
++            } finally {
++                this._syncingBeacon = false;
++            }
++        }
+         const surfaceMode = this._surfaceMode;
+         // Outer edges that do not float: the islands at the band's ends meet
+         // the screen's ends, square there.
+@@ -1542,7 +1855,7 @@ export const Shelf = GObject.registerClass({
+ 
+             const actors = [];
+             const actorOfId = new Map();
+-            for (const entry of Arrangement.fuseStatus(placed.islands)) {
++            for (const entry of Arrangement.fuseStatus(placed.islands, id => !this._ghostWanted(id))) {
+                 if (entry.fused) {
+                     if (this._actionsVisible) {
+                         actors.push(this._actionsIsland);
+@@ -1553,9 +1866,11 @@ export const Shelf = GObject.registerClass({
+                 const id = entry.id;
+                 // In arrange mode the live island's slot shows even with no
+                 // live extension, so it can be seen and placed.
+-                if (id === 'live' && this._liveGhostWanted()) {
+-                    const ghost = this._liveGhostIsland();
+-                    actors.push(ghost);
++                if (this._ghostWanted(id)) {
++                    // One placeholder for the live family.
++                    const ghost = this._ghostIsland(id === 'media' ? 'live' : id);
++                    if (!actors.includes(ghost))
++                        actors.push(ghost);
+                     actorOfId.set(id, ghost);
+                     continue;
+                 }
+@@ -1581,9 +1896,12 @@ export const Shelf = GObject.registerClass({
+                     this._auxIsland.visible && !actors.includes(this._auxIsland))
+                 actors.splice(actors.indexOf(this._actionsIsland), 0, this._auxIsland);
+             this._reconcileRow(row, actors);
+-            // A merged spanning bar keeps its slack between its groups.
+-            row._boundaryActors = placed.merged
+-                ? placed.boundaries.map(id => actorOfId.get(id)).filter(Boolean) : null;
++            // A merged bar lays its groups out as segments at their anchors.
++            row._segments = placed.merged
++                ? placed.segments.map(segment => ({anchor: segment.anchor, position: segment.position,
++                    actors: [...new Set(segment.islands.map(id => actorOfId.get(id)).filter(Boolean))],
++                    dock: segment.islands.includes('dock')}))
++                : null;
+             const flushStart = gutterless && (placed.anchor === 'start' || !!placed.merged);
+             const flushEnd = gutterless && (placed.anchor === 'end' || !!placed.merged);
+ 
+@@ -1609,13 +1927,8 @@ export const Shelf = GObject.registerClass({
+                     continue;
+                 if (!placed.drag && island.has_style_class_name('luma-island-lifted'))
+                     island.remove_style_class_name('luma-island-lifted');
+-                const divider = surfaceMode === 'connected' && island !== visibleIslands.at(-1);
+-                if (divider !== island.has_style_class_name('luma-shelf-divider-after')) {
+-                    if (divider)
+-                        island.add_style_class_name('luma-shelf-divider-after');
+-                    else
+-                        island.remove_style_class_name('luma-shelf-divider-after');
+-                }
++                const divider = surfaceMode === 'connected' && island !== visibleIslands.at(-1) && !island._isGhost;
++                island.setDivider(divider, vertical);
+                 const first = island === visibleIslands[0];
+                 const last = island === visibleIslands.at(-1);
+                 let radii = surfaceMode === 'separate'
+@@ -1629,8 +1942,8 @@ export const Shelf = GObject.registerClass({
+                 island.setCornerRadii(radii);
+                 island.setOrientation(vertical, this._padding);
+                 // The live slot's ghost is an outline, never a surface.
+-                island.setSurfaceVisible(surfaceMode === 'separate' && island !== this._liveGhost,
+-                    (castShadows || !!placed.drag) && island !== this._liveGhost);
++                island.setSurfaceVisible(surfaceMode === 'separate' && !island._isGhost,
++                    (castShadows || !!placed.drag) && !island._isGhost);
+             }
+             group.surface.setOrientation(vertical, this._padding, true);
+             if (previous && previous.edge !== placed.edge)
+@@ -1663,36 +1976,34 @@ export const Shelf = GObject.registerClass({
+         // shelf until they are placed again.
+     }
+ 
+-    // shelf-span-full stretches the dock's group between the other groups
+-    // of its band; a dock standing alone keeps its own length.
++    // A merged bar (Use islands off) spans its edge. With islands, Span full
++    // edge lets the groups at an edge's ends reach the screen's ends (with
++    // Float outer edges off); no island changes length, so what arrange mode
++    // shows is what the desktop shows.
+     _spansGroup(placed) {
+-        if (placed.merged)
+-            return true;
+-        return this._span && this._surfaceMode === 'connected' && !placed.drag && placed.islands.includes('dock') &&
+-            placed.islands.filter(id => !id.startsWith('gap:')).length > 1;
+-    }
+-
+-    // One bar for the dock's band: its groups in order along the edge, the
+-    // bar's slack between them, so each keeps its side of the band.
+-    _mergeSpanningBand(resolved) {
+-        const dock = resolved.find(placed => placed.islands.includes('dock'));
+-        if (!dock)
+-            return resolved;
+-        const onBand = resolved.filter(p => p.monitor === dock.monitor && p.edge === dock.edge);
+-        if (!onBand.length)
+-            return resolved;
+-        const rank = p => p.anchor === 'start' ? 0 : p.anchor === 'end' ? 1 : p.position;
+-        const order = [...onBand].sort((a, b) => rank(a) - rank(b));
+-        const islands = [];
+-        const boundaries = [];
+-        order.forEach((p, i) => {
+-            islands.push(...p.islands);
+-            if (i < order.length - 1)
+-                boundaries.push(p.islands.at(-1));
+-        });
+-        const merged = {source: order.flatMap(p => p.source), monitor: dock.monitor, edge: dock.edge,
+-            anchor: 'start', position: 0.5, islands, merged: true, boundaries};
+-        return [merged, ...resolved.filter(p => !onBand.includes(p))];
++        return !!placed.merged;
++    }
++
++    // One bar per edge: the groups of each monitor edge in order along it,
++    // as segments the bar lays out with the band's own solver, so every
++    // group is exactly where arrange mode showed it.
++    _mergeBands(resolved) {
++        const bands = new Map();
++        for (const placed of resolved) {
++            const key = `${placed.monitor}:${placed.edge}`;
++            if (!bands.has(key))
++                bands.set(key, []);
++            bands.get(key).push(placed);
++        }
++        const rank = p => p.anchor === 'start' ? -1 : p.anchor === 'end' ? 2 : p.position ?? 0.5;
++        const merged = [];
++        for (const onBand of bands.values()) {
++            const order = [...onBand].sort((a, b) => rank(a) - rank(b));
++            merged.push({source: order.flatMap(p => p.source), monitor: order[0].monitor, edge: order[0].edge,
++                anchor: 'start', position: 0.5, islands: order.flatMap(p => p.islands), merged: true,
++                segments: order.map(p => ({anchor: p.anchor, position: p.position, islands: [...p.islands]}))});
++        }
++        return merged;
+     }
+ 
+     // The Well and the clock in islands of their own when they are not
+@@ -1708,8 +2019,12 @@ export const Shelf = GObject.registerClass({
+                 this._wellIsland = new ShelfIsland('luma-shelf-well-island', this._wellMaterial);
+                 this._registerIsland('well', this._wellIsland);
+                 this._well.connectObject('notify::visible', () => {
+-                    if (this._wellIsland && !this._actionsParts?.includes('well'))
++                    if (this._wellIsland && !this._actionsParts?.includes('well')) {
++                        const arriving = this._well.visible && !this._wellIsland.visible;
+                         this._wellIsland.visible = this._well.visible;
++                        if (arriving)
++                            this._growIsland(this._wellIsland, 'well');
++                    }
+                     this._queueDockWidth();
+                 }, this);
+                 this._syncPartWash(this._wellIsland, this._wellMaterial);
+@@ -1823,16 +2138,13 @@ export const Shelf = GObject.registerClass({
+             this._syncSharedReservations([]);
+     }
+ 
+-    // The floating shelf keeps a margin on its monitor's edges through struts.
+-    // Mutter ignores struts on an edge shared with another monitor, and other
+-    // monitors have none, so maximized and tiled windows there touched the
+-    // screen edges. The same margin now applies to every monitor edge that no
+-    // strut pads.
+-    // Windows keep the shelf padding from every edge, protruding shelf or
+-    // not: a protruding shelf touches the screen, the windows beside it still
+-    // keep their gap to it and to each other.
++    // An edge without a band reserves nothing: tiles and maximized windows
++    // reach the screen there. With shelf-reserve-work-area
++    // off, windows may go under the islands and keep only the padding from
++    // every edge (Mutter's work-area inset).
+     _syncWorkAreaInset(scale) {
+-        const inset = this._workAreaTracked ? Math.round(this._padding * scale) : 0;
++        const keepMargin = this._workAreaTracked && !this._settings.get_boolean('shelf-reserve-work-area');
++        const inset = keepMargin ? Math.round(this._padding * scale) : 0;
+         global.display.set_work_area_inset?.(inset);
+     }
+ 
+@@ -1845,7 +2157,8 @@ export const Shelf = GObject.registerClass({
+             margin: this._padding * scale,
+             // A spanning shelf whose outer edges do not float reaches the
+             // screen's ends; otherwise the ends stay SHELF_INSET in.
+-            gutter: this._span && !this._floatEnds ? 0 : SHELF_INSET * scale,
++            // Without islands the bar always spans its edge.
++            gutter: (this._span || this._surfaceMode === 'connected') && !this._floatEnds ? 0 : SHELF_INSET * scale,
+             scale,
+         };
+     }
+@@ -1868,7 +2181,7 @@ export const Shelf = GObject.registerClass({
+         const metrics = this._metrics(scale);
+         const occupied = new Map();
+         for (const placed of this._resolved) {
+-            if (placed.drag || !placed.islands.some(id => !id.startsWith('gap:') && this._islandShown(id)))
++            if (placed.drag || !placed.islands.some(id => this._islandPresent(id)))
+                 continue;
+             if (!occupied.has(placed.monitor))
+                 occupied.set(placed.monitor, new Set());
+@@ -1877,21 +2190,79 @@ export const Shelf = GObject.registerClass({
+         const bands = new Map();
+         for (const monitor of this._monitors) {
+             const edges = occupied.get(monitor.index) ?? new Set();
+-            const depth = Arrangement.bandGeometry(monitor, 'bottom', metrics).depth;
+-            // A side band's ends sit just inside the top and bottom bands, so a
+-            // side group never collides with a corner group.
+-            const reserved = {top: depth, bottom: depth};
++            // Corner ownership: a corner belongs to the top or bottom band
++            // only when something of it sits there -- a group at that end, or
++            // a bar, which always runs the whole edge. A side band's end then
++            // starts just past it (a bar meets a bar flush, an island keeps
++            // its gap); otherwise it reaches the corner exactly like the
++            // other edges' ends.
++            const corners = this._cornerOwners(monitor.index, edges);
++            const joinDepth = metrics.inset + metrics.thickness;
++            const depth = joinDepth + metrics.margin;
+             const perEdge = {};
+             for (const edge of Arrangement.EDGES) {
+                 if (monitor.closedEdges.includes(edge))
+                     continue;
++                const end = edge === 'left' ? 'start' : 'end';
++                const owned = side => corners[side]?.[end]
++                    ? (this._surfaceMode === 'connected' ? joinDepth : depth) : 0;
++                const reserved = Arrangement.isVertical(edge) ? {top: owned('top'), bottom: owned('bottom')} : {};
+                 perEdge[edge] = Arrangement.bandGeometry(monitor, edge, metrics, reserved);
+             }
++            // A bar joined by a side bar at one of its ends stops at that side
++            // bar's outer edge, so the two meet as one L.
++            if (this._surfaceMode === 'connected') {
++                for (const edge of ['top', 'bottom']) {
++                    const band = perEdge[edge];
++                    if (!band || !edges.has(edge))
++                        continue;
++                    const join = {start: edges.has('left') && !!perEdge.left, end: edges.has('right') && !!perEdge.right};
++                    if (!join.start && !join.end)
++                        continue;
++                    const start = join.start ? monitor.x + metrics.inset : band.along[0];
++                    const stop = join.end ? monitor.x + monitor.width - metrics.inset : band.along[1];
++                    band.along = [start, stop];
++                    band.length = Math.max(0, stop - start);
++                    band.rect = {...band.rect, x: start, width: band.length};
++                    band.joined = join;
++                }
++                for (const edge of ['left', 'right']) {
++                    const band = perEdge[edge];
++                    if (band && edges.has(edge))
++                        band.joined = {start: edges.has('top'), end: edges.has('bottom')};
++                }
++            }
+             bands.set(monitor.index, perEdge);
+         }
+         return {metrics, occupied, bands};
+     }
+ 
++    // Which ends of the top and bottom bands hold something on a monitor:
++    // {top: {start, end}, bottom: {start, end}}. A bar (Use islands off)
++    // holds both ends of its edge; with islands, a group placed at an end
++    // (or freely within a side band's reach of it) holds that end.
++    _cornerOwners(monitorIndex, edges) {
++        const owners = {top: {start: false, end: false}, bottom: {start: false, end: false}};
++        for (const edge of ['top', 'bottom']) {
++            if (!edges.has(edge))
++                continue;
++            if (this._surfaceMode === 'connected') {
++                owners[edge] = {start: true, end: true};
++                continue;
++            }
++            for (const placed of this._resolved ?? []) {
++                if (placed.drag || placed.monitor !== monitorIndex || placed.edge !== edge ||
++                        !placed.islands.some(id => this._islandPresent(id)))
++                    continue;
++                if (placed.anchor === 'start' || (placed.anchor === 'free' && (placed.position ?? 0.5) <= 0.1))
++                    owners[edge].start = true;
++                if (placed.anchor === 'end' || (placed.anchor === 'free' && (placed.position ?? 0.5) >= 0.9))
++                    owners[edge].end = true;
++            }
++        }
++        return owners;
++    }
++
+     // The struts: one per occupied edge per monitor, and the floating margin
+     // on that monitor's other edges. Never changed during a drag.
+     _syncStruts(occupied, metrics) {
+@@ -1904,6 +2275,12 @@ export const Shelf = GObject.registerClass({
+             {reserveShared: this.canReserveSharedEdges});
+         // Mutter ignores struts on an edge shared with another monitor; those
+         // bands are reserved through Mutter directly.
++        this._reservedMargins = this._marginsFrom(all, metrics);
++        this._logReservations(all);
++        if (this.workAreaMotion) {
++            this.workAreaNext = this._expectedWorkAreas(all);
++            this.emit('work-area-changing');
++        }
+         this._syncSharedReservations(all.filter(r => r.shared));
+         const wanted = all.filter(r => !r.shared);
+         const keys = new Set();
+@@ -1936,6 +2313,60 @@ export const Shelf = GObject.registerClass({
+         }
+     }
+ 
++    // How much of each monitor edge's reservation is the margin windows
++    // keep from the Dash (the band's own size is the rest): {monitorIndex:
++    // {top, right, bottom, left}}, 0 where an edge reserves nothing. Tiling
++    // Shell takes its outer gap from this, so a window sits the same
++    // distance from an island as from another window.
++    _marginsFrom(all, metrics) {
++        const out = {};
++        const margin = Math.round(metrics.margin);
++        for (const monitor of this._monitors ?? [])
++            out[monitor.index] = {top: 0, right: 0, bottom: 0, left: 0};
++        if (!this._workAreaTracked)
++            return out;
++        // Reserve work area off: every edge keeps the same inset instead.
++        if (!this._settings.get_boolean('shelf-reserve-work-area')) {
++            for (const edges of Object.values(out)) {
++                for (const edge of Arrangement.EDGES)
++                    edges[edge] = margin;
++            }
++            return out;
++        }
++        for (const r of all) {
++            if (out[r.monitor])
++                out[r.monitor][r.edge] = Math.max(out[r.monitor][r.edge], r.band ? margin : Math.round(r.depth ?? margin));
++        }
++        return out;
++    }
++
++    // What a window keeps from the Dash on each edge of `monitorIndex`.
++    reservedMargins(monitorIndex) {
++        return this._reservedMargins?.[monitorIndex] ?? {top: 0, right: 0, bottom: 0, left: 0};
++    }
++
++    // Each monitor's work area once `all` applies: the monitor less every
++    // band it reserves (and the inset every edge keeps with Reserve work
++    // area off). {monitorIndex: {x, y, width, height}}.
++    _expectedWorkAreas(all) {
++        const out = {};
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const keep = this._workAreaTracked && !this._settings.get_boolean('shelf-reserve-work-area')
++            ? Math.round(this._padding * scale) : 0;
++        for (const monitor of this._monitors ?? []) {
++            const depth = {top: keep, bottom: keep, left: keep, right: keep};
++            if (this._workAreaTracked) {
++                for (const r of all) {
++                    if (r.band && r.monitor === monitor.index)
++                        depth[r.edge] = Math.max(depth[r.edge], Math.round(r.depth));
++                }
++            }
++            out[monitor.index] = {x: monitor.x + depth.left, y: monitor.y + depth.top,
++                width: monitor.width - depth.left - depth.right, height: monitor.height - depth.top - depth.bottom};
++        }
++        return out;
++    }
++
+     _syncSharedReservations(shared) {
+         if (!this.canReserveSharedEdges)
+             return;
+@@ -1952,6 +2383,45 @@ export const Shelf = GObject.registerClass({
+             console.log(`[luma-shelf] shared-edge bands reserved: ${key}`);
+     }
+ 
++    // One journal line per change of what each monitor edge reserves, for
++    // Luma Vitals: LUMA_SHELF_RESERVATIONS carries {monitor: {edge: depth}},
++    // 0 where the edge keeps only the windows' margin.
++    _logReservations(all) {
++        const byMonitor = {};
++        for (const monitor of this._monitors ?? [])
++            byMonitor[monitor.index] = {top: 0, bottom: 0, left: 0, right: 0};
++        for (const r of all) {
++            if (r.band && byMonitor[r.monitor])
++                byMonitor[r.monitor][r.edge] = Math.round(r.depth ?? (Arrangement.isVertical(r.edge) ? r.rect.width : r.rect.height));
++        }
++        const json = JSON.stringify(byMonitor);
++        if (json === this._loggedReservations)
++            return;
++        // A change the Dash made itself (an island came or went, islands were
++        // arranged) on the same monitors: windows follow it at once, with
++        // the Dash's own motion. After a hotplug or a resume they wait for
++        // the monitors to settle (Tiling Shell).
++        const monitorsKey = JSON.stringify((this._monitors ?? []).map(m => [m.x, m.y, m.width, m.height]));
++        const fromShelf = this._loggedReservations !== undefined && monitorsKey === this._reservationMonitors;
++        this._reservationMonitors = monitorsKey;
++        const animate = St.Settings.get().enable_animations;
++        this.workAreaMotion = fromShelf ? {
++            since: GLib.get_monotonic_time() / 1000,
++            duration: animate ? SHELF_MOTION_TIME : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++        } : null;
++        this._loggedReservations = json;
++        try {
++            GLib.log_structured('luma-shelf', GLib.LogLevelFlags.LEVEL_MESSAGE, {
++                MESSAGE: `[luma-shelf] edge reservations ${json}`,
++                SYSLOG_IDENTIFIER: 'luma-shelf',
++                LUMA_SHELF_RESERVATIONS: json,
++            });
++        } catch {
++            console.log(`[luma-shelf] edge reservations ${json}`);
++        }
++    }
++
+     // Place every group: the band solver per monitor edge, then the struts.
+     _syncGeometry() {
+         const monitor = Main.layoutManager.primaryMonitor;
+@@ -1962,6 +2432,7 @@ export const Shelf = GObject.registerClass({
+         this.set_size(global.stage.width, global.stage.height);
+         const {metrics, occupied, bands} = this._computeBands(scale);
+         this._bands = bands;
++        this._lastOccupancyKey = this._occupancyKey();
+         this._syncWorkAreaInset(scale);
+         const animate = St.Settings.get().enable_animations;
+         const measure = (actor, vertical) => vertical
+@@ -1999,7 +2470,22 @@ export const Shelf = GObject.registerClass({
+                     dockNatural,
+                 };
+             });
+-            const solved = Arrangement.solveBand(band.length, specs, Arrangement.GROUP_SEPARATION * scale);
++            // A group with nothing to show (notifications with nothing
++            // unread, no live activity) takes no length and no separation:
++            // it is solved out, and kept at its anchor with no size.
++            const shown = specs.map(spec => spec.natural > 0);
++            const solvedShown = Arrangement.solveBand(band.length, specs.filter((_, i) => shown[i]),
++                Arrangement.GROUP_SEPARATION * scale);
++            const solved = [];
++            specs.forEach((spec, i) => {
++                if (shown[i]) {
++                    solved.push(solvedShown.shift());
++                    return;
++                }
++                const at = spec.anchor === 'start' ? 0 : spec.anchor === 'end' ? band.length
++                    : spec.anchor === 'free' ? band.length * (spec.position ?? 0.5) : band.length / 2;
++                solved.push({start: at, length: 0});
++            });
+             groups.forEach((group, i) => {
+                 const {start, length} = solved[i];
+                 const spec = specs[i];
+@@ -2015,6 +2501,15 @@ export const Shelf = GObject.registerClass({
+                 const width = Math.round(vertical ? band.rect.width : length);
+                 const height = Math.round(vertical ? length : band.rect.height);
+                 this._placeGroup(group, x, y, width, height, animate);
++                if (group.placement.merged) {
++                    group.surface.setCornerRadii(this._barRadii(band));
++                    const joinDepth = Math.round(bands.get(Number(monitorIndex))?.[band.joined?.start ? 'left' : 'right']?.rect?.width ??
++                        this._metrics(scale).thickness);
++                    group.surface.setJoins(band.joined ? {vertical, edge, start: !!band.joined.start,
++                        end: !!band.joined.end, depth: joinDepth} : null);
++                } else {
++                    group.surface.setJoins(null);
++                }
+             });
+         }
+ 
+@@ -2030,6 +2525,24 @@ export const Shelf = GObject.registerClass({
+         this.emit('layout-changed');
+     }
+ 
++    // A bar's corners: square against the screen where it protrudes or
++    // reaches the screen's end, and square where another bar joins it, so
++    // two bars on adjacent edges read as one L with a single outer corner.
++    _barRadii(band) {
++        const gutterless = !this._floatEnds;
++        const join = band.joined ?? {start: false, end: false};
++        const touches = end => band.vertical ? gutterless || join[end] : gutterless && !join[end];
++        const radii = dashCornerRadii(band.edge, this._protrude, touches('start'), touches('end'));
++        if (!band.vertical) {
++            const inner = band.edge === 'top' ? {start: 3, end: 2} : {start: 0, end: 1};
++            if (join.start)
++                radii[inner.start] = 0;
++            if (join.end)
++                radii[inner.end] = 0;
++        }
++        return radii;
++    }
++
+     _placeGroup(group, x, y, width, height, animate) {
+         const [oldX, oldY] = group._visualFrom ??
+             [group.x + group.surface.translation_x, group.y + group.surface.translation_y];
+@@ -2057,7 +2570,7 @@ export const Shelf = GObject.registerClass({
+             group.surface.translation_x = oldX - x;
+             group.surface.translation_y = oldY - y;
+             group.surface.ease({translation_x: 0, translation_y: 0,
+-                duration: this._slideTime ?? 220, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++                duration: this._slideTime ?? SHELF_MOTION_TIME, mode: Clutter.AnimationMode.EASE_OUT_QUINT});
+         }
+     }
+ 
+diff --git a/js/ui/shelfArrange.js b/js/ui/shelfArrange.js
+index 3a0dc94..37e1313 100644
+--- a/js/ui/shelfArrange.js
++++ b/js/ui/shelfArrange.js
+@@ -148,6 +148,7 @@ export function islandNames() {
+         media: _('Media'),
+         notifications: _('Notifications'),
+         well: _('Status icons'),
++        folders: _('Folders'),
+         'quick-options': _('Quick Options'),
+         clock: _('Clock'),
+     };
+@@ -160,20 +161,28 @@ function targetText(target, names) {
+     if (!target)
+         return _('Nothing can be placed on an edge shared with another display');
+     const vertical = Arrangement.isVertical(target.edge);
+-    if (target.kind === 'attach') {
+-        const name = names[target.neighbour] ?? target.neighbour;
+-        if (vertical)
+-            return (target.side === 'before' ? _('Attach above %s') : _('Attach below %s')).replace('%s', name);
+-        return (target.side === 'before' ? _('Attach to the left of %s') : _('Attach to the right of %s')).replace('%s', name);
+-    }
+     const edge = EDGE_WORDS()[target.edge];
+     const cap = edge.charAt(0).toUpperCase() + edge.slice(1);
++    const corner = anchor => anchor === 'center' ? _('centre')
++        : vertical ? (anchor === 'start' ? _('top end') : _('bottom end'))
++            : (anchor === 'start' ? _('left corner') : _('right corner'));
++    if (target.kind === 'attach' || target.kind === 'apart') {
++        const name = names[target.neighbour] ?? target.neighbour;
++        // "Join before Quick Options", "New island before Quick Options":
++        // what it will be, and where.
++        const what = (target.kind === 'apart'
++            ? (vertical
++                ? (target.side === 'before' ? _('New island above %s') : _('New island below %s'))
++                : (target.side === 'before' ? _('New island before %s') : _('New island after %s')))
++            : (vertical
++                ? (target.side === 'before' ? _('Join above %s') : _('Join below %s'))
++                : (target.side === 'before' ? _('Join before %s') : _('Join after %s')))).replace('%s', name);
++        return target.anchor && target.anchor !== 'free'
++            ? `${cap}, ${corner(target.anchor)}: ${what}` : `${cap}: ${what}`;
++    }
+     if (target.kind === 'free')
+         return `${cap}, ${_('free position')}`;
+-    const where = target.anchor === 'center' ? _('centre')
+-        : vertical ? (target.anchor === 'start' ? _('top end') : _('bottom end'))
+-            : (target.anchor === 'start' ? _('left corner') : _('right corner'));
+-    return `${cap}, ${where}`;
++    return `${cap}, ${corner(target.anchor)}`;
+ }
+ 
+ function extentsOf(actor) {
+@@ -229,14 +238,12 @@ export class ShelfArrange {
+             for (const island of group.row.get_children()) {
+                 if (!island.visible || !island.islandId || !contains(extentsOf(island), x, y))
+                     continue;
+-                if (island === shelf._actionsIsland) {
+-                    for (const part of ['well', 'clock']) {
+-                        const actor = shelf._actionsParts?.includes(part) ? shelf.partActorFor(part) : null;
+-                        if (actor?.visible && contains(extentsOf(actor), x, y))
+-                            return part;
+-                    }
+-                    return 'quick-options';
++                for (const {id, actor} of shelf.islandParts?.(island) ?? []) {
++                    if (contains(extentsOf(actor), x, y))
++                        return id;
+                 }
++                if (island === shelf._actionsIsland)
++                    return 'quick-options';
+                 return island.islandId;
+             }
+         }
+@@ -513,7 +520,7 @@ export class ShelfArrange {
+         this._announce(_('Arrange islands. Drag an island, or press Control Alt and an arrow key to move the selected island. Escape to finish.'));
+         console.log(`[luma-shelf] arrange mode on${grab ? ` holding ${grab}` : ''}`);
+         if (grab) {
+-            this._pending = {ids: [grab], grab, x, y, pressed, lifted: true};
++            this._pending = {ids: Arrangement.familyOf(grab), grab, x, y, pressed, lifted: true};
+             this._liftActor(this._shelf.islandActorFor(grab), true);
+         }
+         return true;
+@@ -584,8 +591,11 @@ export class ShelfArrange {
+             orientation: Clutter.Orientation.VERTICAL, reactive: true,
+             accessible_role: Atk.Role.DIALOG, accessible_name: _('Arrange islands')});
+         card.add_child(new St.Label({style_class: 'luma-arrange-card-title', text: _('Arrange islands')}));
+-        card.add_child(new St.Label({style_class: 'luma-arrange-card-body',
+-            text: _('Drag to move. Drop beside an island to attach it.')}));
++        const body = new St.Label({style_class: 'luma-arrange-card-body',
++            text: _('Drag an island to move it, or the handle above a group to move the whole group. Drop beside an island to attach it.')});
++        body.clutter_text.line_wrap = true;
++        body.clutter_text.ellipsize = 0;
++        card.add_child(body);
+         // Free placement (off by default): islands go only beside another
+         // island or to an edge's start, centre or end unless this is on.
+         const settings = this._shelf._settings;
+@@ -612,6 +622,7 @@ export class ShelfArrange {
+                 settings.set_boolean('shelf-free-placement', !settings.get_boolean('shelf-free-placement')));
+             settings.connectObject('changed::shelf-free-placement', () => {
+                 sync();
++                this._queueDecorate();
+                 this._announce(settings.get_boolean('shelf-free-placement')
+                     ? _('Free placement on') : _('Free placement off'));
+             }, option);
+@@ -686,24 +697,61 @@ export class ShelfArrange {
+             if (!placed || placed.drag || !group.visible)
+                 return;
+             const islands = [];
+-            for (const island of group.row.get_children()) {
+-                if (!island.visible || !island.islandId)
++            // The islands as they are drawn right now, the drop preview's
++            // slot included: the slot is where the carried island would go,
++            // so the pointer inside it always sits between the same two
++            // midpoints and the target never flickers.
++            const vertical = Arrangement.isVertical(placed.edge);
++            const children = group.row.get_children().filter(c => c.visible);
++            for (const island of children) {
++                if (!island.islandId || island.islandId === 'aux')
+                     continue;
+                 const box = island.get_allocation_box();
+-                const rect = {x: group.x + box.x1, y: group.y + box.y1, width: box.get_width(), height: box.get_height()};
+-                let ids = [island.islandId];
+-                if (island === shelf._actionsIsland)
+-                    ids = placed.islands.filter(id => ['well', 'quick-options', 'clock'].includes(id) &&
+-                        (id === 'quick-options' || shelf._actionsParts.includes(id)));
+-                if (island.islandId === 'aux')
++                const rect = {x: group.x + box.x1, y: group.y + box.y1,
++                    width: box.get_width(), height: box.get_height()};
++                // An island drawn as one whose parts are items of their own
++                // (the status island's tray, controls and clock; the dock
++                // island with the folders rail married to it): each part is
++                // its own place to drop beside, so any of them can be
++                // ordered or taken apart like any other island.
++                const parts = shelf.islandParts?.(island) ?? [];
++                if (parts.length) {
++                    const [ix, iy] = island.get_transformed_position();
++                    for (const {id, actor: part} of parts) {
++                        if (exclude.includes(id) || !placed.islands.includes(id))
++                            continue;
++                        const [px, py] = part.get_transformed_position();
++                        const [pw, ph] = part.get_transformed_size();
++                        islands.push({id, ids: [id], rect: {x: rect.x + (px - ix), y: rect.y + (py - iy),
++                            width: pw, height: ph}});
++                    }
+                     continue;
+-                if (ids.every(id => exclude.includes(id)))
++                }
++                if (exclude.includes(island.islandId))
+                     continue;
+-                islands.push({id: island.islandId === 'quick-options' ? 'quick-options' : ids[0], ids, rect});
++                islands.push({id: island.islandId, ids: [island.islandId], rect});
++            }
++            // The live family is one slot: nothing is dropped between the
++            // live island and what is playing, so they count as one item.
++            const merged = [];
++            for (const island of islands) {
++                const last = merged.at(-1);
++                if (last && Arrangement.familyOf(last.ids.at(-1)).includes(island.id)) {
++                    const x = Math.min(last.rect.x, island.rect.x), y = Math.min(last.rect.y, island.rect.y);
++                    last.rect = {x, y,
++                        width: Math.max(last.rect.x + last.rect.width, island.rect.x + island.rect.width) - x,
++                        height: Math.max(last.rect.y + last.rect.height, island.rect.y + island.rect.height) - y};
++                    last.ids.push(island.id);
++                    continue;
++                }
++                merged.push({...island, ids: [...island.ids]});
+             }
++            islands.length = 0;
++            islands.push(...merged);
+             const rect = {x: group.x, y: group.y, width: group.width, height: group.height};
++            const bandRect = this._drag?.rest?.get(islands[0]?.ids[0]) ?? rect;
+             groups.push({index: placed.source[0], source: placed.source, monitor: placed.monitor,
+-                edge: placed.edge, rect, islands, actor: group});
++                edge: placed.edge, anchor: placed.anchor, rect, bandRect, islands, actor: group});
+         });
+         return {monitors, groups};
+     }
+@@ -731,16 +779,41 @@ export class ShelfArrange {
+             const grip = new St.Button({style_class: 'luma-arrange-grip', reactive: true, can_focus: true,
+                 accessible_role: Atk.Role.PUSH_BUTTON,
+                 accessible_name: _('Move the %s group').replace('%s', names[group.islands[0].id] ?? group.islands[0].id)});
+-            grip.set_size((vertical ? 6 : 24) * scale, (vertical ? 24 : 6) * scale);
+-            const g = GRIP_OFFSET * scale, r = group.rect;
++            // The handle: a 32 x 6 pill in a 48 x 22 target, so it is easy to
++            // see and to hit; hovering it names what it does.
++            const [long, short] = [48 * scale, 22 * scale];
++            grip.set_size(vertical ? short : long, vertical ? long : short);
++            const pill = new St.Widget({style_class: 'luma-arrange-grip-pill',
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER,
++                x_expand: true, y_expand: true});
++            pill.set_size((vertical ? 6 : 32) * scale, (vertical ? 32 : 6) * scale);
++            grip.set_child(pill);
++            const g = (GRIP_OFFSET - 8) * scale, r = group.rect;
+             const pos = {
+-                bottom: [r.x + r.width / 2 - 12 * scale, r.y - g - 6 * scale],
+-                top: [r.x + r.width / 2 - 12 * scale, r.y + r.height + g],
+-                left: [r.x + r.width + g, r.y + r.height / 2 - 12 * scale],
+-                right: [r.x - g - 6 * scale, r.y + r.height / 2 - 12 * scale],
++                bottom: [r.x + r.width / 2 - long / 2, r.y - g - short],
++                top: [r.x + r.width / 2 - long / 2, r.y + r.height + g],
++                left: [r.x + r.width + g, r.y + r.height / 2 - long / 2],
++                right: [r.x - g - short, r.y + r.height / 2 - long / 2],
+             }[group.edge];
+             grip.set_position(Math.round(pos[0]), Math.round(pos[1]));
+             grip._group = group;
++            grip.track_hover = true;
++            grip.connect('notify::hover', () => {
++                if (!this._hint || this._drag)
++                    return;
++                if (!grip.hover) {
++                    this._hint.hide();
++                    return;
++                }
++                const [gx, gy] = grip.get_transformed_position();
++                this._hint.text = _('Drag to move the whole group');
++                this._hint.show();
++                const [, hw] = this._hint.get_preferred_width(-1);
++                const [, hh] = this._hint.get_preferred_height(-1);
++                const hx = Math.min(Math.max(8 * scale, gx + grip.width / 2 - hw / 2), global.stage.width - hw - 8 * scale);
++                const hy = group.edge === 'top' ? gy + grip.height + 6 * scale : gy - hh - 6 * scale;
++                this._hint.set_position(Math.round(hx), Math.round(Math.max(8 * scale, hy)));
++            });
+             grip.connect('button-press-event', (_a, event) => {
+                 const [x, y] = event.get_coords();
+                 this._pending = {ids: this._storedGroupIds(group), grab: group.islands[0].id, x, y, pressed: true, group: true};
+@@ -756,9 +829,14 @@ export class ShelfArrange {
+                 const band = monitor.bands[edge];
+                 if (!band || (monitor.closedEdges ?? monitor.sharedEdges).includes(edge))
+                     continue;
+-                const line = new EdgeLine(band, () => this._edgeObstacles(monitor.index, edge));
+-                this._decorations.insert_child_at_index(line, 0);
+-                this._edgeLines.push(line);
++                // Free placement off: exactly the three zones, nothing else.
++                // On: no zone grid, one faint line where islands can go.
++                if (this._shelf._freePlacement) {
++                    const line = new EdgeLine(band, () => this._edgeObstacles(monitor.index, edge));
++                    this._decorations.insert_child_at_index(line, 0);
++                    this._edgeLines.push(line);
++                    continue;
++                }
+                 for (const anchor of Arrangement.ZONE_ANCHORS) {
+                     const rect = Arrangement.zoneRect(band, anchor, scale);
+                     const taken = groups.some(group => group.monitor === monitor.index &&
+@@ -859,7 +937,7 @@ export class ShelfArrange {
+         if (this._card && contains(extentsOf(this._card), x, y))
+             return Clutter.EVENT_PROPAGATE;
+         const id = this._islandAt(x, y);
+-        this._pending = id ? {ids: [id], grab: id, x, y, pressed: true} : {empty: true, x, y, pressed: true};
++        this._pending = id ? {ids: Arrangement.familyOf(id), grab: id, x, y, pressed: true} : {empty: true, x, y, pressed: true};
+         if (id) {
+             this._selected = id;
+             this._syncSelection();
+@@ -872,7 +950,7 @@ export class ShelfArrange {
+         switch (event.type()) {
+         case Clutter.EventType.TOUCH_BEGIN: {
+             const id = this._islandAt(x, y);
+-            this._pending = id ? {ids: [id], grab: id, x, y, pressed: true} : {empty: true, x, y, pressed: true};
++            this._pending = id ? {ids: Arrangement.familyOf(id), grab: id, x, y, pressed: true} : {empty: true, x, y, pressed: true};
+             break;
+         }
+         case Clutter.EventType.TOUCH_UPDATE:
+@@ -955,7 +1033,12 @@ export class ShelfArrange {
+         // Where the dragged island is drawn now, and how long it is.
+         const actor = pending.group ? null : shelf.partActorFor(pending.grab);
+         const group = shelf.groupForActor(shelf.islandActorFor(pending.grab));
+-        const rect = pending.group ? extentsOf(group) : extentsOf(actor ?? group);
++        // A family (the live extensions) is carried as the run its visible
++        // members make.
++        const members = ids.length > 1 && !pending.group
++            ? ids.map(id => shelf.islandActorFor(id)).filter(a => a?.visible && a.get_stage()).map(extentsOf) : [];
++        const rect = pending.group ? extentsOf(group)
++            : members.length > 1 ? unionRect(members) : extentsOf(actor ?? group);
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const thickness = shelf._thickness * scale;
+         const edge = group?.placement?.edge ?? source.edge;
+@@ -974,6 +1057,22 @@ export class ShelfArrange {
+             .filter(g => !(g.islands.length === ids.length && g.islands.every(id => ids.includes(id))));
+         this._drag.base = base;
+         this._dragPreview(null);
++        // Once the layout without the dragged islands has been drawn, it is
++        // what every target is measured against.
++        const drag = this._drag;
++        const painted = global.stage.connect_after('after-paint', () => {
++            global.stage.disconnect(painted);
++            drag.painted = true;
++            // The groups as they sit without the dragged islands and with no
++            // drop preview: the bands beside a group are measured against
++            // this, so opening a slot never moves them under the pointer.
++            drag.rest = new Map();
++            for (const group of this._context(drag.ids).groups) {
++                const key = group.islands[0]?.ids[0];
++                if (key)
++                    drag.rest.set(key, group.rect);
++            }
++        });
+         const dragGroup = this._dragGroup();
+         if (dragGroup) {
+             dragGroup.set_pivot_point(0.5, 0.5);
+@@ -1011,6 +1110,17 @@ export class ShelfArrange {
+                 const host = groups[target.storedGroup];
+                 if (host)
+                     host.islands.splice(target.storedIndex, 0, `gap:${length}`);
++            } else if (target?.kind === 'apart') {
++                // Its own island beside the host, on the side it is held.
++                const host = groups[target.storedGroup];
++                if (host) {
++                    const at = groups.indexOf(host);
++                    const outwards = host.anchor === 'end' ? target.side === 'before' : target.side === 'after';
++                    groups.splice(at + (outwards ? 1 : 0), 0, {
++                        display: host.display ?? '', edge: host.edge, anchor: host.anchor,
++                        position: host.position ?? 0.5, islands: [`gap:${length}`],
++                    });
++                }
+             } else if (target) {
+                 groups.push({
+                     display: Arrangement.displayFor(target.monitor, shelf.monitors, Main.layoutManager.primaryIndex),
+@@ -1046,18 +1156,29 @@ export class ShelfArrange {
+     _dragTo(x, y) {
+         const drag = this._drag;
+         const dragGroup = this._dragGroup();
+-        const cx = x - drag.offset[0], cy = y - drag.offset[1];
++        // Held at the same place of the island: carried in the other form
++        // (a column on a side edge), the grab offset turns with it.
++        const turned = drag.formEdge && Arrangement.isVertical(drag.formEdge) !== Arrangement.isVertical(drag.edge);
++        const [ox, oy] = turned ? [drag.offset[1], drag.offset[0]] : drag.offset;
++        const cx = x - ox, cy = y - oy;
+         if (dragGroup) {
+             const [, w] = dragGroup.get_preferred_width(-1);
+             const [, h] = dragGroup.get_preferred_height(-1);
+             dragGroup.set_position(Math.round(cx - w / 2), Math.round(cy - h / 2));
+             Main.layoutManager.uiGroup.set_child_above_sibling(this._layer, null);
+         }
+-        const {monitors, groups} = this._context(drag.ids);
++        // Targets are measured against the layout as it was once the drag
++        // began (the dragged islands out), never against the preview, which
++        // moves as the target changes and would move the target again.
++        const context = drag.frozen ?? this._context(drag.ids);
++        if (!drag.frozen && drag.painted)
++            drag.frozen = context;
++        const {monitors, groups} = context;
+         const zones = (this._zones ?? []).map(z => z._zone);
+         const raw = Arrangement.resolveTarget([cx, cy], drag.length, monitors, groups, drag.ids,
+             St.ThemeContext.get_for_stage(global.stage).scale_factor,
+-            {pointer: [x, y], zones, freePlacement: this._shelf._freePlacement});
++            {pointer: [x, y], zones, freePlacement: this._shelf._freePlacement, previous: drag.raw ?? null});
++        drag.raw = raw ? {...raw} : null;
+         const target = raw ? this._storedTarget(raw, groups) : null;
+         this._showHint(target, x, y);
+         const previous = drag.target;
+@@ -1079,16 +1200,24 @@ export class ShelfArrange {
+     // A target in terms of the stored (base) arrangement: the group and the
+     // index among its stored islands, hidden ones included.
+     _storedTarget(raw, groups) {
+-        if (raw.kind !== 'attach')
++        if (raw.kind !== 'attach' && raw.kind !== 'apart')
+             return raw;
+         const group = groups.find(g => g.index === raw.group);
+         if (!group)
+             return null;
+         const base = this._drag.base;
+-        const storedGroup = raw.group;
++        // The host group is found by one of its own islands: while a drag
++        // is on, the drawn arrangement is the preview, whose groups are
++        // numbered differently from the base (a group of the dragged
++        // islands alone is gone, and a preview slot may add one).
++        const keeper = group.islands.flatMap(island => island.ids)
++            .find(id => !this._drag.ids.includes(id));
++        const storedGroup = base.findIndex(g => g.islands.includes(keeper));
+         const host = base[storedGroup];
+         if (!host)
+             return null;
++        if (raw.kind === 'apart')
++            return {...raw, storedGroup};
+         const islands = group.islands.filter(island => !island.ids.every(id => this._drag.ids.includes(id)));
+         let storedIndex;
+         if (raw.index < islands.length)
+@@ -1149,7 +1278,15 @@ export class ShelfArrange {
+         const display = Arrangement.displayFor(target.monitor, shelf.monitors, Main.layoutManager.primaryIndex);
+         // The move counts against the arrangement as stored before the drag.
+         let next;
+-        if (target.kind === 'attach') {
++        if (target.kind === 'apart') {
++            // The host group as the stored arrangement knows it: the
++            // preview's groups are numbered without the dragged islands.
++            const host = drag.base[target.storedGroup];
++            const keeper = host?.islands.find(id => !drag.ids.includes(id));
++            const hostIndex = drag.stored.findIndex(g => g.islands.includes(keeper));
++            next = hostIndex < 0 ? Arrangement.applyMove(drag.stored, drag.ids, target, display)
++                : Arrangement.applyMove(drag.stored, drag.ids, {...target, group: hostIndex}, display);
++        } else if (target.kind === 'attach') {
+             const host = drag.base[target.storedGroup];
+             // Find the host group in the stored arrangement by one of its
+             // islands, then insert at the same stored neighbour.
+@@ -1335,7 +1472,7 @@ export class ShelfArrange {
+         const index = Arrangement.groupIndexOf(stored, id);
+         if (index < 0)
+             return false;
+-        const ids = wholeGroup ? [...stored[index].islands] : [id];
++        const ids = wholeGroup ? [...stored[index].islands] : Arrangement.familyOf(id);
+         const actor = shelf.islandActorFor(id);
+         const group = shelf.groupForActor(actor);
+         if (!group?.placement)
+@@ -1426,6 +1563,12 @@ function pickAt(event) {
+     return global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
+ }
+ 
++function unionRect(rects) {
++    const x1 = Math.min(...rects.map(r => r.x)), y1 = Math.min(...rects.map(r => r.y));
++    const x2 = Math.max(...rects.map(r => r.x + r.width)), y2 = Math.max(...rects.map(r => r.y + r.height));
++    return {x: x1, y: y1, width: x2 - x1, height: y2 - y1};
++}
++
+ function rectsMeet(a, b) {
+     return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+ }
+@@ -1437,6 +1580,8 @@ function sameTarget(a, b) {
+         return false;
+     if (a.kind === 'attach')
+         return a.storedGroup === b.storedGroup && a.storedIndex === b.storedIndex;
++    if (a.kind === 'apart')
++        return a.storedGroup === b.storedGroup && a.side === b.side;
+     if (a.kind === 'snap')
+         return a.anchor === b.anchor;
+     return true;
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index 26509f4..92d02ab 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -33,7 +33,31 @@ export const ZONE_ANCHORS = Object.freeze(['start', 'center', 'end']);
+ export const ISLAND_GAP = 9;          // the kit's island_gap: attached islands
+ export const GROUP_SEPARATION = 24;   // separate groups on one band, at least
+ export const ATTACH_DISTANCE = 40;    // along a group's run, to attach to it
++// Beside any group, measured from its end along the band: the pointer in
++// the join band puts the island in that group (fused where the status
++// parts are), in the separate band it becomes its own island beside it,
++// and the dead band between them changes nothing, so the preview never
++// flickers. Once one is shown it holds until the pointer is well into the
++// other (JOIN_HOLD).
++export const JOIN_BAND = 26;
++export const DEAD_BAND = 10;
++export const SEPARATE_BAND = 96;
++export const JOIN_HOLD = 8;
+ export const SNAP_DISTANCE = 32;      // from a zone's point, to snap to it
++// Attach or apart: an island dropped with its near end within ATTACH_REACH
++// of a group's island attaches; at APART_REACH or more it is placed apart.
++// Between the two nothing changes (the dead zone), so the preview never
++// flickers between a caret and a ghost.
++export const ATTACH_REACH = 20;
++export const APART_REACH = 56;
++// A chosen target is kept until another is better by this much.
++export const HYSTERESIS = 24;
++// With free placement on, the only magnets: an edge's start, centre and end,
++// and an island right beside another.
++export const SOFT_SNAP = 12;
++// Every live extension shows in one slot: the live island and the media
++// island (what is playing) are one family, in one group, moved together.
++export const LIVE_FAMILY = Object.freeze(['live', 'media']);
+ export const ZONE_LENGTH = 120;       // the dashed placeholder of an empty zone
+ export const DRAG_THRESHOLD = 8;
+ export const HOLD_FEEDBACK_TIME = 150;
+@@ -43,6 +67,35 @@ export function isVertical(edge) {
+     return edge === 'left' || edge === 'right';
+ }
+ 
++// The islands that move with `id`: the live family together, anything else
++// alone.
++export function familyOf(id) {
++    return LIVE_FAMILY.includes(id) ? [...LIVE_FAMILY] : [id];
++}
++
++// Keep the live family in one group, side by side, where its first member
++// is: a split placement (from an older release, or written by hand) is
++// joined there.
++export function joinLiveFamily(groups) {
++    let first = null;
++    groups.forEach((group, g) => group.islands.forEach((id, i) => {
++        if (!first && LIVE_FAMILY.includes(id))
++            first = {g, i};
++    }));
++    if (!first)
++        return groups;
++    const present = LIVE_FAMILY.filter(id => groups.some(group => group.islands.includes(id)));
++    const host = groups[first.g];
++    const before = host.islands.slice(0, first.i).filter(id => !LIVE_FAMILY.includes(id));
++    const after = host.islands.slice(first.i).filter(id => !LIVE_FAMILY.includes(id));
++    host.islands = [...before, ...present, ...after];
++    groups.forEach((group, g) => {
++        if (g !== first.g)
++            group.islands = group.islands.filter(id => !LIVE_FAMILY.includes(id));
++    });
++    return groups.filter(group => group.islands.length);
++}
++
+ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+ 
+ function cleanPosition(value) {
+@@ -114,7 +167,7 @@ export function normalizeArrangement(raw, v1 = {}, order = DEFAULT_ORDER, option
+         insertBesideDefaultNeighbour(groups, id, order, fallback);
+         seen.add(id);
+     }
+-    return {groups, isDefault: false};
++    return {groups: joinLiveFamily(groups), isDefault: false};
+ }
+ 
+ function insertBesideDefaultNeighbour(groups, id, order, fallback) {
+@@ -153,8 +206,9 @@ export function groupIndexOf(groups, id) {
+ 
+ // Status fusion: maximal runs of adjacent status parts that include Quick
+ // Options are drawn as one island hosted by Quick Options. Returns the row's
+-// entries in order: {id} for an island drawn alone, {fused: [ids]} for a run.
+-export function fuseStatus(islands) {
++// entries in order: {id} for an island drawn alone, {fused: [ids]} for a
++// run. `fusable(id)` says whether a part may be fused right now.
++export function fuseStatus(islands, fusable = () => true) {
+     const entries = [];
+     let run = [];
+     const flush = () => {
+@@ -167,9 +221,11 @@ export function fuseStatus(islands) {
+         run = [];
+     };
+     for (const id of islands) {
+-        if (STATUS_PARTS.includes(id))
++        // A part that is not fusable now (the system tray while arranging,
++        // drawn as its placeholder) is an item of its own and ends the run.
++        if (STATUS_PARTS.includes(id) && fusable(id)) {
+             run.push(id);
+-        else {
++        } else {
+             flush();
+             entries.push({id});
+         }
+@@ -248,6 +304,19 @@ export function solveBand(bandLength, groups, separation = GROUP_SEPARATION) {
+             overflow -= shrink;
+         });
+     }
++    // A centred group stays on the band's centre line: when it would meet
++    // the groups fixed at the ends, the compressible group (the dock's)
++    // gives up length first, on both sides alike, before anything moves.
++    const fixedEnd = anchor => groups.map((g, i) => g.anchor === anchor ? i : -1).filter(i => i >= 0);
++    const startReach = fixedEnd('start').reduce((sum, i) => sum + lengths[i] + separation, 0);
++    const endReach = fixedEnd('end').reduce((sum, i) => sum + lengths[i] + separation, 0);
++    groups.forEach((group, index) => {
++        if (group.anchor !== 'center' || group.minLength === undefined)
++            return;
++        const half = Math.min(bandLength / 2 - startReach, bandLength / 2 - endReach);
++        if (lengths[index] / 2 > half)
++            lengths[index] = Math.max(group.minLength, Math.min(lengths[index], 2 * Math.max(0, half)));
++    });
+     const ideal = groups.map((group, index) => {
+         const length = lengths[index];
+         switch (group.anchor) {
+@@ -258,6 +327,28 @@ export function solveBand(bandLength, groups, separation = GROUP_SEPARATION) {
+         default: return (bandLength - length) / 2;
+         }
+     });
++    // Groups that share an anchor stack in the order they are stored,
++    // outwards from that anchor: the first is at the anchor itself and the
++    // next is beside it, further in. A drop beside a group therefore lands
++    // on the side it was dropped, every time.
++    for (const anchor of ['start', 'end']) {
++        const mates = groups.map((group, index) => group.anchor === anchor ? index : -1).filter(i => i >= 0);
++        if (mates.length < 2)
++            continue;
++        if (anchor === 'start') {
++            let at = 0;
++            for (const i of mates) {
++                ideal[i] = at;
++                at += lengths[i] + separation;
++            }
++        } else {
++            let at = bandLength;
++            for (const i of mates) {
++                ideal[i] = at - lengths[i];
++                at = ideal[i] - separation;
++            }
++        }
++    }
+     // Order by where each group wants to be; anchored ends win ties.
+     const rank = {start: 0, center: 1, free: 1, end: 2};
+     const order = [...groups.keys()].sort((a, b) =>
+@@ -358,44 +449,41 @@ export function monitorAt(point, monitors) {
+ // monitors: [{index, x, y, width, height, sharedEdges: [...],
+ //             bands: {edge: band}}]  (bandGeometry for every non-shared edge)
+ // groups:   [{index, monitor, edge, rect, islands: [{id, rect}]}], the
+-//           groups as they are drawn without the dragged islands
++//           groups as they were drawn when the drag began, without the
++//           dragged islands; never the live preview, so a preview cannot
++//           move what the next pointer motion is measured against
+ // dragged:  ids being dragged (so a group never attaches to itself)
+ //
+-// Returns, in priority order:
+-//   1. {kind: 'snap', monitor, edge, anchor}  the pointer is inside an empty
+-//      zone's placeholder (options.zones): aiming at a zone always wins,
+-//      wherever the island was grabbed
+-//   2. {kind: 'attach', group, index, neighbour, side}  the island's centre,
+-//      or the pointer, is within ATTACH_DISTANCE of a group's islands
+-//   3. {kind: 'snap', ...}  the zone nearest the island's centre on the edge
+-//      nearest the pointer; with free placement on, only within
+-//      SNAP_DISTANCE of a zone point
+-//   4. {kind: 'free', monitor, edge, position}  free placement only
++// Returns:
++//   {kind: 'attach', group, index, neighbour, side}  the island's near end
++//      is within ATTACH_REACH of a group's island (SOFT_SNAP + ISLAND_GAP
++//      with free placement), or the pointer is on one
++//   {kind: 'snap', monitor, edge, anchor}  the pointer is in an empty zone's
++//      placeholder, or the zone nearest the island's centre on the edge
++//      nearest the pointer; with free placement, only within SOFT_SNAP
++//   {kind: 'free', monitor, edge, position}  free placement: exactly where
++//      the island's centre is
+ // or null when no edge of the monitor offers zones.
+ //
+ // options: {pointer: [x, y] (defaults to the centre), zones: [{monitor,
+-// edge, anchor, rect}] (the empty zones' placeholders), freePlacement}
++// edge, anchor, rect}] (the empty zones' placeholders), freePlacement,
++// previous (the target chosen at the last motion: it is kept until another
++// is better by HYSTERESIS, and between ATTACH_REACH and APART_REACH)}
+ export function resolveTarget(point, length, monitors, groups, dragged = [], scale = 1, options = {}) {
+     const pointer = options.pointer ?? point;
++    const previous = options.previous ?? null;
++    const free = !!options.freePlacement;
+     const monitor = monitorAt(pointer, monitors);
+     if (!monitor)
+         return null;
+     const closed = monitor.closedEdges ?? monitor.sharedEdges ?? [];
+-    // 1. The pointer inside an empty zone's placeholder.
+-    for (const zone of options.zones ?? []) {
+-        const r = zone.rect;
+-        if (zone.monitor === monitor.index && !closed.includes(zone.edge) &&
+-                pointer[0] >= r.x && pointer[0] < r.x + r.width && pointer[1] >= r.y && pointer[1] < r.y + r.height)
+-            return {kind: 'snap', monitor: monitor.index, edge: zone.edge, anchor: zone.anchor, byPointer: true};
+-    }
+-    // 2. Attach: within ATTACH_DISTANCE of a group's islands along its axis
+-    //    and inside its band across it, by the island's centre or the pointer.
+-    let best = null;
++    // 1. Attach: how far the island's near end is from each group's islands.
++    const attachReach = (free ? SOFT_SNAP + ISLAND_GAP : ATTACH_REACH) * scale;
++    const apartReach = (free ? SOFT_SNAP + ISLAND_GAP + HYSTERESIS : APART_REACH) * scale;
++    const attaches = [];
+     for (const group of groups) {
+         if (group.monitor !== monitor.index || !group.islands.length)
+             continue;
+-        if (group.islands.every(island => dragged.includes(island.id)))
+-            continue;
+         const band = monitor.bands[group.edge];
+         if (!band)
+             continue;
+@@ -405,40 +493,135 @@ export function resolveTarget(point, length, monitors, groups, dragged = [], sca
+             continue;
+         const bandCross = vertical ? [band.work.x, band.work.x + band.work.width]
+             : [band.work.y, band.work.y + band.work.height];
+-        const reach = ATTACH_DISTANCE * scale;
+-        // Distance to the nearest island of the run, not to the group's
+-        // box: a spanning group's slack is open band.
++        const half = (vertical ? length.vertical : length.horizontal) / 2;
+         const spans = islands.map(island => vertical
+             ? [island.rect.y, island.rect.y + island.rect.height]
+             : [island.rect.x, island.rect.x + island.rect.width]);
+-        for (const probe of [point, pointer]) {
+-            const cross = crossOf(probe, vertical);
+-            if (cross < bandCross[0] || cross > bandCross[1])
+-                continue;
+-            const along = alongOf(probe, vertical);
+-            const distance = Math.min(...spans.map(([from, to]) =>
+-                along < from ? from - along : along > to ? along - to : 0));
+-            if (distance > reach)
+-                continue;
+-            // Insert before the first island whose centre is past the point.
+-            let index = islands.findIndex(island => alongOf(centreOf(island.rect), vertical) > along);
+-            if (index < 0)
+-                index = islands.length;
+-            const side = index === 0 ? 'before' : 'after';
+-            const neighbour = index === 0 ? islands[0].id : islands[index - 1].id;
+-            if (!best || distance < best.distance)
+-                best = {kind: 'attach', group: group.index, index, neighbour, side, edge: group.edge,
+-                    monitor: monitor.index, distance};
++        const inCross = p => crossOf(p, vertical) >= bandCross[0] && crossOf(p, vertical) <= bandCross[1];
++        if (!inCross(point) && !inCross(pointer))
++            continue;
++        const along = alongOf(point, vertical);
++        const tip = alongOf(pointer, vertical);
++        // The gap between the carried island and the nearest island; 0 when
++        // they overlap or the pointer is on one.
++        const gap = Math.min(...spans.map(([from, to]) => {
++            if (inCross(pointer) && tip >= from && tip <= to)
++                return 0;
++            return Math.max(0, from - (along + half), (along - half) - to);
++        }));
++        // The slot follows the pointer: the carried island goes before the
++        // first island whose midpoint is past the pointer, in physical
++        // order. The islands are measured as they sit without the drop
++        // preview's slot (and without the carried island), so opening the
++        // slot never moves a midpoint across the pointer: the same index
++        // holds until the pointer crosses the next midpoint, at either end
++        // of a start, centre or end group, on every edge.
++        const index = spans.filter(([from, to]) => (from + to) / 2 < tip).length;
++        const join = {kind: 'attach', group: group.index, index,
++            neighbour: index === 0 ? islands[0].id : islands[index - 1].id,
++            side: index === 0 ? 'before' : 'after', edge: group.edge, anchor: group.anchor,
++            monitor: monitor.index, gap};
++        // Beside a group: how far the pointer is past its near end, and
++        // which end that is. Inside the group, and in the join band just
++        // outside it, the island joins the group; in the separate band
++        // beyond that it becomes its own island on that side; the dead
++        // band between them keeps whichever is already shown.
++        // Measured against the group as it sits at rest (the preview's own
++        // slot, inside it or beside it, must not move the bands under the
++        // pointer), and signed: negative is how deep inside the group the
++        // pointer is.
++        const rest = group.bandRect ?? group.rect;
++        const groupSpan = vertical ? [rest.y, rest.y + rest.height] : [rest.x, rest.x + rest.width];
++        const inside = Math.min(tip - groupSpan[0], groupSpan[1] - tip);
++        const outside = inside >= 0 ? -inside : Math.max(groupSpan[0] - tip, tip - groupSpan[1]);
++        const side = tip < (groupSpan[0] + groupSpan[1]) / 2 ? 'before' : 'after';
++        const apart = {kind: 'apart', group: group.index, side, edge: group.edge, anchor: group.anchor,
++            neighbour: side === 'before' ? islands[0].id : islands.at(-1).id,
++            monitor: monitor.index, gap};
++        const wasApart = previous?.kind === 'apart' && previous.group === group.index;
++        const wasJoin = previous?.kind === 'attach' && previous.group === group.index;
++        const hold = JOIN_HOLD * scale;
++        // Once the island is shown beside the group it stays beside it
++        // until the pointer is properly inside the group again, and once it
++        // is shown in the group it stays in until the pointer is properly
++        // past the dead band.
++        const joinTo = wasApart ? -hold : (JOIN_BAND * scale) + hold;
++        const deadTo = (JOIN_BAND + DEAD_BAND) * scale + (wasJoin ? hold : 0);
++        if (!free && inCross(pointer) && outside <= SEPARATE_BAND * scale) {
++            const chosen = outside <= joinTo ? join : outside <= deadTo ? (wasApart ? apart : join) : apart;
++            attaches.push({...chosen, band: true, outside: Math.max(outside, 0)});
++            continue;
+         }
++        attaches.push(join);
+     }
+-    if (best) {
+-        delete best.distance;
+-        return best;
++    // A candidate from the bands beside a group wins over a far attach.
++    attaches.sort((a, b) => (a.band ? a.outside : Infinity) - (b.band ? b.outside : Infinity) || a.gap - b.gap);
++    const nearestAttach = attaches[0] ?? null;
++    const keptAttach = previous?.kind === 'attach'
++        ? attaches.find(t => t.kind === 'attach' && t.group === previous.group && t.gap < apartReach) ?? null : null;
++    const clean = t => {
++        if (t)
++            delete t.gap;
++        return t;
++    };
++    // A zone a group already holds is that group: the island joins it where
++    // the pointer is, at either end or between any two of its islands,
++    // instead of becoming a second group nobody asked for.
++    const snapOrAttach = target => {
++        if (!target || target.kind !== 'snap')
++            return target;
++        const host = groups.find(g => g.monitor === target.monitor && g.edge === target.edge &&
++            g.anchor === target.anchor && g.islands.some(island => !dragged.includes(island.id)));
++        const attach = host ? attaches.find(t => t.group === host.index) : null;
++        return attach ? clean({...attach}) : target;
++    };
++    if (nearestAttach?.band) {
++        delete nearestAttach.band;
++        delete nearestAttach.outside;
++        return clean(nearestAttach);
+     }
+-    // 3. The nearest zone, 4. a free position.
+-    const edge = nearestEdge(pointer, monitor, closed);
++    if (nearestAttach && nearestAttach.kind === 'attach' && nearestAttach.gap <= attachReach) {
++        // Stay in the slot already shown unless another is clearly nearer.
++        if (keptAttach && keptAttach.index === previous.index &&
++                keptAttach.gap <= nearestAttach.gap + HYSTERESIS * scale)
++            return clean(keptAttach);
++        return clean(nearestAttach);
++    }
++    // In the dead zone the attach already shown stays.
++    if (keptAttach) {
++        const same = attaches.find(t => t.group === previous.group && t.index === previous.index);
++        return clean(same ?? keptAttach);
++    }
++    // 2. The pointer in an empty zone's placeholder (zones are drawn only
++    //    with free placement off).
++    //    Every edge's ends reach the corner, so at a corner two
++    //    placeholders can overlap: the one whose centre is nearest wins.
++    if (!free) {
++        let best = null, bestDistance = Infinity;
++        for (const zone of options.zones ?? []) {
++            const r = zone.rect;
++            if (zone.monitor !== monitor.index || closed.includes(zone.edge) ||
++                    !(pointer[0] >= r.x && pointer[0] < r.x + r.width && pointer[1] >= r.y && pointer[1] < r.y + r.height))
++                continue;
++            const d = Math.hypot(pointer[0] - (r.x + r.width / 2), pointer[1] - (r.y + r.height / 2));
++            if (d < bestDistance) {
++                best = zone;
++                bestDistance = d;
++            }
++        }
++        if (best)
++            return snapOrAttach({kind: 'snap', monitor: monitor.index, edge: best.edge, anchor: best.anchor, byPointer: true});
++    }
++    // 3. The edge nearest the pointer, kept until another is clearly nearer.
++    let edge = nearestEdge(pointer, monitor, closed);
+     if (!edge)
+         return null;
++    if (previous && previous.kind !== 'attach' && previous.monitor === monitor.index &&
++            previous.edge !== edge && monitor.bands[previous.edge] && !closed.includes(previous.edge)) {
++        const d = e => edgeDistance(pointer, monitor, e);
++        if (d(previous.edge) <= d(edge) + HYSTERESIS * scale)
++            edge = previous.edge;
++    }
+     const band = monitor.bands[edge];
+     if (!band)
+         return null;
+@@ -448,14 +631,32 @@ export function resolveTarget(point, length, monitors, groups, dragged = [], sca
+     // Along the edge the island's centre decides; if the pointer is on
+     // another edge than the island, project the centre onto this band.
+     const along = clamp(alongOf(point, vertical), band.along[0], band.along[1]);
+-    const nearest = ZONE_ANCHORS.reduce((a, b) =>
++    let nearest = ZONE_ANCHORS.reduce((a, b) =>
+         Math.abs(along - points[a]) <= Math.abs(along - points[b]) ? a : b);
+-    if (!options.freePlacement || Math.abs(along - points[nearest]) <= SNAP_DISTANCE * scale)
+-        return {kind: 'snap', monitor: monitor.index, edge, anchor: nearest};
++    const sameEdge = previous && previous.monitor === monitor.index && previous.edge === edge;
++    if (!free) {
++        if (sameEdge && previous.kind === 'snap' && previous.anchor !== nearest &&
++                Math.abs(along - points[previous.anchor]) <= Math.abs(along - points[nearest]) + HYSTERESIS * scale)
++            nearest = previous.anchor;
++        return snapOrAttach({kind: 'snap', monitor: monitor.index, edge, anchor: nearest});
++    }
++    // 4. Free placement: exactly where the island is, but for the soft snaps.
++    if (Math.abs(along - points[nearest]) <= SOFT_SNAP * scale)
++        return snapOrAttach({kind: 'snap', monitor: monitor.index, edge, anchor: nearest});
+     const position = band.length > 0 ? clamp((along - band.along[0]) / band.length, 0, 1) : 0.5;
+     return {kind: 'free', monitor: monitor.index, edge, position};
+ }
+ 
++function edgeDistance(point, monitor, edge) {
++    const [x, y] = point;
++    return {
++        top: y - monitor.y,
++        bottom: monitor.y + monitor.height - y,
++        left: x - monitor.x,
++        right: monitor.x + monitor.width - x,
++    }[edge];
++}
++
+ // The anchor nearest a free position: start, centre or end.
+ export function nearestAnchor(position) {
+     const p = cleanPosition(position);
+@@ -508,6 +709,26 @@ export function applyMove(groups, ids, target, display = '') {
+         host.islands = islands;
+         return next.filter(group => group.islands.length);
+     }
++    if (target.kind === 'apart') {
++        // Its own island beside a group, on the side it was dropped: a new
++        // group with the same anchor, stored before or after its host so
++        // the band solver puts it there. The host is found again by one of
++        // its own islands, because taking the dragged ones out may leave
++        // fewer groups than before.
++        const keeper = next[target.group]?.islands.find(id => !ids.includes(id));
++        if (keeper) {
++            next = removeIslands(next, ids);
++            const at = next.findIndex(group => group.islands.includes(keeper));
++            const host = next[at];
++            const placement = {display: host.display ?? display, edge: host.edge, anchor: host.anchor,
++                position: host.position ?? 0.5};
++            // An end group's stack grows towards the band's start, so
++            // "before" it is later in the arrangement, not earlier.
++            const outwards = host.anchor === 'end' ? target.side === 'before' : target.side === 'after';
++            next.splice(at + (outwards ? 1 : 0), 0, {...placement, islands: [...ids]});
++            return next.filter(group => group.islands.length);
++        }
++    }
+     next = removeIslands(next, ids);
+     next.push({...placementFor(target, display), islands: [...ids]});
+     return next;
+@@ -665,6 +886,8 @@ export function reservations(monitors, occupied, metrics, options = {}) {
+         const edges = occupied.get(monitor.index);
+         if (!edges?.size)
+             continue;
++        // Only an edge that holds a band reserves anything: an empty edge
++        // reserves nothing, so windows and tiles reach the screen there.
+         for (const edge of EDGES) {
+             // Mutter ignores struts on an edge shared with another monitor.
+             // Where the compositor can reserve such an edge directly, the
+@@ -675,15 +898,6 @@ export function reservations(monitors, occupied, metrics, options = {}) {
+             if (edges.has(edge)) {
+                 const band = bandGeometry(monitor, edge, metrics);
+                 out.push({monitor: monitor.index, edge, rect: band.work, depth: band.depth, band: true, shared});
+-            } else if (metrics.margin > 0) {
+-                const m = metrics.margin;
+-                const rect = {
+-                    top: {x: monitor.x, y: monitor.y, width: monitor.width, height: m},
+-                    bottom: {x: monitor.x, y: monitor.y + monitor.height - m, width: monitor.width, height: m},
+-                    left: {x: monitor.x, y: monitor.y, width: m, height: monitor.height},
+-                    right: {x: monitor.x + monitor.width - m, y: monitor.y, width: m, height: monitor.height},
+-                }[edge];
+-                out.push({monitor: monitor.index, edge, rect, band: false});
+             }
+         }
+     }
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+index 7b390e2..bf007cb 100644
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -8,6 +8,9 @@ export const DASH_TILE_GAP = 6;
+ export const SHELF_INSET = 14;
+ // The rule between pinned and running apps, and between status parts.
+ export const SHELF_DIVIDER_LENGTH = 24;
++// The divider between the parts of one island or bar, full height; its ink is
++// SURFACE_INK[treatment].divider.
++export const DIVIDER_WIDTH = 1;
+ 
+ // A running app is a 4x4 dot 2px beneath its icon, inside the island's
+ // padding; the focused app's dot stretches to a 12x4 pill.
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 5ad3642..51819f8 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1355,14 +1355,61 @@ export class WindowManager {
+             this._shellwm.completed_size_change(actor);
+     }
+ 
+-    _prepareAnimationInfo(shellwm, actor, oldFrameRect, _change) {
++    // Luma: move and resize a window in one continuous glide, with no
++    // cross-fade: the window keeps its old picture where it was until its
++    // client has drawn the new size, then that new picture is eased from the
++    // old rectangle into place (translation and scale on the window actor),
++    // on the given curve. The real move-resize is applied once. Used when
++    // the Dash changes the work area (Tiling Shell re-fits tiled windows).
++    // Reduced motion: the window is simply moved.
++    lumaGlideFrame(window, rect, {duration = 250, mode = Clutter.AnimationMode.EASE_OUT_QUINT} = {}) {
++        const actor = window.get_compositor_private();
++        const before = window.get_frame_rect();
++        if (before.x === rect.x && before.y === rect.y && before.width === rect.width && before.height === rect.height)
++            return;
++        const animate = actor && duration > 0 && St.Settings.get().enable_animations &&
++            actor.visible && !window.minimized && before.width > 0 && before.height > 0;
++        if (!animate) {
++            window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
++            return;
++        }
++        this._clearAnimationInfo(actor);
++        actor.remove_all_transitions();
++        actor.set({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0});
++        if (before.width === rect.width && before.height === rect.height) {
++            // Only a move: no new picture to wait for.
++            window.move_frame(false, rect.x, rect.y);
++            actor.translation_x = before.x - rect.x;
++            actor.translation_y = before.y - rect.y;
++            actor.ease({translation_x: 0, translation_y: 0, duration, mode});
++            return;
++        }
++        this._prepareAnimationInfo(this._shellwm, actor, before.copy(), Meta.SizeChange.UNMAXIMIZE,
++            {glide: {duration, mode}});
++        window.move_resize_frame(false, rect.x, rect.y, rect.width, rect.height);
++        // A client that never draws the new size is not left frozen.
++        const info = actor.__animationInfo;
++        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
++            if (actor.__animationInfo === info && info.frozen) {
++                this._resizePending.delete(actor);
++                this._clearAnimationInfo(actor);
++            }
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _prepareAnimationInfo(shellwm, actor, oldFrameRect, _change, options = {}) {
+         // Position a clone of the window on top of the old position,
+-        // while actor updates are frozen.
+-        const actorContent = actor.paint_to_content(oldFrameRect);
+-        const actorClone = new St.Widget({content: actorContent});
+-        actorClone.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
+-        actorClone.set_position(oldFrameRect.x, oldFrameRect.y);
+-        actorClone.set_size(oldFrameRect.width, oldFrameRect.height);
++        // while actor updates are frozen. A glide keeps no clone: the
++        // window's own picture moves.
++        let actorClone = null;
++        if (!options.glide) {
++            const actorContent = actor.paint_to_content(oldFrameRect);
++            actorClone = new St.Widget({content: actorContent});
++            actorClone.set_offscreen_redirect(Clutter.OffscreenRedirect.ALWAYS);
++            actorClone.set_position(oldFrameRect.x, oldFrameRect.y);
++            actorClone.set_size(oldFrameRect.width, oldFrameRect.height);
++        }
+ 
+         actor.freeze();
+ 
+@@ -1371,16 +1418,18 @@ export class WindowManager {
+             this._completeSizeChange(actor);
+         }
+ 
++        const owner = actorClone ?? actor;
+         actor.connectObject('destroy', () => {
+             this._clearAnimationInfo(actor);
+             this._sizeChangesInProgress.delete(actor);
+-        }, actorClone);
++        }, owner);
+ 
+         this._resizePending.add(actor);
+         actor.__animationInfo = {
+             clone: actorClone,
+             oldRect: oldFrameRect,
+             frozen: true,
++            glide: options.glide ?? null,
+         };
+     }
+ 
+@@ -1400,6 +1449,29 @@ export class WindowManager {
+         this._resizePending.delete(actor);
+         this._resizing.add(actor);
+ 
++        const glide = actor.__animationInfo.glide;
++        if (glide) {
++            actor.set_pivot_point(0, 0);
++            actor.translation_x = sourceRect.x - targetRect.x;
++            actor.translation_y = sourceRect.y - targetRect.y;
++            actor.scale_x = 1 / scaleX;
++            actor.scale_y = 1 / scaleY;
++            actor.ease({
++                scale_x: 1,
++                scale_y: 1,
++                translation_x: 0,
++                translation_y: 0,
++                duration: glide.duration,
++                mode: glide.mode,
++                onStopped: () => this._sizeChangeWindowDone(shellwm, actor),
++            });
++            if (!actor.__animationInfo)
++                return;
++            actor.thaw();
++            actor.__animationInfo.frozen = false;
++            return;
++        }
++
+         Main.uiGroup.add_child(actorClone);
+ 
+         // Now scale and fade out the clone
+@@ -1444,7 +1516,7 @@ export class WindowManager {
+ 
+     _clearAnimationInfo(actor) {
+         if (actor.__animationInfo) {
+-            actor.__animationInfo.clone.destroy();
++            actor.__animationInfo.clone?.destroy();
+             if (actor.__animationInfo.frozen)
+                 actor.thaw();
+ 

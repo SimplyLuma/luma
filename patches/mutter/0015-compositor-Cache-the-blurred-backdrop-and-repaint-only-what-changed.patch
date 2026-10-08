@@ -1,0 +1,1119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 17 Sep 2026 21:00:00 -0500
+Subject: [PATCH] compositor: Cache the blurred backdrop and repaint only what
+ changed
+
+In Frost and Glass every Luma application window asks for a background
+blur. Each time anything was drawn inside a blurred window's sampled area
+(another window dragged over or beside it, a cursor-sized client update),
+the redraw was widened to that window's whole sampled area: every window
+beneath it was repainted across its full size, the full-resolution backdrop
+was copied into freshly allocated textures and blurred again. With several
+blurred windows stacked, each widening pulled in the next window's area, so
+a small drag repainted most of both monitors on every frame.
+
+Keep, per blurred surface and per monitor view, the backdrop at the
+resolution the blur downscales to anyway. Framebuffer blocks repainted
+beneath the surface this frame are copied into it; the rest is still valid,
+because nothing outside the redraw changed. Blocks sit on a grid anchored to
+the framebuffer origin, so partial updates are seamless. The blur then runs
+on the small cached backdrop, and the redraw only grows by the damage plus
+the blur's sampling reach instead of the surface's whole area. Textures are
+reused while the surface keeps its size, so moving a blurred window no
+longer allocates per frame.
+
+The cache is rebuilt from a full repaint whenever the surface moves,
+resizes, changes view scale or blur radius, or was culled on a frame that
+changed its backdrop. Offscreen paints (screenshots, casts, effects) keep
+the previous path unchanged. LUMA_MUTTER_BLUR_CACHE=0 turns the cache off
+for A/B measurements. MUTTER_DEBUG=render logs each blurred paint (cached or
+rebuilt, fresh pixels).
+---
+ clutter/clutter/clutter-blur-private.h  |   5 +
+ src/backends/meta-stage-private.h       |   2 +
+ src/backends/meta-stage.c               |  12 +
+ src/compositor/meta-background-effect.c | 869 +++++++++++++++++++++++-
+ src/compositor/meta-background-effect.h |   4 +-
+ src/compositor/meta-surface-actor.c     |   9 +-
+ 6 files changed, 898 insertions(+), 3 deletions(-)
+
+diff --git a/clutter/clutter/clutter-blur-private.h b/clutter/clutter/clutter-blur-private.h
+index 7a47f73..e2ee2be 100644
+--- a/clutter/clutter/clutter-blur-private.h
++++ b/clutter/clutter/clutter-blur-private.h
+@@ -20,18 +20,23 @@
+ #include <glib-object.h>
+ 
+ #include "cogl/cogl.h"
++#include "clutter/clutter-macros.h"
+ 
+ G_BEGIN_DECLS
+ 
+ typedef struct _ClutterBlur ClutterBlur;
+ 
++CLUTTER_EXPORT
+ ClutterBlur * clutter_blur_new (CoglTexture *texture,
+                                 float        radius);
+ 
++CLUTTER_EXPORT
+ void clutter_blur_apply (ClutterBlur *blur);
+ 
++CLUTTER_EXPORT
+ CoglTexture * clutter_blur_get_texture (ClutterBlur *blur);
+ 
++CLUTTER_EXPORT
+ void clutter_blur_free (ClutterBlur *blur);
+ 
+ G_END_DECLS
+diff --git a/src/backends/meta-stage-private.h b/src/backends/meta-stage-private.h
+index fe9df92..828fb46 100644
+--- a/src/backends/meta-stage-private.h
++++ b/src/backends/meta-stage-private.h
+@@ -84,6 +84,8 @@ void meta_stage_apply_redraw_clip_filters (MetaStage        *stage,
+                                            ClutterStageView *stage_view,
+                                            MtkRegion        *redraw_clip);
+ 
++uint64_t meta_stage_get_redraw_clip_filter_generation (MetaStage *stage);
++
+ void meta_stage_rebuild_views (MetaStage *stage);
+ 
+ G_END_DECLS
+diff --git a/src/backends/meta-stage.c b/src/backends/meta-stage.c
+index 6d4b40c..3f47438 100644
+--- a/src/backends/meta-stage.c
++++ b/src/backends/meta-stage.c
+@@ -74,6 +74,7 @@ struct _MetaStage
+   GPtrArray *watchers[META_N_WATCH_MODES];
+ 
+   GList *redraw_clip_filters;
++  uint64_t redraw_clip_filter_generation;
+ 
+   GList *overlays;
+ };
+@@ -610,6 +611,9 @@ meta_stage_apply_redraw_clip_filters (MetaStage        *stage,
+   if (!redraw_clip || !stage->redraw_clip_filters)
+     return;
+ 
++  /* Filters may keep per-pass state; a new generation starts a new pass. */
++  stage->redraw_clip_filter_generation++;
++
+   do
+     {
+       changed = FALSE;
+@@ -627,6 +631,14 @@ meta_stage_apply_redraw_clip_filters (MetaStage        *stage,
+   while (changed);
+ }
+ 
++uint64_t
++meta_stage_get_redraw_clip_filter_generation (MetaStage *stage)
++{
++  g_return_val_if_fail (META_IS_STAGE (stage), 0);
++
++  return stage->redraw_clip_filter_generation;
++}
++
+ void
+ meta_stage_rebuild_views (MetaStage *stage)
+ {
+diff --git a/src/compositor/meta-background-effect.c b/src/compositor/meta-background-effect.c
+index 1a81bdc..1dfc3b0 100644
+--- a/src/compositor/meta-background-effect.c
++++ b/src/compositor/meta-background-effect.c
+@@ -19,19 +19,180 @@
+ 
+ #include "compositor/meta-background-effect.h"
+ 
++#include <float.h>
+ #include <math.h>
+ 
+ #include "backends/meta-stage-private.h"
++#include "clutter/clutter-blur-private.h"
+ #include "clutter/clutter-mutter.h"
+ #include "clutter/clutter-paint-node-private.h"
++#include "meta/meta-debug.h"
++
++/* Keep in sync with clutter-blur.c: the cached backdrop is stored at the
++ * resolution the blur would have downscaled to anyway. */
++#define BLUR_MAX_SIGMA 6.f
++#define BLUR_MIN_DOWNSCALE_SIZE 256.f
++
++/* Texture sizes are rounded up so moving or resizing a window reuses its
++ * cache textures instead of reallocating them every frame. */
++#define CACHE_TEXTURE_GRANULARITY 32
++
++#define SCRATCH_DATA_KEY "meta-background-blur-scratch"
++
++typedef struct
++{
++  int factor;
++  float radius;
++  /* Framebuffer pixels covered by the cache; x/y/width/height are multiples
++   * of factor unless clamped at the right or bottom framebuffer edge. */
++  MtkRectangle fb_rect;
++} BlurCacheGeometry;
++
++typedef struct
++{
++  GWeakRef view;
++  BlurCacheGeometry geometry;
++  gboolean valid;
++
++  CoglTexture *backdrop;
++  CoglFramebuffer *backdrop_fb;
++  ClutterBlur *blur;
++  float blur_radius;
++
++  uint64_t filter_generation;
++  MtkRegion *filter_covered;
++
++  /* A pass that expanded the clip for this cache expects a paint; if the
++   * surface was culled instead, its backdrop missed an update. */
++  uint64_t pending_generation;
++  uint64_t painted_generation;
++} BlurViewCache;
++
++typedef struct
++{
++  CoglTexture *texture;
++  CoglFramebuffer *framebuffer;
++} BlurScratch;
+ 
+ struct _MetaBackgroundBlur
+ {
+   ClutterActor *actor;
+   MtkRegion *sample_region;
+   MetaStageRedrawClipFilter *redraw_clip_filter;
++  float radius;
++  GPtrArray *view_caches;
+ };
+ 
++static gboolean
++backdrop_cache_enabled (void)
++{
++  static int enabled = -1;
++
++  if (G_UNLIKELY (enabled < 0))
++    {
++      /* LUMA_MUTTER_BLUR_CACHE=0 restores the uncached path, for A/B frame
++       * time measurements and as a field kill switch. */
++      enabled = g_strcmp0 (g_getenv ("LUMA_MUTTER_BLUR_CACHE"), "0") != 0;
++      if (!enabled)
++        g_message ("Background blur backdrop cache disabled by environment");
++    }
++
++  return enabled;
++}
++
++static void
++blur_view_cache_free (BlurViewCache *cache)
++{
++  g_weak_ref_clear (&cache->view);
++  g_clear_pointer (&cache->blur, clutter_blur_free);
++  g_clear_object (&cache->backdrop_fb);
++  g_clear_object (&cache->backdrop);
++  g_clear_pointer (&cache->filter_covered, mtk_region_unref);
++  g_free (cache);
++}
++
++static BlurViewCache *
++lookup_view_cache (MetaBackgroundBlur *blur,
++                   ClutterStageView   *stage_view,
++                   gboolean            create)
++{
++  BlurViewCache *cache;
++  unsigned int i = 0;
++
++  while (i < blur->view_caches->len)
++    {
++      g_autoptr (ClutterStageView) view = NULL;
++
++      cache = g_ptr_array_index (blur->view_caches, i);
++      view = g_weak_ref_get (&cache->view);
++      if (!view)
++        {
++          g_ptr_array_remove_index_fast (blur->view_caches, i);
++          continue;
++        }
++
++      if (view == stage_view)
++        return cache;
++
++      i++;
++    }
++
++  if (!create)
++    return NULL;
++
++  cache = g_new0 (BlurViewCache, 1);
++  g_weak_ref_init (&cache->view, stage_view);
++  g_ptr_array_add (blur->view_caches, cache);
++
++  return cache;
++}
++
++static float
++calculate_downscale_factor (float width,
++                            float height,
++                            float sigma)
++{
++  float downscale_factor = 1.f;
++  float scaled_width = width;
++  float scaled_height = height;
++  float scaled_sigma = sigma;
++
++  while (scaled_sigma > BLUR_MAX_SIGMA &&
++         scaled_width > BLUR_MIN_DOWNSCALE_SIZE &&
++         scaled_height > BLUR_MIN_DOWNSCALE_SIZE)
++    {
++      downscale_factor *= 2.f;
++
++      scaled_width = width / downscale_factor;
++      scaled_height = height / downscale_factor;
++      scaled_sigma = sigma / downscale_factor;
++    }
++
++  return downscale_factor;
++}
++
++static int
++align_down (int value,
++            int factor)
++{
++  return value >= 0 ? (value / factor) * factor
++                    : -(((-value) + factor - 1) / factor) * factor;
++}
++
++static int
++align_up (int value,
++          int factor)
++{
++  return -align_down (-value, factor);
++}
++
++static int
++round_up_to (int value,
++             int granularity)
++{
++  return ((value + granularity - 1) / granularity) * granularity;
++}
++
+ static int
+ calculate_blur_sample_padding (float radius)
+ {
+@@ -78,6 +239,173 @@ union_region_changed (MtkRegion       *region,
+   return !mtk_region_equal (old_region, region);
+ }
+ 
++static MtkRegion *
++dilate_region (const MtkRegion *region,
++               int              margin)
++{
++  MtkRegion *dilated;
++  int n_rects;
++
++  dilated = mtk_region_create ();
++  n_rects = mtk_region_num_rectangles (region);
++
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle rect = mtk_region_get_rectangle (region, i);
++
++      rect.x -= margin;
++      rect.y -= margin;
++      rect.width += 2 * margin;
++      rect.height += 2 * margin;
++      mtk_region_union_rectangle (dilated, &rect);
++    }
++
++  return dilated;
++}
++
++/* Computes where the cached, downscaled backdrop of this blur lives in the
++ * view framebuffer, and the sampled stage region clipped to the view. */
++static gboolean
++compute_cache_geometry (MetaBackgroundBlur  *blur,
++                        MetaStage           *stage,
++                        ClutterStageView    *stage_view,
++                        BlurCacheGeometry   *geometry,
++                        MtkRegion          **out_sample_region)
++{
++  g_autoptr (MtkRegion) sample_region = NULL;
++  CoglFramebuffer *framebuffer;
++  MtkRectangle view_layout;
++  MtkRectangle extents;
++  float view_scale;
++  int fb_width, fb_height;
++  int x1, y1, x2, y2;
++  int factor;
++
++  framebuffer = clutter_stage_view_get_framebuffer (stage_view);
++  if (!framebuffer)
++    return FALSE;
++
++  sample_region = transform_region_to_stage (blur->actor, stage,
++                                             blur->sample_region);
++  if (!sample_region)
++    return FALSE;
++
++  clutter_stage_view_get_layout (stage_view, &view_layout);
++  mtk_region_intersect_rectangle (sample_region, &view_layout);
++  if (mtk_region_is_empty (sample_region))
++    return FALSE;
++
++  view_scale = clutter_stage_view_get_scale (stage_view);
++  fb_width = cogl_framebuffer_get_width (framebuffer);
++  fb_height = cogl_framebuffer_get_height (framebuffer);
++  extents = mtk_region_get_extents (sample_region);
++
++  x1 = CLAMP ((int) floorf ((extents.x - view_layout.x) * view_scale),
++              0, fb_width);
++  y1 = CLAMP ((int) floorf ((extents.y - view_layout.y) * view_scale),
++              0, fb_height);
++  x2 = CLAMP ((int) ceilf ((extents.x + extents.width - view_layout.x) *
++                           view_scale),
++              0, fb_width);
++  y2 = CLAMP ((int) ceilf ((extents.y + extents.height - view_layout.y) *
++                           view_scale),
++              0, fb_height);
++  if (x2 <= x1 || y2 <= y1)
++    return FALSE;
++
++  geometry->radius = blur->radius * view_scale;
++  factor = (int) calculate_downscale_factor (x2 - x1, y2 - y1,
++                                             geometry->radius / 2.0f);
++
++  /* Keep every cached texel a whole block of framebuffer pixels, on a grid
++   * anchored to the framebuffer origin, so partial updates are seamless. */
++  x1 = align_down (x1, factor);
++  y1 = align_down (y1, factor);
++  x2 = MIN (align_up (x2, factor), align_down (fb_width, factor));
++  y2 = MIN (align_up (y2, factor), align_down (fb_height, factor));
++  if (x2 <= x1 || y2 <= y1)
++    return FALSE;
++
++  geometry->factor = factor;
++  geometry->fb_rect = (MtkRectangle) {
++    .x = x1,
++    .y = y1,
++    .width = x2 - x1,
++    .height = y2 - y1,
++  };
++
++  if (out_sample_region)
++    *out_sample_region = g_steal_pointer (&sample_region);
++
++  return TRUE;
++}
++
++static gboolean
++cache_geometry_equal (const BlurCacheGeometry *a,
++                      const BlurCacheGeometry *b)
++{
++  return a->factor == b->factor &&
++         G_APPROX_VALUE (a->radius, b->radius, FLT_EPSILON) &&
++         mtk_rectangle_equal (&a->fb_rect, &b->fb_rect);
++}
++
++/* With a valid cached backdrop only the damage and a ring around it need
++ * repainting: blurred pixels depend on backdrop pixels at most the sample
++ * padding away, and the rest of the backdrop is already cached. Without a
++ * cache the whole sampled region must be repainted before it is read. */
++static gboolean
++expand_redraw_clip_for_cached_blur (MetaBackgroundBlur *blur,
++                                    BlurViewCache      *cache,
++                                    MetaStage          *stage,
++                                    ClutterStageView   *stage_view,
++                                    MtkRegion          *redraw_clip,
++                                    const MtkRegion    *sample_region)
++{
++  g_autoptr (MtkRegion) damage = NULL;
++  g_autoptr (MtkRegion) expanded = NULL;
++  uint64_t generation;
++  float view_scale;
++  int margin;
++
++  generation = meta_stage_get_redraw_clip_filter_generation (stage);
++  if (cache->pending_generation != 0 &&
++      cache->pending_generation != generation &&
++      cache->painted_generation != cache->pending_generation)
++    {
++      meta_topic (META_DEBUG_RENDER,
++                  "Background blur %p: missed a backdrop update, rebuilding",
++                  blur);
++      cache->valid = FALSE;
++      cache->pending_generation = 0;
++      return union_region_changed (redraw_clip, sample_region);
++    }
++
++  if (cache->filter_generation != generation || !cache->filter_covered)
++    {
++      g_clear_pointer (&cache->filter_covered, mtk_region_unref);
++      cache->filter_covered = mtk_region_create ();
++      cache->filter_generation = generation;
++    }
++
++  damage = mtk_region_copy (redraw_clip);
++  mtk_region_intersect (damage, sample_region);
++  mtk_region_subtract (damage, cache->filter_covered);
++  if (mtk_region_is_empty (damage))
++    return FALSE;
++
++  view_scale = clutter_stage_view_get_scale (stage_view);
++  margin = calculate_blur_sample_padding (blur->radius) +
++           (int) ceilf (cache->geometry.factor / view_scale) + 1;
++
++  expanded = dilate_region (damage, margin);
++  mtk_region_intersect (expanded, sample_region);
++  mtk_region_union (expanded, damage);
++  mtk_region_union (cache->filter_covered, expanded);
++  cache->pending_generation = generation;
++
++  return union_region_changed (redraw_clip, expanded);
++}
++
+ static gboolean
+ meta_background_blur_expand_redraw_clip (MetaStage        *stage,
+                                          ClutterStageView *stage_view,
+@@ -108,12 +436,29 @@ meta_background_blur_expand_redraw_clip (MetaStage        *stage,
+   if (!regions_intersect (redraw_clip, sample_region))
+     return FALSE;
+ 
++  if (backdrop_cache_enabled ())
++    {
++      BlurViewCache *cache;
++      BlurCacheGeometry geometry;
++
++      cache = lookup_view_cache (blur, stage_view, FALSE);
++      if (cache && cache->valid &&
++          compute_cache_geometry (blur, stage, stage_view, &geometry, NULL) &&
++          cache_geometry_equal (&geometry, &cache->geometry))
++        {
++          return expand_redraw_clip_for_cached_blur (blur, cache, stage,
++                                                     stage_view, redraw_clip,
++                                                     sample_region);
++        }
++    }
++
+   return union_region_changed (redraw_clip, sample_region);
+ }
+ 
+ MetaBackgroundBlur *
+ meta_background_blur_new (ClutterActor    *actor,
+-                          const MtkRegion *sample_region)
++                          const MtkRegion *sample_region,
++                          float            radius)
+ {
+   ClutterActor *stage_actor;
+   MetaBackgroundBlur *blur;
+@@ -130,6 +475,9 @@ meta_background_blur_new (ClutterActor    *actor,
+   blur = g_new0 (MetaBackgroundBlur, 1);
+   blur->actor = actor;
+   blur->sample_region = mtk_region_copy (sample_region);
++  blur->radius = radius;
++  blur->view_caches =
++    g_ptr_array_new_with_free_func ((GDestroyNotify) blur_view_cache_free);
+   blur->redraw_clip_filter =
+     meta_stage_add_redraw_clip_filter (META_STAGE (stage_actor),
+                                        meta_background_blur_expand_redraw_clip,
+@@ -145,6 +493,7 @@ meta_background_blur_destroy (MetaBackgroundBlur *blur)
+   g_clear_pointer (&blur->redraw_clip_filter,
+                    meta_stage_remove_redraw_clip_filter);
+   g_clear_pointer (&blur->sample_region, mtk_region_unref);
++  g_clear_pointer (&blur->view_caches, g_ptr_array_unref);
+   g_free (blur);
+ }
+ 
+@@ -345,9 +694,519 @@ add_blur_rectangle (ClutterPaintNode      *paint_node,
+                                             texture_y2);
+ }
+ 
++static const char *cached_blur_effect_declarations =
++  "uniform float blur_framebuffer_saturation;                               \n"
++  "uniform float blur_framebuffer_noise;                                    \n"
++  "                                                                          \n"
++  "float blur_framebuffer_random_noise (vec2 position)                       \n"
++  "{                                                                         \n"
++  "  return fract (sin (dot (position, vec2 (12.9898, 78.233))) *           \n"
++  "                43758.5453);                                             \n"
++  "}                                                                         \n";
++
++/* Same post-blur treatment as the framebuffer blur node. */
++static const char *cached_blur_effect_source =
++  "  if (cogl_color_out.a > 0.0)                                             \n"
++  "    {                                                                     \n"
++  "      vec3 color = cogl_color_out.rgb / cogl_color_out.a;                 \n"
++  "      float luma = dot (color, vec3 (0.299, 0.587, 0.114));               \n"
++  "      float grain =                                                     \n"
++  "        blur_framebuffer_random_noise (floor (gl_FragCoord.xy)) - 0.5;   \n"
++  "                                                                          \n"
++  "      color = mix (vec3 (luma), color, blur_framebuffer_saturation);      \n"
++  "      color += vec3 (grain * blur_framebuffer_noise);                     \n"
++  "      color = clamp (color, vec3 (0.0), vec3 (1.0));                      \n"
++  "                                                                          \n"
++  "      cogl_color_out.rgb = color * cogl_color_out.a;                      \n"
++  "    }                                                                     \n";
++
++static CoglPipeline *
++create_downscale_pipeline (CoglContext *ctx,
++                           CoglTexture *texture)
++{
++  static CoglPipelineKey key = "meta-background-blur-downscale";
++  CoglPipeline *pipeline;
++
++  pipeline = cogl_context_get_named_pipeline (ctx, &key);
++  if (G_UNLIKELY (!pipeline))
++    {
++      pipeline = cogl_pipeline_new (ctx);
++      cogl_pipeline_set_static_name (pipeline, "MetaBackgroundBlurDownscale");
++      cogl_pipeline_set_layer_null_texture (pipeline, 0);
++      cogl_pipeline_set_layer_filters (pipeline, 0,
++                                       COGL_PIPELINE_FILTER_LINEAR,
++                                       COGL_PIPELINE_FILTER_LINEAR);
++      cogl_pipeline_set_layer_wrap_mode (pipeline, 0,
++                                         COGL_PIPELINE_WRAP_MODE_CLAMP_TO_EDGE);
++      cogl_pipeline_set_blend (pipeline, "RGBA = ADD (SRC_COLOR, 0)", NULL);
++      cogl_context_set_named_pipeline (ctx, &key, pipeline);
++    }
++
++  pipeline = cogl_pipeline_copy (pipeline);
++  cogl_pipeline_set_layer_texture (pipeline, 0, texture);
++
++  return pipeline;
++}
++
++static CoglPipeline *
++create_cached_blur_paint_pipeline (CoglContext *ctx,
++                                   CoglTexture *texture,
++                                   float        saturation,
++                                   float        noise,
++                                   uint8_t      opacity)
++{
++  static CoglPipelineKey plain_key = "meta-background-blur-paint";
++  static CoglPipelineKey effect_key = "meta-background-blur-paint-effect";
++  gboolean has_effect = !(saturation == 1.0f && noise == 0.0f);
++  CoglPipeline *pipeline;
++  CoglColor color;
++  float opacity_f;
++  int location;
++
++  pipeline = cogl_context_get_named_pipeline (ctx, has_effect ? &effect_key
++                                                               : &plain_key);
++  if (G_UNLIKELY (!pipeline))
++    {
++      pipeline = cogl_pipeline_new (ctx);
++      cogl_pipeline_set_static_name (pipeline, "MetaBackgroundBlurPaint");
++      cogl_pipeline_set_layer_null_texture (pipeline, 0);
++      cogl_pipeline_set_layer_filters (pipeline, 0,
++                                       COGL_PIPELINE_FILTER_LINEAR,
++                                       COGL_PIPELINE_FILTER_LINEAR);
++      cogl_pipeline_set_layer_wrap_mode (pipeline, 0,
++                                         COGL_PIPELINE_WRAP_MODE_CLAMP_TO_EDGE);
++      if (has_effect)
++        {
++          CoglSnippet *snippet;
++
++          snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
++                                      cached_blur_effect_declarations,
++                                      cached_blur_effect_source);
++          cogl_pipeline_add_snippet (pipeline, snippet);
++          g_object_unref (snippet);
++        }
++      cogl_context_set_named_pipeline (ctx,
++                                       has_effect ? &effect_key : &plain_key,
++                                       pipeline);
++    }
++
++  pipeline = cogl_pipeline_copy (pipeline);
++  cogl_pipeline_set_layer_texture (pipeline, 0, texture);
++
++  if (has_effect)
++    {
++      location = cogl_pipeline_get_uniform_location (pipeline,
++                                                     "blur_framebuffer_saturation");
++      if (location > -1)
++        cogl_pipeline_set_uniform_1f (pipeline, location, saturation);
++
++      location = cogl_pipeline_get_uniform_location (pipeline,
++                                                     "blur_framebuffer_noise");
++      if (location > -1)
++        cogl_pipeline_set_uniform_1f (pipeline, location, noise);
++    }
++
++  opacity_f = opacity / 255.0f;
++  cogl_color_init_from_4f (&color, opacity_f, opacity_f, opacity_f, opacity_f);
++  cogl_pipeline_set_color (pipeline, &color);
++
++  return pipeline;
++}
++
++static void
++blur_scratch_free (BlurScratch *scratch)
++{
++  g_clear_object (&scratch->framebuffer);
++  g_clear_object (&scratch->texture);
++  g_free (scratch);
++}
++
++/* One full-resolution capture texture per view, shared by every blurred
++ * surface on it and grown on demand. */
++static BlurScratch *
++ensure_view_scratch (ClutterStageView *stage_view,
++                     CoglContext      *ctx,
++                     int               width,
++                     int               height)
++{
++  BlurScratch *scratch;
++  g_autoptr (GError) error = NULL;
++
++  scratch = g_object_get_data (G_OBJECT (stage_view), SCRATCH_DATA_KEY);
++  if (scratch &&
++      cogl_texture_get_width (scratch->texture) >= (unsigned int) width &&
++      cogl_texture_get_height (scratch->texture) >= (unsigned int) height)
++    return scratch;
++
++  if (scratch)
++    {
++      width = MAX (width,
++                   (int) cogl_texture_get_width (scratch->texture));
++      height = MAX (height,
++                    (int) cogl_texture_get_height (scratch->texture));
++    }
++
++  scratch = g_new0 (BlurScratch, 1);
++  scratch->texture = cogl_texture_2d_new_with_size (ctx,
++                                                    round_up_to (width, 256),
++                                                    round_up_to (height, 256));
++  if (!scratch->texture ||
++      !cogl_texture_allocate (scratch->texture, &error))
++    {
++      g_warning ("Failed to allocate background blur capture: %s",
++                 error ? error->message : "no texture");
++      blur_scratch_free (scratch);
++      g_object_set_data (G_OBJECT (stage_view), SCRATCH_DATA_KEY, NULL);
++      return NULL;
++    }
++
++  scratch->framebuffer =
++    COGL_FRAMEBUFFER (cogl_offscreen_new_with_texture (scratch->texture));
++  g_object_set_data_full (G_OBJECT (stage_view), SCRATCH_DATA_KEY, scratch,
++                          (GDestroyNotify) blur_scratch_free);
++
++  return scratch;
++}
++
++static gboolean
++ensure_cache_textures (BlurViewCache *cache,
++                       CoglContext   *ctx)
++{
++  const BlurCacheGeometry *geometry = &cache->geometry;
++  int width = geometry->fb_rect.width / geometry->factor;
++  int height = geometry->fb_rect.height / geometry->factor;
++  g_autoptr (GError) error = NULL;
++
++  if (cache->backdrop &&
++      (int) cogl_texture_get_width (cache->backdrop) == width &&
++      (int) cogl_texture_get_height (cache->backdrop) == height &&
++      cache->blur &&
++      G_APPROX_VALUE (cache->blur_radius,
++                      geometry->radius / geometry->factor, FLT_EPSILON))
++    return TRUE;
++
++  g_clear_pointer (&cache->blur, clutter_blur_free);
++  g_clear_object (&cache->backdrop_fb);
++  g_clear_object (&cache->backdrop);
++
++  cache->backdrop = cogl_texture_2d_new_with_size (ctx, width, height);
++  if (!cache->backdrop || !cogl_texture_allocate (cache->backdrop, &error))
++    {
++      g_warning ("Failed to allocate background blur backdrop: %s",
++                 error ? error->message : "no texture");
++      g_clear_object (&cache->backdrop);
++      return FALSE;
++    }
++
++  cache->backdrop_fb =
++    COGL_FRAMEBUFFER (cogl_offscreen_new_with_texture (cache->backdrop));
++  cogl_framebuffer_orthographic (cache->backdrop_fb,
++                                 0.0f, 0.0f, width, height, 0.0f, 1.0f);
++
++  /* The backdrop is already downscaled, so this blur runs at its native
++   * size with the sigma scaled to match. */
++  cache->blur_radius = geometry->radius / geometry->factor;
++  cache->blur = clutter_blur_new (cache->backdrop, cache->blur_radius);
++  if (!cache->blur)
++    {
++      g_clear_object (&cache->backdrop_fb);
++      g_clear_object (&cache->backdrop);
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
++/* Converts the stage redraw clip into whole framebuffer blocks inside the
++ * cache: only those were freshly painted beneath this surface this frame. */
++static MtkRegion *
++compute_fresh_blocks (const MtkRegion         *redraw_clip,
++                      const MtkRectangle      *view_layout,
++                      float                    view_scale,
++                      const BlurCacheGeometry *geometry)
++{
++  MtkRegion *fresh;
++  int factor = geometry->factor;
++  int n_rects;
++
++  if (!redraw_clip)
++    return mtk_region_create_rectangle (&geometry->fb_rect);
++
++  fresh = mtk_region_create ();
++  n_rects = mtk_region_num_rectangles (redraw_clip);
++
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle rect = mtk_region_get_rectangle (redraw_clip, i);
++      MtkRectangle block;
++      int x1, y1, x2, y2;
++
++      x1 = (int) ceilf ((rect.x - view_layout->x) * view_scale);
++      y1 = (int) ceilf ((rect.y - view_layout->y) * view_scale);
++      x2 = (int) floorf ((rect.x + rect.width - view_layout->x) * view_scale);
++      y2 = (int) floorf ((rect.y + rect.height - view_layout->y) * view_scale);
++
++      x1 = align_up (MAX (x1, geometry->fb_rect.x), factor);
++      y1 = align_up (MAX (y1, geometry->fb_rect.y), factor);
++      x2 = align_down (MIN (x2, geometry->fb_rect.x + geometry->fb_rect.width),
++                       factor);
++      y2 = align_down (MIN (y2, geometry->fb_rect.y + geometry->fb_rect.height),
++                       factor);
++      if (x2 <= x1 || y2 <= y1)
++        continue;
++
++      block = (MtkRectangle) { x1, y1, x2 - x1, y2 - y1 };
++      mtk_region_union_rectangle (fresh, &block);
++    }
++
++  return fresh;
++}
++
++static gboolean
++update_backdrop (BlurViewCache    *cache,
++                 ClutterStageView *stage_view,
++                 CoglFramebuffer  *view_framebuffer,
++                 CoglContext      *ctx,
++                 const MtkRegion  *fresh,
++                 int              *out_fresh_pixels)
++{
++  const BlurCacheGeometry *geometry = &cache->geometry;
++  MtkRectangle extents;
++  BlurScratch *scratch;
++  g_autoptr (CoglPipeline) pipeline = NULL;
++  int n_rects;
++
++  *out_fresh_pixels = 0;
++  n_rects = mtk_region_num_rectangles (fresh);
++  if (n_rects == 0)
++    return TRUE;
++
++  extents = mtk_region_get_extents (fresh);
++  scratch = ensure_view_scratch (stage_view, ctx,
++                                 extents.width, extents.height);
++  if (!scratch)
++    return FALSE;
++
++  pipeline = create_downscale_pipeline (ctx, scratch->texture);
++
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle rect = mtk_region_get_rectangle (fresh, i);
++      g_autoptr (GError) error = NULL;
++      float scratch_width = cogl_texture_get_width (scratch->texture);
++      float scratch_height = cogl_texture_get_height (scratch->texture);
++      float dest_x = (rect.x - geometry->fb_rect.x) / geometry->factor;
++      float dest_y = (rect.y - geometry->fb_rect.y) / geometry->factor;
++
++      if (!cogl_framebuffer_blit (view_framebuffer, scratch->framebuffer,
++                                  rect.x, rect.y, 0, 0,
++                                  rect.width, rect.height,
++                                  &error))
++        {
++          g_warning ("Failed to capture background blur backdrop: %s",
++                     error->message);
++          return FALSE;
++        }
++
++      cogl_framebuffer_draw_textured_rectangle (cache->backdrop_fb,
++                                                pipeline,
++                                                dest_x,
++                                                dest_y,
++                                                dest_x + rect.width / geometry->factor,
++                                                dest_y + rect.height / geometry->factor,
++                                                0.0f,
++                                                0.0f,
++                                                rect.width / scratch_width,
++                                                rect.height / scratch_height);
++      /* The shared capture texture is overwritten by the next blit. */
++      cogl_framebuffer_flush (cache->backdrop_fb);
++
++      *out_fresh_pixels += rect.width * rect.height;
++    }
++
++  return TRUE;
++}
++
++static gboolean
++paint_cached_blur_region (ClutterPaintNode      *root_node,
++                          MetaBackgroundBlur    *blur,
++                          ClutterPaintContext   *paint_context,
++                          ClutterStageView      *stage_view,
++                          const MtkRegion       *paint_region,
++                          const ClutterActorBox *content_box,
++                          int                    content_width,
++                          int                    content_height,
++                          graphene_matrix_t     *actor_to_stage,
++                          graphene_matrix_t     *stage_to_actor,
++                          float                  saturation,
++                          float                  noise,
++                          uint8_t                opacity)
++{
++  ClutterActor *actor = blur->actor;
++  MetaStage *stage = META_STAGE (clutter_actor_get_stage (actor));
++  CoglFramebuffer *view_framebuffer;
++  CoglContext *ctx;
++  const MtkRegion *redraw_clip;
++  g_autoptr (MtkRegion) sample_region = NULL;
++  g_autoptr (MtkRegion) fresh = NULL;
++  g_autoptr (MtkRegion) unrefreshed = NULL;
++  g_autoptr (CoglPipeline) pipeline = NULL;
++  g_autoptr (ClutterPaintNode) node = NULL;
++  BlurCacheGeometry geometry;
++  BlurViewCache *cache;
++  MtkRectangle view_layout;
++  gboolean rebuilt = FALSE;
++  float view_scale;
++  int fresh_pixels = 0;
++  int n_rects;
++  int n_painted = 0;
++
++  if (!blur || !backdrop_cache_enabled ())
++    return FALSE;
++
++  view_framebuffer = clutter_stage_view_get_framebuffer (stage_view);
++  /* Offscreen paints (screenshots, casts, effects) keep the uncached path. */
++  if (clutter_paint_context_get_framebuffer (paint_context) != view_framebuffer)
++    return FALSE;
++
++  if (!compute_cache_geometry (blur, stage, stage_view, &geometry,
++                               &sample_region))
++    return FALSE;
++
++  cache = lookup_view_cache (blur, stage_view, TRUE);
++  if (cache->pending_generation != 0 &&
++      cache->painted_generation != cache->pending_generation &&
++      cache->pending_generation !=
++      meta_stage_get_redraw_clip_filter_generation (stage))
++    cache->valid = FALSE;
++
++  if (!cache->valid || !cache_geometry_equal (&cache->geometry, &geometry))
++    {
++      cache->valid = FALSE;
++      cache->geometry = geometry;
++      rebuilt = TRUE;
++    }
++
++  ctx = cogl_framebuffer_get_context (view_framebuffer);
++  if (!ensure_cache_textures (cache, ctx))
++    {
++      cache->valid = FALSE;
++      return FALSE;
++    }
++
++  clutter_stage_view_get_layout (stage_view, &view_layout);
++  view_scale = clutter_stage_view_get_scale (stage_view);
++  redraw_clip = clutter_paint_context_get_redraw_clip (paint_context);
++
++  if (rebuilt)
++    fresh = mtk_region_create_rectangle (&geometry.fb_rect);
++  else
++    fresh = compute_fresh_blocks (redraw_clip, &view_layout, view_scale,
++                                  &geometry);
++
++  if (!update_backdrop (cache, stage_view, view_framebuffer, ctx, fresh,
++                        &fresh_pixels))
++    {
++      cache->valid = FALSE;
++      return FALSE;
++    }
++
++  if (rebuilt)
++    {
++      /* A rebuild is only trustworthy if everything sampled was repainted
++       * this frame; otherwise show it once and rebuild on the next frame. */
++      if (redraw_clip)
++        {
++          unrefreshed = mtk_region_copy (sample_region);
++          mtk_region_subtract (unrefreshed, redraw_clip);
++        }
++
++      cache->valid = !unrefreshed || mtk_region_is_empty (unrefreshed);
++      if (!cache->valid)
++        {
++          MtkRectangle sample_extents =
++            mtk_region_get_extents (blur->sample_region);
++
++          meta_topic (META_DEBUG_RENDER,
++                      "Background blur %p: backdrop rebuilt from a partial "
++                      "repaint, repainting it", blur);
++          clutter_actor_queue_redraw_with_clip (actor, &sample_extents);
++        }
++    }
++
++  cache->painted_generation =
++    meta_stage_get_redraw_clip_filter_generation (stage);
++
++  if (fresh_pixels > 0)
++    clutter_blur_apply (cache->blur);
++
++  pipeline = create_cached_blur_paint_pipeline (ctx,
++                                                clutter_blur_get_texture (cache->blur),
++                                                saturation,
++                                                noise,
++                                                opacity);
++  node = clutter_pipeline_node_new (pipeline);
++  clutter_paint_node_set_static_name (node, "MetaBackgroundBlur (cached)");
++
++  n_rects = mtk_region_num_rectangles (paint_region);
++  for (int i = 0; i < n_rects; i++)
++    {
++      MtkRectangle region_rect;
++      MtkRectangle stage_rect;
++      ClutterActorBox actor_box;
++      float fb_x1, fb_y1, fb_x2, fb_y2;
++
++      region_rect = mtk_region_get_rectangle (paint_region, i);
++      if (!region_rect_to_actor_box (&region_rect, content_box,
++                                     content_width, content_height,
++                                     &actor_box))
++        continue;
++
++      if (!actor_box_to_stage_rect (&actor_box, actor_to_stage, &stage_rect))
++        continue;
++
++      if (!mtk_rectangle_intersect (&stage_rect, &view_layout, &stage_rect))
++        continue;
++
++      if (!stage_rect_to_actor_box (&stage_rect, stage_to_actor, &actor_box))
++        continue;
++
++      fb_x1 = (stage_rect.x - view_layout.x) * view_scale - geometry.fb_rect.x;
++      fb_y1 = (stage_rect.y - view_layout.y) * view_scale - geometry.fb_rect.y;
++      fb_x2 = fb_x1 + stage_rect.width * view_scale;
++      fb_y2 = fb_y1 + stage_rect.height * view_scale;
++
++      clutter_paint_node_add_texture_rectangle (node,
++                                                &actor_box,
++                                                fb_x1 / geometry.fb_rect.width,
++                                                fb_y1 / geometry.fb_rect.height,
++                                                fb_x2 / geometry.fb_rect.width,
++                                                fb_y2 / geometry.fb_rect.height);
++      n_painted++;
++    }
++
++  if (n_painted > 0)
++    clutter_paint_node_add_child (root_node, node);
++
++  meta_topic (META_DEBUG_RENDER,
++              "Background blur %p: %s, factor %d, cache %dx%d, "
++              "fresh %d px, reblurred %s, painted %d rects",
++              blur,
++              rebuilt ? "rebuilt" : "cached",
++              geometry.factor,
++              geometry.fb_rect.width / geometry.factor,
++              geometry.fb_rect.height / geometry.factor,
++              fresh_pixels,
++              fresh_pixels > 0 ? "yes" : "no",
++              n_painted);
++
++  return TRUE;
++}
++
+ void
+ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+                                           ClutterActor           *actor,
++                                          MetaBackgroundBlur     *blur,
+                                           ClutterPaintContext    *paint_context,
+                                           const ClutterActorBox  *content_box,
+                                           int                     content_width,
+@@ -417,6 +1276,14 @@ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+   if (mtk_region_is_empty (paint_region))
+     return;
+ 
++  if (blur && blur->actor == actor &&
++      paint_cached_blur_region (root_node, blur, paint_context, stage_view,
++                                paint_region, content_box,
++                                content_width, content_height,
++                                &actor_to_stage, &stage_to_actor,
++                                saturation, noise, opacity))
++    return;
++
+   clutter_stage_view_get_layout (stage_view, &view_layout);
+   view_scale = clutter_stage_view_get_scale (stage_view);
+   effect_extents = mtk_region_get_extents (effect_region);
+diff --git a/src/compositor/meta-background-effect.h b/src/compositor/meta-background-effect.h
+index 75c7c3f..227e9cb 100644
+--- a/src/compositor/meta-background-effect.h
++++ b/src/compositor/meta-background-effect.h
+@@ -26,11 +26,13 @@ MtkRegion * meta_background_effect_create_blur_sample_region (const MtkRegion *b
+                                                               float            radius);
+ 
+ MetaBackgroundBlur * meta_background_blur_new (ClutterActor    *actor,
+-                                               const MtkRegion *sample_region);
++                                               const MtkRegion *sample_region,
++                                               float            radius);
+ void meta_background_blur_destroy (MetaBackgroundBlur *blur);
+ 
+ void meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+                                                ClutterActor           *actor,
++                                               MetaBackgroundBlur     *blur,
+                                                ClutterPaintContext    *paint_context,
+                                                const ClutterActorBox  *content_box,
+                                                int                     content_width,
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index 4102157..e886d9a 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -494,6 +494,7 @@ sync_background_blur (MetaSurfaceActor *surface_actor)
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (surface_actor);
+   ClutterActor *actor = CLUTTER_ACTOR (surface_actor);
++  float blur_radius = 0.0f;
+ 
+   g_clear_pointer (&priv->background_blur,
+                    meta_background_blur_destroy);
+@@ -504,9 +505,14 @@ sync_background_blur (MetaSurfaceActor *surface_actor)
+   if (!clutter_actor_is_mapped (actor))
+     return;
+ 
++  if (priv->compositor)
++    meta_compositor_get_background_blur_params (priv->compositor,
++                                                &blur_radius, NULL, NULL);
++
+   priv->background_blur =
+     meta_background_blur_new (actor,
+-                              priv->background_blur_sample_region);
++                              priv->background_blur_sample_region,
++                              blur_radius);
+ }
+ 
+ static void
+@@ -840,6 +846,7 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                               &noise);
+   meta_background_effect_paint_blur_region (root_node,
+                                             CLUTTER_ACTOR (surface_actor),
++                                            priv->background_blur,
+                                             paint_context,
+                                             content_box,
+                                             content_width,
+-- 
+2.54.0 (Apple Git-157)
+

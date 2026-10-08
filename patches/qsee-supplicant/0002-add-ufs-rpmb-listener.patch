@@ -1,0 +1,244 @@
+diff --git a/Makefile b/Makefile
+index ba1ada5..d1be420 100644
+--- a/Makefile
++++ b/Makefile
+@@ -3,7 +3,9 @@ CPPFLAGS += -D_GNU_SOURCE -Iinclude
+ CFLAGS ?= -O2 -g
+ CFLAGS += -std=c11 -Wall -Wextra -Werror
+ 
+-COMMON = src/path.c src/services.c src/handle_db.c src/fs.c src/gpfs.c
++COMMON = src/path.c src/services.c src/handle_db.c src/fs.c src/gpfs.c \
++	src/rpmb_listener.c src/rpmb.c src/rpmb_emmc.c src/rpmb_ufs.c \
++	src/rpmb_logging.c
+ NOTIFY = src/notify.c
+ APP_ACQUIRE = src/app_acquire.c
+ THREAD_LIBS = -pthread
+diff --git a/include/qsee_supplicant.h b/include/qsee_supplicant.h
+index bf66f9e..a88e7d6 100644
+--- a/include/qsee_supplicant.h
++++ b/include/qsee_supplicant.h
+@@ -7,8 +7,10 @@
+ #include <stdint.h>
+ 
+ #define QS_FS_SERVICE_ID 10u
++#define QS_RPMB_SERVICE_ID 0x2000u
+ #define QS_GPFS_SERVICE_ID 0x7000u
+ #define QS_FS_BUFFER_SIZE (20u * 1024u)
++#define QS_RPMB_BUFFER_SIZE 20040u
+ #define QS_GPFS_BUFFER_SIZE (504u * 1024u)
+ 
+ struct qs_store {
+@@ -37,6 +39,8 @@ int qs_open_parent(struct qs_store *store, const char *path, bool create,
+ int qs_fs_dispatch(struct qs_store *store, void *buffer, size_t size);
+ void qs_fs_reset(void);
+ int qs_gpfs_dispatch(struct qs_store *store, void *buffer, size_t size);
++int qs_rpmb_dispatch(struct qs_store *store, void *buffer, size_t size);
++void qs_rpmb_reset(void);
+ 
+ extern const struct qs_service qs_builtin_services[];
+ extern const size_t qs_builtin_service_count;
+diff --git a/src/rpmb_listener.c b/src/rpmb_listener.c
+new file mode 100644
+index 0000000..5dc9d79
+--- /dev/null
++++ b/src/rpmb_listener.c
+@@ -0,0 +1,186 @@
++// SPDX-License-Identifier: BSD-3-Clause-Clear
++#include "qsee_supplicant.h"
++
++#include "rpmb.h"
++#include "rpmb_service.h"
++
++#include <errno.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++
++static int checked_region(size_t total, uint32_t offset, uint32_t length)
++{
++	return offset <= total && length <= total - offset;
++}
++
++static int rpmb_initialized;
++
++static int ensure_rpmb_initialized(void)
++{
++	rpmb_init_info_t info = {};
++	int result;
++
++	if (rpmb_initialized)
++		return 0;
++	result = rpmb_init(&info);
++	fprintf(stderr,
++		"event=rpmb_backend_init status=%d sectors=%u "
++		"reliable_write_count=%u device_type=%u contents_logged=0\n",
++		result, info.size, info.rel_wr_count, info.dev_type);
++	if (result == 0)
++		rpmb_initialized = 1;
++	return result;
++}
++
++static int handle_init(void *buffer, size_t size)
++{
++	tz_sd_device_init_req_t request;
++	tz_sd_device_init_res_t response = {};
++	rpmb_init_info_t info = {};
++
++	if (size < sizeof(response))
++		return -1;
++	memcpy(&request, buffer, sizeof(request));
++	response.cmd_id = request.cmd_id;
++	response.version = request.version;
++	response.status = rpmb_init(&info);
++	if (response.status == 0)
++		rpmb_initialized = 1;
++	response.num_sectors = info.size;
++	response.rel_wr_count = info.rel_wr_count;
++	memcpy(buffer, &response, sizeof(response));
++	return 0;
++}
++
++static int handle_read(void *buffer, size_t size)
++{
++	tz_rpmb_rw_req_t request;
++	tz_rpmb_rw_res_t response = {};
++	uint32_t response_length = 0;
++	size_t maximum_frames;
++
++	if (size < sizeof(request) || size < sizeof(response))
++		return -1;
++	memcpy(&request, buffer, sizeof(request));
++	maximum_frames = (size - sizeof(response)) / RPMB_BLK_SIZE;
++	/* QREL supplies one authenticated-read request frame and asks for
++	 * num_sectors response frames.  The response count does not describe
++	 * the request buffer length. */
++	if (!request.num_sectors || request.num_sectors > maximum_frames ||
++	    request.req_buff_len != RPMB_BLK_SIZE ||
++	    !checked_region(size, request.req_buff_offset,
++			    request.req_buff_len)) {
++		fprintf(stderr,
++			"event=rpmb_read_shape_rejected sectors=%u request_length=%u "
++			"request_offset=%u version=%u reliable_write_count=%u "
++			"buffer_size=%zu maximum_frames=%zu contents_logged=0\n",
++			request.num_sectors, request.req_buff_len,
++			request.req_buff_offset, request.version,
++			request.rel_wr_count, size, maximum_frames);
++		return -1;
++	}
++	if (ensure_rpmb_initialized() != 0)
++		return -1;
++	response.status = rpmb_read(
++		(uint32_t *)((uint8_t *)buffer + request.req_buff_offset),
++		request.num_sectors,
++		(uint32_t *)((uint8_t *)buffer + sizeof(response)),
++		&response_length);
++	if (response_length > size - sizeof(response))
++		return -1;
++	response.cmd_id = request.cmd_id;
++	response.version = request.version;
++	response.res_buff_len = response_length;
++	response.res_buff_offset = sizeof(response);
++	memcpy(buffer, &response, sizeof(response));
++	return 0;
++}
++
++static int handle_write(void *buffer, size_t size)
++{
++	tz_rpmb_rw_req_t request;
++	tz_rpmb_rw_res_t response = {};
++	uint32_t response_length = 0;
++	size_t maximum_frames;
++
++	if (size < sizeof(request) || size < sizeof(response))
++		return -1;
++	memcpy(&request, buffer, sizeof(request));
++	maximum_frames = (size - sizeof(response)) / RPMB_BLK_SIZE;
++	if (!request.num_sectors || request.num_sectors > maximum_frames ||
++	    !request.rel_wr_count ||
++	    request.req_buff_len != request.num_sectors * RPMB_BLK_SIZE ||
++	    !checked_region(size, request.req_buff_offset,
++			    request.req_buff_len))
++		return -1;
++	if (ensure_rpmb_initialized() != 0)
++		return -1;
++	response.status = rpmb_write(
++		(uint32_t *)((uint8_t *)buffer + request.req_buff_offset),
++		request.num_sectors,
++		(uint32_t *)((uint8_t *)buffer + sizeof(response)),
++		&response_length, request.rel_wr_count);
++	if (response_length > size - sizeof(response))
++		return -1;
++	response.cmd_id = request.cmd_id;
++	response.version = request.version;
++	response.res_buff_len = response_length;
++	response.res_buff_offset = sizeof(response);
++	memcpy(buffer, &response, sizeof(response));
++	return 0;
++}
++
++static int handle_partition(void *buffer, size_t size)
++{
++	tz_sd_rpmb_partition_req_t request;
++	tz_sd_rpmb_partition_rsp_t response = {};
++
++	if (size < sizeof(request) || size < sizeof(response))
++		return -1;
++	memcpy(&request, buffer, sizeof(request));
++	response.cmd_id = request.cmd_id;
++	response.status = UINT32_MAX;
++	response.rsp_buff_offset = sizeof(response);
++	memcpy(buffer, &response, sizeof(response));
++	return 0;
++}
++
++int qs_rpmb_dispatch(struct qs_store *store, void *buffer, size_t size)
++{
++	uint32_t command;
++	int result;
++
++	(void)store;
++	if (!buffer || size != QS_RPMB_BUFFER_SIZE || size < sizeof(command))
++		return -1;
++	memcpy(&command, buffer, sizeof(command));
++	switch (command) {
++	case TZ_CM_CMD_RPMB_INIT:
++		result = handle_init(buffer, size);
++		break;
++	case TZ_CM_CMD_RPMB_READ:
++		result = handle_read(buffer, size);
++		break;
++	case TZ_CM_CMD_RPMB_WRITE:
++		result = handle_write(buffer, size);
++		break;
++	case TZ_CM_CMD_RPMB_PARTITION:
++		result = handle_partition(buffer, size);
++		break;
++	default:
++		fprintf(stderr, "event=rpmb_rejected command=0x%x\n", command);
++		return -1;
++	}
++	fprintf(stderr, "event=rpmb_request command=0x%x dispatch=%s\n",
++		command, result == 0 ? "accepted" : "failed");
++	return result;
++}
++
++void qs_rpmb_reset(void)
++{
++	/* The daemon exits immediately after transport teardown; the kernel
++	 * closes the BSG descriptors. A reconnect is a fresh process in the
++	 * bounded FP6 diagnostic workflow. */
++	rpmb_initialized = 0;
++}
+diff --git a/src/services.c b/src/services.c
+index e323233..ce2ca95 100644
+--- a/src/services.c
++++ b/src/services.c
+@@ -3,6 +3,8 @@
+ 
+ const struct qs_service qs_builtin_services[] = {
+ 	{ QS_FS_SERVICE_ID, QS_FS_BUFFER_SIZE, qs_fs_dispatch, qs_fs_reset },
++	{ QS_RPMB_SERVICE_ID, QS_RPMB_BUFFER_SIZE, qs_rpmb_dispatch,
++	  qs_rpmb_reset },
+ 	{ QS_GPFS_SERVICE_ID, QS_GPFS_BUFFER_SIZE, qs_gpfs_dispatch, NULL },
+ };
+ 

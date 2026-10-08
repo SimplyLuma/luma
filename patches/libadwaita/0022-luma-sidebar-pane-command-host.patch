@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 17:30:00 -0500
+Subject: [PATCH] header-bar: the sidebar pane's header hosts the command row
+
+In a split view with per-pane header bars the sidebar header owns the
+automatic identity while the content header keeps the page title and the
+window controls. Let that sidebar header host the Luma command row when the
+split view is the native work surface, so its actions leave the 42px title
+row and the identity has room; it carries luma-pane-command-host. Other
+header bars inside split views remain flat pane headers.
+---
+
+diff --git a/src/adw-header-bar.c b/src/adw-header-bar.c
+index cf1a6a5..6ab8dbb 100644
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -771,6 +771,31 @@ luma_window_content (GtkWindow *window)
+   return gtk_window_get_child (window);
+ }
+ 
++/* Luma: a toolbar view that is the sidebar pane of the split view acting as
++ * the native work surface.  Its header bar owns the identity for the window
++ * (the content pane keeps the page title and the window controls), so it is
++ * the one place the command row can live without a second title row. */
++static gboolean
++luma_view_is_sidebar_pane_of_work_surface (GtkWidget *view)
++{
++  GtkWidget *ancestor = gtk_widget_get_parent (view);
++
++  while (ancestor && !GTK_IS_ROOT (ancestor)) {
++    if (gtk_widget_has_css_class (ancestor, "sidebar-pane")) {
++      GtkWidget *split = gtk_widget_get_parent (ancestor);
++
++      return split &&
++             (ADW_IS_NAVIGATION_SPLIT_VIEW (split) || ADW_IS_OVERLAY_SPLIT_VIEW (split)) &&
++             gtk_widget_has_css_class (split, "luma-split-surface");
++    }
++    if (gtk_widget_has_css_class (ancestor, "content-pane"))
++      return FALSE;
++    ancestor = gtk_widget_get_parent (ancestor);
++  }
++
++  return FALSE;
++}
++
+ static gboolean
+ luma_command_row_allowed (AdwHeaderBar *self)
+ {
+@@ -781,7 +806,6 @@ luma_command_row_allowed (AdwHeaderBar *self)
+   if (!self->luma_identity ||
+       !GTK_IS_WINDOW (root) ||
+       self->dialog || self->sheet || self->adaptive_preview ||
+-      self->split_views ||
+       gtk_widget_has_css_class (GTK_WIDGET (self), "luma-no-command-row") ||
+       !luma_window_is_generic (GTK_WINDOW (root)))
+     return FALSE;
+@@ -803,9 +827,14 @@ luma_command_row_allowed (AdwHeaderBar *self)
+         GTK_IS_REVEALER (revealer) &&
+         gtk_widget_has_css_class (revealer, "top-bar") &&
+         ADW_IS_TOOLBAR_VIEW (view) &&
+-        view == content)
++        (view == content ||
++         (self->split_views && luma_view_is_sidebar_pane_of_work_surface (view))))
+       return TRUE;
+ 
++    /* Header bars inside a split view otherwise stay pane headers. */
++    if (self->split_views)
++      return FALSE;
++
+     /* Vertical box as window content with the header bar first. */
+     if (parent == content &&
+         gtk_orientable_get_orientation (GTK_ORIENTABLE (parent)) == GTK_ORIENTATION_VERTICAL)
+@@ -963,6 +992,8 @@ luma_enter_command_row (AdwHeaderBar *self)
+                                  gtk_box_layout_new (GTK_ORIENTATION_VERTICAL));
+   gtk_widget_insert_after (self->luma_command_bar, GTK_WIDGET (self), self->handle);
+   gtk_widget_add_css_class (GTK_WIDGET (self), "luma-command-host");
++  if (self->split_views)
++    gtk_widget_add_css_class (GTK_WIDGET (self), "luma-pane-command-host");
+ 
+   luma_move_children (self, self->start_box, self->luma_command_start, NULL);
+   luma_move_children (self, self->end_box, self->luma_command_end, NULL);
+@@ -995,6 +1026,7 @@ luma_leave_command_row (AdwHeaderBar *self)
+   luma_move_children (self, self->luma_command_start, self->start_box, NULL);
+   luma_move_children (self, self->luma_command_end, self->end_box, self->end_controls);
+ 
++  gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-pane-command-host");
+   gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-command-host");
+   g_clear_pointer (&self->luma_command_bar, gtk_widget_unparent);
+   self->luma_command_start = NULL;

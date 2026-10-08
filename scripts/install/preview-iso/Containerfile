@@ -1,0 +1,3 @@
+FROM registry.fedoraproject.org/fedora:44
+RUN dnf5 -y install --setopt=install_weak_deps=False lorax xorriso squashfs-tools dracut-live mtools dosfstools \
+    qemu-system-x86-core qemu-img edk2-ovmf ostree python3 file cpio findutils && dnf5 clean all

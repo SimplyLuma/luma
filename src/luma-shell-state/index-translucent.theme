@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Luma-translucent
+Comment=Project Luma Frost and Glass fallback for toolkits with no translucent renderer
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=Luma-translucent
+IconTheme=Prairie
+CursorTheme=Adwaita
+ButtonLayout=:minimize,maximize,close

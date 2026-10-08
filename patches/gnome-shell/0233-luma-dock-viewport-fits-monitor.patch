@@ -1,0 +1,35 @@
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -297,6 +297,14 @@
+         right: {x: monitor.x + monitor.width - depth, y: monitor.y, width: depth, height: monitor.height},
+     }[edge];
+     return {edge, vertical, rect, along: [start, end], length: Math.max(0, end - start), depth, work};
++}
++
++// The app strip gives folders and system controls room on a short edge.
++// More icons remain reachable by scrolling inside the dock island.
++export function dockViewportBudget(contentLength, bandLength, tileLength) {
++    const band = Math.max(1, bandLength);
++    const cap = Math.min(band, Math.max(tileLength, Math.floor(band * 0.7)));
++    return Math.max(0, Math.min(contentLength, cap));
+ }
+ 
+ // Where the groups of one band sit. groups: [{anchor, position, length,
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -3008,8 +3008,11 @@
+         // The dock's content, not the dash alone: married, the folders rail
+         // and its divider are inside the same scrolling strip, and a viewport
+         // measured without them clips the folders out of the input region.
+-        this._dockNatural = this._dockIsland.visible ? measure(this._dockContent, this._vertical) : 0;
+-        this._setDockLength(this._dockNatural, false);
++        const contentNatural = this._dockIsland.visible
++            ? measure(this._dockContent, this._vertical) : 0;
++        this._dockNatural = Arrangement.dockViewportBudget(contentNatural,
++            edgeLength('dock'), DASH_TILE_SIZE * scale);
++        this._setDockLength(this._dockNatural, this._dockNatural < contentNatural);
+ 
+         // Keep all status controls reachable on a short/narrow display. Both
+         // adopted panel content and the dock use native scrollable boundaries;

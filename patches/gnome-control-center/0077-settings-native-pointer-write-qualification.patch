@@ -1,0 +1,166 @@
+From: Project Luma contributors
+Subject: [PATCH] Settings: keep supported touchpad edits in the native page
+
+Qualify actual pointer writes through one production gate exercised by native
+controls and backend readback. Do not construct missing segmented modes.
+
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -101,6 +101,7 @@
+   g_object_set_data_full (G_OBJECT (model), "cc-luma-live", live, (GDestroyNotify) live_free);
+   cc_luma_fixture_set_writer (model, live_write, live);
+   cc_luma_live_verify_network_keys (model);
++  cc_luma_live_verify_pointer_keys (model);
+   cc_luma_fixture_set_page_ready_func (model, page_ready, live);
+   /* Writes proven against a real owner (VM, 28 Sep): Appearance's mode and
+    * wallpaper, Night Light, the proxy and a VPN's switch. Every other change
+@@ -146,19 +147,18 @@
+                                                          * landed in GSettings/PipeWire/the alert theme and shown
+                                                          * again after reopening Settings */
+                                                         "nightT", "vol", "bal", "overamp", "alert", "autoBright", "dim",
+-                                                        "susAc", "mBtn",
++                                                        "susAc",
+                                                         /* VM 29 Sep (run 20260929T070512-ld5-writes): written by a
+                                                          * click, in GSettings and shown again after reopening */
+                                                         /* Creator 5 Oct: separate schema write/readback and native
+                                                          * libinput finger/wheel .5/1/2 delivery under Mutter12. */
+-                                                        "mScrollSpeed", "tScrollSpeed",
+-                                                        "mSpeed", "mAccel", "mNat", "osk", "rep", "blink", "sticky", "slow",
++                                                        "osk", "rep", "blink", "sticky", "slow",
+                                                         "bounce", "mkeys", "locate", "hold", "hover", "vAlert", "cross",
+                                                         "invert", "hc", "motion", "scrollbars", "soundKeys",
+                                                         /* VM 29 Sep (run 20260929T073511-ld6-writes): the touchpad
+                                                          * tab (a view choice) and its switches and speed, the account
+                                                          * name (AccountsService), shown again after reopening */
+-                                                        "mtab", "tp", "tpType", "tSpeed", "tTap", "myName",
++                                                        "myName",
+                                                         /* VM 29 Sep (run 20260929T080303-ld7-writes): picked from
+                                                          * the pages' menus or switched, in GSettings and shown again
+                                                          * after reopening: Night Light's times, screen off and sleep
+diff --git a/shell/cc-luma-live-gsettings.c b/shell/cc-luma-live-gsettings.c
+--- a/shell/cc-luma-live-gsettings.c
++++ b/shell/cc-luma-live-gsettings.c
+@@ -542,3 +542,12 @@
+ const CcLumaAdapter cc_luma_adapter_a11y = {
+   "a11y", (const char * const[]) { "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom", NULL }, a11y_start, NULL, night_stop
+ };
++
++/* Native pointer controls qualify only writes exercised through the owning
++ * GSettings adapter. Unsupported scroll modes stay unowned and hidden. */
++void cc_luma_live_verify_pointer_keys (CcLumaFixture *model)
++{
++  const char *keys[] = { "mtab", "mBtn", "mSpeed", "mAccel", "mNat", "mScrollSpeed",
++                        "tp", "tpType", "tSpeed", "tTap", "tScrollSpeed", "tSec", "tNat", NULL };
++  for (guint i = 0; keys[i]; i++) cc_luma_fixture_verify_key (model, keys[i]);
++}
+diff --git a/shell/cc-luma-live-gsettings.h b/shell/cc-luma-live-gsettings.h
+--- a/shell/cc-luma-live-gsettings.h
++++ b/shell/cc-luma-live-gsettings.h
+@@ -49,6 +49,9 @@
+                                          gboolean (*valid) (CcLumaFixture *model));
+ void cc_luma_ready_gate_free (CcLumaReadyGate *gate);
+ 
++/* Production write qualification, also used by the native owner/UI check. */
++void cc_luma_live_verify_pointer_keys (CcLumaFixture *model);
++
+ extern const CcLumaAdapter cc_luma_adapter_gsettings;
+ extern const CcLumaAdapter cc_luma_adapter_nightlight;
+ extern const CcLumaAdapter cc_luma_adapter_pointer;
+diff --git a/shell/cc-luma-view-devices.c b/shell/cc-luma-view-devices.c
+--- a/shell/cc-luma-view-devices.c
++++ b/shell/cc-luma-view-devices.c
+@@ -155,7 +155,16 @@
+ GtkWidget *cc_luma_dev_sg (View *v, GtkBox *card, const char *key, const char *title, const char *subtitle,
+                            const char * const *choices, gboolean boolean, CcLumaDevSet set)
+ {
+-  return keep_if_owned (v, key, cf_row (card, NULL, title, subtitle, cc_luma_dev_seg (v, key, title, choices, boolean, set), FALSE));
++  /* An unreported choice has no current mode. Hide before constructing the
++   * segmented control, rather than assigning an empty/fictional mode. */
++  if (!cc_luma_dev_owned (v, key))
++    {
++      GtkWidget *none = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++      gtk_widget_set_visible (none, FALSE);
++      if (card) gtk_box_append (card, none);
++      return none;
++    }
++  return cf_row (card, NULL, title, subtitle, cc_luma_dev_seg (v, key, title, choices, boolean, set), FALSE);
+ }
+ 
+ static GtkWidget *find (GtkWidget *w, GType type, const char *cls)
+diff --git a/shell/meson.build b/shell/meson.build
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -373,6 +373,12 @@
+ fixture_view_sources += ['../panels/privacy/screen/cc-screen-page.c']
+ fixture_view_sources += ['../panels/privacy/camera/cc-camera-page.c', '../panels/privacy/location/cc-location-page.c']
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1'), m_dep]
++live_pointer_test = executable('test-luma-live-pointer',
++  ['test-luma-live-pointer.c', 'cc-luma-live-gsettings.c'] + fixture_view_sources + generated_sources,
++  include_directories: top_inc, dependencies: fixture_view_deps)
++test('luma-settings-live-pointer', live_pointer_test, timeout: 45,
++  env: ['GTK_A11Y=none', 'GSK_RENDERER=cairo', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
++
+ live_bluetooth_test = executable('test-luma-live-bluetooth', ['test-luma-live-bluetooth.c', 'cc-luma-live-bluetooth.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+ test('luma-settings-live-bluetooth', live_bluetooth_test, timeout: 45,
+   env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
+diff --git a/shell/test-luma-live-pointer.c b/shell/test-luma-live-pointer.c
+--- /dev/null
++++ b/shell/test-luma-live-pointer.c
+@@ -0,0 +1,56 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Actual Luma controls, production write qualification and real GSettings.
++ * The memory backend isolates this check from the user's hardware/dconf. */
++#include "cc-luma-live-gsettings.h"
++#include "cc-luma-view.h"
++#include "cc-luma-device-options.h"
++#include <luma-ui.h>
++#include <adwaita.h>
++#include <luma-appearance.h>
++static guint delegates;
++void cc_luma_live_ready (CcLumaFixture *model, const char *adapter) { }
++static void spin(void) { gint64 end=g_get_monotonic_time()+150000;do {while(g_main_context_iteration(NULL,FALSE));g_usleep(1000);}while(g_get_monotonic_time()<end); }
++static gboolean writer(CcLumaFixture*m,const char*k,JsonNode*v,gpointer state,GError**e) {return cc_luma_adapter_gsettings.write(state,k,v,e);}
++static gboolean delegate(GtkWidget*root,const char*page,gpointer data) {delegates++;return TRUE;}
++static GtkWidget *named(GtkWidget*w,const char*n) {if(!g_strcmp0(gtk_widget_get_name(w),n))return w;for(GtkWidget*c=gtk_widget_get_first_child(w);c;c=gtk_widget_get_next_sibling(c)){GtkWidget*r=named(c,n);if(r)return r;}return NULL;}
++static GtkWidget *kind(GtkWidget*w,GType t) {if(G_TYPE_CHECK_INSTANCE_TYPE(w,t))return w;for(GtkWidget*c=gtk_widget_get_first_child(w);c;c=gtk_widget_get_next_sibling(c)){GtkWidget*r=kind(c,t);if(r)return r;}return NULL;}
++static CcLumaFixture *model_new(gpointer*state) {
++ g_autoptr(JsonParser)p=json_parser_new();g_assert_true(json_parser_load_from_data(p,"{\"version\":1,\"settings\":{},\"data\":{},\"pages\":[{\"id\":\"mouse\",\"title\":\"Mouse & Touchpad\"}]}",-1,NULL));
++ CcLumaFixture*m=cc_luma_fixture_new_live(json_parser_get_root(p));*state=cc_luma_adapter_gsettings.start(m);cc_luma_fixture_set_writer(m,writer,*state);cc_luma_live_verify_pointer_keys(m);return m;
++}
++static void set(CcLumaFixture*m,const char*k,JsonNode*v) {g_autoptr(GError)e=NULL;g_assert_true(cc_luma_pointer_set(m,k,v,&e));g_assert_no_error(e);}
++static void set_text(CcLumaFixture*m,const char*k,const char*v) {g_autoptr(JsonNode)n=json_node_init_string(json_node_alloc(),v);set(m,k,n);}
++static void capture(GtkWidget*w,const char*name) {
++ const char*d=g_getenv("LUMA_POINTER_EVIDENCE_DIR");if(!d)return;g_autoptr(GdkPaintable)p=gtk_widget_paintable_new(w);GtkSnapshot*s=gtk_snapshot_new();gdk_paintable_snapshot(p,s,gtk_widget_get_width(w),gtk_widget_get_height(w));g_autoptr(GskRenderNode)n=gtk_snapshot_free_to_node(s);g_assert_nonnull(n);g_autoptr(GdkTexture)t=gsk_renderer_render_texture(gtk_native_get_renderer(GTK_NATIVE(w)),n,NULL);g_autofree char*f=g_strdup_printf("%s/%s.png",d,name);g_assert_true(gdk_texture_save_to_png(t,f));
++}
++static void ui_case(gboolean natural,int width,gboolean dark) {
++ gpointer state;g_autoptr(CcLumaFixture)m=model_new(&state);g_autoptr(GSettings)p=g_settings_new("org.gnome.desktop.peripherals.touchpad");
++ g_settings_set_string(p,"click-method","fingers");g_settings_set_boolean(p,"natural-scroll",FALSE);spin();set_text(m,"mtab","touchpad");
++ g_autoptr(LumaSurfacePolicy)policy=luma_surface_policy_new(LUMA_SURFACE_TARGET_APPLICATION);g_assert_true(luma_surface_policy_select(policy,dark?"dark":"light",NULL));spin();g_assert_cmpint(adw_style_manager_get_dark(adw_style_manager_get_default()),==,dark);
++ g_autoptr(GError)e=NULL;GtkWidget*v=cc_luma_view_new(m,"mouse",&e);g_assert_no_error(e);g_assert_nonnull(v);cc_luma_view_set_delegate(v,delegate,NULL);
++ GtkWidget*w=gtk_window_new();gtk_window_set_default_size(GTK_WINDOW(w),width,780);gtk_window_set_child(GTK_WINDOW(w),v);gtk_window_present(GTK_WINDOW(w));spin();delegates=0;
++ if(natural) {GtkWidget*c=named(v,"cf-tNat");g_assert_nonnull(c);g_assert_true(LUMA_IS_MODE_SWITCH(c));GtkWidget*b=NULL;GQueue q=G_QUEUE_INIT;g_queue_push_tail(&q,c);while(!g_queue_is_empty(&q)){GtkWidget*x=g_queue_pop_head(&q);if(GTK_IS_TOGGLE_BUTTON(x)&&!g_strcmp0(g_object_get_data(G_OBJECT(x),"luma-mode-key"),"true")){b=x;break;}for(GtkWidget*y=gtk_widget_get_first_child(x);y;y=gtk_widget_get_next_sibling(y))g_queue_push_tail(&q,y);}g_queue_clear(&q);g_assert_nonnull(b);gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(b),TRUE);}
++ else {GtkWidget*c=named(v,"cf-tSec-corner");g_assert_nonnull(c);g_assert_true(gtk_widget_get_visible(c));g_signal_emit_by_name(c,"clicked");}
++ spin();g_test_message("native delegates after %s click: %u",natural?"tNat":"tSec",delegates);g_assert_cmpuint(delegates,==,0);
++ if(natural)g_assert_true(g_settings_get_boolean(p,"natural-scroll"));else {g_autofree char*s=g_settings_get_string(p,"click-method");g_assert_cmpstr(s,==,"areas");GtkWidget*c=named(v,"cf-tSec-corner");g_assert_nonnull(c);g_assert_true(gtk_check_button_get_active(GTK_CHECK_BUTTON(kind(c,GTK_TYPE_CHECK_BUTTON))));}
++ GtkWidget*unsupported=named(v,"cf-tScroll");if(unsupported)g_assert_false(gtk_widget_is_visible(unsupported));
++ g_autofree char*label=g_strdup_printf("pointer-%s-%d-%s",natural?"natural":"corner",width,dark?"dark":"light");capture(w,label);gtk_window_destroy(GTK_WINDOW(w));spin();cc_luma_adapter_gsettings.stop(state);
++ gpointer reopened;g_autoptr(CcLumaFixture)r=model_new(&reopened);if(natural)g_assert_true(json_node_get_boolean(cc_luma_fixture_get(r,"tNat")));else g_assert_cmpstr(json_node_get_string(cc_luma_fixture_get(r,"tSec")),==,"corner");cc_luma_adapter_gsettings.stop(reopened);
++}
++static void secondary(void) {ui_case(FALSE,1000,FALSE);ui_case(FALSE,1000,TRUE);ui_case(FALSE,400,FALSE);ui_case(FALSE,400,TRUE);}
++static void natural(void) {ui_case(TRUE,1000,FALSE);ui_case(TRUE,1000,TRUE);ui_case(TRUE,400,FALSE);ui_case(TRUE,400,TRUE);}
++static void coverage(void) {
++ gpointer state;g_autoptr(CcLumaFixture)m=model_new(&state);g_autoptr(GSettings)p=g_settings_new("org.gnome.desktop.peripherals.touchpad");g_autoptr(GSettings)mouse=g_settings_new("org.gnome.desktop.peripherals.mouse");
++ const char*keys[]={"mNat","tpType","tTap","tNat",NULL};for(guint i=0;keys[i];i++){g_autoptr(JsonNode)n=json_node_init_boolean(json_node_alloc(),TRUE);set(m,keys[i],n);}
++ g_assert_true(g_settings_get_boolean(mouse,"natural-scroll"));g_assert_true(g_settings_get_boolean(p,"disable-while-typing"));g_assert_true(g_settings_get_boolean(p,"tap-to-click"));g_assert_true(g_settings_get_boolean(p,"natural-scroll"));
++ set_text(m,"mBtn","left");g_assert_false(g_settings_get_boolean(mouse,"left-handed"));set_text(m,"tSec","two");g_autofree char*c=g_settings_get_string(p,"click-method");g_assert_cmpstr(c,==,"fingers");
++ g_autoptr(GError)e=NULL;g_autoptr(JsonNode)bad=json_node_init_string(json_node_alloc(),"bogus");g_assert_false(cc_luma_pointer_set(m,"tSec",bad,&e));g_clear_error(&e);g_autofree char*after=g_settings_get_string(p,"click-method");g_assert_cmpstr(after,==,"fingers");
++ /* Every other visible pointer key uses the same production gate and its
++  * actual owner value, not merely a successful setter. */
++ g_autoptr(JsonNode)enabled=json_node_init_boolean(json_node_alloc(),TRUE);set(m,"mAccel",enabled);g_autofree char*accel=g_settings_get_string(mouse,"accel-profile");g_assert_cmpstr(accel,==,"default");set(m,"tp",enabled);g_autofree char*events=g_settings_get_string(p,"send-events");g_assert_cmpstr(events,==,"enabled");
++ const char*speeds[]={"mSpeed","tSpeed","mScrollSpeed","tScrollSpeed"};for(guint i=0;i<4;i++){g_autoptr(JsonNode)n=json_node_init_int(json_node_alloc(),50);set(m,speeds[i],n);}
++ g_assert_cmpfloat(g_settings_get_double(mouse,"speed"),==,.5);g_assert_cmpfloat(g_settings_get_double(p,"speed"),==,.5);
++ g_autoptr(GSettings)ms=g_settings_new("org.projectluma.peripherals.mouse");g_autoptr(GSettings)ts=g_settings_new("org.projectluma.peripherals.touchpad");g_assert_cmpfloat(g_settings_get_double(ms,"scroll-speed"),==,2);g_assert_cmpfloat(g_settings_get_double(ts,"scroll-speed"),==,2);
++ g_assert_false(cc_luma_fixture_key_verified(m,"tScroll"));g_autoptr(JsonNode)edge=json_node_init_string(json_node_alloc(),"edge");g_assert_false(cc_luma_pointer_set(m,"tScroll",edge,&e));g_assert_nonnull(e);cc_luma_adapter_gsettings.stop(state);
++}
++int main(int argc,char**argv) {g_setenv("GSETTINGS_BACKEND","memory",TRUE);g_test_init(&argc,&argv,NULL);gtk_init();luma_init();luma_ui_add_style_resource("/org/gnome/Settings/gtk/luma-settings.css", GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);g_test_add_func("/luma/live/pointer/secondary-native",secondary);g_test_add_func("/luma/live/pointer/natural-native",natural);g_test_add_func("/luma/live/pointer/owned-and-invalid",coverage);return g_test_run();}

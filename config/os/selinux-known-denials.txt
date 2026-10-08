@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# SELinux denials from Fedora's own base policy that a fresh Luma install
+# logs and that Luma does not cause. scripts/os/verify-media.sh fails a medium
+# on any other denial.
+# Each entry needs a reason and an expiry, and is reviewed when it expires.
+#
+# Fields: SOURCE_TYPE COMM PERMISSION TCLASS PERMISSIVE EXPIRES REASON
+bootupd_t bootupctl read dir 1 2026-10-01 Fedora 44 bootupd policy: bootupd_t is a permissive domain (permissive=1, nothing is blocked); bootupctl reads /proc at first boot.
+bootupd_t lsblk read file 1 2026-10-01 Same bootupd first-boot run: lsblk reads /proc/swaps in the permissive bootupd_t domain.
+bootupd_t lsblk open file 1 2026-10-01 Same as above.
+bootupd_t lsblk getattr file 1 2026-10-01 Same as above.
+tuned_t chcon mac_admin capability2 0 2026-10-14 Exact tuned_t/chcon/mac_admin observation remains denied (permissive=0). Reviewed 2026-10-07 against signed ISO20 stock Fedora file digests, prefixture balanced/manual defaults and retained September passing observations; the audit does not establish the chcon argv or caller. No SELinux permission granted; temporary private-test renewal expires October 14.
+# snapd, exercised by the install-hurdles check (snap install firefox). Fedora's
+# snapd-selinux policy runs these domains permissive (permissive=1): logged,
+# not blocking. "*" matches USER_AVC records, which name no command.
+snappy_mount_t snap-update-ns search dir 1 2026-10-01 Fedora snapd-selinux: snap-update-ns reads the CUPS configuration directory while building a snap's mount namespace.
+snappy_mount_t snap-update-ns mounton dir 1 2026-10-01 Fedora snapd-selinux: snap-update-ns bind-mounts over /usr/share/man (man_t) inside the snap's private mount namespace; permissive domain, nothing is blocked. Seen on 20260925.1 and 20260926.1 from the install-hurdles snap install; no Luma package runs snap-update-ns or labels man_t.
+snappy_t snapd search dir 1 2026-10-01 Fedora snapd-selinux: snapd looks into the CUPS configuration directory.
+snappy_t snapd getattr file 1 2026-10-01 Fedora snapd-selinux: snapd stats a CUPS runtime file.
+snappy_t * start system 1 2026-10-14 Fedora snapd-selinux: snapd asks systemd to start a snap's units (USER_AVC). Reviewed 2026-10-07 against signed ISO20 stock Fedora bytes, prefixture defaults and retained September passing observations; renewal expires October 14.
+snappy_t * status system 1 2026-10-14 Fedora snapd-selinux: snapd lists systemd units (USER_AVC). Reviewed 2026-10-07 against signed ISO20 stock Fedora bytes, prefixture defaults and retained September passing observations; renewal expires October 14.
+snappy_cli_t * start system 1 2026-10-01 Fedora snapd-selinux: a snap install hook starts a transient unit (USER_AVC).

@@ -1,0 +1,77 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# X-Luma-Managed: Homebrew, ready the first time it is typed.
+set -eu
+
+prefix=${LUMA_HOMEBREW_PREFIX:-/home/linuxbrew/.linuxbrew}
+real="$prefix/bin/brew"
+repository="$prefix/Homebrew"
+: "${HOMEBREW_NO_ANALYTICS:=1}"
+export HOMEBREW_NO_ANALYTICS
+
+say() { printf '%s\n' "$*" >&2; }
+
+# Homebrew refuses to run as root. A guide that says "sudo brew install" means
+# the person who typed it.
+if [ "$(id -u)" = 0 ]; then
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+    exec runuser -u "$SUDO_USER" -- "$0" "$@"
+  fi
+  say "Homebrew installs software for a person, not for the system. Run brew without sudo."
+  exit 1
+fi
+
+if [ -x "$real" ] && [ -d "$repository/.git" ]; then
+  exec "$real" "$@"
+fi
+
+if [ ! -d "$prefix" ]; then
+  say "Homebrew needs its folder, $prefix, which only an administrator can create."
+  pkexec /usr/libexec/luma-homebrew-prefix
+fi
+if [ ! -w "$prefix" ]; then
+  owner=$(stat -c %U "$prefix" 2>/dev/null || echo "another account")
+  say "Homebrew on this computer belongs to $owner. They can share it with:"
+  say "  sudo chown -R $(id -un) /home/linuxbrew"
+  exit 1
+fi
+
+exec 9>"$prefix/.luma-setup.lock"
+flock 9
+if [ ! -d "$repository/.git" ]; then
+  say "Setting up Homebrew. This happens once."
+  # The same steps as Homebrew's own installer: its repository at the newest
+  # release, then brew's own first update.
+  for directory in bin etc include lib sbin share opt var Frameworks etc/bash_completion.d \
+      lib/pkgconfig share/aclocal share/doc share/info share/locale share/man \
+      share/zsh/site-functions var/homebrew var/homebrew/linked var/log; do
+    mkdir -p "$prefix/$directory"
+  done
+  partial="$repository.partial"
+  rm -rf "$partial"
+  mkdir -p "$partial"
+  (
+    cd "$partial"
+    git init --quiet
+    git config remote.origin.url "${HOMEBREW_BREW_GIT_REMOTE:-https://github.com/Homebrew/brew}"
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+    git config --bool core.autocrlf false
+    git config --bool core.symlinks true
+    git fetch --quiet --force origin
+    git fetch --quiet --force --tags origin
+    git remote set-head origin --auto >/dev/null
+    latest=$(git tag --list --sort=-version:refname | head -n 1)
+    git checkout --quiet --force -B stable "$latest"
+  ) || { rm -rf "$partial"; say "Homebrew could not be downloaded. Check the connection and try again."; exit 1; }
+  rm -rf "$repository"
+  mv "$partial" "$repository"
+  ln -sfn ../Homebrew/bin/brew "$prefix/bin/brew"
+  "$real" update --force --quiet || :
+  case ":$PATH:" in
+    *":$prefix/bin:"*) say "Homebrew is ready." ;;
+    *) say "Homebrew is ready. Commands it installs work in terminals opened from now on." ;;
+  esac
+fi
+exec 9>&-
+
+exec "$real" "$@"

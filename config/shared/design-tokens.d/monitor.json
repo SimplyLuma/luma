@@ -1,0 +1,59 @@
+{
+  "_source": "Simulator v71 luma-next-71.html lines1484,1494-1508,4760: chart primary tracks current accent hue, secondary fixed violet; rounded resource plots and cores; main content retains30px horizontal padding at phone widths.",
+  "lumaui": {
+    "colors": {
+      "light": {
+        "monitor_chart_primary": "oklch(from @luma_accent 0.72 0.13 h)",
+        "monitor_chart_secondary": "oklch(0.72 0.11 300)"
+      },
+      "dark": {
+        "monitor_chart_primary": "oklch(from @luma_accent 0.72 0.13 h)",
+        "monitor_chart_secondary": "oklch(0.72 0.11 300)"
+      }
+    },
+    "monitor": {
+      "chart_radius": 16,
+      "core_radius": 9,
+      "content_gutter": 30
+    },
+    "structure": {
+      "modes": {
+        "small_font_size": 12,
+        "small_button_padding_x": 6
+      }
+    },
+    "type_scale": {
+      "monitor_story": {
+        "size": 24,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": -0.022
+      },
+      "monitor_story_phone": {
+        "size": 22,
+        "weight": 650,
+        "line_height": 1.2,
+        "tracking_em": -0.022
+      },
+      "monitor_detail_title": {
+        "size": 16,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "monitor_detail_meta": {
+        "size": 12.5,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "monitor_detail_mono": {
+        "size": 11.5,
+        "weight": 500,
+        "line_height": 1.2173913043478262,
+        "tracking_em": 0,
+        "family": "IBM Plex Mono"
+      }
+    }
+  }
+}

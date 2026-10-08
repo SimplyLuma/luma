@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Record the outcome of a Luma update after restart
+Documentation=https://github.com/ProjectLuma/Luma/blob/stage/docs/os/luma-update.md
+ConditionPathExists=/run/ostree-booted
+# greenboot decides whether the new deployment is healthy and performs any
+# rollback first; this only records what happened.
+After=greenboot-healthcheck.service greenboot-rpm-ostree-grub2-check-fallback.service greenboot-grub2-set-success.service
+After=rpm-ostreed.service dbus.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-update-boot reconcile
+RemainAfterExit=yes
+StateDirectory=luma-update
+StateDirectoryMode=0700
+RuntimeDirectory=luma-update
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

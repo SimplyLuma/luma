@@ -1,0 +1,36 @@
+From 7b7f99698034d1996deb7dd26c60e04c4df701b5 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 18:38:01 +0000
+Subject: [PATCH] Filer: keep fixture search ranking transitive
+
+---
+ src/nautilus-list-view.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index f33cc1d..f1e9f18 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -419,10 +419,18 @@ sort_fixture_search_func (gconstpointer a,
+     NautilusFile *file_b = nautilus_view_item_get_file ((NautilusViewItem *) b);
+     guint rank_a = nautilus_filer_fixture_search_rank (nautilus_file_get_name (file_a));
+     guint rank_b = nautilus_filer_fixture_search_rank (nautilus_file_get_name (file_b));
+-    if (rank_a == 0 || rank_b == 0)
++    if (rank_a == 0 && rank_b == 0)
+     {
+         return GTK_ORDERING_EQUAL;
+     }
++    if (rank_a == 0)
++    {
++        return GTK_ORDERING_LARGER;
++    }
++    if (rank_b == 0)
++    {
++        return GTK_ORDERING_SMALLER;
++    }
+     return rank_a < rank_b ? GTK_ORDERING_SMALLER :
+            rank_a > rank_b ? GTK_ORDERING_LARGER : GTK_ORDERING_EQUAL;
+ }
+-- 
+2.55.0
+

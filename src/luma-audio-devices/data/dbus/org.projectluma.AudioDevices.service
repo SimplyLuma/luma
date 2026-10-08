@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.AudioDevices
+Exec=/usr/libexec/luma-audio-devices --gapplication-service
+SystemdService=luma-audio-devices.service

@@ -1,0 +1,1090 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 15 Sep 2026 14:30:00 -0500
+Subject: [PATCH] wayland: Send modifiers to the client under the pointer
+
+wl_pointer events carry no modifier state, and Mutter sent
+wl_keyboard.modifiers only to the client with keyboard focus. A window
+that is hovered but not focused therefore saw no Control or Shift on its
+scroll, button, motion and gesture events: Ctrl+scroll did not zoom and
+Shift+scroll did not pan until the window was clicked. X11, macOS and
+Windows all report the modifiers with pointer events to the window under
+the pointer without changing focus.
+
+wayland.xml allows wl_keyboard.modifiers "without a surface of the client
+having keyboard focus, for example to tie modifier information to pointer
+focus instead", and a reset by sending no pressed modifiers. KWin has done
+this since Plasma 6. GTK 3 and 4, Chromium and Electron, Qt 6 and
+Xwayland already apply such an event to their pointer events.
+
+Use that permission narrowly. The client that owns the pointer focus
+surface, while it has no keyboard focus, is sent the current state right
+before a pointer event is delivered to it (enter, motion, button, axis,
+touchpad gesture), and only when it differs from what that client was last
+sent; key presses are never streamed to it. The state comes from the
+event itself where the event carries it. When the pointer leaves, a client
+that was sent pressed or latched modifiers is sent a reset. Keyboard focus
+changes, a new wl_keyboard and keymap or layout changes make the next
+pointer event resend the state. No other client learns anything.
+
+The new wayland-keyboard test checks the order on the wire, that nothing
+is streamed while the pointer is still, the reset on leave, and that a
+client neither focused nor hovered receives no modifier events.
+---
+ src/tests/meson.build                         |   1 +
+ src/tests/wayland-keyboard-tests.c            | 135 ++++++
+ src/tests/wayland-test-clients/meson.build    |   3 +
+ .../wayland-test-clients/pointer-modifiers.c  | 452 ++++++++++++++++++
+ src/wayland/meta-wayland-keyboard.c           | 249 ++++++++++
+ src/wayland/meta-wayland-keyboard.h           |   7 +
+ src/wayland/meta-wayland-pointer.c            |  45 ++
+ 7 files changed, 892 insertions(+)
+ create mode 100644 src/tests/wayland-test-clients/pointer-modifiers.c
+
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index 1bcad75..70db93f 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -949,6 +949,7 @@ wayland_test_cases = [
+     ],
+     'depends': [
+       test_client_executables.get('keyboard'),
++      test_client_executables.get('pointer-modifiers'),
+     ],
+   },
+   {
+diff --git a/src/tests/wayland-keyboard-tests.c b/src/tests/wayland-keyboard-tests.c
+index 5e43ccd..7813610 100644
+--- a/src/tests/wayland-keyboard-tests.c
++++ b/src/tests/wayland-keyboard-tests.c
+@@ -219,6 +219,139 @@ keyboard_focus_switch (void)
+   meta_wayland_test_client_finish (wayland_test_client2);
+ }
+ 
++static MetaWindow *
++wait_for_shown_window (const char *title)
++{
++  MetaWindow *window;
++
++  window = meta_wait_for_client_window (test_context, title);
++  while (meta_window_is_hidden (window))
++    g_main_context_iteration (NULL, TRUE);
++  meta_wait_for_effects (window);
++
++  return window;
++}
++
++static void
++move_pointer_to_window (ClutterVirtualInputDevice *virtual_pointer,
++                        MetaWindow                *window)
++{
++  MtkRectangle rect;
++
++  meta_window_get_frame_rect (window, &rect);
++  clutter_virtual_input_device_notify_absolute_motion (virtual_pointer,
++                                                       g_get_monotonic_time (),
++                                                       rect.x + rect.width / 2,
++                                                       rect.y + rect.height / 2);
++  meta_flush_input (test_context);
++}
++
++static void
++notify_key (ClutterVirtualInputDevice *virtual_keyboard,
++            uint32_t                   key,
++            ClutterKeyState            state)
++{
++  clutter_virtual_input_device_notify_key (virtual_keyboard,
++                                           g_get_monotonic_time (),
++                                           key, state);
++  meta_flush_input (test_context);
++}
++
++static void
++scroll_down (ClutterVirtualInputDevice *virtual_pointer)
++{
++  clutter_virtual_input_device_notify_discrete_scroll (virtual_pointer,
++                                                       g_get_monotonic_time (),
++                                                       CLUTTER_SCROLL_DOWN,
++                                                       CLUTTER_SCROLL_SOURCE_WHEEL);
++  meta_flush_input (test_context);
++}
++
++static void
++keyboard_pointer_modifiers (void)
++{
++  MetaBackend *backend = meta_context_get_backend (test_context);
++  MetaDisplay *display = meta_context_get_display (test_context);
++  ClutterSeat *seat = meta_backend_get_default_seat (backend);
++  g_autoptr (ClutterVirtualInputDevice) virtual_keyboard = NULL;
++  g_autoptr (ClutterVirtualInputDevice) virtual_pointer = NULL;
++  MetaWaylandTestClient *bystander_client, *hover_client, *focus_client;
++  MetaWindow *bystander_window, *hover_window, *focus_window;
++
++  /* The window under the pointer is told the modifier state with its pointer
++   * events even without keyboard focus (wl_keyboard.modifiers without enter),
++   * only then, and is reset when the pointer leaves; other clients learn
++   * nothing. The assertions on the wire order live in the client. */
++  meta_backend_inhibit_hw_cursor (backend);
++  virtual_keyboard = clutter_seat_create_virtual_device (seat,
++                                                         CLUTTER_KEYBOARD_DEVICE);
++  virtual_pointer = clutter_seat_create_virtual_device (seat,
++                                                        CLUTTER_POINTER_DEVICE);
++  /* Park the pointer where no window will be. */
++  clutter_virtual_input_device_notify_absolute_motion (virtual_pointer,
++                                                       g_get_monotonic_time (),
++                                                       630, 470);
++  meta_flush_input (test_context);
++
++  bystander_client =
++    meta_wayland_test_client_new_with_args (test_context,
++                                            "pointer-modifiers",
++                                            "bystander",
++                                            NULL);
++  bystander_window = wait_for_shown_window ("pointer-modifiers-bystander");
++  hover_client =
++    meta_wayland_test_client_new_with_args (test_context,
++                                            "pointer-modifiers",
++                                            "hover",
++                                            NULL);
++  hover_window = wait_for_shown_window ("pointer-modifiers-hover");
++  focus_client =
++    meta_wayland_test_client_new_with_args (test_context,
++                                            "pointer-modifiers",
++                                            "focus",
++                                            NULL);
++  focus_window = wait_for_shown_window ("pointer-modifiers-focus");
++
++  meta_window_move_frame (bystander_window, FALSE, 0, 300);
++  meta_window_move_frame (hover_window, FALSE, 0, 0);
++  meta_window_move_frame (focus_window, FALSE, 300, 0);
++  while (meta_display_get_focus_window (display) != focus_window)
++    g_main_context_iteration (NULL, TRUE);
++
++  move_pointer_to_window (virtual_pointer, hover_window);
++  wait_for_sync_point (200);
++
++  notify_key (virtual_keyboard, KEY_LEFTCTRL, CLUTTER_KEY_STATE_PRESSED);
++  meta_wayland_test_driver_emit_sync_event (test_driver, 0);
++
++  scroll_down (virtual_pointer);
++  wait_for_sync_point (201);
++
++  notify_key (virtual_keyboard, KEY_LEFTCTRL, CLUTTER_KEY_STATE_RELEASED);
++  meta_wayland_test_driver_emit_sync_event (test_driver, 1);
++
++  scroll_down (virtual_pointer);
++  wait_for_sync_point (202);
++
++  notify_key (virtual_keyboard, KEY_LEFTCTRL, CLUTTER_KEY_STATE_PRESSED);
++  scroll_down (virtual_pointer);
++  wait_for_sync_point (203);
++
++  move_pointer_to_window (virtual_pointer, focus_window);
++  wait_for_sync_point (204);
++
++  notify_key (virtual_keyboard, KEY_LEFTCTRL, CLUTTER_KEY_STATE_RELEASED);
++  notify_key (virtual_keyboard, KEY_LEFTSHIFT, CLUTTER_KEY_STATE_PRESSED);
++  notify_key (virtual_keyboard, KEY_LEFTSHIFT, CLUTTER_KEY_STATE_RELEASED);
++  g_assert_true (meta_display_get_focus_window (display) == focus_window);
++  meta_wayland_test_driver_emit_sync_event (test_driver, 2);
++
++  meta_wayland_test_client_finish (hover_client);
++  meta_wayland_test_client_finish (focus_client);
++  meta_wayland_test_client_finish (bystander_client);
++  meta_backend_uninhibit_hw_cursor (backend);
++}
++
+ static void
+ on_before_tests (void)
+ {
+@@ -267,6 +400,8 @@ init_tests (void)
+                    keyboard_client_shortcut);
+   g_test_add_func ("/wayland/keyboard/focus-switch",
+                    keyboard_focus_switch);
++  g_test_add_func ("/wayland/keyboard/pointer-modifiers",
++                   keyboard_pointer_modifiers);
+ }
+ 
+ int
+diff --git a/src/tests/wayland-test-clients/meson.build b/src/tests/wayland-test-clients/meson.build
+index 6032638..cae9d12 100644
+--- a/src/tests/wayland-test-clients/meson.build
++++ b/src/tests/wayland-test-clients/meson.build
+@@ -171,6 +171,9 @@ wayland_test_clients = [
+   {
+     'name': 'keyboard',
+   },
++  {
++    'name': 'pointer-modifiers',
++  },
+   {
+     'name': 'invalid-geometry',
+   },
+diff --git a/src/tests/wayland-test-clients/pointer-modifiers.c b/src/tests/wayland-test-clients/pointer-modifiers.c
+new file mode 100644
+index 0000000..3e7f6dd
+--- /dev/null
++++ b/src/tests/wayland-test-clients/pointer-modifiers.c
+@@ -0,0 +1,452 @@
++/*
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++/*
++ * Test client for modifier state delivered to the client under the pointer.
++ *
++ *   pointer-modifiers hover      the window the pointer moves over; never
++ *                                has keyboard focus while hovered
++ *   pointer-modifiers focus      holds keyboard focus
++ *   pointer-modifiers bystander  mapped first, then neither focused nor
++ *                                hovered: must receive no modifier events
++ *
++ * The compositor side is wayland-keyboard-tests.c, pointer-modifiers.
++ */
++
++#include "config.h"
++
++#include <glib.h>
++#include <linux/input-event-codes.h>
++#include <wayland-client.h>
++
++#include "wayland-test-client-utils.h"
++
++#define CONTROL_MASK (1 << 2)
++
++typedef enum
++{
++  ROLE_HOVER,
++  ROLE_FOCUS,
++  ROLE_BYSTANDER,
++} Role;
++
++static Role role;
++static gboolean running;
++static struct wl_seat *seat;
++static struct wl_pointer *pointer;
++static struct wl_keyboard *keyboard;
++
++static gboolean has_keyboard_focus;
++static gboolean has_pointer_focus;
++static gboolean axis_in_frame;
++static int axis_frames;
++static gboolean left_pointer;
++
++static int modifiers_count;
++static int modifiers_count_at_checkpoint;
++static uint32_t pressed_mods;
++static uint32_t modifiers_while_unfocused;
++
++static void
++checkpoint (void)
++{
++  modifiers_count_at_checkpoint = modifiers_count;
++}
++
++/* wl_keyboard */
++
++static void
++keyboard_handle_keymap (void               *data,
++                        struct wl_keyboard *wl_keyboard,
++                        uint32_t            format,
++                        int                 fd,
++                        uint32_t            size)
++{
++}
++
++static void
++keyboard_handle_enter (void               *data,
++                       struct wl_keyboard *wl_keyboard,
++                       uint32_t            serial,
++                       struct wl_surface  *surface,
++                       struct wl_array    *keys)
++{
++  has_keyboard_focus = TRUE;
++}
++
++static void
++keyboard_handle_leave (void               *data,
++                       struct wl_keyboard *wl_keyboard,
++                       uint32_t            serial,
++                       struct wl_surface  *surface)
++{
++  has_keyboard_focus = FALSE;
++  pressed_mods = 0;
++  modifiers_while_unfocused = 0;
++}
++
++static void
++keyboard_handle_key (void               *data,
++                     struct wl_keyboard *wl_keyboard,
++                     uint32_t            serial,
++                     uint32_t            time,
++                     uint32_t            key,
++                     uint32_t            state)
++{
++  g_assert_true (has_keyboard_focus);
++}
++
++static void
++keyboard_handle_modifiers (void               *data,
++                           struct wl_keyboard *wl_keyboard,
++                           uint32_t            serial,
++                           uint32_t            mods_pressed,
++                           uint32_t            mods_latched,
++                           uint32_t            mods_locked,
++                           uint32_t            group)
++{
++  WaylandDisplay *display = data;
++
++  pressed_mods = mods_pressed;
++
++  if (has_keyboard_focus)
++    return;
++
++  modifiers_count++;
++  modifiers_while_unfocused++;
++
++  /* An unfocused client is only told the modifier state while the pointer
++   * is on its surface, or once to reset it when the pointer leaves. */
++  g_assert_true (role == ROLE_HOVER);
++
++  if (left_pointer)
++    {
++      g_assert_cmpuint (mods_pressed, ==, 0);
++      test_driver_sync_point (display->test_driver, 204, NULL);
++    }
++  else
++    {
++      g_assert_true (has_pointer_focus);
++    }
++}
++
++static void
++keyboard_handle_repeat_info (void               *data,
++                             struct wl_keyboard *wl_keyboard,
++                             int32_t             rate,
++                             int32_t             delay)
++{
++}
++
++static const struct wl_keyboard_listener keyboard_listener = {
++  keyboard_handle_keymap,
++  keyboard_handle_enter,
++  keyboard_handle_leave,
++  keyboard_handle_key,
++  keyboard_handle_modifiers,
++  keyboard_handle_repeat_info,
++};
++
++/* wl_pointer */
++
++static void
++pointer_handle_enter (void              *data,
++                      struct wl_pointer *wl_pointer,
++                      uint32_t           serial,
++                      struct wl_surface *surface,
++                      wl_fixed_t         x,
++                      wl_fixed_t         y)
++{
++  WaylandDisplay *display = data;
++
++  has_pointer_focus = TRUE;
++
++  if (role == ROLE_HOVER && !left_pointer)
++    test_driver_sync_point (display->test_driver, 200, NULL);
++}
++
++static void
++pointer_handle_leave (void              *data,
++                      struct wl_pointer *wl_pointer,
++                      uint32_t           serial,
++                      struct wl_surface *surface)
++{
++  has_pointer_focus = FALSE;
++
++  if (role == ROLE_HOVER)
++    {
++      g_assert_cmpint (axis_frames, ==, 3);
++      left_pointer = TRUE;
++    }
++}
++
++static void
++pointer_handle_motion (void              *data,
++                       struct wl_pointer *wl_pointer,
++                       uint32_t           time,
++                       wl_fixed_t         x,
++                       wl_fixed_t         y)
++{
++}
++
++static void
++pointer_handle_button (void              *data,
++                       struct wl_pointer *wl_pointer,
++                       uint32_t           serial,
++                       uint32_t           time,
++                       uint32_t           button,
++                       uint32_t           state)
++{
++}
++
++static void
++pointer_handle_axis (void              *data,
++                     struct wl_pointer *wl_pointer,
++                     uint32_t           time,
++                     uint32_t           axis,
++                     wl_fixed_t         value)
++{
++  axis_in_frame = TRUE;
++}
++
++static void
++pointer_handle_frame (void              *data,
++                      struct wl_pointer *wl_pointer)
++{
++  WaylandDisplay *display = data;
++
++  if (!axis_in_frame || role != ROLE_HOVER)
++    return;
++
++  axis_in_frame = FALSE;
++  g_assert_false (has_keyboard_focus);
++
++  /* The state that applies to this scroll arrived before its axis events. */
++  switch (axis_frames++)
++    {
++    case 0:
++      g_assert_cmpuint (pressed_mods & CONTROL_MASK, ==, CONTROL_MASK);
++      break;
++    case 1:
++      g_assert_cmpuint (pressed_mods & CONTROL_MASK, ==, 0);
++      break;
++    case 2:
++      g_assert_cmpuint (pressed_mods & CONTROL_MASK, ==, CONTROL_MASK);
++      break;
++    default:
++      g_assert_not_reached ();
++    }
++
++  checkpoint ();
++  test_driver_sync_point (display->test_driver, 201 + axis_frames - 1, NULL);
++}
++
++static void
++pointer_handle_axis_source (void              *data,
++                            struct wl_pointer *wl_pointer,
++                            uint32_t           axis_source)
++{
++}
++
++static void
++pointer_handle_axis_stop (void              *data,
++                          struct wl_pointer *wl_pointer,
++                          uint32_t           time,
++                          uint32_t           axis)
++{
++}
++
++static void
++pointer_handle_axis_discrete (void              *data,
++                              struct wl_pointer *wl_pointer,
++                              uint32_t           axis,
++                              int32_t            discrete)
++{
++}
++
++static const struct wl_pointer_listener pointer_listener = {
++  pointer_handle_enter,
++  pointer_handle_leave,
++  pointer_handle_motion,
++  pointer_handle_button,
++  pointer_handle_axis,
++  pointer_handle_frame,
++  pointer_handle_axis_source,
++  pointer_handle_axis_stop,
++  pointer_handle_axis_discrete,
++};
++
++/* wl_seat */
++
++static void
++seat_handle_capabilities (void                    *data,
++                          struct wl_seat          *wl_seat,
++                          enum wl_seat_capability  caps)
++{
++  WaylandDisplay *display = data;
++
++  if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard)
++    {
++      keyboard = wl_seat_get_keyboard (wl_seat);
++      wl_keyboard_add_listener (keyboard, &keyboard_listener, display);
++    }
++
++  if ((caps & WL_SEAT_CAPABILITY_POINTER) && !pointer)
++    {
++      pointer = wl_seat_get_pointer (wl_seat);
++      wl_pointer_add_listener (pointer, &pointer_listener, display);
++    }
++}
++
++static void
++seat_handle_name (void           *data,
++                  struct wl_seat *wl_seat,
++                  const char     *name)
++{
++}
++
++static const struct wl_seat_listener seat_listener = {
++  seat_handle_capabilities,
++  seat_handle_name,
++};
++
++static void
++handle_registry_global (void               *data,
++                        struct wl_registry *registry,
++                        uint32_t            id,
++                        const char         *interface,
++                        uint32_t            version)
++{
++  WaylandDisplay *display = data;
++
++  if (strcmp (interface, "wl_seat") == 0)
++    {
++      seat = wl_registry_bind (registry, id, &wl_seat_interface,
++                               MIN (version, 5));
++      wl_seat_add_listener (seat, &seat_listener, display);
++    }
++}
++
++static void
++handle_registry_global_remove (void               *data,
++                               struct wl_registry *registry,
++                               uint32_t            name)
++{
++}
++
++static const struct wl_registry_listener registry_listener = {
++  handle_registry_global,
++  handle_registry_global_remove
++};
++
++static void
++on_sync_event (WaylandDisplay *display,
++               uint32_t        serial,
++               gpointer        user_data)
++{
++  switch (serial)
++    {
++    case 0:
++      /* Control pressed while hovered, before any further pointer event:
++       * the client was told the state once on enter (nothing pressed), and
++       * the key press itself must not be streamed to it. */
++      if (role == ROLE_HOVER)
++        {
++          g_assert_true (has_pointer_focus);
++          g_assert_cmpint (modifiers_count, ==, 1);
++          g_assert_cmpuint (pressed_mods & CONTROL_MASK, ==, 0);
++          checkpoint ();
++        }
++      break;
++    case 1:
++      /* Control released after a scroll, likewise not streamed. */
++      if (role == ROLE_HOVER)
++        {
++          g_assert_true (has_pointer_focus);
++          g_assert_cmpint (modifiers_count, ==, modifiers_count_at_checkpoint);
++          g_assert_cmpuint (pressed_mods & CONTROL_MASK, ==, CONTROL_MASK);
++        }
++      break;
++    case 2:
++      /* Control released and Shift toggled after the pointer left. */
++      if (role == ROLE_HOVER)
++        {
++          g_assert_true (left_pointer);
++          g_assert_cmpint (modifiers_count, ==, modifiers_count_at_checkpoint + 1);
++        }
++      else if (role == ROLE_BYSTANDER)
++        {
++          g_assert_false (has_keyboard_focus);
++          g_assert_cmpuint (modifiers_while_unfocused, ==, 0);
++        }
++      running = FALSE;
++      break;
++    default:
++      g_assert_not_reached ();
++    }
++}
++
++int
++main (int    argc,
++      char **argv)
++{
++  g_autoptr (WaylandDisplay) display = NULL;
++  g_autoptr (WaylandSurface) surface = NULL;
++  struct wl_registry *registry;
++  const char *title;
++
++  g_assert_cmpint (argc, ==, 2);
++
++  if (g_strcmp0 (argv[1], "hover") == 0)
++    {
++      role = ROLE_HOVER;
++      title = "pointer-modifiers-hover";
++    }
++  else if (g_strcmp0 (argv[1], "focus") == 0)
++    {
++      role = ROLE_FOCUS;
++      title = "pointer-modifiers-focus";
++    }
++  else if (g_strcmp0 (argv[1], "bystander") == 0)
++    {
++      role = ROLE_BYSTANDER;
++      title = "pointer-modifiers-bystander";
++    }
++  else
++    {
++      g_assert_not_reached ();
++    }
++
++  display = wayland_display_new (WAYLAND_DISPLAY_CAPABILITY_TEST_DRIVER);
++  g_signal_connect (display, "sync-event", G_CALLBACK (on_sync_event), NULL);
++
++  registry = wl_display_get_registry (display->display);
++  wl_registry_add_listener (registry, &registry_listener, display);
++  wl_display_roundtrip (display->display);
++  wl_display_roundtrip (display->display);
++
++  surface = wayland_surface_new (display, title, 100, 100, 0xffffffff);
++  wl_surface_commit (surface->wl_surface);
++
++  running = TRUE;
++  while (running)
++    wayland_display_dispatch (display);
++
++  wl_display_roundtrip (display->display);
++
++  return EXIT_SUCCESS;
++}
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index 8d7849c..27b101c 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -89,6 +89,19 @@ struct _MetaWaylandKeyboard
+ 
+   MetaWaylandXkbInfo xkb_info;
+   GSettings *settings;
++
++  /* Modifier state last sent to the client under the pointer while that
++   * client has no keyboard focus. See
++   * meta_wayland_keyboard_sync_pointer_modifiers(). */
++  struct {
++    struct wl_client *client;
++    struct wl_listener client_destroy_listener;
++    gboolean sent;
++    xkb_mod_mask_t pressed;
++    xkb_mod_mask_t latched;
++    xkb_mod_mask_t locked;
++    uint32_t group;
++  } pointer_modifiers;
+ };
+ 
+ G_DEFINE_TYPE (MetaWaylandKeyboard, meta_wayland_keyboard,
+@@ -96,6 +109,7 @@ G_DEFINE_TYPE (MetaWaylandKeyboard, meta_wayland_keyboard,
+ 
+ static void meta_wayland_keyboard_update_xkb_state (MetaWaylandKeyboard *keyboard);
+ static void notify_modifiers (MetaWaylandKeyboard *keyboard);
++static void invalidate_pointer_modifiers (MetaWaylandKeyboard *keyboard);
+ 
+ static MetaBackend *
+ backend_from_keyboard (MetaWaylandKeyboard *keyboard)
+@@ -201,6 +215,7 @@ meta_wayland_keyboard_take_keymap (MetaWaylandKeyboard *keyboard,
+ 
+   keyboard->xkb_info.group = meta_backend_get_keymap_layout_group (backend);
+   notify_modifiers (keyboard);
++  invalidate_pointer_modifiers (keyboard);
+ }
+ 
+ static void
+@@ -222,6 +237,7 @@ on_keymap_layout_group_changed (MetaBackend *backend,
+ 
+   keyboard->xkb_info.group = idx;
+   notify_modifiers (keyboard);
++  invalidate_pointer_modifiers (keyboard);
+ }
+ 
+ static void
+@@ -478,6 +494,8 @@ meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard)
+   g_signal_handlers_disconnect_by_func (backend, on_keymap_layout_group_changed, keyboard);
+ 
+   meta_wayland_keyboard_set_focus (keyboard, NULL);
++  meta_wayland_keyboard_release_pointer_modifiers (keyboard,
++                                                   keyboard->pointer_modifiers.client);
+ 
+   wl_list_remove (&keyboard->resource_list);
+   wl_list_init (&keyboard->resource_list);
+@@ -702,6 +720,225 @@ move_resources_for_client (struct wl_list *destination,
+     }
+ }
+ 
++/*
++ * Modifier state for the client under the pointer
++ *
++ * wl_pointer events carry no modifier state, and a client learns modifiers
++ * only through wl_keyboard. Without the following, a window that is hovered
++ * but not focused sees no Control or Shift on its scroll, button, motion and
++ * gesture events, unlike on X11, macOS and Windows.
++ *
++ * wayland.xml explicitly allows wl_keyboard.modifiers "without a surface of
++ * the client having keyboard focus, for example to tie modifier information
++ * to pointer focus instead", and a reset by sending no pressed modifiers.
++ *
++ * Mutter uses that permission narrowly:
++ *
++ *  - only the client that owns the pointer focus surface is told, and only
++ *    while it has no keyboard focus (otherwise the focus path already keeps
++ *    it current);
++ *  - it is told only immediately before a pointer event is delivered to it
++ *    (enter, motion, button, axis, touchpad gesture), and only when the
++ *    state differs from what that client was last sent, so modifier changes
++ *    are never streamed to a client while nothing happens on its surface;
++ *  - when the pointer leaves it, a client that was sent pressed or latched
++ *    modifiers is sent a reset with none pressed.
++ */
++
++static void
++invalidate_pointer_modifiers (MetaWaylandKeyboard *keyboard)
++{
++  keyboard->pointer_modifiers.sent = FALSE;
++}
++
++static gboolean
++client_has_keyboard_focus (MetaWaylandKeyboard *keyboard,
++                           struct wl_client    *client)
++{
++  return (keyboard->focus_surface &&
++          keyboard->focus_surface->resource &&
++          wl_resource_get_client (keyboard->focus_surface->resource) == client);
++}
++
++static void
++set_pointer_modifiers_client (MetaWaylandKeyboard *keyboard,
++                              struct wl_client    *client)
++{
++  if (keyboard->pointer_modifiers.client == client)
++    return;
++
++  wl_list_remove (&keyboard->pointer_modifiers.client_destroy_listener.link);
++  wl_list_init (&keyboard->pointer_modifiers.client_destroy_listener.link);
++
++  keyboard->pointer_modifiers.client = client;
++  keyboard->pointer_modifiers.sent = FALSE;
++
++  if (client)
++    {
++      wl_client_add_destroy_listener (client,
++                                      &keyboard->pointer_modifiers.client_destroy_listener);
++    }
++}
++
++static void
++pointer_modifiers_client_destroyed (struct wl_listener *listener,
++                                    void               *data)
++{
++  MetaWaylandKeyboard *keyboard =
++    wl_container_of (listener, keyboard,
++                     pointer_modifiers.client_destroy_listener);
++
++  set_pointer_modifiers_client (keyboard, NULL);
++}
++
++static void
++send_pointer_modifiers (MetaWaylandKeyboard *keyboard,
++                        struct wl_client    *client,
++                        xkb_mod_mask_t       pressed,
++                        xkb_mod_mask_t       latched,
++                        xkb_mod_mask_t       locked,
++                        uint32_t             group)
++{
++  MetaWaylandInputDevice *input_device = META_WAYLAND_INPUT_DEVICE (keyboard);
++  struct wl_resource *resource;
++  uint32_t serial = 0;
++  gboolean any = FALSE;
++
++  wl_resource_for_each (resource, &keyboard->resource_list)
++    {
++      if (wl_resource_get_client (resource) != client)
++        continue;
++
++      if (!any)
++        serial = meta_wayland_input_device_next_serial (input_device);
++
++      wl_keyboard_send_modifiers (resource, serial,
++                                  pressed, latched, locked, group);
++      any = TRUE;
++    }
++
++  keyboard->pointer_modifiers.sent = any;
++  keyboard->pointer_modifiers.pressed = pressed;
++  keyboard->pointer_modifiers.latched = latched;
++  keyboard->pointer_modifiers.locked = locked;
++  keyboard->pointer_modifiers.group = group;
++}
++
++static void
++get_pointer_event_modifiers (MetaWaylandKeyboard *keyboard,
++                             const ClutterEvent  *event,
++                             xkb_mod_mask_t      *pressed,
++                             xkb_mod_mask_t      *latched,
++                             xkb_mod_mask_t      *locked)
++{
++  MetaBackend *backend = backend_from_keyboard (keyboard);
++  ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  ClutterSeat *seat = clutter_backend_get_default_seat (clutter_backend);
++  ClutterKeymap *keymap = clutter_seat_get_keymap (seat);
++
++  clutter_keymap_get_modifier_state (keymap, pressed, latched, locked);
++
++  if (!event)
++    return;
++
++  switch (clutter_event_type (event))
++    {
++    case CLUTTER_MOTION:
++    case CLUTTER_BUTTON_PRESS:
++    case CLUTTER_BUTTON_RELEASE:
++    case CLUTTER_SCROLL:
++      {
++        /* The event carries the effective XKB modifier state at the time it
++         * happened (plus button bits); prefer it over the keymap, whose
++         * state is updated asynchronously from the input thread. */
++        ClutterModifierType state;
++
++        state = clutter_event_get_state (event) &
++                ~(CLUTTER_BUTTON1_MASK | CLUTTER_BUTTON2_MASK |
++                  CLUTTER_BUTTON3_MASK | CLUTTER_BUTTON4_MASK |
++                  CLUTTER_BUTTON5_MASK);
++        *pressed = state & ~(*latched | *locked);
++      }
++      break;
++    default:
++      break;
++    }
++}
++
++/**
++ * meta_wayland_keyboard_sync_pointer_modifiers:
++ * @keyboard: the seat keyboard
++ * @client: (nullable): the client about to receive a pointer event
++ * @event: (nullable): the pointer event, or %NULL for pointer enter
++ *
++ * Called right before a pointer event is delivered to @client. If @client
++ * has no keyboard focus and has not yet been sent the current modifier
++ * state, sends it through wl_keyboard.modifiers.
++ */
++void
++meta_wayland_keyboard_sync_pointer_modifiers (MetaWaylandKeyboard *keyboard,
++                                              struct wl_client    *client,
++                                              const ClutterEvent  *event)
++{
++  xkb_mod_mask_t pressed, latched, locked;
++  uint32_t group;
++
++  if (keyboard->pointer_modifiers.client != client)
++    {
++      meta_wayland_keyboard_release_pointer_modifiers (keyboard,
++                                                       keyboard->pointer_modifiers.client);
++      set_pointer_modifiers_client (keyboard, client);
++    }
++
++  if (!client || client_has_keyboard_focus (keyboard, client))
++    return;
++
++  get_pointer_event_modifiers (keyboard, event, &pressed, &latched, &locked);
++  group = keyboard->xkb_info.group;
++
++  if (keyboard->pointer_modifiers.sent &&
++      keyboard->pointer_modifiers.pressed == pressed &&
++      keyboard->pointer_modifiers.latched == latched &&
++      keyboard->pointer_modifiers.locked == locked &&
++      keyboard->pointer_modifiers.group == group)
++    return;
++
++  meta_topic (META_DEBUG_WAYLAND,
++              "Sending pointer-focus modifiers 0x%x/0x%x/0x%x to unfocused client",
++              pressed, latched, locked);
++
++  send_pointer_modifiers (keyboard, client, pressed, latched, locked, group);
++}
++
++/**
++ * meta_wayland_keyboard_release_pointer_modifiers:
++ * @keyboard: the seat keyboard
++ * @client: (nullable): the client the pointer is leaving
++ *
++ * Called when the pointer leaves @client. A client without keyboard focus
++ * that was sent pressed or latched modifiers is sent a reset, so it cannot
++ * keep a stale Control or Shift.
++ */
++void
++meta_wayland_keyboard_release_pointer_modifiers (MetaWaylandKeyboard *keyboard,
++                                                 struct wl_client    *client)
++{
++  if (!client || keyboard->pointer_modifiers.client != client)
++    return;
++
++  if (keyboard->pointer_modifiers.sent &&
++      (keyboard->pointer_modifiers.pressed ||
++       keyboard->pointer_modifiers.latched) &&
++      !client_has_keyboard_focus (keyboard, client))
++    {
++      send_pointer_modifiers (keyboard, client, 0, 0,
++                              keyboard->pointer_modifiers.locked,
++                              keyboard->pointer_modifiers.group);
++    }
++
++  set_pointer_modifiers_client (keyboard, NULL);
++}
++
+ static void
+ broadcast_focus (MetaWaylandKeyboard *keyboard,
+                  struct wl_resource  *resource)
+@@ -722,6 +959,11 @@ meta_wayland_keyboard_set_focus (MetaWaylandKeyboard *keyboard,
+   if (keyboard->focus_surface == surface)
+     return;
+ 
++  /* A client gaining keyboard focus is told the modifier state by the enter
++   * sequence; a client losing it must assume no modifiers are pressed. Either
++   * way, what was sent through the pointer path no longer describes it. */
++  invalidate_pointer_modifiers (keyboard);
++
+   if (keyboard->focus_surface != NULL)
+     {
+       if (!wl_list_empty (&keyboard->focus_resource_list))
+@@ -822,6 +1064,9 @@ meta_wayland_keyboard_create_new_resource (MetaWaylandKeyboard *keyboard,
+     {
+       wl_list_insert (&keyboard->resource_list,
+                       wl_resource_get_link (resource));
++
++      if (keyboard->pointer_modifiers.client == client)
++        keyboard->pointer_modifiers.sent = FALSE;
+     }
+ }
+ 
+@@ -865,6 +1110,10 @@ meta_wayland_keyboard_init (MetaWaylandKeyboard *keyboard)
+ 
+   keyboard->focus_surface_listener.notify =
+     keyboard_handle_focus_surface_destroy;
++
++  wl_list_init (&keyboard->pointer_modifiers.client_destroy_listener.link);
++  keyboard->pointer_modifiers.client_destroy_listener.notify =
++    pointer_modifiers_client_destroyed;
+ }
+ 
+ static void
+diff --git a/src/wayland/meta-wayland-keyboard.h b/src/wayland/meta-wayland-keyboard.h
+index 99a0b5b..c82ac5a 100644
+--- a/src/wayland/meta-wayland-keyboard.h
++++ b/src/wayland/meta-wayland-keyboard.h
+@@ -72,6 +72,13 @@ void meta_wayland_keyboard_update_key_state (MetaWaylandKeyboard *compositor,
+ void meta_wayland_keyboard_set_focus (MetaWaylandKeyboard *keyboard,
+                                       MetaWaylandSurface *surface);
+ 
++void meta_wayland_keyboard_sync_pointer_modifiers (MetaWaylandKeyboard *keyboard,
++                                                   struct wl_client    *client,
++                                                   const ClutterEvent  *event);
++
++void meta_wayland_keyboard_release_pointer_modifiers (MetaWaylandKeyboard *keyboard,
++                                                      struct wl_client    *client);
++
+ void meta_wayland_keyboard_create_new_resource (MetaWaylandKeyboard *keyboard,
+                                                 struct wl_client    *client,
+                                                 struct wl_resource  *seat_resource,
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index ec3447d..355a028 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -355,6 +355,46 @@ sync_focus_surface (MetaWaylandPointer *pointer)
+   meta_wayland_input_invalidate_focus (input, CLUTTER_FOCUS (pointer->sprite));
+ }
+ 
++static struct wl_client *
++get_focus_wl_client (MetaWaylandPointer *pointer)
++{
++  if (!pointer->focus_client ||
++      !pointer->focus_surface ||
++      !pointer->focus_surface->resource)
++    return NULL;
++
++  return wl_resource_get_client (pointer->focus_surface->resource);
++}
++
++/* Tell the client under the pointer the modifier state before it receives a
++ * pointer event, if it has no keyboard focus. See
++ * meta_wayland_keyboard_sync_pointer_modifiers(). */
++static void
++sync_pointer_modifiers (MetaWaylandPointer *pointer,
++                        const ClutterEvent *event)
++{
++  MetaWaylandSeat *seat = meta_wayland_pointer_get_seat (pointer);
++
++  if (!meta_wayland_seat_has_keyboard (seat))
++    return;
++
++  meta_wayland_keyboard_sync_pointer_modifiers (seat->keyboard,
++                                                get_focus_wl_client (pointer),
++                                                event);
++}
++
++static void
++release_pointer_modifiers (MetaWaylandPointer *pointer)
++{
++  MetaWaylandSeat *seat = meta_wayland_pointer_get_seat (pointer);
++
++  if (!meta_wayland_seat_has_keyboard (seat))
++    return;
++
++  meta_wayland_keyboard_release_pointer_modifiers (seat->keyboard,
++                                                   get_focus_wl_client (pointer));
++}
++
+ static void
+ meta_wayland_pointer_send_frame (MetaWaylandPointer *pointer,
+ 				 struct wl_resource *resource)
+@@ -981,6 +1021,9 @@ gboolean
+ meta_wayland_pointer_handle_event (MetaWaylandPointer *pointer,
+                                    const ClutterEvent *event)
+ {
++  if (pointer->focus_client)
++    sync_pointer_modifiers (pointer, event);
++
+   switch (clutter_event_type (event))
+     {
+     case CLUTTER_MOTION:
+@@ -1126,6 +1169,7 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+           meta_wayland_pointer_broadcast_leave (pointer,
+                                                 serial,
+                                                 pointer->focus_surface);
++          release_pointer_modifiers (pointer);
+           pointer->focus_client = NULL;
+         }
+ 
+@@ -1170,6 +1214,7 @@ meta_wayland_pointer_set_focus (MetaWaylandPointer *pointer,
+           meta_wayland_pointer_broadcast_enter (pointer,
+                                                 pointer->focus_serial,
+                                                 pointer->focus_surface);
++          sync_pointer_modifiers (pointer, NULL);
+         }
+     }
+ 

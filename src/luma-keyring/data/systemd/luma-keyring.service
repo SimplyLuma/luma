@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma saved passwords (the login keyring's state)
+PartOf=graphical-session.target
+After=graphical-session.target gnome-keyring-daemon.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-keyring --gapplication-service
+# It looks once, says its piece and goes; a failure is not worth a loop.
+Restart=no
+Slice=session.slice
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryHigh=64M
+
+[Install]
+WantedBy=graphical-session.target

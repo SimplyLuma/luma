@@ -1,0 +1,207 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Adaptive shared settings surface for Luma Search providers and privacy."""
+
+from __future__ import annotations
+
+import gi
+
+gi.require_version("Gio", "2.0")
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gio, GLib, Gtk  # noqa: E402
+
+
+KINDS = (
+    ("app", "Applications"),
+    ("setting", "Settings"),
+    ("file", "Files"),
+    ("mail", "Mail"),
+    ("contact", "Contacts"),
+    ("calendar", "Calendar"),
+    ("message", "Messages"),
+    ("photo", "Photos"),
+    ("music", "Music"),
+    ("place", "Places"),
+)
+
+
+def _value(record: dict[str, object], key: str, default=None):
+    value = record.get(key, default)
+    return value.unpack() if hasattr(value, "unpack") else value
+
+
+def _row(title: str, description: str, switch: Gtk.Switch) -> Gtk.ListBoxRow:
+    row = Gtk.ListBoxRow(activatable=False)
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+    box.set_margin_top(12)
+    box.set_margin_bottom(12)
+    box.set_margin_start(16)
+    box.set_margin_end(16)
+    labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+    labels.set_hexpand(True)
+    name = Gtk.Label(label=title, xalign=0)
+    name.add_css_class("heading")
+    detail = Gtk.Label(label=description, xalign=0, wrap=True)
+    detail.add_css_class("dim-label")
+    labels.append(name)
+    labels.append(detail)
+    switch.set_valign(Gtk.Align.CENTER)
+    box.append(labels)
+    box.append(switch)
+    row.set_child(box)
+    return row
+
+
+class SearchSettings(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="org.projectluma.SearchSettings")
+        self._search = Gio.Settings.new("org.projectluma.search")
+        self._providers = Gio.Settings.new("org.gnome.desktop.search-providers")
+
+    def do_activate(self) -> None:
+        window = self.props.active_window
+        if window:
+            window.present()
+            return
+        window = Gtk.ApplicationWindow(
+            application=self,
+            title="Search",
+            default_width=620,
+            default_height=680,
+        )
+        header = Gtk.HeaderBar()
+        window.set_titlebar(header)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        content.set_margin_top(18)
+        content.set_margin_bottom(24)
+        content.set_margin_start(18)
+        content.set_margin_end(18)
+        heading = Gtk.Label(label="Search this machine", xalign=0)
+        heading.add_css_class("title-1")
+        content.append(heading)
+        content.append(Gtk.Label(
+            label="Choose what Search can find. Desktop and handheld use these same settings.",
+            xalign=0,
+            wrap=True,
+        ))
+
+        scroll = Gtk.ScrolledWindow(vexpand=True)
+        sections = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        sections.append(self._kind_section())
+        sections.append(self._provider_section())
+        sections.append(self._privacy_section())
+        scroll.set_child(sections)
+        content.append(scroll)
+        window.set_child(content)
+        window.present()
+
+    def _section(self, title: str) -> tuple[Gtk.Box, Gtk.ListBox]:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        label = Gtk.Label(label=title, xalign=0)
+        label.add_css_class("title-3")
+        listing = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listing.add_css_class("boxed-list")
+        box.append(label)
+        box.append(listing)
+        return box, listing
+
+    def _kind_section(self) -> Gtk.Box:
+        box, listing = self._section("Result types")
+        enabled = set(self._search.get_strv("enabled-kinds"))
+        for kind, label in KINDS:
+            switch = Gtk.Switch(active=kind in enabled)
+            switch.connect("notify::active", self._kind_changed, kind)
+            listing.append(_row(label, f"Include {label.lower()} in Search results.", switch))
+        return box
+
+    def _kind_changed(self, switch: Gtk.Switch, _param, kind: str) -> None:
+        enabled = set(self._search.get_strv("enabled-kinds"))
+        (enabled.add if switch.get_active() else enabled.discard)(kind)
+        ordered = [item for item, _label in KINDS if item in enabled]
+        self._search.set_strv("enabled-kinds", ordered)
+
+    def _provider_section(self) -> Gtk.Box:
+        box, listing = self._section("Search providers")
+        external_enabled = not self._providers.get_boolean("disable-external")
+        external = Gtk.Switch(active=external_enabled)
+        external.connect(
+            "notify::active",
+            lambda switch, _param: self._providers.set_boolean(
+                "disable-external", not switch.get_active()
+            ),
+        )
+        listing.append(_row(
+            "Application search providers",
+            "Allow installed applications to publish results through the standard provider interface.",
+            external,
+        ))
+        listing.append(_row(
+            "Applications",
+            "The live installed-application catalog; no separate index or copy is kept.",
+            Gtk.Switch(active="app" in self._search.get_strv("enabled-kinds"), sensitive=False),
+        ))
+        try:
+            proxy = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SESSION,
+                Gio.DBusProxyFlags.NONE,
+                None,
+                "org.projectluma.Search",
+                "/org/projectluma/Search",
+                "org.projectluma.Search1",
+                None,
+            )
+            providers = proxy.call_sync(
+                "ListProviders", None, Gio.DBusCallFlags.NONE, 1500, None
+            ).unpack()[0]
+        except GLib.Error:
+            providers = ()
+        if not providers:
+            return box
+        for provider in providers:
+            switch = Gtk.Switch(
+                active=bool(_value(provider, "enabled", False)),
+                sensitive=external_enabled,
+            )
+            switch.connect("notify::active", self._provider_changed, provider)
+            listing.append(_row(
+                str(_value(provider, "name", "Search provider")),
+                str(_value(provider, "description", "Provides Search results.")),
+                switch,
+            ))
+        return box
+
+    def _provider_changed(self, switch: Gtk.Switch, _param, provider: dict) -> None:
+        desktop_id = str(_value(provider, "desktop-id", ""))
+        if not desktop_id:
+            return
+        enabled = set(self._providers.get_strv("enabled"))
+        disabled = set(self._providers.get_strv("disabled"))
+        if switch.get_active():
+            disabled.discard(desktop_id)
+            if bool(_value(provider, "default-disabled", False)):
+                enabled.add(desktop_id)
+        else:
+            enabled.discard(desktop_id)
+            disabled.add(desktop_id)
+        self._providers.set_strv("enabled", sorted(enabled))
+        self._providers.set_strv("disabled", sorted(disabled))
+
+    def _privacy_section(self) -> Gtk.Box:
+        box, listing = self._section("Privacy")
+        snippets = Gtk.Switch(active=self._search.get_boolean("allow-sensitive-snippets"))
+        snippets.connect(
+            "notify::active",
+            lambda switch, _param: self._search.set_boolean(
+                "allow-sensitive-snippets", switch.get_active()
+            ),
+        )
+        listing.append(_row(
+            "Mail and message snippets",
+            "Show sanitized content snippets. Off by default; titles and sources remain searchable.",
+            snippets,
+        ))
+        return box
+
+
+if __name__ == "__main__":
+    raise SystemExit(SearchSettings().run())

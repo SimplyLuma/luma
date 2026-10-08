@@ -1,0 +1,255 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] backend-rdp: terminate RDPEI as native Weston touch
+
+The SDL FreeRDP client sends touchscreen contacts through RDPEI, but Weston's
+RDP backend only consumes legacy pointer and keyboard input.  Terminate the
+dynamic input channel in the backend and forward complete contact frames to a
+non-calibratable Weston touch device.  This preserves contact identity and
+multi-touch semantics without emulating a mouse.
+
+---
+ libweston/backend-rdp/rdp.c | 200 ++++++++++++++++++++++++++++++++++++++
+ libweston/backend-rdp/rdp.h |   5 +
+ 2 files changed, 205 insertions(+)
+
+diff --git a/libweston/backend-rdp/rdp.h b/libweston/backend-rdp/rdp.h
+index 5f947177..bd331028 100644
+--- a/libweston/backend-rdp/rdp.h
++++ b/libweston/backend-rdp/rdp.h
+@@ -40,6 +40,7 @@
+ #include <freerdp/locale/keyboard.h>
+ #include <freerdp/channels/wtsvc.h>
+ #include <freerdp/server/cliprdr.h>
++#include <freerdp/server/rdpei.h>
+ 
+ #include <libweston/libweston.h>
+ #include <libweston/backend-rdp.h>
+@@ -151,6 +152,10 @@ struct rdp_peer_context {
+ 	/* Clipboard support */
+ 	CliprdrServerContext *clipboard_server_context;
+ 
++	RdpeiServerContext *rdpei_server_context;
++	struct wl_event_source *rdpei_event_source;
++	struct weston_touch_device *touch_device;
++	bool touch_active[256];
+ 	void *audio_in_private;
+ 	void *audio_out_private;
+ 
+diff --git a/libweston/backend-rdp/rdp.c b/libweston/backend-rdp/rdp.c
+index 2c88fd53..a4aa6c25 100644
+--- a/libweston/backend-rdp/rdp.c
++++ b/libweston/backend-rdp/rdp.c
+@@ -827,6 +827,173 @@ out_error_nsc:
+ 	return FALSE;
+ }
+ 
++static bool
++rdp_touch_position(RdpPeerContext *peer_context, INT32 x, INT32 y,
++		   struct weston_coord_global *position)
++{
++	int32_t sx = x + peer_context->desktop_left;
++	int32_t sy = y + peer_context->desktop_top;
++
++	if (!to_weston_coordinate(peer_context, &sx, &sy))
++		return false;
++
++	position->c = weston_coord(sx, sy);
++	return true;
++}
++
++static UINT
++rdp_touch_event(RdpeiServerContext *rdpei,
++		const RDPINPUT_TOUCH_EVENT *event)
++{
++	RdpPeerContext *peer_context = rdpei->user_data;
++	struct weston_touch_device *device = peer_context->touch_device;
++	UINT16 frame_index;
++
++	if (!device)
++		return ERROR_INVALID_STATE;
++
++	for (frame_index = 0; frame_index < event->frameCount; frame_index++) {
++		const RDPINPUT_TOUCH_FRAME *frame = &event->frames[frame_index];
++		bool cancel_frame = false;
++		bool have_event = false;
++		UINT16 contact_index;
++		struct timespec time;
++
++		weston_compositor_get_time(&time);
++		for (contact_index = 0;
++		     contact_index < frame->contactCount;
++		     contact_index++) {
++			const RDPINPUT_CONTACT_DATA *contact =
++				&frame->contacts[contact_index];
++			struct weston_coord_global position;
++			uint32_t id = contact->contactId;
++
++			if (id >= ARRAY_LENGTH(peer_context->touch_active))
++				continue;
++			if (contact->contactFlags & RDPINPUT_CONTACT_FLAG_CANCELED) {
++				cancel_frame = true;
++				continue;
++			}
++
++			if (contact->contactFlags & RDPINPUT_CONTACT_FLAG_DOWN) {
++				if (peer_context->touch_active[id] ||
++				    !rdp_touch_position(peer_context, contact->x,
++							contact->y, &position))
++					continue;
++				notify_touch(device, &time, id, &position,
++					     WL_TOUCH_DOWN);
++				peer_context->touch_active[id] = true;
++				have_event = true;
++			} else if (contact->contactFlags & RDPINPUT_CONTACT_FLAG_UP) {
++				if (!peer_context->touch_active[id])
++					continue;
++				notify_touch(device, &time, id, NULL, WL_TOUCH_UP);
++				peer_context->touch_active[id] = false;
++				have_event = true;
++			} else if ((contact->contactFlags & RDPINPUT_CONTACT_FLAG_UPDATE) &&
++				   (contact->contactFlags & RDPINPUT_CONTACT_FLAG_INCONTACT)) {
++				if (!peer_context->touch_active[id] ||
++				    !rdp_touch_position(peer_context, contact->x,
++							contact->y, &position))
++					continue;
++				notify_touch(device, &time, id, &position,
++					     WL_TOUCH_MOTION);
++				have_event = true;
++			}
++		}
++
++		if (cancel_frame) {
++			notify_touch_cancel(device);
++			memset(peer_context->touch_active, 0,
++			       sizeof(peer_context->touch_active));
++		} else if (have_event) {
++			notify_touch_frame(device);
++		}
++	}
++
++	return CHANNEL_RC_OK;
++}
++
++static UINT
++rdp_touch_released(RdpeiServerContext *rdpei, BYTE contact_id)
++{
++	RdpPeerContext *peer_context = rdpei->user_data;
++	struct timespec time;
++
++	if (!peer_context->touch_device ||
++	    !peer_context->touch_active[contact_id])
++		return CHANNEL_RC_OK;
++
++	weston_compositor_get_time(&time);
++	notify_touch(peer_context->touch_device, &time, contact_id, NULL,
++		     WL_TOUCH_UP);
++	notify_touch_frame(peer_context->touch_device);
++	peer_context->touch_active[contact_id] = false;
++	return CHANNEL_RC_OK;
++}
++
++static int
++rdp_touch_activity(int fd, uint32_t mask, void *data)
++{
++	RdpPeerContext *peer_context = data;
++	UINT status;
++
++	if (!(mask & WL_EVENT_READABLE))
++		return 0;
++	status = rdpei_server_handle_messages(peer_context->rdpei_server_context);
++	if (status != CHANNEL_RC_OK) {
++		weston_log("RDP touch channel failed with status %" PRIu32 "\n",
++			   status);
++		return -1;
++	}
++	return 0;
++}
++
++static bool
++rdp_touch_init(RdpPeerContext *peer_context)
++{
++	struct wl_event_loop *loop;
++	HANDLE event_handle;
++	int fd;
++	UINT status;
++
++	if (!peer_context->vcm ||
++	    weston_seat_init_touch(peer_context->item.seat) < 0)
++		return false;
++	peer_context->touch_device = weston_touch_create_touch_device(
++		peer_context->item.seat->touch_state, "rdp-touch", NULL, NULL);
++	if (!peer_context->touch_device)
++		return false;
++
++	peer_context->rdpei_server_context =
++		rdpei_server_context_new(peer_context->vcm);
++	if (!peer_context->rdpei_server_context)
++		return false;
++	peer_context->rdpei_server_context->user_data = peer_context;
++	peer_context->rdpei_server_context->onTouchEvent = rdp_touch_event;
++	peer_context->rdpei_server_context->onTouchReleased = rdp_touch_released;
++
++	status = rdpei_server_init(peer_context->rdpei_server_context);
++	if (status != CHANNEL_RC_OK)
++		return false;
++	event_handle = rdpei_server_get_event_handle(
++		peer_context->rdpei_server_context);
++	fd = GetEventFileDescriptor(event_handle);
++	if (fd < 0)
++		return false;
++
++	loop = wl_display_get_event_loop(
++		peer_context->rdpBackend->compositor->wl_display);
++	peer_context->rdpei_event_source = wl_event_loop_add_fd(
++		loop, fd, WL_EVENT_READABLE, rdp_touch_activity, peer_context);
++	if (!peer_context->rdpei_event_source)
++		return false;
++
++	status = rdpei_server_send_sc_ready(peer_context->rdpei_server_context,
++					    RDPINPUT_PROTOCOL_V300, 0);
++	return status == CHANNEL_RC_OK;
++}
++
+ static void
+ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
+ {
+@@ -850,6 +1017,19 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
+ 
+ 	rdp_clipboard_destroy(context);
+ 
++	if (context->rdpei_event_source) {
++		wl_event_source_remove(context->rdpei_event_source);
++		context->rdpei_event_source = NULL;
++	}
++	if (context->rdpei_server_context) {
++		rdpei_server_context_free(context->rdpei_server_context);
++		context->rdpei_server_context = NULL;
++	}
++	if (context->touch_device) {
++		weston_touch_device_destroy(context->touch_device);
++		context->touch_device = NULL;
++	}
++
+ 	if (context->vcm)
+ 		WTSCloseServer(context->vcm);
+ 
+@@ -859,5 +1039,6 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
+ 		weston_seat_release_keyboard(context->item.seat);
+ 		weston_seat_release_pointer(context->item.seat);
++		weston_seat_release_touch(context->item.seat);
+ 		weston_seat_release(context->item.seat);
+ 		free(context->item.seat);
+ 	}
+@@ -1215,6 +1396,11 @@ xf_peer_activate(freerdp_peer* client)
+ 	xkb_keymap_unref(keymap);
+ 	weston_seat_init_pointer(peersItem->seat);
+ 
++	if (!rdp_touch_init(peerCtx)) {
++		weston_log("RDP client did not establish native touch input\n");
++		goto error_exit;
++	}
++
+ 	/* Initialize RDP clipboard after seat is initialized */
+ 	if (freerdp_settings_get_bool(settings, FreeRDP_RedirectClipboard))
+ 		if (rdp_clipboard_init(client) != 0)
+ 		/*weston_log("code=%x ext=%d vk_code=%x scan_code=%x\n", code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,

@@ -1,0 +1,13 @@
+{
+  "_source": "Simulator v71 .cmcount: 140px/300, inherited1.45, white over photographic media.",
+  "lumaui": {
+    "type_scale": {
+      "camera_countdown": {
+        "size": 140,
+        "weight": 300,
+        "line_height": 1.45,
+        "tracking_em": 0
+      }
+    }
+  }
+}

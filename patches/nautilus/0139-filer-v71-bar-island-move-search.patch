@@ -1,0 +1,1378 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Filer v71 <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 12:26:21 -0500
+Subject: [PATCH 139/142] Filer v71: the bar, the title island, Move as a held
+ row, search scope
+
+Desktop and compact: Back, Forward | Search <folder> | Grid, List, Columns as
+the bar's own buttons (the chosen one raised) | Information | New folder. A
+selection: the file's chip (its face; x clears it), Open, Copy, Share,
+Information, and ... growing the bar.
+
+Phone (under 560): Search, New folder, and ... growing View (two tiles) and
+Sort by (choices with the order's arrow; the same key again flips it, Date
+and Size start descending). A selection: Copy, Share, Move, Details, ..., x.
+Share is the kit's SharePanel; Details grows the details pane into the bar.
+Move holds the files in a second row of the bar ("Where are we moving
+this?"); folders still open; Move here moves them (fixture mode only says
+so). Search covers the folder by default; while typing, choices above the
+field switch to Everywhere (Home). No column view on a phone. The title
+island names the place (menu | Home / 6 items) or the folder (back | Launch
+/ Projects . 14 items) and is the sidebar's menu (it grows into Places); the
+page heading steps aside. No sidebar toggle in the desktop title row; F9
+still toggles the sidebar. The phone breakpoint is 559 (the v71 tiers). The
+heading's count is refreshed once the folder is counted.
+---
+ src/nautilus-window.c                | 1023 +++++++++++++++++++++-----
+ src/resources/ui/nautilus-window.blp |    2 +-
+ 2 files changed, 820 insertions(+), 205 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index c3e4dbd..1df7b76 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -141,12 +141,18 @@ struct _NautilusWindow
+     gboolean temporary_navigation_bar;
+     LumaActionCenter *action_center;
+     LumaBarItem *action_search_item;
+-    char *action_search_placeholder;
+-    LumaBarItem *action_modes_item;
+     LumaBarItem *action_more_item;
+-    LumaModeSwitch *action_modes;
+     gboolean action_bar_selected;
+     guint action_search_timer;
++    gboolean search_everywhere;
++    char *search_placeholder;
++    gboolean scope_changing;
++    GtkWidget *sort_choices; /* weak */
++    GList *held_files;
++    GFile *held_from;
++    LumaTitleIsland *title_island;
++    GtkWidget *location_box;
++    NautilusFile *count_file;
+ 
+     GtkWidget *network_address_bar;
+ 
+@@ -395,7 +401,8 @@ on_search_scope_changed (LumaModeSwitch *switcher,
+         g_clear_object (&home);
+         home = g_file_new_for_path (fixture_home);
+     }
+-    GFile *target = g_strcmp0 (key, "all") == 0 ? home : window->search_origin;
++    window->search_everywhere = g_strcmp0 (key, "all") == 0;
++    GFile *target = window->search_everywhere ? home : window->search_origin;
+     if (target != NULL)
+     {
+         nautilus_query_set_location (query, target);
+@@ -446,6 +453,39 @@ set_search_scope_label (NautilusWindow *window,
+     }
+ }
+ 
++static void filer_update_title_island (NautilusWindow *window,
++                                       const char     *title,
++                                       const char     *count_meta,
++                                       gboolean        searching);
++
++static void update_location_header (NautilusWindow *window);
++
++static void
++on_location_count_ready (NautilusFile *file,
++                         gpointer      data);
++
++static void
++filer_cancel_count (NautilusWindow *window)
++{
++    if (window->count_file == NULL)
++        return;
++    nautilus_file_cancel_call_when_ready (window->count_file, on_location_count_ready, window);
++    g_clear_pointer (&window->count_file, nautilus_file_unref);
++}
++
++static void
++on_location_count_ready (NautilusFile *file,
++                         gpointer      data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (data);
++    g_clear_pointer (&window->count_file, nautilus_file_unref);
++    GFile *location = window->active_slot != NULL
++                      ? nautilus_window_slot_get_location (window->active_slot) : NULL;
++    g_autoptr (GFile) counted = nautilus_file_get_location (file);
++    if (location != NULL && g_file_equal (location, counted))
++        update_location_header (window);
++}
++
+ static void
+ update_location_header (NautilusWindow *window)
+ {
+@@ -541,6 +581,15 @@ update_location_header (NautilusWindow *window)
+     else if (directory == NULL ||
+              !nautilus_file_get_directory_item_count (directory, &count, NULL))
+     {
++        /* Count it, then say it: the heading is the only place it shows. */
++        if (directory != NULL && window->count_file != directory)
++        {
++            filer_cancel_count (window);
++            window->count_file = nautilus_file_ref (directory);
++            nautilus_file_call_when_ready (directory, NAUTILUS_FILE_ATTRIBUTE_DIRECTORY_ITEM_COUNT,
++                                           on_location_count_ready, window);
++        }
++        filer_update_title_island (window, title != NULL ? title : _("Files"), NULL, searching);
+         return;
+     }
+     if (query != NULL)
+@@ -557,6 +606,7 @@ update_location_header (NautilusWindow *window)
+         luma_mode_switch_set_current (LUMA_MODE_SWITCH (window->location_scope),
+                                       scope != NULL && window->search_origin != NULL &&
+                                       g_file_equal (scope, window->search_origin) ? "here" : "all");
++        filer_update_title_island (window, title, NULL, TRUE);
+         return;
+     }
+     g_autofree char *count_meta = g_strdup_printf (ngettext ("%u item", "%u items", count), count);
+@@ -570,10 +620,12 @@ update_location_header (NautilusWindow *window)
+     GtkWidget *count_label = gtk_label_new (count_meta);
+     gtk_widget_add_css_class (count_label, "filer-location-count");
+     gtk_box_append (GTK_BOX (window->location_meta), count_label);
++    filer_update_title_island (window, title != NULL ? title : _("Files"), count_meta, FALSE);
+ }
+ 
+ static void
+-update_information (NautilusWindow *window)
++filer_fill_details (NautilusWindow  *window,
++                    LumaDetailsPane *pane)
+ {
+     g_autoptr (NautilusFile) directory = NULL;
+     g_autoptr (GdkPaintable) paintable = NULL;
+@@ -586,7 +638,7 @@ update_information (NautilusWindow *window)
+     GFile *location;
+     GtkWidget *icon;
+ 
+-    if (window->information_pane == NULL)
++    if (pane == NULL)
+     {
+         return;
+     }
+@@ -597,9 +649,9 @@ update_information (NautilusWindow *window)
+                 ? nautilus_window_slot_get_selection (window->active_slot) : NULL;
+     directory = location != NULL ? nautilus_file_get (location) : NULL;
+     file = selection != NULL ? NAUTILUS_FILE (selection->data) : directory;
+-    luma_details_pane_set_subject (window->information_pane,
++    luma_details_pane_set_subject (pane,
+                                     file != NULL ? G_OBJECT (file) : NULL);
+-    luma_details_pane_clear (window->information_pane);
++    luma_details_pane_clear (pane);
+     if (file == NULL)
+     {
+         return;
+@@ -623,7 +675,7 @@ update_information (NautilusWindow *window)
+                                  : gtk_image_new_from_icon_name ("folder-symbolic");
+         gtk_image_set_pixel_size (GTK_IMAGE (icon), 72);
+     }
+-    luma_details_pane_add_hero (window->information_pane,
++    luma_details_pane_add_hero (pane,
+                                 nautilus_file_get_display_name (file), NULL, icon);
+ 
+     /* The native conform tree stores the sample's displayed metadata alongside
+@@ -644,14 +696,14 @@ update_information (NautilusWindow *window)
+             { "length", N_("Length") },
+             { "tags", N_("Tags") },
+         };
+-        luma_details_pane_add_fact (window->information_pane, _("Kind"), fixture_kind);
++        luma_details_pane_add_fact (pane, _("Kind"), fixture_kind);
+         for (guint i = 0; i < G_N_ELEMENTS (fields); i++)
+         {
+             g_autofree char *value = nautilus_filer_fixture_info (
+                 nautilus_file_get_name (file), fields[i].key);
+             if (value != NULL && *value != '\0')
+             {
+-                luma_details_pane_add_fact (window->information_pane,
++                luma_details_pane_add_fact (pane,
+                                             _(fields[i].label), value);
+             }
+         }
+@@ -663,15 +715,15 @@ update_information (NautilusWindow *window)
+     modified = nautilus_file_get_string_attribute_with_default (file, "date_modified");
+     if (kind != NULL)
+     {
+-        luma_details_pane_add_fact (window->information_pane, _("Kind"), kind);
++        luma_details_pane_add_fact (pane, _("Kind"), kind);
+     }
+     if (size != NULL)
+     {
+-        luma_details_pane_add_fact (window->information_pane, _("Size"), size);
++        luma_details_pane_add_fact (pane, _("Size"), size);
+     }
+     if (modified != NULL)
+     {
+-        luma_details_pane_add_fact (window->information_pane, _("Modified"), modified);
++        luma_details_pane_add_fact (pane, _("Modified"), modified);
+     }
+     g_autoptr (GFile) parent = file_location != NULL ? g_file_get_parent (file_location) : NULL;
+     where = parent != NULL ? g_file_get_parse_name (parent) : NULL;
+@@ -692,10 +744,49 @@ update_information (NautilusWindow *window)
+     }
+     if (where != NULL)
+     {
+-        luma_details_pane_add_fact (window->information_pane, _("Where"), where);
++        luma_details_pane_add_fact (pane, _("Where"), where);
+     }
+ }
+ 
++static void
++update_information (NautilusWindow *window)
++{
++    filer_fill_details (window, window->information_pane);
++}
++
++/* ── Filer v71: the action bar (LumaUI-1, K-C) ─────────────────────────────
++ *
++ * Desktop and compact: Back, Forward | Search | Grid, List, Columns (the
++ * chosen one raised), Information | New folder. A selection: the file's chip
++ * (✕ clears it), Open, Copy, Share, Information, ⋯.
++ * Phone (under 560): Search, New folder, ⋯ (View and Sort by grow from it).
++ * A selection: Copy, Share, Move, Details, ⋯, ✕, spread across the width.
++ * Move holds the files in a second row of the bar ("Where are we moving
++ * this?") while folders still open; "Move here" moves them.
++ * Search covers the folder by default; Everywhere is one tap away. */
++
++static gboolean
++filer_is_phone (NautilusWindow *window)
++{
++    return luma_ui_get_tier (GTK_WIDGET (window)) == LUMA_TIER_PHONE;
++}
++
++/* Home, or the conform fixture's Home: where Everywhere searches. */
++static GFile *
++filer_search_home (void)
++{
++    const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++    if (fixture_root != NULL)
++    {
++        g_autofree char *fixture_home = g_build_filename (fixture_root, "Home", NULL);
++        return g_file_new_for_path (fixture_home);
++    }
++    return g_file_new_for_path (g_get_home_dir ());
++}
++
++static void update_action_center (NautilusWindow *window);
++static void filer_sync_scope_panel (NautilusWindow *window);
++
+ static gboolean
+ run_bar_search (gpointer data)
+ {
+@@ -707,9 +798,11 @@ run_bar_search (gpointer data)
+     const char *text = luma_bar_item_search_get_text (window->action_search_item);
+     if (text == NULL || *text == '\0')
+     {
++        window->search_everywhere = FALSE;
+         g_action_group_change_action_state (
+             nautilus_window_slot_get_action_group (window->active_slot),
+             "search-visible", g_variant_new_boolean (FALSE));
++        filer_sync_scope_panel (window);
+         return G_SOURCE_REMOVE;
+     }
+ 
+@@ -718,17 +811,18 @@ run_bar_search (gpointer data)
+                       : nautilus_window_slot_get_location (window->active_slot);
+     if (location == NULL)
+         return G_SOURCE_REMOVE;
++    g_autoptr (GFile) home = filer_search_home ();
+     g_autoptr (NautilusQuery) query = nautilus_query_new ();
+     nautilus_query_set_text (query, text);
+-    nautilus_query_set_location (query, location);
++    nautilus_query_set_location (query, window->search_everywhere ? home : location);
+     nautilus_window_slot_search (window->active_slot, query);
+-    luma_bar_item_search_focus (window->action_search_item);
++    filer_sync_scope_panel (window);
+     return G_SOURCE_REMOVE;
+ }
+ 
+ static void
+-on_bar_search_changed (LumaBarItem *item,
+-                       const char  *text,
++on_bar_search_changed (LumaBarItem    *item,
++                       const char     *text,
+                        NautilusWindow *window)
+ {
+     g_clear_handle_id (&window->action_search_timer, g_source_remove);
+@@ -736,39 +830,162 @@ on_bar_search_changed (LumaBarItem *item,
+ }
+ 
+ static void
+-on_bar_search_activated (LumaBarItem *item,
+-                         const char  *text,
+-                         NautilusWindow *window)
+-{
+-    g_clear_handle_id (&window->action_search_timer, g_source_remove);
+-    run_bar_search (window);
+-}
+-
+-static void
+-on_bar_mode_changed (LumaModeSwitch *modes,
+-                     const char     *key,
+-                     NautilusWindow *window)
++filer_set_view (NautilusWindow *window,
++                const char     *key)
+ {
+     if (window->active_slot == NULL)
+         return;
+     guint view = g_strcmp0 (key, "list") == 0 ? NAUTILUS_VIEW_LIST_ID
+                 : g_strcmp0 (key, "columns") == 0 ? NAUTILUS_VIEW_COLUMN_ID
+                 : NAUTILUS_VIEW_GRID_ID;
++    /* No column view on a phone: its columns don't fit (v71 filerBody). */
++    if (view == NAUTILUS_VIEW_COLUMN_ID && filer_is_phone (window))
++        view = NAUTILUS_VIEW_GRID_ID;
+     g_action_group_change_action_state (
+         nautilus_window_slot_get_action_group (window->active_slot),
+         "files-view-mode", g_variant_new_uint32 (view));
+ }
+ 
++static guint
++filer_current_view_id (NautilusWindow *window)
++{
++    NautilusFilesView *view = window->active_slot != NULL
++                              ? nautilus_window_slot_get_current_view (window->active_slot) : NULL;
++    return view != NULL ? nautilus_files_view_get_view_id (view) : NAUTILUS_VIEW_GRID_ID;
++}
++
++static void
++action_filer_view (GSimpleAction *action,
++                   GVariant      *parameter,
++                   gpointer       user_data)
++{
++    filer_set_view (NAUTILUS_WINDOW (user_data), g_variant_get_string (parameter, NULL));
++}
++
++/* Sort by: picking the current key again flips the order; Date and Size
++ * start newest and largest first (v71 data-fsortby). */
++static void
++action_filer_sort (GSimpleAction *action,
++                   GVariant      *parameter,
++                   gpointer       user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    NautilusFilesView *view = window->active_slot != NULL
++                              ? nautilus_window_slot_get_current_view (window->active_slot) : NULL;
++    if (view == NULL)
++        return;
++    GActionGroup *group = nautilus_files_view_get_private_action_group (view);
++    const char *key = g_variant_get_string (parameter, NULL);
++    g_autoptr (GVariant) state = g_action_group_get_action_state (group, "sort");
++    const char *current = NULL;
++    gboolean reversed = FALSE;
++    if (state != NULL)
++        g_variant_get (state, "(&sb)", &current, &reversed);
++    gboolean next = g_strcmp0 (current, key) == 0
++                    ? !reversed
++                    : (g_strcmp0 (key, "date_modified") == 0 || g_strcmp0 (key, "size") == 0);
++    g_action_group_change_action_state (group, "sort", g_variant_new ("(sb)", key, next));
++    if (window->sort_choices != NULL)
++    {
++        if (current != NULL)
++            luma_panel_choices_set_decoration (window->sort_choices, current, NULL);
++        luma_panel_choices_set_selected (window->sort_choices, key);
++        luma_panel_choices_set_decoration (window->sort_choices, key, next ? "arrow-down" : "arrow-up");
++    }
++}
++
++/* ⋯ on a phone: how this folder looks and how it's ordered. */
++static GtkWidget *
++filer_view_sort_panel (LumaBarItem *item,
++                       gpointer     user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    NautilusFilesView *view = window->active_slot != NULL
++                              ? nautilus_window_slot_get_current_view (window->active_slot) : NULL;
++    guint current_view = filer_current_view_id (window);
++    const char *current_sort = NULL;
++    gboolean reversed = FALSE;
++    g_autoptr (GVariant) state = view != NULL
++                                 ? g_action_group_get_action_state (
++                                     nautilus_files_view_get_private_action_group (view), "sort")
++                                 : NULL;
++    if (state != NULL)
++        g_variant_get (state, "(&sb)", &current_sort, &reversed);
++
++    GtkWidget *panel = luma_bar_panel_new (_("View"));
++    GtkWidget *tiles = luma_bar_tiles_new (2, FALSE, FALSE);
++    luma_bar_tiles_add (tiles, "layout-grid", _("Grid"), "win.filer-view('grid')",
++                        current_view != NAUTILUS_VIEW_LIST_ID, FALSE);
++    luma_bar_tiles_add (tiles, "list", _("List"), "win.filer-view('list')",
++                        current_view == NAUTILUS_VIEW_LIST_ID, FALSE);
++    gtk_box_append (GTK_BOX (panel), tiles);
++    luma_bar_panel_add_heading (panel, _("Sort by"));
++    GtkWidget *choices = luma_panel_choices_new ("win.filer-sort");
++    luma_panel_choices_add (choices, "name", _("Name"), NULL);
++    luma_panel_choices_add (choices, "date_modified", _("Date"), NULL);
++    luma_panel_choices_add (choices, "size", _("Size"), NULL);
++    luma_panel_choices_add (choices, "type", _("Kind"), NULL);
++    if (current_sort != NULL)
++    {
++        luma_panel_choices_set_selected (choices, current_sort);
++        luma_panel_choices_set_decoration (choices, current_sort, reversed ? "arrow-down" : "arrow-up");
++    }
++    gtk_box_append (GTK_BOX (panel), choices);
++    g_set_weak_pointer (&window->sort_choices, choices);
++    return panel;
++}
++
++/* While typing: this folder, or Everywhere, above the field (v71 .fscope2). */
++static void
++action_filer_search_scope (GSimpleAction *action,
++                           GVariant      *parameter,
++                           gpointer       user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    window->search_everywhere = g_strcmp0 (g_variant_get_string (parameter, NULL), "all") == 0;
++    g_clear_handle_id (&window->action_search_timer, g_source_remove);
++    window->scope_changing = TRUE;
++    run_bar_search (window);
++    window->scope_changing = FALSE;
++}
++
++static void
++filer_sync_scope_panel (NautilusWindow *window)
++{
++    if (window->action_center == NULL || window->action_search_item == NULL)
++        return;
++    const char *grown = luma_action_center_get_grown (window->action_center);
++    const char *text = luma_bar_item_search_get_text (window->action_search_item);
++    gboolean want = filer_is_phone (window) && !window->action_bar_selected &&
++                    !luma_action_center_get_holding (window->action_center) &&
++                    text != NULL && *text != '\0';
++    if (!want)
++    {
++        if (g_strcmp0 (grown, "scope") == 0)
++            luma_action_center_grow_panel (window->action_center, "scope",
++                                           luma_bar_panel_new (NULL)); /* same key: folds */
++        return;
++    }
++    if (grown != NULL || window->scope_changing)
++        return;
++    GFile *origin = window->search_origin;
++    g_autofree char *name = origin != NULL ? g_file_get_basename (origin) : NULL;
++    GtkWidget *panel = luma_panel_choices_new ("win.filer-search-scope");
++    luma_panel_choices_add (panel, "here", name != NULL ? name : _("Here"), "folder");
++    luma_panel_choices_add (panel, "all", _("Everywhere"), "hard-drive");
++    luma_panel_choices_set_selected (panel, window->search_everywhere ? "all" : "here");
++    luma_action_center_grow_panel (window->action_center, "scope", panel);
++}
++
+ static void
+-on_bar_information (LumaBarItem *item,
++on_bar_information (LumaBarItem    *item,
+                     NautilusWindow *window)
+ {
+-    luma_details_pane_show (window->information_pane, TRUE);
++    luma_details_pane_toggle (window->information_pane);
+ }
+ 
+ static void
+-on_bar_selection_dismissed (LumaBarItem *item,
+-                            NautilusWindow *window)
++filer_clear_selection (NautilusWindow *window)
+ {
+     if (window->active_slot == NULL)
+         return;
+@@ -777,6 +994,21 @@ on_bar_selection_dismissed (LumaBarItem *item,
+         nautilus_files_view_set_selection (view, NULL, FALSE);
+ }
+ 
++static void
++on_bar_selection_dismissed (LumaBarItem    *item,
++                            NautilusWindow *window)
++{
++    filer_clear_selection (window);
++}
++
++static void
++action_filer_clear_selection (GSimpleAction *action,
++                              GVariant      *parameter,
++                              gpointer       user_data)
++{
++    filer_clear_selection (NAUTILUS_WINDOW (user_data));
++}
++
+ static char *
+ selected_file_links (NautilusWindow *window)
+ {
+@@ -809,7 +1041,7 @@ action_copy_file_links (GSimpleAction *action,
+     if (links == NULL || *links == '\0')
+         return;
+     gdk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (window)), links);
+-    adw_toast_overlay_add_toast (window->toast_overlay, adw_toast_new (_("File link copied")));
++    adw_toast_overlay_add_toast (window->toast_overlay, adw_toast_new (_("Link copied")));
+ }
+ 
+ static void
+@@ -827,43 +1059,270 @@ action_email_file_links (GSimpleAction *action,
+ }
+ 
+ static void
+-on_bar_share (LumaBarItem *item,
+-              NautilusWindow *window)
++on_share_chosen (LumaSharePanel *panel,
++                 const char     *choice,
++                 const char     *person,
++                 NautilusWindow *window)
++{
++    if (g_strcmp0 (choice, "copy-link") == 0)
++    {
++        g_action_group_activate_action (G_ACTION_GROUP (window), "copy-file-links", NULL);
++        return;
++    }
++    if (g_strcmp0 (choice, "mail") == 0 && g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        g_action_group_activate_action (G_ACTION_GROUP (window), "email-file-links", NULL);
++        return;
++    }
++    GList *selection = window->active_slot != NULL
++                       ? nautilus_window_slot_get_selection (window->active_slot) : NULL;
++    const char *name = selection != NULL
++                       ? nautilus_file_get_display_name (NAUTILUS_FILE (selection->data)) : "";
++    g_autofree char *text = NULL;
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        /* The sample, as v71 says it (fixture mode never sends). */
++        g_autofree char *first = person != NULL ? g_strdup (person) : NULL;
++        if (first != NULL && strchr (first, ' ') != NULL)
++            *strchr (first, ' ') = '\0';
++        text = first != NULL ? g_strdup_printf (_("Sent %s to %s"), name, first)
++               : g_strdup_printf (_("Sharing %s with %s"), name,
++                                  g_strcmp0 (choice, "messages") == 0 ? _("Messages")
++                                  : g_strcmp0 (choice, "mail") == 0 ? _("Email") : _("Nearby"));
++    }
++    else
++    {
++        /* TODO(filer): Messages, Nearby and people need Luma's share
++         * service; Filer doesn't fake a send. */
++        text = g_strdup (_("Sharing there isn't connected yet"));
++    }
++    adw_toast_overlay_add_toast (window->toast_overlay, adw_toast_new (text));
++}
++
++/* Share grows the bar: people, then Messages, Email, Copy link, Nearby. */
++static GtkWidget *
++filer_share_panel (LumaBarItem *item,
++                   gpointer     user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    static const char *const sample[] = { "Priya Raman", "Nora Feld", "Sam Kaur", "Theo Marsh", "Dad", NULL };
++    GtkWidget *panel = luma_share_panel_new (NULL, g_getenv ("LUMA_FILER_FIXTURE") != NULL ? sample : NULL);
++    g_signal_connect (panel, "chosen", G_CALLBACK (on_share_chosen), window);
++    return panel;
++}
++
++/* Details grows the bar into the file's card and its facts (phone).
++ * The kit's details pane carries the hero and the facts. */
++static GtkWidget *
++filer_details_panel (LumaBarItem *item,
++                     gpointer     user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    LumaDetailsPane *pane = LUMA_DETAILS_PANE (luma_details_pane_new (_("Details"), FALSE));
++    gtk_widget_set_name (GTK_WIDGET (pane), "filer-details-panel");
++    luma_details_pane_set_closable (pane, FALSE);
++    filer_fill_details (window, pane);
++    luma_details_pane_show (pane, TRUE);
++    return GTK_WIDGET (pane);
++}
++
++/* ⋯ for a selection: Open in…, Rename, Duplicate, Move to…, Compress, then
++ * Move to Trash in red, last. */
++static GtkWidget *
++filer_more_panel (LumaBarItem *item,
++                  gpointer     user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    GList *selection = window->active_slot != NULL
++                       ? nautilus_window_slot_get_selection (window->active_slot) : NULL;
++    gboolean folder = selection != NULL &&
++                      nautilus_file_is_directory (NAUTILUS_FILE (selection->data));
++    GtkWidget *panel = luma_bar_panel_new (NULL);
++    if (!folder)
++        luma_bar_panel_add_row (panel, "app-window", _("Open in…"),
++                                "view.open-with-other-application", FALSE);
++    luma_bar_panel_add_row (panel, "pencil", _("Rename"), "view.rename", FALSE);
++    luma_bar_panel_add_row (panel, "copy", _("Duplicate"), "win.duplicate-selection", FALSE);
++    if (!filer_is_phone (window))
++        luma_bar_panel_add_row (panel, "folder-input", _("Move to…"), "win.filer-move-start", FALSE);
++    luma_bar_panel_add_row (panel, "file-archive", _("Compress"), "view.compress", FALSE);
++    luma_bar_panel_add_row (panel, "trash-2", _("Move to Trash"), "view.move-to-trash", TRUE);
++    return panel;
++}
++
++/* ── Move: the bar holds the files while you walk to where they go ── */
++
++static void
++filer_update_hold_target (NautilusWindow *window)
+ {
+-    GtkWidget *anchor = luma_bar_item_get_active_control (item);
+-    if (anchor == NULL)
++    if (window->held_files == NULL || window->action_center == NULL ||
++        !luma_action_center_get_holding (window->action_center))
++        return;
++    GFile *here = window->active_slot != NULL
++                  ? nautilus_window_slot_get_location (window->active_slot) : NULL;
++    if (here == NULL || window->held_from == NULL || g_file_equal (here, window->held_from) ||
++        g_file_has_uri_scheme (here, SCHEME_SEARCH))
++    {
++        luma_action_center_set_hold_target (window->action_center, NULL, NULL, NULL, NULL);
+         return;
+-    LumaFloatingMenu *menu = LUMA_FLOATING_MENU (luma_floating_menu_new (_("Share")));
+-    luma_floating_menu_add_item (menu, _("Copy file link"), "link", NULL, NULL,
+-                                 "win.copy-file-links", FALSE);
+-    luma_floating_menu_add_item (menu, _("Email file link"), "mail", NULL, NULL,
+-                                 "win.email-file-links", FALSE);
+-    luma_floating_menu_popup (menu, anchor);
++    }
++    g_autofree char *name = g_file_get_basename (here);
++    g_autoptr (LumaBarItem) move_here = luma_bar_item_new_action (NULL, _("Move here"),
++                                                                  "win.filer-move-here");
++    luma_action_center_set_hold_target (window->action_center, _("Move to"), name, "folder",
++                                        move_here);
+ }
+ 
+ static void
+-on_bar_more (LumaBarItem *item,
+-             NautilusWindow *window)
++filer_drop_hold (NautilusWindow *window)
++{
++    g_list_free_full (g_steal_pointer (&window->held_files), g_object_unref);
++    g_clear_object (&window->held_from);
++}
++
++static void
++on_action_center_released (LumaActionCenter *center,
++                           NautilusWindow   *window)
++{
++    filer_drop_hold (window);
++    update_action_center (window);
++}
++
++static void
++action_filer_move_start (GSimpleAction *action,
++                         GVariant      *parameter,
++                         gpointer       user_data)
+ {
+-    GtkWidget *anchor = luma_bar_item_get_active_control (item);
+-    if (anchor == NULL)
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    if (window->active_slot == NULL || window->action_center == NULL)
++        return;
++    GList *selection = nautilus_window_slot_get_selection (window->active_slot);
++    if (selection == NULL)
+         return;
+-    LumaFloatingMenu *menu = LUMA_FLOATING_MENU (luma_floating_menu_new (_("More")));
+-    luma_floating_menu_add_item (menu, _("Open in"), "app-window", NULL, NULL,
+-                                 "view.open-with-other-application", FALSE);
+-    luma_floating_menu_add_separator (menu);
+-    luma_floating_menu_add_item (menu, _("Rename"), "pencil", NULL, NULL,
+-                                 "view.rename", FALSE);
+-    luma_floating_menu_add_item (menu, _("Duplicate"), "copy", NULL, NULL,
+-                                 "win.duplicate-selection", FALSE);
+-    luma_floating_menu_add_item (menu, _("Move to"), "folder-input", NULL, NULL,
+-                                 "view.move-to", FALSE);
+-    luma_floating_menu_add_item (menu, _("Compress"), "file-archive", NULL, NULL,
+-                                 "view.compress", FALSE);
+-    luma_floating_menu_add_separator (menu);
+-    luma_floating_menu_add_item (menu, _("Move to Trash"), "trash-2", NULL, NULL,
+-                                 "view.move-to-trash", FALSE);
+-    luma_floating_menu_popup (menu, anchor);
++    filer_drop_hold (window);
++    for (GList *l = selection; l != NULL; l = l->next)
++        window->held_files = g_list_append (window->held_files,
++                                            nautilus_file_get_location (NAUTILUS_FILE (l->data)));
++    window->held_from = g_object_ref (nautilus_window_slot_get_location (window->active_slot));
++    NautilusFile *first = NAUTILUS_FILE (selection->data);
++    guint n = g_list_length (selection);
++    g_autofree char *label = n == 1
++                             ? g_strdup (nautilus_file_get_display_name (first))
++                             : g_strdup_printf (ngettext ("%u item", "%u items", n), n);
++    g_autoptr (GIcon) icon = nautilus_file_is_directory (first)
++                             ? g_themed_icon_new ("folder") : NULL;
++    filer_clear_selection (window);
++    luma_action_center_hold (window->action_center, _("Moving"), label, icon, NULL);
++    filer_update_hold_target (window);
++}
++
++typedef struct
++{
++    NautilusWindow *window;
++    char *where;
++    guint count;
++} FilerMoveData;
++
++static void
++filer_move_done (GHashTable *debuting_uris,
++                 gboolean    success,
++                 gpointer    callback_data)
++{
++    FilerMoveData *data = callback_data;
++    if (success && data->window != NULL)
++    {
++        g_autofree char *text = g_strdup_printf (ngettext ("Moved %u item to %s",
++                                                           "Moved %u items to %s", data->count),
++                                                 data->count, data->where);
++        adw_toast_overlay_add_toast (data->window->toast_overlay, adw_toast_new (text));
++    }
++    g_clear_weak_pointer (&data->window);
++    g_free (data->where);
++    g_free (data);
++}
++
++static void
++action_filer_move_here (GSimpleAction *action,
++                        GVariant      *parameter,
++                        gpointer       user_data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (user_data);
++    if (window->held_files == NULL || window->active_slot == NULL)
++        return;
++    GFile *here = nautilus_window_slot_get_location (window->active_slot);
++    if (here == NULL)
++        return;
++    g_autofree char *where = g_file_get_basename (here);
++    guint count = g_list_length (window->held_files);
++    if (g_getenv ("LUMA_FILER_FIXTURE") != NULL)
++    {
++        /* Fixture mode never writes: say what would happen. */
++        g_autofree char *text = g_strdup_printf (ngettext ("Moved %u item to %s",
++                                                           "Moved %u items to %s", count),
++                                                 count, where);
++        adw_toast_overlay_add_toast (window->toast_overlay, adw_toast_new (text));
++    }
++    else
++    {
++        GList *uris = NULL;
++        for (GList *l = window->held_files; l != NULL; l = l->next)
++            uris = g_list_append (uris, g_file_get_uri (G_FILE (l->data)));
++        g_autofree char *target = g_file_get_uri (here);
++        FilerMoveData *data = g_new0 (FilerMoveData, 1);
++        g_set_weak_pointer (&data->window, window);
++        data->where = g_strdup (where);
++        data->count = count;
++        NautilusFilesView *view = nautilus_window_slot_get_current_view (window->active_slot);
++        nautilus_file_operations_copy_move (uris, target, GDK_ACTION_MOVE,
++                                            view != NULL ? GTK_WIDGET (view) : GTK_WIDGET (window),
++                                            NULL, filer_move_done, data);
++        g_list_free_full (uris, g_free);
++    }
++    filer_drop_hold (window);
++    luma_action_center_release (window->action_center);
++}
++
++static const char *
++filer_file_glyph (NautilusFile *file)
++{
++    const char *mime = nautilus_file_get_mime_type (file);
++    if (nautilus_file_is_directory (file))
++        return "folder";
++    if (mime != NULL && g_str_has_prefix (mime, "image/"))
++        return "image";
++    if (mime != NULL && g_str_has_prefix (mime, "video/"))
++        return "film";
++    if (mime != NULL && g_str_has_prefix (mime, "audio/"))
++        return "music";
++    return "file-text";
++}
++
++/* The field says where it searches on a desktop ("Search Launch"); on a
++ * phone just "Search". The item is remade when that changes, keeping its text. */
++static void
++filer_sync_search_item (NautilusWindow *window,
++                        gboolean        phone)
++{
++    GFile *location = window->search_origin != NULL ? window->search_origin
++                      : window->active_slot != NULL ? nautilus_window_slot_get_location (window->active_slot)
++                      : NULL;
++    g_autofree char *name = location != NULL ? g_file_get_basename (location) : NULL;
++    g_autofree char *placeholder = phone || name == NULL || *name == '\0'
++                                   ? g_strdup (_("Search"))
++                                   : g_strdup_printf (_("Search %s"), name);
++    if (window->action_search_item != NULL &&
++        g_strcmp0 (placeholder, window->search_placeholder) == 0)
++        return;
++    g_autofree char *text = window->action_search_item != NULL
++                            ? g_strdup (luma_bar_item_search_get_text (window->action_search_item)) : NULL;
++    LumaBarItem *item = luma_bar_item_new_search (placeholder);
++    if (text != NULL && *text != '\0')
++        luma_bar_item_search_set_text (item, text);
++    g_signal_connect (item, "search-changed", G_CALLBACK (on_bar_search_changed), window);
++    g_clear_object (&window->action_search_item);
++    window->action_search_item = item;
++    g_free (window->search_placeholder);
++    window->search_placeholder = g_steal_pointer (&placeholder);
+ }
+ 
+ static void
+@@ -871,116 +1330,238 @@ update_action_center (NautilusWindow *window)
+ {
+     if (window->action_center == NULL)
+         return;
++    gboolean phone = filer_is_phone (window);
++    filer_sync_search_item (window, phone);
+     /* The slot owns this list and its NautilusFile references. */
+     GList *selection = window->active_slot != NULL
+                        ? nautilus_window_slot_get_selection (window->active_slot)
+                        : NULL;
++    g_clear_object (&window->action_more_item);
+     if (selection != NULL)
+     {
+         NautilusFile *file = NAUTILUS_FILE (selection->data);
+-        g_autofree char *size = nautilus_file_get_string_attribute_with_default (file, "size");
+-        g_autofree char *description = g_strdup_printf ("%s  %s",
+-                                  nautilus_file_get_display_name (file), size != NULL ? size : "");
+-        LumaBarItem *items[] = {
+-            luma_bar_item_new_chip (description, NULL, TRUE),
+-            luma_bar_item_new_action ("app-window", _("Open"), "view.open-with-default-application"),
+-            luma_bar_item_new_action ("copy", _("Copy"), "view.copy"),
+-            luma_bar_item_new_action ("share-2", _("Share"), NULL),
+-            luma_bar_item_new_action ("info", NULL, NULL),
+-            luma_bar_item_new_action ("ellipsis", NULL, NULL),
+-        };
+-        luma_bar_item_set_phone_compact (items[0], TRUE);
+-        luma_bar_item_set_phone_compact (items[1], TRUE);
+-        luma_bar_item_set_phone_compact (items[2], TRUE);
+-        luma_bar_item_set_phone_compact (items[3], TRUE);
+-        g_autoptr (GdkPaintable) preview = nautilus_file_get_icon_paintable (
+-            file, 42, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
+-            NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS);
+-        const char *mime = nautilus_file_get_mime_type (file);
+-        if (mime != NULL && g_str_has_prefix (mime, "image/"))
++        GPtrArray *items = g_ptr_array_new_with_free_func (g_object_unref);
++        LumaBarItem *share = luma_bar_item_new_action ("share-2", phone ? NULL : _("Share"), NULL);
++        luma_bar_item_set_tooltip (share, _("Share"));
++        luma_bar_item_set_panel (share, "share", filer_share_panel, window, NULL);
++        LumaBarItem *more = luma_bar_item_new_action ("ellipsis", NULL, NULL);
++        luma_bar_item_set_tooltip (more, _("More"));
++        luma_bar_item_set_panel (more, "more", filer_more_panel, window, NULL);
++        g_set_object (&window->action_more_item, more);
++        if (phone)
++        {
++            /* No Open (a folder opens with a tap) and no name chip: you can
++             * see what you picked. ✕ lets go of it; it's never a tick. */
++            LumaBarItem *copy = luma_bar_item_new_action ("copy", NULL, "view.copy");
++            luma_bar_item_set_tooltip (copy, _("Copy"));
++            LumaBarItem *move = luma_bar_item_new_action ("folder-input", NULL, "win.filer-move-start");
++            luma_bar_item_set_tooltip (move, _("Move"));
++            LumaBarItem *details = luma_bar_item_new_action ("info", NULL, NULL);
++            luma_bar_item_set_tooltip (details, _("Details"));
++            luma_bar_item_set_panel (details, "details", filer_details_panel, window, NULL);
++            LumaBarItem *clear = luma_bar_item_new_action ("x", NULL, "win.filer-clear-selection");
++            luma_bar_item_set_tooltip (clear, _("Clear selection"));
++            g_ptr_array_add (items, copy);
++            g_ptr_array_add (items, share);
++            g_ptr_array_add (items, move);
++            g_ptr_array_add (items, details);
++            g_ptr_array_add (items, more);
++            g_ptr_array_add (items, clear);
++        }
++        else
+         {
++            g_autofree char *size = nautilus_file_get_string_attribute_with_default (file, "size");
++            guint n = g_list_length (selection);
++            g_autofree char *description = n == 1
++                ? g_strdup_printf ("%s  %s", nautilus_file_get_display_name (file),
++                                   size != NULL ? size : "")
++                : g_strdup_printf (ngettext ("%u item", "%u items", n), n);
++            LumaBarItem *chip = luma_bar_item_new_chip (description, filer_file_glyph (file), TRUE);
++            /* The chip wears the file's own face (v71 .who .th). */
++            g_autoptr (GdkPaintable) preview = nautilus_file_get_icon_paintable (
++                file, 42, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
++                NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS);
++            const char *mime = nautilus_file_get_mime_type (file);
+             g_autoptr (GFile) image = nautilus_file_get_location (file);
+-            g_autofree char *path = image != NULL ? g_file_get_path (image) : NULL;
+-            if (path != NULL)
++            g_autofree char *path = image != NULL && mime != NULL && g_str_has_prefix (mime, "image/")
++                                    ? g_file_get_path (image) : NULL;
++            g_autoptr (GdkPixbuf) scaled = path != NULL
++                                           ? gdk_pixbuf_new_from_file_at_scale (path, 42, 28, TRUE, NULL) : NULL;
++            if (scaled != NULL)
+             {
+-                g_autoptr (GdkPixbuf) scaled =
+-                    gdk_pixbuf_new_from_file_at_scale (path, 42, 28, TRUE, NULL);
+-                if (scaled != NULL)
+-                {
+-                    g_clear_object (&preview);
+-                    preview = GDK_PAINTABLE (gdk_texture_new_for_pixbuf (scaled));
+-                }
++                g_clear_object (&preview);
++                preview = GDK_PAINTABLE (gdk_texture_new_for_pixbuf (scaled));
+             }
++            if (preview != NULL)
++                luma_bar_item_chip_set_paintable (chip, preview);
++            g_signal_connect (chip, "dismissed", G_CALLBACK (on_bar_selection_dismissed), window);
++            LumaBarItem *open = nautilus_file_is_directory (file)
++                                ? luma_bar_item_new_action ("folder-open", _("Open"), "view.open-with-default-application")
++                                : luma_bar_item_new_action ("app-window", _("Open"), "view.open-with-default-application");
++            LumaBarItem *copy = luma_bar_item_new_action ("copy", _("Copy"), "view.copy");
++            LumaBarItem *information = luma_bar_item_new_action ("info", NULL, NULL);
++            luma_bar_item_set_tooltip (information, _("Information"));
++            g_signal_connect (information, "activated", G_CALLBACK (on_bar_information), window);
++            g_ptr_array_add (items, chip);
++            g_ptr_array_add (items, luma_bar_item_new_separator ());
++            g_ptr_array_add (items, open);
++            g_ptr_array_add (items, copy);
++            g_ptr_array_add (items, share);
++            g_ptr_array_add (items, information);
++            g_ptr_array_add (items, more);
+         }
+-        if (preview != NULL)
+-            luma_bar_item_chip_set_paintable (items[0], preview);
+-        g_signal_connect (items[3], "activated", G_CALLBACK (on_bar_share), window);
+-        luma_bar_item_set_tooltip (items[4], _("Information"));
+-        luma_bar_item_set_tooltip (items[5], _("More"));
+-        g_signal_connect (items[0], "dismissed", G_CALLBACK (on_bar_selection_dismissed), window);
+-        g_signal_connect (items[4], "activated", G_CALLBACK (on_bar_information), window);
+-        g_signal_connect (items[5], "activated", G_CALLBACK (on_bar_more), window);
+-        g_set_object (&window->action_more_item, items[5]);
+-        luma_action_center_show_bar (window->action_center, items, G_N_ELEMENTS (items), NULL);
+-        for (guint i = 0; i < G_N_ELEMENTS (items); i++)
+-            g_object_unref (items[i]);
++        g_object_ref (more);
++        luma_action_center_show_bar (window->action_center, (LumaBarItem *const *) items->pdata,
++                                     items->len, NULL);
++        g_object_unref (more);
++        g_ptr_array_unref (items);
+         window->action_bar_selected = TRUE;
++        filer_update_hold_target (window);
+         return;
+     }
+ 
+-    g_clear_object (&window->action_more_item);
+-    LumaBarItem *back = luma_bar_item_new_action ("chevron-left", NULL, "slot.back");
+-    LumaBarItem *forward = luma_bar_item_new_action ("chevron-right", NULL, "slot.forward");
+-    luma_bar_item_set_tooltip (back, _("Back"));
+-    luma_bar_item_set_tooltip (forward, _("Forward"));
+-    LumaBarItem *separator = luma_bar_item_new_separator ();
+-    LumaBarItem *information = luma_bar_item_new_action ("info", NULL, NULL);
+-    luma_bar_item_set_tooltip (information, _("Information"));
+-    g_signal_connect (information, "activated", G_CALLBACK (on_bar_information), window);
+-    LumaBarItem *new_folder = luma_bar_item_new_action ("plus", _("New folder"), "view.new-folder");
+-    luma_bar_item_set_phone_compact (new_folder, TRUE);
+-    luma_bar_item_set_primary (new_folder, TRUE);
+-    LumaBarItem *items[] = {back, forward, separator, window->action_search_item,
+-                           window->action_modes_item, information, new_folder};
+-    luma_action_center_show_bar (window->action_center, items, G_N_ELEMENTS (items), NULL);
+-    g_object_unref (back);
+-    g_object_unref (forward);
+-    g_object_unref (separator);
+-    g_object_unref (information);
+-    g_object_unref (new_folder);
+     window->action_bar_selected = FALSE;
++    GPtrArray *items = g_ptr_array_new_with_free_func (g_object_unref);
++    if (phone)
++    {
++        /* Navigation is the title island's; view settings live behind ⋯. */
++        LumaBarItem *new_folder = luma_bar_item_new_action ("folder-plus", NULL, "view.new-folder");
++        luma_bar_item_set_tooltip (new_folder, _("New folder"));
++        LumaBarItem *more = luma_bar_item_new_action ("ellipsis", NULL, NULL);
++        luma_bar_item_set_tooltip (more, _("View and sort"));
++        luma_bar_item_set_panel (more, "view", filer_view_sort_panel, window, NULL);
++        g_ptr_array_add (items, g_object_ref (window->action_search_item));
++        g_ptr_array_add (items, new_folder);
++        g_ptr_array_add (items, more);
++    }
++    else
++    {
++        LumaBarItem *back = luma_bar_item_new_action ("chevron-left", NULL, "slot.back");
++        LumaBarItem *forward = luma_bar_item_new_action ("chevron-right", NULL, "slot.forward");
++        luma_bar_item_set_tooltip (back, _("Back"));
++        luma_bar_item_set_tooltip (forward, _("Forward"));
++        g_ptr_array_add (items, back);
++        g_ptr_array_add (items, forward);
++        g_ptr_array_add (items, luma_bar_item_new_separator ());
++        g_ptr_array_add (items, g_object_ref (window->action_search_item));
++        g_ptr_array_add (items, luma_bar_item_new_separator ());
++        /* The view switch in the bar is a row of the bar's own buttons, the
++         * chosen one raised (LumaUI: never a frame inside a frame). */
++        static const struct { const char *key; const char *icon; const char *label; guint id; } views[] = {
++            { "grid", "layout-grid", N_("Grid"), NAUTILUS_VIEW_GRID_ID },
++            { "list", "list", N_("List"), NAUTILUS_VIEW_LIST_ID },
++            { "columns", "columns-3", N_("Columns"), NAUTILUS_VIEW_COLUMN_ID },
++        };
++        guint current = filer_current_view_id (window);
++        for (guint i = 0; i < G_N_ELEMENTS (views); i++)
++        {
++            g_autofree char *detailed = g_strdup_printf ("win.filer-view('%s')", views[i].key);
++            LumaBarItem *mode = luma_bar_item_new_action (views[i].icon, NULL, detailed);
++            luma_bar_item_set_tooltip (mode, _(views[i].label));
++            luma_bar_item_set_active (mode, current == views[i].id);
++            g_ptr_array_add (items, mode);
++        }
++        LumaBarItem *information = luma_bar_item_new_action ("info", NULL, NULL);
++        luma_bar_item_set_tooltip (information, _("Information"));
++        g_signal_connect (information, "activated", G_CALLBACK (on_bar_information), window);
++        g_ptr_array_add (items, information);
++        g_ptr_array_add (items, luma_bar_item_new_separator ());
++        LumaBarItem *new_folder = luma_bar_item_new_action ("plus", _("New folder"), "view.new-folder");
++        luma_bar_item_set_primary (new_folder, TRUE);
++        g_ptr_array_add (items, new_folder);
++    }
++    luma_action_center_show_bar (window->action_center, (LumaBarItem *const *) items->pdata,
++                                 items->len, NULL);
++    g_ptr_array_unref (items);
++    filer_update_hold_target (window);
++    filer_sync_scope_panel (window);
++}
++
++/* ── The title island (phone): ☰ | the place, or ‹ | the folder ── */
++
++static gboolean
++filer_is_place_root (GFile *location,
++                     GFile *home)
++{
++    if (g_file_equal (location, home))
++        return TRUE;
++    g_autoptr (GFile) parent = g_file_get_parent (location);
++    if (parent == NULL)
++        return TRUE;
++    const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++    if (fixture_root != NULL)
++    {
++        g_autoptr (GFile) root = g_file_new_for_path (fixture_root);
++        if (g_file_equal (parent, root))
++            return TRUE;
++    }
++    g_autoptr (GMount) mount = g_file_find_enclosing_mount (location, NULL, NULL);
++    if (mount != NULL)
++    {
++        g_autoptr (GFile) mount_root = g_mount_get_root (mount);
++        if (g_file_equal (mount_root, location))
++            return TRUE;
++    }
++    return FALSE;
+ }
+ 
+ static void
+-update_action_search_placeholder (NautilusWindow *window)
++filer_update_title_island (NautilusWindow *window,
++                           const char     *title,
++                           const char     *count_meta,
++                           gboolean        searching)
+ {
+-    if (window->active_slot == NULL || window->action_search_item == NULL)
++    if (window->title_island == NULL)
+         return;
+-
+-    GFile *location = window->search_origin != NULL
+-                      ? window->search_origin
+-                      : nautilus_window_slot_get_location (window->active_slot);
+-    if (location == NULL)
+-        return;
+-    g_autofree char *name = g_file_get_basename (location);
+-    if (name == NULL || *name == '\0')
++    gboolean show = filer_is_phone (window) && !searching;
++    gtk_widget_set_visible (GTK_WIDGET (window->title_island), show);
++    /* The island names the place; the page's own heading steps aside for it
++     * and leaves the island its room. */
++    gtk_widget_set_visible (window->location_title, !show);
++    gtk_widget_set_visible (window->location_meta, !show);
++    gtk_widget_set_size_request (window->location_box, -1, show ? 48 : -1);
++    if (!show)
+         return;
+-    g_autofree char *placeholder = g_strdup_printf (_("Search %s"), name);
+-    if (g_strcmp0 (placeholder, window->action_search_placeholder) == 0)
++    GFile *location = window->active_slot != NULL
++                      ? nautilus_window_slot_get_location (window->active_slot) : NULL;
++    g_autoptr (GFile) home = filer_search_home ();
++    gboolean top = location == NULL || filer_is_place_root (location, home);
++    g_autoptr (GFile) parent = location != NULL && !top ? g_file_get_parent (location) : NULL;
++    g_autofree char *parent_name = parent == NULL ? NULL
++                                   : g_file_equal (parent, home) ? g_strdup (_("Home"))
++                                   : g_file_get_basename (parent);
++    g_autofree char *subtitle = parent_name != NULL && count_meta != NULL
++                                ? g_strdup_printf ("%s · %s", parent_name, count_meta)
++                                : g_strdup (count_meta);
++    luma_title_island_set_lead (window->title_island,
++                                top ? LUMA_TITLE_ISLAND_LEAD_MENU : LUMA_TITLE_ISLAND_LEAD_BACK,
++                                parent_name);
++    luma_title_island_set_title (window->title_island, title, subtitle);
++}
++
++static void
++on_title_island_lead (LumaTitleIsland *island,
++                      NautilusWindow  *window)
++{
++    if (luma_title_island_get_lead (island) == LUMA_TITLE_ISLAND_LEAD_BACK)
++    {
++        if (window->active_slot != NULL)
++            g_action_group_activate_action (nautilus_window_slot_get_action_group (window->active_slot),
++                                            "up", NULL);
+         return;
++    }
++    /* ☰: the kit grows the island into Places (luma_sidebar_toggle_set_island). */
++}
+ 
+-    g_autofree char *text = g_strdup (luma_bar_item_search_get_text (window->action_search_item));
+-    LumaBarItem *item = luma_bar_item_new_search (placeholder);
+-    if (text != NULL && *text != '\0')
+-        luma_bar_item_search_set_text (item, text);
+-    g_signal_connect (item, "search-changed",
+-                      G_CALLBACK (on_bar_search_changed), window);
+-    g_signal_connect (item, "search-activated",
+-                      G_CALLBACK (on_bar_search_activated), window);
+-    g_clear_object (&window->action_search_item);
+-    window->action_search_item = item;
+-    g_free (window->action_search_placeholder);
+-    window->action_search_placeholder = g_strdup (placeholder);
++static void
++on_window_tier_changed (LumaWidthWatch *watch,
++                        LumaTier        tier,
++                        NautilusWindow *window)
++{
++    if (tier == LUMA_TIER_PHONE && filer_current_view_id (window) == NAUTILUS_VIEW_COLUMN_ID)
++        filer_set_view (window, "grid");
++    update_location_header (window);
++    update_action_center (window);
+ }
+ 
+ static void
+@@ -988,7 +1569,6 @@ on_location_changed (NautilusWindow *window)
+ {
+     nautilus_window_sync_location_widgets (window);
+     update_location_header (window);
+-    update_action_search_placeholder (window);
+     update_information (window);
+     update_action_center (window);
+ }
+@@ -1054,17 +1634,12 @@ on_slot_view_mode_changed (GActionGroup   *group,
+         return;
+     }
+ 
+-    if (window->action_modes != NULL)
+-    {
+-        guint view = g_variant_get_uint32 (state);
+-        luma_mode_switch_set_current (window->action_modes,
+-                                      view == NAUTILUS_VIEW_LIST_ID ? "list"
+-                                      : view == NAUTILUS_VIEW_COLUMN_ID ? "columns"
+-                                      : "grid");
+-    }
++    /* The bar's view buttons raise the chosen one. */
++    if (!window->action_bar_selected)
++        update_action_center (window);
+ 
+     if (g_variant_get_uint32 (state) == NAUTILUS_VIEW_COLUMN_ID &&
+-        gtk_widget_get_width (GTK_WIDGET (window)) >= 640)
++        !filer_is_phone (window))
+     {
+         luma_details_pane_show (window->information_pane, TRUE);
+     }
+@@ -1896,6 +2471,12 @@ const GActionEntry win_entries[] =
+     { .name = "duplicate-selection", .activate = action_duplicate_selection },
+     { .name = "copy-file-links", .activate = action_copy_file_links },
+     { .name = "email-file-links", .activate = action_email_file_links },
++    { .name = "filer-view", .parameter_type = "s", .activate = action_filer_view },
++    { .name = "filer-sort", .parameter_type = "s", .activate = action_filer_sort },
++    { .name = "filer-search-scope", .parameter_type = "s", .activate = action_filer_search_scope },
++    { .name = "filer-clear-selection", .activate = action_filer_clear_selection },
++    { .name = "filer-move-start", .activate = action_filer_move_start },
++    { .name = "filer-move-here", .activate = action_filer_move_here },
+ };
+ 
+ static void
+@@ -1976,15 +2557,6 @@ notify_decoration_layout_cb (NautilusWindow *self)
+     }
+ }
+ 
+-static void
+-sidebar_collapsed_changed (AdwOverlaySplitView *split_view,
+-                           GParamSpec          *pspec G_GNUC_UNUSED,
+-                           NautilusWindow      *window)
+-{
+-    gtk_widget_set_visible (GTK_WIDGET (window->sidebar_toggle),
+-                            adw_overlay_split_view_get_collapsed (split_view));
+-}
+-
+ static void
+ nautilus_window_constructed (GObject *self)
+ {
+@@ -2001,19 +2573,11 @@ nautilus_window_constructed (GObject *self)
+ 
+     /* The shared frame keeps NautilusWindow and every template child alive. */
+     luma_application_window_frame_adopt (ADW_APPLICATION_WINDOW (window));
+-    /* Keep the drawer control available on a phone. On a desktop the sidebar
+-     * stays visible and the title row needs no show/hide control. */
+-    GtkWidget *toggle = GTK_WIDGET (window->sidebar_toggle);
+-    g_object_ref (toggle);
+-    gtk_box_remove (GTK_BOX (window->sidebar_toggle_desktop_host), toggle);
+-    gtk_widget_set_margin_start (window->sidebar_toggle_phone_host, 20);
+-    luma_application_window_frame_set_leading_phone_host (ADW_APPLICATION_WINDOW (window),
+-                                                          toggle,
+-                                                          window->sidebar_toggle_phone_host);
+-    g_signal_connect_object (window->split_view, "notify::collapsed",
+-                             G_CALLBACK (sidebar_collapsed_changed), window, 0);
+-    sidebar_collapsed_changed (ADW_OVERLAY_SPLIT_VIEW (window->split_view), NULL, window);
+-    g_object_unref (toggle);
++    /* v71: no sidebar toggle in the desktop title bar (F9 still toggles the
++     * sidebar); on a phone the title island's ☰ opens the places. The toggle
++     * stays as the one owner of the sidebar's open state, unshown. */
++    gtk_widget_set_visible (GTK_WIDGET (window->sidebar_toggle), FALSE);
++    gtk_widget_set_visible (window->sidebar_toggle_phone_host, FALSE);
+     GMenuModel *main_menu = NULL;
+     g_object_get (window->toolbar, "main-menu", &main_menu, NULL);
+     luma_application_window_frame_set_menu_model (ADW_APPLICATION_WINDOW (window),
+@@ -2100,9 +2664,10 @@ nautilus_window_finalize (GObject *object)
+     }
+     g_clear_handle_id (&window->action_search_timer, g_source_remove);
+     g_clear_object (&window->action_search_item);
+-    g_clear_pointer (&window->action_search_placeholder, g_free);
+-    g_clear_object (&window->action_modes_item);
+     g_clear_object (&window->action_more_item);
++    g_clear_pointer (&window->search_placeholder, g_free);
++    filer_drop_hold (window);
++    filer_cancel_count (window);
+ 
+     g_clear_object (&window->selected_file);
+     g_clear_object (&window->selected_volume);
+@@ -2448,12 +3013,42 @@ get_current_pointer_x (GtkGestureDrag *gesture,
+ /* The conform fixture names stable native states without making a capture
+  * client reach into Nautilus' private widget tree. Normal launches never use
+  * this path. Wait for the directory model before selecting a sample file. */
++/* The v71 phone states: a panel the bar grows into, the held row. */
++static gboolean
++show_fixture_phone_state (gpointer data)
++{
++    NautilusWindow *window = NAUTILUS_WINDOW (data);
++    const char *state = g_getenv ("LUMA_FILER_STATE");
++    if (!filer_is_phone (window) || window->action_center == NULL)
++        return G_SOURCE_REMOVE;
++    if (g_strcmp0 (state, "share") == 0)
++        luma_action_center_grow_panel (window->action_center, "share",
++                                       filer_share_panel (NULL, window));
++    else if (g_strcmp0 (state, "file-information") == 0)
++        luma_action_center_grow_panel (window->action_center, "details",
++                                       filer_details_panel (NULL, window));
++    else if (g_strcmp0 (state, "view-sort") == 0)
++        luma_action_center_grow_panel (window->action_center, "view",
++                                       filer_view_sort_panel (NULL, window));
++    else if (g_str_has_prefix (state, "move"))
++    {
++        g_action_group_activate_action (G_ACTION_GROUP (window), "filer-move-start", NULL);
++        if (g_strcmp0 (state, "move-into") == 0 && window->held_from != NULL)
++        {
++            g_autoptr (GFile) into = g_file_get_child (window->held_from, "Press kit");
++            nautilus_window_open_location_full (window, into, 0, NULL);
++        }
++    }
++    return G_SOURCE_REMOVE;
++}
++
+ static gboolean
+ show_fixture_more (gpointer data)
+ {
+     NautilusWindow *window = NAUTILUS_WINDOW (data);
+     if (window->action_more_item != NULL)
+-        on_bar_more (window->action_more_item, window);
++        luma_action_center_grow_panel (window->action_center, "more",
++                                       filer_more_panel (window->action_more_item, window));
+     return G_SOURCE_REMOVE;
+ }
+ 
+@@ -2498,12 +3093,30 @@ apply_fixture_state (gpointer data)
+             "sort", g_variant_new ("(sb)", "size", FALSE));
+     }
+ 
++    if (g_strcmp0 (state, "home") == 0)
++    {
++        g_autoptr (GFile) home = filer_search_home ();
++        GFile *location = nautilus_window_slot_get_location (slot);
++        if (location == NULL || !g_file_equal (location, home))
++        {
++            nautilus_window_open_location_full (window, home, 0, NULL);
++            return G_SOURCE_CONTINUE;
++        }
++    }
++
+     selected = g_strcmp0 (state, "selected") == 0 ||
+                g_strcmp0 (state, "file-information") == 0 ||
+                g_strcmp0 (state, "columns-selected") == 0 ||
+-               g_strcmp0 (state, "more") == 0;
++               g_strcmp0 (state, "more") == 0 ||
++               g_strcmp0 (state, "share") == 0 ||
++               g_str_has_prefix (state, "move");
++    /* On a phone Details grows the bar instead of the side pane. */
+     information = g_strcmp0 (state, "information") == 0 ||
+-                  g_strcmp0 (state, "file-information") == 0;
++                  (g_strcmp0 (state, "file-information") == 0 && !filer_is_phone (window));
++    if (filer_is_phone (window) &&
++        (g_strcmp0 (state, "share") == 0 || g_strcmp0 (state, "file-information") == 0 ||
++         g_strcmp0 (state, "view-sort") == 0 || g_str_has_prefix (state, "move")))
++        g_timeout_add (150, show_fixture_phone_state, window);
+     if (selected)
+     {
+         GFile *location = nautilus_window_slot_get_location (slot);
+@@ -2553,6 +3166,7 @@ apply_fixture_state (gpointer data)
+ 
+         g_autoptr (NautilusQuery) query = nautilus_query_new ();
+         nautilus_query_set_text (query, "press");
++        window->search_everywhere = g_strcmp0 (state, "search-here") != 0;
+         if (g_strcmp0 (state, "search-here") == 0)
+         {
+             nautilus_query_set_location (query, nautilus_window_slot_get_location (slot));
+@@ -2659,6 +3273,7 @@ nautilus_window_init (NautilusWindow *window)
+     gtk_box_append (GTK_BOX (window->sidebar_toggle_desktop_host),
+                     GTK_WIDGET (window->sidebar_toggle));
+     GtkWidget *location = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    window->location_box = location;
+     gtk_widget_set_name (location, "filer-location");
+     gtk_widget_set_hexpand (location, TRUE);
+     gtk_widget_set_margin_top (location, 22);
+@@ -2714,25 +3329,25 @@ nautilus_window_init (NautilusWindow *window)
+     window->action_center = LUMA_ACTION_CENTER (luma_action_center_new (NULL));
+     gtk_widget_set_name (GTK_WIDGET (window->action_center), "filer-action-center");
+     luma_action_center_attach (window->action_center, action_host);
+-    window->action_search_item = luma_bar_item_new_search (_("Search files"));
+-    g_signal_connect (window->action_search_item, "search-changed",
+-                      G_CALLBACK (on_bar_search_changed), window);
+-    g_signal_connect (window->action_search_item, "search-activated",
+-                      G_CALLBACK (on_bar_search_activated), window);
+-    window->action_modes = LUMA_MODE_SWITCH (luma_mode_switch_new (_("View")));
+-    luma_mode_switch_add (window->action_modes, "grid", _("Grid"), "layout-grid");
+-    luma_mode_switch_add (window->action_modes, "list", _("List"), "list");
+-    luma_mode_switch_add (window->action_modes, "columns", _("Columns"), "columns-3");
+-    luma_mode_switch_set_icon_only (window->action_modes, TRUE);
+-    g_signal_connect (window->action_modes, "changed",
+-                      G_CALLBACK (on_bar_mode_changed), window);
+-    window->action_modes_item = luma_bar_item_new_modes (window->action_modes);
++    g_signal_connect (window->action_center, "released",
++                      G_CALLBACK (on_action_center_released), window);
++    window->title_island = LUMA_TITLE_ISLAND (luma_title_island_new (LUMA_TITLE_ISLAND_LEAD_MENU,
++                                                                     _("Home"), NULL));
++    gtk_widget_set_name (GTK_WIDGET (window->title_island), "filer-title-island");
++    g_signal_connect (window->title_island, "lead",
++                      G_CALLBACK (on_title_island_lead), window);
++    luma_title_island_attach (window->title_island, action_host);
++    /* On a phone the island is the sidebar's menu: it grows into Places. */
++    luma_sidebar_toggle_set_island (window->sidebar_toggle, window->title_island);
++    gtk_widget_set_visible (GTK_WIDGET (window->title_island), FALSE);
++    g_signal_connect_object (luma_width_watch_get (GTK_WIDGET (window)), "tier-changed",
++                             G_CALLBACK (on_window_tier_changed), window, 0);
+     update_action_center (window);
+ 
+-    /* Keep the vertical icon-and-label rail. Its wider shared variant wraps
+-     * destination and device names without clipping them. */
++    /* v71: the 88 px vertical icon-and-label rail (the kit's "rail"; the wider
++     * "rail-wide" of .63 is not v71 and not on the foundation kit). */
+     luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (window->split_view),
+-                                        GTK_WIDGET (window->places_sidebar), "rail-wide");
++                                        GTK_WIDGET (window->places_sidebar), "rail");
+     gtk_widget_set_visible (window->sidebar_resize_handle, FALSE);
+     controller = GTK_EVENT_CONTROLLER (gtk_gesture_drag_new ());
+     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 00937b1..deef2ee 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -323,7 +323,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+   }
+ 
+   Adw.Breakpoint {
+-    condition ("max-width: 639px")
++    condition ("max-width: 559px")
+ 
+     setters {
+       split_view.collapsed: true;
+-- 
+2.54.0 (Apple Git-157)
+

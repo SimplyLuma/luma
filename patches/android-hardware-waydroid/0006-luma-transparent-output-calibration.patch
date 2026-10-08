@@ -1,0 +1,28 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: measure the output with a transparent window
+
+Applies after 0005. The first window, opened to learn the output size and
+destroyed at once when Android starts in the background, was opaque black
+and flashed across the whole monitor at every login. It is transparent
+unless it stays as the full Android screen.
+
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -852,8 +852,15 @@
+         pdev->display->cursor_handler.reset(new subsurface_cursor_handler());
+     }
+ 
+-    auto first_window = window::create(pdev->display, pdev->should_compose, "Waydroid", "0", {0, 0, 0, 255});
+-    if (!property_get_bool("waydroid.background_start", true)) {
++    // The first window measures the output. When Android starts in the
++    // background it is destroyed straight away, but as an opaque black window
++    // it still flashed across the whole monitor at every login. Only a
++    // window that stays (the full Android screen) is painted black.
++    const bool background_start = property_get_bool("waydroid.background_start", true);
++    const hwc_color_t first_color = background_start
++        ? hwc_color_t{0, 0, 0, 0} : hwc_color_t{0, 0, 0, 255};
++    auto first_window = window::create(pdev->display, pdev->should_compose, "Waydroid", "0", first_color);
++    if (!background_start) {
+         pdev->display->windows.add("Waydroid", std::move(first_window));
+         property_set("waydroid.active_apps", "Waydroid");
+     } else {

@@ -1,0 +1,17 @@
+[org/project-luma/shell-state]
+reduce-transparency=false
+shelf-edge-mode='floating'
+shelf-float-ends=true
+shelf-padding=8
+shelf-edge='bottom'
+shelf-span-full=false
+shelf-surface-mode='separate'
+status-controls-right=true
+surface-treatment='light'
+
+[org/gnome/desktop/interface]
+color-scheme='prefer-light'
+
+[org/gnome/shell]
+favorite-apps=['org.projectluma.Calendar.desktop', 'org.projectluma.Notes.desktop', 'org.oracle.Slides.desktop', 'org.oracle.Mail.desktop']
+welcome-dialog-last-shown-version='999'

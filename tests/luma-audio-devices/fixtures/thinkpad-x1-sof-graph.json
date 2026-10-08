@@ -1,0 +1,1023 @@
+[
+ {
+  "id": 39,
+  "type": "PipeWire:Interface:Metadata",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x"
+  ],
+  "props": {
+   "client.id": 33,
+   "factory.id": 7,
+   "metadata.name": "default",
+   "module.id": 6,
+   "object.serial": 39
+  },
+  "metadata": [
+   {
+    "subject": 0,
+    "key": "default.configured.audio.sink",
+    "type": "Spa:String:JSON",
+    "value": {
+     "name": "alsa_output.usb-Example_USB_Audio-00.analog-stereo"
+    }
+   },
+   {
+    "subject": 0,
+    "key": "default.configured.audio.source",
+    "type": "Spa:String:JSON",
+    "value": {
+     "name": "alsa_input.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Mic__source"
+    }
+   },
+   {
+    "subject": 0,
+    "key": "default.audio.sink",
+    "type": "Spa:String:JSON",
+    "value": {
+     "name": "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Speaker__sink"
+    }
+   },
+   {
+    "subject": 0,
+    "key": "default.audio.source",
+    "type": "Spa:String:JSON",
+    "value": {
+     "name": "alsa_input.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Mic__source"
+    }
+   }
+  ]
+ },
+ {
+  "id": 52,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "adapt.follower.spa-node": "",
+    "audio.format": "S16LE",
+    "audio.rate": 44100,
+    "client.id": 45,
+    "clock.quantum-limit": 8192,
+    "device.icon-name": "audio-speakers",
+    "factory.id": 19,
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "media.name": "RAOP to Receiver One’s MacBook Pro",
+    "net.mtu": 1448,
+    "node.autoconnect": true,
+    "node.description": "Receiver One’s MacBook Pro",
+    "node.latency": "10912/44100",
+    "node.loop.name": "data-loop.0",
+    "node.name": "raop_sink.Receiver-Ones-MacBook-Pro.local.192.0.2.11.7000",
+    "node.network": true,
+    "node.rate": "1/44100",
+    "node.virtual": true,
+    "node.want-driver": true,
+    "object.id": 52,
+    "object.register": false,
+    "object.serial": 52,
+    "port.group": "stream.0",
+    "rtp.channels": 2,
+    "rtp.framecount": 352,
+    "rtp.media": "audio",
+    "rtp.mime": "L16",
+    "rtp.payload": 96,
+    "rtp.ptime": 7.981859,
+    "rtp.rate": 44100,
+    "rtp.sender-ts-offset": 0,
+    "rtp.ssrc": 1001,
+    "sess.latency.msec": 250,
+    "sess.media": "raop",
+    "sess.ts-direct": 0,
+    "stream.is-live": true
+   },
+   "params": {}
+  }
+ },
+ {
+  "id": 55,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "adapt.follower.spa-node": "",
+    "audio.format": "S16LE",
+    "audio.rate": 44100,
+    "client.id": 47,
+    "clock.quantum-limit": 8192,
+    "device.icon-name": "audio-speakers",
+    "factory.id": 19,
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "media.name": "RAOP to Receiver Two’s MacBook Air",
+    "net.mtu": 1448,
+    "node.autoconnect": true,
+    "node.description": "Receiver Two’s MacBook Air",
+    "node.latency": "10912/44100",
+    "node.loop.name": "data-loop.0",
+    "node.name": "raop_sink.Receiver-Twos-MacBook-Air.local.192.0.2.12.7000",
+    "node.network": true,
+    "node.rate": "1/44100",
+    "node.virtual": true,
+    "node.want-driver": true,
+    "object.id": 55,
+    "object.register": false,
+    "object.serial": 55,
+    "port.group": "stream.0",
+    "rtp.channels": 2,
+    "rtp.framecount": 352,
+    "rtp.media": "audio",
+    "rtp.mime": "L16",
+    "rtp.payload": 96,
+    "rtp.ptime": 7.981859,
+    "rtp.rate": 44100,
+    "rtp.sender-ts-offset": 0,
+    "rtp.ssrc": 1002,
+    "sess.latency.msec": 250,
+    "sess.media": "raop",
+    "sess.ts-direct": 0,
+    "stream.is-live": true
+   },
+   "params": {}
+  }
+ },
+ {
+  "id": 71,
+  "type": "PipeWire:Interface:Device",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "change-mask": [
+    "props",
+    "params"
+   ],
+   "props": {
+    "alsa.card": 0,
+    "alsa.card_name": "sof-soundwire",
+    "alsa.components": "HDA:80862820,80860101,00100000  cfg-amp:1 mic:dmic cfg-mics:2 iec61937-pcm:7,6,5 hs:rt713-sdca spk:rt1318",
+    "alsa.driver_name": "snd_soc_sof_sdw",
+    "alsa.id": "sofsoundwire",
+    "alsa.long_card_name": "LENOVO-EXAMPLE-ThinkPad",
+    "alsa.mixer_name": "Intel Lunar Lake HDMI",
+    "api.acp.auto-port": false,
+    "api.acp.auto-profile": false,
+    "api.alsa.card": 0,
+    "api.alsa.card.longname": "LENOVO-EXAMPLE-ThinkPad",
+    "api.alsa.card.name": "sof-soundwire",
+    "api.alsa.path": "hw:0",
+    "api.alsa.split-enable": true,
+    "api.alsa.use-acp": true,
+    "api.dbus.ReserveDevice1": "Audio0",
+    "api.dbus.ReserveDevice1.Priority": -20,
+    "client.id": 42,
+    "device.api": "alsa",
+    "device.bus": "pci",
+    "device.bus-path": "pci-0000:00:1f.3-platform-sof_sdw",
+    "device.description": "Core Ultra 200V Series Processors HD Audio",
+    "device.enum.api": "udev",
+    "device.icon-name": "audio-card-analog-pci",
+    "device.name": "alsa_card.pci-0000_00_1f.3-platform-sof_sdw",
+    "device.nick": "sof-soundwire",
+    "device.plugged.usec": 11272464,
+    "device.product.id": "0xa828",
+    "device.product.name": "Core Ultra 200V Series Processors HD Audio",
+    "device.string": 0,
+    "device.subsystem": "sound",
+    "device.sysfs.path": "/devices/pci0000:00/0000:00:1f.3/sof_sdw/sound/card0",
+    "device.vendor.id": "0x8086",
+    "device.vendor.name": "Intel Corporation",
+    "factory.id": 15,
+    "media.class": "Audio/Device",
+    "object.id": 71,
+    "object.path": "alsa:acp:sofsoundwire",
+    "object.serial": 71,
+    "spa.object.id": 2
+   },
+   "params": {
+    "Profile": [
+     {
+      "index": 1,
+      "name": "HiFi",
+      "description": "Play HiFi quality Music",
+      "priority": 10400,
+      "available": "yes",
+      "classes": [
+       2,
+       [
+        "Audio/Source",
+        2,
+        "card.profile.devices",
+        [
+         5,
+         6
+        ]
+       ],
+       [
+        "Audio/Sink",
+        5,
+        "card.profile.devices",
+        [
+         0,
+         1,
+         2,
+         3,
+         4
+        ]
+       ]
+      ],
+      "save": false
+     }
+    ],
+    "EnumRoute": [
+     {
+      "index": 0,
+      "direction": "Output",
+      "name": "[Out] Speaker",
+      "description": "Speaker",
+      "priority": 100,
+      "available": "unknown",
+      "info": [
+       3,
+       "port.type",
+       "speaker",
+       "device.icon_name",
+       "audio-speakers",
+       "card.profile.port",
+       "0"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "direction": "Output",
+      "name": "[Out] Headphones",
+      "description": "Headphones",
+      "priority": 200,
+      "available": "no",
+      "info": [
+       4,
+       "port.type",
+       "headphones",
+       "port.availability-group",
+       "Headphone",
+       "device.icon_name",
+       "audio-headphones",
+       "card.profile.port",
+       "1"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       1
+      ]
+     },
+     {
+      "index": 2,
+      "direction": "Output",
+      "name": "[Out] HDMI1",
+      "description": "HDMI / DisplayPort 1 Output",
+      "priority": 500,
+      "available": "yes",
+      "info": [
+       8,
+       "port.type",
+       "hdmi",
+       "port.availability-group",
+       "HDMI/DP,pcm=5",
+       "device.icon_name",
+       "video-display",
+       "card.profile.port",
+       "2",
+       "device.product.name",
+       "LG ULTRAWIDE",
+       "iec958.codecs.detected",
+       "[\"PCM\"]",
+       "audio.channels.detected",
+       "2",
+       "audio.position.detected",
+       "[FL,FR]"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       2
+      ]
+     },
+     {
+      "index": 3,
+      "direction": "Output",
+      "name": "[Out] HDMI2",
+      "description": "HDMI / DisplayPort 2 Output",
+      "priority": 600,
+      "available": "no",
+      "info": [
+       4,
+       "port.type",
+       "hdmi",
+       "port.availability-group",
+       "HDMI/DP,pcm=6",
+       "device.icon_name",
+       "video-display",
+       "card.profile.port",
+       "3"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       3
+      ]
+     },
+     {
+      "index": 4,
+      "direction": "Output",
+      "name": "[Out] HDMI3",
+      "description": "HDMI / DisplayPort 3 Output",
+      "priority": 700,
+      "available": "no",
+      "info": [
+       4,
+       "port.type",
+       "hdmi",
+       "port.availability-group",
+       "HDMI/DP,pcm=7",
+       "device.icon_name",
+       "video-display",
+       "card.profile.port",
+       "4"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       4
+      ]
+     },
+     {
+      "index": 5,
+      "direction": "Input",
+      "name": "[In] Mic",
+      "description": "Digital Microphone",
+      "priority": 100,
+      "available": "unknown",
+      "info": [
+       3,
+       "port.type",
+       "mic",
+       "device.icon_name",
+       "audio-input-microphone",
+       "card.profile.port",
+       "5"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       5
+      ]
+     },
+     {
+      "index": 6,
+      "direction": "Input",
+      "name": "[In] Headset",
+      "description": "Headset Microphone",
+      "priority": 200,
+      "available": "no",
+      "info": [
+       4,
+       "port.type",
+       "headset",
+       "port.availability-group",
+       "Headset Mic",
+       "device.icon_name",
+       "audio-headset",
+       "card.profile.port",
+       "6"
+      ],
+      "profiles": [
+       1
+      ],
+      "devices": [
+       6
+      ]
+     }
+    ],
+    "Route": [
+     {
+      "index": 0,
+      "direction": "Output",
+      "name": "[Out] Speaker",
+      "description": "Speaker",
+      "priority": 100,
+      "available": "unknown",
+      "info": [
+       5,
+       "port.type",
+       "speaker",
+       "device.icon_name",
+       "audio-speakers",
+       "card.profile.port",
+       "0",
+       "route.hw-mute",
+       "true",
+       "route.hw-volume",
+       "false"
+      ],
+      "profiles": [
+       1
+      ],
+      "device": 0,
+      "props": {
+       "mute": false,
+       "channelVolumes": [
+        0.010644,
+        0.010644
+       ],
+       "volumeBase": 1.0,
+       "volumeStep": 1.5e-05,
+       "channelMap": [
+        "FL",
+        "FR"
+       ],
+       "softVolumes": [
+        0.010644,
+        0.010644
+       ],
+       "latencyOffsetNsec": 0
+      },
+      "devices": [
+       0
+      ],
+      "profile": 1,
+      "save": true
+     },
+     {
+      "index": 2,
+      "direction": "Output",
+      "name": "[Out] HDMI1",
+      "description": "HDMI / DisplayPort 1 Output",
+      "priority": 500,
+      "available": "yes",
+      "info": [
+       10,
+       "port.type",
+       "hdmi",
+       "port.availability-group",
+       "HDMI/DP,pcm=5",
+       "device.icon_name",
+       "video-display",
+       "card.profile.port",
+       "2",
+       "device.product.name",
+       "LG ULTRAWIDE",
+       "iec958.codecs.detected",
+       "[\"PCM\"]",
+       "audio.channels.detected",
+       "2",
+       "audio.position.detected",
+       "[FL,FR]",
+       "route.hw-mute",
+       "false",
+       "route.hw-volume",
+       "false"
+      ],
+      "profiles": [
+       1
+      ],
+      "device": 2,
+      "props": {
+       "mute": false,
+       "channelVolumes": [
+        0.063997,
+        0.063997
+       ],
+       "volumeBase": 1.0,
+       "volumeStep": 1.5e-05,
+       "channelMap": [
+        "FL",
+        "FR"
+       ],
+       "softVolumes": [
+        0.063997,
+        0.063997
+       ],
+       "latencyOffsetNsec": 0
+      },
+      "devices": [
+       2
+      ],
+      "profile": 1,
+      "save": false
+     },
+     {
+      "index": 5,
+      "direction": "Input",
+      "name": "[In] Mic",
+      "description": "Digital Microphone",
+      "priority": 100,
+      "available": "unknown",
+      "info": [
+       5,
+       "port.type",
+       "mic",
+       "device.icon_name",
+       "audio-input-microphone",
+       "card.profile.port",
+       "5",
+       "route.hw-mute",
+       "true",
+       "route.hw-volume",
+       "true"
+      ],
+      "profiles": [
+       1
+      ],
+      "device": 5,
+      "props": {
+       "mute": false,
+       "channelVolumes": [
+        1.0,
+        1.0
+       ],
+       "volumeBase": 1.0,
+       "volumeStep": 1.5e-05,
+       "channelMap": [
+        "FL",
+        "FR"
+       ],
+       "softVolumes": [
+        1.0,
+        1.0
+       ],
+       "latencyOffsetNsec": 0
+      },
+      "devices": [
+       5
+      ],
+      "profile": 1,
+      "save": false
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": 78,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "alsa.card": 0,
+    "alsa.card_name": "sof-soundwire",
+    "alsa.class": "generic",
+    "alsa.components": "HDA:80862820,80860101,00100000  cfg-amp:1 mic:dmic cfg-mics:2 iec61937-pcm:7,6,5 hs:rt713-sdca spk:rt1318",
+    "alsa.device": 2,
+    "alsa.driver_name": "snd_soc_sof_sdw",
+    "alsa.id": "sofsoundwire",
+    "alsa.long_card_name": "LENOVO-EXAMPLE-ThinkPad",
+    "alsa.mixer_device": "_ucm0001.default:sofsoundwire",
+    "alsa.mixer_name": "Intel Lunar Lake HDMI",
+    "alsa.name": "",
+    "alsa.resolution_bits": 16,
+    "alsa.subclass": "generic-mix",
+    "alsa.subdevice": 0,
+    "alsa.subdevice_name": "subdevice #0",
+    "alsa.sync.id": "00000000:00000000:00000000:00000000",
+    "api.alsa.card.longname": "LENOVO-EXAMPLE-ThinkPad",
+    "api.alsa.card.name": "sof-soundwire",
+    "api.alsa.open.ucm": true,
+    "api.alsa.path": "hw:sofsoundwire,2",
+    "api.alsa.pcm.card": 0,
+    "api.alsa.pcm.stream": "playback",
+    "audio.channels": 2,
+    "audio.position": "[ FL, FR ]",
+    "card.profile.device": 0,
+    "client.id": 42,
+    "clock.quantum-limit": 8192,
+    "device.api": "alsa",
+    "device.bus": "pci",
+    "device.class": "sound",
+    "device.icon-name": "audio-card-analog",
+    "device.icon_name": "audio-speakers",
+    "device.id": 71,
+    "device.profile.description": "Speaker",
+    "device.profile.name": "HiFi: Speaker: sink",
+    "device.routes": 1,
+    "factory.id": 19,
+    "factory.name": "api.alsa.pcm.sink",
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "node.description": "Core Ultra 200V Series Processors HD Audio Speaker",
+    "node.driver": true,
+    "node.loop.name": "data-loop.0",
+    "node.name": "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Speaker__sink",
+    "node.nick": "Speaker",
+    "node.pause-on-idle": false,
+    "object.id": 78,
+    "object.path": "alsa:acp:sofsoundwire:0:playback",
+    "object.serial": 78,
+    "port.group": "playback",
+    "priority.driver": 712,
+    "priority.session": 712
+   },
+   "params": {}
+  }
+ },
+ {
+  "id": 79,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "alsa.card": 0,
+    "alsa.card_name": "sof-soundwire",
+    "alsa.class": "generic",
+    "alsa.components": "HDA:80862820,80860101,00100000  cfg-amp:1 mic:dmic cfg-mics:2 iec61937-pcm:7,6,5 hs:rt713-sdca spk:rt1318",
+    "alsa.device": 0,
+    "alsa.driver_name": "snd_soc_sof_sdw",
+    "alsa.id": "sofsoundwire",
+    "alsa.long_card_name": "LENOVO-EXAMPLE-ThinkPad",
+    "alsa.mixer_device": "_ucm0001.hw:sofsoundwire",
+    "alsa.mixer_name": "Intel Lunar Lake HDMI",
+    "alsa.name": "",
+    "alsa.resolution_bits": 16,
+    "alsa.subclass": "generic-mix",
+    "alsa.subdevice": 0,
+    "alsa.subdevice_name": "subdevice #0",
+    "alsa.sync.id": "00000000:00000000:00000000:00000000",
+    "api.alsa.card.longname": "LENOVO-EXAMPLE-ThinkPad",
+    "api.alsa.card.name": "sof-soundwire",
+    "api.alsa.open.ucm": true,
+    "api.alsa.path": "hw:sofsoundwire",
+    "api.alsa.pcm.card": 0,
+    "api.alsa.pcm.stream": "playback",
+    "audio.channels": 2,
+    "audio.position": "[ FL, FR ]",
+    "card.profile.device": 1,
+    "client.id": 42,
+    "clock.quantum-limit": 8192,
+    "device.api": "alsa",
+    "device.bus": "pci",
+    "device.class": "sound",
+    "device.icon-name": "audio-card-analog",
+    "device.icon_name": "audio-headphones",
+    "device.id": 71,
+    "device.profile.description": "Headphones",
+    "device.profile.name": "HiFi: Headphones: sink",
+    "device.routes": 1,
+    "factory.id": 19,
+    "factory.name": "api.alsa.pcm.sink",
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "node.description": "Core Ultra 200V Series Processors HD Audio Headphones",
+    "node.driver": true,
+    "node.loop.name": "data-loop.0",
+    "node.name": "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Headphones__sink",
+    "node.nick": "Headphones",
+    "node.pause-on-idle": false,
+    "object.id": 79,
+    "object.path": "alsa:acp:sofsoundwire:1:playback",
+    "object.serial": 79,
+    "port.group": "playback",
+    "priority.driver": 1000,
+    "priority.session": 1000
+   },
+   "params": {}
+  }
+ },
+ {
+  "id": 80,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "alsa.card": 0,
+    "alsa.card_name": "sof-soundwire",
+    "alsa.class": "generic",
+    "alsa.components": "HDA:80862820,80860101,00100000  cfg-amp:1 mic:dmic cfg-mics:2 iec61937-pcm:7,6,5 hs:rt713-sdca spk:rt1318",
+    "alsa.device": 5,
+    "alsa.driver_name": "snd_soc_sof_sdw",
+    "alsa.id": "sofsoundwire",
+    "alsa.long_card_name": "LENOVO-EXAMPLE-ThinkPad",
+    "alsa.mixer_device": "_ucm0001.hw:sofsoundwire",
+    "alsa.mixer_name": "Intel Lunar Lake HDMI",
+    "alsa.name": "LG ULTRAWIDE",
+    "alsa.resolution_bits": 16,
+    "alsa.subclass": "generic-mix",
+    "alsa.subdevice": 0,
+    "alsa.subdevice_name": "subdevice #0",
+    "alsa.sync.id": "00000000:00000000:00000000:00000000",
+    "api.alsa.card.longname": "LENOVO-EXAMPLE-ThinkPad",
+    "api.alsa.card.name": "sof-soundwire",
+    "api.alsa.open.ucm": true,
+    "api.alsa.path": "hw:sofsoundwire,5",
+    "api.alsa.pcm.card": 0,
+    "api.alsa.pcm.stream": "playback",
+    "audio.channels": 2,
+    "audio.position": "[ FL, FR ]",
+    "card.profile.device": 2,
+    "client.id": 42,
+    "clock.quantum-limit": 8192,
+    "device.api": "alsa",
+    "device.bus": "pci",
+    "device.class": "sound",
+    "device.icon-name": "audio-card-analog",
+    "device.icon_name": "video-display",
+    "device.id": 71,
+    "device.profile.description": "HDMI / DisplayPort 1 Output",
+    "device.profile.name": "HiFi: HDMI1: sink",
+    "device.routes": 1,
+    "factory.id": 19,
+    "factory.name": "api.alsa.pcm.sink",
+    "iec958.codecs": "[\"PCM\"]",
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "node.description": "Core Ultra 200V Series Processors HD Audio HDMI / DisplayPort 1 Output",
+    "node.driver": true,
+    "node.loop.name": "data-loop.0",
+    "node.name": "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__HDMI1__sink",
+    "node.nick": "LG ULTRAWIDE",
+    "node.pause-on-idle": false,
+    "object.id": 80,
+    "object.path": "alsa:acp:sofsoundwire:2:playback",
+    "object.serial": 80,
+    "port.group": "playback",
+    "priority.driver": 664,
+    "priority.session": 664
+   },
+   "params": {}
+  }
+ },
+ {
+  "id": 81,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "alsa.card": 0,
+    "alsa.card_name": "sof-soundwire",
+    "alsa.class": "generic",
+    "alsa.components": "HDA:80862820,80860101,00100000  cfg-amp:1 mic:dmic cfg-mics:2 iec61937-pcm:7,6,5 hs:rt713-sdca spk:rt1318",
+    "alsa.device": 6,
+    "alsa.driver_name": "snd_soc_sof_sdw",
+    "alsa.id": "sofsoundwire",
+    "alsa.long_card_name": "LENOVO-EXAMPLE-ThinkPad",
+    "alsa.mixer_device": "_ucm0001.hw:sofsoundwire",
+    "alsa.mixer_name": "Intel Lunar Lake HDMI",
+    "alsa.name": "HDMI 2",
+    "alsa.resolution_bits": 16,
+    "alsa.subclass": "generic-mix",
+    "alsa.subdevice": 0,
+    "alsa.subdevice_name": "subdevice #0",
+    "alsa.sync.id": "00000000:00000000:00000000:00000000",
+    "api.alsa.card.longname": "LENOVO-EXAMPLE-ThinkPad",
+    "api.alsa.card.name": "sof-soundwire",
+    "api.alsa.open.ucm": true,
+    "api.alsa.path": "hw:sofsoundwire,6",
+    "api.alsa.pcm.card": 0,
+    "api.alsa.pcm.stream": "playback",
+    "audio.channels": 2,
+    "audio.position": "[ FL, FR ]",
+    "card.profile.device": 3,
+    "client.id": 42,
+    "clock.quantum-limit": 8192,
+    "device.api": "alsa",
+    "device.bus": "pci",
+    "device.class": "sound",
+    "device.icon-name": "audio-card-analog",
+    "device.icon_name": "video-display",
+    "device.id": 71,
+    "device.profile.description": "HDMI / DisplayPort 2 Output",
+    "device.profile.name": "HiFi: HDMI2: sink",
+    "device.routes": 1,
+    "factory.id": 19,
+    "factory.name": "api.alsa.pcm.sink",
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "node.description": "Core Ultra 200V Series Processors HD Audio HDMI / DisplayPort 2 Output",
+    "node.driver": true,
+    "node.loop.name": "data-loop.0",
+    "node.name": "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__HDMI2__sink",
+    "node.nick": "HDMI 2",
+    "node.pause-on-idle": false,
+    "object.id": 81,
+    "object.path": "alsa:acp:sofsoundwire:3:playback",
+    "object.serial": 81,
+    "port.group": "playback",
+    "priority.driver": 648,
+    "priority.session": 648
+   },
+   "params": {}
+  }
+ },
+ {
+  "id": 82,
+  "type": "PipeWire:Interface:Node",
+  "version": 3,
+  "permissions": [
+   "r",
+   "w",
+   "x",
+   "m"
+  ],
+  "info": {
+   "max-input-ports": 129,
+   "max-output-ports": 0,
+   "change-mask": [
+    "input-ports",
+    "output-ports",
+    "state",
+    "props",
+    "params"
+   ],
+   "n-input-ports": 2,
+   "n-output-ports": 2,
+   "state": "suspended",
+   "error": null,
+   "props": {
+    "alsa.card": 0,
+    "alsa.card_name": "sof-soundwire",
+    "alsa.class": "generic",
+    "alsa.components": "HDA:80862820,80860101,00100000  cfg-amp:1 mic:dmic cfg-mics:2 iec61937-pcm:7,6,5 hs:rt713-sdca spk:rt1318",
+    "alsa.device": 7,
+    "alsa.driver_name": "snd_soc_sof_sdw",
+    "alsa.id": "sofsoundwire",
+    "alsa.long_card_name": "LENOVO-EXAMPLE-ThinkPad",
+    "alsa.mixer_device": "_ucm0001.hw:sofsoundwire",
+    "alsa.mixer_name": "Intel Lunar Lake HDMI",
+    "alsa.name": "HDMI 3",
+    "alsa.resolution_bits": 16,
+    "alsa.subclass": "generic-mix",
+    "alsa.subdevice": 0,
+    "alsa.subdevice_name": "subdevice #0",
+    "alsa.sync.id": "00000000:00000000:00000000:00000000",
+    "api.alsa.card.longname": "LENOVO-EXAMPLE-ThinkPad",
+    "api.alsa.card.name": "sof-soundwire",
+    "api.alsa.open.ucm": true,
+    "api.alsa.path": "hw:sofsoundwire,7",
+    "api.alsa.pcm.card": 0,
+    "api.alsa.pcm.stream": "playback",
+    "audio.channels": 2,
+    "audio.position": "[ FL, FR ]",
+    "card.profile.device": 4,
+    "client.id": 42,
+    "clock.quantum-limit": 8192,
+    "device.api": "alsa",
+    "device.bus": "pci",
+    "device.class": "sound",
+    "device.icon-name": "audio-card-analog",
+    "device.icon_name": "video-display",
+    "device.id": 71,
+    "device.profile.description": "HDMI / DisplayPort 3 Output",
+    "device.profile.name": "HiFi: HDMI3: sink",
+    "device.routes": 1,
+    "factory.id": 19,
+    "factory.name": "api.alsa.pcm.sink",
+    "library.name": "audioconvert/libspa-audioconvert",
+    "media.class": "Audio/Sink",
+    "node.description": "Core Ultra 200V Series Processors HD Audio HDMI / DisplayPort 3 Output",
+    "node.driver": true,
+    "node.loop.name": "data-loop.0",
+    "node.name": "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__HDMI3__sink",
+    "node.nick": "HDMI 3",
+    "node.pause-on-idle": false,
+    "object.id": 82,
+    "object.path": "alsa:acp:sofsoundwire:4:playback",
+    "object.serial": 82,
+    "port.group": "playback",
+    "priority.driver": 632,
+    "priority.session": 632
+   },
+   "params": {}
+  }
+ }
+]

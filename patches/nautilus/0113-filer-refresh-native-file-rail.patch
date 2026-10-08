@@ -1,0 +1,55 @@
+From 42c4ca86f2938a86f2a497b365744bcb25dd086b Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 00:48:38 +0000
+Subject: [PATCH] Refresh native file rail when places change
+
+---
+ src/nautilus-sidebar.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index b35e7d1..d8d6996 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -764,6 +764,22 @@ add_fixture_places (NautilusSidebar *sidebar,
+     }
+ }
+ 
++static void
++refresh_luma_file_rail (NautilusSidebar *sidebar)
++{
++    /* Mount and bookmark updates replace Nautilus's live row children. The
++     * shared adapter keeps their actions and DnD, but needs to arrange the
++     * newly-created rows again after each rebuild. During construction the
++     * sidebar has not yet been placed in its split view. */
++    GtkWidget *split = gtk_widget_get_ancestor (GTK_WIDGET (sidebar),
++                                                 ADW_TYPE_OVERLAY_SPLIT_VIEW);
++    if (split != NULL)
++    {
++        luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (split),
++                                            GTK_WIDGET (sidebar), "rail");
++    }
++}
++
+ static void
+ update_places (NautilusSidebar *sidebar)
+ {
+@@ -836,6 +852,7 @@ update_places (NautilusSidebar *sidebar)
+             nautilus_sidebar_set_location (sidebar, restore);
+             g_free (original_uri);
+         }
++        refresh_luma_file_rail (sidebar);
+         return;
+     }
+ 
+@@ -1332,6 +1349,7 @@ update_places (NautilusSidebar *sidebar)
+         g_object_unref (restore);
+         g_free (original_uri);
+     }
++    refresh_luma_file_rail (sidebar);
+ }
+ 
+ void
+-- 
+2.55.0
+

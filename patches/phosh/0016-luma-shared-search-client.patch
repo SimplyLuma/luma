@@ -1,0 +1,373 @@
+diff -ruN a/src/app-grid.c b/src/app-grid.c
+--- a/src/app-grid.c	2026-09-01 11:23:49
++++ b/src/app-grid.c	2026-09-01 17:54:21
+@@ -55,6 +55,8 @@
+   GtkWidget *dock_revealer;
+   GtkWidget *search_revealer;
+   GtkWidget *search_intro;
++  GtkWidget *search_results;
++  GtkWidget *search_empty;
+   GtkGesture *search_swipe;
+   GtkGesture *search_background_tap;
+   GtkWidget *scrolled_window;
+@@ -81,7 +83,9 @@
+   GSimpleActionGroup *actions;
+   PhoshAppFilterModeFlags filter_mode;
+   guint debounce;
++  guint search_generation;
+   gboolean search_mode;
++  GDBusProxy *search_proxy;
+ };
+ 
+ G_DEFINE_TYPE_WITH_PRIVATE (PhoshAppGrid, phosh_app_grid, GTK_TYPE_BOX)
+@@ -494,6 +498,15 @@
+   priv->settings = g_settings_new ("sm.puri.phosh");
+   priv->luma_settings = g_settings_new ("org.project_luma.shell-state");
+   priv->home_model = g_list_store_new (G_TYPE_APP_INFO);
++  priv->search_proxy = g_dbus_proxy_new_for_bus_sync (
++    G_BUS_TYPE_SESSION,
++    G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START_AT_CONSTRUCTION,
++    NULL,
++    "org.projectluma.Search",
++    "/org/projectluma/Search",
++    "org.projectluma.Search1",
++    NULL,
++    NULL);
+   rebuild_home_model (self);
+ 
+   gtk_flow_box_bind_model (GTK_FLOW_BOX (priv->favs),
+@@ -555,6 +568,7 @@
+   g_clear_object (&priv->open_folder);
+   g_clear_object (&priv->actions);
+   g_clear_object (&priv->model);
++  g_clear_object (&priv->search_proxy);
+   g_clear_object (&priv->home_model);
+   g_clear_object (&priv->settings);
+   g_clear_object (&priv->luma_settings);
+@@ -594,6 +608,178 @@
+ 
+ 
+ static void
++clear_search_results (PhoshAppGrid *self)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  GList *children = gtk_container_get_children (GTK_CONTAINER (priv->search_results));
++
++  for (GList *child = children; child; child = child->next)
++    gtk_widget_destroy (GTK_WIDGET (child->data));
++  g_list_free (children);
++}
++
++
++static const char *
++search_kind_label (const char *kind)
++{
++  if (g_strcmp0 (kind, "app") == 0) return _("App");
++  if (g_strcmp0 (kind, "setting") == 0) return _("Setting");
++  if (g_strcmp0 (kind, "file") == 0) return _("File");
++  if (g_strcmp0 (kind, "mail") == 0) return _("Mail");
++  if (g_strcmp0 (kind, "contact") == 0) return _("Contact");
++  if (g_strcmp0 (kind, "calendar") == 0) return _("Calendar");
++  if (g_strcmp0 (kind, "message") == 0) return _("Message");
++  if (g_strcmp0 (kind, "photo") == 0) return _("Photo");
++  if (g_strcmp0 (kind, "music") == 0) return _("Music");
++  if (g_strcmp0 (kind, "place") == 0) return _("Place");
++  return _("Result");
++}
++
++
++static void
++activate_search_result (GtkButton *button, PhoshAppGrid *self)
++{
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
++  const char *provider_id = g_object_get_data (G_OBJECT (button), "luma-provider-id");
++  const char *result_id = g_object_get_data (G_OBJECT (button), "luma-result-id");
++  const char *query = gtk_entry_get_text (GTK_ENTRY (priv->search));
++  g_auto (GStrv) terms = g_strsplit (query, " ", -1);
++
++  if (!provider_id || !result_id || !priv->search_proxy)
++    return;
++
++  g_dbus_proxy_call (priv->search_proxy,
++                     "Activate",
++                     g_variant_new ("(ss^asu)", provider_id, result_id, terms,
++                                    gtk_get_current_event_time ()),
++                     G_DBUS_CALL_FLAGS_NONE,
++                     1000,
++                     NULL,
++                     NULL,
++                     NULL);
++  phosh_app_grid_reset (self);
++}
++
++
++typedef struct {
++  PhoshAppGrid *self;
++  guint generation;
++} SearchRequest;
++
++
++static void
++search_request_free (SearchRequest *request)
++{
++  g_object_unref (request->self);
++  g_free (request);
++}
++
++
++static void
++search_query_finished (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) reply = NULL;
++  g_autoptr (GVariant) results = NULL;
++  SearchRequest *request = user_data;
++  PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (request->self);
++  GVariantIter iter;
++  GVariant *item;
++  guint count = 0;
++
++  reply = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), result, &error);
++  if (request->generation != priv->search_generation)
++    goto out;
++
++  clear_search_results (request->self);
++  if (!reply) {
++    g_warning ("Unable to query Luma Search: %s", error->message);
++    gtk_widget_set_visible (priv->search_empty, TRUE);
++    goto out;
++  }
++
++  results = g_variant_get_child_value (reply, 0);
++  g_variant_iter_init (&iter, results);
++  while (g_variant_iter_next (&iter, "@a{sv}", &item)) {
++    const char *provider_id = NULL;
++    const char *result_id = NULL;
++    const char *kind = NULL;
++    const char *title = NULL;
++    const char *subtitle = NULL;
++    const char *snippet = NULL;
++    const char *icon_name = NULL;
++    g_autofree char *detail = NULL;
++    GtkWidget *button, *row, *labels, *label, *icon;
++
++    g_variant_lookup (item, "provider-id", "&s", &provider_id);
++    g_variant_lookup (item, "result-id", "&s", &result_id);
++    g_variant_lookup (item, "kind", "&s", &kind);
++    g_variant_lookup (item, "title", "&s", &title);
++    g_variant_lookup (item, "subtitle", "&s", &subtitle);
++    g_variant_lookup (item, "snippet", "&s", &snippet);
++    g_variant_lookup (item, "icon-name", "&s", &icon_name);
++    if (!provider_id || !result_id || !title) {
++      g_variant_unref (item);
++      continue;
++    }
++
++    button = gtk_button_new ();
++    gtk_widget_set_visible (button, TRUE);
++    gtk_style_context_add_class (gtk_widget_get_style_context (button),
++                                 "luma-search-result");
++    gtk_widget_set_tooltip_text (button, title);
++    atk_object_set_name (gtk_widget_get_accessible (button), title);
++    g_object_set_data_full (G_OBJECT (button), "luma-provider-id",
++                            g_strdup (provider_id), g_free);
++    g_object_set_data_full (G_OBJECT (button), "luma-result-id",
++                            g_strdup (result_id), g_free);
++    g_signal_connect (button, "clicked", G_CALLBACK (activate_search_result), request->self);
++
++    row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
++    gtk_widget_set_visible (row, TRUE);
++    gtk_container_set_border_width (GTK_CONTAINER (row), 10);
++    icon = gtk_image_new_from_icon_name (
++      icon_name && *icon_name ? icon_name : "edit-find-symbolic",
++      GTK_ICON_SIZE_DIALOG);
++    gtk_widget_set_visible (icon, TRUE);
++    gtk_box_pack_start (GTK_BOX (row), icon, FALSE, FALSE, 0);
++
++    labels = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
++    gtk_widget_set_visible (labels, TRUE);
++    label = gtk_label_new (title);
++    gtk_widget_set_visible (label, TRUE);
++    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
++    gtk_style_context_add_class (gtk_widget_get_style_context (label),
++                                 "luma-search-result-title");
++    gtk_box_pack_start (GTK_BOX (labels), label, FALSE, FALSE, 0);
++    if (snippet && *snippet)
++      detail = g_strdup_printf ("%s · %s · %s", search_kind_label (kind),
++                                subtitle ? subtitle : "", snippet);
++    else if (subtitle && *subtitle)
++      detail = g_strdup_printf ("%s · %s", search_kind_label (kind), subtitle);
++    else
++      detail = g_strdup (search_kind_label (kind));
++    label = gtk_label_new (detail);
++    gtk_widget_set_visible (label, TRUE);
++    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
++    gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
++    gtk_style_context_add_class (gtk_widget_get_style_context (label),
++                                 "luma-search-result-subtitle");
++    gtk_box_pack_start (GTK_BOX (labels), label, FALSE, FALSE, 0);
++    gtk_box_pack_start (GTK_BOX (row), labels, TRUE, TRUE, 0);
++    gtk_container_add (GTK_CONTAINER (button), row);
++    gtk_list_box_insert (GTK_LIST_BOX (priv->search_results), button, -1);
++    count++;
++    g_variant_unref (item);
++  }
++  gtk_widget_set_visible (priv->search_empty, count == 0);
++
++out:
++  search_request_free (request);
++}
++
++
++static void
+ do_search (gpointer data)
+ {
+   PhoshAppGrid *self = data;
+@@ -608,10 +794,28 @@
+   }
+ 
+   phosh_util_toggle_style_class (GTK_WIDGET (self), ACTIVE_SEARCH_CLASS, priv->search_mode);
+-  phosh_util_toggle_style_class (GTK_WIDGET (priv->apps), ACTIVE_SEARCH_CLASS, search_active);
++  gtk_widget_set_visible (priv->apps, FALSE);
++  gtk_widget_set_visible (priv->search_results, search_active);
+   toggle_favorites_revealer (self);
+-  gtk_filter_list_model_refilter (priv->model);
+ 
++  priv->search_generation++;
++  clear_search_results (self);
++  gtk_widget_set_visible (priv->search_empty, FALSE);
++  if (search_active && priv->search_proxy) {
++    SearchRequest *request = g_new0 (SearchRequest, 1);
++    request->self = g_object_ref (self);
++    request->generation = priv->search_generation;
++    g_dbus_proxy_call (priv->search_proxy,
++                       "Query",
++                       g_variant_new ("(suu)", gtk_entry_get_text (GTK_ENTRY (priv->search)),
++                                      priv->search_generation, 40),
++                       G_DBUS_CALL_FLAGS_NONE,
++                       2500,
++                       NULL,
++                       search_query_finished,
++                       request);
++  }
++
+   priv->debounce = 0;
+ }
+ 
+@@ -698,7 +902,7 @@
+                      PhoshAppGrid   *self)
+ {
+   PhoshAppGridPrivate *priv = phosh_app_grid_get_instance_private (self);
+-  GtkFlowBoxChild *child;
++  GtkListBoxRow *child;
+ 
+   if (!gtk_widget_has_focus (GTK_WIDGET (entry)))
+     return;
+@@ -707,18 +911,13 @@
+   if (!priv->search_string || *priv->search_string == '\0')
+     return;
+ 
+-  child = gtk_flow_box_get_child_at_index (GTK_FLOW_BOX (priv->apps), 0);
++  child = gtk_list_box_get_row_at_index (GTK_LIST_BOX (priv->search_results), 0);
+ 
+   /* No results */
+   if (child == NULL)
+     return;
+ 
+-  if (G_LIKELY (PHOSH_IS_APP_GRID_BUTTON (child))) {
+-    gtk_widget_activate (GTK_WIDGET (child));
+-  } else {
+-    g_critical ("Unexpected child type, %s",
+-                g_type_name (G_TYPE_FROM_INSTANCE (child)));
+-  }
++  gtk_widget_activate (gtk_bin_get_child (GTK_BIN (child)));
+ }
+ 
+ 
+@@ -872,6 +1071,8 @@
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, dock_revealer);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_revealer);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_intro);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_results);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_empty);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_swipe);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, search_background_tap);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshAppGrid, folder_apps);
+diff -ruN a/src/stylesheet/common.css b/src/stylesheet/common.css
+--- a/src/stylesheet/common.css	2026-09-01 16:26:11
++++ b/src/stylesheet/common.css	2026-09-01 17:39:41
+@@ -546,6 +546,28 @@
+   color: alpha(@phosh_fg_color, .66);
+ }
+ 
++.luma-search-results {
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 15px;
++  background: rgba(42, 46, 52, 0.96);
++}
++
++.luma-search-result {
++  min-height: 58px;
++  padding: 0;
++  border: 0;
++  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
++  border-radius: 0;
++  background: transparent;
++  box-shadow: none;
++}
++
++.luma-search-result:active,
++.luma-search-result:focus { background: rgba(255, 255, 255, 0.12); }
++.luma-search-result-title { color: @phosh_fg_color; font-size: 15px; font-weight: 650; }
++.luma-search-result-subtitle,
++.luma-search-empty { color: alpha(@phosh_fg_color, .66); font-size: 13px; }
++
+ .luma-search-suggestions {
+   margin-top: 3px;
+ }
+diff -ruN a/src/ui/app-grid.ui b/src/ui/app-grid.ui
+--- a/src/ui/app-grid.ui	2026-09-01 11:23:49
++++ b/src/ui/app-grid.ui	2026-09-01 17:39:26
+@@ -49,7 +49,7 @@
+                             <property name="halign">start</property>
+                             <property name="valign">center</property>
+                             <property name="margin-start">52</property>
+-                            <property name="label">Search Prairie</property>
++                            <property name="label">Search this machine</property>
+                             <style><class name="luma-search-placeholder"/></style>
+                           </object>
+                           <packing><property name="pass-through">1</property></packing>
+@@ -89,7 +89,7 @@
+                             <child>
+                               <object class="GtkLabel">
+                                 <property name="visible">1</property>
+-                                <property name="label">Everything on this machine, in one place</property>
++                                <property name="label">Everything on this machine, in one place.</property>
+                                 <property name="wrap">1</property>
+                                 <property name="justify">center</property>
+                                 <style><class name="luma-search-title"/></style>
+@@ -174,6 +174,24 @@
+                             <style><class name="luma-search-intro"/></style>
+                           </object>
+                         </child>
++                      </object>
++                    </child>
++                    <child>
++                      <object class="GtkListBox" id="search_results">
++                        <property name="visible">0</property>
++                        <property name="selection-mode">none</property>
++                        <property name="margin-start">18</property>
++                        <property name="margin-end">18</property>
++                        <property name="margin-bottom">16</property>
++                        <style><class name="luma-search-results"/></style>
++                      </object>
++                    </child>
++                    <child>
++                      <object class="GtkLabel" id="search_empty">
++                        <property name="visible">0</property>
++                        <property name="label" translatable="yes">No results</property>
++                        <property name="margin-top">28</property>
++                        <style><class name="luma-search-empty"/></style>
+                       </object>
+                     </child>
+                     <child>

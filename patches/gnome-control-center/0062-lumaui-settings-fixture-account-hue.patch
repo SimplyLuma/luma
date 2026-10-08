@@ -1,0 +1,13 @@
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index 6a23cb1..3244155 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -325,6 +325,8 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+                        cc_luma_fixture_is_live (model) ? g_get_real_name () : "Nick";
+     if (!real || !*real || g_str_equal (real, "Unknown")) real = g_get_user_name ();
+     f->account = luma_account_card_new (real, "Luma account");
++    if (!cc_luma_fixture_is_live (model))
++      luma_account_card_set_hue (LUMA_ACCOUNT_CARD (f->account), 250);
+     luma_account_card_set_compact (LUMA_ACCOUNT_CARD (f->account), TRUE);
+     /* v71 phone (Settings audit, 1 Oct): the card is a plain inset card, the kit's recessed well
+      * (#w-settings.phone .cfme { background: var(--well); padding: 10px 12px; border-radius: 16px }). */

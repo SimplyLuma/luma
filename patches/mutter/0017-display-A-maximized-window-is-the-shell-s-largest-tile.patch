@@ -1,0 +1,241 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 15:00:00 -0500
+Subject: [PATCH] display: A maximized window is the shell's largest tile
+
+Dragging a window into the full-screen tile leaves the gap every tile
+keeps: from the Dash's islands, and from the screen on the edges the Dash
+does not hold. Maximizing the same window went edge to edge, so the two
+ways of asking for "as big as it goes" gave two different windows, and the
+maximized one looked like a different kind of window rather than the
+largest tile.
+
+The shell now says how much a maximized window keeps from each edge of
+each monitor (meta_display_set_maximize_inset), and the maximization
+constraint takes it off the target. The shell sets it from the same
+per-edge gap it gives tiles, so the two are equal by construction rather
+than by two places agreeing. Every way in gets it -- the button, the
+keyboard, a double-click on the title bar, dragging to the top, and a
+window that maximizes itself -- because it is the rectangle Mutter
+maximizes to, not something done to the window afterwards; unmaximizing is
+untouched and puts the window back where it was; and a maximized window
+re-fits when the work area changes, as it already did.
+
+Fullscreen is not affected. A fullscreen window takes the whole monitor
+and does not go through the maximization constraint, and the inset is
+applied only to a window maximized in both directions.
+
+---
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -1392,6 +1392,27 @@
+                                                 active_workspace_struts);
+    }
+ 
++  /* Luma: a maximized window is the shell's largest tile, so it keeps the
++   * same gap from each edge that a tile does. Only a window maximized in
++   * both directions, and never a fullscreen one, which does not reach here.
++   */
++  if (meta_window_is_maximized (window) && !meta_window_is_fullscreen (window))
++    {
++      int monitor = meta_window_get_monitor (window);
++      int top = meta_display_get_maximize_inset (window->display, monitor, META_SIDE_TOP);
++      int bottom = meta_display_get_maximize_inset (window->display, monitor, META_SIDE_BOTTOM);
++      int left = meta_display_get_maximize_inset (window->display, monitor, META_SIDE_LEFT);
++      int right = meta_display_get_maximize_inset (window->display, monitor, META_SIDE_RIGHT);
++
++      if (top || bottom || left || right)
++        {
++          target_size.x += left;
++          target_size.y += top;
++          target_size.width = MAX (target_size.width - left - right, 1);
++          target_size.height = MAX (target_size.height - top - bottom, 1);
++        }
++    }
++
+   /* Check min size constraints; max size constraints are ignored for maximized
+    * windows, as per bug 327543.
+    */
+diff --git a/src/core/display.c b/src/core/display.c
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -1090,6 +1090,7 @@
+   g_clear_object (&display->startup_notification);
+   g_clear_object (&display->workspace_manager);
+   g_clear_pointer (&display->edge_reservations, g_array_unref);
++  g_clear_pointer (&display->maximize_insets, g_array_unref);
+   g_clear_object (&display->sound_player);
+ 
+   meta_clipboard_manager_shutdown (display);
+@@ -2339,6 +2340,13 @@
+   int depth;
+ } MetaEdgeReservation;
+ 
++typedef struct
++{
++  int monitor;
++  MetaSide side;
++  int inset;
++} MetaMaximizeInset;
++
+ static void
+ invalidate_all_work_areas (MetaDisplay *display)
+ {
+@@ -2402,6 +2410,113 @@
+   invalidate_all_work_areas (display);
+ }
+ 
++static void
++requeue_maximized_windows (MetaDisplay *display)
++{
++  g_autoptr (GList) windows = meta_display_list_all_windows (display);
++  GList *l;
++
++  for (l = windows; l; l = l->next)
++    {
++      MetaWindow *window = l->data;
++
++      if (meta_window_config_is_any_maximized (window->config))
++        meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
++    }
++}
++
++/**
++ * meta_display_set_maximize_inset:
++ * @display: a #MetaDisplay
++ * @monitor: the logical monitor index
++ * @side: the monitor edge
++ * @inset: logical pixels a maximized window keeps from that edge, 0 for none
++ *
++ * A maximized window fills its work area. Where the shell draws tiled
++ * windows with a gap, maximizing without one looks like a different kind of
++ * window rather than the largest tile, so the shell says here how much a
++ * maximized window keeps from each edge, and maximizing lands exactly where
++ * the full-screen tile would. Fullscreen windows are not affected: they take
++ * the whole monitor, as they must.
++ */
++void
++meta_display_set_maximize_inset (MetaDisplay *display,
++                                 int          monitor,
++                                 MetaSide     side,
++                                 int          inset)
++{
++  guint i;
++
++  g_return_if_fail (META_IS_DISPLAY (display));
++  g_return_if_fail (side == META_SIDE_LEFT || side == META_SIDE_RIGHT ||
++                    side == META_SIDE_TOP || side == META_SIDE_BOTTOM);
++
++  inset = CLAMP (inset, 0, 200);
++  if (!display->maximize_insets)
++    display->maximize_insets = g_array_new (FALSE, FALSE, sizeof (MetaMaximizeInset));
++
++  for (i = 0; i < display->maximize_insets->len; i++)
++    {
++      MetaMaximizeInset *m = &g_array_index (display->maximize_insets,
++                                             MetaMaximizeInset, i);
++
++      if (m->monitor != monitor || m->side != side)
++        continue;
++      if (m->inset == inset)
++        return;
++      if (inset == 0)
++        g_array_remove_index (display->maximize_insets, i);
++      else
++        m->inset = inset;
++      requeue_maximized_windows (display);
++      return;
++    }
++
++  if (inset == 0)
++    return;
++  g_array_append_val (display->maximize_insets,
++                      ((MetaMaximizeInset) { monitor, side, inset }));
++  requeue_maximized_windows (display);
++}
++
++/**
++ * meta_display_clear_maximize_insets:
++ * @display: a #MetaDisplay
++ *
++ * Removes every inset set with meta_display_set_maximize_inset().
++ */
++void
++meta_display_clear_maximize_insets (MetaDisplay *display)
++{
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  if (!display->maximize_insets || display->maximize_insets->len == 0)
++    return;
++  g_array_set_size (display->maximize_insets, 0);
++  requeue_maximized_windows (display);
++}
++
++int
++meta_display_get_maximize_inset (MetaDisplay *display,
++                                 int          monitor,
++                                 MetaSide     side)
++{
++  guint i;
++
++  if (!display || !display->maximize_insets)
++    return 0;
++
++  for (i = 0; i < display->maximize_insets->len; i++)
++    {
++      MetaMaximizeInset *m = &g_array_index (display->maximize_insets,
++                                             MetaMaximizeInset, i);
++
++      if (m->monitor == monitor && m->side == side)
++        return m->inset;
++    }
++  return 0;
++}
++
+ /**
+  * meta_display_clear_monitor_edge_reservations:
+  * @display: a #MetaDisplay
+diff --git a/src/core/display-private.h b/src/core/display-private.h
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -78,6 +78,10 @@
+    * edge shared with another monitor, where struts are dropped. */
+   GArray *edge_reservations;
+ 
++  /* What a maximized window keeps from each monitor edge, so maximizing
++   * lands a window exactly where the shell's full-screen tile would. */
++  GArray *maximize_insets;
++
+   MetaX11Display *x11_display;
+ 
+   int clutter_event_filter;
+@@ -337,6 +341,10 @@
+ void meta_display_handle_sticky_mouse_focus_event (MetaDisplay        *display,
+                                                    const ClutterEvent *event);
+ 
++int  meta_display_get_maximize_inset (MetaDisplay *display,
++                                      int          monitor,
++                                      MetaSide     side);
++
+ void meta_display_apply_monitor_edge_reservations (MetaDisplay        *display,
+                                                    int                 monitor_number,
+                                                    const MtkRectangle *monitor,
+diff --git a/src/meta/display.h b/src/meta/display.h
+--- a/src/meta/display.h
++++ b/src/meta/display.h
+@@ -201,6 +201,15 @@
+ void meta_display_clear_monitor_edge_reservations (MetaDisplay *display);
+ 
+ META_EXPORT
++void meta_display_set_maximize_inset (MetaDisplay *display,
++                                      int          monitor,
++                                      MetaSide     side,
++                                      int          inset);
++
++META_EXPORT
++void meta_display_clear_maximize_insets (MetaDisplay *display);
++
++META_EXPORT
+ void meta_display_get_size (MetaDisplay *display,
+                             int         *width,
+                             int         *height);

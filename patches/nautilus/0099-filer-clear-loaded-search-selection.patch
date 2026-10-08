@@ -1,0 +1,40 @@
+From 9072c16d176f16de23216c7b87fbf9f90fab49b7 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:11:43 +0000
+Subject: [PATCH] Filer: clear fixture search selection after results arrive
+
+---
+ src/nautilus-window.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 2d5c544..73a9342 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -61,6 +61,7 @@
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-history-controls.h"
+ #include "nautilus-image.h"
++#include "nautilus-list-base.h"
+ #include "nautilus-metadata.h"
+ #include "nautilus-network-address-bar.h"
+ #include "nautilus-mime-actions.h"
+@@ -1987,6 +1988,15 @@ apply_fixture_state (gpointer data)
+             {
+                 return G_SOURCE_CONTINUE;
+             }
++            if (NAUTILUS_IS_LIST_BASE (view))
++            {
++                g_autoptr (GObject) model = NULL;
++                g_object_get (view, "model", &model, NULL);
++                if (model == NULL || g_list_model_get_n_items (G_LIST_MODEL (model)) < 4)
++                {
++                    return G_SOURCE_CONTINUE;
++                }
++            }
+             nautilus_files_view_set_selection (view, NULL, FALSE);
+             return G_SOURCE_REMOVE;
+         }
+-- 
+2.55.0
+

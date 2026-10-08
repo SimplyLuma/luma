@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8c7ae6"/><stop offset="1" stop-color="#5b4bb7"/></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <!-- Full-bleed tile at the 0.25 corner ratio every Luma app icon and the dock mask use. -->
+  <rect width="128" height="128" rx="32" fill="url(#a)"/>
+  <rect width="128" height="128" rx="32" fill="url(#bloom)"/>
+  <g transform="translate(64 64) scale(1.12) translate(-64 -64)">
+    <path d="M40 92 78 54" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
+    <path d="M74 48l6 6" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+    <path d="M82 30l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="#fff"/>
+    <path d="M46 34l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#e9e4ff"/>
+    <path d="M92 70l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#e9e4ff"/>
+  </g>
+</svg>

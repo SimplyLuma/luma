@@ -1,0 +1,48 @@
+From upstream 7ea14cf7c3f99344cc6182f69a0b1515cbf28159
+From: Claudio Saavedra <csaavedra@igalia.com>
+Subject: [PATCH] GTK native synthetic touch constructor prerequisite
+
+Exact two Shared constructor hunks from upstream stable commit317695.386,
+reviewed by Nikolas Zimmermann and Carlos Garcia Campos. Required by
+317695.387's cancellation dispatch when backported onto WebKitGTK2.54.1.
+The upstream test-runner synthesis entry point and expectation changes are
+outside this backport's scope and are not included. No constructor code is
+modified. Original per-file copyright and licenses remain in the sources.
+Source: https://github.com/WebKit/WebKit/commit/7ea14cf7c3f99344cc6182f69a0b1515cbf28159.patch
+
+diff --git a/Source/WebKit/Shared/NativeWebTouchEvent.h b/Source/WebKit/Shared/NativeWebTouchEvent.h
+index c06e1088ecac..de35dbd1f290 100644
+--- a/Source/WebKit/Shared/NativeWebTouchEvent.h
++++ b/Source/WebKit/Shared/NativeWebTouchEvent.h
+@@ -63,6 +63,7 @@ class NativeWebTouchEvent : public WebTouchEvent {
+ #endif
+ #elif PLATFORM(GTK)
+     NativeWebTouchEvent(GdkEvent*, Vector<WebPlatformTouchPoint>&&);
++    NativeWebTouchEvent(WebEventType, OptionSet<WebEventModifier>, Vector<WebPlatformTouchPoint>&&);
+     NativeWebTouchEvent(const NativeWebTouchEvent&);
+     const GdkEvent* nativeEvent() const { return m_nativeEvent.get(); }
+ #elif PLATFORM(WPE)
+diff --git a/Source/WebKit/Shared/gtk/NativeWebTouchEventGtk.cpp b/Source/WebKit/Shared/gtk/NativeWebTouchEventGtk.cpp
+index db1e06ffb78b..5f55875092ab 100644
+--- a/Source/WebKit/Shared/gtk/NativeWebTouchEventGtk.cpp
++++ b/Source/WebKit/Shared/gtk/NativeWebTouchEventGtk.cpp
+@@ -30,6 +30,7 @@
+ 
+ #include "GtkVersioning.h"
+ #include "WebEventFactory.h"
++#include <wtf/MonotonicTime.h>
+ 
+ namespace WebKit {
+ 
+@@ -45,6 +46,11 @@ NativeWebTouchEvent::NativeWebTouchEvent(GdkEvent* event, Vector<WebPlatformTouc
+ {
+ }
+ 
++NativeWebTouchEvent::NativeWebTouchEvent(WebEventType type, OptionSet<WebEventModifier> modifiers, Vector<WebPlatformTouchPoint>&& touchPoints)
++    : WebTouchEvent({ type, modifiers, MonotonicTime::now() }, WTF::move(touchPoints), { }, { })
++{
++}
++
+ NativeWebTouchEvent::NativeWebTouchEvent(const NativeWebTouchEvent& event)
+     : WebTouchEvent(event)
+     , m_nativeEvent(constructNativeEvent(const_cast<GdkEvent*>(event.nativeEvent())))

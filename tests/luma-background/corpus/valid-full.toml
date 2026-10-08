@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+[application]
+id = "com.example.Usage"
+name = "Usage"
+
+[background]
+agent = "com.example.Usage.Agent"
+exec = "/usr/libexec/usage-agent"
+category = "mail"
+wake = ["login", "network", "resume", "schedule"]
+interval = "30m"
+publishes = ["unread", "live-extension:com.example.Usage.Unread"]

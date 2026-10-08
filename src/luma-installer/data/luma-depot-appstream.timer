@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Soon after the first boot, then daily. The short boot delay is what makes a
+# new computer's shelves fill in while somebody is still setting it up; the
+# randomised delay keeps every Luma machine from asking Flathub at once.
+[Unit]
+Description=Download application metadata for Depot regularly
+Documentation=https://projectluma.org/applications
+
+[Timer]
+OnBootSec=90s
+# Six hours, not a day: the first attempt on a new computer may find no
+# network at all, and the next one after that is how long the shelves would
+# stay without artwork. Depot asks for the metadata itself when somebody
+# opens it and finds none, so this is the floor rather than the only chance.
+OnUnitActiveSec=6h
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

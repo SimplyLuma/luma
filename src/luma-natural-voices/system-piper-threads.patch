@@ -1,0 +1,13 @@
+--- a/libpiper/src/piper.cpp
++++ b/libpiper/src/piper.cpp
+@@ -95,6 +95,10 @@
+     synth->session_options.DisableCpuMemArena();
+     synth->session_options.DisableMemPattern();
+     synth->session_options.DisableProfiling();
++    // A local reading voice must not spawn one worker for every CPU core.
++    synth->session_options.SetIntraOpNumThreads(2);
++    synth->session_options.SetInterOpNumThreads(1);
++    synth->session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+ 
+     synth->session = std::make_unique<Ort::Session>(
+         Ort::Session(ort_env, model_path, synth->session_options));

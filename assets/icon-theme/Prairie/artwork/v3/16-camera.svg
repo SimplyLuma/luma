@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".08" y1="0" x2=".92" y2="1"><stop stop-color="#fff"/><stop offset=".62" stop-color="#f2f2ef"/><stop offset="1" stop-color="#d4d9d7"/></linearGradient>
+    <radialGradient id="tileBloom" cx=".18" cy=".02" r=".9"><stop stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="ceramic" x1="286" y1="218" x2="738" y2="810" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".28" stop-color="#f7f8f6"/><stop offset=".56" stop-color="#d9dedc"/><stop offset=".78" stop-color="#f5f6f4"/><stop offset="1" stop-color="#b8c0bd"/></linearGradient>
+    <radialGradient id="barrel" cx=".36" cy=".28" r=".78"><stop stop-color="#555a62"/><stop offset=".32" stop-color="#282c33"/><stop offset=".7" stop-color="#111319"/><stop offset="1" stop-color="#050608"/></radialGradient>
+    <radialGradient id="glass" cx=".36" cy=".3" r=".72"><stop stop-color="#95d2e1"/><stop offset=".09" stop-color="#438ba3"/><stop offset=".27" stop-color="#245873"/><stop offset=".48" stop-color="#183658"/><stop offset=".72" stop-color="#101d40"/><stop offset="1" stop-color="#03060d"/></radialGradient>
+    <radialGradient id="core" cx=".4" cy=".34" r=".68"><stop stop-color="#a0ead8"/><stop offset=".16" stop-color="#3d918f"/><stop offset=".45" stop-color="#214b67"/><stop offset=".76" stop-color="#0c1e3b"/><stop offset="1" stop-color="#03060c"/></radialGradient>
+    <filter id="assemblyShadow" x="-32%" y="-32%" width="164%" height="164%"><feDropShadow dx="0" dy="0" stdDeviation="31" flood-color="#1b2428" flood-opacity=".34"/></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#tileBloom)"/>
+  <g filter="url(#assemblyShadow)">
+    <circle cx="512" cy="512" r="342" fill="url(#ceramic)" stroke="#fff" stroke-opacity=".66" stroke-width="12"/>
+    <circle cx="512" cy="512" r="304" fill="none" stroke="#9da7a4" stroke-opacity=".42" stroke-width="8"/>
+    <circle cx="512" cy="512" r="284" fill="url(#barrel)"/>
+    <circle cx="512" cy="512" r="248" fill="none" stroke="#4d535c" stroke-width="18"/>
+    <circle cx="512" cy="512" r="220" fill="url(#glass)" stroke="#0a111d" stroke-width="16"/>
+    <circle cx="512" cy="512" r="148" fill="#09162b" stroke="#26506b" stroke-width="11"/>
+    <circle cx="512" cy="512" r="96" fill="url(#core)"/>
+    <circle cx="512" cy="512" r="42" fill="#04080e" stroke="#3f8f8a" stroke-opacity=".58" stroke-width="9"/>
+    <path d="M390 390c43-43 98-65 154-64" fill="none" stroke="#fff" stroke-width="24" stroke-linecap="round" opacity=".2"/>
+    <ellipse cx="452" cy="424" rx="46" ry="18" fill="#fff" opacity=".28" transform="rotate(-26 452 424)"/>
+    <circle cx="472" cy="468" r="12" fill="#fff" opacity=".34"/>
+  </g>
+</svg>

@@ -1,0 +1,206 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 19:05:00 -0500
+Subject: [PATCH] notifications: fix quick-options ownership and urgent clearing
+
+The first native notification patch attempted to move box_bottom_half ahead of
+Quick Settings even though the box is nested below an HdyClamp. GTK therefore
+ignored the reorder, leaving notifications after connectivity. It also carried
+a duplicate account/action row with the same GtkBuilder ID.
+
+Move only the existing notification stack into the top-level settings box,
+leave media in its trailing section, remove the duplicate template row, derive
+the top inset from Phosh's usable area, pause banner timeout for keyboard and
+assistive focus, clamp the visible count at 99+ while retaining the exact
+accessible count, and keep critical service-owned records out of Clear all.
+
+diff --git a/src/notifications/notification-banner.c b/src/notifications/notification-banner.c
+index d655db0d1b846be98e1b3a979c37aab6c8f838a1..3bc3af158e13d2685dff0a14cb8319f1a7f5af4e 100644
+--- a/src/notifications/notification-banner.c
++++ b/src/notifications/notification-banner.c
+@@ -19,7 +19,7 @@
+ #include <handy.h>
+ 
+ #define BANNER_MIN_WIDTH 320
+-#define LUMA_BANNER_TOP_INSET 54
++#define LUMA_BANNER_MIN_TOP_INSET 54
+ #define LUMA_BANNER_SIDE_INSET 12
+ #define LUMA_BANNER_GAP 8
+ #define LUMA_BANNER_TIMEOUT_MS 8500
+@@ -59,6 +59,19 @@ static void phosh_notification_banner_slide (double value, gpointer user_data);
+ static void phosh_notification_banner_slide_done (gpointer user_data);
+ 
+ 
++static int
++luma_banner_top_inset (void)
++{
++  PhoshShell *shell = phosh_shell_get_default ();
++  int usable_y = 0;
++
++  if (shell)
++    phosh_shell_get_usable_area (shell, NULL, &usable_y, NULL, NULL);
++
++  return MAX (LUMA_BANNER_MIN_TOP_INSET, usable_y + 6);
++}
++
++
+ static void
+ clear_handler (PhoshNotificationBanner *self)
+ {
+@@ -118,6 +131,18 @@ luma_banner_leave (PhoshNotificationBanner *self, GdkEvent *event)
+ }
+ 
+ 
++static void
++luma_banner_focus_changed (GtkWindow               *window,
++                           GtkWidget               *focus,
++                           PhoshNotificationBanner *self)
++{
++  if (focus)
++    g_clear_handle_id (&self->timeout_id, g_source_remove);
++  else
++    luma_banner_resume_timeout (self);
++}
++
++
+ static void
+ phosh_notification_banner_slide (double value, gpointer user_data)
+ {
+@@ -126,7 +151,7 @@ phosh_notification_banner_slide (double value, gpointer user_data)
+   int margin, height;
+ 
+   gtk_window_get_size (GTK_WINDOW (self), NULL, &height);
+-  margin = LUMA_BANNER_TOP_INSET +
++  margin = luma_banner_top_inset () +
+            self->stack_position * (height + LUMA_BANNER_GAP) -
+            (int) (12 * (1.0 - reveal));
+ 
+@@ -325,6 +350,8 @@ phosh_notification_banner_init (PhoshNotificationBanner *self)
+                             G_CALLBACK (luma_banner_leave), self);
+   g_signal_connect_swapped (self, "button-release-event",
+                             G_CALLBACK (luma_banner_leave), self);
++  g_signal_connect (self, "set-focus",
++                    G_CALLBACK (luma_banner_focus_changed), self);
+   self->animation = phosh_animation_new (GTK_WIDGET (self),
+                                          0.0,
+                                          1.0,
+@@ -376,7 +403,7 @@ phosh_notification_banner_set_stack_position (PhoshNotificationBanner *self,
+     gtk_window_get_size (GTK_WINDOW (self), NULL, &height);
+ 
+   phosh_layer_surface_set_margins (PHOSH_LAYER_SURFACE (self),
+-                                   LUMA_BANNER_TOP_INSET +
++                                   luma_banner_top_inset () +
+                                    position * (height + LUMA_BANNER_GAP),
+                                    LUMA_BANNER_SIDE_INSET,
+                                    0,
+diff --git a/src/notifications/notify-manager.c b/src/notifications/notify-manager.c
+index 8f15d5494ac41adfb5f0d7a7baac9e6dda30b33b..75ba34096af259badb3de4ba1d41e18f62e63dcd 100644
+--- a/src/notifications/notify-manager.c
++++ b/src/notifications/notify-manager.c
+@@ -965,7 +965,12 @@ phosh_notify_manager_close_all_notifications (PhoshNotifyManager      *self,
+ 
+     for (int j = g_list_model_get_n_items(G_LIST_MODEL (notif_list)); j > 0; j--) {
+       g_autoptr (PhoshNotification) notification = PHOSH_NOTIFICATION (g_list_model_get_object (notif_list, j-1));
+-      phosh_notification_close (notification, PHOSH_NOTIFICATION_REASON_DISMISSED);
++      /* Clear all is history management, not authority to cancel an urgent
++       * call, alarm, or critical operation.  Those remain until their owning
++       * service resolves them or the user acts on their dedicated surface. */
++      if (phosh_notification_get_urgency (notification) !=
++          PHOSH_NOTIFICATION_URGENCY_CRITICAL)
++        phosh_notification_close (notification, reason);
+     }
+   }
+ }
+diff --git a/src/settings.c b/src/settings.c
+index 4ca313e2c347f699699f957088aba701b2bbc313..b4edcb1c5b615ddc2a6a0e8fc880b7b810814fba 100644
+--- a/src/settings.c
++++ b/src/settings.c
+@@ -338,8 +338,18 @@ on_notification_frames_items_changed (PhoshSettings *self,
+   is_empty = count == 0;
+   g_debug ("Notification list empty: %d", is_empty);
+ 
+-  g_autofree char *count_text = g_strdup_printf ("%u", count);
++  g_autofree char *count_text = count > 99
++    ? g_strdup ("99+")
++    : g_strdup_printf ("%u", count);
++  g_autofree char *accessible_count = g_strdup_printf (
++    g_dngettext (GETTEXT_PACKAGE,
++                 "%u notification waiting",
++                 "%u notifications waiting",
++                 count),
++    count);
+   gtk_label_set_text (GTK_LABEL (self->lbl_notification_count), count_text);
++  atk_object_set_name (gtk_widget_get_accessible (self->lbl_notification_count),
++                       accessible_count);
+   gtk_widget_set_visible (self->lbl_notifications_empty, is_empty);
+   gtk_stack_set_visible_child_name (GTK_STACK (self->stack_notifications),
+                                     STACK_CHILD_NOTIFICATIONS);
+@@ -505,12 +515,22 @@ phosh_settings_init (PhoshSettings *self)
+ {
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
+-  /* The collection is the first Quick Options section.  Media remains near
+-   * the bottom and connectivity follows notifications, matching the one-shade
+-   * handheld information hierarchy. */
+-  gtk_box_reorder_child (GTK_BOX (self->box_settings), self->box_bottom_half, 0);
+-  gtk_box_reorder_child (GTK_BOX (self->box_bottom_half), self->stack_notifications, 0);
+-  gtk_box_reorder_child (GTK_BOX (self->box_bottom_half), self->media_player, -1);
++  /* The collection is the first Quick Options section.  It used to share the
++   * trailing HdyClamp with media, so reordering box_bottom_half never moved it:
++   * that box is not a direct child of box_settings.  Reparent only the native
++   * notification stack; media stays in its existing bottom section. */
++  g_object_ref (self->stack_notifications);
++  gtk_container_remove (GTK_CONTAINER (self->box_bottom_half),
++                        self->stack_notifications);
++  gtk_box_pack_start (GTK_BOX (self->box_settings),
++                      self->stack_notifications,
++                      FALSE,
++                      FALSE,
++                      0);
++  gtk_box_reorder_child (GTK_BOX (self->box_settings),
++                         self->stack_notifications,
++                         0);
++  g_object_unref (self->stack_notifications);
+ 
+   g_signal_connect (self, "size-allocate", G_CALLBACK (on_size_allocate), NULL);
+ }
+diff --git a/src/ui/settings.ui b/src/ui/settings.ui
+index e13bb1ad05f2d1db61ccc042fc8d382a6c147094..d5107a339273249b398c633a89a00f7722a41648 100644
+--- a/src/ui/settings.ui
++++ b/src/ui/settings.ui
+@@ -115,34 +115,6 @@
+                     <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.poweroff</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-shutdown-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
+                   </object>
+                 </child>
+-                <child>
+-                  <object class="GtkBox" id="luma_actions_row">
+-                    <property name="visible" bind-source="PhoshSettings" bind-property="on-lockscreen" bind-flags="sync-create|invert-boolean"/>
+-                    <property name="spacing">8</property>
+-                    <property name="margin-top">8</property>
+-                    <property name="margin-bottom">10</property>
+-                    <child>
+-                      <object class="GtkBox">
+-                        <property name="visible">1</property>
+-                        <property name="hexpand">1</property>
+-                        <property name="spacing">7</property>
+-                        <style><class name="luma-user-pill"/></style>
+-                        <child><object class="GtkLabel"><property name="visible">1</property><property name="label">N</property><style><class name="luma-user-avatar"/></style></object></child>
+-                        <child>
+-                          <object class="GtkBox">
+-                            <property name="visible">1</property><property name="orientation">vertical</property>
+-                            <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label">Nick</property><style><class name="luma-user-name"/></style></object></child>
+-                            <child><object class="GtkLabel"><property name="visible">1</property><property name="halign">start</property><property name="label">Administrator</property><style><class name="luma-user-role"/></style></object></child>
+-                          </object>
+-                        </child>
+-                      </object>
+-                    </child>
+-                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.launch-panel</property><property name="action-target">(&quot;about&quot;, [&lt;&quot;&quot;&gt;])</property><child><object class="GtkLabel"><property name="visible">1</property><property name="label">i</property><style><class name="luma-action-glyph"/></style></object></child><style><class name="luma-round-action"/></style></object></child>
+-                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.search</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-search-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
+-                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.launch-mobile-panel</property><property name="action-target">(&quot;topbar&quot;, [&lt;&quot;&quot;&gt;])</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">preferences-system-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
+-                    <child><object class="GtkButton"><property name="visible">1</property><property name="action-name">panel.poweroff</property><child><object class="GtkImage"><property name="visible">1</property><property name="icon-name">system-shutdown-symbolic</property></object></child><style><class name="luma-round-action"/></style></object></child>
+-                  </object>
+-                </child>
+                 <child>
+                   <object class="HdyClamp">
+                     <property name="visible">1</property>
+-- 
+2.54.0

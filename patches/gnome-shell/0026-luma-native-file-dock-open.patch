@@ -1,0 +1,274 @@
+--- a/data/dbus-interfaces/org.gnome.Shell.xml
++++ b/data/dbus-interfaces/org.gnome.Shell.xml
+@@ -17,6 +17,17 @@
+       <arg type="s" direction="in" name="id"/>
+     </method>
+     <method name="ShowApplications"/>
++    <!-- Native Filer bridge: local regular-file URI/content-type pairs. The
++         opaque token is bound to the authenticated unique bus sender. End is
++         successful only after root-window data transfer AND native finish. -->
++    <method name="BeginFileDrag">
++      <arg type="a(ss)" direction="in" name="files"/>
++      <arg type="s" direction="out" name="token"/>
++    </method>
++    <method name="EndFileDrag">
++      <arg type="s" direction="in" name="token"/>
++      <arg type="b" direction="in" name="succeeded"/>
++    </method>
+     <method name="BeginApplicationDrag">
+       <arg type="s" direction="in" name="id"/>
+       <arg type="b" direction="out" name="accepted"/>
+--- a/js/ui/appDisplay.js
++++ b/js/ui/appDisplay.js
+@@ -3111,6 +3111,11 @@
+         });
+     }
+ 
++    // Native dock/grid file drops use the application's declared MIME types.
++    getFileDropAppInfo() {
++        return this.app.get_app_info();
++    }
++
+     _canAccept(source) {
+         const view = _getViewFromIcon(source);
+ 
+--- a/js/ui/shellDBus.js
++++ b/js/ui/shellDBus.js
+@@ -228,6 +228,28 @@
+         invocation.return_value(null);
+     }
+ 
++    async BeginFileDragAsync([files], invocation) {
++        try {
++            await this._applicationDragSenderChecker.checkInvocation(invocation);
++        } catch (error) {
++            invocation.return_gerror(error);
++            return;
++        }
++        const token = Main.xdndHandler.beginFileDrag(invocation.get_sender(), files);
++        invocation.return_value(GLib.Variant.new('(s)', [token]));
++    }
++
++    async EndFileDragAsync([token, succeeded], invocation) {
++        try {
++            await this._applicationDragSenderChecker.checkInvocation(invocation);
++        } catch (error) {
++            invocation.return_gerror(error);
++            return;
++        }
++        Main.xdndHandler.endFileDrag(invocation.get_sender(), token, succeeded);
++        invocation.return_value(null);
++    }
++
+     async GrabAcceleratorAsync(params, invocation) {
+         try {
+             await this._senderChecker.checkInvocation(invocation);
+--- a/js/ui/xdndHandler.js
++++ b/js/ui/xdndHandler.js
+@@ -1,4 +1,6 @@
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
+ import Shell from 'gi://Shell';
+ import * as Signals from '../misc/signals.js';
+ 
+@@ -19,6 +21,7 @@
+         this._dummy.hide();
+ 
+         this._applicationDrag = null;
++        this._fileDrag = null;
+ 
+         var dnd = global.backend.get_dnd();
+         dnd.connect('dnd-enter', this._onEnter.bind(this));
+@@ -34,6 +37,12 @@
+             this._cursorWindowClone = null;
+         }
+ 
++        if (this._fileDrag) {
++            this._fileDrag.externalEnded = true;
++            this._maybeFinishFileDrag();
++            return;
++        }
++
+         if (this._applicationDrag) {
+             this._applicationDrag.externalEnded = true;
+             this._maybeFinishApplicationDrag();
+@@ -44,6 +53,8 @@
+     }
+ 
+     _onEnter() {
++        if (this._fileDrag)
++            this._fileDrag.externalEnded = false;
+         global.window_group.connectObject('notify::visible',
+             this._onWindowGroupVisibilityChanged.bind(this), this);
+ 
+@@ -87,6 +98,11 @@
+         // Make sure that the cursor window is on top
+         if (this._cursorWindowClone)
+             Main.uiGroup.set_child_above_sibling(this._cursorWindowClone, null);
++
++        if (this._fileDrag) {
++            this._updateFileDropTarget(pickedActor);
++            return;
++        }
+ 
+         const dragEvent = {
+             x,
+@@ -137,7 +153,157 @@
+             previousApplicationTarget, dragEvent.targetActor, x, y);
+     }
+ 
++    // Authenticated Filer metadata only. URI opening remains owned by AppInfo,
++    // including D-Bus activation/Open for already running applications.
++    beginFileDrag(sender, files) {
++        this._clearFileDrag();
++        if (this._applicationDrag || !Array.isArray(files) ||
++            files.length === 0 || files.length > 64 ||
++            files.some(([uri, type]) => typeof uri !== 'string' ||
++                uri.length > 8192 || !uri.startsWith('file:///') ||
++                typeof type !== 'string' || type.length > 256 ||
++                !type.includes('/') || type === 'inode/directory'))
++            return '';
++
++        const token = GLib.uuid_string_random();
++        this._fileDrag = {sender, token, files, target: null,
++            externalEnded: false, sourceEnded: false};
++        // A crashed or disconnected source must not leave an armed drop target.
++        this._fileDrag.timeout = GLib.timeout_add_seconds(
++            GLib.PRIORITY_DEFAULT, 120, () => {
++                this._fileDrag.timeout = 0;
++                this._clearFileDrag();
++                return GLib.SOURCE_REMOVE;
++            });
++        return token;
++    }
++
++    endFileDrag(sender, token, succeeded) {
++        const drag = this._fileDrag;
++        if (!drag || drag.sender !== sender || drag.token !== token)
++            return;
++        if (!succeeded) {
++            this._clearFileDrag();
++            return;
++        }
++        drag.sourceEnded = true;
++        this._maybeFinishFileDrag();
++    }
++
++    _fileDragMatchesApp(appInfo, files) {
++        if (!appInfo || (!appInfo.supports_uris() && !appInfo.supports_files()))
++            return false;
++        const supported = appInfo.get_supported_types() ?? [];
++        return files.every(([, type]) => type && supported.some(mime =>
++            Gio.content_type_is_a(type, Gio.content_type_from_mime_type(mime))));
++    }
++
++    _updateFileDropTarget(actor) {
++        const drag = this._fileDrag;
++        let target = null;
++        while (actor) {
++            const appInfo = actor._delegate?.getFileDropAppInfo?.();
++            if (this._fileDragMatchesApp(appInfo, drag.files)) {
++                target = {actor, appInfo};
++                break;
++            }
++            actor = actor.get_parent();
++        }
++        if (drag.target) {
++            drag.target.actor.disconnect(drag.target.destroyId);
++            drag.target.actor.remove_style_pseudo_class('drop');
++        }
++        drag.target = target;
++        if (target) {
++            target.destroyId = target.actor.connect('destroy', () => {
++                drag.target = null;
++            });
++            target.actor.add_style_pseudo_class('drop');
++        }
++    }
++
++    _clearFileDrag() {
++        const drag = this._fileDrag;
++        this._fileDrag = null;
++        if (!drag)
++            return;
++        if (drag.timeout)
++            GLib.source_remove(drag.timeout);
++        // The destroy handler clears the target before its actor is disposed.
++        if (drag.target) {
++            drag.target.actor.disconnect(drag.target.destroyId);
++            drag.target.actor.remove_style_pseudo_class('drop');
++        }
++        this.emit('drag-end');
++    }
++
++    _maybeFinishFileDrag() {
++        const drag = this._fileDrag;
++        if (!drag?.externalEnded || !drag.sourceEnded)
++            return;
++        const target = drag.target;
++        const [x, y] = global.get_pointer();
++        const actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
++        const inside = target?.actor.get_stage() && actor &&
++            (actor === target.actor || target.actor.contains(actor));
++        // Consume before any asynchronous work: duplicate/stale finish messages
++        // and subsequent drags cannot replay this launch.
++        this._clearFileDrag();
++        if (inside)
++            this._openDroppedFiles(target.appInfo, drag.files);
++    }
++
++    async _openDroppedFiles(appInfo, files) {
++        const cancellable = new Gio.Cancellable();
++        let timeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
++            timeout = 0;
++            cancellable.cancel();
++            return GLib.SOURCE_REMOVE;
++        });
++        try {
++            // Recheck actual regular-file metadata off the Shell main thread.
++            // Never turn a directory, replaced symlink or unsupported file into
++            // an application launch merely because the source advertised it.
++            const verified = await Promise.all(files.map(([uri]) =>
++                new Promise((resolve, reject) => {
++                    const file = Gio.File.new_for_uri(uri);
++                    file.query_info_async('standard::type,standard::content-type',
++                        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
++                        GLib.PRIORITY_DEFAULT, cancellable, (object, result) => {
++                            try {
++                                const info = object.query_info_finish(result);
++                                if (info.get_file_type() !== Gio.FileType.REGULAR)
++                                    throw new Error('Drop requires regular files');
++                                resolve([uri, info.get_content_type()]);
++                            } catch (error) {
++                                reject(error);
++                            }
++                        });
++                })));
++            if (!this._fileDragMatchesApp(appInfo, verified))
++                return;
++            await new Promise((resolve, reject) => {
++                appInfo.launch_uris_async(verified.map(([uri]) => uri),
++                    global.create_app_launch_context(0, -1), cancellable,
++                    (object, result) => {
++                        try {
++                            object.launch_uris_finish(result);
++                            resolve();
++                        } catch (error) {
++                            reject(error);
++                        }
++                    });
++            });
++        } catch (error) {
++            Main.notifyError(_('Unable to open dropped files'), error.message);
++        } finally {
++            if (timeout)
++                GLib.source_remove(timeout);
++        }
++    }
++
+     beginApplicationDrag(appId) {
++        this._clearFileDrag();
+         const app = Shell.AppSystem.get_default().lookup_app(appId);
+         if (!app || app.is_window_backed())
+             return false;

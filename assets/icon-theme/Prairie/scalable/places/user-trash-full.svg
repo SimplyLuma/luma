@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>Prairie Trash (full)</title>
+  <!--
+    DERIVED state, not separately art-directed: identical to user-trash.svg
+    plus a soft accent wash inside the body silhouette, so a full bin reads
+    differently from an empty one while staying in the line-art language.
+    GNOME swaps to this name whenever the trash is non-empty; without it the
+    full state would fall back to Adwaita and break visual consistency.
+    Say the word and this state can be redesigned properly.
+    Full-colour Applications/Places icon: NOT symbolic, never recoloured.
+  -->
+  <rect width="128" height="128" rx="32" fill="#ffffff"/>
+  <svg x="0" y="0" width="128" height="128" viewBox="0 0 100 100">
+    <!-- contents: interior of the body, inset by half the stroke width -->
+    <path d="M30.75 36.5 V79 Q30.75 82.75 35 82.75 H65 Q69.25 82.75 69.25 79 V36.5 Z"
+          fill="#4878b8" fill-opacity=".18"/>
+    <g fill="none" stroke="#4878b8" stroke-width="5.5"
+       stroke-linejoin="round" stroke-linecap="round">
+      <path d="M40 22 L42.5 16.5 H57.5 L60 22"/>
+      <rect x="22.5" y="23.5" width="55" height="9.5" rx="4.5"/>
+      <path d="M28 36.5 V79 Q28 85.5 35 85.5 H65 Q72 85.5 72 79 V36.5"/>
+      <path d="M41 48 V72 M50 48 V72 M59 48 V72"/>
+    </g>
+  </svg>
+</svg>

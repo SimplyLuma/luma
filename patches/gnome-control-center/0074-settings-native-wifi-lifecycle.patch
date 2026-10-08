@@ -1,0 +1,903 @@
+From: Project Luma
+Subject: [PATCH] Keep native Wi-Fi actions and failures in Luma UI
+
+GPL-2.0-or-later; extends the existing GNOME Control Center/libnm owner.
+
+diff --git a/shell/cc-luma-live-network.c b/shell/cc-luma-live-network.c
+--- a/shell/cc-luma-live-network.c
++++ b/shell/cc-luma-live-network.c
+@@ -13,7 +13,7 @@
+ #define ADAPTER "network"
+ static const char * const pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network", NULL };
+ static const char * const owned[] = { "wifi", "autoJoin", "allUsers", "metered", "hotspot", "hsName", "hsPass",
+-                                      "hsBand", "eth", "vpn", "CFNETS.join", "CFKNOWN.forget", NULL };
++                                      "hsBand", "eth", "vpn", "CFNETS.join", "CFNETS.disconnect", "CFKNOWN.forget", NULL };
+ 
+ typedef struct {
+   CcLumaFixture *model;
+@@ -22,7 +22,8 @@
+   GCancellable *cancel;
+   GHashTable *watched;
+   guint refresh;
+-  gboolean ready;
++  gboolean ready, stopped, scan_ready;
++  guint refs, forget_pending;
+   /* The current network's password, fetched for its share code. */
+   char *share_uuid;
+   char *share_password;
+@@ -37,6 +38,23 @@
+ } Net;
+ 
+ static void queue_refresh (Net *n);
++static void scan_completed (GObject *source, GAsyncResult *result, gpointer data);
++/* Cancellable completions may already be queued when Settings closes. */
++static Net *net_ref (Net *n) { n->refs++; return n; }
++static void net_unref (Net *n) { g_assert (n->refs > 0); if (!--n->refs) g_free (n); }
++static void notice (Net *n, const char *message, gboolean error)
++{
++  if (n->stopped) return;
++  cc_luma_fixture_publish_string (n->model, "netError", error ? message : "");
++  cc_luma_fixture_publish_string (n->model, "netStatus", error ? "" : message);
++}
++/* These writes are exercised against the native NM owner and UI by %check. */
++void cc_luma_live_verify_network_keys (CcLumaFixture *model)
++{
++  const char *keys[] = { "wifi", "autoJoin", "allUsers", "metered",
++                        "CFNETS.join", "CFNETS.disconnect", "CFKNOWN.forget", NULL };
++  for (guint i = 0; keys[i]; i++) cc_luma_fixture_verify_key (model, keys[i]);
++}
+ 
+ /* ── Reading ─────────────────────────────────────────────────────────── */
+ static char *
+@@ -314,7 +332,7 @@
+   SecretsRequest *request = data;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) secrets = nm_remote_connection_get_secrets_finish (NM_REMOTE_CONNECTION (source), result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) goto out;
++  if (request->net->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) goto out;
+   Net *n = request->net;
+   char *password = NULL;
+   if (secrets)
+@@ -337,6 +355,7 @@
+     }
+   queue_refresh (n);
+ out:
++  net_unref (request->net);
+   g_free (request->uuid);
+   g_free (request);
+ }
+@@ -355,7 +374,7 @@
+   if (!c) return;
+   if (!nm_connection_get_setting_wireless_security (NM_CONNECTION (c))) { *password = g_strdup (""); return; }
+   SecretsRequest *request = g_new0 (SecretsRequest, 1);
+-  request->net = n; request->hotspot = hotspot; request->uuid = g_strdup (id);
++  request->net = net_ref (n); request->hotspot = hotspot; request->uuid = g_strdup (id);
+   *fetching = TRUE;
+   nm_remote_connection_get_secrets_async (c, NM_SETTING_WIRELESS_SECURITY_SETTING_NAME, n->cancel, secrets_done, request);
+ }
+@@ -432,6 +451,11 @@
+   unwatch (n);
+   watch (n, n->client);
+   NMDeviceWifi *dev = wifi_device (n);
++  gboolean scan_ready = dev && nm_client_wireless_get_enabled (n->client) &&
++    nm_client_wireless_hardware_get_enabled (n->client) && nm_device_get_state (NM_DEVICE (dev)) >= NM_DEVICE_STATE_DISCONNECTED;
++  if (scan_ready && !n->scan_ready)
++    nm_device_wifi_request_scan_async (dev, n->cancel, scan_completed, net_ref (n));
++  n->scan_ready = scan_ready;
+   NMRemoteConnection *current = current_connection (dev);
+   NMAccessPoint *active_ap = dev && current ? nm_device_wifi_get_active_access_point (dev) : NULL;
+   g_autofree char *network = current ? connection_ssid (NM_CONNECTION (current)) : NULL;
+@@ -491,6 +515,10 @@
+   }
+   /* The joined network: its code, details and per-network settings. */
+   JsonObject *extra = json_object_new ();
++  json_object_set_boolean_member (extra, "present", dev != NULL);
++  json_object_set_boolean_member (extra, "hardwareEnabled", nm_client_wireless_hardware_get_enabled (n->client));
++  NMDeviceState state = dev ? nm_device_get_state (NM_DEVICE (dev)) : NM_DEVICE_STATE_UNKNOWN;
++  cc_luma_fixture_publish_boolean (n->model, "wifiConnecting", state > NM_DEVICE_STATE_DISCONNECTED && state < NM_DEVICE_STATE_ACTIVATED);
+   want_secrets (n, current, FALSE);
+   if (network && active_ap)
+     {
+@@ -566,16 +594,27 @@
+ static void
+ queue_refresh (Net *n)
+ {
+-  if (!n->refresh) n->refresh = g_idle_add (refresh, n);
++  if (!n->stopped && !n->refresh) n->refresh = g_timeout_add (100, refresh, n);
+ }
+ 
+ /* ── Writing ─────────────────────────────────────────────────────────── */
+ static void
+ report (Net *n, GError *error)
+ {
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (error) g_warning ("Settings: NetworkManager refused a change: %s", error->message);
++  if (n->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
++  if (error) notice (n, error->message, TRUE);
+   queue_refresh (n);
++}
++/* A one-shot scan follows adapter readiness and radio On. NM also scans on
++ * its own; a concurrent scan being refused is not a failed join. */
++static void
++scan_completed (GObject *source, GAsyncResult *result, gpointer data)
++{
++  Net *n = data;
++  g_autoptr (GError) error = NULL;
++  nm_device_wifi_request_scan_finish (NM_DEVICE_WIFI (source), result, &error);
++  queue_refresh (n);
++  net_unref (n);
+ }
+ static void
+ updated (GObject *source, GAsyncResult *result, gpointer data)
+@@ -583,6 +622,7 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = nm_remote_connection_update2_finish (NM_REMOTE_CONNECTION (source), result, &error);
+   report (data, error);
++  net_unref (data);
+ }
+ static void
+ disconnected (GObject *source, GAsyncResult *result, gpointer data)
+@@ -590,6 +630,7 @@
+   g_autoptr (GError) error = NULL;
+   nm_device_disconnect_finish (NM_DEVICE (source), result, &error);
+   report (data, error);
++  net_unref (data);
+ }
+ static void
+ activated (GObject *source, GAsyncResult *result, gpointer data)
+@@ -597,6 +638,7 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (NMActiveConnection) active = nm_client_activate_connection_finish (NM_CLIENT (source), result, &error);
+   report (data, error);
++  net_unref (data);
+ }
+ static void
+ added (GObject *source, GAsyncResult *result, gpointer data)
+@@ -604,6 +646,7 @@
+   g_autoptr (GError) error = NULL;
+   g_autoptr (NMActiveConnection) active = nm_client_add_and_activate_connection_finish (NM_CLIENT (source), result, &error);
+   report (data, error);
++  net_unref (data);
+ }
+ static void
+ deactivated (GObject *source, GAsyncResult *result, gpointer data)
+@@ -611,6 +654,7 @@
+   g_autoptr (GError) error = NULL;
+   nm_client_deactivate_connection_finish (NM_CLIENT (source), result, &error);
+   report (data, error);
++  net_unref (data);
+ }
+ static void
+ property_set (GObject *source, GAsyncResult *result, gpointer data)
+@@ -618,21 +662,31 @@
+   g_autoptr (GError) error = NULL;
+   nm_client_dbus_set_property_finish (NM_CLIENT (source), result, &error);
+   report (data, error);
+-}
++  net_unref (data);
++}
++typedef struct { Net *net; guint pending; gboolean failed; } Forget;
+ static void
+ deleted (GObject *source, GAsyncResult *result, gpointer data)
+ {
+-  g_autoptr (GError) error = NULL;
+-  if (!nm_remote_connection_delete_finish (NM_REMOTE_CONNECTION (source), result, &error) &&
+-      !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-    g_warning ("Settings: could not forget a network: %s", error->message);
++  Forget *request = data;
++  Net *n = request->net;
++  g_autoptr (GError) error = NULL;
++  if (!nm_remote_connection_delete_finish (NM_REMOTE_CONNECTION (source), result, &error))
++    { request->failed = TRUE; report (n, error); }
++  g_assert (request->pending > 0);
++  if (--request->pending) return;
++  n->forget_pending = 0;
++  if (!request->failed) notice (n, "Network forgotten", FALSE);
++  queue_refresh (n);
++  net_unref (n);
++  g_free (request);
+ }
+ static void
+ update (Net *n, NMRemoteConnection *remote, NMConnection *copy, GAsyncReadyCallback callback, gpointer data)
+ {
+   nm_remote_connection_update2 (remote, nm_connection_to_dbus (copy, NM_CONNECTION_SERIALIZE_ALL),
+                                 NM_SETTINGS_UPDATE2_FLAG_TO_DISK, NULL, n->cancel,
+-                                callback ? callback : updated, callback ? data : n);
++                                callback ? callback : updated, callback ? data : net_ref (n));
+ }
+ static gboolean
+ fail (GError **error, const char *message)
+@@ -689,6 +743,8 @@
+   NMDeviceWifi *dev = wifi_device (n);
+   NMAccessPoint *ap = dev && name ? strongest_ap (dev, name) : NULL;
+   if (!dev) return fail (error, "This computer has no Wi‑Fi");
++  if (!nm_client_wireless_get_enabled (n->client) || !nm_client_wireless_hardware_get_enabled (n->client))
++    return fail (error, "Turn on Wi‑Fi to join a network");
+   if (!name || !*name) return fail (error, "Type the network’s name");
+   if (!ap && !hidden) return fail (error, "That network is out of range");
+   if (ap)
+@@ -698,7 +754,7 @@
+       if (usable && usable->len)
+         {
+           nm_client_activate_connection_async (n->client, g_ptr_array_index (usable, 0), NM_DEVICE (dev),
+-                                               nm_object_get_path (NM_OBJECT (ap)), n->cancel, activated, n);
++                                               nm_object_get_path (NM_OBJECT (ap)), n->cancel, activated, net_ref (n));
+           return TRUE;
+         }
+     }
+@@ -737,7 +793,7 @@
+                       length == 5 || length == 13 || length == 10 || length == 26 ? NM_WEP_KEY_TYPE_KEY : NM_WEP_KEY_TYPE_PASSPHRASE, NULL);
+       else
+         {
+-          if (length < 8 || length > 64) { g_object_unref (sec); return fail (error, "The password needs 8 to 63 characters"); }
++          if (length < 8 || length > 64 || (length == 64 && strspn (password, "0123456789abcdefABCDEF") != 64)) { g_object_unref (sec); return fail (error, "The password needs 8 to 63 characters"); }
+           g_object_set (sec, NM_SETTING_WIRELESS_SECURITY_KEY_MGMT,
+                         (rsn & NM_802_11_AP_SEC_KEY_MGMT_SAE) && !(rsn & NM_802_11_AP_SEC_KEY_MGMT_PSK) ? "sae" : "wpa-psk",
+                         NM_SETTING_WIRELESS_SECURITY_PSK, password, NULL);
+@@ -745,22 +801,36 @@
+       nm_connection_add_setting (partial, sec);
+     }
+   nm_client_add_and_activate_connection_async (n->client, partial, NM_DEVICE (dev), ap ? nm_object_get_path (NM_OBJECT (ap)) : NULL,
+-                                               n->cancel, added, n);
++                                               n->cancel, added, net_ref (n));
+   return TRUE;
+ }
+ static gboolean
+ forget (Net *n, const char *name, GError **error)
+ {
+   g_autoptr (GPtrArray) saved = saved_networks (n);
+-  guint count = 0;
++  if (n->forget_pending) return fail (error, "A network is still being forgotten");
++  Forget *request = g_new0 (Forget, 1);
++  request->net = net_ref (n);
+   for (guint i = 0; i < saved->len; i++)
+     {
+       g_autofree char *ssid = connection_ssid (g_ptr_array_index (saved, i));
+       if (g_strcmp0 (ssid, name) != 0) continue;
+-      nm_remote_connection_delete_async (g_ptr_array_index (saved, i), n->cancel, deleted, n);
+-      count++;
+-    }
+-  return count ? TRUE : fail (error, "This network isn’t saved on this computer");
++      request->pending++;
++      nm_remote_connection_delete_async (g_ptr_array_index (saved, i), n->cancel, deleted, request);
++    }
++  if (!request->pending)
++    { net_unref (n); g_free (request); return fail (error, "This network isn’t saved on this computer"); }
++  n->forget_pending = request->pending;
++  notice (n, "Forgetting network…", FALSE);
++  return TRUE;
++}
++static gboolean
++disconnect_wifi (Net *n, GError **error)
++{
++  NMDeviceWifi *dev = wifi_device (n);
++  if (!dev) return fail (error, "This computer has no Wi‑Fi");
++  nm_device_disconnect_async (NM_DEVICE (dev), n->cancel, disconnected, net_ref (n));
++  return TRUE;
+ }
+ static char *
+ random_wpa_key (void)
+@@ -839,16 +909,17 @@
+   HotspotSave *save = data;
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GVariant) out = nm_remote_connection_update2_finish (NM_REMOTE_CONNECTION (source), result, &error);
+-  if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+-    {
+-      if (error) g_warning ("Settings: could not save the hotspot: %s", error->message);
++  if (!save->net->stopped && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    {
++      if (error) notice (save->net, error->message, TRUE);
+       else if (save->activate)
+         nm_client_activate_connection_async (save->net->client, NM_CONNECTION (save->connection), NM_DEVICE (save->device),
+-                                             NULL, save->net->cancel, activated, save->net);
++                                             NULL, save->net->cancel, activated, net_ref (save->net));
+       queue_refresh (save->net);
+     }
+   g_object_unref (save->connection);
+   g_object_unref (save->device);
++  net_unref (save->net);
+   g_free (save);
+ }
+ static gboolean
+@@ -869,14 +940,14 @@
+   if (existing)
+     {
+       HotspotSave *save = g_new0 (HotspotSave, 1);
+-      save->net = n; save->connection = g_object_ref (existing); save->device = g_object_ref (dev); save->activate = activate;
++      save->net = net_ref (n); save->connection = g_object_ref (existing); save->device = g_object_ref (dev); save->activate = activate;
+       g_free (n->hs_uuid); n->hs_uuid = g_strdup (nm_connection_get_uuid (NM_CONNECTION (existing)));
+       update (n, existing, settings, hotspot_saved, save);
+     }
+   else
+     {
+       g_free (n->hs_uuid); n->hs_uuid = g_strdup (nm_connection_get_uuid (settings));
+-      nm_client_add_and_activate_connection_async (n->client, settings, NM_DEVICE (dev), NULL, n->cancel, added, n);
++      nm_client_add_and_activate_connection_async (n->client, settings, NM_DEVICE (dev), NULL, n->cancel, added, net_ref (n));
+     }
+   return TRUE;
+ }
+@@ -898,7 +969,7 @@
+   g_clear_handle_id (&n->hs_save, g_source_remove);
+   if (on) return apply_hotspot (n, TRUE, error);
+   if (!active || !device_connection (dev, TRUE)) return TRUE;
+-  nm_client_deactivate_connection_async (n->client, active, n->cancel, deactivated, n);
++  nm_client_deactivate_connection_async (n->client, active, n->cancel, deactivated, net_ref (n));
+   return TRUE;
+ }
+ static gboolean
+@@ -906,8 +977,8 @@
+ {
+   NMDevice *eth = ethernet_device (n);
+   if (!eth) return fail (error, "This computer has no Ethernet port");
+-  if (on) nm_client_activate_connection_async (n->client, NULL, eth, NULL, n->cancel, activated, n);
+-  else nm_device_disconnect_async (eth, n->cancel, disconnected, n);
++  if (on) nm_client_activate_connection_async (n->client, NULL, eth, NULL, n->cancel, activated, net_ref (n));
++  else nm_device_disconnect_async (eth, n->cancel, disconnected, net_ref (n));
+   return TRUE;
+ }
+ static gboolean
+@@ -916,8 +987,8 @@
+   NMConnection *c = first_vpn (n);
+   NMActiveConnection *active = active_for (n, c);
+   if (!c) return fail (error, "Add a VPN first");
+-  if (on && !active) nm_client_activate_connection_async (n->client, c, NULL, NULL, n->cancel, activated, n);
+-  else if (!on && active) nm_client_deactivate_connection_async (n->client, active, n->cancel, deactivated, n);
++  if (on && !active) nm_client_activate_connection_async (n->client, c, NULL, NULL, n->cancel, activated, net_ref (n));
++  else if (!on && active) nm_client_deactivate_connection_async (n->client, active, n->cancel, deactivated, net_ref (n));
+   return TRUE;
+ }
+ static gboolean
+@@ -925,7 +996,10 @@
+ {
+   Net *n = state;
+   if (!g_strv_contains (owned, key)) return FALSE;
++  if (n->stopped) return fail (error, "Settings has closed");
+   if (!n->client || !nm_client_get_nm_running (n->client)) return fail (error, "NetworkManager isn’t running");
++  notice (n, "", FALSE);
++  if (g_str_equal (key, "CFNETS.disconnect")) return disconnect_wifi (n, error);
+   if (g_str_equal (key, "CFNETS.join") && JSON_NODE_HOLDS_OBJECT (value))
+     {
+       JsonObject *o = json_node_get_object (value);
+@@ -938,7 +1012,7 @@
+     {
+       if (!wifi_device (n) && json_node_get_boolean (value)) return fail (error, "This computer has no Wi‑Fi");
+       nm_client_dbus_set_property (n->client, NM_DBUS_PATH, NM_DBUS_INTERFACE, "WirelessEnabled",
+-                                   g_variant_new_boolean (json_node_get_boolean (value)), -1, n->cancel, property_set, n);
++                                   g_variant_new_boolean (json_node_get_boolean (value)), -1, n->cancel, property_set, net_ref (n));
+       return TRUE;
+     }
+   if (g_str_equal (key, "autoJoin") || g_str_equal (key, "allUsers") || g_str_equal (key, "metered"))
+@@ -962,9 +1036,9 @@
+ {
+   g_autoptr (GError) error = NULL;
+   NMClient *client = nm_client_new_finish (result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+   Net *n = data;
+-  if (!client) { g_warning ("Settings: NetworkManager: %s", error->message); return; }
++  if (n->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) { g_clear_object (&client); net_unref (n); return; }
++  if (!client) { notice (n, error->message, TRUE); net_unref (n); return; }
+   n->client = client;
+   g_signal_connect_swapped (client, "notify", G_CALLBACK (queue_refresh), n);
+   g_signal_connect_swapped (client, "any-device-added", G_CALLBACK (queue_refresh), n);
+@@ -975,35 +1049,39 @@
+   g_signal_connect_swapped (client, "active-connection-removed", G_CALLBACK (queue_refresh), n);
+   g_signal_connect_swapped (client, "permission-changed", G_CALLBACK (queue_refresh), n);
+   queue_refresh (n);
++  net_unref (n);
+ }
+ static void
+ hostnamed_ready (GObject *source, GAsyncResult *result, gpointer data)
+ {
+   g_autoptr (GError) error = NULL;
+   GDBusProxy *proxy = g_dbus_proxy_new_for_bus_finish (result, &error);
+-  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+   Net *n = data;
++  if (n->stopped || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) { g_clear_object (&proxy); net_unref (n); return; }
+   n->hostnamed = proxy;
+   if (proxy) g_signal_connect_swapped (proxy, "g-properties-changed", G_CALLBACK (queue_refresh), n);
+   queue_refresh (n);
++  net_unref (n);
+ }
+ static gpointer
+ net_start (CcLumaFixture *model)
+ {
+   Net *n = g_new0 (Net, 1);
++  n->refs = 1;
+   n->model = model;
+   n->cancel = g_cancellable_new ();
+   n->watched = g_hash_table_new_full (g_direct_hash, g_direct_equal, g_object_unref, NULL);
+   for (guint i = 0; owned[i]; i++) cc_luma_fixture_own_key (model, owned[i]);
+   g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_NONE, NULL, "org.freedesktop.hostname1",
+-                            "/org/freedesktop/hostname1", "org.freedesktop.hostname1", n->cancel, hostnamed_ready, n);
+-  nm_client_new_async (n->cancel, client_ready, n);
++                            "/org/freedesktop/hostname1", "org.freedesktop.hostname1", n->cancel, hostnamed_ready, net_ref (n));
++  nm_client_new_async (n->cancel, client_ready, net_ref (n));
+   return n;
+ }
+ static void
+ net_stop (gpointer state)
+ {
+   Net *n = state;
++  n->stopped = TRUE;
+   g_cancellable_cancel (n->cancel);
+   g_clear_object (&n->cancel);
+   g_clear_handle_id (&n->refresh, g_source_remove);
+@@ -1017,7 +1095,7 @@
+   g_free (n->share_uuid); g_free (n->share_password);
+   g_free (n->hs_uuid); g_free (n->hs_password);
+   g_free (n->hs_name); g_free (n->hs_pass); g_free (n->hs_band);
+-  g_free (n);
++  net_unref (n);
+ }
+ 
+ const CcLumaAdapter cc_luma_adapter_network = { ADAPTER, pages, net_start, net_write, net_stop };
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -198,6 +198,7 @@
+     if (!gtk_switch_get_active (widget)) cc_luma_view_bluetooth_stop (v);
+     return;
+   }
++  if (g_str_equal (key, "wifi") && cc_luma_fixture_is_live (v->model)) return;
+   if (!cc_luma_view_flag (v, "wifi"))
+     {
+       g_clear_pointer (&v->joining, g_free);
+@@ -461,7 +462,7 @@
+         { luma_toast_show (v->root, error->message, "error"); return; }
+       if (g_str_equal (v->page, "wifi-net")) { g_free (v->page); v->page = g_strdup ("wifi"); }
+       cc_luma_view_queue_refresh (v);
+-      luma_toast_show (v->root, "Network forgotten", "deleted");
++      /* The native owner publishes success only after Delete completes. */
+       return;
+     }
+   CcLumaNetworkUndo *undo = cc_luma_fixture_forget_with_undo (v->model, name, &error);
+@@ -477,7 +478,7 @@
+ static void forget_clicked (GtkButton *button, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  if (!v || cc_luma_view_delegated (v)) return; /* live: GNOME's Wi-Fi panel forgets */
++  if (!v || (!cc_luma_fixture_key_verified (v->model, "CFKNOWN.forget") && cc_luma_view_delegated (v))) return;
+   const char *name = g_object_get_data (G_OBJECT (button), "cf-network");
+   g_autofree char *title = g_strdup_printf ("Forget %s?", name);
+   LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title,
+@@ -585,7 +586,7 @@
+ }
+ static void hidden_clicked (GtkButton *button, View *v)
+ {
+-  if (button && cc_luma_view_delegated (v)) return; /* live: GNOME's Wi-Fi panel joins */
++  if (button && !cc_luma_fixture_key_verified (v->model, "CFNETS.join") && cc_luma_view_delegated (v)) return;
+   LumaActionEditor *editor = new_editor (v, "Join a hidden network", "wifi", "Type its name exactly as it was set up.", "Cancel");
+   GtkWidget *name = gtk_entry_new (), *password = gtk_entry_new ();
+   gtk_entry_set_placeholder_text (GTK_ENTRY (name), "Type here");
+@@ -691,6 +692,7 @@
+ }
+ static void connect_network (View *v, const char *name)
+ {
++  if (cc_luma_fixture_is_live (v->model)) { live_join (v, name, NULL, FALSE); return; }
+   if (v->connection) g_source_remove (v->connection);
+   g_free (v->connecting);
+   v->connecting = g_strdup (name);
+@@ -705,7 +707,7 @@
+   const char *name = g_object_get_data (G_OBJECT (item), "cf-network");
+   gboolean password_required = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (item), "cf-password-required"));
+   if (!cc_luma_view_flag (v, "wifi")) return;
+-  if (cc_luma_view_delegated (v)) return; /* live: GNOME's Wi-Fi panel joins */
++  if (!cc_luma_fixture_key_verified (v->model, "CFNETS.join") && cc_luma_view_delegated (v)) return;
+   if (!password_required) { connect_network (v, name); return; }
+   char *next = g_strcmp0 (v->joining, name) ? g_strdup (name) : NULL;
+   g_free (v->joining); v->joining = next;
+@@ -720,8 +722,8 @@
+ {
+   if (v->joining && cc_luma_fixture_is_live (v->model))
+     {
+-      /* The form's first child is its password field (nearby_row). */
+-      GtkWidget *password = gtk_widget_get_first_child (gtk_widget_get_parent (GTK_WIDGET (button)));
++      GtkWidget *password = named_widget (v->root, "cf-join-password");
++      if (!GTK_IS_EDITABLE (password)) return;
+       const char *text = gtk_editable_get_text (GTK_EDITABLE (password));
+       if (!*text) { luma_toast_show (v->root, "Type the password", "error"); return; }
+       if (live_join (v, v->joining, text, FALSE)) { g_clear_pointer (&v->joining, g_free); cc_luma_view_queue_refresh (v); }
+@@ -758,34 +760,6 @@
+   return bars;
+ }
+ /* A line of children at their own widths, 8 apart, that may run past its box (overflow visible). */
+-static void run_on_measure (GtkWidget *w, GtkOrientation o, int for_size, int *min, int *nat, int *minb, int *natb)
+-{
+-  *min = *nat = 0; *minb = *natb = -1;
+-  int n = 0;
+-  for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c))
+-    {
+-      int cn = 0;
+-      if (!gtk_widget_should_layout (c)) continue;
+-      gtk_widget_measure (c, o, -1, NULL, &cn, NULL, NULL);
+-      if (o == GTK_ORIENTATION_HORIZONTAL) { *nat += cn + (n ? 8 : 0); n++; }
+-      else { *min = MAX (*min, cn); *nat = MAX (*nat, cn); }
+-    }
+-}
+-static void run_on_allocate (GtkWidget *w, int width, int height, int baseline)
+-{
+-  int x = 0;
+-  for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c))
+-    {
+-      int cw = 0, ch = 0;
+-      if (!gtk_widget_should_layout (c)) continue;
+-      gtk_widget_measure (c, GTK_ORIENTATION_HORIZONTAL, -1, NULL, &cw, NULL, NULL);
+-      gtk_widget_measure (c, GTK_ORIENTATION_VERTICAL, cw, NULL, &ch, NULL, NULL);
+-      GtkAllocation a = { x, (height - ch) / 2, cw, ch };
+-      gtk_widget_size_allocate (c, &a, -1);
+-      x += cw + 8;
+-    }
+-}
+-
+ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+ {
+   const char *name = json_object_get_string_member (network, "n");
+@@ -825,15 +799,16 @@
+       gtk_widget_add_css_class (cancel, "cf-bt");
+       gtk_widget_add_css_class (join, "cf-bt");
+       gtk_box_append (GTK_BOX (form), password);
+-      gtk_box_append (GTK_BOX (form), cancel);
+-      gtk_box_append (GTK_BOX (form), join);
+-      if (v->phone)
+-        {
+-          /* v70 phone: the field keeps its 172 and the line runs past the card's edge rather than squeeze. */
+-          gtk_widget_add_css_class (form, "phone");
+-          gtk_widget_set_hexpand (password, FALSE);
+-          gtk_widget_set_layout_manager (form, gtk_custom_layout_new (NULL, run_on_measure, run_on_allocate));
+-        }
++      gtk_widget_set_name (cancel, "cf-join-cancel");
++      gtk_widget_set_name (join, "cf-join-submit");
++      GtkWidget *actions = v->phone ? gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8) : form;
++      if (v->phone) {
++        gtk_orientable_set_orientation (GTK_ORIENTABLE (form), GTK_ORIENTATION_VERTICAL);
++        gtk_widget_set_halign (actions, GTK_ALIGN_END);
++        gtk_box_append (GTK_BOX (form), actions);
++      }
++      gtk_box_append (GTK_BOX (actions), cancel);
++      gtk_box_append (GTK_BOX (actions), join);
+       gtk_box_append (GTK_BOX (wrap), form);
+     }
+ }
+@@ -860,9 +835,29 @@
+     gtk_widget_set_halign (c, GTK_ALIGN_CENTER);
+   return box;
+ }
++static void network_notice (View *v)
++{
++  const char *error = cc_luma_view_text (v, "netError");
++  const char *status = cc_luma_view_text (v, "netStatus");
++  if (!*error && !*status) return;
++  GtkWidget *row = cf_row (cf_group (v, NULL, NULL), cf_lead_icon (*error ? "circle-alert" : "wifi"),
++                            *error ? error : status, NULL, NULL, FALSE);
++  gtk_widget_set_name (row, "cf-network-notice");
++}
++static void wifi_disconnected (GtkButton *button, View *v)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (JsonNode) value = json_node_init_boolean (json_node_alloc (), TRUE);
++  if (!cc_luma_fixture_write (v->model, "CFNETS.disconnect", value, &error))
++    luma_toast_show (v->root, error->message, "error");
++}
+ static void wifi (View *v)
+ {
+   gboolean enabled = cc_luma_view_flag (v, "wifi");
++  JsonObject *wifi_data = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFWIFI");
++  gboolean present = !cc_luma_fixture_is_live (v->model) || (wifi_data && json_object_get_boolean_member_with_default (wifi_data, "present", FALSE));
++  gboolean hardware = !wifi_data || json_object_get_boolean_member_with_default (wifi_data, "hardwareEnabled", TRUE);
++  gboolean connecting = cc_luma_view_flag (v, "wifiConnecting");
+   const char *network = cc_luma_view_text (v, "net");
+   JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNETS");
+   JsonArray *known = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFKNOWN");
+@@ -871,15 +866,20 @@
+   JsonObject *current = NULL;
+   GtkWidget *hero_body;
+   cc_luma_view_header (v, "Wi‑Fi", meta, "wifi");
++  network_notice (v);
+   for (guint i = 0; enabled && i < json_array_get_length (nets); i++)
+     {
+       JsonObject *n = json_array_get_object_element (nets, i);
+       if (g_str_equal (json_object_get_string_member (n, "n"), network)) current = n;
+     }
+-  if (!enabled)
++  if (!present)
++    hero_body = cf_off_hero (v, "wifi", "No Wi‑Fi adapter", "Connect a Wi‑Fi adapter to find networks", NULL, NULL);
++  else if (!hardware)
++    hero_body = cf_off_hero (v, "wifi", "Wi‑Fi is disabled by hardware", "Check the computer’s wireless switch or airplane-mode key", NULL, NULL);
++  else if (!enabled)
+     hero_body = cf_off_hero (v, "wifi", "Wi‑Fi is off", NULL, "wifi", G_CALLBACK (wifi_on));
+   else if (!current)
+-    hero_body = cf_off_hero (v, "wifi", "Not connected", "Pick a network below", NULL, NULL);
++    hero_body = cf_off_hero (v, "wifi", connecting ? "Connecting…" : "Not connected", connecting ? "Waiting for the network" : "Pick a network below", NULL, NULL);
+   else
+     {
+       const char *signals[] = { "Weak", "Fair", "Good", "Excellent" };
+@@ -998,6 +998,7 @@
+   const char *ipv4 = live_detail (v, "current", "ipv4", "192.168.10.24");
+   const char *ipv6 = live_detail (v, "current", "ipv6", "fe80::9a3b:2cff:fe41:7d10");
+   cc_luma_view_header (v, *net ? net : "Network", live_detail (v, "current", "summary", "Connected · WPA3 · 5 GHz"), NULL);
++  network_notice (v);
+   settings = cf_group (v, NULL, NULL);
+   gtk_widget_set_name (cf_sw (v, settings, "autoJoin", "Join automatically", NULL, NULL), "cf-auto-join");
+   gtk_widget_set_name (cf_sw (v, settings, "allUsers", "Available to everyone on this computer", NULL, NULL), "cf-all-users");
+@@ -1013,6 +1014,10 @@
+   cf_vl (v, addresses, "Router", live_detail (v, "current", "router", "192.168.10.1"), NULL, TRUE, NULL, NULL);
+   cf_vl (v, addresses, "DNS", live_detail (v, "current", "dns", "Automatic"), NULL, FALSE, NULL, NULL);
+   actions = cf_group (v, NULL, NULL);
++  if (cc_luma_fixture_is_live (v->model)) {
++    GtkWidget *row = cf_bt (v, actions, "Disconnect", "Keep the saved password", "Disconnect", FALSE, G_CALLBACK (wifi_disconnected));
++    gtk_widget_set_name (row, "cf-wifi-disconnect");
++  }
+   cf_bt (v, actions, "Share this network", "Show a code a phone can scan", "Share…", FALSE, G_CALLBACK (share_clicked));
+   GtkWidget *row = cf_bt (v, actions, "Forget this network", "The password is removed from this computer", "Forget…", TRUE, NULL);
+   GtkWidget *forget = gtk_widget_get_first_child (gtk_widget_get_last_child (row));
+@@ -1027,7 +1032,10 @@
+   g_autofree char *meta = g_strdup_printf ("%u networks", json_array_get_length (known));
+   GtkBox *rows;
+   cc_luma_view_header (v, "Known networks", meta, NULL);
++  network_notice (v);
+   rows = cf_group (v, NULL, NULL);
++  if (!json_array_get_length (known))
++    cf_row (rows, cf_lead_icon ("wifi"), "No saved networks", "Networks you join will appear here", NULL, FALSE);
+   for (guint i = 0; i < json_array_get_length (known); i++)
+     {
+       const char *name = json_array_get_string_element (known, i);
+@@ -1158,12 +1166,28 @@
+     GtkWidget *focus = gtk_root_get_focus (native);
+     if (focus && gtk_widget_is_ancestor (focus, v->root)) bluetooth_focus = g_object_ref (focus);
+   }
++  GtkWidget *join_field = same_page && v->joining ? named_widget (v->root, "cf-join-password") : NULL;
++  g_autofree char *join_text = join_field ? g_strdup (gtk_editable_get_text (GTK_EDITABLE (join_field))) : NULL;
++  int join_cursor = join_field ? gtk_editable_get_position (GTK_EDITABLE (join_field)) : 0;
++  int join_start = 0, join_end = 0;
++  gboolean join_selection = join_field && gtk_editable_get_selection_bounds (GTK_EDITABLE (join_field), &join_start, &join_end);
++  GtkWidget *focus = native ? gtk_root_get_focus (native) : NULL;
++  gboolean join_focused = join_field && focus && (focus == join_field || gtk_widget_is_ancestor (focus, join_field));
+   v->rendering = TRUE; /* removing a focused field must not commit its draft */
+   while ((child = gtk_widget_get_first_child (GTK_WIDGET (v->body))))
+     gtk_box_remove (v->body, child);
+   if (v->query && *v->query) search_render (v);
+   else render_page (v);
+   cf_rows_wrap (v);
++  if (join_text) {
++    GtkWidget *field = named_widget (v->root, "cf-join-password");
++    if (field) {
++      gtk_editable_set_text (GTK_EDITABLE (field), join_text);
++      if (join_focused) gtk_widget_grab_focus (field);
++      gtk_editable_set_position (GTK_EDITABLE (field), join_cursor);
++      if (join_selection) gtk_editable_select_region (GTK_EDITABLE (field), join_start, join_end);
++    }
++  }
+   if (bluetooth_focus && gtk_widget_is_ancestor (bluetooth_focus, v->root)) gtk_widget_grab_focus (bluetooth_focus);
+   island_drawn (v);
+   v->rendering = FALSE;
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -100,6 +100,7 @@
+   live->owners = g_hash_table_new (g_str_hash, g_str_equal);
+   g_object_set_data_full (G_OBJECT (model), "cc-luma-live", live, (GDestroyNotify) live_free);
+   cc_luma_fixture_set_writer (model, live_write, live);
++  cc_luma_live_verify_network_keys (model);
+   cc_luma_fixture_set_page_ready_func (model, page_ready, live);
+   /* Writes proven against a real owner (VM, 28 Sep): Appearance's mode and
+    * wallpaper, Night Light, the proxy and a VPN's switch. Every other change
+diff --git a/shell/cc-luma-live.h b/shell/cc-luma-live.h
+--- a/shell/cc-luma-live.h
++++ b/shell/cc-luma-live.h
+@@ -20,6 +20,7 @@
+ } CcLumaAdapter;
+ 
+ CcLumaFixture *cc_luma_live_model_new (GError **error);
++void cc_luma_live_verify_network_keys (CcLumaFixture *model);
+ /* TRUE in fixture mode; in live mode when all of the page's adapters are ready. */
+ gboolean cc_luma_live_page_ready (CcLumaFixture *model, const char *page);
+ /* An adapter reports its first complete reading. */
+diff --git a/shell/meson.build b/shell/meson.build
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -378,6 +378,15 @@
+   env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
+     'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
+ 
++if host_is_linux
++  live_network_test = executable('test-luma-live-network', ['test-luma-live-network.c', 'cc-luma-live-network.c', '../panels/network/qrcodegen.c'] + fixture_view_sources + generated_sources,
++    include_directories: top_inc, dependencies: fixture_view_deps + [network_manager_deps[0]],
++    c_args: ['-DTEST_NM_SERVICE="' + meson.project_source_root() / 'tests/network/nm-utils/test-networkmanager-service.py' + '"'])
++  test('luma-settings-live-network', live_network_test, timeout: 45,
++    env: ['GTK_A11Y=none', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
++      'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
++endif
++
+ fixture_view_test = executable('test-luma-view', ['test-luma-view.c'] + fixture_view_sources, dependencies: fixture_view_deps,
+   c_args: ['-DLUMA_SHELL_SRCDIR="' + meson.current_source_dir() + '"'])
+ apps_list_test = executable('test-luma-apps-list', ['test-luma-apps-list.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+diff --git a/shell/test-luma-live-network.c b/shell/test-luma-live-network.c
+new file mode 100644
+--- /dev/null
++++ b/shell/test-luma-live-network.c
+@@ -0,0 +1,152 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Native UI and production adapter. Private NM boundary in %check; optional
++ * disposable-VM mode uses its real NetworkManager and a virt_wifi interface. */
++#include "cc-luma-live.h"
++#include "cc-luma-view.h"
++#include <NetworkManager.h>
++#include <luma-ui.h>
++#include <adwaita.h>
++#include <sys/prctl.h>
++#include <signal.h>
++extern const CcLumaAdapter cc_luma_adapter_network;
++void cc_luma_live_verify_network_keys (CcLumaFixture *model);
++static gboolean ready;
++static guint delegates;
++void cc_luma_live_ready (CcLumaFixture *model, const char *adapter) { ready = TRUE; }
++static void spin (guint ms) {
++  gint64 end = g_get_monotonic_time () + ms * 1000;
++  do { while (g_main_context_iteration (NULL, FALSE)); g_usleep (1000); } while (g_get_monotonic_time () < end);
++}
++static gboolean write_owner (CcLumaFixture *model, const char *key, JsonNode *value, gpointer state, GError **error) {
++  return cc_luma_adapter_network.write (state, key, value, error);
++}
++static gboolean delegate (GtkWidget *root, const char *page, gpointer data) { delegates++; return TRUE; }
++static GtkWidget *named (GtkWidget *root, const char *name) {
++  if (!g_strcmp0 (gtk_widget_get_name (root), name)) return root;
++  for (GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c)) { GtkWidget *w=named(c,name);if(w)return w; }
++  return NULL;
++}
++static GtkWidget *network_button (GtkWidget *root, const char *ssid, gboolean forget) {
++  if (GTK_IS_BUTTON(root) && !g_strcmp0(g_object_get_data(G_OBJECT(root),"cf-network"),ssid) &&
++      (forget ? !gtk_widget_has_css_class(root,"cf-net") : gtk_widget_has_css_class(root,"cf-net"))) return root;
++  for (GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c)) { GtkWidget *w=network_button(c,ssid,forget);if(w)return w; }return NULL;
++}
++static GtkWidget *button_label (GtkWidget *root, const char *label) {
++  if (GTK_IS_BUTTON (root) && !g_strcmp0 (gtk_button_get_label (GTK_BUTTON (root)), label)) return root;
++  for (GtkWidget *c=gtk_widget_get_first_child(root);c;c=gtk_widget_get_next_sibling(c)) { GtkWidget *w=button_label(c,label);if(w)return w; }return NULL;
++}
++static const char *text(CcLumaFixture *m,const char *k) { JsonNode *n=cc_luma_fixture_get(m,k);return n?json_node_get_string(n):""; }
++static gboolean saved(CcLumaFixture *m,const char *ssid) {
++  JsonArray *list=json_object_get_array_member(cc_luma_fixture_get_data(m),"CFKNOWN");
++  for(guint i=0;i<json_array_get_length(list);i++)if(!g_strcmp0(json_array_get_string_element(list,i),ssid))return TRUE;return FALSE;
++}
++static void capture(GtkWidget *window,const char *name) {
++  const char *dir=g_getenv("LUMA_CONNECTIVITY_EVIDENCE_DIR");if(!dir)return;
++  g_autoptr(GdkPaintable) paintable=gtk_widget_paintable_new(window);GtkSnapshot *snapshot=gtk_snapshot_new();
++  gdk_paintable_snapshot(paintable,snapshot,gtk_widget_get_width(window),gtk_widget_get_height(window));
++  g_autoptr(GskRenderNode) node=gtk_snapshot_free_to_node(snapshot);g_assert_nonnull(node);
++  g_autoptr(GdkTexture) texture=gsk_renderer_render_texture(gtk_native_get_renderer(GTK_NATIVE(window)),node,NULL);
++  g_autofree char *path=g_strdup_printf("%s/%s.png",dir,name);g_assert_true(gdk_texture_save_to_png(texture,path));
++}
++static GVariant *call(GDBusConnection *bus,const char *path,const char *iface,const char *method,GVariant *args) {
++  g_autoptr(GError) error=NULL;GVariant *v=g_dbus_connection_call_sync(bus,"org.freedesktop.NetworkManager",path,iface,method,args,NULL,G_DBUS_CALL_FLAGS_NONE,5000,NULL,&error);
++  g_assert_no_error(error);g_assert_nonnull(v);return v;
++}
++static void add_profile(GDBusConnection *bus,const char *ssid,const char *id) {
++  g_autoptr(NMConnection) c=nm_simple_connection_new();NMSetting *sc=nm_setting_connection_new();g_autofree char *uuid=nm_utils_uuid_generate();
++  g_object_set(sc,NM_SETTING_CONNECTION_ID,id,NM_SETTING_CONNECTION_UUID,uuid,NM_SETTING_CONNECTION_TYPE,NM_SETTING_WIRELESS_SETTING_NAME,NM_SETTING_CONNECTION_AUTOCONNECT,FALSE,NULL);nm_connection_add_setting(c,sc);
++  NMSetting *sw=nm_setting_wireless_new();g_autoptr(GBytes) bytes=g_bytes_new(ssid,strlen(ssid));g_object_set(sw,NM_SETTING_WIRELESS_SSID,bytes,NULL);nm_connection_add_setting(c,sw);
++  g_autoptr(GVariant) settings=nm_connection_to_dbus(c,NM_CONNECTION_SERIALIZE_ALL);
++  g_autoptr(GVariant) out=call(bus,NM_DBUS_PATH_SETTINGS,NM_DBUS_INTERFACE_SETTINGS,"AddConnection",g_variant_new("(@a{sa{sv}})",g_variant_ref(settings)));
++}
++static void command(CcLumaFixture *m,const char *key,const char *value) {
++  g_autoptr(GError) error=NULL;g_autoptr(JsonNode) node=json_node_init_string(json_node_alloc(),value);
++  g_assert_true(cc_luma_fixture_write(m,key,node,&error));g_assert_no_error(error);
++}
++static void child_setup(gpointer unused) { prctl(PR_SET_PDEATHSIG,SIGTERM); }
++int main(int argc,char **argv) {
++  g_test_init(&argc,&argv,NULL);
++  gboolean real=g_getenv("LUMA_CONNECTIVITY_VM")!=NULL;
++  g_autoptr(GSubprocess) private=NULL,service=NULL;
++  if(!real) {
++    g_autoptr(GSubprocessLauncher) launcher=g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_STDOUT_PIPE);
++    g_subprocess_launcher_set_child_setup(launcher,child_setup,NULL,NULL);
++    private=g_subprocess_launcher_spawn(launcher,NULL,"dbus-daemon","--session","--nofork","--print-address=1",NULL);g_assert_nonnull(private);
++    g_autoptr(GDataInputStream) stream=g_data_input_stream_new(g_subprocess_get_stdout_pipe(private));
++    g_autofree char *address=g_data_input_stream_read_line(stream,NULL,NULL,NULL);g_assert_nonnull(address);
++    g_setenv("DBUS_SYSTEM_BUS_ADDRESS",address,TRUE);g_setenv("DBUS_SESSION_BUS_ADDRESS",address,TRUE);
++    service=g_subprocess_new(G_SUBPROCESS_FLAGS_STDIN_PIPE,NULL,"python3",TEST_NM_SERVICE,NULL);g_assert_nonnull(service);
++    spin(500);
++  }
++  g_autoptr(GError) error=NULL;g_autoptr(GDBusConnection) bus=g_bus_get_sync(G_BUS_TYPE_SYSTEM,NULL,&error);g_assert_no_error(error);
++  const char *ssid=real?"VirtWifi":"Luma audit network";
++  if(!real) {
++    g_autoptr(GVariant) dev=call(bus,NM_DBUS_PATH,"org.freedesktop.NetworkManager.LibnmGlibTest","AddWifiDevice",g_variant_new("(s)","audit-wifi"));
++    g_autoptr(GVariant) ap=call(bus,NM_DBUS_PATH,"org.freedesktop.NetworkManager.LibnmGlibTest","AddWifiAp",g_variant_new("(sss)","audit-wifi",ssid,"52:54:00:00:00:01"));
++  }
++  add_profile(bus,"Luma audit saved","Luma audit first");add_profile(bus,"Luma audit saved","Luma audit duplicate");
++  if(!real)add_profile(bus,"Luma audit refused","Luma audit refuse-delete");
++  g_autoptr(JsonParser) parser=json_parser_new();g_assert_true(json_parser_load_from_data(parser,"{\"version\":1,\"settings\":{\"bt\":false,\"proxy\":\"off\"},\"data\":{},\"pages\":[{\"id\":\"wifi\"},{\"id\":\"wifi-known\"},{\"id\":\"wifi-net\"},{\"id\":\"hotspot\"}]}",-1,NULL));
++  g_autoptr(CcLumaFixture) model=cc_luma_fixture_new_live(json_parser_get_root(parser));
++  gpointer state=cc_luma_adapter_network.start(model);cc_luma_fixture_set_writer(model,write_owner,state);cc_luma_live_verify_network_keys(model);
++  for(guint i=0;i<100&&!ready;i++)spin(20);g_assert_true(ready);
++  g_assert_true(cc_luma_fixture_key_verified(model,"CFKNOWN.forget"));g_assert_true(cc_luma_fixture_key_verified(model,"CFNETS.join"));
++  g_assert_true(saved(model,"Luma audit saved"));
++  gtk_init();luma_init();luma_ui_add_style_resource("/org/gnome/Settings/gtk/luma-settings.css", GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
++  GtkWidget *view=cc_luma_view_new(model,"wifi-known",&error);g_assert_no_error(error);g_assert_nonnull(view);cc_luma_view_set_delegate(view,delegate,NULL);
++  g_autoptr(GtkApplication) application=gtk_application_new("org.projectluma.NativeNetworkAudit", G_APPLICATION_NON_UNIQUE);
++  g_assert_true(g_application_register(G_APPLICATION(application),NULL,&error));g_assert_no_error(error);
++  GtkWidget *window=luma_application_window_new(application, NULL);gtk_window_set_default_size(GTK_WINDOW(window),900,700);luma_application_window_set_body(LUMA_APPLICATION_WINDOW(window),view);gtk_window_present(GTK_WINDOW(window));spin(250);
++  GtkWidget *forget=network_button(view,"Luma audit saved",TRUE);g_assert_nonnull(forget);g_assert_true(gtk_widget_has_css_class(forget,"lumaui-text-button"));
++  g_signal_emit_by_name(forget,"clicked");spin(150);g_assert_cmpuint(delegates,==,0);
++  GtkWidget *dialog=NULL;GQueue queue=G_QUEUE_INIT;g_queue_push_tail(&queue,window);
++  while(!g_queue_is_empty(&queue)){GtkWidget *w=g_queue_pop_head(&queue);if(LUMA_IS_DESTRUCTIVE_DIALOG(w)){dialog=w;break;}for(GtkWidget *c=gtk_widget_get_first_child(w);c;c=gtk_widget_get_next_sibling(c))g_queue_push_tail(&queue,c);}
++  g_queue_clear(&queue);g_assert_nonnull(dialog);
++  capture(window,"wifi-forget-confirmation");luma_destructive_dialog_close(LUMA_DESTRUCTIVE_DIALOG(dialog));spin(100);g_assert_true(saved(model,"Luma audit saved"));
++  forget=network_button(view,"Luma audit saved",TRUE);g_assert_nonnull(forget);g_signal_emit_by_name(forget,"clicked");spin(80);
++  GtkWidget *confirm=button_label(window,"Forget");g_assert_nonnull(confirm);g_signal_emit_by_name(confirm,"clicked");g_assert_cmpstr(text(model,"netStatus"),==,"Forgetting network…");g_assert_true(saved(model,"Luma audit saved"));
++  spin(600);g_assert_false(saved(model,"Luma audit saved"));g_assert_cmpstr(text(model,"netStatus"),==,"Network forgotten");capture(window,"wifi-forgotten");
++  g_print("PASS native forget dialog cancel, duplicate saved-profile deletion and owner readback\n");
++  if(!real) {
++    command(model,"CFKNOWN.forget","Luma audit refused");spin(500);g_assert_true(saved(model,"Luma audit refused"));g_assert_nonnull(strstr(text(model,"netError"),"Synthetic deletion denied"));g_assert_cmpstr(text(model,"netStatus"),==,"");capture(window,"wifi-delete-error");
++    g_print("PASS deletion denial remains saved and is visible in Luma UI\n");
++  }
++  cc_luma_view_go(view,"wifi");spin(200);GtkWidget *near=network_button(view,ssid,FALSE);g_assert_nonnull(near);g_signal_emit_by_name(near,"clicked");spin(200);g_assert_cmpuint(delegates,==,0);
++  if(!real) {
++    GtkWidget *password=named(view,"cf-join-password");g_assert_nonnull(password);gtk_editable_set_text(GTK_EDITABLE(password),"audit password");g_assert_true(gtk_widget_grab_focus(password));gtk_editable_set_position(GTK_EDITABLE(password),3);
++    cc_luma_fixture_changed(model);spin(200);password=named(view,"cf-join-password");g_assert_nonnull(password);g_assert_cmpstr(gtk_editable_get_text(GTK_EDITABLE(password)),==,"audit password");g_assert_cmpint(gtk_editable_get_position(GTK_EDITABLE(password)),==,3);
++    capture(window,"wifi-password-preserved");
++    const guint widths[] = {360,500,1024,1366};
++    for (guint dark=0;dark<2;dark++) {
++      g_autoptr(GSettings) appearance=g_settings_new("org.project_luma.shell-state");
++      g_assert_true(g_settings_set_string(appearance,"surface-treatment",dark?"dark":"light"));spin(100);
++      g_assert_cmpint(adw_style_manager_get_dark(adw_style_manager_get_default()),==,dark);
++      for (guint i=0;i<G_N_ELEMENTS(widths);i++) {
++        gtk_window_set_default_size(GTK_WINDOW(window),widths[i],800);spin(150);
++        password=named(view,"cf-join-password");g_assert_nonnull(password);
++        graphene_rect_t bounds;g_assert_true(gtk_widget_compute_bounds(password,window,&bounds));
++        g_assert_cmpfloat(bounds.origin.x,>=,0);g_assert_cmpfloat(bounds.origin.x+bounds.size.width,<=,gtk_widget_get_width(window)+1);
++        const char *controls[]={"cf-join-cancel","cf-join-submit"};
++        for(guint c=0;c<2;c++){GtkWidget *control=named(view,controls[c]);g_assert_nonnull(control);g_assert_true(gtk_widget_compute_bounds(control,window,&bounds));g_assert_cmpfloat(bounds.origin.x,>=,0);g_assert_cmpfloat(bounds.origin.x+bounds.size.width,<=,gtk_widget_get_width(window)+1);}
++
++        g_print("LAYOUT request=%u actual=%d dark=%u password fits\n",widths[i],gtk_widget_get_width(window),dark);
++        g_autofree char *shot=g_strdup_printf("wifi-join-%u-%s",widths[i],dark?"dark":"light");capture(window,shot);
++      }
++    }
++    g_print("PASS native join stays in Luma UI and refresh preserves password and cursor\n");
++  } else {
++    /* Real NM on virt_wifi: no physical-radio or DHCP reachability claim. */
++    spin(1500);g_assert_true(saved(model,"VirtWifi"));
++    g_autoptr(JsonNode) on=json_node_init_boolean(json_node_alloc(),TRUE),off=json_node_init_boolean(json_node_alloc(),FALSE);
++    g_assert_true(cc_luma_fixture_write(model,"CFNETS.disconnect",on,&error));g_assert_no_error(error);spin(600);
++    g_assert_true(cc_luma_fixture_write(model,"wifi",off,&error));g_assert_no_error(error);spin(600);g_assert_false(json_node_get_boolean(cc_luma_fixture_get(model,"wifi")));
++    g_assert_true(cc_luma_fixture_write(model,"wifi",on,&error));g_assert_no_error(error);spin(800);g_assert_true(json_node_get_boolean(cc_luma_fixture_get(model,"wifi")));
++    command(model,"CFKNOWN.forget","VirtWifi");spin(600);g_assert_false(saved(model,"VirtWifi"));capture(window,"wifi-real-owner-final");
++    g_print("PASS VM real NM join profile, disconnect, radio Off/On and persistent forget\n");
++  }
++  gtk_window_destroy(GTK_WINDOW(window));spin(100);cc_luma_adapter_network.stop(state);spin(100);
++  for(guint i=0;i<40;i++){state=cc_luma_adapter_network.start(model);cc_luma_adapter_network.stop(state);}spin(400);g_print("PASS 40 startup-close cancellation races\n");
++  if(service){g_output_stream_close(g_subprocess_get_stdin_pipe(service),NULL,NULL);g_assert_true(g_subprocess_wait_check(service,NULL,&error));g_assert_no_error(error);}
++  if(private){g_subprocess_send_signal(private,SIGTERM);g_assert_true(g_subprocess_wait(private,NULL,NULL));}
++  return 0;
++}
+diff --git a/tests/network/nm-utils/test-networkmanager-service.py b/tests/network/nm-utils/test-networkmanager-service.py
+--- a/tests/network/nm-utils/test-networkmanager-service.py
++++ b/tests/network/nm-utils/test-networkmanager-service.py
+@@ -1158,11 +1158,24 @@
+         self.visible = vis
+         self.Updated()
+ 
+-    @dbus.service.method(dbus_interface=IFACE_CONNECTION, in_signature='', out_signature='')
+-    def Delete(self):
+-        self.remove_func(self)
+-        self.Removed()
+-        self.remove_from_connection()
++    @dbus.service.method(dbus_interface=IFACE_CONNECTION, in_signature='', out_signature='',
++                         async_callbacks=('success', 'failure'))
++    def Delete(self, success, failure):
++        # Owned fault injection; native deletion must await owner completion.
++        identity = self.settings['connection']['id']
++        if identity == 'Luma audit refuse-delete':
++            failure(PermissionDeniedException('Synthetic deletion denied'))
++            return
++        def complete():
++            self.remove_func(self)
++            self.Removed()
++            self.remove_from_connection()
++            success()
++            return False
++        if identity.startswith('Luma audit '):
++            GLib.timeout_add(250, complete)
++        else:
++            complete()
+ 
+     @dbus.service.method(dbus_interface=IFACE_CONNECTION, in_signature='a{sa{sv}}', out_signature='')
+     def Update(self, settings):

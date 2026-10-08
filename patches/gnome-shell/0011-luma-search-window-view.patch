@@ -1,0 +1,783 @@
+diff -ruN a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+--- a/data/org.gnome.shell.gschema.xml.in	2026-09-01 16:20:30
++++ b/data/org.gnome.shell.gschema.xml.in	2026-09-01 17:31:37
+@@ -169,6 +169,13 @@
+         Keybinding to open the Activities Overview.
+       </description>
+     </key>
++    <key name="toggle-window-view" type="as">
++      <default>["&lt;Super&gt;w"]</default>
++      <summary>Keybinding to open Window View</summary>
++      <description>
++        Keybinding to open the window-only Window View surface.
++      </description>
++    </key>
+     <key name="toggle-message-tray" type="as">
+       <default>["&lt;Super&gt;v","&lt;Super&gt;m"]</default>
+       <summary>Keybinding to toggle the visibility of the notification list</summary>
+diff -ruN a/data/theme/gnome-shell-sass/widgets/_dialogs.scss b/data/theme/gnome-shell-sass/widgets/_dialogs.scss
+--- a/data/theme/gnome-shell-sass/widgets/_dialogs.scss	2026-09-01 16:20:30
++++ b/data/theme/gnome-shell-sass/widgets/_dialogs.scss	2026-09-01 17:48:47
+@@ -22,6 +22,68 @@
+   }
+ }
+ 
++// Luma Search is a shell-owned modal Beam, separate from Window View.
++.luma-search-dialog {
++  width: 620px;
++  max-height: 44em;
++  padding: $base_padding * 3;
++  border-radius: 22px;
++  background-color: if($variant == 'light', rgba(246, 247, 248, 0.98), rgba(37, 40, 45, 0.98));
++  color: $fg_color;
++  border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .88));
++  box-shadow: 0 24px 64px rgba(12, 16, 21, 0.34);
++
++  .modal-dialog-content-box {
++    max-width: 50em;
++    padding: 0;
++  }
++
++  .luma-search-stage { spacing: $base_padding * 2; }
++
++  .luma-search-entry {
++    width: auto;
++    margin: 0;
++    padding: $base_padding * 2;
++    border-radius: 14px;
++    background-color: if($variant == 'light', rgba(255, 255, 255, 0.94), rgba(54, 58, 64, 0.96));
++    color: $fg_color;
++    border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .89));
++    font-size: 1.18em;
++  }
++
++  .luma-search-intro {
++    spacing: $base_padding * 2;
++    padding: $base_padding * 5 $base_padding * 3;
++    color: $fg_color;
++    text-align: center;
++  }
++
++  .luma-search-intro-title { font-size: 1.22em; font-weight: 700; }
++  .luma-search-intro-subtitle { color: transparentize($fg_color, .35); }
++  .luma-search-suggestions { spacing: $base_padding; }
++
++  .luma-search-suggestion {
++    padding: $base_padding $base_padding * 2;
++    border-radius: 999px;
++    background-color: transparentize($fg_color, .945);
++    color: $fg_color;
++    border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .90));
++
++    &:hover, &:focus { background-color: transparentize($fg_color, .90); }
++    &:active { background-color: transparentize($fg_color, .85); }
++  }
++
++  #searchResults { min-height: 16em; max-height: 34em; }
++  #searchResultsContent { max-width: 50em; }
++  .search-section-content {
++    margin: 0;
++    background-color: transparentize($card_bg_color, .22);
++    color: $fg_color;
++    border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .91));
++  }
++  .list-search-result-description { color: transparentize($fg_color, .35); }
++}
++
+ // lists in dialogs
+ .dialog-list {
+   spacing: $base_padding * 3;
+diff -ruN a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml	2026-09-01 16:20:30
++++ b/js/js-resources.gresource.xml	2026-09-01 17:34:20
+@@ -82,6 +82,7 @@
+     <file>ui/listModes.js</file>
+     <file>ui/locatePointer.js</file>
+     <file>ui/lookingGlass.js</file>
++    <file>ui/lumaSearch.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>
+diff -ruN a/js/ui/lumaSearch.js b/js/ui/lumaSearch.js
+--- a/js/ui/lumaSearch.js	1969-12-31 18:00:00
++++ b/js/ui/lumaSearch.js	2026-09-01 17:54:21
+@@ -0,0 +1,307 @@
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GioUnix from 'gi://GioUnix';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as ModalDialog from './modalDialog.js';
++import * as Search from './search.js';
++import * as ShellEntry from './shellEntry.js';
++
++const SearchProxy = Gio.DBusProxy.makeProxyWrapper(`
++<node>
++  <interface name="org.projectluma.Search1">
++    <method name="Query">
++      <arg name="query" type="s" direction="in"/>
++      <arg name="generation" type="u" direction="in"/>
++      <arg name="limit" type="u" direction="in"/>
++      <arg name="results" type="aa{sv}" direction="out"/>
++    </method>
++    <method name="Activate">
++      <arg name="provider_id" type="s" direction="in"/>
++      <arg name="result_id" type="s" direction="in"/>
++      <arg name="terms" type="as" direction="in"/>
++      <arg name="timestamp" type="u" direction="in"/>
++    </method>
++  </interface>
++</node>`);
++
++const KIND_LABELS = {
++    app: _('App'),
++    setting: _('Setting'),
++    file: _('File'),
++    mail: _('Mail'),
++    contact: _('Contact'),
++    calendar: _('Calendar'),
++    message: _('Message'),
++    photo: _('Photo'),
++    music: _('Music'),
++    place: _('Place'),
++};
++
++class LumaSearchProvider {
++    constructor() {
++        this.id = 'org.projectluma.Search';
++        this.canLaunchSearch = false;
++        this.isRemoteProvider = false;
++        // SearchResultsView passes provider appInfo through GNOME's parental
++        // controls and provider-display paths. Use a real DesktopAppInfo so
++        // the complete Gio.AppInfo contract (including should_show()) is
++        // available instead of an incomplete lookalike object.
++        this.appInfo = GioUnix.DesktopAppInfo.new(
++            'org.projectluma.SearchSettings.desktop');
++        if (!this.appInfo)
++            throw new Error('Luma Search desktop application is not installed');
++        this._metas = new Map();
++        this._generation = 0;
++        this._proxy = null;
++    }
++
++    async getInitialResultSet(terms, cancellable) {
++        this._proxy ??= new SearchProxy(
++            Gio.DBus.session,
++            'org.projectluma.Search',
++            '/org/projectluma/Search');
++        const generation = ++this._generation;
++        const [results] = await this._proxy.QueryAsync(
++            terms.join(' '), generation, 40, cancellable);
++        this._metas.clear();
++        return results.map(result => {
++            const unpack = key => result[key]?.deepUnpack?.() ?? result[key] ?? '';
++            const providerId = unpack('provider-id');
++            const resultId = unpack('result-id');
++            const id = JSON.stringify([providerId, resultId]);
++            const kind = unpack('kind');
++            const subtitle = unpack('subtitle');
++            const snippet = unpack('snippet');
++            const typeLabel = KIND_LABELS[kind] ?? _('Result');
++            const context = [typeLabel, subtitle, snippet].filter(Boolean).join(' · ');
++            this._metas.set(id, {
++                id,
++                name: unpack('title'),
++                description: context,
++                createIcon: size => new St.Icon({
++                    icon_name: unpack('icon-name') || 'edit-find-symbolic',
++                    icon_size: size,
++                }),
++                providerId,
++                resultId,
++            });
++            return id;
++        });
++    }
++
++    getSubsearchResultSet(_previousResults, terms, cancellable) {
++        return this.getInitialResultSet(terms, cancellable);
++    }
++
++    async getResultMetas(ids, _cancellable) {
++        return ids.map(id => this._metas.get(id));
++    }
++
++    filterResults(results, maxNumber) {
++        return results.slice(0, maxNumber);
++    }
++
++    activateResult(id, terms) {
++        const meta = this._metas.get(id);
++        if (!meta)
++            return;
++        this._proxy.ActivateAsync(
++            meta.providerId,
++            meta.resultId,
++            terms,
++            global.get_current_time()).catch(logError);
++    }
++
++    launchSearch() {
++    }
++}
++
++const LumaSearchDialog = GObject.registerClass(
++class LumaSearchDialog extends ModalDialog.ModalDialog {
++    _init() {
++        super._init({
++            styleClass: 'luma-search-dialog',
++            destroyOnClose: false,
++        });
++        this.accessible_name = _('Search this machine');
++        this._lightbox._radialEffect = false;
++        this._lightbox.remove_effect_by_name('radial');
++        this._lightbox._fadeFactor = 0.34;
++        this._lightbox.set({
++            opacity: 0,
++            style: 'background-color: rgb(12, 16, 21);',
++        });
++        this._eventBlocker.connect('button-press-event', () => {
++            this.close();
++            return Clutter.EVENT_STOP;
++        });
++
++        const stage = new St.BoxLayout({
++            style_class: 'luma-search-stage',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_expand: true,
++        });
++        this.contentLayout.add_child(stage);
++
++        this._entry = new St.Entry({
++            style_class: 'search-entry luma-search-entry',
++            hint_text: _('Search this machine'),
++            can_focus: true,
++            track_hover: true,
++            x_expand: true,
++        });
++        this._entry.set_primary_icon(new St.Icon({
++            style_class: 'search-entry-icon',
++            icon_name: 'edit-find-symbolic',
++        }));
++        ShellEntry.addContextMenu(this._entry);
++        stage.add_child(this._entry);
++
++        this._intro = new St.BoxLayout({
++            style_class: 'luma-search-intro',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this._intro.add_child(new St.Label({
++            style_class: 'luma-search-intro-title',
++            text: _('Everything on this machine, in one place.'),
++        }));
++        this._intro.add_child(new St.Label({
++            style_class: 'luma-search-intro-subtitle',
++            text: _('Applications and settings first, then your files, mail, people, days and music.'),
++        }));
++        const suggestions = new St.BoxLayout({style_class: 'luma-search-suggestions'});
++        for (const suggestion of [_('Reel'), _('dark'), _('cursor size'), _('Nora'), _('wallpaper'), _('Retro')]) {
++            const button = new St.Button({
++                style_class: 'luma-search-suggestion',
++                label: suggestion,
++                can_focus: true,
++            });
++            button.connect('clicked', () => {
++                this._entry.text = suggestion;
++                this._entry.clutter_text.set_cursor_position(-1);
++            });
++            suggestions.add_child(button);
++        }
++        this._intro.add_child(suggestions);
++        stage.add_child(this._intro);
++
++        this._results = new Search.SearchResultsView({brokerOnly: true});
++        this._results.addProvider(new LumaSearchProvider());
++        this._results.connect('result-activated', () => this.close());
++        this._results.hide();
++        stage.add_child(this._results);
++
++        this._text = this._entry.clutter_text;
++        this._text.connect('text-changed', this._onTextChanged.bind(this));
++        this._text.connect('key-press-event', this._onEntryKeyPress.bind(this));
++        this._text.connect('key-focus-in', () => this._results.highlightDefault(true));
++        this._text.connect('key-focus-out', () => this._results.highlightDefault(false));
++        this.setInitialKeyFocus(this._entry);
++    }
++
++    open() {
++        if (Main.overview.visible)
++            Main.overview.hide();
++        const monitor = global.display.get_current_monitor();
++        const workArea = Main.layoutManager.getWorkAreaForMonitor(monitor);
++        const island = this.dialogLayout._dialog;
++        island.width = Math.min(620, workArea.width - 48);
++        island.y_align = Clutter.ActorAlign.START;
++        island.margin_top = Math.round(workArea.height * 0.13);
++        const animate = St.Settings.get().enable_animations;
++        island.translation_y = animate ? 10 : 0;
++        island.scale_x = animate ? 0.985 : 1;
++        island.scale_y = animate ? 0.985 : 1;
++        this._entry.text = '';
++        const opened = super.open();
++        if (opened) {
++            this._entry.grab_key_focus();
++            island.ease({
++                translation_y: 0,
++                scale_x: 1,
++                scale_y: 1,
++                duration: animate ? 180 : 0,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            });
++        }
++        return opened;
++    }
++
++    toggle() {
++        if (this.state === ModalDialog.State.OPENED ||
++            this.state === ModalDialog.State.OPENING)
++            this.close();
++        else
++            this.open();
++    }
++
++    vfunc_key_press_event(event) {
++        if (event.get_key_symbol() === Clutter.KEY_Escape) {
++            this.close();
++            return Clutter.EVENT_STOP;
++        }
++        return super.vfunc_key_press_event(event);
++    }
++
++    _onTextChanged() {
++        const terms = this._entry.get_text().trim().split(/\s+/).filter(Boolean);
++        this._intro.visible = terms.length === 0;
++        this._results.visible = terms.length > 0;
++        this._results.setTerms(terms);
++    }
++
++    _onEntryKeyPress(_entry, event) {
++        switch (event.get_key_symbol()) {
++        case Clutter.KEY_Down:
++            this._results.navigateFocus(St.DirectionType.DOWN);
++            return Clutter.EVENT_STOP;
++        case Clutter.KEY_Tab:
++            this._results.navigateFocus(St.DirectionType.TAB_FORWARD);
++            return Clutter.EVENT_STOP;
++        case Clutter.KEY_ISO_Left_Tab:
++            this._results.navigateFocus(St.DirectionType.TAB_BACKWARD);
++            return Clutter.EVENT_STOP;
++        case Clutter.KEY_Return:
++        case Clutter.KEY_KP_Enter:
++            this._results.activateDefault();
++            return Clutter.EVENT_STOP;
++        case Clutter.KEY_Escape:
++            this.close();
++            return Clutter.EVENT_STOP;
++        default:
++            return Clutter.EVENT_PROPAGATE;
++        }
++    }
++});
++
++export class LumaSearch {
++    constructor() {
++        this._dialog = new LumaSearchDialog();
++        this._a11ySettings = new Gio.Settings({
++            schema_id: 'org.gnome.desktop.a11y.keyboard',
++        });
++        global.display.connect('overlay-key', () => {
++            if (this._a11ySettings.get_boolean('stickykeys-enable'))
++                return;
++            this._dialog.toggle();
++        });
++    }
++
++    open() {
++        return this._dialog.open();
++    }
++
++    close() {
++        this._dialog.close();
++    }
++
++    toggle() {
++        this._dialog.toggle();
++    }
++}
+diff -ruN a/js/ui/main.js b/js/ui/main.js
+--- a/js/ui/main.js	2026-09-01 16:20:30
++++ b/js/ui/main.js	2026-09-01 17:31:37
+@@ -30,6 +30,7 @@
+ import * as Layout from './layout.js';
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as LookingGlass from './lookingGlass.js';
++import * as LumaSearch from './lumaSearch.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -59,6 +60,7 @@
+ export let extensionManager = null;
+ export let panel = null;
+ export let overview = null;
++export let lumaSearch = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
+ export let welcomeDialog = null;
+@@ -231,6 +233,13 @@
+     overview = new Overview.Overview();
+     kbdA11yDialog = new KbdA11yDialog.KbdA11yDialog();
+     wm = new WindowManager.WindowManager();
++    if (sessionMode.hasOverview) {
++        try {
++            lumaSearch = new LumaSearch.LumaSearch();
++        } catch (error) {
++            logError(error, 'Failed to initialize Luma Search');
++        }
++    }
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+diff -ruN a/js/ui/overview.js b/js/ui/overview.js
+--- a/js/ui/overview.js	2026-09-01 16:20:30
++++ b/js/ui/overview.js	2026-09-01 17:52:08
+@@ -30,7 +30,7 @@
+             name: 'overview',
+             /* Translators: This is the main view to select
+                 activities. See also note for "Activities" string. */
+-            accessible_name: _('Overview'),
++            accessible_name: _('Window View'),
+             orientation: Clutter.Orientation.VERTICAL,
+         });
+ 
+@@ -217,11 +217,14 @@
+         this._relayout();
+ 
+         Main.wm.addKeybinding(
+-            'toggle-overview',
++            'toggle-window-view',
+             new Gio.Settings({schema_id: WindowManager.SHELL_KEYBINDINGS_SCHEMA}),
+             Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+-            this.toggle.bind(this));
++            () => {
++                Main.lumaSearch?.close();
++                this.toggle();
++            });
+ 
+         const swipeTracker = new SwipeTracker.SwipeTracker(global.stage,
+             Clutter.Orientation.VERTICAL,
+@@ -489,6 +492,9 @@
+ 
+         if (this.isDummy)
+             return;
++        this._overview.accessible_name = state === OverviewControls.ControlsState.APP_GRID
++            ? _('Applications')
++            : _('Window View');
+         if (this._shown)
+             return;
+         this._shown = true;
+@@ -607,6 +613,11 @@
+     }
+ 
+     showApps() {
++        if (this._shown) {
++            this._overview.accessible_name = _('Applications');
++            this._overview.controls.showApplications();
++            return;
++        }
+         this.show(OverviewControls.ControlsState.APP_GRID);
+     }
+ 
+diff -ruN a/js/ui/overviewControls.js b/js/ui/overviewControls.js
+--- a/js/ui/overviewControls.js	2026-09-01 16:20:31
++++ b/js/ui/overviewControls.js	2026-09-01 17:52:08
+@@ -19,12 +19,10 @@
+ import {STARTUP_ANIMATION_TIME} from './layout.js';
+ 
+ export const SMALL_WORKSPACE_RATIO = 0.15;
+-const DASH_MAX_HEIGHT_RATIO = 0.16;
+ const VERTICAL_SPACING_RATIO = 0.02;
+ const THUMBNAILS_SPACING_ADJUSTMENT_TOP = 0.6;
+ const THUMBNAILS_SPACING_ADJUSTMENT_BOTTOM = 0.4;
+ 
+-const A11Y_SCHEMA = 'org.gnome.desktop.a11y.keyboard';
+ const HANDHELD_ACTIVITY_VIEW_USES_DESKTOP_CHROME = false;
+ 
+ export const SIDE_CONTROLS_ANIMATION_TIME = 250;
+@@ -176,11 +174,8 @@
+         const spacing = Math.round(height * VERTICAL_SPACING_RATIO);
+         let availableHeight = height;
+ 
+-        // Search entry. Handheld Home owns application search, so Activity
+-        // View dedicates the full work area to running application cards.
+-        let [searchHeight] = this._searchEntry.get_preferred_height(width);
+-        if (this._handheldMode)
+-            searchHeight = 0;
++        // Search is a separate system overlay on every presentation mode.
++        const searchHeight = 0;
+         childBox.set_origin(0, startY);
+         childBox.set_size(width, searchHeight);
+         this._searchEntry.allocate(childBox);
+@@ -188,9 +183,7 @@
+         availableHeight -= searchHeight + spacing;
+ 
+         // Dash
+-        const maxDashHeight = this._handheldMode
+-            ? 0
+-            : Math.round(box.get_height() * DASH_MAX_HEIGHT_RATIO);
++        const maxDashHeight = 0;
+         this._dash.setMaxSize(width, maxDashHeight);
+ 
+         let [, dashHeight] = this._dash.get_preferred_height(width);
+@@ -371,7 +364,8 @@
+ 
+         this._searchController = new SearchController.SearchController(
+             this._searchEntry,
+-            this.dash.showAppsButton);
++            this.dash.showAppsButton,
++            true);
+         this._searchController.connectObject('notify::search-active',
+             () => this._onSearchChanged(), this);
+ 
+@@ -402,6 +396,13 @@
+         this.add_child(this._thumbnailsBox);
+         this.add_child(this._workspacesDisplay);
+ 
++        // Window View deliberately contains window and workspace machinery
++        // only. Search and Applications are separate system surfaces.
++        this._searchEntryBin.hide();
++        this._appDisplay.hide();
++        this.dash.hide();
++        this._searchController.hide();
++
+         this.layout_manager = new ControlsManagerLayout(
+             this._searchEntryBin,
+             this._appDisplay,
+@@ -415,18 +416,6 @@
+             () => this._onShowAppsButtonToggled(), this);
+ 
+         Main.ctrlAltTabManager.addGroup(
+-            this.appDisplay,
+-            _('Apps'),
+-            'shell-focus-app-grid-symbolic', {
+-                proxy: this,
+-                focusCallback: () => {
+-                    this.dash.showAppsButton.checked = true;
+-                    this.appDisplay.navigate_focus(
+-                        null, St.DirectionType.TAB_FORWARD, false);
+-                },
+-            });
+-
+-        Main.ctrlAltTabManager.addGroup(
+             this._workspacesDisplay,
+             _('Windows'),
+             'shell-focus-windows-symbolic', {
+@@ -438,30 +427,6 @@
+                 },
+             });
+ 
+-        this._a11ySettings = new Gio.Settings({schema_id: A11Y_SCHEMA});
+-
+-        this._lastOverlayKeyTime = 0;
+-        global.display.connectObject('overlay-key', () => {
+-            if (this._a11ySettings.get_boolean('stickykeys-enable'))
+-                return;
+-
+-            const {initialState, finalState, transitioning} =
+-                this._stateAdjustment.getStateTransitionParams();
+-
+-            const time = GLib.get_monotonic_time() / 1000;
+-            const timeDiff = time - this._lastOverlayKeyTime;
+-            this._lastOverlayKeyTime = time;
+-
+-            const shouldShift = St.Settings.get().enable_animations
+-                ? transitioning && finalState > initialState
+-                : Main.overview.visible && timeDiff < Overview.ANIMATION_TIME;
+-
+-            if (shouldShift)
+-                this._shiftState(Meta.MotionDirection.UP);
+-            else
+-                Main.overview.toggle();
+-        }, this);
+-
+         // connect_after to give search controller first dibs on the event
+         global.stage.connect_after('key-press-event', (actor, event) => {
+             if (this._searchController.searchActive)
+@@ -502,13 +467,13 @@
+             new Gio.Settings({schema_id: WindowManager.SHELL_KEYBINDINGS_SCHEMA}),
+             Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+-            this._toggleAppsPage.bind(this));
++            () => Main.overview.showApps());
+ 
+         Main.wm.addKeybinding('shift-overview-up',
+             new Gio.Settings({schema_id: WindowManager.SHELL_KEYBINDINGS_SCHEMA}),
+             Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+-            () => this._shiftState(Meta.MotionDirection.UP));
++            () => Main.overview.show());
+ 
+         Main.wm.addKeybinding('shift-overview-down',
+             new Gio.Settings({schema_id: WindowManager.SHELL_KEYBINDINGS_SCHEMA}),
+@@ -696,7 +661,7 @@
+         if (direction === Meta.MotionDirection.DOWN)
+             finalState = Math.max(finalState - 1, ControlsState.HIDDEN);
+         else if (direction === Meta.MotionDirection.UP)
+-            finalState = Math.min(finalState + 1, ControlsState.APP_GRID);
++            finalState = Math.min(finalState + 1, ControlsState.WINDOW_PICKER);
+ 
+         if (finalState === currentState)
+             return;
+@@ -787,8 +752,9 @@
+         const points = [
+             ControlsState.HIDDEN,
+             ControlsState.WINDOW_PICKER,
+-            ControlsState.APP_GRID,
+         ];
++        if (progress > ControlsState.WINDOW_PICKER)
++            points.push(ControlsState.APP_GRID);
+ 
+         const transition = this._stateAdjustment.get_transition('value');
+         const cancelProgress = transition
+@@ -890,5 +856,13 @@
+ 
+     get appDisplay() {
+         return this._appDisplay;
++    }
++
++    showApplications() {
++        this._stateAdjustment.remove_transition('value');
++        this._stateAdjustment.ease(ControlsState.APP_GRID, {
++            duration: SIDE_CONTROLS_ANIMATION_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_SINE,
++        });
+     }
+ });
+diff -ruN a/js/ui/search.js b/js/ui/search.js
+--- a/js/ui/search.js	2026-09-01 16:20:30
++++ b/js/ui/search.js	2026-09-01 17:30:26
+@@ -66,7 +66,8 @@
+             St.Clipboard.get_default().set_text(
+                 St.ClipboardType.CLIPBOARD, this.metaInfo.clipboardText);
+         }
+-        Main.overview.toggle();
++        this._resultsView.emit('result-activated');
++        Main.overview.hide();
+     }
+ });
+ 
+@@ -565,9 +566,12 @@
+ });
+ 
+ export const SearchResultsView = GObject.registerClass({
+-    Signals: {'terms-changed': {}},
++    Signals: {
++        'terms-changed': {},
++        'result-activated': {},
++    },
+ }, class SearchResultsView extends St.BoxLayout {
+-    _init() {
++    _init(params = {}) {
+         super._init({
+             name: 'searchResults',
+             orientation: Clutter.Orientation.VERTICAL,
+@@ -636,7 +640,9 @@
+         this._searchTimeoutId = 0;
+         this._cancellable = new Gio.Cancellable();
+ 
+-        this._registerProvider(new AppDisplay.AppSearchProvider());
++        this._brokerOnly = params.brokerOnly ?? false;
++        if (!this._brokerOnly)
++            this._registerProvider(new AppDisplay.AppSearchProvider());
+ 
+         const appSystem = Shell.AppSystem.get_default();
+         appSystem.connect('installed-changed', this._reloadRemoteProviders.bind(this));
+@@ -648,6 +654,12 @@
+     }
+ 
++    addProvider(provider) {
++        this._registerProvider(provider);
++    }
++
+     _reloadRemoteProviders() {
++        if (this._brokerOnly)
++            return;
+         const remoteProviders = this._providers.filter(p => p.isRemoteProvider);
+         remoteProviders.forEach(provider => {
+             this._unregisterProvider(provider);
+diff -ruN a/js/ui/searchController.js b/js/ui/searchController.js
+--- a/js/ui/searchController.js	2026-09-01 16:20:30
++++ b/js/ui/searchController.js	2026-09-01 17:56:07
+@@ -31,7 +31,7 @@
+             false),
+     },
+ }, class SearchController extends St.Widget {
+-    _init(searchEntry, showAppsButton) {
++    _init(searchEntry, showAppsButton, disabled = false) {
+         super._init({
+             name: 'searchController',
+             layout_manager: new Clutter.BinLayout(),
+@@ -41,6 +41,7 @@
+         });
+ 
+         this._showAppsButton = showAppsButton;
++        this._disabled = disabled;
+         this._showAppsButton.connect('notify::checked', this._onShowAppsButtonToggled.bind(this));
+ 
+         this._activePage = null;
+@@ -81,9 +82,10 @@
+ 
+         this._iconClickedId = 0;
+ 
+-        this._searchResults = new Search.SearchResultsView();
++        this._searchResults = new Search.SearchResultsView({brokerOnly: this._disabled});
+         this.add_child(this._searchResults);
+-        Main.ctrlAltTabManager.addGroup(this._entry, _('Search'), 'shell-focus-search-symbolic');
++        if (!this._disabled)
++            Main.ctrlAltTabManager.addGroup(this._entry, _('Search'), 'shell-focus-search-symbolic');
+ 
+         // Since the entry isn't inside the results container we install this
+         // dummy widget as the last results container child so that we can
+@@ -97,16 +99,18 @@
+         global.focus_manager.add_group(this._searchResults);
+ 
+         this._stageKeyPressId = 0;
+-        Main.overview.connect('showing', () => {
+-            this._stageKeyPressId =
+-                global.stage.connect('key-press-event', this._onStageKeyPress.bind(this));
+-        });
+-        Main.overview.connect('hiding', () => {
+-            if (this._stageKeyPressId !== 0) {
+-                global.stage.disconnect(this._stageKeyPressId);
+-                this._stageKeyPressId = 0;
+-            }
+-        });
++        if (!this._disabled) {
++            Main.overview.connect('showing', () => {
++                this._stageKeyPressId =
++                    global.stage.connect('key-press-event', this._onStageKeyPress.bind(this));
++            });
++            Main.overview.connect('hiding', () => {
++                if (this._stageKeyPressId !== 0) {
++                    global.stage.disconnect(this._stageKeyPressId);
++                    this._stageKeyPressId = 0;
++                }
++            });
++        }
+ 
+         // Will be connected to the stage when active
+         this._clickGesture = new Clutter.ClickGesture();
+@@ -246,6 +250,8 @@
+     }
+ 
+     _onTextChanged() {
++        if (this._disabled)
++            return;
+         const terms = getTermsForSearchString(this._entry.get_text());
+ 
+         const searchActive = terms.length > 0;

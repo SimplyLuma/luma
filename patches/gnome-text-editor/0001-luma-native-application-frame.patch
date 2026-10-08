@@ -1,0 +1,470 @@
+From 07e9abf2dd88c08d22dc9202bd19e7d1609fc9e2 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 12:00:00 -0500
+Subject: [PATCH] window: adopt the native Luma application frame
+
+Retain Text Editor's sessions, actions, adaptive property panel and editing
+engine, but give those real controls the same application identity, command
+row, work-surface boundary and window geometry as first-party Luma apps.
+
+The application menu model moves to the identity trigger instead of being
+duplicated. Open, New, fullscreen restoration and document properties remain
+the existing widgets and actions; only their native composition changes.
+---
+ src/editor-window.ui | 181 ++++++++++++++++++++++++++++++-------------
+ src/style.css        |  96 +++++++++++++++++++++++
+ 2 files changed, 223 insertions(+), 54 deletions(-)
+
+diff --git a/src/editor-window.ui b/src/editor-window.ui
+index 0ddff10..ce4bec0 100644
+--- a/src/editor-window.ui
++++ b/src/editor-window.ui
+@@ -6,6 +6,8 @@
+     <property name="width-request">360</property>
+     <style>
+       <class name="org-gnome-TextEditor"/>
++      <class name="luma-text-editor-window"/>
++      <class name="luma-app-window"/>
+     </style>
+     <child>
+       <object class="AdwBreakpoint">
+@@ -101,188 +102,258 @@
+         </child>
+         <child type="header_bar">
+-          <object class="AdwHeaderBar" id="header_bar">
+-            <property name="show-start-title-buttons" bind-source="EditorWindow" bind-property="fullscreened" bind-flags="sync-create|invert-boolean"/>
+-            <property name="show-end-title-buttons" bind-source="EditorWindow" bind-property="fullscreened" bind-flags="sync-create|invert-boolean"/>
+-            <property name="title-widget">
+-              <object class="GtkBox">
+-                <property name="hexpand">true</property>
+-                <property name="valign">center</property>
+-                <property name="orientation">vertical</property>
+-                <property name="margin-start">12</property>
+-                <property name="margin-end">12</property>
+-                <child>
+-                  <object class="GtkCenterBox">
+-                    <property name="hexpand">true</property>
+-                    <property name="has-tooltip">true</property>
+-                    <signal name="query-tooltip" handler="title_query_tooltip_cb" object="EditorWindow" swapped="true"/>
+-                    <child type="start">
+-                      <object class="GtkLabel" id="is_modified">
+-                        <property name="halign">end</property>
+-                        <property name="hexpand">true</property>
+-                        <property name="label">•</property>
+-                        <property name="visible">false</property>
+-                      </object>
+-                    </child>
+-                    <child type="center">
+-                      <object class="GtkLabel" id="title">
+-                        <property name="ellipsize">middle</property>
+-                        <style>
+-                          <class name="title"/>
+-                        </style>
+-                      </object>
+-                    </child>
+-                  </object>
+-                </child>
+-                <child>
+-                  <object class="GtkCenterBox">
+-                    <property name="has-tooltip">true</property>
+-                    <signal name="query-tooltip" handler="title_query_tooltip_cb" object="EditorWindow" swapped="true"/>
+-                    <child type="start">
+-                      <object class="GtkImage" id="indicator">
+-                        <property name="hexpand">true</property>
+-                        <property name="halign">end</property>
+-                        <property name="visible">false</property>
+-                        <property name="margin-end">6</property>
+-                        <property name="pixel-size">12</property>
+-                        <style>
+-                          <class name="subtitle"/>
+-                        </style>
+-                      </object>
+-                    </child>
+-                    <child type="center">
+-                      <object class="GtkLabel" id="subtitle">
+-                        <property name="ellipsize">middle</property>
+-                        <style>
+-                          <class name="subtitle"/>
+-                        </style>
+-                      </object>
+-                    </child>
+-                  </object>
+-                </child>
+-              </object>
+-            </property>
+-            <child type="start">
+-              <object class="GtkMenuButton" id="open_menu_button">
+-                <property name="tooltip-text" translatable="yes">Recently Used Documents</property>
++          <object class="GtkBox">
++            <property name="orientation">vertical</property>
++            <child>
++              <object class="AdwHeaderBar" id="header_bar">
++                <property name="show-start-title-buttons">false</property>
++                <property name="show-end-title-buttons" bind-source="EditorWindow" bind-property="fullscreened" bind-flags="sync-create|invert-boolean"/>
++                <property name="decoration-layout">:minimize,maximize,close</property>
+                 <style>
+-                  <class name="flat"/>
++                  <class name="luma-titlebar"/>
+                 </style>
+-                <property name="popover">
+-                  <object class="EditorOpenPopover" id="open_menu_popover">
+-                    <binding name="model">
+-                      <lookup name="recents" type="EditorSession">
+-                        <lookup name="session" type="EditorApplication">
+-                          <lookup name="application">EditorWindow</lookup>
+-                        </lookup>
+-                      </lookup>
+-                    </binding>
++                <property name="title-widget">
++                  <object class="GtkBox">
++                    <property name="hexpand">true</property>
++                    <property name="valign">center</property>
++                    <property name="orientation">vertical</property>
++                    <property name="margin-start">12</property>
++                    <property name="margin-end">12</property>
++                    <child>
++                      <object class="GtkCenterBox">
++                        <property name="hexpand">true</property>
++                        <property name="has-tooltip">true</property>
++                        <signal name="query-tooltip" handler="title_query_tooltip_cb" object="EditorWindow" swapped="true"/>
++                        <child type="start">
++                          <object class="GtkLabel" id="is_modified">
++                            <property name="halign">end</property>
++                            <property name="hexpand">true</property>
++                            <property name="label">•</property>
++                            <property name="visible">false</property>
++                          </object>
++                        </child>
++                        <child type="center">
++                          <object class="GtkLabel" id="title">
++                            <property name="ellipsize">middle</property>
++                            <style>
++                              <class name="title"/>
++                              <class name="luma-window-title"/>
++                            </style>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
++                    <child>
++                      <object class="GtkCenterBox">
++                        <property name="has-tooltip">true</property>
++                        <signal name="query-tooltip" handler="title_query_tooltip_cb" object="EditorWindow" swapped="true"/>
++                        <child type="start">
++                          <object class="GtkImage" id="indicator">
++                            <property name="hexpand">true</property>
++                            <property name="halign">end</property>
++                            <property name="visible">false</property>
++                            <property name="margin-end">6</property>
++                            <property name="pixel-size">12</property>
++                            <style>
++                              <class name="subtitle"/>
++                            </style>
++                          </object>
++                        </child>
++                        <child type="center">
++                          <object class="GtkLabel" id="subtitle">
++                            <property name="ellipsize">middle</property>
++                            <style>
++                              <class name="subtitle"/>
++                            </style>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
+                   </object>
+                 </property>
+-                <child>
+-                  <object class="GtkStack" id="open_button_stack">
+-                    <child>
+-                      <object class="GtkStackPage">
+-                        <property name="name">wide</property>
+-                        <property name="child">
+-                          <object class="GtkBox">
+-                            <property name="spacing">3</property>
+-                            <child>
+-                              <object class="GtkLabel">
+-                                <property name="label" translatable="yes">_Open</property>
+-                                <property name="use-underline">True</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="GtkImage">
+-                                <property name="icon-name">pan-down-symbolic</property>
+-                              </object>
+-                            </child>
+-                          </object>
+-                        </property>
+-                      </object>
+-                    </child>
+-                    <child>
+-                      <object class="GtkStackPage">
+-                        <property name="name">narrow</property>
+-                        <property name="child">
+-                          <object class="GtkImage">
+-                            <property name="icon-name">folder-symbolic</property>
+-                          </object>
+-                        </property>
+-                      </object>
+-                    </child>
+-                    <property name="visible-child-name">wide</property>
+-                    <property name="hhomogeneous">false</property>
+-                  </object>
+-                </child>
++                <child type="start">
++                  <object class="GtkMenuButton" id="primary_menu">
++                    <property name="tooltip-text" translatable="yes">Text Editor Menu</property>
++                    <property name="menu-model">primary_menu_model</property>
++                    <style>
++                      <class name="luma-identity-button"/>
++                    </style>
++                    <child>
++                      <object class="GtkBox">
++                        <property name="spacing">8</property>
++                        <child>
++                          <object class="GtkImage">
++                            <property name="icon-name">org.gnome.TextEditor</property>
++                            <property name="pixel-size">20</property>
++                            <style>
++                              <class name="luma-identity-icon"/>
++                            </style>
++                          </object>
++                        </child>
++                        <child>
++                          <object class="GtkLabel">
++                            <property name="label" translatable="yes">Text Editor</property>
++                          </object>
++                        </child>
++                        <child>
++                          <object class="GtkImage">
++                            <property name="icon-name">pan-down-symbolic</property>
++                            <property name="pixel-size">10</property>
++                            <style>
++                              <class name="luma-identity-chevron"/>
++                            </style>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
++                  </object>
++                </child>
+               </object>
+-            </child>
+-            <child type="start">
+-              <object class="GtkButton" id="new_button">
+-                <property name="action-name">session.new-draft</property>
+-                <property name="icon-name">tab-new-symbolic</property>
+-                <property name="tooltip-text" translatable="yes">New Tab</property>
+-              </object>
+-            </child>
+-            <child type="end">
+-              <object class="GtkButton" id="restore_button">
+-                <property name="tooltip-text" translatable="yes">Leave Fullscreen</property>
+-                <property name="icon-name">view-restore-symbolic</property>
+-                <property name="action-name">win.unfullscreen</property>
+-                <property name="visible" bind-source="EditorWindow" bind-property="fullscreened" bind-flags="sync-create"/>
+-              </object>
+-            </child>
+-            <child type="end">
+-              <object class="GtkMenuButton" id="primary_menu">
+-                <property name="tooltip-text" translatable="yes">Main Menu</property>
+-                <property name="icon-name">open-menu-symbolic</property>
+-                <property name="menu-model">primary_menu_model</property>
+-              </object>
+-            </child>
+-            <child type="end">
+-              <object class="GtkToggleButton" id="properties_button">
+-                <property name="tooltip-text" translatable="yes">Document Properties</property>
+-                <property name="icon-name">info-outline-symbolic</property>
+-                <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="bidirectional|sync-create"/>
+-                <child>
+-                  <object class="GtkShortcutController">
+-                    <property name="scope">managed</property>
++            </child>
++            <child>
++              <object class="GtkCenterBox">
++                <style>
++                  <class name="luma-command-bar"/>
++                </style>
++                <child type="start">
++                  <object class="GtkBox">
++                    <property name="spacing">0</property>
++                    <style>
++                      <class name="luma-command-group"/>
++                    </style>
+                     <child>
+-                      <object class="GtkShortcut">
+-                        <property name="trigger">F9</property>
+-                        <property name="action">activate</property>
++                      <object class="GtkMenuButton" id="open_menu_button">
++                        <property name="tooltip-text" translatable="yes">Recently Used Documents</property>
++                        <property name="popover">
++                          <object class="EditorOpenPopover" id="open_menu_popover">
++                            <binding name="model">
++                              <lookup name="recents" type="EditorSession">
++                                <lookup name="session" type="EditorApplication">
++                                  <lookup name="application">EditorWindow</lookup>
++                                </lookup>
++                              </lookup>
++                            </binding>
++                          </object>
++                        </property>
++                        <child>
++                          <object class="GtkStack" id="open_button_stack">
++                            <child>
++                              <object class="GtkStackPage">
++                                <property name="name">wide</property>
++                                <property name="child">
++                                  <object class="GtkBox">
++                                    <property name="spacing">6</property>
++                                    <child>
++                                      <object class="GtkImage">
++                                        <property name="icon-name">folder-open-symbolic</property>
++                                      </object>
++                                    </child>
++                                    <child>
++                                      <object class="GtkLabel">
++                                        <property name="label" translatable="yes">_Open</property>
++                                        <property name="use-underline">true</property>
++                                      </object>
++                                    </child>
++                                    <child>
++                                      <object class="GtkImage">
++                                        <property name="icon-name">pan-down-symbolic</property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </property>
++                              </object>
++                            </child>
++                            <child>
++                              <object class="GtkStackPage">
++                                <property name="name">narrow</property>
++                                <property name="child">
++                                  <object class="GtkImage">
++                                    <property name="icon-name">folder-open-symbolic</property>
++                                  </object>
++                                </property>
++                              </object>
++                            </child>
++                            <property name="visible-child-name">wide</property>
++                            <property name="hhomogeneous">false</property>
++                          </object>
++                        </child>
+                       </object>
+                     </child>
++                    <child>
++                      <object class="GtkButton" id="new_button">
++                        <property name="action-name">session.new-draft</property>
++                        <property name="icon-name">tab-new-symbolic</property>
++                        <property name="tooltip-text" translatable="yes">New Tab</property>
++                      </object>
++                    </child>
+                   </object>
+                 </child>
++                <child type="end">
++                  <object class="GtkBox">
++                    <property name="spacing">0</property>
++                    <style>
++                      <class name="luma-command-group"/>
++                    </style>
++                    <child>
++                      <object class="GtkButton" id="restore_button">
++                        <property name="tooltip-text" translatable="yes">Leave Fullscreen</property>
++                        <property name="icon-name">view-restore-symbolic</property>
++                        <property name="action-name">win.unfullscreen</property>
++                        <property name="visible" bind-source="EditorWindow" bind-property="fullscreened" bind-flags="sync-create"/>
++                      </object>
++                    </child>
++                    <child>
++                      <object class="GtkToggleButton" id="properties_button">
++                        <property name="tooltip-text" translatable="yes">Document Properties</property>
++                        <property name="icon-name">info-outline-symbolic</property>
++                        <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="bidirectional|sync-create"/>
++                        <child>
++                          <object class="GtkShortcutController">
++                            <property name="scope">managed</property>
++                            <child>
++                              <object class="GtkShortcut">
++                                <property name="trigger">F9</property>
++                                <property name="action">activate</property>
++                              </object>
++                            </child>
++                          </object>
++                        </child>
++                      </object>
++                    </child>
++                  </object>
++                </child>
+               </object>
+-            </child>
++            </child>
+           </object>
+         </child>
+         <child type="tab_bar">
+           <object class="AdwTabBar" id="tab_bar">
+             <property name="view">tab_view</property>
+           </object>
+         </child>
+         <child>
+           <object class="AdwLayout">
+             <property name="name">wide</property>
+             <property name="content">
+               <object class="EditorFullscreenBox" id="fullscreen_box">
+                 <child type="top">
+                   <object class="AdwLayoutSlot">
+                     <property name="id">header_bar</property>
+                   </object>
+                 </child>
+                 <child type="top">
+                   <object class="AdwLayoutSlot">
+                     <property name="id">tab_bar</property>
+                   </object>
+                 </child>
+                 <property name="content">
+                   <object class="AdwOverlaySplitView" id="split_view">
+                     <property name="sidebar-position">end</property>
+                     <property name="show-sidebar">false</property>
+                     <property name="min-sidebar-width">350</property>
++                    <style>
++                      <class name="luma-editor-surface"/>
++                      <class name="luma-island-split"/>
++                      <class name="luma-island"/>
++                    </style>
+                     <property name="content">
+                       <object class="AdwLayoutSlot">
+@@ -307,4 +377,8 @@
+               <object class="AdwBottomSheet">
+                 <property name="open" bind-source="properties_button" bind-property="active" bind-flags="bidirectional|sync-create"/>
++                <style>
++                  <class name="luma-editor-surface"/>
++                  <class name="luma-island"/>
++                </style>
+                 <property name="content">
+                   <object class="EditorFullscreenBox">
+diff --git a/src/style.css b/src/style.css
+index 4b82ff1..12f7573 100644
+--- a/src/style.css
++++ b/src/style.css
+@@ -165,4 +165,19 @@
+ /* Always show "Location" row subtitle w/o desenstized visuals */
+ row.location.property .subtitle {
+   filter: none;
+ }
++
++/* Project Luma native application-frame composition. This source-level opt-in
++ * preserves Text Editor's real actions and adaptive widgets while consuming
++ * the shared toolkit-owned materials, identity and work-surface primitives. */
++window.luma-text-editor-window .luma-editor-surface {
++  margin: 0 9px 9px;
++  color: @luma_ink;
++}
++
++window.luma-text-editor-window .luma-editor-surface tabbar,
++window.luma-text-editor-window .luma-editor-surface taboverview,
++window.luma-text-editor-window .luma-editor-surface textview,
++window.luma-text-editor-window .luma-editor-surface textview text {
++  background-color: transparent;
++}
+-- 
+2.54.0

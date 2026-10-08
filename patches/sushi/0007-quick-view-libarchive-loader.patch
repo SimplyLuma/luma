@@ -1,0 +1,11 @@
+--- a/src/quick-view-listing.py
++++ b/src/quick-view-listing.py
+@@ -44,7 +44,7 @@
+     return {'rows': entries, 'size': total, 'count': len(entries)}
+ 
+ def archive(path):
+-    library = C.CDLL(ctypes.util.find_library('archive'))
++    library = C.CDLL('libarchive.so.13' if sys.platform.startswith('linux') else ctypes.util.find_library('archive'))
+     signatures = {
+         'archive_read_new': (C.c_void_p, []),
+         'archive_read_support_filter_all': (C.c_int, [C.c_void_p]),

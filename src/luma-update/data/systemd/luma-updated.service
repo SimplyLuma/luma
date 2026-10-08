@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma system updates
+Documentation=https://github.com/ProjectLuma/Luma/blob/stage/docs/os/luma-update.md
+Wants=network-online.target
+After=network-online.target rpm-ostreed.service
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=dbus
+BusName=org.projectluma.Update1
+ExecStart=/usr/libexec/luma-updated
+Nice=10
+IOSchedulingClass=idle
+# rpm-ostreed does the privileged deployment work; this service needs root
+# only to be accepted by rpm-ostreed and to write its own state, the preview
+# remote and the credential.
+User=root
+StateDirectory=luma-update
+StateDirectoryMode=0700
+RuntimeDirectory=luma-update
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/luma /etc/ostree/remotes.d
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+# Not ProcSubset=pid: it hides /proc/sys/kernel/random/boot_id, which the agent
+# records to tell "removed in this boot" from "failed while restarting".
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+TimeoutStopSec=30

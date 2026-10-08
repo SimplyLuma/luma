@@ -1,0 +1,684 @@
+From 76b825236b1c59826267ef74634659866d5261d9 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:19:28 +0000
+Subject: [PATCH] settings: add scoped native preference edits with durable
+ recovery
+
+---
+ shell/cc-luma-backup.c           | 105 ++++++++++++++++
+ shell/cc-luma-backup.h           |  11 ++
+ shell/cc-luma-preferences.c      | 126 +++++++++++++++++++
+ shell/cc-luma-preferences.h      |  14 ++-
+ shell/cc-luma-search-locations.c |  72 ++---------
+ shell/meson.build                |   7 +-
+ shell/test-luma-preferences.c    | 209 +++++++++++++++++++++++++++++++
+ 7 files changed, 480 insertions(+), 64 deletions(-)
+ create mode 100644 shell/cc-luma-backup.c
+ create mode 100644 shell/cc-luma-backup.h
+
+diff --git a/shell/cc-luma-backup.c b/shell/cc-luma-backup.c
+new file mode 100644
+index 0000000..fb4f276
+--- /dev/null
++++ b/shell/cc-luma-backup.c
+@@ -0,0 +1,105 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-backup.h"
++#include <glib/gstdio.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <string.h>
++#include <unistd.h>
++
++/* Extracted from Settings' tested Tracker backup implementation. The native
++ * owner validates payload semantics; storage enforces identity, ownership,
++ * no overwrite, private regular files and durability before a write. */
++static gboolean durable (const char *path, const char *directory, GError **error)
++{
++  const char *targets[] = { path, directory };
++  for (guint i = 0; i < G_N_ELEMENTS (targets); i++) {
++    int fd = g_open (targets[i], O_RDONLY | O_CLOEXEC | O_NOFOLLOW | (i ? O_DIRECTORY : 0), 0);
++    int saved_errno = 0;
++    if (fd < 0) saved_errno = errno;
++    else {
++      int result; do result = fsync (fd); while (result != 0 && errno == EINTR);
++      if (result != 0) saved_errno = errno;
++      if (close (fd) != 0 && !saved_errno) saved_errno = errno;
++    }
++    if (saved_errno) {
++      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (saved_errno),
++                   "Cannot make Settings backup durable: %s", g_strerror (saved_errno));
++      return FALSE;
++    }
++  }
++  return TRUE;
++}
++
++GVariant *cc_luma_backup_once (const char *directory, const char *identity,
++  GVariant *record, guint identity_fields, GCancellable *cancel, GError **error)
++{
++  if (!directory || !g_path_is_absolute (directory) || !identity || !*identity ||
++      !record || !g_variant_is_container (record) || !identity_fields ||
++      identity_fields >= g_variant_n_children (record)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid Settings recovery record");
++    return NULL;
++  }
++  for (guint i = 0; i < identity_fields; i++) {
++    g_autoptr(GVariant) field = g_variant_get_child_value (record, i);
++    if (!g_variant_is_of_type (field, G_VARIANT_TYPE_STRING)) {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid Settings recovery identity");
++      return NULL;
++    }
++  }
++  if (g_mkdir_with_parents (directory, 0700) != 0) {
++    g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno),
++                 "Cannot create Settings backup directory: %s", g_strerror (errno));
++    return NULL;
++  }
++  GStatBuf directory_info;
++  if (g_lstat (directory, &directory_info) != 0 || !S_ISDIR (directory_info.st_mode) ||
++      directory_info.st_uid != getuid () || (directory_info.st_mode & 0777) != 0700) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Settings backups need a private directory owned by this user");
++    return NULL;
++  }
++  g_autofree char *digest = g_compute_checksum_for_string (G_CHECKSUM_SHA256, identity, -1);
++  g_autofree char *name = g_strconcat (digest, ".variant", NULL);
++  g_autofree char *path = g_build_filename (directory, name, NULL);
++  g_autoptr(GFile) file = g_file_new_for_path (path);
++  g_autoptr(GError) create_error = NULL;
++  g_autoptr(GFileOutputStream) stream = g_file_create (file, G_FILE_CREATE_PRIVATE, cancel, &create_error);
++  if (!stream) {
++    if (!g_error_matches (create_error, G_IO_ERROR, G_IO_ERROR_EXISTS)) {
++      g_propagate_error (error, g_steal_pointer (&create_error)); return NULL;
++    }
++    g_autoptr(GFileInfo) info = g_file_query_info (file,
++      G_FILE_ATTRIBUTE_STANDARD_TYPE "," G_FILE_ATTRIBUTE_UNIX_MODE "," G_FILE_ATTRIBUTE_UNIX_UID,
++      G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancel, error);
++    if (!info) return NULL;
++    if (g_file_info_get_file_type (info) != G_FILE_TYPE_REGULAR ||
++        (g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_MODE) & 0777) != 0600 ||
++        g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_UID) != getuid ()) {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings backup must be a private regular file owned by this user");
++      return NULL;
++    }
++    g_autofree char *contents = NULL;
++    if (!g_file_load_contents (file, cancel, &contents, NULL, NULL, error)) return NULL;
++    g_autoptr(GVariant) saved = g_variant_parse (g_variant_get_type (record), contents, NULL, NULL, error);
++    if (!saved) return NULL;
++    for (guint i = 0; i < identity_fields; i++) {
++      g_autoptr(GVariant) old_field = g_variant_get_child_value (saved, i);
++      g_autoptr(GVariant) expected = g_variant_get_child_value (record, i);
++      if (!g_variant_equal (old_field, expected)) {
++        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings backup does not match the edited setting");
++        return NULL;
++      }
++    }
++    if (!durable (path, directory, error)) return NULL;
++    return g_steal_pointer (&saved);
++  }
++  g_autofree char *contents = g_variant_print (record, TRUE);
++  gboolean written = g_output_stream_write_all (G_OUTPUT_STREAM (stream), contents, strlen (contents), NULL, cancel, error);
++  if (written) written = g_output_stream_close (G_OUTPUT_STREAM (stream), cancel, error);
++  if (written) written = durable (path, directory, error);
++  if (!written) {
++    g_output_stream_close (G_OUTPUT_STREAM (stream), NULL, NULL);
++    g_file_delete (file, NULL, NULL);
++    return NULL;
++  }
++  return g_variant_ref (record);
++}
+diff --git a/shell/cc-luma-backup.h b/shell/cc-luma-backup.h
+new file mode 100644
+index 0000000..6520f8c
+--- /dev/null
++++ b/shell/cc-luma-backup.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include <gio/gio.h>
++G_BEGIN_DECLS
++/* Settings-owned, immutable first-write recovery record. Owner-supplied
++ * identity determines the filename; initial tuple string fields identify
++ * the exact store/key. Existing payloads are returned for owner validation.
++ * This performs file I/O and must run off the UI thread. */
++GVariant *cc_luma_backup_once (const char *directory, const char *identity,
++  GVariant *record, guint identity_fields, GCancellable *cancel, GError **error);
++G_END_DECLS
+diff --git a/shell/cc-luma-preferences.c b/shell/cc-luma-preferences.c
+index 58de64b..74f374a 100644
+--- a/shell/cc-luma-preferences.c
++++ b/shell/cc-luma-preferences.c
+@@ -1,5 +1,9 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-preferences.h"
++#include "cc-luma-backup.h"
++#define G_SETTINGS_ENABLE_BACKEND
++#include <gio/gsettingsbackend.h>
++#include <math.h>
+ #include <string.h>
+ 
+ struct _CcLumaPreferences {
+@@ -194,6 +198,128 @@ void cc_luma_preferences_start (CcLumaPreferences *self)
+ }
+ GVariant *cc_luma_preferences_dup_values (CcLumaPreferences *self) { return self->values ? g_variant_ref (self->values) : NULL; }
+ GVariant *cc_luma_preferences_dup_writable (CcLumaPreferences *self) { return self->writable ? g_variant_ref (self->writable) : NULL; }
++
++typedef struct { char *key, *directory; GVariant *value; } PreferenceEdit;
++static void edit_free (PreferenceEdit *edit)
++{
++  g_free (edit->key); g_free (edit->directory);
++  g_clear_pointer (&edit->value, g_variant_unref); g_free (edit);
++}
++static gboolean edit_valid (CcLumaPreferences *self, const char *key, GVariant *value, GError **error)
++{
++  gboolean selected = FALSE, delayed = FALSE;
++  for (guint i = 0; self->keys[i]; i++) if (g_strcmp0 (key, self->keys[i]) == 0) selected = TRUE;
++  if (!selected || g_getenv ("LUMA_SETTINGS_FIXTURE")) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                         "This Settings preference is not authorized for editing"); return FALSE;
++  }
++  g_object_get (self->settings, "delay-apply", &delayed, NULL);
++  if (delayed) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                         "Settings edits require an observer without pending delayed writes"); return FALSE;
++  }
++  g_autoptr(GSettingsSchema) schema = NULL;
++  g_object_get (self->settings, "settings-schema", &schema, NULL);
++  g_autoptr(GSettingsSchemaKey) schema_key = g_settings_schema_get_key (schema, key);
++  if (value && (!g_variant_is_of_type (value, g_settings_schema_key_get_value_type (schema_key)) ||
++                !g_settings_schema_key_range_check (schema_key, value) ||
++                (g_variant_is_of_type (value, G_VARIANT_TYPE_DOUBLE) && !isfinite (g_variant_get_double (value))))) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                         "The native Settings schema rejects this value"); return FALSE;
++  }
++  if (!g_settings_is_writable (self->settings, key)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                         "This native Settings preference is locked"); return FALSE;
++  }
++  return TRUE;
++}
++static void preference_apply (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++{
++  static GMutex edits;
++  g_autoptr(GMutexLocker) lock = g_mutex_locker_new (&edits);
++  CcLumaPreferences *self = source; PreferenceEdit *edit = data;
++  g_autoptr(GError) error = NULL;
++  if (!edit_valid (self, edit->key, edit->value, &error)) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  if (g_task_return_error_if_cancelled (task)) return;
++  g_autofree char *schema_id = NULL, *path = NULL;
++  g_autoptr(GSettingsSchema) schema = NULL;
++  g_autoptr(GObject) backend = NULL;
++  g_object_get (self->settings, "schema-id", &schema_id, "path", &path,
++                "settings-schema", &schema, "backend", &backend, NULL);
++  /* Include the relocatable path in identity. Per-app schemas must not share
++   * a recovery record merely because their schema and key names match. */
++  g_autofree char *identity = g_strjoin ("/", schema_id, path, edit->key, NULL);
++  g_autoptr(GVariant) before = g_settings_get_value (self->settings, edit->key);
++  g_autoptr(GVariant) user_value = g_settings_get_user_value (self->settings, edit->key);
++  g_autoptr(GVariant) record = g_variant_ref_sink (g_variant_new ("(sssv@mv)",
++    schema_id, path, edit->key, before,
++    g_variant_new_maybe (G_VARIANT_TYPE_VARIANT, user_value ? g_variant_new_variant (user_value) : NULL)));
++  g_autoptr(GVariant) saved = cc_luma_backup_once (edit->directory, identity, record, 3, cancel, &error);
++  if (!saved) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) boxed = g_variant_get_child_value (saved, 3);
++  g_autoptr(GVariant) original = g_variant_get_variant (boxed);
++  g_autoptr(GVariant) optional = g_variant_get_child_value (saved, 4);
++  g_autoptr(GVariant) override = g_variant_get_maybe (optional);
++  g_autoptr(GVariant) original_override = override ? g_variant_get_variant (override) : NULL;
++  const GVariantType *type = g_variant_get_type (before);
++  if (!g_variant_is_of_type (original, type) ||
++      (original_override && !g_variant_is_of_type (original_override, type))) {
++    g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
++                            "Settings recovery value has the wrong native type"); return;
++  }
++  if (!edit_valid (self, edit->key, edit->value, &error)) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  if (g_task_return_error_if_cancelled (task)) return;
++  /* A separate transaction uses the same backend and only this edited key;
++   * unrelated external changes and the observer's immediate mode survive. */
++  g_autoptr(GSettings) transaction = g_settings_new_full (schema, (GSettingsBackend *) backend, path);
++  g_settings_delay (transaction);
++  if (edit->value) {
++    if (!g_settings_set_value (transaction, edit->key, edit->value)) {
++      g_settings_revert (transaction);
++      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_FAILED, "Native Settings rejected the staged edit"); return;
++    }
++  } else g_settings_reset (transaction, edit->key);
++  if (g_task_return_error_if_cancelled (task)) { g_settings_revert (transaction); return; }
++  /* A cancellation after commit begins must not falsely report no write. */
++  g_task_set_check_cancellable (task, FALSE);
++  g_settings_apply (transaction);
++  g_task_return_boolean (task, TRUE);
++}
++void cc_luma_preferences_set_async (CcLumaPreferences *self, const char *key,
++  GVariant *value, const char *backup_dir, GCancellable *cancel,
++  GAsyncReadyCallback callback, gpointer data)
++{
++  g_return_if_fail (CC_IS_LUMA_PREFERENCES (self));
++  g_autoptr(GTask) task = g_task_new (self, cancel, callback, data);
++  g_task_set_source_tag (task, cc_luma_preferences_set_async);
++  g_autoptr(GError) error = NULL;
++  if (!edit_valid (self, key, value, &error)) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  if (!backup_dir || !g_path_is_absolute (backup_dir)) {
++    g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Settings edits need an absolute backup directory"); return;
++  }
++  g_autoptr(GObject) backend = NULL;
++  g_object_get (self->settings, "backend", &backend, NULL);
++  g_autoptr(GObject) memory = G_OBJECT (g_memory_settings_backend_new ());
++  if (!backend || !g_type_is_a (G_OBJECT_TYPE (backend), G_OBJECT_TYPE (memory))) {
++    g_autofree char *expected = g_build_filename (g_get_user_data_dir (), "luma", "settings", "backups", NULL);
++    g_autofree char *normalized = g_canonicalize_filename (backup_dir, NULL);
++    if (g_strcmp0 (expected, normalized) != 0) {
++      g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                              "Native Settings backups must stay in the documented app-local backup store"); return;
++    }
++  }
++  PreferenceEdit *edit = g_new0 (PreferenceEdit, 1);
++  edit->key = g_strdup (key); edit->directory = g_strdup (backup_dir);
++  edit->value = value ? g_variant_ref (value) : NULL;
++  g_task_set_task_data (task, edit, (GDestroyNotify) edit_free);
++  g_task_run_in_thread (task, preference_apply);
++}
++gboolean cc_luma_preferences_set_finish (CcLumaPreferences *self, GAsyncResult *result, GError **error)
++{
++  g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
++  g_return_val_if_fail (g_async_result_is_tagged (result, cc_luma_preferences_set_async), FALSE);
++  return g_task_propagate_boolean (G_TASK (result), error);
++}
+ static void dispose (GObject *object)
+ {
+   CcLumaPreferences *self = CC_LUMA_PREFERENCES (object);
+diff --git a/shell/cc-luma-preferences.h b/shell/cc-luma-preferences.h
+index 5b11d89..6180c12 100644
+--- a/shell/cc-luma-preferences.h
++++ b/shell/cc-luma-preferences.h
+@@ -4,7 +4,8 @@
+ G_BEGIN_DECLS
+ #define CC_TYPE_LUMA_PREFERENCES (cc_luma_preferences_get_type ())
+ G_DECLARE_FINAL_TYPE (CcLumaPreferences, cc_luma_preferences, CC, LUMA_PREFERENCES, GObject)
+-/* Read-only glue for existing native schemas. The injected-object route
++/* Observer glue for existing native schemas. Construction/start never write.
++ * The injected-object route
+  * permits memory-only tests; no fixture constructor opens a native schema. */
+ CcLumaPreferences *cc_luma_preferences_new (GSettings *settings,
+   const char * const *keys, GError **error);
+@@ -44,4 +45,15 @@ void cc_luma_preferences_stop (CcLumaPreferences *self);
+  * Both are NULL until the first asynchronous ::changed notification. */
+ GVariant *cc_luma_preferences_dup_values (CcLumaPreferences *self);
+ GVariant *cc_luma_preferences_dup_writable (CcLumaPreferences *self);
++/* Explicit edits affect only a key selected by this observer. A durable,
++ * immutable recovery record precedes the update and preserves whether the
++ * original value was an override. NULL value resets to the schema default.
++ * Native backups stay in ~/.local/share/luma/settings/backups; injected
++ * memory backends permit a scratch test directory. Fixture mode refuses.
++ * Backup I/O runs in a worker; cancellation before commit prevents writes. */
++void cc_luma_preferences_set_async (CcLumaPreferences *self, const char *key,
++  GVariant *value, const char *backup_dir, GCancellable *cancel,
++  GAsyncReadyCallback callback, gpointer data);
++gboolean cc_luma_preferences_set_finish (CcLumaPreferences *self,
++  GAsyncResult *result, GError **error);
+ G_END_DECLS
+diff --git a/shell/cc-luma-search-locations.c b/shell/cc-luma-search-locations.c
+index b7ea848..f600cc6 100644
+--- a/shell/cc-luma-search-locations.c
++++ b/shell/cc-luma-search-locations.c
+@@ -1,5 +1,6 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-search-locations.h"
++#include "cc-luma-backup.h"
+ #define G_SETTINGS_ENABLE_BACKEND
+ #include <gio/gsettingsbackend.h>
+ #include <glib/gstdio.h>
+@@ -82,71 +83,22 @@ GPtrArray *cc_luma_search_locations_dup_folders (GSettings *settings)
+   return folders;
+ }
+ static void edit_free (Edit *edit) { g_object_unref (edit->folder); g_free (edit->backup_dir); g_free (edit); }
+-static gboolean sync_backup (const char *path, const char *dir, GError **error)
+-{
+-  const char *targets[] = { path, dir };
+-  for (guint i = 0; i < G_N_ELEMENTS (targets); i++) {
+-    int fd = g_open (targets[i], O_RDONLY | O_CLOEXEC | O_NOFOLLOW | (i ? O_DIRECTORY : 0), 0);
+-    int saved_errno = 0;
+-    if (fd < 0) saved_errno = errno;
+-    else {
+-      int result; do result = fsync (fd); while (result != 0 && errno == EINTR);
+-      if (result != 0) saved_errno = errno;
+-      if (close (fd) != 0 && !saved_errno) saved_errno = errno;
+-    }
+-    if (saved_errno) {
+-      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (saved_errno), "Cannot make Settings backup durable: %s", g_strerror (saved_errno)); return FALSE;
+-    }
+-  }
+-  return TRUE;
+-}
+ static gboolean backup (GSettings *settings, const char *dir, const char *key, GCancellable *cancel, GError **error)
+ {
+   g_autofree char *schema = NULL; g_object_get (settings, "schema-id", &schema, NULL);
++  /* Keep the existing Tracker recovery filenames and record format intact. */
+   g_autofree char *identity = g_strconcat (schema, "/", key, NULL);
+-  g_autofree char *digest = g_compute_checksum_for_string (G_CHECKSUM_SHA256, identity, -1);
+-  g_autofree char *name = g_strconcat (digest, ".variant", NULL);
+-  if (g_mkdir_with_parents (dir, 0700) != 0) {
+-    g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno), "Cannot create Settings backup directory: %s", g_strerror (errno)); return FALSE;
+-  }
+-  g_autofree char *path = g_build_filename (dir, name, NULL);
+-  g_autoptr (GFile) file = g_file_new_for_path (path);
+-  g_autoptr (GError) create_error = NULL;
+-  g_autoptr (GFileOutputStream) stream = g_file_create (file, G_FILE_CREATE_PRIVATE, cancel, &create_error);
+-  if (!stream) {
+-    if (!g_error_matches (create_error, G_IO_ERROR, G_IO_ERROR_EXISTS)) { g_propagate_error (error, g_steal_pointer (&create_error)); return FALSE; }
+-    /* A first-kind backup is immutable. Refuse a malformed previous backup
+-     * rather than overwrite it or proceed without recovery evidence. */
+-    g_autoptr(GFileInfo) info = g_file_query_info (file,
+-      G_FILE_ATTRIBUTE_STANDARD_TYPE "," G_FILE_ATTRIBUTE_UNIX_MODE "," G_FILE_ATTRIBUTE_UNIX_UID,
+-      G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, cancel, error);
+-    if (!info) return FALSE;
+-    if (g_file_info_get_file_type (info) != G_FILE_TYPE_REGULAR ||
+-        (g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_MODE) & 0777) != 0600 ||
+-        g_file_info_get_attribute_uint32 (info, G_FILE_ATTRIBUTE_UNIX_UID) != getuid ()) {
+-      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+-                           "Settings backup must be a private regular file owned by this user");
+-      return FALSE;
+-    }
+-    g_autofree char *contents = NULL;
+-    if (!g_file_load_contents (file, cancel, &contents, NULL, NULL, error)) return FALSE;
+-    g_autoptr (GVariant) saved = g_variant_parse (G_VARIANT_TYPE ("(ssv)"), contents, NULL, NULL, error);
+-    if (!saved) return FALSE;
+-    const char *old_schema, *old_key; g_autoptr (GVariant) old_value = NULL;
+-    g_variant_get (saved, "(&s&sv)", &old_schema, &old_key, &old_value);
+-    if (!g_str_equal (old_schema, schema) || !g_str_equal (old_key, key) || !g_variant_is_of_type (old_value, G_VARIANT_TYPE_STRING_ARRAY)) {
+-      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings backup does not match the edited setting"); return FALSE;
+-    }
+-    return sync_backup (path, dir, error);
++  g_autoptr(GVariant) before = g_settings_get_value (settings, key);
++  g_autoptr(GVariant) record = g_variant_ref_sink (g_variant_new ("(ssv)", schema, key, before));
++  g_autoptr(GVariant) saved = cc_luma_backup_once (dir, identity, record, 2, cancel, error);
++  if (!saved) return FALSE;
++  g_autoptr(GVariant) boxed = g_variant_get_child_value (saved, 2);
++  g_autoptr(GVariant) value = g_variant_get_variant (boxed);
++  if (!g_variant_is_of_type (value, G_VARIANT_TYPE_STRING_ARRAY)) {
++    g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings backup does not match the edited setting");
++    return FALSE;
+   }
+-  g_autoptr (GVariant) before = g_settings_get_value (settings, key);
+-  g_autoptr (GVariant) saved = g_variant_ref_sink (g_variant_new ("(ssv)", schema, key, before));
+-  g_autofree char *contents = g_variant_print (saved, TRUE);
+-  gboolean written = g_output_stream_write_all (G_OUTPUT_STREAM (stream), contents, strlen (contents), NULL, cancel, error);
+-  if (written) written = g_output_stream_close (G_OUTPUT_STREAM (stream), cancel, error);
+-  if (written) written = sync_backup (path, dir, error);
+-  if (!written) { g_output_stream_close (G_OUTPUT_STREAM (stream), NULL, NULL); g_file_delete (file, NULL, NULL); }
+-  return written;
++  return TRUE;
+ }
+ static void apply (GTask *task, gpointer source, gpointer task_data, GCancellable *cancel)
+ {
+diff --git a/shell/meson.build b/shell/meson.build
+index a9c0b59..c84645f 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -75,6 +75,7 @@ common_sources = files(
+   'cc-luma-application-options.c',
+   'cc-luma-applications.c',
+   'cc-luma-search-locations.c',
++  'cc-luma-backup.c',
+   'cc-luma-audio.c',
+   'cc-luma-properties.c',
+   'cc-luma-services.c',
+@@ -239,13 +240,13 @@ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ subdir('test-fixture-schemas')
+ preferences_test = executable(
+-  'test-luma-preferences', ['test-luma-preferences.c', 'cc-luma-preferences.c'],
++  'test-luma-preferences', ['test-luma-preferences.c', 'cc-luma-preferences.c', 'cc-luma-backup.c'],
+   include_directories: top_inc, dependencies: [gio_dep])
+ test('luma-settings-preferences', preferences_test,
+   env: ['G_DEBUG=fatal-warnings', 'GSETTINGS_BACKEND=memory', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
+ 
+ search_locations_test = executable('test-luma-search-locations',
+-  ['test-luma-search-locations.c', 'cc-luma-search-locations.c'],
++  ['test-luma-search-locations.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c'],
+   dependencies: [gio_dep])
+ test('luma-settings-search-locations', search_locations_test,
+   env: ['G_DEBUG=fatal-warnings', 'GSETTINGS_BACKEND=memory', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
+@@ -268,7 +269,7 @@ applications_test = executable('test-luma-applications',
+   ['test-luma-applications.c', 'cc-luma-applications.c'], dependencies: [gio_dep])
+ test('luma-settings-applications', applications_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+-fixture_view_sources = ['cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c']
++fixture_view_sources = ['cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c']
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')]
+ fixture_view_test = executable('test-luma-view', ['test-luma-view.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+ folder_portal_test = executable('test-luma-folder-portal', ['test-luma-folder-portal.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+diff --git a/shell/test-luma-preferences.c b/shell/test-luma-preferences.c
+index e77a1f9..76354a2 100644
+--- a/shell/test-luma-preferences.c
++++ b/shell/test-luma-preferences.c
+@@ -1,5 +1,11 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-preferences.h"
++#include "cc-luma-backup.h"
++#define G_SETTINGS_ENABLE_BACKEND
++#include <gio/gsettingsbackend.h>
++#include <glib/gstdio.h>
++#include <math.h>
++#include <unistd.h>
+ #define SCHEMA "org.project_luma.settings-preferences-test"
+ static guint changes;
+ static void changed (CcLumaPreferences *self, gpointer unused) { changes++; }
+@@ -74,11 +80,214 @@ static void invalid (void)
+   }
+   g_unsetenv ("LUMA_SETTINGS_FIXTURE");
+ }
++typedef struct { gboolean done, success; GError *error; } EditSeen;
++static void edit_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  EditSeen *seen = data;
++  seen->success = cc_luma_preferences_set_finish (CC_LUMA_PREFERENCES (source), result, &seen->error);
++  seen->done = TRUE;
++}
++static void wait_edit (EditSeen *seen)
++{
++  gint64 deadline = g_get_monotonic_time () + 5000000;
++  while (!seen->done && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  g_assert_true (seen->done);
++}
++static GSettings *private_settings (const char *schema_id, const char *path, GSettingsBackend *backend)
++{
++  g_autoptr(GSettingsSchema) schema = g_settings_schema_source_lookup (g_settings_schema_source_get_default (), schema_id, TRUE);
++  g_assert_nonnull (schema);
++  return g_settings_new_full (schema, backend, path);
++}
++static char *backup_path (const char *directory, const char *schema, const char *path, const char *key)
++{
++  g_autofree char *identity = g_strjoin ("/", schema, path, key, NULL);
++  g_autofree char *digest = g_compute_checksum_for_string (G_CHECKSUM_SHA256, identity, -1);
++  g_autofree char *name = g_strconcat (digest, ".variant", NULL);
++  return g_build_filename (directory, name, NULL);
++}
++static void remove_backups (const char *directory)
++{
++  g_autoptr(GDir) entries = g_dir_open (directory, 0, NULL);
++  const char *name;
++  while (entries && (name = g_dir_read_name (entries))) {
++    g_autofree char *path = g_build_filename (directory, name, NULL);
++    g_assert_cmpint (g_remove (path), ==, 0);
++  }
++  g_clear_pointer (&entries, g_dir_close);
++  g_assert_cmpint (g_rmdir (directory), ==, 0);
++}
++static void scoped_write (void)
++{
++  g_autoptr(GSettingsBackend) backend = g_memory_settings_backend_new ();
++  g_autoptr(GSettings) settings = private_settings (SCHEMA, NULL, backend);
++  const char * const keys[] = { "enabled", "speed", NULL };
++  g_autoptr(CcLumaPreferences) self = cc_luma_preferences_new (settings, keys, NULL);
++  g_autofree char *directory = g_dir_make_tmp ("settings-preference-backup-XXXXXX", NULL);
++  g_assert_nonnull (directory);
++  g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_boolean (FALSE));
++  EditSeen seen = { 0 };
++  cc_luma_preferences_set_async (self, "enabled", value, directory, NULL, edit_done, &seen);
++  g_assert_false (seen.done);
++  g_assert_true (g_settings_set_string (settings, "unrelated", "external edit survives"));
++  wait_edit (&seen); g_assert_true (seen.success); g_assert_no_error (seen.error);
++  g_assert_false (g_settings_get_boolean (settings, "enabled"));
++  g_autofree char *text = g_settings_get_string (settings, "unrelated");
++  g_assert_cmpstr (text, ==, "external edit survives");
++  gboolean delayed = TRUE; g_object_get (settings, "delay-apply", &delayed, NULL); g_assert_false (delayed);
++  g_autofree char *path = backup_path (directory, SCHEMA, "/org/project_luma/settings-preferences-test/", "enabled");
++  GStatBuf file_info; g_assert_cmpint (g_stat (path, &file_info), ==, 0); g_assert_cmpuint (file_info.st_mode & 0777, ==, 0600);
++  g_autofree char *original_text = NULL; g_assert_true (g_file_get_contents (path, &original_text, NULL, NULL));
++  g_autoptr(GVariant) original = g_variant_parse (G_VARIANT_TYPE ("(sssvmv)"), original_text, NULL, NULL, NULL);
++  g_assert_nonnull (original);
++  g_autoptr(GVariant) boxed = g_variant_get_child_value (original, 3);
++  g_autoptr(GVariant) old_value = g_variant_get_variant (boxed); g_assert_true (g_variant_get_boolean (old_value));
++  g_autoptr(GVariant) optional = g_variant_get_child_value (original, 4); g_assert_cmpuint (g_variant_n_children (optional), ==, 0);
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (self, "enabled", NULL, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_true (seen.success); g_assert_no_error (seen.error);
++  g_assert_true (g_settings_get_boolean (settings, "enabled"));
++  g_assert_null (g_settings_get_user_value (settings, "enabled"));
++  g_autofree char *after = NULL; g_assert_true (g_file_get_contents (path, &after, NULL, NULL));
++  g_assert_cmpstr (after, ==, original_text);
++  remove_backups (directory);
++}
++static void edit_boundaries (void)
++{
++  g_autoptr(GSettingsBackend) backend = g_memory_settings_backend_new ();
++  g_autoptr(GSettings) settings = private_settings (SCHEMA, NULL, backend);
++  const char * const keys[] = { "enabled", "speed", NULL };
++  g_autoptr(CcLumaPreferences) self = cc_luma_preferences_new (settings, keys, NULL);
++  g_autofree char *directory = g_dir_make_tmp ("settings-preference-refusal-XXXXXX", NULL);
++  const char *forbidden[] = { "unrelated", "missing", NULL };
++  for (guint i = 0; i < G_N_ELEMENTS (forbidden); i++) {
++    EditSeen seen = { 0 }; g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_boolean (FALSE));
++    cc_luma_preferences_set_async (self, forbidden[i], value, directory, NULL, edit_done, &seen);
++    wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED);
++    g_clear_error (&seen.error);
++  }
++  const double invalid_numbers[] = { -2, 2, NAN, INFINITY, -INFINITY };
++  for (guint i = 0; i < G_N_ELEMENTS (invalid_numbers); i++) {
++    EditSeen seen = { 0 }; g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_double (invalid_numbers[i]));
++    cc_luma_preferences_set_async (self, "speed", value, directory, NULL, edit_done, &seen);
++    wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++    g_clear_error (&seen.error); g_assert_cmpfloat (g_settings_get_double (settings, "speed"), ==, 0.2);
++  }
++  EditSeen seen = { 0 }; g_autoptr(GVariant) wrong = g_variant_ref_sink (g_variant_new_string ("wrong type"));
++  cc_luma_preferences_set_async (self, "enabled", wrong, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT); g_clear_error (&seen.error);
++  g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_boolean (FALSE));
++  g_autoptr(GCancellable) cancel = g_cancellable_new (); g_cancellable_cancel (cancel);
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (self, "enabled", value, directory, cancel, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_CANCELLED); g_clear_error (&seen.error);
++  g_assert_true (g_settings_get_boolean (settings, "enabled"));
++  g_setenv ("LUMA_SETTINGS_FIXTURE", "", TRUE);
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (self, "enabled", value, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED); g_clear_error (&seen.error);
++  g_unsetenv ("LUMA_SETTINGS_FIXTURE");
++  g_settings_delay (settings);
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (self, "enabled", value, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT); g_clear_error (&seen.error);
++  g_assert_true (g_settings_get_boolean (settings, "enabled"));
++  g_autoptr(GDir) entries = g_dir_open (directory, 0, NULL); g_assert_null (g_dir_read_name (entries));
++  g_clear_pointer (&entries, g_dir_close); g_assert_cmpint (g_rmdir (directory), ==, 0);
++}
++static void recovery_and_paths (void)
++{
++  const char *schema_id = "org.project_luma.settings-relocatable-test";
++  g_autoptr(GSettingsBackend) backend = g_memory_settings_backend_new ();
++  g_autoptr(GSettings) first = private_settings (schema_id, "/org/project_luma/first/", backend);
++  g_autoptr(GSettings) second = private_settings (schema_id, "/org/project_luma/second/", backend);
++  const char * const keys[] = { "enabled", NULL };
++  g_autoptr(CcLumaPreferences) a = cc_luma_preferences_new (first, keys, NULL);
++  g_autoptr(CcLumaPreferences) b = cc_luma_preferences_new (second, keys, NULL);
++  g_autofree char *directory = g_dir_make_tmp ("settings-preference-paths-XXXXXX", NULL);
++  g_autoptr(GVariant) off = g_variant_ref_sink (g_variant_new_boolean (FALSE));
++  g_autoptr(GVariant) on = g_variant_ref_sink (g_variant_new_boolean (TRUE));
++  EditSeen seen = { 0 }; cc_luma_preferences_set_async (a, "enabled", off, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_true (seen.success); g_assert_no_error (seen.error);
++  g_assert_true (g_settings_set_boolean (second, "enabled", FALSE));
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (b, "enabled", on, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_true (seen.success); g_assert_no_error (seen.error);
++  g_autofree char *a_path = backup_path (directory, schema_id, "/org/project_luma/first/", "enabled");
++  g_autofree char *b_path = backup_path (directory, schema_id, "/org/project_luma/second/", "enabled");
++  g_assert_cmpstr (a_path, !=, b_path); g_assert_true (g_file_test (a_path, G_FILE_TEST_IS_REGULAR));
++  g_autofree char *contents = NULL; g_assert_true (g_file_get_contents (b_path, &contents, NULL, NULL));
++  g_autoptr(GVariant) saved = g_variant_parse (G_VARIANT_TYPE ("(sssvmv)"), contents, NULL, NULL, NULL); g_assert_nonnull (saved);
++  g_autoptr(GVariant) optional = g_variant_get_child_value (saved, 4);
++  g_autoptr(GVariant) boxed = g_variant_get_maybe (optional); g_assert_nonnull (boxed);
++  g_autoptr(GVariant) original_user = g_variant_get_variant (boxed); g_assert_false (g_variant_get_boolean (original_user));
++  g_assert_false (g_settings_get_boolean (first, "enabled")); g_assert_true (g_settings_get_boolean (second, "enabled"));
++  /* Corrupt immutable recovery evidence must prevent any subsequent write. */
++  g_assert_true (g_file_set_contents (a_path, "invalid recovery record", -1, NULL));
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (a, "enabled", on, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_nonnull (seen.error); g_clear_error (&seen.error);
++  g_assert_false (g_settings_get_boolean (first, "enabled"));
++  g_clear_pointer (&contents, g_free);
++  g_assert_true (g_file_get_contents (a_path, &contents, NULL, NULL)); g_assert_cmpstr (contents, ==, "invalid recovery record");
++  remove_backups (directory);
++}
++static void recovery_refusals (void)
++{
++  g_autofree char *directory = g_dir_make_tmp ("settings-recovery-refusal-XXXXXX", NULL);
++  g_autoptr(GVariant) record = g_variant_ref_sink (g_variant_new ("(ssv)", "owner", "key", g_variant_new_boolean (TRUE)));
++  g_autoptr(GError) error = NULL;
++  g_assert_cmpint (g_chmod (directory, 0755), ==, 0);
++  g_assert_null (cc_luma_backup_once (directory, "identity", record, 2, NULL, &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED); g_clear_error (&error);
++  g_assert_cmpint (g_chmod (directory, 0700), ==, 0);
++  g_autoptr(GVariant) saved = cc_luma_backup_once (directory, "identity", record, 2, NULL, &error);
++  g_assert_no_error (error); g_assert_nonnull (saved);
++  g_autofree char *digest = g_compute_checksum_for_string (G_CHECKSUM_SHA256, "identity", -1);
++  g_autofree char *name = g_strconcat (digest, ".variant", NULL);
++  g_autofree char *path = g_build_filename (directory, name, NULL);
++  g_assert_cmpint (g_chmod (path, 0644), ==, 0);
++  g_assert_null (cc_luma_backup_once (directory, "identity", record, 2, NULL, &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA); g_clear_error (&error);
++  g_assert_cmpint (g_chmod (path, 0600), ==, 0);
++  g_autoptr(GVariant) other = g_variant_ref_sink (g_variant_new ("(ssv)", "another owner", "key", g_variant_new_boolean (FALSE)));
++  g_assert_null (cc_luma_backup_once (directory, "identity", other, 2, NULL, &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA); g_clear_error (&error);
++  g_autofree char *target = g_build_filename (directory, "preserved-target", NULL);
++  g_assert_cmpint (g_rename (path, target), ==, 0); g_assert_cmpint (symlink (target, path), ==, 0);
++  g_assert_null (cc_luma_backup_once (directory, "identity", record, 2, NULL, &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA); g_clear_error (&error);
++  g_autofree char *contents = NULL; g_assert_true (g_file_get_contents (target, &contents, NULL, NULL));
++  g_autofree char *expected = g_variant_print (record, TRUE); g_assert_cmpstr (contents, ==, expected);
++  remove_backups (directory);
++}
++static void backend_boundaries (void)
++{
++  g_autofree char *directory = g_dir_make_tmp ("settings-backend-refusal-XXXXXX", NULL);
++  g_autofree char *file = g_build_filename (directory, "scratch.ini", NULL);
++  g_autoptr(GSettingsBackend) backend = g_keyfile_settings_backend_new (file, "/", NULL);
++  g_autoptr(GSettings) settings = private_settings (SCHEMA, NULL, backend);
++  const char * const keys[] = { "enabled", NULL };
++  g_autoptr(CcLumaPreferences) self = cc_luma_preferences_new (settings, keys, NULL);
++  g_autoptr(GVariant) off = g_variant_ref_sink (g_variant_new_boolean (FALSE));
++  /* GSETTINGS_BACKEND=memory cannot authorize an actually different backend. */
++  EditSeen seen = { 0 }; cc_luma_preferences_set_async (self, "enabled", off, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED);
++  g_clear_error (&seen.error); g_assert_true (g_settings_get_boolean (settings, "enabled"));
++  g_assert_false (g_file_test (file, G_FILE_TEST_EXISTS));
++  g_autoptr(GSettingsBackend) locked_backend = g_null_settings_backend_new ();
++  g_autoptr(GSettings) locked_settings = private_settings (SCHEMA, NULL, locked_backend);
++  g_autoptr(CcLumaPreferences) locked = cc_luma_preferences_new (locked_settings, keys, NULL);
++  seen = (EditSeen) { 0 }; cc_luma_preferences_set_async (locked, "enabled", off, directory, NULL, edit_done, &seen);
++  wait_edit (&seen); g_assert_false (seen.success); g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED);
++  g_clear_error (&seen.error); g_assert_true (g_settings_get_boolean (locked_settings, "enabled"));
++  g_clear_object (&self); g_clear_object (&settings); g_clear_object (&backend); drain ();
++  remove_backups (directory);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+   g_assert_cmpstr (g_getenv ("GSETTINGS_BACKEND"), ==, "memory");
+   g_test_add_func ("/settings/preferences/values", values);
+   g_test_add_func ("/settings/preferences/invalid", invalid);
++  g_test_add_func ("/settings/preferences/scoped-write", scoped_write);
++  g_test_add_func ("/settings/preferences/edit-boundaries", edit_boundaries);
++  g_test_add_func ("/settings/preferences/recovery-and-paths", recovery_and_paths);
++  g_test_add_func ("/settings/preferences/recovery-refusals", recovery_refusals);
++  g_test_add_func ("/settings/preferences/backend-boundaries", backend_boundaries);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

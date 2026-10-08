@@ -1,0 +1,10 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Camera
+Type=Application
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=snapshot org.gnome.Snapshot
+Terminal=false
+Categories=AudioVideo;Video;Recorder;GNOME;GTK;
+Icon=org.gnome.Snapshot
+StartupNotify=true
+DBusActivatable=true

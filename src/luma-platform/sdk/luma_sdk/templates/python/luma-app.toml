@@ -1,0 +1,40 @@
+schema_version = "0.2"
+
+[application]
+id = "@APP_ID@"
+name = "@APP_NAME@"
+version = "0.1.0"
+entrypoint = "src/main.py"
+
+[platform]
+ui_contract = "1"
+semantics_contract = "1"
+
+[responsive]
+adaptive = true
+test_widths = [360, 500, 1024]
+input_modes = ["pointer", "touch", "keyboard"]
+presentation_modes = ["windowed", "fullscreen-mobile"]
+
+[distribution]
+substrate = "flatpak"
+flatpak_manifest = "flatpak/@APP_ID@.json"
+appstream_metadata = "data/@APP_ID@.metainfo.xml"
+desktop_file = "data/@APP_ID@.desktop"
+icon = "data/@APP_ID@.svg"
+portal_first = true
+portals = ["file-chooser", "notifications", "open-uri"]
+
+[lifecycle]
+app_data = "removable"
+cache = "removable"
+user_documents = "preserved"
+reset_supported = true
+uninstall_choices = ["keep-data", "remove-app-data"]
+
+[conformance]
+accessibility = true
+keyboard = true
+semantics = true
+reduced_motion = true
+evidence = "verification/luma-native-evidence.json"

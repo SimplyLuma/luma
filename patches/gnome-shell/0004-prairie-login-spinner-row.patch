@@ -1,0 +1,176 @@
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 6a990a0..1954bf3 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3209,6 +3209,11 @@ StScrollBar {
+     icon-size: 18px;
+     color: white; }
+ 
++.prairie-login-spinner-row {
++  height: 18px;
++  min-height: 18px;
++  color: #4878b8; }
++
+ .prairie-login-error,
+ .login-dialog-message-warning.prairie-login-error {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index d8e89c4..f6abd75 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -3539,6 +3539,11 @@ StScrollBar {
+     icon-size: 18px;
+     color: white; }
+ 
++.prairie-login-spinner-row {
++  height: 18px;
++  min-height: 18px;
++  color: #4878b8; }
++
+ .prairie-login-error,
+ .login-dialog-message-warning.prairie-login-error {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index b9313a9..d9677f9 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3288,6 +3288,11 @@ StScrollBar {
+     icon-size: 18px;
+     color: white; }
+ 
++.prairie-login-spinner-row {
++  height: 18px;
++  min-height: 18px;
++  color: #4878b8; }
++
+ .prairie-login-error,
+ .login-dialog-message-warning.prairie-login-error {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index 60fe0f2..bd27820 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -197,6 +197,12 @@ $_gdm_dialog_width: 25em;
+   }
+ }
+ 
++.prairie-login-spinner-row {
++  height: 18px;
++  min-height: 18px;
++  color: #4878b8;
++}
++
+ .prairie-login-error,
+ .login-dialog-message-warning.prairie-login-error {
+   min-height: 0;
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index 6edf2aa..1b494f9 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -341,8 +341,15 @@ export const AuthPrompt = GObject.registerClass({
+         this._mainBox.add_child(this._submitButton);
+ 
+         this._spinner = new Animation.Spinner(DEFAULT_BUTTON_WELL_ICON_SIZE);
+-        this._defaultButtonWell.add_child(this._spinner);
+         this._spinner.opacity = 0;
++        this._spinnerRow = new St.Bin({
++            style_class: 'prairie-login-spinner-row',
++            x_expand: true,
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++            child: this._spinner,
++        });
++        this._inputWell.add_child(this._spinnerRow);
+         this._defaultButtonWellActor = this._submitArrow;
+     }
+ 
+@@ -527,8 +534,41 @@ export const AuthPrompt = GObject.registerClass({
+     }
+ 
+     setActorInDefaultButtonWell(actor, animate) {
++        if (actor === this._spinner) {
++            this._spinner.remove_all_transitions();
++            this._spinner.play();
++
++            if (!animate) {
++                this._spinner.opacity = 255;
++            } else {
++                this._spinner.ease({
++                    opacity: 255,
++                    duration: DEFAULT_BUTTON_WELL_ANIMATION_TIME,
++                    delay: DEFAULT_BUTTON_WELL_ANIMATION_DELAY,
++                    mode: Clutter.AnimationMode.LINEAR,
++                });
++            }
++            return;
++        }
++
+         actor ??= this._submitArrow;
+ 
++        this._spinner.remove_all_transitions();
++        if (this._spinner.opacity > 0) {
++            if (!animate) {
++                this._spinner.opacity = 0;
++                this._spinner.stop();
++            } else {
++                this._spinner.ease({
++                    opacity: 0,
++                    duration: DEFAULT_BUTTON_WELL_ANIMATION_TIME,
++                    delay: DEFAULT_BUTTON_WELL_ANIMATION_DELAY,
++                    mode: Clutter.AnimationMode.LINEAR,
++                    onComplete: () => this._spinner.stop(),
++                });
++            }
++        }
++
+         if (!this._defaultButtonWellActor &&
+             !actor)
+             return;
+@@ -538,46 +578,20 @@ export const AuthPrompt = GObject.registerClass({
+         if (oldActor)
+             oldActor.remove_all_transitions();
+ 
+-        let wasSpinner;
+-        if (oldActor === this._spinner)
+-            wasSpinner = true;
+-        else
+-            wasSpinner = false;
+-
+-        let isSpinner;
+-        if (actor === this._spinner)
+-            isSpinner = true;
+-        else
+-            isSpinner = false;
+-
+         if (this._defaultButtonWellActor !== actor && oldActor) {
+             if (!animate) {
+                 oldActor.opacity = 0;
+-
+-                if (wasSpinner) {
+-                    if (this._spinner)
+-                        this._spinner.stop();
+-                }
+             } else {
+                 oldActor.ease({
+                     opacity: 0,
+                     duration: DEFAULT_BUTTON_WELL_ANIMATION_TIME,
+                     delay: DEFAULT_BUTTON_WELL_ANIMATION_DELAY,
+                     mode: Clutter.AnimationMode.LINEAR,
+-                    onComplete: () => {
+-                        if (wasSpinner) {
+-                            if (this._spinner)
+-                                this._spinner.stop();
+-                        }
+-                    },
+                 });
+             }
+         }
+ 
+         if (actor) {
+-            if (isSpinner)
+-                this._spinner.play();
+-
+             if (!animate) {
+                 actor.opacity = 255;
+             } else {
+

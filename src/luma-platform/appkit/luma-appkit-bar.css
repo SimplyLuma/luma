@@ -1,0 +1,1017 @@
+/* LumaUI bar family (KB-B): items that plug into the action center, the share
+ * and export sheets and the document header. Tokens only: metrics are
+ * var(--lumaui-bar-<group>-<key>) from config/shared/design-tokens.d/bar.json,
+ * colours are @luma_*. Loaded after luma-appkit-base.css. */
+
+/* LumaUI: Bar entry */
+/* The kit's field wells are `entry` nodes (the text area inside belongs to them); the theme's entry look is not theirs. */
+entry.lumaui-bar-entry, entry.lumaui-bar-search, entry.lumaui-share-invite {
+  min-width: 0; border: none; outline: 0 solid transparent; outline-offset: 0; caret-color: @luma_ink;
+}
+box.lumaui-bar-entry-row { border-spacing: var(--lumaui-ac-bar-gap); }
+entry.lumaui-bar-entry {
+  min-height: var(--lumaui-bar-entry-height); padding: 0 var(--lumaui-bar-entry-padding-end) 0 var(--lumaui-bar-entry-padding-start);
+  border-radius: var(--lumaui-bar-entry-radius); border-spacing: var(--lumaui-bar-entry-gap);
+  background: @luma_well; color: @luma_ink; font-size: var(--lumaui-bar-entry-font-size); font-weight: 400;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+  transition: box-shadow var(--lumaui-duration-hover) ease;
+}
+entry.lumaui-bar-entry:focus-within {
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 var(--lumaui-bar-entry-focus-ring) @luma_focus_ring;
+}
+entry.lumaui-bar-entry.compose { padding: 0; border-spacing: 0; }
+entry.lumaui-bar-entry.compose.flat,
+entry.lumaui-bar-entry.compose.flat:focus-within {
+  background: none; box-shadow: none;
+}
+box.lumaui-ac-bar.flat-entry:focus-within {
+  outline: var(--lumaui-bar-entry-focus-ring) solid @luma_focus_ring;
+  outline-offset: 2px;
+}
+box.lumaui-ac-bar.flat-entry button.lumaui-bar-button.icon:hover,
+entry.lumaui-bar-entry.flat button.lumaui-bar-button.tool.lumaui-bar-entry-tool:hover {
+  background: none; color: @luma_ink;
+}
+entry.lumaui-bar-entry.quick { padding-left: var(--lumaui-bar-entry-lead-padding-start); padding-right: var(--lumaui-bar-entry-quick-padding-end); }
+entry.lumaui-bar-entry text, entry.lumaui-bar-entry textview, entry.lumaui-bar-entry textview > text {
+  background: none; color: @luma_ink; font-size: var(--lumaui-bar-entry-font-size); caret-color: @luma_ink;
+}
+entry.lumaui-bar-entry text > placeholder { color: @luma_muted; }
+entry.lumaui-bar-entry scrolledwindow, entry.lumaui-bar-entry scrolledwindow > viewport { background: none; }
+label.lumaui-bar-entry-placeholder {
+  margin: 0 0 0 var(--lumaui-bar-entry-compose-padding-x);
+  color: @luma_muted; font-size: var(--lumaui-bar-entry-font-size);
+}
+button.lumaui-bar-entry-lead {
+  min-width: 0; min-height: 0; padding: 0; margin: 0; border: none; background: none; box-shadow: none; color: @luma_muted;
+}
+button.lumaui-bar-entry-lead image { -gtk-icon-size: var(--lumaui-bar-entry-icon); }
+button.lumaui-bar-entry-lead:hover { color: @luma_ink; }
+entry.lumaui-bar-entry button.lumaui-bar-button.tool.lumaui-bar-entry-tool {
+  min-width: var(--lumaui-bar-entry-tool); min-height: var(--lumaui-bar-entry-tool); margin: var(--lumaui-bar-entry-tool-margin);
+  border-radius: var(--lumaui-bar-entry-tool-radius); color: @luma_ink_secondary;
+}
+entry.lumaui-bar-entry button.lumaui-bar-button.tool.lumaui-bar-entry-tool image { -gtk-icon-size: var(--lumaui-bar-entry-tool-icon); }
+box.lumaui-bar-entry-chips { border-spacing: var(--lumaui-bar-entry-chip-gap); }
+box.lumaui-bar-entry-chip {
+  min-height: var(--lumaui-bar-entry-chip-height); padding: 0 var(--lumaui-bar-entry-chip-padding-x);
+  border-radius: var(--lumaui-bar-entry-chip-radius); border-spacing: 5px;
+  background: @luma_chip; color: @luma_ink; font-size: var(--lumaui-bar-entry-chip-font-size); font-weight: 600; letter-spacing: 0.115px;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+  animation: lumaui-morph var(--lumaui-duration-bar-morph) var(--lumaui-ease) both;
+}
+box.lumaui-bar-entry-chip image { -gtk-icon-size: var(--lumaui-bar-entry-chip-icon); }
+label.lumaui-bar-entry-prefix {
+  font-family: "IBM Plex Mono", monospace; font-size: var(--lumaui-bar-entry-prefix-size); font-weight: 600; color: @luma_bar_command_prefix;
+}
+entry.lumaui-bar-entry.command text, label.lumaui-bar-entry-ghost, label.lumaui-bar-entry-ghost-typed {
+  font-family: "IBM Plex Mono", monospace; font-size: var(--lumaui-bar-entry-mono-size); font-weight: 500;
+}
+box.lumaui-bar-entry-prefix-line { border-spacing: var(--lumaui-bar-entry-prefix-gap); }
+box.lumaui-bar-entry-branch {
+  min-height: var(--lumaui-bar-entry-branch-height); padding: 0 var(--lumaui-bar-entry-branch-padding-end) 0 var(--lumaui-bar-entry-branch-padding-start);
+  border-radius: var(--lumaui-bar-entry-branch-radius); border-spacing: var(--lumaui-bar-entry-branch-gap);
+  background: @luma_fill; color: @luma_good; font-family: "IBM Plex Mono", monospace; font-size: var(--lumaui-bar-entry-branch-size); font-weight: 500;
+}
+box.lumaui-bar-entry-branch image { -gtk-icon-size: var(--lumaui-bar-entry-branch-icon); }
+label.lumaui-bar-entry-sign { font-family: "IBM Plex Mono", monospace; font-size: var(--lumaui-bar-entry-prefix-size); font-weight: 500; color: @luma_bar_command_sign; }
+button.lumaui-bar-button.lumaui-bar-entry-close { padding: 0 var(--lumaui-bar-entry-close-padding-x); }
+label.lumaui-bar-entry-ghost-typed { opacity: 0; }
+label.lumaui-bar-entry-ghost { color: @luma_faint; }
+label.lumaui-bar-entry-key-hint {
+  min-width: calc(var(--lumaui-bar-entry-key-width) - 2 * var(--lumaui-bar-entry-key-padding-x)); padding: 0 var(--lumaui-bar-entry-key-padding-x); font-size: var(--lumaui-bar-entry-key-size); font-weight: 500;
+  letter-spacing: 0.11px; color: @luma_bar_command_hint;
+}
+button.lumaui-bar-send {
+  min-width: var(--lumaui-bar-entry-send); min-height: var(--lumaui-bar-entry-send); padding: 0; margin: 0;
+  border: none; border-radius: 999px; background: none; box-shadow: none; color: @luma_ink_secondary; outline: 0 solid transparent;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-bar-send image { -gtk-icon-size: var(--lumaui-bar-entry-send-icon); }
+button.lumaui-bar-send.stop {
+  min-width: var(--lumaui-bar-entry-stop); min-height: var(--lumaui-bar-entry-stop);
+}
+button.lumaui-bar-send.stop image { -gtk-icon-size: var(--lumaui-bar-entry-stop-icon); }
+button.lumaui-bar-send:hover { background: @luma_hover; }
+button.lumaui-bar-send.go {
+  color: @luma_key_ink; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+button.lumaui-bar-send.go:hover { filter: brightness(1.08); }
+button.lumaui-bar-send:disabled { opacity: 0.35; }
+button.lumaui-bar-send:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+
+/* LumaUI: Share sheet */
+box.lumaui-share {
+  padding: var(--lumaui-bar-share-padding) 0; border-radius: var(--lumaui-bar-share-radius);
+  background: @luma_float_surface; color: @luma_ink; font-size: 13px;
+  box-shadow: inset 0 1px 0 @luma_float_highlight, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+}
+box.lumaui-share.lumaui-share-floating {
+  opacity: 0; transform: translateY(calc(-1 * var(--lumaui-distance-morph-rise))) scale(var(--lumaui-ac-grow-scale));
+  transition: opacity var(--lumaui-duration-dialog-fade) ease, transform var(--lumaui-duration-morph) var(--lumaui-spring);
+}
+box.lumaui-share.lumaui-share-floating.up { transform: translateY(var(--lumaui-distance-morph-rise)) scale(var(--lumaui-ac-grow-scale)); }
+box.lumaui-share.lumaui-share-floating.shown { opacity: 1; transform: none; }
+box.lumaui-share box.lumaui-share-handle { min-height: 0; margin: 0; opacity: 0; }
+box.lumaui-share.phone { padding-top: var(--lumaui-bar-share-phone-padding-top); border-radius: var(--lumaui-bar-share-phone-radius) var(--lumaui-bar-share-phone-radius) 0 0; }
+box.lumaui-share.phone box.lumaui-share-handle { opacity: 1; }
+scrolledwindow.lumaui-share-scroll, scrolledwindow.lumaui-share-scroll > viewport { background: none; }
+box.lumaui-share-head { border-spacing: var(--lumaui-bar-share-head-gap); }
+box.lumaui-share-thumb {
+  min-width: var(--lumaui-bar-share-thumb); min-height: var(--lumaui-bar-share-thumb); border-radius: var(--lumaui-bar-share-thumb-radius);
+  background: @luma_fill; box-shadow: inset 0 0 0 1px @luma_line;
+}
+box.lumaui-share-thumb.person { background: none; box-shadow: none; border-radius: 999px; }
+box.lumaui-share-thumb image { color: @luma_muted; }
+label.lumaui-share-title { min-height: var(--lumaui-bar-share-title-line); font-size: var(--lumaui-bar-share-title-size); font-weight: 650; }
+label.lumaui-share-sub { min-height: var(--lumaui-text-line-small); margin-top: 2px; font-weight: 400; font-size: var(--lumaui-bar-share-sub-size); letter-spacing: 0.12px; color: @luma_muted; }
+box.lumaui-modes.lumaui-share-mode { margin-top: var(--lumaui-bar-share-mode-top); }
+/* The sheet's padding is on its sections, so the rules and the tile strips run to its edges. */
+box.lumaui-share-head, box.lumaui-modes.lumaui-share-mode, box.lumaui-share-actions, box.lumaui-share-link,
+entry.lumaui-share-invite, box.lumaui-share-suggest, label.lumaui-share-none, box.lumaui-share-list {
+  margin-left: var(--lumaui-bar-share-padding); margin-right: var(--lumaui-bar-share-padding);
+}
+box.lumaui-share-divider { min-height: 1px; margin: var(--lumaui-bar-share-divider-margin) 0; background: @luma_line; }
+scrolledwindow.lumaui-share-strip { margin: -4px 0; background: none; }
+box.lumaui-share-strip-fade {
+  min-width: var(--lumaui-bar-share-strip-fade); margin: -4px 0;
+  background-image: linear-gradient(to right, alpha(@luma_float_surface, 0), @luma_float_surface);
+}
+box.lumaui-share-tiles { padding: 4px var(--lumaui-bar-share-padding) 4px 5px; border-spacing: var(--lumaui-bar-share-tile-gap); }
+button.lumaui-share-tile {
+  min-width: var(--lumaui-bar-share-tile-width); padding: var(--lumaui-bar-share-tile-padding-top) 0 var(--lumaui-bar-share-tile-padding-bottom);
+  margin: 0; border: none; border-radius: var(--lumaui-bar-share-tile-radius); background: none; box-shadow: none; color: @luma_ink;
+  outline: 0 solid transparent;
+}
+button.lumaui-share-tile > box { border-spacing: var(--lumaui-bar-share-tile-label-gap); }
+button.lumaui-share-tile:hover, button.lumaui-share-tile.on { background: @luma_hover; }
+button.lumaui-share-tile:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+label.lumaui-share-tile-label { font-size: var(--lumaui-bar-share-tile-label-size); font-weight: 500; letter-spacing: 0.115px; color: @luma_ink_secondary; }
+overlay.lumaui-share-face { border-radius: 999px; }
+button.lumaui-share-tile.sent overlay.lumaui-share-face .lumaui-avatar { box-shadow: 0 0 0 var(--lumaui-bar-share-sent-ring) @luma_float_surface, 0 0 0 calc(2 * var(--lumaui-bar-share-sent-ring)) @luma_good; }
+box.lumaui-share-sent {
+  min-width: var(--lumaui-bar-share-sent-badge); min-height: var(--lumaui-bar-share-sent-badge); margin: 0 -4px -2px 0; border-radius: 999px;
+  background: @luma_good; color: @luma_key_ink; box-shadow: 0 0 0 var(--lumaui-bar-share-sent-ring) @luma_float_surface;
+}
+box.lumaui-share-sent image { -gtk-icon-size: var(--lumaui-bar-share-sent-icon); min-width: var(--lumaui-bar-share-sent-badge); min-height: var(--lumaui-bar-share-sent-badge); }
+image.lumaui-share-app-icon { border-radius: 30%; }
+box.lumaui-share-sys-icon {
+  border-radius: 30%; background: @luma_chip; color: @luma_ink_secondary;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 2px 3px -1px @luma_chip_shadow;
+}
+box.lumaui-share-actions, box.lumaui-share-link {
+  margin-top: var(--lumaui-bar-share-inset-top); padding: var(--lumaui-bar-share-inset-padding);
+  border-radius: var(--lumaui-bar-share-inset-radius); background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+button.lumaui-share-action {
+  min-height: var(--lumaui-bar-share-row-height); padding: 0 var(--lumaui-bar-share-row-padding-end) 0 var(--lumaui-bar-share-row-padding-start);
+  margin: 0; border: none; border-radius: var(--lumaui-bar-share-row-radius); background: none; box-shadow: none; color: @luma_ink;
+  outline: 0 solid transparent;
+}
+button.lumaui-share-action + button.lumaui-share-action { box-shadow: 0 -1px 0 @luma_line; }
+button.lumaui-share-action:hover, button.lumaui-share-action:hover + button.lumaui-share-action { box-shadow: none; }
+button.lumaui-share-action:hover { background: @luma_hover; }
+button.lumaui-share-action:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-share-action > box { border-spacing: var(--lumaui-bar-share-row-gap); }
+button.lumaui-share-action image { -gtk-icon-size: var(--lumaui-bar-share-row-icon); color: @luma_ink_secondary; }
+label.lumaui-share-action-label { font-size: var(--lumaui-bar-share-row-size); font-weight: 500; }
+label.lumaui-share-key { font-size: var(--lumaui-bar-share-key-size); font-weight: 500; letter-spacing: 0.115px; color: @luma_faint; }
+box.lumaui-share-link { margin-top: var(--lumaui-bar-share-link-top); padding: var(--lumaui-bar-share-link-padding); border-spacing: var(--lumaui-bar-share-link-gap); }
+image.lumaui-share-link-icon {
+  min-width: var(--lumaui-bar-share-link-icon-box); min-height: var(--lumaui-bar-share-link-icon-box);
+  -gtk-icon-size: var(--lumaui-bar-share-row-icon); color: @luma_ink_secondary;
+}
+button.lumaui-share-link-picker {
+  padding: 3px 8px 3px 4px; margin: 0 0 0 -6px; border: none; border-radius: 9px; background: none; box-shadow: none; color: @luma_ink;
+  outline: 0 solid transparent;
+}
+button.lumaui-share-link-picker:hover { background: @luma_hover; }
+button.lumaui-share-link-picker:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-share-link-picker image { -gtk-icon-size: 13px; color: @luma_muted; }
+label.lumaui-share-link-title { min-height: var(--lumaui-bar-share-link-title-line); font-size: var(--lumaui-bar-share-link-title-size); font-weight: 600; }
+label.lumaui-share-link-sub { min-height: var(--lumaui-text-line-caption); font-weight: 400; font-size: var(--lumaui-bar-share-link-sub-size); letter-spacing: 0.115px; color: @luma_muted; }
+button.lumaui-share-chip {
+  min-height: var(--lumaui-bar-share-chip-height); padding: 0 var(--lumaui-bar-share-chip-padding-end) 0 var(--lumaui-bar-share-chip-padding-start);
+  margin: 0; border: none; border-radius: var(--lumaui-bar-share-chip-radius);
+  background: @luma_chip; color: @luma_ink; font-size: var(--lumaui-bar-share-chip-size); font-weight: 600;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+  outline: 0 solid transparent;
+}
+button.lumaui-share-chip > box { border-spacing: 6px; }
+button.lumaui-share-chip image { -gtk-icon-size: var(--lumaui-bar-share-chip-icon); }
+button.lumaui-share-chip:hover { filter: brightness(1.06); }
+button.lumaui-share-chip.done { color: @luma_good; }
+button.lumaui-share-chip:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+entry.lumaui-share-invite {
+  min-height: var(--lumaui-bar-share-invite-height); padding: 0 12px; border-radius: var(--lumaui-bar-share-invite-radius);
+  border-spacing: var(--lumaui-bar-share-invite-gap); background: @luma_well; color: @luma_muted;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+entry.lumaui-share-invite:focus-within { box-shadow: inset 0 0 0 1px @luma_well_ring, 0 0 0 2px @luma_focus_ring; }
+entry.lumaui-share-invite image { -gtk-icon-size: var(--lumaui-bar-share-row-icon); }
+entry.lumaui-share-invite text { background: none; color: @luma_ink; font-size: var(--lumaui-bar-share-invite-size); }
+entry.lumaui-share-invite text > placeholder { color: @luma_muted; }
+box.lumaui-share-suggest {
+  margin-top: var(--lumaui-bar-share-suggest-top); padding: 4px; border-radius: var(--lumaui-bar-share-inset-radius); background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+button.lumaui-share-suggestion { padding: 6px 8px; margin: 0; border: none; border-radius: 10px; background: none; box-shadow: none; color: @luma_ink; }
+button.lumaui-share-suggestion > box { border-spacing: 10px; }
+button.lumaui-share-suggestion:hover, button.lumaui-share-suggestion.first { background: @luma_hover; }
+label.lumaui-share-none { margin-top: 8px; padding: 0 6px; font-size: 12px; letter-spacing: 0.12px; color: @luma_muted; }
+box.lumaui-share-list { margin-top: var(--lumaui-bar-share-list-top); border-spacing: 2px; }
+box.lumaui-share-person { padding: var(--lumaui-bar-share-person-padding-y) 2px var(--lumaui-bar-share-person-padding-y) 4px; border-spacing: var(--lumaui-bar-share-person-gap); }
+label.lumaui-share-person-name { min-height: var(--lumaui-text-line-body); font-size: var(--lumaui-bar-share-person-size); font-weight: 600; }
+label.lumaui-share-person-sub { min-height: var(--lumaui-text-line-caption); font-weight: 400; font-size: var(--lumaui-bar-share-person-sub-size); letter-spacing: 0.115px; color: @luma_muted; }
+label.lumaui-share-owner { padding-right: 10px; font-size: 12px; letter-spacing: 0.12px; color: @luma_muted; }
+button.lumaui-share-role {
+  min-height: var(--lumaui-bar-share-role-height); padding: 0 8px 0 10px; margin: 0; border: none; border-radius: var(--lumaui-bar-share-role-radius);
+  background: none; box-shadow: none; color: @luma_ink_secondary; font-size: var(--lumaui-bar-share-role-size); font-weight: 500;
+}
+button.lumaui-share-role > box { border-spacing: 4px; }
+button.lumaui-share-role image { -gtk-icon-size: 13px; color: @luma_muted; }
+button.lumaui-share-role:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-share-role:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+
+/* LumaUI: Modes in the bar */
+box.lumaui-modes.in-bar box.lumaui-mode-line { border-spacing: var(--lumaui-bar-modes-gap); }
+box.lumaui-modes.in-bar.narrow button.lumaui-mode:not(.on) { padding: 0 var(--lumaui-bar-modes-folded-padding-x); }
+box.lumaui-modes.in-bar button.lumaui-mode image { -gtk-icon-size: var(--lumaui-bar-modes-icon); }
+box.lumaui-modes label.lumaui-mode-count { margin-left: calc(var(--lumaui-bar-modes-count-gap) - var(--lumaui-bar-modes-gap)); }
+
+/* LumaUI: Bar search */
+entry.lumaui-bar-search {
+  min-height: var(--lumaui-bar-search-height); padding: 0 var(--lumaui-bar-search-padding-end) 0 var(--lumaui-bar-search-padding-start);
+  border-radius: var(--lumaui-bar-search-radius); border-spacing: var(--lumaui-bar-search-gap);
+  background: @luma_well; color: @luma_muted;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+entry.lumaui-bar-search:focus-visible {
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 var(--lumaui-bar-search-focus-ring) @luma_focus_ring;
+}
+entry.lumaui-bar-search image { -gtk-icon-size: var(--lumaui-bar-search-icon); }
+entry.lumaui-bar-search text { background: none; color: @luma_ink; font-size: var(--lumaui-bar-search-font-size); }
+entry.lumaui-bar-search text > placeholder { color: @luma_muted; }
+entry.lumaui-bar-search.folded { padding: 0 var(--lumaui-bar-search-folded-padding-x); }
+entry.lumaui-bar-search button.lumaui-bar-search-clear {
+  min-width: 24px; min-height: 24px; padding: 0;
+  border: 0; border-radius: 8px; box-shadow: none;
+  background: @luma_control_fill; color: @luma_ink;
+}
+entry.lumaui-bar-search button.lumaui-bar-search-clear image { -gtk-icon-size: 13px; }
+
+/* LumaUI: Selected subject */
+box.lumaui-bar-subject {
+  min-height: var(--lumaui-ac-control-height);
+  padding: 0 var(--lumaui-bar-subject-padding-end) 0 var(--lumaui-bar-subject-padding-start); margin-right: 2px;
+  border-radius: var(--lumaui-ac-control-radius); border-spacing: var(--lumaui-bar-subject-gap);
+  background: @luma_chip; color: @luma_ink; font-size: var(--lumaui-bar-subject-font-size);
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-bar-subject image.lumaui-bar-subject-icon { -gtk-icon-size: var(--lumaui-bar-subject-icon); color: @luma_muted; }
+label.lumaui-bar-subject-meta { font-size: var(--lumaui-bar-subject-meta-size); letter-spacing: 0.12px; color: @luma_muted; font-feature-settings: "tnum"; }
+overlay.lumaui-bar-subject-thumb { border-radius: var(--lumaui-bar-subject-thumb-radius); }
+button.lumaui-bar-subject-close {
+  min-width: var(--lumaui-bar-subject-close); min-height: var(--lumaui-bar-subject-close); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-bar-subject-close-radius); background: none; box-shadow: none; color: @luma_muted;
+  outline: 0 solid transparent;
+}
+button.lumaui-bar-subject-close image { -gtk-icon-size: var(--lumaui-bar-subject-close-icon); }
+button.lumaui-bar-subject-close:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-bar-subject-close:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-bar-thumb-button { min-width: 0; min-height: 0; padding: 0; margin: 0; border: none; background: none; box-shadow: none; }
+button.lumaui-bar-thumb-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+overlay.lumaui-bar-thumb { border-radius: var(--lumaui-bar-subject-tile-radius); box-shadow: inset 0 0 0 1px @luma_line; }
+label.lumaui-bar-thumb-duration {
+  margin: 0 0 var(--lumaui-bar-subject-duration-inset) var(--lumaui-bar-subject-duration-inset);
+  padding: 0 var(--lumaui-bar-subject-duration-padding-x); border-radius: var(--lumaui-bar-subject-duration-radius);
+  background: @luma_media_scrim; color: @luma_on_media; font-size: var(--lumaui-bar-subject-duration-size); font-weight: 600;
+  letter-spacing: 0.1px; font-feature-settings: "tnum";
+}
+
+/* LumaUI: Bar readout */
+box.lumaui-bar-readout { padding: 0 var(--lumaui-bar-readout-padding-end) 0 var(--lumaui-bar-readout-padding-start); }
+label.lumaui-bar-readout-primary {
+  font-size: var(--lumaui-bar-readout-primary-size); font-weight: var(--lumaui-bar-readout-primary-weight); color: @luma_bar_readout_primary;
+  font-feature-settings: "tnum";
+}
+label.lumaui-bar-readout-secondary { font-size: var(--lumaui-bar-readout-secondary-size); letter-spacing: 0.12px; color: @luma_muted; }
+box.lumaui-bar-pager {
+  min-height: var(--lumaui-ac-control-height); padding: 0 var(--lumaui-bar-readout-pager-padding-x);
+  border-radius: var(--lumaui-ac-control-radius); background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-bar-pager.media { background: @luma_bar_pager_media; box-shadow: inset 0 1px 2px @luma_media_shadow, inset 0 0 0 1px alpha(@luma_on_media, 0.05); }
+box.lumaui-bar-pager.media label.lumaui-bar-pager-count, box.lumaui-bar-pager.media button.lumaui-bar-pager-key { color: @luma_bar_pager_media_ink; }
+label.lumaui-bar-pager-count { min-width: var(--lumaui-bar-readout-pager-count-min-width); font-size: var(--lumaui-bar-readout-pager-size); font-weight: 500; color: @luma_ink_secondary; }
+button.lumaui-bar-pager-key, button.lumaui-bar-zoom-key {
+  min-width: var(--lumaui-bar-readout-pager-button); min-height: var(--lumaui-bar-readout-pager-button); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-bar-readout-pager-button-radius); background: none; box-shadow: none;
+  color: @luma_ink_secondary; outline: 0 solid transparent;
+}
+button.lumaui-bar-pager-key image { -gtk-icon-size: var(--lumaui-bar-readout-pager-icon); }
+button.lumaui-bar-zoom-key image { -gtk-icon-size: var(--lumaui-bar-zoom-key-icon); }
+button.lumaui-bar-pager-key:hover, button.lumaui-bar-zoom-key:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-bar-pager-key:disabled, button.lumaui-bar-zoom-key:disabled { opacity: 0.35; }
+button.lumaui-bar-pager-key:focus-visible, button.lumaui-bar-zoom-key:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+
+/* LumaUI: Split action and bar menu */
+box.lumaui-bar-split {
+  min-height: var(--lumaui-bar-split-height); border-radius: var(--lumaui-bar-split-radius);
+  color: @luma_key_ink; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+box.lumaui-bar-split.off { opacity: 0.45; }
+button.lumaui-bar-split-main, button.lumaui-bar-split-more {
+  min-height: var(--lumaui-bar-split-height); margin: 0; border: none; border-radius: 0; background: none; box-shadow: none;
+  color: @luma_key_ink; font-weight: 600; outline: 0 solid transparent;
+}
+button.lumaui-bar-split-main { padding: 0 var(--lumaui-bar-split-padding-end) 0 var(--lumaui-bar-split-padding-start);
+  border-radius: var(--lumaui-bar-split-radius) 0 0 var(--lumaui-bar-split-radius); }
+button.lumaui-bar-split-main > box { border-spacing: 7px; }
+button.lumaui-bar-split-more { min-width: 0; padding: 0 var(--lumaui-bar-split-chevron-padding-end) 0 var(--lumaui-bar-split-chevron-padding-start);
+  border-radius: 0 var(--lumaui-bar-split-radius) var(--lumaui-bar-split-radius) 0; }
+button.lumaui-bar-split-main image, button.lumaui-bar-split-more image { -gtk-icon-size: var(--lumaui-bar-split-icon); }
+button.lumaui-bar-split-main:hover, button.lumaui-bar-split-more:hover { background: alpha(@luma_key_shadow, 0.24); }
+button.lumaui-bar-split-main:focus-visible, button.lumaui-bar-split-more:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-bar-split-rule { min-width: 1px; margin: var(--lumaui-bar-split-divider-inset) 0; background: alpha(@luma_key_ring, 0.23); }
+button.lumaui-bar-menu {
+  min-height: var(--lumaui-ac-control-height);
+  min-width: calc(var(--lumaui-bar-split-menu-min-width) - var(--lumaui-bar-split-menu-padding-start) - var(--lumaui-bar-split-menu-padding-end));
+  padding: 0 var(--lumaui-bar-split-menu-padding-end) 0 var(--lumaui-bar-split-menu-padding-start); margin: 0;
+  border: none; border-radius: var(--lumaui-ac-control-radius); background: @luma_well; color: @luma_ink; font-weight: 500;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+  outline: 0 solid transparent;
+}
+button.lumaui-bar-menu > box { border-spacing: var(--lumaui-bar-split-menu-gap); }
+button.lumaui-bar-menu:hover { filter: brightness(1.12); }
+button.lumaui-bar-menu image { -gtk-icon-size: var(--lumaui-ac-icon); }
+button.lumaui-bar-menu image.lumaui-bar-menu-chevron { -gtk-icon-size: var(--lumaui-bar-split-menu-icon); color: @luma_muted; }
+button.lumaui-bar-menu:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-bar-button.text { padding: 0 var(--lumaui-ac-control-padding-x); }
+/* v71 `.ckwin .fbar .bt` (Clock's Lap | Start): in a window, words beside a primary word are 78 wide (GTK adds the
+ * 12 + 12 padding to min-width) and the secondary word is the well. */
+.lumaui-action-center:not(.phone) box.lumaui-ac-row.word-pair button.lumaui-bar-button.text { min-width: 54px; }
+.lumaui-action-center:not(.phone) box.lumaui-ac-row.word-pair button.lumaui-bar-button.text:not(.primary) {
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+.lumaui-action-center:not(.phone) box.lumaui-ac-row.word-pair button.lumaui-bar-button.text:not(.primary):hover { filter: brightness(1.12); }
+
+/* LumaUI: Zoom control */
+box.lumaui-bar-zoom {
+  min-height: var(--lumaui-bar-zoom-height); padding: 0 var(--lumaui-bar-zoom-padding-x); border-radius: var(--lumaui-bar-zoom-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-bar-zoom button.lumaui-bar-zoom-key { min-width: var(--lumaui-bar-zoom-button); min-height: var(--lumaui-bar-zoom-button);
+  border-radius: var(--lumaui-bar-zoom-button-radius); }
+button.lumaui-bar-zoom-value {
+  min-width: var(--lumaui-bar-zoom-value-min-width); min-height: var(--lumaui-bar-zoom-button); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-bar-zoom-value-radius); background: none; box-shadow: none;
+  color: @luma_ink; font-size: var(--lumaui-bar-zoom-value-size); font-weight: 600; outline: 0 solid transparent;
+}
+button.lumaui-bar-zoom-value:hover { background: @luma_hover; }
+button.lumaui-bar-zoom-value:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-bar-zoom-range { padding: 0 var(--lumaui-bar-zoom-range-padding-x); border-spacing: var(--lumaui-bar-zoom-range-gap); color: @luma_muted; }
+box.lumaui-bar-zoom-range image { -gtk-icon-size: var(--lumaui-bar-zoom-icon); }
+/* steps=True (v71 .ppsize): 44 keys at both ends and the slider between them, filling the panel. */
+box.lumaui-bar-zoom-range.steps { padding: 0; border-spacing: 8px; }
+box.lumaui-bar-zoom-range.steps button.lumaui-bar-zoom-key { min-width: 44px; min-height: 44px; color: @luma_ink_secondary; }
+box.lumaui-bar-zoom-range.steps button.lumaui-bar-zoom-key image { -gtk-icon-size: 18px; }
+button.lumaui-bar-zoom-pill {
+  min-height: var(--lumaui-bar-zoom-height); padding: 0 var(--lumaui-bar-zoom-pill-padding-x); margin: 0; border: none;
+  border-radius: var(--lumaui-bar-zoom-radius); font-size: var(--lumaui-bar-zoom-pill-size); font-weight: 600; color: @luma_ink;
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+  outline: 0 solid transparent;
+}
+button.lumaui-bar-zoom-pill > box { border-spacing: var(--lumaui-bar-zoom-pill-gap); }
+button.lumaui-bar-zoom-pill image { -gtk-icon-size: var(--lumaui-bar-zoom-pill-icon); color: @luma_muted; }
+button.lumaui-bar-zoom-pill:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+/* LumaUI: Document header */
+box.lumaui-doc-header { min-height: var(--lumaui-bar-doc-height); border-spacing: var(--lumaui-bar-doc-gap); color: @luma_frame_ink; }
+image.lumaui-doc-icon { border-radius: var(--lumaui-bar-doc-icon-radius); }
+label.lumaui-doc-title { font-size: var(--lumaui-bar-doc-title-size); font-weight: 600; letter-spacing: -0.135px; }
+label.lumaui-doc-meta { font-size: var(--lumaui-bar-doc-meta-size); color: @luma_frame_muted; }
+box.lumaui-doc-actions { border-spacing: var(--lumaui-bar-doc-actions-gap); }
+box.lumaui-doc-faces > .lumaui-doc-face { box-shadow: 0 0 0 var(--lumaui-bar-doc-face-ring) @luma_window; }
+box.lumaui-doc-faces { border-spacing: 0; }
+box.lumaui-doc-faces > .lumaui-doc-face + .lumaui-doc-face { margin-left: calc(0px - var(--lumaui-bar-doc-face-overlap)); }
+button.lumaui-doc-button {
+  min-height: var(--lumaui-bar-doc-share-height); padding: 0 var(--lumaui-bar-doc-button-padding-x); margin: 0 0 0 var(--lumaui-bar-doc-button-margin);
+  border: none; border-radius: var(--lumaui-bar-doc-button-radius); background: none; box-shadow: none;
+  color: @luma_frame_ink; font-size: var(--lumaui-bar-doc-share-size); font-weight: 500;
+  outline: 0 solid transparent;
+}
+button.lumaui-doc-button > box { border-spacing: var(--lumaui-bar-doc-button-gap); }
+button.lumaui-doc-button image { -gtk-icon-size: var(--lumaui-bar-doc-button-icon); }
+button.lumaui-doc-button:hover { background: @luma_hover; }
+button.lumaui-doc-button.key {
+  min-height: var(--lumaui-bar-doc-key-height); font-size: var(--lumaui-bar-doc-key-size); font-weight: 600; letter-spacing: 0.12px; color: @luma_key_ink; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+button.lumaui-doc-button.key:hover { filter: brightness(1.08); }
+button.lumaui-doc-button + button.lumaui-doc-button.key { margin-left: calc(var(--lumaui-bar-doc-key-margin) - var(--lumaui-bar-doc-actions-gap)); }
+box.lumaui-doc-header.narrow button.lumaui-doc-button:not(.key) { min-width: var(--lumaui-bar-doc-more); padding: 0; margin-left: 2px; }
+button.lumaui-doc-more {
+  min-width: var(--lumaui-bar-doc-more); min-height: var(--lumaui-bar-doc-more); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-bar-doc-more-radius); background: none; box-shadow: none; color: @luma_frame_ink_secondary;
+  outline: 0 solid transparent;
+}
+button.lumaui-doc-more image { -gtk-icon-size: var(--lumaui-bar-doc-more-icon); }
+button.lumaui-doc-more:hover { background: @luma_hover; color: @luma_frame_ink; }
+button.lumaui-doc-button:focus-visible, button.lumaui-doc-more:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+/* LumaUI: Export sheet */
+box.lumaui-export {
+  padding: var(--lumaui-bar-export-padding-top) var(--lumaui-bar-export-padding-x) var(--lumaui-bar-export-padding-bottom);
+  border-radius: var(--lumaui-bar-export-radius); background: @luma_float_surface; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_float_highlight, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+}
+label.lumaui-export-title { min-height: var(--lumaui-bar-export-title-line); font-size: var(--lumaui-bar-export-title-size); font-weight: 650; letter-spacing: -0.16px; }
+label.lumaui-export-body { min-height: var(--lumaui-bar-export-body-line); font-weight: 400; margin-top: var(--lumaui-bar-export-body-top); font-size: var(--lumaui-bar-export-body-size); color: @luma_ink_secondary; }
+box.lumaui-export-list { margin-top: var(--lumaui-bar-export-list-top); border-spacing: var(--lumaui-bar-export-list-gap); }
+button.lumaui-export-choice {
+  padding: var(--lumaui-bar-export-row-padding-y) var(--lumaui-bar-export-row-padding-x); margin: 0; border: none;
+  border-radius: var(--lumaui-bar-export-row-radius); background: none; box-shadow: none; color: @luma_ink; outline: 0 solid transparent;
+}
+button.lumaui-export-choice > box { border-spacing: var(--lumaui-bar-export-row-gap); }
+button.lumaui-export-choice:hover { background: @luma_hover; }
+button.lumaui-export-choice.on, button.lumaui-export-choice:checked {
+  background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+button.lumaui-export-choice:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-export-shape-box { min-width: var(--lumaui-bar-export-shape-width); }
+box.lumaui-export-shape {
+  min-width: var(--lumaui-bar-export-shape-width); min-height: var(--lumaui-bar-export-shape-height);
+  border-radius: var(--lumaui-bar-export-shape-radius); box-shadow: inset 0 0 0 var(--lumaui-bar-export-shape-line) @luma_muted;
+}
+box.lumaui-export-shape.master { box-shadow: inset 0 0 0 2px @luma_ink_secondary; }
+box.lumaui-export-shape.portrait { min-width: var(--lumaui-bar-export-portrait-width); min-height: var(--lumaui-bar-export-portrait-height); }
+box.lumaui-export-shape.audio {
+  box-shadow: none; border-radius: 0;
+  background-image: linear-gradient(to right, @luma_muted var(--lumaui-bar-export-audio-bar), transparent var(--lumaui-bar-export-audio-bar));
+  background-size: var(--lumaui-bar-export-audio-step) 60%; background-repeat: repeat-x; background-position: 0 50%;
+}
+box.lumaui-export-scrim { background: @luma_bar_export_scrim; opacity: 0; transition: opacity var(--lumaui-duration-scrim) var(--lumaui-ease); }
+box.lumaui-export-scrim.shown { opacity: 1; }
+box.lumaui-export { opacity: 0; transform: translateY(-16px) scale(0.97); transition: opacity var(--lumaui-duration-dialog-fade) ease, transform var(--lumaui-duration-dialog-move) var(--lumaui-spring); }
+box.lumaui-export.shown { opacity: 1; transform: none; }
+label.lumaui-export-name { min-height: var(--lumaui-bar-export-name-line); font-size: var(--lumaui-bar-export-name-size); font-weight: 600; }
+label.lumaui-export-detail, label.lumaui-export-size { min-height: var(--lumaui-text-line-caption); font-weight: 400; font-size: var(--lumaui-bar-export-detail-size); letter-spacing: 0.12px; color: @luma_muted; }
+label.lumaui-export-size { font-feature-settings: "tnum"; }
+box.lumaui-export-actions { margin-top: var(--lumaui-bar-export-actions-top); border-spacing: var(--lumaui-bar-export-actions-gap); }
+button.lumaui-export-button {
+  min-height: var(--lumaui-bar-export-button-height); padding: 0 var(--lumaui-bar-export-button-padding-x); margin: 0;
+  border: none; border-radius: var(--lumaui-bar-export-button-radius); background: @luma_control_fill; box-shadow: none;
+  color: @luma_ink; font-weight: 500; outline: 0 solid transparent;
+}
+button.lumaui-export-button:hover { background: @luma_control_fill_hover; }
+button.lumaui-export-button.key {
+  font-weight: 600; color: @luma_key_ink; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+button.lumaui-export-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+
+/* LumaUI bar: reduced motion. Nothing rises or scales; sheets fade. */
+@media (prefers-reduced-motion: reduce) {
+  box.lumaui-bar-entry-chip { animation: none; }
+  box.lumaui-share.lumaui-share-floating, box.lumaui-share.lumaui-share-floating.up {
+    transform: none; transition: opacity var(--lumaui-duration-reduced-fade) ease;
+  }
+}
+
+/* ══ K-BAR v71: the action bar (2026-10-01) ═══════════════════════════════
+ * The mobile changelog's action-bar rules 1–17, "every menu rises from the
+ * bar", the phone confirm and sheets, text entry last, one safe area, and
+ * "bar children carry no margins". Desktop keeps v70's 36 controls on 4. */
+
+/* LumaUI: Action bar on a phone (v71) */
+.lumaui-action-center.phone box.lumaui-ac-bar,
+.lumaui-action-center.phone box.lumaui-ac-split > box.lumaui-ac-bar {
+  padding: var(--lumaui-ac-phone-bar-padding); border-radius: var(--lumaui-ac-phone-bar-radius);
+}
+.lumaui-action-center.phone box.lumaui-ac-row { border-spacing: var(--lumaui-ac-phone-bar-gap); }
+.lumaui-action-center.phone box.lumaui-ac-row > * { margin-left: 0; margin-right: 0; } /* the gap is the only spacing */
+.lumaui-action-center.phone button.lumaui-bar-button.bar {
+  min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius);
+}
+.lumaui-action-center.phone button.lumaui-bar-button.bar.icon,
+.lumaui-action-center.phone button.lumaui-bar-button.bar.glyph-only { min-width: var(--lumaui-ac-phone-control); padding: 0; }
+.lumaui-action-center.phone button.lumaui-bar-button.bar image { -gtk-icon-size: var(--lumaui-ac-phone-icon); }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.keep-label { padding: 0 16px; font-size: 15px; }
+/* Gray ink at rest; only the one primary is filled; a toggled button is the raised chip. */
+.lumaui-action-center.phone button.lumaui-bar-button.bar:not(.primary):not(.record):not(.filled) { background: none; color: @luma_bar_ink_secondary; }
+.lumaui-action-center.phone button.lumaui-bar-button.bar:not(.primary):not(.record):not(.filled):hover { background: @luma_hover; color: @luma_ink; }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.on:not(.primary):not(.record) {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+.lumaui-action-center.phone button.lumaui-bar-button.bar.danger:not(.on):not(.destructive) { color: @luma_danger_ink; }
+/* v71 `.cphbar .cfavb.on`: a lit star is the favourite (yellow, filled by the glyph swap), never the raised chip. */
+button.lumaui-bar-button.favourite.on,
+.lumaui-action-center.phone button.lumaui-bar-button.bar.favourite.on:not(.primary):not(.record) { background: none; box-shadow: none; color: @luma_favourite; }
+.lumaui-action-center.phone box.lumaui-bar-chip { min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius); }
+.lumaui-action-center.phone button.lumaui-ac-prompt { min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius); font-size: 16px; }
+/* The prompt as a two-row bar's foot (v71 Charlie's .crphbar .crqf): 15 px words, 14 in, 16 after, 20 round. */
+.lumaui-action-center.phone box.lumaui-ac-foot button.lumaui-ac-prompt { font-size: 15px; padding: 0 16px 0 14px; border-radius: 20px; }
+/* A switch in the bar is a row of the same buttons, the chosen one raised: never a frame in a frame. */
+.lumaui-action-center.phone box.lumaui-modes.in-bar { min-height: var(--lumaui-ac-phone-control); padding: 0; background: none; box-shadow: none; }
+.lumaui-action-center.phone box.lumaui-modes.in-bar box.lumaui-modes-indicator { opacity: 0; }
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode {
+  min-height: var(--lumaui-ac-phone-control); min-width: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius);
+  color: @luma_bar_ink_secondary;
+}
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode:checked,
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode.on {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode image { -gtk-icon-size: var(--lumaui-ac-phone-icon); }
+/* The editor is the bar grown on a phone: the 16 gutter, 34 up, the bar's 26 corner (rule 15). */
+.lumaui-action-center.phone box.lumaui-ac-editor { border-radius: var(--lumaui-ac-frame-radius); }
+/* Fields in a bar or panel show no focus ring on a phone: the well is the field. */
+.lumaui-action-center.phone entry:focus-within, .lumaui-action-center.phone text:focus-visible,
+.lumaui-bar-frame entry:focus-within { outline: none; }
+
+/* LumaUI: Grown bar (v71) */
+/* The panel rises above the row inside the same glass (.fexp): a hairline under it, 6 to the row. */
+/* The hairline is a 1 px border (v71 draws an inset shadow; a border is the same pixels and a measurable surface). */
+scrolledwindow.lumaui-ac-panel { margin-bottom: var(--lumaui-ac-panel-gap); border-bottom: 1px solid @luma_line; background: none; }
+scrolledwindow.lumaui-ac-panel > viewport { background: none; padding: 8px 4px 11px; }
+scrolledwindow.lumaui-ac-panel { opacity: 0; transition: opacity var(--lumaui-duration-fade) ease; }
+scrolledwindow.lumaui-ac-panel.shown { opacity: 1; }
+.lumaui-action-center.grown box.lumaui-ac-bar { border-radius: var(--lumaui-ac-bar-radius); }
+.lumaui-action-center.grown.phone box.lumaui-ac-bar { border-radius: var(--lumaui-ac-phone-bar-radius); }
+box.lumaui-panel-list { border-spacing: 2px; }
+button.lumaui-panel-row {
+  min-height: var(--lumaui-ac-panel-row-height); padding: 0 10px; margin: 0; border: none; border-radius: var(--lumaui-ac-panel-row-radius);
+  background: none; box-shadow: none; color: @luma_ink; font-size: 15px; font-weight: 400; outline: 0 solid transparent;
+}
+button.lumaui-panel-row box.lumaui-panel-row-line { border-spacing: 12px; }
+button.lumaui-panel-row image { -gtk-icon-size: var(--lumaui-ac-panel-icon); color: @luma_bar_ink_secondary; }
+button.lumaui-panel-row image.lumaui-app-icon { -gtk-icon-size: 24px; }
+button.lumaui-panel-row:hover, button.lumaui-panel-row:active { background: @luma_hover; }
+button.lumaui-panel-row.on { background: @luma_control_fill; }
+button.lumaui-panel-row.danger, button.lumaui-panel-row.danger image { color: @luma_bar_panel_danger; }
+button.lumaui-panel-row:disabled { opacity: 0.4; }
+button.lumaui-panel-row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+label.lumaui-panel-row-note { font-size: 12px; color: @luma_bar_muted; }
+box.lumaui-panel-rule { min-height: 1px; margin: 4px 10px; background: @luma_line; }
+label.lumaui-panel-heading { padding: 0 4px; font-size: 12px; font-weight: 650; letter-spacing: 0.24px; color: @luma_bar_muted; }
+/* A heading's trailing key (v71 .ppnew): 28 tall, 10 across, 12.5 at 600, its glyph at 14. */
+button.lumaui-panel-heading-action {
+  min-height: 28px; min-width: 0; padding: 0 10px; margin: 0; border: none; border-radius: 10px; background: none; box-shadow: none;
+  font-size: 12.5px; font-weight: 600; color: @luma_bar_ink_secondary;
+}
+button.lumaui-panel-heading-action box { border-spacing: 4px; }
+button.lumaui-panel-heading-action image { -gtk-icon-size: 14px; }
+button.lumaui-panel-heading-action:hover, button.lumaui-panel-heading-action:active { background: @luma_hover; }
+button.lumaui-panel-heading-action:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+/* The one field style in a panel (rule 16): a 48 well at 16 with a leading icon. */
+box.lumaui-panel-field {
+  min-height: var(--lumaui-ac-panel-field-height); padding: 0 14px; border-spacing: 10px; border-radius: 16px;
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade;
+}
+box.lumaui-panel-field image.lumaui-panel-field-icon { -gtk-icon-size: 18px; color: @luma_bar_muted; }
+box.lumaui-panel-field text { font-size: 16px; color: @luma_ink; background: none; }
+box.lumaui-panel-field text > placeholder { color: @luma_bar_muted; opacity: 1; }
+box.lumaui-ac-row.entry > box.lumaui-panel-field { border-radius: var(--lumaui-ac-control-radius); }
+.lumaui-action-center.phone box.lumaui-ac-row.entry > box.lumaui-panel-field { border-radius: var(--lumaui-ac-phone-control-radius); }
+/* A destructive confirm inside the grown bar (rule 9, .cconf): title, one line, Cancel and red. */
+box.lumaui-panel-confirm { padding: 2px 4px 0; border-spacing: 6px; }
+label.lumaui-panel-confirm-title { font-size: 16px; font-weight: 650; color: @luma_ink; }
+label.lumaui-panel-confirm-body { font-size: 13.5px; color: @luma_bar_ink_secondary; }
+box.lumaui-panel-confirm-buttons { margin-top: 6px; border-spacing: 8px; }
+box.lumaui-panel-confirm-buttons button {
+  min-height: 46px; border-radius: 16px; border: none; font-size: 14.5px; font-weight: 600; outline: 0 solid transparent;
+}
+button.lumaui-panel-confirm-cancel { background: @luma_well; color: @luma_ink; box-shadow: inset 0 0 0 1px @luma_well_ring; }
+button.lumaui-panel-confirm-action {
+  background: @luma_danger_fill; background-image: linear-gradient(to bottom, @luma_danger_fill, @luma_danger_fill_end);
+  color: @luma_danger_fill_ink; box-shadow: inset 0 1px 0 alpha(white, 0.2);
+}
+button.lumaui-panel-confirm-action:hover { filter: brightness(1.08); }
+box.lumaui-panel-confirm-buttons button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+/* What is held across views (Move): the bar's second row (.fhold), then where it goes (.fhrow). */
+box.lumaui-ac-hold { padding: 4px 4px 9px 6px; margin-bottom: 6px; border-spacing: 12px; border-bottom: 1px solid @luma_line; }
+box.lumaui-ac-hold-face { min-width: 44px; min-height: 44px; border-radius: 10px; background: @luma_control_fill; }
+box.lumaui-ac-hold-face image { -gtk-icon-size: 22px; color: @luma_bar_ink_secondary; }
+label.lumaui-ac-hold-kind { font-size: 11.5px; font-weight: 650; letter-spacing: 0.35px; color: @luma_bar_hold_kind; }
+label.lumaui-ac-hold-name { font-size: 15px; font-weight: 650; color: @luma_ink; }
+box.lumaui-ac-where { min-height: 48px; padding-left: 10px; border-spacing: 10px; }
+label.lumaui-ac-where-prompt { font-size: 14px; color: @luma_bar_muted; }
+label.lumaui-ac-where-lead { font-size: 11.5px; color: @luma_bar_muted; }
+box.lumaui-ac-where-name { border-spacing: 6px; font-size: 15px; font-weight: 650; color: @luma_ink; }
+box.lumaui-ac-where-name image { -gtk-icon-size: 17px; color: @luma_bar_ink_secondary; }
+box.lumaui-ac-where button.lumaui-bar-button.primary { padding: 0 20px; font-size: 15px; }
+
+/* LumaUI: Bar frame (v71) */
+/* On a phone menus, the system confirm and sheets rise from the bar's place: 16 a side, 34 up, 26 round. */
+box.lumaui-bar-frame {
+  padding: 8px 6px 6px; border-radius: var(--lumaui-ac-frame-radius); background: @luma_float_surface; color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+  opacity: 0; transform: translateY(16px);
+  transition: opacity var(--lumaui-duration-fade) ease, transform var(--lumaui-duration-grow) var(--lumaui-spring);
+}
+box.lumaui-bar-frame.anchored { padding: 6px; border-radius: var(--lumaui-ac-anchor-frame-radius); }
+box.lumaui-bar-frame.shown { opacity: 1; transform: none; }
+box.lumaui-bar-frame.confirm { padding: 18px 12px 12px; }
+box.lumaui-bar-frame.sheet { padding: 14px 10px 10px; }
+label.lumaui-bar-frame-title { margin: 0 10px 8px; font-size: 17px; font-weight: 650; }
+scrolledwindow.lumaui-bar-frame-body, scrolledwindow.lumaui-bar-frame-body > viewport { background: none; }
+.lumaui-scrim.bar-frame { background: alpha(black, 0.28); }
+box.lumaui-bar-frame.confirm box.lumaui-panel-confirm { padding: 0 6px; }
+box.lumaui-bar-frame.confirm label.lumaui-panel-confirm-title { font-size: 17px; }
+box.lumaui-bar-frame.confirm label.lumaui-panel-confirm-body { font-size: 14px; }
+box.lumaui-bar-frame.confirm box.lumaui-panel-confirm-buttons { margin-top: 16px; }
+box.lumaui-bar-frame.confirm box.lumaui-panel-confirm-buttons button { min-height: 48px; border-radius: 20px; font-size: 15px; }
+/* The system confirm on a phone (v71 lConfirm): the bar's frame, words left, no icon, two buttons side by side. */
+box.lumaui-dialog.frame {
+  min-width: 0; margin: 0; padding: 18px 12px 12px; border-radius: var(--lumaui-ac-frame-radius);
+}
+box.lumaui-dialog.frame .lumaui-dialog-title { padding: 0 6px; font-size: 17px; }
+box.lumaui-dialog.frame .lumaui-dialog-body { padding: 0 6px; font-size: 14px; }
+box.lumaui-dialog.frame checkbutton.lumaui-dialog-option { margin: 12px 6px 0; }
+box.lumaui-dialog.frame .lumaui-dialog-buttons { margin-top: 16px; }
+box.lumaui-dialog.frame .lumaui-dialog-buttons button { min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius); font-size: 15px; }
+
+/* LumaUI: Bar tiles, place picker, two-row bar and search (v71) */
+/* Tiles in a grown panel (.fsha .fvt): an icon over a word, 72 at 18, a well at rest, the raised chip when on. */
+grid.lumaui-bar-tiles { margin: 2px 0; }
+button.lumaui-bar-tile {
+  min-height: 72px; padding: 0 4px; margin: 0; border: none; border-radius: 18px; outline: 0 solid transparent;
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; color: @luma_bar_ink_secondary;
+  font-size: 12px; font-weight: 600;
+}
+button.lumaui-bar-tile box.lumaui-bar-tile-stack { border-spacing: 7px; }
+button.lumaui-bar-tile image { -gtk-icon-size: 20px; }
+button.lumaui-bar-tile:hover { color: @luma_ink; }
+button.lumaui-bar-tile.on {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+button.lumaui-bar-tile.on image { color: @luma_accent_ink; }
+button.lumaui-bar-tile.danger, button.lumaui-bar-tile.danger image { color: @luma_danger_ink; }
+button.lumaui-bar-tile:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+grid.lumaui-bar-tiles.compact button.lumaui-bar-tile { min-height: 64px; font-size: 11.5px; }
+grid.lumaui-bar-tiles.chip button.lumaui-bar-tile {
+  border-radius: 16px; background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+/* Panel rows: a second line, a count at the end, the current place raised. */
+button.lumaui-panel-row.two-line { min-height: 56px; }
+label.lumaui-panel-row-subtitle { font-size: 12px; color: @luma_bar_muted; }
+label.lumaui-panel-row-count { font-size: 13px; color: @luma_bar_muted; font-feature-settings: "tnum"; }
+button.lumaui-panel-row.current {
+  background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+/* A place picker in the bar (Tasks' "Today ⌄"): lead, words 15/650, a 14 chevron; raised while open. */
+button.lumaui-bar-button.dropdown { padding: 0 14px; }
+button.lumaui-bar-button.dropdown .lumaui-bar-button-content { border-spacing: 10px; }
+button.lumaui-bar-button.dropdown label.lumaui-bar-button-label { font-size: 15px; font-weight: 650; }
+button.lumaui-bar-button.dropdown image.lumaui-bar-dropdown-chevron { -gtk-icon-size: 14px; color: @luma_bar_muted; }
+button.lumaui-bar-button.dropdown.on { background: @luma_control_fill; }
+/* v71 .fbar .ctxc as a switch (Charlie's "↩ All ⌄"): the context chip, 36 tall, 12 round, 13/600, its glyph quiet. */
+button.lumaui-bar-button.dropdown.chip-picker { min-height: 36px; padding: 0 12px 0 10px; margin-right: 2px; border-radius: 12px; background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow; }
+button.lumaui-bar-button.dropdown.chip-picker .lumaui-bar-button-content { border-spacing: 7px; }
+button.lumaui-bar-button.dropdown.chip-picker label.lumaui-bar-button-label { font-size: 13px; font-weight: 600; }
+button.lumaui-bar-button.dropdown.chip-picker image { -gtk-icon-size: 16px; color: @luma_bar_muted; }
+/* A two-row bar: under an inset hairline, the always-there field, 6 below the row (Tasks, Calendar). */
+box.lumaui-ac-foot { padding-top: 6px; margin-top: 4px; box-shadow: inset 0 1px 0 @luma_line; }
+/* v71 .tpmini (Tide): the app's head row, 8 under it and the hairline (inset -1px), above the bar's row. */
+box.lumaui-ac-head { padding-bottom: 8px; margin-bottom: 6px; box-shadow: inset 0 -1px 0 @luma_line; }
+.lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry,
+.lumaui-action-center.phone box.lumaui-ac-row.entry entry.lumaui-bar-entry {
+  min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius); padding: 0 14px;
+}
+.lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry text { font-size: 16px; }
+/* Search (rule 12): a kept field takes the spare width; on a phone 48 at 20 with 16 text; no focus ring. */
+.lumaui-action-center.phone entry.lumaui-bar-search.keep,
+.lumaui-action-center.phone entry.lumaui-bar-search.folded {
+  min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius);
+}
+.lumaui-action-center.phone entry.lumaui-bar-search.keep { padding: 0 14px; border-spacing: 10px; }
+.lumaui-action-center.phone entry.lumaui-bar-search.keep text { font-size: 16px; }
+.lumaui-action-center.phone entry.lumaui-bar-search.keep image { -gtk-icon-size: 18px; }
+/* v71 `.nlq` (Notes): the kept well at rest with its word; tapped, the row becomes the field. */
+entry.lumaui-bar-search label.lumaui-bar-search-word { color: @luma_bar_muted; font-size: var(--lumaui-bar-search-font-size); }
+.lumaui-action-center.phone entry.lumaui-bar-search.opens label.lumaui-bar-search-word { font-size: 16px; }
+.lumaui-action-center.phone entry.lumaui-bar-search.folded { min-width: var(--lumaui-ac-phone-control); padding: 0; background: none; box-shadow: none; }
+.lumaui-action-center.phone entry.lumaui-bar-search.folded image { -gtk-icon-size: var(--lumaui-ac-phone-icon); color: @luma_bar_ink_secondary; }
+.lumaui-action-center.phone entry.lumaui-bar-search:focus-within { box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade; }
+/* A count on the section button ("Discover ② ⌄"), 2 after the words. */
+button.lumaui-bar-menu label.lumaui-bar-menu-badge { margin-left: -4px; }
+/* The bar's frame over media or an app that holds the foot (Camera) is opaque: nothing shows through. */
+box.lumaui-bar-frame.opaque { background: @luma_media_surface; }
+box.lumaui-bar-frame.centred { border-radius: var(--lumaui-ac-editor-radius); padding: 18px 14px 14px; }
+/* The share panel in the grown bar: "Send to", five faces with first names, then the ways to send. */
+box.lumaui-share-panel { border-spacing: 8px; }
+box.lumaui-share-panel-people { padding: 2px 2px 8px; }
+button.lumaui-share-panel-person { padding: 0; margin: 0; border: none; background: none; box-shadow: none; outline: 0 solid transparent; }
+button.lumaui-share-panel-person box { border-spacing: 6px; }
+button.lumaui-share-panel-person label { font-size: 12px; font-weight: 400; color: @luma_bar_ink_secondary; }
+button.lumaui-share-panel-person:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+/* Toasts that hang from the top of a region (Camera). */
+box.lumaui-toast.top { margin-bottom: 0; }
+
+/* LumaUI: Bar extras from the app requests (v71) */
+/* The red key (primary + danger): Remove, Delete for good. */
+button.lumaui-bar-button.primary.destructive {
+  color: @luma_danger_fill_ink; background: @luma_danger_fill; background-image: linear-gradient(to bottom, @luma_danger_fill, @luma_danger_fill_end);
+  box-shadow: inset 0 1px 0 alpha(white, 0.2), 0 0 0 1px alpha(black, 0.18), 0 1px 2px alpha(black, 0.2);
+}
+.lumaui-action-center.phone button.lumaui-bar-button.bar.primary.destructive:not(.icon) { padding: 0 20px; font-size: 15px; }
+/* A count in a bar button's corner (Weather's alerts): 16 tall, amber. */
+label.lumaui-bar-corner-badge {
+  min-height: 16px; min-width: calc(16px - 2 * 4px); margin: 6px 6px 0 0; padding: 0 4px; border-radius: 8px;
+  font-size: 10px; font-weight: 800; background: @luma_bar_corner_badge; color: @luma_bar_corner_badge_ink;
+}
+/* The record dot before a key's words (Memos' Record). */
+box.lumaui-record-dot { min-width: 10px; min-height: 10px; border-radius: 5px; background: @luma_record; }
+box.lumaui-record-dot.white { background: white; }
+/* The live chip as an inset well (Memos recording on a phone). */
+box.lumaui-bar-chip.live.well {
+  min-height: var(--lumaui-ac-phone-control); padding: 0 16px; border-radius: var(--lumaui-ac-phone-control-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade; font-size: 15px;
+}
+box.lumaui-bar-chip.live.well label.lumaui-live-time { color: @luma_bar_ink_secondary; font-feature-settings: "tnum"; }
+/* A bar that is only a panel (Messages' held message): no row, no hairline. */
+box.lumaui-ac-bar.panel-only box.lumaui-ac-foot { padding: 2px; margin-top: 0; box-shadow: none; }
+box.lumaui-ac-bar.panel-only grid.lumaui-bar-tiles { margin: 0; }
+/* Progress as the bar's row (Valet). */
+overlay.lumaui-bar-progress progressbar.lumaui-bar-progress-fill > trough {
+  min-height: var(--lumaui-ac-control-height); border-radius: var(--lumaui-ac-control-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring;
+}
+overlay.lumaui-bar-progress progressbar.lumaui-bar-progress-fill > trough > progress {
+  min-height: var(--lumaui-ac-control-height); border-radius: var(--lumaui-ac-control-radius); background: alpha(@luma_accent_ink, 0.28);
+}
+.lumaui-action-center.phone overlay.lumaui-bar-progress progressbar.lumaui-bar-progress-fill > trough,
+.lumaui-action-center.phone overlay.lumaui-bar-progress progressbar.lumaui-bar-progress-fill > trough > progress {
+  min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius);
+}
+label.lumaui-bar-progress-label { font-size: 14px; font-weight: 600; color: @luma_ink; }
+box.lumaui-bar-progress-row { border-spacing: var(--lumaui-ac-phone-bar-gap); }
+/* Panel parts: a trailing value, a switch row, choice chips, the big key. */
+label.lumaui-panel-row-detail { font-size: 14px; font-weight: 600; color: @luma_bar_ink_secondary; }
+button.lumaui-panel-row.switch switch { margin-left: 8px; }
+box.lumaui-panel-choices { border-spacing: 6px; }
+button.lumaui-panel-choice {
+  min-height: 38px; padding: 0 14px; margin: 0; border: none; border-radius: 14px; outline: 0 solid transparent;
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; color: @luma_bar_ink_secondary; font-size: 13.5px; font-weight: 600;
+}
+button.lumaui-panel-choice box { border-spacing: 4px; }
+button.lumaui-panel-choice image { -gtk-icon-size: 14px; }
+button.lumaui-panel-choice.on {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+button.lumaui-panel-key {
+  min-height: 52px; padding: 0; margin-top: 6px; border: none; border-radius: 20px; font-size: 16px; font-weight: 650;
+  color: @luma_key_ink; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring;
+}
+button.lumaui-panel-key box { border-spacing: 10px; }
+button.lumaui-panel-key.record { color: white; background: @luma_record; background-image: none; box-shadow: inset 0 1px 0 alpha(white, 0.2); }
+/* Places as icon-only tabs in the bar on a phone (Clock, Phone): the chosen glyph lit; a count in the corner. */
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode { padding: 0; }
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode:checked image,
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode.on image { color: @luma_bar_tab_lit; }
+label.lumaui-mode-count.corner {
+  min-height: 16px; min-width: 8px; margin: 3px 3px 0 0; padding: 0 4px; border-radius: 8px; font-size: 10px; font-weight: 400;
+}
+/* An icon tab's running dot (v71 `.cktabbar .cktab .ckrun`: 7 round, top 7, right 7). */
+box.lumaui-mode-dot.corner { min-width: 7px; min-height: 7px; margin: 7px 7px 0 0; animation: none; }
+/* Stacked buttons as tiles (v71 Calendar's event view, .cevtiles): four across, 64 at 16 on the raised chip. */
+box.lumaui-stacked-buttons.tile { border-spacing: 8px; }
+box.lumaui-stacked-buttons.tile button.lumaui-stacked-button {
+  min-height: 64px; border-radius: 16px; font-size: 12.5px; font-weight: 600; color: @luma_ink;
+  background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+box.lumaui-stacked-buttons.tile button.lumaui-stacked-button image.lumaui-stacked-icon { -gtk-icon-size: 20px; }
+box.lumaui-stacked-buttons.tile button.lumaui-stacked-button.danger { color: @luma_danger_ink; }
+.lumaui-action-center.phone box.lumaui-modes.in-bar button.lumaui-mode + button.lumaui-mode { margin-left: 4px; } /* v71 tabs: 4 apart */
+/* The editor's edit layout (v71 Photos, .lac.ped): the mode a chip, the modes a switch, Revert · Cancel · Done. */
+box.lumaui-ac-editor-content.edit button.lumaui-ac-mode.static.chip {
+  padding: 0 10px 0 9px; background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+box.lumaui-ac-editor-content.edit box.lumaui-ac-footer button.lumaui-text-button.lumaui-ac-cancel { padding: 0 16px; }
+box.lumaui-ac-editor-content.edit box.lumaui-ac-footer button:disabled { opacity: 0.45; }
+/* On a phone (.phed): Cancel · Edit · Done over a hairline; the body; the modes, Auto and Revert as tiles. */
+box.lumaui-ac-editor-content.edit.phone { padding: 6px; }
+centerbox.lumaui-ac-edit-top { padding-bottom: 6px; border-bottom: 1px solid @luma_line; }
+label.lumaui-ac-edit-title { font-size: 15px; font-weight: 700; }
+button.lumaui-ac-edit-cancel, button.lumaui-ac-edit-done {
+  min-height: 44px; padding: 0 18px; margin: 0; border: none; border-radius: 18px; font-size: 15px; font-weight: 600; outline: 0 solid transparent;
+}
+button.lumaui-ac-edit-cancel { background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring; color: @luma_ink; }
+button.lumaui-ac-edit-done {
+  color: @luma_key_ink; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring;
+}
+box.lumaui-ac-editor-content.edit.phone scrolledwindow.lumaui-ac-body > viewport { padding: 12px 8px 8px; }
+box.lumaui-ac-edit-tabs { padding-top: 6px; border-top: 1px solid @luma_line; border-spacing: 2px; }
+button.lumaui-ac-edit-tab {
+  min-height: 52px; padding: 0; margin: 0; border: none; border-radius: 18px; background: none; box-shadow: none;
+  color: @luma_bar_muted; font-size: 11.5px; font-weight: 600; outline: 0 solid transparent;
+}
+button.lumaui-ac-edit-tab box { border-spacing: 3px; }
+button.lumaui-ac-edit-tab image { -gtk-icon-size: 20px; }
+button.lumaui-ac-edit-tab.on {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+button.lumaui-ac-edit-tab:disabled { opacity: 0.35; }
+box.lumaui-ac-edit-sep { min-width: 1px; margin: 10px 2px; background: @luma_line; }
+/* A bar that is only a place switch is the app's tab bar on a phone (v71 .fbar.phtabs): 12 a side, 4 round the tabs. */
+.lumaui-action-center.phone box.lumaui-ac-bar.tabs { padding: 4px; }
+.lumaui-action-center.phone box.lumaui-ac-bar.tabs box.lumaui-tab-bar { margin: 0; padding: 0; background: none; box-shadow: none; }
+.lumaui-action-center box.lumaui-tab-bar.compact.in-bar { border-spacing: 4px; } /* v71 .cktabbar: tabs 4 apart in the bar */
+/* Beside icon tabs (v71 `#cb-bar.cktabbar > .ckk`: 56 wide, 48 tall, 20 round) the icon key is wider than the rest. */
+.lumaui-action-center.phone box.lumaui-ac-bar.with-tabs button.lumaui-bar-button.bar.primary.icon,
+.lumaui-action-center.phone box.lumaui-ac-bar.with-tabs button.lumaui-bar-button.bar.primary.glyph-only { min-width: 56px; }
+/* The tab's count (v71 `.cktab em`: 16 at least, 0 4 padding (so 8 of content), 10.5/400 in the ink). */
+.lumaui-action-center box.lumaui-tab-bar.compact label.lumaui-tab-count {
+  min-width: 8px; min-height: 16px; padding: 0 4px; font-size: 10.5px; font-weight: 400; color: @luma_ink;
+}
+
+/* LumaUI: Bar inks (light frames) */
+/* v70/v71 body[data-mode=light][data-mat=solid] .isle :is(.fbar, .flo, .pop, .crpop): a bar's and a menu's greys
+ * are darker than the island's (ink-2 .22, ink-3 .34): @luma_bar_ink_secondary and @luma_bar_muted. Dark is unchanged. */
+.lumaui-action-center box.lumaui-modes button.lumaui-mode { color: @luma_bar_muted; }
+.lumaui-action-center box.lumaui-modes button.lumaui-mode:hover,
+.lumaui-action-center box.lumaui-modes button.lumaui-mode:checked,
+.lumaui-action-center box.lumaui-modes button.lumaui-mode.on { color: @luma_ink; }
+.lumaui-action-center label.lumaui-count:not(.attention) { color: @luma_bar_ink_secondary; }
+.lumaui-action-center entry.lumaui-bar-entry text > placeholder,
+.lumaui-action-center entry.lumaui-bar-search text > placeholder,
+.lumaui-action-center label.lumaui-bar-entry-placeholder { color: @luma_bar_muted; }
+.lumaui-action-center box.lumaui-tab-bar.compact button.lumaui-tab:not(:checked) { color: @luma_bar_ink_secondary; }
+/* Over media the bar keeps the media palette. */
+.lumaui-media .lumaui-action-center.phone button.lumaui-bar-button.bar:not(.primary):not(.record),
+.lumaui-action-center.lumaui-media.phone button.lumaui-bar-button.bar:not(.primary):not(.record):not(.filled) { color: @luma_media_ink_secondary; }
+.lumaui-action-center.on-frame.phone button.lumaui-bar-button.bar:not(.primary):not(.record):not(.filled) { color: @luma_frame_ink_secondary; }
+/* A red count (v71 .tbadge, .pnbadge): Depot's updates on its section button, Phone's voicemail. */
+label.lumaui-bar-corner-badge.red { background: @luma_bar_badge_red; color: @luma_bar_badge_red_ink; font-weight: 700; }
+label.lumaui-bar-corner-badge.accent { background: @luma_count_attention_bg; color: @luma_count_attention_ink; font-weight: 700; }
+button.lumaui-bar-menu label.lumaui-bar-menu-badge {
+  min-height: 16px; min-width: 8px; padding: 0 4px; border-radius: 8px; font-size: 10px; font-weight: 700;
+  background: @luma_bar_badge_red; color: @luma_bar_badge_red_ink;
+}
+/* On a phone a bar's words are 15 (v71 .vlp-half, .calvw b, .cedit): keys and pickers alike. */
+.lumaui-action-center.phone button.lumaui-bar-button.bar label,
+.lumaui-action-center.phone button.lumaui-bar-menu label:not(.lumaui-bar-menu-badge) { font-size: 15px; }
+
+/* Equal filling actions at the foot of a phone form (Cancel / Save). */
+.lumaui-action-center.phone box.lumaui-ac-row.equal-actions { border-spacing: var(--lumaui-ac-phone-action-pair-gap); }
+
+/* Places tiles reuse the favorite disc, with an independently styled subline. */
+button.lumaui-bar-tile.well {
+  padding: var(--lumaui-favourites-panel-padding-top) 0 var(--lumaui-favourites-panel-padding-bottom);
+  min-height: 0; border-radius: var(--lumaui-favourites-panel-radius); color: @luma_ink;
+  font-size: var(--lumaui-favourites-panel-name-size);
+}
+button.lumaui-bar-tile.well box.lumaui-bar-tile-stack { border-spacing: var(--lumaui-favourites-panel-gap); }
+button.lumaui-bar-tile label.lumaui-bar-tile-sub {
+  font-size: var(--lumaui-favourites-sub-size); font-weight: 500; color: @luma_muted;
+}
+box.lumaui-bar-readout-first { border-spacing: var(--lumaui-bar-readout-note-gap); }
+label.lumaui-bar-readout-note { font-size: var(--lumaui-bar-readout-note-size); font-weight: var(--lumaui-bar-readout-note-weight); color: @luma_bar_readout_note; }
+.lumaui-action-center.phone box.lumaui-bar-readout {
+  padding: 0 var(--lumaui-bar-readout-phone-padding-end) 0 var(--lumaui-bar-readout-phone-padding-start);
+  border-spacing: var(--lumaui-bar-readout-line-gap);
+}
+.lumaui-action-center.phone label.lumaui-bar-readout-primary { font-size: var(--lumaui-bar-readout-phone-primary-size); color: @luma_ink; }
+box.lumaui-bar-readout.media label.lumaui-bar-readout-primary { color: @luma_on_media; }
+box.lumaui-bar-readout.media label.lumaui-bar-readout-secondary { color: @luma_media_ink_secondary; }
+/* v71 Tide .tflo .srch: the shared search well inside an island corner. */
+entry.lumaui-bar-search.in-corner {
+  border-radius: var(--lumaui-corner-search-radius);
+  background: @luma_control_fill; box-shadow: none;
+}
+entry.lumaui-bar-search.in-corner:focus-visible { box-shadow: 0 0 0 var(--lumaui-bar-search-focus-ring) @luma_focus_ring; }
+entry.lumaui-bar-search.in-corner button.lumaui-bar-search-clear {
+  min-width: var(--lumaui-corner-search-clear); min-height: var(--lumaui-corner-search-clear);
+  border-radius: var(--lumaui-corner-search-clear-radius); background: none;
+}
+
+/* Document toolbars retain grouped rules and square typographic glyph keys. */
+.lumaui-action-center.phone.document-toolbar box.lumaui-ac-row { border-spacing: var(--lumaui-bar-toolbar-gap); }
+.lumaui-action-center.phone box.lumaui-ac-row > box.lumaui-bar-rule.explicit-rule {
+  min-width: 1px; min-height: var(--lumaui-bar-toolbar-rule-height);
+  margin-left: var(--lumaui-bar-toolbar-rule-margin); margin-right: var(--lumaui-bar-toolbar-rule-margin);
+  background: @luma_line;
+}
+.lumaui-action-center.phone button.lumaui-bar-button.text-glyph {
+  min-width: var(--lumaui-ac-phone-control); padding-left: 0; padding-right: 0;
+}
+button.lumaui-bar-button.text-glyph label {
+  font-family: Georgia, serif; font-size: var(--lumaui-bar-toolbar-text-glyph-size);
+  font-weight: var(--lumaui-bar-toolbar-text-glyph-weight); letter-spacing: var(--lumaui-bar-toolbar-text-glyph-tracking);
+}
+/* A compact collection picker (.ppchip): explicit, so ordinary toolbar keys keep their treatment. */
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.compact-picker,
+button.lumaui-bar-button.dropdown.compact-picker {
+  padding: 0 var(--lumaui-bar-compact-picker-padding-end) 0 var(--lumaui-bar-compact-picker-padding-start);
+  color: @luma_ink;
+}
+button.lumaui-bar-button.dropdown.compact-picker .lumaui-bar-button-content { border-spacing: var(--lumaui-bar-compact-picker-gap); }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.compact-picker image,
+button.lumaui-bar-button.dropdown.compact-picker image { -gtk-icon-size: var(--lumaui-bar-compact-picker-icon); }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.compact-picker image.lumaui-bar-dropdown-chevron,
+button.lumaui-bar-button.dropdown.compact-picker image.lumaui-bar-dropdown-chevron { -gtk-icon-size: var(--lumaui-bar-compact-picker-chevron); color: @luma_bar_muted; }
+
+.lumaui-action-center.phone box.lumaui-ac-row.compact-pickers { border-spacing: var(--lumaui-bar-compact-picker-row-gap); }
+
+/* A view picker (.wxvw): explicit, so ordinary toolbar keys keep their treatment. */
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.view-picker,
+button.lumaui-bar-button.dropdown.view-picker {
+  padding: 0 var(--lumaui-bar-view-picker-padding-end) 0 var(--lumaui-bar-view-picker-padding-start);
+  color: @luma_ink;
+}
+button.lumaui-bar-button.dropdown.view-picker .lumaui-bar-button-content { border-spacing: var(--lumaui-bar-view-picker-gap); }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.view-picker image,
+button.lumaui-bar-button.dropdown.view-picker image { -gtk-icon-size: var(--lumaui-bar-view-picker-icon); }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.view-picker image.lumaui-bar-dropdown-chevron,
+button.lumaui-bar-button.dropdown.view-picker image.lumaui-bar-dropdown-chevron { -gtk-icon-size: var(--lumaui-bar-view-picker-chevron); color: @luma_bar_muted; }
+
+/* Current-file disclosure, v71 .vwfile2. Reuse RowLead's image/document paint. */
+button.lumaui-file-summary {
+  min-height: var(--lumaui-bar-file-summary-height); min-width: 0;
+  padding: 0 var(--lumaui-bar-file-summary-padding-end) 0 var(--lumaui-bar-file-summary-padding-start);
+  border: none; border-radius: var(--lumaui-bar-file-summary-radius);
+  background: none; box-shadow: none; color: @luma_ink;
+}
+button.lumaui-file-summary:hover, button.lumaui-file-summary.on { background: @luma_hover; }
+button.lumaui-file-summary > box { border-spacing: var(--lumaui-bar-file-summary-gap); }
+.lumaui-file-summary-title { font-size: var(--lumaui-bar-file-summary-title-size); font-weight: var(--lumaui-bar-file-summary-title-weight); }
+.lumaui-file-summary-subtitle { font-size: var(--lumaui-bar-file-summary-subtitle-size); color: @luma_bar_muted; }
+.lumaui-file-summary-disclosure { -gtk-icon-size: var(--lumaui-bar-file-summary-chevron); color: @luma_bar_muted; }
+
+/* Nonmodal editing tools above the action bar. */
+box.lumaui-tool-palette { padding: var(--lumaui-bar-tool-palette-padding); border-radius: var(--lumaui-bar-tool-palette-radius); }
+box.lumaui-tool-palette.phone { padding: var(--lumaui-bar-tool-palette-phone-padding); border-radius: var(--lumaui-bar-tool-palette-phone-radius); }
+box.lumaui-tool-palette-row { border-spacing: var(--lumaui-bar-tool-palette-gap); }
+/* A form supplies its own inner geometry instead of nesting the menu inset. */
+scrolledwindow.lumaui-ac-panel.unpadded > viewport { padding: 0; }
+
+/* v71 Messages keeps the compact composer row inside its phone frame. */
+.lumaui-action-center.phone box.lumaui-ac-row.small-controls { border-spacing: var(--lumaui-ac-bar-gap); }
+.lumaui-action-center.phone box.lumaui-ac-row.small-controls > button.lumaui-bar-button.bar {
+  min-height: var(--lumaui-ac-control-height); border-radius: var(--lumaui-ac-control-radius);
+}
+.lumaui-action-center.phone box.lumaui-ac-row.small-controls > button.lumaui-bar-button.bar.icon,
+.lumaui-action-center.phone box.lumaui-ac-row.small-controls > button.lumaui-bar-button.bar.glyph-only {
+  min-width: var(--lumaui-ac-control-height); padding: 0;
+}
+.lumaui-action-center.phone box.lumaui-ac-row.small-controls > button.lumaui-bar-button.bar image { -gtk-icon-size: var(--lumaui-ac-icon); }
+/* A person in an information panel has a compact two-line row and presence. */
+button.lumaui-panel-row.person { min-height: var(--lumaui-panel-person-height); padding: 0 var(--lumaui-panel-person-padding-x); border-radius: var(--lumaui-panel-person-radius); }
+button.lumaui-panel-row.person label.lumaui-panel-row-title { font-size: var(--lumaui-panel-person-title-size); font-weight: var(--lumaui-panel-person-title-weight); line-height: var(--lumaui-panel-person-line-height-ratio); }
+button.lumaui-panel-row.person label.lumaui-panel-row-subtitle { font-size: var(--lumaui-panel-person-subtitle-size); font-weight: 400; line-height: var(--lumaui-panel-person-line-height-ratio); }
+box.lumaui-panel-person-well { min-width: var(--lumaui-panel-person-lead); min-height: var(--lumaui-panel-person-lead); border-radius: 50%; background: @luma_hover; box-shadow: inset 0 0 0 1px @luma_line; }
+box.lumaui-panel-person-well image { -gtk-icon-size: var(--lumaui-panel-person-icon); }
+box.lumaui-panel-person-status { border-spacing: var(--lumaui-panel-person-presence-gap); }
+box.lumaui-panel-person-presence { min-width: var(--lumaui-panel-person-presence-size); min-height: var(--lumaui-panel-person-presence-size); border-radius: 50%; background: @luma_good; box-shadow: 0 0 var(--lumaui-panel-person-presence-glow) @luma_good; }
+
+box.lumaui-title-island grid.lumaui-bar-tiles { margin: 0; }
+/* v71 Charlie's composer (.cr2ft) keeps its 36 keys on a phone (ActionEditor(keep_hint=True)). */
+.lumaui-action-center.phone box.lumaui-ac-editor-content.keeps-foot box.lumaui-ac-footer button.lumaui-bar-button.bar,
+.lumaui-action-center.phone box.lumaui-ac-editor-content.keeps-foot box.lumaui-ac-footer button.lumaui-bar-button {
+  min-height: 36px; border-radius: 12px; }
+.lumaui-action-center.phone box.lumaui-ac-editor-content.keeps-foot box.lumaui-ac-footer button.lumaui-bar-button.icon { min-width: 36px; }
+.lumaui-action-center.phone box.lumaui-ac-editor-content.keeps-foot box.lumaui-ac-footer button.lumaui-bar-button image { -gtk-icon-size: 16px; }
+
+/* v71 creative/Session second-row actions (.cvr2 .ib): glyph above its caption. */
+button.lumaui-bar-button.caption {
+  min-height: var(--lumaui-bar-caption-height); min-width: 0; padding: 0;
+  border-radius: var(--lumaui-bar-caption-radius); color: @luma_bar_muted;
+  font-size: var(--lumaui-bar-caption-font-size); font-weight: var(--lumaui-bar-caption-font-weight);
+}
+button.lumaui-bar-button.caption box.lumaui-bar-button-content { border-spacing: var(--lumaui-bar-caption-gap); }
+button.lumaui-bar-button.caption image { -gtk-icon-size: var(--lumaui-bar-caption-icon-size); }
+button.lumaui-bar-button.caption label { font-size: var(--lumaui-bar-caption-font-size); font-weight: var(--lumaui-bar-caption-font-weight); }
+/* Document style choices preview the paragraph style while retaining choice semantics. */
+box.lumaui-panel-choices.document-style > button.lumaui-panel-choice { min-height: var(--lumaui-bar-toolbar-style-choice-height); }
+box.lumaui-panel-choices.document-style > button.style-heading label { font-size: var(--lumaui-bar-toolbar-style-heading-size); font-weight: var(--lumaui-bar-toolbar-style-heading-weight); }
+box.lumaui-panel-choices.document-style > button.style-quote label { font-style: italic; }
+
+/* Flat subject identity: v71 Depot .dpappid; never a selectable context chip. */
+box.lumaui-bar-identity { padding-left: 6px; border-spacing: 10px; }
+box.lumaui-bar-identity label.title { font-size: 14.5px; font-weight: 650; line-height: 1.2; color: @luma_ink; }
+box.lumaui-bar-identity label.detail { font-size: 12px; font-weight: 400; line-height: 1.2; color: @luma_bar_muted; }
+button.lumaui-bar-button.dropdown label.lumaui-bar-corner-badge.inline {
+  margin: 0 0 0 2px; font-size: 11px; font-weight: 700;
+}
+
+box.lumaui-ac-head.self-padded { padding-bottom: 0; }
+
+/* A session count communicates quantity without an alert color. */
+label.lumaui-bar-corner-badge.neutral { background: @luma_count_bg; color: @luma_count_ink; font-weight: 700; }

@@ -1,0 +1,53 @@
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3733,7 +3733,7 @@
+ /* Luma native menu geometry. St uses content-box sizing and numeric Pango weights. */
+ .popup-menu { min-width: 0; font-family: Figtree; font-size: 13px; font-weight: 600; color: #f2f4f6; }
+ .popup-menu-content {
+-  min-width: 276px;
++  min-width: 204px;
+   padding: 7px;
+   background-color: #252a30;
+   border: 1px solid rgba(255, 255, 255, 0.075);
+@@ -3744,7 +3744,7 @@
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
+ .background-menu { -arrow-rise: 0; }
+-.background-menu .popup-menu-content { min-width: 284px; }
++.background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ .popup-menu-item {
+   height: 32px; min-height: 0;
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3888,7 +3888,7 @@
+ /* Luma native menu geometry. St uses content-box sizing and numeric Pango weights. */
+ .popup-menu { min-width: 0; font-family: Figtree; font-size: 13px; font-weight: 600; color: #252b31; }
+ .popup-menu-content {
+-  min-width: 276px;
++  min-width: 204px;
+   padding: 7px;
+   background-color: #f6f7f8;
+   border: 1px solid rgba(35, 44, 52, 0.09);
+@@ -3899,7 +3899,7 @@
+   border-radius: 15px;
+   box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
+ .background-menu { -arrow-rise: 0; }
+-.background-menu .popup-menu-content { min-width: 284px; }
++.background-menu .popup-menu-content { min-width: 204px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ .popup-menu-item {
+   height: 32px; min-height: 0;
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4396,6 +4396,10 @@
+     padding: 6px 10px;
+     border-radius: 10px;
+     font-size: 13px; }
++
++/* Luma compact context menus; preserve high-contrast system colors. */
++.popup-menu-content, .background-menu .popup-menu-content { min-width: 204px; padding: 7px; }
++.app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner {
+   min-height: 64px;

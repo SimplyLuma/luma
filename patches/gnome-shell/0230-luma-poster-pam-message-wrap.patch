@@ -1,0 +1,15 @@
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index f36c588..2889e5c 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -218,7 +218,9 @@ export const AuthPrompt = GObject.registerClass({
+             y_expand: false,
+             x_expand: true,
+             y_align: Clutter.ActorAlign.START,
+-            x_align: Clutter.ActorAlign.START,
++            // Fill the input well so Pango wraps the verifier's complete text
++            // within the card instead of sizing this actor to one long line.
++            x_align: Clutter.ActorAlign.FILL,
+         });
+         this._message.clutter_text.line_wrap = true;
+         this._message.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;

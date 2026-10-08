@@ -1,0 +1,6 @@
+# Twin-only graphical-session additions. The physical mobile session packages
+# are defined in ../ui-packages.txt; GDM is only a convenient virtual seat and
+# is not part of the phone rootfs contract.
+
+gdm-1:50.2-1.fc44
+wlr-randr-0:0.5.0-3.fc44

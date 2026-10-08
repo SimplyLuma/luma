@@ -1,0 +1,40 @@
+{
+  "home": "/home/nick",
+  "clock": "2026-09-25T22:54:00",
+  "sessions": [
+    {"name": "Home", "cwd": "/home/nick"}
+  ],
+  "history": [
+    "cd Projects/luma",
+    "git status",
+    "git log",
+    "lumafetch",
+    "luma update"
+  ],
+  "blocks": [
+    {
+      "welcome": true,
+      "command": null,
+      "cwd": "/home/nick",
+      "status": "ok",
+      "duration": "",
+      "logo": "   ▄▄▄███▄▄▄\n ▄███████████▄\n▐█████████████▌\n▐█████████████▌\n ▀███████████▀\n   ▀▀▀███▀▀▀",
+      "user": "nick",
+      "host": "thinkpad",
+      "facts": [
+        ["OS", "Luma 1.0 x86_64"],
+        ["Host", "ThinkPad X1 Carbon Gen 12"],
+        ["Kernel", "6.11.4-luma"],
+        ["Uptime", "3 days, 4 hours"],
+        ["Shell", "bash 5.2"],
+        ["CPU", "Intel Core Ultra 7 165U (14)"],
+        ["Memory", "6.1 GiB / 32 GiB"]
+      ],
+      "output": [
+        "Luma 1.0 · bash 5.2",
+        "   ▄▄▄███▄▄▄\n ▄███████████▄\n▐█████████████▌\n▐█████████████▌\n ▀███████████▀\n   ▀▀▀███▀▀▀",
+        "nick@thinkpad\n──────────────\nOS       Luma 1.0 x86_64\nHost     ThinkPad X1 Carbon Gen 12\nKernel   6.11.4-luma\nUptime   3 days, 4 hours\nShell    bash 5.2\nCPU      Intel Core Ultra 7 165U (14)\nMemory   6.1 GiB / 32 GiB"
+      ]
+    }
+  ]
+}

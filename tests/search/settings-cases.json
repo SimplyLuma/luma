@@ -1,0 +1,27 @@
+{
+  "cases": [
+    {"query": "default", "first": "default-apps"},
+    {"query": "default apps", "first": "default-apps"},
+    {"query": "dark", "first": "dark-style"},
+    {"query": "dark mode", "first": "dark-style"},
+    {"query": "night", "first": "night-light"},
+    {"query": "nightlight", "first": "night-light"},
+    {"query": "sleep", "first": "automatic-suspend"},
+    {"query": "suspend", "first": "automatic-suspend"},
+    {"query": "background activity", "first": "background-activity"},
+    {"query": "startup", "first": "open-at-login"},
+    {"query": "open at login", "first": "open-at-login"},
+    {"query": "cast", "first": "cast"},
+    {"query": "airplay", "first": "cast"},
+    {"query": "updates", "first": "depot-updates"},
+    {"query": "timezone", "first": "date-time"},
+    {"query": "transparency", "first": "transparency"},
+    {"query": "dock", "first": "dock"},
+    {"query": "zzqx", "first": null}
+  ],
+  "names": [
+    {"name": "Wi‑Fi", "query": "wifi", "tier": 1000},
+    {"name": "Wi-Fi", "query": "wif", "tier": 800},
+    {"name": "Night Light", "query": "nightlight", "tier": 1000}
+  ]
+}

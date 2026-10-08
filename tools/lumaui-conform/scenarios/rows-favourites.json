@@ -1,0 +1,45 @@
+{
+  "app": "rows-favourites",
+  "title": "SB2 FavouritesStrip (vs Phone's favourites)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=phone",
+    "window": "#pn-side .pnfavs",
+    "exclude": [],
+    "accent_note": "The Studio tints its light mode with the wallpaper's hue (168); the kit's tokens are the default accent (258), so the spec is pinned to it."
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "phone-favourites",
+      "LUMAUI_ROWS_PHOTOS": "{run}/fixtures/contacts-v70"
+    }
+  },
+  "states": [
+    {
+      "name": "favourites",
+      "about": "Phone's four favourites above its list",
+      "spec": [
+        {
+          "eval": "document.body.style.setProperty('--acc', '258')"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "favourites",
+      "spec": "#pn-side .pnfavs"
+    }
+  ],
+  "pairs_note": "No structure pair: the strip fills its window.",
+  "phone_note": "At phone width Phone's sidebar (and its favourites) is hidden until its drawer opens (F2's SidebarToggle)."
+}

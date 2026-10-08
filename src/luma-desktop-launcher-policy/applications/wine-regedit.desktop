@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Regedit
+Exec=regedit
+Icon=regedit
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=X-Wine;

@@ -1,0 +1,488 @@
+From: Project Luma
+Subject: [PATCH] Luma Grid: sharp full-resolution previews, no enlarging, no
+ layout-pass side effects
+
+Previews are rendered at the window's own resolution and shrunk with a 4x4
+box filter instead of one bilinear lookup; a preview is never drawn larger
+than its window; card placement and restyling happen outside Clutter's layout
+pass; off-row cards fade where their window is instead of flying across other
+displays; Grid logs its cards when it opens and warns if one does not settle.
+---
+diff --git a/js/ui/gridLayout.js b/js/ui/gridLayout.js
+--- a/js/ui/gridLayout.js
++++ b/js/ui/gridLayout.js
+@@ -69,19 +69,30 @@ export function gridLayout(windows, width, height) {
+     const scroll = blockHeight > height;
+     const top = scroll ? 0 : (height - blockHeight) / 2;
+     const items = [], rows = [];
++    // A preview is never drawn larger than its window. Enlarging a small
++    // window resamples it past its own pixels and reads as blurred and zoomed
++    // in, so a window shorter than the row keeps its size and sits on the
++    // row's centre line, its label just above it.
++    const heightOf = index => Math.min(h, windows[index].height);
+     packed.groups.forEach(({start, end}, row) => {
+-        const rowWidth = aspects.slice(start, end).reduce((a, b) => a + b, 0) * h + (end - start - 1) * GRID_GAP;
++        let rowWidth = (end - start - 1) * GRID_GAP;
++        for (let index = start; index < end; index++)
++            rowWidth += heightOf(index) * aspects[index];
+         let x = (width - rowWidth) / 2;
+-        const labelY = top + row * (GRID_LABEL + h + GRID_GAP);
+-        rows.push({start, end, width: rowWidth, y: labelY});
++        const rowY = top + row * (GRID_LABEL + h + GRID_GAP);
++        rows.push({start, end, width: rowWidth, y: rowY});
+         for (let index = start; index < end; index++) {
+-            const w = h * aspects[index];
+-            items.push({index, row, x, y: labelY + GRID_LABEL, width: w, height: h,
+-                labelY, labelHeight: 20, radius: Math.max(9, Math.min(16, 25.5 * h / windows[index].height))});
++            const itemHeight = heightOf(index);
++            const w = itemHeight * aspects[index];
++            const labelY = rowY + (h - itemHeight) / 2;
++            items.push({index, row, x, y: labelY + GRID_LABEL, width: w, height: itemHeight,
++                labelY, labelHeight: 20,
++                radius: Math.max(9, Math.min(16, 25.5 * itemHeight / windows[index].height))});
+             x += w + GRID_GAP;
+         }
+     });
+-    return {items, rows, height: blockHeight, scroll, overflowX: packed.width > width + 1e-6};
++    return {items, rows, height: blockHeight, scroll,
++        overflowX: rows.some(r => r.width > width + 1e-6)};
+ }
+ 
+ export function gridNeighbor(layout, index, direction) {
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -82,22 +82,38 @@ export function show(backward = false, modifierMask = 0) {
+     activeGrid.open();
+ }
+ 
+-// Rounds a preview. The offscreen texture covers the body's paint volume,
+-// enlarged the way ClutterOffscreenEffect enlarges it, not its allocation, so
+-// the shape is measured in actor pixels from the texture's real origin.
+-// Sampling is linear: previews rest and travel on fractional positions, and
+-// nearest sampling there drops and doubles columns of text.
++// Rounds a preview and shrinks it to the card. The body is laid out at the
++// window's own size and scaled down as a whole, so the offscreen texture holds
++// the window at full resolution: one texel per window pixel. Shrinking that
++// with a single bilinear lookup skips most of the pixels at the scales Grid
++// uses (about half size on a wide display) and reads as blur and shimmer, so
++// each screen pixel averages a 4x4 grid of lookups spread across the area it
++// covers. At full size the lookups collapse onto one texel and the preview
++// matches the window exactly.
++//
++// The texture covers the body's paint volume, enlarged the way
++// ClutterOffscreenEffect enlarges it, not its allocation, so the shape is
++// measured in window pixels from the texture's real origin.
+ const RoundedPreview = GObject.registerClass(
+ class RoundedPreview extends Shell.GLSLEffect {
+     vfunc_build_pipeline() {
+         this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
+-            'uniform vec2 origin; uniform vec2 extent; uniform vec3 grid_shape;',
+-            `vec2 p = origin + cogl_tex_coord_in[0].st * extent;
++            `uniform vec2 origin; uniform vec2 extent; uniform vec3 grid_shape;
++             uniform vec2 footprint; uniform vec2 texel; uniform float pixel;`,
++            `vec2 st = cogl_tex_coord_in[0].st;
++             vec2 spread = max(footprint - vec2(1.0), vec2(0.0)) * texel / 3.0;
++             vec4 sum = vec4(0.0);
++             for (int i = 0; i < 4; i++) {
++                 for (int j = 0; j < 4; j++)
++                     sum += texture2D(cogl_sampler0, st + (vec2(float(i), float(j)) - 1.5) * spread);
++             }
++             cogl_color_out = cogl_color_in * (sum / 16.0);
++             vec2 p = origin + st * extent;
+              vec2 q = abs(p - grid_shape.xy * 0.5) -
+                  (grid_shape.xy * 0.5 - vec2(grid_shape.z));
+              float d = length(max(q, vec2(0.0))) +
+                  min(max(q.x, q.y), 0.0) - grid_shape.z;
+-             cogl_color_out *= clamp(0.5 - d, 0.0, 1.0);`, false);
++             cogl_color_out *= clamp(0.5 - d / pixel, 0.0, 1.0);`, true);
+     }
+ 
+     setShape(width, height, radius) {
+@@ -122,17 +138,48 @@ class RoundedPreview extends Shell.GLSLEffect {
+         const actor = this.actor;
+         const texture = this.get_texture();
+         if (actor && texture) {
++            // The texture is rendered at the ceiling of the actor's scale; the
++            // displays it lands on may be fractional.
+             const textureScale = Math.max(1, Math.ceil(actor.get_resource_scale()));
++            const viewScale = Math.max(1, ...actor.peek_stage_views().map(v => v.get_scale()));
++            const [scaleX, scaleY] = actor.get_scale();
++            const screenX = Math.max(1e-3, scaleX * viewScale);
++            const screenY = Math.max(1e-3, scaleY * viewScale);
+             this.set_uniform_float(this.get_uniform_location('origin'), 2,
+                 this._textureOrigin(actor));
+             this.set_uniform_float(this.get_uniform_location('extent'), 2,
+                 [texture.get_width() / textureScale, texture.get_height() / textureScale]);
++            this.set_uniform_float(this.get_uniform_location('footprint'), 2,
++                [textureScale / screenX, textureScale / screenY]);
++            this.set_uniform_float(this.get_uniform_location('texel'), 2,
++                [1 / texture.get_width(), 1 / texture.get_height()]);
++            // Window pixels per screen pixel, so the rounded edge stays one
++            // screen pixel soft at any size.
++            this.set_uniform_float(this.get_uniform_location('pixel'), 1,
++                [1 / Math.min(screenX, screenY)]);
+         }
+         smoothOffscreenSampling(this);
+         super.vfunc_paint_target(node, paintContext);
+     }
+ });
+ 
++// Cards are placed by Grid itself. A container's default layout would first
++// put every card back at its preferred size in the same layout pass, and any
++// allocation animation then started from there.
++const ManualLayout = GObject.registerClass(
++class ManualLayout extends Clutter.LayoutManager {
++    vfunc_get_preferred_width() {
++        return [0, 0];
++    }
++
++    vfunc_get_preferred_height() {
++        return [0, 0];
++    }
++
++    vfunc_allocate() {
++    }
++});
++
+ function allocate(actor, x, y, width, height) {
+     // Whole pixels: a preview on a fractional position is resampled across it.
+     const box = new Clutter.ActorBox();
+@@ -207,6 +254,15 @@ class GridCard extends St.Widget {
+         this._syncSelection();
+     }
+ 
++    // Shown only where there is room for it. Decided outside the layout pass:
++    // changing visibility while allocating queues another layout.
++    syncTimeVisible(width) {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const visible = width >= 120 * scale;
++        if (this._time.visible !== visible)
++            this._time.visible = visible;
++    }
++
+     get dimensions() {
+         const bounds = this._body.layout_manager.bounding_box;
+         return {width: Math.max(1, bounds.get_width()), height: Math.max(1, bounds.get_height())};
+@@ -252,13 +308,19 @@ class GridCard extends St.Widget {
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const width = box.get_width();
+         const height = box.get_height() - 28 * scale;
+-        this._time.visible = width >= 120 * scale;
+         allocate(this._header, 0, 0, width, 20 * scale);
+         allocate(this._edge, 0, 28 * scale, width, height);
+-        allocate(this._body, 0, 28 * scale, width, height);
++        // The body keeps the window's own size and is scaled onto the card, so
++        // its texture never changes size while the card travels or rests.
++        const natural = this.dimensions;
++        allocate(this._body, 0, 28 * scale, natural.width, natural.height);
++        const scaleX = width / natural.width;
++        const scaleY = height / natural.height;
++        this._body.set_scale(scaleX, scaleY);
+         allocate(this._close, width - 23 * scale, 25 * scale,
+             26 * scale, 26 * scale);
+-        this._rounded.setShape(width, height, (this._shapeRadius ?? this._radius) * scale);
++        this._rounded.setShape(natural.width, natural.height,
++            (this._shapeRadius ?? this._radius) * scale / Math.max(1e-3, Math.min(scaleX, scaleY)));
+     }
+ });
+ 
+@@ -282,7 +344,8 @@ class GridPopup extends St.Widget {
+         // coordinates. Do not invoke Overview or its background zoom/crop path.
+         this._wallpaper = new Clutter.Clone({source: Main.layoutManager._backgroundGroup});
+         this.add_child(this._wallpaper);
+-        this._stage = new St.Widget({clip_to_allocation: true});
++        this._stage = new St.Widget({clip_to_allocation: true,
++            layout_manager: new ManualLayout()});
+         // Press and drag moves the row like a finger on a touchscreen, with a
+         // mouse as well as touch, and a flick keeps it gliding.
+         const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
+@@ -353,6 +416,9 @@ class GridPopup extends St.Widget {
+                 this.destroy();
+         }, this);
+         this.connect('destroy', () => {
++            if (this._layoutLater)
++                global.compositor.get_laters().remove(this._layoutLater);
++            this._layoutLater = 0;
+             this._stopFling();
+             this._travelTimeline?.stop();
+             this._travelTimeline = null;
+@@ -405,10 +471,13 @@ class GridPopup extends St.Widget {
+             card._travelFrom = rect
+                 ? {x: rect.x, y: rect.y - label, width: rect.width, height: rect.height + label}
+                 : null;
+-            // A card resting outside the visible row fades rather than flying
+-            // to a place the clip hides.
++            // A card resting outside the visible row fades out where its window
++            // is. Flying it to a place the clip hides would draw it across
++            // the neighbouring displays on the way.
+             card._travelShown = !monitor || !home ||
+                 (home.x + home.width > monitor.x && home.x < monitor.x + monitor.width);
++            if (!card._travelShown && card._travelFrom)
++                card._travelFrom.stay = true;
+             card.remove_all_transitions();
+             card.translation_y = 0;
+             card._close.visible = false;
+@@ -463,6 +532,11 @@ class GridPopup extends St.Widget {
+                 width: home.width * (1 - 2 * inset), height: home.height * (1 - 2 * inset)};
+         }
+         card.opacity = card._travelShown ? 255 : Math.round(255 * (1 - progress));
++        if (from.stay) {
++            card._shapeRadius = WINDOW_RADIUS;
++            return {x: from.x - stageOrigin.x, y: from.y - stageOrigin.y,
++                width: from.width, height: from.height};
++        }
+         card._shapeRadius = lerp(WINDOW_RADIUS, restRadius, progress);
+         return {x: lerp(from.x - stageOrigin.x, home.x, progress),
+             y: lerp(from.y - stageOrigin.y, home.y, progress),
+@@ -478,6 +552,31 @@ class GridPopup extends St.Widget {
+             this._stage.clip_to_allocation = true;
+             this._cards.forEach(card => card._syncSelection());
+             this.queue_relayout();
++            this._checkRested();
++        });
++        this.queue_relayout();
++    }
++
++    // After the entrance every card should rest in its place in the row.
++    _checkRested() {
++        global.compositor.get_laters().add(Meta.LaterType.IDLE, () => {
++            const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
++            const monitor = Main.layoutManager.primaryMonitor ?? area;
++            this._cards.forEach((card, index) => {
++                const home = card.home;
++                if (!home || !card.get_stage())
++                    return;
++                const box = card.get_allocation_box();
++                const off = Math.max(Math.abs(box.x1 + monitor.x - home.x), Math.abs(box.y1 + area.y - home.y),
++                    Math.abs(box.get_width() - home.width), Math.abs(box.get_height() - home.height));
++                if (off > 2 || card.opacity !== 255) {
++                    console.warn(`[luma-grid] card ${index} (${card.window.get_wm_class() ?? '-'}) not at rest: ` +
++                        `${Math.round(box.get_width())}x${Math.round(box.get_height())}+${Math.round(box.x1 + monitor.x)}+` +
++                        `${Math.round(box.y1 + area.y)} opacity=${card.opacity}, expected ` +
++                        `${Math.round(home.width)}x${Math.round(home.height)}+${Math.round(home.x)}+${Math.round(home.y)}`);
++                }
++            });
++            return GLib.SOURCE_REMOVE;
+         });
+     }
+ 
+@@ -529,6 +628,8 @@ class GridPopup extends St.Widget {
+     }
+ 
+     open() {
++        this._layout();
++        this._logCards();
+         Main.uiGroup.add_child(this);
+         // Above the windows but below the panel and dock: both stay available
+         // while Grid is open. The live windows are hidden instead of stacked
+@@ -542,17 +643,115 @@ class GridPopup extends St.Widget {
+         this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+         this.grab_key_focus();
+         this._syncSelection();
++        // Every card starts over its window on the first frame.
++        if (this._cards.length)
++            this._enter();
++    }
++
++    // One line per card when Grid opens, and a warning if resting cards
++    // overlap, so a report of a stray or misplaced card can be traced.
++    _logCards() {
++        const lines = this._cards.map((card, index) => {
++            const w = card.window;
++            const r = w.get_frame_rect();
++            const home = card.home;
++            return `${index}:${w.get_wm_class() ?? '-'} type=${w.get_window_type()} ` +
++                `frame=${r.width}x${r.height}+${r.x}+${r.y} monitor=${w.get_monitor()} ` +
++                `minimized=${w.minimized} home=${Math.round(home?.width)}x${Math.round(home?.height)}` +
++                `+${Math.round(home?.x)}+${Math.round(home?.y)}`;
++        });
++        console.log(`[luma-grid] open ${this._cards.length} cards: ${lines.join('; ')}`);
++        const homes = this._cards.map(c => c.home).filter(Boolean);
++        for (let i = 1; i < homes.length; i++) {
++            if (homes[i].x < homes[i - 1].x + homes[i - 1].width - 1)
++                console.warn(`[luma-grid] cards ${i - 1} and ${i} overlap at rest`);
++        }
+     }
+ 
+     reflow() {
+         this._dirty = true;
++        this._layout();
+         this.queue_relayout();
+     }
+ 
++    // Everything that decides where cards rest. It runs before layout, never
++    // inside it: restyling a card or starting the entrance while Clutter is
++    // allocating queues another layout, which left actors unallocated for a
++    // frame. Mutter then assigns them to every display, and a card beside a
++    // fractionally scaled display re-rendered at double resolution and back.
++    // The row's logical size on the primary display.
++    _viewport() {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
++        const monitor = Main.layoutManager.primaryMonitor ?? area;
++        // Insets reserve lift/shadow and maintain the stage's outside slack.
++        const width = Math.max(1, monitor.width / scale - 2 * GRID_EDGE);
++        const height = Math.max(1, area.height / scale - 56);
++        return {scale, width, height, size: `${width}:${height}:${this._cards.length}`};
++    }
++
++    _layout() {
++        const {scale, width, height, size} = this._viewport();
++        if (!this._dirty && this._lastSize === size && this._geometry)
++            return false;
++        this._contentHeight = height;
++        this._geometry = gridLayout(this._cards.map(c => ({
++            width: c.dimensions.width / scale, height: c.dimensions.height / scale})),
++        width, height);
++        this._scroll = Math.min(this._scroll, Math.max(0, this._geometry.height - height));
++        // Scroll positions are expressed as 'what it takes to centre this
++        // card'. The travel therefore runs from centring the first card to
++        // centring the last, which gives both ends the same generous margin
++        // instead of one clean edge and one clipped one.
++        const items = this._geometry.items;
++        const centreOf = item => item.x + item.width / 2 - width / 2;
++        this._scrollMin = items.length ? centreOf(items[0]) : 0;
++        this._scrollMax = items.length ? centreOf(items[items.length - 1]) : 0;
++        if (this._scrollX === null) {
++            // Open on the window you just left. Because the order is stable,
++            // that also restores the neighbours it had last time.
++            const focus = items[Math.min(this._focusIndex ?? 0, items.length - 1)];
++            this._scrollX = focus ? centreOf(focus) : this._scrollMin;
++        }
++        this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax, this._scrollX));
++        items.forEach((item, index) => {
++            const card = this._cards[index];
++            card.syncTimeVisible(item.width * scale);
++            if (card._radius !== item.radius) {
++                card._radius = item.radius;
++                card._syncSelection();
++            }
++        });
++        this._reflowed = this._lastSize !== '';
++        this._lastSize = size;
++        this._dirty = false;
++        this._homes();
++        return true;
++    }
++
++    // Where each card rests on the stage at the current scroll position.
++    _homes() {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
++        const monitor = Main.layoutManager.primaryMonitor ?? area;
++        return this._geometry.items.map((item, index) => {
++            const x = (GRID_EDGE + item.x - this._scrollX) * scale;
++            const y = (28 + item.labelY - this._scroll) * scale;
++            const home = {x, y, width: item.width * scale, height: (item.height + 28) * scale};
++            this._cards[index].home = {x: monitor.x + x, y: area.y + y,
++                width: home.width, height: home.height};
++            return home;
++        });
++    }
++
+     removeCard(card) {
+         const selected = this._cards[this._selected];
+         this._cards = this._cards.filter(c => c !== card);
+         card.destroy();
++        if (this._cards.length === 0) {
++            this.destroy();
++            return;
++        }
+         this._selected = Math.max(0, this._cards.indexOf(selected));
+         this.reflow();
+         this._syncSelection();
+@@ -669,70 +868,41 @@ class GridPopup extends St.Widget {
+     vfunc_allocate(box) {
+         this.set_allocation(box);
+         allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
+         const monitor = Main.layoutManager.primaryMonitor ?? area;
+-        // Insets reserve lift/shadow and maintain the stage's outside slack.
+-        const viewWidth = monitor.width / scale;
+-        const width = Math.max(1, viewWidth - 2 * GRID_EDGE);
+-        const height = Math.max(1, area.height / scale - 56);
+-        this._contentHeight = height;
+         // Span the monitor across, clip to the work area down: the side struts
+         // reserve room for tiled windows, which a full-surface switcher
+         // replaces outright, while the panel and dock stay reachable.
+         allocate(this._stage, monitor.x, area.y, monitor.width, area.height);
+-        const size = `${width}:${height}:${this._cards.length}`;
+-        const reflow = this._dirty || this._lastSize !== size;
+-        if (reflow) {
+-            this._geometry = gridLayout(this._cards.map(c => ({
+-                width: c.dimensions.width / scale, height: c.dimensions.height / scale})),
+-            width, height);
+-            this._scroll = Math.min(this._scroll, Math.max(0, this._geometry.height - height));
+-            // Scroll positions are expressed as 'what it takes to centre this
+-            // card'. The travel therefore runs from centring the first card to
+-            // centring the last, which gives both ends the same generous margin
+-            // instead of one clean edge and one clipped one.
+-            const items = this._geometry.items;
+-            const centreOf = item => item.x + item.width / 2 - width / 2;
+-            this._scrollMin = items.length ? centreOf(items[0]) : 0;
+-            this._scrollMax = items.length ? centreOf(items[items.length - 1]) : 0;
+-            if (this._scrollX === null) {
+-                // Open on the window you just left. Because the order is stable,
+-                // that also restores the neighbours it had last time.
+-                const focus = items[Math.min(this._focusIndex ?? 0, items.length - 1)];
+-                this._scrollX = focus ? centreOf(focus) : this._scrollMin;
+-            }
+-            this._scrollX = Math.max(this._scrollMin,
+-                Math.min(this._scrollMax, this._scrollX));
+-        }
+-        const homes = this._geometry.items.map((item, index) => {
+-            const card = this._cards[index];
+-            const x = (GRID_EDGE + item.x - this._scrollX) * scale;
+-            const y = (28 + item.labelY - this._scroll) * scale;
+-            const home = {x, y, width: item.width * scale, height: (item.height + 28) * scale};
+-            // Where the card rests on the stage, for travelling to and from it.
+-            card.home = {x: monitor.x + x, y: area.y + y, width: home.width, height: home.height};
+-            return home;
+-        });
+-        // Start the entrance before anything is placed, so the first frame
+-        // already shows every card over its window.
+-        if (!this._entered && this._cards.length)
+-            this._enter();
++        if (!this._geometry)
++            return;
++        // Only placement happens here. A size change found this late is
++        // resolved before the next frame, outside the layout pass.
++        if (this._lastSize !== this._viewport().size)
++            this._queueLayout();
++        const homes = this._homes();
++        const reflowed = this._reflowed;
++        this._reflowed = false;
+         this._geometry.items.forEach((item, index) => {
+             const card = this._cards[index];
+-            if (card._radius !== item.radius) {
+-                card._radius = item.radius;
+-                card._syncSelection();
+-            }
+-            const home = homes[index];
+-            const place = this._placeTravelling(card, home, {x: monitor.x, y: area.y}, item.radius);
++            if (!card)
++                return;
++            const place = this._placeTravelling(card, homes[index], {x: monitor.x, y: area.y}, item.radius);
+             card.save_easing_state();
+-            card.set_easing_duration(this._lastSize && reflow && !this.travelling ? 220 : 0);
++            card.set_easing_duration(reflowed && !this.travelling ? 220 : 0);
+             card.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
+             allocate(card, place.x, place.y, place.width, place.height);
+             card.restore_easing_state();
+         });
+-        this._lastSize = size;
+-        this._dirty = false;
++    }
++
++    _queueLayout() {
++        if (this._layoutLater)
++            return;
++        this._layoutLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._layoutLater = 0;
++            this.reflow();
++            return GLib.SOURCE_REMOVE;
++        });
+     }
+ });

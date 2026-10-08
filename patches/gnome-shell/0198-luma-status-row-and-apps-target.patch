@@ -1,0 +1,221 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: the status island and the Apps target match Studio
+
+The status island is one row of 15px glyphs in the secondary ink, 12px
+apart: Wi-Fi, the sound output and the battery (at 75%), with the
+microphone only while something listens. The time reads 21/600 with a small
+AM/PM beside it, over the date as "Fri, Sep 25" (11.5/500), left-aligned.
+The dock's Apps target is Lucide's grid at 18px in the secondary ink.
+
+diff --git a/data/gnome-shell-icons.gresource.xml b/data/gnome-shell-icons.gresource.xml
+index 04ce581..d98f396 100644
+--- a/data/gnome-shell-icons.gresource.xml
++++ b/data/gnome-shell-icons.gresource.xml
+@@ -50,6 +50,7 @@
+     <file preprocess="xml-stripblanks">scalable/actions/shell-focus-top-bar-symbolic-rtl.svg</file>
+     <file preprocess="xml-stripblanks">scalable/actions/shell-focus-windows-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/background-app-ghost-symbolic.svg</file>
++    <file preprocess="xml-stripblanks">scalable/status/luma-grid-2x2-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/check-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/keyboard-brightness-high-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/keyboard-brightness-medium-symbolic.svg</file>
+diff --git a/data/icons/scalable/status/luma-grid-2x2-symbolic.svg b/data/icons/scalable/status/luma-grid-2x2-symbolic.svg
+new file mode 100644
+index 0000000..332483d
+--- /dev/null
++++ b/data/icons/scalable/status/luma-grid-2x2-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide grid-2x2 geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path fill-rule="evenodd" d="M5,2 L19,2 Q22,2 22,5 L22,19 Q22,22 19,22 L5,22 Q2,22 2,19 L2,5 Q2,2 5,2 Z M5,4 Q4,4 4,5 L4,19 Q4,20 5,20 L19,20 Q20,20 20,19 L20,5 Q20,4 19,4 Z" fill="#2e3436"/>
++  <path d="M4,11 L20,11 L20,13 L4,13 Z" fill="#2e3436"/>
++  <path d="M11,4 L13,4 L13,20 L11,20 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 6f5806a..488d7b6 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3100,3 +3100,16 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-live-extension-wave-bar { width: 3px; border-radius: 2px; background-color: #ff645f; }
+ .luma-live-extension-paused .luma-live-extension-wave-bar { background-color: rgba(231,233,232,0.42); }
+ .luma-shelf-live-island .luma-live-extension-recording .luma-live-extension-actions { spacing: 4px; }
++
++/* Studio Desktop status island: one row of 15px glyphs in the secondary ink,
++ * 12px apart (battery at 75%), a hairline, then the time (21/600) over the
++ * date (11.5/500), left-aligned. The Apps target is an 18px grid in the
++ * secondary ink. */
++.luma-status-cluster .luma-status-slot .system-status-icon { color: rgba(231,233,232,0.62); }
++.luma-status-cluster.luma-surface-light .luma-status-slot .system-status-icon { color: rgba(22,25,29,0.76); }
++.luma-status-cluster .luma-status-time { font-size: 21px; font-weight: 600; letter-spacing: -0.3px; font-feature-settings: "tnum"; }
++.luma-status-cluster .luma-status-date { font-size: 11.5px; font-weight: 500; }
++.luma-shelf-dock-island #dash .show-apps .show-apps-icon { color: rgba(231,233,232,0.62); }
++.luma-shelf-dock-island .luma-surface-light #dash .show-apps .show-apps-icon,
++.luma-shelf-dock-island.luma-surface-light #dash .show-apps .show-apps-icon { color: rgba(22,25,29,0.76); }
++.luma-status-cluster .luma-status-clock-text { spacing: 0; }
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index a0679f3..355502d 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -409,7 +409,8 @@ class ShowAppsIcon extends DashItemContainer {
+ 
+     _createIcon(size) {
+         this._iconActor = new St.Icon({
+-            icon_name: 'view-app-grid-symbolic',
++            // The shelf's Apps target is Lucide's grid-2x2 (Studio Desktop).
++            icon_name: this._lumaShelf ? 'luma-grid-2x2-symbolic' : 'view-app-grid-symbolic',
+             icon_size: this._lumaShelf ? 18 : size,
+             style_class: 'show-apps-icon luma-shelf-artwork',
+             track_hover: true,
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 9ce6eab..edaafaf 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -71,8 +71,8 @@ const LUMA_LIVE_REQUEST_ROOT = '/org/projectluma/SemanticBroker1/request';
+ const LUMA_LIVE_REQUEST_TIMEOUT = 35;
+ const LUMA_LIVE_EXTENSION_TOOLTIP_DELAY = 300;
+ // The status grid: 14px glyphs, 8 apart across and 6 apart down.
+-const STATUS_GLYPH = 14;
+-const STATUS_COLUMN_GAP = 8;
++const STATUS_GLYPH = 15;
++const STATUS_COLUMN_GAP = 12;
+ const STATUS_ROW_GAP = 6;
+ // Ink, secondary ink and rules of the status island, per surface treatment.
+ // The status cluster keeps no ink table of its own: it reads the one ledger
+@@ -1198,9 +1198,15 @@ class ShelfStatusLayout extends Clutter.LayoutManager {
+         return container.get_children().filter(child => child.visible);
+     }
+ 
++    // Studio Desktop's status is one row of glyphs along a horizontal
++    // shelf, and a two-wide grid down a side one.
+     _columns(container) {
+-        return this._vertical ? 2 : Math.max(3,
+-            Math.ceil(this._visibleChildren(container).length / 2));
++        return this._vertical ? 2 : Math.max(1, this._visibleChildren(container).length);
++    }
++
++    _rows(container) {
++        return this._vertical
++            ? Math.max(2, Math.ceil(this._visibleChildren(container).length / 2)) : 1;
+     }
+ 
+     _scale() {
+@@ -1241,7 +1247,7 @@ class ShelfStatusLayout extends Clutter.LayoutManager {
+             return [minHeight, natHeight];
+         }
+ 
+-        const rows = Math.max(2, Math.ceil(this._visibleChildren(container).length / this._columns(container)));
++        const rows = this._rows(container);
+         const glyphs = rows * STATUS_GLYPH + (rows - 1) * STATUS_ROW_GAP;
+         return [glyphs * this._scale(), Math.max(DASH_TILE_SIZE, glyphs) * this._scale()];
+     }
+@@ -1270,7 +1276,7 @@ class ShelfStatusLayout extends Clutter.LayoutManager {
+ 
+         const scale = this._scale();
+         const columns = this._columns(container);
+-        const rows = Math.max(2, Math.ceil(children.length / columns));
++        const rows = this._rows(container);
+         const cell = STATUS_GLYPH * scale;
+         const columnGap = STATUS_COLUMN_GAP * scale;
+         const rowGap = STATUS_ROW_GAP * scale;
+@@ -1356,13 +1362,19 @@ class QuickSettings extends PanelMenu.Button {
+             // Time over date, centred on each other: each label takes its own
+             // width, centred in the clock, rather than the clock's full width.
+             this._statusTime = new St.Label({style_class: 'luma-status-time',
+-                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++                x_align: Clutter.ActorAlign.START, y_align: Clutter.ActorAlign.CENTER});
+             this._statusDateLabel = new St.Label({style_class: 'luma-status-date',
+-                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++                x_align: Clutter.ActorAlign.START, y_align: Clutter.ActorAlign.CENTER});
+             // In a 36px column the date is the short "Sat 19" form.
+             this._statusDateShort = new St.Label({style_class: 'luma-status-date',
+                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
+-            this._statusClockBox.add_child(this._statusTime);
++            // Studio Desktop: the time large, a small AM/PM beside it.
++            this._statusAmPm = new St.Label({style_class: 'luma-status-ampm',
++                y_align: Clutter.ActorAlign.END, visible: false});
++            this._statusTimeRow = new St.BoxLayout({x_align: Clutter.ActorAlign.START});
++            this._statusTimeRow.add_child(this._statusTime);
++            this._statusTimeRow.add_child(this._statusAmPm);
++            this._statusClockBox.add_child(this._statusTimeRow);
+             this._statusClockBox.add_child(this._statusDateLabel);
+             this._statusClockBox.add_child(this._statusDateShort);
+             const shortDate = () => {
+@@ -1371,11 +1383,24 @@ class QuickSettings extends PanelMenu.Button {
+             dateMenu._dateDisplay.connectObject('notify::text', shortDate, this);
+             shortDate();
+             this._statusClock.child = this._statusClockBox;
+-            // Bind the owned clock, rather than running another timer.
+-            dateMenu._timeDisplay.bind_property('text', this._statusTime, 'text',
+-                GObject.BindingFlags.SYNC_CREATE);
+-            dateMenu._dateDisplay.bind_property('text', this._statusDateLabel, 'text',
+-                GObject.BindingFlags.SYNC_CREATE);
++            // Follow the owned clock, rather than running another timer.
++            // Studio Desktop writes the time large with a small AM/PM beside
++            // it in the secondary ink, and the date as "Fri, Sep 25".
++            const syncTime = () => {
++                const text = dateMenu._timeDisplay.text ?? '';
++                const match = /^(.*?)\s*([AaPp]\.?[Mm]\.?)$/.exec(text);
++                this._statusTime.text = match ? match[1] : text;
++                this._statusAmPm.text = match ? match[2] : '';
++                this._statusAmPm.visible = Boolean(match) && !this._statusClockVertical;
++            };
++            const syncDate = () => {
++                this._statusDateLabel.text = GLib.DateTime.new_now_local().format('%a, %b %-d') ??
++                    dateMenu._dateDisplay.text;
++            };
++            dateMenu._timeDisplay.connectObject('notify::text', syncTime, this);
++            dateMenu._dateDisplay.connectObject('notify::text', syncDate, this);
++            syncTime();
++            syncDate();
+             for (const label of [this._statusTime, this._statusDateLabel]) {
+                 label.connectObject('notify::text', () => this._updateStatusName(), this);
+                 label.connect_after('style-changed', () => this._setStatusLineHeight(label));
+@@ -1498,6 +1523,10 @@ class QuickSettings extends PanelMenu.Button {
+             slot.icon.icon_name = iconName;
+             slot.opacity = on ? 255 : 89;
+         };
++        // Studio Desktop: Wi-Fi, the sound output and the battery always; the
++        // microphone joins them only while something is listening.
++        this._slots.bluetooth.visible = false;
++        this._slots.power.visible = false;
+         const wifi = this._network?._primaryIndicator;
+         set('wifi', 'luma-wifi-symbolic', Boolean(wifi?.visible));
+         set('bluetooth', 'luma-bluetooth-symbolic', Boolean(this._bluetooth?._indicator?.visible));
+@@ -1510,6 +1539,9 @@ class QuickSettings extends PanelMenu.Button {
+         const muted = Boolean(stream?.is_muted);
+         set('mic', muted ? 'luma-mic-off-symbolic' : 'luma-mic-symbolic', !muted);
+         const recording = Boolean(this._volumeInput?._indicator?.visible) && !muted;
++        this._slots.mic.visible = recording;
++        if (this._slots.battery.opacity === 255)
++            this._slots.battery.opacity = 191;
+         const matched = recording && this._statusWell ? this._statusWell.setRecordingApps(this._recordingApplications()) : false;
+         this._slots.mic.dot.visible = recording && !matched;
+     }
+@@ -1786,15 +1818,21 @@ class QuickSettings extends PanelMenu.Button {
+             divider.x_align = vertical ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
+             divider.y_align = !vertical ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
+         }
+-        this._statusTime.set_style(`font-size: ${this._statusFontSize(this._statusTime)}px; font-weight: 700; color: ${ink.ink};`);
+-        this._statusDateLabel.set_style(`font-size: ${this._statusFontSize(this._statusDateLabel)}px; font-weight: 600; color: ${ink.ink2};`);
++        // Studio Desktop: time 21/600, date 11.5/500 and AM/PM 11/600, both
++        // in the secondary ink.
++        const clockSmall = this._statusClockVertical ?? this._statusVertical;
++        this._statusTime.set_style(`font-size: ${this._statusFontSize(this._statusTime)}px; font-weight: 600; letter-spacing: -0.3px; color: ${ink.ink};`);
++        this._statusDateLabel.set_style(`font-size: ${this._statusFontSize(this._statusDateLabel) + (clockSmall ? 0 : 0.5)}px; font-weight: 500; color: ${ink.ink2};`);
++        this._statusAmPm?.set_style(`font-size: 11px; font-weight: 600; margin-left: 3px; margin-bottom: 4px; color: ${ink.ink2};`);
++        if (this._statusAmPm)
++            this._statusAmPm.visible = Boolean(this._statusAmPm.text) && !clockSmall;
+         this._statusDateShort?.set_style(this._statusDateLabel.get_style());
+         this._statusDateLabel.visible = !clockVertical;
+         if (this._statusDateShort)
+             this._statusDateShort.visible = clockVertical;
+         // Time 13/16 over date 11/14, 2 apart: the lines carry their own
+         // leading, so the gap between them is the spec's two pixels.
+-        this._statusClockBox.set_style(`padding: 0; spacing: ${STATUS_CLOCK_GAP}px;`);
++        this._statusClockBox.set_style(`padding: 0 0 0 1px; spacing: 0;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const label of [this._statusTime, this._statusDateLabel]) {
+             this._setStatusLineHeight(label);

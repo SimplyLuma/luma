@@ -1,0 +1,33 @@
+From: Project Luma <luma@project-luma.org>
+Date: Fri, 14 Aug 2026 18:00:00 +0000
+Subject: [PATCH] drm/msm/a810: disable IFPC for the FP6 diagnostic build
+
+The Fairphone 6 A810 currently enters a repeatable GPU hang under a native
+Waydroid workload.  Recovery then reports that the CX GDSC did not collapse
+and that the GMU GPU_SET OOB request timed out.
+
+Keep every other A810 capability unchanged, but disable idle power collapse
+for the first controlled diagnostic.  This deliberately trades idle power for
+stability and is not intended for release unless physical testing establishes
+that IFPC is the initiating condition.
+
+---
+ drivers/gpu/drm/msm/adreno/a6xx_catalog.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_catalog.c b/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
+index 3e6f409d1..bad552bbe 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
+@@ -2459,8 +2459,7 @@ static const struct adreno_info a8xx_gpus[] = {
+ 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
+ 		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
+ 			  ADRENO_QUIRK_HAS_HW_APRIV |
+-			  ADRENO_QUIRK_PREEMPTION |
+-			  ADRENO_QUIRK_IFPC,
++			  ADRENO_QUIRK_PREEMPTION,
+ 		.funcs = &a8xx_gpu_funcs,
+ 		.zapfw = "gen80300_zap.mbn",
+ 		.a6xx = &(const struct a6xx_info) {
+-- 
+2.51.0

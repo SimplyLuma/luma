@@ -1,0 +1,134 @@
+From 448300a6fda6768882db0e3e3a89eaad3d7783cf Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:34:31 +0000
+Subject: [PATCH] Settings: copy fixture network addresses through named kit
+ actions
+
+---
+ shell/cc-luma-view.c   | 35 ++++++++++++++++++++++++++++++-----
+ shell/test-luma-view.c | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 70 insertions(+), 5 deletions(-)
+
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index f356429..92f25f2 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -323,7 +323,7 @@ static void share_clicked (GtkButton *button, View *v)
+   gtk_widget_set_name (picture, "cf-share-code");
+   gtk_box_append (GTK_BOX (body), picture);
+   GtkWidget *caption = cc_luma_view_label ("Password", "caption", TRUE);
+-  GtkWidget *password = cc_luma_view_label (json_object_get_string_member (wifi_data, "share_password"), "body", FALSE);
++  GtkWidget *password = cc_luma_view_label (json_object_get_string_member (wifi_data, "share_password"), "mono", FALSE);
+   gtk_widget_set_halign (caption, GTK_ALIGN_CENTER);
+   gtk_widget_set_halign (password, GTK_ALIGN_CENTER);
+   gtk_box_append (GTK_BOX (body), caption);
+@@ -483,6 +483,29 @@ static void wifi (View *v)
+     cc_luma_view_row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", toggle (v, "airplane", "cf-airplane", "Airplane mode"));
+   }
+ }
++static void copy_value (LumaBarItem *item, GtkWidget *root)
++{
++  const char *value = g_object_get_data (G_OBJECT (item), "cf-value");
++  gdk_clipboard_set_text (gtk_widget_get_clipboard (root), value);
++  luma_toast_show (root, "Copied", "copied");
++}
++static GtkWidget *fixed_value (View *v, const char *value, const char *name, const char *caption, gboolean copy)
++{
++  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++  gtk_box_append (GTK_BOX (box), cc_luma_view_label (value, "mono", TRUE));
++  if (copy)
++    {
++      g_autoptr (LumaBarItem) item = luma_bar_item_new_action ("copy", NULL, NULL);
++      g_autofree char *tooltip = g_strdup_printf ("Copy %s", caption);
++      luma_bar_item_set_tooltip (item, tooltip);
++      g_object_set_data_full (G_OBJECT (item), "cf-value", g_strdup (value), g_free);
++      g_signal_connect_object (item, "activated", G_CALLBACK (copy_value), v->root, 0);
++      GtkWidget *button = luma_bar_item_create_control (item, "tool");
++      gtk_widget_set_name (button, name);
++      gtk_box_append (GTK_BOX (box), button);
++    }
++  return box;
++}
+ static void wifi_details (View *v)
+ {
+   GtkBox *settings, *connection, *addresses;
+@@ -498,13 +521,15 @@ static void wifi_details (View *v)
+   cc_luma_view_row (connection, "Security", NULL, cc_luma_view_label ("WPA3", "body", TRUE));
+   cc_luma_view_row (connection, "Band", NULL, cc_luma_view_label ("5 GHz, channel 149", "body", TRUE));
+   addresses = cc_luma_view_group (v, "Addresses");
+-  cc_luma_view_row (addresses, "IPv4", NULL, cc_luma_view_label ("192.168.10.24", "body", TRUE));
+-  cc_luma_view_row (addresses, "IPv6", NULL, cc_luma_view_label ("fe80::9a3b:2cff:fe41:7d10", "body", TRUE));
+-  cc_luma_view_row (addresses, "Router", NULL, cc_luma_view_label ("192.168.10.1", "body", TRUE));
++  cc_luma_view_row (addresses, "IPv4", NULL, fixed_value (v, "192.168.10.24", "cf-ipv4-copy", "IPv4", TRUE));
++  cc_luma_view_row (addresses, "IPv6", NULL, fixed_value (v, "fe80::9a3b:2cff:fe41:7d10", "cf-ipv6-copy", "IPv6", TRUE));
++  cc_luma_view_row (addresses, "Router", NULL, fixed_value (v, "192.168.10.1", NULL, "Router", FALSE));
+   cc_luma_view_row (addresses, "DNS", NULL, cc_luma_view_label ("Automatic", "body", TRUE));
+   GtkBox *actions = cc_luma_view_group (v, NULL);
+   cc_luma_view_row (actions, "Share this network", "Show a code a phone can scan", cc_luma_view_command (v, "Share…", G_CALLBACK (share_clicked)));
+-  cc_luma_view_row (actions, "Forget this network", "The password is removed from this computer", forget_button (v, cc_luma_view_text (v, "net")));
++  GtkWidget *forget = forget_button (v, cc_luma_view_text (v, "net"));
++  gtk_button_set_label (GTK_BUTTON (forget), "Forget…");
++  cc_luma_view_row (actions, "Forget this network", "The password is removed from this computer", forget);
+ }
+ static void known_networks (View *v)
+ {
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index a04ad6b..8f7851f 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -263,6 +263,45 @@ static void bluetooth_pairing (void)
+   gtk_window_destroy (GTK_WINDOW (window));
+   g_object_unref (view); drain ();
+ }
++typedef struct { char *text; gboolean done; } ClipboardRead;
++static void clipboard_read (GObject *source, GAsyncResult *result, gpointer data)
++{
++  ClipboardRead *read = data;
++  g_autoptr (GError) error = NULL;
++  read->text = gdk_clipboard_read_text_finish (GDK_CLIPBOARD (source), result, &error);
++  g_assert_no_error (error);
++  read->done = TRUE;
++}
++static char *clipboard_text (GdkClipboard *clipboard)
++{
++  ClipboardRead read = { 0 };
++  gdk_clipboard_read_text_async (clipboard, NULL, clipboard_read, &read);
++  gint64 deadline = g_get_monotonic_time () + G_USEC_PER_SEC;
++  while (!read.done && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  g_assert_true (read.done);
++  return read.text;
++}
++static void copy_addresses (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *window = gtk_window_new ();
++  GtkWidget *view = cc_luma_view_new (model, "wifi-net", NULL);
++  gtk_window_set_child (GTK_WINDOW (window), view);
++  gtk_window_present (GTK_WINDOW (window)); drain ();
++  GdkClipboard *clipboard = gtk_widget_get_clipboard (view);
++  g_signal_emit_by_name (find_name (view, "cf-ipv4-copy"), "clicked");
++  g_autofree char *ipv4 = clipboard_text (clipboard);
++  g_assert_cmpstr (ipv4, ==, "192.168.10.24");
++  GtkWidget *button = g_object_ref (find_name (view, "cf-ipv6-copy"));
++  g_signal_emit_by_name (button, "clicked");
++  g_autofree char *ipv6 = clipboard_text (clipboard);
++  g_assert_cmpstr (ipv6, ==, "fe80::9a3b:2cff:fe41:7d10");
++  g_assert_nonnull (find_type (window, LUMA_TYPE_TOAST));
++  gtk_window_destroy (GTK_WINDOW (window)); drain ();
++  /* A retained orphan control cannot call into a destroyed Settings view. */
++  g_signal_emit_by_name (button, "clicked");
++  g_object_unref (button); drain ();
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -277,5 +316,6 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/scenario-variants", scenario_variants);
+   g_test_add_func ("/settings/view/bluetooth", bluetooth_view);
+   g_test_add_func ("/settings/view/bluetooth-pairing", bluetooth_pairing);
++  g_test_add_func ("/settings/view/copy-addresses", copy_addresses);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

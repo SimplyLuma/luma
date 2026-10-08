@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Wine Help
+Exec=wine winhlp32.exe
+Icon=winhelp
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=X-Wine;

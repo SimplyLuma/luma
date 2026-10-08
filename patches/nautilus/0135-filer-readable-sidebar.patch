@@ -1,0 +1,97 @@
+From 18cd4be64fd1d62623e26920738bf6cabe66106c Mon Sep 17 00:00:00 2001
+From: Codex <codex@local.invalid>
+Date: Sun, 27 Sep 2026 18:33:51 +0000
+Subject: [PATCH] Give Filer a readable sidebar and hide desktop toggle
+
+---
+ src/nautilus-sidebar-row.c | 10 ++--------
+ src/nautilus-window.c      | 23 +++++++++++++++++------
+ 2 files changed, 19 insertions(+), 14 deletions(-)
+
+diff --git a/src/nautilus-sidebar-row.c b/src/nautilus-sidebar-row.c
+index 887f0f7..b9af2e0 100644
+--- a/src/nautilus-sidebar-row.c
++++ b/src/nautilus-sidebar-row.c
+@@ -385,14 +385,6 @@ nautilus_sidebar_row_set_property (GObject      *object,
+         case PROP_SECTION_TYPE:
+         {
+             self->section_type = g_value_get_enum (value);
+-            if (self->section_type == NAUTILUS_SIDEBAR_SECTION_DEFAULT_LOCATIONS)
+-            {
+-                gtk_label_set_ellipsize (GTK_LABEL (self->label_widget), PANGO_ELLIPSIZE_NONE);
+-            }
+-            else
+-            {
+-                gtk_label_set_ellipsize (GTK_LABEL (self->label_widget), PANGO_ELLIPSIZE_MIDDLE);
+-            }
+             break;
+         }
+ 
+@@ -594,6 +586,8 @@ nautilus_sidebar_row_init (NautilusSidebarRow *self)
+     gtk_widget_init_template (GTK_WIDGET (self));
+ 
+     gtk_widget_set_focus_on_click (GTK_WIDGET (self), FALSE);
++    gtk_label_set_ellipsize (GTK_LABEL (self->label_widget), PANGO_ELLIPSIZE_NONE);
++    gtk_label_set_wrap (GTK_LABEL (self->label_widget), TRUE);
+ 
+     self->file = NULL;
+ }
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 3c143c6..5e74ed4 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1976,6 +1976,15 @@ notify_decoration_layout_cb (NautilusWindow *self)
+     }
+ }
+ 
++static void
++sidebar_collapsed_changed (AdwOverlaySplitView *split_view,
++                           GParamSpec          *pspec G_GNUC_UNUSED,
++                           NautilusWindow      *window)
++{
++    gtk_widget_set_visible (GTK_WIDGET (window->sidebar_toggle),
++                            adw_overlay_split_view_get_collapsed (split_view));
++}
++
+ static void
+ nautilus_window_constructed (GObject *self)
+ {
+@@ -1992,9 +2001,8 @@ nautilus_window_constructed (GObject *self)
+ 
+     /* The shared frame keeps NautilusWindow and every template child alive. */
+     luma_application_window_frame_adopt (ADW_APPLICATION_WINDOW (window));
+-    /* The toggle is constructed in Nautilus' template host. Transfer the
+-     * existing control to the kit's selected top title row, retaining its
+-     * split-view action and avoiding an already-parented GTK critical. */
++    /* Keep the drawer control available on a phone. On a desktop the sidebar
++     * stays visible and the title row needs no show/hide control. */
+     GtkWidget *toggle = GTK_WIDGET (window->sidebar_toggle);
+     g_object_ref (toggle);
+     gtk_box_remove (GTK_BOX (window->sidebar_toggle_desktop_host), toggle);
+@@ -2002,6 +2010,9 @@ nautilus_window_constructed (GObject *self)
+     luma_application_window_frame_set_leading_phone_host (ADW_APPLICATION_WINDOW (window),
+                                                           toggle,
+                                                           window->sidebar_toggle_phone_host);
++    g_signal_connect_object (window->split_view, "notify::collapsed",
++                             G_CALLBACK (sidebar_collapsed_changed), window, 0);
++    sidebar_collapsed_changed (ADW_OVERLAY_SPLIT_VIEW (window->split_view), NULL, window);
+     g_object_unref (toggle);
+     GMenuModel *main_menu = NULL;
+     g_object_get (window->toolbar, "main-menu", &main_menu, NULL);
+@@ -2718,10 +2729,10 @@ nautilus_window_init (NautilusWindow *window)
+     window->action_modes_item = luma_bar_item_new_modes (window->action_modes);
+     update_action_center (window);
+ 
+-    /* v70's file rail has a fixed kit width; keep Nautilus' live rows,
+-     * volumes, bookmarks and DnD rather than copying them into a second list. */
++    /* Use the shared navigation width so full destination names and live
++     * device labels fit. Keep Nautilus' rows, volumes, bookmarks and DnD. */
+     luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (window->split_view),
+-                                        GTK_WIDGET (window->places_sidebar), "rail");
++                                        GTK_WIDGET (window->places_sidebar), "narrow");
+     gtk_widget_set_visible (window->sidebar_resize_handle, FALSE);
+     controller = GTK_EVENT_CONTROLLER (gtk_gesture_drag_new ());
+     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+-- 
+2.55.0
+

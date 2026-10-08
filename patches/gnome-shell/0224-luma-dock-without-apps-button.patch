@@ -1,0 +1,30 @@
+From: Project Luma <builds@project-luma.local>
+Date: Mon, 28 Sep 2026 03:10:00 +0000
+Subject: [PATCH] luma: remove the redundant Apps button from the Shelf dock
+
+Patch 0191 made the Apps target visible again. Search already opens the app
+catalog. Hide the Apps tile and remove its divider while preserving the Dash
+actor used by native icon sizing, favorites and running applications.
+
+---
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -689,14 +689,11 @@
+         this._dash._showAppsIcon._lumaShelf = true;
+         this._dash.setFixedIconSize(DASH_TILE_SIZE);
+         this._dash.setShowAppsAtStart(true);
+-        // Studio Desktop starts the dock with a forty-pixel Apps target and
+-        // a short divider before favorites. Keep GNOME's native Apps action.
+-        this._dash.showAppsButton?.show();
++        // Search opens the app catalog. Keep the Dash sizing reference,
++        // but leave its Apps tile out of the Shelf and drop the divider.
++        this._dash.showAppsButton?.hide();
+         this._normaliseDockIcons();
+-        this._dash._showAppsIcon.show();
+-        this._appsDivider = new St.Widget({style_class: 'luma-shelf-apps-divider',
+-            width: 1, height: 24, y_align: Clutter.ActorAlign.CENTER});
+-        this._dash._dashContainer.insert_child_at_index(this._appsDivider, 1);
++        this._dash._showAppsIcon.hide();
+         this._dockScroll = new St.ScrollView({
+             style_class: 'luma-shelf-dock-scroll',
+             hscrollbar_policy: St.PolicyType.EXTERNAL,

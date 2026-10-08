@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# systemd calls system-sleep hooks with "pre" or "post" as argv[2].  Queue
+# recovery asynchronously so wake-up is never held behind modem enumeration.
+
+set -u
+
+if [[ ${2:-} == post ]]; then
+  systemctl --no-block start luma-fp6-cellular-resume.service
+fi

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Sign the update graph for one channel when Hub's rendering changes.
+[Unit]
+Description=Sign the Luma update graph for %i
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=@ROOT@
+ConditionPathExists=/root/luma-os-release-secrets/hub-graph-service-token
+
+[Service]
+Type=oneshot
+Slice=luma-os.slice
+Environment=LUMA_OS_ROOT=@ROOT@
+Environment=TMPDIR=@ROOT@/tmp
+ExecStart=/usr/bin/python3 -B -I @GRAPH_CONTROL@/scripts/os/graph-signer-entry.py @GRAPH_CONTROL@ @GRAPH_MANIFEST@ @GRAPH_IMAGE@ @ROOT@ %i
+TimeoutStartSec=15min

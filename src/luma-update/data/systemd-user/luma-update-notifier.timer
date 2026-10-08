@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Reminders: the notifier decides whether a daily (or, for security updates,
+# four-hourly) reminder is due. It exits immediately when nothing is.
+[Unit]
+Description=Remind about a Luma update waiting for restart
+PartOf=graphical-session.target
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=30min
+AccuracySec=5min
+Unit=luma-update-notifier.service
+
+[Install]
+WantedBy=graphical-session.target

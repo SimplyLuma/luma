@@ -1,0 +1,1106 @@
+{
+ "cached-update": null,
+ "deployments": [
+  {
+   "base-checksum": "d60829f6f29c897a2a759465b3d5d477eff8b2c599165c44ffa37119f476ef18",
+   "base-commit-meta": {
+    "org.projectluma.accepted-deployment": "",
+    "org.projectluma.build-report-sha256": "",
+    "org.projectluma.export-policy": "",
+    "org.projectluma.image-sha256": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "44.20260806.0"
+   },
+   "base-local-replacements": [
+    [
+     [
+      "mutter-common-50.4-1.luma.3.preview20260914.4.fc44.noarch",
+      "mutter-common",
+      0,
+      "50.4",
+      "1.luma.3.preview20260914.4.fc44",
+      "noarch"
+     ],
+     [
+      "mutter-common-50.4-1.luma.1.preview20260908.2.fc44.noarch",
+      "mutter-common",
+      0,
+      "50.4",
+      "1.luma.1.preview20260908.2.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-android-runtime-0.1.0-1.luma.69.preview20260914.1.fc44.noarch",
+      "luma-android-runtime",
+      0,
+      "0.1.0",
+      "1.luma.69.preview20260914.1.fc44",
+      "noarch"
+     ],
+     [
+      "luma-android-runtime-0.1.0-1.luma.68.preview20260910.2.fc44.noarch",
+      "luma-android-runtime",
+      0,
+      "0.1.0",
+      "1.luma.68.preview20260910.2.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-desktop-launcher-policy-0.1.0-17.fc44.noarch",
+      "luma-desktop-launcher-policy",
+      0,
+      "0.1.0",
+      "17.fc44",
+      "noarch"
+     ],
+     [
+      "luma-desktop-launcher-policy-0.1.0-8.fc44.noarch",
+      "luma-desktop-launcher-policy",
+      0,
+      "0.1.0",
+      "8.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260914.17.fc44",
+      "noarch"
+     ],
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260911.4.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260911.4.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gtk4-4.22.4-1.luma.17.preview1.fc44.x86_64",
+      "gtk4",
+      0,
+      "4.22.4",
+      "1.luma.17.preview1.fc44",
+      "x86_64"
+     ],
+     [
+      "gtk4-4.22.4-1.luma.14.preview1.fc44.x86_64",
+      "gtk4",
+      0,
+      "4.22.4",
+      "1.luma.14.preview1.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "mutter-50.4-1.luma.3.preview20260914.4.fc44.x86_64",
+      "mutter",
+      0,
+      "50.4",
+      "1.luma.3.preview20260914.4.fc44",
+      "x86_64"
+     ],
+     [
+      "mutter-50.4-1.luma.1.preview20260908.2.fc44.x86_64",
+      "mutter",
+      0,
+      "50.4",
+      "1.luma.1.preview20260908.2.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-tide-0.1.0-2.luma.14.surfacepreview20260913.1.fc44.noarch",
+      "luma-tide",
+      0,
+      "0.1.0",
+      "2.luma.14.surfacepreview20260913.1.fc44",
+      "noarch"
+     ],
+     [
+      "luma-tide-0.1.0-2.luma.13.surfacepreview20260910.1.fc44.noarch",
+      "luma-tide",
+      0,
+      "0.1.0",
+      "2.luma.13.surfacepreview20260910.1.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-stage-preview-0.1.0-15.test.20260914.fc44.x86_64",
+      "luma-stage-preview",
+      0,
+      "0.1.0",
+      "15.test.20260914.fc44",
+      "x86_64"
+     ],
+     [
+      "luma-stage-preview-0.1.0-13.test.20260910.fc44.x86_64",
+      "luma-stage-preview",
+      0,
+      "0.1.0",
+      "13.test.20260910.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "libadwaita-1.9.3-1.luma.45.preview20260914.fc44.x86_64",
+      "libadwaita",
+      0,
+      "1.9.3",
+      "1.luma.45.preview20260914.fc44",
+      "x86_64"
+     ],
+     [
+      "libadwaita-1.9.3-1.luma.44.preview20260910.fc44.x86_64",
+      "libadwaita",
+      0,
+      "1.9.3",
+      "1.luma.44.preview20260910.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-reel-0.1.0-1.luma.4.preview20260914.fc44.noarch",
+      "luma-reel",
+      0,
+      "0.1.0",
+      "1.luma.4.preview20260914.fc44",
+      "noarch"
+     ],
+     [
+      "luma-reel-0.1.0-1.luma.3.preview20260907.fc44.noarch",
+      "luma-reel",
+      0,
+      "0.1.0",
+      "1.luma.3.preview20260907.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "nautilus-extensions-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+      "nautilus-extensions",
+      0,
+      "50.2.2",
+      "1.luma.53.surfacepreview20260912.fc44",
+      "x86_64"
+     ],
+     [
+      "nautilus-extensions-50.2.2-1.luma.52.surfacepreview20260908.fc44.x86_64",
+      "nautilus-extensions",
+      0,
+      "50.2.2",
+      "1.luma.52.surfacepreview20260908.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "prairie-core-apps-0.1.0-1.luma.74.connect.28~preview.20260914.1.fc44.noarch",
+      "prairie-core-apps",
+      0,
+      "0.1.0",
+      "1.luma.74.connect.28~preview.20260914.1.fc44",
+      "noarch"
+     ],
+     [
+      "prairie-core-apps-0.1.0-1.luma.71.connect.7~preview.20260909.1.fc44.noarch",
+      "prairie-core-apps",
+      0,
+      "0.1.0",
+      "1.luma.71.connect.7~preview.20260909.1.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-common-50.3-1.luma.99.surfacepreview20260914.79.fc44.noarch",
+      "gnome-shell-common",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260914.79.fc44",
+      "noarch"
+     ],
+     [
+      "gnome-shell-common-50.3-1.luma.99.surfacepreview20260911.28.fc44.noarch",
+      "gnome-shell-common",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260911.28.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-50.3-1.luma.99.surfacepreview20260914.79.fc44.x86_64",
+      "gnome-shell",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260914.79.fc44",
+      "x86_64"
+     ],
+     [
+      "gnome-shell-50.3-1.luma.99.surfacepreview20260911.28.fc44.x86_64",
+      "gnome-shell",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260911.28.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-layouts-0.1.0-1.luma.6.fc44.noarch",
+      "luma-layouts",
+      0,
+      "0.1.0",
+      "1.luma.6.fc44",
+      "noarch"
+     ],
+     [
+      "luma-layouts-0.1.0-1.luma.5.fc44.noarch",
+      "luma-layouts",
+      0,
+      "0.1.0",
+      "1.luma.5.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-developer-platform-0.1.0-1.luma.64~preview.20260914.1.fc44.x86_64",
+      "luma-developer-platform",
+      0,
+      "0.1.0",
+      "1.luma.64~preview.20260914.1.fc44",
+      "x86_64"
+     ],
+     [
+      "luma-developer-platform-0.1.0-1.luma.62~preview.20260910.1.fc44.x86_64",
+      "luma-developer-platform",
+      0,
+      "0.1.0",
+      "1.luma.62~preview.20260910.1.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-developer-platform-sdk-0.1.0-1.luma.64~preview.20260914.1.fc44.noarch",
+      "luma-developer-platform-sdk",
+      0,
+      "0.1.0",
+      "1.luma.64~preview.20260914.1.fc44",
+      "noarch"
+     ],
+     [
+      "luma-developer-platform-sdk-0.1.0-1.luma.62~preview.20260910.1.fc44.noarch",
+      "luma-developer-platform-sdk",
+      0,
+      "0.1.0",
+      "1.luma.62~preview.20260910.1.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-extension-tiling-shell-17.3-1.luma.11.fc44.noarch",
+      "gnome-shell-extension-tiling-shell",
+      0,
+      "17.3",
+      "1.luma.11.fc44",
+      "noarch"
+     ],
+     [
+      "gnome-shell-extension-tiling-shell-17.3-1.luma.6.fc44.noarch",
+      "gnome-shell-extension-tiling-shell",
+      0,
+      "17.3",
+      "1.luma.6.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.7.fc44.noarch",
+      "gnome-shell-extension-luma-tiling-toggle",
+      0,
+      "0.1.0",
+      "1.luma.7.fc44",
+      "noarch"
+     ],
+     [
+      "gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.5.fc44.noarch",
+      "gnome-shell-extension-luma-tiling-toggle",
+      0,
+      "0.1.0",
+      "1.luma.5.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-boot-theme-0.1.0-1.luma.12.fc44.noarch",
+      "luma-boot-theme",
+      0,
+      "0.1.0",
+      "1.luma.12.fc44",
+      "noarch"
+     ],
+     [
+      "luma-boot-theme-0.1.0-1.luma.8.fc44.noarch",
+      "luma-boot-theme",
+      0,
+      "0.1.0",
+      "1.luma.8.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-darkroom-0.1.0-1.luma.3.fc44.noarch",
+      "luma-darkroom",
+      0,
+      "0.1.0",
+      "1.luma.3.fc44",
+      "noarch"
+     ],
+     [
+      "luma-darkroom-0.1.0-1.luma.2.fc44.noarch",
+      "luma-darkroom",
+      0,
+      "0.1.0",
+      "1.luma.2.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-continuity-0.1.0-0.54.experiment.fc44.noarch",
+      "luma-continuity",
+      0,
+      "0.1.0",
+      "0.54.experiment.fc44",
+      "noarch"
+     ],
+     [
+      "luma-continuity-0.1.0-0.33.experiment.fc44.noarch",
+      "luma-continuity",
+      0,
+      "0.1.0",
+      "0.33.experiment.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "nautilus-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+      "nautilus",
+      0,
+      "50.2.2",
+      "1.luma.53.surfacepreview20260912.fc44",
+      "x86_64"
+     ],
+     [
+      "nautilus-50.2.2-1.luma.52.surfacepreview20260908.fc44.x86_64",
+      "nautilus",
+      0,
+      "50.2.2",
+      "1.luma.52.surfacepreview20260908.fc44",
+      "x86_64"
+     ]
+    ]
+   ],
+   "base-removals": [],
+   "base-version": "44.20260806.0",
+   "booted": true,
+   "checksum": "77fec9eb3191d04383d0f391d9efbcdbdda136e6845ca3806bf341027fa016ad",
+   "id": "fedora-77fec9eb3191d04383d0f391d9efbcdbdda136e6845ca3806bf341027fa016ad.0",
+   "origin": "luma:luma/1/x86_64/stable",
+   "osname": "fedora",
+   "packages": [
+    "gnome-shell-extension-appindicator",
+    "libretro-bsnes-mercury"
+   ],
+   "pinned": false,
+   "requested-base-local-replacements": [
+    "gnome-shell-50.3-1.luma.99.surfacepreview20260914.79.fc44.x86_64",
+    "gnome-shell-common-50.3-1.luma.99.surfacepreview20260914.79.fc44.noarch",
+    "gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.7.fc44.noarch",
+    "gnome-shell-extension-tiling-shell-17.3-1.luma.11.fc44.noarch",
+    "gtk4-4.22.4-1.luma.17.preview1.fc44.x86_64",
+    "libadwaita-1.9.3-1.luma.45.preview20260914.fc44.x86_64",
+    "luma-android-runtime-0.1.0-1.luma.69.preview20260914.1.fc44.noarch",
+    "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+    "luma-boot-theme-0.1.0-1.luma.12.fc44.noarch",
+    "luma-continuity-0.1.0-0.54.experiment.fc44.noarch",
+    "luma-darkroom-0.1.0-1.luma.3.fc44.noarch",
+    "luma-desktop-launcher-policy-0.1.0-17.fc44.noarch",
+    "luma-developer-platform-0.1.0-1.luma.64~preview.20260914.1.fc44.x86_64",
+    "luma-developer-platform-sdk-0.1.0-1.luma.64~preview.20260914.1.fc44.noarch",
+    "luma-layouts-0.1.0-1.luma.6.fc44.noarch",
+    "luma-reel-0.1.0-1.luma.4.preview20260914.fc44.noarch",
+    "luma-stage-preview-0.1.0-15.test.20260914.fc44.x86_64",
+    "luma-tide-0.1.0-2.luma.14.surfacepreview20260913.1.fc44.noarch",
+    "mutter-50.4-1.luma.3.preview20260914.4.fc44.x86_64",
+    "mutter-common-50.4-1.luma.3.preview20260914.4.fc44.noarch",
+    "nautilus-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+    "nautilus-extensions-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+    "prairie-core-apps-0.1.0-1.luma.74.connect.28~preview.20260914.1.fc44.noarch"
+   ],
+   "requested-base-removals": [],
+   "requested-local-packages": [
+    "google-caveat-fonts-2.000-1.luma.1.fc44.noarch",
+    "luma-agenda-0.1.0-1.luma.8.fc44.noarch",
+    "luma-ari-0.1.0-1.luma.8.fc44.noarch",
+    "luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64",
+    "luma-calls-0.1.0-1.luma.1.fc44.noarch",
+    "luma-charlie-0.2.6-1.luma.1.fc44.noarch",
+    "luma-displays-0.1.0-1.luma.3.fc44.noarch",
+    "luma-homebrew-0.1.0-1.luma.1.fc44.noarch",
+    "luma-imager-0.1.0-1.luma.2.fc44.noarch",
+    "luma-leaf-0.1.0-1.luma.2.fc44.noarch",
+    "luma-media-bridge-0.1.0-1.luma.1.fc44.noarch",
+    "luma-messages-bridges-0.1.0-0.5.experiment.fc44.x86_64",
+    "luma-portal-0.1.0-1.luma.7.fc44.noarch",
+    "luma-sticky-notes-0.1.0-1.luma.6.fc44.noarch",
+    "luma-vitals-0.1.0-1.luma.3.fc44.noarch",
+    "luma-wifi-guard-0.1.0-1.luma.1.fc44.noarch",
+    "openemu-linux-0.1.0-1.luma.2.fc44.x86_64"
+   ],
+   "requested-packages": [
+    "gnome-shell-extension-appindicator",
+    "libretro-bsnes-mercury"
+   ],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1789474818,
+   "unlocked": "none",
+   "version": "44.20260806.0"
+  },
+  {
+   "base-checksum": "d60829f6f29c897a2a759465b3d5d477eff8b2c599165c44ffa37119f476ef18",
+   "base-commit-meta": {
+    "org.projectluma.accepted-deployment": "",
+    "org.projectluma.build-report-sha256": "",
+    "org.projectluma.export-policy": "",
+    "org.projectluma.image-sha256": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "44.20260806.0"
+   },
+   "base-local-replacements": [
+    [
+     [
+      "mutter-common-50.4-1.luma.3.preview20260914.4.fc44.noarch",
+      "mutter-common",
+      0,
+      "50.4",
+      "1.luma.3.preview20260914.4.fc44",
+      "noarch"
+     ],
+     [
+      "mutter-common-50.4-1.luma.1.preview20260908.2.fc44.noarch",
+      "mutter-common",
+      0,
+      "50.4",
+      "1.luma.1.preview20260908.2.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-common-50.3-1.luma.99.surfacepreview20260914.76.fc44.noarch",
+      "gnome-shell-common",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260914.76.fc44",
+      "noarch"
+     ],
+     [
+      "gnome-shell-common-50.3-1.luma.99.surfacepreview20260911.28.fc44.noarch",
+      "gnome-shell-common",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260911.28.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-android-runtime-0.1.0-1.luma.69.preview20260914.1.fc44.noarch",
+      "luma-android-runtime",
+      0,
+      "0.1.0",
+      "1.luma.69.preview20260914.1.fc44",
+      "noarch"
+     ],
+     [
+      "luma-android-runtime-0.1.0-1.luma.68.preview20260910.2.fc44.noarch",
+      "luma-android-runtime",
+      0,
+      "0.1.0",
+      "1.luma.68.preview20260910.2.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260914.17.fc44",
+      "noarch"
+     ],
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260911.4.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260911.4.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gtk4-4.22.4-1.luma.17.preview1.fc44.x86_64",
+      "gtk4",
+      0,
+      "4.22.4",
+      "1.luma.17.preview1.fc44",
+      "x86_64"
+     ],
+     [
+      "gtk4-4.22.4-1.luma.14.preview1.fc44.x86_64",
+      "gtk4",
+      0,
+      "4.22.4",
+      "1.luma.14.preview1.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "mutter-50.4-1.luma.3.preview20260914.4.fc44.x86_64",
+      "mutter",
+      0,
+      "50.4",
+      "1.luma.3.preview20260914.4.fc44",
+      "x86_64"
+     ],
+     [
+      "mutter-50.4-1.luma.1.preview20260908.2.fc44.x86_64",
+      "mutter",
+      0,
+      "50.4",
+      "1.luma.1.preview20260908.2.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-50.3-1.luma.99.surfacepreview20260914.76.fc44.x86_64",
+      "gnome-shell",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260914.76.fc44",
+      "x86_64"
+     ],
+     [
+      "gnome-shell-50.3-1.luma.99.surfacepreview20260911.28.fc44.x86_64",
+      "gnome-shell",
+      0,
+      "50.3",
+      "1.luma.99.surfacepreview20260911.28.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-stage-preview-0.1.0-15.test.20260914.fc44.x86_64",
+      "luma-stage-preview",
+      0,
+      "0.1.0",
+      "15.test.20260914.fc44",
+      "x86_64"
+     ],
+     [
+      "luma-stage-preview-0.1.0-13.test.20260910.fc44.x86_64",
+      "luma-stage-preview",
+      0,
+      "0.1.0",
+      "13.test.20260910.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "libadwaita-1.9.3-1.luma.45.preview20260914.fc44.x86_64",
+      "libadwaita",
+      0,
+      "1.9.3",
+      "1.luma.45.preview20260914.fc44",
+      "x86_64"
+     ],
+     [
+      "libadwaita-1.9.3-1.luma.44.preview20260910.fc44.x86_64",
+      "libadwaita",
+      0,
+      "1.9.3",
+      "1.luma.44.preview20260910.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-reel-0.1.0-1.luma.4.preview20260914.fc44.noarch",
+      "luma-reel",
+      0,
+      "0.1.0",
+      "1.luma.4.preview20260914.fc44",
+      "noarch"
+     ],
+     [
+      "luma-reel-0.1.0-1.luma.3.preview20260907.fc44.noarch",
+      "luma-reel",
+      0,
+      "0.1.0",
+      "1.luma.3.preview20260907.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "nautilus-extensions-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+      "nautilus-extensions",
+      0,
+      "50.2.2",
+      "1.luma.53.surfacepreview20260912.fc44",
+      "x86_64"
+     ],
+     [
+      "nautilus-extensions-50.2.2-1.luma.52.surfacepreview20260908.fc44.x86_64",
+      "nautilus-extensions",
+      0,
+      "50.2.2",
+      "1.luma.52.surfacepreview20260908.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "luma-tide-0.1.0-2.luma.14.surfacepreview20260913.1.fc44.noarch",
+      "luma-tide",
+      0,
+      "0.1.0",
+      "2.luma.14.surfacepreview20260913.1.fc44",
+      "noarch"
+     ],
+     [
+      "luma-tide-0.1.0-2.luma.13.surfacepreview20260910.1.fc44.noarch",
+      "luma-tide",
+      0,
+      "0.1.0",
+      "2.luma.13.surfacepreview20260910.1.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "prairie-core-apps-0.1.0-1.luma.74.connect.27~preview.20260914.1.fc44.noarch",
+      "prairie-core-apps",
+      0,
+      "0.1.0",
+      "1.luma.74.connect.27~preview.20260914.1.fc44",
+      "noarch"
+     ],
+     [
+      "prairie-core-apps-0.1.0-1.luma.71.connect.7~preview.20260909.1.fc44.noarch",
+      "prairie-core-apps",
+      0,
+      "0.1.0",
+      "1.luma.71.connect.7~preview.20260909.1.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-desktop-launcher-policy-0.1.0-14.fc44.noarch",
+      "luma-desktop-launcher-policy",
+      0,
+      "0.1.0",
+      "14.fc44",
+      "noarch"
+     ],
+     [
+      "luma-desktop-launcher-policy-0.1.0-8.fc44.noarch",
+      "luma-desktop-launcher-policy",
+      0,
+      "0.1.0",
+      "8.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-developer-platform-sdk-0.1.0-1.luma.64~preview.20260914.1.fc44.noarch",
+      "luma-developer-platform-sdk",
+      0,
+      "0.1.0",
+      "1.luma.64~preview.20260914.1.fc44",
+      "noarch"
+     ],
+     [
+      "luma-developer-platform-sdk-0.1.0-1.luma.62~preview.20260910.1.fc44.noarch",
+      "luma-developer-platform-sdk",
+      0,
+      "0.1.0",
+      "1.luma.62~preview.20260910.1.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-layouts-0.1.0-1.luma.6.fc44.noarch",
+      "luma-layouts",
+      0,
+      "0.1.0",
+      "1.luma.6.fc44",
+      "noarch"
+     ],
+     [
+      "luma-layouts-0.1.0-1.luma.5.fc44.noarch",
+      "luma-layouts",
+      0,
+      "0.1.0",
+      "1.luma.5.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-developer-platform-0.1.0-1.luma.64~preview.20260914.1.fc44.x86_64",
+      "luma-developer-platform",
+      0,
+      "0.1.0",
+      "1.luma.64~preview.20260914.1.fc44",
+      "x86_64"
+     ],
+     [
+      "luma-developer-platform-0.1.0-1.luma.62~preview.20260910.1.fc44.x86_64",
+      "luma-developer-platform",
+      0,
+      "0.1.0",
+      "1.luma.62~preview.20260910.1.fc44",
+      "x86_64"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.7.fc44.noarch",
+      "gnome-shell-extension-luma-tiling-toggle",
+      0,
+      "0.1.0",
+      "1.luma.7.fc44",
+      "noarch"
+     ],
+     [
+      "gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.5.fc44.noarch",
+      "gnome-shell-extension-luma-tiling-toggle",
+      0,
+      "0.1.0",
+      "1.luma.5.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "gnome-shell-extension-tiling-shell-17.3-1.luma.11.fc44.noarch",
+      "gnome-shell-extension-tiling-shell",
+      0,
+      "17.3",
+      "1.luma.11.fc44",
+      "noarch"
+     ],
+     [
+      "gnome-shell-extension-tiling-shell-17.3-1.luma.6.fc44.noarch",
+      "gnome-shell-extension-tiling-shell",
+      0,
+      "17.3",
+      "1.luma.6.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-continuity-0.1.0-0.52.experiment.fc44.noarch",
+      "luma-continuity",
+      0,
+      "0.1.0",
+      "0.52.experiment.fc44",
+      "noarch"
+     ],
+     [
+      "luma-continuity-0.1.0-0.33.experiment.fc44.noarch",
+      "luma-continuity",
+      0,
+      "0.1.0",
+      "0.33.experiment.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-boot-theme-0.1.0-1.luma.12.fc44.noarch",
+      "luma-boot-theme",
+      0,
+      "0.1.0",
+      "1.luma.12.fc44",
+      "noarch"
+     ],
+     [
+      "luma-boot-theme-0.1.0-1.luma.8.fc44.noarch",
+      "luma-boot-theme",
+      0,
+      "0.1.0",
+      "1.luma.8.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "luma-darkroom-0.1.0-1.luma.3.fc44.noarch",
+      "luma-darkroom",
+      0,
+      "0.1.0",
+      "1.luma.3.fc44",
+      "noarch"
+     ],
+     [
+      "luma-darkroom-0.1.0-1.luma.2.fc44.noarch",
+      "luma-darkroom",
+      0,
+      "0.1.0",
+      "1.luma.2.fc44",
+      "noarch"
+     ]
+    ],
+    [
+     [
+      "nautilus-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+      "nautilus",
+      0,
+      "50.2.2",
+      "1.luma.53.surfacepreview20260912.fc44",
+      "x86_64"
+     ],
+     [
+      "nautilus-50.2.2-1.luma.52.surfacepreview20260908.fc44.x86_64",
+      "nautilus",
+      0,
+      "50.2.2",
+      "1.luma.52.surfacepreview20260908.fc44",
+      "x86_64"
+     ]
+    ]
+   ],
+   "base-removals": [],
+   "base-version": "44.20260806.0",
+   "booted": false,
+   "checksum": "11c20a424b7f9049dfa72c829a953a5bb383106887a28621b11bbb63fb75a8aa",
+   "id": "fedora-11c20a424b7f9049dfa72c829a953a5bb383106887a28621b11bbb63fb75a8aa.0",
+   "origin": "luma:luma/1/x86_64/stable",
+   "osname": "fedora",
+   "packages": [
+    "gnome-shell-extension-appindicator",
+    "libretro-bsnes-mercury"
+   ],
+   "pinned": false,
+   "requested-base-local-replacements": [
+    "gnome-shell-50.3-1.luma.99.surfacepreview20260914.76.fc44.x86_64",
+    "gnome-shell-common-50.3-1.luma.99.surfacepreview20260914.76.fc44.noarch",
+    "gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.7.fc44.noarch",
+    "gnome-shell-extension-tiling-shell-17.3-1.luma.11.fc44.noarch",
+    "gtk4-4.22.4-1.luma.17.preview1.fc44.x86_64",
+    "libadwaita-1.9.3-1.luma.45.preview20260914.fc44.x86_64",
+    "luma-android-runtime-0.1.0-1.luma.69.preview20260914.1.fc44.noarch",
+    "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+    "luma-boot-theme-0.1.0-1.luma.12.fc44.noarch",
+    "luma-continuity-0.1.0-0.52.experiment.fc44.noarch",
+    "luma-darkroom-0.1.0-1.luma.3.fc44.noarch",
+    "luma-desktop-launcher-policy-0.1.0-14.fc44.noarch",
+    "luma-developer-platform-0.1.0-1.luma.64~preview.20260914.1.fc44.x86_64",
+    "luma-developer-platform-sdk-0.1.0-1.luma.64~preview.20260914.1.fc44.noarch",
+    "luma-layouts-0.1.0-1.luma.6.fc44.noarch",
+    "luma-reel-0.1.0-1.luma.4.preview20260914.fc44.noarch",
+    "luma-stage-preview-0.1.0-15.test.20260914.fc44.x86_64",
+    "luma-tide-0.1.0-2.luma.14.surfacepreview20260913.1.fc44.noarch",
+    "mutter-50.4-1.luma.3.preview20260914.4.fc44.x86_64",
+    "mutter-common-50.4-1.luma.3.preview20260914.4.fc44.noarch",
+    "nautilus-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+    "nautilus-extensions-50.2.2-1.luma.53.surfacepreview20260912.fc44.x86_64",
+    "prairie-core-apps-0.1.0-1.luma.74.connect.27~preview.20260914.1.fc44.noarch"
+   ],
+   "requested-base-removals": [],
+   "requested-local-packages": [
+    "google-caveat-fonts-2.000-1.luma.1.fc44.noarch",
+    "luma-agenda-0.1.0-1.luma.8.fc44.noarch",
+    "luma-ari-0.1.0-1.luma.8.fc44.noarch",
+    "luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64",
+    "luma-calls-0.1.0-1.luma.1.fc44.noarch",
+    "luma-charlie-0.2.6-1.luma.1.fc44.noarch",
+    "luma-displays-0.1.0-1.luma.3.fc44.noarch",
+    "luma-homebrew-0.1.0-1.luma.1.fc44.noarch",
+    "luma-imager-0.1.0-1.luma.2.fc44.noarch",
+    "luma-leaf-0.1.0-1.luma.2.fc44.noarch",
+    "luma-media-bridge-0.1.0-1.luma.1.fc44.noarch",
+    "luma-messages-bridges-0.1.0-0.5.experiment.fc44.x86_64",
+    "luma-portal-0.1.0-1.luma.7.fc44.noarch",
+    "luma-sticky-notes-0.1.0-1.luma.6.fc44.noarch",
+    "luma-vitals-0.1.0-1.luma.3.fc44.noarch",
+    "luma-wifi-guard-0.1.0-1.luma.1.fc44.noarch",
+    "openemu-linux-0.1.0-1.luma.2.fc44.x86_64"
+   ],
+   "requested-packages": [
+    "gnome-shell-extension-appindicator",
+    "libretro-bsnes-mercury"
+   ],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1789441222,
+   "unlocked": "none",
+   "version": "44.20260806.0"
+  },
+  {
+   "base-commit-meta": {
+    "org.projectluma.accepted-deployment": "",
+    "org.projectluma.build-report-sha256": "",
+    "org.projectluma.export-policy": "",
+    "org.projectluma.image-sha256": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "44.20260806.0"
+   },
+   "base-local-replacements": [],
+   "base-removals": [],
+   "booted": false,
+   "checksum": "441c74151f4e3ecd10a442ecd4708bc2a5472c49976c0536fc1643148d4dc0b0",
+   "id": "fedora-441c74151f4e3ecd10a442ecd4708bc2a5472c49976c0536fc1643148d4dc0b0.0",
+   "origin": "luma:luma/1/x86_64/stable",
+   "osname": "fedora",
+   "packages": [],
+   "pinned": true,
+   "requested-base-local-replacements": [],
+   "requested-base-removals": [],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1789144669,
+   "unlocked": "none",
+   "version": "44.20260806.0"
+  },
+  {
+   "base-commit-meta": {
+    "org.projectluma.accepted-deployment": "",
+    "org.projectluma.build-report-sha256": "",
+    "org.projectluma.export-policy": "",
+    "org.projectluma.image-sha256": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "44.20260806.0"
+   },
+   "base-local-replacements": [],
+   "base-removals": [],
+   "booted": false,
+   "checksum": "de219c0d02191f1fdb250073b6f141a02b9bdcacf5c922cdf54bfb5b808216dd",
+   "id": "fedora-de219c0d02191f1fdb250073b6f141a02b9bdcacf5c922cdf54bfb5b808216dd.0",
+   "origin": "luma:luma/1/x86_64/stable",
+   "osname": "fedora",
+   "packages": [],
+   "pinned": true,
+   "requested-base-local-replacements": [],
+   "requested-base-removals": [],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1789075548,
+   "unlocked": "none",
+   "version": "44.20260806.0"
+  },
+  {
+   "base-commit-meta": {
+    "org.projectluma.accepted-deployment": "",
+    "org.projectluma.build-report-sha256": "",
+    "org.projectluma.export-policy": "",
+    "org.projectluma.image-sha256": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "44.20260806.0"
+   },
+   "base-local-replacements": [],
+   "base-removals": [],
+   "booted": false,
+   "checksum": "8b61bb268b9fea660e2eccd58905dd67211406152fcdf93349cd9ad4129c4c8d",
+   "id": "fedora-8b61bb268b9fea660e2eccd58905dd67211406152fcdf93349cd9ad4129c4c8d.1",
+   "origin": "luma:luma/1/x86_64/stable",
+   "osname": "fedora",
+   "packages": [],
+   "pinned": true,
+   "requested-base-local-replacements": [],
+   "requested-base-removals": [],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 1,
+   "staged": false,
+   "timestamp": 1789085765,
+   "unlocked": "none",
+   "version": "44.20260806.0"
+  },
+  {
+   "base-commit-meta": {
+    "ostree.bootable": true,
+    "version": "44.1.7"
+   },
+   "base-local-replacements": [],
+   "base-removals": [],
+   "booted": false,
+   "checksum": "c626d6a10db57332ff97b90e67d5a231af5053df0e5b9f4ca0168528bde5b3c9",
+   "id": "fedora-c626d6a10db57332ff97b90e67d5a231af5053df0e5b9f4ca0168528bde5b3c9.0",
+   "origin": "fedora:fedora/44/x86_64/silverblue",
+   "osname": "fedora",
+   "packages": [],
+   "pinned": true,
+   "requested-base-local-replacements": [],
+   "requested-base-removals": [],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1776864440,
+   "unlocked": "none",
+   "version": "44.1.7"
+  }
+ ],
+ "transaction": null,
+ "update-driver": null
+}

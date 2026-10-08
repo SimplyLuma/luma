@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="@APPLICATION_ID@">
+  <schema id="@APPLICATION_ID@" path="@SETTINGS_PATH@">
+    <key name="recent-files" type="as">
+      <default>[]</default>
+      <summary>Recently opened or explicitly saved workbooks</summary>
+      <description>Normalized local filesystem paths only; workbook contents are never stored in this key.</description>
+    </key>
+    <key name="show-welcome" type="b"><default>true</default><summary>Show the Creative collection welcome screen</summary></key>
+  </schema>
+</schemalist>

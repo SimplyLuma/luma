@@ -1,0 +1,27 @@
+[Unit]
+Description=Luma Fairphone 6 secure fingerprint backend
+Requires=luma-fp6-fingerprint-graphical-gate.service
+After=local-fs.target systemd-modules-load.service luma-fp6-fingerprint-graphical-gate.service
+Before=graphical.target sleep.target
+ConditionKernelCommandLine=androidboot.slot_suffix=_b
+ConditionPathExists=/var/lib/luma/fingerprint
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+RuntimeDirectory=luma/fp6-fingerprint
+RuntimeDirectoryMode=0700
+ExecStart=/usr/libexec/luma-fp6-fingerprint-backend
+ExecStop=/usr/libexec/luma-fp6-fingerprint-backend-stop
+TimeoutStartSec=45
+TimeoutStopSec=15
+SendSIGKILL=no
+UMask=0077
+NoNewPrivileges=no
+PrivateTmp=no
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/luma/fp6-fingerprint /var/lib/luma/fingerprint /sys/module/firmware_class/parameters/path /sys/bus/platform/devices/qcomtee
+
+[Install]
+WantedBy=multi-user.target

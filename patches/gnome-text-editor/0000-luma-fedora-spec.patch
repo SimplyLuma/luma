@@ -1,0 +1,17 @@
+diff --git a/gnome-text-editor.spec b/gnome-text-editor.spec
+--- a/gnome-text-editor.spec
++++ b/gnome-text-editor.spec
+@@ -18,11 +18,12 @@
+ Name:		gnome-text-editor
+ Version:	50.1
+-Release:	%autorelease
++Release:	1.luma.2%{?dist}
+ Summary:	A simple text editor for the GNOME desktop
+ 
+ # Code is GPL-3.0-or-later and the Appdata is CC0-1.0
+ License:	GPL-3.0-or-later AND CC-BY-SA-3.0 AND CC0-1.0
+ URL:		https://gitlab.gnome.org/GNOME/gnome-text-editor
+ Source0:	https://download.gnome.org/sources/%{name}/50/%{name}-%{tarball_version}.tar.xz
++Patch1000:	0001-luma-native-application-frame.patch
+ 
+ BuildRequires:	pkgconfig(editorconfig)

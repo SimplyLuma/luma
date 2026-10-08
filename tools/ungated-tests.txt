@@ -1,0 +1,11 @@
+# Tests that no package %check and no workflow can reach, deliberately.
+#
+# An entry here is a decision, not a convenience: it says this test cannot be
+# automated and someone has accepted that. A reason is required, and
+# tools/check-unreached-tests.py refuses an entry without one -- silence is
+# how a test ends up gating nothing by accident, which is the whole problem
+# this tool exists to find.
+#
+# Format:  <repository path>  # why it cannot be gated, and who runs it instead
+#
+tests/emulator/test-guest.sh  # needs a booted emulator guest; run by tests/emulator/run.sh --with-guest before an emulator release

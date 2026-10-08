@@ -1,0 +1,35 @@
+/* Reusable AppKit component candidate: inline zoom control geometry.
+ * Colors, surfaces, focus rings, typography and menu elevation remain owned
+ * by the installed toolkit. Intended handback: src/luma-platform AppKit.
+ */
+.luma-inline-zoom {
+  min-height: 34px;
+  padding: 0;
+}
+.luma-inline-zoom > button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
+.luma-inline-zoom > button.luma-zoom-value {
+  font-feature-settings: "tnum";
+}
+/* The composed row must opt into the same tokens as native menu buttons. */
+.luma-inline-zoom {
+  color: @luma_menu_ink;
+  font-family: Figtree;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 8px;
+}
+.luma-inline-zoom > button {
+  color: @luma_menu_ink;
+  background: transparent;
+  box-shadow: none;
+}
+.luma-inline-zoom > button:hover,
+.luma-inline-zoom > button:active,
+.luma-inline-zoom > button:focus-visible {
+  background: @luma_menu_raised;
+}

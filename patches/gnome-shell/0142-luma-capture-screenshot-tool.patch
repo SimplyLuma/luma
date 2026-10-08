@@ -1,0 +1,3718 @@
+From 61db38c15e3ee86e41f5d962b061abd949fc5153 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 01:31:31 -0400
+Subject: [PATCH] luma: Capture replaces the screenshot panel
+
+Capture is Luma's screenshot and screen recording tool, drawn in the
+shelf's surface language instead of GNOME's OSD panel.
+
+- One bar, SHELF_SURFACE_GAP beyond the dock island's desktop-facing edge
+  (placeShelfBar in lumaShelfSurface.js; SHELF_INSET above the work area
+  with the dock at a side), with Close, three screenshot modes (entire
+  screen, a window, a selection), two recording modes, Options and a
+  labelled Capture or Record button. Quick Options' tokens in light, dark,
+  frost and glass. Tooltips, the Options menu, the recording pill and the
+  thumbnail are placed from the bar by the same rule.
+- Nothing is selected when Capture opens. Dragging draws a selection;
+  choosing a selection mode draws the last one (Remember Last Selection)
+  or a box 42% of the monitor wide and tall, 18% from its top. A dashed
+  outline, eight handles, the size in physical pixels, a 24 by 24 minimum,
+  and a double click takes it.
+- Windows stay where they are; the one under the pointer gets an accent
+  outline over an accent wash and a click takes it. The monitor under the
+  pointer is outlined and a click anywhere takes it.
+- Ctrl+Shift+2 (screenshot-window) opens window mode waiting for a pick
+  instead of capturing the focused window. Ctrl+Shift+1 opens the mode last
+  used, Ctrl+Shift+3 selection, Ctrl+Shift+4 recording or stops one.
+- Options: Save to Pictures (Screenshots), Videos (Screencasts) for
+  recordings, Desktop, Clipboard for screenshots, or a folder chosen
+  through the portal's file chooser; a 5 or 10 second timer counting down
+  over the live screen, Escape cancelling it; Show Floating Thumbnail,
+  Remember Last Selection, Show Pointer. All kept in
+  org.project_luma.capture. Messages and Record Sound are not offered: the
+  recorder captures video only.
+- "Screenshot YYYY-MM-DD at HH.MM.SS.png" and "Recording YYYY-MM-DD at
+  HH.MM.SS.webm". A floating thumbnail beside the shelf opens the file and
+  replaces the screenshot and screencast notifications; failures still
+  notify. The result is announced to screen readers.
+- A recording shows a pill with a pulsing dot, the time and Stop where the
+  bar was; Stop, Ctrl+Shift+4 or Escape end it. GNOME's screen recording
+  indicator is not shown.
+- The pill, a recording's outline, the countdown, the flash and the
+  thumbnail paint only into the stage views, so they are never in a
+  screenshot or recording.
+- Opening from Luma's search keeps the search out of the capture.
+
+Dropping this patch restores GNOME's screenshot UI.
+---
+ data/gnome-shell-theme.gresource.xml          |    1 +
+ .../status/luma-capture-check-symbolic.svg    |    6 +
+ .../status/luma-capture-chevron-symbolic.svg  |    6 +
+ .../status/luma-capture-close-symbolic.svg    |    6 +
+ .../luma-capture-record-screen-symbolic.svg   |   10 +
+ ...luma-capture-record-selection-symbolic.svg |   15 +
+ .../status/luma-capture-screen-symbolic.svg   |    7 +
+ .../luma-capture-selection-symbolic.svg       |   12 +
+ .../status/luma-capture-window-symbolic.svg   |    8 +
+ data/meson.build                              |    2 +
+ data/org.project_luma.capture.gschema.xml     |   57 +
+ data/theme/luma-capture.css                   |  306 ++++
+ js/js-resources.gresource.xml                 |    1 +
+ js/ui/lumaCapture.js                          | 1240 ++++++++++++++++
+ js/ui/lumaShelfSurface.js                     |   68 +-
+ js/ui/screenshot.js                           | 1293 +++++++++++++++--
+ js/ui/status/remoteAccess.js                  |    7 +-
+ 17 files changed, 2904 insertions(+), 141 deletions(-)
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-check-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-chevron-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-close-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-record-screen-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-record-selection-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-screen-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-selection-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-capture-window-symbolic.svg
+ create mode 100644 data/org.project_luma.capture.gschema.xml
+ create mode 100644 data/theme/luma-capture.css
+ create mode 100644 js/ui/lumaCapture.js
+
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index c5dca81..a5bf77c 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -6,6 +6,7 @@
+     <file>gnome-shell-dark.css</file>
+     <file>gnome-shell-light.css</file>
+     <file>gnome-shell-high-contrast.css</file>
++    <file>luma-capture.css</file>
+     <file>luma-cast.css</file>
+     <file>luma-shelf.css</file>
+     <file>gnome-shell-start.svg</file>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-check-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-check-symbolic.svg
+new file mode 100644
+index 0000000..958c20c
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-check-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 12 12">
++  <path d="M3.193,5.479 L5.693,7.879 A1,1 0 0 1 4.307,9.321 L1.807,6.921 A1,1 0 0 1 3.193,5.479Z" fill="#2e3436"/>
++  <path d="M4.257,7.931 L8.757,2.931 A1,1 0 0 1 10.243,4.269 L5.743,9.269 A1,1 0 0 1 4.257,7.931Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-chevron-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-chevron-symbolic.svg
+new file mode 100644
+index 0000000..5eb3aad
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-chevron-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 12 12">
++  <path d="M3.707,3.793 L6.707,6.793 A1,1 0 0 1 5.293,8.207 L2.293,5.207 A1,1 0 0 1 3.707,3.793Z" fill="#2e3436"/>
++  <path d="M5.293,6.793 L8.293,3.793 A1,1 0 0 1 9.707,5.207 L6.707,8.207 A1,1 0 0 1 5.293,6.793Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-close-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-close-symbolic.svg
+new file mode 100644
+index 0000000..1a0a9f6
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-close-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 12 12">
++  <path d="M3.778,2.222 L9.778,8.222 A1.1,1.1 0 0 1 8.222,9.778 L2.222,3.778 A1.1,1.1 0 0 1 3.778,2.222Z" fill="#2e3436"/>
++  <path d="M9.778,3.778 L3.778,9.778 A1.1,1.1 0 0 1 2.222,8.222 L8.222,2.222 A1.1,1.1 0 0 1 9.778,3.778Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-record-screen-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-record-screen-symbolic.svg
+new file mode 100644
+index 0000000..b13fafa
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-record-screen-symbolic.svg
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 26 26">
++  <defs><clipPath id="gap"><path clip-rule="evenodd" d="M-1,-1H27V27H-1Z M15.6,18.5A4.4,4.4 0 1 0 24.4,18.5A4.4,4.4 0 1 0 15.6,18.5Z"/></clipPath></defs>
++  <g clip-path="url(#gap)">
++  <path d="M17,19.8 L5.5,19.8 A3.3,3.3 0 0 1 2.2,16.5 L2.2,7.5 A3.3,3.3 0 0 1 5.5,4.2 L20.5,4.2 A3.3,3.3 0 0 1 23.8,7.5 L23.8,12 A0.8,0.8 0 0 1 22.2,12 L22.2,7.5 A1.7,1.7 0 0 0 20.5,5.8 L5.5,5.8 A1.7,1.7 0 0 0 3.8,7.5 L3.8,16.5 A1.7,1.7 0 0 0 5.5,18.2 L17,18.2 A0.8,0.8 0 0 1 17,19.8Z" fill="#2e3436"/>
++  <path d="M9.5,21.7 L14.5,21.7 A0.8,0.8 0 0 1 14.5,23.3 L9.5,23.3 A0.8,0.8 0 0 1 9.5,21.7Z" fill="#2e3436"/>
++  </g>
++  <path class="error" d="M16.4,18.5A3.6,3.6 0 1 0 23.6,18.5A3.6,3.6 0 1 0 16.4,18.5Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-record-selection-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-record-selection-symbolic.svg
+new file mode 100644
+index 0000000..586669a
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-record-selection-symbolic.svg
+@@ -0,0 +1,15 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 26 26">
++  <defs><clipPath id="gap"><path clip-rule="evenodd" d="M-1,-1H27V27H-1Z M15.1,19.5A4.4,4.4 0 1 0 23.9,19.5A4.4,4.4 0 1 0 15.1,19.5Z"/></clipPath></defs>
++  <g clip-path="url(#gap)">
++  <path d="M3.2,8 L3.2,5.5 A2.3,2.3 0 0 1 5.5,3.2 L8,3.2 A0.8,0.8 0 0 1 8,4.8 L5.5,4.8 A0.7,0.7 0 0 0 4.8,5.5 L4.8,8 A0.8,0.8 0 0 1 3.2,8Z" fill="#2e3436"/>
++  <path d="M12,3.2 L14,3.2 A0.8,0.8 0 0 1 14,4.8 L12,4.8 A0.8,0.8 0 0 1 12,3.2Z" fill="#2e3436"/>
++  <path d="M18,3.2 L20.5,3.2 A2.3,2.3 0 0 1 22.8,5.5 L22.8,8 A0.8,0.8 0 0 1 21.2,8 L21.2,5.5 A0.7,0.7 0 0 0 20.5,4.8 L18,4.8 A0.8,0.8 0 0 1 18,3.2Z" fill="#2e3436"/>
++  <path d="M8,22.8 L5.5,22.8 A2.3,2.3 0 0 1 3.2,20.5 L3.2,18 A0.8,0.8 0 0 1 4.8,18 L4.8,20.5 A0.7,0.7 0 0 0 5.5,21.2 L8,21.2 A0.8,0.8 0 0 1 8,22.8Z" fill="#2e3436"/>
++  <path d="M3.2,14 L3.2,12 A0.8,0.8 0 0 1 4.8,12 L4.8,14 A0.8,0.8 0 0 1 3.2,14Z" fill="#2e3436"/>
++  <path d="M22.8,12 L22.8,13 A0.8,0.8 0 0 1 21.2,13 L21.2,12 A0.8,0.8 0 0 1 22.8,12Z" fill="#2e3436"/>
++  <path d="M13,22.8 L12,22.8 A0.8,0.8 0 0 1 12,21.2 L13,21.2 A0.8,0.8 0 0 1 13,22.8Z" fill="#2e3436"/>
++  </g>
++  <path class="error" d="M15.9,19.5A3.6,3.6 0 1 0 23.1,19.5A3.6,3.6 0 1 0 15.9,19.5Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-screen-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-screen-symbolic.svg
+new file mode 100644
+index 0000000..67d51af
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-screen-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 26 26">
++  <path d="M5.5,4.2H20.5A3.3,3.3 0 0 1 23.8,7.5V16.5A3.3,3.3 0 0 1 20.5,19.8H5.5A3.3,3.3 0 0 1 2.2,16.5V7.5A3.3,3.3 0 0 1 5.5,4.2Z M5.5,5.8H20.5A1.7,1.7 0 0 1 22.2,7.5V16.5A1.7,1.7 0 0 1 20.5,18.2H5.5A1.7,1.7 0 0 1 3.8,16.5V7.5A1.7,1.7 0 0 1 5.5,5.8Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M9.5,21.7 L16.5,21.7 A0.8,0.8 0 0 1 16.5,23.3 L9.5,23.3 A0.8,0.8 0 0 1 9.5,21.7Z" fill="#2e3436"/>
++  <path d="M13.8,19 L13.8,22.5 A0.8,0.8 0 0 1 12.2,22.5 L12.2,19 A0.8,0.8 0 0 1 13.8,19Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-selection-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-selection-symbolic.svg
+new file mode 100644
+index 0000000..8a65c64
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-selection-symbolic.svg
+@@ -0,0 +1,12 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 26 26">
++  <path d="M3.2,8 L3.2,5.5 A2.3,2.3 0 0 1 5.5,3.2 L8,3.2 A0.8,0.8 0 0 1 8,4.8 L5.5,4.8 A0.7,0.7 0 0 0 4.8,5.5 L4.8,8 A0.8,0.8 0 0 1 3.2,8Z" fill="#2e3436"/>
++  <path d="M12,3.2 L14,3.2 A0.8,0.8 0 0 1 14,4.8 L12,4.8 A0.8,0.8 0 0 1 12,3.2Z" fill="#2e3436"/>
++  <path d="M18,3.2 L20.5,3.2 A2.3,2.3 0 0 1 22.8,5.5 L22.8,8 A0.8,0.8 0 0 1 21.2,8 L21.2,5.5 A0.7,0.7 0 0 0 20.5,4.8 L18,4.8 A0.8,0.8 0 0 1 18,3.2Z" fill="#2e3436"/>
++  <path d="M8,22.8 L5.5,22.8 A2.3,2.3 0 0 1 3.2,20.5 L3.2,18 A0.8,0.8 0 0 1 4.8,18 L4.8,20.5 A0.7,0.7 0 0 0 5.5,21.2 L8,21.2 A0.8,0.8 0 0 1 8,22.8Z" fill="#2e3436"/>
++  <path d="M3.2,14 L3.2,12 A0.8,0.8 0 0 1 4.8,12 L4.8,14 A0.8,0.8 0 0 1 3.2,14Z" fill="#2e3436"/>
++  <path d="M22.8,12 L22.8,14 A0.8,0.8 0 0 1 21.2,14 L21.2,12 A0.8,0.8 0 0 1 22.8,12Z" fill="#2e3436"/>
++  <path d="M22.8,18 L22.8,20.5 A2.3,2.3 0 0 1 20.5,22.8 L18,22.8 A0.8,0.8 0 0 1 18,21.2 L20.5,21.2 A0.7,0.7 0 0 0 21.2,20.5 L21.2,18 A0.8,0.8 0 0 1 22.8,18Z" fill="#2e3436"/>
++  <path d="M14,22.8 L12,22.8 A0.8,0.8 0 0 1 12,21.2 L14,21.2 A0.8,0.8 0 0 1 14,22.8Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-capture-window-symbolic.svg b/data/icons/hicolor/scalable/status/luma-capture-window-symbolic.svg
+new file mode 100644
+index 0000000..faad5de
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-capture-window-symbolic.svg
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma Capture glyph; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 26 26">
++  <path d="M5.5,3.7H20.5A3.3,3.3 0 0 1 23.8,7V19A3.3,3.3 0 0 1 20.5,22.3H5.5A3.3,3.3 0 0 1 2.2,19V7A3.3,3.3 0 0 1 5.5,3.7Z M5.5,5.3H20.5A1.7,1.7 0 0 1 22.2,7V19A1.7,1.7 0 0 1 20.5,20.7H5.5A1.7,1.7 0 0 1 3.8,19V7A1.7,1.7 0 0 1 5.5,5.3Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M3,8.2 L23,8.2 A0.8,0.8 0 0 1 23,9.8 L3,9.8 A0.8,0.8 0 0 1 3,8.2Z" fill="#2e3436"/>
++  <path d="M5.2,6.8A1,1 0 1 0 7.2,6.8A1,1 0 1 0 5.2,6.8Z" fill="#2e3436"/>
++  <path d="M7.4,6.8A1,1 0 1 0 9.4,6.8A1,1 0 1 0 7.4,6.8Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/meson.build b/data/meson.build
+index 48cc85d..022704f 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -110,6 +110,8 @@ schema = configure_file(
+   install_dir: schemadir
+ )
+ install_data('00_org.gnome.shell.gschema.override', install_dir: schemadir)
++# Luma Capture: the screenshot tool's Options (org.project_luma.capture).
++install_data('org.project_luma.capture.gschema.xml', install_dir: schemadir)
+ 
+ if have_systemd
+   unitconf = configuration_data()
+diff --git a/data/org.project_luma.capture.gschema.xml b/data/org.project_luma.capture.gschema.xml
+new file mode 100644
+index 0000000..c420943
+--- /dev/null
++++ b/data/org.project_luma.capture.gschema.xml
+@@ -0,0 +1,57 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
++<!-- Luma Capture, the screenshot and screen recording tool: every choice in
++     its Options menu and what it remembers between uses. -->
++<schemalist gettext-domain="gnome-shell">
++  <schema id="org.project_luma.capture" path="/org/project-luma/capture/">
++    <key name="save-to" type="s">
++      <choices>
++        <choice value="pictures"/>
++        <choice value="desktop"/>
++        <choice value="clipboard"/>
++        <choice value="messages"/>
++        <choice value="other"/>
++      </choices>
++      <default>"pictures"</default>
++      <summary>Where captures are saved</summary>
++      <description>Pictures and Videos save into their Screenshots and Screencasts folders. Clipboard copies a screenshot without saving it; recordings then go to Videos. Messages is not offered yet and saves to Pictures.</description>
++    </key>
++    <key name="other-location" type="s">
++      <default>""</default>
++      <summary>The folder chosen with Other Location</summary>
++    </key>
++    <key name="timer" type="u">
++      <range min="0" max="10"/>
++      <default>0</default>
++      <summary>Seconds before a capture is taken</summary>
++      <description>0, 5 or 10; any other value is treated as 0.</description>
++    </key>
++    <key name="show-thumbnail" type="b">
++      <default>true</default>
++      <summary>Show a floating thumbnail after each capture</summary>
++    </key>
++    <key name="remember-selection" type="b">
++      <default>true</default>
++      <summary>Choosing a selection mode draws the last selection again</summary>
++    </key>
++    <key name="show-pointer" type="b">
++      <default>false</default>
++      <summary>Include the pointer in screenshots and recordings</summary>
++    </key>
++    <key name="last-mode" type="s">
++      <choices>
++        <choice value="screen"/>
++        <choice value="window"/>
++        <choice value="selection"/>
++        <choice value="record-screen"/>
++        <choice value="record-selection"/>
++      </choices>
++      <default>"selection"</default>
++      <summary>The capture mode last used</summary>
++    </key>
++    <key name="last-selection" type="ai">
++      <default>[]</default>
++      <summary>The last selection, as x, y, width and height in logical pixels</summary>
++    </key>
++  </schema>
++</schemalist>
+diff --git a/data/theme/luma-capture.css b/data/theme/luma-capture.css
+new file mode 100644
+index 0000000..9501616
+--- /dev/null
++++ b/data/theme/luma-capture.css
+@@ -0,0 +1,306 @@
++/* Luma Capture: the screenshot and screen recording tool (lumaCapture.js).
++ *
++ * Surfaces use Quick Options' tokens in every appearance mode. The material
++ * classes (luma-surface-light, -dark, -frost, -glass) come from
++ * lumaSurfaceMaterials.js, which also adds the backdrop blur.
++ *
++ *            fill                     ink      muted                   line                     control
++ * light      #f1f2f3                  #30343a  #767b81                 rgba(35,39,45,.09)       rgba(35,44,52,.072)
++ * dark       #21252b                  #e9ebec  #969da4                 rgba(255,255,255,.075)   rgba(255,255,255,.072)
++ * frost      rgba(244,245,246,.80)    #30343a  #767b81                 rgba(35,39,45,.09)       rgba(35,44,52,.072)
++ * glass      rgba(22,29,40,.38)       #ffffff  rgba(255,255,255,.70)   rgba(255,255,255,.15)    rgba(10,20,33,.20)
++ *
++ * The only colour of its own is the record red, #e5484d. Where Capture sits
++ * is the shelf surface rule (lumaShelfSurface.js), never an offset here. */
++
++/* ── Surface ─────────────────────────────────────────────────────────────── */
++.luma-capture-surface {
++  font-family: 'Figtree', system-ui, sans-serif;
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26); }
++.luma-capture-surface.luma-surface-dark {
++  background-color: #21252b;
++  color: #e9ebec; }
++.luma-capture-surface.luma-surface-frost { background-color: rgba(244, 245, 246, 0.80); }
++.luma-capture-surface.luma-surface-glass {
++  background-color: rgba(22, 29, 40, 0.38);
++  color: #ffffff; }
++.luma-capture-shadow {
++  background-color: rgba(0, 0, 0, 0.01);
++  box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.55); }
++.luma-capture-line { border: 1px solid rgba(35, 39, 45, 0.09); }
++.luma-capture-line.luma-surface-dark { border-color: rgba(255, 255, 255, 0.075); }
++.luma-capture-line.luma-surface-glass { border-color: rgba(255, 255, 255, 0.15); }
++
++.luma-capture-bar, .luma-capture-bar-shadow, .luma-capture-bar-line { border-radius: 18px; }
++.luma-capture-menu, .luma-capture-menu-shadow, .luma-capture-menu-line { border-radius: 14px; }
++.luma-capture-pill, .luma-capture-pill-shadow, .luma-capture-pill-line { border-radius: 20px; }
++.luma-capture-thumb, .luma-capture-thumb-shadow, .luma-capture-thumb-line { border-radius: 15px; }
++
++/* ── Bar ─────────────────────────────────────────────────────────────────── */
++.luma-capture-bar { height: 58px; }
++.luma-capture-row { spacing: 4px; padding: 0 7px 0 9px; }
++.luma-capture-row:rtl { padding: 0 9px 0 7px; }
++.luma-capture-group { spacing: 2px; }
++
++.luma-capture-close {
++  width: 26px;
++  height: 26px;
++  margin-right: 3px;
++  border-radius: 13px;
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #767b81; }
++.luma-capture-close StIcon { icon-size: 12px; }
++.luma-capture-close:hover, .luma-capture-close:focus { color: #30343a; }
++
++.luma-capture-separator {
++  width: 1px;
++  height: 28px;
++  margin: 0 6px;
++  background-color: rgba(35, 39, 45, 0.09); }
++
++.luma-capture-mode {
++  width: 46px;
++  height: 44px;
++  border-radius: 12px;
++  border: 1px solid transparent;
++  color: #767b81;
++  transition-duration: 140ms; }
++.luma-capture-mode .luma-capture-glyph { icon-size: 26px; error-color: #767b81; }
++.luma-capture-mode:hover { background-color: rgba(35, 44, 52, 0.072); color: #30343a; }
++.luma-capture-mode:hover .luma-capture-glyph { error-color: #30343a; }
++.luma-capture-mode:checked {
++  background-color: rgba(35, 44, 52, 0.072);
++  border-color: rgba(35, 39, 45, 0.09);
++  color: #30343a; }
++.luma-capture-mode:checked .luma-capture-glyph { error-color: #e5484d; }
++.luma-capture-mode:insensitive { color: rgba(118, 123, 129, 0.45); }
++.luma-capture-mode:insensitive .luma-capture-glyph { error-color: rgba(118, 123, 129, 0.45); }
++
++.luma-capture-options {
++  height: 40px;
++  padding: 0 10px 0 12px;
++  border-radius: 11px;
++  color: #30343a;
++  transition-duration: 140ms; }
++.luma-capture-options:hover, .luma-capture-options:checked { background-color: rgba(35, 44, 52, 0.072); }
++.luma-capture-options-box { spacing: 5px; }
++.luma-capture-options-label { font-size: 13.5px; font-weight: 600; }
++.luma-capture-chevron { icon-size: 12px; opacity: 0.7; }
++
++.luma-capture-go {
++  height: 40px;
++  min-width: 96px;
++  margin-left: 4px;
++  padding: 0 16px;
++  border-radius: 12px;
++  background-color: #30343a;
++  color: #f1f2f3; }
++.luma-capture-go:hover { background-color: #3d4249; }
++.luma-capture-go:insensitive { background-color: rgba(48, 52, 58, 0.45); }
++.luma-capture-go-box { spacing: 7px; }
++.luma-capture-go-label { font-size: 13.5px; font-weight: 700; letter-spacing: -0.07px; }
++.luma-capture-go-timer { font-size: 13.5px; font-weight: 600; font-feature-settings: "tnum"; color: rgba(241, 242, 243, 0.62); }
++.luma-capture-record-dot { width: 9px; height: 9px; border-radius: 4.5px; background-color: #e5484d; }
++
++/* The keyboard focus ring: 2px of the surface's ink inside the control, and
++ * of the surface's fill inside the ink-filled buttons. (Luma's accent is the
++ * same graphite as the ink, so it would not show on those buttons. The
++ * Shell's own focus rings are !important.) */
++.luma-capture-close:focus, .luma-capture-mode:focus, .luma-capture-options:focus,
++.luma-capture-thumb-button:focus {
++  box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-capture-go:focus, .luma-capture-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(241, 242, 243, 0.8) !important; }
++.luma-surface-dark .luma-capture-close:focus, .luma-surface-dark .luma-capture-mode:focus,
++.luma-surface-dark .luma-capture-options:focus, .luma-surface-dark .luma-capture-thumb-button:focus,
++.luma-surface-glass .luma-capture-close:focus, .luma-surface-glass .luma-capture-mode:focus,
++.luma-surface-glass .luma-capture-options:focus, .luma-surface-glass .luma-capture-thumb-button:focus {
++  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++.luma-surface-dark .luma-capture-go:focus, .luma-surface-dark .luma-capture-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(33, 37, 43, 0.8) !important; }
++.luma-surface-glass .luma-capture-go:focus, .luma-surface-glass .luma-capture-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(22, 29, 40, 0.8) !important; }
++
++/* Dark */
++.luma-surface-dark .luma-capture-close { background-color: rgba(255, 255, 255, 0.072); color: #969da4; }
++.luma-surface-dark .luma-capture-close:hover, .luma-surface-dark .luma-capture-close:focus { color: #e9ebec; }
++.luma-surface-dark .luma-capture-separator { background-color: rgba(255, 255, 255, 0.075); }
++.luma-surface-dark .luma-capture-mode { color: #969da4; }
++.luma-surface-dark .luma-capture-mode .luma-capture-glyph { error-color: #969da4; }
++.luma-surface-dark .luma-capture-mode:hover { background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-dark .luma-capture-mode:hover .luma-capture-glyph { error-color: #e9ebec; }
++.luma-surface-dark .luma-capture-mode:checked { background-color: rgba(255, 255, 255, 0.072); border-color: rgba(255, 255, 255, 0.075); color: #e9ebec; }
++.luma-surface-dark .luma-capture-mode:checked .luma-capture-glyph { error-color: #e5484d; }
++.luma-surface-dark .luma-capture-options { color: #e9ebec; }
++.luma-surface-dark .luma-capture-options:hover, .luma-surface-dark .luma-capture-options:checked { background-color: rgba(255, 255, 255, 0.072); }
++.luma-surface-dark .luma-capture-go { background-color: #e9ebec; color: #21252b; }
++.luma-surface-dark .luma-capture-go:hover { background-color: #ffffff; }
++.luma-surface-dark .luma-capture-go:insensitive { background-color: rgba(233, 235, 236, 0.4); }
++.luma-surface-dark .luma-capture-go-timer { color: rgba(33, 37, 43, 0.62); }
++
++/* Frost keeps light's ink on a translucent fill. */
++.luma-surface-frost .luma-capture-go { background-color: #30343a; color: #f4f5f6; }
++
++/* Glass */
++.luma-surface-glass .luma-capture-close { background-color: rgba(10, 20, 33, 0.20); color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-capture-close:hover, .luma-surface-glass .luma-capture-close:focus { color: #ffffff; }
++.luma-surface-glass .luma-capture-separator { background-color: rgba(255, 255, 255, 0.15); }
++.luma-surface-glass .luma-capture-mode { color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-capture-mode .luma-capture-glyph { error-color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-capture-mode:hover { background-color: rgba(255, 255, 255, 0.19); color: #ffffff; }
++.luma-surface-glass .luma-capture-mode:hover .luma-capture-glyph { error-color: #ffffff; }
++.luma-surface-glass .luma-capture-mode:checked { background-color: rgba(10, 20, 33, 0.20); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
++.luma-surface-glass .luma-capture-mode:checked .luma-capture-glyph { error-color: #e5484d; }
++.luma-surface-glass .luma-capture-options { color: #ffffff; }
++.luma-surface-glass .luma-capture-options:hover, .luma-surface-glass .luma-capture-options:checked { background-color: rgba(255, 255, 255, 0.19); }
++.luma-surface-glass .luma-capture-go { background-color: #ffffff; color: #161d28; }
++.luma-surface-glass .luma-capture-go:hover { background-color: #f2f5f7; }
++.luma-surface-glass .luma-capture-go-timer { color: rgba(22, 29, 40, 0.62); }
++
++/* ── Tooltip: the dock's pill (.dash-label in luma-shelf.css) ─────────────── */
++.luma-capture-tooltip { font-family: 'Figtree', system-ui, sans-serif; }
++
++/* ── Options menu ───────────────────────────────────────────────────────── */
++.luma-capture-menu { width: 236px; font-size: 13px; }
++.luma-capture-menu-box { padding: 6px; }
++.luma-capture-menu-heading {
++  padding: 8px 10px 4px 30px;
++  font-size: 11.5px;
++  font-weight: 650;
++  letter-spacing: 0.1px;
++  color: #767b81; }
++.luma-capture-menu-item {
++  height: 30px;
++  border-radius: 8px;
++  color: #30343a;
++  font-weight: 500; }
++.luma-capture-menu-item:hover, .luma-capture-menu-item:focus { background-color: rgba(35, 44, 52, 0.072); }
++.luma-capture-menu-row { padding-right: 10px; }
++.luma-capture-menu-gutter { width: 30px; }
++.luma-capture-menu-check { icon-size: 12px; }
++.luma-capture-menu-more { color: #767b81; }
++.luma-capture-menu-separator { height: 1px; margin: 5px 8px; background-color: rgba(35, 39, 45, 0.09); }
++
++.luma-surface-dark .luma-capture-menu-heading, .luma-surface-dark .luma-capture-menu-more { color: #969da4; }
++.luma-surface-dark .luma-capture-menu-item { color: #e9ebec; }
++.luma-surface-dark .luma-capture-menu-item.luma-capture-menu-more { color: #969da4; }
++.luma-surface-dark .luma-capture-menu-item:hover, .luma-surface-dark .luma-capture-menu-item:focus { background-color: rgba(255, 255, 255, 0.072); }
++.luma-surface-dark .luma-capture-menu-separator { background-color: rgba(255, 255, 255, 0.075); }
++.luma-surface-glass .luma-capture-menu-heading, .luma-surface-glass .luma-capture-menu-more { color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-capture-menu-item { color: #ffffff; }
++.luma-surface-glass .luma-capture-menu-item.luma-capture-menu-more { color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-capture-menu-item:hover, .luma-surface-glass .luma-capture-menu-item:focus { background-color: rgba(255, 255, 255, 0.19); }
++.luma-surface-glass .luma-capture-menu-separator { background-color: rgba(255, 255, 255, 0.15); }
++
++/* ── Selection, window and screen ───────────────────────────────────────── */
++.screenshot-ui-area-selector .screenshot-ui-area-indicator-selection { border: 0; }
++.screenshot-ui-area-indicator-shade,
++.screenshot-ui-area-selector .screenshot-ui-area-indicator-shade,
++.screenshot-ui-area-indicator-shade.luma-capture-shade-selection { background-color: rgba(8, 10, 14, 0.42); }
++.screenshot-ui-area-indicator-shade.luma-capture-shade-light,
++.screenshot-ui-area-selector .screenshot-ui-area-indicator-shade.luma-capture-shade-light { background-color: rgba(8, 10, 14, 0.18); }
++.screenshot-ui-area-indicator-shade.luma-capture-shade-none { background-color: transparent; }
++.screenshot-ui-area-selector-handle {
++  width: 10px;
++  height: 10px;
++  border-radius: 5px;
++  border: 1px solid rgba(0, 0, 0, 0.28);
++  background-color: #ffffff;
++  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.30); }
++.luma-capture-size {
++  padding: 5px 9px;
++  border-radius: 7px;
++  background-color: rgba(12, 14, 18, 0.66);
++  color: #ffffff;
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-size: 12px;
++  font-weight: 650;
++  font-feature-settings: "tnum"; }
++
++.screenshot-ui-window-selector,
++.screenshot-ui-window-selector:primary-monitor { background-color: transparent; padding: 0; }
++.screenshot-ui-window-selector-window-container { margin: 0; }
++.luma-capture-window-ring {
++  border: 3px solid -st-accent-color;
++  border-radius: 18px; }
++.luma-capture-window-wash {
++  border-radius: 15px;
++  background-color: st-transparentize(-st-accent-color, 0.9); }
++
++.screenshot-ui-screen-selector,
++.screenshot-ui-screen-selector:hover,
++.screenshot-ui-screen-selector:active {
++  transition-duration: 180ms;
++  background-color: rgba(8, 10, 14, 0.18);
++  border: 0; }
++.screenshot-ui-screen-selector:checked { border: 3px solid st-transparentize(-st-accent-color, 0.3); }
++
++.luma-capture-hint {
++  padding: 9px 14px;
++  border-radius: 999px;
++  background-color: rgba(12, 14, 18, 0.62);
++  color: #ffffff;
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-size: 13px;
++  font-weight: 600;
++  letter-spacing: -0.07px; }
++
++/* ── Countdown, flash ───────────────────────────────────────────────────── */
++.luma-capture-countdown {
++  width: 112px;
++  height: 112px;
++  border-radius: 56px;
++  background-color: rgba(12, 14, 18, 0.55); }
++.luma-capture-countdown-label {
++  color: #ffffff;
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-size: 52px;
++  font-weight: 700;
++  font-feature-settings: "tnum"; }
++.luma-capture-flash { background-color: #ffffff; }
++
++/* ── Recording pill ─────────────────────────────────────────────────────── */
++.luma-capture-pill { height: 40px; }
++.luma-capture-pill-row { spacing: 10px; padding: 0 6px 0 14px; }
++.luma-capture-pill-row:rtl { padding: 0 14px 0 6px; }
++.luma-capture-pill-time {
++  font-size: 13px;
++  font-weight: 650;
++  font-feature-settings: "tnum"; }
++.luma-capture-pill-stop {
++  height: 30px;
++  padding: 0 13px;
++  border-radius: 15px;
++  background-color: #30343a;
++  color: #f1f2f3;
++  font-size: 12.5px;
++  font-weight: 700; }
++.luma-capture-pill-stop:hover { background-color: #3d4249; }
++.luma-surface-dark .luma-capture-pill-stop { background-color: #e9ebec; color: #21252b; }
++.luma-surface-glass .luma-capture-pill-stop { background-color: #ffffff; color: #161d28; }
++
++/* ── Floating thumbnail ─────────────────────────────────────────────────── */
++.luma-capture-thumb { width: 212px; }
++.luma-capture-thumb-button { padding: 6px 6px 9px; border-radius: 15px; }
++.luma-capture-thumb-box { spacing: 0; }
++.luma-capture-thumb-image {
++  height: 118px;
++  border-radius: 10px;
++  background-color: #1b1f26;
++  background-size: cover;
++  background-position: center; }
++.luma-capture-thumb-play {
++  icon-size: 22px;
++  color: #ffffff;
++  icon-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
++.luma-capture-thumb-name {
++  margin-top: 7px;
++  padding: 0 4px;
++  font-size: 12.5px;
++  font-weight: 700; }
++.luma-capture-thumb-where {
++  margin-top: 2px;
++  padding: 0 4px;
++  font-size: 11.5px;
++  color: #767b81; }
++.luma-surface-dark .luma-capture-thumb-where { color: #969da4; }
++.luma-surface-glass .luma-capture-thumb-where { color: rgba(255, 255, 255, 0.70); }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 5471fc2..a493d95 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -107,6 +107,7 @@
+     <file>ui/mediaSelection.js</file>
+     <file>ui/liveActivity.js</file>
+     <file>ui/lumaPopoverPlacement.js</file>
++    <file>ui/lumaCapture.js</file>
+     <file>ui/lumaShelfSurface.js</file>
+     <file>ui/mediaArtwork.js</file>
+     <file>ui/iconMask.js</file>
+diff --git a/js/ui/lumaCapture.js b/js/ui/lumaCapture.js
+new file mode 100644
+index 0000000..96aa5ae
+--- /dev/null
++++ b/js/ui/lumaCapture.js
+@@ -0,0 +1,1240 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Capture: Luma's screenshot and screen recording tool.
++//
++// GNOME's screenshot UI (screenshot.js) still freezes the screen, selects
++// areas, windows and monitors, and drives the recorder. This module draws
++// what a person sees and touches instead of GNOME's OSD panel: one bar above
++// the shelf, the Options menu, the countdown, the flash, the recording pill
++// and the floating thumbnail, all on Luma's surface material and placed by
++// the shared shelf placement rule (lumaShelfSurface.js).
++//
++// What Capture leaves on screen while it works stays out of what it records.
++// A screenshot or a recording paints the stage into its own framebuffer; the
++// screen paints into its stage views' framebuffers. CaptureHidden skips the
++// first kind, so the recording pill, its outline, the countdown, the flash and
++// the thumbnail are never in a screenshot or video. (The bar and its menu need
++// not be: a screenshot is taken of the screen as it was before they opened,
++// and they are gone before a timed capture.)
++
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import GdkPixbuf from 'gi://GdkPixbuf';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {placeFromShelfBar, placeShelfBar} from './lumaShelfSurface.js';
++
++const STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-capture.css';
++const SETTINGS_SCHEMA = 'org.project_luma.capture';
++
++export const Mode = {
++    SCREEN: 'screen',
++    WINDOW: 'window',
++    SELECTION: 'selection',
++    RECORD_SCREEN: 'record-screen',
++    RECORD_SELECTION: 'record-selection',
++};
++
++export const MODES = [Mode.SCREEN, Mode.WINDOW, Mode.SELECTION,
++    Mode.RECORD_SCREEN, Mode.RECORD_SELECTION];
++
++export const isRecordingMode = mode => mode === Mode.RECORD_SCREEN || mode === Mode.RECORD_SELECTION;
++
++// The selector a mode uses: the whole monitor, a window or a selection.
++export function modeTarget(mode) {
++    switch (mode) {
++    case Mode.SCREEN:
++    case Mode.RECORD_SCREEN:
++        return Mode.SCREEN;
++    case Mode.WINDOW:
++        return Mode.WINDOW;
++    default:
++        return Mode.SELECTION;
++    }
++}
++
++export const TIMERS = [0, 5, 10];
++export const MIN_SELECTION = 24;
++const THUMBNAIL_SECONDS = 5;
++const BAR_DISTANCE = 8;
++const THUMBNAIL_DISTANCE = 18;
++
++export const reduceMotion = () => !St.Settings.get().enable_animations;
++const stageScale = () => St.ThemeContext.get_for_stage(global.stage).scale_factor;
++const log = (message, data) => console.log(`Luma Capture: ${message}${data ? ` ${JSON.stringify(data)}` : ''}`);
++
++let stylesheetLoaded = false;
++export function loadStylesheet() {
++    if (stylesheetLoaded)
++        return;
++    stylesheetLoaded = true;
++    const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
++    theme.load_stylesheet(Gio.File.new_for_uri(STYLESHEET_URI));
++}
++
++// ── Staying out of captures ────────────────────────────────────────────────
++
++let paintInCaptures = false;
++
++// Test harnesses photograph the stage with the same offscreen paint a
++// screenshot uses; they turn this on to see what a person sees.
++export function setPaintInCaptures(paint) {
++    paintInCaptures = paint;
++}
++
++// Whether this paint is the screen itself rather than a screenshot or
++// recording of it (see the comment at the top). Only for actors with no
++// offscreen-redirected ancestor, whose paint goes straight to a view.
++export function paintsOnScreen(paintContext) {
++    if (paintInCaptures)
++        return true;
++    const framebuffer = paintContext.get_framebuffer();
++    return global.stage.peek_stage_views().some(view =>
++        view.get_framebuffer() === framebuffer || view.get_onscreen() === framebuffer);
++}
++
++export const CaptureHidden = GObject.registerClass(
++class CaptureHidden extends St.Widget {
++    vfunc_paint(paintContext) {
++        if (paintsOnScreen(paintContext))
++            super.vfunc_paint(paintContext);
++    }
++});
++
++// ── Options ────────────────────────────────────────────────────────────────
++
++const DEFAULTS = {
++    'save-to': 'pictures',
++    'other-location': '',
++    'timer': 0,
++    'show-thumbnail': true,
++    'remember-selection': true,
++    'show-pointer': false,
++    'last-mode': Mode.SELECTION,
++    'last-selection': [],
++};
++
++// Every choice in the Options menu, kept in GSettings.
++export class CaptureOptions {
++    constructor() {
++        const source = Gio.SettingsSchemaSource.get_default();
++        const schema = source?.lookup(SETTINGS_SCHEMA, true);
++        this._settings = schema ? new Gio.Settings({settings_schema: schema}) : null;
++        this._memory = new Map(Object.entries(DEFAULTS));
++        if (!this._settings)
++            log('settings schema is not installed; choices last until the Shell restarts');
++    }
++
++    get settings() {
++        return this._settings;
++    }
++
++    _get(key) {
++        if (!this._settings)
++            return this._memory.get(key);
++        switch (key) {
++        case 'timer':
++            return this._settings.get_uint(key);
++        case 'show-thumbnail':
++        case 'remember-selection':
++        case 'show-pointer':
++            return this._settings.get_boolean(key);
++        case 'last-selection':
++            return this._settings.get_value(key).deepUnpack();
++        default:
++            return this._settings.get_string(key);
++        }
++    }
++
++    _set(key, value) {
++        if (!this._settings) {
++            this._memory.set(key, value);
++            return;
++        }
++        switch (key) {
++        case 'timer':
++            this._settings.set_uint(key, value);
++            break;
++        case 'show-thumbnail':
++        case 'remember-selection':
++        case 'show-pointer':
++            this._settings.set_boolean(key, value);
++            break;
++        case 'last-selection':
++            this._settings.set_value(key, new GLib.Variant('ai', value));
++            break;
++        default:
++            this._settings.set_string(key, value);
++        }
++    }
++
++    get saveTo() {
++        const value = this._get('save-to');
++        // Messages has no sharing path yet, so it is not offered.
++        return ['pictures', 'desktop', 'clipboard', 'other'].includes(value) ? value : 'pictures';
++    }
++
++    set saveTo(value) {
++        this._set('save-to', value);
++    }
++
++    get otherLocation() {
++        return this._get('other-location');
++    }
++
++    set otherLocation(path) {
++        this._set('other-location', path);
++    }
++
++    get timer() {
++        const value = this._get('timer');
++        return TIMERS.includes(value) ? value : 0;
++    }
++
++    set timer(value) {
++        this._set('timer', value);
++    }
++
++    get showThumbnail() {
++        return this._get('show-thumbnail');
++    }
++
++    set showThumbnail(value) {
++        this._set('show-thumbnail', value);
++    }
++
++    get rememberSelection() {
++        return this._get('remember-selection');
++    }
++
++    set rememberSelection(value) {
++        this._set('remember-selection', value);
++    }
++
++    get showPointer() {
++        return this._get('show-pointer');
++    }
++
++    set showPointer(value) {
++        this._set('show-pointer', value);
++    }
++
++    get lastMode() {
++        const value = this._get('last-mode');
++        return MODES.includes(value) ? value : Mode.SELECTION;
++    }
++
++    set lastMode(value) {
++        this._set('last-mode', value);
++    }
++
++    get lastSelection() {
++        const value = this._get('last-selection');
++        return value?.length === 4 && value[2] > 0 && value[3] > 0 ? value : null;
++    }
++
++    set lastSelection(rect) {
++        this._set('last-selection', rect ? rect.map(Math.round) : []);
++    }
++}
++
++// ── Where captures go ──────────────────────────────────────────────────────
++
++function specialDir(directory) {
++    return GLib.get_user_special_dir(directory) || GLib.get_home_dir();
++}
++
++// The folder a capture is saved in, or null for the clipboard. Pictures and
++// Videos keep GNOME's Screenshots and Screencasts folders inside them.
++export function destinationDirectory(destination, kind, otherLocation = '') {
++    const recording = kind === 'recording';
++    switch (destination) {
++    case 'clipboard':
++        return recording ? destinationDirectory('pictures', kind) : null;
++    case 'desktop':
++        return specialDir(GLib.UserDirectory.DIRECTORY_DESKTOP);
++    case 'other':
++        if (otherLocation && GLib.file_test(otherLocation, GLib.FileTest.IS_DIR))
++            return otherLocation;
++        return destinationDirectory('pictures', kind);
++    default:
++        return recording
++            // Translators: name of the folder under ~/Videos for screen recordings.
++            ? GLib.build_filenamev([specialDir(GLib.UserDirectory.DIRECTORY_VIDEOS), _('Screencasts')])
++            // Translators: name of the folder under ~/Pictures for screenshots.
++            : GLib.build_filenamev([specialDir(GLib.UserDirectory.DIRECTORY_PICTURES), _('Screenshots')]);
++    }
++}
++
++// What the thumbnail and the screen reader say about where a capture went.
++export function destinationLabel(destination, kind, otherLocation = '') {
++    const recording = kind === 'recording';
++    if (destination === 'clipboard' && !recording)
++        return _('Copied to the clipboard');
++    if (destination === 'desktop')
++        return _('Saved to Desktop');
++    if (destination === 'other' && otherLocation && GLib.file_test(otherLocation, GLib.FileTest.IS_DIR))
++        return _('Saved to %s').format(GLib.path_get_basename(otherLocation));
++    return recording ? _('Saved to Videos') : _('Saved to Pictures');
++}
++
++// What the screen reader says when a capture is saved.
++export function resultAnnouncement(kind, destination, otherLocation = '') {
++    const recording = kind === 'recording';
++    if (destination === 'clipboard' && !recording)
++        return _('Screenshot copied to the clipboard');
++    let place;
++    if (destination === 'desktop')
++        place = _('Desktop');
++    else if (destination === 'other' && otherLocation && GLib.file_test(otherLocation, GLib.FileTest.IS_DIR))
++        place = GLib.path_get_basename(otherLocation);
++    else
++        place = recording ? _('Videos') : _('Pictures');
++    return recording
++        ? _('Recording saved to %s').format(place)
++        : _('Screenshot saved to %s').format(place);
++}
++
++// "Screenshot 2026-09-16 at 10.22.03", without an extension.
++export function fileStem(kind, time = GLib.DateTime.new_now_local()) {
++    const date = time.format('%Y-%m-%d');
++    const clock = time.format('%H.%M.%S');
++    return kind === 'recording'
++        /* Translators: file name of a screen recording; the first placeholder
++           is the date (2026-09-16), the second the time (10.22.03). */
++        ? _('Recording %s at %s').format(date, clock)
++        /* Translators: file name of a screenshot; the first placeholder is
++           the date (2026-09-16), the second the time (10.22.03). */
++        : _('Screenshot %s at %s').format(date, clock);
++}
++
++// A small PNG of a capture for the thumbnail, kept in the runtime directory.
++let previewSerial = 0;
++const previews = [];
++export function writePreview(pixbuf, scale) {
++    const width = 200 * scale, height = 118 * scale;
++    const factor = Math.min(1, Math.max(width / pixbuf.width, height / pixbuf.height) * 1.5);
++    const scaled = factor < 1
++        ? pixbuf.scale_simple(Math.max(1, Math.round(pixbuf.width * factor)),
++            Math.max(1, Math.round(pixbuf.height * factor)), GdkPixbuf.InterpType.BILINEAR)
++        : pixbuf;
++    const dir = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'luma-capture']);
++    GLib.mkdir_with_parents(dir, 0o700);
++    const path = GLib.build_filenamev([dir, `preview-${Date.now()}-${++previewSerial}.png`]);
++    scaled.savev(path, 'png', [], []);
++    // Only the newest few are kept.
++    previews.push(path);
++    while (previews.length > 4)
++        GLib.unlink(previews.shift());
++    return path;
++}
++
++// A folder chosen through the desktop portal's file chooser.
++export function chooseFolder() {
++    return new Promise(resolve => {
++        const bus = Gio.DBus.session;
++        const token = `luma_capture_${GLib.random_int()}`;
++        const sender = bus.get_unique_name().slice(1).replaceAll('.', '_');
++        const requestPath = `/org/freedesktop/portal/desktop/request/${sender}/${token}`;
++        let done = false;
++        const finish = path => {
++            if (done)
++                return;
++            done = true;
++            bus.signal_unsubscribe(subscription);
++            resolve(path);
++        };
++        const subscription = bus.signal_subscribe('org.freedesktop.portal.Desktop',
++            'org.freedesktop.portal.Request', 'Response', requestPath, null,
++            Gio.DBusSignalFlags.NONE,
++            (_c, _s, _p, _i, _n, params) => {
++                const [response, results] = params.deepUnpack();
++                const uris = results?.uris?.deepUnpack?.() ?? [];
++                finish(response === 0 && uris.length ? Gio.File.new_for_uri(uris[0]).get_path() : null);
++            });
++        bus.call('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop',
++            'org.freedesktop.portal.FileChooser', 'OpenFile',
++            new GLib.Variant('(ssa{sv})', ['', _('Choose where captures are saved'), {
++                'handle_token': new GLib.Variant('s', token),
++                'directory': new GLib.Variant('b', true),
++                'modal': new GLib.Variant('b', true),
++                'accept_label': new GLib.Variant('s', _('Choose')),
++            }]), null, Gio.DBusCallFlags.NONE, -1, null, (connection, result) => {
++                try {
++                    connection.call_finish(result);
++                } catch (e) {
++                    logError(e, 'Luma Capture: the folder chooser is unavailable');
++                    finish(null);
++                }
++            });
++    });
++}
++
++// ── Surfaces ───────────────────────────────────────────────────────────────
++
++// One Luma surface: a shadow, the material with its 1px line, and content.
++// St draws one shadow per actor, so the deep shadow sits on its own actor
++// behind the material, as Beam and Quick Options do.
++const Surface = GObject.registerClass(
++class Surface extends St.Widget {
++    _init(kind, radius, params = {}) {
++        const {onScreenOnly = true, ...widgetParams} = params;
++        super._init({
++            layout_manager: new Clutter.BinLayout(),
++            ...widgetParams,
++        });
++        this._onScreenOnly = onScreenOnly;
++        this._shadow = new St.Widget({
++            style_class: `luma-capture-shadow luma-capture-${kind}-shadow`,
++            x_expand: true,
++            y_expand: true,
++        });
++        this.add_child(this._shadow);
++        this.surface = new St.Widget({
++            style_class: `luma-capture-surface luma-capture-${kind}`,
++            layout_manager: new Clutter.BinLayout(),
++            x_expand: true,
++            y_expand: true,
++        });
++        this.add_child(this.surface);
++        this._line = new St.Widget({
++            style_class: `luma-capture-line luma-capture-${kind}-line`,
++            x_expand: true,
++            y_expand: true,
++        });
++        this.surface.add_child(this._line);
++        this._material = SurfaceMaterials.bindSurface(this.surface, {
++            cornerRadii: radius * stageScale(),
++            classActors: [this._shadow, this._line],
++        });
++    }
++
++    vfunc_paint(paintContext) {
++        if (!this._onScreenOnly || paintsOnScreen(paintContext))
++            super.vfunc_paint(paintContext);
++    }
++
++    setContent(actor) {
++        this.surface.add_child(actor);
++    }
++
++    setRadius(radius) {
++        this._material.setCornerRadii(radius);
++    }
++});
++
++// The shell's tooltip (the dock's pill) for Capture's controls, opened
++// SHELF_SURFACE_GAP beyond the bar's desktop-facing edge.
++const CaptureTooltip = GObject.registerClass(
++class CaptureTooltip extends St.Widget {
++    _init(host) {
++        super._init({
++            layout_manager: new Clutter.BinLayout(),
++            visible: false,
++            opacity: 0,
++        });
++        Shell.util_set_hidden_from_pick(this, true);
++        this._label = new St.Label({style_class: 'dash-label luma-capture-tooltip'});
++        this.add_child(this._label);
++        SurfaceMaterials.bindSurface(this._label, {backdrop: false});
++        this._host = host;
++        this._timeoutId = 0;
++    }
++
++    attach(control, text) {
++        control.accessible_name = text;
++        control.connect('notify::hover', () => {
++            if (control.hover)
++                this._open(control, text);
++            else
++                this._close(control);
++        });
++        control.connect('destroy', () => this._close(control));
++    }
++
++    _open(control, text) {
++        this._clearTimeout();
++        this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
++            this._timeoutId = 0;
++            this._control = control;
++            this._label.text = text;
++            this.show();
++            const [, , width, height] = this.get_preferred_size();
++            const place = this._host.placeFromBar(control, {width, height});
++            if (!place) {
++                this.hide();
++                return GLib.SOURCE_REMOVE;
++            }
++            this.set_position(place.x, place.y);
++            this.remove_all_transitions();
++            this.ease({opacity: 255, duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(this._timeoutId, '[gnome-shell] Capture tooltip');
++    }
++
++    _close(control) {
++        this._clearTimeout();
++        if (control && control !== this._control)
++            return;
++        this._control = null;
++        if (!this.visible)
++            return;
++        this.remove_all_transitions();
++        this.ease({
++            opacity: 0,
++            duration: 100,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onComplete: () => this.hide(),
++        });
++    }
++
++    hideNow() {
++        this._clearTimeout();
++        this._control = null;
++        this.remove_all_transitions();
++        this.opacity = 0;
++        this.hide();
++    }
++
++    _clearTimeout() {
++        if (this._timeoutId)
++            GLib.source_remove(this._timeoutId);
++        this._timeoutId = 0;
++    }
++});
++
++const MODE_LABELS = {
++    [Mode.SCREEN]: () => _('Capture entire screen'),
++    [Mode.WINDOW]: () => _('Capture a window'),
++    [Mode.SELECTION]: () => _('Capture selection'),
++    [Mode.RECORD_SCREEN]: () => _('Record entire screen'),
++    [Mode.RECORD_SELECTION]: () => _('Record selection'),
++};
++
++const MODE_ICONS = {
++    [Mode.SCREEN]: 'luma-capture-screen-symbolic',
++    [Mode.WINDOW]: 'luma-capture-window-symbolic',
++    [Mode.SELECTION]: 'luma-capture-selection-symbolic',
++    [Mode.RECORD_SCREEN]: 'luma-capture-record-screen-symbolic',
++    [Mode.RECORD_SELECTION]: 'luma-capture-record-selection-symbolic',
++};
++
++// ── The bar ────────────────────────────────────────────────────────────────
++
++export const CaptureBar = GObject.registerClass({
++    Signals: {
++        'close': {},
++        'mode-activated': {param_types: [GObject.TYPE_STRING]},
++        'options': {},
++        'capture': {},
++    },
++}, class CaptureBar extends Surface {
++    _init(host) {
++        super._init('bar', 18, {visible: false, reactive: true, onScreenOnly: false});
++        this._host = host;
++        this.surface.set({
++            accessible_role: Atk.Role.TOOL_BAR,
++            accessible_name: _('Capture'),
++        });
++
++        this.tooltip = new CaptureTooltip(host);
++
++        this._row = new St.BoxLayout({
++            style_class: 'luma-capture-row',
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.setContent(this._row);
++
++        this.closeButton = new St.Button({
++            style_class: 'luma-capture-close',
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            child: new St.Icon({icon_name: 'luma-capture-close-symbolic'}),
++        });
++        this.tooltip.attach(this.closeButton, _('Close'));
++        this.closeButton.connect('clicked', () => this.emit('close'));
++        this._row.add_child(this.closeButton);
++
++        this.modeButtons = new Map();
++        const group = (name, modes) => {
++            const box = new St.BoxLayout({
++                style_class: 'luma-capture-group',
++                accessible_role: Atk.Role.PANEL,
++                accessible_name: name,
++            });
++            for (const mode of modes) {
++                const button = new St.Button({
++                    style_class: 'luma-capture-mode',
++                    can_focus: true,
++                    toggle_mode: false,
++                    y_align: Clutter.ActorAlign.CENTER,
++                    accessible_role: Atk.Role.TOGGLE_BUTTON,
++                    child: new St.Icon({
++                        style_class: 'luma-capture-glyph',
++                        icon_name: MODE_ICONS[mode],
++                    }),
++                });
++                if (isRecordingMode(mode))
++                    button.add_style_class_name('luma-capture-record-mode');
++                this.tooltip.attach(button, MODE_LABELS[mode]());
++                button.connect('clicked', () => this.emit('mode-activated', mode));
++                this.modeButtons.set(mode, button);
++                box.add_child(button);
++            }
++            this._row.add_child(box);
++            return box;
++        };
++        const separator = () => {
++            const line = new St.Widget({
++                style_class: 'luma-capture-separator',
++                y_align: Clutter.ActorAlign.CENTER,
++            });
++            this._row.add_child(line);
++            return line;
++        };
++
++        group(_('Screenshot'), [Mode.SCREEN, Mode.WINDOW, Mode.SELECTION]);
++        separator();
++        this._recordingGroup = group(_('Recording'), [Mode.RECORD_SCREEN, Mode.RECORD_SELECTION]);
++        this._recordingSeparator = separator();
++
++        const optionsBox = new St.BoxLayout({style_class: 'luma-capture-options-box'});
++        optionsBox.add_child(new St.Label({
++            style_class: 'luma-capture-options-label',
++            text: _('Options'),
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        optionsBox.add_child(new St.Icon({
++            style_class: 'luma-capture-chevron',
++            icon_name: 'luma-capture-chevron-symbolic',
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        this.optionsButton = new St.Button({
++            style_class: 'luma-capture-options',
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Options'),
++            accessible_role: Atk.Role.PUSH_BUTTON,
++            child: optionsBox,
++        });
++        this.optionsButton.connect('clicked', () => this.emit('options'));
++        this._row.add_child(this.optionsButton);
++
++        const goBox = new St.BoxLayout({
++            style_class: 'luma-capture-go-box',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._goDot = new St.Widget({
++            style_class: 'luma-capture-record-dot',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        goBox.add_child(this._goDot);
++        this._goLabel = new St.Label({
++            style_class: 'luma-capture-go-label',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        goBox.add_child(this._goLabel);
++        this._goTimer = new St.Label({
++            style_class: 'luma-capture-go-timer',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        goBox.add_child(this._goTimer);
++        this.captureButton = new St.Button({
++            style_class: 'luma-capture-go',
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_role: Atk.Role.PUSH_BUTTON,
++            child: goBox,
++        });
++        this.captureButton.connect('clicked', () => this.emit('capture'));
++        this._row.add_child(this.captureButton);
++
++        this._mode = null;
++        this._timer = 0;
++        this._syncGo();
++    }
++
++    // The controls in Tab order.
++    get focusChain() {
++        return [this.closeButton, ...this.modeButtons.values(), this.optionsButton, this.captureButton]
++            .filter(button => button.visible && button.reactive);
++    }
++
++    setMode(mode) {
++        this._mode = mode;
++        for (const [buttonMode, button] of this.modeButtons) {
++            const selected = buttonMode === mode;
++            button.checked = selected;
++            if (selected)
++                button.add_accessible_state(Atk.StateType.CHECKED);
++            else
++                button.remove_accessible_state(Atk.StateType.CHECKED);
++        }
++        this._syncGo();
++    }
++
++    setRecordingAvailable(available) {
++        this._recordingGroup.visible = available;
++        this._recordingSeparator.visible = available;
++    }
++
++    setModeSensitive(mode, sensitive) {
++        const button = this.modeButtons.get(mode);
++        button.reactive = sensitive;
++        button.can_focus = sensitive;
++    }
++
++    setTimer(seconds) {
++        this._timer = seconds;
++        this._syncGo();
++    }
++
++    setCaptureSensitive(sensitive) {
++        this.captureButton.reactive = sensitive;
++    }
++
++    setOptionsOpen(open) {
++        this.optionsButton.checked = open;
++        if (open)
++            this.optionsButton.add_accessible_state(Atk.StateType.EXPANDED);
++        else
++            this.optionsButton.remove_accessible_state(Atk.StateType.EXPANDED);
++    }
++
++    _syncGo() {
++        const recording = isRecordingMode(this._mode);
++        this._goDot.visible = recording;
++        this._goLabel.text = recording
++            // Translators: the button that starts a screen recording.
++            ? _('Record')
++            // Translators: the button that takes a screenshot; a verb.
++            : _('Capture');
++        this._goTimer.visible = this._timer > 0;
++        // Translators: a timer before the capture, in seconds ("5s").
++        this._goTimer.text = this._timer > 0 ? _('%ds').format(this._timer) : '';
++        this.captureButton.accessible_name = this._timer > 0
++            ? _('%s in %d seconds').format(this._goLabel.text, this._timer)
++            : this._goLabel.text;
++    }
++
++    // Slides in from the shelf (from `edge`), or out toward it.
++    present(show, edge, onComplete = null) {
++        const scale = stageScale();
++        const distance = reduceMotion() ? 0 : BAR_DISTANCE * scale;
++        const direction = edge === 'top' ? -1 : 1;
++        this.remove_all_transitions();
++        this.set_pivot_point(0.5, edge === 'top' ? 0 : 1);
++        if (show) {
++            this.show();
++            this.set({opacity: 0, translation_y: distance * direction});
++            if (!reduceMotion())
++                this.set({scale_x: 0.98, scale_y: 0.98});
++            this.ease({opacity: 255, duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            this.ease({
++                translation_y: 0,
++                scale_x: 1,
++                scale_y: 1,
++                duration: reduceMotion() ? 0 : 220,
++                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++                onComplete,
++            });
++        } else {
++            this.tooltip.hideNow();
++            this.ease({opacity: 0, duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            this.ease({
++                translation_y: distance * direction,
++                scale_x: reduceMotion() ? 1 : 0.98,
++                scale_y: reduceMotion() ? 1 : 0.98,
++                duration: reduceMotion() ? 0 : 220,
++                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++                onComplete: () => {
++                    this.hide();
++                    onComplete?.();
++                },
++            });
++        }
++    }
++});
++
++// ── Options menu ───────────────────────────────────────────────────────────
++
++export const CaptureMenu = GObject.registerClass({
++    Signals: {
++        'activate': {param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING]},
++    },
++}, class CaptureMenu extends Surface {
++    _init() {
++        super._init('menu', 14, {visible: false, reactive: true, onScreenOnly: false});
++        this.surface.set({
++            accessible_role: Atk.Role.MENU,
++            accessible_name: _('Capture options'),
++        });
++        this._box = new St.BoxLayout({
++            style_class: 'luma-capture-menu-box',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this.setContent(this._box);
++        this._items = [];
++    }
++
++    // groups: [{label, items: [{key, value, text, role, checked, muted}]}]
++    build(groups) {
++        this._box.destroy_all_children();
++        this._items = [];
++        groups.forEach((group, index) => {
++            if (index > 0) {
++                this._box.add_child(new St.Widget({style_class: 'luma-capture-menu-separator'}));
++            }
++            this._box.add_child(new St.Label({
++                style_class: 'luma-capture-menu-heading',
++                text: group.label,
++            }));
++            for (const item of group.items)
++                this._box.add_child(this._item(item));
++        });
++    }
++
++    _item({key, value = '', text, role = 'radio', checked = false, muted = false}) {
++        const row = new St.BoxLayout({style_class: 'luma-capture-menu-row', x_expand: true});
++        const gutter = new St.Bin({style_class: 'luma-capture-menu-gutter'});
++        if (checked) {
++            gutter.set_child(new St.Icon({
++                style_class: 'luma-capture-menu-check',
++                icon_name: 'luma-capture-check-symbolic',
++            }));
++        }
++        row.add_child(gutter);
++        row.add_child(new St.Label({
++            text,
++            y_align: Clutter.ActorAlign.CENTER,
++            x_expand: true,
++        }));
++        const button = new St.Button({
++            style_class: 'luma-capture-menu-item',
++            can_focus: true,
++            x_expand: true,
++            child: row,
++            accessible_name: text,
++            accessible_role: role === 'check'
++                ? Atk.Role.CHECK_MENU_ITEM
++                : role === 'radio' ? Atk.Role.RADIO_MENU_ITEM : Atk.Role.MENU_ITEM,
++        });
++        if (muted)
++            button.add_style_class_name('luma-capture-menu-more');
++        if (checked)
++            button.add_accessible_state(Atk.StateType.CHECKED);
++        button._lumaChecked = checked;
++        button.connect('clicked', () => this.emit('activate', key, value));
++        this._items.push(button);
++        return button;
++    }
++
++    get items() {
++        return this._items;
++    }
++
++    focusFirst() {
++        (this._items.find(item => item._lumaChecked) ?? this._items[0])?.grab_key_focus();
++    }
++
++    // Up and Down move through the items and wrap.
++    moveFocus(step) {
++        const focus = global.stage.key_focus;
++        let index = this._items.indexOf(focus);
++        if (index < 0)
++            index = step > 0 ? -1 : 0;
++        const next = this._items[(index + step + this._items.length) % this._items.length];
++        next?.grab_key_focus();
++    }
++
++    present(show, edge) {
++        this.remove_all_transitions();
++        const distance = reduceMotion() ? 0 : 6 * stageScale() * (edge === 'top' ? -1 : 1);
++        if (show) {
++            this.show();
++            this.set({opacity: 0, translation_y: distance});
++            this.ease({
++                opacity: 255,
++                translation_y: 0,
++                duration: reduceMotion() ? 0 : 160,
++                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++            });
++        } else {
++            this.ease({
++                opacity: 0,
++                duration: reduceMotion() ? 0 : 120,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                onComplete: () => this.hide(),
++            });
++        }
++    }
++});
++
++// ── Countdown and flash ────────────────────────────────────────────────────
++
++export const Countdown = GObject.registerClass(
++class Countdown extends CaptureHidden {
++    _init() {
++        super._init({
++            style_class: 'luma-capture-countdown',
++            layout_manager: new Clutter.BinLayout(),
++            visible: false,
++            accessible_role: Atk.Role.NOTIFICATION,
++        });
++        Shell.util_set_hidden_from_pick(this, true);
++        this._blur = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 16, brightness: 1});
++        this.add_effect_with_name('luma-capture-countdown-blur', this._blur);
++        this._label = new St.Label({
++            style_class: 'luma-capture-countdown-label',
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.add_child(this._label);
++        this._timeoutId = 0;
++        this._resolve = null;
++    }
++
++    get seconds() {
++        return Number(this._label.text);
++    }
++
++    // Counts down from `seconds` centred on `monitor` at 44% of its height.
++    // Resolves true when it reaches zero, false when cancelled.
++    run(seconds, monitor) {
++        this.cancel();
++        return new Promise(resolve => {
++            this._resolve = resolve;
++            let remaining = seconds;
++            const scale = stageScale();
++            const size = 112 * scale;
++            this._blur.set({
++                corner_radius_top_left: size / 2,
++                corner_radius_top_right: size / 2,
++                corner_radius_bottom_left: size / 2,
++                corner_radius_bottom_right: size / 2,
++            });
++            this.set_position(Math.round(monitor.x + (monitor.width - size) / 2),
++                Math.round(monitor.y + monitor.height * 0.44 - size / 2));
++            this._label.text = `${remaining}`;
++            this.show();
++            this.get_accessible()?.emit('notification', this._label.text, Atk.Live.ASSERTIVE);
++            this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
++                remaining--;
++                if (remaining <= 0) {
++                    this._timeoutId = 0;
++                    this._finish(true);
++                    return GLib.SOURCE_REMOVE;
++                }
++                this._label.text = `${remaining}`;
++                return GLib.SOURCE_CONTINUE;
++            });
++            GLib.Source.set_name_by_id(this._timeoutId, '[gnome-shell] Capture countdown');
++        });
++    }
++
++    cancel() {
++        this._finish(false);
++    }
++
++    _finish(completed) {
++        if (this._timeoutId)
++            GLib.source_remove(this._timeoutId);
++        this._timeoutId = 0;
++        this.hide();
++        const resolve = this._resolve;
++        this._resolve = null;
++        resolve?.(completed);
++    }
++
++    get running() {
++        return this._resolve !== null;
++    }
++});
++
++// White over what was just captured, 85% to nothing in 420ms.
++export function flash(rect) {
++    if (reduceMotion())
++        return;
++    const actor = new CaptureHidden({
++        style_class: 'luma-capture-flash',
++        x: rect.x,
++        y: rect.y,
++        width: rect.width,
++        height: rect.height,
++        opacity: 217,
++    });
++    Shell.util_set_hidden_from_pick(actor, true);
++    global.stage.add_child(actor);
++    actor.ease({
++        opacity: 0,
++        duration: 420,
++        mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        onComplete: () => actor.destroy(),
++    });
++}
++
++// ── Recording pill ─────────────────────────────────────────────────────────
++
++export const RecordingPill = GObject.registerClass({
++    Signals: {'stop': {}},
++}, class RecordingPill extends Surface {
++    _init() {
++        super._init('pill', 20, {visible: false, reactive: true});
++        this.surface.set({
++            accessible_role: Atk.Role.STATUSBAR,
++            accessible_name: _('Recording'),
++        });
++        const row = new St.BoxLayout({
++            style_class: 'luma-capture-pill-row',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.setContent(row);
++        this._dot = new St.Widget({
++            style_class: 'luma-capture-record-dot',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        row.add_child(this._dot);
++        this._time = new St.Label({
++            style_class: 'luma-capture-pill-time',
++            text: '0:00',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        row.add_child(this._time);
++        this.stopButton = new St.Button({
++            style_class: 'luma-capture-pill-stop',
++            can_focus: true,
++            label: _('Stop'),
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Stop recording'),
++        });
++        this.stopButton.connect('clicked', () => this.emit('stop'));
++        row.add_child(this.stopButton);
++        this._timerId = 0;
++        this.connect('notify::height', () => this.setRadius(this.height / 2));
++    }
++
++    get elapsedText() {
++        return this._time.text;
++    }
++
++    start() {
++        this.stop();
++        const started = GLib.get_monotonic_time();
++        this._time.text = '0:00';
++        this._timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
++            const seconds = Math.floor((GLib.get_monotonic_time() - started) / GLib.USEC_PER_SEC);
++            this._time.text = '%d:%02d'.format(Math.floor(seconds / 60), seconds % 60);
++            return GLib.SOURCE_CONTINUE;
++        });
++        GLib.Source.set_name_by_id(this._timerId, '[gnome-shell] Capture recording time');
++        this._dot.remove_all_transitions();
++        this._dot.opacity = 255;
++        if (!reduceMotion()) {
++            this._dot.ease({
++                opacity: 89,
++                duration: 700,
++                mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
++                repeatCount: -1,
++                autoReverse: true,
++            });
++        }
++    }
++
++    stop() {
++        if (this._timerId)
++            GLib.source_remove(this._timerId);
++        this._timerId = 0;
++        this._dot.remove_all_transitions();
++        this._dot.opacity = 255;
++    }
++});
++
++// ── Floating thumbnail ─────────────────────────────────────────────────────
++
++export const CaptureThumbnail = GObject.registerClass(
++class CaptureThumbnail extends Surface {
++    _init() {
++        super._init('thumb', 15, {visible: false, reactive: true, track_hover: true});
++        this.surface.set({accessible_role: Atk.Role.PUSH_BUTTON});
++        this._button = new St.Button({
++            style_class: 'luma-capture-thumb-button',
++            x_expand: true,
++            can_focus: true,
++        });
++        this.setContent(this._button);
++        const box = new St.BoxLayout({
++            style_class: 'luma-capture-thumb-box',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this._button.set_child(box);
++        this._image = new St.Widget({
++            style_class: 'luma-capture-thumb-image',
++            layout_manager: new Clutter.BinLayout(),
++            x_expand: true,
++        });
++        box.add_child(this._image);
++        this._play = new St.Icon({
++            style_class: 'luma-capture-thumb-play',
++            icon_name: 'luma-play-symbolic',
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++            x_expand: true,
++            y_expand: true,
++            visible: false,
++        });
++        this._image.add_child(this._play);
++        this._name = new St.Label({style_class: 'luma-capture-thumb-name'});
++        this._name.clutter_text.ellipsize = 3; // Pango.EllipsizeMode.END
++        box.add_child(this._name);
++        this._where = new St.Label({style_class: 'luma-capture-thumb-where'});
++        this._where.clutter_text.ellipsize = 3;
++        box.add_child(this._where);
++
++        this._file = null;
++        this._timeoutId = 0;
++        this._button.connect('clicked', () => this._open());
++        this.connect('notify::hover', () => {
++            if (!this.hover && this.visible && !this._leaving)
++                this._scheduleHide();
++            else if (this.hover)
++                this._clearTimeout();
++        });
++        Main.layoutManager.addTopChrome(this);
++    }
++
++    get file() {
++        return this._file;
++    }
++
++    get nameText() {
++        return this._name.text;
++    }
++
++    get whereText() {
++        return this._where.text;
++    }
++
++    // Shows the thumbnail for a capture. `preview` is a PNG path.
++    present({kind, preview, file, name, where, place}) {
++        this._clearTimeout();
++        this._file = file;
++        this._leaving = false;
++        this._image.style = preview ? `background-image: url("file://${preview}");` : null;
++        this._play.visible = kind === 'recording';
++        this._name.text = name;
++        this._where.text = where;
++        this._button.reactive = file !== null;
++        this.surface.accessible_name = `${name}, ${where}`;
++        this.remove_all_transitions();
++        this.show();
++        const [, , width, height] = this.get_preferred_size();
++        const slot = place({width, height});
++        if (slot)
++            this.set_position(slot.x, slot.y);
++        const distance = reduceMotion() ? 0 : THUMBNAIL_DISTANCE * stageScale();
++        this.set({opacity: 0, translation_x: distance});
++        this.ease({
++            opacity: 255,
++            translation_x: 0,
++            duration: reduceMotion() ? 0 : 280,
++            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++        });
++        this._scheduleHide();
++    }
++
++    _scheduleHide() {
++        this._clearTimeout();
++        this._timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, THUMBNAIL_SECONDS, () => {
++            this._timeoutId = 0;
++            if (this.hover)
++                return GLib.SOURCE_REMOVE;
++            this.dismiss();
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(this._timeoutId, '[gnome-shell] Capture thumbnail');
++    }
++
++    dismiss() {
++        this._clearTimeout();
++        if (!this.visible)
++            return;
++        this._leaving = true;
++        this.remove_all_transitions();
++        this.ease({
++            opacity: 0,
++            translation_x: reduceMotion() ? 0 : THUMBNAIL_DISTANCE * stageScale(),
++            duration: reduceMotion() ? 0 : 200,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onComplete: () => {
++                this.hide();
++                this._leaving = false;
++            },
++        });
++    }
++
++    _open() {
++        if (!this._file)
++            return;
++        try {
++            Gio.app_info_launch_default_for_uri(this._file.get_uri(),
++                global.create_app_launch_context(0, -1));
++            log('opened', {uri: this._file.get_uri()});
++        } catch (e) {
++            logError(e, 'Luma Capture: could not open the capture');
++        }
++        this.dismiss();
++    }
++
++    _clearTimeout() {
++        if (this._timeoutId)
++            GLib.source_remove(this._timeoutId);
++        this._timeoutId = 0;
++    }
++});
++
++// Speaks a short result politely ("Screenshot saved to Pictures").
++export function announce(actor, text) {
++    const accessible = actor?.get_accessible?.();
++    if (!accessible)
++        return;
++    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
++        accessible.emit('notification', text, Atk.Live.POLITE);
++        return GLib.SOURCE_REMOVE;
++    });
++}
++
++// Escape, taken from every window for as long as `callback` should hear it
++// (a countdown or a recording in progress). Returns a release function.
++export function grabEscape(callback) {
++    const action = global.display.grab_accelerator('Escape', Meta.KeyBindingFlags.NONE);
++    if (action === Meta.KeyBindingAction.NONE) {
++        log('Escape is taken by another shortcut');
++        return () => {};
++    }
++    const name = Meta.external_binding_name_for_action(action);
++    Main.wm.allowKeybinding(name, Shell.ActionMode.ALL);
++    const id = global.display.connect('accelerator-activated', (_display, activated) => {
++        if (activated === action)
++            callback();
++    });
++    return () => {
++        global.display.disconnect(id);
++        Main.wm.allowKeybinding(name, Shell.ActionMode.NONE);
++        global.display.ungrab_accelerator(action);
++    };
++}
++
++export {placeShelfBar, placeFromShelfBar};
+diff --git a/js/ui/lumaShelfSurface.js b/js/ui/lumaShelfSurface.js
+index d079b03..6044ff1 100644
+--- a/js/ui/lumaShelfSurface.js
++++ b/js/ui/lumaShelfSurface.js
+@@ -9,7 +9,7 @@
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
+-import {SHELF_SURFACE_GAP, shelfSurfacePlacement} from './shelfMetrics.js';
++import {SHELF_INSET, SHELF_SURFACE_GAP, shelfSurfacePlacement} from './shelfMetrics.js';
+ 
+ export {SHELF_SURFACE_GAP};
+ 
+@@ -76,3 +76,69 @@ export function placeShelfSurface(actor, size) {
+         source,
+     };
+ }
++
++// The painted island holding the dock, or null when the dock is not shown.
++export function shelfDockIsland() {
++    const dock = Main.shelf?._dockIsland;
++    if (!dock?.mapped)
++        return null;
++    const child = dock.get_first_child();
++    return (child && shelfIslandFor(child)) ?? dock;
++}
++
++function clampAlong(position, extent, start, length, inset) {
++    return Math.max(start + inset, Math.min(position, start + length - inset - extent));
++}
++
++// A bar that belongs to the shelf rather than to one control in it (Capture):
++// centred on the dock's monitor, SHELF_SURFACE_GAP beyond the dock island's
++// desktop-facing edge when the dock is at the top or bottom. With the dock at
++// a side, or no dock shown, it sits SHELF_INSET above the work area's bottom.
++// `end` puts it at the work area's right edge instead of the centre (the
++// Capture thumbnail's slot). Returns {x, y, edge, monitorIndex}; `edge` is the
++// side the bar is attached to, so what opens from the bar opens away from it.
++export function placeShelfBar(size, {end = false} = {}) {
++    const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++    const island = shelfDockIsland();
++    let edge = shelfEdge();
++    const layout = Main.layoutManager;
++    let monitorIndex = island ? layout.findIndexForActor(island) : layout.primaryIndex;
++    if (!layout.monitors[monitorIndex])
++        monitorIndex = layout.primaryIndex;
++    const monitor = layout.monitors[monitorIndex];
++    if (!monitor)
++        return null;
++    const work = layout.getWorkAreaForMonitor(monitorIndex);
++    const inset = SHELF_INSET * scale;
++    let x = end
++        ? work.x + work.width - inset - size.width
++        : monitor.x + (monitor.width - size.width) / 2;
++    x = clampAlong(x, size.width, work.x, work.width, inset);
++    let y;
++    if (island && (edge === 'top' || edge === 'bottom')) {
++        const islandRect = stageRect(island);
++        const anchor = {x: x + size.width / 2, y: islandRect.y, width: 0, height: islandRect.height};
++        y = shelfSurfacePlacement(edge, anchor, islandRect, size, monitor, scale).y;
++    } else {
++        edge = 'bottom';
++        y = work.y + work.height - inset - size.height;
++    }
++    return {x: Math.round(x), y: Math.round(y), edge, monitorIndex};
++}
++
++// A surface opened from a control on a bar placed by placeShelfBar (Capture's
++// Options menu and tooltips): SHELF_SURFACE_GAP beyond the bar's
++// desktop-facing edge, centred on the control, SHELF_INSET inside the work
++// area.
++export function placeFromShelfBar(control, bar, size, edge, monitorIndex) {
++    const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++    const layout = Main.layoutManager;
++    const monitor = layout.monitors[monitorIndex] ?? layout.primaryMonitor;
++    const work = layout.getWorkAreaForMonitor(layout.monitors.indexOf(monitor));
++    const anchor = stageRect(control);
++    const barRect = stageRect(bar);
++    const placed = shelfSurfacePlacement(edge, anchor, barRect, size, monitor, scale);
++    const inset = SHELF_INSET * scale;
++    const x = clampAlong(anchor.x + anchor.width / 2 - size.width / 2, size.width, work.x, work.width, inset);
++    return {x: Math.round(x), y: placed.y, edge};
++}
+diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
+index 007bfad..739cc01 100644
+--- a/js/ui/screenshot.js
++++ b/js/ui/screenshot.js
+@@ -12,6 +12,7 @@ import St from 'gi://St';
+ import * as GrabHelper from './grabHelper.js';
+ import * as Layout from './layout.js';
+ import * as Lightbox from './lightbox.js';
++import * as Capture from './lumaCapture.js';
+ import * as Main from './main.js';
+ import * as MessageTray from './messageTray.js';
+ import * as Workspace from './workspace.js';
+@@ -219,6 +220,12 @@ class UIAreaIndicator extends St.Widget {
+         this._selectionRect = new St.Widget({style_class: 'screenshot-ui-area-indicator-selection'});
+         this.add_child(this._selectionRect);
+ 
++        // Luma Capture: a 1.5px dashed white outline on the selection's edge.
++        this._outline = new St.DrawingArea({style_class: 'luma-capture-outline'});
++        this._outline.connect('repaint', area => this._drawOutline(area));
++        this.add_child(this._outline);
++        this._hiddenFromCaptures = false;
++
+         this._topRect.add_constraint(new Clutter.SnapConstraint({
+             source: this._selectionRect,
+             from_edge: Clutter.SnapEdge.BOTTOM,
+@@ -247,11 +254,62 @@ class UIAreaIndicator extends St.Widget {
+     setSelectionRect(x, y, width, height) {
+         this._selectionRect.set_position(x, y);
+         this._selectionRect.set_size(width, height);
++        const pad = 2 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._outline.set_position(x - pad, y - pad);
++        this._outline.set_size(Math.max(0, width + 2 * pad), Math.max(0, height + 2 * pad));
++        this._outline.visible = this._outlineWanted !== false && width > 0 && height > 0;
++        this._outline.queue_repaint();
++    }
++
++    // Luma Capture: whether the dashed outline is drawn, and which shade the
++    // rest of the screen gets (a class on the four shade rectangles).
++    setLook({outline = true, shade = null} = {}) {
++        this._outlineWanted = outline;
++        this._outline.visible = outline && this._selectionRect.width > 0;
++        for (const rect of [this._topRect, this._bottomRect, this._leftRect, this._rightRect]) {
++            for (const name of ['luma-capture-shade-selection', 'luma-capture-shade-light', 'luma-capture-shade-none'])
++                rect.remove_style_class_name(name);
++            if (shade)
++                rect.add_style_class_name(`luma-capture-shade-${shade}`);
++        }
++    }
++
++    // A recording's outline is on screen but never in the video.
++    setHiddenFromCaptures(hidden) {
++        this._hiddenFromCaptures = hidden;
++    }
++
++    vfunc_paint(paintContext) {
++        if (this._hiddenFromCaptures && !Capture.paintsOnScreen(paintContext))
++            return;
++        super.vfunc_paint(paintContext);
++    }
++
++    _drawOutline(area) {
++        const cr = area.get_context();
++        const [width, height] = area.get_surface_size();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const pad = 2 * scale;
++        const lineWidth = 1.5 * scale;
++        const x = pad - lineWidth / 2, y = pad - lineWidth / 2;
++        const w = width - 2 * pad + lineWidth, h = height - 2 * pad + lineWidth;
++        const r = Math.min(2 * scale, w / 2, h / 2);
++        cr.setLineWidth(lineWidth);
++        cr.setDash([4 * scale, 3 * scale], 0);
++        cr.setSourceRGBA(1, 1, 1, 0.95);
++        cr.newSubPath();
++        cr.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
++        cr.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
++        cr.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
++        cr.arc(x + r, y + r, r, Math.PI, 3 * Math.PI / 2);
++        cr.closePath();
++        cr.stroke();
++        cr.$dispose();
+     }
+ });
+ 
+ const UIAreaSelector = GObject.registerClass({
+-    Signals: {'drag-started': {}, 'drag-ended': {}},
++    Signals: {'drag-started': {}, 'drag-ended': {}, 'activate': {}, 'selection-changed': {}},
+ }, class UIAreaSelector extends St.Widget {
+     _init(params) {
+         super._init(params);
+@@ -278,6 +336,21 @@ const UIAreaSelector = GObject.registerClass({
+         this._bottomRightHandle = new St.Widget({style_class: 'screenshot-ui-area-selector-handle'});
+         this.add_child(this._bottomRightHandle);
+ 
++        // Luma Capture: handles at the edge midpoints too, and the selection's
++        // size in physical pixels in its middle.
++        this._topHandle = new St.Widget({style_class: 'screenshot-ui-area-selector-handle'});
++        this.add_child(this._topHandle);
++        this._rightHandle = new St.Widget({style_class: 'screenshot-ui-area-selector-handle'});
++        this.add_child(this._rightHandle);
++        this._bottomHandle = new St.Widget({style_class: 'screenshot-ui-area-selector-handle'});
++        this.add_child(this._bottomHandle);
++        this._leftHandle = new St.Widget({style_class: 'screenshot-ui-area-selector-handle'});
++        this.add_child(this._leftHandle);
++        this._sizeLabel = new St.Label({style_class: 'luma-capture-size'});
++        this.add_child(this._sizeLabel);
++        this._pixelScale = () => 1;
++        this._empty = true;
++
+         // This will be updated before the first drawn frame.
+         this._handleSize = 0;
+         this._topLeftHandle.connect('style-changed', widget => {
+@@ -301,34 +374,51 @@ const UIAreaSelector = GObject.registerClass({
+         this.reset();
+     }
+ 
++    // Luma Capture: nothing is selected until the person drags or picks the
++    // Selection mode, so the tool never opens with a box already drawn.
+     reset() {
+         this.stopDrag();
+         this.set_cursor_type(Clutter.CursorType.INHERIT);
++        this.clear();
++    }
+ 
+-        // Preserve area selection if possible. If the area goes out of bounds,
+-        // the monitors might have changed, so reset the area.
+-        const [x, y, w, h] = this.getGeometry();
+-        if (x < 0 || y < 0 || x + w > this.width || y + h > this.height) {
+-            // Initialize area to out of bounds so if there's no monitor,
+-            // the area will be reset once a monitor does appear.
+-            this._startX = -1;
+-            this._startY = 0;
+-            this._lastX = 0;
+-            this._lastY = 0;
+-
+-            // This can happen when running headless without any monitors.
+-            if (Main.layoutManager.primaryIndex !== -1) {
+-                const monitor =
+-                    Main.layoutManager.monitors[Main.layoutManager.primaryIndex];
+-
+-                this._startX = monitor.x + Math.floor(monitor.width * 3 / 8);
+-                this._startY = monitor.y + Math.floor(monitor.height * 3 / 8);
+-                this._lastX = monitor.x + Math.floor(monitor.width * 5 / 8) - 1;
+-                this._lastY = monitor.y + Math.floor(monitor.height * 5 / 8) - 1;
+-            }
++    clear() {
++        this._empty = true;
++        this._startX = this._startY = this._lastX = this._lastY = 0;
++        this._updateSelectionRect();
++    }
+ 
+-            this._updateSelectionRect();
+-        }
++    get hasSelection() {
++        return !this._empty;
++    }
++
++    // Stage-logical rectangle; kept inside the stage.
++    setSelection(x, y, width, height) {
++        const stageWidth = this.width || global.stage.width;
++        const stageHeight = this.height || global.stage.height;
++        width = Math.max(1, Math.min(Math.round(width), stageWidth));
++        height = Math.max(1, Math.min(Math.round(height), stageHeight));
++        x = Math.max(0, Math.min(Math.round(x), stageWidth - width));
++        y = Math.max(0, Math.min(Math.round(y), stageHeight - height));
++        this._empty = false;
++        this._startX = x;
++        this._startY = y;
++        this._lastX = x + width - 1;
++        this._lastY = y + height - 1;
++        this._updateSelectionRect();
++        this.emit('selection-changed');
++    }
++
++    // Centred horizontally, 42% of the monitor wide and tall, 18% from its top.
++    setDefaultSelection(monitor) {
++        const width = Math.round(monitor.width * 0.42);
++        const height = Math.round(monitor.height * 0.42);
++        this.setSelection(monitor.x + Math.round((monitor.width - width) / 2),
++            monitor.y + Math.round(monitor.height * 0.18), width, height);
++    }
++
++    setPixelScale(getter) {
++        this._pixelScale = getter;
+     }
+ 
+     getGeometry() {
+@@ -341,6 +431,19 @@ const UIAreaSelector = GObject.registerClass({
+     }
+ 
+     _updateSelectionRect() {
++        const handles = [this._topLeftHandle, this._topRightHandle,
++            this._bottomLeftHandle, this._bottomRightHandle,
++            this._topHandle, this._rightHandle, this._bottomHandle, this._leftHandle];
++        if (this._empty) {
++            this._areaIndicator.setSelectionRect(0, 0, 0, 0);
++            this._areaIndicator.setLook({shade: 'light'});
++            for (const handle of handles)
++                handle.hide();
++            this._sizeLabel.hide();
++            return;
++        }
++        this._areaIndicator.setLook({shade: 'selection'});
++
+         const [x, y, w, h] = this.getGeometry();
+         this._areaIndicator.setSelectionRect(x, y, w, h);
+ 
+@@ -349,15 +452,39 @@ const UIAreaSelector = GObject.registerClass({
+         this._topRightHandle.set_position(x + w - 1 - offset, y - offset);
+         this._bottomLeftHandle.set_position(x - offset, y + h - 1 - offset);
+         this._bottomRightHandle.set_position(x + w - 1 - offset, y + h - 1 - offset);
++        this._topHandle.set_position(x + (w - 1) / 2 - offset, y - offset);
++        this._bottomHandle.set_position(x + (w - 1) / 2 - offset, y + h - 1 - offset);
++        this._leftHandle.set_position(x - offset, y + (h - 1) / 2 - offset);
++        this._rightHandle.set_position(x + w - 1 - offset, y + (h - 1) / 2 - offset);
++        for (const handle of handles)
++            handle.show();
++
++        const pixels = this._pixelScale();
++        this._sizeLabel.text = `${Math.round(w * pixels)} \u00d7 ${Math.round(h * pixels)}`;
++        const [, , labelWidth, labelHeight] = this._sizeLabel.get_preferred_size();
++        const margin = 16 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const fits = w >= labelWidth + margin && h >= labelHeight + margin;
++        this._sizeLabel.visible = fits;
++        if (fits) {
++            this._sizeLabel.set_position(Math.round(x + (w - labelWidth) / 2),
++                Math.round(y + (h - labelHeight) / 2));
++        }
+     }
+ 
+     _computeCursorType(cursorX, cursorY) {
++        if (this._empty)
++            return Clutter.CursorType.CROSSHAIR;
++
+         const [leftX, topY, width, height] = this.getGeometry();
+         const [rightX, bottomY] = [leftX + width - 1, topY + height - 1];
+         const [x, y] = [cursorX, cursorY];
+ 
+-        // Check if the cursor overlaps the handles first.
+-        const limit = (this._handleSize / 2) ** 2;
++        // Check if the cursor overlaps the handles first. Luma's handles are
++        // small, so they catch the pointer a little beyond what they paint.
++        const grab = Math.max(this._handleSize / 2,
++            8 * St.ThemeContext.get_for_stage(global.stage).scale_factor);
++        const limit = grab ** 2;
++        const [middleX, middleY] = [(leftX + rightX) / 2, (topY + bottomY) / 2];
+         if ((leftX - x) ** 2 + (topY - y) ** 2 <= limit)
+             return Clutter.CursorType.NW_RESIZE;
+         else if ((rightX - x) ** 2 + (topY - y) ** 2 <= limit)
+@@ -366,6 +493,14 @@ const UIAreaSelector = GObject.registerClass({
+             return Clutter.CursorType.SW_RESIZE;
+         else if ((rightX - x) ** 2 + (bottomY - y) ** 2 <= limit)
+             return Clutter.CursorType.SE_RESIZE;
++        else if ((middleX - x) ** 2 + (topY - y) ** 2 <= limit)
++            return Clutter.CursorType.N_RESIZE;
++        else if ((middleX - x) ** 2 + (bottomY - y) ** 2 <= limit)
++            return Clutter.CursorType.S_RESIZE;
++        else if ((leftX - x) ** 2 + (middleY - y) ** 2 <= limit)
++            return Clutter.CursorType.W_RESIZE;
++        else if ((rightX - x) ** 2 + (middleY - y) ** 2 <= limit)
++            return Clutter.CursorType.E_RESIZE;
+ 
+         // Now check the rest of the rectangle.
+         const threshold =
+@@ -440,7 +575,17 @@ const UIAreaSelector = GObject.registerClass({
+             this._updateSelectionRect();
+         }
+ 
++        // Luma Capture: a selection is never smaller than 24 by 24.
++        const [minX, minY, minWidth, minHeight] = this.getGeometry();
++        const minimum = Capture.MIN_SELECTION * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        if (!this._empty && (minWidth < minimum || minHeight < minimum)) {
++            this.setSelection(minX - Math.max(0, minimum - minWidth) / 2,
++                minY - Math.max(0, minimum - minHeight) / 2,
++                Math.max(minWidth, minimum), Math.max(minHeight, minimum));
++        }
++
+         this.emit('drag-ended');
++        this.emit('selection-changed');
+     }
+ 
+     _updateCursor(x, y) {
+@@ -455,6 +600,21 @@ const UIAreaSelector = GObject.registerClass({
+         const [x, y] = event.get_coords();
+         const cursor = this._computeCursorType(x, y);
+ 
++        // Luma Capture: a double click inside the selection takes it.
++        if (cursor === Clutter.CursorType.MOVE && button === Clutter.BUTTON_PRIMARY) {
++            const time = event.get_time();
++            const last = this._lastInsidePress;
++            const settings = Clutter.Settings.get_default();
++            const distance = settings.dnd_drag_threshold ?? 8;
++            this._lastInsidePress = {time, x, y};
++            if (last && time - last.time <= settings.double_click_time &&
++                Math.abs(x - last.x) <= distance && Math.abs(y - last.y) <= distance) {
++                this._lastInsidePress = null;
++                this.emit('activate');
++                return Clutter.EVENT_STOP;
++            }
++        }
++
+         // Clicking outside of the selection, or using the right mouse button,
+         // or with Ctrl results in dragging a new selection from scratch.
+         if (cursor === Clutter.CursorType.CROSSHAIR ||
+@@ -464,6 +624,7 @@ const UIAreaSelector = GObject.registerClass({
+ 
+             this._dragCursor = Clutter.CursorType.CROSSHAIR;
+             this.set_cursor_type(Clutter.CursorType.CROSSHAIR);
++            this._empty = false;
+ 
+             [this._startX, this._startY] = event.get_coords();
+             this._lastX = this._startX = Math.floor(this._startX);
+@@ -771,30 +932,17 @@ class UIWindowSelectorLayout extends Workspace.WorkspaceLayout {
+         this._syncWorkareaTracking();
+     }
+ 
++    // Luma Capture: windows stay where they are on the screen, in their
++    // stacking order, instead of being spread out like the overview.
+     vfunc_allocate(container, box) {
+-        const containerBox = container.allocation;
+-        const containerAllocationChanged =
+-            this._lastBox === null || !this._lastBox.equal(containerBox);
+-        this._lastBox = containerBox.copy();
+-
+-        let layoutChanged = false;
+-        if (this._layout === null) {
+-            this._layout = this._createBestLayout(this._workarea);
+-            layoutChanged = true;
+-        }
+-
+-        if (layoutChanged || containerAllocationChanged)
+-            this._windowSlots = this._getWindowSlots(box.copy());
+-
++        const monitor = Main.layoutManager.monitors[this._monitorIndex];
++        if (!monitor)
++            return;
+         const childBox = new Clutter.ActorBox();
+-
+-        const nSlots = this._windowSlots.length;
+-        for (let i = 0; i < nSlots; i++) {
+-            const [x, y, width, height, child] = this._windowSlots[i];
+-
+-            childBox.set_origin(x, y);
+-            childBox.set_size(width, height);
+-
++        for (const child of this._sortedWindows) {
++            const frame = child.boundingBox;
++            childBox.set_origin(frame.x - monitor.x, frame.y - monitor.y);
++            childBox.set_size(frame.width, frame.height);
+             child.allocate(childBox);
+         }
+     }
+@@ -834,11 +982,16 @@ class UIWindowSelectorWindowContent extends Clutter.Actor {
+         });
+ 
+         const window = actor.metaWindow;
++        this._metaWindow = window;
++        this._windowActor = actor;
+         this._boundingBox = window.get_frame_rect();
+         this._bufferRect = window.get_buffer_rect();
+         this._bufferScale = actor.get_resource_scale();
++        // Luma Capture: the window's picture is kept for the capture but not
++        // drawn; the frozen screen already shows the window in place.
+         this._actor = new Clutter.Actor({
+             content: actor.paint_to_content(null),
++            opacity: 0,
+         });
+         this.add_child(this._actor);
+ 
+@@ -856,6 +1009,7 @@ class UIWindowSelectorWindowContent extends Clutter.Actor {
+                 this._border.get_theme_node().get_border_width(St.Side.TOP);
+         });
+         this.add_child(this._border);
++        this._border.hide();
+ 
+         this._cursor = null;
+         this._cursorPoint = {x: 0, y: 0};
+@@ -868,6 +1022,14 @@ class UIWindowSelectorWindowContent extends Clutter.Actor {
+         return this._boundingBox;
+     }
+ 
++    get metaWindow() {
++        return this._metaWindow;
++    }
++
++    get windowActor() {
++        return this._windowActor;
++    }
++
+     get cursorPoint() {
+         return {
+             x: this._cursorPoint.x + this._boundingBox.x - this._bufferRect.x,
+@@ -977,7 +1139,10 @@ class UIWindowSelectorWindowContent extends Clutter.Actor {
+         if (!this._cursor)
+             return;
+ 
++        // Luma Capture: the pointer is part of the capture, not drawn over the
++        // frozen screen a second time.
+         this._cursor.visible = visible;
++        this._cursor.opacity = 0;
+     }
+ });
+ 
+@@ -1022,6 +1187,14 @@ class UIWindowSelectorWindow extends St.Button {
+         return this.child.bufferScale;
+     }
+ 
++    get metaWindow() {
++        return this.child.metaWindow;
++    }
++
++    get windowActor() {
++        return this.child.windowActor;
++    }
++
+     get windowContent() {
+         return this.child.windowContent;
+     }
+@@ -1056,7 +1229,40 @@ class UIWindowSelector extends St.Widget {
+             y_expand: true,
+         });
+         this._container.layout_manager = this._layoutManager;
++
++        // Luma Capture: a light shade everywhere but the window under the
++        // pointer, which gets an accent outline over an accent wash.
++        this._shade = new UIAreaIndicator({x_expand: true, y_expand: true});
++        this._shade.setLook({outline: false, shade: 'light'});
++        this._shade.setSelectionRect(0, 0, 0, 0);
++        this.add_child(this._shade);
+         this.add_child(this._container);
++        this._highlight = new St.Widget({x_expand: true, y_expand: true});
++        Shell.util_set_hidden_from_pick(this._highlight, true);
++        this._wash = new St.Widget({style_class: 'luma-capture-window-wash', visible: false});
++        this._ring = new St.Widget({style_class: 'luma-capture-window-ring', visible: false});
++        this._highlight.add_child(this._wash);
++        this._highlight.add_child(this._ring);
++        this.add_child(this._highlight);
++    }
++
++    // The window a person would capture, or null.
++    setHighlight(window) {
++        const monitor = Main.layoutManager.monitors[this._monitorIndex];
++        if (!window || !monitor || !this._layoutManager.windows.includes(window)) {
++            this._shade.setSelectionRect(0, 0, 0, 0);
++            this._ring.hide();
++            this._wash.hide();
++            return;
++        }
++        const frame = window.boundingBox;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const width = 3 * scale;
++        const x = frame.x - monitor.x, y = frame.y - monitor.y;
++        this._shade.setSelectionRect(x, y, frame.width, frame.height);
++        this._wash.set({x, y, width: frame.width, height: frame.height, visible: true});
++        this._ring.set({x: x - width, y: y - width, width: frame.width + 2 * width,
++            height: frame.height + 2 * width, visible: true});
+     }
+ 
+     capture() {
+@@ -1066,7 +1272,9 @@ class UIWindowSelector extends St.Widget {
+             const activeWorkspace = workspaceManager.get_active_workspace();
+             if (window.is_override_redirect() ||
+                 !window.located_on_workspace(activeWorkspace) ||
+-                window.get_monitor() !== this._monitorIndex)
++                window.get_monitor() !== this._monitorIndex ||
++                window.minimized || !actor.visible ||
++                window.get_window_type() === Meta.WindowType.DESKTOP)
+                 continue;
+ 
+             const widget = new UIWindowSelectorWindow(
+@@ -1083,11 +1291,13 @@ class UIWindowSelector extends St.Widget {
+                 Main.screenshotUI.grab_key_focus();
+                 win.checked = true;
+             });
+-
+-            if (window.has_focus()) {
+-                widget.checked = true;
+-                widget.toggle_mode = false;
+-            }
++            // Luma Capture: the window under the pointer is the one picked,
++            // and clicking it takes it. Nothing is picked until then.
++            widget.connect('notify::hover', win => {
++                if (win.hover)
++                    win.checked = true;
++            });
++            widget.connect('clicked', win => Main.screenshotUI.captureWindow(win));
+ 
+             this._layoutManager.addWindow(widget);
+         }
+@@ -1230,6 +1440,16 @@ export const ScreenshotUI = GObject.registerClass({
+             reactive: true,
+         });
+         this.add_child(this._areaSelector);
++        // Luma Capture: the size label counts physical pixels, a double click
++        // inside the selection takes it, and Capture waits for a selection.
++        this._areaSelector.setPixelScale(() => this._scale ??
++            Math.max(1, ...global.stage.peek_stage_views().map(view => view.get_scale())));
++        this._areaSelector.connect('activate',
++            () => this._onCaptureButtonClicked().catch(logError));
++        this._areaSelector.connect('selection-changed', () => {
++            this._syncCaptureSensitivity();
++            this._syncHint();
++        });
+ 
+         this._primaryMonitorBin = new St.Widget({layout_manager: new Clutter.BinLayout()});
+         this._primaryMonitorBin.add_constraint(
+@@ -1269,6 +1489,12 @@ export const ScreenshotUI = GObject.registerClass({
+         this._primaryMonitorBin.add_child(this._closeButton);
+ 
+         this._areaSelector.connect('drag-started', () => {
++            this._hint?.hide();
++            this._bar?.ease({
++                opacity: 100,
++                duration: 200,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            });
+             this._panel.ease({
+                 opacity: 100,
+                 duration: 200,
+@@ -1281,6 +1507,13 @@ export const ScreenshotUI = GObject.registerClass({
+             });
+         });
+         this._areaSelector.connect('drag-ended', () => {
++            if (this._bar?.visible) {
++                this._bar.ease({
++                    opacity: 255,
++                    duration: 200,
++                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                });
++            }
+             this._panel.ease({
+                 opacity: 255,
+                 duration: 200,
+@@ -1448,6 +1681,8 @@ export const ScreenshotUI = GObject.registerClass({
+             this._rebuildMonitorBins();
+         });
+ 
++        this._initCapture();
++
+         const uiModes =
+             Shell.ActionMode.ALL & ~Shell.ActionMode.LOGIN_SCREEN;
+         const restrictedModes =
+@@ -1485,22 +1720,14 @@ export const ScreenshotUI = GObject.registerClass({
+             }
+         );
+ 
++        // Luma Capture: Capture a window (Ctrl+Shift+2) opens Capture waiting
++        // for a window to be picked, instead of taking the focused window.
+         Main.wm.addKeybinding(
+             'screenshot-window',
+             new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}),
+-            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT | Meta.KeyBindingFlags.PER_WINDOW,
++            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+             restrictedModes,
+-            async (_display, window, _event, _binding) => {
+-                try {
+-                    const actor = window.get_compositor_private();
+-                    const content = actor.paint_to_content(null);
+-                    const texture = content.get_texture();
+-
+-                    await captureScreenshot(texture, null, 1, null);
+-                } catch (e) {
+-                    logError(e, 'Error capturing screenshot');
+-                }
+-            }
++            showScreenshotUIWindow
+         );
+ 
+         Main.wm.addKeybinding(
+@@ -1537,6 +1764,7 @@ export const ScreenshotUI = GObject.registerClass({
+             Main.sessionMode.allowScreencast;
+ 
+         this._castButton.set({visible, reactive});
++        this._bar?.setRecordingAvailable(reactive);
+     }
+ 
+     _syncWindowButtonSensitivity() {
+@@ -1547,6 +1775,12 @@ export const ScreenshotUI = GObject.registerClass({
+             Main.sessionMode.hasWindows &&
+             windows.length > 0 &&
+             !this._castButton.checked;
++        this._bar?.setModeSensitive(Capture.Mode.WINDOW, this._windowsAvailable());
++    }
++
++    _windowsAvailable() {
++        return Main.sessionMode.hasWindows &&
++            this._windowSelectors.some(selector => selector.windows().length > 0);
+     }
+ 
+     _refreshButtonLayout() {
+@@ -1605,6 +1839,14 @@ export const ScreenshotUI = GObject.registerClass({
+                 this.grab_key_focus();
+                 screenSelector.checked = true;
+             });
++            // Luma Capture: the monitor under the pointer is the one taken,
++            // and clicking anywhere on it takes it.
++            screenSelector.connect('notify::hover', () => {
++                if (screenSelector.hover)
++                    screenSelector.checked = true;
++            });
++            screenSelector.connect('clicked',
++                () => this._onCaptureButtonClicked().catch(logError));
+             bin.add_child(screenSelector);
+             this._screenSelectors.push(screenSelector);
+ 
+@@ -1621,6 +1863,7 @@ export const ScreenshotUI = GObject.registerClass({
+                     otherSelector.toggle_mode = true;
+                     otherSelector.checked = false;
+                 }
++                this._syncHint();
+             });
+         }
+ 
+@@ -1628,21 +1871,28 @@ export const ScreenshotUI = GObject.registerClass({
+             this._screenSelectors[Main.layoutManager.primaryIndex].checked = true;
+     }
+ 
+-    // The screenshot tool in its Selection mode, ready for a drag.
++    // Capture in its Selection mode, ready for a drag (Ctrl+Shift+3).
+     async openArea() {
+-        this._selectionButton.checked = true;
+-        await this.open(UIMode.SCREENSHOT);
+-        if (this.visible && !this._screencastInProgress)
+-            this._selectionButton.checked = true;
++        await this.open(UIMode.SCREENSHOT, Capture.Mode.SELECTION);
++    }
++
++    // Capture waiting for a window to be picked (Ctrl+Shift+2).
++    async openWindow() {
++        await this.open(UIMode.SCREENSHOT, Capture.Mode.WINDOW);
+     }
+ 
+-    async open(mode = UIMode.SCREENSHOT) {
++    // Luma Capture: `captureMode` is one of Capture.Mode; without one the
++    // tool opens in the mode last used, and never with a selection drawn.
++    async open(mode = UIMode.SCREENSHOT, captureMode = null) {
+         if (this._openingCoroutineInProgress)
+             return;
+ 
+         if (this._screencastInProgress)
+             return;
+ 
++        if (this._countdown.running)
++            return;
++
+         if (mode === UIMode.SCREENCAST && !this._screencastSupported)
+             return;
+ 
+@@ -1660,6 +1910,7 @@ export const ScreenshotUI = GObject.registerClass({
+                 this._windowSelectors.flatMap(selector => selector.windows());
+             for (const window of windows) {
+                 window.connect('notify::checked', () => {
++                    this._syncWindowHighlight();
+                     if (!window.checked)
+                         return;
+ 
+@@ -1710,6 +1961,16 @@ export const ScreenshotUI = GObject.registerClass({
+                 log(`Error capturing screenshot: ${e.message}`);
+             }
+             this._openingCoroutineInProgress = false;
++
++            this._showPointerButton.checked = this._options.showPointer;
++            this._bar.setTimer(this._options.timer);
++            this._setCaptureMode(this._openingMode(mode, captureMode));
++            if (Capture.isRecordingMode(this._captureMode)) {
++                this._stageScreenshotContainer.remove_all_transitions();
++                this._stageScreenshotContainer.hide();
++            }
++        } else if (captureMode) {
++            this._setCaptureMode(this._openingMode(mode, captureMode));
+         }
+ 
+         // Get rid of any popup menus.
+@@ -1723,10 +1984,7 @@ export const ScreenshotUI = GObject.registerClass({
+         screenshotUIGroup.get_parent().set_child_above_sibling(
+             screenshotUIGroup, null);
+ 
+-        const grabResult = this._grabHelper.grab({
+-            actor: this,
+-            onUngrab: () => this.close(),
+-        });
++        const grabResult = this._grabCapture();
+         if (!grabResult) {
+             this.close(true);
+             return;
+@@ -1746,10 +2004,23 @@ export const ScreenshotUI = GObject.registerClass({
+                 this.insert_child_at_index(this._stageScreenshotContainer, 0);
+             },
+         });
++
++        this._placeBar();
++        if (!this._bar.visible || this._bar.opacity < 255)
++            this._bar.present(true, this._barPlace?.edge ?? 'bottom');
++        this._syncHint();
++        this._syncCaptureSensitivity();
++        console.log(`Luma Capture: open ${JSON.stringify({mode: this._captureMode,
++            selection: this._areaSelector.hasSelection})}`);
+     }
+ 
+     _finishClosing() {
+         this.hide();
++        this._menu.hide();
++        this._bar.setOptionsOpen(false);
++        this._bar.tooltip.hideNow();
++        this._bar.hide();
++        this._hint.hide();
+ 
+         this._shooter = null;
+ 
+@@ -1773,7 +2044,14 @@ export const ScreenshotUI = GObject.registerClass({
+     }
+ 
+     close(instantly = false) {
++        if (this._countdown?.running)
++            this._cancelCountdown(false);
+         this._grabHelper.ungrab();
++        if (this._menu?.visible)
++            this._menu.hide();
++        this._bar?.setOptionsOpen(false);
++        if (!instantly && this._bar?.visible)
++            this._bar.present(false, this._barPlace?.edge ?? 'bottom');
+ 
+         if (instantly) {
+             this._finishClosing();
+@@ -1951,6 +2229,17 @@ export const ScreenshotUI = GObject.registerClass({
+     }
+ 
+     async _onCaptureButtonClicked() {
++        if (!this.visible || this._countdown.running || !this._canCapture())
++            return;
++        this._closeMenu(false);
++
++        const seconds = this._options.timer;
++        if (seconds > 0) {
++            await this._captureAfterCountdown(seconds);
++            return;
++        }
++
++        this._options.lastMode = this._captureMode;
+         if (this._shotButton.checked) {
+             try {
+                 await this._saveScreenshot();
+@@ -1964,72 +2253,246 @@ export const ScreenshotUI = GObject.registerClass({
+         }
+     }
+ 
+-    async _saveScreenshot() {
++    // A window clicked in window mode.
++    captureWindow(window) {
++        if (!this._windowButton.checked || this._countdown.running)
++            return;
++        window.checked = true;
++        this._onCaptureButtonClicked().catch(logError);
++    }
++
++    // Luma Capture: with a timer the bar leaves, the countdown runs over the
++    // live screen (which a person can still use), and the capture is taken
++    // of the screen as it is when the countdown ends.
++    async _captureAfterCountdown(seconds) {
++        const mode = this._captureMode;
++        const recording = Capture.isRecordingMode(mode);
++        const monitor = Main.layoutManager.monitors[this._barPlace?.monitorIndex] ??
++            Main.layoutManager.primaryMonitor;
++        this._options.lastMode = mode;
++
++        this._keepOpenOnUngrab = true;
++        this._grabHelper.ungrab();
++        this._keepOpenOnUngrab = false;
++        this._bar.tooltip.hideNow();
++        this.remove_all_transitions();
++        this.hide();
++        this._releaseCountdownEscape = Capture.grabEscape(() => this._cancelCountdown(true));
++
++        const completed = await this._countdown.run(seconds, monitor);
++        this._releaseCountdownEscape?.();
++        this._releaseCountdownEscape = null;
++        console.log(`Luma Capture: countdown ${JSON.stringify({seconds, completed})}`);
++
++        if (!completed) {
++            if (this._countdownResume)
++                this._resumeAfterCountdown();
++            return;
++        }
++
++        if (recording) {
++            this._startScreencast();
++            return;
++        }
++        try {
++            await this._saveScreenshot({live: true});
++        } catch (e) {
++            logError(e, 'Luma Capture: timed screenshot failed');
++        }
++        this.close(true);
++    }
++
++    _cancelCountdown(resume) {
++        this._countdownResume = resume;
++        this._countdown.cancel();
++    }
++
++    _resumeAfterCountdown() {
++        this._countdownResume = false;
++        this.show();
++        this.opacity = 255;
++        if (!this._grabCapture()) {
++            this.close(true);
++            return;
++        }
++        this._placeBar();
++        this._bar.present(true, this._barPlace?.edge ?? 'bottom');
++        this._syncHint();
++    }
++
++    _grabCapture() {
++        return this._grabHelper.grab({
++            actor: this,
++            onUngrab: () => {
++                if (!this._keepOpenOnUngrab)
++                    this.close();
++            },
++        });
++    }
++
++    _canCapture() {
++        const target = Capture.modeTarget(this._captureMode);
++        if (target === Capture.Mode.SELECTION)
++            return this._areaSelector.hasSelection;
++        if (target === Capture.Mode.WINDOW) {
++            return this._windowSelectors.flatMap(selector => selector.windows())
++                .some(win => win.checked);
++        }
++        return true;
++    }
++
++    _checkedWindow() {
++        return this._windowSelectors.flatMap(selector => selector.windows())
++            .find(win => win.checked) ?? null;
++    }
++
++    _captureRect() {
++        const target = Capture.modeTarget(this._captureMode);
++        if (target === Capture.Mode.WINDOW) {
++            const box = this._checkedWindow()?.boundingBox;
++            return box ? {x: box.x, y: box.y, width: box.width, height: box.height} : null;
++        }
++        const [x, y, width, height] = this._getSelectedGeometry(false);
++        return {x, y, width, height};
++    }
++
++    async _saveScreenshot({live = false} = {}) {
+         let file = null;
++        const destination = this._currentMode === UIMode.SCREENSHOT_ONLY
++            ? 'pictures' : this._options.saveTo;
++        const store = {destination, otherLocation: this._options.otherLocation};
++        const rect = this._captureRect();
++        const showPointer = this._showPointerButton.checked;
+ 
+         if (this._selectionButton.checked || this._screenButton.checked) {
+-            const content = this._stageScreenshot.get_content();
+-            if (!content)
+-                return; // Failed to capture the screenshot for some reason.
+-
+-            const texture = content.get_texture();
++            let texture, scale, cursor;
+             const geometry = this._getSelectedGeometry(true);
++            if (live) {
++                const shooter = new Shell.Screenshot();
++                const [content, contentScale, cursorContent, cursorPoint, cursorScale] =
++                    await shooter.screenshot_stage_to_content();
++                texture = content.get_texture();
++                scale = contentScale;
++                geometry.splice(0, 4, ...this._getSelectedGeometry(false).map(v => v * scale));
++                cursor = {
++                    texture: showPointer ? cursorContent?.get_texture() ?? null : null,
++                    x: (cursorPoint?.x ?? 0) * scale,
++                    y: (cursorPoint?.y ?? 0) * scale,
++                    scale: cursorScale ?? 1,
++                };
++            } else {
++                const content = this._stageScreenshot.get_content();
++                if (!content)
++                    return; // Failed to capture the screenshot for some reason.
++                texture = content.get_texture();
++                scale = this._scale;
++                let cursorTexture = this._cursor.content?.get_texture();
++                if (!this._cursor.visible)
++                    cursorTexture = null;
++                cursor = {
++                    texture: cursorTexture ?? null,
++                    x: this._cursor.x * this._scale,
++                    y: this._cursor.y * this._scale,
++                    scale: this._cursorScale,
++                };
++            }
+ 
+-            let cursorTexture = this._cursor.content?.get_texture();
+-            if (!this._cursor.visible)
+-                cursorTexture = null;
++            if (this._selectionButton.checked)
++                this._options.lastSelection = this._areaSelector.getGeometry();
+ 
+             try {
+-                file = await captureScreenshot(
+-                    texture, geometry, this._scale,
+-                    {
+-                        texture: cursorTexture ?? null,
+-                        x: this._cursor.x * this._scale,
+-                        y: this._cursor.y * this._scale,
+-                        scale: this._cursorScale,
+-                    }
+-                );
++                file = await captureScreenshot(texture, geometry, scale, cursor, store);
+             } catch (e) {
+                 logError(e, 'Error capturing screenshot');
++                this._captureFailed();
++                return;
+             }
+         } else if (this._windowButton.checked) {
+-            const window =
+-                this._windowSelectors.flatMap(selector => selector.windows())
+-                                     .find(win => win.checked);
++            const window = this._checkedWindow();
+             if (!window)
+                 return;
+ 
+-            const content = window.windowContent;
+-            if (!content)
+-                return;
+-
+-            const texture = content.get_texture();
++            let texture, bufferScale, cursor = null;
++            if (live) {
++                const actor = window.windowActor;
++                if (!actor?.metaWindow || actor.metaWindow.get_compositor_private() !== actor) {
++                    this._captureFailed();
++                    return;
++                }
++                texture = actor.paint_to_content(null).get_texture();
++                bufferScale = actor.get_resource_scale();
++            } else {
++                const content = window.windowContent;
++                if (!content)
++                    return;
+ 
+-            let cursorTexture = window.getCursorTexture()?.get_texture();
+-            if (!this._cursor.visible)
+-                cursorTexture = null;
++                texture = content.get_texture();
++                bufferScale = window.bufferScale;
++
++                let cursorTexture = window.getCursorTexture()?.get_texture();
++                if (!this._cursor.visible)
++                    cursorTexture = null;
++                cursor = {
++                    texture: cursorTexture ?? null,
++                    x: window.cursorPoint.x * window.bufferScale,
++                    y: window.cursorPoint.y * window.bufferScale,
++                    scale: this._cursorScale,
++                };
++            }
+ 
+             try {
+-                file = await captureScreenshot(
+-                    texture,
+-                    null,
+-                    window.bufferScale,
+-                    {
+-                        texture: cursorTexture ?? null,
+-                        x: window.cursorPoint.x * window.bufferScale,
+-                        y: window.cursorPoint.y * window.bufferScale,
+-                        scale: this._cursorScale,
+-                    }
+-                );
++                file = await captureScreenshot(texture, null, bufferScale, cursor, store);
+             } catch (e) {
+                 logError(e, 'Error capturing screenshot');
++                this._captureFailed();
++                return;
+             }
+         }
+ 
++        if (rect)
++            Capture.flash(rect);
++        this._showResult('screenshot', {file, pixbuf: store.pixbuf, destination});
++
+         if (file)
+             this.emit('screenshot-taken', file);
+     }
+ 
++    // The floating thumbnail and the spoken result, for a screenshot or a
++    // recording that was saved.
++    _showResult(kind, {file, pixbuf, preview = null, destination}) {
++        const where = Capture.destinationLabel(destination, kind, this._options.otherLocation);
++        const name = file ? file.get_basename() : Capture.fileStem(kind);
++        console.log(`Luma Capture: saved ${JSON.stringify({kind, path: file?.get_path() ?? null, where})}`);
++        Capture.announce(this._thumbnail.surface,
++            Capture.resultAnnouncement(kind, destination, this._options.otherLocation));
++        if (!this._options.showThumbnail)
++            return;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        try {
++            preview ??= pixbuf ? Capture.writePreview(pixbuf, scale) : null;
++        } catch (e) {
++            logError(e, 'Luma Capture: no thumbnail preview');
++        }
++        this._thumbnail.present({
++            kind,
++            preview,
++            file,
++            name,
++            where,
++            place: size => Capture.placeShelfBar(size, {end: true}),
++        });
++    }
++
++    _captureFailed() {
++        const source = getScreenshotNotificationSource();
++        source.addNotification(new MessageTray.Notification({
++            source,
++            // Translators: notification title when a screenshot could not be saved.
++            title: _('Screenshot failed'),
++            isTransient: true,
++        }));
++    }
++
+     async _startScreencast(nRetries = 0) {
+         if (this._windowButton.checked)
+             return; // TODO
+@@ -2037,10 +2500,14 @@ export const ScreenshotUI = GObject.registerClass({
+         const [x, y, w, h] = this._getSelectedGeometry(false);
+         const drawCursor = this._cursor.visible;
+ 
+-        // Set up the screencast indicator rect.
++        // Set up the screencast indicator rect. Luma Capture: a selection keeps
++        // its dashed outline, which is never in the video; a whole screen has
++        // no outline.
+         if (this._selectionButton.checked) {
+             this._screencastAreaIndicator.setSelectionRect(
+                 ...this._areaSelector.getGeometry());
++            this._screencastAreaIndicator.setLook({outline: true, shade: 'none'});
++            this._options.lastSelection = this._areaSelector.getGeometry();
+         } else if (this._screenButton.checked) {
+             const index =
+                 this._screenSelectors.findIndex(screen => screen.checked);
+@@ -2048,8 +2515,18 @@ export const ScreenshotUI = GObject.registerClass({
+ 
+             this._screencastAreaIndicator.setSelectionRect(
+                 monitor.x, monitor.y, monitor.width, monitor.height);
++            this._screencastAreaIndicator.setLook({outline: false, shade: 'none'});
+         }
+ 
++        // The first frame for the thumbnail, from the screen as it was.
++        if (nRetries === 0)
++            this._recordingPreview = this._previewOf([x, y, w, h]);
++
++        const destination = this._options.saveTo;
++        const directory = Capture.destinationDirectory(destination, 'recording',
++            this._options.otherLocation);
++        this._recordingDestination = destination;
++
+         // Close instantly so the fade-out doesn't get recorded.
+         this.close(true);
+ 
+@@ -2069,20 +2546,15 @@ export const ScreenshotUI = GObject.registerClass({
+         try {
+             this._screencastStarting = true;
+ 
++            // Luma Capture: "Recording 2026-09-16 at 10.22.03" where Save to
++            // points. A literal % would be a template placeholder.
+             const [, path] = await method(
+-                GLib.build_filenamev([
+-                    /* Translators: this is the folder where recorded
+-                       screencasts are stored. */
+-                    _('Screencasts'),
+-                    /* Translators: this is a filename used for screencast
+-                     * recording, where "%d" and "%t" date and time, e.g.
+-                     * "Screencast From 07-17-2013 10:00:46 PM" */
+-                    /* xgettext:no-c-format */
+-                    _('Screencast From %d %t'),
+-                ]),
++                GLib.build_filenamev([directory,
++                    Capture.fileStem('recording').replaceAll('%', '%%')]),
+                 {'draw-cursor': new GLib.Variant('b', drawCursor)});
+ 
+             this._screencastPath = path;
++            this._showRecordingPill();
+         } catch (error) {
+             // Recorder service disconnected without reply -> service crash
+             // That should have blocklisted the pipeline that caused the crash,
+@@ -2109,6 +2581,7 @@ export const ScreenshotUI = GObject.registerClass({
+         // Set this before calling the method as the screen recording indicator
+         // will check it before the success callback fires.
+         this._setScreencastInProgress(false);
++        this._hideRecordingPill();
+ 
+         try {
+             const [success] = await this._screencastProxy.StopScreencastAsync();
+@@ -2123,14 +2596,65 @@ export const ScreenshotUI = GObject.registerClass({
+             return;
+         }
+ 
+-        // Translators: notification title.
+-        this._showNotification(_('Screencast recorded'));
++        // Luma Capture: the thumbnail instead of GNOME's notification.
++        const file = this._screencastPath ? Gio.File.new_for_path(this._screencastPath) : null;
++        let preview = null;
++        try {
++            preview = await this._recordingPreview;
++        } catch (e) {
++            logError(e, 'Luma Capture: no first frame for the recording');
++        }
++        this._showResult('recording', {
++            file,
++            preview,
++            destination: this._recordingDestination ?? this._options.saveTo,
++        });
++    }
++
++    // A preview PNG of `geometry` (stage-logical) from the frozen screen.
++    async _previewOf([x, y, width, height]) {
++        const content = this._stageScreenshot.get_content();
++        if (!content || !this._options.showThumbnail)
++            return null;
++        const stream = Gio.MemoryOutputStream.new_resizable();
++        const pixbuf = await Shell.Screenshot.composite_to_stream(content.get_texture(),
++            x * this._scale, y * this._scale, width * this._scale, height * this._scale,
++            this._scale, null, 0, 0, 1, stream);
++        stream.close(null);
++        return Capture.writePreview(pixbuf,
++            St.ThemeContext.get_for_stage(global.stage).scale_factor);
++    }
++
++    _showRecordingPill() {
++        this._pill.show();
++        this._pill.opacity = 0;
++        const [, , width, height] = this._pill.get_preferred_size();
++        const place = Capture.placeShelfBar({width, height});
++        if (place)
++            this._pill.set_position(place.x, place.y);
++        this._pill.ease({
++            opacity: 255,
++            duration: Capture.reduceMotion() ? 0 : 160,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++        this._pill.start();
++        this._releaseRecordingEscape?.();
++        this._releaseRecordingEscape = Capture.grabEscape(() => this.stopScreencast());
++        console.log(`Luma Capture: recording ${JSON.stringify({path: this._screencastPath})}`);
++    }
++
++    _hideRecordingPill() {
++        this._releaseRecordingEscape?.();
++        this._releaseRecordingEscape = null;
++        this._pill.stop();
++        this._pill.hide();
+     }
+ 
+     _screencastFailed(phase, error) {
+         console.error(`Screencast failed during phase ${phase}: ${error}`);
+ 
+         this._setScreencastInProgress(false);
++        this._hideRecordingPill();
+ 
+         switch (phase) {
+         case ScreencastPhase.STARTUP:
+@@ -2205,6 +2729,397 @@ export const ScreenshotUI = GObject.registerClass({
+         return this._screencastInProgress;
+     }
+ 
++    get hasRecordingPill() {
++        return !!this._pill;
++    }
++
++    // ── Luma Capture ──────────────────────────────────────────────────────
++
++    _initCapture() {
++        Capture.loadStylesheet();
++        this._options = new Capture.CaptureOptions();
++        this._captureMode = this._options.lastMode;
++        this._keepOpenOnUngrab = false;
++
++        // GNOME's panel and its floating close button are never shown; their
++        // buttons still hold which selector is active.
++        this._primaryMonitorBin.hide();
++
++        this._hint = new St.Label({style_class: 'luma-capture-hint', visible: false});
++        Shell.util_set_hidden_from_pick(this._hint, true);
++        this.add_child(this._hint);
++
++        this._bar = new Capture.CaptureBar(this);
++        this.add_child(this._bar);
++        this.add_child(this._bar.tooltip);
++        this._bar.connect('close', () => this.close());
++        this._bar.connect('mode-activated', (_bar, mode) =>
++            this._setCaptureMode(mode, {picked: true}));
++        this._bar.connect('options', () => this._toggleMenu());
++        this._bar.connect('capture', () => this._onCaptureButtonClicked().catch(logError));
++        this._bar.connect('notify::size', () => {
++            if (this._bar.visible)
++                this._placeBar();
++        });
++
++        this._menu = new Capture.CaptureMenu();
++        this.add_child(this._menu);
++        this._menu.connect('activate', (_menu, key, value) => this._setOption(key, value));
++
++        this._countdown = new Capture.Countdown();
++        global.stage.add_child(this._countdown);
++
++        this._pill = new Capture.RecordingPill();
++        Main.layoutManager.addTopChrome(this._pill);
++        this._pill.connect('stop', () => this.stopScreencast());
++
++        this._thumbnail = new Capture.CaptureThumbnail();
++
++        this._screencastAreaIndicator.setHiddenFromCaptures(true);
++        this._screencastAreaIndicator.setLook({outline: true, shade: 'none'});
++
++        // Escape closes the Options menu before anything else; with the menu
++        // open, arrows and Tab move through it and a click elsewhere closes it.
++        this.connect('captured-event', (_actor, event) => {
++            if (!this._menu.visible || this._menuClosing)
++                return Clutter.EVENT_PROPAGATE;
++            const type = event.type();
++            if (type === Clutter.EventType.KEY_PRESS) {
++                const symbol = event.get_key_symbol();
++                if (symbol === Clutter.KEY_Escape) {
++                    this._closeMenu(true);
++                    return Clutter.EVENT_STOP;
++                }
++                if (symbol === Clutter.KEY_Up || symbol === Clutter.KEY_ISO_Left_Tab) {
++                    this._menu.moveFocus(-1);
++                    return Clutter.EVENT_STOP;
++                }
++                if (symbol === Clutter.KEY_Down || symbol === Clutter.KEY_Tab) {
++                    this._menu.moveFocus(1);
++                    return Clutter.EVENT_STOP;
++                }
++                return Clutter.EVENT_PROPAGATE;
++            }
++            if (type === Clutter.EventType.BUTTON_PRESS || type === Clutter.EventType.TOUCH_BEGIN) {
++                const target = global.stage.get_event_actor(event);
++                if (this._menu.contains(target) || this._bar.optionsButton.contains(target))
++                    return Clutter.EVENT_PROPAGATE;
++                this._closeMenu(false);
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++    }
++
++    // Where Capture opens: the mode asked for, else the last one used, as
++    // long as it can be used now.
++    _openingMode(mode, captureMode) {
++        let wanted = captureMode;
++        if (!wanted && mode === UIMode.SCREENCAST) {
++            wanted = Capture.isRecordingMode(this._options.lastMode)
++                ? this._options.lastMode : Capture.Mode.RECORD_SCREEN;
++        }
++        wanted ??= this._options.lastMode;
++        if (Capture.isRecordingMode(wanted) && !this._castButton.reactive)
++            wanted = Capture.modeTarget(wanted);
++        if (wanted === Capture.Mode.WINDOW && !this._windowsAvailable())
++            wanted = Capture.Mode.SELECTION;
++        return wanted;
++    }
++
++    _setCaptureMode(mode, {picked = false} = {}) {
++        const recording = Capture.isRecordingMode(mode);
++        if (recording && !this._castButton.reactive)
++            return;
++        if (mode === Capture.Mode.WINDOW && !this._windowsAvailable())
++            return;
++        this._closeMenu(false);
++
++        this._captureMode = mode;
++        this._castButton.checked = recording;
++        const target = Capture.modeTarget(mode);
++        if (target === Capture.Mode.SCREEN)
++            this._screenButton.checked = true;
++        else if (target === Capture.Mode.WINDOW)
++            this._windowButton.checked = true;
++        else
++            this._selectionButton.checked = true;
++
++        if (picked && target === Capture.Mode.SELECTION && !this._areaSelector.hasSelection)
++            this._restoreSelection();
++        if (target === Capture.Mode.WINDOW)
++            this._pickWindowUnderPointer();
++        if (target === Capture.Mode.SCREEN)
++            this._pickScreenUnderPointer();
++        if (picked)
++            this._options.lastMode = mode;
++
++        this._bar.setMode(mode);
++        this._syncWindowHighlight();
++        this._syncCaptureSensitivity();
++        this._syncHint();
++    }
++
++    // Remember last selection: the last box, else the default box on the
++    // shelf's monitor.
++    _restoreSelection() {
++        const last = this._options.rememberSelection ? this._options.lastSelection : null;
++        if (last && last[0] >= 0 && last[1] >= 0 &&
++            last[0] + last[2] <= global.stage.width && last[1] + last[3] <= global.stage.height) {
++            this._areaSelector.setSelection(...last);
++            return;
++        }
++        const monitor = Main.layoutManager.monitors[this._barMonitorIndex()] ??
++            Main.layoutManager.primaryMonitor;
++        if (monitor)
++            this._areaSelector.setDefaultSelection(monitor);
++    }
++
++    _barMonitorIndex() {
++        return this._barPlace?.monitorIndex ??
++            Capture.placeShelfBar({width: 1, height: 1})?.monitorIndex ??
++            Main.layoutManager.primaryIndex;
++    }
++
++    _pickWindowUnderPointer() {
++        const [px, py] = global.get_pointer();
++        const order = global.get_window_actors();
++        const windows = this._windowSelectors.flatMap(selector => selector.windows())
++            .sort((a, b) => order.indexOf(b.windowActor) - order.indexOf(a.windowActor));
++        const under = windows.find(win => {
++            const box = win.boundingBox;
++            return px >= box.x && px < box.x + box.width && py >= box.y && py < box.y + box.height;
++        });
++        if (under) {
++            under.checked = true;
++            return;
++        }
++        for (const win of windows) {
++            win.toggle_mode = true;
++            win.checked = false;
++        }
++    }
++
++    _pickScreenUnderPointer() {
++        const [px, py] = global.get_pointer();
++        const index = Main.layoutManager.monitors.findIndex(monitor =>
++            px >= monitor.x && px < monitor.x + monitor.width &&
++            py >= monitor.y && py < monitor.y + monitor.height);
++        if (index >= 0 && this._screenSelectors[index])
++            this._screenSelectors[index].checked = true;
++    }
++
++    _syncWindowHighlight() {
++        const window = this._windowButton.checked ? this._checkedWindow() : null;
++        for (const selector of this._windowSelectors)
++            selector.setHighlight(window);
++        this._syncCaptureSensitivity();
++    }
++
++    _syncCaptureSensitivity() {
++        this._bar?.setCaptureSensitive(this._canCapture());
++    }
++
++    _syncHint() {
++        if (!this._hint)
++            return;
++        const target = Capture.modeTarget(this._captureMode);
++        const recording = Capture.isRecordingMode(this._captureMode);
++        let text = null;
++        let index = this._barMonitorIndex();
++        if (target === Capture.Mode.SCREEN) {
++            text = recording
++                ? _('Click anywhere to start recording')
++                : _('Click anywhere to capture the screen');
++            const checked = this._screenSelectors.findIndex(selector => selector.checked);
++            if (checked >= 0)
++                index = checked;
++        } else if (target === Capture.Mode.SELECTION && !this._areaSelector.hasSelection) {
++            text = recording
++                ? _('Drag to choose what to record')
++                : _('Drag to select an area');
++        }
++        const monitor = Main.layoutManager.monitors[index];
++        if (!text || !monitor || !this.visible) {
++            this._hint.hide();
++            return;
++        }
++        this._hint.text = text;
++        this._hint.show();
++        const [, , width, height] = this._hint.get_preferred_size();
++        this._hint.set_position(Math.round(monitor.x + (monitor.width - width) / 2),
++            Math.round(monitor.y + monitor.height * 0.44 - height / 2));
++    }
++
++    _placeBar() {
++        const [, , width, height] = this._bar.get_preferred_size();
++        const place = Capture.placeShelfBar({width, height});
++        if (!place)
++            return;
++        this._barPlace = place;
++        this._bar.set_position(place.x, place.y);
++        if (this._menu.visible)
++            this._placeMenu();
++    }
++
++    // Tooltips and the Options menu open from the bar (see CaptureTooltip).
++    placeFromBar(control, size) {
++        if (!this._barPlace)
++            return null;
++        return Capture.placeFromShelfBar(control, this._bar, size,
++            this._barPlace.edge, this._barPlace.monitorIndex);
++    }
++
++    _moveBarFocus(step, wrap) {
++        const chain = this._bar.focusChain;
++        if (!chain.length)
++            return;
++        const index = chain.indexOf(global.stage.key_focus);
++        let next;
++        if (index < 0)
++            next = step > 0 ? 0 : chain.length - 1;
++        else if (wrap)
++            next = (index + step + chain.length) % chain.length;
++        else
++            next = Math.max(0, Math.min(chain.length - 1, index + step));
++        chain[next].grab_key_focus();
++    }
++
++    // ── Options menu ──
++
++    _menuGroups() {
++        const options = this._options;
++        const recording = Capture.isRecordingMode(this._captureMode);
++        const saveTo = options.saveTo;
++        const save = [
++            {key: 'save', value: 'pictures', text: recording ? _('Videos') : _('Pictures')},
++            {key: 'save', value: 'desktop', text: _('Desktop')},
++        ];
++        if (!recording)
++            save.push({key: 'save', value: 'clipboard', text: _('Clipboard')});
++        const other = options.otherLocation;
++        if (other && GLib.file_test(other, GLib.FileTest.IS_DIR))
++            save.push({key: 'save', value: 'other', text: GLib.path_get_basename(other)});
++        for (const item of save) {
++            item.checked = item.value === saveTo ||
++                (recording && saveTo === 'clipboard' && item.value === 'pictures');
++        }
++        save.push({key: 'save-other', text: _('Other Location…'), role: 'item', muted: true});
++
++        return [{
++            label: _('Save to'),
++            items: save,
++        }, {
++            label: _('Timer'),
++            items: Capture.TIMERS.map(seconds => ({
++                key: 'timer',
++                value: `${seconds}`,
++                text: seconds === 0 ? _('None') : _('%d seconds').format(seconds),
++                checked: options.timer === seconds,
++            })),
++        }, {
++            label: _('Options'),
++            items: [
++                {key: 'thumbnail', text: _('Show Floating Thumbnail'), role: 'check', checked: options.showThumbnail},
++                {key: 'remember', text: _('Remember Last Selection'), role: 'check', checked: options.rememberSelection},
++                {key: 'pointer', text: _('Show Pointer'), role: 'check', checked: options.showPointer},
++            ],
++        }];
++    }
++
++    _toggleMenu() {
++        if (this._menu.visible && !this._menuClosing)
++            this._closeMenu(true);
++        else
++            this._openMenu();
++    }
++
++    _openMenu() {
++        const fromKeyboard = global.stage.key_focus === this._bar.optionsButton;
++        this._menuClosing = false;
++        this._menu.build(this._menuGroups());
++        this._bar.tooltip.hideNow();
++        this._menu.show();
++        this._placeMenu();
++        this._menu.present(true, this._barPlace?.edge ?? 'bottom');
++        this._bar.setOptionsOpen(true);
++        if (fromKeyboard)
++            this._menu.focusFirst();
++    }
++
++    _placeMenu() {
++        const [, , width, height] = this._menu.get_preferred_size();
++        const place = this.placeFromBar(this._bar.optionsButton, {width, height});
++        if (place)
++            this._menu.set_position(place.x, place.y);
++    }
++
++    _closeMenu(returnFocus) {
++        if (!this._menu?.visible || this._menuClosing)
++            return;
++        this._menuClosing = true;
++        this._bar.setOptionsOpen(false);
++        this._menu.present(false, this._barPlace?.edge ?? 'bottom');
++        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 130, () => {
++            this._menuClosing = false;
++            return GLib.SOURCE_REMOVE;
++        });
++        if (returnFocus)
++            this._bar.optionsButton.grab_key_focus();
++    }
++
++    _setOption(key, value) {
++        const options = this._options;
++        const focusIndex = this._menu.items.indexOf(global.stage.key_focus);
++        switch (key) {
++        case 'save':
++            options.saveTo = value;
++            this._closeMenu(true);
++            break;
++        case 'save-other':
++            this._closeMenu(false);
++            this._chooseOtherLocation().catch(logError);
++            return;
++        case 'timer':
++            options.timer = Number(value);
++            this._bar.setTimer(options.timer);
++            this._closeMenu(true);
++            break;
++        case 'thumbnail':
++            options.showThumbnail = !options.showThumbnail;
++            break;
++        case 'remember':
++            options.rememberSelection = !options.rememberSelection;
++            break;
++        case 'pointer':
++            options.showPointer = !options.showPointer;
++            this._showPointerButton.checked = options.showPointer;
++            break;
++        }
++        console.log(`Luma Capture: option ${JSON.stringify({key, value,
++            saveTo: options.saveTo, timer: options.timer, thumbnail: options.showThumbnail,
++            remember: options.rememberSelection, pointer: options.showPointer})}`);
++        // Checkboxes leave the menu open, showing the new state.
++        if (this._menu.visible && !this._menuClosing) {
++            this._menu.build(this._menuGroups());
++            this._menu.items[focusIndex]?.grab_key_focus();
++        }
++    }
++
++    // Other location…: Capture steps aside for the folder chooser and comes
++    // back in the same mode with the folder chosen.
++    async _chooseOtherLocation() {
++        const mode = this._captureMode;
++        const uiMode = this._currentMode;
++        this.close(true);
++        const path = await Capture.chooseFolder();
++        if (path) {
++            this._options.otherLocation = path;
++            this._options.saveTo = 'other';
++        }
++        await this.open(uiMode, mode);
++    }
++
+     _setScreencastInProgress(inProgress) {
+         if (this._screencastInProgress === inProgress)
+             return;
+@@ -2215,6 +3130,23 @@ export const ScreenshotUI = GObject.registerClass({
+ 
+     vfunc_key_press_event(event) {
+         const symbol = event.get_key_symbol();
++
++        // Luma Capture: Tab and Shift+Tab move through the bar.
++        if (symbol === Clutter.KEY_Tab || symbol === Clutter.KEY_ISO_Left_Tab ||
++            symbol === Clutter.KEY_KP_Tab) {
++            const backwards = symbol === Clutter.KEY_ISO_Left_Tab ||
++                (event.get_state() & Clutter.ModifierType.SHIFT_MASK) !== 0;
++            this._moveBarFocus(backwards ? -1 : 1, true);
++            return Clutter.EVENT_STOP;
++        }
++
++        const barFocus = this._bar.focusChain.includes(global.stage.key_focus);
++        if (barFocus && (symbol === Clutter.KEY_Left || symbol === Clutter.KEY_Right)) {
++            const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
++            this._moveBarFocus((symbol === Clutter.KEY_Right) !== rtl ? 1 : -1, false);
++            return Clutter.EVENT_STOP;
++        }
++
+         if (symbol === Clutter.KEY_Return || symbol === Clutter.KEY_space ||
+             symbol === Clutter.KEY_KP_Enter || symbol === Clutter.KEY_ISO_Enter ||
+             ((event.get_state() & Clutter.ModifierType.CONTROL_MASK) &&
+@@ -2223,30 +3155,37 @@ export const ScreenshotUI = GObject.registerClass({
+             return Clutter.EVENT_STOP;
+         }
+ 
++        const recording = Capture.isRecordingMode(this._captureMode);
+         if (symbol === Clutter.KEY_s || symbol === Clutter.KEY_S) {
+-            this._selectionButton.checked = true;
++            this._setCaptureMode(recording ? Capture.Mode.RECORD_SELECTION : Capture.Mode.SELECTION,
++                {picked: true});
+             return Clutter.EVENT_STOP;
+         }
+ 
+         if (symbol === Clutter.KEY_c || symbol === Clutter.KEY_C) {
+-            this._screenButton.checked = true;
++            this._setCaptureMode(recording ? Capture.Mode.RECORD_SCREEN : Capture.Mode.SCREEN,
++                {picked: true});
+             return Clutter.EVENT_STOP;
+         }
+ 
+-        if (this._windowButton.reactive &&
++        if (this._windowsAvailable() &&
+             (symbol === Clutter.KEY_w || symbol === Clutter.KEY_W)) {
+-            this._windowButton.checked = true;
++            this._setCaptureMode(Capture.Mode.WINDOW, {picked: true});
+             return Clutter.EVENT_STOP;
+         }
+ 
+         if (symbol === Clutter.KEY_p || symbol === Clutter.KEY_P) {
+-            this._showPointerButton.checked = !this._showPointerButton.checked;
++            this._setOption('pointer');
+             return Clutter.EVENT_STOP;
+         }
+ 
+         if (this._castButton.reactive &&
+             (symbol === Clutter.KEY_v || symbol === Clutter.KEY_V)) {
+-            this._castButton.checked = !this._castButton.checked;
++            const target = Capture.modeTarget(this._captureMode);
++            this._setCaptureMode(recording
++                ? target === Capture.Mode.SCREEN ? Capture.Mode.SCREEN : Capture.Mode.SELECTION
++                : target === Capture.Mode.SCREEN ? Capture.Mode.RECORD_SCREEN : Capture.Mode.RECORD_SELECTION,
++            {picked: true});
+             return Clutter.EVENT_STOP;
+         }
+ 
+@@ -2287,11 +3226,15 @@ export const ScreenshotUI = GObject.registerClass({
+  * @param {GLib.Bytes} bytes - The PNG-encoded screenshot.
+  * @param {GdkPixbuf.Pixbuf} pixbuf - The Pixbuf with the screenshot.
+  */
+-function _storeScreenshot(bytes, pixbuf) {
++function _storeScreenshot(bytes, pixbuf, store = null) {
+     // Store to the clipboard first in case storing to file fails.
+     const clipboard = St.Clipboard.get_default();
+     clipboard.set_content(St.ClipboardType.CLIPBOARD, 'image/png', bytes);
+ 
++    // Luma Capture chooses where the file goes and shows its own thumbnail.
++    if (store?.destination)
++        return _storeCapture(bytes, pixbuf, store);
++
+     const time = GLib.DateTime.new_now_local();
+ 
+     // This will be set in the first save to disk branch and then accessed
+@@ -2446,6 +3389,71 @@ function _storeScreenshot(bytes, pixbuf) {
+     return file;
+ }
+ 
++/**
++ * Luma Capture: saves a screenshot where Save to points ("Screenshot
++ * 2026-09-16 at 10.22.03.png"), or only to the clipboard, without a
++ * notification. The image is already on the clipboard.
++ *
++ * @param {GLib.Bytes} bytes - The PNG-encoded screenshot.
++ * @param {GdkPixbuf.Pixbuf} pixbuf - The Pixbuf with the screenshot.
++ * @param {object} store - destination, otherLocation; pixbuf is set on it.
++ * @returns {Gio.File|null} the file, or null for the clipboard
++ */
++function _storeCapture(bytes, pixbuf, store) {
++    store.pixbuf = pixbuf;
++    const lockdownSettings =
++        new Gio.Settings({schema_id: 'org.gnome.desktop.lockdown'});
++    if (lockdownSettings.get_boolean('disable-save-to-disk')) {
++        store.destination = 'clipboard';
++        return null;
++    }
++    const directory = Capture.destinationDirectory(store.destination, 'screenshot',
++        store.otherLocation);
++    if (!directory)
++        return null;
++
++    const dir = Gio.File.new_for_path(directory);
++    try {
++        dir.make_directory_with_parents(null);
++    } catch (e) {
++        if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
++            throw e;
++    }
++
++    const name = Capture.fileStem('screenshot');
++    let file;
++    for (let i = 0; ; i++) {
++        file = dir.get_child(i ? `${name} (${i + 1}).png` : `${name}.png`);
++        try {
++            const stream = file.create(Gio.FileCreateFlags.NONE, null);
++            stream.write_bytes(bytes, null);
++            stream.close(null);
++            break;
++        } catch (e) {
++            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
++                throw e;
++        }
++    }
++
++    const recentFile =
++        GLib.build_filenamev([GLib.get_user_data_dir(), 'recently-used.xbel']);
++    const bookmarks = new GLib.BookmarkFile();
++    try {
++        try {
++            bookmarks.load_from_file(recentFile);
++        } catch (e) {
++            if (!e.matches(GLib.BookmarkFileError, GLib.BookmarkFileError.FILE_NOT_FOUND))
++                throw e;
++        }
++        bookmarks.add_application(file.get_uri(), GLib.get_prgname(), 'gio open %u');
++        bookmarks.to_file(recentFile);
++    } catch (e) {
++        log(`Could not save recent file ${file.get_uri()}: ${e.message}`);
++    }
++
++    return file;
++}
++
+ /**
+  * Captures a screenshot from a texture, given a region, scale and optional
+  * cursor data.
+@@ -2459,7 +3467,7 @@ function _storeScreenshot(bytes, pixbuf) {
+  * @param {number} cursor.y - The cursor y coordinate.
+  * @param {number} cursor.scale - The cursor texture scale.
+  */
+-export async function captureScreenshot(texture, geometry, scale, cursor) {
++export async function captureScreenshot(texture, geometry, scale, cursor, store = null) {
+     const stream = Gio.MemoryOutputStream.new_resizable();
+     const [x, y, w, h] = geometry ?? [0, 0, -1, -1];
+     if (cursor === null)
+@@ -2477,7 +3485,7 @@ export async function captureScreenshot(texture, geometry, scale, cursor) {
+     );
+ 
+     stream.close(null);
+-    return _storeScreenshot(stream.steal_as_bytes(), pixbuf);
++    return _storeScreenshot(stream.steal_as_bytes(), pixbuf, store);
+ }
+ 
+ /**
+@@ -2489,6 +3497,15 @@ export function showScreenshotUI() {
+     });
+ }
+ 
++/**
++ * Shows the screenshot UI waiting for a window to be picked.
++ */
++export function showScreenshotUIWindow() {
++    Main.screenshotUI.openWindow().catch(err => {
++        logError(err, 'Error opening the screenshot UI');
++    });
++}
++
+ /**
+  * Shows the screenshot UI in its Selection mode.
+  */
+diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
+index 3bcdcbb..72e3ae5 100644
+--- a/js/ui/status/remoteAccess.js
++++ b/js/ui/status/remoteAccess.js
+@@ -106,7 +106,9 @@ export const ScreenRecordingIndicator = GObject.registerClass({
+     }
+ 
+     _onScreencastInProgressChanged() {
+-        if (Main.screenshotUI.screencast_in_progress) {
++        // Luma Capture: a Capture recording shows its own pill where the bar
++        // was, with the time and Stop, so this indicator never appears.
++        if (Main.screenshotUI.screencast_in_progress && !Main.screenshotUI.hasRecordingPill) {
+             this.show();
+ 
+             this._secondsPassed = 0;
+@@ -122,7 +124,8 @@ export const ScreenRecordingIndicator = GObject.registerClass({
+         } else {
+             this.hide();
+ 
+-            GLib.source_remove(this._timeoutId);
++            if (this._timeoutId)
++                GLib.source_remove(this._timeoutId);
+             delete this._timeoutId;
+ 
+             delete this._secondsPassed;
+-- 
+2.55.0
+

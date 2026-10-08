@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Filer v71 <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 12:26:21 -0500
+Subject: [PATCH 140/142] Filer v71: on a phone, tapping a folder opens it
+
+Tapping a file selects it; a folder opens on release, as v71 does.
+---
+ src/nautilus-list-base.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/nautilus-list-base.c b/src/nautilus-list-base.c
+index 51f89ac..2274517 100644
+--- a/src/nautilus-list-base.c
++++ b/src/nautilus-list-base.c
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: GPL-3.0-or-later
+  */
+ 
++#include <luma-ui.h>
+ #include "nautilus-list-base.h"
+ #include "nautilus-list-base-private.h"
+ 
+@@ -597,6 +598,15 @@ on_item_click_pressed (GtkGestureClick *gesture,
+                                  button == GDK_BUTTON_PRIMARY &&
+                                  n_press == 1 &&
+                                  !selection_mode);
++    /* Filer v71 on a phone: tapping a folder opens it, tapping a file
++     * selects it. */
++    if (!priv->activate_on_release && button == GDK_BUTTON_PRIMARY && n_press == 1 &&
++        !selection_mode && luma_ui_get_tier (GTK_WIDGET (self)) == LUMA_TIER_PHONE)
++    {
++        g_autoptr (NautilusViewItem) item = nautilus_view_cell_get_item (cell);
++        priv->activate_on_release = item != NULL &&
++                                    nautilus_file_is_directory (nautilus_view_item_get_file (item));
++    }
+ 
+     rubberband_set_state (self, FALSE);
+ 
+-- 
+2.54.0 (Apple Git-157)
+

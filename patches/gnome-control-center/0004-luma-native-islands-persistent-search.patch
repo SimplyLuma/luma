@@ -1,0 +1,235 @@
+--- a/shell/cc-window.blp
++++ b/shell/cc-window.blp
+@@ -2,71 +2,64 @@
+ using Adw 1;
+ 
+ template $CcWindow: Adw.ApplicationWindow {
+-  styles ["luma-preferences"]
+-
++  styles ["luma-preferences", "luma-app-window", "luma-sibling-islands"]
+   default-width: 980;
+   default-height: 640;
+ 
+   Adw.Breakpoint break_point {
+     condition ("max-width: 550sp")
+-
+-    setters {
+-      split_view.collapsed: true;
+-    }
++    setters { split_view.collapsed: true; }
+   }
+ 
+-  content: Adw.NavigationSplitView split_view {
+-    min-sidebar-width: 178;
+-    max-sidebar-width: 178;
+-    sidebar-width-unit: sp;
++  content: Adw.ToolbarView {
++    [top]
++    Adw.HeaderBar titlebar {
++      styles ["luma-titlebar", "luma-no-automatic-identity"]
++      show-start-title-buttons: false;
++      decoration-layout: ":minimize,maximize,close";
++      title-widget: Label {
++        label: _("Settings");
++        styles ["luma-window-title"]
++      };
++      [start]
++      MenuButton {
++        icon-name: "open-menu-symbolic";
++        menu-model: primary_menu;
++        primary: true;
++        tooltip-text: _("Main Menu");
++      }
++    }
+ 
+-    notify::collapsed => $on_split_view_collapsed_changed_cb(template);
++    content: Adw.NavigationSplitView split_view {
++      styles ["luma-island-split", "luma-window-body"]
++      min-sidebar-width: 178;
++      max-sidebar-width: 178;
++      sidebar-width-unit: sp;
++      notify::collapsed => $on_split_view_collapsed_changed_cb(template);
+ 
+-    sidebar: Adw.NavigationPage {
+-      title: _("Settings");
+-
+-      child: Adw.ToolbarView {
+-        [top]
+-        Adw.HeaderBar {
+-          ToggleButton search_button {
+-            icon-name: "edit-find-symbolic";
+-
+-            /* Translators: this is a verb. */
+-            tooltip-text: _("Search");
+-          }
+-
+-          [end]
+-          MenuButton {
+-            icon-name: "open-menu-symbolic";
+-            menu-model: primary_menu;
+-            primary: true;
+-            tooltip-text: _("Main Menu");
+-          }
+-        }
+-
+-        [top]
+-        SearchBar search_bar {
+-          search-mode-enabled: bind search_button.active bidirectional;
+-
++      sidebar: Adw.NavigationPage {
++        title: _("Settings");
++        styles ["luma-island"]
++        overflow: hidden;
++        child: Adw.ToolbarView {
++          [top]
+           SearchEntry search_entry {
++            styles ["luma-sidebar-search"]
+             hexpand: true;
+             placeholder-text: _("Search settings");
+             activate => $search_entry_activate_cb(template);
+-
++            stop-search => $search_entry_stop_search_cb(template);
+             EventControllerKey {
+               key-pressed => $search_entry_key_pressed_cb(template);
+             }
+           }
+-        }
+-
+-        content: ScrolledWindow {
+-          hscrollbar-policy: never;
+-
+-          $CcPanelList panel_list {
+-            search-mode: bind search_bar.search-mode-enabled no-sync-create bidirectional;
+-            search-query: bind search_entry.text no-sync-create;
+-            show-panel => $show_panel_cb(template);
+-          }
++          content: ScrolledWindow {
++            hscrollbar-policy: never;
++            $CcPanelList panel_list {
++              search-query: bind search_entry.text no-sync-create;
++              show-panel => $show_panel_cb(template);
++            }
++          };
+         };
+       };
+     };
+--- a/shell/cc-window.c
++++ b/shell/cc-window.c
+@@ -55,7 +55,7 @@
+   AdwDialog         *development_warning_dialog;
+   AdwNavigationSplitView *split_view;
+   CcPanelList       *panel_list;
+-  GtkSearchBar      *search_bar;
++  GtkWidget         *titlebar;
+   GtkSearchEntry    *search_entry;
+ 
+   GtkWidget  *old_panel;
+@@ -143,6 +143,10 @@
+   self->current_panel = GTK_WIDGET (cc_panel_loader_load_by_name (CC_SHELL (self), id, name, parameters));
+   cc_shell_set_active_panel (CC_SHELL (self), CC_PANEL (self->current_panel));
+ 
++  gtk_widget_add_css_class (self->current_panel, "luma-island");
++  gtk_widget_set_overflow (self->current_panel, GTK_OVERFLOW_HIDDEN);
++  gtk_widget_set_margin_start (self->current_panel,
++                               adw_navigation_split_view_get_collapsed (self->split_view) ? 0 : 9);
+   adw_navigation_split_view_set_content (self->split_view, ADW_NAVIGATION_PAGE (self->current_panel));
+ 
+   /* Finish profiling */
+@@ -467,6 +471,9 @@
+ 
+   collapsed = adw_navigation_split_view_get_collapsed (self->split_view);
+ 
++  if (self->current_panel)
++    gtk_widget_set_margin_start (self->current_panel, collapsed ? 0 : 9);
++
+   selection_mode = collapsed ? GTK_SELECTION_NONE : GTK_SELECTION_SINGLE;
+   cc_panel_list_set_selection_mode (self->panel_list, selection_mode);
+ 
+@@ -508,7 +515,15 @@
+ 
+   changed = cc_panel_list_activate (self->panel_list);
+ 
+-  gtk_search_bar_set_search_mode (self->search_bar, !changed);
++  if (changed)
++    gtk_editable_set_text (GTK_EDITABLE (self->search_entry), "");
++}
++
++static void
++search_entry_stop_search_cb (CcWindow *self)
++{
++  gtk_editable_set_text (GTK_EDITABLE (self->search_entry), "");
++  gtk_widget_grab_focus (GTK_WIDGET (self->panel_list));
+ }
+ 
+ static gboolean
+@@ -537,7 +552,6 @@
+   if (view != CC_PANEL_LIST_MAIN && view != CC_PANEL_LIST_SEARCH)
+     return GDK_EVENT_PROPAGATE;
+ 
+-  gtk_search_bar_set_search_mode (self->search_bar, TRUE);
+   gtk_widget_grab_focus (GTK_WIDGET (self->search_entry));
+ 
+   return GDK_EVENT_STOP;
+@@ -794,12 +808,13 @@
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, development_warning_dialog);
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, split_view);
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, panel_list);
+-  gtk_widget_class_bind_template_child (widget_class, CcWindow, search_bar);
++  gtk_widget_class_bind_template_child (widget_class, CcWindow, titlebar);
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, search_entry);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_split_view_collapsed_changed_cb);
+   gtk_widget_class_bind_template_callback (widget_class, on_development_warning_dialog_responded_cb);
+   gtk_widget_class_bind_template_callback (widget_class, search_entry_activate_cb);
++  gtk_widget_class_bind_template_callback (widget_class, search_entry_stop_search_cb);
+   gtk_widget_class_bind_template_callback (widget_class, show_panel_cb);
+   gtk_widget_class_bind_template_callback (widget_class, search_entry_key_pressed_cb);
+ 
+@@ -827,7 +842,8 @@
+   if (in_flatpak_sandbox ())
+     gtk_widget_add_css_class (GTK_WIDGET (self), "devel");
+ 
+-  gtk_search_bar_set_key_capture_widget (self->search_bar, GTK_WIDGET (self));
++  g_object_set_data (G_OBJECT (self), "luma-window-title-row", self->titlebar);
++  gtk_search_entry_set_key_capture_widget (self->search_entry, GTK_WIDGET (self));
+ }
+ 
+ CcWindow *
+@@ -850,7 +866,6 @@
+ cc_window_set_search_item (CcWindow   *center,
+                            const char *search)
+ {
+-  gtk_search_bar_set_search_mode (center->search_bar, TRUE);
+   gtk_editable_set_text (GTK_EDITABLE (center->search_entry), search);
+   gtk_editable_set_position (GTK_EDITABLE (center->search_entry), -1);
+ }
+--- a/shell/cc-panel-list.blp
++++ b/shell/cc-panel-list.blp
+@@ -19,7 +19,7 @@
+ 
+         styles [
+           "navigation-sidebar",
+-          "luma-preferences-navigation",
++          "luma-preferences-navigation", "luma-navigation-sidebar",
+         ]
+       };
+     }
+@@ -33,7 +33,7 @@
+ 
+         styles [
+           "navigation-sidebar",
+-          "luma-preferences-navigation",
++          "luma-preferences-navigation", "luma-navigation-sidebar",
+         ]
+ 
+         [placeholder]
+--- a/shell/cc-panel-list.c
++++ b/shell/cc-panel-list.c
+@@ -502,6 +502,7 @@
+ 
+       separator = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+       gtk_widget_set_hexpand (separator, TRUE);
++      gtk_widget_add_css_class (separator, "luma-navigation-divider");
+ 
+       gtk_list_box_row_set_header (row, separator);
+     }

@@ -1,0 +1,63 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: keep every dock icon rounded
+
+An icon rebuilds its image actor when its size or style changes, which
+dropped the rounded mask without the dock changing width, so some icons
+were left square. The dock now follows each icon's image replacement.
+
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -887,22 +887,39 @@
+                 delegate.label._lumaSurfaceBinding = SurfaceMaterials.bindSurface(
+                     delegate.label, {backdrop: false, cornerRadii: 999});
+             }
+-            const icon = delegate?.icon?.icon;
+-            if (!icon || icon.get_effect('luma-icon-mask'))
++            const baseIcon = delegate?.icon;
++            if (!baseIcon)
+                 continue;
+-            try {
+-                const effect = new LumaIconMask();
+-                effect.set_uniform_float(
+-                    effect.get_uniform_location('radius'), 1,
+-                    [ICON_CORNER_RATIO]);
+-                icon.add_effect_with_name('luma-icon-mask', effect);
+-            } catch (error) {
+-                // A display without a usable shader path must still get a
+-                // dock. The tile behind the icon remains, so the result is a
+-                // square icon on a rounded tile rather than no dock at all.
+-                logError(error, 'Luma Shelf: icon mask unavailable');
+-                return;
++            // An icon replaces its image actor whenever its size or style
++            // changes (BaseIcon._createIconTexture), which drops the mask
++            // without the dock changing width. Follow the replacement so no
++            // icon is ever left square.
++            if (baseIcon._iconBin && !baseIcon._lumaMaskFollowed) {
++                baseIcon._lumaMaskFollowed = true;
++                baseIcon._iconBin.connectObject('notify::child',
++                    () => this._maskIcon(baseIcon.icon), this);
+             }
++            if (!this._maskIcon(baseIcon.icon))
++                return;
++        }
++    }
++
++    _maskIcon(icon) {
++        if (!icon || icon.get_effect('luma-icon-mask'))
++            return true;
++        try {
++            const effect = new LumaIconMask();
++            effect.set_uniform_float(
++                effect.get_uniform_location('radius'), 1,
++                [ICON_CORNER_RATIO]);
++            icon.add_effect_with_name('luma-icon-mask', effect);
++            return true;
++        } catch (error) {
++            // A display without a usable shader path must still get a
++            // dock. The tile behind the icon remains, so the result is a
++            // square icon on a rounded tile rather than no dock at all.
++            logError(error, 'Luma Shelf: icon mask unavailable');
++            return false;
+         }
+     }
+ 

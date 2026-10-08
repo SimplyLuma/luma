@@ -1,0 +1,102 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] hostname: device name sets a lower-case slug as static hostname
+
+Settings › About › Device Name sets hostnamed's pretty hostname to what was
+typed and the static hostname to its slug ("Nick’s ThinkPad" ->
+"nicks-thinkpad"), as upstream does. Luma's device names follow one rule
+(installer, first login and Settings): the slug is lower-case a-z, 0-9 and
+'-', at most 63 bytes. Upstream kept a name that is already a valid host name
+in its own case ("ThinkPad" stayed "ThinkPad"), sent names longer than 63
+bytes that hostnamed refuses (the pretty name changed, the static name did
+not), and set "localhost" for a name with nothing to transliterate. The static
+name is now lower-cased and cut at 63 bytes without a trailing '-' or '.', and
+a name with no host name form keeps the current static hostname.
+
+The hostname test gains the "Nick’s ThinkPad" case.
+
+---
+diff --git a/panels/common/cc-hostname.c b/panels/common/cc-hostname.c
+index f4aecd3..e6a0e08 100644
+--- a/panels/common/cc-hostname.c
++++ b/panels/common/cc-hostname.c
+@@ -29,6 +29,8 @@
+ # include <config.h>
+ #endif
+ 
++#include <string.h>
++
+ #include "cc-hostname.h"
+ #include "hostname-helper.h"
+ #include "shell/cc-object-storage.h"
+@@ -170,6 +172,45 @@ cc_hostname_get_static_hostname (CcHostname *self)
+   return g_steal_pointer (&str);
+ }
+ 
++/* Luma: the static hostname is the device name's slug, lower-case
++ * a-z, 0-9, '-' (and '.' for a name typed as a domain), at most 63 bytes, so
++ * "Nick’s ThinkPad" becomes "nicks-thinkpad" and a long name does not make
++ * hostnamed refuse the static name while the pretty name changes. A name with
++ * nothing to transliterate ("レナート") keeps the current static hostname
++ * rather than every such machine answering as "localhost". */
++static gchar *
++luma_static_hostname_for_device_name (const gchar *hostname)
++{
++  g_autofree gchar *slug = pretty_hostname_to_static (hostname, FALSE);
++  gsize len;
++
++  if (slug == NULL)
++    return NULL;
++
++  if (g_strcmp0 (slug, "localhost") == 0)
++    {
++      g_autofree gchar *typed = g_strstrip (g_strdup (hostname));
++
++      if (g_ascii_strcasecmp (typed, "localhost") != 0)
++        return NULL;
++    }
++
++  len = strlen (slug);
++  for (gsize i = 0; i < len; i++)
++    slug[i] = g_ascii_tolower (slug[i]);
++
++  if (len > 63)
++    slug[63] = '\0';
++  len = strlen (slug);
++  while (len > 0 && (slug[len - 1] == '-' || slug[len - 1] == '.'))
++    slug[--len] = '\0';
++
++  if (len == 0)
++    return NULL;
++
++  return g_steal_pointer (&slug);
++}
++
+ void
+ cc_hostname_set_hostname (CcHostname  *self,
+                           const gchar *hostname)
+@@ -193,8 +234,12 @@ cc_hostname_set_hostname (CcHostname  *self,
+     g_warning ("Could not set PrettyHostname: %s", pretty_error->message);
+ 
+   /* Set the static hostname */
+-  static_hostname = pretty_hostname_to_static (hostname, FALSE);
+-  g_assert (hostname);
++  static_hostname = luma_static_hostname_for_device_name (hostname);
++  if (static_hostname == NULL)
++    {
++      g_message ("Device name '%s' has no host name form; keeping the static hostname", hostname);
++      return;
++    }
+ 
+   g_debug ("Setting StaticHostname to '%s'", static_hostname);  
+   static_result = g_dbus_proxy_call_sync (self->proxy,
+diff --git a/tests/common/hostnames-test.txt b/tests/common/hostnames-test.txt
+index 17d4758..2673a48 100644
+--- a/tests/common/hostnames-test.txt
++++ b/tests/common/hostnames-test.txt
+@@ -1,5 +1,6 @@
+ # Pretty hostname, tab, display hostname, tab, real hostname
+ Lennart's PC	Lennarts-PC	lennarts-pc
++Nick’s ThinkPad	Nicks-ThinkPad	nicks-thinkpad
+ Müllers Computer	Mullers-Computer	mullers-computer
+ Voran!	Voran	voran
+ Es war einmal ein Männlein	Es-war-einmal-ein-Mannlein	es-war-einmal-ein-mannlein

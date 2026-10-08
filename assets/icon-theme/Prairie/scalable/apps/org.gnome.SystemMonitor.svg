@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".08" y1="0" x2=".92" y2="1"><stop stop-color="#6f91a8"/><stop offset=".5" stop-color="#4b6d83"/><stop offset="1" stop-color="#2d4355"/></linearGradient>
+    <radialGradient id="bloom" cx=".16" cy=".02" r=".82"><stop stop-color="#fff" stop-opacity=".24"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#171713" flood-opacity=".22"/></filter>
+
+  <clipPath id="lumaTile"><rect width="1024" height="1024" rx="256.0" ry="256.0"/></clipPath>
+  </defs>
+  <g clip-path="url(#lumaTile)">
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+  <path d="M-48 512h360l88-236 138 472 104-428 82 192h348" fill="none" stroke="#fff" stroke-width="42" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)"/>
+</g>
+</svg>

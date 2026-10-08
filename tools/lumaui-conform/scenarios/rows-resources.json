@@ -1,0 +1,51 @@
+{
+  "app": "rows-resources",
+  "title": "SB1 sidebar rows, resources variant (vs Monitor's sidebar)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=monitor",
+    "window": "#mn-side",
+    "exclude": [
+      "#mn-side .mnsp"
+    ],
+    "exclude_note": "The sparklines are DT1's Sparkline (the data family), not a rows part.",
+    "freeze_note": "Monitor's values are live; the capture stops its timers and pins them to the sample values the GTK surface shows.",
+    "accent_note": "The Studio tints its light mode with the wallpaper's hue (168); the kit's tokens are the default accent (258), so the spec is pinned to it."
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "monitor-side",
+      "LUMAUI_ROWS_PHOTOS": "{run}/fixtures/contacts-v70"
+    }
+  },
+  "states": [
+    {
+      "name": "resources",
+      "about": "Monitor's resources, CPU chosen (v70's opening state)",
+      "spec": [
+        {
+          "eval": "document.body.style.setProperty('--acc', '258')"
+        },
+        {
+          "eval": "for (let i = 1; i < 100000; i++) { clearInterval(i); clearTimeout(i); } [['cpu','54%'],['mem','7.9 of 16 GB'],['disk','182.5 MB/s'],['net','↓ 5.8 MB/s'],['en','74% · 4 h left']].forEach(([k,v]) => { const e = document.querySelector(`[data-mnsv=\"${k}\"]`); if (e) e.textContent = v; })"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "resources",
+      "spec": "#mn-side"
+    }
+  ],
+  "pairs_note": "No structure pair: the surface fills its window, so the window's own frame paint would be read as the sidebar's."
+}

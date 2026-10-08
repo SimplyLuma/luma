@@ -1,0 +1,72 @@
+{
+  "app": "disks",
+  "title": "Disks",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=disks",
+    "window": "#w-disks",
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "module": "luma_disks",
+    "pythonpath": ["src/luma-disks", "src/luma-platform/appkit"],
+    "fixtures": ["tests/fixtures/disks-v70.json", "tests/fixtures/disks-v70-data"],
+    "env": {"LUMA_DISKS_FIXTURE": "{run}/fixtures/disks-v70.json",
+            "XDG_DATA_HOME": "{run}/fixtures/disks-v70-data"}
+  },
+  "states": [
+    {"name": "system", "about": "Luma SSD and Luma volume on opening", "spec": [], "gtk": []},
+    {"name": "archive", "about": "Archive HD with a health warning", "spec": [{"click": "[data-dskd=\"ext\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0"}}]},
+    {"name": "vault", "about": "Locked encrypted Vault volume", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskv=\"1\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:1"}}]},
+    {"name": "unlock", "about": "Vault passphrase sheet", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskv=\"1\"]"}, {"click": "[data-dsksheet=\"unlock\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:1", "LUMA_DISKS_VIEW": "unlock"}}]},
+    {"name": "usb", "about": "USB stick without health reporting", "spec": [{"click": "[data-dskd=\"usb\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "usb", "LUMA_DISKS_SELECTED_VOLUME": "usb:0"}}]},
+    {"name": "free", "about": "Free space on Archive HD", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskv=\"3\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:free"}}]},
+    {"name": "create", "about": "Create a volume in free space", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskv=\"3\"]"}, {"click": "[data-dsksheet=\"create\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:free", "LUMA_DISKS_VIEW": "create"}}]},
+    {"name": "attach", "about": "Read-only attached disk image", "spec": [{"click": "[data-dskattach]"}],
+     "gtk": [{"env": {"LUMA_DISKS_VIEW": "attach"}}]},
+    {"name": "more", "about": "Archive volume actions", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskvmenu]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "more"}}]},
+    {"name": "format", "about": "Archive format choices", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dsksheet=\"format\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "format"}}]},
+    {"name": "disk-format", "about": "Whole Archive HD format choices", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskvmenu]"}, {"click": "[data-dsksheet=\"disk\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "format-disk"}}]},
+    {"name": "delete", "about": "Delete Archive volume confirmation", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskvmenu]"}, {"click": "[data-dskdel]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "delete"}}]},
+    {"name": "health", "about": "SMART details", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dsksheet=\"health\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "health"}}]},
+    {"name": "speed", "about": "Read speed test before starting", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dsksheet=\"bench\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "speed"}}]},
+    {"name": "rename", "about": "Rename Archive", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskvmenu]"}, {"click": "[data-dsksheet=\"rename\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "rename"}}]},
+    {"name": "resize", "about": "Resize Archive", "spec": [{"click": "[data-dskd=\"ext\"]"}, {"click": "[data-dskvmenu]"}, {"click": "[data-dsksheet=\"resize\"]"}],
+     "gtk": [{"env": {"LUMA_DISKS_SELECTED_DRIVE": "ext", "LUMA_DISKS_SELECTED_VOLUME": "ext:0", "LUMA_DISKS_VIEW": "resize"}}]}
+  ],
+  "phone_states": ["system", "archive", "usb", "format"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-disks > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#dsk-top"},
+    {"name": "sidebar", "spec": "#dsk-side"},
+    {"name": "header", "spec": "#dsk-body .dskhd"},
+    {"name": "storage map", "spec": "#dsk-body .dskmap"},
+    {"name": "volume table", "spec": "#dsk-body .dskparts"},
+    {"name": "volume card", "spec": "#dsk-body .dskcard:first-of-type"},
+    {"name": "health and speed", "spec": "#dsk-body .dsktwo"},
+    {"name": "action center", "spec": "#dsk-bar"},
+    {"name": "sheet", "spec": "#dsk-sheet"},
+    {"name": "main", "spec": "#dsk-main"}
+  ],
+  "pairs": [
+    {"spec": "#dsk-side", "gtk": "dsk-sidebar", "name": "sidebar"},
+    {"spec": "#dsk-main", "gtk": "dsk-island", "name": "island"},
+    {"spec": "#dsk-body .dskhd", "gtk": "dsk-header", "name": "header"},
+    {"spec": "#dsk-body .dskmap", "gtk": "dsk-map", "name": "storage map"},
+    {"spec": "#dsk-body .dskparts", "gtk": "dsk-parts", "name": "volume table"},
+    {"spec": "#dsk-bar", "gtk": "dsk-actions", "name": "action center"}
+  ],
+  "app_icon": {"spec_src": "disks.svg", "gtk": "^org\\.projectluma\\."}
+}

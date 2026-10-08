@@ -1,0 +1,384 @@
+From 8bf4ef53e7303b384a593b881768b9f5a3af21cd Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:42:55 +0000
+Subject: [PATCH] Filer: show every ancestor in Columns view
+
+---
+ src/nautilus-column-view.c                    | 214 +++++++++++++++++-
+ src/resources/style.css                       |   2 +-
+ .../display/test-luma-column-header-menu.c    |  45 +++-
+ 3 files changed, 257 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-column-view.c b/src/nautilus-column-view.c
+index 3f97d6f..ecf1985 100644
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -23,11 +23,27 @@
+ #include <adwaita.h>
+ #include <glib/gi18n.h>
+ 
++typedef struct _AncestorColumn
++{
++    NautilusColumnView *owner;
++    GFile *next_location;
++    NautilusDirectory *directory;
++    GListStore *store;
++    GtkSingleSelection *selection;
++    GtkListView *view;
++    GtkWidget *island;
++    GtkLabel *title;
++    GtkLabel *count;
++    guint update_id;
++} AncestorColumn;
++
+ struct _NautilusColumnView
+ {
+     NautilusListBase parent_instance;
+ 
+     GtkWidget *workspace;
++    GtkWidget *base_scroller;
++    GPtrArray *ancestors;
+     GtkWidget *parent_island;
+     GtkWidget *current_island;
+     GtkListView *parent_view;
+@@ -244,10 +260,26 @@ static void
+ update_adaptive_presentation (NautilusColumnView *self)
+ {
+     int width = gtk_widget_get_width (GTK_WIDGET (self));
++    gboolean phone = width > 0 && width < 640;
++    guint count = self->ancestors != NULL ? self->ancestors->len : 0;
++    guint available = width > 0 ? MAX (1, width / 208) : 1;
++    guint visible = MIN (count + (self->parent_directory != NULL ? 2 : 1), available);
++    int column_width = !phone && width > 0 ? MIN (280, width / (int) visible) : -1;
+ 
+     gtk_widget_set_visible (self->parent_island,
+                             self->parent_directory != NULL &&
+-                            (width <= 0 || width >= 640));
++                            !phone);
++    if (self->ancestors != NULL)
++    {
++        for (guint i = 0; i < self->ancestors->len; i++)
++        {
++            AncestorColumn *column = g_ptr_array_index (self->ancestors, i);
++            gtk_widget_set_visible (column->island, !phone);
++            gtk_widget_set_size_request (column->island, column_width, -1);
++        }
++    }
++    gtk_widget_set_size_request (self->parent_island, column_width, -1);
++    gtk_widget_set_size_request (self->current_island, phone ? width : column_width, -1);
+ }
+ 
+ static void
+@@ -637,6 +669,177 @@ create_list_island (GtkWidget *header,
+     return island;
+ }
+ 
++static void
++rebuild_ancestor_store (AncestorColumn *column)
++{
++    g_autolist (NautilusFile) files = NULL;
++    g_autoptr (GPtrArray) items = g_ptr_array_new ();
++    guint selected = GTK_INVALID_LIST_POSITION;
++    guint position = 0;
++
++    files = nautilus_directory_get_file_list (column->directory);
++    files = g_list_sort (files, parent_file_compare);
++    for (GList *l = files; l != NULL; l = l->next, position++)
++    {
++        NautilusFile *file = l->data;
++        g_autoptr (GFile) location = nautilus_file_get_location (file);
++
++        g_ptr_array_add (items, file);
++        if (location != NULL && g_file_equal (location, column->next_location))
++        {
++            selected = position;
++        }
++    }
++    g_list_store_splice (column->store, 0,
++                         g_list_model_get_n_items (G_LIST_MODEL (column->store)),
++                         items->pdata, items->len);
++    gtk_single_selection_set_selected (column->selection, selected);
++    g_autofree char *count = g_strdup_printf ("%u", position);
++    gtk_label_set_text (column->count, count);
++}
++
++static gboolean
++flush_ancestor_update (gpointer data)
++{
++    AncestorColumn *column = data;
++    column->update_id = 0;
++    rebuild_ancestor_store (column);
++    return G_SOURCE_REMOVE;
++}
++
++static void
++queue_ancestor_update (AncestorColumn *column)
++{
++    if (column->update_id == 0)
++    {
++        column->update_id = g_idle_add (flush_ancestor_update, column);
++    }
++}
++
++static void
++ancestor_directory_ready (NautilusDirectory *directory,
++                          GList             *files,
++                          gpointer           user_data)
++{
++    queue_ancestor_update (user_data);
++}
++
++static void
++on_ancestor_item_activated (GtkListView   *view,
++                            guint          position,
++                            AncestorColumn *column)
++{
++    g_autoptr (NautilusFile) file = g_list_model_get_item (
++        G_LIST_MODEL (column->selection), position);
++    g_autoptr (GFile) location = file != NULL ? nautilus_file_get_location (file) : NULL;
++    g_autofree char *uri = location != NULL ? g_file_get_uri (location) : NULL;
++
++    if (uri != NULL)
++    {
++        gtk_widget_activate_action (GTK_WIDGET (column->owner), "slot.open-location", "s", uri);
++    }
++}
++
++static void
++free_ancestor_column (gpointer data)
++{
++    AncestorColumn *column = data;
++
++    g_clear_handle_id (&column->update_id, g_source_remove);
++    nautilus_directory_file_monitor_remove (column->directory, column);
++    g_signal_handlers_disconnect_by_data (column->directory, column);
++    gtk_box_remove (GTK_BOX (column->owner->workspace), column->island);
++    g_clear_object (&column->directory);
++    g_clear_object (&column->next_location);
++    g_clear_object (&column->selection);
++    g_clear_object (&column->store);
++    g_free (column);
++}
++
++static gboolean
++scroll_to_active_column (gpointer data)
++{
++    NautilusColumnView *self = data;
++    GtkAdjustment *adjustment = gtk_scrolled_window_get_hadjustment (
++        GTK_SCROLLED_WINDOW (self->base_scroller));
++
++    gtk_adjustment_set_value (adjustment,
++                              gtk_adjustment_get_upper (adjustment) -
++                              gtk_adjustment_get_page_size (adjustment));
++    return G_SOURCE_REMOVE;
++}
++
++static void
++rebuild_ancestors (NautilusColumnView *self, GFile *parent_location)
++{
++    g_autoptr (GPtrArray) chain = g_ptr_array_new_with_free_func (g_object_unref);
++    g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
++    GFile *walk = parent_location != NULL ? g_file_get_parent (parent_location) : NULL;
++    GtkWidget *previous = NULL;
++
++    g_ptr_array_set_size (self->ancestors, 0);
++    while (walk != NULL && chain->len < 8)
++    {
++        GFile *next;
++
++        g_ptr_array_add (chain, g_object_ref (walk));
++        if (g_file_equal (walk, home))
++        {
++            break;
++        }
++        next = g_file_get_parent (walk);
++        g_object_unref (walk);
++        walk = next;
++    }
++    g_clear_object (&walk);
++
++    for (gint i = (gint) chain->len - 1; i >= 0; i--)
++    {
++        GFile *location = g_ptr_array_index (chain, i);
++        GFile *next_location = i == 0 ? parent_location
++                                       : g_ptr_array_index (chain, i - 1);
++        AncestorColumn *column = g_new0 (AncestorColumn, 1);
++        GtkListItemFactory *factory = gtk_signal_list_item_factory_new ();
++        GtkWidget *header;
++        g_autoptr (NautilusFile) file = nautilus_file_get (location);
++
++        column->owner = self;
++        column->next_location = g_object_ref (next_location);
++        column->directory = nautilus_directory_get (location);
++        column->store = g_list_store_new (NAUTILUS_TYPE_FILE);
++        column->selection = gtk_single_selection_new (
++            G_LIST_MODEL (g_object_ref (column->store)));
++        g_signal_connect (factory, "setup", G_CALLBACK (setup_parent_cell), self);
++        g_signal_connect (factory, "bind", G_CALLBACK (bind_parent_cell), self);
++        g_signal_connect (factory, "teardown", G_CALLBACK (teardown_parent_cell), self);
++        column->view = GTK_LIST_VIEW (gtk_list_view_new (
++            GTK_SELECTION_MODEL (g_object_ref (column->selection)), factory));
++        gtk_list_view_set_single_click_activate (column->view, TRUE);
++        g_signal_connect (column->view, "activate",
++                          G_CALLBACK (on_ancestor_item_activated), column);
++        header = create_header (&column->title, &column->count);
++        gtk_label_set_text (column->title,
++                            file != NULL ? nautilus_file_get_display_name (file) : _("Location"));
++        column->island = create_list_island (header, GTK_WIDGET (column->view));
++        gtk_widget_set_hexpand (column->island, FALSE);
++        gtk_box_insert_child_after (GTK_BOX (self->workspace), column->island, previous);
++        previous = column->island;
++        g_ptr_array_add (self->ancestors, column);
++        g_signal_connect_swapped (column->directory, "files-added",
++                                  G_CALLBACK (queue_ancestor_update), column);
++        g_signal_connect_swapped (column->directory, "files-changed",
++                                  G_CALLBACK (queue_ancestor_update), column);
++        nautilus_directory_file_monitor_add (column->directory, column, FALSE,
++                                             NAUTILUS_FILE_ATTRIBUTE_INFO |
++                                             NAUTILUS_FILE_ATTRIBUTE_MOUNT,
++                                             ancestor_directory_ready, column);
++        rebuild_ancestor_store (column);
++    }
++    update_adaptive_presentation (self);
++    g_idle_add_full (G_PRIORITY_DEFAULT_IDLE, scroll_to_active_column,
++                     g_object_ref (self), g_object_unref);
++}
++
+ static void
+ nautilus_column_view_setup_directory (NautilusListBase  *list_base,
+                                       NautilusDirectory *new_directory)
+@@ -686,6 +889,8 @@ nautilus_column_view_setup_directory (NautilusListBase  *list_base,
+         rebuild_parent_store (self);
+     }
+ 
++    rebuild_ancestors (self, parent_location);
++
+     self->directories_first = TRUE;
+     apply_sorter (self);
+ }
+@@ -712,6 +917,7 @@ nautilus_column_view_dispose (GObject *object)
+     }
+ 
+     g_clear_object (&self->sorter);
++    g_clear_pointer (&self->ancestors, g_ptr_array_unref);
+     g_clear_object (&self->current_model);
+     g_clear_object (&self->parent_directory);
+     g_clear_object (&self->current_location);
+@@ -751,12 +957,14 @@ nautilus_column_view_init (NautilusColumnView *self)
+     GtkShortcut *shortcut;
+ 
+     self->zoom_level = get_default_zoom_level ();
++    self->base_scroller = base_scroller;
++    self->ancestors = g_ptr_array_new_with_free_func (free_ancestor_column);
+     self->sort_attribute = g_quark_from_static_string ("name");
+     self->directories_first = TRUE;
+ 
+     gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-column-view");
+     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (base_scroller),
+-                                    GTK_POLICY_NEVER,
++                                    GTK_POLICY_AUTOMATIC,
+                                     GTK_POLICY_NEVER);
+ 
+     g_signal_connect (current_factory, "setup", G_CALLBACK (setup_current_cell), self);
+@@ -783,6 +991,8 @@ nautilus_column_view_init (NautilusColumnView *self)
+     current_header = create_header (&self->current_title, &self->current_count);
+     self->parent_island = create_list_island (parent_header, GTK_WIDGET (self->parent_view));
+     self->current_island = create_list_island (current_header, GTK_WIDGET (self->current_view));
++    gtk_widget_set_hexpand (self->parent_island, FALSE);
++    gtk_widget_set_hexpand (self->current_island, FALSE);
+ 
+     self->workspace = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 9);
+     gtk_widget_add_css_class (self->workspace, "luma-columns-workspace");
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 309ac6c..2de94f2 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -446,7 +446,7 @@
+ }
+ 
+ /* Columns is a first-class NautilusListBase presentation over the same live
+- * NautilusViewModel. The three panes are spatial work islands; rows remain
++ * NautilusViewModel. Each ancestor is a browsing island; rows remain
+  * ordinary native list items with the shared hover/selection/focus states. */
+ .luma-files-window .nautilus-column-view .luma-columns-workspace {
+   padding: 9px;
+diff --git a/test/automated/display/test-luma-column-header-menu.c b/test/automated/display/test-luma-column-header-menu.c
+index d80b739..4b0ce34 100644
+--- a/test/automated/display/test-luma-column-header-menu.c
++++ b/test/automated/display/test-luma-column-header-menu.c
+@@ -344,6 +344,8 @@ find_drag_source (GtkWidget *widget)
+     return NULL;
+ }
+ 
++static GtkWidget *find_columns_workspace (GtkWidget *widget);
++
+ static void
+ test_parent_drag (void)
+ {
+@@ -361,7 +363,10 @@ test_parent_drag (void)
+     nautilus_list_base_setup_directory (NAUTILUS_LIST_BASE (view), directory);
+     gtk_window_present (GTK_WINDOW (window));
+     settle_metadata ();
+-    g_autoptr (GtkEventController) source = GTK_EVENT_CONTROLLER (find_drag_source (GTK_WIDGET (view)));
++    GtkWidget *workspace = find_columns_workspace (GTK_WIDGET (view));
++    g_assert_nonnull (workspace);
++    GtkWidget *parent_island = gtk_widget_get_prev_sibling (gtk_widget_get_last_child (workspace));
++    g_autoptr (GtkEventController) source = GTK_EVENT_CONTROLLER (find_drag_source (parent_island));
+     g_assert_nonnull (source);
+     g_autoptr (GdkContentProvider) provider = NULL;
+     g_signal_emit_by_name (source, "prepare", 2.0, 2.0, &provider);
+@@ -379,6 +384,43 @@ test_parent_drag (void)
+     g_print ("PASS: left column exports selected folder for native file drag\n");
+ }
+ 
++static GtkWidget *
++find_columns_workspace (GtkWidget *widget)
++{
++    if (gtk_widget_has_css_class (widget, "luma-columns-workspace")) return widget;
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkWidget *found = find_columns_workspace (child);
++        if (found != NULL) return found;
++    }
++    return NULL;
++}
++
++static void
++test_ancestor_columns (void)
++{
++    g_autofree char *root = g_dir_make_tmp ("filer-ancestors-XXXXXX", NULL);
++    g_autofree char *first = g_build_filename (root, "Projects", NULL);
++    g_autofree char *second = g_build_filename (first, "Launch", NULL);
++    g_assert_cmpint (g_mkdir_with_parents (second, 0700), ==, 0);
++    g_autoptr (GFile) location = g_file_new_for_path (second);
++    g_autoptr (NautilusDirectory) directory = nautilus_directory_get (location);
++    g_autoptr (NautilusColumnView) view = g_object_ref_sink (nautilus_column_view_new ());
++
++    nautilus_list_base_setup_directory (NAUTILUS_LIST_BASE (view), directory);
++    GtkWidget *workspace = find_columns_workspace (GTK_WIDGET (view));
++    g_assert_nonnull (workspace);
++    guint count = 0;
++    for (GtkWidget *child = gtk_widget_get_first_child (workspace); child;
++         child = gtk_widget_get_next_sibling (child)) count++;
++    g_assert_cmpuint (count, >=, 4);
++    g_clear_object (&view);
++    g_assert_cmpint (g_rmdir (second), ==, 0);
++    g_assert_cmpint (g_rmdir (first), ==, 0);
++    g_assert_cmpint (g_rmdir (root), ==, 0);
++}
++
+ int
+ main (int argc, char **argv)
+ {
+@@ -410,6 +452,7 @@ main (int argc, char **argv)
+     test_favorites ();
+     test_sidebar_customization ();
+     test_parent_drag ();
++    test_ancestor_columns ();
+     test_sidebar_drop_position ();
+     g_print ("PASS: header columns toggle, preserve order, and reopen\n");
+     return 0;
+-- 
+2.55.0
+

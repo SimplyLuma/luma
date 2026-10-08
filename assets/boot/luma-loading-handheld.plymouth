@@ -1,0 +1,12 @@
+[Plymouth Theme]
+Name=Luma Loading Handheld
+Description=Project Luma quiet handheld boot surface
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/luma-loading-handheld
+ScriptFile=/usr/share/plymouth/themes/luma-loading-handheld/luma-loading-handheld.script
+
+# The dracut Plymouth module uses these to include the prompt font.
+Font=Figtree Medium
+TitleFont=Figtree Bold

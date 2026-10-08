@@ -1,0 +1,2256 @@
+/* The Luma Application Kit: one sheet of shared components, loaded by both the
+ * Python kit and the C kit at THEME priority.
+ *
+ * Every value here was read from the running Fable design rather than from a
+ * description of it. An application composes these classes and gets the same
+ * chrome, islands, buttons, hovers, radii, shadows, sidebars and toolbars as
+ * every other Luma application, because they are the same rules. Loaded below
+ * the application level, this is a floor: an application can still say
+ * something for itself, but it should rarely need to.
+ *
+ * Two radii and a page: 10 for controls and islands, 13 for the window frame,
+ * 999 only for things that are genuinely round. */
+
+/* ── Type ──────────────────────────────────────────────────────────────── */
+
+.luma-app-window,
+.luma-application-window {
+  font-family: Figtree, Inter, Cantarell, system-ui, sans-serif;
+  font-size: 13px;
+  color: @luma_ink;
+}
+/* Dim labels retain their type role; only captions change the type step. */
+.luma-app-window .caption, .luma-application-window .caption { font-size: 11px; }
+.luma-app-window .heading, .luma-application-window .heading { font-size: 13px; font-weight: 650; }
+/* `title` is a public libadwaita class used by every AdwActionRow and
+ * AdwComboRow. Styling it below the window root makes ordinary Settings rows
+ * page-heading sized. Large display titles are explicit Luma semantics. */
+.luma-app-window .luma-display-title,
+.luma-application-window .luma-display-title { font-size: 19px; font-weight: 700; }
+.luma-type-label { font-size: 11px; font-weight: 600; }
+.luma-type-meta { font-size: 9px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.numeric { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ── Frame ─────────────────────────────────────────────────────────────── */
+
+/* Nothing here, on purpose. The window frame, the title row, the identity,
+ * the window controls, the 9px gutter and the island itself are drawn by
+ * Luma's toolkit — the patched GTK 4 and libadwaita — for any window that
+ * carries `luma-app-window` and a header bar carrying `luma-titlebar`. That
+ * is the same code that dresses Filer and Calculator, and it is the only
+ * code that can reach every window on the system. A rule for any of those
+ * things in this sheet would be a second answer to a settled question. */
+
+/* ── Bars ──────────────────────────────────────────────────────────────── */
+
+.luma-toolbar, .luma-action-bar {
+  /* 39 of content under a 1px rule is the design's 40px bar. */
+  min-height: 39px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid @luma_line;
+  box-shadow: none;
+}
+/* A pane's own title row. Taller than a toolbar because it is the head of an
+ * island rather than a strip inside one, and because at a toolbar's height its
+ * contents sit against the island's top edge. Like the design's app bar it
+ * ends in the 1px rule that separates it from the content scrolling below. */
+.luma-appbar {
+  min-height: 46px;
+  padding: 0 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid @luma_line;
+  box-shadow: none;
+}
+.luma-action-title, .luma-appbar-title { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.luma-appbar-sub { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.luma-status-bar {
+  /* 27 of content above a 1px rule is the design's 28px bar. */
+  min-height: 27px;
+  padding: 0 12px;
+  color: @luma_muted;
+  font-size: 9px;
+  font-weight: 550;
+  border-top: 1px solid @luma_line;
+}
+.luma-status-text { color: @luma_muted; font-size: 9px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.luma-status-rule, .luma-bar-rule { min-width: 1px; min-height: 22px; margin: 0 3px; background: @luma_line; }
+
+/* ── Text ──────────────────────────────────────────────────────────────── */
+
+/* v70 body: text runs at 1.45 unless a type role sets its own (the generated role rules also name
+ * window.luma-app-window label.lumaui-t-<role>, so a role wins inside a Luma window). */
+window.luma-app-window label, box.lumaui-menu label { line-height: var(--lumaui-text-line-height); } /* a kit menu keeps it in any window */
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+
+/* Legacy (pre-LumaUI) icon buttons. A LumaUI part is never this look: every kit button is
+ * excluded by class (Nick, 26 Sep: outlined bar buttons in Tasks and Camera).
+ 28px, the control the design calls --f-control-sm. Icon-only, quiet colour,
+ * a hairline ring, never a fill until hovered.
+ * The toolkit's window controls are image buttons too; they are excluded by
+ * class, because the kit does not style the frame's controls. */
+.luma-icon-button,
+.luma-app-window button.image-button:not(.minimize):not(.maximize):not(.close):not(.luma-media-play):not(.lumaui-bar-button):not(.lumaui-corner-button):not(.lumaui-media-key):not(.lumaui-sidebar-toggle):not(.lumaui-mark-button):not(.lumaui-menu-trail):not(.lumaui-row-trail):not(.lumaui-mini-button):not(.lumaui-share-key):not(.lumaui-bar-chip-close):not(.lumaui-bar-entry-close):not(.lumaui-foot-square):not(.lumaui-fact-copy):not(.lumaui-details-close):not(.lumaui-mode):not(.lumaui-trail-back):not(.lumaui-icon-only):not(.lumaui-text-button):not(.lumaui-title-island-lead):not(.lumaui-title-island-title):not(.lumaui-title-island-button):not(.lumaui-list-first-back),
+.luma-application-window button.image-button:not(.minimize):not(.maximize):not(.close):not(.luma-media-play):not(.lumaui-bar-button):not(.lumaui-corner-button):not(.lumaui-media-key):not(.lumaui-sidebar-toggle):not(.lumaui-mark-button):not(.lumaui-menu-trail):not(.lumaui-row-trail):not(.lumaui-mini-button):not(.lumaui-share-key):not(.lumaui-bar-chip-close):not(.lumaui-bar-entry-close):not(.lumaui-foot-square):not(.lumaui-fact-copy):not(.lumaui-details-close):not(.lumaui-mode):not(.lumaui-trail-back):not(.lumaui-icon-only):not(.lumaui-text-button):not(.lumaui-title-island-lead):not(.lumaui-title-island-title):not(.lumaui-title-island-button):not(.lumaui-list-first-back),
+.luma-toolbar button, .luma-action-bar button {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: @luma_muted;
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+.luma-icon-button image, .luma-toolbar button image, .luma-action-bar button image { -gtk-icon-size: 14px; }
+.luma-icon-button:hover, .luma-toolbar button:hover, .luma-action-bar button:hover { background: @luma_hover; color: @luma_ink; }
+.luma-icon-button:active, .luma-toolbar button:active, .luma-action-bar button:active { background: @luma_selected; color: @luma_ink; }
+/* A toggled button holds the state fill: 3:1 or better against its off state
+ * in every mode, and quieter than ink (ADR-043). */
+.luma-icon-button:checked, .luma-toolbar button:checked,
+.luma-action-bar button:checked { background: @luma_state; color: @luma_state_ink; }
+.luma-icon-button.quiet, .luma-toolbar button.flat, .luma-action-bar button.flat { box-shadow: none; }
+.luma-icon-button.small { min-width: 26px; min-height: 26px; }
+
+/* Text buttons: 28px, 13/700, a soft fill. */
+.luma-button, dropdown.luma-dropdown > button,
+.luma-toolbar button.text-button, .luma-action-bar button.text-button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: alpha(@luma_ink, .08);
+  color: @luma_ink;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+.luma-button:hover, dropdown.luma-dropdown > button:hover { background: @luma_hover; }
+.luma-button.primary { background: @luma_ink; color: @luma_content; box-shadow: none; }
+.luma-button.primary:hover { background: mix(@luma_ink, @luma_content, .14); }
+/* The design's `small` button, and the size a toolbar's text button keeps. */
+.luma-button.small, dropdown.luma-dropdown.small > button,
+.luma-toolbar button.text-button, .luma-action-bar button.text-button {
+  min-height: 28px; padding: 0 10px;
+}
+
+/* The selected value is a GtkListItemWidget, not a sidebar row. Keep its
+ * intrinsic text height; the dropdown button owns the shared control height.
+ * The popup list retains its ordinary keyboard and pointer target sizing. */
+.luma-app-window dropdown.luma-dropdown > button row,
+.luma-application-window dropdown.luma-dropdown > button row {
+  min-height: 0;
+}
+
+/* A connected group: one ring around several 28px buttons, corners only at
+ * the ends. */
+.luma-connected-buttons {
+  margin: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+.luma-connected-buttons > button {
+  min-width: 28px; min-height: 28px; padding: 0 7px;
+  border: 0; border-radius: 0; background: transparent; color: @luma_muted; box-shadow: none;
+}
+.luma-connected-buttons > button:hover { background: @luma_hover; color: @luma_ink; }
+.luma-connected-buttons > button:active { background: @luma_selected; color: @luma_ink; }
+.luma-connected-buttons > button:checked { background: @luma_state; color: @luma_state_ink; }
+.luma-connected-buttons > button:first-child { border-radius: 10px 0 0 10px; }
+.luma-connected-buttons > button:last-child { border-radius: 0 10px 10px 0; }
+.luma-connected-buttons > button:only-child { border-radius: 10px; }
+/* Inside a toolbar the bar's own button rule is the more specific one, so a
+ * text button in a group would keep its ring and its radius; these say again,
+ * at the bar's specificity, that a grouped button has neither. */
+.luma-toolbar .luma-connected-buttons > button, .luma-action-bar .luma-connected-buttons > button,
+.luma-toolbar .luma-connected-buttons > button.text-button, .luma-action-bar .luma-connected-buttons > button.text-button,
+.luma-toolbar .luma-connected-buttons > button.image-button, .luma-action-bar .luma-connected-buttons > button.image-button {
+  min-width: 28px; min-height: 28px; padding: 0 7px; margin: 0;
+  border: 0; border-radius: 0; background: transparent; color: @luma_muted; box-shadow: none;
+}
+.luma-toolbar .luma-connected-buttons > button:hover, .luma-action-bar .luma-connected-buttons > button:hover { background: @luma_hover; color: @luma_ink; }
+.luma-toolbar .luma-connected-buttons > button:active, .luma-action-bar .luma-connected-buttons > button:active { background: @luma_selected; color: @luma_ink; }
+.luma-toolbar .luma-connected-buttons > button:checked, .luma-action-bar .luma-connected-buttons > button:checked { background: @luma_state; color: @luma_state_ink; }
+.luma-toolbar .luma-connected-buttons > button:first-child, .luma-action-bar .luma-connected-buttons > button:first-child { border-radius: 10px 0 0 10px; }
+.luma-toolbar .luma-connected-buttons > button:last-child, .luma-action-bar .luma-connected-buttons > button:last-child { border-radius: 0 10px 10px 0; }
+.luma-toolbar .luma-connected-buttons > button:only-child, .luma-action-bar .luma-connected-buttons > button:only-child { border-radius: 10px; }
+
+/* A segment: the tab control. Padded 2px, the active tab takes the one quiet
+ * state fill (ADR-043), not ink: ink is the view's single emphasis. */
+.luma-segment {
+  margin: 0;
+  /* 24 of content inside 2px of padding is the design's 28px control. */
+  min-height: 24px;
+  padding: 2px;
+  border: 0;
+  border-radius: 10px;
+  background: @luma_fill;
+  box-shadow: none;
+}
+.luma-segment > button,
+.luma-app-window .luma-segment > button,
+.luma-application-window .luma-segment > button,
+.luma-action-bar .luma-segment > button,
+.luma-toolbar .luma-segment > button {
+  min-height: 24px; padding: 0 8px;
+  border: 0; border-radius: 7px; background: transparent;
+  color: @luma_muted; font-size: 11px; font-weight: 650; box-shadow: none;
+}
+.luma-segment > button:hover { color: @luma_ink; }
+.luma-segment > button:checked,
+.luma-action-bar .luma-segment > button:checked,
+.luma-toolbar .luma-segment > button:checked { background: @luma_state; color: @luma_state_ink; }
+.luma-segment.soft > button:checked { background: @luma_state; color: @luma_state_ink; border-radius: 10px; }
+
+/* A tool: 30×30, the pressed one takes the state fill. Named through the window because
+ * GTK puts .image-button on any button holding only an icon, and the bar rule
+ * matching that is more specific than a bare class would be. */
+.luma-tool,
+.luma-app-window button.luma-tool,
+.luma-application-window button.luma-tool {
+  min-width: 30px; min-height: 30px; padding: 0;
+  border: 0; border-radius: 10px; background: transparent; color: @luma_muted; box-shadow: none;
+}
+.luma-tool:hover, .luma-app-window button.luma-tool:hover,
+.luma-application-window button.luma-tool:hover { background: @luma_hover; color: @luma_ink; }
+.luma-tool:checked, .luma-app-window button.luma-tool:checked,
+.luma-application-window button.luma-tool:checked { background: @luma_state; color: @luma_state_ink; }
+.luma-tool-rail { padding: 4px 0; }
+.luma-tool-rail separator { min-width: 16px; min-height: 1px; margin: 4px 0; background: @luma_line; }
+
+/* The one round control: play. It keeps ink, the view's single emphasis
+ * (ADR-043); a view that has play has no other ink-filled control. */
+.luma-play,
+.luma-app-window button.luma-play,
+.luma-application-window button.luma-play {
+  min-width: 32px; min-height: 32px; padding: 0;
+  border: 0; border-radius: 999px; background: @luma_ink; color: @luma_window; box-shadow: none;
+}
+.luma-play:hover { background: @luma_ink; }
+.luma-play image { -gtk-icon-size: 13px; }
+
+/* ── Sidebar rows ──────────────────────────────────────────────────────── */
+
+.luma-sidebar-heading {
+  min-height: 18px; padding: 4px 8px 0;
+  /* The same heading as .luma-section-label, in its ledger colour (ADR-043). */
+  color: @luma_section_label; font-size: 9px; font-weight: 700;
+  letter-spacing: .11em; text-transform: uppercase;
+}
+.luma-sidebar-row,
+.luma-navigation-row {
+  min-height: 32px; padding: 0 8px;
+  border: 0; border-radius: 10px; background: transparent;
+  color: @luma_ink; font-size: 13px; font-weight: 600; box-shadow: none;
+}
+.luma-sidebar-row:hover, .luma-navigation-row:hover { background: @luma_hover; }
+.luma-sidebar-row:checked, .luma-sidebar-row:selected,
+.luma-navigation-row:checked, .luma-navigation-row:selected { background: alpha(@luma_ink, .11); font-weight: 700; }
+.luma-sidebar-row image, .luma-navigation-icon { color: @luma_muted; -gtk-icon-size: 14px; }
+.luma-sidebar-row:checked image, .luma-sidebar-row:selected image { color: @luma_ink; }
+.luma-sidebar-count, .luma-navigation-trailing {
+  color: @luma_muted; font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.luma-status-dot {
+  min-width: 6px; min-height: 6px;
+  margin: 0 2px; border-radius: 999px; background: @luma_green;
+}
+.luma-status-dot.syncing { background: @luma_amber; }
+.luma-status-dot.offline { background: @luma_muted; opacity: .5; }
+
+/* ── Inputs ────────────────────────────────────────────────────────────── */
+
+.luma-app-window entry, .luma-app-window searchentry, .luma-app-window spinbutton,
+.luma-application-window entry, .luma-application-window searchentry {
+  min-height: 28px; padding: 0 8px;
+  border: 0; border-radius: 10px; background: @luma_fill; color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+.luma-app-window searchentry, .luma-application-window searchentry { min-width: 150px; }
+/* The text node inside an entry carries its own height and padding, which is
+ * what made a 28px field measure 38 on screen. */
+.luma-app-window entry > text, .luma-application-window entry > text,
+.luma-app-window searchentry > text, .luma-application-window searchentry > text {
+  min-height: 26px; padding: 0; margin: 0;
+}
+/* A label states its text's size, never a height of its own; two stacked in a
+ * control are why a 34px control came out at 42. Written at the lowest weight (0,0,2) so a kit
+ * part's own label (a count, a category pill, a details line: label.lumaui-*, 0,1,1) keeps its box
+ * inside a button (Settings, 28 Sep: counts in nav rows collapsed to 8x16). */
+button label { min-height: 0; padding: 0; }
+
+/* Sliders: a 4px track, a 14px handle, no claim on a control's height. */
+.luma-app-window scale, .luma-application-window scale {
+  min-height: 18px; padding: 0; margin: 0;
+}
+.luma-app-window scale trough, .luma-application-window scale trough { min-height: 4px; border-radius: 999px; background: @luma_fill; }
+/* The value runs in the state fill; the handle is a disc of the surface with
+ * a state-coloured ring, so it reads as a control and not as a black dot. */
+.luma-app-window scale highlight, .luma-application-window scale highlight { min-height: 4px; border-radius: 999px; background: @luma_state; }
+.luma-app-window scale slider, .luma-application-window scale slider {
+  min-width: 14px; min-height: 14px; margin: -7px; border: 0; border-radius: 999px;
+  background: @luma_knob; box-shadow: inset 0 0 0 2px @luma_knob_ring, 0 1px 2px @luma_island_shadow;
+}
+
+/* A slider row: name, track, value. 66 | flex | 40 in the design. Adwaita
+ * pads a scale vertically; inside a row that padding is what turns a 26px row
+ * into a 48px one, so it is removed here. */
+.luma-slider-row { min-height: 26px; }
+.luma-slider-row scale { margin: 0; padding: 0; min-height: 18px; }
+.luma-slider-row scale trough { margin: 0; }
+.luma-slider-row > label:first-child { min-width: 66px; color: @luma_muted; font-size: 11px; font-weight: 600; }
+.luma-slider-row.touched > label:first-child { color: @luma_ink; }
+.luma-slider-value { min-width: 40px; color: @luma_muted; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.luma-slider-row.touched .luma-slider-value { color: @luma_ink; }
+
+/* A collapsible group: a header row with a chevron and a touched dot. */
+.luma-group { border-bottom: 1px solid @luma_line; }
+.luma-group-head {
+  min-height: 34px; padding: 8px 12px; border: 0; border-radius: 0;
+  background: transparent; color: @luma_ink; font-size: 11px; font-weight: 700; box-shadow: none;
+}
+.luma-group-head:hover { background: @luma_hover; }
+.luma-group-body { padding: 0 12px 12px; }
+.luma-touched-dot { min-width: 6px; min-height: 6px; border-radius: 999px; background: @luma_state; }
+
+/* A quiet note box. */
+.luma-note { padding: 12px; border-radius: 10px; background: @luma_fill; color: @luma_muted; font-size: 11px; }
+.luma-audio-waveform { background: @luma_fill; color: @luma_ink; border-radius: 10px; border: 1px solid alpha(@luma_ink, .12); }
+.luma-audio-waveform:focus-within { outline: 2px solid @luma_ink; outline-offset: 2px; }
+.luma-app-window scale.luma-audio-waveform-range { margin: 0; padding: 0; background: transparent; }
+.luma-app-window scale.luma-audio-waveform-range trough,
+.luma-app-window scale.luma-audio-waveform-range highlight,
+.luma-app-window scale.luma-audio-waveform-range slider { background: transparent; border: 0; box-shadow: none; min-width: 0; min-height: 0; }
+
+/* Rows and lists. */
+.luma-app-window row, .luma-application-window row { min-height: 32px; }
+.luma-app-window listview > row, .luma-app-window list > row { min-height: 32px; padding: 0 8px; }
+/* Native table cells own horizontal padding, unlike one-column list rows. */
+.luma-app-window columnview.lumaui-table > listview > row { padding: 0; }
+.luma-app-window popover > contents, .luma-application-window popover > contents { border-radius: 16px; padding: 6px; /* v70 .crpop */ }
+.luma-app-window popover menuitem { min-height: 28px; border-radius: 10px; }
+
+/* The handheld title row: 51px, the title centred between two 44px slots so it
+ * sits in the same place whether or not a control is present. */
+.luma-mobile-header { min-height: 51px; padding: 0 8px; border-bottom: 1px solid @luma_line; }
+.luma-mobile-slot { min-width: 44px; min-height: 44px; }
+.luma-mobile-title { color: @luma_ink; font-size: 17px; font-weight: 700; }
+
+/* Explicit quiet actions. Ordinary buttons retain their existing treatment.
+ * GtkButton's native focus/keyboard behavior remains in charge. */
+.luma-button.quiet {
+  background: transparent; color: @luma_muted; box-shadow: none;
+}
+.luma-button.quiet:hover { background: @luma_hover; color: @luma_ink; }
+.luma-button.quiet:active { background: @luma_selected; color: @luma_ink; }
+.luma-button.quiet:disabled { background: transparent; color: @luma_muted; opacity: .38; }
+
+/* Match the specificity of the existing image-button rule above. */
+.luma-app-window button.luma-icon-button.quiet:not(.minimize):not(.maximize):not(.close),
+.luma-application-window button.luma-icon-button.quiet:not(.minimize):not(.maximize):not(.close) {
+  background: transparent; color: @luma_muted; box-shadow: none;
+}
+.luma-app-window button.luma-icon-button.quiet:not(.minimize):not(.maximize):not(.close):hover,
+.luma-application-window button.luma-icon-button.quiet:not(.minimize):not(.maximize):not(.close):hover {
+  background: @luma_hover; color: @luma_ink;
+}
+.luma-app-window button.luma-icon-button.quiet:not(.minimize):not(.maximize):not(.close):active,
+.luma-application-window button.luma-icon-button.quiet:not(.minimize):not(.maximize):not(.close):active {
+  background: @luma_selected; color: @luma_ink;
+}
+
+/* A native link button used as a secondary inline action, not a URL label. */
+button.link.luma-inline-action {
+  min-width: 0; min-height: 0; padding: 0; border: 0;
+  background: transparent; box-shadow: none; color: @luma_ink;
+  font-size: 11px; font-weight: 650; line-height: 13px;
+}
+button.link.luma-inline-action label { text-decoration-line: underline; }
+button.link.luma-inline-action:hover { color: @luma_ink; }
+button.link.luma-inline-action:focus-visible { outline: 2px solid @luma_accent; outline-offset: 2px; }
+
+/* Compact filters keep GtkSearchEntry's editing, clear action and IM support.
+ * Clear width-chars/max-width-chars through GtkEditable when the application
+ * supplies an explicit responsive width request. */
+.luma-app-window .luma-compact-search,
+.luma-application-window .luma-compact-search {
+  min-width: 0; min-height: 28px; padding: 0 6px 0 8px;
+  font-size: 13px; font-weight: 550;
+}
+.luma-compact-search > image {
+  -gtk-icon-size: 13px; min-width: 13px; min-height: 13px;
+  margin: 0 6px 0 0;
+}
+
+/* Opt in from explicit input capabilities, never from available width. */
+.luma-button.touch-targets,
+.luma-touch .luma-button,
+dropdown.luma-dropdown.touch-targets > button,
+.luma-touch dropdown.luma-dropdown > button,
+.luma-app-window button.luma-icon-button.quiet.touch-targets:not(.minimize):not(.maximize):not(.close),
+.luma-application-window button.luma-icon-button.quiet.touch-targets:not(.minimize):not(.maximize):not(.close),
+button.link.luma-inline-action.touch-targets,
+.luma-app-window .luma-compact-search.touch-targets,
+.luma-application-window .luma-compact-search.touch-targets {
+  min-width: 44px; min-height: 44px;
+}
+
+/* Fixed transaction geometry. Phases never replace allocated controls. */
+.luma-transaction-name { font-size:29px; font-weight:750; letter-spacing:-.87px; color:@luma_ink; }
+.luma-transaction-sub { font-size:14px; color:@luma_muted; }
+.luma-transaction-phase { font-size:13px; font-weight:650; color:@luma_muted; }
+.luma-transaction-primary { min-width:230px; min-height:44px; padding:0; border-radius:10px; }
+.luma-transaction-primary:disabled { opacity:1; }
+.luma-transaction-primary label { font-size:14px; font-weight:650; padding:0 12px; }
+.luma-transaction-fill trough { min-height:44px; border:0; background:transparent; border-radius:10px; }
+.luma-transaction-fill progress { min-height:44px; border:0; background:alpha(@luma_ink,.16); border-radius:10px; }
+.luma-transaction-keep { background:@luma_fill; border-radius:10px; padding:0 8px; font-size:13px; }
+.luma-transaction-done { color:white; background:@luma_green; border-radius:999px; -gtk-icon-size:17px; }
+.luma-transaction-foot { padding:0 12px 8px; font-size:11px; color:@luma_muted; }
+.luma-transaction-foot button { min-height:26px; padding:0 6px; font-size:11px; font-weight:650; }
+.luma-transaction-fact { font-size:13px; }
+.luma-transaction-fact .fact-value { font-weight:600; }
+.luma-transaction-fact .unknown { font-style:italic; color:@luma_muted; font-weight:500; }
+.luma-transaction-fact .caution { color:@luma_amber; }
+
+/* Shared Creative collection welcome surface, deliberately neutral in either theme. */
+.luma-creative-welcome { color: @luma_on_media; }
+.luma-creative-welcome .creative-eyebrow { color: alpha(@luma_on_media, .58); font-size: 11px; font-weight: 700; letter-spacing: 1.43px; }
+.luma-creative-welcome .creative-title { color: @luma_on_media; font-size: 27px; font-weight: 650; letter-spacing: -.675px; }
+.luma-creative-welcome .creative-description { color: alpha(@luma_on_media, .72); font-size: 13px; font-weight: 500; }
+.luma-creative-welcome .creative-icon { -gtk-icon-shadow: 0 3px 12px alpha(@luma_media_shadow, .25); }
+.luma-creative-welcome button { min-height: 40px; padding: 0 18px; border-radius: 999px; font-size: 13px; font-weight: 650; }
+.luma-creative-welcome button.creative-primary { background: @luma_on_media; color: @luma_on_media_contrast; border: 1px solid transparent; }
+.luma-creative-welcome button.creative-secondary { background: alpha(@luma_on_media, .14); color: @luma_on_media; border: 1px solid alpha(@luma_on_media, .22); }
+.luma-creative-welcome button:hover { filter: brightness(1.08); }
+.luma-creative-welcome button:focus-visible { outline: 2px solid @luma_on_media; outline-offset: 3px; }
+.luma-creative-welcome checkbutton { color: alpha(@luma_on_media, .55); font-size: 13px; }
+.luma-creative-welcome checkbutton check:checked { background: @luma_on_media; color: @luma_on_media_contrast; }
+
+/* Shared media play/pause/stop control; 46px also satisfies touch targets. */
+button.luma-media-play {
+  min-width: 46px; min-height: 46px; padding: 0; border: 0;
+  border-radius: 999px; background: @luma_ink; color: @luma_content;
+  box-shadow: none;
+}
+button.luma-media-play image { color: inherit; -gtk-icon-size: 20px; }
+
+/* The transparent native range thumb must not retain Adwaita's negative
+ * margins after its visual size is removed. Its overlay keeps the hit area. */
+.luma-app-window scale.luma-audio-waveform-range slider { margin: 0; padding: 0; }
+
+/* Scrolling, in every kit application: one overlay scrollbar, shown while
+ * scrolling or when the pointer comes near, floating over the content's
+ * trailing edge 3px in and clear of the island's rounded corners. Nothing is
+ * reserved for it, so a sidebar's rows reach the island's edge. ScrollView is
+ * the component; the island rule gives applications that still build their
+ * own GtkScrolledWindow inside an island the same bar in the same place. */
+scrolledwindow.luma-scroll-view { padding: 0; margin: 0; border: 0; background: none; box-shadow: none; }
+scrolledwindow.luma-scroll-view > scrollbar,
+.luma-island scrolledwindow > scrollbar {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+scrolledwindow.luma-scroll-view > scrollbar.vertical > range > trough,
+.luma-island scrolledwindow > scrollbar.vertical > range > trough {
+  margin: 10px 3px 10px 0;
+  border: 0;
+  background: none;
+}
+scrolledwindow.luma-scroll-view > scrollbar.horizontal > range > trough,
+.luma-island scrolledwindow > scrollbar.horizontal > range > trough {
+  margin: 0 10px 3px 10px;
+  border: 0;
+  background: none;
+}
+scrolledwindow.luma-scroll-view > scrollbar > range > trough > slider,
+.luma-island scrolledwindow > scrollbar > range > trough > slider {
+  min-width: 4px;
+  min-height: 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background-color: alpha(@luma_ink, .30);
+  transition: min-width 120ms ease-out, min-height 120ms ease-out, background-color 120ms ease-out;
+}
+scrolledwindow.luma-scroll-view > scrollbar.vertical > range > trough > slider,
+.luma-island scrolledwindow > scrollbar.vertical > range > trough > slider { min-height: 32px; }
+scrolledwindow.luma-scroll-view > scrollbar.horizontal > range > trough > slider,
+.luma-island scrolledwindow > scrollbar.horizontal > range > trough > slider { min-width: 32px; }
+scrolledwindow.luma-scroll-view > scrollbar.vertical.hovering > range > trough > slider,
+scrolledwindow.luma-scroll-view > scrollbar.vertical.dragging > range > trough > slider,
+.luma-island scrolledwindow > scrollbar.vertical.hovering > range > trough > slider,
+.luma-island scrolledwindow > scrollbar.vertical.dragging > range > trough > slider { min-width: 7px; background-color: alpha(@luma_ink, .48); }
+scrolledwindow.luma-scroll-view > scrollbar.horizontal.hovering > range > trough > slider,
+scrolledwindow.luma-scroll-view > scrollbar.horizontal.dragging > range > trough > slider,
+.luma-island scrolledwindow > scrollbar.horizontal.hovering > range > trough > slider,
+.luma-island scrolledwindow > scrollbar.horizontal.dragging > range > trough > slider { min-height: 7px; background-color: alpha(@luma_ink, .48); }
+
+/* ══ LumaUI (v70) ═══════════════════════════════════════════════════════════
+ * The shared parts every Luma app uses, one implementation each. Every part
+ * has its own `LumaUI: <part>` block so parallel branches merge cleanly; a
+ * part's colours are @luma_* roles and its metrics and motion --lumaui-*
+ * properties, both generated from config/shared/design-tokens.json. The kit
+ * sheet is loaded at APPLICATION priority, above stock Adwaita, and each part
+ * states its whole look (background, border, shadow, outline) so it reads the
+ * same on stock libadwaita. Applications never select .lumaui-* classes
+ * (tests/unit/test_luma_appkit_conformance.py). Reduced motion swaps movement
+ * for a fade. docs/developer/kit/behaviour.md describes the behaviour. */
+
+/* LumaUI: Type scale */
+.lumaui-t-display, window.luma-app-window label.lumaui-t-display { font-size: var(--lumaui-t-display-size); font-weight: var(--lumaui-t-display-weight); line-height: var(--lumaui-t-display-line-height); letter-spacing: var(--lumaui-t-display-tracking); font-feature-settings: "tnum"; }
+/* The window body default above is more specific than a bare type role. */
+window.luma-app-window label.lumaui-t-display { line-height: var(--lumaui-t-display-line-height); }
+.lumaui-t-hero, window.luma-app-window label.lumaui-t-hero { font-size: var(--lumaui-t-hero-size); font-weight: var(--lumaui-t-hero-weight); line-height: var(--lumaui-t-hero-line-height); letter-spacing: var(--lumaui-t-hero-tracking); }
+.lumaui-t-title-1, window.luma-app-window label.lumaui-t-title-1 { font-size: var(--lumaui-t-title-1-size); font-weight: var(--lumaui-t-title-1-weight); line-height: var(--lumaui-t-title-1-line-height); letter-spacing: var(--lumaui-t-title-1-tracking); }
+.lumaui-t-title-2, window.luma-app-window label.lumaui-t-title-2 { font-size: var(--lumaui-t-title-2-size); font-weight: var(--lumaui-t-title-2-weight); line-height: var(--lumaui-t-title-2-line-height); letter-spacing: var(--lumaui-t-title-2-tracking); }
+.lumaui-t-lead, window.luma-app-window label.lumaui-t-lead { font-size: var(--lumaui-t-lead-size); font-weight: var(--lumaui-t-lead-weight); line-height: var(--lumaui-t-lead-line-height); letter-spacing: var(--lumaui-t-lead-tracking); color: @luma_ink_secondary; }
+.lumaui-t-muted, window.luma-app-window label.lumaui-t-muted { color: @luma_muted; }
+/* Doubled, as the weights are: a role's own ink (caption, label) is as specific and comes later. */
+.lumaui-t-secondary, window.luma-app-window label.lumaui-t-secondary.lumaui-t-secondary { color: @luma_ink_secondary; }
+.lumaui-t-accent, window.luma-app-window label.lumaui-t-accent.lumaui-t-accent { color: @luma_accent_ink; }
+.lumaui-t-body, window.luma-app-window label.lumaui-t-body { font-size: var(--lumaui-t-body-size); font-weight: var(--lumaui-t-body-weight); line-height: var(--lumaui-t-body-line-height); letter-spacing: var(--lumaui-t-body-tracking); }
+.lumaui-t-caption, window.luma-app-window label.lumaui-t-caption { font-size: var(--lumaui-t-caption-size); font-weight: var(--lumaui-t-caption-weight); line-height: var(--lumaui-t-caption-line-height); letter-spacing: var(--lumaui-t-caption-tracking); color: @luma_muted; }
+.lumaui-t-label, window.luma-app-window label.lumaui-t-label { font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight); line-height: var(--lumaui-t-label-line-height); letter-spacing: var(--lumaui-t-label-tracking); color: @luma_muted; }
+.lumaui-t-numeric, window.luma-app-window label.lumaui-t-numeric { font-size: var(--lumaui-t-numeric-size); font-weight: var(--lumaui-t-numeric-weight); line-height: var(--lumaui-t-numeric-line-height); letter-spacing: var(--lumaui-t-numeric-tracking); font-feature-settings: "tnum"; }
+/* The small unit after a display or numeric figure: seconds, AM/PM, mph. */
+.lumaui-t-unit, window.luma-app-window label.lumaui-t-unit { font-weight: 500; letter-spacing: 0; color: @luma_muted; }
+.lumaui-type.lumaui-t-display .lumaui-t-unit { font-size: var(--lumaui-t-display-unit-size); margin-left: var(--lumaui-t-display-unit-gap); }
+.lumaui-type.lumaui-t-numeric .lumaui-t-unit { font-size: var(--lumaui-t-numeric-unit-size); margin-left: var(--lumaui-t-numeric-unit-gap); }
+
+/* LumaUI: Count badge */
+label.lumaui-count {
+  min-width: var(--lumaui-count-content-min-width); min-height: var(--lumaui-count-height);
+  padding: 0 var(--lumaui-count-padding-x); margin: 0;
+  border-radius: var(--lumaui-count-radius);
+  font-size: var(--lumaui-count-font-size); font-weight: var(--lumaui-count-weight); font-style: normal;
+  font-feature-settings: "tnum"; letter-spacing: 0.11px;
+  background: @luma_count_bg; color: @luma_count_ink;
+}
+label.lumaui-count.attention { background: @luma_count_attention_bg; color: @luma_count_attention_ink; }
+
+/* LumaUI: Category pill */
+label.lumaui-category {
+  min-height: var(--lumaui-pill-height); padding: 0 var(--lumaui-pill-padding-x); margin: 0;
+  border-radius: var(--lumaui-pill-radius);
+  font-size: var(--lumaui-pill-font-size); font-weight: var(--lumaui-pill-weight); font-style: normal; letter-spacing: 0.115px;
+}
+label.lumaui-category.create { background: @luma_cat_create_bg; color: @luma_cat_create_ink; }
+label.lumaui-category.work { background: @luma_cat_work_bg; color: @luma_cat_work_ink; }
+label.lumaui-category.media { background: @luma_cat_media_bg; color: @luma_cat_media_ink; }
+label.lumaui-category.play { background: @luma_cat_play_bg; color: @luma_cat_play_ink; }
+label.lumaui-category.tools { background: @luma_cat_tools_bg; color: @luma_cat_tools_ink; }
+
+/* LumaUI: Stacked button */
+box.lumaui-stacked-buttons { border-spacing: var(--lumaui-stack-spacing); }
+button.lumaui-stacked-button {
+  min-width: 0; min-height: var(--lumaui-stack-height); padding: 0 6px; margin: 0;
+  border: none; border-radius: var(--lumaui-stack-radius);
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+  outline: 0 solid transparent;
+  font-size: var(--lumaui-stack-font-size); font-weight: var(--lumaui-stack-weight); letter-spacing: 0.12px;
+  transition: transform var(--lumaui-duration-press) var(--lumaui-spring), filter var(--lumaui-duration-hover) ease;
+}
+button.lumaui-stacked-button .lumaui-stacked-content { border-spacing: var(--lumaui-stack-gap); }
+button.lumaui-stacked-button .lumaui-stacked-icon { -gtk-icon-size: var(--lumaui-stack-icon); }
+button.lumaui-stacked-button:hover { filter: brightness(var(--lumaui-hover-brightness)); } /* never a transform on hover: it moves the hit area and the hover flickers */
+button.lumaui-stacked-button:active { transform: scale(0.97); filter: brightness(0.95); }
+button.lumaui-stacked-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+/* Unavailable stays readable: the tile goes flat (no raised chip, no lift) and its ink drops to the
+ * muted tone, which the tests hold at 3:1 or more against the flat tile in light and dark. */
+button.lumaui-stacked-button:disabled {
+  opacity: 1; background: @luma_hover; color: @luma_muted;
+  box-shadow: inset 0 0 0 1px @luma_line; transform: none; filter: none;
+}
+button.lumaui-stacked-button.danger { color: @luma_danger_ink; }
+box.lumaui-stacked-buttons.lumaui-stack-small button.lumaui-stacked-button { min-height: var(--lumaui-stack-sm-height); padding: 0 2px; border-radius: var(--lumaui-stack-sm-radius); font-size: var(--lumaui-stack-sm-font-size); }
+box.lumaui-stacked-buttons.lumaui-stack-small .lumaui-stacked-content { border-spacing: var(--lumaui-stack-sm-gap); }
+box.lumaui-stacked-buttons.lumaui-stack-small .lumaui-stacked-icon { -gtk-icon-size: var(--lumaui-stack-sm-icon); }
+
+/* LumaUI: Layers (scrim, modal card, drawer) */
+.lumaui-scrim { background: @luma_scrim; opacity: 0; transition: opacity var(--lumaui-duration-scrim) var(--lumaui-ease); }
+.lumaui-scrim.drawer { background: @luma_drawer_scrim; }
+.lumaui-scrim.shown { opacity: 1; }
+.lumaui-modal {
+  opacity: 0; transform: translateY(var(--lumaui-dialog-enter-drop)) scale(var(--lumaui-dialog-enter-scale));
+  transition: opacity var(--lumaui-duration-dialog-fade) ease, transform var(--lumaui-duration-dialog-move) var(--lumaui-spring);
+}
+.lumaui-modal.shown { opacity: 1; transform: none; }
+.lumaui-modal.drawer {
+  transform: translateY(var(--lumaui-drawer-enter-rise));
+  transition: opacity var(--lumaui-duration-dialog-fade) ease, transform var(--lumaui-duration-drawer) var(--lumaui-ease);
+  border-radius: var(--lumaui-drawer-radius) var(--lumaui-drawer-radius) 0 0;
+}
+.lumaui-modal.drawer.shown { transform: none; }
+.lumaui-modal.nudge { animation: lumaui-nudge var(--lumaui-duration-nudge) var(--lumaui-ease); }
+@keyframes lumaui-nudge { 30% { transform: translateX(calc(-1 * var(--lumaui-distance-nudge))); } 70% { transform: translateX(var(--lumaui-distance-nudge)); } }
+.lumaui-drawer-handle { min-width: 0; min-height: 0; }
+.lumaui-modal.drawer .lumaui-drawer-handle {
+  min-width: var(--lumaui-drawer-handle-width); min-height: var(--lumaui-drawer-handle-height);
+  border-radius: 3px; background: @luma_drawer_handle;
+}
+
+/* LumaUI: Destructive dialog */
+box.lumaui-dialog {
+  min-width: var(--lumaui-dialog-content-width);
+  padding: var(--lumaui-dialog-padding-top) var(--lumaui-dialog-padding-x) var(--lumaui-dialog-padding-bottom);
+  margin: 16px; border-radius: var(--lumaui-dialog-radius);
+  background: @luma_float_surface; color: @luma_ink;
+  box-shadow: 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near, inset 0 1px 0 @luma_float_highlight;
+}
+box.lumaui-dialog .lumaui-dialog-icon {
+  min-width: var(--lumaui-dialog-icon-box); min-height: var(--lumaui-dialog-icon-box); margin-bottom: 14px;
+  border-radius: var(--lumaui-dialog-icon-radius);
+  background: @luma_chip; color: @luma_danger_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-dialog .lumaui-dialog-icon image { -gtk-icon-size: var(--lumaui-dialog-icon); }
+box.lumaui-dialog .lumaui-dialog-title { font-size: var(--lumaui-dialog-title-size); font-weight: 650; letter-spacing: -0.16px; }
+/* The confirm sits on the window, not an island, so its quiet ink is the frame's (v70 .lconf p ink-2). */
+box.lumaui-dialog .lumaui-dialog-body { margin-top: 6px; font-size: var(--lumaui-dialog-body-size); color: @luma_frame_ink_secondary; }
+box.lumaui-dialog checkbutton.lumaui-dialog-option {
+  min-height: 32px; margin-top: 12px; padding: 0 10px 0 8px; border-radius: 10px;
+  border-spacing: 9px; color: @luma_ink_secondary; background: none; font-size: 13px;
+}
+box.lumaui-dialog checkbutton.lumaui-dialog-option:hover { background: @luma_hover; }
+box.lumaui-dialog checkbutton.lumaui-dialog-option check {
+  min-width: 16px; min-height: 16px; margin: 0; padding: 0; border: none; border-radius: 5px;
+  background: none; box-shadow: inset 0 0 0 1.5px @luma_muted; color: transparent;
+  -gtk-icon-source: -gtk-icontheme("lumaui-check-symbolic"); -gtk-icon-size: 11px;
+}
+box.lumaui-dialog checkbutton.lumaui-dialog-option check:checked { background: @luma_check_on; box-shadow: none; color: @luma_danger_fill_ink; }
+box.lumaui-dialog checkbutton.lumaui-dialog-option:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+box.lumaui-dialog .lumaui-dialog-buttons { margin-top: 20px; border-spacing: 8px; }
+box.lumaui-dialog .lumaui-dialog-buttons button {
+  min-height: var(--lumaui-dialog-button-height); padding: 0 12px; margin: 0;
+  border: none; border-radius: var(--lumaui-dialog-button-radius);
+  font-weight: 600; outline: 0 solid transparent; box-shadow: none;
+  transition: background var(--lumaui-duration-hover) ease, filter var(--lumaui-duration-hover) ease;
+}
+box.lumaui-dialog button.lumaui-dialog-cancel { background: @luma_control_fill; color: @luma_ink; }
+box.lumaui-dialog button.lumaui-dialog-cancel:hover { background: @luma_control_fill_hover; }
+box.lumaui-dialog button.lumaui-dialog-action {
+  background: @luma_danger_fill; background-image: linear-gradient(to bottom, @luma_danger_fill, @luma_danger_fill_end);
+  color: @luma_danger_fill_ink;
+  box-shadow: inset 0 1px 0 alpha(@luma_on_media, 0.2), 0 0 0 1px alpha(@luma_media_shadow, 0.25), 0 1px 2px alpha(@luma_media_shadow, 0.3);
+}
+box.lumaui-dialog button.lumaui-dialog-action:hover { filter: brightness(1.08); }
+box.lumaui-dialog .lumaui-dialog-buttons button:active { filter: brightness(0.95); }
+box.lumaui-dialog .lumaui-dialog-buttons button:focus-visible { outline: 2px solid alpha(@luma_focus_ring, 0.7); outline-offset: 2px; }
+box.lumaui-dialog.drawer { margin: 0; padding: var(--lumaui-drawer-handle-top) 20px 26px; }
+box.lumaui-dialog.drawer .lumaui-drawer-handle { margin-bottom: 16px; } /* v70 .win.phone .lconf: content 30 from the top */
+box.lumaui-dialog.drawer .lumaui-dialog-buttons button { min-height: var(--lumaui-dialog-phone-button-height); }
+
+/* LumaUI: Toast */
+box.lumaui-toast {
+  min-height: var(--lumaui-toast-height); padding: 0 15px 0 13px;
+  border-radius: var(--lumaui-toast-radius); border-spacing: var(--lumaui-toast-gap);
+  background: @luma_toast_surface; color: @luma_ink; font-weight: 500;
+  box-shadow: inset 0 1px 0 @luma_toast_highlight, 0 0 0 1px @luma_toast_ring, 0 12px 32px -8px @luma_toast_shadow, 0 2px 6px @luma_toast_shadow_near;
+  opacity: 0; transform: translateY(var(--lumaui-distance-toast-rise));
+  transition: transform var(--lumaui-duration-toast-in) var(--lumaui-spring), opacity var(--lumaui-duration-fade) ease;
+}
+box.lumaui-toast.has-action { padding-right: 6px; }
+box.lumaui-toast.shown { opacity: 1; transform: none; }
+box.lumaui-toast .lumaui-toast-icon { -gtk-icon-size: var(--lumaui-toast-icon); color: @luma_good; }
+box.lumaui-toast.accent .lumaui-toast-icon { color: @luma_accent_ink; }
+box.lumaui-toast.love .lumaui-toast-icon { color: @luma_love; }
+box.lumaui-toast.muted .lumaui-toast-icon { color: @luma_ink_secondary; }
+box.lumaui-toast.warning .lumaui-toast-icon { color: @luma_amber; }
+box.lumaui-toast.danger .lumaui-toast-icon { color: @luma_danger_ink; }
+box.lumaui-toast .lumaui-toast-spinner { min-width: var(--lumaui-toast-icon); min-height: var(--lumaui-toast-icon); color: @luma_ink_secondary; }
+box.lumaui-toast button.lumaui-toast-undo {
+  min-height: var(--lumaui-toast-button-height); padding: 0 12px; margin: 0;
+  border: none; border-radius: var(--lumaui-toast-button-radius); box-shadow: none; outline: 0 solid transparent;
+  background: @luma_control_fill; color: @luma_ink; font-weight: 600;
+}
+box.lumaui-toast button.lumaui-toast-undo:hover { background: @luma_control_fill_hover; }
+box.lumaui-toast button.lumaui-toast-undo:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+/* LumaUI: reduced motion. Movement becomes a short fade; nothing slides,
+ * lifts, springs or shakes. */
+@media (prefers-reduced-motion: reduce) {
+  box.lumaui-toast, .lumaui-modal, .lumaui-modal.drawer {
+    transform: none; transition: opacity var(--lumaui-duration-reduced-fade) ease;
+  }
+  .lumaui-modal.nudge { animation: none; }
+  button.lumaui-stacked-button { transition: filter var(--lumaui-duration-hover) ease; }
+  button.lumaui-stacked-button:hover, button.lumaui-stacked-button:active { transform: none; }
+}
+
+/* LumaUI: parts F2 and F3 build. Each adds its rules under its own banner:
+ *   Structure (F2): Details pane · Details pane item · Details pane photos ·
+ *     Add row · Sidebar foot · Sidebar toggle · Table header · Selection ·
+ *     Navigation trail · Corner pill and mode switch · Menu drawer
+ *   Action (F3): Action center · Selection bubble
+ *   Content (F3): File card · Open in · Contact actions · Mini cards ·
+ *     Account card · Cards on content-lit backgrounds · Place search ·
+ *     Field · Status dot · Message bubble */
+
+/* ══ LumaUI F3: action and content parts ══════════════════════════════════ */
+
+/* LumaUI: Action center */
+/* Bar controls: the buttons of the action center, its editor's tools, the
+ * selection bubble and a file card's own actions. Inside a bar the radii are
+ * concentric: bar 16, padding 4, control 12. */
+button.lumaui-bar-button {
+  min-height: var(--lumaui-ac-control-height); min-width: 0; padding: 0 var(--lumaui-ac-control-padding-x); margin: 0;
+  border: none; border-radius: var(--lumaui-ac-control-radius); box-shadow: none; outline: 0 solid transparent;
+  background: none; color: @luma_ink; font-size: 13px; letter-spacing: -0.078px; font-weight: 500; /* v70 body: 13px at -.006em */
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease, filter var(--lumaui-duration-hover) ease;
+}
+button.lumaui-bar-button .lumaui-bar-button-content { border-spacing: 7px; }
+button.lumaui-bar-button image { -gtk-icon-size: var(--lumaui-ac-icon); }
+button.lumaui-bar-button:hover { background: @luma_hover; }
+button.lumaui-bar-button:active, button.lumaui-bar-button.on { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-bar-button.filled { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-bar-button.filled:hover { background: @luma_control_fill_hover; }
+button.lumaui-bar-button.icon { min-width: var(--lumaui-ac-control-height); padding: 0; color: @luma_bar_ink_secondary; }   /* on bar material: the bar's ink (light #191b1e) */
+button.lumaui-bar-button.icon:hover { color: @luma_ink; }
+/* An icon alone in an app bar draws at 18 (v70 .fbar .ib svg.i); words keep their 15 glyph. */
+box.lumaui-ac-row button.lumaui-bar-button.icon {
+  min-width: var(--lumaui-ac-control-height); min-height: var(--lumaui-ac-control-height);
+}
+box.lumaui-ac-row button.lumaui-bar-button.icon image { -gtk-icon-size: var(--lumaui-ac-icon-only); }
+button.lumaui-bar-button.primary {
+  padding: 0 14px; font-weight: 600; color: @luma_key_ink;
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+/* Icon keys retain the square control geometry; only labelled keys carry text padding. */
+button.lumaui-bar-button.primary.icon { padding: 0; }
+button.lumaui-bar-button.primary:hover { filter: brightness(1.08); }
+button.lumaui-bar-button.primary:active { filter: brightness(0.95); }
+button.lumaui-bar-button.danger, button.lumaui-bar-button.danger image { color: @luma_danger_ink; }
+button.lumaui-bar-button:disabled { opacity: 0.35; }
+button.lumaui-bar-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-bar-button.tool { min-height: var(--lumaui-ac-tool-button); border-radius: var(--lumaui-ac-tool-radius); }
+button.lumaui-bar-button.tool.icon { min-width: var(--lumaui-ac-tool-button); }
+button.lumaui-bar-button.tool image { -gtk-icon-size: var(--lumaui-ac-tool-icon); }
+button.lumaui-bar-button.inline.icon {
+  min-width: var(--lumaui-bar-entry-inline); min-height: var(--lumaui-bar-entry-inline);
+  padding: 0; border-radius: var(--lumaui-bar-entry-inline-radius); color: @luma_muted;
+}
+button.lumaui-bar-button.inline.icon image { -gtk-icon-size: var(--lumaui-bar-entry-inline-icon); }
+button.lumaui-bar-button.inline.icon:hover { background: none; color: @luma_ink; }
+box.lumaui-bar-rule { min-width: 1px; min-height: 20px; margin: 0 4px; background: @luma_line; }
+box.lumaui-bar-rule.space { min-width: var(--lumaui-ac-bar-space); min-height: 1px; margin: 0; background: none; }
+box.lumaui-bar-chip, button.lumaui-bar-chip {
+  min-height: var(--lumaui-ac-control-height); padding: 0 var(--lumaui-ac-chip-padding-x) 0 10px; margin-right: 2px;
+  border-radius: var(--lumaui-ac-control-radius); border-spacing: 8px;
+  background: @luma_chip; color: @luma_ink; font-weight: 600;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-bar-chip image.lumaui-bar-chip-icon { -gtk-icon-size: var(--lumaui-ac-icon); color: @luma_context_icon; }
+box.lumaui-bar-chip overlay.lumaui-bar-chip-preview {
+  min-width: 28px; min-height: 28px; border-radius: 7px;
+  margin-left: -4px; margin-right: 7px;
+}
+button.lumaui-bar-chip { border: none; outline: 0 solid transparent; }
+button.lumaui-bar-chip:hover { background: @luma_control_fill; }
+button.lumaui-bar-chip:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-bar-chip image.lumaui-bar-chip-icon,
+button.lumaui-bar-chip image.lumaui-bar-chip-icon { -gtk-icon-size: var(--lumaui-ac-icon); color: @luma_context_icon; }
+button.lumaui-bar-chip-close {
+  min-width: 26px; min-height: 26px; padding: 0; margin: 0 -6px 0 0; border: none; border-radius: 8px;
+  background: none; box-shadow: none; color: @luma_muted; outline: 0 solid transparent;
+}
+button.lumaui-bar-chip-close image { -gtk-icon-size: 13px; }
+button.lumaui-bar-chip-close:hover { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-bar-chip-close:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+
+/* The bar, and the double-height bar with its context line. */
+box.lumaui-ac-bar {
+  padding: var(--lumaui-ac-bar-padding); border-radius: var(--lumaui-ac-bar-radius); border-spacing: var(--lumaui-ac-double-gap);
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end); color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+}
+box.lumaui-ac-row { border-spacing: var(--lumaui-ac-bar-gap); }
+box.lumaui-ac-row box.lumaui-bar-group {
+  min-height: 30px; padding: 3px; border-spacing: 2px;
+  border-radius: var(--lumaui-ac-control-radius); background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-ac-row box.lumaui-bar-group button.lumaui-bar-button.icon {
+  min-width: 34px; min-height: 30px; border-radius: 9px;
+}
+box.lumaui-ac-row box.lumaui-bar-group.three { border-spacing: 0; }
+box.lumaui-ac-row box.lumaui-bar-group.three button.lumaui-bar-button.icon { min-width: 42px; }
+box.lumaui-ac-context {
+  padding: 4px 6px 4px 10px; border-spacing: 8px;
+  font-size: var(--lumaui-ac-context-size); letter-spacing: 0.12px; color: @luma_ink_secondary;
+}
+box.lumaui-ac-context image.lumaui-ac-context-icon { -gtk-icon-size: var(--lumaui-ac-context-icon); color: @luma_context_icon; }
+box.lumaui-ac-context button.lumaui-bar-chip-close { min-width: 24px; min-height: 24px; margin: 0; }
+button.lumaui-ac-prompt {
+  min-height: var(--lumaui-ac-control-height); padding: 0 12px; margin: 0; border: none; border-radius: var(--lumaui-ac-control-radius);
+  background: @luma_well; color: @luma_bar_muted; font-size: var(--lumaui-ac-prompt-font-size); font-weight: 400;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+  outline: 0 solid transparent; transition: color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-ac-prompt:hover, button.lumaui-ac-prompt.has-draft { color: @luma_bar_ink_secondary; }
+button.lumaui-ac-prompt:focus-visible { box-shadow: inset 0 0 0 1px @luma_well_ring, 0 0 0 2px @luma_focus_ring; }
+@keyframes lumaui-morph { from { opacity: 0; transform: translateY(var(--lumaui-distance-morph-rise)); } }
+box.lumaui-ac-bar.morph > box { animation: lumaui-morph var(--lumaui-duration-bar-morph) var(--lumaui-ease) both; }
+box.lumaui-ac-split.morph > box > * { animation: lumaui-morph var(--lumaui-duration-bar-morph) var(--lumaui-ease) both; }
+box.lumaui-ac-split { border-spacing: var(--lumaui-ac-split-gap); }
+
+/* The editor the bar grows into (Charlie's reply). */
+box.lumaui-ac-editor {
+  border-radius: var(--lumaui-ac-editor-radius); background: @luma_float_surface; color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+  opacity: 0; transform: translateY(var(--lumaui-distance-grow-rise)) scale(var(--lumaui-ac-grow-scale));
+  transition: opacity var(--lumaui-duration-grow) ease, transform var(--lumaui-duration-grow) var(--lumaui-spring);
+}
+box.lumaui-ac-editor.shown { opacity: 1; transform: none; }
+.lumaui-action-center.phone box.lumaui-ac-editor {
+  border-radius: var(--lumaui-ac-phone-radius) var(--lumaui-ac-phone-radius) 0 0; transform: none;
+  transition: opacity var(--lumaui-duration-fade) ease;
+}
+box.lumaui-ac-header { min-height: var(--lumaui-ac-header-height); padding: 0 8px; border-spacing: 10px; border-bottom: 1px solid @luma_line; }
+button.lumaui-ac-mode {
+  min-height: var(--lumaui-ac-mode-height); padding: 0 10px 0 9px; margin: 0; border: none; border-radius: var(--lumaui-ac-mode-radius);
+  background: @luma_chip; color: @luma_ink; font-size: 12.5px; font-weight: 600; outline: 0 solid transparent;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+button.lumaui-ac-mode .lumaui-ac-mode-content { border-spacing: 7px; }
+button.lumaui-ac-mode image.lumaui-ac-mode-icon { -gtk-icon-size: 14px; color: @luma_accent_ink; }
+button.lumaui-ac-mode image.lumaui-ac-mode-chevron { -gtk-icon-size: 12px; color: @luma_muted; }
+button.lumaui-ac-mode.static { background: none; box-shadow: none; padding-left: 6px; }
+button.lumaui-ac-mode:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+label.lumaui-ac-summary { font-size: 12.5px; color: @luma_muted; }
+box.lumaui-ac-field { min-height: var(--lumaui-ac-field-row-height); padding: 0 14px; border-spacing: 8px; border-bottom: 1px solid @luma_line; }
+label.lumaui-ac-field-label { min-width: var(--lumaui-ac-field-label-width); font-size: 12.5px; color: @luma_muted; }
+entry.lumaui-ac-field-input, text.lumaui-ac-field-input {
+  min-height: 32px; padding: 0; margin: 0; border: none; border-radius: 0; outline: none;
+  background: none; box-shadow: none; color: @luma_ink; font-size: 13.5px;
+}
+box.lumaui-ac-tools { padding: 6px 8px 2px; border-spacing: 2px; }
+box.lumaui-ac-tools box.lumaui-bar-rule { min-height: 18px; }
+scrolledwindow.lumaui-ac-body, scrolledwindow.lumaui-ac-body > viewport { background: none; }
+textview.lumaui-ac-text, textview.lumaui-ac-text > text { background: none; color: @luma_ink; font-size: var(--lumaui-ac-text-size); }
+/* An input no kit rule styles keeps v70's browser placeholder grey (Chromium's default), in light exactly and on the
+ * dark well as an AA grey (lumaui-deviations.md). Lowest specificity: every kit field's own ink-3 rule wins. */
+text > placeholder { color: @luma_placeholder_ink; opacity: 1; }
+label.lumaui-ac-placeholder {
+  margin: var(--lumaui-ac-text-padding-top) 0 0 var(--lumaui-ac-text-padding-x);
+  color: @luma_muted; font-size: var(--lumaui-ac-text-size);
+}
+box.lumaui-ac-footer { padding: 8px; border-spacing: 10px; border-top: 1px solid @luma_line; }
+/* A form (v70 Settings' cfSheet, .cflac): a 128 label column, and Cancel (fill-2) then the key,
+ * both 36 and 12 round, at the footer's end. */
+box.lumaui-ac-editor-content.form label.lumaui-ac-field-label { min-width: var(--lumaui-ac-form-label-width); }
+box.lumaui-ac-editor-content.form box.lumaui-ac-footer { border-spacing: 8px; }
+box.lumaui-ac-editor-content.form label.lumaui-ac-summary { line-height: 17px; } /* 12.5 x 1.35, to the pixel */
+/* v70 .cflac: the mode pill stays the chip (a form's mode does not change) in the header's quiet ink;
+ * the footer's buttons are 0 16; a field's placeholder is ink-3 (v70 .lacf input::placeholder). */
+box.lumaui-ac-editor-content.form button.lumaui-ac-mode.static {
+  padding-left: 9px; color: @luma_muted; background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-ac-editor-content.form box.lumaui-ac-footer button { padding: 0 16px; }
+entry.lumaui-ac-field-input > text > placeholder, text.lumaui-ac-field-input > placeholder { color: @luma_muted; opacity: 1; }
+/* v70's 48 header and 44 rows count their hairline in; GTK's min-height is inside the border. */
+box.lumaui-ac-editor-content.form box.lumaui-ac-header { min-height: calc(var(--lumaui-ac-header-height) - 1px); }
+box.lumaui-ac-editor-content.form box.lumaui-ac-field { min-height: calc(var(--lumaui-ac-field-row-height) - 1px); }
+box.lumaui-ac-footer button.lumaui-text-button.lumaui-ac-cancel {
+  min-height: var(--lumaui-ac-control-height); border-radius: var(--lumaui-ac-control-radius); background: @luma_control_fill;
+}
+box.lumaui-ac-footer button.lumaui-text-button.lumaui-ac-cancel:hover { background: @luma_control_fill_hover; }
+box.lumaui-ac-footer button.lumaui-bar-button.icon { color: @luma_muted; }
+box.lumaui-ac-footer button.lumaui-bar-button.icon:hover { color: @luma_danger_ink; background: @luma_hover; }
+box.lumaui-ac-footer button.lumaui-bar-button.primary { padding: 0 16px; }
+label.lumaui-ac-hint { font-size: 11.5px; letter-spacing: 0.12px; color: @luma_faint; }
+
+/* LumaUI: Selection bubble */
+box.lumaui-bubble {
+  padding: var(--lumaui-bubble-padding); border-radius: var(--lumaui-bubble-radius); border-spacing: var(--lumaui-bubble-gap);
+  background: @luma_bar_surface; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+  opacity: 0; transform: translateY(var(--lumaui-distance-morph-rise));
+  transition: opacity var(--lumaui-duration-bubble-in) var(--lumaui-ease), transform var(--lumaui-duration-bubble-in) var(--lumaui-ease);
+}
+box.lumaui-bubble.below { transform: translateY(calc(-1 * var(--lumaui-distance-morph-rise))); }
+box.lumaui-bubble.shown { opacity: 1; transform: none; }
+box.lumaui-bubble button.lumaui-bar-button.bubble { min-height: var(--lumaui-bubble-button); border-radius: var(--lumaui-bubble-button-radius); }
+box.lumaui-bubble button.lumaui-bar-button.bubble.icon { min-width: var(--lumaui-bubble-button); }
+box.lumaui-bubble button.lumaui-bar-button.bubble image { -gtk-icon-size: var(--lumaui-bubble-icon); }
+
+/* A short anchored menu (Open in, the editor's modes); F2's menu drawer
+ * takes over its presentation. */
+box.lumaui-menu {
+  min-width: 220px; padding: 6px; border-radius: 16px; background: @luma_float_surface; color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+  opacity: 0; transition: opacity var(--lumaui-duration-fade) var(--lumaui-ease);
+}
+box.lumaui-menu.shown, box.lumaui-menu.drawer { opacity: 1; }
+box.lumaui-menu.narrow { min-width: 208px; }   /* v71 crPop */
+box.lumaui-menu.drawer { padding: var(--lumaui-drawer-handle-top) var(--lumaui-drawer-padding-x) var(--lumaui-drawer-padding-bottom); }
+box.lumaui-menu.drawer .lumaui-drawer-handle { margin-bottom: 12px; }
+box.lumaui-menu.open-in { min-width: var(--lumaui-open-in-min-width); }
+box.lumaui-menu.wide { min-width: calc(var(--lumaui-menu-wide-width) - 12px); } /* v70 .tsesspop: 300 less its 6 padding */
+label.lumaui-menu-heading { margin: 6px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.11px; color: @luma_muted; }
+box.lumaui-menu.drawer label.lumaui-menu-heading { margin: 0 16px 6px; }
+/* v70 .crmi: 36 tall with its 5 px padding (CSS counts the padding in; GTK's min-height is inside it). */
+button.lumaui-menu-item {
+  min-height: calc(var(--lumaui-open-in-row-height) - 10px); padding: 5px 10px; margin: 0; border: none; border-radius: 10px;
+  background: none; box-shadow: none; color: @luma_ink; font-size: 13px; font-weight: 400; outline: 0 solid transparent;
+}
+box.lumaui-menu.drawer button.lumaui-menu-item { min-height: calc(var(--lumaui-drawer-row-min-height) - 10px); }
+button.lumaui-menu-item.rich { min-width: 292px; min-height: 44px; }
+button.lumaui-menu-item.rich label.lumaui-menu-description { font-size: 11px; color: @luma_muted; }
+button.lumaui-menu-item:hover { background: @luma_hover; }
+button.lumaui-menu-item.on { background: @luma_control_fill; font-weight: 600; }
+box.lumaui-menu.picker { min-width: 0; }
+box.lumaui-menu image.lumaui-menu-check { -gtk-icon-size: 15px; color: @luma_frame_ink_secondary; } /* v70 .cfpop: ink-2 (the frame ink-2 in light) */
+button.lumaui-menu-item:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-menu-item image { -gtk-icon-size: 16px; color: @luma_bar_ink_secondary; }   /* on float material */
+button.lumaui-menu-item image.lumaui-app-icon { -gtk-icon-size: var(--lumaui-open-in-menu-icon); }
+label.lumaui-menu-note { font-size: 11px; letter-spacing: 0.11px; color: @luma_muted; }
+box.lumaui-menu-separator { min-height: 1px; margin: 5px 8px; background: @luma_line; }
+
+/* LumaUI: Open in */
+button.lumaui-open-button {
+  min-height: var(--lumaui-ac-control-height); padding: 0 12px 0 10px; margin: 0; border: none; border-radius: 10px;
+  background: @luma_hover; color: @luma_ink; font-weight: 500; box-shadow: none; outline: 0 solid transparent;
+  transition: background var(--lumaui-duration-hover) ease;
+}
+button.lumaui-open-button:hover { background: @luma_control_fill; }
+button.lumaui-open-button .lumaui-open-content { border-spacing: 7px; }
+button.lumaui-open-button image.lumaui-app-icon { -gtk-icon-size: var(--lumaui-open-in-app-icon); }
+button.lumaui-open-button.small {
+  min-height: var(--lumaui-file-open-height); padding: 0 var(--lumaui-file-open-padding-x) 0 8px; border-radius: var(--lumaui-file-open-radius);
+  background: @luma_control_fill; font-size: 12px; font-weight: 600; letter-spacing: 0.12px;
+}
+button.lumaui-open-button.small:hover { background: @luma_control_fill_hover; }
+button.lumaui-open-button.small .lumaui-open-content { border-spacing: 6px; }
+button.lumaui-open-button.small image.lumaui-app-icon { -gtk-icon-size: var(--lumaui-file-app-icon); }
+button.lumaui-open-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+/* LumaUI: File card */
+box.lumaui-file-card {
+  min-height: var(--lumaui-file-height); padding: 0 10px 0 8px; border-radius: var(--lumaui-file-radius); border-spacing: var(--lumaui-file-gap);
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-file-card.selected { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 0 0 2px @luma_focus_ring; }
+box.lumaui-file-card .lumaui-file-slot { min-width: var(--lumaui-file-face); min-height: var(--lumaui-file-face); }
+box.lumaui-file-card .lumaui-file-face { border-radius: var(--lumaui-file-face-radius); box-shadow: inset 0 0 0 1px @luma_line; }
+box.lumaui-file-card .lumaui-file-text { border-spacing: 2px; }
+box.lumaui-file-card .lumaui-file-name { font-size: 13px; font-weight: 600; }
+label.lumaui-file-meta { font-size: 11.5px; letter-spacing: 0.12px; color: @luma_muted; font-feature-settings: "tnum"; }
+label.lumaui-file-meta.danger { color: @luma_danger_ink; }
+label.lumaui-file-meta.warning { color: @luma_warning_ink; }
+box.lumaui-file-card button.lumaui-bar-button.file {
+  min-height: var(--lumaui-file-open-height); padding: 0 var(--lumaui-file-open-padding-x); border-radius: var(--lumaui-file-open-radius);
+  background: @luma_control_fill; font-size: 12px; font-weight: 600;
+}
+box.lumaui-file-card button.lumaui-bar-button.file:hover { background: @luma_control_fill_hover; }
+box.lumaui-file-card button.lumaui-bar-button.file.icon {
+  min-width: var(--lumaui-file-action); min-height: var(--lumaui-file-action); padding: 0;
+  border-radius: var(--lumaui-file-action-radius); background: none; color: @luma_muted;
+}
+box.lumaui-file-card button.lumaui-bar-button.file.icon:hover { background: @luma_control_fill; color: @luma_ink; }
+box.lumaui-file-card button.lumaui-bar-button.file.icon image { -gtk-icon-size: var(--lumaui-file-action-icon); }
+box.lumaui-file-card.compact {
+  min-height: var(--lumaui-file-mini-height); padding: 0 6px; border-radius: var(--lumaui-file-mini-radius); border-spacing: var(--lumaui-file-mini-gap);
+}
+box.lumaui-file-card.compact .lumaui-file-slot { min-width: var(--lumaui-file-mini-face); min-height: var(--lumaui-file-mini-face); }
+box.lumaui-file-card.compact .lumaui-file-name { font-size: 12.5px; }
+
+/* LumaUI: Contact actions */
+box.lumaui-contact-actions { border-spacing: var(--lumaui-stack-spacing); }
+
+/* LumaUI: Mini cards */
+box.lumaui-mini-card {
+  min-height: calc(var(--lumaui-mini-min-height) - 16px); padding: 8px 10px 8px 8px; border-radius: var(--lumaui-mini-radius);
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-mini-card.person { padding: 12px; }
+box.lumaui-mini-card.person box.lumaui-contact-actions { margin-top: 14px; }
+box.lumaui-mini-card .lumaui-mini-row { border-spacing: var(--lumaui-mini-gap); }
+box.lumaui-mini-card .lumaui-mini-lead { min-width: var(--lumaui-mini-lead); min-height: var(--lumaui-mini-lead); }
+box.lumaui-mini-card .lumaui-mini-text { border-spacing: 2px; }
+label.lumaui-mini-title { font-size: 13px; font-weight: 600; }
+.lumaui-mini-subtitle, .lumaui-mini-subtitle label {
+  font-size: var(--lumaui-t-caption-size); font-weight: var(--lumaui-t-caption-weight); letter-spacing: var(--lumaui-t-caption-tracking);
+  color: @luma_muted; font-feature-settings: "tnum";
+}
+box.lumaui-mini-subtitle { border-spacing: 5px; }
+box.lumaui-on-luma-dot { min-width: var(--lumaui-mini-dot); min-height: var(--lumaui-mini-dot); border-radius: 999px; background: @luma_good; }
+button.lumaui-mini-button {
+  min-height: var(--lumaui-mini-button-height); padding: 0 12px; margin: 0; border: none; border-radius: var(--lumaui-mini-button-radius);
+  background: @luma_control_fill; color: @luma_ink; box-shadow: none; font-size: 12px; font-weight: 600; outline: 0 solid transparent;
+}
+button.lumaui-mini-button:hover, button.lumaui-mini-play:hover { background: @luma_control_fill_hover; }
+button.lumaui-mini-button:focus-visible, button.lumaui-mini-play:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+box.lumaui-event-tile { min-width: var(--lumaui-mini-lead); min-height: var(--lumaui-mini-lead); border-radius: var(--lumaui-mini-event-radius); }
+box.lumaui-event-tile.create { background: @luma_cat_create_bg; box-shadow: inset 3px 0 0 @luma_cat_create_ink; }
+box.lumaui-event-tile.work { background: @luma_cat_work_bg; box-shadow: inset 3px 0 0 @luma_cat_work_ink; }
+box.lumaui-event-tile.media { background: @luma_cat_media_bg; box-shadow: inset 3px 0 0 @luma_cat_media_ink; }
+box.lumaui-event-tile.play { background: @luma_cat_play_bg; box-shadow: inset 3px 0 0 @luma_cat_play_ink; }
+box.lumaui-event-tile.tools { background: @luma_cat_tools_bg; box-shadow: inset 3px 0 0 @luma_cat_tools_ink; }
+label.lumaui-event-month { font-size: var(--lumaui-mini-month-size); font-weight: 700; letter-spacing: 0.4px; color: @luma_ink_secondary; }
+label.lumaui-event-day { font-size: var(--lumaui-mini-day-size); font-weight: 650; font-feature-settings: "tnum"; color: @luma_ink; }
+.lumaui-song-artwork { border-radius: var(--lumaui-mini-artwork-radius); box-shadow: 0 1px 3px alpha(@luma_media_shadow, 0.25); }
+button.lumaui-mini-play {
+  min-width: var(--lumaui-mini-play); min-height: var(--lumaui-mini-play); padding: 0; margin: 0; border: none; border-radius: 999px;
+  background: @luma_control_fill; color: @luma_ink; box-shadow: none; outline: 0 solid transparent;
+}
+button.lumaui-mini-play image { -gtk-icon-size: var(--lumaui-mini-play-icon); }
+box.lumaui-place-pin {
+  min-width: var(--lumaui-mini-pin); min-height: var(--lumaui-mini-pin); border-radius: 999px;
+  background: @luma_place_pin; color: @luma_place_pin_ink;
+  box-shadow: 0 0 0 2px @luma_place_pin_ring, 0 2px 6px alpha(@luma_media_shadow, 0.3);
+}
+box.lumaui-place-pin image { -gtk-icon-size: var(--lumaui-mini-pin-icon); }
+
+/* LumaUI: Account card */
+button.lumaui-account-card {
+  padding: var(--lumaui-account-padding); margin: 0 0 var(--lumaui-account-margin-bottom) 0; border: none; border-radius: var(--lumaui-account-radius);
+  background: @luma_hover; color: @luma_ink; box-shadow: inset 0 0 0 1px @luma_line; outline: 0 solid transparent;
+  transition: background var(--lumaui-duration-hover) ease;
+}
+button.lumaui-account-card:hover { background: @luma_control_fill; }
+button.lumaui-account-card.on { background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop; }
+button.lumaui-account-card:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+button.lumaui-account-card .lumaui-account-content { border-spacing: var(--lumaui-account-gap); }
+button.lumaui-account-card label.lumaui-account-name { font-weight: 600; }
+button.lumaui-account-card.compact label.lumaui-account-name { font-size: var(--lumaui-account-compact-name-size); }
+button.lumaui-account-card.compact label.lumaui-t-caption { font-weight: 400; }
+button.lumaui-account-card image.lumaui-account-chevron { -gtk-icon-size: var(--lumaui-account-chevron); color: @luma_faint; }
+/* Recessed: the card in its own well at the top of a list, the row inside it (v70 Contacts' .cmecard). */
+/* v70 .cmecard > .ctrow.me: the button is the row (11 round); AccountCard draws the
+ * well around it, recessed_padding out, as its own node (.lumaui-account-well). */
+button.lumaui-account-card.recessed {
+  padding: 0; border: none; border-radius: var(--lumaui-account-recessed-row-radius);
+  margin: calc(var(--lumaui-account-recessed-margin-top) + var(--lumaui-account-recessed-padding)) var(--lumaui-account-recessed-padding)
+          calc(var(--lumaui-account-recessed-margin-bottom) + var(--lumaui-account-recessed-padding));
+  background: none; box-shadow: none;
+}
+button.lumaui-account-card.recessed > box.lumaui-account-well {
+  border-radius: var(--lumaui-account-radius);
+  background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+button.lumaui-account-card.recessed .lumaui-account-content {
+  min-height: calc(var(--lumaui-account-recessed-row-height) - 2 * var(--lumaui-account-recessed-row-padding-y));
+  padding: var(--lumaui-account-recessed-row-padding-y) var(--lumaui-account-recessed-row-padding-x);
+  border-radius: var(--lumaui-account-recessed-row-radius); border-spacing: var(--lumaui-account-recessed-gap);
+  transition: background var(--lumaui-duration-hover) ease;
+}
+button.lumaui-account-card.recessed:hover, button.lumaui-account-card.recessed.on { background: none; }
+button.lumaui-account-card.recessed:hover .lumaui-account-content { background: @luma_hover; }
+button.lumaui-account-card.recessed.on .lumaui-account-content {
+  background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+button.lumaui-account-card.recessed label.lumaui-account-name { font-weight: var(--lumaui-sidebar-title-weight); }
+button.lumaui-account-card.recessed label.lumaui-t-caption { font-weight: 400; }
+.lumaui-avatar { border-radius: 999px; color: @luma_on_media; }
+.lumaui-avatar .lumaui-avatar-initials { color: @luma_on_media; }
+.lumaui-avatar.picture { background: none; }
+.lumaui-avatar .lumaui-avatar-initials { font-weight: 600; font-size: 12px; }
+.lumaui-avatar.large .lumaui-avatar-initials { font-size: 15px; }
+/* v71 .crbrand: a sender that is not a person; the size and weight are the label's own attributes. */
+.lumaui-avatar.mark { border-radius: 28%; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 1px 2px @luma_chip_shadow; }
+.lumaui-avatar.mark .lumaui-avatar-initials { font-weight: 700; }
+
+/* LumaUI: Cards on content-lit backgrounds */
+box.lumaui-card {
+  border-radius: var(--lumaui-card-radius); background: @luma_card_surface; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-lit-card {
+  border-radius: var(--lumaui-sky-card-radius); background: @luma_sky_card; color: @luma_sky_card_ink;
+  box-shadow: inset 0 1px 0 @luma_sky_card_highlight, inset 0 0 0 1px @luma_sky_card_edge;
+}
+/* A recessed card: a well in the page (v70 .ccard), for groups of facts on a person's page. */
+box.lumaui-card.recessed {
+  background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-card.outlined {
+  background: @luma_content;
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+box.lumaui-card.recessed.padded {
+  padding: var(--lumaui-card-recessed-padding-top) var(--lumaui-card-recessed-padding-x) var(--lumaui-card-recessed-padding-bottom);
+}
+box.lumaui-card.recessed > label.lumaui-t-label:first-child { margin: 0 2px var(--lumaui-card-heading-gap); line-height: var(--lumaui-card-heading-line-height); min-height: 0; } /* 16 px, whole pixels */
+box.lumaui-card.padded, box.lumaui-lit-card.padded {
+  padding: var(--lumaui-card-padding-top) var(--lumaui-card-padding-x) var(--lumaui-card-padding-bottom);
+}
+box.lumaui-lit-card label, window.luma-app-window box.lumaui-lit-card label { color: @luma_sky_card_ink; }
+box.lumaui-lit-card label.lumaui-t-caption, box.lumaui-lit-card label.lumaui-t-label,
+box.lumaui-lit-card label.lumaui-t-body, box.lumaui-lit-card .lumaui-t-unit,
+window.luma-app-window box.lumaui-lit-card label.lumaui-t-caption,
+window.luma-app-window box.lumaui-lit-card label.lumaui-t-label,
+window.luma-app-window box.lumaui-lit-card label.lumaui-t-body,
+window.luma-app-window box.lumaui-lit-card .lumaui-t-unit { color: @luma_sky_card_ink_secondary; }
+
+/* LumaUI: Place search */
+box.lumaui-place-search {
+  min-height: var(--lumaui-place-field-height); padding: 0 var(--lumaui-place-field-padding-x); border-radius: var(--lumaui-place-field-radius);
+  border-spacing: var(--lumaui-place-field-gap); background: @luma_hover; color: @luma_muted;
+  transition: background var(--lumaui-duration-hover) ease, box-shadow var(--lumaui-duration-hover) ease;
+}
+box.lumaui-place-search:hover { background: @luma_control_fill; }
+box.lumaui-place-search:focus-within { box-shadow: 0 0 0 2px @luma_focus_ring; color: @luma_ink; }
+box.lumaui-place-search image.lumaui-place-search-icon { -gtk-icon-size: 16px; }
+text.lumaui-place-entry { background: none; color: @luma_ink; font-size: 13px; }
+text.lumaui-place-entry > placeholder { color: @luma_muted; opacity: 1; }
+box.lumaui-place-list {
+  padding: var(--lumaui-place-padding); border-radius: var(--lumaui-place-radius); border-spacing: 1px;
+  background: @luma_float_surface; color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+  animation: lumaui-morph var(--lumaui-duration-bubble-in) var(--lumaui-ease) both;
+}
+button.lumaui-place-row {
+  min-height: var(--lumaui-place-row-height); padding: 4px 10px; margin: 0; border: none; border-radius: var(--lumaui-place-row-radius);
+  background: none; box-shadow: none; color: @luma_ink; font-weight: 400;
+}
+button.lumaui-place-row > box { border-spacing: var(--lumaui-place-row-gap); }
+button.lumaui-place-row:hover, button.lumaui-place-row.on { background: @luma_hover; }
+button.lumaui-place-row image.lumaui-place-row-icon { -gtk-icon-size: var(--lumaui-place-icon); color: @luma_muted; }
+label.lumaui-place-name { font-size: 13px; font-weight: 550; }
+label.lumaui-place-key { font-size: 11px; font-weight: 500; letter-spacing: 0.11px; color: @luma_faint; }
+label.lumaui-place-none { margin: 8px 10px; font-size: 12.5px; color: @luma_muted; }
+
+/* LumaUI: Field */
+box.lumaui-field { margin-top: var(--lumaui-field-top-gap); border-spacing: var(--lumaui-field-gap); }
+label.lumaui-field-label {
+  font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight); letter-spacing: var(--lumaui-t-label-tracking); color: @luma_muted;
+}
+entry.lumaui-field-well {
+  min-height: var(--lumaui-field-height); padding: 0 var(--lumaui-field-padding-x); margin: 0; border: none; border-radius: var(--lumaui-field-radius);
+  background: @luma_well; color: @luma_ink; font-size: var(--lumaui-field-font-size); outline: 0 solid transparent;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-field.panel { margin-top: 0; }
+box.lumaui-field.panel entry.lumaui-field-well {
+  min-height: var(--lumaui-field-panel-height); padding: 0 var(--lumaui-field-panel-padding-x);
+  border-radius: var(--lumaui-field-panel-radius); font-size: var(--lumaui-field-panel-font-size);
+}
+box.lumaui-field.panel label.lumaui-field-label { padding: 0 var(--lumaui-field-panel-label-padding-x); }
+entry.lumaui-field-well:focus-within { box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 2px @luma_focus_ring; outline: 0 solid transparent; }
+entry.lumaui-field-well > text > placeholder { color: @luma_muted; opacity: 1; }
+label.lumaui-field-hint {
+  margin-top: 2px; font-size: var(--lumaui-t-caption-size); font-weight: var(--lumaui-t-caption-weight);
+  letter-spacing: var(--lumaui-t-caption-tracking); color: @luma_muted;
+}
+
+/* LumaUI: Message bubble */
+box.lumaui-message {
+  padding: var(--lumaui-msg-padding-top) var(--lumaui-msg-padding-x) var(--lumaui-msg-padding-bottom);
+  border-radius: var(--lumaui-msg-radius); background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+  transition: box-shadow var(--lumaui-duration-press) ease, transform var(--lumaui-duration-press) var(--lumaui-spring);
+}
+box.lumaui-message label.lumaui-message-text { font-size: var(--lumaui-msg-font-size); font-weight: 400; line-height: var(--lumaui-msg-line-height); }
+box.lumaui-message.mine {
+  background: @luma_bubble_mine; background-image: linear-gradient(to bottom, @luma_bubble_mine, @luma_bubble_mine_end); color: @luma_bubble_mine_ink;
+  box-shadow: inset 0 1px 0 @luma_bubble_mine_highlight, 0 0 0 1px @luma_bubble_mine_ring, 0 1px 2px @luma_bubble_mine_shadow;
+}
+box.lumaui-message.media { padding: 3px; }
+box.lumaui-message.theirs.join-above { border-top-left-radius: var(--lumaui-msg-join); }
+box.lumaui-message.theirs.join-below { border-bottom-left-radius: var(--lumaui-msg-join); }
+box.lumaui-message.mine.join-above { border-top-right-radius: var(--lumaui-msg-join); }
+box.lumaui-message.mine.join-below { border-bottom-right-radius: var(--lumaui-msg-join); }
+box.lumaui-message.rtl.theirs.join-above { border-top-left-radius: var(--lumaui-msg-radius); border-top-right-radius: var(--lumaui-msg-join); }
+box.lumaui-message.rtl.theirs.join-below { border-bottom-left-radius: var(--lumaui-msg-radius); border-bottom-right-radius: var(--lumaui-msg-join); }
+box.lumaui-message.rtl.mine.join-above { border-top-right-radius: var(--lumaui-msg-radius); border-top-left-radius: var(--lumaui-msg-join); }
+box.lumaui-message.rtl.mine.join-below { border-bottom-right-radius: var(--lumaui-msg-radius); border-bottom-left-radius: var(--lumaui-msg-join); }
+box.lumaui-message.selected { transform: scale(1.015); box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 0 0 2px @luma_accent_ink; }
+box.lumaui-message.mine.selected { box-shadow: inset 0 1px 0 @luma_bubble_mine_highlight, 0 0 0 1px @luma_bubble_mine_ring, 0 0 0 2px @luma_ink; }
+
+/* LumaUI: Content-lit header */
+.lumaui-lit-header .lumaui-lit-picture { opacity: var(--lumaui-lit-light-opacity); }
+box.lumaui-lit-wash { min-height: var(--lumaui-lit-wash-height); }
+box.lumaui-lit-wash.create { background-image: linear-gradient(to bottom, alpha(@luma_cat_create_bg, var(--lumaui-lit-wash-alpha)), alpha(@luma_cat_create_bg, 0)); }
+box.lumaui-lit-wash.work { background-image: linear-gradient(to bottom, alpha(@luma_cat_work_bg, var(--lumaui-lit-wash-alpha)), alpha(@luma_cat_work_bg, 0)); }
+box.lumaui-lit-wash.media { background-image: linear-gradient(to bottom, alpha(@luma_cat_media_bg, var(--lumaui-lit-wash-alpha)), alpha(@luma_cat_media_bg, 0)); }
+box.lumaui-lit-wash.play { background-image: linear-gradient(to bottom, alpha(@luma_cat_play_bg, var(--lumaui-lit-wash-alpha)), alpha(@luma_cat_play_bg, 0)); }
+box.lumaui-lit-wash.tools { background-image: linear-gradient(to bottom, alpha(@luma_cat_tools_bg, var(--lumaui-lit-wash-alpha)), alpha(@luma_cat_tools_bg, 0)); }
+
+/* LumaUI: Hero title field */
+entry.lumaui-hero-field {
+  min-width: calc(var(--lumaui-hero-width) - 2 * var(--lumaui-hero-padding-x)); min-height: 0; padding: var(--lumaui-hero-padding-y) var(--lumaui-hero-padding-x);
+  margin: var(--lumaui-hero-margin-top) 0 var(--lumaui-hero-margin-bottom);
+  border: none; border-radius: var(--lumaui-hero-radius); outline: 0 solid transparent;
+  background: none; box-shadow: none; color: @luma_ink;
+  transition: background var(--lumaui-duration-hover) ease, box-shadow var(--lumaui-duration-hover) ease;
+}
+/* Being edited (v70 .cname): a 320-wide well at 26/700, its ring in the person's hue
+ * (lumaui.hue_class; the focus ring where there is none). */
+entry.lumaui-hero-field.editable {
+  min-height: calc(var(--lumaui-hero-edit-height) - 2 * var(--lumaui-hero-padding-y));
+  font-size: var(--lumaui-hero-edit-size); letter-spacing: 0; line-height: 1;
+  margin: calc(var(--lumaui-hero-margin-top) + var(--lumaui-hero-edit-margin-top)) 0 calc(var(--lumaui-hero-margin-bottom) + var(--lumaui-hero-edit-margin-bottom));
+  background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip, 0 0 0 2px @luma_focus_ring;
+}
+entry.lumaui-hero-field:not(.editable) { padding-top: 0; padding-bottom: 0; }
+entry.lumaui-hero-field:focus-within { outline: 0 solid transparent; }
+entry.lumaui-hero-field > text > placeholder { color: @luma_muted; opacity: 1; }
+
+/* LumaUI: Status pill */
+box.lumaui-status-pill {
+  min-height: var(--lumaui-status-height); padding: 0 var(--lumaui-status-padding-x); border-radius: var(--lumaui-status-radius);
+  border-spacing: var(--lumaui-status-gap); background: @luma_well; color: @luma_ink_secondary;
+  font-size: var(--lumaui-status-font-size); font-weight: 600; letter-spacing: 0.12px;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-status-pill.off { color: @luma_muted; }
+box.lumaui-status-pill-dot {
+  min-width: var(--lumaui-status-dot); min-height: var(--lumaui-status-dot); border-radius: 999px;
+  background: @luma_good; box-shadow: 0 0 var(--lumaui-status-glow) @luma_good;
+}
+box.lumaui-status-pill.busy box.lumaui-status-pill-dot { background: @luma_accent_ink; box-shadow: none; animation: lumaui-breathe 1.6s ease-in-out infinite; }
+box.lumaui-status-pill.bad box.lumaui-status-pill-dot { background: @luma_danger_ink; box-shadow: none; }
+@keyframes lumaui-breathe { 50% { opacity: 0.35; } }
+
+/* LumaUI F3: reduced motion. Nothing grows, rises or scales; it fades. */
+@media (prefers-reduced-motion: reduce) {
+  box.lumaui-ac-editor, box.lumaui-bubble, box.lumaui-bubble.below, box.lumaui-menu {
+    transform: none; transition: opacity var(--lumaui-duration-reduced-fade) ease;
+  }
+  box.lumaui-ac-bar.morph > box, box.lumaui-ac-split.morph > box > *, box.lumaui-place-list { animation: none; }
+  box.lumaui-message, box.lumaui-message.selected { transform: none; transition: none; }
+  box.lumaui-status-pill.busy box.lumaui-status-pill-dot { animation: none; }
+}
+
+/* ══ LumaUI structure (F2) ═══════════════════════════════════════════════════
+ * Details pane, sidebar foot and toggle, table header, selection, navigation
+ * trail, corner pill and mode switch, menu drawer. v70 fills map to roles:
+ * fill-1 @luma_hover, fill-2 @luma_control_fill, fill-3 @luma_control_fill_hover,
+ * hair @luma_line, ink-2 @luma_ink_secondary, ink-3 @luma_muted, ink-4 @luma_faint.
+ * GTK sizes content without padding, so a min-height is the design's outside
+ * minus its padding. */
+
+/* LumaUI: Details pane */
+/* v70 .ldp margin 0 8px 8px 0 is the frame's gutter, which the window body already gives
+ * (a second 8 left the pane 16 from the edge and higher than the island). Beside a frame
+ * sidebar the body drops its bottom gutter and the pane keeps it, as the island does. */
+box.lumaui-details {
+  min-width: var(--lumaui-details-width);
+  margin: 0;
+  color: @luma_ink;
+  transition: opacity var(--lumaui-duration-morph) var(--lumaui-ease), transform var(--lumaui-duration-morph) var(--lumaui-ease);
+}
+box.lumaui-details.entering { opacity: 0; transform: translateX(var(--lumaui-details-enter)); }
+box.lumaui-details-header {
+  min-height: calc(var(--lumaui-details-header-height) - 1px);
+  padding: 0 var(--lumaui-details-header-padding-end) 0 var(--lumaui-details-header-padding-start);
+  border-bottom: 1px solid @luma_line; border-spacing: 8px;
+}
+label.lumaui-details-title { font-size: var(--lumaui-details-title-size); font-weight: 650; letter-spacing: -0.14px; color: @luma_ink; }
+button.lumaui-details-close {
+  min-width: var(--lumaui-details-close); min-height: var(--lumaui-details-close); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-details-close-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_muted;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-details-close:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-details-close image { -gtk-icon-size: var(--lumaui-details-close-icon); }
+box.lumaui-details-body {
+  padding: var(--lumaui-details-body-padding-top) var(--lumaui-details-body-padding-x) var(--lumaui-details-body-padding-bottom);
+}
+/* Lists reach 8 from the pane's edges so their hover spans it; everything else lines up 16 in. */
+box.lumaui-details-body > :not(.lumaui-details-list) { margin-left: var(--lumaui-details-body-inset); margin-right: var(--lumaui-details-body-inset); }
+box.lumaui-details-footer {
+  padding: var(--lumaui-details-body-padding-top) calc(var(--lumaui-details-body-padding-x) + var(--lumaui-details-body-inset)) var(--lumaui-details-body-padding-bottom);
+  border-top: 1px solid @luma_line;
+}
+box.lumaui-details-section { margin-top: var(--lumaui-details-section-gap); margin-bottom: var(--lumaui-details-section-label-gap); border-spacing: 8px; }
+box.lumaui-details-body > box.lumaui-details-section:first-child { margin-top: var(--lumaui-details-section-gap-first); }
+label.lumaui-details-section-label { font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight); letter-spacing: var(--lumaui-t-label-tracking); color: @luma_muted; }
+button.lumaui-details-section-action {
+  min-height: 24px; padding: 0 8px; margin: 0; border: none; border-radius: 7px; background: none; box-shadow: none;
+  outline: 0 solid transparent; font-size: 12px; font-weight: 600; color: @luma_accent_ink;
+}
+button.lumaui-details-section-action:hover { background: @luma_hover; }
+box.lumaui-details-fact {
+  padding: var(--lumaui-details-fact-padding-y) 0; border-top: 1px solid @luma_line;
+  border-spacing: var(--lumaui-details-fact-gap); font-size: var(--lumaui-details-fact-size);
+}
+box.lumaui-details-facts > box.lumaui-details-fact:first-child { border-top: none; }
+label.lumaui-details-key { color: @luma_muted; }
+label.lumaui-details-value { font-weight: 550; color: @luma_ink; }
+box.lumaui-details-hero { padding: 6px 0 14px; border-spacing: var(--lumaui-details-hero-gap); }
+label.lumaui-details-hero-title { margin-top: 8px; font-size: var(--lumaui-details-hero-title-size); font-weight: 650; letter-spacing: -0.16px; }
+label.lumaui-details-hero-sub { font-size: var(--lumaui-t-caption-size); font-weight: var(--lumaui-t-caption-weight); letter-spacing: var(--lumaui-t-caption-tracking); color: @luma_muted; }
+box.lumaui-details-body > box.lumaui-stacked-buttons { margin-top: var(--lumaui-details-stack-gap); }
+/* Rows and items: the people rows' height, hover and type, shared with Add. */
+box.lumaui-details-row {
+  min-height: var(--lumaui-details-row-min-height); padding: 0 4px 0 0; border-radius: var(--lumaui-details-row-radius);
+  transition: background var(--lumaui-duration-hover) ease;
+}
+box.lumaui-details-row:hover, box.lumaui-details-row:focus-within { background: @luma_hover; }
+button.lumaui-details-who, button.lumaui-details-item, button.lumaui-add-row {
+  min-height: calc(var(--lumaui-details-row-min-height) - 2 * var(--lumaui-details-row-padding-y));
+  min-width: 0; padding: var(--lumaui-details-row-padding-y) 8px; margin: 0;
+  border: none; border-radius: var(--lumaui-details-row-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_ink; font-weight: normal;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-details-item:hover, button.lumaui-details-item.on { background: @luma_hover; }
+button.lumaui-details-who:focus-visible, button.lumaui-details-item:focus-visible, button.lumaui-add-row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-details-line { border-spacing: var(--lumaui-details-row-gap); }
+label.lumaui-details-when { font-size: var(--lumaui-t-caption-size); letter-spacing: var(--lumaui-t-caption-tracking); color: @luma_faint; font-feature-settings: normal; } /* v70 .tgi em */
+/* In a recessed card (v70 Contacts' Together, .tgi) a row is roomier: 8 by 6, 11 between its parts,
+ * and its second line is 12 px. */
+box.lumaui-card.recessed button.lumaui-details-item { padding: var(--lumaui-card-row-padding-y) var(--lumaui-card-row-padding-x); }
+box.lumaui-card.recessed button.lumaui-details-item box.lumaui-details-line { border-spacing: var(--lumaui-card-row-gap); }
+box.lumaui-card.recessed button.lumaui-details-item label.lumaui-details-name { font-weight: 500; }
+/* A file among a card's rows (v70 .tgfile): 4 px below the row above it. */
+box.lumaui-card.recessed box.lumaui-file-card { margin-top: 4px; }
+/* An ellipsized name keeps the 1.45 line (v70 .tgi b) even inside a button, whose own label rules reset min-height. */
+button.lumaui-details-item label.lumaui-details-name { min-height: var(--lumaui-text-line-body); }
+box.lumaui-card.recessed button.lumaui-details-item label.lumaui-details-sub { font-size: 12px; font-weight: 400; min-height: var(--lumaui-text-line-small); letter-spacing: 0.12px; font-feature-settings: normal; } /* v70 .tgi span span: proportional figures */
+label.lumaui-details-name { font-size: 13px; font-weight: 550; color: @luma_ink; min-height: var(--lumaui-text-line-body); }
+label.lumaui-details-sub { min-height: var(--lumaui-text-line-caption); font-size: var(--lumaui-t-caption-size); font-weight: var(--lumaui-t-caption-weight); letter-spacing: var(--lumaui-t-caption-tracking); color: @luma_muted; font-feature-settings: "tnum"; }
+box.lumaui-details-actions { opacity: 0; transition: opacity var(--lumaui-duration-press) ease; }
+box.lumaui-details-row:hover box.lumaui-details-actions, box.lumaui-details-row:focus-within box.lumaui-details-actions,
+box.lumaui-details.drawer box.lumaui-details-actions { opacity: 1; }
+button.lumaui-details-action {
+  min-width: var(--lumaui-details-action); min-height: var(--lumaui-details-action); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-details-action-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_muted;
+}
+button.lumaui-details-action:hover { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-details-action:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-details-action image { -gtk-icon-size: var(--lumaui-details-action-icon); }
+/* On a phone the pane is a drawer: full width from the bottom edge, a handle, the float surface. */
+box.lumaui-details.drawer {
+  min-width: 0; margin: 0;
+  background: @luma_float_surface;
+  box-shadow: 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near, inset 0 1px 0 @luma_float_highlight;
+}
+box.lumaui-details.drawer > .lumaui-drawer-handle { margin: var(--lumaui-details-phone-handle-top) 0 2px; }
+
+/* LumaUI: Details pane item */
+image.lumaui-details-item-icon { -gtk-icon-size: var(--lumaui-details-item-icon); color: @luma_muted; }
+
+/* LumaUI: Details pane photos */
+grid.lumaui-details-photos { border-radius: var(--lumaui-details-photo-radius); }
+aspectframe.lumaui-details-photo picture { background: @luma_hover; }
+
+/* LumaUI: Add row */
+button.lumaui-add-row { color: @luma_ink_secondary; }
+button.lumaui-add-row.compact { min-height: 28px; padding-top: 6px; padding-bottom: 6px; }
+button.lumaui-add-row.compact box.lumaui-add-mark { min-width: 28px; min-height: 28px; }
+button.lumaui-add-row.compact, button.lumaui-add-row.compact box.lumaui-add-mark { color: @luma_frame_ink_secondary; }   /* on the frame (v71 .crnfoot) */
+button.lumaui-add-row:hover { background: @luma_hover; color: @luma_ink; }
+box.lumaui-add-mark {
+  min-width: var(--lumaui-details-avatar); min-height: var(--lumaui-details-avatar); border-radius: 999px;
+  background: @luma_hover; box-shadow: inset 0 0 0 1px @luma_line; color: @luma_ink_secondary;
+}
+box.lumaui-add-mark image { -gtk-icon-size: var(--lumaui-details-add-icon); }
+label.lumaui-add-label { font-size: 13px; font-weight: 550; }
+label.lumaui-add-shortcut { font-size: 11px; font-weight: 500; letter-spacing: 0.11px; color: @luma_faint; }
+
+/* LumaUI: Sidebar foot */
+box.lumaui-sidebar-foot {
+  margin: var(--lumaui-foot-margin-top) var(--lumaui-sidebar-inset) 0;
+  padding-top: var(--lumaui-foot-padding-top);
+  border-top: 1px solid @luma_line; border-spacing: var(--lumaui-foot-gap);
+}
+/* The same shared search/actions may head a list: no footer hairline or top gap. */
+box.lumaui-sidebar-foot.header { margin-top: 0; padding-top: 0; border-top: 0; }
+/* NavigationSidebar already owns the horizontal inset; a nested foot must
+ * align with its rows rather than inset itself a second time. */
+.luma-navigation-sidebar box.lumaui-sidebar-foot { margin-left: 0; margin-right: 0; }
+box.lumaui-foot-search {
+  min-height: var(--lumaui-foot-height); padding: 0 var(--lumaui-foot-search-padding-x);
+  border-radius: var(--lumaui-foot-radius); border-spacing: 8px;
+  background: @luma_well; color: @luma_muted;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+  transition: box-shadow var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+box.lumaui-foot-search:hover { color: @luma_ink_secondary; }
+box.lumaui-foot-search.focused {
+  color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip, 0 0 0 2px @luma_accent_ink;
+}
+box.lumaui-foot-search image { -gtk-icon-size: var(--lumaui-foot-icon); }
+text.lumaui-foot-search-text { min-height: 0; padding: 0; background: none; color: @luma_ink; font-size: 13px; }
+text.lumaui-foot-search-text > placeholder { color: @luma_muted; opacity: 1; }
+button.lumaui-foot-square {
+  min-width: var(--lumaui-foot-height); min-height: var(--lumaui-foot-height); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-foot-radius);
+  background: @luma_chip; color: @luma_ink; outline: 0 solid transparent;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+  transition: filter var(--lumaui-duration-hover) ease;
+}
+button.lumaui-foot-square:hover { filter: brightness(var(--lumaui-hover-brightness)); }
+button.lumaui-foot-square:active { filter: brightness(0.95); }
+button.lumaui-foot-square:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+button.lumaui-foot-square image { -gtk-icon-size: var(--lumaui-foot-icon); }
+button.lumaui-foot-square.on {
+  color: @luma_accent_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop, inset 0 0 0 1.5px alpha(@luma_accent_ink, 0.5);
+}
+box.lumaui-filter-heading { margin: 2px 2px 6px 8px; border-spacing: 8px; }
+label.lumaui-filter-heading-label { font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight); letter-spacing: var(--lumaui-t-label-tracking); color: @luma_ink_secondary; }
+button.lumaui-filter-heading-button {
+  min-height: var(--lumaui-foot-heading-button-height); padding: 0 8px; margin: 0;
+  border: none; border-radius: var(--lumaui-foot-heading-button-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; font-size: 12px; font-weight: 600; color: @luma_accent_ink;
+}
+button.lumaui-filter-heading-button:hover { background: @luma_hover; }
+
+/* LumaUI: Sidebar toggle */
+button.lumaui-sidebar-toggle {
+  min-width: var(--lumaui-sidebar-toggle-size); min-height: var(--lumaui-sidebar-toggle-size); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-sidebar-toggle-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_frame_muted; /* v70 .lsidebtn: ink-3 on the frame, shown or hidden */
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-sidebar-toggle:checked { background: none; color: @luma_frame_muted; }
+button.lumaui-sidebar-toggle:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-sidebar-toggle:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+button.lumaui-sidebar-toggle image { -gtk-icon-size: var(--lumaui-sidebar-toggle-icon); }
+/* At phone width the sidebar opens as a drawer from the left over the dimmed window. */
+box.lumaui-sidebar-drawer {
+  min-width: calc(var(--lumaui-sidebar-toggle-drawer-width) - 20px); margin: var(--lumaui-sidebar-toggle-drawer-inset);
+  padding: 12px 10px 10px; border-radius: var(--lumaui-sidebar-toggle-drawer-radius);
+  background: @luma_float_surface;
+  box-shadow: 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near, inset 0 1px 0 @luma_float_highlight;
+}
+box.lumaui-sidebar-drawer.full {
+  min-width: 0; margin: 0 var(--lumaui-sidebar-toggle-drawer-inset) var(--lumaui-sidebar-toggle-drawer-inset);
+  padding: var(--lumaui-sidebar-toggle-full-padding-top) 0 0; border-radius: var(--lumaui-sidebar-toggle-full-radius);
+  background: @luma_window;
+}
+.lumaui-modal.side-drawer {
+  transform: translateX(calc(-1 * var(--lumaui-sidebar-toggle-drawer-enter)));
+  transition: opacity var(--lumaui-duration-dialog-fade) ease, transform var(--lumaui-duration-drawer) var(--lumaui-ease);
+}
+.lumaui-modal.side-drawer.shown { transform: none; }
+
+/* LumaUI: Table header */
+box.lumaui-thead {
+  min-height: var(--lumaui-thead-height); padding: 0 var(--lumaui-thead-padding-x); margin-bottom: var(--lumaui-thead-rows-gap);
+  border-radius: var(--lumaui-thead-radius); border-spacing: var(--lumaui-thead-gap); background: @luma_hover;
+}
+box.lumaui-thead-row { padding: 0 var(--lumaui-thead-padding-x); border-spacing: var(--lumaui-thead-gap); }
+box.lumaui-thead.compact, box.lumaui-thead-row.compact { padding-left: 0; padding-right: 0; border-spacing: 0; }
+button.lumaui-thead-cell, label.lumaui-thead-label, columnview.lumaui-table > header > button {
+  font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight); letter-spacing: var(--lumaui-t-label-tracking); color: @luma_muted;
+}
+button.lumaui-thead-cell {
+  min-height: var(--lumaui-thead-height); min-width: 0; padding: 0; margin: 0;
+  border: none; border-radius: 8px; background: none; box-shadow: none; outline: 0 solid transparent;
+  transition: color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-thead-cell:hover, button.lumaui-thead-cell.active { color: @luma_ink; background: none; }
+button.lumaui-thead-cell:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+box.lumaui-thead-line { border-spacing: var(--lumaui-thead-label-gap); }
+image.lumaui-thead-arrow { -gtk-icon-size: var(--lumaui-thead-arrow); }
+/* A Gtk.ColumnView's own header, the same bar (TableHeader.for_column_view). */
+columnview.lumaui-table > header {
+  min-height: var(--lumaui-thead-height); margin-bottom: var(--lumaui-thead-rows-gap);
+  border: none; border-radius: var(--lumaui-thead-radius); background: @luma_hover; box-shadow: none;
+}
+columnview.lumaui-table > header > button {
+  min-height: var(--lumaui-thead-height); padding: 0 var(--lumaui-thead-padding-x); margin: 0;
+  border: none; border-radius: 0; background: none; box-shadow: none; outline: 0 solid transparent;
+}
+columnview.lumaui-table > header > button:first-child { border-radius: var(--lumaui-thead-radius) 0 0 var(--lumaui-thead-radius); }
+columnview.lumaui-table > header > button:last-child { border-radius: 0 var(--lumaui-thead-radius) var(--lumaui-thead-radius) 0; }
+columnview.lumaui-table > header > button:hover, columnview.lumaui-table > header > button.active { color: @luma_ink; background: none; }
+columnview.lumaui-table > header > button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+columnview.lumaui-table > header > button > box { border-spacing: var(--lumaui-thead-label-gap); }
+columnview.lumaui-table > header > button sort-indicator { min-width: var(--lumaui-thead-arrow); min-height: var(--lumaui-thead-arrow); -gtk-icon-size: var(--lumaui-thead-arrow); }
+columnview.lumaui-table > header > button sort-indicator.ascending { -gtk-icon-source: -gtk-icontheme("lumaui-arrow-up-symbolic"); }
+columnview.lumaui-table > header > button sort-indicator.descending { -gtk-icon-source: -gtk-icontheme("lumaui-arrow-down-symbolic"); }
+
+/* LumaUI: Selection. One look: the raised chip. A path's earlier steps: the same shape, quieter. */
+list.lumaui-selection > row:selected, listview.lumaui-selection > row:selected,
+gridview.lumaui-selection > child:selected, flowbox.lumaui-selection > flowboxchild:selected,
+columnview.lumaui-selection > listview > row:selected, .lumaui-selected,
+list.luma-navigation-list > row.luma-navigation-row:selected {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+.lumaui-trail { background: @luma_control_fill; box-shadow: none; color: @luma_ink; }
+
+/* LumaUI: Navigation trail */
+box.lumaui-trail { background: none; border-spacing: var(--lumaui-trail-gap); }
+button.lumaui-trail-back {
+  min-height: var(--lumaui-trail-back-height); min-width: 0; margin: 0;
+  padding: 0 var(--lumaui-trail-back-padding-end) 0 var(--lumaui-trail-back-padding-start);
+  border: none; border-radius: var(--lumaui-trail-back-radius); background: none; box-shadow: none; outline: 0 solid transparent;
+  font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight); letter-spacing: var(--lumaui-t-label-tracking);
+  color: @luma_ink_secondary;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-trail-back > box { border-spacing: 2px; }
+button.lumaui-trail-back:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-trail-back:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-trail-back image { -gtk-icon-size: var(--lumaui-trail-icon); }
+button.lumaui-trail-back.icon-only { min-width: var(--lumaui-trail-icon-only); min-height: var(--lumaui-trail-icon-only); padding: 0; color: @luma_muted; }
+button.lumaui-trail-back.icon-only image { -gtk-icon-size: var(--lumaui-trail-icon-only-glyph); }
+label.lumaui-trail-title {
+  font-size: var(--lumaui-t-title-1-size); font-weight: var(--lumaui-t-title-1-weight); letter-spacing: var(--lumaui-t-title-1-tracking); color: @luma_ink;
+}
+box.lumaui-trail-meta {
+  border-spacing: var(--lumaui-trail-meta-gap); font-size: var(--lumaui-trail-meta-size); font-weight: var(--lumaui-t-caption-weight);
+  letter-spacing: 0.125px; color: @luma_muted;
+}
+box.lumaui-trail-dot { min-width: var(--lumaui-trail-dot); min-height: var(--lumaui-trail-dot); border-radius: 999px; background: @luma_faint; }
+button.lumaui-trail-link {
+  min-height: 0; min-width: 0; padding: 0; margin: 0; border: none; border-radius: 4px; background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_muted; font: inherit;
+}
+button.lumaui-trail-link:hover { color: @luma_ink; background: none; }
+button.lumaui-trail-link:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+/* LumaUI: Corner pill and mode switch */
+box.lumaui-corner {
+  margin: var(--lumaui-corner-inset); padding: var(--lumaui-corner-padding);
+  border-radius: var(--lumaui-corner-radius); border-spacing: var(--lumaui-corner-gap);
+}
+/* A title-row slot already supplies its gutter; the floating outer inset
+ * must not enlarge the native header from 46 to 76 pixels. */
+headerbar.luma-titlebar box.lumaui-corner { margin: 0; }
+/* v70 .flo: the floating island a corner pill is. `lumaui-float` gives an app's own floating part the same
+ * surface (Calendar's month heading, v70 .flo.calhead); the app keeps its own size and inset. */
+box.lumaui-corner, .lumaui-float {
+  border-radius: var(--lumaui-corner-radius);
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+}
+button.lumaui-corner-button {
+  min-width: var(--lumaui-corner-button); min-height: var(--lumaui-corner-button); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-corner-button-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_ink; /* v70: corner glyphs are ink; only ⋯ is ink-2 (.more) */
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-corner-button:hover { background: @luma_hover; color: @luma_ink; }
+box.lumaui-corner.quiet button.lumaui-corner-button:not(:checked):not(:hover):not(.primary) { color: @luma_bar_ink_secondary; }
+box.lumaui-corner.quiet button.lumaui-corner-button image { -gtk-icon-size: 18px; }   /* v71 .ib: 18 px glyphs */
+button.lumaui-corner-button:checked { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-corner-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-corner-button image { -gtk-icon-size: var(--lumaui-corner-icon); }
+box.lumaui-modes {
+  min-height: var(--lumaui-modes-button-height); padding: var(--lumaui-modes-padding);
+  border-radius: var(--lumaui-modes-radius); background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-modes-indicator {
+  border-radius: var(--lumaui-modes-button-radius); background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+button.lumaui-mode {
+  min-height: var(--lumaui-modes-button-height); min-width: 0; padding: 0 var(--lumaui-modes-button-padding-x); margin: 0;
+  border: none; border-radius: var(--lumaui-modes-button-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_muted; font-size: var(--lumaui-modes-font-size); font-weight: 500;
+  transition: color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-mode:hover, button.lumaui-mode:checked, button.lumaui-mode.on { color: @luma_ink; background: none; }
+button.lumaui-mode:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-mode-line { border-spacing: var(--lumaui-modes-gap); }
+button.lumaui-mode image { -gtk-icon-size: var(--lumaui-modes-icon); }
+/* A mode's status (v71 Clock .ckplaces .ckem 11.5 in oklch(0.8 0.12 45), tabular; .ckrun a 6 green dot, pulsing). */
+label.lumaui-mode-status { font-size: 11.5px; font-weight: 400; font-feature-settings: "tnum"; letter-spacing: 0.115px; color: @luma_mode_status_ink; }
+box.lumaui-mode-dot { min-width: 6px; min-height: 6px; border-radius: 999px; background: @luma_good; animation: lumaui-island-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { box.lumaui-mode-dot { animation: none; } }
+box.lumaui-modes.narrow button.lumaui-mode:not(.on) { padding: 0 var(--lumaui-modes-button-padding-narrow); }
+box.lumaui-corner > box.lumaui-modes { margin-right: 2px; }
+/* compact: a choice inside a settings row (v70 .cfrow .seg: a 32 well, 26 buttons at 0 11, 12.5). */
+box.lumaui-modes.compact { min-height: var(--lumaui-modes-compact-button-height); }
+box.lumaui-modes.compact button.lumaui-mode {
+  min-height: var(--lumaui-modes-compact-button-height); padding: 0 var(--lumaui-modes-compact-button-padding-x);
+  font-size: var(--lumaui-modes-compact-font-size);
+}
+
+/* Small text segments keep the regular 30px key height, fitting property rows. */
+box.lumaui-modes.small button.lumaui-mode {
+  padding: 0 var(--lumaui-modes-small-button-padding-x);
+  font-size: var(--lumaui-modes-small-font-size);
+}
+
+/* LumaUI: Menu drawer */
+box.lumaui-menu-drawer {
+  padding: var(--lumaui-drawer-handle-top) var(--lumaui-drawer-padding-x) var(--lumaui-drawer-padding-bottom);
+  background: @luma_float_surface; color: @luma_ink;
+  box-shadow: 0 0 0 1px @luma_float_ring, 0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near, inset 0 1px 0 @luma_float_highlight;
+}
+box.lumaui-menu-drawer > .lumaui-drawer-handle { margin-bottom: calc(var(--lumaui-drawer-padding-top) - var(--lumaui-drawer-handle-top) - var(--lumaui-drawer-handle-height)); }
+button.lumaui-menu-row {
+  min-height: calc(var(--lumaui-drawer-row-min-height) - 10px); min-width: 0; padding: 5px var(--lumaui-menu-row-padding-x); margin: 0;
+  border: none; border-radius: var(--lumaui-menu-row-radius); background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_ink; font-size: 13px; font-weight: normal;
+  transition: background var(--lumaui-duration-hover) ease;
+}
+button.lumaui-menu-row:hover { background: @luma_hover; }
+button.lumaui-menu-row:active { background: @luma_control_fill; }
+button.lumaui-menu-row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-menu-row:disabled { opacity: 0.35; }
+button.lumaui-menu-row.danger { color: @luma_bar_panel_danger; }   /* v71 .crmi.red: one red on any menu, light or dark */
+button.lumaui-menu-row.back { color: @luma_ink_secondary; font-weight: 600; }
+button.lumaui-menu-row.on { background: @luma_control_fill; font-weight: 600; }
+button.lumaui-menu-row image.lumaui-app-icon { -gtk-icon-size: var(--lumaui-open-in-menu-icon); }
+box.lumaui-menu-line { border-spacing: var(--lumaui-menu-row-gap); }
+image.lumaui-menu-icon { -gtk-icon-size: var(--lumaui-menu-icon); color: @luma_ink_secondary; }
+button.lumaui-menu-row.danger image.lumaui-menu-icon { color: @luma_bar_panel_danger; }
+box.lumaui-menu-drawer image.lumaui-menu-check { -gtk-icon-size: 15px; color: @luma_accent_ink; }
+box.lumaui-menu-drawer image.lumaui-menu-check.picker { color: @luma_frame_ink_secondary; } /* a picker's value, as on desktop */
+image.lumaui-menu-chevron { -gtk-icon-size: 14px; color: @luma_muted; }
+label.lumaui-menu-description { font-size: var(--lumaui-t-caption-size); color: @luma_muted; }
+box.lumaui-menu-drawer label.lumaui-menu-heading { margin: 0 16px 6px; font-size: var(--lumaui-menu-heading-size); font-weight: 600; letter-spacing: 0.11px; color: @luma_muted; }
+box.lumaui-menu-drawer box.lumaui-menu-separator { min-height: 1px; margin: var(--lumaui-menu-separator-margin) 8px; background: @luma_line; }
+
+/* LumaUI: Corner pill words, the key and the edit state (v70 Contacts' corner) */
+box.lumaui-corner-group { border-spacing: var(--lumaui-corner-gap); }
+button.lumaui-corner-button.labelled { min-width: 0; padding: 0 12px; color: @luma_ink; font-weight: 500; }
+button.lumaui-corner-button.labelled > box { border-spacing: 7px; }
+button.lumaui-corner-button.primary {
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end); color: @luma_key_ink; font-weight: 600;
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+  transition: filter var(--lumaui-duration-hover) ease, transform var(--lumaui-duration-hover) ease;
+}
+button.lumaui-corner-button.primary:hover { background-image: linear-gradient(to bottom, @luma_key, @luma_key_end); color: @luma_key_ink; filter: brightness(1.04); }
+button.lumaui-corner-button.primary:active { transform: translateY(0.5px); filter: brightness(0.96); }
+button.lumaui-corner-button.primary:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+
+/* LumaUI: Fact row (v70 .crow2): icon, a small label over the value, Copy on hover */
+box.lumaui-fact-row { padding: 7px 4px; border-radius: var(--lumaui-details-row-radius); border-spacing: 12px; transition: background var(--lumaui-duration-hover) ease; }
+box.lumaui-fact-row:not(.editable):hover { background: @luma_hover; }
+image.lumaui-fact-icon { -gtk-icon-size: 16px; color: @luma_muted; }
+label.lumaui-fact-label { min-height: var(--lumaui-text-line-caption); font-size: var(--lumaui-t-caption-size); letter-spacing: 0.115px; color: @luma_muted; }
+textview.lumaui-paragraph-field, textview.lumaui-paragraph-field > text { background: none; color: @luma_ink; }
+textview.lumaui-paragraph-field { caret-color: @luma_accent; }
+label.lumaui-paragraph-placeholder { color: @luma_muted; }
+entry.lumaui-fact-input {
+  min-height: var(--lumaui-fact-input-height); margin-top: 2px; padding: 0 9px; /* v70 .crow2 input: 30 tall, the 2 above it outside */
+  border: none; border-radius: var(--lumaui-fact-input-radius); outline: none;
+  background: @luma_content; color: @luma_ink; font-size: var(--lumaui-t-body-size);
+  box-shadow: inset 0 0 0 1px @luma_line;
+}
+entry.lumaui-fact-input:focus-within { box-shadow: 0 0 0 2px @luma_focus_ring; }
+label.lumaui-fact-value { min-height: var(--lumaui-text-line-body); font-weight: 500; color: @luma_ink; }
+button.lumaui-fact-copy {
+  min-width: 30px; min-height: 30px; padding: 0; margin: 0; border: none; border-radius: 9px; background: none; box-shadow: none;
+  outline: 0 solid transparent; color: @luma_muted; opacity: 0;
+  transition: opacity var(--lumaui-duration-press) ease, background var(--lumaui-duration-hover) ease;
+}
+box.lumaui-fact-row:hover button.lumaui-fact-copy, box.lumaui-fact-row:focus-within button.lumaui-fact-copy,
+box.lumaui-details.drawer button.lumaui-fact-copy { opacity: 1; }
+button.lumaui-fact-copy:hover { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-fact-copy:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-fact-copy image { -gtk-icon-size: 15px; }
+
+/* ══ LumaUI v71 navigation (K-NAV) ══════════════════════════════════════════
+ * Title island, phone drawer, list-first, tab bar, phone page header and
+ * phone polish. Numbers are --lumaui-title-island-*, -phone-drawer-*,
+ * -list-first-*, -tab-bar-*, -page-header-* and -gutter-* (design-tokens.d/structure-nav.json). */
+
+/* LumaUI: Title island */
+box.lumaui-title-island {
+  border-radius: var(--lumaui-title-island-radius);
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end); color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+  transition: box-shadow var(--lumaui-duration-grow) var(--lumaui-ease);
+}
+box.lumaui-title-island.flat:not(.grown) { background: none; box-shadow: none; }
+/* An island that floats on a computer (v71 Charlie .flo.crsubj): 44 tall, 13.5/650 over 11.5/400. */
+box.lumaui-title-island.desk box.lumaui-title-island-row, box.lumaui-title-island.desk button { min-height: 44px; }
+box.lumaui-title-island.desk button.lumaui-title-island-title { padding: 0 16px 0 4px; }
+box.lumaui-title-island.desk label.lumaui-title-island-label { font-size: 13.5px; font-weight: 650; }
+box.lumaui-title-island.desk label.lumaui-title-island-subtitle { font-size: 11.5px; font-weight: 400; letter-spacing: 0.115px; color: @luma_bar_muted; }
+box.lumaui-title-island.floating { margin: var(--lumaui-title-island-top) 0 0 var(--lumaui-title-island-left); }
+box.lumaui-title-island-row { min-height: var(--lumaui-title-island-height); }
+box.lumaui-title-island button {
+  min-height: var(--lumaui-title-island-height); min-width: 0; padding: 0; margin: 0;
+  border: none; border-radius: 0; background: none; box-shadow: none; outline: 0 solid transparent; color: @luma_ink;
+  transition: background var(--lumaui-duration-hover) ease;
+}
+box.lumaui-title-island button:hover { background: @luma_hover; }
+box.lumaui-title-island button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-title-island button.lumaui-title-island-lead { min-width: var(--lumaui-title-island-lead); color: @luma_frame_ink; }
+box.lumaui-title-island button.lumaui-title-island-lead image, box.lumaui-title-island button.lumaui-title-island-button image { -gtk-icon-size: var(--lumaui-title-island-glyph); }
+/* A full-height hairline divides the lead from the title, and the title from trailing buttons. */
+box.lumaui-title-island button.lumaui-title-island-title { padding: 0 var(--lumaui-title-island-text-padding-end) 0 var(--lumaui-title-island-text-padding-start); box-shadow: inset 1px 0 0 @luma_line; }
+box.lumaui-title-island.no-lead button.lumaui-title-island-title { box-shadow: none; }
+box.lumaui-title-island-inner { border-spacing: var(--lumaui-title-island-faces-gap); }
+image.lumaui-title-island-disclosure { -gtk-icon-size: 14px; color: @luma_frame_muted; }
+/* The island reads as the title row does: frame inks (crisp near-black in light), the title 600 in light, 650 in dark (luma-appkit-dark.css). */
+label.lumaui-title-island-label { line-height: 1.2; font-size: var(--lumaui-title-island-title-size); font-weight: var(--lumaui-title-island-light-title-weight); color: @luma_frame_ink; }
+label.lumaui-title-island-subtitle { line-height: 1.2; font-size: var(--lumaui-title-island-subtitle-size); font-weight: var(--lumaui-title-island-subtitle-weight); color: @luma_muted; }   /* v71 islands' small: --ink-3 (light #6c6f73) */
+box.lumaui-title-island box.lumaui-title-island-trailing > button.lumaui-title-island-button { min-width: var(--lumaui-title-island-button-width); color: @luma_frame_ink_secondary; }
+box.lumaui-title-island box.lumaui-title-island-trailing > button.lumaui-title-island-button:first-child { box-shadow: inset 1px 0 0 @luma_line; }
+/* Grown: one glass. The row is the header, solid, with a hairline under it; the panel continues below. */
+box.lumaui-title-island.grown {
+  background: @luma_bar_surface; background-image: none;
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 32px 80px -10px @luma_island_shadow_far, 0 12px 28px @luma_island_shadow_near;
+}
+box.lumaui-title-island.grown > box.lumaui-title-island-row { background: @luma_bar_surface; box-shadow: inset 0 -1px 0 @luma_line; }
+box.lumaui-title-island.grown.scrolled > box.lumaui-title-island-row { box-shadow: inset 0 -1px 0 @luma_line, 0 8px 16px -6px @luma_island_scrolled_shadow; }
+scrolledwindow.lumaui-title-island-panel > viewport > * { margin: var(--lumaui-title-island-panel-padding); }
+box.lumaui-title-island.menu scrolledwindow.lumaui-title-island-panel > viewport > * { margin: var(--lumaui-title-island-menu-panel-padding); }
+box.lumaui-title-island.grown .luma-navigation-sidebar { min-width: 0; background: none; }
+.lumaui-title-island-scrim { background: @luma_island_scrim; opacity: 0; transition: opacity var(--lumaui-duration-scrim) var(--lumaui-ease); }
+.lumaui-title-island-scrim.shown { opacity: 1; }
+
+/* LumaUI: Phone drawer (v71 5806-5813, 6062-6066): from the bottom-left corner, level with the page
+ * title, square to the left and bottom edges, the top-right corner rounded; 44 rows at 15, a 19 glyph,
+ * 14 round; headings 12.5 with 18 above; a 42 search at 16 (typing never zooms). */
+box.lumaui-sidebar-drawer.phone-drawer {
+  min-width: 0; margin: 0;
+  padding: var(--lumaui-phone-drawer-padding-top) var(--lumaui-phone-drawer-padding-x) var(--lumaui-phone-drawer-padding-bottom);
+  border-radius: 0 var(--lumaui-phone-drawer-radius) 0 0; background: @luma_float_surface;
+  box-shadow: 14px -6px 40px -16px @luma_phone_drawer_shadow, inset -1px 0 0 @luma_line, inset 0 1px 0 @luma_line;
+}
+.lumaui-scrim.drawer.phone-drawer { background: @luma_phone_drawer_scrim; }
+.lumaui-modal.side-drawer.phone-drawer { transition: opacity var(--lumaui-duration-dialog-fade) ease, transform var(--lumaui-phone-drawer-enter-ms) var(--lumaui-spring); }
+box.lumaui-sidebar-drawer.phone-drawer .luma-navigation-list > row.luma-navigation-row {
+  min-height: var(--lumaui-phone-drawer-row-height); border-radius: var(--lumaui-phone-drawer-row-radius);
+}
+box.lumaui-sidebar-drawer.phone-drawer .luma-navigation-list > row.luma-navigation-row .luma-navigation-title,
+box.lumaui-sidebar-drawer.phone-drawer .luma-navigation-list > row.luma-navigation-row label.lumaui-row-title { font-size: var(--lumaui-phone-drawer-row-size); }
+box.lumaui-sidebar-drawer.phone-drawer .luma-navigation-list > row.luma-navigation-row image { -gtk-icon-size: var(--lumaui-phone-drawer-row-icon); }
+box.lumaui-sidebar-drawer.phone-drawer .luma-navigation-heading { font-size: var(--lumaui-phone-drawer-heading-size); }
+box.lumaui-sidebar-drawer.phone-drawer row.luma-navigation-section { margin-top: var(--lumaui-phone-drawer-heading-top); }
+box.lumaui-sidebar-drawer.phone-drawer box.lumaui-foot-search { min-height: var(--lumaui-phone-drawer-search-height); border-radius: var(--lumaui-phone-drawer-search-radius); }
+box.lumaui-sidebar-drawer.phone-drawer text.lumaui-foot-search-text { font-size: var(--lumaui-phone-drawer-search-size); }
+
+/* LumaUI: List first (v71 phone.js stackStart, 5640-5666): the list full screen under a 32/750 title on the
+ * 16 gutter; the floating Back until the page has its own title island. */
+label.lumaui-list-first-title, window.luma-app-window label.lumaui-list-first-title {
+  line-height: var(--lumaui-list-first-title-line-height);
+  margin: var(--lumaui-list-first-title-padding-top) var(--lumaui-gutter-phone) var(--lumaui-list-first-title-padding-bottom);
+  font-size: var(--lumaui-list-first-title-size); font-weight: var(--lumaui-list-first-title-weight);
+  letter-spacing: var(--lumaui-list-first-title-tracking); color: @luma_ink;
+}
+button.lumaui-list-first-back {
+  min-width: var(--lumaui-list-first-back); min-height: var(--lumaui-list-first-back); padding: 0;
+  margin: var(--lumaui-list-first-back-top) 0 0 var(--lumaui-gutter-phone);
+  border: none; border-radius: var(--lumaui-list-first-back-radius); color: @luma_ink;
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+}
+button.lumaui-list-first-back image { -gtk-icon-size: var(--lumaui-list-first-back-glyph); }
+/* With the list's name (v71 .pnlback): padding 0 14 0 8, 2 between the ‹ and the word, 14/600. */
+button.lumaui-list-first-back.labelled { padding: 0 14px 0 8px; }
+button.lumaui-list-first-back.labelled box { border-spacing: 2px; }
+label.lumaui-list-first-back-label { font-size: 14px; font-weight: 600; }
+box.lumaui-list-first.phone box.lumaui-sidebar-foot box.lumaui-foot-search { min-height: var(--lumaui-list-first-search-height); border-radius: var(--lumaui-list-first-search-radius); }
+box.lumaui-list-first.phone text.lumaui-foot-search-text { font-size: var(--lumaui-list-first-search-size); }
+
+/* LumaUI: Tab bar (v71 phone.js tabBar, 5964-5972; Clock .cktabbar for compact) */
+box.lumaui-tab-bar.floating {
+  margin: 0 var(--lumaui-tab-bar-side) var(--lumaui-tab-bar-bottom); padding: var(--lumaui-tab-bar-padding);
+  border-radius: var(--lumaui-ac-bar-radius);
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+}
+box.lumaui-tab-bar button.lumaui-tab {
+  min-height: var(--lumaui-tab-bar-height); min-width: 0; padding: 0; margin: 0; border: none; outline: 0 solid transparent;
+  border-radius: var(--lumaui-tab-bar-radius); background: none; box-shadow: none; color: @luma_muted;
+  transition: color var(--lumaui-duration-hover) ease, background var(--lumaui-duration-hover) ease;
+}
+box.lumaui-tab-bar button.lumaui-tab:checked { background: @luma_hover; color: @luma_accent_ink; }
+box.lumaui-tab-bar button.lumaui-tab:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-tab-face { border-spacing: var(--lumaui-tab-bar-gap); }
+box.lumaui-tab-bar button.lumaui-tab image { -gtk-icon-size: var(--lumaui-tab-bar-icon); }
+label.lumaui-tab-label { font-size: var(--lumaui-tab-bar-label-size); font-weight: var(--lumaui-tab-bar-label-weight); }
+box.lumaui-tab-bar label.lumaui-tab-count { margin: var(--lumaui-tab-bar-count-top) 0 0 var(--lumaui-tab-bar-count-shift); }
+box.lumaui-tab-bar.compact button.lumaui-tab { min-height: var(--lumaui-tab-bar-compact-height); min-width: var(--lumaui-tab-bar-compact-width); color: @luma_ink_secondary; }
+box.lumaui-tab-bar.compact button.lumaui-tab:checked {
+  background: @luma_chip; color: @luma_accent_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-tab-bar.compact label.lumaui-tab-count { margin: var(--lumaui-tab-bar-compact-count-inset) var(--lumaui-tab-bar-compact-count-inset) 0 0; }
+box.lumaui-tab-dot { min-width: var(--lumaui-tab-bar-dot); min-height: var(--lumaui-tab-bar-dot); margin: var(--lumaui-tab-bar-dot-inset) var(--lumaui-tab-bar-dot-inset) 0 0; border-radius: 999px; background: @luma_good; }
+
+/* LumaUI: Page header (v71 .lnt, 5632-5635): on a phone the title is 30/750 and its meta takes its own line at 13. */
+box.lumaui-page-header.phone label.lumaui-trail-title {
+  font-size: var(--lumaui-page-header-phone-title-size); font-weight: var(--lumaui-page-header-phone-title-weight);
+  letter-spacing: var(--lumaui-page-header-phone-title-tracking);
+}
+box.lumaui-page-header.phone > box.lumaui-trail-meta { margin-top: var(--lumaui-page-header-phone-row-gap); font-size: var(--lumaui-page-header-phone-meta-size); }
+
+/* LumaUI: Phone gutter (changelog rule 17): one side gutter on a phone, 16; tile grids 8 (each tile carries 8). */
+.lumaui-phone .lumaui-gutter { padding-left: var(--lumaui-gutter-phone); padding-right: var(--lumaui-gutter-phone); }
+.lumaui-phone .lumaui-gutter-tiles { padding-left: var(--lumaui-gutter-phone-tiles); padding-right: var(--lumaui-gutter-phone-tiles); }
+
+/* LumaUI: v71 phone polish (all apps). Fields in a bar or a grown panel show no focus ring (the well is the
+ * field); keyboard hints (Esc to fold, Return, shortcuts in menus) are hidden on a phone. */
+.lumaui-phone entry.lumaui-bar-entry:focus-within, .lumaui-phone entry.lumaui-bar-search:focus-within {
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+.lumaui-phone label.lumaui-bar-entry-key-hint, .lumaui-phone label.lumaui-ac-hint, .lumaui-phone label.lumaui-share-key,
+.lumaui-phone label.lumaui-place-key, .lumaui-phone label.lumaui-add-shortcut, .lumaui-phone .luma-menu-keycap {
+  min-width: 0; min-height: 0; margin: 0; padding: 0; border: none; box-shadow: none; font-size: 0; opacity: 0;
+}
+
+/* LumaUI: Phone frame offsets (the frame itself is lumaui-toolkit.css's, K-NAV block): islands under the clock. */
+window.lumaui-phone-device box.lumaui-title-island.floating { margin-top: var(--lumaui-phone-frame-island-top); }
+window.lumaui-phone-device button.lumaui-list-first-back { margin-top: var(--lumaui-phone-frame-back-top); }
+/* The list owns the status inset, including lists with a custom title row. */
+window.lumaui-phone-device box.lumaui-list-first-list { padding-top: var(--lumaui-phone-frame-status); }
+window.lumaui-phone-device:not(.lumaui-bleed) .luma-island box.lumaui-list-first-list { padding-top: 0; }
+window.lumaui-phone-device box.lumaui-list-first-list.full-height { padding-top: 0; }   /* ListFirst(status_inset=False) */
+window.lumaui-phone-device label.lumaui-list-first-title { margin-top: var(--lumaui-phone-frame-list-title-top); }
+
+/* LumaUI: v71 placement and details variants: the favourite star, the large mode switch, the facts card. */
+box.lumaui-corner button.lumaui-corner-button.favourite:checked { background: none; box-shadow: none; color: @luma_favourite; }
+box.lumaui-modes.large { min-height: calc(var(--lumaui-modes-large-height) - 2 * var(--lumaui-modes-large-inset)); padding: var(--lumaui-modes-large-inset); border-radius: var(--lumaui-modes-large-radius); }
+box.lumaui-modes.large box.lumaui-modes-indicator { border-radius: var(--lumaui-modes-large-button-radius); }
+box.lumaui-modes.large button.lumaui-mode {
+  min-height: calc(var(--lumaui-modes-large-height) - 2 * var(--lumaui-modes-large-inset)); border-radius: var(--lumaui-modes-large-button-radius);
+  font-size: var(--lumaui-modes-large-font-size); font-weight: var(--lumaui-modes-large-font-weight);
+}
+box.lumaui-details-facts.card {
+  padding: 0 var(--lumaui-facts-card-padding-x); border-radius: var(--lumaui-facts-card-radius); background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-details-facts.card > box.lumaui-details-fact { min-height: var(--lumaui-facts-card-row-height); padding-top: 0; padding-bottom: 0; }
+box.lumaui-details-facts.card > box.lumaui-details-fact > label { margin-top: 0; }
+box.lumaui-details-facts.card label.lumaui-details-key { color: @luma_ink_secondary; }
+box.lumaui-details-facts.card label.lumaui-details-value { font-weight: var(--lumaui-facts-card-value-weight); }
+
+/* LumaUI: Details section tally (v71 lDP.lab('Steps', '<em>3 of 5</em>')): at the heading's end, ink-3, tabular. */
+label.lumaui-details-section-tally { font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-caption-weight); color: @luma_muted; font-feature-settings: "tnum"; }
+
+/* LumaUI: Title island status dot (v71 Memos .meisli .medot): the record red, 9 round, pulsing; paused is dimmed and still. */
+box.lumaui-title-island-status { min-width: var(--lumaui-title-island-status-dot); min-height: var(--lumaui-title-island-status-dot); border-radius: 999px; background: @luma_record; }
+box.lumaui-title-island-status.record { animation: lumaui-island-pulse 1.2s ease-in-out infinite; }
+box.lumaui-title-island-status.paused { opacity: 0.5; }
+/* Presence in the subtitle (v71 `.nisli small` gap 5, `.ond` 7 round, --good with a 6 glow). */
+box.lumaui-title-island-subtitle-row { border-spacing: 5px; }
+box.lumaui-title-island-presence { min-width: 7px; min-height: 7px; border-radius: 999px; background: @luma_good; box-shadow: 0 0 6px @luma_good; }
+@keyframes lumaui-island-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { box.lumaui-title-island-status.record { animation: none; } }
+
+/* LumaUI: structure reduced motion. Nothing slides; panes and drawers fade. */
+@media (prefers-reduced-motion: reduce) {
+  box.lumaui-details, .lumaui-modal.side-drawer { transform: none; transition: opacity var(--lumaui-duration-reduced-fade) ease; }
+  box.lumaui-details.entering { transform: none; }
+}
+
+/* LumaUI: frame and bar inks. v70 light Solid (luma-next-70 .iwin, lines 4158-4160):
+ * text and glyphs standing on the frame (title row, sidebar, its foot) are darker
+ * than on the island, and bars and menus over the island take a step between.
+ * Dark has one set, so there these tokens equal the island's. The title row's
+ * share is in lumaui-toolkit.css, which owns the frame. */
+.luma-navigation-sidebar.luma-sidebar-surface { color: @luma_frame_ink; }
+.luma-navigation-sidebar.luma-sidebar-surface .luma-navigation-title, .luma-navigation-sidebar.luma-sidebar-surface label.lumaui-account-name,
+.luma-navigation-sidebar.luma-sidebar-surface text.lumaui-foot-search-text { color: @luma_frame_ink; }
+.luma-navigation-sidebar.luma-sidebar-surface .lumaui-t-lead, .luma-navigation-sidebar.luma-sidebar-surface .luma-navigation-face > .luma-navigation-icon { color: @luma_frame_ink_secondary; }
+.luma-navigation-sidebar.luma-sidebar-surface .luma-navigation-subtitle, .luma-navigation-sidebar.luma-sidebar-surface .luma-navigation-heading,
+.luma-navigation-sidebar.luma-sidebar-surface .lumaui-t-caption, .luma-navigation-sidebar.luma-sidebar-surface .lumaui-t-label, .luma-navigation-sidebar.luma-sidebar-surface .lumaui-t-muted,
+.luma-navigation-sidebar.luma-sidebar-surface box.lumaui-foot-search, .luma-navigation-sidebar.luma-sidebar-surface text.lumaui-foot-search-text > placeholder { color: @luma_frame_muted; }
+.luma-navigation-sidebar.luma-sidebar-surface text.lumaui-foot-search-text > placeholder { opacity: 1; }
+.luma-navigation-sidebar.luma-sidebar-surface image.lumaui-account-chevron { color: @luma_frame_faint; }
+box.lumaui-corner button.lumaui-corner-button.love:checked { background: none; color: @luma_love; } /* v70 .ib.loved: the filled heart, no chip */
+box.lumaui-corner button.lumaui-corner-button.more image { -gtk-icon-size: var(--lumaui-corner-more-icon); } /* v70: the ⋯ glyph is 18 */
+box.lumaui-corner button.lumaui-corner-button.menu-open { background: none; } /* v70: opening its menu leaves the button as it was */
+box.lumaui-corner button.lumaui-corner-button.more { color: @luma_bar_ink_secondary; } /* v70: the ⋯ alone is ink-2 */
+
+/* LumaUI: sidebar headings. v70 .sh is 16.67 tall and its rows 49.69; GTK rounds each
+ * up, so a 16 px heading keeps a long list within a pixel of the design. */
+.luma-sidebar-surface .luma-navigation-heading { line-height: var(--lumaui-sidebar-heading-line-height); } /* 16 px, whole pixels */
+
+/* LumaUI: media context (v70 .cmbody). An always-dark photographic region (a viewfinder,
+ * a photo being viewed) in every appearance: the kit's parts inside it, and menus opened
+ * from it, take the media palette. lumaui.media_context(widget). */
+.lumaui-media, window.luma-app-window .lumaui-media label { color: @luma_media_ink; }
+.lumaui-media .lumaui-t-caption, .lumaui-media .lumaui-t-label, .lumaui-media .lumaui-t-muted,
+.lumaui-media label.lumaui-menu-heading, .lumaui-media label.lumaui-menu-note, .lumaui-media label.lumaui-menu-subtitle,
+box.lumaui-menu.lumaui-media label.lumaui-menu-heading, box.lumaui-menu.lumaui-media label.lumaui-menu-note,
+box.lumaui-menu.lumaui-media label.lumaui-menu-subtitle, box.lumaui-menu.lumaui-media label.lumaui-menu-value,
+window.luma-app-window .lumaui-media label.lumaui-t-caption,
+window.luma-app-window .lumaui-media label.lumaui-t-label,
+window.luma-app-window .lumaui-media label.lumaui-t-muted { color: @luma_media_muted; }
+.lumaui-media .lumaui-t-lead, window.luma-app-window .lumaui-media label.lumaui-t-lead { color: @luma_media_ink_secondary; }
+.lumaui-media box.lumaui-ac-bar, .lumaui-media box.lumaui-corner {
+  background: @luma_media_bar; background-image: none; color: @luma_media_ink;
+  box-shadow: inset 0 1px 0 @luma_media_bar_highlight, 0 0 0 1px @luma_media_bar_ring, 0 12px 32px -8px @luma_media_bar_shadow, 0 2px 6px @luma_media_bar_shadow_near;
+}
+.lumaui-media button.lumaui-bar-button, .lumaui-media button.lumaui-bar-button.icon { color: @luma_media_ink_secondary; }
+.lumaui-media button.lumaui-bar-button:hover { background: @luma_media_fill; color: @luma_media_ink; }
+.lumaui-media button.lumaui-bar-button.on { background: none; box-shadow: none; color: @luma_media_accent_ink; }
+/* Raised primary keys keep their contrast when the surrounding bar is over media. */
+.lumaui-media button.lumaui-bar-button.primary {
+  background: @luma_media_key; background-image: linear-gradient(to bottom, @luma_media_key, @luma_media_key_end);
+  color: @luma_media_key_ink;
+}
+.lumaui-media button.lumaui-bar-button.primary label { color: inherit; }
+/* v70 .vwpal .ib.on / .sut.on: a selected tool is the neutral key in either
+ * appearance, including when the palette sits in a media context. Other on
+ * actions keep the media accent treatment above. */
+button.lumaui-bar-button.tool.on {
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+  color: @luma_key_ink;
+}
+.lumaui-media button.lumaui-bar-button.tool.on {
+  background: @luma_media_key; background-image: linear-gradient(to bottom, @luma_media_key, @luma_media_key_end);
+  color: @luma_media_key_ink;
+}
+.lumaui-media box.lumaui-ac-row button.lumaui-bar-button.icon image { -gtk-icon-size: var(--lumaui-ac-media-icon); }
+.lumaui-media button.lumaui-corner-button { color: @luma_media_ink; }
+.lumaui-media box.lumaui-corner button.lumaui-corner-button.more { color: @luma_media_ink_secondary; }
+.lumaui-media button.lumaui-corner-button:hover { background: @luma_media_fill_strong; }
+.lumaui-media button.lumaui-corner-button.primary { background-image: linear-gradient(to bottom, @luma_media_key, @luma_media_key_end); color: @luma_media_key_ink; }
+.lumaui-media box.lumaui-menu, box.lumaui-menu.lumaui-media, .lumaui-media popover.menu > contents {
+  background: @luma_media_pop; background-image: none; color: @luma_media_ink;
+  box-shadow: 0 0 0 0.5px @luma_media_pop_ring, 0 16px 40px -8px @luma_media_pop_shadow, 0 2px 6px @luma_media_pop_shadow_near, inset 0 0 0 1px @luma_media_hair;
+}
+box.lumaui-menu.lumaui-media button.lumaui-menu-item, .lumaui-media popover.menu button.luma-menu-row { color: @luma_media_ink; }
+box.lumaui-menu.lumaui-media button.lumaui-menu-item image, .lumaui-media popover.menu button.luma-menu-row image { color: @luma_media_ink_secondary; }
+box.lumaui-menu.lumaui-media button.lumaui-menu-item:hover, .lumaui-media popover.menu button.luma-menu-row:hover { background: @luma_media_fill; }
+box.lumaui-menu.lumaui-media button.lumaui-menu-item.on { background: @luma_media_fill_strong; }
+.lumaui-modal.lumaui-media { background: @luma_media_pop; color: @luma_media_ink; }
+box.lumaui-menu-drawer.lumaui-media button.lumaui-menu-row { color: @luma_media_ink; }
+box.lumaui-menu-drawer.lumaui-media button.lumaui-menu-row image { color: @luma_media_ink_secondary; }
+box.lumaui-menu-drawer.lumaui-media button.lumaui-menu-row:hover { background: @luma_media_fill; }
+
+/* A short note beside a bar icon (Camera's flash "A", the timer's "3s"; v70 .cmt small). */
+button.lumaui-bar-button .lumaui-bar-button-noted { border-spacing: var(--lumaui-ac-note-gap); }
+button.lumaui-bar-button label.lumaui-bar-note { font-size: var(--lumaui-ac-note-size); font-weight: 600; letter-spacing: 0.1px; }
+button.lumaui-bar-button.icon.noted { padding: 0 6px; }
+
+/* A bar on the window body, not the island (v70 Messages' .mbar, Terminal's .tmcmd):
+ * the frame's inks (only light differs). ActionCenter.attach(over="frame"). A flat
+ * bar is Messages' own (.mbar is not an .fbar). */
+/* (not the primary key: its glyph takes the key's ink, v71 `.fbar .bt.pri`) */
+.lumaui-action-center.on-frame button.lumaui-bar-button.icon:not(.primary) { color: @luma_frame_ink_secondary; }
+.lumaui-action-center.on-frame .lumaui-t-caption, .lumaui-action-center.on-frame .lumaui-t-muted,
+.lumaui-action-center.on-frame text > placeholder { color: @luma_frame_muted; opacity: 1; }
+.lumaui-action-center.on-frame label.lumaui-ac-hint { color: @luma_frame_faint; }
+
+/* LumaUI: weight within a type role (apply_type(..., weight=)); doubled to outrank the role's own,
+ * and named under the app window as the generated role rules are (0,3,2 beats 0,2,2: kit request valet-05). */
+.lumaui-w-300.lumaui-w-300, .lumaui-w-300.lumaui-w-300 label, window.luma-app-window label.lumaui-w-300.lumaui-w-300, window.luma-app-window .lumaui-w-300.lumaui-w-300 label { font-weight: 300; }
+.lumaui-w-400.lumaui-w-400, .lumaui-w-400.lumaui-w-400 label, window.luma-app-window label.lumaui-w-400.lumaui-w-400, window.luma-app-window .lumaui-w-400.lumaui-w-400 label { font-weight: 400; }
+.lumaui-w-450.lumaui-w-450, .lumaui-w-450.lumaui-w-450 label, window.luma-app-window label.lumaui-w-450.lumaui-w-450, window.luma-app-window .lumaui-w-450.lumaui-w-450 label { font-weight: 450; }
+.lumaui-w-500.lumaui-w-500, .lumaui-w-500.lumaui-w-500 label, window.luma-app-window label.lumaui-w-500.lumaui-w-500, window.luma-app-window .lumaui-w-500.lumaui-w-500 label { font-weight: 500; }
+.lumaui-w-550.lumaui-w-550, .lumaui-w-550.lumaui-w-550 label, window.luma-app-window label.lumaui-w-550.lumaui-w-550, window.luma-app-window .lumaui-w-550.lumaui-w-550 label { font-weight: 550; }
+.lumaui-w-600.lumaui-w-600, .lumaui-w-600.lumaui-w-600 label, window.luma-app-window label.lumaui-w-600.lumaui-w-600, window.luma-app-window .lumaui-w-600.lumaui-w-600 label { font-weight: 600; }
+.lumaui-w-650.lumaui-w-650, .lumaui-w-650.lumaui-w-650 label, window.luma-app-window label.lumaui-w-650.lumaui-w-650, window.luma-app-window .lumaui-w-650.lumaui-w-650 label { font-weight: 650; }
+.lumaui-w-700.lumaui-w-700, .lumaui-w-700.lumaui-w-700 label, window.luma-app-window label.lumaui-w-700.lumaui-w-700, window.luma-app-window .lumaui-w-700.lumaui-w-700 label { font-weight: 700; }
+.lumaui-w-750.lumaui-w-750, .lumaui-w-750.lumaui-w-750 label, window.luma-app-window label.lumaui-w-750.lumaui-w-750, window.luma-app-window .lumaui-w-750.lumaui-w-750 label { font-weight: 750; }
+
+/* A fact whose value is led by a mark (v70 Calendar's category dot and name). */
+box.lumaui-details-value-line { border-spacing: 6px; }
+.luma-window-body.lumaui-frame-sidebar box.lumaui-details { margin-bottom: var(--lumaui-window-gutter); }
+
+/* Recording (v70 Memos' bar): the live chip, red on a red wash with a pulsing dot and the
+ * running time; the record key, red with white words and a filled glyph. */
+box.lumaui-bar-chip.live {
+  min-height: var(--lumaui-ac-control-height); padding: 0 14px 0 12px; border-spacing: 9px; border-radius: var(--lumaui-ac-control-radius);
+  background: @luma_record_wash; box-shadow: none; color: @luma_record; font-size: 13px; letter-spacing: -0.078px; font-weight: 650; font-feature-settings: "tnum";
+}
+box.lumaui-live-dot { min-width: 9px; min-height: 9px; border-radius: 999px; background: @luma_record; animation: lumaui-live 1.2s ease-in-out infinite; }
+@keyframes lumaui-live { 50% { opacity: 0.35; } }
+label.lumaui-live-time { color: alpha(@luma_record, 0.8); font-weight: 500; }
+button.lumaui-bar-button.record { background: @luma_record; color: @luma_record_ink; font-weight: 600; box-shadow: inset 0 1px 0 @luma_record_highlight; }
+button.lumaui-bar-button.record:hover { background: @luma_record; filter: brightness(1.06); }
+button.lumaui-bar-button.record image { -gtk-icon-size: 12px; color: @luma_record_ink; }
+@media (prefers-reduced-motion: reduce) { box.lumaui-live-dot { animation: none; } }
+
+
+/* ══ LumaUI controls (settings-12): TextButton (v70 .bt) and Switch (v70 .cfsw) ══════════════
+ * TextButton: plain (ink on nothing, fill-1 on hover), fill (fill-1), key (the bar's key), danger
+ * (red ink) and danger-solid (the red key, v70 .cfwin .bt.danger); small is .sm. */
+button.lumaui-text-button {
+  min-height: var(--lumaui-text-button-height); min-width: 0; padding: 0 var(--lumaui-text-button-padding-x); margin: 0;
+  border: none; border-radius: var(--lumaui-text-button-radius); box-shadow: none; outline: 0 solid transparent;
+  background: none; color: @luma_ink; font-size: var(--lumaui-text-button-font-size); font-weight: 500;
+  transition: background var(--lumaui-duration-hover) ease, filter var(--lumaui-duration-hover) ease;
+}
+button.lumaui-text-button .lumaui-text-button-content { border-spacing: var(--lumaui-text-button-gap); }
+button.lumaui-text-button image { -gtk-icon-size: var(--lumaui-text-button-icon); }
+button.lumaui-text-button:hover { background: @luma_hover; }
+/* v70's one button standard (24 Sep): fill rests on fill-2 and hovers to fill-3, in every window. */
+button.lumaui-text-button.fill { background: @luma_control_fill; }
+button.lumaui-text-button.fill:hover { background: @luma_control_fill_hover; }
+/* v70 .iwin .bt.pri: 0 15 0 13, 12 round, 600 at -.01em. */
+button.lumaui-text-button.key {
+  padding: 0 var(--lumaui-text-button-key-padding-end) 0 var(--lumaui-text-button-key-padding-start);
+  border-radius: var(--lumaui-text-button-key-radius); letter-spacing: -0.13px; font-weight: 600; color: @luma_key_ink;
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+button.lumaui-text-button.key:hover, button.lumaui-text-button.danger-solid:hover { filter: brightness(1.08); }
+button.lumaui-text-button.danger { color: @luma_danger_ink; }
+button.lumaui-text-button.danger:hover { background: alpha(@luma_danger_fill, 0.16); }
+button.lumaui-text-button.danger-solid {
+  font-weight: 600; color: @luma_danger_fill_ink; background: @luma_danger_fill;
+  background-image: linear-gradient(to bottom, @luma_danger_fill, @luma_danger_fill_end);
+  box-shadow: inset 0 1px 0 @luma_record_highlight;
+}
+button.lumaui-text-button.small {
+  min-height: var(--lumaui-text-button-small-height); padding: 0 var(--lumaui-text-button-small-padding-x);
+  border-radius: var(--lumaui-text-button-small-radius); font-size: var(--lumaui-text-button-small-font-size); letter-spacing: 0.12px;
+}
+button.lumaui-text-button.small image { -gtk-icon-size: var(--lumaui-text-button-small-icon); }
+/* hero: a header's or hero's buttons (v70 .cfnowa .bt, .cfhda .bt.fill: 34, 11 round). */
+button.lumaui-text-button.hero { min-height: var(--lumaui-text-button-hero-height); border-radius: var(--lumaui-text-button-hero-radius); }
+/* v71 media hero actions: 40px, the standard 10px button radius. */
+button.lumaui-text-button.large {
+  min-height: var(--lumaui-text-button-large-height);
+  padding: 0 var(--lumaui-text-button-large-padding-end) 0 var(--lumaui-text-button-large-padding-start);
+  border-radius: var(--lumaui-text-button-radius);
+}
+/* v71 narrow media actions retain intrinsic width with a 46px touch target. */
+button.lumaui-text-button.touch {
+  min-height: var(--lumaui-text-button-touch-height);
+  border-radius: var(--lumaui-text-button-touch-radius);
+  font-size: var(--lumaui-text-button-touch-font-size);
+}
+button.lumaui-text-button:disabled { opacity: 0.4; }
+button.lumaui-text-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+
+/* IconOnlyButton (v70 .ib): a glyph alone, 36 square; row (.cfcp) 28 with 14; small (.cfgrp h6 .ib) 26 with 15. */
+button.lumaui-icon-only {
+  min-width: var(--lumaui-icon-button-size); min-height: var(--lumaui-icon-button-size); padding: 0; margin: 0;
+  border: none; border-radius: var(--lumaui-icon-button-radius); box-shadow: none; outline: 0 solid transparent;
+  background: none; color: @luma_ink_secondary;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-icon-only image { -gtk-icon-size: var(--lumaui-icon-button-icon); color: inherit; } /* the button's ink-2, not a row's muted glyph rule */
+button.lumaui-icon-only:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-icon-only.on, button.lumaui-icon-only:checked { background: @luma_control_fill; color: @luma_ink; }
+button.lumaui-icon-only.love.on { background: none; color: @luma_love; }
+button.lumaui-icon-only:disabled { opacity: 0.3; }
+button.lumaui-icon-only:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-icon-only.large { min-width: var(--lumaui-icon-button-large-size); min-height: var(--lumaui-icon-button-large-size); }
+button.lumaui-icon-only.row { min-width: var(--lumaui-icon-button-row-size); min-height: var(--lumaui-icon-button-row-size); border-radius: var(--lumaui-icon-button-small-radius); }
+button.lumaui-icon-only.row image { -gtk-icon-size: var(--lumaui-icon-button-row-icon); }
+button.lumaui-icon-only.small { min-width: var(--lumaui-icon-button-small-size); min-height: var(--lumaui-icon-button-small-size); border-radius: var(--lumaui-icon-button-small-radius); }
+button.lumaui-icon-only.small image { -gtk-icon-size: var(--lumaui-icon-button-small-icon); }
+
+/* Switch: GtkSwitch halves its width for the knob, so the knob's margin moves to the side it leaves
+ * (off: 3 from the left; on: 3 from the right) and the pill comes out at v70's 38x22. */
+switch.lumaui-switch {
+  min-width: 0; min-height: 0; padding: 0; margin: 0; border: none; border-radius: 999px;
+  background: @luma_content; background-image: none; color: transparent;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+  transition: background 200ms ease;
+}
+switch.lumaui-switch > image { opacity: 0; -gtk-icon-size: 12px; margin: 0; }
+switch.lumaui-switch > slider {
+  min-width: var(--lumaui-switch-knob); min-height: var(--lumaui-switch-knob);
+  margin: var(--lumaui-switch-inset) 0 var(--lumaui-switch-inset) var(--lumaui-switch-inset);
+  border: none; border-radius: 999px; background: @luma_chip; background-image: none;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+}
+switch.lumaui-switch:checked { background: @luma_well_on; box-shadow: inset 0 1px 2px @luma_well_shade; }
+switch.lumaui-switch:checked > slider {
+  margin: var(--lumaui-switch-inset) var(--lumaui-switch-inset) var(--lumaui-switch-inset) 0; background: @luma_well_on_ink;
+}
+switch.lumaui-switch.big > slider {
+  min-width: var(--lumaui-switch-big-knob); min-height: var(--lumaui-switch-big-knob);
+  margin: var(--lumaui-switch-inset) 0 var(--lumaui-switch-inset) calc(var(--lumaui-switch-inset) - 1px);
+}
+switch.lumaui-switch.big:checked > slider { margin: var(--lumaui-switch-inset) calc(var(--lumaui-switch-inset) - 1px) var(--lumaui-switch-inset) 0; }
+switch.lumaui-switch:disabled { opacity: 0.4; }
+switch.lumaui-switch:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+
+/* Fixed-width stops (Camera zoom): the layout owns stop width and gap. */
+box.lumaui-modes.fixed-stops button.lumaui-mode { padding-left: 0; padding-right: 0; min-width: 0; }
+
+/* A sidebar-provided list title shares the sidebar inset. Sidebars normally
+ * stand on the frame, outside Island's status padding. Nested hosts already
+ * owning that padding keep a single safe area. */
+window.luma-app-window .luma-navigation-sidebar > label.lumaui-list-first-title {
+  margin-left: calc(var(--lumaui-gutter-phone) - var(--lumaui-sidebar-edge));
+  margin-right: calc(var(--lumaui-gutter-phone) - var(--lumaui-sidebar-edge));
+}
+window.lumaui-phone-device .luma-navigation-sidebar > label.lumaui-list-first-title {
+  margin-top: calc(var(--lumaui-phone-frame-status) + var(--lumaui-phone-frame-list-title-top) - var(--lumaui-sidebar-padding-top));
+}
+window.lumaui-phone-device:not(.lumaui-bleed) .luma-island .luma-navigation-sidebar > label.lumaui-list-first-title,
+window.lumaui-phone-device.lumaui-bleed .lumaui-list-first-list .luma-navigation-sidebar > label.lumaui-list-first-title {
+  margin-top: calc(var(--lumaui-phone-frame-list-title-top) - var(--lumaui-sidebar-padding-top));
+}
+
+/* Phone menu rows retain their thumb-sized geometry when embedded in a bar. */
+window.lumaui-phone-device button.lumaui-menu-item,
+window.lumaui-phone-device button.lumaui-menu-row,
+.lumaui-action-center.phone button.lumaui-menu-item,
+.lumaui-action-center.phone button.lumaui-menu-row {
+  min-height: calc(var(--lumaui-menu-phone-row-height) - 10px);
+  border-radius: var(--lumaui-menu-phone-row-radius);
+  font-size: var(--lumaui-menu-phone-font-size);
+}
+/* Mode switches on photos/video always sit on the media surface. */
+.lumaui-media box.lumaui-modes { background: @luma_media_well; }
+.lumaui-media box.lumaui-modes-indicator { background: @luma_media_chip; }
+.lumaui-media button.lumaui-mode { color: @luma_media_muted; }
+.lumaui-media button.lumaui-mode:hover,
+.lumaui-media button.lumaui-mode:checked,
+.lumaui-media button.lumaui-mode.on { color: @luma_media_ink; }
+
+/* A vertical corner stack (v71 Maps): two 44px targets and an inset hairline. */
+box.lumaui-corner.vertical-stack { border-radius: var(--lumaui-corner-vertical-radius); }
+box.lumaui-corner.vertical-stack box.lumaui-corner-group { border-spacing: var(--lumaui-corner-vertical-gap); }
+box.lumaui-corner.vertical-stack button.lumaui-corner-button {
+  min-width: var(--lumaui-corner-vertical-button); min-height: var(--lumaui-corner-vertical-button);
+  border-radius: var(--lumaui-corner-vertical-button-radius); padding: 0;
+}
+box.lumaui-corner.vertical-stack separator.lumaui-corner-separator {
+  min-height: var(--lumaui-corner-vertical-separator-height);
+  margin: var(--lumaui-corner-vertical-separator-margin) var(--lumaui-corner-vertical-separator-inset);
+  background: @luma_hairline;
+}
+
+/* Compact recessed account: one padded well, as in the phone Settings list. */
+button.lumaui-account-card.compact.recessed {
+  margin: 0 var(--lumaui-account-compact-well-margin-x) var(--lumaui-account-margin-bottom);
+}
+button.lumaui-account-card.compact.recessed > box.lumaui-account-well {
+  border-radius: var(--lumaui-account-compact-well-radius);
+}
+button.lumaui-account-card.compact.recessed .lumaui-account-content {
+  min-height: var(--lumaui-account-compact-avatar);
+  padding: var(--lumaui-account-compact-well-padding-y) var(--lumaui-account-compact-well-padding-x);
+  border-radius: var(--lumaui-account-compact-well-radius); border-spacing: var(--lumaui-account-gap);
+}
+button.lumaui-account-card.compact.recessed.on .lumaui-account-content { background: none; box-shadow: none; }
+
+button.lumaui-folder-path {
+  min-height: var(--lumaui-document-path-height); min-width: 0;
+  padding: 0 var(--lumaui-document-path-padding-end) 0 var(--lumaui-document-path-padding-start);
+  border: none; border-radius: var(--lumaui-document-path-radius);
+  background: @luma_well; color: @luma_ink_secondary;
+  box-shadow: inset 0 1px 2px @luma_well_shade, inset 0 0 0 1px @luma_well_ring;
+}
+button.lumaui-folder-path:hover { color: @luma_ink; filter: brightness(1.12); }
+box.lumaui-folder-path-content { border-spacing: var(--lumaui-document-path-gap); }
+button.lumaui-folder-path label, button.lumaui-trail-action label {
+  font-size: var(--lumaui-document-path-size); font-weight: var(--lumaui-document-path-weight);
+  letter-spacing: var(--lumaui-document-path-tracking);
+}
+label.lumaui-path-separator { color: @luma_faint; font-size: var(--lumaui-document-path-size); }
+box.lumaui-trail-crumb { border-spacing: var(--lumaui-document-path-crumb-gap); }
+button.lumaui-trail-action { min-height: 0; min-width: 0; padding: 0; border: none; background: none; box-shadow: none; color: @luma_ink_secondary; }
+button.lumaui-trail-action:hover { color: @luma_ink; text-decoration: underline; }
+
+/* A dark content scene needs a light veil; phone glass keeps its own treatment. */
+box.lumaui-lit-card.night:not(.glass) { background: @luma_sky_card_night; }
+button.lumaui-presence-chip {
+  min-height: var(--lumaui-document-presence-height); min-width: 0;
+  padding: 0 var(--lumaui-document-presence-padding-end) 0 var(--lumaui-document-presence-padding-start);
+  border: none; border-radius: var(--lumaui-document-presence-radius); background: none; box-shadow: none;
+}
+button.lumaui-presence-chip:hover { background: @luma_hover; }
+box.lumaui-presence-content { border-spacing: var(--lumaui-document-presence-gap); }
+box.lumaui-presence-status { border-spacing: var(--lumaui-document-presence-status-gap); }
+box.lumaui-presence-status label { font-size: var(--lumaui-document-presence-status-size); font-weight: 400; letter-spacing: var(--lumaui-document-presence-status-tracking); color: @luma_ink_secondary; }
+box.lumaui-presence-dot { min-width: var(--lumaui-document-presence-dot); min-height: var(--lumaui-document-presence-dot); border-radius: 50%; background: @luma_good; box-shadow: 0 0 var(--lumaui-document-presence-glow) @luma_good; }
+.lumaui-avatar-stack.document > .lumaui-stack-face { box-shadow: 0 0 0 var(--lumaui-avatar-stack-document-ring) @luma_float_surface; }
+/* Described single-selection rows, shared by forms and grown panels. */
+box.lumaui-choice-list { border-spacing: var(--lumaui-choice-list-gap); margin-bottom: var(--lumaui-choice-list-bottom); }
+button.lumaui-choice-row { padding: var(--lumaui-choice-list-padding-y) var(--lumaui-choice-list-padding-x); border: none; border-radius: var(--lumaui-choice-list-radius); background: none; box-shadow: none; color: @luma_ink; }
+box.lumaui-choice-list.panel button.lumaui-choice-row { padding: var(--lumaui-choice-list-panel-padding); border-radius: var(--lumaui-choice-list-panel-radius); }
+button.lumaui-choice-row:hover { background: @luma_hover; }
+button.lumaui-choice-row.on { background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop; }
+box.lumaui-choice-content { border-spacing: var(--lumaui-choice-list-content-gap); }
+box.lumaui-choice-indicator { min-width: var(--lumaui-choice-list-indicator); min-height: var(--lumaui-choice-list-indicator); margin-top: var(--lumaui-choice-list-indicator-top); border-radius: 50%; box-shadow: inset 0 0 0 var(--lumaui-choice-list-indicator-ring) @luma_muted; }
+button.lumaui-choice-row.on box.lumaui-choice-indicator { box-shadow: inset 0 0 0 var(--lumaui-choice-list-indicator-selected-ring) @luma_choice_selected; }
+
+/* Shared dialing keys retain native focus, activation and disabled behavior. */
+button.lumaui-dial-key {
+  padding: 0; border: none; min-width: 0; min-height: 0;
+  border-radius: var(--lumaui-dial-key-radius); background: @luma_chip;
+  color: @luma_ink; box-shadow: inset 0 var(--lumaui-dial-key-chip-lip) 0 @luma_chip_highlight, 0 0 0 var(--lumaui-dial-key-chip-ring) @luma_chip_ring, 0 var(--lumaui-dial-key-chip-shadow-y) var(--lumaui-dial-key-chip-shadow-blur) @luma_chip_shadow;
+}
+button.lumaui-dial-key:hover { background: @luma_control_fill; }
+button.lumaui-dial-key:disabled { opacity: var(--lumaui-dial-key-disabled-alpha-ratio); filter: none; }
+button.lumaui-dial-key label.dial-digit {
+  font-size: var(--lumaui-dial-key-digit-size); font-weight: var(--lumaui-dial-key-digit-weight); line-height: 1;
+}
+button.lumaui-dial-key label.dial-legend {
+  font-size: var(--lumaui-dial-key-legend-size); font-weight: var(--lumaui-dial-key-legend-weight);
+  line-height: var(--lumaui-dial-key-legend-height); letter-spacing: var(--lumaui-dial-key-legend-tracking); color: @luma_muted;
+}
+button.lumaui-dial-key.tone { background: alpha(@luma_on_media, var(--lumaui-dial-key-tone-alpha-ratio)); color: @luma_on_media; box-shadow: none; }
+button.lumaui-dial-key.tone.phone { background: alpha(@luma_on_media, var(--lumaui-dial-key-tone-phone-alpha-ratio)); }
+button.lumaui-dial-key.tone label.dial-digit { font-size: var(--lumaui-dial-key-tone-digit-size); }
+button.lumaui-dial-key.call { background: @luma_call; color: @luma_call_ink; box-shadow: 0 var(--lumaui-dial-key-call-shadow-y) var(--lumaui-dial-key-call-shadow-blur) var(--lumaui-dial-key-call-shadow-spread) @luma_call_shadow; }
+.lumaui-t-call-heading, window.luma-app-window label.lumaui-t-call-heading { font-size: var(--lumaui-t-call-heading-size); font-weight: var(--lumaui-t-call-heading-weight); line-height: var(--lumaui-t-call-heading-line-height); letter-spacing: var(--lumaui-t-call-heading-tracking); }
+.lumaui-t-call-heading.lumaui-t-phone, window.luma-app-window label.lumaui-t-call-heading.lumaui-t-phone { font-size: var(--lumaui-t-call-heading-phone-size); line-height: var(--lumaui-dial-key-call-line-height-ratio); }
+.lumaui-t-call-timer, window.luma-app-window label.lumaui-t-call-timer { font-size: var(--lumaui-t-call-timer-size); font-weight: var(--lumaui-t-call-timer-weight); line-height: var(--lumaui-t-call-timer-line-height); letter-spacing: var(--lumaui-t-call-timer-tracking); font-feature-settings: "tnum"; }
+.lumaui-t-call-timer.lumaui-t-phone, window.luma-app-window label.lumaui-t-call-timer.lumaui-t-phone { font-size: var(--lumaui-t-call-timer-phone-size); line-height: var(--lumaui-dial-key-call-line-height-ratio); }
+box.lumaui-card.stat { border-radius: var(--lumaui-card-stat-radius); }
+box.lumaui-card.stat.padded {
+  padding: var(--lumaui-card-stat-padding-top) var(--lumaui-card-stat-padding-x) var(--lumaui-card-stat-padding-bottom);
+}
+
+/* A mini card is the message surface itself when it participates in a run. */
+box.lumaui-mini-card.lumaui-run-shaped.selected {
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 0 0 2px @luma_accent_ink;
+}
+/* A document's inline add action uses its text edge, without an avatar well. */
+button.lumaui-add-row.document { min-height: var(--lumaui-document-add-height); padding: 0 var(--lumaui-document-add-padding-end) 0 var(--lumaui-document-add-padding-start); margin-left: calc(-1 * var(--lumaui-document-add-padding-start)); border-radius: var(--lumaui-document-add-radius); color: @luma_muted; }
+button.lumaui-add-row.document .lumaui-details-line { border-spacing: var(--lumaui-document-add-gap); }
+button.lumaui-add-row.document .lumaui-add-mark { min-width: var(--lumaui-document-add-icon); min-height: var(--lumaui-document-add-icon); background: none; box-shadow: none; color: inherit; }
+button.lumaui-add-row.document .lumaui-add-mark image { -gtk-icon-size: var(--lumaui-document-add-icon); }
+button.lumaui-add-row.document .lumaui-add-label { font-size: var(--lumaui-document-add-label-size); font-weight: var(--lumaui-document-add-label-weight); }
+button.lumaui-add-row.document:hover { color: @luma_ink; }
+/* A grown title island's people and facts (v71 Charlie .crprow, .crinfo2 dl). */
+box.lumaui-details-row.prominent label.lumaui-details-name { font-size: 14.5px; font-weight: 650; }
+box.lumaui-details-row.prominent label.lumaui-details-sub { font-size: 12.5px; font-weight: 400; color: @luma_muted; }
+box.lumaui-details-facts.prominent label.lumaui-details-key,
+box.lumaui-details-facts.prominent label.lumaui-details-value { font-size: 13.5px; font-weight: 400; }
+
+/* v71 creative document Back/title (.rlback2); standard divided leads remain 48px. */
+box.lumaui-title-island.creative box.lumaui-title-island-row,
+box.lumaui-title-island.creative button { min-height: var(--lumaui-title-island-creative-height); }
+box.lumaui-title-island.creative button.lumaui-title-island-lead { min-width: var(--lumaui-title-island-creative-lead); }
+box.lumaui-title-island.creative button.lumaui-title-island-title { padding: 0 var(--lumaui-title-island-creative-text-end) 0 var(--lumaui-title-island-creative-text-start); box-shadow: none; }
+box.lumaui-title-island.creative label.lumaui-title-island-label { font-size: var(--lumaui-title-island-creative-title-size); font-weight: var(--lumaui-title-island-creative-title-weight); }
+box.lumaui-title-island.creative.floating { margin-left: var(--lumaui-title-island-creative-left); }
+window.lumaui-phone-device box.lumaui-title-island.creative.floating { margin-top: var(--lumaui-title-island-creative-top); }
+
+/* A nonempty sidebar query offers the same visible clear action as search inputs. */
+box.lumaui-foot-search button.lumaui-foot-search-clear {
+  min-width: var(--lumaui-corner-search-clear); min-height: var(--lumaui-corner-search-clear);
+  padding: 0; margin: 0; border: none; border-radius: var(--lumaui-corner-search-clear-radius);
+  background: none; box-shadow: none; color: @luma_muted;
+}
+box.lumaui-foot-search button.lumaui-foot-search-clear:hover { color: @luma_ink; }
+
+/* Neutral dimensional actions, shared with stacked action tiles. */
+button.lumaui-text-button.raised, button.lumaui-icon-only.raised {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+button.lumaui-text-button.raised:hover, button.lumaui-icon-only.raised:hover { filter: brightness(var(--lumaui-hover-brightness)); }
+button.lumaui-text-button.raised:active, button.lumaui-icon-only.raised:active { filter: brightness(0.95); }
+button.lumaui-text-button.raised:disabled, button.lumaui-icon-only.raised:disabled {
+  background: @luma_hover; color: @luma_muted; box-shadow: inset 0 0 0 1px @luma_line; filter: none;
+}
+/* An owning panel supplies the surface and outer spacing. */
+box.lumaui-details.embedded { min-width: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+
+/* Adjacent content and details remain distinct recessed surfaces. */
+box.lumaui-details:not(.drawer):not(.embedded) { margin-left: var(--lumaui-details-gutter); }
+/* Identity controls follow the surrounding pill inset, including hover fill. */
+box.lumaui-corner button.lumaui-corner-people {
+  border-radius: calc(var(--lumaui-corner-radius) - var(--lumaui-corner-padding));
+}
+
+/* A compact subject in an embedded details panel uses shared file-summary type. */
+box.lumaui-details-subject {
+  border-spacing: var(--lumaui-details-fact-gap);
+  padding-bottom: var(--lumaui-details-body-padding-top);
+}
+box.lumaui-details-subject > box { border-spacing: var(--lumaui-details-hero-gap); }

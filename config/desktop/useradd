@@ -1,0 +1,13 @@
+# Project Luma account defaults.
+#
+# Fedora Atomic stores user data on the writable /var partition and exposes it
+# through the standard /home path.  Accounts must advertise /home/<name> so
+# sandboxed application ecosystems such as Snap see the conventional home
+# hierarchy; /home resolves to the same persistent /var/home storage.
+GROUP=100
+HOME=/home
+INACTIVE=-1
+EXPIRE=
+SHELL=/bin/bash
+SKEL=/etc/skel
+CREATE_MAIL_SPOOL=yes

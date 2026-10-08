@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE wallpapers SYSTEM "gnome-wp-list.dtd">
+<wallpapers>
+  <wallpaper deleted="false">
+    <name>Prism</name>
+    <filename>/usr/share/backgrounds/luma/prism.png</filename>
+    <filename-dark>/usr/share/backgrounds/luma/prism.png</filename-dark>
+    <options>zoom</options>
+    <pcolor>#183b91</pcolor>
+    <scolor>#b5486b</scolor>
+    <shade_type>solid</shade_type>
+  </wallpaper>
+  <wallpaper deleted="false">
+    <name>Meadow</name>
+    <filename>/usr/share/backgrounds/luma/meadow.png</filename>
+    <filename-dark>/usr/share/backgrounds/luma/meadow.png</filename-dark>
+    <options>zoom</options>
+    <pcolor>#4f8f6a</pcolor>
+    <scolor>#2f7d78</scolor>
+    <shade_type>solid</shade_type>
+  </wallpaper>
+  <wallpaper deleted="false">
+    <name>Ember</name>
+    <filename>/usr/share/backgrounds/luma/ember.png</filename>
+    <filename-dark>/usr/share/backgrounds/luma/ember.png</filename-dark>
+    <options>zoom</options>
+    <pcolor>#a4242c</pcolor>
+    <scolor>#e8a13c</scolor>
+    <shade_type>solid</shade_type>
+  </wallpaper>
+</wallpapers>

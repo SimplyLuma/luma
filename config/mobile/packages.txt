@@ -1,0 +1,37 @@
+# Intended Fedora 44 userspace for the first physical FP6 diagnostic rootfs.
+# Keep board support, firmware, and boot packaging out of this manifest.
+
+bash
+alsa-ucm
+alsa-ucm-utils
+alsa-utils
+bluez
+cage
+chrony
+coreutils
+dbus-daemon
+dracut
+greetd
+iproute
+kmscube
+libdrm
+libinput-utils
+mesa-dri-drivers
+mesa-vulkan-drivers
+ModemManager
+neard-tools
+NetworkManager
+openssh-server
+pipewire
+pipewire-pulseaudio
+plymouth
+qrtr
+rmtfs
+selinux-policy-targeted
+sudo
+systemd
+systemd-pam
+tqftpserv
+weston
+weston-libs-backend-rdp
+freerdp

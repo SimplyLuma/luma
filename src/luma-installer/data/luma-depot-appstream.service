@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Downloads the application metadata Depot draws its icons and summaries from.
+#
+# That metadata is a Flatpak remote's AppStream branch, checked out under
+# /var/lib/flatpak/appstream. /var is local to the machine on an image-based
+# system, so the image cannot carry it: a freshly installed computer has no
+# icon for anything listed from Flathub until this has run. Nothing else on
+# the system fetches it -- Fedora's appstream-cache-refresh unit rebuilds the
+# local package cache, not a Flatpak remote's.
+#
+# It never fails. The leading "-" makes a failed exec a successful unit, so a
+# computer with no network at first boot reports no failed units and no
+# degraded state; the timer tries again, and Depot draws each application's
+# monogram in the meantime and fills the artwork in when it lands.
+[Unit]
+Description=Download application metadata for Depot
+Documentation=https://projectluma.org/applications
+After=network-online.target flatpak-system-helper.service
+Wants=network-online.target
+ConditionPathIsReadWrite=/var
+ConditionPathExists=/usr/bin/flatpak
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/flatpak --system update --appstream --noninteractive
+# Somebody is using this computer for the first time: take the metadata
+# slowly and leave the disk and the processor to them.
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+TimeoutStartSec=30min
+PrivateTmp=yes
+ProtectHome=yes
+NoNewPrivileges=yes

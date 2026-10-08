@@ -1,0 +1,803 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] chooser: compose native purpose, places, files and action surfaces
+
+diff --git a/src/nautilus-file-chooser.c b/src/nautilus-file-chooser.c
+--- a/src/nautilus-file-chooser.c
++++ b/src/nautilus-file-chooser.c
+@@ -27,6 +27,8 @@
+ #include "nautilus-view-item-filter.h"
+ #include "nautilus-window-slot.h"
+ 
++#include <gio/gdesktopappinfo.h>
++
+ #define FILTER_WIDTH_CHARS 12
+ 
+ struct _NautilusFileChooser
+@@ -50,11 +52,11 @@
+     GtkWidget *read_only_checkbox;
+     GtkWidget *accept_button;
+     GtkWidget *filename_widget;
+-    GtkWidget *filename_button_container;
+     GtkWidget *filename_undo_button;
+     GtkWidget *filename_entry;
+     GtkWidget *new_folder_button;
+     GtkWidget *title_widget;
++    GtkWidget *requester_label;
+ 
+     NautilusFilenameValidator *validator;
+     AdwBreakpoint *breakpoint;
+@@ -329,6 +331,20 @@
+ }
+ 
+ static void
++on_validator_feedback_text_changed (NautilusFileChooser *self)
++{
++    g_autofree char *feedback = NULL;
++
++    g_object_get (self->validator, "feedback-text", &feedback, NULL);
++    if (feedback != NULL && *feedback != '\0' &&
++        gtk_widget_get_mapped (self->filename_entry))
++    {
++        gtk_accessible_announce (GTK_ACCESSIBLE (self->filename_entry), feedback,
++                                 GTK_ACCESSIBLE_ANNOUNCEMENT_PRIORITY_MEDIUM);
++    }
++}
++
++static void
+ on_validator_will_overwrite_changed (NautilusFileChooser *self)
+ {
+     if (nautilus_filename_validator_get_will_overwrite (self->validator))
+@@ -408,29 +424,6 @@
+ }
+ 
+ static void
+-on_filename_entry_focus_leave (NautilusFileChooser *self)
+-{
+-    /* The filename entry is a transient: it should hide when it loses focus.
+-     *
+-     * However, if we lose focus because the window itself lost focus, then the
+-     * filename entry should persist, because this may happen due to the user
+-     * switching keyboard layout/input method; or they may want to copy/drop
+-     * an path from another window/app. We detect this case by looking at the
+-     * focus widget of the window (GtkRoot).
+-     */
+-
+-    GtkWidget *focus_widget = gtk_root_get_focus (gtk_widget_get_root (GTK_WIDGET (self)));
+-    if (focus_widget != NULL &&
+-        gtk_widget_is_ancestor (focus_widget, GTK_WIDGET (self->filename_entry)))
+-    {
+-        return;
+-    }
+-
+-    gtk_stack_set_visible_child (GTK_STACK (self->filename_widget),
+-                                 self->filename_button_container);
+-}
+-
+-static void
+ on_filename_entry_changed (NautilusFileChooser *self)
+ {
+     const char *current_text = gtk_editable_get_text (GTK_EDITABLE (self->filename_entry));
+@@ -445,8 +438,6 @@
+ static void
+ open_filename_entry (NautilusFileChooser *self)
+ {
+-    gtk_stack_set_visible_child (GTK_STACK (self->filename_widget),
+-                                 self->filename_entry);
+     gtk_entry_grab_focus_without_selecting (GTK_ENTRY (self->filename_entry));
+ 
+     const char *filename = gtk_editable_get_text (GTK_EDITABLE (self->filename_entry));
+@@ -732,12 +723,65 @@
+     return GTK_WIDGET_CLASS (nautilus_file_chooser_parent_class)->grab_focus (widget);
+ }
+ 
++/* A request title is purpose text, never an authenticated application name. */
++static void
++update_purpose (NautilusFileChooser *self)
++{
++    const char *title = gtk_window_get_title (GTK_WINDOW (self));
++
++    if (title == NULL || *title == '\0' || g_strcmp0 (title, _("Filer")) == 0)
++    {
++        switch (self->mode)
++        {
++            case NAUTILUS_MODE_SAVE_FILE:
++                title = _("Save your document");
++                break;
++            case NAUTILUS_MODE_SAVE_FILES:
++                title = _("Save your documents");
++                break;
++            case NAUTILUS_MODE_OPEN_FOLDER:
++                title = _("Choose a folder");
++                break;
++            case NAUTILUS_MODE_OPEN_FOLDERS:
++                title = _("Choose folders");
++                break;
++            case NAUTILUS_MODE_OPEN_FILES:
++                title = _("Open files");
++                break;
++            default:
++                title = _("Open a file");
++                break;
++        }
++    }
++    gtk_label_set_text (GTK_LABEL (self->title_widget), title);
++}
++
++static void
++update_input_capabilities (NautilusFileChooser *self)
++{
++    GdkSeat *seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
++    if (seat != NULL && (gdk_seat_get_capabilities (seat) & GDK_SEAT_CAPABILITY_TOUCH))
++        gtk_widget_add_css_class (GTK_WIDGET (self), "luma-touch");
++    else
++        gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-touch");
++}
++
+ static void
+ nautilus_file_chooser_constructed (GObject *object)
+ {
+     G_OBJECT_CLASS (nautilus_file_chooser_parent_class)->constructed (object);
+ 
+     NautilusFileChooser *self = (NautilusFileChooser *) object;
++
++    GdkSeat *seat = gdk_display_get_default_seat (gtk_widget_get_display (GTK_WIDGET (self)));
++    update_input_capabilities (self);
++    if (seat != NULL)
++    {
++        g_signal_connect_object (seat, "device-added", G_CALLBACK (update_input_capabilities),
++                                 self, G_CONNECT_SWAPPED);
++        g_signal_connect_object (seat, "device-removed", G_CALLBACK (update_input_capabilities),
++                                 self, G_CONNECT_SWAPPED);
++    }
+ 
+     /* Setup slot. */
+     self->slot = nautilus_window_slot_new (self->mode);
+@@ -781,8 +825,9 @@
+         gtk_widget_add_css_class (GTK_WIDGET (self), "devel");
+     }
+ 
+-    gtk_widget_add_css_class (self->title_widget, "windowtitle");
+-    gtk_widget_add_css_class (self->title_widget, "title");
++    g_signal_connect_swapped (self, "notify::title",
++                              G_CALLBACK (update_purpose), self);
++    update_purpose (self);
+     g_signal_connect (self->title_widget, "query-tooltip",
+                       G_CALLBACK (title_widget_query_tooltip), self);
+ 
+@@ -896,20 +941,20 @@
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, choices_menu_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, accept_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_widget);
+-    gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_button_container);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_undo_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, filename_entry);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, new_folder_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, validator);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, title_widget);
++    gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, requester_label);
+     gtk_widget_class_bind_template_child (widget_class, NautilusFileChooser, breakpoint);
+ 
+     gtk_widget_class_bind_template_callback (widget_class, open_filename_entry);
+     gtk_widget_class_bind_template_callback (widget_class, on_filename_undo_button_clicked);
+     gtk_widget_class_bind_template_callback (widget_class, on_filename_entry_changed);
+-    gtk_widget_class_bind_template_callback (widget_class, on_filename_entry_focus_leave);
+     gtk_widget_class_bind_template_callback (widget_class, nautilus_filename_validator_validate);
+     gtk_widget_class_bind_template_callback (widget_class, on_validator_has_feedback_changed);
++    gtk_widget_class_bind_template_callback (widget_class, on_validator_feedback_text_changed);
+     gtk_widget_class_bind_template_callback (widget_class, on_validator_will_overwrite_changed);
+     gtk_widget_class_bind_template_callback (widget_class, on_file_drop);
+     gtk_widget_class_bind_template_callback (widget_class, get_filter_width_chars);
+@@ -1007,3 +1052,31 @@
+ 
+     gtk_widget_set_visible (self->choices_menu_button, visible);
+ }
++
++/* Only the portal backend supplies this ID. Never resolve the request title. */
++void
++nautilus_file_chooser_set_requesting_app_id (NautilusFileChooser *self,
++                                            const char          *app_id)
++{
++    g_autofree char *desktop_id = NULL;
++    g_autoptr (GDesktopAppInfo) info = NULL;
++    g_autofree char *requester = NULL;
++
++    g_return_if_fail (NAUTILUS_IS_FILE_CHOOSER (self));
++    gtk_widget_set_visible (self->requester_label, FALSE);
++    if (app_id == NULL || *app_id == '\0' || strchr (app_id, '/') != NULL)
++    {
++        return;
++    }
++    desktop_id = g_strconcat (app_id, ".desktop", NULL);
++    info = g_desktop_app_info_new (desktop_id);
++    if (info == NULL)
++    {
++        return;
++    }
++    /* Translators: %s is a locally resolved application display name. */
++    requester = g_strdup_printf (_("%s is asking"),
++                                  g_app_info_get_display_name (G_APP_INFO (info)));
++    gtk_label_set_text (GTK_LABEL (self->requester_label), requester);
++    gtk_widget_set_visible (self->requester_label, TRUE);
++}
+diff --git a/src/nautilus-file-chooser.h b/src/nautilus-file-chooser.h
+--- a/src/nautilus-file-chooser.h
++++ b/src/nautilus-file-chooser.h
+@@ -43,4 +43,7 @@
+                                           GActionGroup        *action_group,
+                                           GMenuModel          *menu);
+ 
++void nautilus_file_chooser_set_requesting_app_id (NautilusFileChooser *self,
++                                                const char          *app_id);
++
+ G_END_DECLS
+diff --git a/src/nautilus-portal.c b/src/nautilus-portal.c
+--- a/src/nautilus-portal.c
++++ b/src/nautilus-portal.c
+@@ -567,6 +567,7 @@
+ 
+     /* Prepare window */
+     NautilusFileChooser *window = nautilus_file_chooser_new (mode);
++    nautilus_file_chooser_set_requesting_app_id (window, arg_app_id);
+ 
+     g_set_object (&data->window, GTK_WINDOW (window));
+ 
+diff --git a/src/resources/ui/nautilus-file-chooser.blp b/src/resources/ui/nautilus-file-chooser.blp
+--- a/src/resources/ui/nautilus-file-chooser.blp
++++ b/src/resources/ui/nautilus-file-chooser.blp
+@@ -2,272 +2,211 @@
+ using Adw 1;
+ 
+ template $NautilusFileChooser: Adw.Window {
+-  width-request: 360;
++  width-request: 320;
+   height-request: 348;
+   default-widget: accept_button;
+ 
+   content: $NautilusShortcutManager {
+     child: Adw.ToastOverlay {
+-      child: Adw.OverlaySplitView split_view {
+-        max-sidebar-width: 240;
+-        sidebar-width-unit: px;
+-        sidebar-width-fraction: 0.2;
+-
+-        styles [
+-          "view",
+-        ]
+-
+-        sidebar: Adw.ToolbarView {
+-          [top]
+-          Adw.HeaderBar {
+-            [start]
+-            ToggleButton {
+-              tooltip-text: _("Search Everywhere");
+-              action-name: "slot.search-global";
+-              icon-name: "edit-find-symbolic";
+-            }
+-
+-            title-widget: Label title_widget {
+-              ellipsize: end;
+-              wrap: false;
+-              single-line-mode: true;
+-              width-chars: 5;
+-              has-tooltip: true;
+-              label: bind template.title no-sync-create;
++      child: Adw.ToolbarView {
++        [top]
++        Adw.HeaderBar {
++          title-widget: Box {};
++        }
++
++        content: Box {
++          orientation: vertical;
++          spacing: 8;
++          styles ["luma-window-body", "luma-chooser-body"]
++
++          Box {
++            orientation: vertical;
++            spacing: 8;
++            styles ["luma-island", "luma-island-quiet", "luma-chooser-purpose", "luma-controls-quiet"]
++
++            Box {
++              spacing: 8;
++              Adw.WrapBox {
++                child-spacing: 8;
++                line-spacing: 4;
++                hexpand: true;
++                Label title_widget {
++                  xalign: 0;
++                  wrap: true;
++                  wrap-mode: word_char;
++                  has-tooltip: true;
++                  styles ["luma-chooser-purpose-title"]
++                }
++                Label requester_label {
++                  visible: false;
++                  xalign: 0;
++                  wrap: true;
++                  wrap-mode: word_char;
++                  styles ["dim-label"]
++                }
++              }
++              MenuButton choices_menu_button {
++                visible: false;
++                valign: start;
++                icon-name: "nautilus-file-chooser-options-symbolic";
++                tooltip-text: C_("File Chooser tooltips", "Show Options");
++              }
++            }
++
++            Grid filename_widget {
++              column-spacing: 12;
++              row-spacing: 8;
++              Label filename_label {
++                label: _("_Name");
++                use-underline: true;
++                mnemonic-widget: filename_entry;
++                valign: center;
++                xalign: 0;
++                layout { column: 0; row: 0; }
++              }
++              Entry filename_entry {
++                hexpand: true;
++                width-chars: 1;
++                activates-default: true;
++                changed => $on_filename_entry_changed(template);
++                accessibility {
++                  labelled-by: [filename_label];
++                  described-by: [filename_feedback];
++                }
++                layout { column: 1; row: 0; }
++              }
++              Button filename_undo_button {
++                tooltip-text: _("Reset File Name");
++                icon-name: "edit-undo-symbolic";
++                visible: false;
++                clicked => $on_filename_undo_button_clicked(template);
++                styles ["flat"]
++                layout { column: 2; row: 0; }
++              }
++              Label filename_feedback {
++                visible: bind validator.has-feedback;
++                label: bind validator.feedback-text;
++                xalign: 0;
++                wrap: true;
++                  wrap-mode: word_char;
++                styles ["caption", "warning"]
++                layout { column: 1; row: 1; column-span: 2; }
++              }
++            }
++          }
++
++          Adw.OverlaySplitView split_view {
++            vexpand: true;
++            min-sidebar-width: 178;
++            max-sidebar-width: 178;
++            sidebar-width-unit: px;
++            styles ["luma-island-split", "luma-chooser-middle"]
++
++            sidebar: Adw.ToolbarView {
++              styles ["luma-island", "luma-island-quiet", "luma-chooser-places"]
++              [top]
++              Box {
++                spacing: 6;
++                styles ["luma-chooser-places-heading"]
++                Label {
++                  label: _("Places");
++                  xalign: 0;
++                  hexpand: true;
++                  styles ["caption", "dim-label"]
++                }
++                ToggleButton {
++                  tooltip-text: _("Search Everywhere");
++                  action-name: "slot.search-global";
++                  icon-name: "edit-find-symbolic";
++                  styles ["flat"]
++                }
++              }
++              content: $NautilusSidebar places_sidebar {
++                vexpand: true;
++                window-slot: bind slot_container.child;
++              };
++            };
++
++            content: Adw.ToolbarView files_surface {
++              margin-start: 8;
++              styles ["luma-island", "luma-island-quiet", "luma-chooser-files"]
++              [top]
++              $NautilusToolbar toolbar {
++                show-history-controls: true;
++                window-slot: bind slot_container.child;
++                show-new-folder-button: bind new_folder_button.visible;
++                show-view-controls: bind view_controls.visible;
++              }
++              content: Adw.Bin slot_container {};
+             };
+           }
+ 
+-          content: $NautilusSidebar places_sidebar {
+-            vexpand: "true";
+-            window-slot: bind slot_container.child;
+-          };
+-        };
+-
+-        content: Adw.ToolbarView {
+-          [top]
+-          $NautilusToolbar toolbar {
+-            show-history-controls: "true";
+-            window-slot: bind slot_container.child;
+-            show-new-folder-button: bind new_folder_button.visible;
+-            show-view-controls: bind view_controls.visible;
+-          }
+-
+-          content: Adw.Bin slot_container {};
+-
+-          [bottom]
+           Adw.MultiLayoutView bottom_toolbar {
++            styles ["luma-island", "luma-island-quiet", "luma-chooser-actions", "luma-controls-quiet"]
+             Adw.Layout {
+               name: "wide";
+-
+-              content: CenterBox {
+-                [start]
+-                Box {
+-                  styles [
+-                    "toolbar",
+-                  ]
+-
+-                  Adw.LayoutSlot {
+-                    id: "filter-dropdown";
+-                    visible: bind filters_dropdown.visible;
+-                  }
+-                }
+-
+-                [center]
+-                Adw.LayoutSlot {
+-                  id: "filename-widget";
+-                }
+-
+-                [end]
+-                Box {
+-                  styles [
+-                    "toolbar",
+-                  ]
+-
+-                  Adw.LayoutSlot {
+-                    id: "choices-menu-button";
+-                    valign: center;
+-                    visible: bind choices_menu_button.visible;
+-                  }
+-
+-                  Adw.LayoutSlot {
+-                    id: "accept-button";
+-                  }
+-                }
+-              };
+-            }
+-
++              content: Box {
++                spacing: 8;
++                Adw.LayoutSlot { id: "filter-dropdown"; visible: bind filters_dropdown.visible; }
++                Box { hexpand: true; }
++                Adw.LayoutSlot { id: "cancel-button"; }
++                Adw.LayoutSlot { id: "accept-button"; }
++              };
++            }
+             Adw.Layout {
+               name: "narrow";
+-
+               content: Box {
+                 orientation: vertical;
+-
+-                Adw.LayoutSlot {
+-                  id: "filename-widget";
+-                  visible: bind filename_widget.visible;
+-
+-                  styles [
+-                    "toolbar",
+-                    "no-bottom-padding",
+-                  ]
+-                }
+-
+-                CenterBox {
+-                  [start]
+-                  Box {
+-                    valign: center;
+-
+-                    styles [
+-                      "toolbar",
+-                    ]
+-
+-                    ToggleButton {
+-                      active: bind split_view.show-sidebar bidirectional;
+-                      tooltip-text: _("Show Sidebar");
+-                      icon-name: "sidebar-show-symbolic";
+-
+-                      ShortcutController {
+-                        scope: managed;
+-
+-                        Shortcut {
+-                          trigger: "F9";
+-                          action: "activate";
+-                        }
+-                      }
+-                    }
+-
+-                    Adw.LayoutSlot {
+-                      id: "filter-dropdown";
+-                      visible: bind filters_dropdown.visible;
++                spacing: 8;
++                Box {
++                  spacing: 8;
++                  ToggleButton {
++                    active: bind split_view.show-sidebar bidirectional;
++                    tooltip-text: _("Show Sidebar");
++                    icon-name: "sidebar-show-symbolic";
++                    ShortcutController {
++                      scope: managed;
++                      Shortcut { trigger: "F9"; action: "activate"; }
+                     }
+                   }
+-
+-                  [center]
+-                  Adw.LayoutSlot {
+-                    id: "accept-button";
++                  Adw.LayoutSlot { id: "filter-dropdown"; visible: bind filters_dropdown.visible; }
++                  Box { hexpand: true; }
++                  Button new_folder_button {
++                    visible: false;
++                    icon-name: "folder-new-symbolic";
++                    tooltip-text: _("New Folder");
++                    action-name: "view.new-folder";
++                    focus-on-click: false;
+                   }
+-
+-                  [end]
+-                  Box {
+-                    valign: center;
+-
+-                    styles [
+-                      "toolbar",
+-                    ]
+-
+-                    Button new_folder_button {
+-                      visible: false;
+-                      icon-name: "folder-new-symbolic";
+-                      tooltip-text: _("New Folder");
+-                      action-name: "view.new-folder";
+-                      focus-on-click: false;
+-                    }
+-
+-                    Adw.LayoutSlot {
+-                      id: "choices-menu-button";
+-                      visible: bind choices_menu_button.visible;
+-                    }
+-
+-                    $NautilusViewControls view_controls {
+-                      window-slot: bind slot_container.child;
+-                    }
++                  $NautilusViewControls view_controls {
++                    window-slot: bind slot_container.child;
+                   }
+                 }
+-              };
+-            }
+-
+-            [filename-widget]
+-            Stack filename_widget {
+-              Overlay filename_button_container {
+-                valign: center;
+-
+-                Button {
+-                  tooltip-text: _("Edit File Name");
+-
+-                  accessibility {
+-                    labelled-by: [
+-                      filename_label,
+-                    ];
+-                  }
+-
+-                  clicked => $open_filename_entry(template);
+-
+-                  child: CenterBox {
+-                    [start]
+-                    Adw.Bin filename_button_start {}
+-
+-                    /* Center the label and don't overlap the overlay */
+-                    [center]
+-                    Label filename_label {
+-                      single-line-mode: true;
+-                      label: bind filename_entry.text;
+-                      ellipsize: middle;
+-                    }
+-
+-                    [end]
+-                    Image filename_button_end {
+-                      margin-start: 12;
+-                      icon-name: "document-edit-symbolic";
+-                    }
+-                  };
+-                }
+-
+-                [overlay]
+-                Button filename_undo_button {
+-                  tooltip-text: _("Reset File Name");
+-                  icon-name: "edit-undo-symbolic";
+-                  visible: false;
+-                  halign: start;
+-                  clicked => $on_filename_undo_button_clicked(template);
+-
+-                  styles [
+-                    "flat",
+-                  ]
+-                }
+-              }
+-
+-              Entry filename_entry {
+-                tooltip-text: _("File Name");
+-                valign: center;
+-                max-width-chars: 30;
+-                activates-default: true;
+-                changed => $on_filename_entry_changed(template);
+-
+-                EventControllerFocus {
+-                  leave => $on_filename_entry_focus_leave(template);
+-                }
+-              }
+-            }
+-
++                Box {
++                  spacing: 8;
++                  halign: end;
++                  Adw.LayoutSlot { id: "cancel-button"; }
++                  Adw.LayoutSlot { id: "accept-button"; }
++                }
++              };
++            }
++            [cancel-button]
++            Button {
++              label: _("_Cancel");
++              use-underline: true;
++              action-name: "window.close";
++            }
+             [accept-button]
+             Button accept_button {
+               label: "_Select";
+               use-underline: true;
+-              margin-top: 6;
+-              margin-bottom: 6;
+-              margin-start: 6;
+-              margin-end: 6;
+               action-name: "chooser.accept";
+-
+-              styles [
+-                "pill",
+-                "suggested-action",
+-              ]
+-            }
+-
+-            [choices-menu-button]
+-            MenuButton choices_menu_button {
+-              icon-name: "nautilus-file-chooser-options-symbolic";
+-
+-              /* Translators: 'Show' is a verb */
+-              tooltip-text: C_("File Chooser tooltips", "Show Options");
+-            }
+-
++              styles ["suggested-action"]
++            }
+             [filter-dropdown]
+             DropDown filters_dropdown {
+               valign: center;
+               tooltip-text: _("Visible Files Filter");
+-
+               factory: BuilderListItemFactory {
+                 template ListItem {
+                   child: Label {
+@@ -278,12 +217,7 @@
+                   };
+                 }
+               };
+-
+-              styles [
+-                "flat-dropdown",
+-              ]
+-            }
+-
++            }
+             DropTarget {
+               actions: copy;
+               formats: "GdkFileList";
+@@ -296,10 +230,10 @@
+   };
+ 
+   Adw.Breakpoint breakpoint {
+-    condition ("max-width: 682sp")
+-
++    condition ("max-width: 549sp")
+     setters {
+       split_view.collapsed: true;
++      files_surface.margin-start: 0;
+       toolbar.show-new-folder-button: false;
+       toolbar.show-view-controls: false;
+       bottom_toolbar.layout-name: "narrow";
+@@ -307,40 +241,22 @@
+       filters_dropdown.factory: builder_list_item_image;
+     }
+   }
+-
+   ShortcutController {
+     scope: managed;
+-
+-    Shortcut {
+-      trigger: "Escape";
+-      action: "action(window.close)";
+-    }
++    Shortcut { trigger: "Escape"; action: "action(window.close)"; }
+   }
+-
+-  styles [
+-    "nautilus-file-chooser",
+-  ]
++  styles ["nautilus-file-chooser", "luma-native-file-chooser"]
+ }
+ 
+ $NautilusFilenameValidator validator {
+-  allow-overwrite: "true";
++  allow-overwrite: true;
+   new-name: bind filename_entry.text;
+   notify::has-feedback => $on_validator_has_feedback_changed() swapped;
++  notify::feedback-text => $on_validator_feedback_text_changed() swapped;
+   notify::will-overwrite => $on_validator_will_overwrite_changed() swapped;
+ }
+-
+ BuilderListItemFactory builder_list_item_image {
+   template ListItem {
+-    child: Image {
+-      icon-name: "funnel-outline-symbolic";
+-    };
++    child: Image { icon-name: "funnel-outline-symbolic"; };
+   }
+ }
+-
+-SizeGroup {
+-  widgets [
+-    filename_button_start,
+-    filename_button_end,
+-    filename_undo_button,
+-  ]
+-}
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1473,3 +1473,31 @@
+   border-radius: 0 10px 10px 0;
+   box-shadow: none;
+ }
++
++/* Chooser composition only. Quiet materials and control metrics are shared
++ * libadwaita variants; no portal protocol or application geometry is changed. */
++window.luma-native-file-chooser {
++  background-color: @luma_window;
++  color: @luma_ink;
++}
++.luma-native-file-chooser .luma-chooser-purpose { padding: 11px; }
++.luma-native-file-chooser .luma-chooser-purpose-title { font-size: 14px; font-weight: 700; }
++.luma-native-file-chooser .luma-chooser-actions { padding: 7px; }
++.luma-native-file-chooser .luma-chooser-places-heading { padding: 5px; }
++.luma-native-file-chooser .luma-chooser-places .navigation-sidebar { padding: 6px; }
++.luma-native-file-chooser .luma-chooser-places .navigation-sidebar row {
++  min-height: 24px;
++  padding: 4px 8px;
++  font-size: 13px;
++  font-weight: 600;
++}
++.luma-native-file-chooser.luma-touch .luma-chooser-places .navigation-sidebar row {
++  min-height: 36px;
++}
++.luma-native-file-chooser .luma-chooser-files .view {
++  background-color: transparent;
++}
++.luma-native-file-chooser .luma-chooser-files toolbarview > headerbar,
++.luma-native-file-chooser .luma-chooser-files headerbar {
++  min-height: 40px;
++}

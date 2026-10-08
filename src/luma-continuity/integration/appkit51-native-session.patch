@@ -1,0 +1,160 @@
+--- a/packaging/rpm/luma-developer-platform.spec
++++ b/packaging/rpm/luma-developer-platform.spec
+@@ -4,7 +4,7 @@
+ 
+ Name:           luma-developer-platform
+ Version:        0.1.0
+-Release:        1.luma.50~preview.20260907.1%{?dist}
++Release:        1.luma.51~preview.20260907.1%{?dist}
+ Summary:        Adaptive and semantic application platform for Project Luma
+ License:        Apache-2.0
+ URL:            https://projectluma.org/developers
+@@ -25,6 +25,9 @@
+ BuildRequires:  python3-pyyaml
+ BuildRequires:  systemd-rpm-macros
+ BuildRequires:  dbus-daemon
++BuildRequires:  at-spi2-core
++BuildRequires:  xdg-desktop-portal
++BuildRequires:  xdg-desktop-portal-gtk
+ BuildRequires:  xorg-x11-server-Xvfb
+ BuildRequires:  xorg-x11-xauth
+ Requires:       glib2 >= 2.80
+@@ -98,10 +101,7 @@
+ %check
+ PYTHONPATH="$PWD/appkit" python3 tests/icon_assets.py
+ # New UI regressions require a display: exit 77 is not package evidence.
+-test_runtime=$(mktemp -d)
+-chmod 0700 "$test_runtime"
+-dbus-run-session -- xvfb-run -a --server-args="-screen 0 1920x1080x24" \
+-  env GSK_RENDERER=cairo G_DEBUG=fatal-criticals XDG_RUNTIME_DIR="$test_runtime" \
++env G_DEBUG=fatal-criticals python3 tests/native_session.py -- \
+   meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs --num-processes 1
+ python3 - <<'PY_CHECK'
+ import json
+@@ -117,14 +117,12 @@
+ LD_LIBRARY_PATH="$PWD/%{_vpath_builddir}/ui:$PWD/%{_vpath_builddir}/semantics" \
+ PYTHONPATH=%{buildroot}%{python3_sitelib} \
+ LUMA_APPKIT_BASE_PATH="$PWD/appkit/luma-appkit-base.css" \
+-dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo \
+-  python3 tests/transaction_card.py
++python3 tests/native_session.py -- python3 tests/transaction_card.py
+ GI_TYPELIB_PATH="$PWD/%{_vpath_builddir}/ui:$PWD/%{_vpath_builddir}/semantics" \
+ LD_LIBRARY_PATH="$PWD/%{_vpath_builddir}/ui:$PWD/%{_vpath_builddir}/semantics" \
+ PYTHONPATH=%{buildroot}%{python3_sitelib} \
+ LUMA_APPKIT_BASE_PATH="$PWD/appkit/luma-appkit-base.css" \
+-dbus-run-session -- xvfb-run -a --server-args="-screen 0 1920x1200x24" env GSK_RENDERER=cairo \
+-  python3 tests/window_geometry.py
++python3 tests/native_session.py -- python3 tests/window_geometry.py
+ PYTHONPATH=%{buildroot}%{python3_sitelib} \
+   %{buildroot}%{_bindir}/luma --version
+ test_project=$(mktemp -d)
+--- /dev/null
++++ b/src/luma-platform/tests/native_session.py
+@@ -0,0 +1,107 @@
++#!/usr/bin/python3
++"""Run native checks with real accessibility/GTK portal services on a private bus.
++
++Ad-hoc dbus-daemon on Fedora can enter a role/domain combination which cannot
++activate at-spi. Launching the actual service from the normal builder context
++preserves enforcing policy and accessibility without a mock or a test skip.
++"""
++import os
++from pathlib import Path
++import signal
++import subprocess
++import sys
++import tempfile
++import time
++
++
++def session(command):
++    import gi
++    gi.require_version('Gio', '2.0')
++    from gi.repository import Gio, GLib
++    children = []
++
++    def wait_for_name(bus, name):
++        deadline = time.monotonic() + 5
++        while time.monotonic() < deadline:
++            if any(child.poll() is not None for child in children):
++                raise RuntimeError('Native accessibility service exited')
++            value = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
++                'org.freedesktop.DBus', 'NameHasOwner', GLib.Variant('(s)', (name,)),
++                None, Gio.DBusCallFlags.NONE, 1000, None)
++            if value.unpack()[0]:
++                return
++            time.sleep(.05)
++        raise RuntimeError('Native service did not acquire ' + name)
++
++    try:
++        children.append(subprocess.Popen(['/usr/libexec/at-spi-bus-launcher', '--launch-immediately']))
++        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
++        wait_for_name(bus, 'org.a11y.Bus')
++        address = bus.call_sync('org.a11y.Bus', '/org/a11y/bus', 'org.a11y.Bus',
++            'GetAddress', None, None, Gio.DBusCallFlags.NONE, 3000, None).unpack()[0]
++        if not address:
++            raise RuntimeError('Accessibility address is empty')
++        children.append(subprocess.Popen(['/usr/libexec/at-spi2-registryd', '--use-gnome-session']))
++        accessibility = Gio.DBusConnection.new_for_address_sync(address,
++            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
++            None, None)
++        wait_for_name(accessibility, 'org.a11y.atspi.Registry')
++        # Wait for real portal activation, not a substitute interface that only
++        # satisfies the tests. Xvfb and the private runtime precede this bus.
++        for interface in ('org.freedesktop.portal.Settings', 'org.freedesktop.portal.Inhibit'):
++            version = bus.call_sync('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop',
++                'org.freedesktop.DBus.Properties', 'Get', GLib.Variant('(ss)', (interface, 'version')),
++                None, Gio.DBusCallFlags.NONE, 15000, None).unpack()[0]
++            if version < 1:
++                raise RuntimeError('Native portal interface unavailable: ' + interface)
++        return subprocess.call(command)
++    finally:
++        for child in reversed(children):
++            if child.poll() is None:
++                child.terminate()
++                try:
++                    child.wait(timeout=5)
++                except subprocess.TimeoutExpired:
++                    child.kill()
++                    child.wait()
++
++
++def main():
++    args = sys.argv[1:]
++    if args and args[0] == '--session':
++        return session(args[1:])
++    if args and args[0] == '--':
++        args.pop(0)
++    if not args:
++        raise SystemExit('A native check command is required')
++    with tempfile.TemporaryDirectory(prefix='luma-native-check-') as directory:
++        root = Path(directory)
++        env = os.environ.copy()
++        for key in ('DBUS_SESSION_BUS_ADDRESS', 'DISPLAY', 'WAYLAND_DISPLAY'):
++            env.pop(key, None)
++        for key, name in (('XDG_RUNTIME_DIR', 'runtime'), ('XDG_CONFIG_HOME', 'config'),
++                          ('XDG_CACHE_HOME', 'cache'), ('XDG_DATA_HOME', 'data'), ('XDG_STATE_HOME', 'state')):
++            path = root / name
++            path.mkdir(mode=0o700)
++            env[key] = str(path)
++        portal = root / 'config/xdg-desktop-portal'
++        portal.mkdir()
++        (portal / 'portals.conf').write_text('[preferred]\ndefault=gtk\n')
++        env.update(XDG_CURRENT_DESKTOP='GNOME', XDG_SESSION_TYPE='x11', GSK_RENDERER='cairo')
++        command = ['xvfb-run', '-a', '--server-args=-screen 0 1920x1200x24', 'dbus-run-session', '--',
++                   sys.executable, str(Path(__file__).resolve()), '--session', *args]
++        process = subprocess.Popen(command, env=env, start_new_session=True)
++        try:
++            return process.wait(timeout=120)
++        finally:
++            if process.poll() is None:
++                os.killpg(process.pid, signal.SIGTERM)
++                try:
++                    process.wait(timeout=5)
++                except subprocess.TimeoutExpired:
++                    os.killpg(process.pid, signal.SIGKILL)
++                    process.wait()
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())

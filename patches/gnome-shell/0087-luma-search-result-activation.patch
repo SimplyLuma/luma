@@ -1,0 +1,65 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: do not let a launch animation swallow the launch
+
+Search results stopped opening. Typing found them and they drew
+correctly, but Return did nothing and neither did clicking one.
+
+AppIcon.activate() animates before it activates. The animation zooms a
+clone out from the icon's transformed position, and an icon that has not
+been allocated answers with a number near the float limit -- about
+-3.9e38. That value passes findMonitorForActor and Math.clamp untouched
+and is only rejected at the very end, by translation_y, as out of range.
+The exception then leaves activate() before app.activate() and before
+Main.overview.hide(), so the application never started and the overview
+never closed.
+
+Animating from a position that does not exist is not something to
+attempt, so it is not attempted; and a launch is not made to depend on
+the flourish that accompanies it.
+
+diff --git a/js/ui/iconGrid.js b/js/ui/iconGrid.js
+--- a/js/ui/iconGrid.js
++++ b/js/ui/iconGrid.js
+@@ -194,6 +194,19 @@
+     });
+     const [width, height] = actor.get_transformed_size();
+ 
++    // An actor that has never been allocated has no position to animate from:
++    // get_transformed_position() answers with a number near the float limit,
++    // which survives findMonitorForActor and Math.clamp and only fails at the
++    // end, when translation_y rejects it as out of range. That throw lands in
++    // AppIcon.activate() before the application is activated and before the
++    // overview is hidden, so a search result stopped launching altogether and
++    // the pointer and the Return key both appeared to do nothing at all.
++    // There is nothing to animate from here, so animate nothing.
++    if (![x, y, width, height].every(Number.isFinite)) {
++        actorClone.destroy();
++        return;
++    }
++
+     actorClone.set_size(width, height);
+     actorClone.set_position(x, y);
+     actorClone.opacity = 255;
+diff --git a/js/ui/appDisplay.js b/js/ui/appDisplay.js
+--- a/js/ui/appDisplay.js
++++ b/js/ui/appDisplay.js
+@@ -3068,8 +3068,17 @@
+                             this.app.state === Shell.AppState.RUNNING &&
+                             (isCtrlPressed || isMiddleButton);
+ 
+-        if (this.app.state === Shell.AppState.STOPPED || openNewWindow)
+-            this.animateLaunch();
++        // Launching must not depend on the flourish that accompanies it.
++        // This ran first, so anything it threw took the activation and the
++        // overview with it, and the failure looked like a dead icon rather
++        // than like a broken animation.
++        if (this.app.state === Shell.AppState.STOPPED || openNewWindow) {
++            try {
++                this.animateLaunch();
++            } catch (error) {
++                logError(error, 'Could not animate the launch');
++            }
++        }
+ 
+         if (openNewWindow)
+             this.app.open_new_window(-1);

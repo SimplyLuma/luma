@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: keep notifications after short-lived app sender exits
+
+The notification forwarder preserves the original D-Bus sender. A command
+such as notify-send can exit immediately after Notify returns, while its
+desktop-entry hint still resolves a real app. Keep that app's notification
+source until its records expire or are dismissed; an already empty source
+can still be removed when its sender vanishes.
+---
+diff --git a/js/ui/notificationDaemon.js b/js/ui/notificationDaemon.js
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -432,11 +432,10 @@
+     }
+ 
+     _onNameVanished() {
+-        // Destroy the notification source when its sender is removed from DBus.
+-        // Only do so if this.app is set to avoid removing "notify-send" sources, senders
+-        // of which аre removed from DBus immediately.
+-        // Sender being removed from DBus would normally result in a tray icon being removed,
+-        // so allow the code path that handles the tray icon being removed to handle that case.
+-        if (this.app)
++        // A short-lived sender can name an installed app. Keep its records
++        // until their own expiry or dismissal, even after notify-send exits.
++        // Source.addNotification destroys the source when the last record
++        // goes away; an already empty app source can be removed now.
++        if (this.app && this.notifications.length === 0)
+             this.destroy();
+     }

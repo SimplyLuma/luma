@@ -1,0 +1,201 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] notifications: Badge App Icon, per app
+
+Settings › Notifications › *app* gains a "Badge App Icon" switch, on by
+default, for the unread badge the dock draws on that app's icon (GNOME Shell
+patch 0147). Off adds the app to the Shell's
+org.gnome.shell dock-badges-disabled-apps; the Shell then removes the badge
+and stops listening to that app for badges.
+
+- The switch sits with Notifications and Sound, not under Banners, and is
+  independent of them: a badge is not an interruption, and neither turning
+  notifications off nor Do Not Disturb hides it.
+- Writing the list keeps every other app's choice, including apps this
+  Settings never listed.
+- The app is the desktop file name without ".desktop", which is what the
+  Shell matches dock items on; it is not the canonicalized id used for the
+  per-app notification schema path.
+- A Settings newer than the Shell beside it must not abort, so the row
+  appears only when the installed Shell's schema has the key.
+
+---
+--- a/panels/notifications/cc-app-notifications-page.blp
++++ b/panels/notifications/cc-app-notifications-page.blp
+@@ -17,6 +17,15 @@
+           notify::active => $notifications_row_state_set_cb(template);
+         }
+ 
++        Adw.SwitchRow badge_row {
++          use-underline: true;
++
++          /* Translators: the per-app switch for the unread badge on its dock icon. */
++          title: C_("notifications", "Badge App _Icon");
++          subtitle: _("Show what is waiting on the app's dock icon");
++          notify::active => $badge_row_state_set_cb(template);
++        }
++
+         Adw.SwitchRow sound_alerts_row {
+           use-underline: true;
+ 
+--- a/panels/notifications/cc-app-notifications-page.c
++++ b/panels/notifications/cc-app-notifications-page.c
+@@ -46,16 +46,25 @@
+ static void update_lock_screen_content_row (CcAppNotificationsPage *self);
+ static void update_sound_row (CcAppNotificationsPage *self);
+ static void update_notification_row (CcAppNotificationsPage *self);
++static void update_badge_row (CcAppNotificationsPage *self);
+ 
++/* The Shell's list of apps whose dock icon shows no unread badge. A badge is
++ * not an interruption, so this switch is independent of the notification
++ * switches above it and of Do Not Disturb. */
++#define SHELL_SCHEMA "org.gnome.shell"
++#define BADGES_DISABLED_KEY "dock-badges-disabled-apps"
++
+ struct _CcAppNotificationsPage {
+   AdwNavigationPage    parent;
+ 
+   GSettings           *settings;
+   GSettings           *master_settings;
+   gchar               *app_id;
++  GSettings           *shell_settings;
+   GDBusProxy          *perm_store;
+ 
+   AdwSwitchRow        *notifications_row;
++  AdwSwitchRow        *badge_row;
+   AdwSwitchRow        *sound_alerts_row;
+   AdwSwitchRow        *notification_banners_row;
+   AdwSwitchRow        *notification_banners_content_row;
+@@ -63,6 +72,7 @@
+   AdwSwitchRow        *lock_screen_content_row;
+ 
+   gulong notifications_page_change_signal_handler_id;
++  gulong badges_change_signal_handler_id;
+ };
+ 
+ G_DEFINE_TYPE (CcAppNotificationsPage, cc_app_notifications_page, ADW_TYPE_NAVIGATION_PAGE)
+@@ -169,6 +179,52 @@
+   update_banner_content_row (self);
+   update_lock_screen_row (self);
+   update_lock_screen_content_row (self);
++}
++
++/* An app is badged unless it is in the Shell's list. Writing the list back
++ * keeps every other app's choice, including apps this Settings never saw. */
++static void
++badge_row_state_set_cb (CcAppNotificationsPage *self)
++{
++  gboolean badge = adw_switch_row_get_active (self->badge_row);
++  g_auto(GStrv) disabled = NULL;
++  g_autoptr(GPtrArray) kept = NULL;
++  guint i;
++
++  if (self->shell_settings == NULL)
++    return;
++
++  disabled = g_settings_get_strv (self->shell_settings, BADGES_DISABLED_KEY);
++  kept = g_ptr_array_new ();
++  for (i = 0; disabled[i] != NULL; i++)
++    {
++      if (g_strcmp0 (disabled[i], self->app_id) != 0)
++        g_ptr_array_add (kept, disabled[i]);
++    }
++  if (!badge)
++    g_ptr_array_add (kept, self->app_id);
++  g_ptr_array_add (kept, NULL);
++
++  g_settings_set_strv (self->shell_settings, BADGES_DISABLED_KEY,
++                       (const gchar * const *) kept->pdata);
++}
++
++static void
++update_badge_row (CcAppNotificationsPage *self)
++{
++  g_auto(GStrv) disabled = NULL;
++
++  if (self->shell_settings == NULL)
++    {
++      gtk_widget_set_visible (GTK_WIDGET (self->badge_row), FALSE);
++      return;
++    }
++
++  disabled = g_settings_get_strv (self->shell_settings, BADGES_DISABLED_KEY);
++  g_signal_handlers_block_by_func (self->badge_row, badge_row_state_set_cb, self);
++  adw_switch_row_set_active (self->badge_row,
++                             !g_strv_contains ((const gchar * const *) disabled, self->app_id));
++  g_signal_handlers_unblock_by_func (self->badge_row, badge_row_state_set_cb, self);
+ }
+ 
+ static void
+@@ -207,6 +263,7 @@
+ update_switches (CcAppNotificationsPage *self)
+ {
+   update_notification_row (self);
++  update_badge_row (self);
+   update_sound_row (self);
+   update_banner_row (self);
+   update_banner_content_row (self);
+@@ -326,9 +383,11 @@
+   CcAppNotificationsPage *self = CC_APP_NOTIFICATIONS_PAGE (object);
+ 
+   g_clear_signal_handler (&self->notifications_page_change_signal_handler_id, self->settings);
++  g_clear_signal_handler (&self->badges_change_signal_handler_id, self->shell_settings);
+ 
+   g_clear_object (&self->settings);
+   g_clear_object (&self->master_settings);
++  g_clear_object (&self->shell_settings);
+   g_clear_pointer (&self->app_id, g_free);
+   g_clear_object (&self->perm_store);
+ 
+@@ -346,6 +405,7 @@
+   gtk_widget_class_set_template_from_resource (widget_class, "/org/gnome/control-center/notifications/cc-app-notifications-page.ui");
+ 
+   gtk_widget_class_bind_template_child (widget_class, CcAppNotificationsPage, notifications_row);
++  gtk_widget_class_bind_template_child (widget_class, CcAppNotificationsPage, badge_row);
+   gtk_widget_class_bind_template_child (widget_class, CcAppNotificationsPage, sound_alerts_row);
+   gtk_widget_class_bind_template_child (widget_class, CcAppNotificationsPage, notification_banners_row);
+   gtk_widget_class_bind_template_child (widget_class, CcAppNotificationsPage, notification_banners_content_row);
+@@ -353,6 +413,7 @@
+   gtk_widget_class_bind_template_child (widget_class, CcAppNotificationsPage, lock_screen_content_row);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, notifications_row_state_set_cb);
++  gtk_widget_class_bind_template_callback (widget_class, badge_row_state_set_cb);
+   gtk_widget_class_bind_template_callback (widget_class, sound_alerts_row_state_set_cb);
+   gtk_widget_class_bind_template_callback (widget_class, notification_banners_row_state_set_cb);
+   gtk_widget_class_bind_template_callback (widget_class, notification_banners_content_row_state_set_cb);
+@@ -360,6 +421,22 @@
+   gtk_widget_class_bind_template_callback (widget_class, lock_screen_content_row_state_set_cb);
+ }
+ 
++static GSettings *
++lookup_shell_settings (void)
++{
++  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
++  g_autoptr(GSettingsSchema) schema = NULL;
++
++  if (source == NULL)
++    return NULL;
++
++  schema = g_settings_schema_source_lookup (source, SHELL_SCHEMA, TRUE);
++  if (schema == NULL || !g_settings_schema_has_key (schema, BADGES_DISABLED_KEY))
++    return NULL;
++
++  return g_settings_new_full (schema, NULL, NULL);
++}
++
+ void
+ cc_app_notifications_page_init (CcAppNotificationsPage *self)
+ {
+@@ -382,6 +459,13 @@
+   self->master_settings = g_object_ref (master_settings);
+   self->app_id = g_strdup (app_id);
+   self->perm_store = g_object_ref (perm_store);
++  /* A Settings newer than the Shell it runs against must not abort: the row
++   * appears only when the installed Shell has the key. */
++  self->shell_settings = lookup_shell_settings ();
++  if (self->shell_settings != NULL)
++    self->badges_change_signal_handler_id =
++        g_signal_connect_swapped (self->shell_settings, "changed::" BADGES_DISABLED_KEY,
++                                  G_CALLBACK (update_badge_row), self);
+ 
+   self->notifications_page_change_signal_handler_id =
+       g_signal_connect_swapped (self->settings, "changed", G_CALLBACK (update_switches), self);

@@ -1,0 +1,29 @@
+From e26ba6a6afeaff4a8a21a6eea4877bb4acb53204 Mon Sep 17 00:00:00 2001
+From: Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 18:01:50 -0500
+Subject: [PATCH] luma: give the shelf clock a gap between the time and the
+ date
+
+---
+ js/ui/dateMenu.js | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+index 0bc5fdd..e0e8e4c 100644
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -1010,7 +1010,10 @@ class DateMenuButton extends PanelMenu.Button {
+         this._clockContent.orientation = enabled
+             ? Clutter.Orientation.VERTICAL
+             : Clutter.Orientation.HORIZONTAL;
+-        this._clockSpacer.visible = !enabled;
++        // The spacer carries the gap on whichever axis the clock stacks
++        // on. Hiding it in shelf presentation left the time and the date
++        // touching, so re-point it at the cross axis instead.
++        this._clockSpacer.set_size(enabled ? -1 : 9, enabled ? 4 : -1);
+         this._timeDisplay.x_align = enabled
+             ? Clutter.ActorAlign.END
+             : Clutter.ActorAlign.START;
+-- 
+2.55.0
+

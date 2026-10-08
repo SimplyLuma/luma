@@ -1,0 +1,10 @@
+[Unit]
+Description=Reconcile interrupted and completed Luma application transactions
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-installer-system reconcile
+
+[Install]
+WantedBy=multi-user.target

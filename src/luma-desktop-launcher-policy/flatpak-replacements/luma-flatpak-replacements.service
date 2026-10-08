@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Remove stock system Flatpaks that Luma replaces with native apps
+After=local-fs.target flatpak-add-fedora-repos.service
+ConditionPathIsDirectory=/var/lib/flatpak/app
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-flatpak-replacements
+ProtectSystem=strict
+ReadWritePaths=/var/lib/flatpak /var/lib/luma
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

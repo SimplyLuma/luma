@@ -1,0 +1,105 @@
+diff --git a/src/stylesheet/_colors.scss b/src/stylesheet/_colors.scss
+index aac141c6fceaaeccce82e30fdcdc0f5dc103afa8..a0abfcb48d946bec4b441733892b3fcc14880084 100644
+--- a/src/stylesheet/_colors.scss
++++ b/src/stylesheet/_colors.scss
+@@ -84,6 +84,30 @@
+ @define-color shade_color RGB(17 24 39 / 6%);
+ @define-color scrollbar_outline_color white;
+ 
++// Additive Luma application-surface semantics. Upstream and third-party apps
++// keep consuming libadwaita's ordinary palette; source-integrated Luma apps
++// use these names instead of carrying copies of the product colors.
++@define-color luma_window #f1f2f3;
++@define-color luma_content #fbfbfa;
++@define-color luma_island #ffffff;
++@define-color luma_ink #283038;
++@define-color luma_muted #757e87;
++@define-color luma_faint #9da5ad;
++@define-color luma_line RGB(39 48 56 / 9.5%);
++@define-color luma_fill RGB(39 48 56 / 4%);
++@define-color luma_hover RGB(39 48 56 / 6%);
++@define-color luma_selected RGB(39 48 56 / 10.5%);
++@define-color luma_folder #527fae;
++@define-color luma_image #865f9f;
++@define-color luma_audio #b17a3c;
++@define-color luma_code #3b8967;
++@define-color luma_frost_outer RGB(241 242 243 / 73%);
++@define-color luma_frost_content RGB(251 251 250 / 92%);
++@define-color luma_glass_outer RGB(255 255 255 / 31%);
++@define-color luma_glass_content RGB(246 244 240 / 85%);
++@define-color luma_translucent_ink #2c343a;
++@define-color luma_translucent_line RGB(37 46 54 / 10.5%);
++
+ @media (prefers-color-scheme: dark) {
+   @define-color destructive_bg_color @red_4;
+   @define-color success_bg_color @green_5;
+@@ -145,6 +169,21 @@
+   // Miscellaneous
+   @define-color shade_color RGB(0 0 6 / 25%);
+   @define-color scrollbar_outline_color RGB(0 0 12 / 95%);
++
++  @define-color luma_window #21252b;
++  @define-color luma_content #2a2e34;
++  @define-color luma_island RGB(255 255 255 / 3.5%);
++  @define-color luma_ink #e4e8ea;
++  @define-color luma_muted #8b949c;
++  @define-color luma_faint #69727b;
++  @define-color luma_line RGB(255 255 255 / 8%);
++  @define-color luma_fill RGB(255 255 255 / 3.8%);
++  @define-color luma_hover RGB(255 255 255 / 6%);
++  @define-color luma_selected RGB(255 255 255 / 10.8%);
++  @define-color luma_folder #80a8d2;
++  @define-color luma_image #b58bd0;
++  @define-color luma_audio #d19447;
++  @define-color luma_code #65b58c;
+ }
+ 
+ :root {
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index cbae40ae02e1fdec50b644445d10972a930502e2..e946f5add6c45cc5da218c8c1e99982446432655 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -83,6 +83,43 @@ headerbar {
+   font-weight: 600;
+ }
+ 
++// Shared Luma application-identity trigger. Applications supply their real
++// GMenuModel and registered icon; the toolkit owns reusable geometry only.
++headerbar .luma-identity-button {
++  min-height: 32px;
++  padding: 0;
++  border-radius: 10px;
++}
++
++headerbar .luma-identity-button > button {
++  min-height: 32px;
++  padding: 4px 8px 4px 4px;
++  border-radius: 10px;
++  background: transparent;
++  box-shadow: none;
++  color: var(--headerbar-fg-color);
++  font-size: 13px;
++  font-weight: 650;
++}
++
++headerbar .luma-identity-button > button:hover {
++  background: unquote("@luma_hover");
++}
++
++headerbar .luma-identity-button > button:active,
++headerbar .luma-identity-button > button:checked {
++  background: unquote("@luma_selected");
++}
++
++headerbar .luma-identity-icon {
++  -gtk-icon-size: 20px;
++}
++
++headerbar .luma-identity-chevron {
++  -gtk-icon-size: 10px;
++  color: unquote("@luma_muted");
++}
++
+ // Figtree 12.5px needs a 16px logical line at 1x. Keep one-line stock titles
+ // from being rounded down to a 15px allocation without altering their native
+ // alignment or attaching them to Prairie's custom title component.

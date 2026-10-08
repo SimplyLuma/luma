@@ -1,0 +1,16 @@
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Started app-gnome-org.projectluma.Files-4410.scope - Application launched by gnome-shell.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "2104", "SYSLOG_IDENTIFIER": "gnome-shell", "MESSAGE": "Window manager warning: Buffer release timed out"}
+{"_PID": "1011", "SYSLOG_IDENTIFIER": "NetworkManager", "MESSAGE": "<info>  [1789786000.1234] dhcp4 (wlp0s20f3): state changed new lease"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Starting fwupd-refresh.service - Refresh fwupd metadata and update motd...", "MESSAGE_ID": "7d4958e842da4a758f6c1cdc7b36dcc5"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Finished fwupd-refresh.service - Refresh fwupd metadata and update motd.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "1117", "SYSLOG_IDENTIFIER": "systemd-logind", "MESSAGE": "The system will reboot now!", "MESSAGE_ID": "9e7066279dc8403da79ce4b1a69064b2"}
+{"_PID": "1117", "SYSLOG_IDENTIFIER": "systemd-logind", "MESSAGE": "System is rebooting.", "MESSAGE_ID": "98268866d1d54a499c4e98921d93bc40"}
+{"_PID": "2912", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Reached target shutdown.target - Shutdown.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Stopping systemd-logind.service - User Login Management...", "MESSAGE_ID": "de5b426a63be47a7b6ac3eaac82e2f6f"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Stopped target basic.target - Basic System.", "MESSAGE_ID": "9d1aaa27d60140bd96365438aad20286"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Stopped target sysinit.target - System Initialization.", "MESSAGE_ID": "9d1aaa27d60140bd96365438aad20286"}
+{"_PID": "227675", "SYSLOG_IDENTIFIER": "ostree", "MESSAGE": "Finished writing deployment"}
+{"_PID": "227675", "SYSLOG_IDENTIFIER": "ostree", "MESSAGE": "Cleanup complete"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Stopped ostree-finalize-staged.service - OSTree Finalize Staged Deployment.", "MESSAGE_ID": "9d1aaa27d60140bd96365438aad20286"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Stopped target local-fs.target - Local File Systems.", "MESSAGE_ID": "9d1aaa27d60140bd96365438aad20286"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Unmounting var-home.mount - /var/home...", "MESSAGE_ID": "de5b426a63be47a7b6ac3eaac82e2f6f"}

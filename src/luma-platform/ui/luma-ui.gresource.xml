@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/projectluma/platform">
+    <!-- The AppKit's own vocabulary. Applications are written against these
+         names, so a GTK 4 application has to be able to resolve them without
+         depending on a desktop theme that only ships gtk-3.0 files. -->
+    <file alias="luma-appkit-base.css">../appkit/luma-appkit-base.css</file>
+    <file alias="luma-appkit-tokens.css">../appkit/luma-appkit-tokens.css</file>
+    <file alias="luma-appkit-dark-tokens.css">../appkit/luma-appkit-dark-tokens.css</file>
+    <file alias="luma-appkit-frost-tokens.css">../appkit/luma-appkit-frost-tokens.css</file>
+    <file alias="luma-appkit-glass-tokens.css">../appkit/luma-appkit-glass-tokens.css</file>
+    <file alias="luma-appkit-high-contrast-tokens.css">../appkit/luma-appkit-high-contrast-tokens.css</file>
+    <file>luma-tokens.css</file>
+    <file>luma-tokens-dark.css</file>
+    <file>luma-ui.css</file>
+    <file>luma-reorder-hint.css</file>
+    <file>luma-save-sheet.css</file>
+    <file alias="luma-empty-state-tokens.css">../appkit/luma-empty-state-tokens.css</file>
+    <!-- LumaUI's own window and toolkit look (ADR-052), above libadwaita. -->
+    <file alias="lumaui-palette.css">../appkit/lumaui-palette.css</file>
+    <file alias="lumaui-toolkit.css">../appkit/lumaui-toolkit.css</file>
+    <file alias="luma-appkit-creative.css">../appkit/luma-appkit-creative.css</file>
+    <file alias="luma-appkit-media.css">../appkit/luma-appkit-media.css</file>
+    <file alias="luma-appkit-bar.css">../appkit/luma-appkit-bar.css</file>
+    <file alias="luma-appkit-rows.css">../appkit/luma-appkit-rows.css</file>
+    <file>luma-creatives.png</file>
+  </gresource>
+</gresources>

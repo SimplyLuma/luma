@@ -1,0 +1,40 @@
+{
+  "app": "rows-menu",
+  "title": "MN1 rich menu rows (vs Camera's settings menu)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=camera",
+    "window": "#cm-pop",
+    "exclude": []
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "camera-menu"
+    }
+  },
+  "states": [
+    {
+      "name": "settings",
+      "about": "Camera's Format, shape and settings menu open",
+      "spec": [
+        {
+          "click": "#w-camera [data-cmset]"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "menu",
+      "spec": "#cm-pop"
+    }
+  ],
+  "pairs_note": "No structure pair: the menu card fills its window."
+}

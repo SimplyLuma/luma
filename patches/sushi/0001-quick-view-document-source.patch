@@ -1,0 +1,374 @@
+--- a/data/org.gnome.NautilusPreviewer.appdata.xml.in.in
++++ b/data/org.gnome.NautilusPreviewer.appdata.xml.in.in
+@@ -6,11 +6,11 @@
+   <extends>org.gnome.Nautilus.desktop</extends>
+   <metadata_license>CC0-1.0</metadata_license>
+   <project_license>GPL-2.0+</project_license>
+-  <name>Sushi</name>
++  <name>Quick View</name>
+   <summary>Provide a facility for quickly viewing different kinds of files</summary>
+   <description>
+     <p>
+-      Sushi is a file previewer for the GNOME desktop environment. It is an independent component that
++      Quick View is Luma’s file previewer, based on GNOME Sushi. It is an independent component that
+       integrates with GNOME Files (Nautilus).
+     </p>
+   </description>
+--- a/data/org.gnome.NautilusPreviewer.service.in
++++ b/data/org.gnome.NautilusPreviewer.service.in
+@@ -1,3 +1,4 @@
+ [D-BUS Service]
++# Quick View file preview service (GNOME Sushi compatibility interface)
+ Name=@app_id@
+ Exec=@libexecdir@/@app_id@
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -134,6 +134,9 @@
+                       gravity: Gdk.Gravity.CENTER,
+                       application: application });
+ 
++        this.get_accessible().set_name('Quick View');
++        this.connect('destroy', () => { this._queryCancel?.cancel(); });
++
+         this._titlebar = new Gtk.HeaderBar({ show_close_button: true,
+                                              decoration_layout: _getDecorationLayout() });
+         this.set_titlebar(this._titlebar);
+@@ -304,6 +307,8 @@
+     }
+ 
+     _createRenderer() {
++        this._queryCancel?.cancel();
++        const cancellable = this._queryCancel = new Gio.Cancellable();
+         this.file.query_info_async(
+             [Gio.FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+              Gio.FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+@@ -311,8 +316,9 @@
+              Gio.FILE_ATTRIBUTE_STANDARD_SIZE,
+              Gio.FILE_ATTRIBUTE_STANDARD_TYPE,
+              Gio.FILE_ATTRIBUTE_TIME_MODIFIED].join(','),
+-            Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, null,
++            Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable,
+             (obj, res) => {
++                if (cancellable.is_cancelled()) return;
+                 try {
+                     let fileInfo = obj.query_info_finish(res);
+                     this._createView(fileInfo);
+@@ -329,6 +335,11 @@
+         }
+ 
+         this._renderer = renderer;
++        this._openButton.set_visible(!!this._hasHandler && !renderer.hideOpen);
++        if (renderer.viewSwitch) {
++            this._titlebar.pack_end(renderer.viewSwitch);
++            renderer.viewSwitch.show_all();
++        }
+         this._renderer.show_all();
+         this._renderer.expand = true;
+         this._embed.add(this._renderer);
+@@ -354,14 +365,16 @@
+     _updateTitlebar() {
+         try {
+             let appInfo = this.file.query_default_handler(null);
++            this._hasHandler = true;
+             // TRANSLATORS: This is the display name of an application, e.g. "Open With Image Viewer"
+-            this._openButton.set_label(_("Open With %s").format(appInfo.get_display_name()));
++            this._openButton.set_label(_("Open with %s").format(appInfo.get_display_name()));
+         } catch (e) {
+             // This happens when running under flatpak, since we don't have direct access
+             // to the other applications
+             if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_SUPPORTED))
+                 logError(e, `Failed to query default handler for ${this.file.get_uri()}`);
+-            this._openButton.set_label(_("Open"));
++            this._hasHandler = false;
++            this._openButton.hide();
+         }
+     }
+ 
+--- a/src/libsushi/sushi-utils.c
++++ b/src/libsushi/sushi-utils.c
+@@ -136,47 +136,11 @@
+ }
+ 
+ static void
+-libreoffice_missing_ready_cb (GObject *source,
+-                              GAsyncResult *res,
+-                              gpointer user_data)
+-{
+-  g_autoptr(GTask) task = user_data;
+-  g_autoptr(GError) error = NULL;
+-
+-  g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), res, &error);
+-  if (error != NULL) {
+-    /* can't install libreoffice with packagekit - nothing else we can do */
+-    g_task_return_error (task, g_steal_pointer (&error));
+-    return;
+-  }
+-
+-  /* now that we have libreoffice installed, try again loading the document */
+-  load_libreoffice (task);
+-}
+-
+-static void
+ libreoffice_missing (GTask *task)
+ {
+-  GApplication *app = g_application_get_default ();
+-  GDBusConnection *connection = g_application_get_dbus_connection (app);
+-  const gchar *libreoffice_path[2];
+-
+-  libreoffice_path[0] = "/usr/bin/libreoffice";
+-  libreoffice_path[1] = NULL;
+-
+-  g_dbus_connection_call (connection,
+-                          "org.freedesktop.PackageKit",
+-                          "/org/freedesktop/PackageKit",
+-                          "org.freedesktop.PackageKit.Modify2",
+-                          "InstallProvideFiles",
+-                          g_variant_new ("(^asssa{sv})",
+-                                         libreoffice_path,
+-                                         "hide-confirm-deps",
+-                                         "org.gnome.NautilusPreviewer"),
+-                          NULL, G_DBUS_CALL_FLAGS_NONE,
+-                          G_MAXINT, NULL,
+-                          libreoffice_missing_ready_cb,
+-                          g_object_ref (task));
++  /* A preview must never initiate software installation. */
++  g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                           "There is no preview for this kind of file.");
+ }
+ 
+ static void
+--- a/src/viewers/html.js
++++ b/src/viewers/html.js
+@@ -23,65 +23,178 @@
+  *
+  */
+ 
+-const {Gtk, GLib, GObject, Sushi} = imports.gi;
+-
+-var WebKit2;
+-try {
+-    imports.gi.versions.WebKit2 = '4.1';
+-    WebKit2 = imports.gi.WebKit2;
+-} catch(e) {
+-}
+-
+-function _isAvailable() {
+-    return WebKit2 !== undefined;
+-}
+-
++const {Gio, GLib, GObject, Gtk, GtkSource} = imports.gi;
++imports.gi.versions.WebKit2 = '4.1';
++const {WebKit2} = imports.gi;
+ const Renderer = imports.ui.renderer;
+-
+-var Klass = _isAvailable() ? GObject.registerClass({
++const ByteArray = imports.byteArray;
++const LIMIT = 8 * 1024 * 1024;
++const POLICY = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
++
++var Klass = GObject.registerClass({
+     Implements: [Renderer.Renderer],
+     Properties: {
+-        fullscreen: GObject.ParamSpec.boolean('fullscreen', '', '',
+-                                              GObject.ParamFlags.READABLE,
+-                                              false),
+-        ready: GObject.ParamSpec.boolean('ready', '', '',
+-                                         GObject.ParamFlags.READABLE,
+-                                         false)
++        fullscreen: GObject.ParamSpec.boolean('fullscreen', '', '', GObject.ParamFlags.READABLE, false),
++        ready: GObject.ParamSpec.boolean('ready', '', '', GObject.ParamFlags.READABLE, false),
+     },
+-}, class HTMLRenderer extends WebKit2.WebView {
+-    get ready() {
+-        return !!this._ready;
+-    }
+-
+-    get fullscreen() {
+-        return !!this._fullscreen;
+-    }
+-
+-    _init(file) {
+-        super._init();
+-
+-        /* disable the default context menu of the web view */
+-        this.connect('context-menu',
+-                     function() {return true;});
+-
+-        this.load_uri(file.get_uri());
+-        this.connect('load-failed', (view, loadEvent, uri, error) => {
+-            this.emit('error', error);
++}, class DocumentRenderer extends Gtk.Stack {
++    _init(file, info) {
++        super._init({transition_type: Gtk.StackTransitionType.NONE});
++        this._cancel = new Gio.Cancellable();
++        this._markdown = info.get_content_type() !== 'text/html';
++        this.viewSwitch = new Gtk.Box({spacing: 0});
++        this.viewSwitch.get_accessible().set_name('Show as');
++        this.viewSwitch.get_style_context().add_class('linked');
++        const rendered = new Gtk.ToggleButton({label: this._markdown ? 'Preview' : 'Page', active: true});
++        const source = new Gtk.ToggleButton({label: 'Source'});
++        for (const [button, name] of [[rendered, 'rendered'], [source, 'source']]) {
++            this.viewSwitch.add(button);
++            button.connect('clicked', () => {
++                if (this._switching) return;
++                this._switching = true;
++                rendered.set_active(name === 'rendered');
++                source.set_active(name === 'source');
++                this.set_visible_child_name(name);
++                this._switching = false;
++            });
++        }
++        const settings = new WebKit2.Settings({enable_javascript: false,
++            enable_html5_database: false, enable_html5_local_storage: false,
++            enable_dns_prefetching: false, enable_developer_extras: false,
++            allow_file_access_from_file_urls: false, allow_universal_access_from_file_urls: false});
++        const manager = new WebKit2.UserContentManager();
++        this._manager = manager;
++        this.connect('style-updated', () => this._syncStyle());
++        const context = WebKit2.WebContext.new_ephemeral();
++        context.set_sandbox_enabled(true);
++        this._web = new WebKit2.WebView({web_context: context,
++            user_content_manager: manager, settings});
++        this._web.connect('context-menu', () => true);
++        this._web.connect('permission-request', (_view, request) => { request.deny(); return true; });
++        this._web.connect('decide-policy', (_view, decision, type) => {
++            if (type === WebKit2.PolicyDecisionType.NAVIGATION_ACTION ||
++                type === WebKit2.PolicyDecisionType.NEW_WINDOW_ACTION) {
++                // Only our first internally supplied document is admissible.
++                if (this._initialNavigation && decision.get_request().get_uri() === 'about:blank') {
++                    this._initialNavigation = false;
++                    decision.use();
++                } else {
++                    decision.ignore();
++                }
++                return true;
++            }
++            return false;
++        });
++        const overlay = new Gtk.Overlay();
++        overlay.add(this._web);
++        if (!this._markdown) {
++            const notice = new Gtk.Label({label: 'Scripts are off in Quick View',
++                halign: Gtk.Align.START, valign: Gtk.Align.END, margin: 12});
++            notice.get_style_context().add_class('osd');
++            overlay.add_overlay(notice);
++        }
++        this.add_named(overlay, 'rendered');
++        this._buffer = new GtkSource.Buffer();
++        this._buffer.set_language(GtkSource.LanguageManager.get_default().get_language(this._markdown ? 'markdown' : 'html'));
++        const scroller = new Gtk.ScrolledWindow();
++        scroller.add(new GtkSource.View({buffer: this._buffer, editable: false,
++            monospace: true, show_line_numbers: true, tab_width: 4}));
++        this.add_named(scroller, 'source');
++        this.set_visible_child_name('rendered');
++        this.connect('destroy', () => {
++            this._cancel.cancel();
++            this._web.stop_loading();
++            this._converter?.force_exit();
++            this.viewSwitch.destroy();
++        });
++        this._prepare(file, manager).catch(error => {
++            if (!this._cancel.is_cancelled()) {
++                const label = new Gtk.Label({label: error.message === 'large-file' ? 'This file is too large for Quick View. Open it in its app to view the complete file.' : 'There is no preview for this kind of file.', wrap: true});
++                this.add_named(label, 'error');
++                label.show();
++                this.set_visible_child_name('error');
++            }
+         });
+         this.isReady();
+     }
+ 
+-    static {
+-        WebKit2.WebContext.get_default().set_sandbox_enabled(true);
+-    }
+-
+-    get moveOnClick() {
+-        return false;
+-    }
+-}) : undefined;
+-
+-var mimeTypes = [];
+-if (_isAvailable())
+-    mimeTypes = [
+-        'text/html'
+-    ];
++    _syncStyle() {
++        if (!this._markdown || !this._manager) return;
++        const context = this.get_style_context();
++        const ink = context.get_color(Gtk.StateFlags.NORMAL).to_string();
++        const [found, pane] = context.lookup_color('theme_base_color');
++        if (!found) return;
++        this._manager.remove_all_style_sheets();
++        this._manager.add_style_sheet(new WebKit2.UserStyleSheet(
++            `body{color:${ink};background:${pane.to_string()}}`,
++            WebKit2.UserContentInjectedFrames.ALL_FRAMES,
++            WebKit2.UserStyleLevel.USER, null, null));
++    }
++
++    async _read(file) {
++        const info = await new Promise((resolve, reject) => file.query_info_async('standard::type',
++            Gio.FileQueryInfoFlags.NONE, 0, this._cancel,
++            (f, result) => { try { resolve(f.query_info_finish(result)); } catch (e) { reject(e); } }));
++        if (info.get_file_type() !== Gio.FileType.REGULAR) throw new Error('not-regular');
++        // Bounded streaming also protects against a file growing after stat.
++        const stream = await new Promise((resolve, reject) => file.read_async(0, this._cancel,
++            (f, result) => { try { resolve(f.read_finish(result)); } catch (e) { reject(e); } }));
++        const chunks = [];
++        let size = 0;
++        try {
++            while (true) {
++                const bytes = await new Promise((resolve, reject) => stream.read_bytes_async(65536, 0,
++                    this._cancel, (s, result) => { try { resolve(s.read_bytes_finish(result)); } catch (e) { reject(e); } }));
++                const chunk = bytes.get_data();
++                if (!chunk.length) break;
++                size += chunk.length;
++                if (size > LIMIT) throw new Error('large-file');
++                chunks.push(chunk);
++            }
++        } finally { stream.close(null); }
++        const content = new Uint8Array(size);
++        let offset = 0;
++        for (const chunk of chunks) { content.set(chunk, offset); offset += chunk.length; }
++        const text = new TextDecoder('utf-8', {fatal: true}).decode(content);
++        if (text.includes('\0')) throw new Error('not-text');
++        return text;
++    }
++
++    async _prepare(file, manager) {
++        const text = await this._read(file);
++        this._buffer.set_text(text, -1);
++        let html = text;
++        if (this._markdown) {
++            this._converter = Gio.Subprocess.new(['/usr/bin/bwrap', '--unshare-all', '--die-with-parent', '--new-session', '--ro-bind', '/usr', '/usr', '--symlink', 'usr/lib64', '/lib64', '--symlink', 'usr/lib', '/lib', '--proc', '/proc', '--dev', '/dev', '--clearenv', '/usr/bin/python3', '-I', '-c', 'import sys,resource; resource.setrlimit(resource.RLIMIT_AS,(268435456,268435456)); resource.setrlimit(resource.RLIMIT_CPU,(3,3)); from cmarkgfm import github_flavored_markdown_to_html; result=github_flavored_markdown_to_html(sys.stdin.read(8388609)); assert len(result.encode()) <= 16777216; sys.stdout.write(result)'],
++                Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
++            const deadline = GLib.timeout_add_seconds(0, 5, () => {
++                this._converter.force_exit(); return GLib.SOURCE_REMOVE;
++            });
++            html = await new Promise((resolve, reject) => this._converter.communicate_utf8_async(text,
++                this._cancel, (process, result) => {
++                    try { const [, out, err] = process.communicate_utf8_finish(result);
++                        if (!process.get_successful()) throw new Error(err);
++                        resolve(out);
++                    } catch (e) { reject(e); }
++                })).finally(() => { if (GLib.MainContext.default().find_source_by_id(deadline)) GLib.source_remove(deadline); });
++            html = `<style>body{font:14px/1.62 sans-serif;max-width:640px;margin:auto;padding:30px 36px}h1{font-size:26px}h2{font-size:16px;margin-top:26px}pre{padding:12px;background:#8881;border:1px solid #8883;border-radius:10px;white-space:pre-wrap}code{font-family:monospace}td,th{padding:6px 10px;border-bottom:1px solid #8885}table{border-collapse:collapse}</style>${html}`;
++        }
++        // Fail closed: no document is loaded before the engine's resource filter exists.
++        const directory = GLib.build_filenamev([GLib.get_user_cache_dir(), 'luma-quick-view', 'filters']);
++        GLib.mkdir_with_parents(directory, 0o700);
++        const store = new WebKit2.UserContentFilterStore({path: directory});
++        const rules = [{trigger: {'url-filter': '.*', 'resource-type': ['image', 'style-sheet', 'script', 'font', 'raw', 'svg-document', 'media', 'popup']}, action: {type: 'block'}}];
++        const filter = await new Promise((resolve, reject) => store.save('deny-all',
++            new GLib.Bytes(ByteArray.fromString(JSON.stringify(rules))), this._cancel,
++            (s, result) => { try { resolve(s.save_finish(result)); } catch (e) { reject(e); } }));
++        if (this._cancel.is_cancelled()) return;
++        manager.add_filter(filter);
++        this._syncStyle();
++        this._initialNavigation = true;
++        this._web.load_html(`<meta http-equiv="Content-Security-Policy" content="${POLICY}">${html}`, 'about:blank');
++    }
++    get ready() { return !!this._ready; }
++    get fullscreen() { return !!this._fullscreen; }
++    get moveOnClick() { return false; }
++});
++var mimeTypes = ['text/html', 'text/markdown', 'text/x-markdown'];

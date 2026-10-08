@@ -1,0 +1,71 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] backend-rdp: defer RDPEI until drdynvc is ready
+
+FreeRDP cannot open a dynamic virtual channel before peer activation. Its
+default descriptor check auto-opens drdynvc, marks it INITIALIZED before the
+open attempt, and does not retry when that premature attempt fails. The
+manager reaches DRDYNVC_STATE_READY only after processing the client's
+capabilities. Starting RDPEI earlier rejects the entire connection during RDP
+finalization.
+
+Keep the Weston seat activation independent, then initialize the required
+native-touch channel from the existing virtual-channel event path as soon as
+drdynvc reports READY.
+
+---
+ libweston/backend-rdp/rdp.c | 26 ++++++++++++++++++++------
+ 1 file changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/libweston/backend-rdp/rdp.c b/libweston/backend-rdp/rdp.c
+index 144aefd..743d8db 100644
+--- a/libweston/backend-rdp/rdp.c
++++ b/libweston/backend-rdp/rdp.c
+@@ -34,6 +34,7 @@
+ 
+ #include "rdp.h"
+ 
++#include <freerdp/channels/drdynvc.h>
+ #include <winpr/input.h>
+ #include <winpr/ssl.h>
+ 
+@@ -1068,7 +1068,25 @@ rdp_client_activity(int fd, uint32_t mask, void *data)
+-		if (!WTSVirtualChannelManagerCheckFileDescriptor(peerCtx->vcm)) {
++		if (!WTSVirtualChannelManagerCheckFileDescriptorEx(
++			    peerCtx->vcm,
++			    (peerCtx->item.flags & RDP_PEER_ACTIVATED) != 0)) {
+			weston_log("failed to check FreeRDP WTS VC file descriptor for %p\n", client);
+ 			goto out_clean;
+ 		}
++
++		/* Dynamic virtual channels cannot be opened during peer activation.
++		 * FreeRDP marks drdynvc READY only after its channel manager has
++		 * processed the client's capabilities.  Starting RDPEI earlier makes
++		 * WTSVirtualChannelOpenEx fail and tears down an otherwise healthy
++		 * connection during finalization. */
++		if ((peerCtx->item.flags & RDP_PEER_ACTIVATED) &&
++		    !peerCtx->rdpei_server_context &&
++		    WTSVirtualChannelManagerGetDrdynvcState(peerCtx->vcm) ==
++			    DRDYNVC_STATE_READY) {
++			if (!rdp_touch_init(peerCtx)) {
++				weston_log("RDP native touch channel initialization failed\n");
++				goto out_clean;
++			}
++			weston_log("RDP native touch channel ready\n");
++		}
+ 	}
+ 
+ 	return 0;
+@@ -1397,11 +1415,6 @@ xf_peer_activate(freerdp_peer* client)
+ 	xkb_keymap_unref(keymap);
+ 	weston_seat_init_pointer(peersItem->seat);
+ 
+-	if (!rdp_touch_init(peerCtx)) {
+-		weston_log("RDP client did not establish native touch input\n");
+-		goto error_exit;
+-	}
+-
+ 	/* Initialize RDP clipboard after seat is initialized */
+ 	if (freerdp_settings_get_bool(settings, FreeRDP_RedirectClipboard))
+ 		if (rdp_clipboard_init(client) != 0)
+-- 
+2.51.0

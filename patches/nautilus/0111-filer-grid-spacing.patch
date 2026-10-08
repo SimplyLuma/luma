@@ -1,0 +1,45 @@
+From 8b6835b9a67adcee963abf82c05e4f06c19d3d73 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 23:18:32 +0000
+Subject: [PATCH] Filer: fit grid cells to v70 eight-column rhythm
+
+---
+ src/resources/style.css | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 437e5f1..382c0a8 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -385,13 +385,13 @@
+ /* Native Grid presentation. Selection and focus decorate the real GtkGridView
+  * child; file models, thumbnails, captions, and zoom remain Nautilus-owned. */
+ .luma-files-window .nautilus-grid-view gridview {
+-  padding: 12px;
+-  border-spacing: 8px;
++  padding: 2px 20px 96px;
++  border-spacing: 6px 4px;
+ }
+ 
+ .luma-files-window .nautilus-grid-view.phone-layout gridview {
+-  padding-left: 10px;
+-  padding-right: 10px;
++  padding-left: 8px;
++  padding-right: 8px;
+ }
+ 
+ .luma-files-window .nautilus-grid-view gridview > child,
+@@ -399,6 +399,10 @@
+   border-radius: 10px;
+ }
+ 
++.luma-files-window .nautilus-grid-view .nautilus-view-cell {
++  padding: 0;
++}
++
+ .luma-files-window .nautilus-grid-view gridview > child.activatable:hover {
+   background-color: @luma_hover;
+ }
+-- 
+2.55.0
+

@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Keep the firmware's record of why the machine last stopped
+Documentation=file:///usr/share/doc/luma-vitals/026-luma-vitals.md
+ConditionPathExists=/sys/firmware/acpi/tables
+After=local-fs.target systemd-pstore.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-crash-evidence
+# On Intel machines with iclg installed: decode a new Crash Log once and name
+# its cause in the journal. It never fails the unit; "-" is only a backstop.
+ExecStart=-/usr/libexec/luma-crash-evidence-intel
+TimeoutStartSec=2min
+StateDirectory=luma/crash
+StateDirectoryMode=0755
+UMask=0022
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+# Root reads the root-owned tables and writes its own directory. CAP_SYSLOG is
+# the only capability: it lets the module map show real addresses (kept 0600)
+# so a later boot can name the module a crashed core was running.
+CapabilityBoundingSet=CAP_SYSLOG
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

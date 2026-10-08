@@ -1,0 +1,7 @@
+/* AppKit candidate: pointer focus is not a hovered command. Keyboard focus
+ * keeps the installed kit's normal highlight and navigation behavior. */
+.pointer-navigation modelbutton:focus:not(:hover),
+.pointer-navigation button.luma-menu-row:focus:not(:hover) {
+  background: transparent;
+  outline: none;
+}

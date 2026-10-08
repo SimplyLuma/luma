@@ -1,0 +1,21 @@
+{
+  "_doc": "K: shared controls Settings asked for (settings-12, 13): the v70 .bt text button, the .ib icon button and the .cfsw switch. Deep-merged into design-tokens.json's lumaui object; px unless the key says otherwise.",
+  "lumaui": {
+    "text_button": {
+      "_doc": "v70 .bt: 36 tall, padding 0 12 (the key 0 14), 10 round, 7 between a 16 glyph and 13/500 words; .sm 28 tall, padding 0 9, 8 round, 12 at .01em.",
+      "height": 36, "padding_x": 12, "key_padding_x": 14, "key_padding_start": 13, "key_padding_end": 15, "key_radius": 12, "radius": 10, "gap": 7, "icon": 16, "font_size": 13,
+      "small_height": 28, "small_padding_x": 9, "small_radius": 8, "small_font_size": 12, "small_icon": 14,
+      "hero_height": 34, "hero_radius": 11,
+      "large_height": 40, "large_padding_start": 14, "large_padding_end": 18,
+      "touch_height": 46, "touch_radius": 16, "touch_font_size": 15
+    },
+    "icon_button": {
+      "_doc": "v70 .ib: 36 square, 10 round, an 18 glyph in ink-2 (fill-1 and ink on hover, fill-2 when on); in a settings row .cfcp 28 with 14; in a group heading .cfgrp h6 .ib 26 with 15.",
+      "size": 36, "large_size": 40, "radius": 10, "icon": 18, "row_size": 28, "row_icon": 14, "small_size": 26, "small_icon": 15, "small_radius": 8
+    },
+    "switch": {
+      "_doc": "v70 .cfsw / .cksw / .cwin .sw: a 38x22 pill with a 16 round knob 3 in (on: 19 from the left), the island's fill in a well edge off, the accent well on with a white knob; big 44x26 with a 20 knob.",
+      "width": 38, "height": 22, "knob": 16, "inset": 3, "big_width": 44, "big_height": 26, "big_knob": 20
+    }
+  }
+}

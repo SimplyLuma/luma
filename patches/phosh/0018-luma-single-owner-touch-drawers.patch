@@ -1,0 +1,230 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 22:55:00 -0500
+Subject: [PATCH] shell: give physical drawers exclusive touch ownership
+
+Both handheld drawers still had a second capture-phase gesture layered over
+the component that owns their continuous motion.
+
+Quick Options already exposes a draggable layer surface whose position is
+tracked continuously by Phoc.  The additional GtkGestureSwipe on the whole
+top panel folded it directly from release velocity, bypassing that state
+machine and making the sheet jump, rebound, or disappear without following
+the finger.
+
+The lockscreen HdyCarousel likewise owns a capture-aware GtkGestureDrag with a
+16-pixel direction threshold and continuous progress.  Phosh's parent-level
+two-finger brightness recognizer was also installed in capture phase over the
+whole lockscreen, delaying or stealing arbitration before the carousel could
+claim the same stream.  That produced the late grab, PIN-page flash, and snap
+back seen on the FP6.  Brightness remains available in Quick Options.
+
+Remove both competing recognizers.  The draggable layer surface exclusively
+owns Quick Options touch motion and HdyCarousel exclusively owns lock motion,
+so one physical gesture can make exactly one continuous transition and one
+settle decision.
+
+---
+ src/lockscreen.c     | 93 ----------------------------------------------
+ src/top-panel.c      | 13 -------
+ src/ui/lockscreen.ui |  8 ----
+ src/ui/top-panel.ui  |  6 ---
+ 4 files changed, 120 deletions(-)
+
+diff --git a/src/lockscreen.c b/src/lockscreen.c
+index 6eed156..01554be 100644
+--- a/src/lockscreen.c
++++ b/src/lockscreen.c
+@@ -111,12 +111,6 @@ typedef struct {
+   PhoshAuth          *auth;
+   GSettings          *lockscreen_settings;
+ 
+-  struct {
+-    GtkGesture *swipe_gesture;
+-    double      x_start;
+-    double      base;
+-  } brightness;
+-
+   /* extra page */
+   GtkWidget         *extra_page;
+ 
+@@ -135,84 +129,6 @@ typedef struct {
+ G_DEFINE_TYPE_WITH_PRIVATE (PhoshLockscreen, phosh_lockscreen, PHOSH_TYPE_LAYER_SURFACE)
+ 
+ 
+-static gboolean
+-is_valid (PhoshLockscreen *self, GtkGesture *gesture, double *x_center)
+-{
+-  double y_center, v_x, v_y;
+-  uint height;
+-  gboolean active;
+-
+-  active = gtk_gesture_get_bounding_box_center (gesture, x_center, &y_center);
+-  if (!active)
+-    return FALSE;
+-
+-  height = gtk_widget_get_allocated_height (GTK_WIDGET (self));
+-  /* Swipe must happen in the upper screen half */
+-  if (y_center > 0.5 * height)
+-    return FALSE;
+-
+-  if (!gtk_gesture_swipe_get_velocity (GTK_GESTURE_SWIPE (gesture), &v_x, &v_y))
+-    return FALSE;
+-
+-  if (ABS (v_x) > 3.0 * ABS (v_y))
+-    return TRUE;
+-
+-  return FALSE;
+-}
+-
+-
+-static void
+-on_swipe_gesture_update (PhoshLockscreen  *self,
+-                         GdkEventSequence *sequence,
+-                         GtkGesture       *gesture)
+-{
+-  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+-  PhoshBrightnessManager *manager;
+-  double x_center;
+-  uint width;
+-  double brightness;
+-
+-  g_return_if_fail (PHOSH_IS_LOCKSCREEN (self));
+-
+-  if (!is_valid (self, gesture, &x_center))
+-    return;
+-
+-  manager = phosh_shell_get_brightness_manager (phosh_shell_get_default ());
+-  width = gtk_widget_get_allocated_width (GTK_WIDGET (self));
+-
+-  brightness = priv->brightness.base;
+-  /* Use at least 1% steps to avoid too many updates */
+-  brightness += 0.01 * (int)(100 * (x_center - priv->brightness.x_start) / width);
+-
+-  g_debug ("Brightness gesture updating: %f", brightness);
+-  phosh_brightness_manager_set_value (manager, CLAMP (brightness, 0.0, 1.0), TRUE);
+-}
+-
+-
+-static void
+-on_swipe_gesture_begin (PhoshLockscreen  *self,
+-                        GdkEventSequence *sequence,
+-                        GtkGesture       *gesture)
+-{
+-  gdouble x_center;
+-  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+-  PhoshBrightnessManager *manager;
+-
+-  g_return_if_fail (PHOSH_IS_LOCKSCREEN (self));
+-
+-  if (!is_valid (self, gesture, &x_center))
+-    return;
+-
+-  gtk_gesture_set_state (gesture, GTK_EVENT_SEQUENCE_CLAIMED);
+-  manager = phosh_shell_get_brightness_manager (phosh_shell_get_default ());
+-  priv->brightness.x_start = x_center;
+-  priv->brightness.base = phosh_brightness_manager_get_value (manager);
+-  g_debug ("Brightness gesture start at: %f (%f)",
+-           priv->brightness.x_start,
+-           priv->brightness.base);
+-}
+-
+-
+ static void
+ phosh_lockscreen_map (GtkWidget *widget)
+ {
+@@ -1372,15 +1287,6 @@ phosh_lockscreen_class_init (PhoshLockscreenClass *klass)
+   gtk_widget_class_bind_template_callback_full (widget_class,
+                                                 "carousel_page_changed_cb",
+                                                 G_CALLBACK (carousel_page_changed_cb));
+-  gtk_widget_class_bind_template_child_full (widget_class,
+-                                             "swipe_gesture",
+-                                             FALSE,
+-                                             G_PRIVATE_OFFSET (PhoshLockscreen,
+-                                                               brightness.swipe_gesture));
+-
+-  gtk_widget_class_bind_template_callback (widget_class, on_swipe_gesture_begin);
+-  gtk_widget_class_bind_template_callback (widget_class, on_swipe_gesture_update);
+-
+   /* main deck */
+   gtk_widget_class_bind_template_callback (widget_class, deck_forward_clicked_cb);
+   gtk_widget_class_bind_template_callback (widget_class, deck_forward_clicked_cb);
+diff --git a/src/top-panel.c b/src/top-panel.c
+index 4e86a74..4081259 100644
+--- a/src/top-panel.c
++++ b/src/top-panel.c
+@@ -112,7 +112,6 @@ typedef struct _PhoshTopPanel {
+   GSettings      *kb_settings;
+ 
+   GtkGesture     *click_gesture; /* needed so that the gesture isn't destroyed immediately */
+-  GtkGesture     *settings_swipe;
+ 
+   PhoshTopPanelBg *background;
+   GtkCssProvider  *cutout_css_provider;
+@@ -503,16 +502,6 @@ released_cb (PhoshTopPanel *self, int n_press, double x, double y, GtkGestureMul
+     g_signal_emit (self, signals[ACTIVATED], 0);
+ }
+ 
+-static void
+-on_settings_swipe (PhoshTopPanel *self, double velocity_x, double velocity_y)
+-{
+-  if (self->state != PHOSH_TOP_PANEL_STATE_UNFOLDED)
+-    return;
+-
+-  if (ABS (velocity_y) > ABS (velocity_x) && velocity_y < 0)
+-    phosh_top_panel_fold (self);
+-}
+-
+ 
+ static void
+ toggle_message_tray_action (GSimpleAction *action, GVariant *param, gpointer data)
+@@ -961,14 +950,12 @@ phosh_top_panel_class_init (PhoshTopPanelClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, lbl_lang);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, menu_system);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, settings);
+-  gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, settings_swipe);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, stack);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, status_icons_box);
+   gtk_widget_class_bind_template_child (widget_class, PhoshTopPanel, top_bar_bin);
+   gtk_widget_class_bind_template_callback (widget_class, on_settings_drag_handle_offset_changed);
+   gtk_widget_class_bind_template_callback (widget_class, phosh_top_panel_fold);
+   gtk_widget_class_bind_template_callback (widget_class, released_cb);
+-  gtk_widget_class_bind_template_callback (widget_class, on_settings_swipe);
+ 
+   binding_set = gtk_binding_set_by_class (klass);
+   gtk_binding_entry_add_signal (binding_set, GDK_KEY_Escape, 0, "activated", 0);
+diff --git a/src/ui/lockscreen.ui b/src/ui/lockscreen.ui
+index e709a71..ab75f56 100644
+--- a/src/ui/lockscreen.ui
++++ b/src/ui/lockscreen.ui
+@@ -347,14 +347,6 @@
+       </object>
+     </child>
+   </template>
+-  <object class="GtkGestureSwipe" id="swipe_gesture">
+-    <property name="widget">PhoshLockscreen</property>
+-    <property name="propagation-phase">capture</property>
+-    <property name="touch-only">1</property>
+-    <property name="n-points">2</property>
+-    <signal name="begin" handler="on_swipe_gesture_begin" swapped="true"/>
+-    <signal name="update" handler="on_swipe_gesture_update" swapped="true"/>
+-  </object>
+   <object class="GtkButton" id="btn_delete">
+     <property name="visible">1</property>
+     <property name="can-focus">1</property>
+diff --git a/src/ui/top-panel.ui b/src/ui/top-panel.ui
+index 36d6a58..c07d094 100644
+--- a/src/ui/top-panel.ui
++++ b/src/ui/top-panel.ui
+@@ -409,10 +409,4 @@
+     <property name="propagation-phase">target</property>
+     <signal name="released" handler="released_cb" swapped="true"/>
+   </object>
+-  <object class="GtkGestureSwipe" id="settings_swipe">
+-    <property name="widget">PhoshTopPanel</property>
+-    <property name="touch-only">1</property>
+-    <property name="propagation-phase">capture</property>
+-    <signal name="swipe" handler="on_settings_swipe" swapped="true"/>
+-  </object>
+ </interface>
+-- 
+2.53.0

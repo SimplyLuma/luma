@@ -1,0 +1,183 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 22:40:00 -0500
+Subject: [PATCH] compositor: retain Presence through authenticated handoff
+
+Own the physical display with one Phoc process across the PAM boundary. Keep
+the Presence view above shell layers and route input to it until it exits after
+Home's first complete frame. This removes the compositor teardown/reacquire gap
+without weakening authentication or using a user-session overlay.
+
+--- a/src/server.h	2026-06-01 02:50:19
++++ b/src/server.h	2026-08-30 22:33:40
+@@ -86,5 +86,9 @@
+                                                                       bool        enable);
+ gboolean               phoc_server_get_allow_input         (PhocServer *self);
+ gboolean               phoc_server_get_use_focus_frame     (PhocServer *self);
++void                   phoc_server_set_handoff_app_id      (PhocServer *self,
++                                                            const char *app_id);
++gboolean               phoc_server_is_handoff_view         (PhocServer *self,
++                                                            PhocView   *view);
+ 
+ G_END_DECLS
+--- a/src/server.c	2026-06-01 02:50:19
++++ b/src/server.c	2026-08-30 22:33:40
+@@ -71,6 +71,7 @@
+   PhocDesktop         *desktop;
+ 
+   char                *session_exec;
++  char                *handoff_app_id;
+   GPid                 session_pid;
+   gint                 exit_status;
+   GMainLoop           *mainloop;
+@@ -114,9 +115,7 @@
+   static gboolean signal_sent;
+   PhocServer *self = PHOC_SERVER (user_data);
+ 
+-  g_return_val_if_fail (self->session_pid > 0, FALSE);
+-
+-  if (!signal_sent) {
++  if (!signal_sent && self->session_pid > 0) {
+     g_debug ("Ending session via SIGTERM");
+     kill (self->session_pid, SIGTERM);
+     signal_sent = TRUE;
+@@ -196,6 +195,7 @@
+ 
+   g_return_if_fail (PHOC_IS_SERVER (self));
+   g_spawn_close_pid (pid);
++  self->session_pid = 0;
+   if (g_spawn_check_wait_status (status, &err)) {
+     self->exit_status = 0;
+   } else {
+@@ -208,7 +208,24 @@
+     g_main_loop_quit (self->mainloop);
+ }
+ 
++void
++phoc_server_set_handoff_app_id (PhocServer *self, const char *app_id)
++{
++  g_return_if_fail (PHOC_IS_SERVER (self));
++  g_set_str (&self->handoff_app_id, app_id);
++}
+ 
++gboolean
++phoc_server_is_handoff_view (PhocServer *self, PhocView *view)
++{
++  g_return_val_if_fail (PHOC_IS_SERVER (self), FALSE);
++  g_return_val_if_fail (PHOC_IS_VIEW (view), FALSE);
++
++  return self->handoff_app_id &&
++         g_strcmp0 (self->handoff_app_id, phoc_view_get_app_id (view)) == 0;
++}
++
++
+ static void
+ on_child_setup (gpointer data)
+ {
+--- a/src/main.c	2026-06-01 02:50:19
++++ b/src/main.c	2026-08-30 22:33:40
+@@ -131,10 +131,10 @@
+   g_autoptr (PhocServer) server = NULL;
+   g_autoptr (PhocStyleManager) style_manager = NULL;
+   g_autofree char *config_path = NULL;
+-  g_autofree char *exec = NULL, *socket = NULL;
++  g_autofree char *exec = NULL, *socket = NULL, *handoff_app_id = NULL;
+   PhocServerFlags flags = PHOC_SERVER_FLAG_NONE;
+   PhocServerDebugFlags debug_flags = PHOC_SERVER_DEBUG_FLAG_NONE;
+-  gboolean version = FALSE, shell_mode = FALSE, verbose = FALSE;
++  gboolean version = FALSE, shell_mode = FALSE, verbose = FALSE, persistent = FALSE;
+   gboolean xwayland = FALSE, no_xwayland = FALSE;
+   PhocConfig *config;
+ 
+@@ -155,6 +155,10 @@
+      "Whether to provide more verbose output", NULL},
+     {"socket", 0, 0, G_OPTION_ARG_STRING, &socket,
+      "Name of socket to listen on", NULL},
++    {"persistent", 0, 0, G_OPTION_ARG_NONE, &persistent,
++     "Keep the compositor alive after its startup client exits", NULL},
++    {"handoff-app-id", 0, 0, G_OPTION_ARG_STRING, &handoff_app_id,
++     "Keep this application above shell surfaces during an authenticated handoff", NULL},
+     {"version", 0, 0, G_OPTION_ARG_NONE, &version,
+      "Show version information", NULL},
+     { NULL, 0, 0, G_OPTION_ARG_NONE, NULL, NULL, NULL }
+@@ -189,6 +193,9 @@
+     return 1;
+   }
+   phoc_server_set_debug_flags (server, debug_flags);
++  if (persistent)
++    phoc_server_set_debug_flags (server, debug_flags | PHOC_SERVER_DEBUG_FLAG_NO_QUIT);
++  phoc_server_set_handoff_app_id (server, handoff_app_id);
+ 
+   if (shell_mode)
+     flags |= PHOC_SERVER_FLAG_SHELL_MODE;
+--- a/src/render.c	2026-06-01 02:50:19
++++ b/src/render.c	2026-08-30 22:33:40
+@@ -559,6 +559,7 @@
+   struct wlr_output *wlr_output = output->wlr_output;
+   PhocDesktop *desktop = phoc_server_get_desktop (server);
+   PhocWorkspace *workspace = phoc_desktop_get_active_workspace (desktop);
++  PhocView *handoff_view = NULL;
+   pixman_region32_t *damage = ctx->damage;
+ 
+   g_assert (PHOC_IS_RENDERER (self));
+@@ -607,6 +608,11 @@
+     /* Render all views */
+     for (GList *l = phoc_workspace_get_views (workspace)->tail; l; l = l->prev) {
+       PhocView *view = PHOC_VIEW (l->data);
++
++      if (phoc_server_is_handoff_view (server, view)) {
++        handoff_view = view;
++        continue;
++      }
+ 
+       if (phoc_desktop_view_check_visibility (desktop, view))
+         render_view (output, view, ctx);
+@@ -621,6 +627,20 @@
+   render_drag_icons (phoc_server_get_input (server), ctx);
+ 
+   render_layer (ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, ctx);
++
++  /* Presence owns the display until it exits after the first complete Home
++   * frame. Rendering it last makes that reveal a single compositor commit. */
++  if (!handoff_view) {
++    for (GList *l = phoc_workspace_get_views (workspace)->head; l; l = l->next) {
++      PhocView *view = PHOC_VIEW (l->data);
++      if (phoc_server_is_handoff_view (server, view)) {
++        handoff_view = view;
++        break;
++      }
++    }
++  }
++  if (handoff_view && phoc_desktop_view_check_visibility (desktop, handoff_view))
++    render_view (output, handoff_view, ctx);
+ 
+   render_output_blings (output, ctx);
+ 
+--- a/src/desktop.c	2026-06-01 02:50:19
++++ b/src/desktop.c	2026-08-30 22:33:40
+@@ -295,6 +295,23 @@
+   if (output)
+     wlr_output_layout_output_coords (desktop->layout, output->wlr_output, &ox, &oy);
+ 
++  /* The authenticated shell is allowed to prepare behind Presence, but must
++   * not receive touch until Presence has atomically revealed it by exiting. */
++  {
++    PhocServer *server = phoc_server_get_default ();
++    PhocWorkspace *workspace = phoc_desktop_get_active_workspace (desktop);
++    for (GList *l = phoc_workspace_get_views (workspace)->head; l; l = l->next) {
++      PhocView *handoff = PHOC_VIEW (l->data);
++      if (phoc_server_is_handoff_view (server, handoff) &&
++          phoc_desktop_view_check_visibility (desktop, handoff) &&
++          view_at (handoff, lx, ly, &surface, sx, sy)) {
++        if (view)
++          *view = handoff;
++        return surface;
++      }
++    }
++  }
++
+   /* Layers above regular views */
+   if (output) {
+     surface = layer_surface_at (output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, ox, oy, sx, sy);
+
+-- 
+2.53.0

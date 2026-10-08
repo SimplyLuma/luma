@@ -1,0 +1,43 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from luma_mods.catalog_publish import accept
+from luma_mods.catalog_update import TufCatalogClient
+from luma_mods.errors import LumaModsError
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Verify a signed TUF staging catalog and emit a publication receipt."
+    )
+    parser.add_argument("request", type=Path)
+    parser.add_argument("bootstrap_root", type=Path)
+    parser.add_argument("cache", type=Path)
+    parser.add_argument("metadata_url")
+    parser.add_argument("targets_url")
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    try:
+        client = TufCatalogClient(
+            bootstrap_root=args.bootstrap_root,
+            cache_root=args.cache,
+            metadata_base_url=args.metadata_url,
+            target_base_url=args.targets_url,
+        )
+        receipt = accept(client, args.request, args.output)
+    except (LumaModsError, OSError) as error:
+        print(f"luma-mod-catalog-accept: {error}", file=sys.stderr)
+        return 2
+    print(json.dumps(receipt, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

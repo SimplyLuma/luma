@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Qualcomm's QRTR services may return before ModemManager has rebuilt its
+# modem object after system suspend.  Restore the public cellular stack in a
+# bounded order, then rebuild the IMS transport.  No subscriber identifiers
+# or protected modem state are read or logged here.
+
+set -Eeuo pipefail
+
+[[ $(id -u) -eq 0 ]] || exit 1
+
+modem_present() {
+  [[ $(mmcli -L 2>/dev/null | grep -c '/Modem/' || true) -eq 1 ]]
+}
+
+recovered_modem=false
+for _ in $(seq 1 8); do
+  modem_present && break
+  sleep 1
+done
+
+if ! modem_present; then
+  systemctl restart ModemManager.service
+  recovered_modem=true
+  for _ in $(seq 1 30); do
+    modem_present && break
+    sleep 1
+  done
+fi
+
+if ! modem_present; then
+  printf 'event=luma_fp6_cellular_resume state=failed reason=modem-not-enumerated identifiers_logged=0\n'
+  exit 1
+fi
+
+if [[ $recovered_modem == true ]]; then
+  # A vanished modem invalidates the carrier-side IPsec association even when
+  # the IMS IPv6 address happens to be reused.  Never attempt a warm resume in
+  # that case; the registration state is recreatable and contains no user
+  # content.
+  rm -f -- /var/lib/imsd/imsreg.state
+  systemctl restart luma-fp6-primary-gw-session.service
+  systemctl restart luma-fp6-imsd.service
+  state=restored
+else
+  # Do not churn a healthy registration merely because the display woke.
+  # imsd owns its own TCP keepalive and bounded reconnect path.
+  systemctl is-active --quiet luma-fp6-primary-gw-session.service ||
+    systemctl restart luma-fp6-primary-gw-session.service
+  systemctl is-active --quiet luma-fp6-imsd.service ||
+    systemctl restart luma-fp6-imsd.service
+  state=healthy
+fi
+
+printf 'event=luma_fp6_cellular_resume state=%s identifiers_logged=0\n' "$state"

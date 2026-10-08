@@ -1,0 +1,27 @@
+From: Project Luma
+Subject: [PATCH] menus: compact widths against the composed source stack
+
+--- a/src/stylesheet/widgets/_menus.scss
++++ b/src/stylesheet/widgets/_menus.scss
+@@ -288,7 +288,7 @@
+ // sets the variant class, and a menu without one is the application menu.
+ popover.menu {
+   > contents {
+-    min-width: 292px;
++    min-width: 204px;
+     padding: 8px;
+     border: none;
+     border-radius: 15px;
+@@ -309,9 +309,9 @@
+     border-color: unquote("@luma_menu_border");
+   }
+ 
+-  &.luma-menu-desktop > contents { min-width: 300px; }
+-  &.luma-menu-dock > contents { min-width: 186px; padding: 6px; }
+-  &.luma-menu-submenu > contents { min-width: 224px; padding: 6px; }
++  &.luma-menu-desktop > contents { min-width: 204px; }
++  &.luma-menu-dock > contents { min-width: 174px; padding: 6px; }
++  &.luma-menu-submenu > contents { min-width: 208px; padding: 6px; }
+ 
+   // A rule sits between every group.
+   separator {

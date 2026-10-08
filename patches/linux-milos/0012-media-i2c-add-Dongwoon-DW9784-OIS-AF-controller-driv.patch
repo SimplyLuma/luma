@@ -1,0 +1,493 @@
+From d104a038bb29dadd52de06d1a559f09af57a71ec Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 17 Aug 2026 00:11:23 +0200
+Subject: [PATCH] media: i2c: add Dongwoon DW9784 OIS/AF controller driver
+
+The DW9784 is a combined OIS + AF controller with an on-chip DSP running
+firmware from its own flash, used on the Fairphone 6 main camera. Drive
+only the autofocus channel: boot the DSP from the factory firmware (no
+download), hold the OIS servo in the centered servo-on state, and expose
+the AF target position (register 0xd013, 12-bit DAC) as
+V4L2_CID_FOCUS_ABSOLUTE.
+
+Register sequences follow Dongwoon's GPL-2.0 vendor driver as shipped in
+the Fairphone 6 and Motorola downstream kernels; the AF target register
+and init writes match the FP6 CamX actuator configuration.
+
+Assisted-by: Claude:claude-fable-5
+---
+ drivers/media/i2c/Kconfig  |  11 +
+ drivers/media/i2c/Makefile |   1 +
+ drivers/media/i2c/dw9784.c | 426 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 438 insertions(+)
+ create mode 100644 drivers/media/i2c/dw9784.c
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index f69a914..b3b9a42 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -929,6 +929,17 @@ config VIDEO_DW9768
+ 	  capability. This is designed for linear control of
+ 	  voice coil motors, controlled via I2C serial interface.
+ 
++config VIDEO_DW9784
++	tristate "DW9784 OIS/AF controller support"
++	select V4L2_CCI_I2C
++	help
++	  This is a driver for the Dongwoon Anatech DW9784 camera
++	  OIS/AF controller. Only the autofocus channel is driven;
++	  the OIS servo is held centered with stabilization off.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called dw9784.
++
+ config VIDEO_DW9807_VCM
+ 	tristate "DW9807 lens voice coil support"
+ 	help
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index d6d988f..aaa7276 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -35,6 +35,7 @@ obj-$(CONFIG_VIDEO_DS90UB960) += ds90ub960.o
+ obj-$(CONFIG_VIDEO_DW9714) += dw9714.o
+ obj-$(CONFIG_VIDEO_DW9719) += dw9719.o
+ obj-$(CONFIG_VIDEO_DW9768) += dw9768.o
++obj-$(CONFIG_VIDEO_DW9784) += dw9784.o
+ obj-$(CONFIG_VIDEO_DW9807_VCM) += dw9807-vcm.o
+ obj-$(CONFIG_VIDEO_ET8EK8) += et8ek8/
+ obj-$(CONFIG_VIDEO_GC0308) += gc0308.o
+diff --git a/drivers/media/i2c/dw9784.c b/drivers/media/i2c/dw9784.c
+new file mode 100644
+index 0000000..e367a85
+--- /dev/null
++++ b/drivers/media/i2c/dw9784.c
+@@ -0,0 +1,426 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Dongwoon Anatech DW9784 OIS + AF controller, autofocus support
++ *
++ * Copyright (C) 2026 Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
++ *
++ * The DW9784 is a combined OIS/AF controller with an on-chip DSP that runs
++ * firmware from its own flash. This driver only drives the autofocus
++ * channel: it brings the DSP up from the factory-flashed firmware (no
++ * firmware download), forces the OIS servo into the centered "servo on"
++ * state (lens held at center, stabilization off) and exposes the AF target
++ * position as V4L2_CID_FOCUS_ABSOLUTE.
++ *
++ * Register sequences follow Dongwoon's GPL-2.0 vendor driver (dw9784_ois.c
++ * as shipped in the Fairphone 6 and Motorola downstream kernels); the AF
++ * target register matches the FP6 CamX actuator configuration.
++ */
++
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/pm_runtime.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++
++#include <media/v4l2-cci.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-event.h>
++
++/* 0 = shutdown (power state preserved), 1 = chip enable */
++#define DW9784_REG_CHIP_EN		CCI_REG16(0xd000)
++/* 0 = standby (DSP off), 1 = active (DSP on) */
++#define DW9784_REG_DSP_CTRL		CCI_REG16(0xd001)
++#define DW9784_REG_LOGIC_RESET		CCI_REG16(0xd002)
++/* AF target position, 12-bit DAC code */
++#define DW9784_REG_AF_TARGET		CCI_REG16(0xd013)
++
++#define DW9784_REG_CHIP_ID		CCI_REG16(0x7000)
++#define DW9784_CHIP_ID			0x9784
++#define DW9784_REG_FW_VERSION		CCI_REG16(0x7001)
++#define DW9784_REG_FW_DATE		CCI_REG16(0x7002)
++/* bit 0: fw, bit 4: module cal., bit 8: set cal. checksum error */
++#define DW9784_REG_CHECKSUM_STATUS	CCI_REG16(0x700d)
++
++#define DW9784_REG_OIS_STATUS		CCI_REG16(0x7010)
++#define DW9784_STATUS_SERVO_ON		0x1001
++/* 0 = OIS on, 1 = servo on (centered, no stabilization), 2 = servo off */
++#define DW9784_REG_OIS_MODE		CCI_REG16(0x7011)
++#define DW9784_OIS_MODE_SERVO_ON	0x0001
++#define DW9784_REG_CONTROL_MODE		CCI_REG16(0x7012)
++#define DW9784_CONTROL_MODE_USER	0x0001
++
++#define DW9784_REG_USER_PROTECT		CCI_REG16(0xebf1)
++#define DW9784_USER_PROTECT_RELEASE	0x56fa
++
++#define DW9784_MAX_FOCUS_POS		4095
++#define DW9784_FOCUS_STEPS		1
++/* Vendor default infinity position */
++#define DW9784_DEFAULT_FOCUS_POS	512
++
++/*
++ * Power-up order per the downstream actuator/OIS configuration: I/O rail,
++ * module 1.8 V analog rail, the OIS converter, then the AF coil rail.
++ */
++static const char * const dw9784_supply_names[] = {
++	"vio",		/* Digital I/O, 1.8 V */
++	"avdd",		/* Module analog power, 1.8 V */
++	"vdd",		/* OIS/DSP core power, 3.3 V */
++	"vaf",		/* AF coil power, 3.3 V */
++};
++
++struct dw9784_device {
++	struct v4l2_ctrl_handler ctrls_vcm;
++	struct v4l2_subdev sd;
++	struct regmap *cci;
++	struct regulator_bulk_data supplies[ARRAY_SIZE(dw9784_supply_names)];
++	u16 current_val;
++};
++
++static inline struct dw9784_device *to_dw9784_vcm(struct v4l2_ctrl *ctrl)
++{
++	return container_of(ctrl->handler, struct dw9784_device, ctrls_vcm);
++}
++
++static inline struct dw9784_device *sd_to_dw9784_vcm(struct v4l2_subdev *sd)
++{
++	return container_of(sd, struct dw9784_device, sd);
++}
++
++static int dw9784_power_on(struct dw9784_device *dw9784)
++{
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < ARRAY_SIZE(dw9784->supplies); i++) {
++		ret = regulator_enable(dw9784->supplies[i].consumer);
++		if (ret) {
++			while (i--)
++				regulator_disable(dw9784->supplies[i].consumer);
++			return ret;
++		}
++	}
++
++	/* Converter soft-start plus MCU boot from flash */
++	usleep_range(10000, 11000);
++
++	return 0;
++}
++
++static int dw9784_power_off(struct dw9784_device *dw9784)
++{
++	cci_write(dw9784->cci, DW9784_REG_CHIP_EN, 0, NULL);
++
++	return regulator_bulk_disable(ARRAY_SIZE(dw9784->supplies),
++				      dw9784->supplies);
++}
++
++/* Bring the DSP up from the factory firmware and center the OIS servo */
++static int dw9784_chip_init(struct dw9784_device *dw9784)
++{
++	struct device *dev = dw9784->sd.dev;
++	unsigned int retries = 50;
++	u64 status = 0;
++	int ret = 0;
++
++	cci_write(dw9784->cci, DW9784_REG_CHIP_EN, 1, &ret);
++	if (ret)
++		return ret;
++	usleep_range(4000, 5000);
++
++	cci_write(dw9784->cci, DW9784_REG_LOGIC_RESET, 1, &ret);
++	if (ret)
++		return ret;
++	usleep_range(4000, 5000);
++
++	cci_write(dw9784->cci, DW9784_REG_DSP_CTRL, 1, &ret);
++	if (ret)
++		return ret;
++	/* Gyro self-test needs 25 ms after DSP start */
++	usleep_range(25000, 26000);
++
++	cci_write(dw9784->cci, DW9784_REG_USER_PROTECT,
++		  DW9784_USER_PROTECT_RELEASE, &ret);
++
++	/* AF only: servo on holds the lens centered without stabilization */
++	cci_write(dw9784->cci, DW9784_REG_CONTROL_MODE,
++		  DW9784_CONTROL_MODE_USER, &ret);
++	if (ret)
++		return ret;
++	usleep_range(1000, 1500);
++
++	cci_write(dw9784->cci, DW9784_REG_OIS_MODE,
++		  DW9784_OIS_MODE_SERVO_ON, &ret);
++	if (ret)
++		return ret;
++
++	do {
++		ret = cci_read(dw9784->cci, DW9784_REG_OIS_STATUS, &status,
++			       NULL);
++		if (!ret && status == DW9784_STATUS_SERVO_ON)
++			return 0;
++		usleep_range(2000, 2500);
++	} while (--retries);
++
++	dev_warn(dev, "servo-on not confirmed, status 0x%04llx\n", status);
++
++	return 0;
++}
++
++static int dw9784_t_focus_vcm(struct dw9784_device *dw9784, u16 val)
++{
++	dw9784->current_val = val;
++
++	return cci_write(dw9784->cci, DW9784_REG_AF_TARGET, val, NULL);
++}
++
++static int dw9784_set_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct dw9784_device *dw9784 = to_dw9784_vcm(ctrl);
++
++	if (ctrl->id == V4L2_CID_FOCUS_ABSOLUTE)
++		return dw9784_t_focus_vcm(dw9784, ctrl->val);
++
++	return -EINVAL;
++}
++
++static const struct v4l2_ctrl_ops dw9784_vcm_ctrl_ops = {
++	.s_ctrl = dw9784_set_ctrl,
++};
++
++static int dw9784_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++	return pm_runtime_resume_and_get(sd->dev);
++}
++
++static int dw9784_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++	pm_runtime_put(sd->dev);
++
++	return 0;
++}
++
++static const struct v4l2_subdev_internal_ops dw9784_int_ops = {
++	.open = dw9784_open,
++	.close = dw9784_close,
++};
++
++static const struct v4l2_subdev_core_ops dw9784_core_ops = {
++	.log_status = v4l2_ctrl_subdev_log_status,
++	.subscribe_event = v4l2_ctrl_subdev_subscribe_event,
++	.unsubscribe_event = v4l2_event_subdev_unsubscribe,
++};
++
++static const struct v4l2_subdev_ops dw9784_ops = {
++	.core = &dw9784_core_ops,
++};
++
++static int dw9784_init_controls(struct dw9784_device *dw9784)
++{
++	struct v4l2_ctrl_handler *hdl = &dw9784->ctrls_vcm;
++	const struct v4l2_ctrl_ops *ops = &dw9784_vcm_ctrl_ops;
++
++	v4l2_ctrl_handler_init(hdl, 1);
++
++	v4l2_ctrl_new_std(hdl, ops, V4L2_CID_FOCUS_ABSOLUTE,
++			  0, DW9784_MAX_FOCUS_POS, DW9784_FOCUS_STEPS,
++			  DW9784_DEFAULT_FOCUS_POS);
++
++	dw9784->current_val = DW9784_DEFAULT_FOCUS_POS;
++
++	if (hdl->error)
++		dev_err(dw9784->sd.dev, "%s fail error: 0x%x\n",
++			__func__, hdl->error);
++	dw9784->sd.ctrl_handler = hdl;
++
++	return hdl->error;
++}
++
++static int dw9784_identify(struct dw9784_device *dw9784)
++{
++	struct device *dev = dw9784->sd.dev;
++	u64 chip_id, fw_ver, fw_date, csum;
++	int ret = 0;
++
++	cci_read(dw9784->cci, DW9784_REG_CHIP_ID, &chip_id, &ret);
++	if (ret)
++		return ret;
++
++	if (chip_id != DW9784_CHIP_ID) {
++		dev_err(dev, "unexpected chip id 0x%04llx\n", chip_id);
++		return -ENODEV;
++	}
++
++	cci_read(dw9784->cci, DW9784_REG_FW_VERSION, &fw_ver, &ret);
++	cci_read(dw9784->cci, DW9784_REG_FW_DATE, &fw_date, &ret);
++	cci_read(dw9784->cci, DW9784_REG_CHECKSUM_STATUS, &csum, &ret);
++	if (ret)
++		return ret;
++
++	dev_info(dev, "chip id 0x%04llx, fw version 0x%04llx date 0x%04llx, checksum status 0x%04llx\n",
++		 chip_id, fw_ver, fw_date, csum);
++
++	return 0;
++}
++
++static int dw9784_probe(struct i2c_client *client)
++{
++	struct dw9784_device *dw9784;
++	unsigned int i;
++	int ret;
++
++	dw9784 = devm_kzalloc(&client->dev, sizeof(*dw9784), GFP_KERNEL);
++	if (!dw9784)
++		return -ENOMEM;
++
++	dw9784->cci = devm_cci_regmap_init_i2c(client, 16);
++	if (IS_ERR(dw9784->cci))
++		return dev_err_probe(&client->dev, PTR_ERR(dw9784->cci),
++				     "failed to init CCI\n");
++
++	for (i = 0; i < ARRAY_SIZE(dw9784->supplies); i++)
++		dw9784->supplies[i].supply = dw9784_supply_names[i];
++	ret = devm_regulator_bulk_get(&client->dev,
++				      ARRAY_SIZE(dw9784->supplies),
++				      dw9784->supplies);
++	if (ret)
++		return dev_err_probe(&client->dev, ret,
++				     "failed to get regulators\n");
++
++	v4l2_i2c_subdev_init(&dw9784->sd, client, &dw9784_ops);
++
++	ret = dw9784_power_on(dw9784);
++	if (ret)
++		return dev_err_probe(&client->dev, ret, "failed to power up\n");
++
++	ret = dw9784_chip_init(dw9784);
++	if (ret)
++		goto err_power_down;
++
++	ret = dw9784_identify(dw9784);
++	if (ret)
++		goto err_power_down;
++
++	dw9784->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE |
++			    V4L2_SUBDEV_FL_HAS_EVENTS;
++	dw9784->sd.internal_ops = &dw9784_int_ops;
++
++	ret = dw9784_init_controls(dw9784);
++	if (ret)
++		goto err_cleanup;
++
++	ret = media_entity_pads_init(&dw9784->sd.entity, 0, NULL);
++	if (ret < 0)
++		goto err_cleanup;
++
++	dw9784->sd.entity.function = MEDIA_ENT_F_LENS;
++
++	ret = v4l2_async_register_subdev(&dw9784->sd);
++	if (ret < 0)
++		goto err_cleanup;
++
++	pm_runtime_set_active(&client->dev);
++	pm_runtime_enable(&client->dev);
++	pm_runtime_idle(&client->dev);
++
++	return 0;
++
++err_cleanup:
++	v4l2_ctrl_handler_free(&dw9784->ctrls_vcm);
++	media_entity_cleanup(&dw9784->sd.entity);
++err_power_down:
++	dw9784_power_off(dw9784);
++
++	return ret;
++}
++
++static void dw9784_remove(struct i2c_client *client)
++{
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct dw9784_device *dw9784 = sd_to_dw9784_vcm(sd);
++
++	pm_runtime_disable(&client->dev);
++	if (!pm_runtime_status_suspended(&client->dev))
++		dw9784_power_off(dw9784);
++	pm_runtime_set_suspended(&client->dev);
++
++	v4l2_async_unregister_subdev(&dw9784->sd);
++	v4l2_ctrl_handler_free(&dw9784->ctrls_vcm);
++	media_entity_cleanup(&dw9784->sd.entity);
++}
++
++static int __maybe_unused dw9784_vcm_suspend(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct dw9784_device *dw9784 = sd_to_dw9784_vcm(sd);
++
++	if (pm_runtime_suspended(&client->dev))
++		return 0;
++
++	return dw9784_power_off(dw9784);
++}
++
++static int __maybe_unused dw9784_vcm_resume(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct dw9784_device *dw9784 = sd_to_dw9784_vcm(sd);
++	int ret;
++
++	if (pm_runtime_suspended(&client->dev))
++		return 0;
++
++	ret = dw9784_power_on(dw9784);
++	if (ret)
++		return ret;
++
++	ret = dw9784_chip_init(dw9784);
++	if (ret)
++		goto err_power_down;
++
++	ret = dw9784_t_focus_vcm(dw9784, dw9784->current_val);
++	if (ret)
++		goto err_power_down;
++
++	return 0;
++
++err_power_down:
++	dw9784_power_off(dw9784);
++
++	return ret;
++}
++
++static const struct i2c_device_id dw9784_id_table[] = {
++	{ "dw9784" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, dw9784_id_table);
++
++static const struct of_device_id dw9784_of_table[] = {
++	{ .compatible = "dongwoon,dw9784" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, dw9784_of_table);
++
++static const struct dev_pm_ops dw9784_pm_ops = {
++	SET_SYSTEM_SLEEP_PM_OPS(dw9784_vcm_suspend, dw9784_vcm_resume)
++	SET_RUNTIME_PM_OPS(dw9784_vcm_suspend, dw9784_vcm_resume, NULL)
++};
++
++static struct i2c_driver dw9784_i2c_driver = {
++	.driver = {
++		.name = "dw9784",
++		.pm = &dw9784_pm_ops,
++		.of_match_table = dw9784_of_table,
++	},
++	.probe = dw9784_probe,
++	.remove = dw9784_remove,
++	.id_table = dw9784_id_table,
++};
++
++module_i2c_driver(dw9784_i2c_driver);
++
++MODULE_DESCRIPTION("DW9784 OIS/AF controller driver");
++MODULE_LICENSE("GPL");
+-- 
+2.54.0 (Apple Git-157)
+

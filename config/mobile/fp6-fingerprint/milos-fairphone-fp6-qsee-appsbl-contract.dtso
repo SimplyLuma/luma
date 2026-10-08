@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0
+/dts-v1/;
+/plugin/;
+
+/*
+ * Restore the exact bootloader-facing QSEECom contract from the FP6's QREL
+ * 16.95.0 vendor DT without changing Luma's accepted dedicated allocators.
+ *
+ * The v10 dedicated-heaps overlay intentionally moved ownership below SCM,
+ * but also omitted the inert stock qcom,qseecom node and aliases. AppsBL uses
+ * that contract to register the application region before Linux starts. The
+ * Linux transport then deliberately skips APP_REGION_NOTIFICATION when the
+ * AppsBL marker is present. Keep the accepted Luma pool nodes and add only the
+ * references and properties observed in the stock DT.
+ */
+
+&{/aliases} {
+	qseecom_mem = "/reserved-memory/qseecom-apps-pool";
+	qseecom_ta_mem = "/reserved-memory/qseecom-ta-pool";
+	qcom_qseecom = "/soc@0/qseecom@c1700000";
+};
+
+&{/soc@0} {
+	qseecom@c1700000 {
+		compatible = "qcom,qseecom";
+		memory-region = <&qseecom_apps_pool>;
+		qseecom_mem = <&qseecom_apps_pool>;
+		qseecom_ta_mem = <&qseecom_ta_pool>;
+		qcom,no-user-contig-mem-support;
+		qcom,hlos-num-ce-hw-instances = <1>;
+		qcom,hlos-ce-hw-instance = <0>;
+		qcom,qsee-ce-hw-instance = <0>;
+		qcom,disk-encrypt-pipe-pair = <2>;
+		qcom,no-clock-support;
+		qcom,appsbl-qseecom-support;
+		qcom,commonlib64-loaded-by-uefi;
+		qcom,qsee-reentrancy-support = <2>;
+	};
+};

@@ -1,0 +1,37 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Run the genuine Wkeys client and Luma's content-neutral typing surface under
+# one physical Phoc compositor. Closing the typing surface ends the comparison.
+
+set -eu
+
+root=/usr/libexec/luma-keyboard-labs/wkeys
+for path in "$root/wkeys" "$root/layout.toml" "$root/style.css" \
+  /usr/libexec/luma-keyboard-lab-entry; do
+  [ -r "$path" ] || {
+    printf 'wkeys direct client: missing path: %s\n' "$path" >&2
+    exit 1
+  }
+done
+
+rm -f /tmp/net.pithos.wkeys
+LD_LIBRARY_PATH="$root${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  "$root/wkeys" \
+    --layout "$root/layout.toml" \
+    --style "$root/style.css" \
+    --height 54 &
+wkeys_pid=$!
+
+cleanup() {
+  if kill -0 "$wkeys_pid" 2>/dev/null; then
+    LD_LIBRARY_PATH="$root${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      "$root/wkeys" --message close >/dev/null 2>&1 || \
+      kill -TERM "$wkeys_pid" 2>/dev/null || true
+    wait "$wkeys_pid" 2>/dev/null || true
+  fi
+  rm -f /tmp/net.pithos.wkeys
+}
+trap cleanup EXIT HUP INT TERM
+
+/usr/libexec/luma-keyboard-lab-entry wkeys

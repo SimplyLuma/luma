@@ -1,0 +1,59 @@
+diff --git a/src/ui/math-window.blp b/src/ui/math-window.blp
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -119,10 +119,12 @@ template $MathWindow: Adw.ApplicationWindow {
+ 
+     content: Box {
+       vexpand: true;
++      overflow: hidden;
+       orientation: vertical;
+ 
+       styles [
+         "luma-calculator-surface",
++        "luma-island",
+       ]
+ 
+       Box {
+diff --git a/src/ui/style.css b/src/ui/style.css
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -619,7 +619,7 @@ button.action-button {
+ 
+ headerbar.luma-calculator-titlebar {
+   min-height: 42px;
+-  padding: 0 8px 0 12px;
++  padding: 0;
+   background-color: @luma_window;
+   background-image: none;
+   color: @luma_ink;
+@@ -628,18 +628,12 @@ headerbar.luma-calculator-titlebar {
+ }
+ 
+ headerbar.luma-calculator-titlebar > windowhandle > box {
+-  padding-top: 0;
+-  padding-bottom: 0;
++  padding: 0 8px 0 12px;
+ }
+ 
+ .luma-calculator-surface {
+   margin: 0 9px 9px;
+-  border-radius: 10px;
+-  background-color: @luma_content;
+   color: @luma_ink;
+-  box-shadow: inset 0 0 0 1px @luma_line,
+-              0 2px 5px rgba(25, 27, 31, 0.16),
+-              0 18px 36px -16px rgba(25, 27, 31, 0.48);
+ }
+ 
+ .luma-calculator-surface .display-container {
+@@ -719,10 +713,2 @@
+ 
+-@media (prefers-color-scheme: dark) {
+-  .luma-calculator-surface {
+-    box-shadow: inset 0 0 0 1px @luma_line,
+-                0 2px 6px rgba(0, 0, 0, 0.42),
+-                0 20px 38px -15px rgba(0, 0, 0, 0.78);
+-  }
+-}
+-
+ .luma-calculator-surface .math-buttons grid.buttons button.result-button {

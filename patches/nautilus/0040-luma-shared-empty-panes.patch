@@ -1,0 +1,560 @@
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -287,7 +287,7 @@
+   icu_dep,
+   icu_i18n_dep,
+   libadwaita,
+-  luma_ui.partial_dependency(links: true, link_args: true),
++  luma_ui,
+   libportal,
+   libportal_gtk4,
+   nautilus_extension,
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -25,6 +25,7 @@
+ #define G_LOG_DOMAIN "nautilus-view"
+ 
+ #include "nautilus-files-view.h"
++#include <luma-ui.h>
+ 
+ #include <gdk/gdk.h>
+ #include <gio/gio.h>
+@@ -3615,10 +3616,20 @@
+     guint total_count = view->model != NULL
+                         ? g_list_model_get_n_items (G_LIST_MODEL (view->model))
+                         : 0;
++    guint available_count = view->model != NULL
++                            ? nautilus_view_model_get_unfiltered_root_count (view->model) : 0;
++    gboolean picker_filtered = nautilus_window_slot_get_mode (view->slot) != NAUTILUS_MODE_BROWSE
++                               && available_count > total_count;
+     guint selected_count = folder_count + non_folder_count;
+     g_autofree char *item_status =
+         g_strdup_printf (ngettext ("%'u item", "%'u items", total_count),
+                          total_count);
++    if (picker_filtered)
++    {
++        g_free (item_status);
++        item_status = g_strdup_printf (ngettext ("%'u of %'u item shown", "%'u of %'u items shown", available_count),
++                                       total_count, available_count);
++    }
+     g_autofree char *selected_status = NULL;
+     g_autofree char *status = NULL;
+ 
+@@ -3755,7 +3766,9 @@
+         nautilus_files_view_is_empty (self))
+     {
+         adw_status_page_set_child (status_page, NULL);
+-        gtk_widget_remove_css_class (self->empty_view_page, "luma-empty-folder");
++        gboolean picker = nautilus_window_slot_get_mode (self->slot) != NAUTILUS_MODE_BROWSE;
++        guint available = nautilus_view_model_get_unfiltered_root_count (self->model);
++        luma_empty_state_configure (status_page, picker);
+ 
+         if (NAUTILUS_IS_SEARCH_DIRECTORY (self->directory))
+         {
+@@ -3783,44 +3796,51 @@
+                 adw_status_page_set_child (status_page, (build_search_everywhere_button ()));
+             }
+ 
+-            adw_status_page_set_title (status_page, _("No Results Found"));
++            adw_status_page_set_title (status_page, _("No results found"));
+         }
+         else if (nautilus_is_root_for_scheme (self->location, SCHEME_TRASH))
+         {
+             adw_status_page_set_icon_name (status_page, "user-trash-symbolic");
+-            adw_status_page_set_title (status_page, _("Trash is Empty"));
++            adw_status_page_set_title (status_page, _("Trash is empty"));
+             adw_status_page_set_description (status_page, NULL);
+         }
+         else if (g_file_has_uri_scheme (self->location, SCHEME_STARRED))
+         {
+             adw_status_page_set_icon_name (status_page, "starred-symbolic");
+-            adw_status_page_set_title (status_page, _("No Starred Files"));
++            adw_status_page_set_title (status_page, _("No starred files"));
+             adw_status_page_set_description (status_page, NULL);
+         }
+         else if (g_file_has_uri_scheme (self->location, SCHEME_RECENT))
+         {
+             adw_status_page_set_icon_name (status_page, "document-open-recent-symbolic");
+-            adw_status_page_set_title (status_page, _("No Recent Files"));
++            adw_status_page_set_title (status_page, _("No recent files"));
+             adw_status_page_set_description (status_page, NULL);
+         }
+         else if (g_file_has_uri_scheme (self->location, SCHEME_APPLICATIONS))
+         {
+             adw_status_page_set_icon_name (status_page, "view-app-grid-symbolic");
+-            adw_status_page_set_title (status_page, _("No Applications Found"));
++            adw_status_page_set_title (status_page, _("No applications found"));
+             adw_status_page_set_description (status_page, NULL);
+         }
+         else if (g_file_has_uri_scheme (self->location, SCHEME_NETWORK_VIEW))
+         {
+             adw_status_page_set_icon_name (status_page, "network-computer-symbolic");
+-            adw_status_page_set_title (status_page, _("No Known Connections"));
++            adw_status_page_set_title (status_page, _("No known connections"));
+             adw_status_page_set_description (status_page, _("Enter an address to connect to a network location."));
+         }
+         else
+         {
+-            gtk_widget_add_css_class (self->empty_view_page, "luma-empty-folder");
+-            adw_status_page_set_icon_name (status_page, "prairie-folder-empty");
+-            adw_status_page_set_title (status_page, _("This folder is empty"));
+-            adw_status_page_set_description (status_page, NULL);
++            adw_status_page_set_icon_name (status_page, "folder-symbolic");
++            if (picker && available > 0)
++            {
++                adw_status_page_set_title (status_page, _("Nothing here this app can open"));
++                adw_status_page_set_description (status_page, _("Only files it understands are shown. Try another folder."));
++            }
++            else
++            {
++                adw_status_page_set_title (status_page, _("This folder is empty"));
++                adw_status_page_set_description (status_page, NULL);
++            }
+         }
+ 
+         gtk_widget_set_visible (self->empty_view_page, TRUE);
+@@ -9329,6 +9349,14 @@
+ }
+ 
+ static void
++empty_model_changed (NautilusFilesView *self)
++{
++    if (self->location == NULL || self->in_destruction) return;
++    nautilus_files_view_update_status_overlay (self);
++    schedule_update_status (self);
++}
++
++static void
+ nautilus_files_view_constructed (GObject *object)
+ {
+     G_OBJECT_CLASS (nautilus_files_view_parent_class)->constructed (object);
+@@ -9345,6 +9373,8 @@
+                              G_CONNECT_DEFAULT);
+ 
+     self->model = nautilus_view_model_new (use_single_selection);
++    g_signal_connect_object (self->model, "items-changed",
++                             G_CALLBACK (empty_model_changed), self, G_CONNECT_SWAPPED);
+     g_object_bind_property (self->slot, "filter",
+                             self->model, "filter",
+                             G_BINDING_SYNC_CREATE);
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -110,6 +110,7 @@
+     GtkWidget *scrolled;
+     GtkWidget *buttons_box;
+     GtkWidget *ancestor_overflow_button;
++    guint ancestor_update_idle;
+     GtkWidget *compact_button;
+     GtkWidget *compact_root_icon;
+     GtkWidget *compact_root_label;
+@@ -258,26 +259,44 @@
+     nautilus_file_list_free (files);
+ }
+ 
+-static void
+-on_adjustment_changed (GtkAdjustment   *adjustment,
+-                       NautilusPathBar *self)
+-{
+-    /* Automatically scroll to the end, to reveal the current folder. */
+-    GtkWidget *last = gtk_widget_get_last_child (self->buttons_box);
+-    GtkViewport *viewport;
+-
+-    viewport = GTK_VIEWPORT (gtk_scrolled_window_get_child (GTK_SCROLLED_WINDOW (self->scrolled)));
+-
+-    if (last != NULL)
+-    {
+-        gtk_viewport_scroll_to (viewport, last, NULL);
+-    }
+-
++/* Adjustment notifications can run during allocation. Update visibility in the
++ * next main-loop turn so a newly shown button is measured before allocation. */
++static gboolean
++update_ancestor_overflow_idle (gpointer data)
++{
++    NautilusPathBar *self = data;
++    GtkAdjustment *adjustment = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scrolled));
++
++    self->ancestor_update_idle = 0;
+     gtk_widget_set_visible (self->ancestor_overflow_button,
+                             !self->compact &&
+                             gtk_adjustment_get_upper (adjustment) >
+                             gtk_adjustment_get_page_size (adjustment) + 1.0);
+     rebuild_ancestor_menu (self);
++    return G_SOURCE_REMOVE;
++}
++
++static void
++on_adjustment_changed (GtkAdjustment   *adjustment,
++                       NautilusPathBar *self)
++{
++    /* Automatically scroll to the end, to reveal the current folder. */
++    GtkWidget *last = gtk_widget_get_last_child (self->buttons_box);
++    GtkViewport *viewport;
++
++    viewport = GTK_VIEWPORT (gtk_scrolled_window_get_child (GTK_SCROLLED_WINDOW (self->scrolled)));
++
++    if (last != NULL)
++    {
++        gtk_viewport_scroll_to (viewport, last, NULL);
++    }
++
++    if (self->ancestor_update_idle == 0)
++    {
++        self->ancestor_update_idle = g_idle_add_full (G_PRIORITY_DEFAULT_IDLE,
++                                                     update_ancestor_overflow_idle,
++                                                     g_object_ref (self), g_object_unref);
++    }
+ }
+ 
+ static gboolean
+--- a/src/nautilus-view-model.c
++++ b/src/nautilus-view-model.c
+@@ -758,3 +758,13 @@
+         }
+     }
+ }
++
++/* Already-enumerated, preference-visible root items before the chooser's
++ * file-type filter. No extra directory read, hidden-file leak, or tree total. */
++guint
++nautilus_view_model_get_unfiltered_root_count (NautilusViewModel *self)
++{
++    g_return_val_if_fail (NAUTILUS_IS_VIEW_MODEL (self), 0);
++    GListModel *store = gtk_filter_list_model_get_model (self->root_filter_model);
++    return store != NULL ? g_list_model_get_n_items (store) : 0;
++}
+--- a/src/nautilus-view-model.h
++++ b/src/nautilus-view-model.h
+@@ -13,6 +13,8 @@
+ G_DECLARE_FINAL_TYPE (NautilusViewModel, nautilus_view_model, NAUTILUS, VIEW_MODEL, GObject)
+ 
+ NautilusViewModel * nautilus_view_model_new (gboolean single_selection);
++
++guint nautilus_view_model_get_unfiltered_root_count (NautilusViewModel *self);
+ 
+ GtkFilter *nautilus_view_model_get_filter (NautilusViewModel *self);
+ void nautilus_view_model_set_filter (NautilusViewModel *self,
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1015,31 +1015,7 @@
+   padding-bottom: 0px;
+ }
+ 
+-/* Prairie's ordinary empty-folder state. Keep the existing AdwStatusPage and
+- * Nautilus empty-directory state machine; only its state-specific presentation
+- * changes. Other empty states retain their upstream treatment. */
+-statuspage.luma-empty-folder > scrolledwindow > viewport > box {
+-  margin: 0 12px;
+-  padding-bottom: 26px;
+-  border-spacing: 0;
+-}
+-
+-statuspage.luma-empty-folder > scrolledwindow > viewport > box > clamp > box {
+-  border-spacing: 15px;
+-}
+-
+-statuspage.luma-empty-folder > scrolledwindow > viewport > box > clamp > box > .icon {
+-  color: #ccd1d7;
+-  -gtk-icon-size: 82px;
+-  margin-bottom: 0;
+-}
+-
+-statuspage.luma-empty-folder > scrolledwindow > viewport > box > clamp > box > .title {
+-  color: #a4aab2;
+-  font-size: 14px;
+-  font-weight: 500;
+-  letter-spacing: 0.01em;
+-}
++/* Empty panes use the shared Luma native status-page adapter. */
+ .luma-files-window .nautilus-column-view .luma-column-header-icon {
+   -gtk-icon-size: 14px;
+   color: var(--accent-color);
+--- a/src/resources/ui/nautilus-file-chooser.blp
++++ b/src/resources/ui/nautilus-file-chooser.blp
+@@ -122,6 +122,7 @@
+               [top]
+               $NautilusToolbar toolbar {
+                 show-history-controls: true;
++                sidebar-button-active: bind split_view.show-sidebar bidirectional;
+                 window-slot: bind slot_container.child;
+                 show-new-folder-button: bind new_folder_button.visible;
+                 show-view-controls: bind view_controls.visible;
+@@ -149,15 +150,6 @@
+                 spacing: 8;
+                 Box {
+                   spacing: 8;
+-                  ToggleButton {
+-                    active: bind split_view.show-sidebar bidirectional;
+-                    tooltip-text: _("Show Sidebar");
+-                    icon-name: "sidebar-show-symbolic";
+-                    ShortcutController {
+-                      scope: managed;
+-                      Shortcut { trigger: "F9"; action: "activate"; }
+-                    }
+-                  }
+                   Adw.LayoutSlot { id: "filter-dropdown"; visible: bind filters_dropdown.visible; }
+                   Box { hexpand: true; }
+                   Button new_folder_button {
+@@ -222,7 +214,9 @@
+     condition ("max-width: 549sp")
+     setters {
+       split_view.collapsed: true;
++      split_view.show-sidebar: false;
+       toolbar.compact: true;
++      toolbar.show-history-controls: false;
+       files_surface.margin-start: 0;
+       toolbar.show-new-folder-button: false;
+       toolbar.show-view-controls: false;
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -16,6 +16,10 @@
+       hexpand: true;
+       spacing: 6;
+       ToggleButton compact_sidebar_button {
++            ShortcutController {
++              scope: managed;
++              Shortcut { trigger: "F9"; action: "activate"; }
++            }
+             visible: bind template.compact;
+             active: bind template.sidebar-button-active bidirectional;
+             icon-name: "sidebar-show-symbolic";
+--- a/test/automated/display/meson.build
++++ b/test/automated/display/meson.build
+@@ -8,6 +8,9 @@
+   },
+   'test-sidebar': {
+     'is_parallel' : false,
++  },
++  'test-luma-empty-picker': {
++    'is_parallel': false,
+   },
+   'test-portal-file-chooser': {
+     'is_parallel' : false,
+--- /dev/null
++++ b/test/automated/display/test-luma-empty-picker.c
+@@ -0,0 +1,164 @@
++/* SPDX-License-Identifier: GPL-3.0-or-later */
++#include <nautilus-application.h>
++#include <nautilus-file-chooser.h>
++#include <nautilus-resources.h>
++#include <nautilus-tag-manager.h>
++#include <luma-ui.h>
++#include <glib/gstdio.h>
++
++static GtkWidget *find_text(GtkWidget *widget, const char *text) {
++    if (GTK_IS_LABEL(widget) && g_strcmp0(gtk_label_get_text(GTK_LABEL(widget)), text) == 0)
++        return widget;
++    for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
++         child = gtk_widget_get_next_sibling(child)) {
++        GtkWidget *found = find_text(child, text);
++        if (found != NULL) return found;
++    }
++    return NULL;
++}
++static void settle(void) {
++    gint64 until = g_get_monotonic_time() + 150000;
++    while (g_get_monotonic_time() < until) {
++        while (g_main_context_iteration(NULL, FALSE));
++        g_usleep(1000);
++    }
++}
++static void wait_text(GtkWidget *widget, const char *text) {
++    gint64 until = g_get_monotonic_time() + 10000000;
++    while (g_get_monotonic_time() < until) {
++        settle();
++        GtkWidget *label = find_text(widget, text);
++        if (label != NULL && gtk_widget_is_visible(label)) return;
++    }
++    g_error("Expected visible picker text: %s", text);
++}
++static void capture(GtkWidget *widget, const char *name) {
++    const char *directory = g_getenv("LUMA_PICKER_CAPTURE_DIR");
++    if (directory == NULL) return;
++    g_autoptr(GdkPaintable) paintable = gtk_widget_paintable_new(widget);
++    GtkSnapshot *snapshot = gtk_snapshot_new();
++    gdk_paintable_snapshot(paintable, GDK_SNAPSHOT(snapshot),
++                          gtk_widget_get_width(widget), gtk_widget_get_height(widget));
++    GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
++    g_assert_nonnull(node);
++    GskRenderer *renderer = gtk_native_get_renderer(GTK_NATIVE(widget));
++    g_autoptr(GdkTexture) texture = gsk_renderer_render_texture(renderer, node, NULL);
++    g_autofree char *path = g_build_filename(directory, name, NULL);
++    g_assert_true(gdk_texture_save_to_png(texture, path));
++    gsk_render_node_unref(node);
++}
++static void accepted(NautilusFileChooser *chooser, GList *locations,
++                     GtkFileFilter *filter, GFile **result) {
++    g_assert_cmpuint(g_list_length(locations), ==, 1);
++    *result = g_object_ref(locations->data);
++}
++int main(int argc, char **argv) {
++    g_test_init(&argc, &argv, NULL);
++    if (!gtk_init_check()) return 77;
++    const char *icon_theme = g_getenv("LUMA_PICKER_ICON_THEME");
++    if (icon_theme != NULL)
++        g_object_set(gtk_settings_get_default(), "gtk-icon-theme-name", icon_theme, NULL);
++    nautilus_register_resource();
++    g_autoptr(NautilusTagManager) tags = nautilus_tag_manager_new_dummy();
++    g_autoptr(GApplication) app = G_APPLICATION(nautilus_application_new());
++    g_application_hold(app);
++    g_assert_true(g_application_register(app, NULL, NULL));
++    g_autofree char *root = g_dir_make_tmp("luma-picker-XXXXXX", NULL);
++    g_assert_nonnull(root);
++    g_autofree char *empty = g_build_filename(root, "empty", NULL);
++    g_autofree char *filtered = g_build_filename(root, "filtered", NULL);
++    g_assert_cmpint(g_mkdir(empty, 0700), ==, 0);
++    g_assert_cmpint(g_mkdir(filtered, 0700), ==, 0);
++    for (int n = 0; n < 4; n++) {
++        g_autofree char *name = g_strdup_printf("file%d.txt", n);
++        g_autofree char *path = g_build_filename(filtered, name, NULL);
++        g_assert_true(g_file_set_contents(path, "fixture", -1, NULL));
++    }
++    const int widths[] = {360, 500, 1024, 1440};
++    for (int dark = 0; dark < 2; dark++) {
++        adw_style_manager_set_color_scheme(adw_style_manager_get_default(),
++            dark ? ADW_COLOR_SCHEME_FORCE_DARK : ADW_COLOR_SCHEME_FORCE_LIGHT);
++        for (int save = 0; save < 2; save++) {
++            for (guint n = 0; n < G_N_ELEMENTS(widths); n++) {
++                NautilusFileChooser *chooser = nautilus_file_chooser_new(save ? NAUTILUS_MODE_SAVE_FILE : NAUTILUS_MODE_OPEN_FILE);
++                GtkWidget *window = GTK_WIDGET(chooser);
++                gtk_window_set_application(GTK_WINDOW(window), GTK_APPLICATION(app));
++                gtk_window_set_title(GTK_WINDOW(window), save ? "Save image" : "Open image");
++                gtk_window_set_default_size(GTK_WINDOW(window), widths[n], 560);
++                g_autoptr(GFile) folder = g_file_new_for_path(empty);
++                nautilus_file_chooser_set_starting_location(chooser, folder);
++                if (save) nautilus_file_chooser_set_suggested_name(chooser, "result.png");
++                gtk_window_present(GTK_WINDOW(window));
++                wait_text(window, "This folder is empty");
++                wait_text(window, "0 items");
++                /* Exercise resize after native initial geometry restoration. */
++                gtk_window_set_default_size(GTK_WINDOW(window), widths[n], 560);
++                settle();
++                g_assert_cmpint(gtk_widget_get_width(window), >=, widths[n] - 16);
++                g_assert_cmpint(gtk_widget_get_width(window), <=, widths[n]);
++                if (n == 0 || n == 2) {
++                    g_autofree char *name = g_strdup_printf("%s-empty-%s-%d.png", save ? "save" : "open", dark ? "dark" : "light", widths[n]);
++                    capture(window, name);
++                }
++                if (save && n == 2) {
++                    GFile *result = NULL;
++                    g_signal_connect(chooser, "accepted", G_CALLBACK(accepted), &result);
++                    g_assert_true(gtk_widget_activate_action(window, "chooser.accept", NULL));
++                    settle();
++                    g_assert_nonnull(result);
++                    g_autofree char *name = g_file_get_basename(result);
++                    g_assert_cmpstr(name, ==, "result.png");
++                    g_assert_false(g_file_query_exists(result, NULL));
++                    g_object_unref(result);
++                }
++                gtk_window_destroy(GTK_WINDOW(window));
++            }
++        }
++    }
++    NautilusFileChooser *chooser = nautilus_file_chooser_new(NAUTILUS_MODE_OPEN_FILE);
++    gtk_window_set_application(GTK_WINDOW(chooser), GTK_APPLICATION(app));
++    g_autoptr(GListStore) filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
++    g_autoptr(GtkFileFilter) png = gtk_file_filter_new();
++    gtk_file_filter_set_name(png, "PNG images");
++    gtk_file_filter_add_pattern(png, "*.png");
++    g_list_store_append(filters, png);
++    g_autoptr(GtkFileFilter) all = gtk_file_filter_new();
++    gtk_file_filter_set_name(all, "All files");
++    gtk_file_filter_add_pattern(all, "*");
++    g_list_store_append(filters, all);
++    nautilus_file_chooser_set_filters(chooser, G_LIST_MODEL(filters));
++    g_autoptr(GFile) folder = g_file_new_for_path(filtered);
++    nautilus_file_chooser_set_starting_location(chooser, folder);
++    gtk_window_present(GTK_WINDOW(chooser));
++    wait_text(GTK_WIDGET(chooser), "Nothing here this app can open");
++    wait_text(GTK_WIDGET(chooser), "0 of 4 items shown");
++    capture(GTK_WIDGET(chooser), "open-filtered-dark.png");
++    nautilus_file_chooser_set_current_filter(chooser, 1);
++    wait_text(GTK_WIDGET(chooser), "4 items");
++    GtkWidget *title = find_text(GTK_WIDGET(chooser), "Nothing here this app can open");
++    g_assert_true(title == NULL || !gtk_widget_is_visible(title));
++    nautilus_file_chooser_set_current_filter(chooser, 0);
++    wait_text(GTK_WIDGET(chooser), "0 of 4 items shown");
++    g_assert_true(gtk_widget_activate_action(GTK_WIDGET(chooser), "window.close", NULL));
++    settle();
++    for (int n = 0; n < 4; n++) {
++        g_autofree char *name = g_strdup_printf("file%d.txt", n);
++        g_autofree char *path = g_build_filename(filtered, name, NULL);
++        g_assert_cmpint(g_unlink(path), ==, 0);
++    }
++    g_autoptr(GFile) browse_folder = g_file_new_for_path(empty);
++    GFile *locations[] = {browse_folder};
++    g_application_open(app, locations, 1, "");
++    settle();
++    GtkWindow *filer = gtk_application_get_active_window(GTK_APPLICATION(app));
++    g_assert_nonnull(filer);
++    wait_text(GTK_WIDGET(filer), "This folder is empty");
++    wait_text(GTK_WIDGET(filer), "0 items");
++    capture(GTK_WIDGET(filer), "filer-empty-dark.png");
++    gtk_window_destroy(filer);
++    g_assert_cmpint(g_rmdir(filtered), ==, 0);
++    g_assert_cmpint(g_rmdir(empty), ==, 0);
++    g_assert_cmpint(g_rmdir(root), ==, 0);
++    g_application_quit(app);
++    return 0;
++}
+--- a/test/automated/display/test-portal-file-chooser.c
++++ b/test/automated/display/test-portal-file-chooser.c
+@@ -21,7 +21,7 @@
+ #define BUS_NAME APPLICATION_ID
+ #define PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
+ #define PORTAL_INTERFACE "org.freedesktop.impl.portal.FileChooser"
+-#define DBUS_DELAY_MS 2500
++#define DBUS_DELAY_MS 30000
+ 
+ typedef struct
+ {
+@@ -161,17 +161,33 @@
+ 
+ static guint accept_source_id;
+ 
+-static void
++/* Readiness, rather than a fixed animation delay, is the test boundary.
++ * A cold virtualized builder can still be loading/validating after 250ms. */
++static GtkWidget *
++find_accept_button (GtkWidget *widget)
++{
++    if (GTK_IS_BUTTON (widget) &&
++        g_strcmp0 (gtk_actionable_get_action_name (GTK_ACTIONABLE (widget)), "chooser.accept") == 0)
++        return widget;
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child != NULL;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkWidget *found = find_accept_button (child);
++        if (found != NULL) return found;
++    }
++    return NULL;
++}
++
++static gboolean
+ trigger_accept_action (gpointer user_data)
+ {
+     NautilusFileChooser *self = NAUTILUS_FILE_CHOOSER (user_data);
+-
++    GtkWidget *button = find_accept_button (GTK_WIDGET (self));
++    if (button == NULL || !gtk_widget_is_sensitive (button))
++        return G_SOURCE_CONTINUE;
+     accept_source_id = 0;
+-
+-    gtk_test_widget_wait_for_draw (GTK_WIDGET (self));
+-
+-    /* Simulate clicking the accept button to complete the portal request */
+     gtk_widget_activate_action (GTK_WIDGET (self), "chooser.accept", NULL);
++    return G_SOURCE_REMOVE;
+ }
+ 
+ static void
+@@ -187,7 +203,8 @@
+ 
+     gtk_test_widget_wait_for_draw (GTK_WIDGET (self));
+ 
+-    accept_source_id = g_timeout_add_once (250, trigger_accept_action, self);
++    accept_source_id = g_timeout_add_full (G_PRIORITY_DEFAULT, 250, trigger_accept_action,
++                                           g_object_ref (self), g_object_unref);
+ }
+ 
+ static void

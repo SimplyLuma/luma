@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+set -eu
+
+if [ "$#" -lt 1 ]; then
+  exit 0
+fi
+
+normal_directory=$1
+
+# snapd writes one authoritative mount unit per installed revision into /etc.
+# rpm-ostree preserves those units but can omit their generated enablement
+# symlinks while merging /etc into a new deployment.  Materialize the dynamic
+# dependency in /run at every systemd generator pass; snapd remains the owner
+# of the unit, mount, revision, and removal lifecycle.
+for unit in /etc/systemd/system/var-lib-snapd-snap-*.mount; do
+  [ -f "$unit" ] || continue
+  unit_name=${unit##*/}
+  for target in snapd.mounts.target multi-user.target; do
+    wants_directory="$normal_directory/$target.wants"
+    destination="$wants_directory/$unit_name"
+    mkdir -p "$wants_directory"
+    [ -e "$destination" ] || [ -L "$destination" ] || ln -s "$unit" "$destination"
+  done
+done

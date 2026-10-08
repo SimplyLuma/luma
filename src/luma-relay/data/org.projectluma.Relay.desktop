@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Relay
+GenericName=Application Compatibility
+Comment=Manage Windows and Android applications
+Exec=luma-relay-settings
+Icon=org.projectluma.Relay
+Terminal=false
+Type=Application
+NoDisplay=true
+Categories=Settings;
+Keywords=Windows;Android;Wine;Compatibility;Applications;
+StartupNotify=true
+X-Purism-FormFactor=Workstation;Mobile;

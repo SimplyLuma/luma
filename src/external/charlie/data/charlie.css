@@ -1,0 +1,92 @@
+/* SPDX-License-Identifier: Apache-2.0
+ * Charlie's layout only (simulator v71). Every part's look is LumaUI's: the
+ * rows, bubbles, bars, islands, panels and the details pane. What is here
+ * places Charlie's own surfaces (the mail row's lines, the thread's columns,
+ * the floating subject and corner) on v71's spacing.
+ */
+
+/* The list child owns its 12/8 layout spacing; the shared Island keeps its full surface bounds. */
+.charlie-list-head { margin: 0 4px; }
+.charlie-rows { margin-top: 8px; }
+.charlie-row-line { padding: 10px 10px 11px 10px; }
+.charlie-row.sub .charlie-row-line { padding-left: 26px; }
+.charlie-row-text { margin-left: 12px; }
+.charlie-row-first > * + *,
+.charlie-row-second > * + * { margin-left: 6px; }
+.charlie-row-text > * + * { margin-top: 1px; }
+.charlie-row-dot { min-width: 8px; min-height: 8px; border-radius: 999px; background: @luma_accent; }
+.charlie-list-foot { padding: 8px 10px 10px 10px; margin: 8px -8px 0 -8px; border-top: 1px solid @luma_line; }
+.charlie-empty { margin: 24px 12px; }
+/* A phone: the list under its title island, rows on the 16 gutter (v71 .crside::before 46, padding 8 + 4) */
+.charlie-list-content.phone { padding: 108px 12px 0 12px; }
+.charlie-list-content.phone .charlie-rows { margin-top: 0; }
+
+.charlie-account-heading { padding: 12px 4px 4px 20px; }
+
+/* The thread (v71 .crpad 84 28 112; .crmsg 12 apart; a face column 10 from the bubble) */
+.charlie-thread { padding: 84px 28px 112px 28px; }
+.charlie-thread.phone { padding: 108px 16px 24px 16px; }
+.charlie-day { margin: 26px 0 8px 0; }
+.charlie-message { margin: 12px 0; }
+.charlie-message .charlie-face { margin-right: 10px; }
+.charlie-thread.phone .charlie-message .charlie-face { margin-right: 8px; }
+.charlie-column > * + * { margin-top: 6px; }
+.charlie-meta { padding: 0 6px; }
+.charlie-meta > * + * { margin-left: 8px; }
+.charlie-text > * + * { margin-top: 6px; }
+.charlie-signature { margin-top: 12px; padding-top: 9px; border-top: 1px solid @luma_line; }
+.charlie-files > * + * { margin-top: 8px; }
+.charlie-photos { border-radius: 18px; }
+.charlie-photos > * { margin: 0 3px 3px 0; padding: 0; }
+.charlie-html-privacy { padding: 6px 4px 2px 6px; }
+
+/* What floats over the thread on a computer (v71 .crhead: 16 in) */
+.charlie-subject { margin: 16px 0 0 16px; }
+.charlie-corner { margin: 0; }
+
+/* Information, grown from a phone's title island (v71 .crislp 8 10 12) */
+.charlie-info { padding: 8px 10px 12px 10px; }
+.charlie-info-rule { margin: 6px 0; }
+
+/* Designed mail on its paper (v71 .crpaper) */
+.charlie-html-preview { min-width: 0; }
+.charlie-html-preview-frame { min-width: 0; }
+
+.charlie-account-list { background: transparent; padding: 6px; }
+.charlie-account-list row { margin-bottom: 3px; border-radius: 10px; background: @luma_fill; }
+.charlie-account-page { min-width: 0; }
+.charlie-provider-list {
+  padding: 4px; border: 1px solid @luma_line; border-radius: 14px;
+  background: @luma_fill;
+}
+.charlie-provider-list row.charlie-provider-row {
+  min-height: 52px; margin: 1px 0; padding: 3px 9px; border-radius: 10px;
+}
+.charlie-provider-list .luma-navigation-icon {
+  min-width: 32px; min-height: 32px; border-radius: 10px;
+}
+.charlie-provider-summary {
+  padding: 10px 12px; border: 1px solid @luma_line; border-radius: 14px;
+  background: @luma_fill;
+}
+.charlie-account-card {
+  padding: 4px; border: 1px solid @luma_line; border-radius: 14px;
+  background: @luma_fill;
+}
+.charlie-account-field {
+  min-height: 42px; padding: 3px 8px; border-radius: 10px;
+}
+.charlie-account-field:hover { background: @luma_hover; }
+.charlie-account-field .charlie-form-label { min-width: 104px; }
+.charlie-account-form entry { min-height: 30px; }
+.charlie-account-copy { color: @luma_ink; font-size: 13px; }
+.charlie-disclosure {
+  min-height: 30px; padding: 0 8px; border: 0; box-shadow: none;
+  background: transparent; color: @luma_ink;
+}
+.charlie-disclosure:hover { background: @luma_hover; }
+.charlie-form-label { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.charlie-account-form .error { color: @error_color; }
+@media (prefers-reduced-motion: reduce) {
+  .charlie-window * { transition-duration: 0ms; animation-duration: 0ms; }
+}

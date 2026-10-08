@@ -1,0 +1,92 @@
+diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
+index 7974aa6..c882acb 100644
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -777,7 +777,11 @@ static int hwc_open(const struct hw_module_t* module, const char* name,
+         pdev->should_compose = false;
+     }
+ 
+-    if (!property_get_bool("persist.waydroid.cursor_on_subsurface", false)) {
++    const std::string luma_device_class =
++            property_get_string("persist.luma.device_class", "desktop");
++    if (luma_device_class != "handheld") {
++        pdev->display->cursor_handler.reset(new host_pointer_cursor_handler());
++    } else if (!property_get_bool("persist.waydroid.cursor_on_subsurface", false)) {
+         pdev->display->cursor_handler.reset(new wl_cursor_cursor_handler(pdev));
+     } else {
+         pdev->display->cursor_handler.reset(new subsurface_cursor_handler());
+@@ -829,6 +833,26 @@ std::unique_ptr<buffer> cursor_handler::create_buffer(waydroid_hwc_composer_devi
+     return pdev->gralloc_handler.create_buffer(pdev->display, metadata, hwc_layer->handle);
+ };
+ 
++int host_pointer_cursor_handler::apply_cursor(
++        waydroid_hwc_composer_device_1*, hwc_layer_1* hwc_layer, size_t) {
++    // The layer is intentionally not imported: Mutter continues presenting
++    // its host cursor. Complete Android's fence ownership exactly as the
++    // existing no-pointer path does so SurfaceFlinger cannot stall.
++    hwc_layer->releaseFenceFd = -1;
++    if (hwc_layer->acquireFenceFd != -1) {
++        close(hwc_layer->acquireFenceFd);
++    }
++    return 0;
++}
++
++int host_pointer_cursor_handler::reset_cursor(waydroid_hwc_composer_device_1*) {
++    return 0;
++}
++
++int host_pointer_cursor_handler::on_cursor_enter(display*) {
++    return 0;
++}
++
+ void subsurface_cursor_handler::clear_previous_subsurface_if_needed(waydroid_hwc_composer_device_1 *pdev) {
+     /* If should_compose is set, remaining subsurface are cleared in post_processing.
+      * In this case we can skip it here */
+diff --git a/hwcomposer/hwcomposer.h b/hwcomposer/hwcomposer.h
+index b147f38..ee2455c 100644
+--- a/hwcomposer/hwcomposer.h
++++ b/hwcomposer/hwcomposer.h
+@@ -59,6 +59,19 @@ class wl_cursor_cursor_handler : public cursor_handler {
+     int on_cursor_enter(display *display) override;
+ };
+ 
++// Desktop and tablet sessions already have an authoritative compositor cursor.
++// Consuming Android's cursor layer without assigning it a Wayland cursor role
++// keeps the pointer at the host theme's normal size and avoids a visible cursor
++// swap at the application boundary.
++class host_pointer_cursor_handler : public cursor_handler {
++  public:
++    int apply_cursor(waydroid_hwc_composer_device_1 *pdev,
++                     hwc_layer_1 *hwc_layer,
++                     size_t hwc_layer_index) override;
++    int reset_cursor(waydroid_hwc_composer_device_1 *pdev) override;
++    int on_cursor_enter(display *display) override;
++};
++
+ struct waydroid_hwc_composer_device_1 : hwc_composer_device_1_t {
+     const hwc_procs_t *procs;        // constant after init
+     pthread_t vsync_thread;          // constant after init
+diff --git a/hwcomposer/prairie-titlebar.cpp b/hwcomposer/prairie-titlebar.cpp
+index a76d14e..632a961 100644
+--- a/hwcomposer/prairie-titlebar.cpp
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -439,10 +439,16 @@ void redraw_shadow(window& window) {
+                 static_cast<float>(frame_height + kShadowOffsetY),
+                 static_cast<float>(kWindowRadius));
+             const float outside = std::max(0.0f, shadow_distance);
++            // GTK's box-shadow is a Gaussian convolution of the complete
++            // window silhouette. At the geometric edge only half of the
++            // kernel covers the shape. The former point-sampled Gaussian was
++            // at full opacity there, producing a dark seam even though its
++            // nominal color and sigma matched Prairie's shared token.
++            constexpr float sqrt_two = 1.41421356237f;
++            const float shadow_coverage = 0.5f * std::erfc(
++                outside / (sqrt_two * kShadowSigma));
+             const uint32_t shadow_alpha = static_cast<uint32_t>(std::round(
+-                255.0f * kShadowOpacity *
+-                std::exp(-0.5f * outside * outside /
+-                         (kShadowSigma * kShadowSigma))));
++                255.0f * kShadowOpacity * shadow_coverage));
+             if (shadow_alpha != 0)
+                 pixels[y * width + x] =
+                     premultiplied(0x001e293b, shadow_alpha);

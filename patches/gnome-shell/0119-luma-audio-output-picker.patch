@@ -1,0 +1,678 @@
+From: Project Luma
+Subject: [PATCH] luma: AirPlay picker and unchosen network outputs in Sound Output
+
+The Sound Output detail in Quick Settings gains an "AirPlay Speakers" row.
+Expanding it asks luma-audio-devices (org.projectluma.AudioDevices1, package
+luma-audio-policy) to look for receivers, and collapsing it, closing the
+detail or closing Quick Settings stops the search. Choosing a receiver
+connects it without closing the picker; a receiver with a password opens a
+dialog modelled on the Wi-Fi password dialog, and other failures stay on the
+row ("Owner Only", "Not Responding"). Remembered AirPlay outputs are listed
+with the network speaker icon; outputs created by PipeWire's own discovery
+modules (raop_sink., tunnel., rtp_session., snapcast) and any the service
+reports in HiddenOutputs are left out unless one is the current output.
+Without the service, the row is hidden and the menu behaves as before.
+
+Rebased onto the series through 0118 (release .81); the stylesheet rules land after the Quick Options detail rules, ahead of the notification rules added by 0116.
+---
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index c20a75a..c046f8e 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4148,6 +4148,32 @@ StScrollBar {
+     .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level StLabel {
+       font-size: 12px;
+       color: #969da4; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-item:open {
++    background-color: rgba(255, 255, 255, 0.12); }
++  .quick-toggle-menu.luma-quick-detail .popup-sub-menu {
++    margin: 4px 0 2px;
++    padding: 4px;
++    border: 0;
++    border-radius: 10px;
++    background-color: rgba(255, 255, 255, 0.072); }
++    .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item {
++      padding: 8px 10px;
++      border-radius: 8px;
++      background-color: transparent; }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:hover, .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:focus, .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:selected {
++        background-color: rgba(255, 255, 255, 0.12); }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:insensitive {
++        background-color: transparent !important;
++        color: #969da4; }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:last-child {
++        border-radius: 8px; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-status {
++    font-size: 11px;
++    font-weight: 500;
++    color: #969da4; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-placeholder {
++    font-size: 12px;
++    color: #969da4; }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 46c9dbc..d599542 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4418,6 +4418,32 @@ StScrollBar {
+     .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level StLabel {
+       font-size: 12px;
+       color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-item:open {
++    background-color: rgba(255, 255, 255, 0.12); }
++  .quick-toggle-menu.luma-quick-detail .popup-sub-menu {
++    margin: 4px 0 2px;
++    padding: 4px;
++    border: 0;
++    border-radius: 10px;
++    background-color: rgba(255, 255, 255, 0.072); }
++    .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item {
++      padding: 8px 10px;
++      border-radius: 8px;
++      background-color: transparent; }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:hover, .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:focus, .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:selected {
++        background-color: rgba(255, 255, 255, 0.12); }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:insensitive {
++        background-color: transparent !important;
++        color: #e9ebec; }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:last-child {
++        border-radius: 8px; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-status {
++    font-size: 11px;
++    font-weight: 500;
++    color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-placeholder {
++    font-size: 12px;
++    color: #e9ebec; }
+ 
+ /* Luma compact context menus; preserve high-contrast system colors. */
+ .popup-menu-content, .background-menu .popup-menu-content { min-width: 204px; padding: 7px; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 079a805..74f4a03 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4336,6 +4336,32 @@ StScrollBar {
+     .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level StLabel {
+       font-size: 12px;
+       color: #767b81; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-item:open {
++    background-color: rgba(35, 44, 52, 0.115); }
++  .quick-toggle-menu.luma-quick-detail .popup-sub-menu {
++    margin: 4px 0 2px;
++    padding: 4px;
++    border: 0;
++    border-radius: 10px;
++    background-color: rgba(35, 44, 52, 0.072); }
++    .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item {
++      padding: 8px 10px;
++      border-radius: 8px;
++      background-color: transparent; }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:hover, .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:focus, .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:selected {
++        background-color: rgba(35, 44, 52, 0.115); }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:insensitive {
++        background-color: transparent !important;
++        color: #767b81; }
++      .quick-toggle-menu.luma-quick-detail .popup-sub-menu .popup-menu-item:last-child {
++        border-radius: 8px; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-status {
++    font-size: 11px;
++    font-weight: 500;
++    color: #767b81; }
++  .quick-toggle-menu.luma-quick-detail .luma-airplay-placeholder {
++    font-size: 12px;
++    color: #767b81; }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+diff --git a/data/theme/gnome-shell-sass/widgets/_quick-options.scss b/data/theme/gnome-shell-sass/widgets/_quick-options.scss
+index d49ce33..662a0f1 100644
+--- a/data/theme/gnome-shell-sass/widgets/_quick-options.scss
++++ b/data/theme/gnome-shell-sass/widgets/_quick-options.scss
+@@ -164,4 +164,19 @@ $q-state-line: if($variant == 'light', rgba(35,44,52,.18), rgba(255,255,255,.17)
+     }
+     StLabel { font-size: 12px; color: $q-muted; }
+   }
++  // AirPlay picker (luma-audio-policy): receivers sit in an inset list under
++  // their row, with a quiet state at the trailing edge.
++  .luma-airplay-item:open { background-color: $q-hover; }
++  .popup-sub-menu {
++    margin: 4px 0 2px; padding: 4px; border: 0; border-radius: 10px;
++    background-color: $q-control;
++    .popup-menu-item {
++      padding: 8px 10px; border-radius: 8px; background-color: transparent;
++      &:hover, &:focus, &:selected { background-color: $q-hover; }
++      &:insensitive { background-color: transparent !important; color: $q-muted; }
++      &:last-child { border-radius: 8px; }
++    }
++  }
++  .luma-airplay-status { font-size: 11px; font-weight: 500; color: $q-muted; }
++  .luma-airplay-placeholder { font-size: 12px; color: $q-muted; }
+ }
+diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
+index cc137b9..1418eed 100644
+--- a/js/ui/status/volume.js
++++ b/js/ui/status/volume.js
+@@ -3,15 +3,415 @@ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Gvc from 'gi://Gvc';
++import Pango from 'gi://Pango';
++import St from 'gi://St';
+ 
++import * as Dialog from '../dialog.js';
+ import * as Main from '../main.js';
++import * as ModalDialog from '../modalDialog.js';
+ import * as PopupMenu from '../popupMenu.js';
++import * as ShellEntry from '../shellEntry.js';
+ 
+ import {QuickSlider, SystemIndicator} from '../quickSettings.js';
+ 
+ const ALLOW_AMPLIFIED_VOLUME_KEY = 'allow-volume-above-100-percent';
+ const UNMUTE_DEFAULT_VOLUME = 0.25;
+ 
++// Luma sound output devices (luma-audio-policy). The service owns AirPlay
++// discovery and the new-device prompts; the menu only shows and chooses.
++const AUDIO_DEVICES_BUS_NAME = 'org.projectluma.AudioDevices';
++const AUDIO_DEVICES_OBJECT_PATH = '/org/projectluma/AudioDevices';
++const AUDIO_DEVICES_ERROR = 'org.projectluma.AudioDevices1.Error.';
++const AudioDevicesProxy = Gio.DBusProxy.makeProxyWrapper(`<node>
++  <interface name="org.projectluma.AudioDevices1">
++    <property name="AirPlayAvailable" type="b" access="read"/>
++    <property name="AirPlayBrowsing" type="b" access="read"/>
++    <property name="HiddenOutputs" type="as" access="read"/>
++    <method name="StartAirPlayBrowsing"/>
++    <method name="StopAirPlayBrowsing"/>
++    <method name="GetAirPlayReceivers">
++      <arg name="receivers" type="aa{sv}" direction="out"/>
++    </method>
++    <method name="ConnectAirPlayReceiver">
++      <arg name="id" type="s" direction="in"/>
++      <arg name="password" type="s" direction="in"/>
++    </method>
++    <signal name="AirPlayReceiversChanged"/>
++  </interface>
++</node>`);
++
++// Outputs PipeWire's discovery modules create on their own. Nobody chose
++// them, so they are left out of the menu unless one is already in use.
++const DISCOVERED_NETWORK_OUTPUT_PREFIXES = ['raop_sink.', 'tunnel.', 'rtp_session.', 'snapcast'];
++const AIRPLAY_OUTPUT_PREFIX = 'luma_airplay.';
++const NETWORK_SPEAKER_ICON = 'luma-network-speaker-symbolic';
++// The service stops looking after three minutes; renew well before that.
++const AIRPLAY_BROWSE_RENEW_SECONDS = 150;
++const AIRPLAY_NOTHING_FOUND_SECONDS = 8;
++
++const AIRPLAY_RECEIVER_ICONS = {
++    computer: 'computer-symbolic',
++    tv: 'video-display-symbolic',
++    speaker: 'audio-speakers-symbolic',
++};
++
++let _audioDevices;
++
++/**
++ * @returns {Gio.DBusProxy} - the org.projectluma.AudioDevices1 proxy singleton
++ */
++function getAudioDevices() {
++    if (!_audioDevices) {
++        _audioDevices = new AudioDevicesProxy(Gio.DBus.session,
++            AUDIO_DEVICES_BUS_NAME, AUDIO_DEVICES_OBJECT_PATH,
++            (proxy, error) => {
++                if (error)
++                    console.debug(`Luma audio devices: ${error.message}`);
++            }, null, Gio.DBusProxyFlags.DO_NOT_AUTO_START_AT_CONSTRUCTION);
++    }
++    return _audioDevices;
++}
++
++/**
++ * @param {string} name - a sink's node name
++ * @param {string[]} hidden - node names the service asks menus to leave out
++ * @returns {boolean}
++ */
++function isHiddenOutputName(name, hidden) {
++    if (!name || name.startsWith(AIRPLAY_OUTPUT_PREFIX))
++        return false;
++    return hidden.includes(name) ||
++        DISCOVERED_NETWORK_OUTPUT_PREFIXES.some(prefix => name.startsWith(prefix));
++}
++
++/**
++ * A short state for a receiver row; the full sentence is its accessible
++ * description and the connection error the person sees in a dialog.
++ *
++ * @param {object} receiver - an entry from GetAirPlayReceivers
++ * @returns {string}
++ */
++function airPlayStatus(receiver) {
++    switch (receiver.state) {
++    case 'connecting':
++        return _('Connecting…');
++    case 'unavailable':
++        return _('Not Nearby');
++    }
++    if (!receiver.supported)
++        return _('Not Supported');
++    switch (receiver.error) {
++    case 'password-required':
++    case 'password-incorrect':
++        return _('Password');
++    case 'denied':
++        return _('Owner Only');
++    case 'unreachable':
++    case 'failed':
++        return _('Not Responding');
++    case 'unsupported':
++        return _('Not Supported');
++    }
++    return '';
++}
++
++const AirPlayPasswordDialog = GObject.registerClass(
++class AirPlayPasswordDialog extends ModalDialog.ModalDialog {
++    _init(receiver, connect) {
++        super._init({styleClass: 'prompt-dialog luma-airplay-password-dialog'});
++
++        this._receiver = receiver;
++        this._connect = connect;
++
++        const content = new Dialog.MessageDialogContent({
++            title: _('AirPlay Password'),
++            description: _('Enter the password for “%s”.').format(receiver.name),
++        });
++
++        this._entry = new St.PasswordEntry({
++            style_class: 'prompt-dialog-password-entry',
++            hint_text: _('Password'),
++            can_focus: true,
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        ShellEntry.addContextMenu(this._entry);
++        this._entry.clutter_text.connect('activate', () => this._onConnect());
++        this._entry.clutter_text.connect('text-changed', () => {
++            this._showError('');
++            this._syncConnectButton();
++        });
++        content.add_child(this._entry);
++
++        content.add_child(new ShellEntry.CapsLockWarning());
++
++        this._errorLabel = new St.Label({
++            style_class: 'prompt-dialog-error-label',
++            x_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._errorLabel.clutter_text.line_wrap = true;
++        this._errorLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++        content.add_child(this._errorLabel);
++
++        this.contentLayout.add_child(content);
++
++        this._connectButton = {
++            label: _('Connect'),
++            action: () => this._onConnect(),
++            default: true,
++        };
++        this.setButtons([{
++            label: _('Cancel'),
++            action: () => this.close(),
++            key: Clutter.KEY_Escape,
++        }, this._connectButton]);
++        this.setInitialKeyFocus(this._entry);
++        this._syncConnectButton();
++    }
++
++    _showError(text) {
++        this._errorLabel.text = text;
++        this._errorLabel.visible = text !== '';
++    }
++
++    _syncConnectButton() {
++        const ready = this._entry.get_text().length > 0 && !this._busy;
++        this._connectButton.button.reactive = ready;
++        this._connectButton.button.can_focus = ready;
++    }
++
++    async _onConnect() {
++        if (this._busy || this._entry.get_text().length === 0)
++            return;
++        this._busy = true;
++        this._entry.reactive = false;
++        this._syncConnectButton();
++        this._showError('');
++        try {
++            await this._connect(this._entry.get_text());
++            this.close();
++        } catch (error) {
++            this._showError(error.message);
++            this._entry.reactive = true;
++            this._entry.clutter_text.set_selection(0, -1);
++            this._entry.grab_key_focus();
++        } finally {
++            this._busy = false;
++            this._syncConnectButton();
++        }
++    }
++});
++
++const AirPlayMenuItem = GObject.registerClass({
++    Signals: {'availability-changed': {}},
++}, class AirPlayMenuItem extends PopupMenu.PopupSubMenuMenuItem {
++    _init(control) {
++        super._init(_('AirPlay Speakers'), true);
++        this.add_style_class_name('luma-airplay-item');
++        this.icon.icon_name = NETWORK_SPEAKER_ICON;
++
++        this._control = control;
++        this._receivers = [];
++        this._busy = new Set();
++        this._browsing = false;
++        this._searchedLongEnough = false;
++        this._renewId = 0;
++        this._nothingFoundId = 0;
++
++        this._placeholder = new PopupMenu.PopupMenuItem('', {
++            reactive: false,
++            style_class: 'luma-airplay-placeholder',
++        });
++        this.menu.addMenuItem(this._placeholder);
++        this._receiverSection = new PopupMenu.PopupMenuSection();
++        this.menu.addMenuItem(this._receiverSection);
++
++        this.menu.connect('open-state-changed', (menu, open) => {
++            if (open)
++                this._startBrowsing();
++            else
++                this._stopBrowsing();
++        });
++
++        this._proxy = getAudioDevices();
++        this._proxy.connectObject(
++            'notify::g-name-owner', () => this._sync(),
++            'g-properties-changed', () => this._sync(),
++            this);
++        this._receiversChangedId = this._proxy.connectSignal(
++            'AirPlayReceiversChanged', () => this._refresh());
++        this._control.connectObject('default-sink-changed', () => this._render(), this);
++
++        this.connect('destroy', () => {
++            this._stopBrowsing();
++            this._proxy.disconnectSignal(this._receiversChangedId);
++            this._proxy.disconnectObject(this);
++        });
++        this._sync();
++    }
++
++    get available() {
++        return this._proxy.g_name_owner !== null;
++    }
++
++    _sync() {
++        this.visible = this.available;
++        this.emit('availability-changed');
++        if (!this.available)
++            this.menu.close(false);
++        this._render();
++    }
++
++    async _startBrowsing() {
++        if (this._browsing)
++            return;
++        this._browsing = true;
++        // Neither the sound detail nor Quick Settings closes an open submenu
++        // when it closes itself; stop looking the moment either goes away.
++        for (const menu of new Set([this._getTopMenu(), Main.panel.statusArea.quickSettings?.menu])) {
++            menu?.connectObject('open-state-changed', (m, open) => {
++                if (!open)
++                    this.menu.close(false);
++            }, this);
++        }
++        this._searchedLongEnough = false;
++        this._render();
++        this._nothingFoundId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT,
++            AIRPLAY_NOTHING_FOUND_SECONDS, () => {
++                this._nothingFoundId = 0;
++                this._searchedLongEnough = true;
++                this._render();
++                return GLib.SOURCE_REMOVE;
++            });
++        this._renewId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT,
++            AIRPLAY_BROWSE_RENEW_SECONDS, () => {
++                this._proxy.StartAirPlayBrowsingAsync().catch(logError);
++                return GLib.SOURCE_CONTINUE;
++            });
++        try {
++            await this._proxy.StartAirPlayBrowsingAsync();
++        } catch (error) {
++            console.warn(`AirPlay browsing: ${error.message}`);
++        }
++        this._refresh();
++    }
++
++    _stopBrowsing() {
++        if (!this._browsing)
++            return;
++        this._browsing = false;
++        for (const menu of new Set([this._getTopMenu(), Main.panel.statusArea.quickSettings?.menu]))
++            menu?.disconnectObject(this);
++        if (this._renewId)
++            GLib.source_remove(this._renewId);
++        if (this._nothingFoundId)
++            GLib.source_remove(this._nothingFoundId);
++        this._renewId = this._nothingFoundId = 0;
++        if (this.available)
++            this._proxy.StopAirPlayBrowsingAsync().catch(() => {});
++    }
++
++    async _refresh() {
++        if (!this.available)
++            return;
++        try {
++            const [receivers] = await this._proxy.GetAirPlayReceiversAsync();
++            this._receivers = receivers.map(r => {
++                const entry = {};
++                for (const [key, value] of Object.entries(r))
++                    entry[key] = value.deepUnpack();
++                return entry;
++            });
++        } catch (error) {
++            console.warn(`AirPlay receivers: ${error.message}`);
++            this._receivers = [];
++        }
++        this._render();
++    }
++
++    _render() {
++        this._receiverSection.removeAll();
++
++        const defaultName = this._control.get_default_sink()?.get_name() ?? '';
++        for (const receiver of this._receivers)
++            this._receiverSection.addMenuItem(this._createReceiverItem(receiver, defaultName));
++
++        const nearby = this._receivers.some(r => r.state !== 'unavailable');
++        if (this._proxy.AirPlayAvailable === false)
++            this._placeholder.label.text = _('AirPlay isn’t available on this network');
++        else if (nearby)
++            this._placeholder.label.text = '';
++        else if (this._searchedLongEnough)
++            this._placeholder.label.text = _('No AirPlay speakers found');
++        else
++            this._placeholder.label.text = _('Looking for AirPlay speakers…');
++        this._placeholder.visible = this._placeholder.label.text !== '';
++    }
++
++    _createReceiverItem(receiver, defaultName) {
++        const item = new PopupMenu.PopupImageMenuItem(receiver.name,
++            AIRPLAY_RECEIVER_ICONS[receiver.kind] ?? AIRPLAY_RECEIVER_ICONS.speaker);
++        item.add_style_class_name('luma-airplay-receiver');
++
++        const status = this._busy.has(receiver.id)
++            ? _('Connecting…') : airPlayStatus(receiver);
++        if (status) {
++            item.add_child(new St.Label({
++                text: status,
++                style_class: 'luma-airplay-status',
++                x_expand: true,
++                x_align: Clutter.ActorAlign.END,
++                y_align: Clutter.ActorAlign.CENTER,
++            }));
++        }
++
++        const inUse = receiver.state === 'connected' && receiver.node_name === defaultName;
++        item.setOrnament(inUse ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
++        item.setSensitive(receiver.state !== 'unavailable' && receiver.supported &&
++            !this._busy.has(receiver.id));
++        // Choosing does not emit "activate", which would close Quick Settings:
++        // the picker stays open to show the connection finish (or fail) and
++        // the check move, like the output list above it.
++        item.activate = () => this._choose(receiver);
++        return item;
++    }
++
++    async _choose(receiver) {
++        if (receiver.node_name === this._control.get_default_sink()?.get_name())
++            return;
++        this._busy.add(receiver.id);
++        this._render();
++        try {
++            await this._connect(receiver, '');
++        } catch (error) {
++            // Other failures stay on the row ("Owner Only", "Not Responding").
++            if (error.lumaCode === 'PasswordRequired' || error.lumaCode === 'PasswordIncorrect')
++                this._askPassword(receiver);
++        } finally {
++            this._busy.delete(receiver.id);
++            this._refresh();
++        }
++    }
++
++    async _connect(receiver, password) {
++        try {
++            await this._proxy.ConnectAirPlayReceiverAsync(receiver.id, password);
++        } catch (error) {
++            const code = Gio.DBusError.get_remote_error(error) ?? '';
++            error.lumaCode = code.startsWith(AUDIO_DEVICES_ERROR)
++                ? code.slice(AUDIO_DEVICES_ERROR.length) : '';
++            Gio.DBusError.strip_remote_error(error);
++            throw error;
++        }
++    }
++
++    _askPassword(receiver) {
++        Main.panel.closeQuickSettings();
++        const dialog = new AirPlayPasswordDialog(receiver, password => this._connect(receiver, password));
++        dialog.open();
++    }
++});
++
+ // Each Gvc.MixerControl is a connection to PulseAudio,
+ // so it's better to make it a singleton
+ let _mixerControl;
+@@ -135,7 +535,7 @@ const StreamSlider = GObject.registerClass({
+         const name = origin
+             ? `${description} – ${origin}`
+             : description;
+-        const item = new PopupMenu.PopupImageMenuItem(name, device.get_gicon());
++        const item = new PopupMenu.PopupImageMenuItem(name, this._deviceIcon(device));
+         item.connect('activate', () => {
+             const dev = this._lookupDevice(id);
+             if (dev)
+@@ -156,6 +556,10 @@ const StreamSlider = GObject.registerClass({
+             this._sync();
+     }
+ 
++    _deviceIcon(device) {
++        return device.get_gicon();
++    }
++
+     _setActiveDevice(activeId) {
+         for (const [id, item] of this._deviceItems) {
+             item.setOrnament(id === activeId
+@@ -292,6 +696,7 @@ const StreamSlider = GObject.registerClass({
+ const OutputStreamSlider = GObject.registerClass(
+ class OutputStreamSlider extends StreamSlider {
+     _init(control) {
++        this._hiddenDeviceIds = new Set();
+         super._init(control);
+ 
+         this.slider.accessible_name = _('Volume');
+@@ -314,6 +719,77 @@ class OutputStreamSlider extends StreamSlider {
+ 
+         this.menu.setHeader('audio-headphones-symbolic', _('Sound Output'));
+         this.menuButtonAccessibleName = _('Open sound output menu');
++
++        // AirPlay speakers are chosen in a picker below the outputs; the
++        // picker is the only place they are looked for.
++        this._airPlayItem = new AirPlayMenuItem(this._control);
++        this.menu.addMenuItem(this._airPlayItem, 1);
++        this._airPlayItem.connect('availability-changed', () => this._sync());
++
++        this._audioDevices = getAudioDevices();
++        this._audioDevices.connectObject('g-properties-changed',
++            () => this._refilterDevices(), this);
++        this._control.connectObject('default-sink-changed',
++            () => this._refilterDevices(), this);
++        this._sync();
++    }
++
++    _hiddenOutputNames() {
++        return this._audioDevices?.HiddenOutputs ?? [];
++    }
++
++    _isHiddenDevice(device) {
++        const stream = this._control.get_stream_from_device(device);
++        const name = stream?.get_name() ?? '';
++        if (stream && stream === this._control.get_default_sink())
++            return false;
++        return isHiddenOutputName(name, this._hiddenOutputNames());
++    }
++
++    _addDevice(id) {
++        const device = this._lookupDevice(id);
++        if (device && this._isHiddenDevice(device)) {
++            this._hiddenDeviceIds.add(id);
++            return;
++        }
++        this._hiddenDeviceIds.delete(id);
++        super._addDevice(id);
++    }
++
++    _removeDevice(id) {
++        this._hiddenDeviceIds.delete(id);
++        super._removeDevice(id);
++    }
++
++    _refilterDevices() {
++        for (const id of [...this._deviceItems.keys()]) {
++            const device = this._lookupDevice(id);
++            if (device && this._isHiddenDevice(device)) {
++                super._removeDevice(id);
++                this._hiddenDeviceIds.add(id);
++            }
++        }
++        for (const id of [...this._hiddenDeviceIds])
++            this._addDevice(id);
++        this._setActiveDevice(this._activeDeviceId);
++    }
++
++    _setActiveDevice(activeId) {
++        this._activeDeviceId = activeId;
++        super._setActiveDevice(activeId);
++    }
++
++    _deviceIcon(device) {
++        const name = this._control.get_stream_from_device(device)?.get_name() ?? '';
++        if (name.startsWith(AIRPLAY_OUTPUT_PREFIX))
++            return new Gio.ThemedIcon({name: NETWORK_SPEAKER_ICON});
++        return super._deviceIcon(device);
++    }
++
++    _sync() {
++        super._sync();
++        if (this._airPlayItem?.available)
++            this.menuEnabled = true;
+     }
+ 
+     _connectStream(stream) {

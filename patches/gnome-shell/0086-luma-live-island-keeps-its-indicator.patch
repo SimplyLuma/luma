@@ -1,0 +1,46 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: keep the live island's indicator inside it
+
+The event island turned into an empty slab beside the clock: material
+and padding, nothing within. The instrumentation measured it exactly --
+natural=0, content.w=1, island=21 -- so the island's content had no
+children, and the scroll viewport clamped itself to the one pixel its
+floor allows.
+
+The indicator's container was only ever inserted into the island at the
+moment the island was first built. Rebuilding the panel, which a monitor
+or scale change does, hands that container back to the panel, and
+nothing put it back. Every neighbouring actor in the same function is
+already re-parented idempotently on each sync; this one now is too.
+
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -598,9 +598,7 @@
+         const live = liveIndicator?.container;
+         if (live) {
+             if (!this._liveIsland) {
+-                live.get_parent()?.remove_child(live);
+                 this._liveContent = new St.BoxLayout();
+-                this._liveContent.add_child(live);
+                 this._liveScroll = new St.ScrollView({
+                     enable_mouse_scrolling: true,
+                     overlay_scrollbars: true,
+@@ -616,6 +614,17 @@
+                     this._queueDockWidth();
+                 }, this);
+             }
++            // Every other adopted actor is re-parented on each sync; this
++            // one was only ever put in place when the island was first built.
++            // Rebuilding the panel -- which a monitor or scale change does --
++            // hands the indicator's container back to the panel, and the
++            // island was then left holding nothing at all: it kept its
++            // material and its padding, measured zero, and drew as an empty
++            // slab beside the clock with the event nowhere to be seen.
++            if (live.get_parent() !== this._liveContent) {
++                live.get_parent()?.remove_child(live);
++                this._liveContent.add_child(live);
++            }
+             if (this._liveIsland.get_parent() !== this._group) {
+                 this._liveIsland.get_parent()?.remove_child(this._liveIsland);
+                 this._group.insert_child_at_index(this._liveIsland, 1);

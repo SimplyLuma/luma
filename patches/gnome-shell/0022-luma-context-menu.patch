@@ -1,0 +1,262 @@
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3729,3 +3729,40 @@
+     .login-dialog .user-widget.vertical .user-icon StIcon,
+     .unlock-dialog .user-widget.vertical .user-icon StIcon {
+       padding: 30px; }
++
++/* Luma native menu geometry. St uses content-box sizing and numeric Pango weights. */
++.popup-menu { min-width: 0; font-family: Figtree; font-size: 13px; font-weight: 600; color: #f2f4f6; }
++.popup-menu-content {
++  min-width: 276px;
++  padding: 7px;
++  background-color: #252a30;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 15px;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.20); }
++.popup-menu .luma-popup-shadow {
++  background-color: #252a30;
++  border-radius: 15px;
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.background-menu { -arrow-rise: 0; }
++.background-menu .popup-menu-content { min-width: 284px; }
++.app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
++.popup-menu-item {
++  height: 32px; min-height: 0;
++  padding: 0 8px; spacing: 10px;
++  border: none; border-radius: 10px;
++  color: #f2f4f6; background-color: transparent;
++  font-family: Figtree; font-size: 13px; font-weight: 600; }
++.popup-menu-item:hover, .popup-menu-item:focus, .popup-menu-item:selected,
++.popup-menu-item:checked { color: #f2f4f6; background-color: #30363d; border-radius: 10px; }
++.popup-menu-item:insensitive { color: rgba(242, 244, 246, 0.38); background-color: transparent; }
++.popup-inactive-menu-item { color: #f2f4f6; }
++.popup-separator-menu-item { height: 1px; min-height: 0; padding: 0; margin: 5px 4px; background-color: transparent; }
++.popup-separator-menu-item .popup-separator-menu-item-separator { height: 1px; background-color: rgba(255, 255, 255, 0.075); }
++.popup-menu-item.luma-menu-heading {
++  height: 14px; padding: 4px 8px 0; border: none; background-color: transparent;
++  font-size: 11px; font-weight: 700; letter-spacing: 0.11em; color: rgba(242, 244, 246, 0.46); }
++.popup-sub-menu { border-radius: 15px; margin-bottom: 0; border: 1px solid rgba(255, 255, 255, 0.075); background-color: #252a30; }
++.popup-menu .popup-ornamented-menu-item:ltr,
++.popup-menu .popup-ornamented-menu-item:rtl { padding: 0 8px; }
++.popup-menu-ornament { icon-size: 14px; color: rgba(242, 244, 246, 0.72); }
++.popup-menu-arrow { icon-size: 14px; color: rgba(242, 244, 246, 0.58); }
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3884,3 +3884,40 @@
+     .login-dialog .user-widget.vertical .user-icon StIcon,
+     .unlock-dialog .user-widget.vertical .user-icon StIcon {
+       padding: 30px; }
++
++/* Luma native menu geometry. St uses content-box sizing and numeric Pango weights. */
++.popup-menu { min-width: 0; font-family: Figtree; font-size: 13px; font-weight: 600; color: #252b31; }
++.popup-menu-content {
++  min-width: 276px;
++  padding: 7px;
++  background-color: #f6f7f8;
++  border: 1px solid rgba(35, 44, 52, 0.09);
++  border-radius: 15px;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.20); }
++.popup-menu .luma-popup-shadow {
++  background-color: #f6f7f8;
++  border-radius: 15px;
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.background-menu { -arrow-rise: 0; }
++.background-menu .popup-menu-content { min-width: 284px; }
++.app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
++.popup-menu-item {
++  height: 32px; min-height: 0;
++  padding: 0 8px; spacing: 10px;
++  border: none; border-radius: 10px;
++  color: #252b31; background-color: transparent;
++  font-family: Figtree; font-size: 13px; font-weight: 600; }
++.popup-menu-item:hover, .popup-menu-item:focus, .popup-menu-item:selected,
++.popup-menu-item:checked { color: #252b31; background-color: #ffffff; border-radius: 10px; }
++.popup-menu-item:insensitive { color: rgba(37, 43, 49, 0.38); background-color: transparent; }
++.popup-inactive-menu-item { color: #252b31; }
++.popup-separator-menu-item { height: 1px; min-height: 0; padding: 0; margin: 5px 4px; background-color: transparent; }
++.popup-separator-menu-item .popup-separator-menu-item-separator { height: 1px; background-color: rgba(35, 44, 52, 0.09); }
++.popup-menu-item.luma-menu-heading {
++  height: 14px; padding: 4px 8px 0; border: none; background-color: transparent;
++  font-size: 11px; font-weight: 700; letter-spacing: 0.11em; color: rgba(37, 43, 49, 0.46); }
++.popup-sub-menu { border-radius: 15px; margin-bottom: 0; border: 1px solid rgba(35, 44, 52, 0.09); background-color: #f6f7f8; }
++.popup-menu .popup-ornamented-menu-item:ltr,
++.popup-menu .popup-ornamented-menu-item:rtl { padding: 0 8px; }
++.popup-menu-ornament { icon-size: 14px; color: rgba(37, 43, 49, 0.72); }
++.popup-menu-arrow { icon-size: 14px; color: rgba(37, 43, 49, 0.58); }
+diff --git a/js/ui/boxpointer.js b/js/ui/boxpointer.js
+--- a/js/ui/boxpointer.js
++++ b/js/ui/boxpointer.js
+@@ -1,3 +1,4 @@
++import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import GObject from 'gi://GObject';
+ import St from 'gi://St';
+@@ -40,6 +41,15 @@
+         this._userArrowSide = arrowSide;
+         this._arrowOrigin = 0;
+         this._arrowActor = null;
++        // A second native paint layer supplies the wide elevation shadow.
++        // It has no input, focus or accessibility role and follows bin bounds.
++        this._lumaShadow = new St.Widget({
++            style_class: 'luma-popup-shadow',
++            reactive: false,
++            can_focus: false,
++            accessible_role: Atk.Role.REDUNDANT_OBJECT,
++        });
++        this.add_child(this._lumaShadow);
+         this.bin = new St.Bin(binProperties);
+         this.add_child(this.bin);
+         this._border = new St.DrawingArea();
+@@ -264,6 +274,7 @@
+             childBox.x2 -= rise;
+             break;
+         }
++        this._lumaShadow.allocate(childBox);
+         this.bin.allocate(childBox);
+     }
+ 
+diff --git a/js/ui/backgroundMenu.js b/js/ui/backgroundMenu.js
+--- a/js/ui/backgroundMenu.js
++++ b/js/ui/backgroundMenu.js
+@@ -181,10 +181,19 @@
+     constructor(layoutManager) {
+         super(layoutManager.dummyCursor, 0, St.Side.TOP);
+ 
+-        this.addSettingsAction(_('Change Background…'), 'gnome-background-panel.desktop');
++        const heading = text => {
++            const item = new PopupMenu.PopupMenuItem(text, {
++                reactive: false, can_focus: false,
++            });
++            item.add_style_class_name('luma-menu-heading');
++            this.addMenuItem(item);
++        };
++        heading(_('PERSONALIZE'));
++        this.addSettingsAction(_('Change wallpaper…'), 'gnome-background-panel.desktop');
++        this.addSettingsAction(_('Display settings'), 'gnome-display-panel.desktop');
+         this.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-        this.addSettingsAction(_('Display Settings'), 'gnome-display-panel.desktop');
+-        this.addSettingsAction(_('Settings'), 'org.gnome.Settings.desktop');
++        heading(_('SYSTEM'));
++        this.addSettingsAction(_('Desktop settings…'), 'org.gnome.Settings.desktop');
+ 
+         this.actor.add_style_class_name('background-menu');
+ 
+diff --git a/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss b/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
+new file mode 100644
+--- /dev/null
++++ b/data/theme/gnome-shell-sass/widgets/_luma-context-menu.scss
+@@ -0,0 +1,78 @@
++// Source-owned native context menu, matching shared semantic menu tokens.
++@if $variant == dark {
++
++/* Luma native menu geometry. St uses content-box sizing and numeric Pango weights. */
++.popup-menu { min-width: 0; font-family: Figtree; font-size: 13px; font-weight: 600; color: #f2f4f6; }
++.popup-menu-content {
++  min-width: 276px;
++  padding: 7px;
++  background-color: #252a30;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 15px;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.20); }
++.popup-menu .luma-popup-shadow {
++  background-color: #252a30;
++  border-radius: 15px;
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.background-menu { -arrow-rise: 0; }
++.background-menu .popup-menu-content { min-width: 284px; }
++.app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
++.popup-menu-item {
++  height: 32px; min-height: 0;
++  padding: 0 8px; spacing: 10px;
++  border: none; border-radius: 10px;
++  color: #f2f4f6; background-color: transparent;
++  font-family: Figtree; font-size: 13px; font-weight: 600; }
++.popup-menu-item:hover, .popup-menu-item:focus, .popup-menu-item:selected,
++.popup-menu-item:checked { color: #f2f4f6; background-color: #30363d; border-radius: 10px; }
++.popup-menu-item:insensitive { color: rgba(242, 244, 246, 0.38); background-color: transparent; }
++.popup-inactive-menu-item { color: #f2f4f6; }
++.popup-separator-menu-item { height: 1px; min-height: 0; padding: 0; margin: 5px 4px; background-color: transparent; }
++.popup-separator-menu-item .popup-separator-menu-item-separator { height: 1px; background-color: rgba(255, 255, 255, 0.075); }
++.popup-menu-item.luma-menu-heading {
++  height: 14px; padding: 4px 8px 0; border: none; background-color: transparent;
++  font-size: 11px; font-weight: 700; letter-spacing: 0.11em; color: rgba(242, 244, 246, 0.46); }
++.popup-sub-menu { border-radius: 15px; margin-bottom: 0; border: 1px solid rgba(255, 255, 255, 0.075); background-color: #252a30; }
++.popup-menu .popup-ornamented-menu-item:ltr,
++.popup-menu .popup-ornamented-menu-item:rtl { padding: 0 8px; }
++.popup-menu-ornament { icon-size: 14px; color: rgba(242, 244, 246, 0.72); }
++.popup-menu-arrow { icon-size: 14px; color: rgba(242, 244, 246, 0.58); }
++} @else {
++
++/* Luma native menu geometry. St uses content-box sizing and numeric Pango weights. */
++.popup-menu { min-width: 0; font-family: Figtree; font-size: 13px; font-weight: 600; color: #252b31; }
++.popup-menu-content {
++  min-width: 276px;
++  padding: 7px;
++  background-color: #f6f7f8;
++  border: 1px solid rgba(35, 44, 52, 0.09);
++  border-radius: 15px;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.20); }
++.popup-menu .luma-popup-shadow {
++  background-color: #f6f7f8;
++  border-radius: 15px;
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++.background-menu { -arrow-rise: 0; }
++.background-menu .popup-menu-content { min-width: 284px; }
++.app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
++.popup-menu-item {
++  height: 32px; min-height: 0;
++  padding: 0 8px; spacing: 10px;
++  border: none; border-radius: 10px;
++  color: #252b31; background-color: transparent;
++  font-family: Figtree; font-size: 13px; font-weight: 600; }
++.popup-menu-item:hover, .popup-menu-item:focus, .popup-menu-item:selected,
++.popup-menu-item:checked { color: #252b31; background-color: #ffffff; border-radius: 10px; }
++.popup-menu-item:insensitive { color: rgba(37, 43, 49, 0.38); background-color: transparent; }
++.popup-inactive-menu-item { color: #252b31; }
++.popup-separator-menu-item { height: 1px; min-height: 0; padding: 0; margin: 5px 4px; background-color: transparent; }
++.popup-separator-menu-item .popup-separator-menu-item-separator { height: 1px; background-color: rgba(35, 44, 52, 0.09); }
++.popup-menu-item.luma-menu-heading {
++  height: 14px; padding: 4px 8px 0; border: none; background-color: transparent;
++  font-size: 11px; font-weight: 700; letter-spacing: 0.11em; color: rgba(37, 43, 49, 0.46); }
++.popup-sub-menu { border-radius: 15px; margin-bottom: 0; border: 1px solid rgba(35, 44, 52, 0.09); background-color: #f6f7f8; }
++.popup-menu .popup-ornamented-menu-item:ltr,
++.popup-menu .popup-ornamented-menu-item:rtl { padding: 0 8px; }
++.popup-menu-ornament { icon-size: 14px; color: rgba(37, 43, 49, 0.72); }
++.popup-menu-arrow { icon-size: 14px; color: rgba(37, 43, 49, 0.58); }
++}
+diff --git a/data/theme/gnome-shell-sass/_widgets.scss b/data/theme/gnome-shell-sass/_widgets.scss
+--- a/data/theme/gnome-shell-sass/_widgets.scss
++++ b/data/theme/gnome-shell-sass/_widgets.scss
+@@ -43,2 +43,3 @@
+ // Lock / login screen
++@import 'widgets/luma-context-menu';
+ @import 'widgets/login-lock';
+diff --git a/data/theme/meson.build b/data/theme/meson.build
+--- a/data/theme/meson.build
++++ b/data/theme/meson.build
+@@ -23,6 +23,7 @@
+   'gnome-shell-sass/widgets/_keyboard.scss',
+   'gnome-shell-sass/widgets/_login-lock.scss',
+   'gnome-shell-sass/widgets/_looking-glass.scss',
++  'gnome-shell-sass/widgets/_luma-context-menu.scss',
+   'gnome-shell-sass/widgets/_message-list.scss',
+   'gnome-shell-sass/widgets/_misc.scss',
+   'gnome-shell-sass/widgets/_notifications.scss',
+
+diff --git a/js/ui/popupMenu.js b/js/ui/popupMenu.js
+--- a/js/ui/popupMenu.js
++++ b/js/ui/popupMenu.js
+@@ -287,10 +287,12 @@
+ 
+         this.label = new St.Label({
+             text,
++            x_expand: true,
+             y_expand: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+         this.add_child(this.label);
++        this.set_child_above_sibling(this._ornamentIcon, this.label);
+         this.label_actor = this.label;
+     }
+ });

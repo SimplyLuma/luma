@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: the sign-in fingerprint hint uses the LumaUI
+ fingerprint glyph
+
+No icon set provides fingerprint-symbolic, so the hint drew a blank icon and
+the image's icon-reference check failed. Use lumaui-fingerprint-symbolic
+(Lucide, from the Prairie icon theme).
+
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index 28c8112..88ac15b 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -252,7 +252,7 @@ export const AuthPrompt = GObject.registerClass({
+         this._inputWell.add_child(this._message);
+ 
+         this._fingerprintHint = new St.BoxLayout({style_class: 'poster-fingerprint-hint'});
+-        this._fingerprintHint.add_child(new St.Icon({icon_name: 'fingerprint-symbolic',
++        this._fingerprintHint.add_child(new St.Icon({icon_name: 'lumaui-fingerprint-symbolic',
+             style_class: 'poster-fingerprint-icon'}));
+         this._fingerprintHint.add_child(new St.Label({
+             text: _('Or touch the fingerprint sensor'),

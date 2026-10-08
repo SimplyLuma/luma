@@ -1,0 +1,914 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: correct captured Studio card and control metrics
+
+Remove inherited account-footer sizing and subtitle padding. Express spacing
+with positive native margins; negative margins overflow St unsigned sizing.
+The lip rim is inset paint and consumes no text width, as in current Studio.
+GPL-2.0-or-later, following GNOME Shell upstream.
+
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -216,7 +216,7 @@
+         card.add_style_class_name('luma-lip-card');
+         card.useCardLayout();
+         card.setInlineReplyVisible(!tray);
+-        if (n.urgency === MessageTray.Urgency.CRITICAL) {
++        if (MessageList.isIncomingCallNotification(n)) {
+             card.add_style_class_name('luma-notification-urgent');
+             const ring = new St.Widget({style_class: 'luma-lip-call-ring',
+                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+@@ -288,7 +288,10 @@
+         const big = this._engaged();
+         const box = new St.BoxLayout({style_class: `luma-lip-pill${big ? ' big' : ''}`});
+         if (this.dnd) box.add_child(glyph('moon', 13));
+-        const stack = new St.BoxLayout({style_class: 'luma-lip-icon-stack'});
++        const iconSize = big ? 18 : 14;
++        const iconStep = big ? 12 : 9;
++        const stack = new St.Widget({style_class: 'luma-lip-icon-stack',
++            layout_manager: new Clutter.FixedLayout(), height: iconSize});
+         const apps = new Set();
+         for (const n of this._records ?? []) {
+             const source = n.source;
+@@ -300,9 +303,11 @@
+             const mask = new LumaIconMask();
+             mask.set_uniform_float(mask.get_uniform_location('radius'), 1, [0.3]);
+             icon.add_effect_with_name('luma-lip-icon-mask', mask);
++            icon.set_position((apps.size - 1) * iconStep, 0);
+             stack.add_child(icon);
+             if (apps.size === 3) break;
+         }
++        stack.width = apps.size ? iconSize + (apps.size - 1) * iconStep : 0;
+         box.add_child(stack);
+         const count = this._records?.length ?? 0;
+         const title = new St.Label({style_class: 'luma-lip-pill-title',
+diff --git a/js/ui/messageList.js b/js/ui/messageList.js
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -49,8 +49,14 @@
+ const AFFIRMATIVE_ACTIONS = new Set(['accept', 'answer']);
+ const DECLINING_ACTIONS = new Set(['decline', 'reject', 'hangup']);
+ 
++export function isIncomingCallNotification(notification) {
++    return notification?.urgency === MessageTray.Urgency.CRITICAL &&
++        !!notification.actions?.some(a => AFFIRMATIVE_ACTIONS.has(a.id)) &&
++        notification.actions.some(a => DECLINING_ACTIONS.has(a.id));
++}
++
+ function actionWeight(action, notification) {
+-    if (notification?.urgency !== MessageTray.Urgency.CRITICAL)
++    if (!isIncomingCallNotification(notification))
+         return null;
+     if (AFFIRMATIVE_ACTIONS.has(action.id))
+         return 'ok';
+@@ -390,7 +396,16 @@
+             this._updateText();
+     }
+ 
++    set ringing(enabled) {
++        this._ringing = enabled;
++        this._updateText();
++    }
++
+     _updateText() {
++        if (this._ringing) {
++            this.text = _('ringing');
++            return;
++        }
+         if (!this._datetime)
+             return;
+         // A Luma card states when it arrived as a clock time ("9:47 AM"),
+@@ -689,6 +704,7 @@
+         this._tile.add_child(this._tileImage);
+         this._appBadge = new St.Icon({style_class: 'luma-lip-app-badge', icon_size: 16,
+             x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.END, visible: false});
++        this._appBadge.translation_x = this._appBadge.translation_y = 6;
+         this._tile.add_child(this._appBadge);
+         grid.layout_manager = new CardColumnsLayout({orientation: Clutter.Orientation.HORIZONTAL});
+         grid.add_child(this._tile);
+@@ -1018,12 +1034,14 @@
+     }
+ 
+     _syncActionButtons() {
++        if (this._allowInlineReply !== undefined)
++            this._header.timeLabel.ringing = !!isIncomingCallNotification(this.notification);
+         if (!this._buttonBox || !this._cardLayout)
+             return;
+         this._buttonBox.get_children().forEach((button, index) => {
+             button.x_expand = false;
+             button.visible = index < CARD_MAX_ACTIONS && !(this._inlineReply && this._allowInlineReply !== false);
+-            if (this._allowInlineReply !== undefined && !button._lumaCallGlyph) {
++            if (this._allowInlineReply !== undefined && isIncomingCallNotification(this.notification) && !button._lumaCallGlyph) {
+                 const id = button._lumaAction.id;
+                 if (AFFIRMATIVE_ACTIONS.has(id) || DECLINING_ACTIONS.has(id)) {
+                     const content = new St.BoxLayout({style_class: 'luma-lip-call-action'});
+@@ -1048,8 +1066,7 @@
+     }
+ 
+     canClose() {
+-        return !this.notification || this.notification.urgency !== MessageTray.Urgency.CRITICAL ||
+-            !this.notification.actions.some(a => AFFIRMATIVE_ACTIONS.has(a.id));
++        return !isIncomingCallNotification(this.notification);
+     }
+ 
+     setInlineReplyVisible(visible) {
+@@ -1112,8 +1129,10 @@
+         // Replacement invalidates the old token and its editor. Never send
+         // text entered for one notification generation against another.
+         this._inlineReply = reply;
++        this._replyPending = false;
+         this._inlineReplyRow?.destroy();
+         this._inlineReplyRow = null;
++        this._replyEntry = this._replyButton = null;
+         this._replyRequestId = null;
+         this._replyPayload = null;
+         this._replyUncertain = false;
+@@ -1174,7 +1193,7 @@
+             this.notification?.source.open();
+             return;
+         }
+-        if (!this._inlineReply || this._replyPending)
++        if (!this.notification || !this._inlineReply || this._replyPending)
+             return;
+ 
+         const enteredText = this._replyEntry.get_text();
+@@ -1186,21 +1205,24 @@
+             return;
+         }
+ 
+-        // This ID deliberately survives retryable pre-dispatch failures.
+-        this._replyRequestId ??= GLib.uuid_string_random();
+-        this._replyPayload ??= text;
++        // An unchanged retry retains its ID after a pre-dispatch failure.
++        // Edited text is a new request, never the old request's payload.
++        if (this._replyPayload !== text) {
++            this._replyRequestId = GLib.uuid_string_random();
++            this._replyPayload = text;
++        }
++        const notification = this.notification;
++        const generation = this._inlineReply;
+         this._replyPending = true;
+         this._replyEntry.reactive = false;
+         this._replyButton.reactive = false;
+ 
+         try {
+-            const notification = this.notification;
+-            const generation = this._inlineReply;
+-            const [, state] = await this._inlineReply.send(
++            const [, state] = await generation.send(
+                 this._replyPayload, this._replyRequestId);
++            if (notification !== this.notification || generation !== this._inlineReply)
++                return;
+             if (state === 'sent') {
+-                if (!notification || notification !== this.notification || generation !== this._inlineReply)
+-                    return;
+                 this._inlineReplyRow.destroy_all_children();
+                 this._replyEntry = this._replyButton = null;
+                 this._inlineReplyRow.add_child(new St.Label({text: _('Sent'), style_class: 'luma-lip-sent'}));
+@@ -1215,12 +1237,15 @@
+             }
+             this._setReplyUncertain();
+         } catch (error) {
++            if (notification !== this.notification || generation !== this._inlineReply)
++                return;
+             const remoteName = Gio.DBusError.get_remote_error(error) ?? '';
+             if (remoteName.endsWith('.NotReady')) {
+                 this._replyEntry.hint_text = _('Messages is not ready; try again');
+                 this._replyButton.remove_style_class_name('luma-inline-reply-send');
+                 this._replyButton._lumaGlyph = false;
+                 this._replyButton.label = _('Try again');
++                this._replyButton.accessible_name = _('Try again');
+             } else {
+                 // A timeout may have happened after dispatch. Preserve the
+                 // text and request ID, and reconcile in Messages instead of
+@@ -1228,11 +1253,13 @@
+                 this._setReplyUncertain();
+             }
+         } finally {
+-            this._replyPending = false;
+-            if (this._replyEntry && !this._replyUncertain)
+-                this._replyEntry.reactive = true;
+-            if (this._replyButton && !this._replyUncertain)
+-                this._replyButton.reactive = true;
++            if (notification === this.notification && generation === this._inlineReply) {
++                this._replyPending = false;
++                if (this._replyEntry && !this._replyUncertain)
++                    this._replyEntry.reactive = true;
++                if (this._replyButton && !this._replyUncertain)
++                    this._replyButton.reactive = true;
++            }
+         }
+     }
+ 
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -548,6 +548,44 @@
+  * signal bars), and the current choice takes the raised row fill and a dot on
+  * the trailing side.
+  */
++// Add Studio's leading glyph and status copy to an existing native switch
++// row; its state, gesture handling and service callbacks remain intact.
++export function decorateStudioSwitchRow(item, iconName, subtitle = '') {
++    item.add_style_class_name('luma-sheet-row');
++    item.label.add_style_class_name('luma-sheet-row-title');
++    item.remove_child(item.label);
++    const copy = new St.BoxLayout({style_class: 'luma-sheet-row-copy',
++        orientation: Clutter.Orientation.VERTICAL, x_expand: true,
++        y_align: Clutter.ActorAlign.CENTER});
++    copy.add_child(item.label);
++    const note = new St.Label({text: subtitle, visible: !!subtitle,
++        style_class: 'luma-sheet-row-state'});
++    copy.add_child(note);
++    item.insert_child_at_index(new St.Icon({icon_name: iconName,
++        style_class: 'luma-sheet-row-icon', y_align: Clutter.ActorAlign.CENTER}), 0);
++    item.insert_child_at_index(copy, 1);
++    item._statusBin.x_expand = false;
++    // A radio change leaves its Studio page open for the resulting state.
++    item.activate = () => item.toggle();
++    return note;
++}
++
++export function bindStudioSwitchRow(control, row) {
++    let syncing = false;
++    const sync = () => {
++        syncing = true;
++        try { row.setToggleState(control.checked); }
++        finally { syncing = false; }
++        row.reactive = control.reactive;
++    };
++    row.connect('toggled', (_row, enabled) => {
++        if (syncing || enabled === control.checked || !control.reactive) return;
++        control.emit('clicked', 1); sync();
++    });
++    control.connectObject('notify::checked', sync, 'notify::reactive', sync, row);
++    sync();
++}
++
+ export const QuickSheetRow = GObject.registerClass(
+ class QuickSheetRow extends PopupMenu.PopupBaseMenuItem {
+     _init(params = {}) {
+@@ -567,7 +605,7 @@
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+         this._titleLabel = new St.Label({style_class: 'luma-sheet-row-title'});
+-        this._stateLabel = new St.Label({style_class: 'luma-sheet-row-state'});
++        this._stateLabel = new St.Label({style_class: 'luma-sheet-row-state', visible: false});
+         this._titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+         this._stateLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+         copy.add_child(this._titleLabel);
+@@ -575,8 +613,10 @@
+         this.add_child(copy);
+         this.label_actor = this._titleLabel;
+ 
+-        this._dot = new St.Widget({
++        this._dot = new St.Icon({
+             style_class: 'luma-sheet-row-dot',
++            icon_name: 'lumaui-check-symbolic',
++            icon_size: 15,
+             y_align: Clutter.ActorAlign.CENTER,
+             opacity: 0,
+         });
+@@ -612,7 +652,7 @@
+ 
+     setCurrent(current) {
+         this._current = !!current;
+-        // The dot keeps its slot either way, so names never shift.
++        // The selection marker keeps its slot either way, so names never shift.
+         this._dot.opacity = this._current ? 255 : 0;
+         if (this._current) {
+             this.add_style_pseudo_class('checked');
+@@ -1329,8 +1369,17 @@
+         this._pageSwitch.connect('notify::checked', () => {
+             if (this._pageSwitch.checked) this._pageSwitch.child.add_style_pseudo_class('checked');
+             else this._pageSwitch.child.remove_style_pseudo_class('checked');
+-        });
++            this._pageSwitch.child.state = this._pageSwitch.checked;
++        });
++        this._pageSwitch.child.reactive = false;
+         header.add_child(this._pageSwitch); this._pageHost.add_child(header);
++        this._pageScroll = new St.ScrollView({style_class: 'luma-options-page-scroll',
++            x_expand: true, overlay_scrollbars: true,
++            hscrollbar_policy: St.PolicyType.NEVER,
++            vscrollbar_policy: St.PolicyType.AUTOMATIC});
++        this._pages = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
++        this._pageScroll.set_child(this._pages);
++        this._pageHost.add_child(this._pageScroll);
+         this.box.add_child(this._pageHost);
+     }
+ 
+@@ -1385,7 +1434,9 @@
+         brightness._menuButton.hide();
+         auto.connect('destroy', () => powerSettings.run_dispose());
+         // GNOME can still expose per-monitor brightness from the keyboard.
+-        const radios = row('luma-options-radios'); this._mainPage.add_child(radios);
++        const radios = row('luma-options-radios');
++        radios.layout_manager.homogeneous = true;
++        this._mainPage.add_child(radios);
+         for (const item of [indicators._network?._wirelessToggle, indicators._bluetooth?.quickSettingsItems[0]]) {
+             move(item, radios, 'luma-options-radio');
+             if (!item) continue;
+@@ -1401,7 +1452,9 @@
+         const utilities = [indicators._doNotDisturb, indicators._nightLight,
+             indicators._powerProfiles, indicators._darkMode].map(i => i.quickSettingsItems[0]);
+         for (let i = 0; i < utilities.length; i += 2) {
+-            const group = row('luma-options-toggle-row'); toggles.add_child(group);
++            const group = row('luma-options-toggle-row');
++            group.layout_manager.homogeneous = true;
++            toggles.add_child(group);
+             for (const item of utilities.slice(i, i + 2)) {
+                 move(item, group, 'luma-options-utility'); item.x_expand = true;
+                 item.setPill?.(true);
+@@ -1445,10 +1498,23 @@
+         const wifi = indicators._network?._wirelessToggle;
+         if (wifi) {
+             const air = indicators._rfkill.quickSettingsItems[0];
+-            move(air, wifi.menu.box, 'luma-options-switch-row');
+-            air.setPill?.(true); air.title = _('Airplane mode');
+-            const settingsLink = wifi.menu.box.get_children().find(a => a.has_style_class_name?.('luma-sheet-link'));
+-            if (settingsLink) wifi.menu.box.set_child_below_sibling(air, settingsLink);
++            const controls = new PopupMenu.PopupMenuSection();
++            controls.actor.add_style_class_name('luma-options-list');
++            const airRow = new PopupMenu.PopupSwitchMenuItem(_('Airplane mode'), air.checked);
++            decorateStudioSwitchRow(airRow, 'lumaui-plane-symbolic');
++            bindStudioSwitchRow(air, airRow); controls.addMenuItem(airRow);
++            const hotspot = wifi._hotspot;
++            if (hotspot) {
++                hotspot.get_parent()?.remove_child(hotspot);
++                const note = decorateStudioSwitchRow(hotspot, 'lumaui-hotspot-symbolic');
++                const syncHotspotCopy = () => {
++                    note.text = hotspot.state ? _('Sharing this connection') : _('Share this connection');
++                    note.visible = true;
++                };
++                hotspot.connectObject('notify::state', syncHotspotCopy, note);
++                syncHotspotCopy(); controls.addMenuItem(hotspot);
++            }
++            wifi.menu.addMenuItem(controls, Math.max(0, wifi.menu.length - 1));
+         }
+         this.actor.connect('key-press-event', (_a, e) => {
+             if (e.get_key_symbol() === Clutter.KEY_Escape && this._activeMenu) {
+@@ -1464,6 +1530,9 @@
+             if (this._activeMenu !== menu) this._activeMenu?.close(PopupAnimation.NONE);
+             this._activeMenu = menu;
+             this._mainPage?.hide(); this._pageHost.show();
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            const monitor = Main.layoutManager.findMonitorForActor(this.sourceActor) ?? Main.layoutManager.primaryMonitor;
++            if (monitor) this._pageScroll.set_style(`max-height: ${Math.max(160, monitor.height / scale - 160)}px;`);
+             this._pageHeading.text = menu._studioTitle ?? item.title ?? menu._titleLabel.text;
+             const radio = menu._studioRadio;
+             this._pageSwitch.visible = !!radio;
+@@ -1527,10 +1596,14 @@
+         if (item.menu) {
+             item.menu._studioPage = true;
+             item.menu.box.add_style_class_name('luma-options-detail');
++            for (const child of item.menu.box.get_children()) {
++                if (child._delegate instanceof PopupMenu.PopupSeparatorMenuItem)
++                    child.destroy();
++            }
+             item.menu._materialBinding?.setEnabled(false);
+             const sheet = item.menu.actor;
+             sheet.clear_constraints();
+-            this._pageHost.add_child(sheet);
++            this._pages.add_child(sheet);
+             sheet.hide();
+             item.menu._titleRow.hide();
+             item.menu.connect('open-state-changed', (_m, open) => this._showStudioPage(item, open));
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -16,7 +16,7 @@
+ import * as PopupMenu from '../popupMenu.js';
+ import {PopupAnimation} from '../boxpointer.js';
+ 
+-import {QuickSettingsItem, QuickToggle, SystemIndicator, trackSheetOwner} from '../quickSettings.js';
++import {QuickSettingsItem, QuickToggle, QuickSheetRow, SystemIndicator, trackSheetOwner} from '../quickSettings.js';
+ import {loadInterfaceXML} from '../../misc/fileUtils.js';
+ 
+ const BUS_NAME = 'org.freedesktop.UPower';
+@@ -311,6 +311,9 @@
+         // The sheet hangs from this button, as a level's hangs from its
+         // disclosure.
+         trackSheetOwner(this.menu, this);
++        this._powerSection = new PopupMenu.PopupMenuSection();
++        this._powerSection.actor.add_style_class_name('luma-options-list');
++        this.menu.addMenuItem(this._powerSection);
+ 
+         this._addSystemAction(_('Sleep'), 'can-suspend', () => {
+             this._systemActions.activateSuspend();
+@@ -352,7 +355,16 @@
+     }
+ 
+     _addSystemAction(label, propName, callback) {
+-        const item = this.menu.addAction(label, callback);
++        const item = new QuickSheetRow();
++        item.setTitle(label);
++        item.setIcon({
++            'can-suspend': 'lumaui-moon-symbolic',
++            'can-restart': 'lumaui-rotate-cw-symbolic',
++            'can-power-off': 'lumaui-power-symbolic',
++            'can-logout': 'lumaui-log-out-symbolic',
++        }[propName]);
++        item.connect('activate', callback);
++        this._powerSection.addMenuItem(item);
+         this._items.push(item);
+ 
+         this._systemActions.bind_property(propName,
+@@ -449,8 +461,10 @@
+             const seconds = proxy.State === UPower.DeviceState.CHARGING ? proxy.TimeToFull : proxy.TimeToEmpty;
+             const hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
+             const remaining = seconds > 0 ? (hours ? _('%d h %d min').format(hours, minutes) : _('%d min').format(minutes)) : '';
+-            label.text = this._powerToggle.title + (remaining ? ` · ${remaining} ` +
+-                (proxy.State === UPower.DeviceState.CHARGING ? _('until full') : _('left')) : '');
++            const percentage = GLib.markup_escape_text(this._powerToggle.title, -1);
++            const suffix = remaining ? ` · ${remaining} ` +
++                (proxy.State === UPower.DeviceState.CHARGING ? _('until full') : _('left')) : '';
++            label.clutter_text.set_markup(`<span weight="650" alpha="65535">${percentage}</span>${GLib.markup_escape_text(suffix, -1)}`);
+             key.visible = this._powerToggle.visible;
+         };
+         this._powerToggle._proxy.connectObject('g-properties-changed', syncBattery, key);
+diff --git a/js/ui/status/network.js b/js/ui/status/network.js
+--- a/js/ui/status/network.js
++++ b/js/ui/status/network.js
+@@ -1824,7 +1824,9 @@
+ 
+     _setupHotspot() {
+         this._hotspot = new PopupMenu.PopupSwitchMenuItem(_('Hotspot'), false);
+-        this._hotspot.connect('toggled', (_item, enabled) => this._toggleHotspot(enabled));
++        this._hotspot.connect('toggled', (_item, enabled) => {
++            if (!this._hotspotSyncing) this._toggleHotspot(enabled);
++        });
+         this.menu.addMenuItem(this._hotspot, this.menu.length - 1);
+         this._wifiOff = new PopupMenu.PopupMenuItem(_('Wi-Fi is off'), {reactive: false});
+         this.menu.addMenuItem(this._wifiOff, 0);
+@@ -1834,7 +1836,12 @@
+     _syncHotspot() {
+         if (!this._hotspot) return;
+         const hotspot = [...this._items.values()].some(i => i.is_hotspot);
+-        this._hotspot.setToggleState(hotspot);
++        this._hotspotSyncing = true;
++        try {
++            this._hotspot.setToggleState(hotspot);
++        } finally {
++            this._hotspotSyncing = false;
++        }
+         this._hotspot.reactive = this.checked && !this._hotspotBusy;
+         this._wifiOff.visible = !this.checked;
+         // The radio switch remains reachable while hotspot mode is active.
+@@ -1842,6 +1849,7 @@
+     }
+     async _toggleHotspot(enabled) {
+         if (this._hotspotBusy || !this._client) return;
++        this._hotspot.label.text = _('Hotspot');
+         this._hotspotBusy = true; this._syncHotspot();
+         try {
+             if (!enabled) {
+@@ -1851,7 +1859,13 @@
+                     d.get_capabilities() & NM.DeviceCapabilities.SUPPORTED &&
+                     d.get_wireless_capabilities() & NM.DeviceWifiCapabilities.AP);
+                 if (!device) throw new Error('No hotspot-capable adapter');
+-                let connection = this._client.get_connections().find(c => c.get_setting_wireless()?.mode === 'ap');
++                // Reuse only this control's secured sharing profile. An
++                // unrelated or open AP profile is not consent to publish it.
++                let connection = this._client.get_connections().find(c =>
++                    c.get_id() === _('Luma Hotspot') &&
++                    c.get_setting_wireless()?.mode === 'ap' &&
++                    c.get_setting_wireless_security()?.key_mgmt === 'wpa-psk' &&
++                    c.get_setting_ip4_config()?.method === 'shared');
+                 if (connection) {
+                     await new Promise((resolve, reject) => this._client.activate_connection_async(connection, device, null, null, (client, result) => {
+                         try { resolve(client.activate_connection_finish(result)); } catch (error) { reject(error); }
+diff --git a/js/ui/status/bluetooth.js b/js/ui/status/bluetooth.js
+--- a/js/ui/status/bluetooth.js
++++ b/js/ui/status/bluetooth.js
+@@ -497,7 +497,7 @@
+     }
+ 
+     _setupNearby() {
+-        this._nearHeading = new PopupMenu.PopupBaseMenuItem({reactive: false});
++        this._nearHeading = new PopupMenu.PopupBaseMenuItem({reactive: false, style_class: 'luma-options-nearby'});
+         this._nearHeading.add_child(new St.Label({text: _('Nearby'), x_expand: true}));
+         this._nearStatus = new St.Label({style_class: 'luma-options-looking'});
+         this._nearHeading.add_child(this._nearStatus);
+@@ -513,7 +513,7 @@
+         this.menu.box.insert_child_below(this._pairCode, this.menu.box.get_last_child());
+         this._pairAgent = new PairingAgent(this);
+         this.menu.connectObject('open-state-changed', (_m, open) => {
+-            if (open && this._client.active) this._scanNearby();
++            if (open && this._client.active) this._syncNearby();
+             else this._stopNearby();
+         }, this);
+         this._client.connectObject('devices-changed', () => this._syncNearby(), this);
+@@ -522,7 +522,11 @@
+     }
+     _scanNearby() {
+         if (!this._client.active || this._scanId) return;
+-        this._client._client.default_adapter_setup_mode = true;
++        // Leave discovery started by another surface running when we close.
++        if (!this._client._client.default_adapter_setup_mode) {
++            this._client._client.default_adapter_setup_mode = true;
++            this._discoveryOwned = true;
++        }
+         this._nearStatus.text = _('Looking'); this._lookAgain.hide();
+         this._scanId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 8000, () => {
+             this._scanId = 0; this._finishScan(); return GLib.SOURCE_REMOVE;
+@@ -530,7 +534,10 @@
+         this._syncNearby();
+     }
+     _finishScan() {
+-        this._client._client.default_adapter_setup_mode = false;
++        if (this._discoveryOwned) {
++            this._client._client.default_adapter_setup_mode = false;
++            this._discoveryOwned = false;
++        }
+         this._nearStatus.text = ''; this._lookAgain.show(); this._syncNearby();
+     }
+     _stopNearby() {
+@@ -554,12 +561,14 @@
+             this._nearSection.addMenuItem(item);
+         }
+         if (!count && !this._scanId) {
+-            const empty = new PopupMenu.PopupMenuItem(_('Nothing new nearby. Put a device in pairing mode.'), {reactive: false});
++            const empty = new PopupMenu.PopupMenuItem(_('Nothing new nearby. Put a device in pairing mode.'), {reactive: false, style_class: 'luma-options-off'});
+             empty.label.clutter_text.line_wrap = true;
+             this._nearSection.addMenuItem(empty);
+         }
+         this._nearHeading.visible = this._client.active;
+-        this._nearSection.actor.visible = this._client.active;
++        this._nearSection.actor.visible = this._client.active && (count > 0 || !this._scanId);
++        if (!count) this._nearSection.actor.add_style_class_name('luma-options-near-empty');
++        else this._nearSection.actor.remove_style_class_name('luma-options-near-empty');
+         this._placeholderItem.label.text = this._client.active ? _('No devices') : _('Bluetooth is off');
+     }
+ 
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5274,3 +5274,89 @@
+ .quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+ .quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+ .luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5498,3 +5498,89 @@
+ .quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+ .quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+ .luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5448,3 +5448,89 @@
+ .quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+ .quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+ .luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2886,3 +2886,89 @@
+ .quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+ .quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+ .luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }

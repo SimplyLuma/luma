@@ -1,0 +1,82 @@
+{
+  "app": "bar-maps",
+  "title": "Bar search and the ETA readout against Maps' bar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=maps",
+    "window": "#w-maps",
+    "exclude": [
+      "#w-maps *:not(:has(#mp-bar)):not(#mp-bar):not(#mp-bar *)",
+      "#mp-bar > .ib",
+      "#mp-bar > .vr",
+      "#mp-bar .bt"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "maps",
+      "LUMAUI_BAR_HOST": "272,46,900,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774"
+    }
+  },
+  "states": [
+    {
+      "name": "search",
+      "about": "The resting bar: search, then Where am I and the layers",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "search"
+          }
+        }
+      ]
+    },
+    {
+      "name": "eta",
+      "about": "Navigating: the ETA readout, Voice and End",
+      "spec": [
+        {
+          "eval": "Date.now = () => new Date('2026-09-25T22:16:00').getTime()"
+        },
+        {
+          "click": "[data-mpp]"
+        },
+        {
+          "click": "[data-mpdir]"
+        },
+        {
+          "click": "[data-mpgo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "eta"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "search",
+    "eta"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#mp-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#mp-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: add a highlight guard to automatic exposure
+
+The Simple IPA's five-bin mean-sample-value metering can consider a strongly
+backlit scene correctly exposed even when a substantial bright region is
+already clipped. This is particularly visible on phone cameras: the FP6
+front-camera trace held maximum shutter and 11x analogue gain while 8.5% of
+the samples occupied the brightest histogram bin.
+
+Allow per-sensor tuning to set a maximum fraction for that bin. Above the
+limit, bias the existing bounded proportional controller toward lower
+exposure. A zero or omitted value preserves upstream behaviour. This is a
+highlight-protection guard, not an HDR or tone-mapping substitute.
+
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -27,8 +27,10 @@
+ 		     ControlList &metadata) override;
+ 
+ private:
+-	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
++	void updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++			    double exposureMSV, double brightFraction);
+ 	double maxGain_;
++	double maxBrightFraction_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -63,7 +63,7 @@
+ static constexpr float kExpMaxStep = 0.15;
+ 
+ Agc::Agc()
+-	: maxGain_(0.0)
++	: maxGain_(0.0), maxBrightFraction_(0.0)
+ {
+ }
+ 
+@@ -76,10 +76,18 @@
+ 		return -EINVAL;
+ 	}
+ 
++	maxBrightFraction_ = tuningData["maxBrightFraction"].get<double>(0.0);
++	if (maxBrightFraction_ < 0.0 || maxBrightFraction_ > 1.0) {
++		LOG(IPASoftExposure, Error)
++			<< "maxBrightFraction must be between zero and one";
++		return -EINVAL;
++	}
++
+ 	return 0;
+ }
+ 
+-void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
++void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
++			 double exposureMSV, double brightFraction)
+ {
+ 	int32_t &exposure = frameContext.sensor.exposure;
+ 	double &again = frameContext.sensor.gain;
+@@ -89,6 +97,26 @@
+ 
+ 	double error = kExposureOptimal - exposureMSV;
+ 
++	/*
++	 * Protect significant bright regions even when darker pixels pull the
++	 * scene mean below its target. Ten maps each percentage point above the
++	 * configured limit to a 0.1 MSV correction. The existing proportional
++	 * gain and maximum step retain smooth, bounded convergence.
++	 */
++	if (maxBrightFraction_ > 0.0) {
++		if (brightFraction > maxBrightFraction_) {
++			double highlightError = std::clamp(
++				(brightFraction - maxBrightFraction_) * 10.0,
++				static_cast<double>(kExposureSatisfactory) + 0.01,
++				2.5);
++			error = std::min(error, -highlightError);
++		} else if (error > 0.0 &&
++			   brightFraction >= maxBrightFraction_ * 0.8) {
++			/* Hold inside the guard's hysteresis band. */
++			return;
++		}
++	}
++
+ 	if (std::abs(error) <= kExposureSatisfactory)
+ 		return;
+ 
+@@ -137,6 +165,7 @@
+ 
+ 	LOG(IPASoftExposure, Debug)
+ 		<< "exposureMSV " << exposureMSV
++		<< " brightFraction " << brightFraction
+ 		<< " error " << error << " factor " << factor
+ 		<< " exp " << exposure << " again " << again;
+ }
+@@ -206,7 +235,9 @@
+ 	}
+ 
+ 	float exposureMSV = (denom == 0 ? 0 : static_cast<float>(num) / denom);
+-	updateExposure(context, frameContext, exposureMSV);
++	float brightFraction = denom == 0 ? 0.0f
++		: static_cast<float>(exposureBins[kExposureBinsCount - 1]) / denom;
++	updateExposure(context, frameContext, exposureMSV, brightFraction);
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Agc, "Agc")

@@ -1,0 +1,58 @@
+{
+  "source": "Studio v70 Filer sample, luma-next-70.html lines 4895-4933",
+  "initial": {"root": "Home", "path": ["Projects", "Launch"], "view": "grid", "sort": {"key": "name", "direction": 1}, "selection": null, "information": false},
+  "places": [
+    ["recent", "Recent", "clock"], ["home", "Home", "house"],
+    ["documents", "Documents", "file-text"], ["downloads", "Downloads", "download"],
+    ["pictures", "Pictures", "image"], ["projects", "Projects", "folder"]
+  ],
+  "drives": [{"name": "Fable SSD", "used_percent": 58}, {"name": "Archive", "used_percent": 84}],
+  "kind_labels": {"folder": "Folder", "md": "Markdown", "pdf": "PDF document", "img": "Image", "deck": "Stage presentation", "sheet": "Grid spreadsheet", "doc": "Write document", "video": "Video", "audio": "Voice memo", "iso": "Disk image", "pkg": "App to install"},
+  "launch_information": {"size_on_disk": "1.24 GB", "modified": "Today, 10:04 AM", "shared_with": "Priya, Nora"},
+  "files": [
+    {"name": "Press kit", "kind": "folder", "size": "12 items", "modified": "Today, 9:40 AM"},
+    {"name": "Screens", "kind": "folder", "size": "48 items", "modified": "Yesterday"},
+    {"name": "Website", "kind": "folder", "size": "31 items", "modified": "Sep 19"},
+    {"name": "Fonts", "kind": "folder", "size": "6 items", "modified": "Sep 2"},
+    {"name": "hero-writing.webp", "kind": "img", "thumbnail": "life-hero-writing.webp", "size": "412 KB", "modified": "Today, 10:04 AM", "dimensions": "2000 × 1125", "tags": ["design"]},
+    {"name": "field-desk.webp", "kind": "img", "thumbnail": "life-footer.webp", "size": "388 KB", "modified": "Today, 10:02 AM", "dimensions": "1672 × 941"},
+    {"name": "ari-demo.mov", "kind": "video", "thumbnail": "life-work-suite.webp", "length": "2:14", "size": "1.2 GB", "modified": "Sep 16", "dimensions": "3840 × 2160"},
+    {"name": "launch-deck.stage", "kind": "deck", "extension": "STAGE", "size": "18.4 MB", "modified": "Sep 20", "tags": ["launch"]},
+    {"name": "budget-q4.grid", "kind": "sheet", "extension": "GRID", "size": "96 KB", "modified": "Sep 18", "tags": ["personal"]},
+    {"name": "press-release.write", "kind": "doc", "extension": "WRITE", "size": "48 KB", "modified": "Sep 17", "tags": ["launch"]},
+    {"name": "launch-plan.md", "kind": "md", "extension": "MD", "size": "14 KB", "modified": "Today, 9:12 AM", "tags": ["launch"]},
+    {"name": "why-letter.pdf", "kind": "pdf", "extension": "PDF", "size": "2.1 MB", "modified": "Yesterday"},
+    {"name": "terrace.webp", "kind": "img", "thumbnail": "life-sync-terrace.webp", "size": "356 KB", "modified": "Yesterday", "dimensions": "1800 × 1013", "tags": ["design"]},
+    {"name": "standup.ogg", "kind": "audio", "extension": "OGG", "size": "3.4 MB", "modified": "Sep 15"}
+  ],
+  "tree": {
+    "Home": [["Desktop", "folder"], ["Documents", "folder"], ["Downloads", "folder"], ["Music", "folder"], ["Pictures", "folder"], ["Projects", "folder"]],
+    "Projects": [["Archive 2025", "folder"], ["Launch", "folder"], ["Personal site", "folder"], ["Taxes 2026", "folder"]],
+    "Documents": [["Letters", "folder"], ["Lease 2026.pdf", "pdf"], ["Reading list.md", "md"]],
+    "Pictures": [["Screenshots", "folder"], ["Terrace.webp", "img"], ["Studio morning.webp", "img"]],
+    "Downloads": [["Luma-1.0-nightly.iso", "iso"], ["kiln-2.4.1.flatpakref", "pkg"], ["Invoice 0923.pdf", "pdf"]],
+    "Desktop": [["Screenshot 21.40.png", "img"]],
+    "Music": [["Pet Sounds", "folder"], ["Demos", "folder"]],
+    "Personal site": [["index.html", "md"], ["styles.css", "md"]],
+    "Archive 2025": [["Old deck.stage", "deck"]],
+    "Taxes 2026": [["Return.pdf", "pdf"], ["Receipts.grid", "sheet"]],
+    "Press kit": [["logo.svg", "img"], ["press-photo-1.webp", "img"], ["boilerplate.md", "md"]],
+    "Screens": [["filer.webp", "img"], ["photos.webp", "img"]],
+    "Website": [["hero.webp", "img"], ["copy.md", "md"]],
+    "Fonts": [["Figtree.ttf", "md"], ["Instrument Serif.otf", "md"]],
+    "Fable SSD": [["Home", "folder"], ["Luma", "folder"]],
+    "Luma": [["Apps", "folder"], ["Wallpapers", "folder"]],
+    "Archive": [["Archive 2025", "folder"], ["Photo backups", "folder"]]
+  },
+  "file_details": {
+    "press-photo-1.webp": {"thumbnail": "life-footer.webp", "size": "2.4 MB", "modified": "Sep 18"}
+  },
+  "search_snippets": {
+    "launch-plan.md": "Freeze strings on the 10th. Launch day is October 14: film at 9, download at 10, press all day.",
+    "press-release.write": "Luma 1.0 launches October 14 as a free download for any PC.",
+    "why-letter.pdf": "Why we built Luma: a computer that feels calm again.",
+    "boilerplate.md": "Luma is a desktop operating system. It launches October 14.",
+    "copy.md": "Your computer, calm again. Launch film and download on the 14th."
+  },
+  "search_order": ["Press kit", "press-photo-1.webp", "press-release.write", "launch-plan.md"]
+}

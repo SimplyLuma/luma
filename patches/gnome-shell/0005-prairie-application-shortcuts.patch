@@ -1,0 +1,606 @@
+diff --git a/data/dbus-interfaces/org.gnome.Shell.xml b/data/dbus-interfaces/org.gnome.Shell.xml
+index 7d14c16..5b079eb 100644
+--- a/data/dbus-interfaces/org.gnome.Shell.xml
++++ b/data/dbus-interfaces/org.gnome.Shell.xml
+@@ -17,6 +17,13 @@
+       <arg type="s" direction="in" name="id"/>
+     </method>
+     <method name="ShowApplications"/>
++    <method name="BeginApplicationDrag">
++      <arg type="s" direction="in" name="id"/>
++      <arg type="b" direction="out" name="accepted"/>
++    </method>
++    <method name="EndApplicationDrag">
++      <arg type="b" direction="in" name="succeeded"/>
++    </method>
+     <method name="GrabAccelerator">
+       <arg type="s" direction="in" name="accelerator"/>
+       <arg type="u" direction="in" name="modeFlags"/>
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index a1965de..5b65467 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -553,6 +553,27 @@ StEntry {
+     .login-dialog-button.a11y-button:checked:active, .login-dialog-button.cancel-button:checked:active, .login-dialog-button.switch-user-button:checked:active, .login-dialog-button.login-dialog-session-list-button:checked:active {
+       background-color: st-darken(st-darken(st-mix(#fafafb, #2e2e33, 12%), 8%), 9%); }
+ 
++/* Prairie desktop application shortcuts */
++.prairie-desktop-shortcut {
++  padding: 6px;
++  border-radius: 10px;
++  color: #1f2937;
++  background-color: transparent; }
++  .prairie-desktop-shortcut:hover,
++  .prairie-desktop-shortcut:focus {
++    background-color: rgba(250, 250, 251, 0.82); }
++  .prairie-desktop-shortcut:active {
++    background-color: rgba(72, 120, 184, 0.16); }
++
++.prairie-desktop-shortcut-content {
++  spacing: 7px; }
++
++.prairie-desktop-shortcut-label {
++  width: 72px;
++  font-size: 12px;
++  font-weight: 500;
++  color: #1f2937; }
++
+ /* Lockscreen Elements */
+ .unlock-dialog-notifications-container .message StButton,
+ .unlock-dialog-notifications-container .unlock-dialog-notification-source StButton, .parental-controls-shield .parental-controls-shield-button, .unlock-dialog .button,
+diff --git a/data/theme/gnome-shell-sass/_common.scss b/data/theme/gnome-shell-sass/_common.scss
+index 846427e..d8c6501 100644
+--- a/data/theme/gnome-shell-sass/_common.scss
++++ b/data/theme/gnome-shell-sass/_common.scss
+@@ -356,6 +356,34 @@ stage {
+ 
+ /* Lockscreen Elements */
+ 
++/* Prairie desktop application shortcuts */
++.prairie-desktop-shortcut {
++  padding: 6px;
++  border-radius: 10px;
++  color: #1f2937;
++  background-color: transparent;
++
++  &:hover,
++  &:focus {
++    background-color: rgba(250, 250, 251, 0.82);
++  }
++
++  &:active {
++    background-color: rgba(72, 120, 184, 0.16);
++  }
++}
++
++.prairie-desktop-shortcut-content {
++  spacing: 7px;
++}
++
++.prairie-desktop-shortcut-label {
++  width: 72px;
++  font-size: 12px;
++  font-weight: 500;
++  color: #1f2937;
++}
++
+ // buttons
+ %lockscreen_button {
+   @extend %button_common;
+@@ -377,4 +405,3 @@ stage {
+ 
+   StLabel.hint-text { color: transparentize($system_fg_color, 0.3);}
+ }
+-
+diff --git a/js/ui/backgroundMenu.js b/js/ui/backgroundMenu.js
+index 26fd41e..8ce14e7 100644
+--- a/js/ui/backgroundMenu.js
++++ b/js/ui/backgroundMenu.js
+@@ -1,11 +1,182 @@
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GioUnix from 'gi://GioUnix';
++import GLib from 'gi://GLib';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as BoxPointer from './boxpointer.js';
++import * as DND from './dnd.js';
+ import * as PopupMenu from './popupMenu.js';
+ 
+ import * as Main from './main.js';
+ 
++class DesktopApplicationShortcuts {
++    constructor() {
++        const desktopPath = GLib.get_user_special_dir(
++            GLib.UserDirectory.DIRECTORY_DESKTOP) ??
++            GLib.build_filenamev([GLib.get_home_dir(), 'Desktop']);
++
++        this._directory = Gio.File.new_for_path(desktopPath);
++        this._views = new Set();
++        this._reloadId = 0;
++
++        try {
++            this._directory.make_directory_with_parents(null);
++        } catch (e) {
++            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
++                logError(e, 'Failed to prepare the desktop directory');
++        }
++
++        try {
++            this._monitor = this._directory.monitor_directory(
++                Gio.FileMonitorFlags.WATCH_MOVES, null);
++            this._monitor.connect('changed', () => this._queueReload());
++        } catch (e) {
++            logError(e, 'Failed to monitor desktop application shortcuts');
++            this._monitor = null;
++        }
++    }
++
++    attach(backgroundActor, layoutManager) {
++        const monitor = layoutManager.primaryMonitor;
++        if (!monitor || backgroundActor.x !== monitor.x ||
++            backgroundActor.y !== monitor.y)
++            return;
++
++        const view = new St.Widget({
++            style_class: 'prairie-desktop-shortcuts',
++            reactive: false,
++            layout_manager: new Clutter.FixedLayout(),
++        });
++        view.set_position(0, 0);
++        view.set_size(monitor.width, monitor.height);
++        backgroundActor.add_child(view);
++        this._views.add(view);
++
++        backgroundActor.connect('destroy', () => this._views.delete(view));
++        this._reloadView(view);
++    }
++
++    createShortcut(app) {
++        const appInfo = app?.get_app_info();
++        const appId = app?.get_id();
++        const sourcePath = appInfo?.get_filename?.();
++        if (!appId || !sourcePath)
++            return false;
++
++        const shortcut = this._directory.get_child(appId);
++        if (shortcut.query_exists(null))
++            return true;
++
++        try {
++            shortcut.make_symbolic_link(sourcePath, null);
++            return true;
++        } catch (e) {
++            logError(e, `Failed to create desktop shortcut for ${appId}`);
++            Main.notifyError(
++                _('Could Not Add Application to Desktop'), e.message);
++            return false;
++        }
++    }
++
++    _queueReload() {
++        if (this._reloadId)
++            return;
++
++        this._reloadId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._reloadId = 0;
++            for (const view of this._views)
++                this._reloadView(view);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _loadApplications() {
++        const applications = [];
++        let enumerator;
++
++        try {
++            enumerator = this._directory.enumerate_children(
++                'standard::name,standard::type',
++                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
++
++            let info;
++            while ((info = enumerator.next_file(null))) {
++                const name = info.get_name();
++                if (!name.endsWith('.desktop'))
++                    continue;
++
++                const file = this._directory.get_child(name);
++                const appInfo = GioUnix.DesktopAppInfo.new_from_filename(
++                    file.get_path());
++                if (!appInfo)
++                    continue;
++
++                const app = Shell.AppSystem.get_default().lookup_app(
++                    appInfo.get_id());
++                if (app)
++                    applications.push(app);
++            }
++        } catch (e) {
++            logError(e, 'Failed to enumerate desktop application shortcuts');
++        } finally {
++            enumerator?.close(null);
++        }
++
++        applications.sort((a, b) =>
++            a.get_name().localeCompare(b.get_name()));
++        return applications;
++    }
++
++    _reloadView(view) {
++        view.destroy_all_children();
++
++        const applications = this._loadApplications();
++        const columnWidth = 92;
++        const rowHeight = 94;
++        const topInset = (Main.panel?.height ?? 34) + 18;
++        const rows = Math.max(1,
++            Math.floor((view.height - topInset - 24) / rowHeight));
++
++        applications.forEach((app, index) => {
++            const column = Math.floor(index / rows);
++            const row = index % rows;
++            const button = new St.Button({
++                style_class: 'prairie-desktop-shortcut',
++                can_focus: true,
++                x: view.width - (column + 1) * columnWidth - 12,
++                y: topInset + row * rowHeight,
++                width: 84,
++                height: 86,
++            });
++            const content = new St.BoxLayout({
++                style_class: 'prairie-desktop-shortcut-content',
++                vertical: true,
++                x_align: Clutter.ActorAlign.CENTER,
++            });
++            const label = new St.Label({
++                style_class: 'prairie-desktop-shortcut-label',
++                text: app.get_name(),
++                x_align: Clutter.ActorAlign.CENTER,
++            });
++
++            content.add_child(app.create_icon_texture(48));
++            content.add_child(label);
++            button.set_child(content);
++            button.connect('clicked', () => app.activate());
++            view.add_child(button);
++        });
++    }
++}
++
++let desktopApplicationShortcuts = null;
++
++function getDesktopApplicationShortcuts() {
++    desktopApplicationShortcuts ??= new DesktopApplicationShortcuts();
++    return desktopApplicationShortcuts;
++}
++
+ export class BackgroundMenu extends PopupMenu.PopupMenu {
+     constructor(layoutManager) {
+         super(layoutManager.dummyCursor, 0, St.Side.TOP);
+@@ -32,6 +203,25 @@ export function addBackgroundMenu(actor, layoutManager) {
+     actor._backgroundManager = new PopupMenu.PopupMenuManager(actor);
+     actor._backgroundManager.addMenu(actor._backgroundMenu);
+ 
++    const shortcuts = getDesktopApplicationShortcuts();
++    shortcuts.attach(actor, layoutManager);
++    actor._delegate = {
++        handleDragOver(source) {
++            if (source !== Main.xdndHandler ||
++                !source.getApplicationDragApp())
++                return DND.DragMotionResult.CONTINUE;
++
++            return DND.DragMotionResult.COPY_DROP;
++        },
++
++        acceptDrop(source) {
++            if (source !== Main.xdndHandler)
++                return false;
++
++            return shortcuts.createShortcut(source.getApplicationDragApp());
++        },
++    };
++
+     function openMenu(x, y) {
+         Main.layoutManager.setDummyCursorGeometry(x, y, 0, 0);
+         actor._backgroundMenu.open(BoxPointer.PopupAnimation.FULL);
+@@ -63,5 +253,6 @@ export function addBackgroundMenu(actor, layoutManager) {
+         actor._backgroundMenu.destroy();
+         actor._backgroundMenu = null;
+         actor._backgroundManager = null;
++        actor._delegate = null;
+     });
+ }
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index 970bf94..0514e47 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -311,6 +311,8 @@ export const Dash = GObject.registerClass({
+     static getAppFromSource(source) {
+         if (source instanceof AppDisplay.AppIcon)
+             return source.app;
++        else if (source === Main.xdndHandler)
++            return source.getApplicationDragApp();
+         else
+             return null;
+     }
+@@ -441,7 +443,22 @@ export const Dash = GObject.registerClass({
+         const showAppsHovered =
+                 this._showAppsIcon.contains(dragEvent.targetActor);
+ 
+-        if (!this._box.contains(dragEvent.targetActor) || showAppsHovered)
++        let boxHovered = this._box.contains(dragEvent.targetActor);
++        if (dragEvent.source === Main.xdndHandler) {
++            // An external Xdnd pointer has no Shell drag actor that follows
++            // the dash layout. Expanding the placeholder recenters the dock,
++            // which can make Clutter repick the same stationary pointer onto
++            // the dock background instead of an icon child. Use the pointer's
++            // actual stage coordinates for external drags so that layout
++            // movement cannot collapse a still-valid insertion slot.
++            const [insideTransform, boxX, boxY] =
++                this._box.transform_stage_point(dragEvent.x, dragEvent.y);
++            boxHovered = insideTransform &&
++                boxX >= 0 && boxX <= this._box.width &&
++                boxY >= 0 && boxY <= this._box.height;
++        }
++
++        if (!boxHovered || showAppsHovered)
+             this._clearDragPlaceholder();
+ 
+         if (showAppsHovered)
+@@ -881,6 +898,27 @@ export const Dash = GObject.registerClass({
+         // need to do the same adjustment there.
+         if (this._dragPlaceholder) {
+             boxWidth -= this._dragPlaceholder.width;
++
++            if (source === Main.xdndHandler) {
++                // XdndHandler invokes us through _box._delegate, so x is
++                // local to _box, not to the outer Dash actor.
++                const [boxStageX] = this._box.get_transformed_position();
++                const [placeholderStageX] =
++                    this._dragPlaceholder.get_transformed_position();
++                const placeholderStart = placeholderStageX - boxStageX;
++                const placeholderEnd =
++                    placeholderStart + this._dragPlaceholder.width;
++
++                // Remove the temporary actor from pointer geometry exactly
++                // where it exists. While the pointer is over the open gap,
++                // retain that gap; after crossing it, subtract its full
++                // width. This avoids both recentering oscillation and the
++                // half-slot bias caused by a blanket center correction.
++                if (x >= placeholderStart && x <= placeholderEnd)
++                    return DND.DragMotionResult.MOVE_DROP;
++                if (x > placeholderEnd)
++                    x -= this._dragPlaceholder.width;
++            }
+             numChildren--;
+         }
+ 
+@@ -893,8 +931,15 @@ export const Dash = GObject.registerClass({
+         let pos;
+         if (this._emptyDropTarget)
+             pos = 0; // always insert at the start when dash is empty
++        else if (source === Main.xdndHandler &&
++                 this.text_direction === Clutter.TextDirection.RTL)
++            pos = numChildren - Math.max(0, Math.min(numChildren,
++                Math.round(x * numChildren / boxWidth)));
+         else if (this.text_direction === Clutter.TextDirection.RTL)
+             pos = numChildren - Math.floor(x * numChildren / boxWidth);
++        else if (source === Main.xdndHandler)
++            pos = Math.max(0, Math.min(numChildren,
++                Math.round(x * numChildren / boxWidth)));
+         else
+             pos = Math.floor(x * numChildren / boxWidth);
+ 
+diff --git a/js/ui/shellDBus.js b/js/ui/shellDBus.js
+index 1e5a6a3..8815909 100644
+--- a/js/ui/shellDBus.js
++++ b/js/ui/shellDBus.js
+@@ -29,6 +29,9 @@ export class GnomeShell {
+             'org.gnome.SettingsDaemon.MediaKeys',
+             'org.freedesktop.impl.portal.desktop.gnome',
+         ]);
++        this._applicationDragSenderChecker = new DBusSenderChecker([
++            'org.gnome.Nautilus',
++        ]);
+ 
+         this._extensionsService = new GnomeShellExtensions();
+         this._screenshotService = new Screenshot.ScreenshotService();
+@@ -201,6 +204,30 @@ export class GnomeShell {
+         invocation.return_value(null);
+     }
+ 
++    async BeginApplicationDragAsync([id], invocation) {
++        try {
++            await this._applicationDragSenderChecker.checkInvocation(invocation);
++        } catch (e) {
++            invocation.return_gerror(e);
++            return;
++        }
++
++        const accepted = Main.xdndHandler.beginApplicationDrag(id);
++        invocation.return_value(GLib.Variant.new('(b)', [accepted]));
++    }
++
++    async EndApplicationDragAsync([succeeded], invocation) {
++        try {
++            await this._applicationDragSenderChecker.checkInvocation(invocation);
++        } catch (e) {
++            invocation.return_gerror(e);
++            return;
++        }
++
++        Main.xdndHandler.endApplicationDrag(succeeded);
++        invocation.return_value(null);
++    }
++
+     async GrabAcceleratorAsync(params, invocation) {
+         try {
+             await this._senderChecker.checkInvocation(invocation);
+diff --git a/js/ui/xdndHandler.js b/js/ui/xdndHandler.js
+index 9d98cbe..7b3cfc0 100644
+--- a/js/ui/xdndHandler.js
++++ b/js/ui/xdndHandler.js
+@@ -1,4 +1,5 @@
+ import Clutter from 'gi://Clutter';
++import Shell from 'gi://Shell';
+ import * as Signals from '../misc/signals.js';
+ 
+ import * as DND from './dnd.js';
+@@ -17,6 +18,8 @@ export class XdndHandler extends Signals.EventEmitter {
+         Main.uiGroup.add_child(this._dummy);
+         this._dummy.hide();
+ 
++        this._applicationDrag = null;
++
+         var dnd = global.backend.get_dnd();
+         dnd.connect('dnd-enter', this._onEnter.bind(this));
+         dnd.connect('dnd-position-change', this._onPositionChanged.bind(this));
+@@ -31,6 +34,12 @@ export class XdndHandler extends Signals.EventEmitter {
+             this._cursorWindowClone = null;
+         }
+ 
++        if (this._applicationDrag) {
++            this._applicationDrag.externalEnded = true;
++            this._maybeFinishApplicationDrag();
++            return;
++        }
++
+         this.emit('drag-end');
+     }
+ 
+@@ -87,12 +96,22 @@ export class XdndHandler extends Signals.EventEmitter {
+             targetActor: pickedActor,
+         };
+ 
++        const previousApplicationTarget =
++            this._applicationDrag?.target ?? null;
++        if (this._applicationDrag)
++            this._applicationDrag.target = null;
++
+         for (let i = 0; i < DND.dragMonitors.length; i++) {
+             const motionFunc = DND.dragMonitors[i].dragMotion;
+             if (motionFunc) {
+                 const result = motionFunc(dragEvent);
+-                if (result !== DND.DragMotionResult.CONTINUE)
++                if (result !== DND.DragMotionResult.CONTINUE) {
++                    this._recordApplicationDropTarget(
++                        result, null, dragEvent.dragActor, x, y, null);
++                    this._restoreApplicationDropTarget(
++                        previousApplicationTarget, dragEvent.targetActor, x, y);
+                     return;
++                }
+             }
+         }
+ 
+@@ -104,10 +123,108 @@ export class XdndHandler extends Signals.EventEmitter {
+                     targX,
+                     targY,
+                     global.get_current_time());
+-                if (result !== DND.DragMotionResult.CONTINUE)
++                if (result !== DND.DragMotionResult.CONTINUE) {
++                    this._recordApplicationDropTarget(
++                        result, pickedActor._delegate,
++                        dragEvent.dragActor, targX, targY, pickedActor);
+                     return;
++                }
+             }
+             pickedActor = pickedActor.get_parent();
+         }
++
++        this._restoreApplicationDropTarget(
++            previousApplicationTarget, dragEvent.targetActor, x, y);
++    }
++
++    beginApplicationDrag(appId) {
++        const app = Shell.AppSystem.get_default().lookup_app(appId);
++        if (!app || app.is_window_backed())
++            return false;
++
++        if (this._applicationDrag) {
++            Main.overview.cancelledItemDrag(this);
++            Main.overview.endItemDrag(this);
++        }
++
++        this._applicationDrag = {
++            app,
++            externalEnded: false,
++            sourceEnded: false,
++            sourceSucceeded: false,
++            target: null,
++        };
++        Main.overview.beginItemDrag(this);
++        return true;
++    }
++
++    endApplicationDrag(succeeded) {
++        if (!this._applicationDrag)
++            return;
++
++        this._applicationDrag.sourceEnded = true;
++        this._applicationDrag.sourceSucceeded = succeeded;
++        this._maybeFinishApplicationDrag();
++    }
++
++    getApplicationDragApp() {
++        return this._applicationDrag?.app ?? null;
++    }
++
++    _recordApplicationDropTarget(result, delegate, actor, x, y, targetActor) {
++        if (!this._applicationDrag ||
++            (result !== DND.DragMotionResult.COPY_DROP &&
++             result !== DND.DragMotionResult.MOVE_DROP) ||
++            !delegate?.acceptDrop || !targetActor)
++            return;
++
++        this._applicationDrag.target = {
++            delegate,
++            actor,
++            x,
++            y,
++            targetActor,
++        };
++    }
++
++    _restoreApplicationDropTarget(previousTarget, pickedActor, stageX, stageY) {
++        if (!this._applicationDrag || this._applicationDrag.target ||
++            !previousTarget?.targetActor)
++            return;
++
++        let pointerInsidePreviousTarget = false;
++        if (pickedActor) {
++            pointerInsidePreviousTarget =
++                previousTarget.targetActor === pickedActor ||
++                previousTarget.targetActor.contains(pickedActor);
++        }
++
++        if (!pointerInsidePreviousTarget) {
++            const [insideTransform, targetX, targetY] =
++                previousTarget.targetActor.transform_stage_point(stageX, stageY);
++            pointerInsidePreviousTarget = insideTransform &&
++                targetX >= 0 && targetX <= previousTarget.targetActor.width &&
++                targetY >= 0 && targetY <= previousTarget.targetActor.height;
++        }
++
++        if (pointerInsidePreviousTarget)
++            this._applicationDrag.target = previousTarget;
++    }
++
++    _maybeFinishApplicationDrag() {
++        const drag = this._applicationDrag;
++        if (!drag || !drag.externalEnded || !drag.sourceEnded)
++            return;
++
++        const target = drag.sourceSucceeded ? drag.target : null;
++
++        if (target?.delegate?.acceptDrop) {
++            target.delegate.acceptDrop(
++                this, target.actor, target.x, target.y,
++                global.get_current_time());
++        }
++
++        this.emit('drag-end');
++        this._applicationDrag = null;
+     }
+ }

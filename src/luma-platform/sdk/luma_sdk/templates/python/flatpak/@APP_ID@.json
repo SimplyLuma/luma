@@ -1,0 +1,43 @@
+{
+  "id": "@APP_ID@",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "50",
+  "sdk": "org.gnome.Sdk",
+  "command": "run-app",
+  "finish-args": [
+    "--share=ipc",
+    "--socket=wayland",
+    "--device=dri"
+  ],
+  "modules": [
+    {
+      "name": "luma-developer-platform",
+      "buildsystem": "meson",
+      "subdir": "src/luma-platform",
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/SimplyLuma/luma.git",
+          "branch": "main"
+        }
+      ]
+    },
+    {
+      "name": "application",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm755 run-app /app/bin/run-app",
+        "install -Dm644 src/main.py /app/share/@APP_ID@/main.py",
+        "install -Dm644 data/@APP_ID@.desktop /app/share/applications/@APP_ID@.desktop",
+        "install -Dm644 data/@APP_ID@.metainfo.xml /app/share/metainfo/@APP_ID@.metainfo.xml",
+        "install -Dm644 data/@APP_ID@.svg /app/share/icons/hicolor/scalable/apps/@APP_ID@.svg"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": ".."
+        }
+      ]
+    }
+  ]
+}

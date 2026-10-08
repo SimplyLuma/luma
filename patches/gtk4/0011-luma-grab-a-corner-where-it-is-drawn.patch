@@ -1,0 +1,128 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: grab a window's corner where it is drawn
+
+Resize handles for client-decorated windows lay only outside the border
+box, over the shadow, so aiming at a rounded corner grabbed nothing. A
+12px band just inside each corner, 32px along each edge, now resizes
+too, except where the press lands on a button, window control or text field. The resize gesture looks first so that band wins over a
+header bar's drag; any press it does not take is denied at once and
+reaches the widgets beneath unchanged.
+
+--- a/gtk/gtkwindow.c
++++ b/gtk/gtkwindow.c
+@@ -63,6 +63,9 @@
+ #include "gtkcssboxesimplprivate.h"
+ #include "gtktooltipprivate.h"
+ #include "gtkmenubutton.h"
++#include "gtkbutton.h"
++#include "gtkeditable.h"
++#include "gtkwindowcontrols.h"
+ 
+ #include "inspector/window.h"
+ 
+@@ -191,6 +194,8 @@
+ #define MENU_BAR_ACCEL GDK_KEY_F10
+ #define RESIZE_HANDLE_SIZE 12 /* Width of resize borders */
+ #define RESIZE_HANDLE_CORNER_SIZE 24 /* How resize corners extend */
++#define RESIZE_HANDLE_CORNER_INSET 12 /* How far a corner handle reaches inside the window */
++#define RESIZE_HANDLE_CORNER_REACH 32 /* How far along each edge it reaches inside */
+ #define MNEMONICS_DELAY 300 /* ms */
+ #define NO_CONTENT_CHILD_NAT 200 /* ms */
+ #define VISIBLE_FOCUS_DURATION 3 /* s */
+@@ -1590,6 +1595,47 @@
+   left = border_rect->origin.x;
+   top = border_rect->origin.y;
+ 
++  /* A rounded window's corner is where people aim, and it sits inside the
++   * border box. Handles only in the shadow outside it felt like grabbing
++   * the shadow, so a band just inside each corner resizes too -- unless the
++   * press lands on a button there, such as a window control. */
++  if (x >= left && x < left + border_rect->size.width &&
++      y >= top && y < top + border_rect->size.height)
++    {
++      float right = left + border_rect->size.width;
++      float bottom = top + border_rect->size.height;
++      float reach = MAX (RESIZE_HANDLE_CORNER_REACH, resize_handle_size);
++      gboolean west = x < left + reach;
++      gboolean east = x >= right - reach;
++      gboolean north = y < top + reach;
++      gboolean south = y >= bottom - reach;
++      gboolean at_edge = x < left + RESIZE_HANDLE_CORNER_INSET ||
++                         x >= right - RESIZE_HANDLE_CORNER_INSET ||
++                         y < top + RESIZE_HANDLE_CORNER_INSET ||
++                         y >= bottom - RESIZE_HANDLE_CORNER_INSET;
++
++      if (at_edge && (north || south) && (west || east))
++        {
++          GtkWidget *target = gtk_widget_pick (GTK_WIDGET (window), x, y, GTK_PICK_DEFAULT);
++
++          for (; target && target != GTK_WIDGET (window); target = gtk_widget_get_parent (target))
++            if (GTK_IS_BUTTON (target) || GTK_IS_CHECK_BUTTON (target) ||
++                GTK_IS_WINDOW_CONTROLS (target) || GTK_IS_EDITABLE (target))
++              break;
++
++          if (!target || target == GTK_WIDGET (window))
++            {
++              if (north && west)
++                return edge_or_minus_one (GDK_SURFACE_EDGE_NORTH_WEST);
++              if (north && east)
++                return edge_or_minus_one (GDK_SURFACE_EDGE_NORTH_EAST);
++              if (south && west)
++                return edge_or_minus_one (GDK_SURFACE_EDGE_SOUTH_WEST);
++              return edge_or_minus_one (GDK_SURFACE_EDGE_SOUTH_EAST);
++            }
++        }
++    }
++
+   if (x < left && x >= left - handle_size.left)
+     {
+       if (y < top + resize_handle_size && y >= top - handle_size.top)
+@@ -1677,25 +1723,24 @@
+   event = gtk_gesture_get_last_event (GTK_GESTURE (gesture), sequence);
+   device = gtk_gesture_get_device (GTK_GESTURE (gesture));
+ 
+-  if (!event)
+-    return;
+-
+-  if (button != GDK_BUTTON_PRIMARY)
+-    return;
+-
+-  if (priv->maximized)
+-    return;
+-
+-  if (gdk_display_device_is_grabbed (gtk_widget_get_display (GTK_WIDGET (window)), device))
+-    return;
+-
+-  if (!priv->client_decorated)
+-    return;
++  if (!event ||
++      button != GDK_BUTTON_PRIMARY ||
++      priv->maximized ||
++      gdk_display_device_is_grabbed (gtk_widget_get_display (GTK_WIDGET (window)), device) ||
++      !priv->client_decorated)
++    {
++      gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
++      return;
++    }
+ 
+   edge = get_edge_for_coordinates (window, x, y);
+ 
+   if (edge == -1)
+-    return;
++    {
++      /* Not a resize: let the press reach the widgets under it. */
++      gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
++      return;
++    }
+ 
+   region = (GtkWindowRegion)edge;
+ 
+@@ -1927,7 +1972,7 @@
+   gtk_event_controller_set_static_name (GTK_EVENT_CONTROLLER (priv->click_gesture), "gtk-window-resize");
+   gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (priv->click_gesture), 0);
+   gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (priv->click_gesture),
+-                                              GTK_PHASE_BUBBLE);
++                                              GTK_PHASE_CAPTURE);
+   g_signal_connect (priv->click_gesture, "pressed",
+                     G_CALLBACK (click_gesture_pressed_cb), object);
+   gtk_widget_add_controller (GTK_WIDGET (object), GTK_EVENT_CONTROLLER (priv->click_gesture));

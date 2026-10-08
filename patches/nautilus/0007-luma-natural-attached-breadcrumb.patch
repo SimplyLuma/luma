@@ -1,0 +1,88 @@
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index 0ce921f..20c0ff5 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -210,7 +210,7 @@
+         <alias value='larger' target='extra-large'/>
+         <alias value='largest' target='extra-large'/>
+       </aliases>
+-      <default>'medium'</default>
++      <default>'small-plus'</default>
+       <summary>Default icon view zoom level</summary>
+     </key>
+   </schema>
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+index 10ae4b6..73c24ad 100644
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -288,6 +288,7 @@ nautilus_path_bar_init (NautilusPathBar *self)
+     self->os_name = g_get_os_info (G_OS_INFO_KEY_NAME);
+ 
+     self->scrolled = gtk_scrolled_window_new ();
++    gtk_widget_add_css_class (self->scrolled, "luma-path-crumbs");
+     /* Scroll horizontally only and don't use internal scrollbar. */
+     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->scrolled),
+                                     /* hscrollbar-policy */ GTK_POLICY_EXTERNAL,
+@@ -307,6 +308,7 @@ nautilus_path_bar_init (NautilusPathBar *self)
+ 
+     self->current_view_menu_button = gtk_menu_button_new ();
+     gtk_widget_add_css_class (self->current_view_menu_button, "flat");
++    gtk_widget_add_css_class (self->current_view_menu_button, "luma-path-menu");
+     gtk_menu_button_set_child (GTK_MENU_BUTTON (self->current_view_menu_button),
+                                gtk_image_new_from_icon_name ("view-more-symbolic"));
+     gtk_box_append (GTK_BOX (self), self->current_view_menu_button);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 4647be3..9904d54 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -99,13 +99,34 @@
+     color: color-mix(in srgb, var(--headerbar-fg-color) 42%, transparent);
+   }
+ 
+-  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > menubutton > button {
+-    min-width: 8px;
++  /* The pathbar owns the one shared outer stroke. Its breadcrumb scroller and
++   * native current-folder menu are two attached segments, not nested buttons. */
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > .luma-path-crumbs {
++    border-radius: 7px 0 0 7px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > .luma-path-menu > button {
++    min-width: 29px;
++    min-height: 28px;
+     padding: 0;
++    border: none;
++    border-left: 1px solid var(--headerbar-shade-color);
++    border-radius: 0 7px 7px 0;
++    box-shadow: none;
+   }
+ 
+-  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > menubutton > button image {
+-    -gtk-icon-size: 6px;
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > .luma-path-menu > button image {
++    -gtk-icon-size: 10px;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar:dir(rtl) > .luma-path-crumbs {
++    border-radius: 0 7px 7px 0;
++  }
++
++  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar:dir(rtl) > .luma-path-menu > button {
++    border-right: 1px solid var(--headerbar-shade-color);
++    border-left: none;
++    border-radius: 7px 0 0 7px;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field {
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index e3c875c..bd7af8e 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -25,7 +25,6 @@ template $NautilusToolbar: Adw.Bin {
+           $NautilusPathBar path_bar {
+             valign: center;
+             hexpand: false;
+-            width-request: 174;
+             margin-start: 4;
+             window-slot: bind template.window-slot;
+           }

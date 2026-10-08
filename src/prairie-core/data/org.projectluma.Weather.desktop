@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Weather
+Comment=View forecasts for saved places
+Exec=prairie-weather
+Icon=org.projectluma.Weather
+Terminal=false
+Categories=Utility;
+Keywords=Weather;Forecast;Temperature;Place;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;
+X-GNOME-UsesNotifications=true

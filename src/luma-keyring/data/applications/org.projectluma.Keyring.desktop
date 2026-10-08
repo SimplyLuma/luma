@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Saved Passwords
+Comment=Unlock the saved passwords that no longer match your login password
+Icon=dialog-password-symbolic
+Exec=/usr/libexec/luma-keyring --gapplication-service
+DBusActivatable=true
+NoDisplay=true
+Terminal=false
+Categories=Settings;Security;
+X-GNOME-UsesNotifications=true

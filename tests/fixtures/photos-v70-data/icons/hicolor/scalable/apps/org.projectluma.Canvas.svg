@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="paper" cx=".18" cy=".02" r="1.08"><stop stop-color="#fff" /><stop offset=".54" stop-color="#f5f3ed" /><stop offset="1" stop-color="#e4e1d8" /></radialGradient>
+    <linearGradient id="char" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#343631" /><stop offset="1" stop-color="#111210" /></linearGradient>
+    <linearGradient id="slate" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9aa5af" /><stop offset="1" stop-color="#65717c" /></linearGradient>
+    <linearGradient id="mist" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#cbd1d3" /><stop offset="1" stop-color="#aeb8be" /></linearGradient>
+    <linearGradient id="ember" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff8b3f" /><stop offset="1" stop-color="#e94e0b" /></linearGradient>
+    <filter id="depth" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#171713" flood-opacity=".22" /></filter>
+  <clipPath id="lumaTile"><rect width="1024" height="1024" rx="256" ry="256" /></clipPath></defs>
+  <g clip-path="url(#lumaTile)"><rect width="1024" height="1024" fill="url(#paper)" />
+  <rect width="1024" height="160" fill="url(#slate)" filter="url(#depth)" />
+  <g filter="url(#depth)">
+    <rect x="140" y="272" width="320" height="612" rx="32" fill="url(#char)" />
+    <rect x="516" y="272" width="368" height="238" rx="32" fill="url(#mist)" />
+    <rect x="516" y="578" width="368" height="34" rx="17" fill="url(#char)" />
+    <rect x="516" y="656" width="248" height="30" rx="15" fill="#7a838a" />
+    <rect x="720" y="736" width="164" height="148" rx="28" fill="url(#ember)" />
+  </g>
+</g></svg>

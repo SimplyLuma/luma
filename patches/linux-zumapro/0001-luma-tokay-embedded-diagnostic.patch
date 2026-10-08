@@ -1,0 +1,79 @@
+From: Project Luma <luma@example.invalid>
+Subject: [PATCH] arm64: embed Tokay diagnostic DTB behind explicit config
+
+The Android downloaded-boot container supplies only the kernel payload.  Keep
+the upstream arm64/EFI entry code intact, but allow the bounded Luma diagnostic
+build to replace the prior-stage FDT pointer with one exact linked Tokay DTB.
+The option is explicit and disabled by default.
+
+SPDX-License-Identifier: GPL-2.0-only
+---
+ arch/arm64/Kconfig                    |  9 +++++++++
+ arch/arm64/kernel/Makefile            |  3 +++
+ arch/arm64/kernel/head.S              |  4 ++++
+ arch/arm64/kernel/luma_tokay_dtb.S    | 13 +++++++++++++
+ 4 files changed, 29 insertions(+)
+ create mode 100644 arch/arm64/kernel/luma_tokay_dtb.S
+
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -2464,4 +2464,13 @@ endchoice
+ 
++config LUMA_TOKAY_EMBEDDED_DIAGNOSTIC
++	bool "Project Luma Tokay embedded diagnostic"
++	depends on ARM64
++	help
++	  Link the exact generated Zumapro Tokay DTB into a diagnostic-only
++	  kernel and use it instead of the prior-stage FDT at primary entry.
++	  This is an explicit Project Luma bring-up option, not a general arm64
++	  boot protocol and not suitable for a multi-device release kernel.
++
+ config EFI_STUB
+ 	bool
+ 
+diff --git a/arch/arm64/kernel/Makefile b/arch/arm64/kernel/Makefile
+--- a/arch/arm64/kernel/Makefile
++++ b/arch/arm64/kernel/Makefile
+@@ -54,4 +54,7 @@ obj-$(CONFIG_KGDB)			+= kgdb.o
+ obj-$(CONFIG_EFI)			+= efi.o efi-rt-wrapper.o
++obj-$(CONFIG_LUMA_TOKAY_EMBEDDED_DIAGNOSTIC) += luma_tokay_dtb.o
++AFLAGS_luma_tokay_dtb.o += -I$(objtree)
++
+ obj-$(CONFIG_PCI)			+= pci.o
+ obj-$(CONFIG_ARMV8_DEPRECATED)		+= armv8_deprecated.o
+ obj-$(CONFIG_ACPI)			+= acpi.o
+diff --git a/arch/arm64/kernel/head.S b/arch/arm64/kernel/head.S
+--- a/arch/arm64/kernel/head.S
++++ b/arch/arm64/kernel/head.S
+@@ -83,6 +83,10 @@
+ 	 *  x21        primary_entry() .. start_kernel()        FDT pointer passed at boot in x0
+ 	 */
+ SYM_CODE_START(primary_entry)
++#ifdef CONFIG_LUMA_TOKAY_EMBEDDED_DIAGNOSTIC
++	adrp	x0, __luma_tokay_dtb_start
++	add	x0, x0, :lo12:__luma_tokay_dtb_start
++#endif
+ 	bl	record_mmu_state
+ 	bl	preserve_boot_args
+ 
+diff --git a/arch/arm64/kernel/luma_tokay_dtb.S b/arch/arm64/kernel/luma_tokay_dtb.S
+new file mode 100644
+--- /dev/null
++++ b/arch/arm64/kernel/luma_tokay_dtb.S
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <linux/linkage.h>
++
++	.section ".init.rodata", "a"
++	.balign 8
++SYM_DATA_START(__luma_tokay_dtb_start)
++	.incbin "arch/arm64/boot/dts/exynos/google/zumapro-tokay.dtb"
++SYM_DATA_END(__luma_tokay_dtb_start)
++
++	.globl __luma_tokay_dtb_end
++__luma_tokay_dtb_end:
++	.balign 8
+-- 
+2.51.0

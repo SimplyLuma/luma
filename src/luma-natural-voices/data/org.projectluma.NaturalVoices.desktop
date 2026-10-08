@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Natural Voices
+Comment=Local natural English reading voice
+Exec=org.projectluma.NaturalVoices
+Icon=org.projectluma.Leaf
+Categories=Utility;Accessibility;
+StartupNotify=true

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="@APP_ID@" path="@SETTINGS_PATH@">
+    <key name="recent-projects" type="as">
+      <default>[]</default>
+      <summary>Recently opened project bundle paths</summary>
+    </key>
+    <key name="default-input" type="s">
+      <default>''</default>
+      <summary>Stable PipeWire input node identifier</summary>
+    </key>
+    <key name="default-output" type="s">
+      <default>''</default>
+      <summary>Stable PipeWire output node identifier</summary>
+    </key>
+    <key name="sample-rate" type="i">
+      <default>48000</default>
+      <range min="44100" max="96000"/>
+      <summary>Default project sample rate</summary>
+    </key>
+    <key name="recording-format" type="s">
+      <default>'pcm24'</default>
+      <summary>Default WAV recording subtype</summary>
+    </key>
+    <key name="buffer-frames" type="i">
+      <default>256</default>
+      <range min="64" max="1024"/>
+      <summary>Preferred PipeWire graph quantum in frames</summary>
+    </key>
+    <key name="autosave-minutes" type="i">
+      <default>3</default>
+      <range min="1" max="30"/>
+      <summary>Autosave interval</summary>
+    </key>
+    <key name="waveform-quality" type="s">
+      <default>'balanced'</default>
+      <summary>Waveform peak cache quality</summary>
+    </key>
+    <key name="show-welcome" type="b">
+      <default>true</default>
+      <summary>Show the Creative collection welcome screen</summary>
+    </key>
+  </schema>
+</schemalist>

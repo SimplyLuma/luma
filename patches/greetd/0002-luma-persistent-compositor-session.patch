@@ -1,0 +1,181 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 22:38:00 -0500
+Subject: [PATCH] context: start authenticated client under persistent compositor
+
+Add an explicit graphical lifecycle mode in which greetd keeps its greeter
+session (the display-owning compositor) alive while starting the authenticated
+PAM session without a second VT. Both remain independently tracked and the
+authenticated child cannot be duplicated.
+
+--- a/greetd/src/config/mod.rs	2024-06-07 05:54:29
++++ b/greetd/src/config/mod.rs	2026-08-30 22:33:00
+@@ -55,6 +55,7 @@
+ #[derive(Debug, Eq, PartialEq)]
+ pub struct ConfigGeneral {
+     pub source_profile: bool,
++    pub persistent_compositor: bool,
+     pub runfile: String,
+     pub service: String,
+ }
+@@ -63,6 +64,7 @@
+     fn default() -> Self {
+         ConfigGeneral {
+             source_profile: true,
++            persistent_compositor: false,
+             runfile: RUNFILE.to_string(),
+             service: GENERAL_SERVICE.to_string(),
+         }
+@@ -114,6 +116,11 @@
+                     .unwrap_or(&"true")
+                     .parse()
+                     .map_err(|e| format!("could not parse source_profile: {}", e))?,
++                persistent_compositor: section
++                    .get("persistent_compositor")
++                    .unwrap_or(&"false")
++                    .parse()
++                    .map_err(|e| format!("could not parse persistent_compositor: {}", e))?,
+                 runfile,
+                 service,
+             }
+@@ -363,6 +370,7 @@
+                 },
+                 general: ConfigGeneral {
+                     source_profile: false,
++                    persistent_compositor: false,
+                     runfile: "/path/to/greetd.state".to_string(),
+                     service: "greetd".to_string(),
+                 },
+--- a/greetd/src/context.rs	2024-06-07 05:54:29
++++ b/greetd/src/context.rs	2026-08-30 22:33:00
+@@ -33,6 +33,7 @@
+ 
+ struct ContextInner {
+     current: Option<SessionChildSet>,
++    authenticated: Option<SessionChildSet>,
+     scheduled: Option<SessionSet>,
+     configuring: Option<SessionSet>,
+ }
+@@ -46,6 +47,7 @@
+     pam_service: String,
+     term_mode: TerminalMode,
+     source_profile: bool,
++    persistent_compositor: bool,
+     runfile: String,
+     listener_path: String,
+ }
+@@ -58,12 +60,14 @@
+         pam_service: String,
+         term_mode: TerminalMode,
+         source_profile: bool,
++        persistent_compositor: bool,
+         runfile: String,
+         listener_path: String,
+     ) -> Context {
+         Context {
+             inner: RwLock::new(ContextInner {
+                 current: None,
++                authenticated: None,
+                 scheduled: None,
+                 configuring: None,
+             }),
+@@ -73,6 +77,7 @@
+             pam_service,
+             term_mode,
+             source_profile,
++            persistent_compositor,
+             runfile,
+             listener_path,
+         }
+@@ -188,11 +193,19 @@
+             if inner.scheduled.is_some() {
+                 return Err("a session is already scheduled".into());
+             }
++            if inner.authenticated.is_some() {
++                return Err("an authenticated session is already active".into());
++            }
+         }
+ 
+         let mut session_set = SessionSet {
+             session: Session::new_external()?,
+             time: Instant::now(),
++        };
++        let user_term_mode = if self.persistent_compositor {
++            TerminalMode::Stdin
++        } else {
++            self.term_mode.clone()
+         };
+         session_set
+             .session
+@@ -201,7 +214,7 @@
+                 SessionClass::User,
+                 &username,
+                 true,
+-                &self.term_mode,
++                &user_term_mode,
+                 self.source_profile,
+                 &self.listener_path,
+             )
+@@ -275,6 +288,23 @@
+                 SessionState::Ready => {
+                     // Send our arguments to the session.
+                     s.session.send_args(cmd, env).await?;
++
++                    if self.persistent_compositor {
++                        let mut ready = session.take().expect("ready session disappeared");
++                        let child = ready.session.start().await
++                            .map_err(|e| format!("session start failed: {}", e))?;
++                        let mut inner = self.inner.write().await;
++                        if inner.authenticated.is_some() {
++                            child.term();
++                            return Err("an authenticated session is already active".into());
++                        }
++                        inner.authenticated = Some(SessionChildSet {
++                            child,
++                            time: Instant::now(),
++                            is_greeter: false,
++                        });
++                        return Ok(());
++                    }
+ 
+                     let mut inner = self.inner.write().await;
+                     std::mem::swap(&mut session, &mut inner.scheduled);
+@@ -344,6 +374,15 @@
+                 // We got an exit, see if it's something we need to clean up.
+                 Ok(WaitStatus::Exited(pid, ..)) | Ok(WaitStatus::Signaled(pid, ..)) => {
+                     let mut inner = self.inner.write().await;
++                    if let Some(s) = &inner.authenticated {
++                        if s.child.owns_pid(pid) {
++                            inner.authenticated = None;
++                            if let Some(greeter) = inner.current.take() {
++                                greeter.child.term();
++                            }
++                            return Err("authenticated session exited".into());
++                        }
++                    }
+                     let (was_greeter, sesion_length) = match &inner.current {
+                         Some(s) if s.child.owns_pid(pid) => {
+                             let res = (s.is_greeter, s.time.elapsed());
+@@ -410,6 +449,9 @@
+         if let Some(mut sess) = inner.scheduled.take() {
+             let _ = sess.session.cancel().await;
+         }
++        if let Some(sess) = inner.authenticated.take() {
++            sess.child.term();
++        }
+         if let Some(sess) = inner.current.take() {
+             sess.child.term();
+         }
+--- a/greetd/src/server.rs	2024-06-07 05:54:29
++++ b/greetd/src/server.rs	2026-08-30 22:33:00
+@@ -244,6 +244,7 @@
+         service.to_string(),
+         term_mode.clone(),
+         config.file.general.source_profile,
++        config.file.general.persistent_compositor,
+         config.file.general.runfile,
+         listener_path,
+     ));
+
+-- 
+2.53.0
+

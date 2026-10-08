@@ -1,0 +1,36 @@
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -93,13 +93,27 @@
+         global.stage.connectObject('notify::key-focus', () => this._engagementChanged(), this);
+         this.connect('notify::width', () => this._anchor());
+         this.connect('notify::hover', () => this._engagementChanged());
+-        this.connect('button-release-event', (_a, e) => {
+-            if (e.get_button() === Clutter.BUTTON_PRIMARY && ['idle', 'pill'].includes(this._state)) {
++        // Native gesture arbitration recognizes a tap on release, so a finger
++        // that starts on the nub can instead pull down without firing a click.
++        // Notification cards and tray buttons keep their own input owners.
++        const nubReady = () => ['idle', 'pill'].includes(this._state) &&
++            Main.sessionMode.hasNotifications && !Main.sessionMode.isLocked;
++        const tap = new Clutter.ClickGesture();
++        tap.connect('may-recognize', nubReady);
++        tap.connect('recognize', gesture => {
++            if (gesture.get_button() === 0 || gesture.get_button() === Clutter.BUTTON_PRIMARY)
+                 this.open();
+-                return Clutter.EVENT_STOP;
+-            }
+-            return Clutter.EVENT_PROPAGATE;
+-        });
++        });
++        this.add_action(tap);
++        const pull = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
++        pull.set_begin_threshold(12);
++        pull.connect('may-recognize', gesture => {
++            const delta = gesture.get_accumulated_delta();
++            return nubReady() && delta.get_y() > 0 &&
++                delta.get_y() > Math.abs(delta.get_x());
++        });
++        pull.connect('recognize', () => this.open());
++        this.add_action(pull);
+         this.connect('key-press-event', (_a, e) => {
+             if (e.get_key_symbol() === Clutter.KEY_Escape) {
+                 this.close();

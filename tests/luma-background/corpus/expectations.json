@@ -1,0 +1,15 @@
+{
+  "valid-minimal.toml": true,
+  "valid-full.toml": true,
+  "valid-alarms.toml": true,
+  "invalid-agent-outside-app.toml": false,
+  "invalid-shell-command.toml": false,
+  "invalid-field-code.toml": false,
+  "invalid-category.toml": false,
+  "invalid-wake.toml": false,
+  "invalid-interval-without-schedule.toml": false,
+  "invalid-interval-too-short.toml": false,
+  "invalid-missing-exec.toml": false,
+  "invalid-env-assignment.toml": false,
+  "invalid-unknown-key.toml": false
+}

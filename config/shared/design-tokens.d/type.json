@@ -1,0 +1,24 @@
+{
+  "_doc": "K: general type roles for app surfaces v70 draws at sizes the core scale lacks (Round 2 type requests: Depot, Disks, Maps, Memos, Messages, Settings, Clock, Tasks; Settings 12: v70 .cfnowt b, .cft b and small, .cfgrp h6, .bt.sm). Weights vary within a role with apply_type(..., weight=).",
+  "lumaui": {
+    "type_scale": {
+      "editorial": {"size": 38, "weight": 750, "line_height": 1.1, "tracking_em": -0.03},
+      "app_title": {"size": 34, "weight": 750, "line_height": 1.12, "tracking_em": -0.03},
+      "detail_title": {"size": 30, "weight": 650, "line_height": 1.2, "tracking_em": -0.025},
+      "page_title": {"size": 26, "weight": 700, "line_height": 1.2, "tracking_em": -0.02},
+      "intro": {"size": 22, "weight": 700, "line_height": 1.25, "tracking_em": -0.025},
+      "collection_heading": {"size": 20, "weight": 700, "line_height": 1.45, "tracking_em": -0.006},
+      "card_title": {"size": 20, "weight": 700, "line_height": 1.25, "tracking_em": -0.01},
+      "guidance": {"size": 19, "weight": 700, "line_height": 1.25, "tracking_em": -0.01},
+      "section_title": {"size": 18, "weight": 650, "line_height": 1.3, "tracking_em": -0.01},
+      "list_title": {"size": 14, "weight": 600, "line_height": 1.45, "tracking_em": 0},
+      "meta": {"size": 12.5, "weight": 400, "line_height": 1.45, "tracking_em": 0, "tone": "muted"},
+      "small": {"size": 12, "weight": 400, "line_height": 1.45, "tracking_em": 0.01, "tone": "muted"},
+      "hero_title": {"size": 17, "weight": 650, "line_height": 1.3, "tracking_em": -0.01},
+      "row_title": {"size": 13, "weight": 500, "line_height": 1.35, "tracking_em": 0},
+      "row_subtitle": {"size": 12, "weight": 400, "line_height": 1.35, "tracking_em": 0.01, "tone": "muted"},
+      "group_heading": {"size": 12, "weight": 600, "line_height": 1.35, "tracking_em": 0.01},
+      "button_small": {"size": 12, "weight": 500, "line_height": 1.35, "tracking_em": 0.01}
+    }
+  }
+}

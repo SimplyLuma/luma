@@ -1,0 +1,285 @@
+From 9b222d80cda1f5a57e380ed42b0aa23ff31b63ea Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Thu, 20 Aug 2026 22:01:00 -0500
+Subject: [PATCH 3/3] Input: focaltech: convert legacy GPIOs to descriptors
+
+Linux 7.1 removed the legacy OF GPIO header used by the Android 6.1 shim.
+Acquire the three board lines through the consumer descriptor API, retain the
+numeric identifiers only for the existing diagnostic text ABI, and let devres
+own the descriptors for the whole platform-device lifetime.
+
+The sensor's private userspace ioctl ABI is unchanged.  This is only a normal-
+world power, reset and interrupt API port; it does not expose sensor data or
+implement biometric matching.
+---
+ drivers/input/finger/focal_finger/ff_core.c | 114 ++++++++++++----------------
+ drivers/input/finger/focal_finger/ff_core.h |   3 +
+ 2 files changed, 54 insertions(+), 63 deletions(-)
+
+diff --git a/drivers/input/finger/focal_finger/ff_core.c b/drivers/input/finger/focal_finger/ff_core.c
+index 2ff18ec..337b323 100644
+--- a/drivers/input/finger/focal_finger/ff_core.c
++++ b/drivers/input/finger/focal_finger/ff_core.c
+@@ -21,7 +21,8 @@
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_device.h>
+-#include <linux/of_gpio.h>
++#include <linux/gpio/consumer.h>
++#include <linux/pinctrl/consumer.h>
+ #include <linux/of_irq.h>
+ #include <linux/printk.h>
+ #include <linux/signal.h>
+@@ -195,9 +195,9 @@ static int ff_set_reset(ff_context_t *ff_ctx, bool high)
+             ret = pinctrl_select_state(ff_ctx->pinctrl, ff_ctx->pins_reset_low);
+     }
+ 
+-    if (!ff_ctx->b_use_pinctrl && gpio_is_valid(ff_ctx->reset_gpio)) {
++    if (!ff_ctx->b_use_pinctrl && ff_ctx->reset_gpiod) {
+         FF_LOGI("use gpio(%d) to control reset pin", ff_ctx->reset_gpio);
+-        ret = gpio_direction_output(ff_ctx->reset_gpio, high);
++        ret = gpiod_direction_output(ff_ctx->reset_gpiod, high);
+     }
+ 
+     if (ret < 0) FF_LOGE("reset device fails");
+@@ -237,9 +237,9 @@ static int ff_power_on(ff_context_t *ff_ctx, bool on)
+                     ret = pinctrl_select_state(ff_ctx->pinctrl, ff_ctx->pins_power_low);
+             }
+ 
+-            if (!ff_ctx->b_use_pinctrl && gpio_is_valid(ff_ctx->vdd_gpio)) {
++            if (!ff_ctx->b_use_pinctrl && ff_ctx->vdd_gpiod) {
+                 FF_LOGI("use gpio(%d) to control power", ff_ctx->vdd_gpio);
+-                ret = gpio_direction_output(ff_ctx->vdd_gpio, on);
++                ret = gpiod_direction_output(ff_ctx->vdd_gpiod, on);
+             }
+         }
+ 
+@@ -372,9 +372,6 @@ err_request_irq:
+     if (!ff_ctx->b_power_always_on) {
+         if (ff_ctx->b_use_regulator && ff_ctx->ff_vdd)
+             regulator_put(ff_ctx->ff_vdd);
+-        if (!ff_ctx->b_use_regulator && !ff_ctx->b_use_pinctrl) {
+-            if (gpio_is_valid(ff_ctx->vdd_gpio)) gpio_free(ff_ctx->vdd_gpio);
+-        }
+     }
+ err_init_power:
+     if (ff_ctx->b_use_pinctrl && ff_ctx->pinctrl) {
+@@ -384,9 +381,6 @@ err_init_power:
+         ff_ctx->pins_reset_high = NULL;
+         ff_ctx->pins_power_low = NULL;
+         ff_ctx->pins_power_high = NULL;
+-    } else if (!ff_ctx->b_use_pinctrl) {
+-        if (gpio_is_valid(ff_ctx->irq_gpio)) gpio_free(ff_ctx->irq_gpio);
+-        if (gpio_is_valid(ff_ctx->reset_gpio)) gpio_free(ff_ctx->reset_gpio);
+     }
+ 
+     FF_LOGD("'%s' leave.", __func__);
+@@ -432,9 +426,6 @@ static int ff_ctl_free_driver(ff_context_t *ff_ctx)
+ 
+         if (ff_ctx->b_use_regulator && ff_ctx->ff_vdd)
+             regulator_put(ff_ctx->ff_vdd);
+-        if (!ff_ctx->b_use_regulator && !ff_ctx->b_use_pinctrl) {
+-            if (gpio_is_valid(ff_ctx->vdd_gpio)) gpio_free(ff_ctx->vdd_gpio);
+-        }
+     }
+ 
+     /*free rst/int pins*/
+@@ -445,9 +436,6 @@ static int ff_ctl_free_driver(ff_context_t *ff_ctx)
+         ff_ctx->pins_reset_high = NULL;
+         ff_ctx->pins_power_low = NULL;
+         ff_ctx->pins_power_high = NULL;
+-    } else if (!ff_ctx->b_use_pinctrl) {
+-        if (gpio_is_valid(ff_ctx->irq_gpio)) gpio_free(ff_ctx->irq_gpio);
+-        if (gpio_is_valid(ff_ctx->reset_gpio)) gpio_free(ff_ctx->reset_gpio);
+     }
+ 
+     ff_ctx->b_driver_inited = false;
+@@ -928,14 +916,14 @@ static irqreturn_t ff_irq_handler(int irq, void *dev_id)
+ }
+ 
+ 
+-static void ff_parse_dt(struct device *dev, ff_context_t *ff_ctx)
++static int ff_parse_dt(struct device *dev, ff_context_t *ff_ctx)
+ {
+     struct device_node *np = dev->of_node;
+ 
+     FF_LOGV("'%s' enter.", __func__);
+     if (!np) {
+         FF_LOGE("device node is null");
+-        return ;
++        return -EINVAL;
+     }
+ 
+     /*check if need report screen on/off event*/
+@@ -959,18 +947,28 @@ static void ff_parse_dt(struct device *dev, ff_context_t *ff_ctx)
+     /*check if supports spi clock enable/disable*/
+     ff_ctx->b_spiclk = of_property_read_bool(np, "focaltech_fp,spiclk");
+ 
+-    /*check gpios*/
+-    ff_ctx->reset_gpio = of_get_named_gpio(np, "focaltech_fp,reset-gpio", 0);
+-    if (!gpio_is_valid(ff_ctx->reset_gpio))
+-        FF_LOGD("unable to get ff reset gpio");
++    /* Acquire all normal-world lines once; devres owns their lifetime. */
++    ff_ctx->reset_gpiod = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
++    if (IS_ERR(ff_ctx->reset_gpiod)) {
++        FF_LOGE("unable to get ff reset gpio,ret=%ld", PTR_ERR(ff_ctx->reset_gpiod));
++        return PTR_ERR(ff_ctx->reset_gpiod);
++    }
+ 
+-    ff_ctx->irq_gpio = of_get_named_gpio(np, "focaltech_fp,irq-gpio", 0);
+-    if (!gpio_is_valid(ff_ctx->irq_gpio))
+-        FF_LOGD("unable to get ff irq gpio");
++    ff_ctx->irq_gpiod = devm_gpiod_get(dev, "irq", GPIOD_IN);
++    if (IS_ERR(ff_ctx->irq_gpiod)) {
++        FF_LOGE("unable to get ff irq gpio,ret=%ld", PTR_ERR(ff_ctx->irq_gpiod));
++        return PTR_ERR(ff_ctx->irq_gpiod);
++    }
+ 
+-    ff_ctx->vdd_gpio = of_get_named_gpio(np, "focaltech_fp,vdd-gpio", 0);
+-    if (!gpio_is_valid(ff_ctx->vdd_gpio))
+-        FF_LOGD("unable to get ff vdd gpio");
++    ff_ctx->vdd_gpiod = devm_gpiod_get(dev, "vdd", GPIOD_OUT_LOW);
++    if (IS_ERR(ff_ctx->vdd_gpiod)) {
++        FF_LOGE("unable to get ff vdd gpio,ret=%ld", PTR_ERR(ff_ctx->vdd_gpiod));
++        return PTR_ERR(ff_ctx->vdd_gpiod);
++    }
++
++    ff_ctx->reset_gpio = desc_to_gpio(ff_ctx->reset_gpiod);
++    ff_ctx->irq_gpio = desc_to_gpio(ff_ctx->irq_gpiod);
++    ff_ctx->vdd_gpio = desc_to_gpio(ff_ctx->vdd_gpiod);
+ 
+     FF_LOGI("irq gpio:%d, reset gpio:%d, vdd gpio:%d", ff_ctx->irq_gpio,
+             ff_ctx->reset_gpio, ff_ctx->vdd_gpio);
+@@ -979,6 +977,7 @@ static void ff_parse_dt(struct device *dev, ff_context_t *ff_ctx)
+     FF_LOGD("read_chip:%d, ree:%d, spiclk:%d, screen on/off:%d", ff_ctx->b_read_chipid,
+             ff_ctx->b_ree, ff_ctx->b_spiclk, ff_ctx->b_screen_onoff_event);
+     FF_LOGV("'%s' leave.", __func__);
++    return 0;
+ }
+ 
+ static int ff_init_pins(ff_context_t *ff_ctx)
+@@ -1086,40 +1085,19 @@ static int ff_init_pins(ff_context_t *ff_ctx)
+ 
+         FF_LOGI("get irq-reset-power pinctrl success");
+     } else {
+-        /* request irq gpio */
+-        if (gpio_is_valid(ff_ctx->irq_gpio)) {
+-            FF_LOGI("init irq gpio:%d", ff_ctx->irq_gpio);
+-            ret = gpio_request(ff_ctx->irq_gpio, "ff_irq_gpio");
+-            if (ret < 0) {
+-                FF_LOGE("irq gpio request failed");
+-                return ret;
+-            }
+-
+-            ret = gpio_direction_input(ff_ctx->irq_gpio);
+-            if (ret < 0) {
+-                FF_LOGE("set_direction for irq gpio failed");
+-                gpio_free(ff_ctx->irq_gpio);
+-                return ret;
+-            }
++        if (!ff_ctx->irq_gpiod || !ff_ctx->reset_gpiod) {
++            FF_LOGE("irq or reset gpio descriptor is missing");
++            return -EINVAL;
+         }
+-
+-        /* request reset gpio */
+-        if (gpio_is_valid(ff_ctx->reset_gpio)) {
+-            FF_LOGI("init reset gpio:%d", ff_ctx->reset_gpio);
+-            ret = gpio_request(ff_ctx->reset_gpio, "ff_reset_gpio");
+-            if (ret) {
+-                FF_LOGE("reset gpio request failed");
+-                if (gpio_is_valid(ff_ctx->irq_gpio)) gpio_free(ff_ctx->irq_gpio);
+-                return ret;
+-            }
+-
+-            ret = gpio_direction_output(ff_ctx->reset_gpio, 0);
+-            if (ret < 0) {
+-                FF_LOGE("set_direction for reset gpio failed");
+-                if (gpio_is_valid(ff_ctx->irq_gpio)) gpio_free(ff_ctx->irq_gpio);
+-                gpio_free(ff_ctx->reset_gpio);
+-                return ret;
+-            }
++        ret = gpiod_direction_input(ff_ctx->irq_gpiod);
++        if (ret < 0) {
++            FF_LOGE("set_direction for irq gpio failed");
++            return ret;
++        }
++        ret = gpiod_direction_output(ff_ctx->reset_gpiod, 0);
++        if (ret < 0) {
++            FF_LOGE("set_direction for reset gpio failed");
++            return ret;
+         }
+         FF_LOGI("get irq and reset gpio success");
+     }
+@@ -1160,21 +1138,16 @@ static int ff_init_power(ff_context_t *ff_ctx)
+     } else if (ff_ctx->b_use_pinctrl) {
+         FF_LOGI("get power pinctrl success");
+     } else {
+-        if (gpio_is_valid(ff_ctx->vdd_gpio)) {
+-            ret = gpio_request(ff_ctx->vdd_gpio, "ff_vdd_gpio");
+-            if (ret < 0) {
+-                FF_LOGE("vdd gpio request failed");
+-                return ret;
+-            }
+-
+-            ret = gpio_direction_output(ff_ctx->vdd_gpio, 0);
+-            if (ret < 0) {
+-                FF_LOGE("set_direction for vdd gpio failed");
+-                gpio_free(ff_ctx->vdd_gpio);
+-                return ret;
+-            }
+-            FF_LOGI("get power gpio(%d) success", ff_ctx->vdd_gpio);
++        if (!ff_ctx->vdd_gpiod) {
++            FF_LOGE("power gpio descriptor is missing");
++            return -EINVAL;
++        }
++        ret = gpiod_direction_output(ff_ctx->vdd_gpiod, 0);
++        if (ret < 0) {
++            FF_LOGE("set_direction for vdd gpio failed");
++            return ret;
+         }
++        FF_LOGI("get power gpio(%d) success", ff_ctx->vdd_gpio);
+     }
+ 
+     ff_ctx->b_power_on = false;
+@@ -1190,7 +1163,7 @@ static int ff_register_irq(ff_context_t *ff_ctx)
+ 
+     FF_LOGD("'%s' enter.", __func__);
+     /*get irq num*/
+-    ff_ctx->irq_num = gpio_to_irq(ff_ctx->irq_gpio);
++    ff_ctx->irq_num = gpiod_to_irq(ff_ctx->irq_gpiod);
+     FF_LOGI("irq_gpio:%d,irq_num:%d", ff_ctx->irq_gpio, ff_ctx->irq_num);
+     if (np && ff_ctx->b_use_pinctrl && (ff_ctx->irq_num <= 0)) {
+         ff_ctx->irq_num = irq_of_parse_and_map(np, 0);
+@@ -1336,7 +1309,12 @@ static int ff_probe(struct platform_device *pdev)
+     }
+ 
+     /*parse dts*/
+-    ff_parse_dt(&pdev->dev, ff_ctx);
++    ret = ff_parse_dt(&pdev->dev, ff_ctx);
++    if (ret < 0) {
++        FF_LOGE("parse dts fails,ret=%d", ret);
++        kfree(ff_ctx);
++        return ret;
++    }
+ 
+     /*variables*/
+     ff_ctx->pdev = pdev;
+diff --git a/drivers/input/finger/focal_finger/ff_core.h b/drivers/input/finger/focal_finger/ff_core.h
+index 8be4324..62871ef 100644
+--- a/drivers/input/finger/focal_finger/ff_core.h
++++ b/drivers/input/finger/focal_finger/ff_core.h
+@@ -145,8 +145,11 @@ typedef struct {
+     ff_driver_config_t ff_config;
+     int irq_num;
+     int irq_gpio;
++    struct gpio_desc *irq_gpiod;
+     int reset_gpio;
++    struct gpio_desc *reset_gpiod;
+     int vdd_gpio;
++    struct gpio_desc *vdd_gpiod;
+     bool b_use_regulator;
+     bool b_use_pinctrl;
+     bool b_irq_enabled;
+-- 
+2.54.0 (Apple Git-157)

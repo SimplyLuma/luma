@@ -1,0 +1,77 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: smooth quantized gain transitions
+
+Some phone sensors expose very coarse analogue-gain steps. The IMX896's first
+step is 1.00x to 1.63x and S5KKD1SP uses whole-number gains. Applying the
+minimum gain step for every smaller requested correction makes the controller
+alternate between adjacent values, producing a visible exposure flash.
+
+When a requested reduction is smaller than one hardware gain step, reduce
+shutter until there is enough headroom to cross the step while preserving
+total exposure. Then lower gain and compensate shutter in the same update.
+This also favours the lower-noise gain once it is representable. Use a faster
+proportional response only for large scene changes while retaining the existing
+near-target damping.
+
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -55,12 +55,13 @@
+  * that converges smoothly and avoids overshooting near the target.
+  */
+ static constexpr float kExpProportionalGain = 0.04;
++static constexpr float kExpLargeErrorGain = 0.08;
+ 
+ /*
+  * Maximum multiplicative step per frame, to bound the correction when the
+  * scene changes dramatically.
+  */
+-static constexpr float kExpMaxStep = 0.15;
++static constexpr float kExpMaxStep = 0.20;
+ 
+ Agc::Agc()
+ 	: maxGain_(0.0), maxBrightFraction_(0.0)
+@@ -125,7 +126,9 @@
+ 	 * determines the direction: positive error means too dark (increase),
+ 	 * negative means too bright (decrease).
+ 	 */
+-	float step = std::clamp(static_cast<float>(error) * kExpProportionalGain,
++	float response = std::abs(error) >= 1.0
++		? kExpLargeErrorGain : kExpProportionalGain;
++	float step = std::clamp(static_cast<float>(error) * response,
+ 				-kExpMaxStep, kExpMaxStep);
+ 	float factor = 1.0f + step;
+ 
+@@ -145,10 +148,30 @@
+ 		/* Scene too bright: decrease gain first, then exposure. */
+ 		if (again > context.configuration.agc.again10) {
+ 			double next = again * factor;
+-			if (again - next < context.configuration.agc.againMinStep)
+-				again -= context.configuration.agc.againMinStep;
+-			else
++			if (again - next < context.configuration.agc.againMinStep) {
++				double lowerGain = std::max(
++					again - context.configuration.agc.againMinStep,
++					context.configuration.agc.again10);
++				double compensatedExposure = exposure * again / lowerGain;
++
++				if (compensatedExposure <=
++				    context.configuration.agc.exposureMax) {
++					/*
++					 * Cross a coarse gain step without changing total
++					 * exposure. This avoids visible 1x/1.63x or integer
++					 * gain flashing on the FP6 sensors.
++					 */
++					again = lowerGain;
++					exposure = std::lround(compensatedExposure);
++				} else {
++					/* Create headroom before crossing the gain step. */
++					int32_t adjusted =
++						static_cast<int32_t>(exposure * factor);
++					exposure = std::min(adjusted, exposure - 1);
++				}
++			} else {
+ 				again = next;
++			}
+ 		} else {
+ 			int32_t next = static_cast<int32_t>(exposure * factor);
+ 			exposure = std::min(next, exposure - 1);

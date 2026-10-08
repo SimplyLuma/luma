@@ -1,0 +1,24 @@
+From 0509d763bada17491bb0b606102796eaf94c4e59 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 06:25:13 +0000
+Subject: [PATCH] Allow compact Filer chip at phone width
+
+---
+ src/resources/style.css | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 478c250..dbc5442 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -45,6 +45,7 @@
+ }
+ .luma-files-window #filer-location-scope image { -gtk-icon-size: 0px; }
+ .luma-files-window box.lumaui-bar-chip { min-width: 243px; }
++.luma-files-window .lumaui-action-center.phone box.lumaui-bar-chip { min-width: 0; }
+ .luma-files-window row.luma-live-rail-row { padding-left: 3px; padding-right: 3px; }
+ 
+ /* Filer uses a deliberate two-row native title composition. */
+-- 
+2.55.0
+

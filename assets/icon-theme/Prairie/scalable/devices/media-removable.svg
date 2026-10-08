@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><title>USB drive — Graphite</title><defs><radialGradient id="light" cx=".28" cy=".23" r=".86"><stop stop-color="#fff" stop-opacity=".23"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".65"/><stop offset=".45" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#153b62" stop-opacity=".3"/></linearGradient><radialGradient id="shadow"><stop stop-color="#1b3044" stop-opacity=".25"/><stop offset="1" stop-color="#1b3044" stop-opacity="0"/></radialGradient><linearGradient id="body" x1="0" y1="0" x2=".35" y2="1"><stop stop-color="#596670"/><stop offset=".48" stop-color="#303e48"/><stop offset="1" stop-color="#1a2731"/></linearGradient><linearGradient id="metal" x1="0" y1="0" x2="1" y2=".35"><stop stop-color="#a2b3bb"/><stop offset=".25" stop-color="#e6edef"/><stop offset=".65" stop-color="#c8d4d9"/><stop offset="1" stop-color="#96aab5"/></linearGradient></defs>
+<ellipse cx="129" cy="214" rx="47" ry="7" fill="url(#shadow)"/>
+<rect x="104" y="40" width="48" height="55" rx="2" fill="url(#metal)" stroke="#8c9da6" stroke-width=".7"/>
+<path d="M106 43 H150" fill="none" stroke="#fff" stroke-opacity=".65" stroke-width="1.2"/>
+<rect x="111" y="56" width="10" height="8" rx="1" fill="#607783"/><rect x="135" y="56" width="10" height="8" rx="1" fill="#607783"/>
+<path d="M112 64 H120 M136 64 H144" stroke="#edf3f3" stroke-opacity=".5" stroke-width=".7"/>
+<rect x="92" y="84" width="72" height="126" rx="12" fill="url(#body)" stroke="#1a2731" stroke-width=".7"/>
+<rect x="92" y="84" width="72" height="126" rx="12" fill="url(#light)" stroke="url(#rim)" stroke-width="1.2"/>
+<path d="M108 203 H148" stroke="#fff" stroke-opacity=".24" stroke-width="1" stroke-linecap="round"/></svg>

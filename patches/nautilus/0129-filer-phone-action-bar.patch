@@ -1,0 +1,35 @@
+From b6d105e8fcbe181591d69d3a0f438019faedaad2 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 06:01:53 +0000
+Subject: [PATCH] Compact Filer action bar on phone
+
+---
+ src/nautilus-window.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 83cafdd..5cfeaf7 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -889,6 +889,10 @@ update_action_center (NautilusWindow *window)
+             luma_bar_item_new_action ("info", NULL, NULL),
+             luma_bar_item_new_action ("ellipsis", NULL, NULL),
+         };
++        luma_bar_item_set_phone_compact (items[0], TRUE);
++        luma_bar_item_set_phone_compact (items[1], TRUE);
++        luma_bar_item_set_phone_compact (items[2], TRUE);
++        luma_bar_item_set_phone_compact (items[3], TRUE);
+         g_autoptr (GdkPaintable) preview = nautilus_file_get_icon_paintable (
+             file, 42, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
+             NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS);
+@@ -934,6 +938,7 @@ update_action_center (NautilusWindow *window)
+     luma_bar_item_set_tooltip (information, _("Information"));
+     g_signal_connect (information, "activated", G_CALLBACK (on_bar_information), window);
+     LumaBarItem *new_folder = luma_bar_item_new_action ("plus", _("New folder"), "view.new-folder");
++    luma_bar_item_set_phone_compact (new_folder, TRUE);
+     luma_bar_item_set_primary (new_folder, TRUE);
+     LumaBarItem *items[] = {back, forward, separator, window->action_search_item,
+                            window->action_modes_item, information, new_folder};
+-- 
+2.55.0
+

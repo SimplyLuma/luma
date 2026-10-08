@@ -1,0 +1,73 @@
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 26343ac..793489f 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -1,5 +1,5 @@
+ headerbar {
+-  min-height: 17px;
++  min-height: 34px;
+   background-color: var(--headerbar-bg-color);
+   color: var(--headerbar-fg-color);
+   box-shadow: inset 0 -1px var(--headerbar-shade-color);
+@@ -83,6 +83,43 @@ headerbar {
+   font-weight: 600;
+ }
+ 
++// Figtree 12.5px needs a 16px logical line at 1x. Keep one-line stock titles
++// from being rounded down to a 15px allocation without altering their native
++// alignment or attaching them to Prairie's custom title component.
++windowtitle .title {
++  min-height: 16px;
++}
++
++// Keep application-owned title-bar actions optically subordinate to the
++// window controls without shrinking their pointer or touch targets.
++headerbar button.image-button,
++headerbar menubutton > button {
++  min-width: 28px;
++  min-height: 28px;
++  padding: 0;
++  border-radius: 8px;
++}
++
++headerbar button.image-button > image,
++headerbar menubutton > button > image {
++  -gtk-icon-size: 14px;
++  color: var(--headerbar-fg-color);
++}
++
++// The generic action rule also matches GtkWindowControls' image buttons.
++// Preserve Prairie's smaller control contract with the more-specific form.
++headerbar windowcontrols > button,
++headerbar windowcontrols > button.image-button {
++  min-width: 20px;
++  min-height: 20px;
++  padding: 0;
++}
++
++headerbar windowcontrols > button > image,
++headerbar windowcontrols > button.image-button > image {
++  -gtk-icon-size: 10px;
++}
++
+ window:not(.ssd-frame) > {
+   .titlebar:not(.flat) {
+     box-shadow: 0 1px color-mix(in srgb, var(--headerbar-shade-color) 50%, transparent),
+@@ -98,7 +135,7 @@ window:not(.ssd-frame) > {
+ 
+   headerbar.titlebar,
+   .titlebar headerbar {
+-    min-height: 17px;
++    min-height: 34px;
+ 
+     > windowhandle > box {
+       padding-bottom: 1px;
+@@ -116,7 +153,7 @@ window:not(.ssd-frame) > {
+   box-shadow: none;
+   color: inherit;
+ 
+-  min-height: 17px;
++  min-height: 34px;
+ 
+   > windowhandle > box {
+     padding-bottom: 1px;

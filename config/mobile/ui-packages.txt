@@ -1,0 +1,23 @@
+# Fedora 44 AArch64 mobile-session layer validated first in the behavioral twin.
+# Exact versions freeze this experimental run. The physical diagnostic rootfs
+# remains separately defined by packages.txt.
+
+NetworkManager-1:1.56.1-2.fc44
+NetworkManager-wifi-1:1.56.1-2.fc44
+ModemManager-1.24.2-3.fc44
+alsa-ucm-1.2.16.1-1.fc44
+alsa-ucm-utils-1.2.16-1.fc44
+alsa-utils-1.2.16-1.fc44
+bluez-5.87-3.fc44
+calls-50.0-1.fc44
+feedbackd-0.8.9-2.fc44
+flatpak-1.18.1-1.fc44
+iio-sensor-proxy-3.8-2.fc44
+phoc-0.56.0-2.fc44
+phosh-0.56.0-2.fc44
+phosh-mobile-settings-0.56.0-2.fc44
+pipewire-1.6.8-1.fc44
+pipewire-pulseaudio-1.6.8-1.fc44
+stevia-0.55.0-1.fc44
+upower-1.91.3-1.fc44
+wireplumber-0.5.14-1.fc44

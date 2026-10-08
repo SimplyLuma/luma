@@ -1,0 +1,54 @@
+From 5b4fb759b23a76cbe9a63e55b40ca2a94063e6fd Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 18 Aug 2026 16:30:00 -0500
+Subject: [PATCH] ipa: simple: Ignore incomplete statistics during teardown
+
+The software ISP can finish a statistics buffer while the camera is stopping.
+That completion may legitimately carry no exposure or analogue-gain sensor
+controls.  processStats() currently calls ControlValue::get() before its own
+contains() sanity check, so this teardown race aborts the entire camera client.
+
+Validate the required controls before dereferencing them.  A late incomplete
+statistics buffer cannot produce valid metadata or a safe next sensor request,
+so dropping it is the only useful action during stop.
+
+Signed-off-by: Project Luma <maintainers@projectluma.org>
+---
+ src/ipa/simple/soft_simple.cpp | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index f9e91e91..c184f5d0 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -323,6 +323,13 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 				 [[maybe_unused]] const uint32_t bufferId,
+ 				 const ControlList &sensorControls)
+ {
++	/* A final statistics buffer may arrive without controls while stopping. */
++	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||
++	    !sensorControls.contains(V4L2_CID_ANALOGUE_GAIN)) {
++		LOG(IPASoft, Debug) << "Ignoring incomplete controls during stop";
++		return;
++	}
++
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+ 	frameContext.sensor.exposure =
+@@ -335,13 +342,6 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 		algo->process(context_, frame, frameContext, stats_, metadata);
+ 	metadataReady.emit(frame, metadata);
+ 
+-	/* Sanity check */
+-	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||
+-	    !sensorControls.contains(V4L2_CID_ANALOGUE_GAIN)) {
+-		LOG(IPASoft, Error) << "Control(s) missing";
+-		return;
+-	}
+-
+ 	ControlList ctrls(sensorInfoMap_);
+ 
+ 	auto &againNew = frameContext.sensor.gain;
+-- 
+2.51.0
+

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# System apps: packages that must always be the newest released build in every
+# nightly (owner directive, 2026-09-17: "Viola is a system app, so it should
+# always be current in the builds"). scripts/os/lib/system_apps_current.py
+# fails the nightly before the image build when a pin here is older than the
+# newest build in the verified pool, a delivered incoming drop (not HOLD), or
+# the app's own signed release directories; and fails its release notes when
+# the pin changed without a fragment "Updated <App> to X.Y" (type: improvement).
+#
+# PACKAGE  DISPLAY-NAME (underscores for spaces)  [RELEASE-DIR...]
+viola-browser-stable  Viola  /srv/viola-linux/release-staging

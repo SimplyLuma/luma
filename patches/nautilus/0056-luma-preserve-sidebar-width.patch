@@ -1,0 +1,28 @@
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -332,9 +332,6 @@
+       split_view.collapsed: true;
+       split_view.enable-show-gesture: true;
+       split_view.enable-hide-gesture: true;
+-      split_view.min-sidebar-width: 232;
+-      split_view.max-sidebar-width: 300;
+-      split_view.sidebar-width-fraction: 0.85;
+       toolbar.show-sidebar-button: true;
+       toolbar.show-view-controls: false;
+       toolbar.show-history-controls: false;
+--- a/test/automated/test-properties-about.c
++++ b/test/automated/test-properties-about.c
+@@ -95,6 +95,13 @@
+     g_test_message("Banner destination: %s; home: %s", g_file_peek_path(nautilus_window_get_active_location(window)), g_file_peek_path(home));
+     g_assert_true(g_file_equal(nautilus_window_get_active_location(window),home));
+     g_assert_false(gtk_widget_get_visible(banner));
++    /* Crossing the compact breakpoint must not replace the saved sidebar width. */
++    GtkWidget *split = required(GTK_WIDGET(window), "split_view");
++    double saved_width = adw_overlay_split_view_get_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split));
++    gtk_window_set_default_size(GTK_WINDOW(window), 420, 640);spin(200);
++    gtk_window_set_default_size(GTK_WINDOW(window), 1400, 740);spin(200);
++    g_assert_cmpfloat(adw_overlay_split_view_get_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split)),==,saved_width);
++    g_assert_cmpfloat(adw_overlay_split_view_get_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split)),==,saved_width);
+     gtk_window_destroy(GTK_WINDOW(window));spin(50);
+     g_settings_reset(nautilus_preferences,"show-system-folder-warning");
+ }

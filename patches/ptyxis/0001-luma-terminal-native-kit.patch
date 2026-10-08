@@ -1,0 +1,1700 @@
+--- a/data/org.gnome.Ptyxis.desktop.in.in
++++ b/data/org.gnome.Ptyxis.desktop.in.in
+@@ -1,5 +1,5 @@
+ [Desktop Entry]
+-Name=@APP_NAME@
++Name=Terminal
+ Comment=A container-oriented terminal for GNOME
+ Exec=ptyxis
+ # Translators: Do NOT translate or transliterate this text (this is an icon file name)!
+@@ -20,13 +20,13 @@
+ X-KDE-AuthorizeAction=shell_access
+ 
+ [Desktop Action new-window]
+-Name=New Window
++Name=Terminal
+ Exec=ptyxis --new-window
+ 
+ [Desktop Action new-tab]
+-Name=New Tab
++Name=Terminal
+ Exec=ptyxis --tab
+ 
+ [Desktop Action preferences]
+-Name=Preferences
++Name=Terminal
+ Exec=ptyxis --preferences
+--- /dev/null
++++ b/src/luma-tab-strip.c
+@@ -0,0 +1,526 @@
++/* luma-tab-strip.c
++ *
++ * Copyright 2026 Project Luma
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * The tab strip Luma draws. Everything a tab *means* — which pages exist,
++ * which is selected, what closing one does, where a dragged tab lands — stays
++ * with the AdwTabView this strip is attached to. Only the drawing is ours, so
++ * upstream keeps owning the behaviour and this file stays rebaseable.
++ */
++
++#include "config.h"
++
++#include <glib/gi18n.h>
++
++#include "luma-tab-strip.h"
++#include "ptyxis-tab.h"
++
++struct _LumaTabStrip
++{
++  GtkWidget   parent_instance;
++
++  AdwTabView *view;
++  GListModel *pages;
++  GtkWidget  *box;
++  GtkWidget  *tabs;
++  GtkWidget  *new_tab;
++  GtkWidget  *overflow;
++  GtkPopover *profile_popover;
++
++  gulong      pages_changed_handler;
++  gulong      selected_handler;
++};
++
++enum {
++  PROP_0,
++  PROP_VIEW,
++  N_PROPS
++};
++
++static GParamSpec *properties[N_PROPS];
++
++G_DEFINE_FINAL_TYPE (LumaTabStrip, luma_tab_strip, GTK_TYPE_WIDGET)
++
++static void luma_tab_strip_rebuild (LumaTabStrip *self);
++
++/* What the tab is, rather than what it is called: the running command when
++ * there is one, otherwise the shell. The design puts this where the close
++ * button appears on hover, so it has to be short. */
++static char *
++luma_tab_strip_badge_for (PtyxisTab *tab)
++{
++  const char *command = ptyxis_tab_get_command_line (tab);
++  if (command != NULL && *command != 0)
++    {
++      g_auto(GStrv) parts = g_strsplit (command, " ", 2);
++      if (parts != NULL && parts[0] != NULL && *parts[0] != 0)
++        return g_path_get_basename (parts[0]);
++    }
++
++  return NULL;
++}
++
++/* Process and attention state arrive after the page is attached. Update the
++ * existing content widgets instead of waiting for another tab selection. */
++static void
++luma_tab_strip_badge_changed (PtyxisTab  *tab,
++                              GParamSpec *pspec,
++                              GtkLabel   *badge)
++{
++  g_autofree char *text = luma_tab_strip_badge_for (tab);
++
++  gtk_label_set_text (badge, text != NULL ? text : "");
++  gtk_widget_set_visible (GTK_WIDGET (badge), text != NULL);
++}
++
++static void
++luma_tab_strip_attention_changed (AdwTabPage *page,
++                                  GParamSpec *pspec,
++                                  GtkWidget  *dot)
++{
++  if (adw_tab_page_get_needs_attention (page))
++    gtk_widget_add_css_class (dot, "activity");
++  else
++    gtk_widget_remove_css_class (dot, "activity");
++}
++
++static void
++luma_tab_strip_close_clicked (GtkButton *button,
++                              AdwTabPage *page)
++{
++  LumaTabStrip *self = LUMA_TAB_STRIP (gtk_widget_get_ancestor (GTK_WIDGET (button),
++                                                                LUMA_TYPE_TAB_STRIP));
++
++  /* close_page(), not remove_page(): it runs upstream's close handler, which is
++   * what asks before killing a running process. */
++  if (self != NULL && self->view != NULL)
++    adw_tab_view_close_page (self->view, page);
++}
++
++static void
++luma_tab_strip_tab_clicked (GtkGestureClick *gesture,
++                            int              n_press,
++                            double           x,
++                            double           y,
++                            AdwTabPage      *page)
++{
++  GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
++  LumaTabStrip *self = LUMA_TAB_STRIP (gtk_widget_get_ancestor (widget, LUMA_TYPE_TAB_STRIP));
++  guint button;
++
++  if (self == NULL || self->view == NULL)
++    return;
++
++  button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
++
++  if (button == GDK_BUTTON_MIDDLE)
++    {
++      adw_tab_view_close_page (self->view, page);
++      return;
++    }
++
++  adw_tab_view_set_selected_page (self->view, page);
++
++  /* Double-click renames, through the window's own action so the dialog and
++   * the title semantics stay upstream's. */
++  if (n_press == 2)
++    gtk_widget_activate_action (widget, "win.set-title", NULL);
++}
++
++static GdkContentProvider *
++luma_tab_strip_drag_prepare (GtkDragSource *source,
++                             double         x,
++                             double         y,
++                             AdwTabPage    *page)
++{
++  return gdk_content_provider_new_typed (ADW_TYPE_TAB_PAGE, page);
++}
++
++static gboolean
++luma_tab_strip_drop (GtkDropTarget *target,
++                     const GValue  *value,
++                     double         x,
++                     double         y,
++                     AdwTabPage    *page)
++{
++  GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (target));
++  LumaTabStrip *self = LUMA_TAB_STRIP (gtk_widget_get_ancestor (widget, LUMA_TYPE_TAB_STRIP));
++  AdwTabPage *dragged;
++  int position;
++
++  if (self == NULL || self->view == NULL || !G_VALUE_HOLDS (value, ADW_TYPE_TAB_PAGE))
++    return FALSE;
++
++  dragged = g_value_get_object (value);
++  if (dragged == NULL || dragged == page)
++    return FALSE;
++
++  position = adw_tab_view_get_page_position (self->view, page);
++  adw_tab_view_reorder_page (self->view, dragged, position);
++  return TRUE;
++}
++
++static GtkWidget *
++luma_tab_strip_build_tab (LumaTabStrip *self,
++                          AdwTabPage   *page)
++{
++  GtkWidget *overlay;
++  GtkWidget *content;
++  GtkWidget *dot;
++  GtkWidget *label;
++  GtkWidget *close;
++  GtkGesture *click;
++  GtkDragSource *source;
++  GtkDropTarget *target;
++  GtkWidget *child;
++
++  overlay = gtk_overlay_new ();
++  gtk_widget_add_css_class (overlay, "luma-tab");
++  gtk_widget_set_focusable (overlay, TRUE);
++
++  content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 7);
++  gtk_widget_add_css_class (content, "luma-tab-content");
++
++  dot = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (dot, "luma-tab-dot");
++  gtk_widget_set_valign (dot, GTK_ALIGN_CENTER);
++  /* Upstream already tracks whether a background tab wants you: the amber,
++   * pulsing state is that same signal, drawn the way the design asks. */
++  luma_tab_strip_attention_changed (page, NULL, dot);
++  g_signal_connect_object (page, "notify::needs-attention",
++                           G_CALLBACK (luma_tab_strip_attention_changed), dot, 0);
++  gtk_box_append (GTK_BOX (content), dot);
++
++  label = gtk_label_new (NULL);
++  g_object_bind_property (page, "title", label, "label", G_BINDING_SYNC_CREATE);
++  gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
++  gtk_label_set_xalign (GTK_LABEL (label), 0.0f);
++  gtk_widget_set_hexpand (label, TRUE);
++  gtk_widget_add_css_class (label, "luma-tab-title");
++  gtk_box_append (GTK_BOX (content), label);
++
++  child = adw_tab_page_get_child (page);
++  if (PTYXIS_IS_TAB (child))
++    {
++      GtkWidget *badge = gtk_label_new (NULL);
++      gtk_widget_add_css_class (badge, "luma-tab-badge");
++      gtk_widget_set_halign (badge, GTK_ALIGN_END);
++      gtk_box_append (GTK_BOX (content), badge);
++      luma_tab_strip_badge_changed (PTYXIS_TAB (child), NULL, GTK_LABEL (badge));
++      g_signal_connect_object (child, "notify::command-line",
++                               G_CALLBACK (luma_tab_strip_badge_changed), badge, 0);
++    }
++
++  gtk_overlay_set_child (GTK_OVERLAY (overlay), content);
++  gtk_widget_set_hexpand (overlay, FALSE);
++
++  /* The close sits over the badge rather than beside it, so the crossfade
++   * between them moves nothing. */
++  close = gtk_button_new_from_icon_name ("window-close-symbolic");
++  gtk_widget_add_css_class (close, "luma-tab-close");
++  gtk_widget_set_halign (close, GTK_ALIGN_END);
++  gtk_widget_set_valign (close, GTK_ALIGN_CENTER);
++  gtk_widget_set_tooltip_text (close, _("Close Tab"));
++  gtk_accessible_update_property (GTK_ACCESSIBLE (close),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL, _("Close Tab"),
++                                  -1);
++  g_signal_connect_object (close, "clicked",
++                           G_CALLBACK (luma_tab_strip_close_clicked), page, 0);
++  gtk_overlay_add_overlay (GTK_OVERLAY (overlay), close);
++
++  if (page == adw_tab_view_get_selected_page (self->view))
++    gtk_widget_add_css_class (overlay, "active");
++
++  click = gtk_gesture_click_new ();
++  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), 0);
++  g_signal_connect_object (click, "pressed",
++                           G_CALLBACK (luma_tab_strip_tab_clicked), page, 0);
++  gtk_widget_add_controller (overlay, GTK_EVENT_CONTROLLER (click));
++
++  source = gtk_drag_source_new ();
++  g_signal_connect_object (source, "prepare",
++                           G_CALLBACK (luma_tab_strip_drag_prepare), page, 0);
++  gtk_widget_add_controller (overlay, GTK_EVENT_CONTROLLER (source));
++
++  target = gtk_drop_target_new (ADW_TYPE_TAB_PAGE, GDK_ACTION_MOVE);
++  g_signal_connect_object (target, "drop",
++                           G_CALLBACK (luma_tab_strip_drop), page, 0);
++  gtk_widget_add_controller (overlay, GTK_EVENT_CONTROLLER (target));
++
++  gtk_accessible_update_property (GTK_ACCESSIBLE (overlay),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL,
++                                  adw_tab_page_get_title (page),
++                                  -1);
++  gtk_accessible_update_state (GTK_ACCESSIBLE (overlay),
++                               GTK_ACCESSIBLE_STATE_SELECTED,
++                               page == adw_tab_view_get_selected_page (self->view),
++                               -1);
++
++  return overlay;
++}
++
++static void
++luma_tab_strip_rebuild (LumaTabStrip *self)
++{
++  GtkWidget *child;
++  guint n_pages;
++
++  g_assert (LUMA_IS_TAB_STRIP (self));
++
++  while ((child = gtk_widget_get_first_child (self->tabs)))
++    gtk_box_remove (GTK_BOX (self->tabs), child);
++
++  if (self->view == NULL)
++    return;
++
++  n_pages = adw_tab_view_get_n_pages (self->view);
++  for (guint i = 0; i < n_pages; i++)
++    {
++      AdwTabPage *page = adw_tab_view_get_nth_page (self->view, i);
++      gtk_box_append (GTK_BOX (self->tabs), luma_tab_strip_build_tab (self, page));
++    }
++  if (gtk_widget_get_parent (self->new_tab) == NULL)
++    gtk_box_append (GTK_BOX (self->tabs), self->new_tab);
++
++  /* One tab is not a strip: with nothing to switch between, the row is chrome
++   * that earns nothing. Upstream hides its own bar on the same rule. */
++  gtk_widget_set_visible (GTK_WIDGET (self), n_pages > 1);
++}
++
++static void
++luma_tab_strip_pages_changed_cb (LumaTabStrip *self)
++{
++  luma_tab_strip_rebuild (self);
++}
++
++static void
++luma_tab_strip_dispose (GObject *object)
++{
++  LumaTabStrip *self = (LumaTabStrip *)object;
++
++  luma_tab_strip_set_view (self, NULL);
++  if (self->profile_popover != NULL)
++    {
++      gtk_widget_unparent (GTK_WIDGET (self->profile_popover));
++      self->profile_popover = NULL;
++    }
++  g_clear_pointer (&self->box, gtk_widget_unparent);
++  g_clear_object (&self->new_tab);
++
++  G_OBJECT_CLASS (luma_tab_strip_parent_class)->dispose (object);
++}
++
++static void
++luma_tab_strip_get_property (GObject    *object,
++                             guint       prop_id,
++                             GValue     *value,
++                             GParamSpec *pspec)
++{
++  LumaTabStrip *self = LUMA_TAB_STRIP (object);
++
++  switch (prop_id)
++    {
++    case PROP_VIEW:
++      g_value_set_object (value, luma_tab_strip_get_view (self));
++      break;
++
++    default:
++      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
++    }
++}
++
++static void
++luma_tab_strip_set_property (GObject      *object,
++                             guint         prop_id,
++                             const GValue *value,
++                             GParamSpec   *pspec)
++{
++  LumaTabStrip *self = LUMA_TAB_STRIP (object);
++
++  switch (prop_id)
++    {
++    case PROP_VIEW:
++      luma_tab_strip_set_view (self, g_value_get_object (value));
++      break;
++
++    default:
++      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
++    }
++}
++
++/* The upstream picker is parented to this visible content widget. Its own
++ * GtkPopover still owns rendering, focus, dismissal and profile selection. */
++static void
++luma_tab_strip_measure (GtkWidget *widget, GtkOrientation orientation,
++                        int for_size, int *minimum, int *natural,
++                        int *minimum_baseline, int *natural_baseline)
++{
++  LumaTabStrip *self = LUMA_TAB_STRIP (widget);
++  gtk_widget_measure (self->box, orientation, for_size, minimum, natural,
++                      minimum_baseline, natural_baseline);
++}
++
++static void
++luma_tab_strip_size_allocate (GtkWidget *widget, int width, int height, int baseline)
++{
++  LumaTabStrip *self = LUMA_TAB_STRIP (widget);
++  graphene_rect_t bounds;
++
++  gtk_widget_allocate (self->box, width, height, baseline, NULL);
++  if (self->profile_popover != NULL &&
++      gtk_widget_get_visible (GTK_WIDGET (self->profile_popover)) &&
++      gtk_widget_compute_bounds (self->new_tab, widget, &bounds))
++    {
++      GdkRectangle rect = {bounds.origin.x, bounds.origin.y,
++                           bounds.size.width, bounds.size.height};
++      gtk_popover_set_pointing_to (self->profile_popover, &rect);
++      gtk_popover_present (self->profile_popover);
++    }
++}
++
++static void
++luma_tab_strip_profiles_closed (LumaTabStrip *self)
++{
++  if (self->view != NULL && adw_tab_view_get_n_pages (self->view) < 2)
++    gtk_widget_set_visible (GTK_WIDGET (self), FALSE);
++}
++
++static void
++luma_tab_strip_class_init (LumaTabStripClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
++
++  object_class->dispose = luma_tab_strip_dispose;
++  object_class->get_property = luma_tab_strip_get_property;
++  object_class->set_property = luma_tab_strip_set_property;
++
++  properties[PROP_VIEW] =
++    g_param_spec_object ("view", NULL, NULL,
++                         ADW_TYPE_TAB_VIEW,
++                         (G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS));
++
++  g_object_class_install_properties (object_class, N_PROPS, properties);
++
++  widget_class->measure = luma_tab_strip_measure;
++  widget_class->size_allocate = luma_tab_strip_size_allocate;
++  gtk_widget_class_set_css_name (widget_class, "lumatabstrip");
++  gtk_widget_class_set_accessible_role (widget_class, GTK_ACCESSIBLE_ROLE_TAB_LIST);
++}
++
++static void
++luma_tab_strip_init (LumaTabStrip *self)
++{
++  GtkWidget *scroller;
++
++  self->box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
++  gtk_widget_add_css_class (self->box, "luma-tab-strip");
++  gtk_widget_set_parent (self->box, GTK_WIDGET (self));
++
++  self->tabs = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
++  gtk_widget_set_valign (self->tabs, GTK_ALIGN_CENTER);
++
++  /* Overflow scrolls; a tab never shrinks below the width the design gives it. */
++  scroller = gtk_scrolled_window_new ();
++  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
++                                  GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
++  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), self->tabs);
++  gtk_widget_set_hexpand (scroller, TRUE);
++  gtk_box_append (GTK_BOX (self->box), scroller);
++
++  self->new_tab = gtk_button_new_with_label ("+");
++  gtk_widget_add_css_class (self->new_tab, "luma-tab-new");
++  gtk_widget_set_tooltip_text (self->new_tab, _("New Tab"));
++  /* Upstream's new-tab takes (profile, command); empty strings mean
++   * "the default profile, the default command". */
++  gtk_widget_set_valign (self->new_tab, GTK_ALIGN_CENTER);
++  gtk_actionable_set_action_name (GTK_ACTIONABLE (self->new_tab), "win.new-tab");
++  gtk_actionable_set_action_target (GTK_ACTIONABLE (self->new_tab), "(ss)", "", "");
++  g_object_ref_sink (self->new_tab);
++
++  self->overflow = gtk_button_new_with_label ("\u2022\u2022\u2022");
++  gtk_widget_add_css_class (self->overflow, "luma-tab-overflow");
++  gtk_widget_set_tooltip_text (self->overflow, _("All Tabs"));
++  gtk_widget_set_valign (self->overflow, GTK_ALIGN_CENTER);
++  gtk_actionable_set_action_name (GTK_ACTIONABLE (self->overflow), "win.tab-overview");
++  gtk_box_append (GTK_BOX (self->box), self->overflow);
++}
++
++GtkWidget *
++luma_tab_strip_new (void)
++{
++  return g_object_new (LUMA_TYPE_TAB_STRIP, NULL);
++}
++
++AdwTabView *
++luma_tab_strip_get_view (LumaTabStrip *self)
++{
++  g_return_val_if_fail (LUMA_IS_TAB_STRIP (self), NULL);
++
++  return self->view;
++}
++
++void
++luma_tab_strip_set_view (LumaTabStrip *self,
++                         AdwTabView   *view)
++{
++  g_return_if_fail (LUMA_IS_TAB_STRIP (self));
++  g_return_if_fail (view == NULL || ADW_IS_TAB_VIEW (view));
++
++  if (self->view == view)
++    return;
++
++  if (self->view != NULL)
++    {
++      g_clear_signal_handler (&self->pages_changed_handler, self->pages);
++      g_clear_signal_handler (&self->selected_handler, self->view);
++      g_clear_object (&self->pages);
++      g_clear_object (&self->view);
++    }
++
++  if (view != NULL)
++    {
++      self->view = g_object_ref (view);
++      self->pages = G_LIST_MODEL (adw_tab_view_get_pages (view));
++      self->pages_changed_handler =
++        g_signal_connect_object (self->pages, "items-changed",
++                                 G_CALLBACK (luma_tab_strip_pages_changed_cb),
++                                 self, G_CONNECT_SWAPPED);
++      self->selected_handler =
++        g_signal_connect_object (view, "notify::selected-page",
++                                 G_CALLBACK (luma_tab_strip_pages_changed_cb),
++                                 self, G_CONNECT_SWAPPED);
++    }
++
++  luma_tab_strip_rebuild (self);
++  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_VIEW]);
++}
++
++void
++luma_tab_strip_set_profile_popover (LumaTabStrip *self, GtkPopover *popover)
++{
++  g_return_if_fail (LUMA_IS_TAB_STRIP (self));
++  g_return_if_fail (GTK_IS_POPOVER (popover));
++  g_return_if_fail (self->profile_popover == NULL);
++
++  self->profile_popover = popover;
++  gtk_widget_set_parent (GTK_WIDGET (popover), GTK_WIDGET (self));
++  g_signal_connect_object (popover, "closed",
++                           G_CALLBACK (luma_tab_strip_profiles_closed), self,
++                           G_CONNECT_SWAPPED);
++}
++
++void
++luma_tab_strip_popup_profiles (LumaTabStrip *self)
++{
++  g_return_if_fail (LUMA_IS_TAB_STRIP (self));
++  g_return_if_fail (self->profile_popover != NULL);
++
++  /* A single terminal normally hides its strip; reveal the real anchor for
++   * the duration of the picker, then restore that policy on dismissal. */
++  gtk_widget_set_visible (GTK_WIDGET (self), TRUE);
++  gtk_popover_popup (self->profile_popover);
++  gtk_widget_queue_allocate (GTK_WIDGET (self));
++}
+--- /dev/null
++++ b/src/luma-tab-strip.h
+@@ -0,0 +1,27 @@
++/* luma-tab-strip.h
++ *
++ * Copyright 2026 Project Luma
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include <adwaita.h>
++
++G_BEGIN_DECLS
++
++#define LUMA_TYPE_TAB_STRIP (luma_tab_strip_get_type())
++
++G_DECLARE_FINAL_TYPE (LumaTabStrip, luma_tab_strip, LUMA, TAB_STRIP, GtkWidget)
++
++GtkWidget  *luma_tab_strip_new      (void);
++AdwTabView *luma_tab_strip_get_view (LumaTabStrip *self);
++void        luma_tab_strip_set_view (LumaTabStrip *self,
++                                     AdwTabView   *view);
++
++void        luma_tab_strip_set_profile_popover (LumaTabStrip *self,
++                                               GtkPopover   *popover);
++void        luma_tab_strip_popup_profiles      (LumaTabStrip *self);
++
++G_END_DECLS
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -29,6 +29,7 @@
+   'ptyxis-shortcut-row.c',
+   'ptyxis-shortcuts.c',
+   'ptyxis-shrinker.c',
++  'luma-tab-strip.c',
+   'ptyxis-tab.c',
+   'ptyxis-tab-monitor.c',
+   'ptyxis-terminal.c',
+@@ -84,6 +85,7 @@
+   dependency('gio-unix-2.0', version: glib_req),
+   dependency('gtk4', version: gtk_req),
+   dependency('libadwaita-1', version: adwaita_req),
++  dependency('luma-ui-1'),
+   dependency('json-glib-1.0', version: json_glib_req),
+   dependency('vte-2.91-gtk4', version: vte_req),
+   cc.find_library('m', required: false),
+--- a/src/org.gnome.Ptyxis.gschema.xml.in
++++ b/src/org.gnome.Ptyxis.gschema.xml.in
+@@ -133,13 +133,13 @@
+     </key>
+ 
+     <key name="use-system-font" type="b">
+-      <default>true</default>
++      <default>false</default>
+       <summary>Use System Font</summary>
+       <description>If the default system monospace font should be used</description>
+     </key>
+ 
+     <key name="font-name" type="s">
+-      <default>'Monospace 10'</default>
++      <default>'Monospace 9.75'</default>
+       <summary>Font Name</summary>
+       <description>The font description to use if use-system-font is set to False</description>
+     </key>
+@@ -341,7 +341,7 @@
+     </key>
+ 
+     <key name="palette" type="s">
+-      <default>'gnome'</default>
++      <default>'luma'</default>
+       <summary>Palette</summary>
+       <description>The color palette to use for the profile, by name</description>
+     </key>
+@@ -360,7 +360,7 @@
+     </key>
+ 
+     <key name="cell-height-scale" type="d">
+-      <default>1.0</default>
++      <default>1.2</default>
+       <range min="1.0" max="2.0"/>
+       <summary>Line Spacing</summary>
+       <description>The terminal’s cell height scale</description>
+--- /dev/null
++++ b/src/palettes/luma.palette
+@@ -0,0 +1,48 @@
++[Palette]
++Name=Luma
++
++[Light]
++Background=#fbfbfa
++Foreground=#283038
++Cursor=#865f9f
++TitlebarBackground=#f3f3f1
++TitlebarForeground=#283038
++Color0=#283038
++Color1=#a6494d
++Color2=#3b8967
++Color3=#b17a3c
++Color4=#527fae
++Color5=#865f9f
++Color6=#3f7f86
++Color7=#d8dadc
++Color8=#707a82
++Color9=#c05f63
++Color10=#4ca878
++Color11=#c9924f
++Color12=#6a95c2
++Color13=#9d75b6
++Color14=#4f979e
++Color15=#fbfbfa
++
++[Dark]
++Background=#2a2e34
++Foreground=#e4e8ea
++Cursor=#b58bd0
++TitlebarBackground=#21252b
++TitlebarForeground=#e4e8ea
++Color0=#21252b
++Color1=#d0797d
++Color2=#65b58c
++Color3=#d19447
++Color4=#80a8d2
++Color5=#b58bd0
++Color6=#6bb3ba
++Color7=#c6cbd0
++Color8=#89939c
++Color9=#e08e92
++Color10=#7fc9a2
++Color11=#e0a862
++Color12=#98bce0
++Color13=#c8a3df
++Color14=#83c6cd
++Color15=#f2f4f5
+--- a/src/ptyxis-application.c
++++ b/src/ptyxis-application.c
+@@ -19,6 +19,8 @@
+  */
+ 
+ #include "config.h"
++
++#include <luma-ui.h>
+ 
+ #include <glib/gi18n.h>
+ 
+@@ -874,6 +876,7 @@
+                          GINT_TO_POINTER (exit_code));
+ }
+ 
++
+ static void
+ ptyxis_application_startup (GApplication *application)
+ {
+@@ -910,6 +913,8 @@
+     }
+ 
+   G_APPLICATION_CLASS (ptyxis_application_parent_class)->startup (application);
++
++  luma_init ();
+ 
+   if ((sandbox_agent = ptyxis_application_should_sandbox_agent (self)))
+     timeout_msec = G_MAXINT;
+--- a/src/ptyxis-window-dressing.c
++++ b/src/ptyxis-window-dressing.c
+@@ -112,12 +112,16 @@
+ 
+       revealer_bg = g_strdup_printf ("alpha(mix(%s,%s,.05),%s)", titlebar_bg, titlebar_fg, popover_alpha_str);
+ 
++      /* The window wears the titlebar colour — in Luma's palettes that is the
++       * window ground — and the terminal wears the terminal colour on the
++       * island above it. Painting the whole window in the terminal's colour
++       * leaves the island invisible. */
+       g_string_append_printf (string,
+                               "window.%s { color: %s; background-color: alpha(%s, %s); }\n",
+-                              self->css_class, fg, bg, window_alpha_str);
++                              self->css_class, fg, titlebar_bg, window_alpha_str);
+       g_string_append_printf (string,
+                               "window.%s.fullscreen { background-color: %s; }\n",
+-                              self->css_class, bg);
++                              self->css_class, titlebar_bg);
+       g_string_append_printf (string,
+                               "window.%s .window-contents popover > contents { color: %s; background-color: alpha(%s, %s); }\n",
+                               self->css_class, titlebar_fg, titlebar_bg, popover_alpha_str);
+--- a/src/ptyxis-window.c
++++ b/src/ptyxis-window.c
+@@ -38,6 +38,7 @@
+ #include "ptyxis-title-dialog.h"
+ #include "ptyxis-profile-dialog.h"
+ #include "ptyxis-util.h"
++#include "luma-tab-strip.h"
+ #include "ptyxis-window.h"
+ #include "ptyxis-window-dressing.h"
+ 
+@@ -52,12 +53,11 @@
+   PtyxisShortcuts       *shortcuts;
+   PtyxisParkingLot      *parking_lot;
+ 
+-  GtkButton             *new_terminal_button;
+-  GtkMenuButton         *new_terminal_menu_button;
+-  GtkSeparator          *new_terminal_separator;
++  GtkPopover            *new_terminal_popover;
++  LumaTabStrip          *luma_tab_strip;
+   PtyxisFindBar         *find_bar;
+   GtkRevealer           *find_bar_revealer;
+-  AdwHeaderBar          *header_bar;
++  GtkWidget             *header_bar;
+   GMenu                 *primary_menu;
+   GtkMenuButton         *primary_menu_button;
+   AdwTabBar             *tab_bar;
+@@ -65,8 +65,6 @@
+   AdwTabOverview        *tab_overview;
+   AdwTabView            *tab_view;
+   GtkWidget             *zoom_label;
+-  GtkWidget             *tab_overview_button;
+-  GtkWidget             *new_tab_box;
+   PtyxisFullscreenBox   *fullscreen_box;
+   GtkStack              *menu_search_stack;
+   GtkSearchEntry        *menu_search;
+@@ -394,12 +392,13 @@
+       return;
+     }
+ 
+-  was_visible = gtk_widget_get_visible (GTK_WIDGET (self->tab_bar));
++  /* Luma draws its own strip; upstream's bar stays hidden. The window class
++   * still tracks whether tabs are on show, because the stylesheet keys off it. */
+   visible = !self->single_terminal_mode && n_pages > 1;
++  was_visible = gtk_widget_has_css_class (GTK_WIDGET (self), "has-tab-bar");
+ 
+   if (visible != was_visible)
+     {
+-      gtk_widget_set_visible (GTK_WIDGET (self->tab_bar), visible);
+       gtk_window_set_default_size (GTK_WINDOW (self), -1, -1);
+ 
+       if (visible)
+@@ -407,6 +406,8 @@
+       else
+         gtk_widget_remove_css_class (GTK_WIDGET (self), "has-tab-bar");
+     }
++
++  gtk_widget_set_visible (GTK_WIDGET (self->tab_bar), FALSE);
+ }
+ 
+ static void
+@@ -1336,7 +1337,7 @@
+ 
+   g_assert (PTYXIS_IS_WINDOW (self));
+ 
+-  gtk_menu_button_popup (self->new_terminal_menu_button);
++  luma_tab_strip_popup_profiles (self->luma_tab_strip);
+ }
+ 
+ static void
+@@ -1572,7 +1573,6 @@
+ {
+   g_autoptr(GListModel) containers = NULL;
+   g_autoptr(GListModel) profiles = NULL;
+-  gboolean visible;
+   guint n_profiles;
+ 
+   g_assert (PTYXIS_IS_WINDOW (self));
+@@ -1580,8 +1580,6 @@
+   containers = ptyxis_application_list_containers (PTYXIS_APPLICATION_DEFAULT);
+   profiles = ptyxis_application_list_profiles (PTYXIS_APPLICATION_DEFAULT);
+   n_profiles = g_list_model_get_n_items (profiles);
+-  visible = g_list_model_get_n_items (containers) > 1 ||
+-            n_profiles > 1;
+ 
+   gtk_widget_action_set_enabled (GTK_WIDGET (self),
+                                  "my-computer",
+@@ -1592,8 +1590,6 @@
+                                  "win.set-profile",
+                                  n_profiles > 1);
+ 
+-  gtk_widget_set_visible (GTK_WIDGET (self->new_terminal_separator), visible);
+-  gtk_widget_set_visible (GTK_WIDGET (self->new_terminal_menu_button), visible);
+ }
+ 
+ static void
+@@ -1771,7 +1767,7 @@
+   g_assert (GTK_IS_SEARCH_ENTRY (entry));
+ 
+   gtk_editable_set_text (GTK_EDITABLE (entry), "");
+-  gtk_menu_button_popdown (self->new_terminal_menu_button);
++  gtk_popover_popdown (self->new_terminal_popover);
+ 
+   if ((tab = ptyxis_window_get_active_tab (self)))
+     ptyxis_tab_grab_focus (tab);
+@@ -1792,7 +1788,7 @@
+   model = gtk_list_view_get_model (list_view);
+   item = g_list_model_get_item (G_LIST_MODEL (model), position);
+ 
+-  gtk_menu_button_popdown (self->new_terminal_menu_button);
++  gtk_popover_popdown (self->new_terminal_popover);
+   gtk_editable_set_text (GTK_EDITABLE (self->menu_search), "");
+ 
+   /* First return focus before we make changes so that if we
+@@ -2048,6 +2044,7 @@
+ 
+   g_object_class_install_properties (object_class, N_PROPS, properties);
+ 
++  g_type_ensure (LUMA_TYPE_TAB_STRIP);
+   gtk_widget_class_set_template_from_resource (widget_class, "/org/gnome/Ptyxis/ptyxis-window.ui");
+ 
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, find_bar);
+@@ -2059,10 +2056,8 @@
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, menu_list_view);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, menu_search);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, menu_search_stack);
+-  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, new_tab_box);
+-  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, new_terminal_button);
+-  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, new_terminal_menu_button);
+-  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, new_terminal_separator);
++  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, new_terminal_popover);
++  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, luma_tab_strip);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, not_containers);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, not_containers_filter);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, primary_menu);
+@@ -2070,7 +2065,6 @@
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, tab_bar);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, tab_menu);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, tab_overview);
+-  gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, tab_overview_button);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, tab_view);
+   gtk_widget_class_bind_template_child (widget_class, PtyxisWindow, visual_bell);
+ 
+@@ -2182,6 +2176,10 @@
+   self->shortcuts = g_object_ref (ptyxis_application_get_shortcuts (PTYXIS_APPLICATION_DEFAULT));
+ 
+   gtk_widget_init_template (GTK_WIDGET (self));
++  luma_tab_strip_set_profile_popover (self->luma_tab_strip, self->new_terminal_popover);
++
++  /* The frame, the title row and the controls are the Application Kit's. */
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-application-window");
+ 
+   default_icon = g_themed_icon_new ("utilities-terminal-symbolic");
+   adw_tab_view_set_default_icon (self->tab_view, default_icon);
+@@ -2393,8 +2391,7 @@
+       gtk_widget_action_set_enabled (GTK_WIDGET (self), "my-computer", FALSE);
+ 
+       gtk_widget_set_visible (GTK_WIDGET (self->tab_bar), FALSE);
+-      gtk_widget_set_visible (self->new_tab_box, FALSE);
+-      gtk_widget_set_visible (self->tab_overview_button, FALSE);
++
+     }
+ 
+   return self;
+--- a/src/ptyxis-window.ui
++++ b/src/ptyxis-window.ui
+@@ -1,28 +1,11 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<!--
+-  Copyright 2023 Christian Hergert
+-
+-  This program is free software: you can redistribute it and/or modify
+-  it under the terms of the GNU General Public License as published by
+-  the Free Software Foundation, either version 3 of the License, or
+-  (at your option) any later version.
+-
+-  This program is distributed in the hope that it will be useful,
+-  but WITHOUT ANY WARRANTY; without even the implied warranty of
+-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-  GNU General Public License for more details.
+-
+-  You should have received a copy of the GNU General Public License
+-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-
+-  SPDX-License-Identifier: GPL-3.0-or-later
+--->
++<?xml version='1.0' encoding='utf-8'?>
+ <interface>
+-  <requires lib="gtk" version="4.0"/>
+-  <requires lib="Adw" version="1.0"/>
++  <requires lib="gtk" version="4.0" />
++  <requires lib="Adw" version="1.0" />
+   <template class="PtyxisWindow" parent="AdwApplicationWindow">
+     <style>
+-      <class name="ptyxis-window"/>
++      <class name="ptyxis-window" />
++      <class name="luma-app-window" />
+     </style>
+     <property name="width-request">360</property>
+     <property name="height-request">294</property>
+@@ -380,290 +363,75 @@
+     <property name="content">
+       <object class="AdwTabOverview" id="tab_overview">
+         <style>
+-          <class name="window-contents"/>
++          <class name="window-contents" />
+         </style>
+         <property name="enable-new-tab">true</property>
+-        <signal name="notify::open" handler="ptyxis_window_tab_overview_notify_open_cb" swapped="1" after="1"/>
+-        <signal name="create-tab" handler="ptyxis_window_tab_overview_create_tab_cb" swapped="1"/>
++        <signal name="notify::open" handler="ptyxis_window_tab_overview_notify_open_cb" swapped="1" after="1" />
++        <signal name="create-tab" handler="ptyxis_window_tab_overview_create_tab_cb" swapped="1" />
+         <property name="view">tab_view</property>
+         <property name="child">
+           <object class="PtyxisFullscreenBox" id="fullscreen_box">
+             <child type="top">
+               <object class="GtkBox" id="visual_bell">
+                 <style>
+-                  <class name="visual-bell-area"/>
++                  <class name="visual-bell-area" />
+                 </style>
+                 <property name="orientation">vertical</property>
+                 <child>
+                   <object class="PtyxisShrinker">
+                     <property name="hexpand">true</property>
+                     <child>
+-                      <object class="AdwHeaderBar" id="header_bar">
+-                        <style>
+-                          <class name="main-header-bar"/>
+-                        </style>
+-                        <property name="show-start-title-buttons" bind-source="PtyxisWindow" bind-property="fullscreened" bind-flags="sync-create|invert-boolean"/>
+-                        <property name="show-end-title-buttons" bind-source="PtyxisWindow" bind-property="fullscreened" bind-flags="sync-create|invert-boolean"/>
+-                        <child type="end">
+-                          <object class="GtkButton" id="restore_button">
+-                            <property name="tooltip-text" translatable="yes">Leave Fullscreen</property>
+-                            <property name="icon-name">view-restore-symbolic</property>
+-                            <property name="action-name">win.unfullscreen</property>
+-                            <property name="visible" bind-source="PtyxisWindow" bind-property="fullscreened" bind-flags="sync-create"/>
+-                          </object>
+-                        </child>
+-                        <child type="start">
+-                          <object class="GtkBox" id="new_tab_box">
+-                            <property name="css-name">splitbutton</property>
+-                            <style>
+-                              <class name="image-button"/>
+-                            </style>
+-                            <child>
+-                              <object class="GtkButton" id="new_terminal_button">
+-                                <property name="icon-name">tab-new-symbolic</property>
+-                                <property name="tooltip-text" translatable="yes">New Terminal</property>
+-                                <property name="action-name">win.new-terminal</property>
+-                                <property name="action-target">('default','')</property>
+-                                <property name="focus-on-click">false</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="GtkSeparator" id="new_terminal_separator">
+-                                <property name="orientation">vertical</property>
+-                              </object>
+-                            </child>
+-                            <child>
+-                              <object class="GtkMenuButton" id="new_terminal_menu_button">
+-                                <property name="tooltip-text" translatable="yes">Show Profiles and Containers</property>
+-                                <child>
+-                                  <object class="GtkImage">
+-                                    <property name="icon-name">pan-down-symbolic</property>
+-                                  </object>
+-                                </child>
+-                                <property name="popover">
+-                                  <object class="GtkPopover">
+-                                    <style>
+-                                      <class name="tab-menu"/>
+-                                    </style>
+-                                    <property name="child">
+-                                      <object class="GtkBox">
+-                                        <property name="orientation">vertical</property>
+-                                        <child>
+-                                          <object class="GtkSearchEntry" id="menu_search">
+-                                            <property name="margin-top">6</property>
+-                                            <property name="margin-bottom">6</property>
+-                                            <property name="margin-start">6</property>
+-                                            <property name="margin-end">6</property>
+-                                            <property name="placeholder-text" translatable="yes">Filter…</property>
+-                                            <signal name="activate" handler="ptyxis_window_menu_search_activate_cb" swapped="true"/>
+-                                            <signal name="stop-search" handler="ptyxis_window_menu_stop_search" swapped="true"/>
+-                                          </object>
+-                                        </child>
+-                                        <child>
+-                                          <object class="GtkSeparator">
+-                                          </object>
+-                                        </child>
+-                                        <child>
+-                                          <object class="GtkStack" id="menu_search_stack">
+-                                            <property name="hhomogeneous">true</property>
+-                                            <property name="vhomogeneous">false</property>
+-                                            <child>
+-                                              <object class="GtkStackPage">
+-                                                <property name="name">results</property>
+-                                                <property name="child">
+-                                                  <object class="GtkScrolledWindow">
+-                                                    <property name="hscrollbar-policy">never</property>
+-                                                    <property name="propagate-natural-height">true</property>
+-                                                    <child>
+-                                                      <object class="GtkListView" id="menu_list_view">
+-                                                        <property name="single-click-activate">true</property>
+-                                                        <signal name="activate" handler="ptyxis_window_menu_activate_cb" swapped="true"/>
+-                                                        <property name="model">
+-                                                          <object class="GtkNoSelection">
+-                                                            <signal name="notify::n-items" handler="ptyxis_window_notify_menu_n_items_cb" swapped="true"/>
+-                                                            <property name="model">
+-                                                              <object class="GtkFlattenListModel">
+-                                                                <property name="model">
+-                                                                  <object class="GListStore">
+-                                                                    <property name="item-type">GListModel</property>
+-                                                                    <child>
+-                                                                      <object class="GtkFilterListModel">
+-                                                                        <property name="filter">
+-                                                                          <object class="GtkStringFilter">
+-                                                                            <property name="expression">
+-                                                                              <closure function="ptyxis_window_get_container_title" type="gchararray" swapped="true"/>
+-                                                                            </property>
+-                                                                            <binding name="search">
+-                                                                              <lookup name="text">menu_search</lookup>
+-                                                                            </binding>
+-                                                                          </object>
+-                                                                        </property>
+-                                                                        <property name="model">not_containers</property>
+-                                                                      </object>
+-                                                                    </child>
+-                                                                    <child>
+-                                                                      <object class="GtkFilterListModel">
+-                                                                        <property name="filter">
+-                                                                          <object class="GtkStringFilter">
+-                                                                            <property name="expression">
+-                                                                              <lookup name="label" type="PtyxisProfile"/>
+-                                                                            </property>
+-                                                                            <binding name="search">
+-                                                                              <lookup name="text">menu_search</lookup>
+-                                                                            </binding>
+-                                                                          </object>
+-                                                                        </property>
+-                                                                        <property name="model">
+-                                                                          <object class="PtyxisGatedListModel">
+-                                                                            <binding name="gated">
+-                                                                              <closure function="ptyxis_window_check_singular" type="gboolean">
+-                                                                                <lookup name="n-items" type="GListStore">
+-                                                                                  <lookup name="profiles" type="PtyxisApplication">
+-                                                                                    <lookup name="application">PtyxisWindow</lookup>
+-                                                                                  </lookup>
+-                                                                                </lookup>
+-                                                                              </closure>
+-                                                                            </binding>
+-                                                                            <binding name="model">
+-                                                                              <lookup name="profiles" type="PtyxisApplication">
+-                                                                                <lookup name="application">PtyxisWindow</lookup>
+-                                                                              </lookup>
+-                                                                            </binding>
+-                                                                          </object>
+-                                                                        </property>
+-                                                                      </object>
+-                                                                    </child>
+-                                                                    <child>
+-                                                                      <object class="GtkFilterListModel">
+-                                                                        <property name="filter">
+-                                                                          <object class="GtkStringFilter">
+-                                                                            <property name="expression">
+-                                                                              <closure function="ptyxis_window_get_container_title" type="gchararray" swapped="true">
+-                                                                              </closure>
+-                                                                            </property>
+-                                                                            <binding name="search">
+-                                                                              <lookup name="text">menu_search</lookup>
+-                                                                            </binding>
+-                                                                          </object>
+-                                                                        </property>
+-									<property name="model">maybe_containers</property>
+-                                                                      </object>
+-                                                                    </child>
+-                                                                  </object>
+-                                                                </property>
+-                                                              </object>
+-                                                            </property>
+-                                                          </object>
+-                                                        </property>
+-                                                        <property name="header-factory">
+-                                                          <object class="GtkSignalListItemFactory">
+-                                                            <signal name="bind" handler="ptyxis_window_bind_section_title" swapped="true"/>
+-                                                          </object>
+-                                                        </property>
+-                                                        <property name="factory">
+-                                                          <object class="GtkBuilderListItemFactory">
+-                                                            <property name="bytes"><![CDATA[
+-<?xml version="1.0" encoding="UTF-8"?>
+-<interface>
+-  <template class="GtkListItem">
+-    <property name="child">
+-      <object class="PtyxisMenuRow">
+-        <binding name="item">
+-          <lookup name="item">GtkListItem</lookup>
+-        </binding>
+-      </object>
+-    </property>
+-  </template>
+-</interface>]]>
+-                                                            </property>
+-                                                          </object>
+-                                                        </property>
+-                                                      </object>
+-                                                    </child>
+-                                                  </object>
+-                                                </property>
+-                                              </object>
+-                                            </child>
+-                                            <child>
+-                                              <object class="GtkStackPage">
+-                                                <property name="name">empty</property>
+-                                                <property name="child">
+-                                                  <object class="GtkBox">
+-                                                    <property name="orientation">vertical</property>
+-                                                    <property name="valign">center</property>
+-                                                    <property name="margin-top">32</property>
+-                                                    <property name="margin-bottom">32</property>
+-                                                    <property name="margin-start">32</property>
+-                                                    <property name="margin-end">32</property>
+-                                                    <property name="spacing">12</property>
+-                                                    <child>
+-                                                      <object class="GtkImage">
+-                                                        <property name="icon-name">edit-find-symbolic</property>
+-                                                        <property name="pixel-size">96</property>
+-                                                        <style>
+-                                                          <class name="dimmed"/>
+-                                                        </style>
+-                                                      </object>
+-                                                    </child>
+-                                                    <child>
+-                                                      <object class="GtkLabel">
+-                                                        <property name="label" translatable="yes">No Matching Results</property>
+-                                                        <attributes>
+-                                                          <attribute name="weight" value="bold"/>
+-                                                          <attribute name="scale" value="1.4"/>
+-                                                        </attributes>
+-                                                        <style>
+-                                                          <class name="dimmed"/>
+-                                                        </style>
+-                                                      </object>
+-                                                    </child>
+-                                                  </object>
+-                                                </property>
+-                                              </object>
+-                                            </child>
+-                                            <property name="visible-child-name">empty</property>
+-                                          </object>
+-                                        </child>
+-                                      </object>
+-                                    </property>
+-                                  </object>
+-                                </property>
+-                              </object>
+-                            </child>
+-                          </object>
+-                        </child>
+-                        <child type="title">
+-                          <object class="AdwWindowTitle">
+-                            <binding name="subtitle">
+-                              <lookup name="subtitle" type="PtyxisTab">
+-                                <lookup name="active-tab">PtyxisWindow</lookup>
+-                              </lookup>
+-                            </binding>
+-                            <binding name="title">
+-                              <lookup name="title" type="PtyxisTab">
+-                                  <lookup name="active-tab">PtyxisWindow</lookup>
+-                                </lookup>
+-                            </binding>
+-                          </object>
+-                        </child>
+-                        <child type="end">
+-                          <object class="GtkMenuButton" id="primary_menu_button">
+-                            <property name="icon-name">open-menu-symbolic</property>
+-                            <property name="tooltip-text" translatable="yes">Main Menu</property>
+-                            <property name="menu-model">primary_menu</property>
+-                            <property name="focus-on-click">false</property>
+-                          </object>
+-                        </child>
+-                        <child type="end">
+-                          <object class="GtkToggleButton" id="tab_overview_button">
+-                            <property name="icon-name">view-grid-symbolic</property>
+-                            <property name="tooltip-text" translatable="yes">Show Open Tabs</property>
+-                            <property name="active" bind-source="tab_overview" bind-property="open" bind-flags="bidirectional|sync-create"/>
+-                            <property name="focus-on-click">false</property>
+-                          </object>
+-                        </child>
+-                      </object>
+-                    </child>
++<object class="AdwHeaderBar" id="header_bar">
++  <style>
++    <class name="luma-titlebar" />
++  </style>
++  <property name="show-title">false</property>
++  <child type="start">
++    <object class="GtkMenuButton" id="primary_menu_button">
++      <style>
++        <class name="luma-identity-button" />
++      </style>
++      <property name="tooltip-text">Application menu</property>
++      <property name="menu-model">primary_menu</property>
++      <property name="focus-on-click">false</property>
++      <property name="halign">start</property>
++      <property name="valign">center</property>
++      <property name="hexpand">false</property>
++      <child>
++        <object class="GtkBox">
++          <style>
++            <class name="luma-identity-content" />
++          </style>
++          <property name="spacing">7</property>
++          <child>
++            <object class="GtkImage">
++              <style>
++                <class name="luma-identity-icon" />
++              </style>
++              <property name="icon-name">org.gnome.Ptyxis</property>
++            </object>
++          </child>
++          <child>
++            <object class="GtkLabel">
++              <style>
++                <class name="luma-identity-title" />
++              </style>
++              <property name="label">Terminal</property>
++            </object>
++          </child>
++          <child>
++            <object class="GtkImage">
++              <style>
++                <class name="luma-identity-chevron" />
++              </style>
++              <property name="icon-name">pan-down-symbolic</property>
++            </object>
++          </child>
++        </object>
++      </child>
++    </object>
++  </child>
++</object></child>
+                   </object>
+                 </child>
+               </object>
+@@ -677,19 +445,19 @@
+             </child>
+             <property name="content">
+               <object class="GtkBox">
+-                <property name="orientation">vertical</property>
++                <child><object class="LumaTabStrip" id="luma_tab_strip"><property name="view">tab_view</property></object></child><property name="orientation">vertical</property>
+                 <property name="vexpand">true</property>
+                 <child>
+                   <object class="AdwToastOverlay" id="toasts">
+                     <property name="vexpand">true</property>
+                     <child>
+                       <object class="AdwTabView" id="tab_view">
+-                        <signal name="notify::selected-page" handler="ptyxis_window_notify_selected_page_cb" swapped="1" after="1"/>
+-                        <signal name="page-attached" handler="ptyxis_window_page_attached_cb" swapped="1"/>
+-                        <signal name="page-detached" handler="ptyxis_window_page_detached_cb" swapped="1"/>
+-                        <signal name="create-window" handler="ptyxis_window_create_window_cb" swapped="1"/>
+-                        <signal name="close-page" handler="ptyxis_window_close_page_cb" swapped="1"/>
+-                        <signal name="setup-menu" handler="ptyxis_window_setup_menu_cb" swapped="1"/>
++                        <signal name="notify::selected-page" handler="ptyxis_window_notify_selected_page_cb" swapped="1" after="1" />
++                        <signal name="page-attached" handler="ptyxis_window_page_attached_cb" swapped="1" />
++                        <signal name="page-detached" handler="ptyxis_window_page_detached_cb" swapped="1" />
++                        <signal name="create-window" handler="ptyxis_window_create_window_cb" swapped="1" />
++                        <signal name="close-page" handler="ptyxis_window_close_page_cb" swapped="1" />
++                        <signal name="setup-menu" handler="ptyxis_window_setup_menu_cb" swapped="1" />
+                         <property name="menu-model">tab_menu</property>
+                       </object>
+                     </child>
+@@ -698,7 +466,7 @@
+                 <child>
+                   <object class="GtkRevealer" id="find_bar_revealer">
+                     <property name="reveal-child">false</property>
+-                    <!-- Disable for now because VteTerminal won't gracefully resize -->
++
+                     <property name="transition-duration">0</property>
+                     <child>
+                       <object class="PtyxisFindBar" id="find_bar">
+@@ -706,7 +474,7 @@
+                     </child>
+                   </object>
+                 </child>
+-              </object>
++              <style><class name="luma-island" /><class name="luma-terminal-island" /></style><property name="overflow">hidden</property></object>
+             </property>
+           </object>
+         </property>
+@@ -715,7 +483,7 @@
+   </template>
+   <object class="GtkFilterListModel" id="not_containers">
+     <property name="filter">
+-      <object class="GtkCustomFilter" id="not_containers_filter"/>
++      <object class="GtkCustomFilter" id="not_containers_filter" />
+     </property>
+     <binding name="model">
+       <lookup name="containers" type="PtyxisApplication">
+@@ -725,14 +493,14 @@
+   </object>
+   <object class="GtkFilterListModel" id="maybe_containers">
+     <property name="filter">
+-      <object class="GtkCustomFilter" id="maybe_containers_filter"/>
++      <object class="GtkCustomFilter" id="maybe_containers_filter" />
+     </property>
+     <property name="model">
+       <object class="GtkSortListModel">
+         <property name="sorter">
+           <object class="GtkStringSorter">
+             <property name="expression">
+-              <lookup name="display-name" type="PtyxisIpcContainer"/>
++              <lookup name="display-name" type="PtyxisIpcContainer" />
+             </property>
+           </object>
+         </property>
+@@ -860,4 +628,191 @@
+       </item>
+     </section>
+   </menu>
++  <object class="GtkPopover" id="new_terminal_popover">
++    <style>
++      <class name="tab-menu" />
++    </style>
++    <property name="child">
++      <object class="GtkBox">
++        <property name="orientation">vertical</property>
++        <child>
++          <object class="GtkSearchEntry" id="menu_search">
++            <property name="margin-top">6</property>
++            <property name="margin-bottom">6</property>
++            <property name="margin-start">6</property>
++            <property name="margin-end">6</property>
++            <property name="placeholder-text" translatable="yes">Filter…</property>
++            <signal name="activate" handler="ptyxis_window_menu_search_activate_cb" swapped="true" />
++            <signal name="stop-search" handler="ptyxis_window_menu_stop_search" swapped="true" />
++          </object>
++        </child>
++        <child>
++          <object class="GtkSeparator">
++                                          </object>
++        </child>
++        <child>
++          <object class="GtkStack" id="menu_search_stack">
++            <property name="hhomogeneous">true</property>
++            <property name="vhomogeneous">false</property>
++            <child>
++              <object class="GtkStackPage">
++                <property name="name">results</property>
++                <property name="child">
++                  <object class="GtkScrolledWindow">
++                    <property name="hscrollbar-policy">never</property>
++                    <property name="propagate-natural-height">true</property>
++                    <child>
++                      <object class="GtkListView" id="menu_list_view">
++                        <property name="single-click-activate">true</property>
++                        <signal name="activate" handler="ptyxis_window_menu_activate_cb" swapped="true" />
++                        <property name="model">
++                          <object class="GtkNoSelection">
++                            <signal name="notify::n-items" handler="ptyxis_window_notify_menu_n_items_cb" swapped="true" />
++                            <property name="model">
++                              <object class="GtkFlattenListModel">
++                                <property name="model">
++                                  <object class="GListStore">
++                                    <property name="item-type">GListModel</property>
++                                    <child>
++                                      <object class="GtkFilterListModel">
++                                        <property name="filter">
++                                          <object class="GtkStringFilter">
++                                            <property name="expression">
++                                              <closure function="ptyxis_window_get_container_title" type="gchararray" swapped="true" />
++                                            </property>
++                                            <binding name="search">
++                                              <lookup name="text">menu_search</lookup>
++                                            </binding>
++                                          </object>
++                                        </property>
++                                        <property name="model">not_containers</property>
++                                      </object>
++                                    </child>
++                                    <child>
++                                      <object class="GtkFilterListModel">
++                                        <property name="filter">
++                                          <object class="GtkStringFilter">
++                                            <property name="expression">
++                                              <lookup name="label" type="PtyxisProfile" />
++                                            </property>
++                                            <binding name="search">
++                                              <lookup name="text">menu_search</lookup>
++                                            </binding>
++                                          </object>
++                                        </property>
++                                        <property name="model">
++                                          <object class="PtyxisGatedListModel">
++                                            <binding name="gated">
++                                              <closure function="ptyxis_window_check_singular" type="gboolean">
++                                                <lookup name="n-items" type="GListStore">
++                                                  <lookup name="profiles" type="PtyxisApplication">
++                                                    <lookup name="application">PtyxisWindow</lookup>
++                                                  </lookup>
++                                                </lookup>
++                                              </closure>
++                                            </binding>
++                                            <binding name="model">
++                                              <lookup name="profiles" type="PtyxisApplication">
++                                                <lookup name="application">PtyxisWindow</lookup>
++                                              </lookup>
++                                            </binding>
++                                          </object>
++                                        </property>
++                                      </object>
++                                    </child>
++                                    <child>
++                                      <object class="GtkFilterListModel">
++                                        <property name="filter">
++                                          <object class="GtkStringFilter">
++                                            <property name="expression">
++                                              <closure function="ptyxis_window_get_container_title" type="gchararray" swapped="true">
++                                                                              </closure>
++                                            </property>
++                                            <binding name="search">
++                                              <lookup name="text">menu_search</lookup>
++                                            </binding>
++                                          </object>
++                                        </property>
++                                        <property name="model">maybe_containers</property>
++                                      </object>
++                                    </child>
++                                  </object>
++                                </property>
++                              </object>
++                            </property>
++                          </object>
++                        </property>
++                        <property name="header-factory">
++                          <object class="GtkSignalListItemFactory">
++                            <signal name="bind" handler="ptyxis_window_bind_section_title" swapped="true" />
++                          </object>
++                        </property>
++                        <property name="factory">
++                          <object class="GtkBuilderListItemFactory">
++                            <property name="bytes">
++&lt;?xml version="1.0" encoding="UTF-8"?&gt;
++&lt;interface&gt;
++  &lt;template class="GtkListItem"&gt;
++    &lt;property name="child"&gt;
++      &lt;object class="PtyxisMenuRow"&gt;
++        &lt;binding name="item"&gt;
++          &lt;lookup name="item"&gt;GtkListItem&lt;/lookup&gt;
++        &lt;/binding&gt;
++      &lt;/object&gt;
++    &lt;/property&gt;
++  &lt;/template&gt;
++&lt;/interface&gt;
++                                                            </property>
++                          </object>
++                        </property>
++                      </object>
++                    </child>
++                  </object>
++                </property>
++              </object>
++            </child>
++            <child>
++              <object class="GtkStackPage">
++                <property name="name">empty</property>
++                <property name="child">
++                  <object class="GtkBox">
++                    <property name="orientation">vertical</property>
++                    <property name="valign">center</property>
++                    <property name="margin-top">32</property>
++                    <property name="margin-bottom">32</property>
++                    <property name="margin-start">32</property>
++                    <property name="margin-end">32</property>
++                    <property name="spacing">12</property>
++                    <child>
++                      <object class="GtkImage">
++                        <property name="icon-name">edit-find-symbolic</property>
++                        <property name="pixel-size">96</property>
++                        <style>
++                          <class name="dimmed" />
++                        </style>
++                      </object>
++                    </child>
++                    <child>
++                      <object class="GtkLabel">
++                        <property name="label" translatable="yes">No Matching Results</property>
++                        <attributes>
++                          <attribute name="weight" value="bold" />
++                          <attribute name="scale" value="1.4" />
++                        </attributes>
++                        <style>
++                          <class name="dimmed" />
++                        </style>
++                      </object>
++                    </child>
++                  </object>
++                </property>
++              </object>
++            </child>
++            <property name="visible-child-name">empty</property>
++          </object>
++        </child>
++      </object>
++    </property>
++  </object>
++
+ </interface>
+--- a/src/ptyxis.gresource.xml
++++ b/src/ptyxis.gresource.xml
+@@ -36,6 +36,7 @@
+     <file>style.css</file>
+ 
+     <!-- Core palettes -->
++    <file>palettes/luma.palette</file>
+     <file>palettes/campbell.palette</file>
+     <file>palettes/dracula.palette</file>
+     <file>palettes/gnome.palette</file>
+--- a/src/style.css
++++ b/src/style.css
+@@ -12,9 +12,10 @@
+   outline-width: 0;
+ }
+ 
+-vte-terminal.padded {
+-  margin: 0 0 1px 0;
+-  padding: 7px 6px 3px 6px;
++.luma-terminal-island vte-terminal.padded {
++  margin: 0;
++  /* The design sets the terminal in from the island's edge. */
++  padding: 18px 20px 22px 20px;
+ }
+ 
+ vte-terminal:drop(active) { border-radius: 0 0 11px 11px; }
+@@ -171,7 +172,123 @@
+   padding-top: 0px;
+   padding-bottom: 0px;
+ }
++/* Upstream padded this for its own tab bar. Luma's strip lives inside the
++ * island, so the title row keeps the kit's 42 and nothing pads around it. */
+ window.has-tab-bar .visual-bell-area {
+-  padding-top: 3px;
+-  padding-bottom: 3px;
+-}
++  padding-top: 0;
++  padding-bottom: 0;
++}
++
++
++/* ── Luma ─────────────────────────────────────────────────────────────────
++ *
++ * The window frame, the title row, the identity, the close/minimise/maximise
++ * island and the island the terminal sits in are all drawn by the Application
++ * Kit's stylesheet, loaded at startup. Nothing about them is restated here.
++ *
++ * What is here is the one widget the kit has no equivalent for — the tab strip
++ * — and the two places Terminal differs from a kit application: the island
++ * carries the body's own inset, and the terminal keeps the island's corners.
++ */
++
++.luma-terminal-island { margin: 0 9px 9px 9px; }
++vte-terminal { border-radius: 0 0 10px 10px; }
++
++/* ── Tab strip ─────────────────────────────────────────────────────────── */
++
++/* 40px including padding and divider; 4px between items. */
++lumatabstrip {
++  font-family: Figtree, sans-serif;
++  /* GTK minima exclude padding and borders: 28 + 5 + 6 + 1 = 40. */
++  min-height: 28px;
++  padding: 5px 15px 6px 5px;
++  border-bottom: 1px solid alpha(@luma_line, 0.9);
++}
++
++/* 28px tall, 116 wide at the floor, ten-pixel corners all round. */
++lumatabstrip .luma-tab {
++  min-height: 28px;
++  /* 96 content pixels plus 20 padding pixels gives the 116px tab. */
++  min-width: 96px;
++  padding: 0 10px;
++  border-radius: 10px;
++  background: transparent;
++  color: @luma_muted;
++  font-size: 13px;
++  font-weight: 600;
++  box-shadow: none;
++}
++
++lumatabstrip .luma-tab:hover { background: @luma_hover; }
++lumatabstrip .luma-tab.active { background: mix(@luma_content, @luma_ink, 0.06); color: @luma_ink; }
++lumatabstrip .luma-tab-title { font-size: 13px; font-weight: 600; }
++
++/* Follow the platform treatment for both semantic status colours. */
++lumatabstrip .luma-tab-dot {
++  min-width: 7px;
++  min-height: 7px;
++  border-radius: 999px;
++  background: @luma_green;
++  transform: translateY(1px);
++  box-shadow: 0 0 0 3px alpha(@luma_green, 0.12);
++}
++
++lumatabstrip .luma-tab-dot.activity {
++  background: @luma_amber;
++  box-shadow: 0 0 0 3px alpha(@luma_amber, 0.13);
++  animation: luma-activity-dot 1.6s ease-in-out infinite;
++}
++
++@keyframes luma-activity-dot {
++  0%, 100% { opacity: 1; }
++  50% { opacity: 0.45; }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  lumatabstrip .luma-tab-dot.activity { animation: none; }
++}
++
++/* The badge says what the tab is; the close sits in the same place and they
++ * cross-fade, so reaching for the close moves nothing. */
++lumatabstrip .luma-tab-badge {
++  color: @luma_muted;
++  font-size: 11px;
++  font-weight: 500;
++  transition: opacity 120ms ease;
++}
++
++lumatabstrip .luma-tab-close {
++  min-width: 16px;
++  min-height: 16px;
++  margin-right: 7px;
++  padding: 0;
++  border: 0;
++  border-radius: 10px;
++  background: transparent;
++  color: @luma_muted;
++  opacity: 0;
++  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
++}
++
++lumatabstrip .luma-tab-close image { -gtk-icon-size: 10px; }
++lumatabstrip .luma-tab:hover .luma-tab-badge { opacity: 0; }
++lumatabstrip .luma-tab:hover .luma-tab-close,
++lumatabstrip .luma-tab:focus-within .luma-tab-close { opacity: 1; }
++lumatabstrip .luma-tab-close:hover { background: alpha(@luma_ink, 0.13); color: @luma_ink; }
++
++lumatabstrip .luma-tab-new,
++lumatabstrip .luma-tab-overflow {
++  min-width: 28px;
++  min-height: 28px;
++  padding: 0;
++  border: 0;
++  border-radius: 10px;
++  background: transparent;
++  color: @luma_muted;
++  box-shadow: none;
++}
++
++lumatabstrip .luma-tab-new label { font-size: 17px; font-weight: 500; line-height: 1; transform: translate(0.5px, 1px); }
++lumatabstrip .luma-tab-overflow label { font-size: 11px; font-weight: 500; line-height: 1; letter-spacing: 0.08em; }
++lumatabstrip .luma-tab-new:hover,
++lumatabstrip .luma-tab-overflow:hover { background: @luma_hover; }

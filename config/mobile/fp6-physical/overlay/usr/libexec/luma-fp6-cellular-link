@@ -1,0 +1,341 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Bind an FP6 QRTR/qmap ModemManager bearer to the Linux network stack."""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import time
+from pathlib import Path
+
+from gi.repository import Gio, GLib
+
+
+CONFIG = Path("/etc/luma/fp6-cellular-link.conf")
+MODEL = Path("/sys/firmware/devicetree/base/model")
+MODEM_DESTINATION = "org.freedesktop.ModemManager1"
+PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+RECONCILE_DELAY_MS = 250
+CONNECTION_NAME = "luma-fp6-cellular"
+
+
+def run(arguments: list[str], *, check: bool = True) -> str:
+    return subprocess.run(
+        arguments,
+        check=check,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={"PATH": "/usr/sbin:/usr/bin"},
+    ).stdout
+
+
+def run_retry(
+    arguments: list[str], attempts: int = 5, delay_seconds: float = 0.2
+) -> str:
+    """Retry short netlink races caused by NetworkManager reapplying a link."""
+    for attempt in range(attempts):
+        try:
+            return run(arguments)
+        except subprocess.CalledProcessError:
+            if attempt + 1 == attempts:
+                raise
+            time.sleep(delay_seconds)
+    raise RuntimeError("unreachable retry state")
+
+
+def values(output: str) -> dict[str, str]:
+    result = {}
+    for line in output.splitlines():
+        key, separator, value = line.partition(":")
+        if separator:
+            result[key.strip()] = value.strip()
+    return result
+
+
+def suffix(mapping: dict[str, str], ending: str) -> str:
+    return next((value for key, value in mapping.items() if key.endswith(ending)), "")
+
+
+def usable(value: str) -> bool:
+    return bool(value and value != "--")
+
+
+def read_config() -> tuple[str, str]:
+    apn = ""
+    allowed_modes = ""
+    try:
+        for line in CONFIG.read_text(encoding="utf-8").splitlines():
+            key, separator, value = line.partition("=")
+            if separator and key.strip() == "APN":
+                candidate = value.strip()
+                if re.fullmatch(r"[A-Za-z0-9.-]{1,100}", candidate):
+                    apn = candidate
+            if separator and key.strip() == "ALLOWED_MODES":
+                candidate = value.strip()
+                if candidate in {"", "4g", "4g,5g"}:
+                    allowed_modes = candidate
+    except OSError:
+        pass
+    return apn, allowed_modes
+
+
+class CellularLink:
+    def __init__(self) -> None:
+        self.apn, self.allowed_modes = read_config()
+        self.active: tuple[str, str, str] | None = None
+        self.busy = False
+        self.reconcile_source_id = 0
+        self.last_modem_action = 0.0
+        self.last_connect_action = 0.0
+
+    def cleanup(self) -> None:
+        if not self.active:
+            return
+        interface, _address, _prefix = self.active
+        run(["nmcli", "connection", "down", CONNECTION_NAME], check=False)
+        run(["nmcli", "connection", "delete", CONNECTION_NAME], check=False)
+        run(["nmcli", "device", "set", interface, "managed", "no"], check=False)
+        self.active = None
+
+    def connected_bearer(
+        self, modem: str, modem_values: dict[str, str]
+    ) -> tuple[str, dict[str, str]] | None:
+        paths = set(re.findall(r"/Bearer/(\d+)", "\n".join(modem_values.values())))
+        entries = []
+        attach_apn = ""
+        stale = []
+        for bearer in sorted(paths, key=int):
+            bearer_values = values(
+                run(["mmcli", "-b", bearer, "--output-keyvalue"], check=False)
+            )
+            if not bearer_values:
+                continue
+            bearer_type = suffix(bearer_values, ".type")
+            bearer_apn = suffix(bearer_values, ".properties.apn")
+            entries.append((bearer, bearer_values, bearer_type, bearer_apn))
+            if (
+                bearer_type == "default-attach"
+                and re.fullmatch(r"[A-Za-z0-9.-]{1,100}", bearer_apn)
+            ):
+                attach_apn = bearer_apn
+
+        # A carrier may expose a generic parent-network attach APN even when
+        # the MVNO requires its own APN for user traffic.  An explicit Luma
+        # setting therefore overrides the modem-reported attach fallback.
+        connect_apn = self.apn or attach_apn
+        for bearer, bearer_values, bearer_type, bearer_apn in entries:
+            interface = suffix(bearer_values, ".status.interface")
+            if (
+                bearer_type == "default"
+                and bearer_apn == connect_apn
+                and suffix(bearer_values, ".status.connected") == "yes"
+                and re.fullmatch(r"qmapmux\d+\.\d+", interface)
+                and usable(suffix(bearer_values, ".ipv4-config.address"))
+                and usable(suffix(bearer_values, ".ipv4-config.prefix"))
+                and usable(suffix(bearer_values, ".ipv4-config.gateway"))
+            ):
+                return bearer, bearer_values
+            if bearer_type == "default" and bearer_apn != connect_apn:
+                stale.append(bearer)
+            if (
+                bearer_type == "default"
+                and bearer_apn == connect_apn
+                and suffix(bearer_values, ".status.connected") != "yes"
+            ):
+                stale.append(bearer)
+        if not connect_apn:
+            return None
+        if time.monotonic() - self.last_connect_action < 60:
+            return None
+        self.last_connect_action = time.monotonic()
+        for bearer in stale:
+            run(["mmcli", "-b", bearer, "--disconnect"], check=False)
+            run(
+                [
+                    "mmcli", "-m", modem,
+                    f"--delete-bearer=/org/freedesktop/ModemManager1/Bearer/{bearer}",
+                ],
+                check=False,
+            )
+        run(
+            [
+                "mmcli",
+                "-m",
+                modem,
+                f"--simple-connect=apn={connect_apn},ip-type=ipv4",
+            ]
+        )
+        return None
+
+    def schedule_reconcile(self, delay_ms: int = RECONCILE_DELAY_MS) -> None:
+        if not self.reconcile_source_id:
+            self.reconcile_source_id = GLib.timeout_add(delay_ms, self.reconcile)
+
+    def reconcile(self) -> bool:
+        self.reconcile_source_id = 0
+        if self.busy:
+            self.schedule_reconcile()
+            return GLib.SOURCE_REMOVE
+        self.busy = True
+        try:
+            listing = run(["mmcli", "-L"])
+            modems = tuple(dict.fromkeys(re.findall(r"/Modem/(\d+)", listing)))
+            if len(modems) != 1:
+                self.cleanup()
+                return GLib.SOURCE_CONTINUE
+            modem_values = values(run(["mmcli", "-m", modems[0], "--output-keyvalue"]))
+            modem_state = suffix(modem_values, ".generic.state").casefold()
+            registration = suffix(modem_values, ".3gpp.registration-state").casefold()
+            current_modes = suffix(modem_values, ".generic.current-modes").casefold()
+            if modem_state == "disabled" and time.monotonic() - self.last_modem_action >= 60:
+                self.last_modem_action = time.monotonic()
+                run(["mmcli", "-m", modems[0], "--enable"])
+                return GLib.SOURCE_CONTINUE
+            # Registration can already be reported from the baseband while
+            # ModemManager is still enabling its feature interfaces.  Starting
+            # Simple.Connect in that window jumps the public state directly
+            # from disabled/enabling to connecting and skips Messaging's
+            # enable phase, leaving the SMS list permanently absent.  Bearer
+            # creation begins only after ModemManager itself reaches the normal
+            # registered state.
+            if modem_state not in {"registered", "connected"}:
+                self.cleanup()
+                return GLib.SOURCE_CONTINUE
+            expected_modes = {
+                "4g": "allowed: 4g; preferred: none",
+                "4g,5g": "allowed: 4g, 5g; preferred: 4g",
+            }.get(self.allowed_modes)
+            if (
+                expected_modes
+                and current_modes != expected_modes
+                and time.monotonic() - self.last_modem_action >= 60
+            ):
+                self.last_modem_action = time.monotonic()
+                arguments = [
+                    "mmcli", "-m", modems[0],
+                    f"--set-allowed-modes={self.allowed_modes}",
+                ]
+                if self.allowed_modes == "4g,5g":
+                    arguments.append("--set-preferred-mode=4g")
+                run(arguments)
+                self.cleanup()
+                return GLib.SOURCE_CONTINUE
+            if registration not in {"home", "roaming"}:
+                self.cleanup()
+                return GLib.SOURCE_CONTINUE
+            bearer = self.connected_bearer(modems[0], modem_values)
+            if not bearer:
+                self.cleanup()
+                return GLib.SOURCE_CONTINUE
+            bearer_values = bearer[1]
+            interface = suffix(bearer_values, ".status.interface")
+            address = suffix(bearer_values, ".ipv4-config.address")
+            prefix = suffix(bearer_values, ".ipv4-config.prefix")
+            gateway = suffix(bearer_values, ".ipv4-config.gateway")
+            if not re.fullmatch(r"qmapmux\d+\.\d+", interface):
+                raise RuntimeError("ModemManager returned a non-qmap bearer")
+            if not all(usable(value) for value in (address, prefix, gateway)):
+                raise RuntimeError("ModemManager returned incomplete IPv4 configuration")
+            requested = (interface, address, prefix)
+            if self.active and self.active != requested:
+                self.cleanup()
+            mtu = suffix(bearer_values, ".ipv4-config.mtu")
+            dns_values = [
+                value
+                for key, value in bearer_values.items()
+                if key.endswith(".ipv4-config.dns")
+                or ".ipv4-config.dns.value[" in key
+            ]
+            dns = [
+                item for value in dns_values for item in re.split(r"[, ]+", value)
+                if item and item != "--"
+            ]
+            run_retry(["ip", "link", "set", interface, "up"])
+            if mtu.isdigit() and 1280 <= int(mtu) <= 9000:
+                run_retry(["ip", "link", "set", interface, "mtu", mtu])
+            run(["nmcli", "device", "set", interface, "managed", "yes"])
+            # A freshly recreated qmap link is disconnected, so `device modify`
+            # cannot apply its IP configuration. Build an in-memory generic
+            # profile instead and activate it atomically through NetworkManager.
+            # `save no` ensures that no stale interface/IP tuple survives reboot.
+            run(["nmcli", "connection", "delete", CONNECTION_NAME], check=False)
+            nmcli_add = [
+                "nmcli", "connection", "add",
+                "type", "generic",
+                "ifname", interface,
+                "con-name", CONNECTION_NAME,
+                "save", "no",
+                "ip4", f"{address}/{prefix}",
+                "gw4", gateway,
+                "--",
+                "ipv4.route-metric", "700",
+                "ipv4.ignore-auto-dns", "no",
+                "ipv6.method", "disabled",
+            ]
+            if dns:
+                nmcli_add.extend(["ipv4.dns", ",".join(dns)])
+            run_retry(nmcli_add, attempts=10, delay_seconds=0.5)
+            run_retry(
+                ["nmcli", "connection", "up", CONNECTION_NAME, "ifname", interface],
+                attempts=10,
+                delay_seconds=0.5,
+            )
+            self.active = requested
+        except subprocess.CalledProcessError as error:
+            command = Path(str(error.cmd[0])).name if error.cmd else "unknown"
+            action = str(error.cmd[1]) if error.cmd and len(error.cmd) > 1 else "unknown"
+            operation = (
+                str(error.cmd[2]) if error.cmd and len(error.cmd) > 2 else "unknown"
+            )
+            print(
+                f"cellular-link: command={command} action={action} "
+                f"operation={operation} "
+                f"returncode={error.returncode}",
+                flush=True,
+            )
+            self.cleanup()
+        except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+            print(f"cellular-link: {error.__class__.__name__}", flush=True)
+            self.cleanup()
+        finally:
+            self.busy = False
+        return GLib.SOURCE_REMOVE
+
+    def changed(self, *_args) -> None:
+        self.schedule_reconcile()
+
+    def periodic_reconcile(self) -> bool:
+        self.schedule_reconcile(0)
+        return GLib.SOURCE_CONTINUE
+
+
+def main() -> int:
+    if "Fairphone (Gen. 6)" not in MODEL.read_bytes().replace(b"\0", b"").decode():
+        return 0
+    link = CellularLink()
+    bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    bus.signal_subscribe(
+        MODEM_DESTINATION,
+        PROPERTIES_INTERFACE,
+        "PropertiesChanged",
+        None,
+        None,
+        Gio.DBusSignalFlags.NONE,
+        link.changed,
+    )
+    link.schedule_reconcile(0)
+    GLib.timeout_add_seconds(300, link.periodic_reconcile)
+    loop = GLib.MainLoop()
+    try:
+        loop.run()
+    finally:
+        link.cleanup()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

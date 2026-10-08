@@ -1,0 +1,28 @@
+From: Project Luma <luma@example.invalid>
+Subject: [PATCH] arm64: keep Tokay diagnostic DTB after initmem release
+
+The first physical inventory proved that property values in the embedded FDT
+were overwritten with POISON_FREE_INITMEM (0xcc) before PID 1 read them.
+Linux's unflattened property values point into the flat blob, so the diagnostic
+DTB must not live in the freed init section.  Keep the exact blob read-only for
+the lifetime of the kernel.
+
+SPDX-License-Identifier: GPL-2.0-only
+---
+ arch/arm64/kernel/luma_tokay_dtb.S | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/kernel/luma_tokay_dtb.S b/arch/arm64/kernel/luma_tokay_dtb.S
+--- a/arch/arm64/kernel/luma_tokay_dtb.S
++++ b/arch/arm64/kernel/luma_tokay_dtb.S
+@@ -2,7 +2,7 @@
+ 
+ #include <linux/linkage.h>
+ 
+-	.section ".init.rodata", "a"
++	.section ".rodata", "a"
+ 	.balign 8
+ SYM_DATA_START(__luma_tokay_dtb_start)
+ 	.incbin "arch/arm64/boot/dts/exynos/google/zumapro-tokay.dtb"
+-- 
+2.51.0

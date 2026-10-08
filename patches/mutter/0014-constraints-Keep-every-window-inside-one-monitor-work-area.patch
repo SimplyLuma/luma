@@ -1,0 +1,309 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 17 Sep 2026 12:00:00 -0500
+Subject: [PATCH] constraints: Keep every window inside one monitor's work area
+
+An app could open, move or resize a window where nobody can reach it: an
+Electron app restoring a position from another monitor layout opened with
+only its bottom edge on screen, and a Wayland client acknowledging an old
+configure after resume put its window above the panel. The upstream rules
+use the union of all work areas (so a window may sit in the empty space
+between monitors that are not next to each other), do not shrink a window
+on a move, give up when it does not fit, and are dropped when they conflict.
+
+A new highest-priority constraint keeps every window a person sees (normal
+windows, dialogs, utilities, splash screens) fully inside the work area of
+the monitor it overlaps most, else the nearest one: shrunk to fit but never
+below its minimum size, and moved inside, in the same constraint run, so its
+first frame is already there. The person moving or resizing a window is
+exempt, and so is a window the person left partly outside until something
+else moves it or the monitors change. Late acknowledgements of a floating
+window's configure are now constrained too, except during a drag.
+---
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+index 15db5ae..50f1e20 100644
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -117,6 +117,7 @@ typedef enum
+   PRIORITY_PARTIALLY_VISIBLE_ON_WORKAREA = 4,
+   PRIORITY_CUSTOM_RULE = 4,
+   PRIORITY_EXTERNAL_CONSTRAINT = 5, /* External constraints - highest priority */
++  PRIORITY_INSIDE_WORK_AREA = 5,
+   PRIORITY_MAXIMUM = 5 /* Dummy value used for loop end = max(all priorities) */
+ } ConstraintPriority;
+ 
+@@ -218,6 +219,15 @@ static gboolean constrain_top_edge_reachable (MetaWindow         *window,
+                                               ConstraintInfo     *info,
+                                               ConstraintPriority  priority,
+                                               gboolean            check_only);
++static gboolean inside_work_area_applies     (MetaWindow         *window,
++                                              ConstraintInfo     *info);
++static gboolean rect_inside_one_work_area    (MetaWindow         *window,
++                                              ConstraintInfo     *info,
++                                              const MtkRectangle *rect);
++static gboolean constrain_inside_work_area   (MetaWindow         *window,
++                                              ConstraintInfo     *info,
++                                              ConstraintPriority  priority,
++                                              gboolean            check_only);
+ static gboolean constrain_partially_onscreen (MetaWindow         *window,
+                                               ConstraintInfo     *info,
+                                               ConstraintPriority  priority,
+@@ -261,6 +271,7 @@ static const Constraint all_constraints[] = {
+   {constrain_partially_onscreen, "constrain_partially_onscreen"},
+   {constrain_top_edge_reachable, "constrain_top_edge_reachable"},
+   {constrain_external,           "constrain_external"},
++  {constrain_inside_work_area,   "constrain_inside_work_area"},
+   {NULL,                         NULL}
+ };
+ 
+@@ -694,6 +705,24 @@ update_onscreen_requirements (MetaWindow     *window,
+   if (meta_window_is_fullscreen (window))
+     return;
+ 
++  /* The person may leave a window partly outside a work area; anything else
++   * that puts it back fully inside one lifts that exemption. */
++  if (inside_work_area_applies (window, info))
++    {
++      gboolean inside = rect_inside_one_work_area (window, info, &info->current);
++
++      old = window->placed_outside_work_area_by_user;
++      if (info->is_user_action)
++        window->placed_outside_work_area_by_user = !inside;
++      else if (inside)
++        window->placed_outside_work_area_by_user = FALSE;
++      if (old != window->placed_outside_work_area_by_user)
++        meta_topic (META_DEBUG_GEOMETRY,
++                    "placed_outside_work_area_by_user for %s toggled to %s",
++                    window->desc,
++                    window->placed_outside_work_area_by_user ? "TRUE" : "FALSE");
++    }
++
+   /* USABILITY NOTE: Naturally, I only want the require_fully_onscreen,
+    * require_on_single_monitor, and require_titlebar_visible flags to
+    * *become false* due to user interactions (which is allowed since
+@@ -2073,6 +2102,172 @@ constrain_top_edge_reachable (MetaWindow         *window,
+   return TRUE;
+ }
+ 
++/* Windows this rule keeps inside a work area: everything a person sees as a
++ * window, but not the desktop, docks, popups positioned relative to a parent,
++ * or override-redirect windows (menus and tooltips place themselves). */
++static gboolean
++inside_work_area_applies (MetaWindow     *window,
++                          ConstraintInfo *info)
++{
++  MetaWindowDrag *window_drag;
++
++  switch (window->type)
++    {
++    case META_WINDOW_NORMAL:
++    case META_WINDOW_DIALOG:
++    case META_WINDOW_MODAL_DIALOG:
++    case META_WINDOW_UTILITY:
++    case META_WINDOW_SPLASHSCREEN:
++    case META_WINDOW_TOOLBAR:
++    case META_WINDOW_MENU:
++      break;
++    default:
++      return FALSE;
++    }
++
++  if (window->override_redirect ||
++      meta_window_is_fullscreen (window) ||
++      meta_window_get_placement_rule (window) ||
++      mtk_rectangle_is_empty (&info->current))
++    return FALSE;
++
++  window_drag =
++    meta_compositor_get_current_window_drag (window->display->compositor);
++  if (window_drag && meta_window_drag_get_window (window_drag) == window)
++    return FALSE;
++
++  return TRUE;
++}
++
++/* The work area of the monitor @rect overlaps most, or of the nearest monitor
++ * when it overlaps none. Returns FALSE if there are no monitors. */
++static gboolean
++find_work_area_for_rect (MetaWindow         *window,
++                         ConstraintInfo     *info,
++                         const MtkRectangle *rect,
++                         MtkRectangle       *work_area)
++{
++  MetaMonitorManager *monitor_manager =
++    meta_backend_get_monitor_manager (info->backend);
++  MetaLogicalMonitor *best = NULL;
++  int64_t best_overlap = -1;
++  double best_distance = G_MAXDOUBLE;
++  double cx = rect->x + rect->width / 2.0;
++  double cy = rect->y + rect->height / 2.0;
++  GList *l;
++
++  for (l = meta_monitor_manager_get_logical_monitors (monitor_manager);
++       l;
++       l = l->next)
++    {
++      MetaLogicalMonitor *logical_monitor = l->data;
++      MtkRectangle area;
++      MtkRectangle intersection;
++      int64_t overlap = 0;
++      double dx, dy, distance;
++
++      meta_window_get_work_area_for_logical_monitor (window,
++                                                     logical_monitor,
++                                                     &area);
++      if (area.width <= 0 || area.height <= 0)
++        continue;
++
++      if (mtk_rectangle_intersect (rect, &area, &intersection))
++        overlap = (int64_t) intersection.width * intersection.height;
++
++      dx = MAX (MAX (area.x - cx, 0), cx - (area.x + area.width));
++      dy = MAX (MAX (area.y - cy, 0), cy - (area.y + area.height));
++      distance = dx * dx + dy * dy;
++
++      if (overlap > best_overlap ||
++          (overlap == best_overlap && distance < best_distance))
++        {
++          best = logical_monitor;
++          best_overlap = overlap;
++          best_distance = distance;
++          *work_area = area;
++        }
++    }
++
++  return best != NULL;
++}
++
++static gboolean
++rect_inside_one_work_area (MetaWindow         *window,
++                           ConstraintInfo     *info,
++                           const MtkRectangle *rect)
++{
++  MtkRectangle area;
++
++  if (!find_work_area_for_rect (window, info, rect, &area))
++    return TRUE;
++
++  return mtk_rectangle_contains_rect (&area, rect);
++}
++
++/* Every window a person sees is fully inside one monitor's work area, in its
++ * first frame and every frame after, unless the person put it elsewhere.
++ *
++ * The upstream rules leave gaps: constrain_fully_onscreen uses the union of
++ * all work areas (so a window may straddle the empty space between monitors
++ * that are not next to each other), does not shrink a window on a move, gives
++ * up when the window does not fit, is dropped when it conflicts with other
++ * rules, and stops applying once require_fully_onscreen is cleared. So an app
++ * that asks for a position on a monitor that is no longer there, or above the
++ * top of the screen, opens where nobody can reach it.
++ *
++ * This rule has the highest priority. It picks the monitor the window overlaps
++ * most (else the nearest), shrinks the window to that work area but never
++ * below the window's minimum size, and moves it inside, keeping its top-left
++ * corner in the work area when even the minimum size does not fit. The person
++ * moving or resizing a window, and a window the person left partly outside a
++ * work area, are exempt until the monitors change.
++ */
++static gboolean
++constrain_inside_work_area (MetaWindow         *window,
++                            ConstraintInfo     *info,
++                            ConstraintPriority  priority,
++                            gboolean            check_only)
++{
++  MtkRectangle area, min_size, max_size, target;
++  MtkRectangle *rect = &info->current;
++
++  if (priority > PRIORITY_INSIDE_WORK_AREA)
++    return TRUE;
++
++  if (!inside_work_area_applies (window, info) ||
++      info->is_user_action ||
++      window->placed_outside_work_area_by_user)
++    return TRUE;
++
++  if (!find_work_area_for_rect (window, info, rect, &area))
++    return TRUE;
++
++  get_size_limits (window, &min_size, &max_size);
++
++  /* Shrink to the work area, never below the minimum size; then move inside,
++   * keeping the top-left corner in the work area if even that does not fit. */
++  target.width = MAX (MIN (rect->width, area.width), min_size.width);
++  target.height = MAX (MIN (rect->height, area.height), min_size.height);
++  target.x = target.width >= area.width ?
++    area.x : CLAMP (rect->x, area.x, area.x + area.width - target.width);
++  target.y = target.height >= area.height ?
++    area.y : CLAMP (rect->y, area.y, area.y + area.height - target.height);
++
++  if (mtk_rectangle_equal (&target, rect) || check_only)
++    return mtk_rectangle_equal (&target, rect);
++
++  meta_topic (META_DEBUG_GEOMETRY,
++              "Keeping %s inside work area %d,%d %dx%d: %d,%d %dx%d -> %d,%d %dx%d",
++              window->desc, area.x, area.y, area.width, area.height,
++              rect->x, rect->y, rect->width, rect->height,
++              target.x, target.y, target.width, target.height);
++
++  *rect = target;
++
++  return TRUE;
++}
++
+ static gboolean
+ constrain_partially_onscreen (MetaWindow         *window,
+                               ConstraintInfo     *info,
+diff --git a/src/core/window-private.h b/src/core/window-private.h
+index c14b3d8..2195e83 100644
+--- a/src/core/window-private.h
++++ b/src/core/window-private.h
+@@ -423,6 +423,10 @@ struct _MetaWindow
+   /* Whether we're trying to constrain the window's titlebar to be onscreen */
+   guint require_titlebar_visible : 1;
+ 
++  /* Whether the person left the window where it is not fully inside one
++   * monitor's work area; until then it is kept fully inside one. */
++  guint placed_outside_work_area_by_user : 1;
++
+   /* Whether we're sticky in the multi-workspace sense
+    * (vs. the not-scroll-with-viewport sense, we don't
+    * have no stupid viewports)
+diff --git a/src/core/window.c b/src/core/window.c
+index 6155cb6..6f1e357 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -4165,6 +4165,10 @@ meta_window_update_for_monitors_changed (MetaWindow *window)
+       goto out;
+     }
+ 
++  /* A new monitor layout: whatever the person left partly off a work area
++   * in the old one is brought fully inside a work area of the new one. */
++  window->placed_outside_work_area_by_user = FALSE;
++
+   old = window->monitor;
+   new = meta_window_find_monitor_from_id (window);
+ 
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 6d20598..f373a24 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -1705,6 +1705,19 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+                   place_flags |= META_PLACE_FLAG_CALCULATE;
+                   flags |= META_MOVE_RESIZE_CONSTRAIN;
+                 }
++              else
++                {
++                  MetaWindowDrag *window_drag =
++                    meta_compositor_get_current_window_drag (window->display->compositor);
++
++                  /* The position in an acknowledged configuration was right
++                   * when it was sent; a client that acknowledges it late (after
++                   * resume, or after the monitors changed) must not put the
++                   * window where the old layout wanted it. */
++                  if (!window_drag ||
++                      meta_window_drag_get_window (window_drag) != window)
++                    flags |= META_MOVE_RESIZE_CONSTRAIN;
++                }
+ 
+               if (acked_configuration->has_position)
+                 {

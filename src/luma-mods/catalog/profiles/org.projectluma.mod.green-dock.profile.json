@@ -1,0 +1,8 @@
+{
+  "schema": "org.luma.mod-profile/v0.1",
+  "mod_id": "org.projectluma.mod.green-dock",
+  "version": "1.0.0",
+  "values": {
+    "org.luma.shell.dock.appearance": {"surface": "green-glow"}
+  }
+}

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma Energy: spend the battery on what the person is looking at
+Documentation=https://projectluma.org/developer/platform/energy
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.projectluma.Energy1
+ExecStart=/usr/libexec/luma-energy-service
+Restart=on-failure
+RestartSec=5s
+# It exists to save power; it must not be a cost itself.
+Nice=5
+CPUWeight=20
+MemoryHigh=64M
+# It only ever touches the person's own units, and never needs anything more.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=graphical-session.target

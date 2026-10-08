@@ -1,0 +1,508 @@
+From 219c608552e46df4a686613ece8e43f06e2ef7aa Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 13:20:47 -0400
+Subject: [PATCH] luma: banners arrive top centre, the tray opens on its
+ beacon, cards fit
+
+Banners now arrive at the top centre of the active monitor by default,
+centred in what the Shelf leaves free and dropping in from the top edge;
+the corners remain choices. Do Not Disturb and Cast's silenced and captured
+monitors are unchanged.
+
+The notification tray opened at the far right of the screen whatever was
+clicked. It now opens 8 beyond the island of the item that opened it,
+centred on that item and kept wholly on that item's monitor (placement is
+pure and tested, including a 5120px ultrawide beside a scaled laptop), or
+beside the item on a side Shelf.
+
+With many notifications the tray's cards overlapped: the list is a
+viewport, a viewport gives its children their minimum heights before it
+scrolls, and a card's minimum was only its first line, so every two-line
+preview was drawn over the next card and nothing scrolled. A tray card's
+minimum is now its natural height, so cards keep their previews (two lines,
+ellipsized) and the list scrolls. The header lines up with the cards.
+
+The beacon said its count twice -- "Discord and 13 more" beside a "14" on a
+brown blob taken from the application's tone. It now names the newest
+notification's application, and the count is the kit's count chip: a 24px
+capsule on the island's hover fill with ink tabular numerals, shown from two
+notifications.
+
+A card's soft shadow was bound to the card with a constraint that kept the
+size and place the card first measured at, so once the stack moved a card
+a dark band trailed across the screen from where it had been. The frame's
+bin now gives the shadow the card's own box.
+---
+ data/org.gnome.shell.gschema.xml.in |  8 +--
+ data/theme/luma-shelf.css           | 45 ++++++++++++++
+ js/js-resources.gresource.xml       |  1 +
+ js/ui/lumaNotificationBeacon.js     | 91 ++++++++++++++++++++++++-----
+ js/ui/lumaPopoverPlacement.js       | 56 ++++++++++++++++++
+ js/ui/messageTray.js                | 59 ++++++++++++++-----
+ js/ui/status/doNotDisturb.js        |  3 +-
+ 7 files changed, 227 insertions(+), 36 deletions(-)
+ create mode 100644 js/ui/lumaPopoverPlacement.js
+
+diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+index a37e37a..4cb96d4 100644
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -2,11 +2,11 @@
+   <schema id="org.gnome.shell" path="/org/gnome/shell/"
+           gettext-domain="@GETTEXT_PACKAGE@">
+     <key name="notification-corner" type="s">
+-      <default>'bottom-right'</default>
+-      <summary>Screen corner used for notification banners</summary>
++      <default>'top-center'</default>
++      <summary>Screen position used for notification banners</summary>
+       <description>
+-        Place notification banners in one of bottom-right, bottom-left,
+-        top-right, or top-left. The desktop work area keeps banners clear of
++        Place notification banners at top-center (the default), or in one of
++        bottom-right, bottom-left, top-right, or top-left. The desktop work area keeps banners clear of
+         Luma shell chrome such as the Shelf.
+       </description>
+     </key>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index ffabe4d..eeab25d 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1382,3 +1382,48 @@
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-end,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-end:hover { color: #b9544f; }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action:hover { background-color: rgba(25, 27, 31, 0.08); }
++
++/* ── Notification tray: header aligned with the cards ──────────────────── */
++/* The heading starts where a card's tile starts (11 in) and Clear all's label
++ * ends where a card's content ends, so the header reads as part of the list. */
++StBoxLayout.luma-notification-tray .luma-notification-tray-header {
++  padding: 2px 3px 0 11px;
++  min-height: 24px;
++}
++StBoxLayout.luma-notification-tray .luma-notification-tray-list { spacing: 6px; }
++
++/* ── Notification beacon: the kit's count chip ─────────────────────────── */
++/* 24 high, a true capsule, padding 0 8, the island's hover fill, 11/750 ink
++ * tabular numerals -- the Well's count chip. Never a colour taken from the
++ * application: the mark already says whose notification it is. A single
++ * digit is a 24px circle; 10, 99 and 99+ widen as capsules. */
++.luma-shelf-beacon-island .luma-notification-beacon {
++  padding: 0;
++}
++.luma-shelf-beacon-island .luma-notification-beacon .luma-notification-beacon-count,
++.luma-shelf-beacon-island .luma-shelf-material .luma-notification-beacon .luma-notification-beacon-count {
++  min-width: 8px;
++  height: 24px;
++  padding: 0 8px;
++  border-radius: 12px;
++  font-size: 11px;
++  font-weight: 750;
++  font-feature-settings: "tnum";
++  background-color: rgba(255, 255, 255, 0.08);
++  color: #e7e9e8;
++}
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-light .luma-notification-beacon .luma-notification-beacon-count {
++  background-color: rgba(25, 27, 31, 0.07);
++  color: #34383d;
++}
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-count {
++  background-color: rgba(25, 27, 31, 0.08);
++  color: #21252b;
++}
++.luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-count {
++  background-color: rgba(255, 255, 255, 0.14);
++  color: #ffffff;
++}
++/* The beacon island ends 10 in, as every live island does. */
++.luma-shelf-beacon-island .luma-shelf-material { padding: 8px 10px 8px 8px; }
++.luma-shelf-vertical .luma-shelf-beacon-island .luma-shelf-material { padding: 7px; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 674fa49..9d4132e 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -102,6 +102,7 @@
+     <file>ui/sessionApplications.js</file>
+     <file>ui/mediaSelection.js</file>
+     <file>ui/liveActivity.js</file>
++    <file>ui/lumaPopoverPlacement.js</file>
+     <file>ui/mediaArtwork.js</file>
+     <file>ui/iconMask.js</file>
+     <file>ui/shelfMedia.js</file>
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index 0248963..07df294 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -19,6 +19,7 @@ import * as MessageList from './messageList.js';
+ import * as MessageTray from './messageTray.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {LumaIconMask} from './iconMask.js';
++import {placePopover} from './lumaPopoverPlacement.js';
+ 
+ const {NotificationLifecycleState, NotificationDestroyedReason, Urgency} = MessageTray;
+ 
+@@ -28,11 +29,15 @@ const RESTING_STATES = new Set([
+ ]);
+ 
+ // Tray geometry (logical px): clamp(280px, 26vw, 344px) wide, at most 64% of
+-// the usable monitor height, 14 from the screen edge and the Shelf.
++// the usable monitor height. It opens 8 beyond the island of the item that
++// opened it, as every Shelf menu does, and never nearer than 14 to a screen
++// edge.
+ const TRAY_MIN_WIDTH = 280;
+ const TRAY_MAX_WIDTH = 344;
+ const TRAY_MAX_HEIGHT = 0.64;
+ const EDGE_INSET = 14;
++const ISLAND_GAP = 8;
++const ISLAND_PADDING = 8;
+ const TRAY_RADIUS = 15;
+ const TRAY_OPEN_TIME = 170;
+ const TRAY_RISE = 4;
+@@ -159,10 +164,14 @@ class NotificationBeacon extends St.Button {
+         }
+         content.add_child(this._copy);
+ 
++        // The kit's count chip: a 24-high capsule on the island's own quiet
++        // fill, ink numerals, centred on the island's line.
+         this._count = new St.Label({
+             style_class: 'luma-notification-beacon-count',
+             y_align: Clutter.ActorAlign.CENTER,
+         });
++        this._count.clutter_text.x_align = Clutter.ActorAlign.CENTER;
++        this._count.clutter_text.y_align = Clutter.ActorAlign.CENTER;
+         content.add_child(this._count);
+         this._content = content;
+ 
+@@ -191,12 +200,15 @@ class NotificationBeacon extends St.Button {
+             const title = newest.title || appName;
+             this.add_style_class_name(`luma-notification-tone-${MessageTray.notificationTone(newest)}`);
+             this._title.text = title;
+-            this._summary.text = count > 1
+-                ? _('%s and %d more').format(appName, count - 1) : appName;
++            // The count is said once, by the chip; the subtitle names where
++            // the newest one came from. "Discord and 13 more" beside a 14 said
++            // the same thing twice.
++            this._summary.text = appName;
+             const icon = source?.app?.get_icon() ?? source?.icon ?? null;
+             this._markIcon.gicon = icon;
+             this._syncMark();
+             this._count.text = count > COUNT_LIMIT ? `${COUNT_LIMIT}+` : `${count}`;
++            this._count.visible = count > 1;
+             this.accessible_name = count > 1
+                 ? _('%d notifications waiting. Newest: %s from %s.').format(count, title, appName)
+                 : _('One notification waiting: %s from %s.').format(title, appName);
+@@ -219,6 +231,29 @@ class NotificationBeacon extends St.Button {
+     }
+ });
+ 
++// A card in the tray's scrolled list. The list is a viewport, and a viewport
++// hands its children their minimum heights before it scrolls; a notification
++// card's minimum is only its first line, so fifteen cards were squeezed to
++// fit instead of scrolling -- each preview line drawn over the next card. A
++// card is never shorter than its content: its minimum is its natural height.
++const TrayCard = GObject.registerClass(
++class TrayCard extends St.Widget {
++    constructor(frame) {
++        super({
++            style_class: 'luma-notification-tray-card',
++            layout_manager: new Clutter.BinLayout(),
++            x_expand: true,
++        });
++        this.frame = frame;
++        this.add_child(frame);
++    }
++
++    vfunc_get_preferred_height(forWidth) {
++        const [, natural] = super.vfunc_get_preferred_height(forWidth);
++        return [natural, natural];
++    }
++});
++
+ /**
+  * The tray: the resting notifications as quiet cards above the Shelf, with
+  * the exact count and Clear all. Clicking outside closes it without changing
+@@ -434,30 +469,54 @@ class NotificationTray extends St.BoxLayout {
+ 
+     _place() {
+         const tray = Main.messageTray;
+-        const monitor = (this._anchor && Main.layoutManager.findMonitorForActor(this._anchor)) ??
++        const anchor = this._anchor?.get_stage() && this._anchor.visible ? this._anchor : null;
++        const monitor = (anchor && Main.layoutManager.findMonitorForActor(anchor)) ??
+             Main.layoutManager.primaryMonitor;
+         if (!monitor)
+             return;
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const reserve = tray.shelfReserve(monitor);
+-        const corner = tray.corner;
+         const width = Math.min(TRAY_MAX_WIDTH,
+             Math.max(TRAY_MIN_WIDTH, Math.round(0.26 * monitor.width / scale))) * scale;
+         const usable = monitor.height - reserve.top - reserve.bottom;
+-        const maxHeight = Math.floor(usable * TRAY_MAX_HEIGHT);
+         this.set_width(width);
+         this.set_height(-1);
+         const [, natural] = this.get_preferred_height(width);
+-        const height = Math.min(natural, maxHeight);
++
++        // Opened from the beacon: above it (or beside it, on a side Shelf),
++        // centred on it. Opened from Quick Options with no beacon showing: the
++        // middle of the Shelf's edge on that monitor.
++        let box;
++        if (anchor) {
++            const [ax, ay] = anchor.get_transformed_position();
++            const [aw, ah] = anchor.get_transformed_size();
++            box = {x: ax, y: ay, width: aw, height: ah};
++        } else {
++            box = {
++                x: monitor.x + monitor.width / 2,
++                y: monitor.y + monitor.height - reserve.bottom,
++                width: 0, height: 0,
++            };
++        }
++        const place = placePopover({
++            anchor: box,
++            monitor,
++            reserve,
++            size: {width, height: natural},
++            gap: ISLAND_GAP * scale,
++            lift: anchor ? ISLAND_PADDING * scale : 0,
++            inset: EDGE_INSET * scale,
++        });
++        const height = Math.min(natural, Math.floor(usable * TRAY_MAX_HEIGHT), place.maxHeight);
+         this.set_height(height);
+-        const inset = EDGE_INSET * scale;
+-        const x = corner.right
+-            ? monitor.x + monitor.width - reserve.right - inset - width
+-            : monitor.x + reserve.left + inset;
+-        const y = corner.bottom
+-            ? monitor.y + monitor.height - reserve.bottom - inset - height
+-            : monitor.y + reserve.top + inset;
+-        this.set_position(Math.round(x), Math.round(y));
++        const final = placePopover({
++            anchor: box, monitor, reserve,
++            size: {width, height},
++            gap: ISLAND_GAP * scale,
++            lift: anchor ? ISLAND_PADDING * scale : 0,
++            inset: EDGE_INSET * scale,
++        });
++        this.set_position(final.x, final.y);
+     }
+ 
+     sync(records) {
+@@ -515,7 +574,7 @@ class NotificationTray extends St.BoxLayout {
+         // Opening the application leaves the collection; answering an
+         // action keeps it open and updates it in place.
+         card.connect_after('clicked', () => this.close());
+-        return frame;
++        return new TrayCard(frame);
+     }
+ 
+     _isClearable(notification) {
+diff --git a/js/ui/lumaPopoverPlacement.js b/js/ui/lumaPopoverPlacement.js
+new file mode 100644
+index 0000000..deb2080
+--- /dev/null
++++ b/js/ui/lumaPopoverPlacement.js
+@@ -0,0 +1,56 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Where a Shelf popover opens: beside the item that opened it, on the side
++// facing away from the Shelf, centred on that item and kept wholly on the
++// item's monitor. Pure, so it can be tested without a Shell. All values are in
++// stage pixels.
++
++// Which side of its monitor the Shelf is on, from how much of each edge it
++// reserves. No reservation (a hidden Shelf) reads as the bottom, Luma's
++// default edge.
++export function shelfEdge(reserve) {
++    const edges = ['bottom', 'top', 'left', 'right'];
++    let best = 'bottom';
++    for (const edge of edges) {
++        if ((reserve?.[edge] ?? 0) > (reserve?.[best] ?? 0))
++            best = edge;
++    }
++    return best;
++}
++
++const clamp = (value, low, high) => Math.max(low, Math.min(value, Math.max(low, high)));
++
++// anchor: {x, y, width, height} of the item; monitor: {x, y, width, height};
++// reserve: the Shelf's {top, bottom, left, right}; size: {width, height} of
++// the popover; gap: from the item's island to the popover; lift: from the
++// item to its island's edge; inset: the closest the popover may come to a
++// monitor edge. Returns {x, y, maxHeight}; height is clamped by the caller.
++export function placePopover({anchor, monitor, reserve, size, gap, lift = 0, inset}) {
++    const edge = shelfEdge(reserve);
++    const left = monitor.x + inset;
++    const right = monitor.x + monitor.width - inset;
++    const top = monitor.y + inset;
++    const bottom = monitor.y + monitor.height - inset;
++    const centreX = anchor.x + anchor.width / 2;
++    const centreY = anchor.y + anchor.height / 2;
++
++    if (edge === 'bottom' || edge === 'top') {
++        const x = clamp(Math.round(centreX - size.width / 2), left, right - size.width);
++        if (edge === 'bottom') {
++            const limit = anchor.y - lift - gap;
++            const maxHeight = Math.max(0, limit - top);
++            const height = Math.min(size.height, maxHeight);
++            return {x, y: Math.round(limit - height), maxHeight};
++        }
++        const start = anchor.y + anchor.height + lift + gap;
++        return {x, y: Math.round(start), maxHeight: Math.max(0, bottom - start)};
++    }
++
++    const maxHeight = Math.max(0, bottom - top);
++    const height = Math.min(size.height, maxHeight);
++    const y = clamp(Math.round(centreY - height / 2), top, bottom - height);
++    const x = edge === 'left'
++        ? anchor.x + anchor.width + lift + gap
++        : anchor.x - lift - gap - size.width;
++    return {x: Math.round(clamp(x, left, right - size.width)), y, maxHeight};
++}
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index d485935..e851030 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -771,7 +771,7 @@ GObject.registerClass({
+ }, Notification);
+ SignalTracker.registerDestroyableType(Notification);
+ 
+-const NOTIFICATION_CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
++const NOTIFICATION_CORNERS = ['top-center', 'bottom-right', 'bottom-left', 'top-right', 'top-left'];
+ const NOTIFICATION_TONES = {
+     'org.projectluma.Messages': 'messages',
+     'org.projectluma.Phone': 'phone',
+@@ -842,11 +842,16 @@ class CardFrame extends St.Widget {
+         });
+         // St draws one box-shadow per actor. The banner carries the near
+         // shadow; this layer carries the long, soft one beneath it.
+-        this._shadow = new St.Widget({style_class: 'luma-notification-shadow'});
+-        this._shadow.add_constraint(new Clutter.BindConstraint({
+-            source: banner,
+-            coordinate: Clutter.BindCoordinate.ALL,
+-        }));
++        // The frame's bin gives the shadow exactly the card's box. It used to
++        // be bound to the card with a constraint, which kept the size the card
++        // first measured at (861px for a short banner) and the place it first
++        // arrived at: a dark band trailed across the screen from where a
++        // card had been before the stack moved it.
++        this._shadow = new St.Widget({
++            style_class: 'luma-notification-shadow',
++            x_expand: true,
++            y_expand: true,
++        });
+         Shell.util_set_hidden_from_pick(this._shadow, true);
+         this.add_child(this._shadow);
+         this.add_child(banner);
+@@ -996,10 +1001,16 @@ export const MessageTray = GObject.registerClass({
+     }
+ 
+     _corner() {
++        // Top centre is where a banner is noticed without covering the Shelf
++        // or the corner the pointer lives in; a corner is still a choice.
+         const corner = this._shellSettings.get_string('notification-corner');
+         const [vertical, horizontal] = NOTIFICATION_CORNERS.includes(corner)
+-            ? corner.split('-') : ['bottom', 'right'];
+-        return {bottom: vertical === 'bottom', right: horizontal === 'right'};
++            ? corner.split('-') : ['top', 'center'];
++        return {
++            bottom: vertical === 'bottom',
++            right: horizontal === 'right',
++            center: horizontal === 'center',
++        };
+     }
+ 
+     _targetMonitorIndex() {
+@@ -1094,14 +1105,21 @@ export const MessageTray = GObject.registerClass({
+         const margins = {
+             top: corner.bottom ? 0 : logical(reserve.top) + EDGE_INSET,
+             bottom: corner.bottom ? logical(reserve.bottom) + EDGE_INSET : 0,
+-            left: corner.right ? 0 : logical(reserve.left) + EDGE_INSET,
+-            right: corner.right ? logical(reserve.right) + EDGE_INSET : 0,
++            left: corner.right || corner.center ? 0 : logical(reserve.left) + EDGE_INSET,
++            right: corner.right && !corner.center ? logical(reserve.right) + EDGE_INSET : 0,
+         };
++        // Centred in what the Shelf leaves free, so a Shelf on a side edge
++        // can never sit under a card; with the Shelf at the bottom that is
++        // the exact middle of the monitor.
++        if (corner.center) {
++            margins.left = logical(reserve.left);
++            margins.right = logical(reserve.right);
++        }
+ 
+         this.set_position(monitor.x, monitor.y);
+         this.set_size(monitor.width, monitor.height);
+-        this._bannerBin.set_x_align(corner.right
+-            ? Clutter.ActorAlign.END : Clutter.ActorAlign.START);
++        this._bannerBin.set_x_align(corner.center ? Clutter.ActorAlign.CENTER
++            : corner.right ? Clutter.ActorAlign.END : Clutter.ActorAlign.START);
+         this._bannerBin.set_y_align(corner.bottom
+             ? Clutter.ActorAlign.END : Clutter.ActorAlign.START);
+         this._bannerBin.set_style(
+@@ -1110,9 +1128,16 @@ export const MessageTray = GObject.registerClass({
+         this._placement = {monitor, corner, width, margins, scale};
+     }
+ 
++    // Where a card arrives from and leaves to: in from its screen edge. A
++    // centred card drops down from the top edge (or rises from the bottom);
++    // a corner card slides in from the side.
+     _cardTranslation() {
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        return (this._corner().right ? 1 : -1) * ARRIVAL_TRAVEL * scale;
++        const corner = this._corner();
++        const travel = ARRIVAL_TRAVEL * scale;
++        if (corner.center)
++            return {x: 0, y: (corner.bottom ? 1 : -1) * travel};
++        return {x: (corner.right ? 1 : -1) * travel, y: 0};
+     }
+ 
+     _prepareBanner(banner, notification) {
+@@ -1479,11 +1504,14 @@ export const MessageTray = GObject.registerClass({
+         banner.connectObject('notify::hover', () => this._syncCardTimer(entry), this);
+ 
+         frame.opacity = 0;
+-        frame.translation_x = this._cardTranslation();
++        const arrival = this._cardTranslation();
++        frame.translation_x = arrival.x;
++        frame.translation_y += arrival.y;
+         this.show();
+         frame.ease({
+             opacity: 255,
+             translation_x: 0,
++            translation_y: 0,
+             duration: ANIMATION_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_QUART,
+             onComplete: () => {
+@@ -1612,7 +1640,8 @@ export const MessageTray = GObject.registerClass({
+         }
+         frame.ease({
+             opacity: 0,
+-            translation_x: this._cardTranslation() * LEAVE_TRAVEL_RATIO,
++            translation_x: this._cardTranslation().x * LEAVE_TRAVEL_RATIO,
++            translation_y: frame.translation_y + this._cardTranslation().y * LEAVE_TRAVEL_RATIO,
+             duration: LEAVE_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             onStopped: finish,
+diff --git a/js/ui/status/doNotDisturb.js b/js/ui/status/doNotDisturb.js
+index 3ec8b0e..a7d59bc 100644
+--- a/js/ui/status/doNotDisturb.js
++++ b/js/ui/status/doNotDisturb.js
+@@ -6,6 +6,7 @@ import * as PopupMenu from '../popupMenu.js';
+ import {QuickMenuToggle, SystemIndicator} from '../quickSettings.js';
+ 
+ const CORNERS = {
++    'top-center': _('Top center'),
+     'bottom-right': _('Bottom right'),
+     'bottom-left': _('Bottom left'),
+     'top-right': _('Top right'),
+@@ -51,7 +52,7 @@ class DoNotDisturbToggle extends QuickMenuToggle {
+ 
+     _syncCorner() {
+         const current = this._shellSettings.get_string('notification-corner');
+-        this.subtitle = CORNERS[current] ?? CORNERS['bottom-right'];
++        this.subtitle = CORNERS[current] ?? CORNERS['top-center'];
+         for (const [corner, item] of this._cornerItems) {
+             item.setOrnament(corner === current
+                 ? PopupMenu.Ornament.CHECK
+-- 
+2.55.0
+

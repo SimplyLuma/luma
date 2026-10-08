@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# Local stand-in for dl.simplyluma.com/os on loopback (HTTP and HTTPS), serving
+# the switched webroot generation. Used by VM checks and until the CDN is live.
+[Unit]
+Description=Luma OS content on loopback (local CDN stand-in)
+After=network.target
+RequiresMountsFor=@ROOT@
+
+[Service]
+Type=simple
+Slice=luma-os.slice
+ExecStart=/usr/bin/python3 @ROOT@/src/nightly/scripts/os/lib/local_http.py --webroot @ROOT@/webroot/current --bind 127.0.0.1 --port 8871 --credentials @ROOT@/etc/preview-credentials.sha256
+Restart=on-failure
+DynamicUser=no
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadOnlyPaths=@ROOT@
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

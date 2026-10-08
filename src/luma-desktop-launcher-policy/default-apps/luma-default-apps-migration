@@ -1,0 +1,248 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Hand PDFs and images back to Viewer, once per account.
+
+Luma's system defaults (/etc/xdg/gnome-mimeapps.list) make Viewer the default
+for PDFs and images. A personal ~/.config/mimeapps.list outranks them, and on
+machines installed before those defaults existed it can still name GNOME's
+Document Viewer or Image Viewer, a Flatpak that is no longer installed, or a
+web browser whose installer claimed PDFs for itself. This runs once per
+account, after which it never runs again:
+
+* a type with no personal default, or one naming a stock viewer Luma replaced,
+  or an application that is no longer installed, gets Viewer;
+* a type a web browser claimed gets Viewer (browser installers take PDFs
+  without asking; that is not the person's choice);
+* any other application the person picked stays exactly as it is.
+
+Every decision is written to the journal for Luma Vitals. Only the
+[Default Applications] lines for these types are touched; everything else in
+the file, including comments and order, is kept.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+VIEWER = "org.projectluma.Viewer.desktop"
+PDF_TYPES = (
+    "application/pdf",
+    "application/x-bzpdf",
+    "application/x-gzpdf",
+    "application/x-xzpdf",
+    "application/x-ext-pdf",
+)
+IMAGE_TYPES = (
+    "image/png", "image/jpeg", "image/gif", "image/bmp", "image/tiff",
+    "image/webp", "image/avif", "image/heif", "image/svg+xml",
+)
+TYPES = PDF_TYPES + IMAGE_TYPES
+# Stock viewers Luma replaces with Viewer (desktop ids, including the legacy
+# unprefixed ones older GNOME releases wrote).
+REPLACED = {
+    "org.gnome.Papers.desktop", "papers.desktop", "org.gnome.Papers-previewer.desktop",
+    "org.gnome.Evince.desktop", "evince.desktop", "org.gnome.Evince-previewer.desktop",
+    "org.gnome.Loupe.desktop", "org.gnome.eog.desktop", "eog.desktop",
+}
+STAMP_NAME = "viewer-1"
+SECTION = "[Default Applications]"
+MESSAGE_ID = "5f1c0e7b3a8d4c2e9b6a41d7c3e8f250"
+
+
+def data_dirs() -> list[Path]:
+    home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    system = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    return [home] + [Path(p) for p in system.split(":") if p]
+
+
+def desktop_entry(desktop_id: str, dirs: list[Path]) -> dict[str, str] | None:
+    """The [Desktop Entry] keys of the first installed file for this id."""
+    candidates = [desktop_id]
+    # XDG: a-b-c.desktop may live at applications/a/b-c.desktop and so on.
+    parts = desktop_id.split("-")
+    for cut in range(1, len(parts)):
+        candidates.append("/".join(("-".join(parts[:cut]), "-".join(parts[cut:]))))
+    for base in dirs:
+        for name in candidates:
+            path = base / "applications" / name
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            keys: dict[str, str] = {}
+            inside = False
+            for line in text.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("["):
+                    inside = stripped == "[Desktop Entry]"
+                elif inside and "=" in stripped and not stripped.startswith("#"):
+                    key, value = stripped.split("=", 1)
+                    keys.setdefault(key.strip(), value.strip())
+            return keys
+    return None
+
+
+def is_browser(entry: dict[str, str]) -> bool:
+    categories = entry.get("Categories", "").split(";")
+    types = entry.get("MimeType", "").split(";")
+    return "WebBrowser" in categories or "x-scheme-handler/https" in types
+
+
+def decide(current: str | None, dirs: list[Path]) -> tuple[str, str | None]:
+    """(reason, new value or None to keep) for one type's personal default."""
+    if not current:
+        return "missing", VIEWER
+    # Like GIO: the first listed application that is installed is the default.
+    for desktop_id in filter(None, (part.strip() for part in current.split(";"))):
+        if desktop_id == VIEWER:
+            return "already-viewer", None
+        if desktop_id in REPLACED:
+            return "replaced-stock-viewer", VIEWER
+        entry = desktop_entry(desktop_id, dirs)
+        if entry is None:
+            continue
+        if is_browser(entry):
+            return "browser-takeover", VIEWER
+        return "personal-choice", None
+    return "not-installed", VIEWER
+
+
+def read_defaults(lines: list[str]) -> dict[str, str]:
+    values, inside = {}, False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            inside = stripped == SECTION
+        elif inside and "=" in stripped and not stripped.startswith("#"):
+            key, value = stripped.split("=", 1)
+            values.setdefault(key.strip(), value.strip())
+    return values
+
+
+def write_defaults(lines: list[str], changes: dict[str, str]) -> list[str]:
+    """Lines with each changed key replaced in place, or added to the section."""
+    out, inside, done, seen_section = [], False, set(), False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            if inside:
+                out.extend(f"{k}={v};\n" for k, v in changes.items() if k not in done)
+                done.update(changes)
+            inside = stripped == SECTION
+            seen_section = seen_section or inside
+            out.append(line)
+            continue
+        if inside and "=" in stripped and not stripped.startswith("#"):
+            key = stripped.split("=", 1)[0].strip()
+            if key in changes:
+                if key not in done:
+                    out.append(f"{key}={changes[key]};\n")
+                    done.add(key)
+                continue
+        out.append(line)
+    if out and not out[-1].endswith("\n"):
+        out[-1] += "\n"
+    remaining = [f"{k}={v};\n" for k, v in changes.items() if k not in done]
+    if remaining:
+        if not seen_section:
+            if out and out[-1].strip():
+                out.append("\n")
+            out.append(SECTION + "\n")
+        out.extend(remaining)
+    return out
+
+
+def atomic_write(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+    handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=".mimeapps.")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.writelines(lines)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def vitals(summary: str, details: dict, priority: int = 5) -> None:
+    print(summary, flush=True)
+    fields = {
+        "MESSAGE": summary,
+        "MESSAGE_ID": MESSAGE_ID,
+        "SYSLOG_IDENTIFIER": "luma-default-apps-migration",
+        "PRIORITY": str(priority),
+        "LUMA_VITALS_KIND": "default-apps",
+        "LUMA_VITALS_UNIT": "luma-default-apps-migration.service",
+        "LUMA_VITALS_DETAILS": json.dumps(details, sort_keys=True),
+    }
+    payload = "".join(f"{k}={str(v).replace(chr(10), ' ')}\n" for k, v in fields.items())
+    try:
+        subprocess.run(["logger", "--journald"], input=payload, text=True, timeout=10,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def migrate(config_home: Path, dirs: list[Path]) -> dict:
+    """Apply the rules to the personal lists; return what was decided."""
+    report: dict[str, dict] = {"changed": {}, "kept": {}}
+    main = config_home / "mimeapps.list"
+    # GNOME's desktop-specific personal list outranks mimeapps.list, so a
+    # default there is judged (and fixed) where it lives.
+    gnome = config_home / "gnome-mimeapps.list"
+    files = {path: (path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+                    if path.exists() else []) for path in (gnome, main)}
+    edits: dict[Path, dict[str, str]] = {gnome: {}, main: {}}
+    for mime in TYPES:
+        gnome_value = read_defaults(files[gnome]).get(mime)
+        owner = gnome if gnome_value else main
+        current = gnome_value or read_defaults(files[main]).get(mime)
+        reason, new = decide(current, dirs)
+        if new is None:
+            report["kept"][mime] = {"app": current, "reason": reason}
+        else:
+            edits[owner][mime] = new
+            report["changed"][mime] = {"from": current, "to": new, "reason": reason,
+                                       "file": str(owner)}
+    for path, changes in edits.items():
+        if changes:
+            atomic_write(path, write_defaults(files[path], changes))
+    return report
+
+
+def main() -> int:
+    state_home = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    stamp = state_home / "luma" / "default-apps-migration" / STAMP_NAME
+    if stamp.exists():
+        return 0
+    if desktop_entry(VIEWER, data_dirs()) is None:
+        print("Viewer is not installed; nothing to hand to it")
+        return 0
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    try:
+        report = migrate(config_home, data_dirs())
+    except OSError as error:
+        vitals(f"Could not update default applications: {error}", {"error": str(error)}, 3)
+        return 1
+    takeovers = sorted({v["from"] for v in report["changed"].values() if v["reason"] == "browser-takeover"})
+    summary = (f"Viewer is now the default for {len(report['changed'])} file types; "
+               f"{len(report['kept'])} kept")
+    if takeovers:
+        summary += f"; reset a browser's claim ({', '.join(takeovers)})"
+    vitals(summary, {"action": "viewer-defaults", **report})
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.touch()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,79 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 19:50:00 -0500
+Subject: [PATCH] luma: Quick Options detail headers keep their glyph in light
+ mode
+
+A Quick Options detail marks its header glyph .active while its toggle is
+on. Upstream's rule paints an active glyph in the accent foreground, white,
+on an accent disc; Luma's detail header draws no disc, so in light mode the
+glyph of every detail whose toggle was on (Wi-Fi, Bluetooth, Tiling and the
+rest) was white on the white detail and vanished. The header glyph is now
+the detail's ink whether the toggle is on or off, in both variant sheets.
+
+The light detail's subtitle ink (header subtitle and device subtitles) moves
+from #767b81 to #6b7076, from 4.27:1 to 5.0:1 on the white detail.
+---
+ data/theme/gnome-shell-dark.css  | 10 +++++++++-
+ data/theme/gnome-shell-light.css | 14 +++++++++++---
+ 2 files changed, 20 insertions(+), 4 deletions(-)
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 5139aad..31dbc64 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4189,7 +4189,15 @@ StScrollBar {
+   .quick-toggle-menu.luma-quick-detail .header .icon {
+     icon-size: 18px;
+     padding: 0;
+-    background-color: transparent; }
++    background-color: transparent;
++    color: #e9ebec; }
++  /* The detail header's icon is a plain glyph in the detail's ink whether
++   * the toggle is on or off: upstream's .active rule paints it in the accent
++   * foreground (white) for an accent disc Luma does not draw, which left it
++   * white on the light detail. */
++  .quick-toggle-menu.luma-quick-detail .header .icon.active {
++    background-color: transparent;
++    color: #e9ebec; }
+   .quick-toggle-menu.luma-quick-detail .header .title {
+     font-size: 13px;
+     font-weight: 700; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index e4dc950..158e2ae 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4377,13 +4377,21 @@ StScrollBar {
+   .quick-toggle-menu.luma-quick-detail .header .icon {
+     icon-size: 18px;
+     padding: 0;
+-    background-color: transparent; }
++    background-color: transparent;
++    color: #30343a; }
++  /* The detail header's icon is a plain glyph in the detail's ink whether
++   * the toggle is on or off: upstream's .active rule paints it in the accent
++   * foreground (white) for an accent disc Luma does not draw, which left it
++   * white on the light detail. */
++  .quick-toggle-menu.luma-quick-detail .header .icon.active {
++    background-color: transparent;
++    color: #30343a; }
+   .quick-toggle-menu.luma-quick-detail .header .title {
+     font-size: 13px;
+     font-weight: 700; }
+   .quick-toggle-menu.luma-quick-detail .header .subtitle {
+     font-size: 11px;
+-    color: #767b81; }
++    color: #6b7076; }
+   .quick-toggle-menu.luma-quick-detail .popup-menu-item {
+     min-height: 0;
+     padding: 10px;
+@@ -4395,7 +4403,7 @@ StScrollBar {
+   .quick-toggle-menu.luma-quick-detail .nm-network-item .wireless-secure-icon {
+     width: 7px; }
+   .quick-toggle-menu.luma-quick-detail .device-subtitle {
+-    color: #767b81; }
++    color: #6b7076; }
+   .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level {
+     spacing: 6px; }
+     .quick-toggle-menu.luma-quick-detail .keyboard-brightness-level .button {
+-- 
+2.55.0

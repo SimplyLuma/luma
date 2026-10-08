@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Create Homebrew's folder for the primary account
+Documentation=file:///usr/share/doc/luma-homebrew/README.md
+ConditionPathExists=!/var/home/linuxbrew/.linuxbrew
+After=local-fs.target systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-homebrew-prefix
+ProtectSystem=strict
+ReadWritePaths=/var/home
+PrivateNetwork=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

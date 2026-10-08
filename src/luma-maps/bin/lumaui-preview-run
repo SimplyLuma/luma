@@ -1,0 +1,18 @@
+#!/bin/sh
+# An isolated Maps preview. The installed app and its files are untouched.
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+while read -r package nvr; do
+    have=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package" 2>/dev/null) || have=
+    if [ "$have" != "$nvr" ]; then
+        echo "Maps preview: expected $package $nvr; installed ${have:-nothing}." >&2
+        exit 3
+    fi
+done < "$here/BASE-NVR"
+unset LUMA_MAPS_FIXTURE LUMA_MAPS_STATE LUMA_MAPS_CLOCK_MS
+export PYTHONPATH="$here/python"
+export LUMA_APPKIT_ICON_PATH="$here/python/icons"
+export LUMA_MAPS_PREVIEW=1
+export LUMA_MAPS_STYLE_PATH="$here/python/data/maps.css"
+export LUMA_MAPS_PROVIDERS="$here/python/data/providers.toml"
+exec python3 -m luma_maps.application "$@"

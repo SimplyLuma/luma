@@ -1,0 +1,486 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: add regional touch focus and exposure metering
+
+The Simple software ISP only exposes a global histogram and a fixed centre
+sharpness sample. Add an inexpensive 3x3 metering grid, teach AF and AE to
+select a requested cell while retaining the global highlight guard, and
+expose normalized focus-point properties from libcamerasrc. This lets
+language bindings that cannot construct nested GstValueArray rectangles
+still submit standard AfWindows and AfMetering controls.
+diff -urN --exclude=.git --exclude=output a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+--- a/include/libcamera/internal/software_isp/swisp_stats.h	2026-08-17 19:06:03
++++ b/include/libcamera/internal/software_isp/swisp_stats.h	2026-08-18 12:41:12
+@@ -47,6 +47,18 @@
+ 	 * \brief Holds the sharpness of an image
+ 	 */
+ 	uint64_t sharpness;
++	/**
++	 * \brief Sharpness measurements for a 3x3 grid over the image
++	 *
++	 * The centre entry preserves the default autofocus behaviour while the
++	 * remaining entries allow a requested focus window to select a local
++	 * subject without copying image frames out of the software ISP.
++	 */
++	std::array<uint64_t, 9> sharpnessGrid;
++	/**
++	 * \brief Luminance histograms for the same 3x3 metering grid
++	 */
++	std::array<Histogram, 9> yHistogramGrid;
+ };
+ 
+ } /* namespace libcamera */
+diff -urN --exclude=.git --exclude=output a/src/gstreamer/gstlibcamera-controls.cpp.in b/src/gstreamer/gstlibcamera-controls.cpp.in
+--- a/src/gstreamer/gstlibcamera-controls.cpp.in	2026-08-17 19:06:03
++++ b/src/gstreamer/gstlibcamera-controls.cpp.in	2026-08-18 12:44:15
+@@ -7,6 +7,8 @@
+  * This file is auto-generated. Do not edit.
+  */
+ 
++#include <algorithm>
++#include <array>
+ #include <vector>
+ 
+ #include <libcamera/control_ids.h>
+@@ -240,6 +242,57 @@
+ 	default:
+ 		return false;
+ 	}
++}
++
++bool GstCameraControls::setFocusPoint(guint x, guint y)
++{
++	if (capabilities_.empty())
++		return false;
++
++	const auto windowInfo = capabilities_.find(&controls::AfWindows);
++	const auto afMeteringInfo = capabilities_.find(&controls::AfMetering);
++	const auto aeMeteringInfo = capabilities_.find(&controls::AeMeteringMode);
++	if (windowInfo == capabilities_.end() ||
++	    afMeteringInfo == capabilities_.end())
++		return false;
++
++	const Rectangle maximum = windowInfo->second.max().get<Rectangle>();
++	const unsigned int areaWidth = maximum.width;
++	const unsigned int areaHeight = maximum.height;
++	if (!areaWidth || !areaHeight)
++		return false;
++
++	x = std::min(x, 1000u);
++	y = std::min(y, 1000u);
++	const unsigned int width = std::max(1u, areaWidth / 5);
++	const unsigned int height = std::max(1u, areaHeight / 5);
++	const unsigned int centreX = areaWidth * x / 1000;
++	const unsigned int centreY = areaHeight * y / 1000;
++	const unsigned int left = std::min(
++		centreX > width / 2 ? centreX - width / 2 : 0,
++		areaWidth - width);
++	const unsigned int top = std::min(
++		centreY > height / 2 ? centreY - height / 2 : 0,
++		areaHeight - height);
++	const std::array<Rectangle, 1> windows{
++		Rectangle(left, top, width, height)
++	};
++	const Span<const Rectangle> windowSpan(windows);
++
++	controls_.set(controls::AfMetering,
++		      static_cast<int32_t>(controls::AfMeteringWindows));
++	controls_.set(controls::AfWindows, windowSpan);
++	controls_acc_.set(controls::AfMetering,
++			  static_cast<int32_t>(controls::AfMeteringWindows));
++	controls_acc_.set(controls::AfWindows, windowSpan);
++	if (aeMeteringInfo != capabilities_.end()) {
++		controls_.set(controls::AeMeteringMode,
++			      static_cast<int32_t>(controls::MeteringSpot));
++		controls_acc_.set(controls::AeMeteringMode,
++				  static_cast<int32_t>(controls::MeteringSpot));
++	}
++
++	return true;
+ }
+ 
+ void GstCameraControls::setCamera(const std::shared_ptr<libcamera::Camera> &cam)
+diff -urN --exclude=.git --exclude=output a/src/gstreamer/gstlibcamera-controls.h b/src/gstreamer/gstlibcamera-controls.h
+--- a/src/gstreamer/gstlibcamera-controls.h	2026-08-17 19:06:03
++++ b/src/gstreamer/gstlibcamera-controls.h	2026-08-18 12:44:06
+@@ -25,6 +25,7 @@
+ 
+ 	bool getProperty(guint propId, GValue *value, GParamSpec *pspec);
+ 	bool setProperty(guint propId, const GValue *value, GParamSpec *pspec);
++	bool setFocusPoint(guint x, guint y);
+ 
+ 	void setCamera(const std::shared_ptr<libcamera::Camera> &cam);
+ 
+diff -urN --exclude=.git --exclude=output a/src/gstreamer/gstlibcamerasrc.cpp b/src/gstreamer/gstlibcamerasrc.cpp
+--- a/src/gstreamer/gstlibcamerasrc.cpp	2026-08-17 19:06:03
++++ b/src/gstreamer/gstlibcamerasrc.cpp	2026-08-18 12:45:37
+@@ -143,6 +143,9 @@
+ 
+ 	gchar *camera_name;
+ 	GstStructure *sensor_config;
++	guint focus_point_x;
++	guint focus_point_y;
++	gboolean focus_point_set;
+ 
+ 	std::atomic<GstEvent *> pending_eos;
+ 
+@@ -155,6 +158,8 @@
+ 	PROP_0,
+ 	PROP_CAMERA_NAME,
+ 	PROP_SENSOR_CONFIG,
++	PROP_FOCUS_POINT_X,
++	PROP_FOCUS_POINT_Y,
+ 	PROP_LAST
+ };
+ 
+@@ -510,6 +515,9 @@
+ 	}
+ 
+ 	self->state->controls_.setCamera(cam);
++	if (self->focus_point_set)
++		self->state->controls_.setFocusPoint(self->focus_point_x,
++						    self->focus_point_y);
+ 
+ 	cam->requestCompleted.connect(self->state, &GstLibcameraSrcState::requestCompleted);
+ 
+@@ -990,6 +998,20 @@
+ 		g_clear_pointer(&self->sensor_config, gst_structure_free);
+ 		self->sensor_config = (GstStructure *)g_value_dup_boxed(value);
+ 		break;
++	case PROP_FOCUS_POINT_X:
++		self->focus_point_x = g_value_get_uint(value);
++		self->focus_point_set = true;
++		if (state->cam_)
++			state->controls_.setFocusPoint(self->focus_point_x,
++						       self->focus_point_y);
++		break;
++	case PROP_FOCUS_POINT_Y:
++		self->focus_point_y = g_value_get_uint(value);
++		self->focus_point_set = true;
++		if (state->cam_)
++			state->controls_.setFocusPoint(self->focus_point_x,
++						       self->focus_point_y);
++		break;
+ 	default:
+ 		if (!state->controls_.setProperty(prop_id - PROP_LAST, value, pspec))
+ 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
+@@ -1012,6 +1034,12 @@
+ 	case PROP_SENSOR_CONFIG:
+ 		g_value_set_boxed(value, self->sensor_config);
+ 		break;
++	case PROP_FOCUS_POINT_X:
++		g_value_set_uint(value, self->focus_point_x);
++		break;
++	case PROP_FOCUS_POINT_Y:
++		g_value_set_uint(value, self->focus_point_y);
++		break;
+ 	default:
+ 		if (!state->controls_.getProperty(prop_id - PROP_LAST, value, pspec))
+ 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
+@@ -1112,6 +1140,9 @@
+ 	GstPadTemplate *templ = gst_element_get_pad_template(GST_ELEMENT(self), "src");
+ 
+ 	g_rec_mutex_init(&self->stream_lock);
++	self->focus_point_x = 500;
++	self->focus_point_y = 500;
++	self->focus_point_set = false;
+ 	self->task = gst_task_new(gst_libcamera_src_task_run, self, nullptr);
+ 	gst_task_set_enter_callback(self->task, gst_libcamera_src_task_enter, self, nullptr);
+ 	gst_task_set_leave_callback(self->task, gst_libcamera_src_task_leave, self, nullptr);
+@@ -1235,6 +1266,24 @@
+ 						| G_PARAM_READWRITE
+ 						| G_PARAM_STATIC_STRINGS));
+ 	g_object_class_install_property(object_class, PROP_SENSOR_CONFIG, spec);
++
++	spec = g_param_spec_uint("focus-point-x", "Focus Point X",
++				 "Horizontal touch-focus position, normalized from 0 to 1000.",
++				 0, 1000, 500,
++				 (GParamFlags)(GST_PARAM_CONTROLLABLE |
++						GST_PARAM_MUTABLE_PLAYING |
++						G_PARAM_READWRITE |
++						G_PARAM_STATIC_STRINGS));
++	g_object_class_install_property(object_class, PROP_FOCUS_POINT_X, spec);
++
++	spec = g_param_spec_uint("focus-point-y", "Focus Point Y",
++				 "Vertical touch-focus position, normalized from 0 to 1000.",
++				 0, 1000, 500,
++				 (GParamFlags)(GST_PARAM_CONTROLLABLE |
++						GST_PARAM_MUTABLE_PLAYING |
++						G_PARAM_READWRITE |
++						G_PARAM_STATIC_STRINGS));
++	g_object_class_install_property(object_class, PROP_FOCUS_POINT_Y, spec);
+ 
+ 	GstCameraControls::installProperties(object_class, PROP_LAST);
+ }
+diff -urN --exclude=.git --exclude=output a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+--- a/src/ipa/simple/algorithms/af.cpp	2026-08-18 12:59:51
++++ b/src/ipa/simple/algorithms/af.cpp	2026-08-18 12:43:44
+@@ -94,6 +94,15 @@
+ 	context.ctrlMap[&controls::AfTrigger] =
+ 		ControlInfo(controls::AfTriggerValues,
+ 			    ControlValue(static_cast<int32_t>(controls::AfTriggerStart)));
++	context.ctrlMap[&controls::AfMetering] = ControlInfo(
++		controls::AfMeteringValues,
++		ControlValue(static_cast<int32_t>(controls::AfMeteringAuto)));
++	const Size &activeArea = context.sensorInfo.activeAreaSize;
++	context.ctrlMap[&controls::AfWindows] = ControlInfo(
++		Rectangle{},
++		Rectangle(activeArea.width, activeArea.height,
++			  activeArea.width, activeArea.height),
++		Span<const Rectangle, 1>{ { Rectangle{} } });
+ 	context.ctrlMap[&controls::LensPosition] = ControlInfo(
+ 		0.0f, 100.0f, static_cast<float>(startupPosition_));
+ 	LOG(IPASoftAutoFocus, Info)
+@@ -111,6 +120,8 @@
+ {
+ 	context.activeState.knobs.af_mode = defaultContinuous_
+ 		? controls::AfModeContinuous : controls::AfModeAuto;
++	context.activeState.knobs.af_metering_mode = controls::AfMeteringAuto;
++	context.activeState.knobs.metering_grid_index = 4;
+ 	context.activeState.knobs.focus_sweep = false;
+ 	context.activeState.knobs.focus_pos = startupPosition_;
+ 	context.configuration.focus.skip = settleSkip_;
+@@ -149,6 +160,33 @@
+ 			restart(context, haveFocus);
+ 	}
+ 
++	const auto &afMetering = controls.get(controls::AfMetering);
++	if (afMetering.has_value())
++		context.activeState.knobs.af_metering_mode = afMetering.value();
++
++	const auto &afWindows = controls.get(controls::AfWindows);
++	if (afWindows.has_value() && !afWindows->empty() &&
++	    context.activeState.knobs.af_metering_mode == controls::AfMeteringWindows) {
++		const Rectangle &window = afWindows->front();
++		if (window.width && window.height &&
++		    context.sensorInfo.activeAreaSize.width &&
++		    context.sensorInfo.activeAreaSize.height) {
++			const Point centre = window.center();
++			const unsigned int column = std::min(
++				2u, static_cast<unsigned int>(std::max(centre.x, 0)) * 3 /
++					context.sensorInfo.activeAreaSize.width);
++			const unsigned int row = std::min(
++				2u, static_cast<unsigned int>(std::max(centre.y, 0)) * 3 /
++					context.sensorInfo.activeAreaSize.height);
++			const unsigned int index = row * 3 + column;
++			if (index != context.activeState.knobs.metering_grid_index) {
++				context.activeState.knobs.metering_grid_index = index;
++				LOG(IPASoftAutoFocus, Info)
++					<< "Focus metering cell " << column << "," << row;
++			}
++		}
++	}
++
+ 	const auto &lensPosition = controls.get(controls::LensPosition);
+ 	if (lensPosition.has_value() &&
+ 	    context.activeState.knobs.af_mode == controls::AfModeManual) {
+@@ -308,8 +346,13 @@
+ 
+ 	if (stats->valid &&
+ 	    context.activeState.knobs.af_mode != controls::AfModeManual) {
++		const unsigned int grid = std::min(
++			context.activeState.knobs.metering_grid_index, 8u);
++		const uint64_t sharpness =
++			context.activeState.knobs.af_metering_mode == controls::AfMeteringWindows
++				? stats->sharpnessGrid[grid] : stats->sharpness;
+ 		step(context, context.activeState.knobs.focus_pos.value(),
+-		     stats->sharpness,
++		     sharpness,
+ 		     context.activeState.knobs.focus_sweep.value());
+ 	}
+ 
+diff -urN --exclude=.git --exclude=output a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+--- a/src/ipa/simple/algorithms/agc.cpp	2026-08-18 12:59:51
++++ b/src/ipa/simple/algorithms/agc.cpp	2026-08-18 13:05:25
+@@ -68,9 +68,12 @@
+ {
+ }
+ 
+-int Agc::init([[maybe_unused]] IPAContext &context,
++int Agc::init(IPAContext &context,
+ 	      const ValueNode &tuningData)
+ {
++	context.ctrlMap[&controls::AeMeteringMode] = ControlInfo(
++		controls::AeMeteringModeValues,
++		ControlValue(static_cast<int32_t>(controls::MeteringCentreWeighted)));
+ 	maxGain_ = tuningData["maxGain"].get<double>(0.0);
+ 	if (maxGain_ < 0.0) {
+ 		LOG(IPASoftExposure, Error) << "maxGain must not be negative";
+@@ -87,6 +90,16 @@
+ 	return 0;
+ }
+ 
++void Agc::queueRequest(IPAContext &context,
++		       [[maybe_unused]] const uint32_t frame,
++		       [[maybe_unused]] IPAFrameContext &frameContext,
++		       const ControlList &controls)
++{
++	const auto &metering = controls.get(controls::AeMeteringMode);
++	if (metering.has_value())
++		context.activeState.knobs.ae_metering_mode = metering.value();
++}
++
+ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext,
+ 			 double exposureMSV, double brightFraction)
+ {
+@@ -228,7 +241,11 @@
+ 	 * Calculate Mean Sample Value (MSV) according to formula from:
+ 	 * https://www.araa.asn.au/acra/acra2007/papers/paper84final.pdf
+ 	 */
+-	const auto &histogram = stats->yHistogram;
++	const unsigned int grid = std::min(
++		context.activeState.knobs.metering_grid_index, 8u);
++	const auto &histogram =
++		context.activeState.knobs.ae_metering_mode == controls::MeteringSpot
++			? stats->yHistogramGrid[grid] : stats->yHistogram;
+ 	const unsigned int blackLevelHistIdx =
+ 		context.activeState.blc.level / (256 / SwIspStats::kYHistogramSize);
+ 	const unsigned int histogramSize =
+@@ -260,6 +277,25 @@
+ 	float exposureMSV = (denom == 0 ? 0 : static_cast<float>(num) / denom);
+ 	float brightFraction = denom == 0 ? 0.0f
+ 		: static_cast<float>(exposureBins[kExposureBinsCount - 1]) / denom;
++	if (context.activeState.knobs.ae_metering_mode == controls::MeteringSpot) {
++		/*
++		 * Let the selected cell drive subject exposure, but retain a global
++		 * highlight guard so a tap on a dark object cannot clip the rest of
++		 * the scene without bound.
++		 */
++		uint64_t globalSamples = 0;
++		uint64_t globalBrightSamples = 0;
++		const unsigned int brightStart = blackLevelHistIdx +
++			histogramSize * (kExposureBinsCount - 1) / kExposureBinsCount;
++		for (unsigned int i = blackLevelHistIdx;
++		     i < SwIspStats::kYHistogramSize; i++) {
++			globalSamples += stats->yHistogram[i];
++			if (i >= brightStart)
++				globalBrightSamples += stats->yHistogram[i];
++		}
++		brightFraction = globalSamples == 0 ? 0.0f
++			: static_cast<float>(globalBrightSamples) / globalSamples;
++	}
+ 	updateExposure(context, frameContext, exposureMSV, brightFraction);
+ }
+ 
+diff -urN --exclude=.git --exclude=output a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+--- a/src/ipa/simple/algorithms/agc.h	2026-08-18 12:59:51
++++ b/src/ipa/simple/algorithms/agc.h	2026-08-18 12:43:33
+@@ -20,6 +20,9 @@
+ 	~Agc() = default;
+ 
+ 	int init(IPAContext &context, const ValueNode &tuningData) override;
++	void queueRequest(IPAContext &context, const uint32_t frame,
++			  IPAFrameContext &frameContext,
++			  const ControlList &controls) override;
+ 
+ 	void process(IPAContext &context, const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+diff -urN --exclude=.git --exclude=output a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+--- a/src/ipa/simple/ipa_context.h	2026-08-17 19:06:03
++++ b/src/ipa/simple/ipa_context.h	2026-08-18 12:42:20
+@@ -79,6 +79,12 @@
+ 		std::optional<bool> focus_sweep;
+ 		/* One of the controls::AfModeEnum values */
+ 		int32_t af_mode;
++		/* One of the controls::AfMeteringEnum values. */
++		int32_t af_metering_mode;
++		/* One of the nine software-ISP metering cells, centre by default. */
++		unsigned int metering_grid_index;
++		/* One of the controls::AeMeteringModeEnum values. */
++		int32_t ae_metering_mode;
+ 	} knobs;
+ };
+ 
+diff -urN --exclude=.git --exclude=output a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+--- a/src/libcamera/software_isp/swstats_cpu.cpp	2026-08-17 19:06:03
++++ b/src/libcamera/software_isp/swstats_cpu.cpp	2026-08-18 13:20:47
+@@ -189,10 +189,18 @@
+ 	uint64_t sharpness = 0;           \
+ 	uint64_t sharpSumG = 0;           \
+ 	unsigned int sharpCount = 0;      \
++	std::array<uint64_t, 3> gridSharpness = {}; \
++	std::array<uint64_t, 3> gridSharpSumG = {}; \
++	std::array<unsigned int, 3> gridSharpCount = {}; \
++	const unsigned int gridLineLength = (lineLength); \
++	const unsigned int gridXBoundary1 = gridLineLength / 3; \
++	const unsigned int gridXBoundary2 = gridLineLength * 2 / 3; \
+ 	const unsigned int sharpXBegin = (lineLength) * 2 / 5;              \
+ 	const unsigned int sharpXEnd = (lineLength) * 3 / 5;                \
+ 	const bool sharpRow = y >= window_.height * 2 / 5 &&                \
+-			      y < window_.height * 3 / 5;
++			      y < window_.height * 3 / 5;                  \
++	const unsigned int gridY = ((y - window_.y) * 3 / window_.height < 3) \
++		? (y - window_.y) * 3 / window_.height : 2;
+ 
+ /*
+  * Sharpness is the sum of the squared differences between green samples two
+@@ -208,7 +216,17 @@
+ 	yVal = r * kRedYMul;               \
+ 	yVal += g * kGreenYMul;            \
+ 	yVal += b * kBlueYMul;             \
+-	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++; \
++	const unsigned int histIndex = yVal * SwIspStats::kYHistogramSize / \
++		(256 * 256 * (div)); \
++	const unsigned int gridX = x < gridXBoundary1 ? 0 \
++		: x < gridXBoundary2 ? 1 : 2; \
++	const unsigned int gridIndex = gridY * 3 + gridX; \
++	stats.yHistogram[histIndex]++; \
++	stats.yHistogramGrid[gridIndex][histIndex]++; \
++	const int64_t gridGDiff = static_cast<int64_t>(g) - gPrev2; \
++	gridSharpness[gridX] += gridGDiff * gridGDiff; \
++	gridSharpSumG[gridX] += g; \
++	gridSharpCount[gridX]++; \
+ 	if (sharpRow && x >= sharpXBegin && x < sharpXEnd) { \
+ 		const int64_t gDiff = static_cast<int64_t>(g) - gPrev2; \
+ 		sharpness += gDiff * gDiff; \
+@@ -227,6 +245,16 @@
+ 	stats.sum_.r() += sumR;     \
+ 	stats.sum_.g() += sumG;     \
+ 	stats.sum_.b() += sumB;     \
++	for (unsigned int gridX = 0; gridX < 3; gridX++) { \
++		if (!gridSharpCount[gridX]) \
++			continue; \
++		const uint64_t gridMeanG = gridSharpSumG[gridX] / \
++			gridSharpCount[gridX]; \
++		if (gridMeanG) \
++			stats.sharpnessGrid[gridY * 3 + gridX] += \
++				gridSharpness[gridX] * 1024 / \
++				(gridMeanG * gridMeanG); \
++	} \
+ 	if (sharpCount) {           \
+ 		const uint64_t meanG = sharpSumG / sharpCount; \
+ 		if (meanG) \
+@@ -432,6 +460,9 @@
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		s.yHistogram.fill(0);
+ 		s.sharpness = 0;
++		s.sharpnessGrid.fill(0);
++		for (auto &histogram : s.yHistogramGrid)
++			histogram.fill(0);
+ 	}
+ }
+ 
+@@ -449,12 +480,22 @@
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		sharedStats_->sharpness = 0;
++		sharedStats_->sharpnessGrid.fill(0);
+ 		sharedStats_->yHistogram.fill(0);
++		for (auto &histogram : sharedStats_->yHistogramGrid)
++			histogram.fill(0);
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sharpness += s.sharpness;
+ 			sharedStats_->sum_ += s.sum_;
+-			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
++			for (unsigned int grid = 0; grid < 9; grid++)
++				sharedStats_->sharpnessGrid[grid] +=
++					s.sharpnessGrid[grid];
++			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++) {
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
++				for (unsigned int grid = 0; grid < 9; grid++)
++					sharedStats_->yHistogramGrid[grid][j] +=
++						s.yHistogramGrid[grid][j];
++			}
+ 		}
+ 
+ 		sharedStats_->sum_ >>= sumShift_;
+

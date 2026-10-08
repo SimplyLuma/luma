@@ -1,0 +1,106 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 31 Aug 2026 10:40:00 -0500
+Subject: [PATCH] session: give the persistent-compositor session no seat
+
+The authenticated session started under persistent_compositor used
+TerminalMode::Stdin so that greetd would not open, clear, re-mode or switch the
+VT that the surviving compositor owns.  That was right about the terminal and
+wrong about logind: Stdin also sets no PAM_TTY and no XDG_VTNR, while
+prepared_env still exports XDG_SEAT=seat0 unconditionally.  logind rejects a
+session on a seat that has VTs unless vtnr is 1..63, so CreateSession failed
+with InvalidParameter, the account never got a runtime directory, and the
+session aborted before the shell could start.
+
+Supplying the compositor's VT instead is worse, not better: logind then treats
+the new session as the seat's owner, makes it active, and pauses the running
+compositor's DRM and input devices, so the display is taken away mid-handoff.
+
+The session is a client of a compositor that already owns the seat, so it
+should own no seat at all.  Add an explicit Detached terminal mode that touches
+no VT and claims no seat, leaving the compositor's own session active and
+letting logind create an ordinary seatless session with a runtime directory and
+user bus.
+
+---
+--- a/greetd/src/session/worker.rs
++++ b/greetd/src/session/worker.rs
+@@ -29,6 +29,10 @@
+         switch: bool,
+     },
+     Stdin,
++    /* Luma: the display is owned by a compositor that outlives this session,
++     * so the session must take no VT and claim no seat.  It still needs a
++     * logind session for its runtime directory and user bus. */
++    Detached,
+ }
+ 
+ #[derive(Clone, Debug, Serialize, Deserialize)]
+@@ -166,8 +170,12 @@
+     // Make this process a session leader.
+     setsid().map_err(|e| format!("unable to become session leader: {}", e))?;
+ 
++    /* Checked before the match below consumes `tty`. */
++    let seatless = matches!(tty, TerminalMode::Detached);
++
+     match tty {
+         TerminalMode::Stdin => (),
++        TerminalMode::Detached => (),
+         TerminalMode::Terminal { path, vt, switch } => {
+             // Tell PAM what TTY we're targetting, which is used by logind.
+             pam.set_item(PamItemType::TTY, &format!("tty{}", vt))?;
+@@ -202,8 +210,7 @@
+     // through here as well. This allows them to affect PAM (more
+     // specifically, pam_systemd.so), as well as make it easier to gather
+     // and set all environment variables later.
+-    let prepared_env = [
+-        "XDG_SEAT=seat0".to_string(),
++    let mut prepared_env = vec![
+         format!("XDG_SESSION_CLASS={}", class.as_str()),
+         format!("USER={}", user.name),
+         format!("LOGNAME={}", user.name),
+@@ -214,6 +221,12 @@
+             env::var("TERM").unwrap_or_else(|_| "linux".to_string())
+         ),
+     ];
++    /* A detached session is a client of someone else's compositor.  Claiming
++     * seat0 would make logind treat it as the seat's new owner and pause the
++     * running compositor's DRM and input devices. */
++    if !seatless {
++        prepared_env.push("XDG_SEAT=seat0".to_string());
++    }
+     for e in env.iter().chain(prepared_env.iter()) {
+         pam.putenv(e)?;
+     }
+--- a/greetd/src/server.rs
++++ b/greetd/src/server.rs
+@@ -26,7 +26,7 @@
+             term.kd_setmode(terminal::KdMode::Text)?;
+             term.vt_setactivate(*vt)?;
+         }
+-        TerminalMode::Stdin => (),
++        TerminalMode::Stdin | TerminalMode::Detached => (),
+     }
+     Ok(())
+ }
+@@ -37,7 +37,7 @@
+             let term = Terminal::open(path)?;
+             term.vt_waitactive(*vt)?;
+         }
+-        TerminalMode::Stdin => (),
++        TerminalMode::Stdin | TerminalMode::Detached => (),
+     }
+     Ok(())
+ }
+--- a/greetd/src/context.rs
++++ b/greetd/src/context.rs
+@@ -203,7 +203,7 @@
+             time: Instant::now(),
+         };
+         let user_term_mode = if self.persistent_compositor {
+-            TerminalMode::Stdin
++            TerminalMode::Detached
+         } else {
+             self.term_mode.clone()
+         };
+-- 
+2.53.0

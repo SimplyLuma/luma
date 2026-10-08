@@ -1,0 +1,89 @@
+From: Project Luma
+Subject: [PATCH] Shell: paint native raised controls with supported St shadows
+
+St supports one box shadow, not a comma-separated CSS shadow list.
+Use the existing border for the top rim and one outer shadow for both
+radio cards and level keys. Keep the pressed state inset shadow.
+
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5246,12 +5246,16 @@
+ .quick-settings.luma-studio-options .luma-options-level-key,
+ .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+   border: 1px solid rgba(255,255,255,.10);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++  border-top-color: rgba(255,255,255,.16);
++  border-bottom-color: rgba(0,0,0,.25);
++  box-shadow: 0 2px 3px rgba(0,0,0,.15); }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-level-key,
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
+   background-color: #fff; color: rgba(22,25,29,.86);
+   border-color: rgba(25,27,31,.12);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++  border-top-color: #fff;
++  border-bottom-color: rgba(25,27,31,.18);
++  box-shadow: 0 2px 3px rgba(25,27,31,.10); }
+ .quick-settings.luma-studio-options .luma-options-page-header { margin-bottom: 12px; }
+ .quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
+ .quick-settings.luma-studio-options .luma-options-detail .luma-options-list {
+@@ -5276,12 +5280,16 @@
+ .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+   background-color: #353a42;
+   border: 1px solid rgba(255,255,255,.10);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++  border-top-color: rgba(255,255,255,.16);
++  border-bottom-color: rgba(0,0,0,.25);
++  box-shadow: 0 2px 3px rgba(0,0,0,.15); }
+ .quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio,
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
+   background-color: #fff; color: rgba(22,25,29,.86);
+   border-color: rgba(25,27,31,.12);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++  border-top-color: #fff;
++  border-bottom-color: rgba(25,27,31,.18);
++  box-shadow: 0 2px 3px rgba(25,27,31,.10); }
+ .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:active,
+ .quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:active {
+   box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5022,12 +5022,16 @@
+ .quick-settings.luma-studio-options .luma-options-level-key,
+ .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+   border: 1px solid rgba(255,255,255,.10);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++  border-top-color: rgba(255,255,255,.16);
++  border-bottom-color: rgba(0,0,0,.25);
++  box-shadow: 0 2px 3px rgba(0,0,0,.15); }
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-level-key,
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
+   background-color: #fff; color: rgba(22,25,29,.86);
+   border-color: rgba(25,27,31,.12);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++  border-top-color: #fff;
++  border-bottom-color: rgba(25,27,31,.18);
++  box-shadow: 0 2px 3px rgba(25,27,31,.10); }
+ .quick-settings.luma-studio-options .luma-options-page-header { margin-bottom: 12px; }
+ .quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
+ .quick-settings.luma-studio-options .luma-options-detail .luma-options-list {
+@@ -5052,12 +5056,16 @@
+ .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+   background-color: #353a42;
+   border: 1px solid rgba(255,255,255,.10);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++  border-top-color: rgba(255,255,255,.16);
++  border-bottom-color: rgba(0,0,0,.25);
++  box-shadow: 0 2px 3px rgba(0,0,0,.15); }
+ .quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio,
+ .quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
+   background-color: #fff; color: rgba(22,25,29,.86);
+   border-color: rgba(25,27,31,.12);
+-  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++  border-top-color: #fff;
++  border-bottom-color: rgba(25,27,31,.18);
++  box-shadow: 0 2px 3px rgba(25,27,31,.10); }
+ .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:active,
+ .quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:active {
+   box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }

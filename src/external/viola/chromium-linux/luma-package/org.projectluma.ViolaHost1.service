@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.ViolaHost1
+Exec=/usr/bin/python3 /usr/share/viola-browser/luma-host/viola_host.py

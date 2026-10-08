@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Read after Fedora's org.gnome.login-screen override, so the login screen's
+# logo is Luma's (ADR-040).
+[org.gnome.login-screen]
+logo='/usr/share/pixmaps/luma-login-logo.png'

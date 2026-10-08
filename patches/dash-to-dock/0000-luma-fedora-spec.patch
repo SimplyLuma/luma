@@ -1,0 +1,16 @@
+--- a/gnome-shell-extension-dash-to-dock.spec
++++ b/gnome-shell-extension-dash-to-dock.spec
+@@ -20,6 +20,6 @@
+ 
+ Name:           gnome-shell-extension-dash-to-dock
+ Version:        105
+-Release:        %autorelease
++Release:        1.luma.14%{?dist}
+ #Release:        %%autorelease -e %%{commit_date}git%%{commit_short}
+ Summary:        Dock for the Gnome Shell by micxgx@gmail.com
+@@ -30,4 +30,5 @@ Source0:        %{giturl}/archive/extensions.gnome.org-v%{version}.tar.gz#/%{name}-%{version}.tar.gz
+ %endif
+ Source1:        stylesheet.css
++Patch1000:      0001-luma-dock-material.patch
+ 
+ BuildArch:      noarch

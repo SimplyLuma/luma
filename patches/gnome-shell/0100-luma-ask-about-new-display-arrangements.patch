@@ -1,0 +1,142 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: ask how to use displays never arranged together
+
+Plugging displays into a combination that has never been arranged left
+the person to find display settings and fix a default they did not
+choose. Once monitor changes have stopped for a few seconds, and once
+after a session starts, the Shell asks Luma Displays through D-Bus
+activation. Displays opens only when the arrangement is new, so plugging
+the second of two cables in quick succession asks nothing. A layout kept
+from Displays is confirmed without the Shell's countdown dialog, because
+Displays already shows a change before keeping it and undoes one nobody
+responds to.
+
+--- /dev/null
++++ b/js/ui/lumaDisplayArrival.js
+@@ -0,0 +1,63 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Ask how to use displays that have never been arranged together.
++//
++// Plugging in a dock and a second cable, or unplugging both, is a run of
++// monitor changes a few seconds apart. Nothing is asked until they stop.
++// Displays itself decides whether the arrangement is new: it reads the same
++// monitors.xml Mutter keeps, and returns without a window when it knows it.
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import Shell from 'gi://Shell';
++
++import * as Main from './main.js';
++
++const SETTLE_SECONDS = 4;
++// A session that starts on a new arrangement is asked once it is up.
++const STARTUP_SECONDS = 10;
++const DISPLAYS = 'org.projectluma.Displays';
++
++export class DisplayArrival {
++    constructor() {
++        this._source = 0;
++        Main.layoutManager.connect('monitors-changed', () => this._schedule(SETTLE_SECONDS));
++        this._schedule(STARTUP_SECONDS);
++    }
++
++    _schedule(seconds) {
++        if (this._source)
++            GLib.source_remove(this._source);
++        this._source = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, seconds, () => {
++            this._source = 0;
++            this._ask();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _ask() {
++        const mode = Main.sessionMode;
++        if (mode.isLocked || mode.isGreeter || !mode.hasOverview)
++            return;
++        if (Main.layoutManager.monitors.length < 2)
++            return;
++        // D-Bus activation starts Displays as its own service, not as a child
++        // of the Shell. A Luma without Displays installed simply isn't asked.
++        Gio.DBus.session.call(DISPLAYS, '/org/projectluma/Displays',
++            'org.freedesktop.Application', 'ActivateAction',
++            new GLib.Variant('(sava{sv})', ['arrival', [], {}]),
++            null, Gio.DBusCallFlags.NONE, -1, null,
++            (connection, result) => {
++                try {
++                    connection.call_finish(result);
++                } catch (_error) {
++                }
++            });
++    }
++}
++
++// Displays shows a layout before it is kept and undoes it on its own if
++// nobody touches the window, so the Shell's countdown would only ask the
++// same question twice.
++export function keptByDisplays() {
++    const app = Shell.WindowTracker.get_default().focus_app;
++    return app?.get_id() === `${DISPLAYS}.desktop`;
++}
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -33,6 +33,7 @@
+ import * as LoginManager from '../misc/loginManager.js';
+ import * as LookingGlass from './lookingGlass.js';
+ import * as LumaSearch from './lumaSearch.js';
++import * as LumaDisplayArrival from './lumaDisplayArrival.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -65,6 +66,7 @@
+ export let stickyDock = null;
+ export let overview = null;
+ export let lumaSearch = null;
++export let lumaDisplayArrival = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
+ export let welcomeDialog = null;
+@@ -244,6 +246,13 @@
+             logError(error, 'Failed to initialize Luma Search');
+         }
+     }
++    if (sessionMode.hasOverview) {
++        try {
++            lumaDisplayArrival = new LumaDisplayArrival.DisplayArrival();
++        } catch (error) {
++            logError(error, 'Failed to watch for new display arrangements');
++        }
++    }
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -18,6 +18,7 @@
+ import * as PadOsd from './padOsd.js';
+ import * as CloseDialog from './closeDialog.js';
+ import * as SwitchMonitor from './switchMonitor.js';
++import * as LumaDisplayArrival from './lumaDisplayArrival.js';
+ import * as IBusManager from '../misc/ibusManager.js';
+ import * as WorkspaceAnimation from './workspaceAnimation.js';
+ 
+@@ -1979,6 +1980,10 @@
+     }
+ 
+     _confirmDisplayChange() {
++        if (LumaDisplayArrival.keptByDisplays()) {
++            this._shellwm.complete_display_change(true);
++            return;
++        }
+         const dialog = new DisplayChangeDialog(this._shellwm);
+         dialog.open();
+     }
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -84,6 +84,7 @@
+     <file>ui/lookingGlass.js</file>
+     <file>ui/lumaSurfaceMaterials.js</file>
+     <file>ui/lumaSearch.js</file>
++    <file>ui/lumaDisplayArrival.js</file>
+     <file>ui/magnifier.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>

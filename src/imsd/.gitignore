@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+bin/
+build/
+imsd-*.tar.gz
+# captures / runtime state must never enter the repo (they carry the
+# subscriber's IMSI/MSISDN and network addresses)
+*.raw
+*.rtp
+*.stats
+imsreg.state

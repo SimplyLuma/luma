@@ -1,0 +1,69 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 17 Sep 2026 00:30:00 -0500
+Subject: [PATCH] place: Keep a window centred over its parent on the parent's
+ monitor
+
+A new window with a transient parent is centred over that parent, a third
+of the spare height from its top. When the window is wider or taller than
+the parent, or the parent sits near a monitor edge, that position can reach
+past the edge of the parent's monitor: onto a neighbouring monitor or into a
+part of the desktop no monitor shows. The later constraints do not bring
+such a window back, so a file preview opened from a file manager near the
+top of a screen showed partly off screen. Clamp the centred position into the
+work area of the parent's monitor so the window opens fully on the screen its
+parent is on. A window that already fits there is unaffected.
+---
+ src/core/place.c | 1 file changed
+
+diff --git a/src/core/place.c b/src/core/place.c
+--- a/src/core/place.c
++++ b/src/core/place.c
+@@ -836,6 +836,39 @@
+   return windows;
+ }
+ 
++/* A window centred over its parent can end up mostly on a neighbouring
++ * monitor when it is wider or taller than the parent: centring a tall
++ * window over a short one near the top of a monitor puts much of it on the
++ * monitor above. The constraints then keep it on that monitor. Keep the
++ * window inside the work area of the monitor its parent is on instead.
++ */
++static void
++keep_on_parent_monitor (MetaWindow *window,
++                        MetaWindow *parent,
++                        int         width,
++                        int         height,
++                        int        *x,
++                        int        *y)
++{
++  MetaLogicalMonitor *parent_monitor;
++  MtkRectangle work_area;
++
++  parent_monitor = meta_window_get_main_logical_monitor (parent);
++  if (!parent_monitor)
++    return;
++
++  meta_window_get_work_area_for_logical_monitor (window,
++                                                 parent_monitor,
++                                                 &work_area);
++
++  *x = MAX (work_area.x, MIN (*x, work_area.x + work_area.width - width));
++  *y = MAX (work_area.y, MIN (*y, work_area.y + work_area.height - height));
++
++  meta_topic (META_DEBUG_PLACEMENT,
++              "Kept window %s on the monitor of its parent %s at %d,%d",
++              window->desc, parent->desc, *x, *y);
++}
++
+ void
+ meta_window_place (MetaWindow        *window,
+                    MetaPlaceFlag      flags,
+@@ -1005,6 +1038,8 @@
+ 
+           avoid_being_obscured_as_second_modal_dialog (window, flags, &x, &y);
+ 
++          keep_on_parent_monitor (window, parent, new_width, new_height, &x, &y);
++
+           goto maybe_automaximize;
+         }
+     }

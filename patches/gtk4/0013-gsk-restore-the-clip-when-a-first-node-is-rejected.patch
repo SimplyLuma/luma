@@ -1,0 +1,35 @@
+From: Project Luma
+Subject: [PATCH] gpu: Restore the clip when a first node is rejected
+
+gsk_gpu_node_processor_add_first_node_clipped() saves the node processor's
+clip and scissor, narrows them to the candidate first node, and reverts both
+when the node turns out not to be usable as the pass's first node. The revert
+copied the live clip back over the saved one instead of the other way round:
+
+  gsk_gpu_clip_init_copy (&old_clip, &self->clip);
+
+so self->clip kept the narrowed clip of the rejected candidate while the
+scissor was correctly restored. Every later node in that pass was then
+processed against a clip that is too small - nodes silently disappear on
+partial redraws - and the mismatch between clip and scissor trips the
+"Clipping is broken" warning in gsk_gpu_node_processor_sync_globals().
+
+Copy in the other direction so the saved clip is restored.
+
+--- a/gsk/gpu/gskgpunodeprocessor.c
++++ b/gsk/gpu/gskgpunodeprocessor.c
+@@ -1435,13 +1435,13 @@
+     {
+       /* don't revert clip here, the add_first_node() adjusted it to a correct value */
+       return TRUE;
+     }
+ 
+   self->scissor = old_scissor;
+-  gsk_gpu_clip_init_copy (&old_clip, &self->clip);
++  gsk_gpu_clip_init_copy (&self->clip, &old_clip);
+ 
+   return FALSE;
+ }
+ 
+ static gboolean
+ gsk_gpu_node_processor_add_first_clip_node (GskGpuNodeProcessor *self,

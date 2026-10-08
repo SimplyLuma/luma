@@ -1,0 +1,5 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MPL-2.0
+import sys
+from luma_energy.cli import main
+sys.exit(main())

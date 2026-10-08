@@ -1,0 +1,5 @@
+#!/usr/bin/python3 -sP
+# SPDX-License-Identifier: MPL-2.0
+from luma_install_commands.apt import entry
+
+entry()

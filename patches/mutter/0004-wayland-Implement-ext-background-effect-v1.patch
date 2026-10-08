@@ -1,0 +1,439 @@
+From 5ddc36a91da81d0b8f4fa17fbf8b708bf1c7d1f8 Mon Sep 17 00:00:00 2001
+From: Kristof Imeri <kristof@lanth.me>
+Date: Mon, 22 Jun 2026 13:18:27 +0200
+Subject: [PATCH 4/5] wayland: Implement ext-background-effect-v1
+
+Expose ext-background-effect-v1 with the blur capability and attach one
+background-effect resource to each wl_surface.
+
+The blur region follows the protocol's double-buffered state model. Regions
+are copied from wl_region resources, can be cleared with NULL, and are
+clipped to the surface bounds when actor state is synchronized.
+
+Part-of: <https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/5071>
+---
+ src/meson.build                              |   3 +
+ src/wayland/meta-wayland-actor-surface.c     |  15 ++
+ src/wayland/meta-wayland-background-effect.c | 218 +++++++++++++++++++
+ src/wayland/meta-wayland-background-effect.h |  22 ++
+ src/wayland/meta-wayland-surface-private.h   |   3 +
+ src/wayland/meta-wayland-surface.c           |  22 ++
+ src/wayland/meta-wayland-versions.h          |   1 +
+ src/wayland/meta-wayland.c                   |   2 +
+ 8 files changed, 286 insertions(+)
+ create mode 100644 src/wayland/meta-wayland-background-effect.c
+ create mode 100644 src/wayland/meta-wayland-background-effect.h
+
+diff --git a/src/meson.build b/src/meson.build
+index 2595d254a..d5af53949 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -531,6 +531,8 @@ mutter_sources += [
+   'wayland/meta-wayland-activation.h',
+   'wayland/meta-wayland-actor-surface.c',
+   'wayland/meta-wayland-actor-surface.h',
++  'wayland/meta-wayland-background-effect.c',
++  'wayland/meta-wayland-background-effect.h',
+   'wayland/meta-wayland-buffer.c',
+   'wayland/meta-wayland-buffer.h',
+   'wayland/meta-wayland.c',
+@@ -1063,6 +1065,7 @@ wayland_protocols = [
+   ['commit-timing', 'staging', 1, ],
+   ['cursor-shape', 'staging', 1, ],
+   ['drm-lease', 'staging', 1, ],
++  ['ext-background-effect', 'staging', 1, ],
+   ['fractional-scale', 'staging', 1, ],
+   ['fifo', 'staging', 1, ],
+   ['gtk-shell', 'private', ],
+diff --git a/src/wayland/meta-wayland-actor-surface.c b/src/wayland/meta-wayland-actor-surface.c
+index a71747e97..a8ff4ec16 100644
+--- a/src/wayland/meta-wayland-actor-surface.c
++++ b/src/wayland/meta-wayland-actor-surface.c
+@@ -256,6 +256,21 @@ meta_wayland_actor_surface_real_sync_actor_state (MetaWaylandActorSurface *actor
+       {
+         meta_surface_actor_set_opaque_region (surface_actor, NULL);
+       }
++
++    if (surface->background_blur_region)
++      {
++        g_autoptr (MtkRegion) background_blur_region = NULL;
++
++        background_blur_region =
++          mtk_region_copy (surface->background_blur_region);
++        mtk_region_intersect_rectangle (background_blur_region, &surface_rect);
++        meta_surface_actor_set_background_blur_region (surface_actor,
++                                                       background_blur_region);
++      }
++    else
++      {
++        meta_surface_actor_set_background_blur_region (surface_actor, NULL);
++      }
+   }
+ 
+   meta_shaped_texture_set_transform (stex, surface->buffer_transform);
+diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-wayland-background-effect.c
+new file mode 100644
+index 000000000..bcfec89f7
+--- /dev/null
++++ b/src/wayland/meta-wayland-background-effect.c
+@@ -0,0 +1,218 @@
++/*
++ * Copyright (C) 2026 Kristof Imeri
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "config.h"
++
++#include "wayland/meta-wayland-background-effect.h"
++
++#include <glib.h>
++#include <wayland-server.h>
++
++#include "ext-background-effect-v1-server-protocol.h"
++#include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-region.h"
++#include "wayland/meta-wayland-surface-private.h"
++#include "wayland/meta-wayland-versions.h"
++
++#define BACKGROUND_EFFECT_SURFACE_DATA "-meta-wayland-background-effect-surface"
++
++typedef struct _MetaWaylandBackgroundEffectSurface
++{
++  MetaWaylandSurface *surface;
++  gulong destroy_handler_id;
++} MetaWaylandBackgroundEffectSurface;
++
++static void
++background_effect_surface_unset_pending_blur_region (MetaWaylandSurface *surface)
++{
++  MetaWaylandSurfaceState *pending;
++
++  if (!surface)
++    return;
++
++  pending = meta_wayland_surface_get_pending_state (surface);
++  if (!pending)
++    return;
++
++  g_clear_pointer (&pending->background_blur_region, mtk_region_unref);
++  pending->background_blur_region_set = TRUE;
++}
++
++static void
++background_effect_surface_destructor (struct wl_resource *resource)
++{
++  MetaWaylandBackgroundEffectSurface *background_effect_surface =
++    wl_resource_get_user_data (resource);
++
++  if (background_effect_surface->surface)
++    {
++      background_effect_surface_unset_pending_blur_region (
++        background_effect_surface->surface);
++
++      g_object_set_data (G_OBJECT (background_effect_surface->surface),
++                         BACKGROUND_EFFECT_SURFACE_DATA,
++                         NULL);
++      g_clear_signal_handler (&background_effect_surface->destroy_handler_id,
++                              background_effect_surface->surface);
++    }
++
++  g_free (background_effect_surface);
++}
++
++static void
++background_effect_surface_destroy (struct wl_client   *client,
++                                   struct wl_resource *resource)
++{
++  wl_resource_destroy (resource);
++}
++
++static void
++background_effect_surface_set_blur_region (struct wl_client   *client,
++                                           struct wl_resource *resource,
++                                           struct wl_resource *region_resource)
++{
++  MetaWaylandBackgroundEffectSurface *background_effect_surface =
++    wl_resource_get_user_data (resource);
++  MetaWaylandSurface *surface = background_effect_surface->surface;
++  MetaWaylandSurfaceState *pending;
++
++  if (!surface)
++    {
++      wl_resource_post_error (resource,
++                              EXT_BACKGROUND_EFFECT_SURFACE_V1_ERROR_SURFACE_DESTROYED,
++                              "Surface destroyed");
++      return;
++    }
++
++  pending = meta_wayland_surface_get_pending_state (surface);
++
++  g_clear_pointer (&pending->background_blur_region, mtk_region_unref);
++  if (region_resource)
++    {
++      MetaWaylandRegion *region = wl_resource_get_user_data (region_resource);
++      MtkRegion *mtk_region = meta_wayland_region_peek_region (region);
++
++      pending->background_blur_region = mtk_region_copy (mtk_region);
++    }
++
++  pending->background_blur_region_set = TRUE;
++}
++
++static const struct ext_background_effect_surface_v1_interface
++  background_effect_surface_implementation =
++{
++  background_effect_surface_destroy,
++  background_effect_surface_set_blur_region,
++};
++
++static void
++background_effect_manager_destroy (struct wl_client   *client,
++                                   struct wl_resource *resource)
++{
++  wl_resource_destroy (resource);
++}
++
++static void
++on_surface_destroyed (MetaWaylandSurface                 *surface,
++                      MetaWaylandBackgroundEffectSurface *background_effect_surface)
++{
++  background_effect_surface->surface = NULL;
++}
++
++static void
++background_effect_manager_get_background_effect (struct wl_client   *client,
++                                                 struct wl_resource *resource,
++                                                 uint32_t            id,
++                                                 struct wl_resource *surface_resource)
++{
++  MetaWaylandSurface *surface = wl_resource_get_user_data (surface_resource);
++  MetaWaylandBackgroundEffectSurface *background_effect_surface;
++  struct wl_resource *background_effect_surface_resource;
++
++  background_effect_surface =
++    g_object_get_data (G_OBJECT (surface), BACKGROUND_EFFECT_SURFACE_DATA);
++  if (background_effect_surface)
++    {
++      wl_resource_post_error (resource,
++                              EXT_BACKGROUND_EFFECT_MANAGER_V1_ERROR_BACKGROUND_EFFECT_EXISTS,
++                              "Background effect resource already exists on surface");
++      return;
++    }
++
++  background_effect_surface_resource =
++    wl_resource_create (client,
++                        &ext_background_effect_surface_v1_interface,
++                        wl_resource_get_version (resource),
++                        id);
++
++  background_effect_surface = g_new0 (MetaWaylandBackgroundEffectSurface, 1);
++  background_effect_surface->surface = surface;
++  background_effect_surface->destroy_handler_id =
++    g_signal_connect (surface,
++                      "destroy",
++                      G_CALLBACK (on_surface_destroyed),
++                      background_effect_surface);
++
++  g_object_set_data (G_OBJECT (surface),
++                     BACKGROUND_EFFECT_SURFACE_DATA,
++                     background_effect_surface);
++
++  wl_resource_set_implementation (background_effect_surface_resource,
++                                  &background_effect_surface_implementation,
++                                  background_effect_surface,
++                                  background_effect_surface_destructor);
++}
++
++static const struct ext_background_effect_manager_v1_interface
++  background_effect_manager_implementation =
++{
++  background_effect_manager_destroy,
++  background_effect_manager_get_background_effect,
++};
++
++static void
++background_effect_manager_bind (struct wl_client *client,
++                                void             *data,
++                                uint32_t          version,
++                                uint32_t          id)
++{
++  struct wl_resource *resource;
++
++  resource = wl_resource_create (client,
++                                 &ext_background_effect_manager_v1_interface,
++                                 version,
++                                 id);
++  wl_resource_set_implementation (resource,
++                                  &background_effect_manager_implementation,
++                                  NULL,
++                                  NULL);
++
++  ext_background_effect_manager_v1_send_capabilities (
++    resource,
++    EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR);
++}
++
++void
++meta_wayland_init_background_effect (MetaWaylandCompositor *compositor)
++{
++  if (!wl_global_create (compositor->wayland_display,
++                         &ext_background_effect_manager_v1_interface,
++                         META_EXT_BACKGROUND_EFFECT_V1_VERSION,
++                         compositor,
++                         background_effect_manager_bind))
++    g_warning ("Failed to create ext_background_effect_manager_v1 global");
++}
+diff --git a/src/wayland/meta-wayland-background-effect.h b/src/wayland/meta-wayland-background-effect.h
+new file mode 100644
+index 000000000..d83fae9d8
+--- /dev/null
++++ b/src/wayland/meta-wayland-background-effect.h
+@@ -0,0 +1,22 @@
++/*
++ * Copyright (C) 2026 Kristof Imeri
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "wayland/meta-wayland-types.h"
++
++void meta_wayland_init_background_effect (MetaWaylandCompositor *compositor);
+diff --git a/src/wayland/meta-wayland-surface-private.h b/src/wayland/meta-wayland-surface-private.h
+index c9dce7031..e08cca7f0 100644
+--- a/src/wayland/meta-wayland-surface-private.h
++++ b/src/wayland/meta-wayland-surface-private.h
+@@ -93,6 +93,8 @@ struct _MetaWaylandSurfaceState
+   gboolean input_region_set;
+   MtkRegion *opaque_region;
+   gboolean opaque_region_set;
++  MtkRegion *background_blur_region;
++  gboolean background_blur_region_set;
+ 
+   /* wl_surface.frame */
+   struct wl_list frame_callback_list;
+@@ -185,6 +187,7 @@ struct _MetaWaylandSurface
+   MetaWaylandSurfaceRole *role;
+   MtkRegion *input_region;
+   MtkRegion *opaque_region;
++  MtkRegion *background_blur_region;
+   int32_t offset_x, offset_y;
+   GHashTable *outputs;
+   MtkMonitorTransform buffer_transform;
+diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
+index ebbd3f397..ea7020687 100644
+--- a/src/wayland/meta-wayland-surface.c
++++ b/src/wayland/meta-wayland-surface.c
+@@ -435,6 +435,8 @@ meta_wayland_surface_state_set_default (MetaWaylandSurfaceState *state)
+   state->input_region_set = FALSE;
+   state->opaque_region = NULL;
+   state->opaque_region_set = FALSE;
++  state->background_blur_region = NULL;
++  state->background_blur_region_set = FALSE;
+ 
+   state->surface_damage = mtk_region_create ();
+   state->buffer_damage = mtk_region_create ();
+@@ -495,6 +497,7 @@ meta_wayland_surface_state_clear (MetaWaylandSurfaceState *state)
+   g_clear_pointer (&state->buffer_damage, mtk_region_unref);
+   g_clear_pointer (&state->input_region, mtk_region_unref);
+   g_clear_pointer (&state->opaque_region, mtk_region_unref);
++  g_clear_pointer (&state->background_blur_region, mtk_region_unref);
+   g_clear_pointer (&state->xdg_positioner, g_free);
+ 
+   g_clear_signal_handler (&state->buffer_destroy_handler_id, state->buffer);
+@@ -566,6 +569,16 @@ meta_wayland_surface_state_merge_into (MetaWaylandSurfaceState *from,
+       to->opaque_region_set = TRUE;
+     }
+ 
++  if (from->background_blur_region_set)
++    {
++      g_clear_pointer (&to->background_blur_region, mtk_region_unref);
++      if (from->background_blur_region)
++        to->background_blur_region =
++          mtk_region_ref (from->background_blur_region);
++
++      to->background_blur_region_set = TRUE;
++    }
++
+   if (from->has_new_geometry)
+     {
+       to->new_geometry = from->new_geometry;
+@@ -999,6 +1012,14 @@ meta_wayland_surface_apply_state (MetaWaylandSurface      *surface,
+         surface->opaque_region = mtk_region_ref (state->opaque_region);
+     }
+ 
++  if (state->background_blur_region_set)
++    {
++      g_clear_pointer (&surface->background_blur_region, mtk_region_unref);
++      if (state->background_blur_region)
++        surface->background_blur_region =
++          mtk_region_ref (state->background_blur_region);
++    }
++
+   if (state->input_region_set)
+     {
+       g_clear_pointer (&surface->input_region, mtk_region_unref);
+@@ -1743,6 +1764,7 @@ meta_wayland_surface_dispose (GObject *object)
+ 
+   g_clear_pointer (&surface->opaque_region, mtk_region_unref);
+   g_clear_pointer (&surface->input_region, mtk_region_unref);
++  g_clear_pointer (&surface->background_blur_region, mtk_region_unref);
+ 
+   meta_wayland_compositor_remove_frame_callback_surface (compositor, surface);
+   meta_wayland_compositor_remove_presentation_feedback_surface (compositor,
+diff --git a/src/wayland/meta-wayland-versions.h b/src/wayland/meta-wayland-versions.h
+index 9da5e1eee..f17a642bc 100644
+--- a/src/wayland/meta-wayland-versions.h
++++ b/src/wayland/meta-wayland-versions.h
+@@ -70,3 +70,4 @@
+ #define META_WP_COLOR_REPRESENTATION_VERSION 1
+ #define META_WL_FIXES_VERSION 1
+ #define META_WP_POINTER_WARP_VERSION 1
++#define META_EXT_BACKGROUND_EFFECT_V1_VERSION 1
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index cc303d364..6b9e0df18 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -38,6 +38,7 @@
+ #include "core/events.h"
+ #include "core/meta-context-private.h"
+ #include "wayland/meta-wayland-activation.h"
++#include "wayland/meta-wayland-background-effect.h"
+ #include "wayland/meta-wayland-buffer.h"
+ #include "wayland/meta-wayland-client-private.h"
+ #include "wayland/meta-wayland-color-management.h"
+@@ -1049,6 +1050,7 @@ meta_wayland_compositor_new (MetaContext *context)
+   meta_wayland_fifo_init (compositor);
+   meta_wayland_init_cursor_shape (compositor);
+   meta_wayland_init_color_representation (compositor);
++  meta_wayland_init_background_effect (compositor);
+   meta_wayland_init_fixes (compositor);
+ 
+ #ifdef HAVE_WAYLAND_EGLSTREAM
+-- 
+2.54.0 (Apple Git-157)
+

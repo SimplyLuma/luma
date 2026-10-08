@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Select the configured, physically accepted FP6 carrier PDC profile in the
+# modem's normal read-only rmtfs shadow before subscriber provisioning starts.
+# No modem partition is written by this adapter.
+
+set -Eeuo pipefail
+umask 077
+
+config=/etc/luma/fp6-carrier-pdc.conf
+qmicli=/usr/libexec/luma-fp6-qmicli-pdc
+att_profile=/usr/lib/firmware/luma/fp6-carrier-pdc/att-volte-qrel1695.mbn
+platform_profile=/usr/lib/firmware/luma/fp6-carrier-pdc/dsds-la-milos.mbn
+platform_id=00b4217c22737e3fc64ddea978a4218c4282769e
+att_id=444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc
+tmo_id=88f589369ff3a066511dd1b21ed42cf3496686a3
+qmicli_sha=1b4adcd3d949e8d0f68065ba0022bbc35fe4462717deaaeae0ec244557f76b9c
+att_sha=32e7f3d9059e63323f70cf113b1ecc040dc7e9c82238a1d5bde2b21ca2eb7d6e
+platform_sha=281cf305a5bcd98b709a0446f9733d1859cb423a791b2af17ab9776ffeaf0400
+
+event() { printf 'event=luma_fp6_carrier_pdc %s\n' "$*"; }
+fail() { event "state=failed reason=$1 identifiers_logged=0" >&2; exit 1; }
+hash() { sha256sum "$1" | awk '{print $1}'; }
+compact_ids() {
+  sed -n 's/^[[:space:]]*ID:[[:space:]]*//p' | tr -d ':' |
+    tr '[:upper:]' '[:lower:]'
+}
+active_id() {
+  awk '
+    /^[[:space:]]*Status:[[:space:]]*Active/ { active=1; next }
+    active && /^[[:space:]]*ID:/ {
+      sub(/^[^:]*:[[:space:]]*/, "")
+      print
+      exit
+    }
+  ' | tr -d ':' | tr '[:upper:]' '[:lower:]'
+}
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ -f $config ]] || fail config_missing
+[[ $(stat -c '%u:%g:%a' "$config") == 0:0:644 ]] || fail config_permissions
+[[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] ||
+  fail model
+grep -qw androidboot.slot_suffix=_b /proc/cmdline || fail slot
+[[ $(uname -r) == 7.1.2-luma-fp-ims1 ]] || fail kernel
+[[ $(hash "$qmicli") == "$qmicli_sha" ]] || fail qmicli_hash
+[[ $(hash "$att_profile") == "$att_sha" ]] || fail profile_hash
+[[ $(hash "$platform_profile") == "$platform_sha" ]] || fail platform_profile_hash
+for _ in $(seq 1 120); do
+  systemctl is-active --quiet rmtfs.service && break
+  sleep 1
+done
+systemctl is-active --quiet rmtfs.service || fail rmtfs_inactive
+[[ $(tr '\0' '\n' </proc/$(systemctl show -p MainPID --value rmtfs.service)/cmdline |
+  paste -sd' ' -) == '/usr/bin/rmtfs -o /var/lib/luma/rmtfs -s' ]] ||
+  fail rmtfs_backend
+
+profile=$(sed -n 's/^PROFILE=//p' "$config")
+[[ $(grep -c '^PROFILE=' "$config") -eq 1 ]] || fail config_shape
+[[ $profile == att-qrel1695 ]] || fail unsupported_profile
+
+for _ in $(seq 1 120); do
+  "$qmicli" -d qrtr://0 --device-open-qmi --dms-get-operating-mode \
+    >/dev/null 2>&1 && break
+  sleep 1
+done
+"$qmicli" -d qrtr://0 --device-open-qmi --dms-get-operating-mode \
+  >/dev/null 2>&1 || fail modem_timeout
+
+platform=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=platform) ||
+  fail platform_list
+platform_count=$(grep -c '^Configuration ' <<<"$platform" || true)
+[[ $platform_count -le 1 ]] || fail platform_count
+if [[ $platform_count -eq 0 ]]; then
+  "$qmicli" -d qrtr://0 --device-open-qmi \
+    --pdc-load-config="platform,$platform_profile" >/dev/null || fail platform_load
+  set +e
+  timeout --signal=TERM --kill-after=5 20 \
+    "$qmicli" -d qrtr://0 --device-open-qmi \
+      --pdc-activate-config="platform,$platform_id" >/dev/null 2>&1
+  platform_activation_status=$?
+  set -e
+  # Milos may end the client wait with a transport status after accepting the
+  # request. The authoritative PDC list below is the acceptance gate.
+  platform=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=platform) ||
+    fail platform_verification_list
+fi
+[[ $(active_id <<<"$platform") == "$platform_id" ]] || fail platform_identity
+unset platform platform_count platform_activation_status
+
+software=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=software) ||
+  fail software_list
+mapfile -t software_ids < <(compact_ids <<<"$software")
+for id in "${software_ids[@]}"; do
+  [[ $id == "$att_id" || $id == "$tmo_id" ]] || fail unexpected_software
+done
+if [[ $(active_id <<<"$software") == "$att_id" ]]; then
+  event 'state=already-active profile=att-qrel1695 persistence=volatile identifiers_logged=0'
+  exit 0
+fi
+
+if [[ ! " ${software_ids[*]} " =~ " $att_id " ]]; then
+  "$qmicli" -d qrtr://0 --device-open-qmi \
+    --pdc-load-config="software,$att_profile" >/dev/null || fail profile_load
+fi
+unset software software_ids id
+
+set +e
+timeout --signal=TERM --kill-after=5 20 \
+  "$qmicli" -d qrtr://0 --device-open-qmi \
+    --pdc-activate-config="software,$att_id" >/dev/null 2>&1
+activation_status=$?
+set -e
+# As above, trust only the exact active PDC identity, not the terminal client
+# status, which is unreliable on this modem firmware.
+
+software=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=software) ||
+  fail verification_list
+[[ $(active_id <<<"$software") == "$att_id" ]] || fail att_not_active
+unset software profile activation_status
+
+event 'state=active profile=att-qrel1695 persistence=volatile identifiers_logged=0'

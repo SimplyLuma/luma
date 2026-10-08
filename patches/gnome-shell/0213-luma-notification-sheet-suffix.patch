@@ -1,0 +1,2293 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: keep the notification rules last in the sheets and drop
+ stale icon resources
+
+The Studio Quick Options rules were appended after the notification-owned
+suffix of gnome-shell-dark, -light and -high-contrast.css, so the build's
+verify-generated.sh check failed; they now sit in front of the suffix,
+unchanged. The Studio glyphs moved to the installed hicolor theme, but the
+icon resource still listed them, so glib-compile-resources failed; the
+stale resource entries are dropped (the glyphs load from the theme).
+
+diff --git a/data/gnome-shell-icons.gresource.xml b/data/gnome-shell-icons.gresource.xml
+index d98f396..31bef1a 100644
+--- a/data/gnome-shell-icons.gresource.xml
++++ b/data/gnome-shell-icons.gresource.xml
+@@ -70,25 +70,6 @@
+     <file preprocess="xml-stripblanks">scalable/status/switch-off-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/switch-on-symbolic.svg</file>
+     <file preprocess="xml-stripblanks">scalable/status/wellbeing-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-sun-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-sun-moon-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-sunset-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-leaf-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-moon-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-lock-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-power-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-settings-2-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-speaker-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-monitor-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-battery-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-chevron-left-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-chevron-right-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-phone-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-phone-off-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-x-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-wifi-off-symbolic.svg</file>
+-    <file preprocess="xml-stripblanks">scalable/status/luma-volume-x-symbolic.svg</file>
+-    <file>LUMA-STUDIO-ICONS-LICENSE.txt</file>
+   </gresource>
+ </gresources>
+ 
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 297c18e..05b335e 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4399,6 +4399,288 @@ StScrollBar {
+  * measured 3.98:1 on the menu. 62% holds 5.7:1 on the menu and its hover row. */
+ .popup-menu-item.luma-menu-heading { color: rgba(242, 244, 246, 0.62); }
+ 
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+@@ -4985,378 +5267,95 @@ StScrollBar {
+     background-gradient-end: #434e5b; }
+     .luma-notification-beacon .luma-notification-beacon-mark.luma-notification-beacon-mark-glyph .luma-notification-beacon-mark-icon {
+       icon-size: 16px;
+-      color: #ffffff;
+-      -st-icon-style: symbolic; }
+-  .luma-notification-beacon .luma-notification-beacon-copy {
+-    width: 132px;
+-    spacing: 2px; }
+-  .luma-notification-beacon .luma-notification-beacon-title {
+-    font-size: 13px;
+-    font-weight: 650; }
+-  .luma-notification-beacon .luma-notification-beacon-summary {
+-    font-size: 11px;
+-    font-weight: 550; }
+-  .luma-notification-beacon .luma-notification-beacon-count {
+-    min-width: 8px;
+-    height: 20px;
+-    padding: 0 6px;
+-    border-radius: 999px;
+-    color: #ffffff;
+-    font-size: 11px;
+-    font-weight: 750;
+-    font-feature-settings: "tnum";
+-    text-align: center; }
+-  .luma-notification-beacon:focus {
+-    box-shadow: inset 0 0 0 2px st-transparentize(-st-accent-color, 0.3); }
+-  .luma-notification-beacon.luma-notification-tone-messages .luma-notification-beacon-count {
+-    background-color: #3f8f6c;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-phone .luma-notification-beacon-count {
+-    background-color: #3f8f6c;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-mail .luma-notification-beacon-count {
+-    background-color: #5585b8;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-files .luma-notification-beacon-count {
+-    background-color: #5585b8;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-calendar .luma-notification-beacon-count {
+-    background-color: #8a63a4;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-depot .luma-notification-beacon-count {
+-    background-color: #b57f3f;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-neutral .luma-notification-beacon-count {
+-    background-color: #b57f3f;
+-    color: #ffffff; }
+-
+-.luma-surface-light .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #34383d; }
+-
+-.luma-surface-light .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: rgba(52, 56, 61, 0.78); }
+-
+-.luma-surface-light .luma-notification-beacon:hover {
+-  background-color: rgba(25, 27, 31, 0.06); }
+-
+-.luma-surface-light .luma-notification-beacon:active, .luma-surface-light .luma-notification-beacon:checked {
+-  background-color: rgba(25, 27, 31, 0.09); }
+-
+-.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #e7e9e8; }
+-
+-.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: rgba(231, 233, 232, 0.8); }
+-
+-.luma-surface-dark .luma-notification-beacon:hover {
+-  background-color: rgba(255, 255, 255, 0.06); }
+-
+-.luma-surface-dark .luma-notification-beacon:active, .luma-surface-dark .luma-notification-beacon:checked {
+-  background-color: rgba(255, 255, 255, 0.09); }
+-
+-.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #1f262d; }
+-
+-.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: #394047; }
+-
+-.luma-surface-frost .luma-notification-beacon:hover {
+-  background-color: rgba(37, 46, 54, 0.06); }
+-
+-.luma-surface-frost .luma-notification-beacon:active, .luma-surface-frost .luma-notification-beacon:checked {
+-  background-color: rgba(37, 46, 54, 0.1); }
+-
+-.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #161b20; }
+-
+-.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: #1f242a; }
+-
+-.luma-surface-glass .luma-notification-beacon:hover {
+-  background-color: rgba(37, 46, 54, 0.05); }
+-
+-.luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+-  background-color: rgba(37, 46, 54, 0.08); }
+-
+-/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
+-.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
+-.luma-notification-lip .luma-lip-surface {
+-  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
+-  border-top-width: 0; border-radius: 0 0 22px 22px;
+-  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
+-.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
+-.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
+-.luma-notification-lip.luma-surface-light { color: #1d1f23; }
+-.luma-notification-lip.luma-surface-light .luma-lip-surface {
+-  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
+-.luma-notification-lip.luma-surface-frost .luma-lip-surface {
+-  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
+-.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
+-.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
+-.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
+-.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
+-.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
+-.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
+-.luma-notification-lip .notification-banner.luma-lip-card {
+-  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
+-  background-color: transparent; background-gradient-direction: none;
+-  border: none; border-radius: 0; box-shadow: none; color: inherit; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
+-  width: 34px; height: 34px; border-radius: 10px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
+-  width: 32px; height: 32px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
+-.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
+-.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
+-  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
+-  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
+-  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
+-  border-radius: 7px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
+-  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
+-  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
+-  background-color: rgba(255,255,255,.08); color: inherit; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
+-  background-color: #65b58c; color: #f2f3f5; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
+-.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
+-  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
+-  background-color: rgba(0,0,0,.22); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
+-  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
+-  background-color: transparent; color: inherit; font-size: 12.5px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
+-  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
+-  background-color: -st-accent-color; color: #f2f3f5; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
+-.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
+-.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
+-.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
+-.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
+-.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
+-.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
+-.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
+-.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
+-.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
+-  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
+-  border: 1px solid rgba(255,255,255,.1); }
+-.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
+-.luma-notification-lip.luma-surface-light .luma-lip-empty,
+-.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
+-.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
+-.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
+-  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++      color: #ffffff;
++      -st-icon-style: symbolic; }
++  .luma-notification-beacon .luma-notification-beacon-copy {
++    width: 132px;
++    spacing: 2px; }
++  .luma-notification-beacon .luma-notification-beacon-title {
++    font-size: 13px;
++    font-weight: 650; }
++  .luma-notification-beacon .luma-notification-beacon-summary {
++    font-size: 11px;
++    font-weight: 550; }
++  .luma-notification-beacon .luma-notification-beacon-count {
++    min-width: 8px;
++    height: 20px;
++    padding: 0 6px;
++    border-radius: 999px;
++    color: #ffffff;
++    font-size: 11px;
++    font-weight: 750;
++    font-feature-settings: "tnum";
++    text-align: center; }
++  .luma-notification-beacon:focus {
++    box-shadow: inset 0 0 0 2px st-transparentize(-st-accent-color, 0.3); }
++  .luma-notification-beacon.luma-notification-tone-messages .luma-notification-beacon-count {
++    background-color: #3f8f6c;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-phone .luma-notification-beacon-count {
++    background-color: #3f8f6c;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-mail .luma-notification-beacon-count {
++    background-color: #5585b8;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-files .luma-notification-beacon-count {
++    background-color: #5585b8;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-calendar .luma-notification-beacon-count {
++    background-color: #8a63a4;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-depot .luma-notification-beacon-count {
++    background-color: #b57f3f;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-neutral .luma-notification-beacon-count {
++    background-color: #b57f3f;
++    color: #ffffff; }
+ 
+-/* One 340px popup, one stable source actor, one page visible at a time. */
+-.quick-settings.luma-studio-options {
+-  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
+-  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
+-  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
+-.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
+-.quick-settings.luma-studio-options.luma-surface-frost {
+-  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
+-  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
+-  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
+-.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
+-.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
+-.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
+-.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider {
+-  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
+-  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
+-  -barlevel-active-background-color: -st-accent-color; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
+-.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+-  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
+-  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
+-  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
+-  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
+-.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
+-  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
+-  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
+-.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
+-.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
+-.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
+-.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
+-.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
+-.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
+-.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
+-.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
+-.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
+-.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
+-.luma-studio-options.luma-surface-light .luma-options-radio,
+-.luma-studio-options.luma-surface-light .luma-options-level-key,
+-.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
+-.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++.luma-surface-light .luma-notification-beacon .luma-notification-beacon-title {
++  color: #34383d; }
+ 
+-.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
+-.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
+-.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
+-.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
+-.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
+-.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
+-.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
+-.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++.luma-surface-light .luma-notification-beacon .luma-notification-beacon-summary {
++  color: rgba(52, 56, 61, 0.78); }
+ 
+-/* Reset the earlier 62px card geometry after moving controls out of its grid. */
+-.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
+-.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
+-.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++.luma-surface-light .luma-notification-beacon:hover {
++  background-color: rgba(25, 27, 31, 0.06); }
+ 
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++.luma-surface-light .luma-notification-beacon:active, .luma-surface-light .luma-notification-beacon:checked {
++  background-color: rgba(25, 27, 31, 0.09); }
+ 
+-.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
+-.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-title {
++  color: #e7e9e8; }
+ 
+-/* Measured against current Studio: remove old account-footer/subtitle geometry. */
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
+-.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
+-.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
+-.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-summary {
++  color: rgba(231, 233, 232, 0.8); }
+ 
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++.luma-surface-dark .luma-notification-beacon:hover {
++  background-color: rgba(255, 255, 255, 0.06); }
+ 
+-/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
+-.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++.luma-surface-dark .luma-notification-beacon:active, .luma-surface-dark .luma-notification-beacon:checked {
++  background-color: rgba(255, 255, 255, 0.09); }
+ 
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
+-.luma-notification-lip { color: #e7e9e8; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options { color: #e7e9e8; }
++.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-title {
++  color: #1f262d; }
+ 
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-summary {
++  color: #394047; }
+ 
+-.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
+-.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
+-.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
+-.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++.luma-surface-frost .luma-notification-beacon:hover {
++  background-color: rgba(37, 46, 54, 0.06); }
+ 
+-.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++.luma-surface-frost .luma-notification-beacon:active, .luma-surface-frost .luma-notification-beacon:checked {
++  background-color: rgba(37, 46, 54, 0.1); }
+ 
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-title {
++  color: #161b20; }
+ 
+-.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
+-/* Resolve inherited radio wrapper spacing and checked-state specificity. */
+-.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button,
+-.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
+-.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
+-/* Studio detail lists and native Switch actors retain their service bindings. */
+-.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
+-.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
++.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-summary {
++  color: #1f242a; }
++
++.luma-surface-glass .luma-notification-beacon:hover {
++  background-color: rgba(37, 46, 54, 0.05); }
++
++.luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
++  background-color: rgba(37, 46, 54, 0.08); }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index c072771..8ffe04e 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4657,6 +4657,288 @@ StScrollBar {
+   background-color: rgba(22, 29, 40, 0.01);
+   box-shadow: 0 42px 100px -26px rgba(9, 15, 25, 0.76); }
+ 
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+@@ -5159,378 +5441,95 @@ StScrollBar {
+     background-gradient-end: #434e5b; }
+     .luma-notification-beacon .luma-notification-beacon-mark.luma-notification-beacon-mark-glyph .luma-notification-beacon-mark-icon {
+       icon-size: 16px;
+-      color: #ffffff;
+-      -st-icon-style: symbolic; }
+-  .luma-notification-beacon .luma-notification-beacon-copy {
+-    width: 132px;
+-    spacing: 2px; }
+-  .luma-notification-beacon .luma-notification-beacon-title {
+-    font-size: 13px;
+-    font-weight: 650; }
+-  .luma-notification-beacon .luma-notification-beacon-summary {
+-    font-size: 11px;
+-    font-weight: 550; }
+-  .luma-notification-beacon .luma-notification-beacon-count {
+-    min-width: 8px;
+-    height: 20px;
+-    padding: 0 6px;
+-    border-radius: 999px;
+-    color: #ffffff;
+-    font-size: 11px;
+-    font-weight: 750;
+-    font-feature-settings: "tnum";
+-    text-align: center; }
+-  .luma-notification-beacon:focus {
+-    box-shadow: inset 0 0 0 2px st-transparentize(-st-accent-color, 0.3); }
+-  .luma-notification-beacon.luma-notification-tone-messages .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-  .luma-notification-beacon.luma-notification-tone-phone .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-  .luma-notification-beacon.luma-notification-tone-mail .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-  .luma-notification-beacon.luma-notification-tone-files .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-  .luma-notification-beacon.luma-notification-tone-calendar .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-  .luma-notification-beacon.luma-notification-tone-depot .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-  .luma-notification-beacon.luma-notification-tone-neutral .luma-notification-beacon-count {
+-    background-color: #ffffff;
+-    color: #000000; }
+-
+-.luma-surface-light .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #34383d; }
+-
+-.luma-surface-light .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: rgba(52, 56, 61, 0.78); }
+-
+-.luma-surface-light .luma-notification-beacon:hover {
+-  background-color: rgba(25, 27, 31, 0.06); }
+-
+-.luma-surface-light .luma-notification-beacon:active, .luma-surface-light .luma-notification-beacon:checked {
+-  background-color: rgba(25, 27, 31, 0.09); }
+-
+-.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #e7e9e8; }
+-
+-.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: rgba(231, 233, 232, 0.8); }
+-
+-.luma-surface-dark .luma-notification-beacon:hover {
+-  background-color: rgba(255, 255, 255, 0.06); }
+-
+-.luma-surface-dark .luma-notification-beacon:active, .luma-surface-dark .luma-notification-beacon:checked {
+-  background-color: rgba(255, 255, 255, 0.09); }
+-
+-.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #1f262d; }
+-
+-.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: #394047; }
+-
+-.luma-surface-frost .luma-notification-beacon:hover {
+-  background-color: rgba(37, 46, 54, 0.06); }
+-
+-.luma-surface-frost .luma-notification-beacon:active, .luma-surface-frost .luma-notification-beacon:checked {
+-  background-color: rgba(37, 46, 54, 0.1); }
+-
+-.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #161b20; }
+-
+-.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: #1f242a; }
+-
+-.luma-surface-glass .luma-notification-beacon:hover {
+-  background-color: rgba(37, 46, 54, 0.05); }
+-
+-.luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+-  background-color: rgba(37, 46, 54, 0.08); }
+-
+-/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
+-.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
+-.luma-notification-lip .luma-lip-surface {
+-  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
+-  border-top-width: 0; border-radius: 0 0 22px 22px;
+-  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
+-.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
+-.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
+-.luma-notification-lip.luma-surface-light { color: #1d1f23; }
+-.luma-notification-lip.luma-surface-light .luma-lip-surface {
+-  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
+-.luma-notification-lip.luma-surface-frost .luma-lip-surface {
+-  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
+-.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
+-.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
+-.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
+-.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
+-.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
+-.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
+-.luma-notification-lip .notification-banner.luma-lip-card {
+-  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
+-  background-color: transparent; background-gradient-direction: none;
+-  border: none; border-radius: 0; box-shadow: none; color: inherit; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
+-  width: 34px; height: 34px; border-radius: 10px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
+-  width: 32px; height: 32px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
+-.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
+-.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
+-  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
+-  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
+-  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
+-  border-radius: 7px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
+-  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
+-  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
+-  background-color: rgba(255,255,255,.08); color: inherit; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
+-  background-color: #65b58c; color: #f2f3f5; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
+-.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
+-  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
+-  background-color: rgba(0,0,0,.22); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
+-  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
+-  background-color: transparent; color: inherit; font-size: 12.5px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
+-  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
+-  background-color: -st-accent-color; color: #f2f3f5; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
+-.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
+-.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
+-.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
+-.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
+-.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
+-.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
+-.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
+-.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
+-.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
+-  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
+-  border: 1px solid rgba(255,255,255,.1); }
+-.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
+-.luma-notification-lip.luma-surface-light .luma-lip-empty,
+-.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
+-.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
+-.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
+-  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++      color: #ffffff;
++      -st-icon-style: symbolic; }
++  .luma-notification-beacon .luma-notification-beacon-copy {
++    width: 132px;
++    spacing: 2px; }
++  .luma-notification-beacon .luma-notification-beacon-title {
++    font-size: 13px;
++    font-weight: 650; }
++  .luma-notification-beacon .luma-notification-beacon-summary {
++    font-size: 11px;
++    font-weight: 550; }
++  .luma-notification-beacon .luma-notification-beacon-count {
++    min-width: 8px;
++    height: 20px;
++    padding: 0 6px;
++    border-radius: 999px;
++    color: #ffffff;
++    font-size: 11px;
++    font-weight: 750;
++    font-feature-settings: "tnum";
++    text-align: center; }
++  .luma-notification-beacon:focus {
++    box-shadow: inset 0 0 0 2px st-transparentize(-st-accent-color, 0.3); }
++  .luma-notification-beacon.luma-notification-tone-messages .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
++  .luma-notification-beacon.luma-notification-tone-phone .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
++  .luma-notification-beacon.luma-notification-tone-mail .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
++  .luma-notification-beacon.luma-notification-tone-files .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
++  .luma-notification-beacon.luma-notification-tone-calendar .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
++  .luma-notification-beacon.luma-notification-tone-depot .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
++  .luma-notification-beacon.luma-notification-tone-neutral .luma-notification-beacon-count {
++    background-color: #ffffff;
++    color: #000000; }
+ 
+-/* One 340px popup, one stable source actor, one page visible at a time. */
+-.quick-settings.luma-studio-options {
+-  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
+-  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
+-  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
+-.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
+-.quick-settings.luma-studio-options.luma-surface-frost {
+-  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
+-  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
+-  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
+-.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
+-.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
+-.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
+-.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider {
+-  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
+-  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
+-  -barlevel-active-background-color: -st-accent-color; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
+-.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+-  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
+-  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
+-  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
+-  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
+-.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
+-  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
+-  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
+-.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
+-.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
+-.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
+-.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
+-.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
+-.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
+-.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
+-.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
+-.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
+-.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
+-.luma-studio-options.luma-surface-light .luma-options-radio,
+-.luma-studio-options.luma-surface-light .luma-options-level-key,
+-.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
+-.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++.luma-surface-light .luma-notification-beacon .luma-notification-beacon-title {
++  color: #34383d; }
+ 
+-.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
+-.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
+-.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
+-.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
+-.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
+-.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
+-.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
+-.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++.luma-surface-light .luma-notification-beacon .luma-notification-beacon-summary {
++  color: rgba(52, 56, 61, 0.78); }
+ 
+-/* Reset the earlier 62px card geometry after moving controls out of its grid. */
+-.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
+-.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
+-.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++.luma-surface-light .luma-notification-beacon:hover {
++  background-color: rgba(25, 27, 31, 0.06); }
+ 
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++.luma-surface-light .luma-notification-beacon:active, .luma-surface-light .luma-notification-beacon:checked {
++  background-color: rgba(25, 27, 31, 0.09); }
+ 
+-.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
+-.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-title {
++  color: #e7e9e8; }
+ 
+-/* Measured against current Studio: remove old account-footer/subtitle geometry. */
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
+-.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
+-.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
+-.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-summary {
++  color: rgba(231, 233, 232, 0.8); }
+ 
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++.luma-surface-dark .luma-notification-beacon:hover {
++  background-color: rgba(255, 255, 255, 0.06); }
+ 
+-/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
+-.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++.luma-surface-dark .luma-notification-beacon:active, .luma-surface-dark .luma-notification-beacon:checked {
++  background-color: rgba(255, 255, 255, 0.09); }
+ 
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
+-.luma-notification-lip { color: #e7e9e8; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options { color: #e7e9e8; }
++.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-title {
++  color: #1f262d; }
+ 
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-summary {
++  color: #394047; }
+ 
+-.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
+-.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
+-.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
+-.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++.luma-surface-frost .luma-notification-beacon:hover {
++  background-color: rgba(37, 46, 54, 0.06); }
+ 
+-.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++.luma-surface-frost .luma-notification-beacon:active, .luma-surface-frost .luma-notification-beacon:checked {
++  background-color: rgba(37, 46, 54, 0.1); }
+ 
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-title {
++  color: #161b20; }
+ 
+-.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
+-/* Resolve inherited radio wrapper spacing and checked-state specificity. */
+-.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button,
+-.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
+-.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
+-/* Studio detail lists and native Switch actors retain their service bindings. */
+-.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
+-.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
++.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-summary {
++  color: #1f242a; }
++
++.luma-surface-glass .luma-notification-beacon:hover {
++  background-color: rgba(37, 46, 54, 0.05); }
++
++.luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
++  background-color: rgba(37, 46, 54, 0.08); }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index a853fb1..8b00493 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4623,6 +4623,288 @@ StScrollBar {
+ .luma-beam-shadow.luma-surface-frost,
+ .luma-beam-shadow.luma-surface-glass { background-color: rgba(241, 242, 243, 0.01); }
+ 
++/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
++.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
++.luma-notification-lip .luma-lip-surface {
++  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
++  border-top-width: 0; border-radius: 0 0 22px 22px;
++  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
++.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
++.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
++.luma-notification-lip.luma-surface-light { color: #1d1f23; }
++.luma-notification-lip.luma-surface-light .luma-lip-surface {
++  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
++.luma-notification-lip.luma-surface-frost .luma-lip-surface {
++  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
++.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
++.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
++.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
++.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
++.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card {
++  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
++  background-color: transparent; background-gradient-direction: none;
++  border: none; border-radius: 0; box-shadow: none; color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
++  width: 34px; height: 34px; border-radius: 10px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
++  width: 32px; height: 32px; }
++.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
++.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
++.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
++  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
++  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
++  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
++  border-radius: 7px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
++  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
++  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
++  background-color: rgba(255,255,255,.08); color: inherit; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
++  background-color: #65b58c; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
++.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
++  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
++  background-color: rgba(0,0,0,.22); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
++  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
++  background-color: transparent; color: inherit; font-size: 12.5px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
++  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
++  background-color: -st-accent-color; color: #f2f3f5; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
++.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
++.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
++.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
++.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
++.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
++.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
++.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
++.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
++.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
++.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
++  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
++  border: 1px solid rgba(255,255,255,.1); }
++.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
++.luma-notification-lip.luma-surface-light .luma-lip-empty,
++.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
++.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
++.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
++  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++
++/* One 340px popup, one stable source actor, one page visible at a time. */
++.quick-settings.luma-studio-options {
++  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
++  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
++  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
++.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
++.quick-settings.luma-studio-options.luma-surface-frost {
++  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
++  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
++  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
++.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
++.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-slider .slider {
++  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
++  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
++  -barlevel-active-background-color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
++.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
++  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
++  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
++  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
++  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
++.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
++.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
++.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
++.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
++.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
++.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
++.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
++.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
++.luma-studio-options.luma-surface-light .luma-options-radio,
++.luma-studio-options.luma-surface-light .luma-options-level-key,
++.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
++.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++
++.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
++.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
++.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
++.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
++.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
++.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
++.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
++.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++
++/* Reset the earlier 62px card geometry after moving controls out of its grid. */
++.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
++.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++
++.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
++.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++
++/* Measured against current Studio: remove old account-footer/subtitle geometry. */
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
++.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
++.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
++.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
++.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
++.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++
++/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
++.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++
++.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
++.luma-notification-lip { color: #e7e9e8; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
++.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options { color: #e7e9e8; }
++
++.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
++.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++
++.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
++.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
++.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++
++.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++
++.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
++/* Resolve inherited radio wrapper spacing and checked-state specificity. */
++.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
++.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
++/* Studio detail lists and native Switch actors retain their service bindings. */
++.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
++.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+@@ -5209,378 +5491,95 @@ StScrollBar {
+     background-gradient-end: #434e5b; }
+     .luma-notification-beacon .luma-notification-beacon-mark.luma-notification-beacon-mark-glyph .luma-notification-beacon-mark-icon {
+       icon-size: 16px;
+-      color: #ffffff;
+-      -st-icon-style: symbolic; }
+-  .luma-notification-beacon .luma-notification-beacon-copy {
+-    width: 132px;
+-    spacing: 2px; }
+-  .luma-notification-beacon .luma-notification-beacon-title {
+-    font-size: 13px;
+-    font-weight: 650; }
+-  .luma-notification-beacon .luma-notification-beacon-summary {
+-    font-size: 11px;
+-    font-weight: 550; }
+-  .luma-notification-beacon .luma-notification-beacon-count {
+-    min-width: 8px;
+-    height: 20px;
+-    padding: 0 6px;
+-    border-radius: 999px;
+-    color: #ffffff;
+-    font-size: 11px;
+-    font-weight: 750;
+-    font-feature-settings: "tnum";
+-    text-align: center; }
+-  .luma-notification-beacon:focus {
+-    box-shadow: inset 0 0 0 2px st-transparentize(-st-accent-color, 0.3); }
+-  .luma-notification-beacon.luma-notification-tone-messages .luma-notification-beacon-count {
+-    background-color: #3f8f6c;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-phone .luma-notification-beacon-count {
+-    background-color: #3f8f6c;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-mail .luma-notification-beacon-count {
+-    background-color: #5585b8;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-files .luma-notification-beacon-count {
+-    background-color: #5585b8;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-calendar .luma-notification-beacon-count {
+-    background-color: #8a63a4;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-depot .luma-notification-beacon-count {
+-    background-color: #b57f3f;
+-    color: #ffffff; }
+-  .luma-notification-beacon.luma-notification-tone-neutral .luma-notification-beacon-count {
+-    background-color: #b57f3f;
+-    color: #ffffff; }
+-
+-.luma-surface-light .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #34383d; }
+-
+-.luma-surface-light .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: rgba(52, 56, 61, 0.78); }
+-
+-.luma-surface-light .luma-notification-beacon:hover {
+-  background-color: rgba(25, 27, 31, 0.06); }
+-
+-.luma-surface-light .luma-notification-beacon:active, .luma-surface-light .luma-notification-beacon:checked {
+-  background-color: rgba(25, 27, 31, 0.09); }
+-
+-.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #e7e9e8; }
+-
+-.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: rgba(231, 233, 232, 0.8); }
+-
+-.luma-surface-dark .luma-notification-beacon:hover {
+-  background-color: rgba(255, 255, 255, 0.06); }
+-
+-.luma-surface-dark .luma-notification-beacon:active, .luma-surface-dark .luma-notification-beacon:checked {
+-  background-color: rgba(255, 255, 255, 0.09); }
+-
+-.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #1f262d; }
+-
+-.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: #394047; }
+-
+-.luma-surface-frost .luma-notification-beacon:hover {
+-  background-color: rgba(37, 46, 54, 0.06); }
+-
+-.luma-surface-frost .luma-notification-beacon:active, .luma-surface-frost .luma-notification-beacon:checked {
+-  background-color: rgba(37, 46, 54, 0.1); }
+-
+-.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-title {
+-  color: #161b20; }
+-
+-.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-summary {
+-  color: #1f242a; }
+-
+-.luma-surface-glass .luma-notification-beacon:hover {
+-  background-color: rgba(37, 46, 54, 0.05); }
+-
+-.luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
+-  background-color: rgba(37, 46, 54, 0.08); }
+-
+-/* Studio shelf-2 notification lip and v70 Quick Options. Logical pixels. */
+-.luma-notification-lip { font-family: Figtree; color: #f2f3f5; }
+-.luma-notification-lip .luma-lip-surface {
+-  background-color: #21252b; border: 1px solid rgba(255,255,255,.075);
+-  border-top-width: 0; border-radius: 0 0 22px 22px;
+-  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6); }
+-.luma-notification-lip.idle .luma-lip-surface { border-radius: 0 0 5px 5px; }
+-.luma-notification-lip.pill .luma-lip-surface { border-radius: 0 0 11px 11px; }
+-.luma-notification-lip.luma-surface-light { color: #1d1f23; }
+-.luma-notification-lip.luma-surface-light .luma-lip-surface {
+-  background-color: #eceef1; border-color: rgba(255,255,255,.9); }
+-.luma-notification-lip.luma-surface-frost .luma-lip-surface {
+-  background-color: rgba(38,38,43,.8); border-color: rgba(255,255,255,.1); }
+-.luma-notification-lip .luma-lip-pill { height: 21px; padding: 0 10px 1px; spacing: 7px; }
+-.luma-notification-lip .luma-lip-pill.big { height: 31px; padding: 0 14px 1px; spacing: 8px; }
+-.luma-notification-lip .luma-lip-icon-stack { spacing: -5px; }
+-.luma-notification-lip .luma-lip-pill-title { font-size: 12px; font-weight: 650; font-feature-settings: "tnum"; max-width: 240px; }
+-.luma-notification-lip .luma-lip-pill-more { font-size: 12px; color: rgba(242,243,245,.7); }
+-.luma-notification-lip .luma-lip-glow { background-color: -st-accent-color; border-radius: 1px; }
+-.luma-notification-lip .notification-banner.luma-lip-card {
+-  min-width: 0; width: auto; min-height: 0; margin: 0; padding: 14px 16px 14px 14px;
+-  background-color: transparent; background-gradient-direction: none;
+-  border: none; border-radius: 0; box-shadow: none; color: inherit; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-grid { spacing: 12px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile {
+-  width: 34px; height: 34px; border-radius: 10px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .message-source-icon,
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile .luma-notification-tile-image { icon-size: 34px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph {
+-  width: 32px; height: 32px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .luma-notification-tile-glyph .message-source-icon { icon-size: 20px; }
+-.luma-notification-lip .luma-lip-app-badge { border-radius: 5px; border: 2px solid #21252b; margin: 0 -4px -4px 0; }
+-.luma-notification-lip.luma-surface-light .luma-lip-app-badge { border-color: #eceef1; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 12px; spacing: 0; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-header-content { spacing: 8px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title {
+-  font-size: 10px; font-weight: 700; letter-spacing: .9px; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time {
+-  font-size: 10.5px; font-weight: 600; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button {
+-  width: 22px; height: 22px; min-width: 22px; min-height: 22px; margin-top: -5px;
+-  border-radius: 7px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button StIcon { icon-size: 12px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-content { spacing: 1px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { font-size: 13.5px; font-weight: 650; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body {
+-  font-size: 12.5px; font-weight: 400; color: rgba(242,243,245,.7); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin { padding: 10px 0 0; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-buttons-bin { spacing: 6px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button {
+-  height: 30px; min-height: 0; padding: 0 13px; border-radius: 10px; font-size: 12px; font-weight: 650;
+-  background-color: rgba(255,255,255,.08); color: inherit; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button:hover { background-color: rgba(255,255,255,.14); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-ok {
+-  background-color: #65b58c; color: #f2f3f5; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .notification-button.luma-notification-action-danger { color: #db6b72; }
+-.luma-notification-lip .luma-lip-call-action { spacing: 6px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row {
+-  height: 34px; min-height: 0; padding: 0 4px 0 12px; spacing: 6px; border-radius: 17px;
+-  background-color: rgba(0,0,0,.22); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry {
+-  min-height: 0; height: 34px; padding: 0; border: none; box-shadow: none;
+-  background-color: transparent; color: inherit; font-size: 12.5px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-button {
+-  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 13px;
+-  background-color: -st-accent-color; color: #f2f3f5; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-glyph { icon-size: 13px; }
+-.luma-notification-lip .luma-lip-sent { color: #65b58c; font-size: 12px; font-weight: 600; }
+-.luma-notification-lip .luma-lip-tray-header { padding: 14px 14px 6px 18px; spacing: 8px; }
+-.luma-notification-lip .luma-lip-heading { font-size: 15px; font-weight: 650; }
+-.luma-notification-lip .luma-lip-count { font-size: 13px; font-weight: 600; color: rgba(242,243,245,.5); }
+-.luma-notification-lip .luma-lip-key { width: 28px; height: 28px; border-radius: 9px; }
+-.luma-notification-lip .luma-lip-key:checked { color: -st-accent-color; }
+-.luma-notification-lip .luma-lip-clear { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 9px; }
+-.luma-notification-lip .luma-lip-scroll { max-height: 520px; }
+-.luma-notification-lip .luma-lip-list { padding: 4px 10px 12px; spacing: 6px; }
+-.luma-notification-lip .luma-lip-list .notification-banner.luma-lip-card {
+-  padding: 12px 14px 12px 12px; border-radius: 16px; background-color: rgba(255,255,255,.08);
+-  border: 1px solid rgba(255,255,255,.1); }
+-.luma-notification-lip .luma-lip-empty { padding: 18px 18px 22px; font-size: 12.5px; color: rgba(242,243,245,.7); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-body,
+-.luma-notification-lip.luma-surface-light .luma-lip-empty,
+-.luma-notification-lip.luma-surface-light .luma-lip-pill-more { color: rgba(29,31,35,.65); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-source-title,
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .event-time,
+-.luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(29,31,35,.45); }
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .notification-button,
+-.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .luma-inline-reply-row { background-color: rgba(20,22,26,.06); }
+-.luma-notification-lip.luma-surface-light .luma-lip-list .notification-banner.luma-lip-card {
+-  background-color: #f7f8fa; border-color: rgba(20,22,26,.1); }
++      color: #ffffff;
++      -st-icon-style: symbolic; }
++  .luma-notification-beacon .luma-notification-beacon-copy {
++    width: 132px;
++    spacing: 2px; }
++  .luma-notification-beacon .luma-notification-beacon-title {
++    font-size: 13px;
++    font-weight: 650; }
++  .luma-notification-beacon .luma-notification-beacon-summary {
++    font-size: 11px;
++    font-weight: 550; }
++  .luma-notification-beacon .luma-notification-beacon-count {
++    min-width: 8px;
++    height: 20px;
++    padding: 0 6px;
++    border-radius: 999px;
++    color: #ffffff;
++    font-size: 11px;
++    font-weight: 750;
++    font-feature-settings: "tnum";
++    text-align: center; }
++  .luma-notification-beacon:focus {
++    box-shadow: inset 0 0 0 2px st-transparentize(-st-accent-color, 0.3); }
++  .luma-notification-beacon.luma-notification-tone-messages .luma-notification-beacon-count {
++    background-color: #3f8f6c;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-phone .luma-notification-beacon-count {
++    background-color: #3f8f6c;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-mail .luma-notification-beacon-count {
++    background-color: #5585b8;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-files .luma-notification-beacon-count {
++    background-color: #5585b8;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-calendar .luma-notification-beacon-count {
++    background-color: #8a63a4;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-depot .luma-notification-beacon-count {
++    background-color: #b57f3f;
++    color: #ffffff; }
++  .luma-notification-beacon.luma-notification-tone-neutral .luma-notification-beacon-count {
++    background-color: #b57f3f;
++    color: #ffffff; }
+ 
+-/* One 340px popup, one stable source actor, one page visible at a time. */
+-.quick-settings.luma-studio-options {
+-  width: 316px; min-width: 316px; max-width: 316px; padding: 12px; spacing: 0;
+-  background-color: #262a31; color: #f2f3f5; border-radius: 22px;
+-  border: 1px solid rgba(255,255,255,.075); font-family: Figtree; }
+-.quick-settings.luma-studio-options.luma-surface-light { background-color: #eceef1; color: #1d1f23; border-color: rgba(255,255,255,.9); }
+-.quick-settings.luma-studio-options.luma-surface-frost {
+-  background-color: rgba(32,32,36,.86); background-gradient-direction: vertical;
+-  background-gradient-start: rgba(50,50,56,.8); background-gradient-end: rgba(32,32,36,.86);
+-  color: #f2f3f5; border-color: rgba(255,255,255,.1); }
+-.quick-settings.luma-studio-options .luma-options-main, .quick-settings.luma-studio-options .luma-options-page { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-levels { spacing: 4px; }
+-.quick-settings.luma-studio-options .quick-slider.luma-options-slider { margin: 0; padding: 0; height: 36px; min-height: 0; spacing: 11px; }
+-.quick-settings.luma-studio-options .luma-options-slider > StBoxLayout { spacing: 11px; }
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; height: 36px; min-width: 0; min-height: 0; padding: 0 0 0 8px; }
+-.quick-settings.luma-studio-options .luma-options-slider StIcon { icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider-bin { padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider {
+-  height: 24px; -slider-height: 5px; -slider-handle-radius: 7px;
+-  -barlevel-height: 5px; -barlevel-background-color: rgba(0,0,0,.22);
+-  -barlevel-active-background-color: -st-accent-color; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-level-value { width: 34px; font-size: 11.5px; font-feature-settings: "tnum"; color: rgba(242,243,245,.5); }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-slot { width: 36px; height: 36px; }
+-.quick-settings.luma-studio-options .luma-options-level-key, .quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
+-  width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; border-radius: 11px;
+-  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; font-size: 10.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-level-key:checked { color: -st-accent-color; background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-radios { spacing: 8px; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio {
+-  width: 154px; min-width: 0; min-height: 0; padding: 0; border-radius: 15px;
+-  background-color: rgba(0,0,0,.22); border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { padding: 9px 2px 9px 9px; min-width: 0; min-height: 0; border: none; border-radius: 15px 0 0 15px; background-color: transparent; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle .quick-toggle-icon { icon-size: 16px; width: 32px; height: 32px; padding: 0; border-radius: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { font-size: 11px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 30px; min-width: 0; padding: 0; border: none; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-toggles { spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-toggle-row { spacing: 8px; }
+-.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle {
+-  padding: 5px 9px 5px 5px; min-height: 0; min-width: 0; border-radius: 14px; border: none;
+-  background-color: transparent; box-shadow: none; font-size: 12.5px; font-weight: 600; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle { padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon { width: 32px; height: 32px; icon-size: 16px; border-radius: 10px; background-color: rgba(255,255,255,.08); }
+-.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: -st-accent-color; color: #f2f3f5; }
+-.quick-settings.luma-studio-options .luma-options-utility:checked, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle:checked { background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-mic { padding: 8px 10px 8px 8px; spacing: 10px; border-radius: 15px; background-color: rgba(232,150,55,.16); }
+-.quick-settings.luma-studio-options .luma-options-mic-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-mic-app { font-size: 11px; color: rgba(242,243,245,.7); }
+-.quick-settings.luma-studio-options .luma-options-mute { height: 28px; padding: 0 11px; border-radius: 9px; font-size: 12px; font-weight: 600; background-color: rgba(255,255,255,.14); }
+-.quick-settings.luma-studio-options .luma-options-system { padding-top: 10px; border-top: 1px solid rgba(255,255,255,.1); background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { padding: 0; spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { width: 28px; height: 30px; padding: 0; min-width: 0; min-height: 0; border-radius: 9px; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action StIcon { icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-battery { spacing: 8px; padding: 0 8px 0 6px; height: 30px; }
+-.quick-settings.luma-studio-options .luma-options-battery-text { font-size: 12px; }
+-.quick-settings.luma-studio-options .luma-options-page-header { spacing: 6px; }
+-.quick-settings.luma-studio-options .luma-options-page-title { font-size: 14.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-back { width: 28px; height: 28px; border-radius: 9px; }
+-.quick-settings.luma-studio-options .luma-options-page-switch { padding: 4px; border-radius: 9px; }
+-.quick-settings.luma-studio-options .quick-toggle-menu.luma-options-detail { margin: 0; padding: 0; border: none; border-radius: 0; background-color: transparent; box-shadow: none; spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { min-height: 34px; padding: 5px 10px 5px 5px; border-radius: 12px; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-title { font-size: 12.5px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { font-size: 11px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-icon { width: 32px; icon-size: 16px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { icon-size: 15px; color: -st-accent-color; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { font-size: 12px; font-weight: 600; color: -st-accent-color; padding: 0 8px; height: 28px; }
+-.quick-settings.luma-studio-options .luma-options-switch-row { padding: 6px 10px; border-radius: 12px; }
+-.luma-studio-options.luma-surface-light .luma-options-radio,
+-.luma-studio-options.luma-surface-light .luma-options-level-key,
+-.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: rgba(20,22,26,.05); }
+-.luma-studio-options.luma-surface-light .luma-options-slider .luma-quick-level-value { color: rgba(29,31,35,.45); }
++.luma-surface-light .luma-notification-beacon .luma-notification-beacon-title {
++  color: #34383d; }
+ 
+-.luma-notification-lip .luma-lip-call-ring { width: 34px; height: 34px; border: 2px solid #65b58c; border-radius: 17px; }
+-.quick-settings.luma-studio-options .luma-options-pair-code { spacing: 8px; padding: 8px 0; }
+-.quick-settings.luma-studio-options .luma-options-pair-instruction { font-size: 12px; }
+-.quick-settings.luma-studio-options .luma-options-passkey { spacing: 6px; }
+-.quick-settings.luma-studio-options .luma-options-passkey-digit { width: 28px; padding: 7px 0; text-align: center; border-radius: 8px; background-color: rgba(255,255,255,.1); font-size: 20px; font-weight: 650; }
+-.quick-settings.luma-studio-options .luma-options-passkey-digit.entered { color: #65b58c; }
+-.quick-settings.luma-studio-options .luma-options-pair-actions { spacing: 8px; }
+-.quick-settings.luma-studio-options .luma-options-pair-actions StButton { padding: 6px 12px; border-radius: 8px; background-color: rgba(255,255,255,.12); }
+-.luma-notification-lip StButton:focus, .quick-settings.luma-studio-options StButton:focus { box-shadow: inset 0 0 0 2px -st-accent-color; }
++.luma-surface-light .luma-notification-beacon .luma-notification-beacon-summary {
++  color: rgba(52, 56, 61, 0.78); }
+ 
+-/* Reset the earlier 62px card geometry after moving controls out of its grid. */
+-.quick-settings.luma-studio-options { width: 310px; min-width: 310px; max-width: 310px; padding: 14px; }
+-.quick-settings.luma-studio-options .luma-options-utility, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle { height: 32px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-utility { padding: 5px; }
+-.quick-settings.luma-studio-options .luma-options-utility > StBoxLayout, .quick-settings.luma-studio-options .luma-options-utility .quick-toggle > StBoxLayout { padding: 0; spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio { width: 151px; height: 52px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle { height: 32px; margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++.luma-surface-light .luma-notification-beacon:hover {
++  background-color: rgba(25, 27, 31, 0.06); }
+ 
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { width: 16px; padding: 0; background-color: transparent; border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider { color: #f2f3f5; -barlevel-active-background-color: #e8eaed; -slider-handle-border-width: 0; -slider-handle-border-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-disc { background-color: transparent; border: none; box-shadow: none; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 14px; }
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-title { font-size: 12.5px; font-weight: 600; }
++.luma-surface-light .luma-notification-beacon:active, .luma-surface-light .luma-notification-beacon:checked {
++  background-color: rgba(25, 27, 31, 0.09); }
+ 
+-.quick-settings.luma-studio-options .quick-slider.luma-options-slider { border: none; }
+-.quick-settings.luma-studio-options .luma-options-system { min-height: 0; height: auto; margin: 2px 0 0; border-radius: 0; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-action { border: none; box-shadow: none; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-row { min-height: 34px; }
++.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-title {
++  color: #e7e9e8; }
+ 
+-/* Measured against current Studio: remove old account-footer/subtitle geometry. */
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-footer { height: 30px; }
+-.quick-settings.luma-studio-options .luma-options-system .luma-quick-actions { spacing: 2px; }
+-.quick-settings.luma-studio-options .luma-options-main { spacing: 0; }
+-.quick-settings.luma-studio-options .luma-options-levels { margin-bottom: 12px; }
+-.quick-settings.luma-studio-options .luma-options-radios { margin-bottom: 8px; }
+-.quick-settings.luma-studio-options .luma-options-toggles { margin-bottom: 12px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle { padding-top: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle StBoxLayout { spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { spacing: 10px; }
+-.quick-settings.luma-studio-options .luma-options-radio { border: 1px solid rgba(0,0,0,.25); }
++.luma-surface-dark .luma-notification-beacon .luma-notification-beacon-summary {
++  color: rgba(231, 233, 232, 0.8); }
+ 
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-close-button { margin: 0; }
++.luma-surface-dark .luma-notification-beacon:hover {
++  background-color: rgba(255, 255, 255, 0.06); }
+ 
+-/* Studio's lip rim is an inset shadow, so it consumes no text-column width. */
+-.luma-notification-lip .luma-lip-surface { border-width: 0; box-shadow: inset 0 -1px 0 rgba(255,255,255,.075); }
++.luma-surface-dark .luma-notification-beacon:active, .luma-surface-dark .luma-notification-beacon:checked {
++  background-color: rgba(255, 255, 255, 0.09); }
+ 
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header { min-height: 15px; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-title { min-height: 18px; }
+-.luma-notification-lip { color: #e7e9e8; }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-box .message-body { color: rgba(231,233,232,.62); }
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .message-source-title,
+-.luma-notification-lip .notification-banner.luma-lip-card .message-header .event-time { color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options { color: #e7e9e8; }
++.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-title {
++  color: #1f262d; }
+ 
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button { padding-left: 8px; }
+-.quick-settings.luma-studio-options .luma-options-slider .luma-quick-disclosure-icon { icon-size: 16px; }
++.luma-surface-frost .luma-notification-beacon .luma-notification-beacon-summary {
++  color: #394047; }
+ 
+-.popup-menu-content.quick-settings.luma-studio-options { width: 308px; min-width: 308px; max-width: 308px; padding: 16px; border: none; }
+-.quick-settings.luma-studio-options .luma-options-radio { width: 150px; border: none; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked { background-color: #353a42; }
+-.quick-settings.luma-studio-options .luma-options-radio:checked .quick-toggle-icon,
+-.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options .luma-options-system { border-top: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.09); }
+-.quick-settings.luma-studio-options .luma-options-toggle-row > .luma-options-utility { width: 140px; }
++.luma-surface-frost .luma-notification-beacon:hover {
++  background-color: rgba(37, 46, 54, 0.06); }
+ 
+-.luma-notification-lip .luma-lip-app-badge { margin: 0; }
++.luma-surface-frost .luma-notification-beacon:active, .luma-surface-frost .luma-notification-beacon:checked {
++  background-color: rgba(37, 46, 54, 0.1); }
+ 
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { margin: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle > StBoxLayout { padding: 0; }
++.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-title {
++  color: #161b20; }
+ 
+-.luma-notification-lip .luma-lip-icon-stack { spacing: 0; }
+-/* Resolve inherited radio wrapper spacing and checked-state specificity. */
+-.quick-settings.luma-studio-options .luma-options-radio > StBoxLayout { spacing: 0; padding: 0; }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-separator { width: 0; min-width: 0; padding: 0; margin: 0; border: none; }
+-.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked { background-color: #353a42; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-subtitle,
+-.quick-settings.luma-studio-options .luma-options-utility .quick-toggle-icon,
+-.quick-settings.luma-studio-options .luma-options-slider .icon-button,
+-.quick-settings.luma-studio-options .luma-options-system { color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options .luma-options-system .luma-options-battery StIcon { icon-size: 18px; }
+-.quick-settings.luma-studio-options .luma-options-slider .slider { color: #fff; -barlevel-active-background-color: #e7e9e8; }
+-.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked { background-color: #fff; box-shadow: 0 0 0 1px rgba(25,27,31,.08); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-subtitle,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility .quick-toggle-icon,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .icon-button,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-system { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio .quick-toggle-menu-button { color: rgba(22,25,29,.56); }
+-/* Studio detail lists and native Switch actors retain their service bindings. */
+-.quick-settings.luma-studio-options .luma-options-detail { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 4px; spacing: 1px; border-radius: 16px; background-color: rgba(0,0,0,.22); box-shadow: inset 0 1px 2px rgba(0,0,0,.22); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-copy { spacing: 1px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-state { color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row-dot { width: 15px; height: 15px; icon-size: 15px; background-color: transparent; border: none; border-radius: 0; color: #71b5f4; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { min-height: 0; height: 28px; padding: 0 8px; margin: 0; border: none; background-color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch { width: 34px; height: 20px; margin: 0; padding: 0; border: none; border-radius: 10px; background-color: rgba(0,0,0,.22); }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch StIcon { color: transparent; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch .handle { width: 14px; height: 14px; margin: 3px; padding: 0; border: none; border-radius: 7px; background-color: #353a42; }
+-.quick-settings.luma-studio-options .luma-options-page .toggle-switch:checked .handle { background-color: #fff; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail > .popup-menu-section,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-list,
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch { background-color: rgba(25,27,31,.055); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row-state { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch:checked { background-color: #3a84ca; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-page .toggle-switch .handle { background-color: #fff; }
+-.quick-settings.luma-studio-options .luma-options-fixture-groups { spacing: 12px; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { min-height: 0; padding: 2px 4px 0 6px; margin: 0; font-size: 12px; font-weight: 650; color: rgba(231,233,232,.62); }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby StButton { padding: 0; min-height: 0; font-size: 12px; font-weight: 600; background-color: transparent; color: #71b5f4; }
+-.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 2px 6px; margin: 0; font-size: 12.5px; color: rgba(231,233,232,.42); }
+-.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section.luma-options-near-empty { padding: 0; background-color: transparent; box-shadow: none; }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-nearby { color: rgba(22,25,29,.76); }
+-.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-options-off { color: rgba(22,25,29,.56); }
++.luma-surface-glass .luma-notification-beacon .luma-notification-beacon-summary {
++  color: #1f242a; }
++
++.luma-surface-glass .luma-notification-beacon:hover {
++  background-color: rgba(37, 46, 54, 0.05); }
++
++.luma-surface-glass .luma-notification-beacon:active, .luma-surface-glass .luma-notification-beacon:checked {
++  background-color: rgba(37, 46, 54, 0.08); }

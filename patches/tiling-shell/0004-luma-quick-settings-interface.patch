@@ -1,0 +1,48 @@
+diff --git a/dbus.js b/dbus.js
+--- a/dbus.js
++++ b/dbus.js
+@@ -1,6 +1,11 @@
+ const node = `<node>
+     <interface name="org.gnome.Shell.Extensions.TilingShell">
+         <method name="openLayoutEditor" />
++        <method name="newLayout" />
++        <method name="selectLayout">
++            <arg type="i" name="monitorIndex" direction="in" />
++            <arg type="s" name="layoutId" direction="in" />
++        </method>
+     </interface>
+ </node>`;
+ import { Gio } from "./gi/ext.js";
+diff --git a/extension.js b/extension.js
+--- a/extension.js
++++ b/extension.js
+@@ -157,6 +157,17 @@ class TilingShellExtension extends Extension {
+     this._indicator?.openLayoutEditor();
+   }
+ 
++  newLayout() {
++    this._indicator?.newLayoutOnClick(true);
++  }
++
++  selectLayout(monitorIndex, layoutId) {
++    GlobalState.get().setSelectedLayoutOfMonitor(
++      layoutId,
++      monitorIndex
++    );
++  }
++
+   _createTilingManagers() {
+     debug("building a tiling manager for each monitor");
+     this._tilingManagers.forEach((tm) => tm.destroy());
+diff --git a/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml b/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+--- a/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
++++ b/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+@@ -40,7 +40,7 @@
+             <description>Change the desktop layout to match the layout used when tiling a window with Snap Assistant.</description>
+         </key>
+         <key name="show-indicator" type="b">
+-            <default>true</default>
++            <default>false</default>
+             <summary>Shows indicator</summary>
+             <description>Shows an indicator on top panel.</description>
+         </key>

@@ -1,0 +1,93 @@
+From 83a3a2691bd8c2007199302666337fd74d38147f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:20:05 +0200
+Subject: [PATCH 05/41] tee: qseecom: unload an application when its load
+ session closes
+
+The driver already knows which applications it loaded, and a load session on
+the privileged device owns the application it started, so closing that session
+is the natural place to release it. Without this, TZ keeps the application
+until reboot and refuses to load it again.
+
+Sessions on the client device are unaffected -- they reference an application,
+they do not own it.
+
+A failing shutdown is warned about and leaves the registry entry alone, so the
+worst case is the previous behaviour.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 41 ++++++++++++++++++++++++++++++++++----
+ 1 file changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 50aa0f66a..c3009aef5 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -406,6 +406,22 @@ static u32 qseecom_tee_app_find(struct qseecom_tee *qtee, const char *name)
+ 	return app_id;
+ }
+ 
++/* Drop an application from the registry once TZ has unloaded it. */
++static void qseecom_tee_app_forget(struct qseecom_tee *qtee, u32 app_id)
++{
++	struct qseecom_tee_app *app;
++
++	guard(mutex)(&qtee->apps_lock);
++
++	list_for_each_entry(app, &qtee->apps, node) {
++		if (app->app_id == app_id) {
++			list_del(&app->node);
++			kfree(app);
++			return;
++		}
++	}
++}
++
+ static int qseecom_tee_app_remember(struct qseecom_tee *qtee, const char *name,
+ 				    u32 app_id)
+ {
+@@ -1318,6 +1334,7 @@ static int qseecom_tee_supp_close_session(struct tee_context *ctx, u32 session)
+ 	struct qseecom_tee_context *ctxdata = ctx->data;
+ 	struct qseecom_tee_listener *listener;
+ 	struct qseecom_tee_session *sess;
++	u32 app_id;
+ 	int ret;
+ 
+ 	mutex_lock(&ctxdata->mutex);
+@@ -1333,15 +1350,31 @@ static int qseecom_tee_supp_close_session(struct tee_context *ctx, u32 session)
+ 	if (!sess)
+ 		return -EINVAL;
+ 
++	app_id = sess->app_id;
+ 	kfree(sess);
+ 
+ 	/*
+-	 * An application session on this device just drops its reference, as
+-	 * on the client one: the application stays loaded and other contexts
+-	 * may still be using it.
++	 * A load session on this device owns the application it started, so
++	 * closing it unloads. Without that, TZ refuses a second load of the
++	 * same application and only a reboot clears it -- which matters
++	 * because an application asks for its stored state during a first
++	 * initialisation and never again, so re-initialising it is otherwise
++	 * impossible.
++	 *
++	 * Sessions opened on the client device are unaffected: those only
++	 * reference an application, they do not own it.
+ 	 */
+-	if (!listener)
++	if (!listener) {
++		if (app_id) {
++			ret = qcom_scm_qseecom_app_shutdown(app_id);
++			if (ret)
++				dev_warn(ctxdata->qtee->dev,
++					 "unloading app %u: %d\n", app_id, ret);
++			else
++				qseecom_tee_app_forget(ctxdata->qtee, app_id);
++		}
+ 		return 0;
++	}
+ 
+ 	/*
+ 	 * Withdrawing a listener that has a request outstanding will block

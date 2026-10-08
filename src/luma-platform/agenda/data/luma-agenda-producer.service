@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Project Luma upcoming calendar event producer
+Documentation=https://github.com/SimplyLuma/luma
+After=luma-semantic-broker.service evolution-source-registry.service
+PartOf=graphical-session.target
+# The login screen is a graphical session too, run by a transient greeter
+# user with no calendar or calls of its own.
+ConditionEnvironment=XDG_SESSION_CLASS=user
+
+[Service]
+Type=simple
+# The Semantic Broker derives a publisher's application identity from the
+# caller's cgroup, and this publication belongs to Calendar: the event is
+# Calendar's, and its one action opens Calendar. So the producer is launched
+# into a transient application scope named for org.projectluma.Calendar, whose
+# desktop file is root-owned, rather than claiming an identity of its own.
+ExecStart=/usr/bin/systemd-run --user --quiet --scope \
+  --unit=app-org.projectluma.Calendar-%b --collect \
+  /usr/libexec/luma-agenda-producer
+# systemd-run execs the producer in place, so without this every line it logs
+# is attributed to "systemd-run" and `journalctl -t luma-agenda` finds nothing.
+SyslogIdentifier=luma-agenda
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=graphical-session.target

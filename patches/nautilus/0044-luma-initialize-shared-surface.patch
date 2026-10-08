@@ -1,0 +1,39 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] nautilus: initialize the shared Luma surface before windows
+
+Filer already links the shared Luma UI and consumes its components, but the
+library was reached only by view-specific paths. A normal non-empty folder
+could therefore create its first window before Luma UI registered the native
+surface binding, leaving Frost and Glass opaque.
+
+Initialize the shared platform immediately after GtkApplication startup, when
+the display and default application both exist and before Nautilus creates a
+window. This is toolkit adoption at the application's native startup boundary;
+it does not add a Filer-local material implementation.
+
+---
+ src/nautilus-application.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -27,6 +27,7 @@
+ #include "nautilus-application.h"
+ 
+ #include <adwaita.h>
++#include <luma-ui.h>
+ #include <fcntl.h>
+ #include <gdk/gdk.h>
+ #include <gio/gio.h>
+@@ -981,6 +982,8 @@ nautilus_application_startup (GApplication *app)
+      */
+     G_APPLICATION_CLASS (nautilus_application_parent_class)->startup (G_APPLICATION (self));
+ 
++    luma_init ();
++
+     g_assert (display == NULL || gdk_display_get_default () == display);
+ 
+     gtk_window_set_default_icon_name (APPLICATION_ID);
+-- 
+2.54.0

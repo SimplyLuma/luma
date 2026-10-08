@@ -1,0 +1,64 @@
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -15,6 +15,7 @@
+   GSettings *settings;
+   GtkWidget *preview;
+   AdwSwitchRow *float_row;
++  AdwSpinRow *padding_row;
+   GtkCheckButton *positions[4];
+ };
+ 
+@@ -71,12 +72,14 @@
+   gboolean islands = g_str_equal (surface, "separate");
+   GdkRGBA fg;
+   double sw = MIN (width - 32, 300), sh = height - 24, sx = (width-sw)/2, sy = 12;
+-  double inset = attached ? 0 : 7, gutter = !span || floating ? 7 : 0;
++  double padding = g_settings_get_int (self->settings, "shelf-padding") * .4;
++  double thickness = 14.4 + 2 * padding;
++  double inset = attached ? 0 : padding, gutter = !span || floating ? padding : 0;
+   double available = (vertical ? sh : sw) - 2*gutter;
+   double length = span ? available : MIN (available, vertical ? 116 : 164);
+   double start = ((vertical ? sh : sw) - length)/2;
+-  double x = vertical ? (g_str_equal (edge, "left") ? sx+inset : sx+sw-inset-20) : sx+start;
+-  double y = vertical ? sy+start : (g_str_equal (edge, "top") ? sy+inset : sy+sh-inset-20);
++  double x = vertical ? (g_str_equal (edge, "left") ? sx+inset : sx+sw-inset-thickness) : sx+start;
++  double y = vertical ? sy+start : (g_str_equal (edge, "top") ? sy+inset : sy+sh-inset-thickness);
+ 
+   gtk_widget_get_color (GTK_WIDGET (area), &fg);
+   cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, .1);
+@@ -88,7 +91,7 @@
+   cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, .85);
+   if (!islands)
+     {
+-      surface_rect (cr, x, y, vertical ? 20 : length, vertical ? length : 20,
++      surface_rect (cr, x, y, vertical ? thickness : length, vertical ? length : thickness,
+                     edge, attached, span && !floating, span && !floating);
+       cairo_fill (cr);
+     }
+@@ -96,11 +99,11 @@
+     {
+       double dock = span ? MIN (length * .55, 100) : length * .62;
+       double status = MIN (length-dock-4, vertical ? 36 : 48);
+-      surface_rect (cr, x, y, vertical ? 20 : dock, vertical ? dock : 20,
++      surface_rect (cr, x, y, vertical ? thickness : dock, vertical ? dock : thickness,
+                     edge, attached, span && !floating, FALSE);
+       cairo_fill (cr);
+       surface_rect (cr, vertical ? x : x+length-status, vertical ? y+length-status : y,
+-                    vertical ? 20 : status, vertical ? status : 20,
++                    vertical ? thickness : status, vertical ? status : thickness,
+                     edge, attached, FALSE, span && !floating);
+       cairo_fill (cr);
+     }
+@@ -241,6 +244,12 @@
+   adw_preferences_group_set_title (appearance, _("Appearance"));
+   add_switch (self, appearance, _("Use islands"), _("Give the dock and status area separate surfaces"),
+               "shelf-surface-mode", island_values);
++  self->padding_row = ADW_SPIN_ROW (adw_spin_row_new_with_range (4, 24, 1));
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->padding_row), _("Padding"));
++  adw_action_row_set_subtitle (ADW_ACTION_ROW (self->padding_row),
++    _("Space around content and between the Dash and screen edges, in pixels"));
++  g_settings_bind (self->settings, "shelf-padding", self->padding_row, "value", G_SETTINGS_BIND_DEFAULT);
++  adw_preferences_group_add (appearance, GTK_WIDGET (self->padding_row));
+   adw_preferences_page_add (page, appearance);
+   g_signal_connect_object (self->settings, "changed", G_CALLBACK (settings_changed), self, 0);
+   g_signal_connect_object (self->settings, "writable-changed", G_CALLBACK (sync_settings), self, G_CONNECT_SWAPPED);

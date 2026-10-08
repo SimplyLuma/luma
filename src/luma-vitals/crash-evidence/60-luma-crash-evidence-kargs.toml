@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Fedora builds efi_pstore disabled by default. Enable it so a kernel panic or
+# oops leaves its last kernel messages in EFI variables; systemd-pstore moves
+# them to /var/lib/systemd/pstore on the next boot and removes them from NVRAM.
+kargs = ["efi_pstore.pstore_disable=0"]

@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.Leaf
+Exec=@bindir@/org.projectluma.Leaf --gapplication-service

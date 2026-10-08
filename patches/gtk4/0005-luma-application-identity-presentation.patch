@@ -1,0 +1,116 @@
+From f190c9b5fb739847a96297cf656e1b3d0591c340 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 23:10:00 -0500
+Subject: [PATCH] theme: present generic application identity with AppKit metrics
+
+Keep the compatibility identity trigger on the same 32px, 20px icon, 8px
+spacing, and quiet hover/active geometry as the Luma AppKit component. Update
+both the maintained SCSS and generated release CSS.
+---
+ gtk/theme/Default/Default-dark.css  | 14 ++++++++++++++
+ gtk/theme/Default/Default-light.css | 14 ++++++++++++++
+ gtk/theme/Default/_common.scss      | 43 ++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 71 insertions(+)
+
+--- a/gtk/theme/Default/_common.scss
++++ b/gtk/theme/Default/_common.scss
+@@ -1654,8 +1654,51 @@ headerbar {
+   menubutton > button {
+     margin-top: 0px;
+     margin-bottom: 0px;
++  }
++
++  menubutton.luma-identity-button {
++    min-height: 32px;
++    margin-top: 5px;
++    margin-bottom: 5px;
++    padding: 0;
++    border-radius: 10px;
+   }
+ 
++  menubutton.luma-identity-button > button,
++  box.luma-identity-button {
++    min-height: 24px;
++    padding: 4px 8px 4px 4px;
++    border: 0;
++    border-radius: 10px;
++    background: transparent;
++    box-shadow: none;
++    color: $fg_color;
++    font-size: 13px;
++    font-weight: 600;
++  }
++
++  menubutton.luma-identity-button > button:hover {
++    background: gtkalpha($fg_color, 0.06);
++  }
++
++  menubutton.luma-identity-button > button:active,
++  menubutton.luma-identity-button > button:checked {
++    background: gtkalpha($fg_color, 0.105);
++  }
++
++  .luma-identity-content {
++    border-spacing: 8px;
++  }
++
++  .luma-identity-icon {
++    -gtk-icon-size: 20px;
++  }
++
++  .luma-identity-chevron {
++    -gtk-icon-size: 10px;
++    opacity: 0.55;
++  }
++
+   switch {
+     margin-top: 10px;
+     margin-bottom: 10px;
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -630,6 +630,20 @@ headerbar windowcontrols.end { margin-right: 0; }
+ headerbar windowcontrols.end { margin-right: 0; }
+ 
+ headerbar menubutton > button { margin-top: 0px; margin-bottom: 0px; }
++
++headerbar menubutton.luma-identity-button { min-height: 32px; margin-top: 5px; margin-bottom: 5px; padding: 0; border-radius: 10px; }
++
++headerbar menubutton.luma-identity-button > button, headerbar box.luma-identity-button { min-height: 24px; padding: 4px 8px 4px 4px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: #2e3436; font-size: 13px; font-weight: 600; }
++
++headerbar menubutton.luma-identity-button > button:hover { background: alpha(#2e3436,0.06); }
++
++headerbar menubutton.luma-identity-button > button:active, headerbar menubutton.luma-identity-button > button:checked { background: alpha(#2e3436,0.105); }
++
++headerbar .luma-identity-content { border-spacing: 8px; }
++
++headerbar .luma-identity-icon { -gtk-icon-size: 20px; }
++
++headerbar .luma-identity-chevron { -gtk-icon-size: 10px; opacity: 0.55; }
+ 
+ headerbar switch { margin-top: 10px; margin-bottom: 10px; }
+ 
+--- a/gtk/theme/Default/Default-dark.css
++++ b/gtk/theme/Default/Default-dark.css
+@@ -622,6 +622,20 @@ headerbar windowcontrols.end { margin-right: 0; }
+ headerbar windowcontrols.end { margin-right: 0; }
+ 
+ headerbar menubutton > button { margin-top: 0px; margin-bottom: 0px; }
++
++headerbar menubutton.luma-identity-button { min-height: 32px; margin-top: 5px; margin-bottom: 5px; padding: 0; border-radius: 10px; }
++
++headerbar menubutton.luma-identity-button > button, headerbar box.luma-identity-button { min-height: 24px; padding: 4px 8px 4px 4px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: #eeeeec; font-size: 13px; font-weight: 600; }
++
++headerbar menubutton.luma-identity-button > button:hover { background: alpha(#eeeeec,0.06); }
++
++headerbar menubutton.luma-identity-button > button:active, headerbar menubutton.luma-identity-button > button:checked { background: alpha(#eeeeec,0.105); }
++
++headerbar .luma-identity-content { border-spacing: 8px; }
++
++headerbar .luma-identity-icon { -gtk-icon-size: 20px; }
++
++headerbar .luma-identity-chevron { -gtk-icon-size: 10px; opacity: 0.55; }
+ 
+ headerbar switch { margin-top: 10px; margin-bottom: 10px; }
+ 
+-- 
+2.54.0

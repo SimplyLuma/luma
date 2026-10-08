@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Valet
+Comment=Review and install an application package
+Exec=luma-install %f
+Icon=io.luma.Valet
+Terminal=false
+NoDisplay=true
+StartupNotify=true
+StartupWMClass=io.luma.Valet
+MimeType=application/x-rpm;application/vnd.debian.binary-package;application/vnd.appimage;application/vnd.flatpak;application/vnd.flatpak.ref;application/vnd.flatpak.repo;application/vnd.snap;application/vnd.android.package-archive;application/vnd.projectluma.android-package-set;application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/vnd.microsoft.portable-executable;
+Categories=System;

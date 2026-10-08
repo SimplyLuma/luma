@@ -1,0 +1,1398 @@
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 19 Sep 2026 12:00:00 -0500
+Subject: [PATCH] luma: Dash islands on every edge, where you aim, with every setting
+
+The owner's feedback on movable islands (ADR-044, 0167):
+
+- Every edge takes islands, including an edge shared with another monitor
+  (the sides of a middle display): those bands are reserved through
+  Mutter's meta_display_set_monitor_edge_reservation() (Mutter 0016);
+  without it, shared edges stay closed as before.
+- A drop goes to the zone the pointer is in, wherever the island was
+  grabbed; otherwise the island's centre picks the nearest zone. The
+  carried island takes its target edge's form and the ghost is a preview
+  group of its real length, so it is exactly where the island lands.
+- Islands attach (9 px) or sit at an edge's start, centre or end; free
+  positions need shelf-free-placement (Dash settings, the arrange card).
+- Empty zones are drawn faint at rest and stronger with nearness, the
+  target zone at full weight; each edge has a faint line that steps aside
+  around every placeholder, group and ghost.
+- Arranging shows the live extensions slot as a ghost island when nothing
+  is live.
+- Settings: Use islands off with span draws one bar along the dock's band,
+  arranged groups included; Float outer edges moves the band's ends and
+  squares them; Protrude keeps the windows' padding (the tiling gap on
+  every edge); Keep windows out of the Dash is honoured; Position moves the
+  dock's edge in an arrangement.
+- Side-edge forms of the media and live islands and the column clock.
+- The Dash menu is a kit menu (the app-menu presentation) and reads Dash
+  Settings….
+---
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index d961669..5c3ffd0 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2352,3 +2352,57 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-surface-glass .luma-well .luma-well-extension .panel-button.screen-sharing-indicator,
+ .luma-surface-glass .luma-well .luma-well-extension .panel-button.screen-recording-indicator,
+ .luma-surface-glass .luma-well .luma-well-extension .panel-button.luma-screen-recorded-indicator { color: #5f3908; }
++
++/* ── Movable islands, refinements (owner, 2026-09-19) ────────────────────
++ * Zone placeholders are drawn at a weight set in code (ZONE_REST 22% at
++ * rest, rising with the pointer's nearness); the zone a drop takes is filled
++ * and loses its dashes, and the ghost (the preview group, the exact landing
++ * footprint) carries the outline, so one space holds one outline. */
++.luma-arrange-zone.luma-arrange-zone-active,
++.luma-arrange-light .luma-arrange-zone.luma-arrange-zone-active,
++.luma-arrange-frost .luma-arrange-zone.luma-arrange-zone-active,
++.luma-arrange-glass .luma-arrange-zone.luma-arrange-zone-active { -luma-line-width: 0; }
++/* The ghost of a drop on a zone: the state ink, dashed. */
++.luma-arrange-gap.luma-arrange-gap-ghost .luma-arrange-gap-footprint { color: #8a99a8; }
++.luma-arrange-gap.luma-arrange-gap-ghost.luma-arrange-light .luma-arrange-gap-footprint,
++.luma-arrange-gap.luma-arrange-gap-ghost.luma-arrange-frost .luma-arrange-gap-footprint,
++.luma-arrange-gap.luma-arrange-gap-ghost.luma-arrange-glass .luma-arrange-gap-footprint { color: #4a5a6e; }
++/* The edge line: its alpha is drawn in code (faint, brighter near the
++ * pointer); the colour is the treatment's ink. */
++.luma-arrange-edge { color: #ffffff; }
++.luma-arrange-light .luma-arrange-edge,
++.luma-arrange-frost .luma-arrange-edge,
++.luma-arrange-glass .luma-arrange-edge { color: #191b1f; }
++
++/* The live extensions slot while arranging, when no live extension runs. */
++.luma-live-ghost-outline { color: rgba(255, 255, 255, 0.40); -luma-line-width: 1.5px; -luma-dash: 5; border-radius: 15px; }
++.luma-live-ghost-content { spacing: 8px; padding: 0 14px; }
++.luma-live-ghost-icon { icon-size: 16px; color: rgba(231, 233, 232, 0.62); }
++.luma-live-ghost-label { font-family: Figtree, sans-serif; font-size: 12px; font-weight: 600; color: rgba(231, 233, 232, 0.62); }
++.luma-live-ghost.luma-arrange-light .luma-live-ghost-outline,
++.luma-live-ghost.luma-arrange-frost .luma-live-ghost-outline,
++.luma-live-ghost.luma-arrange-glass .luma-live-ghost-outline { color: rgba(25, 27, 31, 0.36); }
++.luma-live-ghost.luma-arrange-light .luma-live-ghost-label,
++.luma-live-ghost.luma-arrange-frost .luma-live-ghost-label,
++.luma-live-ghost.luma-arrange-glass .luma-live-ghost-label,
++.luma-live-ghost.luma-arrange-light .luma-live-ghost-icon,
++.luma-live-ghost.luma-arrange-frost .luma-live-ghost-icon,
++.luma-live-ghost.luma-arrange-glass .luma-live-ghost-icon { color: rgba(25, 27, 31, 0.62); }
++
++/* Allow free placement, in the arrange card. */
++.luma-arrange-option { padding: 6px 0 12px; }
++.luma-arrange-option-label { font-size: 12px; font-weight: 600; }
++
++/* Menus opened from the Dash's islands are kit menus: the kit's 13/600
++ * Figtree rows 32 high and its rule, in every mode (the Dash menu itself
++ * uses the app-menu presentation). */
++.luma-shelf-menu .popup-menu-item { min-height: 32px; padding: 0 8px; border-radius: 10px; font-size: 13px; font-weight: 600; }
++.luma-shelf-menu .popup-separator-menu-item { min-height: 0; padding: 0; margin: 5px 4px; }
++
++/* Side-edge (column) forms of every island (ADR-044 §6). */
++.luma-shelf-vertical .luma-status-cluster .luma-status-clock,
++.luma-shelf-vertical .luma-shelf-clock-island .luma-status-clock { min-width: 0; padding: 0; }
++.luma-shelf-vertical .luma-status-cluster .luma-status-clock-text,
++.luma-shelf-vertical .luma-shelf-clock-island .luma-status-clock-text { spacing: 2px; }
++.luma-live-extension-short { font-family: Figtree, sans-serif; font-size: 11px; font-weight: 700; font-feature-settings: "tnum"; }
++.luma-shelf-vertical .luma-live-extension-content { spacing: 6px; }
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index cd7eea1..5c4c51c 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -196,12 +196,22 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             y_align: Clutter.ActorAlign.CENTER,
+             visible: false,
+         });
++        // On a side edge the island is a 36px column: the leading tile, the
++        // short time or countdown ("4:12") and the primary action. The title
++        // stays in the island's name.
++        this._short = new St.Label({
++            style_class: 'luma-live-extension-short',
++            x_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._subtitle.connect('notify::text', () => this._syncShort());
+         const content = this._shelfContent = new St.BoxLayout({
+             style_class: 'luma-live-extension-content',
+         });
+         content.add_child(this._badge);
+         content.add_child(this._leading);
+         content.add_child(text);
++        content.add_child(this._short);
+         content.add_child(this._time);
+         content.add_child(this._actions);
+         this.add_child(content);
+@@ -716,6 +726,17 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         this._shelfContent.orientation = orientation;
+         // A vertical shelf is a narrow column: three buttons only fit stacked.
+         this._actions.orientation = orientation;
++        this._compact = vertical;
++        this._text.visible = !vertical;
++        this._shelfContent.x_align = vertical ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL;
++        this._syncShort();
++    }
++
++    // The countdown or elapsed time from the subtitle, for the column form.
++    _syncShort() {
++        const match = /\d{1,2}:\d{2}(?::\d{2})?/.exec(this._subtitle.text ?? '');
++        this._short.text = match ? match[0] : '';
++        this._short.visible = !!this._compact && !!match;
+     }
+ 
+     _openOptions() {
+@@ -1221,8 +1242,17 @@ class QuickSettings extends PanelMenu.Button {
+                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+             this._statusDateLabel = new St.Label({style_class: 'luma-status-date',
+                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++            // In a 36px column the date is the short "Sat 19" form.
++            this._statusDateShort = new St.Label({style_class: 'luma-status-date',
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER, visible: false});
+             this._statusClockBox.add_child(this._statusTime);
+             this._statusClockBox.add_child(this._statusDateLabel);
++            this._statusClockBox.add_child(this._statusDateShort);
++            const shortDate = () => {
++                this._statusDateShort.text = GLib.DateTime.new_now_local().format('%a %-d') ?? '';
++            };
++            dateMenu._dateDisplay.connectObject('notify::text', shortDate, this);
++            shortDate();
+             this._statusClock.child = this._statusClockBox;
+             // Bind the owned clock, rather than running another timer.
+             dateMenu._timeDisplay.bind_property('text', this._statusTime, 'text',
+@@ -1454,8 +1484,13 @@ class QuickSettings extends PanelMenu.Button {
+ 
+     _statusFontSize(label) {
+         const s = this._statusSettings;
+-        return label === this._statusTime
++        const size = label === this._statusTime
+             ? s.get_int('status-time-size') : Math.max(11, s.get_int('status-date-size'));
++        // In a 36px column (a side edge) the time is set small enough never
++        // to break, and the date under it smaller still.
++        if (this._statusClockVertical ?? this._statusVertical)
++            return Math.min(size, label === this._statusTime ? 11 : 9);
++        return size;
+     }
+ 
+     _setStatusLineHeight(label) {
+@@ -1617,11 +1652,11 @@ class QuickSettings extends PanelMenu.Button {
+             part.set_style(`border: ${framed && stroked ? 1 : 0}px solid ${line}; ` +
+                 `border-radius: ${radii.map(n => `${n}px`).join(' ')}; ` +
+                 `${framed && filled ? `background-color: ${rgba(isClock ? 'status-clock-fill' : 'status-controls-fill')}; ` : ''}` +
+-                `padding: ${flush ? `${padding}px` : isClock ? '0 4px' : '0'}; ${joined && innerSide ? `border-${innerSide}: 0;` : ''} ${joined && !flush && innerSide ? `padding-${innerSide}: ${padding}px;` : ''}`);
++                `padding: ${flush ? `${padding}px` : isClock && !clockVertical ? '0 4px' : '0'}; ${joined && innerSide ? `border-${innerSide}: 0;` : ''} ${joined && !flush && innerSide ? `padding-${innerSide}: ${padding}px;` : ''}`);
+         }
+         // A clock with an island of its own is a plain part of that island.
+         if (!parts.includes(this._statusClock))
+-            this._statusClock.set_style('padding: 0 4px;');
++            this._statusClock.set_style(clockVertical ? 'padding: 0;' : 'padding: 0 4px;');
+         const seam = s.get_boolean('status-divider');
+         // A 1 x 24 rule, 8 from the parts on each side. Joined parts meet
+         // along a rule as long as they are.
+@@ -1636,6 +1671,10 @@ class QuickSettings extends PanelMenu.Button {
+         }
+         this._statusTime.set_style(`font-size: ${this._statusFontSize(this._statusTime)}px; font-weight: 700; color: ${ink.ink};`);
+         this._statusDateLabel.set_style(`font-size: ${this._statusFontSize(this._statusDateLabel)}px; font-weight: 600; color: ${ink.ink2};`);
++        this._statusDateShort?.set_style(this._statusDateLabel.get_style());
++        this._statusDateLabel.visible = !clockVertical;
++        if (this._statusDateShort)
++            this._statusDateShort.visible = clockVertical;
+         // Time 13/16 over date 11/14, 2 apart: the lines carry their own
+         // leading, so the gap between them is the spec's two pixels.
+         this._statusClockBox.set_style(`padding: 0; spacing: ${STATUS_CLOCK_GAP}px;`);
+@@ -1644,9 +1683,11 @@ class QuickSettings extends PanelMenu.Button {
+             this._setStatusLineHeight(label);
+             const textWidth = DASH_TILE_SIZE - (stroked && ['all', 'split', 'joined'].includes(scope) ? 2 : 0);
+             label.set_width(clockVertical ? textWidth * textScale : -1);
+-            label.clutter_text.single_line_mode = !clockVertical;
++            // The time never breaks; the date may wrap under it in a column.
++            const wraps = clockVertical && label !== this._statusTime;
++            label.clutter_text.single_line_mode = !wraps;
+             label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+-            label.clutter_text.line_wrap = clockVertical;
++            label.clutter_text.line_wrap = wraps;
+             label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+             label.clutter_text.line_alignment = Pango.Alignment.CENTER;
+         }
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index c153cde..942d07b 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1,6 +1,7 @@
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
++import Meta from 'gi://Meta';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Shell from 'gi://Shell';
+@@ -157,7 +158,10 @@ class ShelfGroupLayout extends Clutter.LayoutManager {
+         let lead = 0;
+         if (spare > 0 && !container._fitsContent) {
+             const dock = children.indexOf(container._dockIsland);
+-            const flexible = dock < 0 ? [] : [dock - 1, dock].filter(i => i >= 0 && i < gaps.length);
++            const boundaries = (container._boundaryActors ?? [])
++                .map(actor => children.indexOf(actor)).filter(i => i >= 0 && i < gaps.length);
++            const flexible = boundaries.length ? boundaries
++                : dock < 0 ? [] : [dock - 1, dock].filter(i => i >= 0 && i < gaps.length);
+             if (flexible.length)
+                 flexible.forEach(i => (gaps[i] += spare / flexible.length));
+             else
+@@ -584,10 +588,12 @@ export const Shelf = GObject.registerClass({
+         this._mediaIsland = new ShelfIsland('luma-shelf-media-island', this._mediaMaterial);
+         this._mediaIsland.visible = false;
+         this._mediaGuard = new MediaIslandGuard(this._mediaIsland, this._media,
+-            {vertical: () => this._vertical, sync: () => { this._sync(); this._queueDockWidth(); }});
++            {vertical: () => Arrangement.isVertical(this.edgeOfIsland('media')), sync: () => { this._sync(); this._queueDockWidth(); }});
+         this._media.connectObject('eligibility-changed', () => {
+             const show = this._media.eligible;
+-            const property = this._vertical ? 'height' : 'width';
++            // Grow along the media island's own edge, not the dock's.
++            const mediaVertical = Arrangement.isVertical(this.edgeOfIsland('media'));
++            const property = mediaVertical ? 'height' : 'width';
+             // Every show and hide ends in a known state, however it stops: an
+             // animation cut short by anything but the opposite one still
+             // leaves the island opaque at its natural size, or hidden.
+@@ -598,7 +604,7 @@ export const Shelf = GObject.registerClass({
+                 this._mediaIsland[property] = -1;
+                 this._sync();
+                 const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-                const target = this._vertical
++                const target = mediaVertical
+                     ? this._mediaIsland.get_preferred_height(50 * scale)[1]
+                     : this._mediaIsland.get_preferred_width(50 * scale)[1];
+                 this._mediaIsland[property] = 0;
+@@ -682,7 +688,7 @@ export const Shelf = GObject.registerClass({
+             this._syncAgainId = 0;
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+-            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland])
++            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland, this._liveGhost])
+                 if (island && !island.get_parent()) island.destroy();
+         });
+ 
+@@ -716,9 +722,21 @@ export const Shelf = GObject.registerClass({
+     }
+ 
+     _settingsChanged(key) {
++        // Dash settings' Position moves the dock's edge. Once islands are
++        // arranged, it carries every group on the dock's edge to the new one,
++        // keeping where along the edge each sits.
++        if (key === 'shelf-edge' && this.canArrange && !this._arrangementIsDefault) {
++            const edge = this._settings.get_string('shelf-edge');
++            const from = this._edge;
++            if (from && edge !== from) {
++                console.log(`[luma-shelf] Dash position ${from} -> ${edge}: moving the dock's edge`);
++                this.writeArrangement(this.arrangement.map(g => (g.edge === from ? {...g, edge} : g)));
++                return;
++            }
++        }
+         const shapeKeys = ['shelf-edge-mode', 'shelf-span-full',
+             'shelf-float-ends', 'shelf-surface-mode'];
+-        if (!this._positioned || !shapeKeys.includes(key) ||
++        if (!this._groups.some(group => group._positioned) || !shapeKeys.includes(key) ||
+             !St.Settings.get().enable_animations) {
+             this._sync();
+             return;
+@@ -1143,7 +1161,9 @@ export const Shelf = GObject.registerClass({
+             this._missingKeyLogged = true;
+             console.warn('[luma-shelf] shell-state has no shelf-arrangement key: default layout, arrange mode off');
+         }
+-        const result = Arrangement.normalizeArrangement(raw, v1);
++        const free = this._settings.settings_schema.has_key('shelf-free-placement') &&
++            this._settings.get_boolean('shelf-free-placement');
++        const result = Arrangement.normalizeArrangement(raw, v1, Arrangement.DEFAULT_ORDER, {freePlacement: free});
+         // The default row mirrors in RTL as it always has; a placed row is
+         // physical and never does.
+         if (result.isDefault && Clutter.get_default_text_direction() === Clutter.TextDirection.RTL) {
+@@ -1227,8 +1247,10 @@ export const Shelf = GObject.registerClass({
+         const monitors = layout.monitors.map(m => ({index: m.index, x: m.x, y: m.y,
+             width: m.width, height: m.height, primary: m.index === layout.primaryIndex,
+             id: this._monitorId(m.index)}));
+-        for (const monitor of monitors)
++        for (const monitor of monitors) {
+             monitor.sharedEdges = Arrangement.sharedEdges(monitor, monitors);
++            monitor.closedEdges = this._closedEdges(monitor);
++        }
+         return monitors;
+     }
+ 
+@@ -1319,6 +1341,8 @@ export const Shelf = GObject.registerClass({
+         this._protrude = this._settings.get_string('shelf-edge-mode') === 'protruding';
+         this._span = this._settings.get_boolean('shelf-span-full');
+         this._floatEnds = this._settings.get_boolean('shelf-float-ends');
++        this._freePlacement = this._settings.settings_schema.has_key('shelf-free-placement') &&
++            this._settings.get_boolean('shelf-free-placement');
+ 
+         // Where every island is: the stored arrangement (an empty one is
+         // today's layout, derived from the v1 keys), or arrange mode's
+@@ -1328,10 +1352,15 @@ export const Shelf = GObject.registerClass({
+         this._arrangementIsDefault = stored.isDefault;
+         this._monitors = this._monitorInfo();
+         const layout = Main.layoutManager;
+-        const shared = new Map(this._monitors.map(m => [m.index, m.sharedEdges]));
++        const shared = new Map(this._monitors.map(m => [m.index, m.closedEdges]));
+         const groups = this._preview?.groups ?? this._arrangement;
+         this._resolved = layout.primaryMonitor
+             ? Arrangement.resolveDisplays(groups, this._monitors, layout.primaryIndex, shared) : [];
++        // "Use islands" off with a spanning shelf: the groups on the dock's
++        // band are drawn as one bar along the edge (not while arranging,
++        // where each group stays a group of its own).
++        if (this._surfaceMode === 'connected' && this._span && !this._preview && !this._arrange?.active)
++            this._resolved = this._mergeSpanningBand(this._resolved);
+         if (this._preview?.drag)
+             this._resolved.push({...this._preview.drag, source: [], drag: true});
+         this._islandEdges = new Map();
+@@ -1396,6 +1425,8 @@ export const Shelf = GObject.registerClass({
+     // The island actor drawn for an id right now. A status part fused into
+     // Quick Options is drawn by the Quick Options island.
+     islandActorFor(id) {
++        if (id === 'live' && this._liveGhostWanted())
++            return this._liveGhostIsland();
+         if (id === 'well' && this._wellIsland && !this._actionsParts?.includes('well'))
+             return this._wellIsland;
+         if (id === 'clock' && this._clockIsland && !this._actionsParts?.includes('clock'))
+@@ -1416,6 +1447,39 @@ export const Shelf = GObject.registerClass({
+         return this.islandActorFor(id);
+     }
+ 
++    // Arrange mode shows the live island's slot even with no live extension
++    // running: every live extension appears in that one slot.
++    _liveGhostWanted() {
++        return !!this._arrange?.active && this._actionsVisible && !this._liveIsland?.visible;
++    }
++
++    _liveGhostIsland() {
++        if (!this._liveGhost) {
++            const content = new St.Widget({layout_manager: new Clutter.BinLayout(),
++                style_class: 'luma-live-ghost', x_expand: true, y_expand: true});
++            content.add_child(new DashedOutline({style_class: 'luma-live-ghost-outline',
++                x_expand: true, y_expand: true}));
++            const box = new St.BoxLayout({style_class: 'luma-live-ghost-content',
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++            box.add_child(new St.Icon({style_class: 'luma-live-ghost-icon',
++                icon_name: 'luma-live-extensions-symbolic', fallback_icon_name: 'view-grid-symbolic'}));
++            const label = new St.Label({style_class: 'luma-live-ghost-label', text: _('Live extensions'),
++                y_align: Clutter.ActorAlign.CENTER});
++            box.add_child(label);
++            content.add_child(box);
++            const material = new St.Bin({child: content, style_class: 'luma-live-ghost-material'});
++            this._liveGhost = new ShelfIsland('luma-shelf-live-ghost', material);
++            this._liveGhost.islandId = 'live';
++            this._liveGhost.name = 'lumaShelfIsland-live-ghost';
++            this._liveGhost.accessible_name = _('Live extensions: where live activities appear');
++            this._liveGhost._label = label;
++        }
++        this._liveGhost._label.visible = !Arrangement.isVertical(this.edgeOfIsland('live'));
++        this._liveGhost._content.get_child().set_style_class_name(
++            `luma-live-ghost luma-arrange-${SurfaceMaterials.effectiveTreatment()}`);
++        return this._liveGhost;
++    }
++
+     _islandShown(id) {
+         if (id === 'dock')
+             return this._dockVisible;
+@@ -1429,7 +1493,9 @@ export const Shelf = GObject.registerClass({
+     _syncGroups() {
+         const layout = Main.layoutManager;
+         const surfaceMode = this._surfaceMode;
+-        const flushEnds = this._span && !this._floatEnds;
++        // Outer edges that do not float: the islands at the band's ends meet
++        // the screen's ends, square there.
++        const gutterless = this._span && !this._floatEnds;
+         const castShadows = !this._protrude && (!this._span || this._floatEnds);
+         while (this._groups.length > this._resolved.length) {
+             const group = this._groups.pop();
+@@ -1475,13 +1541,24 @@ export const Shelf = GObject.registerClass({
+             row._fitsContent = !this._spansGroup(placed);
+ 
+             const actors = [];
++            const actorOfId = new Map();
+             for (const entry of Arrangement.fuseStatus(placed.islands)) {
+                 if (entry.fused) {
+-                    if (this._actionsVisible)
++                    if (this._actionsVisible) {
+                         actors.push(this._actionsIsland);
++                        entry.fused.forEach(id => actorOfId.set(id, this._actionsIsland));
++                    }
+                     continue;
+                 }
+                 const id = entry.id;
++                // In arrange mode the live island's slot shows even with no
++                // live extension, so it can be seen and placed.
++                if (id === 'live' && this._liveGhostWanted()) {
++                    const ghost = this._liveGhostIsland();
++                    actors.push(ghost);
++                    actorOfId.set(id, ghost);
++                    continue;
++                }
+                 if (id.startsWith('gap:')) {
+                     actors.push(this._gapActor(placed, id, scale));
+                     continue;
+@@ -1498,16 +1575,22 @@ export const Shelf = GObject.registerClass({
+                 }
+                 if (!actors.includes(actor))
+                     actors.push(actor);
++                actorOfId.set(id, actor);
+             }
+             if (this._actionsParts.includes('well') && actors.includes(this._actionsIsland) &&
+                     this._auxIsland.visible && !actors.includes(this._auxIsland))
+                 actors.splice(actors.indexOf(this._actionsIsland), 0, this._auxIsland);
+             this._reconcileRow(row, actors);
++            // A merged spanning bar keeps its slack between its groups.
++            row._boundaryActors = placed.merged
++                ? placed.boundaries.map(id => actorOfId.get(id)).filter(Boolean) : null;
++            const flushStart = gutterless && (placed.anchor === 'start' || !!placed.merged);
++            const flushEnd = gutterless && (placed.anchor === 'end' || !!placed.merged);
+ 
+             const surfaceClass = `luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
+                 `luma-shelf-${placed.edge} ${vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
+                 `${this._protrude ? 'luma-shelf-attached' : ''} ` +
+-                `${flushEnds && this._spansGroup(placed) ? 'luma-shelf-flush' : ''} ` +
++                `${flushStart || flushEnd ? 'luma-shelf-flush' : ''} ` +
+                 `${placed.drag ? 'luma-shelf-dragging' : ''}`;
+             if (group.surface.style_class !== surfaceClass)
+                 group.surface.set_style_class_name(surfaceClass);
+@@ -1517,9 +1600,8 @@ export const Shelf = GObject.registerClass({
+                 row._rowClass = rowClass;
+                 row.set_style_class_name(rowClass);
+             }
+-            const flush = flushEnds && this._spansGroup(placed);
+             group.surface.setCornerRadii(surfaceMode === 'connected'
+-                ? dashCornerRadii(placed.edge, this._protrude, flush, flush)
++                ? dashCornerRadii(placed.edge, this._protrude, flushStart, flushEnd)
+                 : [0, 0, 0, 0]);
+             const visibleIslands = row.get_children().filter(actor => actor.visible);
+             for (const island of row.get_children()) {
+@@ -1537,16 +1619,18 @@ export const Shelf = GObject.registerClass({
+                 const first = island === visibleIslands[0];
+                 const last = island === visibleIslands.at(-1);
+                 let radii = surfaceMode === 'separate'
+-                    ? dashCornerRadii(placed.edge, this._protrude, flush && first, flush && last)
++                    ? dashCornerRadii(placed.edge, this._protrude, flushStart && first, flushEnd && last)
+                     : [0, 0, 0, 0];
+                 if (surfaceMode === 'connected' && island === this._actionsIsland && this._actionsMaterial._statusFlush) {
+-                    radii = dashCornerRadii(placed.edge, this._protrude, flush && first, flush && last);
++                    radii = dashCornerRadii(placed.edge, this._protrude, flushStart && first, flushEnd && last);
+                     if (!first) for (const i of vertical ? [0, 1] : [0, 3]) radii[i] = 0;
+                     if (!last) for (const i of vertical ? [2, 3] : [1, 2]) radii[i] = 0;
+                 }
+                 island.setCornerRadii(radii);
+                 island.setOrientation(vertical, this._padding);
+-                island.setSurfaceVisible(surfaceMode === 'separate', castShadows || !!placed.drag);
++                // The live slot's ghost is an outline, never a surface.
++                island.setSurfaceVisible(surfaceMode === 'separate' && island !== this._liveGhost,
++                    (castShadows || !!placed.drag) && island !== this._liveGhost);
+             }
+             group.surface.setOrientation(vertical, this._padding, true);
+             if (previous && previous.edge !== placed.edge)
+@@ -1582,10 +1666,35 @@ export const Shelf = GObject.registerClass({
+     // shelf-span-full stretches the dock's group between the other groups
+     // of its band; a dock standing alone keeps its own length.
+     _spansGroup(placed) {
++        if (placed.merged)
++            return true;
+         return this._span && this._surfaceMode === 'connected' && !placed.drag && placed.islands.includes('dock') &&
+             placed.islands.filter(id => !id.startsWith('gap:')).length > 1;
+     }
+ 
++    // One bar for the dock's band: its groups in order along the edge, the
++    // bar's slack between them, so each keeps its side of the band.
++    _mergeSpanningBand(resolved) {
++        const dock = resolved.find(placed => placed.islands.includes('dock'));
++        if (!dock)
++            return resolved;
++        const onBand = resolved.filter(p => p.monitor === dock.monitor && p.edge === dock.edge);
++        if (!onBand.length)
++            return resolved;
++        const rank = p => p.anchor === 'start' ? 0 : p.anchor === 'end' ? 1 : p.position;
++        const order = [...onBand].sort((a, b) => rank(a) - rank(b));
++        const islands = [];
++        const boundaries = [];
++        order.forEach((p, i) => {
++            islands.push(...p.islands);
++            if (i < order.length - 1)
++                boundaries.push(p.islands.at(-1));
++        });
++        const merged = {source: order.flatMap(p => p.source), monitor: dock.monitor, edge: dock.edge,
++            anchor: 'start', position: 0.5, islands, merged: true, boundaries};
++        return [merged, ...resolved.filter(p => !onBand.includes(p))];
++    }
++
+     // The Well and the clock in islands of their own when they are not
+     // fused into Quick Options.
+     _syncStandaloneParts() {
+@@ -1683,6 +1792,13 @@ export const Shelf = GObject.registerClass({
+         gap._length = Math.round(Number(id.slice(4)) || 56 * scale);
+         const index = placed.islands.indexOf(id);
+         gap._caretBefore = index > 0;
++        // Alone, the gap is the ghost of a drop on a zone or a free place: no
++        // seam to mark.
++        gap._caret.visible = placed.islands.length > 1;
++        if (placed.islands.length > 1)
++            gap.remove_style_class_name('luma-arrange-gap-ghost');
++        else
++            gap.add_style_class_name('luma-arrange-gap-ghost');
+         gap.queue_relayout();
+         return gap;
+     }
+@@ -1703,6 +1819,8 @@ export const Shelf = GObject.registerClass({
+         }
+         this._workAreaTracked = enabled;
+         this._syncWorkAreaInset(St.ThemeContext.get_for_stage(global.stage).scale_factor);
++        if (!enabled)
++            this._syncSharedReservations([]);
+     }
+ 
+     // The floating shelf keeps a margin on its monitor's edges through struts.
+@@ -1710,21 +1828,39 @@ export const Shelf = GObject.registerClass({
+     // monitors have none, so maximized and tiled windows there touched the
+     // screen edges. The same margin now applies to every monitor edge that no
+     // strut pads.
++    // Windows keep the shelf padding from every edge, protruding shelf or
++    // not: a protruding shelf touches the screen, the windows beside it still
++    // keep their gap to it and to each other.
+     _syncWorkAreaInset(scale) {
+-        const inset = this._workAreaTracked && !this._protrude ? Math.round(this._padding * scale) : 0;
++        const inset = this._workAreaTracked ? Math.round(this._padding * scale) : 0;
+         global.display.set_work_area_inset?.(inset);
+     }
+ 
+     _metrics(scale) {
+         return {
++            // Protruding: the islands touch the screen edge.
+             inset: this._protrude ? 0 : SHELF_INSET * scale,
+             thickness: this._thickness * scale,
+-            margin: this._protrude ? 0 : this._padding * scale,
+-            gutter: !this._span || this._floatEnds ? SHELF_INSET * scale : 0,
++            // Windows keep the padding from a band either way.
++            margin: this._padding * scale,
++            // A spanning shelf whose outer edges do not float reaches the
++            // screen's ends; otherwise the ends stay SHELF_INSET in.
++            gutter: this._span && !this._floatEnds ? 0 : SHELF_INSET * scale,
+             scale,
+         };
+     }
+ 
++    // Whether Mutter can reserve work area on an edge shared with another
++    // monitor (Luma Mutter 0015). Without it such an edge offers no zone.
++    get canReserveSharedEdges() {
++        return typeof global.display.set_monitor_edge_reservation === 'function';
++    }
++
++    // The edges of a monitor that offer no zones.
++    _closedEdges(monitor) {
++        return this.canReserveSharedEdges ? [] : monitor.sharedEdges;
++    }
++
+     // Every monitor's bands, from which edges hold a placed group. A band
+     // stays reserved while it holds any placed island, even a hidden one,
+     // so maximized windows do not move when music starts or a call ends.
+@@ -1747,7 +1883,7 @@ export const Shelf = GObject.registerClass({
+             const reserved = {top: depth, bottom: depth};
+             const perEdge = {};
+             for (const edge of Arrangement.EDGES) {
+-                if (monitor.sharedEdges.includes(edge))
++                if (monitor.closedEdges.includes(edge))
+                     continue;
+                 perEdge[edge] = Arrangement.bandGeometry(monitor, edge, metrics, reserved);
+             }
+@@ -1761,7 +1897,15 @@ export const Shelf = GObject.registerClass({
+     _syncStruts(occupied, metrics) {
+         if (!this._chromeAlive())
+             return;
+-        const wanted = Arrangement.reservations(this._monitors, occupied, metrics);
++        // shelf-reserve-work-area off: windows may go under the islands; they
++        // keep only the margin every edge has (Mutter's work-area inset).
++        const reserve = this._settings.get_boolean('shelf-reserve-work-area');
++        const all = Arrangement.reservations(this._monitors, reserve ? occupied : new Map(), metrics,
++            {reserveShared: this.canReserveSharedEdges});
++        // Mutter ignores struts on an edge shared with another monitor; those
++        // bands are reserved through Mutter directly.
++        this._syncSharedReservations(all.filter(r => r.shared));
++        const wanted = all.filter(r => !r.shared);
+         const keys = new Set();
+         for (const reservation of wanted) {
+             const key = `${reservation.monitor}:${reservation.edge}`;
+@@ -1792,6 +1936,22 @@ export const Shelf = GObject.registerClass({
+         }
+     }
+ 
++    _syncSharedReservations(shared) {
++        if (!this.canReserveSharedEdges)
++            return;
++        const side = {top: Meta.Side.TOP, bottom: Meta.Side.BOTTOM, left: Meta.Side.LEFT, right: Meta.Side.RIGHT};
++        const wanted = this._workAreaTracked ? shared : [];
++        const key = JSON.stringify(wanted.map(r => [r.monitor, r.edge, Math.round(r.depth)]));
++        if (key === this._sharedReservationKey)
++            return;
++        this._sharedReservationKey = key;
++        global.display.clear_monitor_edge_reservations();
++        for (const r of wanted)
++            global.display.set_monitor_edge_reservation(r.monitor, side[r.edge], Math.round(r.depth));
++        if (wanted.length)
++            console.log(`[luma-shelf] shared-edge bands reserved: ${key}`);
++    }
++
+     // Place every group: the band solver per monitor edge, then the struts.
+     _syncGeometry() {
+         const monitor = Main.layoutManager.primaryMonitor;
+diff --git a/js/ui/shelfArrange.js b/js/ui/shelfArrange.js
+index e9c8f33..3a0dc94 100644
+--- a/js/ui/shelfArrange.js
++++ b/js/ui/shelfArrange.js
+@@ -21,6 +21,7 @@ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import Cairo from 'cairo';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+@@ -51,7 +52,8 @@ class DashedOutline extends St.DrawingArea {
+         const node = this.get_theme_node();
+         const [width, height] = this.get_surface_size();
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const line = (node.lookup_length('-luma-line-width', false)[1] || scale);
++        const [hasLine, lineLength] = node.lookup_length('-luma-line-width', false);
++        const line = hasLine ? lineLength : scale;
+         const [hasDash, dash] = node.lookup_double('-luma-dash', false);
+         const radius = Math.min(node.get_border_radius(St.Corner.TOPLEFT), width / 2, height / 2);
+         const color = node.get_foreground_color();
+@@ -64,6 +66,10 @@ class DashedOutline extends St.DrawingArea {
+         cr.arc(inset + r, inset + h - r, r, Math.PI / 2, Math.PI);
+         cr.arc(inset + r, inset + r, r, Math.PI, 3 * Math.PI / 2);
+         cr.closePath();
++        if (line <= 0) {
++            cr.$dispose();
++            return;
++        }
+         cr.setSourceRGBA(color.red / 255, color.green / 255, color.blue / 255, color.alpha / 255);
+         cr.setLineWidth(line);
+         if (hasDash && dash > 0)
+@@ -73,6 +79,67 @@ class DashedOutline extends St.DrawingArea {
+     }
+ });
+ 
++// The line along one edge's band: faint, brighter only near the pointer,
++// and absent wherever something else already sits (an empty zone's
++// placeholder, a group, the ghost), so one space holds one thing.
++export const EdgeLine = GObject.registerClass(
++class EdgeLine extends St.DrawingArea {
++    _init(band, obstacles) {
++        super._init({style_class: 'luma-arrange-edge', reactive: false});
++        this._band = band;
++        this._obstacles = obstacles;
++        this._pointer = null;
++        const r = band.rect;
++        this.set_position(r.x, r.y);
++        this.set_size(r.width, r.height);
++    }
++
++    setPointer(pointer) {
++        this._pointer = pointer;
++        this.queue_repaint();
++    }
++
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const band = this._band;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const color = this.get_theme_node().get_foreground_color();
++        const vertical = band.vertical;
++        const origin = vertical ? band.rect.y : band.rect.x;
++        const mid = (vertical ? band.rect.width : band.rect.height) / 2;
++        const pointerAlong = this._pointer ? (vertical ? this._pointer[1] : this._pointer[0]) : -1e6;
++        const cross = this._pointer
++            ? Math.abs((vertical ? this._pointer[0] - band.rect.x : this._pointer[1] - band.rect.y) - mid) : 1e6;
++        cr.setLineWidth(1 * scale);
++        for (const [from, to] of Arrangement.bandSegments(band, this._obstacles(), 12 * scale)) {
++            const a = from - origin, b = to - origin;
++            const gradient = vertical
++                ? new Cairo.LinearGradient(0, a, 0, b)
++                : new Cairo.LinearGradient(a, 0, b, 0);
++            const steps = Math.max(2, Math.ceil((b - a) / (40 * scale)));
++            for (let i = 0; i <= steps; i++) {
++                const t = i / steps;
++                const along = from + (to - from) * t;
++                // Each piece fades in from its ends: no hard stop at a gap.
++                const endFade = Math.min(1, Math.min(along - from, to - along) / (16 * scale));
++                const alpha = Arrangement.edgeGlow(along, pointerAlong, cross, scale) * endFade;
++                gradient.addColorStopRGBA(t, color.red / 255, color.green / 255, color.blue / 255,
++                    alpha * color.alpha / 255);
++            }
++            cr.setSource(gradient);
++            if (vertical) {
++                cr.moveTo(mid, a);
++                cr.lineTo(mid, b);
++            } else {
++                cr.moveTo(a, mid);
++                cr.lineTo(b, mid);
++            }
++            cr.stroke();
++        }
++        cr.$dispose();
++    }
++});
++
+ // The names islands are spoken and shown by.
+ export function islandNames() {
+     return {
+@@ -345,19 +412,35 @@ export class ShelfArrange {
+ 
+     // ------------------------------------------------------------- menu
+ 
+-    // The Shelf menu: Arrange Islands…, Reset Island Layout, Shelf Settings…
++    // The Dash menu: Arrange Islands…, Reset Island Layout, Dash Settings…
++    // It is a kit context menu, drawn exactly as the dock's app menus are
++    // (the app-menu presentation: a title row, 13/600 Figtree rows 32 high,
++    // the kit's rule), in every appearance mode.
+     openMenu(sourceActor, id, x, y) {
+         if (!sourceActor)
+             return;
+         this._menu?.destroy();
+         const side = St.Side[this._shelf.edgeForActor(sourceActor).toUpperCase()];
+         const menu = new PopupMenu.PopupMenu(sourceActor, 0.5, side);
+-        menu.actor.add_style_class_name('luma-shelf-menu');
+-        menu.addAction(_('Arrange Islands…'), () => this.begin({select: id}));
++        menu.actor.add_style_class_name('app-menu');
++        menu.actor.add_style_class_name('luma-dash-menu');
++        const title = new PopupMenu.PopupMenuItem(_('Dash'), {reactive: false, can_focus: false});
++        title.add_style_class_name('luma-menu-title');
++        menu.addMenuItem(title);
++        const arrange = menu.addAction(_('Arrange Islands…'), () => this.begin({select: id}));
++        // The title cannot be chosen, but it is not a disabled row: it takes
++        // the rows' ink in whatever surface the menu is drawn in, as the app
++        // menus' titles do.
++        menu.connect('open-state-changed', (_m, open) => {
++            if (!open || !arrange.label.get_stage())
++                return;
++            const ink = arrange.label.get_theme_node().get_foreground_color();
++            title.label.style = `color: rgba(${ink.red}, ${ink.green}, ${ink.blue}, ${ink.alpha / 255});`;
++        });
+         const reset = menu.addAction(_('Reset Island Layout'), () => this.reset());
+         reset.setSensitive(!this._shelf.arrangementIsDefault);
+         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-        menu.addAction(_('Shelf Settings…'), () => this._openSettings());
++        menu.addAction(_('Dash Settings…'), () => this._openSettings());
+         Main.uiGroup.add_child(menu.actor);
+         menu.actor.hide();
+         this._menuManager ??= new PopupMenu.PopupMenuManager(this._shelf, {actionMode: Shell.ActionMode.NORMAL});
+@@ -408,6 +491,8 @@ export class ShelfArrange {
+         this._active = true;
+         this._undo = [];
+         this._selected = select ?? grab ?? null;
++        // Arranging shows every group as itself and the live slot's ghost.
++        this._shelf._sync();
+         this._buildLayer();
+         this._grab = Main.pushModal(this._layer, {actionMode: Shell.ActionMode.POPUP});
+         const seatState = this._grab?.get_seat_state?.();
+@@ -419,6 +504,9 @@ export class ShelfArrange {
+             return false;
+         }
+         this._layer.grab_key_focus();
++        // Weigh the zones from where the pointer is now.
++        const [px, py] = global.get_pointer();
++        this._lastPointer = [px, py];
+         this._shelf.emit('arrange-changed', true);
+         this._decorate();
+         this._syncSelection();
+@@ -451,6 +539,7 @@ export class ShelfArrange {
+             this._grab = null;
+         }
+         this._destroyLayer();
++        this._shelf._sync();
+         this._shelf.emit('arrange-changed', false);
+         if (reason !== 'destroy' && reason !== 'session')
+             this._announce(_('Islands arranged'));
+@@ -497,6 +586,39 @@ export class ShelfArrange {
+         card.add_child(new St.Label({style_class: 'luma-arrange-card-title', text: _('Arrange islands')}));
+         card.add_child(new St.Label({style_class: 'luma-arrange-card-body',
+             text: _('Drag to move. Drop beside an island to attach it.')}));
++        // Free placement (off by default): islands go only beside another
++        // island or to an edge's start, centre or end unless this is on.
++        const settings = this._shelf._settings;
++        if (settings.settings_schema.has_key('shelf-free-placement')) {
++            const option = new St.Button({style_class: 'luma-arrange-option', can_focus: true,
++                x_expand: true, accessible_role: Atk.Role.CHECK_BOX,
++                accessible_name: _('Allow free placement')});
++            const box = new St.BoxLayout({x_expand: true});
++            box.add_child(new St.Label({style_class: 'luma-arrange-option-label', text: _('Allow free placement'),
++                x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
++            const toggle = new PopupMenu.Switch(settings.get_boolean('shelf-free-placement'));
++            toggle.y_align = Clutter.ActorAlign.CENTER;
++            box.add_child(toggle);
++            option.child = box;
++            const sync = () => {
++                const on = settings.get_boolean('shelf-free-placement');
++                toggle.state = on;
++                if (on)
++                    option.add_accessible_state(Atk.StateType.CHECKED);
++                else
++                    option.remove_accessible_state(Atk.StateType.CHECKED);
++            };
++            option.connect('clicked', () =>
++                settings.set_boolean('shelf-free-placement', !settings.get_boolean('shelf-free-placement')));
++            settings.connectObject('changed::shelf-free-placement', () => {
++                sync();
++                this._announce(settings.get_boolean('shelf-free-placement')
++                    ? _('Free placement on') : _('Free placement off'));
++            }, option);
++            sync();
++            card.add_child(option);
++            this._freeOption = option;
++        }
+         const row = new St.BoxLayout({style_class: 'luma-arrange-card-buttons'});
+         const reset = new St.Button({style_class: 'luma-arrange-button', label: _('Reset'), can_focus: true});
+         reset.connect('clicked', () => this.reset());
+@@ -627,12 +749,16 @@ export class ShelfArrange {
+             this._decorations.add_child(grip);
+             this._grips.push(grip);
+         }
+-        // Every empty zone on every monitor.
++        // Every empty zone on every monitor, and each edge's line.
++        this._edgeLines = [];
+         for (const monitor of monitors) {
+             for (const edge of Arrangement.EDGES) {
+                 const band = monitor.bands[edge];
+-                if (!band || monitor.sharedEdges.includes(edge))
++                if (!band || (monitor.closedEdges ?? monitor.sharedEdges).includes(edge))
+                     continue;
++                const line = new EdgeLine(band, () => this._edgeObstacles(monitor.index, edge));
++                this._decorations.insert_child_at_index(line, 0);
++                this._edgeLines.push(line);
+                 for (const anchor of Arrangement.ZONE_ANCHORS) {
+                     const rect = Arrangement.zoneRect(band, anchor, scale);
+                     const taken = groups.some(group => group.monitor === monitor.index &&
+@@ -642,16 +768,55 @@ export class ShelfArrange {
+                     const zone = new DashedOutline({style_class: 'luma-arrange-zone', reactive: false});
+                     zone.set_position(rect.x, rect.y);
+                     zone.set_size(rect.width, rect.height);
+-                    zone._zone = {monitor: monitor.index, edge, anchor};
++                    zone._zone = {monitor: monitor.index, edge, anchor, rect};
++                    zone.opacity = Math.round(255 * Arrangement.ZONE_REST);
+                     this._decorations.add_child(zone);
+                 }
+             }
+         }
+         this._zones = this._decorations.get_children().filter(a => a._zone);
++        this._updateWeights(this._lastPointer ?? null, null);
+         this._placeCard();
+         this._cardReset?.set_reactive(!this._shelf.arrangementIsDefault || this._undo.length > 0);
+     }
+ 
++    // What the edge line leaves room for on one band: the empty zones'
++    // placeholders and every group drawn there, the ghost included.
++    _edgeObstacles(monitorIndex, edge) {
++        const rects = (this._zones ?? []).filter(z => z._zone.monitor === monitorIndex && z._zone.edge === edge)
++            .map(z => z._zone.rect);
++        for (const group of this._shelf._groups) {
++            const placed = group.placement;
++            if (!placed || placed.drag || placed.monitor !== monitorIndex || placed.edge !== edge)
++                continue;
++            const r = extentsOf(group);
++            if (r.width > 0 && r.height > 0)
++                rects.push(r);
++        }
++        return rects;
++    }
++
++    // Zone placeholders at their weight: faint at rest, stronger as the
++    // pointer or the dragged island nears, full for the zone a drop takes.
++    // Distances, not time, drive it, so reduced motion changes nothing.
++    _updateWeights(pointer, centre) {
++        this._lastPointer = pointer;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const target = this._drag?.target;
++        for (const zone of this._zones ?? []) {
++            const z = zone._zone;
++            const best = target?.kind === 'snap' && target.monitor === z.monitor &&
++                target.edge === z.edge && target.anchor === z.anchor;
++            const distances = [pointer, centre].filter(Boolean).map(p => Arrangement.distanceToRect(p, z.rect));
++            const distance = distances.length ? Math.min(...distances) : Infinity;
++            const opacity = Math.round(255 * Arrangement.zoneWeight(distance, {best, scale}));
++            if (zone.opacity !== opacity)
++                zone.opacity = opacity;
++        }
++        for (const line of this._edgeLines ?? [])
++            line.setPointer(pointer);
++    }
++
+     // The stored ids of a drawn group, hidden islands included.
+     _storedGroupIds(group) {
+         const stored = this._shelf.arrangement;
+@@ -742,6 +907,7 @@ export class ShelfArrange {
+             this._dragTo(x, y);
+             return;
+         }
++        this._updateWeights([x, y], null);
+         const pending = this._pending;
+         if (!pending?.pressed || pending.empty)
+             return;
+@@ -828,18 +994,53 @@ export class ShelfArrange {
+ 
+     // Apply the preview for a target: the base arrangement (without the
+     // dragged islands) plus, for an attach, the gap in the target group.
++    // The island takes the form of the edge it would land on (vertical on
++    // a side edge) while it is carried there, so the preview is exact: an
++    // attach opens a gap of its length in the target group; a zone or free
++    // place shows a ghost group of its length placed by the same solver
++    // the drop will use.
+     _dragPreview(target) {
+         const drag = this._drag;
+-        const groups = Arrangement.cloneArrangement(drag.base);
+-        if (target?.kind === 'attach') {
+-            const host = groups[target.storedGroup];
+-            if (host)
+-                host.islands.splice(target.storedIndex, 0, `gap:${Math.round(target.gapLength ?? drag.along)}`);
++        const shelf = this._shelf;
++        const edge = target?.edge ?? drag.edge;
++        const vertical = Arrangement.isVertical(edge);
++        const apply = () => {
++            const length = Math.round(vertical ? drag.length.vertical : drag.length.horizontal);
++            const groups = Arrangement.cloneArrangement(drag.base);
++            if (target?.kind === 'attach') {
++                const host = groups[target.storedGroup];
++                if (host)
++                    host.islands.splice(target.storedIndex, 0, `gap:${length}`);
++            } else if (target) {
++                groups.push({
++                    display: Arrangement.displayFor(target.monitor, shelf.monitors, Main.layoutManager.primaryIndex),
++                    edge: target.edge,
++                    anchor: target.kind === 'snap' ? target.anchor : 'free',
++                    position: target.kind === 'free' ? target.position : 0.5,
++                    islands: [`gap:${length}`],
++                });
++            }
++            shelf.setPreview({
++                groups,
++                drag: {monitor: drag.monitor, edge, anchor: 'free', position: 0.5, islands: [...drag.ids]},
++            });
++        };
++        apply();
++        // Measure the carried island in its new form; if that changes its
++        // length, place the gap or ghost again at the true length.
++        const row = this._dragGroup()?.row;
++        if (row) {
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            const along = vertical
++                ? row.get_preferred_height(shelf._thickness * scale)[1]
++                : row.get_preferred_width(shelf._thickness * scale)[1];
++            const key = vertical ? 'vertical' : 'horizontal';
++            if (along > 0 && Math.abs(along - drag.length[key]) > 1) {
++                drag.length[key] = along;
++                apply();
++            }
+         }
+-        this._shelf.setPreview({
+-            groups,
+-            drag: {monitor: drag.monitor, edge: drag.edge, anchor: 'free', position: 0.5, islands: [...drag.ids]},
+-        });
++        drag.formEdge = edge;
+     }
+ 
+     _dragTo(x, y) {
+@@ -853,18 +1054,20 @@ export class ShelfArrange {
+             Main.layoutManager.uiGroup.set_child_above_sibling(this._layer, null);
+         }
+         const {monitors, groups} = this._context(drag.ids);
++        const zones = (this._zones ?? []).map(z => z._zone);
+         const raw = Arrangement.resolveTarget([cx, cy], drag.length, monitors, groups, drag.ids,
+-            St.ThemeContext.get_for_stage(global.stage).scale_factor);
++            St.ThemeContext.get_for_stage(global.stage).scale_factor,
++            {pointer: [x, y], zones, freePlacement: this._shelf._freePlacement});
+         const target = raw ? this._storedTarget(raw, groups) : null;
+         this._showHint(target, x, y);
+         const previous = drag.target;
+         drag.target = target;
+-        // A free position moves with the pointer: only the ghost follows it.
+-        // The groups are laid out again only when the target itself changes
+-        // (another zone, another attach slot, another edge).
++        this._updateWeights([x, y], [cx, cy]);
++        // The groups are laid out again only when the target changes (another
++        // zone, attach slot or edge); a free place moves only its ghost.
+         if (sameTarget(target, previous)) {
+-            if (target?.kind === 'free')
+-                this._showTarget(target);
++            if (target?.kind === 'free' && Math.abs(target.position - (previous.position ?? 0)) > 0.002)
++                this._dragPreview(target);
+             return;
+         }
+         drag.monitor = target?.monitor ?? drag.monitor;
+@@ -919,48 +1122,16 @@ export class ShelfArrange {
+         this._ghost = null;
+     }
+ 
+-    // The snap and free previews: the zone fills, and a ghost outline shows
+-    // the island's final footprint (with a guide line when free).
++    // The zone a snap takes is drawn at full weight; the ghost itself is the
++    // preview group _dragPreview placed.
+     _showTarget(target) {
+         this._clearTargetVisuals();
+-        if (!target || target.kind === 'attach' || !this._overlay)
+-            return;
+-        const shelf = this._shelf;
+-        const band = shelf._bands?.get(target.monitor)?.[target.edge];
+-        if (!band)
++        if (target?.kind !== 'snap')
+             return;
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const vertical = Arrangement.isVertical(target.edge);
+-        const length = vertical ? this._drag.length.vertical : this._drag.length.horizontal;
+-        const thickness = shelf._thickness * scale;
+-        const along = target.kind === 'snap'
+-            ? Arrangement.zonePoints(band, length)[target.anchor]
+-            : band.along[0] + target.position * band.length;
+-        const start = Math.max(band.along[0], Math.min(along - length / 2, band.along[1] - length));
+-        const rect = vertical
+-            ? {x: band.rect.x, y: start, width: thickness, height: length}
+-            : {x: start, y: band.rect.y, width: length, height: thickness};
+-        if (target.kind === 'snap') {
+-            this._activeZone = this._zones?.find(z => z._zone.monitor === target.monitor &&
+-                z._zone.edge === target.edge && z._zone.anchor === target.anchor) ?? null;
+-            this._activeZone?.add_style_class_name('luma-arrange-zone-active');
+-            this._activeZone?.queue_repaint();
+-        } else {
+-            const guide = new St.Widget({style_class: 'luma-arrange-guide', reactive: false});
+-            if (vertical) {
+-                guide.set_position(Math.round(band.rect.x + thickness / 2), band.along[0]);
+-                guide.set_size(1, band.length);
+-            } else {
+-                guide.set_position(band.along[0], Math.round(band.rect.y + thickness / 2));
+-                guide.set_size(band.length, 1);
+-            }
+-            this._overlay.add_child(guide);
+-        }
+-        const ghost = new DashedOutline({style_class: 'luma-arrange-ghost', reactive: false});
+-        ghost.set_position(Math.round(rect.x), Math.round(rect.y));
+-        ghost.set_size(Math.round(rect.width), Math.round(rect.height));
+-        this._overlay.add_child(ghost);
+-        this._ghost = ghost;
++        this._activeZone = this._zones?.find(z => z._zone.monitor === target.monitor &&
++            z._zone.edge === target.edge && z._zone.anchor === target.anchor) ?? null;
++        this._activeZone?.add_style_class_name('luma-arrange-zone-active');
++        this._activeZone?.queue_repaint();
+     }
+ 
+     _drop() {
+@@ -1003,7 +1174,7 @@ export class ShelfArrange {
+         const shelf = this._shelf;
+         const before = drag?.stored ?? shelf.arrangement;
+         const from = drag ? this._dragOrigins() : null;
+-        const edgeBefore = drag?.edge;
++        const edgeBefore = drag?.formEdge ?? drag?.edge;
+         this._drag = null;
+         this._undo.push(before);
+         shelf._preview = null;
+@@ -1081,7 +1252,7 @@ export class ShelfArrange {
+         this._shelf._slideTime = 180;
+         this._shelf.setPreview(null);
+         this._shelf._slideTime = null;
+-        this._travel(from, drag.edge);
++        this._travel(from, drag.formEdge ?? drag.edge);
+         this._queueDecorate();
+         if (announce)
+             this._announce(_('Move cancelled'));
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index 9adcdf5..26509f4 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -79,7 +79,7 @@ export function defaultArrangement(v1 = {}, order = DEFAULT_ORDER) {
+ // discarded, a position is clamped, and every placeable island missing from
+ // the arrangement joins its default group beside its default neighbour. A
+ // corrupt value therefore never loses the clock or the dock.
+-export function normalizeArrangement(raw, v1 = {}, order = DEFAULT_ORDER) {
++export function normalizeArrangement(raw, v1 = {}, order = DEFAULT_ORDER, options = {}) {
+     const fallback = defaultArrangement(v1, order);
+     if (!Array.isArray(raw) || raw.length === 0)
+         return {groups: fallback, isDefault: true};
+@@ -93,11 +93,16 @@ export function normalizeArrangement(raw, v1 = {}, order = DEFAULT_ORDER) {
+         islands.forEach(id => seen.add(id));
+         if (!islands.length)
+             continue;
++        let anchor = ANCHORS.includes(entry.anchor) ? entry.anchor : 'center';
++        // Free positions only with free placement on; otherwise the group
++        // goes to the anchor nearest where it was.
++        if (anchor === 'free' && !options.freePlacement)
++            anchor = nearestAnchor(entry.position);
+         groups.push({
+             display: typeof entry.display === 'string' ? entry.display : '',
+             edge: entry.edge,
+-            anchor: ANCHORS.includes(entry.anchor) ? entry.anchor : 'center',
+-            position: cleanPosition(entry.position),
++            anchor,
++            position: anchor === 'free' ? cleanPosition(entry.position) : 0.5,
+             islands,
+         });
+     }
+@@ -183,15 +188,18 @@ export function fuseStatus(islands) {
+ //   depth     the work area the band reserves from the monitor edge
+ export function bandGeometry(monitor, edge, metrics, reserved = {}) {
+     const {inset, thickness, margin} = metrics;
++    // How far the band's ends stay from the screen's ends: SHELF_INSET, or
++    // nothing when a spanning shelf's outer edges do not float.
++    const gutter = metrics.gutter ?? inset;
+     const vertical = isVertical(edge);
+     const depth = inset + thickness + margin;
+     let start, end;
+     if (vertical) {
+-        start = monitor.y + Math.max(inset, reserved.top ?? 0);
+-        end = monitor.y + monitor.height - Math.max(inset, reserved.bottom ?? 0);
++        start = monitor.y + Math.max(gutter, reserved.top ?? 0);
++        end = monitor.y + monitor.height - Math.max(gutter, reserved.bottom ?? 0);
+     } else {
+-        start = monitor.x + inset;
+-        end = monitor.x + monitor.width - inset;
++        start = monitor.x + gutter;
++        end = monitor.x + monitor.width - gutter;
+     }
+     const cross = {
+         top: monitor.y + inset,
+@@ -354,16 +362,34 @@ export function monitorAt(point, monitors) {
+ // dragged:  ids being dragged (so a group never attaches to itself)
+ //
+ // Returns, in priority order:
+-//   {kind: 'attach', group, index, neighbour, side}
+-//   {kind: 'snap',   monitor, edge, anchor}
+-//   {kind: 'free',   monitor, edge, position}
+-// or null on a shared edge, where nothing may be dropped.
+-export function resolveTarget(point, length, monitors, groups, dragged = [], scale = 1) {
+-    const monitor = monitorAt(point, monitors);
++//   1. {kind: 'snap', monitor, edge, anchor}  the pointer is inside an empty
++//      zone's placeholder (options.zones): aiming at a zone always wins,
++//      wherever the island was grabbed
++//   2. {kind: 'attach', group, index, neighbour, side}  the island's centre,
++//      or the pointer, is within ATTACH_DISTANCE of a group's islands
++//   3. {kind: 'snap', ...}  the zone nearest the island's centre on the edge
++//      nearest the pointer; with free placement on, only within
++//      SNAP_DISTANCE of a zone point
++//   4. {kind: 'free', monitor, edge, position}  free placement only
++// or null when no edge of the monitor offers zones.
++//
++// options: {pointer: [x, y] (defaults to the centre), zones: [{monitor,
++// edge, anchor, rect}] (the empty zones' placeholders), freePlacement}
++export function resolveTarget(point, length, monitors, groups, dragged = [], scale = 1, options = {}) {
++    const pointer = options.pointer ?? point;
++    const monitor = monitorAt(pointer, monitors);
+     if (!monitor)
+         return null;
+-    // 1. Attach: within ATTACH_DISTANCE of a group's run along its axis and
+-    //    inside its band across it.
++    const closed = monitor.closedEdges ?? monitor.sharedEdges ?? [];
++    // 1. The pointer inside an empty zone's placeholder.
++    for (const zone of options.zones ?? []) {
++        const r = zone.rect;
++        if (zone.monitor === monitor.index && !closed.includes(zone.edge) &&
++                pointer[0] >= r.x && pointer[0] < r.x + r.width && pointer[1] >= r.y && pointer[1] < r.y + r.height)
++            return {kind: 'snap', monitor: monitor.index, edge: zone.edge, anchor: zone.anchor, byPointer: true};
++    }
++    // 2. Attach: within ATTACH_DISTANCE of a group's islands along its axis
++    //    and inside its band across it, by the island's centre or the pointer.
+     let best = null;
+     for (const group of groups) {
+         if (group.monitor !== monitor.index || !group.islands.length)
+@@ -374,42 +400,43 @@ export function resolveTarget(point, length, monitors, groups, dragged = [], sca
+         if (!band)
+             continue;
+         const vertical = isVertical(group.edge);
+-        const along = alongOf(point, vertical);
+-        const cross = crossOf(point, vertical);
+-        const bandCross = vertical ? [band.work.x, band.work.x + band.work.width]
+-            : [band.work.y, band.work.y + band.work.height];
+-        if (cross < bandCross[0] || cross > bandCross[1])
+-            continue;
+-        const reach = ATTACH_DISTANCE * scale;
+         const islands = group.islands.filter(island => !dragged.includes(island.id));
+         if (!islands.length)
+             continue;
++        const bandCross = vertical ? [band.work.x, band.work.x + band.work.width]
++            : [band.work.y, band.work.y + band.work.height];
++        const reach = ATTACH_DISTANCE * scale;
+         // Distance to the nearest island of the run, not to the group's
+-        // box: a spanning group's slack between the dock and the status
+-        // cluster is open band, where an island is placed freely.
++        // box: a spanning group's slack is open band.
+         const spans = islands.map(island => vertical
+             ? [island.rect.y, island.rect.y + island.rect.height]
+             : [island.rect.x, island.rect.x + island.rect.width]);
+-        const distance = Math.min(...spans.map(([from, to]) =>
+-            along < from ? from - along : along > to ? along - to : 0));
+-        if (distance > reach)
+-            continue;
+-        // Insert before the first island whose centre is past the point.
+-        let index = islands.findIndex(island => alongOf(centreOf(island.rect), vertical) > along);
+-        if (index < 0)
+-            index = islands.length;
+-        const side = index === 0 ? 'before' : 'after';
+-        const neighbour = index === 0 ? islands[0].id : islands[index - 1].id;
+-        if (!best || distance < best.distance)
+-            best = {kind: 'attach', group: group.index, index, neighbour, side, edge: group.edge,
+-                monitor: monitor.index, distance};
++        for (const probe of [point, pointer]) {
++            const cross = crossOf(probe, vertical);
++            if (cross < bandCross[0] || cross > bandCross[1])
++                continue;
++            const along = alongOf(probe, vertical);
++            const distance = Math.min(...spans.map(([from, to]) =>
++                along < from ? from - along : along > to ? along - to : 0));
++            if (distance > reach)
++                continue;
++            // Insert before the first island whose centre is past the point.
++            let index = islands.findIndex(island => alongOf(centreOf(island.rect), vertical) > along);
++            if (index < 0)
++                index = islands.length;
++            const side = index === 0 ? 'before' : 'after';
++            const neighbour = index === 0 ? islands[0].id : islands[index - 1].id;
++            if (!best || distance < best.distance)
++                best = {kind: 'attach', group: group.index, index, neighbour, side, edge: group.edge,
++                    monitor: monitor.index, distance};
++        }
+     }
+     if (best) {
+         delete best.distance;
+         return best;
+     }
+-    // 2. Snap, 3. free: on the nearest edge that offers zones.
+-    const edge = nearestEdge(point, monitor, monitor.sharedEdges ?? []);
++    // 3. The nearest zone, 4. a free position.
++    const edge = nearestEdge(pointer, monitor, closed);
+     if (!edge)
+         return null;
+     const band = monitor.bands[edge];
+@@ -418,15 +445,23 @@ export function resolveTarget(point, length, monitors, groups, dragged = [], sca
+     const vertical = isVertical(edge);
+     const islandLength = vertical ? length.vertical : length.horizontal;
+     const points = zonePoints(band, islandLength);
+-    const along = alongOf(point, vertical);
+-    for (const anchor of ZONE_ANCHORS) {
+-        if (Math.abs(along - points[anchor]) <= SNAP_DISTANCE * scale)
+-            return {kind: 'snap', monitor: monitor.index, edge, anchor};
+-    }
++    // Along the edge the island's centre decides; if the pointer is on
++    // another edge than the island, project the centre onto this band.
++    const along = clamp(alongOf(point, vertical), band.along[0], band.along[1]);
++    const nearest = ZONE_ANCHORS.reduce((a, b) =>
++        Math.abs(along - points[a]) <= Math.abs(along - points[b]) ? a : b);
++    if (!options.freePlacement || Math.abs(along - points[nearest]) <= SNAP_DISTANCE * scale)
++        return {kind: 'snap', monitor: monitor.index, edge, anchor: nearest};
+     const position = band.length > 0 ? clamp((along - band.along[0]) / band.length, 0, 1) : 0.5;
+     return {kind: 'free', monitor: monitor.index, edge, position};
+ }
+ 
++// The anchor nearest a free position: start, centre or end.
++export function nearestAnchor(position) {
++    const p = cleanPosition(position);
++    return p < 0.25 ? 'start' : p > 0.75 ? 'end' : 'center';
++}
++
+ // ------------------------------------------------------------------ moves
+ 
+ // The display a monitor stands for in the arrangement: '' follows the
+@@ -487,7 +522,7 @@ export function orderedTargets(monitor, groups, dragged, length) {
+     const targets = [];
+     for (const edge of EDGES) {
+         const band = monitor.bands[edge];
+-        if (!band || (monitor.sharedEdges ?? []).includes(edge))
++        if (!band || (monitor.closedEdges ?? monitor.sharedEdges ?? []).includes(edge))
+             continue;
+         const vertical = isVertical(edge);
+         const islandLength = vertical ? length.vertical : length.horizontal;
+@@ -624,17 +659,22 @@ export function describePlacement(groups, id, names, translate = s => s) {
+ // whole edge; the monitor's other edges keep the floating margin. Returns
+ // [{monitor, edge, rect}] for struts and margins alike. `occupied`:
+ // Map monitorIndex → Set of edges holding a placed group.
+-export function reservations(monitors, occupied, metrics) {
++export function reservations(monitors, occupied, metrics, options = {}) {
+     const out = [];
+     for (const monitor of monitors) {
+         const edges = occupied.get(monitor.index);
+         if (!edges?.size)
+             continue;
+         for (const edge of EDGES) {
+-            if ((monitor.sharedEdges ?? []).includes(edge))
++            // Mutter ignores struts on an edge shared with another monitor.
++            // Where the compositor can reserve such an edge directly, the
++            // band is returned with `shared` so the caller reserves it there.
++            const shared = (monitor.sharedEdges ?? []).includes(edge);
++            if (shared && !(options.reserveShared && edges.has(edge)))
+                 continue;
+             if (edges.has(edge)) {
+-                out.push({monitor: monitor.index, edge, rect: bandGeometry(monitor, edge, metrics).work, band: true});
++                const band = bandGeometry(monitor, edge, metrics);
++                out.push({monitor: monitor.index, edge, rect: band.work, depth: band.depth, band: true, shared});
+             } else if (metrics.margin > 0) {
+                 const m = metrics.margin;
+                 const rect = {
+@@ -703,3 +743,58 @@ export function resolveDisplays(groups, monitors, primaryIndex, shared = new Map
+     });
+     return resolved;
+ }
++
++// ------------------------------------------------------- arrange visuals
++
++// How strongly an empty zone's placeholder is drawn, 0..1: faint at rest
++// (ZONE_REST) and rising smoothly as the pointer or the dragged island comes
++// within ZONE_REACH, full for the zone a drop would take.
++export const ZONE_REST = 0.22;
++export const ZONE_REACH = 360;
++export function zoneWeight(distance, {best = false, scale = 1} = {}) {
++    if (best)
++        return 1;
++    const t = clamp(1 - distance / (ZONE_REACH * scale), 0, 1);
++    // Smoothstep: no visible edge where the falloff begins.
++    const eased = t * t * (3 - 2 * t);
++    return ZONE_REST + (0.72 - ZONE_REST) * eased;
++}
++
++// Distance from a point to a rectangle (0 inside).
++export function distanceToRect(point, rect) {
++    const dx = Math.max(rect.x - point[0], 0, point[0] - (rect.x + rect.width));
++    const dy = Math.max(rect.y - point[1], 0, point[1] - (rect.y + rect.height));
++    return Math.hypot(dx, dy);
++}
++
++// The pieces of an edge's line that stay drawn: the band's length less every
++// obstacle on it (placeholders, groups, the ghost), each widened by `pad`, so
++// one space never holds two things. Intervals are [from, to] along the band.
++export function bandSegments(band, obstacles, pad = 12) {
++    let segments = [[band.along[0], band.along[1]]];
++    for (const rect of obstacles) {
++        const from = (band.vertical ? rect.y : rect.x) - pad;
++        const to = (band.vertical ? rect.y + rect.height : rect.x + rect.width) + pad;
++        segments = segments.flatMap(([a, b]) => {
++            if (to <= a || from >= b)
++                return [[a, b]];
++            const out = [];
++            if (from > a)
++                out.push([a, from]);
++            if (to < b)
++                out.push([to, b]);
++            return out;
++        });
++    }
++    return segments.filter(([a, b]) => b - a >= 2);
++}
++
++// The edge line's opacity at `along`: faint everywhere (EDGE_REST), brighter
++// near the pointer's projection on the band while the pointer is near it.
++export const EDGE_REST = 0.10;
++export function edgeGlow(along, pointerAlong, crossDistance, scale = 1) {
++    const near = clamp(1 - crossDistance / (240 * scale), 0, 1);
++    const spread = 260 * scale;
++    const t = Math.exp(-((along - pointerAlong) ** 2) / (2 * spread * spread));
++    return EDGE_REST + 0.45 * near * t;
++}
+diff --git a/js/ui/shelfMedia.js b/js/ui/shelfMedia.js
+index 539f8cd..139a687 100644
+--- a/js/ui/shelfMedia.js
++++ b/js/ui/shelfMedia.js
+@@ -81,9 +81,13 @@ export const ShelfMedia = GObject.registerClass({
+         this.orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._identity.child.orientation = this.orientation;
+         this._controls.orientation = this.orientation;
+-        this._copy.visible = true;
+-        this._copy.set_style(vertical ? "width: 36px;" : null);
+-        this._copyStack.set_style(vertical ? "width: 36px;" : null);
++        // The compact form on a side edge (ADR-044): the artwork, then the
++        // stacked controls; the title and artist move to the island's name
++        // and tooltip, never rotated or clipped into a 36px column.
++        this._copy.visible = !vertical;
++        this._copy.set_style(null);
++        this._copyStack.set_style(null);
++        this._vertical = vertical;
+         if (vertical) this.add_style_class_name('vertical');
+         else this.remove_style_class_name('vertical');
+     }

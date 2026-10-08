@@ -1,0 +1,504 @@
+diff --git a/src/math-window.vala b/src/math-window.vala
+index 1e0ddd3..36fa5c8 100644
+--- a/src/math-window.vala
++++ b/src/math-window.vala
+@@ -135,37 +135,37 @@ public class MathWindow : Adw.ApplicationWindow
+         default:
+         case ButtonMode.BASIC:
+             menu_button.label = _("Basic");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (360, null);
++            this.default_width = (int) Adw.LengthUnit.SP.to_px (480, null);
+             action.set_state (new Variant.string ("basic"));
+             break;
+ 
+         case ButtonMode.ADVANCED:
+             menu_button.label = _("Advanced");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (700, null);
++            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+             action.set_state (new Variant.string ("advanced"));
+             break;
+ 
+         case ButtonMode.FINANCIAL:
+             menu_button.label = _("Financial");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (700, null);
++            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+             action.set_state (new Variant.string ("financial"));
+             break;
+ 
+         case ButtonMode.PROGRAMMING:
+             menu_button.label = _("Programming");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (700, null);
++            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+             action.set_state (new Variant.string ("programming"));
+             break;
+ 
+         case ButtonMode.KEYBOARD:
+             menu_button.label = _("Keyboard");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (700, null);
++            this.default_width = (int) Adw.LengthUnit.SP.to_px (760, null);
+             action.set_state (new Variant.string ("keyboard"));
+             break;
+ 
+         case ButtonMode.CONVERSION:
+             menu_button.label = _("Conversion");
+-            this.default_width = (int) Adw.LengthUnit.SP.to_px (360, null);
++            this.default_width = (int) Adw.LengthUnit.SP.to_px (480, null);
+             action.set_state (new Variant.string ("conversion"));
+             break;
+         }
+diff --git a/src/ui/buttons-advanced.blp b/src/ui/buttons-advanced.blp
+index 0a7ef88..1f6d6b1 100644
+--- a/src/ui/buttons-advanced.blp
++++ b/src/ui/buttons-advanced.blp
+@@ -457,6 +457,7 @@ template $AdvancedButtonPanel: Adw.BreakpointBin {
+ 
+         styles [
+           "suggested-action",
++          "result-button",
+         ]
+ 
+         layout {
+diff --git a/src/ui/buttons-basic.blp b/src/ui/buttons-basic.blp
+index c465af7..81408a8 100644
+--- a/src/ui/buttons-basic.blp
++++ b/src/ui/buttons-basic.blp
+@@ -402,6 +402,7 @@ template $BasicButtonPanel: Adw.Bin {
+ 
+       styles [
+         "suggested-action",
++        "result-button",
+       ]
+ 
+       layout {
+diff --git a/src/ui/buttons-financial.blp b/src/ui/buttons-financial.blp
+index 666f7dc..13a8a51 100644
+--- a/src/ui/buttons-financial.blp
++++ b/src/ui/buttons-financial.blp
+@@ -457,6 +457,7 @@ template $FinancialButtonPanel: Adw.BreakpointBin {
+ 
+         styles [
+           "suggested-action",
++          "result-button",
+         ]
+ 
+         layout {
+diff --git a/src/ui/buttons-programming.blp b/src/ui/buttons-programming.blp
+index c2e86b4..5249569 100644
+--- a/src/ui/buttons-programming.blp
++++ b/src/ui/buttons-programming.blp
+@@ -1862,6 +1862,7 @@ template $ProgrammingButtonPanel: Adw.BreakpointBin {
+ 
+         styles [
+           "suggested-action",
++          "result-button",
+         ]
+ 
+         layout {
+diff --git a/src/ui/math-display.blp b/src/ui/math-display.blp
+index f658a3a..911a779 100644
+--- a/src/ui/math-display.blp
++++ b/src/ui/math-display.blp
+@@ -19,7 +19,7 @@ template $MathDisplay: Box {
+         right-margin: "14";
+         pixels-above-lines: "8";
+         pixels-below-lines: "2";
+-        justification: "left";
++        justification: "right";
+         name: "displayitem";
+         width-request: "20";
+         height-request: "45";
+diff --git a/src/ui/math-window.blp b/src/ui/math-window.blp
+index c4f4e4c..357a7d1 100644
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -118,38 +118,97 @@ template $MathWindow: Adw.ApplicationWindow {
+   title: _("Calculator");
+   height-request: 616;
+ 
+-  Adw.ToolbarView {
+-    top-bar-style: raised;
++  styles [
++    "luma-calculator-window",
++  ]
+ 
++  Adw.ToolbarView {
+     [top]
+     Adw.HeaderBar headerbar {
++      centering-policy: strict;
++
++      styles [
++        "luma-calculator-titlebar",
++      ]
++
+       [title]
+-      MenuButton menu_button {
+-        menu-model: window_menu;
+-        focus-on-click: false;
+-        always-show-arrow: true;
+-        can-shrink: true;
+-        tooltip-text: _("Mode Selection");
+-      }
++      Label {
++        label: _("Calculator");
++        ellipsize: end;
+ 
+-      Button undo_button {
+-        icon-name: "edit-undo-symbolic";
+-        focus-on-click: false;
+-        action-name: "win.undo";
+-        tooltip-text: _("Undo");
++        styles [
++          "luma-calculator-title",
++        ]
+       }
++    }
+ 
+-      Button redo_button {
+-        icon-name: "edit-redo-symbolic";
+-        focus-on-click: false;
+-        action-name: "win.redo";
+-        tooltip-text: _("Redo");
+-      }
++    [top]
++    Adw.HeaderBar {
++      show-start-title-buttons: false;
++      show-end-title-buttons: false;
++
++      styles [
++        "luma-calculator-actionbar",
++      ]
++
++      [title]
++      Box {}
++
++      [start]
++      Box {
++        spacing: 9;
++
++        Box {
++          styles [
++            "linked",
++            "luma-calculator-history-controls",
++          ]
+ 
+-      Button back_button {
+-        icon-name: "go-previous-symbolic";
+-        action-name: "win.back";
+-        tooltip-text: _("Financial");
++          Button undo_button {
++            icon-name: "edit-undo-symbolic";
++            focus-on-click: false;
++            action-name: "win.undo";
++            tooltip-text: _("Undo");
++
++            styles [
++              "luma-action-control",
++            ]
++          }
++
++          Button redo_button {
++            icon-name: "edit-redo-symbolic";
++            focus-on-click: false;
++            action-name: "win.redo";
++            tooltip-text: _("Redo");
++
++            styles [
++              "luma-action-control",
++            ]
++          }
++
++          Button back_button {
++            icon-name: "go-previous-symbolic";
++            action-name: "win.back";
++            tooltip-text: _("Financial");
++
++            styles [
++              "luma-action-control",
++            ]
++          }
++        }
++
++        MenuButton menu_button {
++          menu-model: window_menu;
++          focus-on-click: false;
++          always-show-arrow: true;
++          can-shrink: true;
++          tooltip-text: _("Mode Selection");
++
++          styles [
++            "luma-action-control",
++            "luma-mode-control",
++          ]
++        }
+       }
+ 
+       [end]
+@@ -159,6 +218,10 @@ template $MathWindow: Adw.ApplicationWindow {
+         menu-model: primary_menu;
+         primary: true;
+         tooltip-text: _("Main Menu");
++
++        styles [
++          "luma-action-control",
++        ]
+       }
+     }
+ 
+@@ -169,6 +232,10 @@ template $MathWindow: Adw.ApplicationWindow {
+       tightening-threshold: 700;
+       unit: px;
+ 
++      styles [
++        "luma-calculator-surface",
++      ]
++
+       Box {
+         vexpand: true;
+         orientation: vertical;
+@@ -176,6 +243,7 @@ template $MathWindow: Adw.ApplicationWindow {
+         Box display_box {
+           overflow: hidden;
+           orientation: vertical;
++          vexpand: false;
+ 
+           styles [
+             "card",
+@@ -201,6 +269,7 @@ template $MathWindow: Adw.ApplicationWindow {
+         }
+ 
+         $MathButtons _buttons {
++          vexpand: true;
+           equation: bind template.equation;
+           converter: "_converter";
+         }
+diff --git a/src/ui/style.css b/src/ui/style.css
+index c4a8aff..b0370be 100644
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -346,3 +346,226 @@ button.action-button {
+ .currency-search-entry {
+   margin: 3px 12px;
+ }
++
++/* Project Luma calculator composition — light mode v1.
++ * Shared palette values come from Luma's downstream libadwaita stylesheet;
++ * this application stylesheet owns only Calculator-specific composition and
++ * the semantic button categories already present in upstream templates. */
++@media (prefers-color-scheme: light) {
++  .luma-calculator-window,
++  .luma-calculator-surface {
++    background-color: @window_bg_color;
++    color: @window_fg_color;
++  }
++
++  headerbar.luma-calculator-titlebar {
++    min-height: 34px;
++    background-color: @headerbar_bg_color;
++    background-image: linear-gradient(to bottom, #f2f3f5, #e8eaee);
++    color: @headerbar_fg_color;
++    border: none;
++    box-shadow: inset 0 -1px RGB(44 49 56 / 11%);
++  }
++
++  headerbar.luma-calculator-titlebar > windowhandle > box {
++    padding-top: 0;
++    padding-bottom: 1px;
++  }
++
++  .luma-calculator-title {
++    color: @headerbar_fg_color;
++    font-size: 12.5px;
++    font-weight: 600;
++  }
++
++  headerbar.luma-calculator-actionbar {
++    min-height: 38px;
++    padding: 3px 0;
++    background-color: @headerbar_bg_color;
++    background-image: none;
++    color: @headerbar_fg_color;
++    border: none;
++    border-bottom: 1px solid @borders;
++    box-shadow: none;
++  }
++
++  headerbar.luma-calculator-actionbar > windowhandle > box {
++    padding-top: 3px;
++    padding-bottom: 3px;
++  }
++
++  headerbar.luma-calculator-actionbar button.luma-action-control,
++  headerbar.luma-calculator-actionbar menubutton.luma-action-control > button {
++    min-height: 30px;
++    min-width: 32px;
++    padding: 0 8px;
++    border-radius: 8px;
++    background-color: @view_bg_color;
++    background-image: none;
++    color: #374151;
++    border: 1px solid @borders;
++    box-shadow: none;
++  }
++
++  headerbar.luma-calculator-actionbar button.luma-action-control:hover,
++  headerbar.luma-calculator-actionbar menubutton.luma-action-control > button:hover {
++    background-color: @luma_hover_bg_color;
++  }
++
++  headerbar.luma-calculator-actionbar button.luma-action-control:active,
++  headerbar.luma-calculator-actionbar menubutton.luma-action-control > button:active,
++  headerbar.luma-calculator-actionbar menubutton.luma-action-control > button:checked {
++    background-color: @luma_active_bg_color;
++  }
++
++  headerbar.luma-calculator-actionbar .luma-calculator-history-controls button {
++    min-width: 35px;
++    padding: 0;
++  }
++
++  headerbar.luma-calculator-actionbar .luma-calculator-history-controls button image {
++    -gtk-icon-size: 10px;
++  }
++
++  headerbar.luma-calculator-actionbar menubutton.luma-mode-control > button {
++    min-width: 82px;
++    font-size: 12px;
++    font-weight: 500;
++  }
++
++  .display-container {
++    min-height: 132px;
++    margin: 14px 14px 0;
++    background-color: @view_bg_color;
++    color: @view_fg_color;
++    border: 1px solid @borders;
++    border-radius: 10px;
++    box-shadow: none;
++  }
++
++  .display-container.programming {
++    border-radius: 10px 10px 0 0;
++  }
++
++  .history-view,
++  .history-view list {
++    background-color: @view_bg_color;
++    color: @view_fg_color;
++  }
++
++  mathdisplay {
++    min-height: 112px;
++    border-top: none;
++  }
++
++  mathdisplay textview,
++  mathdisplay textview text {
++    background-color: transparent;
++    color: @view_fg_color;
++  }
++
++  .sourceview {
++    padding: 50px 16px 12px;
++    color: @view_fg_color;
++    font-size: 34px;
++    font-weight: 500;
++    font-feature-settings: "tnum";
++  }
++
++  .info-view {
++    min-height: 18px;
++    padding: 0 0 6px;
++    color: @luma_secondary_fg_color;
++    font-size: 12px;
++    font-weight: 400;
++  }
++
++  .math-buttons grid.buttons {
++    min-height: calc(58px * 5 + 8px * 4);
++    min-width: calc(64px * 5 + 8px * 4);
++  }
++
++  box.math-buttons,
++  .math-buttons grid.buttons,
++  .math-buttons grid.buttons > grid {
++    border-spacing: 8px;
++  }
++
++  widget.math-buttons,
++  box.math-buttons {
++    margin: 12px 14px 14px;
++  }
++
++  carousel.math-buttons > widget > grid.buttons {
++    margin: 12px 14px 0;
++  }
++
++  .math-buttons grid.buttons > button,
++  .math-buttons grid.buttons > menubutton > button,
++  .math-buttons grid.buttons > stack > button,
++  .math-buttons grid.buttons > grid > button,
++  .math-buttons grid.buttons > grid > menubutton > button,
++  .math-buttons grid.buttons > grid > stack > button {
++    padding: 2px 4px;
++    border: 1px solid @borders;
++    border-radius: 10px;
++    background-color: @view_bg_color;
++    background-image: none;
++    color: @view_fg_color;
++    box-shadow: none;
++    font-size: 18px;
++    font-weight: 500;
++  }
++
++  .math-buttons grid.buttons button:hover,
++  .math-buttons grid.buttons menubutton > button:hover {
++    background-color: @luma_hover_bg_color;
++  }
++
++  .math-buttons grid.buttons button:active,
++  .math-buttons grid.buttons button.keyboard-activating,
++  .math-buttons grid.buttons menubutton > button:active {
++    background-color: @luma_active_bg_color;
++  }
++
++  .math-buttons grid.buttons button:disabled,
++  .math-buttons grid.buttons menubutton > button:disabled {
++    color: @luma_faint_fg_color;
++  }
++
++  .math-buttons grid.buttons button.function-button:checked {
++    background-color: @luma_soft_accent_bg_color;
++    color: @accent_color;
++  }
++
++  .math-buttons grid.buttons button.operator-button {
++    background-color: @luma_soft_accent_bg_color;
++    color: @accent_color;
++    font-weight: 600;
++  }
++
++  .math-buttons grid.buttons button.operator-button:hover {
++    background-color: alpha(@accent_bg_color, 0.17);
++  }
++
++  .math-buttons grid.buttons button.operator-button:active,
++  .math-buttons grid.buttons button.operator-button.keyboard-activating {
++    background-color: alpha(@accent_bg_color, 0.20);
++  }
++
++  .math-buttons grid.buttons button.result-button {
++    background-color: @accent_bg_color;
++    color: @accent_fg_color;
++    font-size: 18px;
++    font-weight: 600;
++  }
++
++  .math-buttons grid.buttons button.result-button:hover {
++    background-color: #3f6ba6;
++  }
++
++  .math-buttons grid.buttons button.result-button:active,
++  .math-buttons grid.buttons button.result-button.keyboard-activating {
++    background-color: #365f97;
++  }
++}

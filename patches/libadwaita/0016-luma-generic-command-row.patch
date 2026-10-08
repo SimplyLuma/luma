@@ -1,0 +1,443 @@
+From 780f23feac62ec9132917a0fc4e1a3c7cba9d6a8 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 18:45:54 -0400
+Subject: [PATCH] header-bar: host the Luma command row for generic application
+ windows
+
+A window-level AdwHeaderBar that owns the automatic Luma identity keeps the
+clean 42px title row (identity, contextual title, native window controls) and
+re-hosts its packed start/end children on a secondary command surface directly
+below the title row. The application widgets, their actions, signals,
+tooltips, accessible names and adaptive visibility are untouched, and
+pack_start, pack_end and remove keep routing into the command groups so
+applications that reparent their own controls at runtime keep working.
+
+Only structurally safe patterns opt in: the first top bar of the window's
+AdwToolbarView, the window titlebar, or the first child of a vertical GtkBox
+that is the window content, in a non-transient generic application window
+without split views, dialogs, sheets or adaptive previews. Explicit Luma
+product windows and the luma-no-command-row escape class are excluded, and an
+empty command row is never shown.
+---
+ src/adw-header-bar.c                    | 248 +++++++++++++++++++++++-
+ src/stylesheet/widgets/_header-bar.scss |  88 +++++++++
+ 2 files changed, 335 insertions(+), 1 deletion(-)
+
+diff --git a/src/adw-header-bar.c b/src/adw-header-bar.c
+index 344d32d..be74562 100644
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -24,6 +24,9 @@
+ #include "adw-header-bar.h"
+ 
+ #include "adw-adaptive-preview-private.h"
++#include "adw-application-window.h"
++#include "adw-toolbar-view.h"
++#include "adw-window.h"
+ #include "adw-back-button-private.h"
+ #include "adw-bin.h"
+ #include "adw-bottom-sheet-private.h"
+@@ -186,6 +189,9 @@ struct _AdwHeaderBar {
+   GtkWidget *luma_identity;
+   GtkRoot *luma_identity_root;
+   char *luma_identity_name;
++  GtkWidget *luma_command_bar;
++  GtkWidget *luma_command_start;
++  GtkWidget *luma_command_end;
+ 
+   char *decoration_layout;
+ 
+@@ -224,6 +230,9 @@ static GParamSpec *props[LAST_PROP] = { NULL, };
+ static const char luma_identity_owner_key[] = "adw-header-bar-luma-identity-owner";
+ static void add_automatic_luma_identity (AdwHeaderBar *self);
+ static void update_title (AdwHeaderBar *self);
++static void luma_enter_command_row (AdwHeaderBar *self);
++static void luma_leave_command_row (AdwHeaderBar *self);
++static void luma_update_command_bar_visibility (AdwHeaderBar *self);
+ 
+ static void adw_header_bar_buildable_init (GtkBuildableIface *iface);
+ 
+@@ -657,6 +666,7 @@ add_automatic_luma_identity (AdwHeaderBar *self)
+                               self->start_controls);
+   g_object_set_data (G_OBJECT (root), luma_identity_owner_key, self);
+   update_box_visibility (self->start_box);
++  luma_enter_command_row (self);
+ }
+ 
+ static void
+@@ -675,6 +685,7 @@ remove_automatic_luma_identity (AdwHeaderBar *self)
+       g_object_get_data (G_OBJECT (self->luma_identity_root), luma_identity_owner_key) == self)
+     g_object_set_data (G_OBJECT (self->luma_identity_root), luma_identity_owner_key, NULL);
+ 
++  luma_leave_command_row (self);
+   gtk_box_remove (GTK_BOX (self->start_box), self->luma_identity);
+   self->luma_identity = NULL;
+   self->luma_identity_root = NULL;
+@@ -683,6 +694,219 @@ remove_automatic_luma_identity (AdwHeaderBar *self)
+   update_title (self);
+ }
+ 
++
++/* Luma command row.
++ *
++ * A window-level header bar that owns the automatic application identity has
++ * two jobs: the clean title row (identity, contextual title, window controls)
++ * and hosting the application's real actions.  On Luma those actions live on a
++ * secondary command surface directly below the title row.  The header bar
++ * re-hosts its packed start/end children there; the widgets, their actions,
++ * signals, tooltips, accessible names, and adaptive visibility are untouched.
++ * pack_start/pack_end/remove keep working so applications that reparent their
++ * own controls at runtime keep working too.
++ *
++ * Only the structurally safe patterns opt in: the header bar must be the
++ * identity owner of a non-transient application window, must not be inside a
++ * split view, dialog, sheet, or adaptive preview, and must be the first top
++ * bar of the window's AdwToolbarView, the window titlebar, or the first child
++ * of a vertical GtkBox that is the window content.  Explicit Luma product
++ * windows and the luma-no-command-row escape class are excluded.
++ */
++
++static gboolean
++luma_window_is_generic (GtkWindow *window)
++{
++  GtkWidget *widget = GTK_WIDGET (window);
++
++  return !gtk_widget_has_css_class (widget, "luma-app-window") &&
++         !gtk_widget_has_css_class (widget, "luma-files-window") &&
++         !gtk_widget_has_css_class (widget, "luma-calculator-window") &&
++         !gtk_widget_has_css_class (widget, "luma-no-native-surfaces");
++}
++
++static GtkWidget *
++luma_window_content (GtkWindow *window)
++{
++  if (ADW_IS_APPLICATION_WINDOW (window))
++    return adw_application_window_get_content (ADW_APPLICATION_WINDOW (window));
++  if (ADW_IS_WINDOW (window))
++    return adw_window_get_content (ADW_WINDOW (window));
++
++  return gtk_window_get_child (window);
++}
++
++static gboolean
++luma_command_row_allowed (AdwHeaderBar *self)
++{
++  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
++  GtkWidget *parent;
++  GtkWidget *content;
++
++  if (!self->luma_identity ||
++      !GTK_IS_WINDOW (root) ||
++      self->dialog || self->sheet || self->adaptive_preview ||
++      self->split_views ||
++      gtk_widget_has_css_class (GTK_WIDGET (self), "luma-no-command-row") ||
++      !luma_window_is_generic (GTK_WINDOW (root)))
++    return FALSE;
++
++  if (gtk_window_get_titlebar (GTK_WINDOW (root)) == GTK_WIDGET (self))
++    return TRUE;
++
++  content = luma_window_content (GTK_WINDOW (root));
++  parent = gtk_widget_get_parent (GTK_WIDGET (self));
++
++  /* AdwToolbarView top bar: toolbarview > revealer.top-bar > windowhandle > box > self */
++  if (GTK_IS_BOX (parent) &&
++      gtk_widget_get_first_child (parent) == GTK_WIDGET (self)) {
++    GtkWidget *handle = gtk_widget_get_parent (parent);
++    GtkWidget *revealer = handle ? gtk_widget_get_parent (handle) : NULL;
++    GtkWidget *view = revealer ? gtk_widget_get_parent (revealer) : NULL;
++
++    if (GTK_IS_WINDOW_HANDLE (handle) &&
++        GTK_IS_REVEALER (revealer) &&
++        gtk_widget_has_css_class (revealer, "top-bar") &&
++        ADW_IS_TOOLBAR_VIEW (view) &&
++        view == content)
++      return TRUE;
++
++    /* Vertical box as window content with the header bar first. */
++    if (parent == content &&
++        gtk_orientable_get_orientation (GTK_ORIENTABLE (parent)) == GTK_ORIENTATION_VERTICAL)
++      return TRUE;
++  }
++
++  return FALSE;
++}
++
++static gboolean
++luma_is_title_row_child (AdwHeaderBar *self,
++                         GtkWidget    *child)
++{
++  return child == self->start_controls ||
++         child == self->end_controls ||
++         child == self->back_button ||
++         child == self->luma_identity;
++}
++
++static void
++luma_move_children (AdwHeaderBar *self,
++                    GtkWidget    *from,
++                    GtkWidget    *to,
++                    GtkWidget    *before)
++{
++  GtkWidget *child = gtk_widget_get_first_child (from);
++  GtkWidget *anchor = before ? gtk_widget_get_prev_sibling (before) : NULL;
++  gboolean anchored = before != NULL;
++
++  while (child) {
++    GtkWidget *next = gtk_widget_get_next_sibling (child);
++
++    if (!luma_is_title_row_child (self, child)) {
++      g_object_ref (child);
++      g_signal_handlers_disconnect_by_func (child, update_box_visibility, from);
++      gtk_box_remove (GTK_BOX (from), child);
++      if (anchored) {
++        gtk_box_insert_child_after (GTK_BOX (to), child, anchor);
++        anchor = child;
++      } else {
++        gtk_box_append (GTK_BOX (to), child);
++      }
++      g_signal_connect_swapped (child, "notify::visible",
++                                G_CALLBACK (update_box_visibility), to);
++      g_object_unref (child);
++    }
++
++    child = next;
++  }
++
++  update_box_visibility (from);
++  update_box_visibility (to);
++}
++
++static void
++luma_update_command_bar_visibility (AdwHeaderBar *self)
++{
++  if (!self->luma_command_bar)
++    return;
++
++  gtk_widget_set_visible (self->luma_command_bar,
++                          gtk_widget_get_visible (self->luma_command_start) ||
++                          gtk_widget_get_visible (self->luma_command_end));
++}
++
++static void
++luma_enter_command_row (AdwHeaderBar *self)
++{
++  GtkWidget *toolbar_view;
++
++  if (self->luma_command_bar || !luma_command_row_allowed (self))
++    return;
++
++  self->luma_command_start = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (self->luma_command_start, "luma-command-group");
++  gtk_widget_set_valign (self->luma_command_start, GTK_ALIGN_CENTER);
++  self->luma_command_end = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (self->luma_command_end, "luma-command-group");
++  gtk_widget_set_valign (self->luma_command_end, GTK_ALIGN_CENTER);
++
++  self->luma_command_bar = gtk_center_box_new ();
++  gtk_widget_add_css_class (self->luma_command_bar, "luma-command-bar");
++  gtk_center_box_set_start_widget (GTK_CENTER_BOX (self->luma_command_bar),
++                                   self->luma_command_start);
++  gtk_center_box_set_end_widget (GTK_CENTER_BOX (self->luma_command_bar),
++                                 self->luma_command_end);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (self->luma_command_bar),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL, _("Toolbar"),
++                                  -1);
++
++  g_signal_connect_swapped (self->luma_command_start, "notify::visible",
++                            G_CALLBACK (luma_update_command_bar_visibility), self);
++  g_signal_connect_swapped (self->luma_command_end, "notify::visible",
++                            G_CALLBACK (luma_update_command_bar_visibility), self);
++
++  gtk_widget_set_layout_manager (GTK_WIDGET (self),
++                                 gtk_box_layout_new (GTK_ORIENTATION_VERTICAL));
++  gtk_widget_insert_after (self->luma_command_bar, GTK_WIDGET (self), self->handle);
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-command-host");
++
++  luma_move_children (self, self->start_box, self->luma_command_start, NULL);
++  luma_move_children (self, self->end_box, self->luma_command_end, NULL);
++  luma_update_command_bar_visibility (self);
++
++  toolbar_view = gtk_widget_get_ancestor (GTK_WIDGET (self), ADW_TYPE_TOOLBAR_VIEW);
++  if (toolbar_view)
++    gtk_widget_add_css_class (toolbar_view, "luma-has-command-row");
++}
++
++static void
++luma_leave_command_row (AdwHeaderBar *self)
++{
++  GtkWidget *toolbar_view;
++
++  if (!self->luma_command_bar)
++    return;
++
++  toolbar_view = gtk_widget_get_ancestor (GTK_WIDGET (self), ADW_TYPE_TOOLBAR_VIEW);
++  if (toolbar_view)
++    gtk_widget_remove_css_class (toolbar_view, "luma-has-command-row");
++
++  g_signal_handlers_disconnect_by_func (self->luma_command_start,
++                                        luma_update_command_bar_visibility, self);
++  g_signal_handlers_disconnect_by_func (self->luma_command_end,
++                                        luma_update_command_bar_visibility, self);
++
++  luma_move_children (self, self->luma_command_start, self->start_box, NULL);
++  luma_move_children (self, self->luma_command_end, self->end_box, self->end_controls);
++
++  gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-command-host");
++  g_clear_pointer (&self->luma_command_bar, gtk_widget_unparent);
++  self->luma_command_start = NULL;
++  self->luma_command_end = NULL;
++  gtk_widget_set_layout_manager (GTK_WIDGET (self), gtk_bin_layout_new ());
++}
++
+ static void
+ update_start_title_buttons (AdwHeaderBar *self)
+ {
+@@ -1080,6 +1304,9 @@ adw_header_bar_dispose (GObject *object)
+ 
+   g_clear_object (&self->size_group);
+   g_clear_pointer (&self->luma_identity_name, g_free);
++  g_clear_pointer (&self->luma_command_bar, gtk_widget_unparent);
++  self->luma_command_start = NULL;
++  self->luma_command_end = NULL;
+   g_clear_pointer (&self->handle, gtk_widget_unparent);
+ 
+   G_OBJECT_CLASS (adw_header_bar_parent_class)->dispose (object);
+@@ -1410,6 +1637,15 @@ adw_header_bar_pack_start (AdwHeaderBar *self,
+   g_return_if_fail (GTK_IS_WIDGET (child));
+   g_return_if_fail (gtk_widget_get_parent (child) == NULL);
+ 
++  if (self->luma_command_start) {
++    gtk_box_append (GTK_BOX (self->luma_command_start), child);
++    update_box_visibility (self->luma_command_start);
++    g_signal_connect_swapped (child, "notify::visible",
++                              G_CALLBACK (update_box_visibility),
++                              self->luma_command_start);
++    return;
++  }
++
+   gtk_box_append (GTK_BOX (self->start_box), child);
+   update_box_visibility (self->start_box);
+ 
+@@ -1433,6 +1669,15 @@ adw_header_bar_pack_end (AdwHeaderBar *self,
+   g_return_if_fail (GTK_IS_WIDGET (child));
+   g_return_if_fail (gtk_widget_get_parent (child) == NULL);
+ 
++  if (self->luma_command_end) {
++    gtk_box_prepend (GTK_BOX (self->luma_command_end), child);
++    update_box_visibility (self->luma_command_end);
++    g_signal_connect_swapped (child, "notify::visible",
++                              G_CALLBACK (update_box_visibility),
++                              self->luma_command_end);
++    return;
++  }
++
+   gtk_box_prepend (GTK_BOX (self->end_box), child);
+   update_box_visibility (self->end_box);
+ 
+@@ -1462,7 +1707,8 @@ adw_header_bar_remove (AdwHeaderBar *self,
+ 
+   parent = gtk_widget_get_parent (child);
+ 
+-  if (parent == self->start_box || parent == self->end_box) {
++  if (parent == self->start_box || parent == self->end_box ||
++      (parent && (parent == self->luma_command_start || parent == self->luma_command_end))) {
+     g_signal_handlers_disconnect_by_func (child,
+                                           update_box_visibility,
+                                           parent);
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 6907ad5..11ec594 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -454,3 +454,91 @@ window.devel {
+     background-repeat: unset;
+   }
+ }
++
++/****************************
++ * Luma generic command row *
++ ****************************/
++
++// A header bar hosting the Luma command row stacks the 42px title row above
++// the application's real actions. The title row keeps identity, contextual
++// title, and native window controls; the command surface keeps the widgets.
++headerbar.luma-command-host {
++  padding: 0;
++
++  > windowhandle {
++    min-height: 42px;
++  }
++
++  > .luma-command-bar {
++    margin: 0 9px 8px;
++  }
++
++  .luma-command-group {
++    margin: 5px 0;
++  }
++
++  .luma-command-group > button,
++  .luma-command-group > button.image-button,
++  .luma-command-group > button.text-button,
++  .luma-command-group > togglebutton,
++  .luma-command-group > menubutton > button,
++  .luma-command-group > menubutton > button.image-button,
++  .luma-command-group > splitbutton > button,
++  .luma-command-group > splitbutton > menubutton > button {
++    min-width: 30px;
++    min-height: 30px;
++    padding: 0 9px;
++    margin: 0;
++    border: none;
++    border-right: 1px solid unquote("@luma_line");
++    border-radius: 0;
++    background: transparent;
++    box-shadow: none;
++    color: unquote("@luma_ink");
++
++    &:dir(rtl) {
++      border-right: none;
++      border-left: 1px solid unquote("@luma_line");
++    }
++
++    > image {
++      -gtk-icon-size: 14px;
++      color: inherit;
++    }
++
++    &:hover { background-color: unquote("@luma_hover"); }
++    &:active, &:checked { background-color: unquote("@luma_selected"); }
++    &:disabled { color: unquote("@luma_muted"); filter: none; }
++  }
++
++  .luma-command-group > :first-child,
++  .luma-command-group > menubutton:first-child > button,
++  .luma-command-group > splitbutton:first-child > button {
++    border-radius: 8px 0 0 8px;
++
++    &:dir(rtl) { border-radius: 0 8px 8px 0; }
++  }
++
++  .luma-command-group > :last-child,
++  .luma-command-group > menubutton:last-child > button,
++  .luma-command-group > splitbutton:last-child > menubutton > button {
++    border-right: none;
++    border-left: none;
++    border-radius: 0 8px 8px 0;
++
++    &:dir(rtl) { border-radius: 8px 0 0 8px; }
++  }
++
++  .luma-command-group > :only-child,
++  .luma-command-group > menubutton:only-child > button {
++    border-right: none;
++    border-left: none;
++    border-radius: 8px;
++  }
++
++  // Non-button controls (entries, labels, custom widgets) keep their own
++  // presentation inside the group with a quiet inset.
++  .luma-command-group > :not(button):not(menubutton):not(splitbutton) {
++    margin: 0 4px;
++  }
++}

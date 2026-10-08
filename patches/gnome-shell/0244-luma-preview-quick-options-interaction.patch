@@ -1,0 +1,294 @@
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5004,6 +5004,48 @@
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+ .poster-card.compact .prairie-password-field { width: 220px; }
++
++/* Creator preview: shared tile feedback and comfortable detail geometry. */
++.quick-settings.luma-studio-options .luma-options-radio.luma-radio-hover {
++  background-color: rgba(255,255,255,.12);
++  box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio.luma-radio-hover {
++  background-color: #fff;
++  box-shadow: 0 0 0 1px rgba(25,27,31,.14), 0 2px 4px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button {
++  width: 24px; margin-right: 6px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:rtl {
++  margin-right: 0; margin-left: 6px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:hover,
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++  background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-level-key,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  border: 1px solid rgba(255,255,255,.10);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-level-key,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
++  background-color: #fff; color: rgba(22,25,29,.86);
++  border-color: rgba(25,27,31,.12);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++.quick-settings.luma-studio-options .luma-options-page-header { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list {
++  padding: 6px; spacing: 4px; border-radius: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row {
++  padding: 7px 8px; border-radius: 8px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby {
++  padding: 4px 6px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off {
++  padding: 6px; }
++
++/* Keep enabled utility glyphs legible over the selected blue fill. */
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility:checked .quick-toggle-icon {
++  color: #ffffff;
++  background-color: #3a84ca;
++}
++
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5262,6 +5262,18 @@
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+ .poster-card.compact .prairie-password-field { width: 220px; }
++
++/* Creator preview: preserve high-contrast colors while spacing embedded pages. */
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button { width: 24px; margin-right: 6px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:rtl { margin-right: 0; margin-left: 6px; }
++.quick-settings.luma-studio-options .luma-options-radio.luma-radio-hover { outline: 2px solid -st-accent-color; }
++.quick-settings.luma-studio-options .luma-options-page-header { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list { padding: 6px; spacing: 4px; border-radius: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row { padding: 7px 8px; border-radius: 8px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby { padding: 4px 6px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off { padding: 6px; }
++
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5228,6 +5228,48 @@
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+ .poster-card.compact .prairie-password-field { width: 220px; }
++
++/* Creator preview: shared tile feedback and comfortable detail geometry. */
++.quick-settings.luma-studio-options .luma-options-radio.luma-radio-hover {
++  background-color: rgba(255,255,255,.12);
++  box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-radio.luma-radio-hover {
++  background-color: #fff;
++  box-shadow: 0 0 0 1px rgba(25,27,31,.14), 0 2px 4px rgba(25,27,31,.08); }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button {
++  width: 24px; margin-right: 6px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:rtl {
++  margin-right: 0; margin-left: 6px; }
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:hover,
++.quick-settings.luma-studio-options .luma-options-radio .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++  background-color: transparent; box-shadow: none; }
++.quick-settings.luma-studio-options .luma-options-level-key,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  border: 1px solid rgba(255,255,255,.10);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-level-key,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
++  background-color: #fff; color: rgba(22,25,29,.86);
++  border-color: rgba(25,27,31,.12);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++.quick-settings.luma-studio-options .luma-options-page-header { margin-bottom: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail > .popup-menu-section,
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-list {
++  padding: 6px; spacing: 4px; border-radius: 12px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row {
++  padding: 7px 8px; border-radius: 8px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-nearby {
++  padding: 4px 6px; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-options-off {
++  padding: 6px; }
++
++/* Keep enabled utility glyphs legible over the selected blue fill. */
++.quick-settings.luma-studio-options .luma-options-utility:checked .quick-toggle-icon,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-utility:checked .quick-toggle-icon {
++  color: #ffffff;
++  background-color: #3a84ca;
++}
++
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+   min-height: 0;
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -381,7 +381,7 @@
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+         this._submitArrow = new St.Icon({
+-            icon_name: 'go-next-symbolic',
++            icon_name: 'lumaui-corner-down-left-symbolic',
+             style_class: 'prairie-login-submit-icon',
+         });
+         this._defaultButtonWell.add_child(this._submitArrow);
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1448,6 +1448,15 @@
+             item._menuButton.child.child.icon_name = 'luma-chevron-right-symbolic';
+             item.menu._studioTitle = item === indicators._network?._wirelessToggle ? _('Wi-Fi') : _('Bluetooth');
+             item.menu._studioRadio = item;
++            // Both native hit targets share the enclosing tile's feedback.
++            const syncHover = () => {
++                if (item._contents.hover || item._menuButton.hover)
++                    item.add_style_class_name('luma-radio-hover');
++                else
++                    item.remove_style_class_name('luma-radio-hover');
++            };
++            item._contents.connectObject('notify::hover', syncHover, item);
++            item._menuButton.connectObject('notify::hover', syncHover, item);
+ 
+         }
+         const toggles = new St.BoxLayout({style_class: 'luma-options-toggles', orientation: Clutter.Orientation.VERTICAL});
+@@ -1598,6 +1607,10 @@
+             this._grid, item, 'column-span', colSpan);
+ 
+         if (item.menu) {
++            // Embedded pages use the enclosing Quick Options modal grab.
++            // A second grab on the detail body treats its header switch as
++            // an outside click and closes the page before the click arrives.
++            item._menuManager?.removeMenu(item.menu);
+             item.menu._studioPage = true;
+             item.menu.box.add_style_class_name('luma-options-detail');
+             for (const child of item.menu.box.get_children()) {
+--- a/js/ui/status/bluetooth.js
++++ b/js/ui/status/bluetooth.js
+@@ -513,7 +513,7 @@
+         this.menu.box.insert_child_below(this._pairCode, this.menu.box.get_last_child());
+         this._pairAgent = new PairingAgent(this);
+         this.menu.connectObject('open-state-changed', (_m, open) => {
+-            if (open && this._client.active) this._syncNearby();
++            if (open && this._client.active) this._scanNearby();
+             else this._stopNearby();
+         }, this);
+         this._client.connectObject('devices-changed', () => this._syncNearby(), this);
+@@ -580,6 +580,8 @@
+         this._deviceItems.clear();
+ 
+         this._sync();
++        if (this._client.active && this.menu.isOpen)
++            this._scanNearby();
+     }
+ 
+     _updatePlaceholder() {
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -273,7 +273,7 @@
+         if (!this._settingsApp)
+             console.warn('Missing required core component Settings, expect trouble…');
+ 
+-        this.child.icon_name = 'luma-settings-2-symbolic';
++        this.child.icon_name = 'lumaui-cog-symbolic';
+         this.accessible_name = this._settingsApp?.get_name() ?? null;
+ 
+         this.connect('clicked', () => {
+--- a/data/theme/verify-treatment-ink.py
++++ b/data/theme/verify-treatment-ink.py
+@@ -150,8 +150,8 @@
+     return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+ 
+ 
+-def plate_carries_ink(body, ink):
+-    """True if the rule's own opaque-enough fill carries its ink at 4.5:1."""
++def plate_carries_ink(body, ink, minimum=PLATE_INK_MINIMUM):
++    """True if the rule's own opaque fill carries its ink at `minimum`."""
+     ink = rgba(ink)
+     if ink is None:
+         return False
+@@ -159,7 +159,7 @@
+         fill = rgba(value)
+         if fill is None or fill[3] < 0.95:
+             continue
+-        if ratio(over(ink, fill), fill) >= PLATE_INK_MINIMUM:
++        if ratio(over(ink, fill), fill) >= minimum:
+             return True
+     return False
+ 
+@@ -178,6 +178,21 @@
+ BLACK = (0, 0, 0, 1.0)
+ BODY_MINIMUM = 4.5
+ GLYPH_MINIMUM = 3.0
++
++
++def utility_glyph_plate(selectors, body, ink):
++    """A checked utility icon may use the existing 3:1 non-text threshold.
++
++    This is not an ink waiver: every selector must target the actual icon,
++    and the same rule must paint an opaque plate with measured contrast.
++    Labels and other light-surface ink retain the 4.5:1 plate requirement.
++    """
++    if not selectors or not all(
++            ".luma-options-utility:checked" in selector
++            and re.search(r"(?:^|\s)\.quick-toggle-icon$", selector)
++            for selector in selectors):
++        return False
++    return plate_carries_ink(body, ink, minimum=GLYPH_MINIMUM)
+ 
+ 
+ def js_ledger(path, name):
+@@ -334,7 +349,8 @@
+                 if lum is None or alpha < 0.5:
+                     continue
+                 where = f"{name}: {selectors[-1][:70]}"
+-                if plate_carries_ink(body, value):
++                if (plate_carries_ink(body, value)
++                        or utility_glyph_plate(selectors, body, value)):
+                     continue
+                 if lum > TOO_LIGHT_FOR_PAPER and not dark_plated:
+                     problems.append(
+--- /dev/null
++++ b/data/theme/test-treatment-ink.py
+@@ -0,0 +1,43 @@
++#!/usr/bin/python3
++# SPDX-License-Identifier: GPL-2.0-or-later
++"""Measured utility glyph plates must never waive the general ink gate."""
++import importlib.util
++from pathlib import Path
++import unittest
++
++spec = importlib.util.spec_from_file_location(
++    "ink_guard", Path(__file__).with_name("verify-treatment-ink.py"))
++guard = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(guard)
++SELECTOR = ".quick-settings.luma-studio-options.luma-surface-light .luma-options-utility:checked .quick-toggle-icon"
++BLUE = "color: #ffffff; background-color: #3a84ca;"
++
++class UtilityGlyphPlateTests(unittest.TestCase):
++    def test_existing_blue_plate_meets_glyph_not_body_threshold(self):
++        self.assertFalse(guard.plate_carries_ink(BLUE, "#ffffff"))
++        self.assertTrue(guard.utility_glyph_plate([SELECTOR], BLUE, "#ffffff"))
++
++    def test_white_icon_without_fill_fails(self):
++        self.assertFalse(guard.utility_glyph_plate([SELECTOR], "color: #ffffff;", "#ffffff"))
++
++    def test_transparent_plate_fails(self):
++        self.assertFalse(guard.utility_glyph_plate([SELECTOR], "background-color: rgba(58,132,202,.5);", "#ffffff"))
++
++    def test_low_contrast_plate_fails(self):
++        self.assertFalse(guard.utility_glyph_plate([SELECTOR], "background-color: #aaaaaa;", "#ffffff"))
++
++    def test_label_and_icon_mixed_selector_list_fails(self):
++        self.assertFalse(guard.utility_glyph_plate([SELECTOR, SELECTOR.replace("quick-toggle-icon", "quick-toggle-label")], BLUE, "#ffffff"))
++
++    def test_ordinary_paper_text_remains_forbidden(self):
++        self.assertFalse(guard.utility_glyph_plate([".luma-surface-light .label"], BLUE, "#ffffff"))
++        self.assertFalse(guard.plate_carries_ink(BLUE, "#ffffff"))
++
++    def test_descendant_label_of_icon_is_not_an_icon(self):
++        self.assertFalse(guard.utility_glyph_plate([SELECTOR + " .label"], BLUE, "#ffffff"))
++
++    def test_unchecked_icon_retains_body_gate(self):
++        self.assertFalse(guard.utility_glyph_plate([SELECTOR.replace(":checked", "")], BLUE, "#ffffff"))
++
++if __name__ == "__main__":
++    unittest.main()

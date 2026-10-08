@@ -1,0 +1,49 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Diagnostic physical-display session for FP6 Android acceptance. Weston owns
+# KMS directly and composites with Pixman, so GNOME Shell and the A810 command
+# stream are absent. This is a bounded bring-up lane, not the normal Luma boot.
+
+set -eu
+
+for path in /usr/bin/weston /usr/local/share/luma/fp6-pixman.ini; do
+  if [ ! -e "$path" ]; then
+    printf 'luma-android-pixman-session: missing %s\n' "$path" >&2
+    exit 1
+  fi
+done
+
+unset DISPLAY WAYLAND_DISPLAY
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_CLASS=user
+export XDG_SESSION_DESKTOP=luma-android-pixman
+export XDG_CURRENT_DESKTOP=Luma
+export DESKTOP_SESSION=luma-android-pixman
+export LUMA_DEVICE_CLASS=handheld
+
+for variable in XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_RUNTIME_DIR; do
+  eval "value=\${$variable:-}"
+  if [ -z "$value" ]; then
+    printf 'luma-android-pixman-session: greetd did not provide %s\n' \
+      "$variable" >&2
+    exit 1
+  fi
+done
+
+/usr/bin/systemctl --user unset-environment DISPLAY WAYLAND_DISPLAY
+/usr/bin/systemctl --user import-environment \
+  XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_SESSION_TYPE XDG_SESSION_CLASS \
+  XDG_SESSION_DESKTOP XDG_CURRENT_DESKTOP DESKTOP_SESSION LUMA_DEVICE_CLASS
+
+exec /usr/bin/weston \
+  --config=/usr/local/share/luma/fp6-pixman.ini \
+  --backend=drm \
+  --renderer=pixman \
+  --shell=kiosk \
+  --socket=wayland-0 \
+  --seat=seat0 \
+  --drm-device=card0 \
+  --current-mode \
+  --continue-without-input \
+  --log=/var/tmp/luma-android-pixman-weston.log

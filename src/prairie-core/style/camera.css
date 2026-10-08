@@ -1,0 +1,137 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Camera-only photographic surfaces (§2, coordinator triage camera-01/02).
+ * Geometry is owned by the canvas; shared parts are never restyled here. */
+.camera-viewfinder { background: @luma_media_scrim; color: @luma_on_media; }
+.camera-control,
+.camera-shutter {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: @luma_ink;
+  border-radius: var(--lumaui-ac-control-radius);
+}
+.camera-control label { font-size: var(--lumaui-t-body-size); font-weight: var(--lumaui-t-label-weight); }
+.camera-control:hover { background: @luma_hover; }
+.camera-control.on { background: alpha(@luma_on_media, .10); color: @luma_accent_ink; }
+.camera-tool { color: @luma_ink_secondary; }
+.camera-island { background-color: @luma_media_scrim; }
+.camera-control:disabled { opacity: .35; }
+/* v70 .cmt small: the note in a toggle's corner (A, 3s), 10.5 / 600 in the toggle's own ink. */
+.camera-control .camera-control-note { font-size: 10.5px; font-weight: 600; color: @luma_media_ink_secondary; }
+.camera-zoom {
+  padding: var(--lumaui-modes-padding);
+  border-radius: var(--lumaui-ac-control-radius);
+  background: @luma_media_well;
+}
+.camera-manual,
+.camera-strip,
+.camera-status {
+  background: @luma_media_bar;
+  color: @luma_media_ink;
+  border-radius: var(--lumaui-ac-bar-radius);
+  box-shadow: inset 0 calc(var(--lumaui-ac-bar-padding) / 4) 0 alpha(@luma_on_media, .11),
+    0 0 0 calc(var(--lumaui-ac-bar-padding) / 4) alpha(@luma_media_shadow, .55),
+    0 var(--lumaui-ac-chip-padding-x) calc(var(--lumaui-ac-bar-padding) * 8) calc(var(--lumaui-ac-bar-padding) * -2) alpha(@luma_media_shadow, .6),
+    0 calc(var(--lumaui-ac-bar-padding) / 2) calc(var(--lumaui-ac-bar-padding) * 1.5) alpha(@luma_media_shadow, .3);
+}
+.camera-manual,
+.camera-strip { padding: var(--lumaui-ac-bar-padding); }
+.camera-strip-separator { min-width: 1px; min-height: 22px; margin: 0 6px; background: alpha(@luma_on_media, .1); }
+.camera-status { padding: 0 var(--lumaui-ac-chip-padding-x); }
+.camera-shape { box-shadow: inset 0 0 0 calc(var(--lumaui-ac-control-radius) / 8) @luma_media_muted; }
+.camera-focus-reticle { border: calc(var(--lumaui-ac-control-radius) / 8) solid @luma_on_media; border-radius: calc(var(--lumaui-ac-control-radius) / 2); box-shadow: 0 0 0 calc(var(--lumaui-ac-bar-padding) / 4) alpha(@luma_media_shadow, .25), inset 0 0 0 calc(var(--lumaui-ac-bar-padding) / 4) alpha(@luma_media_shadow, .15); }
+/* Compatibility class names retained for the native capture runtime checks. */
+.camera-review { padding: 0; }
+
+.camera-muted { color: @luma_muted; }
+.camera-source { font-weight: var(--lumaui-t-label-weight); }
+.camera-exposure { color: @luma_on_media; }
+.camera-session { padding: var(--lumaui-modes-padding); }
+.camera-session:disabled { opacity: 1; }
+.camera-session.on { background: @luma_media_bar; box-shadow: 0 0 0 calc(var(--lumaui-ac-bar-padding) / 2) @luma_media_accent_ink, 0 calc(var(--lumaui-ac-bar-padding) * 1.5) var(--lumaui-ac-bar-radius) calc(var(--lumaui-ac-bar-padding) * -2.5) alpha(@luma_media_shadow, .5); }
+.camera-zoom-choice label { font-weight: var(--lumaui-t-caption-weight); color: @luma_media_muted; }
+.camera-zoom-choice { border-radius: var(--lumaui-modes-button-radius); }
+.camera-zoom-choice.on { color: @luma_on_media; background: @luma_media_chip; box-shadow: 0 0 0 calc(var(--lumaui-ac-bar-padding) / 4) alpha(@luma_media_shadow, .4), 0 calc(var(--lumaui-ac-bar-padding) / 4) calc(var(--lumaui-ac-bar-padding) / 2) alpha(@luma_media_shadow, .35); }
+.camera-zoom-choice.on label { color: @luma_on_media; }
+.camera-shape label { font-size: var(--lumaui-ac-context-size); font-weight: var(--lumaui-t-title-2-weight); }
+.camera-shape { border-radius: var(--lumaui-modes-button-radius); }
+.camera-shape:disabled { opacity: .5; }
+
+.camera-mode { padding-left: var(--lumaui-ac-chip-padding-x); padding-right: var(--lumaui-modes-button-radius); }
+
+.camera-zoom-choice:disabled { opacity: 1; }
+
+.camera-control .camera-dial-caption { font-size: var(--lumaui-media-tile-clip-badge-size); font-weight: var(--lumaui-t-label-weight); letter-spacing: calc(var(--lumaui-media-tile-clip-badge-size) * .03); color: @luma_media_muted; }
+.camera-control .camera-dial-value { font-size: var(--lumaui-t-body-size); font-weight: var(--lumaui-t-title-2-weight); }
+.camera-dial-set { background: @luma_media_chip; box-shadow: inset 0 calc(var(--lumaui-ac-bar-padding) / 4) 0 @luma_chip_highlight, 0 0 0 calc(var(--lumaui-ac-bar-padding) / 4) @luma_chip_ring, 0 calc(var(--lumaui-ac-bar-padding) / 4) calc(var(--lumaui-ac-bar-padding) / 2) @luma_chip_shadow; }
+.camera-dial-set .camera-dial-value { color: @luma_amber; }
+.camera-manual-separator { min-height: calc(var(--lumaui-ac-bar-padding) / 4); margin: calc(var(--lumaui-ac-bar-padding) / 2) calc(var(--lumaui-ac-bar-padding) * 2); background: alpha(@luma_on_media, .1); }
+.camera-tag { border-radius: var(--lumaui-menu-row-radius); background: @luma_media_float; box-shadow: 0 0 0 calc(var(--lumaui-ac-bar-padding) / 8) alpha(@luma_on_media, .12), 0 var(--lumaui-ac-bar-radius) calc(var(--lumaui-ac-bar-padding) * 10) calc(var(--lumaui-ac-bar-padding) * -2) alpha(@luma_media_shadow, .7), 0 calc(var(--lumaui-ac-bar-padding) / 2) calc(var(--lumaui-ac-bar-padding) * 1.5) alpha(@luma_media_shadow, .35); }
+.camera-tag-label { font-size: var(--lumaui-media-adjust-label-size); font-weight: var(--lumaui-t-caption-weight); }
+.camera-tag-label.recording { font-weight: var(--lumaui-t-label-weight); }
+
+/* ── Camera on a phone (v71 cmRenderPhone, "Camera polish pass" 2026-09-30) ──────────
+ * Black, the quick toggles along the top, the picture upright, zoom pills over its
+ * foot, the modes as words, then last shot, the shutter and switch camera. The same
+ * controls as the desk's bar, moved into these rows (CameraSurface.adapt). */
+/* The phone body is black edge to edge (the kit's phone frame squares the window and
+ * island); on a phone device it keeps clear of the clock and the gesture chin. */
+.camera-phone-body { color: @luma_on_media; background: @luma_media_shadow; padding-bottom: 12px; }
+.camera-phone-body.device { padding: 44px 0 34px; }
+.camera-top-row { padding: 0 16px; }
+.camera-bottom-row { padding: 0 36px; }
+/* One control size along the top: 44 round discs; on = the yellow glyph on a brighter disc. */
+.camera-control.phone { border-radius: 22px; background: alpha(@luma_on_media, .08); color: @luma_on_media; }
+.camera-control.phone:hover { background: alpha(@luma_on_media, .12); }
+.camera-control.phone.on { background: alpha(@luma_on_media, .18); color: @luma_media_capture; }
+.camera-control.phone .camera-control-note {
+  min-width: 16px; min-height: 16px; margin: 0 2px 2px 0; padding: 0 3px; border-radius: 8px;
+  background: @luma_on_media; color: @luma_on_media_contrast; font-size: 9.5px; font-weight: 800;
+}
+/* The shape is a 44 pill like the toggles (it was a 32 pill); in video it names the format. */
+.camera-shape.phone { padding: 0 14px; border-radius: 22px; box-shadow: none; background: alpha(@luma_on_media, .08); }
+.camera-shape.phone label { font-size: 14px; font-weight: 650; }
+.camera-shape.phone:disabled { opacity: .8; }
+/* Recording: the red timecode pill in the top row. */
+.camera-record-pill { padding: 0 14px; border-radius: 16px; background: @luma_record; color: @luma_record_ink; }
+.camera-record-time { font-size: 14px; font-weight: 900; font-feature-settings: "tnum"; }
+/* Zoom: every stop the same 38, the current one lit yellow with × on a faint chip; the glass is
+ * the over-media bar material (the viewer's and the call's bars). */
+.camera-zoom-pills {
+  padding: 4px; border-radius: 24px; background: @luma_media_bar;
+  box-shadow: inset 0 1px 0 @luma_media_bar_highlight, 0 0 0 1px @luma_media_bar_ring, 0 12px 32px -8px @luma_media_bar_shadow;
+}
+.camera-control.camera-zoom-pill { border-radius: 19px; background: none; color: @luma_on_media; }
+.camera-control.camera-zoom-pill label { font-size: 12.5px; font-weight: 700; }
+.camera-control.camera-zoom-pill.on { background: alpha(@luma_on_media, .12); color: @luma_media_capture; }
+.camera-control.camera-zoom-pill:disabled { opacity: 1; }
+/* The mode tag centres on the frame's top edge, in the same glass. */
+.camera-tag.phone {
+  min-height: 32px; border-radius: 16px; background: @luma_media_bar;
+  box-shadow: inset 0 1px 0 @luma_media_bar_highlight, 0 0 0 1px @luma_media_bar_ring;
+}
+/* The modes as a strip of words; the current one yellow and centred. */
+.camera-mode-word { min-height: 44px; padding: 0; border: 0; background: none; box-shadow: none; color: alpha(@luma_on_media, .62); }
+.camera-mode-word label { font-size: 13.5px; font-weight: 700; letter-spacing: 0.81px; }
+.camera-mode-word.on { color: @luma_media_capture; }
+.camera-mode-word:disabled, .camera-mode-word:disabled label { opacity: 1; color: alpha(@luma_on_media, .62); }
+.camera-mode-word.on:disabled, .camera-mode-word.on:disabled label { color: @luma_media_capture; }
+/* Last shot, the shutter, switch camera. */
+.camera-session.phone { padding: 0; border-radius: 14px; background: alpha(@luma_on_media, .1); box-shadow: none; color: alpha(@luma_on_media, .6); }
+.camera-flip { border-radius: 26px; background: alpha(@luma_on_media, .12); color: @luma_on_media; }
+.camera-shutter.phone { border-radius: 40px; }
+/* While recording these wait without dimming (v71 styles no disabled state for them). */
+.camera-flip:disabled { opacity: 1; color: @luma_on_media; }
+.camera-session.phone:disabled { opacity: 1; color: alpha(@luma_on_media, .6); }
+
+/* The photographic countdown stays white in either appearance. */
+.camera-countdown { color: @luma_on_media; text-shadow: 0 6px 30px alpha(@luma_media_shadow, .5); }
+
+/* The desktop uses the shared ActionCenter and raised source chip. Hover
+ * keeps that material instead of exposing the viewfinder underneath. */
+.camera-corner:hover { background: @luma_bar_surface; }
+.camera-corner:disabled { opacity: 1; }
+.camera-phone-body .camera-muted { color: @luma_media_muted; }

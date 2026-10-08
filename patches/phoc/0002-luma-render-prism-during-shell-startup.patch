@@ -1,0 +1,181 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 22:55:00 -0500
+Subject: [PATCH] output-shield: render Prism during authenticated startup
+
+Phoc must cover the output until Phosh publishes its ready state, but a flat
+colour makes that safety interval look like a second boot screen. Render the
+same packaged Prism artwork used by the desktop underneath the shield's
+existing alpha animation. If the artwork is unavailable or cannot be decoded,
+retain the accepted Luma-blue fallback.
+
+The texture is compositor-owned, contains no user data, and is released with
+the output shield. This preserves Phoc's input and uninitialized-content
+protection while making the authenticated handoff visually continuous.
+
+---
+ src/output-shield.c | 108 +++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 107 insertions(+), 1 deletion(-)
+
+diff --git a/src/output-shield.c b/src/output-shield.c
+index e85af0e..5292d3c 100644
+--- a/src/output-shield.c
++++ b/src/output-shield.c
+@@ -10,14 +10,20 @@
+ 
+ #include "phoc-config.h"
+ 
++#include "cairo-texture.h"
+ #include "color-rect.h"
++#include "output.h"
+ #include "output-shield.h"
+ #include "phoc-animation.h"
+ #include "server.h"
+ #include "spinner.h"
++#include "utils.h"
+ 
+ #include "render-private.h"
+ 
++#include <cairo.h>
++
++#define LUMA_PRISM_PATH "/usr/share/backgrounds/luma/luma-prism.png"
+ #define PHOC_ANIM_DURATION_SHIELD_MS 250 /* ms */
+ #define SPINNER_SIZE 32
+ 
+@@ -39,6 +43,8 @@ struct _PhocOutputShield {
+   GObject             parent;
+ 
+   PhocColorRect      *color_rect;
++  PhocCairoTexture   *wallpaper;
++  PhocBox             wallpaper_box;
+   PhocSpinner        *spinner;
+   PhocOutput         *output;
+   PhocTimedAnimation *animation;
+@@ -145,13 +151,108 @@ stop_render (PhocOutputShield *self)
+ 
+ 
+ 
++static gboolean
++ensure_wallpaper (PhocOutputShield *self, const PhocBox *output_box)
++{
++  struct wlr_output *output = self->output->wlr_output;
++  cairo_surface_t *source;
++  cairo_t *cr;
++  cairo_pattern_t *pattern;
++  double scale, offset_x, offset_y;
++  int source_width, source_height;
++  int width, height;
++
++  if (self->wallpaper)
++    return TRUE;
++
++  width = MAX (1, (int)(output_box->width * output->scale));
++  height = MAX (1, (int)(output_box->height * output->scale));
++  source = cairo_image_surface_create_from_png (LUMA_PRISM_PATH);
++  if (cairo_surface_status (source) != CAIRO_STATUS_SUCCESS) {
++    g_debug ("Could not load Luma handoff artwork %s: %s",
++             LUMA_PRISM_PATH,
++             cairo_status_to_string (cairo_surface_status (source)));
++    cairo_surface_destroy (source);
++    return FALSE;
++  }
++
++  source_width = cairo_image_surface_get_width (source);
++  source_height = cairo_image_surface_get_height (source);
++  if (source_width <= 0 || source_height <= 0) {
++    cairo_surface_destroy (source);
++    return FALSE;
++  }
++
++  self->wallpaper = phoc_cairo_texture_new (width, height);
++  cr = phoc_cairo_texture_get_context (self->wallpaper);
++  scale = MAX ((double)width / source_width,
++               (double)height / source_height);
++  offset_x = (width - source_width * scale) * 0.5;
++  offset_y = (height - source_height * scale) * 0.5;
++
++  cairo_save (cr);
++  cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
++  cairo_translate (cr, offset_x, offset_y);
++  cairo_scale (cr, scale, scale);
++  cairo_set_source_surface (cr, source, 0, 0);
++  pattern = cairo_get_source (cr);
++  cairo_pattern_set_filter (pattern, CAIRO_FILTER_BILINEAR);
++  cairo_paint (cr);
++  cairo_restore (cr);
++  cairo_surface_destroy (source);
++  phoc_cairo_texture_update (self->wallpaper);
++  self->wallpaper_box = *output_box;
++
++  return TRUE;
++}
++
++
++static void
++render_wallpaper (PhocOutputShield *self, PhocRenderContext *ctx)
++{
++  struct wlr_texture *texture;
++  struct wlr_box box = self->wallpaper_box;
++  pixman_region32_t damage;
++  float alpha;
++
++  if (!self->wallpaper)
++    return;
++
++  texture = phoc_cairo_texture_get_texture (self->wallpaper);
++  if (!texture)
++    return;
++
++  box.x -= ctx->output->lx;
++  box.y -= ctx->output->ly;
++  phoc_utils_scale_box (&box, ctx->output->wlr_output->scale);
++  phoc_output_transform_box (ctx->output, &box);
++  if (!phoc_utils_is_damaged (&box, ctx->damage, NULL, &damage)) {
++    pixman_region32_fini (&damage);
++    return;
++  }
++
++  alpha = phoc_color_rect_get_alpha (self->color_rect);
++  wlr_render_pass_add_texture (ctx->render_pass,
++                               &(struct wlr_render_texture_options) {
++                                 .alpha = &alpha,
++                                 .texture = texture,
++                                 .dst_box = box,
++                                 .clip = &damage,
++                                 .transform = ctx->output->wlr_output->transform,
++                               });
++}
++
++
+ static void
+ on_render (PhocOutputShield *self, PhocRenderContext *ctx)
+ {
+   if (self->output == NULL || self->output != ctx->output)
+     return;
+ 
+-  phoc_bling_render (PHOC_BLING (self->color_rect), ctx);
++  if (self->wallpaper)
++    render_wallpaper (self, ctx);
++  else
++    phoc_bling_render (PHOC_BLING (self->color_rect), ctx);
+   if (self->spinner)
+     phoc_bling_render (PHOC_BLING (self->spinner), ctx);
+ }
+@@ -172,6 +273,7 @@ start_render (PhocOutputShield *self, gboolean show_spinner)
+   wlr_output_layout_get_box (desktop->layout, output, &output_box);
+ 
+   phoc_color_rect_set_box (self->color_rect, &output_box);
++  ensure_wallpaper (self, &output_box);
+   phoc_bling_map (PHOC_BLING (self->color_rect));
+ 
+   if (show_spinner && !self->spinner) {
+@@ -210,6 +312,8 @@ phoc_output_shield_finalize (GObject *object)
+   stop_render (self);
+ 
+   g_clear_object (&self->color_rect);
++  g_clear_object (&self->wallpaper);
++  self->wallpaper_box = (PhocBox) {};
+   g_clear_object (&self->easer);
+   g_clear_object (&self->animation);
+   g_clear_object (&self->spinner);
+-- 
+2.53.0

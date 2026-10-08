@@ -1,0 +1,60 @@
+From 37a7cf28354353dcb18b1e548b146ae7f0dc22c5 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Thu, 20 Aug 2026 22:11:00 -0500
+Subject: [PATCH 4/4] Input: focaltech: disable removed FB blank notifier
+
+The legacy FB blank event ABI is no longer present in Linux 7.1 even when
+CONFIG_FB is enabled. Compile that optional Android-era screen notification
+path only when its event symbol exists. Sensor power, reset, IRQ, poll and
+ioctl behavior are unaffected.
+---
+ drivers/input/finger/focal_finger/ff_core.c | 6 +++---
+ drivers/input/finger/focal_finger/ff_core.h | 2 +-
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/input/finger/focal_finger/ff_core.c b/drivers/input/finger/focal_finger/ff_core.c
+index d679deb..39eaa7a 100644
+--- a/drivers/input/finger/focal_finger/ff_core.c
++++ b/drivers/input/finger/focal_finger/ff_core.c
+@@ -1243,7 +1243,7 @@ static int ff_register_device(ff_context_t *ff_ctx)
+ }
+ 
+ /*screen on/off callback*/
+-#if defined(CONFIG_FB)
++#if defined(CONFIG_FB) && defined(FB_EVENT_BLANK)
+ static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
+ {
+     struct fb_event *evdata = data;
+@@ -1359,7 +1359,7 @@ static int ff_probe(struct platform_device *pdev)
+ 
+     if (ff_ctx->b_screen_onoff_event) {
+         ff_ctx->b_screen_on = true;
+-#if defined(CONFIG_FB)
++#if defined(CONFIG_FB) && defined(FB_EVENT_BLANK)
+         ff_ctx->fb_notif.notifier_call = fb_notifier_callback;
+         ret = fb_register_client(&ff_ctx->fb_notif);
+         if (ret) FF_LOGE("Unable to register fb_notifier,ret=%d", ret);
+@@ -1415,7 +1415,7 @@ static void ff_unprobe(ff_context_t *ff_ctx)
+         cancel_work_sync(&ff_ctx->event_work);
+ 
+         if (ff_ctx->b_screen_onoff_event) {
+-#if defined(CONFIG_FB)
++#if defined(CONFIG_FB) && defined(FB_EVENT_BLANK)
+             fb_unregister_client(&ff_ctx->fb_notif);
+ #endif
+         }
+diff --git a/drivers/input/finger/focal_finger/ff_core.h b/drivers/input/finger/focal_finger/ff_core.h
+index 62871ef..e96a489 100644
+--- a/drivers/input/finger/focal_finger/ff_core.h
++++ b/drivers/input/finger/focal_finger/ff_core.h
+@@ -127,7 +127,7 @@ typedef struct {
+     struct wakeup_source *p_ws;
+     struct wakeup_source *p_ws_ctl;
+ 
+-#if defined(CONFIG_FB)
++#if defined(CONFIG_FB) && defined(FB_EVENT_BLANK)
+     struct notifier_block fb_notif;
+ #endif
+ 
+-- 
+2.54.0 (Apple Git-157)

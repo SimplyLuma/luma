@@ -1,0 +1,37 @@
+From: Luma UI maintainers <noreply@projectluma.org>
+Subject: [PATCH] Match phone list cells and metadata to v71
+
+The desktop metadata rule fixes direct cell labels at 11px/500, so changing
+row typography cannot update phone dates. Use the shared 13px body metrics
+on phone metadata labels. Align column allocation, row margins and cell
+padding to one 12px inset, leaving desktop columns intact.
+
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1338,5 +1338,26 @@
+ window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) columnview > listview > row {
+   min-height: 54px;
+   font-size: 15px;
+   font-weight: 500;
+ }
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) .nautilus-view-cell > label.dim-label {
++  font-size: var(--lumaui-t-body-size);
++  font-weight: var(--lumaui-t-body-weight);
++  letter-spacing: var(--lumaui-t-body-tracking);
++}
++
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) columnview > listview > row {
++  margin-left: 12px;
++  margin-right: 12px;
++}
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) .nautilus-view-cell {
++  padding: 0 12px;
++}
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) columnview {
++  padding-left: 12px;
++  padding-right: 12px;
++}
++window.luma-files-window .nautilus-list-view.phone-list:not(.search-results) columnview > listview {
++  margin-left: -12px;
++  margin-right: -12px;
++}

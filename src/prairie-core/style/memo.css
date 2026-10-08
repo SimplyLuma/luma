@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Memos-only media surfaces. Shared window, sidebar, corner, menus and bar
+   remain wholly owned by LumaUI. Every ink and surface comes from kit tokens. */
+
+.me-page { border-spacing: 0; }
+.me-page .me-heading { margin-bottom: 6px; }
+.me-page .me-title { margin-bottom: 0; }
+.me-page .me-recording-state { color: @luma_record; }
+.me-page .me-heading .me-recording-dot { background: @luma_record; border-radius: 100%; }
+.me-page .me-place { color: @luma_muted; margin-top: 10px; }
+.me-page .me-scroll-content { margin-bottom: 110px; }
+.me-empty { color: @luma_muted; }
+.me-empty .me-empty-title { color: @luma_ink_secondary; }
+
+row.me-row { min-height: 40px; padding: 9px 12px; margin: 1px 0; border-radius: var(--lumaui-card-radius); color: @luma_ink; }
+row.me-row:hover { background: @luma_hover; }
+row.me-row:selected { background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop; }
+row.me-row .me-row-title { color: @luma_ink; font-weight: 600; }
+row.me-row .me-row-meta { font-weight: var(--lumaui-t-body-weight); }
+row.me-row .me-row-hit { color: @luma_muted; margin-top: 3px; }
+row.me-row .me-row-hit label { font-size: calc(var(--lumaui-t-body-size) * .9230769); }
+row.me-row .me-row-hit-match { color: @luma_ink; background: @luma_accent_soft; }
+row.me-row .me-row-star { color: @luma_favourite; -gtk-icon-size: 11px; }
+row.me-recording-row { background: @luma_record_wash; border-radius: var(--lumaui-card-radius);
+  padding: 9px 12px; min-height: 38px; margin: 1px 0; }
+row.me-recording-row .me-recording-dot { background: @luma_record; border-radius: 100%; }
+row.me-recording-row .me-recording-elapsed { color: @luma_record; font-weight: 600; }
+
+box.me-deck-host { margin-top: 32px; }
+box.me-deck-host.recording { margin-top: 29px; }
+box.me-recording-deck {
+  background: @luma_media_deck;
+  border-radius: var(--lumaui-media-transport-memo-radius);
+  box-shadow: inset 0 2px 6px @luma_media_deck_shade, inset 0 0 0 1px @luma_media_deck_ring, 0 1px 0 @luma_media_deck_lip;
+  padding: 18px 22px 22px;
+}
+box.me-recording-deck .me-live-clock { margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+box.me-recording-deck .me-live-clock label:first-child { font-size: calc(var(--lumaui-t-display-size) * .8888889); font-weight: 250; }
+box.me-recording-deck .me-live-clock label:last-child { font-size: calc(var(--lumaui-t-display-size) * .3888889); font-weight: 500; color: @luma_muted; }
+
+box.me-transcript { margin-top: 31px; border-spacing: 17px; }
+box.me-transcript .me-transcript-paragraph { border-spacing: 4px; }
+box.me-transcript .me-speaker { color: @luma_ink_secondary; font-weight: 600; }
+box.me-transcript label.me-word { color: @luma_muted; font-size: calc(var(--lumaui-t-lead-size) * 1.2142857); line-height: 1.4; }
+box.me-transcript label.me-word.said { color: @luma_ink; }
+box.me-transcript label.me-word.current { color: @luma_accent_ink; }
+box.me-transcript .me-no-speech { color: @luma_muted; font-size: var(--lumaui-t-lead-size); line-height: 1.4; }
+box.me-transcript .me-no-speech-icon { color: @luma_muted; }
+box.me-transcript.live label.me-live-word { color: @luma_ink; }
+box.me-transcript.live .me-live-caret { background: @luma_record; }
+
+/* Phone (under 560, v71 "Memos: the player"): the deck spans the 16 px gutter and leads 20 under the
+   title island; the transcript is the page. The transport's own phone shape is the kit's (MediaTransport). */
+.me-page.me-islanded box.me-deck-host,
+.me-page.me-islanded box.me-deck-host.recording { margin-top: 0; }
+.me-page.phone box.me-recording-deck { padding: 18px 14px 16px; border-radius: 24px; }
+.me-page.phone box.me-transcript { margin-top: 22px; }
+/* v71 on a phone: words not yet heard are dimmed, the live ones too until they are played back. */
+.me-page.phone box.me-transcript.live label.me-live-word { color: @luma_muted; }

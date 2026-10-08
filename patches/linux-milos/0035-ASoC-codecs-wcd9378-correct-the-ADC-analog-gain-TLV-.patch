@@ -1,0 +1,39 @@
+From 82c43dd3f18e59dbd1fe097e35dc8826eba4ac20 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 6 Jul 2026 02:18:05 +0200
+Subject: [PATCH] ASoC: codecs: wcd9378: correct the ADC analog gain TLV to 1.5
+ dB steps
+
+Measured acoustically on the FP6 with a fixed tone played through the
+speakers: each TX gain code adds 1.5 dB (+6 dB per 4 codes, +30 dB over
+the 0..20 range), not the 0.25 dB the TLV inherited from the wcd937x
+driver family. With the correct scale, userspace volume mapping (e.g.
+PulseAudio) can use the real analog range.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ sound/soc/codecs/wcd9378.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wcd9378.c b/sound/soc/codecs/wcd9378.c
+index e1857ac..4adc782 100644
+--- a/sound/soc/codecs/wcd9378.c
++++ b/sound/soc/codecs/wcd9378.c
+@@ -145,7 +145,12 @@ static const struct wcd9378_smp_fn wcd9378_smp_jack_adc2 = {
+ 	.act_reg = WCD9378_SMP_JACK_PDE34_ACT_PS,
+ };
+ 
+-static const DECLARE_TLV_DB_SCALE(analog_gain, 0, 25, 1);
++/*
++ * Measured acoustically on the FP6: the TX gain field steps 1.5 dB per
++ * code (+6 dB per 4 codes, +30 dB over the full 0..20 range). The
++ * wcd937x-family drivers claim 0.25 dB steps for the same field.
++ */
++static const DECLARE_TLV_DB_SCALE(analog_gain, 0, 150, 0);
+ 
+ static int wcd9378_reset(struct wcd9378_priv *wcd9378)
+ {
+-- 
+2.54.0 (Apple Git-157)
+

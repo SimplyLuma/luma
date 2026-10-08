@@ -1,0 +1,28 @@
+From 7474e17a9f9759ca13828bb281625bbfc2d12a53 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 06:17:58 +0000
+Subject: [PATCH] Move Filer sidebar toggle into phone content
+
+---
+ src/nautilus-window.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 5cfeaf7..6218c65 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1998,8 +1998,9 @@ nautilus_window_constructed (GObject *self)
+     GtkWidget *toggle = GTK_WIDGET (window->sidebar_toggle);
+     g_object_ref (toggle);
+     gtk_box_remove (GTK_BOX (window->sidebar_toggle_desktop_host), toggle);
+-    luma_application_window_frame_set_leading (ADW_APPLICATION_WINDOW (window),
+-                                               toggle);
++    luma_application_window_frame_set_leading_phone_host (ADW_APPLICATION_WINDOW (window),
++                                                          toggle,
++                                                          window->sidebar_toggle_phone_host);
+     g_object_unref (toggle);
+     GMenuModel *main_menu = NULL;
+     g_object_get (window->toolbar, "main-menu", &main_menu, NULL);
+-- 
+2.55.0
+

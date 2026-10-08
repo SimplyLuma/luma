@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Messages
+Comment=Send and receive messages
+Exec=prairie-messages
+MimeType=x-scheme-handler/sms;
+Icon=org.projectluma.Messages
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Network;Chat;
+Keywords=SMS;Text;Chat;Message;
+StartupNotify=true
+DBusActivatable=false
+X-Purism-FormFactor=Workstation;Mobile;
+X-Luma-Status-Surface=deep
+X-GNOME-UsesNotifications=true

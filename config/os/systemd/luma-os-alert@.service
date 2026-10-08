@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Luma OS pipeline alert for a failed unit (scripts/os/alert.sh). Named in
+# OnFailure= of luma-os-nightly.service and luma-os-media.service.
+# Installed by scripts/os/install-build-host-units.sh, which fills @ROOT@.
+[Unit]
+Description=Luma OS pipeline alert for %i
+RequiresMountsFor=@ROOT@
+
+[Service]
+Type=oneshot
+Slice=luma-os.slice
+Environment=LUMA_OS_ROOT=@ROOT@
+ExecStart=/usr/bin/bash @ROOT@/src/nightly/scripts/os/alert.sh %i
+TimeoutStartSec=2min

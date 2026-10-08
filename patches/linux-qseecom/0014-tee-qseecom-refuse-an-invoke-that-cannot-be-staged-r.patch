@@ -1,0 +1,50 @@
+From 28a49bce8a12edf51f9eeb3ac63d798e9cdac0f1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:21:31 +0200
+Subject: [PATCH 14/41] tee: qseecom: refuse an invoke that cannot be staged,
+ rather than sending it
+
+The patch loop skipped a buffer it could not map and carried on. That
+desynchronised the staging layout from the copy-back loop, which advances
+unconditionally, so the wrong bytes went back to user space -- and it skipped
+the address patch, leaving whatever user space had put at that offset in a
+field the application dereferences in the secure world. The staging buffer is a
+verbatim copy of the caller's request, so that value is user-chosen, and a zero
+there resets the machine.
+
+Cannot happen today, because check_patch() has already validated every memref.
+Fixed defensively: the failure mode is a hard reset, and the alternative is
+sending a request the driver knows is malformed.
+
+Assisted-by: Claude:claude-opus-5
+Assisted-by: Kimi:kimi-k3
+---
+ drivers/tee/qseecom/core.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 5428bd278..d074e26bf 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -799,8 +799,19 @@ static int qseecom_tee_invoke_func(struct tee_context *ctx,
+ 			void *pv;
+ 
+ 			pv = tee_shm_get_va(pshm, param[k + 1].u.memref.shm_offs);
+-			if (IS_ERR(pv))
+-				continue;
++			if (IS_ERR(pv)) {
++				/*
++				 * Cannot happen -- check_patch() validated
++				 * these memrefs -- but skipping the copy would
++				 * desynchronise the staging layout from the
++				 * copy-back loop *and* leave whatever user
++				 * space put at that offset in a field the
++				 * application dereferences in the secure
++				 * world. Refuse the invoke instead.
++				 */
++				ret = PTR_ERR(pv);
++				goto out_free;
++			}
+ 
+ 			memcpy(b + off, pv, plen);
+ 			pp = qcom_tzmem_to_phys(b + off);

@@ -1,0 +1,7 @@
+[Desktop Entry]
+NoDisplay=true
+Type=Application
+Name=Windows Installer File
+Exec=wine %f
+MimeType=application/x-ole-storage;text/mspg-legacyinfo;
+StartupNotify=true

@@ -1,0 +1,318 @@
+{
+  "app": "maps",
+  "title": "Maps",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=maps",
+    "window": "#w-maps",
+    "before": [
+      {
+        "eval": "Date.now = () => 1790366400000"
+      }
+    ],
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "pythonpath": [
+      "src/luma-maps",
+      "src/luma-platform/appkit"
+    ],
+    "module": "luma_maps.application",
+    "fixtures": [
+      "tests/fixtures/maps-v70.json",
+      "tests/fixtures/maps-v70"
+    ],
+    "env": {
+      "LUMA_MAPS_FIXTURE": "{run}/fixtures/maps-v70.json",
+      "LUMA_MAPS_CLOCK_MS": "1790366400000"
+    }
+  },
+  "states": [
+    {
+      "name": "map",
+      "about": "Opening map, favourites, recents and search bar",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "place",
+      "about": "The Loft place card",
+      "spec": [
+        {
+          "click": "#mp-side [data-mpp='loft']"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "place:loft"
+          }
+        }
+      ]
+    },
+    {
+      "name": "directions",
+      "about": "Driving directions to The Loft",
+      "spec": [
+        {
+          "click": "#mp-side [data-mpp='loft']"
+        },
+        {
+          "click": "[data-mpdir]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "directions:loft:drive"
+          }
+        }
+      ]
+    },
+    {
+      "name": "transit",
+      "about": "Transit directions to The Loft",
+      "spec": [
+        {
+          "click": "#mp-side [data-mpp='loft']"
+        },
+        {
+          "click": "[data-mpdir]"
+        },
+        {
+          "click": "[data-mpmode='transit']"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "directions:loft:transit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "navigating",
+      "about": "Guidance banner and navigation action bar",
+      "spec": [
+        {
+          "click": "#mp-side [data-mpp='loft']"
+        },
+        {
+          "click": "[data-mpdir]"
+        },
+        {
+          "eval": "(() => { const original = window.setInterval; window.setInterval = (callback, milliseconds, ...args) => { if (milliseconds === 60) { for (let tick = 0; tick < 19; tick++) callback(...args); return 0; } return original(callback, milliseconds, ...args); }; })()"
+        },
+        {
+          "click": "[data-mpgo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "navigating:loft"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "about": "Search results for coffee",
+      "spec": [
+        {
+          "eval": "(() => { const f=document.querySelector('[data-mpq]'); f.value='coffee'; f.dispatchEvent(new Event('input',{bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "search:coffee"
+          }
+        }
+      ]
+    },
+    {
+      "name": "transit_map",
+      "about": "Transit map style",
+      "spec": [
+        {
+          "click": "[data-mplayer='transit']"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "layer:transit"
+          }
+        }
+      ]
+    },
+    {
+      "name": "walk",
+      "about": "Walk directions to The Loft",
+      "spec": [
+        {
+          "click": "#mp-side [data-mpp='loft']"
+        },
+        {
+          "click": "[data-mpdir]"
+        },
+        {
+          "click": "[data-mpmode='walk']"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "directions:loft:walk"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bike",
+      "about": "Bike directions to The Loft",
+      "spec": [
+        {
+          "click": "#mp-side [data-mpp='loft']"
+        },
+        {
+          "click": "[data-mpdir]"
+        },
+        {
+          "click": "[data-mpmode='bike']"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "directions:loft:bike"
+          }
+        }
+      ]
+    },
+    {
+      "name": "satellite_map",
+      "about": "Satellite map style",
+      "spec": [
+        {
+          "click": "[data-mplayer='sat']"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "layer:sat"
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty_search",
+      "about": "No nearby result for a search",
+      "spec": [
+        {
+          "eval": "(() => { const f=document.querySelector('[data-mpq]'); f.value='no such place'; f.dispatchEvent(new Event('input',{bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MAPS_STATE": "search:no such place"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "map",
+    "place",
+    "directions",
+    "transit",
+    "navigating",
+    "search",
+    "transit_map",
+    "walk",
+    "bike",
+    "satellite_map",
+    "empty_search"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-maps > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#mp-top"
+    },
+    {
+      "name": "my location",
+      "spec": "#mp-side .mpme"
+    },
+    {
+      "name": "favourites",
+      "spec": "#mp-side .mpfavs"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#mp-side"
+    },
+    {
+      "name": "map style",
+      "spec": "#mp-corner"
+    },
+    {
+      "name": "place and directions",
+      "spec": "#mp-card"
+    },
+    {
+      "name": "action bar",
+      "spec": "#mp-bar"
+    },
+    {
+      "name": "map",
+      "spec": "#mp-map"
+    },
+    {
+      "name": "main island",
+      "spec": "#mp-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#mp-side",
+      "gtk": "mp-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#mp-main",
+      "gtk": "mp-island",
+      "name": "map island"
+    },
+    {
+      "spec": "#mp-map",
+      "gtk": "mp-map",
+      "name": "map canvas"
+    },
+    {
+      "spec": "#mp-corner",
+      "gtk": "mp-corner",
+      "name": "map style pill"
+    },
+    {
+      "spec": "#mp-card",
+      "gtk": "mp-card",
+      "name": "place card"
+    },
+    {
+      "spec": "#mp-bar",
+      "gtk": "mp-bar",
+      "name": "action center"
+    }
+  ]
+}

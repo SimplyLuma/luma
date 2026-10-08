@@ -1,0 +1,1181 @@
+/*
+ * Copyright (C) 2026 Project Luma contributors
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
+ * Atlas, the Luma installer room. Values follow the Design Center install
+ * study (Atlas concept) exactly; additions required by the handoff are marked
+ * "handoff §n". Class names keep the design's component list: install-option,
+ * install-switchrow, install-field, install-warn, install-summary,
+ * install-meter, install-phase.
+ */
+
+@font-face {
+    font-family: "Figtree";
+    font-style: normal;
+    font-weight: 300 900;
+    font-display: block;
+    src: url("fonts/Figtree.ttf") format("truetype");
+}
+
+/* ── Base tokens (desktop density, Design Center --f-*) ───────────────────── */
+:root {
+    --f-space-2xs: 4px;
+    --f-space-xs: 6px;
+    --f-space-sm: 8px;
+    --f-space-md: 12px;
+    --f-space-lg: 16px;
+    --f-space-xl: 24px;
+    /* The values the Design Center install stage computes at desktop size. */
+    --f-type-meta: 11px;
+    --f-type-label: 13px;
+    --f-type-body: 13px;
+    --f-radius-inner: 10px;
+    --f-radius-sm: var(--f-radius-inner);
+    --f-control-md: 36px;
+    --f-control-lg: 44px;
+    --f-stroke: 1px;
+    /* Every language Atlas offers needs glyphs; Figtree covers Latin, the
+     * installer runtime's Noto families cover the rest (handoff §9). */
+    --atlas-font: "Figtree", "Noto Sans", "Noto Sans CJK JP", "Noto Sans Arabic", "Noto Sans Devanagari", system-ui, sans-serif;
+}
+
+/* ── Surfaces: Paper (default), Ink, Slate, and Slate at full contrast ────── */
+.install-stage {
+    --ins-bg: #f1f2f3;
+    --ins-ink: #283038;
+    /* Design value .6 measured 3.7:1 on Paper; .72 is the least change that
+     * gives every muted sentence 4.5:1 (WCAG AA) on the ground, tiles and hover. */
+    --ins-muted: rgba(40, 48, 56, .72);
+    --ins-faint: rgba(40, 48, 56, .36);
+    --ins-line: rgba(40, 48, 56, .14);
+    --ins-hair: rgba(40, 48, 56, .1);
+    --ins-panel: #ffffff;
+    --ins-tile: rgba(40, 48, 56, .045);
+    --ins-tile-hi: rgba(40, 48, 56, .075);
+    --ins-fill: #283038;
+    --ins-fill-ink: #ffffff;
+    --ins-focus: color-mix(in srgb, var(--ins-ink) 46%, transparent);
+    --ins-shadow: 0 30px 70px -34px rgba(12, 16, 20, .4);
+    position: fixed;
+    inset: 0;
+    isolation: isolate;
+    background: var(--ins-bg);
+    color: var(--ins-ink);
+    font-family: var(--atlas-font);
+    -webkit-font-smoothing: antialiased;
+}
+
+.install-stage[data-install-surface="ink"] {
+    --ins-bg: #14171a;
+    --ins-ink: #eff1f3;
+    --ins-muted: rgba(239, 241, 243, .58);
+    --ins-faint: rgba(239, 241, 243, .32);
+    --ins-line: rgba(255, 255, 255, .12);
+    --ins-hair: rgba(255, 255, 255, .08);
+    --ins-panel: #1b1f24;
+    --ins-tile: rgba(255, 255, 255, .05);
+    --ins-tile-hi: rgba(255, 255, 255, .09);
+    --ins-fill: #eff1f3;
+    --ins-fill-ink: #14171a;
+    --ins-shadow: 0 34px 80px -36px rgba(0, 0, 0, .8);
+}
+
+.install-stage[data-install-surface="slate"] {
+    --ins-bg: #2c3239;
+    --ins-ink: #eff1f3;
+    --ins-muted: rgba(239, 241, 243, .58);
+    --ins-faint: rgba(239, 241, 243, .32);
+    --ins-line: rgba(255, 255, 255, .13);
+    --ins-hair: rgba(255, 255, 255, .09);
+    --ins-panel: #20262c;
+    --ins-tile: rgba(255, 255, 255, .06);
+    --ins-tile-hi: rgba(255, 255, 255, .1);
+    --ins-fill: #eff1f3;
+    --ins-fill-ink: #2c3239;
+    --ins-shadow: 0 34px 80px -36px rgba(0, 0, 0, .7);
+}
+
+/* handoff §6: the high-contrast variant is Slate at full contrast. Every
+ * secondary tone becomes the ink itself; lines become visible edges. */
+.install-stage[data-install-surface="slate"][data-install-contrast="more"] {
+    --ins-bg: #1f252b;
+    --ins-ink: #ffffff;
+    --ins-muted: #ffffff;
+    --ins-faint: rgba(255, 255, 255, .86);
+    --ins-line: rgba(255, 255, 255, .72);
+    --ins-hair: rgba(255, 255, 255, .5);
+    --ins-tile: rgba(255, 255, 255, .08);
+    --ins-tile-hi: rgba(255, 255, 255, .16);
+    --ins-fill: #ffffff;
+    --ins-fill-ink: #1f252b;
+    --ins-focus: #ffffff;
+}
+
+.install-stage[data-install-contrast="more"] .install-option,
+.install-stage[data-install-contrast="more"] .install-switchrow,
+.install-stage[data-install-contrast="more"] .install-warn {
+    box-shadow: inset 0 0 0 1px var(--ins-line);
+}
+
+/* ── The room ─────────────────────────────────────────────────────────────── */
+/* The scroll area stops above a band for the dots, so content never slides
+ * under them on short screens. Band + padding equal the design's 60px. */
+.install-body {
+    position: absolute;
+    inset: 0 0 calc(var(--f-space-xl) * 2) 0;
+    padding: var(--f-space-xl) 8vw calc(var(--f-space-xl) * .5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--f-space-xl);
+    overflow: auto;
+    box-sizing: border-box;
+    scroll-padding-bottom: calc(var(--f-space-xl) * 3);
+}
+
+.install-panels {
+    flex: 0 0 auto;
+    width: 100%;
+    /* Centred when there is room; scrolls from the top when there is not. */
+    margin-block: auto;
+}
+
+.install-panel {
+    width: min(640px, 100%);
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--f-space-xl);
+}
+
+.install-panel:focus {
+    outline: 0;
+}
+
+.install-kicker {
+    margin: 0;
+    /* Read first by screen readers and relied on by everyone: text contrast,
+     * so muted rather than the design's faint (2:1). */
+    color: var(--ins-muted);
+    font-size: var(--f-type-meta);
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: .13em;
+}
+
+.install-title {
+    margin: 0;
+    max-width: 22ch;
+    font-size: clamp(34px, 4.6vw, 58px);
+    font-weight: 600;
+    letter-spacing: -.035em;
+    line-height: 1.06;
+    text-wrap: balance;
+}
+
+.install-panel[data-step="done"] .install-title {
+    font-size: clamp(42px, 5.8vw, 74px);
+}
+
+.install-title:focus {
+    outline: 0;
+}
+
+.install-lede {
+    margin: 0;
+    max-width: 58ch;
+    color: var(--ins-muted);
+    font-size: clamp(14px, 1.1vw, 17px);
+    line-height: 1.55;
+    text-wrap: pretty;
+}
+
+/* ── Options: rows, not radio buttons ─────────────────────────────────────── */
+.install-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--f-space-xs);
+}
+
+.install-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--f-space-md);
+}
+
+.install-group + .install-group {
+    padding-top: var(--f-space-lg);
+    border-top: 1px solid var(--ins-hair);
+}
+
+.install-grouplabel {
+    margin: 0;
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 700;
+}
+
+.install-option {
+    width: 100%;
+    padding: var(--f-space-md);
+    display: flex;
+    align-items: center;
+    gap: var(--f-space-md);
+    border: 0;
+    border-radius: var(--f-radius-inner);
+    background: var(--ins-tile);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 var(--f-stroke) transparent;
+    transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.install-option:hover {
+    background: var(--ins-tile-hi);
+}
+
+.install-option[aria-pressed="true"] {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ins-ink) 46%, transparent);
+}
+
+.install-option[aria-disabled="true"] {
+    cursor: default;
+    background: transparent;
+    box-shadow: inset 0 0 0 var(--f-stroke) var(--ins-hair);
+}
+
+.install-option[aria-disabled="true"] .install-option-copy strong,
+.install-option[aria-disabled="true"] .install-glyph {
+    opacity: .6;
+}
+
+.install-option-copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.install-option-copy strong {
+    font-size: var(--f-type-body);
+    font-weight: 650;
+}
+
+.install-option-copy small {
+    color: var(--ins-muted);
+    font-size: var(--f-type-meta);
+}
+
+.install-option-tag {
+    padding: 2px var(--f-space-xs);
+    border-radius: 999px;
+    background: var(--ins-tile-hi);
+    /* Muted text on a tile inside a tile is 4.3:1; mix toward ink for AA. */
+    color: color-mix(in srgb, var(--ins-ink) 82%, var(--ins-bg));
+    font-size: var(--f-type-meta);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+}
+
+.install-glyph {
+    width: var(--f-control-md);
+    height: var(--f-control-md);
+    flex: 0 0 var(--f-control-md);
+    display: grid;
+    place-items: center;
+    border-radius: var(--f-radius-sm);
+    background: var(--ins-tile-hi);
+    box-shadow: inset 0 0 0 var(--f-stroke) var(--ins-line);
+}
+
+.install-glyph svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.install-check {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--ins-line);
+}
+
+.install-option[aria-pressed="true"] .install-check {
+    background: var(--ins-fill);
+    box-shadow: none;
+}
+
+.install-check svg {
+    width: 11px;
+    height: 11px;
+    fill: none;
+    stroke: var(--ins-fill-ink);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0;
+}
+
+.install-option[aria-pressed="true"] .install-check svg {
+    opacity: 1;
+}
+
+/* The method list is subordinate to the drive list: a list, not cards. */
+.install-options.compact .install-option {
+    padding: var(--f-space-sm) var(--f-space-md);
+    background: transparent;
+    gap: var(--f-space-sm);
+}
+
+.install-options.compact .install-option:hover {
+    background: var(--ins-tile);
+}
+
+.install-options.compact .install-option[aria-disabled="true"] {
+    box-shadow: none;
+}
+
+.install-options.compact .install-option[aria-disabled="true"]:hover {
+    background: transparent;
+}
+
+.install-options.compact .install-option-copy {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    column-gap: var(--f-space-sm);
+    row-gap: 1px;
+}
+
+.install-options.compact .install-option-copy strong {
+    flex: 0 0 auto;
+    font-size: var(--f-type-label);
+}
+
+.install-options.compact .install-option-copy small {
+    flex: 1;
+    min-width: 0;
+}
+
+.install-options.compact .install-check {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
+}
+
+.install-options.compact .install-check svg {
+    width: 9px;
+    height: 9px;
+}
+
+.install-capacity {
+    width: 100%;
+    height: 6px;
+    margin-top: var(--f-space-xs);
+    border-radius: 999px;
+    background: var(--ins-line);
+    overflow: hidden;
+    display: flex;
+}
+
+.install-capacity i {
+    height: 100%;
+    background: var(--ins-fill);
+    opacity: .55;
+}
+
+.install-capacity i:last-child {
+    opacity: .2;
+}
+
+/* A quiet link-like action beneath a list ("More languages"). */
+.install-more {
+    align-self: flex-start;
+    margin: 0;
+    padding: var(--f-space-2xs) 0;
+    border: 0;
+    background: transparent;
+    color: var(--ins-muted);
+    font: 650 var(--f-type-label) var(--atlas-font);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: var(--ins-line);
+    text-underline-offset: 3px;
+}
+
+.install-more:hover {
+    color: var(--ins-ink);
+    text-decoration-color: currentColor;
+}
+
+.install-scroll {
+    max-height: 264px;
+    overflow: auto;
+    padding: 2px;
+    margin: -2px;
+}
+
+/* ── Fields ───────────────────────────────────────────────────────────────── */
+.install-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--f-space-xs);
+    min-width: 0;
+}
+
+.install-field > span:first-child {
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 650;
+}
+
+.install-field input,
+.install-field select {
+    width: 100%;
+    height: var(--f-control-lg);
+    padding: 0 var(--f-space-md);
+    border: 0;
+    border-radius: var(--f-radius-inner);
+    background: var(--ins-tile);
+    color: var(--ins-ink);
+    font: 500 var(--f-type-body) var(--atlas-font);
+    box-shadow: inset 0 0 0 var(--f-stroke) var(--ins-line);
+    box-sizing: border-box;
+}
+
+.install-field select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: calc(var(--f-space-xl) + var(--f-space-md));
+}
+
+.install-field select option,
+.install-field select optgroup {
+    background: var(--ins-panel);
+    color: var(--ins-ink);
+}
+
+.install-field .install-select-chevron {
+    position: absolute;
+    right: 14px;
+    bottom: 15px;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    fill: none;
+    stroke: var(--ins-muted);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.install-field input:focus,
+.install-field select:focus {
+    outline: 0;
+    box-shadow: inset 0 0 0 1.5px var(--ins-focus);
+}
+
+.install-field input::placeholder {
+    color: var(--ins-faint);
+}
+
+.install-field input:disabled,
+.install-field select:disabled {
+    opacity: .55;
+}
+
+/* handoff §6: passphrase fields have a show/hide toggle. */
+.install-secret {
+    position: relative;
+    display: block;
+}
+
+.install-secret input {
+    padding-right: calc(var(--f-control-lg) + var(--f-space-xs));
+}
+
+.install-reveal {
+    position: absolute;
+    top: 50%;
+    right: var(--f-space-xs);
+    width: 32px;
+    height: 32px;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ins-muted);
+    cursor: pointer;
+}
+
+.install-reveal:hover {
+    background: var(--ins-tile-hi);
+    color: var(--ins-ink);
+}
+
+.install-reveal svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* handoff §7: problems are sentences beneath the field, not dialogs. They are
+ * not red; the words carry it, marked with the same triangle as warnings. */
+.install-field[data-invalid="true"] input,
+.install-field[data-invalid="true"] select {
+    box-shadow: inset 0 0 0 1.5px var(--ins-ink);
+}
+
+.install-field-message {
+    margin: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--f-space-xs);
+    color: var(--ins-ink);
+    font-size: var(--f-type-label);
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.install-field-message svg {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 13px;
+    margin-top: 1px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.install-field-message.quiet {
+    color: var(--ins-muted);
+    font-weight: 550;
+}
+
+.install-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--f-space-md);
+    align-items: start;
+}
+
+/* ── Switch rows ──────────────────────────────────────────────────────────── */
+.install-switchrow {
+    position: relative;
+    padding: var(--f-space-md);
+    display: flex;
+    align-items: center;
+    gap: var(--f-space-md);
+    border-radius: var(--f-radius-inner);
+    background: var(--ins-tile);
+    cursor: pointer;
+}
+
+.install-switchrow > span {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.install-switchrow strong {
+    font-size: var(--f-type-body);
+    font-weight: 650;
+}
+
+.install-switchrow small {
+    color: var(--ins-muted);
+    font-size: var(--f-type-meta);
+}
+
+.install-switchrow input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+
+.install-switchrow i {
+    position: relative;
+    width: 38px;
+    height: 22px;
+    flex: 0 0 38px;
+    border-radius: 999px;
+    background: var(--ins-line);
+    transition: background 180ms ease;
+}
+
+.install-switchrow i::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--ins-panel);
+    transition: transform 180ms cubic-bezier(.2, .7, .2, 1);
+}
+
+.install-switchrow input:checked + i {
+    background: var(--ins-fill);
+}
+
+.install-switchrow input:checked + i::after {
+    transform: translateX(16px);
+    background: var(--ins-fill-ink);
+}
+
+.install-switchrow input:focus-visible + i {
+    outline: 2px solid var(--ins-focus);
+    outline-offset: 3px;
+}
+
+.install-switchrow[data-disabled="true"] {
+    cursor: default;
+}
+
+.install-switchrow[data-disabled="true"] i,
+.install-switchrow[data-disabled="true"] strong {
+    opacity: .55;
+}
+
+/* ── Quiet lines, summary, warnings ───────────────────────────────────────── */
+.install-note {
+    margin: 0;
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 550;
+    line-height: 1.5;
+}
+
+.install-note b {
+    color: var(--ins-ink);
+    font-weight: 650;
+}
+
+.install-summary {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.install-summary > div {
+    padding: var(--f-space-sm) 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--f-space-md);
+    border-bottom: 1px solid var(--ins-hair);
+    font-size: var(--f-type-body);
+}
+
+.install-summary > div:last-child {
+    border-bottom: 0;
+}
+
+.install-summary dt {
+    flex: 0 0 34%;
+    margin: 0;
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 650;
+}
+
+.install-summary dd {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-weight: 550;
+}
+
+/* handoff §2: every review row is a link back to its step. */
+.install-summary-link {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--f-space-md);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.install-summary-link > span:first-child {
+    flex: 1;
+    min-width: 0;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    transition: text-decoration-color 160ms ease;
+}
+
+.install-summary-link > span:last-child {
+    flex: 0 0 auto;
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 650;
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+
+.install-summary-link:hover > span:first-child,
+.install-summary-link:focus-visible > span:first-child {
+    text-decoration-color: var(--ins-line);
+}
+
+.install-summary-link:hover > span:last-child,
+.install-summary-link:focus-visible > span:last-child {
+    opacity: 1;
+}
+
+.install-warn {
+    padding: var(--f-space-md);
+    display: flex;
+    gap: var(--f-space-md);
+    border-radius: var(--f-radius-inner);
+    background: var(--ins-tile);
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    line-height: 1.55;
+}
+
+.install-warn svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    margin-top: 1px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.install-warn strong {
+    color: var(--ins-ink);
+    font-weight: 700;
+}
+
+.install-warn ul {
+    margin: var(--f-space-xs) 0 0;
+    padding-left: 1.2em;
+}
+
+/* ── Progress and completion ──────────────────────────────────────────────── */
+.install-phases {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--f-space-md);
+}
+
+.install-phase {
+    display: flex;
+    align-items: center;
+    gap: var(--f-space-md);
+    color: var(--ins-muted);
+    font-size: var(--f-type-body);
+    font-weight: 550;
+    transition: color 260ms ease;
+}
+
+.install-phase[data-state="doing"],
+.install-phase[data-state="done"],
+.install-phase[data-state="failed"] {
+    color: var(--ins-ink);
+}
+
+.install-phase i {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 1.5px var(--ins-line);
+}
+
+.install-phase[data-state="doing"] i {
+    box-shadow: inset 0 0 0 1.5px var(--ins-ink);
+    animation: ins-pulse 1.2s ease-in-out infinite;
+}
+
+.install-phase[data-state="failed"] i {
+    box-shadow: inset 0 0 0 1.5px var(--ins-ink);
+}
+
+.install-phase[data-state="failed"] i::after {
+    content: "!";
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.install-phase[data-state="done"] i {
+    background: var(--ins-fill);
+    box-shadow: none;
+}
+
+.install-phase[data-state="done"] i::after {
+    content: "";
+    width: 4px;
+    height: 8px;
+    margin-top: -2px;
+    border: solid var(--ins-fill-ink);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+@keyframes ins-pulse {
+    0%, 100% { opacity: .45; }
+    50% { opacity: 1; }
+}
+
+.install-meter {
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--ins-line);
+    overflow: hidden;
+}
+
+.install-meter i {
+    display: block;
+    height: 100%;
+    width: var(--ins-progress, 0%);
+    border-radius: 999px;
+    background: var(--ins-fill);
+    transition: width 320ms cubic-bezier(.3, .8, .3, 1);
+}
+
+.install-meter[data-indeterminate="true"] i {
+    width: 25%;
+    animation: atlas-working 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes atlas-working {
+    from { transform: translateX(0); }
+    to { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .install-meter[data-indeterminate="true"] i { animation: none; }
+}
+
+.install-percent {
+    min-height: 1em;
+    margin: 0;
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Actions ──────────────────────────────────────────────────────────────── */
+.install-actions {
+    /* The step's action is never out of reach: it stays at the foot of the
+     * room while a long step (every language, every drive) scrolls behind it,
+     * and margin-top pushes it down when the step is shorter than the room. */
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--f-space-sm);
+    padding-top: var(--f-space-lg);
+    padding-bottom: var(--f-space-md);
+    background: var(--ins-bg);
+    border-top: 1px solid var(--ins-hair);
+}
+
+.install-actions .install-spacer {
+    flex: 1;
+}
+
+.install-btn {
+    height: var(--f-control-lg);
+    padding: 0 var(--f-space-xl);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--f-space-xs);
+    border: 0;
+    border-radius: 999px;
+    background: var(--ins-tile);
+    color: var(--ins-ink);
+    font: 650 var(--f-type-body) var(--atlas-font);
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 var(--f-stroke) var(--ins-line);
+    transition: background 160ms ease, transform 200ms cubic-bezier(.2, .7, .2, 1);
+}
+
+.install-btn:hover {
+    background: var(--ins-tile-hi);
+    transform: translateY(-1px);
+}
+
+.install-btn.primary {
+    background: var(--ins-fill);
+    color: var(--ins-fill-ink);
+    box-shadow: none;
+}
+
+.install-btn.primary:hover {
+    filter: brightness(1.12);
+}
+
+.install-btn.quiet {
+    background: transparent;
+    color: var(--ins-muted);
+    box-shadow: inset 0 0 0 var(--f-stroke) var(--ins-line);
+}
+
+.install-btn.quiet:hover {
+    background: transparent;
+    color: var(--ins-ink);
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ins-ink) 34%, transparent);
+}
+
+.install-btn[aria-disabled="true"] {
+    cursor: default;
+    opacity: .42;
+    transform: none;
+    filter: none;
+}
+
+.install-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* ── Progress dots (handoff §2, §6) ────────────────────────────────────────── */
+.install-rail {
+    position: fixed;
+    z-index: 2;
+    left: 50%;
+    /* 18px hit areas centred where the design's 6px dots sit. */
+    bottom: calc(var(--f-space-xl) - 5px);
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    gap: var(--f-space-sm);
+}
+
+.install-rail li {
+    position: relative;
+}
+
+.install-rail button {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.install-rail button[aria-disabled="true"] {
+    cursor: default;
+}
+
+.install-rail b {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--ins-line);
+    transition: background 160ms ease, transform 160ms ease;
+}
+
+.install-rail button[data-state="done"] b,
+.install-rail button[data-state="current"] b {
+    background: var(--ins-fill);
+}
+
+.install-rail button[data-state="done"]:hover b,
+.install-rail button[data-state="done"]:focus-visible b {
+    transform: scale(1.35);
+}
+
+.install-rail button:focus-visible {
+    outline: 2px solid var(--ins-focus);
+    outline-offset: 0;
+}
+
+/* The name shows on hover and focus; its accessible twin is always present. */
+.install-rail-name {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + var(--f-space-xs));
+    transform: translate(-50%, 4px);
+    padding: var(--f-space-2xs) var(--f-space-sm);
+    border-radius: 999px;
+    background: var(--ins-fill);
+    color: var(--ins-fill-ink);
+    font: 650 var(--f-type-label) var(--atlas-font);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.install-rail button:hover .install-rail-name,
+.install-rail button:focus-visible .install-rail-name {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+/* ── Focus for everything else a keyboard reaches ─────────────────────────── */
+.install-option:focus-visible,
+.install-btn:focus-visible,
+.install-more:focus-visible,
+.install-reveal:focus-visible,
+.install-summary-link:focus-visible {
+    outline: 2px solid var(--ins-focus);
+    outline-offset: 2px;
+}
+
+.install-visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.install-loading {
+    color: var(--ins-muted);
+    font-size: var(--f-type-label);
+    font-weight: 600;
+}
+
+/* Short screens (1024×768, 1280×800, any laptop in between): the same room,
+ * tightened, so a step's title, options and action arrive together instead of
+ * pushing the action past the fold. */
+@media (max-height: 840px) {
+    .install-stage {
+        --f-space-xl: 18px;
+    }
+
+    .install-body {
+        padding-top: var(--f-space-lg);
+    }
+
+    .install-title {
+        font-size: clamp(30px, 3.4vw, 42px);
+    }
+
+    .install-panel[data-step="done"] .install-title {
+        font-size: clamp(34px, 4.2vw, 52px);
+    }
+
+    .install-option {
+        padding: var(--f-space-sm) var(--f-space-md);
+    }
+
+    .install-actions {
+        padding-top: var(--f-space-md);
+    }
+}
+
+@media (max-width: 900px) {
+    .install-body {
+        padding: var(--f-space-xl) var(--f-space-xl) calc(var(--f-space-xl) * .5);
+    }
+
+    .install-pair {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .install-stage *,
+    .install-stage *::before,
+    .install-stage *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+    }
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+    background: #21252b;
+}
+
+/* The same centered native lockup as Plymouth and GNOME Kiosk, including
+ * the pre-JavaScript first frame. The actual wizard selects its own surface. */
+.install-startup {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: #21252b;
+}
+.install-startup img { display: block; width: 142px; height: 75px; }
+
+/* Shared DOM calendar: no viewer-owned Chromium date/time popup. */
+.install-field > label { color: var(--ins-muted); font-size: var(--f-type-label); font-weight: 650; }
+.install-datetime-input { position: relative; }
+.install-datetime-input:has(.install-calendar-toggle) input { padding-right: var(--f-control-lg); }
+.install-calendar-toggle { position: absolute; right: 0; top: 0; width: var(--f-control-lg); height: var(--f-control-lg); padding: 12px; border: 0; background: transparent; color: var(--ins-muted); border-radius: var(--f-radius-inner); cursor: pointer; }
+.install-calendar-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.install-calendar { position: absolute; z-index: 5; top: calc(var(--f-control-lg) + 24px); left: 0; width: min(22rem, calc(100vw - 32px)); box-sizing: border-box; padding: var(--f-space-md); border: 1px solid var(--ins-line); border-radius: var(--f-radius-inner); background: var(--ins-panel); color: var(--ins-ink); box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+.install-calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--f-space-sm); }
+.install-calendar button { min-width: 0; min-height: var(--f-control-lg); border: 0; border-radius: var(--f-radius-inner); color: var(--ins-ink); background: transparent; font: inherit; cursor: pointer; }
+.install-calendar-header button { width: var(--f-control-lg); font-size: 24px; }
+.install-calendar-row { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); align-items: center; text-align: center; }
+.install-calendar-row [role="columnheader"] { font-size: var(--f-type-meta); color: var(--ins-muted); padding: var(--f-space-xs) 0; }
+.install-calendar button:hover { background: var(--ins-tile); }
+.install-calendar button[aria-selected="true"] { background: var(--ins-ink); color: var(--ins-panel); }
+.install-calendar button:focus-visible, .install-calendar-toggle:focus-visible { outline: 2px solid var(--ins-focus); outline-offset: -2px; }
+.install-datetime-input + .install-note { margin: 0; font-size: var(--f-type-meta); }

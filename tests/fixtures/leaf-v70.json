@@ -1,0 +1,268 @@
+{
+  "source": "Studio v70, luma-next-70.html, Leaf LFB/LFTXT/LFTOC/LFDICT",
+  "books": [
+    {
+      "id": "totc",
+      "t": "A Tale of Two Cities",
+      "a": "Charles Dickens",
+      "c1": "#5b1a1f",
+      "c2": "#d6b26a",
+      "ci": "#f3e6c8",
+      "v": "classic",
+      "st": "reading",
+      "p": 0.12,
+      "left": "About 11 hours left",
+      "at": "Book the First, Chapter II"
+    },
+    {
+      "id": "moby",
+      "t": "Moby-Dick",
+      "a": "Herman Melville",
+      "c1": "#14263b",
+      "c2": "#7aa6c7",
+      "ci": "#e8eef4",
+      "v": "waves",
+      "st": "reading",
+      "p": 0.34,
+      "left": "About 14 hours left",
+      "at": "Chapter 41"
+    },
+    {
+      "id": "alice",
+      "t": "Alice’s Adventures in Wonderland",
+      "a": "Lewis Carroll",
+      "c1": "#f1b89b",
+      "c2": "#a8403a",
+      "ci": "#3a1d17",
+      "v": "play",
+      "st": "reading",
+      "p": 0.62,
+      "left": "About 1 hour left",
+      "at": "Chapter VII"
+    },
+    {
+      "id": "pp",
+      "t": "Pride and Prejudice",
+      "a": "Jane Austen",
+      "c1": "#9aad92",
+      "c2": "#f7f0e1",
+      "ci": "#fbf6ea",
+      "v": "script",
+      "st": "want",
+      "p": 0
+    },
+    {
+      "id": "gatsby",
+      "t": "The Great Gatsby",
+      "a": "F. Scott Fitzgerald",
+      "c1": "#0f1a2c",
+      "c2": "#caa54e",
+      "ci": "#ecdcaa",
+      "v": "deco",
+      "st": "new",
+      "p": 0
+    },
+    {
+      "id": "drac",
+      "t": "Dracula",
+      "a": "Bram Stoker",
+      "c1": "#151213",
+      "c2": "#b8292f",
+      "ci": "#eadbc3",
+      "v": "bold",
+      "st": "new",
+      "p": 0
+    },
+    {
+      "id": "frank",
+      "t": "Frankenstein",
+      "a": "Mary Shelley",
+      "c1": "#262b29",
+      "c2": "#b9e6a9",
+      "ci": "#dcefd4",
+      "v": "bolt",
+      "st": "finished",
+      "p": 1
+    },
+    {
+      "id": "walden",
+      "t": "Walden",
+      "a": "Henry David Thoreau",
+      "c1": "#ebe3cf",
+      "c2": "#557a46",
+      "ci": "#2e3a27",
+      "v": "leaf",
+      "st": "want",
+      "p": 0
+    },
+    {
+      "id": "eyre",
+      "t": "Jane Eyre",
+      "a": "Charlotte Brontë",
+      "c1": "#8b5660",
+      "c2": "#f1dbd5",
+      "ci": "#f8ecE8",
+      "v": "script",
+      "st": "want",
+      "p": 0
+    },
+    {
+      "id": "odyssey",
+      "t": "The Odyssey",
+      "a": "Homer",
+      "c1": "#c6652f",
+      "c2": "#1e1a16",
+      "ci": "#1e1a16",
+      "v": "bold",
+      "st": "finished",
+      "p": 1
+    }
+  ],
+  "chapters": {
+    "totc": [
+      {
+        "part": "Book the First · Recalled to Life",
+        "n": "I",
+        "t": "The Period",
+        "ps": [
+          "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.",
+          "There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France. In both countries it was clearer than crystal to the lords of the State preserves of loaves and fishes, that things in general were settled for ever.",
+          "It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster.",
+          "France, less favoured on the whole as to matters spiritual than her sister of the shield and trident, rolled with exceeding smoothness down hill, making paper money and spending it. Under the guidance of her Christian pastors, she entertained herself, besides, with such humane achievements as sentencing a youth to have his hands cut off, his tongue torn out with pincers, and his body burned alive, because he had not kneeled down in the rain to do honour to a dirty procession of monks which passed within his view, at a distance of some fifty or sixty yards.",
+          "It is likely enough that, rooted in the woods of France and Norway, there were growing trees, when that sufferer was put to death, already marked by the Woodman, Fate, to come down and be sawn into boards, to make a certain movable framework with a sack and a knife in it, terrible in history. It is likely enough that in the rough outhouses of some tillers of the heavy lands adjacent to Paris, there were sheltered from the weather that very day, rude carts, bespattered with rustic mire, snuffed about by pigs, and roosted in by poultry, which the Farmer, Death, had already set apart to be his tumbrils of the Revolution. But that Woodman and that Farmer, though they work unceasingly, work silently, and no one heard them as they went about with muffled tread.",
+          "In England, there was scarcely an amount of order and protection to justify much national boasting. Daring burglaries by armed men, and highway robberies, took place in the capital itself every night; families were publicly cautioned not to go out of town without removing their furniture to upholsterers’ warehouses for security; the highwayman in the dark was a City tradesman in the light.",
+          "All these things, and a thousand like them, came to pass in and close upon the dear old year one thousand seven hundred and seventy-five. Environed by them, while the Woodman and the Farmer worked unheeded, those two of the large jaws, and those other two of the plain and the fair faces, trod with stir enough, and carried their divine rights with a high hand. Thus did the year one thousand seven hundred and seventy-five conduct their Greatnesses, and myriads of small creatures—the creatures of this chronicle among the rest—along the roads that lay before them."
+        ]
+      },
+      {
+        "n": "II",
+        "t": "The Mail",
+        "ps": [
+          "It was the Dover road that lay, on a Friday night late in November, before the first of the persons with whom this history has business. The Dover road lay, as to him, beyond the Dover mail, as it lumbered up Shooter’s Hill. He walked up hill in the mire by the side of the mail, as the rest of the passengers did; not because they had the least relish for walking exercise, under the circumstances, but because the hill, and the harness, and the mud, and the mail, were all so heavy, that the horses had three times already come to a stop, besides once drawing the coach across the road, with the mutinous intent of taking it back to Blackheath.",
+          "With drooping heads and tremulous tails, they mashed their way through the thick mud, floundering and stumbling between whiles, as if they were falling to pieces at the larger joints. As often as the driver rested them and brought them to a stand, with a wary “Wo-ho! so-ho-then!” the near leader violently shook his head and everything upon it—like an unusually emphatic horse, denying that the coach could be got up the hill. Whenever the leader made this rattle, the passenger started, as a nervous passenger might, and was disturbed in mind.",
+          "§There was a steaming mist in all the hollows, and it had roamed in its forlornness up the hill, like an evil spirit, seeking rest and finding none. A clammy and intensely cold mist, it made its slow way through the air in ripples that visibly followed and overspread one another, as the waves of an unwholesome sea might do. It was dense enough to shut out everything from the light of the coach-lamps but these its own workings, and a few yards of road; and the reek of the labouring horses steamed into it, as if they had made it all.",
+          "Two other passengers, besides the one, were plodding up the hill by the side of the mail. All three were wrapped to the cheekbones and over the ears, and wore jack-boots. Not one of the three could have said, from anything he saw, what either of the other two was like; and each was hidden under almost as many wrappers from the eyes of the mind, as from the eyes of the body, of his two companions."
+        ]
+      }
+    ],
+    "pp": [
+      {
+        "part": "Volume I",
+        "n": "Chapter 1",
+        "t": "",
+        "ps": [
+          "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
+          "However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
+          "“My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?”",
+          "Mr. Bennet replied that he had not.",
+          "“But it is,” returned she; “for Mrs. Long has just been here, and she told me all about it.”",
+          "Mr. Bennet made no answer.",
+          "“Do you not want to know who has taken it?” cried his wife impatiently.",
+          "“You want to tell me, and I have no objection to hearing it.”",
+          "This was invitation enough."
+        ]
+      }
+    ],
+    "moby": [
+      {
+        "n": "Chapter 1",
+        "t": "Loomings",
+        "ps": [
+          "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world. It is a way I have of driving off the spleen and regulating the circulation. Whenever I find myself growing grim about the mouth; whenever it is a damp, drizzly November in my soul; whenever I find myself involuntarily pausing before coffin warehouses, and bringing up the rear of every funeral I meet; and especially whenever my hypos get such an upper hand of me, that it requires a strong moral principle to prevent me from deliberately stepping into the street, and methodically knocking people’s hats off—then, I account it high time to get to sea as soon as I can. This is my substitute for pistol and ball. With a philosophical flourish Cato throws himself upon his sword; I quietly take to the ship. There is nothing surprising in this. If they but knew it, almost all men in their degree, some time or other, cherish very nearly the same feelings towards the ocean with me.",
+          "There now is your insular city of the Manhattoes, belted round by wharves as Indian isles by coral reefs—commerce surrounds it with her surf. Right and left, the streets take you waterward. Its extreme downtown is the battery, where that noble mole is washed by waves, and cooled by breezes, which a few hours previous were out of sight of land. Look at the crowds of water-gazers there."
+        ]
+      }
+    ]
+  },
+  "contents": {
+    "totc": [
+      [
+        "Book the First · Recalled to Life",
+        [
+          "The Period",
+          "The Mail",
+          "The Night Shadows",
+          "The Preparation",
+          "The Wine-shop",
+          "The Shoemaker"
+        ]
+      ],
+      [
+        "Book the Second · The Golden Thread",
+        [
+          "Five Years Later",
+          "A Sight",
+          "A Disappointment",
+          "Congratulatory",
+          "The Jackal"
+        ]
+      ],
+      [
+        "Book the Third · The Track of a Storm",
+        [
+          "In Secret",
+          "The Grindstone",
+          "The Shadow",
+          "Calm in Storm"
+        ]
+      ]
+    ]
+  },
+  "dictionary": {
+    "incredulity": [
+      "noun",
+      "The state of being unwilling or unable to believe something."
+    ],
+    "epoch": [
+      "noun",
+      "A period of time in history or a person’s life, marked by notable events."
+    ],
+    "tumbrils": [
+      "noun",
+      "Open carts that tilt backward to empty; used to carry the condemned to the guillotine during the French Revolution."
+    ],
+    "forlornness": [
+      "noun",
+      "The state of being pitifully sad and abandoned or lonely."
+    ],
+    "capitulated": [
+      "verb",
+      "Ceased to resist an opponent; surrendered."
+    ],
+    "environed": [
+      "verb",
+      "Surrounded; enclosed."
+    ],
+    "tremulous": [
+      "adjective",
+      "Shaking or quivering slightly."
+    ],
+    "mire": [
+      "noun",
+      "A stretch of swampy or boggy ground; deep mud."
+    ]
+  },
+  "collections": [
+    {
+      "name": "Gothic nights",
+      "count": 3
+    },
+    {
+      "name": "At sea",
+      "count": 2
+    }
+  ],
+  "opening": {
+    "view": "lib",
+    "shelf": "reading",
+    "sort": "recent",
+    "book": "totc",
+    "theme": "auto",
+    "font": "literata",
+    "size": 19,
+    "line_spacing": 1.62,
+    "layout": "two",
+    "justify": true
+  },
+  "hero_quote": "There was a steaming mist in all the hollows, and it had roamed in its forlornness up the hill, like an evil spirit, seeking rest and finding none."
+}

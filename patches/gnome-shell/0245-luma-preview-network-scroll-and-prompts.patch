@@ -1,0 +1,204 @@
+--- a/js/ui/dialog.js
++++ b/js/ui/dialog.js
+@@ -1,9 +1,12 @@
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+ import St from 'gi://St';
++
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ 
+ function _setLabel(label, value) {
+     label.set({
+@@ -29,6 +32,26 @@
+ 
+         if (styleClass != null)
+             this._dialog.add_style_class_name(styleClass);
++
++        // Network/VPN/keyring prompts use the shared native dialog owner.
++        // Seal and Cast retain their specialized chrome and authentication.
++        if (this._dialog.has_style_class_name('prompt-dialog')) {
++            this._dialog.add_style_class_name('luma-system-prompt');
++            const stylesheet = Gio.File.new_for_uri('resource:///org/gnome/shell/theme/luma-system-prompts.css');
++            const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
++            if (!theme.get_custom_stylesheets().some(file => file.equal(stylesheet)))
++                theme.load_stylesheet(stylesheet);
++            SurfaceMaterials.bindSurface(this._dialog, {backdrop: false, enabled: false});
++            this._promptA11y = new Gio.Settings({schema_id: 'org.gnome.desktop.a11y.interface'});
++            const syncContrast = () => {
++                if (this._promptA11y.get_boolean('high-contrast'))
++                    this._dialog.add_style_class_name('luma-prompt-high-contrast');
++                else
++                    this._dialog.remove_style_class_name('luma-prompt-high-contrast');
++            };
++            this._promptA11y.connectObject('changed::high-contrast', syncContrast, this._dialog);
++            syncContrast();
++        }
+ 
+         this._parentActor = parentActor;
+         this._parentActor.add_child(this);
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -10,6 +10,8 @@
+ import Shell from 'gi://Shell';
+ 
+ import GnomeDesktop from 'gi://GnomeDesktop';
++
++import {ensureActorVisibleInScrollView} from '../misc/animationUtils.js';
+ 
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+@@ -1383,6 +1385,11 @@
+         this._pageScroll.set_child(this._pages);
+         this._pageHost.add_child(this._pageScroll);
+         this.box.add_child(this._pageHost);
++        global.stage.connectObject('notify::key-focus', () => {
++            const focus = global.stage.key_focus;
++            if (this._activeMenu && focus && this._pageScroll.contains(focus))
++                ensureActorVisibleInScrollView(this._pageScroll, focus);
++        }, this.actor);
+     }
+ 
+     // The Studio page arrangement reuses GNOME's live indicator actors. No
+@@ -1542,6 +1549,7 @@
+             if (this._activeMenu !== menu) this._activeMenu?.close(PopupAnimation.NONE);
+             this._activeMenu = menu;
+             this._mainPage?.hide(); this._pageHost.show();
++            this._pageScroll.vadjustment.value = 0;
+             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+             const monitor = Main.layoutManager.findMonitorForActor(this.sourceActor) ?? Main.layoutManager.primaryMonitor;
+             if (monitor) this._pageScroll.set_style(`max-height: ${Math.max(160, monitor.height / scale - 160)}px;`);
+--- a/js/ui/status/network.js
++++ b/js/ui/status/network.js
+@@ -1292,9 +1292,9 @@
+         let nVisible = 0;
+         for (const item of this._itemSorter) {
+             const {network: net} = item;
+-            item.visible =
+-                (hasWindows || net.hasConnections() || net.canAutoconnect()) &&
+-                nVisible < MAX_VISIBLE_NETWORKS;
++            // The native detail page scrolls: keep every eligible result.
++            // The greeter still exposes only known/autoconnect networks.
++            item.visible = hasWindows || net.hasConnections() || net.canAutoconnect();
+             if (item.visible)
+                 nVisible++;
+         }
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -4,6 +4,7 @@
+     <file>calendar-today.svg</file>
+     <file>calendar-today-light.svg</file>
+     <file>luma-controls.css</file>
++    <file>luma-system-prompts.css</file>
+     <file>gnome-shell-dark.css</file>
+     <file>gnome-shell-light.css</file>
+     <file>gnome-shell-high-contrast.css</file>
+--- /dev/null
++++ b/data/theme/luma-system-prompts.css
+@@ -0,0 +1,103 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later
++ * Shared native system prompts: the existing Luma material and Cast control
++ * geometry, applied by Dialog.Dialog. No authentication protocol lives here. */
++.modal-dialog.prompt-dialog.luma-system-prompt {
++  padding: 22px 22px 18px;
++  spacing: 18px;
++  border-radius: 15px;
++  border: 1px solid rgba(255,255,255,.10);
++  background-color: #21252b;
++  color: #e7e9e8;
++  font-family: Figtree, sans-serif;
++  box-shadow: 0 12px 28px rgba(0,0,0,.32); }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-content-box {
++  padding-top: 0; spacing: 16px; }
++.modal-dialog.prompt-dialog.luma-system-prompt .message-dialog-content {
++  spacing: 12px; }
++.modal-dialog.prompt-dialog.luma-system-prompt .message-dialog-title {
++  color: #e7e9e8; font-size: 20px; font-weight: 700; }
++.modal-dialog.prompt-dialog.luma-system-prompt .message-dialog-description {
++  color: #b8bec4; font-size: 13px; }
++.modal-dialog.prompt-dialog.luma-system-prompt .prompt-dialog-password-entry {
++  min-height: 22px; padding: 10px 12px; border-radius: 10px;
++  border: 1px solid rgba(255,255,255,.16);
++  background-color: #191d22; color: #e7e9e8;
++  font-size: 13px; box-shadow: inset 0 1px 2px rgba(0,0,0,.25); }
++.modal-dialog.prompt-dialog.luma-system-prompt .prompt-dialog-password-entry:focus {
++  border-color: #8a99a8;
++  box-shadow: inset 0 0 2px #8a99a8; }
++.modal-dialog.prompt-dialog.luma-system-prompt .prompt-dialog-password-entry StLabel.hint-text {
++  color: #b8bec4; }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button-box {
++  padding-top: 0; spacing: 8px; }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button {
++  min-height: 36px; padding: 0 18px; border-radius: 10px;
++  border: 1px solid rgba(255,255,255,.16);
++  background-color: #343a42; color: #e7e9e8;
++  font-size: 13px; font-weight: 700;
++  border-top-color: rgba(255,255,255,.24);
++  box-shadow: 0 2px 3px rgba(0,0,0,.18); }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button:hover {
++  background-color: #424a54; }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button:default {
++  border-color: rgba(255,255,255,.32);
++  background-color: #e6e9eb; color: #242a30; }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button:default:hover {
++  background-color: #ffffff; }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button:active {
++  box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button:focus {
++  border-color: #8a99a8; box-shadow: inset 0 0 2px #8a99a8; }
++.modal-dialog.prompt-dialog.luma-system-prompt .modal-dialog-button:insensitive {
++  background-color: #343a42; color: #b8bec4; box-shadow: none; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass {
++  border-color: rgba(25,27,31,.16);
++  background-color: #f1f2f3; color: #34383d;
++  box-shadow: 0 12px 28px rgba(10,14,19,.26); }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .message-dialog-title,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .message-dialog-title {
++  color: #34383d; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .message-dialog-description,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .message-dialog-description,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .prompt-dialog-password-entry StLabel.hint-text,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .prompt-dialog-password-entry StLabel.hint-text {
++  color: #525b65; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .prompt-dialog-password-entry,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .prompt-dialog-password-entry {
++  border-color: rgba(25,27,31,.20);
++  background-color: #ffffff; color: #34383d;
++  box-shadow: inset 0 1px 2px rgba(25,27,31,.10); }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .prompt-dialog-password-entry:focus,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .prompt-dialog-password-entry:focus {
++  border-color: #61728a; box-shadow: inset 0 0 2px #61728a; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .modal-dialog-button,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .modal-dialog-button {
++  border-color: rgba(25,27,31,.16);
++  background-color: #ffffff; color: #34383d;
++  border-top-color: rgba(255,255,255,.80);
++  box-shadow: 0 2px 3px rgba(25,27,31,.12); }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .modal-dialog-button:hover,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .modal-dialog-button:hover {
++  background-color: #f7f8f9; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .modal-dialog-button:default,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .modal-dialog-button:default {
++  border-color: rgba(25,27,31,.20);
++  background-color: #31373e; color: #ffffff; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .modal-dialog-button:default:hover,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .modal-dialog-button:default:hover {
++  background-color: #242a30; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .modal-dialog-button:focus,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .modal-dialog-button:focus {
++  border-color: #61728a; box-shadow: inset 0 0 2px #61728a; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-light .modal-dialog-button:insensitive,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-surface-glass .modal-dialog-button:insensitive {
++  background-color: #e0e3e6; color: #525b65; box-shadow: none; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-prompt-high-contrast,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-prompt-high-contrast .prompt-dialog-password-entry,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-prompt-high-contrast .modal-dialog-button {
++  border-width: 2px; border-color: #e7e9e8; }
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-prompt-high-contrast.luma-surface-light,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-prompt-high-contrast.luma-surface-light .prompt-dialog-password-entry,
++.modal-dialog.prompt-dialog.luma-system-prompt.luma-prompt-high-contrast.luma-surface-light .modal-dialog-button {
++  border-color: #34383d; }

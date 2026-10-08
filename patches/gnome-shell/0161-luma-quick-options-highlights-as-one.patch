@@ -1,0 +1,159 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 22:31:00 -0500
+Subject: [PATCH] luma: the Quick Options island highlights as one surface
+
+Owner request, 2026-09-18: no part of the Quick Options island has a fill
+of its own. The Well's items and extension indicators (the tiling button
+among them), the status icons and the clock/date painted their own hover,
+pressed and focus fills (0150, 0151, 0155 and upstream .panel-button and
+.clock-display rules), and the Well sat in a recess of its own. None of
+them paints now, at rest, hovered, pressed or focused.
+
+Instead the shelf washes the whole island once, at its own radius, while
+the pointer is anywhere over it, presses it while one of its menus is open,
+and draws one keyboard-focus ring round the whole island, in every
+appearance mode.
+
+A symbolic extension glyph in the Well was blank: its icon name was set
+before its gicon was cleared, and clearing the gicon cleared the name.
+---
+ data/theme/luma-shelf.css | 37 +++++++++++++++++++++++++++++++++++++
+ js/ui/lumaWell.js         |  4 +++-
+ js/ui/panel.js            |  8 ++++----
+ js/ui/shelf.js            | 35 +++++++++++++++++++++++++++++++++++
+ 4 files changed, 79 insertions(+), 5 deletions(-)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 098efc4..d18cbf7 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1805,3 +1805,40 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon-action:hover,
+ .luma-shelf-beacon-island .luma-shelf-material.luma-surface-glass .luma-notification-beacon-dismiss:hover {
+   background-color: rgba(255, 255, 255, 0.22); }
++
++/* The Quick Options island is one surface (owner, 2026-09-18): no segment of
++ * it -- the Well's items and extension indicators, the status icons, the
++ * clock -- has a fill or a ring of its own at rest, hovered, pressed or
++ * focused. The whole island washes and rings instead (.luma-island-hover,
++ * -press and -focus on the material, driven by Shelf._syncActionsWash). */
++.luma-status-cluster.luma-shelf-material .luma-status-controls,
++.luma-status-cluster.luma-shelf-material .luma-status-controls:hover,
++.luma-status-cluster.luma-shelf-material .luma-status-controls:focus,
++.luma-status-cluster.luma-shelf-material .luma-status-controls:active,
++.luma-status-cluster.luma-shelf-material .luma-status-controls:checked,
++.luma-status-cluster.luma-shelf-material .luma-status-clock,
++.luma-status-cluster.luma-shelf-material .luma-status-clock:hover,
++.luma-status-cluster.luma-shelf-material .luma-status-clock:focus,
++.luma-status-cluster.luma-shelf-material .luma-status-clock:active,
++.luma-status-cluster.luma-shelf-material .luma-well-item,
++.luma-status-cluster.luma-shelf-material .luma-well-item:hover,
++.luma-status-cluster.luma-shelf-material .luma-well-item:focus,
++.luma-status-cluster.luma-shelf-material .luma-well-item:active,
++.luma-status-cluster.luma-shelf-material .luma-well-item:checked,
++.luma-status-cluster.luma-shelf-material .luma-well .panel-button,
++.luma-status-cluster.luma-shelf-material .luma-well .panel-button:hover,
++.luma-status-cluster.luma-shelf-material .luma-well .panel-button:focus,
++.luma-status-cluster.luma-shelf-material .luma-well .panel-button:active,
++.luma-status-cluster.luma-shelf-material .luma-well .panel-button:checked {
++  background-color: transparent;
++  box-shadow: none; }
++/* The Well is not a recess of its own inside the island either: its items sit
++ * on the island like the status icons do. The line keeps its pixel, clear. */
++.luma-status-cluster.luma-shelf-material .luma-well,
++.luma-surface-light.luma-status-cluster.luma-shelf-material .luma-well,
++.luma-surface-dark.luma-status-cluster.luma-shelf-material .luma-well,
++.luma-surface-frost.luma-status-cluster.luma-shelf-material .luma-well,
++.luma-surface-glass.luma-status-cluster.luma-shelf-material .luma-well {
++  background-color: transparent;
++  border-color: transparent;
++  box-shadow: none; }
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index df8b96e..98136cc 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -624,8 +624,10 @@ export const Well = GObject.registerClass({
+             if (actor instanceof St.Icon) {
+                 const symbolic = this._wellGlyphName(actor);
+                 if (symbolic) {
+-                    actor.icon_name = symbolic;
++                    // gicon first: clearing it after the name cleared the
++                    // name too, and a symbolic extension glyph was blank.
+                     actor.gicon = null;
++                    actor.icon_name = symbolic;
+                 } else {
+                     // Ink either way: a colour a third party chose is outside
+                     // the ink contract and can land on the surface's own
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 786fefd..4c59da8 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1444,11 +1444,11 @@ class QuickSettings extends PanelMenu.Button {
+         // and stays pressed while Quick Settings is open. The island-wide
+         // overlay is no longer drawn.
+         this._statusHover.opacity = 0;
++        // The island is one surface: the shelf washes and rings the whole
++        // island (Shelf._syncActionsWash), so no part is marked on its own.
+         const controls = this._statusControls;
+-        if (this.has_key_focus() && this.has_style_pseudo_class('focus')) controls.add_style_pseudo_class('focus');
+-        else controls.remove_style_pseudo_class('focus');
+-        if (this.menu.isOpen) controls.add_style_pseudo_class('checked');
+-        else controls.remove_style_pseudo_class('checked');
++        controls.remove_style_pseudo_class('focus');
++        controls.remove_style_pseudo_class('checked');
+     }
+ 
+     _watchStatus(child) {
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 3ff074b..23b5a5b 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -503,6 +503,7 @@ class Shelf extends St.Widget {
+         // island of their own.
+         // Focus rings on the shelf are for keyboard navigation only.
+         this._focusVisible = new FocusVisible(this);
++        this._syncActionsWash();
+         this._well = new Well();
+         this._actionsMaterial.setStatusWell?.(this._well);
+         this._well.connectObject('changed', () => this._queueDockWidth(), this);
+@@ -1001,6 +1002,40 @@ class Shelf extends St.Widget {
+         }
+     }
+ 
++    // The Quick Options island is one surface (owner, 2026-09-18): the Well's
++    // items, the status icons and the clock never highlight on their own.
++    // Hovered anywhere, the whole island washes once at its own radius;
++    // pressed while a menu of the island is open; and keyboard focus anywhere
++    // in it is one ring round the whole island. The wash is the material's
++    // inset shadow, as for an island that is one action (ShelfIsland.setBody).
++    _syncActionsWash() {
++        const quick = this._actionsMaterial;
++        if (!quick)
++            return;
++        const sync = () => {
++            const focus = global.stage.get_key_focus();
++            const inside = !!focus && (focus === quick || quick.contains(focus));
++            const menuOpen = quick.menu?.isOpen ||
++                (this._well?.get_children?.() ?? []).some(child =>
++                    [child, ...(child.get_children?.() ?? [])].some(a => a.has_style_pseudo_class?.('checked')));
++            const pressed = menuOpen || quick.has_style_pseudo_class('active');
++            const hovered = quick.hover && !pressed;
++            const focused = inside && (this._focusVisible?.keyboard ?? true) && !pressed && !hovered;
++            for (const [name, on] of [['luma-island-press', pressed],
++                ['luma-island-hover', hovered], ['luma-island-focus', focused]]) {
++                if (on)
++                    quick.add_style_class_name(name);
++                else
++                    quick.remove_style_class_name(name);
++            }
++        };
++        quick.connectObject('notify::hover', sync, 'notify::pseudo-class', sync, this);
++        quick.menu?.connectObject('open-state-changed', sync, this);
++        global.stage.connectObject('notify::key-focus', sync, this);
++        this._syncActionsWashNow = sync;
++        sync();
++    }
++
+     _restorePanelActors() {
+         const indicators = Main.panel.statusArea;
+         const quick = indicators.quickSettings;

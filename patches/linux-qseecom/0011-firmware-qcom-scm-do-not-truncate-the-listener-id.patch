@@ -1,0 +1,30 @@
+From e9839dab824ac2772177023f2d9e877d7a61376c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:21:11 +0200
+Subject: [PATCH 11/41] firmware: qcom: scm: do not truncate the listener id
+
+It arrives as a u64 from the secure world and selects which registered listener
+services a request, so narrowing it silently is the wrong shape even though no
+id today comes near the boundary.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/firmware/qcom/qcom_scm.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 311425f99..5ecc1f088 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2192,7 +2192,10 @@ static int qcom_scm_qseecom_service_listeners(struct qcom_scm_qseecom_resp *res)
+ 			return -ELOOP;
+ 		}
+ 
+-		id = res->data;
++		if (res->data > U32_MAX)
++		return -EINVAL;
++
++	id = res->data;
+ 		listener = qcom_scm_qseecom_listener_find(id);
+ 		if (listener) {
+ 			status = listener->service(listener);

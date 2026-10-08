@@ -1,0 +1,812 @@
+From 7ce0663c19c0f8dc328adaf7c34923ba73dd5224 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:37:42 +0000
+Subject: [PATCH] Filer: compose one LumaUI Information pane across views
+
+---
+ src/nautilus-column-view.c                    | 284 +-----------------
+ src/nautilus-toolbar.c                        |  15 +
+ src/nautilus-toolbar.h                        |   3 +
+ src/nautilus-window.c                         |  97 ++++++
+ src/resources/style.css                       |  87 ------
+ src/resources/ui/nautilus-toolbar.blp         |   2 +
+ src/resources/ui/nautilus-window.blp          |   9 +-
+ .../display/test-luma-column-header-menu.c    |  39 ---
+ 8 files changed, 128 insertions(+), 408 deletions(-)
+
+diff --git a/src/nautilus-column-view.c b/src/nautilus-column-view.c
+index 2b974a5..3f97d6f 100644
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -30,8 +30,6 @@ struct _NautilusColumnView
+     GtkWidget *workspace;
+     GtkWidget *parent_island;
+     GtkWidget *current_island;
+-    GtkWidget *details_island;
+-    gboolean has_details;
+     GtkListView *parent_view;
+     GtkSingleSelection *parent_selection;
+     GListStore *parent_store;
+@@ -43,18 +41,6 @@ struct _NautilusColumnView
+     GtkLabel *current_title;
+     GtkLabel *current_count;
+ 
+-    GtkImage *details_icon;
+-    GtkLabel *details_name;
+-    GtkLabel *details_summary;
+-    GtkLabel *details_kind;
+-    GtkLabel *details_size;
+-    GtkLabel *details_created;
+-    GtkLabel *details_modified;
+-    GtkLabel *details_where;
+-    GtkWidget *details_tags;
+-    GtkWidget *details_open_button;
+-    GtkWidget *details_share_button;
+-
+     guint parent_update_id;
+     NautilusDirectory *parent_directory;
+     GFile *current_location;
+@@ -254,42 +240,14 @@ on_current_item_activated (GtkListView        *view,
+     nautilus_list_base_activate_selection (NAUTILUS_LIST_BASE (self), FALSE);
+ }
+ 
+-static void
+-clear_details (NautilusColumnView *self)
+-{
+-    self->has_details = FALSE;
+-    if (self->details_island != NULL)
+-    {
+-        gtk_widget_set_visible (self->details_island, FALSE);
+-    }
+-    gtk_image_clear (self->details_icon);
+-    gtk_label_set_text (self->details_name, _("Nothing selected"));
+-    gtk_label_set_text (self->details_summary, _("Select an item to see details"));
+-    gtk_label_set_text (self->details_kind, "—");
+-    gtk_label_set_text (self->details_size, "—");
+-    gtk_label_set_text (self->details_created, "—");
+-    gtk_label_set_text (self->details_modified, "—");
+-    gtk_label_set_text (self->details_where, "—");
+-    while (gtk_widget_get_first_child (self->details_tags) != NULL)
+-    {
+-        gtk_box_remove (GTK_BOX (self->details_tags),
+-                        gtk_widget_get_first_child (self->details_tags));
+-    }
+-    gtk_widget_set_visible (self->details_tags, FALSE);
+-    gtk_widget_set_sensitive (self->details_open_button, FALSE);
+-    gtk_widget_set_sensitive (self->details_share_button, FALSE);
+-}
+-
+ static void
+ update_adaptive_presentation (NautilusColumnView *self)
+ {
+     int width = gtk_widget_get_width (GTK_WIDGET (self));
+-    gboolean compact_parent = width > 0 && width < 640;
+-    gboolean compact_details = width > 0 && width < 520;
+ 
+     gtk_widget_set_visible (self->parent_island,
+-                            !compact_parent && self->parent_directory != NULL);
+-    gtk_widget_set_visible (self->details_island, self->has_details && !compact_details);
++                            self->parent_directory != NULL &&
++                            (width <= 0 || width >= 640));
+ }
+ 
+ static void
+@@ -300,135 +258,6 @@ on_width_changed (GObject    *object,
+     update_adaptive_presentation (NAUTILUS_COLUMN_VIEW (user_data));
+ }
+ 
+-static void
+-update_details (NautilusColumnView *self)
+-{
+-    GtkSelectionModel *selection;
+-    g_autoptr (GtkBitset) selected = NULL;
+-    guint position;
+-    g_autoptr (GtkTreeListRow) row = NULL;
+-    NautilusViewItem *item;
+-    NautilusFile *file;
+-    g_autofree char *kind = NULL;
+-    g_autofree char *size = NULL;
+-    g_autofree char *created = NULL;
+-    g_autofree char *modified = NULL;
+-    g_autofree char *where = NULL;
+-    g_auto (GStrv) tags = NULL;
+-    g_autoptr (GFile) location = NULL;
+-    g_autoptr (GFile) parent = NULL;
+-    g_autoptr (GdkPaintable) paintable = NULL;
+-
+-    if (self->current_model == NULL)
+-    {
+-        clear_details (self);
+-        return;
+-    }
+-
+-    selection = GTK_SELECTION_MODEL (self->current_model);
+-    selected = gtk_selection_model_get_selection (selection);
+-    position = gtk_bitset_get_minimum (selected);
+-    if (position == GTK_INVALID_LIST_POSITION)
+-    {
+-        clear_details (self);
+-        return;
+-    }
+-
+-    row = g_list_model_get_item (G_LIST_MODEL (self->current_model), position);
+-    if (row == NULL)
+-    {
+-        clear_details (self);
+-        return;
+-    }
+-
+-    item = NAUTILUS_VIEW_ITEM (gtk_tree_list_row_get_item (row));
+-    file = nautilus_view_item_get_file (item);
+-    if (file == NULL)
+-    {
+-        clear_details (self);
+-        return;
+-    }
+-
+-    if (nautilus_file_is_directory (file))
+-    {
+-        gtk_image_set_from_icon_name (self->details_icon, "folder-symbolic");
+-    }
+-    else
+-    {
+-        paintable = nautilus_file_get_icon_paintable (file,
+-                                                       30,
+-                                                       gtk_widget_get_scale_factor (GTK_WIDGET (self)),
+-                                                       NAUTILUS_FILE_ICON_FLAGS_NONE);
+-        gtk_image_set_from_paintable (self->details_icon, paintable);
+-    }
+-    gtk_label_set_text (self->details_name, nautilus_file_get_display_name (file));
+-
+-    kind = nautilus_file_get_string_attribute_with_default (file, "type");
+-    size = nautilus_file_get_string_attribute_with_default (file, "size");
+-    created = nautilus_file_get_string_attribute_with_default (file, "date_created");
+-    modified = nautilus_file_get_string_attribute_with_default (file, "date_modified");
+-    location = nautilus_file_get_location (file);
+-    parent = location != NULL ? g_file_get_parent (location) : NULL;
+-    where = parent != NULL ? g_file_get_parse_name (parent) : g_strdup ("—");
+-
+-    gtk_label_set_text (self->details_kind, kind);
+-    gtk_label_set_text (self->details_size, size);
+-    gtk_label_set_text (self->details_created, created);
+-    gtk_label_set_text (self->details_modified, modified);
+-    gtk_label_set_text (self->details_where, where);
+-    if (nautilus_file_is_directory (file))
+-    {
+-        guint item_count = 0;
+-        gboolean count_unreadable = FALSE;
+-
+-        if (nautilus_file_get_directory_item_count (file, &item_count, &count_unreadable) &&
+-            !count_unreadable)
+-        {
+-            g_autofree char *summary = g_strdup_printf (ngettext ("Folder · %u item",
+-                                                                  "Folder · %u items",
+-                                                                  item_count),
+-                                                        item_count);
+-            gtk_label_set_text (self->details_summary, summary);
+-        }
+-        else
+-        {
+-            gtk_label_set_text (self->details_summary, _("Folder"));
+-        }
+-    }
+-    else
+-    {
+-        gtk_label_set_text (self->details_summary, kind);
+-    }
+-
+-    while (gtk_widget_get_first_child (self->details_tags) != NULL)
+-    {
+-        gtk_box_remove (GTK_BOX (self->details_tags),
+-                        gtk_widget_get_first_child (self->details_tags));
+-    }
+-    tags = nautilus_file_get_metadata_list (file, NAUTILUS_METADATA_KEY_EMBLEMS);
+-    for (guint i = 0; tags != NULL && tags[i] != NULL; i++)
+-    {
+-        GtkWidget *chip = gtk_label_new (tags[i]);
+-
+-        gtk_widget_add_css_class (chip, "luma-details-tag");
+-        gtk_box_append (GTK_BOX (self->details_tags), chip);
+-    }
+-    gtk_widget_set_visible (self->details_tags, tags != NULL && tags[0] != NULL);
+-    gtk_widget_set_sensitive (self->details_open_button, TRUE);
+-    gtk_widget_set_sensitive (self->details_share_button, TRUE);
+-    self->has_details = TRUE;
+-    update_adaptive_presentation (self);
+-}
+-
+-static void
+-on_selection_changed (GtkSelectionModel  *model,
+-                      guint               position,
+-                      guint               n_items,
+-                      NautilusColumnView *self)
+-{
+-    update_details (self);
+-}
+-
+ static void
+ update_current_header (NautilusColumnView *self)
+ {
+@@ -448,7 +277,6 @@ on_current_items_changed (GListModel         *model,
+                           NautilusColumnView *self)
+ {
+     update_current_header (self);
+-    update_details (self);
+ }
+ 
+ static void
+@@ -468,13 +296,11 @@ on_model_changed (NautilusColumnView *self)
+     {
+         gtk_list_view_set_enable_rubberband (self->current_view,
+                                              !nautilus_view_model_get_single_selection (model));
+-        g_signal_connect (model, "selection-changed", G_CALLBACK (on_selection_changed), self);
+         g_signal_connect (model, "items-changed", G_CALLBACK (on_current_items_changed), self);
+         apply_sorter (self);
+     }
+ 
+     update_current_header (self);
+-    update_details (self);
+ }
+ 
+ /* Use the same file-list transfer format as the current-location view.
+@@ -668,8 +494,7 @@ rebuild_parent_store (NautilusColumnView *self)
+     if (self->parent_directory == NULL)
+     {
+         g_list_store_remove_all (self->parent_store);
+-        update_adaptive_presentation (self);
+-        return;
++            return;
+     }
+ 
+     files = nautilus_directory_get_file_list (self->parent_directory);
+@@ -812,106 +637,6 @@ create_list_island (GtkWidget *header,
+     return island;
+ }
+ 
+-static GtkWidget *
+-create_details_island (NautilusColumnView *self)
+-{
+-    GtkWidget *clamp = adw_clamp_new ();
+-    GtkWidget *island = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+-    GtkWidget *header = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+-    GtkWidget *heading = gtk_label_new (_("DETAILS"));
+-    GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+-    GtkWidget *icon_frame = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+-    GtkWidget *metadata = gtk_grid_new ();
+-    GtkWidget *actions = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+-    const char *labels[] = { N_("Kind"), N_("Size"), N_("Created"), N_("Modified"), N_("Where") };
+-    GtkLabel **values[] = { &self->details_kind, &self->details_size,
+-                           &self->details_created, &self->details_modified,
+-                           &self->details_where };
+-
+-    gtk_widget_add_css_class (island, "luma-column-island");
+-    gtk_widget_add_css_class (island, "luma-island");
+-    gtk_widget_add_css_class (island, "luma-details-island");
+-    gtk_widget_set_vexpand (island, TRUE);
+-
+-    /* GtkWidget::width-request is a minimum, not a maximum. The action row's
+-     * natural width could therefore grow this inspector beyond the simulator's
+-     * 190px contract and steal space from both browsing columns. AdwClamp is
+-     * the supported native ownership boundary for an exact content maximum. */
+-    gtk_orientable_set_orientation (GTK_ORIENTABLE (clamp),
+-                                    GTK_ORIENTATION_HORIZONTAL);
+-    adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 190);
+-    adw_clamp_set_tightening_threshold (ADW_CLAMP (clamp), 190);
+-    gtk_widget_set_size_request (clamp, 190, -1);
+-    /* Do not inherit expansion from the inspector action buttons. */
+-    gtk_widget_set_hexpand (clamp, FALSE);
+-    gtk_widget_set_vexpand (clamp, TRUE);
+-
+-    gtk_widget_add_css_class (header, "luma-column-header");
+-    gtk_widget_add_css_class (heading, "luma-details-heading");
+-    gtk_label_set_xalign (GTK_LABEL (heading), 0.0f);
+-    gtk_box_append (GTK_BOX (header), heading);
+-
+-    gtk_widget_add_css_class (content, "luma-details-content");
+-    gtk_widget_add_css_class (icon_frame, "luma-details-icon-frame");
+-    gtk_widget_set_halign (icon_frame, GTK_ALIGN_CENTER);
+-    self->details_icon = GTK_IMAGE (gtk_image_new ());
+-    gtk_image_set_pixel_size (self->details_icon, 30);
+-    gtk_box_append (GTK_BOX (icon_frame), GTK_WIDGET (self->details_icon));
+-
+-    self->details_name = GTK_LABEL (gtk_label_new (NULL));
+-    self->details_summary = GTK_LABEL (gtk_label_new (NULL));
+-    gtk_widget_add_css_class (GTK_WIDGET (self->details_name), "luma-details-name");
+-    gtk_widget_add_css_class (GTK_WIDGET (self->details_summary), "luma-details-summary");
+-    gtk_label_set_ellipsize (self->details_name, PANGO_ELLIPSIZE_END);
+-    gtk_label_set_wrap (self->details_summary, TRUE);
+-    gtk_label_set_justify (self->details_summary, GTK_JUSTIFY_CENTER);
+-
+-    gtk_grid_set_row_spacing (GTK_GRID (metadata), 4);
+-    gtk_grid_set_column_spacing (GTK_GRID (metadata), 8);
+-    gtk_widget_add_css_class (metadata, "luma-details-metadata");
+-    for (guint i = 0; i < G_N_ELEMENTS (labels); i++)
+-    {
+-        GtkWidget *label = gtk_label_new (_(labels[i]));
+-        GtkWidget *value = gtk_label_new (NULL);
+-
+-        gtk_label_set_xalign (GTK_LABEL (label), 0.0f);
+-        gtk_label_set_xalign (GTK_LABEL (value), 1.0f);
+-        gtk_label_set_ellipsize (GTK_LABEL (value), PANGO_ELLIPSIZE_MIDDLE);
+-        gtk_widget_add_css_class (label, "luma-details-key");
+-        gtk_widget_add_css_class (value, "luma-details-value");
+-        gtk_grid_attach (GTK_GRID (metadata), label, 0, i, 1, 1);
+-        gtk_grid_attach (GTK_GRID (metadata), value, 1, i, 1, 1);
+-        *values[i] = GTK_LABEL (value);
+-    }
+-
+-    gtk_box_append (GTK_BOX (content), icon_frame);
+-    gtk_box_append (GTK_BOX (content), GTK_WIDGET (self->details_name));
+-    gtk_box_append (GTK_BOX (content), GTK_WIDGET (self->details_summary));
+-    gtk_box_append (GTK_BOX (content), metadata);
+-    self->details_tags = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 5);
+-    gtk_widget_add_css_class (self->details_tags, "luma-details-tags");
+-    gtk_widget_set_halign (self->details_tags, GTK_ALIGN_CENTER);
+-    gtk_box_append (GTK_BOX (content), self->details_tags);
+-    gtk_widget_add_css_class (actions, "luma-details-actions");
+-    self->details_open_button = gtk_button_new_with_label (_("Open"));
+-    self->details_share_button = gtk_button_new_with_label (_("Share"));
+-    gtk_widget_set_hexpand (self->details_open_button, TRUE);
+-    gtk_widget_set_hexpand (self->details_share_button, TRUE);
+-    gtk_actionable_set_action_name (GTK_ACTIONABLE (self->details_open_button),
+-                                    "view.open-with-default-application");
+-    gtk_actionable_set_action_name (GTK_ACTIONABLE (self->details_share_button),
+-                                    "view.open-with-other-application");
+-    gtk_box_append (GTK_BOX (actions), self->details_open_button);
+-    gtk_box_append (GTK_BOX (actions), self->details_share_button);
+-    gtk_box_append (GTK_BOX (content), actions);
+-    gtk_box_append (GTK_BOX (island), header);
+-    gtk_box_append (GTK_BOX (island), content);
+-    adw_clamp_set_child (ADW_CLAMP (clamp), island);
+-    clear_details (self);
+-
+-    return clamp;
+-}
+-
+ static void
+ nautilus_column_view_setup_directory (NautilusListBase  *list_base,
+                                       NautilusDirectory *new_directory)
+@@ -1058,14 +783,11 @@ nautilus_column_view_init (NautilusColumnView *self)
+     current_header = create_header (&self->current_title, &self->current_count);
+     self->parent_island = create_list_island (parent_header, GTK_WIDGET (self->parent_view));
+     self->current_island = create_list_island (current_header, GTK_WIDGET (self->current_view));
+-    self->details_island = create_details_island (self);
+-    gtk_widget_set_visible (self->details_island, FALSE);
+ 
+     self->workspace = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 9);
+     gtk_widget_add_css_class (self->workspace, "luma-columns-workspace");
+     gtk_box_append (GTK_BOX (self->workspace), self->parent_island);
+     gtk_box_append (GTK_BOX (self->workspace), self->current_island);
+-    gtk_box_append (GTK_BOX (self->workspace), self->details_island);
+     gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (base_scroller), self->workspace);
+ 
+     g_signal_connect (self, "notify::width", G_CALLBACK (on_width_changed), self);
+diff --git a/src/nautilus-toolbar.c b/src/nautilus-toolbar.c
+index f6d0d1e..930c1ca 100644
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -34,6 +34,7 @@
+ #include "nautilus-view-controls.h"
+ #include "nautilus-ui-utilities.h"
+ #include "nautilus-window-slot.h"
++#include <luma-ui.h>
+ 
+ struct _NautilusToolbar
+ {
+@@ -52,6 +53,7 @@ struct _NautilusToolbar
+     GtkWidget *new_folder_button;
+     GtkWidget *search_button_placeholder;
+     GtkWidget *view_controls;
++    GtkWidget *information_button_host;
+     GtkWidget *compact_sidebar_button;
+     GtkWidget *compact_back_button;
+     GtkWidget *compact_search_button;
+@@ -348,6 +350,7 @@ nautilus_toolbar_init (NautilusToolbar *self)
+ 
+     self->compact_menu = g_menu_new ();
+     gtk_widget_init_template (GTK_WIDGET (self));
++    gtk_widget_set_name (self->path_bar, "filer-location");
+     rebuild_compact_menu (self);
+ 
+     compact_popover = gtk_menu_button_get_popover (GTK_MENU_BUTTON (self->compact_overflow_button));
+@@ -655,6 +658,7 @@ nautilus_toolbar_class_init (NautilusToolbarClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, search_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, search_button_placeholder);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, view_controls);
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, information_button_host);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_sidebar_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_back_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_search_button);
+@@ -795,3 +799,14 @@ nautilus_toolbar_set_window_slot (NautilusToolbar    *self,
+ 
+     nautilus_toolbar_set_window_slot_real (self, window_slot);
+ }
++
++void
++nautilus_toolbar_set_information_pane (NautilusToolbar *self,
++                                        LumaDetailsPane *pane)
++{
++    g_return_if_fail (NAUTILUS_IS_TOOLBAR (self));
++    g_return_if_fail (LUMA_IS_DETAILS_PANE (pane));
++
++    gtk_box_append (GTK_BOX (self->information_button_host),
++                    luma_details_pane_info_button (pane));
++}
+diff --git a/src/nautilus-toolbar.h b/src/nautilus-toolbar.h
+index 1c72224..f051d4f 100644
+--- a/src/nautilus-toolbar.h
++++ b/src/nautilus-toolbar.h
+@@ -25,6 +25,7 @@
+ 
+ #include <adwaita.h>
+ #include <gtk/gtk.h>
++#include <luma-ui.h>
+ 
+ #include "nautilus-types.h"
+ 
+@@ -43,4 +44,6 @@ void       nautilus_toolbar_set_active_slot    (NautilusToolbar    *toolbar,
+ 
+ void nautilus_toolbar_set_window_slot (NautilusToolbar    *self,
+                                        NautilusWindowSlot *window_slot);
++void nautilus_toolbar_set_information_pane (NautilusToolbar *self,
++                                             LumaDetailsPane *pane);
+ G_END_DECLS
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 8b1aca5..75fe7de 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -34,6 +34,7 @@
+ #include <gtk/gtk.h>
+ #include <math.h>
+ #include <sys/time.h>
++#include <luma-ui.h>
+ 
+ #ifdef GDK_WINDOWING_WAYLAND
+ #include <gdk/wayland/gdkwayland.h>
+@@ -103,6 +104,8 @@ struct _NautilusWindow
+     NautilusWindowSlot *active_slot; /* weak reference */
+ 
+     GtkWidget *split_view;
++    GtkWidget *information_host;
++    LumaDetailsPane *information_pane;
+ 
+     /* Side Pane */
+     NautilusSidebar *places_sidebar;
+@@ -305,10 +308,88 @@ action_show_current_location_menu (GSimpleAction *action,
+     nautilus_toolbar_show_current_location_menu (NAUTILUS_TOOLBAR (self->toolbar));
+ }
+ 
++static void
++update_information (NautilusWindow *window)
++{
++    g_autoptr (NautilusFile) directory = NULL;
++    g_autoptr (GdkPaintable) paintable = NULL;
++    g_autofree char *kind = NULL;
++    g_autofree char *size = NULL;
++    g_autofree char *modified = NULL;
++    g_autofree char *where = NULL;
++    GList *selection;
++    NautilusFile *file;
++    GFile *location;
++    GtkWidget *icon;
++
++    if (window->information_pane == NULL)
++    {
++        return;
++    }
++
++    location = window->active_slot != NULL
++               ? nautilus_window_slot_get_location (window->active_slot) : NULL;
++    selection = window->active_slot != NULL
++                ? nautilus_window_slot_get_selection (window->active_slot) : NULL;
++    directory = location != NULL ? nautilus_file_get (location) : NULL;
++    file = selection != NULL ? NAUTILUS_FILE (selection->data) : directory;
++    luma_details_pane_set_subject (window->information_pane,
++                                    file != NULL ? G_OBJECT (file) : NULL);
++    luma_details_pane_clear (window->information_pane);
++    if (file == NULL)
++    {
++        return;
++    }
++
++    paintable = nautilus_file_get_icon_paintable (
++        file, 72, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
++        NAUTILUS_FILE_ICON_FLAGS_NONE);
++    icon = paintable != NULL ? gtk_image_new_from_paintable (paintable)
++                             : gtk_image_new_from_icon_name ("folder-symbolic");
++    gtk_image_set_pixel_size (GTK_IMAGE (icon), 72);
++    luma_details_pane_add_hero (window->information_pane,
++                                nautilus_file_get_display_name (file), NULL, icon);
++
++    kind = nautilus_file_get_string_attribute_with_default (file, "type");
++    size = nautilus_file_get_string_attribute_with_default (file, "size");
++    modified = nautilus_file_get_string_attribute_with_default (file, "date_modified");
++    if (kind != NULL)
++    {
++        luma_details_pane_add_fact (window->information_pane, _("Kind"), kind);
++    }
++    if (size != NULL)
++    {
++        luma_details_pane_add_fact (window->information_pane, _("Size"), size);
++    }
++    if (modified != NULL)
++    {
++        luma_details_pane_add_fact (window->information_pane, _("Modified"), modified);
++    }
++    g_autoptr (GFile) file_location = nautilus_file_get_location (file);
++    g_autoptr (GFile) parent = file_location != NULL ? g_file_get_parent (file_location) : NULL;
++    where = parent != NULL ? g_file_get_parse_name (parent) : NULL;
++    if (where != NULL)
++    {
++        luma_details_pane_add_fact (window->information_pane, _("Where"), where);
++    }
++}
++
+ static void
+ on_location_changed (NautilusWindow *window)
+ {
+     nautilus_window_sync_location_widgets (window);
++    update_information (window);
++}
++
++static void
++on_slot_selection_changed (NautilusWindowSlot *slot,
++                           GParamSpec        *pspec,
++                           NautilusWindow    *window)
++{
++    if (window->active_slot == slot)
++    {
++        update_information (window);
++    }
+ }
+ 
+ static void
+@@ -418,6 +499,8 @@ nautilus_window_create_and_init_slot (NautilusWindow *window)
+                               G_CALLBACK (update_cursor), window);
+     g_signal_connect (slot, "notify::location",
+                       G_CALLBACK (on_slot_location_changed), window);
++    g_signal_connect (slot, "notify::selection",
++                      G_CALLBACK (on_slot_selection_changed), window);
+ 
+     AdwTabPage *current = get_current_page (window);
+     AdwTabPage *page = adw_tab_view_add_page (window->tab_view, GTK_WIDGET (slot), current);
+@@ -1376,6 +1459,7 @@ set_active_slot (NautilusWindow     *window,
+     }
+ 
+     g_object_notify_by_pspec (G_OBJECT (window), properties[PROP_ACTIVE_SLOT]);
++    update_information (window);
+ }
+ 
+ static void
+@@ -1680,6 +1764,18 @@ nautilus_window_init (NautilusWindow *window)
+     g_type_ensure (NAUTILUS_TYPE_VIEW_CONTROLS);
+     gtk_widget_init_template (GTK_WIDGET (window));
+ 
++    luma_layer_host_install (GTK_WINDOW (window));
++    window->information_pane = LUMA_DETAILS_PANE (
++        luma_details_pane_new (_("Information"), FALSE));
++    gtk_widget_set_name (GTK_WIDGET (window->information_pane), "filer-information");
++    gtk_box_append (GTK_BOX (window->information_host),
++                    GTK_WIDGET (window->information_pane));
++    nautilus_toolbar_set_information_pane (NAUTILUS_TOOLBAR (window->toolbar),
++                                           window->information_pane);
++    gtk_widget_set_name (GTK_WIDGET (window->places_sidebar), "filer-sidebar");
++    gtk_widget_set_name (window->split_view, "filer-island");
++    gtk_widget_set_name (window->toolbar, "filer-action-center");
++
+     set_sidebar_width (window,
+                        g_settings_get_int (nautilus_window_state,
+                                            NAUTILUS_WINDOW_STATE_SIDEBAR_WIDTH));
+@@ -1813,6 +1909,7 @@ nautilus_window_class_init (NautilusWindowClass *class)
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, undo_redo_section);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, toolbar);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, split_view);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, information_host);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, places_sidebar);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_resize_handle);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_action_surface);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 00de961..309ac6c 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -523,86 +523,6 @@
+   color: @luma_muted;
+ }
+ 
+-.luma-files-window .nautilus-column-view .luma-details-heading {
+-  color: @luma_muted;
+-  font-size: 11px;
+-  font-weight: 700;
+-  letter-spacing: 0.08em;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-content {
+-  padding: 16px 12px;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-icon-frame {
+-  min-width: 64px;
+-  min-height: 64px;
+-  border-radius: 10px;
+-  background-color: @luma_hover;
+-  box-shadow: inset 0 0 0 1px @luma_line;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-icon-frame image {
+-  color: var(--accent-color);
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-name {
+-  color: @luma_ink;
+-  font-size: 14px;
+-  font-weight: 700;
+-  margin-top: 8px;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-summary,
+-.luma-files-window .nautilus-column-view .luma-details-key {
+-  color: @luma_muted;
+-  font-size: 11px;
+-  font-weight: 550;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-value {
+-  color: @luma_ink;
+-  font-size: 11px;
+-  font-weight: 550;
+-  font-feature-settings: "tnum";
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-metadata {
+-  margin-top: 12px;
+-  padding-top: 8px;
+-  border-top: 1px solid @luma_line;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-tags {
+-  margin-top: 6px;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-tag {
+-  min-height: 20px;
+-  padding: 0 7px;
+-  border-radius: 10px;
+-  background-color: @luma_hover;
+-  color: @luma_muted;
+-  font-size: 11px;
+-  font-weight: 600;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-actions {
+-  margin-top: 10px;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-actions button {
+-  min-width: 0;
+-  min-height: 36px;
+-  padding: 0 10px;
+-  border-radius: 9px;
+-}
+-
+-.luma-files-window .nautilus-column-view .luma-details-actions button:first-child {
+-  background-color: @luma_ink;
+-  color: @luma_content;
+-}
+-
+ /* Toolbar */
+ 
+ @keyframes needs_attention_keyframes {
+@@ -1218,13 +1138,6 @@ window.luma-files-window .nautilus-column-view .luma-column-island > scrolledwin
+   background-color: transparent;
+   border-radius: 0 0 10px 10px;
+ }
+-window.luma-files-window .nautilus-column-view .luma-details-content {
+-  padding: 16px;
+-}
+-window.luma-files-window .nautilus-column-view .luma-details-value {
+-  font-weight: 600;
+-}
+-
+ /* Filer simulator follow-up: native history group and undimmed metadata. */
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls {
+   padding: 0;
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 8162f9a..0bdb5e4 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -178,6 +178,8 @@ template $NautilusToolbar: Adw.Bin {
+             visible: bind template.show-view-controls;
+             window-slot: bind template.window-slot;
+           }
++
++      Box information_button_host {}
+     }
+   }
+ }
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index d849d7f..5bd63d2 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -214,7 +214,11 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           };
+         }
+ 
+-        content: Adw.OverlaySplitView split_view {
++        content: Box filer_workspace {
++          orientation: horizontal;
++
++          Adw.OverlaySplitView split_view {
++          hexpand: true;
+           enable-show-gesture: false;
+           enable-hide-gesture: false;
+           min-sidebar-width: 120;
+@@ -320,6 +324,9 @@ template $NautilusWindow: Adw.ApplicationWindow {
+               }
+             }
+           };
++          }
++
++          Box information_host {}
+         };
+       };
+     };
+diff --git a/test/automated/display/test-luma-column-header-menu.c b/test/automated/display/test-luma-column-header-menu.c
+index 3cb3845..d80b739 100644
+--- a/test/automated/display/test-luma-column-header-menu.c
++++ b/test/automated/display/test-luma-column-header-menu.c
+@@ -168,44 +168,6 @@ test_v70_table_labels (void)
+     g_assert_cmpstr (gtk_column_view_column_get_title (kind), ==, "Kind");
+ }
+ 
+-static GtkWidget *
+-find_details (GtkWidget *widget)
+-{
+-    if (gtk_widget_has_css_class (widget, "luma-details-island")) return widget;
+-    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
+-         child = gtk_widget_get_next_sibling (child))
+-    {
+-        GtkWidget *found = find_details (child);
+-        if (found) return found;
+-    }
+-    return NULL;
+-}
+-
+-static void
+-test_details_selection (void)
+-{
+-    g_autoptr (NautilusColumnView) view = nautilus_column_view_new ();
+-    g_object_ref_sink (view);
+-    GtkWidget *details = find_details (GTK_WIDGET (view));
+-    g_assert_nonnull (details);
+-    g_assert_false (gtk_widget_is_visible (details));
+-    g_autoptr (NautilusViewModel) model = nautilus_view_model_new (FALSE);
+-    nautilus_list_base_set_model (NAUTILUS_LIST_BASE (view), model);
+-    g_autoptr (GFile) location = g_file_new_for_path (g_get_tmp_dir ());
+-    g_autoptr (NautilusFile) file = nautilus_file_get (location);
+-    g_autoptr (NautilusViewItem) item = nautilus_view_item_new (file);
+-    nautilus_view_model_add_item (model, item);
+-    g_assert_false (gtk_widget_is_visible (details));
+-    gtk_selection_model_select_item (GTK_SELECTION_MODEL (model), 0, TRUE);
+-    g_assert_true (gtk_widget_is_visible (details));
+-    gtk_selection_model_unselect_all (GTK_SELECTION_MODEL (model));
+-    g_assert_false (gtk_widget_is_visible (details));
+-    gtk_selection_model_select_item (GTK_SELECTION_MODEL (model), 0, TRUE);
+-    nautilus_view_model_remove_all_items (model);
+-    g_assert_false (gtk_widget_is_visible (details));
+-    g_print ("PASS: Details appears on selection and collapses on clear/removal\n");
+-}
+-
+ static void
+ test_favorites (void)
+ {
+@@ -445,7 +407,6 @@ main (int argc, char **argv)
+     test_v70_table_labels ();
+     test_view_modes_follow_slot ();
+     test_header_columns ();
+-    test_details_selection ();
+     test_favorites ();
+     test_sidebar_customization ();
+     test_parent_drag ();
+-- 
+2.55.0
+

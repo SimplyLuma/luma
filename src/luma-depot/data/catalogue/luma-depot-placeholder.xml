@@ -1,0 +1,524 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Depot's placeholder catalogue.
+
+     This is a real AppStream collection file, not a schema invented for
+     Depot. It is parsed by libappstream exactly as a Flatpak remote's
+     AppStream branch would be, so replacing it with a real repository is a
+     change of where the XML comes from and nothing else.
+
+     Every application here is a placeholder. The names match the ones the
+     rest of Luma already shows, so Depot agrees with the system it is in. -->
+<components origin="luma-depot-placeholder" version="1.0">
+  <component type="desktop-application">
+    <id>io.luma.Reel</id>
+    <name>Reel</name>
+    <summary>Cut, grade and title your video.</summary>
+    <description><p>Reel is the video editor in the Fable suite. Each row of your timeline decides for itself whether clips snap together or stay exactly where you put them, so a locked story and a loose B-roll lane can live side by side.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <categories><category>Graphics</category></categories>
+    <icon type="stock">camera-video-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Reel.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Reel/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="0.1.0" date="2026-08-21">
+        <description><p>Cut, grade and title your video.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Reel in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Reel in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Reel in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">82000000</size>
+    <size type="installed">240000000</size>
+    <custom>
+      <value key="luma::tone">violet</value>
+      <value key="luma::group">Create</value>
+      <value key="luma::rating">4.8</value>
+      <value key="luma::rating-count">1284</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+      <value key="luma::permission::graphics">Graphics|It can use the graphics chip to go faster|ordinary</value>
+      <value key="luma::permission::audio">Your speakers|It can play sound|ordinary</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Studio</id>
+    <name>Studio</name>
+    <summary>Record and mix music.</summary>
+    <description><p>Studio records, arranges and mixes. Latency is measured on first run and shown to you, rather than left as a number you are expected to guess.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <categories><category>Graphics</category></categories>
+    <icon type="stock">audio-x-generic-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Studio.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Studio/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="0.1.0" date="2026-08-14">
+        <description><p>Record and mix music.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Studio in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Studio in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Studio in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">96000000</size>
+    <size type="installed">205000000</size>
+    <custom>
+      <value key="luma::tone">blue</value>
+      <value key="luma::group">Create</value>
+      <value key="luma::rating">4.6</value>
+      <value key="luma::rating-count">512</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+      <value key="luma::permission::audio">Your microphone and speakers|It can record and play sound|notable</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Inkline</id>
+    <name>Inkline</name>
+    <summary>Draw shapes and logos that stay sharp at any size.</summary>
+    <description><p>A small, quick drawing tool. Inkline opens instantly, keeps every path editable, and exports the same vector you drew rather than a picture of it.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <categories><category>Graphics</category></categories>
+    <icon type="stock">applications-graphics-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Inkline.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Inkline/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="0.4.2" date="2026-08-29">
+        <description><p>Draw shapes and logos that stay sharp at any size.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Inkline in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Inkline in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Inkline in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">118000000</size>
+    <size type="installed">118000000</size>
+    <custom>
+      <value key="luma::tone">violet</value>
+      <value key="luma::group">Create</value>
+      <value key="luma::rating">4.4</value>
+      <value key="luma::rating-count">214</value>
+      <value key="luma::featured">true</value>
+      <value key="luma::tagline">Draw shapes and logos that stay sharp at any size.</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Lattice</id>
+    <name>Lattice</name>
+    <summary>Write and edit code, even in enormous projects.</summary>
+    <description><p>Lattice is the editor. It opens very large projects faster, and there is a new way to compare changes side by side.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>MIT</project_license>
+    <categories><category>Office</category></categories>
+    <icon type="stock">accessories-text-editor-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Lattice.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Lattice/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="1.2.0" date="2026-08-30">
+        <description><p>Write and edit code, even in enormous projects.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Lattice in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Lattice in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Lattice in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">94000000</size>
+    <size type="installed">190000000</size>
+    <custom>
+      <value key="luma::tone">green</value>
+      <value key="luma::group">Work</value>
+      <value key="luma::rating">4.9</value>
+      <value key="luma::rating-count">3120</value>
+      <value key="luma::permission::files">The folders you open|It asks before reaching anywhere else|notable</value>
+      <value key="luma::permission::network">The network|It can fetch dependencies you ask for|notable</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Ledgerbook</id>
+    <name>Ledgerbook</name>
+    <summary>Keep the books without taking a course first.</summary>
+    <description><p>Double-entry accounting that explains itself as you go. Every figure on a report can be opened to the entries that produced it.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>AGPL-3.0-or-later</project_license>
+    <categories><category>Office</category></categories>
+    <icon type="stock">x-office-spreadsheet-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Ledgerbook.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Ledgerbook/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="0.9.1" date="2026-07-30">
+        <description><p>Keep the books without taking a course first.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Ledgerbook in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Ledgerbook in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Ledgerbook in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">72000000</size>
+    <size type="installed">96000000</size>
+    <custom>
+      <value key="luma::tone">blue</value>
+      <value key="luma::group">Work</value>
+      <value key="luma::rating">4.3</value>
+      <value key="luma::rating-count">178</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Bellwether</id>
+    <name>Bellwether</name>
+    <summary>One place for every alert your machines send.</summary>
+    <description><p>Bellwether collects alerts from the machines you look after and groups them so a single failure does not arrive as forty notifications. Alerts can now be grouped by which machine sent them.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>Apache-2.0</project_license>
+    <categories><category>Office</category></categories>
+    <icon type="stock">preferences-system-notifications-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Bellwether.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Bellwether/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="2.3.0" date="2026-08-28">
+        <description><p>One place for every alert your machines send.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Bellwether in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Bellwether in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Bellwether in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">18000000</size>
+    <size type="installed">120000000</size>
+    <custom>
+      <value key="luma::tone">amber</value>
+      <value key="luma::group">Work</value>
+      <value key="luma::rating">4.1</value>
+      <value key="luma::rating-count">96</value>
+      <value key="luma::permission::network">The network|It listens for alerts you have configured|notable</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Plate</id>
+    <name>Plate</name>
+    <summary>Develop photos exactly the way you remember them.</summary>
+    <description><p>A raw developer with a reversible history. Nothing you do to a photograph is written into the original file.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <categories><category>AudioVideo</category></categories>
+    <icon type="stock">image-x-generic-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Plate.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Plate/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="3.1.0" date="2026-08-19">
+        <description><p>Develop photos exactly the way you remember them.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Plate in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Plate in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Plate in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">156000000</size>
+    <size type="installed">320000000</size>
+    <custom>
+      <value key="luma::tone">violet</value>
+      <value key="luma::group">Media</value>
+      <value key="luma::rating">4.7</value>
+      <value key="luma::rating-count">806</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+      <value key="luma::permission::graphics">Graphics|It can use the graphics chip to go faster|ordinary</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Folio</id>
+    <name>Folio</name>
+    <summary>Read, mark up and sign documents.</summary>
+    <description><p>Folio opens documents quickly and lets you annotate and sign them without converting them into something else first.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>MPL-2.0</project_license>
+    <categories><category>AudioVideo</category></categories>
+    <icon type="stock">x-office-document-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Folio.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Folio/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="1.0.3" date="2026-08-08">
+        <description><p>Read, mark up and sign documents.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Folio in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Folio in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Folio in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">12000000</size>
+    <size type="installed">40000000</size>
+    <custom>
+      <value key="luma::tone">blue</value>
+      <value key="luma::group">Media</value>
+      <value key="luma::rating">4.2</value>
+      <value key="luma::rating-count">340</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+      <value key="luma::permission::printing">Your printers|It can print what you are reading|ordinary</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Gauge</id>
+    <name>Gauge</name>
+    <summary>See what is making your machine work hard.</summary>
+    <description><p>Gauge shows what is using the processor, the memory and the disk, in the order that matters, and says what each thing actually is.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-2.0-or-later</project_license>
+    <categories><category>Utility</category></categories>
+    <icon type="stock">system-run-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Gauge.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Gauge/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="0.7.0" date="2026-08-25">
+        <description><p>See what is making your machine work hard.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Gauge in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Gauge in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Gauge in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">6000000</size>
+    <size type="installed">14000000</size>
+    <custom>
+      <value key="luma::tone">green</value>
+      <value key="luma::group">Tools</value>
+      <value key="luma::rating">4.5</value>
+      <value key="luma::rating-count">452</value>
+      <value key="luma::permission::system">How this computer is running|It reads processes and sensors; it changes nothing|notable</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Keyring</id>
+    <name>Keyring</name>
+    <summary>Keep your passwords somewhere sensible.</summary>
+    <description><p>An encrypted store for passwords, keys and notes. It unlocks with your login and locks itself again when you step away.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <categories><category>Utility</category></categories>
+    <icon type="stock">dialog-password-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Keyring.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Keyring/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="5.0.1" date="2026-08-27">
+        <description><p>Keep your passwords somewhere sensible.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Keyring in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Keyring in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Keyring in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">22000000</size>
+    <size type="installed">200000000</size>
+    <custom>
+      <value key="luma::tone">amber</value>
+      <value key="luma::group">Tools</value>
+      <value key="luma::rating">4.8</value>
+      <value key="luma::rating-count">1902</value>
+      <value key="luma::permission::secrets">Your secrets|Everything it holds is encrypted on this computer|notable</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Shears</id>
+    <name>Shears</name>
+    <summary>Take a picture or a recording of your screen.</summary>
+    <description><p>Shears captures a window, a region or the whole screen, and records the same. It asks the portal each time rather than holding a standing permission.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-or-later</project_license>
+    <categories><category>Utility</category></categories>
+    <icon type="stock">applets-screenshooter-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Shears.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Shears/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="1.4.0" date="2026-08-12">
+        <description><p>Take a picture or a recording of your screen.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Shears in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Shears in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Shears in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">28000000</size>
+    <size type="installed">60000000</size>
+    <custom>
+      <value key="luma::tone">blue</value>
+      <value key="luma::group">Tools</value>
+      <value key="luma::rating">4.6</value>
+      <value key="luma::rating-count">288</value>
+      <value key="luma::permission::screen">The screen|It asks each time before capturing|notable</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>io.luma.Crate</id>
+    <name>Crate</name>
+    <summary>Pack and unpack archives without thinking about formats.</summary>
+    <description><p>Crate opens whatever archive you hand it and makes the kind you ask for, without a dialog of options you have to learn first.</p></description>
+    <developer id="io.luma"><name>Fable</name></developer>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>LGPL-2.1-or-later</project_license>
+    <categories><category>Utility</category></categories>
+    <icon type="stock">package-x-generic-symbolic</icon>
+    <launchable type="desktop-id">io.luma.Crate.desktop</launchable>
+    <bundle type="flatpak">app/io.luma.Crate/x86_64/stable</bundle>
+    <content_rating type="oars-1.1"/>
+    <releases>
+      <release version="0.5.0" date="2026-07-22">
+        <description><p>Pack and unpack archives without thinking about formats.</p></description>
+      </release>
+    </releases>
+    <screenshots>
+      <screenshot type="default">
+        <caption>Crate in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-1.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Crate in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-2.svg</image>
+      </screenshot>
+      <screenshot>
+        <caption>Crate in use</caption>
+        <image type="source" width="1600" height="1000">file:///usr/share/luma-depot/screenshots/placeholder-3.svg</image>
+      </screenshot>
+    </screenshots>
+    <size type="download">9000000</size>
+    <size type="installed">24000000</size>
+    <custom>
+      <value key="luma::tone">green</value>
+      <value key="luma::group">Tools</value>
+      <value key="luma::rating">4.0</value>
+      <value key="luma::rating-count">132</value>
+      <value key="luma::permission::files">Files you open with it|Nothing else in your folders|ordinary</value>
+    </custom>
+  </component>
+</components>

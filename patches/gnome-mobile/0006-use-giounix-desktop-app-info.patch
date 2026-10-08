@@ -1,0 +1,53 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Use GioUnix for DesktopAppInfo on Fedora 44
+
+GDesktopAppInfo moved from the Gio introspection namespace to GioUnix. Use
+that namespace for the desktop environment and remote search providers so
+the Fedora 44 provider metadata is not incorrectly rejected.
+---
+ js/ui/main.js         | 3 ++-
+ js/ui/remoteSearch.js | 3 ++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 2312ad1..9c8c5d4 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -1,5 +1,6 @@
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
++import GioUnix from 'gi://GioUnix?version=2.0';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+@@ -170,7 +171,7 @@ export async function start() {
+ 
+     let currentDesktop = GLib.getenv('XDG_CURRENT_DESKTOP');
+     if (!currentDesktop || !currentDesktop.split(':').includes('GNOME'))
+-        Gio.DesktopAppInfo.set_desktop_env('GNOME');
++        GioUnix.DesktopAppInfo.set_desktop_env('GNOME');
+ 
+     sessionMode = new SessionMode.SessionMode();
+     sessionMode.connect('updated', _sessionUpdated);
+diff --git a/js/ui/remoteSearch.js b/js/ui/remoteSearch.js
+index 3a6a9f2..5b10b01 100644
+--- a/js/ui/remoteSearch.js
++++ b/js/ui/remoteSearch.js
+@@ -1,5 +1,6 @@
+ import GdkPixbuf from 'gi://GdkPixbuf';
+ import Gio from 'gi://Gio';
++import GioUnix from 'gi://GioUnix?version=2.0';
+ import GLib from 'gi://GLib';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+@@ -96,7 +97,7 @@ export function loadRemoteSearchProviders(searchSettings) {
+             let appInfo = null;
+             try {
+                 let desktopId = keyfile.get_string(group, 'DesktopId');
+-                appInfo = Gio.DesktopAppInfo.new(desktopId);
++                appInfo = GioUnix.DesktopAppInfo.new(desktopId);
+                 if (!appInfo.should_show())
+                     return;
+             } catch (e) {
+-- 
+2.51.0

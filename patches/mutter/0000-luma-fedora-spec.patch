@@ -1,0 +1,81 @@
+--- a/mutter.spec
++++ b/mutter.spec
+@@ -29,13 +29,34 @@
+ 
+ Name:          mutter
+ Version:       50.4
+-Release:       %autorelease
++Release:       1.luma.12.preview20260922.1%{?dist}
+ Summary:       Window and compositing manager based on Clutter
+ 
+ # Automatically converted from old format: GPLv2+ - review is highly recommended.
+ License:       GPL-2.0-or-later
+ URL:           http://www.gnome.org
+ Source0:       http://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
++Source1:       ext-background-effect-v1.xml
++Patch1000:     0001-luma-handheld-scales.patch
++Patch1001:     0002-clutter-Add-blur-node-support-for-framebuffer-region.patch
++Patch1002:     0003-compositor-Add-background-blur-support.patch
++Patch1003:     0004-wayland-Implement-ext-background-effect-v1.patch
++Patch1004:     0005-compositor-Add-background-blur-parameters.patch
++Patch1005:     0006-wayland-Vendor-protocol-and-gate-blur-capability.patch
++Patch1006:     0007-compositor-Fix-opaque-region-after-surface-content-backport.patch
++Patch1007:     0008-window-Let-a-tiling-manager-mark-a-window-as-tiled.patch
++Patch1008:     0009-window-drag-Let-a-secondary-click-reach-the-tiler.patch
++Patch1009:     0010-constraints-Never-let-a-window-top-edge-leave-the-desktop.patch
++Patch1010:     0011-workspace-Keep-a-margin-on-every-monitor-edge.patch
++Patch1011:     0012-wayland-Send-modifiers-to-the-client-under-the-pointer.patch
++Patch1012:     0013-place-Keep-a-window-centred-over-its-parent-on-its-monitor.patch
++Patch1013:     0014-constraints-Keep-every-window-inside-one-monitor-work-area.patch
++Patch1014:     0015-compositor-Cache-the-blurred-backdrop-and-repaint-only-what-changed.patch
++Patch1015:     0016-display-Let-the-shell-reserve-work-area-on-any-monitor-edge.patch
++Patch1016:     0017-display-A-maximized-window-is-the-shell-s-largest-tile.patch
++Patch1017:     0018-keyboard-Keys-typed-while-the-focus-moves-reach-the-new-window.patch
++Patch1018:     0019-input-Adjustable-scroll-speed-for-mice-and-touchpads.patch
++Patch1019:     0020-x11-Keep-the-geometry-the-shell-chose-before-map.patch
+ 
+ 
+ BuildRequires: cvt
+@@ -169,6 +190,8 @@
+ 
+ %prep
+ %autosetup -S git -n %{name}-%{tarball_version}
++install -D -m 0644 %{SOURCE1} \
++  src/wayland/protocol/ext-background-effect-v1.xml
+ 
+ %build
+ %meson -Degl_device=true
+@@ -179,6 +202,25 @@
+ 
+ %find_lang %{name}
+ 
++%check
++# Luma: the scroll speed arithmetic (0019). Every test must report ok; a run
++# that reaches fewer than all of them fails with the count.
++gcc -o scroll-scale-test -I%{_vpath_builddir} -Isrc \
++  src/tests/scroll-scale-test.c src/backends/meta-scroll-scale.c \
++  $(pkg-config --cflags --libs glib-2.0) -lm
++./scroll-scale-test --tap | tee scroll-scale-test.log
++passed=$(grep -c "^ok " scroll-scale-test.log)
++test "$passed" -eq 6 || { echo "scroll-scale-test: $passed of 6 passed"; exit 1; }
++# Luma: the keyboard focus handover (0018). Keys are never held while the
++# shell has the keyboard and are never dropped. Every test must report ok.
++gcc -o key-handover-test -I%{_vpath_builddir} -Isrc \
++  src/tests/key-handover-test.c src/wayland/meta-key-handover.c \
++  $(pkg-config --cflags --libs glib-2.0)
++./key-handover-test | tee key-handover-test.log
++passed=$(grep -c "^ok " key-handover-test.log)
++test "$passed" -eq 11 || { echo "key-handover-test: $passed of 11 passed"; exit 1; }
++glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
++
+ %files -f %{name}.lang
+ %license COPYING
+ %doc NEWS
+@@ -200,6 +242,7 @@
+ %{_datadir}/GConf/gsettings/mutter-schemas.convert
+ %{_datadir}/glib-2.0/schemas/org.gnome.mutter.gschema.xml
+ %{_datadir}/glib-2.0/schemas/org.gnome.mutter.wayland.gschema.xml
++%{_datadir}/glib-2.0/schemas/org.projectluma.peripherals.gschema.xml
+ %{_datadir}/gnome-control-center/keybindings/50-mutter-*.xml
+ %{_udevrulesdir}/61-mutter.rules
+ 

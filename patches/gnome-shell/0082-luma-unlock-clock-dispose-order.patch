@@ -1,0 +1,37 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: stop the lock screen clock from wedging the unlock
+
+A successful password unlock could leave the screen spinning forever.
+The journal shows PAM authenticating, then gnome-shell throwing
+"GnomeDesktop.WallClock has been already disposed" from
+ScreenShield._completeDeactivate(). The lock screen clock disposed its
+WallClock from one destroy handler while the signal tracker was still
+holding signals connected against the same widget; the loser of that
+race threw, and the exception aborted the rest of the deactivation
+before _setLocked(false) ever ran. Cancelling the prompt and retrying
+worked because the dialog was already gone the second time.
+
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -33,7 +33,19 @@
+         this._wallClock.connectObject(
+             'notify::clock', this._updateClock.bind(this), this);
+         this._updateClock();
+-        this.connect('destroy', () => this._wallClock.run_dispose());
++        // connectObject registered the signals above against this widget, so
++        // the signal tracker disconnects them when it is destroyed. Disposing
++        // the clock from a second destroy handler raced that cleanup, and
++        // whichever ran last found the object already gone. The exception it
++        // threw escaped into the middle of ScreenShield._completeDeactivate(),
++        // which then never reached _setLocked(false) — so a *successful*
++        // password unlock left the shield up and the screen appeared to load
++        // forever, until the prompt was cancelled and retried. Dropping the
++        // tracked signals before disposing makes both orders equivalent.
++        this.connect('destroy', () => {
++            this._wallClock.disconnectObject(this);
++            this._wallClock.run_dispose();
++        });
+     }
+ 
+     _updateClock() {

@@ -1,0 +1,72 @@
+From d9543b23b0d15a705e78d79e5cab34c6057b7aa8 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 21:49:29 +0000
+Subject: [PATCH] Filer: adopt native Luma frame and live sidebar rail
+
+---
+ src/nautilus-window.c                | 19 +++++++++++++++----
+ src/resources/ui/nautilus-window.blp |  9 ++-------
+ 2 files changed, 17 insertions(+), 11 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 73a9342..afe4ed8 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1494,6 +1494,16 @@ nautilus_window_constructed (GObject *self)
+     application = NAUTILUS_APPLICATION (g_application_get_default ());
+     gtk_window_set_application (GTK_WINDOW (window), GTK_APPLICATION (application));
+ 
++    /* The shared frame keeps NautilusWindow and every template child alive. */
++    luma_application_window_frame_adopt (ADW_APPLICATION_WINDOW (window));
++    luma_application_window_frame_set_leading (ADW_APPLICATION_WINDOW (window),
++                                               window->sidebar_toggle_desktop_host);
++    GMenuModel *main_menu = NULL;
++    g_object_get (window->toolbar, "main-menu", &main_menu, NULL);
++    luma_application_window_frame_set_menu_model (ADW_APPLICATION_WINDOW (window),
++                                                  main_menu);
++    g_clear_object (&main_menu);
++
+     gtk_window_set_default_size (GTK_WINDOW (window),
+                                  NAUTILUS_WINDOW_DEFAULT_WIDTH,
+                                  NAUTILUS_WINDOW_DEFAULT_HEIGHT);
+@@ -2139,10 +2149,11 @@ nautilus_window_init (NautilusWindow *window)
+     adw_overlay_split_view_set_content (split, island);
+     g_object_unref (content);
+ 
+-    set_sidebar_width (window,
+-                       g_settings_get_int (nautilus_window_state,
+-                                           NAUTILUS_WINDOW_STATE_SIDEBAR_WIDTH));
+-    gtk_widget_set_cursor_from_name (window->sidebar_resize_handle, "col-resize");
++    /* v70's file rail has a fixed kit width; keep Nautilus' live rows,
++     * volumes, bookmarks and DnD rather than copying them into a second list. */
++    luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (window->split_view),
++                                        GTK_WIDGET (window->places_sidebar), "rail");
++    gtk_widget_set_visible (window->sidebar_resize_handle, FALSE);
+     controller = GTK_EVENT_CONTROLLER (gtk_gesture_drag_new ());
+     gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+     g_signal_connect (controller, "drag-begin",
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index d7f6626..effa608 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -223,15 +223,10 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           sidebar: Adw.ToolbarView sidebar_action_surface {
+             reveal-bottom-bars: bind progress_indicator.reveal;
+             margin-top: 0;
+-            margin-bottom: 9;
+-            margin-start: 9;
++            margin-bottom: 0;
++            margin-start: 0;
+             overflow: hidden;
+ 
+-            styles [
+-              "luma-sidebar-surface",
+-              "luma-island",
+-            ]
+-
+             [bottom]
+             Box {
+               styles [
+-- 
+2.55.0
+

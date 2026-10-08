@@ -1,0 +1,111 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: bound default autofocus and avoid autonomous rescans
+
+The early Simple IPA autofocus implementation defaults to continuous mode,
+sweeps the actuator from one mechanical end to the other, and starts a new
+full sweep after a few noisy sharpness samples. On the Fairphone 6 this can
+produce audible actuator impacts and repeated rescans in a static preview.
+
+Use one-shot automatic focus by default, keep the coarse scan five percent
+away from either end stop, and require an application mode transition or AF
+trigger for another scan.
+
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -32,15 +32,14 @@
+ constexpr double kFineStepMin = 1.0;
+ /* Stats frames to ignore after a large lens movement. */
+ constexpr uint32_t kSettleSkipLong = 3;
+-/* Relative sharpness change that makes a settled scene worth re-focusing. */
+-constexpr double kFocusLossThreshold = 0.3;
+-/* Consecutive stats frames that change must persist for before re-focusing. */
+-constexpr uint32_t kFocusLossFrames = 4;
++/* Keep experimental actuators away from their mechanical end stops. */
++constexpr double kSweepStart = 5.0;
++constexpr double kSweepStop = 95.0;
+ /*
+- * Focus continuously by default: applications that know nothing about AF never
+- * send an AfMode or an AfTrigger, and they are the ones this exists for.
++ * Applications that know nothing about AF still receive one startup scan.
++ * Additional scans require an explicit mode transition or AF trigger.
+  */
+-constexpr int32_t kDefaultAfMode = controls::AfModeContinuous;
++constexpr int32_t kDefaultAfMode = controls::AfModeAuto;
+ 
+ } /* namespace */
+ 
+@@ -95,10 +94,10 @@
+ 		context.activeState.knobs.af_mode = afMode.value();
+ 		LOG(IPASoftAutoFocus, Debug) << "Setting AF mode to " << afMode.value();
+ 
+-		if (afMode.value() == controls::AfModeContinuous)
+-			restart(context);
+-		else
++		if (afMode.value() == controls::AfModeManual)
+ 			context.activeState.knobs.focus_sweep = false;
++		else
++			restart(context);
+ 	}
+ 
+ 	const auto &lensPosition = controls.get(controls::LensPosition);
+@@ -138,13 +137,13 @@
+ 	steps_ = 0;
+ 	focus.focus_max_pos = 0;
+ 	focus.sharpness_max = 0;
+-	focus.start = 0;
+-	focus.stop = 100;
++	focus.start = kSweepStart;
++	focus.stop = kSweepStop;
+ 	focus.step = kCoarseStep;
+ 	focus.skip = kSettleSkipLong;
+ 	focus.settled = false;
+ 	focus.lossCount = 0;
+-	context.activeState.knobs.focus_pos = 0;
++	context.activeState.knobs.focus_pos = kSweepStart;
+ 	context.activeState.knobs.focus_sweep = true;
+ 	LOG(IPASoftAutoFocus, Info) << "Starting focus sweep";
+ }
+@@ -162,41 +161,6 @@
+ 	}
+ 
+ 	if (!sweep) {
+-		/*
+-		 * Only continuous AF chases the scene; in auto mode the lens
+-		 * stays where the last triggered sweep left it.
+-		 */
+-		if (context.activeState.knobs.af_mode != controls::AfModeContinuous)
+-			return;
+-
+-		/*
+-		 * Take the reference the scene is compared against here, at
+-		 * the settled position, rather than reusing the maximum found
+-		 * during the sweep: that maximum was measured under whatever
+-		 * exposure and gain the AGC happened to be using at the time.
+-		 */
+-		if (!focus.settled) {
+-			focus.sharpness_max = sharp;
+-			focus.lossCount = 0;
+-			focus.settled = true;
+-			LOG(IPASoftAutoFocus, Debug)
+-				<< "Settled sharpness reference " << sharp;
+-			return;
+-		}
+-
+-		if (utils::abs_diff(sharp, focus.sharpness_max) <=
+-		    focus.sharpness_max * kFocusLossThreshold) {
+-			focus.lossCount = 0;
+-			return;
+-		}
+-
+-		if (++focus.lossCount < kFocusLossFrames)
+-			return;
+-
+-		LOG(IPASoftAutoFocus, Info)
+-			<< "Focus lost: " << sharp << " vs "
+-			<< focus.sharpness_max;
+-		restart(context);
+ 		return;
+ 	}
+ 
+-- 
+2.51.0

@@ -1,0 +1,24 @@
+// Run against assembled source. Real Filer Space remains the integration gate.
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const root = process.argv[2];
+const xml = fs.readFileSync(path.join(root,'src/org.gnome.NautilusPreviewer2.xml'),'utf8');
+assert.deepEqual([...xml.matchAll(/<arg type="(.*?)" direction="in"/g)].map(m=>m[1]), ['s','s','b','s']);
+const context = vm.createContext({imports: {gi: {Gio: {}, GLib: {Variant: class {constructor(type,value){this.type=type;this.value=value;}}}, GObject: {registerClass: klass=>klass}, Gtk: {Application:class{}}},byteArray:{},ui:{mainWindow:{}}}});
+vm.runInContext(fs.readFileSync(path.join(root,'src/ui/application.js'),'utf8'),context);
+let args;
+const skeleton = Object.create(context.NautilusPreviewer2Skeleton.prototype);
+skeleton.application = {showFile: (...values)=>args=values,watchPreviewOwner:()=>{}};
+skeleton.ShowFileAsync(['file:///tmp/a','wayland:parent',true,'activation'], {get_connection:()=>({}),get_sender:()=>':1.7',return_value:()=>{}});
+assert.deepEqual(args,['file:///tmp/a','wayland:parent',true,'activation']);
+const app=Object.create(context.Application.prototype);
+let signal;
+app._skeleton2={impl:{emit_signal:(name,variant)=>signal=[name,variant]}};
+app.emitSelectionEvent(3);
+assert.equal(signal[0],'SelectionEvent');
+assert.equal(signal[1].type,'(u)');
+assert(xml.includes('<arg type="u" name="direction" />'));
+assert.equal(signal[1].value[0],3);
+console.log('Filer protocol signature and activation forwarding passed');

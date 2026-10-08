@@ -1,0 +1,326 @@
+From: Project Luma
+Subject: [PATCH] luma: stop the Shell errors and warnings found in the journal audit
+
+Fades and zooms no longer clone actors that were never on screen or never staged, so the login user list and Beam search activations stop logging NaN allocations and null labels. Window corners and the short-lived window log ignore menus, tooltips and other override-redirect surfaces and stop touching destroyed actors. The login wallpaper blur drops a brightness GObject always refused, the greeter seeds keyboard options and model before its first keymap, and the window manager only completes size changes Mutter actually started, which ends the size change accounting errors from tiling animations.
+---
+diff --git a/js/gdm/util.js b/js/gdm/util.js
+index f6ef4c6..0eb715d 100644
+--- a/js/gdm/util.js
++++ b/js/gdm/util.js
+@@ -95,19 +95,32 @@ export function cloneAndFadeOutActor(actor) {
+     // and position, but leave a non-reactive clone on-screen,
+     // so from the user's point of view it smoothly fades away
+     // and reveals its sibling.
++    const wasOnScreen = actor.mapped;
++    const [x, y] = actor.get_transformed_position();
+     actor.hide();
+ 
++    const hold = new Batch.Hold();
++
++    // Only something the user can see can fade away. The login dialog
++    // activates its only user before the user list was ever shown, and a
++    // clone of that never-shown list was placed at a position Clutter could
++    // not compute (NaN): the clone was never allocated, so the list inside it
++    // was painted without ever being laid out, and every frame of the fade
++    // logged a NaN allocation and "this._currentLabel is null" from
++    // UserWidgetLabel.
++    if (!wasOnScreen || !Number.isFinite(x) || !Number.isFinite(y)) {
++        hold.release();
++        return hold;
++    }
++
+     const clone = new Clutter.Clone({
+         source: actor,
+         reactive: false,
+     });
+ 
+     Main.uiGroup.add_child(clone);
+-
+-    const [x, y] = actor.get_transformed_position();
+     clone.set_position(x, y);
+ 
+-    const hold = new Batch.Hold();
+     clone.ease({
+         opacity: 0,
+         duration: CLONE_FADE_ANIMATION_TIME,
+diff --git a/js/ui/iconGrid.js b/js/ui/iconGrid.js
+index f5819bd..d17e6a1 100644
+--- a/js/ui/iconGrid.js
++++ b/js/ui/iconGrid.js
+@@ -179,34 +179,37 @@ class BaseIcon extends Shell.SquareBin {
+  * @param {Clutter.Actor} actor
+  */
+ export function zoomOutActor(actor) {
++    // An actor outside the stage has no position to animate from. Beam's
++    // compact search rows activate applications through an AppIcon that is
++    // never added to the stage; for an actor without a stage Clutter returns
++    // from get_transformed_position() without writing its results, so the
++    // "position" was uninitialised memory (-3.7e38 on the laptop). Measuring
++    // that icon also asked St for theme nodes of widgets outside the stage,
++    // and the clone added below then allocated an actor outside the stage on
++    // every relayout, long after the throw from translation_y had leaked it.
++    if (!actor.get_stage())
++        return;
++
+     const [x, y] = actor.get_transformed_position();
+     zoomOutActorAtPos(actor, x, y);
+ }
+ 
+ function zoomOutActorAtPos(actor, x, y) {
++    if (!actor.get_stage())
++        return;
++
+     const monitor = Main.layoutManager.findMonitorForActor(actor);
+     if (!monitor)
+         return;
+ 
++    const [width, height] = actor.get_transformed_size();
++    if (![x, y, width, height].every(Number.isFinite))
++        return;
++
+     const actorClone = new Clutter.Clone({
+         source: actor,
+         reactive: false,
+     });
+-    const [width, height] = actor.get_transformed_size();
+-
+-    // An actor that has never been allocated has no position to animate from:
+-    // get_transformed_position() answers with a number near the float limit,
+-    // which survives findMonitorForActor and Math.clamp and only fails at the
+-    // end, when translation_y rejects it as out of range. That throw lands in
+-    // AppIcon.activate() before the application is activated and before the
+-    // overview is hidden, so a search result stopped launching altogether and
+-    // the pointer and the Return key both appeared to do nothing at all.
+-    // There is nothing to animate from here, so animate nothing.
+-    if (![x, y, width, height].every(Number.isFinite)) {
+-        actorClone.destroy();
+-        return;
+-    }
+-
+     actorClone.set_size(width, height);
+     actorClone.set_position(x, y);
+     actorClone.opacity = 255;
+diff --git a/js/ui/lumaWindowCorners.js b/js/ui/lumaWindowCorners.js
+index 656c4d3..c77adfe 100644
+--- a/js/ui/lumaWindowCorners.js
++++ b/js/ui/lumaWindowCorners.js
+@@ -227,22 +227,47 @@ export class WindowCorners {
+         window.connectObject(
+             'size-changed', sync,
+             'notify::fullscreen', sync,
+-            'notify::decorated', sync, actor);
++            'notify::decorated', sync,
++            'notify::window-type', sync, actor);
+         actor.connectObject(
+             'notify::width', sync,
+             'notify::height', sync, this);
+-        // A client's first commit settles its frame and buffer sizes.
+-        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++        // A client's first commit settles its frame and buffer sizes. Menus
++        // and tooltips often close before the idle runs; a window actor
++        // destroyed by then must not be touched ("already disposed" warnings
++        // with this file's stack).
++        let idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            idleId = 0;
+             sync();
+             return GLib.SOURCE_REMOVE;
+         });
++        actor.connectObject('destroy', () => {
++            if (idleId)
++                GLib.source_remove(idleId);
++            idleId = 0;
++        }, this);
+         sync();
+     }
+ 
++    // One line per application window when its corners are decided, and
++    // again if the decision changes. window-created comes before a Wayland
++    // client's first commit, when it has no class, no application id and a
++    // 0x0 frame, and it comes for every popup menu and tooltip, none of which
++    // can ever be masked: logging those produced a "null left alone ...
++    // frame 0x0+0+0 in 0x0" line for each menu opened. Unmasking a window
++    // that was masked is always logged.
++    _decisionIsWorthLogging(window, actor, masked) {
++        if (masked || actor._lumaCornersLogged)
++            return true;
++        const frame = window.get_frame_rect();
++        return frame.width > 0 && frame.height > 0 &&
++            !window.is_override_redirect() && MASKED_TYPES.has(window.get_window_type());
++    }
++
+     _sync(window, actor) {
+         let effect = actor.get_effect(EFFECT_NAME);
+         const masked = wantsMask(window);
+-        if (actor._lumaCornersLogged !== masked) {
++        if (actor._lumaCornersLogged !== masked && this._decisionIsWorthLogging(window, actor, masked)) {
+             actor._lumaCornersLogged = masked;
+             const frame = window.get_frame_rect();
+             const buffer = window.get_buffer_rect();
+diff --git a/js/ui/lumaWindowWatch.js b/js/ui/lumaWindowWatch.js
+index ee0fb2a..0a4578a 100644
+--- a/js/ui/lumaWindowWatch.js
++++ b/js/ui/lumaWindowWatch.js
+@@ -12,6 +12,23 @@ import Meta from 'gi://Meta';
+ const SHORT_LIVED_MS = 3000;
+ const STARTUP_WINDOW_MS = 90000;
+ 
++// Windows a person would see as a window of their own. Menus, tooltips,
++// drop-downs and other override-redirect surfaces open and close within a
++// second by design: a Wayland popup menu is a DROPDOWN_MENU window, and every
++// menu opened in an application went to the journal as a "short-lived window"
++// (386 of 419 such lines across five boots on the ThinkPad).
++const APPLICATION_TYPES = new Set([
++    Meta.WindowType.NORMAL,
++    Meta.WindowType.DIALOG,
++    Meta.WindowType.MODAL_DIALOG,
++    Meta.WindowType.UTILITY,
++    Meta.WindowType.SPLASHSCREEN,
++]);
++
++function isApplicationWindow(window) {
++    return !window.is_override_redirect() && APPLICATION_TYPES.has(window.get_window_type());
++}
++
+ function describe(window) {
+     const rect = window.get_frame_rect();
+     const type = Object.keys(Meta.WindowType).find(key => Meta.WindowType[key] === window.get_window_type()) ?? '?';
+@@ -30,11 +47,13 @@ export class WindowWatch {
+     _created(window) {
+         const born = GLib.get_monotonic_time();
+         const sinceStart = (born - this._started) / 1000;
+-        if (sinceStart < STARTUP_WINDOW_MS)
++        if (sinceStart < STARTUP_WINDOW_MS && isApplicationWindow(window))
+             console.log(`[luma-windows] +${Math.round(sinceStart)}ms opened ${describe(window)}`);
+         window.connectObject('unmanaged', () => {
+             const lived = (GLib.get_monotonic_time() - born) / 1000;
+-            if (lived < SHORT_LIVED_MS)
++            // The type is read again here: an X11 client can change it after
++            // the window was created.
++            if (lived < SHORT_LIVED_MS && isApplicationWindow(window))
+                 console.log(`[luma-windows] short-lived window (${Math.round(lived)}ms) ${describe(window)}`);
+         }, this);
+     }
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+index 80783e0..2e4e1f3 100644
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -186,7 +186,10 @@ class PrairieLoginBackground extends St.Widget {
+             new Shell.BlurEffect({
+                 mode: Shell.BlurMode.ACTOR,
+                 radius: 28,
+-                brightness: 1.025,
++                // brightness is a factor from 0 to 1 and only darkens. The
++                // 1.025 set here was always refused by GObject, with a
++                // warning each time a login or unlock wallpaper was made,
++                // so the wallpaper has only ever been drawn at 1.
+             }));
+         this.add_child(this._wallpaper);
+ 
+diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
+index 4f7471e..1e7bef2 100644
+--- a/js/ui/status/keyboard.js
++++ b/js/ui/status/keyboard.js
+@@ -369,6 +369,15 @@ export class InputSourceManager extends Signals.EventEmitter {
+         this._xkbInfo = KeyboardManager.getXkbInfo();
+         this._keyboardManager = KeyboardManager.getKeyboardManager();
+         this._keyboardManager.connect('keymap-changed', this._keymapChanged.bind(this));
++        // The first keymap is built as soon as the settings report input
++        // sources. Seeding options and model used to be left to reload(),
++        // which only the panel's keyboard indicator calls; the login and
++        // unlock screens show no such indicator, so every keymap the greeter
++        // built failed with "this._xkbOptions is undefined". The system
++        // settings do not report options or a model that equal their
++        // initial empty values either, so nothing else would ever set them.
++        this._keyboardManager.setKeyboardOptions(this._settings.keyboardOptions);
++        this._keyboardManager.setKeyboardModel(this._settings.keyboardModel);
+ 
+         this._ibusReady = false;
+         this._ibusManager = IBusManager.getIBusManager();
+diff --git a/js/ui/userWidget.js b/js/ui/userWidget.js
+index 559405e..ae78e62 100644
+--- a/js/ui/userWidget.js
++++ b/js/ui/userWidget.js
+@@ -173,7 +173,10 @@ class UserWidgetLabel extends St.Widget {
+     }
+ 
+     vfunc_paint(paintContext) {
+-        this._currentLabel.paint(paintContext);
++        // Which label shows is decided in vfunc_allocate(); a clone can paint
++        // this widget before it was ever laid out, and then there is nothing
++        // to paint yet.
++        this._currentLabel?.paint(paintContext);
+     }
+ 
+     _updateUser() {
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index a720953..9ee8b50 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -513,6 +513,9 @@ export class WindowManager {
+         this._mapping = new Set();
+         this._resizing = new Set();
+         this._resizePending = new Set();
++        // Actors for which Mutter started a size change and still waits for
++        // completed_size_change(). See _completeSizeChange().
++        this._sizeChangesInProgress = new Set();
+         this._destroying = new Set();
+ 
+         this._skippedActors = new Set();
+@@ -1312,10 +1315,23 @@ export class WindowManager {
+             oldFrameRect.width > 0 &&
+             oldFrameRect.height > 0;
+ 
+-        if (shouldAnimate)
++        if (shouldAnimate) {
+             this._prepareAnimationInfo(shellwm, actor, oldFrameRect, whichChange);
+-        else
++            this._sizeChangesInProgress.add(actor);
++        } else {
+             shellwm.completed_size_change(actor);
++        }
++    }
++
++    // Tell Mutter a size change is finished, but only one it started.
++    // _prepareAnimationInfo() is also called directly, without any size-change
++    // event, to animate a window between two rectangles: Tiling Shell does
++    // that for every tile it moves. Completing those told Mutter about size
++    // changes it never began, and each one logged "Error in size change
++    // accounting." and left the window actor's effect bookkeeping reset.
++    _completeSizeChange(actor) {
++        if (this._sizeChangesInProgress.delete(actor))
++            this._shellwm.completed_size_change(actor);
+     }
+ 
+     _prepareAnimationInfo(shellwm, actor, oldFrameRect, _change) {
+@@ -1331,11 +1347,13 @@ export class WindowManager {
+ 
+         if (this._clearAnimationInfo(actor)) {
+             log(`Old animationInfo removed from actor ${actor}`);
+-            this._shellwm.completed_size_change(actor);
++            this._completeSizeChange(actor);
+         }
+ 
+-        actor.connectObject('destroy',
+-            () => this._clearAnimationInfo(actor), actorClone);
++        actor.connectObject('destroy', () => {
++            this._clearAnimationInfo(actor);
++            this._sizeChangesInProgress.delete(actor);
++        }, actorClone);
+ 
+         this._resizePending.add(actor);
+         actor.__animationInfo = {
+@@ -1423,12 +1441,12 @@ export class WindowManager {
+             actor.translation_x = 0;
+             actor.translation_y = 0;
+             this._clearAnimationInfo(actor);
+-            this._shellwm.completed_size_change(actor);
++            this._completeSizeChange(actor);
+         }
+ 
+         if (this._resizePending.delete(actor)) {
+             this._clearAnimationInfo(actor);
+-            this._shellwm.completed_size_change(actor);
++            this._completeSizeChange(actor);
+         }
+     }
+ 

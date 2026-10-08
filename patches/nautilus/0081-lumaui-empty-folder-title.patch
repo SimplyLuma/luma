@@ -1,0 +1,37 @@
+From f2e4983d3523041e521e4a2d9bc1f4b4164bb39f Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:27:51 +0000
+Subject: [PATCH] Filer: name empty folders like v70 without a decorative icon
+
+---
+ src/nautilus-files-view.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/nautilus-files-view.c b/src/nautilus-files-view.c
+index c6cc96d..e0c56c4 100644
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -3850,15 +3850,18 @@ nautilus_files_view_update_status_overlay (NautilusFilesView *self)
+         }
+         else
+         {
+-            adw_status_page_set_icon_name (status_page, "folder-symbolic");
+             if (picker && available > 0)
+             {
++                adw_status_page_set_icon_name (status_page, "folder-symbolic");
+                 adw_status_page_set_title (status_page, _("Nothing here this app can open"));
+                 adw_status_page_set_description (status_page, _("Only files it understands are shown. Try another folder."));
+             }
+             else
+             {
+-                adw_status_page_set_title (status_page, _("This folder is empty"));
++                g_autofree char *location_title = nautilus_compute_title_for_location (self->location);
++                g_autofree char *empty_title = g_strdup_printf (_("%s is empty"), location_title);
++                adw_status_page_set_icon_name (status_page, NULL);
++                adw_status_page_set_title (status_page, empty_title);
+                 adw_status_page_set_description (status_page, NULL);
+             }
+         }
+-- 
+2.55.0
+

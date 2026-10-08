@@ -1,0 +1,31 @@
+--- a/src/resources/ui/nautilus-history-controls.blp
++++ b/src/resources/ui/nautilus-history-controls.blp
+@@ -7,6 +7,9 @@
+ 
+ template $NautilusHistoryControls: Adw.Bin {
+   child: Box {
++    valign: center;
++    margin-top: 4;
++    margin-bottom: 4;
+     spacing: 0;
+ 
+     styles [
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1427,7 +1427,6 @@
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:checked {
+   background: @luma_hover;
+ }
+-window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls image,
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field image,
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls image {
+   -gtk-icon-size: 15px;
+@@ -1444,3 +1443,8 @@
+   font-size: 11px;
+   font-weight: 500;
+ }
++
++/* Keep the history hit targets intact while reducing the arrow glyphs. */
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls image {
++  -gtk-icon-size: 13px;
++}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Notepad
+Exec=notepad
+Icon=notepad
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=X-Wine;

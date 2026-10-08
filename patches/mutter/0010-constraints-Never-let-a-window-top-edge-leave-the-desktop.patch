@@ -1,0 +1,97 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 14 Sep 2026 14:00:00 -0500
+Subject: [PATCH] constraints: Never let a window's top edge leave the desktop
+
+A window's title bar and controls could end up above the top of the
+screen -- after a restore, a monitor change, or when the window was taller
+than the screen -- where nothing could reach them. The existing titlebar
+constraint gives way to higher-priority constraints and does nothing for
+windows that do not fit. A new constraint moves any normal window down so
+its top edge is at or below the highest usable top among the monitors it
+overlaps. Sizes never change; fullscreen windows, the desktop, docks and
+positioned popups are exempt.
+---
+ src/core/constraints.c | 1 file changed
+
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -214,6 +214,10 @@
+                                               ConstraintInfo     *info,
+                                               ConstraintPriority  priority,
+                                               gboolean            check_only);
++static gboolean constrain_top_edge_reachable (MetaWindow         *window,
++                                              ConstraintInfo     *info,
++                                              ConstraintPriority  priority,
++                                              gboolean            check_only);
+ static gboolean constrain_partially_onscreen (MetaWindow         *window,
+                                               ConstraintInfo     *info,
+                                               ConstraintPriority  priority,
+@@ -255,6 +259,7 @@
+   {constrain_fully_onscreen,     "constrain_fully_onscreen"},
+   {constrain_titlebar_visible,   "constrain_titlebar_visible"},
+   {constrain_partially_onscreen, "constrain_partially_onscreen"},
++  {constrain_top_edge_reachable, "constrain_top_edge_reachable"},
+   {constrain_external,           "constrain_external"},
+   {NULL,                         NULL}
+ };
+@@ -2017,6 +2022,57 @@
+   return retval;
+ }
+ 
++/* A window's top edge, where its title bar and controls are, never goes above
++ * the top of the usable desktop.
++ *
++ * constrain_titlebar_visible already wants that, but it gives way to higher
++ * priority constraints, exempts unconstrained moves and does nothing for a
++ * window taller than the screen, so a restored or oversized window could end
++ * up with its controls out of reach. This rule has no priority to give way
++ * with: the window moves down, its size never changes, and its bottom may go
++ * below the screen instead. "The top" is the highest usable top among the
++ * monitors the window overlaps horizontally, so a window over a taller
++ * neighbouring monitor may sit higher than a shorter monitor's top.
++ */
++static gboolean
++constrain_top_edge_reachable (MetaWindow         *window,
++                              ConstraintInfo     *info,
++                              ConstraintPriority  priority,
++                              gboolean            check_only)
++{
++  GList *l;
++  int top = G_MAXINT;
++
++  if (window->type == META_WINDOW_DESKTOP ||
++      window->type == META_WINDOW_DOCK ||
++      window->override_redirect ||
++      meta_window_is_fullscreen (window) ||
++      meta_window_get_placement_rule (window) ||
++      mtk_rectangle_is_empty (&info->current))
++    return TRUE;
++
++  for (l = info->usable_screen_region; l; l = l->next)
++    {
++      MtkRectangle *area = l->data;
++
++      if (area->x < info->current.x + info->current.width &&
++          info->current.x < area->x + area->width)
++        top = MIN (top, area->y);
++    }
++
++  if (top == G_MAXINT)
++    top = info->work_area_monitor.y;
++
++  if (info->current.y >= top)
++    return TRUE;
++
++  if (check_only)
++    return FALSE;
++
++  info->current.y = top;
++  return TRUE;
++}
++
+ static gboolean
+ constrain_partially_onscreen (MetaWindow         *window,
+                               ConstraintInfo     *info,
+-- 
+2.55.0

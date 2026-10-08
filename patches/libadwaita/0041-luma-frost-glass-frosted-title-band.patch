@@ -1,0 +1,61 @@
+From: Project Luma
+Subject: [PATCH] theme: frost and glass title rows are a frosted band
+
+Owner, 2026-09-18, on libadwaita .50: "titlebars are not frost, they're
+light." Frost and glass title rows rendered as a solid light strip. The window
+frame painted the frost or glass veil, the window then painted the title-row
+band on top of it (0040, @luma_chrome at .92/.88), and the top bar painted
+--headerbar-bg-color (.92/.88) on top of both, so three veils stacked to an
+opaque slab.
+
+Frost and glass are now one light material with the Shell. The platform's
+surface roles are layers sized to composite to the recipe (the frame 62% on
+frost and 30% on glass, the title band over it to 76% and 62%), and the top
+bar and header bar paint nothing on frost and glass, so the title row is a
+frosted band the wallpaper tints through. Title ink is one step deeper than
+paper's (#1f262d frost, #161b20 glass) and holds 4.5:1 composited over a black
+wallpaper. Glass's dimmed text keeps 88% of the ink, which holds 4.5:1 on a
+glass pane over black; frost keeps 0040's 78%.
+---
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -747,3 +747,38 @@
+     --dim-opacity: 90%;
+   }
+ }
++
++// Frost and glass are one light material with the Shell (0041). The title row
++// is not a veil of its own any more: the window's frame is the frosted
++// material, and the title band (@luma_chrome) is a thin layer painted over
++// it, so the title row composites to 76% on frost and 62% on glass -- a
++// frosted band the wallpaper tints through, not a solid white strip. The
++// top bar and the header bar therefore paint nothing themselves; stacking
++// their .92/.88 veils on the frame and the band is what made the title row
++// read as solid. Title ink is one step deeper than paper's so it holds 4.5:1
++// where the band is thinnest, over a black wallpaper.
++window.csd.luma-treatment-frost,
++window.csd.luma-treatment-glass {
++  --headerbar-bg-color: transparent;
++  --headerbar-backdrop-color: transparent;
++}
++
++window.csd.luma-treatment-frost {
++  --headerbar-fg-color: #1f262d;
++}
++
++window.csd.luma-treatment-glass {
++  --headerbar-fg-color: #161b20;
++}
++
++// Glass lets the most wallpaper through, so its dimmed text keeps more of the
++// ink: 88% holds 4.5:1 on a glass pane over black, where 78% does not.
++window.luma-treatment-glass {
++  --dim-opacity: 88%;
++}
++
++@media (prefers-contrast: more) {
++  window.luma-treatment-glass {
++    --dim-opacity: 90%;
++  }
++}

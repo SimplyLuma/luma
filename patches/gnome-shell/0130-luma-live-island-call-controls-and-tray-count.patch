@@ -1,0 +1,471 @@
+From 8724cded31dff84796aa0349549372fe2488e7b8 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 17:22:23 -0400
+Subject: [PATCH] luma: live island call controls that act, and say what they
+ did
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every control in the live island was inert. The Semantic Broker answers an
+InvokeAction with a request object and refuses one without a handle token;
+the island never sent one, so each press was refused and the refusal was
+logged only at debug level. The island now sends a handle token, listens on
+the request's Response signal before asking, and logs refusals and failures
+as warnings with the broker's reason.
+
+A call now offers deafen beside mute. Luma mutes and deafens at the audio
+layer, so the application's own window keeps showing the person as live;
+the island is where that state is visible. An engaged microphone or deafen
+control is red on a red capsule, the subtitle reads "Muted · 04:12" or
+"Deafened · 04:12" in red, and the live dot turns red. The call glyphs are
+the shelf's Lucide set: its microphone, and new headphones and
+headphones-off glyphs.
+
+In the notification popover the count is the kit's count chip, placed
+straight after the "Notifications" title and hidden at zero.
+---
+ .../status/luma-headphones-off-symbolic.svg   | 13 +++
+ .../status/luma-headphones-symbolic.svg       | 11 +++
+ data/theme/luma-shelf.css                     | 87 +++++++++++++++++
+ js/ui/liveActivity.js                         | 46 ++++++---
+ js/ui/lumaNotificationBeacon.js               |  9 +-
+ js/ui/panel.js                                | 94 +++++++++++++++----
+ 6 files changed, 228 insertions(+), 32 deletions(-)
+ create mode 100644 data/icons/hicolor/scalable/status/luma-headphones-off-symbolic.svg
+ create mode 100644 data/icons/hicolor/scalable/status/luma-headphones-symbolic.svg
+
+diff --git a/data/icons/hicolor/scalable/status/luma-headphones-off-symbolic.svg b/data/icons/hicolor/scalable/status/luma-headphones-off-symbolic.svg
+new file mode 100644
+index 0000000..eb6d003
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-headphones-off-symbolic.svg
+@@ -0,0 +1,13 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide "headphones" geometry, ISC, with a slash; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <defs><clipPath id="gap"><path d="M2.83,0 L24,0 L24,21.17 Z M0,2.83 L0,24 L21.17,24 Z"/></clipPath></defs>
++  <path d="M2,12 A10,10 0 0 1 22,12 L20,12 A8,8 0 0 0 4,12 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M2,12 L4,12 L4,19 L2,19 L2,12 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M20,12 L22,12 L22,19 L20,19 L20,12 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M2,13 L6,13 A3,3 0 0 1 9,16 L9,19 A3,3 0 0 1 6,22 L5,22 A3,3 0 0 1 2,19 L2,13 Z M4,15 L6,15 A1,1 0 0 1 7,16 L7,19 A1,1 0 0 1 6,20 L5,20 A1,1 0 0 1 4,19 L4,15 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M18,13 L22,13 L22,19 A3,3 0 0 1 19,22 L18,22 A3,3 0 0 1 15,19 L15,16 A3,3 0 0 1 18,13 Z M18,15 L20,15 L20,19 A1,1 0 0 1 19,20 L18,20 A1,1 0 0 1 17,19 L17,16 A1,1 0 0 1 18,15 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M2,12 A1,1 0 1 0 4,12 A1,1 0 1 0 2,12 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M20,12 A1,1 0 1 0 22,12 A1,1 0 1 0 20,12 Z" fill="#2e3436" fill-rule="evenodd" clip-path="url(#gap)"/>
++  <path d="M1.293,2.707 L21.293,22.707 L22.707,21.293 L2.707,1.293 Z M1,2 A1,1 0 1 0 3,2 A1,1 0 1 0 1,2 Z M21,22 A1,1 0 1 0 23,22 A1,1 0 1 0 21,22 Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-headphones-symbolic.svg b/data/icons/hicolor/scalable/status/luma-headphones-symbolic.svg
+new file mode 100644
+index 0000000..1786030
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-headphones-symbolic.svg
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M2,12 A10,10 0 0 1 22,12 L20,12 A8,8 0 0 0 4,12 Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M2,12 L4,12 L4,19 L2,19 L2,12 Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M20,12 L22,12 L22,19 L20,19 L20,12 Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M2,13 L6,13 A3,3 0 0 1 9,16 L9,19 A3,3 0 0 1 6,22 L5,22 A3,3 0 0 1 2,19 L2,13 Z M4,15 L6,15 A1,1 0 0 1 7,16 L7,19 A1,1 0 0 1 6,20 L5,20 A1,1 0 0 1 4,19 L4,15 Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M18,13 L22,13 L22,19 A3,3 0 0 1 19,22 L18,22 A3,3 0 0 1 15,19 L15,16 A3,3 0 0 1 18,13 Z M18,15 L20,15 L20,19 A1,1 0 0 1 19,20 L18,20 A1,1 0 0 1 17,19 L17,16 A1,1 0 0 1 18,15 Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M2,12 A1,1 0 1 0 4,12 A1,1 0 1 0 2,12 Z" fill="#2e3436" fill-rule="evenodd"/>
++  <path d="M20,12 A1,1 0 1 0 22,12 A1,1 0 1 0 20,12 Z" fill="#2e3436" fill-rule="evenodd"/>
++</svg>
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index eeab25d..7093e02 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1427,3 +1427,90 @@ StBoxLayout.luma-notification-tray .luma-notification-tray-list { spacing: 6px;
+ /* The beacon island ends 10 in, as every live island does. */
+ .luma-shelf-beacon-island .luma-shelf-material { padding: 8px 10px 8px 8px; }
+ .luma-shelf-vertical .luma-shelf-beacon-island .luma-shelf-material { padding: 7px; }
++
++/* ── Live island: a muted or deafened call ─────────────────────────────── */
++/* Luma mutes and deafens at the audio layer, so the application's own window
++ * keeps showing the person as live. The island is where that is visible: the
++ * control that is on sits on a red capsule in red, the subtitle reads
++ * "Muted · 04:12" or "Deafened · 04:12" in red, and the live dot turns red.
++ * Red is the shelf's colour for recording and ending a call; the capsule is
++ * the control's own 28px square at radius 8, filled at 16%. */
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-engaged,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-engaged,
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-engaged:hover,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-engaged:hover {
++  background-color: rgba(224, 113, 107, 0.16);
++  color: #e0716b;
++}
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-engaged:hover,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-action.luma-live-extension-action-engaged:hover { background-color: rgba(224, 113, 107, 0.24); }
++.luma-shelf-live-island .luma-live-extension-muted .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-muted .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-live-extension-deafened .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-deafened .luma-live-extension-subtitle { color: #e0716b; }
++.luma-shelf-live-island .luma-live-extension-muted .luma-live-extension-presence,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-muted .luma-live-extension-presence,
++.luma-shelf-live-island .luma-live-extension-deafened .luma-live-extension-presence,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-dark .luma-live-extension-deafened .luma-live-extension-presence { background-color: #e0716b; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-engaged,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-engaged:hover {
++  background-color: rgba(185, 84, 79, 0.16);
++  color: #b9544f;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-engaged:hover { background-color: rgba(185, 84, 79, 0.24); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-muted .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-deafened .luma-live-extension-subtitle { color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-muted .luma-live-extension-presence,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-deafened .luma-live-extension-presence { background-color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-engaged,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-engaged:hover {
++  background-color: rgba(185, 84, 79, 0.16);
++  color: #b9544f;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-action.luma-live-extension-action-engaged:hover { background-color: rgba(185, 84, 79, 0.24); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-muted .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-deafened .luma-live-extension-subtitle { color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-muted .luma-live-extension-presence,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-deafened .luma-live-extension-presence { background-color: #b9544f; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-engaged,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-engaged:hover {
++  background-color: rgba(255, 143, 135, 0.16);
++  color: #ff8f87;
++}
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-action.luma-live-extension-action-engaged:hover { background-color: rgba(255, 143, 135, 0.24); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-muted .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-deafened .luma-live-extension-subtitle { color: #ff8f87; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-muted .luma-live-extension-presence,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-deafened .luma-live-extension-presence { background-color: #ff8f87; }
++
++/* ── Notification tray: the count chip beside the title ────────────────── */
++/* The beacon's count chip -- 24 high, a true capsule, 11/750 tabular ink on
++ * the surface's quiet fill -- set 8 after the title. */
++StBoxLayout.luma-notification-tray .luma-notification-tray-count {
++  min-width: 8px;
++  height: 24px;
++  padding: 0 8px;
++  margin-left: 8px;
++  border-radius: 12px;
++  font-size: 11px;
++  font-weight: 750;
++  font-feature-settings: "tnum";
++  background-color: rgba(255, 255, 255, 0.08);
++  color: #e7e9e8;
++}
++StBoxLayout.luma-notification-tray.luma-surface-light .luma-notification-tray-count {
++  background-color: rgba(25, 27, 31, 0.07);
++  color: #34383d;
++}
++StBoxLayout.luma-notification-tray.luma-surface-frost .luma-notification-tray-count {
++  background-color: rgba(25, 27, 31, 0.08);
++  color: #21252b;
++}
++StBoxLayout.luma-notification-tray.luma-surface-glass .luma-notification-tray-count {
++  background-color: rgba(255, 255, 255, 0.14);
++  color: #ffffff;
++}
++StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-count {
++  background-color: rgba(255, 255, 255, 0.08);
++  color: #e7e9e8;
++}
+diff --git a/js/ui/liveActivity.js b/js/ui/liveActivity.js
+index 26a453d..162841a 100644
+--- a/js/ui/liveActivity.js
++++ b/js/ui/liveActivity.js
+@@ -55,12 +55,6 @@ export const GENERIC_ICON = 'emblem-synchronizing-symbolic';
+ // ("call.mute"), so the last segment is what is looked up. The Shell draws
+ // nothing it has no glyph for.
+ const ACTION_ICONS = new Map([
+-    ['mute', 'audio-input-microphone-symbolic'],
+-    ['mute-microphone', 'audio-input-microphone-symbolic'],
+-    ['microphone-mute', 'audio-input-microphone-symbolic'],
+-    ['unmute', 'microphone-disabled-symbolic'],
+-    ['microphone', 'audio-input-microphone-symbolic'],
+-    ['mic', 'audio-input-microphone-symbolic'],
+     ['camera', 'camera-web-symbolic'],
+     ['video', 'camera-web-symbolic'],
+     ['camera-off', 'camera-disabled-symbolic'],
+@@ -78,6 +72,14 @@ const ACTION_ICONS = new Map([
+ ]);
+ 
+ const MICROPHONE_ACTIONS = new Set(['mute', 'mute-microphone', 'microphone-mute', 'unmute', 'microphone', 'mic']);
++// Deafen, as in Discord: the call is silenced both ways.
++const DEAFEN_ACTIONS = new Set(['deafen', 'undeafen']);
++// The call's own glyphs are the shelf's Lucide set, as the status grid's
++// microphone is.
++const MIC_ICON = 'luma-mic-symbolic';
++const MIC_OFF_ICON = 'luma-mic-off-symbolic';
++const DEAFEN_ICON = 'luma-headphones-symbolic';
++const DEAFENED_ICON = 'luma-headphones-off-symbolic';
+ const CAMERA_ACTIONS = new Set(['camera', 'video', 'camera-off', 'mute-camera', 'camera-mute']);
+ const HANGUP_ACTIONS = new Set(['end-call', 'hang-up', 'hangup']);
+ 
+@@ -144,23 +146,30 @@ export function actionVerb(id) {
+ export function actionIcon(action) {
+     const verb = actionVerb(action?.id);
+     if (MICROPHONE_ACTIONS.has(verb))
+-        return isMuted(action) ? 'microphone-disabled-symbolic' : 'audio-input-microphone-symbolic';
++        return isMuted(action) ? MIC_OFF_ICON : MIC_ICON;
++    if (DEAFEN_ACTIONS.has(verb))
++        return isMuted(action) ? DEAFENED_ICON : DEAFEN_ICON;
+     return ACTION_ICONS.get(verb) ?? null;
+ }
+ 
+-// A microphone action states the mute it would undo: an "unmute" verb, or a
+-// label that offers to unmute ("Unmute microphone"). Anything else is live.
++// A microphone or deafen action states the state it would undo: an "unmute"
++// or "undeafen" verb, or a label that offers to ("Unmute microphone").
++// Anything else is live.
+ export function isMuted(action) {
+     const verb = actionVerb(action?.id);
+-    if (!MICROPHONE_ACTIONS.has(verb))
+-        return false;
+-    return verb === 'unmute' || /^\s*unmute\b/i.test(action?.label ?? '');
++    if (MICROPHONE_ACTIONS.has(verb))
++        return verb === 'unmute' || /^\s*unmute\b/i.test(action?.label ?? '');
++    if (DEAFEN_ACTIONS.has(verb))
++        return verb === 'undeafen' || /^\s*undeafen\b/i.test(action?.label ?? '');
++    return false;
+ }
+ 
+ export function actionRole(action) {
+     const verb = actionVerb(action?.id);
+     if (MICROPHONE_ACTIONS.has(verb))
+         return 'microphone';
++    if (DEAFEN_ACTIONS.has(verb))
++        return 'deafen';
+     if (CAMERA_ACTIONS.has(verb))
+         return 'camera';
+     if (HANGUP_ACTIONS.has(verb))
+@@ -173,7 +182,7 @@ export function actionRole(action) {
+ // each only when it works. A control the provider marks unavailable is not
+ // drawn on a call; it stays in the right-click menu with its reason, because a
+ // dead hang-up in the middle of a call reads as a broken one. Microphone
+-// first, end-call last, as in the kit.
++// first, then deafen, end-call last, as in the kit.
+ export function shownActions(item, actions) {
+     const drawable = actions.filter(action => actionIcon(action) !== null);
+     if (styleOf(item) !== Style.CALL) {
+@@ -182,7 +191,7 @@ export function shownActions(item, actions) {
+             return [];
+         return drawable;
+     }
+-    const order = {microphone: 0, camera: 1, other: 2, hangup: 3};
++    const order = {microphone: 0, deafen: 1, camera: 2, other: 3, hangup: 4};
+     return drawable.filter(action => action.enabled === true)
+         .sort((a, b) => order[actionRole(a)] - order[actionRole(b)]);
+ }
+@@ -228,3 +237,12 @@ export function microphoneMuted(actions) {
+     const mic = actions.find(action => actionRole(action) === 'microphone');
+     return mic ? isMuted(mic) : null;
+ }
++
++// What a call is doing to the person, most severe first: deafened (nothing in
++// or out), muted (nothing out), or live.
++export function callState(actions) {
++    const deafen = actions.find(action => actionRole(action) === 'deafen');
++    if (deafen && isMuted(deafen))
++        return 'deafened';
++    return microphoneMuted(actions) ? 'muted' : 'live';
++}
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index 07df294..7d442c5 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -275,13 +275,16 @@ class NotificationTray extends St.BoxLayout {
+         this._heading = new St.Label({
+             style_class: 'luma-notification-tray-title',
+             text: _('Notifications'),
+-            x_expand: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
++        // The count reads as part of the title -- "Notifications 10" -- in
++        // the kit's count chip, the same capsule the beacon uses.
+         this._countLabel = new St.Label({
+             style_class: 'luma-notification-tray-count',
+             y_align: Clutter.ActorAlign.CENTER,
+         });
++        this._countLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
++        this._countLabel.clutter_text.y_align = Clutter.ActorAlign.CENTER;
+         this._clearButton = new St.Button({
+             style_class: 'luma-notification-tray-clear',
+             label: _('Clear all'),
+@@ -291,6 +294,7 @@ class NotificationTray extends St.BoxLayout {
+         this._clearButton.connect('clicked', () => this._clearAll());
+         header.add_child(this._heading);
+         header.add_child(this._countLabel);
++        header.add_child(new St.Widget({x_expand: true}));
+         header.add_child(this._clearButton);
+         this.add_child(header);
+ 
+@@ -522,7 +526,8 @@ class NotificationTray extends St.BoxLayout {
+     sync(records) {
+         this._records = records;
+         const count = records.length;
+-        this._countLabel.text = `${count}`;
++        this._countLabel.text = count > COUNT_LIMIT ? `${COUNT_LIMIT}+` : `${count}`;
++        this._countLabel.visible = count > 0;
+         this._countLabel.accessible_name = count === 1
+             ? _('One notification') : _('%d notifications').format(count);
+         this._clearButton.visible = records.some(n => this._isClearable(n));
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index dee6d69..51ba42a 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -61,6 +61,13 @@ const LUMA_LIVE_EXTENSION_MAX_ACTIONS = 3;
+ // an application other than the publisher.
+ const LUMA_CALLS_APPLICATION_ID = 'org.projectluma.Calls';
+ const LUMA_LIVE_LEADING_SIZE = 36;
++// org.projectluma.SemanticBroker1 answers an InvokeAction with a request
++// object, and only reports the outcome on that object's Response signal. A
++// request needs a handle token of the caller's choosing, which also makes its
++// path known before the call, so the answer can never be missed.
++const LUMA_LIVE_REQUEST_INTERFACE = 'org.projectluma.SemanticRequest1';
++const LUMA_LIVE_REQUEST_ROOT = '/org/projectluma/SemanticBroker1/request';
++const LUMA_LIVE_REQUEST_TIMEOUT = 35;
+ const LUMA_LIVE_EXTENSION_TOOLTIP_DELAY = 300;
+ // The status grid: 14px glyphs, 8 apart across and 6 apart down.
+ const STATUS_GLYPH = 14;
+@@ -156,6 +163,8 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         this._style = null;
+         this._tickId = 0;
+         this._callStart = null;
++        this._callLabel = _('Call');
++        this._requestSerial = 0;
+         this._title = new St.Label({
+             style_class: 'luma-live-extension-title',
+             y_align: Clutter.ActorAlign.CENTER,
+@@ -361,10 +370,22 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         else
+             this._setLeading({initials: LiveActivity.initialsOf(extension.title)});
+         this._presence.visible = true;
++        // Luma mutes and deafens at the audio layer, so the application's own
++        // window goes on showing the person as live. The island is the one
++        // place that state is visible, and it says it in words and in red.
++        const state = LiveActivity.callState(this._validActions(item));
++        for (const name of ['muted', 'deafened']) {
++            if (state === name)
++                this.add_style_class_name(`luma-live-extension-${name}`);
++            else
++                this.remove_style_class_name(`luma-live-extension-${name}`);
++        }
++        this._callLabel = state === 'deafened' ? _('Deafened')
++            : state === 'muted' ? _('Muted') : _('Call');
+         this._callStart = LiveActivity.parseInstant(extension.starts_at);
+         const elapsed = LiveActivity.elapsedText(this._callStart, Date.now());
+         if (elapsed !== null) {
+-            this._subtitle.text = LiveActivity.callSubtitle(_('Call'), elapsed);
++            this._subtitle.text = LiveActivity.callSubtitle(this._callLabel, elapsed);
+             this._subtitle.visible = true;
+             this._startTicking();
+         } else {
+@@ -410,7 +431,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+                     this._tickId = 0;
+                     return GLib.SOURCE_REMOVE;
+                 }
+-                this._subtitle.text = LiveActivity.callSubtitle(_('Call'), elapsed);
++                this._subtitle.text = LiveActivity.callSubtitle(this._callLabel, elapsed);
+                 schedule();
+                 return GLib.SOURCE_REMOVE;
+             });
+@@ -523,15 +544,20 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         });
+         // A call's microphone is green while live and ink-2 when muted; its
+         // end-call control is red. Neither has a fill at rest.
++        // A muted microphone or a deafened call is shown switched on: red,
++        // on a red capsule, because the application itself will not show it.
+         const role = LiveActivity.actionRole(action);
++        const engaged = LiveActivity.isMuted(action);
+         if (role === 'hangup')
+             button.add_style_class_name('luma-live-extension-action-end');
+-        else if (role === 'microphone')
+-            button.add_style_class_name(LiveActivity.isMuted(action)
+-                ? 'luma-live-extension-action-mic-muted' : 'luma-live-extension-action-mic-live');
+-        // The label names what a press does ("Unmute microphone"); the
+-        // description explains a control that cannot work.
+-        const hint = action.enabled ? action.label : action.description || action.label;
++        else if (role === 'microphone' && !engaged)
++            button.add_style_class_name('luma-live-extension-action-mic-live');
++        if ((role === 'microphone' || role === 'deafen') && engaged)
++            button.add_style_class_name('luma-live-extension-action-engaged');
++        // The label names what a press does ("Unmute microphone"). An engaged
++        // control, and one that cannot work, explain themselves instead.
++        const hint = action.enabled && !engaged
++            ? action.label : action.description || action.label;
+         button.accessible_name = hint;
+         if (!action.enabled)
+             button.add_style_class_name('luma-live-extension-action-unavailable');
+@@ -573,7 +599,45 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+         if (typeof publicationId !== 'string' || typeof objectId !== 'string')
+             return;
+ 
+-        Gio.DBus.session.call(
++        // The broker refuses a request without a handle token, which is what
++        // left every island control inert: the refusal was only ever logged
++        // at debug level. Subscribe to the request's answer before asking.
++        const connection = Gio.DBus.session;
++        const token = `luma_live_${++this._requestSerial}`;
++        const unique = connection.get_unique_name() ?? '';
++        const requestPath =
++            `${LUMA_LIVE_REQUEST_ROOT}/${unique.slice(1).replaceAll('.', '_')}/${token}`;
++        let subscription = 0;
++        let timeoutId = 0;
++        const finish = () => {
++            if (subscription)
++                connection.signal_unsubscribe(subscription);
++            if (timeoutId)
++                GLib.source_remove(timeoutId);
++            subscription = timeoutId = 0;
++        };
++        subscription = connection.signal_subscribe(
++            LUMA_LIVE_EXTENSIONS_BUS, LUMA_LIVE_REQUEST_INTERFACE, 'Response',
++            requestPath, null, Gio.DBusSignalFlags.NONE,
++            (_connection, _sender, _path, _interface, _signal, parameters) => {
++                finish();
++                const [response, results] = parameters.recursiveUnpack();
++                // Contract vocabulary and the broker's own reason only; the
++                // extension's text never reaches the journal.
++                if (response === 0)
++                    console.log(`Luma live island: ${action.id} carried out`);
++                else
++                    console.warn(`Luma live island: ${action.id} was not carried out: ${results?.reason ?? `response ${response}`}`);
++            });
++        timeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, LUMA_LIVE_REQUEST_TIMEOUT, () => {
++            timeoutId = 0;
++            finish();
++            console.warn(`Luma live island: ${action.id} got no answer`);
++            return GLib.SOURCE_REMOVE;
++        });
++        GLib.Source.set_name_by_id(timeoutId, '[gnome-shell] lumaLiveActionRequest');
++
++        connection.call(
+             LUMA_LIVE_EXTENSIONS_BUS,
+             LUMA_LIVE_EXTENSIONS_PATH,
+             LUMA_LIVE_EXTENSIONS_INTERFACE,
+@@ -583,20 +647,18 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+                 objectId,
+                 action.id,
+                 new GLib.Variant('a{sv}', {}),
+-                {},
++                {handle_token: new GLib.Variant('s', token)},
+             ]),
+             new GLib.VariantType('(o)'),
+             Gio.DBusCallFlags.NONE,
+             3000,
+             null,
+-            (connection, result) => {
++            (_connection, result) => {
+                 try {
+-                    connection.call_finish(result);
++                    _connection.call_finish(result);
+                 } catch (error) {
+-                    // The action identifier is contract vocabulary; the
+-                    // extension's own text never reaches the journal.
+-                    console.debug(
+-                        `Luma Live Extension action ${action.id} failed: ${error}`);
++                    finish();
++                    console.warn(`Luma live island: ${action.id} was refused: ${error.message}`);
+                 }
+             });
+     }
+-- 
+2.55.0
+

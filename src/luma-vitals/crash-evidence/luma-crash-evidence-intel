@@ -1,0 +1,378 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: MPL-2.0
+"""Read the Intel Crash Log in the firmware's boot error record (ADR-026 §6).
+
+luma-crash-evidence copies the ACPI Boot Error Record Table to
+/var/lib/luma/crash/<boot id>/ first. This runs right after it, in the same
+unit, and does three things:
+
+1. Keeps this boot's kernel module map (root-only), so that when a later boot
+   finds a crash record, the processor's last instruction pointer can be named
+   as a module and offset instead of an address that meant nothing after the
+   reset.
+2. When the record is new and Intel's iclg recognises a Crash Log in it, keeps
+   iclg's decoded JSON and triage beside the raw record, and writes one journal
+   entry (MESSAGE_ID below) saying the computer restarted unexpectedly, with
+   the triage tags.
+3. Otherwise does nothing: no BERT, an empty record, a record that is not a
+   Crash Log (other vendors, memory errors), no iclg installed, or a record
+   already decoded at an earlier boot.
+
+Each record is decoded once, keyed by its SHA-256. It reads only the capture
+directory, /proc/modules and /sys/module, and writes only the capture
+directory. It never fails the boot: any error ends it quietly with status 0.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+from pathlib import Path
+
+STATE = Path(os.environ.get("STATE_DIRECTORY", "/var/lib/luma/crash").split(":")[0])
+BOOT_ID = Path(os.environ.get("LUMA_CRASH_BOOT_ID_FILE", "/proc/sys/kernel/random/boot_id"))
+ICLG = os.environ.get("LUMA_ICLG", "/usr/bin/iclg")
+PROC_MODULES = Path(os.environ.get("LUMA_CRASH_PROC_MODULES", "/proc/modules"))
+SYS_MODULE = Path(os.environ.get("LUMA_CRASH_SYS_MODULE", "/sys/module"))
+KERNEL_RELEASE = Path("/proc/sys/kernel/osrelease")
+
+#: "The computer restarted unexpectedly; the processor's Crash Log says why."
+#: Documented in /usr/lib/systemd/catalog/luma-crash-evidence.catalog.
+MESSAGE_ID = "e6f1229b2154445eaaf8f207d149fb1f"
+DECODE_TIMEOUT = 60
+#: A decoded Crash Log is tens of kilobytes; refuse anything absurd.
+MAX_OUTPUT = 8 * 1024 * 1024
+#: Keys under which iclg reports an instruction pointer.
+IP_KEYS = {"lip", "rip"}
+MODULES_FILE = "modules.json"
+#: CPER section type of a Firmware Error Record Reference (UEFI 2.10 N.2.10).
+FIRMWARE_ERROR_RECORD = uuid.UUID("81212a96-09ed-4996-9471-8d729c8e69ed").bytes_le
+#: The record identifier Intel firmware gives a Crash Log region (as iclg 1.2.0).
+INTEL_CRASH_LOG = uuid.UUID("8f87f311-c998-4d9e-a0c4-6065518c4f6d").bytes_le
+CRASHLOG_FILE = "crashlog.json"
+
+
+def log(priority: int, message: str, fields: list[tuple[str, str]]) -> None:
+    try:
+        from systemd import journal  # python3-systemd, when installed
+    except ImportError:
+        print(f"<{priority}>{message}", file=sys.stderr, flush=True)
+        return
+    entries = [f"MESSAGE={message}", "SYSLOG_IDENTIFIER=luma-crash-evidence", f"PRIORITY={priority}"]
+    entries += [f"{name}={value}" for name, value in fields]
+    try:
+        journal.sendv(*entries)
+    except OSError:  # No journal socket (a container, early boot): keep the line.
+        print(f"<{priority}>{message}", file=sys.stderr, flush=True)
+
+
+def boot_id() -> str:
+    try:
+        return BOOT_ID.read_text().strip().replace("-", "")
+    except OSError:
+        return ""
+
+
+def write_private(path: Path, text: str) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(text)
+
+
+def write_public(path: Path, text: str) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(text)
+    os.chmod(temporary, 0o644)
+    temporary.replace(path)
+
+
+# --- module map ---------------------------------------------------------------
+
+def module_map() -> dict:
+    """This boot's module text addresses, which a later boot needs to name an IP.
+
+    Addresses read as zero without CAP_SYSLOG; such a map is useless and is not
+    kept.
+    """
+    modules = []
+    try:
+        lines = PROC_MODULES.read_text().splitlines()
+    except OSError:
+        return {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        name, size, address = parts[0], parts[1], parts[-1]
+        try:
+            base = int(address, 16)
+            size_bytes = int(size)
+        except ValueError:
+            continue
+        text = base
+        try:
+            text = int((SYS_MODULE / name / "sections" / ".text").read_text().strip(), 16)
+        except (OSError, ValueError):
+            pass
+        if base == 0 and text == 0:
+            continue
+        modules.append({"name": name, "base": base, "size": size_bytes, "text": text})
+    if not modules:
+        return {}
+    try:
+        release = KERNEL_RELEASE.read_text().strip()
+    except OSError:
+        release = ""
+    return {"kernel_release": release, "captured": int(time.time()), "modules": modules}
+
+
+def keep_module_map(target: Path) -> None:
+    mapping = module_map()
+    if mapping:
+        # The module layout of a running kernel defeats KASLR: root only.
+        write_private(target / MODULES_FILE, json.dumps(mapping) + "\n")
+
+
+def previous_boot_id() -> str:
+    """The boot before this one, which is the boot a new record describes."""
+    try:
+        result = subprocess.run(["journalctl", "--list-boots", "-o", "json", "--no-pager"],
+                                capture_output=True, text=True, timeout=15, check=False)
+        boots = json.loads(result.stdout) if result.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return ""
+    if not isinstance(boots, list) or len(boots) < 2 or not isinstance(boots[-2], dict):
+        return ""
+    return str(boots[-2].get("boot_id") or "").replace("-", "")
+
+
+def previous_module_map(state: Path, previous: str) -> dict:
+    """The module map the previous boot kept, if it kept one.
+
+    Only that boot's map can name its addresses: an older one would name the
+    wrong module with confidence, so it is never used instead.
+    """
+    if not previous:
+        return {}
+    try:
+        mapping = json.loads((state / previous / MODULES_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(mapping, dict):
+        return {}
+    mapping["boot_id"] = previous
+    return mapping
+
+
+def resolve(address: int, mapping: dict) -> dict:
+    """Name an address as module+offset from its .text, using a module map.
+
+    The kernel may place module text apart from module data, so /proc/modules'
+    size only bounds the text from above; the owner is the module whose text
+    starts nearest below the address.
+    """
+    owner = None
+    for module in mapping.get("modules", []):
+        try:
+            size, text = int(module["size"]), int(module["text"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if text <= address < text + size and (owner is None or text > owner[1]):
+            owner = (str(module.get("name", "")), text)
+    if owner is None:
+        return {}
+    return {"module": owner[0], "offset": f"{address - owner[1]:#x}",
+            "kernel_release": mapping.get("kernel_release", ""),
+            "module_map_boot": mapping.get("boot_id", "")}
+
+
+# --- decoding -----------------------------------------------------------------
+
+def crash_log_sections(region: bytes) -> int:
+    """How many Intel Crash Log sections a Boot Error Region holds.
+
+    Parsed here, strictly, before iclg sees anything: iclg falls back to reading
+    arbitrary bytes as a raw Crash Log region, which would turn another vendor's
+    record, a memory error or firmware noise into a confident wrong answer.
+    """
+    if len(region) < 20:
+        return 0
+    data_length = struct.unpack_from("<I", region, 12)[0]
+    end = min(len(region), 20 + data_length)
+    cursor, found = 20, 0
+    while cursor + 64 <= end:
+        revision = struct.unpack_from("<H", region, cursor + 20)[0]
+        length = struct.unpack_from("<I", region, cursor + 24)[0]
+        header = 72 if revision >= 0x300 else 64
+        body = region[cursor + header:cursor + header + length]
+        if cursor + header + length > end or len(body) != length:
+            break
+        if (region[cursor:cursor + 16] == FIRMWARE_ERROR_RECORD and len(body) >= 32 and body[1] >= 2
+                and body[16:32] == INTEL_CRASH_LOG):
+            found += 1
+        cursor += header + length
+    return found
+
+
+def instruction_pointers(node, path=()) -> list[tuple[str, int]]:
+    found = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in IP_KEYS and isinstance(value, str):
+                try:
+                    address = int(value, 16)
+                except ValueError:
+                    continue
+                # 0xdeadbeef... fills records that were never written.
+                if address and value.lower() != "0xdeadbeefdeadbeef":
+                    where = ".".join(p for p in path if p not in ("crashlog_data", "thread", "arch_state"))
+                    found.append((where, address))
+            else:
+                found.extend(instruction_pointers(value, path + (key,)))
+    return found
+
+
+def run_iclg(arguments: list[str]) -> subprocess.CompletedProcess | None:
+    try:
+        result = subprocess.run([ICLG, *arguments], capture_output=True, timeout=DECODE_TIMEOUT, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if len(result.stdout) > MAX_OUTPUT:
+        return None
+    return result
+
+
+def decode(data: bytes) -> tuple[dict | None, list[str], str]:
+    """(decoded JSON, triage tags, reason) — decoded is None when not a Crash Log."""
+    with tempfile.TemporaryDirectory(prefix="luma-crashlog-") as directory:
+        record = Path(directory) / "record.berr"
+        # iclg reads a Boot Error Region behind a "BERR" marker.
+        record.write_bytes(b"BERR" + data)
+        decoded = run_iclg(["decode", str(record)])
+        if decoded is None:
+            return None, [], "iclg did not run"
+        if decoded.returncode != 0:
+            message = decoded.stderr.decode(errors="replace").strip().splitlines()
+            return None, [], (message[-1] if message else f"iclg exited {decoded.returncode}")[:200]
+        try:
+            tree = json.loads(decoded.stdout)
+        except ValueError:
+            return None, [], "iclg printed no JSON"
+        if not isinstance(tree, dict) or not tree:
+            return None, [], "no Crash Log in the record"
+        triage = run_iclg(["triage", str(record)])
+        tags = []
+        if triage is not None and triage.returncode == 0:
+            for line in triage.stdout.decode(errors="replace").splitlines():
+                line = line.strip()
+                if re.fullmatch(r"[A-Za-z0-9_.]+", line):
+                    tags.append(line)
+        return tree, tags, ""
+
+
+def iclg_version() -> str:
+    result = run_iclg(["--version"])
+    if result is None or result.returncode != 0:
+        return ""
+    return result.stdout.decode(errors="replace").strip()
+
+
+def earlier_decode(state: Path, current: str, digest: str) -> Path | None:
+    for path in state.glob(f"*/{CRASHLOG_FILE}"):
+        if path.parent.name == current:
+            continue
+        try:
+            if json.loads(path.read_text()).get("sha256") == digest:
+                return path
+        except (OSError, ValueError, AttributeError):
+            continue
+    return None
+
+
+def describe(tags: list[str], pointers: list[dict]) -> str:
+    message = "The computer restarted unexpectedly: the processor's Crash Log "
+    if tags:
+        message += "reports " + ", ".join(tags)
+    else:
+        message += "was recorded, with no cause iclg recognises"
+    named = [p for p in pointers if p.get("module")]
+    if named:
+        first = named[0]
+        message += f"; last instruction in {first['module']}+{first['offset']}"
+        if first.get("kernel_release"):
+            message += f" ({first['kernel_release']})"
+    return message
+
+
+def main() -> int:
+    current = boot_id()
+    if not current:
+        return 0
+    target = STATE / current
+    try:
+        summary = json.loads((target / "summary.json").read_text())
+    except (OSError, ValueError):
+        return 0  # No boot error record was captured at this boot.
+    try:
+        keep_module_map(target)
+    except OSError:
+        pass
+    if (target / CRASHLOG_FILE).exists():
+        return 0  # Already handled at this boot.
+    digest = str(summary.get("sha256", ""))
+    try:
+        data = (target / "BERT.data").read_bytes()
+    except OSError:
+        return 0
+    if not digest or not data.strip(b"\x00"):
+        return 0
+    earlier = earlier_decode(STATE, current, digest)
+    if earlier is not None:
+        previous = json.loads(earlier.read_text())
+        previous.update({"boot_id": current, "new": False, "first_decoded_in": earlier.parent.name})
+        write_public(target / CRASHLOG_FILE, json.dumps(previous, indent=1) + "\n")
+        return 0
+    if not crash_log_sections(data):
+        return 0  # Another kind of boot error record: the raw copy is all there is.
+    if not shutil.which(ICLG):
+        return 0  # iclg is not installed.
+    tree, tags, reason = decode(data)
+    record = {"boot_id": current, "sha256": digest, "new": True, "decoded": tree is not None,
+              "iclg": iclg_version(), "decoded_at": int(time.time())}
+    if tree is None:
+        record["reason"] = reason
+        write_public(target / CRASHLOG_FILE, json.dumps(record, indent=1) + "\n")
+        return 0
+    mapping = previous_module_map(STATE, previous_boot_id())
+    pointers = []
+    for where, address in instruction_pointers(tree):
+        pointer = {"where": where, "address": f"{address:#x}"}
+        pointer.update(resolve(address, mapping))
+        pointers.append(pointer)
+    write_public(target / "crashlog-decoded.json", json.dumps(tree, indent=1) + "\n")
+    write_public(target / "crashlog-triage.txt", "".join(f"{tag}\n" for tag in tags))
+    record.update({"triage": tags, "instruction_pointers": pointers})
+    write_public(target / CRASHLOG_FILE, json.dumps(record, indent=1) + "\n")
+    fields = [("MESSAGE_ID", MESSAGE_ID), ("LUMA_CRASH_EVIDENCE", "intel-crashlog"),
+              ("LUMA_CRASH_SHA256", digest), ("LUMA_CRASH_DIRECTORY", str(target))]
+    fields += [("LUMA_CRASHLOG_TRIAGE", tag) for tag in tags]
+    fields += [("LUMA_CRASHLOG_IP", " ".join(f"{k}={v}" for k, v in p.items())) for p in pointers]
+    log(3, describe(tags, pointers) + f". Kept in {target}", fields)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception as error:  # Evidence collection must never fail the boot.
+        print(f"<4>luma-crash-evidence-intel: {error}", file=sys.stderr, flush=True)
+        raise SystemExit(0)

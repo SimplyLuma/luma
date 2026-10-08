@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Viewer
+Comment=Open a file, fast, and look at it
+Exec=luma-viewer %f
+Icon=org.projectluma.Viewer
+Terminal=false
+Categories=Graphics;Viewer;Utility;
+StartupNotify=true
+StartupWMClass=org.projectluma.Viewer
+# Registered broadly so Viewer appears under Open With for everything it can
+# display. What it is the *default* for is decided by Luma's desktop policy
+# (luma-desktop-launcher-policy's gnome-mimeapps.list), never by the
+# application asking at first run.
+MimeType=application/epub+zip;model/obj;model/stl;model/x.stl-ascii;model/x.stl-binary;audio/mpeg;audio/flac;audio/x-flac;audio/x-wav;audio/ogg;audio/mp4;application/pdf;application/x-bzpdf;application/x-gzpdf;application/x-xzpdf;application/x-ext-pdf;image/png;image/jpeg;image/gif;image/bmp;image/tiff;image/webp;image/avif;image/heif;image/svg+xml;text/plain;text/markdown;text/csv;text/tab-separated-values;application/json;application/xml;text/x-python;text/x-csrc;text/x-chdr;text/x-c++src;

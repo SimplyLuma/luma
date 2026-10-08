@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Exact Luma-built packages composed into the x86_64 desktop OS image.
+#
+# This is the single pin list for image/luma-desktop/Containerfile (and for the
+# legacy VM composition). Every line is an exact NEVRA; the image build refuses
+# to start unless each one is present in the verified package pool, and fails
+# unless each one is installed byte-for-byte (RPM header digest) afterwards.
+# Fedora packages the image adds by name are in config/os/fedora-packages.txt.
+#
+# Resolved 2026-09-15 from the qualified parity deployment (Shell
+# 50.3 .78, GTK 4 .17, libadwaita .45, luma-continuity 0.54, launcher policy 17,
+# prairie-core-apps connect.28); each file's header digest matched that
+# deployment's rpmdb. Keep the shared pins in step with inputs.env.
+
+# Shell, window manager and settings (replace Fedora base packages)
+gnome-control-center-50.4-1.luma.48.creator20261006.1.fc44.x86_64
+gnome-control-center-filesystem-50.4-1.luma.48.creator20261006.1.fc44.noarch
+gnome-shell-50.3-1.luma.108.creator20261007.1.fc44.x86_64
+gnome-shell-common-50.3-1.luma.108.creator20261007.1.fc44.noarch
+gnome-settings-daemon-50.1-1.luma.2.fc44.x86_64
+gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.10.fc44.noarch
+gnome-shell-extension-tiling-shell-17.3-1.luma.24.fc44.noarch
+luma-calculator-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
+luma-disks-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
+luma-maps-0.1.0-1.luma.7.creator20261005.1.fc44.noarch
+luma-terminal-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
+mutter-50.4-1.luma.12.preview20260922.1.fc44.x86_64
+mutter-common-50.4-1.luma.12.preview20260922.1.fc44.noarch
+ibus-1.5.34-4.luma.2.fc44.x86_64
+ibus-gtk3-1.5.34-4.luma.2.fc44.x86_64
+ibus-gtk4-1.5.34-4.luma.2.fc44.x86_64
+ibus-libs-1.5.34-4.luma.2.fc44.x86_64
+ibus-setup-1.5.34-4.luma.2.fc44.noarch
+python3-ibus-1.5.34-4.luma.2.fc44.x86_64
+nautilus-50.2.2-1.luma.68.creator20261007.1.fc44.x86_64
+nautilus-extensions-50.2.2-1.luma.68.creator20261007.1.fc44.x86_64
+
+# Toolkit design system (replace Fedora base packages)
+gtk3-3.24.52-2.luma.10.fc44.x86_64
+gtk4-4.22.4-1.luma.23.creator20261006.1.fc44.x86_64
+libadwaita-1.9.3-1.luma.55.creator20261005.1.fc44.x86_64
+libhandy-1.8.3-10.luma.9.fc44.x86_64
+
+# Graphical boot (replace the Fedora Plymouth family)
+luma-boot-theme-0.1.0-1.luma.21.creator20261006.2.fc44.noarch
+fwupd-2.1.7-1.luma.1.fc44.x86_64
+fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
+fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
+luma-keyring-0.1.0-1.luma.1.fc44.noarch
+luma-logos-0.1.0-1.luma.2.fc44.noarch
+luma-logos-httpd-0.1.0-1.luma.2.fc44.noarch
+luma-release-1-1.luma.2.fc44.noarch
+plymouth-24.004.60-24.luma.3.fc44.x86_64
+plymouth-core-libs-24.004.60-24.luma.3.fc44.x86_64
+plymouth-graphics-libs-24.004.60-24.luma.3.fc44.x86_64
+plymouth-plugin-label-24.004.60-24.luma.3.fc44.x86_64
+plymouth-plugin-script-24.004.60-24.luma.3.fc44.x86_64
+plymouth-plugin-two-step-24.004.60-24.luma.3.fc44.x86_64
+plymouth-scripts-24.004.60-24.luma.3.fc44.x86_64
+plymouth-system-theme-24.004.60-24.luma.3.fc44.x86_64
+plymouth-theme-spinner-24.004.60-24.luma.3.fc44.x86_64
+
+# Luma platform, assets and core applications
+google-caveat-fonts-2.000-1.luma.1.fc44.noarch
+google-figtree-fonts-2.0.3-1.luma.4.fc44.noarch
+luma-audio-policy-0.1.0-1.luma.3.fc44.noarch
+luma-sound-theme-0.1.0-2.luma.1.fc44.noarch
+luma-background-0.1.0-1.luma.5.creator20261007.1.fc44.noarch
+luma-backgrounds-0.2.0-1.luma.4.fc44.noarch
+luma-desktop-launcher-policy-0.1.0-28.creator20261007.1.fc44.noarch
+luma-cast-0.1.0-1.luma.4.fc44.noarch
+luma-cast-backend-common-0.1.0-1.luma.1.fc44.noarch
+luma-cast-dlna-0.1.0-1.luma.1.fc44.noarch
+luma-cast-googlecast-0.1.0-1.luma.2.fc44.x86_64
+luma-cast-miracast-0.1.0-1.luma.1.fc44.x86_64
+luma-developer-platform-0.1.0-1.luma.107.creator20261007.1.fc44.x86_64
+luma-developer-platform-sdk-0.1.0-1.luma.107.creator20261007.1.fc44.noarch
+luma-mods-0.1.0-1.luma.24.creator20261007.1.fc44.noarch
+luma-monitor-0.1.0-1.luma.16.creator20261007.1.fc44.noarch
+luma-notification-policy-0.1.0-1.luma.1~preview.20260905.1.fc44.noarch
+luma-quick-view-46.0-1.luma.18.lumaui20260928.fc44.x86_64
+luma-rfkill-guard-0.1.0-1.luma.2.fc44.noarch
+luma-install-commands-0.1.0-1.luma.6.fc44.noarch
+luma-search-0.1.0-1.luma.7.fc44.noarch
+luma-shell-state-0.2.0-1.luma.33.preview20260926.fc44.noarch
+luma-os-remote-1.0.0-1.luma.17.fc44.noarch
+luma-update-1.0.0-1.luma.17.fc44.noarch
+prairie-core-apps-0.1.0-1.luma.100.creator20261008.1.fc44.noarch
+luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
+prairie-icon-theme-0.1.0-1.luma.38.creator20261006.1.fc44.noarch
+
+# Luma Connect, messaging and accounts
+luma-calls-0.1.0-1.luma.3.fc44.noarch
+luma-charlie-0.2.14-1.luma.6.creator20261007.1.fc44.noarch
+luma-continuity-0.1.0-0.63.experiment.fc44.noarch
+luma-media-bridge-0.1.0-1.luma.2.fc44.noarch
+luma-portal-0.1.0-1.luma.9.fc44.noarch
+luma-wifi-guard-0.1.0-1.luma.1.fc44.noarch
+python3-authlib-1.7.2-0.1.luma.experiment.fc44.noarch
+python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
+
+# Compatibility (Android and Windows applications)
+luma-android-runtime-0.1.0-1.luma.80.creator20261007.1.fc44.noarch
+luma-android-images-20.0-1.luma.9.creator20261008.1.fc44.x86_64
+luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.x86_64
+luma-application-installer-0.1.0-1.luma.68.creator20261008.1.fc44.noarch
+luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
+luma-homebrew-0.1.0-1.luma.1.fc44.noarch
+luma-relay-0.1.0-1.luma.12.fc44.noarch
+wine-luma-relay-explorer-11.0-3.luma.2.fc44.x86_64
+
+# Luma applications and desktop utilities
+luma-agenda-0.1.0-1.luma.9.fc44.noarch
+luma-ari-0.1.0-1.luma.16.creator20261007.1.fc44.noarch
+luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64
+luma-displays-0.1.0-1.luma.6.creator20261008.1.fc44.noarch
+luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
+luma-tide-0.1.0-2.luma.33.creator20261007.1.fc44.noarch
+luma-viewer-0.1.0-1.luma.17.creator20261007.1.fc44.noarch
+intel-crashlog-1.2.0-1.luma.1.fc44.x86_64
+luma-vitals-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
+luma-vitals-energy-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
+luma-vitals-memory-guard-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
+luma-vitals-crash-evidence-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
+luma-vitals-power-guard-0.1.0-1.luma.14.creator20261005.1.fc44.noarch
+viola-browser-stable-151.0.7922.72-13.viola8210.native35.creator20261008.1.fc44.x86_64
+luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64

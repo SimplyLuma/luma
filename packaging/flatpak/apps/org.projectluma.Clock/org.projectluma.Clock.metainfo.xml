@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Clock</id>
+  <name>Clock</name>
+  <summary>Keep time around the world</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Check local times around the world, manage alarms, and use timers and a stopwatch in one responsive application.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Clock.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>World clocks</caption>
+      <image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Clock/70b1cdb41fcf7de849c9e52375081477e135cc1b4aa17449b2f87c7b1e1bab49.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

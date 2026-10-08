@@ -1,0 +1,67 @@
+From 246195c27e98ad1fda8a597881614d46a7b27acf Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 22:42:29 +0000
+Subject: [PATCH] media-keys: Do not play a sound when the volume changes
+
+Luma shows the new level on screen (Beam) and makes no sound for a
+volume change from any key, quiet or not. The audio-volume-change
+event is no longer played.
+---
+ plugins/media-keys/gsd-media-keys-manager.c | 28 +++------------------
+ 1 file changed, 3 insertions(+), 25 deletions(-)
+
+diff --git a/plugins/media-keys/gsd-media-keys-manager.c b/plugins/media-keys/gsd-media-keys-manager.c
+index 35d8ba4..6a85dac 100644
+--- a/plugins/media-keys/gsd-media-keys-manager.c
++++ b/plugins/media-keys/gsd-media-keys-manager.c
+@@ -1401,23 +1401,6 @@ allow_volume_above_100_percent_changed_cb (GSettings           *settings,
+         }
+ }
+ 
+-static void
+-play_volume_changed_audio (GsdMediaKeysManager *manager,
+-                           GvcMixerStream      *stream)
+-{
+-        ca_context *ca_context;
+-
+-        ca_context = gsd_application_get_ca_context (GSD_APPLICATION (manager));
+-
+-        ca_context_change_device (ca_context,
+-                                  gvc_mixer_stream_get_name (stream));
+-        ca_context_play (ca_context, 1,
+-                         CA_PROP_EVENT_ID, "audio-volume-change",
+-                         CA_PROP_EVENT_DESCRIPTION, "volume changed through key press",
+-                         CA_PROP_CANBERRA_CACHE_CONTROL, "permanent",
+-                         NULL);
+-}
+-
+ static void
+ show_volume_osd (GsdMediaKeysManager *manager,
+                  GvcMixerStream      *stream,
+@@ -1430,10 +1413,8 @@ show_volume_osd (GsdMediaKeysManager *manager,
+         GvcMixerUIDevice *device;
+         const GvcMixerStreamPort *port;
+         const char *icon;
+-        gboolean playing = FALSE;
+         double new_vol;
+         double max_volume;
+-        ca_context *ca_context;
+ 
+         max_volume = (double) priv->max_volume / PA_VOLUME_NORM;
+         if (!muted) {
+@@ -1458,12 +1439,9 @@ show_volume_osd (GsdMediaKeysManager *manager,
+                 show_osd_with_max_level (manager, icon, NULL, new_vol, max_volume, NULL);
+         }
+ 
+-        ca_context = gsd_application_get_ca_context (GSD_APPLICATION (manager));
+-        ca_context_playing (ca_context, 1, &playing);
+-        playing = !playing && gvc_mixer_stream_get_state (stream) == GVC_STREAM_STATE_RUNNING;
+-
+-        if (quiet == FALSE && sound_changed != FALSE && muted == FALSE && playing == FALSE)
+-                play_volume_changed_audio (manager, stream);
++        /* Luma: changing the volume makes no sound. The on-screen level is
++         * the feedback, so audio-volume-change is not played for any key,
++         * quiet or not. */
+ }
+ 
+ #if HAVE_GUDEV

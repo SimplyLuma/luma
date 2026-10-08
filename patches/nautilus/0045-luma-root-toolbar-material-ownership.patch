@@ -1,0 +1,30 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] nautilus: mark the root toolbar as window material
+
+Filer's outer AdwToolbarView owns the application header, but unlike native
+Luma application windows it was never marked as the window toolbar view.  The
+shared Developer Platform therefore could not clear libadwaita's generated
+top-bar wrapper for Frost and Glass, leaving an opaque strip above otherwise
+translucent content.
+
+Adopt the shared structural role on that root toolbar only.  The nested
+sidebar and content toolbar views remain island surfaces and keep their own
+material ownership.
+
+---
+ src/resources/ui/nautilus-window.blp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -169,6 +169,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+   $NautilusShortcutManager {
+     child: Adw.ToastOverlay toast_overlay {
+       child: Adw.ToolbarView {
++        styles ["luma-window-toolbar-view"]
+         [top]
+         Adw.HeaderBar {
+           show-start-title-buttons: false;
+-- 
+2.54.0

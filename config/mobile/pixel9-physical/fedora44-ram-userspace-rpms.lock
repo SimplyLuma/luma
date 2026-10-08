@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Exact Fedora 44 AArch64/noarch dependency closure for the first volatile
+# Fedora userspace execution proof. Format:
+# SHA256 BYTES NEVRA RPM_FILENAME
+14a817ef8aa99a041a738c67cc6ff858681e23470dc7fc7144fe4c14c82a8e75 2042091 glibc-2.43-8.fc44.aarch64 glibc-2.43-8.fc44.aarch64.rpm
+19c6053ad3e76d47f330da92e5c97e2b9a3617b4ddd8fa2139d9066092cfc181 90110 ncurses-base-6.6-1.fc44.noarch ncurses-base-6.6-1.fc44.noarch.rpm
+39b4b8a1339183697a6e342062ee8e84bad7457273c4e2c81f6a29e87c082346 13542 fedora-release-identity-basic-44-18.noarch fedora-release-identity-basic-44-18.noarch.rpm
+3adc5270b1bd2ea81d99f53f21cfab37b9c13062d966dacb9a9deeb36fde4f5d 366811 glibc-common-2.43-8.fc44.aarch64 glibc-common-2.43-8.fc44.aarch64.rpm
+55d58325996df10b4be2f1a9b963dbec3cea3099e43f9f4295eea6e8adfaf7b8 160947 setup-2.15.0-28.fc44.noarch setup-2.15.0-28.fc44.noarch.rpm
+5e68aeef90aa603527592466286bc8437df4c575dbc8f4a58f730033a342071b 332563 ncurses-libs-6.6-1.fc44.aarch64 ncurses-libs-6.6-1.fc44.aarch64.rpm
+6fc6249253b06d3a84a6f2bda1c04d52c991c9c779febf7af53aaa87ecfdeedc 120666 libgcc-16.2.1-2.fc44.aarch64 libgcc-16.2.1-2.fc44.aarch64.rpm
+884b530ed43c9b460fae5985009845419d997df1d1ce7b9f473b4c0794ce671c 1930272 bash-5.3.9-3.fc44.aarch64 bash-5.3.9-3.fc44.aarch64.rpm
+8950c8ff3d22734076c4b5ea9a7b0fe1a868bd4e530e93455b4970403690231f 1801297 glibc-gconv-extra-2.43-8.fc44.aarch64 glibc-gconv-extra-2.43-8.fc44.aarch64.rpm
+93f61d864a51821898da3608d537dc1d5fbcce8a442e72f728d31783fcce9524 1398734 filesystem-3.18-52.fc44.aarch64 filesystem-3.18-52.fc44.aarch64.rpm
+9d9b65b4d52ca949a0b80bf909c7add1f327baea797febb72314019261960958 192112 fedora-gpg-keys-44-2.noarch fedora-gpg-keys-44-2.noarch.rpm
+a2371ee2ea46ee2787b366e1659bae18d8f495ee7970f09a90e31ea05098b6b9 9300 fedora-repos-44-2.noarch fedora-repos-44-2.noarch.rpm
+a5a600ae27bf46427705da734c3c4c11fe85700c9705c6b817fb86da17b78618 728814 tzdata-2026c-1.fc44.noarch tzdata-2026c-1.fc44.noarch.rpm
+a85259328505a417ddc862747a68ad255bd9b574b9fc0550051549903be67053 12761 fedora-release-44-18.noarch fedora-release-44-18.noarch.rpm
+e5dca3c167683cce1a50dd6d5ff8400a6fe85c291a6aa465c6942cf1713f79c7 85317 glibc-minimal-langpack-2.43-8.fc44.aarch64 glibc-minimal-langpack-2.43-8.fc44.aarch64.rpm
+ea06ce5597746df56a5cc7c3bd184a8e0b05eec048f60456b0b9469fc59a0cdc 24167 fedora-release-common-44-18.noarch fedora-release-common-44-18.noarch.rpm

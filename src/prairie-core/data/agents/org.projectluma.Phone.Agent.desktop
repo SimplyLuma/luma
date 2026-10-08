@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Phone
+Comment=Rings for calls from your phone while Phone is closed
+Exec=prairie-phone --agent --autostart
+Icon=org.projectluma.Phone
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-AutoRestart=false
+# Before luma-background is installed. With it, this start exits at once and the
+# service starts the agent under its limits.
+X-Luma-Background-Agent=org.projectluma.Phone.Agent

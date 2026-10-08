@@ -1,0 +1,108 @@
+From 993cc2df9458ee0b5a8614202fe4583757377a4d Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 16:40:52 -0500
+Subject: [PATCH] [LUMA] Grid presentation: clean backdrop, sticky, and the
+ touchpad swipe
+
+Grid is raised above every shell surface rather than only above the window
+group, so the panel and dock no longer paint over it and the wallpaper clone
+and cards are the only things on screen.
+
+Grid stops behaving as a hold-to-preview switcher. The invoking modifier is
+ignored and releasing it no longer chooses a window, so Alt-Tab opens Grid and
+it stays open until Return, a click, or Escape.
+
+The three-finger touchpad swipe drives the overview state machine directly and
+never passes through toggle(), which is the only place Grid hooked in, so the
+gesture previously landed on Window View. Overview now hands the gesture to
+Grid at _gestureBegin and suppresses its own progress and end handling for
+that gesture.
+---
+ js/ui/lumaGrid.js | 16 +++++++++-------
+ js/ui/overview.js | 18 ++++++++++++++++++
+ 2 files changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index 141f41b..e506b53 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -177,7 +177,9 @@ class GridPopup extends St.Widget {
+         super._init({reactive: true, can_focus: true,
+             accessible_name: _('Grid'), accessible_role: Atk.Role.PANEL});
+         // Native switchers finish on the primary modifier, not Shift.
+-        this._mask = modifierMask ? 2 ** Math.floor(Math.log2(modifierMask)) : 0;
++        // Grid is not a hold-to-preview switcher: it stays open until Return,
++        // a click, or Escape, so the invoking modifier is deliberately ignored.
++        this._mask = 0;
+         this._scroll = 0;
+         this._scrollX = 0;
+         this._cards = [];
+@@ -241,13 +243,14 @@ class GridPopup extends St.Widget {
+ 
+     open() {
+         Main.uiGroup.add_child(this);
+-        Main.uiGroup.set_child_above_sibling(this, global.window_group);
++        // Above every other shell surface, not merely above the windows. Raised
++        // only above global.window_group the panel and dock still paint over the
++        // grid and compete with it; the wallpaper clone and the cards are meant
++        // to be the only things on screen.
++        Main.uiGroup.set_child_above_sibling(this, null);
+         this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+         this.grab_key_focus();
+         this._syncSelection();
+-        // Match native switcher's Alt-release race handling.
+-        if (this._mask && !(global.get_pointer()[2] & this._mask))
+-            this.activate(this._cards[this._selected]);
+     }
+ 
+     reflow() {
+@@ -316,8 +319,7 @@ class GridPopup extends St.Widget {
+     }
+ 
+     vfunc_key_release_event(event) {
+-        if (this._mask && !(global.get_pointer()[2] & this._mask))
+-            this.activate(this._cards[this._selected]);
++        // Releasing the modifier never chooses a window.
+         return Clutter.EVENT_STOP;
+     }
+ 
+diff --git a/js/ui/overview.js b/js/ui/overview.js
+index 2d06ef5..d1aaf55 100644
+--- a/js/ui/overview.js
++++ b/js/ui/overview.js
+@@ -357,10 +357,23 @@ export class Overview extends Signals.EventEmitter {
+     }
+ 
+     _gestureBegin(tracker) {
++        // The touchpad swipe drives the overview state machine directly and
++        // never passes through toggle(), which is the only place Grid hooks in.
++        // Without this the gesture lands on Window View instead of Grid.
++        if (LumaGrid.isDefault() && !this._visible && !this.isDummy) {
++            this._gestureOpensGrid = true;
++            LumaGrid.toggle();
++            return;
++        }
++        this._gestureOpensGrid = false;
+         this._overview.controls.gestureBegin(tracker);
+     }
+ 
+     _gestureUpdate(tracker, progress) {
++        // Grid took this gesture; the overview must not also animate in.
++        if (this._gestureOpensGrid)
++            return;
++
+         if (progress === 0)
+             return;
+ 
+@@ -384,6 +397,11 @@ export class Overview extends Signals.EventEmitter {
+     }
+ 
+     _gestureEnd(tracker, duration, endProgress) {
++        if (this._gestureOpensGrid) {
++            this._gestureOpensGrid = false;
++            return;
++        }
++
+         let onComplete;
+         if (endProgress === 0) {
+             this._shown = false;

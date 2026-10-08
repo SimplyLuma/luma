@@ -1,0 +1,18 @@
+{
+  "piper1-gpl-1.4.2.tar.gz": {
+    "url": "https://codeload.github.com/OHF-Voice/piper1-gpl/tar.gz/d6975e21a440c0d8b6e5fb7c41027409af13d44d",
+    "sha256": "ebf535912b5760e33ff5c01a483bfc9c58b13c18c7c6ccfb4cec0184dc14f747"
+  },
+  "speechd-0.12.1.tar.gz": {
+    "url": "https://codeload.github.com/brailcom/speechd/tar.gz/6781ff1709eca1c3d7f748e5361a6aa157dd5f18",
+    "sha256": "9becccc9917f33f8e9bebff8f041c15a29de3a9963914c49c0b1080e664d3ea2"
+  },
+  "en_US-ljspeech-medium.onnx": {
+    "url": "https://sfo3.digitaloceanspaces.com/bkmdls/lj-med.onnx",
+    "sha256": "6f52a751e2349abe7a76735eb09dc1875298c77ea2342ffd2fef79ff81b87f22"
+  },
+  "en_US-ljspeech-medium.onnx.json": {
+    "url": "https://sfo3.digitaloceanspaces.com/bkmdls/lj-med.onnx.json",
+    "sha256": "01699b1f64aec09d359efd73aed94453d83a3fe6031de1f570bbb1df46d995d2"
+  }
+}

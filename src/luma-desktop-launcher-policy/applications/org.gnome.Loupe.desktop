@@ -1,0 +1,11 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Image Viewer
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=loupe --file-forwarding org.gnome.Loupe @@u %U @@
+Icon=org.gnome.Loupe
+DBusActivatable=true
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Graphics;2DGraphics;RasterGraphics;Viewer;
+MimeType=image/apng;image/bmp;image/gif;image/jp2;image/jpeg;image/png;image/qoi;image/tiff;image/vnd.microsoft.icon;image/webp;image/x-dds;image/x-exr;image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;image/x-portable-pixmap;image/x-qoi;image/x-tga;image/x-win-bitmap;image/x-xbitmap;image/x-xpixmap;image/svg+xml;image/svg+xml-compressed;image/avif;image/heic;image/jxl;
+StartupNotify=true

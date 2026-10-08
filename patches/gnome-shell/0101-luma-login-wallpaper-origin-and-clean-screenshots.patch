@@ -1,0 +1,67 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: login wallpapers and screenshots from search land where they belong
+
+The login screen allocated its per-display wallpapers in the parent's
+coordinates, so with the primary display to the right of another every
+wallpaper moved right by that offset and the other display stayed black.
+The screenshot UI opened from search captured the search dialog while it
+was still fading out; it now waits until no dialog is visible and one
+frame has been painted without it.
+
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -804,11 +804,15 @@
+     vfunc_allocate(dialogBox) {
+         this.set_allocation(dialogBox);
+ 
++        // dialogBox is in the parent's coordinates; children are placed in
++        // the dialog's own. When the primary display did not start at the
++        // left edge, every wallpaper moved right by that much and the display
++        // beside it was left black.
+         const backgroundAllocation = new Clutter.ActorBox();
+-        backgroundAllocation.x1 = dialogBox.x1;
+-        backgroundAllocation.y1 = dialogBox.y1;
+-        backgroundAllocation.x2 = dialogBox.x2;
+-        backgroundAllocation.y2 = dialogBox.y2;
++        backgroundAllocation.x1 = 0;
++        backgroundAllocation.y1 = 0;
++        backgroundAllocation.x2 = dialogBox.x2 - dialogBox.x1;
++        backgroundAllocation.y2 = dialogBox.y2 - dialogBox.y1;
+         this._prairieBackgrounds.allocate(backgroundAllocation);
+ 
+         const themeNode = this.get_theme_node();
+--- a/js/misc/systemActions.js	2026-09-14 11:03:32.726041829 -0500
++++ b/js/misc/systemActions.js	2026-09-14 11:03:32.726157937 -0500
+@@ -521,12 +521,28 @@
+         if (!Main.overview.visible) {
+             if (this._screenshotWaitId)
+                 return;
++            // A dialog lets go of the keyboard as soon as it starts to close
++            // but keeps fading for a moment, and the screenshot UI captures
++            // the screen as it opens: wait until nothing modal is still on
++            // screen, then for one frame painted without it.
++            const settled = () => Main.modalCount === 0 &&
++                !Main.layoutManager.modalDialogGroup.get_children().some(dialog => dialog.visible);
+             let attempts = 0;
+-            this._screenshotWaitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+-                if (Main.modalCount > 0 && ++attempts < 40)
++            this._screenshotWaitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30, () => {
++                if (!settled() && ++attempts < 60)
+                     return GLib.SOURCE_CONTINUE;
+-                delete this._screenshotWaitId;
+-                Screenshot.showScreenshotUI();
++                let frames = 0;
++                const paintedId = global.stage.connect('after-paint', () => {
++                    if (++frames < 2)
++                        return;
++                    global.stage.disconnect(paintedId);
++                    GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
++                        delete this._screenshotWaitId;
++                        Screenshot.showScreenshotUI();
++                        return GLib.SOURCE_REMOVE;
++                    });
++                });
++                global.stage.queue_redraw();
+                 return GLib.SOURCE_REMOVE;
+             });
+             return;

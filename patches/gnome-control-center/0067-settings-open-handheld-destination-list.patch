@@ -1,0 +1,14 @@
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -512,7 +512,10 @@
+               g_object_add_weak_pointer (G_OBJECT (self->luma_window), (gpointer *) &self->luma_window);
+               self->luma_shell = CC_SHELL (g_object_get_data (G_OBJECT (self->luma_window), "cf-shell"));
+               gtk_window_set_default_size (self->luma_window, 1180, 740);
+-              cc_luma_shell_go (CC_LUMA_SHELL (self->luma_shell), "wifi");
++              /* A phone starts on its destinations; explicit panel requests
++               * still navigate through the command-line route below. */
++              if (!luma_ui_mobile_form_factor ())
++                cc_luma_shell_go (CC_LUMA_SHELL (self->luma_shell), "wifi");
+             }
+         }
+       if (self->luma_ui)

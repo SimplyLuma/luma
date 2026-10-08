@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Exact official Fedora 44 container digest shared with Luma's isolated RPM
+# builder. This container supplies development tools only; it is not the twin
+# guest image and cannot become a phone artifact.
+FROM registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
+
+RUN dnf install -y \
+      curl-8.18.0-8.fc44 \
+      edk2-aarch64-20260508-8.fc44 \
+      openssh-clients-10.2p1-13.fc44 \
+      qemu-device-display-virtio-gpu-pci-10.2.2-1.fc44 \
+      qemu-img-10.2.2-1.fc44 \
+      qemu-system-aarch64-core-10.2.2-1.fc44 \
+      xorriso-1.5.8-2.fc44 \
+    && dnf clean all
+
+WORKDIR /workspace

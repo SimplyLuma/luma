@@ -1,0 +1,64 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Create Homebrew's prefix, owned by one account.
+#
+#   luma-homebrew-prefix            the primary account (boot service)
+#   pkexec luma-homebrew-prefix     the account that asked (PKEXEC_UID)
+#
+# Homebrew for Linux only uses its prebuilt packages at this exact path, and
+# /home is part of the system image's layout: creating it needs root.
+set -eu
+
+root=${LUMA_HOMEBREW_ROOT:-/var/home/linuxbrew}
+passwd_file=${LUMA_HOMEBREW_PASSWD:-}
+group_file=${LUMA_HOMEBREW_GROUP:-}
+
+accounts() {
+  if [ -n "$passwd_file" ]; then cat "$passwd_file"; else getent passwd; fi
+}
+
+administrators() {
+  if [ -n "$group_file" ]; then
+    awk -F: '$1 == "wheel" { print $4 }' "$group_file"
+  else
+    getent group wheel | awk -F: '{ print $4 }'
+  fi
+}
+
+# The first administrator, otherwise the first person, by account number.
+primary_account() {
+  admins=",$(administrators),"
+  accounts | awk -F: -v admins="$admins" '
+    $3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ {
+      rank = index(admins, "," $1 ",") ? 0 : 1
+      print rank, $3, $1
+    }' | sort -n -k1,1 -k2,2 | awk 'NR == 1 { print $3 }'
+}
+
+if [ -n "${PKEXEC_UID:-}" ]; then
+  owner=$(accounts | awk -F: -v uid="$PKEXEC_UID" '$3 == uid { print $1; exit }')
+else
+  owner=$(primary_account)
+fi
+
+if [ "${1:-}" = "--print-owner" ]; then
+  printf '%s\n' "$owner"
+  exit 0
+fi
+
+if [ -z "$owner" ]; then
+  # No person has an account yet (first boot before setup); the service runs
+  # again next boot, and brew asks for the folder itself when first used.
+  exit 0
+fi
+
+if [ -e "$root/.linuxbrew" ]; then
+  exit 0
+fi
+
+install -d -m 0755 "$root"
+install -d -m 0755 "$root/.linuxbrew"
+chown "$owner:" "$root" "$root/.linuxbrew"
+if command -v restorecon >/dev/null 2>&1; then
+  restorecon -R "$root" 2>/dev/null || :
+fi

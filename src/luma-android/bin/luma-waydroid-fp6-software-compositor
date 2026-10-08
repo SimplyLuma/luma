@@ -1,0 +1,139 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Start Luma's CPU-only, loopback-only FP6 Android compositor."""
+
+from __future__ import annotations
+
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+from luma_android.kernel import is_fp6
+
+
+WESTON = "/usr/bin/weston"
+CONFIG = "/usr/share/luma/android/fp6-software-weston.ini"
+SOCKET = "luma-android-rdp"
+PORT = "33990"
+
+
+def fail(message: str) -> int:
+    print(f"Luma FP6 software compositor: {message}", file=sys.stderr)
+    return 69
+
+
+def secure_runtime_directory() -> Path | None:
+    raw_runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not raw_runtime:
+        return None
+    runtime = Path(raw_runtime)
+    try:
+        metadata = runtime.lstat()
+    except OSError:
+        return None
+    if runtime.is_symlink() or not stat.S_ISDIR(metadata.st_mode):
+        return None
+    if metadata.st_uid != os.getuid():
+        return None
+    target = runtime / "luma-android"
+    target.mkdir(mode=0o700, exist_ok=True)
+    target_metadata = target.lstat()
+    if target.is_symlink() or not stat.S_ISDIR(target_metadata.st_mode):
+        return None
+    if target_metadata.st_uid != os.getuid():
+        return None
+    os.chmod(target, 0o700)
+    return target
+
+
+def ensure_certificate(runtime: Path) -> tuple[Path, Path] | None:
+    certificate = runtime / "rdp.crt"
+    private_key = runtime / "rdp.key"
+    if certificate.is_file() and private_key.is_file():
+        try:
+            certificate_metadata = certificate.lstat()
+            key_metadata = private_key.lstat()
+        except OSError:
+            return None
+        if (
+            certificate.is_symlink()
+            or private_key.is_symlink()
+            or certificate_metadata.st_uid != os.getuid()
+            or key_metadata.st_uid != os.getuid()
+        ):
+            return None
+        os.chmod(certificate, 0o600)
+        os.chmod(private_key, 0o600)
+        return certificate, private_key
+
+    temporary_certificate = runtime / f".rdp.crt.{os.getpid()}"
+    temporary_key = runtime / f".rdp.key.{os.getpid()}"
+    temporary_certificate.unlink(missing_ok=True)
+    temporary_key.unlink(missing_ok=True)
+    try:
+        completed = subprocess.run(
+            [
+                "/usr/bin/openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-nodes", "-days", "2", "-subj", "/CN=localhost", "-addext",
+                "subjectAltName=IP:127.0.0.1", "-keyout", str(temporary_key),
+                "-out", str(temporary_certificate),
+            ],
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=30,
+        )
+        if completed.returncode != 0:
+            return None
+        os.chmod(temporary_certificate, 0o600)
+        os.chmod(temporary_key, 0o600)
+        os.replace(temporary_certificate, certificate)
+        os.replace(temporary_key, private_key)
+        return certificate, private_key
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        temporary_certificate.unlink(missing_ok=True)
+        temporary_key.unlink(missing_ok=True)
+
+
+def main() -> int:
+    os.umask(0o077)
+    if not is_fp6():
+        return fail("this adapter is only valid on Fairphone 6")
+    if not Path(WESTON).is_file() or not Path(CONFIG).is_file():
+        return fail("the packaged compositor or policy is unavailable")
+    runtime = secure_runtime_directory()
+    if runtime is None:
+        return fail("the per-user runtime directory is not trustworthy")
+    credentials = ensure_certificate(runtime)
+    if credentials is None:
+        return fail("could not create the ephemeral loopback certificate")
+    certificate, private_key = credentials
+    pid_file = runtime / "rdp-weston.pid"
+    temporary_pid = runtime / f".rdp-weston.pid.{os.getpid()}"
+    temporary_pid.write_text(f"{os.getpid()}\n", encoding="ascii")
+    os.chmod(temporary_pid, 0o600)
+    os.replace(temporary_pid, pid_file)
+
+    arguments = [
+        WESTON, "--backend=rdp", "--renderer=pixman", "--shell=kiosk",
+        f"--config={CONFIG}", f"--socket={SOCKET}", "--address=127.0.0.1",
+        f"--port={PORT}", "--width=558", "--height=1088", "--no-resizeable",
+        f"--rdp-tls-cert={certificate}", f"--rdp-tls-key={private_key}",
+        f"--log={runtime / 'fp6-software-weston.log'}",
+    ]
+    environment = os.environ.copy()
+    environment["XDG_RUNTIME_DIR"] = str(runtime)
+    environment.pop("DISPLAY", None)
+    environment.pop("WAYLAND_DISPLAY", None)
+    os.execve(WESTON, arguments, environment)
+    return 70
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

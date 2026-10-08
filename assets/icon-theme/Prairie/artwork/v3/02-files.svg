@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs>
+<linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#66d0bf"/><stop offset=".52" stop-color="#38a69e"/><stop offset="1" stop-color="#187787"/></linearGradient><radialGradient id="bloom" cx=".18" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="back" x1=".2" y1="0" x2=".8" y2="1"><stop stop-color="#dda548"/><stop offset="1" stop-color="#ad701f"/></linearGradient><linearGradient id="front" x1=".2" y1="0" x2=".8" y2="1"><stop stop-color="#ffe4ad"/><stop offset="1" stop-color="#e7b357"/></linearGradient>
+<filter id="ts" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#171713" flood-opacity=".22"/></filter></defs>
+<rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+<g filter="url(#ts)"><path d="M194 768H830q38 0 38-38V374q0-38-38-38H532l-76-92H194q-38 0-38 38v448q0 38 38 38Z" fill="url(#back)"/><path d="M194 398H830q38 0 38 38v294q0 38-38 38H194q-38 0-38-38V436q0-38 38-38Z" fill="url(#front)"/><path d="M204 410H820" stroke="#fff4d9" stroke-opacity=".72" stroke-width="10" stroke-linecap="round"/></g></svg>

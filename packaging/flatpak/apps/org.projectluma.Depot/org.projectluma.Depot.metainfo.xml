@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Depot</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Depot</name>
+  <summary>Find applications and manage Luma updates</summary>
+  <description>
+    <p>Discover applications, review their permissions and manage installed apps in one place.</p>
+    <p>Apps and the operating system update independently. Choose Beta or opt into Nightly, keep using running apps while an update installs, and review retained versions when you need to go back.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Depot.desktop</launchable>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <url type="homepage">https://simplyluma.com/apps/depot</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.2" date="2026-10-08" />
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Manage installed apps and independent updates</caption>
+      <image type="source" width="1014" height="790">https://dl.simplyluma.com/media/org.projectluma.Depot/cc3af148aaa7857e61833f095effb5441297f05eab2f5733f3c912f5b561af56.png</image>
+    </screenshot>
+  </screenshots>
+</component>

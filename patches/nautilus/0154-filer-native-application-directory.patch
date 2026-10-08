@@ -1,0 +1,214 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] Filer: authenticated native application discovery and launch
+
+--- a/src/nautilus-applications-directory.c
++++ b/src/nautilus-applications-directory.c
+@@ -28,6 +28,8 @@
+     gboolean loaded;
+     gboolean reload_pending;
+     guint reload_source;
++    GDBusConnection *host_bus;
++    guint host_subscription;
+ };
+ 
+ typedef struct
+@@ -277,6 +279,53 @@
+     return g_steal_pointer (&info);
+ }
+ 
++/* Host desktop IDs never carry an executable, argv, or desktop file path
++ * into the sandbox. The authenticated native directory owns actual launch. */
++static GPtrArray *
++infos_from_host (GCancellable *cancellable, GError **error)
++{
++    g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, cancellable, error);
++    if (bus == NULL) return NULL;
++    g_autoptr (GVariant) result = g_dbus_connection_call_sync (bus,
++        "org.projectluma.ApplicationDirectory1", "/org/projectluma/ApplicationDirectory1",
++        "org.projectluma.ApplicationDirectory1", "List", g_variant_new ("(s)", ""),
++        G_VARIANT_TYPE ("(a(sssbbb))"), G_DBUS_CALL_FLAGS_NONE, 15000, cancellable, error);
++    if (result == NULL) return NULL;
++    g_autoptr (GVariant) rows = g_variant_get_child_value (result, 0);
++    if (g_variant_n_children (rows) > 4096)
++    {
++        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Installed application catalogue is too large");
++        return NULL;
++    }
++    GPtrArray *infos = g_ptr_array_new_with_free_func (g_object_unref);
++    GVariantIter iter;
++    const char *identity, *name, *icon_name;
++    gboolean is_default, files, uris;
++    g_variant_iter_init (&iter, rows);
++    while (g_variant_iter_loop (&iter, "(&s&s&sbbb)", &identity, &name, &icon_name, &is_default, &files, &uris))
++    {
++        if (!g_str_has_suffix (identity, ".desktop") || strchr (identity, '/') != NULL || strlen (identity) > 255)
++            continue;
++        g_autoptr (GFileInfo) info = g_file_info_new ();
++        g_autoptr (GIcon) icon = g_themed_icon_new (*icon_name ? icon_name : "application-x-executable");
++        g_file_info_set_name (info, identity);
++        g_file_info_set_display_name (info, name);
++        g_file_info_set_edit_name (info, name);
++        g_file_info_set_file_type (info, G_FILE_TYPE_REGULAR);
++        g_file_info_set_content_type (info, "application/x-desktop");
++        g_file_info_set_icon (info, icon);
++        g_file_info_set_size (info, 0);
++        g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_STANDARD_IS_VIRTUAL, TRUE);
++        g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_READ, TRUE);
++        g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_WRITE, FALSE);
++        g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_DELETE, FALSE);
++        g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_TRASH, FALSE);
++        g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_RENAME, FALSE);
++        g_ptr_array_add (infos, g_steal_pointer (&info));
++    }
++    return infos;
++}
++
+ /* GAppInfo and desktop-file stat work runs outside the GTK main context.
+  * Only creation and publication of NautilusFile models happens on GTK's
+  * thread. Monitor bursts coalesce; one scan may run at a time. */
+@@ -287,6 +336,16 @@
+     (void) source_object;
+     (void) task_data;
+     (void) cancellable;
++    if (g_file_test ("/.flatpak-info", G_FILE_TEST_IS_REGULAR))
++    {
++        g_autoptr (GError) error = NULL;
++        GPtrArray *infos = infos_from_host (cancellable, &error);
++        if (infos != NULL)
++            g_task_return_pointer (task, infos, (GDestroyNotify) g_ptr_array_unref);
++        else
++            g_task_return_error (task, g_steal_pointer (&error));
++        return;
++    }
+     g_autolist (GAppInfo) applications = g_app_info_get_all ();
+     g_autoptr (GHashTable) seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+     GPtrArray *infos = g_ptr_array_new_with_free_func (g_object_unref);
+@@ -311,7 +370,13 @@
+ {
+     NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (source_object);
+     NautilusDirectory *directory = NAUTILUS_DIRECTORY (self);
+-    g_autoptr (GPtrArray) infos = g_task_propagate_pointer (G_TASK (result), NULL);
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GPtrArray) infos = g_task_propagate_pointer (G_TASK (result), &error);
++    if (infos == NULL)
++    {
++        nautilus_directory_emit_load_error (directory, error);
++        infos = g_ptr_array_new_with_free_func (g_object_unref);
++    }
+     g_autolist (NautilusFile) removed = g_steal_pointer (&self->files);
+     (void) user_data;
+     for (GList *l = removed; l != NULL; l = l->next)
+@@ -386,6 +451,28 @@
+ }
+ 
+ static void
++on_host_applications_changed (GDBusConnection *connection, const char *sender,
++    const char *path, const char *interface, const char *signal, GVariant *parameters, gpointer data)
++{
++    (void) connection; (void) sender; (void) path; (void) interface; (void) signal; (void) parameters;
++    on_applications_changed (NULL, data);
++}
++
++static void
++host_bus_ready (GObject *source, GAsyncResult *result, gpointer data)
++{
++    NautilusApplicationsDirectory *self = data;
++    (void) source;
++    self->host_bus = g_bus_get_finish (result, NULL);
++    if (self->host_bus != NULL)
++        self->host_subscription = g_dbus_connection_signal_subscribe (self->host_bus,
++            "org.projectluma.ApplicationDirectory1", "org.projectluma.ApplicationDirectory1", "Changed",
++            "/org/projectluma/ApplicationDirectory1", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
++            on_host_applications_changed, self, NULL);
++    g_object_unref (self);
++}
++
++static void
+ nautilus_applications_directory_finalize (GObject *object)
+ {
+     NautilusApplicationsDirectory *self = NAUTILUS_APPLICATIONS_DIRECTORY (object);
+@@ -394,6 +481,9 @@
+                                           on_applications_changed,
+                                           self);
+     g_clear_object (&self->app_monitor);
++    if (self->host_subscription != 0)
++        g_dbus_connection_signal_unsubscribe (self->host_bus, self->host_subscription);
++    g_clear_object (&self->host_bus);
+ 
+     for (GList *l = self->files; l != NULL; l = l->next)
+     {
+@@ -437,6 +527,8 @@
+ static void
+ nautilus_applications_directory_init (NautilusApplicationsDirectory *self)
+ {
++    if (g_file_test ("/.flatpak-info", G_FILE_TEST_IS_REGULAR))
++        g_bus_get (G_BUS_TYPE_SESSION, NULL, host_bus_ready, g_object_ref (self));
+     self->app_monitor = g_app_info_monitor_get ();
+     g_signal_connect (self->app_monitor,
+                       "changed",
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -1272,6 +1272,49 @@
+ }
+ 
+ static void
++host_application_launched (GObject *source, GAsyncResult *result, gpointer data)
++{
++    GtkWindow *window = data;
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GVariant) response = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++    gboolean accepted = FALSE;
++    if (response != NULL) g_variant_get (response, "(b)", &accepted);
++    if (!accepted)
++        {
++        AdwDialog *dialog = adw_alert_dialog_new (_("Could not open application"),
++            error != NULL ? error->message : _("The application did not accept the request"));
++        adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _("Close"));
++        adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "close");
++        adw_dialog_present (dialog, GTK_WIDGET (window));
++        }
++    g_object_unref (window);
++}
++
++static void
++host_launch_bus_ready (GObject *source, GAsyncResult *result, gpointer data)
++{
++    GTask *task = data;
++    g_autoptr (GError) error = NULL;
++    g_autoptr (GDBusConnection) bus = g_bus_get_finish (result, &error);
++    GtkWindow *window = g_task_get_source_object (task);
++    (void) source;
++    if (bus == NULL)
++        {
++        AdwDialog *dialog = adw_alert_dialog_new (_("Could not open application"), error->message);
++        adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _("Close"));
++        adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "close");
++        adw_dialog_present (dialog, GTK_WIDGET (window));
++        }
++    else
++        g_dbus_connection_call (bus, "org.projectluma.ApplicationDirectory1",
++            "/org/projectluma/ApplicationDirectory1", "org.projectluma.ApplicationDirectory1", "Launch",
++            g_variant_new ("(s@as)", (const char *) g_task_get_task_data (task), g_variant_new_strv (NULL, 0)),
++            G_VARIANT_TYPE ("(b)"), G_DBUS_CALL_FLAGS_NONE, 15000, NULL,
++            host_application_launched, g_object_ref (window));
++    g_object_unref (task);
++}
++
++static void
+ nautilus_files_view_activate_files (NautilusFilesView *view,
+                                     GList             *files,
+                                     NautilusOpenFlags  flags,
+@@ -1283,6 +1326,13 @@
+         {
+             NautilusFile *file = files->data;
+             const char *app_id = nautilus_file_get_name (file);
++            if (g_file_test ("/.flatpak-info", G_FILE_TEST_IS_REGULAR))
++            {
++                GTask *task = g_task_new (nautilus_files_view_get_containing_window (view), NULL, NULL, NULL);
++                g_task_set_task_data (task, g_strdup (app_id), g_free);
++                g_bus_get (G_BUS_TYPE_SESSION, NULL, host_launch_bus_ready, task);
++                return;
++            }
+             g_autoptr (GDesktopAppInfo) app_info = g_desktop_app_info_new (app_id);
+ 
+             if (app_info != NULL)

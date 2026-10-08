@@ -1,0 +1,276 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 19:30:00 -0500
+Subject: [PATCH] window-mixin, header-bar: one title row per window
+
+When a window's header bars live inside the pages of the leaflet that is its
+work surface, HdyWindowMixin's titlebar slot carries a toolkit-owned title
+row (identity and window controls) above the islands. The page header bars
+take pane roles: the first page's header becomes a pane toolbar carrying its
+actions on the command row with no title row of its own; the other pages'
+headers stay flat pane headers with their title and actions. Neither owns the
+identity or shows window controls. The roles lift while the leaflet is folded.
+---
+
+diff --git a/src/hdy-header-bar.c b/src/hdy-header-bar.c
+index 80dea28..1033c4b 100644
+--- a/src/hdy-header-bar.c
++++ b/src/hdy-header-bar.c
+@@ -23,6 +23,7 @@
+ #include <glib/gi18n-lib.h>
+ 
+ #include "hdy-header-bar.h"
++#include "hdy-leaflet.h"
+ 
+ #include "hdy-animation-private.h"
+ #include "hdy-cairo-private.h"
+@@ -111,6 +112,9 @@ typedef struct {
+   GtkWidget *luma_command_end;
+   GList *luma_command_children;
+   GtkWidget *luma_hosted_title;
++  gboolean luma_pane_header;
++  gboolean luma_pane_toolbar;
++  GtkWidget *luma_pane_leaflet;
+ 
+   guint tick_id;
+   GtkProgressTracker tracker;
+@@ -168,6 +172,7 @@ static void luma_command_row_measure (HdyHeaderBar *self, GtkOrientation orienta
+ static gint luma_command_row_height (HdyHeaderBar *self, gint width);
+ static void luma_host_title (HdyHeaderBar *self);
+ static void luma_update_title_repeat (HdyHeaderBar *self);
++static void luma_update_pane_role (HdyHeaderBar *self);
+ static void luma_unhost_title (HdyHeaderBar *self);
+ #define LUMA_TITLE_ROW_CUSTOM(priv) ((priv)->luma_hosted_title ? NULL : (priv)->custom_title)
+ static void remove_automatic_luma_identity (HdyHeaderBar *self);
+@@ -426,7 +431,7 @@ hdy_header_bar_update_window_buttons (HdyHeaderBar *self)
+ 
+   priv->titlebar_icon = NULL;
+ 
+-  if (!priv->shows_wm_decorations)
++  if (!priv->shows_wm_decorations || priv->luma_pane_header)
+     return;
+ 
+   direction = gtk_widget_get_direction (widget);
+@@ -653,6 +658,10 @@ update_is_mobile_window (HdyHeaderBar *self)
+   GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
+   gboolean was_mobile_window = priv->is_mobile_window;
+ 
++  if (GTK_IS_WINDOW (toplevel) &&
++      g_object_get_data (G_OBJECT (toplevel), "luma-window-mixin-constructing"))
++    return;
++
+   if (!gtk_widget_is_toplevel (toplevel))
+     return;
+ 
+@@ -663,6 +668,12 @@ update_is_mobile_window (HdyHeaderBar *self)
+   if (!gtk_widget_is_toplevel (toplevel))
+     return;
+ 
++  /* Luma: the window's own title row is parented while the window is still
++   * being constructed; its size cannot be computed yet.  size-allocate
++   * recomputes this once the window is realized. */
++  if (!gtk_widget_get_realized (toplevel))
++    return;
++
+   priv->is_mobile_window = compute_is_mobile_window (GTK_WINDOW (toplevel));
+ 
+   if (priv->is_mobile_window != was_mobile_window)
+@@ -1014,6 +1025,14 @@ hdy_header_bar_measure (GtkWidget      *widget,
+   else
+     hdy_header_bar_compute_size_for_opposing_orientation (widget, MAX (for_size, css_width), minimum, natural);
+ 
++  {
++    HdyHeaderBarPrivate *luma_priv = hdy_header_bar_get_instance_private (HDY_HEADER_BAR (widget));
++
++    /* A pane toolbar has no title row of its own. */
++    if (orientation == GTK_ORIENTATION_VERTICAL && luma_priv->luma_pane_toolbar)
++      *minimum = *natural = 0;
++  }
++
+   luma_command_row_measure (HDY_HEADER_BAR (widget), orientation, for_size, minimum, natural);
+ 
+   hdy_css_measure (widget, orientation, minimum, natural);
+@@ -2063,6 +2082,8 @@ hdy_header_bar_realize (GtkWidget *widget)
+                            attributes_mask);
+   gtk_widget_set_window (widget, window);
+   gtk_widget_register_window (widget, window);
++
++  luma_update_pane_role (HDY_HEADER_BAR (widget));
+ }
+ 
+ static void
+@@ -2264,6 +2285,7 @@ add_automatic_luma_identity (HdyHeaderBar *self)
+   GtkApplication *application;
+ 
+   if (priv->luma_identity ||
++      priv->luma_pane_header ||
+       !GTK_IS_WINDOW (toplevel) ||
+       gtk_window_get_transient_for (GTK_WINDOW (toplevel)) != NULL ||
+       gtk_style_context_has_class (context, "luma-no-automatic-identity") ||
+@@ -2320,6 +2342,103 @@ remove_automatic_luma_identity (HdyHeaderBar *self)
+   luma_update_title_repeat (self);
+ }
+ 
++/* Luma: one title row per window.
++ *
++ * When a window's header bars live inside the pages of the leaflet that is its
++ * work surface, the window provides the 42px title row itself (HdyWindowMixin
++ * owns it: identity and window controls).  The page header bars take pane
++ * roles: the first page's header becomes a pane toolbar carrying its actions
++ * on the command row with no title row of its own; the other pages' headers
++ * stay flat pane headers with their title and actions.  Neither owns the
++ * identity or shows window controls.  The roles lift while the leaflet is
++ * folded, when the pages are a navigation stack again. */
++static GtkWidget *
++luma_pane_leaflet_for (GtkWidget *widget, gboolean *first_page)
++{
++  GtkWidget *child = widget;
++  GtkWidget *parent = gtk_widget_get_parent (widget);
++
++  while (parent && !GTK_IS_WINDOW (parent)) {
++    if (gtk_style_context_has_class (gtk_widget_get_style_context (parent), "luma-split-leaflet")) {
++      GList *pages = gtk_container_get_children (GTK_CONTAINER (parent));
++
++      *first_page = pages && pages->data == child;
++      g_list_free (pages);
++      return parent;
++    }
++    child = parent;
++    parent = gtk_widget_get_parent (parent);
++  }
++
++  return NULL;
++}
++
++static void
++luma_update_pane_role (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GtkStyleContext *context = gtk_widget_get_style_context (GTK_WIDGET (self));
++  GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
++  GtkWidget *row = NULL, *leaflet;
++  gboolean first_page = FALSE, pane = FALSE, toolbar = FALSE;
++
++  if (GTK_IS_WINDOW (toplevel))
++    row = g_object_get_data (G_OBJECT (toplevel), "luma-window-title-row");
++
++  leaflet = luma_pane_leaflet_for (GTK_WIDGET (self), &first_page);
++
++  if (leaflet && priv->luma_pane_leaflet != leaflet) {
++    if (priv->luma_pane_leaflet)
++      g_signal_handlers_disconnect_by_func (priv->luma_pane_leaflet, luma_update_pane_role, self);
++    priv->luma_pane_leaflet = leaflet;
++    g_signal_connect_swapped (leaflet, "notify::folded",
++                              G_CALLBACK (luma_update_pane_role), self);
++  }
++
++  if (row && row != GTK_WIDGET (self) && leaflet && HDY_IS_LEAFLET (leaflet) &&
++      !hdy_leaflet_get_folded (HDY_LEAFLET (leaflet)) &&
++      gtk_window_get_transient_for (GTK_WINDOW (toplevel)) == NULL) {
++    pane = TRUE;
++    toolbar = first_page;
++  }
++
++  if (pane == priv->luma_pane_header && toolbar == priv->luma_pane_toolbar)
++    return;
++
++  priv->luma_pane_header = pane;
++  priv->luma_pane_toolbar = toolbar;
++
++  if (pane) {
++    remove_automatic_luma_identity (self);
++    gtk_style_context_add_class (context, "luma-pane-header");
++    gtk_widget_show (row);
++    if (!g_object_get_data (G_OBJECT (toplevel), luma_identity_owner_key) && HDY_IS_HEADER_BAR (row))
++      add_automatic_luma_identity (HDY_HEADER_BAR (row));
++  } else {
++    gtk_style_context_remove_class (context, "luma-pane-header");
++  }
++
++  if (toolbar) {
++    gtk_style_context_add_class (context, "luma-pane-toolbar");
++    if (priv->label_box)
++      gtk_widget_set_visible (priv->label_box, FALSE);
++    luma_enter_command_row (self);
++  } else {
++    gtk_style_context_remove_class (context, "luma-pane-toolbar");
++    if (priv->label_box)
++      gtk_widget_set_visible (priv->label_box, TRUE);
++    if (!priv->luma_identity)
++      luma_leave_command_row (self);
++    luma_update_title_repeat (self);
++  }
++
++  if (!pane)
++    add_automatic_luma_identity (self);
++
++  hdy_header_bar_update_window_buttons (self);
++  gtk_widget_queue_resize (GTK_WIDGET (self));
++}
++
+ /* Luma command row (see gtkheaderbar.c in the Luma GTK 3 downstream).
+  *
+  * A header bar that owns the automatic Luma application identity presents the
+@@ -2542,7 +2661,7 @@ luma_enter_command_row (HdyHeaderBar *self)
+   GList *l, *next;
+ 
+   if (priv->luma_command_bar ||
+-      !priv->luma_identity ||
++      (!priv->luma_identity && !priv->luma_pane_toolbar) ||
+       !GTK_IS_WINDOW (toplevel) ||
+       gtk_window_get_transient_for (GTK_WINDOW (toplevel)) != NULL ||
+       gtk_style_context_has_class (context, "luma-no-command-row"))
+@@ -2653,6 +2772,19 @@ hdy_header_bar_hierarchy_changed (GtkWidget *widget,
+   HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
+ 
+   remove_automatic_luma_identity (self);
++  if (priv->luma_pane_leaflet) {
++    g_signal_handlers_disconnect_by_func (priv->luma_pane_leaflet, luma_update_pane_role, self);
++    priv->luma_pane_leaflet = NULL;
++  }
++  if (priv->luma_pane_header) {
++    priv->luma_pane_header = FALSE;
++    priv->luma_pane_toolbar = FALSE;
++    gtk_style_context_remove_class (gtk_widget_get_style_context (widget), "luma-pane-header");
++    gtk_style_context_remove_class (gtk_widget_get_style_context (widget), "luma-pane-toolbar");
++    if (priv->label_box)
++      gtk_widget_set_visible (priv->label_box, TRUE);
++    luma_leave_command_row (self);
++  }
+ 
+   toplevel = gtk_widget_get_toplevel (widget);
+ 
+diff --git a/src/hdy-window-mixin.c b/src/hdy-window-mixin.c
+index 4bade07..66f36aa 100644
+--- a/src/hdy-window-mixin.c
++++ b/src/hdy-window-mixin.c
+@@ -8,6 +8,7 @@
+ 
+ #include "hdy-cairo-private.h"
+ #include "hdy-deck.h"
++#include "hdy-header-bar.h"
+ #include "hdy-nothing-private.h"
+ #include "hdy-window-mixin-private.h"
+ 
+@@ -566,8 +567,19 @@ hdy_window_mixin_new (GtkWindow      *window,
+   GTK_CONTAINER_CLASS (self->klass)->add (GTK_CONTAINER (self->window),
+                                           self->content);
+ 
+-  self->titlebar = hdy_nothing_new ();
++  g_object_set_data (G_OBJECT (self->window), "luma-window-mixin-constructing",
++                     GINT_TO_POINTER (TRUE));
++  /* Luma: the window owns one title row.  It stays hidden unless the window's
++   * header bars live inside the pages of a leaflet that is the work surface,
++   * in which case it carries the identity and the window controls above the
++   * islands (see hdy-header-bar.c, pane roles). */
++  self->titlebar = hdy_header_bar_new ();
++  hdy_header_bar_set_show_close_button (HDY_HEADER_BAR (self->titlebar), TRUE);
++  hdy_header_bar_set_has_subtitle (HDY_HEADER_BAR (self->titlebar), FALSE);
++  gtk_style_context_add_class (gtk_widget_get_style_context (self->titlebar),
++                               "luma-window-title-row");
+   gtk_widget_set_no_show_all (self->titlebar, TRUE);
++  g_object_set_data (G_OBJECT (self->window), "luma-window-title-row", self->titlebar);
+   gtk_window_set_titlebar (self->window, self->titlebar);
++  g_object_set_data (G_OBJECT (self->window), "luma-window-mixin-constructing", NULL);
+ 
+   context = gtk_widget_get_style_context (GTK_WIDGET (self->window));

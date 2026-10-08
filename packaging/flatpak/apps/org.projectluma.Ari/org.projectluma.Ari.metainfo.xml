@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<component type="desktop-application">
+  <id>org.projectluma.Ari</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Ari</name>
+  <summary>Ask Luma's assistant, or tell her what to change</summary>
+  <description>
+    <p>Ari answers questions and changes personal settings like the dock, the theme and the wallpaper. Every change shows as a step you can undo.</p>
+    <p>Ari runs an open model on this computer. Conversations and the activity log stay here, and what she reads on the web can inform an answer but never make a change.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Ari.desktop</launchable>
+  <developer id="org.projectluma"><name>Project Luma</name></developer>
+  <url type="homepage">https://projectluma.org/apps/ari</url>
+  <screenshots><screenshot type="default"><caption>Start a conversation with Ari</caption><image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Ari/eb4536550cc8d32ed547aa760a8a122ad3e14b472a75ba31455286025ec24592.png</image></screenshot></screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-13"/>
+  </releases>
+</component>

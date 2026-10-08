@@ -1,0 +1,20 @@
+Package "gettext-0.26-5.fc44.x86_64" is already installed.
+
+Package                           Arch   Version                  Repository      Size
+Changing reason:
+ gettext                          x86_64 0:0.26-5.fc44            @System     12.9 MiB
+   External User -> User                                                              
+Installing group/module packages:
+ diffstat                         x86_64 0:1.69-1.fc44            updates     76.6 KiB
+ git                              x86_64 0:2.55.0-1.fc44          updates     57.7 KiB
+Installing dependencies:
+ make                             x86_64 1:4.4.1-12.fc44          fedora       1.8 MiB
+Installing weak dependencies:
+ kernel-devel                     x86_64 0:7.2.5-200.fc44         updates    238.5 MiB
+Installing groups:
+ Development Tools                                                                    
+
+Transaction Summary:
+ Installing:        4 packages
+ Changing reason:    1 package
+Operation aborted by the user.

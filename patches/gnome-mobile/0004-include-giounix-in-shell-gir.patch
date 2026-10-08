@@ -1,0 +1,24 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Include GioUnix in the Shell introspection namespace
+
+Fedora 44 exposes GDesktopAppInfo from GioUnix-2.0 rather than Gio-2.0.
+Without that include, g-ir-scanner marks Shell.App:app-info and
+Shell.App.get_app_info() non-introspectable, and GNOME Mobile aborts while
+constructing its dash.
+---
+ src/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/meson.build b/src/meson.build
+index a3f5c24..f49e93c 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -264,5 +264,6 @@ libshell_gir_includes = [
+   'Clutter-@0@'.format(mutter_api_version),
+   'Meta-@0@'.format(mutter_api_version),
++  'GioUnix-2.0',
+   'Gcr-4',
+   'PolkitAgent-1.0',
+   'GdkPixbuf-2.0'
+-- 
+2.51.0

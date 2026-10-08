@@ -1,0 +1,52 @@
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -650,7 +650,7 @@
+ 
+ // Persistent native search belongs inside a navigation island, not in a
+ // separately elevated generic command group.
+-searchentry.luma-sidebar-search {
++.luma-sidebar-search {
+   min-height: 28px;
+   margin: 6px;
+ }
+@@ -666,3 +666,29 @@
+                 0 18px 42px -14px RGB(9 11 14 / 48%);
+   }
+ }
++
++// Shared row owns the inset. GtkPlacesSidebar's native revealer must not
++// add its legacy 14px inset inside the shared 8px row.
++list.navigation-sidebar.luma-navigation-sidebar > row > revealer {
++  padding: 0;
++}
++
++// A quiet island owns one material and outer edge. Native preference rows
++// keep their own separators, hover, selection and focus states.
++.luma-island.luma-island-quiet list.boxed-list {
++  background-color: transparent;
++  border: none;
++  box-shadow: none;
++}
++
++// Keep native suggested/default action semantics while using the shared
++// inverse-ink primary treatment rather than a saturated accent fill.
++.luma-controls-quiet button.suggested-action {
++  background-color: unquote("@luma_ink");
++  color: unquote("@luma_content");
++  &:checked { background-color: unquote("@luma_ink"); }
++  &:hover { background-color: unquote("alpha(@luma_ink, 0.90)"); }
++  &:active, &.keyboard-activating {
++    background-color: unquote("alpha(@luma_ink, 0.80)");
++  }
++}
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -653,6 +653,8 @@
+                                   -1);
+   gtk_menu_button_set_child (GTK_MENU_BUTTON (button), box);
+   gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (button), menu_model);
++  if (gtk_application_get_menubar (application))
++    gtk_menu_button_set_primary (GTK_MENU_BUTTON (button), TRUE);
+ 
+   return button;
+ }

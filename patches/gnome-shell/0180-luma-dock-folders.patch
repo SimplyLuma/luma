@@ -1,0 +1,2767 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 19 Sep 2026 22:10:00 -0400
+Subject: [PATCH] luma: dock folders, a Stack and a Grid
+
+A folder can be pinned to the Dock. Its tile sits after the applications,
+behind the same divider token the Dash already draws between the parts of a
+bar, so the row reads as three things instead of one long strip: what you
+run, what you keep, what is happening.
+
+The tile is the folder's own icon, the one Filer draws: a special folder
+keeps its own, and so does a folder the person gave an icon to. It comes
+from the attributes Filer reads, so the two cannot disagree. A count appears
+only when something arrived that has not been looked at, and it clears when
+the folder is opened; it is the Dash's own badge, fill, ring and geometry.
+
+Clicking a tile opens one surface with two arrangements, both Filer's: a
+Stack, which is Filer's list, and a Grid, which is Filer's icon view. Their
+metrics are not chosen here, they are copied: the row height, the cell
+radius, the padding, the spacing, the icon size, the type and the number of
+name lines all come from Filer's own style.css and nautilus-grid-cell.blp,
+quoted beside each constant so the two cannot drift apart. The items carry
+Filer's thumbnails too, read from the same cache Filer fills -- never
+generated here, because a decoder on the compositor's main loop is not worth
+a popover -- resolved only for what is on screen plus a margin, and replaced
+in place so nothing jumps when a picture arrives.
+
+Nothing wears a focus ring at rest. Focus opens on the surface, and the
+first arrow key moves it onto an item: a ring on an item that nobody chose
+reads as a selection, and nothing is selected until the person selects it.
+
+A click anywhere outside an attached surface closes it, and the click still
+reaches what it was aimed at. A press captured at the stage often arrives
+with no source -- the wallpaper and the Dash both do -- so the actor under
+the pointer is asked for, and a press that cannot be placed is a press
+somewhere else. Treating an unplaceable press as "not outside" had stopped
+click-away working at all. The arrangement is a segmented control in the header
+and is remembered for that folder. The surface hangs from its own tile on
+whichever edge the Dash is on, and can break out of the dock -- from the pin
+or by dragging the header past 26px -- to park anywhere until it is closed.
+
+The divider in front of the rail is the Dash's own token, DIVIDER_WIDTH and
+SHELF_DIVIDER_LENGTH from shelfMetrics.js, so it is the same hairline as the
+one between the parts of any other bar and follows it when it changes.
+
+Married or separated is the arrangement model's own vocabulary (ADR-044):
+married the rail is a part of the dock island; separated it is the 'folders'
+island, placed and moved like any other, and the divider goes because the gap
+is then doing the separating. It is one rail either way -- the actor moves,
+nothing is copied.
+
+Every count, size and time is read from the file system or is not shown. The
+badge counts files created since the folder was last opened; where the file
+system cannot report a creation time there is no honest number, so there is
+no badge. Thumbnails and icons are the ones Filer uses, from the same cache.
+
+A folder dragged from Filer onto the dock is pinned there. Luma's file-drag
+bridge carries it: a drag is all regular files or all folders and never a
+mixture, because a drop would otherwise have to guess. The dock takes a
+folder anywhere along it, not only on the rail, and while a folder is on its
+way the rail appears with a slot to drop it into even when nothing is pinned
+yet. What the source says is a folder is never trusted: every URI is
+confirmed to be a directory off the main thread before anything is pinned,
+as the regular-file path already confirms its own. A file dropped there is
+refused with a reason rather than swallowed.
+
+New settings, all in org.project_luma.shell-state: dock-folders,
+dock-folders-visible, dock-folders-separate, dock-folders-views,
+dock-folders-seen and dock-folders-detached. Hidden, the folders keep their
+places, their arrangements and their counts; only the rail goes.
+
+The rail arriving or leaving changes the dock island's length, so the
+geometry pass runs again once the new length is measured. Without it the
+tiles keep their old places in the input region: they are drawn where they
+belong and cannot be clicked.
+
+Generated against the Shell .120 tree with 0167-0172 applied, for release
+.130.
+
+Regenerated on top of patch 0172's .121 changes (the two places that
+answer whether an island is present or shown moved).
+
+---
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 47a9bae..ab01030 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2404,3 +2404,252 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-shelf-vertical .luma-shelf-clock-island .luma-status-clock-text { spacing: 2px; }
+ .luma-live-extension-short { font-family: Figtree, sans-serif; font-size: 11px; font-weight: 700; font-feature-settings: "tnum"; }
+ .luma-shelf-vertical .luma-live-extension-content { spacing: 6px; }
++
++/* ── Dock folders: a Stack and a Grid (lumaDockFolders.js) ─────────────────
++ *
++ * A folder pinned to the dock, behind the same divider token the Dash draws
++ * between the parts of a bar. The tile is the dock's own 36px slot and 32px
++ * mark, with a lip across the foot; the tint, the gradient, the lip and the
++ * chips are set from the folder itself, so only the shape and the type are
++ * here. The surface borrows Filer's rhythm and the shelf's four treatments.
++ */
++.luma-dockf-rail { spacing: 6px; }
++.luma-dockf-divider { margin: 0 7px; }
++.luma-shelf-vertical .luma-dockf-divider { margin: 7px 0; }
++.luma-shelf-folders-box { padding: 0; }
++
++.luma-dockf-tile { padding: 0; border: none; background: none; }
++.luma-dockf-tile:focus {
++  outline: 2px solid rgba(92, 133, 183, 0.72);
++  outline-offset: 2px; }
++/* The mark is the folder's own icon; it carries its own shape. */
++/* The open indicator is the dock's own bar, on the island's inside edge. */
++.luma-dockf-bar { margin: 0; }
++/* The unread count: the dock's badge, so one count never reads as two
++ * systems. Fill, ring and geometry come from lumaDockBadgeModel.js. */
++.luma-dockf-badge { padding: 0; }
++
++/* The surface. One island, Filer's rhythm, the shelf's radius. */
++.luma-dockf-surface {
++  padding: 0;
++  spacing: 0;
++  border-radius: 15px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  background-color: #2a2e34;
++  color: #e7e9e8;
++  box-shadow: 0 4px 12px rgba(14, 18, 24, 0.2); }
++.luma-dockf-shadow {
++  border-radius: 15px;
++  background-color: rgba(37, 42, 48, 0.01);
++  box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
++/* Detached it is a thing sitting on the desktop rather than a thing hanging
++ * off the dock, so the shadow deepens to the desktop's window shadow. */
++.luma-dockf-detached .luma-dockf-shadow {
++  box-shadow: 0 18px 42px -14px rgba(25, 27, 31, 0.42),
++              0 54px 110px -28px rgba(25, 27, 31, 0.56); }
++.luma-dockf-surface.luma-surface-light {
++  border-color: rgba(255, 255, 255, 0.82); background-color: #fbfbfa; color: #283038; }
++.luma-dockf-surface.luma-surface-frost {
++  border-color: rgba(255, 255, 255, 0.82);
++  background-color: rgba(251, 251, 250, 0.88);
++  color: #1f262d; }
++.luma-dockf-surface.luma-surface-glass {
++  border-color: rgba(255, 255, 255, 0.82);
++  background-color: rgba(250, 250, 251, 0.80);
++  color: #161b20; }
++
++/* Header: the mark, the name and a true count, the arrangement, and the ways
++ * out of the dock. */
++.luma-dockf-head {
++  height: 46px;
++  padding: 0 6px 0 12px;
++  spacing: 8px;
++  border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
++.luma-surface-light .luma-dockf-head,
++.luma-surface-frost .luma-dockf-head,
++.luma-surface-glass .luma-dockf-head { border-bottom-color: rgba(39, 48, 56, 0.095); }
++.luma-dockf-head-copy { spacing: 1px; }
++.luma-dockf-head-name { font-family: Figtree, sans-serif; font-size: 14px; font-weight: 700; }
++.luma-dockf-head-meta {
++  font-family: Figtree, sans-serif;
++  font-size: 11px;
++  font-weight: 550;
++  color: rgba(231, 233, 232, 0.55); }
++.luma-surface-light .luma-dockf-head-meta,
++.luma-surface-frost .luma-dockf-head-meta,
++.luma-surface-glass .luma-dockf-head-meta { color: rgba(40, 48, 56, 0.55); }
++
++/* The arrangement, the kit's segmented control at its smallest. */
++.luma-dockf-views {
++  padding: 2px;
++  spacing: 1px;
++  border-radius: 8px;
++  background-color: rgba(255, 255, 255, 0.038); }
++.luma-surface-light .luma-dockf-views,
++.luma-surface-frost .luma-dockf-views,
++.luma-surface-glass .luma-dockf-views { background-color: rgba(39, 48, 56, 0.04); }
++.luma-dockf-view {
++  width: 26px; height: 22px;
++  padding: 0;
++  border: none;
++  border-radius: 6px;
++  background: none;
++  color: rgba(231, 233, 232, 0.55); }
++.luma-surface-light .luma-dockf-view,
++.luma-surface-frost .luma-dockf-view,
++.luma-surface-glass .luma-dockf-view { color: rgba(40, 48, 56, 0.55); }
++.luma-dockf-view:hover { color: inherit; }
++.luma-dockf-view:focus { outline: 2px solid rgba(92, 133, 183, 0.72); outline-offset: -2px; }
++.luma-dockf-view:checked {
++  background-color: rgba(255, 255, 255, 0.11);
++  color: #e7e9e8; }
++.luma-surface-light .luma-dockf-view:checked,
++.luma-surface-frost .luma-dockf-view:checked,
++.luma-surface-glass .luma-dockf-view:checked {
++  background-color: #ffffff;
++  color: #283038;
++  box-shadow: 0 1px 2px rgba(12, 17, 24, 0.16); }
++.luma-dockf-view-icon { icon-size: 14px; }
++
++.luma-dockf-act {
++  width: 26px; height: 26px;
++  padding: 0;
++  border: none;
++  border-radius: 8px;
++  background: none;
++  color: rgba(231, 233, 232, 0.55); }
++.luma-surface-light .luma-dockf-act,
++.luma-surface-frost .luma-dockf-act,
++.luma-surface-glass .luma-dockf-act { color: rgba(40, 48, 56, 0.55); }
++.luma-dockf-act:hover { background-color: rgba(255, 255, 255, 0.06); color: #e7e9e8; }
++.luma-surface-light .luma-dockf-act:hover,
++.luma-surface-frost .luma-dockf-act:hover,
++.luma-surface-glass .luma-dockf-act:hover {
++  background-color: rgba(39, 48, 56, 0.06); color: #283038; }
++.luma-dockf-act:focus { outline: 2px solid rgba(92, 133, 183, 0.72); outline-offset: -2px; }
++.luma-dockf-act-icon { icon-size: 15px; }
++
++/* Body. Stack is Filer's list, Grid is Filer's icon view; both cap at eight,
++ * so switching the arrangement does not move the surface. */
++.luma-dockf-scroll { padding: 0; }
++.luma-dockf-scroll StScrollBar { padding: 0; }
++.luma-dockf-scroll > StBoxLayout { padding: 6px; spacing: 0; }
++.luma-dockf-scroll > StBoxLayout.luma-dockf-grid { padding: 12px; spacing: 8px; }
++.luma-dockf-grid-row { spacing: 8px; }
++
++/* Filer: row min-height 30 with a 4px 8px cell inside it. St adds padding
++ * to height, so the content box is 22 and the row measures Filer 30. */
++.luma-dockf-row {
++  height: 22px;
++  padding: 4px 8px;
++  border: none;
++  border-radius: 8px;
++  background: none;
++  color: inherit; }
++.luma-dockf-row > StBoxLayout { spacing: 8px; }
++.luma-dockf-row:hover { background-color: rgba(255, 255, 255, 0.06); }
++.luma-surface-light .luma-dockf-row:hover,
++.luma-surface-frost .luma-dockf-row:hover,
++.luma-surface-glass .luma-dockf-row:hover { background-color: rgba(39, 48, 56, 0.06); }
++/* Keyboard focus only: nothing wears a ring until an arrow key puts it
++ * there. An outline drew as one left edge here, which read as a selection. */
++.luma-dockf-row:focus { box-shadow: inset 0 0 0 2px #80a8d2; }
++.luma-dockf-row-name { font-family: Figtree, sans-serif; font-size: 13px; font-weight: 525; }
++.luma-dockf-row-meta {
++  font-family: Figtree, sans-serif;
++  font-size: 11px;
++  font-weight: 550;
++  font-feature-settings: "tnum";
++  color: rgba(231, 233, 232, 0.55); }
++.luma-surface-light .luma-dockf-row-meta,
++.luma-surface-frost .luma-dockf-row-meta,
++.luma-surface-glass .luma-dockf-row-meta { color: rgba(40, 48, 56, 0.55); }
++/* An item that arrived since the last opening. */
++.luma-dockf-new {
++  width: 5px; height: 5px;
++  border-radius: 3px;
++  background-color: #80a8d2; }
++.luma-surface-light .luma-dockf-new,
++.luma-surface-frost .luma-dockf-new,
++.luma-surface-glass .luma-dockf-new { background-color: #527fae; }
++
++.luma-dockf-cell {
++  padding: 6px;
++  border: none;
++  border-radius: 10px;
++  background: none;
++  color: inherit; }
++.luma-dockf-cell > StBoxLayout { spacing: 6px; }
++.luma-dockf-cell:hover { background-color: rgba(255, 255, 255, 0.06); }
++.luma-surface-light .luma-dockf-cell:hover,
++.luma-surface-frost .luma-dockf-cell:hover,
++.luma-surface-glass .luma-dockf-cell:hover { background-color: rgba(39, 48, 56, 0.06); }
++.luma-dockf-cell:focus { box-shadow: inset 0 0 0 2px #80a8d2; }
++.luma-dockf-cell-name {
++  font-family: Figtree, sans-serif;
++  font-size: 13px;
++  font-weight: 625;
++  text-align: center;
++  /* Filer wraps a name over three lines before it ellipsises. */
++  max-height: 51px; }
++.luma-dockf-cell-meta {
++  font-family: Figtree, sans-serif;
++  font-size: 11px;
++  font-weight: 500;
++  text-align: center;
++  max-height: 30px;
++  font-feature-settings: "tnum";
++  color: rgba(231, 233, 232, 0.55); }
++.luma-surface-light .luma-dockf-cell-meta,
++.luma-surface-frost .luma-dockf-cell-meta,
++.luma-surface-glass .luma-dockf-cell-meta { color: rgba(40, 48, 56, 0.55); }
++
++/* Thumbnails are Filer's: the cached thumbnail where one exists, the kind's
++ * own glyph on the standard fill where it does not. */
++.luma-dockf-thumb {
++  border-radius: 6px;
++  background-color: rgba(255, 255, 255, 0.038);
++  border: 1px solid rgba(255, 255, 255, 0.08); }
++.luma-surface-light .luma-dockf-thumb,
++.luma-surface-frost .luma-dockf-thumb,
++.luma-surface-glass .luma-dockf-thumb {
++  background-color: rgba(39, 48, 56, 0.04);
++  border-color: rgba(39, 48, 56, 0.095); }
++.luma-dockf-thumb-large { border-radius: 10px; height: 76px; }
++.luma-dockf-thumb-photo { border: none; }
++.luma-dockf-photo { border-radius: 6px; }
++.luma-dockf-thumb-large .luma-dockf-photo { border-radius: 10px; }
++.luma-dockf-glyph { color: rgba(231, 233, 232, 0.55); }
++.luma-surface-light .luma-dockf-glyph,
++.luma-surface-frost .luma-dockf-glyph,
++.luma-surface-glass .luma-dockf-glyph { color: rgba(40, 48, 56, 0.55); }
++.luma-dockf-glyph-folder { color: #80a8d2; }
++.luma-surface-light .luma-dockf-glyph-folder,
++.luma-surface-frost .luma-dockf-glyph-folder,
++.luma-surface-glass .luma-dockf-glyph-folder { color: #527fae; }
++
++/* Dragging an attached surface says what letting go will do. */
++.luma-dockf-breakout {
++  padding: 5px 10px;
++  border-radius: 99px;
++  background-color: rgba(20, 25, 31, 0.86);
++  color: #f4f6f7;
++  font-family: Figtree, sans-serif;
++  font-size: 11px;
++  font-weight: 650; }
++
++/* The slot a dragged folder lands in, and the rail lighting up to take it.
++   The dock already shows a drop with :drop; this is the same cue, at the
++   tile footprint so the row does not move when the folder arrives. */
++.luma-dockf-placeholder {
++  border-radius: 9px;
++  border: 2px dashed rgba(255, 255, 255, 0.34);
++  background-color: rgba(255, 255, 255, 0.06); }
++.luma-surface-light .luma-dockf-placeholder,
++.luma-surface-frost .luma-dockf-placeholder,
++.luma-surface-glass .luma-dockf-placeholder {
++  border-color: rgba(39, 48, 56, 0.30);
++  background-color: rgba(39, 48, 56, 0.05); }
++.luma-dockf-rail:drop .luma-dockf-placeholder {
++  border-color: rgba(128, 168, 210, 0.85);
++  background-color: rgba(128, 168, 210, 0.16); }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index d0b8fce..d2d47e9 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -96,6 +96,7 @@
+     <file>ui/lumaWell.js</file>
+     <file>ui/lumaDockBadgeModel.js</file>
+     <file>ui/lumaDockBadges.js</file>
++    <file>ui/lumaDockFolders.js</file>
+     <file>ui/lumaDockWindows.js</file>
+     <file>ui/lumaNotificationBeacon.js</file>
+     <file>ui/lumaCast.js</file>
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index a613290..6abc02b 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -1131,6 +1131,10 @@ export const Dash = GObject.registerClass({
+     }
+ 
+     handleDragOver(source, actor, x, y, _time) {
++        // A folder dragged onto the dock is pinned there (lumaDockFolders.js).
++        // It is not an application, so nothing below this applies to it.
++        if (Main.shelf?.dockFolders?.canAcceptDrop(source))
++            return DND.DragMotionResult.COPY_DROP;
+         const vertical = this._shelfEdge === 'left' || this._shelfEdge === 'right';
+         const axis = vertical ? 1 : 0;
+         const extent = actor => vertical ? actor.height : actor.width;
+@@ -1265,6 +1269,8 @@ export const Dash = GObject.registerClass({
+ 
+     // Draggable target interface
+     acceptDrop(source, _actor, _x, _y, _time) {
++        if (Main.shelf?.dockFolders?.canAcceptDrop(source))
++            return Main.shelf.dockFolders.acceptDrop(source);
+         const app = Dash.getAppFromSource(source);
+ 
+         // Don't allow favoriting of transient apps
+diff --git a/js/ui/lumaDockFolders.js b/js/ui/lumaDockFolders.js
+new file mode 100644
+index 0000000..f90efe6
+--- /dev/null
++++ b/js/ui/lumaDockFolders.js
+@@ -0,0 +1,1921 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Dock folders: a Stack and a Grid.
++//
++// A folder pinned to the dock. The folders sit after the applications, behind
++// the same divider token the Dash already draws between the parts of a bar, so
++// the dock reads as three things and not one long strip: what you run, what
++// you keep, what is happening.
++//
++// A tile shows the folder's own contents, not a folder glyph: the three newest
++// fanned for a Stack, the four newest laid down for a Grid, in the pocket of a
++// folder lip. A count appears only when something arrived that has not been
++// looked at, and it clears when the folder is opened.
++//
++// Clicking a tile opens one surface with two arrangements, both Filer's: a
++// Stack, which is Filer's list, and a Grid, which is Filer's icon view. The
++// arrangement is a segmented control in the header and is remembered per
++// folder. The surface can break out of the dock and park anywhere until it is
++// closed.
++//
++// Married or separated is the shelf's own arrangement model (ADR-044): married
++// the rail is a part of the dock island, separated it is the 'folders' island,
++// placed and dragged like any other. One rail, one setting, no second copy.
++
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GnomeDesktop from 'gi://GnomeDesktop';
++import GObject from 'gi://GObject';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Signals from '../misc/signals.js';
++import * as Main from './main.js';
++import * as PopupMenu from './popupMenu.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import * as Placement from './lumaPopoverPlacement.js';
++import * as BadgeModel from './lumaDockBadgeModel.js';
++import {formatTimeSpan} from '../misc/dateUtils.js';
++import {DASH_TILE_SIZE, DASH_TILE_GAP, DIVIDER_WIDTH, SHELF_DIVIDER_LENGTH,
++    SHELF_ISLAND_RADIUS} from './shelfMetrics.js';
++
++// The tile. The dock's own 36px slot and 32px mark at radius 9, so a folder is
++// a peer of the applications beside it.
++const MARK_SIZE = 32;
++// The art: three chips fanned for a Stack, four laid down for a Grid. Capped,
++
++// The surface.
++// Filer's icon view and list view, from src/resources/style.css and
++// nautilus-grid-cell.blp in the same tree. These are not chosen here; they
++// are copied, and they are the reason the two cannot look different.
++const FILER_GRID_PADDING = 12;   // gridview padding
++const FILER_GRID_SPACING = 8;    // gridview border-spacing
++const FILER_CELL_RADIUS = 10;    // gridview > child border-radius
++const FILER_GRID_ICON = 64;      // NAUTILUS_GRID_ICON_SIZE_SMALL_PLUS
++const FILER_NAME_LINES = 3;      // grid cell name: lines 3, ellipsize middle
++const FILER_CAPTION_LINES = 2;   // grid cell caption: lines 2, ellipsize end
++const FILER_ROW_HEIGHT = 30;     // columnview > listview > row min-height
++const SURFACE_GAP = 12;          // from the dock to the surface
++const SURFACE_INSET = 8;         // the closest it comes to a monitor edge
++const STACK_WIDTH = 300;
++const GRID_WIDTH = 412;
++const HEADER_HEIGHT = 46;
++const ROW_HEIGHT = FILER_ROW_HEIGHT;
++const STACK_BODY_MAX = 288;      // eight rows
++const GRID_BODY_MAX = 352;       // eight cells, so switching does not move it
++const GRID_COLUMNS = 4;
++const ISLAND_PADDING = 8;        // the island's own padding around a tile
++const BAR_LENGTH = 18;           // the dock's own open indicator
++const BAR_THICKNESS = 3;
++const DRAG_START = 8;            // before this, a press is still a click
++const BREAK_OUT_DISTANCE = 26;   // the drag that commits to breaking out
++const SHOW_TIME = 200;
++const FADE_TIME = 160;
++
++// How much of a folder we read. Enough for the Grid's eight, its count and its
++// new items; a folder of ten thousand things must not stall the Shell.
++const READ_LIMIT = 512;
++const BODY_ITEMS = 8;
++
++const FOLDER_ATTRIBUTES = [
++    'standard::display-name', 'standard::icon', 'standard::symbolic-icon',
++    'metadata::custom-icon', 'metadata::custom-icon-name',
++].join(',');
++
++const INFO_ATTRIBUTES = [
++    'standard::name', 'standard::display-name', 'standard::type',
++    'standard::content-type', 'standard::icon', 'standard::is-hidden',
++    'standard::is-backup', 'standard::size',
++    'time::modified', 'time::created',
++].join(',');
++
++Gio._promisify(Gio.File.prototype, 'enumerate_children_async');
++Gio._promisify(Gio.FileEnumerator.prototype, 'next_files_async');
++Gio._promisify(Gio.File.prototype, 'query_info_async');
++
++function scaleFactor() {
++    return St.ThemeContext.get_for_stage(global.stage).scale_factor;
++}
++
++function clamp(value, low, high) {
++    return Math.max(low, Math.min(value, Math.max(low, high)));
++}
++
++// ── What is in a folder ─────────────────────────────────────────────────────
++//
++// Truth first: every count, size and time here is read from the file system or
++// is not shown. Nothing is estimated and nothing is cached across a change.
++
++export class FolderModel extends Signals.EventEmitter {
++    constructor(uri) {
++        super();
++        this.uri = uri;
++        this.file = Gio.File.new_for_uri(uri);
++        this.name = this.file.get_basename() ?? uri;
++        this.gicon = null;
++        this.items = [];
++        this.count = 0;
++        this.loaded = false;
++        // The stamp the badge counts against: when this folder was last
++        // opened. Set by the controller from its settings.
++        this.seen = 0;
++        this._monitor = null;
++        this._queuedId = 0;
++        this._cancellable = null;
++    }
++
++    // The folder's own display name, which is Filer's: a localised Downloads
++    // stays Downloads here.
++    async _readDisplayName() {
++        try {
++            const info = await this.file.query_info_async(
++                FOLDER_ATTRIBUTES, Gio.FileQueryInfoFlags.NONE,
++                GLib.PRIORITY_DEFAULT, null);
++            this.name = info.get_display_name() ?? this.name;
++            // standard::icon carries the special-folder icons and any icon
++            // the person set on the folder, which is what Filer shows.
++            this.gicon = info.get_icon() ?? this.gicon;
++        } catch (error) {
++            // A folder that has gone is still named by its path.
++        }
++    }
++
++    start() {
++        if (this._monitor)
++            return;
++        try {
++            this._monitor = this.file.monitor_directory(
++                Gio.FileMonitorFlags.WATCH_MOVES, null);
++            // The tile art, the count and the open surface all follow a folder
++            // that changes underneath them. Coalesced, because a copy of many
++            // files is many events.
++            this._monitor.connect('changed', () => this._queueReload());
++        } catch (error) {
++            logError(error, 'Luma dock folders: cannot watch a folder');
++        }
++        this.reload();
++    }
++
++    _queueReload() {
++        if (this._queuedId)
++            return;
++        this._queuedId = GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE, 250, () => {
++            this._queuedId = 0;
++            this.reload();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    async reload() {
++        this._cancellable?.cancel();
++        const cancellable = this._cancellable = new Gio.Cancellable();
++        await this._readDisplayName();
++        let items = [];
++        try {
++            const enumerator = await this.file.enumerate_children_async(
++                INFO_ATTRIBUTES, Gio.FileQueryInfoFlags.NONE,
++                GLib.PRIORITY_DEFAULT, cancellable);
++            for (;;) {
++                const batch = await enumerator.next_files_async(
++                    64, GLib.PRIORITY_DEFAULT, cancellable);
++                if (!batch?.length)
++                    break;
++                for (const info of batch) {
++                    // Filer's rules: hidden and backup files are not shown.
++                    if (info.get_is_hidden() || info.get_is_backup())
++                        continue;
++                    items.push(this._item(info));
++                }
++                if (items.length >= READ_LIMIT)
++                    break;
++            }
++            enumerator.close(null);
++        } catch (error) {
++            if (error.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
++                return;
++            // A folder that cannot be read has no contents, not stale ones.
++            items = [];
++        }
++        if (cancellable.is_cancelled())
++            return;
++        // Newest first, which is what a dock folder is for.
++        items.sort((a, b) => b.sortTime - a.sortTime);
++        this.items = items;
++        this.count = items.length;
++        this.loaded = true;
++        this.emit('changed');
++    }
++
++    _item(info) {
++        const child = this.file.get_child(info.get_name());
++        const modified = info.get_modification_date_time?.() ?? null;
++        const created = info.get_creation_date_time?.() ?? null;
++        const isDirectory = info.get_file_type() === Gio.FileType.DIRECTORY;
++        return {
++            name: info.get_display_name() ?? info.get_name(),
++            uri: child.get_uri(),
++            file: child,
++            gicon: info.get_icon(),
++            contentType: info.get_content_type() ?? '',
++            isDirectory,
++            size: isDirectory ? -1 : info.get_size(),
++            modified,
++            // What the badge counts against. A file system that cannot say
++            // when a file was created says nothing, and the badge stays away.
++            created,
++            sortTime: (created ?? modified)?.to_unix() ?? 0,
++            // Looked up when the item is about to be seen, not now: a folder
++            // of a thousand must not be a thousand cache lookups to open.
++            thumbnail: undefined,
++            modifiedUnix: modified?.to_unix() ?? 0,
++        };
++    }
++
++    // Files added since the folder was last opened.
++    //
++    // Creation time, never modification time: "2 new" has to mean two things
++    // arrived, and a file edited in place did not arrive. Where the file
++    // system cannot report a creation time -- some network and FUSE mounts --
++    // there is no honest number, so there is no badge.
++    get newCount() {
++        if (!this.seen)
++            return 0;
++        let count = 0;
++        for (const item of this.items) {
++            if (!item.created)
++                return 0;
++            if (item.created.to_unix() > this.seen)
++                count++;
++        }
++        return count;
++    }
++
++    isNew(item) {
++        return !!(this.seen && item.created && item.created.to_unix() > this.seen);
++    }
++
++    destroy() {
++        this._cancellable?.cancel();
++        this._cancellable = null;
++        if (this._queuedId)
++            GLib.source_remove(this._queuedId);
++        this._queuedId = 0;
++        this._monitor?.cancel();
++        this._monitor = null;
++    }
++}
++
++// Filer's thumbnails, from Filer's cache: the same thumbnailer, the same
++// files on disk, and Filer's own preferences about when to show one.
++//
++// This reads that cache; it never fills it. Generating a thumbnail is the
++// thumbnailer's job, and doing it here would put arbitrary decoders on the
++// compositor's main loop for the sake of a popover. A file Filer has not
++// thumbnailed yet keeps its kind's icon and gains the picture the next time
++// the folder is opened after Filer has been there.
++const FILER_PREFS = 'org.gnome.nautilus.preferences';
++const THUMBNAIL_MINIMUM_ICON = 32;   // NAUTILUS_THUMBNAIL_MINIMUM_ICON_SIZE
++
++let filerPrefs;
++function filerThumbnailPrefs() {
++    if (filerPrefs === undefined) {
++        const source = Gio.SettingsSchemaSource.get_default();
++        filerPrefs = source?.lookup(FILER_PREFS, true)
++            ? new Gio.Settings({schema_id: FILER_PREFS}) : null;
++    }
++    return filerPrefs;
++}
++
++// Filer's rule, not one of our own: the "show thumbnails" setting and the
++// size limit it applies.
++function thumbnailAllowed(item, iconSize) {
++    if (iconSize < THUMBNAIL_MINIMUM_ICON || item.isDirectory)
++        return false;
++    const prefs = filerThumbnailPrefs();
++    if (!prefs)
++        return true;
++    const show = prefs.get_string('show-image-thumbnails');
++    if (show === 'never')
++        return false;
++    const limit = prefs.get_uint64('thumbnail-limit');
++    return !(limit > 0 && item.size > limit);
++}
++
++let thumbnailFactory = null;
++function thumbnailFor(file, info) {
++    try {
++        // A gnome-desktop without the thumbnail factory means no thumbnails,
++        // not a broken folder: every item still has its kind's own icon.
++        thumbnailFactory ??= GnomeDesktop.DesktopThumbnailFactory?.new(
++            GnomeDesktop.DesktopThumbnailSize.LARGE) ?? null;
++        if (!thumbnailFactory)
++            return null;
++        const mtime = info.modifiedUnix ?? info.get_modification_date_time?.()?.to_unix();
++        if (!mtime)
++            return null;
++        return thumbnailFactory.lookup(file.get_uri(), mtime);
++    } catch (error) {
++        return null;
++    }
++}
++
++// The right side of a Stack row, and the line under a Grid cell: the size and
++// the age, in Filer's words and the platform's own relative time.
++function metaFor(item) {
++    if (item.isDirectory) {
++        const count = item.childCount;
++        if (count === undefined || count < 0)
++            return '';
++        return ngettext('%d item', '%d items', count).format(count);
++    }
++    const size = GLib.format_size(Math.max(0, item.size));
++    if (!item.modified)
++        return size;
++    const age = formatTimeSpan(item.modified);
++    return age ? `${size} · ${age}` : size;
++}
++
++// ── The tile ────────────────────────────────────────────────────────────────
++
++// The mark: the folder's own icon, exactly as Filer draws it.
++//
++// Not art derived from the contents. A folder's icon is already a thing the
++// person recognises -- Downloads, Pictures, a folder they gave an icon of
++// its own -- and two pictures of the same folder that disagree would be
++// worse than one that is plain. The gicon comes from the same attributes
++// Filer reads, so the dock cannot disagree with it.
++const FolderMark = GObject.registerClass(
++class FolderMark extends St.Icon {
++    _init(size = MARK_SIZE) {
++        super._init({
++            style_class: 'luma-dockf-mark',
++            icon_size: size,
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._size = size;
++    }
++
++    setFolder(model) {
++        const gicon = model?.gicon ?? null;
++        const key = gicon ? gicon.to_string() : 'folder';
++        if (this._key === key)
++            return;
++        this._key = key;
++        this.gicon = gicon ?? new Gio.ThemedIcon({name: 'folder'});
++    }
++});
++
++// The tile's parts: the mark in the slot, the badge where every other dock
++// badge goes, and the open bar on the island's inside edge.
++const FolderTileLayout = GObject.registerClass(
++class FolderTileLayout extends Clutter.LayoutManager {
++    vfunc_get_preferred_width() {
++        const scale = scaleFactor();
++        return [DASH_TILE_SIZE * scale, DASH_TILE_SIZE * scale];
++    }
++
++    vfunc_get_preferred_height() {
++        const scale = scaleFactor();
++        return [DASH_TILE_SIZE * scale, DASH_TILE_SIZE * scale];
++    }
++
++    vfunc_allocate(container, box) {
++        const tile = this.tile;
++        if (!tile)
++            return;
++        const scale = scaleFactor();
++        const width = box.get_width(), height = box.get_height();
++        const mark = MARK_SIZE * scale;
++        const inset = Math.round((DASH_TILE_SIZE - MARK_SIZE) / 2 * scale);
++        const artwork = {
++            x: Math.round((width - mark) / 2), y: Math.round((height - mark) / 2),
++            width: Math.round(mark), height: Math.round(mark),
++        };
++        tile._mark.allocate(new Clutter.ActorBox({
++            x1: artwork.x, y1: artwork.y,
++            x2: artwork.x + artwork.width, y2: artwork.y + artwork.height,
++        }));
++        if (tile._badge.visible) {
++            const [, textWidth] = tile._badge.child.clutter_text.get_preferred_width(-1);
++            const place = BadgeModel.badgeBox({kind: 'pill'},
++                {x: artwork.x - inset, y: artwork.y - inset,
++                    width: artwork.width + 2 * inset, height: artwork.height + 2 * inset},
++                textWidth, scale);
++            tile._badge.allocate(new Clutter.ActorBox({
++                x1: place.x, y1: place.y,
++                x2: place.x + place.width, y2: place.y + place.height,
++            }));
++        }
++        if (!tile._bar.visible)
++            return;
++        // The bar sits on the island's inside edge, which is the edge the
++        // dock is not on, and follows the dock to any of the four.
++        const edge = tile._controller.edge;
++        const long = Math.round(BAR_LENGTH * scale);
++        const thin = Math.round(BAR_THICKNESS * scale);
++        const boxes = {
++            bottom: [Math.round((width - long) / 2), height - thin, long, thin],
++            top: [Math.round((width - long) / 2), 0, long, thin],
++            left: [0, Math.round((height - long) / 2), thin, long],
++            right: [width - thin, Math.round((height - long) / 2), thin, long],
++        }[edge] ?? [Math.round((width - long) / 2), height - thin, long, thin];
++        const [x, y, w, h] = boxes;
++        tile._bar.allocate(new Clutter.ActorBox({x1: x, y1: y, x2: x + w, y2: y + h}));
++    }
++});
++
++export const FolderTile = GObject.registerClass(
++class FolderTile extends St.Button {
++    _init(controller, model) {
++        super._init({
++            style_class: 'luma-dockf-tile',
++            can_focus: true,
++            reactive: true,
++            track_hover: true,
++            toggle_mode: false,
++            accessible_role: Atk.Role.PUSH_BUTTON,
++            width: DASH_TILE_SIZE, height: DASH_TILE_SIZE,
++        });
++        this._controller = controller;
++        this.model = model;
++        this._delegate = this;
++        const box = new St.Widget({layout_manager: new FolderTileLayout()});
++        this.child = box;
++        this._mark = new FolderMark(MARK_SIZE);
++        box.add_child(this._mark);
++        // The dock's own unread badge: the same fill, ring, geometry and
++        // placement every other dock badge uses, so one count never reads as
++        // two systems.
++        this._badge = new St.Bin({style_class: 'luma-dock-badge luma-dockf-badge',
++            visible: false,
++            child: new St.Label({style_class: 'luma-dock-badge-label',
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER})});
++        Shell.util_set_hidden_from_pick(this._badge, true);
++        box.add_child(this._badge);
++        // The open indicator is the dock's own bar, on the island's inside
++        // edge; broken out, it goes hollow.
++        this._bar = new St.Widget({style_class: 'luma-dockf-bar', visible: false});
++        Shell.util_set_hidden_from_pick(this._bar, true);
++        box.add_child(this._bar);
++        box.layout_manager.tile = this;
++
++        this.connect('clicked', () => this._controller.toggle(this.model));
++        this.connect('popup-menu', () => this._controller.openTileMenu(this));
++        this.connect('button-press-event', (_a, event) => {
++            if (event.get_button() === Clutter.BUTTON_SECONDARY) {
++                this._controller.openTileMenu(this);
++                return Clutter.EVENT_STOP;
++            }
++            return Clutter.EVENT_PROPAGATE;
++        });
++        this.connect('notify::hover', () => this._syncLift());
++        this._changedId = this.model.connect('changed', () => this.sync());
++        this.connect('destroy', () => this.model.disconnect(this._changedId));
++        this.sync();
++    }
++
++    _syncLift() {
++        if (!St.Settings.get().enable_animations) {
++            this._mark.translation_y = this.hover ? -3 : 0;
++            return;
++        }
++        this._mark.ease({translation_y: this.hover ? -3 : 0, duration: 160,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    sync() {
++        this._mark.setFolder(this.model);
++        const count = this._controller.badgeCount(this.model);
++        this._badge.visible = count > 0;
++        if (count > 0) {
++            this._badge.child.text = `${Math.min(count, BadgeModel.COUNT_CAP)}`;
++            this._styleBadge();
++        }
++        const open = this._controller.openFolder === this.model;
++        const detached = open && this._controller.detached;
++        this._bar.visible = open;
++        this._bar.set_style(this._barStyle(detached));
++        this.child.queue_relayout();
++        this.accessible_name = ngettext('%s, %d item', '%s, %d items',
++            this.model.count).format(this.model.name, this.model.count);
++        this.set_accessible_state?.(Atk.StateType.EXPANDABLE);
++        if (open && !detached)
++            this.add_accessible_state(Atk.StateType.EXPANDED);
++        else
++            this.remove_accessible_state(Atk.StateType.EXPANDED);
++    }
++
++    _styleBadge() {
++        const scale = scaleFactor();
++        const metrics = BadgeModel.DESKTOP_METRICS;
++        const ring = metrics.ring;
++        this._badge.set_style([
++            `background-color: ${BadgeModel.BADGE_FILL}`,
++            `color: ${BadgeModel.BADGE_INK}`,
++            `border: ${ring}px solid ${this._controller.badgeRing()}`,
++            `border-radius: ${metrics.pillHeight / 2 + ring}px`,
++            `font-size: ${metrics.fontSize}px`,
++        ].join('; '));
++        void scale;
++    }
++
++    // The bar follows the dock to any screen edge, and goes hollow when the
++    // folder is open somewhere other than here.
++    _barStyle(hollow) {
++        const edge = this._controller.edge;
++        const vertical = edge === 'left' || edge === 'right';
++        const ink = this._controller.indicatorInk();
++        void vertical;
++        return hollow
++            ? `background-color: transparent; border: 1.5px solid ${ink}; border-radius: 2px;`
++            : `background-color: ${ink}; border-radius: 2px;`;
++    }
++
++});
++
++// ── The surface ─────────────────────────────────────────────────────────────
++
++const FolderSurface = GObject.registerClass(
++class FolderSurface extends St.Widget {
++    _init(controller) {
++        super._init({
++            name: 'lumaDockFolderSurface',
++            reactive: true, track_hover: true, visible: false,
++            layout_manager: new Clutter.BinLayout(),
++            accessible_role: Atk.Role.PANEL,
++        });
++        this._controller = controller;
++        // St draws one shadow per actor: the surface keeps its near shadow
++        // and this layer the deep one, as the dock's previews do. Detached,
++        // the deep one becomes the desktop's window shadow.
++        this._shadow = new St.Widget({style_class: 'luma-dockf-shadow'});
++        Shell.util_set_hidden_from_pick(this._shadow, true);
++        this.add_child(this._shadow);
++        this._surface = new St.BoxLayout({style_class: 'luma-dockf-surface',
++            orientation: Clutter.Orientation.VERTICAL});
++        this.add_child(this._surface);
++        this._shadow.add_constraint(new Clutter.BindConstraint({source: this._surface,
++            coordinate: Clutter.BindCoordinate.ALL}));
++        this._material = SurfaceMaterials.bindSurface(this._surface, {
++            cornerRadii: SHELF_ISLAND_RADIUS,
++            classActors: [this, this._shadow],
++        });
++
++        this._header = new St.BoxLayout({style_class: 'luma-dockf-head',
++            reactive: true, track_hover: true});
++        this._surface.add_child(this._header);
++        this._headMark = new FolderMark(22);
++        this._headMark.set({y_align: Clutter.ActorAlign.CENTER});
++        this._header.add_child(this._headMark);
++        const copy = new St.BoxLayout({style_class: 'luma-dockf-head-copy',
++            orientation: Clutter.Orientation.VERTICAL, x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER});
++        this._name = new St.Label({style_class: 'luma-dockf-head-name'});
++        this._name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._meta = new St.Label({style_class: 'luma-dockf-head-meta'});
++        this._meta.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        copy.add_child(this._name);
++        copy.add_child(this._meta);
++        this._header.add_child(copy);
++
++        // The arrangement: the kit's segmented control at its smallest, and a
++        // real radio group, so a screen reader hears two options and which is
++        // chosen.
++        this._views = new St.BoxLayout({style_class: 'luma-dockf-views',
++            y_align: Clutter.ActorAlign.CENTER, accessible_role: Atk.Role.GROUPING});
++        this._views.accessible_name = _('Arrangement');
++        this._viewButtons = new Map();
++        for (const [view, icon, label] of [
++            ['stack', 'view-list-symbolic', _('Stack')],
++            ['grid', 'view-grid-symbolic', _('Grid')]]) {
++            const button = new St.Button({style_class: 'luma-dockf-view',
++                can_focus: true, toggle_mode: true,
++                accessible_role: Atk.Role.RADIO_BUTTON, accessible_name: label,
++                child: new St.Icon({icon_name: icon, style_class: 'luma-dockf-view-icon'})});
++            button.connect('clicked', () => this._controller.setView(view));
++            this._views.add_child(button);
++            this._viewButtons.set(view, button);
++        }
++        this._header.add_child(this._views);
++
++        this._actions = new Map();
++        // No pin: a folder leaves the dock by dragging its header, and comes
++        // back from the control that replaces this one once it is detached.
++        for (const [id, icon, label] of [
++            ['redock', 'view-restore-symbolic', _('Put back in the dock')],
++            ['filer', 'view-fullscreen-symbolic', _('Open in Filer')],
++            ['close', 'window-close-symbolic', _('Close')]]) {
++            const button = new St.Button({style_class: 'luma-dockf-act',
++                can_focus: true, accessible_name: label,
++                child: new St.Icon({icon_name: icon, style_class: 'luma-dockf-act-icon'})});
++            button.connect('clicked', () => this._controller.action(id));
++            this._header.add_child(button);
++            this._actions.set(id, button);
++        }
++
++        this._scroll = new St.ScrollView({style_class: 'luma-dockf-scroll',
++            hscrollbar_policy: St.PolicyType.NEVER,
++            vscrollbar_policy: St.PolicyType.AUTOMATIC,
++            overlay_scrollbars: true, y_expand: true});
++        this._body = new St.Viewport({layout_manager: new Clutter.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL})});
++        this._scroll.set_child(this._body);
++        this._surface.add_child(this._scroll);
++
++        // While an attached surface is being dragged, it says what letting go
++        // will do. This is the gesture the pin names, so both exist.
++        this._breakout = new St.Label({style_class: 'luma-dockf-breakout',
++            text: _('Let go to break out of the dock'), visible: false});
++        Shell.util_set_hidden_from_pick(this._breakout, true);
++        this.add_child(this._breakout);
++
++        global.focus_manager.add_group(this);
++        this._scroll.vadjustment.connect('notify::value',
++            () => this._controller.onScrolled());
++        this.connect('key-press-event', (_a, event) => this._controller.onKey(event));
++        this._header.connect('button-press-event', (actor, event) =>
++            this._controller.onHeaderPress(actor, event));
++    }
++
++    get surface() {
++        return this._surface;
++    }
++
++    get header() {
++        return this._header;
++    }
++
++    setDetached(detached) {
++        // Attached, the only two ways out of the dock are the header drag and
++        // the tile's menu, so neither of these rows is there to be pressed.
++        for (const [id, button] of this._actions) {
++            if (id === 'close' || id === 'redock')
++                button.visible = detached;
++        }
++        if (detached)
++            this.add_style_class_name('luma-dockf-detached');
++        else
++            this.remove_style_class_name('luma-dockf-detached');
++        // Detached, the header is a grip: the pointer says so before the
++        // press, and says it is holding on during the drag.
++        this._header.set_cursor_type(detached
++            ? Clutter.CursorType.GRAB : Clutter.CursorType.DEFAULT);
++    }
++
++    setLifting(lifting) {
++        this._breakout.visible = lifting;
++    }
++
++    setView(view) {
++        for (const [id, button] of this._viewButtons) {
++            button.checked = id === view;
++            if (id === view)
++                button.add_accessible_state(Atk.StateType.CHECKED);
++            else
++                button.remove_accessible_state(Atk.StateType.CHECKED);
++        }
++        this._surface.width = (view === 'grid' ? GRID_WIDTH : STACK_WIDTH) * scaleFactor();
++        this._scroll.style = `max-height: ${view === 'grid' ? GRID_BODY_MAX : STACK_BODY_MAX}px;`;
++        this._body.layout_manager.orientation = Clutter.Orientation.VERTICAL;
++        if (view === 'grid')
++            this._body.add_style_class_name('luma-dockf-grid');
++        else
++            this._body.remove_style_class_name('luma-dockf-grid');
++    }
++
++    setHeader(model, view, newCount) {
++        this._headMark.setFolder(model);
++        this._name.text = model.name;
++        const count = ngettext('%d item', '%d items', model.count).format(model.count);
++        this._meta.text = newCount
++            ? `${count} · ${ngettext('%d new', '%d new', newCount).format(newCount)}`
++            : count;
++        // The folder's path is the header's tooltip, not a line of chrome.
++        this._header.accessible_name = model.file.get_path() ?? model.uri;
++        this.accessible_name = model.name;
++    }
++
++    get body() {
++        return this._body;
++    }
++
++    get scroll() {
++        return this._scroll;
++    }
++});
++
++// One row of a Stack: Filer's list rhythm.
++const FolderRow = GObject.registerClass(
++class FolderRow extends St.Button {
++    _init(item, isNew) {
++        super._init({style_class: 'luma-dockf-row', can_focus: true, x_expand: true,
++            accessible_role: Atk.Role.LIST_ITEM});
++        const box = new St.BoxLayout({x_expand: true});
++        this.child = box;
++        box.add_child(makeThumb(item, 22));
++        const name = new St.Label({style_class: 'luma-dockf-row-name', x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER, text: item.name});
++        name.clutter_text.ellipsize = Pango.EllipsizeMode.MIDDLE;
++        box.add_child(name);
++        if (isNew) {
++            // A small dot marks an item that is new since the last opening.
++            const dot = new St.Widget({style_class: 'luma-dockf-new',
++                y_align: Clutter.ActorAlign.CENTER});
++            box.add_child(dot);
++        }
++        const meta = metaFor(item);
++        box.add_child(new St.Label({style_class: 'luma-dockf-row-meta',
++            y_align: Clutter.ActorAlign.CENTER, text: meta}));
++        // Names get truncated, and truncation should never lose information.
++        this.accessible_name = meta ? `${item.name}, ${meta}` : item.name;
++        this.item = item;
++    }
++});
++
++// One cell of a Grid: Filer's icon view.
++const FolderCell = GObject.registerClass(
++class FolderCell extends St.Button {
++    _init(item) {
++        super._init({style_class: 'luma-dockf-cell', can_focus: true,
++            accessible_role: Atk.Role.LIST_ITEM});
++        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true});
++        this.child = box;
++        box.add_child(makeThumb(item, 0, true));
++        // Filer wraps a name over three lines and ellipsises in the middle;
++        // a caption over two and ellipsises at the end. A single hard-
++        // truncated line is what made these unreadable.
++        const name = new St.Label({style_class: 'luma-dockf-cell-name', text: item.name,
++            x_align: Clutter.ActorAlign.FILL});
++        name.clutter_text.set({ellipsize: Pango.EllipsizeMode.MIDDLE,
++            line_wrap: true, line_wrap_mode: Pango.WrapMode.WORD_CHAR,
++            line_alignment: Pango.Alignment.CENTER});
++        box.add_child(name);
++        const meta = metaFor(item);
++        const caption = new St.Label({style_class: 'luma-dockf-cell-meta', text: meta,
++            x_align: Clutter.ActorAlign.FILL});
++        caption.clutter_text.set({ellipsize: Pango.EllipsizeMode.END,
++            line_wrap: true, line_wrap_mode: Pango.WrapMode.WORD_CHAR,
++            line_alignment: Pango.Alignment.CENTER});
++        box.add_child(caption);
++        this.accessible_name = meta ? `${item.name}, ${meta}` : item.name;
++        this.item = item;
++    }
++});
++
++// A thumbnail is Filer's: the cached thumbnail where one exists, and the
++// kind's own icon on the standard fill where it does not.
++function makeThumb(item, size, fill = false) {
++    const thumb = new St.Widget({style_class: 'luma-dockf-thumb',
++        layout_manager: new Clutter.BinLayout(),
++        y_align: Clutter.ActorAlign.CENTER});
++    if (size) {
++        thumb.set_size(size * scaleFactor(), size * scaleFactor());
++    } else if (fill) {
++        thumb.x_expand = true;
++        thumb.add_style_class_name('luma-dockf-thumb-large');
++    }
++    // The kind's icon is what is there until a picture arrives, and the
++    // picture replaces it inside the same box, so nothing moves when it does.
++    const icon = new St.Icon({gicon: item.gicon,
++        style_class: item.isDirectory
++            ? 'luma-dockf-glyph luma-dockf-glyph-folder' : 'luma-dockf-glyph',
++        icon_size: fill ? FILER_GRID_ICON : 13});
++    thumb.add_child(icon);
++    thumb._item = item;
++    thumb._glyph = icon;
++    thumb.showThumbnail = path => {
++        if (thumb._shown === path || !thumb.get_stage())
++            return;
++        thumb._shown = path;
++        icon.visible = false;
++        const image = new St.Widget({style_class: 'luma-dockf-photo',
++            x_expand: true, y_expand: true});
++        image.set_style(`background-image: url("file://${path}"); background-size: cover;`);
++        thumb.add_child(image);
++        thumb.add_style_class_name('luma-dockf-thumb-photo');
++    };
++    return thumb;
++}
++
++// ── The controller ──────────────────────────────────────────────────────────
++
++export const DockFolders = GObject.registerClass(
++class DockFolders extends GObject.Object {
++    _init(shelf, settings) {
++        super._init();
++        this._shelf = shelf;
++        this._settings = settings;
++        this._models = new Map();       // uri -> FolderModel
++        this._tiles = new Map();        // uri -> FolderTile
++        this.openFolder = null;
++        this.detached = false;
++        this._position = null;
++        this._watchId = 0;
++        this._drag = null;
++        this._folderDrag = false;
++        this._keyed = false;
++        this._placeLater = 0;
++        this._thumbs = new Map();
++
++        // One rail, whichever island it is in. Married it is a part of the
++        // dock; separated it is the 'folders' island. Nothing is copied.
++        this.rail = new St.BoxLayout({style_class: 'luma-dockf-rail',
++            accessible_role: Atk.Role.TOOL_BAR});
++        this.rail.accessible_name = _('Dock folders');
++        this.divider = new St.Widget({style_class: 'luma-dockf-divider', reactive: false});
++        Shell.util_set_hidden_from_pick(this.divider, true);
++        // With nothing pinned there is nowhere to aim, so while a folder is
++        // being dragged the rail shows a slot to drop it into. It is the
++        // dock's own tile footprint, so the row does not jump when the
++        // folder lands in it.
++        this._placeholder = new St.Widget({style_class: 'luma-dockf-placeholder',
++            visible: false, width: DASH_TILE_SIZE, height: DASH_TILE_SIZE});
++        Shell.util_set_hidden_from_pick(this._placeholder, true);
++        this.rail._delegate = this;
++
++        this._surface = new FolderSurface(this);
++        Main.layoutManager.addTopChrome(this._surface);
++        this._surface.hide();
++
++        for (const key of ['dock-folders', 'dock-folders-separate', 'dock-folders-views',
++            'dock-folders-visible'])
++            this._settings.connectObject(`changed::${key}`, () => this._sync(), this);
++        // The separated rail needs somewhere to be, and it needs it whether
++        // the switch was just used or the session has only started.
++        this._settings.connectObject('changed::dock-folders-separate',
++            () => this._ensureFoldersPlaced(), this);
++        this._placeLater = GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE, 400, () => {
++            this._placeLater = 0;
++            this._ensureFoldersPlaced();
++            return GLib.SOURCE_REMOVE;
++        });
++        SurfaceMaterials.connectTreatmentChanged(() => this._syncTiles());
++        St.ThemeContext.get_for_stage(global.stage).connectObject('notify::scale-factor',
++            () => this._syncTiles(), this);
++        // The surface repositions rather than being left behind.
++        Main.layoutManager.connectObject('monitors-changed', () => this._place(), this);
++        Main.xdndHandler?.connectObject(
++            'file-drag-begin', (_handler, folders) => this.setFolderDragActive(folders),
++            'file-drag-end', () => this.setFolderDragActive(false), this);
++        global.display.connectObject('workareas-changed', () => this._place(), this);
++
++        this._sync();
++        this._restoreDetached();
++    }
++
++    // ── Settings ────────────────────────────────────────────────────────────
++
++    get uris() {
++        return this._settings.get_strv('dock-folders');
++    }
++
++    get separate() {
++        return this._settings.get_boolean('dock-folders-separate');
++    }
++
++    // Hidden, the folders keep their places and their arrangements; only the
++    // rail goes. A shell state without the key shows them, as it always did.
++    get visible() {
++        return !this._settings.settings_schema.has_key('dock-folders-visible') ||
++            this._settings.get_boolean('dock-folders-visible');
++    }
++
++    // What the rail draws: the folders that are pinned, while they are shown.
++    get shown() {
++        return (this.uris.length > 0 || this._folderDrag === true) && this.visible;
++    }
++
++    get edge() {
++        return this._shelf.edgeForActor?.(this.rail) ?? 'bottom';
++    }
++
++    // A folder with no arrangement of its own opens as a Stack, and so does
++    // no folder at all: nothing here may depend on one being open.
++    viewFor(model) {
++        if (!model)
++            return 'stack';
++        const views = this._settings.get_value('dock-folders-views').deep_unpack();
++        return views[model.uri] === 'grid' ? 'grid' : 'stack';
++    }
++
++    _setViewFor(model, view) {
++        const views = this._settings.get_value('dock-folders-views').deep_unpack();
++        views[model.uri] = view;
++        this._settings.set_value('dock-folders-views',
++            new GLib.Variant('a{ss}', views));
++    }
++
++    // Where the folders island sits when it is separate.
++    //
++    // The setting is the fact -- islandParts fuses the rail into the dock
++    // island from dock-folders-separate, and nothing infers it from the
++    // arrangement, because both states can look identical. What the
++    // arrangement holds is only the place, and the place has to be one that
++    // does not collide: a group of its own can land on an anchor another
++    // group already holds, which is how a separated rail ends up nowhere.
++    //
++    // Beside the dock, one island gap away, is both the reference layout and
++    // the one position that cannot collide, because the dock's own group
++    // makes room for it.
++    _ensureFoldersPlaced() {
++        if (!this._shelf.writeArrangement || !this._shelf.arrangement)
++            return;
++        const groups = this._shelf.arrangement;
++        const dockGroup = groups.find(group => group.islands?.includes('dock'));
++        if (!dockGroup)
++            return;
++        const ids = dockGroup.islands;
++        const dock = ids.indexOf('dock');
++        if (ids[dock + 1] === 'folders')
++            return;
++        const cleaned = groups
++            .map(group => ({...group,
++                islands: (group.islands ?? []).filter(id => id !== 'folders')}))
++            .filter(group => group.islands.length);
++        const target = cleaned.find(group => group.islands.includes('dock'));
++        target.islands.splice(target.islands.indexOf('dock') + 1, 0, 'folders');
++        this._shelf.writeArrangement(cleaned);
++    }
++
++    _seen() {
++        return this._settings.get_value('dock-folders-seen').deep_unpack();
++    }
++
++    badgeCount(model) {
++        return model.newCount;
++    }
++
++    badgeRing() {
++        const treatment = SurfaceMaterials.effectiveTreatment();
++        return SurfaceMaterials.LIGHT_FAMILY.has(treatment)
++            ? '#f1f2f3' : SurfaceMaterials.SURFACE_INK.dark.veil;
++    }
++
++    indicatorInk() {
++        return SurfaceMaterials.inkFor(SurfaceMaterials.effectiveTreatment()).ink;
++    }
++
++    // ── The rail ────────────────────────────────────────────────────────────
++
++    _sync() {
++        const uris = this.uris;
++        const seen = this._seen();
++        for (const [uri, model] of this._models) {
++            if (uris.includes(uri))
++                continue;
++            this._tiles.get(uri)?.destroy();
++            this._tiles.delete(uri);
++            model.destroy();
++            this._models.delete(uri);
++            if (this.openFolder === model)
++                this.close();
++        }
++        for (const uri of uris) {
++            if (this._models.has(uri))
++                continue;
++            const model = new FolderModel(uri);
++            model.seen = Number(seen[uri] ?? 0);
++            model.connect('changed', () => {
++                this._tiles.get(uri)?.sync();
++                if (this.openFolder === model)
++                    this._render();
++            });
++            this._models.set(uri, model);
++            model.start();
++            const tile = new FolderTile(this, model);
++            this._tiles.set(uri, tile);
++        }
++        // Physical order is the setting's order.
++        this.rail.remove_all_children();
++        for (const uri of uris) {
++            const tile = this._tiles.get(uri);
++            if (tile)
++                this.rail.add_child(tile);
++        }
++        if (this._folderDrag)
++            this.rail.add_child(this._placeholder);
++        for (const model of this._models.values())
++            model.seen = Number(seen[model.uri] ?? 0);
++        const shown = this.shown;
++        this.rail.visible = shown;
++        this.divider.visible = shown && !this.separate;
++        // A folder cannot stay open on a rail that is no longer there.
++        if (!shown && this.openFolder)
++            this.close();
++        this._syncOrientation();
++        this._syncTiles();
++        if (this.openFolder && !this._models.has(this.openFolder.uri))
++            this.close();
++    }
++
++    _syncOrientation() {
++        const vertical = this.edge === 'left' || this.edge === 'right';
++        this._placeholder?.set_size(DASH_TILE_SIZE, DASH_TILE_SIZE);
++        this.rail.orientation = vertical
++            ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this.rail.style = `spacing: ${DASH_TILE_GAP}px;`;
++        const ink = SurfaceMaterials.SURFACE_INK[SurfaceMaterials.effectiveTreatment()] ??
++            SurfaceMaterials.SURFACE_INK.dark;
++        // The same hairline the Dash already draws between the parts of a
++        // bar, from the same token: a folders divider of its own thickness
++        // would be the one rule on the shelf that did not match.
++        this.divider.set_style([
++            `background-color: ${ink.divider}`,
++            `width: ${vertical ? SHELF_DIVIDER_LENGTH : DIVIDER_WIDTH}px`,
++            `height: ${vertical ? DIVIDER_WIDTH : SHELF_DIVIDER_LENGTH}px`,
++        ].join('; '));
++    }
++
++    _syncTiles() {
++        this._syncOrientation();
++        for (const tile of this._tiles.values())
++            tile.sync();
++    }
++
++    // ── Opening ─────────────────────────────────────────────────────────────
++
++    toggle(model) {
++        if (this.openFolder === model && !this.detached) {
++            this.close();
++            return;
++        }
++        this.open(model);
++    }
++
++    open(model) {
++        const switching = !!this.openFolder && !this.detached;
++        this.openFolder = model;
++        if (!switching)
++            this.detached = false;
++        this._surface.setDetached(this.detached);
++        // Read it again as it opens: a folder on a mount that cannot be
++        // watched is then still right at the moment it is looked at.
++        model.reload();
++        this._render();
++        this._surface.show();
++        this._place();
++        this._animateIn(switching);
++        this._markSeen(model);
++        this._syncTiles();
++        this._pushGrab();
++        // Focus moves into the surface, not onto an item. An item wearing a
++        // focus ring at rest reads as a selection, and nothing is selected
++        // until the person selects it. The first arrow key moves focus into
++        // the list, which is when a ring is meant.
++        this._keyed = false;
++        this._surface.grab_key_focus();
++    }
++
++    close() {
++        if (!this.openFolder)
++            return;
++        this._cancelThumbnails();
++        this._endHeaderDrag();
++        const tile = this._tiles.get(this.openFolder.uri);
++        this.openFolder = null;
++        this.detached = false;
++        this._popGrab();
++        const finish = () => {
++            if (!this.openFolder)
++                this._surface.hide();
++        };
++        if (St.Settings.get().enable_animations) {
++            this._surface.ease({opacity: 0, duration: FADE_TIME,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD, onComplete: finish});
++        } else {
++            this._surface.opacity = 0;
++            finish();
++        }
++        this._syncTiles();
++        // Focus returns to the tile when it closes.
++        tile?.grab_key_focus();
++    }
++
++    _animateIn(switching) {
++        this._surface.remove_all_transitions();
++        this._surface.opacity = 255;
++        if (switching || !St.Settings.get().enable_animations) {
++            this._surface.surface.set_scale(1, 1);
++            this._surface.surface.translation_y = 0;
++            return;
++        }
++        // An 8px rise and a 0.985 scale, from the tile's side.
++        const vertical = this.edge === 'left' || this.edge === 'right';
++        const surface = this._surface.surface;
++        surface.set_pivot_point(
++            this.edge === 'left' ? 0 : this.edge === 'right' ? 1 : 0.5,
++            this.edge === 'top' ? 0 : this.edge === 'bottom' ? 1 : 0.5);
++        surface.set_scale(0.985, 0.985);
++        surface.translation_y = vertical ? 0 : this.edge === 'top' ? -8 : 8;
++        surface.translation_x = vertical ? (this.edge === 'left' ? -8 : 8) : 0;
++        this._surface.opacity = 0;
++        this._surface.ease({opacity: 255, duration: FADE_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        surface.ease({scale_x: 1, scale_y: 1, translation_x: 0, translation_y: 0,
++            duration: SHOW_TIME, mode: Clutter.AnimationMode.EASE_OUT_EXPO});
++    }
++
++    // The count clears when the folder is opened, not on a timer, because that
++    // is what it meant.
++    _markSeen(model) {
++        const seen = this._seen();
++        seen[model.uri] = GLib.DateTime.new_now_local().to_unix();
++        this._settings.set_value('dock-folders-seen', new GLib.Variant('a{sx}', seen));
++        model.seen = Number(seen[model.uri]);
++    }
++
++    _render() {
++        const model = this.openFolder;
++        if (!model)
++            return;
++        // A folder that changes underneath an open surface redraws it. Keep
++        // the keyboard where it was: losing focus to the wallpaper because a
++        // file arrived would be its own bug.
++        const focus = global.stage.get_key_focus();
++        const focusAt = focus && this._surface.contains(focus)
++            ? this._itemActors().indexOf(focus) : -1;
++        const view = this.viewFor(model);
++        this._surface.setView(view);
++        this._surface.setHeader(model, view, model.newCount);
++        const body = this._surface.body;
++        body.destroy_all_children();
++        // Every item, in both arrangements: the body's height is capped, not
++        // the folder. A folder of ninety-two scrolls to all ninety-two.
++        const items = model.items;
++        if (view === 'grid') {
++            let row = null;
++            items.forEach((item, index) => {
++                if (index % GRID_COLUMNS === 0) {
++                    row = new St.BoxLayout({style_class: 'luma-dockf-grid-row', x_expand: true});
++                    body.add_child(row);
++                }
++                const cell = new FolderCell(item);
++                cell.x_expand = true;
++                cell.connect('clicked', () => this._activate(item));
++                this._hookItemMenu(cell, item);
++                row.add_child(cell);
++            });
++            // A short last row keeps the columns, rather than stretching.
++            const remainder = items.length % GRID_COLUMNS;
++            if (row && remainder) {
++                for (let i = remainder; i < GRID_COLUMNS; i++)
++                    row.add_child(new St.Widget({x_expand: true}));
++            }
++        } else {
++            for (const item of items) {
++                const row = new FolderRow(item, model.isNew(item));
++                row.connect('clicked', () => this._activate(item));
++                this._hookItemMenu(row, item);
++                body.add_child(row);
++            }
++        }
++        if (focusAt >= 0) {
++            const actors = this._itemActors();
++            (actors[Math.min(focusAt, actors.length - 1)] ?? this._surface).grab_key_focus();
++        }
++        this._countDirectories(items);
++        this._cancelThumbnails();
++        this._queueThumbnails();
++    }
++
++    // A folder's line is its item count, which is a real number or nothing.
++    _countDirectories(items) {
++        for (const item of items) {
++            if (!item.isDirectory || item.childCount !== undefined)
++                continue;
++            item.childCount = -1;
++            item.file.enumerate_children_async('standard::name,standard::is-hidden',
++                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_LOW, null,
++                (file, result) => {
++                    let count = 0;
++                    try {
++                        const enumerator = file.enumerate_children_finish(result);
++                        for (;;) {
++                            const info = enumerator.next_file(null);
++                            if (!info)
++                                break;
++                            if (!info.get_is_hidden())
++                                count++;
++                        }
++                        enumerator.close(null);
++                    } catch (error) {
++                        return;
++                    }
++                    item.childCount = count;
++                    // Only that one line changes: rebuilding the body would
++                    // move the keyboard and the pointer's target with it.
++                    for (const actor of this._itemActors()) {
++                        if (actor.item !== item)
++                            continue;
++                        const meta = metaFor(item);
++                        const label = actor.get_children()[0].get_children()
++                            .find(child => child instanceof St.Label &&
++                                child.style_class.endsWith('-meta'));
++                        if (label)
++                            label.text = meta;
++                        actor.accessible_name = meta ? `${item.name}, ${meta}` : item.name;
++                    }
++                });
++        }
++    }
++
++    // Only what can be seen, plus a page either side, and never on the main
++    // loop's back: one idle does a few at a time and yields. A scroll or a
++    // close cancels what is left.
++    _queueThumbnails() {
++        if (this._thumbLater)
++            return;
++        this._thumbLater = GLib.idle_add(GLib.PRIORITY_LOW, () => {
++            this._thumbLater = 0;
++            this._resolveThumbnails();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _cancelThumbnails() {
++        if (this._thumbLater)
++            GLib.source_remove(this._thumbLater);
++        this._thumbLater = 0;
++    }
++
++    _resolveThumbnails() {
++        if (!this.openFolder || !this._surface?.visible)
++            return;
++        const scroll = this._surface.scroll;
++        const adjustment = scroll.vadjustment;
++        const top = adjustment.value - adjustment.page_size;
++        const bottom = adjustment.value + 2 * adjustment.page_size;
++        const grid = this.viewFor(this.openFolder) === 'grid';
++        const iconSize = grid ? FILER_GRID_ICON : 22;
++        let budget = 12;
++        const thumbs = [];
++        for (const actor of this._itemActors()) {
++            const box = actor.get_allocation_box();
++            if (box.y2 < top || box.y1 > bottom)
++                continue;
++            const thumb = actor.get_children()[0]?.get_children()
++                ?.find(child => child._item);
++            if (thumb && thumb._shown === undefined)
++                thumbs.push(thumb);
++        }
++        for (const thumb of thumbs) {
++            if (budget-- <= 0) {
++                this._queueThumbnails();
++                return;
++            }
++            const item = thumb._item;
++            let path = this._thumbs.get(item.uri);
++            if (path === undefined) {
++                path = thumbnailAllowed(item, iconSize)
++                    ? thumbnailFor(item.file, item) : null;
++                this._thumbs.set(item.uri, path ?? null);
++            }
++            if (path)
++                thumb.showThumbnail(path);
++            else
++                thumb._shown = null;
++        }
++    }
++
++    _activate(item) {
++        this.close();
++        Gio.AppInfo.launch_default_for_uri_async(item.uri,
++            global.create_app_launch_context(0, -1), null, null);
++    }
++
++    onScrolled() {
++        this._cancelThumbnails();
++        this._queueThumbnails();
++    }
++
++    setView(view) {
++        if (!this.openFolder)
++            return;
++        this._setViewFor(this.openFolder, view);
++        this._render();
++        this._place();
++        this._syncTiles();
++    }
++
++    action(id) {
++        if (id === 'redock')
++            this.redock();
++        else if (id === 'close')
++            this.close();
++        else if (id === 'filer')
++            this.openInFiler();
++    }
++
++    // Opening it full size and opening it in Filer are the same act, so it is
++    // one control and not two.
++    openInFiler() {
++        const uri = this.openFolder?.uri;
++        this.close();
++        if (uri) {
++            Gio.AppInfo.launch_default_for_uri_async(uri,
++                global.create_app_launch_context(0, -1), null, null);
++        }
++    }
++
++    // ── Breaking out of the dock ────────────────────────────────────────────
++
++    detach() {
++        if (!this.openFolder || this.detached)
++            return;
++        const [x, y] = this._surface.surface.get_transformed_position();
++        this._position = {x, y};
++        this.detached = true;
++        this._surface.setDetached(true);
++        this._place();
++        this._saveDetached();
++        this._syncTiles();
++    }
++
++    redock() {
++        if (!this.detached)
++            return;
++        this.detached = false;
++        this._surface.setDetached(false);
++        this._place();
++        this._clearDetached();
++        this._syncTiles();
++    }
++
++    // Attached, the surface hangs from its own tile; detached, it keeps
++    // wherever it was put, clamped inside the monitor it is on.
++    _place() {
++        if (!this.openFolder || !this._surface.visible)
++            return;
++        const scale = scaleFactor();
++        const [width, height] = this._surface.surface.get_size();
++        const size = {width: width || STACK_WIDTH * scale, height: height || 200};
++        if (this.detached) {
++            const monitor = Main.layoutManager.findMonitorForActor(this._surface) ??
++                Main.layoutManager.primaryMonitor;
++            if (!monitor)
++                return;
++            const inset = SURFACE_INSET * scale;
++            const at = this._position ?? {
++                x: monitor.x + (monitor.width - size.width) / 2,
++                y: monitor.y + (monitor.height - size.height) / 2};
++            this._surface.set_position(
++                Math.round(clamp(at.x, monitor.x + inset,
++                    monitor.x + monitor.width - size.width - inset)),
++                Math.round(clamp(at.y, monitor.y + inset,
++                    monitor.y + monitor.height - size.height - inset)));
++            return;
++        }
++        const tile = this._tiles.get(this.openFolder.uri);
++        if (!tile)
++            return;
++        // A dock with more in it than fits scrolls: a surface must never hang
++        // from a tile the pointer cannot see.
++        this._shelf.scrollDockItemIntoView?.(tile);
++        const [tx, ty] = tile.get_transformed_position();
++        const [tw, th] = tile.get_transformed_size();
++        const monitor = Main.layoutManager.findMonitorForActor(tile) ??
++            Main.layoutManager.primaryMonitor;
++        if (!monitor)
++            return;
++        const {x, y} = Placement.placePopover({
++            anchor: {x: tx, y: ty, width: tw, height: th},
++            monitor,
++            reserve: this._shelf.bandReserve?.(monitor) ?? null,
++            size,
++            gap: SURFACE_GAP * scale,
++            // Past the island's own padding, so the gap is from the island's
++            // edge and not from the tile inside it.
++            lift: ISLAND_PADDING * scale,
++            inset: SURFACE_INSET * scale,
++            edge: this.edge,
++        });
++        this._surface.set_position(x, y);
++    }
++
++    // Dragging the header: attached, past 26px it breaks out; detached, it
++    // simply moves.
++    // Is this press on one of the header's controls rather than on the grip?
++    // The picked actor is whatever is under the pointer -- the icon inside a
++    // button, not the button -- so the whole chain up to the header counts.
++    _pressedControl(actor) {
++        for (let node = actor; node && node !== this._surface.header; node = node.get_parent()) {
++            if (node instanceof St.Button)
++                return true;
++        }
++        return false;
++    }
++
++    // Dragging the header: attached, past 26px it breaks out; detached, it
++    // simply moves.
++    //
++    // A press is never swallowed. The drag is only armed here and the event
++    // goes on to whatever was under it, so the arrangement control, Open in
++    // Filer and Close always get their click: a click has no movement in it,
++    // and nothing is taken from anyone until the pointer has travelled
++    // DRAG_START. Stopping the press outright is what made those controls
++    // dead, and no amount of hit-testing is worth relying on when letting
++    // the event through costs nothing.
++    //
++    // This takes no pointer grab. A grab here once wedged the whole session:
++    // any exception anywhere in the captured-event chain -- including one
++    // thrown by an unrelated extension -- could skip the release that
++    // dismissed it, and the compositor stayed grabbed with the grabbing hand
++    // on screen and nothing clickable. Watching the stage and stopping the
++    // events we are using does everything the grab did, and the worst a
++    // failure can do is end the drag.
++    onHeaderPress(actor, event) {
++        if (event.get_button() !== Clutter.BUTTON_PRIMARY)
++            return Clutter.EVENT_PROPAGATE;
++        if (this._pressedControl(event.get_source()))
++            return Clutter.EVENT_PROPAGATE;
++        if (this._drag)
++            this._endHeaderDrag();
++
++        const [startX, startY] = event.get_coords();
++        const [surfaceX, surfaceY] = this._surface.get_position();
++        const drag = {actor, startX, startY, surfaceX, surfaceY,
++            broke: this.detached, moved: false, armed: true};
++        this._drag = drag;
++        drag.watchdog = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30, () => {
++            drag.watchdog = 0;
++            this._endHeaderDrag();
++            return GLib.SOURCE_REMOVE;
++        });
++        // If the header goes away underneath the drag -- the surface closes,
++        // the folder is unpinned -- the drag ends with it.
++        drag.destroyId = actor.connect('destroy', () => this._endHeaderDrag());
++        drag.eventId = global.stage.connect('captured-event',
++            (_stage, dragEvent) => this._onDragEvent(dragEvent));
++        // Armed, not started: the press belongs to whatever it landed on.
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    _onDragEvent(event) {
++        const drag = this._drag;
++        if (!drag)
++            return Clutter.EVENT_PROPAGATE;
++        // Whatever goes wrong in here, the drag ends rather than leaving the
++        // stage listening and the cursor stuck.
++        try {
++            const type = event.type();
++            if (type === Clutter.EventType.MOTION) {
++                const [x, y] = event.get_coords();
++                const dx = x - drag.startX, dy = y - drag.startY;
++                if (drag.armed) {
++                    // Still a click until the pointer has actually travelled.
++                    if (Math.hypot(dx, dy) <= DRAG_START * scaleFactor())
++                        return Clutter.EVENT_PROPAGATE;
++                    drag.armed = false;
++                    drag.actor.set_cursor_type(Clutter.CursorType.GRABBING);
++                }
++                drag.moved = true;
++                if (!drag.broke) {
++                    this._surface.setLifting(true);
++                    if (Math.hypot(dx, dy) > BREAK_OUT_DISTANCE * scaleFactor()) {
++                        drag.broke = true;
++                        this._surface.setLifting(false);
++                        this.detached = true;
++                        this._surface.setDetached(true);
++                        this._syncTiles();
++                    } else {
++                        this._surface.surface.set_translation(dx, dy, 0);
++                        return Clutter.EVENT_STOP;
++                    }
++                }
++                this._surface.surface.set_translation(0, 0, 0);
++                this._position = {x: drag.surfaceX + dx, y: drag.surfaceY + dy};
++                this._place();
++                return Clutter.EVENT_STOP;
++            }
++            if (type === Clutter.EventType.BUTTON_RELEASE ||
++                type === Clutter.EventType.TOUCH_END ||
++                type === Clutter.EventType.LEAVE && !drag.actor.get_stage()) {
++                const armed = drag.armed, broke = drag.broke;
++                this._endHeaderDrag();
++                // Released without travelling: that was a click, and it goes
++                // where it was aimed.
++                if (armed)
++                    return Clutter.EVENT_PROPAGATE;
++                if (broke)
++                    this._saveDetached();
++                else
++                    this._place();
++                return Clutter.EVENT_STOP;
++            }
++        } catch (error) {
++            logError(error, 'Luma dock folders: the header drag ended on an error');
++            this._endHeaderDrag();
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    // The one way out of a drag, however it ends: nothing here may throw
++    // before the stage listener is gone.
++    _endHeaderDrag() {
++        const drag = this._drag;
++        this._drag = null;
++        if (!drag)
++            return;
++        try {
++            if (drag.eventId)
++                global.stage.disconnect(drag.eventId);
++        } finally {
++            if (drag.watchdog)
++                GLib.source_remove(drag.watchdog);
++            if (drag.destroyId && drag.actor.get_stage())
++                drag.actor.disconnect(drag.destroyId);
++            // Cosmetics only, and they come last: the listener is already
++            // gone and the drag is already over, so nothing here can leave
++            // the pointer captured however it fails.
++            try {
++                if (drag.actor.get_stage()) {
++                    drag.actor.set_cursor_type(this.detached
++                        ? Clutter.CursorType.GRAB : Clutter.CursorType.DEFAULT);
++                }
++                this._surface?.setLifting(false);
++                this._surface?.surface.set_translation(0, 0, 0);
++            } catch (error) {
++                logError(error, 'Luma dock folders: the drag ended untidily');
++            }
++        }
++    }
++
++    // ── Dismissal and the keyboard ──────────────────────────────────────────
++
++    // An attached surface closes when the pointer goes elsewhere; a detached
++    // one is left alone, because nothing else on the desktop will put it away.
++    //
++    // Watched, not grabbed: a folder hanging off the dock must not take the
++    // keyboard or the pointer from the session, and a click that closes it
++    // still reaches whatever it was aimed at.
++    _pushGrab() {
++        if (this._watchId)
++            return;
++        this._watchId = global.stage.connect('captured-event', (_stage, event) => {
++            const type = event.type();
++            // Escape closes, attached or not, wherever the focus is: a folder
++            // left on the desktop must not need finding before it can be put
++            // away.
++            if (type === Clutter.EventType.KEY_PRESS) {
++                if (event.get_key_symbol() !== Clutter.KEY_Escape)
++                    return Clutter.EVENT_PROPAGATE;
++                this.close();
++                return Clutter.EVENT_STOP;
++            }
++            if (type !== Clutter.EventType.BUTTON_PRESS &&
++                type !== Clutter.EventType.TOUCH_BEGIN)
++                return Clutter.EVENT_PROPAGATE;
++            // A click away closes an attached surface and leaves a detached
++            // one alone, because nothing else on the desktop will put it away.
++            if (this.detached)
++                return Clutter.EVENT_PROPAGATE;
++            const source = event.get_source();
++            // A press captured at the stage often has no source yet -- a
++            // click on the wallpaper or on the Dash arrives that way -- so
++            // the actor under the pointer is asked for. A press we cannot
++            // place is a press somewhere else, which is the whole point of
++            // this watch: the surface closes unless the press is positively
++            // one of ours. Treating an unknown press as "not outside" is
++            // what stopped a click away from closing anything at all.
++            let actor = event.get_source();
++            if (!actor) {
++                const [x, y] = event.get_coords();
++                actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
++            }
++            const ours = actor && (this._surface.contains(actor) ||
++                this.rail.contains(actor) ||
++                [this._menu, this._itemMenu].some(menu =>
++                    menu?.actor?.get_stage() && menu.actor.contains(actor)));
++            if (ours)
++                return Clutter.EVENT_PROPAGATE;
++            this.close();
++            // The click still goes where it was aimed.
++            return Clutter.EVENT_PROPAGATE;
++        });
++    }
++
++    _popGrab() {
++        if (this._watchId)
++            global.stage.disconnect(this._watchId);
++        this._watchId = 0;
++    }
++
++    // Arrow keys move through the items in both arrangements, Enter opens one,
++    // Escape closes, attached or not.
++    onKey(event) {
++        if (!this.openFolder)
++            return Clutter.EVENT_PROPAGATE;
++        const symbol = event.get_key_symbol();
++        if (symbol === Clutter.KEY_Escape) {
++            this.close();
++            return Clutter.EVENT_STOP;
++        }
++        const grid = this.viewFor(this.openFolder) === 'grid';
++        // The first arrow key is what puts focus on an item.
++        if (!this._keyed) {
++            const first = this._itemActors()[0];
++            if (first) {
++                this._keyed = true;
++                first.grab_key_focus();
++                return Clutter.EVENT_STOP;
++            }
++        }
++        const step = {
++            [Clutter.KEY_Up]: grid ? -GRID_COLUMNS : -1,
++            [Clutter.KEY_Down]: grid ? GRID_COLUMNS : 1,
++            [Clutter.KEY_Left]: grid ? -1 : 0,
++            [Clutter.KEY_Right]: grid ? 1 : 0,
++        }[symbol];
++        if (!step)
++            return Clutter.EVENT_PROPAGATE;
++        const items = this._itemActors();
++        const focus = global.stage.get_key_focus();
++        const at = items.indexOf(focus);
++        const next = items[clamp(at + step, 0, items.length - 1)];
++        next?.grab_key_focus();
++        return Clutter.EVENT_STOP;
++    }
++
++    _itemActors() {
++        if (!this.openFolder || !this._surface)
++            return [];
++        const body = this._surface.body;
++        return this.viewFor(this.openFolder) === 'grid'
++            ? body.get_children().flatMap(row =>
++                row.get_children().filter(child => child instanceof St.Button))
++            : body.get_children().filter(child => child instanceof St.Button);
++    }
++
++    // ── A detached folder across a session ──────────────────────────────────
++    //
++    // Restored where it was, but only onto a monitor layout that still exists:
++    // a folder must never come back into a position that is no longer on any
++    // screen.
++    _monitorFingerprint() {
++        return Main.layoutManager.monitors
++            .map(m => `${m.x},${m.y},${m.width},${m.height}`).join(';');
++    }
++
++    _saveDetached() {
++        if (!this.detached || !this.openFolder || !this._position)
++            return;
++        this._settings.set_value('dock-folders-detached', new GLib.Variant('a{sv}', {
++            uri: GLib.Variant.new_string(this.openFolder.uri),
++            x: GLib.Variant.new_int32(Math.round(this._position.x)),
++            y: GLib.Variant.new_int32(Math.round(this._position.y)),
++            monitors: GLib.Variant.new_string(this._monitorFingerprint()),
++        }));
++    }
++
++    _clearDetached() {
++        this._settings.set_value('dock-folders-detached', new GLib.Variant('a{sv}', {}));
++    }
++
++    _restoreDetached() {
++        const saved = this._settings.get_value('dock-folders-detached').deep_unpack();
++        const uri = saved.uri?.deep_unpack?.();
++        if (!uri || !this._models.has(uri))
++            return;
++        if (saved.monitors?.deep_unpack?.() !== this._monitorFingerprint()) {
++            // The screens changed: the spot it remembers is not there any
++            // more, so it is not restored at all.
++            this._clearDetached();
++            return;
++        }
++        this._position = {x: saved.x?.deep_unpack?.() ?? 0, y: saved.y?.deep_unpack?.() ?? 0};
++        this.open(this._models.get(uri));
++        this.detach();
++    }
++
++    // ── The tile's own menu ─────────────────────────────────────────────────
++
++    openTileMenu(tile) {
++        this._menu?.destroy();
++        const side = St.Side[this.edge.toUpperCase()];
++        const menu = new PopupMenu.PopupMenu(tile, 0.5, side);
++        menu.actor.add_style_class_name('app-menu');
++        menu.actor.add_style_class_name('luma-dash-menu');
++        const title = new PopupMenu.PopupMenuItem(tile.model.name,
++            {reactive: false, can_focus: false});
++        title.add_style_class_name('luma-menu-title');
++        menu.addMenuItem(title);
++        const view = this.viewFor(tile.model);
++        for (const [id, label] of [['stack', _('Stack')], ['grid', _('Grid')]]) {
++            const item = menu.addAction(label, () => {
++                this._setViewFor(tile.model, id);
++                if (this.openFolder === tile.model)
++                    this._render();
++                this._syncTiles();
++            });
++            item.setOrnament(view === id
++                ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT);
++        }
++        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        // Breaking out is a drag of the header; this is the same act for
++        // anyone not using a pointer.
++        const open = this.openFolder === tile.model;
++        if (open && this.detached) {
++            menu.addAction(_('Put back in the dock'), () => this.redock());
++        } else {
++            menu.addAction(_('Break out of the dock'), () => {
++                if (!open)
++                    this.open(tile.model);
++                this.detach();
++            });
++        }
++        menu.addAction(_('Open in Filer'), () => {
++            Gio.AppInfo.launch_default_for_uri_async(tile.model.uri,
++                global.create_app_launch_context(0, -1), null, null);
++        });
++        menu.addAction(_('Remove from the dock'), () => this.unpin(tile.model.uri));
++        Main.uiGroup.add_child(menu.actor);
++        menu.actor.hide();
++        this._menuManager ??= new PopupMenu.PopupMenuManager(this._shelf,
++            {actionMode: Shell.ActionMode.NORMAL});
++        this._menuManager.addMenu(menu);
++        menu.connect('open-state-changed', (_m, open) => {
++            if (!open)
++                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => (menu.destroy(), GLib.SOURCE_REMOVE));
++        });
++        this._menu = menu;
++        menu.open();
++    }
++
++    // ── An item's own menu ──────────────────────────────────────────────────
++    //
++    // The four things a file manager's menu is for, in Filer's own words and
++    // in Filer's own order. Nothing here deletes: Move to trash is the trash.
++
++    _hookItemMenu(actor, item) {
++        actor.connect('popup-menu', () => this.openItemMenu(actor, item));
++        actor.connect('button-press-event', (_a, event) => {
++            if (event.get_button() !== Clutter.BUTTON_SECONDARY)
++                return Clutter.EVENT_PROPAGATE;
++            this.openItemMenu(actor, item);
++            return Clutter.EVENT_STOP;
++        });
++    }
++
++    openItemMenu(actor, item) {
++        this._itemMenu?.destroy();
++        // Away from the dock's own edge, as every surface opened from the
++        // shelf is, so a menu never covers the row it belongs to.
++        const menu = new PopupMenu.PopupMenu(actor, 0.0, St.Side[this.edge.toUpperCase()]);
++        menu.actor.add_style_class_name('app-menu');
++        menu.actor.add_style_class_name('luma-dash-menu');
++        const launch = () => global.create_app_launch_context(0, -1);
++        menu.addAction(_('Open'), () => {
++            this.close();
++            Gio.AppInfo.launch_default_for_uri_async(item.uri, launch(), null, null);
++        });
++        // Open with: the applications that handle this kind, as the system
++        // knows them. A kind nothing handles gets no row rather than an
++        // empty one.
++        const apps = item.isDirectory
++            ? [] : Gio.AppInfo.get_all_for_type(item.contentType) ?? [];
++        const others = apps.filter(app => app.should_show());
++        if (others.length) {
++            const submenu = new PopupMenu.PopupSubMenuMenuItem(_('Open with'));
++            for (const app of others.slice(0, 6)) {
++                submenu.menu.addAction(app.get_display_name(), () => {
++                    this.close();
++                    app.launch_uris_async([item.uri], launch(), null, null);
++                });
++            }
++            menu.addMenuItem(submenu);
++        }
++        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        menu.addAction(_('Reveal in Filer'), () => {
++            this.close();
++            Gio.DBus.session.call('org.freedesktop.FileManager1',
++                '/org/freedesktop/FileManager1', 'org.freedesktop.FileManager1',
++                'ShowItems', new GLib.Variant('(ass)', [[item.uri], '']),
++                null, Gio.DBusCallFlags.NONE, -1, null).catch(error => {
++                console.warn(`Luma dock folders: could not show ${item.uri} in Filer: ${error.message}`);
++                Main.notifyError(_('Could not show the item in Filer'), error.message);
++            });
++        });
++        menu.addAction(_('Move to Trash'), () => {
++            item.file.trash_async(GLib.PRIORITY_DEFAULT, null, (file, result) => {
++                try {
++                    file.trash_finish(result);
++                } catch (error) {
++                    Main.notifyError(_('Could not move the item to the trash'), error.message);
++                    return;
++                }
++                this.openFolder?.reload();
++            });
++        });
++        Main.uiGroup.add_child(menu.actor);
++        menu.actor.hide();
++        this._menuManager ??= new PopupMenu.PopupMenuManager(this._shelf,
++            {actionMode: Shell.ActionMode.NORMAL});
++        this._menuManager.addMenu(menu);
++        menu.connect('open-state-changed', (_m, open) => {
++            if (!open)
++                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => (menu.destroy(), GLib.SOURCE_REMOVE));
++        });
++        this._itemMenu = menu;
++        menu.open();
++    }
++
++    // ── Pinning ─────────────────────────────────────────────────────────────
++
++    pin(uri) {
++        const uris = this.uris;
++        if (uris.includes(uri))
++            return false;
++        this._settings.set_strv('dock-folders', [...uris, uri]);
++        return true;
++    }
++
++    unpin(uri) {
++        this._settings.set_strv('dock-folders', this.uris.filter(u => u !== uri));
++    }
++
++    // Where a folder dropped from Filer lands. The handler answers for any
++    // file drag, so a file dropped here is refused with a reason rather than
++    // swallowed (lumaDockFolders is the only thing on the shelf that takes
++    // folders, and nothing else would refuse it).
++    getFolderDropTarget() {
++        if (!this._settings.is_writable('dock-folders'))
++            return null;
++        return {pin: uris => this.pinAll(uris)};
++    }
++
++    pinAll(uris) {
++        const existing = this.uris;
++        const added = uris.filter(uri => !existing.includes(uri));
++        if (!added.length)
++            return;
++        this._settings.set_strv('dock-folders', [...existing, ...added]);
++    }
++
++    // While a folder is on its way, the rail is there to receive it even
++    // with nothing pinned yet.
++    setFolderDragActive(active) {
++        if (this._folderDrag === active)
++            return;
++        this._folderDrag = active;
++        // An empty rail holds only the placeholder, which is hidden from
++        // pick, so without this the drop would land on whatever is behind
++        // the rail and find no target at all.
++        this.rail.reactive = active;
++        if (active && this._placeholder.get_parent() !== this.rail)
++            this.rail.add_child(this._placeholder);
++        this._placeholder.visible = active;
++        if (active)
++            this.rail.add_style_pseudo_class('drop');
++        else
++            this.rail.remove_style_pseudo_class('drop');
++        this._sync();
++        // The rail is a part of the dock island, so whether it is there at
++        // all is the shelf's to place, not ours to show.
++        this._shelf.syncDockFolders?.();
++    }
++
++    // A folder dragged onto the dock is pinned; a tile dragged out of it is
++    // unpinned. Called by the Dash's drop handling.
++    canAcceptDrop(source) {
++        const uri = source?.lumaFolderUri ?? source?.uri ?? null;
++        if (!uri)
++            return false;
++        const file = Gio.File.new_for_uri(uri);
++        try {
++            return file.query_file_type(Gio.FileQueryInfoFlags.NONE, null) ===
++                Gio.FileType.DIRECTORY;
++        } catch (error) {
++            return false;
++        }
++    }
++
++    acceptDrop(source) {
++        const uri = source?.lumaFolderUri ?? source?.uri ?? null;
++        return uri ? this.pin(uri) : false;
++    }
++
++    destroy() {
++        if (this._placeLater)
++            GLib.source_remove(this._placeLater);
++        this._placeLater = 0;
++        this._shelf?.disconnectObject?.(this);
++        this._cancelThumbnails();
++        this._endHeaderDrag();
++        Main.xdndHandler?.disconnectObject(this);
++        this._popGrab();
++        this._menu?.destroy();
++        this._itemMenu?.destroy();
++        for (const model of this._models.values())
++            model.destroy();
++        this._models.clear();
++        this._surface?.destroy();
++        this._surface = null;
++        this.rail?.destroy();
++        this.divider?.destroy();
++    }
++});
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 30dbc68..4f88b7a 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -20,6 +20,7 @@ import {WindowMarks} from './lumaDockWindows.js';
+ import {DASH_TILE_SIZE, DIVIDER_WIDTH, SHELF_INSET, SHELF_ISLAND_RADIUS, windowMarkRow} from './shelfMetrics.js';
+ import * as Arrangement from './shelfArrangement.js';
+ import {ShelfArrange, DashedOutline} from './shelfArrange.js';
++import {DockFolders} from './lumaDockFolders.js';
+ 
+ const DASH_PADDING = 10;
+ // Every application on the dock is drawn to the same silhouette, whatever
+@@ -707,11 +708,35 @@ export const Shelf = GObject.registerClass({
+         });
+         // StViewport clips to its content box, excluding its own padding.
+         // Put hover headroom inside that clip, on a non-scrollable child.
+-        this._dockPadding = new St.Bin({child: this._dash});
++        // One padded strip inside the clip: the applications, and -- married
++        // -- the divider and the folders rail after them. They are the
++        // content of one island, so they share its padding and its scrolling.
++        this._dockStrip = new St.BoxLayout({
++            orientation: Clutter.Orientation.HORIZONTAL,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._dockStrip.add_child(this._dash);
++        this._dockPadding = new St.Bin({child: this._dockStrip});
+         this._dockContent.add_child(this._dockPadding);
+         this._dockScroll.set_child(this._dockContent);
+-        this._dockMaterial = new St.Bin({child: this._dockScroll});
++        this._dockScroll.x_expand = true;
++        this._dockScroll.y_expand = true;
++        // The applications scroll; the folders do not. A dock with more
++        // applications than fit would otherwise carry the folders off the
++        // end of its own clip, where they are drawn, allocated and
++        // completely unreachable -- which is exactly what a full dock did.
++        // Folders are not applications and must not be lost in a long list,
++        // so the rail is pinned at the end of the island beside the scroll,
++        // the way the tray sits beside the status cluster.
++        this._dockMaterial = new St.BoxLayout({style_class: 'luma-shelf-dock-box'});
++        this._dockMaterial.add_child(this._dockScroll);
+         this._dockMaterial._lumaDock = true;
++        // A folder dropped from Filer is taken anywhere along the dock, not
++        // only on the folders rail: the person is aiming at the dock, and
++        // the rail may not be there yet to aim at.
++        this._dockMaterial._delegate = {
++            getFolderDropTarget: () => this.dockFolders?.getFolderDropTarget?.() ?? null,
++        };
+         this._dockIsland = new ShelfIsland('luma-shelf-dock-island', this._dockMaterial);
+         this._dockIndicators = new St.Widget({layout_manager: new DockIndicatorLayout(),
+             reactive: false});
+@@ -724,6 +749,23 @@ export const Shelf = GObject.registerClass({
+         this._dash._box.connectObject('notify::allocation', () => this._queueIndicatorLayout(), this);
+         Shell.WindowTracker.get_default().connectObject('notify::focus-app', () => this._queueIndicatorLayout(), this);
+ 
++        // Dock folders. One rail, in whichever island the setting puts it:
++        // married it is a part of the dock, behind the same divider token the
++        // Dash draws between the parts of a bar; separated it is the
++        // 'folders' island, placed and dragged like any other (ADR-044).
++        // Nothing is copied -- the rail actor moves.
++        this.dockFolders = new DockFolders(this, this._settings);
++        this._foldersMaterial = new St.Bin({style_class: 'luma-shelf-folders-box'});
++        this._foldersIsland = new ShelfIsland('luma-shelf-folders-island',
++            this._foldersMaterial);
++        this._foldersIsland.visible = false;
++        this._settings.connectObject('changed::dock-folders',
++            () => this._syncDockFolders(),
++            'changed::dock-folders-separate', () => this._syncDockFolders(),
++            'changed::dock-folders-visible', () => this._syncDockFolders(), this);
++        this.dockFolders.rail.connectObject(
++            'child-added', () => this._queueDockWidth(),
++            'child-removed', () => this._queueDockWidth(), this);
+ 
+         // Keep secondary accessibility/input applets reachable in their own
+         // island. The clock/status island itself has exactly one input target.
+@@ -816,7 +858,7 @@ export const Shelf = GObject.registerClass({
+         this._islands = new Map();
+         for (const [id, island] of [['dock', this._dockIsland], ['media', this._mediaIsland],
+             ['notifications', this._beaconIsland], ['quick-options', this._actionsIsland],
+-            ['aux', this._auxIsland]])
++            ['folders', this._foldersIsland], ['aux', this._auxIsland]])
+             this._registerIsland(id, island);
+ 
+         // Applications and extensions put status icons in the top panel: tray
+@@ -835,12 +877,16 @@ export const Shelf = GObject.registerClass({
+             this._focusVisible = null;
+             this._mediaGuard?.destroy();
+             this._mediaGuard = null;
++            this.dockFolders?.destroy();
++            this.dockFolders = null;
+             if (this._panelAddToStatusArea) {
+                 Main.panel.addToStatusArea = this._panelAddToStatusArea;
+                 this._panelAddToStatusArea = null;
+             }
+             if (this._adoptLaterId) GLib.source_remove(this._adoptLaterId);
+             this._adoptLaterId = 0;
++            if (this._foldersLaterId) GLib.source_remove(this._foldersLaterId);
++            this._foldersLaterId = 0;
+             this._arrange?.destroy();
+             this._arrange = null;
+             // At shutdown the layout manager destroys uiGroup's children, the
+@@ -853,7 +899,7 @@ export const Shelf = GObject.registerClass({
+             this._syncAgainId = 0;
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+             this._indicatorLaterId = 0;
+-            for (const island of [this._auxIsland, this._dockIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland, ...(this._ghosts?.values() ?? [])])
++            for (const island of [this._auxIsland, this._dockIsland, this._foldersIsland, this._actionsIsland, this._liveIsland, this._mediaIsland, this._beaconIsland, this._wellIsland, this._clockIsland, ...(this._ghosts?.values() ?? [])])
+                 if (island && !island.get_parent()) island.destroy();
+         });
+ 
+@@ -1564,6 +1610,9 @@ export const Shelf = GObject.registerClass({
+         this._floatEnds = this._settings.get_boolean('shelf-float-ends');
+         this._freePlacement = this._settings.settings_schema.has_key('shelf-free-placement') &&
+             this._settings.get_boolean('shelf-free-placement');
++        // Married or separated, before the arrangement is resolved: whether
++        // the folders island is there at all decides which bands it holds.
++        this._syncDockFolders();
+ 
+         // Where every island is: the stored arrangement (an empty one is
+         // today's layout, derived from the v1 keys), or arrange mode's
+@@ -1603,6 +1652,8 @@ export const Shelf = GObject.registerClass({
+         this._vertical = Arrangement.isVertical(this._edge);
+         const orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+         this._dockContent.orientation = orientation;
++        this._dockStrip.orientation = orientation;
++        this._dockMaterial.orientation = orientation;
+         this._dash.setShelfEdge(this._edge);
+         this._dockIndicators.queue_relayout();
+         this._dockScroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
+@@ -1638,6 +1689,26 @@ export const Shelf = GObject.registerClass({
+         return null;
+     }
+ 
++    // A dock with more in it than fits scrolls. A surface that hangs from a
++    // dock item must never hang from one the pointer cannot see, so the item
++    // comes into the visible strip first.
++    scrollDockItemIntoView(actor) {
++        if (!actor?.get_stage() || !this._dockScroll?.contains(actor))
++            return;
++        const adjustment = this._vertical
++            ? this._dockScroll.vadjustment : this._dockScroll.hadjustment;
++        if (!adjustment || adjustment.upper <= adjustment.page_size)
++            return;
++        const box = actor.get_allocation_box();
++        const start = this._vertical ? box.y1 : box.x1;
++        const end = this._vertical ? box.y2 : box.x2;
++        const value = adjustment.value;
++        if (start < value)
++            adjustment.value = start;
++        else if (end > value + adjustment.page_size)
++            adjustment.value = end - adjustment.page_size;
++    }
++
+     // The edge of the island an actor sits in: every surface opened from an
+     // island opens away from that island's own edge.
+     edgeForActor(actor) {
+@@ -1780,9 +1851,82 @@ export const Shelf = GObject.registerClass({
+             return !!this._beacon?.visible && !!this._beaconIsland?.visible;
+         if (id === 'live' || id === 'media')
+             return this._actionsVisible && !!this.getIsland(id)?.visible;
++        if (id === 'folders')
++            return !!this._foldersIsland?.visible;
+         return this._actionsVisible;
+     }
+ 
++    // The folders rail has come or gone for a reason that is not a setting
++    // change -- a folder is being dragged in from Filer, and the rail has to
++    // be there to receive it.
++    syncDockFolders() {
++        this._syncDockFolders();
++    }
++
++    // Married or separated: one rail, one setting, no second copy of it.
++    //
++    // Married (the default) the rail is a part of the dock island, after the
++    // applications, with the divider token in front of it -- the same
++    // separation the status parts already use inside one bar. Separated it
++    // leaves the dock for the 'folders' island, which the arrangement model
++    // then places, drags and gives the shelf's own corner rules; the divider
++    // goes, because the gap is doing the separating.
++    _syncDockFolders() {
++        const folders = this.dockFolders;
++        if (!folders)
++            return;
++        const rail = folders.rail;
++        const divider = folders.divider;
++        const separate = folders.separate;
++        const pinned = folders.shown;
++        if (separate && pinned) {
++            if (divider.get_parent())
++                divider.get_parent().remove_child(divider);
++            if (rail.get_parent() !== this._foldersMaterial) {
++                rail.get_parent()?.remove_child(rail);
++                this._foldersMaterial.child = rail;
++            }
++            this._foldersIsland.visible = true;
++        } else {
++            this._foldersMaterial.child = null;
++            this._foldersIsland.visible = false;
++            if (pinned) {
++                for (const [actor, index] of [[divider, 1], [rail, 2]]) {
++                    if (actor.get_parent() === this._dockMaterial) {
++                        this._dockMaterial.set_child_at_index(actor, index);
++                        continue;
++                    }
++                    actor.get_parent()?.remove_child(actor);
++                    this._dockMaterial.insert_child_at_index(actor, index);
++                }
++            } else {
++                for (const actor of [divider, rail])
++                    actor.get_parent()?.remove_child(actor);
++            }
++        }
++        divider.visible = pinned && !separate;
++        rail.visible = pinned;
++        this._queueOccupancy();
++        this._queueDockWidth();
++        // The rail arriving or leaving changes the dock island's length, and
++        // every island beside it on that band moves with it. The geometry
++        // pass has to run after the new length is measured, or the tiles keep
++        // their old places in the input region while the band is drawn
++        // somewhere else: the folders are visibly there and cannot be
++        // clicked. _queueDockWidth above measures on the next idle, so this
++        // one, queued after it at the same priority, lays out with the length
++        // it found.
++        const key = `${pinned}:${separate}`;
++        if (this._foldersKey === key || this._foldersLaterId)
++            return;
++        this._foldersKey = key;
++        this._foldersLaterId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._foldersLaterId = 0;
++            this._sync();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
+     _islandShown(id) {
+         if (id === 'dock')
+             return this._dockVisible;
+@@ -1790,6 +1934,8 @@ export const Shelf = GObject.registerClass({
+         // island is on its way out); a hidden or stale island takes none.
+         if (id === 'notifications')
+             return !!this._beacon?.visible || !!this._beaconIsland?._lumaLeaving;
++        if (id === 'folders')
++            return !!this._foldersIsland?.visible;
+         return this._actionsVisible;
+     }
+ 
+@@ -2731,7 +2877,11 @@ export const Shelf = GObject.registerClass({
+         };
+         // The dock at its natural length; a band too short for it shortens
+         // its viewport when the groups are placed (_syncGeometry).
+-        this._dockNatural = this._dockIsland.visible ? measure(this._dash, this._vertical) : 0;
++        //
++        // The dock's content, not the dash alone: married, the folders rail
++        // and its divider are inside the same scrolling strip, and a viewport
++        // measured without them clips the folders out of the input region.
++        this._dockNatural = this._dockIsland.visible ? measure(this._dockContent, this._vertical) : 0;
+         this._setDockLength(this._dockNatural, false);
+ 
+         // Keep all status controls reachable on a short/narrow display. Both
+diff --git a/js/ui/shelfArrange.js b/js/ui/shelfArrange.js
+index 37e1313..ecb02f0 100644
+--- a/js/ui/shelfArrange.js
++++ b/js/ui/shelfArrange.js
+@@ -630,6 +630,41 @@ export class ShelfArrange {
+             card.add_child(option);
+             this._freeOption = option;
+         }
++        // Married or separated, the one setting behind the folders rail: a
++        // part of the dock, or the 'folders' island beside it. The rail is
++        // the same rail either way.
++        if (settings.settings_schema.has_key('dock-folders-separate') &&
++            settings.get_strv('dock-folders').length > 0) {
++            const option = new St.Button({style_class: 'luma-arrange-option', can_focus: true,
++                x_expand: true, accessible_role: Atk.Role.CHECK_BOX,
++                accessible_name: _('Separate folders')});
++            const box = new St.BoxLayout({x_expand: true});
++            box.add_child(new St.Label({style_class: 'luma-arrange-option-label',
++                text: _('Separate folders'),
++                x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
++            const toggle = new PopupMenu.Switch(settings.get_boolean('dock-folders-separate'));
++            toggle.y_align = Clutter.ActorAlign.CENTER;
++            box.add_child(toggle);
++            option.child = box;
++            const sync = () => {
++                const on = settings.get_boolean('dock-folders-separate');
++                toggle.state = on;
++                if (on)
++                    option.add_accessible_state(Atk.StateType.CHECKED);
++                else
++                    option.remove_accessible_state(Atk.StateType.CHECKED);
++            };
++            option.connect('clicked', () => settings.set_boolean('dock-folders-separate',
++                !settings.get_boolean('dock-folders-separate')));
++            settings.connectObject('changed::dock-folders-separate', () => {
++                sync();
++                this._queueDecorate();
++                this._announce(settings.get_boolean('dock-folders-separate')
++                    ? _('Folders separated') : _('Folders in the dock'));
++            }, option);
++            sync();
++            card.add_child(option);
++        }
+         const row = new St.BoxLayout({style_class: 'luma-arrange-card-buttons'});
+         const reset = new St.Button({style_class: 'luma-arrange-button', label: _('Reset'), can_focus: true});
+         reset.connect('clicked', () => this.reset());
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index 92d02ab..8e681ee 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -17,8 +17,12 @@
+ // start/end are physical: left/right on horizontal edges, top/bottom on
+ // vertical ones, in RTL too.
+ 
+-export const ISLAND_IDS = Object.freeze(['dock', 'live', 'media', 'well',
++export const ISLAND_IDS = Object.freeze(['dock', 'folders', 'live', 'media', 'well',
+     'quick-options', 'clock', 'notifications']);
++// 'folders' is the dock folders rail as an island of its own. It exists only
++// while the folders are separated from the dock; married, the rail is a part
++// of the dock island and this id holds nothing. It defaults to the dock's own
++// side, beside it, because that is where it came from.
+ // Shell .114's row: the dock, the live and media islands against Quick
+ // Options, then the notification island at the far end.
+ export const DEFAULT_ORDER = ISLAND_IDS;
+@@ -111,17 +115,20 @@ export function defaultArrangement(v1 = {}, order = DEFAULT_ORDER) {
+     const anchor = value => ZONE_ANCHORS.includes(value) ? value : 'center';
+     // A shelf that spans its edge with separate islands draws the dock at
+     // one end and everything else at the other: exactly two groups.
++    // The folders rail came out of the dock, so it goes with the dock
++    // wherever the dock goes, beside it, one island gap away.
++    const withDock = order.filter(id => id === 'dock' || id === 'folders');
++    const away = order.filter(id => !withDock.includes(id));
+     if (v1.spanSplit) {
+         return [
+-            {display: '', edge, anchor: 'start', position: 0.5, islands: ['dock']},
+-            {display: '', edge, anchor: 'end', position: 0.5, islands: order.filter(id => id !== 'dock')},
++            {display: '', edge, anchor: 'start', position: 0.5, islands: withDock},
++            {display: '', edge, anchor: 'end', position: 0.5, islands: away},
+         ];
+     }
+     if (v1.groupLayout === 'split-ends') {
+-        const rest = order.filter(id => id !== 'dock');
+         return [
+-            {display: '', edge, anchor: anchor(v1.dockAnchor ?? 'start'), position: 0.5, islands: ['dock']},
+-            {display: '', edge, anchor: anchor(v1.actionsAnchor ?? 'end'), position: 0.5, islands: rest},
++            {display: '', edge, anchor: anchor(v1.dockAnchor ?? 'start'), position: 0.5, islands: withDock},
++            {display: '', edge, anchor: anchor(v1.actionsAnchor ?? 'end'), position: 0.5, islands: away},
+         ].filter(group => group.islands.length);
+     }
+     return [{display: '', edge, anchor: 'center', position: 0.5, islands: [...order]}];
+diff --git a/js/ui/xdndHandler.js b/js/ui/xdndHandler.js
+index b95ec7f..efc2b86 100644
+--- a/js/ui/xdndHandler.js
++++ b/js/ui/xdndHandler.js
+@@ -162,12 +162,22 @@ export class XdndHandler extends Signals.EventEmitter {
+             files.some(([uri, type]) => typeof uri !== 'string' ||
+                 uri.length > 8192 || !uri.startsWith('file:///') ||
+                 typeof type !== 'string' || type.length > 256 ||
+-                !type.includes('/') || type === 'inode/directory'))
++                !type.includes('/')))
++            return '';
++
++        // Two kinds, and never a mixture. All regular files is the original
++        // one: drop them on an app's tile to open them. All folders is the
++        // other: drop them on the dock to pin them. Something of each is
++        // neither, because the drop would have to guess.
++        const folders = files.every(([, type]) => type === 'inode/directory');
++        const regular = files.every(([, type]) => type !== 'inode/directory');
++        if (!folders && !regular)
+             return '';
+ 
+         const token = GLib.uuid_string_random();
+-        this._fileDrag = {sender, token, files, target: null,
++        this._fileDrag = {sender, token, files, target: null, folders,
+             externalEnded: false, sourceEnded: false};
++        this.emit('file-drag-begin', folders);
+         // A crashed or disconnected source must not leave an armed drop target.
+         this._fileDrag.timeout = GLib.timeout_add_seconds(
+             GLib.PRIORITY_DEFAULT, 120, () => {
+@@ -202,7 +212,15 @@ export class XdndHandler extends Signals.EventEmitter {
+         const drag = this._fileDrag;
+         let target = null;
+         while (actor) {
+-            const appInfo = actor._delegate?.getFileDropAppInfo?.();
++            // Somewhere that takes folders answers first, and answers for
++            // either kind: a file dropped there has to be refused out loud
++            // rather than fall through and look like nothing happened.
++            const folderDrop = actor._delegate?.getFolderDropTarget?.();
++            if (folderDrop) {
++                target = {actor, folderDrop};
++                break;
++            }
++            const appInfo = drag.folders ? null : actor._delegate?.getFileDropAppInfo?.();
+             if (this._fileDragMatchesApp(appInfo, drag.files)) {
+                 target = {actor, appInfo};
+                 break;
+@@ -234,6 +252,7 @@ export class XdndHandler extends Signals.EventEmitter {
+             drag.target.actor.disconnect(drag.target.destroyId);
+             drag.target.actor.remove_style_pseudo_class('drop');
+         }
++        this.emit('file-drag-end');
+         this.emit('drag-end');
+     }
+ 
+@@ -248,9 +267,57 @@ export class XdndHandler extends Signals.EventEmitter {
+             (actor === target.actor || target.actor.contains(actor));
+         // Consume before any asynchronous work: duplicate/stale finish messages
+         // and subsequent drags cannot replay this launch.
++        const folders = drag.folders, files = drag.files;
++        const folderDrop = target?.folderDrop ?? null;
+         this._clearFileDrag();
+-        if (inside)
+-            this._openDroppedFiles(target.appInfo, drag.files);
++        if (!inside)
++            return;
++        if (folderDrop) {
++            if (!folders) {
++                Main.notifyError(_('Only folders can be pinned to the dock'),
++                    _('Drop a folder here, or drop a file on an application to open it.'));
++                return;
++            }
++            this._pinDroppedFolders(folderDrop, files);
++            return;
++        }
++        this._openDroppedFiles(target.appInfo, files);
++    }
++
++    // Never pin what the source merely said was a folder: the directories
++    // are confirmed off the Shell's main thread first, exactly as the
++    // regular-file path re-checks its own.
++    async _pinDroppedFolders(folderDrop, files) {
++        const cancellable = new Gio.Cancellable();
++        let timeout = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
++            timeout = 0;
++            cancellable.cancel();
++            return GLib.SOURCE_REMOVE;
++        });
++        try {
++            const verified = await Promise.all(files.map(([uri]) =>
++                new Promise((resolve, reject) => {
++                    const file = Gio.File.new_for_uri(uri);
++                    file.query_info_async('standard::type',
++                        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
++                        GLib.PRIORITY_DEFAULT, cancellable, (object, result) => {
++                            try {
++                                const info = object.query_info_finish(result);
++                                if (info.get_file_type() !== Gio.FileType.DIRECTORY)
++                                    throw new Error('Only folders can be pinned');
++                                resolve(uri);
++                            } catch (error) {
++                                reject(error);
++                            }
++                        });
++                })));
++            folderDrop.pin(verified);
++        } catch (error) {
++            Main.notifyError(_('Unable to pin to the dock'), error.message);
++        } finally {
++            if (timeout)
++                GLib.source_remove(timeout);
++        }
+     }
+ 
+     async _openDroppedFiles(appInfo, files) {

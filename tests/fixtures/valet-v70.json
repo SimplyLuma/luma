@@ -1,0 +1,360 @@
+{
+  "apps": [
+    {
+      "id": "kiln",
+      "n": "Kiln",
+      "dev": "Kiln Labs",
+      "ok": true,
+      "file": "kiln-2.4.1.flatpakref",
+      "fmt": "flatpak",
+      "v": "2.4.1",
+      "sz": "38 MB",
+      "inst": "214 MB",
+      "g": "image",
+      "a": "oklch(0.72 0.15 45)",
+      "b": "oklch(0.52 0.16 20)",
+      "desc": "Photo editor",
+      "runs": "Runs in a sandbox. It sees only the photos and folders you give it.",
+      "src": "Flathub",
+      "sig": "Kiln Labs",
+      "perms": [
+        [
+          "Network",
+          "globe",
+          true,
+          "Syncs presets"
+        ],
+        [
+          "Pictures",
+          "image",
+          true,
+          "Opens and saves photos"
+        ],
+        [
+          "Camera",
+          "camera",
+          false,
+          "Tethered shooting"
+        ],
+        [
+          "Notifications",
+          "bell",
+          true,
+          ""
+        ]
+      ],
+      "adds": [
+        [
+          "file-text",
+          "Opens .jpg, .png, .tiff and camera raw files"
+        ]
+      ],
+      "net": [
+        "api.kilnlabs.app",
+        "presets.kilnlabs.app"
+      ],
+      "rt": "org.freedesktop.Platform 24.08 (already installed, shared)"
+    },
+    {
+      "id": "driftwood",
+      "n": "Driftwood",
+      "dev": "Driftwood Software",
+      "ok": true,
+      "file": "driftwood_1.8.2_amd64.deb",
+      "fmt": "deb",
+      "v": "1.8.2",
+      "sz": "64 MB",
+      "inst": "190 MB",
+      "g": "notebook-pen",
+      "a": "oklch(0.78 0.08 80)",
+      "b": "oklch(0.55 0.09 60)",
+      "desc": "Notes and outlines",
+      "have": "1.7.0",
+      "runs": "Runs as a normal Luma app on a shared Debian 12 runtime that Luma keeps patched.",
+      "src": "apt.driftwood.app",
+      "sig": "Driftwood Software",
+      "perms": [
+        [
+          "Home folder",
+          "folder",
+          true,
+          "Command-line tools see your real files"
+        ],
+        [
+          "Network",
+          "globe",
+          true,
+          "Sync"
+        ]
+      ],
+      "adds": [
+        [
+          "terminal",
+          "A command: driftwood"
+        ],
+        [
+          "bell",
+          "A background sync service (you’ll be asked first)"
+        ],
+        [
+          "file-text",
+          "Opens .md and .opml files"
+        ]
+      ],
+      "net": [
+        "sync.driftwood.app"
+      ],
+      "rt": "Debian 12 runtime (shared with 4 other apps)",
+      "scripts": "postinst ran in a recording sandbox. It tried to add a service and a command; both were turned into Luma equivalents."
+    },
+    {
+      "id": "labelpress",
+      "n": "LabelPress",
+      "dev": "LabelPress Inc.",
+      "ok": true,
+      "file": "labelpress-driver-4.0.x86_64.rpm",
+      "fmt": "rpm",
+      "v": "4.0.0",
+      "sz": "12 MB",
+      "inst": "41 MB",
+      "g": "printer",
+      "a": "oklch(0.7 0.02 250)",
+      "b": "oklch(0.45 0.02 250)",
+      "desc": "Label printer driver",
+      "runs": "Runs on a Fedora 44 runtime. RPMs never change the system itself.",
+      "warn": "USB printing won’t work: its kernel driver isn’t signed. Network printing will.",
+      "src": "rpm.labelpress.com",
+      "sig": "LabelPress Inc.",
+      "perms": [
+        [
+          "Printers",
+          "printer",
+          true,
+          "Adds a print queue"
+        ],
+        [
+          "USB devices",
+          "cpu",
+          false,
+          "Needs the kernel driver"
+        ]
+      ],
+      "adds": [
+        [
+          "printer",
+          "A printer: LabelPress LP-2"
+        ],
+        [
+          "cpu",
+          "A kernel driver (DKMS), which can’t be loaded yet"
+        ]
+      ],
+      "net": [],
+      "rt": "Fedora 44 runtime (downloads on first use, 180 MB)",
+      "scripts": "post-install asked to build a kernel module with DKMS. Luma skipped that step."
+    },
+    {
+      "id": "tessera",
+      "n": "Tessera",
+      "dev": "Unknown developer",
+      "ok": false,
+      "file": "Tessera-0.9.3-x86_64.AppImage",
+      "fmt": "appimage",
+      "v": "0.9.3",
+      "sz": "112 MB",
+      "inst": "112 MB",
+      "g": "layout-grid",
+      "a": "oklch(0.72 0.12 300)",
+      "b": "oklch(0.5 0.14 280)",
+      "desc": "Tile map editor",
+      "runs": "Not signed. Valet runs it in a sandbox unless you turn that off.",
+      "sandbox": true,
+      "src": "github.com",
+      "sig": "",
+      "perms": [
+        [
+          "Documents",
+          "folder",
+          true,
+          ""
+        ],
+        [
+          "Network",
+          "globe",
+          true,
+          ""
+        ]
+      ],
+      "adds": [
+        [
+          "file-text",
+          "Opens .tmx files"
+        ]
+      ],
+      "net": [
+        "Not declared. Valet will show you what it connects to"
+      ]
+    },
+    {
+      "id": "garden",
+      "n": "Pixel Garden",
+      "dev": "Small Sprout Games",
+      "ok": true,
+      "file": "pixel-garden-3.1.apk",
+      "fmt": "apk",
+      "v": "3.1",
+      "sz": "86 MB",
+      "inst": "150 MB",
+      "g": "sunrise",
+      "a": "oklch(0.8 0.14 130)",
+      "b": "oklch(0.55 0.15 150)",
+      "desc": "Game",
+      "runs": "Runs in Luma’s Android layer, in its own space, like on a phone.",
+      "src": "Signed APK",
+      "sig": "Small Sprout Games",
+      "perms": [
+        [
+          "Notifications",
+          "bell",
+          true,
+          "Garden reminders"
+        ],
+        [
+          "Storage",
+          "folder",
+          false,
+          "Save screenshots"
+        ],
+        [
+          "Location",
+          "map-pin",
+          false,
+          "Weather in the garden"
+        ]
+      ],
+      "adds": [],
+      "net": [
+        "play.smallsprout.games"
+      ]
+    },
+    {
+      "id": "ledger",
+      "n": "Ledger 5",
+      "dev": "Northfield Accounting",
+      "ok": true,
+      "file": "Ledger5-Setup.exe",
+      "fmt": "exe",
+      "v": "5.2",
+      "sz": "220 MB",
+      "inst": "640 MB",
+      "g": "receipt",
+      "a": "oklch(0.7 0.1 160)",
+      "b": "oklch(0.45 0.1 180)",
+      "desc": "Accounting",
+      "runs": "Runs through Luma’s Windows layer in its own private space.",
+      "src": "northfield.com",
+      "sig": "Northfield Accounting",
+      "perms": [
+        [
+          "Documents",
+          "folder",
+          true,
+          "Company files"
+        ],
+        [
+          "Downloads",
+          "download",
+          true,
+          "Bank statements"
+        ],
+        [
+          "Network",
+          "globe",
+          true,
+          "Bank feeds"
+        ]
+      ],
+      "adds": [
+        [
+          "file-text",
+          "Opens .ldg files"
+        ]
+      ],
+      "net": [
+        "feeds.northfield.com"
+      ],
+      "rt": "A private Windows space: 1.1 GB, shared by all Windows apps"
+    }
+  ],
+  "installed": [
+    {
+      "id": "harbor",
+      "n": "Harbor",
+      "fmt": "flatpak",
+      "g": "waves",
+      "a": "oklch(0.7 0.1 220)",
+      "b": "oklch(0.45 0.12 240)",
+      "when": "12 August",
+      "parts": [
+        [
+          "App",
+          312,
+          1
+        ],
+        [
+          "Cache",
+          860,
+          1
+        ],
+        [
+          "Settings",
+          4,
+          0
+        ],
+        [
+          "Saved data",
+          38,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "driftwood",
+      "n": "Driftwood",
+      "fmt": "deb",
+      "g": "notebook-pen",
+      "a": "oklch(0.78 0.08 80)",
+      "b": "oklch(0.55 0.09 60)",
+      "when": "2 September",
+      "v": "1.7.0",
+      "parts": [
+        [
+          "App",
+          180,
+          1
+        ],
+        [
+          "Cache",
+          64,
+          1
+        ],
+        [
+          "Settings",
+          2,
+          0
+        ],
+        [
+          "Notes database",
+          210,
+          0
+        ]
+      ]
+    }
+  ],
+  "initial": {
+    "view": "install",
+    "app": "kiln",
+    "keep": true,
+    "sandbox": true
+  }
+}

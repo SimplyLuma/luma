@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: the Hotspot row uses the radio-tower glyph
+
+Studio Desktop draws Hotspot with Lucide's radio-tower (its G() maps
+hotspot to radio-tower). The system icon set provides it as
+lumaui-radio-tower-symbolic; no set provides lumaui-hotspot-symbolic, so the
+row had no glyph and the image's icon-reference check failed.
+
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+index 109dc65..0a9a9d2 100644
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1509,7 +1509,7 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             const hotspot = wifi._hotspot;
+             if (hotspot) {
+                 hotspot.get_parent()?.remove_child(hotspot);
+-                const note = decorateStudioSwitchRow(hotspot, 'lumaui-hotspot-symbolic');
++                const note = decorateStudioSwitchRow(hotspot, 'lumaui-radio-tower-symbolic');
+                 const syncHotspotCopy = () => {
+                     note.text = hotspot.state ? _('Sharing this connection') : _('Share this connection');
+                     note.visible = true;

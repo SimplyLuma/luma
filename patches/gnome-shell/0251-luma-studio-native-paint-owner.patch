@@ -1,0 +1,68 @@
+From: Project Luma
+Subject: [PATCH] Shell: own Studio control and popup frame painting in Shelf
+
+The loaded Shelf stylesheet overrides default theme variants. Paint raised
+Studio controls there, including checked cards, and keep native material
+as the sole Quick Options frame instead of a second BoxPointer stroke.
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3117,3 +3117,57 @@
+ .luma-shelf-dock-island .luma-surface-light #dash .show-apps .show-apps-icon,
+ .luma-shelf-dock-island.luma-surface-light #dash .show-apps .show-apps-icon { color: rgba(22,25,29,0.76); }
+ .luma-status-cluster .luma-status-clock-text { spacing: 0; }
++
++/* Studio controls belong to this loaded Shelf stylesheet, which overrides
++ * default variant sheets. St paints one shadow; border colors own the rim. */
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:checked {
++  background-color: #353a42;
++  border: 1px solid rgba(255,255,255,.10);
++  border-top-color: rgba(255,255,255,.16);
++  border-bottom-color: rgba(0,0,0,.25);
++  box-shadow: 0 2px 3px rgba(0,0,0,.15); }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key:checked,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options.luma-surface-frost .luma-options-slider .luma-options-level-key,
++.quick-settings.luma-studio-options.luma-surface-frost .luma-options-slider .luma-options-level-key:checked,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio:checked,
++.quick-settings.luma-studio-options.luma-surface-glass .luma-options-slider .luma-options-level-key,
++.quick-settings.luma-studio-options.luma-surface-glass .luma-options-slider .luma-options-level-key:checked {
++  background-color: #fff; color: rgba(22,25,29,.86);
++  border-color: rgba(25,27,31,.12);
++  border-top-color: #fff;
++  border-bottom-color: rgba(25,27,31,.18);
++  box-shadow: 0 2px 3px rgba(25,27,31,.10); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:active,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:checked:active,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:checked:active {
++  box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key:active,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key:checked:active,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio:checked:active,
++.quick-settings.luma-studio-options.luma-surface-frost .luma-options-slider .luma-options-level-key:active,
++.quick-settings.luma-studio-options.luma-surface-frost .luma-options-slider .luma-options-level-key:checked:active,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options.luma-surface-frost .quick-toggle-has-menu.luma-options-radio:checked:active,
++.quick-settings.luma-studio-options.luma-surface-glass .luma-options-slider .luma-options-level-key:active,
++.quick-settings.luma-studio-options.luma-surface-glass .luma-options-slider .luma-options-level-key:checked:active,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio:active,
++.quick-settings.luma-studio-options.luma-surface-glass .quick-toggle-has-menu.luma-options-radio:checked:active {
++  box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }
++/* Quick Options' native material owns its frame. BoxPointer must not paint a
++ * second stock stroke/background around its differently rounded corners. */
++.popup-menu-boxpointer.luma-quick-options-popup {
++  -arrow-border-width: 0;
++  -arrow-background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-back { width: 32px; height: 32px; }
++.quick-settings.luma-studio-options .luma-options-radio .luma-quick-disclosure-icon { icon-size: 18px; }

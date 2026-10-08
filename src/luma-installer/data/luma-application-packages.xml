@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.appimage">
+    <comment>AppImage application</comment>
+    <glob pattern="*.AppImage" weight="80"/>
+    <glob pattern="*.appimage" weight="80"/>
+  </mime-type>
+  <mime-type type="application/vnd.flatpak">
+    <comment>Flatpak bundle</comment>
+    <glob pattern="*.flatpak" weight="80"/>
+  </mime-type>
+  <mime-type type="application/vnd.flatpak.ref">
+    <comment>Flatpak application reference</comment>
+    <glob pattern="*.flatpakref" weight="80"/>
+  </mime-type>
+  <mime-type type="application/vnd.flatpak.repo">
+    <comment>Flatpak repository reference</comment>
+    <glob pattern="*.flatpakrepo" weight="80"/>
+  </mime-type>
+  <mime-type type="application/vnd.snap">
+    <comment>Snap application package</comment>
+    <glob pattern="*.snap" weight="80"/>
+  </mime-type>
+</mime-info>

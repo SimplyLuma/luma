@@ -1,0 +1,271 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: give Chromium and Electron windows the same corners
+
+Claude and other Chromium apps load GTK 4 for their dialogs, so the corner
+mask could take them for GTK windows. Windows are now left alone only when
+their process loaded libadwaita, which draws Luma's radius.
+
+Mutter renders an effect into a texture covering the actor's paint volume,
+padded to whole pixels, not the actor's size. Chromium's subsurfaces widen
+that volume, so mapping the texture onto the window size put the corner in
+the wrong place and Claude and Discord kept their own 8px corners. The
+texture's real origin and extent are now set before every paint.
+
+Inside a client's shadow margin the shader draws Luma's window elevation
+around the 15px curve instead of the client's shadow for its smaller corner.
+The shadow fades to nothing at the edge of the client's margin on each
+side instead of ending in a hard line. Each decision is logged under
+[luma-corners].
+
+--- a/js/ui/lumaWindowCorners.js
++++ b/js/ui/lumaWindowCorners.js
+@@ -12,15 +12,36 @@
+ // frame, so the mask cuts the frame's corners and leaves that shadow as it
+ // is. Fullscreen windows (games, video) stay square, and so do Android
+ // windows and Mutter-framed X11 windows, which draw their own.
++//
++// Which windows round themselves is decided by what the process loaded, not
++// by the GTK application id a surface carries: Chromium and Electron load
++// GTK 4 for their dialogs and so looked like GTK windows, and Claude kept its
++// own 8px corners beside 15px Luma windows. libadwaita is what draws Luma's
++// radius, so only a process that loaded it is left alone.
++//
++// A client that draws its own shadow outside its frame (Chromium with Wayland
++// window decorations) drew it for its own, smaller corner. Inside that margin
++// the shader now draws Luma's window elevation around the 15px curve instead,
++// so the corner and the shadow under it match a native window.
++//
++// The shader works in the window's own coordinates. Mutter renders an effect
++// into a texture covering the actor's paint volume, padded and rounded to
++// whole pixels, not the actor's size; for Chromium, whose subsurfaces widen
++// that volume, mapping the texture onto the window size put the corner in the
++// wrong place and left Claude and Discord with their own 8px corners. The
++// texture's real origin and extent are set before every paint.
+ 
+ import GObject from 'gi://GObject';
+ import GLib from 'gi://GLib';
++import Gio from 'gi://Gio';
+ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import Cogl from 'gi://Cogl';
+ 
+ const RADIUS = 15;
+ const EFFECT_NAME = 'luma-window-corners';
++// A client margin narrower than this is not a shadow Luma can redraw.
++const SHADOW_MARGIN = 6;
+ const MASKED_TYPES = new Set([
+     Meta.WindowType.NORMAL,
+     Meta.WindowType.DIALOG,
+@@ -28,25 +49,69 @@
+     Meta.WindowType.UTILITY,
+ ]);
+ 
++// Luma's window elevation from the patched libadwaita, nearest two layers:
++// [offset-y, blur, spread, alpha]. The farthest layer never fits a client's
++// margin and is left out rather than cut off.
++const ELEVATION = {
++    light: {color: [25 / 255, 27 / 255, 31 / 255], near: [2, 5, 0, 0.18], far: [18, 42, -14, 0.42]},
++    dark: {color: [9 / 255, 11 / 255, 14 / 255], near: [3, 8, 0, 0.38], far: [22, 52, -15, 0.72]},
++};
++
+ const DECLARATIONS = `
++uniform vec2 origin;
++uniform vec2 extent;
+ uniform vec2 size;
+ uniform vec4 bounds;
+ uniform float radius;
+ uniform float scale;
++uniform float shadows;
++uniform vec3 shadow_color;
++uniform vec4 near_shadow;
++uniform vec4 far_shadow;
++
++float luma_round_box(vec2 point, vec2 center, vec2 half_size, float corner) {
++  vec2 inner = abs(point - center) - (half_size - vec2(corner));
++  return length(max(inner, vec2(0.0))) + min(max(inner.x, inner.y), 0.0) - corner;
++}
++
++float luma_shadow_layer(vec2 point, vec2 center, vec2 half_size, vec4 layer) {
++  float spread = layer.z;
++  float distance = luma_round_box(point - vec2(0.0, layer.x), center,
++                                  max(half_size + vec2(spread), vec2(0.0)),
++                                  max(radius + spread, 0.0));
++  return layer.w * (1.0 - smoothstep(-layer.y, layer.y, distance));
++}
+ `;
+ 
+ // A rounded-rectangle distance field over the window, measured in logical
+ // pixels and softened over one device pixel so the curve is antialiased at
+-// every display scale. Colour is premultiplied, so scaling it fades a corner.
+-// bounds is the frame inside the actor (x1, y1, x2, y2); outside it -- a
+-// client's own shadow -- nothing is touched.
++// every display scale, exactly as GTK draws a 15px window. Colour is
++// premultiplied, so scaling it fades a corner. bounds is the frame inside the
++// actor (x1, y1, x2, y2). Outside it, a client's own shadow is replaced by
++// Luma's when shadows is set, and left alone otherwise.
+ const CODE = `
+-vec2 point = cogl_tex_coord_in[0].st * size;
+-if (point.x >= bounds.x && point.y >= bounds.y && point.x <= bounds.z && point.y <= bounds.w) {
+-  vec2 half_size = (bounds.zw - bounds.xy) * 0.5;
+-  vec2 inner = abs(point - (bounds.xy + half_size)) - (half_size - vec2(radius));
+-  float distance = length(max(inner, vec2(0.0))) + min(max(inner.x, inner.y), 0.0) - radius;
+-  cogl_color_out *= clamp(0.5 - distance * scale, 0.0, 1.0);
++vec2 point = origin + cogl_tex_coord_in[0].st * extent;
++vec2 half_size = (bounds.zw - bounds.xy) * 0.5;
++vec2 center = bounds.xy + half_size;
++float edge_distance = luma_round_box(point, center, half_size, radius);
++float coverage = clamp(0.5 - edge_distance * scale, 0.0, 1.0);
++if (shadows > 0.5) {
++  // The client's margin is all the room there is: fade the shadow to nothing
++  // exactly at the buffer's edge on each side, or it ends in a hard line.
++  float room_x = point.x < center.x ? bounds.x : size.x - bounds.z;
++  float room_y = point.y < center.y ? bounds.y : size.y - bounds.w;
++  float outside_x = max(abs(point.x - center.x) - half_size.x, 0.0);
++  float outside_y = max(abs(point.y - center.y) - half_size.y, 0.0);
++  float fade = (1.0 - smoothstep(0.0, max(room_x, 1.0), outside_x)) *
++               (1.0 - smoothstep(0.0, max(room_y, 1.0), outside_y));
++  float near = luma_shadow_layer(point, center, half_size, near_shadow);
++  float far = luma_shadow_layer(point, center, half_size, far_shadow);
++  float alpha = (1.0 - (1.0 - near) * (1.0 - far)) * fade;
++  vec4 shadow = vec4(shadow_color * alpha, alpha);
++  cogl_color_out = cogl_color_out * coverage + shadow * (1.0 - coverage);
++} else if (point.x >= bounds.x && point.y >= bounds.y &&
++           point.x <= bounds.z && point.y <= bounds.w) {
++  cogl_color_out *= coverage;
+ }
+ `;
+ 
+@@ -55,8 +120,61 @@
+     vfunc_build_pipeline() {
+         this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT, DECLARATIONS, CODE, false);
+     }
++
++    // Where the offscreen texture sits in actor coordinates, as
++    // ClutterOffscreenEffect's pre_paint computed it: the paint volume (or
++    // allocation) enlarged by _clutter_actor_box_enlarge_for_effects.
++    _textureOrigin(actor) {
++        const enlarge = (x1, width) => {
++            const x2 = Math.ceil(x1 + width + 0.75);
++            return x2 - Math.round(width) - 3;
++        };
++        const volume = actor.get_paint_volume();
++        if (volume) {
++            const origin = volume.get_origin();
++            const width = volume.get_width();
++            const height = volume.get_height();
++            if (width * height === 0)
++                return [Math.trunc(origin.x), Math.trunc(origin.y)];
++            return [Math.trunc(enlarge(origin.x, width)), Math.trunc(enlarge(origin.y, height))];
++        }
++        const box = actor.get_allocation_box();
++        const width = box.x2 - box.x1;
++        const height = box.y2 - box.y1;
++        return [Math.trunc(enlarge(box.x1, width) - box.x1),
++            Math.trunc(enlarge(box.y1, height) - box.y1)];
++    }
++
++    vfunc_paint_target(node, paintContext) {
++        const actor = this.actor;
++        const texture = this.get_texture();
++        if (actor && texture) {
++            const textureScale = Math.max(1, Math.ceil(actor.get_resource_scale()));
++            this.set_uniform_float(this.get_uniform_location('origin'), 2,
++                this._textureOrigin(actor));
++            this.set_uniform_float(this.get_uniform_location('extent'), 2,
++                [texture.get_width() / textureScale, texture.get_height() / textureScale]);
++            this.set_uniform_float(this.get_uniform_location('scale'), 1, [textureScale]);
++        }
++        super.vfunc_paint_target(node, paintContext);
++    }
+ });
+ 
++// Whether the window's process draws Luma's radius itself. Unreadable
++// processes (other users, sandboxes) are masked: the mask is the same curve
++// libadwaita draws, so a libadwaita app masked by mistake looks unchanged.
++function roundsItself(window) {
++    const pid = window.get_pid();
++    if (pid <= 0)
++        return false;
++    try {
++        const [ok, contents] = GLib.file_get_contents(`/proc/${pid}/maps`);
++        return ok && new TextDecoder().decode(contents).includes('/libadwaita-1.so');
++    } catch {
++        return false;
++    }
++}
++
+ function wantsMask(window) {
+     if (window.is_override_redirect() || !MASKED_TYPES.has(window.get_window_type()))
+         return false;
+@@ -66,8 +184,8 @@
+         return false;
+     if (window.get_client_type() === Meta.WindowClientType.X11 && window.decorated)
+         return false;
+-    // GTK and libadwaita round their own windows to the same radius.
+-    if (window.get_gtk_application_id())
++    window._lumaRoundsItself ??= roundsItself(window);
++    if (window._lumaRoundsItself)
+         return false;
+     const frame = window.get_frame_rect();
+     return frame.width > 2 * RADIUS && frame.height > 2 * RADIUS;
+@@ -75,12 +193,21 @@
+ 
+ export class WindowCorners {
+     constructor() {
++        this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
++        this._interface.connectObject('changed::color-scheme', () => this._syncAll(), this);
+         global.display.connectObject('window-created',
+             (_display, window) => this._track(window), this);
+         for (const actor of global.get_window_actors())
+             this._track(actor.meta_window);
+     }
+ 
++    _syncAll() {
++        for (const actor of global.get_window_actors()) {
++            if (actor._lumaCornersTracked)
++                this._sync(actor.meta_window, actor);
++        }
++    }
++
+     _track(window) {
+         const actor = window.get_compositor_private();
+         if (!actor) {
+@@ -112,7 +239,17 @@
+ 
+     _sync(window, actor) {
+         let effect = actor.get_effect(EFFECT_NAME);
+-        if (!wantsMask(window)) {
++        const masked = wantsMask(window);
++        if (actor._lumaCornersLogged !== masked) {
++            actor._lumaCornersLogged = masked;
++            const frame = window.get_frame_rect();
++            const buffer = window.get_buffer_rect();
++            console.log(`[luma-corners] ${window.get_wm_class()} ${masked ? 'masked' : 'left alone'} ` +
++                `(rounds itself ${window._lumaRoundsItself}, gtk id ${window.get_gtk_application_id()}, ` +
++                `frame ${frame.width}x${frame.height}+${frame.x - buffer.x}+${frame.y - buffer.y} ` +
++                `in ${buffer.width}x${buffer.height})`);
++        }
++        if (!masked) {
+             if (effect)
+                 actor.remove_effect(effect);
+             return;
+@@ -133,11 +270,18 @@
+         const buffer = window.get_buffer_rect();
+         const x = frame.x - buffer.x;
+         const y = frame.y - buffer.y;
++        const margin = Math.min(x, y, buffer.width - frame.width - x, buffer.height - frame.height - y);
++        const elevation = this._interface.get_string('color-scheme') === 'prefer-dark'
++            ? ELEVATION.dark : ELEVATION.light;
+         effect.set_uniform_float(effect.get_uniform_location('size'), 2, [width, height]);
+         effect.set_uniform_float(effect.get_uniform_location('bounds'), 4,
+             [x, y, x + frame.width, y + frame.height]);
+         effect.set_uniform_float(effect.get_uniform_location('radius'), 1, [RADIUS]);
+-        effect.set_uniform_float(effect.get_uniform_location('scale'), 1, [actor.get_resource_scale()]);
++        effect.set_uniform_float(effect.get_uniform_location('shadows'), 1,
++            [margin >= SHADOW_MARGIN && !window.maximized_horizontally ? 1 : 0]);
++        effect.set_uniform_float(effect.get_uniform_location('shadow_color'), 3, elevation.color);
++        effect.set_uniform_float(effect.get_uniform_location('near_shadow'), 4, elevation.near);
++        effect.set_uniform_float(effect.get_uniform_location('far_shadow'), 4, elevation.far);
+         effect.queue_repaint();
+     }
+ }

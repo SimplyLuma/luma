@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="gnome-shell-extension-luma-handheld">
+  <schema id="org.project_luma.handheld" path="/org/project-luma/handheld/">
+    <key name="keyboard-engine" type="s">
+      <default>'gnome'</default>
+      <summary>Selected handheld virtual keyboard engine</summary>
+      <description>Only engines accepted under the active Luma compositor may be selected.</description>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,134 @@
+diff --git a/src/phosh-osk-stevia.gresources.xml b/src/phosh-osk-stevia.gresources.xml
+index 3ba1eed..f340167 100644
+--- a/src/phosh-osk-stevia.gresources.xml
++++ b/src/phosh-osk-stevia.gresources.xml
+@@ -13,6 +13,7 @@
+     <file compressed="true">stylesheet/adwaita-dark.css</file>
+     <file compressed="true">stylesheet/adwaita-hc-light.css</file>
+     <file compressed="true">stylesheet/luma-light.css</file>
++    <file compressed="true">stylesheet/luma-dark.css</file>
+     <file compressed="true">stylesheet/common.css</file>
+     <!-- from gnome-shell -->
+     <file preprocess="json-stripblanks">layouts/am.json</file>
+diff --git a/src/pos-size-manager.c b/src/pos-size-manager.c
+index e2d16ee..3d4ad9d 100644
+--- a/src/pos-size-manager.c
++++ b/src/pos-size-manager.c
+@@ -70,7 +70,7 @@ G_DEFINE_TYPE (PosSizeManager, pos_size_manager, G_TYPE_OBJECT)
+ 
+ /* Portrait */
+ #define MIN_PORTRAIT_RATIO 0.4
+-#define TARGET_PORTRAIT_PHYS_HEIGHT 40 /* mm */
++#define TARGET_PORTRAIT_PHYS_HEIGHT 30 /* mm */
+ #define TARGET_PORTRAIT_BOTTOM_DEAD_ZONE 8 /* mm */
+ 
+ /* Landscape */
+diff --git a/src/pos-style-manager.c b/src/pos-style-manager.c
+index 2f6c3cd..84acdf8 100644
+--- a/src/pos-style-manager.c
++++ b/src/pos-style-manager.c
+@@ -245,7 +245,7 @@ pos_style_manager_get_stylesheet (const char *theme_name)
+   if (g_strcmp0 (theme_name, "HighContrast") == 0)
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-hc-light.css";
+   else if (g_strcmp0 (theme_name, "Luma") == 0)
+-    style = "/mobi/phosh/stevia/stylesheet/adwaita-dark.css";
++    style = "/mobi/phosh/stevia/stylesheet/luma-dark.css";
+   else
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-dark.css";
+ 
+diff --git a/src/stylesheet/luma-dark.css b/src/stylesheet/luma-dark.css
+new file mode 100644
+index 0000000..b2d437d
+--- /dev/null
++++ b/src/stylesheet/luma-dark.css
+@@ -0,0 +1,57 @@
++/* Project Luma's compact dark handheld keyboard palette. */
++@define-color pos_key_fg_color #f4f5f6;
++@define-color pos_key_bg_color #30363d;
++@define-color pos_fg_color #f4f5f6;
++@define-color pos_bg_color #171b20;
++@define-color theme_selected_bg_color #f3f4f5;
++@define-color theme_selected_fg_color #171b20;
++
++@import url("resource:///mobi/phosh/stevia/stylesheet/common.css");
++
++pos-input-surface,
++pos-osk-widget {
++  color: #f4f5f6;
++  background-color: #171b20;
++  font-family: Figtree, sans-serif;
++}
++
++pos-key {
++  color: #f4f5f6;
++  background: #30363d;
++  border-radius: 8px;
++  margin: 3px;
++  font-weight: 500;
++  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
++}
++
++pos-key.pressed {
++  color: #ffffff;
++  background: #444c55;
++  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
++}
++
++pos-key.sys,
++pos-key.toggle,
++pos-shortcuts-bar button {
++  color: #f4f5f6;
++  background: #292f35;
++}
++
++pos-key.return {
++  color: #171b20;
++  background: #f3f4f5;
++  font-weight: 600;
++}
++
++pos-key.return.pressed {
++  color: #171b20;
++  background: #d8dbde;
++}
++
++pos-completion-bar {
++  color: #f4f5f6;
++  background: #171b20;
++  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
++}
++
++pos-completion-bar button,
++pos-completion-bar button label {
++  color: #f4f5f6;
++  background: transparent;
++  text-shadow: none;
++}
++
++pos-completion-bar button:active {
++  color: #ffffff;
++  background: #30363d;
++}
+diff --git a/tests/test-size-manager.c b/tests/test-size-manager.c
+index 20850ae..c22bf77 100644
+--- a/tests/test-size-manager.c
++++ b/tests/test-size-manager.c
+@@ -178,7 +178,7 @@ test_size_manager_portrait_osk_scale_up_op6t_at_250 (void)
+   g_assert_cmpfloat (pixel_size, >, 0.06);
+   height = calc_height (output, &dz, ALL_FLAGS);
+ 
+-  g_assert_cmpint (height, ==, 258);
++  g_assert_cmpint (height, ==, 193);
+   g_assert_cmpint (dz, ==, 51);
+ }
+ 
+@@ -197,7 +197,7 @@ test_size_manager_portrait_osk_scale_up_l5_at_200 (void)
+ 
+   g_assert_true (pos_output_is_portrait (output));
+   g_assert_cmpfloat (pixel_size, >, 0.09);
+   height = calc_height (output, &dz, ALL_FLAGS);
+-  g_assert_cmpint (height, ==, 221);
++  g_assert_cmpint (height, ==, 166);
+   g_assert_cmpint (dz, ==, 44);
+ }
+ 

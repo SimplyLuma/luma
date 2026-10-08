@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<component type="desktop-application">
+  <id>org.projectluma.Displays</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Displays</name>
+  <summary>Arrange your displays and name the arrangements you use</summary>
+  <description>
+    <p>When displays are plugged in together for the first time, Displays opens to ask how to use them: extend, mirror, or one display. Drag them to match your desk, and set rotation, refresh rate and scale where you can see the result.</p>
+    <p>Every arrangement you keep is remembered and can be named, like Home or Office.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Displays.desktop</launchable>
+  <developer id="org.projectluma"><name>Project Luma</name></developer>
+  <url type="homepage">https://projectluma.org/apps/displays</url>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="0.1.0" date="2026-09-13"/></releases>
+</component>

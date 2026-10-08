@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Which Luma apps work in the background before anyone decides (ADR-033).
+#
+#   on   essential: runs by default, shown as Always On, can be turned off
+#   off  runs only once the person turns it on
+#   (absent) asks once, the first time the app requests it
+#
+# Only apps the system installed (root-owned desktop entry and declaration,
+# or a system Flatpak installation) can be on by default. An image can
+# override any line in /etc/luma-background/defaults.toml.
+
+[apps]
+"org.projectluma.Messages" = "on"
+"org.projectluma.Phone" = "on"
+"org.projectluma.Calendar" = "on"
+"org.projectluma.Clock" = "on"
+"org.projectluma.Connect" = "on"
+# Charlie, Luma's mail app (its own repository; agent org.projectluma.Charlie.Agent).
+"org.projectluma.Charlie" = "on"
+
+"org.projectluma.Weather" = "off"
+"org.projectluma.Notes" = "off"
+"org.projectluma.Tasks" = "off"
+"org.projectluma.Photos" = "off"
+"org.projectluma.Tide" = "off"

@@ -1,0 +1,32 @@
+/* Weather-only surfaces; all paint uses kit color roles. */
+.wx-hero { color: @luma_sky_card_ink; text-shadow: 0 1px 12px alpha(@luma_media_shadow, .15); }
+.wx-hero .wx-location label, .wx-hero .wx-location image { color: @luma_sky_card_ink; }
+.wx-summary { padding-bottom: 10px; box-shadow: inset 0 -1px 0 alpha(@luma_sky_card_ink, .14); }
+
+/* v71 phone (wxBodyPhone): Weather's own surfaces over the sky. Kit colour roles only. */
+.wx-hero2, #wx-phone-say, .wx-page-head { color: @luma_sky_card_ink; }
+.wx-hero2 { padding: 4px 0; }
+.wx-place-button { min-height: 36px; padding: 0 12px; border-radius: 18px; color: @luma_sky_card_ink; background: none; box-shadow: none; }
+.wx-place-button:hover { background-color: alpha(@luma_sky_card_ink, .08); }
+#wx-phone-condition { opacity: .85; }
+#wx-phone-say { margin: 4px 2px; }
+.wx-card-heading { margin-bottom: 8px; opacity: .7; }
+.wx-next-joint { min-height: 2px; background-color: alpha(@luma_sky_card_ink, .25); }
+.wx-sun-glyph { color: @luma_weather_glyph_sun; }
+.wx-alert-glyph { color: @luma_weather_alert_glyph; }
+.wx-alert { padding: 14px 16px; border-radius: 22px; background-color: @luma_weather_alert_fill; box-shadow: inset 0 0 0 1px @luma_weather_alert_ring; }
+.wx-alert:not(.small) { color: @luma_sky_card_ink; }
+.wx-alert.small { padding: 10px 12px; border-radius: 16px; }
+.wx-alert-text { margin: 8px 0 6px; }
+.wx-plan { min-height: 44px; }
+.wx-plan.joined { box-shadow: inset 0 1px 0 alpha(@luma_sky_card_ink, .1); }
+.wx-hour-rain { color: @luma_weather_hour_rain; }
+.wx-page-head { padding: 4px 2px 6px; }
+.wx-radar { border-radius: 24px; }
+.wx-radar-legend, .wx-radar-time { margin: 12px; color: @luma_sky_card_ink; background-color: alpha(@luma_media_shadow, .42); }
+.wx-radar-legend { padding: 6px 10px; border-radius: 14px; }
+.wx-radar-time { padding: 6px 12px 6px 6px; border-radius: 22px; }
+.wx-radar-key-1, .wx-radar-key-2, .wx-radar-key-3 { min-width: 10px; min-height: 10px; border-radius: 3px; }
+.wx-radar-key-1 { background-color: @luma_green; }
+.wx-radar-key-2 { background-color: @luma_amber; }
+.wx-radar-key-3 { background-color: @luma_destructive; }

@@ -1,0 +1,40 @@
+From 19174407d02b59543ec76e5eec63c4a4458b10a1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:11:33 +0000
+Subject: [PATCH] Filer: size default grid tiles to the v70 eight-column layout
+
+---
+ data/org.gnome.nautilus.gschema.xml | 2 +-
+ src/nautilus-grid-cell.c            | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/data/org.gnome.nautilus.gschema.xml b/data/org.gnome.nautilus.gschema.xml
+index 51683f4..af48862 100644
+--- a/data/org.gnome.nautilus.gschema.xml
++++ b/data/org.gnome.nautilus.gschema.xml
+@@ -242,7 +242,7 @@
+         <alias value='larger' target='extra-large'/>
+         <alias value='largest' target='extra-large'/>
+       </aliases>
+-      <default>'small-plus'</default>
++      <default>'medium'</default>
+       <summary>Default icon view zoom level</summary>
+     </key>
+   </schema>
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index c6e1ed7..24d1ba5 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -252,7 +252,8 @@ nautilus_grid_cell_dispose (GObject *object)
+     G_OBJECT_CLASS (nautilus_grid_cell_parent_class)->dispose (object);
+ }
+ 
+-#define EMBLEMS_BOX_WIDTH 18
++/* At the medium 96px icon step, two 14px margins leave a 124px v70 tile. */
++#define EMBLEMS_BOX_WIDTH 14
+ #define VERTICAL_PADDING 6
+ 
+ static void
+-- 
+2.55.0
+

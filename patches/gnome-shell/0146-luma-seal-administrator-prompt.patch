@@ -1,0 +1,2590 @@
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 13:30:00 -0500
+Subject: [PATCH] luma: Seal, the administrator prompt
+
+Replaces the polkit "Authentication Required" dialog with Seal: a
+centred card over a blurred scrim covering every monitor, with the
+requesting app's icon and a lock badge (or a neutral system lock when the
+requester cannot be resolved), a title and body written by Luma, one
+field that is visible and focused from the first frame, a status line,
+equal Cancel and Allow buttons and a Details disclosure. Quick Options'
+tokens in light, dark, frost and glass; reduced motion drops every
+transform, the breathing reader glyph and the shake.
+
+A password is always offered; a fingerprint is an addition.
+
+Mechanism (lumaSealAuth.js). Luma's PAM stack (authselect local
+with-fingerprint) runs `auth sufficient pam_fprintd.so` before
+`auth sufficient pam_unix.so` in the polkit-1 service, so one polkit
+session asks for nothing but a finger until the reader times out. The
+stack is not changed. Seal runs more than one PolkitAgent.Session for the
+same cookie, as GDM runs a fingerprint conversation beside the password
+one:
+
+- The first session claims the reader through pam_fprintd and listens.
+- When a password is submitted while that session holds the reader, a
+  second session starts. fprintd refuses it the claim (AlreadyInUse),
+  pam_fprintd returns PAM_AUTHINFO_UNAVAIL without a message, `sufficient`
+  ignores that, and pam_unix asks the second session for the password at
+  once. The typed text is handed over; nobody waits for the reader to time
+  out and nothing is retyped.
+- Whichever session first asks for a secret gets the submitted text,
+  exactly once; it is not kept afterwards.
+- The first session to complete authorized wins. Every other session is
+  disconnected before it is cancelled, so a fingerprint message still on
+  its way (the failure mode 0085 fixed for unlocking) can neither hold nor
+  undo the success. polkit is answered before the card's closing motion.
+- Without a reader or an enrolled finger pam_fprintd returns at once and
+  the first session asks for the password; nothing about fingerprints is
+  shown. After a reader timeout the reader is armed again (at most four
+  times); after pam_fprintd's own max-tries it is not.
+- The shell decides nothing: polkitd accepts an authorization only from
+  its agent helper, for this cookie and for an offered identity.
+
+Copy (lumaSealCopy.js). polkitd passes agents only the action id, the
+mechanism's translated message and the subject and caller pids; the
+mechanism's other details are withheld. Templates for udisks2 open-device
+for writing and for reading (drive name from udisks' own message, size and
+partition from sysfs), Flatpak app-install, timedate1 set-time and pkexec
+as root (command from pkexec's argument vector); anything else is "App
+wants administrator access" with polkit's message as the body. The
+requester is resolved from the kernel's view of polkit.subject-pid and its
+parents: /.flatpak-info, the systemd unit's application id, or the app
+owning a window; otherwise "An app" and the neutral lock. The requesting
+app cannot choose the words or the icon.
+ShellPolkitAuthenticationAgent gains get_request_detail() so the prompt
+can read the pids polkitd passes.
+
+Dropping this patch restores GNOME's polkit dialog.
+---
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index a5bf77c..86c0f25 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -7,6 +7,7 @@
+     <file>gnome-shell-light.css</file>
+     <file>gnome-shell-high-contrast.css</file>
+     <file>luma-capture.css</file>
++    <file>luma-seal.css</file>
+     <file>luma-cast.css</file>
+     <file>luma-shelf.css</file>
+     <file>gnome-shell-start.svg</file>
+diff --git a/data/theme/luma-seal.css b/data/theme/luma-seal.css
+new file mode 100644
+index 0000000..0f79266
+--- /dev/null
++++ b/data/theme/luma-seal.css
+@@ -0,0 +1,237 @@
++/* Luma Seal: the administrator prompt (components/polkitAgent.js).
++ *
++ * A centred, symmetrical card over a blurred scrim. Surface, ink and line
++ * are Quick Options' tokens in every appearance mode; the material classes
++ * (luma-surface-light, -dark, -frost, -glass) come from lumaSurfaceMaterials.js.
++ *
++ *            fill                     ink      muted                   line                     control                 active
++ * light      #f1f2f3                  #30343a  #767b81                 rgba(35,39,45,.09)       rgba(35,44,52,.072)     #31373e
++ * dark       #21252b                  #e9ebec  #969da4                 rgba(255,255,255,.075)   rgba(255,255,255,.072)  #e6e9eb
++ * frost      rgba(244,245,246,.80)    #30343a  #767b81                 rgba(35,39,45,.09)       rgba(35,44,52,.072)     #31373e
++ * glass      rgba(22,29,40,.38)       #ffffff  rgba(255,255,255,.70)   rgba(255,255,255,.15)    rgba(10,20,33,.20)      #ffffff
++ *
++ * Its own colours are the error red #d4595c and the success green #3b9a6b. */
++
++/* ── Scrim and card ──────────────────────────────────────────────────────── */
++.luma-seal-scrim { background-color: rgba(8, 10, 14, 0.46); }
++
++.luma-seal-shadow {
++  border-radius: 24px;
++  background-color: rgba(0, 0, 0, 0.01);
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.28); }
++
++.luma-seal-card {
++  font-family: 'Figtree', system-ui, sans-serif;
++  padding: 27px 23px 17px;
++  border-radius: 24px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.6); }
++.luma-seal-card.luma-surface-dark { background-color: #21252b; color: #e9ebec; border-color: rgba(255, 255, 255, 0.075); }
++.luma-seal-card.luma-surface-frost { background-color: rgba(244, 245, 246, 0.80); }
++.luma-seal-card.luma-surface-glass { background-color: rgba(22, 29, 40, 0.38); color: #ffffff; border-color: rgba(255, 255, 255, 0.15); }
++
++/* ── Who is asking ───────────────────────────────────────────────────────── */
++.luma-seal-who { width: 60px; height: 60px; }
++.luma-seal-app-icon { icon-shadow: 0 8px 18px -6px rgba(12, 17, 24, 0.45); }
++
++/* A 26 circle in ink, ringed 3 in the card's fill so it reads as cut out. */
++.luma-seal-badge {
++  width: 26px;
++  height: 26px;
++  border-radius: 16px;
++  border: 3px solid #f1f2f3;
++  background-color: #30343a;
++  color: #f1f2f3; }
++.luma-seal-badge-glyph { width: 13px; height: 13px; }
++.luma-surface-dark .luma-seal-badge { border-color: #21252b; background-color: #e9ebec; color: #21252b; }
++.luma-surface-frost .luma-seal-badge { border-color: #f4f5f6; }
++.luma-surface-glass .luma-seal-badge { border-color: #2a313c; background-color: #ffffff; color: #2a313c; }
++
++/* The system itself is asking: a neutral lock, never an app placeholder. */
++.luma-seal-system {
++  width: 54px;
++  height: 54px;
++  border-radius: 28px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #30343a; }
++.luma-seal-system-glyph { width: 24px; height: 24px; }
++.luma-surface-dark .luma-seal-system { border-color: rgba(255, 255, 255, 0.075); background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-glass .luma-seal-system { border-color: rgba(255, 255, 255, 0.15); background-color: rgba(10, 20, 33, 0.20); color: #ffffff; }
++
++/* ── Words ───────────────────────────────────────────────────────────────── */
++.luma-seal-title {
++  margin-top: 16px;
++  font-size: 17px;
++  font-weight: 750;
++  letter-spacing: -0.31px;
++  text-align: center;
++  color: #30343a; }
++.luma-seal-body {
++  margin-top: 7px;
++  padding: 0 4px;
++  font-size: 13.5px;
++  text-align: center;
++  color: #767b81; }
++.luma-surface-dark .luma-seal-title { color: #e9ebec; }
++.luma-surface-dark .luma-seal-body { color: #969da4; }
++.luma-surface-glass .luma-seal-title { color: #ffffff; }
++.luma-surface-glass .luma-seal-body { color: rgba(255, 255, 255, 0.70); }
++
++/* ── Field ───────────────────────────────────────────────────────────────── */
++.luma-seal-field {
++  margin-top: 20px;
++  height: 44px;
++  border-radius: 12px;
++  background-color: rgba(35, 44, 52, 0.072);
++  box-shadow: inset 0 0 0 1px rgba(35, 39, 45, 0.09);
++  transition-duration: 140ms; }
++.luma-seal-field:focus { box-shadow: inset 0 0 0 1.5px #31373e; }
++.luma-seal-field:error { box-shadow: inset 0 0 0 1.5px #d4595c; }
++.luma-surface-dark .luma-seal-field { background-color: rgba(255, 255, 255, 0.072); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.075); }
++.luma-surface-dark .luma-seal-field:focus { box-shadow: inset 0 0 0 1.5px #e6e9eb; }
++.luma-surface-glass .luma-seal-field { background-color: rgba(10, 20, 33, 0.20); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
++.luma-surface-glass .luma-seal-field:focus { box-shadow: inset 0 0 0 1.5px #ffffff; }
++.luma-surface-dark .luma-seal-field:error, .luma-surface-glass .luma-seal-field:error { box-shadow: inset 0 0 0 1.5px #d4595c; }
++
++.luma-seal-entry,
++.luma-seal-entry:focus,
++.luma-seal-entry:hover,
++.luma-seal-entry:insensitive {
++  min-height: 0;
++  height: 44px;
++  padding: 0 6px 0 12px;
++  border: none !important;
++  border-radius: 12px;
++  background-color: transparent !important;
++  box-shadow: none !important;
++  font-size: 14px;
++  font-weight: 600;
++  letter-spacing: 0.84px;
++  color: #30343a;
++  caret-color: #30343a;
++  selection-background-color: rgba(48, 52, 58, 0.22);
++  selected-color: #30343a; }
++.luma-seal-entry StLabel.hint-text {
++  margin-left: 0;
++  font-weight: 500;
++  letter-spacing: 0;
++  color: #767b81; }
++.luma-seal-field:insensitive .luma-seal-entry { color: rgba(48, 52, 58, 0.5); }
++.luma-surface-dark .luma-seal-entry { color: #e9ebec; caret-color: #e9ebec; selection-background-color: rgba(233, 235, 236, 0.22); selected-color: #e9ebec; }
++.luma-surface-dark .luma-seal-entry StLabel.hint-text { color: #969da4; }
++.luma-surface-dark .luma-seal-field:insensitive .luma-seal-entry { color: rgba(233, 235, 236, 0.5); }
++.luma-surface-glass .luma-seal-entry { color: #ffffff; caret-color: #ffffff; selection-background-color: rgba(255, 255, 255, 0.25); selected-color: #ffffff; }
++.luma-surface-glass .luma-seal-entry StLabel.hint-text { color: rgba(255, 255, 255, 0.70); }
++
++.luma-seal-icon-button {
++  width: 32px;
++  height: 32px;
++  margin-right: 4px;
++  border-radius: 8px;
++  color: #767b81;
++  transition-duration: 140ms; }
++.luma-seal-icon-button .luma-seal-glyph { width: 17px; height: 17px; }
++.luma-seal-icon-button:hover { background-color: rgba(35, 44, 52, 0.072); color: #30343a; }
++.luma-seal-icon-button:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-surface-dark .luma-seal-icon-button { color: #969da4; }
++.luma-surface-dark .luma-seal-icon-button:hover { background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-glass .luma-seal-icon-button { color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-seal-icon-button:hover { background-color: rgba(10, 20, 33, 0.20); color: #ffffff; }
++.luma-surface-dark .luma-seal-icon-button:focus,
++.luma-surface-glass .luma-seal-icon-button:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++
++.luma-seal-divider { width: 1px; height: 20px; margin: 0 2px; background-color: rgba(35, 39, 45, 0.09); }
++.luma-surface-dark .luma-seal-divider { background-color: rgba(255, 255, 255, 0.075); }
++.luma-surface-glass .luma-seal-divider { background-color: rgba(255, 255, 255, 0.15); }
++
++/* The reader is listening: the print breathes in the active ink. */
++.luma-seal-finger, .luma-seal-finger:hover { color: #31373e; }
++.luma-surface-dark .luma-seal-finger, .luma-surface-dark .luma-seal-finger:hover { color: #e6e9eb; }
++.luma-surface-glass .luma-seal-finger, .luma-surface-glass .luma-seal-finger:hover { color: #ffffff; }
++.luma-seal-finger.luma-seal-finger-matched { color: #3b9a6b !important; }
++.luma-seal-finger.luma-seal-finger-miss,
++.luma-seal-finger.luma-seal-finger-exhausted { color: #d4595c !important; }
++
++/* ── Status ──────────────────────────────────────────────────────────────── */
++.luma-seal-status {
++  margin-top: 9px;
++  min-height: 18px;
++  spacing: 6px;
++  font-size: 12.5px;
++  color: #767b81; }
++.luma-seal-status-label { text-align: center; }
++.luma-seal-status-glyph { width: 13px; height: 13px; }
++.luma-surface-dark .luma-seal-status { color: #969da4; }
++.luma-surface-glass .luma-seal-status { color: rgba(255, 255, 255, 0.70); }
++.luma-seal-status.luma-seal-status-error { color: #d4595c; }
++.luma-seal-status.luma-seal-status-success { color: #3b9a6b; }
++
++/* ── Buttons ─────────────────────────────────────────────────────────────── */
++.luma-seal-actions { margin-top: 16px; spacing: 10px; }
++.luma-seal-button {
++  height: 42px;
++  border-radius: 12px;
++  font-size: 13.5px;
++  font-weight: 700;
++  transition-duration: 140ms; }
++.luma-seal-cancel { background-color: rgba(35, 44, 52, 0.072); color: #30343a; }
++.luma-seal-cancel:hover { background-color: rgba(35, 44, 52, 0.115); }
++.luma-seal-cancel:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-seal-allow { background-color: #30343a; color: #f1f2f3; }
++.luma-seal-allow:hover { background-color: #3d4249; }
++.luma-seal-allow:focus { box-shadow: inset 0 0 0 2px rgba(241, 242, 243, 0.8) !important; }
++.luma-seal-allow:insensitive { background-color: rgba(48, 52, 58, 0.40); color: #f1f2f3; }
++.luma-seal-cancel:insensitive { color: rgba(48, 52, 58, 0.45); }
++
++.luma-surface-dark .luma-seal-cancel { background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-dark .luma-seal-cancel:hover { background-color: rgba(255, 255, 255, 0.12); }
++.luma-surface-dark .luma-seal-cancel:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++.luma-surface-dark .luma-seal-cancel:insensitive { color: rgba(233, 235, 236, 0.45); }
++.luma-surface-dark .luma-seal-allow { background-color: #e9ebec; color: #21252b; }
++.luma-surface-dark .luma-seal-allow:hover { background-color: #ffffff; }
++.luma-surface-dark .luma-seal-allow:focus { box-shadow: inset 0 0 0 2px rgba(33, 37, 43, 0.8) !important; }
++.luma-surface-dark .luma-seal-allow:insensitive { background-color: rgba(233, 235, 236, 0.40); color: #21252b; }
++
++.luma-surface-glass .luma-seal-cancel { background-color: rgba(10, 20, 33, 0.20); color: #ffffff; }
++.luma-surface-glass .luma-seal-cancel:hover { background-color: rgba(10, 20, 33, 0.30); }
++.luma-surface-glass .luma-seal-cancel:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++.luma-surface-glass .luma-seal-allow { background-color: #ffffff; color: #1b2230; }
++.luma-surface-glass .luma-seal-allow:focus { box-shadow: inset 0 0 0 2px rgba(27, 34, 48, 0.8) !important; }
++.luma-surface-glass .luma-seal-allow:insensitive { background-color: rgba(255, 255, 255, 0.40); color: #1b2230; }
++
++/* ── Details ─────────────────────────────────────────────────────────────── */
++.luma-seal-details-toggle {
++  margin-top: 14px;
++  padding: 2px 6px;
++  border-radius: 6px;
++  color: #767b81; }
++.luma-seal-details-toggle:hover { color: #30343a; }
++.luma-seal-details-toggle:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-seal-details-box { spacing: 5px; }
++.luma-seal-details-label { font-size: 12.5px; font-weight: 650; }
++.luma-seal-details-chevron { width: 12px; height: 12px; }
++.luma-surface-dark .luma-seal-details-toggle { color: #969da4; }
++.luma-surface-dark .luma-seal-details-toggle:hover { color: #e9ebec; }
++.luma-surface-glass .luma-seal-details-toggle { color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-seal-details-toggle:hover { color: #ffffff; }
++.luma-surface-dark .luma-seal-details-toggle:focus,
++.luma-surface-glass .luma-seal-details-toggle:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++
++.luma-seal-facts {
++  margin-top: 8px;
++  padding: 10px 12px;
++  border-radius: 10px;
++  background-color: rgba(35, 44, 52, 0.072);
++  spacing: 4px; }
++.luma-seal-fact { spacing: 12px; }
++.luma-seal-fact-key { font-size: 12px; color: #767b81; }
++.luma-seal-fact-value { font-family: monospace; font-size: 11.5px; color: #30343a; }
++.luma-surface-dark .luma-seal-facts { background-color: rgba(255, 255, 255, 0.072); }
++.luma-surface-dark .luma-seal-fact-key { color: #969da4; }
++.luma-surface-dark .luma-seal-fact-value { color: #e9ebec; }
++.luma-surface-glass .luma-seal-facts { background-color: rgba(10, 20, 33, 0.20); }
++.luma-surface-glass .luma-seal-fact-key { color: rgba(255, 255, 255, 0.70); }
++.luma-surface-glass .luma-seal-fact-value { color: #ffffff; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 6a85d63..7f43578 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -108,6 +108,9 @@
+     <file>ui/liveActivity.js</file>
+     <file>ui/lumaPopoverPlacement.js</file>
+     <file>ui/lumaCapture.js</file>
++    <file>ui/lumaSealAuth.js</file>
++    <file>ui/lumaSealCopy.js</file>
++    <file>ui/lumaSealGlyph.js</file>
+     <file>ui/lumaShelfSurface.js</file>
+     <file>ui/lumaWindowMotion.js</file>
+     <file>ui/lumaWindowPath.js</file>
+diff --git a/js/ui/components/polkitAgent.js b/js/ui/components/polkitAgent.js
+index 68ee8db..7c88776 100644
+--- a/js/ui/components/polkitAgent.js
++++ b/js/ui/components/polkitAgent.js
+@@ -1,19 +1,81 @@
++// Luma Seal: the administrator prompt.
++//
++// Replaces GNOME's "Authentication Required" dialog. A centred card over a
++// blurred scrim that covers every monitor, shelf included: the requesting
++// app's icon with a lock, what will happen in Luma's words, one field that is
++// visible and focused from the first frame, a status line, two equal buttons
++// and a Details disclosure.
++//
++// A password is always offered. The fingerprint reader listens beside the
++// field when one is enrolled; the conversations that make both work at once
++// are in lumaSealAuth.js. The shell never decides anything: PAM and polkit do.
++
+ import AccountsService from 'gi://AccountsService';
++import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import Graphene from 'gi://Graphene';
+ import Pango from 'gi://Pango';
+ import PolkitAgent from 'gi://PolkitAgent';
+ import Polkit from 'gi://Polkit';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+-import * as Dialog from '../dialog.js';
+ import * as Main from '../main.js';
+ import * as ModalDialog from '../modalDialog.js';
+ import * as ShellEntry from '../shellEntry.js';
+-import * as UserWidget from '../userWidget.js';
+-import {wiggle} from '../../misc/animationUtils.js';
++import * as SurfaceMaterials from '../lumaSurfaceMaterials.js';
++import {Conversations} from '../lumaSealAuth.js';
++import * as SealCopy from '../lumaSealCopy.js';
++import {Glyph} from '../lumaSealGlyph.js';
++
++const STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-seal.css';
++
++const CARD_WIDTH = 356;
++const SCREEN_INSET = 16;
++const APP_ICON_SIZE = 60;
++const OPEN_TIME = 240;
++const SCRIM_TIME = 200;
++const CLOSE_TIME = 180;
++const SUCCESS_HOLD = 420;
++const MISS_RECOVER = 1100;
++const SCRIM_BLUR = 14;
++
++const log = message => console.log(`Luma Seal: ${message}`);
++const reduceMotion = () => !St.Settings.get().enable_animations;
++const stageScale = () => St.ThemeContext.get_for_stage(global.stage).scale_factor;
++
++let stylesheetLoaded = false;
++function loadStylesheet() {
++    if (stylesheetLoaded)
++        return;
++    stylesheetLoaded = true;
++    St.ThemeContext.get_for_stage(global.stage).get_theme()
++        .load_stylesheet(Gio.File.new_for_uri(STYLESHEET_URI));
++}
++
++function blurAllowed() {
++    const source = Gio.SettingsSchemaSource.get_default();
++    const lookup = (id, key) => {
++        const schema = source?.lookup(id, true);
++        return schema?.has_key(key) ? new Gio.Settings({settings_schema: schema}).get_boolean(key) : false;
++    };
++    if (lookup('org.project_luma.shell-state', 'reduce-transparency') ||
++        lookup('org.gnome.desktop.a11y.interface', 'high-contrast'))
++        return false;
++    if (GLib.getenv('LUMA_MUTTER_ALLOW_SOFTWARE_BLUR') === '1')
++        return true;
++    try {
++        return global.backend.is_rendering_hardware_accelerated();
++    } catch {
++        return false;
++    }
++}
++
++// faillock's own words when an account is locked.
++const LOCKED = /account is (temporarily )?locked/i;
+ 
+ /** @enum {number} */
+ const DialogMode = {
+@@ -21,391 +83,824 @@ const DialogMode = {
+     CONFIRM: 1,
+ };
+ 
+-const DIALOG_ICON_SIZE = 96;
+-
+-const DELAYED_RESET_TIMEOUT = 200;
+-
+ const AuthenticationDialog = GObject.registerClass({
+     Signals: {'done': {param_types: [GObject.TYPE_BOOLEAN]}},
+ }, class AuthenticationDialog extends ModalDialog.ModalDialog {
+-    _init(actionId, description, cookie, userNames) {
+-        super._init({styleClass: 'prompt-dialog'});
++    _init(actionId, message, cookie, userNames, request = {}) {
++        super._init({
++            styleClass: 'luma-seal-chrome',
++            shellReactive: true,
++            shouldFadeIn: false,
++            shouldFadeOut: false,
++        });
++        loadStylesheet();
+ 
+         this.actionId = actionId;
+-        this.message = description;
++        this.message = message;
+         this.userNames = userNames;
++        this._cookie = cookie;
++        this._doneEmitted = false;
++        this._succeeded = false;
++        this._closing = false;
++        this._mode = -1;
++        this._timeouts = new Set();
+ 
+         Main.sessionMode.connectObject('updated', () => {
+             this.visible = !Main.sessionMode.isLocked;
+         }, this);
+-
+         this.connect('closed', this._onDialogClosed.bind(this));
+ 
+-        const title = _('Authentication Required');
+-
+-        const headerContent = new Dialog.MessageDialogContent({title, description});
+-        this.contentLayout.add_child(headerContent);
+-
+-        const bodyContent = new Dialog.MessageDialogContent();
+-
+-        if (userNames.length > 1) {
+-            log(`polkitAuthenticationAgent: Received ${userNames.length} ` +
+-                'identities that can be used for authentication. Only ' +
+-                'considering one.');
+-        }
+-
+         let userName = GLib.get_user_name();
+         if (!userNames.includes(userName))
+             userName = 'root';
+         if (!userNames.includes(userName))
+             userName = userNames[0];
+-
++        if (userNames.length > 1)
++            log(`${userNames.length} identities offered, authenticating as ${userName}`);
++        this._userName = userName;
++        this._identity = Polkit.UnixUser.new_for_name(userName);
+         this._user = AccountsService.UserManager.get_default().get_user(userName);
+ 
+-        const userBox = new St.BoxLayout({
+-            style_class: 'polkit-dialog-user-layout',
+-            orientation: Clutter.Orientation.VERTICAL,
+-        });
+-        bodyContent.add_child(userBox);
++        this._describe(request);
++        this._build();
+ 
+-        this._userAvatar = new UserWidget.Avatar(this._user, {
+-            iconSize: DIALOG_ICON_SIZE,
++        this._conversations = new Conversations({
++            createSession: () => new PolkitAgent.Session({
++                identity: this._identity,
++                cookie: this._cookie,
++            }),
++            onEvent: (name, data) => this._onConversationEvent(name, data),
++            log: text => log(`[${this.actionId}] ${text}`),
+         });
+-        this._userAvatar.x_align = Clutter.ActorAlign.CENTER;
+-        userBox.add_child(this._userAvatar);
+ 
+-        this._userLabel = new St.Label({
+-            style_class: userName === 'root'
+-                ? 'polkit-dialog-user-root-label'
+-                : 'polkit-dialog-user-label',
++        this._open();
++
++        this._user.connectObject(
++            'notify::is-loaded', this._onUserChanged.bind(this),
++            'changed', this._onUserChanged.bind(this), this);
++        this._onUserChanged();
++    }
++
++    // ── What it says ─────────────────────────────────────────────────────
++
++    _describe({subjectPid = 0, callerPid = 0}) {
++        let requester = {app: null, name: null, icon: null, executable: null, how: 'unresolved'};
++        try {
++            requester = SealCopy.resolveRequester(subjectPid, {
++                appSystem: Shell.AppSystem.get_default(),
++                windowTracker: Shell.WindowTracker.get_default(),
++            });
++        } catch (e) {
++            logError(e, 'Luma Seal: resolving the requester');
++        }
++
++        let command = null;
++        if (this.actionId === 'org.freedesktop.policykit.exec' && callerPid > 1)
++            command = SealCopy.pkexecCommand(SealCopy.commandLine(callerPid));
++
++        this._copy = SealCopy.describe({
++            actionId: this.actionId,
++            message: this.message,
++            appName: requester.name,
++            executable: requester.executable,
++            command,
+         });
++        this._requester = requester;
++        log(`[${this.actionId}] requester ${requester.id ?? 'unknown'} (${requester.how}), ` +
++            `subject ${subjectPid}, caller ${callerPid}, template ${this._copy.template}, ` +
++            `message ${JSON.stringify(this.message)}`);
++    }
++
++    // ── Building the card ────────────────────────────────────────────────
++
++    _build() {
++        const scale = stageScale();
++        this.dialogLayout.hide();
++
++        this._scrim = new St.Widget({style_class: 'luma-seal-scrim', opacity: 0});
++        this._scrim.add_constraint(new Clutter.BindConstraint({
++            source: this,
++            coordinate: Clutter.BindCoordinate.SIZE,
++        }));
++        if (blurAllowed()) {
++            this._scrim.add_effect_with_name('luma-seal-blur', new Shell.BlurEffect({
++                mode: Shell.BlurMode.BACKGROUND,
++                radius: SCRIM_BLUR * scale,
++                brightness: 1,
++            }));
++        }
++        this.insert_child_below(this._scrim, null);
+ 
+-        if (userName === 'root')
+-            this._userLabel.text = _('Administrator');
++        this._holder = new St.Widget({
++            layout_manager: new Clutter.BinLayout(),
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.START,
++            opacity: 0,
++            pivot_point: new Graphene.Point({x: 0.5, y: 0.5}),
++        });
++        this.add_child(this._holder);
+ 
+-        userBox.add_child(this._userLabel);
++        this._shadow = new St.Widget({style_class: 'luma-seal-shadow', x_expand: true, y_expand: true});
++        this._holder.add_child(this._shadow);
+ 
+-        const passwordBox = new St.BoxLayout({
+-            style_class: 'prompt-dialog-password-layout',
++        this._card = new St.BoxLayout({
++            style_class: 'luma-seal-card',
+             orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            reactive: true,
++            accessible_role: Atk.Role.DIALOG,
+         });
++        this._card.request_mode = Clutter.RequestMode.HEIGHT_FOR_WIDTH;
++        this._holder.add_child(this._card);
++        this._material = SurfaceMaterials.bindSurface(this._card, {
++            cornerRadii: 24 * scale,
++            classActors: [this._holder, this._shadow],
++        });
++        global.focus_manager.add_group(this._card);
++
++        this._buildWho();
++
++        this._title = this._label('luma-seal-title', this._copy.title);
++        this._body = this._label('luma-seal-body', this._copy.body);
++        this._card.add_child(this._title);
++        this._card.add_child(this._body);
++        this._card.accessible_name = this._copy.title;
++        this._card.get_accessible()?.set_description(this._copy.body);
++
++        this._buildField();
++        this._buildStatus();
++        this._buildActions();
++        this._buildDetails();
++
++        Main.layoutManager.connectObject('monitors-changed', () => this._place(), this);
++    }
++
++    _label(styleClass, text) {
++        const label = new St.Label({style_class: styleClass, text, x_expand: true});
++        label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++        label.clutter_text.line_wrap = true;
++        label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
++        label.clutter_text.line_alignment = Pango.Alignment.CENTER;
++        return label;
++    }
++
++    _buildWho() {
++        const {icon} = this._requester;
++        if (icon) {
++            this._who = new St.Widget({
++                style_class: 'luma-seal-who',
++                layout_manager: new Clutter.FixedLayout(),
++                x_align: Clutter.ActorAlign.CENTER,
++            });
++            this._appIcon = new St.Icon({
++                style_class: 'luma-seal-app-icon',
++                gicon: icon,
++                icon_size: APP_ICON_SIZE,
++            });
++            this._who.add_child(this._appIcon);
++            this._badge = new St.Bin({
++                style_class: 'luma-seal-badge',
++                child: new Glyph('lock', {style_class: 'luma-seal-glyph luma-seal-badge-glyph'}),
++            });
++            this._who.add_child(this._badge);
++            this._who.connect('notify::width', () => this._placeBadge());
++            this._badge.connect('notify::width', () => this._placeBadge());
++        } else {
++            // Never a generic app placeholder: the system itself is asking.
++            this._who = new St.Bin({
++                style_class: 'luma-seal-system',
++                x_align: Clutter.ActorAlign.CENTER,
++                child: new Glyph('seal', {style_class: 'luma-seal-glyph luma-seal-system-glyph'}),
++            });
++        }
++        this._card.add_child(this._who);
++    }
++
++    _placeBadge() {
++        if (!this._badge)
++            return;
++        const scale = stageScale();
++        const size = APP_ICON_SIZE * scale;
++        // A 26 circle, offset 7 beyond the icon's lower right corner, with its
++        // 3 ring drawn outside it as a border.
++        const [badgeWidth] = this._badge.get_size();
++        this._badge.set_position(size + 7 * scale - badgeWidth + 3 * scale,
++            size + 7 * scale - badgeWidth + 3 * scale);
++    }
++
++    _buildField() {
++        this._field = new St.BoxLayout({style_class: 'luma-seal-field', x_expand: true});
++        this._card.add_child(this._field);
+ 
+-        this._passwordEntry = new St.PasswordEntry({
+-            style_class: 'prompt-dialog-password-entry',
+-            text: '',
++        this._entry = new St.PasswordEntry({
++            style_class: 'luma-seal-entry',
+             can_focus: true,
+-            visible: false,
+-            x_align: Clutter.ActorAlign.CENTER,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            show_peek_icon: false,
+         });
+-        ShellEntry.addContextMenu(this._passwordEntry);
+-        this._passwordEntry.clutter_text.connect('activate', this._onEntryActivate.bind(this));
+-        this._passwordEntry.bind_property('reactive',
+-            this._passwordEntry.clutter_text, 'editable',
++        ShellEntry.addContextMenu(this._entry);
++        this._entry.clutter_text.connect('activate', () => this._submit());
++        this._entry.clutter_text.connect('text-changed', () => this._onTextChanged());
++        this._entry.bind_property('reactive', this._entry.clutter_text, 'editable',
+             GObject.BindingFlags.SYNC_CREATE);
+-        passwordBox.add_child(this._passwordEntry);
++        this._field.add_child(this._entry);
++        this.setInitialKeyFocus(this._entry);
++        this._setAccountName();
+ 
+-        const warningBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
++        this._reveal = new St.Button({
++            style_class: 'luma-seal-icon-button luma-seal-reveal',
++            can_focus: true,
++            toggle_mode: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Show password'),
++            child: new Glyph('eye'),
++        });
++        this._reveal.connect('notify::checked', () => {
++            this._entry.password_visible = this._reveal.checked;
++            this._reveal.child.glyph = this._reveal.checked ? 'eye-off' : 'eye';
++            this._reveal.accessible_name = this._reveal.checked ? _('Hide password') : _('Show password');
++        });
++        this._field.add_child(this._reveal);
+ 
+-        const capsLockWarning = new ShellEntry.CapsLockWarning();
+-        this._passwordEntry.bind_property('visible',
+-            capsLockWarning, 'visible',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        warningBox.add_child(capsLockWarning);
++        this._divider = new St.Widget({
++            style_class: 'luma-seal-divider',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._field.add_child(this._divider);
+ 
+-        this._errorMessageLabel = new St.Label({
+-            style_class: 'prompt-dialog-error-label',
++        this._finger = new St.Button({
++            style_class: 'luma-seal-icon-button luma-seal-finger',
++            can_focus: true,
+             visible: false,
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Fingerprint reader is listening'),
++            child: new Glyph('fingerprint'),
+         });
+-        this._errorMessageLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+-        this._errorMessageLabel.clutter_text.line_wrap = true;
+-        warningBox.add_child(this._errorMessageLabel);
++        this._finger.connect('clicked', () => this._entry.grab_key_focus());
++        this._field.add_child(this._finger);
++
++        global.stage.connectObject('notify::key-focus', () => this._syncFocus(), this);
+ 
+-        this._infoMessageLabel = new St.Label({
+-            style_class: 'prompt-dialog-info-label',
++        this._keymap = Clutter.get_default_backend().get_default_seat().get_keymap();
++        this._keymap.connectObject('state-changed', () => this._syncStatus(), this);
++    }
++
++    _setAccountName() {
++        let name;
++        if (this._userName === 'root') {
++            this._entry.hint_text = _('Administrator password');
++            this._entry.clutter_text.get_accessible()?.set_name(_('Administrator password'));
++            return;
++        }
++        if (this._user?.is_loaded)
++            name = this._user.get_real_name() || this._userName;
++        else if (this._userName === GLib.get_user_name())
++            name = GLib.get_real_name() || this._userName;
++        else
++            name = this._userName;
++        if (!name || name === 'Unknown')
++            name = this._userName;
++        const hint = _('Password for %s').replace('%s', name);
++        this._entry.hint_text = hint;
++        this._entry.clutter_text.get_accessible()?.set_name(hint);
++        this._entry.accessible_name = hint;
++    }
++
++    _buildStatus() {
++        this._status = new St.BoxLayout({
++            style_class: 'luma-seal-status',
++            x_align: Clutter.ActorAlign.CENTER,
++            accessible_role: Atk.Role.STATUSBAR,
++        });
++        this._statusGlyph = new Glyph('alert', {
++            style_class: 'luma-seal-glyph luma-seal-status-glyph',
+             visible: false,
++            y_align: Clutter.ActorAlign.CENTER,
+         });
+-        this._infoMessageLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+-        this._infoMessageLabel.clutter_text.line_wrap = true;
+-        warningBox.add_child(this._infoMessageLabel);
+-
+-        /* text is intentionally non-blank otherwise the height is not the same as for
+-         * infoMessage and errorMessageLabel - but it is still invisible because
+-         * gnome-shell.css sets the color to be transparent
+-         */
+-        this._nullMessageLabel = new St.Label({style_class: 'prompt-dialog-null-label'});
+-        this._nullMessageLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+-        this._nullMessageLabel.clutter_text.line_wrap = true;
+-        warningBox.add_child(this._nullMessageLabel);
+-
+-        passwordBox.add_child(warningBox);
+-        bodyContent.add_child(passwordBox);
+-
+-        this._cancelButton = this.addButton({
++        this._statusLabel = new St.Label({style_class: 'luma-seal-status-label', y_align: Clutter.ActorAlign.CENTER});
++        this._statusLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++        this._statusLabel.clutter_text.line_wrap = true;
++        this._statusLabel.clutter_text.line_alignment = Pango.Alignment.CENTER;
++        this._status.add_child(this._statusGlyph);
++        this._status.add_child(this._statusLabel);
++        this._card.add_child(this._status);
++        this._statusState = {kind: 'idle', text: '', icon: null};
++    }
++
++    _buildActions() {
++        this._actions = new St.BoxLayout({style_class: 'luma-seal-actions', x_expand: true});
++        this._actions.layout_manager.homogeneous = true;
++        this._cancelButton = new St.Button({
++            style_class: 'luma-seal-button luma-seal-cancel',
+             label: _('Cancel'),
+-            action: this.cancel.bind(this),
+-            key: Clutter.KEY_Escape,
++            can_focus: true,
++            x_expand: true,
+         });
+-        this._okButton = this.addButton({
+-            label: _('Authenticate'),
+-            action: this._onAuthenticateButtonPressed.bind(this),
++        this._cancelButton.connect('clicked', () => this.cancel());
++        this._allowButton = new St.Button({
++            style_class: 'luma-seal-button luma-seal-allow',
++            label: _('Allow'),
++            can_focus: false,
+             reactive: false,
++            x_expand: true,
+         });
+-        this._okButton.bind_property('reactive',
+-            this._okButton, 'can-focus',
++        this._allowButton.bind_property('reactive', this._allowButton, 'can-focus',
+             GObject.BindingFlags.SYNC_CREATE);
+-
+-        this._passwordEntry.clutter_text.connect('text-changed', text => {
+-            this._okButton.reactive = text.get_text().length > 0;
++        this._allowButton.connect('clicked', () => {
++            if (this._mode === DialogMode.CONFIRM)
++                this._confirm();
++            else
++                this._submit();
+         });
+-
+-        this.contentLayout.add_child(bodyContent);
+-
+-        this._doneEmitted = false;
+-
+-        this._mode = -1;
+-
+-        this._identityToAuth = Polkit.UnixUser.new_for_name(userName);
+-        this._cookie = cookie;
+-
+-        this._user.connectObject(
+-            'notify::is-loaded', this._onUserChanged.bind(this),
+-            'changed', this._onUserChanged.bind(this), this);
+-        this._onUserChanged();
++        this._actions.add_child(this._cancelButton);
++        this._actions.add_child(this._allowButton);
++        this._card.add_child(this._actions);
+     }
+ 
+-    _initiateSession() {
+-        this._destroySession(DELAYED_RESET_TIMEOUT);
+-
+-        this._session = new PolkitAgent.Session({
+-            identity: this._identityToAuth,
+-            cookie: this._cookie,
++    _buildDetails() {
++        const box = new St.BoxLayout({style_class: 'luma-seal-details-box'});
++        this._detailsChevron = new Glyph('chevron', {
++            style_class: 'luma-seal-glyph luma-seal-details-chevron',
++            y_align: Clutter.ActorAlign.CENTER,
++            pivot_point: new Graphene.Point({x: 0.5, y: 0.5}),
+         });
+-        this._session.connectObject(
+-            'completed', this._onSessionCompleted.bind(this),
+-            'request', this._onSessionRequest.bind(this),
+-            'show-error', this._onSessionShowError.bind(this),
+-            'show-info', this._onSessionShowInfo.bind(this), this);
+-        this._session.initiate();
+-    }
++        box.add_child(this._detailsChevron);
++        box.add_child(new St.Label({
++            style_class: 'luma-seal-details-label',
++            text: _('Details'),
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        this._detailsToggle = new St.Button({
++            style_class: 'luma-seal-details-toggle',
++            can_focus: true,
++            toggle_mode: true,
++            x_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Details'),
++            child: box,
++        });
++        this._detailsToggle.connect('notify::checked', () => this._syncDetails());
++        this._card.add_child(this._detailsToggle);
+ 
+-    _ensureOpen() {
+-        // NOTE: ModalDialog.open() is safe to call if the dialog is
+-        // already open - it just returns true without side-effects
+-        if (!this.open()) {
+-            // This can fail if e.g. unable to get input grab
+-            //
+-            // In an ideal world this wouldn't happen (because the
+-            // Shell is in complete control of the session) but that's
+-            // just not how things work right now.
+-            //
+-            // One way to make this happen is by running 'sleep 3;
+-            // pkexec bash' and then opening a popup menu.
+-            //
+-            // We could add retrying if this turns out to be a problem
+-
+-            log('polkitAuthenticationAgent: Failed to show modal dialog. ' +
+-                `Dismissing authentication request for action-id ${this.actionId} ` +
+-                `cookie ${this._cookie}`);
+-            this._emitDone(true);
++        this._facts = new St.BoxLayout({
++            style_class: 'luma-seal-facts',
++            orientation: Clutter.Orientation.VERTICAL,
++            visible: false,
++            x_expand: true,
++        });
++        this._factKeys = [];
++        for (const [key, value] of this._copy.facts) {
++            const row = new St.BoxLayout({style_class: 'luma-seal-fact', x_expand: true});
++            const keyLabel = new St.Label({style_class: 'luma-seal-fact-key', text: key, y_align: Clutter.ActorAlign.START});
++            // Identifiers and paths wrap after their separators rather than
++            // mid-word with an inserted hyphen.
++            const breakable = (value ?? '').replace(/([./_·-])/g, '$1\u200b');
++            const valueLabel = new St.Label({style_class: 'luma-seal-fact-value', text: breakable, x_expand: true});
++            valueLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++            valueLabel.clutter_text.line_wrap = true;
++            valueLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
++            row.add_child(keyLabel);
++            row.add_child(valueLabel);
++            this._facts.add_child(row);
++            this._factKeys.push(keyLabel);
+         }
++        this._card.add_child(this._facts);
+     }
+ 
+-    _emitDone(dismissed) {
+-        if (!this._doneEmitted) {
+-            this._doneEmitted = true;
+-            this.emit('done', dismissed);
++    _syncDetails() {
++        const open = this._detailsToggle.checked;
++        if (open) {
++            // One key column: every key as wide as the widest.
++            for (const key of this._factKeys)
++                key.width = -1;
++            const widest = Math.max(...this._factKeys.map(key => {
++                key.ensure_style();
++                return key.get_preferred_width(-1)[1];
++            }));
++            for (const key of this._factKeys)
++                key.width = Math.ceil(widest);
+         }
++        this._facts.visible = open;
++        if (open)
++            this._detailsToggle.add_accessible_state(Atk.StateType.EXPANDED);
++        else
++            this._detailsToggle.remove_accessible_state(Atk.StateType.EXPANDED);
++        this._detailsChevron.remove_all_transitions();
++        if (reduceMotion())
++            this._detailsChevron.rotation_angle_z = open ? 90 : 0;
++        else
++            this._detailsChevron.ease({rotation_angle_z: open ? 90 : 0, duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+     }
+ 
+-    _onEntryActivate() {
+-        const response = this._passwordEntry.get_text();
+-        if (response.length === 0)
++    _place() {
++        const monitor = Main.layoutManager.monitors[this._monitorConstraint.index] ??
++            Main.layoutManager.primaryMonitor;
++        if (!monitor)
+             return;
+-
+-        this._passwordEntry.reactive = false;
+-        this._okButton.reactive = false;
+-
+-        this._session.response(response);
+-        // When the user responds, dismiss already shown info and
+-        // error texts (if any)
+-        this._errorMessageLabel.hide();
+-        this._infoMessageLabel.hide();
+-        this._nullMessageLabel.show();
++        const scale = stageScale();
++        const width = Math.min(CARD_WIDTH * scale, monitor.width - 2 * SCREEN_INSET * scale);
++        this._holder.width = width;
++        this._holder.set_position(
++            monitor.x + Math.round((monitor.width - width) / 2),
++            monitor.y + Math.max(SCREEN_INSET * scale, Math.round(monitor.height * 0.42 - 210 * scale)));
++        this._balance(this._title, width);
+     }
+ 
+-    _onAuthenticateButtonPressed() {
+-        if (this._mode === DialogMode.CONFIRM)
+-            this._initiateSession();
+-        else
+-            this._onEntryActivate();
++    // Balanced wrapping for the title: as many lines as it needs at full
++    // width, each as close to the same length as the words allow. Measured
++    // with the label's own height-for-width, so no Pango objects are shared
++    // with the text actor.
++    _balance(label, cardWidth) {
++        label.ensure_style();
++        const node = this._card.get_theme_node();
++        const inner = Math.floor(cardWidth - node.get_horizontal_padding() -
++            2 * node.get_border_width(St.Side.LEFT));
++        label.set({width: -1, x_expand: true});
++        const heightAt = width => label.get_preferred_height(width)[1];
++        const [, natural] = label.get_preferred_width(-1);
++        const target = heightAt(inner);
++        if (natural <= inner || target <= 0)
++            return;
++        let low = Math.floor(inner / 2);
++        let high = inner;
++        if (heightAt(low) <= target)
++            high = low;
++        while (high - low > 1) {
++            const mid = Math.floor((low + high) / 2);
++            if (heightAt(mid) > target)
++                low = mid;
++            else
++                high = mid;
++        }
++        label.set({width: Math.min(inner, high + 2), x_expand: false, x_align: Clutter.ActorAlign.CENTER});
+     }
+ 
+-    _onSessionCompleted(session, gainedAuthorization) {
+-        if (this._completed || this._doneEmitted)
+-            return;
++    // ── Opening and closing ──────────────────────────────────────────────
+ 
+-        this._completed = true;
++    _open() {
++        if (!this.open()) {
++            log(`could not take the keyboard and pointer; dismissing ${this.actionId}`);
++            this._emitDone(true);
++            return;
++        }
++        this._place();
++        this._entry.grab_key_focus();
++        this._syncFocus();
++        this._scrim.ease({opacity: 255, duration: SCRIM_TIME, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        if (reduceMotion()) {
++            this._holder.opacity = 255;
++            return;
++        }
++        this._holder.set({translation_y: 10 * stageScale(), scale_x: 0.985, scale_y: 0.985});
++        this._holder.ease({opacity: 255, duration: CLOSE_TIME, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        this._holder.ease({
++            translation_y: 0,
++            scale_x: 1,
++            scale_y: 1,
++            duration: OPEN_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++        });
++    }
+ 
+-        /* Yay, all done */
+-        if (gainedAuthorization) {
+-            this._emitDone(false);
+-        } else {
+-            /* Unless we are showing an existing error message from the PAM
+-             * module (the PAM module could be reporting the authentication
+-             * error providing authentication-method specific information),
+-             * show "Sorry, that didn't work. Please try again."
+-             */
+-            if (!this._errorMessageLabel.visible) {
+-                /* Translators: "that didn't work" refers to the fact that the
+-                 * requested authentication was not gained; this can happen
+-                 * because of an authentication error (like invalid password),
+-                 * for instance. */
+-                this._errorMessageLabel.set_text(_('Sorry, that didn’t work. Please try again.'));
+-                this._errorMessageLabel.show();
+-                this._infoMessageLabel.hide();
+-                this._nullMessageLabel.hide();
+-
+-                wiggle(this._passwordEntry);
++    close(timestamp) {
++        if (this._closing)
++            return;
++        // Ensure cleanup if the dialog was never shown
++        if (this.state === ModalDialog.State.CLOSED) {
++            this._onDialogClosed();
++            super.close(timestamp);
++            return;
++        }
++        this._closing = true;
++        // The request is already answered; nothing here holds it up. Input
++        // goes back to the desktop at once while the card finishes.
++        this.popModal();
++        this.reactive = false;
++        this._card.reactive = false;
++        const hold = this._succeeded ? SUCCESS_HOLD : 0;
++        this._later(hold, () => {
++            const finish = () => super.close(timestamp);
++            if (reduceMotion()) {
++                finish();
++                return;
+             }
++            this._scrim.ease({opacity: 0, duration: SCRIM_TIME, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++            this._holder.ease({
++                opacity: 0,
++                scale_x: 0.985,
++                scale_y: 0.985,
++                duration: CLOSE_TIME,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            });
++            this._later(Math.max(SCRIM_TIME, CLOSE_TIME), finish);
++        });
++    }
+ 
+-            /* Try and authenticate again */
+-            this._initiateSession();
+-        }
++    _later(ms, callback) {
++        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(ms, 0), () => {
++            this._timeouts.delete(id);
++            callback();
++            return GLib.SOURCE_REMOVE;
++        });
++        this._timeouts.add(id);
++        return id;
+     }
+ 
+-    _onSessionRequest(session, request, echoOn) {
+-        if (this._sessionRequestTimeoutId) {
+-            GLib.source_remove(this._sessionRequestTimeoutId);
+-            this._sessionRequestTimeoutId = 0;
++    vfunc_key_press_event(event) {
++        // Escape always cancels, whatever has focus and whatever state the
++        // prompt is in.
++        const symbol = event.get_key_symbol();
++        if (symbol === Clutter.KEY_Escape) {
++            if (!this._succeeded)
++                this.cancel();
++            return Clutter.EVENT_STOP;
+         }
++        return super.vfunc_key_press_event(event);
++    }
+ 
+-        // Hack: The request string comes directly from PAM, if it's "Password:"
+-        // we replace it with our own to allow localization, if it's something
+-        // else we remove the last colon and any trailing or leading spaces.
+-        if (request === 'Password:' || request === 'Password: ')
+-            this._passwordEntry.hint_text = _('Password');
+-        else
+-            this._passwordEntry.hint_text = request.replace(/: *$/, '').trim();
++    // ── State ────────────────────────────────────────────────────────────
+ 
+-        this._passwordEntry.password_visible = echoOn;
++    _syncFocus() {
++        const focus = global.stage.key_focus;
++        const focused = focus && (focus === this._entry || focus === this._entry.clutter_text);
++        if (focused)
++            this._field.add_style_pseudo_class('focus');
++        else
++            this._field.remove_style_pseudo_class('focus');
++        this._syncStatus();
++    }
+ 
+-        this._passwordEntry.show();
+-        this._passwordEntry.set_text('');
+-        this._passwordEntry.reactive  = true;
+-        this._okButton.reactive = false;
++    _onTextChanged() {
++        this._syncAllow();
++        if (this._statusState.kind === 'error' && !this._conversations?.checking) {
++            this._field.remove_style_pseudo_class('error');
++            this._setStatus(this._idleStatus());
++        }
++        this._syncStatus();
++    }
+ 
+-        this._ensureOpen();
+-        this._passwordEntry.grab_key_focus();
++    _syncAllow() {
++        const busy = this._succeeded || this._conversations?.checking || this._failed;
++        if (this._mode === DialogMode.CONFIRM)
++            this._allowButton.reactive = !busy;
++        else
++            this._allowButton.reactive = !busy && this._entry.get_text().length > 0;
+     }
+ 
+-    _onSessionShowError(session, text) {
+-        this._passwordEntry.set_text('');
+-        this._errorMessageLabel.set_text(text);
+-        this._errorMessageLabel.show();
+-        this._infoMessageLabel.hide();
+-        this._nullMessageLabel.hide();
+-        this._ensureOpen();
++    _setFieldEnabled(enabled) {
++        this._entry.reactive = enabled;
++        this._reveal.reactive = enabled;
++        if (enabled)
++            this._field.remove_style_pseudo_class('insensitive');
++        else
++            this._field.add_style_pseudo_class('insensitive');
++        this._syncAllow();
+     }
+ 
+-    _onSessionShowInfo(session, text) {
+-        this._passwordEntry.set_text('');
+-        this._infoMessageLabel.set_text(text);
+-        this._infoMessageLabel.show();
+-        this._errorMessageLabel.hide();
+-        this._nullMessageLabel.hide();
+-        this._ensureOpen();
++    _idleStatus() {
++        if (this._mode === DialogMode.CONFIRM)
++            return {kind: 'idle', text: '', icon: null};
++        if (this._conversations?.fingerprint === 'listening')
++            return {kind: 'idle', text: _('Or touch the fingerprint reader.'), icon: null};
++        return {kind: 'idle', text: '', icon: null};
+     }
+ 
+-    _destroySession(delay = 0) {
+-        this._session?.disconnectObject(this);
++    _setStatus(state) {
++        this._statusState = state;
++        this._syncStatus();
++    }
+ 
+-        if (!this._completed)
+-            this._session?.cancel();
++    _syncStatus() {
++        let {kind, text, icon} = this._statusState;
++        // Caps Lock is only news while someone is typing into the field.
++        const capsOn = this._keymap?.get_caps_lock_state() ?? false;
++        if (kind === 'idle' && capsOn && this._field?.has_style_pseudo_class('focus')) {
++            text = _('Caps Lock is on.');
++            icon = null;
++        }
++        for (const name of ['idle', 'error', 'success', 'info'])
++            this._status.remove_style_class_name(`luma-seal-status-${name}`);
++        this._status.add_style_class_name(`luma-seal-status-${kind}`);
++        this._statusGlyph.visible = !!icon;
++        if (icon)
++            this._statusGlyph.glyph = icon;
++        if (this._statusLabel.text !== text) {
++            this._statusLabel.text = text;
++            if (text)
++                this._announce(text);
++        }
++    }
+ 
+-        this._completed = false;
+-        this._session = null;
++    _announce(text) {
++        const accessible = this._status.get_accessible();
++        if (!accessible)
++            return;
++        this._later(150, () => accessible.emit('notification', text, Atk.Live.POLITE));
++    }
+ 
+-        if (this._sessionRequestTimeoutId) {
+-            GLib.source_remove(this._sessionRequestTimeoutId);
+-            this._sessionRequestTimeoutId = 0;
++    _setReader(state) {
++        const visible = ['listening', 'still', 'miss', 'matched', 'exhausted'].includes(state);
++        this._finger.visible = visible;
++        this._divider.visible = visible;
++        for (const name of ['listening', 'still', 'miss', 'matched', 'exhausted'])
++            this._finger.remove_style_class_name(`luma-seal-finger-${name}`);
++        if (visible)
++            this._finger.add_style_class_name(`luma-seal-finger-${state}`);
++        this._finger.accessible_name = {
++            listening: _('Fingerprint reader is listening'),
++            still: _('Fingerprint reader'),
++            miss: _('Fingerprint not recognized'),
++            matched: _('Fingerprint recognized'),
++            exhausted: _('Fingerprint not recognized'),
++        }[state] ?? '';
++
++        const glyph = this._finger.child;
++        glyph.remove_all_transitions();
++        glyph.opacity = 255;
++        if (state === 'listening' && !reduceMotion()) {
++            glyph.ease({
++                opacity: 115,
++                duration: 1100,
++                mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
++                repeatCount: -1,
++                autoReverse: true,
++            });
+         }
++        this._readerState = state;
++    }
+ 
+-        const resetDialog = () => {
+-            this._sessionRequestTimeoutId = 0;
+-
+-            if (this.state !== ModalDialog.State.OPENED)
+-                return;
++    _shake() {
++        if (reduceMotion())
++            return;
++        const scale = stageScale();
++        for (const actor of [this._field, this._status]) {
++            actor.remove_transition('translation-x');
++            actor.translation_x = 0;
++            const steps = [[-5, 64], [4, 80], [-2, 80], [0, 96]];
++            const run = i => {
++                if (i >= steps.length)
++                    return;
++                const [x, duration] = steps[i];
++                actor.ease({
++                    translation_x: x * scale,
++                    duration,
++                    mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
++                    onComplete: () => run(i + 1),
++                });
++            };
++            run(0);
++        }
++    }
+ 
+-            this._passwordEntry.hide();
++    _onConversationEvent(name, data) {
++        if (this._closing && name !== 'success')
++            return;
++        switch (name) {
++        case 'fingerprint-listening':
++            if (this._readerState !== 'miss')
++                this._setReader('listening');
++            if (this._statusState.kind === 'idle')
++                this._setStatus(this._idleStatus());
++            break;
++        case 'fingerprint-retry':
++            this._setStatus({kind: 'info', text: _('Lift your finger, then touch the reader again.'), icon: null});
++            break;
++        case 'fingerprint-miss':
++            this._setReader('miss');
++            this._field.add_style_pseudo_class('error');
++            this._setStatus({kind: 'error', text: _('Fingerprint not recognized.'), icon: 'alert'});
++            this._shake();
++            this._later(MISS_RECOVER, () => {
++                if (this._readerState === 'miss' && this._conversations.fingerprint === 'listening')
++                    this._setReader('listening');
++            });
++            break;
++        case 'fingerprint-exhausted':
++            this._setReader('exhausted');
++            this._setStatus({kind: 'error', text: _('Fingerprint not recognized. Use your password.'), icon: 'alert'});
++            break;
++        case 'fingerprint-unavailable':
++            this._setReader('hidden');
++            this._setStatus({kind: 'info', text: _('Fingerprint is unavailable. Use your password.'), icon: null});
++            break;
++        case 'fingerprint-stopped':
++            this._setReader('hidden');
++            if (this._statusState.kind === 'idle')
++                this._setStatus(this._idleStatus());
++            break;
++        case 'checking':
++            this._setFieldEnabled(false);
++            break;
++        case 'message':
++            if (data.kind === 'error' && LOCKED.test(data.text ?? ''))
++                this._locked = true;
++            break;
++        case 'password-rejected': {
++            const locked = this._locked || LOCKED.test(data.text ?? '');
++            this._locked = false;
++            this._setFieldEnabled(true);
++            this._field.add_style_pseudo_class('error');
++            this._setStatus({
++                kind: 'error',
++                text: locked ? _('Too many tries. Try again later.') : _('That password is not right.'),
++                icon: 'alert',
++            });
++            this._entry.grab_key_focus();
++            this._entry.clutter_text.set_selection(0, this._entry.get_text().length);
++            this._shake();
++            break;
++        }
++        case 'success':
++            this._succeeded = true;
++            this._setFieldEnabled(false);
++            this._cancelButton.reactive = false;
++            this._field.remove_style_pseudo_class('error');
++            if (data.method === 'fingerprint')
++                this._setReader('matched');
++            else if (this._finger.visible)
++                this._setReader('still');
++            this._setStatus({
++                kind: 'success',
++                text: data.method === 'fingerprint' ? _('Fingerprint recognized.') : _('Password accepted.'),
++                icon: 'check',
++            });
++            log(`[${this.actionId}] authorized by ${data.method}`);
++            this._emitDone(false);
++            break;
++        case 'failed':
++            this._failed = true;
++            this._setFieldEnabled(false);
++            this._setReader('hidden');
++            this._setStatus({kind: 'error', text: _('Authentication is not available right now.'), icon: 'alert'});
+             this._cancelButton.grab_key_focus();
+-            this._okButton.reactive = false;
+-        };
+-
+-        if (delay) {
+-            this._sessionRequestTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT, delay, resetDialog);
+-            GLib.Source.set_name_by_id(this._sessionRequestTimeoutId, '[gnome-shell] this._sessionRequestTimeoutId');
+-        } else {
+-            resetDialog();
++            break;
+         }
+     }
+ 
+-    _onUserChanged() {
+-        if (!this._user.is_loaded)
++    _submit() {
++        if (this._mode !== DialogMode.AUTH || this._succeeded)
+             return;
++        const text = this._entry.get_text();
++        if (!text)
++            return;
++        this._field.remove_style_pseudo_class('error');
++        if (this._statusState.kind === 'error')
++            this._setStatus(this._idleStatus());
++        this._conversations.submit(text);
++    }
+ 
+-        const userName = this._user.get_user_name();
+-        const realName = this._user.get_real_name();
+-
+-        if (userName !== 'root')
+-            this._userLabel.set_text(realName);
++    _confirm() {
++        // A password-less account: starting the conversation performs the
++        // authentication, so it only starts once the person allows it.
++        this._conversations.start();
++    }
+ 
+-        this._userAvatar.update();
++    _onUserChanged() {
++        if (!this._user?.is_loaded)
++            return;
++        this._setAccountName();
+ 
+         if (this._user.get_password_mode() === AccountsService.UserPasswordMode.NONE) {
+             if (this._mode === DialogMode.CONFIRM)
+                 return;
+-
+             this._mode = DialogMode.CONFIRM;
+-            this._destroySession();
+-
+-            this._okButton.reactive = true;
+-
+-            /* We normally open the dialog when we get a "request" signal, but
+-             * since in this case initiating a session would perform the
+-             * authentication, only open the dialog and initiate the session
+-             * when the user confirmed. */
+-            this._ensureOpen();
++            this._field.hide();
++            this._allowButton.grab_key_focus();
++            this._syncAllow();
++            this._setStatus(this._idleStatus());
+         } else {
+             if (this._mode === DialogMode.AUTH)
+                 return;
+-
+             this._mode = DialogMode.AUTH;
+-            this._initiateSession();
++            this._field.show();
++            this._conversations.start();
+         }
+     }
+ 
+-    close(timestamp) {
+-        // Ensure cleanup if the dialog was never shown
+-        if (this.state === ModalDialog.State.CLOSED)
+-            this._onDialogClosed();
+-        super.close(timestamp);
++    _emitDone(dismissed) {
++        if (!this._doneEmitted) {
++            this._doneEmitted = true;
++            this.emit('done', dismissed);
++        }
+     }
+ 
+     cancel() {
++        this._conversations?.cancel();
+         this._emitDone(true);
+     }
+ 
+     _onDialogClosed() {
+         Main.sessionMode.disconnectObject(this);
+-
+-        if (this._sessionRequestTimeoutId)
+-            GLib.source_remove(this._sessionRequestTimeoutId);
+-        this._sessionRequestTimeoutId = 0;
+-
++        Main.layoutManager.disconnectObject(this);
++        global.stage.disconnectObject(this);
++        this._keymap?.disconnectObject(this);
++        for (const id of this._timeouts)
++            GLib.source_remove(id);
++        this._timeouts.clear();
+         this._user?.disconnectObject(this);
+         this._user = null;
+-
+-        this._destroySession();
++        this._conversations?.cancel();
+     }
+ });
+ 
+@@ -437,6 +932,13 @@ class AuthenticationAgent extends Shell.PolkitAuthenticationAgent {
+     }
+ 
+     _onInitiate(nativeAgent, actionId, message, iconName, cookie, userNames) {
++        // Read while this request is the agent's current one.
++        const pid = key => Number.parseInt(nativeAgent.get_request_detail(key) ?? '', 10) || 0;
++        const request = {subjectPid: pid('polkit.subject-pid'), callerPid: pid('polkit.caller-pid')};
++        this._initiate(actionId, message, cookie, userNames, request);
++    }
++
++    _initiate(actionId, message, cookie, userNames, request) {
+         // Don't pop up a dialog while locked, unless it's triggered by user
+         // action from the lock screen, such as extending the session limits
+         if (Main.sessionMode.isLocked &&
+@@ -444,12 +946,12 @@ class AuthenticationAgent extends Shell.PolkitAuthenticationAgent {
+             Main.sessionMode.connectObject('updated', () => {
+                 Main.sessionMode.disconnectObject(this);
+ 
+-                this._onInitiate(nativeAgent, actionId, message, iconName, cookie, userNames);
++                this._initiate(actionId, message, cookie, userNames, request);
+             }, this);
+             return;
+         }
+ 
+-        this._currentDialog = new AuthenticationDialog(actionId, message, cookie, userNames);
++        this._currentDialog = new AuthenticationDialog(actionId, message, cookie, userNames, request);
+         this._currentDialog.connect('done', this._onDialogDone.bind(this));
+     }
+ 
+@@ -462,12 +964,13 @@ class AuthenticationAgent extends Shell.PolkitAuthenticationAgent {
+     }
+ 
+     _completeRequest(dismissed) {
+-        this._currentDialog.close();
++        const dialog = this._currentDialog;
+         this._currentDialog = null;
+-
+         Main.sessionMode.disconnectObject(this);
+ 
++        // Answer polkit first; the prompt's closing motion never delays it.
+         this.complete(dismissed);
++        dialog?.close();
+     }
+ });
+ 
+diff --git a/js/ui/lumaSealAuth.js b/js/ui/lumaSealAuth.js
+new file mode 100644
+index 0000000..90fd22f
+--- /dev/null
++++ b/js/ui/lumaSealAuth.js
+@@ -0,0 +1,369 @@
++// Luma Seal: the conversations behind the administrator prompt.
++//
++// A password is always offered; a fingerprint is an addition. The PAM stack
++// Luma ships (authselect with-fingerprint) runs pam_fprintd before pam_unix
++// in one conversation, so a single polkit session asks for nothing but a
++// finger until the reader times out. Seal never changes that stack and never
++// decides anything itself. It runs more than one polkit session for the same
++// request, the way GDM runs a fingerprint conversation beside the password
++// one:
++//
++// - The first session claims the reader and listens (pam_fprintd).
++// - When a password is submitted while that session holds the reader, a
++//   second session starts. Its pam_fprintd cannot claim the reader, which it
++//   treats as "no reader" (PAM_AUTHINFO_UNAVAIL, ignored by `sufficient`), so
++//   pam_unix asks it for the password straight away and the typed text is
++//   handed over. Nobody waits for the reader to time out, and nothing is
++//   retyped.
++// - Whichever session first asks for a secret receives the submitted text,
++//   exactly once. The text is never kept after it has been handed over.
++// - The first session to complete with authorization wins. Every other
++//   session is disconnected before it is cancelled, so a fingerprint message
++//   still on its way (the failure mode fixed for the unlock screen in 0085)
++//   can never hold or undo the success.
++// - Without a reader, or without an enrolled finger, pam_fprintd returns at
++//   once and the first session simply asks for the password.
++//
++// polkitd accepts an authorization only from its own agent helper, only for
++// the cookie of this request and only for an identity it offered, so a second
++// session cannot widen who may authenticate.
++
++import GLib from 'gi://GLib';
++import Gettext from 'gettext';
++
++const FPRINTD_DOMAIN = 'fprintd';
++
++// How many times the reader is armed again after it timed out while the
++// prompt stays open. Misses are never retried here: pam_fprintd's own
++// max-tries is the limit.
++const MAX_REARMS = 4;
++
++// A helper that exits without asking anything is restarted, but never in a
++// tight loop.
++const RESTART_WINDOW_MS = 10000;
++const MAX_RESTARTS = 4;
++
++function translations(message) {
++    const out = new Set([message]);
++    try {
++        const translated = Gettext.dgettext(FPRINTD_DOMAIN, message);
++        if (translated)
++            out.add(translated);
++    } catch {}
++    return out;
++}
++
++const TIMED_OUT = translations('Verification timed out');
++const NO_MATCH = translations('Failed to match fingerprint');
++const UNKNOWN_ERROR = translations('An unknown error occurred');
++
++export const Phase = {
++    STARTING: 'starting',
++    LISTENING: 'listening',
++    ASKING: 'asking',
++    CHECKING: 'checking',
++};
++
++/**
++ * Coordinates polkit sessions for one request.
++ *
++ * `createSession()` returns an object with PolkitAgent.Session's surface:
++ * initiate(), response(text), cancel(), connect(signal, handler) and
++ * disconnect(id), emitting request(prompt, echoOn), show-info(text),
++ * show-error(text) and completed(gainedAuthorization).
++ *
++ * `onEvent(name, data)` receives:
++ *   fingerprint-listening, fingerprint-retry, fingerprint-miss,
++ *   fingerprint-exhausted, fingerprint-stopped, fingerprint-unavailable,
++ *   checking,
++ *   password-rejected ({text}), message ({kind, text}), success ({method}),
++ *   failed ({reason})
++ */
++export class Conversations {
++    constructor({createSession, onEvent, log = () => {}, now = () => GLib.get_monotonic_time() / 1000}) {
++        this._createSession = createSession;
++        this._onEvent = onEvent;
++        this._log = log;
++        this._now = now;
++        this._sessions = [];
++        this._nextId = 1;
++        this._pending = null;
++        this._settled = false;
++        this._rearms = 0;
++        this._restarts = [];
++        this._fingerprint = 'unknown';
++        this._lastRejection = null;
++    }
++
++    get settled() {
++        return this._settled;
++    }
++
++    get checking() {
++        return this._sessions.some(s => s.phase === Phase.CHECKING);
++    }
++
++    get sessionCount() {
++        return this._sessions.length;
++    }
++
++    // What the reader is doing, for the prompt: unknown, listening, matched,
++    // exhausted, stopped or unavailable.
++    get fingerprint() {
++        return this._fingerprint;
++    }
++
++    start() {
++        if (this._settled || this._sessions.length > 0)
++            return;
++        this._spawn('open');
++    }
++
++    /**
++     * Hand a typed secret to PAM. Returns false when it cannot be taken now
++     * (already settled, or a previous attempt is still being checked).
++     *
++     * @param {string} text
++     */
++    submit(text) {
++        if (this._settled || !text || this.checking)
++            return false;
++
++        const asking = this._sessions.find(s => s.phase === Phase.ASKING);
++        if (asking) {
++            this._respond(asking, text);
++            return true;
++        }
++
++        this._pending = text;
++        this._emit('checking', {});
++        // A session that has not said anything yet may still turn out to ask
++        // for the password itself; only sessions holding the reader need a
++        // second conversation beside them.
++        if (!this._sessions.some(s => s.phase === Phase.STARTING))
++            this._spawn('password beside the reader');
++        return true;
++    }
++
++    cancel() {
++        this._pending = null;
++        this._settled = true;
++        this._dropAll();
++    }
++
++    _emit(name, data) {
++        try {
++            this._onEvent(name, data);
++        } catch (e) {
++            logError(e, `Luma Seal: handling ${name}`);
++        }
++    }
++
++    _spawn(reason) {
++        let session;
++        try {
++            session = this._createSession();
++        } catch (e) {
++            this._log(`could not create a polkit session (${reason}): ${e.message}`);
++            this._settleFailed('session');
++            return;
++        }
++        const entry = {id: this._nextId++, session, phase: Phase.STARTING, signals: [], lastFingerprint: null, misses: 0};
++        entry.signals = [
++            session.connect('request', (_s, prompt, echoOn) => this._onRequest(entry, prompt, echoOn)),
++            session.connect('show-info', (_s, text) => this._onInfo(entry, text)),
++            session.connect('show-error', (_s, text) => this._onError(entry, text)),
++            session.connect('completed', (_s, gained) => this._onCompleted(entry, gained)),
++        ];
++        this._sessions.push(entry);
++        this._log(`session ${entry.id} started: ${reason}`);
++        session.initiate();
++    }
++
++    _drop(entry) {
++        const index = this._sessions.indexOf(entry);
++        if (index >= 0)
++            this._sessions.splice(index, 1);
++        // Disconnect before cancelling: cancel() itself emits completed, and
++        // nothing a dropped session says may reach the prompt.
++        for (const id of entry.signals)
++            entry.session.disconnect(id);
++        entry.signals = [];
++        if (entry.phase !== 'done') {
++            entry.phase = 'done';
++            try {
++                entry.session.cancel();
++            } catch (e) {
++                this._log(`cancelling session ${entry.id}: ${e.message}`);
++            }
++        }
++    }
++
++    _dropAll() {
++        for (const entry of [...this._sessions])
++            this._drop(entry);
++    }
++
++    _respond(entry, text) {
++        entry.phase = Phase.CHECKING;
++        this._pending = null;
++        this._log(`session ${entry.id}: password handed over`);
++        this._emit('checking', {});
++        entry.session.response(text);
++    }
++
++    _onRequest(entry, prompt, echoOn) {
++        if (this._settled)
++            return;
++        this._log(`session ${entry.id} asks (${echoOn ? 'visible' : 'secret'}): ${JSON.stringify(prompt)}`);
++
++        const wasListening = entry.phase === Phase.LISTENING;
++        entry.phase = Phase.ASKING;
++
++        if (wasListening) {
++            // pam_fprintd returned and pam_unix asks this session instead:
++            // the reader stopped listening for this conversation.
++            if (entry.lastFingerprint === 'timeout' && this._rearms < MAX_REARMS) {
++                // A fresh conversation claims the reader again (below, once
++                // this one has taken any pending password).
++                this._rearms++;
++                this._fingerprint = 'unknown';
++            } else if (entry.lastFingerprint === 'timeout') {
++                this._fingerprint = 'stopped';
++                this._emit('fingerprint-stopped', {});
++            } else if (entry.misses > 0) {
++                this._fingerprint = 'exhausted';
++                this._emit('fingerprint-exhausted', {});
++            } else {
++                this._fingerprint = 'unavailable';
++                this._emit('fingerprint-unavailable', {});
++            }
++        }
++
++        // Only one session waits for a password at a time.
++        const other = this._sessions.find(s => s !== entry &&
++            (s.phase === Phase.ASKING || s.phase === Phase.CHECKING));
++        if (other) {
++            this._log(`session ${entry.id} is not needed: session ${other.id} already takes the password`);
++            this._drop(entry);
++            return;
++        }
++
++        if (this._pending !== null)
++            this._respond(entry, this._pending);
++
++        if (wasListening && this._fingerprint === 'unknown' &&
++            !this._sessions.some(s => s.phase === Phase.LISTENING || s.phase === Phase.STARTING))
++            this._spawn('reader again after a timeout');
++    }
++
++    _onInfo(entry, text) {
++        if (this._settled)
++            return;
++        if (entry.phase === Phase.STARTING || entry.phase === Phase.LISTENING) {
++            if (TIMED_OUT.has(text)) {
++                entry.lastFingerprint = 'timeout';
++                this._log(`session ${entry.id}: reader timed out`);
++                return;
++            }
++            // Before pam_unix, the only module in the stack that talks is
++            // pam_fprintd, and it only does once it holds the reader.
++            entry.phase = Phase.LISTENING;
++            entry.lastFingerprint = 'listening';
++            this._fingerprint = 'listening';
++            this._log(`session ${entry.id} listens: ${JSON.stringify(text)}`);
++            this._emit('fingerprint-listening', {text});
++
++            if (this._pending !== null &&
++                !this._sessions.some(s => s !== entry &&
++                    [Phase.STARTING, Phase.ASKING, Phase.CHECKING].includes(s.phase)))
++                this._spawn('password beside the reader');
++            return;
++        }
++        this._log(`session ${entry.id} info: ${JSON.stringify(text)}`);
++        this._emit('message', {kind: 'info', text});
++    }
++
++    _onError(entry, text) {
++        if (this._settled)
++            return;
++        if (entry.phase === Phase.LISTENING) {
++            if (NO_MATCH.has(text)) {
++                entry.misses++;
++                entry.lastFingerprint = 'miss';
++                this._log(`session ${entry.id}: fingerprint not recognized (${entry.misses})`);
++                this._emit('fingerprint-miss', {misses: entry.misses});
++            } else if (UNKNOWN_ERROR.has(text)) {
++                entry.lastFingerprint = 'error';
++                this._log(`session ${entry.id}: reader error ${JSON.stringify(text)}`);
++            } else {
++                entry.lastFingerprint = 'retry';
++                this._log(`session ${entry.id}: reader asks to retry ${JSON.stringify(text)}`);
++                this._emit('fingerprint-retry', {text});
++            }
++            return;
++        }
++        this._log(`session ${entry.id} error: ${JSON.stringify(text)}`);
++        if (entry.phase === Phase.CHECKING)
++            this._lastRejection = text;
++        this._emit('message', {kind: 'error', text});
++    }
++
++    _onCompleted(entry, gained) {
++        if (this._settled)
++            return;
++        const phase = entry.phase;
++        this._log(`session ${entry.id} completed in ${phase}: ${gained ? 'authorized' : 'not authorized'}`);
++
++        if (gained) {
++            this._settled = true;
++            this._pending = null;
++            entry.phase = 'done';
++            const method = phase === Phase.LISTENING ? 'fingerprint' : 'password';
++            // Success first; nothing the other sessions still have queued is
++            // allowed to reach the prompt.
++            this._drop(entry);
++            this._dropAll();
++            this._fingerprint = method === 'fingerprint' ? 'matched' : this._fingerprint;
++            this._emit('success', {method});
++            return;
++        }
++
++        entry.phase = 'done';
++        this._drop(entry);
++
++        if (phase === Phase.CHECKING) {
++            const text = this._lastRejection;
++            this._lastRejection = null;
++            this._emit('password-rejected', {text});
++        } else if (phase === Phase.LISTENING && this._pending === null) {
++            this._fingerprint = 'unavailable';
++            this._emit('fingerprint-unavailable', {});
++        }
++
++        // A rejected password is an ordinary answer; a conversation that
++        // ended any other way is restarted, but never in a tight loop.
++        if (phase !== Phase.CHECKING && !this._mayRestart()) {
++            this._settleFailed('restarts');
++            return;
++        }
++        // Keep one conversation that can take the password.
++        if (!this._sessions.some(s => s.phase === Phase.STARTING || s.phase === Phase.ASKING))
++            this._spawn(phase === Phase.CHECKING ? 'after a rejected password' : `after a session ended in ${phase}`);
++    }
++
++    _mayRestart() {
++        const now = this._now();
++        this._restarts = this._restarts.filter(t => now - t < RESTART_WINDOW_MS);
++        this._restarts.push(now);
++        return this._restarts.length <= MAX_RESTARTS;
++    }
++
++    _settleFailed(reason) {
++        this._log(`giving up: ${reason}`);
++        this._settled = true;
++        this._pending = null;
++        this._dropAll();
++        this._emit('failed', {reason});
++    }
++}
+diff --git a/js/ui/lumaSealCopy.js b/js/ui/lumaSealCopy.js
+new file mode 100644
+index 0000000..a3b3eec
+--- /dev/null
++++ b/js/ui/lumaSealCopy.js
+@@ -0,0 +1,359 @@
++// Luma Seal: what the administrator prompt says, and who it says is asking.
++//
++// The title and body are written by Luma, never passed through from polkit.
++// polkitd gives an agent only the action id, the mechanism's message (already
++// translated, with its $(details) filled in) and the pids of the subject and
++// the caller; it deliberately withholds the mechanism's other details. So a
++// template only says what can be read from those: the action, the message the
++// mechanism itself wrote, the kernel's view of the requesting process and
++// the system's own view of a device. Nothing the requesting app sends can
++// choose the words or the icon. Anything not in the table falls back to
++// "App wants administrator access" with polkit's message as the body.
++
++import Gettext from 'gettext';
++import GLib from 'gi://GLib';
++
++const _ = s => Gettext.dgettext('gnome-shell', s);
++
++// Fills %s placeholders in one pass, so a name containing %s stays as it is.
++function fmt(template, ...args) {
++    let i = 0;
++    return template.replace(/%s/g, () => String(args[i++] ?? ''));
++}
++
++// ── Parsing a mechanism's message ──────────────────────────────────────────
++
++function escapeRegExp(text) {
++    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++}
++
++/**
++ * A matcher for a mechanism's message template, in English and in the
++ * mechanism's translation (polkitd translates with the agent's locale, which
++ * is the Shell's).
++ *
++ * @param {string} domain the mechanism's gettext domain
++ * @param {string} template with $(name) placeholders
++ * @returns {(message: string) => object|null}
++ */
++export function messageMatcher(domain, template) {
++    const variants = new Set([template]);
++    try {
++        const translated = Gettext.dgettext(domain, template);
++        if (translated)
++            variants.add(translated);
++    } catch {}
++
++    const patterns = [...variants].map(variant => {
++        const names = [];
++        const source = escapeRegExp(variant).replace(/\\\$\\\(([a-z_.]+)\\\)/g, (_m, name) => {
++            names.push(name);
++            return '([\\s\\S]*)';
++        });
++        return {regexp: new RegExp(`^${source}$`), names};
++    });
++
++    return message => {
++        for (const {regexp, names} of patterns) {
++            const match = regexp.exec(message ?? '');
++            if (!match)
++                continue;
++            const values = {};
++            names.forEach((name, i) => (values[name] = match[i + 1]));
++            return values;
++        }
++        return null;
++    };
++}
++
++const UDISKS_WRITE = messageMatcher('udisks2', 'Authentication is required to open $(drive) for writing');
++const UDISKS_READ = messageMatcher('udisks2', 'Authentication is required to open $(drive) for reading');
++const PKEXEC_ROOT = messageMatcher('polkit-1', 'Authentication is needed to run `$(cmdline_short)\' as the super user');
++
++// udisks writes $(drive) as "Vendor Model (/dev/sdX)".
++export function splitDrive(drive) {
++    const match = /^(.*) \((\/dev\/[^()\s]+)\)$/.exec(drive ?? '');
++    if (!match)
++        return {name: drive?.trim() || null, device: null};
++    return {name: match[1].trim() || null, device: match[2]};
++}
++
++// ── Sizes ──────────────────────────────────────────────────────────────────
++
++export function formatSize(bytes) {
++    if (!Number.isFinite(bytes) || bytes <= 0)
++        return null;
++    const units = [[1e12, 'TB'], [1e9, 'GB'], [1e6, 'MB']];
++    for (const [factor, unit] of units) {
++        if (bytes < factor)
++            continue;
++        const value = bytes / factor;
++        const shown = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
++        return `${shown} ${unit}`;
++    }
++    return null;
++}
++
++function readText(path) {
++    try {
++        const [ok, bytes] = GLib.file_get_contents(path);
++        return ok ? new TextDecoder().decode(bytes) : null;
++    } catch {
++        return null;
++    }
++}
++
++/**
++ * The kernel's view of a block device: its size, and whether it is a
++ * partition rather than a whole drive.
++ *
++ * @param {string} device a /dev path
++ * @param {string} sysfs root of /sys/class/block
++ */
++export function blockDevice(device, sysfs = '/sys/class/block') {
++    let path = device;
++    try {
++        // /dev/disk/by-*/… and /dev/mapper/… are links to the kernel name.
++        for (let i = 0; i < 8; i++) {
++            const target = GLib.file_read_link(path);
++            path = GLib.canonicalize_filename(target, GLib.path_get_dirname(path));
++        }
++    } catch {}
++    const name = GLib.path_get_basename(path);
++    if (!/^[A-Za-z0-9_.!-]+$/.test(name))
++        return {size: null, partition: false};
++    const sectors = Number.parseInt(readText(`${sysfs}/${name}/size`) ?? '', 10);
++    return {
++        size: Number.isFinite(sectors) ? sectors * 512 : null,
++        partition: GLib.file_test(`${sysfs}/${name}/partition`, GLib.FileTest.EXISTS),
++    };
++}
++
++// ── Who is asking ──────────────────────────────────────────────────────────
++
++function unescapeUnit(text) {
++    return text.replace(/\\x([0-9a-fA-F]{2})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
++}
++
++/**
++ * The application id systemd records for a process, from /proc/PID/cgroup:
++ * app-flatpak-ID-N.scope, app-LAUNCHER-ID-N.scope, app-LAUNCHER-ID@X.service,
++ * app-ID@X.service or dbus-:1.N-ID@X.service.
++ *
++ * @param {string} cgroup contents of /proc/PID/cgroup
++ * @returns {{id: string, flatpak: boolean}|null}
++ */
++export function appFromCgroup(cgroup) {
++    const line = (cgroup ?? '').split('\n').find(l => l.startsWith('0::'));
++    if (!line)
++        return null;
++    const unit = line.slice(3).split('/').filter(Boolean).pop() ?? '';
++
++    let match = /^app-flatpak-(.+)-\d+\.scope$/.exec(unit);
++    if (match)
++        return {id: unescapeUnit(match[1]), flatpak: true};
++
++    match = /^dbus-:[0-9.]+-(.+)@[^@]*\.service$/.exec(unit);
++    if (match)
++        return {id: unescapeUnit(match[1]), flatpak: false};
++
++    match = /^app-(.+?)(?:-[0-9a-f]+\.scope|@[^@]*\.service|\.service)$/.exec(unit);
++    if (!match)
++        return null;
++    // Only the launcher is separated by an unescaped dash; dashes inside an
++    // id are escaped as \x2d.
++    const parts = match[1].split('-');
++    const id = parts.length > 1 ? parts.slice(1).join('-') : parts[0];
++    return id ? {id: unescapeUnit(id), flatpak: false} : null;
++}
++
++function flatpakId(pid) {
++    const keyFile = new GLib.KeyFile();
++    try {
++        keyFile.load_from_file(`/proc/${pid}/root/.flatpak-info`, GLib.KeyFileFlags.NONE);
++        return keyFile.get_string('Application', 'name') || null;
++    } catch {
++        return null;
++    }
++}
++
++function parentPid(pid) {
++    const stat = readText(`/proc/${pid}/stat`);
++    // The command name may itself contain spaces and parentheses.
++    const tail = stat?.slice(stat.lastIndexOf(')') + 2).split(' ');
++    const ppid = Number.parseInt(tail?.[1] ?? '', 10);
++    return Number.isFinite(ppid) ? ppid : 0;
++}
++
++export function commandLine(pid) {
++    const raw = readText(`/proc/${pid}/cmdline`);
++    if (!raw)
++        return [];
++    return raw.split('\0').filter((arg, i, all) => arg !== '' || i < all.length - 1);
++}
++
++export function executable(pid) {
++    try {
++        return GLib.file_read_link(`/proc/${pid}/exe`);
++    } catch {
++        const argv0 = commandLine(pid)[0];
++        return argv0 || null;
++    }
++}
++
++/**
++ * Resolve polkit's subject to an app the person recognizes: its Flatpak id,
++ * the application id of its systemd unit, or the app whose window belongs to
++ * it, checked for the subject and then for its parents (a terminal runs each
++ * shell in a scope of its own, so pkexec's parent is found through the
++ * terminal that started it). Returns {app, name, icon, executable, how, id};
++ * app, name and icon are null when nothing matched.
++ *
++ * @param {number} pid polkit.subject-pid
++ * @param {object} shell {appSystem, windowTracker}
++ */
++export function resolveRequester(pid, {appSystem, windowTracker} = {}) {
++    const result = {app: null, name: null, icon: null, executable: null, how: 'unresolved', id: null};
++    if (!Number.isInteger(pid) || pid <= 1)
++        return result;
++    result.executable = executable(pid);
++
++    const lookup = id => (id && appSystem ? appSystem.lookup_app(`${id}.desktop`) ?? null : null);
++
++    let current = pid;
++    for (let depth = 0; depth < 8 && current > 1 && !result.app; depth++) {
++        const where = depth === 0 ? '' : ` of parent ${depth}`;
++        const flatpak = flatpakId(current);
++        const unit = appFromCgroup(readText(`/proc/${current}/cgroup`));
++        const candidates = [
++            [flatpak, `flatpak${where}`],
++            [unit?.id, `${unit?.flatpak ? 'flatpak scope' : 'systemd unit'}${where}`],
++        ];
++        for (const [id, how] of candidates) {
++            const app = lookup(id);
++            if (app) {
++                Object.assign(result, {app, how, id});
++                break;
++            }
++        }
++        if (!result.app && windowTracker) {
++            const app = windowTracker.get_app_from_pid(current);
++            if (app)
++                Object.assign(result, {app, how: `window${where}`, id: app.get_id()});
++        }
++        current = parentPid(current);
++    }
++
++    if (result.app) {
++        result.name = result.app.get_name();
++        result.icon = result.app.get_icon();
++    }
++    return result;
++}
++
++// ── The table ──────────────────────────────────────────────────────────────
++
++function wants(requester, rest) {
++    return requester
++        ? fmt(_('%s wants %s'), requester, rest)
++        : fmt(_('An app wants %s'), rest);
++}
++
++/**
++ * Title, body and Details for a request.
++ *
++ * @param {object} request
++ * @param {string} request.actionId
++ * @param {string} request.message polkit's translated message
++ * @param {string|null} request.appName the resolved requester's name
++ * @param {string|null} request.executable the requester's executable
++ * @param {string|null} request.command full command line for pkexec
++ * @param {Function} request.device (path) => {size, partition}
++ * @returns {{title: string, body: string, facts: string[][], template: string}}
++ */
++export function describe({actionId, message, appName = null, executable: exe = null, command = null,
++    device: deviceInfo = blockDevice}) {
++    const requestedBy = [exe, appName].filter(Boolean).join(' · ') || _('Unknown');
++    const facts = [[_('Action'), actionId]];
++    const finish = (template, title, body, extra = []) => ({
++        template, title, body,
++        facts: [...facts, ...extra, [_('Requested by'), requestedBy]],
++    });
++
++    switch (actionId) {
++    case 'org.freedesktop.udisks2.open-device':
++    case 'org.freedesktop.udisks2.open-device-system': {
++        const writing = UDISKS_WRITE(message);
++        const reading = writing ? null : UDISKS_READ(message);
++        const parsed = writing ?? reading;
++        if (!parsed)
++            break;
++        const {name, device} = splitDrive(parsed.drive);
++        const label = name ?? device;
++        if (!label)
++            break;
++        const {size, partition} = device ? deviceInfo(device) : {size: null, partition: false};
++        const sized = formatSize(size);
++        const what = partition ? _('partition') : _('drive');
++        const deviceFact = [[_('Device'), [device, name].filter(Boolean).join(' · ')]];
++        if (writing) {
++            return finish('udisks-write',
++                wants(appName, fmt(_('to write to “%s”'), label)),
++                (sized
++                    ? fmt(_('Everything on this %s %s will be erased and replaced.'), sized, what)
++                    : fmt(_('Everything on this %s will be erased and replaced.'), what)) +
++                    ' ' + _('Writing to a disk needs an administrator.'),
++                deviceFact);
++        }
++        return finish('udisks-read',
++            wants(appName, fmt(_('to read everything on “%s”'), label)),
++            (sized
++                ? fmt(_('It will be able to read all data on this %s %s.'), sized, what)
++                : fmt(_('It will be able to read all data on this %s.'), what)) +
++                ' ' + _('Reading a disk directly needs an administrator.'),
++            deviceFact);
++    }
++    case 'org.freedesktop.Flatpak.app-install':
++        // polkitd does not pass the ref on to agents, so the app being
++        // installed cannot be named without trusting the requester.
++        return finish('flatpak-app-install',
++            wants(appName, _('to install an app for everyone on this computer')),
++            _('The app and its updates will be available to every account. Installing for everyone needs an administrator.'));
++    case 'org.freedesktop.timedate1.set-time':
++        return finish('timedate-set-time',
++            wants(appName, _('to change the date and time')),
++            _('The clock affects every account, and the certificates apps use to connect securely.'));
++    case 'org.freedesktop.policykit.exec': {
++        const parsed = PKEXEC_ROOT(message);
++        if (!parsed)
++            break;
++        return finish('pkexec-root',
++            wants(appName, _('to run a command as administrator')),
++            _('The command below will have full control of this computer while it runs.'),
++            [[_('Command'), command || parsed.cmdline_short]]);
++    }
++    }
++
++    return finish('fallback',
++        wants(appName, _('administrator access')),
++        message?.trim() || _('This needs an administrator.'));
++}
++
++/**
++ * The command pkexec was asked to run, from pkexec's own argument vector.
++ *
++ * @param {string[]} argv
++ */
++export function pkexecCommand(argv) {
++    if (!argv.length || GLib.path_get_basename(argv[0]) !== 'pkexec')
++        return null;
++    let i = 1;
++    while (i < argv.length && argv[i].startsWith('--')) {
++        if (argv[i] === '--user' || argv[i] === '-u')
++            i++;
++        i++;
++    }
++    const rest = argv.slice(i);
++    return rest.length ? rest.map(arg => (/[\s'"\\]/.test(arg) ? GLib.shell_quote(arg) : arg)).join(' ') : null;
++}
++
+diff --git a/js/ui/lumaSealGlyph.js b/js/ui/lumaSealGlyph.js
+new file mode 100644
+index 0000000..db4b7ca
+--- /dev/null
++++ b/js/ui/lumaSealGlyph.js
+@@ -0,0 +1,241 @@
++// Luma Seal: stroked glyphs drawn in the widget's own ink.
++//
++// The prompt's glyphs are line drawings with round caps. They are stroked
++// with Cairo in the theme node's foreground colour, so CSS alone decides
++// their colour in every appearance mode and state (listening, matched,
++// missed), at any scale.
++
++import Cairo from 'cairo';
++import GObject from 'gi://GObject';
++import St from 'gi://St';
++
++export const GLYPHS = {
++    lock: {box: 12, stroke: 2.2, rects: [[2.5, 5.5, 7, 5, 1.2]], paths: ['M4 5.5V4a2 2 0 0 1 4 0v1.5']},
++    seal: {box: 24, stroke: 1.8, rects: [[5, 10.5, 14, 10, 2.5]], paths: ['M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3', 'M12 14.5v2']},
++    eye: {box: 24, stroke: 1.8, circles: [[12, 12, 3]], paths: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z']},
++    'eye-off': {box: 24, stroke: 1.8, circles: [[12, 12, 3]], paths: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z', 'M4 4l16 16']},
++    fingerprint: {
++        box: 24, stroke: 1.8, paths: [
++            'M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4',
++            'M14 13.12c0 2.38 0 6.38-1 8.88',
++            'M17.29 21.02c.12-.6.43-2.3.5-3.02',
++            'M2 12a10 10 0 0 1 18-6',
++            'M2 16h.01',
++            'M21.8 16c.2-2 .131-5.354 0-6',
++            'M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2',
++            'M8.65 22c.21-.66.45-1.32.57-2',
++            'M9 6.8a6 6 0 0 1 9 5.2v2',
++        ],
++    },
++    check: {box: 14, stroke: 2.2, paths: ['m3 7.5 2.5 2.5L11 4.5']},
++    alert: {box: 14, stroke: 2.2, circles: [[7, 7, 5.5]], paths: ['M7 4.5v3M7 9.6h.01']},
++    chevron: {box: 12, stroke: 2.2, paths: ['m4.5 3 3 3-3 3']},
++};
++
++// ── SVG path data ──────────────────────────────────────────────────────────
++
++const ARGS = {M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0};
++
++export function parsePath(data) {
++    const tokens = data.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g) ?? [];
++    const commands = [];
++    let i = 0;
++    let command = null;
++    while (i < tokens.length) {
++        if (/[a-zA-Z]/.test(tokens[i]))
++            command = tokens[i++];
++        if (!command)
++            throw new Error(`path data starts without a command: ${data}`);
++        const count = ARGS[command.toUpperCase()];
++        if (count === undefined)
++            throw new Error(`unsupported path command ${command}`);
++        const args = tokens.slice(i, i + count).map(Number);
++        if (args.length < count)
++            throw new Error(`short arguments for ${command} in ${data}`);
++        i += count;
++        commands.push([command, args]);
++        if (count === 0)
++            command = null;
++        else if (command === 'M')
++            command = 'L';
++        else if (command === 'm')
++            command = 'l';
++    }
++    return commands;
++}
++
++// SVG's endpoint arc to Cairo's centre arc (circles and ellipses alike).
++function arcTo(cr, x0, y0, rx, ry, rotation, large, sweep, x, y) {
++    if (rx === 0 || ry === 0 || (x0 === x && y0 === y)) {
++        cr.lineTo(x, y);
++        return;
++    }
++    rx = Math.abs(rx);
++    ry = Math.abs(ry);
++    const phi = rotation * Math.PI / 180;
++    const cos = Math.cos(phi);
++    const sin = Math.sin(phi);
++    const dx = (x0 - x) / 2;
++    const dy = (y0 - y) / 2;
++    const x1 = cos * dx + sin * dy;
++    const y1 = -sin * dx + cos * dy;
++    const lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
++    if (lambda > 1) {
++        rx *= Math.sqrt(lambda);
++        ry *= Math.sqrt(lambda);
++    }
++    const sign = large === sweep ? -1 : 1;
++    const numerator = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
++    const denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1;
++    const factor = sign * Math.sqrt(Math.max(0, numerator / denominator));
++    const cx1 = factor * rx * y1 / ry;
++    const cy1 = -factor * ry * x1 / rx;
++    const cx = cos * cx1 - sin * cy1 + (x0 + x) / 2;
++    const cy = sin * cx1 + cos * cy1 + (y0 + y) / 2;
++    const angle = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
++    const start = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry);
++    let delta = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry);
++    if (!sweep && delta > 0)
++        delta -= 2 * Math.PI;
++    else if (sweep && delta < 0)
++        delta += 2 * Math.PI;
++
++    cr.save();
++    cr.translate(cx, cy);
++    cr.rotate(phi);
++    cr.scale(rx, ry);
++    if (sweep)
++        cr.arc(0, 0, 1, start, start + delta);
++    else
++        cr.arcNegative(0, 0, 1, start, start + delta);
++    cr.restore();
++}
++
++export function tracePath(cr, data) {
++    let x = 0, y = 0, startX = 0, startY = 0, lastControl = null;
++    for (const [command, a] of parsePath(data)) {
++        const relative = command === command.toLowerCase();
++        const ox = relative ? x : 0;
++        const oy = relative ? y : 0;
++        let control = null;
++        switch (command.toUpperCase()) {
++        case 'M':
++            x = ox + a[0];
++            y = oy + a[1];
++            cr.moveTo(x, y);
++            startX = x;
++            startY = y;
++            break;
++        case 'L':
++            x = ox + a[0];
++            y = oy + a[1];
++            cr.lineTo(x, y);
++            break;
++        case 'H':
++            x = ox + a[0];
++            cr.lineTo(x, y);
++            break;
++        case 'V':
++            y = oy + a[0];
++            cr.lineTo(x, y);
++            break;
++        case 'C':
++            cr.curveTo(ox + a[0], oy + a[1], ox + a[2], oy + a[3], ox + a[4], oy + a[5]);
++            control = [ox + a[2], oy + a[3]];
++            x = ox + a[4];
++            y = oy + a[5];
++            break;
++        case 'S': {
++            const [rx, ry] = lastControl ? [2 * x - lastControl[0], 2 * y - lastControl[1]] : [x, y];
++            cr.curveTo(rx, ry, ox + a[0], oy + a[1], ox + a[2], oy + a[3]);
++            control = [ox + a[0], oy + a[1]];
++            x = ox + a[2];
++            y = oy + a[3];
++            break;
++        }
++        case 'A': {
++            const endX = ox + a[5];
++            const endY = oy + a[6];
++            arcTo(cr, x, y, a[0], a[1], a[2], a[3] !== 0, a[4] !== 0, endX, endY);
++            x = endX;
++            y = endY;
++            break;
++        }
++        case 'Z':
++            cr.closePath();
++            x = startX;
++            y = startY;
++            break;
++        default:
++            throw new Error(`unsupported path command ${command}`);
++        }
++        lastControl = control;
++    }
++}
++
++function roundedRect(cr, x, y, w, h, r) {
++    cr.newSubPath();
++    cr.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
++    cr.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
++    cr.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
++    cr.arc(x + r, y + r, r, Math.PI, 3 * Math.PI / 2);
++    cr.closePath();
++}
++
++export function drawGlyph(cr, name, width, height, color) {
++    const glyph = GLYPHS[name];
++    if (!glyph)
++        return;
++    const scale = Math.min(width, height) / glyph.box;
++    cr.save();
++    cr.translate((width - glyph.box * scale) / 2, (height - glyph.box * scale) / 2);
++    cr.scale(scale, scale);
++    cr.setSourceRGBA(color.red / 255, color.green / 255, color.blue / 255, color.alpha / 255);
++    cr.setLineWidth(glyph.stroke);
++    cr.setLineCap(Cairo.LineCap.ROUND);
++    cr.setLineJoin(Cairo.LineJoin.ROUND);
++    for (const [x, y, w, h, r] of glyph.rects ?? [])
++        roundedRect(cr, x, y, w, h, r);
++    for (const [cx, cy, r] of glyph.circles ?? []) {
++        cr.newSubPath();
++        cr.arc(cx, cy, r, 0, 2 * Math.PI);
++    }
++    for (const data of glyph.paths ?? []) {
++        cr.newSubPath();
++        tracePath(cr, data);
++    }
++    cr.stroke();
++    cr.restore();
++}
++
++export const Glyph = GObject.registerClass(
++class LumaSealGlyph extends St.DrawingArea {
++    _init(name, params = {}) {
++        super._init({style_class: 'luma-seal-glyph', ...params});
++        this._name = name;
++    }
++
++    get glyph() {
++        return this._name;
++    }
++
++    set glyph(name) {
++        if (this._name === name)
++            return;
++        this._name = name;
++        this.queue_repaint();
++    }
++
++    vfunc_style_changed() {
++        super.vfunc_style_changed();
++        this.queue_repaint();
++    }
++
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const [width, height] = this.get_surface_size();
++        const color = this.get_theme_node().get_foreground_color();
++        drawGlyph(cr, this._name, width, height, color);
++        cr.$dispose();
++    }
++});
+diff --git a/src/shell-polkit-authentication-agent.c b/src/shell-polkit-authentication-agent.c
+index 7b00064..4a1f97a 100644
+--- a/src/shell-polkit-authentication-agent.c
++++ b/src/shell-polkit-authentication-agent.c
+@@ -426,3 +426,27 @@ shell_polkit_authentication_agent_complete (ShellPolkitAuthenticationAgent *agen
+ 
+   auth_request_complete (agent->current_request, dismissed);
+ }
++
++/**
++ * shell_polkit_authentication_agent_get_request_detail:
++ * @agent: A #ShellPolkitAuthenticationAgent
++ * @key: A detail key, such as `polkit.subject-pid`
++ *
++ * Looks up a detail polkitd passed with the request currently being shown.
++ * polkitd only passes details it sets itself (the subject and caller pids);
++ * the mechanism's own details are withheld from agents.
++ *
++ * Returns: (nullable) (transfer none): The value of @key, or %NULL
++ */
++const char *
++shell_polkit_authentication_agent_get_request_detail (ShellPolkitAuthenticationAgent *agent,
++                                                      const char                     *key)
++{
++  g_return_val_if_fail (SHELL_IS_POLKIT_AUTHENTICATION_AGENT (agent), NULL);
++  g_return_val_if_fail (key != NULL, NULL);
++
++  if (agent->current_request == NULL || agent->current_request->details == NULL)
++    return NULL;
++
++  return polkit_details_lookup (agent->current_request->details, key);
++}
+diff --git a/src/shell-polkit-authentication-agent.h b/src/shell-polkit-authentication-agent.h
+index e4fccda..a394e27 100644
+--- a/src/shell-polkit-authentication-agent.h
++++ b/src/shell-polkit-authentication-agent.h
+@@ -30,5 +30,7 @@ void                            shell_polkit_authentication_agent_complete (Shel
+ void                            shell_polkit_authentication_agent_register (ShellPolkitAuthenticationAgent *agent,
+                                                                             GError                        **error_out);
+ void                            shell_polkit_authentication_agent_unregister (ShellPolkitAuthenticationAgent *agent);
++const char                     *shell_polkit_authentication_agent_get_request_detail (ShellPolkitAuthenticationAgent *agent,
++                                                                                      const char                     *key);
+ 
+ G_END_DECLS

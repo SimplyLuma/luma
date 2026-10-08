@@ -1,0 +1,8 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Winetricks
+Exec=winetricks --gui
+Terminal=false
+Icon=winetricks
+Type=Application
+Categories=Utility;

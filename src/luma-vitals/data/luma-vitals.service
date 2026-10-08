@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma Vitals: what every application and service costs
+Documentation=file:///usr/share/doc/luma-vitals/026-luma-vitals.md
+PartOf=graphical-session.target
+After=graphical-session.target
+# The login screen is a graphical session too, run by a transient greeter
+# user; nothing there is the person's to account for.
+ConditionEnvironment=XDG_SESSION_CLASS=user
+
+[Service]
+ExecStart=/usr/libexec/luma-vitals
+Restart=on-failure
+RestartSec=30
+# It must never be the process it would report (ADR-026 §5).
+Nice=10
+CPUWeight=10
+IOWeight=10
+# A real desktop session peaked at 88.3MiB while the old 48MiB high boundary
+# repeatedly reclaimed the sampler itself. Keep that observed working set
+# below the throttle boundary, with a bounded hard ceiling for a runaway.
+MemoryHigh=96M
+MemoryMax=192M
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

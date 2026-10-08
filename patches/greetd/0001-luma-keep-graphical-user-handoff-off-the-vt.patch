@@ -1,0 +1,59 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 21:30:00 -0500
+Subject: [PATCH] session: preserve graphics mode for Luma user handoff
+
+greetd deliberately restores KD_TEXT and clears the VT before every session
+because it supports both text and graphical commands.  On a graphical-only
+handheld that exposes the console between the greeter compositor and the user
+compositor, including PAM and session diagnostics that should never be part of
+the product surface.
+
+Allow the system-owned display-manager unit to opt authenticated user sessions
+into a graphics-preserving handoff.  Greeter sessions and installations that do
+not set the explicit environment marker retain upstream behavior.
+
+---
+ greetd/src/session/worker.rs | 21 ++++++++++++++-------
+ 1 file changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/greetd/src/session/worker.rs b/greetd/src/session/worker.rs
+index 0185378..c2c3c72 100644
+--- a/greetd/src/session/worker.rs
++++ b/greetd/src/session/worker.rs
+@@ -161,6 +161,10 @@ fn worker(sock: &UnixDatagram) -> Result<(), Error> {
+ 
+     let pam_username = pam.get_user()?;
+ 
++    let graphical_handoff = matches!(class, SessionClass::User)
++        && env::var_os("LUMA_GREETD_GRAPHICAL_HANDOFF")
++            .is_some_and(|value| !value.is_empty());
++
+     let user = nix::unistd::User::from_name(&pam_username)?.ok_or("unable to get user info")?;
+ 
+     // Make this process a session leader.
+@@ -176,13 +180,16 @@ fn worker(sock: &UnixDatagram) -> Result<(), Error> {
+             // Opening our target terminal.
+             let target_term = terminal::Terminal::open(&path)?;
+ 
+-            // Set the target VT mode to text for compatibility. Other login managers
+-            // set this to graphics, but that disallows start of textual applications,
+-            // which greetd aims to support.
+-            target_term.kd_setmode(terminal::KdMode::Text)?;
+-
+-            // Clear TTY so that it will be empty when we switch to it.
+-            target_term.term_clear()?;
++            if graphical_handoff {
++                // Keep the authenticated graphical handoff away from fbcon.
++                target_term.kd_setmode(terminal::KdMode::Graphics)?;
++                // Cage's diagnostics live in the backing VT even while hidden.
++                target_term.term_clear()?;
++            } else {
++                // Preserve greetd's generic text-session compatibility.
++                target_term.kd_setmode(terminal::KdMode::Text)?;
++                target_term.term_clear()?;
++            }
+ 
+             // A bit more work if a VT switch is required.
+             if switch && vt != target_term.vt_get_current()? {
+-- 
+2.53.0

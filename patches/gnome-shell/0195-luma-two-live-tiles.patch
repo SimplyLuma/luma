@@ -1,0 +1,432 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: the shelf shows two live tiles at once
+
+Studio Desktop holds up to two live tiles, the most urgent first: a call, a
+recording, an event about to start, then music. A second live island shows
+the second publication, music takes a place only while the budget has room,
+and when the row would be wider than its edge the least urgent tile steps
+aside until what is available changes.
+
+diff --git a/js/ui/liveActivity.js b/js/ui/liveActivity.js
+index 5dac991..68e9173 100644
+--- a/js/ui/liveActivity.js
++++ b/js/ui/liveActivity.js
+@@ -117,23 +117,57 @@ export function categoryIcon(item) {
+     return CATEGORY_ICONS[categoryOf(item)] ?? GENERIC_ICON;
+ }
+ 
+-// The one publication the island shows: highest priority first, then the one
+-// that started (or starts) soonest, then the one that expires soonest.
+-export function pickActivity(items, nowMs = Date.now()) {
++// Calendar publishes the day's next event for its own purposes. The shelf
++// only joins that event from fifteen minutes before until ten minutes after
++// its start; the daemon's thirty-second updates wake the selectors below.
++export const EVENT_LEAD_MS = 15 * 60_000;
++export const EVENT_TAIL_MS = 10 * 60_000;
++export function isShown(item, nowMs = Date.now()) {
++    if (categoryOf(item) !== 'event')
++        return true;
++    const start = parseInstant(item.extension.starts_at);
++    return start !== null && nowMs >= start - EVENT_LEAD_MS &&
++        nowMs <= start + EVENT_TAIL_MS;
++}
++
++// The publications the shelf may show, most urgent first: highest priority,
++// then the one that started (or starts) soonest, then the one that expires
++// soonest.
++export function orderActivities(items, nowMs = Date.now()) {
+     const when = item => parseInstant(item.extension.starts_at) ??
+         parseInstant(item.extension.expires_at) ?? Number.MAX_SAFE_INTEGER;
+-    // Calendar publishes the day's next event for its own purposes. The shelf
+-    // only joins that event from fifteen minutes before until ten minutes
+-    // after its start; the daemon's thirty-second updates wake this selector.
+-    const visible = items.filter(item => {
+-        if (categoryOf(item) !== 'event')
+-            return true;
+-        const start = parseInstant(item.extension.starts_at);
+-        return start !== null && nowMs >= start - 15 * 60_000 &&
+-            nowMs <= start + 10 * 60_000;
++    return items.filter(item => isShown(item, nowMs)).sort((a, b) =>
++        priorityOf(a) - priorityOf(b) || when(a) - when(b));
++}
++
++// The one publication an island shows on its own.
++export function pickActivity(items, nowMs = Date.now()) {
++    return orderActivities(items, nowMs)[0] ?? null;
++}
++
++// Studio Desktop: the shelf holds two live tiles at most, the most urgent
++// first -- a call, a recording, an event about to start, then music, then
++// weather, then the toggles. Music, weather and the toggles are not
++// publications; they rank among them by these values.
++export const LIVE_TILE_LIMIT = 2;
++export const TILE_PRIORITY = Object.freeze({music: PRIORITY.media, weather: 9.5, toggles: 10});
++
++// Which tiles show: `publications` in orderActivities order, `others` the
++// tiles that are available now ({music: true, weather: false, ...}). Returns
++// the publications to show, in order, and each other tile's verdict.
++export function chooseLiveTiles(publications, others = {}, limit = LIVE_TILE_LIMIT) {
++    const candidates = publications.map((item, index) =>
++        ({item, rank: priorityOf(item), index}));
++    Object.entries(TILE_PRIORITY).forEach(([name, rank], index) => {
++        if (others[name])
++            candidates.push({name, rank, index: publications.length + index});
+     });
+-    return visible.sort((a, b) =>
+-        priorityOf(a) - priorityOf(b) || when(a) - when(b))[0] ?? null;
++    candidates.sort((a, b) => a.rank - b.rank || a.index - b.index);
++    const shown = candidates.slice(0, Math.max(0, limit));
++    const result = {publications: shown.filter(c => c.item).map(c => c.item)};
++    for (const name of Object.keys(TILE_PRIORITY))
++        result[name] = shown.some(c => c.name === name);
++    return result;
+ }
+ 
+ // A call's elapsed time, MM:SS, widening to H:MM:SS after an hour. Null while
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 7f720c4..511647c 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -84,10 +84,20 @@ const STATUS_CLOCK_LEADING = 3;
+ const STATUS_CLOCK_GAP = 2;
+ const LUMA_LIVE_EXTENSION_TOOLTIP_GAP = 6;
+ 
+-const LiveExtensionsIndicator = GObject.registerClass(
+-class LiveExtensionsIndicator extends PanelMenu.Button {
+-    _init() {
++// The shelf shows up to two publications at once (Studio Desktop): the first
++// indicator (rank 0) reads the publications and, once the shelf budgets the
++// live tiles, shows whichever it is handed; a second one (rank 1) only ever
++// shows what it is handed.
++export const LiveExtensionsIndicator = GObject.registerClass({
++    Signals: {'publications-changed': {}},
++}, class LiveExtensionsIndicator extends PanelMenu.Button {
++    _init(rank = 0) {
+         super._init(0.5, _('Ongoing activity'), true);
++        // The panel builds its indicators with GObject properties, not a rank.
++        rank = typeof rank === 'number' ? rank : 0;
++        this._rank = rank;
++        this._publications = [];
++        this._budgeted = false;
+         this.add_style_class_name('luma-live-extension');
+         this._handheld = GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld';
+         this._current = null;
+@@ -234,7 +244,7 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             return Clutter.EVENT_STOP;
+         });
+ 
+-        this._signal = Gio.DBus.session.signal_subscribe(
++        this._signal = rank !== 0 ? 0 : Gio.DBus.session.signal_subscribe(
+             LUMA_LIVE_EXTENSIONS_BUS,
+             LUMA_LIVE_EXTENSIONS_INTERFACE,
+             'LiveExtensionsChanged',
+@@ -259,7 +269,32 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+                 this._setExtension(this._current);
+         }, this);
+         this.hide();
+-        this._refresh();
++        if (rank === 0)
++            this._refresh();
++    }
++
++    // Every shown publication, most urgent first.
++    get publications() {
++        return this._publications;
++    }
++
++    // Once budgeted, the indicator shows only what showPublication() hands it.
++    setBudgeted(budgeted) {
++        this._budgeted = budgeted;
++    }
++
++    showPublication(item) {
++        if (item === this._current && item !== null)
++            return;
++        this._setExtension(item ?? null);
++    }
++
++    _publish(extensions) {
++        this._publications = LiveActivity.orderActivities(extensions);
++        if (this._budgeted)
++            this.emit('publications-changed');
++        else
++            this._setExtension(this._publications[0] ?? null);
+     }
+ 
+     _refresh() {
+@@ -274,17 +309,22 @@ class LiveExtensionsIndicator extends PanelMenu.Button {
+             3000,
+             null,
+             (connection, result) => {
++                let extensions = [];
+                 try {
+                     const [reply] = connection.call_finish(result).recursiveUnpack();
+-                    const extensions = Array.isArray(reply)
++                    extensions = Array.isArray(reply)
+                         ? reply.filter(item => this._isValidExtension(item))
+                         : [];
+-                    // What the person is doing now outranks what is coming
+-                    // up: a call is shown over a meeting that starts later.
+-                    this._setExtension(LiveActivity.pickActivity(extensions));
+                 } catch (error) {
+                     console.debug(`Luma Live Extensions unavailable: ${error}`);
+-                    this._setExtension(null);
++                }
++                // What the person is doing now outranks what is coming up: a
++                // call is shown over a meeting that starts later. A failure
++                // past this point is the Shell's own, and is logged as one.
++                try {
++                    this._publish(extensions);
++                } catch (error) {
++                    logError(error, 'Luma live tiles');
+                 }
+             });
+     }
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index eb32bd4..94b1978 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -19,6 +19,7 @@ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {WindowMarks} from './lumaDockWindows.js';
+ import {DASH_TILE_SIZE, DIVIDER_WIDTH, SHELF_INSET, SHELF_ISLAND_RADIUS, windowMarkRow} from './shelfMetrics.js';
+ import * as Arrangement from './shelfArrangement.js';
++import * as LiveActivity from './liveActivity.js';
+ import {ShelfArrange, DashedOutline} from './shelfArrange.js';
+ import {DockFolders} from './lumaDockFolders.js';
+ 
+@@ -106,7 +107,7 @@ export function dashCornerRadii(edge, protrude, touchesStart, touchesEnd) {
+ 
+ // Islands that come and go with what is happening: they hold an edge only
+ // while they show, and arrange mode shows a ghost in their slot otherwise.
+-const TRANSIENT_ISLANDS = ['notifications', 'live', 'media'];
++const TRANSIENT_ISLANDS = ['notifications', 'live', 'live2', 'media'];
+ // Panel indicators the Dash leaves in the (hidden) panel.
+ const NEVER_ADOPTED = ['tilingshell@ferrarodomenico.com'];
+ // The ghost each hidden slot shows in arrange mode.
+@@ -799,8 +800,15 @@ export const Shelf = GObject.registerClass({
+         this._mediaIsland.visible = false;
+         this._mediaGuard = new MediaIslandGuard(this._mediaIsland, this._media,
+             {vertical: () => Arrangement.isVertical(this.edgeOfIsland('media')), sync: () => { this._sync(); this._queueDockWidth(); }});
+-        this._media.connectObject('eligibility-changed', () => {
+-            const show = this._media.eligible;
++        // Music is one of the live tiles: it shows while eligible and while
++        // the live budget (two tiles at most, the most urgent first) has room.
++        this._mediaShown = false;
++        this._media.connectObject('eligibility-changed', () => this._syncLiveBudget(true), this);
++        this._syncMediaIsland = () => {
++            const show = this._media.eligible && this._mediaAllowed !== false;
++            if (show === this._mediaShown)
++                return;
++            this._mediaShown = show;
+             // Grow along the media island's own edge, not the dock's.
+             const mediaVertical = Arrangement.isVertical(this.edgeOfIsland('media'));
+             const property = mediaVertical ? 'height' : 'width';
+@@ -841,7 +849,7 @@ export const Shelf = GObject.registerClass({
+                     }});
+             }
+             this._mediaGuard.started(motion);
+-        }, this);
++        };
+         this._mediaIsland.connectObject('notify::width', () => this._queueDockWidth(),
+             'notify::height', () => this._queueDockWidth(), this);
+ 
+@@ -1168,7 +1176,88 @@ export const Shelf = GObject.registerClass({
+             this._liveIsland.visible = liveIndicator.visible;
+             this._liveIndicator = liveIndicator;
+             liveIndicator.setShelfOrientation(Arrangement.isVertical(this.edgeOfIsland('live')));
++
++            // The second live tile (Studio Desktop shows two at once): its
++            // own island, one island gap after the first.
++            if (!this._live2Island) {
++                const second = this._live2Indicator = new liveIndicator.constructor(1);
++                this._live2Content = new St.BoxLayout();
++                this._live2Scroll = new St.ScrollView({
++                    enable_mouse_scrolling: true,
++                    overlay_scrollbars: true,
++                });
++                this._live2Scroll.set_child(this._live2Content);
++                this._live2Material = new St.Bin({child: this._live2Scroll});
++                this._live2Island = new ShelfIsland(
++                    'luma-shelf-live-island', this._live2Material);
++                this._live2Island.visible = false;
++                this._registerIsland('live2', this._live2Island);
++                this._live2Island.setBody(second);
++                this._live2Content.add_child(second.container);
++                second.connectObject('notify::width', () => this._queueDockWidth(),
++                    'notify::height', () => this._queueDockWidth(), this);
++                second.connectObject('notify::visible', () => {
++                    const arriving = second.visible && !this._live2Island.visible;
++                    this._live2Island.visible = second.visible;
++                    this._queueDockWidth();
++                    if (arriving)
++                        this._growIsland(this._live2Island, 'live2');
++                }, this);
++                second.connectObject('destroy', () => {
++                    this._live2Indicator = null;
++                }, this);
++            }
++            this._live2Indicator?.setShelfOrientation(Arrangement.isVertical(this.edgeOfIsland('live2')));
++            if (!liveIndicator._lumaBudgeted) {
++                liveIndicator._lumaBudgeted = true;
++                liveIndicator.setBudgeted?.(true);
++                liveIndicator.connectObject('publications-changed',
++                    () => this._syncLiveBudget(true), this);
++                this._syncLiveBudget(true);
++            }
++        }
++    }
++
++    // Which live tiles show: two at most, the most urgent first (a call, a
++    // recording, an event about to start, then music), fewer while the row
++    // would not fit its edge. `fresh` means what is available changed, which
++    // gives the row its full budget back before it is measured again.
++    _syncLiveBudget(fresh = false) {
++        if (fresh)
++            this._liveLimit = LiveActivity.LIVE_TILE_LIMIT;
++        const publications = this._liveIndicator?.publications ?? [];
++        const pick = LiveActivity.chooseLiveTiles(publications,
++            {music: this._media.eligible}, this._liveLimit ?? LiveActivity.LIVE_TILE_LIMIT);
++        this._liveIndicator?.showPublication?.(pick.publications[0] ?? null);
++        this._live2Indicator?.showPublication(pick.publications[1] ?? null);
++        this._mediaAllowed = pick.music;
++        this._syncMediaIsland();
++        this._liveShown = pick.publications.length + (pick.music ? 1 : 0);
++    }
++
++    // Studio Desktop: if the row is wider than its edge, the least urgent
++    // live tile steps aside. Returns true when it took one away.
++    _fitLiveTiles(edgeLength, scale) {
++        const id = 'live';
++        const group = this._resolved?.find(p => p.islands.includes(id));
++        if (!group || Arrangement.isVertical(this.edgeOfIsland(id)) || !(this._liveShown > 0))
++            return false;
++        let total = 0, count = 0;
++        const seen = new Set();
++        for (const member of group.islands) {
++            const island = this.islandActorFor(member);
++            if (!island?.visible || seen.has(island))
++                continue;
++            seen.add(island);
++            total += island.get_preferred_width(-1)[1];
++            count++;
+         }
++        total += Math.max(0, count - 1) * Arrangement.ISLAND_GAP * scale;
++        if (total <= edgeLength)
++            return false;
++        this._liveLimit = this._liveShown - 1;
++        this._syncLiveBudget(false);
++        return true;
+     }
+ 
+     // ADR-044: every island the shelf manages has an id ('dock', 'live',
+@@ -1743,7 +1832,7 @@ export const Shelf = GObject.registerClass({
+     // Quick Options is drawn by the Quick Options island.
+     islandActorFor(id) {
+         if (this._ghostWanted(id))
+-            return this._ghostIsland(id === 'media' ? 'live' : id);
++            return this._ghostIsland(id === 'media' || id === 'live2' ? 'live' : id);
+         if (id === 'well' && this._wellIsland && !this._actionsParts?.includes('well'))
+             return this._wellIsland;
+         if (id === 'clock' && this._clockIsland && !this._actionsParts?.includes('clock'))
+@@ -1805,7 +1894,7 @@ export const Shelf = GObject.registerClass({
+     _ghostWanted(id) {
+         if (!this._arrange?.active)
+             return false;
+-        if (id === 'live' || id === 'media')
++        if (id === 'live' || id === 'live2' || id === 'media')
+             return !!this._actionsVisible;
+         // The system tray is a placeholder too: arranging never shows the
+         // icons that happen to be in it, and nor are the dock's folders.
+@@ -1873,7 +1962,7 @@ export const Shelf = GObject.registerClass({
+             return this._dockVisible;
+         if (id === 'notifications')
+             return !!this._beacon?.visible && !!this._beaconIsland?.visible;
+-        if (id === 'live' || id === 'media')
++        if (id === 'live' || id === 'live2' || id === 'media')
+             return this._actionsVisible && !!this.getIsland(id)?.visible;
+         // The tray is there while it has something in it, like the live and
+         // media islands: an item with nothing to show takes no width, no
+@@ -2047,7 +2136,7 @@ export const Shelf = GObject.registerClass({
+                 // live extension, so it can be seen and placed.
+                 if (this._ghostWanted(id)) {
+                     // One placeholder for the live family.
+-                    const ghost = this._ghostIsland(id === 'media' ? 'live' : id);
++                    const ghost = this._ghostIsland(id === 'media' || id === 'live2' ? 'live' : id);
+                     if (!actors.includes(ghost))
+                         actors.push(ghost);
+                     actorOfId.set(id, ghost);
+@@ -2132,6 +2221,7 @@ export const Shelf = GObject.registerClass({
+         this._beacon.setVertical(Arrangement.isVertical(this.edgeOfIsland('notifications')));
+         this._media.setVertical(Arrangement.isVertical(this.edgeOfIsland('media')));
+         this._liveIndicator?.setShelfOrientation?.(Arrangement.isVertical(this.edgeOfIsland('live')));
++        this._live2Indicator?.setShelfOrientation?.(Arrangement.isVertical(this.edgeOfIsland('live2')));
+         this._syncActionsWashNow?.();
+     }
+ 
+@@ -2927,17 +3017,23 @@ export const Shelf = GObject.registerClass({
+         // Keep all status controls reachable on a short/narrow display. Both
+         // adopted panel content and the dock use native scrollable boundaries;
+         // no child is silently discarded to satisfy geometry.
+-        if (this._liveIsland?.visible) {
+-            const vertical = Arrangement.isVertical(this.edgeOfIsland('live'));
+-            this._liveContent.orientation = vertical
++        // Each live tile at its natural size: tiles cap their own copy
++        // (170px), and the row as a whole gives way below (_fitLiveTiles).
++        for (const [id, island, content, scroll] of [
++            ['live', this._liveIsland, this._liveContent, this._liveScroll],
++            ['live2', this._live2Island, this._live2Content, this._live2Scroll]]) {
++            if (!island?.visible)
++                continue;
++            const vertical = Arrangement.isVertical(this.edgeOfIsland(id));
++            content.orientation = vertical
+                 ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+-            this._liveScroll.set_size(-1, -1);
+-            const liveNatural = measure(this._liveContent, vertical);
+-            const liveSize = Math.min(liveNatural + 2 * this._padding * scale, edgeLength('live') / 3);
+-            setViewport(this._liveScroll, vertical, Math.max(1, liveSize - 2 * this._padding * scale),
++            scroll.set_size(-1, -1);
++            const liveNatural = measure(content, vertical);
++            const liveSize = Math.min(liveNatural + 2 * this._padding * scale, edgeLength(id));
++            setViewport(scroll, vertical, Math.max(1, liveSize - 2 * this._padding * scale),
+                 DASH_TILE_SIZE * scale);
+             if (GLib.getenv('LUMA_LIVE_DEBUG'))
+-                log(`luma-live: natural=${Math.round(liveNatural)} island=${Math.round(liveSize)}`);
++                log(`luma-live: ${id} natural=${Math.round(liveNatural)} island=${Math.round(liveSize)}`);
+         }
+         const quickVertical = Arrangement.isVertical(this.edgeOfIsland('quick-options'));
+         this._actionsScroll.set_size(-1, -1);
+@@ -2952,6 +3048,10 @@ export const Shelf = GObject.registerClass({
+         const actionsLength = Math.min(statusNatural,
+             Math.max(1, edgeLength('quick-options') - 2 * this._thickness * scale));
+         setViewport(this._actionsScroll, quickVertical, actionsLength, statusCross);
++        if (this._fitLiveTiles(edgeLength('live'), scale)) {
++            this._queueDockWidth();
++            return;
++        }
+         this._syncGeometry();
+     }
+ });
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index 2cc6cfc..81e0171 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -17,7 +17,7 @@
+ // start/end are physical: left/right on horizontal edges, top/bottom on
+ // vertical ones, in RTL too.
+ 
+-export const ISLAND_IDS = Object.freeze(['dock', 'folders', 'live', 'media', 'well',
++export const ISLAND_IDS = Object.freeze(['dock', 'folders', 'live', 'live2', 'media', 'well',
+     'quick-options', 'clock', 'notifications']);
+ // 'folders' is the dock folders rail as an island of its own. It exists only
+ // while the folders are separated from the dock; married, the rail is a part
+@@ -61,7 +61,7 @@ export const HYSTERESIS = 24;
+ export const SOFT_SNAP = 12;
+ // Every live extension shows in one slot: the live island and the media
+ // island (what is playing) are one family, in one group, moved together.
+-export const LIVE_FAMILY = Object.freeze(['live', 'media']);
++export const LIVE_FAMILY = Object.freeze(['live', 'live2', 'media']);
+ export const ZONE_LENGTH = 120;       // the dashed placeholder of an empty zone
+ export const DRAG_THRESHOLD = 8;
+ export const HOLD_FEEDBACK_TIME = 150;

@@ -1,0 +1,173 @@
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -376,7 +376,7 @@
+         {
+             GtkWidget *group = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+             GtkWidget *divider = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+-            gtk_widget_add_css_class (divider, "luma-sidebar-section-divider");
++            gtk_widget_add_css_class (divider, "luma-navigation-divider");
+             gtk_box_append (GTK_BOX (group), divider);
+             gtk_box_append (GTK_BOX (group), header);
+             header = group;
+@@ -3724,6 +3724,7 @@
+     /* list box */
+     sidebar->list_box = gtk_list_box_new ();
+     gtk_widget_add_css_class (sidebar->list_box, "navigation-sidebar");
++    gtk_widget_add_css_class (sidebar->list_box, "luma-navigation-sidebar");
+ 
+     gtk_list_box_set_header_func (GTK_LIST_BOX (sidebar->list_box),
+                                   list_box_header_func, sidebar, NULL);
+@@ -3767,6 +3768,7 @@
+ 
+     sidebar->trash_list_box = gtk_list_box_new ();
+     gtk_widget_add_css_class (sidebar->trash_list_box, "navigation-sidebar");
++    gtk_widget_add_css_class (sidebar->trash_list_box, "luma-navigation-sidebar");
+     gtk_widget_add_css_class (sidebar->trash_list_box, "luma-trash-list");
+     gtk_list_box_set_selection_mode (GTK_LIST_BOX (sidebar->trash_list_box), GTK_SELECTION_SINGLE);
+     gtk_list_box_set_activate_on_single_click (GTK_LIST_BOX (sidebar->trash_list_box), TRUE);
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -317,24 +317,11 @@
+     border: 1px solid @luma_line;
+   }
+ 
+-  /* GtkPaned reserves an invisible 8px resize target at the sidebar edge.
+-   * Compensate only that structural gutter so the globally themed row still
+-   * reads as having a true 10px inset from the visible divider. */
+-  .luma-files-window placessidebar .navigation-sidebar > row {
+-    margin-right: 2px;
+-  }
+ 
+   .luma-files-window .luma-sidebar-surface:dir(rtl) {
+     border: none;
+   }
+ 
+-  .luma-files-window .navigation-sidebar > row {
+-    color: @luma_ink;
+-    font-size: 13px;
+-    font-weight: 600;
+-    min-height: 32px;
+-    border-radius: 10px;
+-  }
+ 
+   .luma-files-window .luma-sidebar-section-heading {
+     min-height: 18px;
+@@ -345,50 +332,17 @@
+     letter-spacing: 0.11em;
+   }
+ 
+-  .luma-files-window .navigation-sidebar > row:not(:selected) label {
+-    color: @luma_ink;
+-    opacity: 1;
+-  }
+-
+-  .luma-files-window .navigation-sidebar > row:disabled label {
+-    color: @luma_muted;
+-  }
+-
+-  .luma-files-window .navigation-sidebar:not(.luma-trash-list) {
+-    padding: 6px;
+-  }
++
++
+ 
+   .luma-files-window .navigation-sidebar.luma-trash-list {
+     padding: 0 6px 6px;
+   }
+ 
+-  .luma-files-window .navigation-sidebar > row image {
+-    -gtk-icon-size: 14px;
+-    color: @luma_muted;
+-  }
+-
+-  .luma-files-window .navigation-sidebar > row:not(:selected):hover {
+-    background-color: @luma_hover;
+-  }
+-
+-  .luma-files-window .navigation-sidebar > row:selected,
+-  .luma-files-window .navigation-sidebar > row:selected:hover,
+-  .luma-files-window .navigation-sidebar > row:selected:active,
+-  .luma-files-window .navigation-sidebar > row:selected.has-open-popup {
+-    background-color: @luma_selected;
+-    color: @luma_ink;
+-    font-weight: 700;
+-  }
+-
+-  .luma-files-window .navigation-sidebar > row:selected image {
+-    color: var(--accent-color);
+-  }
+-
+-  .luma-files-window .navigation-sidebar separator {
+-    min-height: 1px;
+-    margin: 8px 16px;
+-    background-color: @luma_line;
+-  }
++
++
++
++
+ 
+   .luma-files-window .luma-content-surface,
+   .luma-files-window .luma-content-surface .view,
+@@ -1093,26 +1047,7 @@
+   color: var(--accent-color);
+ }
+ 
+-/* ── Corrections from the design review ──────────────────────────────────
+- *
+- * Every rule here carries `window.` before the window class, so it holds
+- * wherever it lands in the sheet rather than depending on being the last rule
+- * of equal weight. They sit outside the light-mode block: Filer is read in
+- * both treatments and every value here is a token, not a colour. */
+-
+-/* The sidebar's list owns a 6px inset, and a section heading's text begins on
+- * the same left edge as a row's icon — 6 + 8 in both cases. Measured from
+- * different origins, the headings sat inboard of the rows they caption. */
+-window.luma-files-window .navigation-sidebar:not(.luma-trash-list) {
+-  padding: 6px;
+-}
+-
+-window.luma-files-window .navigation-sidebar > row {
+-  margin: 0;
+-  padding: 0 8px;
+-  min-height: 32px;
+-  border-radius: 10px;
+-}
++
+ 
+ window.luma-files-window .luma-sidebar-section-heading {
+   padding: 4px 8px 0;
+@@ -1289,18 +1224,7 @@
+   font-size: 9px;
+ }
+ 
+-/* Let the window title row own the identity. The inner action bar opts out
+- * through libadwaita's existing luma-no-automatic-identity role. */
+-
+-/* Match the shared navigation row's left edge without a second row inset. */
+-window.luma-files-window .navigation-sidebar > row {
+-  padding-left: 0;
+-  padding-right: 0;
+-}
+-window.luma-files-window .luma-sidebar-section-heading {
+-  padding-left: 0;
+-  padding-right: 0;
+-}
++
+ 
+ /* GtkImage can receive its own foreground from toolkit button rules. Set the
+  * selected symbol's foreground at that node, as well as on the button. */
+@@ -1364,12 +1288,7 @@
+ window.luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar .current-dir label {
+   font-weight: 700;
+ }
+-window.luma-files-window .luma-sidebar-section-divider {
+-  min-height: 1px;
+-  margin: 5px 7px;
+-  background-color: @luma_line;
+-  border: none;
+-}
++
+ window.luma-files-window .nautilus-column-view .luma-column-island {
+   background-color: @luma_island;
+   border-radius: 10px;

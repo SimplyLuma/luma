@@ -1,0 +1,250 @@
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -59,3 +59,5 @@
+   install_mode: 'rwxr-xr-x',
+   install_dir: bindir,
+ )
++
++install_data('quick-view-listing.py', rename: 'luma-quick-view-listing', install_dir: libexecdir)
+--- a/src/org.gnome.NautilusPreviewer.src.gresource.xml.in
++++ b/src/org.gnome.NautilusPreviewer.src.gresource.xml.in
+@@ -15,6 +15,7 @@
+     <file>viewers/font.js</file>
+     <file>viewers/gst.js</file>
+     <file>viewers/html.js</file>
++    <file>viewers/listing.js</file>
+     <file>viewers/image.js</file>
+     <file>viewers/libreoffice.js</file>
+     <file>viewers/text.js</file>
+--- /dev/null
++++ b/src/quick-view-listing.py
+@@ -0,0 +1,120 @@
++#!/usr/bin/python3
++# SPDX-License-Identifier: GPL-2.0-or-later
++"""Bounded read-only listing. No archive entry is extracted or followed."""
++import ctypes as C
++import ctypes.util
++import json
++import os
++import resource
++import stat
++import sys
++import time
++
++MAX_ROWS = 1000
++MAX_NODES = 10000
++
++def folder(path):
++    entries = []
++    with os.scandir(path) as scan:
++        for entry in scan:
++            if len(entries) >= MAX_ROWS:
++                raise ValueError('Folder listing exceeds preview limit')
++            info = entry.stat(follow_symlinks=False)
++            entries.append({'name': entry.name, 'directory': stat.S_ISDIR(info.st_mode),
++                            'size': info.st_size if stat.S_ISREG(info.st_mode) else None, 'depth': 0})
++    entries.sort(key=lambda row: (not row['directory'], row['name'].casefold()))
++    # Bound recursive accounting separately. An incomplete total is unavailable.
++    deadline, nodes, total, pending = time.monotonic() + 2, 0, 0, [path]
++    while pending:
++        if time.monotonic() > deadline or nodes >= MAX_NODES:
++            total = None
++            break
++        try:
++            with os.scandir(pending.pop()) as scan:
++                for entry in scan:
++                    nodes += 1
++                    if nodes >= MAX_NODES or time.monotonic() > deadline:
++                        total = None; pending.clear(); break
++                    info = entry.stat(follow_symlinks=False)
++                    if stat.S_ISDIR(info.st_mode): pending.append(entry.path)
++                    elif stat.S_ISREG(info.st_mode): total += info.st_size
++        except OSError:
++            total = None
++            break
++    return {'rows': entries, 'size': total, 'count': len(entries)}
++
++def archive(path):
++    library = C.CDLL(ctypes.util.find_library('archive'))
++    signatures = {
++        'archive_read_new': (C.c_void_p, []),
++        'archive_read_support_filter_all': (C.c_int, [C.c_void_p]),
++        'archive_read_support_format_all': (C.c_int, [C.c_void_p]),
++        'archive_read_open_fd': (C.c_int, [C.c_void_p, C.c_int, C.c_size_t]),
++        'archive_read_next_header': (C.c_int, [C.c_void_p, C.POINTER(C.c_void_p)]),
++        'archive_entry_pathname': (C.c_char_p, [C.c_void_p]),
++        'archive_entry_size': (C.c_longlong, [C.c_void_p]),
++        'archive_entry_filetype': (C.c_uint, [C.c_void_p]),
++        'archive_read_free': (C.c_int, [C.c_void_p]),
++    }
++    for name, (result, args) in signatures.items():
++        function = getattr(library, name); function.restype = result; function.argtypes = args
++    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
++    reader = library.archive_read_new()
++    try:
++        if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError('Not a regular archive')
++        library.archive_read_support_filter_all(reader)
++        library.archive_read_support_format_all(reader)
++        if library.archive_read_open_fd(reader, fd, 65536) != 0: raise ValueError('Archive cannot be read')
++        rows, total = [], 0
++        while True:
++            entry = C.c_void_p()
++            result = library.archive_read_next_header(reader, C.byref(entry))
++            if result == 1: break
++            if result < 0: raise ValueError('Archive cannot be read')
++            if len(rows) >= MAX_ROWS: raise ValueError('Archive listing exceeds preview limit')
++            name = (library.archive_entry_pathname(entry) or b'').decode('utf-8', 'replace')
++            # Paths are display strings only, never passed to any file API.
++            if len(name) > 4096: raise ValueError('Archive name exceeds preview limit')
++            directory = library.archive_entry_filetype(entry) == stat.S_IFDIR
++            size = max(0, library.archive_entry_size(entry))
++            total += size
++            rows.append({'name': name, 'directory': directory, 'size': size,
++                         'depth': min(16, max(0, len(name.rstrip('/').split('/')) - 1))})
++        count = len(rows)
++        tree = {}
++        for row in rows:
++            parts = row['name'].rstrip('/').split('/')
++            parent = tree
++            for index, part in enumerate(parts):
++                node = parent.setdefault(part, {'children': {}, 'row': None})
++                if index == len(parts) - 1: node['row'] = row
++                parent = node['children']
++        rendered = []
++        def flatten(nodes, depth=0):
++            for name, node in sorted(nodes.items(), key=lambda item: item[0].casefold()):
++                row = dict(node['row'] or {'name': name, 'size': None, 'directory': True})
++                row.update(display=name, depth=min(16, depth))
++                if node['children']:
++                    row['directory'] = True
++                    row['items'] = len(node['children'])
++                rendered.append(row)
++                if len(rendered) > MAX_ROWS: raise ValueError('Archive tree exceeds preview limit')
++                flatten(node['children'], depth + 1)
++        flatten(tree)
++        return {'rows': rendered, 'size': total, 'count': count}
++    finally:
++        library.archive_read_free(reader)
++        os.close(fd)
++
++if __name__ == '__main__':
++    resource.setrlimit(resource.RLIMIT_CPU, (4, 4))
++    resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024,) * 2)
++    resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
++    try:
++        result = folder(sys.argv[1]) if sys.argv[2] == 'folder' else archive(sys.argv[1])
++        output = json.dumps(result, ensure_ascii=True)
++        if len(output) > 8 * 1024 * 1024: raise ValueError('Listing exceeds output limit')
++        print(output)
++    except Exception:
++        print(json.dumps({'error': True}))
++        sys.exit(1)
+--- /dev/null
++++ b/src/viewers/listing.js
+@@ -0,0 +1,106 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later
++ * Luma read-only archive and folder listing renderer.
++ */
++const {Gio, GLib, GObject, Gtk} = imports.gi;
++const Renderer = imports.ui.renderer;
++
++function size(bytes) {
++    if (bytes === null || bytes === undefined) return '—';
++    for (const unit of ['B', 'KB', 'MB', 'GB']) {
++        if (bytes < 1024 || unit === 'GB') return `${bytes.toFixed(unit === 'B' ? 0 : 1)} ${unit}`;
++        bytes /= 1024;
++    }
++}
++
++var Klass = GObject.registerClass({
++    Implements: [Renderer.Renderer],
++    Properties: {
++        fullscreen: GObject.ParamSpec.boolean('fullscreen', '', '', GObject.ParamFlags.READABLE, false),
++        ready: GObject.ParamSpec.boolean('ready', '', '', GObject.ParamFlags.READABLE, false),
++    },
++}, class ListingRenderer extends Gtk.Box {
++    _init(file, info) {
++        super._init({orientation: Gtk.Orientation.VERTICAL, spacing: 8, margin: 12});
++        this._cancel = new Gio.Cancellable();
++        this._folder = info.get_file_type() === Gio.FileType.DIRECTORY;
++        const heading = new Gtk.Box({spacing: 12});
++        heading.add(new Gtk.Image({gicon: info.get_icon(), pixel_size: 48}));
++        const labels = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 4});
++        const title = new Gtk.Label({label: info.get_display_name(), xalign: 0, ellipsize: 3});
++        title.get_style_context().add_class('heading');
++        labels.add(title);
++        this._summary = new Gtk.Label({label: 'Preparing a preview…', xalign: 0});
++        this._summary.get_style_context().add_class('dim-label');
++        labels.add(this._summary); heading.add(labels); this.add(heading);
++        this.add(new Gtk.Separator());
++        const scroll = new Gtk.ScrolledWindow({hexpand: true, vexpand: true});
++        this._list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE});
++        scroll.add(this._list); this.add(scroll);
++        this.connect('destroy', () => {
++            this._cancel.cancel();
++            if (this._timeout) GLib.source_remove(this._timeout);
++            this._timeout = 0;
++            this._process?.force_exit();
++        });
++        this._load(file, info).catch(() => {
++            if (!this._cancel.is_cancelled()) this._summary.set_text('There is no preview for this kind of file.');
++        });
++        this.isReady();
++    }
++
++    async _load(file, info) {
++        const path = file.get_path();
++        if (!path || ![Gio.FileType.REGULAR, Gio.FileType.DIRECTORY].includes(info.get_file_type()))
++            throw new Error('Unsupported file');
++        // No network, writable host mounts or archive extraction; native parser
++        // sees only the selected input and read-only system runtime.
++        this._process = Gio.Subprocess.new(['/usr/bin/bwrap', '--unshare-all', '--die-with-parent',
++            '--new-session', '--clearenv', '--ro-bind', '/usr', '/usr', '--symlink', 'usr/lib', '/lib',
++            '--symlink', 'usr/lib64', '/lib64', '--proc', '/proc', '--dev', '/dev',
++            '--tmpfs', '/tmp', '--ro-bind', path, '/input', '--', '/usr/bin/python3', '-I',
++            '/usr/libexec/luma-quick-view-listing', '/input', this._folder ? 'folder' : 'archive'],
++            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
++        this._timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 6000, () => {
++            this._timeout = 0;
++            this._process.force_exit();
++            return GLib.SOURCE_REMOVE;
++        });
++        const output = await new Promise((resolve, reject) => this._process.communicate_utf8_async(null,
++            this._cancel, (process, result) => {
++                try {
++                    const [, text] = process.communicate_utf8_finish(result);
++                    if (!process.get_successful()) throw new Error('Listing unavailable');
++                    resolve(text);
++                } catch (error) { reject(error); }
++            }));
++        if (this._timeout) GLib.source_remove(this._timeout);
++        this._timeout = 0;
++        if (this._cancel.is_cancelled()) return;
++        const data = JSON.parse(output);
++        const modified = GLib.DateTime.new_from_unix_local(info.get_attribute_uint64('time::modified'));
++        const today = GLib.DateTime.new_now_local();
++        const sameDay = modified.format('%Y-%m-%d') === today.format('%Y-%m-%d');
++        const modifiedText = sameDay ? `Today, ${modified.format('%H:%M')}` : modified.format('%b %e, %H:%M');
++        this._summary.set_text(this._folder ? `${data.count} items · ${size(data.size)} · Modified ${modifiedText}` :
++            `${data.count} items · ${size(data.size)} when extracted · ${size(info.get_size())} compressed`);
++        for (const entry of data.rows) {
++            const row = new Gtk.Box({spacing: 8, margin_start: 8 + entry.depth * 18,
++                margin_end: 8, height_request: 30});
++            row.add(new Gtk.Image({icon_name: entry.directory ? 'folder-symbolic' : 'text-x-generic-symbolic', pixel_size: 14}));
++            row.add(new Gtk.Label({label: entry.display ?? entry.name, xalign: 0, hexpand: true, ellipsize: 3}));
++            const value = new Gtk.Label({label: entry.directory ? (entry.items === undefined ? '' : `${entry.items} items`) : size(entry.size), xalign: 1});
++            value.get_style_context().add_class('dim-label'); row.add(value);
++            this._list.add(row);
++        }
++        this._list.show_all();
++    }
++    get ready() { return !!this._ready; }
++    get fullscreen() { return !!this._fullscreen; }
++    get moveOnClick() { return false; }
++    get hideOpen() { return true; }
++});
++var mimeTypes = ['inode/directory', 'application/zip', 'application/x-tar',
++    'application/gzip', 'application/x-gzip', 'application/x-bzip2', 'application/x-xz',
++    'application/zstd', 'application/x-zstd', 'application/x-7z-compressed',
++    'application/vnd.rar', 'application/x-rar', 'application/x-compressed-tar',
++    'application/x-bzip-compressed-tar', 'application/x-xz-compressed-tar', 'application/x-zstd-compressed-tar'];

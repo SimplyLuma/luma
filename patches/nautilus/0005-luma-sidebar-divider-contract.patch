@@ -1,0 +1,130 @@
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index b29d2c9..5a19478 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -105,6 +105,7 @@ struct _NautilusWindow
+     /* Side Pane */
+     NautilusSidebar *places_sidebar;
+     GtkWidget *sidebar_resize_handle;
++    GtkWidget *sidebar_action_surface;
+     GVolume *selected_volume;     /* the selected volume in the sidebar popup callback */
+     GFile *selected_file;     /* the selected file in the sidebar popup callback */
+ 
+@@ -1591,6 +1592,10 @@ set_sidebar_width (NautilusWindow *window,
+         adw_overlay_split_view_set_min_sidebar_width (split_view, width);
+         adw_overlay_split_view_set_max_sidebar_width (split_view, width);
+     }
++
++    gtk_widget_set_size_request (window->sidebar_action_surface,
++                                 (gint) (width + 0.5),
++                                 -1);
+ }
+ 
+ static gboolean
+@@ -1806,6 +1811,7 @@ nautilus_window_class_init (NautilusWindowClass *class)
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, split_view);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, places_sidebar);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_resize_handle);
++    gtk_widget_class_bind_template_child (wclass, NautilusWindow, sidebar_action_surface);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, toast_overlay);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, tab_view);
+     gtk_widget_class_bind_template_child (wclass, NautilusWindow, tab_bar);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 242b6bf..4647be3 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -37,6 +37,18 @@
+     padding-bottom: 2px;
+   }
+ 
++  .luma-files-window .luma-sidebar-action-surface {
++    background-color: var(--sidebar-bg-color);
++  }
++
++  .luma-files-window .luma-content-action-surface {
++    min-height: 46px;
++    background-color: var(--headerbar-bg-color);
++  }
++
++  .luma-files-window .luma-action-toolbar-overlay headerbar.luma-secondary-toolbar {
++    background-color: transparent;
++  }
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar {
+     min-height: 30px;
+     background-color: var(--view-bg-color);
+@@ -178,7 +190,7 @@
+   }
+ 
+   .luma-files-window .luma-sidebar-surface {
+-    border-right: 1px solid var(--sidebar-border-color);
++    border-right: 1px solid var(--headerbar-shade-color);
+   }
+ 
+   /* GtkPaned reserves an invisible 8px resize target at the sidebar edge.
+@@ -190,7 +202,7 @@
+ 
+   .luma-files-window .luma-sidebar-surface:dir(rtl) {
+     border-right: none;
+-    border-left: 1px solid var(--sidebar-border-color);
++    border-left: 1px solid var(--headerbar-shade-color);
+   }
+ 
+   .luma-files-window .navigation-sidebar > row {
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 6ccb6d3..1811b1c 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -141,12 +141,39 @@ template $NautilusWindow: Adw.ApplicationWindow {
+         }
+ 
+         [top]
+-        $NautilusToolbar toolbar {
+-          main-menu: app_menu;
+-          show-view-controls: true;
+-          show-history-controls: true;
+-          sidebar-button-active: bind split_view.show-sidebar bidirectional;
+-          window-slot: bind template.active-slot;
++        Overlay {
++          Box {
++            Box sidebar_action_surface {
++              width-request: 232;
++
++              styles [
++                "luma-sidebar-action-surface",
++                "luma-content-action-surface",
++              ]
++            }
++
++            Box {
++              hexpand: true;
++
++              styles [
++                "luma-content-action-surface",
++              ]
++            }
++          }
++
++          [overlay]
++          $NautilusToolbar toolbar {
++            hexpand: true;
++            main-menu: app_menu;
++            show-view-controls: true;
++            show-history-controls: true;
++            sidebar-button-active: bind split_view.show-sidebar bidirectional;
++            window-slot: bind template.active-slot;
++
++            styles [
++              "luma-action-toolbar-overlay",
++            ]
++          }
+         }
+ 
+         content: Adw.OverlaySplitView split_view {
+@@ -236,6 +263,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+       toolbar.show-sidebar-button: true;
+       toolbar.show-view-controls: false;
+       toolbar.show-history-controls: false;
++      sidebar_action_surface.visible: false;
+       action_bar.revealed: true;
+       progress_indicator.popover-position: 2;
+     }

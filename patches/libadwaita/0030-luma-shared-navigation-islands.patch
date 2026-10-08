@@ -1,0 +1,86 @@
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -598,3 +598,71 @@
+ .luma-touch .luma-controls-quiet dropdown > button {
+   min-height: calc(var(--luma-quiet-touch-height) - 12px);
+ }
++
++// Shared native navigation contract promoted from Filer's maintained source.
++// Row contents own their natural height; this is a minimum for translated text.
++list.navigation-sidebar.luma-navigation-sidebar {
++  padding: 6px;
++  color: unquote("@luma_ink");
++  background-color: transparent;
++
++  > row {
++    min-height: 32px;
++    margin: 0;
++    padding: 0 8px;
++    border-radius: 10px;
++    color: unquote("@luma_ink");
++    font-size: 13px;
++    font-weight: 600;
++
++    label { color: inherit; opacity: 1; }
++    image { -gtk-icon-size: 14px; color: unquote("@luma_muted"); }
++    &:disabled, &:disabled label { color: unquote("@luma_muted"); }
++    &:not(:selected):hover { background-color: unquote("@luma_hover"); }
++    &:selected, &:selected:hover, &:selected:active, &:selected.has-open-popup {
++      background-color: unquote("@luma_selected");
++      color: unquote("@luma_ink");
++      font-weight: 700;
++      image { color: var(--accent-color); }
++    }
++  }
++
++  separator.luma-navigation-divider {
++    min-height: 1px;
++    margin: 5px 7px;
++    background-color: unquote("@luma_line");
++    border: none;
++  }
++
++  @media (prefers-contrast: more) {
++    color: var(--window-fg-color);
++    > row {
++      color: var(--window-fg-color);
++      image { color: inherit; }
++      &:selected, &:selected:hover, &:selected:active, &:selected.has-open-popup {
++        background-color: var(--accent-bg-color);
++        color: var(--accent-fg-color);
++        image { color: inherit; }
++      }
++    }
++  }
++}
++
++// Persistent native search belongs inside a navigation island, not in a
++// separately elevated generic command group.
++searchentry.luma-sidebar-search {
++  min-height: 28px;
++  margin: 6px;
++}
++
++// Match the active dark frame's subtle edge while the window is unfocused.
++// The explicit backdrop selector is needed to beat the light fallback.
++@media (prefers-color-scheme: dark) {
++  window.luma-files-window:backdrop,
++  window.luma-calculator-window:backdrop,
++  window.luma-app-window:backdrop {
++    box-shadow: inset 0 0 0 1px RGB(255 255 255 / 4.5%),
++                0 2px 5px RGB(9 11 14 / 24%),
++                0 18px 42px -14px RGB(9 11 14 / 48%);
++  }
++}
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -1216,7 +1216,8 @@
+ 
+   if (row && row != GTK_WIDGET (self) && self->split_views &&
+       !self->dialog && !self->sheet && !self->adaptive_preview &&
+-      !luma_split_views_collapsed (self)) {
++      (!luma_split_views_collapsed (self) ||
++       gtk_widget_has_css_class (GTK_WIDGET (root), "luma-sibling-islands"))) {
+     pane = TRUE;
+     toolbar = luma_widget_in_sidebar_pane (GTK_WIDGET (self));
+   }

@@ -1,0 +1,112 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: Frost controls and checks follow the smoked glass
+
+Since Frost is the smoked glass with dark-mode ink (0196), its control
+ink is the dark family's (a state fill a step lighter so it stands 3:1 from
+a tile on the smoke over any wallpaper), and the treatment ink check no
+longer holds the Frost rules in luma-controls.css or the Sass frost map of
+the notification island, which the Shell no longer applies. The end-call
+key stays red in Light.
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 488d7b6..deb309b 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3075,17 +3075,18 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+   background-color: rgba(255,255,255,0.20); }
+ .luma-shelf-live-island .luma-live-extension-action.luma-live-extension-key:hover { background-color: rgba(255,255,255,0.27); }
+ .luma-shelf-live-island .luma-live-extension-action.luma-live-extension-key .luma-live-extension-action-icon { icon-size: 14px; }
+-.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end {
+-  background-color: #d24c49; color: #ffffff; }
+-.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end:hover { background-color: #db5a56; }
+-.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-stop { color: #e23439; }
++
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action {
+   background-color: rgba(20,22,26,0.06); color: #1d1f23; }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action:hover { background-color: rgba(20,22,26,0.10); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-key { background-color: rgba(20,22,26,0.11); }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-key:hover { background-color: rgba(20,22,26,0.16); }
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-end { background-color: #d24c49; color: #ffffff; }
+-.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-stop { color: #e23439; }
++/* Red ends a call in every mode; stop is a red glyph on the key. Placed
++ * after the light rules, at their weight, so it wins in Light too. */
++.luma-shelf-live-island .luma-shelf-material .luma-live-extension-action.luma-live-extension-key.luma-live-extension-action-end {
++  background-color: #d24c49; color: #ffffff; }
++.luma-shelf-live-island .luma-shelf-material .luma-live-extension-action.luma-live-extension-key.luma-live-extension-action-end:hover { background-color: #db5a56; }
++.luma-shelf-live-island .luma-shelf-material .luma-live-extension-action.luma-live-extension-action-stop { color: #e23439; }
+ /* A recording: the red dot, its time as the hero, the waveform. */
+ .luma-shelf-live-island .luma-live-extension-recording .luma-live-extension-content { padding-left: 4px; }
+ .luma-live-extension-recdot {
+diff --git a/data/theme/verify-treatment-ink.py b/data/theme/verify-treatment-ink.py
+index 23f80e5..b898530 100755
+--- a/data/theme/verify-treatment-ink.py
++++ b/data/theme/verify-treatment-ink.py
+@@ -243,7 +243,12 @@ def check_filled_controls():
+                          ratio(over(rgba(c["ink"]), ground), ground),
+                          BODY_MINIMUM)
+ 
+-        # The sheet may spend only this mode's ledger values.
++        # The sheet may spend only this mode's ledger values. Frost is the
++        # smoked glass since Shell patch 0196: its surfaces wear the dark
++        # classes (luma-surface-dark luma-surface-smoke), so no Frost rule
++        # in the sheet is ever applied and there is nothing to hold to it.
++        if mode == "frost":
++            continue
+         allowed = {rgba(v) for v in c.values()} | {(0, 0, 0, 0.0)}
+         for head, body in rules(text):
+             if f"luma-surface-{mode}" not in head:
+@@ -270,7 +275,9 @@ def check_notification_stacks():
+         encoding="utf-8")
+     block = sass[sass.index("$note-treatments:"):]
+     block = block[:block.index(") !default;")]
+-    for mode in MODES:
++    # Frost notifications wear the dark map on the smoked glass (0196); the
++    # Sass frost map is no longer applied in the Shell.
++    for mode in (m for m in MODES if m != "frost"):
+         m = re.search(rf"\n  {mode}: \((.*?)\n  \),", block, re.S)
+         if not m:
+             problems.append(f"notifications: no {mode} map")
+diff --git a/js/ui/lumaControlInk.js b/js/ui/lumaControlInk.js
+index 669e8ea..8f3511b 100644
+--- a/js/ui/lumaControlInk.js
++++ b/js/ui/lumaControlInk.js
+@@ -29,15 +29,16 @@ export const CONTROL_INK = {
+         control: 'rgba(255,255,255,0.072)', hover: 'rgba(255,255,255,0.06)',
+         offPlate: '#2a2f36',
+     },
+-    // Frost and glass are the light family on a veil. Composited over black
+-    // a glass veil is mid grey, so the state fill sits deeper than paper's
+-    // to stand 3:1 from the veil over any wallpaper, and carries white.
++    // Smoked Frost (0196) carries the dark family's ink on a dark glass,
++    // so its controls are the dark ones. Glass is the light family on a
++    // veil: composited over black it is mid grey, so its state fill sits
++    // deeper than paper's to stand 3:1 from the veil, and carries white.
+     frost: {
+-        state: '#4a5a6e', stateInk: '#ffffff',
+-        knob: '#ffffff', knobRing: '#4a5a6e',
+-        ink: '#1f262d', line: 'rgba(25,27,31,0.12)',
+-        control: 'rgba(35,39,45,0.06)', hover: 'rgba(25,27,31,0.06)',
+-        offPlate: '#ffffff',
++        state: '#93a2b0', stateInk: '#161a1f',
++        knob: '#2a2e34', knobRing: '#93a2b0',
++        ink: '#e7e9e8', line: 'rgba(255,255,255,0.10)',
++        control: 'rgba(255,255,255,0.072)', hover: 'rgba(255,255,255,0.06)',
++        offPlate: '#2a2f36',
+     },
+     glass: {
+         state: '#3b4757', stateInk: '#ffffff',
+diff --git a/js/ui/lumaSurfaceMaterials.js b/js/ui/lumaSurfaceMaterials.js
+index 9161fe5..0c31b29 100644
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -315,7 +315,7 @@ class SurfaceMaterialBinding {
+ 
+     setTranslucentRecipe(recipe) {
+         this._translucentRecipe = recipe;
+-        this._sync(this._controller._effective, RECIPES[this._controller._effective]);
++        this._sync(this._controller._effective, SHELL_RECIPES[this._controller._effective]);
+     }
+ 
+     setCornerRadii(radii) {

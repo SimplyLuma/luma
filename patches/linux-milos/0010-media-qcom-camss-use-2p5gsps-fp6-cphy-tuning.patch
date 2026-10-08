@@ -1,0 +1,78 @@
+From: Project Luma <luma@projectluma.dev>
+Subject: [PATCH] media: qcom: camss: use 2.5 Gsps FP6 C-PHY tuning
+
+The IMX896 output PLL runs at a 2.4 Gsps C-PHY symbol rate.  The original
+FP6 bring-up accidentally used Qualcomm's 500 Msps AFE/CDR bucket, which
+allows the sensor to start but leaves CSID with zero received packets.
+
+Use the downstream datarate_221_2p5Gsps values verified by CatCrafts on the
+same Fairphone 6 hardware.  Also feed the framework-calculated settle count
+into each C-PHY trio and use the matching lane-control value.
+
+Reference: CatCrafts milos-linux commit
+01db525c886c6096cec8cc663482c04f92481373
+---
+ .../qcom/camss/camss-csiphy-3ph-1-0.c        | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c b/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c
+--- a/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c
++++ b/drivers/media/platform/qcom/camss/camss-csiphy-3ph-1-0.c
+@@ -1200,7 +1200,8 @@ static void csiphy_gen2_config_lanes(struct csiphy_device *csiphy,
+ 	}
+ }
+ 
+-static void csiphy_sm7635_cphy_enable(struct csiphy_device *csiphy)
++static void csiphy_sm7635_cphy_enable(struct csiphy_device *csiphy,
++				       u8 settle_cnt)
+ {
+ 	static const u16 lane_base[] = { 0x0200, 0x0600, 0x0a00 };
+ 	unsigned int i;
+@@ -1215,13 +1216,13 @@ static void csiphy_sm7635_cphy_enable(struct csiphy_device *csiphy)
+ 	writel_relaxed(0x7a, csiphy->base + 0x101c);
+ 	writel_relaxed(0x01, csiphy->base + 0x1018);
+ 
+-	/* Qualcomm datarate_221_1p0Gsps, standard-channel variant. */
++	/* Qualcomm datarate_221_2p5Gsps, standard-channel variant. */
+ 	for (i = 0; i < ARRAY_SIZE(lane_base); i++) {
+ 		u16 base = lane_base[i];
+ 
+ 		writel_relaxed(0xf1, csiphy->base + base + 0x68);
+ 		writel_relaxed(0x01, csiphy->base + base + 0x94);
+-		writel_relaxed(0x58, csiphy->base + base + 0x78);
++		writel_relaxed(0x20, csiphy->base + base + 0x78);
+ 		writel_relaxed(0x20, csiphy->base + base + 0x88);
+ 		writel_relaxed(0x05, csiphy->base + base + 0x6c);
+ 		writel_relaxed(0x37, csiphy->base + base + 0x8c);
+@@ -1229,9 +1230,9 @@ static void csiphy_sm7635_cphy_enable(struct csiphy_device *csiphy)
+ 		writel_relaxed(0x00, csiphy->base + base + 0x70);
+ 		writel_relaxed(0x03, csiphy->base + base + 0x74);
+-		writel_relaxed(0x3c, csiphy->base + base + 0x0c);
++		writel_relaxed(settle_cnt, csiphy->base + base + 0x0c);
+ 		writel_relaxed(0x00, csiphy->base + base + 0x08);
+ 		writel_relaxed(0x00, csiphy->base + base + 0x10);
+-		writel_relaxed(0x09, csiphy->base + base + 0x14);
++		writel_relaxed(0x00, csiphy->base + base + 0x14);
+ 	}
+ 
+ 	for (i = 0; i < ARRAY_SIZE(lane_regs_sm7635_cphy); i++) {
+@@ -1290,13 +1291,13 @@ static void csiphy_lanes_enable(struct csiphy_device *csiphy,
+ 	u8 val;
+ 	int i;
+ 
++	settle_cnt = csiphy_settle_cnt_calc(link_freq, csiphy->timer_clk_rate);
++
+ 	/* FP6 rear-main IMX896 is the sole C-PHY client on CSIPHY0. */
+ 	if (csiphy->camss->res->version == CAMSS_7635 && csiphy->id == 0) {
+-		csiphy_sm7635_cphy_enable(csiphy);
++		csiphy_sm7635_cphy_enable(csiphy, settle_cnt);
+ 		return;
+ 	}
+ 
+-	settle_cnt = csiphy_settle_cnt_calc(link_freq, csiphy->timer_clk_rate);
+-
+ 	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
+ 	for (i = 0; i < c->num_data; i++)
+ 		val |= BIT(c->data[i].pos * 2);
+-- 
+2.51.0

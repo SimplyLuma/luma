@@ -1,0 +1,600 @@
+{
+  "source": "Exact SVGs from user-provided simulator icons directory, supplied with LUCIDE_LICENSE.txt. Some identify lucide-static1.39.0; unmarked files not assigned a guessed upstream version. Geometry unchanged. Transport glyphs (2026-09-15) additionally vendor their exact Lucide source under upstream/lucide/transport/ so each sha256 is verifiable in-tree. Messages glyphs (2026-09-16) vendor their exact Lucide source under upstream/lucide/messages/ the same way.",
+  "files": [
+    {
+      "alias": "user-home-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "cf7ba27be575b5fdb583d1f1ff8fa45e70c7fb9dadb80ed9d4bdb5bde8162642",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "e4732b9970c8b2d1641716837afc011d6209f205e7a9cfdd1202d91f68f8b7b0"
+    },
+    {
+      "alias": "document-open-recent-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "fc360ee63fc51bbe62978d8ef4ca4077b91036aef5d164fd18ae24422c28c257",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "aabffb5e912cf05fd8fd2d78745cffcfbccad9ea41e75b813db5bdc1baa65f57"
+    },
+    {
+      "alias": "starred-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "c59da86b889569387db28e69ad00a89f96af22863ad9eea9aa12c4876a14338c",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "a717c79c41536a03a3bec384afc0f575db4fc282e3e1dfdc2500c14c5bc8d4fb"
+    },
+    {
+      "alias": "non-starred-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "c59da86b889569387db28e69ad00a89f96af22863ad9eea9aa12c4876a14338c",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "a717c79c41536a03a3bec384afc0f575db4fc282e3e1dfdc2500c14c5bc8d4fb"
+    },
+    {
+      "alias": "view-app-grid-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "8995425eed97a05ca4b17a1bffdd0961aa2bb9b8259d41fd3d71f0829d1d1f5c",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "34dc474ede25a9d0175514a21d32f6bc3d4987dc0338542a039a0dce929b6c15"
+    },
+    {
+      "alias": "network-computer-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "60debf09ce755d186a963ed51bb0f0690bd29e20c72c2439667db8364617e774",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "fb1ba12b7e24cc283512f1d4756ee32f997bbdbef9bd15a665548ec3dce67520"
+    },
+    {
+      "alias": "network-workgroup-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "60debf09ce755d186a963ed51bb0f0690bd29e20c72c2439667db8364617e774",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "fb1ba12b7e24cc283512f1d4756ee32f997bbdbef9bd15a665548ec3dce67520"
+    },
+    {
+      "alias": "drive-harddisk-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "68dce2527df71d343e8361d301f53b7401e44a30e4533746b38c828bf985a749",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "9706eda44afb4b769fbb5dad621b3964cd696fcf1c43679ded839bb8cbb87940"
+    },
+    {
+      "alias": "drive-removable-media-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "68dce2527df71d343e8361d301f53b7401e44a30e4533746b38c828bf985a749",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "9706eda44afb4b769fbb5dad621b3964cd696fcf1c43679ded839bb8cbb87940"
+    },
+    {
+      "alias": "user-trash-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "90a9f8df4c2622b88beb83dc06e338da4b0d57d272dfab703c0cd3ba74a1140b",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "598883f5b297ac0ca5c371f6417729ca18428e71baa5531584b3ae1995acbe28"
+    },
+    {
+      "alias": "user-trash-full-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "90a9f8df4c2622b88beb83dc06e338da4b0d57d272dfab703c0cd3ba74a1140b",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "598883f5b297ac0ca5c371f6417729ca18428e71baa5531584b3ae1995acbe28"
+    },
+    {
+      "alias": "folder-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "user-desktop-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-documents-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-download-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-music-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-pictures-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-publicshare-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-templates-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "folder-videos-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "6341a9035ea2d04cbe8b8b347ed2c005e7be4df0fb94e80fa8836901fbfd76c0"
+    },
+    {
+      "alias": "text-x-generic-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "a261082fa3e783d0e78d2ec28d289638cfd132d23177aed725a13c6155d87206",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "1f5965bf71a6f940c7249fbeda4b646f9f56b1887b25a4261fcb6c7f6a5d64aa"
+    },
+    {
+      "alias": "image-x-generic-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "619c9db58c879dce6250376ba67d9c9102ca6dbb3b1efb9294c9f180e22273a5",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "77d3d0d4f730eb61abcecf1e9c92ca1ddeb5ebe61c3340df2f6ad788985193e4"
+    },
+    {
+      "alias": "audio-x-generic-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "fd3e51e40de1d9c5b1872030467fc1e181592072c3a70854133e060b134c3661",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "a669340f1b5200c7858a1670e8378a773a07d761351c1d0d5e9e44450e017caf"
+    },
+    {
+      "alias": "video-x-generic-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "a0ec1b95d02d80d06d17e5b2eaace1fccafd32820f7ffdce84eba0be44ddb6be",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "ea8219bca1c043072a3baae9621f36de67efea3e0ff0c4121371bc8e89de248f"
+    },
+    {
+      "alias": "luma-chevron-left-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "c9ddb42e1706309505e8cb11805c5eaba178704fc26c714c67bf2e1eb2534756"
+    },
+    {
+      "alias": "luma-chevron-right-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8"
+    },
+    {
+      "alias": "luma-search-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "9322d964b61cf729b3a81210568d5a97eaf4a1f3239f25a056fda3013bf35611",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "da7b9ae078ec2c196d59802619a5ec56c3d4fd650f2274ee94dbd17cb783d370"
+    },
+    {
+      "alias": "luma-layout-grid-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "b8903f61d09b1d75e55c71158277d26570962f69c2099446a251871e0a2d6678",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "38ee05d88990bf8063862873cd6925ea5589a9738cdf68670f2be81425db7379"
+    },
+    {
+      "alias": "luma-list-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "ff97a7379eb962ddc3863bb59f0f45875ac8da91aac8a38a67361e7118d2d627",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "d6a456ce61f4175b4a8a849bae50c3d8d30ac593f1a315d7d75cc51fa1e5056e"
+    },
+    {
+      "alias": "luma-columns-three-symbolic",
+      "source": "local-source-artwork",
+      "sha256": "c297e5d7d9b4f7e685b9beceaeb8819fa5eed97101b38090a036385e37a9a85e",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "a16784c2acc49dc81a98784b8ff17c8c2cc18c656f043a970a515f31820e2be5"
+    },
+    {
+      "alias": "luma-chevron-left-symbolic-rtl",
+      "source": "local-source-artwork",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8"
+    },
+    {
+      "alias": "luma-chevron-right-symbolic-rtl",
+      "source": "local-source-artwork",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "c9ddb42e1706309505e8cb11805c5eaba178704fc26c714c67bf2e1eb2534756"
+    },
+    {
+      "alias": "media-playlist-shuffle-symbolic",
+      "source": "upstream/lucide/transport/shuffle.svg",
+      "sha256": "a1dadb0bf33334dcf6e4d6bf6bc89d23a84c8355e112563b873e84e485c8c190",
+      "upstream_version": "1.39.0 format; geometry from lucide-react 0.522.0/1.31.0",
+      "gtk_symbolic_sha256": "115825e29cd2661aa48b3c187c9cf8f0147ee505e035dd6b802f5beb22203f9d",
+      "source_origin": "No shuffle.svg in the supplied lucide-static snapshot. The five path commands are lucide-react's published shuffle icon node, byte-identical in 0.522.0 and 1.31.0, re-emitted in lucide-static's output format."
+    },
+    {
+      "alias": "media-skip-backward-symbolic",
+      "source": "upstream/lucide/transport/skip-back.svg",
+      "sha256": "901579624a7d28036a39b3b8bd9e6da0e8cf771a79c67836d8a52b3e2287c031",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "42df90cf6596b1c702777c675ea1830eb511e4ac1a60d3b3bcaa275212f969ba",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "media-playback-start-symbolic",
+      "source": "upstream/lucide/transport/play.svg",
+      "sha256": "d7c34786135922a92b6896f6c2384ceeb0346afbf6041dc79982011411409833",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "1689c8004435864a48bf49d667324525e2d61ee9b1a4a7e8f17c81157a4f2467",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "media-playback-pause-symbolic",
+      "source": "upstream/lucide/transport/pause.svg",
+      "sha256": "8850f9b7c27c46d78342f2323a4d9ae518dd1b47699e2ffe7d69bae4c514944d",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "1d86a1f30160500c59381f9cf34d7918e6e23a1cda5d6a714ad0b99fc4051d05",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "media-skip-forward-symbolic",
+      "source": "upstream/lucide/transport/skip-forward.svg",
+      "sha256": "f6bdc4b8d453332bafcf1366a48d5ece4bd4f15eced97c85c3676bd22c5cadf9",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "e6b9f5f2611f42e2e00a369a52645dcc7e5fb8b284faaff72fe2e41de6a4de05",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "media-playlist-repeat-symbolic",
+      "source": "upstream/lucide/transport/repeat.svg",
+      "sha256": "c84a6acf9bfc8b6a0f922bdcdcd23e54e563a7968aa9c0e9a22f9cfb8b795878",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "9e0d1ebe26b33e208d0ae73bf00e460677253b0e32c840477239479928465b56",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "media-skip-backward-symbolic-rtl",
+      "source": "upstream/lucide/transport/skip-forward.svg",
+      "sha256": "f6bdc4b8d453332bafcf1366a48d5ece4bd4f15eced97c85c3676bd22c5cadf9",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "e6b9f5f2611f42e2e00a369a52645dcc7e5fb8b284faaff72fe2e41de6a4de05",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "media-skip-forward-symbolic-rtl",
+      "source": "upstream/lucide/transport/skip-back.svg",
+      "sha256": "901579624a7d28036a39b3b8bd9e6da0e8cf771a79c67836d8a52b3e2287c031",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "42df90cf6596b1c702777c675ea1830eb511e4ac1a60d3b3bcaa275212f969ba",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "mail-attachment-symbolic",
+      "source": "upstream/lucide/messages/paperclip.svg",
+      "sha256": "50325bccde7a95c0a85da5b093dc3a6efe8ba2fc582c3ff069e760cdc4fb37e9",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "fb08bce80986ad4e9bfdb16526fabace3f14805174599f0042db9e74c2af2da4",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "mail-send-symbolic",
+      "source": "upstream/lucide/messages/send-horizontal.svg",
+      "sha256": "89c71ff477a2d8ee31be20e01cc18a3947b0e597c24f055722edd168c1b0968e",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "512b48073ccefa1fe9d923d7371f57051cc2b244f0091cc71069f69e3ce6367b",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "call-start-symbolic",
+      "source": "upstream/lucide/messages/phone.svg",
+      "sha256": "08dc20d60c087dd6f19a8960927dac5c6d67f870de853d718cca79a10a94d535",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "105177243d264fdf1b8dfc56c3c5e669074d7780fdd691509c6fdddc10ca1b26",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "camera-video-symbolic",
+      "source": "upstream/lucide/messages/video.svg",
+      "sha256": "a0ec1b95d02d80d06d17e5b2eaace1fccafd32820f7ffdce84eba0be44ddb6be",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "ea8219bca1c043072a3baae9621f36de67efea3e0ff0c4121371bc8e89de248f",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "avatar-default-symbolic",
+      "source": "upstream/lucide/messages/user.svg",
+      "sha256": "5f4c376c9dca671a57fbc09c5036aa40f9d1f1266b26e215b7ef909d09234c6d",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "757ae96c455ecd5c135f559c8378bacdb952514ab6209276879638326387981b",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "system-users-symbolic",
+      "source": "upstream/lucide/messages/users.svg",
+      "sha256": "a7c1202d7cee8022fa8b8e19cf0622ece4f97ec3f7ace05f68e60897d9a50aa2",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "7db1e926d7e2cc4223adbb06f7b0d302284a4fc3454c462c653d7033ced25b68",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "luma-business-symbolic",
+      "source": "upstream/lucide/messages/building-2.svg",
+      "sha256": "eb8a45fc41152b279a11371b4ba63bfb3fd3259fbc105c302546b90233175cd6",
+      "upstream_version": "1.39.0 format; geometry from lucide-react 1.31.0",
+      "gtk_symbolic_sha256": "95a8feb5c9492b37858caf89b520007c1fbf306ade3b373e345be4beb382cf7b",
+      "source_origin": "No building-2.svg in the supplied lucide-static snapshot. The five path commands are lucide-react 1.31.0's published building-2 icon node (0.522.0 carries the earlier drawing without the door), re-emitted in lucide-static's output format."
+    },
+    {
+      "alias": "system-search-symbolic",
+      "source": "upstream/lucide/messages/search.svg",
+      "sha256": "9322d964b61cf729b3a81210568d5a97eaf4a1f3239f25a056fda3013bf35611",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "184aac61ff5522bc4398265f6d1364f975fb300e59a2f9f934f2e4194d15e06b",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "document-edit-symbolic",
+      "source": "upstream/lucide/messages/square-pen.svg",
+      "sha256": "689c93336cf69a98eb03705c7755ebd3aa2cecdbe3ad8fac1776653a25f11883",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "5a7bbc52c6b6455f64d0b1561a607f380a48dacb216c9cd68e17eccd0f708af2",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "audio-input-microphone-symbolic",
+      "source": "upstream/lucide/messages/mic.svg",
+      "sha256": "3889023f739d93d1b3ae3a04290d764ac2a77ca2855bd8440ce15912a7f5aaaf",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "da1abc6c987aefae2a4528a70adf40eb2102a100868605fb4e310969b416120d",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "emblem-favorite-symbolic",
+      "source": "upstream/lucide/messages/heart.svg",
+      "sha256": "66a6d6a6327bf31d852907c63fee56705f3779db0359203e71a8b2b3c878f62a",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "91f264caac95d1b46b90817c4a715e8981ffdac9950f84fb331bec64226132b3",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "view-refresh-symbolic",
+      "source": "upstream/lucide/messages/rotate-cw.svg",
+      "sha256": "ceecdae51770a97015f48532a3846916dc1fb8660d7c3f02fcc195ca91c0f545",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "1cc40ddb37a5ad291c1dd93f7d54831080cff312101ac2fcd554c6eafccdf32e",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "dialog-warning-symbolic",
+      "source": "upstream/lucide/messages/triangle-alert.svg",
+      "sha256": "d96c1a1700b18a9cf1903e8d89151bc9fe881f58f6ba986a367daadf4a6fef17",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "279cf832dc76e6925f45e88d4ae5336a3861c59380be603ed4d5d93728ccff4c",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "emblem-ok-symbolic",
+      "source": "upstream/lucide/messages/check.svg",
+      "sha256": "b7b291faffe998d37c7eb8ce0f84237c876d9fa8b896499a8c64b98a9813317b",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "a026474ace2e402ce980398314cae09a9fcad6966b101ef7c7acaa5ca790e626",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "go-next-symbolic",
+      "source": "upstream/lucide/messages/chevron-right.svg",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "go-next-symbolic-rtl",
+      "source": "upstream/lucide/messages/chevron-left.svg",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "41b422da0b93c5ac3a64b9a589ce1bfaf22f4b0d3a51ed592c57d794acbf462d",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "phone-symbolic",
+      "source": "upstream/lucide/messages/smartphone.svg",
+      "sha256": "ec458f002aca7fef9a65c905d41057556d3e91135e4877233eaa66e80cef58c0",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "a0726f4c432e5fd7fee6cce946fa744e479f1617bd1f4cc565ca070267b5338c",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "mail-message-new-symbolic",
+      "source": "upstream/lucide/messages/message-square.svg",
+      "sha256": "44610d4a5d7566fc29fbc3b9b59c0078a0614dd2c1d72003024aaed17fd2ae76",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "85d39cf455fd2b53b964ccfde2c0a1dd5834903bc8cd744c3590c2fd10706c6a",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "edit-clear-symbolic",
+      "source": "upstream/lucide/messages/x.svg",
+      "sha256": "4a9cdab38fbb96162e7dace28e33f4ca0e49d8963a6162abc3d4691b7d675117",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "b6740097282b0690600e9d0c13729e183e93dd271685b8f92fc5017c21da5be5",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "object-select-symbolic",
+      "source": "upstream/lucide/messages/check.svg",
+      "sha256": "b7b291faffe998d37c7eb8ce0f84237c876d9fa8b896499a8c64b98a9813317b",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "a026474ace2e402ce980398314cae09a9fcad6966b101ef7c7acaa5ca790e626",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "go-previous-symbolic",
+      "source": "upstream/lucide/messages/chevron-left.svg",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "41b422da0b93c5ac3a64b9a589ce1bfaf22f4b0d3a51ed592c57d794acbf462d",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "go-previous-symbolic-rtl",
+      "source": "upstream/lucide/messages/chevron-right.svg",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "pan-down-symbolic",
+      "source": "upstream/lucide/pan/chevron-down.svg",
+      "sha256": "66ea878e72ed3488bb3b464c39dfdccee8d1f78e560dccea40e5e12da0e87e87",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "83ef74a5830b25b261829d64a669550813ad5f8b3601365dbdf114972558d3ec",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "pan-up-symbolic",
+      "source": "upstream/lucide/pan/chevron-up.svg",
+      "sha256": "33fd5d237f5ee741e9616de117f65df68a675f5924f5e99309d7224b467a0ba2",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "8e5af2b07ca86e31c908e95ae884ac70287681b6f42c8ed86c245d0e1e032ead",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "pan-start-symbolic",
+      "source": "upstream/lucide/pan/chevron-left.svg",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "41b422da0b93c5ac3a64b9a589ce1bfaf22f4b0d3a51ed592c57d794acbf462d",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "pan-start-symbolic-rtl",
+      "source": "upstream/lucide/pan/chevron-right.svg",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "pan-end-symbolic",
+      "source": "upstream/lucide/pan/chevron-right.svg",
+      "sha256": "a5ef4bb30b27242097b8b0780e89eba39f68d0932d3bdd6538c64db83df08d81",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "d355afd83fa9997ebb1329c9e85a3fbe4ab4a89d53f21035ad4f0902da1057e8",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "pan-end-symbolic-rtl",
+      "source": "upstream/lucide/pan/chevron-left.svg",
+      "sha256": "83b0681aa38bf55e9d52a1e4b4cced624abe1fe7678ecafda133a574f1161d93",
+      "upstream_version": "not stated in supplied SVG",
+      "gtk_symbolic_sha256": "41b422da0b93c5ac3a64b9a589ce1bfaf22f4b0d3a51ed592c57d794acbf462d",
+      "source_origin": "local-source-artwork"
+    },
+    {
+      "alias": "cursor-default-symbolic",
+      "source": "upstream/lucide/fills/mouse-pointer-2.svg",
+      "sha256": "cc2853e90951d369053a5fb3e581938bece92ae62e2a10baf5f30cb27e6b15bc",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "9b9bc5a90b4286f4900dee18f550b776333d19a6ee7042b7c558d8560f896f2d",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/mouse-pointer-2.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "draw-freehand-symbolic",
+      "source": "upstream/lucide/fills/pen-tool.svg",
+      "sha256": "dc2821f483a520f3b71cf8925f191265b065836d5d5d21466087911dde74181c",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "cd470c30c7861091ba890e374303d651e264d70f9071641fb32b00ecf34b2343",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/pen-tool.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "edit-rename-symbolic",
+      "source": "upstream/lucide/fills/pencil-line.svg",
+      "sha256": "158bc412dffc6bc215348fcefe63b03cf59a6000405458d4db1d027066575d18",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "cca952692c7e2d4e409f9aa8a51fcb4f8fdd19bc08c9dfd147ce55fa55026359",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/pencil-line.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "application-x-apk-symbolic",
+      "source": "upstream/lucide/fills/package.svg",
+      "sha256": "5a5126a1d19ed7d8b0dc8a5c6e888a25d9a81c9093390d12e1771af3fafb4fb9",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "04131d39ef491b484d74ef0967681b797b0b2c10101843da4a58920838ec71f5",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/package.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "utilities-system-monitor-symbolic",
+      "source": "upstream/lucide/fills/activity.svg",
+      "sha256": "aea600afaeb21db97c1db6e757ba82ab90efa18a0cb00130646b3df111af1a3f",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "cf0fae54d79d28f4fdabef7c4087095ed4aad3da62bc94ff15cc7631b76ea659",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/activity.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "emblem-default-symbolic",
+      "source": "upstream/lucide/fills/circle-check.svg",
+      "sha256": "3bb03baecb8333033b745a3cd827586234951d9f1b8c2fb8f6a3d38f418d0c2f",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "805532387629103cad2bea3f70cd7034f62e6b215470074f2832c993116ec8aa",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/circle-check.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "emblem-shared-symbolic",
+      "source": "upstream/lucide/fills/share-2.svg",
+      "sha256": "95fd0e8f65de9cc0f10446017c1d953c08a46ae398f53e443ab4f58fff79a29c",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "747be401db9bc0f5eb4dd23991448923be132b0fed26d1f8070f267e6fcd578a",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/share-2.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "emblem-synchronizing-symbolic",
+      "source": "upstream/lucide/fills/refresh-cw.svg",
+      "sha256": "2fce7f3ecaecff83db1af280c006f7f2ab0f86a0f13b13676787aaaf7eb2704d",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "b0f8451e3edbfb520e6cf065ae07f057b355afb03acac9ea5e87dd82635f5d43",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/refresh-cw.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    },
+    {
+      "alias": "notifications-symbolic",
+      "source": "upstream/lucide/fills/bell.svg",
+      "sha256": "f4aed6c9ebae5f342bca3d4a95b3f940bb8403838b0e606116030125bb07da1e",
+      "upstream_version": "1.39.0",
+      "gtk_symbolic_sha256": "5e87a07d486fc57676be407e4949786a00093c4181185ed2a67e814cc0ef4e24",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.39.0/icons/bell.svg; vendored verbatim.",
+      "adaptation": "fills-only: tools/outline-symbolic.py outlines each 2px stroke with round caps and joins, merges one nonzero path, scales 24 to 16 units, ink #2e3436."
+    }
+  ],
+  "adaptation": "GTK4.20+ symbolic classes explicitly preserve open strokes; line/polyline/polygon converted losslessly to path commands; per-primitive stroke attributes copied. No path reshaping or rasterization.",
+  "gtk_format_reference": "https://raw.githubusercontent.com/GNOME/gtk/gtk-4-22/docs/symbolic-icons.md"
+}

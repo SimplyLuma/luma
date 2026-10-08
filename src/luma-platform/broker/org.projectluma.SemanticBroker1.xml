@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<node>
+  <interface name="org.projectluma.SemanticBroker1">
+    <method name="ListSurfaces">
+      <arg name="surfaces" type="aa{sv}" direction="out"/>
+    </method>
+    <method name="GetSurface">
+      <arg name="publication_id" type="s" direction="in"/>
+      <arg name="surface" type="a{sv}" direction="out"/>
+    </method>
+    <method name="RequestAccess">
+      <arg name="application_id" type="s" direction="in"/>
+      <arg name="scopes" type="as" direction="in"/>
+      <arg name="options" type="a{sv}" direction="in"/>
+      <arg name="request_handle" type="o" direction="out"/>
+    </method>
+    <method name="RevokeAccess">
+      <arg name="application_id" type="s" direction="in"/>
+    </method>
+    <method name="InvokeAction">
+      <arg name="publication_id" type="s" direction="in"/>
+      <arg name="object_id" type="s" direction="in"/>
+      <arg name="action_id" type="s" direction="in"/>
+      <arg name="parameter" type="v" direction="in"/>
+      <arg name="options" type="a{sv}" direction="in"/>
+      <arg name="request_handle" type="o" direction="out"/>
+    </method>
+    <method name="GetAudit">
+      <arg name="limit" type="u" direction="in"/>
+      <arg name="events" type="aa{sv}" direction="out"/>
+    </method>
+    <method name="RegisterSurface">
+      <arg name="application_id" type="s" direction="in"/>
+      <arg name="surface_id" type="s" direction="in"/>
+      <arg name="surface" type="a{sv}" direction="in"/>
+      <arg name="provider_path" type="o" direction="in"/>
+      <arg name="publication_id" type="s" direction="out"/>
+    </method>
+    <method name="UpdateSurface">
+      <arg name="publication_id" type="s" direction="in"/>
+      <arg name="surface" type="a{sv}" direction="in"/>
+    </method>
+    <method name="UnregisterSurface">
+      <arg name="publication_id" type="s" direction="in"/>
+    </method>
+    <method name="RegisterLiveExtension">
+      <arg name="application_id" type="s" direction="in"/>
+      <arg name="extension_id" type="s" direction="in"/>
+      <arg name="extension" type="a{sv}" direction="in"/>
+      <arg name="provider_path" type="o" direction="in"/>
+      <arg name="publication_id" type="s" direction="out"/>
+    </method>
+    <method name="UpdateLiveExtension">
+      <arg name="publication_id" type="s" direction="in"/>
+      <arg name="extension" type="a{sv}" direction="in"/>
+    </method>
+    <method name="UnregisterLiveExtension">
+      <arg name="publication_id" type="s" direction="in"/>
+    </method>
+    <method name="ListLiveExtensions">
+      <arg name="extensions" type="aa{sv}" direction="out"/>
+    </method>
+    <signal name="LiveExtensionsChanged"/>
+  </interface>
+  <interface name="org.projectluma.SemanticRequest1">
+    <method name="Close"/>
+    <signal name="Response">
+      <arg name="response" type="u"/>
+      <arg name="results" type="a{sv}"/>
+    </signal>
+  </interface>
+  <interface name="org.projectluma.SemanticProvider1">
+    <method name="InvokeAction">
+      <arg name="object_id" type="s" direction="in"/>
+      <arg name="action_id" type="s" direction="in"/>
+      <arg name="parameter" type="v" direction="in"/>
+      <arg name="result" type="v" direction="out"/>
+    </method>
+  </interface>
+</node>

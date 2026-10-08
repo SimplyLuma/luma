@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Luma Updates
+Comment=Notifications about Luma system updates
+Icon=software-update-available
+Exec=/usr/libexec/luma-update-notifier
+DBusActivatable=true
+NoDisplay=true
+Terminal=false
+Categories=System;
+X-GNOME-UsesNotifications=true

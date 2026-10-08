@@ -1,0 +1,411 @@
+From: Project Luma
+Subject: [PATCH] Shell: preserve symbolic strokes and native outer geometry
+
+Use supported symbolic paint classes in St without changing legacy filled
+icons. Align clocks by Pango baseline, bound native Quick Options lists and
+reserve their scrollbar gutter. Shelf keeps edge padding independently of
+tiling; existing Mutter work-area semantics preserve true fullscreen.
+
+diff --git a/src/st/st-icon-theme.c b/src/st/st-icon-theme.c
+--- a/src/st/st-icon-theme.c
++++ b/src/st/st-icon-theme.c
+@@ -3852,6 +3852,16 @@
+                       "    .success {\n"
+                       "      fill: ", css_success, " !important;\n"
+                       "    }\n"
++                      "    .foreground-fill { fill: ", css_fg, " !important; }\n"
++                      "    .foreground-stroke { stroke: ", css_fg, " !important; }\n"
++                      "    .warning-fill { fill: ", css_warning, " !important; }\n"
++                      "    .warning-stroke { stroke: ", css_warning, " !important; }\n"
++                      "    .error-fill { fill: ", css_error, " !important; }\n"
++                      "    .error-stroke { stroke: ", css_error, " !important; }\n"
++                      "    .success-fill { fill: ", css_success, " !important; }\n"
++                      "    .success-stroke { stroke: ", css_success, " !important; }\n"
++                      "    .transparent-fill { fill: none !important; }\n"
++                      "    .transparent-stroke { stroke: none !important; }\n"
+                       "  </style>\n"
+                       "  <g opacity=\"", alphastr, "\" ><xi:include href=\"data:text/xml;base64,", escaped_file_data, "\"/></g>\n"
+                       "</svg>",
+diff --git a/src/st/meson.build b/src/st/meson.build
+--- a/src/st/meson.build
++++ b/src/st/meson.build
+@@ -230,6 +230,14 @@
+   )
+ endif
+ 
++symbolic_stroke_test = executable('test-symbolic-strokes',
++  sources: 'test-symbolic-strokes.c',
++  c_args: st_cflags,
++  dependencies: [libst_dep],
++  build_rpath: mutter_typelibdir,
++)
++test('luma-symbolic-strokes', symbolic_stroke_test, suite: 'st')
++
+ libst_gir = gnome.generate_gir(libst,
+   sources: st_gir_sources,
+   nsversion: mutter_api_version,
+diff --git a/src/st/test-symbolic-strokes.c b/src/st/test-symbolic-strokes.c
+new file mode 100644
+--- /dev/null
++++ b/src/st/test-symbolic-strokes.c
+@@ -0,0 +1,84 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "st-icon-theme.h"
++#include "st-icon-colors.h"
++#include <glib/gstdio.h>
++
++static GdkPixbuf *
++load_symbolic (const char *path, StIconColors *colors)
++{
++  StIconTheme *theme = st_icon_theme_new ();
++  GFile *file = g_file_new_for_path (path);
++  GIcon *icon = g_file_icon_new (file);
++  StIconInfo *info = st_icon_theme_lookup_by_gicon (theme, icon, 24, 0);
++  GError *error = NULL;
++  gboolean symbolic = FALSE;
++  g_assert_nonnull (info);
++  GdkPixbuf *pixbuf = st_icon_info_load_symbolic (info, colors, &symbolic, &error);
++  g_assert_no_error (error);
++  g_assert_true (symbolic);
++  g_assert_nonnull (pixbuf);
++  g_object_unref (info);
++  g_object_unref (icon);
++  g_object_unref (file);
++  g_object_unref (theme);
++  return pixbuf;
++}
++
++static void
++check_stroke_and_legacy (void)
++{
++  GError *error = NULL;
++  char *dir = g_dir_make_tmp ("luma-st-symbolic-XXXXXX", &error);
++  g_assert_no_error (error);
++  char *path = g_build_filename (dir, "stroke-symbolic.svg", NULL);
++  const char *svg = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>"
++    "<circle cx='12' cy='12' r='8' fill='none' stroke='currentColor' stroke-width='2' class='transparent-fill foreground-stroke'/>"
++    "<rect x='1' y='1' width='3' height='3' class='warning-fill'/>"
++    "<path d='M2 22h20' stroke-width='2' class='transparent-fill success-stroke'/></svg>";
++  g_assert_true (g_file_set_contents (path, svg, -1, &error));
++  g_assert_no_error (error);
++  StIconColors *colors = st_icon_colors_new ();
++  cogl_color_init_from_4f (&colors->foreground, 30.f/255, 60.f/255, 120.f/255, 1.f);
++  cogl_color_init_from_4f (&colors->warning, 200.f/255, 50.f/255, 20.f/255, 1.f);
++  cogl_color_init_from_4f (&colors->success, 10.f/255, 180.f/255, 60.f/255, 1.f);
++  cogl_color_init_from_4f (&colors->error, 220.f/255, 10.f/255, 10.f/255, 1.f);
++  GdkPixbuf *pixbuf = load_symbolic (path, colors);
++  int stride = gdk_pixbuf_get_rowstride (pixbuf);
++  int channels = gdk_pixbuf_get_n_channels (pixbuf);
++  g_assert_cmpint (channels, ==, 4);
++  const guchar *pixels = gdk_pixbuf_read_pixels (pixbuf);
++  /* A cog centre must remain hollow, and its stroke receives the palette. */
++  g_assert_cmpint (pixels[12 * stride + 12 * channels + 3], ==, 0);
++  const guchar *edge = pixels + 4 * stride + 12 * channels;
++  g_assert_cmpint (edge[3], >, 100);
++  g_assert_cmpint (edge[0], ==, 30);
++  g_assert_cmpint (edge[2], ==, 120);
++  const guchar *warning = pixels + 2 * stride + 2 * channels;
++  g_assert_cmpint (warning[0], ==, 200);
++  const guchar *success = pixels + 22 * stride + 12 * channels;
++  g_assert_cmpint (success[1], ==, 180);
++  g_object_unref (pixbuf);
++  /* Ordinary legacy filled symbolic icons retain their existing recolour. */
++  svg = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><rect width='24' height='24'/></svg>";
++  g_assert_true (g_file_set_contents (path, svg, -1, &error));
++  g_assert_no_error (error);
++  pixbuf = load_symbolic (path, colors);
++  pixels = gdk_pixbuf_read_pixels (pixbuf);
++  g_assert_cmpint (pixels[0], ==, 30);
++  g_assert_cmpint (pixels[1], ==, 60);
++  g_assert_cmpint (pixels[2], ==, 120);
++  g_assert_cmpint (pixels[3], ==, 255);
++  g_object_unref (pixbuf);
++  st_icon_colors_unref (colors);
++  g_unlink (path);
++  g_rmdir (dir);
++  g_free (path);
++  g_free (dir);
++}
++
++int main (int argc, char **argv)
++{
++  g_test_init (&argc, &argv, NULL);
++  g_test_add_func ("/st/symbolic/stroke-and-legacy", check_stroke_and_legacy);
++  return g_test_run ();
++}
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -5,6 +5,7 @@
+ import GnomeDesktop from 'gi://GnomeDesktop';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+@@ -112,15 +113,20 @@
+         };
+         const [, naturalTimeWidth] = this._time.get_preferred_width(-1);
+         let x = Math.min(width, naturalTimeWidth, 240 * scale);
+-        allocatePart(this._time, 0, rowY, x, rowHeight);
++        const [, timeHeight] = this._time.get_preferred_height(x);
++        const timeY = rowY + Math.max(0, rowHeight - timeHeight) / 2;
++        allocatePart(this._time, 0, timeY, x, timeHeight);
++        const timeBaseline = this._time.clutter_text.get_layout().get_baseline() / Pango.SCALE;
+         if (this._ampm.visible) {
+             const [, naturalAmPmWidth] = this._ampm.get_preferred_width(-1);
+             // Some themes report the available row width for this tiny label.
+             // Bound its slot so the divider and date stay beside the time.
+             const ampmWidth = Math.min(Math.max(0, width - x),
+                 naturalAmPmWidth, 48 * scale);
++            const [, ampmHeight] = this._ampm.get_preferred_height(ampmWidth);
++            const ampmBaseline = this._ampm.clutter_text.get_layout().get_baseline() / Pango.SCALE;
+             allocatePart(this._ampm, x + 8 * scale,
+-                rowY + rowHeight - 32 * scale, ampmWidth, 30 * scale);
++                timeY + timeBaseline - ampmBaseline, ampmWidth, ampmHeight);
+             x += ampmWidth + 8 * scale;
+         } else {
+             allocatePart(this._ampm, 0, 0, 0, 0);
+@@ -325,7 +331,7 @@
+         // UPower owns the percentage and charging-state glyph. Use the same
+         // symbolic icon path as the other status controls instead of painting
+         // a fill actor over an SVG background at a different scale.
+-        this._battery = new St.Icon({icon_name: 'battery-full-symbolic',
++        this._battery = new St.Icon({icon_name: 'battery-full-symbolic', icon_size: 24,
+             style_class: 'poster-battery', visible: false});
+         status.add_child(this._battery);
+         status.add_child(new St.Widget({style_class: 'poster-status-divider'}));
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -37,6 +37,8 @@
+ import * as DoNotDisturb from './status/doNotDisturb.js';
+ import * as BacklightStatus from './status/backlight.js';
+ import * as ThunderboltStatus from './status/thunderbolt.js';
++import {BaselineClockRow} from './lumaClockLayout.js';
++
+ import * as AutoRotateStatus from './status/autoRotate.js';
+ import * as BackgroundAppsStatus from './status/backgroundApps.js';
+ import * as CastStatus from './status/cast.js';
+@@ -1371,7 +1373,7 @@
+             // Studio Desktop: the time large, a small AM/PM beside it.
+             this._statusAmPm = new St.Label({style_class: 'luma-status-ampm',
+                 y_align: Clutter.ActorAlign.END, visible: false});
+-            this._statusTimeRow = new St.BoxLayout({x_align: Clutter.ActorAlign.START});
++            this._statusTimeRow = new BaselineClockRow({x_align: Clutter.ActorAlign.START});
+             this._statusTimeRow.add_child(this._statusTime);
+             this._statusTimeRow.add_child(this._statusAmPm);
+             this._statusClockBox.add_child(this._statusTimeRow);
+@@ -1823,7 +1825,7 @@
+         const clockSmall = this._statusClockVertical ?? this._statusVertical;
+         this._statusTime.set_style(`font-size: ${this._statusFontSize(this._statusTime)}px; font-weight: 600; letter-spacing: -0.3px; color: ${ink.ink};`);
+         this._statusDateLabel.set_style(`font-size: ${this._statusFontSize(this._statusDateLabel) + (clockSmall ? 0 : 0.5)}px; font-weight: 500; color: ${ink.ink2};`);
+-        this._statusAmPm?.set_style(`font-size: 11px; font-weight: 600; margin-left: 3px; margin-bottom: 4px; color: ${ink.ink2};`);
++        this._statusAmPm?.set_style(`font-size: 11px; font-weight: 600; margin: 0; color: ${ink.ink2};`);
+         if (this._statusAmPm)
+             this._statusAmPm.visible = Boolean(this._statusAmPm.text) && !clockSmall;
+         this._statusDateShort?.set_style(this._statusDateLabel.get_style());
+@@ -1832,7 +1834,7 @@
+             this._statusDateShort.visible = clockVertical;
+         // Time 13/16 over date 11/14, 2 apart: the lines carry their own
+         // leading, so the gap between them is the spec's two pixels.
+-        this._statusClockBox.set_style(`padding: 0 0 0 1px; spacing: 0;`);
++        this._statusClockBox.set_style(`padding: 0 0 0 1px; spacing: 2px;`);
+         const textScale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         for (const label of [this._statusTime, this._statusDateLabel]) {
+             this._setStatusLineHeight(label);
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1360,7 +1360,7 @@
+             orientation: Clutter.Orientation.VERTICAL, visible: false});
+         const header = new St.BoxLayout({style_class: 'luma-options-page-header'});
+         this._back = new St.Button({can_focus: true, accessible_name: _('Back'),
+-            style_class: 'luma-options-back', child: new St.Icon({icon_name: 'luma-chevron-left-symbolic', icon_size: 16})});
++            style_class: 'luma-options-back', child: new St.Icon({icon_name: 'lumaui-chevron-left-symbolic', icon_size: 18})});
+         this._back.connect('clicked', () => this._activeMenu?.close());
+         header.add_child(this._back);
+         this._pageHeading = new St.Label({style_class: 'luma-options-page-title', x_expand: true,
+@@ -1378,7 +1378,7 @@
+         this._pageSwitch.child.accessible_role = Atk.Role.REDUNDANT_OBJECT;
+         header.add_child(this._pageSwitch); this._pageHost.add_child(header);
+         this._pageScroll = new St.ScrollView({style_class: 'luma-options-page-scroll',
+-            x_expand: true, overlay_scrollbars: true,
++            x_expand: true, overlay_scrollbars: false,
+             hscrollbar_policy: St.PolicyType.NEVER,
+             vscrollbar_policy: St.PolicyType.AUTOMATIC});
+         this._pages = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
+@@ -1452,7 +1452,8 @@
+             if (!item) continue;
+             item.x_expand = true;
+             item.setPill(false);
+-            item._menuButton.child.child.icon_name = 'luma-chevron-right-symbolic';
++            item._menuButton.child.child.icon_name = 'lumaui-chevron-right-symbolic';
++            item._menuButton.child.child.icon_size = 18;
+             item.menu._studioTitle = item === indicators._network?._wirelessToggle ? _('Wi-Fi') : _('Bluetooth');
+             item.menu._studioRadio = item;
+             // Both native hit targets share the enclosing tile's feedback.
+@@ -1552,7 +1553,11 @@
+             this._pageScroll.vadjustment.value = 0;
+             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+             const monitor = Main.layoutManager.findMonitorForActor(this.sourceActor) ?? Main.layoutManager.primaryMonitor;
+-            if (monitor) this._pageScroll.set_style(`max-height: ${Math.max(160, monitor.height / scale - 160)}px;`);
++            // The page grows to its content up to a bounded desktop list.
++            // Use usable work area, not the full display behind the Shelf.
++            const workArea = monitor ? Main.layoutManager.getWorkAreaForMonitor(monitor.index) : null;
++            const maxHeight = Math.max(96, Math.min(420, (workArea?.height ?? 600) / scale - 160));
++            this._pageScroll.set_style(`max-height: ${maxHeight}px;`);
+             this._pageHeading.text = menu._studioTitle ?? item.title ?? menu._titleLabel.text;
+             const radio = menu._studioRadio;
+             this._pageSwitch.accessible_name = this._pageHeading.text;
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -2409,7 +2409,10 @@
+     // off, windows may go under the islands and keep only the padding from
+     // every edge (Mutter's work-area inset).
+     _syncWorkAreaInset(scale) {
+-        const keepMargin = this._workAreaTracked && !this._settings.get_boolean('shelf-reserve-work-area');
++        // Mutter applies this only where an edge has no native strut.
++        // Keep the same outer padding when bands reserve other edges, and
++        // when tiling is disabled. True fullscreen bypasses the work area.
++        const keepMargin = this._workAreaTracked;
+         const inset = keepMargin ? Math.round(this._padding * scale) : 0;
+         global.display.set_work_area_inset?.(inset);
+     }
+diff --git a/js/ui/lumaClockLayout.js b/js/ui/lumaClockLayout.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/lumaClockLayout.js
+@@ -0,0 +1,48 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Align differently sized clock labels by their real Pango baseline.
++import Clutter from 'gi://Clutter';
++import GObject from 'gi://GObject';
++import Pango from 'gi://Pango';
++import St from 'gi://St';
++
++export const BaselineClockRow = GObject.registerClass(
++class BaselineClockRow extends St.Widget {
++    _metrics() {
++        return this.get_children().filter(actor => actor.visible).map(actor => {
++            actor.ensure_style();
++            const [, width] = actor.get_preferred_width(-1);
++            const [, height] = actor.get_preferred_height(width);
++            const baseline = actor.clutter_text.get_layout().get_baseline() / Pango.SCALE;
++            return {actor, width, height, baseline};
++        });
++    }
++
++    vfunc_get_preferred_width() {
++        const items = this._metrics();
++        const gap = 3 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const width = items.reduce((sum, item) => sum + item.width, 0) + Math.max(0, items.length - 1) * gap;
++        return [width, width];
++    }
++
++    vfunc_get_preferred_height() {
++        const items = this._metrics();
++        const baseline = Math.max(0, ...items.map(item => item.baseline));
++        const descent = Math.max(0, ...items.map(item => item.height - item.baseline));
++        return [baseline + descent, baseline + descent];
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const items = this._metrics();
++        const baseline = Math.max(0, ...items.map(item => item.baseline));
++        const gap = 3 * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
++        let x = rtl ? box.get_width() : 0;
++        for (const {actor, width, height, baseline: textBaseline} of items) {
++            if (rtl) x -= width;
++            const y = baseline - textBaseline;
++            actor.allocate(new Clutter.ActorBox({x1: x, x2: x + width, y1: y, y2: y + height}));
++            x += rtl ? -gap : width + gap;
++        }
++    }
++});
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -139,6 +139,7 @@
+     <file>ui/pointerA11yTimeout.js</file>
+     <file>ui/pointerWatcher.js</file>
+     <file>ui/prairieLogin.js</file>
++    <file>ui/lumaClockLayout.js</file>
+     <file>ui/popupMenu.js</file>
+     <file>ui/quickSettings.js</file>
+     <file>ui/remoteSearch.js</file>
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5269,6 +5269,27 @@
+   color: #ffffff;
+   background-color: #3a84ca;
+ }
++
++
++/* Native follow-up: one raised recipe for radio tiles and level controls. */
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  background-color: #353a42;
++  border: 1px solid rgba(255,255,255,.10);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
++  background-color: #fff; color: rgba(22,25,29,.86);
++  border-color: rgba(25,27,31,.12);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:active,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:active {
++  box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }
++.quick-settings.luma-studio-options .luma-options-page-scroll { padding-right: 4px; }
++.quick-settings.luma-studio-options .luma-options-page-scroll:rtl { padding-right: 0; padding-left: 4px; }
++.quick-settings.luma-studio-options .luma-options-back { width: 32px; height: 32px; }
++.quick-settings.luma-studio-options .luma-options-radio .luma-quick-disclosure-icon { icon-size: 18px; }
++.poster-battery, .poster-card.wide .poster-battery { icon-size: 24px; }
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5045,6 +5045,27 @@
+   color: #ffffff;
+   background-color: #3a84ca;
+ }
++
++
++/* Native follow-up: one raised recipe for radio tiles and level controls. */
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key {
++  background-color: #353a42;
++  border: 1px solid rgba(255,255,255,.10);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 3px rgba(0,0,0,.15); }
++.quick-settings.luma-studio-options.luma-surface-light .quick-toggle-has-menu.luma-options-radio,
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .luma-options-level-key {
++  background-color: #fff; color: rgba(22,25,29,.86);
++  border-color: rgba(25,27,31,.12);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 2px 3px rgba(25,27,31,.10); }
++.quick-settings.luma-studio-options .luma-options-slider .luma-options-level-key:active,
++.quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio:active {
++  box-shadow: inset 0 1px 2px rgba(0,0,0,.20); }
++.quick-settings.luma-studio-options .luma-options-page-scroll { padding-right: 4px; }
++.quick-settings.luma-studio-options .luma-options-page-scroll:rtl { padding-right: 0; padding-left: 4px; }
++.quick-settings.luma-studio-options .luma-options-back { width: 32px; height: 32px; }
++.quick-settings.luma-studio-options .luma-options-radio .luma-quick-disclosure-icon { icon-size: 18px; }
++.poster-battery, .poster-card.wide .poster-battery { icon-size: 24px; }
+ 
+ /* Luma notification-owned rules; safe to compile without the global Shell SCSS. */
+ .notification-banner.luma-notification-card {
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -748,3 +748,5 @@
+ .poster-card.compact .prairie-auth-card,
+ .poster-card.compact .prairie-login-input-well { width: 276px; }
+ .poster-card.compact .prairie-password-field { width: 220px; }
++
++.poster-battery, .poster-card.wide .poster-battery { icon-size: 24px; }

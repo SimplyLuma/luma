@@ -1,0 +1,281 @@
+From 0061f0a96fc8c116c26c4a4da6cd7afd8339e490 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:45:23 +0200
+Subject: [PATCH 21/41] tee: qseecom: do not let a session outlive the
+ application it names
+
+Unloading on load-session close left every client session naming that
+application holding a bare id, and TZ hands out application ids as small
+integers and reuses them. After an unload and any later load, a stale session
+addressed a different trusted application entirely -- an unprivileged client's
+commands delivered to one it never opened. The comment shipped alongside said
+those sessions were 'unaffected', which was the opposite of true.
+
+Give each registry entry a generation that is never reused, record it in the
+session that resolved it, and check it on invoke. Generation zero means the
+session named an application the boot chain loaded, which this driver cannot
+unload and which therefore cannot be replaced underneath it, so those keep
+working.
+
+Correct both comments that asserted the broken invariant.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 90 ++++++++++++++++++++++++++++++++------
+ 1 file changed, 77 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index f335e06b0..8ca1b6517 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -120,7 +120,10 @@ struct qseecom_tee_supp {
+  * @mempool:     TZ memory. Kernel-only: everything TZ reads or writes is
+  *               staged through here, and none of it is ever mapped to user
+  *               space.
+- * @apps_lock:   Protects @apps.
++ * @apps_lock:   Protects @apps and @next_app_gen.
++ * @next_app_gen: Counter stamped into each registry entry, so a session can
++ *               tell the application it was opened on from a later one that
++ *               TZ gave the same ID.
+  * @apps:        Applications this driver loaded, since TZ will not resolve
+  *               them by name afterwards.
+  * @supp:        Supplicant state.
+@@ -132,7 +135,8 @@ struct qseecom_tee {
+ 	struct tee_shm_pool *pool;
+ 	struct qcom_tzmem_pool *mempool;
+ 	struct qseecom_tee_supp supp;
+-	struct mutex apps_lock;		/* protects @apps */
++	struct mutex apps_lock;
++	u32 next_app_gen;
+ 	struct list_head apps;
+ };
+ 
+@@ -164,6 +168,8 @@ struct qseecom_tee_listener {
+  * @node:     Entry in the owning context's session list.
+  * @id:       Session ID handed to user space.
+  * @app_id:   QSEE application ID, for an application session.
++ * @app_gen:  Generation of the registry entry this was opened on. TZ reuses
++ *            application IDs, so the ID alone does not identify it.
+  * @listener: The service offered, for a listener session.
+  *
+  * Exactly one of @app_id and @listener is set. IDs are handed out from a
+@@ -175,6 +181,7 @@ struct qseecom_tee_session {
+ 	struct list_head node;
+ 	u32 id;
+ 	u32 app_id;
++	u32 app_gen;
+ 	struct qseecom_tee_listener *listener;
+ };
+ 
+@@ -182,6 +189,8 @@ struct qseecom_tee_session {
+  * struct qseecom_tee_app - An application this driver loaded.
+  * @node:   Entry in the driver's registry.
+  * @app_id: What TZ called it.
++ * @gen:    Generation, distinguishing this entry from a later one that TZ
++ *          happened to give the same @app_id.
+  * @name:   What it is called.
+  *
+  * Kept because TZ will not tell us again: qcom_scm_qseecom_app_get_id()
+@@ -192,6 +201,7 @@ struct qseecom_tee_session {
+ struct qseecom_tee_app {
+ 	struct list_head node;
+ 	u32 app_id;
++	u32 gen;
+ 	char name[QSEECOM_TEE_MAX_APP_NAME];
+ };
+ 
+@@ -374,7 +384,7 @@ qseecom_tee_session_find(struct qseecom_tee_context *ctxdata, u32 session_id)
+  * its ID.
+  */
+ static int qseecom_tee_session_add(struct qseecom_tee_context *ctxdata,
+-				   u32 app_id,
++				   u32 app_id, u32 app_gen,
+ 				   struct qseecom_tee_listener *listener,
+ 				   u32 *session_id)
+ {
+@@ -385,6 +395,7 @@ static int qseecom_tee_session_add(struct qseecom_tee_context *ctxdata,
+ 		return -ENOMEM;
+ 
+ 	sess->app_id = app_id;
++	sess->app_gen = app_gen;
+ 	sess->listener = listener;
+ 
+ 	mutex_lock(&ctxdata->mutex);
+@@ -398,7 +409,8 @@ static int qseecom_tee_session_add(struct qseecom_tee_context *ctxdata,
+ }
+ 
+ /* Applications this driver loaded, since TZ will not look them up by name. */
+-static u32 qseecom_tee_app_find(struct qseecom_tee *qtee, const char *name)
++static u32 qseecom_tee_app_find(struct qseecom_tee *qtee, const char *name,
++				u32 *gen)
+ {
+ 	struct qseecom_tee_app *app;
+ 	u32 app_id = 0;
+@@ -408,6 +420,7 @@ static u32 qseecom_tee_app_find(struct qseecom_tee *qtee, const char *name)
+ 	list_for_each_entry(app, &qtee->apps, node) {
+ 		if (!strcmp(app->name, name)) {
+ 			app_id = app->app_id;
++			*gen = app->gen;
+ 			break;
+ 		}
+ 	}
+@@ -415,6 +428,33 @@ static u32 qseecom_tee_app_find(struct qseecom_tee *qtee, const char *name)
+ 	return app_id;
+ }
+ 
++/*
++ * Is the application a session was opened against still the same one?
++ *
++ * TZ hands out application ids as small integers and reuses them, so an id on
++ * its own does not identify anything for longer than the application lives.
++ * Sessions therefore record the generation of the registry entry they resolved,
++ * and a generation is never reused. gen 0 means the session named an
++ * application the boot chain loaded, which this driver cannot unload and which
++ * therefore cannot be replaced underneath it.
++ */
++static bool qseecom_tee_app_current(struct qseecom_tee *qtee, u32 app_id,
++				    u32 gen)
++{
++	struct qseecom_tee_app *app;
++
++	if (!gen)
++		return true;
++
++	guard(mutex)(&qtee->apps_lock);
++
++	list_for_each_entry(app, &qtee->apps, node)
++		if (app->app_id == app_id)
++			return app->gen == gen;
++
++	return false;
++}
++
+ /* Drop an application from the registry once TZ has unloaded it. */
+ static void qseecom_tee_app_forget(struct qseecom_tee *qtee, u32 app_id)
+ {
+@@ -432,7 +472,7 @@ static void qseecom_tee_app_forget(struct qseecom_tee *qtee, u32 app_id)
+ }
+ 
+ static int qseecom_tee_app_remember(struct qseecom_tee *qtee, const char *name,
+-				    u32 app_id)
++				    u32 app_id, u32 *gen)
+ {
+ 	struct qseecom_tee_app *app, *old;
+ 
+@@ -444,6 +484,9 @@ static int qseecom_tee_app_remember(struct qseecom_tee *qtee, const char *name,
+ 	strscpy(app->name, name, sizeof(app->name));
+ 
+ 	mutex_lock(&qtee->apps_lock);
++	app->gen = ++qtee->next_app_gen;
++	if (gen)
++		*gen = app->gen;
+ 
+ 	/*
+ 	 * A name identifies one application, so an existing entry under this
+@@ -526,6 +569,7 @@ static int qseecom_tee_open_session(struct tee_context *ctx,
+ 				    struct tee_ioctl_open_session_arg *arg,
+ 				    struct tee_param *param)
+ {
++	u32 app_gen = 0;
+ 	struct qseecom_tee_context *ctxdata = ctx->data;
+ 	char app_name[QSEECOM_TEE_MAX_APP_NAME];
+ 	u32 app_id;
+@@ -550,7 +594,7 @@ static int qseecom_tee_open_session(struct tee_context *ctx,
+ 	 * chain loaded and answers -ENOENT for ours even while they are
+ 	 * running. Fall back to asking TZ for the boot-loaded ones.
+ 	 */
+-	app_id = qseecom_tee_app_find(ctxdata->qtee, app_name);
++	app_id = qseecom_tee_app_find(ctxdata->qtee, app_name, &app_gen);
+ 	if (!app_id) {
+ 		ret = qcom_scm_qseecom_app_get_id(app_name, &app_id);
+ 		if (ret) {
+@@ -561,7 +605,8 @@ static int qseecom_tee_open_session(struct tee_context *ctx,
+ 		}
+ 	}
+ 
+-	ret = qseecom_tee_session_add(ctxdata, app_id, NULL, &arg->session);
++	ret = qseecom_tee_session_add(ctxdata, app_id, app_gen, NULL,
++				      &arg->session);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -705,6 +750,8 @@ static int qseecom_tee_invoke_func(struct tee_context *ctx,
+ 	struct qseecom_tee_context *ctxdata = ctx->data;
+ 	struct qseecom_tee_session *sess;
+ 	size_t req_size, rsp_size;
++	u32 app_gen;
++	bool found;
+ 	void *req, *rsp;
+ 	unsigned int i;
+ 	u32 app_id;
+@@ -724,11 +771,22 @@ static int qseecom_tee_invoke_func(struct tee_context *ctx,
+ 	mutex_lock(&ctxdata->mutex);
+ 	sess = qseecom_tee_session_find(ctxdata, arg->session);
+ 	app_id = sess ? sess->app_id : 0;
++	app_gen = sess ? sess->app_gen : 0;
++	found = sess;
+ 	mutex_unlock(&ctxdata->mutex);
+ 
+-	if (!sess)
++	if (!found)
+ 		return -EINVAL;
+ 
++	/*
++	 * The application this session names may have been unloaded since,
++	 * and TZ reuses application ids. Without this the command would be
++	 * delivered to whatever now holds the id -- an unprivileged client's
++	 * request arriving at a trusted application it never opened.
++	 */
++	if (!qseecom_tee_app_current(ctxdata->qtee, app_id, app_gen))
++		return -ENOENT;
++
+ 	ret = qseecom_tee_memref(&param[0], TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT,
+ 				 &req, &req_size);
+ 	if (ret)
+@@ -1226,6 +1284,7 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 				     struct tee_ioctl_open_session_arg *arg,
+ 				     struct tee_param *param)
+ {
++	u32 app_gen = 0;
+ 	struct qseecom_tee_context *ctxdata = ctx->data;
+ 	struct qseecom_tee *qtee = ctxdata->qtee;
+ 	struct qcom_tzmem_pool_config pool_config = {
+@@ -1329,11 +1388,12 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 	 * time and only a reboot would clear it -- exactly the trap unloading
+ 	 * on session close exists to avoid.
+ 	 */
+-	ret = qseecom_tee_app_remember(qtee, app_name, app_id);
++	ret = qseecom_tee_app_remember(qtee, app_name, app_id, &app_gen);
+ 	if (ret)
+ 		goto err_shutdown;
+ 
+-	ret = qseecom_tee_session_add(ctxdata, app_id, NULL, &arg->session);
++	ret = qseecom_tee_session_add(ctxdata, app_id, app_gen, NULL,
++				      &arg->session);
+ 	if (ret) {
+ 		qseecom_tee_app_forget(qtee, app_id);
+ 		goto err_shutdown;
+@@ -1457,7 +1517,7 @@ static int qseecom_tee_supp_open_session(struct tee_context *ctx,
+ 	list_add_tail(&listener->node, &ctxdata->listeners);
+ 	mutex_unlock(&ctxdata->mutex);
+ 
+-	ret = qseecom_tee_session_add(ctxdata, 0, listener, &arg->session);
++	ret = qseecom_tee_session_add(ctxdata, 0, 0, listener, &arg->session);
+ 	if (ret) {
+ 		mutex_lock(&ctxdata->mutex);
+ 		list_del(&listener->node);
+@@ -1504,8 +1564,12 @@ static int qseecom_tee_supp_close_session(struct tee_context *ctx, u32 session)
+ 	 * initialisation and never again, so re-initialising it is otherwise
+ 	 * impossible.
+ 	 *
+-	 * Sessions opened on the client device are unaffected: those only
+-	 * reference an application, they do not own it.
++	 * Sessions opened on the client device only reference an application,
++	 * they do not own it -- but they do not survive it either. Each records
++	 * the generation of the registry entry it resolved, and an invoke
++	 * revalidates that, so a session naming an application that has since
++	 * been unloaded fails rather than addressing whatever now holds the
++	 * reused id.
+ 	 */
+ 	if (!listener) {
+ 		if (app_id) {

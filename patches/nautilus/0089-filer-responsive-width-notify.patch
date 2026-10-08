@@ -1,0 +1,120 @@
+From 9b90a4fb1291cdf417215f723249afd5e795a8a4 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:04:33 +0000
+Subject: [PATCH] Filer: respond to native width notifications
+
+---
+ src/nautilus-grid-view.c | 17 ++++++-----------
+ src/nautilus-list-view.c | 19 ++++++++-----------
+ 2 files changed, 14 insertions(+), 22 deletions(-)
+
+diff --git a/src/nautilus-grid-view.c b/src/nautilus-grid-view.c
+index e04ba82..0448c69 100644
+--- a/src/nautilus-grid-view.c
++++ b/src/nautilus-grid-view.c
+@@ -355,18 +355,13 @@ real_get_icon_size (NautilusListBase *list_base_view)
+ }
+ 
+ static void
+-nautilus_grid_view_size_allocate (GtkWidget *widget,
+-                                  int        width,
+-                                  int        height,
+-                                  int        baseline)
++update_phone_layout (NautilusGridView *self)
+ {
+-    NautilusGridView *self = NAUTILUS_GRID_VIEW (widget);
+-    GtkRoot *root = gtk_widget_get_root (widget);
+-    int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root)) : width;
++    GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
++    int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root))
++                                    : gtk_widget_get_width (GTK_WIDGET (self));
+     gboolean phone_layout = window_width > 0 && window_width <= 480;
+ 
+-    GTK_WIDGET_CLASS (nautilus_grid_view_parent_class)->size_allocate (widget, width, height, baseline);
+-
+     if (self->phone_layout != phone_layout)
+     {
+         self->phone_layout = phone_layout;
+@@ -580,12 +575,10 @@ static void
+ nautilus_grid_view_class_init (NautilusGridViewClass *klass)
+ {
+     GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+     NautilusListBaseClass *list_base_view_class = NAUTILUS_LIST_BASE_CLASS (klass);
+ 
+     object_class->dispose = dispose;
+     object_class->finalize = finalize;
+-    widget_class->size_allocate = nautilus_grid_view_size_allocate;
+ 
+     list_base_view_class->get_icon_size = real_get_icon_size;
+     list_base_view_class->get_sort_state = real_get_sort_state;
+@@ -605,6 +598,8 @@ nautilus_grid_view_init (NautilusGridView *self)
+     GtkWidget *scrolled_window = nautilus_list_base_get_scrolled_window (NAUTILUS_LIST_BASE (self));
+ 
+     gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-grid-view");
++    g_signal_connect_swapped (self, "notify::width", G_CALLBACK (update_phone_layout), self);
++    g_signal_connect_swapped (self, "notify::root", G_CALLBACK (update_phone_layout), self);
+ 
+     set_captions_from_preferences (self);
+     g_signal_connect_object (nautilus_icon_view_preferences,
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index 9c8e2dd..e479b40 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -65,6 +65,8 @@ struct _NautilusListView
+ 
+ G_DEFINE_TYPE (NautilusListView, nautilus_list_view, NAUTILUS_TYPE_LIST_BASE)
+ 
++static void update_phone_layout (NautilusListView *self);
++
+ enum
+ {
+     LOAD_SUBDIRECTORY,
+@@ -1278,6 +1280,8 @@ nautilus_list_view_init (NautilusListView *self)
+     GtkShortcut *shortcut;
+ 
+     gtk_widget_add_css_class (GTK_WIDGET (self), "nautilus-list-view");
++    g_signal_connect_swapped (self, "notify::width", G_CALLBACK (update_phone_layout), self);
++    g_signal_connect_swapped (self, "notify::root", G_CALLBACK (update_phone_layout), self);
+ 
+     g_signal_connect_object (nautilus_list_view_preferences,
+                              "changed::" NAUTILUS_PREFERENCES_LIST_VIEW_DEFAULT_VISIBLE_COLUMNS,
+@@ -1393,18 +1397,13 @@ nautilus_list_view_finalize (GObject *object)
+ }
+ 
+ static void
+-nautilus_list_view_size_allocate (GtkWidget *widget,
+-                                  int        width,
+-                                  int        height,
+-                                  int        baseline)
++update_phone_layout (NautilusListView *self)
+ {
+-    NautilusListView *self = NAUTILUS_LIST_VIEW (widget);
+-    GtkRoot *root = gtk_widget_get_root (widget);
+-    int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root)) : width;
++    GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
++    int window_width = root != NULL ? gtk_widget_get_width (GTK_WIDGET (root))
++                                    : gtk_widget_get_width (GTK_WIDGET (self));
+     gboolean phone_layout = window_width > 0 && window_width <= 480;
+ 
+-    GTK_WIDGET_CLASS (nautilus_list_view_parent_class)->size_allocate (widget, width, height, baseline);
+-
+     if (self->phone_layout != phone_layout)
+     {
+         self->phone_layout = phone_layout;
+@@ -1416,12 +1415,10 @@ static void
+ nautilus_list_view_class_init (NautilusListViewClass *klass)
+ {
+     GObjectClass *object_class = G_OBJECT_CLASS (klass);
+-    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+     NautilusListBaseClass *list_base_view_class = NAUTILUS_LIST_BASE_CLASS (klass);
+ 
+     object_class->dispose = nautilus_list_view_dispose;
+     object_class->finalize = nautilus_list_view_finalize;
+-    widget_class->size_allocate = nautilus_list_view_size_allocate;
+ 
+     list_base_view_class->get_backing_item = real_get_backing_item;
+     list_base_view_class->get_icon_size = real_get_icon_size;
+-- 
+2.55.0
+

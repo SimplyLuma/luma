@@ -1,0 +1,10 @@
+/* Viewer composes LumaUI parts; the kit owns their appearance. */
+#vw-stage { margin: 0; }
+/* Native selectable text lies over the document pixels. */
+.vw-live-text { color: alpha(@luma_ink, 0); }
+.vw-detected-text { background: alpha(@luma_blue, .14); color: alpha(@luma_ink, 0); }
+
+.vw-document-field { background: alpha(@luma_blue, .14); color: @luma_blue; }
+.vw-document-field > placeholder { color: @luma_blue; }
+.vw-comparison-glyph { color: @lumaui_black; }
+.vw-comparison-label { color: @luma_ink_secondary; }

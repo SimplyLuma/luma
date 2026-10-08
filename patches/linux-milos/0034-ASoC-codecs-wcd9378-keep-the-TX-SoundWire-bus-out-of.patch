@@ -1,0 +1,127 @@
+From 5694c4a5f397c718b74327ed4f74872f21f76332 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 6 Jul 2026 00:58:51 +0200
+Subject: [PATCH] ASoC: codecs: wcd9378: keep the TX SoundWire bus out of
+ clock-stop
+
+The SDCA function engine (the SmartMIC/SmartJACK/SmartAMP sequencer
+machinery activated by the FUNC_ACT class-load) dies when the TX
+SoundWire bus enters clock-stop. All its registers keep their values,
+so a regcache sync on resume restores nothing visible - the PDE simply
+never services power-state requests again: PDE11_ACT_PS stays in PS3,
+SEQ_TXn_STAT stays at pwr_dn_rdy, and even the TXn_VALID_CFG_OVR /
+TXn_SEQ_TRIGGER_OVR sequencer overrides and a TX0_SEQ_SOFT_RST pulse
+are ignored. Re-toggling FUNC_ACT (a real 0->1 edge on the bus) does
+not revive it either; only a full codec reset does. The result was
+capture recording pure digital silence: the whole DPCM -> CDC-DMA ->
+TX macro -> SoundWire transport ran, but the ADC never powered.
+
+Hold a runtime PM reference on the TX slave for as long as the codec
+is bound, so the bus never clock-stops. This matches the downstream
+stack, which marks the TX SoundWire master 'qcom,is-always-on' - with
+full documentation available, Qualcomm made the same trade-off.
+
+Also perform the class-load activation with plain writes instead of
+update_bits so the 0->1 activation edge always reaches the hardware
+regardless of regcache state.
+
+Verified on the FP6: from a fresh boot, repeated captures across what
+were previously bus suspend/resume cycles now power the sequencer every
+time (PDE11 reaches PS0) and record live mic signal instead of zeros.
+
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ sound/soc/codecs/wcd9378.c | 50 +++++++++++++++++++++++++++-----------
+ 1 file changed, 36 insertions(+), 14 deletions(-)
+
+diff --git a/sound/soc/codecs/wcd9378.c b/sound/soc/codecs/wcd9378.c
+index 44a3f35..e1857ac 100644
+--- a/sound/soc/codecs/wcd9378.c
++++ b/sound/soc/codecs/wcd9378.c
+@@ -165,28 +165,33 @@ static void wcd9378_class_load(struct snd_soc_component *component)
+ {
+ 	int i;
+ 
+-	snd_soc_component_update_bits(component, WCD9378_SMP_AMP_FUNC_ACT,
+-				      0x01, 0x01);
++	/*
++	 * Plain writes, not update_bits, so the 0->1 activation edge
++	 * always reaches the hardware regardless of regcache state.
++	 * The engine boots from this edge only on a freshly reset
++	 * codec; once it dies (bus clock-stop) no register write
++	 * revives it, see the TX bus PM hold in wcd9378_bind().
++	 */
++	snd_soc_component_write(component, WCD9378_SMP_AMP_FUNC_ACT, 0x00);
++	snd_soc_component_write(component, WCD9378_SMP_AMP_FUNC_ACT, 0x01);
+ 	usleep_range(20000, 20010);
+-	snd_soc_component_update_bits(component, WCD9378_SMP_AMP_FUNC_STAT,
+-				      0xff, 0xff);
++	snd_soc_component_write(component, WCD9378_SMP_AMP_FUNC_STAT, 0xff);
+ 
+-	snd_soc_component_update_bits(component, WCD9378_SMP_JACK_FUNC_ACT,
+-				      0x01, 0x01);
++	snd_soc_component_write(component, WCD9378_SMP_JACK_FUNC_ACT, 0x00);
++	snd_soc_component_write(component, WCD9378_SMP_JACK_FUNC_ACT, 0x01);
+ 	usleep_range(30000, 30010);
+ 	snd_soc_component_update_bits(component, WCD9378_CMT_GRP_MASK,
+ 				      0xff, 0x02);
+-	snd_soc_component_update_bits(component, WCD9378_SMP_JACK_FUNC_STAT,
+-				      0xff, 0xff);
++	snd_soc_component_write(component, WCD9378_SMP_JACK_FUNC_STAT, 0xff);
+ 
+ 	for (i = 0; i < 3; i++) {
+-		snd_soc_component_update_bits(component,
+-					      WCD9378_SMP_MIC_FUNC_ACT(i),
+-					      0x01, 0x01);
++		snd_soc_component_write(component,
++					WCD9378_SMP_MIC_FUNC_ACT(i), 0x00);
++		snd_soc_component_write(component,
++					WCD9378_SMP_MIC_FUNC_ACT(i), 0x01);
+ 		usleep_range(5000, 5010);
+-		snd_soc_component_update_bits(component,
+-					      WCD9378_SMP_MIC_FUNC_STAT(i),
+-					      0xff, 0xff);
++		snd_soc_component_write(component,
++					WCD9378_SMP_MIC_FUNC_STAT(i), 0xff);
+ 	}
+ }
+ 
+@@ -1219,10 +1224,26 @@ static int wcd9378_bind(struct device *dev)
+ 		goto err_remove_link3;
+ 	}
+ 
++	/*
++	 * The SDCA function engine dies when the TX bus enters clock-stop
++	 * and only a codec reset revives it — registers keep their values
++	 * so a regcache sync or a FUNC_ACT re-toggle does not help. The
++	 * downstream stack sidesteps the same problem by marking the TX
++	 * SoundWire master "qcom,is-always-on"; do the equivalent and
++	 * keep the TX slave (and thus its bus) runtime-active while the
++	 * codec is bound.
++	 */
++	ret = pm_runtime_resume_and_get(wcd9378->txdev);
++	if (ret < 0 && ret != -EACCES) {
++		dev_err(dev, "could not resume TX device\n");
++		goto err_remove_link3;
++	}
++
+ 	ret = snd_soc_register_component(dev, &soc_codec_dev_wcd9378,
+ 					 wcd9378_dais, ARRAY_SIZE(wcd9378_dais));
+ 	if (ret) {
+ 		dev_err(dev, "Codec registration failed\n");
++		pm_runtime_put(wcd9378->txdev);
+ 		goto err_remove_link3;
+ 	}
+ 
+@@ -1248,6 +1269,7 @@ static void wcd9378_unbind(struct device *dev)
+ 	struct wcd9378_priv *wcd9378 = dev_get_drvdata(dev);
+ 
+ 	snd_soc_unregister_component(dev);
++	pm_runtime_put(wcd9378->txdev);
+ 	device_link_remove(dev, wcd9378->txdev);
+ 	device_link_remove(dev, wcd9378->rxdev);
+ 	device_link_remove(wcd9378->rxdev, wcd9378->txdev);
+-- 
+2.54.0 (Apple Git-157)
+

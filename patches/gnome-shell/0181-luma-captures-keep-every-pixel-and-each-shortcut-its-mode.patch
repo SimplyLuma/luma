@@ -1,0 +1,727 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 12:30:00 -0400
+Subject: [PATCH] luma: captures keep every pixel, and each shortcut opens its own mode
+
+Capture froze the screen once, painted at the largest monitor scale, and cut
+every capture out of that picture. On a laptop panel at 1.25 beside a monitor
+at 1.0, anything taken on the monitor at 1.0 was scaled up by a quarter and
+resampled: soft, pixelated screenshots, in the file and on the clipboard.
+GNOME does the same. The screen is now also frozen at every other monitor
+scale, and a capture on one monitor is cut from the picture at that
+monitor's own scale, so it is exactly its physical pixels. A selection across
+monitors of different scales takes the largest, so no part is scaled down.
+A window is still its own buffer, as before.
+
+Ctrl+Shift+1 opens a selection, Ctrl+Shift+2 a window and Ctrl+Shift+3 the
+entire screen, every time, whatever the tool was last left on. The mode
+buttons are in that order, and each tooltip shows its shortcut. The tool on
+its own keeps no shortcut; a person's stale Ctrl+Shift+3 for a selection is
+moved once, as the earlier defaults were.
+
+Selection shows its crosshair as soon as it is entered, before the pointer
+moves. Escape closes the tool from its own key handler too, not only through
+its grab. The Options menu is the Shell's own popover menu: its standard rows
+and padding, its natural width, kept inside the work area, and opened below
+the bar when there is no room above.
+
+--- a/js/ui/screenshot.js
++++ b/js/ui/screenshot.js
+@@ -421,6 +421,13 @@
+         this._pixelScale = getter;
+     }
+ 
++    // Luma Capture: the cursor for where the pointer is now, so Selection
++    // shows its crosshair before the pointer moves.
++    syncCursor() {
++        const [x, y] = global.get_pointer();
++        this._updateCursor(x, y);
++    }
++
+     getGeometry() {
+         const leftX = Math.min(this._startX, this._lastX);
+         const topY = Math.min(this._startY, this._lastY);
+@@ -1442,8 +1449,8 @@
+         this.add_child(this._areaSelector);
+         // Luma Capture: the size label counts physical pixels, a double click
+         // inside the selection takes it, and Capture waits for a selection.
+-        this._areaSelector.setPixelScale(() => this._scale ??
+-            Math.max(1, ...global.stage.peek_stage_views().map(view => view.get_scale())));
++        this._areaSelector.setPixelScale(() =>
++            this._captureScale(...this._areaSelector.getGeometry()));
+         this._areaSelector.connect('activate',
+             () => this._onCaptureButtonClicked().catch(logError));
+         this._areaSelector.connect('selection-changed', () => {
+@@ -1697,8 +1704,10 @@
+             showScreenshotUI
+         );
+ 
+-        // Luma: the screenshot tool opened straight into drawing a selection,
+-        // whatever the tool was last left on (show-screenshot-ui keeps that).
++        // Luma: each shortcut opens its own mode, whatever the tool was last
++        // left on (only show-screenshot-ui, with no shortcut of its own, keeps
++        // that): Ctrl+Shift+1 a selection, Ctrl+Shift+2 a window (below),
++        // Ctrl+Shift+3 the entire screen.
+         Main.wm.addKeybinding(
+             'show-screenshot-ui-area',
+             new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}),
+@@ -1708,6 +1717,14 @@
+         );
+ 
+         Main.wm.addKeybinding(
++            'show-screenshot-ui-screen',
++            new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}),
++            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
++            uiModes,
++            showScreenshotUIScreen
++        );
++
++        Main.wm.addKeybinding(
+             'show-screen-recording-ui',
+             new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}),
+             Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+@@ -1871,11 +1888,16 @@
+             this._screenSelectors[Main.layoutManager.primaryIndex].checked = true;
+     }
+ 
+-    // Capture in its Selection mode, ready for a drag (Ctrl+Shift+3).
++    // Capture in its Selection mode, ready for a drag (Ctrl+Shift+1).
+     async openArea() {
+         await this.open(UIMode.SCREENSHOT, Capture.Mode.SELECTION);
+     }
+ 
++    // Capture taking the entire screen under the pointer (Ctrl+Shift+3).
++    async openScreen() {
++        await this.open(UIMode.SCREENSHOT, Capture.Mode.SCREEN);
++    }
++
+     // Capture waiting for a window to be picked (Ctrl+Shift+2).
+     async openWindow() {
+         await this.open(UIMode.SCREENSHOT, Capture.Mode.WINDOW);
+@@ -1938,6 +1960,7 @@
+                     await this._shooter.screenshot_stage_to_content();
+                 this._stageScreenshot.set_content(content);
+                 this._scale = scale;
++                this._paintEachScale(scale);
+ 
+                 if (cursorContent !== null) {
+                     this._cursor.set_content(cursorContent);
+@@ -2010,6 +2033,9 @@
+             this._bar.present(true, this._barPlace?.edge ?? 'bottom');
+         this._syncHint();
+         this._syncCaptureSensitivity();
++        // The crosshair from the first frame, however Selection was entered.
++        if (Capture.modeTarget(this._captureMode) === Capture.Mode.SELECTION)
++            this._areaSelector.syncCursor();
+         console.log(`Luma Capture: open ${JSON.stringify({mode: this._captureMode,
+             selection: this._areaSelector.hasSelection})}`);
+     }
+@@ -2034,6 +2060,7 @@
+         this._stageScreenshotContainer.hide();
+ 
+         this._stageScreenshot.set_content(null);
++        this._stageTextures = null;
+         this._cursor.set_content(null);
+ 
+         this._areaSelector.reset();
+@@ -2346,6 +2373,52 @@
+             .find(win => win.checked) ?? null;
+     }
+ 
++    // Luma Capture: the scale a capture of this area is taken at. An area on
++    // one monitor gets that monitor's scale, so it keeps exactly its pixels;
++    // an area across monitors of different scales gets the largest, so no
++    // part of it is scaled down.
++    _captureScale(x, y, width, height) {
++        const {monitors} = Main.layoutManager;
++        let scale = 0;
++        monitors.forEach((monitor, index) => {
++            if (x < monitor.x + monitor.width && x + width > monitor.x &&
++                y < monitor.y + monitor.height && y + height > monitor.y)
++                scale = Math.max(scale, global.display.get_monitor_scale(index));
++        });
++        return scale || this._scale || 1;
++    }
++
++    // The stage painted at `scale`, or null if it could not be.
++    _paintStageAt(scale) {
++        try {
++            const rect = new Mtk.Rectangle({
++                x: 0, y: 0, width: global.stage.width, height: global.stage.height,
++            });
++            const content = global.stage.paint_to_content(rect, scale, null,
++                Clutter.PaintFlag.NO_CURSORS);
++            return content?.get_texture() ?? null;
++        } catch (e) {
++            logError(e, `Luma Capture: could not paint the screen at scale ${scale}`);
++            return null;
++        }
++    }
++
++    // The frozen screen at every monitor scale, next to the one the tool
++    // shows (painted at the largest), so a capture on a monitor with a
++    // smaller scale is cut from a picture at its own scale.
++    _paintEachScale(shownScale) {
++        this._stageTextures = new Map([[shownScale, this._stageScreenshot.get_content()?.get_texture()]]);
++        const scales = new Set(Main.layoutManager.monitors.map(
++            (_monitor, index) => global.display.get_monitor_scale(index)));
++        for (const scale of scales) {
++            if (this._stageTextures.has(scale))
++                continue;
++            const texture = this._paintStageAt(scale);
++            if (texture)
++                this._stageTextures.set(scale, texture);
++        }
++    }
++
+     _captureRect() {
+         const target = Capture.modeTarget(this._captureMode);
+         if (target === Capture.Mode.WINDOW) {
+@@ -2366,14 +2439,21 @@
+ 
+         if (this._selectionButton.checked || this._screenButton.checked) {
+             let texture, scale, cursor;
+-            const geometry = this._getSelectedGeometry(true);
++            // Luma Capture: every pixel of the monitor the capture is on, at
++            // that monitor's own scale, never resampled from another's.
++            const logical = this._getSelectedGeometry(false);
++            scale = this._captureScale(...logical);
++            const geometry = logical.map(v => Math.round(v * scale));
+             if (live) {
+                 const shooter = new Shell.Screenshot();
+                 const [content, contentScale, cursorContent, cursorPoint, cursorScale] =
+                     await shooter.screenshot_stage_to_content();
+-                texture = content.get_texture();
+-                scale = contentScale;
+-                geometry.splice(0, 4, ...this._getSelectedGeometry(false).map(v => v * scale));
++                texture = scale === contentScale ? null : this._paintStageAt(scale);
++                if (!texture) {
++                    texture = content.get_texture();
++                    scale = contentScale;
++                    geometry.splice(0, 4, ...logical.map(v => Math.round(v * scale)));
++                }
+                 cursor = {
+                     texture: showPointer ? cursorContent?.get_texture() ?? null : null,
+                     x: (cursorPoint?.x ?? 0) * scale,
+@@ -2384,15 +2464,19 @@
+                 const content = this._stageScreenshot.get_content();
+                 if (!content)
+                     return; // Failed to capture the screenshot for some reason.
+-                texture = content.get_texture();
+-                scale = this._scale;
++                texture = this._stageTextures?.get(scale) ?? null;
++                if (!texture) {
++                    texture = content.get_texture();
++                    scale = this._scale;
++                    geometry.splice(0, 4, ...logical.map(v => Math.round(v * scale)));
++                }
+                 let cursorTexture = this._cursor.content?.get_texture();
+                 if (!this._cursor.visible)
+                     cursorTexture = null;
+                 cursor = {
+                     texture: cursorTexture ?? null,
+-                    x: this._cursor.x * this._scale,
+-                    y: this._cursor.y * this._scale,
++                    x: this._cursor.x * scale,
++                    y: this._cursor.y * scale,
+                     scale: this._cursorScale,
+                 };
+             }
+@@ -2762,9 +2846,14 @@
+                 this._placeBar();
+         });
+ 
+-        this._menu = new Capture.CaptureMenu();
+-        this.add_child(this._menu);
++        this._menu = new Capture.CaptureMenu(this._bar.optionsButton);
++        this.add_child(this._menu.actor);
+         this._menu.connect('activate', (_menu, key, value) => this._setOption(key, value));
++        // A chosen item closes the menu, as every Shell menu does.
++        this._menu.connect('open-state-changed', (_menu, open) => {
++            if (!open)
++                this._bar.setOptionsOpen(false);
++        });
+ 
+         this._countdown = new Capture.Countdown();
+         global.stage.add_child(this._countdown);
+@@ -2847,6 +2936,8 @@
+ 
+         if (picked && target === Capture.Mode.SELECTION && !this._areaSelector.hasSelection)
+             this._restoreSelection();
++        if (target === Capture.Mode.SELECTION)
++            this._areaSelector.syncCursor();
+         if (target === Capture.Mode.WINDOW)
+             this._pickWindowUnderPointer();
+         if (target === Capture.Mode.SCREEN)
+@@ -3048,10 +3139,7 @@
+     }
+ 
+     _placeMenu() {
+-        const [, , width, height] = this._menu.get_preferred_size();
+-        const place = this.placeFromBar(this._bar.optionsButton, {width, height});
+-        if (place)
+-            this._menu.set_position(place.x, place.y);
++        this._menu.reposition();
+     }
+ 
+     _closeMenu(returnFocus) {
+@@ -3131,6 +3219,13 @@
+     vfunc_key_press_event(event) {
+         const symbol = event.get_key_symbol();
+ 
++        // Luma Capture: Escape closes the tool from its own modal as well as
++        // through the grab, so it never depends on the grab seeing the key.
++        if (symbol === Clutter.KEY_Escape) {
++            this.close();
++            return Clutter.EVENT_STOP;
++        }
++
+         // Luma Capture: Tab and Shift+Tab move through the bar.
+         if (symbol === Clutter.KEY_Tab || symbol === Clutter.KEY_ISO_Left_Tab ||
+             symbol === Clutter.KEY_KP_Tab) {
+@@ -3505,6 +3600,15 @@
+         logError(err, 'Error opening the screenshot UI');
+     });
+ }
++
++/**
++ * Shows the screenshot UI in its Selection mode.
++ */
++export function showScreenshotUIScreen() {
++    Main.screenshotUI.openScreen().catch(err => {
++        logError(err, 'Error opening the screenshot UI');
++    });
++}
+ 
+ /**
+  * Shows the screenshot UI in its Selection mode.
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -29,6 +29,7 @@
+ import St from 'gi://St';
+ 
+ import * as Config from '../misc/config.js';
++import * as Signals from '../misc/signals.js';
+ import * as BoxPointer from './boxpointer.js';
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+@@ -466,23 +467,29 @@
+         this._timeoutId = 0;
+     }
+ 
+-    attach(control, text) {
++    attach(control, text, shortcut = null) {
+         control.accessible_name = text;
++        if (shortcut)
++            control.accessible_description = shortcut;
+         control.connect('notify::hover', () => {
+             if (control.hover)
+-                this._open(control, text);
++                this._open(control, text, shortcut);
+             else
+                 this._close(control);
+         });
+         control.connect('destroy', () => this._close(control));
+     }
+ 
+-    _open(control, text) {
++    _open(control, text, shortcut = null) {
+         this._clearTimeout();
+         this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+             this._timeoutId = 0;
+             this._control = control;
+-            this._label.text = text;
++            // The shortcut follows the name, quieter.
++            const escape = value => GLib.markup_escape_text(value, -1);
++            this._label.clutter_text.set_markup(shortcut
++                ? `${escape(text)}   <span fgalpha="60%">${escape(shortcut)}</span>`
++                : escape(text));
+             this.show();
+             const [, , width, height] = this.get_preferred_size();
+             const place = this._host.placeFromBar(control, {width, height});
+@@ -537,6 +544,44 @@
+     [Mode.RECORD_SELECTION]: () => _('Record selection'),
+ };
+ 
++// The shortcut that opens each screenshot mode, from the keybinding settings.
++const MODE_SHORTCUT_KEYS = {
++    [Mode.SELECTION]: 'show-screenshot-ui-area',
++    [Mode.WINDOW]: 'screenshot-window',
++    [Mode.SCREEN]: 'show-screenshot-ui-screen',
++};
++
++// "<Ctrl><Shift>1" as "Ctrl+Shift+1".
++export function formatAccelerator(accel) {
++    const names = {control: 'Ctrl', ctrl: 'Ctrl', primary: 'Ctrl', shift: 'Shift',
++        alt: 'Alt', mod1: 'Alt', super: 'Super', mod4: 'Super', meta: 'Meta'};
++    const parts = [];
++    let rest = accel.trim();
++    for (let match = rest.match(/^<([^>]+)>/); match; match = rest.match(/^<([^>]+)>/)) {
++        parts.push(names[match[1].toLowerCase()] ?? match[1]);
++        rest = rest.slice(match[0].length);
++    }
++    if (!rest)
++        return '';
++    parts.push(rest.length === 1 ? rest.toUpperCase() : rest);
++    return parts.join('+');
++}
++
++function modeShortcut(mode) {
++    const key = MODE_SHORTCUT_KEYS[mode];
++    if (!key)
++        return null;
++    try {
++        const settings = new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'});
++        if (!settings.settings_schema.has_key(key))
++            return null;
++        const [accel] = settings.get_strv(key);
++        return accel ? formatAccelerator(accel) || null : null;
++    } catch {
++        return null;
++    }
++}
++
+ const MODE_ICONS = {
+     [Mode.SCREEN]: 'luma-capture-screen-symbolic',
+     [Mode.WINDOW]: 'luma-capture-window-symbolic',
+@@ -603,7 +648,7 @@
+                 });
+                 if (isRecordingMode(mode))
+                     button.add_style_class_name('luma-capture-record-mode');
+-                this.tooltip.attach(button, MODE_LABELS[mode]());
++                this.tooltip.attach(button, MODE_LABELS[mode](), modeShortcut(mode));
+                 button.connect('clicked', () => this.emit('mode-activated', mode));
+                 this.modeButtons.set(mode, button);
+                 box.add_child(button);
+@@ -620,9 +665,10 @@
+             return line;
+         };
+ 
+-        group(_('Screenshot'), [Mode.SCREEN, Mode.WINDOW, Mode.SELECTION]);
++        // In the order of their shortcuts: Ctrl+Shift+1, 2 and 3.
++        group(_('Screenshot'), [Mode.SELECTION, Mode.WINDOW, Mode.SCREEN]);
+         separator();
+-        this._recordingGroup = group(_('Recording'), [Mode.RECORD_SCREEN, Mode.RECORD_SELECTION]);
++        this._recordingGroup = group(_('Recording'), [Mode.RECORD_SELECTION, Mode.RECORD_SCREEN]);
+         this._recordingSeparator = separator();
+ 
+         const optionsBox = new St.BoxLayout({style_class: 'luma-capture-options-box'});
+@@ -787,76 +833,63 @@
+ 
+ // ── Options menu ───────────────────────────────────────────────────────────
+ 
+-export const CaptureMenu = GObject.registerClass({
+-    Signals: {
+-        'activate': {param_types: [GObject.TYPE_STRING, GObject.TYPE_STRING]},
+-    },
+-}, class CaptureMenu extends Surface {
+-    _init() {
+-        super._init('menu', 14, {visible: false, reactive: true, onScreenOnly: false});
+-        this.surface.set({
+-            accessible_role: Atk.Role.MENU,
+-            accessible_name: _('Capture options'),
+-        });
+-        this._box = new St.BoxLayout({
+-            style_class: 'luma-capture-menu-box',
+-            orientation: Clutter.Orientation.VERTICAL,
+-            x_expand: true,
+-        });
+-        this.setContent(this._box);
++// The Shell's own popover menu, opened from the Options button: standard
++// rows and padding, its natural width, kept inside the monitor's work area,
++// and opened above the bar or, with no room there, below it.
++export class CaptureMenu extends Signals.EventEmitter {
++    constructor(sourceActor) {
++        super();
++        this._menu = new PopupMenu.PopupMenu(sourceActor, 0.5, St.Side.BOTTOM);
++        // The Options button opens the menu itself, once it is filled.
++        sourceActor.disconnectObject(this._menu);
++        this._menu.actor.add_style_class_name('luma-capture-options-menu');
++        this._menu.actor.accessible_name = _('Capture options');
++        this._menu.actor.hide();
++        this._menu.connect('open-state-changed', (_menu, open) =>
++            this.emit('open-state-changed', open));
+         this._items = [];
+     }
+ 
++    get actor() {
++        return this._menu.actor;
++    }
++
++    get visible() {
++        return this._menu.isOpen;
++    }
++
++    contains(actor) {
++        return this._menu.actor.contains(actor);
++    }
++
+     // groups: [{label, items: [{key, value, text, role, checked, muted}]}]
+     build(groups) {
+-        this._box.destroy_all_children();
++        this._menu.removeAll();
+         this._items = [];
+         groups.forEach((group, index) => {
+-            if (index > 0) {
+-                this._box.add_child(new St.Widget({style_class: 'luma-capture-menu-separator'}));
+-            }
+-            this._box.add_child(new St.Label({
+-                style_class: 'luma-capture-menu-heading',
+-                text: group.label,
+-            }));
++            if (index > 0)
++                this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++            // A quiet heading row, as the Shell's menus title a section.
++            const heading = new PopupMenu.PopupMenuItem(group.label, {reactive: false, can_focus: false});
++            heading.add_style_class_name('luma-capture-menu-heading');
++            this._menu.addMenuItem(heading);
+             for (const item of group.items)
+-                this._box.add_child(this._item(item));
++                this._menu.addMenuItem(this._item(item));
+         });
+     }
+ 
+     _item({key, value = '', text, role = 'radio', checked = false, muted = false}) {
+-        const row = new St.BoxLayout({style_class: 'luma-capture-menu-row', x_expand: true});
+-        const gutter = new St.Bin({style_class: 'luma-capture-menu-gutter'});
+-        if (checked) {
+-            gutter.set_child(new St.Icon({
+-                style_class: 'luma-capture-menu-check',
+-                icon_name: 'luma-capture-check-symbolic',
+-            }));
+-        }
+-        row.add_child(gutter);
+-        row.add_child(new St.Label({
+-            text,
+-            y_align: Clutter.ActorAlign.CENTER,
+-            x_expand: true,
+-        }));
+-        const button = new St.Button({
+-            style_class: 'luma-capture-menu-item',
+-            can_focus: true,
+-            x_expand: true,
+-            child: row,
+-            accessible_name: text,
+-            accessible_role: role === 'check'
+-                ? Atk.Role.CHECK_MENU_ITEM
+-                : role === 'radio' ? Atk.Role.RADIO_MENU_ITEM : Atk.Role.MENU_ITEM,
+-        });
++        const item = new PopupMenu.PopupMenuItem(text);
++        item.setOrnament(checked ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
++        item.accessible_role = role === 'check'
++            ? Atk.Role.CHECK_MENU_ITEM
++            : role === 'radio' ? Atk.Role.RADIO_MENU_ITEM : Atk.Role.MENU_ITEM;
+         if (muted)
+-            button.add_style_class_name('luma-capture-menu-more');
+-        if (checked)
+-            button.add_accessible_state(Atk.StateType.CHECKED);
+-        button._lumaChecked = checked;
+-        button.connect('clicked', () => this.emit('activate', key, value));
+-        this._items.push(button);
+-        return button;
++            item.label.add_style_class_name('luma-capture-menu-more');
++        item._lumaChecked = checked;
++        item.connect('activate', () => this.emit('activate', key, value));
++        this._items.push(item);
++        return item;
+     }
+ 
+     get items() {
+@@ -877,28 +910,30 @@
+         next?.grab_key_focus();
+     }
+ 
+-    present(show, edge) {
+-        this.remove_all_transitions();
+-        const distance = reduceMotion() ? 0 : 6 * stageScale() * (edge === 'top' ? -1 : 1);
+-        if (show) {
+-            this.show();
+-            this.set({opacity: 0, translation_y: distance});
+-            this.ease({
+-                opacity: 255,
+-                translation_y: 0,
+-                duration: reduceMotion() ? 0 : 160,
+-                mode: Clutter.AnimationMode.EASE_OUT_QUINT,
+-            });
+-        } else {
+-            this.ease({
+-                opacity: 0,
+-                duration: reduceMotion() ? 0 : 120,
+-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-                onComplete: () => this.hide(),
+-            });
+-        }
++    show() {
+     }
+-});
++
++    hide() {
++        this._menu.close(BoxPointer.PopupAnimation.NONE);
++    }
++
++    reposition() {
++        if (this._menu.isOpen)
++            this._menu._boxPointer.setPosition(this._menu.sourceActor, this._menu._arrowAlignment);
++    }
++
++    present(show) {
++        const animation = reduceMotion() ? BoxPointer.PopupAnimation.NONE : BoxPointer.PopupAnimation.FULL;
++        if (show)
++            this._menu.open(animation);
++        else
++            this._menu.close(animation);
++    }
++
++    destroy() {
++        this._menu.destroy();
++    }
++}
+ 
+ // ── Countdown and flash ────────────────────────────────────────────────────
+ 
+--- a/data/theme/luma-capture.css
++++ b/data/theme/luma-capture.css
+@@ -32,7 +32,6 @@
+ 
+ 
+ .luma-capture-bar, .luma-capture-bar-shadow, .luma-capture-bar-line { border-radius: 18px; }
+-.luma-capture-menu, .luma-capture-menu-shadow, .luma-capture-menu-line { border-radius: 14px; }
+ .luma-capture-pill, .luma-capture-pill-shadow, .luma-capture-pill-line { border-radius: 20px; }
+ .luma-capture-thumb, .luma-capture-thumb-shadow, .luma-capture-thumb-line { border-radius: 15px; }
+ 
+@@ -143,32 +142,8 @@
+ /* ── Tooltip: the dock's pill (.dash-label in luma-shelf.css) ─────────────── */
+ .luma-capture-tooltip { font-family: 'Figtree', system-ui, sans-serif; }
+ 
+-/* ── Options menu ───────────────────────────────────────────────────────── */
+-.luma-capture-menu { width: 236px; font-size: 13px; }
+-.luma-capture-menu-box { padding: 6px; }
+-.luma-capture-menu-heading {
+-  padding: 8px 10px 4px 30px;
+-  font-size: 11.5px;
+-  font-weight: 650;
+-  letter-spacing: 0.1px;
+-  color: #767b81; }
+-.luma-capture-menu-item {
+-  height: 30px;
+-  border-radius: 8px;
+-  color: #30343a;
+-  font-weight: 500; }
+-.luma-capture-menu-item:hover, .luma-capture-menu-item:focus { background-color: rgba(35, 44, 52, 0.072); }
+-.luma-capture-menu-row { padding-right: 10px; }
+-.luma-capture-menu-gutter { width: 30px; }
+-.luma-capture-menu-check { icon-size: 12px; }
+-.luma-capture-menu-more { color: #767b81; }
+-.luma-capture-menu-separator { height: 1px; margin: 5px 8px; background-color: rgba(35, 39, 45, 0.09); }
+-
+-.luma-surface-dark .luma-capture-menu-heading, .luma-surface-dark .luma-capture-menu-more { color: #969da4; }
+-.luma-surface-dark .luma-capture-menu-item { color: #e9ebec; }
+-.luma-surface-dark .luma-capture-menu-item.luma-capture-menu-more { color: #969da4; }
+-.luma-surface-dark .luma-capture-menu-item:hover, .luma-surface-dark .luma-capture-menu-item:focus { background-color: rgba(255, 255, 255, 0.072); }
+-.luma-surface-dark .luma-capture-menu-separator { background-color: rgba(255, 255, 255, 0.075); }
++/* ── Options menu: the Shell's own popover menu, styled by the theme ──── */
++.luma-capture-menu-heading { font-size: 11.5px; font-weight: 650; }
+ 
+ /* ── Selection, window and screen ───────────────────────────────────────── */
+ .screenshot-ui-area-selector .screenshot-ui-area-indicator-selection { border: 0; }
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -308,10 +308,15 @@
+       <summary>Take a screenshot interactively</summary>
+     </key>
+     <key name="show-screenshot-ui-area" type="as">
+-      <default>["&lt;Ctrl&gt;&lt;Shift&gt;3"]</default>
+-      <summary>Drag to capture an area</summary>
++      <default>["&lt;Ctrl&gt;&lt;Shift&gt;1"]</default>
++      <summary>Capture a selection</summary>
+       <description>Opens the screenshot tool in its Selection mode, ready to drag an area.</description>
+     </key>
++    <key name="show-screenshot-ui-screen" type="as">
++      <default>["&lt;Ctrl&gt;&lt;Shift&gt;3"]</default>
++      <summary>Capture the entire screen</summary>
++      <description>Opens the screenshot tool in its Entire Screen mode, on the screen under the pointer.</description>
++    </key>
+     <key name="show-screen-recording-ui" type="as">
+       <default>["&lt;Ctrl&gt;&lt;Shift&gt;&lt;Alt&gt;R"]</default>
+       <summary>Record a screencast interactively</summary>
+--- a/data/00_org.gnome.shell.gschema.override
++++ b/data/00_org.gnome.shell.gschema.override
+@@ -7,11 +7,12 @@
+ 
+ # Luma: Super+Tab opens the workspace overview (org.gnome.shell.keybindings
+ # toggle-workspace-overview), so the app switcher, Grid, keeps Alt+Tab only.
+-# Luma: Ctrl+Shift+1 to 4 take screenshots and recordings (the tool, a
+-# window, a selected area, a recording) and nothing else does: the whole-screen
+-# capture has no shortcut. Ctrl+Shift+3 is show-screenshot-ui-area's default.
++# Luma: Ctrl+Shift+1 to 4 take screenshots and recordings, each in its own
++# mode (a selection, a window, the entire screen, a recording), and nothing
++# else does. Ctrl+Shift+1 and 3 are show-screenshot-ui-area's and
++# show-screenshot-ui-screen's defaults; the tool on its own has no shortcut.
+ [org.gnome.shell.keybindings]
+-show-screenshot-ui=['<Ctrl><Shift>1']
++show-screenshot-ui=@as []
+ screenshot-window=['<Ctrl><Shift>2']
+ show-screen-recording-ui=['<Ctrl><Shift>4']
+ screenshot=@as []
+--- a/data/50-gnome-shell-screenshots.xml
++++ b/data/50-gnome-shell-screenshots.xml
+@@ -6,16 +6,16 @@
+                 package="gnome-shell">
+ 
+     <!-- Luma: the four screenshot shortcuts, in the order of their keys
+-         (Ctrl+Shift+1 to 4). The whole-screen capture keeps its action but
++         (Ctrl+Shift+1 to 4), each opening its own mode. The tool on its own
+          has no shortcut, so it is not listed as a Disabled row. -->
+-    <KeyListEntry name="show-screenshot-ui"
+-                  description="Open the screenshot tool"/>
++    <KeyListEntry name="show-screenshot-ui-area"
++                  description="Capture a selection"/>
+ 
+     <KeyListEntry name="screenshot-window"
+                   description="Capture a window"/>
+ 
+-    <KeyListEntry name="show-screenshot-ui-area"
+-                  description="Drag to capture an area"/>
++    <KeyListEntry name="show-screenshot-ui-screen"
++                  description="Capture the entire screen"/>
+ 
+     <KeyListEntry name="show-screen-recording-ui"
+                   description="Record the screen"/>
+--- a/data/luma-screenshot-shortcuts-migrate.js
++++ b/data/luma-screenshot-shortcuts-migrate.js
+@@ -6,12 +6,15 @@
+ // early machines by hand, as their own setting would never see them. Once per
+ // person, each of those keys is reset to the image default, but only while its
+ // value is still one of those known values: a shortcut someone chose is kept.
++// Second pass: each shortcut now opens its own mode (Ctrl+Shift+1 a
++// selection, 3 the entire screen), so the old Ctrl+Shift+3 for a selection
++// is stale too.
+ 
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ 
+ const SCHEMA = 'org.gnome.shell.keybindings';
+-const MARKER = 'screenshot-shortcuts-1';
++const MARKER = 'screenshot-shortcuts-2';
+ 
+ // Values that are not a person's choice: GNOME's defaults before Luma changed
+ // them, and what was set on staging machines before these defaults shipped.
+@@ -20,6 +23,7 @@
+     'screenshot-window': [['<Alt>Print'], ['<Control><Shift>2']],
+     'show-screen-recording-ui': [['<Ctrl><Shift><Alt>R'], ['<Control><Shift>4']],
+     'screenshot': [['<Shift>Print'], []],
++    'show-screenshot-ui-area': [['<Control><Shift>3']],
+ };
+ 
+ const MODIFIERS = new Map([
+--- a/data/luma-screenshot-shortcuts-migrate.service
++++ b/data/luma-screenshot-shortcuts-migrate.service
+@@ -2,7 +2,7 @@
+ Description=Move screenshot shortcuts to Luma's defaults, once
+ After=graphical-session-pre.target
+ PartOf=graphical-session.target
+-ConditionPathExists=!%S/luma/migrations/screenshot-shortcuts-1
++ConditionPathExists=!%S/luma/migrations/screenshot-shortcuts-2
+ 
+ [Service]
+ Type=oneshot

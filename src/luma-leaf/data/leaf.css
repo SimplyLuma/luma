@@ -1,0 +1,153 @@
+/* SPDX-License-Identifier: Apache-2.0
+   Leaf outside the page. Everything here takes the kit's tokens, so the
+   library, panels and player follow Light, Dark, Frost and Glass like every
+   other Luma application. The page keeps its own paper (data/reader). No 3D,
+   no lift: covers are flat and nothing grows on hover. */
+
+/* ── library ─────────────────────────────────────────────────────────── */
+.leaf-phone-hero-middle { margin-top: 0; }
+.leaf-phone-hero-title { font-size: 22px; }
+
+.leaf-hero { padding: 8px 0 19px; margin-bottom: 36px; border-bottom: 1px solid @luma_line; }
+.leaf-phone-hero { padding: 16px; border-radius: 24px; }
+.leaf-phone-hero .leaf-eyebrow { margin-bottom: 9px; }
+.leaf-hero-cover { padding: 0; border: 0; background: none; box-shadow: none; border-radius: 3px; min-height: 0; min-width: 0; }
+.leaf-hero-cover:focus-visible .leaf-cover { outline: 2px solid @accent_color; outline-offset: 3px; }
+.leaf-eyebrow { margin-bottom: 0; color: @luma_muted; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; }
+.leaf-hero-title { color: @luma_ink; font-family: "Literata", Georgia, serif; font-size: 34px;
+  font-weight: 500; letter-spacing: -.015em; }
+.leaf-hero-by { margin: 4px 0 18px; color: @luma_ink_secondary; font-size: 14px; font-weight: 400; }
+.leaf-hero-quote { margin-bottom: 18px; padding-left: 16px; border-left: 2px solid @accent_color;
+  color: @luma_ink; font-family: "Literata", Georgia, serif; font-size: 16px; font-style: italic; font-weight: 400; }
+.leaf-hero-meta { margin: 0 0 8px; color: @luma_muted; font-size: 12.5px; font-weight: 400; font-feature-settings: "tnum"; }
+.leaf-hero-progress { margin-bottom: 20px; }
+.leaf-also { padding-left: 28px; border-left: 1px solid @luma_line; }
+.leaf-also-row { padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; min-height: 0; }
+.leaf-also-row:hover { background: @luma_hover; }
+.leaf-also-title { color: @luma_ink; font-size: 13px; font-weight: 600; }
+.leaf-also-status { color: @luma_muted; font-size: 11.5px; font-weight: 400; }
+
+.leaf-shelf-head { margin: 0 0 20px; }
+.leaf-shelf-title { color: @luma_ink; font-size: 17px; font-weight: 650; }
+.leaf-shelf-count { color: @luma_muted; font-size: 12.5px; font-weight: 400; }
+.leaf-grid > flowboxchild { padding: 0; background: none; }
+.leaf-book { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; min-height: 0; min-width: 0; }
+.leaf-book:hover { background: transparent; }
+.leaf-book:hover .leaf-cover { filter: brightness(.965); }
+.leaf-book:focus-visible { outline: 0; }
+.leaf-book:focus-visible .leaf-cover { outline: 2px solid @accent_color; outline-offset: 3px; }
+.leaf-book .leaf-cover { margin-bottom: 11px; }
+.leaf-book.gone .leaf-cover { opacity: .42; }
+.leaf-book-title { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.leaf-book-by { margin-top: 2px; color: @luma_muted; font-size: 11px; font-weight: 550; }
+.leaf-book-meta { min-height: 12px; margin-top: 8px; color: @luma_muted; font-size: 9px; font-weight: 650; font-feature-settings: "tnum"; }
+.leaf-book-new { color: @luma_accent_link; }
+.leaf-empty { padding: 60px 0; color: @luma_muted; font-size: 11px; font-weight: 600; }
+.luma-avail { color: @luma_muted; }
+
+/* ── the page room ───────────────────────────────────────────────────── */
+.leaf-rbar { min-height: 39px; }
+.leaf-back { min-height: 28px; padding: 0 10px 0 6px; border-radius: 10px; background: transparent;
+  box-shadow: inset 0 0 0 1px @luma_line; color: @luma_ink; font-size: 11px; font-weight: 650; }
+.leaf-back:hover { background: @luma_hover; }
+.leaf-rtitle { margin-left: 4px; }
+.leaf-rtitle-book { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.leaf-rtitle-chapter { color: @luma_muted; font-size: 11px; font-weight: 550; }
+.leaf-listen { min-height: 28px; margin-left: 4px; padding: 0 11px 0 9px; border: 0; border-radius: 10px;
+  background: @luma_fill; color: @luma_ink; font-size: 11px; font-weight: 650; box-shadow: none; }
+.leaf-listen:hover { background: @luma_hover; }
+.leaf-listen:checked { background: @luma_ink; color: @luma_content; }
+.leaf-web { background: transparent; }
+
+.leaf-toc-bar { padding: 0 6px; }
+.leaf-toc-header { padding: 4px 4px 10px; }
+.leaf-drawer-title { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.leaf-drawer-author { color: @luma_muted; font-size: 11px; }
+.leaf-drawer-close { min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 9px;
+  background: transparent; box-shadow: none; color: @luma_muted; }
+.leaf-drawer-close:hover { background: @luma_hover; color: @luma_ink; }
+.leaf-toc-divider { margin: 0 4px 10px; background: @luma_line; }
+.leaf-toc .lumaui-mode-switch { margin-bottom: 12px; }
+.leaf-toc-list { background: transparent; padding: 0 8px 0 0; }
+.leaf-toc-list > row { border-radius: 8px; padding: 7px 10px; min-height: 0; }
+.leaf-toc-list > row.leaf-toc-heading { padding-top: 17px; padding-bottom: 0; }
+.leaf-toc-list > row:hover { background: @luma_hover; }
+.leaf-toc-list > row:selected { background: @luma_selected; color: @luma_ink; }
+.leaf-toc-row label { color: @luma_ink; font-size: 13px; font-weight: 600; }
+.leaf-toc-row .leaf-toc-number, .leaf-toc-group, .leaf-drawer-author { color: @luma_muted; }
+.leaf-toc-row .leaf-toc-reading { color: @luma_accent_link; }
+.leaf-toc-row .leaf-toc-minutes { color: @luma_muted; font-size: 9px; font-weight: 600; font-feature-settings: "tnum"; }
+.leaf-toc-empty { padding: 40px 16px; color: @luma_muted; font-size: 11px; font-weight: 600; }
+.leaf-mark-row { padding: 9px 8px; }
+.leaf-mark-dot { min-width: 8px; min-height: 8px; margin-top: 5px; border-radius: 99px; background: @luma_muted; }
+.leaf-mark-dot.colour-y { background: #e8c784; } .leaf-mark-dot.colour-g { background: #9cc28c; }
+.leaf-mark-dot.colour-b { background: #8fb0d4; } .leaf-mark-dot.colour-r { background: #d49aa8; }
+.leaf-mark-quote { color: @luma_ink; font-family: "Source Serif 4", "Source Serif Pro", Georgia, serif; font-size: 13px; }
+.leaf-mark-note { color: @luma_ink; font-size: 11px; font-weight: 500; font-style: italic; }
+.leaf-mark-chapter { color: @luma_muted; font-size: 9px; font-weight: 600; }
+
+/* text and page */
+.leaf-type-panel { padding: 0; }
+.leaf-type-panel > separator { margin: 2px -12px; background: @luma_line; }
+.leaf-themes { margin-bottom: 2px; }
+.leaf-type-size { margin: 0; }
+.leaf-type-size > button { min-width: 36px; min-height: 36px; padding: 0; }
+.leaf-type-label { color: @luma_muted; font-size: 11.5px; font-weight: 500; }
+popover.leaf-type > contents { padding: 14px 14px 10px; min-width: 268px; }
+.leaf-tp-row > label { color: @luma_muted; font-size: 11px; font-weight: 600; }
+.leaf-theme { padding: 0; border: 0; background: none; box-shadow: none; color: @luma_muted; font-size: 9px; font-weight: 600; min-height: 0; min-width: 0; }
+.leaf-theme:checked { color: @luma_ink; background: none; }
+.leaf-theme-swatch { min-width: 42px; min-height: 42px; border-radius: 12px; box-shadow: inset 0 0 0 1px @luma_line;
+  font-family: "Source Serif 4", "Source Serif Pro", Georgia, serif; font-size: 14px; font-weight: 600; }
+.leaf-theme:checked .leaf-theme-swatch { box-shadow: inset 0 0 0 1px @luma_line, 0 0 0 2px @luma_content, 0 0 0 3.5px @accent_color; }
+.leaf-theme-swatch.theme-auto { background: @luma_content; color: @luma_ink; }
+.leaf-theme-swatch.theme-paper { background: #f6f1e6; color: #2a251f; }
+.leaf-theme-swatch.theme-sepia { background: #ecdfc6; color: #3a2d1f; }
+.leaf-theme-swatch.theme-stone { background: #e2e1dc; color: #25272a; }
+.leaf-theme-swatch.theme-night { background: #1d1c1a; color: #d9d1c3; }
+.leaf-step { padding: 2px; border-radius: 10px; background: @luma_fill; }
+.leaf-step > button { min-width: 32px; min-height: 24px; padding: 0; border: 0; border-radius: 8px; background: transparent; box-shadow: none;
+  color: @luma_ink; font-family: "Source Serif 4", "Source Serif Pro", Georgia, serif; font-weight: 600; }
+.leaf-step > button:hover { background: @luma_hover; }
+.leaf-step-small { font-size: 12px; } .leaf-step-large { font-size: 17px; }
+.leaf-step-value { min-width: 26px; color: @luma_ink; font-size: 11px; font-weight: 650; font-feature-settings: "tnum"; }
+
+/* the selection menu: solid, raised, 44px — never translucent over text */
+popover.leaf-selpop > contents { padding: 6px; background: @luma_content; min-height: 32px; }
+.leaf-dot { min-width: 24px; min-height: 24px; margin: 0 1px; padding: 0; border: 0; border-radius: 99px;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.1); }
+.leaf-dot.colour-y { background: #f3d99f; } .leaf-dot.colour-g { background: #bcd9ae; }
+.leaf-dot.colour-b { background: #b4cce6; } .leaf-dot.colour-r { background: #e6bcc6; }
+.leaf-dot:checked { box-shadow: inset 0 0 0 1px rgba(0,0,0,.1), 0 0 0 2px @luma_content, 0 0 0 3.5px @luma_ink; }
+.leaf-sp-sep { margin: 3px 4px; background: @luma_line; min-width: 1px; }
+.leaf-sp-btn { min-height: 32px; padding: 0 9px; border: 0; border-radius: 10px; background: transparent; box-shadow: none;
+  color: @luma_ink; font-size: 11px; font-weight: 600; }
+.leaf-sp-btn:hover { background: @luma_hover; }
+.leaf-note { padding: 4px; }
+.leaf-note-text { padding: 8px 9px; border-radius: 10px; background: @luma_fill; color: @luma_ink; font-size: 13px; }
+.leaf-note-text text { background: transparent; }
+
+/* the player */
+.leaf-player { padding: 9px 10px 9px 12px; border-top: 1px solid @luma_line; background: @luma_content; }
+.leaf-pl-play { min-width: 34px; min-height: 34px; margin: 0 3px; padding: 0; border: 0; border-radius: 99px;
+  background: @luma_ink; color: @luma_content; box-shadow: none; }
+.leaf-pl-play:hover { background: mix(@luma_ink, @luma_content, .14); }
+.leaf-pl-title { color: @luma_ink; font-size: 13px; font-weight: 650; }
+.leaf-pl-status { color: @luma_muted; font-size: 9px; font-weight: 550; }
+.leaf-speeds > button { min-width: 0; padding: 0 7px; font-feature-settings: "tnum"; }
+.leaf-pl-pick { min-height: 28px; padding: 0 2px 0 8px; border-radius: 10px; background: @luma_fill; color: @luma_muted; }
+.leaf-pl-pick dropdown > button { min-height: 26px; padding: 0 6px; border: 0; background: transparent; box-shadow: none;
+  color: @luma_ink; font-size: 11px; font-weight: 600; }
+
+/* another device is further on: a small solid note at the top of the page */
+.leaf-elsewhere { padding: 6px 6px 6px 12px; border-radius: 12px; background: @luma_content;
+  box-shadow: 0 0 0 1px @luma_line, 0 8px 24px alpha(black, .18); }
+.leaf-elsewhere-text { color: @luma_ink; font-size: 11px; font-weight: 600; }
+
+.leaf-toast { padding: 8px 14px; border-radius: 12px; background: @luma_content; color: @luma_ink; font-size: 11px; font-weight: 600;
+  box-shadow: 0 0 0 1px @luma_line, 0 8px 24px alpha(black, .18); }
+.leaf-book-menu > button { min-height: 28px; padding: 0 10px; font-size: 13px; font-weight: 550; }
+
+.leaf-phone-hero .leaf-hero-title { font-size: 22px; margin: 2px 0; }
+.leaf-phone-hero .leaf-hero-by { margin: 4px 0 18px; }
+.leaf-phone-hero .leaf-hero-progress { margin-bottom: 0; }

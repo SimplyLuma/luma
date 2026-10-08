@@ -1,0 +1,279 @@
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 4070623..f6dcd0c 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -2133,10 +2133,38 @@ StScrollBar {
+ #panel.luma-handheld:overview {
+   height: 42px;
+   background-color: #ffffff;
+   color: #202733;
+   box-shadow: 0 1px 0 rgba(30, 41, 59, 0.10); }
+ 
++.luma-live-extension {
++  margin: 3px 0;
++  border: 1px solid rgba(17, 24, 39, 0.1);
++  border-radius: 9px;
++  background-color: rgba(255, 255, 255, 0.72);
++  color: #1f2937; }
++  .luma-live-extension:hover, .luma-live-extension:focus {
++    background-color: rgba(255, 255, 255, 0.92); }
++  .luma-live-extension:active {
++    background-color: rgba(72, 120, 184, 0.14); }
++  .luma-live-extension .luma-live-extension-content {
++    spacing: 7px;
++    padding: 2px 9px; }
++  .luma-live-extension .luma-live-extension-icon {
++    icon-size: 16px;
++    color: #4878b8; }
++  .luma-live-extension .luma-live-extension-text {
++    spacing: 0;
++    width: 180px; }
++  .luma-live-extension .luma-live-extension-title {
++    font-size: 11px;
++    font-weight: 600;
++    color: #1f2937; }
++  .luma-live-extension .luma-live-extension-subtitle {
++    font-size: 9px;
++    font-weight: 500;
++    color: #6b7280; }
++
+ #panel.luma-handheld .panel-button,
+ #panel.luma-handheld:overview .panel-button {
+   min-height: 38px;
+   color: #202733; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_panel.scss b/data/theme/gnome-shell-sass/widgets/_panel.scss
+index b3a6f7e..498d854 100644
+--- a/data/theme/gnome-shell-sass/widgets/_panel.scss
++++ b/data/theme/gnome-shell-sass/widgets/_panel.scss
+@@ -278,6 +278,51 @@ $panel_transition_duration: 250ms; // same as the overview transition duration
+   }
+ }
+ 
++// Live Extensions are structured application state rendered entirely by the
++// system Shell. Applications cannot inject actors, markup, or styling here.
++.luma-live-extension {
++  margin: 3px 0;
++  border: 1px solid rgba(17, 24, 39, 0.10);
++  border-radius: 9px;
++  background-color: rgba(255, 255, 255, 0.72);
++  color: #1f2937;
++
++  &:hover, &:focus {
++    background-color: rgba(255, 255, 255, 0.92);
++  }
++
++  &:active {
++    background-color: rgba(72, 120, 184, 0.14);
++  }
++
++  .luma-live-extension-content {
++    spacing: 7px;
++    padding: 2px 9px;
++  }
++
++  .luma-live-extension-icon {
++    icon-size: 16px;
++    color: #4878b8;
++  }
++
++  .luma-live-extension-text {
++    spacing: 0;
++    width: 180px;
++  }
++
++  .luma-live-extension-title {
++    font-size: 11px;
++    font-weight: 600;
++    color: #1f2937;
++  }
++
++  .luma-live-extension-subtitle {
++    font-size: 9px;
++    font-weight: 500;
++    color: #6b7280;
++  }
++}
++
+ // Portrait handheld posture clears the camera cutout without turning the
+ // entire top band into oversized chrome. Desktop geometry is unchanged.
+ #panel.luma-handheld,
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 2015f6f..f5d5f8f 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1,9 +1,11 @@
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Graphene from 'gi://Graphene';
+ import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
+ import St from 'gi://St';
+ 
+ import * as Config from '../misc/config.js';
+@@ -37,6 +39,142 @@ import {InputSourceIndicator} from './status/keyboard.js';
+ import {DwellClickIndicator} from './status/dwellClick.js';
+ import {ScreenRecordingIndicator, ScreenSharingIndicator} from './status/remoteAccess.js';
+ 
++const LUMA_LIVE_EXTENSIONS_BUS = 'org.projectluma.SemanticBroker1';
++const LUMA_LIVE_EXTENSIONS_PATH = '/org/projectluma/SemanticBroker1';
++const LUMA_LIVE_EXTENSIONS_INTERFACE = 'org.projectluma.SemanticBroker1';
++
++const LiveExtensionsIndicator = GObject.registerClass(
++class LiveExtensionsIndicator extends PanelMenu.Button {
++    _init() {
++        super._init(0.5, _('Ongoing activity'), true);
++        this.add_style_class_name('luma-live-extension');
++        this._handheld = GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld';
++        this._current = null;
++
++        this._icon = new St.Icon({
++            style_class: 'luma-live-extension-icon',
++            icon_name: 'x-office-calendar-symbolic',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._title = new St.Label({
++            style_class: 'luma-live-extension-title',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._title.clutter_text.single_line_mode = true;
++        this._subtitle = new St.Label({
++            style_class: 'luma-live-extension-subtitle',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._subtitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._subtitle.clutter_text.single_line_mode = true;
++        const text = new St.BoxLayout({
++            style_class: 'luma-live-extension-text',
++            vertical: true,
++        });
++        text.add_child(this._title);
++        text.add_child(this._subtitle);
++        const content = new St.BoxLayout({
++            style_class: 'luma-live-extension-content',
++        });
++        content.add_child(this._icon);
++        content.add_child(text);
++        this.add_child(content);
++
++        const click = new Clutter.ClickGesture();
++        click.set_recognize_on_press(true);
++        click.connect('recognize', () => this._openApplication());
++        this.add_action(click);
++
++        this._signal = Gio.DBus.session.signal_subscribe(
++            LUMA_LIVE_EXTENSIONS_BUS,
++            LUMA_LIVE_EXTENSIONS_INTERFACE,
++            'LiveExtensionsChanged',
++            LUMA_LIVE_EXTENSIONS_PATH,
++            null,
++            Gio.DBusSignalFlags.NONE,
++            () => this._refresh());
++        this.connect('destroy', () => {
++            if (this._signal)
++                Gio.DBus.session.signal_unsubscribe(this._signal);
++            this._signal = 0;
++        });
++        this.hide();
++        this._refresh();
++    }
++
++    _refresh() {
++        Gio.DBus.session.call(
++            LUMA_LIVE_EXTENSIONS_BUS,
++            LUMA_LIVE_EXTENSIONS_PATH,
++            LUMA_LIVE_EXTENSIONS_INTERFACE,
++            'ListLiveExtensions',
++            null,
++            new GLib.VariantType('(aa{sv})'),
++            Gio.DBusCallFlags.NONE,
++            3000,
++            null,
++            (connection, result) => {
++                try {
++                    const [reply] = connection.call_finish(result).recursiveUnpack();
++                    const extensions = Array.isArray(reply)
++                        ? reply.filter(item => this._isValidExtension(item))
++                        : [];
++                    extensions.sort((a, b) =>
++                        (a.extension.starts_at ?? a.extension.expires_at).localeCompare(
++                            b.extension.starts_at ?? b.extension.expires_at));
++                    this._setExtension(extensions[0] ?? null);
++                } catch (error) {
++                    console.debug(`Luma Live Extensions unavailable: ${error}`);
++                    this._setExtension(null);
++                }
++            });
++    }
++
++    _isValidExtension(item) {
++        if (!item || typeof item !== 'object' ||
++            typeof item.application_id !== 'string' ||
++            !item.extension || typeof item.extension !== 'object')
++            return false;
++
++        const extension = item.extension;
++        return typeof extension.title === 'string' &&
++            (extension.subtitle === undefined ||
++                typeof extension.subtitle === 'string') &&
++            (extension.starts_at === undefined ||
++                typeof extension.starts_at === 'string') &&
++            typeof extension.expires_at === 'string';
++    }
++
++    _setExtension(item) {
++        this._current = item;
++        if (!item || this._handheld) {
++            this.hide();
++            return;
++        }
++        const extension = item.extension;
++        this._title.text = extension.title;
++        this._subtitle.text = extension.subtitle ?? '';
++        this._subtitle.visible = Boolean(extension.subtitle);
++        this.accessible_name = extension.subtitle
++            ? `${extension.title}, ${extension.subtitle}`
++            : extension.title;
++        this.show();
++    }
++
++    _openApplication() {
++        if (!this._current)
++            return;
++        const application = Gio.DesktopAppInfo.new(
++            `${this._current.application_id}.desktop`);
++        try {
++            application?.launch([], null);
++        } catch (error) {
++            console.error(`Unable to open Live Extension application: ${error.message}`);
++        }
++    }
++});
++
+ const BUTTON_DND_ACTIVATION_TIMEOUT = 250;
+ 
+ const N_QUICK_SETTINGS_COLUMNS = 2;
+@@ -420,6 +558,7 @@ const PANEL_ITEM_IMPLEMENTATIONS = {
+     'activities': ActivitiesButton,
+     'quickSettings': QuickSettings,
+     'dateMenu': DateMenuButton,
++    'liveExtensions': LiveExtensionsIndicator,
+     'a11y': ATIndicator,
+     'keyboard': InputSourceIndicator,
+     'dwellClick': DwellClickIndicator,
+diff --git a/js/ui/sessionMode.js b/js/ui/sessionMode.js
+index 48657c2..9108a0a 100644
+--- a/js/ui/sessionMode.js
++++ b/js/ui/sessionMode.js
+@@ -97,7 +97,7 @@ const _modes = {
+         components: USER_SESSION_COMPONENTS,
+         panel: {
+             left: ['dateMenu'],
+-            center: [],
++            center: ['liveExtensions'],
+             right: ['screenRecording', 'screenSharing', 'dwellClick', 'a11y', 'keyboard', 'quickSettings'],
+         },
+     },

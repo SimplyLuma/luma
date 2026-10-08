@@ -1,0 +1,318 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+/*
+ * LumaUI creative family (KB-D): the creative suite's parts (v70 .su*),
+ * shared by Canvas, Grid, Stage, Session and Write.
+ *
+ *   LumaCreativeWorkspace  .suwork     the canvas ground, dot grid and slots
+ *   LumaFloatingPanel      .supanel    floating panel, folds to .supill, a drawer on a phone
+ *   LumaToolBar            .sutools    the 40 px tool strip; the palette variant is #vw-pal
+ *   LumaLayerTree          .sulyr      layers, with caret, eye and the object selection
+ *   LumaPropertySection    .susec      and its fields: .sufld, .suclrrow, .suselect, .seg, .sualign
+ *
+ * One implementation in C (LumaUI-1, luma-creative-*.c); Python uses it
+ * through gi.repository.LumaUI. Colours are @luma_* only, metrics are
+ * var(--lumaui-*). Apps never select .lumaui-creative-* in their own sheets.
+ */
+
+/* ── LumaUI: CreativeWorkspace (.suwork) ── */
+.lumaui-creative-workspace { background-color: @luma_creative_canvas; }
+/* The dot grid is painted by the workspace in this node's colour. */
+.lumaui-creative-workspace > .lumaui-creative-grid { color: @luma_creative_canvas_dot; min-width: 0; min-height: 0; }
+.lumaui-creative-workspace > .lumaui-creative-zoom {
+  margin: 0 var(--lumaui-creative-zoom-right) var(--lumaui-creative-zoom-bottom) 0;
+  transition: opacity var(--lumaui-duration-creative-panel-fade) ease;
+}
+.lumaui-creative-workspace > .lumaui-creative-zoom.gone { opacity: 0; }
+.lumaui-creative-workspace > .lumaui-creative-tools { margin-bottom: var(--lumaui-creative-tools-bottom); }
+
+/* ── LumaUI: FloatingPanel (.supanel, .supill) ── */
+box.lumaui-creative-panel {
+  margin: var(--lumaui-creative-panel-inset);
+  transition: opacity var(--lumaui-duration-creative-panel-fade) ease,
+              transform var(--lumaui-duration-creative-panel-move) var(--lumaui-spring);
+}
+box.lumaui-creative-panel.gone { opacity: 0; }
+box.lumaui-creative-panel.left.gone { transform: translateX(calc(-1 * var(--lumaui-creative-gone-shift))); }
+box.lumaui-creative-panel.right.gone { transform: translateX(var(--lumaui-creative-gone-shift)); }
+box.lumaui-creative-panel-card {
+  border-radius: var(--lumaui-creative-panel-radius);
+  background: @luma_creative_panel_surface; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_float_highlight, 0 0 0 1px @luma_float_ring,
+              0 12px 32px -8px @luma_float_shadow, 0 2px 6px @luma_float_shadow_near;
+}
+box.lumaui-creative-panel.left box.lumaui-creative-panel-card { min-width: var(--lumaui-creative-panel-left-width); }
+box.lumaui-creative-panel.right box.lumaui-creative-panel-card { min-width: var(--lumaui-creative-panel-right-width); }
+/* A phone: the open panel is a bottom drawer (the kit's drawer shape). */
+box.lumaui-creative-panel.drawer { margin: 0; }
+box.lumaui-creative-panel.drawer box.lumaui-creative-panel-card {
+  min-width: 0; padding-top: var(--lumaui-creative-panel-phone-padding-top);
+  border-radius: var(--lumaui-creative-panel-phone-radius) var(--lumaui-creative-panel-phone-radius) 0 0;
+}
+box.lumaui-creative-handle { min-width: 0; min-height: 0; }
+box.lumaui-creative-panel.drawer box.lumaui-creative-handle {
+  min-width: var(--lumaui-drawer-handle-width); min-height: var(--lumaui-drawer-handle-height);
+  margin: calc(var(--lumaui-drawer-handle-top) - var(--lumaui-creative-panel-phone-padding-top)) 0 4px;
+  border-radius: 3px; background: @luma_drawer_handle;
+}
+
+/* The header: a page picker (.suph1) or the subject's icon and name (.suinsph). */
+box.lumaui-creative-panel-header { padding: 8px 8px 0 12px; border-spacing: 6px; }
+box.lumaui-creative-panel-header.menu { padding: 8px 8px 2px 8px; }
+image.lumaui-creative-panel-icon { -gtk-icon-size: var(--lumaui-creative-pill-icon); color: @luma_creative_selection; }
+label.lumaui-creative-panel-title,
+button.lumaui-creative-panel-title label,
+entry.lumaui-creative-panel-title {
+  font-size: var(--lumaui-creative-title-size); font-weight: var(--lumaui-t-title-2-weight); letter-spacing: -0.14px;
+}
+button.lumaui-creative-panel-title {
+  min-height: var(--lumaui-creative-header-button); padding: 0 8px; margin: 0; border: none;
+  border-radius: var(--lumaui-creative-header-radius); background: none; box-shadow: none; color: @luma_ink;
+  outline: 0 solid transparent; transition: background var(--lumaui-duration-hover) ease;
+}
+button.lumaui-creative-panel-title > box { border-spacing: 5px; }
+button.lumaui-creative-panel-title label { font-weight: 900; }
+button.lumaui-creative-panel-title image { -gtk-icon-size: 13px; color: @luma_muted; }
+button.lumaui-creative-panel-title:hover { background: @luma_hover; }
+entry.lumaui-creative-panel-title {
+  min-height: var(--lumaui-creative-header-button); padding: 0 6px; margin: 0; border: none; border-radius: 8px;
+  background: none; box-shadow: none; color: @luma_ink; outline: 0 solid transparent;
+}
+entry.lumaui-creative-panel-title:hover, entry.lumaui-creative-panel-title:focus-within { background: @luma_well; }
+button.lumaui-creative-panel-button {
+  min-width: var(--lumaui-creative-header-button); min-height: var(--lumaui-creative-header-button);
+  padding: 0; margin: 0; border: none; border-radius: var(--lumaui-creative-header-radius);
+  background: none; box-shadow: none; color: @luma_ink_secondary; outline: 0 solid transparent;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-creative-panel-button image { -gtk-icon-size: 18px; }
+box.lumaui-creative-panel-header.menu button.lumaui-creative-panel-button image { -gtk-icon-size: var(--lumaui-creative-header-icon); }
+button.lumaui-creative-panel-button:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-creative-panel-title:focus-visible,
+button.lumaui-creative-panel-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+
+/* Tabs (.sutabs) and segments (.seg): a well, the current one on a raised
+ * chip that is its own node (v70 i.ind), never the button's paint. */
+box.lumaui-creative-tabs, box.lumaui-creative-segments {
+  padding: 3px; border-radius: 12px; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-creative-tabs { margin: 6px 10px 8px; }
+box.lumaui-creative-tabs-row { border-spacing: 0; }
+box.lumaui-creative-tabs-indicator {
+  border-radius: 9px; background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+button.lumaui-creative-tab {
+  min-height: var(--lumaui-creative-tab-height); min-width: 0; padding: 0 8px; margin: 0; border: none;
+  border-radius: 9px; background: none; box-shadow: none; outline: 0 solid transparent;
+  color: @luma_muted; font-size: var(--lumaui-creative-tab-size); font-weight: 500; letter-spacing: 0.125px;
+  transition: color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-creative-tab:hover, button.lumaui-creative-tab:checked, button.lumaui-creative-tab.on { color: @luma_ink; background: none; box-shadow: none; }
+button.lumaui-creative-tab:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-creative-tab image { -gtk-icon-size: 15px; }
+box.lumaui-creative-segments button.lumaui-creative-tab { font-size: 12px; letter-spacing: 0.12px; }
+
+scrolledwindow.lumaui-creative-panel-scroll > viewport > stack,
+scrolledwindow.lumaui-creative-panel-scroll > viewport > box { padding: 0 var(--lumaui-creative-scroll-padding-x) 8px; }
+scrolledwindow.lumaui-creative-panel-scroll > scrollbar { opacity: 0; }
+label.lumaui-creative-heading {
+  margin: 12px 6px 6px; font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight);
+  letter-spacing: var(--lumaui-t-label-tracking); color: @luma_muted;
+}
+
+/* The folded panel (.supill), in the bar's material. */
+button.lumaui-creative-pill {
+  min-height: var(--lumaui-creative-pill-height); padding: 0 var(--lumaui-creative-pill-padding-x); margin: 0; border: none;
+  border-radius: var(--lumaui-creative-pill-radius); color: @luma_ink_secondary; outline: 0 solid transparent;
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+  transition: color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-creative-pill:hover { color: @luma_ink; }
+button.lumaui-creative-pill:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+button.lumaui-creative-pill > box { border-spacing: var(--lumaui-creative-pill-gap); }
+button.lumaui-creative-pill image { -gtk-icon-size: var(--lumaui-creative-pill-icon); color: @luma_muted; }
+/* v70's titles are <b> in a 600 and 650 run: bolder, 900. */
+label.lumaui-creative-pill-title { font-size: 13px; font-weight: 900; color: @luma_ink; }
+label.lumaui-creative-pill-summary { font-size: 13px; font-weight: 400; color: @luma_muted; }
+
+/* ── LumaUI: ToolBar (.sutools) and ToolPalette (#vw-pal) ── */
+box.lumaui-creative-tools {
+  padding: var(--lumaui-creative-tools-padding); border-spacing: var(--lumaui-creative-tools-gap);
+  border-radius: var(--lumaui-ac-bar-radius); color: @luma_bar_ink_secondary;
+  background: @luma_bar_surface; background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
+  box-shadow: inset 0 1px 0 @luma_bar_highlight, 0 0 0 1px @luma_bar_ring, 0 12px 32px -8px @luma_bar_shadow, 0 2px 6px @luma_bar_shadow_near;
+}
+box.lumaui-creative-tools.palette { padding: 4px; }
+button.lumaui-creative-tool {
+  min-width: var(--lumaui-creative-tool); min-height: var(--lumaui-creative-tool); padding: 0; margin: 0; border: none;
+  border-radius: var(--lumaui-creative-tool-radius); background: none; box-shadow: none; color: @luma_bar_ink_secondary;
+  outline: 0 solid transparent; transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+.lumaui-creative-workspace.phone button.lumaui-creative-tool { min-width: var(--lumaui-creative-tool-phone-min); }
+box.lumaui-creative-tools.palette button.lumaui-creative-tool { min-width: var(--lumaui-creative-palette-tool); min-height: var(--lumaui-creative-palette-tool); }
+button.lumaui-creative-tool image { -gtk-icon-size: var(--lumaui-creative-tool-icon); }
+button.lumaui-creative-tool:hover { background: @luma_hover; color: @luma_ink; }
+/* The chosen tool is a state, so it is raised, never the loud key (v70, 25 Sep). */
+button.lumaui-creative-tool:checked, button.lumaui-creative-tool.on {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+/* The palette's chosen tool is the key (v70 .vwpal .ib.on). */
+box.lumaui-creative-tools.palette button.lumaui-creative-tool:checked,
+box.lumaui-creative-tools.palette button.lumaui-creative-tool.on {
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end); color: @luma_key_ink;
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 2px @luma_key_shadow;
+}
+button.lumaui-creative-tool:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+/* The flyout's corner mark (.sumore): two borders make the triangle. */
+.lumaui-creative-tool-more {
+  min-width: 18px; min-height: 18px; opacity: 0.6;
+}
+.lumaui-creative-tool-more-mark {
+  min-width: 0; min-height: 0; margin: 0 4px 4px 0;
+  border: var(--lumaui-creative-tool-more) solid transparent;
+  border-right-color: currentColor; border-bottom-color: currentColor;
+}
+/* v70: in the bar the separator is a 6 px pause; in the palette, a hairline. */
+separator.lumaui-creative-tools-separator { min-width: var(--lumaui-creative-tools-separator); min-height: 1px; margin: 0; background: @luma_line; }
+box.lumaui-creative-tools.palette separator.lumaui-creative-tools-separator { min-width: 1px; min-height: 22px; margin: 0 5px; }
+
+/* ── LumaUI: LayerTree (.sulyr, .sucar, .sueye) ── */
+list.lumaui-creative-layers { background: none; color: @luma_ink_secondary; }
+list.lumaui-creative-layers > row {
+  min-height: var(--lumaui-creative-layer-height); padding: 0; margin: 0;
+  border-radius: var(--lumaui-creative-layer-radius); background: none; outline: 0 solid transparent;
+  transition: background var(--lumaui-duration-hover) ease;
+}
+list.lumaui-creative-layers > row:hover { background: @luma_hover; }
+/* The object selection: one token, shared with the canvas. */
+list.lumaui-creative-layers > row:selected { background: @luma_creative_selection_soft; color: @luma_ink; }
+list.lumaui-creative-layers > row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+box.lumaui-creative-layer {
+  min-height: var(--lumaui-creative-layer-height); padding: 0 4px; border-spacing: var(--lumaui-creative-layer-gap);
+  font-size: var(--lumaui-creative-layer-size);
+}
+.lumaui-creative-layer-caret { min-width: var(--lumaui-creative-layer-caret); min-height: var(--lumaui-creative-layer-caret); }
+button.lumaui-creative-layer-caret {
+  padding: 0; margin: 0; border: none; border-radius: 4px; background: none; box-shadow: none; color: @luma_faint; outline: 0 solid transparent;
+}
+button.lumaui-creative-layer-caret image {
+  -gtk-icon-size: var(--lumaui-creative-layer-caret-icon); transition: -gtk-icon-transform var(--lumaui-duration-press) ease;
+}
+button.lumaui-creative-layer-caret.open image { -gtk-icon-transform: rotate(90deg); }
+image.lumaui-creative-layer-icon { -gtk-icon-size: var(--lumaui-creative-layer-icon); color: @luma_muted; }
+list.lumaui-creative-layers > row:selected image.lumaui-creative-layer-icon { color: @luma_creative_selection; }
+entry.lumaui-creative-layer-rename {
+  min-height: 24px; padding: 0 4px; margin: 0; border: none; border-radius: 6px; font-size: var(--lumaui-creative-layer-size);
+  background: @luma_well; box-shadow: 0 0 0 1.5px @luma_creative_selection; color: @luma_ink; outline: 0 solid transparent;
+}
+label.lumaui-creative-layer-detail {
+  font-size: var(--lumaui-t-caption-size); letter-spacing: var(--lumaui-t-caption-tracking); color: @luma_faint; font-feature-settings: "tnum";
+}
+box.lumaui-creative-layer.hidden > label.lumaui-creative-layer-name,
+box.lumaui-creative-layer.hidden > image.lumaui-creative-layer-icon { opacity: 0.45; }
+button.lumaui-creative-layer-eye {
+  min-width: var(--lumaui-creative-layer-eye); min-height: var(--lumaui-creative-layer-eye); padding: 0; margin: 0; border: none;
+  border-radius: 6px; background: none; box-shadow: none; color: @luma_muted; opacity: 0; outline: 0 solid transparent;
+}
+button.lumaui-creative-layer-eye image { -gtk-icon-size: var(--lumaui-creative-layer-eye-icon); }
+list.lumaui-creative-layers > row:hover button.lumaui-creative-layer-eye,
+box.lumaui-creative-layer.hidden > button.lumaui-creative-layer-eye { opacity: 1; }
+button.lumaui-creative-layer-eye:hover { background: @luma_hover; color: @luma_ink; }
+list.lumaui-creative-layers > row.drop-above { box-shadow: inset 0 2px 0 @luma_creative_selection; }
+list.lumaui-creative-layers > row.drop-below { box-shadow: inset 0 -2px 0 @luma_creative_selection; }
+list.lumaui-creative-layers > row.drop-into { box-shadow: inset 0 0 0 1.5px @luma_creative_selection; }
+
+/* ── LumaUI: property fields ── */
+box.lumaui-creative-section {
+  padding: var(--lumaui-creative-section-padding-y) var(--lumaui-creative-section-padding-x);
+  border-top: 1px solid @luma_line; border-spacing: 6px;
+}
+box.lumaui-creative-section:first-child { border-top: none; }
+box.lumaui-creative-section-header { min-height: var(--lumaui-creative-section-header-height); margin-bottom: 2px; }
+box.lumaui-creative-section-header:last-child { margin-bottom: 0; }
+label.lumaui-creative-section-title {
+  font-size: var(--lumaui-t-label-size); font-weight: var(--lumaui-t-label-weight);
+  letter-spacing: var(--lumaui-t-label-tracking); color: @luma_ink_secondary;
+}
+button.lumaui-creative-section-action {
+  min-width: var(--lumaui-creative-section-action); min-height: var(--lumaui-creative-section-action); padding: 0; margin: 0;
+  border: none; border-radius: 8px; background: none; box-shadow: none; color: @luma_ink_secondary; outline: 0 solid transparent;
+}
+button.lumaui-creative-section-action image { -gtk-icon-size: var(--lumaui-creative-section-action-icon); }
+button.lumaui-creative-section-action:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-creative-section-action:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+grid.lumaui-creative-pairs { border-spacing: var(--lumaui-creative-field-gap); }
+
+/* PropertyNumber (.sufld): a well with its label, the number and a unit. */
+entry.lumaui-creative-number {
+  min-height: var(--lumaui-creative-field-height); padding: 0 var(--lumaui-creative-field-padding-x);
+  margin: 0; border: none; outline: 0 solid transparent; color: @luma_ink; border-spacing: 0;
+  border-radius: var(--lumaui-creative-field-radius); background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+entry.lumaui-creative-number:focus-within {
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 1.5px @luma_creative_selection;
+}
+entry.lumaui-creative-number.compact { min-width: var(--lumaui-creative-field-compact-width); }
+label.lumaui-creative-number-label {
+  min-width: 14px; margin-right: 6px; font-size: var(--lumaui-creative-field-label-size); letter-spacing: 0.11px; color: @luma_muted;
+}
+label.lumaui-creative-number-unit { font-size: var(--lumaui-creative-field-label-size); letter-spacing: 0.11px; color: @luma_muted; }
+entry.lumaui-creative-number > text {
+  min-height: 0; padding: 0; margin: 0; background: none; color: @luma_ink;
+  font-size: var(--lumaui-creative-field-value-size); /* v70's tabular-nums does not take in Figtree: proportional */
+}
+entry.lumaui-creative-number.mixed > text { color: @luma_muted; }
+
+/* PropertyColor (.suclrrow, .suclr, .suhex). */
+box.lumaui-creative-color { border-spacing: 6px; }
+button.lumaui-creative-swatch {
+  min-width: var(--lumaui-creative-swatch); min-height: var(--lumaui-creative-swatch); padding: 0; margin: 0; border: none;
+  border-radius: var(--lumaui-creative-field-radius); background: none; box-shadow: inset 0 0 0 1px @luma_line; outline: 0 solid transparent;
+}
+button.lumaui-creative-swatch:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+entry.lumaui-creative-hex {
+  min-height: var(--lumaui-creative-field-height); padding: 0 10px; margin: 0; border: none; outline: 0 solid transparent;
+  border-radius: var(--lumaui-creative-field-radius); background: @luma_well; color: @luma_ink;
+  font-size: var(--lumaui-creative-hex-size); font-weight: 500; letter-spacing: 0.12px; /* the mono role's family */
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+entry.lumaui-creative-hex:focus-within {
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 1.5px @luma_creative_selection;
+}
+grid.lumaui-creative-palette { padding: 4px; border-spacing: 6px; }
+button.lumaui-creative-palette-swatch {
+  min-width: 28px; min-height: 28px; padding: 0; margin: 0; border: none; border-radius: 8px;
+  background: none; box-shadow: inset 0 0 0 1px @luma_line; outline: 0 solid transparent;
+}
+button.lumaui-creative-palette-swatch:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+popover.lumaui-creative-palette-popover > contents { padding: 6px; border-radius: 16px; background: @luma_float_surface; }
+
+/* PropertyChoice: a menu well (.suselect) or segments (.seg). */
+button.lumaui-creative-select {
+  min-height: var(--lumaui-creative-select-height); padding: 0 var(--lumaui-creative-select-padding-x); margin: 0; border: none;
+  border-radius: var(--lumaui-creative-field-radius); background: @luma_well; color: @luma_ink; outline: 0 solid transparent;
+  font-size: var(--lumaui-creative-select-size); font-weight: 400;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+button.lumaui-creative-select image { -gtk-icon-size: 13px; color: @luma_muted; }
+button.lumaui-creative-select:focus-visible { box-shadow: inset 0 0 0 1px @luma_well_ring, 0 0 0 2px @luma_focus_ring; }
+
+/* AlignmentActions (.sualign). */
+box.lumaui-creative-align { border-spacing: 0; }
+button.lumaui-creative-align-button {
+  min-width: var(--lumaui-creative-align-width); min-height: var(--lumaui-creative-align-height); padding: 0; margin: 0;
+  border: none; border-radius: 8px; background: none; box-shadow: none; color: @luma_ink_secondary; outline: 0 solid transparent;
+  transition: background var(--lumaui-duration-hover) ease, color var(--lumaui-duration-hover) ease;
+}
+button.lumaui-creative-align-button image { -gtk-icon-size: var(--lumaui-creative-align-icon); }
+button.lumaui-creative-align-button:hover { background: @luma_hover; color: @luma_ink; }
+button.lumaui-creative-align-button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  box.lumaui-creative-panel, .lumaui-creative-workspace > .lumaui-creative-zoom { transition: opacity var(--lumaui-duration-reduced-fade) ease; }
+  box.lumaui-creative-panel.left.gone, box.lumaui-creative-panel.right.gone { transform: none; }
+}

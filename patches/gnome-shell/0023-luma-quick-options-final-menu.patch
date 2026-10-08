@@ -1,0 +1,1956 @@
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index ecb3e33..8f0851c 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3766,3 +3766,324 @@ StScrollBar {
+ .popup-menu .popup-ornamented-menu-item:rtl { padding: 0 8px; }
+ .popup-menu-ornament { icon-size: 14px; color: rgba(242, 244, 246, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(242, 244, 246, 0.58); }
++
++/* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
++ * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
++ * Shared tokens: Figtree 14/13/11, window radius 15, island 10,
++ * compact/standard controls 28/36, standard icon 18, spacing 8/12.
++ * St adds padding and border to CSS sizes; values below are CONTENT sizes.
++ * Native runtime geometry and compositor comparison remain release gates.
++ */
++.luma-quick-options {
++  width: 384px;
++  padding: 17px;
++  spacing: 0;
++  border-radius: 15px;
++  border: 1px solid rgba(255, 255, 255, 0.055);
++  background-color: #21252b;
++  color: #e9ebec;
++  font-family: Figtree;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.38); }
++
++.luma-quick-options-popup .luma-popup-shadow {
++  border-radius: 15px;
++  background-color: #21252b;
++  box-shadow: 0 38px 94px -26px rgba(0, 0, 0, 0.88); }
++
++.luma-quick-header {
++  height: 25px;
++  padding: 0 2px 13px;
++  border: 0 solid rgba(255, 255, 255, 0.075);
++  border-bottom-width: 1px; }
++
++.luma-quick-when {
++  spacing: 9px; }
++
++.luma-quick-time {
++  font-size: 14px;
++  font-weight: 750;
++  color: #e9ebec; }
++
++.luma-quick-date {
++  font-size: 13px;
++  font-weight: 400;
++  color: #969da4; }
++
++.luma-quick-battery {
++  padding: 0 2px;
++  spacing: 5px; }
++
++.luma-quick-battery-icon {
++  icon-size: 19px;
++  color: #e9ebec; }
++
++.luma-quick-battery-label {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++
++.luma-quick-options .quick-settings-grid {
++  padding-top: 16px;
++  spacing-rows: 0;
++  spacing-columns: 8px; }
++
++.luma-quick-options .quick-toggle,
++.luma-quick-options .quick-toggle-has-menu {
++  min-width: 0;
++  max-width: auto;
++  min-height: 0;
++  height: 62px;
++  padding: 0;
++  margin: 0 0 10px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 10px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec;
++  box-shadow: none; }
++  .luma-quick-options .quick-toggle:hover,
++  .luma-quick-options .quick-toggle-has-menu:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++
++.luma-quick-options .quick-toggle > StBoxLayout {
++  padding: 0 7px;
++  spacing: 10px; }
++
++.luma-quick-options .quick-toggle .quick-toggle-icon {
++  width: 36px;
++  height: 36px;
++  icon-size: 18px;
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #969da4; }
++
++.luma-quick-options .quick-toggle:checked .quick-toggle-icon {
++  background-color: rgba(255, 255, 255, 0.88);
++  color: #242a30; }
++
++.luma-quick-options .quick-toggle-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: inherit; }
++
++.luma-quick-options .quick-toggle-subtitle {
++  font-size: 11px;
++  font-weight: 500;
++  color: #969da4;
++  padding-top: 2px; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle {
++  height: 62px;
++  margin: 0;
++  border: 0;
++  border-radius: 10px;
++  background-color: transparent;
++  box-shadow: none; }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle > StBoxLayout {
++    padding: 0 7px;
++    spacing: 10px; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-separator {
++  width: 0;
++  background-color: transparent; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  margin: 0 7px 0 0;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec;
++  icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20, 27, 34, 0.11); }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:rtl {
++    margin: 0 0 0 7px; }
++
++.luma-quick-utility-row {
++  padding: 0 0 10px;
++  border: 0 solid rgba(255, 255, 255, 0.075);
++  border-bottom-width: 1px; }
++
++.luma-quick-utility-box {
++  spacing: 8px; }
++
++.luma-quick-options .quick-toggle.luma-quick-pill {
++  height: 42px;
++  margin: 0;
++  padding: 0;
++  color: #969da4; }
++  .luma-quick-options .quick-toggle.luma-quick-pill > StBoxLayout {
++    padding: 0 11px;
++    spacing: 9px; }
++  .luma-quick-options .quick-toggle.luma-quick-pill .quick-toggle-icon {
++    width: 18px;
++    height: 18px;
++    icon-size: 18px;
++    border-radius: 0;
++    background-color: transparent;
++    color: inherit; }
++  .luma-quick-options .quick-toggle.luma-quick-pill:checked {
++    background-color: rgba(255, 255, 255, 0.115);
++    border-color: rgba(255, 255, 255, 0.17);
++    color: #f1f3f4; }
++  .luma-quick-options .quick-toggle.luma-quick-pill:checked .quick-toggle-icon {
++    background-color: transparent;
++    color: inherit; }
++
++.luma-quick-options .quick-slider {
++  height: 38px;
++  min-height: 0;
++  padding: 6px 2px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent; }
++  .luma-quick-options .quick-slider > StBoxLayout {
++    spacing: 12px; }
++  .luma-quick-options .quick-slider .icon-button {
++    width: 28px;
++    height: 28px;
++    min-width: 0;
++    min-height: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 99px;
++    background-color: rgba(255, 255, 255, 0.072);
++    color: #969da4;
++    icon-size: 14px; }
++  .luma-quick-options .quick-slider .slider-bin {
++    padding: 0; }
++
++.luma-quick-options .quick-slider.luma-quick-volume {
++  height: 37px;
++  border-top: 1px solid rgba(255, 255, 255, 0.075); }
++
++.luma-quick-level-copy {
++  width: 82px;
++  spacing: 0; }
++
++.luma-quick-level-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++
++.luma-quick-level-value {
++  font-size: 11px;
++  font-weight: 400;
++  color: #969da4; }
++
++.luma-quick-options .slider {
++  height: 20px;
++  color: #e6e9eb;
++  -barlevel-height: 5px;
++  -barlevel-background-color: rgba(255, 255, 255, 0.072);
++  -barlevel-active-background-color: #e6e9eb;
++  -slider-handle-radius: 8px;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #21252b; }
++
++.luma-quick-options .quick-settings-system-item {
++  padding: 0;
++  margin-top: 14px; }
++
++.luma-quick-options .quick-settings-system-item > StBoxLayout {
++  spacing: 8px; }
++
++.luma-quick-footer {
++  height: 38px;
++  spacing: 8px;
++  padding: 0; }
++
++.luma-quick-identity {
++  height: 36px;
++  padding: 0 11px 0 3px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 99px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec; }
++
++.luma-quick-identity-box {
++  spacing: 9px; }
++
++.luma-quick-avatar {
++  width: 30px;
++  height: 30px;
++  border-radius: 99px;
++  background-color: #e6e9eb;
++  color: #242a30; }
++
++.luma-quick-avatar .prairie-login-avatar-initial {
++  font-size: 13px;
++  font-weight: 700; }
++
++.luma-quick-identity-name {
++  font-size: 13px;
++  font-weight: 650;
++  color: #e9ebec; }
++
++.luma-quick-identity-role {
++  font-size: 11px;
++  font-weight: 550;
++  color: #969da4; }
++
++.luma-quick-actions {
++  spacing: 8px; }
++
++.luma-quick-options .luma-quick-action {
++  width: 34px;
++  height: 34px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 99px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec;
++  icon-size: 18px; }
++  .luma-quick-options .luma-quick-action:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++
++.luma-quick-options .luma-quick-action StIcon {
++  icon-size: 18px; }
++
++.luma-quick-options .luma-quick-actions > StButton:last-child:hover {
++  background-color: #a64d52;
++  color: #fff; }
++
++.luma-quick-options StButton:focus,
++.luma-quick-options .slider-bin:focus {
++  box-shadow: 0 0 0 2px #e6e9eb; }
++
++.luma-quick-options StButton:insensitive {
++  color: #969da4; }
++
++.quick-toggle-menu.luma-quick-detail {
++  margin: 0;
++  padding: 9px;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .header {
++    padding-bottom: 0;
++    spacing-columns: 8px; }
++  .quick-toggle-menu.luma-quick-detail .header .icon {
++    icon-size: 18px;
++    padding: 0;
++    background-color: transparent; }
++  .quick-toggle-menu.luma-quick-detail .header .title {
++    font-size: 13px;
++    font-weight: 700; }
++  .quick-toggle-menu.luma-quick-detail .header .subtitle {
++    font-size: 11px;
++    color: #969da4; }
++  .quick-toggle-menu.luma-quick-detail .popup-menu-item {
++    min-height: 0;
++    height: 30px;
++    padding: 6px 10px;
++    border-radius: 10px;
++    font-size: 13px; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 6afbf59..12d249d 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4075,3 +4075,324 @@ StScrollBar {
+     .login-dialog .user-widget.vertical .user-icon StIcon,
+     .unlock-dialog .user-widget.vertical .user-icon StIcon {
+       padding: 30px; }
++
++/* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
++ * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
++ * Shared tokens: Figtree 14/13/11, window radius 15, island 10,
++ * compact/standard controls 28/36, standard icon 18, spacing 8/12.
++ * St adds padding and border to CSS sizes; values below are CONTENT sizes.
++ * Native runtime geometry and compositor comparison remain release gates.
++ */
++.luma-quick-options {
++  width: 384px;
++  padding: 17px;
++  spacing: 0;
++  border-radius: 15px;
++  border: 1px solid rgba(255, 255, 255, 0.055);
++  background-color: #21252b;
++  color: #e9ebec;
++  font-family: Figtree;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.38); }
++
++.luma-quick-options-popup .luma-popup-shadow {
++  border-radius: 15px;
++  background-color: #21252b;
++  box-shadow: 0 38px 94px -26px rgba(0, 0, 0, 0.88); }
++
++.luma-quick-header {
++  height: 25px;
++  padding: 0 2px 13px;
++  border: 0 solid #e9ebec;
++  border-bottom-width: 1px; }
++
++.luma-quick-when {
++  spacing: 9px; }
++
++.luma-quick-time {
++  font-size: 14px;
++  font-weight: 750;
++  color: #e9ebec; }
++
++.luma-quick-date {
++  font-size: 13px;
++  font-weight: 400;
++  color: #e9ebec; }
++
++.luma-quick-battery {
++  padding: 0 2px;
++  spacing: 5px; }
++
++.luma-quick-battery-icon {
++  icon-size: 19px;
++  color: #e9ebec; }
++
++.luma-quick-battery-label {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++
++.luma-quick-options .quick-settings-grid {
++  padding-top: 16px;
++  spacing-rows: 0;
++  spacing-columns: 8px; }
++
++.luma-quick-options .quick-toggle,
++.luma-quick-options .quick-toggle-has-menu {
++  min-width: 0;
++  max-width: auto;
++  min-height: 0;
++  height: 62px;
++  padding: 0;
++  margin: 0 0 10px;
++  border: 1px solid #e9ebec;
++  border-radius: 10px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec;
++  box-shadow: none; }
++  .luma-quick-options .quick-toggle:hover,
++  .luma-quick-options .quick-toggle-has-menu:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++
++.luma-quick-options .quick-toggle > StBoxLayout {
++  padding: 0 7px;
++  spacing: 10px; }
++
++.luma-quick-options .quick-toggle .quick-toggle-icon {
++  width: 36px;
++  height: 36px;
++  icon-size: 18px;
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec; }
++
++.luma-quick-options .quick-toggle:checked .quick-toggle-icon {
++  background-color: rgba(255, 255, 255, 0.88);
++  color: #242a30; }
++
++.luma-quick-options .quick-toggle-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: inherit; }
++
++.luma-quick-options .quick-toggle-subtitle {
++  font-size: 11px;
++  font-weight: 500;
++  color: #e9ebec;
++  padding-top: 2px; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle {
++  height: 62px;
++  margin: 0;
++  border: 0;
++  border-radius: 10px;
++  background-color: transparent;
++  box-shadow: none; }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle > StBoxLayout {
++    padding: 0 7px;
++    spacing: 10px; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-separator {
++  width: 0;
++  background-color: transparent; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  margin: 0 7px 0 0;
++  border: 1px solid #e9ebec;
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec;
++  icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20, 27, 34, 0.11); }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:rtl {
++    margin: 0 0 0 7px; }
++
++.luma-quick-utility-row {
++  padding: 0 0 10px;
++  border: 0 solid #e9ebec;
++  border-bottom-width: 1px; }
++
++.luma-quick-utility-box {
++  spacing: 8px; }
++
++.luma-quick-options .quick-toggle.luma-quick-pill {
++  height: 42px;
++  margin: 0;
++  padding: 0;
++  color: #e9ebec; }
++  .luma-quick-options .quick-toggle.luma-quick-pill > StBoxLayout {
++    padding: 0 11px;
++    spacing: 9px; }
++  .luma-quick-options .quick-toggle.luma-quick-pill .quick-toggle-icon {
++    width: 18px;
++    height: 18px;
++    icon-size: 18px;
++    border-radius: 0;
++    background-color: transparent;
++    color: inherit; }
++  .luma-quick-options .quick-toggle.luma-quick-pill:checked {
++    background-color: rgba(255, 255, 255, 0.115);
++    border-color: #e9ebec;
++    color: #f1f3f4; }
++  .luma-quick-options .quick-toggle.luma-quick-pill:checked .quick-toggle-icon {
++    background-color: transparent;
++    color: inherit; }
++
++.luma-quick-options .quick-slider {
++  height: 38px;
++  min-height: 0;
++  padding: 6px 2px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent; }
++  .luma-quick-options .quick-slider > StBoxLayout {
++    spacing: 12px; }
++  .luma-quick-options .quick-slider .icon-button {
++    width: 28px;
++    height: 28px;
++    min-width: 0;
++    min-height: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 99px;
++    background-color: rgba(255, 255, 255, 0.072);
++    color: #e9ebec;
++    icon-size: 14px; }
++  .luma-quick-options .quick-slider .slider-bin {
++    padding: 0; }
++
++.luma-quick-options .quick-slider.luma-quick-volume {
++  height: 37px;
++  border-top: 1px solid #e9ebec; }
++
++.luma-quick-level-copy {
++  width: 82px;
++  spacing: 0; }
++
++.luma-quick-level-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++
++.luma-quick-level-value {
++  font-size: 11px;
++  font-weight: 400;
++  color: #e9ebec; }
++
++.luma-quick-options .slider {
++  height: 20px;
++  color: #e6e9eb;
++  -barlevel-height: 5px;
++  -barlevel-background-color: rgba(255, 255, 255, 0.072);
++  -barlevel-active-background-color: #e6e9eb;
++  -slider-handle-radius: 8px;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #21252b; }
++
++.luma-quick-options .quick-settings-system-item {
++  padding: 0;
++  margin-top: 14px; }
++
++.luma-quick-options .quick-settings-system-item > StBoxLayout {
++  spacing: 8px; }
++
++.luma-quick-footer {
++  height: 38px;
++  spacing: 8px;
++  padding: 0; }
++
++.luma-quick-identity {
++  height: 36px;
++  padding: 0 11px 0 3px;
++  border: 1px solid #e9ebec;
++  border-radius: 99px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec; }
++
++.luma-quick-identity-box {
++  spacing: 9px; }
++
++.luma-quick-avatar {
++  width: 30px;
++  height: 30px;
++  border-radius: 99px;
++  background-color: #e6e9eb;
++  color: #242a30; }
++
++.luma-quick-avatar .prairie-login-avatar-initial {
++  font-size: 13px;
++  font-weight: 700; }
++
++.luma-quick-identity-name {
++  font-size: 13px;
++  font-weight: 650;
++  color: #e9ebec; }
++
++.luma-quick-identity-role {
++  font-size: 11px;
++  font-weight: 550;
++  color: #e9ebec; }
++
++.luma-quick-actions {
++  spacing: 8px; }
++
++.luma-quick-options .luma-quick-action {
++  width: 34px;
++  height: 34px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border: 1px solid #e9ebec;
++  border-radius: 99px;
++  background-color: rgba(255, 255, 255, 0.072);
++  color: #e9ebec;
++  icon-size: 18px; }
++  .luma-quick-options .luma-quick-action:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++
++.luma-quick-options .luma-quick-action StIcon {
++  icon-size: 18px; }
++
++.luma-quick-options .luma-quick-actions > StButton:last-child:hover {
++  background-color: #a64d52;
++  color: #fff; }
++
++.luma-quick-options StButton:focus,
++.luma-quick-options .slider-bin:focus {
++  box-shadow: 0 0 0 2px #e6e9eb; }
++
++.luma-quick-options StButton:insensitive {
++  color: #e9ebec; }
++
++.quick-toggle-menu.luma-quick-detail {
++  margin: 0;
++  padding: 9px;
++  border: 1px solid #e9ebec;
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .header {
++    padding-bottom: 0;
++    spacing-columns: 8px; }
++  .quick-toggle-menu.luma-quick-detail .header .icon {
++    icon-size: 18px;
++    padding: 0;
++    background-color: transparent; }
++  .quick-toggle-menu.luma-quick-detail .header .title {
++    font-size: 13px;
++    font-weight: 700; }
++  .quick-toggle-menu.luma-quick-detail .header .subtitle {
++    font-size: 11px;
++    color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .popup-menu-item {
++    min-height: 0;
++    height: 30px;
++    padding: 6px 10px;
++    border-radius: 10px;
++    font-size: 13px; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 66e104b..272a070 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3921,3 +3921,324 @@ StScrollBar {
+ .popup-menu .popup-ornamented-menu-item:rtl { padding: 0 8px; }
+ .popup-menu-ornament { icon-size: 14px; color: rgba(37, 43, 49, 0.72); }
+ .popup-menu-arrow { icon-size: 14px; color: rgba(37, 43, 49, 0.58); }
++
++/* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
++ * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
++ * Shared tokens: Figtree 14/13/11, window radius 15, island 10,
++ * compact/standard controls 28/36, standard icon 18, spacing 8/12.
++ * St adds padding and border to CSS sizes; values below are CONTENT sizes.
++ * Native runtime geometry and compositor comparison remain release gates.
++ */
++.luma-quick-options {
++  width: 384px;
++  padding: 17px;
++  spacing: 0;
++  border-radius: 15px;
++  border: 1px solid rgba(255, 255, 255, 0.72);
++  background-color: #f1f2f3;
++  color: #30343a;
++  font-family: Figtree;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.2); }
++
++.luma-quick-options-popup .luma-popup-shadow {
++  border-radius: 15px;
++  background-color: #f1f2f3;
++  box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
++
++.luma-quick-header {
++  height: 25px;
++  padding: 0 2px 13px;
++  border: 0 solid rgba(35, 39, 45, 0.09);
++  border-bottom-width: 1px; }
++
++.luma-quick-when {
++  spacing: 9px; }
++
++.luma-quick-time {
++  font-size: 14px;
++  font-weight: 750;
++  color: #30343a; }
++
++.luma-quick-date {
++  font-size: 13px;
++  font-weight: 400;
++  color: #767b81; }
++
++.luma-quick-battery {
++  padding: 0 2px;
++  spacing: 5px; }
++
++.luma-quick-battery-icon {
++  icon-size: 19px;
++  color: #30343a; }
++
++.luma-quick-battery-label {
++  font-size: 13px;
++  font-weight: 700;
++  color: #30343a; }
++
++.luma-quick-options .quick-settings-grid {
++  padding-top: 16px;
++  spacing-rows: 0;
++  spacing-columns: 8px; }
++
++.luma-quick-options .quick-toggle,
++.luma-quick-options .quick-toggle-has-menu {
++  min-width: 0;
++  max-width: auto;
++  min-height: 0;
++  height: 62px;
++  padding: 0;
++  margin: 0 0 10px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  border-radius: 10px;
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #30343a;
++  box-shadow: none; }
++  .luma-quick-options .quick-toggle:hover,
++  .luma-quick-options .quick-toggle-has-menu:hover {
++    background-color: rgba(35, 44, 52, 0.115); }
++
++.luma-quick-options .quick-toggle > StBoxLayout {
++  padding: 0 7px;
++  spacing: 10px; }
++
++.luma-quick-options .quick-toggle .quick-toggle-icon {
++  width: 36px;
++  height: 36px;
++  icon-size: 18px;
++  border-radius: 10px;
++  background-color: #fff;
++  color: #767b81; }
++
++.luma-quick-options .quick-toggle:checked .quick-toggle-icon {
++  background-color: #343a40;
++  color: #fff; }
++
++.luma-quick-options .quick-toggle-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: inherit; }
++
++.luma-quick-options .quick-toggle-subtitle {
++  font-size: 11px;
++  font-weight: 500;
++  color: #767b81;
++  padding-top: 2px; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle {
++  height: 62px;
++  margin: 0;
++  border: 0;
++  border-radius: 10px;
++  background-color: transparent;
++  box-shadow: none; }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle > StBoxLayout {
++    padding: 0 7px;
++    spacing: 10px; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-separator {
++  width: 0;
++  background-color: transparent; }
++
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  margin: 0 7px 0 0;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  border-radius: 10px;
++  background-color: #fff;
++  color: #30343a;
++  icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20, 27, 34, 0.11); }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:hover {
++    background-color: rgba(35, 44, 52, 0.115); }
++  .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:rtl {
++    margin: 0 0 0 7px; }
++
++.luma-quick-utility-row {
++  padding: 0 0 10px;
++  border: 0 solid rgba(35, 39, 45, 0.09);
++  border-bottom-width: 1px; }
++
++.luma-quick-utility-box {
++  spacing: 8px; }
++
++.luma-quick-options .quick-toggle.luma-quick-pill {
++  height: 42px;
++  margin: 0;
++  padding: 0;
++  color: #767b81; }
++  .luma-quick-options .quick-toggle.luma-quick-pill > StBoxLayout {
++    padding: 0 11px;
++    spacing: 9px; }
++  .luma-quick-options .quick-toggle.luma-quick-pill .quick-toggle-icon {
++    width: 18px;
++    height: 18px;
++    icon-size: 18px;
++    border-radius: 0;
++    background-color: transparent;
++    color: inherit; }
++  .luma-quick-options .quick-toggle.luma-quick-pill:checked {
++    background-color: rgba(35, 44, 52, 0.105);
++    border-color: rgba(35, 44, 52, 0.18);
++    color: #303840; }
++  .luma-quick-options .quick-toggle.luma-quick-pill:checked .quick-toggle-icon {
++    background-color: transparent;
++    color: inherit; }
++
++.luma-quick-options .quick-slider {
++  height: 38px;
++  min-height: 0;
++  padding: 6px 2px;
++  border: 0;
++  border-radius: 0;
++  background-color: transparent; }
++  .luma-quick-options .quick-slider > StBoxLayout {
++    spacing: 12px; }
++  .luma-quick-options .quick-slider .icon-button {
++    width: 28px;
++    height: 28px;
++    min-width: 0;
++    min-height: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 99px;
++    background-color: rgba(35, 44, 52, 0.072);
++    color: #767b81;
++    icon-size: 14px; }
++  .luma-quick-options .quick-slider .slider-bin {
++    padding: 0; }
++
++.luma-quick-options .quick-slider.luma-quick-volume {
++  height: 37px;
++  border-top: 1px solid rgba(35, 39, 45, 0.09); }
++
++.luma-quick-level-copy {
++  width: 82px;
++  spacing: 0; }
++
++.luma-quick-level-title {
++  font-size: 13px;
++  font-weight: 700;
++  color: #30343a; }
++
++.luma-quick-level-value {
++  font-size: 11px;
++  font-weight: 400;
++  color: #767b81; }
++
++.luma-quick-options .slider {
++  height: 20px;
++  color: #31373e;
++  -barlevel-height: 5px;
++  -barlevel-background-color: rgba(35, 44, 52, 0.072);
++  -barlevel-active-background-color: #31373e;
++  -slider-handle-radius: 8px;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: #f1f2f3; }
++
++.luma-quick-options .quick-settings-system-item {
++  padding: 0;
++  margin-top: 14px; }
++
++.luma-quick-options .quick-settings-system-item > StBoxLayout {
++  spacing: 8px; }
++
++.luma-quick-footer {
++  height: 38px;
++  spacing: 8px;
++  padding: 0; }
++
++.luma-quick-identity {
++  height: 36px;
++  padding: 0 11px 0 3px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  border-radius: 99px;
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #30343a; }
++
++.luma-quick-identity-box {
++  spacing: 9px; }
++
++.luma-quick-avatar {
++  width: 30px;
++  height: 30px;
++  border-radius: 99px;
++  background-color: #31373e;
++  color: #fff; }
++
++.luma-quick-avatar .prairie-login-avatar-initial {
++  font-size: 13px;
++  font-weight: 700; }
++
++.luma-quick-identity-name {
++  font-size: 13px;
++  font-weight: 650;
++  color: #30343a; }
++
++.luma-quick-identity-role {
++  font-size: 11px;
++  font-weight: 550;
++  color: #767b81; }
++
++.luma-quick-actions {
++  spacing: 8px; }
++
++.luma-quick-options .luma-quick-action {
++  width: 34px;
++  height: 34px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  border-radius: 99px;
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #30343a;
++  icon-size: 18px; }
++  .luma-quick-options .luma-quick-action:hover {
++    background-color: rgba(35, 44, 52, 0.115); }
++
++.luma-quick-options .luma-quick-action StIcon {
++  icon-size: 18px; }
++
++.luma-quick-options .luma-quick-actions > StButton:last-child:hover {
++  background-color: #a64d52;
++  color: #fff; }
++
++.luma-quick-options StButton:focus,
++.luma-quick-options .slider-bin:focus {
++  box-shadow: 0 0 0 2px #31373e; }
++
++.luma-quick-options StButton:insensitive {
++  color: #767b81; }
++
++.quick-toggle-menu.luma-quick-detail {
++  margin: 0;
++  padding: 9px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  border-radius: 10px;
++  background-color: #fff;
++  color: #30343a; }
++  .quick-toggle-menu.luma-quick-detail .header {
++    padding-bottom: 0;
++    spacing-columns: 8px; }
++  .quick-toggle-menu.luma-quick-detail .header .icon {
++    icon-size: 18px;
++    padding: 0;
++    background-color: transparent; }
++  .quick-toggle-menu.luma-quick-detail .header .title {
++    font-size: 13px;
++    font-weight: 700; }
++  .quick-toggle-menu.luma-quick-detail .header .subtitle {
++    font-size: 11px;
++    color: #767b81; }
++  .quick-toggle-menu.luma-quick-detail .popup-menu-item {
++    min-height: 0;
++    height: 30px;
++    padding: 6px 10px;
++    border-radius: 10px;
++    font-size: 13px; }
+diff --git a/data/theme/gnome-shell-sass/_widgets.scss b/data/theme/gnome-shell-sass/_widgets.scss
+index e8de94f..6aa9094 100644
+--- a/data/theme/gnome-shell-sass/_widgets.scss
++++ b/data/theme/gnome-shell-sass/_widgets.scss
+@@ -49,3 +49,5 @@
+ // Lock / login screen
+ @import 'widgets/luma-context-menu';
+ @import 'widgets/login-lock';
++
++@import 'widgets/quick-options';
+diff --git a/data/theme/gnome-shell-sass/widgets/_quick-options.scss b/data/theme/gnome-shell-sass/widgets/_quick-options.scss
+new file mode 100644
+index 0000000..8296e4c
+--- /dev/null
++++ b/data/theme/gnome-shell-sass/widgets/_quick-options.scss
+@@ -0,0 +1,150 @@
++/* Luma Quick Options. GNOME Shell/St presenter of the shared OS controls.
++ * Design Center dark/mosaic final cascade, measured at zoom 1: 420 x 372.
++ * Shared tokens: Figtree 14/13/11, window radius 15, island 10,
++ * compact/standard controls 28/36, standard icon 18, spacing 8/12.
++ * St adds padding and border to CSS sizes; values below are CONTENT sizes.
++ * Native runtime geometry and compositor comparison remain release gates.
++ */
++$q-bg: if($variant == 'light', #f1f2f3, #21252b);
++$q-raised: if($variant == 'light', #fff, #2a2f36);
++$q-ink: if($variant == 'light', #30343a, #e9ebec);
++$q-muted: if($variant == 'light', #767b81, #969da4);
++$q-line: if($variant == 'light', rgba(35,39,45,.09), rgba(255,255,255,.075));
++$q-control: if($variant == 'light', rgba(35,44,52,.072), rgba(255,255,255,.072));
++$q-hover: if($variant == 'light', rgba(35,44,52,.115), rgba(255,255,255,.12));
++$q-active: if($variant == 'light', #31373e, #e6e9eb);
++$q-active-ink: if($variant == 'light', #fff, #242a30);
++$q-state: if($variant == 'light', rgba(35,44,52,.105), rgba(255,255,255,.115));
++$q-state-line: if($variant == 'light', rgba(35,44,52,.18), rgba(255,255,255,.17));
++@if $contrast == 'high' {
++  $q-line: $q-ink;
++  $q-state-line: $q-ink;
++  $q-muted: $q-ink;
++}
++
++.luma-quick-options {
++  width: 384px;
++  padding: 17px;
++  spacing: 0;
++  border-radius: 15px;
++  border: 1px solid if($variant == 'light', rgba(255,255,255,.72), rgba(255,255,255,.055));
++  background-color: $q-bg;
++  color: $q-ink;
++  font-family: Figtree;
++  box-shadow: 0 5px 16px rgba(0,0,0,if($variant == 'light', .2, .38));
++}
++// Wide native BoxPointer layer supplied by the scoped menu patch.
++.luma-quick-options-popup .luma-popup-shadow {
++  border-radius: 15px; background-color: $q-bg;
++  box-shadow: if($variant == 'light', 0 34px 84px -24px rgba(14,18,24,.62), 0 38px 94px -26px rgba(0,0,0,.88));
++}
++.luma-quick-header {
++  height: 25px;
++  padding: 0 2px 13px;
++  border: 0 solid $q-line; border-bottom-width: 1px;
++}
++.luma-quick-when { spacing: 9px; }
++.luma-quick-time { font-size: 14px; font-weight: 750; color: $q-ink; }
++.luma-quick-date { font-size: 13px; font-weight: 400; color: $q-muted; }
++.luma-quick-battery { padding: 0 2px; spacing: 5px; }
++.luma-quick-battery-icon { icon-size: 19px; color: $q-ink; }
++.luma-quick-battery-label { font-size: 13px; font-weight: 700; color: $q-ink; }
++.luma-quick-options .quick-settings-grid { padding-top: 16px; spacing-rows: 0; spacing-columns: 8px; }
++
++.luma-quick-options .quick-toggle,
++.luma-quick-options .quick-toggle-has-menu {
++  min-width: 0; max-width: auto; min-height: 0;
++  height: 62px; padding: 0; margin: 0 0 10px;
++  border: 1px solid $q-line; border-radius: 10px;
++  background-color: $q-control; color: $q-ink;
++  box-shadow: none;
++  &:hover { background-color: $q-hover; }
++}
++.luma-quick-options .quick-toggle > StBoxLayout {
++  padding: 0 7px; spacing: 10px;
++}
++.luma-quick-options .quick-toggle .quick-toggle-icon {
++  width: 36px; height: 36px; icon-size: 18px;
++  border-radius: 10px; background-color: $q-raised; color: $q-muted;
++}
++.luma-quick-options .quick-toggle:checked .quick-toggle-icon {
++  background-color: if($variant == 'light', #343a40, rgba(255,255,255,.88));
++  color: $q-active-ink;
++}
++.luma-quick-options .quick-toggle-title { font-size: 13px; font-weight: 700; color: inherit; }
++.luma-quick-options .quick-toggle-subtitle { font-size: 11px; font-weight: 500; color: $q-muted; padding-top: 2px; }
++.luma-quick-options .quick-toggle-has-menu .quick-toggle {
++  height: 62px; margin: 0; border: 0; border-radius: 10px;
++  background-color: transparent; box-shadow: none;
++  > StBoxLayout { padding: 0 7px; spacing: 10px; }
++}
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-separator { width: 0; background-color: transparent; }
++.luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button {
++  width: 28px; height: 28px; min-width: 0; min-height: 0;
++  padding: 0; margin: 0 7px 0 0;
++  border: 1px solid $q-line; border-radius: 10px;
++  background-color: $q-raised; color: $q-ink; icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20,27,34,.11);
++  &:hover { background-color: $q-hover; }
++  &:rtl { margin: 0 0 0 7px; }
++}
++.luma-quick-utility-row { padding: 0 0 10px; border: 0 solid $q-line; border-bottom-width: 1px; }
++.luma-quick-utility-box { spacing: 8px; }
++.luma-quick-options .quick-toggle.luma-quick-pill {
++  height: 42px; margin: 0; padding: 0;
++  color: $q-muted;
++  > StBoxLayout { padding: 0 11px; spacing: 9px; }
++  .quick-toggle-icon { width: 18px; height: 18px; icon-size: 18px; border-radius: 0; background-color: transparent; color: inherit; }
++  &:checked { background-color: $q-state; border-color: $q-state-line; color: if($variant == 'light', #303840, #f1f3f4); }
++  &:checked .quick-toggle-icon { background-color: transparent; color: inherit; }
++}
++.luma-quick-options .quick-slider {
++  height: 38px; min-height: 0; padding: 6px 2px; border: 0;
++  border-radius: 0; background-color: transparent;
++  > StBoxLayout { spacing: 12px; }
++  .icon-button { width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 99px; background-color: $q-control; color: $q-muted; icon-size: 14px; }
++  .slider-bin { padding: 0; }
++}
++.luma-quick-options .quick-slider.luma-quick-volume { height: 37px; border-top: 1px solid $q-line; }
++.luma-quick-level-copy { width: 82px; spacing: 0; }
++.luma-quick-level-title { font-size: 13px; font-weight: 700; color: $q-ink; }
++.luma-quick-level-value { font-size: 11px; font-weight: 400; color: $q-muted; }
++.luma-quick-options .slider {
++  height: 20px; color: $q-active;
++  -barlevel-height: 5px;
++  -barlevel-background-color: $q-control;
++  -barlevel-active-background-color: $q-active;
++  -slider-handle-radius: 8px;
++  -slider-handle-border-width: 2px;
++  -slider-handle-border-color: $q-bg;
++}
++.luma-quick-options .quick-settings-system-item { padding: 0; margin-top: 14px; }
++.luma-quick-options .quick-settings-system-item > StBoxLayout { spacing: 8px; }
++.luma-quick-footer { height: 38px; spacing: 8px; padding: 0; }
++.luma-quick-identity { height: 36px; padding: 0 11px 0 3px; border: 1px solid $q-line; border-radius: 99px; background-color: $q-control; color: $q-ink; }
++.luma-quick-identity-box { spacing: 9px; }
++.luma-quick-avatar { width: 30px; height: 30px; border-radius: 99px; background-color: $q-active; color: $q-active-ink; }
++.luma-quick-avatar .prairie-login-avatar-initial { font-size: 13px; font-weight: 700; }
++.luma-quick-identity-name { font-size: 13px; font-weight: 650; color: $q-ink; }
++.luma-quick-identity-role { font-size: 11px; font-weight: 550; color: $q-muted; }
++.luma-quick-actions { spacing: 8px; }
++.luma-quick-options .luma-quick-action {
++  width: 34px; height: 34px; min-width: 0; min-height: 0; padding: 0;
++  border: 1px solid $q-line; border-radius: 99px; background-color: $q-control;
++  color: $q-ink; icon-size: 18px;
++  &:hover { background-color: $q-hover; }
++}
++.luma-quick-options .luma-quick-action StIcon { icon-size: 18px; }
++.luma-quick-options .luma-quick-actions > StButton:last-child:hover { background-color: #a64d52; color: #fff; }
++.luma-quick-options StButton:focus,
++.luma-quick-options .slider-bin:focus { box-shadow: 0 0 0 2px $q-active; }
++.luma-quick-options StButton:insensitive { color: $q-muted; }
++.quick-toggle-menu.luma-quick-detail {
++  margin: 0; padding: 9px; border: 1px solid $q-line; border-radius: 10px;
++  background-color: $q-raised; color: $q-ink;
++  .header { padding-bottom: 0; spacing-columns: 8px; }
++  .header .icon { icon-size: 18px; padding: 0; background-color: transparent; }
++  .header .title { font-size: 13px; font-weight: 700; }
++  .header .subtitle { font-size: 11px; color: $q-muted; }
++  .popup-menu-item { min-height: 0; height: 30px; padding: 6px 10px; border-radius: 10px; font-size: 13px; }
++}
+diff --git a/data/theme/meson.build b/data/theme/meson.build
+index 06c0f77..a3cf392 100644
+--- a/data/theme/meson.build
++++ b/data/theme/meson.build
+@@ -32,6 +32,7 @@ theme_sources = files([
+   'gnome-shell-sass/widgets/_panel.scss',
+   'gnome-shell-sass/widgets/_popovers.scss',
+   'gnome-shell-sass/widgets/_quick-settings.scss',
++  'gnome-shell-sass/widgets/_quick-options.scss',
+   'gnome-shell-sass/widgets/_screenshot.scss',
+   'gnome-shell-sass/widgets/_scrollbars.scss',
+   'gnome-shell-sass/widgets/_search-entry.scss',
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index c76acb1..7a51af7 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -13,7 +13,7 @@ import * as CtrlAltTab from './ctrlAltTab.js';
+ import * as DND from './dnd.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as PanelMenu from './panelMenu.js';
+-import {QuickSettingsMenu, SystemIndicator} from './quickSettings.js';
++import {QuickSettingsMenu, QuickUtilityRow, SystemIndicator} from './quickSettings.js';
+ import * as Main from './main.js';
+ import * as Util from '../misc/util.js';
+ 
+@@ -583,6 +583,10 @@ class QuickSettings extends PanelMenu.Button {
+         }
+ 
+         this._system = new SystemStatus.Indicator();
++        // The header shows the battery the system indicator already tracks,
++        // rather than opening a second UPower proxy to say the same thing.
++        this.menu.bindLumaBattery?.(
++            this._system.quickSettingsItems[0].powerToggle);
+         this._camera = new CameraStatus.Indicator();
+         this._volumeOutput = new VolumeStatus.OutputIndicator();
+         this._volumeInput = new VolumeStatus.InputIndicator();
+@@ -625,29 +629,35 @@ class QuickSettings extends PanelMenu.Button {
+         this._indicators.add_child(this._powerProfiles);
+         this._indicators.add_child(this._system);
+ 
+-        // add our quick settings items before any external ones
++        // The design's order: what you are connected to, the things you flick
++        // on and off, the two levels, then everything else, then the account.
++        // Every item here is still the indicator's own actor.
+         const sibling = this.menu.getFirstItem();
+-        this._addItemsBefore(this._system.quickSettingsItems,
++
++        if (this._network)
++            this._addItemsBefore(this._network.quickSettingsItems, sibling);
++        if (this._bluetooth)
++            this._addItemsBefore(this._bluetooth.quickSettingsItems, sibling);
++
++        // The utility pills: one row, across the panel.
++        this._utilityRow = new QuickUtilityRow();
++        this.menu.insertItemBefore(this._utilityRow, sibling,
++            N_QUICK_SETTINGS_COLUMNS);
++        for (const indicator of [this._location, this._nightLight]) {
++            for (const item of indicator.quickSettingsItems)
++                this._utilityRow.adopt(item);
++        }
++
++        this._addItemsBefore(this._brightness.quickSettingsItems,
+             sibling, N_QUICK_SETTINGS_COLUMNS);
+         this._addItemsBefore(this._volumeOutput.quickSettingsItems,
+             sibling, N_QUICK_SETTINGS_COLUMNS);
+         this._addItemsBefore(this._volumeInput.quickSettingsItems,
+             sibling, N_QUICK_SETTINGS_COLUMNS);
+-        this._addItemsBefore(this._brightness.quickSettingsItems,
+-            sibling, N_QUICK_SETTINGS_COLUMNS);
+ 
+         this._addItemsBefore(this._camera.quickSettingsItems, sibling);
+         this._addItemsBefore(this._remoteAccess.quickSettingsItems, sibling);
+         this._addItemsBefore(this._thunderbolt.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._location.quickSettingsItems, sibling);
+-        if (this._network)
+-            this._addItemsBefore(this._network.quickSettingsItems, sibling);
+-        if (this._bluetooth)
+-            this._addItemsBefore(this._bluetooth.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._powerProfiles.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._nightLight.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._darkMode.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._doNotDisturb.quickSettingsItems, sibling);
+         this._addItemsBefore(this._backlight.quickSettingsItems, sibling);
+         this._addItemsBefore(this._rfkill.quickSettingsItems, sibling);
+         this._addItemsBefore(this._autoRotate.quickSettingsItems, sibling);
+@@ -656,6 +666,11 @@ class QuickSettings extends PanelMenu.Button {
+         // append background apps
+         this._backgroundApps.quickSettingsItems.forEach(
+             item => this.menu.addItem(item, N_QUICK_SETTINGS_COLUMNS));
++
++        // The account and its four actions close the panel, as the design has
++        // them, so they are added after everything else rather than first.
++        this._system.quickSettingsItems.forEach(
++            item => this.menu.addItem(item, N_QUICK_SETTINGS_COLUMNS));
+     }
+ 
+     _addItemsBefore(items, sibling, colSpan = 1) {
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+index 6102ff2..2de10c4 100644
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -9,6 +9,8 @@ import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+ import St from 'gi://St';
+ 
++import GnomeDesktop from 'gi://GnomeDesktop';
++
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+ import {Slider} from './slider.js';
+@@ -116,6 +118,7 @@ export const QuickToggle = GObject.registerClass({
+         this._box.add_child(titleBox);
+ 
+         this._title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._subtitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+ 
+         this.bind_property('title',
+             this._title, 'text',
+@@ -185,10 +188,12 @@ export const QuickMenuToggle = GObject.registerClass({
+ 
+         this._menuButton = new St.Button({
+             style_class: 'quick-toggle-menu-button icon-button',
+-            child: new St.Icon({icon_name: 'go-next-symbolic'}),
++            // The detail opens in place, below the card, so the chevron points
++            // at it rather than off to the side.
++            child: new St.Icon({icon_name: 'pan-down-symbolic'}),
+             can_focus: true,
+             x_expand: false,
+-            y_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
+         });
+         this._box.add_child(this._menuButton);
+ 
+@@ -229,7 +234,16 @@ export const QuickMenuToggle = GObject.registerClass({
+             this._menuButton, 'checked',
+             GObject.BindingFlags.SYNC_CREATE);
+         contents.connect('clicked', (o, button) => this.emit('clicked', button));
+-        this._menuButton.connect('clicked', () => this.menu.open());
++        this._menuButton.connect('clicked', () => {
++            if (this.menu.isOpen)
++                this.menu.close();
++            else
++                this.menu.open();
++        });
++        this.menu.connect('open-state-changed', (menu, open) => {
++            this._menuButton.child.icon_name = open
++                ? 'pan-up-symbolic' : 'pan-down-symbolic';
++        });
+         this._menuButton.connect('popup-menu', () => this.emit('popup-menu'));
+         contents.connect('popup-menu', () => this.emit('popup-menu'));
+         this.connect('popup-menu', () => {
+@@ -239,6 +253,50 @@ export const QuickMenuToggle = GObject.registerClass({
+     }
+ });
+ 
++/**
++ * The utility row: the design's pills, side by side across the panel.
++ *
++ * The toggles inside are the indicators' own actors, moved here rather than
++ * recreated, so Location is still the location indicator and Warm light is
++ * still the night-light indicator. The row hides itself when every toggle in
++ * it is hidden, which is how absent hardware becomes an absent control rather
++ * than an empty space.
++ */
++export const QuickUtilityRow = GObject.registerClass(
++class QuickUtilityRow extends QuickSettingsItem {
++    _init() {
++        super._init({
++            style_class: 'luma-quick-utility-row',
++            reactive: false,
++            can_focus: false,
++        });
++
++        this._row = new St.BoxLayout({
++            layout_manager: new Clutter.BoxLayout({homogeneous: true}),
++            style_class: 'luma-quick-utility-box',
++            x_expand: true,
++        });
++        this.set_child(this._row);
++        this.hide();
++    }
++
++    adopt(toggle) {
++        if (!toggle)
++            return;
++        toggle.get_parent()?.remove_child(toggle);
++        toggle.add_style_class_name('luma-quick-pill');
++        toggle.x_expand = true;
++        this._row.add_child(toggle);
++        toggle.connectObject('notify::visible',
++            () => this._updateVisibility(), this);
++        this._updateVisibility();
++    }
++
++    _updateVisibility() {
++        this.visible = [...this._row].some(child => child.visible);
++    }
++});
++
+ export const QuickSlider = GObject.registerClass({
+     Properties: {
+         'icon-name': GObject.ParamSpec.override('icon-name', St.Button),
+@@ -261,6 +319,10 @@ export const QuickSlider = GObject.registerClass({
+             'menu-button-accessible-name', null, null,
+             GObject.ParamFlags.READWRITE,
+             _('Open menu')),
++        'title': GObject.ParamSpec.string(
++            'title', null, null,
++            GObject.ParamFlags.READWRITE,
++            null),
+     },
+     Signals: {
+         'icon-clicked': {},
+@@ -292,7 +354,8 @@ export const QuickSlider = GObject.registerClass({
+             style_class: 'icon-button flat',
+             can_focus: true,
+             x_expand: false,
+-            y_expand: true,
++            y_expand: false,
++            y_align: Clutter.ActorAlign.CENTER,
+         });
+         this._iconButton.connect('clicked',
+             () => this.emit('icon-clicked'));
+@@ -324,6 +387,36 @@ export const QuickSlider = GObject.registerClass({
+ 
+         this.slider = new Slider(0);
+ 
++        // The design names the level and states it as a percentage. Both read
++        // the slider itself, so they cannot drift from what it is showing.
++        this._titleLabel = new St.Label({
++            style_class: 'luma-quick-level-title',
++            x_align: Clutter.ActorAlign.START,
++        });
++        this._valueLabel = new St.Label({
++            style_class: 'luma-quick-level-value',
++            x_align: Clutter.ActorAlign.START,
++        });
++        // A fixed column beside the track: the name, and under it where the
++        // level currently stands.
++        this._levelHeader = new St.BoxLayout({
++            style_class: 'luma-quick-level-copy',
++            orientation: Clutter.Orientation.VERTICAL,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._levelHeader.add_child(this._titleLabel);
++        this._levelHeader.add_child(this._valueLabel);
++        this.bind_property('title',
++            this._titleLabel, 'text',
++            GObject.BindingFlags.SYNC_CREATE);
++        this.bind_property_full('title',
++            this._levelHeader, 'visible',
++            GObject.BindingFlags.SYNC_CREATE,
++            (bind, source) => [true, !!source],
++            null);
++        this.slider.connect('notify::value', () => this._updateLevelValue());
++        this._updateLevelValue();
++
+         // for focus indication
+         const sliderBin = new St.Bin({
+             style_class: 'slider-bin',
+@@ -333,6 +426,7 @@ export const QuickSlider = GObject.registerClass({
+             x_expand: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
++        box.add_child(this._levelHeader);
+         box.add_child(sliderBin);
+ 
+         // Make the slider bin transparent for a11y
+@@ -346,7 +440,8 @@ export const QuickSlider = GObject.registerClass({
+             style_class: 'icon-button flat',
+             can_focus: true,
+             x_expand: false,
+-            y_expand: true,
++            y_expand: false,
++            y_align: Clutter.ActorAlign.CENTER,
+         });
+         box.add_child(this._menuButton);
+ 
+@@ -356,12 +451,27 @@ export const QuickSlider = GObject.registerClass({
+         this.bind_property('menu-enabled',
+             this._menuButton, 'visible',
+             GObject.BindingFlags.SYNC_CREATE);
+-        this._menuButton.connect('clicked', () => this.menu.open());
++        this._menuButton.connect('clicked', () => {
++            if (this.menu.isOpen)
++                this.menu.close();
++            else
++                this.menu.open();
++        });
++        this.menu.connect('open-state-changed', (menu, open) => {
++            this._menuButton.child.icon_name = open
++                ? 'pan-up-symbolic' : 'pan-down-symbolic';
++        });
+         this.slider.connect('popup-menu', () => {
+             if (this.menuEnabled)
+                 this.menu.open();
+         });
+     }
++
++    _updateLevelValue() {
++        this._valueLabel.text = new Intl.NumberFormat(undefined, {
++            style: 'percent', maximumFractionDigits: 0,
++        }).format(this.slider.value);
++    }
+ });
+ 
+ class QuickToggleMenu extends PopupMenu.PopupMenuBase {
+@@ -748,6 +858,61 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+         });
+         this._boxPointer.add_effect_with_name('dim', this._dimEffect);
+         this.box.add_style_class_name('quick-settings');
++        this.box.add_style_class_name('luma-quick-options');
++        this._boxPointer.add_style_class_name('luma-quick-options-popup');
++
++        // The header the design puts above the controls: what time it is, and
++        // what the battery is doing. The clock is GNOME's own wall clock — the
++        // same object the date menu reads — and the battery percentage is bound
++        // from the system indicator that already tracks UPower, so nothing here
++        // is a second source of truth.
++        this._lumaHeader = new St.BoxLayout({
++            style_class: 'luma-quick-header',
++        });
++
++        const when = new St.BoxLayout({
++            style_class: 'luma-quick-when',
++            orientation: Clutter.Orientation.HORIZONTAL,
++            x_expand: true,
++        });
++        this._lumaTime = new St.Label({
++            style_class: 'luma-quick-time',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._lumaDate = new St.Label({
++            style_class: 'luma-quick-date',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        when.add_child(this._lumaTime);
++        when.add_child(this._lumaDate);
++        this._lumaHeader.add_child(when);
++
++        this._lumaBattery = new St.BoxLayout({
++            style_class: 'luma-quick-battery',
++        });
++        this._lumaBatteryIcon = new St.Icon({
++            style_class: 'luma-quick-battery-icon',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._lumaBatteryLabel = new St.Label({
++            style_class: 'luma-quick-battery-label',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._lumaBattery.add_child(this._lumaBatteryIcon);
++        this._lumaBattery.add_child(this._lumaBatteryLabel);
++        this._lumaBattery.hide();
++        this._lumaHeader.add_child(this._lumaBattery);
++        this.box.add_child(this._lumaHeader);
++
++        this._lumaClockSettings = new Gio.Settings({
++            schema_id: 'org.gnome.desktop.interface',
++        });
++        this._lumaClockSettings.connectObject('changed::clock-format',
++            () => this._updateLumaHeader(), this);
++        this._lumaClock = new GnomeDesktop.WallClock();
++        this._lumaClock.connectObject('notify::clock',
++            () => this._updateLumaHeader(), this);
++        this._updateLumaHeader();
+ 
+         // Overlay layer for menus
+         this._overlay = new Clutter.Actor({
+@@ -811,6 +976,27 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+         this.actor.add_child(this._overlay);
+     }
+ 
++    _updateLumaHeader() {
++        const now = GLib.DateTime.new_now_local();
++        const format = this._lumaClockSettings.get_string('clock-format') === '24h'
++            ? '%H:%M' : '%l:%M %p';
++        this._lumaTime.text = now.format(format).trim();
++        this._lumaDate.text = now.format('%a, %b %-d');
++    }
++
++    // Bind the existing UPower presentation model. Header percentage is
++    // independent of the preference that hides the shelf percentage.
++    bindLumaBattery(powerToggle) {
++        powerToggle.bind_property('title', this._lumaBatteryLabel, 'text',
++            GObject.BindingFlags.SYNC_CREATE);
++        powerToggle.bind_property('visible', this._lumaBattery, 'visible',
++            GObject.BindingFlags.SYNC_CREATE);
++        powerToggle.bind_property('gicon', this._lumaBatteryIcon, 'gicon',
++            GObject.BindingFlags.SYNC_CREATE);
++        powerToggle.bind_property('fallback-icon-name', this._lumaBatteryIcon,
++            'fallback-icon-name', GObject.BindingFlags.SYNC_CREATE);
++    }
++
+     addItem(item, colSpan = 1) {
+         this._grid.add_child(item);
+         this._completeAddItem(item, colSpan);
+@@ -826,10 +1012,13 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             this._grid, item, 'column-span', colSpan);
+ 
+         if (item.menu) {
++            item.menu.box.add_style_class_name('luma-quick-detail');
+             this._overlay.add_child(item.menu.actor);
+ 
+             item.menu.connect('open-state-changed', (m, isOpen) => {
+-                this._setDimmed(isOpen);
++                // Attached details share the panel material; no dim overlay.
++                if (isOpen && this._activeMenu !== item.menu)
++                    this._activeMenu?.close();
+                 this._activeMenu = isOpen ? item.menu : null;
+             });
+         }
+diff --git a/js/ui/slider.js b/js/ui/slider.js
+index 563d414..753cb90 100644
+--- a/js/ui/slider.js
++++ b/js/ui/slider.js
+@@ -82,8 +82,19 @@ export const Slider = GObject.registerClass({
+             handleX = width - handleX;
+ 
+         const color = themeNode.get_foreground_color();
++        // Optional surface ring for compact native presenters. Unstyled
++        // sliders retain the upstream solid handle and interaction geometry.
++        const [hasBorder, requestedBorder] = themeNode.lookup_length(
++            '-slider-handle-border-width', false);
++        const border = hasBorder
++            ? Math.clamp(requestedBorder, 0, this._handleRadius) : 0;
++        if (border > 0) {
++            cr.setSourceColor(themeNode.get_color('-slider-handle-border-color'));
++            cr.arc(handleX, handleY, this._handleRadius, 0, 2 * Math.PI);
++            cr.fill();
++        }
+         cr.setSourceColor(color);
+-        cr.arc(handleX, handleY, this._handleRadius, 0, 2 * Math.PI);
++        cr.arc(handleX, handleY, this._handleRadius - border, 0, 2 * Math.PI);
+         cr.fill();
+         cr.$dispose();
+     }
+diff --git a/js/ui/status/brightness.js b/js/ui/status/brightness.js
+index bee5115..b25f381 100644
+--- a/js/ui/status/brightness.js
++++ b/js/ui/status/brightness.js
+@@ -38,7 +38,8 @@ const BrightnessItem = GObject.registerClass(
+ class BrightnessItem extends QuickSlider {
+     _init() {
+         super._init({
+-            iconName: 'display-brightness-symbolic',
++            iconName: 'luma-sun-symbolic',
++            title: _('Brightness'),
+             menuButtonAccessibleName: _('Open brightness menu'),
+         });
+ 
+diff --git a/js/ui/status/location.js b/js/ui/status/location.js
+index 9e494c2..91e53bb 100644
+--- a/js/ui/status/location.js
++++ b/js/ui/status/location.js
+@@ -6,9 +6,10 @@ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Dialog from '../dialog.js';
++import * as Main from '../main.js';
+ import * as ModalDialog from '../modalDialog.js';
+ import * as PermissionStore from '../../misc/permissionStore.js';
+-import {SystemIndicator} from '../quickSettings.js';
++import {QuickToggle, SystemIndicator} from '../quickSettings.js';
+ 
+ import {loadInterfaceXML} from '../../misc/fileUtils.js';
+ 
+@@ -214,6 +215,23 @@ class Indicator extends SystemIndicator {
+         super._init();
+ 
+         this._agent = getGeoclueAgent();
++        const toggle = new QuickToggle({
++            title: _('Location'),
++            iconName: 'luma-location-symbolic',
++            toggleMode: true,
++        });
++        this._agent.bind_property('enabled', toggle, 'checked',
++            GObject.BindingFlags.SYNC_CREATE | GObject.BindingFlags.BIDIRECTIONAL);
++        const syncSession = () => {
++            toggle.reactive = this._agent._settings.is_writable(ENABLED) &&
++                Main.sessionMode.allowSettings &&
++                !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
++        };
++        Main.sessionMode.connectObject('updated', syncSession, toggle);
++        this._agent._settings.connectObject(`writable-changed::${ENABLED}`,
++            syncSession, toggle);
++        syncSession();
++        this.quickSettingsItems.push(toggle);
+ 
+         this._indicator = this._addIndicator();
+         this._indicator.icon_name = 'location-services-active-symbolic';
+diff --git a/js/ui/status/nightLight.js b/js/ui/status/nightLight.js
+index e4db24c..db86b03 100644
+--- a/js/ui/status/nightLight.js
++++ b/js/ui/status/nightLight.js
+@@ -16,8 +16,8 @@ const NightLightToggle = GObject.registerClass(
+ class NightLightToggle extends QuickToggle {
+     _init() {
+         super._init({
+-            title: _('Night Light'),
+-            iconName: 'night-light-symbolic',
++            title: _('Warm light'),
++            iconName: 'luma-sun-symbolic',
+             toggleMode: true,
+         });
+ 
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+index c4f5544..3b2727c 100644
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -4,12 +4,15 @@ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
++import AccountsService from 'gi://AccountsService';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ import UPower from 'gi://UPowerGlib';
+ 
+ import * as SystemActions from '../../misc/systemActions.js';
+ import * as Main from '../main.js';
++import * as UserWidget from '../userWidget.js';
+ import * as PopupMenu from '../popupMenu.js';
+ import {PopupAnimation} from '../boxpointer.js';
+ 
+@@ -22,6 +25,11 @@ const OBJECT_PATH = '/org/freedesktop/UPower/devices/DisplayDevice';
+ const DisplayDeviceInterface = loadInterfaceXML('org.freedesktop.UPower.Device');
+ const PowerManagerProxy = Gio.DBusProxy.makeProxyWrapper(DisplayDeviceInterface);
+ 
++function sessionUnlocked() {
++    return Main.sessionMode.allowSettings &&
++        !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
++}
++
+ const SHOW_BATTERY_PERCENTAGE = 'show-battery-percentage';
+ 
+ const PowerToggle = GObject.registerClass({
+@@ -58,7 +66,7 @@ const PowerToggle = GObject.registerClass({
+             app.activate();
+         });
+ 
+-        Main.sessionMode.connect('updated', () => this._sessionUpdated());
++        Main.sessionMode.connectObject('updated', () => this._sessionUpdated(), this);
+         this._sessionUpdated();
+         this._sync();
+     }
+@@ -107,6 +115,126 @@ const PowerToggle = GObject.registerClass({
+     }
+ });
+ 
++const LumaIdentity = GObject.registerClass(
++class LumaIdentity extends St.Button {
++    _init() {
++        super._init({
++            style_class: 'luma-quick-identity',
++            x_expand: true,
++            x_align: Clutter.ActorAlign.START,
++            can_focus: true,
++        });
++
++        const box = new St.BoxLayout({style_class: 'luma-quick-identity-box'});
++        this._avatar = new UserWidget.Avatar(
++            Main.sessionMode.isGreeter ? null : this._currentUser(), {iconSize: 30, showInitial: true, styleClass: 'luma-quick-avatar'});
++        this._avatar.y_align = Clutter.ActorAlign.CENTER;
++        this._avatar.update();
++        box.add_child(this._avatar);
++
++        const copy = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._name = new St.Label({style_class: 'luma-quick-identity-name'});
++        this._role = new St.Label({style_class: 'luma-quick-identity-role'});
++        this._name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._role.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        copy.add_child(this._name);
++        copy.add_child(this._role);
++        box.add_child(copy);
++        this.set_child(box);
++
++        this.reactive = Shell.AppSystem.get_default()
++            .lookup_app('gnome-user-accounts-panel.desktop') !== null;
++        this._updateIdentity();
++        this.connect('clicked', () => {
++            if (!sessionUnlocked())
++                return;
++            Main.overview.hide();
++            Main.panel.statusArea.quickSettings?.menu.close();
++            const app = Shell.AppSystem.get_default()
++                .lookup_app('gnome-user-accounts-panel.desktop');
++            app?.activate();
++        });
++    }
++
++    _currentUser() {
++        const manager = AccountsService.UserManager.get_default();
++        return manager.get_user(GLib.get_user_name());
++    }
++
++    _updateIdentity() {
++        const user = this._currentUser();
++        const update = () => {
++            this._name.text = user.get_real_name() || GLib.get_user_name();
++            // Do not infer privileges while AccountsService is unavailable.
++            this._role.text = user.is_loaded
++                ? (user.get_account_type() === AccountsService.UserAccountType.ADMINISTRATOR
++                    ? _('Administrator') : _('Standard'))
++                : _('Account');
++            this._avatar.update();
++            if (!user.is_loaded && this._avatar.child instanceof St.Label)
++                this._avatar.child.text = Array.from(GLib.get_user_name())[0]?.toLocaleUpperCase() ?? '';
++            this.accessible_name = `${this._name.text}, ${this._role.text}`;
++        };
++        update();
++        user.connectObject('notify::is-loaded', update, 'changed', update, this);
++    }
++});
++
++const LumaAboutItem = GObject.registerClass(
++class LumaAboutItem extends QuickSettingsItem {
++    _init() {
++        super._init({
++            style_class: 'icon-button luma-quick-action',
++            can_focus: true,
++            icon_name: 'luma-info-symbolic',
++            accessible_name: _('About This Computer'),
++        });
++
++        this.connect('clicked', () => {
++            if (!sessionUnlocked())
++                return;
++            Main.overview.hide();
++            Main.panel.statusArea.quickSettings?.menu.close();
++            const app = Shell.AppSystem.get_default()
++                .lookup_app('org.projectluma.About.desktop') ??
++                Shell.AppSystem.get_default().lookup_app('gnome-about-panel.desktop');
++            app?.activate();
++        });
++        const appSystem = Shell.AppSystem.get_default();
++        const syncApp = () => {
++            this.visible = (appSystem.lookup_app('org.projectluma.About.desktop') ??
++                appSystem.lookup_app('gnome-about-panel.desktop')) !== null;
++        };
++        appSystem.connectObject('installed-changed', syncApp, this);
++        syncApp();
++    }
++});
++
++const LumaSearchItem = GObject.registerClass(
++class LumaSearchItem extends QuickSettingsItem {
++    _init() {
++        super._init({
++            style_class: 'icon-button luma-quick-action',
++            can_focus: true,
++            icon_name: 'edit-find-symbolic',
++            accessible_name: _('Search'),
++        });
++
++        this.connect('notify::mapped', () => {
++            this.reactive = sessionUnlocked() && Main.lumaSearch !== null;
++        });
++        this.connect('clicked', () => {
++            if (!sessionUnlocked())
++                return;
++            Main.panel.statusArea.quickSettings?.menu.close();
++            Main.lumaSearch?.open();
++        });
++    }
++});
++
+ const ScreenshotItem = GObject.registerClass(
+ class ScreenshotItem extends QuickSettingsItem {
+     _init() {
+@@ -145,13 +273,14 @@ class SettingsItem extends QuickSettingsItem {
+         if (!this._settingsApp)
+             console.warn('Missing required core component Settings, expect trouble…');
+ 
+-        this.child.gicon = this._settingsApp?.get_icon() ?? null;
++        this.child.icon_name = 'emblem-system-symbolic';
+         this.accessible_name = this._settingsApp?.get_name() ?? null;
+ 
+         this.connect('clicked', () => {
+             Main.overview.hide();
+             Main.panel.closeQuickSettings();
+-            this._settingsApp.activate();
++            if (sessionUnlocked())
++                this._settingsApp?.activate();
+         });
+ 
+         Main.sessionMode.connectObject('updated', () => this._sync(), this);
+@@ -180,6 +309,11 @@ class ShutdownItem extends QuickSettingsItem {
+ 
+         this.menu.setHeader('system-shutdown-symbolic', C_('title', 'Power Off'));
+ 
++        this._addSystemAction(_('Lock'), 'can-lock-screen', () => {
++            Main.panel.closeQuickSettings();
++            this._systemActions.activateLockScreen();
++        });
++
+         this._addSystemAction(_('Suspend'), 'can-suspend', () => {
+             this._systemActions.activateSuspend();
+             Main.panel.closeQuickSettings();
+@@ -268,37 +402,52 @@ class SystemItem extends QuickSettingsItem {
+             reactive: false,
+         });
+ 
+-        this.child = new St.BoxLayout();
++        this.child = new St.BoxLayout({
++            style_class: 'luma-quick-footer',
++            x_expand: true,
++        });
+ 
++        // The battery lives in the header now, so the footer is the account and
++        // the four things the design puts beside it. The power toggle is still
++        // constructed: it owns the UPower proxy the header's percentage is
++        // bound to.
+         this._powerToggle = new PowerToggle();
+-        this.child.add_child(this._powerToggle);
+-
+-        this._laptopSpacer = new Clutter.Actor({x_expand: true});
+-        this._powerToggle.bind_property('visible',
+-            this._laptopSpacer, 'visible',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        this.child.add_child(this._laptopSpacer);
+-
+-        const screenshotItem = new ScreenshotItem();
+-        this.child.add_child(screenshotItem);
+-
+-        const settingsItem = new SettingsItem();
+-        this.child.add_child(settingsItem);
+-
+-        this._desktopSpacer = new Clutter.Actor({x_expand: true});
+-        this._powerToggle.bind_property('visible',
+-            this._desktopSpacer, 'visible',
+-            GObject.BindingFlags.INVERT_BOOLEAN |
+-            GObject.BindingFlags.SYNC_CREATE);
+-        this.child.add_child(this._desktopSpacer);
+-
+-        const lockItem = new LockItem();
+-        this.child.add_child(lockItem);
++        this.connect('destroy', () => this._powerToggle.destroy());
+ 
++        this._identitySlot = new St.Bin({x_expand: true,
++            x_align: Clutter.ActorAlign.START});
++        this.child.add_child(this._identitySlot);
++        this._actions = new St.BoxLayout({
++            style_class: 'luma-quick-actions',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
+         const shutdownItem = new ShutdownItem();
+-        this.child.add_child(shutdownItem);
+-
++        shutdownItem.add_style_class_name('luma-quick-action');
++        this._actions.add_child(shutdownItem);
++        this.child.add_child(this._actions);
+         this.menu = shutdownItem.menu;
++        this._privateItems = [];
++        Main.sessionMode.connectObject('updated', () => this._syncSession(), this);
++        this._syncSession();
++    }
++
++    _syncSession() {
++        if (!sessionUnlocked()) {
++            // Destroy private identity/text/actions, including a11y actors;
++            // hidden-but-focusable controls must not survive a lock transition.
++            this._identitySlot.child?.destroy();
++            this._privateItems.forEach(item => item.destroy());
++            this._privateItems = [];
++            return;
++        }
++        if (this._identitySlot.child)
++            return;
++        this._identitySlot.child = new LumaIdentity();
++        this._privateItems = [new LumaAboutItem(), new LumaSearchItem(), new SettingsItem()];
++        this._privateItems.forEach((item, index) => {
++            item.add_style_class_name('luma-quick-action');
++            this._actions.insert_child_at_index(item, index);
++        });
+     }
+ 
+     get powerToggle() {
+diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
+index fc49cb9..cc137b9 100644
+--- a/js/ui/status/volume.js
++++ b/js/ui/status/volume.js
+@@ -295,6 +295,8 @@ class OutputStreamSlider extends StreamSlider {
+         super._init(control);
+ 
+         this.slider.accessible_name = _('Volume');
++        this.title = _('Volume');
++        this.add_style_class_name('luma-quick-volume');
+ 
+         this._control.connectObject(
+             'output-added', (c, id) => this._addDevice(id),
+@@ -369,6 +371,7 @@ class InputStreamSlider extends StreamSlider {
+         super._init(control);
+ 
+         this.slider.accessible_name = _('Microphone');
++        this.title = _('Microphone');
+ 
+         this._control.connectObject(
+             'input-added', (c, id) => this._addDevice(id),

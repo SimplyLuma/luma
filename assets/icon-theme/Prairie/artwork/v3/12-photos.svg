@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="paper" cx=".18" cy=".02" r="1.08"><stop stop-color="#fff"/><stop offset=".54" stop-color="#f5f3ed"/><stop offset="1" stop-color="#e4e1d8"/></radialGradient>
+    <linearGradient id="red" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#8e67b5" stop-opacity=".18"/><stop offset=".42" stop-color="#d25978" stop-opacity=".8"/><stop offset="1" stop-color="#ef7161"/></linearGradient>
+    <linearGradient id="orange" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#e45c52" stop-opacity=".18"/><stop offset=".42" stop-color="#f47a35" stop-opacity=".8"/><stop offset="1" stop-color="#ffae49"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#f29138" stop-opacity=".18"/><stop offset=".42" stop-color="#76ae5b" stop-opacity=".8"/><stop offset="1" stop-color="#49a078"/></linearGradient>
+    <linearGradient id="cyan" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#5da36b" stop-opacity=".18"/><stop offset=".42" stop-color="#4fb2aa" stop-opacity=".8"/><stop offset="1" stop-color="#4aaac3"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#48aeb8" stop-opacity=".18"/><stop offset=".42" stop-color="#5286ca" stop-opacity=".8"/><stop offset="1" stop-color="#596dcc"/></linearGradient>
+    <linearGradient id="violet" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#5577c5" stop-opacity=".18"/><stop offset=".42" stop-color="#7e68bd" stop-opacity=".8"/><stop offset="1" stop-color="#a46fc0"/></linearGradient>
+    <filter id="ps" x="-35%" y="-35%" width="170%" height="170%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#171713" flood-opacity=".22"/></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#paper)"/>
+  <g filter="url(#ps)" transform="translate(512 512)">
+    <g opacity=".92">
+      <ellipse cx="0" cy="-156" rx="138" ry="242" fill="url(#orange)"/>
+      <ellipse cx="0" cy="-156" rx="138" ry="242" fill="url(#green)" transform="rotate(60)"/>
+      <ellipse cx="0" cy="-156" rx="138" ry="242" fill="url(#cyan)" transform="rotate(120)"/>
+      <ellipse cx="0" cy="-156" rx="138" ry="242" fill="url(#blue)" transform="rotate(180)"/>
+      <ellipse cx="0" cy="-156" rx="138" ry="242" fill="url(#violet)" transform="rotate(240)"/>
+      <ellipse cx="0" cy="-156" rx="138" ry="242" fill="url(#red)" transform="rotate(300)"/>
+    </g>
+  </g>
+</svg>

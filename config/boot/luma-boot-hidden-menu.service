@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# bootupd writes its static grub.cfg only when it installs a bootloader, so a
+# computer that updates would never receive the hidden-menu piece. Like
+# bootupd's own bootloader-update.service, this runs at boot from the booted
+# release and, in a private mount namespace, brings /boot/grub2/grub.cfg up to
+# date for that one piece. It leaves any grub.cfg that bootupd did not
+# generate, or whose menu timing an administrator changed, alone and says so.
+[Unit]
+Description=Keep GRUB's menu hidden on bootupd-installed systems
+After=local-fs.target bootloader-update.service
+RequiresMountsFor=/boot
+ConditionPathExists=/run/ostree-booted
+ConditionPathExists=/boot/grub2/grub.cfg
+ConditionPathExists=/usr/lib/bootupd/grub2-static/configs.d/09_luma_hidden_menu.cfg
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-boot-hidden-menu --remount
+MountFlags=slave
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+SyslogIdentifier=luma-boot-hidden-menu
+
+[Install]
+WantedBy=multi-user.target

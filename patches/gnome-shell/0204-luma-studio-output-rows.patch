@@ -1,0 +1,42 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: align production output rows with Studio
+
+Keep the device origin as the secondary line; the selection marker already
+identifies the active output. Reuse the existing Gvc headphone classification
+and approved system Lucide glyphs. Backend selection stays with Gvc.
+GPL-2.0-or-later, following GNOME Shell upstream.
+
+diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
+--- a/js/ui/status/volume.js
++++ b/js/ui/status/volume.js
+@@ -561,9 +561,7 @@
+         for (const [id, item] of this._deviceItems) {
+             const current = id === activeId;
+             item.setCurrent(current);
+-            item.setState(current
+-                ? [_('In use'), item._lumaOrigin].filter(Boolean).join(' · ')
+-                : item._lumaOrigin || _('Available'));
++            item.setState(item._lumaOrigin || _('Available'));
+         }
+         this._syncLevelDetail(activeId);
+     }
+@@ -766,10 +764,15 @@
+     }
+ 
+     _deviceIcon(device) {
+-        const name = this._control.get_stream_from_device(device)?.get_name() ?? '';
+-        if (name.startsWith(AIRPLAY_OUTPUT_PREFIX))
+-            return new Gio.ThemedIcon({name: NETWORK_SPEAKER_ICON});
+-        return super._deviceIcon(device);
++        const stream = this._control.get_stream_from_device(device);
++        const name = stream?.get_name() ?? '';
++        let glyph = 'speaker';
++        if (stream && this._findHeadphones(stream))
++            glyph = 'headphones';
++        else if (name.includes('hdmi'))
++            glyph = 'monitor';
++        // Selection comes from Gvc; use the same Lucide roles as Studio.
++        return new Gio.ThemedIcon({name: `lumaui-${glyph}-symbolic`});
+     }
+ 
+     _sync() {

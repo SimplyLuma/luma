@@ -1,0 +1,239 @@
+{
+  "app": "window-gallery",
+  "title": "Window chrome (gallery)",
+  "about": "The same window chrome as window-contacts.json, on the LumaUI gallery against v70's LumaUI reference window (?app=lumaui): frame, title row, identity and the controls at rest, hovered, pressed and focused, inactive and maximized. Only the frame is reported. The gallery opens in its own light appearance (its --appearance flag; the toggle is in the window), so it is measured in light; dark and high contrast are the Contacts scenario's and the gallery's own screenshots'. The identity names the app it is (the gallery is 'LumaUI Gallery'), so the spec's title is renamed to match before measuring.",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=lumaui",
+    "window": "#w-lumaui",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "gallery",
+    "fixtures": [
+      "assets/icon-theme/Prairie/scalable/apps"
+    ],
+    "env": {
+      "LUMAUI_CONFORM_ICON_DIRS": "{run}/fixtures/apps"
+    }
+  },
+  "frame": true,
+  "frame_note": "frame: compare the window's own radius, shadow layers and rim, and the frame colour at frame_probes (window coordinates; negative counts from the right or bottom edge).",
+  "frame_probes": [
+    {
+      "name": "title row",
+      "x": 420,
+      "y": 6,
+      "w": 240,
+      "h": 34
+    }
+  ],
+  "scope": {
+    "groups": [
+      "window controls",
+      "title row"
+    ],
+    "subjects": "^(identity icon|title row|window controls|minimize|zoom|close|window|frame title row)$"
+  },
+  "states": [
+    {
+      "name": "active",
+      "about": "The focused window at rest (Priya selected, v70's opening state)",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "inactive",
+      "about": "Another window has focus. v70 draws an inactive window exactly as an active one.",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        }
+      ],
+      "gtk": [
+        {
+          "backdrop": true
+        }
+      ]
+    },
+    {
+      "name": "hover-minimize",
+      "about": "The pointer over Minimize",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "hover": "#w-lumaui > .wctl [data-w=\"min\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight",
+          "widget": "lumaui-window-minimize"
+        }
+      ]
+    },
+    {
+      "name": "hover-maximize",
+      "about": "The pointer over Zoom (maximize)",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "hover": "#w-lumaui > .wctl [data-w=\"max\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight",
+          "widget": "lumaui-window-maximize"
+        }
+      ]
+    },
+    {
+      "name": "hover-close",
+      "about": "The pointer over Close",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "hover": "#w-lumaui > .wctl [data-w=\"close\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight",
+          "widget": "lumaui-window-close"
+        }
+      ]
+    },
+    {
+      "name": "pressed-close",
+      "about": "Close held down (v70 has no pressed rule, so it stays the hover)",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "press": "#w-lumaui > .wctl [data-w=\"close\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight|active",
+          "widget": "lumaui-window-close"
+        }
+      ]
+    },
+    {
+      "name": "focus-close",
+      "about": "Close focused from the keyboard (v70 :focus-visible, a 2 px accent ring 2 px out)",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "focus": "#w-lumaui > .wctl [data-w=\"close\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "focus": "lumaui-window-close"
+        }
+      ]
+    },
+    {
+      "name": "maximized",
+      "about": "Maximized (v70 toggleMax from a double-click on the title row); the desk is sized so the window is the headless monitor, 1920x1200",
+      "viewport": {
+        "width": 1936,
+        "height": 1314
+      },
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "dblclick": "#lui-top"
+        }
+      ],
+      "gtk": [
+        {
+          "maximize": true
+        }
+      ]
+    },
+    {
+      "name": "narrow-desktop",
+      "about": "Nick, 26 Sep: a desktop window tiled narrow (460, the gallery's own least width with its sidebar) keeps its window controls; only a phone folds them. The island clips its content rather than pushing the frame past the window. The gallery's pages are wider than 460, so the islands clip them: reported as info here.",
+      "spec": [
+        {
+          "eval": "document.querySelector('#lui-top b').textContent = 'LumaUI Gallery'"
+        },
+        {
+          "eval": "document.querySelector('#w-lumaui').style.width = '460px'"
+        }
+      ],
+      "gtk": [],
+      "overflow": "info"
+    }
+  ],
+  "phone_states": [
+    "active"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-lumaui > .wctl"
+    },
+    {
+      "name": "title row",
+      "spec": "#lui-top"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#lui-top",
+      "gtk": "lumaui-title-row",
+      "name": "title row"
+    },
+    {
+      "spec": "#w-lumaui > .wctl",
+      "gtk": "lumaui-window-controls",
+      "name": "window controls"
+    },
+    {
+      "spec": "#w-lumaui > .wctl [data-w=\"min\"]",
+      "gtk": "lumaui-window-minimize",
+      "name": "minimize"
+    },
+    {
+      "spec": "#w-lumaui > .wctl [data-w=\"max\"]",
+      "gtk": "lumaui-window-maximize",
+      "name": "zoom"
+    },
+    {
+      "spec": "#w-lumaui > .wctl [data-w=\"close\"]",
+      "gtk": "lumaui-window-close",
+      "name": "close"
+    },
+    {
+      "spec": "#lui-top img",
+      "gtk": "lumaui-identity-icon",
+      "name": "identity icon"
+    }
+  ],
+  "app_icon": {
+    "spec_src": "luma-favicon.svg",
+    "gtk": "^luma-v3-designer$"
+  }
+}

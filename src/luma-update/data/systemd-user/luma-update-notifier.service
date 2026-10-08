@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Show Luma system update notifications
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionPathExists=/run/ostree-booted
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-update-notifier sync

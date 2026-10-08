@@ -1,0 +1,12 @@
+diff --git a/src/ui/math-window.blp b/src/ui/math-window.blp
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -119,7 +119,7 @@ template $MathWindow: Adw.ApplicationWindow {
+ 
+     content: Box {
+       vexpand: true;
+-      overflow: hidden;
++      overflow: visible;
+       orientation: vertical;
+ 
+       styles [

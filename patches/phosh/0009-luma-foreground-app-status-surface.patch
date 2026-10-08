@@ -1,0 +1,107 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 31 Aug 2026 19:52:00 -0500
+Subject: [PATCH] shell: keep the status surface joined to the foreground app
+
+Phosh normally derives top-bar transparency only from the Home carousel. A
+foreground toplevel can already be activated while that state is still
+unfolded after an atomic startup or lock handoff, leaving the reserved status
+area transparent over the compositor's black clear colour.
+
+Treat an activated native toplevel as authoritative foreground evidence and
+refresh the bar whenever activation changes. The existing p-solid class and
+Luma theme remain the presentation owners: Home stays wallpaper-transparent,
+while applications receive the shared AppKit status surface without helpers or
+per-app startup actions.
+
+---
+ src/shell.c | 40 +++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 37 insertions(+), 3 deletions(-)
+
+diff --git a/src/shell.c b/src/shell.c
+--- a/src/shell.c
++++ b/src/shell.c
+@@ -315,7 +315,28 @@ on_top_panel_state_changed (PhoshShell *self, GParamSpec *pspec, PhoshTopPanel *
+   state = phosh_top_panel_get_state (PHOSH_TOP_PANEL (priv->top_panel));
+   phosh_shell_set_state (self, PHOSH_STATE_SETTINGS, state == PHOSH_TOP_PANEL_STATE_UNFOLDED);
+ }
++
++static gboolean
++has_activated_toplevel (PhoshShell *self)
++{
++  PhoshShellPrivate *priv = phosh_shell_get_instance_private (self);
++  guint n_toplevels;
+ 
++  if (!priv->toplevel_manager)
++    return FALSE;
++
++  n_toplevels = phosh_toplevel_manager_get_num_toplevels (priv->toplevel_manager);
++  for (guint i = 0; i < n_toplevels; i++) {
++    PhoshToplevel *toplevel = phosh_toplevel_manager_get_toplevel (priv->toplevel_manager, i);
++
++    if (phosh_toplevel_is_activated (toplevel))
++      return TRUE;
++  }
++
++  return FALSE;
++}
++
++
+ static void
+ update_top_bar_transparency (PhoshShell *self)
+ {
+@@ -332,7 +353,8 @@ update_top_bar_transparency (PhoshShell *self)
+ 
+   state = phosh_home_get_state (PHOSH_HOME (priv->home));
+   phosh_top_panel_set_bar_transparent (PHOSH_TOP_PANEL (priv->top_panel),
+-                                       (state != PHOSH_HOME_STATE_FOLDED));
++                                       (state != PHOSH_HOME_STATE_FOLDED) &&
++                                       !has_activated_toplevel (self));
+ }
+ 
+ 
+@@ -686,6 +708,15 @@ phosh_shell_finalize (GObject *object)
+ 
+   cui_uninit ();
+   G_OBJECT_CLASS (phosh_shell_parent_class)->finalize (object);
++}
++
++
++static void
++on_toplevel_activated_changed (PhoshToplevel *toplevel, GParamSpec *pspec, PhoshShell *self)
++{
++  g_return_if_fail (PHOSH_IS_TOPLEVEL (toplevel));
++  g_return_if_fail (PHOSH_IS_SHELL (self));
++  update_top_bar_transparency (self);
+ }
+ 
+ 
+@@ -703,20 +734,26 @@ on_num_toplevels_changed (PhoshShell           *self,
+   /* all toplevels gone, show the overview */
+   if (!phosh_toplevel_manager_get_num_toplevels (toplevel_manager))
+     phosh_home_set_state (PHOSH_HOME (priv->home), PHOSH_HOME_STATE_UNFOLDED);
++
++  update_top_bar_transparency (self);
+ }
+ 
+ 
+ static void
+-on_toplevel_added (PhoshShell *self, PhoshToplevel *unused, PhoshToplevelManager *toplevel_manager)
++on_toplevel_added (PhoshShell *self, PhoshToplevel *toplevel, PhoshToplevelManager *toplevel_manager)
+ {
+   PhoshShellPrivate *priv;
+ 
+   g_return_if_fail (PHOSH_IS_SHELL (self));
++  g_return_if_fail (PHOSH_IS_TOPLEVEL (toplevel));
+   g_return_if_fail (PHOSH_IS_TOPLEVEL_MANAGER (toplevel_manager));
+ 
+   priv = phosh_shell_get_instance_private (self);
++  g_signal_connect_object (toplevel, "notify::activated",
++                           G_CALLBACK (on_toplevel_activated_changed), self, 0);
+   if (phosh_toplevel_manager_get_num_toplevels (toplevel_manager) == 1)
+     phosh_home_set_state (PHOSH_HOME (priv->home), PHOSH_HOME_STATE_FOLDED);
++  update_top_bar_transparency (self);
+ }
+ 
+ 
+-- 
+2.51.0

@@ -1,0 +1,239 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: desktop input, closing and resizing for Android windows
+
+Applies to the hwcomposer working tree of 2026-09-12
+(working-tree-20260912/), on top of 0001-0004.
+
+- On a desktop, Android's input-method window is not presented. It is a
+  transparent layer the size of the Android display and, as a host window,
+  took every click on the monitor until Escape hid it.
+- A task closed from its window stays closed while Android finishes
+  removing it, instead of a new host window appearing for its last frames.
+- During a resize the last frame is shown unscaled and cut to the window
+  rather than stretched; the size is sent when the drag ends or after 1.5 s
+  held still; the title bar is redrawn at most 30 times a second; a size
+  Android did not reach is asked for again, at most twice.
+
+diff -ruN a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -410,24 +410,38 @@
+     int height = std::max(1, int(ceil(source_height / pdev->display->scale)));
+     double scale_x = 1.0, scale_y = 1.0;
+     // While the host window is resized, and until Android draws the size it
+-    // was sent, stretch the task's frame to the window rather than showing a
+-    // gap or asking Android to lay the app out again for every step.
+-    const bool stretching = !window->composed_canvas && window_layer.viewport &&
++    // was sent, show the task's last frame at its own size, cut to the window.
++    // Stretching it distorted the app on every drag; a window that grows shows
++    // its own surface colour beside the frame until Android lays out again,
++    // as native applications do.
++    const bool resizing_ahead = !window->composed_canvas && window_layer.viewport &&
+             window->android_task_width > 0 && window->android_task_height > 0 &&
++            hwc_layer->transform == 0 &&
+             (window->task_resize_interactive ||
+              std::chrono::steady_clock::now() < window->stretch_until);
+-    if (stretching) {
+-        const double scale = pdev->display->scale;
+-        const double sx = geometry.content.width * scale / window->android_task_width;
+-        const double sy = geometry.content.height * scale / window->android_task_height;
+-        if (std::fabs(sx - 1.0) > 0.005 || std::fabs(sy - 1.0) > 0.005) {
+-            x = geometry.content.x + int(std::floor(local_x / scale * sx));
+-            y = geometry.content.y + int(std::floor(local_y / scale * sy));
+-            width = std::max(1, int(std::ceil(source_width / scale * sx)));
+-            height = std::max(1, int(std::ceil(source_height / scale * sy)));
+-            wp_viewport_set_destination(window_layer.viewport, width, height);
+-            scale_x = 1.0 / sx;
+-            scale_y = 1.0 / sy;
++    if (resizing_ahead) {
++        const int visible_width = std::min(width,
++            geometry.content.x + geometry.content.width - x);
++        const int visible_height = std::min(height,
++            geometry.content.y + geometry.content.height - y);
++        if (visible_width < 1 || visible_height < 1) {
++            wp_viewport_set_source(window_layer.viewport, wl_fixed_from_int(0),
++                                   wl_fixed_from_int(0), wl_fixed_from_int(1),
++                                   wl_fixed_from_int(1));
++            wp_viewport_set_destination(window_layer.viewport, 1, 1);
++            width = height = 1;
++        } else if (visible_width < width || visible_height < height) {
++            const auto& crop = hwc_layer->sourceCropf;
++            const double fx = double(visible_width) / width;
++            const double fy = double(visible_height) / height;
++            wp_viewport_set_source(window_layer.viewport,
++                wl_fixed_from_double(std::max(0.0f, crop.left)),
++                wl_fixed_from_double(std::max(0.0f, crop.top)),
++                wl_fixed_from_double(std::max(1.0, (crop.right - crop.left) * fx)),
++                wl_fixed_from_double(std::max(1.0, (crop.bottom - crop.top) * fy)));
++            wp_viewport_set_destination(window_layer.viewport, visible_width, visible_height);
++            width = visible_width;
++            height = visible_height;
+         }
+     }
+     if (window->composed_canvas && window_layer.viewport &&
+--- a/hwcomposer/modes/multi-window.cpp
++++ b/hwcomposer/modes/multi-window.cpp
+@@ -27,15 +27,33 @@
+ 
+ #include <log/log.h>
+ #include <cutils/properties.h>
++#include <algorithm>
++#include <cstring>
+ 
+ constexpr hwc_color_t color_transparent = {0, 0, 0, 0};
+ 
++// On a desktop the person types on a hardware keyboard. Android still maps its
++// input-method window whenever a text field takes focus: a transparent layer the
++// size of the whole Android display. As a host window it took every click on
++// the monitor until Escape hid it. Android's own touchable region is not
++// visible to the compositor, so on desktop the window is not presented at all.
++static bool desktop_posture() {
++    char value[PROPERTY_VALUE_MAX] {};
++    property_get("persist.luma.device_class", value, "desktop");
++    return std::strcmp(value, "desktop") == 0;
++}
++
+ window *multi_window_mode::get_window(waydroid_hwc_composer_device_1 *pdev, layer_info &layer_info) {
+     auto &windows = pdev->display->windows;
+     if (layer_info.type == LayerSplitType::TID) {
+         // Create windows based on Task ID in layer name
+         if (is_blacklisted(pdev, layer_info.aid, layer_info.component))
+             return nullptr;
++        // Closed by the person: Android removes the task asynchronously and
++        // its layers can outlive the close by several frames. Without this the
++        // next frame created a new host window and the app "reopened".
++        if (pdev->display->ignored_apps.count(layer_info.tid))
++            return nullptr;
+ 
+         auto it = windows.find(layer_info.tid);
+         if (it != windows.end()) {
+@@ -43,6 +61,7 @@
+             const auto bounds = task_bounds.at(layer_info.tid);
+             it->second->android_task_width = bounds.right - bounds.left;
+             it->second->android_task_height = bounds.bottom - bounds.top;
++            it->second->confirm_task_size();
+             if (it->second->requested_content_width == 0 ||
+                     it->second->requested_content_height == 0) {
+                 it->second->task_origin_x = bounds.left;
+@@ -63,6 +82,8 @@
+         }
+     } else if (layer_info.type == LayerSplitType::RawName) {
+         if (layer_info.aid == "InputMethod") {
++            if (desktop_posture())
++                return nullptr;
+             auto it = windows.find("InputMethod");
+             if (it != windows.end()) {
+                 return it->second.get();
+@@ -127,7 +148,15 @@
+         return ++it.second->missing_frames > 120;
+     });
+ 
+-    pdev->display->ignored_apps.clear();
++    // Forget a closed task only once Android has stopped drawing it.
++    auto &ignored_apps = pdev->display->ignored_apps;
++    for (auto it = ignored_apps.begin(); it != ignored_apps.end();) {
++        const bool still_shown = std::any_of(layer_infos.container().begin(),
++                layer_infos.container().end(), [&it](const auto &info) {
++            return info.type == LayerSplitType::TID && info.tid == *it;
++        });
++        it = still_shown ? std::next(it) : ignored_apps.erase(it);
++    }
+ 
+     return 0;
+ }
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -157,10 +157,11 @@
+ // Most Android apps relaunch their activity for every new task size, and a
+ // relaunch holds the task service, so forwarding each configure of a drag made
+ // the window trail the pointer by seconds. During a drag nothing is sent: the
+-// hardware composer stretches the app's last frame to the window instead. The
+-// size a drag ends on is sent at once, and a drag that stops without ending is
+-// sent after a short pause.
+-constexpr auto kInteractiveResizePause = std::chrono::milliseconds(600);
++// hardware composer shows the app's last frame, unscaled and cut to the window,
++// instead. The size a drag ends on is sent at once, and a drag held still for
++// a second and a half is sent then; a shorter pause relaunched apps such as
++// TikTok mid-drag, which looked like the window refreshing every second.
++constexpr auto kInteractiveResizePause = std::chrono::milliseconds(1500);
+ 
+ struct PendingTaskResize {
+     int32_t left;
+@@ -411,9 +412,20 @@
+         window->fullscreen = fullscreen;
+         window->content_width = content_width;
+         window->content_height = content_height;
+-        if (changed) {
+-            const auto started = std::chrono::steady_clock::now();
++        // Drawing the title bar takes about ten milliseconds and a drag
++        // configures a hundred times a second, which left the Wayland thread
++        // no time for input or frames. During a drag draw it at most thirty
++        // times a second; the size a drag ends on is always drawn.
++        const int outer_width = prairie::frame(*window).outer.width;
++        const auto now = std::chrono::steady_clock::now();
++        const bool titlebar_due = !resizing ||
++            now - window->titlebar_drawn_at >= std::chrono::milliseconds(33);
++        if ((changed && titlebar_due) ||
++                (!resizing && window->titlebar_drawn_width != outer_width)) {
++            const auto started = now;
+             prairie::redraw_titlebar(*window);
++            window->titlebar_drawn_at = started;
++            window->titlebar_drawn_width = outer_width;
+             const auto titled = std::chrono::steady_clock::now();
+             const bool stretched = resizing && prairie::stretch_shadow(*window);
+             if (!stretched)
+@@ -704,8 +716,31 @@
+     requested_content_width = width;
+     requested_content_height = height;
+     task_resize_interactive = interactive;
++    task_resize_retries = 0;
+     ALOGI("Luma task %s configured %dx%d logical (%dx%d px)%s", taskID.c_str(),
+           width, height, px_width, px_height, interactive ? " while resizing" : "");
++}
++
++void window::confirm_task_size() {
++    constexpr int kMaximumRetries = 2;
++    if (task_resize_interactive || requested_content_width < 1 ||
++            requested_content_height < 1 || task_resize_retries >= kMaximumRetries ||
++            std::chrono::steady_clock::now() < stretch_until)
++        return;
++    const int px_width = luma_logical_to_px(display, requested_content_width);
++    const int px_height = luma_logical_to_px(display, requested_content_height);
++    // Within two pixels is the rounding of the fractional scale, not a miss.
++    if (std::abs(android_task_width - px_width) <= 2 &&
++            std::abs(android_task_height - px_height) <= 2)
++        return;
++    const int retries = task_resize_retries + 1;
++    ALOGI("Luma task %s drew %dx%d px, not %dx%d px; asking again (%d)", taskID.c_str(),
++          android_task_width, android_task_height, px_width, px_height, retries);
++    const int width = requested_content_width;
++    const int height = requested_content_height;
++    requested_content_width = 0;  // defeat the same-size shortcut
++    request_task_resize(width, height, false);
++    task_resize_retries = retries;
+ }
+ 
+ window::~window() {
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -238,6 +238,12 @@
+     int android_task_width {};
+     int android_task_height {};
+     std::chrono::steady_clock::time_point stretch_until {};
++    // A task size Android has not reached is asked for again, a bounded
++    // number of times: a request made while the activity relaunches is lost.
++    int task_resize_retries {};
++    // The title bar is redrawn at most this often during a drag.
++    std::chrono::steady_clock::time_point titlebar_drawn_at {};
++    int titlebar_drawn_width {};
+     int missing_frames {};
+     bool maximized {};
+     // Distinct from maximized: a maximized window is inset by the shelf and
+@@ -280,6 +286,7 @@
+     void set_title(const char *title);
+     void set_app_id(std::string appID);
+     void request_task_resize(int width, int height, bool interactive = false);
++    void confirm_task_size();
+ 
+   private:
+     window() = default;

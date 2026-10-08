@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.android.package-archive">
+    <comment>Android application package</comment>
+    <acronym>APK</acronym>
+    <expanded-acronym>Android Package</expanded-acronym>
+    <glob pattern="*.apk" weight="80"/>
+    <magic priority="50">
+      <match type="string" value="PK\003\004" offset="0"/>
+    </magic>
+  </mime-type>
+  <mime-type type="application/vnd.projectluma.android-package-set">
+    <comment>Android split application package</comment>
+    <acronym>APKS</acronym>
+    <expanded-acronym>Android Package Set</expanded-acronym>
+    <glob pattern="*.apks" weight="90"/>
+    <glob pattern="*.xapk" weight="90"/>
+    <glob pattern="*.apkm" weight="90"/>
+    <magic priority="40">
+      <match type="string" value="PK\003\004" offset="0"/>
+    </magic>
+  </mime-type>
+</mime-info>

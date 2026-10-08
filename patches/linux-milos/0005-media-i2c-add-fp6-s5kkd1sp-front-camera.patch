@@ -1,0 +1,1187 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] media: i2c: add FP6 S5KKD1SP front camera
+
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -780,6 +780,16 @@
+ 
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called s5k3m5.
++
++config VIDEO_S5KKD1SP
++	tristate "Samsung S5KKD1SP sensor support"
++	select V4L2_CCI_I2C
++	help
++	  This is a V4L2 sensor driver for the Samsung S5KKD1SP raw
++	  camera sensor used as the front camera on the Fairphone 6.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called s5kkd1sp.
+ 
+ config VIDEO_S5K5BAF
+ 	tristate "Samsung S5K5BAF sensor support"
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -128,6 +128,7 @@
+ obj-$(CONFIG_VIDEO_RJ54N1) += rj54n1cb0c.o
+ obj-$(CONFIG_VIDEO_S5C73M3) += s5c73m3/
+ obj-$(CONFIG_VIDEO_S5K3M5) += s5k3m5.o
++obj-$(CONFIG_VIDEO_S5KKD1SP) += s5kkd1sp.o
+ obj-$(CONFIG_VIDEO_S5K5BAF) += s5k5baf.o
+ obj-$(CONFIG_VIDEO_S5K6A3) += s5k6a3.o
+ obj-$(CONFIG_VIDEO_S5KJN1) += s5kjn1.o
+--- a/drivers/media/i2c/s5kkd1sp.c
++++ b/drivers/media/i2c/s5kkd1sp.c
+@@ -0,0 +1,1068 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Samsung S5KKD1SP image sensor driver
++ *
++ * The initial FP6 integration exposes the stock 3104x2336 30 fps mode.  The
++ * register programming sequence is decoded from the device's own signed stock
++ * camera profile; no Android camera HAL or tuning payload is loaded at runtime.
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/pm_runtime.h>
++#include <linux/regulator/consumer.h>
++#include <linux/units.h>
++#include <media/v4l2-cci.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-fwnode.h>
++
++#define S5KKD1SP_LINK_FREQ		893983616ULL
++#define S5KKD1SP_MCLK_FREQ		(24 * HZ_PER_MHZ)
++#define S5KKD1SP_DATA_LANES		4
++#define S5KKD1SP_REG_CTRL_MODE		CCI_REG16(0x0100)
++#define S5KKD1SP_MODE_STREAMING		0x0103
++#define S5KKD1SP_MODE_STANDBY		0x0000
++#define S5KKD1SP_INIT_RESET1_END	4
++#define S5KKD1SP_INIT_RESET2_END	7
++#define S5KKD1SP_INIT_DELAY_US		10000
++
++static const s64 s5kkd1sp_link_freq_menu[] = {
++	S5KKD1SP_LINK_FREQ,
++};
++
++static const char * const s5kkd1sp_supply_names[] = {
++	"vdda",
++	"vddd",
++	"vddio",
++};
++
++#define S5KKD1SP_NUM_SUPPLIES ARRAY_SIZE(s5kkd1sp_supply_names)
++#define S5KKD1SP_SUPPLY_VDDA	0
++#define S5KKD1SP_SUPPLY_VDDD	1
++#define S5KKD1SP_SUPPLY_VDDIO	2
++#define S5KKD1SP_POWER_DELAY_US	2000
++#define S5KKD1SP_OFF_DELAY_US	1000
++#define S5KKD1SP_VDDIO_MIN_UV	1800000
++#define S5KKD1SP_VDDIO_MAX_UV	1800000
++#define S5KKD1SP_VDDIO_LOAD_UA	1060
++#define S5KKD1SP_VDDD_MIN_UV	1050000
++#define S5KKD1SP_VDDD_MAX_UV	1150000
++#define S5KKD1SP_VDDD_LOAD_UA	643640
++#define S5KKD1SP_VDDA_MIN_UV	2800000
++#define S5KKD1SP_VDDA_MAX_UV	2800000
++#define S5KKD1SP_VDDA_LOAD_UA	82860
++
++static const struct cci_reg_sequence s5kkd1sp_init_regs[] = {
++	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x0000), 0x0000 },
++	{ CCI_REG16(0x0000), 0x4841 },
++	{ CCI_REG16(0x6010), 0x0001 },
++	{ CCI_REG16(0x6214), 0xff7d },
++	{ CCI_REG16(0x6218), 0x0000 },
++	{ CCI_REG16(0x6226), 0x0001 },
++	{ CCI_REG16(0x0a02), 0x0078 },
++	{ CCI_REG16(0xfcfc), 0x2400 },
++	{ CCI_REG16(0x7b1c), 0x17a3 },
++	{ CCI_REG16(0x7b1e), 0x01fc },
++	{ CCI_REG16(0x7b20), 0xe702 },
++	{ CCI_REG16(0x7b22), 0xe329 },
++	{ CCI_REG16(0x7b24), 0xb787 },
++	{ CCI_REG16(0x7b26), 0x0024 },
++	{ CCI_REG16(0x7b28), 0x3777 },
++	{ CCI_REG16(0x7b2a), 0x0024 },
++	{ CCI_REG16(0x7b2c), 0x9387 },
++	{ CCI_REG16(0x7b2e), 0xc7c7 },
++	{ CCI_REG16(0x7b30), 0x2324 },
++	{ CCI_REG16(0x7b32), 0xf79e },
++	{ CCI_REG16(0x7b34), 0xb747 },
++	{ CCI_REG16(0x7b36), 0x0024 },
++	{ CCI_REG16(0x7b38), 0x3787 },
++	{ CCI_REG16(0x7b3a), 0x0024 },
++	{ CCI_REG16(0x7b3c), 0x9387 },
++	{ CCI_REG16(0x7b3e), 0x87ff },
++	{ CCI_REG16(0x7b40), 0x1307 },
++	{ CCI_REG16(0x7b42), 0x47b9 },
++	{ CCI_REG16(0x7b44), 0xd8c3 },
++	{ CCI_REG16(0x7b46), 0x3787 },
++	{ CCI_REG16(0x7b48), 0x0024 },
++	{ CCI_REG16(0x7b4a), 0xb746 },
++	{ CCI_REG16(0x7b4c), 0x0024 },
++	{ CCI_REG16(0x7b4e), 0x1307 },
++	{ CCI_REG16(0x7b50), 0x87be },
++	{ CCI_REG16(0x7b52), 0x23aa },
++	{ CCI_REG16(0x7b54), 0xe6f4 },
++	{ CCI_REG16(0x7b56), 0xb785 },
++	{ CCI_REG16(0x7b58), 0x0024 },
++	{ CCI_REG16(0x7b5a), 0x3787 },
++	{ CCI_REG16(0x7b5c), 0x0024 },
++	{ CCI_REG16(0x7b5e), 0x37e5 },
++	{ CCI_REG16(0x7b60), 0x0120 },
++	{ CCI_REG16(0x7b62), 0x1307 },
++	{ CCI_REG16(0x7b64), 0xe7bb },
++	{ CCI_REG16(0x7b66), 0x0146 },
++	{ CCI_REG16(0x7b68), 0x9385 },
++	{ CCI_REG16(0x7b6a), 0x85c3 },
++	{ CCI_REG16(0x7b6c), 0x1305 },
++	{ CCI_REG16(0x7b6e), 0xc504 },
++	{ CCI_REG16(0x7b70), 0x98cb },
++	{ CCI_REG16(0x7b72), 0x9730 },
++	{ CCI_REG16(0x7b74), 0x00fc },
++	{ CCI_REG16(0x7b76), 0xe780 },
++	{ CCI_REG16(0x7b78), 0x0036 },
++	{ CCI_REG16(0x7b7a), 0xb787 },
++	{ CCI_REG16(0x7b7c), 0x0024 },
++	{ CCI_REG16(0x7b7e), 0x23a6 },
++	{ CCI_REG16(0x7b80), 0xa7b8 },
++	{ CCI_REG16(0x7b82), 0x17a3 },
++	{ CCI_REG16(0x7b84), 0x01fc },
++	{ CCI_REG16(0x7b86), 0x6700 },
++	{ CCI_REG16(0x7b88), 0xc325 },
++	{ CCI_REG16(0x7b8a), 0x0000 },
++	{ CCI_REG16(0x7b8c), 0x0000 },
++	{ CCI_REG16(0x7b8e), 0x0000 },
++	{ CCI_REG16(0x7b90), 0x0000 },
++	{ CCI_REG16(0x7b92), 0x0000 },
++	{ CCI_REG16(0x7b94), 0x17a3 },
++	{ CCI_REG16(0x7b96), 0x01fc },
++	{ CCI_REG16(0x7b98), 0xe702 },
++	{ CCI_REG16(0x7b9a), 0x6322 },
++	{ CCI_REG16(0x7b9c), 0x97f0 },
++	{ CCI_REG16(0x7b9e), 0x00fc },
++	{ CCI_REG16(0x7ba0), 0xe780 },
++	{ CCI_REG16(0x7ba2), 0xc031 },
++	{ CCI_REG16(0x7ba4), 0xb777 },
++	{ CCI_REG16(0x7ba6), 0x0024 },
++	{ CCI_REG16(0x7ba8), 0x03c5 },
++	{ CCI_REG16(0x7baa), 0x8710 },
++	{ CCI_REG16(0x7bac), 0x9d45 },
++	{ CCI_REG16(0x7bae), 0x9710 },
++	{ CCI_REG16(0x7bb0), 0x01fc },
++	{ CCI_REG16(0x7bb2), 0xe780 },
++	{ CCI_REG16(0x7bb4), 0x2029 },
++	{ CCI_REG16(0x7bb6), 0x17a3 },
++	{ CCI_REG16(0x7bb8), 0x01fc },
++	{ CCI_REG16(0x7bba), 0x6700 },
++	{ CCI_REG16(0x7bbc), 0x8322 },
++	{ CCI_REG16(0x7bbe), 0x17a3 },
++	{ CCI_REG16(0x7bc0), 0x01fc },
++	{ CCI_REG16(0x7bc2), 0xe702 },
++	{ CCI_REG16(0x7bc4), 0xc31f },
++	{ CCI_REG16(0x7bc6), 0x9700 },
++	{ CCI_REG16(0x7bc8), 0x01fc },
++	{ CCI_REG16(0x7bca), 0xe780 },
++	{ CCI_REG16(0x7bcc), 0x6077 },
++	{ CCI_REG16(0x7bce), 0x1965 },
++	{ CCI_REG16(0x7bd0), 0x0146 },
++	{ CCI_REG16(0x7bd2), 0x8965 },
++	{ CCI_REG16(0x7bd4), 0x1305 },
++	{ CCI_REG16(0x7bd6), 0x0522 },
++	{ CCI_REG16(0x7bd8), 0x9780 },
++	{ CCI_REG16(0x7bda), 0xfffb },
++	{ CCI_REG16(0x7bdc), 0xe780 },
++	{ CCI_REG16(0x7bde), 0x8077 },
++	{ CCI_REG16(0x7be0), 0x17a3 },
++	{ CCI_REG16(0x7be2), 0x01fc },
++	{ CCI_REG16(0x7be4), 0x6700 },
++	{ CCI_REG16(0x7be6), 0xe31f },
++	{ CCI_REG16(0x7be8), 0x17a3 },
++	{ CCI_REG16(0x7bea), 0x01fc },
++	{ CCI_REG16(0x7bec), 0xe702 },
++	{ CCI_REG16(0x7bee), 0x231d },
++	{ CCI_REG16(0x7bf0), 0x3764 },
++	{ CCI_REG16(0x7bf2), 0x0024 },
++	{ CCI_REG16(0x7bf4), 0xb767 },
++	{ CCI_REG16(0x7bf6), 0x0024 },
++	{ CCI_REG16(0x7bf8), 0x1304 },
++	{ CCI_REG16(0x7bfa), 0x04a6 },
++	{ CCI_REG16(0x7bfc), 0x9387 },
++	{ CCI_REG16(0x7bfe), 0x071f },
++	{ CCI_REG16(0x7c00), 0x0329 },
++	{ CCI_REG16(0x7c02), 0x440e },
++	{ CCI_REG16(0x7c04), 0x8324 },
++	{ CCI_REG16(0x7c06), 0x4425 },
++	{ CCI_REG16(0x7c08), 0x03c7 },
++	{ CCI_REG16(0x7c0a), 0xc724 },
++	{ CCI_REG16(0x7c0c), 0x83c7 },
++	{ CCI_REG16(0x7c0e), 0xd724 },
++	{ CCI_REG16(0x7c10), 0x3317 },
++	{ CCI_REG16(0x7c12), 0xe900 },
++	{ CCI_REG16(0x7c14), 0xb397 },
++	{ CCI_REG16(0x7c16), 0xf400 },
++	{ CCI_REG16(0x7c18), 0x2322 },
++	{ CCI_REG16(0x7c1a), 0xe40e },
++	{ CCI_REG16(0x7c1c), 0x232a },
++	{ CCI_REG16(0x7c1e), 0xf424 },
++	{ CCI_REG16(0x7c20), 0x97b0 },
++	{ CCI_REG16(0x7c22), 0xfffb },
++	{ CCI_REG16(0x7c24), 0xe780 },
++	{ CCI_REG16(0x7c26), 0xa016 },
++	{ CCI_REG16(0x7c28), 0x2322 },
++	{ CCI_REG16(0x7c2a), 0x240f },
++	{ CCI_REG16(0x7c2c), 0x232a },
++	{ CCI_REG16(0x7c2e), 0x9424 },
++	{ CCI_REG16(0x7c30), 0x17a3 },
++	{ CCI_REG16(0x7c32), 0x01fc },
++	{ CCI_REG16(0x7c34), 0x6700 },
++	{ CCI_REG16(0x7c36), 0xe31a },
++	{ CCI_REG16(0x7c38), 0x17a3 },
++	{ CCI_REG16(0x7c3a), 0x01fc },
++	{ CCI_REG16(0x7c3c), 0xe702 },
++	{ CCI_REG16(0x7c3e), 0x2318 },
++	{ CCI_REG16(0x7c40), 0xb787 },
++	{ CCI_REG16(0x7c42), 0x0024 },
++	{ CCI_REG16(0x7c44), 0x03a4 },
++	{ CCI_REG16(0x7c46), 0xc7b8 },
++	{ CCI_REG16(0x7c48), 0x0146 },
++	{ CCI_REG16(0x7c4a), 0x1145 },
++	{ CCI_REG16(0x7c4c), 0xa285 },
++	{ CCI_REG16(0x7c4e), 0x9780 },
++	{ CCI_REG16(0x7c50), 0xfffb },
++	{ CCI_REG16(0x7c52), 0xe780 },
++	{ CCI_REG16(0x7c54), 0x407a },
++	{ CCI_REG16(0x7c56), 0x9760 },
++	{ CCI_REG16(0x7c58), 0x01fc },
++	{ CCI_REG16(0x7c5a), 0xe780 },
++	{ CCI_REG16(0x7c5c), 0x603f },
++	{ CCI_REG16(0x7c5e), 0x0546 },
++	{ CCI_REG16(0x7c60), 0xa285 },
++	{ CCI_REG16(0x7c62), 0x1145 },
++	{ CCI_REG16(0x7c64), 0x9780 },
++	{ CCI_REG16(0x7c66), 0xfffb },
++	{ CCI_REG16(0x7c68), 0xe780 },
++	{ CCI_REG16(0x7c6a), 0xe078 },
++	{ CCI_REG16(0x7c6c), 0xb767 },
++	{ CCI_REG16(0x7c6e), 0x0024 },
++	{ CCI_REG16(0x7c70), 0x239a },
++	{ CCI_REG16(0x7c72), 0x0738 },
++	{ CCI_REG16(0x7c74), 0x17a3 },
++	{ CCI_REG16(0x7c76), 0x01fc },
++	{ CCI_REG16(0x7c78), 0x6700 },
++	{ CCI_REG16(0x7c7a), 0xa316 },
++	{ CCI_REG16(0x35cc), 0x1c80 },
++	{ CCI_REG16(0x35ce), 0x0024 },
++	{ CCI_REG16(0xfcfc), 0x2400 },
++	{ CCI_REG16(0x005a), 0x0000 },
++	{ CCI_REG16(0x005c), 0xd60e },
++	{ CCI_REG16(0x0060), 0xd606 },
++	{ CCI_REG16(0x00ec), 0x0000 },
++	{ CCI_REG16(0x011a), 0x0000 },
++	{ CCI_REG16(0x0274), 0x0202 },
++	{ CCI_REG16(0x0288), 0x0000 },
++	{ CCI_REG16(0x028a), 0x0000 },
++	{ CCI_REG16(0x0290), 0x0000 },
++	{ CCI_REG16(0x0292), 0x0000 },
++	{ CCI_REG16(0x029c), 0x0000 },
++	{ CCI_REG16(0x029e), 0x0000 },
++	{ CCI_REG16(0x02a4), 0x0000 },
++	{ CCI_REG16(0x02a6), 0x0000 },
++	{ CCI_REG16(0x02a8), 0x0000 },
++	{ CCI_REG16(0x02aa), 0x0000 },
++	{ CCI_REG16(0x02ac), 0x0000 },
++	{ CCI_REG16(0x032a), 0x0000 },
++	{ CCI_REG16(0x0634), 0x0002 },
++	{ CCI_REG16(0x0636), 0x0002 },
++	{ CCI_REG16(0x0638), 0x080a },
++	{ CCI_REG16(0x063a), 0x080a },
++	{ CCI_REG16(0x063c), 0x0002 },
++	{ CCI_REG16(0x063e), 0x0002 },
++	{ CCI_REG16(0x0640), 0x080a },
++	{ CCI_REG16(0x0642), 0x080a },
++	{ CCI_REG16(0x0b48), 0x0000 },
++	{ CCI_REG16(0x10ba), 0x0100 },
++	{ CCI_REG16(0x10f6), 0x0100 },
++	{ CCI_REG16(0x1222), 0x0100 },
++	{ CCI_REG16(0x1224), 0x9411 },
++	{ CCI_REG16(0x1248), 0x6018 },
++	{ CCI_REG16(0x1256), 0x0b00 },
++	{ CCI_REG16(0x1260), 0x0100 },
++	{ CCI_REG16(0x1292), 0x0101 },
++	{ CCI_REG16(0x1294), 0x0001 },
++	{ CCI_REG16(0x12a4), 0x0307 },
++	{ CCI_REG16(0x1c2e), 0x0300 },
++	{ CCI_REG16(0x1c66), 0x530a },
++	{ CCI_REG16(0x1c8e), 0x3401 },
++	{ CCI_REG16(0x1cbe), 0x0000 },
++	{ CCI_REG16(0x1f02), 0xca44 },
++	{ CCI_REG16(0x21b0), 0x0101 },
++	{ CCI_REG16(0x21b2), 0x0101 },
++	{ CCI_REG16(0x2204), 0x0000 },
++	{ CCI_REG16(0x22be), 0x0101 },
++	{ CCI_REG16(0x2322), 0x0000 },
++	{ CCI_REG16(0x2f74), 0x0050 },
++	{ CCI_REG16(0x2f7c), 0x0a00 },
++	{ CCI_REG16(0x3020), 0x0800 },
++	{ CCI_REG16(0x302c), 0x0000 },
++	{ CCI_REG16(0x303c), 0x0000 },
++	{ CCI_REG16(0x30ae), 0x0200 },
++	{ CCI_REG16(0x3128), 0x0001 },
++	{ CCI_REG16(0x3162), 0x1400 },
++	{ CCI_REG16(0x3192), 0x0000 },
++	{ CCI_REG16(0x5730), 0x1ea1 },
++	{ CCI_REG16(0x5736), 0x0000 },
++	{ CCI_REG16(0x58c0), 0x0c00 },
++	{ CCI_REG16(0x58c4), 0x0000 },
++	{ CCI_REG16(0x58c6), 0x0700 },
++	{ CCI_REG16(0x58c8), 0x0c00 },
++	{ CCI_REG16(0x58ce), 0x0700 },
++	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x001e), 0x0105 },
++	{ CCI_REG16(0x011a), 0x0001 },
++	{ CCI_REG16(0x0b0a), 0x0101 },
++	{ CCI_REG16(0xf41c), 0x0002 },
++	{ CCI_REG16(0xf44a), 0x0006 },
++	{ CCI_REG16(0xf44c), 0x0b0b },
++};
++
++static const struct cci_reg_sequence s5kkd1sp_3104x2336_regs[] = {
++	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x0136), 0x1800 },
++	{ CCI_REG16(0x013e), 0x0000 },
++	{ CCI_REG16(0x0304), 0x0004 },
++	{ CCI_REG16(0x0306), 0x008c },
++	{ CCI_REG16(0x030c), 0x0000 },
++	{ CCI_REG16(0x0302), 0x0001 },
++	{ CCI_REG16(0x0300), 0x0006 },
++	{ CCI_REG16(0x030e), 0x0004 },
++	{ CCI_REG16(0x0310), 0x0097 },
++	{ CCI_REG16(0x0322), 0x0000 },
++	{ CCI_REG16(0x0312), 0x0000 },
++	{ CCI_REG16(0x030a), 0x0001 },
++	{ CCI_REG16(0x0308), 0x0008 },
++	{ CCI_REG16(0x02ee), 0x0000 },
++	{ CCI_REG16(0xfcfc), 0x2400 },
++	{ CCI_REG16(0x1c6a), 0x9600 },
++	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x0344), 0x00b0 },
++	{ CCI_REG16(0x0348), 0x18ff },
++	{ CCI_REG16(0x0346), 0x0080 },
++	{ CCI_REG16(0x034a), 0x12cf },
++	{ CCI_REG16(0x0350), 0x0004 },
++	{ CCI_REG16(0x0352), 0x0004 },
++	{ CCI_REG16(0x034c), 0x0c20 },
++	{ CCI_REG16(0x034e), 0x0920 },
++	{ CCI_REG16(0x0900), 0x0122 },
++	{ CCI_REG16(0x0404), 0x1000 },
++	{ CCI_REG16(0x0936), 0x0000 },
++	{ CCI_REG16(0x0c40), 0x0000 },
++	{ CCI_REG16(0x0086), 0x1000 },
++	{ CCI_REG16(0x0380), 0x0002 },
++	{ CCI_REG16(0x0382), 0x0002 },
++	{ CCI_REG16(0x0384), 0x0002 },
++	{ CCI_REG16(0x0386), 0x0002 },
++	{ CCI_REG16(0x0342), 0x0e38 },
++	{ CCI_REG16(0x0340), 0x13d6 },
++	{ CCI_REG16(0x0702), 0x0000 },
++	{ CCI_REG16(0x0112), 0x0a0a },
++	{ CCI_REG16(0x0114), 0x0301 },
++	{ CCI_REG16(0x0116), 0x2b00 },
++	{ CCI_REG16(0x0118), 0x0000 },
++	{ CCI_REG16(0x011c), 0x0100 },
++	{ CCI_REG16(0x080e), 0x1200 },
++	{ CCI_REG16(0x0816), 0x0000 },
++	{ CCI_REG16(0x0d00), 0x0101 },
++	{ CCI_REG16(0x0d02), 0x0101 },
++	{ CCI_REG16(0x0d04), 0x0102 },
++	{ CCI_REG16(0xfcfc), 0x2400 },
++	{ CCI_REG16(0x2f9a), 0x0a00 },
++	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x0b06), 0x0101 },
++	{ CCI_REG16(0x0b08), 0x0000 },
++	{ CCI_REG16(0x0fea), 0x0b00 },
++	{ CCI_REG16(0xfcfc), 0x2400 },
++	{ CCI_REG16(0x01ea), 0xc017 },
++	{ CCI_REG16(0x01ec), 0x0018 },
++	{ CCI_REG16(0x0050), 0x0100 },
++	{ CCI_REG16(0x0070), 0x0002 },
++	{ CCI_REG16(0x0080), 0x0600 },
++	{ CCI_REG16(0x0084), 0x0000 },
++	{ CCI_REG16(0x008a), 0x0000 },
++	{ CCI_REG16(0x0098), 0x0a00 },
++	{ CCI_REG16(0x009a), 0x0c00 },
++	{ CCI_REG16(0x009c), 0x0a00 },
++	{ CCI_REG16(0x009e), 0x0c00 },
++	{ CCI_REG16(0x00b4), 0x4001 },
++	{ CCI_REG16(0x00b8), 0x4001 },
++	{ CCI_REG16(0x00e6), 0x0a00 },
++	{ CCI_REG16(0x0130), 0x0002 },
++	{ CCI_REG16(0x0132), 0x0804 },
++	{ CCI_REG16(0x0134), 0x0100 },
++	{ CCI_REG16(0x0138), 0x0001 },
++	{ CCI_REG16(0x01a6), 0x7701 },
++	{ CCI_REG16(0x028c), 0x0000 },
++	{ CCI_REG16(0x028e), 0x0000 },
++	{ CCI_REG16(0x0294), 0x0000 },
++	{ CCI_REG16(0x0296), 0x0000 },
++	{ CCI_REG16(0x0298), 0x0000 },
++	{ CCI_REG16(0x029a), 0x0000 },
++	{ CCI_REG16(0x02a0), 0x0000 },
++	{ CCI_REG16(0x02a2), 0x0000 },
++	{ CCI_REG16(0x0308), 0x0000 },
++	{ CCI_REG16(0x030a), 0x0000 },
++	{ CCI_REG16(0x030c), 0x0000 },
++	{ CCI_REG16(0x030e), 0x0000 },
++	{ CCI_REG16(0x0310), 0x0000 },
++	{ CCI_REG16(0x0312), 0x0000 },
++	{ CCI_REG16(0x0314), 0x0000 },
++	{ CCI_REG16(0x0316), 0x0000 },
++	{ CCI_REG16(0x0318), 0x0000 },
++	{ CCI_REG16(0x031a), 0x0000 },
++	{ CCI_REG16(0x031c), 0x0000 },
++	{ CCI_REG16(0x031e), 0x0000 },
++	{ CCI_REG16(0x0320), 0x0000 },
++	{ CCI_REG16(0x0322), 0x0000 },
++	{ CCI_REG16(0x0324), 0x0000 },
++	{ CCI_REG16(0x0326), 0x0000 },
++	{ CCI_REG16(0x0328), 0x0000 },
++	{ CCI_REG16(0x032c), 0x0000 },
++	{ CCI_REG16(0x0632), 0x0110 },
++	{ CCI_REG16(0x0906), 0x1000 },
++	{ CCI_REG16(0x097e), 0x1000 },
++	{ CCI_REG16(0x09f6), 0x1000 },
++	{ CCI_REG16(0x0a6e), 0x1000 },
++	{ CCI_REG16(0x0a78), 0x3000 },
++	{ CCI_REG16(0x0a7a), 0x3000 },
++	{ CCI_REG16(0x0ae6), 0x1000 },
++	{ CCI_REG16(0x0af0), 0x3000 },
++	{ CCI_REG16(0x0af2), 0x3000 },
++	{ CCI_REG16(0x0b32), 0x0000 },
++	{ CCI_REG16(0x0b4a), 0x0100 },
++	{ CCI_REG16(0x1088), 0x0020 },
++	{ CCI_REG16(0x109e), 0x1000 },
++	{ CCI_REG16(0x10da), 0x0100 },
++	{ CCI_REG16(0x1226), 0x0200 },
++	{ CCI_REG16(0x1230), 0x0100 },
++	{ CCI_REG16(0x1288), 0x0000 },
++	{ CCI_REG16(0x128a), 0x0400 },
++	{ CCI_REG16(0x128c), 0x0200 },
++	{ CCI_REG16(0x128e), 0x0a00 },
++	{ CCI_REG16(0x1290), 0x0900 },
++	{ CCI_REG16(0x12a0), 0x0101 },
++	{ CCI_REG16(0x12a2), 0x0100 },
++	{ CCI_REG16(0x12a6), 0x0000 },
++	{ CCI_REG16(0x12a8), 0x0000 },
++	{ CCI_REG16(0x12aa), 0x0000 },
++	{ CCI_REG16(0x12c4), 0x0402 },
++	{ CCI_REG16(0x12dc), 0x0000 },
++	{ CCI_REG16(0x13b6), 0x1800 },
++	{ CCI_REG16(0x13bc), 0x1800 },
++	{ CCI_REG16(0x1c6e), 0x0000 },
++	{ CCI_REG16(0x1c9a), 0x8207 },
++	{ CCI_REG16(0x1ca4), 0x8a00 },
++	{ CCI_REG16(0x1ca6), 0x0206 },
++	{ CCI_REG16(0x1cb0), 0xbf00 },
++	{ CCI_REG16(0x1cba), 0x0101 },
++	{ CCI_REG16(0x1f42), 0x0100 },
++	{ CCI_REG16(0x1f5e), 0x0000 },
++	{ CCI_REG16(0x2144), 0x1a00 },
++	{ CCI_REG16(0x2156), 0x0000 },
++	{ CCI_REG16(0x2176), 0x0000 },
++	{ CCI_REG16(0x2180), 0x0000 },
++	{ CCI_REG16(0x2182), 0x0000 },
++	{ CCI_REG16(0x2190), 0xffff },
++	{ CCI_REG16(0x21b4), 0x0101 },
++	{ CCI_REG16(0x21b6), 0x0100 },
++	{ CCI_REG16(0x21b8), 0x0000 },
++	{ CCI_REG16(0x21ba), 0x7f00 },
++	{ CCI_REG16(0x21bc), 0x0008 },
++	{ CCI_REG16(0x21be), 0x0000 },
++	{ CCI_REG16(0x21c0), 0x0000 },
++	{ CCI_REG16(0x21c4), 0x8000 },
++	{ CCI_REG16(0x21c6), 0x0108 },
++	{ CCI_REG16(0x21c8), 0x0000 },
++	{ CCI_REG16(0x21ca), 0x0000 },
++	{ CCI_REG16(0x21ce), 0x5500 },
++	{ CCI_REG16(0x21d0), 0x6600 },
++	{ CCI_REG16(0x21d2), 0x10d6 },
++	{ CCI_REG16(0x21fe), 0x0800 },
++	{ CCI_REG16(0x2200), 0x0a00 },
++	{ CCI_REG16(0x2202), 0x6cf4 },
++	{ CCI_REG16(0x2206), 0x4100 },
++	{ CCI_REG16(0x2208), 0x3ef6 },
++	{ CCI_REG16(0x222e), 0x0000 },
++	{ CCI_REG16(0x2230), 0x0000 },
++	{ CCI_REG16(0x2232), 0x0000 },
++	{ CCI_REG16(0x225e), 0x0000 },
++	{ CCI_REG16(0x2260), 0x0000 },
++	{ CCI_REG16(0x2262), 0x0000 },
++	{ CCI_REG16(0x22c2), 0x0101 },
++	{ CCI_REG16(0x22c8), 0x4000 },
++	{ CCI_REG16(0x22ca), 0x7f00 },
++	{ CCI_REG16(0x22cc), 0x8000 },
++	{ CCI_REG16(0x22ce), 0x0001 },
++	{ CCI_REG16(0x22d0), 0x0002 },
++	{ CCI_REG16(0x22d2), 0x0004 },
++	{ CCI_REG16(0x22d4), 0x0010 },
++	{ CCI_REG16(0x230e), 0x54f4 },
++	{ CCI_REG16(0x2310), 0x1611 },
++	{ CCI_REG16(0x2312), 0x1607 },
++	{ CCI_REG16(0x2314), 0x1611 },
++	{ CCI_REG16(0x2316), 0x1613 },
++	{ CCI_REG16(0x2318), 0x1609 },
++	{ CCI_REG16(0x231a), 0x1613 },
++	{ CCI_REG16(0x231c), 0x1619 },
++	{ CCI_REG16(0x231e), 0x161f },
++	{ CCI_REG16(0x2320), 0x6af4 },
++	{ CCI_REG16(0x2324), 0x4000 },
++	{ CCI_REG16(0x2326), 0x4000 },
++	{ CCI_REG16(0x2328), 0x0000 },
++	{ CCI_REG16(0x232a), 0x4000 },
++	{ CCI_REG16(0x232c), 0x4000 },
++	{ CCI_REG16(0x232e), 0x4000 },
++	{ CCI_REG16(0x2330), 0x4000 },
++	{ CCI_REG16(0x2332), 0x0ad6 },
++	{ CCI_REG16(0x2334), 0x0c0c },
++	{ CCI_REG16(0x2336), 0x0c0c },
++	{ CCI_REG16(0x2338), 0x0c0c },
++	{ CCI_REG16(0x233a), 0x0101 },
++	{ CCI_REG16(0x233c), 0x0101 },
++	{ CCI_REG16(0x233e), 0x0a0a },
++	{ CCI_REG16(0x2340), 0x0a0a },
++	{ CCI_REG16(0x2342), 0x0a0a },
++	{ CCI_REG16(0x2344), 0x02f4 },
++	{ CCI_REG16(0x2346), 0x4000 },
++	{ CCI_REG16(0x2348), 0x4000 },
++	{ CCI_REG16(0x234a), 0x4000 },
++	{ CCI_REG16(0x234c), 0x4c00 },
++	{ CCI_REG16(0x234e), 0x4c00 },
++	{ CCI_REG16(0x2350), 0x4000 },
++	{ CCI_REG16(0x2352), 0x4000 },
++	{ CCI_REG16(0x2354), 0x4000 },
++	{ CCI_REG16(0x2f70), 0xe803 },
++	{ CCI_REG16(0x2f8e), 0x0101 },
++	{ CCI_REG16(0x2f94), 0x0100 },
++	{ CCI_REG16(0x2fa6), 0x0200 },
++	{ CCI_REG16(0x2fde), 0x0000 },
++	{ CCI_REG16(0x2fe0), 0x0000 },
++	{ CCI_REG16(0x3018), 0x0000 },
++	{ CCI_REG16(0x3098), 0x0400 },
++	{ CCI_REG16(0x30a0), 0xf002 },
++	{ CCI_REG16(0x30c6), 0x0000 },
++	{ CCI_REG16(0x30d4), 0x0000 },
++	{ CCI_REG16(0x313a), 0x0100 },
++	{ CCI_REG16(0x314a), 0x0010 },
++	{ CCI_REG16(0x3164), 0x0000 },
++	{ CCI_REG16(0x31ce), 0x2c01 },
++	{ CCI_REG16(0x3e40), 0x0100 },
++	{ CCI_REG16(0x3e50), 0x0000 },
++	{ CCI_REG16(0x3e54), 0x2d01 },
++	{ CCI_REG16(0x5732), 0x0100 },
++	{ CCI_REG16(0x5734), 0x0000 },
++	{ CCI_REG16(0x58cc), 0x0100 },
++	{ CCI_REG16(0x7108), 0x0000 },
++	{ CCI_REG16(0xfcfc), 0x4000 },
++	{ CCI_REG16(0x6226), 0x0000 },
++};
++
++struct s5kkd1sp {
++	struct device *dev;
++	struct regmap *regmap;
++	struct clk *mclk;
++	struct gpio_desc *reset_gpio;
++	struct regulator_bulk_data supplies[S5KKD1SP_NUM_SUPPLIES];
++	struct v4l2_subdev sd;
++	struct media_pad pad;
++	struct v4l2_ctrl_handler ctrl_handler;
++};
++
++#define to_s5kkd1sp(_sd) container_of(_sd, struct s5kkd1sp, sd)
++
++static void s5kkd1sp_log_reg(struct s5kkd1sp *sensor, u32 reg,
++			     const char *name)
++{
++	u64 value;
++	int ret;
++
++	ret = cci_read(sensor->regmap, CCI_REG16(reg), &value, NULL);
++	if (ret)
++		dev_err(sensor->dev, "failed to read %s (0x%04x): %d\n",
++			name, reg, ret);
++	else
++		dev_info(sensor->dev, "%s[0x%04x]=0x%04llx\n",
++			 name, reg, value);
++}
++
++static void s5kkd1sp_fill_format(struct v4l2_mbus_framefmt *fmt)
++{
++	fmt->code = MEDIA_BUS_FMT_SGRBG10_1X10;
++	fmt->width = 3104;
++	fmt->height = 2336;
++	fmt->field = V4L2_FIELD_NONE;
++	fmt->colorspace = V4L2_COLORSPACE_RAW;
++	fmt->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
++	fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
++	fmt->xfer_func = V4L2_XFER_FUNC_NONE;
++}
++
++static int s5kkd1sp_set_pad_format(struct v4l2_subdev *sd,
++				   struct v4l2_subdev_state *state,
++				   struct v4l2_subdev_format *fmt)
++{
++	s5kkd1sp_fill_format(&fmt->format);
++	*v4l2_subdev_state_get_format(state, 0) = fmt->format;
++	return 0;
++}
++
++static int s5kkd1sp_enum_mbus_code(struct v4l2_subdev *sd,
++				   struct v4l2_subdev_state *state,
++				   struct v4l2_subdev_mbus_code_enum *code)
++{
++	if (code->index)
++		return -EINVAL;
++	code->code = MEDIA_BUS_FMT_SGRBG10_1X10;
++	return 0;
++}
++
++static int s5kkd1sp_enum_frame_size(struct v4l2_subdev *sd,
++				    struct v4l2_subdev_state *state,
++				    struct v4l2_subdev_frame_size_enum *fse)
++{
++	if (fse->index || fse->code != MEDIA_BUS_FMT_SGRBG10_1X10)
++		return -EINVAL;
++	fse->min_width = fse->max_width = 3104;
++	fse->min_height = fse->max_height = 2336;
++	return 0;
++}
++
++static int s5kkd1sp_get_selection(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *state,
++				  struct v4l2_subdev_selection *sel)
++{
++	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE)
++		return -EINVAL;
++
++	switch (sel->target) {
++	case V4L2_SEL_TGT_CROP:
++	case V4L2_SEL_TGT_CROP_BOUNDS:
++	case V4L2_SEL_TGT_NATIVE_SIZE:
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = 3104;
++		sel->r.height = 2336;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int s5kkd1sp_enable_streams(struct v4l2_subdev *sd,
++				   struct v4l2_subdev_state *state,
++				   u32 pad, u64 streams_mask)
++{
++	struct s5kkd1sp *sensor = to_s5kkd1sp(sd);
++	int ret;
++
++	ret = pm_runtime_resume_and_get(sensor->dev);
++	if (ret)
++		return ret;
++
++	/*
++	 * The stock profile requires 10 ms after both reset-release writes.
++	 * cci_reg_sequence has no delay member, so preserve those boundaries
++	 * explicitly instead of collapsing the profile into one bulk write.
++	 */
++	cci_multi_reg_write(sensor->regmap, s5kkd1sp_init_regs,
++			    S5KKD1SP_INIT_RESET1_END, &ret);
++	if (!ret)
++		usleep_range(S5KKD1SP_INIT_DELAY_US,
++			     S5KKD1SP_INIT_DELAY_US + 1000);
++	cci_multi_reg_write(sensor->regmap,
++			    s5kkd1sp_init_regs + S5KKD1SP_INIT_RESET1_END,
++			    S5KKD1SP_INIT_RESET2_END -
++			    S5KKD1SP_INIT_RESET1_END, &ret);
++	if (!ret)
++		usleep_range(S5KKD1SP_INIT_DELAY_US,
++			     S5KKD1SP_INIT_DELAY_US + 1000);
++	cci_multi_reg_write(sensor->regmap,
++			    s5kkd1sp_init_regs + S5KKD1SP_INIT_RESET2_END,
++			    ARRAY_SIZE(s5kkd1sp_init_regs) -
++			    S5KKD1SP_INIT_RESET2_END, &ret);
++	cci_multi_reg_write(sensor->regmap, s5kkd1sp_3104x2336_regs,
++			    ARRAY_SIZE(s5kkd1sp_3104x2336_regs), &ret);
++	cci_write(sensor->regmap, S5KKD1SP_REG_CTRL_MODE,
++		  S5KKD1SP_MODE_STREAMING, &ret);
++	if (!ret) {
++		s5kkd1sp_log_reg(sensor, 0x0000, "model");
++		s5kkd1sp_log_reg(sensor, 0x0100, "mode");
++		s5kkd1sp_log_reg(sensor, 0x0112, "bit-depth");
++		s5kkd1sp_log_reg(sensor, 0x0114, "lane-mode");
++		s5kkd1sp_log_reg(sensor, 0x0136, "input-clock");
++		s5kkd1sp_log_reg(sensor, 0x0306, "pll-multiplier");
++		s5kkd1sp_log_reg(sensor, 0x0310, "mipi-pll-multiplier");
++		s5kkd1sp_log_reg(sensor, 0x0340, "frame-length");
++		s5kkd1sp_log_reg(sensor, 0x0342, "line-length");
++		s5kkd1sp_log_reg(sensor, 0x034c, "output-width");
++		s5kkd1sp_log_reg(sensor, 0x034e, "output-height");
++	}
++	if (!ret)
++		return 0;
++
++	dev_err(sensor->dev, "failed to start streaming: %d\n", ret);
++	pm_runtime_put_autosuspend(sensor->dev);
++	return ret;
++}
++
++static int s5kkd1sp_disable_streams(struct v4l2_subdev *sd,
++				    struct v4l2_subdev_state *state,
++				    u32 pad, u64 streams_mask)
++{
++	struct s5kkd1sp *sensor = to_s5kkd1sp(sd);
++	int ret;
++
++	ret = cci_write(sensor->regmap, S5KKD1SP_REG_CTRL_MODE,
++			S5KKD1SP_MODE_STANDBY, NULL);
++	if (ret)
++		dev_err(sensor->dev, "failed to stop streaming: %d\n", ret);
++	pm_runtime_put_autosuspend(sensor->dev);
++	return ret;
++}
++
++static int s5kkd1sp_init_state(struct v4l2_subdev *sd,
++			       struct v4l2_subdev_state *state)
++{
++	struct v4l2_subdev_format fmt = {
++		.which = V4L2_SUBDEV_FORMAT_TRY,
++		.pad = 0,
++	};
++
++	return s5kkd1sp_set_pad_format(sd, state, &fmt);
++}
++
++static const struct v4l2_subdev_video_ops s5kkd1sp_video_ops = {
++	.s_stream = v4l2_subdev_s_stream_helper,
++};
++
++static const struct v4l2_subdev_pad_ops s5kkd1sp_pad_ops = {
++	.set_fmt = s5kkd1sp_set_pad_format,
++	.get_fmt = v4l2_subdev_get_fmt,
++	.enum_mbus_code = s5kkd1sp_enum_mbus_code,
++	.enum_frame_size = s5kkd1sp_enum_frame_size,
++	.get_selection = s5kkd1sp_get_selection,
++	.enable_streams = s5kkd1sp_enable_streams,
++	.disable_streams = s5kkd1sp_disable_streams,
++};
++
++static const struct v4l2_subdev_ops s5kkd1sp_subdev_ops = {
++	.video = &s5kkd1sp_video_ops,
++	.pad = &s5kkd1sp_pad_ops,
++};
++
++static const struct v4l2_subdev_internal_ops s5kkd1sp_internal_ops = {
++	.init_state = s5kkd1sp_init_state,
++};
++
++static const struct media_entity_operations s5kkd1sp_entity_ops = {
++	.link_validate = v4l2_subdev_link_validate,
++};
++
++static int s5kkd1sp_check_hwcfg(struct s5kkd1sp *sensor)
++{
++	struct fwnode_handle *ep;
++	struct v4l2_fwnode_endpoint bus_cfg = {
++		.bus = {
++			.mipi_csi2 = {
++				.num_data_lanes = S5KKD1SP_DATA_LANES,
++			},
++		},
++		.bus_type = V4L2_MBUS_CSI2_DPHY,
++	};
++	unsigned long freq_bitmap;
++	int ret;
++
++	ep = fwnode_graph_get_next_endpoint(dev_fwnode(sensor->dev), NULL);
++	if (!ep)
++		return -EINVAL;
++	ret = v4l2_fwnode_endpoint_alloc_parse(ep, &bus_cfg);
++	fwnode_handle_put(ep);
++	if (ret)
++		return ret;
++	if (bus_cfg.bus.mipi_csi2.num_data_lanes != S5KKD1SP_DATA_LANES) {
++		ret = -EINVAL;
++		goto out;
++	}
++	ret = v4l2_link_freq_to_bitmap(sensor->dev,
++				       bus_cfg.link_frequencies,
++				       bus_cfg.nr_of_link_frequencies,
++				       s5kkd1sp_link_freq_menu,
++				       ARRAY_SIZE(s5kkd1sp_link_freq_menu),
++				       &freq_bitmap);
++out:
++	v4l2_fwnode_endpoint_free(&bus_cfg);
++	return ret;
++}
++
++static int s5kkd1sp_power_on(struct device *dev)
++{
++	struct s5kkd1sp *sensor = to_s5kkd1sp(dev_get_drvdata(dev));
++	int ret;
++
++	/* Preserve the signed stock profile's ordered power-up sequence. */
++	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
++	usleep_range(S5KKD1SP_POWER_DELAY_US, S5KKD1SP_POWER_DELAY_US + 5);
++
++	ret = regulator_set_voltage(
++		sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer,
++		S5KKD1SP_VDDIO_MIN_UV, S5KKD1SP_VDDIO_MAX_UV);
++	if (ret)
++		return ret;
++	ret = regulator_set_load(
++		sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer,
++		S5KKD1SP_VDDIO_LOAD_UA);
++	if (ret < 0)
++		return ret;
++	ret = regulator_enable(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer);
++	if (ret)
++		return ret;
++	usleep_range(S5KKD1SP_POWER_DELAY_US, S5KKD1SP_POWER_DELAY_US + 5);
++
++	ret = regulator_set_voltage(
++		sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer,
++		S5KKD1SP_VDDD_MIN_UV, S5KKD1SP_VDDD_MAX_UV);
++	if (ret)
++		goto disable_vddio;
++	ret = regulator_set_load(
++		sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer,
++		S5KKD1SP_VDDD_LOAD_UA);
++	if (ret < 0)
++		goto disable_vddio;
++	ret = regulator_enable(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer);
++	if (ret)
++		goto disable_vddio;
++	usleep_range(S5KKD1SP_POWER_DELAY_US, S5KKD1SP_POWER_DELAY_US + 5);
++
++	ret = regulator_set_voltage(
++		sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer,
++		S5KKD1SP_VDDA_MIN_UV, S5KKD1SP_VDDA_MAX_UV);
++	if (ret)
++		goto disable_vddd;
++	ret = regulator_set_load(
++		sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer,
++		S5KKD1SP_VDDA_LOAD_UA);
++	if (ret < 0)
++		goto disable_vddd;
++	ret = regulator_enable(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer);
++	if (ret)
++		goto disable_vddd;
++	usleep_range(S5KKD1SP_POWER_DELAY_US, S5KKD1SP_POWER_DELAY_US + 5);
++
++	gpiod_set_value_cansleep(sensor->reset_gpio, 0);
++	usleep_range(S5KKD1SP_POWER_DELAY_US, S5KKD1SP_POWER_DELAY_US + 5);
++
++	ret = clk_prepare_enable(sensor->mclk);
++	if (ret)
++		goto assert_reset;
++	return 0;
++
++assert_reset:
++	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
++	regulator_disable(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer);
++	regulator_set_load(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer, 0);
++	regulator_set_voltage(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer,
++			      0, S5KKD1SP_VDDA_MAX_UV);
++disable_vddd:
++	regulator_disable(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer);
++	regulator_set_load(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer, 0);
++	regulator_set_voltage(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer,
++			      0, S5KKD1SP_VDDD_MAX_UV);
++disable_vddio:
++	regulator_disable(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer);
++	regulator_set_load(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer, 0);
++	regulator_set_voltage(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer,
++			      0, S5KKD1SP_VDDIO_MAX_UV);
++	return ret;
++}
++
++static int s5kkd1sp_power_off(struct device *dev)
++{
++	struct s5kkd1sp *sensor = to_s5kkd1sp(dev_get_drvdata(dev));
++
++	clk_disable_unprepare(sensor->mclk);
++	usleep_range(S5KKD1SP_OFF_DELAY_US, S5KKD1SP_OFF_DELAY_US + 5);
++	gpiod_set_value_cansleep(sensor->reset_gpio, 1);
++	usleep_range(S5KKD1SP_OFF_DELAY_US, S5KKD1SP_OFF_DELAY_US + 5);
++	regulator_disable(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer);
++	regulator_set_load(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer, 0);
++	regulator_set_voltage(sensor->supplies[S5KKD1SP_SUPPLY_VDDA].consumer,
++			      0, S5KKD1SP_VDDA_MAX_UV);
++	regulator_disable(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer);
++	regulator_set_load(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer, 0);
++	regulator_set_voltage(sensor->supplies[S5KKD1SP_SUPPLY_VDDD].consumer,
++			      0, S5KKD1SP_VDDD_MAX_UV);
++	regulator_disable(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer);
++	regulator_set_load(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer, 0);
++	regulator_set_voltage(sensor->supplies[S5KKD1SP_SUPPLY_VDDIO].consumer,
++			      0, S5KKD1SP_VDDIO_MAX_UV);
++	return 0;
++}
++
++static int s5kkd1sp_init_controls(struct s5kkd1sp *sensor)
++{
++	struct v4l2_ctrl_handler *handler = &sensor->ctrl_handler;
++	struct v4l2_fwnode_device_properties props;
++	struct v4l2_ctrl *ctrl;
++	s64 pixel_rate = S5KKD1SP_LINK_FREQ * 2 * S5KKD1SP_DATA_LANES / 10;
++	int ret;
++
++	v4l2_ctrl_handler_init(handler, 8);
++	ctrl = v4l2_ctrl_new_int_menu(handler, NULL, V4L2_CID_LINK_FREQ,
++				      0, 0, s5kkd1sp_link_freq_menu);
++	if (ctrl)
++		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_PIXEL_RATE,
++			  pixel_rate, pixel_rate, 1, pixel_rate);
++	ctrl = v4l2_ctrl_new_std(handler, NULL, V4L2_CID_HBLANK,
++				3640 - 3104, 3640 - 3104, 1, 3640 - 3104);
++	if (ctrl)
++		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++	ctrl = v4l2_ctrl_new_std(handler, NULL, V4L2_CID_VBLANK,
++				5078 - 2336, 5078 - 2336, 1, 5078 - 2336);
++	if (ctrl)
++		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++	/*
++	 * The stock diagnostic table currently supplies fixed exposure and gain.
++	 * Keep writable cached controls for libcamera bring-up until the matching
++	 * Samsung indirect-register writes are physically validated.
++	 */
++	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_EXPOSURE,
++			  1, 5078 - 48, 1, 1000);
++	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_ANALOGUE_GAIN,
++			  0, 1023, 1, 0);
++	if (handler->error)
++		return handler->error;
++
++	ret = v4l2_fwnode_device_parse(sensor->dev, &props);
++	if (ret)
++		return ret;
++	ret = v4l2_ctrl_new_fwnode_properties(handler, NULL, &props);
++	if (ret)
++		return ret;
++	sensor->sd.ctrl_handler = handler;
++	return 0;
++}
++
++static int s5kkd1sp_probe(struct i2c_client *client)
++{
++	struct s5kkd1sp *sensor;
++	u64 chip_id;
++	unsigned int i;
++	int ret;
++
++	sensor = devm_kzalloc(&client->dev, sizeof(*sensor), GFP_KERNEL);
++	if (!sensor)
++		return -ENOMEM;
++	sensor->dev = &client->dev;
++	v4l2_i2c_subdev_init(&sensor->sd, client, &s5kkd1sp_subdev_ops);
++	sensor->regmap = devm_cci_regmap_init_i2c(client, 16);
++	if (IS_ERR(sensor->regmap))
++		return dev_err_probe(sensor->dev, PTR_ERR(sensor->regmap),
++				     "failed to initialize CCI\n");
++	sensor->mclk = devm_v4l2_sensor_clk_get(sensor->dev, NULL);
++	if (IS_ERR(sensor->mclk))
++		return dev_err_probe(sensor->dev, PTR_ERR(sensor->mclk),
++				     "failed to get MCLK\n");
++	if (clk_get_rate(sensor->mclk) != S5KKD1SP_MCLK_FREQ)
++		return dev_err_probe(sensor->dev, -EINVAL,
++				     "unsupported MCLK frequency\n");
++	ret = s5kkd1sp_check_hwcfg(sensor);
++	if (ret)
++		return dev_err_probe(sensor->dev, ret, "invalid endpoint\n");
++	sensor->reset_gpio = devm_gpiod_get_optional(sensor->dev, "reset",
++						     GPIOD_OUT_HIGH);
++	if (IS_ERR(sensor->reset_gpio))
++		return dev_err_probe(sensor->dev, PTR_ERR(sensor->reset_gpio),
++				     "failed to get reset GPIO\n");
++	for (i = 0; i < S5KKD1SP_NUM_SUPPLIES; i++)
++		sensor->supplies[i].supply = s5kkd1sp_supply_names[i];
++	ret = devm_regulator_bulk_get(sensor->dev, S5KKD1SP_NUM_SUPPLIES,
++				      sensor->supplies);
++	if (ret)
++		return dev_err_probe(sensor->dev, ret, "failed to get supplies\n");
++
++	ret = s5kkd1sp_power_on(sensor->dev);
++	if (ret)
++		return ret;
++	ret = cci_read(sensor->regmap, CCI_REG16(0x0000), &chip_id, NULL);
++	if (ret) {
++		dev_err_probe(sensor->dev, ret, "failed to read sensor identity\n");
++		goto power_off;
++	}
++	dev_info(sensor->dev, "sensor identity 0x%04llx\n", chip_id);
++	ret = s5kkd1sp_init_controls(sensor);
++	if (ret)
++		goto power_off;
++	sensor->sd.state_lock = sensor->ctrl_handler.lock;
++	sensor->sd.internal_ops = &s5kkd1sp_internal_ops;
++	sensor->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	sensor->sd.entity.ops = &s5kkd1sp_entity_ops;
++	sensor->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	sensor->pad.flags = MEDIA_PAD_FL_SOURCE;
++	ret = media_entity_pads_init(&sensor->sd.entity, 1, &sensor->pad);
++	if (ret)
++		goto free_controls;
++	ret = v4l2_subdev_init_finalize(&sensor->sd);
++	if (ret)
++		goto cleanup_entity;
++	pm_runtime_set_active(sensor->dev);
++	pm_runtime_enable(sensor->dev);
++	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
++	if (ret)
++		goto cleanup_subdev;
++	pm_runtime_set_autosuspend_delay(sensor->dev, 1000);
++	pm_runtime_use_autosuspend(sensor->dev);
++	pm_runtime_idle(sensor->dev);
++	return 0;
++
++cleanup_subdev:
++	v4l2_subdev_cleanup(&sensor->sd);
++	pm_runtime_disable(sensor->dev);
++	pm_runtime_set_suspended(sensor->dev);
++cleanup_entity:
++	media_entity_cleanup(&sensor->sd.entity);
++free_controls:
++	v4l2_ctrl_handler_free(&sensor->ctrl_handler);
++power_off:
++	s5kkd1sp_power_off(sensor->dev);
++	return ret;
++}
++
++static void s5kkd1sp_remove(struct i2c_client *client)
++{
++	struct s5kkd1sp *sensor = to_s5kkd1sp(i2c_get_clientdata(client));
++
++	v4l2_async_unregister_subdev(&sensor->sd);
++	v4l2_subdev_cleanup(&sensor->sd);
++	media_entity_cleanup(&sensor->sd.entity);
++	v4l2_ctrl_handler_free(&sensor->ctrl_handler);
++	pm_runtime_disable(sensor->dev);
++	if (!pm_runtime_status_suspended(sensor->dev)) {
++		s5kkd1sp_power_off(sensor->dev);
++		pm_runtime_set_suspended(sensor->dev);
++	}
++}
++
++static const struct dev_pm_ops s5kkd1sp_pm_ops = {
++	SET_RUNTIME_PM_OPS(s5kkd1sp_power_off, s5kkd1sp_power_on, NULL)
++};
++
++static const struct of_device_id s5kkd1sp_of_match[] = {
++	{ .compatible = "samsung,s5kkd1sp" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, s5kkd1sp_of_match);
++
++static struct i2c_driver s5kkd1sp_i2c_driver = {
++	.driver = {
++		.name = "s5kkd1sp",
++		.pm = &s5kkd1sp_pm_ops,
++		.of_match_table = s5kkd1sp_of_match,
++	},
++	.probe = s5kkd1sp_probe,
++	.remove = s5kkd1sp_remove,
++};
++module_i2c_driver(s5kkd1sp_i2c_driver);
++
++MODULE_DESCRIPTION("Samsung S5KKD1SP image sensor driver");
++MODULE_LICENSE("GPL");
+--- a/arch/arm64/boot/dts/qcom/milos.dtsi
++++ b/arch/arm64/boot/dts/qcom/milos.dtsi
+@@ -2579,7 +2579,10 @@
+ 				port@3 {
+ 					reg = <3>;
+ 
+-
++					csiphy3_ep: endpoint {
++						remote-endpoint = <&s5kkd1sp_ep>;
++						data-lanes = <0 1 2 3>;
++					};
+ 				};
+ 			};
+ 		};
+@@ -3039,9 +3042,30 @@
+ 
+ 			cam_mclk1_sleep: cam-mclk1-sleep-state {
+ 				pins = "gpio84";
++				function = "cam_mclk";
++				drive-strength = <2>;
++				bias-pull-down;
++			};
++
++			cam_mclk3_default: cam-mclk3-default-state {
++				pins = "gpio86";
++				function = "cam_mclk";
++				drive-strength = <4>;
++				bias-disable;
++			};
++
++			cam_mclk3_sleep: cam-mclk3-sleep-state {
++				pins = "gpio86";
+ 				function = "cam_mclk";
+ 				drive-strength = <2>;
+ 				bias-pull-down;
++			};
++
++			s5kkd1sp_reset_default: s5kkd1sp-reset-default-state {
++				pins = "gpio43";
++				function = "gpio";
++				drive-strength = <2>;
++				bias-disable;
+ 			};
+ 
+ 			ov13b10_reset_default: ov13b10-reset-default-state {
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -711,8 +711,35 @@
+ 
+ &cci1_i2c1 {
+ 	/* Awinic AW86016 VCM @ 0x0c */
+-	/* Front cam: Samsung S5KKD1 @ 0x3d */
++	/* Front cam: Samsung S5KKD1SP @ 0x3d */
++	camera@3d {
++		compatible = "samsung,s5kkd1sp";
++		reg = <0x3d>;
++
++		clocks = <&camcc CAM_CC_MCLK3_CLK>;
++		assigned-clocks = <&camcc CAM_CC_MCLK3_CLK>;
++		assigned-clock-rates = <24000000>;
+ 
++		vdda-supply = <&vreg_l3p>;
++		vddd-supply = <&vreg_l2p>;
++		vddio-supply = <&vreg_l6p>;
++
++		reset-gpios = <&tlmm 43 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam_mclk3_default &s5kkd1sp_reset_default>;
++
++		orientation = <0>;
++		rotation = <270>;
++
++		port {
++			s5kkd1sp_ep: endpoint {
++				remote-endpoint = <&csiphy3_ep>;
++				data-lanes = <0 1 2 3>;
++				link-frequencies = /bits/ 64 <893983616>;
++			};
++		};
++	};
++
+ 	eeprom@51 {
+ 		compatible = "puya,p24c128f", "atmel,24c128";
+ 		reg = <0x51>;

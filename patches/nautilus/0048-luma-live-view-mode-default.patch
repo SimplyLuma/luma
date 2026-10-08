@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Thu, 17 Sep 2026 01:27:18 -0400
+Subject: [PATCH] nautilus: always read the live view-mode default for a
+ location
+
+Project Luma view-mode memory (default-folder-viewer) writes correctly
+on every switch, but a window slot only ever computed its view from
+the live global default in some of the places that matter, so an
+already-open window could keep showing a stale view indefinitely:
+
+1. get_view_id_for_location() returned a per-window snapshot
+   (self->default_view_id) taken once at that window slot construction,
+   not the live GSettings value. Fixed by adding
+   nautilus_window_slot_get_global_default_view_id() (the same
+   read-plus-validate-plus-warn logic slot construction already did)
+   and reading it live from get_view_id_for_location()'s general case.
+
+2. nautilus_window_slot_open_location_full() early-returns before ever
+   calling that function when the requested location already equals
+   the slot's current location -- the path taken whenever
+   NAUTILUS_OPEN_FLAG_REUSE_EXISTING hands an already-open window back
+   for the same folder. That is nautilus_application_activate()'s
+   normal path (dock icon, app grid, D-Bus Activate/Open with no
+   explicit new location) reusing a window via
+   get_window_with_location(). This is what a person experiences as
+   Filer forgetting the view they just picked: the window they get
+   back was never told about it, because the code path that tells it
+   never ran. Now that early return also re-syncs the window to the
+   live default via nautilus_window_slot_set_view_id(), which is
+   already a safe no-op if the view already matches.
+
+self->default_view_id keeps its role of avoiding a redundant GSettings
+write in change_files_view_mode(); it is no longer the source of truth
+for what a location should open in.
+
+Reproduced headlessly: Window A opens Home (icon-view). A second
+window opens a different folder and is switched to Column view
+(writes GSettings). Reactivating Filer on Home (nautilus /home,
+matching a dock click) now shows Window A in Column view instead of
+keeping icon-view.
+---
+ src/nautilus-window-slot.c | 51 ++++++++++++++++++++++++++++++--------
+ 1 file changed, 40 insertions(+), 11 deletions(-)
+
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+index df32f0d..6aecb8d 100644
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -338,6 +338,30 @@ nautilus_window_slot_set_view_id (NautilusWindowSlot *self,
+     g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_TOOLTIP]);
+ }
+ 
++/* Project Luma: the live global preference, not a per-window snapshot.
++ * Reading this fresh on every location change (not just at window
++ * construction) is what makes an already-open or reactivated window pick
++ * up a view chosen in another window, the same way Finder-style "remember
++ * my last view" is expected to work globally, not per-window. */
++static guint
++nautilus_window_slot_get_global_default_view_id (void)
++{
++    guint view_id = g_settings_get_enum (nautilus_preferences,
++                                         NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER);
++
++    if (G_UNLIKELY (view_id != NAUTILUS_VIEW_LIST_ID &&
++                    view_id != NAUTILUS_VIEW_GRID_ID &&
++                    view_id != NAUTILUS_VIEW_COLUMN_ID))
++    {
++        g_warning ("Invalid value stored for 'default-folder-viewer' key for "
++                   "the 'org.gnome.nautilus.preferences' schemas. Installed "
++                   "schemas may be outdated. Falling back to 'list-view'.");
++        view_id = NAUTILUS_VIEW_LIST_ID;
++    }
++
++    return view_id;
++}
++
+ static guint
+ nautilus_window_slot_get_view_id_for_location (NautilusWindowSlot *self,
+                                                GFile              *location)
+@@ -364,7 +388,7 @@ nautilus_window_slot_get_view_id_for_location (NautilusWindowSlot *self,
+         return NAUTILUS_VIEW_NETWORK_ID;
+     }
+ 
+-    return self->default_view_id;
++    return nautilus_window_slot_get_global_default_view_id ();
+ }
+ 
+ static void
+@@ -1485,16 +1509,7 @@ nautilus_window_slot_init (NautilusWindowSlot *self)
+ 
+     self->fd_holder = nautilus_fd_holder_new ();
+ 
+-    self->default_view_id = g_settings_get_enum (nautilus_preferences, NAUTILUS_PREFERENCES_DEFAULT_FOLDER_VIEWER);
+-    if (G_UNLIKELY (self->default_view_id != NAUTILUS_VIEW_LIST_ID &&
+-                    self->default_view_id != NAUTILUS_VIEW_GRID_ID &&
+-                    self->default_view_id != NAUTILUS_VIEW_COLUMN_ID))
+-    {
+-        g_warning ("Invalid value stored for 'default-folder-viewer' key for "
+-                   "the 'org.gnome.nautilus.preferences' schemas. Installed "
+-                   "schemas may be outdated. Falling back to 'list-view'.");
+-        self->default_view_id = NAUTILUS_VIEW_LIST_ID;
+-    }
++    self->default_view_id = nautilus_window_slot_get_global_default_view_id ();
+ }
+ 
+ static void begin_location_change (NautilusWindowSlot        *slot,
+@@ -1538,6 +1553,20 @@ nautilus_window_slot_open_location_full (NautilusWindowSlot *self,
+             nautilus_files_view_set_selection (self->content_view, new_selection, FALSE);
+         }
+ 
++        /* Project Luma: this is the path taken when the application is
++         * reactivated (dock, app grid, D-Bus Open/Activate with no new
++         * location) and reuses a window that already shows this location,
++         * per NAUTILUS_OPEN_FLAG_REUSE_EXISTING in nautilus-application.c.
++         * Nothing below this point runs for that case, so without this the
++         * window kept whatever view it had from when it was last given a
++         * location, never picking up a view chosen since in another window
++         * or a previous session -- the exact "Filer forgot my view" gap. */
++        if (self->content_view != NULL)
++        {
++            nautilus_window_slot_set_view_id (self,
++                                              nautilus_window_slot_get_view_id_for_location (self, location));
++        }
++
+         return;
+     }
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,26 @@
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1453,3 +1453,23 @@
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls button image {
+   -gtk-icon-size: 13px;
+ }
++
++/* Match the simulator's button-owned frames, never the container allocation. */
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls {
++  border: none;
++  box-shadow: none;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button {
++  min-width: 26px;
++  min-height: 26px;
++  border: 1px solid @luma_line;
++  box-shadow: none;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button:first-child {
++  border-radius: 10px 0 0 10px;
++}
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls button:last-child {
++  border-left-width: 0;
++  border-radius: 0 10px 10px 0;
++  box-shadow: none;
++}

@@ -1,0 +1,95 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: defer lip placement outside Shelf allocation
+
+Do not query dormant or unallocated Shelf groups. Coalesce allocation
+notifications outside Clutter layout and size the first lip allocation directly.
+This changes notification-owned code only; saved arrangements remain intact.
+GPL-2.0-or-later, following GNOME Shell upstream.
+
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -114,7 +114,7 @@
+         this.connect('destroy', () => {
+             this._destroying = true;
+             this.close();
+-            for (const id of [this._timer, this._buzzId, this._syncId])
++            for (const id of [this._timer, this._buzzId, this._syncId, this._placeId])
+                 if (id) GLib.source_remove(id);
+             for (const s of this._sources.keys()) { s.disconnectObject(this); s.policy.disconnectObject(this); }
+             for (const n of this._notifications) n.disconnectObject(this);
+@@ -158,9 +158,10 @@
+             this._syncId = 0;
+             if (Main.shelf && !this._watchingShelf) {
+                 this._watchingShelf = true;
+-                Main.shelf.connectObject('notify::allocation', () => this._place(), this);
++                Main.shelf.connectObject('notify::allocation', () => this._queuePlace(),
++                    'layout-changed', () => this._queuePlace(), this);
+                 for (const group of Main.shelf._groups ?? [])
+-                    group.connectObject('notify::allocation', () => this._place(), this);
++                    group.connectObject('notify::allocation', () => this._queuePlace(), this);
+             }
+             this._records = records();
+             const keep = new Set(this._records);
+@@ -236,7 +237,7 @@
+             if (!n.resident) n.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
+             if (this.isOpen) this.close();
+         });
+-        card.connect('notify::height', () => this._place());
++        card.connect('notify::height', () => this._queuePlace());
+         return card;
+     }
+ 
+@@ -336,6 +337,17 @@
+         this._place();
+         this._breathe();
+     }
++    // Allocation notifications run inside Clutter's layout traversal. Reading
++    // transformed geometry or changing chrome geometry there can re-enter that
++    // traversal. Coalesce placement after the notifying allocation completes.
++    _queuePlace() {
++        if (this._destroying || this._placeId) return;
++        this._placeId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._placeId = 0;
++            this._place();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
+     _place() {
+         if (this._destroying) return;
+         const monitor = Main.layoutManager.primaryMonitor;
+@@ -346,7 +358,12 @@
+         let top = monitor.y;
+         const groups = Main.shelf?._groups ?? [];
+         for (const g of groups) {
+-            if (g.visible && g.placement?.edge === 'top' && g.placement?.monitor === monitor.index) {
++            // A saved notifications-only row is dormant: its legacy beacon is
++            // hidden and the row may never receive a usable allocation. Such
++            // rows reserve no space, just as Shelf's own bandReserve specifies.
++            if (Main.shelf.has_allocation() && g.has_allocation() && g.visible &&
++                g.row.get_children().some(actor => actor.visible) &&
++                g.placement?.edge === 'top' && g.placement?.monitor === monitor.index) {
+                 const [, y] = g.get_transformed_position();
+                 const [, h] = g.get_transformed_size();
+                 top = Math.max(top, y + h);
+@@ -370,6 +387,12 @@
+         this._rightAligned = this._positionSettings.get_string('notification-corner') === 'top-right';
+         // Anchor the *animated* width on every frame, rather than animating x
+         // independently and briefly separating the lip from the top edge.
++        if (!this._hasInitialAllocation) {
++            // There is no starting allocation to interpolate at startup.
++            this.set_size(width, height);
++            this._anchor();
++            return;
++        }
+         this._anchor();
+         if (unchanged) return;
+         this.remove_transition('width'); this.remove_transition('height');
+@@ -390,6 +413,7 @@
+     }
+     vfunc_allocate(box) {
+         this.set_allocation(box);
++        this._hasInitialAllocation = true;
+         const width = box.get_width(), height = box.get_height();
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         this._surface.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: width, y2: height}));

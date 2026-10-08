@@ -1,0 +1,546 @@
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -188,6 +188,14 @@
+     };
+ 
+     struct display *display;
++
++    // Configure events and HWC creation/painting run on separate threads.
++    // Never take windowsMutex here: creation roundtrips dispatch configure
++    // while HWC already owns that collection lock.
++    mutable std::recursive_mutex chromeMutex;
++    void* listener_data {};
++    static std::shared_ptr<window> acquire_listener(void* token);
++    bool retire_listener();
+ 
+     struct wl_shell_surface *shell_surface;
+     struct xdg_surface *xdg_surface;
+@@ -254,7 +262,7 @@
+ 
+     ~window();
+ 
+-    static std::unique_ptr<window> create(struct display *display, bool use_subsurfaces,
++    static std::shared_ptr<window> create(struct display *display, bool use_subsurfaces,
+                                           std::string appID, std::string taskID,
+                                           hwc_color_t color, int content_width = 0,
+                                           int content_height = 0,
+@@ -278,7 +286,7 @@
+ };
+ 
+ class open_windows {
+-    using Collection = std::map<std::string, std::unique_ptr<window>>;
++    using Collection = std::map<std::string, std::shared_ptr<window>>;
+     Collection windows;
+ 
+   public:
+@@ -325,7 +333,7 @@
+                 hwc_color_t color = {0, 0, 0, 255}, int content_width = 0,
+                 int content_height = 0, int task_origin_x = 0,
+                 int task_origin_y = 0, bool composed_canvas = false);
+-    void add(const std::string& key, std::unique_ptr<window> window);
++    void add(const std::string& key, std::shared_ptr<window> window);
+     void clear();
+     void erase(const_iterator pos);
+     void erase(const key_type& key);
+@@ -334,6 +342,7 @@
+         update([&](){
+             for (auto it = windows.begin(), end = windows.end(); it != end;) {
+                 if (pred(*it)) {
++                    it->second->retire_listener();
+                     it = windows.erase(it);
+                 } else {
+                     ++it;
+@@ -404,6 +413,8 @@
+ 
+     std::map<int, struct wl_surface *> touch_surfaces;
+     struct wl_surface *pointer_surface;
++    void* pointer_listener_data {};
++    std::map<int, void*> touch_listener_data;
+     struct wl_surface *tablet_surface;
+     std::list<struct zwp_tablet_tool_v2 *> tablet_tools;
+     std::map<struct zwp_tablet_tool_v2 *, uint16_t> tablet_tools_evt;
+--- a/hwcomposer/prairie-titlebar.cpp
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -26,6 +26,7 @@
+ 
+ namespace prairie {
+ LumaWindowFrame frame(const window& window) {
++    std::scoped_lock chrome_lock(window.chromeMutex);
+     auto geometry = luma_window_frame(window.content_width, window.content_height,
+                                      kTitlebarHeight, window.has_prairie_titlebar);
+     return geometry;
+@@ -317,6 +318,7 @@
+ }
+ 
+ void redraw_shadow(window& window) {
++    std::scoped_lock chrome_lock(window.chromeMutex);
+     if (!window.shadow_surface)
+         return;
+     if (window.shadow_buffer)
+@@ -436,6 +438,7 @@
+ }
+ 
+ bool create_titlebar(window& window) {
++    std::scoped_lock chrome_lock(window.chromeMutex);
+     if (!desktop_chrome_enabled() || !window.display->subcompositor ||
+             !window.display->viewporter || !window.display->wm_base ||
+             property_get_bool("persist.waydroid.no_background_subsurface", false))
+@@ -454,7 +457,7 @@
+     window.titlebar_surface = wl_compositor_create_surface(window.display->compositor);
+     window.titlebar_subsurface = wl_subcompositor_get_subsurface(
+         window.display->subcompositor, window.titlebar_surface, window.surface);
+-    wl_surface_set_user_data(window.titlebar_surface, &window);
++    wl_surface_set_user_data(window.titlebar_surface, window.listener_data);
+     wl_subsurface_set_position(window.titlebar_subsurface, 0, 0);
+     wl_subsurface_set_desync(window.titlebar_subsurface);
+     wl_region* input_region = wl_compositor_create_region(window.display->compositor);
+@@ -476,6 +479,7 @@
+ }
+ 
+ void destroy_titlebar(window& window) {
++    std::scoped_lock chrome_lock(window.chromeMutex);
+     if (window.shadow_buffer)
+         wl_buffer_destroy(window.shadow_buffer);
+     window.shadow_buffer = nullptr;
+@@ -504,15 +508,18 @@
+         wl_surface_destroy(window.titlebar_surface);
+     }
+     window.titlebar_surface = nullptr;
++    window.has_prairie_titlebar = false;
+ }
+ 
+ void refresh_appearance(window& window) {
++    std::scoped_lock chrome_lock(window.chromeMutex);
+     const std::string treatment = treatment_name(read_surface_treatment());
+     if (window.has_prairie_titlebar && window.surface_treatment != treatment)
+         redraw_titlebar(window);
+ }
+ 
+ void redraw_titlebar(window& window) {
++    std::scoped_lock chrome_lock(window.chromeMutex);
+     if (!window.has_prairie_titlebar || window.content_width < 1 || window.content_height < 1)
+         return;
+     const auto geometry = frame(window);
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -32,6 +32,7 @@
+ #include "egl-tools.h"
+ #include "prairie-titlebar.h"
+ #include "luma-task-resize.h"
++#include "luma-window-callbacks.h"
+ 
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -216,7 +217,10 @@
+ xdg_surface_handle_configure(void *data, struct xdg_surface *surface,
+                  uint32_t serial)
+ {
+-    auto window = static_cast<struct window *>(data);
++    auto owner = window::acquire_listener(data);
++    if (!owner) return;
++    auto* window = owner.get();
++    std::scoped_lock chrome_lock(window->chromeMutex);
+ 
+     xdg_surface_ack_configure(surface, serial);
+ 
+@@ -295,8 +299,11 @@
+                               int32_t width, int32_t height,
+                               struct wl_array *states)
+ {
+-    struct window *window = (struct window *)data;
++    auto owner = window::acquire_listener(data);
++    if (!owner) return;
++    auto* window = owner.get();
+     struct display *display = window->display;
++    std::scoped_lock chrome_lock(window->chromeMutex);
+ 
+     if (window->has_prairie_titlebar) {
+         if (width <= 1) width = window->content_width + 2 * LUMA_FRAME_GAP;
+@@ -373,7 +380,10 @@
+ static void
+ xdg_toplevel_handle_close(void *data, struct xdg_toplevel *)
+ {
+-    struct window *window = (struct window *)data;
++    auto owner = window::acquire_listener(data);
++    if (!owner) return;
++    auto* window = owner.get();
++    if (!window->retire_listener()) return;
+     struct display *display = window->display;
+ 
+     // simulate user input to restart idle timeout (TODO: find a better way)
+@@ -417,8 +427,11 @@
+ void
+ shell_surface_configure(void *data, struct wl_shell_surface *, uint32_t, int32_t width, int32_t height)
+ {
+-    struct window *window = (struct window *)data;
++    auto owner = window::acquire_listener(data);
++    if (!owner) return;
++    auto* window = owner.get();
+     struct display *display = window->display;
++    std::scoped_lock chrome_lock(window->chromeMutex);
+ 
+     if (width > 1 && height > 1) {
+         display->req_width = width;
+@@ -517,6 +530,20 @@
+                                 std::max(1, height));
+ }
+ 
++namespace {
++luma::WindowCallbacks<window>& window_callbacks() {
++    // Registry storage outlives display/window teardown during process exit.
++    static auto* callbacks = new luma::WindowCallbacks<window>();
++    return *callbacks;
++}
++}
++std::shared_ptr<window> window::acquire_listener(void* token) {
++    return window_callbacks().acquire(token);
++}
++bool window::retire_listener() {
++    return window_callbacks().retire(listener_data);
++}
++
+ void window::reset_per_set_state() {
+     lastLayer = 0;
+     last_layer_buffer = nullptr;
+@@ -546,6 +573,7 @@
+ }
+ 
+ void window::set_title(const char* title) {
++    std::scoped_lock chrome_lock(chromeMutex);
+     this->title = title;
+     if (xdg_toplevel) {
+         xdg_toplevel_set_title(xdg_toplevel, title);
+@@ -557,6 +585,7 @@
+ }
+ 
+ void window::set_app_id(std::string appID) {
++    std::scoped_lock chrome_lock(chromeMutex);
+     this->appID = std::move(appID);
+     if (xdg_toplevel) {
+         const std::string &wayland_app_id = [&](){
+@@ -609,6 +638,8 @@
+ }
+ 
+ window::~window() {
++    retire_listener();
++    std::scoped_lock chrome_lock(chromeMutex);
+     if (taskID != "none" && taskID != "0")
+         task_resize_queue().cancel(stoi(taskID));
+     prairie::destroy_titlebar(*this);
+@@ -655,19 +686,21 @@
+     .preferred_scale = fractional_scale_handle_preferred_scale
+ };
+ 
+-std::unique_ptr<window>
++std::shared_ptr<window>
+ window::create(struct display *display, bool use_subsurfaces, std::string appID,
+                std::string taskID, hwc_color_t color, int content_width,
+                int content_height, int task_origin_x, int task_origin_y,
+                bool composed_canvas)
+ {
+-    std::unique_ptr<window> window { new struct window() };
++    std::shared_ptr<window> window { new struct window() };
+     if (!window)
+         return nullptr;
+ 
+     window->display = display;
++    window->listener_data = window_callbacks().attach(window);
++    if (!window->listener_data) return nullptr;
+     window->surface = wl_compositor_create_surface(display->compositor);
+-    wl_surface_set_user_data(window->surface, window.get());
++    wl_surface_set_user_data(window->surface, window->listener_data);
+     if (display->viewporter)
+         window->viewport = wp_viewporter_get_viewport(display->viewporter, window->surface);
+     window->taskID = std::move(taskID);
+@@ -703,11 +736,11 @@
+                 xdg_wm_base_get_xdg_surface(display->wm_base, window->surface);
+         assert(window->xdg_surface);
+         xdg_surface_add_listener(window->xdg_surface,
+-                                     &xdg_surface_listener, window.get());
++                                     &xdg_surface_listener, window->listener_data);
+ 
+         window->xdg_toplevel = xdg_surface_get_toplevel(window->xdg_surface);
+         assert(window->xdg_toplevel);
+-        xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window.get());
++        xdg_toplevel_add_listener(window->xdg_toplevel, &xdg_toplevel_listener, window->listener_data);
+         if (window->has_prairie_titlebar)
+             xdg_toplevel_set_min_size(window->xdg_toplevel, 240 + 2 * LUMA_FRAME_GAP,
+                                      180 + prairie::kTitlebarHeight + LUMA_FRAME_GAP);
+@@ -715,7 +748,7 @@
+         window->shell_surface =
+             wl_shell_get_shell_surface(display->shell, window->surface);
+         assert(window->shell_surface);
+-        wl_shell_surface_add_listener(window->shell_surface, &shell_surface_listener, window.get());
++        wl_shell_surface_add_listener(window->shell_surface, &shell_surface_listener, window->listener_data);
+         wl_shell_surface_set_toplevel(window->shell_surface);
+     } else {
+         abort();
+@@ -781,10 +814,13 @@
+             window->set_maximize(false);
+     }
+ 
+-    if (window->content_width < 1)
+-        window->content_width = display->width;
+-    if (window->content_height < 1)
+-        window->content_height = display->height;
++    {
++        std::scoped_lock chrome_lock(window->chromeMutex);
++        if (window->content_width < 1)
++            window->content_width = display->width;
++        if (window->content_height < 1)
++            window->content_height = display->height;
++    }
+     const auto geometry = prairie::frame(*window);
+     if (display->wm_base)
+         xdg_surface_set_window_geometry(window->xdg_surface, 0, 0,
+@@ -922,7 +958,9 @@
+ }
+ 
+ window::layer& window::create_new_layer() {
++    std::scoped_lock chrome_lock(chromeMutex);
+     wl_surface *surface = wl_compositor_create_surface(display->compositor);
++    wl_surface_set_user_data(surface, listener_data);
+     wl_subsurface *subsurface = wl_subcompositor_get_subsurface(display->subcompositor, surface, this->surface);
+     wp_viewport *viewport = nullptr;
+     if (display->viewporter)
+@@ -1023,7 +1061,7 @@
+     display->keyboard_enter_serial = serial;
+ 
+     std::scoped_lock lock(display->windowsMutex);
+-    auto window = reinterpret_cast<struct window *>(wl_surface_get_user_data(surface));
++    auto window = window::acquire_listener(wl_surface_get_user_data(surface));
+     if (!window)
+         return; // Window was destroyed in hwc_set
+ 
+@@ -1086,7 +1124,9 @@
+         d->cursor_shape_device = wp_cursor_shape_manager_v1_get_pointer(
+             d->cursor_shape_manager, d->pointer);
+     uint32_t shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT;
+-    auto* window = reinterpret_cast<struct window*>(wl_surface_get_user_data(d->pointer_surface));
++    auto window = window::acquire_listener(d->pointer_listener_data);
++    std::unique_lock<std::recursive_mutex> chrome_lock;
++    if (window) chrome_lock = std::unique_lock<std::recursive_mutex>(window->chromeMutex);
+     if (window && window->has_prairie_titlebar && d->pointer_surface == window->titlebar_surface) {
+         switch (luma_frame_resize_edge(prairie::frame(*window), d->pointer_x, d->pointer_y, window->maximized)) {
+             case 1: case 2: shape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE; break;
+@@ -1114,6 +1154,7 @@
+ 
+     struct display *display = (struct display *)data;
+     display->pointer_surface = surface;
++    display->pointer_listener_data = wl_surface_get_user_data(surface);
+     display->pointer_enter_serial = serial;
+     display->pointer_x = wl_fixed_to_int(sx);
+     display->pointer_y = wl_fixed_to_int(sy);
+@@ -1129,14 +1170,20 @@
+ {
+     struct display *display = (struct display *)data;
+     if (display->pointer_surface) {
+-        auto* window = reinterpret_cast<struct window*>(
+-            wl_surface_get_user_data(display->pointer_surface));
+-        if (window && window->hovered_chrome_target != 0) {
++        auto window = window::acquire_listener(display->pointer_listener_data);
++        if (window) {
++            std::scoped_lock chrome_lock(window->chromeMutex);
++            if (window->hovered_chrome_target == 0) {
++                display->pointer_surface = nullptr;
++                display->pointer_listener_data = nullptr;
++                return;
++            }
+             window->hovered_chrome_target = 0;
+             prairie::redraw_titlebar(*window);
+         }
+     }
+     display->pointer_surface = NULL;
++    display->pointer_listener_data = nullptr;
+ }
+ 
+ static void
+@@ -1155,8 +1202,10 @@
+     display->pointer_x = wl_fixed_to_int(sx);
+     display->pointer_y = wl_fixed_to_int(sy);
+     update_chrome_cursor(display);
+-    auto* window = reinterpret_cast<struct window*>(
+-        wl_surface_get_user_data(display->pointer_surface));
++    auto window = window::acquire_listener(display->pointer_listener_data);
++    if (!window) return;
++    std::unique_lock<std::recursive_mutex> chrome_lock;
++    if (window) chrome_lock = std::unique_lock<std::recursive_mutex>(window->chromeMutex);
+     if (window && window->has_prairie_titlebar &&
+             display->pointer_surface == window->titlebar_surface) {
+         const auto target = prairie::hit_test(
+@@ -1251,8 +1300,10 @@
+         return;
+ 
+     display->pointer_button_serial = serial;
+-    auto* window = reinterpret_cast<struct window*>(
+-        wl_surface_get_user_data(display->pointer_surface));
++    auto window = window::acquire_listener(display->pointer_listener_data);
++    if (!window) return;
++    std::unique_lock<std::recursive_mutex> chrome_lock;
++    if (window) chrome_lock = std::unique_lock<std::recursive_mutex>(window->chromeMutex);
+     if (window && window->has_prairie_titlebar &&
+             display->pointer_surface == window->titlebar_surface) {
+         const auto target = prairie::hit_test(
+@@ -1266,7 +1317,8 @@
+                 } else if (target == prairie::TitlebarTarget::Drag) {
+                     xdg_toplevel_move(window->xdg_toplevel, display->seat, serial);
+                 } else if (target == prairie::TitlebarTarget::Close) {
+-                    xdg_toplevel_handle_close(window, window->xdg_toplevel);
++                    chrome_lock.unlock();
++                    xdg_toplevel_handle_close(window->listener_data, window->xdg_toplevel);
+                 } else if (target == prairie::TitlebarTarget::Minimize) {
+                     window->minimize();
+                 } else if (target == prairie::TitlebarTarget::Maximize) {
+@@ -1317,8 +1369,9 @@
+     if (!display->pointer_surface)
+         return;
+ 
+-    auto* window = reinterpret_cast<struct window*>(
+-        wl_surface_get_user_data(display->pointer_surface));
++    auto window = window::acquire_listener(display->pointer_listener_data);
++    if (!window) return;
++    std::scoped_lock chrome_lock(window->chromeMutex);
+     if (window && window->has_prairie_titlebar &&
+             display->pointer_surface == window->titlebar_surface &&
+             prairie::hit_test(*window, display->pointer_x, display->pointer_y) !=
+@@ -1449,7 +1502,9 @@
+     int x, y;
+     unsigned int res, n = 0;
+ 
+-    auto* window = reinterpret_cast<struct window*>(wl_surface_get_user_data(surface));
++    auto window = window::acquire_listener(wl_surface_get_user_data(surface));
++    std::unique_lock<std::recursive_mutex> chrome_lock;
++    if (window) chrome_lock = std::unique_lock<std::recursive_mutex>(window->chromeMutex);
+     if (window && window->has_prairie_titlebar &&
+             surface == window->titlebar_surface) {
+         const int title_x = wl_fixed_to_int(x_w);
+@@ -1462,8 +1517,10 @@
+                 xdg_toplevel_resize(window->xdg_toplevel, display->seat, serial, edge);
+             else if (target == prairie::TitlebarTarget::Drag)
+                 xdg_toplevel_move(window->xdg_toplevel, display->seat, serial);
+-            else if (target == prairie::TitlebarTarget::Close)
+-                xdg_toplevel_handle_close(window, window->xdg_toplevel);
++            else if (target == prairie::TitlebarTarget::Close) {
++                chrome_lock.unlock();
++                xdg_toplevel_handle_close(window->listener_data, window->xdg_toplevel);
++            }
+             else if (target == prairie::TitlebarTarget::Minimize)
+                 window->minimize();
+             else if (target == prairie::TitlebarTarget::Maximize)
+@@ -1486,6 +1543,7 @@
+ 
+     int touch_id = create_touch_id(display, id);
+     display->touch_surfaces[id] = surface;
++    display->touch_listener_data[id] = window ? window->listener_data : nullptr;
+ 
+     if (clock_gettime(CLOCK_MONOTONIC, &rt) == -1) {
+        ALOGE("%s:%d error in touch clock_gettime: %s",
+@@ -1532,6 +1590,7 @@
+                   __FILE__, __LINE__, strerror(errno));
+         }
+         display->touch_surfaces[id] = NULL;
++        display->touch_listener_data.erase(id);
+ 
+         ADD_EVENT(EV_ABS, ABS_MT_SLOT, touch_id);
+         ADD_EVENT(EV_ABS, ABS_MT_TRACKING_ID, -1);
+@@ -1553,6 +1612,11 @@
+     int x, y;
+     unsigned int res, n = 0;
+ 
++    const auto token = display->touch_listener_data.find(id);
++    if (token == display->touch_listener_data.end()) return;
++    auto window = window::acquire_listener(token->second);
++    if (!window) return;
++    std::scoped_lock chrome_lock(window->chromeMutex);
+     int touch_id = get_touch_id(display, id);
+     // Might not exist if we discarded the down event due to a NULL surface
+     if (touch_id != -1) {
+@@ -1613,6 +1677,7 @@
+             id = display->touch_id[i];
+             display->touch_id[i] = -1;
+             display->touch_surfaces[id] = NULL;
++        display->touch_listener_data.erase(id);
+ 
+             n = 0;
+             // Turn finger into palm.
+@@ -2374,7 +2439,7 @@
+     return window;
+ }
+ 
+-void open_windows::add(const std::string& key, std::unique_ptr<window> window) {
++void open_windows::add(const std::string& key, std::shared_ptr<window> window) {
+     update([&](){
+         auto res = windows.emplace(
+             key,
+@@ -2385,17 +2450,21 @@
+ }
+ 
+ void open_windows::clear() {
++    for (auto& item : windows) item.second->retire_listener();
+     windows.clear();
+     property_set("waydroid.open_windows", "0");
+ }
+ 
+ void open_windows::erase(const_iterator pos) {
+     update([&](){
++        pos->second->retire_listener();
+         windows.erase(pos);
+     });
+ }
+ 
+ void open_windows::erase(const key_type& key) {
++    auto found = windows.find(key);
++    if (found != windows.end()) found->second->retire_listener();
+     if (windows.erase(key) > 0) {
+         std::string windows_size_str = std::to_string(windows.size());
+         property_set("waydroid.open_windows", windows_size_str.c_str());
+--- a/hwcomposer/modes/multi-window.cpp
++++ b/hwcomposer/modes/multi-window.cpp
+@@ -52,6 +52,7 @@
+             return nullptr;
+         auto it = windows.find(layer_info.tid);
+         if (it != windows.end()) {
++            std::scoped_lock chrome_lock(it->second->chromeMutex);
+             it->second->missing_frames = 0;
+             const auto bounds = task_bounds.at(layer_info.tid);
+             it->second->observe_task_bounds(bounds);
+--- /dev/null
++++ b/hwcomposer/luma-window-callbacks.h
+@@ -0,0 +1,37 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++#pragma once
++#include <cstdint>
++#include <limits>
++#include <map>
++#include <memory>
++#include <mutex>
++
++namespace luma {
++// Wayland listener userdata is an opaque generation, never an object pointer.
++// Weak entries are retired before dropping collection ownership. Admission
++// returns a strong owner after releasing this registry's mutex, so neither
++// window locks nor protocol calls run while the registry mutex is held.
++template<class T> class WindowCallbacks {
++    std::mutex mutex;
++    std::map<uintptr_t, std::weak_ptr<T>> active;
++    uintptr_t next = 1;
++public:
++    void* attach(const std::shared_ptr<T>& owner) {
++        std::lock_guard<std::mutex> lock(mutex);
++        if (!owner || active.size() >= 4096 || next == std::numeric_limits<uintptr_t>::max())
++            return nullptr;
++        const uintptr_t token = next++;
++        active.emplace(token, owner);
++        return reinterpret_cast<void*>(token);
++    }
++    std::shared_ptr<T> acquire(void* data) {
++        std::lock_guard<std::mutex> lock(mutex);
++        const auto found = active.find(reinterpret_cast<uintptr_t>(data));
++        return found == active.end() ? nullptr : found->second.lock();
++    }
++    bool retire(void* data) {
++        std::lock_guard<std::mutex> lock(mutex);
++        return active.erase(reinterpret_cast<uintptr_t>(data)) != 0;
++    }
++};
++}

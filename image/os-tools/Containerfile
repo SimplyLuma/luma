@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Tools for the Luma OS release pipeline: repository metadata, minisign and
+# object-storage sync. (Fedora does not package syft; SBOMs come from the
+# pinned upstream syft image, see scripts/os/generate-sbom.sh.) The build host stays free of packages;
+# every tool the pipeline needs beyond ostree, gpg, podman and libvirt runs in
+# this container. scripts/os/lib/common.sh builds it on demand and tags it by
+# the digest of this file, so a change here is a new tools image.
+
+ARG FEDORA_IMAGE
+FROM ${FEDORA_IMAGE}
+
+RUN dnf5 -y --setopt=install_weak_deps=False install \
+      createrepo_c \
+      curl \
+      gnupg2 \
+      jq \
+      minisign \
+      openssh-clients \
+      ostree \
+      python3 \
+      python3-jsonschema \
+      rclone \
+      rpm \
+      rsync \
+      tar \
+      util-linux \
+      zstd \
+ && dnf5 clean all \
+ && rm -rf /var/cache/libdnf5 /var/log/dnf5.log*
+
+LABEL org.projectluma.purpose="Luma OS release pipeline tools"

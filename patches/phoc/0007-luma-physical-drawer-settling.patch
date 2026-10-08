@@ -1,0 +1,156 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 1 Sep 2026 19:05:00 -0500
+Subject: [PATCH] layer-shell: settle one physical drawer gesture once
+
+The compositor registered both drag and swipe recognizers for the same touch.
+At release they could start opposing animations: the drag path settled from
+distance while the swipe path independently settled from velocity. This made
+a slowly positioned surface rebound and a quick motion visibly flick between
+states.
+
+Make the interactive drag the single owner while it is pending, dragging, or
+settling. Track its release velocity alongside its continuous offset, project
+a deliberate flick at 650 px/s, and otherwise use the client-supplied distance
+threshold. Reduce only the initial direction-lock distance from 16 to 8 pixels
+so the surface catches the finger promptly while retaining the 24-pixel
+cross-axis rejection guard. Touchpad-only flings retain the existing path.
+
+---
+--- a/src/layer-shell-effects.c
++++ b/src/layer-shell-effects.c
+@@ -17,10 +17,12 @@
+ #include <glib-object.h>
+ 
+ #define LAYER_SHELL_EFFECTS_VERSION 3
+-#define DRAG_ACCEPT_THRESHOLD_DISTANCE 16
++#define DRAG_ACCEPT_THRESHOLD_DISTANCE 8
+ #define DRAG_REJECT_THRESHOLD_DISTANCE 24
+ #define SLIDE_ANIM_DURATION_MS 300 /* ms */
+ #define FLING_V_MIN 1500
++#define DRAG_SETTLE_V_MIN 650
++#define DRAG_VELOCITY_MAX_AGE_US (160 * 1000)
+ 
+ typedef enum {
+   PHOC_LAYER_SHELL_EFFECT_DRAG_FROM_TOP = (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+@@ -67,6 +69,13 @@
+     int      pending_accept;
+     /* Threshold until drag is rejected */
+     int      pending_reject;
++    /* Velocity of the compositor-owned drag, used to project the drawer to
++     * its destination without running a second gesture over the same touch. */
++    gint64   last_update_us;
++    double   last_off_x;
++    double   last_off_y;
++    double   velocity_x;
++    double   velocity_y;
+     /* Slide in/out animation */
+     guint    anim_id;
+     float    anim_t;
+@@ -1424,6 +1433,11 @@
+ 
+   drag_surface->drag.pending_accept = 0;
+   drag_surface->drag.pending_reject = 0;
++  drag_surface->drag.last_update_us = g_get_monotonic_time ();
++  drag_surface->drag.last_off_x = 0.0;
++  drag_surface->drag.last_off_y = 0.0;
++  drag_surface->drag.velocity_x = 0.0;
++  drag_surface->drag.velocity_y = 0.0;
+ 
+   apply_state (drag_surface, PHOC_DRAGGABLE_SURFACE_STATE_PENDING);
+   return drag_surface->state;
+@@ -1456,6 +1470,8 @@
+   struct wlr_layer_surface_v1 *wlr_layer_surface = drag_surface->layer_surface->layer_surface;
+   struct wlr_output *wlr_output = wlr_layer_surface->output;
+   bool accept;
++  gint64 now;
++  gint64 elapsed;
+ 
+   if (drag_surface->state != PHOC_DRAGGABLE_SURFACE_STATE_PENDING &&
+       drag_surface->state != PHOC_DRAGGABLE_SURFACE_STATE_DRAGGING) {
+@@ -1466,7 +1482,23 @@
+   if (!wlr_output) {
+     apply_state (drag_surface, PHOC_DRAGGABLE_SURFACE_STATE_REJECTED);
+     return drag_surface->state;
++  }
++
++  now = g_get_monotonic_time ();
++  elapsed = now - drag_surface->drag.last_update_us;
++  if (elapsed > 0) {
++    double sample_x = (off_x - drag_surface->drag.last_off_x) * G_USEC_PER_SEC / elapsed;
++    double sample_y = (off_y - drag_surface->drag.last_off_y) * G_USEC_PER_SEC / elapsed;
++
++    /* Smooth event-to-event noise while preserving a deliberate release
++     * direction. The age check in drag_end prevents a paused finger from
++     * retaining stale momentum. */
++    drag_surface->drag.velocity_x = 0.35 * sample_x + 0.65 * drag_surface->drag.velocity_x;
++    drag_surface->drag.velocity_y = 0.35 * sample_y + 0.65 * drag_surface->drag.velocity_y;
+   }
++  drag_surface->drag.last_update_us = now;
++  drag_surface->drag.last_off_x = off_x;
++  drag_surface->drag.last_off_y = off_y;
+ 
+   if (phoc_draggable_surface_is_vertical (drag_surface)) {
+     drag_surface->drag.pending_accept = off_y;
+@@ -1569,6 +1601,8 @@
+   PhocAnimDir dir;
+   struct wlr_layer_surface_v1 *wlr_layer_surface = drag_surface->layer_surface->layer_surface;
+   struct wlr_output *wlr_output = wlr_layer_surface->output;
++  double velocity;
++  gboolean use_velocity;
+ 
+   if (!wlr_output)
+     return;
+@@ -1576,7 +1610,29 @@
+   output = PHOC_OUTPUT (wlr_output->data);
+   g_assert (PHOC_IS_OUTPUT (output));
+ 
+-  if (hit_threshold (drag_surface)) {
++  velocity = phoc_draggable_surface_is_vertical (drag_surface) ?
++    drag_surface->drag.velocity_y : drag_surface->drag.velocity_x;
++  use_velocity = g_get_monotonic_time () - drag_surface->drag.last_update_us <=
++    DRAG_VELOCITY_MAX_AGE_US && fabs (velocity) >= DRAG_SETTLE_V_MIN;
++
++  if (use_velocity) {
++    switch (wlr_layer_surface->current.anchor) {
++    case PHOC_LAYER_SHELL_EFFECT_DRAG_FROM_TOP:
++      dir = velocity < 0 ? ANIM_DIR_IN : ANIM_DIR_OUT;
++      break;
++    case PHOC_LAYER_SHELL_EFFECT_DRAG_FROM_BOTTOM:
++      dir = velocity > 0 ? ANIM_DIR_IN : ANIM_DIR_OUT;
++      break;
++    case PHOC_LAYER_SHELL_EFFECT_DRAG_FROM_LEFT:
++      dir = velocity < 0 ? ANIM_DIR_IN : ANIM_DIR_OUT;
++      break;
++    case PHOC_LAYER_SHELL_EFFECT_DRAG_FROM_RIGHT:
++      dir = velocity > 0 ? ANIM_DIR_IN : ANIM_DIR_OUT;
++      break;
++    default:
++      g_assert_not_reached ();
++    }
++  } else if (hit_threshold (drag_surface)) {
+     dir = drag_surface->drag.last_state == ZPHOC_DRAGGABLE_LAYER_SURFACE_V1_DRAG_END_STATE_FOLDED ?
+       ANIM_DIR_OUT : ANIM_DIR_IN;
+   } else {
+--- a/src/cursor.c
++++ b/src/cursor.c
+@@ -1155,6 +1155,18 @@
+ 
+   drag_surface = phoc_desktop_get_draggable_layer_surface (desktop, layer_surface);
+   if (!drag_surface)
++    return;
++
++  /* A one-finger touch is already represented by the interactive drag. Do
++   * not let the parallel swipe recognizer start a second, opposing animation
++   * at release; drag_end settles the same physical plane using distance and
++   * its tracked release velocity. Touchpad-only swipes still use this path. */
++  if (phoc_draggable_layer_surface_get_state (drag_surface) ==
++        PHOC_DRAGGABLE_SURFACE_STATE_PENDING ||
++      phoc_draggable_layer_surface_get_state (drag_surface) ==
++        PHOC_DRAGGABLE_SURFACE_STATE_DRAGGING ||
++      phoc_draggable_layer_surface_get_state (drag_surface) ==
++        PHOC_DRAGGABLE_SURFACE_STATE_ANIMATING)
+     return;
+ 
+   if (!phoc_draggable_layer_surface_fling (drag_surface, lx, ly, vx, vy))
+-- 
+2.53.0

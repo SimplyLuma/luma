@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Luma Connect
+Comment=Keeps your phone linked while Luma Connect is closed
+Exec=luma-connect-daemon --agent --autostart
+Icon=org.projectluma.Connect
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-AutoRestart=false
+# Before luma-background is installed. With it, this start exits at once and the
+# service starts the agent under its limits.
+X-Luma-Background-Agent=org.projectluma.Connect.Agent

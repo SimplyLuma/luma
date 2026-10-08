@@ -1,0 +1,273 @@
+diff --git a/hwcomposer/extension.cpp b/hwcomposer/extension.cpp
+index b8d6b02..6a305eb 100644
+--- a/hwcomposer/extension.cpp
++++ b/hwcomposer/extension.cpp
+@@ -33,6 +33,7 @@ Return<Error> WaydroidDisplay::setLayerName(uint32_t layer, const hidl_string &n
+     return Error::NONE;
+ }
+ Return<Error> WaydroidDisplay::setLayerHandleInfo(uint32_t layer, uint32_t format, uint32_t stride) {
++    std::scoped_lock lock(mDisplay->bufferMetadataMutex);
+     mDisplay->layer_handles_ext[layer] = 
+     {
+         .format = format,
+@@ -41,6 +42,7 @@ Return<Error> WaydroidDisplay::setLayerHandleInfo(uint32_t layer, uint32_t forma
+     return Error::NONE;
+ }
+ Return<Error> WaydroidDisplay::setTargetLayerHandleInfo(uint32_t format, uint32_t stride) {
++    std::scoped_lock lock(mDisplay->bufferMetadataMutex);
+     mDisplay->target_layer_handle_ext = 
+     {
+         .format = format,
+@@ -51,12 +53,14 @@ Return<Error> WaydroidDisplay::setTargetLayerHandleInfo(uint32_t format, uint32_
+ 
+ // Methods from ::vendor::waydroid::display::V1_1::IWaydroidDisplay follow.
+ Return<Error> WaydroidDisplay::setLayerSize(uint32_t layer, uint32_t width, uint32_t height) {
++    std::scoped_lock lock(mDisplay->bufferMetadataMutex);
+     mDisplay->layer_handles_ext[layer].width = width;
+     mDisplay->layer_handles_ext[layer].height = height;
+     return Error::NONE;
+ }
+ 
+ Return<Error> WaydroidDisplay::setTargetLayerSize(uint32_t width, uint32_t height) {
++    std::scoped_lock lock(mDisplay->bufferMetadataMutex);
+     mDisplay->target_layer_handle_ext.width = width;
+     mDisplay->target_layer_handle_ext.height = height;
+     return Error::NONE;
+diff --git a/hwcomposer/gralloc_handler.cpp b/hwcomposer/gralloc_handler.cpp
+index a86b9aa..480ae91 100644
+--- a/hwcomposer/gralloc_handler.cpp
++++ b/hwcomposer/gralloc_handler.cpp
+@@ -27,6 +27,11 @@
+ 
+ #include <cstdint>
+ #include <memory>
++#include <sys/stat.h>
++#include <cutils/ashmem.h>
++#include <log/log.h>
++#include "../../libhardware/modules/gralloc/gralloc_priv.h"
++#include "luma-rgb-copy-bounds.h"
+ 
+ #include <linux/memfd.h>
+ #include <sys/syscall.h>
+@@ -216,6 +221,7 @@ std::unique_ptr<buffer> create_android_wl_buffer(display *display, const buffer_
+ 
+ namespace {
+ buffer_metadata get_buffer_metadata_generic(display *display, hwc_layer_1_t *layer, size_t pos) {
++    std::scoped_lock lock(display->bufferMetadataMutex);
+     uint32_t format, pixel_stride, width, height;
+     if (layer->compositionType == HWC_FRAMEBUFFER_TARGET) {
+         format = display->target_layer_handle_ext.format;
+@@ -270,32 +276,71 @@ std::unique_ptr<buffer> create_buffer_android(display *display, const buffer_met
+     return create_android_wl_buffer(display, metadata, handle);
+ }
+ 
+-void update_shm_buffer_generic(display *display, buffer *buffer) {
++
++// The default software gralloc descriptor owns the source dimensions and
++// capacity. Display-extension messages can describe a neighbouring frame.
++bool default_copy_allocation(buffer_handle_t handle, const buffer_metadata& metadata,
++                             uint64_t destination_size, uint32_t* stride) {
++    if (private_handle_t::validate(handle) != 0) return false;
++    const auto* allocation = static_cast<const private_handle_t*>(handle);
++    struct stat file{};
++    if (fstat(allocation->fd, &file) != 0 || file.st_size < 0) return false;
++    // memfd has a normal file size. Older ashmem descriptors expose their
++    // allocation through the supported ashmem query rather than fstat.
++    int64_t capacity = file.st_size;
++    if (capacity == 0) capacity = ashmem_get_size_region(allocation->fd);
++    if (capacity <= 0) return false;
++    if (allocation->stride <= 0 || allocation->height <= 0 ||
++        allocation->size <= 0 || allocation->offset < 0 ||
++        (allocation->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER) ||
++        (allocation->format != HAL_PIXEL_FORMAT_RGBA_8888 &&
++         allocation->format != HAL_PIXEL_FORMAT_RGBX_8888) ||
++        metadata.format != uint32_t(allocation->format) ||
++        !luma::valid_rgb_copy(metadata.width, metadata.height, allocation->stride,
++            allocation->height, allocation->size, allocation->offset,
++            uint64_t(capacity), destination_size)) return false;
++    *stride = uint32_t(allocation->stride);
++    return true;
++}
++buffer_metadata get_buffer_metadata_default(display *display, hwc_layer_1_t *layer, size_t pos) {
++    auto metadata = get_buffer_metadata_generic(display, layer, pos);
++    uint32_t stride;
++    if (!default_copy_allocation(layer->handle, metadata,
++            uint64_t(metadata.width) * metadata.height * 4, &stride)) {
++        ALOGW("Rejecting inconsistent software buffer metadata %ux%u stride %u",
++              metadata.width, metadata.height, metadata.pixel_stride);
++        return {};
++    }
++    metadata.pixel_stride = stride;
++    return metadata;
++}
++
++bool update_shm_buffer_generic(display *display, buffer *buffer) {
+     display->egl_work_queue.emplace_back(std::bind(egl_render_to_pixels, display, buffer));
+     sem_post(&display->egl_go);
+     sem_wait(&display->egl_done);
++    return true;
+ }
+-void update_shm_buffer_default(display *, buffer *buffer) {
+-    void *data;
+-    uint32_t shm_stride, src_stride;
++bool update_shm_buffer_default(display *, buffer *buffer) {
++    uint32_t src_stride;
++    if (!default_copy_allocation(buffer->handle, buffer->metadata, buffer->size, &src_stride))
++        return false;
++    void *data = nullptr;
+     android::Rect bounds(buffer->metadata.width, buffer->metadata.height);
+-    if (android::GraphicBufferMapper::get().lock(buffer->handle, GRALLOC_USAGE_SW_READ_OFTEN, bounds, &data) == 0) {
+-        src_stride = buffer->metadata.pixel_stride;
+-        shm_stride = buffer->metadata.width;
+-        for (int i = 0; i < buffer->metadata.height; i++) {
+-            uint32_t* source = (uint32_t*)data + (i * src_stride);
+-            uint32_t* dist = (uint32_t*)buffer->shm_data + (i * shm_stride);
+-            uint32_t* end = dist + shm_stride;
+-
+-            while (dist < end) {
+-                uint32_t c = *source;
+-                *dist = (c & 0xFF00FF00) | ((c & 0xFF0000) >> 16) | ((c & 0xFF) << 16);
+-                source++;
+-                dist++;
+-            }
+-        }
+-        android::GraphicBufferMapper::get().unlock(buffer->handle);
++    auto& mapper = android::GraphicBufferMapper::get();
++    if (mapper.lock(buffer->handle, GRALLOC_USAGE_SW_READ_OFTEN, bounds, &data) != 0)
++        return false;
++    if (!data) {
++        mapper.unlock(buffer->handle);
++        return false;
+     }
++    const auto* allocation = static_cast<const private_handle_t*>(buffer->handle);
++    const bool copied = luma::copy_rgb(static_cast<const uint32_t*>(data),
++        static_cast<uint32_t*>(buffer->shm_data), buffer->metadata.width,
++        buffer->metadata.height, src_stride, allocation->height,
++        allocation->size, allocation->offset, allocation->size, buffer->size);
++    mapper.unlock(buffer->handle);
++    return copied;
+ }
+ }
+ 
+@@ -306,8 +351,9 @@ gralloc_handler::get_buffer_metadata_func gralloc_handler::select_get_buffer_met
+         case GrallocType::GRALLOC_CROS:
+             return get_buffer_metadata_cros;
+         case GrallocType::GRALLOC_ANDROID:
+-        case GrallocType::GRALLOC_DEFAULT:
+             return get_buffer_metadata_generic;
++        case GrallocType::GRALLOC_DEFAULT:
++            return get_buffer_metadata_default;
+         default:
+             abort();
+     }
+@@ -336,4 +382,4 @@ gralloc_handler::update_shm_buffer_func gralloc_handler::select_update_shm_buffe
+ gralloc_handler::gralloc_handler(display *display)
+     : get_buffer_metadata_impl(select_get_buffer_metadata_impl(display->gtype))
+     , create_buffer_impl(select_create_buffer_impl(display, display->gtype))
+-    , update_shm_buffer_impl(select_update_shm_buffer_impl(display->gtype)) { }
+\ No newline at end of file
++    , update_shm_buffer_impl(select_update_shm_buffer_impl(display->gtype)) { }
+diff --git a/hwcomposer/gralloc_handler.h b/hwcomposer/gralloc_handler.h
+index 1d045e3..1a718d2 100644
+--- a/hwcomposer/gralloc_handler.h
++++ b/hwcomposer/gralloc_handler.h
+@@ -40,7 +40,7 @@ std::unique_ptr<buffer> create_android_wl_buffer(display *display, const buffer_
+ class gralloc_handler {
+     using get_buffer_metadata_func = buffer_metadata (*)(display *display, hwc_layer_1_t *layer, size_t pos);
+     using create_buffer_func = std::unique_ptr<buffer> (*)(display *display, const buffer_metadata& metadata, buffer_handle_t handle);
+-    using update_shm_buffer_func = void (*)(display *display, buffer *buffer);
++    using update_shm_buffer_func = bool (*)(display *display, buffer *buffer);
+ 
+     get_buffer_metadata_func get_buffer_metadata_impl;
+     create_buffer_func create_buffer_impl;
+@@ -60,7 +60,7 @@ class gralloc_handler {
+     std::unique_ptr<buffer> create_buffer(display *display, const buffer_metadata& metadata, buffer_handle_t handle) const {
+         return create_buffer_impl(display, metadata, handle);
+     }
+-    void update_shm_buffer(display *display, buffer *buffer) const {
+-        update_shm_buffer_impl(display, buffer);
++    bool update_shm_buffer(display *display, buffer *buffer) const {
++        return update_shm_buffer_impl(display, buffer);
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/hwcomposer/hwcomposer.cpp b/hwcomposer/hwcomposer.cpp
+index e88b7b9..8b8d61f 100644
+--- a/hwcomposer/hwcomposer.cpp
++++ b/hwcomposer/hwcomposer.cpp
+@@ -106,6 +106,7 @@ namespace {
+     buffer *get_wl_buffer(waydroid_hwc_composer_device_1 *pdev, hwc_layer_1_t *layer, size_t pos) {
+         const auto& gralloc_handler = pdev->gralloc_handler;
+         auto metadata = gralloc_handler.get_buffer_metadata(pdev->display, layer, pos);
++        if (!metadata.width || !metadata.height || !metadata.pixel_stride) return nullptr;
+         buffer *buf = find_cached_buffer(pdev, metadata, layer->handle);
+ 
+         if (!buf) {
+@@ -123,8 +124,8 @@ namespace {
+             buf = emplace_result.first->second.get();
+         }
+ 
+-        if (buf->isShm)
+-            gralloc_handler.update_shm_buffer(pdev->display, buf);
++        if (buf->isShm && !gralloc_handler.update_shm_buffer(pdev->display, buf))
++            return nullptr;
+         return buf;
+     }
+ 
+diff --git a/new/hwcomposer/luma-rgb-copy-bounds.h b/hwcomposer/luma-rgb-copy-bounds.h
+new file mode 100644
+index 0000000..a8f5b52
+--- /dev/null
++++ b/hwcomposer/luma-rgb-copy-bounds.h
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: Apache-2.0
++#pragma once
++#include <cstdint>
++#include <cstddef>
++
++namespace luma {
++// Validate the CPU copy against the allocation, never against a destination
++// display rectangle. Reject mixed/stale metadata rather than clipping it.
++inline bool valid_rgb_copy(uint64_t width, uint64_t height, uint64_t stride,
++                           uint64_t allocation_height, uint64_t allocation_size,
++                           uint64_t offset, uint64_t fd_size,
++                           uint64_t destination_size) {
++    constexpr uint64_t limit = 16384;
++    if (!width || !height || !stride || !allocation_height || width > stride ||
++        width > limit || height > limit || stride > limit || allocation_height > limit ||
++        height > allocation_height || offset > allocation_size || allocation_size > fd_size)
++        return false;
++    const uint64_t source_end = ((height - 1) * stride + width) * 4;
++    const uint64_t destination_end = width * height * 4;
++    return source_end <= allocation_size - offset &&
++           source_end <= fd_size - offset && destination_end <= destination_size;
++}
++inline bool copy_rgb(const uint32_t* source, uint32_t* destination,
++                     uint64_t width, uint64_t height, uint64_t stride,
++                     uint64_t allocation_height, uint64_t allocation_size,
++                     uint64_t offset, uint64_t fd_size, uint64_t destination_size) {
++    if (!source || !destination || !valid_rgb_copy(width, height, stride,
++            allocation_height, allocation_size, offset, fd_size, destination_size)) return false;
++    for (uint64_t i = 0; i < height; ++i) {
++        for (uint64_t x = 0; x < width; ++x) {
++            const uint32_t c = source[size_t(i * stride + x)];
++            destination[size_t(i * width + x)] =
++                (c & 0xFF00FF00) | ((c & 0xFF0000) >> 16) | ((c & 0xFF) << 16);
++        }
++    }
++    return true;
++}
++} // namespace luma
+diff --git a/hwcomposer/wayland-hwc.h b/hwcomposer/wayland-hwc.h
+index 88e3af0..a0d067d 100644
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -446,6 +446,7 @@ struct display {
+ 
+     std::map<uint32_t, std::vector<uint64_t>> modifiers;
+     std::map<uint32_t, std::string> layer_names;
++    std::recursive_mutex bufferMetadataMutex;
+     std::map<uint32_t, struct handleExt> layer_handles_ext;
+     struct handleExt target_layer_handle_ext;
+     std::unordered_map<buffer_handle_t, std::unique_ptr<buffer>> buffer_map;

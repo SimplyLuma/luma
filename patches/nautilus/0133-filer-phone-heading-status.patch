@@ -1,0 +1,37 @@
+From 69913eb1ef47a7f641fb87a6c84ac66894ef57d6 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 06:28:16 +0000
+Subject: [PATCH] Finish Filer phone heading and remove duplicate status strip
+
+---
+ src/nautilus-window.c                    | 1 +
+ src/resources/ui/nautilus-files-view.blp | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 6218c65..3c143c6 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1998,6 +1998,7 @@ nautilus_window_constructed (GObject *self)
+     GtkWidget *toggle = GTK_WIDGET (window->sidebar_toggle);
+     g_object_ref (toggle);
+     gtk_box_remove (GTK_BOX (window->sidebar_toggle_desktop_host), toggle);
++    gtk_widget_set_margin_start (window->sidebar_toggle_phone_host, 20);
+     luma_application_window_frame_set_leading_phone_host (ADW_APPLICATION_WINDOW (window),
+                                                           toggle,
+                                                           window->sidebar_toggle_phone_host);
+diff --git a/src/resources/ui/nautilus-files-view.blp b/src/resources/ui/nautilus-files-view.blp
+index e3df56b..1f644b2 100644
+--- a/src/resources/ui/nautilus-files-view.blp
++++ b/src/resources/ui/nautilus-files-view.blp
+@@ -19,6 +19,7 @@ template $NautilusFilesView: Adw.Bin {
+     }
+ 
+     Box {
++      visible: false;
+       styles [
+         "luma-status-bar",
+       ]
+-- 
+2.55.0
+

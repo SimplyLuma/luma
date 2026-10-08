@@ -1,0 +1,244 @@
+{
+  "selected": "1",
+  "open": [
+    "flaunch",
+    "fpersonal",
+    "n1"
+  ],
+  "folders": {
+    "launch": {
+      "name": "Launch",
+      "hue": 285,
+      "parent": null
+    },
+    "press": {
+      "name": "Press",
+      "hue": 285,
+      "parent": "launch"
+    },
+    "personal": {
+      "name": "Personal",
+      "hue": 150,
+      "parent": null
+    },
+    "recipes": {
+      "name": "Recipes",
+      "hue": 45,
+      "parent": "personal"
+    },
+    "ideas": {
+      "name": "Ideas",
+      "hue": 200,
+      "parent": null
+    }
+  },
+  "notes": [
+    {
+      "id": 1,
+      "at": "Today, 10:40 AM",
+      "share": [
+        "PR",
+        "NF"
+      ],
+      "t": "Launch checklist",
+      "f": "launch",
+      "pinned": true,
+      "live": "PR",
+      "html": "<p>Everything that has to be true before we press the button on October 14.</p><ul class=\"check\"><li class=\"done\">Freeze strings</li><li class=\"done\">Installer tested on twelve laptops</li><li>Press photos picked</li><li>Fairphone build signed</li><li>Mirrors load-tested at 3× our estimate</li></ul><h2>Day of</h2><p id=\"n-live\">Short film goes up at 9, the download an hour later. </p>"
+    },
+    {
+      "id": 2,
+      "at": "Today, 8:12 AM",
+      "share": [
+        "MO"
+      ],
+      "t": "Groceries",
+      "f": "personal",
+      "pinned": true,
+      "html": "<ul class=\"check\"><li>Oat milk</li><li>Sourdough flour</li><li class=\"done\">Coffee beans</li><li>Lemons</li><li>Something for Dad’s birthday</li></ul>"
+    },
+    {
+      "id": 3,
+      "at": "Yesterday",
+      "share": [],
+      "t": "Podcast interview",
+      "f": "press",
+      "html": "<p>Talking points for Thursday.</p><ul><li>Why a computer should feel like yours again</li><li>Free, and why that isn’t a catch</li><li>What Ari does and doesn’t do</li></ul><blockquote>We didn’t want to build another thing that asks for your attention.</blockquote>"
+    },
+    {
+      "id": 4,
+      "at": "Sep 20",
+      "share": [],
+      "t": "Sourdough",
+      "f": "recipes",
+      "html": "<figure contenteditable=\"false\"><img src=\"notes-v70/life-hero-home.webp\" alt=\"\"></figure><p>500 g flour, 350 g water, 100 g starter, 10 g salt.</p><ol><li>Mix, rest an hour</li><li>Four sets of folds, 30 minutes apart</li><li>Shape, cold proof overnight</li><li>Bake at 250°, lid on for 20, off for 25</li></ol>"
+    },
+    {
+      "id": 5,
+      "at": "Sep 19",
+      "share": [],
+      "t": "App ideas",
+      "f": "ideas",
+      "html": "<p>Things I’d want on my own computer:</p><ul><li>A clipboard you can see (done: Filer’s tray)</li><li>Notes that know who they’re shared with</li><li>A music app lit by the album</li></ul>"
+    },
+    {
+      "id": 6,
+      "at": "Sep 12",
+      "share": [],
+      "t": "Books to read",
+      "f": "personal",
+      "html": "<ul class=\"check\"><li class=\"done\">The Design of Everyday Things</li><li>Hackers &amp; Painters</li><li>A Pattern Language</li></ul>"
+    },
+    {
+      "id": 7,
+      "at": "Aug 30",
+      "share": [],
+      "t": "Cabin Wi-Fi",
+      "f": "personal",
+      "html": "<p>Network: <b>Pinecrest</b><br>Password: bring-snacks-2026</p>"
+    },
+    {
+      "id": 8,
+      "at": "Today, 9:02 AM",
+      "share": [
+        "PR"
+      ],
+      "t": "Day-of run sheet",
+      "f": "launch",
+      "parent": 1,
+      "html": "<p>Minute by minute for October 14.</p><ul><li>8:30 Everyone on the call</li><li>9:00 Film goes live</li><li>10:00 Download opens</li></ul>"
+    },
+    {
+      "id": 9,
+      "at": "Sep 21",
+      "share": [],
+      "t": "Press list",
+      "f": "press",
+      "html": "<ul class=\"check\"><li class=\"done\">The Verge</li><li>Ars Technica</li><li>It’s FOSS</li></ul>"
+    },
+    {
+      "id": 10,
+      "at": "Sep 20",
+      "share": [],
+      "t": "Feeding the starter",
+      "f": "recipes",
+      "parent": 4,
+      "html": "<p>Equal parts flour and water by weight, every morning. Keep it on the counter in summer.</p>"
+    },
+    {
+      "id": 11,
+      "at": "Sep 21",
+      "share": [
+        "TH"
+      ],
+      "t": "Climbing gear",
+      "f": null,
+      "from": "TH",
+      "html": "<p>For Saturday. Theo is bringing the rope.</p><ul class=\"check\"><li>Shoes</li><li>Chalk</li><li>Harness</li></ul>"
+    }
+  ],
+  "people": {
+    "me": {
+      "n": "You",
+      "ini": "N",
+      "u": "nick",
+      "h": 250
+    },
+    "PR": {
+      "n": "Priya Raman",
+      "u": "priya",
+      "h": 330,
+      "on": true,
+      "face": [
+        "life-ari-street",
+        0.705,
+        0.2,
+        5.2
+      ]
+    },
+    "NF": {
+      "n": "Nora Feld",
+      "u": "nora",
+      "h": 45,
+      "on": true,
+      "face": [
+        "life-sync-terrace",
+        0.36,
+        0.27,
+        5
+      ]
+    },
+    "SK": {
+      "n": "Sam Kaur",
+      "u": "samk",
+      "h": 200,
+      "face": [
+        "life-suite-bg-write",
+        0.47,
+        0.3,
+        5
+      ]
+    },
+    "TH": {
+      "n": "Theo Marsh",
+      "u": "theo",
+      "h": 350,
+      "face": [
+        "take-back",
+        0.575,
+        0.12,
+        5.4
+      ]
+    },
+    "MO": {
+      "n": "Dad",
+      "u": null,
+      "phone": "+1 (510) 555-0142",
+      "h": 20,
+      "face": [
+        "life-hero-home",
+        0.8,
+        0.33,
+        6
+      ]
+    },
+    "AR": {
+      "n": "Alex Ruiz",
+      "u": "alexr",
+      "h": 262,
+      "face": [
+        "life-professionals-loft",
+        0.55,
+        0.36,
+        5.2
+      ]
+    },
+    "JK": {
+      "n": "Jordan Kim",
+      "u": "jordan.k",
+      "h": 100
+    },
+    "CL": {
+      "n": "Lena Okafor",
+      "u": "lena",
+      "h": 160,
+      "face": [
+        "life-suite-bg-canvas",
+        0.575,
+        0.3,
+        5.4
+      ]
+    },
+    "AC": {
+      "n": "Ada Chen",
+      "u": "ada",
+      "h": 200
+    },
+    "ZM": {
+      "n": "Zoe Martin",
+      "u": "zoe",
+      "h": 270
+    }
+  },
+  "live_text": "Priya posts the letter at 10:30, Nora answers press from the Hub all day, and we meet at 4 to decide on the phone release."
+}

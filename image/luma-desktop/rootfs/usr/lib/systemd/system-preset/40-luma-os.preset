@@ -1,0 +1,10 @@
+# Luma OS image policy (ADR-030 section 3).
+
+# Luma owns updates: no Fedora OCI Flatpak remote, no rpm-ostreed automatic
+# timer. Flathub and the Luma Flatpak remote are unaffected.
+disable flatpak-add-fedora-repos.service
+disable rpm-ostreed-automatic.timer
+
+# Automatic rollback after a failed boot (greenboot 0.16).
+enable greenboot-healthcheck.service
+enable greenboot-set-rollback-trigger.service

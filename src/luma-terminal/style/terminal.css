@@ -1,0 +1,93 @@
+/* Terminal-owned output canvas. All colours and metrics come from LumaUI. */
+paned.tm-split > separator {
+  min-width: var(--lumaui-window-gutter);
+  min-height: var(--lumaui-window-gutter);
+  background: @luma_window;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+box.tm-active {
+  outline: var(--lumaui-bar-entry-focus-ring) solid @luma_focus_ring;
+  outline-offset: calc(0px - var(--lumaui-bar-entry-focus-ring));
+}
+box.tm-blocks {
+  margin-top: calc(var(--lumaui-card-padding-x) + var(--lumaui-details-section-gap-first));
+  margin-left: calc(var(--lumaui-card-padding-x) + var(--lumaui-details-section-gap-first));
+  margin-right: calc(var(--lumaui-card-padding-x) + var(--lumaui-details-section-gap-first));
+  margin-bottom: calc(var(--lumaui-ac-text-min-height) - var(--lumaui-bar-entry-height));
+}
+paned.tm-split box.tm-blocks {
+  margin-right: calc(0px - var(--lumaui-card-padding-top));
+}
+
+button.tm-block {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: calc(var(--lumaui-card-padding-x) + var(--lumaui-details-section-gap-first))
+           var(--lumaui-card-padding-top)
+           calc(var(--lumaui-card-padding-bottom) + var(--lumaui-details-section-gap-first));
+  border-radius: var(--lumaui-ac-control-radius);
+  color: @luma_ink;
+}
+
+button.tm-block:hover { background: @luma_hover; }
+button.tm-block.sel { background: @luma_chip; }
+button.tm-block:focus-visible { outline-color: @luma_focus_ring; }
+scrolledwindow.tm-pane-scroll { background: @luma_terminal_pane; }
+box.tm-block-header { border-spacing: var(--lumaui-ac-bar-gap); }
+label.tm-block-command { color: @luma_ink; font-weight: 600; }
+label.tm-block-status { color: @luma_muted; }
+label.tm-block-output { color: @luma_ink_secondary; }
+label.tm-welcome-greeting { color: @luma_faint; font-size: var(--lumaui-sidebar-subtitle-size); }
+overlay.tm-greeting-narrow {
+  min-height: calc(var(--lumaui-ac-editor-top) + var(--lumaui-ac-editor-top));
+}
+box.tm-fetch { margin-top: var(--lumaui-details-body-padding-x); }
+label.tm-fetch-logo { color: @luma_ember_dot; font-size: var(--lumaui-ac-context-size); }
+label.tm-fetch-user { color: @luma_accent_ink; font-weight: 600; }
+label.tm-fetch-at, label.tm-fetch-divider { color: @luma_faint; }
+label.tm-fetch-key { color: @luma_ink; font-weight: 600; }
+label.tm-fetch-value { color: @luma_ink_secondary; }
+overlay.tm-fetch-swatches { margin-top: var(--lumaui-details-body-padding-x); }
+box.tm-swatch-0 { background: @luma_destructive; }
+box.tm-swatch-1 { background: @luma_amber; }
+box.tm-swatch-2 { background: @luma_green; }
+box.tm-swatch-3 { background: @luma_cat_play_ink; }
+box.tm-swatch-4 { background: @luma_cat_tools_ink; }
+box.tm-swatch-5 { background: @luma_blue; }
+box.tm-swatch-6 { background: @luma_violet; }
+box.tm-swatch-7 { background: @luma_cat_media_ink; }
+stack.tm-empty {
+  margin: calc(var(--lumaui-ac-editor-top) + var(--lumaui-ac-editor-top))
+          var(--lumaui-card-padding-top);
+  color: @luma_muted;
+}
+label.tm-empty-fragment { color: @luma_muted; }
+label.tm-empty-help { color: @luma_ink; }
+
+box.tm-vte-wrap {
+  padding: calc(var(--lumaui-card-padding-x) + var(--lumaui-details-section-gap-first));
+  background: @luma_terminal_pane;
+}
+vte-terminal.tm-vte { background: @luma_terminal_pane; color: @luma_ink; }
+
+/* Phone keys row (v71 .tmkeys): Terminal's own strip, laid out with the bar's tokens. */
+scrolledwindow.tm-keys { background: none; }
+box.tm-keys-row { border-spacing: var(--lumaui-ac-bar-gap); }
+button.tm-key {
+  min-height: var(--lumaui-bar-entry-height);
+  min-width: calc(var(--lumaui-bar-entry-height) + var(--lumaui-bar-entry-inline-radius));
+  padding: 0;
+  border-radius: var(--lumaui-bar-entry-radius);
+  background: @luma_chip;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring,
+              0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+  color: @luma_ink_secondary;
+}
+button.tm-key label { font-weight: 600; }
+button.tm-key:hover { background: @luma_hover; }
+button.tm-key:focus-visible { outline-color: @luma_focus_ring; }
+/* The command row: sessions, the line, Run. */
+box.tm-command-row { border-spacing: var(--lumaui-ac-phone-bar-gap); }

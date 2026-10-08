@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectluma.org/schemas/action/v0.1",
+  "title": "Luma semantic action",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "label", "risk", "enabled"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$" },
+    "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "description": { "type": "string", "maxLength": 240 },
+    "parameter_type": { "type": "string" },
+    "risk": { "enum": ["passive", "low", "consequential", "destructive", "security-sensitive"] },
+    "enabled": { "type": "boolean" }
+  }
+}

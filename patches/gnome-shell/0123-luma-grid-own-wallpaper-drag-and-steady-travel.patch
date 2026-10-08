@@ -1,0 +1,410 @@
+From: Project Luma
+Subject: [PATCH] luma: Grid paints its own wallpaper, drags, reveals the selection and travels steadily
+
+Grid showed large duplicated, flashing windows behind its cards on a
+desktop of libadwaita apps (white rectangles in screenshots). Its wallpaper
+was a clone of the desktop background group, which lives inside the window
+group. Mutter culls that group every frame against the opaque regions of the
+windows above it, whether or not the window group is hidden, so the clone
+skipped every rectangle an opaque window covered and nothing painted there:
+the display showed stale frames. Grid now builds its own background actor
+per display from the same cached backgrounds.
+
+Dragging the row did nothing: the pan sat on the row, which is not reactive,
+so it never saw a press. It now belongs to the whole popup, so a drag anywhere
+scrolls and never counts as a click.
+
+A long row scrolled from centring its first card to centring its last,
+which on a 5120px display opened with half the screen empty and most cards
+out of sight. The row now scrolls between its first card on the left margin
+and its last on the right margin, opens centred on the window you left where
+that range allows, keeps its place when a window changes size, and glides a
+card chosen from the keyboard into view.
+
+The travel clock starts after the first frame, which renders every preview
+and used to swallow most of the ease-out curve so cards jumped on their first
+step. Cards resting wholly outside the row are not painted (they were
+rendered at full resolution every frame, at 2x over a neighbouring 1.25x
+panel). Size notifications from window previews rebuild the row before the
+next frame instead of inside Clutter's layout pass, the close button is shown
+by opacity so a hover after layout cannot leave it unallocated, and a Grid
+being destroyed is no longer allocated, which logged dozens of
+"GridCard has been already disposed" criticals on every dismiss.
+
+Generated against the Shell .83 tree (0122 applied) for release .84.
+---
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -10,6 +10,7 @@
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
++import * as Background from './background.js';
+ import * as Main from './main.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import {gridLayout, gridNeighbor} from './gridLayout.js';
+@@ -55,6 +56,8 @@
+ // A flung row keeps moving and slows like a list on a phone: velocity decays
+ // with this time constant, so it travels velocity x FLING_DECAY in total.
+ const FLING_DECAY = 325;
++// Keyboard selection brings an off-screen card into view over this long.
++const REVEAL_DURATION = 240;
+ 
+ // Keep the native handheld carousel unless Grid is explicitly invoked (Alt-Tab).
+ export function isDefault() {
+@@ -234,7 +237,7 @@
+         this._close = new St.Button({style_class: 'window-close',
+             accessible_name: _('Close window'), icon_name: 'preview-close-symbolic',
+             style: 'width: 26px; height: 26px; padding: 0; min-width: 0; min-height: 0;',
+-            visible: false});
++            opacity: 0, reactive: false, can_focus: false});
+         this._close.connect('clicked', () => this.closeWindow());
+         this.add_child(this._edge);
+         this.add_child(this._body);
+@@ -249,11 +252,35 @@
+         window.connectObject('notify::minimized', () => this._syncName(),
+             'notify::title', () => this._syncName(),
+             'unmanaged', () => popup.removeCard(this), this);
+-        this._body.layout_manager.connectObject('notify::bounding-box',
+-            () => popup.reflow(), this);
++        // The bounding box also moves with the window, and it is announced from
++        // inside Clutter's layout pass. Only a new size changes the row, and
++        // the row is rebuilt before the next frame rather than mid-layout.
++        this._size = this._sizeKey();
++        this._body.layout_manager.connectObject('notify::bounding-box', () => {
++            const size = this._sizeKey();
++            if (size !== this._size) {
++                this._size = size;
++                popup.queueReflow();
++            }
++        }, this);
+         this._syncSelection();
+     }
+ 
++    _sizeKey() {
++        const {width, height} = this.dimensions;
++        return `${width}x${height}`;
++    }
++
++    // A card resting wholly outside the row's clip is not drawn at all.
++    // Clutter clips it away but still rendered its full-resolution preview
++    // first, every frame for a live window. Past the edge of a wide display
++    // that could be over a neighbouring display with a higher scale, where
++    // the preview was rendered at twice the resolution for nothing.
++    vfunc_paint(paintContext) {
++        if (!this._popup.isHidden(this))
++            super.vfunc_paint(paintContext);
++    }
++
+     // Shown only where there is room for it. Decided outside the layout pass:
+     // changing visibility while allocating queues another layout.
+     syncTimeVisible(width) {
+@@ -292,12 +319,24 @@
+                 duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+         }
+         this._name.opacity = lifted ? 255 : 204;
+-        this._close.visible = lifted && this.window.can_close();
++        this.setCloseShown(lifted && this.window.can_close());
+         this._edge.set_style(`border-radius: ${this._radius}px;
+             border: 1px solid rgba(255,255,255,0.18);
+             box-shadow: 0 ${lifted ? 8 : 4}px ${lifted ? 24 : 14}px rgba(0,0,0,0.35);`);
+     }
+ 
++    // The close button stays visible and allocated and is shown by opacity.
++    // Hover changes arrive after Clutter's layout pass (the pointer is
++    // re-picked once cards move), and showing a hidden button there left it
++    // unallocated for a frame.
++    setCloseShown(shown) {
++        if (this._close.reactive === shown)
++            return;
++        this._close.reactive = shown;
++        this._close.can_focus = shown;
++        this._close.opacity = shown ? 255 : 0;
++    }
++
+     closeWindow() {
+         if (this.window.can_close())
+             this.window.delete(global.get_current_time());
+@@ -340,17 +379,31 @@
+         this._cards = [];
+         this._selected = 0;
+         this._lastSize = '';
+-        // Clone only the existing desktop background group, at its exact stage
+-        // coordinates. Do not invoke Overview or its background zoom/crop path.
+-        this._wallpaper = new Clutter.Clone({source: Main.layoutManager._backgroundGroup});
++        // Grid's own wallpaper: the desktop background, one actor per display
++        // at its stage position, from the same cached backgrounds. It used to
++        // clone the desktop's background group, but that group lives inside
++        // the window group. Mutter culls it there every frame against the
++        // opaque regions of the windows above it, hidden or not, so the clone
++        // left a hole wherever an opaque window (every libadwaita app) sat.
++        // Nothing else paints there while Grid is open, so those holes showed
++        // stale frames: duplicated, flashing windows on screen, and white
++        // rectangles in screenshots.
++        this._wallpaper = new Meta.BackgroundGroup();
++        this._wallpaperManagers = [];
+         this.add_child(this._wallpaper);
++        this._syncWallpaper();
+         this._stage = new St.Widget({clip_to_allocation: true,
+             layout_manager: new ManualLayout()});
+         // Press and drag moves the row like a finger on a touchscreen, with a
+-        // mouse as well as touch, and a flick keeps it gliding.
++        // mouse as well as touch, and a flick keeps it gliding. The pan
++        // belongs to Grid as a whole: the row itself is not reactive, so a
++        // pan attached to it only ever saw presses that began on a card's
++        // own reactive children, and dragging did nothing. Anywhere Grid
++        // covers now drags the row, and a drag never counts as a click.
+         const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
+         pan.connect('recognize', () => {
+             this._stopFling();
++            this._stopReveal();
+             this._panStart = this._scroll;
+             this._panStartX = this._scrollX;
+             this._flingVelocity = 0;
+@@ -366,7 +419,7 @@
+             this.queue_relayout();
+         });
+         pan.connect('end', () => this._fling(this._flingVelocity ?? 0));
+-        this._stage.add_action(pan);
++        this.add_action(pan);
+         this.add_child(this._stage);
+         const recent = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
+             .map(w => w.is_attached_dialog() ? w.get_transient_for() : w)
+@@ -407,8 +460,11 @@
+                 this.dismiss();
+         });
+         Main.layoutManager.connectObject('system-modal-opened', () => this.destroy(),
+-            'monitors-changed', () => this.reflow(), this);
+-        global.display.connectObject('workareas-changed', () => this.reflow(),
++            'monitors-changed', () => {
++                this._syncWallpaper();
++                this.queueReflow();
++            }, this);
++        global.display.connectObject('workareas-changed', () => this.queueReflow(),
+             // Reveal newly created close-confirmation/authentication dialogs.
+             'window-created', () => this.destroy(), this);
+         Main.sessionMode.connectObject('updated', () => {
+@@ -416,6 +472,15 @@
+                 this.destroy();
+         }, this);
+         this.connect('destroy', () => {
++            // Clutter can still allocate Grid while it tears down its children;
++            // from here on there is nothing left to place.
++            this._destroyed = true;
++            this._cards = [];
++            this._geometry = null;
++            this._wallpaperManagers.forEach(manager => manager.destroy());
++            this._wallpaperManagers = [];
++            this._stopReveal();
++            this._cancelTravelStart();
+             if (this._layoutLater)
+                 global.compositor.get_laters().remove(this._layoutLater);
+             this._layoutLater = 0;
+@@ -437,6 +502,21 @@
+         return this._leaving === true;
+     }
+ 
++    _syncWallpaper() {
++        this._wallpaperManagers.forEach(manager => manager.destroy());
++        this._wallpaperManagers = Main.layoutManager.monitors.map((_monitor, monitorIndex) =>
++            new Background.BackgroundManager({container: this._wallpaper, monitorIndex}));
++    }
++
++    // Whether a resting card lies wholly outside the row's clip.
++    isHidden(card) {
++        if (this._destroyed || this.travelling || this._leaving || !this._stage.clip_to_allocation)
++            return false;
++        const box = card.get_allocation_box();
++        const width = this._stage.get_allocation_box().get_width();
++        return box.x2 <= 0 || box.x1 >= width;
++    }
++
+     // Where a window sits on the desktop, if it is there to travel from or to.
+     _desktopRect(window) {
+         const workspace = global.workspace_manager.get_active_workspace();
+@@ -480,7 +560,7 @@
+                 card._travelFrom.stay = true;
+             card.remove_all_transitions();
+             card.translation_y = 0;
+-            card._close.visible = false;
++            card.setCloseShown(false);
+         });
+         this._travelProgress = leaving ? 1 : 0;
+         this._travelLeaving = leaving;
+@@ -503,7 +583,23 @@
+             if (finished)
+                 onDone();
+         });
+-        timeline.start();
++        // The clock starts once the first frame is on screen. That frame
++        // renders every preview for the first time, which is slow; counted
++        // into the travel, it swallowed most of an ease-out curve and cards
++        // jumped half way on their first step.
++        this._cancelTravelStart();
++        this._travelStartId = global.stage.connect_after('after-paint', () => {
++            this._cancelTravelStart();
++            if (this._travelTimeline === timeline)
++                timeline.start();
++        });
++        this.queue_redraw();
++    }
++
++    _cancelTravelStart() {
++        if (this._travelStartId)
++            global.stage.disconnect(this._travelStartId);
++        this._travelStartId = 0;
+     }
+ 
+     get travelling() {
+@@ -627,10 +723,55 @@
+         timeline?.stop();
+     }
+ 
++    // Glide the row so a card chosen from the keyboard is fully in view.
++    _reveal(index) {
++        const item = this._geometry?.items[index];
++        if (!item)
++            return;
++        const {width} = this._viewport();
++        let target = this._scrollX;
++        if (item.x - this._scrollX < 0)
++            target = item.x;
++        else if (item.x + item.width - this._scrollX > width)
++            target = item.x + item.width - width;
++        target = Math.max(this._scrollMin, Math.min(this._scrollMax, target));
++        if (Math.abs(target - this._scrollX) < 0.5)
++            return;
++        this._stopFling();
++        this._stopReveal();
++        if (!St.Settings.get().enable_animations) {
++            this._scrollX = target;
++            this.queue_relayout();
++            return;
++        }
++        const start = this._scrollX;
++        const timeline = this._revealTimeline = new Clutter.Timeline({
++            actor: this, duration: REVEAL_DURATION,
++            progress_mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        timeline.connect('new-frame', () => {
++            this._scrollX = lerp(start, target, timeline.get_progress());
++            this.queue_relayout();
++        });
++        timeline.connect('stopped', () => {
++            if (this._revealTimeline === timeline)
++                this._revealTimeline = null;
++        });
++        timeline.start();
++    }
++
++    _stopReveal() {
++        const timeline = this._revealTimeline;
++        this._revealTimeline = null;
++        timeline?.stop();
++    }
++
+     open() {
+         this._layout();
+         this._logCards();
+         Main.uiGroup.add_child(this);
++        // Resolve styles now so every icon has its texture actor before the
++        // first layout, instead of creating it mid-frame and missing it.
++        this.ensure_style();
+         // Above the windows but below the panel and dock: both stay available
+         // while Grid is open. The live windows are hidden instead of stacked
+         // under, because every one of them is already represented by a card and
+@@ -669,11 +810,19 @@
+     }
+ 
+     reflow() {
++        if (this._destroyed)
++            return;
+         this._dirty = true;
+         this._layout();
+         this.queue_relayout();
+     }
+ 
++    // Rebuild the row before the next frame, outside any layout pass.
++    queueReflow() {
++        this._dirty = true;
++        this._queueLayout();
++    }
++
+     // Everything that decides where cards rest. It runs before layout, never
+     // inside it: restyling a card or starting the entrance while Clutter is
+     // allocating queues another layout, which left actors unallocated for a
+@@ -699,19 +848,29 @@
+             width: c.dimensions.width / scale, height: c.dimensions.height / scale})),
+         width, height);
+         this._scroll = Math.min(this._scroll, Math.max(0, this._geometry.height - height));
+-        // Scroll positions are expressed as 'what it takes to centre this
+-        // card'. The travel therefore runs from centring the first card to
+-        // centring the last, which gives both ends the same generous margin
+-        // instead of one clean edge and one clipped one.
++        // A row that fits sits centred and does not scroll. A longer row
++        // scrolls from its first card resting on the left margin to its last
++        // resting on the right one, so both ends keep the same margin and the
++        // display is always full. (Centring the end cards instead left half
++        // of an ultra-wide display empty on opening, with most windows
++        // scrolled out of sight on the other side.)
+         const items = this._geometry.items;
+-        const centreOf = item => item.x + item.width / 2 - width / 2;
+-        this._scrollMin = items.length ? centreOf(items[0]) : 0;
+-        this._scrollMax = items.length ? centreOf(items[items.length - 1]) : 0;
++        const first = items[0];
++        const last = items[items.length - 1];
++        const overflow = first && last.x + last.width - first.x > width + 0.5;
++        const previousStart = this._rowStart;
++        this._rowStart = first?.x ?? 0;
++        this._scrollMin = overflow ? first.x : 0;
++        this._scrollMax = overflow ? last.x + last.width - width : 0;
+         if (this._scrollX === null) {
+-            // Open on the window you just left. Because the order is stable,
+-            // that also restores the neighbours it had last time.
++            // Open on the window you just left, centred where the row allows.
++            // Because the order is stable, that also restores its neighbours.
+             const focus = items[Math.min(this._focusIndex ?? 0, items.length - 1)];
+-            this._scrollX = focus ? centreOf(focus) : this._scrollMin;
++            this._scrollX = focus ? focus.x + focus.width / 2 - width / 2 : 0;
++        } else if (previousStart !== undefined) {
++            // A window changing size re-centres the whole row; keep the cards
++            // before it where they were.
++            this._scrollX += this._rowStart - previousStart;
+         }
+         this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax, this._scrollX));
+         items.forEach((item, index) => {
+@@ -781,6 +940,7 @@
+             return;
+         this._selected = gridNeighbor(this._geometry, this._selected, direction);
+         this._syncSelection();
++        this._reveal(this._selected);
+     }
+ 
+     activate(card) {
+@@ -833,6 +993,7 @@
+         // gestures are left alone: those belong to the workspace switcher.
+         const travel = (dx + dy) * 60;
+         this._stopFling();
++        this._stopReveal();
+         this._scrollX = Math.max(this._scrollMin, Math.min(this._scrollMax,
+             this._scrollX + travel));
+         this.queue_relayout();
+@@ -867,6 +1028,8 @@
+ 
+     vfunc_allocate(box) {
+         this.set_allocation(box);
++        if (this._destroyed)
++            return;
+         allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
+         const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
+         const monitor = Main.layoutManager.primaryMonitor ?? area;
+@@ -901,7 +1064,8 @@
+             return;
+         this._layoutLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
+             this._layoutLater = 0;
+-            this.reflow();
++            if (!this._destroyed)
++                this.reflow();
+             return GLib.SOURCE_REMOVE;
+         });
+     }

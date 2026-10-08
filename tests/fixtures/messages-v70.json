@@ -1,0 +1,56 @@
+{
+  "_doc": "Studio v70 ?app=messages sample. Fixture mode keeps these conversations in memory and never opens the person's stores.",
+  "selected": "crew",
+  "people": {
+    "me": {"name": "You", "initials": "N", "handle": "nick", "hue": 250},
+    "PR": {"name": "Priya Raman", "handle": "priya", "hue": 330, "online": true, "photo": "messages-v70/face-PR.jpg", "light": "messages-v70/life-ari-street.webp", "focus": [0.705, 0.2]},
+    "NF": {"name": "Nora Feld", "handle": "nora", "hue": 45, "online": true, "photo": "messages-v70/face-NF.jpg", "light": "messages-v70/life-sync-terrace.webp", "focus": [0.36, 0.27]},
+    "SK": {"name": "Sam Kaur", "handle": "samk", "hue": 200, "photo": "messages-v70/face-SK.jpg", "light": "messages-v70/life-suite-bg-write.webp", "focus": [0.47, 0.3]},
+    "TH": {"name": "Theo Marsh", "handle": "theo", "hue": 350, "photo": "messages-v70/face-TH.jpg", "light": "messages-v70/take-back.webp", "focus": [0.575, 0.12]},
+    "MO": {"name": "Dad", "phone": "+1 (510) 555-0142", "hue": 20, "photo": "messages-v70/face-MO.jpg", "light": "messages-v70/life-hero-home.webp", "focus": [0.8, 0.33]},
+    "AR": {"name": "Alex Ruiz", "handle": "alexr", "hue": 262, "photo": "messages-v70/face-AR.jpg", "light": "messages-v70/life-professionals-loft.webp", "focus": [0.55, 0.36]},
+    "JK": {"name": "Jordan Kim", "handle": "jordan.k", "hue": 100},
+    "CL": {"name": "Lena Okafor", "handle": "lena", "hue": 160, "photo": "messages-v70/face-CL.jpg", "light": "messages-v70/life-suite-bg-canvas.webp", "focus": [0.575, 0.3]}
+  },
+  "requests": [{"person": "JK", "preview": "Hi! Saw your post on the Hub about Fairphone support…"}],
+  "conversations": [
+    {"id": "crew", "address": "+15105550101", "name": "Launch crew", "hue": 285, "group": ["PR", "NF", "SK"], "pinned": true, "unread": 0, "gallery": ["messages-v70/life-sync-terrace.webp", "messages-v70/life-work-suite.webp", "messages-v70/life-suite-bg-stage.webp"], "messages": [
+      {"id": 1, "from": "SK", "text": "Morning! RC2 finished building overnight", "day": "Yesterday", "at": "9:14 PM"},
+      {"id": 2, "from": "SK", "text": "Installer passed on all twelve test laptops 🎉", "at": "9:15 PM", "reactions": {"🎉": ["PR", "NF", "me"]}},
+      {"id": 3, "from": "me", "text": "Amazing. Let’s freeze strings tomorrow morning.", "at": "9:40 PM", "status": "read"},
+      {"id": 4, "from": "PR", "text": "Shot the press photos this morning, first pick:", "day": "Today", "at": "9:31 AM"},
+      {"id": 5, "from": "PR", "kind": "photo", "photo": "messages-v70/life-hero-studio.webp", "at": "9:31 AM", "reactions": {"❤️": ["NF", "me"]}},
+      {"id": 6, "from": "NF", "text": "That’s the one. Can we get a crop for the homepage hero?", "at": "9:33 AM"},
+      {"id": 7, "from": "PR", "kind": "file", "name": "launch-deck.stage", "size": "18.4 MB", "app": "presentations", "at": "9:48 AM"},
+      {"id": 8, "from": "PR", "text": "Updated deck with the new milestones", "at": "9:48 AM"},
+      {"id": 9, "from": "NF", "kind": "voice", "duration": 23, "at": "9:52 AM"},
+      {"id": 10, "from": "me", "text": "Love it. I’ll go through the deck before lunch", "at": "9:58 AM", "status": "read", "reply": 7},
+      {"id": 11, "from": "SK", "text": "simplyluma.com is live on the new server btw", "at": "10:02 AM", "link": {"host": "simplyluma.com", "title": "Luma — A better computer.", "photo": "messages-v70/life-hero-writing.webp"}}
+    ]},
+    {"id": "priya", "address": "+15105550102", "person": "PR", "pinned": true, "unread": 0, "messages": [
+      {"id": 12, "from": "PR", "text": "Are we still on for the walkthrough at 2?", "day": "Today", "at": "8:40 AM"},
+      {"id": 13, "from": "PR", "kind": "event", "card": {"title": "Launch walkthrough", "month": "Sep", "day": "25", "when": "2:00 PM", "where": "Studio", "hue": 285}, "at": "8:40 AM"},
+      {"id": 14, "from": "me", "text": "Yes, bring the Fairphone build", "at": "8:42 AM", "status": "read"},
+      {"id": 15, "from": "PR", "text": "Will do 👍", "at": "8:43 AM"}
+    ]},
+    {"id": "mom", "address": "+15105550103", "person": "MO", "sms": true, "unread": 1, "messages": [
+      {"id": 16, "from": "MO", "text": "Saw the article about Luma. Proud of you kid. Call me this weekend", "day": "Today", "at": "11:05 AM"}
+    ]},
+    {"id": "theo", "address": "+15105550104", "person": "TH", "unread": 0, "messages": [
+      {"id": 17, "from": "TH", "kind": "song", "card": {"title": "God Only Knows", "artist": "The Beach Boys", "album": "Pet Sounds", "photo": "messages-v70/pet-sounds.webp"}, "day": "Yesterday", "at": "6:18 PM"},
+      {"id": 18, "from": "TH", "kind": "voice", "duration": 41, "at": "6:20 PM"},
+      {"id": 19, "from": "me", "text": "Haha yes. Saturday works", "at": "6:31 PM", "status": "read"}
+    ]},
+    {"id": "climb", "address": "+15105550105", "name": "Climbing Saturday", "hue": 150, "group": ["TH", "CL", "AR"], "muted": true, "unread": 0, "messages": [
+      {"id": 20, "from": "CL", "kind": "place", "card": {"name": "Mission Cliffs", "address": "2295 Harrison St", "eta": "14 min"}, "day": "Yesterday", "at": "4:01 PM"},
+      {"id": 21, "from": "CL", "text": "Gym at 10, coffee after?", "at": "4:02 PM"}
+    ]},
+    {"id": "alex", "address": "+15105550106", "person": "AR", "unread": 0, "messages": [
+      {"id": 22, "from": "AR", "text": "Sent you the invoice, no rush", "day": "Monday", "at": "3:12 PM"}
+    ]},
+    {"id": "nora", "address": "+15105550107", "person": "NF", "unread": 0, "messages": [
+      {"id": 23, "from": "me", "text": "Thanks for the notes on the letter", "day": "Sep 19", "at": "5:40 PM", "status": "read"},
+      {"id": 24, "from": "NF", "text": "Anytime. It reads really well now", "at": "5:44 PM"}
+    ]}
+  ]
+}

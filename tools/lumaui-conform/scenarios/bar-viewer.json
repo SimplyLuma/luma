@@ -1,0 +1,53 @@
+{
+  "app": "bar-viewer",
+  "title": "Zoom control and the split key against Viewer's bar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=viewer",
+    "window": "#w-viewer",
+    "exclude": [
+      "#w-viewer *:not(:has(#vw-bar)):not(#vw-bar):not(#vw-bar *)"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "viewer",
+      "LUMAUI_BAR_HOST": "236,46,936,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774"
+    }
+  },
+  "states": [
+    {
+      "name": "zoom",
+      "about": "The resting bar: zoom out, the percent (Fit), zoom in",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "zoom"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "zoom"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#vw-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#vw-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

@@ -1,0 +1,186 @@
+--- a/js/misc/introspect.js
++++ b/js/misc/introspect.js
+@@ -17,6 +17,7 @@
+ import {loadInterfaceXML} from './fileUtils.js';
+ import {DBusSenderChecker} from './util.js';
+ import * as SessionApplications from '../ui/sessionApplications.js';
++import * as AndroidActivation from '../ui/lumaAndroidActivation.js';
+ 
+ const IntrospectDBusIface = loadInterfaceXML('org.gnome.Shell.Introspect');
+ 
+@@ -59,6 +60,14 @@
+         this._senderChecker = new DBusSenderChecker(APP_ALLOWLIST);
+         // Monitor receives only app IDs and PIDs, never the portal window data.
+         this._monitorSenderChecker = new DBusSenderChecker(['io.luma.Monitor']);
++        this._androidOwner = {owner: null, generation: 0};
++        Gio.DBus.watch_name(Gio.BusType.SESSION, 'org.projectluma.Android1',
++            Gio.BusNameWatcherFlags.NONE,
++            (_connection, _name, owner) => {
++                this._androidOwner = {owner, generation: this._androidOwner.generation + 1};
++            }, () => {
++                this._androidOwner = {owner: null, generation: this._androidOwner.generation + 1};
++            });
+ 
+         this._settings = St.Settings.get();
+         this._settings.connect('notify::enable-animations',
+@@ -187,6 +196,41 @@
+         invocation.return_value(new GLib.Variant('(b)', [Boolean(requested)]));
+     }
+ 
++    async ActivateAndroidApplicationAsync(params, invocation) {
++        return this._androidApplicationRequest(params, invocation, false);
++    }
++
++    async CloseAndroidApplicationAsync(params, invocation) {
++        return this._androidApplicationRequest(params, invocation, true);
++    }
++
++    async _androidApplicationRequest(params, invocation, close) {
++        try {
++            const sender = invocation.get_sender();
++            const before = this._androidOwner;
++            // Refuse irrelevant callers before issuing even one bus request.
++            if (sender !== before.owner || !AndroidActivation.validAndroidPackage(params[0]))
++                throw new GLib.Error(Gio.DBusError, Gio.DBusError.ACCESS_DENIED,
++                    'Only the current Android broker may manage its application.');
++            const result = await Gio.DBus.session.call(
++                'org.freedesktop.DBus', '/org/freedesktop/DBus',
++                'org.freedesktop.DBus', 'GetNameOwner',
++                new GLib.Variant('(s)', ['org.projectluma.Android1']),
++                new GLib.VariantType('(s)'), Gio.DBusCallFlags.NONE, 1000, null);
++            if (!AndroidActivation.sameAndroidOwner(sender, before,
++                this._androidOwner, result.deepUnpack()[0]))
++                throw new GLib.Error(Gio.DBusError, Gio.DBusError.ACCESS_DENIED,
++                    'Only the current Android broker may restore its application.');
++            const action = close ? AndroidActivation.closeAndroidApplication :
++                AndroidActivation.activateAndroidApplication;
++            const restored = action(params[0], this._appSystem,
++                global.display.get_current_time_roundtrip());
++            invocation.return_value(new GLib.Variant('(b)', [restored]));
++        } catch (error) {
++            AndroidActivation.replyAndroidRequestError(invocation, error);
++        }
++    }
++
+     async GetWindowsAsync(params, invocation) {
+         const focusWindow = global.display.get_focus_window();
+         const apps = this._appSystem.get_running();
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -7,6 +7,7 @@
+ import * as Config from '../misc/config.js';
+ import * as Main from './main.js';
+ import * as MessageTray from './messageTray.js';
++import * as AndroidActivation from './lumaAndroidActivation.js';
+ 
+ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ import {NotificationErrors, NotificationError} from '../misc/dbusErrors.js';
+@@ -258,6 +259,15 @@
+ 
+         if (hasDefaultAction) {
+             notification.connectObject('activated', () => {
++                // Android's PendingIntent changes the activity, but upstream
++                // Waydroid does not consume the host activation token yet.
++                // Restore the exact existing Android window before dispatch.
++                const packageName = AndroidActivation.androidPackageFromDesktopId(
++                    source.app?.get_id());
++                if (packageName)
++                    AndroidActivation.activateAndroidApplication(packageName,
++                        Shell.AppSystem.get_default(),
++                        global.display.get_current_time_roundtrip());
+                 this._emitActivationToken(source, id);
+                 this._emitActionInvoked(id, 'default');
+             }, this);
+--- a/data/dbus-interfaces/org.gnome.Shell.Introspect.xml
++++ b/data/dbus-interfaces/org.gnome.Shell.Introspect.xml
+@@ -62,6 +62,15 @@
+     -->
+     <!-- Luma Monitor-only interface: no window titles or other portal data.
+          Quit is a request, not evidence that an application has exited. -->
++    <!-- Android broker only; restores an existing generated Android app. -->
++    <method name="ActivateAndroidApplication">
++      <arg name="package" direction="in" type="s" />
++      <arg name="restored" direction="out" type="b" />
++    </method>
++    <method name="CloseAndroidApplication">
++      <arg name="package" direction="in" type="s" />
++      <arg name="requested" direction="out" type="b" />
++    </method>
+     <method name="GetMonitorApplications">
+       <arg name="apps" direction="out" type="a{sau}" />
+     </method>
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -127,6 +127,7 @@
+     <file>ui/iconMask.js</file>
+     <file>ui/lumaMediaIslandGuard.js</file>
+     <file>ui/shelfMedia.js</file>
++    <file>ui/lumaAndroidActivation.js</file>
+     <file>ui/notificationDaemon.js</file>
+     <file>ui/osdMonitorLabeler.js</file>
+     <file>ui/osdWindow.js</file>
+--- /dev/null
++++ b/js/ui/lumaAndroidActivation.js
+@@ -0,0 +1,62 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++// Restore only an existing window belonging to a generated Android launcher.
++// Neither this helper nor its broker method starts an arbitrary desktop app.
++export function replyAndroidRequestError(invocation, error) {
++    // D-Bus invocations require GLib.Error, including native app/window throws.
++    const reply = error instanceof GLib.Error ? error :
++        new GLib.Error(Gio.DBusError, Gio.DBusError.FAILED,
++            'The Android window request failed.');
++    invocation.return_gerror(reply);
++}
++
++export function androidPackageFromDesktopId(id) {
++    if (typeof id !== 'string' || !id.startsWith('waydroid.') || !id.endsWith('.desktop'))
++        return null;
++    const packageName = id.slice(9, -8);
++    return validAndroidPackage(packageName) ? packageName : null;
++}
++
++export function validAndroidPackage(packageName) {
++    return typeof packageName === 'string' && packageName.length <= 255 &&
++        /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName);
++}
++
++export function sameAndroidOwner(sender, before, after, liveOwner) {
++    return typeof sender === 'string' && sender.startsWith(':') &&
++        before.owner === sender && after.owner === sender && liveOwner === sender &&
++        before.generation === after.generation;
++}
++
++function matchingAndroidWindows(packageName, appSystem) {
++    if (!validAndroidPackage(packageName))
++        return false;
++    const appId = `waydroid.${packageName}.desktop`;
++    const app = appSystem.lookup_app(appId);
++    const info = app?.get_app_info();
++    if (app?.get_id() !== appId || info?.get_id() !== appId ||
++        !info.get_boolean('X-Luma-Android'))
++        return false;
++    const wmClass = `waydroid.${packageName}`;
++    const windows = app.get_windows().filter(window =>
++        !window.skip_taskbar && !window.is_attached_dialog());
++    if (!windows.length || !windows.every(window => window.get_wm_class() === wmClass))
++        return false;
++    return {app, windows};
++}
++
++export function activateAndroidApplication(packageName, appSystem, timestamp) {
++    const matched = matchingAndroidWindows(packageName, appSystem);
++    if (!matched) return false;
++    matched.app.activate_full(-1, timestamp);
++    return true;
++}
++
++export function closeAndroidApplication(packageName, appSystem, timestamp) {
++    const matched = matchingAndroidWindows(packageName, appSystem);
++    if (!matched) return false;
++    for (const window of matched.windows)
++        window.delete(timestamp);
++    return true;
++}

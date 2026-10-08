@@ -1,0 +1,127 @@
+From b0ed5e834037d664e23aae86d46c7984c571c06e Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 23:59:15 -0400
+Subject: [PATCH] luma: screen sharing, screencasts and other system indicators
+ sit in the Well
+
+While the screen was shared or recorded, GNOME's indicator (the cast glyph
+and the amber stop mark) opened an island of its own at the far end of the
+shelf, after the clock. The Well beside Quick Options already holds the
+shelf's status icons, and these belong with them. Screen sharing, the
+screenshot UI's screencast, casting, dwell click, the accessibility menu and
+the keyboard layout now join the Well the way extension indicators do. Their
+own actors move, so a click still stops the sharing or the screencast and
+their menus still open. They keep GNOME's amber, darker on the light
+treatments.
+
+GNOME's mark for a screen being recorded (a recording remote-access handle)
+only existed among the panel's status icons, which the status grid replaces.
+It is now shown in the Well for as long as GNOME shows it, focusable and
+named "Your screen is being recorded". The secondary island remains only for
+an indicator the Well cannot take.
+
+Dropping this patch restores the separate island.
+---
+ data/theme/luma-shelf.css |  9 +++++++++
+ js/ui/shelf.js            | 38 ++++++++++++++++++++++++++++++++++----
+ 2 files changed, 43 insertions(+), 4 deletions(-)
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 99127de..b11601b 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -857,6 +857,15 @@
+   font-weight: 600;
+   font-feature-settings: "tnum"; }
+ 
++/* The same indicators in the Well: amber says the screen is leaving the
++ * computer, the Well's darker amber on the light treatments. */
++.luma-well .luma-well-extension .panel-button.screen-sharing-indicator,
++.luma-well .luma-well-extension .panel-button.screen-recording-indicator,
++.luma-well .luma-well-extension .panel-button.luma-screen-recorded-indicator { color: #f5c26b; }
++.luma-status-light .luma-well .luma-well-extension .panel-button.screen-sharing-indicator,
++.luma-status-light .luma-well .luma-well-extension .panel-button.screen-recording-indicator,
++.luma-status-light .luma-well .luma-well-extension .panel-button.luma-screen-recorded-indicator { color: #a8660c; }
++
+ /* The Well: application status icons, recessed at the start of the status island. */
+ .luma-well { height: 36px; padding: 0 4px; spacing: 2px; border-radius: 10px;
+   background-color: rgba(255,255,255,0.05); box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); }
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index c13f270..2be6121 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1,3 +1,4 @@
++import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+@@ -6,6 +7,7 @@ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
++import * as PanelMenu from './panelMenu.js';
+ import {ShelfMedia} from './shelfMedia.js';
+ import {Well} from './lumaWell.js';
+ import {NotificationBeacon} from './lumaNotificationBeacon.js';
+@@ -636,6 +638,27 @@ class Shelf extends St.Widget {
+         });
+     }
+ 
++    // GNOME marks a screen being recorded (a remote-access handle that
++    // records) only among the panel's status icons, which the shelf's status
++    // grid replaces. The same mark, in the Well, for as long as GNOME shows it.
++    _adoptRecordingIndicator(quick) {
++        const source = quick._remoteAccess?._indicator;
++        if (!source || this._recordingIndicator)
++            return;
++        const button = new PanelMenu.ButtonBox({
++            reactive: false,
++            can_focus: true,
++            accessible_role: Atk.Role.LABEL,
++            accessible_name: _('Your screen is being recorded'),
++        });
++        button.add_style_class_name('luma-screen-recorded-indicator');
++        button.add_child(new St.Icon({icon_name: 'media-record-symbolic'}));
++        source.bind_property('visible', button, 'visible', GObject.BindingFlags.SYNC_CREATE);
++        this._recordingIndicator = button;
++        button.connect('destroy', () => (this._recordingIndicator = null));
++        this._well.adoptExtension(button);
++    }
++
+     _adoptPanelActors() {
+         const indicators = Main.panel.statusArea;
+         const actionRoles = [
+@@ -671,15 +694,21 @@ class Shelf extends St.Widget {
+         // On a left or right shelf the Well stacks its items, like the dock.
+         this._well.orientation = this._vertical
+             ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._adoptRecordingIndicator(quick);
+         for (const role of [...actionRoles, ...extraRoles]) {
+             const indicator = indicators[role];
+             if (!indicator)
+                 continue;
+-            // Status icons from applications and extensions live in the
+-            // Well, never in an island of their own.
+-            if (!actionRoles.includes(role) &&
+-                (this._well.adopt(indicator) || this._well.adoptExtension(indicator)))
++            // Status icons from applications and extensions, and the system's
++            // own -- screen sharing, a screencast, casting, accessibility, the
++            // keyboard layout -- live in the Well beside Quick Options, never
++            // in an island of their own. Their actors move as they are, so a
++            // click still stops the sharing or opens their menu.
++            if (this._well.adopt(indicator) || this._well.adoptExtension(indicator)) {
++                indicator.setShelfPresentation?.(true);
++                indicator.setShelfOrientation?.(this._vertical);
+                 continue;
++            }
+             const container = indicator.container;
+             if (!actionRoles.includes(role) && !container._lumaShelfExtra) {
+                 container.add_style_class_name('luma-shelf-extra');
+@@ -704,6 +733,7 @@ class Shelf extends St.Widget {
+             this._setMenuSide(indicator, arrowSide);
+         }
+ 
++        // Anything that could not go into the Well keeps the secondary island.
+         this._auxIsland.visible = this._auxBox.get_children().some(child => child.visible);
+         if (this._auxIsland.visible && this._settings.get_boolean('shelf-actions-visible'))
+             this._group.add_child(this._auxIsland);

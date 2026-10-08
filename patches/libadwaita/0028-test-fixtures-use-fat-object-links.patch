@@ -1,0 +1,20 @@
+From: Luma downstream maintainers
+Subject: [PATCH] tests: avoid repeated LTO when GCC fat objects are available
+
+Retain every test and all hardening. Shipped library/demo links retain LTO.
+Apply only when the configured GCC compilation explicitly supplies fat objects.
+
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -31,6 +31,11 @@
+ ]
+ 
+ test_link_args = []
++if cc.get_id() == 'gcc' and '-ffat-lto-objects' in get_option('c_args')
++  # Fedora supplies native code alongside LTO IR in these objects. Test it
++  # without repeating whole-library LTO per fixture; shipped links retain LTO.
++  test_link_args += '-fno-lto'
++endif
+ use_pie = false
+ 
+ if cc.get_argument_syntax() != 'msvc'

@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.MonitorHost1
+Exec=/usr/bin/luma-monitor-host
+SystemdService=luma-monitor-host.service

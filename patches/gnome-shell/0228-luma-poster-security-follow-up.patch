@@ -1,0 +1,953 @@
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 0855d7c..ef9cedb 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4477,6 +4477,21 @@ StScrollBar {
+ .poster-status-row {
+   spacing: 14px; }
+ 
++.poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++  color: #eceeed; }
++
++.poster-status-row .a11y-button:hover, .poster-status-row .a11y-button:focus, .poster-status-row .login-dialog-session-list-button:hover, .poster-status-row .login-dialog-session-list-button:focus {
++  background-color: rgba(255, 255, 255, 0.08); }
++
+ .poster-wifi-icon {
+   icon-size: 15px;
+   color: #eceeed; }
+@@ -4567,6 +4582,19 @@ StScrollBar {
+   color: #eceeed;
+   text-align: center; }
+ 
++.poster-card .login-dialog-banner-view {
++  max-width: 100%;
++  max-height: 160px;
++  margin-top: 16px;
++  padding: 10px 12px;
++  border-radius: 12px;
++  background-color: rgba(0, 0, 0, 0.28); }
++
++.poster-card .login-dialog-banner {
++  color: #eceeed;
++  font-family: "Figtree";
++  font-size: 12px; }
++
+ .login-dialog-prompt-layout.prairie-login-input-well {
+   width: 320px;
+   spacing: 0; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 2defe12..95de0dd 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4735,6 +4735,21 @@ StScrollBar {
+ .poster-status-row {
+   spacing: 14px; }
+ 
++.poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++  color: #eceeed; }
++
++.poster-status-row .a11y-button:hover, .poster-status-row .a11y-button:focus, .poster-status-row .login-dialog-session-list-button:hover, .poster-status-row .login-dialog-session-list-button:focus {
++  background-color: rgba(255, 255, 255, 0.08); }
++
+ .poster-wifi-icon {
+   icon-size: 15px;
+   color: #eceeed; }
+@@ -4825,6 +4840,19 @@ StScrollBar {
+   color: #eceeed;
+   text-align: center; }
+ 
++.poster-card .login-dialog-banner-view {
++  max-width: 100%;
++  max-height: 160px;
++  margin-top: 16px;
++  padding: 10px 12px;
++  border-radius: 12px;
++  background-color: rgba(0, 0, 0, 0.28); }
++
++.poster-card .login-dialog-banner {
++  color: #eceeed;
++  font-family: "Figtree";
++  font-size: 12px; }
++
+ .login-dialog-prompt-layout.prairie-login-input-well {
+   width: 320px;
+   spacing: 0; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index ec022ca..ce5d78f 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4701,6 +4701,21 @@ StScrollBar {
+ .poster-status-row {
+   spacing: 14px; }
+ 
++.poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button {
++  width: 32px;
++  height: 32px;
++  min-width: 32px;
++  min-height: 32px;
++  padding: 0;
++  border: 0;
++  border-radius: 16px;
++  background-color: transparent;
++  box-shadow: none;
++  color: #eceeed; }
++
++.poster-status-row .a11y-button:hover, .poster-status-row .a11y-button:focus, .poster-status-row .login-dialog-session-list-button:hover, .poster-status-row .login-dialog-session-list-button:focus {
++  background-color: rgba(255, 255, 255, 0.08); }
++
+ .poster-wifi-icon {
+   icon-size: 15px;
+   color: #eceeed; }
+@@ -4791,6 +4806,19 @@ StScrollBar {
+   color: #eceeed;
+   text-align: center; }
+ 
++.poster-card .login-dialog-banner-view {
++  max-width: 100%;
++  max-height: 160px;
++  margin-top: 16px;
++  padding: 10px 12px;
++  border-radius: 12px;
++  background-color: rgba(0, 0, 0, 0.28); }
++
++.poster-card .login-dialog-banner {
++  color: #eceeed;
++  font-family: "Figtree";
++  font-size: 12px; }
++
+ .login-dialog-prompt-layout.prairie-login-input-well {
+   width: 320px;
+   spacing: 0; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index b960a30..5512027 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -677,6 +677,8 @@ $_gdm_dialog_width: 25em;
+ .poster-card { padding: 26px 30px 22px; border-radius: 24px; background-image: url("resource:///org/gnome/shell/theme/poster-card-glass.svg"); background-size: 100% 100%; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06), -30px 0 80px -30px rgba(0, 0, 0, 0.6), 0 40px 80px -30px rgba(0, 0, 0, 0.6); color: #eceeed; }
+ .poster-card.poster-card-opaque { background-image: none; background-color: #26262a; }
+ .poster-status-row { spacing: 14px; }
++.poster-status-row .a11y-button, .poster-status-row .login-dialog-session-list-button { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 16px; background-color: transparent; box-shadow: none; color: #eceeed; }
++.poster-status-row .a11y-button:hover, .poster-status-row .a11y-button:focus, .poster-status-row .login-dialog-session-list-button:hover, .poster-status-row .login-dialog-session-list-button:focus { background-color: rgba(255, 255, 255, 0.08); }
+ .poster-wifi-icon { icon-size: 15px; color: #eceeed; }
+ .poster-battery { width: 23px; height: 10px; background-image: url("resource:///org/gnome/shell/theme/poster-battery.svg"); background-size: 23px 10px; }
+ .poster-battery-fill { height: 5px; background-color: #eceeed; border-radius: 1px; }
+@@ -693,6 +695,8 @@ $_gdm_dialog_width: 25em;
+ .poster-avatar { icon-size: 76px; border-radius: 99px; border: 0; background-color: #627eae; background-image: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.06), 0 16px 32px -12px rgba(55, 85, 145, 0.8); }
+ .poster-avatar .prairie-login-avatar-initial { font-family: "Figtree"; font-size: 30px; font-weight: 650; color: white; }
+ .poster-greeting { margin-top: 20px; margin-bottom: 22px; font-family: "Figtree"; font-size: 26px; font-weight: 650; letter-spacing: -0.025em; color: #eceeed; text-align: center; }
++.poster-card .login-dialog-banner-view { max-width: 100%; max-height: 160px; margin-top: 16px; padding: 10px 12px; border-radius: 12px; background-color: rgba(0, 0, 0, 0.28); }
++.poster-card .login-dialog-banner { color: #eceeed; font-family: "Figtree"; font-size: 12px; }
+ .login-dialog-prompt-layout.prairie-login-input-well { width: 320px; spacing: 0; }
+ .login-dialog-button-box.prairie-password-field { width: 320px; height: 44px; padding: 0 5px 0 14px; spacing: 0; border: 0; border-radius: 13px; background-color: rgba(0, 0, 0, 0.28); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3); }
+ .login-dialog-button-box.prairie-password-field:focus-within { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.32), inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1.5px rgba(92, 164, 220, 0.7); }
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index 8c8ded6..fd3feb1 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -181,6 +181,8 @@ export const AuthPrompt = GObject.registerClass({
+         this._userVerifier.connect('reset', this._onReset.bind(this));
+         this._userVerifier.connect('smartcard-status-changed', this._onSmartcardStatusChanged.bind(this));
+         this._userVerifier.connect('credential-manager-authenticated', this._onCredentialManagerAuthenticated.bind(this));
++        this._userVerifier.connect('fingerprint-availability-changed',
++            this._syncFingerprintHint.bind(this));
+         this.smartcardDetected = this._userVerifier.smartcardDetected;
+ 
+         this.connect('destroy', this._onDestroy.bind(this));
+@@ -229,6 +231,8 @@ export const AuthPrompt = GObject.registerClass({
+             text: _('Or touch the fingerprint sensor'),
+         }));
+         this._inputWell.add_child(this._fingerprintHint);
++        this._fingerprintHint.hide();
++        this._fingerprintHintTimeoutId = 0;
+         this._greetingClock = new GnomeDesktop.WallClock({time_only: true});
+         this._greetingClock.connectObject('notify::clock', this._updateGreeting.bind(this), this);
+     }
+@@ -238,6 +242,8 @@ export const AuthPrompt = GObject.registerClass({
+     }
+ 
+     _onDestroy() {
++        if (this._fingerprintHintTimeoutId)
++            GLib.source_remove(this._fingerprintHintTimeoutId);
+         this._inactiveEntry.destroy();
+         this._inactiveEntry = null;
+         this._userVerifier.destroy();
+@@ -331,7 +337,7 @@ export const AuthPrompt = GObject.registerClass({
+ 
+         [this._textEntry, this._passwordEntry].forEach(entry => {
+             entry.clutter_text.connect('text-changed', () => {
+-                if (!this._userVerifier.hasPendingMessages)
++                if (!this._clearingEntry && !this._userVerifier.hasPendingMessages)
+                     this._fadeOutMessage();
+             });
+ 
+@@ -514,6 +520,8 @@ export const AuthPrompt = GObject.registerClass({
+     }
+ 
+     _onShowMessage(_userVerifier, serviceName, message, type, showMessageResolver) {
++        // Keep the verifier's PAM and faillock text; a generic error must not
++        // replace a lockout, password-change or OTP explanation.
+         this.setMessage(message, type);
+         this.emit('prompted');
+ 
+@@ -535,7 +543,7 @@ export const AuthPrompt = GObject.registerClass({
+ 
+         if (wasQueryingService) {
+             this._queryingService = null;
+-            this.clear({preserveEntry: serviceName === GdmUtil.PASSWORD_SERVICE_NAME});
++            this.clear();
+         }
+ 
+         this.updateSensitivity(canRetry);
+@@ -545,10 +553,7 @@ export const AuthPrompt = GObject.registerClass({
+             this.verificationStatus = AuthPromptStatus.VERIFICATION_FAILED;
+ 
+         if (serviceName === GdmUtil.PASSWORD_SERVICE_NAME && canRetry) {
+-            this._preservePasswordOnReset = true;
+             wiggle(this._mainBox, {duration: 60, wiggleCount: 3}).catch(logError);
+-            this.setMessage(_('Wrong password'), GdmUtil.MessageType.ERROR);
+-            this._entry.clutter_text.set_selection(0, -1);
+         }
+     }
+ 
+@@ -627,11 +632,11 @@ export const AuthPrompt = GObject.registerClass({
+         this.setActorInDefaultButtonWell(null, false);
+     }
+ 
+-    clear({preserveEntry = false} = {}) {
+-        if (!preserveEntry) {
+-            this._entry.text = '';
+-            this._inactiveEntry.text = '';
+-        }
++    clear() {
++        this._clearingEntry = true;
++        this._entry.text = '';
++        this._inactiveEntry.text = '';
++        this._clearingEntry = false;
+         this.stopSpinning();
+         this._authList.clear();
+         this._authList.hide();
+@@ -775,6 +780,7 @@ export const AuthPrompt = GObject.registerClass({
+         this._greeting = new St.Label({style_class: 'poster-greeting'});
+         identity.add_child(this._greeting);
+         this._userWell.set_child(identity);
++        identity.visible = !!user && this._identityAllowed !== false;
+         this._user = user;
+         if (user)
+             user.connectObject('changed', this._updateGreeting.bind(this), identity);
+@@ -796,29 +802,46 @@ export const AuthPrompt = GObject.registerClass({
+         this._greeting.text = greeting.format(firstName);
+     }
+ 
++    setIdentityVisible(visible) {
++        this._identityAllowed = visible;
++        const identity = this._userWell.get_child();
++        if (identity)
++            identity.visible = !!this._user && visible;
++    }
++
++    _syncFingerprintHint() {
++        if (this._fingerprintHintTimeoutId) {
++            GLib.source_remove(this._fingerprintHintTimeoutId);
++            this._fingerprintHintTimeoutId = 0;
++        }
++        this._fingerprintHint.hide();
++        if (!this._userVerifier.fingerprintAvailable)
++            return;
++        // An unenrolled reader can start and fail immediately. Wait past that
++        // failure window before offering a misleading fingerprint hint.
++        this._fingerprintHintTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
++            1000, () => {
++                this._fingerprintHintTimeoutId = 0;
++                this._fingerprintHint.visible = this._userVerifier.fingerprintAvailable;
++            });
++    }
++
+     reset() {
+         const oldStatus = this.verificationStatus;
+         this.verificationStatus = AuthPromptStatus.NOT_VERIFYING;
+         this.cancelButton.reactive = this._hasCancelButton;
+         this.cancelButton.can_focus = this._hasCancelButton;
+         this._preemptiveAnswer = null;
+-        const preservePassword = !!this._preservePasswordOnReset &&
+-            oldStatus !== AuthPromptStatus.VERIFICATION_CANCELLED;
+-        this._preservePasswordOnReset = false;
+ 
+         if (this._userVerifier)
+             this._userVerifier.cancel();
+ 
+         this._queryingService = null;
+-        this.clear({preserveEntry: preservePassword});
++        this.clear();
+         this._message.opacity = 0;
+         this.setUser(null);
+         this._updateEntry(true);
+         this.stopSpinning();
+-        if (preservePassword) {
+-            this.setMessage(_('Wrong password'), GdmUtil.MessageType.ERROR);
+-            this._entry.clutter_text.set_selection(0, -1);
+-        }
+ 
+         if (oldStatus === AuthPromptStatus.VERIFICATION_FAILED)
+             this.emit('failed');
+diff --git a/js/gdm/loginDialog.js b/js/gdm/loginDialog.js
+index 4c4a4a5..428e7b4 100644
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -433,16 +433,27 @@ class A11yMenuButton extends St.Button {
+ 
+         this._menu = new QuickSettingsMenu(this, N_A11Y_MENU_COLUMNS);
+ 
+-        this._menu.addItem(new A11y.HighContrastToggle());
+-        this._menu.addItem(new A11y.MagnifierToggle());
+-        this._menu.addItem(new A11y.LargeTextToggle());
+-        this._menu.addItem(new A11y.ScreenReaderToggle());
+-        this._menu.addItem(new A11y.ScreenKeyboardToggle());
+-        this._menu.addItem(new A11y.VisualBellToggle());
+-        this._menu.addItem(new A11y.StickyKeysToggle());
+-        this._menu.addItem(new A11y.SlowKeysToggle());
+-        this._menu.addItem(new A11y.BounceKeysToggle());
+-        this._menu.addItem(new A11y.MouseKeysToggle());
++        this._toggles = [
++            new A11y.HighContrastToggle(),
++            new A11y.MagnifierToggle(),
++            new A11y.LargeTextToggle(),
++            new A11y.ScreenReaderToggle(),
++            new A11y.ScreenKeyboardToggle(),
++            new A11y.VisualBellToggle(),
++            new A11y.StickyKeysToggle(),
++            new A11y.SlowKeysToggle(),
++            new A11y.BounceKeysToggle(),
++            new A11y.MouseKeysToggle(),
++        ];
++        for (const toggle of this._toggles) {
++            this._menu.addItem(toggle);
++            toggle.connect('notify::checked', this._syncVisibility.bind(this));
++        }
++        this._visibilitySettings = new Gio.Settings({schema_id: 'org.gnome.desktop.a11y'});
++        this._visibilitySettings.connectObject(
++            'changed::always-show-universal-access-status',
++            this._syncVisibility.bind(this), this);
++        this._syncVisibility();
+ 
+         Main.uiGroup.add_child(this._menu.actor);
+         this._menu.actor.hide();
+@@ -461,7 +472,16 @@ class A11yMenuButton extends St.Button {
+         this._manager.addMenu(this._menu);
+ 
+         this.connect('clicked', () => this._menu.toggle());
+-        this.connect('destroy', () => this._menu.destroy());
++        this.connect('destroy', () => {
++            this._visibilitySettings.run_dispose();
++            this._menu.destroy();
++        });
++    }
++
++    _syncVisibility() {
++        this.visible = this._visibilitySettings.get_boolean(
++            'always-show-universal-access-status') ||
++            this._toggles.some(toggle => toggle.checked);
+     }
+ });
+ 
+@@ -649,7 +669,8 @@ export const LoginDialog = GObject.registerClass({
+             opacity: 0,
+             child: bannerBox,
+         });
+-        this.add_child(this._bannerView);
++        this._bannerView.hide();
++        this._posterCard.add_child(this._bannerView);
+ 
+         this._bannerLabel = new St.Label({
+             style_class: 'login-dialog-banner',
+@@ -673,11 +694,11 @@ export const LoginDialog = GObject.registerClass({
+                 this._greeter.call_select_session_sync(sessionId, null);
+             });
+         this._sessionMenuButton.opacity = 0;
+-        this._sessionMenuButton.show();
+-        this._bottomButtonGroup.add_child(this._sessionMenuButton);
++        this._sessionMenuButton.hide();
++        this._posterCard.addStatusControl(this._sessionMenuButton);
+ 
+         this._a11yMenuButton = new A11yMenuButton();
+-        this._bottomButtonGroup.add_child(this._a11yMenuButton);
++        this._posterCard.addStatusControl(this._a11yMenuButton);
+         this._bottomButtonGroup.hide();
+ 
+         this._logoBin = new St.Widget({
+@@ -780,7 +801,8 @@ export const LoginDialog = GObject.registerClass({
+         // is -- except while the user list is up, where keys navigate users.
+         if (this._authPrompt?.visible && !this._userSelectionBox.visible &&
+             PrairieLogin.routeTypingToPassword(event, this._authPrompt,
+-                [this._sessionMenuButton, this._prairiePowerButton]) === Clutter.EVENT_STOP)
++                [this._sessionMenuButton, this._a11yMenuButton,
++                    this._prairiePowerButton]) === Clutter.EVENT_STOP)
+             return Clutter.EVENT_STOP;
+ 
+         return Clutter.EVENT_PROPAGATE;
+@@ -841,7 +863,7 @@ export const LoginDialog = GObject.registerClass({
+         clock.y1 = height - 56 * scale - clockHeight;
+         clock.y2 = clock.y1 + clockHeight;
+         this._prairieClock.allocate(clock);
+-        for (const actor of [this._userSelectionBox, this._bannerView,
++        for (const actor of [this._userSelectionBox,
+             this._bottomButtonGroup, this._logoBin])
+             actor.allocate(new Clutter.ActorBox());
+     }
+@@ -862,7 +884,7 @@ export const LoginDialog = GObject.registerClass({
+     }
+ 
+     _updateDisableUserList() {
+-        let disableUserList = true;
++        let disableUserList = this._settings.get_boolean(GdmUtil.DISABLE_USER_LIST_KEY);
+ 
+         // Disable user list when there are no users.
+         if (this._userListLoaded && this._userList.numItems() === 0)
+@@ -870,6 +892,7 @@ export const LoginDialog = GObject.registerClass({
+ 
+         if (disableUserList !== this._disableUserList) {
+             this._disableUserList = disableUserList;
++            this._authPrompt.setIdentityVisible(!disableUserList);
+ 
+             if (this._authPrompt.verificationStatus === AuthPrompt.AuthPromptStatus.NOT_VERIFYING)
+                 this._authPrompt.reset();
+@@ -945,12 +968,17 @@ export const LoginDialog = GObject.registerClass({
+         if (text) {
+             this._bannerLabel.set_text(text);
+             this._bannerLabel.show();
++            if (this._authPrompt.visible)
++                this._fadeInBannerView();
+         } else {
+             this._bannerLabel.hide();
++            this._hideBannerView();
+         }
+     }
+ 
+     _fadeInBannerView() {
++        if (!this._bannerLabel.visible)
++            return;
+         this._bannerView.show();
+         this._bannerView.ease({
+             opacity: 255,
+@@ -1031,16 +1059,22 @@ export const LoginDialog = GObject.registerClass({
+ 
+         if (previousUser && beginRequest === AuthPrompt.BeginRequestType.REUSE_USERNAME) {
+             this._user = previousUser;
+-            this._authPrompt.setUser(this._user);
++            this._authPrompt.setUser(this._disableUserList ? null : this._user);
+             this._authPrompt.begin({userName: previousUser.get_user_name()});
+         } else if (beginRequest === AuthPrompt.BeginRequestType.PROVIDE_USERNAME) {
+-            if (!this._userListLoaded) {
++            if (this._disableUserList) {
++                this._hideUserListAskForUsernameAndBeginVerification();
++            } else if (!this._userListLoaded) {
+                 this._ensureUserListLoaded();
+             } else if (this._posterUser) {
+                 const item = this._userList.getItemFromUserName(
+                     this._posterUser.get_user_name());
+                 if (item)
+                     this._onUserListActivated(item);
++                else
++                    this._hideUserListAskForUsernameAndBeginVerification();
++            } else {
++                this._hideUserListAskForUsernameAndBeginVerification();
+             }
+         } else {
+             this._hideUserListAndBeginVerification();
+@@ -1215,9 +1249,10 @@ export const LoginDialog = GObject.registerClass({
+             background.settle();
+         this._posterCard.ease({opacity: 0, translation_x: 24,
+             duration: St.Settings.get().enable_animations ? 600 : 0,
+-            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+-            onComplete: () => this._greeter.call_start_session_when_ready_sync(
+-                serviceName, true, null)});
++            mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        // GDM must be told to start the authenticated session even when a
++        // compositor transition is interrupted or the card is destroyed.
++        this._greeter.call_start_session_when_ready_sync(serviceName, true, null);
+     }
+ 
+     async _findConflictingSession(startingSessionId) {
+@@ -1473,13 +1508,12 @@ export const LoginDialog = GObject.registerClass({
+         for (let i = 0; i < users.length; i++)
+             this._userList.addUser(users[i]);
+ 
++        this._choosePosterUser();
+         this._updateDisableUserList();
+-
+-        this._posterUser = users.find(user => !user.locked) ?? null;
+-        if (this._posterUser) {
++        if (this._posterUser && !this._disableUserList) {
+             const item = this._userList.getItemFromUserName(this._posterUser.get_user_name());
+             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
+-                if (item && !this._authPrompt.visible)
++                if (item && !this._disableUserList && !this._authPrompt.visible)
+                     this._onUserListActivated(item);
+             });
+         }
+@@ -1487,10 +1521,16 @@ export const LoginDialog = GObject.registerClass({
+         this._userManager.connectObject(
+             'user-added', (userManager, user) => {
+                 this._userList.addUser(user);
++                this._choosePosterUser();
+                 this._updateDisableUserList();
+             },
+             'user-removed', (userManager, user) => {
+                 this._userList.removeUser(user);
++                this._choosePosterUser();
++                if (this._user === user) {
++                    this._user = null;
++                    this._authPrompt.reset();
++                }
+                 this._updateDisableUserList();
+             },
+             'user-changed', (userManager, user) => {
+@@ -1498,10 +1538,22 @@ export const LoginDialog = GObject.registerClass({
+                     this._userList.removeUser(user);
+                 else if (!this._userList.containsUser(user) && !user.locked)
+                     this._userList.addUser(user);
++                this._choosePosterUser();
++                if (this._user === user && user.locked) {
++                    this._user = null;
++                    this._authPrompt.reset();
++                }
+                 this._updateDisableUserList();
+             }, this);
+     }
+ 
++    _choosePosterUser() {
++        const users = this._userManager.list_users().filter(user => !user.locked);
++        users.sort((a, b) =>
++            (b.get_login_frequency?.() ?? 0) - (a.get_login_frequency?.() ?? 0));
++        this._posterUser = users[0] ?? null;
++    }
++
+     activate() {
+         this._userList.grab_key_focus();
+         this.show();
+diff --git a/js/gdm/util.js b/js/gdm/util.js
+index 0eb715d..20211d1 100644
+--- a/js/gdm/util.js
++++ b/js/gdm/util.js
+@@ -248,6 +248,7 @@ export class ShellUserVerifier extends Signals.EventEmitter {
+         this._clearUserVerifier();
+         this._clearMessageQueue();
+         this._activeServices.clear();
++        this.emit('fingerprint-availability-changed');
+     }
+ 
+     destroy() {
+@@ -435,6 +436,7 @@ export class ShellUserVerifier extends Signals.EventEmitter {
+ 
+     _handleFingerprintError(e) {
+         this._fingerprintReaderType = FingerprintReaderType.NONE;
++        this.emit('fingerprint-availability-changed');
+ 
+         if (e instanceof GLib.Error) {
+             if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+@@ -654,6 +656,12 @@ export class ShellUserVerifier extends Signals.EventEmitter {
+             serviceName === FINGERPRINT_SERVICE_NAME;
+     }
+ 
++    get fingerprintAvailable() {
++        return this._fingerprintReaderType !== FingerprintReaderType.NONE &&
++            this._activeServices.has(FINGERPRINT_SERVICE_NAME) &&
++            !this._unavailableServices.has(FINGERPRINT_SERVICE_NAME);
++    }
++
+     _onSettingsChanged() {
+         this._updateEnabledServices();
+         this._updateDefaultService();
+@@ -667,6 +675,7 @@ export class ShellUserVerifier extends Signals.EventEmitter {
+         } else if (this._fingerprintManager) {
+             this._fingerprintManager = null;
+             this._fingerprintReaderType = FingerprintReaderType.NONE;
++            this.emit('fingerprint-availability-changed');
+ 
+             if (this._activeServices.has(FINGERPRINT_SERVICE_NAME))
+                 needsReset = true;
+@@ -941,6 +950,8 @@ export class ShellUserVerifier extends Signals.EventEmitter {
+ 
+     _onServiceUnavailable(_client, serviceName, errorMessage) {
+         this._unavailableServices.add(serviceName);
++        if (serviceName === FINGERPRINT_SERVICE_NAME)
++            this.emit('fingerprint-availability-changed');
+ 
+         if (!errorMessage)
+             return;
+@@ -951,10 +962,14 @@ export class ShellUserVerifier extends Signals.EventEmitter {
+ 
+     _onConversationStarted(client, serviceName) {
+         this._activeServices.add(serviceName);
++        if (serviceName === FINGERPRINT_SERVICE_NAME)
++            this.emit('fingerprint-availability-changed');
+     }
+ 
+     _onConversationStopped(client, serviceName) {
+         this._activeServices.delete(serviceName);
++        if (serviceName === FINGERPRINT_SERVICE_NAME)
++            this.emit('fingerprint-availability-changed');
+ 
+         // If the login failed with the preauthenticated oVirt credentials
+         // then discard the credentials and revert to default authentication
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+index a37fab2..7bd3d30 100644
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -7,7 +7,6 @@ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+-import NM from 'gi://NM';
+ 
+ import {formatDateWithCFormatString} from '../misc/dateUtils.js';
+ import * as Main from './main.js';
+@@ -88,12 +87,12 @@ class PrairieLoginPowerButton extends St.Button {
+ 
+         this._items = [];
+         this._addSystemAction(_('Sleep'), 'can-suspend', 'weather-clear-night-symbolic',
+-            _('Sleeping…'), () => this._systemActions.activateSuspend());
++            'sleep', _('Sleeping…'), () => this._systemActions.activateSuspend());
+         this._addSystemAction(_('Restart'), 'can-restart', 'view-refresh-symbolic',
+-            _('Restarting…'), () => this._systemActions.activateRestart());
++            'restart', _('Restarting…'), () => this._systemActions.activateRestart());
+         this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+         this._addSystemAction(_('Shut down'), 'can-power-off', 'system-shutdown-symbolic',
+-            _('Shutting down…'), () => this._systemActions.activatePowerOff());
++            'shutdown', _('Shutting down…'), () => this._systemActions.activatePowerOff());
+ 
+         this.connect('clicked', () => {
+             this._systemActions.forceUpdate();
+@@ -111,26 +110,55 @@ class PrairieLoginPowerButton extends St.Button {
+             style_class: 'poster-power-progress',
+             layout_manager: new Clutter.BinLayout(),
+             visible: false,
+-            reactive: true,
++            reactive: false,
+         });
+         this._progressLabel = new St.Label({style_class: 'poster-power-progress-label',
+             x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+         this._progressOverlay.add_child(this._progressLabel);
+         Main.uiGroup.add_child(this._progressOverlay);
++        Main.uiGroup.set_child_below_sibling(
++            this._progressOverlay, Main.layoutManager.modalDialogGroup);
++        this._pendingAction = null;
++        this._progressTimeoutId = 0;
++        const watchPrepare = (signal, callback) => Gio.DBus.system.signal_subscribe(
++            'org.freedesktop.login1', 'org.freedesktop.login1.Manager', signal,
++            '/org/freedesktop/login1', null, Gio.DBusSignalFlags.NONE, callback);
++        this._sleepSignalId = watchPrepare('PrepareForSleep',
++            (_connection, _sender, _path, _interface, _signal, parameters) => {
++                const [preparing] = parameters.deep_unpack();
++                if (preparing && this._pendingAction === 'sleep')
++                    this._showProgress();
++                else if (!preparing)
++                    this._clearProgress();
++            });
++        this._shutdownSignalId = watchPrepare('PrepareForShutdown',
++            (_connection, _sender, _path, _interface, _signal, parameters) => {
++                const [preparing] = parameters.deep_unpack();
++                if (preparing && ['restart', 'shutdown'].includes(this._pendingAction))
++                    this._showProgress();
++                else if (!preparing)
++                    this._clearProgress();
++            });
+         this.connect('destroy', () => {
++            Gio.DBus.system.signal_unsubscribe(this._sleepSignalId);
++            Gio.DBus.system.signal_unsubscribe(this._shutdownSignalId);
++            this._clearProgress();
+             this._menu.destroy();
+             this._progressOverlay.destroy();
+         });
+     }
+ 
+-    _addSystemAction(label, property, iconName, progress, callback) {
++    _addSystemAction(label, property, iconName, action, progress, callback) {
+         const item = this._menu.addAction(label, () => {
+             this._menu.close();
+-            this._showProgress(progress);
++            this._clearProgress();
++            this._pendingAction = action;
++            this._pendingProgress = progress;
++            this._armProgressTimeout();
+             try {
+                 callback();
+             } catch (error) {
+-                this._progressOverlay.hide();
++                this._clearProgress();
+                 logError(error, 'Poster power action failed');
+             }
+         });
+@@ -142,11 +170,32 @@ class PrairieLoginPowerButton extends St.Button {
+         this._sync();
+     }
+ 
+-    _showProgress(text) {
+-        this._progressLabel.text = text;
++    _armProgressTimeout() {
++        if (this._progressTimeoutId)
++            GLib.source_remove(this._progressTimeoutId);
++        this._progressTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
++            20000, () => {
++                this._progressTimeoutId = 0;
++                this._clearProgress();
++            });
++    }
++
++    _clearProgress() {
++        if (this._progressTimeoutId) {
++            GLib.source_remove(this._progressTimeoutId);
++            this._progressTimeoutId = 0;
++        }
++        this._pendingAction = null;
++        this._pendingProgress = null;
++        this._progressOverlay.hide();
++    }
++
++    _showProgress() {
++        this._progressLabel.text = this._pendingProgress;
+         this._progressOverlay.set_size(global.stage.width, global.stage.height);
+         this._progressOverlay.opacity = 0;
+         this._progressOverlay.show();
++        this._armProgressTimeout();
+         this._progressOverlay.ease({opacity: 255,
+             duration: St.Settings.get().enable_animations ? 400 : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+@@ -194,9 +243,11 @@ class PosterCard extends St.BoxLayout {
+         this._syncTransparency();
+ 
+         const status = new St.BoxLayout({style_class: 'poster-status-row'});
++        this._status = status;
++        this._statusControls = [];
+         status.add_child(new St.Widget({x_expand: true}));
+         this._wifi = new St.Icon({icon_name: 'network-wireless-offline-symbolic',
+-            style_class: 'poster-wifi-icon'});
++            style_class: 'poster-wifi-icon', visible: false});
+         status.add_child(this._wifi);
+         this._battery = new St.Widget({style_class: 'poster-battery',
+             layout_manager: new Clutter.FixedLayout()});
+@@ -217,20 +268,8 @@ class PosterCard extends St.BoxLayout {
+ 
+         // Only the status is duplicated; it never changes network or power
+         // state. Actions remain in GNOME's native system and GDM interfaces.
+-        NM.Client.new_async(null, (source, result) => {
+-            try {
+-                const client = NM.Client.new_finish(result);
+-                if (!this.get_parent())
+-                    return;
+-                this._networkClient = client;
+-                client.connectObject('notify::primary-connection',
+-                    this._syncWifi.bind(this),
+-                    'notify::wireless-enabled', this._syncWifi.bind(this), this);
+-                this._syncWifi();
+-            } catch (error) {
+-                logError(error, 'Poster Wi-Fi status unavailable');
+-            }
+-        });
++        this._initNetworkClient().catch(error =>
++            logError(error, 'Poster Wi-Fi status unavailable'));
+ 
+         this._powerProxy = new PowerManagerProxy(Gio.DBus.system,
+             'org.freedesktop.UPower',
+@@ -248,6 +287,51 @@ class PosterCard extends St.BoxLayout {
+         });
+     }
+ 
++    addStatusControl(control) {
++        this._status.insert_child_below(control, this._powerButton);
++        const focusTarget = control._button ?? control;
++        this._statusControls.push({control, focusTarget});
++        focusTarget.connect('key-press-event', (_actor, event) => {
++            if (event.get_key_symbol() !== Clutter.KEY_Tab || !this._focusPrompt)
++                return Clutter.EVENT_PROPAGATE;
++            const available = this._statusControls.filter(({control: item, focusTarget: target}) =>
++                item.visible && target.visible && target.can_focus);
++            const current = available.findIndex(({focusTarget: target}) => target === focusTarget);
++            const reverse = !!(event.get_state() & Clutter.ModifierType.SHIFT_MASK);
++            const next = available[current + (reverse ? -1 : 1)];
++            if (next)
++                next.focusTarget.grab_key_focus();
++            else if (reverse)
++                this._powerButton.grab_key_focus();
++            else
++                this._focusPrompt._entry.grab_key_focus();
++            return Clutter.EVENT_STOP;
++        });
++    }
++
++    async _initNetworkClient() {
++        // A missing NetworkManager typelib must not prevent the greeter or
++        // unlock module from loading. The status icon is optional.
++        const {default: NM} = await import('gi://NM');
++        if (!this.get_parent())
++            return;
++        this._nm = NM;
++        NM.Client.new_async(null, (source, result) => {
++            try {
++                const client = NM.Client.new_finish(result);
++                if (!this.get_parent())
++                    return;
++                this._networkClient = client;
++                client.connectObject('notify::primary-connection',
++                    this._syncWifi.bind(this),
++                    'notify::wireless-enabled', this._syncWifi.bind(this), this);
++                this._syncWifi();
++            } catch (error) {
++                logError(error, 'Poster Wi-Fi status unavailable');
++            }
++        });
++    }
++
+     setPromptFocusTarget(prompt) {
+         if (this._focusPrompt === prompt)
+             return;
+@@ -271,8 +355,11 @@ class PosterCard extends St.BoxLayout {
+                     return Clutter.EVENT_PROPAGATE;
+                 if (event.get_state() & Clutter.ModifierType.SHIFT_MASK)
+                     this._focusPrompt._submitButton.grab_key_focus();
+-                else
+-                    this._focusPrompt._entry.grab_key_focus();
++                else {
++                    const next = this._statusControls.find(({control, focusTarget}) =>
++                        control.visible && focusTarget.visible && focusTarget.can_focus);
++                    (next?.focusTarget ?? this._focusPrompt._entry).grab_key_focus();
++                }
+                 return Clutter.EVENT_STOP;
+             });
+         }
+@@ -290,7 +377,8 @@ class PosterCard extends St.BoxLayout {
+ 
+     _syncWifi() {
+         const client = this._networkClient;
+-        const hasWifi = client.get_devices().some(device => device.get_device_type() === NM.DeviceType.WIFI);
++        const hasWifi = client.get_devices().some(device =>
++            device.get_device_type() === this._nm.DeviceType.WIFI);
+         this._wifi.visible = hasWifi;
+         if (!hasWifi)
+             return;
+@@ -315,20 +403,35 @@ class PosterCard extends St.BoxLayout {
+ const LOGIN_WALLPAPER = '/usr/share/backgrounds/luma/prism.png';
+ let loginWallpaper = null;
+ let pictureSettings = null;
++let pictureRequest = 0;
+ 
+ function setLoginWallpaper() {
+-    let file = Gio.File.new_for_path(LOGIN_WALLPAPER);
++    const request = ++pictureRequest;
++    loginWallpaper.set_file(Gio.File.new_for_path(LOGIN_WALLPAPER),
++        GDesktopEnums.BackgroundStyle.ZOOM);
+     if (pictureSettings) {
+         let uri = pictureSettings.lock.get_string('picture-uri');
+         if (!uri)
+             uri = pictureSettings.wallpaper.get_string('picture-uri');
+         if (uri) {
+             const candidate = Gio.File.new_for_uri(uri);
+-            if (candidate.is_native() && candidate.query_exists(null))
+-                file = candidate;
++            if (candidate.is_native()) {
++                candidate.query_info_async('standard::type', Gio.FileQueryInfoFlags.NONE,
++                    GLib.PRIORITY_DEFAULT, null, (file, result) => {
++                        try {
++                            const info = file.query_info_finish(result);
++                            if (request === pictureRequest &&
++                                info.get_file_type() === Gio.FileType.REGULAR)
++                                loginWallpaper.set_file(file, GDesktopEnums.BackgroundStyle.ZOOM);
++                        } catch (error) {
++                            // Keep the packaged wallpaper when a local mount
++                            // is missing or a user-selected file cannot load.
++                            logError(error, 'Poster picture unavailable');
++                        }
++                    });
++            }
+         }
+     }
+-    loginWallpaper.set_file(file, GDesktopEnums.BackgroundStyle.ZOOM);
+ }
+ 
+ function getLoginWallpaper() {
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index a549e27..a0f1429 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -23,7 +23,7 @@ const CROSSFADE_TIME = 300;
+ const FADE_OUT_SCALE = 0.3;
+ const PosterNotifications = GObject.registerClass(
+ class PosterNotifications extends St.BoxLayout {
+-    _init() {
++    _init(wakeUp) {
+         super._init({
+             style_class: 'poster-away',
+             orientation: Clutter.Orientation.VERTICAL,
+@@ -39,6 +39,7 @@ class PosterNotifications extends St.BoxLayout {
+         });
+         this.add_child(this._well);
+         this._sources = new Map();
++        this._wakeUp = wakeUp;
+         this._clockSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+         this._clockSettings.connectObject('changed::clock-format', this._rebuild.bind(this), this);
+         Main.messageTray.getSources().forEach(source => this._watchSource(source));
+@@ -63,6 +64,11 @@ class PosterNotifications extends St.BoxLayout {
+         source.connectObject(
+             'notify::count', this._rebuild.bind(this),
+             'notify::title', this._rebuild.bind(this),
++            'notification-added', () => {
++                this._rebuild();
++                if (source.policy.showInLockScreen)
++                    this._wakeUp();
++            },
+             'destroy', () => {
+                 source.policy.disconnect(this._sources.get(source));
+                 this._sources.delete(source);
+@@ -103,7 +109,7 @@ class PosterNotifications extends St.BoxLayout {
+             copy.add_child(new St.Label({style_class: 'poster-away-title', text: title}));
+             copy.add_child(new St.Label({style_class: 'poster-away-summary', text: summary}));
+             row.add_child(copy);
+-            if (notification?.datetime) {
++            if (details && notification?.datetime) {
+                 const format = this._clockSettings.get_string('clock-format') === '24h'
+                     ? '%H:%M' : '%l:%M %p';
+                 row.add_child(new St.Label({
+@@ -292,7 +298,7 @@ export const UnlockDialog = GObject.registerClass({
+         Main.ctrlAltTabManager.addGroup(this, _('Unlock Window'), 'dialog-password-symbolic');
+ 
+         // Notifications
+-        this._notificationsBox = new PosterNotifications();
++        this._notificationsBox = new PosterNotifications(() => this.emit('wake-up-screen'));
+ 
+         // Switch User button
+         this._otherUserButton = new St.Button({
+@@ -618,13 +624,15 @@ export const UnlockDialog = GObject.registerClass({
+         this._authPrompt.finish(() => {
+             this._posterCard.ease({opacity: 0, translation_x: 24,
+                 duration: St.Settings.get().enable_animations ? 600 : 0,
+-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+-                onComplete});
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+             this._clock.ease({opacity: 0, translation_y: 12,
+                 duration: St.Settings.get().enable_animations ? 400 : 0,
+                 mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+             for (const background of this._backgroundGroup.get_children())
+                 background.settle();
++            // ScreenShield completion is an authentication step. Never wait
++            // on a visual transition that may be stopped before onComplete.
++            onComplete();
+         });
+     }
+ 

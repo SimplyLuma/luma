@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Valet
+Comment=Install an application from a downloaded file or folder
+Exec=luma-install %f
+Keywords=install;package;deb;rpm;appimage;flatpak;snap;apk;exe;tar;zip;
+Icon=io.luma.Valet
+Terminal=false
+StartupNotify=true
+StartupWMClass=io.luma.Valet
+MimeType=application/x-rpm;application/vnd.debian.binary-package;application/vnd.appimage;application/vnd.flatpak;application/vnd.flatpak.ref;application/vnd.flatpak.repo;application/vnd.snap;application/vnd.android.package-archive;application/vnd.projectluma.android-package-set;application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/vnd.microsoft.portable-executable;application/x-compressed-tar;application/x-xz-compressed-tar;application/x-bzip2-compressed-tar;application/x-bzip-compressed-tar;application/x-zstd-compressed-tar;application/x-tar;application/gzip;application/zip;inode/directory;
+Categories=System;

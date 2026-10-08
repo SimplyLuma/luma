@@ -1,0 +1,57 @@
+# libcamera Simple-pipeline tuning for the Fairphone 6 S5KKD1SP.
+#
+# White points and CCMs are numeric calibration data decoded from the stock
+# com.qti.tuned.tsp_s5kkd1_fp6.bin profile (sha256 7770f9...; retained in
+# artifacts/fp6-stock-front-calibration). They remain a bring-up baseline until
+# Luma's own chart calibration. Do not add Af until the AW86016 actuator and
+# front focus capability are implemented and physically verified.
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+  - Awb:
+      whitePoints:
+        - { ct: 1900, gains: [ 0.745046, 2.473206 ] }
+        - { ct: 2300, gains: [ 0.906047, 2.252876 ] }
+        - { ct: 2856, gains: [ 1.064142, 2.122857 ] }
+        - { ct: 5000, gains: [ 1.481143, 1.564945 ] }
+        - { ct: 6504, gains: [ 1.633385, 1.442483 ] }
+        - { ct: 7504, gains: [ 1.708421, 1.334870 ] }
+        - { ct: 9500, gains: [ 2.521756, 1.096632 ] }
+      clampMargin: 0.35
+      damping: 0.8
+  - Ccm:
+      ccms:
+        - ct: 2800
+          ccm: [ 2.089260, -1.126494,  0.037234,
+                -0.186268,  1.189732, -0.003464,
+                -0.224810, -0.998645,  2.223455 ]
+        - ct: 4000
+          ccm: [ 1.960756, -0.971115,  0.010359,
+                -0.248089,  1.302973, -0.054884,
+                -0.208317, -0.826650,  2.034967 ]
+        - ct: 5000
+          ccm: [ 2.245903, -1.268993,  0.023090,
+                -0.236168,  1.336483, -0.100315,
+                -0.145235, -0.745029,  1.890264 ]
+        - ct: 6500
+          ccm: [ 2.118045, -0.912831, -0.205214,
+                -0.287119,  1.623994, -0.336875,
+                -0.096991, -0.770955,  1.867946 ]
+  - Adjust:
+  # The sensor exposes coarse whole-number gain controls. In a dark scene the
+  # hardware permits 64x, but the CPU ISP has no production denoise pipeline
+  # yet; gains above 16x turn shadow chroma into severe purple/green noise.
+  - Agc:
+      maxGain: 16.0
+      # The unguarded mean meter held 8.5% of a backlit office scene in its
+      # brightest bin while the face was visibly clipped. Preserve small
+      # practical highlights but stop dark backgrounds driving large regions
+      # into clipping. Patch 0025 now compensates transitions across the
+      # sensor's whole-number gain steps, so Front can share the rear sensors'
+      # stricter guard without oscillating between adjacent gains.
+      # Front color is the physical reference, but white clothing still clips.
+      # Match Main's measured guard without changing accepted AWB behavior.
+      maxBrightFraction: 0.02
+...

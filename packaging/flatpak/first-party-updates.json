@@ -1,0 +1,916 @@
+{
+  "schema": "org.projectluma.first-party-update-registry/v1",
+  "runtime_major": 44,
+  "applications": [
+    {
+      "id": "org.projectluma.Ari",
+      "title": "Ari",
+      "catalog_id": "ari",
+      "producer": "ari",
+      "source_tree": "src/luma-ari",
+      "native_packages": [
+        "luma-ari"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Ari.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.Ari1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Ari/org.projectluma.Ari.yml",
+      "minimum_host_packages": {
+        "luma-ari": 15,
+        "luma-application-installer": 57
+      }
+    },
+    {
+      "id": "org.projectluma.Calendar",
+      "title": "Calendar",
+      "catalog_id": "calendar",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Calendar.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "EvolutionDataServer",
+        "LumaConnect",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-calendar",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Calendar/org.projectluma.Calendar.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Camera",
+      "title": "Camera",
+      "catalog_id": "camera",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Camera.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-camera",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Camera/org.projectluma.Camera.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Charlie",
+      "title": "Charlie",
+      "catalog_id": "charlie",
+      "producer": "charlie",
+      "source_tree": "src/external/charlie",
+      "native_packages": [
+        "luma-charlie"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Charlie.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "EvolutionDataServer",
+        "LumaAccounts"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Charlie/org.projectluma.Charlie.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 59
+      },
+      "host_interface": {
+        "mail": "org.projectluma.MailHost1",
+        "minimum_charlie_release": 6
+      },
+      "data_schema": "charlie-shared-mailbox-v1"
+    },
+    {
+      "id": "org.projectluma.Clock",
+      "title": "Clock",
+      "catalog_id": "clock",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Clock.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-clock",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Clock/org.projectluma.Clock.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60,
+        "prairie-core-apps": 93,
+        "luma-background": 5
+      }
+    },
+    {
+      "id": "org.projectluma.Connect",
+      "title": "Luma Connect",
+      "catalog_id": "connect",
+      "producer": "connect",
+      "source_tree": "src/luma-continuity",
+      "native_packages": [
+        "luma-continuity"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Connect.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaConnect"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Connect/org.projectluma.Connect.yml",
+      "minimum_host_packages": {
+        "luma-continuity": 63,
+        "luma-application-installer": 57
+      }
+    },
+    {
+      "id": "org.projectluma.Contacts",
+      "title": "Contacts",
+      "catalog_id": "contacts",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Contacts.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "EvolutionDataServer",
+        "LumaConnect",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-contacts",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Contacts/org.projectluma.Contacts.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 64,
+        "luma-continuity": 63,
+        "prairie-core-apps": 97
+      }
+    },
+    {
+      "id": "org.projectluma.Darkroom",
+      "title": "Darkroom",
+      "catalog_id": "darkroom",
+      "producer": "darkroom",
+      "source_tree": "src/luma-darkroom",
+      "native_packages": [
+        "luma-darkroom"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Darkroom.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Darkroom/org.projectluma.Darkroom.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 57
+      }
+    },
+    {
+      "id": "org.projectluma.Displays",
+      "title": "Displays",
+      "catalog_id": "displays",
+      "producer": "displays",
+      "source_tree": "src/luma-displays",
+      "native_packages": [
+        "luma-displays"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Displays.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaDisplayControl"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Displays/org.projectluma.Displays.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 57
+      }
+    },
+    {
+      "id": "org.gnome.Nautilus",
+      "title": "Filer",
+      "catalog_id": "filer",
+      "producer": "filer",
+      "source_tree": "packaging/nautilus",
+      "native_packages": [
+        "nautilus"
+      ],
+      "native_desktop_ids": [
+        "org.gnome.Nautilus.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaFileIntegration",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.gnome.Nautilus/org.gnome.Nautilus.yml",
+      "canonical_native_builder": "scripts/packages/build-nautilus.sh",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Imager",
+      "title": "Imager",
+      "catalog_id": "imager",
+      "producer": "imager",
+      "source_tree": "src/luma-imager",
+      "native_packages": [
+        "luma-imager"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Imager.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Imager/org.projectluma.Imager.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 57
+      }
+    },
+    {
+      "id": "org.projectluma.Leaf",
+      "title": "Leaf",
+      "catalog_id": "leaf",
+      "producer": "leaf",
+      "source_tree": "src/luma-leaf",
+      "native_packages": [
+        "luma-leaf"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Leaf.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Leaf/org.projectluma.Leaf.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Messages",
+      "title": "Messages",
+      "catalog_id": "messages",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Messages.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaMessages",
+        "LumaConnect",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-messages",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Messages/org.projectluma.Messages.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60,
+        "prairie-core-apps": 93,
+        "luma-background": 5
+      }
+    },
+    {
+      "id": "org.projectluma.Mods",
+      "title": "Mods",
+      "catalog_id": "mods",
+      "producer": "mods",
+      "source_tree": "src/luma-mods",
+      "native_packages": [
+        "luma-mods"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Mods.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ModProfiles1",
+        "org.projectluma.ModTransactions1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Mods/org.projectluma.Mods.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 57,
+        "luma-mods": 24
+      }
+    },
+    {
+      "id": "io.luma.Monitor",
+      "title": "Monitor",
+      "catalog_id": "monitor",
+      "producer": "monitor",
+      "source_tree": "src/luma-monitor",
+      "native_packages": [
+        "luma-monitor"
+      ],
+      "native_desktop_ids": [
+        "io.luma.Monitor.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaSemanticBroker"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/io.luma.Monitor/io.luma.Monitor.yml",
+      "minimum_host_packages": {
+        "luma-monitor": 16,
+        "luma-application-installer": 57
+      }
+    },
+    {
+      "id": "org.projectluma.Notes",
+      "title": "Notes",
+      "catalog_id": "notes",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Notes.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-notes",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Notes/org.projectluma.Notes.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 64,
+        "luma-continuity": 63,
+        "prairie-core-apps": 97
+      }
+    },
+    {
+      "id": "org.projectluma.Phone",
+      "title": "Phone",
+      "catalog_id": "phone",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Phone.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaCalls",
+        "ModemManager",
+        "LumaConnect",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-phone",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Phone/org.projectluma.Phone.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 64,
+        "luma-continuity": 63,
+        "prairie-core-apps": 97
+      }
+    },
+    {
+      "id": "org.projectluma.Photos",
+      "title": "Photos",
+      "catalog_id": "photos",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Photos.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-photos",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Photos/org.projectluma.Photos.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Tasks",
+      "title": "Tasks",
+      "catalog_id": "tasks",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Tasks.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "EvolutionDataServer",
+        "LumaConnect",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-tasks",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Tasks/org.projectluma.Tasks.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 64,
+        "luma-continuity": 63,
+        "prairie-core-apps": 97
+      }
+    },
+    {
+      "id": "org.projectluma.Tide",
+      "title": "Tide",
+      "catalog_id": "tide",
+      "producer": "tide",
+      "source_tree": "src/luma-tide",
+      "native_packages": [
+        "luma-tide"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Tide.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Tide/org.projectluma.Tide.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Viewer",
+      "title": "Viewer",
+      "catalog_id": "viewer",
+      "producer": "viewer",
+      "source_tree": "src/luma-viewer",
+      "native_packages": [
+        "luma-viewer"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Viewer.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Viewer/org.projectluma.Viewer.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "com.rhyme.viola",
+      "title": "Viola",
+      "catalog_id": "viola",
+      "producer": "viola",
+      "source_tree": "src/external/viola/chromium-linux",
+      "native_packages": [
+        "viola-browser-stable"
+      ],
+      "native_desktop_ids": [
+        "com.rhyme.viola.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.AppData1",
+        "org.projectluma.ViolaHost1",
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 33,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "recipe": "packaging/flatpak/apps/com.rhyme.viola/com.rhyme.viola.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 61,
+        "viola-browser-stable": 35
+      }
+    },
+    {
+      "id": "org.projectluma.VoiceMemos",
+      "title": "Voice Memos",
+      "catalog_id": "voice-memos",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.VoiceMemos.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-voice-memos",
+      "recipe": "packaging/flatpak/apps/org.projectluma.VoiceMemos/org.projectluma.VoiceMemos.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Weather",
+      "title": "Weather",
+      "catalog_id": "weather",
+      "producer": "prairie-core",
+      "source_tree": "src/prairie-core",
+      "native_packages": [
+        "prairie-core-apps"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Weather.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.ApplicationDirectory1"
+      ],
+      "host_interface_version": 1,
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "entrypoint": "prairie-weather",
+      "recipe": "packaging/flatpak/apps/org.projectluma.Weather/org.projectluma.Weather.yml",
+      "minimum_host_packages": {
+        "luma-application-installer": 60
+      }
+    },
+    {
+      "id": "org.projectluma.Write",
+      "title": "Write",
+      "producer": "write",
+      "source_tree": "src/external/write",
+      "native_packages": [],
+      "native_desktop_ids": [],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.AppData1"
+      ],
+      "host_interface_version": 1,
+      "recipe": "packaging/flatpak/apps/org.projectluma.Write/org.projectluma.Write.yml",
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "minimum_host_packages": {
+        "luma-application-installer": 64
+      },
+      "data_schema": "write-preferences-v1"
+    },
+    {
+      "id": "org.projectluma.Grid",
+      "title": "Grid",
+      "producer": "grid",
+      "source_tree": "src/external/grid",
+      "native_packages": [],
+      "native_desktop_ids": [],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.AppData1"
+      ],
+      "host_interface_version": 1,
+      "recipe": "packaging/flatpak/apps/org.projectluma.Grid/org.projectluma.Grid.yml",
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "minimum_host_packages": {
+        "luma-application-installer": 64
+      },
+      "data_schema": "grid-documents-preferences-v1"
+    },
+    {
+      "id": "org.projectluma.Stage",
+      "title": "Stage",
+      "producer": "stage",
+      "source_tree": "src/external/stage",
+      "native_packages": [],
+      "native_desktop_ids": [],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.AppData1"
+      ],
+      "host_interface_version": 1,
+      "recipe": "packaging/flatpak/apps/org.projectluma.Stage/org.projectluma.Stage.yml",
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "minimum_host_packages": {
+        "luma-application-installer": 64
+      },
+      "data_schema": "stage-preferences-v1"
+    },
+    {
+      "id": "org.projectluma.Session",
+      "title": "Session",
+      "producer": "session",
+      "source_tree": "src/external/session",
+      "native_packages": [],
+      "native_desktop_ids": [],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.AppData1"
+      ],
+      "host_interface_version": 1,
+      "recipe": "packaging/flatpak/apps/org.projectluma.Session/org.projectluma.Session.yml",
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "minimum_host_packages": {
+        "luma-application-installer": 63
+      },
+      "data_schema": "session-instruments-preferences-v1"
+    },
+    {
+      "id": "org.projectluma.Reel",
+      "title": "Reel",
+      "producer": "reel",
+      "source_tree": "src/luma-reel",
+      "native_packages": [],
+      "native_desktop_ids": [],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "org.projectluma.AppData1"
+      ],
+      "host_interface_version": 1,
+      "recipe": "packaging/flatpak/apps/org.projectluma.Reel/org.projectluma.Reel.yml",
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "minimum_host_packages": {
+        "luma-application-installer": 63
+      },
+      "data_schema": "reel-profile-preferences-v1"
+    },
+    {
+      "id": "org.projectluma.Depot",
+      "title": "Depot",
+      "producer": "application-installer",
+      "source_tree": "src/luma-depot",
+      "native_packages": [
+        "luma-application-installer"
+      ],
+      "native_desktop_ids": [
+        "org.projectluma.Depot.desktop"
+      ],
+      "target_delivery": "signed-flatpak-app",
+      "channels": [
+        "beta",
+        "nightly"
+      ],
+      "default_channel": "beta",
+      "required_host_services": [
+        "LumaInstaller",
+        "LumaAppData",
+        "LumaDepotHost",
+        "LumaUpdate"
+      ],
+      "host_interface_version": 1,
+      "recipe": "packaging/flatpak/apps/org.projectluma.Depot/org.projectluma.Depot.yml",
+      "qualification": "pending-installed-update-rollback-and-migration",
+      "minimum_host_packages": {
+        "luma-application-installer": 57
+      }
+    }
+  ],
+  "os_integration_groups": [
+    {
+      "id": "shell",
+      "packages": [
+        "gnome-shell",
+        "mutter",
+        "luma-shell-state"
+      ],
+      "delivery": "signed-os-deployment",
+      "reason": "Compositor and session ABI form one deployment."
+    },
+    {
+      "id": "host-services",
+      "packages": [
+        "luma-application-installer",
+        "luma-update",
+        "luma-portal",
+        "luma-calls",
+        "luma-continuity",
+        "luma-messages-e2ee"
+      ],
+      "delivery": "signed-os-deployment",
+      "reason": "Privileged brokers remain host-owned; app clients bind supported interface versions."
+    },
+    {
+      "id": "settings",
+      "packages": [
+        "gnome-control-center"
+      ],
+      "delivery": "signed-os-deployment",
+      "reason": "Settings changes privileged device/session configuration through versioned OS interfaces."
+    },
+    {
+      "id": "speech-modules",
+      "packages": [
+        "luma-natural-voices",
+        "speech-dispatcher"
+      ],
+      "delivery": "signed-os-deployment",
+      "reason": "SSIP modules load into the host speech service; app clients request voices through its supported interface."
+    }
+  ]
+}

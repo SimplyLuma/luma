@@ -1,0 +1,293 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Copyright (C) 2026 Project Luma contributors
+"""Read-only facts Atlas needs that Anaconda's D-Bus modules do not expose.
+
+Every value here is read from this computer or from the payload repository;
+nothing is written anywhere. Output is one JSON object on stdout.
+
+  atlas-probe system              installer medium, firmware language, battery,
+                                  whether stage 2 runs from memory, boot options
+  atlas-probe battery             battery only (polled while steps 1-6 are open)
+  atlas-probe network             whether this computer reaches the internet
+                                  (polled on the review step for online installs)
+  atlas-probe payload URL REF     what the OSTree payload is, whether it
+                                  configures zram, and the accounts it reserves
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+EFI_PLATFORM_LANG = "/sys/firmware/efi/efivars/PlatformLang-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+# Mount points whose backing device is the installer medium.
+MEDIUM_MOUNTS = ("/run/install/repo", "/run/install/source", "/run/initramfs/live", "/run/install/isodir")
+
+
+def run(args, check=False):
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, check=check, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def mount_sources():
+    """{mount point: source} from /proc/self/mountinfo."""
+    sources = {}
+    try:
+        with open("/proc/self/mountinfo", encoding="utf-8") as mountinfo:
+            for line in mountinfo:
+                left, _, right = line.partition(" - ")
+                fields = left.split()
+                rest = right.split()
+                if len(fields) >= 5 and len(rest) >= 2:
+                    sources[fields[4].replace("\\040", " ")] = rest[1]
+    except OSError:
+        pass
+    return sources
+
+
+def loop_backing_files():
+    """{"/dev/loopN": "/path/to/backing/file"} for every configured loop device."""
+    files = {}
+    base = "/sys/block"
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return files
+    for name in names:
+        if not name.startswith("loop"):
+            continue
+        backing = os.path.join(base, name, "loop", "backing_file")
+        try:
+            with open(backing, encoding="utf-8") as handle:
+                files["/dev/" + name] = handle.read().strip()
+        except OSError:
+            continue
+    return files
+
+
+def parent_disk(device):
+    """Resolve a partition, loop-free block device path to its whole-disk name."""
+    if not device or not device.startswith("/dev/"):
+        return None
+    real = os.path.realpath(device)
+    name = os.path.basename(real)
+    if name.startswith(("loop", "dm-", "zram")):
+        return None
+    sys_path = os.path.realpath(os.path.join("/sys/class/block", name))
+    if os.path.exists(os.path.join(sys_path, "partition")):
+        return os.path.basename(os.path.dirname(sys_path))
+    return name if os.path.exists(sys_path) else None
+
+
+def installer_disks(sources=None):
+    sources = sources if sources is not None else mount_sources()
+    loops = loop_backing_files()
+    disks = set()
+    for mount in MEDIUM_MOUNTS:
+        source = sources.get(mount)
+        if not source:
+            continue
+        if source.startswith("/dev/loop") and source in loops:
+            # An ISO file mounted from another filesystem: the disk under that.
+            backing = loops[source]
+            holder = best_mount_for(backing, sources)
+            disk = parent_disk(sources.get(holder)) if holder else None
+        else:
+            disk = parent_disk(source)
+        if disk:
+            disks.add(disk)
+    return sorted(disks)
+
+
+def best_mount_for(path, sources):
+    best = None
+    for mount in sources:
+        if path == mount or path.startswith(mount.rstrip("/") + "/"):
+            if best is None or len(mount) > len(best):
+                best = mount
+    return best
+
+
+def stage2_in_memory(sources=None):
+    """True when the running installer no longer reads from the medium.
+
+    Anaconda warns that ejecting while stage 2 is read from the medium
+    crashes the installer (pyanaconda.core.util.dracut_eject). With
+    rd.live.ram=1 dracut copies the image into /run/initramfs first, so no
+    loop device is backed by a file on the medium and nothing but the medium
+    mounts themselves use it.
+    """
+    sources = sources if sources is not None else mount_sources()
+    medium = set(installer_disks(sources))
+    if not medium:
+        return False
+    for backing in loop_backing_files().values():
+        holder = best_mount_for(backing, sources)
+        holder_source = sources.get(holder) if holder else None
+        if holder_source and parent_disk(holder_source) in medium:
+            return False
+    for mount, source in sources.items():
+        if mount not in MEDIUM_MOUNTS and parent_disk(source) in medium:
+            return False
+    return True
+
+
+def platform_lang():
+    try:
+        with open(EFI_PLATFORM_LANG, "rb") as handle:
+            data = handle.read()
+    except OSError:
+        return None
+    value = data[4:].split(b"\0", 1)[0].decode("ascii", "ignore").strip()
+    return value if re.match(r"^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,3})?$", value) else None
+
+
+def read(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+def battery():
+    base = "/sys/class/power_supply"
+    try:
+        supplies = sorted(os.listdir(base))
+    except OSError:
+        return None
+    batteries = []
+    ac_online = False
+    for supply in supplies:
+        kind = read(os.path.join(base, supply, "type"))
+        if kind == "Battery" and read(os.path.join(base, supply, "scope")) != "Device":
+            capacity = read(os.path.join(base, supply, "capacity"))
+            status = read(os.path.join(base, supply, "status")) or ""
+            batteries.append({"capacity": int(capacity) if capacity and capacity.isdigit() else None, "status": status})
+        elif kind in ("Mains", "USB") and read(os.path.join(base, supply, "online")) == "1":
+            ac_online = True
+    if not batteries:
+        return None
+    known = [entry["capacity"] for entry in batteries if entry["capacity"] is not None]
+    return {
+        "acOnline": ac_online,
+        "capacity": min(known) if known else None,
+        "charging": any(entry["status"] in ("Charging", "Full") for entry in batteries),
+        "present": True,
+    }
+
+
+CHANNELS = ("stable", "beta", "nightly")
+SOURCES = ("medium", "online", "test")
+
+
+def media():
+    """What the installer kickstart's %pre chose: the channel and where the
+    payload comes from (/run/luma-atlas/payload.json)."""
+    try:
+        with open("/run/luma-atlas/payload.json", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("channel") not in CHANNELS or data.get("source") not in SOURCES:
+        return None
+    return {"channel": data["channel"], "enrolled": data.get("preview_enrolled") is True,
+            "ref": data.get("ref"), "source": data["source"]}
+
+
+def network():
+    """NetworkManager's connectivity verdict: full, limited, portal, none or
+    unknown. Without nmcli, a default route counts as unknown."""
+    output = run(["nmcli", "--terse", "--fields", "CONNECTIVITY", "general"])
+    if output and output.strip() in ("full", "limited", "portal", "none", "unknown"):
+        return {"connectivity": output.strip()}
+    try:
+        with open("/proc/net/route", encoding="utf-8") as routes:
+            has_default = any(line.split()[1] == "00000000" for line in list(routes)[1:] if len(line.split()) > 1)
+    except OSError:
+        has_default = False
+    return {"connectivity": "unknown" if has_default else "none"}
+
+
+def boot_options():
+    cmdline = read("/proc/cmdline") or ""
+    options = {"contrast": False, "lang": None, "surface": None}
+    for token in cmdline.split():
+        if token.startswith(("inst.lang=", "lang=")):
+            options["lang"] = token.split("=", 1)[1]
+        elif token.startswith("inst.luma.surface="):
+            value = token.split("=", 1)[1]
+            if value in ("paper", "ink", "slate"):
+                options["surface"] = value
+            elif value == "contrast":
+                options["surface"] = "slate"
+                options["contrast"] = True
+    return options
+
+
+def parse_os_release(text):
+    values = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            values[key.strip()] = value.strip().strip('"')
+    return values
+
+
+def payload(url, ref):
+    result = {"osName": None, "prettyName": None, "ref": ref, "systemUsers": [], "url": url, "version": None, "zram": None}
+    if not url.startswith("file://"):
+        return result
+    repo = url[len("file://"):]
+    if not os.path.isdir(repo):
+        return result
+    ostree = ["ostree", "--repo=" + repo]
+    os_release = run(ostree + ["cat", ref, "/usr/lib/os-release"])
+    if os_release:
+        values = parse_os_release(os_release)
+        result["osName"] = values.get("NAME")
+        result["prettyName"] = values.get("PRETTY_NAME")
+        result["version"] = values.get("VERSION_ID") or values.get("VERSION")
+    zram_config = run(ostree + ["ls", ref, "/usr/lib/systemd/zram-generator.conf"])
+    result["zram"] = zram_config is not None
+    passwd = run(ostree + ["cat", ref, "/usr/lib/passwd"])
+    if passwd:
+        result["systemUsers"] = sorted({line.split(":", 1)[0] for line in passwd.splitlines() if ":" in line})
+    return result
+
+
+def main(argv):
+    command = argv[1] if len(argv) > 1 else "system"
+    if command == "battery":
+        output = {"battery": battery()}
+    elif command == "network":
+        output = network()
+    elif command == "payload" and len(argv) == 4:
+        output = payload(argv[2], argv[3])
+    elif command == "system":
+        sources = mount_sources()
+        output = {
+            "battery": battery(),
+            "bootOptions": boot_options(),
+            "installerDisks": installer_disks(sources),
+            "media": media(),
+            "network": network(),
+            "platformLang": platform_lang(),
+            "stage2InMemory": stage2_in_memory(sources),
+            "uefi": os.path.isdir("/sys/firmware/efi"),
+        }
+    else:
+        sys.stderr.write(__doc__)
+        return 2
+    json.dump(output, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

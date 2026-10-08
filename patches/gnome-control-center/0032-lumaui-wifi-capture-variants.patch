@@ -1,0 +1,206 @@
+From b0341076e3b7403566f1bb0a963447aa80f2df55 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:10:54 +0000
+Subject: [PATCH] Settings: route Wi-Fi capture variants through actual kit
+ widgets
+
+---
+ shell/cc-application.c |  8 ++++++
+ shell/cc-luma-view.c   | 56 ++++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-view.h   |  2 ++
+ shell/test-luma-view.c | 58 ++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 124 insertions(+)
+
+diff --git a/shell/cc-application.c b/shell/cc-application.c
+index 365309e..05e64c8 100644
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -369,6 +369,14 @@ cc_application_activate (GApplication *application)
+           gtk_window_set_default_size (self->fixture_window, 1180, 740);
+           gtk_widget_set_name (GTK_WIDGET (self->fixture_window), "cf-window");
+           luma_application_window_set_body (LUMA_APPLICATION_WINDOW (self->fixture_window), body);
++          if (!cc_luma_view_set_variant (body, g_getenv ("LUMA_SETTINGS_VARIANT"), &error))
++            {
++              g_printerr ("Settings fixture: %s\n", error->message);
++              self->fixture_failed = TRUE;
++              gtk_window_destroy (self->fixture_window);
++              g_application_quit (application);
++              return;
++            }
+         }
+       gtk_window_present (self->fixture_window);
+       return;
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 52459bc..4de904a 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -11,6 +11,8 @@ typedef struct {
+   guint connection;
+   char *joining;
+   char *connecting;
++  char *variant;
++  guint variant_tick;
+   GtkWidget *root;
+   GSimpleActionGroup *actions;
+   LumaActionCenter *center;
+@@ -574,6 +576,7 @@ static void view_free (View *v)
+   if (v->connection) g_source_remove (v->connection);
+   g_free (v->joining);
+   g_free (v->connecting);
++  g_free (v->variant);
+   g_object_unref (v->center);
+   g_object_unref (v->actions);
+   g_object_unref (v->model);
+@@ -681,3 +684,56 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   render (v);
+   return v->root;
+ }
++
++static GtkWidget *named_widget (GtkWidget *root, const char *name)
++{
++  if (g_str_equal (gtk_widget_get_name (root), name)) return root;
++  for (GtkWidget *w = gtk_widget_get_first_child (root); w; w = gtk_widget_get_next_sibling (w))
++    {
++      GtkWidget *found = named_widget (w, name);
++      if (found) return found;
++    }
++  return NULL;
++}
++static gboolean capture_variant (GtkWidget *root, GdkFrameClock *clock, gpointer unused)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  v->variant_tick = 0;
++  if (g_str_equal (v->variant, "wifi-join"))
++    { g_free (v->joining); v->joining = g_strdup ("Priya’s phone"); render (v); }
++  else if (g_str_equal (v->variant, "wifi-hidden")) hidden_clicked (NULL, v);
++  else if (g_str_equal (v->variant, "wifi-share")) share_clicked (NULL, v);
++  else if (g_str_equal (v->variant, "wifi-metered"))
++    open_picker (GTK_BUTTON (named_widget (root, "cf-metered")), v);
++  else if (g_str_equal (v->variant, "wifi-forget"))
++    {
++      GtkWidget *button = forget_button (v, text (v, "net"));
++      g_object_ref_sink (button);
++      forget_clicked (GTK_BUTTON (button), v);
++      g_object_unref (button);
++    }
++  return G_SOURCE_REMOVE;
++}
++gboolean cc_luma_view_set_variant (GtkWidget *root, const char *variant, GError **error)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!variant || !*variant) return TRUE;
++  gboolean wifi_page = v && g_str_equal (v->page, "wifi");
++  gboolean details = v && g_str_equal (v->page, "wifi-net");
++  if (!((wifi_page && (g_str_equal (variant, "wifi-off") || g_str_equal (variant, "wifi-join") ||
++         g_str_equal (variant, "wifi-hidden") || g_str_equal (variant, "wifi-share"))) ||
++        (details && (g_str_equal (variant, "wifi-metered") || g_str_equal (variant, "wifi-forget")))))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unsupported Settings page/variant: %s", variant);
++      return FALSE;
++    }
++  if (v->variant_tick) gtk_widget_remove_tick_callback (root, v->variant_tick);
++  g_free (v->variant); v->variant = g_strdup (variant);
++  if (g_str_equal (variant, "wifi-off"))
++    {
++      if (!cc_luma_fixture_set_flag (v->model, "wifi", FALSE, error)) return FALSE;
++      render (v);
++    }
++  else v->variant_tick = gtk_widget_add_tick_callback (root, capture_variant, NULL, NULL);
++  return TRUE;
++}
+diff --git a/shell/cc-luma-view.h b/shell/cc-luma-view.h
+index 5ce7f42..db81d48 100644
+--- a/shell/cc-luma-view.h
++++ b/shell/cc-luma-view.h
+@@ -5,4 +5,6 @@
+ G_BEGIN_DECLS
+ /* The view consumes only its supplied model. Service adapters belong outside it. */
+ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error);
++/* Capture selector, accepted only for a supported page/state pair. */
++gboolean cc_luma_view_set_variant (GtkWidget *view, const char *variant, GError **error);
+ G_END_DECLS
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 19396e2..4361559 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-view.h"
+ #include <string.h>
++#include <luma-ui.h>
+ 
+ static GtkWidget *find_name (GtkWidget *root, const char *name)
+ {
+@@ -152,6 +153,62 @@ static void turn_on (void)
+   g_assert_nonnull (find_network (view, "Studio North Guest"));
+   g_object_unref (view);
+ }
++static GtkWidget *find_type (GtkWidget *root, GType type)
++{
++  if (G_TYPE_CHECK_INSTANCE_TYPE (root, type)) return root;
++  for (GtkWidget *w = gtk_widget_get_first_child (root); w; w = gtk_widget_get_next_sibling (w))
++    {
++      GtkWidget *found = find_type (w, type);
++      if (found) return found;
++    }
++  return NULL;
++}
++static void scenario_variants (void)
++{
++  const char *variants[] = { "wifi-off", "wifi-join", "wifi-hidden", "wifi-share", "wifi-metered", "wifi-forget" };
++  for (guint i = 0; i < G_N_ELEMENTS (variants); i++)
++    {
++      g_autoptr (CcLumaFixture) model = load ();
++      g_autoptr (GError) error = NULL;
++      GtkWidget *window = gtk_window_new ();
++      GtkWidget *view = cc_luma_view_new (model, i >= 4 ? "wifi-net" : "wifi", NULL);
++      gtk_window_set_default_size (GTK_WINDOW (window), 1180, 740);
++      gtk_window_set_child (GTK_WINDOW (window), view);
++      g_assert_true (cc_luma_view_set_variant (view, variants[i], &error));
++      g_assert_no_error (error);
++      gtk_window_present (GTK_WINDOW (window));
++      gint64 deadline = g_get_monotonic_time () + 120 * 1000;
++      while (g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++      if (i == 0) g_assert_nonnull (find_name (view, "cf-wifi-on"));
++      else if (i == 1) g_assert_nonnull (find_name (view, "cf-join-password"));
++      else if (i == 2)
++        {
++          g_assert_nonnull (find_name (view, "cf-hidden-name"));
++          g_assert_false (gtk_entry_get_visibility (GTK_ENTRY (find_name (view, "cf-hidden-password"))));
++        }
++      else if (i == 3)
++        {
++          GtkWidget *code = find_name (view, "cf-share-code");
++          g_assert_true (GTK_IS_PICTURE (code));
++          g_assert_nonnull (gtk_picture_get_paintable (GTK_PICTURE (code)));
++        }
++      else if (i == 4) g_assert_nonnull (find_type (window, LUMA_TYPE_FLOATING_MENU));
++      else
++        {
++          GtkWidget *dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG);
++          g_assert_nonnull (dialog);
++          g_signal_emit_by_name (dialog, "confirmed", FALSE); drain ();
++          g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "");
++          GtkWidget *toast = find_type (window, LUMA_TYPE_TOAST);
++          g_assert_nonnull (toast);
++          g_signal_emit_by_name (toast, "undo"); drain ();
++          g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Studio North");
++        }
++      g_assert_false (cc_luma_view_set_variant (view, "unrecognized-state", &error));
++      g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++      gtk_window_destroy (GTK_WINDOW (window)); drain ();
++    }
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -163,5 +220,6 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/missing-share-artwork", missing_share_artwork);
+   g_test_add_func ("/settings/view/nearby-join", nearby_join);
+   g_test_add_func ("/settings/view/turn-on", turn_on);
++  g_test_add_func ("/settings/view/scenario-variants", scenario_variants);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

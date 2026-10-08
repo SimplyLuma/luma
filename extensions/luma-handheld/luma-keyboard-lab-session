@@ -1,0 +1,153 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+set -eu
+
+engine=${1:-}
+osk_pid=
+entry_pid=
+notify_outer() {
+  gdbus call --session \
+    --dest org.project_luma.Handheld \
+    --object-path /org/project_luma/Handheld \
+    --method org.project_luma.Handheld1.SetExternalKeyboardVisible \
+    "$1" >/dev/null 2>&1 || true
+}
+cleanup() {
+  notify_outer false
+  if [ -n "$entry_pid" ]; then
+    kill -TERM "$entry_pid" 2>/dev/null || true
+    wait "$entry_pid" 2>/dev/null || true
+  fi
+  if [ -n "$osk_pid" ]; then
+    kill -TERM "$osk_pid" 2>/dev/null || true
+    wait "$osk_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT HUP INT TERM
+
+case "$engine" in
+  stevia)
+    /usr/bin/phosh-osk-stevia --replace &
+    osk_pid=$!
+    ;;
+  squeekboard)
+    # Squeekboard is deliberately staged outside /usr/bin with no desktop or
+    # autostart entry. Its documented force-show mode is restricted to this
+    # disposable nested compositor and cannot become Luma's session OSK.
+    export SQUEEKBOARD_DEBUG=force-show
+    export GSETTINGS_BACKEND=memory
+    export GSETTINGS_SCHEMA_DIR=/usr/share/luma-keyboard-labs/squeekboard/schemas
+    /usr/libexec/luma-keyboard-labs/squeekboard &
+    osk_pid=$!
+    ;;
+  wvkbd)
+    /usr/libexec/luma-keyboard-labs/wvkbd-mobintl \
+      -l simple,special,emoji \
+      -H 300 -L 220 -R 12 \
+      --bg 20242bff --fg 343a43ff --fg-sp 49515cff \
+      --press 4f86d9ff --press-sp 4f86d9ff \
+      --text f7f9fcff --text-sp f7f9fcff &
+    osk_pid=$!
+    ;;
+  sysboard)
+    sysboard_root=/usr/libexec/luma-keyboard-labs/sysboard
+    sysboard_home=$XDG_CONFIG_HOME/sysboard-home
+    mkdir -p "$sysboard_home/.config/sys64/board"
+    printf '%s\n' \
+      '[main]' \
+      'margin=3' \
+      'height=310' \
+      'layout=mobile' \
+      >"$sysboard_home/.config/sys64/board/config.conf"
+    cp "$sysboard_root/style.css" \
+      "$sysboard_home/.config/sys64/board/style.css"
+    HOME="$sysboard_home" \
+      LD_LIBRARY_PATH="$sysboard_root${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+      "$sysboard_root/sysboard" -m 3 -H 310 -l mobile &
+    osk_pid=$!
+    ;;
+  *)
+    printf 'keyboard lab session: unsupported engine: %s\n' "$engine" >&2
+    exit 2
+    ;;
+esac
+
+if [ "$engine" = wvkbd ] || [ "$engine" = sysboard ]; then
+  /usr/libexec/luma-keyboard-lab-entry "$engine" &
+  entry_pid=$!
+  sleep 2
+  kill -0 "$osk_pid" 2>/dev/null || {
+    printf 'keyboard lab session: %s exited during startup\n' "$engine" >&2
+    exit 1
+  }
+  notify_outer true
+  wait "$entry_pid"
+  entry_pid=
+  exit 0
+fi
+
+# Wait for the candidate's real control endpoint instead of assuming startup
+# completed after an arbitrary delay.
+ready=false
+for _attempt in $(seq 1 50); do
+  if gdbus call --session \
+      --dest sm.puri.OSK0 \
+      --object-path /sm/puri/OSK0 \
+      --method org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  kill -0 "$osk_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[ "$ready" = true ] || {
+  printf 'keyboard lab session: %s control endpoint did not appear\n' "$engine" >&2
+  exit 1
+}
+
+# Map and focus the native typing surface before explicitly asking the engine
+# to reveal itself. Text-input activation alone is not reliable in nested Phoc.
+/usr/libexec/luma-keyboard-lab-entry "$engine" &
+entry_pid=$!
+# Nested Phoc may issue a final toplevel configure several seconds after the
+# client maps. If an OSK is shown before that transaction settles, the ensuing
+# focus update may hide it again. Wait for that one-time startup boundary.
+sleep 4
+
+visible=false
+for _attempt in $(seq 1 20); do
+  gdbus call --session \
+    --dest sm.puri.OSK0 \
+    --object-path /sm/puri/OSK0 \
+    --method sm.puri.OSK0.SetVisible true >/dev/null 2>&1 || true
+  if gdbus call --session \
+      --dest sm.puri.OSK0 \
+      --object-path /sm/puri/OSK0 \
+      --method org.freedesktop.DBus.Properties.Get \
+      sm.puri.OSK0 Visible 2>/dev/null | grep -Fq '<true>'; then
+    visible=true
+    break
+  fi
+  kill -0 "$entry_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[ "$visible" = true ] || {
+  printf 'keyboard lab session: %s did not become visible\n' "$engine" >&2
+  exit 1
+}
+
+# Require stable visibility, not merely a transient true response.
+sleep 1
+gdbus call --session \
+  --dest sm.puri.OSK0 \
+  --object-path /sm/puri/OSK0 \
+  --method org.freedesktop.DBus.Properties.Get \
+  sm.puri.OSK0 Visible 2>/dev/null | grep -Fq '<true>' || {
+  printf 'keyboard lab session: %s visibility did not remain stable\n' "$engine" >&2
+  exit 1
+}
+
+notify_outer true
+wait "$entry_pid"
+entry_pid=

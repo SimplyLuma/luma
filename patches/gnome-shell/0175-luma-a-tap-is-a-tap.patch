@@ -1,0 +1,312 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 23:00:00 -0500
+Subject: [PATCH] luma: a tap is a tap, an empty tray holds nothing, a mark waits for its place
+
+Three things the owner met on a touchscreen laptop in one evening.
+
+A tap on the clock or on Quick Options opened arrange mode instead of the
+menu, every time, while a tap on a dock tile was fine. The shelf ran its
+own timer from the press and cancelled it when it saw the release -- and a
+button takes the touch sequence for itself, so that release never reached
+the shelf at all: the timer ran on under a finger that had already lifted.
+Clutter's own press gesture sees both ends of a press wherever it goes and
+arbitrates with the button's click gesture, so a quick release is the
+button's and a held finger is an arrangement. The gesture goes on the
+islands and on the parts inside them -- the clock, Quick Options, the tray
+-- because that is where the touch goes.
+
+A tray with nothing in it held width. An extension indicator can be visible
+and draw nothing, and what the person is left looking at is a hole in the
+bar where their tray used to be. The tray is now there while it has
+something to show, like the notification island, and the space it would
+have taken goes back to the band.
+
+And a running-window mark that had never been placed was faded anyway,
+which asks Clutter to update the stage views of an actor that does not know
+where it is. It said so, many times a minute, in the person's journal. A
+mark fades when it is placed.
+
+Known limit, said plainly: with the gesture in place a tap is a tap
+everywhere, but a long press on the clock or Quick Options does not yet
+open arrange mode in the harness -- their own buttons take the sequence in
+a way the gesture beside them does not see. A long press on any other
+island, on a dock icon, or a right-click, still gets there, and the island
+menu still carries Arrange Islands.
+
+---
+diff --git a/js/ui/lumaDockWindows.js b/js/ui/lumaDockWindows.js
+index 4b4dc79..8682a41 100644
+--- a/js/ui/lumaDockWindows.js
++++ b/js/ui/lumaDockWindows.js
+@@ -94,13 +94,22 @@ class WindowMark extends St.Widget {
+             this.remove_style_class_name(this.kind);
+         this.kind = kind;
+         this.add_style_class_name(kind);
+-        this._fade();
++        // A mark that has never been placed has no allocation yet: easing it
++        // asks Clutter to update the stage views of an actor that does not
++        // know where it is, which it says so about, many times a minute, in
++        // the person's journal. It fades when it is placed.
++        if (this.box)
++            this._fade();
+     }
+ 
+     // Ink at 55% for every mark except the focused pill, which is full ink.
+     _fade(target = this.kind === 'focused' ? 255 : 140) {
+         this.remove_transition('opacity');
+-        this.ease({opacity: target, duration: animations() && this.box ? MARK_TIME : 0,
++        if (!this.box) {
++            this.opacity = target;
++            return;
++        }
++        this.ease({opacity: target, duration: animations() ? MARK_TIME : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+     }
+ 
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index 98136cc..f537594 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -761,7 +761,18 @@ export const Well = GObject.registerClass({
+             this.add_child(this._chip);
+         this.add_child(this._insertion);
+         this.add_child(this._host);
+-        this.visible = sources.length > 0 || extensions.some(([indicator]) => indicator.visible);
++        // Luma: a tray with nothing to show holds no width, no spacing and no
++        // divider. An extension indicator can be visible and still draw
++        // nothing -- a tray icon with no icon -- and what the person is left
++        // looking at is a hole in the bar where their tray used to be.
++        const draws = actor => {
++            if (!actor?.visible)
++                return false;
++            const [, natural] = actor.get_preferred_width(-1);
++            return natural > 0;
++        };
++        this.visible = sources.length > 0 || rest.length > 0 ||
++            extensions.some(([, container]) => draws(container));
+         if (this._pulse && rest.length > 0) {
+             this._pulse = false;
+             this._chip.add_style_pseudo_class('pulse');
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 4f88b7a..a42dfad 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1170,6 +1170,7 @@ export const Shelf = GObject.registerClass({
+     // name, lumaShelfIsland-<id>.
+     _registerIsland(id, island) {
+         island.islandId = id;
++        this._arrange?._watchPresses?.();
+         island.name = `lumaShelfIsland-${id}`;
+         this._islands.set(id, island);
+         // A transient island (notifications, live extensions, what is
+@@ -1851,6 +1852,11 @@ export const Shelf = GObject.registerClass({
+             return !!this._beacon?.visible && !!this._beaconIsland?.visible;
+         if (id === 'live' || id === 'media')
+             return this._actionsVisible && !!this.getIsland(id)?.visible;
++        // The tray is there while it has something in it, like the live and
++        // media islands: an item with nothing to show takes no width, no
++        // spacing and no divider.
++        if (id === 'well')
++            return this._actionsVisible && !!this._well?.visible;
+         if (id === 'folders')
+             return !!this._foldersIsland?.visible;
+         return this._actionsVisible;
+@@ -1936,6 +1942,10 @@ export const Shelf = GObject.registerClass({
+             return !!this._beacon?.visible || !!this._beaconIsland?._lumaLeaving;
+         if (id === 'folders')
+             return !!this._foldersIsland?.visible;
++        // A tray with nothing in it is not drawn and holds nothing: the
++        // space it would have taken goes back to the band.
++        if (id === 'well' && this._wellIsland)
++            return this._actionsVisible && !!this._well?.visible;
+         return this._actionsVisible;
+     }
+ 
+diff --git a/js/ui/shelfArrange.js b/js/ui/shelfArrange.js
+index ecb02f0..8ab3f26 100644
+--- a/js/ui/shelfArrange.js
++++ b/js/ui/shelfArrange.js
+@@ -208,7 +208,11 @@ export class ShelfArrange {
+                 return Clutter.EVENT_PROPAGATE;
+             return this._onShelfEvent(event);
+         }, this);
+-        shelf.connectObject('layout-changed', () => this._queueDecorate(), this);
++        shelf.connectObject('layout-changed', () => {
++            this._queueDecorate();
++            this._watchPresses();
++        }, this);
++        this._watchPresses();
+     }
+ 
+     get active() {
+@@ -293,6 +297,16 @@ export class ShelfArrange {
+         switch (type) {
+         case Clutter.EventType.BUTTON_PRESS: {
+             const button = event.get_button();
++            // Luma: a tap is a tap. A touchscreen sends the shelf a touch
++            // and, on some backends, a pointer press standing in for it; the
++            // touch path below already holds for a long press, so taking the
++            // emulated press as well made a tap into a long press and opened
++            // arrange mode instead of the menu.
++            if ((event.get_flags() & Clutter.EventFlags.FLAG_POINTER_EMULATED) ||
++                (this._lastTouchUs &&
++                 GLib.get_monotonic_time() - this._lastTouchUs <
++                 Arrangement.TOUCH_EMULATION_GRACE * 1000))
++                return Clutter.EVENT_PROPAGATE;
+             const id = this._islandAt(x, y);
+             if (GLib.getenv('LUMA_SHELF_DEBUG'))
+                 console.log(`[luma-shelf] press ${button} at ${x},${y} on ${id}`);
+@@ -307,11 +321,10 @@ export class ShelfArrange {
+             return Clutter.EVENT_PROPAGATE;
+         }
+         case Clutter.EventType.TOUCH_BEGIN: {
++            this._lastTouchUs = GLib.get_monotonic_time();
+             const id = this._islandAt(x, y);
+             // A long-press on a dock icon still opens its app menu, whose
+             // last item is Arrange Islands…
+-            if (id && !(id === 'dock' && this._isDockIcon(pickAt(event))))
+-                this._startHold(id, x, y, event.get_event_sequence());
+             return Clutter.EVENT_PROPAGATE;
+         }
+         case Clutter.EventType.MOTION:
+@@ -360,6 +373,102 @@ export class ShelfArrange {
+         return null;
+     }
+ 
++    // Whether the finger that started this hold is still down. The island's
++    // press watcher knows even when the touch end went straight to a button
++    // and never passed the shelf at all.
++    _holdStillPressed(hold) {
++        // Only positive evidence cancels: a watcher that saw this press
++        // begin and now says it has ended. A watcher that never saw it
++        // knows nothing, and a hold is not cancelled on ignorance.
++        if (!hold.watched)
++            return true;
++        try {
++            return !!hold.actor?._lumaHoldGesture?.pressed;
++        } catch (e) {
++            return true;
++        }
++    }
++
++    // One press gesture per island, beside whatever gestures the island's
++    // own buttons have. It holds for HOLD_TIME_TOUCH and then this is an
++    // arrangement; released before that, it is whatever the button under
++    // the finger says it is.
++    _watchPresses() {
++        if (!Clutter.LongPressGesture)
++            return;
++        const targets = [];
++        for (const [id, actor] of this._shelf._islands ?? [])
++            targets.push([id, actor]);
++        // The parts inside an island -- the clock, Quick Options, the tray --
++        // have buttons of their own, and a finger on one of those never
++        // reaches the island: the gesture goes where the touch goes.
++        for (const id of ['clock', 'quick-options', 'well', 'live', 'media', 'folders']) {
++            const part = this._shelf.partActorFor?.(id);
++            if (part)
++                targets.push([id, part]);
++        }
++        for (const [id, actor] of targets) {
++            if (!actor || actor._lumaHoldGesture)
++                continue;
++            const gesture = new Clutter.LongPressGesture();
++            if (gesture.set_long_press_duration_ms)
++                gesture.set_long_press_duration_ms(Arrangement.HOLD_TIME_TOUCH);
++            if (gesture.set_cancel_threshold)
++                gesture.set_cancel_threshold(Arrangement.DRAG_THRESHOLD);
++            gesture.connect('may-recognize', () => {
++                if (this._active || !this._shelf.canArrange || !this._shelf._isDesktopSession())
++                    return false;
++                // A long press on a dock icon belongs to the icon's own menu,
++                // whose last item is Arrange Islands.
++                if (id === 'dock') {
++                    const [px, py] = global.get_pointer();
++                    const under = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, px, py);
++                    if (under && this._isDockIcon(under))
++                        return false;
++                }
++                return true;
++            });
++            gesture.connect('recognize', () => {
++                const [x, y] = this._gestureCoords(gesture);
++                this._resetHoldScale(actor);
++                this.begin({grab: id, x, y, pressed: true});
++            });
++            gesture.connect('notify::pressed', () => {
++                if (gesture.pressed)
++                    this._growForHold(actor);
++                else
++                    this._resetHoldScale(actor);
++            });
++            actor.reactive = true;
++            actor.add_action(gesture);
++            actor._lumaHoldGesture = gesture;
++        }
++    }
++
++    _gestureCoords(gesture) {
++        try {
++            const point = gesture.get_coords_abs ? gesture.get_coords_abs() : null;
++            if (point && typeof point.x === 'number')
++                return [point.x, point.y];
++        } catch (e) {
++            // The seat knows where the pointer is, at least.
++        }
++        const [x, y] = global.get_pointer();
++        return [x, y];
++    }
++
++    // The island grows a little under the press from the start, so that a
++    // long press is something the person watches happen rather than
++    // something that happens to them.
++    _growForHold(actor) {
++        if (!St.Settings.get().enable_animations || !actor)
++            return;
++        actor.set_pivot_point(0.5, 0.5);
++        actor.ease({scale_x: HOLD_SCALE, scale_y: HOLD_SCALE,
++            duration: Arrangement.HOLD_TIME_TOUCH,
++            mode: Clutter.AnimationMode.LINEAR});
++    }
++
+     _startHold(id, x, y, sequence) {
+         this._cancelHold();
+         const actor = this._shelf.islandActorFor(id);
+@@ -381,6 +490,10 @@ export class ShelfArrange {
+             // A menu that opened on press takes the pointer's events, so the
+             // release may never reach the shelf: ask the seat whether the
+             // button is still down and the pointer still where it was.
++            if (hold.sequence && !this._holdStillPressed(hold)) {
++                this._cancelHold();
++                return GLib.SOURCE_REMOVE;
++            }
+             if (!hold.sequence) {
+                 const [px, py, mods] = global.get_pointer();
+                 if (GLib.getenv('LUMA_SHELF_DEBUG'))
+@@ -399,6 +512,10 @@ export class ShelfArrange {
+     }
+ 
+     _cancelHold() {
++        if (this._holdWatch) {
++            this._hold?.target?.disconnectObject(this._holdWatch);
++            this._holdWatch = null;
++        }
+         if (!this._hold)
+             return;
+         for (const key of ['feedbackId', 'liftId']) {
+diff --git a/js/ui/shelfArrangement.js b/js/ui/shelfArrangement.js
+index 8e681ee..1fb27af 100644
+--- a/js/ui/shelfArrangement.js
++++ b/js/ui/shelfArrangement.js
+@@ -66,6 +66,11 @@ export const ZONE_LENGTH = 120;       // the dashed placeholder of an empty zone
+ export const DRAG_THRESHOLD = 8;
+ export const HOLD_FEEDBACK_TIME = 150;
+ export const HOLD_TIME = 400;
++// A finger needs longer than a mouse: a tap is quick and a press is
++// deliberate, and the difference has to be plain to the person making it.
++export const HOLD_TIME_TOUCH = 500;
++// A press that follows a touch this recently is that touch, emulated.
++export const TOUCH_EMULATION_GRACE = 800;
+ 
+ export function isVertical(edge) {
+     return edge === 'left' || edge === 'right';

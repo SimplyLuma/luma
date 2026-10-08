@@ -1,0 +1,200 @@
+diff --git a/data/org.gnome.Nautilus.desktop.in.in b/data/org.gnome.Nautilus.desktop.in.in
+index 9cee145..bcc36b8 100644
+--- a/data/org.gnome.Nautilus.desktop.in.in
++++ b/data/org.gnome.Nautilus.desktop.in.in
+@@ -1,5 +1,5 @@
+ [Desktop Entry]
+-Name=Files
++Name=Filer
+ Comment=Access and organize files
+ # Translators: Search terms to find this application. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+ Keywords=folder;manager;explore;disk;filesystem;nautilus;
+diff --git a/data/org.gnome.Nautilus.metainfo.xml.in.in b/data/org.gnome.Nautilus.metainfo.xml.in.in
+index 31413c2..602edd9 100644
+--- a/data/org.gnome.Nautilus.metainfo.xml.in.in
++++ b/data/org.gnome.Nautilus.metainfo.xml.in.in
+@@ -2,12 +2,12 @@
+ <component type="desktop-application">
+   <id>@appid@</id>
+   <metadata_license>CC0-1.0</metadata_license>
+-  <name>Files</name>
++  <name>Filer</name>
+   <summary>Access and organize files</summary>
+   <description>
+     <p>
+-      Files, also known as Nautilus, is the default file manager of the GNOME desktop.
+-      It provides a  simple and integrated way of managing your files and browsing your file system.
++      Filer is Project Luma's file manager, built from GNOME Files, also known as Nautilus.
++      It provides a simple and integrated way of managing your files and browsing your file system.
+     </p>
+     <p>
+       Nautilus supports all the basic functions of a file manager and more.
+diff --git a/src/nautilus-application.c b/src/nautilus-application.c
+index c8a96dc..20d1a9f 100644
+--- a/src/nautilus-application.c
++++ b/src/nautilus-application.c
+@@ -768,7 +768,7 @@ nautilus_application_init (NautilusApplication *self)
+         },
+         {
+             "quit", 'q', 0, G_OPTION_ARG_NONE, NULL,
+-            N_("Quit Nautilus."), NULL
++            N_("Quit Filer."), NULL
+         },
+         {
+             "select", 's', 0, G_OPTION_ARG_NONE, NULL,
+diff --git a/src/nautilus-portal.c b/src/nautilus-portal.c
+index 919d515..600a9e1 100644
+--- a/src/nautilus-portal.c
++++ b/src/nautilus-portal.c
+@@ -578,7 +578,7 @@ handle_file_chooser_methods (XdpImplFileChooser    *object,
+     nautilus_file_chooser_add_choices (window, data->choices_action_group, G_MENU_MODEL (menu));
+ 
+     const char *title;
+-    title = (arg_title[0] == '\0') ? _("Files") : arg_title;
++    title = (arg_title[0] == '\0') ? _("Filer") : arg_title;
+     gtk_window_set_title (GTK_WINDOW (window), title);
+ 
+     g_signal_connect_swapped (window, "close-request",
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index d1dc09f..8d38b7b 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -812,6 +812,18 @@ update_places (NautilusSidebar *sidebar)
+     }
+ #endif
+ 
++    /* The root filesystem is not exposed by every GVolumeMonitor backend,
++     * especially inside virtual machines. Represent it as a real local place
++     * so the hardware section is always present; removable and optical media
++     * continue to come from the live GDrive/GVolume/GMount pipeline below. */
++    start_icon = g_themed_icon_new_with_default_fallbacks ("drive-harddisk-symbolic");
++    add_place (sidebar, NAUTILUS_SIDEBAR_ROW_BUILT_IN,
++               NAUTILUS_SIDEBAR_SECTION_MOUNTS,
++               _("System Disk"), start_icon, NULL, "file:///",
++               NULL, NULL, NULL, NULL, 0,
++               _("Open the system disk"));
++    g_object_unref (start_icon);
++
+     /* go through all connected drives */
+     drives = g_volume_monitor_get_connected_drives (sidebar->volume_monitor);
+ 
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 5e52b8a..b29d2c9 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -1838,11 +1838,13 @@ nautilus_window_show_about_dialog (NautilusWindow *window)
+ 
+     const gchar *designers[] =
+     {
++        _("Project Luma"),
+         _("The GNOME Project"),
+         NULL
+     };
+     const gchar *developers[] =
+     {
++        _("Project Luma"),
+         _("The GNOME Project"),
+         NULL
+     };
+@@ -1867,9 +1869,14 @@ nautilus_window_show_about_dialog (NautilusWindow *window)
+ 
+     dialog = adw_about_dialog_new_from_appdata ("/org/gnome/nautilus/appdata", NULL);
+ 
++    adw_about_dialog_set_application_name (ADW_ABOUT_DIALOG (dialog), _("Filer"));
++    adw_about_dialog_set_developer_name (ADW_ABOUT_DIALOG (dialog), _("Project Luma"));
++    adw_about_dialog_set_comments (ADW_ABOUT_DIALOG (dialog),
++                                   _("Filer is Project Luma's file manager, built from GNOME Files (Nautilus). Project Luma gratefully preserves and credits the work of the Nautilus and GNOME contributors."));
+     adw_about_dialog_set_version (ADW_ABOUT_DIALOG (dialog), VERSION);
+     adw_about_dialog_set_debug_info (ADW_ABOUT_DIALOG (dialog), debug_info);
+-    adw_about_dialog_set_copyright (ADW_ABOUT_DIALOG (dialog), "© 1999 The Files Authors");
++    adw_about_dialog_set_copyright (ADW_ABOUT_DIALOG (dialog),
++                                    "© 1999 The Nautilus Authors\n© 2026 Project Luma contributors");
+     adw_about_dialog_set_developers (ADW_ABOUT_DIALOG (dialog), developers);
+     adw_about_dialog_set_designers (ADW_ABOUT_DIALOG (dialog), designers);
+     adw_about_dialog_set_documenters (ADW_ABOUT_DIALOG (dialog), documenters);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index decca3c..242b6bf 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -122,6 +122,29 @@
+     padding: 0;
+   }
+ 
++  /* History, view, and main-menu actions are one secondary-control family.
++   * Keep their neutral material identical; checked view modes alone carry the
++   * blue selection treatment below. */
++  .luma-files-window .luma-history-controls button,
++  .luma-files-window .luma-view-controls button,
++  .luma-files-window .luma-main-menu > button {
++    background-color: var(--view-bg-color);
++    background-image: none;
++    color: var(--headerbar-fg-color);
++    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++  }
++
++  .luma-files-window .luma-main-menu > button {
++    min-width: 32px;
++    min-height: 30px;
++    padding: 0;
++    border-radius: 8px;
++  }
++
++  .luma-files-window .luma-main-menu > button image {
++    -gtk-icon-size: 14px;
++  }
++
+   .luma-files-window .luma-view-controls {
+     margin-left: 3px;
+   }
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+index bbbb646..c45072f 100644
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -1217,6 +1217,10 @@ make_button_data (NautilusPathBar *self,
+     button_data->button = gtk_button_new ();
+     gtk_widget_set_focus_on_click (button_data->button, FALSE);
+     gtk_widget_add_css_class (button_data->button, "nautilus-path-button");
++    if (button_data->is_root)
++    {
++        gtk_widget_add_css_class (button_data->button, "luma-path-root");
++    }
+ 
+     /* TODO update button type when xdg directories change */
+ 
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 5d9ab93..55e3e24 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -128,6 +128,10 @@ template $NautilusToolbar: Adw.Bin {
+       tooltip-text: _("Main Menu");
+       icon-name: "open-menu-symbolic";
+       menu-model: bind template.main-menu;
++
++      styles [
++        "luma-main-menu",
++      ]
+     }
+ 
+     [end]
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index 72d81ce..6ccb6d3 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -49,7 +49,7 @@ menu app_menu {
+     }
+ 
+     item {
+-      label: _("_About Files");
++      label: _("_About Filer");
+       action: "app.about";
+     }
+   }
+@@ -135,7 +135,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+             }
+ 
+             Label {
+-              label: _(" — Files");
++              label: _(" — Filer");
+             }
+           };
+         }

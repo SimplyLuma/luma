@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/dts-v1/;
+/plugin/;
+
+/*
+ * Minimal FP6 S3NRN4V NFC overlay for the physically accepted sensor DTB.
+ *
+ * The accepted DTB was not built with __symbols__, so every external target
+ * is addressed by its stable absolute path and every pre-existing provider is
+ * referenced by its verified phandle.  Local labels let fdtoverlay allocate
+ * collision-free phandles for the otherwise-unreferenced PM7550 LDO20 rail
+ * and the new pin state.
+ */
+
+/ {
+	fragment@0 {
+		target-path = "/soc@0/rsc@17a00000/regulators-0/ldo20";
+
+		nfc_pvdd: __overlay__ {
+		};
+	};
+
+	fragment@1 {
+		target-path = "/soc@0/pinctrl@f100000";
+
+		__overlay__ {
+			nfc_default: nfc-default-state {
+				irq-pins {
+					pins = "gpio31";
+					function = "gpio";
+					drive-strength = <2>;
+					bias-disable;
+				};
+
+				pd-pins {
+					pins = "gpio56";
+					function = "gpio";
+					drive-strength = <2>;
+					bias-pull-up;
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target-path = "/soc@0/geniqup@ac0000/i2c@a84000";
+
+		__overlay__ {
+			nfc@27 {
+				compatible = "samsung,s3nrn4v";
+				reg = <0x27>;
+
+				/* tlmm phandle 0x35, GPIO31, rising edge. */
+				interrupts-extended = <0x35 31 1>;
+				en-gpios = <0x35 56 0>;
+				wake-gpios = <0x35 7 0>;
+
+				/* rpmhcc phandle 0x28, RPMH_LN_BB_CLK2. */
+				clocks = <0x28 2>;
+
+				pvdd-supply = <&nfc_pvdd>;
+				pinctrl-0 = <&nfc_default>;
+				pinctrl-names = "default";
+			};
+		};
+	};
+};

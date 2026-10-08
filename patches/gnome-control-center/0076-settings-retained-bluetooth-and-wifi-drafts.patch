@@ -1,0 +1,93 @@
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -661,6 +661,17 @@
+       command->generation == v->generation && g_str_equal (command->page, v->page))
+     ((void (*) (GtkButton *, View *)) command->callback) (button, v);
+ }
++/* Only the Bluetooth cache may renew commands on a reattached, unchanged row.
++ * Detached rows, other pages and callbacks outside rendering remain stale. */
++void cc_luma_view_rebind_retained_commands (View *v, GtkWidget *w)
++{
++  if (!v->rendering || !g_str_equal (v->page, "bluetooth") ||
++      !gtk_widget_is_ancestor (w, v->root)) return;
++  Command *command = g_object_get_data (G_OBJECT (w), "cf-command");
++  if (command && g_str_equal (command->page, v->page)) command->generation = v->generation;
++  for (GtkWidget *child = gtk_widget_get_first_child (w); child; child = gtk_widget_get_next_sibling (child))
++    cc_luma_view_rebind_retained_commands (v, child);
++}
+ void cc_luma_view_bind_command (View *v, GtkWidget *w, GCallback callback)
+ {
+   Command *command = g_new0 (Command, 1); command->callback = callback;
+@@ -759,7 +770,7 @@
+   gtk_widget_set_tooltip_text (bars, names[strength - 1]);
+   return bars;
+ }
+-/* A line of children at their own widths, 8 apart, that may run past its box (overflow visible). */
++/* A nearby network and an adaptive inline join form. */
+ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+ {
+   const char *name = json_object_get_string_member (network, "n");
+@@ -790,6 +801,7 @@
+       gtk_widget_add_css_class (form, "cf-joinf");
+       gtk_widget_set_name (form, "cf-join-form");
+       gtk_widget_set_name (password, "cf-join-password");
++      g_object_set_data_full (G_OBJECT (password), "cf-network", g_strdup (name), g_free);
+       gtk_widget_add_css_class (password, "cf-field");
+       g_object_set (password, "placeholder-text", "Password", NULL);
+       g_autofree char *accessible = g_strdup_printf ("Password for %s", name);
+@@ -1167,6 +1179,7 @@
+     if (focus && gtk_widget_is_ancestor (focus, v->root)) bluetooth_focus = g_object_ref (focus);
+   }
+   GtkWidget *join_field = same_page && v->joining ? named_widget (v->root, "cf-join-password") : NULL;
++  if (join_field && g_strcmp0 (g_object_get_data (G_OBJECT (join_field), "cf-network"), v->joining) != 0) join_field = NULL;
+   g_autofree char *join_text = join_field ? g_strdup (gtk_editable_get_text (GTK_EDITABLE (join_field))) : NULL;
+   int join_cursor = join_field ? gtk_editable_get_position (GTK_EDITABLE (join_field)) : 0;
+   int join_start = 0, join_end = 0;
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -112,6 +112,7 @@
+ GtkWidget *cc_luma_view_command (View *v, const char *caption, GCallback callback);
+ GtkWidget *cc_luma_view_command_style (View *v, const char *caption, GCallback callback, const char *style);
+ void cc_luma_view_bind_command (View *v, GtkWidget *button, GCallback callback);
++void cc_luma_view_rebind_retained_commands (View *v, GtkWidget *row);
+ void cc_luma_view_bluetooth_start (View *v);
+ void cc_luma_view_bluetooth_stop (View *v);
+ void cc_luma_view_bluetooth_render (View *v);
+--- a/shell/cc-luma-view-bluetooth.c
++++ b/shell/cc-luma-view-bluetooth.c
+@@ -283,6 +283,11 @@
+   char *id = g_strconcat (saved ? "saved:" : "near:", json_object_get_string_member (device, "id"), NULL);
+   BtRow *row = g_new0 (BtRow, 1);row->widget = g_object_ref_sink (widget);row->signature = row_signature (device);row->seen = TRUE;
+   g_hash_table_replace (row_cache (v), id, row);
++}
++static void rebind_seen_commands (gpointer key, gpointer value, gpointer data)
++{
++  BtRow *row = value;
++  if (row->seen) cc_luma_view_rebind_retained_commands (data, row->widget);
+ }
+ static gboolean unused_row (gpointer key, gpointer value, gpointer data) { return !((BtRow *) value)->seen; }
+ static void reset_seen (gpointer key, gpointer value, gpointer data) { ((BtRow *) value)->seen = FALSE; }
+@@ -413,6 +418,9 @@
+       GtkWidget *row = cf_row (rows, cf_lead_icon (json_object_get_string_member (d, "i")), name, status, actions, FALSE);
+       row_remember (v, d, TRUE, row);
+     }
++  /* Commands of retained rows belong to this freshly rendered page only
++   * after the actual owned rows have been attached to its widget tree. */
++  g_hash_table_foreach (row_cache (v), rebind_seen_commands, v);
+   g_hash_table_foreach_remove (row_cache (v), unused_row, NULL);
+   if (live) {
+     const char *problem = cc_luma_view_text (v, "btError");
+--- a/shell/test-luma-live-network.c
++++ b/shell/test-luma-live-network.c
+@@ -133,7 +133,10 @@
+         g_autofree char *shot=g_strdup_printf("wifi-join-%u-%s",widths[i],dark?"dark":"light");capture(window,shot);
+       }
+     }
+-    g_print("PASS native join stays in Luma UI and refresh preserves password and cursor\n");
++    g_autoptr(GVariant) second_ap=call(bus,NM_DBUS_PATH,"org.freedesktop.NetworkManager.LibnmGlibTest","AddWifiAp",g_variant_new("(sss)","audit-wifi","Luma audit second","52:54:00:00:00:02"));spin(250);
++    GtkWidget *other=network_button(view,"Luma audit second",FALSE);g_assert_nonnull(other);g_signal_emit_by_name(other,"clicked");spin(150);
++    password=named(view,"cf-join-password");g_assert_nonnull(password);g_assert_cmpstr(gtk_editable_get_text(GTK_EDITABLE(password)),==,"");
++    g_print("PASS native join stays in Luma UI and refresh preserves password and cursor only for the same SSID\n");
+   } else {
+     /* Real NM on virt_wifi: no physical-radio or DHCP reachability claim. */
+     spin(1500);g_assert_true(saved(model,"VirtWifi"));

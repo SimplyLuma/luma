@@ -1,0 +1,14 @@
+Removing dependent packages:
+ wget2-wget x86_64 0:2.2.1-2.fc44  <unknown>   42.0   B
+Installing:
+ wget1-wget x86_64 0:1.25.0-4.fc44 updates      4.9 KiB
+Installing dependencies:
+ wget1      x86_64 0:1.25.0-4.fc44 updates      3.4 MiB
+
+Transaction Summary:
+ Installing:         2 packages
+ Removing:           1 package
+
+Total size of inbound packages is 825 KiB. Need to download 825 KiB.
+After this operation, 3 MiB extra will be used (install 3 MiB, remove 42 B).
+Operation aborted by the user.

@@ -1,0 +1,6 @@
+/.build-inputs/
+/node_modules/
+/test/visual/node_modules/
+/dist/
+/dist-preview/
+/test/visual/output/

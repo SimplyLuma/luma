@@ -1,0 +1,255 @@
+From 2924dab906b3dc9e3b48e766637618ce53615c23 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Thu, 2 Jul 2026 15:30:48 +0200
+Subject: [PATCH 2/3] shared-qmi: unlock AFW-gated GNSS engines at LOC start
+
+Newer Snapdragon GNSS engines (e.g. gnss8 in the SM7635/Fairphone 6)
+only allow positioning for clients registered as application framework
+("AFW", i.e. the Android framework) clients: for anyone else,
+QMI_LOC_REG_EVENTS fails with INVALID_ARGUMENT and QMI_LOC_START with
+GENERAL_FAILURE ("IsPosRequestAllowed: FORCED_DISABLED" in the
+engine's own logic). ModemManager issued START first and never
+identified itself, so GPS could not be enabled at all on these devices.
+
+Reorder the LOC bring-up to register-events -> start (the order the
+Qualcomm location HAL uses), identifying as an AFW client with the
+client identification TLVs added in libqmi 1.39.1, and bump the libqmi
+requirement accordingly.
+
+Isolating the TLVs on the gated engine showed the client type is the
+only TLV actually checked (the client string and Enable Positioning
+Request Notification are ignored for AFW clients, matching their
+documentation in location_service_v02.h), so only the client type and
+an informational "MM" client string are sent. Should an engine reject
+the registration carrying the identification TLVs, it is retried once
+without them, i.e. exactly what was always sent before.
+
+This changes the LOC messages every QMI modem sees, and it has only
+been tested on the Fairphone 6: the effect of the new TLVs and of the
+reordering on other LOC engines is unknown (the retry above bounds the
+worst case for the TLVs, not for the reordering). Regression testing
+on other QMI modems would be very welcome.
+
+The tracking-events registration that previously followed a successful
+START is thereby folded into the initial register-events; the LOC
+client and NMEA handler are still only recorded in the private info
+once START has succeeded. This also fixes a pre-existing issue where a
+register-events failure after a successful START returned an error
+while leaving the engine running with no indication handlers connected.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ meson.build         |   2 +-
+ src/mm-shared-qmi.c | 139 +++++++++++++++++++++++++++-----------------
+ 2 files changed, 86 insertions(+), 55 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 3cf29e80..e5e3d0be 100644
+--- a/meson.build
++++ b/meson.build
+@@ -277,7 +277,7 @@ config_h.set('WITH_MBIM', enable_mbim)
+ # QMI support (enabled by default)
+ enable_qmi = get_option('qmi')
+ if enable_qmi
+-  qmi_glib_dep = dependency('qmi-glib', version: '>= 1.37.95',
++  qmi_glib_dep = dependency('qmi-glib', version: '>= 1.39.1',
+                             required: not get_option('subproject-fallback'))
+ 
+   if not qmi_glib_dep.found() and get_option('subproject-fallback')
+diff --git a/src/mm-shared-qmi.c b/src/mm-shared-qmi.c
+index d93698a6..09aa987a 100644
+--- a/src/mm-shared-qmi.c
++++ b/src/mm-shared-qmi.c
+@@ -5646,33 +5646,67 @@ pds_gps_service_state_start_ready (QmiClientPds *client,
+     qmi_message_pds_set_auto_tracking_state_input_unref (input);
+ }
+ 
++static void loc_register_events_ready (QmiClientLoc *client, GAsyncResult *res, GTask *task);
++
++/* Send the LOC event registration, optionally identifying as an
++ * application framework ("AFW", i.e. the Android framework) client: some
++ * GNSS engines (e.g. gnss8 in the SM7635) only allow positioning for AFW
++ * clients, and reject both event registration and QMI_LOC_START for
++ * unidentified clients. */
+ static void
+-loc_register_events_ready (QmiClientLoc *client,
+-                           GAsyncResult *res,
+-                           GTask        *task)
++gps_engine_loc_register_events (QmiClientLoc *client,
++                                GTask        *task,
++                                gboolean      identify)
+ {
+-    MMSharedQmi                       *self;
+-    Private                           *priv;
+-    QmiMessageLocRegisterEventsOutput *output;
+-    GError                            *error = NULL;
++    QmiMessageLocRegisterEventsInput *input;
++    guint64                           event_mask;
++
++    event_mask = QMI_LOC_EVENT_REGISTRATION_FLAG_NMEA |
++                 QMI_LOC_EVENT_REGISTRATION_FLAG_INJECT_TIME_REQUEST |
++                 QMI_LOC_EVENT_REGISTRATION_FLAG_INJECT_POSITION_REQUEST;
++    input = qmi_message_loc_register_events_input_new ();
++    qmi_message_loc_register_events_input_set_event_registration_mask (input, event_mask, NULL);
++    if (identify) {
++        qmi_message_loc_register_events_input_set_client_type (input, QMI_LOC_CLIENT_TYPE_AFW, NULL);
++        qmi_message_loc_register_events_input_set_client_string_id (input, "MM", NULL);
++    }
++    g_task_set_task_data (task, GUINT_TO_POINTER (identify), NULL);
++    qmi_client_loc_register_events (client,
++                                    input,
++                                    10,
++                                    NULL,
++                                    (GAsyncReadyCallback) loc_register_events_ready,
++                                    task);
++    qmi_message_loc_register_events_input_unref (input);
++}
++
++static void
++loc_start_ready (QmiClientLoc *client,
++                 GAsyncResult *res,
++                 GTask        *task)
++{
++    MMSharedQmi              *self;
++    Private                  *priv;
++    QmiMessageLocStartOutput *output;
++    GError                   *error = NULL;
+ 
+-   output = qmi_client_loc_register_events_finish (client, res, &error);
+-   if (!output) {
++    output = qmi_client_loc_start_finish (client, res, &error);
++    if (!output) {
+         g_prefix_error (&error, "QMI operation failed: ");
+         g_task_return_error (task, error);
+         g_object_unref (task);
+         return;
+-   }
++    }
+ 
+-    if (!qmi_message_loc_register_events_output_get_result (output, &error)) {
+-        g_prefix_error (&error, "Couldn't not register tracking events: ");
++    if (!qmi_message_loc_start_output_get_result (output, &error)) {
++        g_prefix_error (&error, "Couldn't start GPS engine: ");
+         g_task_return_error (task, error);
+         g_object_unref (task);
+-        qmi_message_loc_register_events_output_unref (output);
++        qmi_message_loc_start_output_unref (output);
+         return;
+     }
+ 
+-    qmi_message_loc_register_events_output_unref (output);
++    qmi_message_loc_start_output_unref (output);
+ 
+     self = g_task_get_source_object (task);
+     priv = get_private (self);
+@@ -5691,16 +5725,16 @@ loc_register_events_ready (QmiClientLoc *client,
+ }
+ 
+ static void
+-loc_start_ready (QmiClientLoc *client,
+-                 GAsyncResult *res,
+-                 GTask        *task)
++loc_register_events_ready (QmiClientLoc *client,
++                           GAsyncResult *res,
++                           GTask        *task)
+ {
+-    QmiMessageLocRegisterEventsInput *input;
+-    QmiMessageLocStartOutput         *output;
+-    guint64                           event_mask;
+-    GError                           *error = NULL;
++    MMSharedQmi                       *self;
++    QmiMessageLocRegisterEventsOutput *output;
++    QmiMessageLocStartInput           *input;
++    GError                            *error = NULL;
+ 
+-    output = qmi_client_loc_start_finish (client, res, &error);
++    output = qmi_client_loc_register_events_finish (client, res, &error);
+     if (!output) {
+         g_prefix_error (&error, "QMI operation failed: ");
+         g_task_return_error (task, error);
+@@ -5708,32 +5742,40 @@ loc_start_ready (QmiClientLoc *client,
+         return;
+     }
+ 
+-    if (!qmi_message_loc_start_output_get_result (output, &error)) {
+-        g_prefix_error (&error, "Couldn't start GPS engine: ");
++    if (!qmi_message_loc_register_events_output_get_result (output, &error)) {
++        qmi_message_loc_register_events_output_unref (output);
++        /* Engines predating the client identification TLVs may reject the
++         * identified registration; retry once without identifying, which
++         * matches what was always sent before */
++        if (g_task_get_task_data (task)) {
++            self = g_task_get_source_object (task);
++            mm_obj_dbg (self, "couldn't register location events as AFW client: %s; retrying without client identification", error->message);
++            g_clear_error (&error);
++            gps_engine_loc_register_events (client, task, FALSE);
++            return;
++        }
++        g_prefix_error (&error, "Couldn't register location events: ");
+         g_task_return_error (task, error);
+         g_object_unref (task);
+-        qmi_message_loc_start_output_unref (output);
+         return;
+     }
+ 
+-    qmi_message_loc_start_output_unref (output);
++    qmi_message_loc_register_events_output_unref (output);
+ 
+-    input = qmi_message_loc_register_events_input_new ();
+-    event_mask = QMI_LOC_EVENT_REGISTRATION_FLAG_NMEA |
+-                 QMI_LOC_EVENT_REGISTRATION_FLAG_INJECT_TIME_REQUEST |
+-                 QMI_LOC_EVENT_REGISTRATION_FLAG_INJECT_POSITION_REQUEST;
+-    qmi_message_loc_register_events_input_set_event_registration_mask (
+-        input, event_mask, NULL);
+-    qmi_client_loc_register_events (client,
+-                                    input,
+-                                    10,
+-                                    NULL,
+-                                    (GAsyncReadyCallback) loc_register_events_ready,
+-                                    task);
+-    qmi_message_loc_register_events_input_unref (input);
++    input = qmi_message_loc_start_input_new ();
++    qmi_message_loc_start_input_set_session_id (input, DEFAULT_LOC_SESSION_ID, NULL);
++    qmi_message_loc_start_input_set_intermediate_report_state (input, QMI_LOC_INTERMEDIATE_REPORT_STATE_DISABLE, NULL);
++    qmi_message_loc_start_input_set_minimum_interval_between_position_reports (input, 1000, NULL);
++    qmi_message_loc_start_input_set_fix_recurrence_type (input, QMI_LOC_FIX_RECURRENCE_TYPE_REQUEST_PERIODIC_FIXES, NULL);
++    qmi_client_loc_start (client,
++                          input,
++                          10,
++                          NULL,
++                          (GAsyncReadyCallback) loc_start_ready,
++                          task);
++    qmi_message_loc_start_input_unref (input);
+ }
+ 
+-
+ static void
+ start_gps_engine (MMSharedQmi         *self,
+                   GAsyncReadyCallback  callback,
+@@ -5771,20 +5813,9 @@ start_gps_engine (MMSharedQmi         *self,
+                                         MM_PORT_QMI_FLAG_DEFAULT,
+                                         NULL);
+     if (client) {
+-        QmiMessageLocStartInput *input;
+-
+-        input = qmi_message_loc_start_input_new ();
+-        qmi_message_loc_start_input_set_session_id (input, DEFAULT_LOC_SESSION_ID, NULL);
+-        qmi_message_loc_start_input_set_intermediate_report_state (input, QMI_LOC_INTERMEDIATE_REPORT_STATE_DISABLE, NULL);
+-        qmi_message_loc_start_input_set_minimum_interval_between_position_reports (input, 1000, NULL);
+-        qmi_message_loc_start_input_set_fix_recurrence_type (input, QMI_LOC_FIX_RECURRENCE_TYPE_REQUEST_PERIODIC_FIXES, NULL);
+-        qmi_client_loc_start (QMI_CLIENT_LOC (client),
+-                              input,
+-                              10,
+-                              NULL,
+-                              (GAsyncReadyCallback) loc_start_ready,
+-                              task);
+-        qmi_message_loc_start_input_unref (input);
++        /* Register events before starting; register-before-start is the
++         * order the Qualcomm location HAL uses */
++        gps_engine_loc_register_events (QMI_CLIENT_LOC (client), task, TRUE);
+         return;
+     }
+ 
+-- 
+2.55.0
+

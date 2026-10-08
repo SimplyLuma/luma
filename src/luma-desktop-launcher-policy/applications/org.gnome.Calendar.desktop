@@ -1,0 +1,11 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Calendar
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=gnome-calendar --file-forwarding org.gnome.Calendar @@u %U @@
+Icon=org.gnome.Calendar
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Office;Calendar;Core;
+MimeType=text/calendar;
+DBusActivatable=true

@@ -1,0 +1,68 @@
+# S: gnome-shell .207 with Nick's real layout (notifications on the top edge) at 1920x1200.
+# Login (Poster), the dock on this screen, the notification pill width, the outside-click
+# collapse, a lock-screen notification row (the body must stay hidden), lock and unlock,
+# then rollback to the base deployment.
+name: shelf207-1920
+display: 1920x1200
+steps:
+  - wait_greeter: 240
+  - wait: 8
+  - screenshot: greeter
+  - click: [1500, 714]
+  - key: [ctrl+a, backspace]
+  - type_secret: lumatest
+  - key: ret
+  - wait_session: 120
+  - wait: 15
+  - expect: {name: "first login - the Shell answers D-Bus", ssh_user: "timeout 10 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.freedesktop.DBus.Properties.Get org.gnome.Shell ShellVersion"}
+  - ssh_user: "gsettings set org.project_luma.shell-state shelf-arrangement \"[{'display': <''>, 'edge': <'bottom'>, 'anchor': <'end'>, 'position': <0.5>, 'islands': <['well', 'clock', 'quick-options']>}, {'display': <''>, 'edge': <'bottom'>, 'anchor': <'center'>, 'position': <0.5>, 'islands': <['dock', 'folders']>}, {'display': <''>, 'edge': <'bottom'>, 'anchor': <'start'>, 'position': <0.5>, 'islands': <['live', 'media']>}, {'display': <''>, 'edge': <'top'>, 'anchor': <'center'>, 'position': <0.5>, 'islands': <['notifications']>}]\""
+  - reboot: true
+  - wait_greeter: 240
+  - wait: 8
+  - screenshot: greeter
+  - click: [1500, 714]
+  - key: [ctrl+a, backspace]
+  - type_secret: lumatest
+  - key: ret
+  - wait_session: 120
+  - wait: 15
+  - expect: {name: "login with Nick's arrangement - the Shell answers D-Bus", ssh_user: "timeout 10 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.freedesktop.DBus.Properties.Get org.gnome.Shell ShellVersion"}
+  - expect: {name: "Nick's arrangement is stored (top notifications group)", ssh_user: "gsettings get org.project_luma.shell-state shelf-arrangement | grep -q \"'edge': <'top'>\""}
+  - expect: {name: "gnome-shell is not spinning", ssh: "test $(ps -C gnome-shell -o %cpu= | sort -n | tail -1 | cut -d. -f1) -lt 60"}
+  - expect: {name: "packages are the candidate", ssh: "rpm -q gnome-shell | grep -q surfacepreview20260914.207"}
+  - screenshot: shelf-dock-and-status
+  - ssh_user: "notify-send 'Build finished' 'luma-nightly.iso is ready'"
+  - wait: 1
+  - screenshot: notification-card
+  - ssh_user: "notify-send -a Messages --hint=string:desktop-entry:org.projectluma.Messages 'Alex Rivera' 'Lunch at 12?'"
+  - wait: 10
+  - screenshot: notification-pill-width
+  - click: [960, 8]
+  - wait: 2
+  - screenshot: tray-open
+  - click: [450, 600]
+  - wait: 2
+  - screenshot: tray-after-outside-click-must-be-closed
+  - key: super+l
+  - wait: 3
+  - expect: {name: "Super+L locks the session", ssh_user: "gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.GetActive | grep -q true"}
+  - ssh_user: "notify-send -a Messages --hint=string:desktop-entry:org.projectluma.Messages 'Alex Rivera' 'The door code is 4471'"
+  - wait: 2
+  - key: shift
+  - wait: 2
+  - screenshot: lock-notification-row-must-hide-body-4471
+  - key: ret
+  - wait: 2
+  - type_secret: lumatest
+  - key: ret
+  - wait: 6
+  - screenshot: unlocked
+  - expect: {name: "after unlock - the Shell answers D-Bus", ssh_user: "timeout 10 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.freedesktop.DBus.Properties.Get org.gnome.Shell ShellVersion"}
+  - expect: {name: "unlocked", ssh_user: "gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.GetActive | grep -q false"}
+  - expect: {name: "no JS errors in the session", ssh: "! journalctl -b --no-pager | grep -q 'JS ERROR'"}
+  - ssh: "rpm-ostree rollback"
+  - reboot: true
+  - wait_greeter: 240
+  - wait: 8
+  - screenshot: greeter-after-rollback
+  - expect: {name: "rollback boots the previous Shell", ssh: "! rpm -q gnome-shell | grep -q surfacepreview20260914.207"}

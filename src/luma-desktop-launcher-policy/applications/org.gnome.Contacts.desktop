@@ -1,0 +1,10 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Contacts
+Icon=org.gnome.Contacts
+Exec=/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=gnome-contacts org.gnome.Contacts
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=GNOME;GTK;Office;ContactManagement;
+DBusActivatable=true

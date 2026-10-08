@@ -1,0 +1,143 @@
+diff --git a/src/ui/math-display.blp b/src/ui/math-display.blp
+--- a/src/ui/math-display.blp
++++ b/src/ui/math-display.blp
+@@ -6,3 +6,18 @@
+-
++  focusable: true;
++
++  EventControllerKey event_controller {
++    propagation-phase: capture;
++    key-pressed => $key_press_cb();
++  }
++
++  GestureClick {
++    button: 0;
++    exclusive: true;
++    propagation-phase: capture;
++    pressed => $focus_display_cb();
++  }
++
+   Overlay {
++    vexpand: true;
++
+     ScrolledWindow display_scrolled {
+@@ -26,13 +39,8 @@
+         height-request: "45";
+         input-hints: "no-emoji|no-spellcheck|inhibit-osk";
+         cursor-visible: false;
+-        opacity: 0;
++        visible: false;
+         buffer: bind template.equation;
+-
+-        EventControllerKey event_controller {
+-          propagation-phase: capture;
+-          key-pressed => $key_press_cb();
+-        }
+       }
+ 
+       EventControllerScroll {
+@@ -46,6 +54,9 @@
+       label: "0";
+       halign: end;
+-      valign: center;
++      valign: fill;
++      hexpand: true;
++      vexpand: true;
++      yalign: 0.5;
+       margin-end: 16;
+       can-target: false;
+       single-line-mode: true;
+diff --git a/src/math-display.vala b/src/math-display.vala
+--- a/src/math-display.vala
++++ b/src/math-display.vala
+@@ -83,7 +83,7 @@
+         equation.notify["base-label"].connect (base_label_changed_cb);
+         equation.notify["status"].connect (status_changed_cb);
+         equation.notify["display"].connect (update_result_scale);
+-        source_view.notify["width"].connect (update_result_scale);
++        result_label.notify["width"].connect (update_result_scale);
+         status_changed_cb ();
+         update_result_scale ();
+ 
+@@ -480,6 +480,37 @@
+             }
+         }
+ 
++        if (state == 0)
++        {
++            if (c >= '0' && c <= '9')
++            {
++                equation.insert_digit (c - '0');
++                return true;
++            }
++
++            switch (keyval)
++            {
++            case Gdk.Key.BackSpace:
++                equation.backspace ();
++                return true;
++            case Gdk.Key.Delete:
++                equation.delete_next ();
++                return true;
++            case Gdk.Key.plus:
++                equation.insert ("+");
++                return true;
++            case Gdk.Key.parenleft:
++                equation.insert ("(");
++                return true;
++            case Gdk.Key.parenright:
++                equation.insert (")");
++                return true;
++            case Gdk.Key.percent:
++                equation.insert ("%");
++                return true;
++            }
++        }
++
+         return false;
+     }
+ 
+@@ -546,11 +577,11 @@
+         result_label.remove_css_class ("result-medium");
+         result_label.remove_css_class ("result-small");
+ 
+-        var width = source_view.get_width () - 32;
++        var width = result_label.get_width () - 32;
+         if (width <= 0 || equation.display == "")
+             return;
+ 
+-        var layout = source_view.create_pango_layout (equation.display);
++        var layout = result_label.create_pango_layout (equation.display);
+         int text_width;
+         int text_height;
+         layout.get_pixel_size (out text_width, out text_height);
+@@ -575,11 +606,17 @@
+         end.set_offset ((int) equation.error_token_end);
+ 
+         equation.select_range (start, end);
++    }
++
++    [GtkCallback]
++    private void focus_display_cb (Gtk.GestureClick gesture, int n_click, double x, double y)
++    {
++        base.grab_focus ();
+     }
+ 
+     public new void grab_focus ()
+     {
+-        source_view.grab_focus ();
++        base.grab_focus ();
+     }
+ 
+ }
+diff --git a/src/ui/style.css b/src/ui/style.css
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -476,6 +476,7 @@ button.action-button {
+   }
+ 
+   .display-result {
++    background-color: @view_bg_color;
+     color: @view_fg_color;
+     font-family: "Figtree";
+     font-size: 34px;

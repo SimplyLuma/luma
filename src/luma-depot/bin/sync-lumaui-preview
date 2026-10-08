@@ -1,0 +1,44 @@
+#!/bin/sh
+# Stage Depot beside the installed app. Run through the ThinkPad host bridge.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
+destination="$HOME/.local/share/luma-dev/lumaui-depot"
+
+LUMAUI_HOST=local LUMAUI_WORKTREE="$root" \
+  LUMAUI_DEST=.local/share/luma-dev/lumaui-depot \
+  sh "$HOME/Documents/LumaDesign/tools/sync-lumaui-preview.sh"
+
+mkdir -p "$destination/src" "$destination/bin" "$HOME/.local/share/applications"
+rsync -a --delete --exclude __pycache__ --exclude tests \
+  "$root/src/luma-depot/" "$destination/src/luma-depot/"
+rsync -a --delete --exclude __pycache__ --exclude tests \
+  "$root/src/luma-installer/" "$destination/src/luma-installer/"
+
+cat > "$destination/bin/run" <<'RUN'
+#!/bin/sh
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export PYTHONPATH="$here/python:$here/src/luma-depot:$here/src/luma-installer"
+export LUMA_APPKIT_ICON_PATH="$here/python/icons"
+export LUMA_DEPOT_STYLE_PATH="$here/src/luma-depot/data/depot.css"
+export LUMA_DEPOT_LUMAUI_PREVIEW=1
+unset LUMA_DEPOT_PREVIEW LUMA_DEPOT_FIXTURE LUMA_DEPOT_FIXTURE_STATE
+exec python3 -m luma_depot.window "$@"
+RUN
+chmod 755 "$destination/bin/run"
+
+cat > "$HOME/.local/share/applications/org.projectluma.Depot.LumaUIPreview.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Depot (LumaUI preview)
+Comment=Depot from the LumaUI app worktree
+Exec=/var/home/nick/.local/share/luma-dev/lumaui-depot/bin/run
+Icon=org.projectluma.Depot
+Terminal=false
+Categories=System;PackageManager;
+StartupNotify=true
+StartupWMClass=org.projectluma.Depot.LumaUIPreview
+DESKTOP
+
+printf 'Depot preview staged at %s (real providers, separate application ID).\n' "$destination"

@@ -1,0 +1,10 @@
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Started app-gnome-org.projectluma.Files-4410.scope - Application launched by gnome-shell.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "2104", "SYSLOG_IDENTIFIER": "gnome-shell", "MESSAGE": "Window manager warning: Buffer release timed out"}
+{"_PID": "1011", "SYSLOG_IDENTIFIER": "NetworkManager", "MESSAGE": "<info>  [1789786000.1234] dhcp4 (wlp0s20f3): state changed new lease"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Starting fwupd-refresh.service - Refresh fwupd metadata and update motd...", "MESSAGE_ID": "7d4958e842da4a758f6c1cdc7b36dcc5"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Finished fwupd-refresh.service - Refresh fwupd metadata and update motd.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "1117", "SYSLOG_IDENTIFIER": "systemd-logind", "MESSAGE": "The system will suspend now!", "MESSAGE_ID": "9e7066279dc8403da79ce4b1a69064b2"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Reached target sleep.target - Sleep.", "MESSAGE_ID": "39f53479d3a045ac8e11786248231fbf"}
+{"_PID": "1", "SYSLOG_IDENTIFIER": "systemd", "MESSAGE": "Starting systemd-suspend.service - System Suspend...", "MESSAGE_ID": "7d4958e842da4a758f6c1cdc7b36dcc5"}
+{"_PID": "4920", "SYSLOG_IDENTIFIER": "systemd-sleep", "MESSAGE": "Performing sleep operation 'suspend'..."}
+{"_PID": "0", "SYSLOG_IDENTIFIER": "kernel", "MESSAGE": "PM: suspend entry (s2idle)"}

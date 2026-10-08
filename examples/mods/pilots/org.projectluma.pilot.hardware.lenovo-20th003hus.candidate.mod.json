@@ -1,0 +1,45 @@
+{
+  "schema": "org.luma.mod/v0.1",
+  "identity": {
+    "id": "org.projectluma.pilot.hardware.lenovo-20th003hus",
+    "version": "0.1.0",
+    "kind": "hardware",
+    "name": "ThinkPad P1 Gen 3 Hardware Qualification Pilot",
+    "summary": "Evidence-only qualification contract for the observed Lenovo 20TH003HUS lab machine.",
+    "license": ["Apache-2.0"],
+    "publisher": {"id": "org.projectluma", "name": "Project Luma"}
+  },
+  "compatibility": {
+    "luma_base": ">=0.1.0 <1.0.0",
+    "architectures": ["x86_64"],
+    "presentations": ["desktop"],
+    "hardware": ["dmi:LENOVO:20TH003HUS"],
+    "kernel_releases": [],
+    "install_modes": ["running-system", "image-compose"]
+  },
+  "dependencies": [],
+  "capabilities": {
+    "provides": [
+      {"id": "org.luma.hardware.qualification.lenovo-20th003hus", "version": "0.1.0", "ownership": "shared", "reason": "Records evidence for this exact DMI identity without claiming an unmeasured driver change."}
+    ],
+    "requires": [], "conflicts": [], "replaces": []
+  },
+  "effects": {
+    "settings": [], "files": [], "packages": [], "services": [],
+    "dbus_names": [], "portals": [], "devices": [],
+    "configuration_domains": [], "kernel_modules": [], "firmware": [],
+    "boot_arguments": [], "user_data": [], "initramfs": false,
+    "secure_boot": "none"
+  },
+  "payloads": [],
+  "recovery": {
+    "previous_composition_retained": false,
+    "health_gate": "hardware-qualification-v1",
+    "user_data": "retain"
+  },
+  "evidence": {
+    "source": "none:observed-dmi-identity-only",
+    "source_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "signatures": []
+}

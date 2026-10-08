@@ -1,0 +1,439 @@
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/lumaGrid.js
+@@ -0,0 +1,377 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// First-party window picker. Mutter owns window content, activation and close.
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import Cogl from 'gi://Cogl';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import {gridLayout, gridNeighbor} from './gridLayout.js';
++
++let activeGrid = null;
++
++// Keep the native handheld carousel unless Grid is explicitly invoked (Alt-Tab).
++export function isDefault() {
++    return GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld';
++}
++
++export function toggle() {
++    if (activeGrid)
++        activeGrid.destroy();
++    else
++        show();
++}
++
++export function show(backward = false, modifierMask = 0) {
++    if (activeGrid) {
++        activeGrid.step(backward ? 'Left' : 'Right');
++        return;
++    }
++    if (!Main.sessionMode.hasOverview || Main.sessionMode.isLocked)
++        return;
++    activeGrid = new GridPopup(backward, modifierMask);
++    activeGrid.open();
++}
++
++const RoundedPreview = GObject.registerClass(
++class RoundedPreview extends Shell.GLSLEffect {
++    vfunc_build_pipeline() {
++        this.add_glsl_snippet(Cogl.SnippetHook.FRAGMENT,
++            'uniform vec3 grid_shape;',
++            `vec2 p = cogl_tex_coord_in[0].st * grid_shape.xy;
++             vec2 q = abs(p - grid_shape.xy * 0.5) -
++                 (grid_shape.xy * 0.5 - vec2(grid_shape.z));
++             float d = length(max(q, vec2(0.0))) +
++                 min(max(q.x, q.y), 0.0) - grid_shape.z;
++             cogl_color_out *= 1.0 - smoothstep(-0.5, 0.5, d);`, false);
++    }
++
++    setShape(width, height, radius) {
++        this.set_uniform_float(this.get_uniform_location('grid_shape'),
++            3, [width, height, radius]);
++    }
++});
++
++function allocate(actor, x, y, width, height) {
++    const box = new Clutter.ActorBox();
++    box.set_origin(x, y);
++    box.set_size(Math.max(0, width), Math.max(0, height));
++    actor.allocate(box);
++}
++
++const GridCard = GObject.registerClass(
++class GridCard extends St.Widget {
++    _init(window, popup, index) {
++        super._init({reactive: true, can_focus: true,
++            accessible_role: Atk.Role.PUSH_BUTTON});
++        this.window = window;
++        this._popup = popup;
++        this._selected = false;
++        this._radius = 9;
++        this._body = new Clutter.Actor();
++        this._body.layout_manager = new Shell.WindowPreviewLayout();
++        this._body.layout_manager.add_window(window);
++        window.foreach_transient(transient => {
++            if (transient.is_attached_dialog() && transient.get_compositor_private())
++                this._body.layout_manager.add_window(transient);
++            return true;
++        });
++        this._rounded = new RoundedPreview();
++        this._body.add_effect(this._rounded);
++        this._edge = new St.Widget({reactive: false});
++        this._header = new St.BoxLayout({clip_to_allocation: true, style: 'spacing: 6px; padding-right: 22px;'});
++        const app = Shell.WindowTracker.get_default().get_window_app(window);
++        const icon = app?.create_icon_texture(20) ?? new St.Icon({
++            icon_name: 'application-x-executable-symbolic', icon_size: 20});
++        this._header.add_child(icon);
++        this._name = new St.Label({text: app?.get_name() ?? window.title ?? _('Window'),
++            x_expand: true, y_align: Clutter.ActorAlign.CENTER});
++        this._name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._header.add_child(this._name);
++        this._time = new St.Label({y_align: Clutter.ActorAlign.CENTER,
++            style: 'font-size: 11px; color: rgba(255,255,255,0.65);'});
++        this._header.add_child(this._time);
++        // Snapshot recency at entry. A clock/timer never reorders this surface.
++        const age = ((global.get_current_time() - window.get_user_time()) >>> 0) / 60000;
++        this._recency = index === 0 ? _('Current') : age < 1 ? _('Just now') :
++            _('%d min ago').format(Math.floor(age));
++        this._syncName();
++        this._close = new St.Button({style_class: 'window-close',
++            accessible_name: _('Close window'), icon_name: 'preview-close-symbolic',
++            style: 'width: 26px; height: 26px; padding: 0; min-width: 0; min-height: 0;',
++            visible: false});
++        this._close.connect('clicked', () => this.closeWindow());
++        this.add_child(this._edge);
++        this.add_child(this._body);
++        this.add_child(this._header);
++        this.add_child(this._close);
++        const click = new Clutter.ClickGesture();
++        click.connect('recognize', () => popup.activate(this));
++        this.add_action(click);
++        this.connect('notify::hover', () => this._syncSelection());
++        this.track_hover = true;
++        this.connect('key-focus-in', () => popup.selectCard(this));
++        window.connectObject('notify::minimized', () => this._syncName(),
++            'notify::title', () => this._syncName(),
++            'unmanaged', () => popup.removeCard(this), this);
++        this._body.layout_manager.connectObject('notify::bounding-box',
++            () => popup.reflow(), this);
++        this._syncSelection();
++    }
++
++    get dimensions() {
++        const bounds = this._body.layout_manager.bounding_box;
++        return {width: Math.max(1, bounds.get_width()), height: Math.max(1, bounds.get_height())};
++    }
++
++    _syncName() {
++        this._time.text = this.window.minimized ? _('Minimized') : this._recency;
++        this.accessible_name = `${this._name.text}: ${this.window.title}, ${this._time.text}`;
++    }
++
++    setSelected(selected) {
++        this._selected = selected;
++        this._syncSelection();
++    }
++
++    _syncSelection() {
++        const lifted = this._selected || this.hover;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this.ease({translation_y: lifted ? -3 * scale : 0,
++            duration: 160, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        this._name.opacity = lifted ? 255 : 204;
++        this._close.visible = lifted && this.window.can_close();
++        this._edge.set_style(`border-radius: ${this._radius}px;
++            border: 1px solid rgba(255,255,255,0.18);
++            box-shadow: 0 ${lifted ? 8 : 4}px ${lifted ? 24 : 14}px rgba(0,0,0,0.35);`);
++    }
++
++    closeWindow() {
++        if (this.window.can_close())
++            this.window.delete(global.get_current_time());
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const width = box.get_width();
++        const height = box.get_height() - 28 * scale;
++        this._time.visible = width >= 120 * scale;
++        allocate(this._header, 0, 0, width, 20 * scale);
++        allocate(this._edge, 0, 28 * scale, width, height);
++        allocate(this._body, 0, 28 * scale, width, height);
++        allocate(this._close, width - 23 * scale, 25 * scale,
++            26 * scale, 26 * scale);
++        this._rounded.setShape(width, height, this._radius * scale);
++    }
++});
++
++const GridPopup = GObject.registerClass(
++class GridPopup extends St.Widget {
++    _init(backward, modifierMask) {
++        super._init({reactive: true, can_focus: true,
++            accessible_name: _('Grid'), accessible_role: Atk.Role.PANEL});
++        // Native switchers finish on the primary modifier, not Shift.
++        this._mask = modifierMask ? 2 ** Math.floor(Math.log2(modifierMask)) : 0;
++        this._scroll = 0;
++        this._scrollX = 0;
++        this._cards = [];
++        this._selected = 0;
++        this._lastSize = '';
++        // Clone only the existing desktop background group, at its exact stage
++        // coordinates. Do not invoke Overview or its background zoom/crop path.
++        this._wallpaper = new Clutter.Clone({source: Main.layoutManager._backgroundGroup});
++        this.add_child(this._wallpaper);
++        this._stage = new St.Widget({clip_to_allocation: true});
++        const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
++        pan.connect('recognize', () => {
++            this._panStart = this._scroll;
++            this._panStartX = this._scrollX;
++        });
++        pan.connect('pan-update', gesture => {
++            const delta = gesture.get_accumulated_delta();
++            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            this._scroll = Math.max(0, Math.min(this._panStart - delta.get_y() / scale,
++                Math.max(0, this._geometry.height - this._contentHeight)));
++            this._scrollX = Math.max(-this._overflowX / 2, Math.min(this._overflowX / 2,
++                this._panStartX - delta.get_x() / scale));
++            this.queue_relayout();
++        });
++        this._stage.add_action(pan);
++        this.add_child(this._stage);
++        const windows = global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
++            .map(w => w.is_attached_dialog() ? w.get_transient_for() : w)
++            .filter((w, i, list) => w && !w.skip_taskbar && list.indexOf(w) === i &&
++                w.get_compositor_private());
++        windows.forEach((window, index) => {
++            const card = new GridCard(window, this, index);
++            this._cards.push(card);
++            this._stage.add_child(card);
++        });
++        this._selected = modifierMask && this._cards.length > 1
++            ? backward ? this._cards.length - 1 : 1 : 0;
++        this.add_constraint(new Clutter.BindConstraint({source: global.stage,
++            coordinate: Clutter.BindCoordinate.ALL}));
++        const dismiss = new Clutter.ClickGesture();
++        dismiss.connect('may-recognize', () => !this._cards.some(c => c.hover));
++        dismiss.connect('recognize', () => this.destroy());
++        this.add_action(dismiss);
++        Main.layoutManager.connectObject('system-modal-opened', () => this.destroy(),
++            'monitors-changed', () => this.reflow(), this);
++        global.display.connectObject('workareas-changed', () => this.reflow(),
++            // Reveal newly created close-confirmation/authentication dialogs.
++            'window-created', () => this.destroy(), this);
++        Main.sessionMode.connectObject('updated', () => {
++            if (Main.sessionMode.isLocked || !Main.sessionMode.hasOverview)
++                this.destroy();
++        }, this);
++        this.connect('destroy', () => {
++            if (this._grab)
++                Main.popModal(this._grab);
++            this._grab = null;
++            if (activeGrid === this)
++                activeGrid = null;
++        });
++    }
++
++    open() {
++        Main.uiGroup.add_child(this);
++        Main.uiGroup.set_child_above_sibling(this, global.window_group);
++        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
++        this.grab_key_focus();
++        this._syncSelection();
++        // Match native switcher's Alt-release race handling.
++        if (this._mask && !(global.get_pointer()[2] & this._mask))
++            this.activate(this._cards[this._selected]);
++    }
++
++    reflow() {
++        this._dirty = true;
++        this.queue_relayout();
++    }
++
++    removeCard(card) {
++        const selected = this._cards[this._selected];
++        this._cards = this._cards.filter(c => c !== card);
++        card.destroy();
++        this._selected = Math.max(0, this._cards.indexOf(selected));
++        this.reflow();
++        this._syncSelection();
++    }
++
++    selectCard(card) {
++        this._selected = Math.max(0, this._cards.indexOf(card));
++        this._syncSelection();
++    }
++
++    _syncSelection() {
++        this._cards.forEach((card, i) => card.setSelected(i === this._selected));
++        this._cards[this._selected]?.grab_key_focus();
++        const item = this._geometry?.items[this._selected];
++        if (!item)
++            return;
++        const viewport = this._contentHeight;
++        if (item.labelY < this._scroll)
++            this._scroll = item.labelY;
++        else if (item.y + item.height > this._scroll + viewport)
++            this._scroll = item.y + item.height - viewport;
++        this.queue_relayout();
++    }
++
++    step(direction) {
++        if (!this._geometry)
++            return;
++        this._selected = gridNeighbor(this._geometry, this._selected, direction);
++        this._syncSelection();
++    }
++
++    activate(card) {
++        const window = card?.window;
++        this.destroy();
++        if (window)
++            Main.activateWindow(window);
++    }
++
++    vfunc_key_press_event(event) {
++        const key = event.get_key_symbol();
++        const directions = new Map([[Clutter.KEY_Left, 'Left'], [Clutter.KEY_Right, 'Right'],
++            [Clutter.KEY_Up, 'Up'], [Clutter.KEY_Down, 'Down'],
++            [Clutter.KEY_Home, 'Home'], [Clutter.KEY_End, 'End']]);
++        if (directions.has(key))
++            this.step(directions.get(key));
++        else if (key === Clutter.KEY_Tab || key === Clutter.KEY_ISO_Left_Tab)
++            this.step(event.get_state() & Clutter.ModifierType.SHIFT_MASK ? 'Left' : 'Right');
++        else if (key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter)
++            this.activate(this._cards[this._selected]);
++        else if (key === Clutter.KEY_Delete)
++            this._cards[this._selected]?.closeWindow();
++        else if (key === Clutter.KEY_Escape)
++            this.destroy();
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_key_release_event(event) {
++        if (this._mask && !(global.get_pointer()[2] & this._mask))
++            this.activate(this._cards[this._selected]);
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_scroll_event(event) {
++        const direction = event.get_scroll_direction();
++        const horizontal = direction === Clutter.ScrollDirection.SMOOTH
++            ? event.get_scroll_delta()[0] : 0;
++        this._scrollX = Math.max(-this._overflowX / 2, Math.min(this._overflowX / 2,
++            this._scrollX + horizontal * 60));
++        const delta = direction === Clutter.ScrollDirection.SMOOTH
++            ? event.get_scroll_delta()[1] : direction === Clutter.ScrollDirection.UP ? -1 : 1;
++        this._scroll = Math.max(0, Math.min(this._scroll + delta * 60,
++            Math.max(0, (this._geometry?.height ?? 0) - this._contentHeight)));
++        this.queue_relayout();
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const area = Main.layoutManager.getWorkAreaForMonitor(Main.layoutManager.primaryIndex);
++        // Insets reserve lift/shadow and maintain the stage's outside slack.
++        const width = Math.max(1, area.width / scale - 112);
++        const height = Math.max(1, area.height / scale - 56);
++        this._contentHeight = height;
++        // Clip at the work area, leaving outside space for labels/lift/shadow.
++        allocate(this._stage, area.x, area.y, area.width, area.height);
++        const size = `${width}:${height}:${this._cards.length}`;
++        const reflow = this._dirty || this._lastSize !== size;
++        if (reflow) {
++            this._geometry = gridLayout(this._cards.map(c => ({
++                width: c.dimensions.width / scale, height: c.dimensions.height / scale})),
++            width, height);
++            this._scroll = Math.min(this._scroll, Math.max(0, this._geometry.height - height));
++            this._overflowX = Math.max(0, ...this._geometry.rows.map(row => row.width - width));
++            this._scrollX = Math.max(-this._overflowX / 2,
++                Math.min(this._overflowX / 2, this._scrollX));
++        }
++        this._geometry.items.forEach((item, index) => {
++            const card = this._cards[index];
++            if (card._radius !== item.radius) {
++                card._radius = item.radius;
++                card._syncSelection();
++            }
++            card.save_easing_state();
++            card.set_easing_duration(this._lastSize && reflow ? 220 : 0);
++            card.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
++            allocate(card, (56 + item.x - this._scrollX) * scale,
++                (28 + item.labelY - this._scroll) * scale,
++                item.width * scale, (item.height + 28) * scale);
++            card.restore_easing_state();
++        });
++        this._lastSize = size;
++        this._dirty = false;
++    }
++});
+diff --git a/js/ui/overview.js b/js/ui/overview.js
+--- a/js/ui/overview.js
++++ b/js/ui/overview.js
+@@ -14,6 +14,7 @@
+ import * as DND from './dnd.js';
+ import * as LayoutManager from './layout.js';
+ import * as Main from './main.js';
++import * as LumaGrid from './lumaGrid.js';
+ import * as OverviewControls from './overviewControls.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import * as WindowManager from './windowManager.js';
+@@ -603,6 +604,10 @@
+     }
+ 
+     toggle() {
++        if (LumaGrid.isDefault() && !this._visible && !this.isDummy) {
++            LumaGrid.toggle();
++            return;
++        }
+         if (this.isDummy)
+             return;
+ 
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -22,6 +22,7 @@
+ import * as WorkspaceAnimation from './workspaceAnimation.js';
+ 
+ import * as Main from './main.js';
++import * as LumaGrid from './lumaGrid.js';
+ 
+ export const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+ 
+@@ -1674,6 +1675,11 @@
+     }
+ 
+     _startSwitcher(display, window, event, binding) {
++        if (['switch-applications', 'switch-applications-backward',
++            'switch-windows', 'switch-windows-backward'].includes(binding.get_name())) {
++            LumaGrid.show(binding.is_reversed(), binding.get_mask());
++            return;
++        }
+         let constructor = null;
+         switch (binding.get_name()) {
+         case 'switch-applications':
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -133,6 +133,8 @@
+     <file>ui/windowManager.js</file>
+     <file>ui/windowMenu.js</file>
+     <file>ui/windowPreview.js</file>
++    <file>ui/gridLayout.js</file>
++    <file>ui/lumaGrid.js</file>
+     <file>ui/workspace.js</file>
+     <file>ui/workspaceAnimation.js</file>
+     <file>ui/workspacesView.js</file>

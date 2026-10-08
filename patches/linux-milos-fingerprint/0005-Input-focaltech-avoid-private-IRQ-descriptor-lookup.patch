@@ -1,0 +1,29 @@
+From 1387f7840a6afae8859172a023002eaa1ae53d35 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Thu, 20 Aug 2026 22:23:00 -0500
+Subject: [PATCH 5/5] Input: focaltech: avoid private IRQ descriptor lookup
+
+Sparse-IRQ kernels do not export irq_to_desc() to modules. The driver's sysfs
+readout only used it to expose internal IRQ-disable nesting. Report the
+driver's own IRQ-enabled state instead, avoiding a private kernel dependency
+without changing interrupt control or the ioctl ABI.
+---
+ drivers/input/finger/focal_finger/ff_core.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/input/finger/focal_finger/ff_core.c b/drivers/input/finger/focal_finger/ff_core.c
+index 39eaa7a..4db65f9 100644
+--- a/drivers/input/finger/focal_finger/ff_core.c
++++ b/drivers/input/finger/focal_finger/ff_core.c
+@@ -802,8 +802,7 @@ static ssize_t ff_irq_show(struct device *dev, struct device_attribute *attr, char *buf)
+ 
+     FF_LOGV("'%s' enter.", __func__);
+     if (ff_ctx && (ff_ctx->irq_num > 0) && ff_ctx->b_driver_inited) {
+-        struct irq_desc *desc = irq_to_desc(ff_ctx->irq_num);
+-        count = snprintf(buf, PAGE_SIZE, "irq_depth:%d\n", desc->depth);
++        count = snprintf(buf, PAGE_SIZE, "irq_enabled:%d\n", ff_ctx->b_irq_enabled);
+     }
+     FF_LOGV("'%s' leave.", __func__);
+     return count;
+-- 
+2.54.0 (Apple Git-157)

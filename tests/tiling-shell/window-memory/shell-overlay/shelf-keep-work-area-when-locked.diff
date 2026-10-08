@@ -1,0 +1,46 @@
+--- a/js/ui/shelf.js (gnome-shell 50.3-1.luma.99…83)
++++ b/js/ui/shelf.js
+@@ -599,6 +599,12 @@
+                 this._surface.ease({opacity: 255, duration: 110,
+                     mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+             }});
++    }
++
++    _keepsWorkArea() {
++        return this._isDesktopSession() ||
++            (!Main.sessionMode.isGreeter && Main.sessionMode.currentMode === 'unlock-dialog' &&
++             GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld' && this._workAreaTracked);
+     }
+ 
+     _isDesktopSession() {
+@@ -774,9 +780,15 @@
+         this._surface.translation_x = 0;
+         this._surface.translation_y = 0;
+         if (!this._isDesktopSession()) {
+-            this._trackWorkArea(false);
+             Main.layoutManager.setChromeHidden(this, true);
+             this._restorePanelActors();
++            // The lock screen covers a running desktop: keep its work area, so
++            // maximized and tiled windows do not resize behind the lock screen
++            // and again as it is revealed. Monitor changes still move it.
++            if (this._keepsWorkArea())
++                this._syncGeometry();
++            else
++                this._trackWorkArea(false);
+             return;
+         }
+ 
+@@ -920,8 +932,11 @@
+         // The outer visual actor follows the strut actor's full bounds. Its
+         // group still measures its natural length independently for content-hug.
+         this._surface.set_size(geometry.width, geometry.height);
+-        this._trackWorkArea(this._isDesktopSession() &&
+-            this._group.get_children().some(actor => actor.visible));
++        if (this._isDesktopSession()) {
++            this._trackWorkArea(this._group.get_children().some(actor => actor.visible));
++        } else if (!this._keepsWorkArea()) {
++            this._trackWorkArea(false);
++        }
+         if (!this._chromeAlive())
+             return;
+         const workArea = geometry.workArea;

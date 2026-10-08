@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#61d9d0"/><stop offset=".48" stop-color="#32a7c4"/><stop offset="1" stop-color="#356bcb"/></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="globe" x1=".18" y1="0" x2=".82" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#d9e2e0"/></linearGradient>
+    <clipPath id="globeClip"><circle cx="512" cy="512" r="304"/></clipPath>
+    <filter id="ts" x="-35%" y="-35%" width="170%" height="170%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#171713" flood-opacity=".22"/></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+  <g filter="url(#ts)">
+    <circle cx="512" cy="512" r="304" fill="url(#globe)"/>
+    <g clip-path="url(#globeClip)" fill="none" stroke="#4d7180" stroke-width="22" stroke-linecap="round">
+      <ellipse cx="512" cy="512" rx="142" ry="372"/>
+      <path d="M226 428Q512 328 798 428M226 596Q512 696 798 596"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,191 @@
+From: Project Luma
+Subject: [PATCH] theme: white ink and a stroke for frost/glass windows, and keep it when tiled
+
+Two owner reports, one root cause each, in the same file.
+
+Window headers never read Luma's appearance mode. --headerbar-fg-color and
+--headerbar-bg-color are native GTK custom properties (_colors.scss, :root),
+and nothing in this series ever varied them by luma-treatment. Settings'
+surface-treatment panel writes G_DESKTOP_COLOR_SCHEME_DEFAULT for light,
+frost and glass alike -- only its own dark toggle writes prefer-dark -- so
+frost and glass windows loaded the *light* native GTK theme's headerbar
+colours: dark ink on a near-white bar. Exactly the class of bug the Shell's
+own menus had (gnome-shell patch 0152, same root cause, same session), and
+exactly the direction the owner asked reversed: "On LIGHT, a dark font is
+fine. On FROST and ESPECIALLY glass I think it needs to be white with drop
+shadow." The title label, the app-menu identity button, and the header-bar
+icons all inherit color from the one ancestor rule (headerbar { color:
+var(--headerbar-fg-color); }), so one override at window.csd.luma-treatment-*
+reaches all three.
+
+Frost and glass now define --headerbar-bg-color from the same smoked veil the
+window frame itself uses (config/shared/design-tokens.json,
+surface_treatments.frost/glass.frame) and --headerbar-fg-color: #ffffff, with
+one text-shadow and -gtk-icon-shadow -- the same shadow token the Shell ledger
+uses (js/ui/lumaSurfaceMaterials.js) -- so a window reads as the same material
+as the shelf above it. window.csd.luma-treatment-* is two classes on the
+window, which outranks :root's specificity regardless of source order. Light
+is untouched: the native values already read correctly there, and this file's
+own light gradient still applies.
+
+Tiled windows lost their stroke along with their outer shadow. 0032 bundles
+the per-treatment inset stroke and the three outer-elevation shadow layers
+into one box-shadow list, and zeroes the whole property for .maximized,
+.fullscreen and every .tiled* class together. 0036's own commit message says
+tiled windows "still draw no outer shadow (0032)" -- true for maximized and
+fullscreen, which meet the screen edge and want none, but for tiled it also
+means no stroke at all. On glass, that stroke is what separates the window
+from the wallpaper and from the tile beside it, so its absence is visible the
+moment a window is snapped into a tile and gone the moment it's pulled back
+out.
+
+Maximized and fullscreen are unchanged. Tiled windows get their own
+per-treatment rule restoring only the inset stroke -- no outer shadow --
+using the exact alphas the luma-no-frame-shadow pattern already established
+for this purpose (0.82/0.045/0.62/0.48 light/dark/frost/glass), so a tiled
+window now reads exactly like a floating one with its drop shadow turned off.
+It is inset, so it does not grow the window's footprint or encroach on the
+gap between two adjacent tiles.
+
+Both changes verified by compiling gtk.scss with sassc against a from-scratch
+reconstruction (pristine libadwaita-1.9.3 plus this series' own patches
+0001-0037 in order) and confirming the new rules survive compilation with the
+expected specificity ordering; no other rule in the 6900-line output changed.
+
+Generated against the app-menu-highlight tree (0037 applied) for release .47.
+---
+diff --git a/src/stylesheet/widgets/_window.scss b/src/stylesheet/widgets/_window.scss
+--- a/src/stylesheet/widgets/_window.scss
++++ b/src/stylesheet/widgets/_window.scss
+@@ -118,6 +118,63 @@
+     outline: none;
+   }
+ 
++  // A tiled window still meets a gap, not the display edge, so it keeps the
++  // one-treatment inset stroke that separates it from the wallpaper and from
++  // its neighbour tile -- only the outer elevation shadow drops, the same way
++  // it already does for luma-no-frame-shadow. These are the same per-treatment
++  // alphas that pattern already uses (0.82/0.045/0.62/0.48), so a tiled window
++  // reads exactly like a floating one with its drop shadow turned off.
++  &.csd.luma-treatment-light.tiled:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-top:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-left:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-right:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-bottom:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-top:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-left:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-right:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-light.tiled-bottom:backdrop:not(.fullscreen) {
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82);
++  }
++  &.csd.luma-treatment-dark.tiled:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-top:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-left:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-right:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-bottom:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-top:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-left:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-right:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-dark.tiled-bottom:backdrop:not(.fullscreen) {
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
++  }
++  // Frost and glass need this stroke the most: it is what separates a smoked,
++  // wallpaper-tinted surface from the wallpaper and from the tile beside it.
++  &.csd.luma-treatment-frost.tiled:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-top:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-left:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-right:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-bottom:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-top:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-left:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-right:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-frost.tiled-bottom:backdrop:not(.fullscreen) {
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62);
++  }
++  &.csd.luma-treatment-glass.tiled:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-top:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-left:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-right:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-bottom:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-top:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-left:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-right:backdrop:not(.fullscreen),
++  &.csd.luma-treatment-glass.tiled-bottom:backdrop:not(.fullscreen) {
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
++  }
++
+   &.solid-csd {
+     margin: 0;
+     padding: 5px;
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -94,8 +94,64 @@
+   min-height: 24px;
+   padding: 0;
+   border-radius: 10px;
++}
++
++// The native --headerbar-bg-color/--headerbar-fg-color custom properties
++// (_colors.scss, :root) never varied by Luma's own appearance mode -- only by
++// GTK's native color-scheme, which Settings' surface-treatment panel writes
++// as `default` for light, frost AND glass alike (only its own dark toggle
++// writes prefer-dark). So frost and glass windows loaded the *light* native
++// theme's headerbar colours: dark ink on a near-white bar, the same class of
++// bug the shell's own menus had (see gnome-shell patch 0152) and exactly the
++// direction the owner asked to be reversed. `window.csd.luma-treatment-*` is
++// two classes on the window, so it outranks :root's single-pseudo-class
++// specificity and wins regardless of source order.
++//
++// Light keeps the native values (dark ink already reads correctly there, and
++// this file's own light gradient above already tints the bar). Frost and
++// glass become the same smoked veil the window frame itself uses
++// (config/shared/design-tokens.json, surface_treatments.frost/glass.frame),
++// with white ink and the one shadow every smoked Luma surface uses
++// (gnome-shell's ledger, js/ui/lumaSurfaceMaterials.js) -- so a window reads
++// as the same material as the shelf above it.
++window.csd.luma-treatment-frost {
++  --headerbar-bg-color: rgba(24, 29, 36, 0.84);
++  --headerbar-fg-color: #ffffff;
++}
++
++window.csd.luma-treatment-glass {
++  --headerbar-bg-color: rgba(12, 17, 24, 0.76);
++  --headerbar-fg-color: #ffffff;
++}
++
++window.csd.luma-treatment-frost headerbar,
++window.csd.luma-treatment-glass headerbar {
++  // The light gradient above is scoped to prefers-color-scheme: light, so it
++  // never reaches frost/glass; this only has to stop the contrast-mode
++  // hairline from reading as a light-surface edge on a dark one.
++  @media (prefers-contrast: more) {
++    box-shadow: inset 0 -1px rgba(255, 255, 255, 0.24);
++  }
+ }
+ 
++// White ink on a smoked, wallpaper-tinted veil needs the shadow to hold over
++// a busy wallpaper -- the same reasoning and the same token as the shelf.
++window.csd.luma-treatment-frost windowtitle .title,
++window.csd.luma-treatment-glass windowtitle .title,
++window.csd.luma-treatment-frost headerbar .luma-identity-button > button,
++window.csd.luma-treatment-glass headerbar .luma-identity-button > button {
++  text-shadow: 0 1px 3px rgba(6, 9, 13, 0.80);
++}
++
++window.csd.luma-treatment-frost headerbar windowcontrols button > image,
++window.csd.luma-treatment-glass headerbar windowcontrols button > image,
++window.csd.luma-treatment-frost headerbar .luma-identity-icon,
++window.csd.luma-treatment-glass headerbar .luma-identity-icon,
++window.csd.luma-treatment-frost headerbar .luma-identity-chevron,
++window.csd.luma-treatment-glass headerbar .luma-identity-chevron {
++  -gtk-icon-shadow: 0 1px 3px rgba(6, 9, 13, 0.80);
++}
++
+ headerbar .luma-identity-button > button {
+   min-height: 24px;
+   padding: 5px 8px 5px 4px;

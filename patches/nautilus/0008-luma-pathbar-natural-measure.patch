@@ -1,0 +1,82 @@
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+index 73c24ad..416cda2 100644
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -293,6 +293,7 @@ nautilus_path_bar_init (NautilusPathBar *self)
+     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (self->scrolled),
+                                     /* hscrollbar-policy */ GTK_POLICY_EXTERNAL,
+                                     /* vscrollbar-policy */ GTK_POLICY_NEVER);
++    gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (self->scrolled), TRUE);
+     gtk_widget_set_hexpand (self->scrolled, TRUE);
+     gtk_box_append (GTK_BOX (self), self->scrolled);
+ 
+@@ -306,11 +307,14 @@ nautilus_path_bar_init (NautilusPathBar *self)
+     self->buttons_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++    gtk_widget_set_margin_start (self->buttons_box, 8);
++    gtk_widget_set_margin_end (self->buttons_box, 8);
+     gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (self->scrolled), self->buttons_box);
+ 
+     self->current_view_menu_button = gtk_menu_button_new ();
+     gtk_widget_add_css_class (self->current_view_menu_button, "flat");
+     gtk_widget_add_css_class (self->current_view_menu_button, "luma-path-menu");
+     gtk_menu_button_set_child (GTK_MENU_BUTTON (self->current_view_menu_button),
+                                gtk_image_new_from_icon_name ("view-more-symbolic"));
++    gtk_widget_set_size_request (self->current_view_menu_button, 30, -1);
+-    gtk_box_append (GTK_BOX (self), self->current_view_menu_button);
++    gtk_box_prepend (GTK_BOX (self), self->current_view_menu_button);
+ 
+     gtk_widget_set_tooltip_text (self->current_view_menu_button, _("Current Folder Menu"));
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 9904d54..5f5979c 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -71,10 +71,6 @@
+     padding: 0 3px;
+   }
+ 
+-  .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.luma-path-root {
+-    margin-left: 8px;
+-  }
+-
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.current-dir {
+     font-weight: 600;
+     color: var(--headerbar-fg-color);
+@@ -102,16 +98,17 @@
+   /* The pathbar owns the one shared outer stroke. Its breadcrumb scroller and
+    * native current-folder menu are two attached segments, not nested buttons. */
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > .luma-path-crumbs {
+-    border-radius: 7px 0 0 7px;
++    border-radius: 0 7px 7px 0;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar > .luma-path-menu > button {
+     min-width: 29px;
+     min-height: 28px;
+     padding: 0;
+     border: none;
+-    border-left: 1px solid var(--headerbar-shade-color);
+-    border-radius: 0 7px 7px 0;
++    border-right: 1px solid var(--headerbar-shade-color);
++    border-left: none;
++    border-radius: 7px 0 0 7px;
+     box-shadow: none;
+   }
+ 
+@@ -120,13 +117,13 @@
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar:dir(rtl) > .luma-path-crumbs {
+-    border-radius: 0 7px 7px 0;
++    border-radius: 7px 0 0 7px;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-pathbar:dir(rtl) > .luma-path-menu > button {
+-    border-right: 1px solid var(--headerbar-shade-color);
+-    border-left: none;
+-    border-radius: 7px 0 0 7px;
++    border-right: none;
++    border-left: 1px solid var(--headerbar-shade-color);
++    border-radius: 0 7px 7px 0;
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .luma-search-field {

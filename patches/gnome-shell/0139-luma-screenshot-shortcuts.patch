@@ -1,0 +1,303 @@
+From 152b18430b7313a5ea8b8bfe8054b32b3eae9e5e Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 00:23:59 -0400
+Subject: [PATCH] luma: Ctrl+Shift+1 to 4 take screenshots and recordings, and
+ nothing else does
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Luma's screenshot shortcuts, and the only ones:
+
+- Ctrl+Shift+1 opens the screenshot tool as it was last used
+  (show-screenshot-ui).
+- Ctrl+Shift+2 captures the focused window (screenshot-window).
+- Ctrl+Shift+3 opens the screenshot tool straight in Selection mode, ready to
+  drag an area. GNOME has no action for that, so this adds
+  show-screenshot-ui-area and ScreenshotUI.openArea(). It differs from
+  Ctrl+Shift+1 whenever the tool was last left on Screen or Window.
+- Ctrl+Shift+4 opens screen recording (show-screen-recording-ui), and stops a
+  recording in progress.
+
+GNOME's Print, Shift+Print, Alt+Print and Ctrl+Shift+Alt+R defaults are
+removed. The whole-screen capture (screenshot) has no shortcut and is no
+longer listed in Settings › Keyboard › Screenshots, which lists the four
+above, in key order, named "Open the screenshot tool", "Capture a window",
+"Drag to capture an area" and "Record the screen". The defaults live in the Shell's 00_org.gnome.shell.gschema.override
+and in the new key's schema default.
+
+For people whose own settings still hold GNOME's old defaults, or the values
+set by hand on staging machines before this shipped, a user oneshot resets
+those keys to the image defaults once. It is
+luma-screenshot-shortcuts-migrate.service in graphical-session.target, with a
+marker in ~/.local/state/luma/migrations. Any other value is a person's own
+choice and is kept.
+
+No shortcut Luma ships uses Ctrl+Shift+1 to 4: the Shell and Mutter, Tiling
+Shell, Filer (Nautilus), Ptyxis and the Luma apps were checked.
+
+Dropping this patch restores GNOME's shortcuts; the migration never runs
+without it.
+---
+ data/00_org.gnome.shell.gschema.override      |  9 ++
+ data/50-gnome-shell-screenshots.xml           | 17 ++--
+ data/luma-screenshot-shortcuts-migrate.js     | 85 +++++++++++++++++++
+ .../luma-screenshot-shortcuts-migrate.service |  9 ++
+ data/meson.build                              | 14 +++
+ data/org.gnome.shell.gschema.xml.in           |  5 ++
+ js/ui/screenshot.js                           | 27 ++++++
+ 7 files changed, 159 insertions(+), 7 deletions(-)
+ create mode 100644 data/luma-screenshot-shortcuts-migrate.js
+ create mode 100644 data/luma-screenshot-shortcuts-migrate.service
+
+diff --git a/data/00_org.gnome.shell.gschema.override b/data/00_org.gnome.shell.gschema.override
+index 7a1f657..740a5a7 100644
+--- a/data/00_org.gnome.shell.gschema.override
++++ b/data/00_org.gnome.shell.gschema.override
+@@ -7,6 +7,15 @@ focus-change-on-pointer-rest=true
+ 
+ # Luma: Super+Tab opens the workspace overview (org.gnome.shell.keybindings
+ # toggle-workspace-overview), so the app switcher, Grid, keeps Alt+Tab only.
++# Luma: Ctrl+Shift+1 to 4 take screenshots and recordings (the tool, a
++# window, a selected area, a recording) and nothing else does: the whole-screen
++# capture has no shortcut. Ctrl+Shift+3 is show-screenshot-ui-area's default.
++[org.gnome.shell.keybindings]
++show-screenshot-ui=['<Ctrl><Shift>1']
++screenshot-window=['<Ctrl><Shift>2']
++show-screen-recording-ui=['<Ctrl><Shift>4']
++screenshot=@as []
++
+ [org.gnome.desktop.wm.keybindings]
+ switch-applications=['<Alt>Tab']
+ switch-applications-backward=['<Shift><Alt>Tab']
+diff --git a/data/50-gnome-shell-screenshots.xml b/data/50-gnome-shell-screenshots.xml
+index c82f1a3..54d862a 100644
+--- a/data/50-gnome-shell-screenshots.xml
++++ b/data/50-gnome-shell-screenshots.xml
+@@ -5,16 +5,19 @@
+                 wm_name="GNOME Shell"
+                 package="gnome-shell">
+ 
++    <!-- Luma: the four screenshot shortcuts, in the order of their keys
++         (Ctrl+Shift+1 to 4). The whole-screen capture keeps its action but
++         has no shortcut, so it is not listed as a Disabled row. -->
+     <KeyListEntry name="show-screenshot-ui"
+-                  description="Take a screenshot interactively"/>
+-
+-    <KeyListEntry name="screenshot"
+-                  description="Take a screenshot"/>
++                  description="Open the screenshot tool"/>
+ 
+     <KeyListEntry name="screenshot-window"
+-                  description="Take a screenshot of a window"/>
++                  description="Capture a window"/>
++
++    <KeyListEntry name="show-screenshot-ui-area"
++                  description="Drag to capture an area"/>
+ 
+     <KeyListEntry name="show-screen-recording-ui"
+-                  description="Record a screencast interactively"/>
++                  description="Record the screen"/>
+ 
+-</KeyListEntries>
+\ No newline at end of file
++</KeyListEntries>
+diff --git a/data/luma-screenshot-shortcuts-migrate.js b/data/luma-screenshot-shortcuts-migrate.js
+new file mode 100644
+index 0000000..94b537d
+--- /dev/null
++++ b/data/luma-screenshot-shortcuts-migrate.js
+@@ -0,0 +1,85 @@
++#!/usr/bin/gjs -m
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Luma's screenshot shortcuts moved to Ctrl+Shift+1 to 4 as image defaults.
++// A person who still carries GNOME's old defaults, or the values Luma set on
++// early machines by hand, as their own setting would never see them. Once per
++// person, each of those keys is reset to the image default, but only while its
++// value is still one of those known values: a shortcut someone chose is kept.
++
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++
++const SCHEMA = 'org.gnome.shell.keybindings';
++const MARKER = 'screenshot-shortcuts-1';
++
++// Values that are not a person's choice: GNOME's defaults before Luma changed
++// them, and what was set on staging machines before these defaults shipped.
++const STALE = {
++    'show-screenshot-ui': [['Print'], ['<Control><Shift>1']],
++    'screenshot-window': [['<Alt>Print'], ['<Control><Shift>2']],
++    'show-screen-recording-ui': [['<Ctrl><Shift><Alt>R'], ['<Control><Shift>4']],
++    'screenshot': [['<Shift>Print'], []],
++};
++
++const MODIFIERS = new Map([
++    ['ctrl', 'control'], ['control', 'control'], ['primary', 'control'],
++    ['shift', 'shift'], ['alt', 'alt'], ['mod1', 'alt'], ['super', 'super'],
++    ['mod4', 'super'], ['meta', 'meta'], ['hyper', 'hyper'],
++]);
++
++// One spelling per accelerator: modifiers named one way and sorted, key lower-cased.
++export function normalize(accel) {
++    const modifiers = [];
++    let rest = accel.trim();
++    for (let match = rest.match(/^<([^>]+)>/); match; match = rest.match(/^<([^>]+)>/)) {
++        const name = match[1].toLowerCase();
++        modifiers.push(MODIFIERS.get(name) ?? name);
++        rest = rest.slice(match[0].length);
++    }
++    return [...new Set(modifiers)].sort().map(m => `<${m}>`).join('') + rest.toLowerCase();
++}
++
++export const sameList = (a, b) => a.length === b.length &&
++    a.map(normalize).every((value, index) => value === b.map(normalize)[index]);
++
++export function migrate(settings) {
++    const reset = [];
++    for (const [key, stale] of Object.entries(STALE)) {
++        if (!settings.settings_schema.has_key(key))
++            continue;
++        const user = settings.get_user_value(key);
++        if (!user)
++            continue;
++        const value = user.deepUnpack();
++        if (stale.some(list => sameList(value, list))) {
++            settings.reset(key);
++            reset.push(key);
++        }
++    }
++    return reset;
++}
++
++function main() {
++    const stateDir = GLib.build_filenamev([GLib.get_user_state_dir(), 'luma', 'migrations']);
++    const marker = GLib.build_filenamev([stateDir, MARKER]);
++    if (GLib.file_test(marker, GLib.FileTest.EXISTS))
++        return 0;
++    const source = Gio.SettingsSchemaSource.get_default();
++    const schema = source?.lookup(SCHEMA, true);
++    if (!schema)
++        return 0;
++    const settings = new Gio.Settings({settings_schema: schema});
++    const reset = migrate(settings);
++    Gio.Settings.sync();
++    GLib.mkdir_with_parents(stateDir, 0o700);
++    GLib.file_set_contents(marker, `${reset.join('\n')}\n`);
++    print(reset.length
++        ? `Luma screenshot shortcuts: reset ${reset.join(', ')} to the image defaults`
++        : 'Luma screenshot shortcuts: every shortcut is already the image default or a personal choice');
++    return 0;
++}
++
++// Imported by its test without running.
++if (!GLib.getenv('LUMA_MIGRATE_TEST'))
++    main();
+diff --git a/data/luma-screenshot-shortcuts-migrate.service b/data/luma-screenshot-shortcuts-migrate.service
+new file mode 100644
+index 0000000..7f961b0
+--- /dev/null
++++ b/data/luma-screenshot-shortcuts-migrate.service
+@@ -0,0 +1,9 @@
++[Unit]
++Description=Move screenshot shortcuts to Luma's defaults, once
++After=graphical-session-pre.target
++PartOf=graphical-session.target
++ConditionPathExists=!%S/luma/migrations/screenshot-shortcuts-1
++
++[Service]
++Type=oneshot
++ExecStart=/usr/bin/gjs -m @pkglibdir@/luma-screenshot-shortcuts-migrate.js
+diff --git a/data/meson.build b/data/meson.build
+index bc1c6ab..48cc85d 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -125,6 +125,20 @@ if have_systemd
+     'org.gnome.Shell-disable-extensions.service',
+     install_dir: systemduserunitdir,
+   )
++
++  # Luma: moves a person's stale screenshot shortcuts to the image defaults, once.
++  migrateconf = configuration_data()
++  migrateconf.set('pkglibdir', pkglibdir)
++  configure_file(
++    input: 'luma-screenshot-shortcuts-migrate.service',
++    output: 'luma-screenshot-shortcuts-migrate.service',
++    configuration: migrateconf,
++    install_dir: systemduserunitdir
++  )
++  install_symlink('luma-screenshot-shortcuts-migrate.service',
++    pointing_to: '../luma-screenshot-shortcuts-migrate.service',
++    install_dir: systemduserunitdir / 'graphical-session.target.wants')
++  install_data('luma-screenshot-shortcuts-migrate.js', install_dir: pkglibdir)
+ endif
+ 
+ # for unit tests - gnome.compile_schemas() only looks in srcdir
+diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+index ef97c30..15fd270 100644
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -298,6 +298,11 @@
+       <default>["Print"]</default>
+       <summary>Take a screenshot interactively</summary>
+     </key>
++    <key name="show-screenshot-ui-area" type="as">
++      <default>["&lt;Ctrl&gt;&lt;Shift&gt;3"]</default>
++      <summary>Drag to capture an area</summary>
++      <description>Opens the screenshot tool in its Selection mode, ready to drag an area.</description>
++    </key>
+     <key name="show-screen-recording-ui" type="as">
+       <default>["&lt;Ctrl&gt;&lt;Shift&gt;&lt;Alt&gt;R"]</default>
+       <summary>Record a screencast interactively</summary>
+diff --git a/js/ui/screenshot.js b/js/ui/screenshot.js
+index 499baa8..007bfad 100644
+--- a/js/ui/screenshot.js
++++ b/js/ui/screenshot.js
+@@ -1462,6 +1462,16 @@ export const ScreenshotUI = GObject.registerClass({
+             showScreenshotUI
+         );
+ 
++        // Luma: the screenshot tool opened straight into drawing a selection,
++        // whatever the tool was last left on (show-screenshot-ui keeps that).
++        Main.wm.addKeybinding(
++            'show-screenshot-ui-area',
++            new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}),
++            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
++            uiModes,
++            showScreenshotUIArea
++        );
++
+         Main.wm.addKeybinding(
+             'show-screen-recording-ui',
+             new Gio.Settings({schema_id: 'org.gnome.shell.keybindings'}),
+@@ -1618,6 +1628,14 @@ export const ScreenshotUI = GObject.registerClass({
+             this._screenSelectors[Main.layoutManager.primaryIndex].checked = true;
+     }
+ 
++    // The screenshot tool in its Selection mode, ready for a drag.
++    async openArea() {
++        this._selectionButton.checked = true;
++        await this.open(UIMode.SCREENSHOT);
++        if (this.visible && !this._screencastInProgress)
++            this._selectionButton.checked = true;
++    }
++
+     async open(mode = UIMode.SCREENSHOT) {
+         if (this._openingCoroutineInProgress)
+             return;
+@@ -2471,6 +2489,15 @@ export function showScreenshotUI() {
+     });
+ }
+ 
++/**
++ * Shows the screenshot UI in its Selection mode.
++ */
++export function showScreenshotUIArea() {
++    Main.screenshotUI.openArea().catch(err => {
++        logError(err, 'Error opening the screenshot UI');
++    });
++}
++
+ /**
+  * Shows the screen recording UI.
+  */

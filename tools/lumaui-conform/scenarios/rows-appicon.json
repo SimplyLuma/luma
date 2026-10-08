@@ -1,0 +1,36 @@
+{
+  "app": "rows-appicon",
+  "title": "ID1 AppIcon monogram (vs Depot's Au monogram, 52)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=depot",
+    "window": "#dp-body .dstack .dic.mono",
+    "exclude": [],
+    "wait_for": "#dp-body .dstack .dic.mono"
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "depot-icon"
+    }
+  },
+  "states": [
+    {
+      "name": "monogram",
+      "about": "The Au monogram (hue 260) at the head of a Depot stack",
+      "spec": [],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "icon",
+      "spec": "#dp-body .dstack .dic.mono"
+    }
+  ]
+}

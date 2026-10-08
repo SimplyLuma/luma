@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs>
+<linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#5fbf8c"/><stop offset=".52" stop-color="#3b8967"/><stop offset="1" stop-color="#25604a"/></linearGradient>
+<radialGradient id="bloom" cx=".18" cy=".02" r=".82"><stop stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<linearGradient id="pin" x1=".15" y1="0" x2=".85" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dfe6e1"/></linearGradient>
+<filter id="ps" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#123424" flood-opacity=".26"/></filter>
+  <clipPath id="lumaTile"><rect width="1024" height="1024" rx="256.0" ry="256.0"/></clipPath>
+  </defs>
+  <g clip-path="url(#lumaTile)">
+<rect width="1024" height="1024" fill="url(#tile)" rx="256.0"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+<g stroke="#ffffff" stroke-opacity=".22" stroke-width="16" fill="none" stroke-linecap="round">
+  <path d="M96 372h832"/><path d="M96 652h832"/><path d="M336 96v832"/><path d="M688 96v832"/>
+</g>
+<g filter="url(#ps)">
+  <path d="M512 214c-116 0-210 94-210 210 0 158 210 396 210 396s210-238 210-396c0-116-94-210-210-210Z" fill="url(#pin)"/>
+  <circle cx="512" cy="424" r="86" fill="#2f7a58"/>
+</g>
+</g>
+</svg>

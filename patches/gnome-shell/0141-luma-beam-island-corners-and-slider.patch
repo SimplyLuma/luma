@@ -1,0 +1,539 @@
+From ddcfb438d269ca847651fbeac2c0d6a457c95145 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 00:44:47 -0400
+Subject: [PATCH] luma: Beam takes the shelf's corners and becomes a slider
+
+At Nick's request Beam is no longer only an indicator:
+
+- Its corners are the shelf islands' radius, SHELF_ISLAND_RADIUS (15, new in
+  shelfMetrics.js and now also used by the islands themselves), instead of a
+  capsule. Size and padding are unchanged.
+- A press anywhere on it sets the level to that point, a drag follows the
+  pointer, and scrolling steps it by 2% like the Quick Options sliders. The
+  volume glyph toggles mute.
+- The level is written through the objects Quick Options already uses: the
+  output stream's slider for volume, whose maximum is the over-amplification
+  limit, and the brightness manager's scale for Beam's monitor. Both always
+  show one value, and a volume Beam follows the stream while it shows.
+- While the pointer is on Beam or dragging it, it stays; it leaves 1500ms after
+  the pointer does or the drag ends.
+- It never takes keyboard focus, and the active window keeps it. It is exposed
+  as a slider (value 0 to the maximum in percent, a 2% step) and still
+  announces changes politely.
+- No volume sound is played (patch 0133).
+
+Dropping this patch restores the capsule indicator.
+---
+ data/theme/gnome-shell-dark.css          |   9 +-
+ data/theme/gnome-shell-high-contrast.css |   9 +-
+ data/theme/gnome-shell-light.css         |   9 +-
+ js/ui/osdWindow.js                       | 244 +++++++++++++++++++++--
+ js/ui/shelf.js                           |   6 +-
+ js/ui/shelfMetrics.js                    |   3 +
+ 6 files changed, 251 insertions(+), 29 deletions(-)
+
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index a3f2916..ab5a410 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4242,7 +4242,8 @@ StScrollBar {
+     font-size: 12px;
+     color: #969da4; }
+ 
+-/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 capsule on the
++/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 surface, at the
++ * shelf islands' radius (SHELF_ISLAND_RADIUS, 15), on the
+  * Quick Options surface of the current appearance mode: the same fill, 1px
+  * line and shadows, and the same compositor blur on Frost and Glass. The fill
+  * is the active control colour at 24% over the surface, ending in a 2px
+@@ -4250,7 +4251,7 @@ StScrollBar {
+ .luma-beam {
+   width: 236px;
+   height: 48px;
+-  border-radius: 24px;
++  border-radius: 15px;
+   font-family: Figtree, sans-serif;
+   background-color: #f1f2f3;
+   color: #30343a;
+@@ -4258,11 +4259,11 @@ StScrollBar {
+   -luma-beam-fill-color: rgba(61, 68, 76, 0.24);
+   -luma-beam-marker-color: rgba(61, 68, 76, 0.55); }
+ .luma-beam-shadow {
+-  border-radius: 24px;
++  border-radius: 15px;
+   background-color: rgba(241, 242, 243, 0.01);
+   box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
+ .luma-beam-line {
+-  border-radius: 24px;
++  border-radius: 15px;
+   border: 1px solid rgba(255, 255, 255, 0.72); }
+ .luma-beam-row {
+   spacing: 10px;
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 34c615b..6d46db2 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4461,7 +4461,8 @@ StScrollBar {
+ .popup-menu-content, .background-menu .popup-menu-content { min-width: 204px; padding: 7px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ 
+-/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 capsule on the
++/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 surface, at the
++ * shelf islands' radius (SHELF_ISLAND_RADIUS, 15), on the
+  * Quick Options surface of the current appearance mode: the same fill, 1px
+  * line and shadows, and the same compositor blur on Frost and Glass. The fill
+  * is the active control colour at 24% over the surface, ending in a 2px
+@@ -4469,7 +4470,7 @@ StScrollBar {
+ .luma-beam {
+   width: 236px;
+   height: 48px;
+-  border-radius: 24px;
++  border-radius: 15px;
+   font-family: Figtree, sans-serif;
+   background-color: #f1f2f3;
+   color: #30343a;
+@@ -4477,11 +4478,11 @@ StScrollBar {
+   -luma-beam-fill-color: rgba(61, 68, 76, 0.24);
+   -luma-beam-marker-color: rgba(61, 68, 76, 0.55); }
+ .luma-beam-shadow {
+-  border-radius: 24px;
++  border-radius: 15px;
+   background-color: rgba(241, 242, 243, 0.01);
+   box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
+ .luma-beam-line {
+-  border-radius: 24px;
++  border-radius: 15px;
+   border: 1px solid rgba(255, 255, 255, 0.72); }
+ .luma-beam-row {
+   spacing: 10px;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index e9fddfc..b241a57 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4430,7 +4430,8 @@ StScrollBar {
+     font-size: 12px;
+     color: #767b81; }
+ 
+-/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 capsule on the
++/* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 surface, at the
++ * shelf islands' radius (SHELF_ISLAND_RADIUS, 15), on the
+  * Quick Options surface of the current appearance mode: the same fill, 1px
+  * line and shadows, and the same compositor blur on Frost and Glass. The fill
+  * is the active control colour at 24% over the surface, ending in a 2px
+@@ -4438,7 +4439,7 @@ StScrollBar {
+ .luma-beam {
+   width: 236px;
+   height: 48px;
+-  border-radius: 24px;
++  border-radius: 15px;
+   font-family: Figtree, sans-serif;
+   background-color: #f1f2f3;
+   color: #30343a;
+@@ -4446,11 +4447,11 @@ StScrollBar {
+   -luma-beam-fill-color: rgba(61, 68, 76, 0.24);
+   -luma-beam-marker-color: rgba(61, 68, 76, 0.55); }
+ .luma-beam-shadow {
+-  border-radius: 24px;
++  border-radius: 15px;
+   background-color: rgba(241, 242, 243, 0.01);
+   box-shadow: 0 34px 84px -24px rgba(14, 18, 24, 0.62); }
+ .luma-beam-line {
+-  border-radius: 24px;
++  border-radius: 15px;
+   border: 1px solid rgba(255, 255, 255, 0.72); }
+ .luma-beam-row {
+   spacing: 10px;
+diff --git a/js/ui/osdWindow.js b/js/ui/osdWindow.js
+index 1939430..753c0f8 100644
+--- a/js/ui/osdWindow.js
++++ b/js/ui/osdWindow.js
+@@ -3,12 +3,12 @@ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+-import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Main from './main.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {SHELF_SURFACE_GAP, placeShelfSurface, shelfEdge} from './lumaShelfSurface.js';
++import {SHELF_ISLAND_RADIUS} from './shelfMetrics.js';
+ 
+ const HIDE_TIMEOUT = 1500;
+ const FADE_TIME = 100;
+@@ -24,6 +24,8 @@ export const LEVEL_ANIMATION_TIME = 100;
+ 
+ // Lift toward the desktop on the way in, in logical pixels.
+ const ENTRANCE_DISTANCE = 6;
++// One scroll step, as the Quick Options sliders step.
++const SCROLL_STEP = 0.02;
+ 
+ const reduceMotion = () => !St.Settings.get().enable_animations;
+ 
+@@ -190,10 +192,12 @@ const BeamFill = GObject.registerClass({
+         const [width, height] = this.get_surface_size();
+         const node = this.get_theme_node();
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const radius = height / 2;
++        const radius = Math.min(SHELF_ISLAND_RADIUS * scale, height / 2, width / 2);
+         cr.newSubPath();
+-        cr.arc(radius, radius, radius, Math.PI / 2, 3 * Math.PI / 2);
+-        cr.arc(width - radius, radius, radius, -Math.PI / 2, Math.PI / 2);
++        cr.arc(radius, radius, radius, Math.PI, 3 * Math.PI / 2);
++        cr.arc(width - radius, radius, radius, -Math.PI / 2, 0);
++        cr.arc(width - radius, height - radius, radius, 0, Math.PI / 2);
++        cr.arc(radius, height - radius, radius, Math.PI / 2, Math.PI);
+         cr.closePath();
+         cr.clip();
+ 
+@@ -224,9 +228,6 @@ class OsdWindow extends St.Widget {
+             reactive: false,
+             can_focus: false,
+         });
+-        // Never takes pointer input: it is not even a pick target.
+-        Shell.util_set_hidden_from_pick(this, true);
+-
+         this._monitorIndex = monitorIndex;
+ 
+         this._shadow = new St.Widget({
+@@ -236,18 +237,35 @@ class OsdWindow extends St.Widget {
+         });
+         this.add_child(this._shadow);
+ 
++        // Beam is also a slider: press to set the level, drag, scroll, and
++        // the volume glyph mutes. It never takes keyboard focus.
+         this._capsule = new St.Widget({
+             style_class: 'luma-beam',
+             layout_manager: new Clutter.BinLayout(),
+-            accessible_role: Atk.Role.NOTIFICATION,
++            reactive: true,
++            track_hover: true,
++            can_focus: false,
+         });
+         this.add_child(this._capsule);
++        this._accessible = St.GenericAccessible.new_for_actor(this._capsule);
++        this._capsule.set_accessible(this._accessible);
++        this._capsule.accessible_role = Atk.Role.SLIDER;
++        this._accessible.connect('get-current-value', () => Math.round(Math.max(0, this._level ?? 0) * 100));
++        this._accessible.connect('get-minimum-value', () => 0);
++        this._accessible.connect('get-maximum-value', () => Math.round((this._control()?.max ?? 1) * 100));
++        this._accessible.connect('get-minimum-increment', () => SCROLL_STEP * 100);
++        this._accessible.connect('set-current-value', (_accessible, value) => this._setLevel(value / 100));
+         this._material = SurfaceMaterials.bindSurface(this._capsule, {
+-            cornerRadii: 0,
++            cornerRadii: SHELF_ISLAND_RADIUS,
+             classActors: [this._shadow],
+         });
+-        this._capsule.connect('notify::height', () =>
+-            this._material.setCornerRadii(this._capsule.height / 2));
++        this._capsule.connect('notify::hover', () => this._syncHold());
++        this._capsule.connect('button-press-event', (_actor, event) => this._onPress(event));
++        this._capsule.connect('motion-event', (_actor, event) => this._onMotion(event));
++        this._capsule.connect('button-release-event', (_actor, event) => this._onRelease(event));
++        this._capsule.connect('scroll-event', (_actor, event) => this._onScroll(event));
++        this._dragging = false;
++        this._grab = null;
+ 
+         // The 1px line lies on the surface, under the fill, as Quick Options'
+         // does under its controls.
+@@ -265,6 +283,7 @@ class OsdWindow extends St.Widget {
+         this._capsule.add_child(this._row);
+ 
+         this._glyph = new BeamGlyph();
++        this._glyph.reactive = true;
+         this._icon = new St.Icon({
+             style_class: 'luma-beam-icon',
+             y_align: Clutter.ActorAlign.CENTER,
+@@ -352,6 +371,179 @@ class OsdWindow extends St.Widget {
+         GLib.Source.set_name_by_id(this._announceId, '[gnome-shell] Beam announce');
+     }
+ 
++    // What this Beam controls, written through the same objects Quick Options
++    // uses, so both always show one value: the output stream's slider for
++    // volume (its maximum is the over-amplification limit), the brightness
++    // manager's scale for this monitor. Nothing for other requests.
++    _control() {
++        const kind = beamKind(iconName(this._gicon));
++        if (kind === 'volume') {
++            const output = Main.panel?.statusArea?.quickSettings?._volumeOutput?._output;
++            if (!output?.stream)
++                return null;
++            return {
++                kind,
++                max: output.slider.maximum_value,
++                level: () => output.slider.value,
++                set: value => (output.slider.value = Math.clamp(value, 0, output.slider.maximum_value)),
++                // From the value it shows now: Slider.step() carries a private
++                // unsnapped value that a value set elsewhere leaves stale.
++                step: steps => (output.slider.value = Math.clamp(
++                    output.slider.value + steps * SCROLL_STEP, 0, output.slider.maximum_value)),
++                toggleMute: () => output.emit('icon-clicked'),
++                icon: () => new Gio.ThemedIcon({name: output.getIcon() ?? 'audio-volume-muted-symbolic'}),
++            };
++        }
++        if (kind === 'brightness') {
++            const manager = Main.brightnessManager;
++            const scale = manager?.scales?.find(item => item.monitor?.get_number?.() === this._monitorIndex) ??
++                manager?.globalScale;
++            if (!scale)
++                return null;
++            return {
++                kind,
++                max: 1,
++                level: () => scale.value,
++                set: value => (scale.value = Math.clamp(value, 0, 1)),
++                step: steps => (scale.value = Math.clamp(scale.value + steps * SCROLL_STEP, 0, 1)),
++                toggleMute: null,
++                icon: () => this._gicon,
++            };
++        }
++        return null;
++    }
++
++    _syncFromControl(control) {
++        this._level = control.level();
++        this._maxLevel = control.max;
++        this._gicon = control.icon();
++        this._present(false);
++    }
++
++    _setLevel(level) {
++        const control = this._control();
++        if (!control)
++            return false;
++        control.set(level);
++        this._syncFromControl(control);
++        return true;
++    }
++
++    _levelAt(event) {
++        const [x, y] = event.get_coords();
++        const [ok, localX] = this._capsule.transform_stage_point(x, y);
++        if (!ok || this._capsule.width <= 0)
++            return null;
++        let fraction = Math.clamp(localX / this._capsule.width, 0, 1);
++        if (this._capsule.get_text_direction() === Clutter.TextDirection.RTL)
++            fraction = 1 - fraction;
++        return fraction;
++    }
++
++    _onPress(event) {
++        if (event.get_button() !== Clutter.BUTTON_PRIMARY || !this._control())
++            return Clutter.EVENT_PROPAGATE;
++        const source = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, ...event.get_coords());
++        if (source === this._glyph) {
++            this._pressOnGlyph = true;
++            return Clutter.EVENT_STOP;
++        }
++        this._dragging = true;
++        this._grab = global.stage.grab(this._capsule);
++        this._syncHold();
++        const level = this._levelAt(event);
++        if (level !== null)
++            this._setLevel(level);
++        return Clutter.EVENT_STOP;
++    }
++
++    _onMotion(event) {
++        if (!this._dragging)
++            return Clutter.EVENT_PROPAGATE;
++        const level = this._levelAt(event);
++        if (level !== null)
++            this._setLevel(level);
++        return Clutter.EVENT_STOP;
++    }
++
++    _onRelease(event) {
++        if (this._pressOnGlyph) {
++            this._pressOnGlyph = false;
++            const control = this._control();
++            const source = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, ...event.get_coords());
++            if (control?.toggleMute && source === this._glyph) {
++                control.toggleMute();
++                this._syncFromControl(control);
++            }
++            return Clutter.EVENT_STOP;
++        }
++        if (!this._dragging)
++            return Clutter.EVENT_PROPAGATE;
++        this._endDrag();
++        return Clutter.EVENT_STOP;
++    }
++
++    _endDrag() {
++        this._dragging = false;
++        this._grab?.dismiss();
++        this._grab = null;
++        this._syncHold();
++    }
++
++    _onScroll(event) {
++        const control = this._control();
++        if (!control || event.get_flags() & Clutter.EventFlags.FLAG_POINTER_EMULATED)
++            return Clutter.EVENT_PROPAGATE;
++        const direction = event.get_scroll_direction();
++        let steps = 0;
++        if (direction === Clutter.ScrollDirection.UP || direction === Clutter.ScrollDirection.RIGHT)
++            steps = 1;
++        else if (direction === Clutter.ScrollDirection.DOWN || direction === Clutter.ScrollDirection.LEFT)
++            steps = -1;
++        else if (direction === Clutter.ScrollDirection.SMOOTH) {
++            const [dx, dy] = event.get_scroll_delta();
++            steps = Math.abs(dy) >= Math.abs(dx) ? -dy : dx;
++            if (event.get_scroll_flags() & Clutter.ScrollFlags.INVERTED)
++                steps *= -1;
++        }
++        if (steps) {
++            control.step(steps);
++            this._syncFromControl(control);
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    // While the pointer is on Beam or dragging it, it stays; it leaves
++    // HIDE_TIMEOUT after the pointer does or the drag ends.
++    get held() {
++        return this.visible && (this._capsule.hover || this._dragging);
++    }
++
++    _syncHold() {
++        if (!this.visible)
++            return;
++        if (this._hideTimeoutId)
++            GLib.source_remove(this._hideTimeoutId);
++        this._hideTimeoutId = 0;
++        if (this.held) {
++            if (this._leaving) {
++                this._leaving = false;
++                this.remove_transition('opacity');
++                this.opacity = 255;
++            }
++            return;
++        }
++        this._scheduleHide();
++    }
++
++    _scheduleHide() {
++        if (this._hideTimeoutId)
++            GLib.source_remove(this._hideTimeoutId);
++        this._hideTimeoutId = GLib.timeout_add_once(
++            GLib.PRIORITY_DEFAULT, HIDE_TIMEOUT, this._hide.bind(this));
++        GLib.Source.set_name_by_id(this._hideTimeoutId, '[gnome-shell] this._hide');
++    }
++
+     // Beside the island holding Quick Options when this monitor's shelf is
+     // shown; otherwise centred on the monitor, the same gap inside the
+     // work-area edge the shelf uses.
+@@ -384,9 +576,27 @@ class OsdWindow extends St.Widget {
+         this.set_position(Math.round(place.x), Math.round(place.y));
+     }
+ 
++    // A volume Beam follows the stream while it shows, whoever changes it:
++    // the mute glyph, a key, the Quick Options slider.
++    _followVolume() {
++        const output = Main.panel?.statusArea?.quickSettings?._volumeOutput?._output;
++        if (!output || this._followedOutput === output)
++            return;
++        this._followedOutput?.disconnectObject(this);
++        this._followedOutput = output;
++        output.connectObject('stream-updated', () => {
++            if (!this.visible || beamKind(iconName(this._gicon)) !== 'volume')
++                return;
++            const control = this._control();
++            if (control)
++                this._syncFromControl(control);
++        }, this);
++    }
++
+     show() {
+         if (!this._gicon)
+             return;
++        this._followVolume();
+         if (Main.osdWindowManager?.quickOptionsOpen())
+             return;
+ 
+@@ -430,9 +640,9 @@ class OsdWindow extends St.Widget {
+ 
+         if (this._hideTimeoutId)
+             GLib.source_remove(this._hideTimeoutId);
+-        this._hideTimeoutId = GLib.timeout_add_once(
+-            GLib.PRIORITY_DEFAULT, HIDE_TIMEOUT, this._hide.bind(this));
+-        GLib.Source.set_name_by_id(this._hideTimeoutId, '[gnome-shell] this._hide');
++        this._hideTimeoutId = 0;
++        if (!this.held)
++            this._scheduleHide();
+     }
+ 
+     cancel() {
+@@ -445,6 +655,8 @@ class OsdWindow extends St.Widget {
+ 
+     // Gone at once, without a fade: Quick Options is opening over it.
+     dismiss() {
++        if (this._dragging)
++            this._endDrag();
+         if (this._hideTimeoutId) {
+             GLib.source_remove(this._hideTimeoutId);
+             this._hideTimeoutId = 0;
+@@ -459,6 +671,8 @@ class OsdWindow extends St.Widget {
+ 
+     _hide() {
+         this._hideTimeoutId = 0;
++        if (this.held)
++            return;
+         this._leaving = true;
+         this.ease({
+             opacity: 0,
+@@ -483,6 +697,8 @@ class OsdWindow extends St.Widget {
+     }
+ 
+     _onDestroy() {
++        this._grab?.dismiss();
++        this._grab = null;
+         if (this._hideTimeoutId)
+             GLib.source_remove(this._hideTimeoutId);
+         this._hideTimeoutId = 0;
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 2be6121..44114f5 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -15,7 +15,7 @@ import {LumaIconMask} from './iconMask.js';
+ import {anchoredToStatus, shelfGaps} from './mediaSelection.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {WindowMarks} from './lumaDockWindows.js';
+-import {DASH_TILE_SIZE, SHELF_INSET, windowMarkRow} from './shelfMetrics.js';
++import {DASH_TILE_SIZE, SHELF_INSET, SHELF_ISLAND_RADIUS, windowMarkRow} from './shelfMetrics.js';
+ 
+ const DASH_PADDING = 10;
+ // Every application on the dock is drawn to the same silhouette, whatever
+@@ -82,7 +82,7 @@ export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural,
+ // Square the union of physical edges touched by this material. Island order
+ // is supplied in physical coordinates, so RTL cannot reverse screen contact.
+ export function dashCornerRadii(edge, protrude, touchesStart, touchesEnd) {
+-    const radius = [15, 15, 15, 15];
++    const radius = Array(4).fill(SHELF_ISLAND_RADIUS);
+     const square = side => {
+         const corners = {top: [0, 1], right: [1, 2], bottom: [2, 3], left: [3, 0]};
+         corners[side].forEach(index => radius[index] = 0);
+@@ -267,7 +267,7 @@ class ShelfIsland extends St.Widget {
+         this._stroke = stroke;
+         this._materialBinding = SurfaceMaterials.bindSurface(child, {
+             enabled: false,
+-            cornerRadii: 15,
++            cornerRadii: SHELF_ISLAND_RADIUS,
+             classActors: [this, stroke, ...this._shadows],
+             onTreatmentChanged: treatment => {
+                 this._content._lumaSurfaceTreatment = treatment;
+diff --git a/js/ui/shelfMetrics.js b/js/ui/shelfMetrics.js
+index 79a3e37..7b390e2 100644
+--- a/js/ui/shelfMetrics.js
++++ b/js/ui/shelfMetrics.js
+@@ -103,6 +103,9 @@ export function windowMarkRow(edge, width, height, center, marks, scale = 1, pad
+ // side facing the desktop. Logical pixels; display scale multiplies it.
+ export const SHELF_SURFACE_GAP = 8;
+ 
++// The corner radius of a shelf island, and of the surfaces drawn like one.
++export const SHELF_ISLAND_RADIUS = 15;
++
+ // Where a shelf surface sits. edge: the shelf's side of its monitor; anchor:
+ // the control that opened the surface; island: the painted island holding
+ // that control; size: the surface's; monitor: the island's. All rectangles

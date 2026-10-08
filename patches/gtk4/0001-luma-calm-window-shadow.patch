@@ -1,0 +1,55 @@
+diff --git a/gtk/theme/Default/_common.scss b/gtk/theme/Default/_common.scss
+index 9c4864520e..69596110f7 100644
+--- a/gtk/theme/Default/_common.scss
++++ b/gtk/theme/Default/_common.scss
+@@ -4203,8 +4203,15 @@ window {
+   $_wm_border_backdrop: if($variant=='light', transparentize(black, 0.82), transparentize(black, 0.25));
+ 
+   &.csd {
+-    box-shadow: 0 3px 9px 1px transparentize(black, 0.5),
+-                0 0 0 1px $_wm_border; //doing borders with box-shadow
++    @if $variant == 'light' {
++      // Project Luma's calm elevation: match the dock's measured falloff.
++      // Keep the same quiet one-layer falloff as libadwaita windows.
++      box-shadow: 0 5px 16px rgba(30, 41, 59, 0.04),
++                  0 0 0 1px rgba(17, 24, 39, 0.10);
++    } @else {
++      box-shadow: 0 3px 9px 1px transparentize(black, 0.5),
++                  0 0 0 1px $_wm_border; //doing borders with box-shadow
++    }
+     margin: 0px;
+     border-radius: $window_radius $window_radius 0 0;
+     &:backdrop {
+@@ -4215,8 +4222,13 @@ window {
+       // The biggest shadow should be in the same order then in the active state
+       // or the jumping will happen during the transition.
+-      box-shadow: 0 3px 9px 1px transparent,
+-                  0 2px 6px 2px transparentize(black, 0.8),
+-                  0 0 0 1px $_wm_border_backdrop;
++      @if $variant == 'light' {
++        box-shadow: 0 5px 16px rgba(30, 41, 59, 0.02),
++                    0 0 0 1px rgba(17, 24, 39, 0.08);
++      } @else {
++        box-shadow: 0 3px 9px 1px transparent,
++                    0 2px 6px 2px transparentize(black, 0.8),
++                    0 0 0 1px $_wm_border_backdrop;
++      }
+       transition: $backdrop_transition;
+     }
+ 
+diff --git a/gtk/theme/Default/Default-light.css b/gtk/theme/Default/Default-light.css
+index ead0e41efb..fc84d1e77c 100644
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -1737,9 +1737,9 @@ tooltip.background.csd decoration { box-shadow: none; }
+ /********************** Window Decorations * */
+ window { border-width: 0px; }
+ 
+-window.csd { box-shadow: 0 3px 9px 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.23); margin: 0px; border-radius: 8px 8px 0 0; }
++window.csd { box-shadow: 0 5px 16px rgba(30, 41, 59, 0.04), 0 0 0 1px rgba(17, 24, 39, 0.10); margin: 0px; border-radius: 8px 8px 0 0; }
+ 
+-window.csd:backdrop { box-shadow: 0 3px 9px 1px transparent, 0 2px 6px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.18); transition: 200ms ease-out; }
++window.csd:backdrop { box-shadow: 0 5px 16px rgba(30, 41, 59, 0.02), 0 0 0 1px rgba(17, 24, 39, 0.08); transition: 200ms ease-out; }
+ 
+ window.csd.popup { border-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.13); }
+ 

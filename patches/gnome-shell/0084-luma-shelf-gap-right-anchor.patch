@@ -1,0 +1,39 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: keep the status cluster on the right edge
+
+Pinning the gap before the status cluster seated the live extension
+island against the clock, but it also applied to a shelf carrying only
+the dock and the clock, where that gap is the only one there is and the
+slack inside it is what holds the cluster against the right edge. The
+clock moved to the middle of the shelf and only returned once a second
+island appeared to take the slack.
+
+diff --git a/js/ui/mediaSelection.js b/js/ui/mediaSelection.js
+--- a/js/ui/mediaSelection.js
++++ b/js/ui/mediaSelection.js
+@@ -52,9 +52,22 @@
+     // instead, which is why it read as floating loose between the dock and the
+     // clock rather than belonging to the clock. Pinning by position covers the
+     // media island exactly as before and anything else that lands there.
+-    const beforeStatus = children.indexOf(status) - 1;
++    const mediaPair = children.findIndex((child, index) =>
++        child === media && children[index + 1] === status);
+     const gaps = children.slice(0, -1);
+-    const flexible = gaps.length - (beforeStatus >= 0 ? 1 : 0);
+-    return gaps.map((_child, index) => index === beforeStatus
++    // Pinning the gap before the status cluster is what keeps a live extension
++    // island against the clock. But on a shelf holding only the dock and the
++    // clock that same gap is the only thing there is, and the slack inside it
++    // is what carries the cluster to the right edge of the screen -- pinning it
++    // tight left the clock sitting next to the dock in the middle of the shelf.
++    // So it is only pinned when some earlier gap can take the slack instead.
++    // The media island keeps its own pin either way: the allocation treats a
++    // lone media-and-status pair as right-anchored already, so it needs no
++    // slack of its own.
++    const pinned = mediaPair >= 0
++        ? mediaPair
++        : (gaps.length > 1 ? children.indexOf(status) - 1 : -1);
++    const flexible = gaps.length - (pinned >= 0 ? 1 : 0);
++    return gaps.map((_child, index) => index === pinned
+         ? gap : gap + (flexible ? spare / flexible : 0));
+ }

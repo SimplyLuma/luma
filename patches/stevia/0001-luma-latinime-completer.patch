@@ -1,0 +1,797 @@
+diff --git a/src/completers/meson.build b/src/completers/meson.build
+index 7e0057d..2da42dd 100644
+--- a/src/completers/meson.build
++++ b/src/completers/meson.build
+@@ -27,7 +27,12 @@ else
+ endif
+ 
+ #  pipe like completer
+-libpos_completer_pipe_sources = files('pos-completer-pipe.c', 'pos-completer-pipe.h')
++libpos_completer_pipe_sources = files(
++  'pos-completer-pipe.c',
++  'pos-completer-pipe.h',
++  'pos-completer-luma.c',
++  'pos-completer-luma.h',
++)
+ 
+ libpos_completer_pipe_deps = [gio_dep, glib_dep, gtk_dep]
+ 
+diff --git a/src/completers/pos-completer-luma.c b/src/completers/pos-completer-luma.c
+new file mode 100644
+index 0000000..37668ac
+--- /dev/null
++++ b/src/completers/pos-completer-luma.c
+@@ -0,0 +1,495 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#define G_LOG_DOMAIN "pos-completer-luma"
++
++#include "pos-config.h"
++
++#include "pos-completer-luma.h"
++#include "pos-completer-priv.h"
++
++#include <gio/gio.h>
++
++#define LUMA_DECODER "/usr/libexec/luma-latinime-decoder"
++#define LUMA_DICTIONARY "/usr/share/luma-keyboard/main_en.dict"
++#define LUMA_APPROPRIATE_FOR_AUTOCORRECTION 0x10000000
++#define LUMA_KIND_MASK 0xff
++#define LUMA_KIND_CORRECTION 1
++#define LUMA_MAX_COMPLETIONS 3
++#define LUMA_MIN_AUTOCORRECT_SCORE 200000
++#define LUMA_MIN_AUTOCORRECT_MARGIN 100000
++#define LUMA_MIN_COMPOUND_SCORE 225000
++#define LUMA_MIN_COMPOUND_MARGIN 150000
++
++enum {
++  PROP_0,
++  PROP_NAME,
++  PROP_PREEDIT,
++  PROP_COMPLETIONS,
++  PROP_MODE_NAME,
++  PROP_LAST_PROP
++};
++static GParamSpec *props[PROP_LAST_PROP];
++
++struct _PosCompleterLuma {
++  PosCompleterBase parent;
++
++  GString          *preedit;
++  GStrv             completions;
++  char             *autocorrect;
++  char             *previous;
++  GSubprocess      *decoder;
++  GOutputStream    *decoder_stdin;
++  GDataInputStream *decoder_stdout;
++};
++
++static void pos_completer_luma_interface_init (PosCompleterInterface *iface);
++static void pos_completer_luma_initable_interface_init (GInitableIface *iface);
++
++G_DEFINE_TYPE_WITH_CODE (PosCompleterLuma, pos_completer_luma, POS_TYPE_COMPLETER_BASE,
++                         G_IMPLEMENT_INTERFACE (POS_TYPE_COMPLETER,
++                                                pos_completer_luma_interface_init)
++                         G_IMPLEMENT_INTERFACE (G_TYPE_INITABLE,
++                                                pos_completer_luma_initable_interface_init))
++
++static void
++pos_completer_luma_set_completions (PosCompleterLuma *self, GStrv completions)
++{
++  g_strfreev (self->completions);
++  self->completions = g_strdupv (completions);
++  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_COMPLETIONS]);
++}
++
++static char *
++match_input_case (const char *candidate, const char *typed)
++{
++  gunichar first;
++  gunichar upper;
++  char encoded[7] = {0};
++  int length;
++
++  if (!candidate || !*candidate || !typed || !*typed)
++    return g_strdup (candidate);
++  if (!g_unichar_isupper (g_utf8_get_char (typed)))
++    return g_strdup (candidate);
++
++  first = g_utf8_get_char (candidate);
++  upper = g_unichar_toupper (first);
++  length = g_unichar_to_utf8 (upper, encoded);
++  encoded[length] = '\0';
++  return g_strconcat (encoded, g_utf8_next_char (candidate), NULL);
++}
++
++static void
++pos_completer_luma_clear_decoder (PosCompleterLuma *self)
++{
++  if (self->decoder) {
++    g_subprocess_send_signal (self->decoder, SIGTERM);
++    g_subprocess_wait (self->decoder, NULL, NULL);
++  }
++  g_clear_object (&self->decoder_stdin);
++  g_clear_object (&self->decoder_stdout);
++  g_clear_object (&self->decoder);
++}
++
++static gboolean
++pos_completer_luma_start_decoder (PosCompleterLuma *self, GError **error)
++{
++  g_autofree char *ready = NULL;
++  gsize ready_len = 0;
++  const char *decoder = g_getenv ("LUMA_LATINIME_DECODER");
++  const char *dictionary = g_getenv ("LUMA_LATINIME_DICTIONARY");
++
++  if (!decoder || !*decoder)
++    decoder = LUMA_DECODER;
++  if (!dictionary || !*dictionary)
++    dictionary = LUMA_DICTIONARY;
++
++  pos_completer_luma_clear_decoder (self);
++  self->decoder = g_subprocess_new (G_SUBPROCESS_FLAGS_STDIN_PIPE |
++                                    G_SUBPROCESS_FLAGS_STDOUT_PIPE |
++                                    G_SUBPROCESS_FLAGS_STDERR_SILENCE,
++                                    error,
++                                    decoder,
++                                    dictionary,
++                                    NULL);
++  if (!self->decoder)
++    return FALSE;
++
++  self->decoder_stdin = g_object_ref (g_subprocess_get_stdin_pipe (self->decoder));
++  self->decoder_stdout = g_data_input_stream_new (g_subprocess_get_stdout_pipe (self->decoder));
++  ready = g_data_input_stream_read_line (self->decoder_stdout, &ready_len, NULL, error);
++  if (!ready || g_strcmp0 (ready, "READY") != 0) {
++    if (error && *error == NULL)
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Luma decoder did not become ready");
++    pos_completer_luma_clear_decoder (self);
++    return FALSE;
++  }
++
++  return TRUE;
++}
++
++static gboolean
++parse_candidate (const char *field, char **text, guint *kind, gint64 *score)
++{
++  g_autofree char *copy = g_strdup (field);
++  char *score_sep;
++  char *kind_sep;
++  guint64 parsed;
++
++  score_sep = strrchr (copy, ':');
++  if (!score_sep)
++    return FALSE;
++  *score_sep = '\0';
++  kind_sep = strrchr (copy, ':');
++  if (!kind_sep)
++    return FALSE;
++  *kind_sep = '\0';
++  parsed = g_ascii_strtoull (kind_sep + 1, NULL, 10);
++  if (!*copy)
++    return FALSE;
++
++  *text = g_strdup (copy);
++  *kind = (guint)parsed;
++  *score = g_ascii_strtoll (score_sep + 1, NULL, 10);
++  return TRUE;
++}
++
++static gboolean
++is_autocorrect_candidate (guint kind)
++{
++  return (kind & LUMA_APPROPRIATE_FOR_AUTOCORRECTION) &&
++         ((kind & LUMA_KIND_MASK) == LUMA_KIND_CORRECTION);
++}
++
++static gboolean
++has_decisive_score (const char *candidate, gint64 score, gint64 runner_up_score)
++{
++  const gboolean compound = strchr (candidate, ' ') != NULL;
++  const gint64 score_floor = compound ? LUMA_MIN_COMPOUND_SCORE
++                                      : LUMA_MIN_AUTOCORRECT_SCORE;
++  const gint64 margin_floor = compound ? LUMA_MIN_COMPOUND_MARGIN
++                                       : LUMA_MIN_AUTOCORRECT_MARGIN;
++
++  if (score < score_floor)
++    return FALSE;
++  if (runner_up_score == G_MININT64)
++    return TRUE;
++  if (score - runner_up_score < margin_floor)
++    return FALSE;
++
++  /* Multiword recovery must lead by 2x; ordinary correction by 1.5x. */
++  if (runner_up_score > 0)
++    return compound ? score >= runner_up_score * 2
++                    : score * 2 >= runner_up_score * 3;
++  return TRUE;
++}
++
++static gboolean
++pos_completer_luma_query (PosCompleterLuma *self, GError **error)
++{
++  g_autofree char *lower = NULL;
++  g_autofree char *request = NULL;
++  g_autofree char *response = NULL;
++  g_auto (GStrv) fields = NULL;
++  g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
++  gsize response_len = 0;
++  gsize written = 0;
++  guint accepted = 0;
++  gboolean exact_match = FALSE;
++  g_autofree char *autocorrect = NULL;
++  gint64 autocorrect_score = G_MININT64;
++  gint64 runner_up_score = G_MININT64;
++
++  g_clear_pointer (&self->autocorrect, g_free);
++  if (!self->preedit->len) {
++    pos_completer_luma_set_completions (self, NULL);
++    return TRUE;
++  }
++
++  if (!self->decoder && !pos_completer_luma_start_decoder (self, error))
++    return FALSE;
++
++  lower = g_utf8_strdown (self->preedit->str, -1);
++  request = g_strdup_printf ("%s\t%s\t\n", lower, self->previous ?: "");
++  if (!g_output_stream_write_all (self->decoder_stdin,
++                                  request,
++                                  strlen (request),
++                                  &written,
++                                  NULL,
++                                  error) ||
++      !g_output_stream_flush (self->decoder_stdin, NULL, error)) {
++    pos_completer_luma_clear_decoder (self);
++    return FALSE;
++  }
++
++  response = g_data_input_stream_read_line (self->decoder_stdout,
++                                             &response_len,
++                                             NULL,
++                                             error);
++  if (!response || !g_str_has_prefix (response, "R")) {
++    if (error && *error == NULL)
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Invalid Luma decoder response");
++    pos_completer_luma_clear_decoder (self);
++    return FALSE;
++  }
++
++  fields = g_strsplit (response, "\t", -1);
++  /*
++   * LatinIME includes the typed token when it already considers the word
++   * valid.  Treat that as an absolute veto: suggestions remain useful, but a
++   * valid word must never be silently replaced by a more frequent neighbour.
++   */
++  for (guint i = 1; fields[i]; i++) {
++    g_autofree char *candidate = NULL;
++    guint kind = 0;
++    gint64 score = 0;
++
++    if (!parse_candidate (fields[i], &candidate, &kind, &score))
++      continue;
++    if (g_ascii_strcasecmp (candidate, lower) == 0) {
++      exact_match = TRUE;
++      break;
++    }
++  }
++
++  for (guint i = 1; fields[i] && accepted < LUMA_MAX_COMPLETIONS; i++) {
++    g_autofree char *candidate = NULL;
++    g_autofree char *display = NULL;
++    guint kind = 0;
++    gint64 score = 0;
++
++    if (!parse_candidate (fields[i], &candidate, &kind, &score))
++      continue;
++    display = match_input_case (candidate, self->preedit->str);
++    g_strv_builder_add (builder, display);
++    accepted++;
++
++    if (!exact_match && is_autocorrect_candidate (kind)) {
++      if (!autocorrect) {
++        autocorrect = g_strdup (display);
++        autocorrect_score = score;
++      } else if (g_ascii_strcasecmp (candidate, autocorrect) != 0 &&
++                 runner_up_score == G_MININT64) {
++        runner_up_score = score;
++      }
++    }
++  }
++
++  /*
++   * Autocorrect only when an invalid token has one genuinely decisive result.
++   * Ambiguous results are displayed as suggestions and left to the user.
++   */
++  if (!exact_match && autocorrect &&
++      has_decisive_score (autocorrect, autocorrect_score, runner_up_score))
++    self->autocorrect = g_steal_pointer (&autocorrect);
++
++  if (accepted) {
++    g_auto (GStrv) completions = g_strv_builder_end (builder);
++    pos_completer_luma_set_completions (self, completions);
++  } else {
++    pos_completer_luma_set_completions (self, NULL);
++  }
++  return TRUE;
++}
++
++static const char *
++pos_completer_luma_get_name (PosCompleter *iface)
++{
++  return "luma";
++}
++
++static char *
++pos_completer_luma_get_display_name (PosCompleter *iface)
++{
++  return g_strdup ("Luma");
++}
++
++static const char *
++pos_completer_luma_get_preedit (PosCompleter *iface)
++{
++  return POS_COMPLETER_LUMA (iface)->preedit->str;
++}
++
++static void
++pos_completer_luma_set_preedit (PosCompleter *iface, const char *preedit)
++{
++  PosCompleterLuma *self = POS_COMPLETER_LUMA (iface);
++
++  if (g_strcmp0 (self->preedit->str, preedit) == 0)
++    return;
++  g_string_assign (self->preedit, preedit ?: "");
++  if (!preedit) {
++    g_clear_pointer (&self->autocorrect, g_free);
++    pos_completer_luma_set_completions (self, NULL);
++  }
++  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_PREEDIT]);
++}
++
++static gboolean
++pos_completer_luma_feed_symbol (PosCompleter *iface, const char *symbol)
++{
++  PosCompleterLuma *self = POS_COMPLETER_LUMA (iface);
++  g_autofree char *before = g_strdup (self->preedit->str);
++  g_autoptr (GError) error = NULL;
++
++  if (pos_completer_add_preedit (iface, self->preedit, symbol)) {
++    g_autofree char *commit = NULL;
++    const char *suffix = self->preedit->str + strlen (before);
++    const char *word = self->autocorrect ?: before;
++
++    commit = g_strconcat (word, suffix, NULL);
++    g_signal_emit_by_name (self, "commit-string", commit, 0, 0);
++    if (*word) {
++      g_free (self->previous);
++      self->previous = g_utf8_strdown (word, -1);
++    }
++    pos_completer_luma_set_preedit (iface, NULL);
++    return g_strcmp0 (symbol, "KEY_ENTER") != 0;
++  }
++
++  if (g_strcmp0 (self->preedit->str, before) == 0)
++    return FALSE;
++  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_PREEDIT]);
++  if (!pos_completer_luma_query (self, &error))
++    g_warning ("Luma decoder query failed: %s", error->message);
++  return TRUE;
++}
++
++static gboolean
++pos_completer_luma_set_selected (PosCompleter *iface, const char *selected)
++{
++  PosCompleterLuma *self = POS_COMPLETER_LUMA (iface);
++
++  g_free (self->previous);
++  self->previous = g_utf8_strdown (selected, -1);
++  return FALSE;
++}
++
++static gboolean
++pos_completer_luma_set_language (PosCompleter *iface,
++                                 const char   *lang,
++                                 const char   *region,
++                                 GError      **error)
++{
++  if (g_strcmp0 (lang, "en") == 0)
++    return TRUE;
++  g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++               "Luma decoder has no %s-%s dictionary", lang, region ?: "");
++  return FALSE;
++}
++
++static void
++pos_completer_luma_set_property (GObject      *object,
++                                 guint         property_id,
++                                 const GValue *value,
++                                 GParamSpec   *pspec)
++{
++  switch (property_id) {
++  case PROP_PREEDIT:
++    pos_completer_luma_set_preedit (POS_COMPLETER (object), g_value_get_string (value));
++    break;
++  default:
++    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
++  }
++}
++
++static void
++pos_completer_luma_get_property (GObject    *object,
++                                 guint       property_id,
++                                 GValue     *value,
++                                 GParamSpec *pspec)
++{
++  PosCompleterLuma *self = POS_COMPLETER_LUMA (object);
++
++  switch (property_id) {
++  case PROP_NAME:
++    g_value_set_string (value, "luma");
++    break;
++  case PROP_PREEDIT:
++    g_value_set_string (value, self->preedit->str);
++    break;
++  case PROP_COMPLETIONS:
++    g_value_set_boxed (value, self->completions);
++    break;
++  case PROP_MODE_NAME:
++    g_value_set_string (value, "Luma");
++    break;
++  default:
++    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
++  }
++}
++
++static void
++pos_completer_luma_finalize (GObject *object)
++{
++  PosCompleterLuma *self = POS_COMPLETER_LUMA (object);
++
++  pos_completer_luma_clear_decoder (self);
++  g_clear_pointer (&self->completions, g_strfreev);
++  g_clear_pointer (&self->autocorrect, g_free);
++  g_clear_pointer (&self->previous, g_free);
++  g_string_free (self->preedit, TRUE);
++  G_OBJECT_CLASS (pos_completer_luma_parent_class)->finalize (object);
++}
++
++static void
++pos_completer_luma_class_init (PosCompleterLumaClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->get_property = pos_completer_luma_get_property;
++  object_class->set_property = pos_completer_luma_set_property;
++  object_class->finalize = pos_completer_luma_finalize;
++  g_object_class_override_property (object_class, PROP_NAME, "name");
++  g_object_class_override_property (object_class, PROP_PREEDIT, "preedit");
++  g_object_class_override_property (object_class, PROP_COMPLETIONS, "completions");
++  g_object_class_override_property (object_class, PROP_MODE_NAME, "mode-name");
++  props[PROP_NAME] = g_object_class_find_property (object_class, "name");
++  props[PROP_PREEDIT] = g_object_class_find_property (object_class, "preedit");
++  props[PROP_COMPLETIONS] = g_object_class_find_property (object_class, "completions");
++  props[PROP_MODE_NAME] = g_object_class_find_property (object_class, "mode-name");
++}
++
++static gboolean
++pos_completer_luma_initable_init (GInitable *initable,
++                                  GCancellable *cancelable,
++                                  GError **error)
++{
++  return pos_completer_luma_start_decoder (POS_COMPLETER_LUMA (initable), error);
++}
++
++static void
++pos_completer_luma_initable_interface_init (GInitableIface *iface)
++{
++  iface->init = pos_completer_luma_initable_init;
++}
++
++static void
++pos_completer_luma_interface_init (PosCompleterInterface *iface)
++{
++  iface->get_name = pos_completer_luma_get_name;
++  iface->get_display_name = pos_completer_luma_get_display_name;
++  iface->feed_symbol = pos_completer_luma_feed_symbol;
++  iface->get_preedit = pos_completer_luma_get_preedit;
++  iface->set_preedit = pos_completer_luma_set_preedit;
++  iface->set_selected = pos_completer_luma_set_selected;
++  iface->set_language = pos_completer_luma_set_language;
++}
++
++static void
++pos_completer_luma_init (PosCompleterLuma *self)
++{
++  self->preedit = g_string_new (NULL);
++}
++
++PosCompleter *
++pos_completer_luma_new (GError **error)
++{
++  return POS_COMPLETER (g_initable_new (POS_TYPE_COMPLETER_LUMA, NULL, error, NULL));
++}
+diff --git a/src/completers/pos-completer-luma.h b/src/completers/pos-completer-luma.h
+new file mode 100644
+index 0000000..56046dd
+--- /dev/null
++++ b/src/completers/pos-completer-luma.h
+@@ -0,0 +1,23 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include "pos-completer-base.h"
++#include "pos-completer.h"
++
++#include <glib-object.h>
++
++G_BEGIN_DECLS
++
++#define POS_TYPE_COMPLETER_LUMA (pos_completer_luma_get_type ())
++
++G_DECLARE_FINAL_TYPE (PosCompleterLuma, pos_completer_luma, POS, COMPLETER_LUMA,
++                      PosCompleterBase)
++
++PosCompleter *pos_completer_luma_new (GError **error);
++
++G_END_DECLS
+diff --git a/src/phosh-osk-stevia.gresources.xml b/src/phosh-osk-stevia.gresources.xml
+index 8a8a5ba..edabca5 100644
+--- a/src/phosh-osk-stevia.gresources.xml
++++ b/src/phosh-osk-stevia.gresources.xml
+@@ -12,6 +12,7 @@
+     <file alias="keymap.txt">../data/keymap.txt</file>
+     <file compressed="true">stylesheet/adwaita-dark.css</file>
+     <file compressed="true">stylesheet/adwaita-hc-light.css</file>
++    <file compressed="true">stylesheet/luma-light.css</file>
+     <file compressed="true">stylesheet/common.css</file>
+     <!-- from gnome-shell -->
+     <file preprocess="json-stripblanks">layouts/am.json</file>
+diff --git a/src/pos-completer-manager.c b/src/pos-completer-manager.c
+index 169903f..c55a501 100644
+--- a/src/pos-completer-manager.c
++++ b/src/pos-completer-manager.c
+@@ -13,6 +13,7 @@
+ #include "pos-completer-manager.h"
+ #include "completers/pos-completer-presage.h"
+ #include "completers/pos-completer-pipe.h"
++#include "completers/pos-completer-luma.h"
+ #ifdef POS_HAVE_FZF
+ # include "completers/pos-completer-fzf.h"
+ #endif
+@@ -93,6 +94,11 @@ init_completer (PosCompleterManager *self, const char *name, GError **err)
+     if (completer)
+       goto done;
+     return NULL;
++  } else if (g_strcmp0 (name, "luma") == 0) {
++    completer = pos_completer_luma_new (err);
++    if (completer)
++      goto done;
++    return NULL;
+ #ifdef POS_HAVE_PRESAGE
+   } else if (g_strcmp0 (name, "presage") == 0) {
+     completer = pos_completer_presage_new (err);
+diff --git a/src/pos-style-manager.c b/src/pos-style-manager.c
+index 35a187c..e818939 100644
+--- a/src/pos-style-manager.c
++++ b/src/pos-style-manager.c
+@@ -244,6 +244,8 @@ pos_style_manager_get_stylesheet (const char *theme_name)
+ 
+   if (g_strcmp0 (theme_name, "HighContrast") == 0)
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-hc-light.css";
++  else if (g_strcmp0 (theme_name, "Luma") == 0)
++    style = "/mobi/phosh/stevia/stylesheet/adwaita-dark.css";
+   else
+     style = "/mobi/phosh/stevia/stylesheet/adwaita-dark.css";
+ 
+diff --git a/src/stylesheet/luma-light.css b/src/stylesheet/luma-light.css
+new file mode 100644
+index 0000000..498135f
+--- /dev/null
++++ b/src/stylesheet/luma-light.css
+@@ -0,0 +1,60 @@
++/* Project Luma's high-contrast light handheld keyboard palette. */
++@define-color pos_key_fg_color #1f2937;
++@define-color pos_key_bg_color #ffffff;
++@define-color pos_fg_color #1f2937;
++@define-color pos_bg_color #e7ebf0;
++@define-color theme_selected_bg_color #4878b8;
++@define-color theme_selected_fg_color #ffffff;
++
++@import url("resource:///mobi/phosh/stevia/stylesheet/common.css");
++
++pos-input-surface,
++pos-osk-widget {
++  color: #1f2937;
++  background-color: #e7ebf0;
++  font-family: Figtree, sans-serif;
++}
++
++pos-key {
++  color: #1f2937;
++  background: #ffffff;
++  border-radius: 8px;
++  margin: 3px;
++  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.20);
++}
++
++pos-key.pressed {
++  color: #17365f;
++  background: #cfdef1;
++  box-shadow: inset 0 0 0 2px rgba(72, 120, 184, 0.42);
++}
++
++pos-key.sys,
++pos-key.toggle,
++pos-shortcuts-bar button {
++  color: #1f2937;
++  background: #d7dde5;
++}
++
++pos-key.return {
++  color: #ffffff;
++  background: #4878b8;
++}
++
++pos-completion-bar {
++  color: #1f2937;
++  background: #f7f8fa;
++  border-bottom: 1px solid rgba(17, 24, 39, 0.12);
++}
++
++pos-completion-bar button,
++pos-completion-bar button label {
++  color: #1f2937;
++  background: transparent;
++  text-shadow: none;
++}
++
++pos-completion-bar button:active {
++  color: #17365f;
++  background: #cfdef1;
++}
+diff --git a/tests/meson.build b/tests/meson.build
+index acb48d7..cb818c8 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -23,6 +23,7 @@ tests = [
+   'completer',
+   'completer-base',
+   'completer-hunspell',
++  'completer-luma',
+   'load-layouts',
+   'osk-widget',
+   'completers',
+diff --git a/tests/test-completer-luma.c b/tests/test-completer-luma.c
+new file mode 100644
+index 0000000..0cfe89e
+--- /dev/null
++++ b/tests/test-completer-luma.c
+@@ -0,0 +1,116 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "pos-config.h"
++
++#include "pos-test-completer.h"
++
++#include "pos.h"
++#include "pos-completer-luma.h"
++
++#include <gio/gio.h>
++#include <glib.h>
++
++typedef struct {
++  char *text;
++  int before;
++  int after;
++} Commit;
++
++static void
++on_commit (PosCompleter *completer,
++           const char   *text,
++           int           before,
++           int           after,
++           Commit       *commit)
++{
++  commit->text = g_strdup (text);
++  commit->before = before;
++  commit->after = after;
++}
++
++static char *
++commit_word (const char *word)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (PosCompleter) luma = pos_completer_luma_new (&error);
++  Commit commit = {0};
++
++  g_assert_no_error (error);
++  g_assert_nonnull (luma);
++  pos_completer_assert_initial_state (luma, "luma", "Luma");
++  g_signal_connect (luma, "commit-string", G_CALLBACK (on_commit), &commit);
++
++  for (const char *cursor = word; *cursor; cursor = g_utf8_next_char (cursor)) {
++    g_autofree char *symbol = g_strndup (cursor, g_utf8_next_char (cursor) - cursor);
++    g_assert_true (pos_completer_feed_symbol (luma, symbol));
++  }
++  g_assert_true (pos_completer_feed_symbol (luma, " "));
++  g_assert_cmpint (commit.before, ==, 0);
++  g_assert_cmpint (commit.after, ==, 0);
++  return commit.text;
++}
++
++static void
++test_completer_luma_preserves_valid_words (void)
++{
++  const char *valid_words[] = { "if", "bath", "pour", "crash", NULL };
++
++  for (guint i = 0; valid_words[i]; i++) {
++    g_autofree char *expected = g_strconcat (valid_words[i], " ", NULL);
++    g_autofree char *actual = commit_word (valid_words[i]);
++
++    g_assert_cmpstr (actual, ==, expected);
++  }
++}
++
++static void
++test_completer_luma_autocorrects_decisive_typos (void)
++{
++  const struct {
++    const char *typed;
++    const char *expected;
++  } cases[] = {
++    { "woudl", "would " },
++    { "adn", "and " },
++    { "becuase", "because " },
++    { "recieve", "receive " },
++    { "andbsee", "and see " },
++    { "tyojng", "typing " },
++    { "whenbi", "when I " },
++  };
++
++  for (guint i = 0; i < G_N_ELEMENTS (cases); i++) {
++    g_autofree char *actual = commit_word (cases[i].typed);
++
++    g_assert_cmpstr (actual, ==, cases[i].expected);
++  }
++}
++
++static void
++test_completer_luma_leaves_ambiguous_typo (void)
++{
++  g_autofree char *helo = commit_word ("helo");
++  g_autofree char *socool = commit_word ("socool");
++  g_autofree char *multiple_boundaries = commit_word ("itnfeelsnokah");
++
++  g_assert_cmpstr (helo, ==, "helo ");
++  g_assert_cmpstr (socool, ==, "socool ");
++  g_assert_cmpstr (multiple_boundaries, ==, "itnfeelsnokah ");
++}
++
++int
++main (int argc, char *argv[])
++{
++  gtk_test_init (&argc, &argv, NULL);
++  g_test_add_func ("/pos/completer/luma/preserves-valid-words",
++                   test_completer_luma_preserves_valid_words);
++  g_test_add_func ("/pos/completer/luma/autocorrects-decisive-typos",
++                   test_completer_luma_autocorrects_decisive_typos);
++  g_test_add_func ("/pos/completer/luma/leaves-ambiguous-typo",
++                   test_completer_luma_leaves_ambiguous_typo);
++  return g_test_run ();
++}

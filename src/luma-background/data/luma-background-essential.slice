@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma background agents that keep running in Power Saver
+Documentation=https://projectluma.org/developer/kit/background-agents
+
+[Slice]
+CPUWeight=100
+IOWeight=100

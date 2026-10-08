@@ -1,0 +1,46 @@
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -28,6 +28,12 @@
+   padding: 0 8px 0 12px;
+ }
+ 
++.luma-files-window .luma-window-title {
++  color: @luma_ink;
++  font-size: 14px;
++  font-weight: 675;
++}
++
+   /* The working controls remain native Nautilus actions in a second row. */
+   .luma-files-window headerbar.luma-secondary-toolbar {
+     min-height: 40px;
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -233,7 +233,20 @@ template $NautilusWindow: Adw.ApplicationWindow {
+-          // AdwHeaderBar otherwise synthesizes the current location as a
+-          // centered fallback title. The simulator's title row has one
+-          // identity at the leading edge, so keep an explicit empty native
+-          // title widget rather than hiding a generated label with CSS.
+-          title-widget: Box {};
++          title-widget: Box {
++            halign: center;
++
++            styles [
++              "luma-window-title",
++              "luma-title-label",
++              "title",
++            ]
++
++            Label {
++              label: bind template.active-slot as <$NautilusWindowSlot>.title;
++              ellipsize: end;
++            }
++
++            Label {
++              label: _(" — Filer");
++            }
++          };
+         }
+ 
+         content: Adw.OverlaySplitView split_view {

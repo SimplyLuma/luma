@@ -1,0 +1,306 @@
+{
+  "_doc": "Phone sample from approved Studio v70 PPL/PNNUM/PNR/PNVM/PNFAV and pnMain Together data. Read-only; no store or transport. Original photo files, with face focus x/y/zoom from PPL.",
+  "people": [
+    {
+      "uid": "PR",
+      "name": "Priya Raman",
+      "phone": "+1 (510) 555-0132",
+      "handle": "priya",
+      "email": "priya@example.test",
+      "hue": 330,
+      "online": true,
+      "photo": "phone-v70/life-ari-street.webp",
+      "face": [
+        0.705,
+        0.2,
+        5.2
+      ]
+    },
+    {
+      "uid": "NF",
+      "name": "Nora Feld",
+      "phone": "+1 (510) 555-0178",
+      "handle": "nora",
+      "email": "nora@example.test",
+      "hue": 45,
+      "online": true,
+      "photo": "phone-v70/life-sync-terrace.webp",
+      "face": [
+        0.36,
+        0.27,
+        5
+      ]
+    },
+    {
+      "uid": "SK",
+      "name": "Sam Kaur",
+      "phone": "+1 (415) 555-0161",
+      "handle": "samk",
+      "email": "sam@example.test",
+      "hue": 200,
+      "online": false,
+      "photo": "phone-v70/life-suite-bg-write.webp",
+      "face": [
+        0.47,
+        0.3,
+        5
+      ]
+    },
+    {
+      "uid": "TH",
+      "name": "Theo Marsh",
+      "phone": "+1 (510) 555-0199",
+      "handle": "theo",
+      "email": "theo.marsh@example.test",
+      "hue": 350,
+      "online": false,
+      "photo": "phone-v70/take-back.webp",
+      "face": [
+        0.575,
+        0.12,
+        5.4
+      ]
+    },
+    {
+      "uid": "MO",
+      "name": "Dad",
+      "phone": "+1 (510) 555-0142",
+      "handle": "",
+      "email": "",
+      "hue": 20,
+      "online": false,
+      "photo": "phone-v70/life-hero-home.webp",
+      "face": [
+        0.8,
+        0.33,
+        6
+      ]
+    },
+    {
+      "uid": "AR",
+      "name": "Alex Ruiz",
+      "phone": "+1 (510) 555-0117",
+      "handle": "alexr",
+      "email": "alex@example.test",
+      "hue": 262,
+      "online": false,
+      "photo": "phone-v70/life-professionals-loft.webp",
+      "face": [
+        0.55,
+        0.36,
+        5.2
+      ]
+    },
+    {
+      "uid": "JK",
+      "name": "Jordan Kim",
+      "phone": "+1 (628) 555-0120",
+      "handle": "jordan.k",
+      "email": "",
+      "hue": 100,
+      "online": false
+    },
+    {
+      "uid": "CL",
+      "name": "Lena Okafor",
+      "phone": "+1 (415) 555-0104",
+      "handle": "lena",
+      "email": "",
+      "hue": 160,
+      "online": false,
+      "photo": "phone-v70/life-suite-bg-canvas.webp",
+      "face": [
+        0.575,
+        0.3,
+        5.4
+      ]
+    }
+  ],
+  "favourites": [
+    "PR",
+    "NF",
+    "MO",
+    "SK"
+  ],
+  "calls": [
+    {
+      "id": "r1",
+      "who": [
+        "PR"
+      ],
+      "kind": "video",
+      "dir": "out",
+      "when": "Today, 9:41 AM",
+      "len": "12 min"
+    },
+    {
+      "id": "r2",
+      "who": [
+        "MO"
+      ],
+      "kind": "voice",
+      "dir": "missed",
+      "when": "Today, 8:10 AM",
+      "vm": true
+    },
+    {
+      "id": "r3",
+      "who": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "kind": "video",
+      "dir": "in",
+      "when": "Yesterday, 4:00 PM",
+      "len": "42 min",
+      "group": "Launch crew"
+    },
+    {
+      "id": "r4",
+      "who": [
+        "TH"
+      ],
+      "kind": "voice",
+      "dir": "in",
+      "when": "Yesterday, 4:30 PM",
+      "len": "6 min"
+    },
+    {
+      "id": "r5",
+      "who": [
+        "?"
+      ],
+      "num": "+1 (415) 555-0199",
+      "kind": "voice",
+      "dir": "missed",
+      "when": "Monday",
+      "spam": true
+    },
+    {
+      "id": "r6",
+      "who": [
+        "NF"
+      ],
+      "kind": "voice",
+      "dir": "out",
+      "when": "Monday",
+      "len": "3 min"
+    },
+    {
+      "id": "r7",
+      "who": [
+        "AR"
+      ],
+      "kind": "video",
+      "dir": "in",
+      "when": "Sunday",
+      "len": "28 min"
+    }
+  ],
+  "voicemails": [
+    {
+      "id": "v1",
+      "who": "MO",
+      "when": "Today, 8:11 AM",
+      "len": 18,
+      "t": "Hey, it’s Dad. Call me back when you get a chance. Nothing urgent, just want to hear how the launch prep is going."
+    },
+    {
+      "id": "v2",
+      "who": "JK",
+      "when": "Friday",
+      "len": 31,
+      "t": "Hi Nick, Jordan here. The printer for the event banners needs the final file by Tuesday. Give me a ring."
+    }
+  ],
+  "messages": {
+    "PR": {
+      "from": "PR",
+      "text": "Will do 👍",
+      "when": "8:43 AM"
+    },
+    "MO": {
+      "from": "MO",
+      "text": "Saw the article about Luma. Proud of you kid. Call me this weekend",
+      "when": "11:05 AM"
+    },
+    "TH": {
+      "from": "me",
+      "text": "Haha yes. Saturday works",
+      "when": "6:31 PM"
+    },
+    "AR": {
+      "from": "AR",
+      "text": "Sent you the invoice, no rush",
+      "when": "3:12 PM"
+    },
+    "NF": {
+      "from": "NF",
+      "text": "Anytime. It reads really well now",
+      "when": "5:44 PM"
+    }
+  },
+  "emails": {
+    "PR": [
+      {
+        "subject": "Launch walkthrough deck",
+        "when": "9:41 AM"
+      },
+      {
+        "subject": "Venue confirmed",
+        "when": "Thu 1:10 PM"
+      }
+    ],
+    "NF": [
+      {
+        "subject": "Launch walkthrough deck",
+        "when": "9:41 AM"
+      },
+      {
+        "subject": "Venue confirmed",
+        "when": "Thu 1:10 PM"
+      }
+    ],
+    "TH": [
+      {
+        "subject": "Studio lease renewal",
+        "when": "8:02 AM"
+      }
+    ],
+    "SK": [
+      {
+        "subject": "Photos from the offsite",
+        "when": "Mon 7:02 PM"
+      }
+    ]
+  },
+  "initial": {
+    "tab": "pad",
+    "selected": "r1",
+    "person": "PR",
+    "number": ""
+  },
+  "spam": {
+    "r5": {
+      "reports": 214
+    }
+  },
+  "audio_outputs": [
+    {
+      "id": "buds",
+      "icon": "headphones",
+      "label": "Fable Buds"
+    },
+    {
+      "id": "spk",
+      "icon": "speaker",
+      "label": "This computer’s speakers"
+    },
+    {
+      "id": "usb",
+      "icon": "mic",
+      "label": "Studio mic and speakers"
+    }
+  ]
+}

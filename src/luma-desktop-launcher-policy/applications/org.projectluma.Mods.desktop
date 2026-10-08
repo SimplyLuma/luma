@@ -1,0 +1,10 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Mods
+Comment=Discover, review, and manage changes to Luma
+Exec=luma-mods
+Icon=application-x-addon-symbolic
+Terminal=false
+Type=Application
+Categories=System;Settings;
+StartupNotify=true

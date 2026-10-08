@@ -1,0 +1,70 @@
+# libcamera Simple-pipeline tuning for the Fairphone 6 Sony IMX896.
+#
+# The CCM and AWB values originate from the public CatCrafts FP6 camera
+# bring-up. Luma enables its accompanying software-ISP autofocus algorithm;
+# without the Af entry the DW9784 lens is discovered but never moved.
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+      blackLevel: 4096
+  - Awb:
+      whitePoints:
+        - { ct: 1900, gains: [ 0.878997, 4.771635 ] }
+        - { ct: 2300, gains: [ 1.119141, 3.340533 ] }
+        - { ct: 2856, gains: [ 1.377957, 2.769483 ] }
+        - { ct: 5000, gains: [ 2.037341, 1.809127 ] }
+        - { ct: 6504, gains: [ 2.367133, 1.574040 ] }
+        - { ct: 7504, gains: [ 2.741927, 1.357219 ] }
+        - { ct: 9500, gains: [ 4.508486, 1.012164 ] }
+      # Main's white balance visibly moved in coarse steps. Stay closer to the
+      # stock-derived locus and reduce each 7.5 Hz statistics update.
+      clampMargin: 0.20
+      damping: 0.90
+  - Ccm:
+      ccms:
+        - ct: 2800
+          ccm: [ 1.593410, -0.552769, -0.040641,
+                -0.166429,  1.170414, -0.003985,
+                 0.004114, -0.855526,  1.851411 ]
+        - ct: 4000
+          ccm: [ 1.612519, -0.785270,  0.172751,
+                -0.110672,  1.189965, -0.079293,
+                 0.091939, -0.965137,  1.873197 ]
+        - ct: 5750
+          ccm: [ 1.900000, -0.581250, -0.318750,
+                -0.292500,  1.778126, -0.485626,
+                 0.014573, -0.734843,  1.720270 ]
+  - Af:
+      continuous: true
+      # DW9784: avoid the end stops and let each move settle before sampling.
+      sweepStart: 20.0
+      sweepStop: 90.0
+      # Keep full-range acquisition bounded while retaining a sub-dioptre
+      # local refinement pass for touch focus.
+      coarseStep: 6.0
+      stepDivisor: 4.0
+      fineStepMin: 0.5
+      settleFrames: 2
+      localRadius: 6.0
+      # Recent physical startup and touch sweeps repeatedly converged near
+      # 35%. Begin there to reduce visible and audible lens travel.
+      # actuator end positions during ordinary camera switching.
+      startupPosition: 35.0
+      localSettleFrames: 1
+      # Require a large, sustained loss before autonomous refocus. Touch
+      # requests still initiate a bounded local search immediately.
+      focusLossThreshold: 0.50
+      focusLossFrames: 20
+      refocusCooldownFrames: 90
+  - Adjust:
+  - Agc:
+      # A same-scene 4%→2% physical A/B reduced fully clipped luminance
+      # pixels from 4.46% to 3.08% and channel clipping from 9.21% to 7.03%,
+      # while median luminance moved only from 149.1 to 144.3.
+      maxBrightFraction: 0.02
+      # Statistics arrive at 7.5 Hz because sensor controls need several
+      # frames to settle. Keep that safe cadence but halve each visible jump.
+      maxExposureStep: 0.10
+...

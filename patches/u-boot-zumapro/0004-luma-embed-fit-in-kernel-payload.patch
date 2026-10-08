@@ -1,0 +1,144 @@
+diff --git a/board/samsung/exynos-mobile/Kconfig b/board/samsung/exynos-mobile/Kconfig
+index c40167c..15f087d 100644
+--- a/board/samsung/exynos-mobile/Kconfig
++++ b/board/samsung/exynos-mobile/Kconfig
+@@ -21,7 +21,7 @@ config LUMA_RAMBOOT_DIAGNOSTIC
+ 	help
+ 	  Build a non-interactive diagnostic loader which accepts exactly one
+-	  in-memory FIT passed as the Android boot image ramdisk. The board code
+-	  derives an exact source bound from a compiled FIT size and validates an
+-	  optional prior-stage initrd end. It never initializes block or USB update
+-	  interfaces. This is not a general-purpose U-Boot mode.
++	  FIT linked into the loader's read-only image. This keeps the Android v4
++	  boot ramdisk empty on devices launched with Android 13. The board code
++	  derives an exact source bound from linker symbols and never initializes
++	  block or USB update interfaces. This is not a general-purpose U-Boot mode.
+ 
+diff --git a/board/samsung/exynos-mobile/Makefile b/board/samsung/exynos-mobile/Makefile
+index 9c881fd..e3befa2 100644
+--- a/board/samsung/exynos-mobile/Makefile
++++ b/board/samsung/exynos-mobile/Makefile
+@@ -2,3 +2,4 @@
+ # Copyright (C) 2025 Kaustabh Chakraborty <kauschluss@disroot.org>
+ 
+ obj-y := exynos-mobile.o
++obj-$(CONFIG_LUMA_RAMBOOT_DIAGNOSTIC) += luma-fit.o
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index 1f11d88..6102eaf 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -188,17 +188,11 @@ static bool exynos_addr_in_dram(phys_addr_t addr, ulong size)
+ #define LUMA_INITRAMFS_WINDOW_END	0x84000000UL
+ #define LUMA_FIRST_RESERVED_START	0x90200000UL
+ 
+-static u64 exynos_fdt_get_addr(const void *fdt, int node, const char *name)
+-{
+-	u64 value;
+-
+-	value = fdtdec_get_uint64(fdt, node, name, 0);
+-	if (!value)
+-		value = fdtdec_get_uint(fdt, node, name, 0);
+-
+-	return value;
+-}
++extern const unsigned char luma_fit_start[];
++extern const unsigned char luma_fit_end[];
+ 
+ static bool exynos_luma_digest_valid(const char *digest)
+ {
+@@ -243,45 +237,30 @@ static int exynos_luma_ramboot_setup(void)
+ {
+ 	const char *expected = CONFIG_LUMA_EXPECTED_FIT_SHA256;
+ 	const ulong expected_size = CONFIG_LUMA_EXPECTED_FIT_SIZE;
+-	const void *prev_bl_fdt = exynos_get_prev_bl_fdt();
+-	const void *fit;
+-	phys_addr_t start, end, fit_end;
+-	ulong fit_size;
+-	int chosen;
++	const void *fit = luma_fit_start;
++	const ulong fit_size = luma_fit_end - luma_fit_start;
++	const phys_addr_t start = (phys_addr_t)fit;
++	phys_addr_t fit_end;
+ 
+-	if (!prev_bl_fdt || !exynos_luma_digest_valid(expected) || !expected_size)
++	if (!exynos_luma_digest_valid(expected) || !expected_size ||
++	    fit_size != expected_size || start + fit_size < start ||
++	    !IS_ALIGNED(start, 8) || !exynos_addr_in_dram(start, fit_size))
+ 		return -EINVAL;
+ 
+-	chosen = fdt_path_offset(prev_bl_fdt, "/chosen");
+-	if (chosen < 0)
+-		return -ENOENT;
+-
+-	start = exynos_fdt_get_addr(prev_bl_fdt, chosen,
+-				    "linux,initrd-start");
+-	if (!start || !IS_ALIGNED(start, 8) ||
+-	    !exynos_addr_in_dram(start, sizeof(struct fdt_header)))
+-		return -ERANGE;
+-
+-	fit = (const void *)start;
+ 	if (fdt_check_header(fit) < 0)
+ 		return -EINVAL;
+ 
+-	fit_size = fdt_totalsize(fit);
+-	if (fit_size != expected_size || start + fit_size < start ||
+-	    !exynos_addr_in_dram(start, fit_size))
++	if (fdt_totalsize(fit) != fit_size)
+ 		return -EFBIG;
+ 	fit_end = start + fit_size;
+ 
+ 	/*
+-	 * Some Pixel boot stages omit initrd-end. If present, accept only the
+-	 * exact FIT plus less than one page of transport padding.
++	 * The authenticated FIT is linked into U-Boot's copied read-only image.
++	 * It does not depend on a nonstandard Android v4 boot ramdisk handoff.
+ 	 */
+-	end = exynos_fdt_get_addr(prev_bl_fdt, chosen, "linux,initrd-end");
+-	if (end && (end < fit_end || end - fit_end >= SZ_4K ||
+-		    !exynos_addr_in_dram(start, end - start)))
+-		return -EFBIG;
+-
+ 	if (LUMA_INITRAMFS_WINDOW_END > LUMA_FIRST_RESERVED_START ||
+ 	    !exynos_luma_fit_image_valid(fit, "kernel", LUMA_KERNEL_LOAD,
+ 					 LUMA_KERNEL_WINDOW_END) ||
+@@ -303,7 +282,7 @@ static int exynos_luma_ramboot_setup(void)
+ 	env_set_hex("luma_fit_size", fit_size);
+ 	env_set("luma_fit_bounds_ok", "1");
+ 	env_set("luma_expected_fit_sha256", expected);
+-	env_set("luma_prev_bl_initrd_end_present", end ? "1" : "0");
++	env_set("luma_fit_source", "embedded-rodata");
+ 
+ 	return 0;
+ }
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.env b/board/samsung/exynos-mobile/exynos-mobile.env
+index 54022f8..33a909e 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.env
++++ b/board/samsung/exynos-mobile/exynos-mobile.env
+@@ -7,6 +7,7 @@ stderr=vidconsole
+ 
+ bootcmd=echo LUMA_STAGE=U_BOOT_HANDOFF; \
+ if test "${luma_fit_bounds_ok}" = "1"; then \
++	echo LUMA_STAGE=FIT_EMBEDDED_OK; \
+ 	echo LUMA_STAGE=FIT_BOUNDS_OK; \
+ 	hash sha256 ${luma_fit_addr} ${luma_fit_size} luma_fit_digest; \
+ 	if test "${luma_fit_digest}" = "${luma_expected_fit_sha256}"; then \
+diff --git a/board/samsung/exynos-mobile/luma-fit.S b/board/samsung/exynos-mobile/luma-fit.S
+new file mode 100644
+index 0000000..776009f
+--- /dev/null
++++ b/board/samsung/exynos-mobile/luma-fit.S
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++
++	.section .rodata.luma_fit, "a"
++	.balign 8
++	.global luma_fit_start
++	.type luma_fit_start, %object
++luma_fit_start:
++	.incbin "board/samsung/exynos-mobile/luma-payload.fit"
++	.global luma_fit_end
++luma_fit_end:
++	.size luma_fit_start, luma_fit_end - luma_fit_start
++
++	.section .note.GNU-stack, "", %progbits
++	.balign 8

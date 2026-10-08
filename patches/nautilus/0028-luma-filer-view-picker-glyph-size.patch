@@ -1,0 +1,49 @@
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -65,7 +65,10 @@
+       ]
+ 
+       ToggleButton {
+-        icon-name: "luma-layout-grid-symbolic";
++        child: Image {
++          icon-name: "luma-layout-grid-symbolic";
++          pixel-size: 13;
++        };
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 2";
+ 
+@@ -75,7 +78,10 @@
+       }
+ 
+       ToggleButton {
+-        icon-name: "luma-list-symbolic";
++        child: Image {
++          icon-name: "luma-list-symbolic";
++          pixel-size: 13;
++        };
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 1";
+ 
+@@ -85,7 +91,10 @@
+       }
+ 
+       ToggleButton {
+-        icon-name: "luma-columns-three-symbolic";
++        child: Image {
++          icon-name: "luma-columns-three-symbolic";
++          pixel-size: 13;
++        };
+         action-name: "slot.files-view-mode";
+         action-target: "uint32 4";
+ 
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1448,3 +1448,8 @@
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls image {
+   -gtk-icon-size: 13px;
+ }
++
++/* Compact Lucide view glyphs retain the native button/selection area. */
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls button image {
++  -gtk-icon-size: 13px;
++}

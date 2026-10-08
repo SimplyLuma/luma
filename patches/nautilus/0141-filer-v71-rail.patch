@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Filer v71 <noreply@anthropic.com>
+Date: Thu, 1 Oct 2026 12:26:21 -0500
+Subject: [PATCH 141/142] Filer v71: the 88 px rail
+
+v71's rail is 88 px (the kit's "rail"), not .63's "rail-wide".
+---
+ src/nautilus-sidebar.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+index 1e0d3cf..1bc9a5f 100644
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -776,7 +776,7 @@ refresh_luma_file_sidebar (NautilusSidebar *sidebar)
+     if (split != NULL)
+     {
+         luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (split),
+-                                            GTK_WIDGET (sidebar), "rail-wide");
++                                            GTK_WIDGET (sidebar), "rail");
+     }
+ }
+ 
+-- 
+2.54.0 (Apple Git-157)
+

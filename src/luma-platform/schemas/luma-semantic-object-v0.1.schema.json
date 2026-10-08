@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectluma.org/schemas/semantic-object/v0.1",
+  "title": "Luma semantic object",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "kind", "name", "privacy", "actions", "children"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$" },
+    "name": { "type": "string", "minLength": 1 },
+    "privacy": { "enum": ["public", "private", "sensitive", "secret"] },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "luma-action-v0.1.schema.json" }
+    },
+    "children": {
+      "type": "array",
+      "items": { "$ref": "#" }
+    }
+  }
+}

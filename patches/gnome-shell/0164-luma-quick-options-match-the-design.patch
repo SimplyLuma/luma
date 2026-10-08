@@ -1,0 +1,3009 @@
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 18 Sep 2026 23:50:00 -0500
+Subject: [PATCH] luma: Quick Options matches the Design Center
+
+Owner handoff, 2026-09-18 ("Quick Options polish"): the shipped panel had
+drifted from the design. Three shapes of control became two, holes opened in
+the grid, every dropdown button looked different, rows that belong elsewhere
+crept in, and the detail sheets floated over the controls below them.
+
+Two shapes. Wi-Fi and Bluetooth (and any wired, mobile or VPN connection)
+are the 64px connectivity cards; every other switch is a 44px utility pill,
+an icon and one word, in a three-column grid in the design's order: Tiling,
+Location, Warm light, Airplane mode, Keyboard, Cast, then GNOME's other
+switches. A pill shows only when it can work (Keyboard with a backlight,
+Airplane mode with a radio, Cast with a network or a known screen). The grid
+never leaves a hole: two pills on the last row take half the width each, one
+takes all of it, and a lone card spans the panel. An on pill takes the
+design's tinted wash and stroke instead of the filled slab. A pill with a
+menu toggles, and opens its menu from a chevron inside its trailing edge that
+has no box of its own: 26px of layout, a 32px hit area, a smaller hover disc.
+"Airplane mode" is "Airplane", the one label that did not fit.
+
+One disclosure. The cards and the level rows share the 30px raised button
+with a filled chevron glyph (luma-disclosure-{down,up}-symbolic; strokes
+render as blobs in St). Volume states its output under the level ("48% ·
+Buds4 Pro"); the microphone row, GNOME's own and shown only while an app
+records, sits right under it with its input disclosure. Every level keeps the
+disclosure's slot, so their tracks end together.
+
+Attached sheets. A detail sheet is now in the grid, in flow under the row
+that owns it: opening it pushes everything below down instead of laying a
+second surface over the controls, and one is open at a time. The owner (a
+card, a pill, a level's or the power button's disclosure) and the sheet are
+drawn as one shape by QuickSheetFrame: the owner keeps its top corners, the
+sheet overlaps it by a pixel, and the sheet's corner under the owner is
+square. Its title is plain, in sentence case, with a muted count on the other
+side ("Bluetooth devices", "3 connected"; "Wi-Fi networks", "5 available";
+"Sound output"; "Microphone"); GNOME's icon header is built and hidden. A
+choice is a 44px QuickSheetRow: an optional muted icon (device type, signal
+bars), the name, the state under it ("Connected · 82%" from UPower,
+"Not connected", "Connecting…", "Secured", "In use"), the raised fill and a
+dot for the current one, and the whole row is the button, so the "Connect"
+and "Disconnect" text buttons are gone. Settings links are plain sentence
+case rows under a hairline.
+
+Removed: the Notifications and Calendar buttons (they have their own
+surfaces) and the background-apps row. The background-apps indicator is still
+built and keeps tracking; only its row is not shown.
+
+In high contrast the shared outline takes the high-contrast line: the dark
+mode rules in luma-shelf.css restate only what luma-controls.css would
+override, so the high-contrast sheet keeps its own lines and ink.
+
+The panel's width is unchanged; only its height grows.
+---
+  .../status/luma-disclosure-down-symbolic.svg      |   6 +
+  .../status/luma-disclosure-up-symbolic.svg        |   6 +
+  data/theme/gnome-shell-dark.css                   | 183 ++++-
+  data/theme/gnome-shell-high-contrast.css          | 183 ++++-
+  data/theme/gnome-shell-light.css                  | 185 ++++-
+  data/theme/luma-controls.css                      |  21 +-
+  data/theme/luma-shelf.css                         | 259 +++++++
+  js/ui/panel.js                                    | 137 ++--
+  js/ui/quickSettings.js                            | 745 ++++++++++++++------
+  js/ui/status/backlight.js                         |   3 +-
+  js/ui/status/bluetooth.js                         | 112 +--
+  js/ui/status/cast.js                              |  16 +-
+  js/ui/status/network.js                           | 155 ++--
+  js/ui/status/rfkill.js                            |   5 +-
+  js/ui/status/system.js                            |  19 +-
+  js/ui/status/volume.js                            |  41 +-
+  16 files changed, 1601 insertions(+), 475 deletions(-)
+
+diff --git a/data/icons/hicolor/scalable/status/luma-disclosure-down-symbolic.svg b/data/icons/hicolor/scalable/status/luma-disclosure-down-symbolic.svg
+new file mode 100644
+index 0000000..002bf78
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-disclosure-down-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma disclosure chevron, pointing down; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 12 12">
++  <path d="M3.707,3.793 L6.707,6.793 A1,1 0 0 1 5.293,8.207 L2.293,5.207 A1,1 0 0 1 3.707,3.793Z" fill="#2e3436"/>
++  <path d="M5.293,6.793 L8.293,3.793 A1,1 0 0 1 9.707,5.207 L6.707,8.207 A1,1 0 0 1 5.293,6.793Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/icons/hicolor/scalable/status/luma-disclosure-up-symbolic.svg b/data/icons/hicolor/scalable/status/luma-disclosure-up-symbolic.svg
+new file mode 100644
+index 0000000..9c72c48
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-disclosure-up-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma disclosure chevron, pointing up; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 12 12">
++  <path d="M3.707,8.207 L6.707,5.207 A1,1 0 0 0 5.293,3.793 L2.293,6.793 A1,1 0 0 0 3.707,8.207Z" fill="#2e3436"/>
++  <path d="M5.293,5.207 L8.293,8.207 A1,1 0 0 0 9.707,6.793 L6.707,3.793 A1,1 0 0 0 5.293,5.207Z" fill="#2e3436"/>
++</svg>
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 31dbc64..1b19cfe 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4019,42 +4019,67 @@ StScrollBar {
+   .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:rtl {
+     margin: 0 0 0 7px; }
+ 
+-.luma-quick-utility-row {
+-  padding: 0 0 10px;
+-  border: 0 solid rgba(255, 255, 255, 0.075);
+-  border-bottom-width: 1px; }
+-
+-.luma-quick-utility-box {
+-  spacing: 8px; }
+-
+-.luma-quick-options .quick-toggle.luma-quick-pill {
++/* Utility pills (0164): 44px, an icon and a one-word label, three to a
++ * row; the grid (quickSettings.js) widens the last row's pills so it never
++ * leaves a hole. On, a pill takes the tinted wash and stroke, never a slab. */
++.luma-quick-options .quick-settings-grid .luma-quick-pill {
+   height: 42px;
+-  margin: 0;
++  margin: 0 0 8px;
+   padding: 0;
+   color: #969da4; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill > StBoxLayout {
+-    padding: 0 11px;
+-    spacing: 9px; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  .luma-quick-options .quick-settings-grid .quick-toggle.luma-quick-pill > StBoxLayout {
++    padding: 0 10px;
++    spacing: 7px; }
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle {
++    height: 42px;
++    color: inherit; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle > StBoxLayout {
++      padding: 0 0 0 10px;
++      spacing: 7px; }
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-icon,
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon {
+     width: 18px;
+     height: 18px;
+     icon-size: 18px;
+     border-radius: 0;
+     background-color: transparent;
+     color: inherit; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill:checked {
++  .luma-quick-options .quick-settings-grid .luma-quick-pill:checked {
+     background-color: rgba(255, 255, 255, 0.115);
+     border-color: rgba(255, 255, 255, 0.17);
+     color: #f1f3f4; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill:checked .quick-toggle-icon {
++  /* A pill's chevron is inside the pill, with no box of its own: 26px of
++   * layout whose hit area runs 6px further, over the pill's edge (32px in
++   * all, quickSettings.js), so "Keyboard" fits; the hover disc is smaller. */
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button {
++    width: 26px;
++    height: 32px;
++    margin: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 0;
+     background-color: transparent;
++    box-shadow: none;
+     color: inherit; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover,
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:checked {
++      background-color: transparent; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button .luma-quick-disclosure-disc {
++      width: 20px;
++      height: 20px;
++      border-radius: 6px; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++      background-color: rgba(255, 255, 255, 0.12); }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .luma-quick-disclosure-icon {
++      icon-size: 12px; }
+ 
+ .luma-quick-options .quick-slider {
+-  height: 38px;
++  height: 37px;
+   min-height: 0;
+   padding: 6px 2px;
++  margin-top: 3px;
+   border: 0;
++  border-top: 1px solid rgba(255, 255, 255, 0.075);
+   border-radius: 0;
+   background-color: transparent; }
+   .luma-quick-options .quick-slider > StBoxLayout {
+@@ -4073,12 +4098,8 @@ StScrollBar {
+   .luma-quick-options .quick-slider .slider-bin {
+     padding: 0; }
+ 
+-.luma-quick-options .quick-slider.luma-quick-volume {
+-  height: 37px;
+-  border-top: 1px solid rgba(255, 255, 255, 0.075); }
+-
+ .luma-quick-level-copy {
+-  width: 82px;
++  width: 104px;
+   spacing: 0; }
+ 
+ .luma-quick-level-title {
+@@ -4177,11 +4198,12 @@ StScrollBar {
+   color: #969da4; }
+ 
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0 0 10px;
+-  padding: 9px;
+-  border: 1px solid rgba(255, 255, 255, 0.075);
++  margin: 0;
++  padding: 10px;
++  border: 0;
+   border-radius: 10px;
+-  background-color: #2a2f36;
++  background-color: transparent;
++  box-shadow: none;
+   color: #e9ebec; }
+   .quick-toggle-menu.luma-quick-detail .header {
+     padding-bottom: 0;
+@@ -4262,6 +4284,115 @@ StScrollBar {
+     font-size: 12px;
+     color: #969da4; }
+ 
++/* Quick Options polish (0164): one disclosure, attached sheets. */
++/* The 30px raised disclosure of a card and of a level row. */
++.luma-quick-options .luma-quick-disclosure-slot {
++  width: 30px; }
++.luma-quick-options .quick-slider .luma-quick-disclosure {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border: 1px solid rgba(255, 255, 255, 0.075);
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec;
++  icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20, 27, 34, 0.11); }
++  .luma-quick-options .quick-slider .luma-quick-disclosure:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++.luma-quick-options .luma-quick-disclosure-icon {
++  icon-size: 14px; }
++
++/* The outline an open sheet and its owner share (QuickSheetFrame). */
++.luma-sheet-frame {
++  -luma-sheet-fill: rgba(255, 255, 255, 0.072);
++  -luma-sheet-line: rgba(255, 255, 255, 0.075);
++  -luma-sheet-radius: 10px; }
++.luma-quick-options .quick-settings-grid .luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .luma-sheet-owner:hover,
++.luma-quick-options .quick-settings-grid .luma-sheet-owner:checked {
++  border-color: transparent;
++  box-shadow: none; }
++.luma-quick-options .quick-settings-grid .quick-toggle-has-menu.luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .quick-toggle.luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .luma-quick-action.luma-sheet-owner,
++.luma-quick-options .quick-slider .luma-quick-disclosure.luma-sheet-owner {
++  background-color: transparent; }
++/* An open pill that is on keeps its wash over the shared fill. */
++.luma-quick-options .quick-settings-grid .luma-quick-pill.luma-sheet-owner:checked {
++  background-color: rgba(255, 255, 255, 0.115); }
++
++/* The sheet's title row: a plain title and a muted count, no icon. */
++.luma-quick-detail .luma-sheet-title {
++  height: 32px;
++  padding: 0 8px;
++  spacing: 8px; }
++.luma-quick-detail .luma-sheet-title-text {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++.luma-quick-detail .luma-sheet-count {
++  font-size: 11px;
++  font-weight: 500;
++  color: #969da4; }
++
++/* A choice: 44px, two lines, the whole row is the button. */
++.quick-toggle-menu.luma-quick-detail .luma-sheet-row {
++  min-height: 0;
++  height: 32px;
++  padding: 6px 12px 6px 10px;
++  margin: 1px 0;
++  spacing: 10px;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:hover,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:focus,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:checked {
++    background-color: rgba(255, 255, 255, 0.06); }
++.luma-quick-detail .luma-sheet-row-icon {
++  width: 24px;
++  icon-size: 19px;
++  color: #969da4; }
++.luma-quick-detail .luma-sheet-row:checked .luma-sheet-row-icon {
++  color: #e6e9eb; }
++.luma-quick-detail .luma-sheet-row-title {
++  font-size: 13px;
++  font-weight: 700; }
++.luma-quick-detail .luma-sheet-row-state {
++  padding-top: 2px;
++  font-size: 11px;
++  font-weight: 500;
++  color: #969da4; }
++.luma-quick-detail .luma-sheet-row-dot {
++  width: 6px;
++  height: 6px;
++  border-radius: 3px;
++  background-color: #e6e9eb;
++  box-shadow: 0 0 0 3px rgba(230, 233, 235, 0.14); }
++
++/* The settings link: a hairline, then a plain row in sentence case. */
++.quick-toggle-menu.luma-quick-detail .popup-separator-menu-item {
++  padding: 6px 0; }
++  .quick-toggle-menu.luma-quick-detail .popup-separator-menu-item .popup-separator-menu-item-separator {
++    height: 1px;
++    margin: 0;
++    background-color: rgba(255, 255, 255, 0.075); }
++.quick-toggle-menu.luma-quick-detail .luma-sheet-link {
++  min-height: 0;
++  height: 20px;
++  padding: 8px 10px;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #e9ebec;
++  font-size: 13px;
++  font-weight: 600; }
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-link:hover,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-link:focus {
++    background-color: rgba(255, 255, 255, 0.06); }
++
+ /* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 surface, at the
+  * shelf islands' radius (SHELF_ISLAND_RADIUS, 15), on the
+  * Quick Options surface of the current appearance mode: the same fill, 1px
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 25df6a7..4a897fb 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4222,42 +4222,67 @@ StScrollBar {
+   .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:rtl {
+     margin: 0 0 0 7px; }
+ 
+-.luma-quick-utility-row {
+-  padding: 0 0 10px;
+-  border: 0 solid #e9ebec;
+-  border-bottom-width: 1px; }
+-
+-.luma-quick-utility-box {
+-  spacing: 8px; }
+-
+-.luma-quick-options .quick-toggle.luma-quick-pill {
++/* Utility pills (0164): 44px, an icon and a one-word label, three to a
++ * row; the grid (quickSettings.js) widens the last row's pills so it never
++ * leaves a hole. On, a pill takes the tinted wash and stroke, never a slab. */
++.luma-quick-options .quick-settings-grid .luma-quick-pill {
+   height: 42px;
+-  margin: 0;
++  margin: 0 0 8px;
+   padding: 0;
+   color: #e9ebec; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill > StBoxLayout {
+-    padding: 0 11px;
+-    spacing: 9px; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  .luma-quick-options .quick-settings-grid .quick-toggle.luma-quick-pill > StBoxLayout {
++    padding: 0 10px;
++    spacing: 7px; }
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle {
++    height: 42px;
++    color: inherit; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle > StBoxLayout {
++      padding: 0 0 0 10px;
++      spacing: 7px; }
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-icon,
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon {
+     width: 18px;
+     height: 18px;
+     icon-size: 18px;
+     border-radius: 0;
+     background-color: transparent;
+     color: inherit; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill:checked {
++  .luma-quick-options .quick-settings-grid .luma-quick-pill:checked {
+     background-color: rgba(255, 255, 255, 0.115);
+     border-color: #e9ebec;
+     color: #f1f3f4; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill:checked .quick-toggle-icon {
++  /* A pill's chevron is inside the pill, with no box of its own: 26px of
++   * layout whose hit area runs 6px further, over the pill's edge (32px in
++   * all, quickSettings.js), so "Keyboard" fits; the hover disc is smaller. */
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button {
++    width: 26px;
++    height: 32px;
++    margin: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 0;
+     background-color: transparent;
++    box-shadow: none;
+     color: inherit; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover,
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:checked {
++      background-color: transparent; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button .luma-quick-disclosure-disc {
++      width: 20px;
++      height: 20px;
++      border-radius: 6px; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++      background-color: rgba(255, 255, 255, 0.12); }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .luma-quick-disclosure-icon {
++      icon-size: 12px; }
+ 
+ .luma-quick-options .quick-slider {
+-  height: 38px;
++  height: 37px;
+   min-height: 0;
+   padding: 6px 2px;
++  margin-top: 3px;
+   border: 0;
++  border-top: 1px solid #e9ebec;
+   border-radius: 0;
+   background-color: transparent; }
+   .luma-quick-options .quick-slider > StBoxLayout {
+@@ -4276,12 +4301,8 @@ StScrollBar {
+   .luma-quick-options .quick-slider .slider-bin {
+     padding: 0; }
+ 
+-.luma-quick-options .quick-slider.luma-quick-volume {
+-  height: 37px;
+-  border-top: 1px solid #e9ebec; }
+-
+ .luma-quick-level-copy {
+-  width: 82px;
++  width: 104px;
+   spacing: 0; }
+ 
+ .luma-quick-level-title {
+@@ -4380,11 +4401,12 @@ StScrollBar {
+   color: #e9ebec; }
+ 
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0 0 10px;
+-  padding: 9px;
+-  border: 1px solid #e9ebec;
++  margin: 0;
++  padding: 10px;
++  border: 0;
+   border-radius: 10px;
+-  background-color: #2a2f36;
++  background-color: transparent;
++  box-shadow: none;
+   color: #e9ebec; }
+   .quick-toggle-menu.luma-quick-detail .header {
+     padding-bottom: 0;
+@@ -4461,6 +4483,115 @@ StScrollBar {
+ .popup-menu-content, .background-menu .popup-menu-content { min-width: 204px; padding: 7px; }
+ .app-menu .popup-menu-content { min-width: 174px; padding: 5px; }
+ 
++/* Quick Options polish (0164): one disclosure, attached sheets. */
++/* The 30px raised disclosure of a card and of a level row. */
++.luma-quick-options .luma-quick-disclosure-slot {
++  width: 30px; }
++.luma-quick-options .quick-slider .luma-quick-disclosure {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border: 1px solid #e9ebec;
++  border-radius: 10px;
++  background-color: #2a2f36;
++  color: #e9ebec;
++  icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20, 27, 34, 0.11); }
++  .luma-quick-options .quick-slider .luma-quick-disclosure:hover {
++    background-color: rgba(255, 255, 255, 0.12); }
++.luma-quick-options .luma-quick-disclosure-icon {
++  icon-size: 14px; }
++
++/* The outline an open sheet and its owner share (QuickSheetFrame). */
++.luma-sheet-frame {
++  -luma-sheet-fill: rgba(255, 255, 255, 0.072);
++  -luma-sheet-line: #e9ebec;
++  -luma-sheet-radius: 10px; }
++.luma-quick-options .quick-settings-grid .luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .luma-sheet-owner:hover,
++.luma-quick-options .quick-settings-grid .luma-sheet-owner:checked {
++  border-color: transparent;
++  box-shadow: none; }
++.luma-quick-options .quick-settings-grid .quick-toggle-has-menu.luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .quick-toggle.luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .luma-quick-action.luma-sheet-owner,
++.luma-quick-options .quick-slider .luma-quick-disclosure.luma-sheet-owner {
++  background-color: transparent; }
++/* An open pill that is on keeps its wash over the shared fill. */
++.luma-quick-options .quick-settings-grid .luma-quick-pill.luma-sheet-owner:checked {
++  background-color: rgba(255, 255, 255, 0.115); }
++
++/* The sheet's title row: a plain title and a muted count, no icon. */
++.luma-quick-detail .luma-sheet-title {
++  height: 32px;
++  padding: 0 8px;
++  spacing: 8px; }
++.luma-quick-detail .luma-sheet-title-text {
++  font-size: 13px;
++  font-weight: 700;
++  color: #e9ebec; }
++.luma-quick-detail .luma-sheet-count {
++  font-size: 11px;
++  font-weight: 500;
++  color: #e9ebec; }
++
++/* A choice: 44px, two lines, the whole row is the button. */
++.quick-toggle-menu.luma-quick-detail .luma-sheet-row {
++  min-height: 0;
++  height: 32px;
++  padding: 6px 12px 6px 10px;
++  margin: 1px 0;
++  spacing: 10px;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #e9ebec; }
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:hover,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:focus,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:checked {
++    background-color: rgba(255, 255, 255, 0.06); }
++.luma-quick-detail .luma-sheet-row-icon {
++  width: 24px;
++  icon-size: 19px;
++  color: #e9ebec; }
++.luma-quick-detail .luma-sheet-row:checked .luma-sheet-row-icon {
++  color: #e6e9eb; }
++.luma-quick-detail .luma-sheet-row-title {
++  font-size: 13px;
++  font-weight: 700; }
++.luma-quick-detail .luma-sheet-row-state {
++  padding-top: 2px;
++  font-size: 11px;
++  font-weight: 500;
++  color: #e9ebec; }
++.luma-quick-detail .luma-sheet-row-dot {
++  width: 6px;
++  height: 6px;
++  border-radius: 3px;
++  background-color: #e6e9eb;
++  box-shadow: 0 0 0 3px rgba(230, 233, 235, 0.14); }
++
++/* The settings link: a hairline, then a plain row in sentence case. */
++.quick-toggle-menu.luma-quick-detail .popup-separator-menu-item {
++  padding: 6px 0; }
++  .quick-toggle-menu.luma-quick-detail .popup-separator-menu-item .popup-separator-menu-item-separator {
++    height: 1px;
++    margin: 0;
++    background-color: #e9ebec; }
++.quick-toggle-menu.luma-quick-detail .luma-sheet-link {
++  min-height: 0;
++  height: 20px;
++  padding: 8px 10px;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #e9ebec;
++  font-size: 13px;
++  font-weight: 600; }
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-link:hover,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-link:focus {
++    background-color: rgba(255, 255, 255, 0.06); }
++
+ /* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 surface, at the
+  * shelf islands' radius (SHELF_ISLAND_RADIUS, 15), on the
+  * Quick Options surface of the current appearance mode: the same fill, 1px
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 158e2ae..ad3085f 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4207,42 +4207,67 @@ StScrollBar {
+   .luma-quick-options .quick-toggle-has-menu .quick-toggle-menu-button:rtl {
+     margin: 0 0 0 7px; }
+ 
+-.luma-quick-utility-row {
+-  padding: 0 0 10px;
+-  border: 0 solid rgba(35, 39, 45, 0.09);
+-  border-bottom-width: 1px; }
+-
+-.luma-quick-utility-box {
+-  spacing: 8px; }
+-
+-.luma-quick-options .quick-toggle.luma-quick-pill {
++/* Utility pills (0164): 44px, an icon and a one-word label, three to a
++ * row; the grid (quickSettings.js) widens the last row's pills so it never
++ * leaves a hole. On, a pill takes the tinted wash and stroke, never a slab. */
++.luma-quick-options .quick-settings-grid .luma-quick-pill {
+   height: 42px;
+-  margin: 0;
++  margin: 0 0 8px;
+   padding: 0;
+-  color: #767b81; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill > StBoxLayout {
+-    padding: 0 11px;
+-    spacing: 9px; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  color: rgba(48, 52, 58, 0.78); }
++  .luma-quick-options .quick-settings-grid .quick-toggle.luma-quick-pill > StBoxLayout {
++    padding: 0 10px;
++    spacing: 7px; }
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle {
++    height: 42px;
++    color: inherit; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle > StBoxLayout {
++      padding: 0 0 0 10px;
++      spacing: 7px; }
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-icon,
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon {
+     width: 18px;
+     height: 18px;
+     icon-size: 18px;
+     border-radius: 0;
+     background-color: transparent;
+     color: inherit; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill:checked {
++  .luma-quick-options .quick-settings-grid .luma-quick-pill:checked {
+     background-color: rgba(35, 44, 52, 0.105);
+     border-color: rgba(35, 44, 52, 0.18);
+     color: #303840; }
+-  .luma-quick-options .quick-toggle.luma-quick-pill:checked .quick-toggle-icon {
++  /* A pill's chevron is inside the pill, with no box of its own: 26px of
++   * layout whose hit area runs 6px further, over the pill's edge (32px in
++   * all, quickSettings.js), so "Keyboard" fits; the hover disc is smaller. */
++  .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button {
++    width: 26px;
++    height: 32px;
++    margin: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 0;
+     background-color: transparent;
++    box-shadow: none;
+     color: inherit; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover,
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:checked {
++      background-color: transparent; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button .luma-quick-disclosure-disc {
++      width: 20px;
++      height: 20px;
++      border-radius: 6px; }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++      background-color: rgba(35, 44, 52, 0.115); }
++    .luma-quick-options .quick-settings-grid .luma-quick-pill .luma-quick-disclosure-icon {
++      icon-size: 12px; }
+ 
+ .luma-quick-options .quick-slider {
+-  height: 38px;
++  height: 37px;
+   min-height: 0;
+   padding: 6px 2px;
++  margin-top: 3px;
+   border: 0;
++  border-top: 1px solid rgba(35, 39, 45, 0.09);
+   border-radius: 0;
+   background-color: transparent; }
+   .luma-quick-options .quick-slider > StBoxLayout {
+@@ -4261,12 +4286,8 @@ StScrollBar {
+   .luma-quick-options .quick-slider .slider-bin {
+     padding: 0; }
+ 
+-.luma-quick-options .quick-slider.luma-quick-volume {
+-  height: 37px;
+-  border-top: 1px solid rgba(35, 39, 45, 0.09); }
+-
+ .luma-quick-level-copy {
+-  width: 82px;
++  width: 104px;
+   spacing: 0; }
+ 
+ .luma-quick-level-title {
+@@ -4365,11 +4386,12 @@ StScrollBar {
+   color: #767b81; }
+ 
+ .quick-toggle-menu.luma-quick-detail {
+-  margin: 0 0 10px;
+-  padding: 9px;
+-  border: 1px solid rgba(35, 39, 45, 0.09);
++  margin: 0;
++  padding: 10px;
++  border: 0;
+   border-radius: 10px;
+-  background-color: #fff;
++  background-color: transparent;
++  box-shadow: none;
+   color: #30343a; }
+   .quick-toggle-menu.luma-quick-detail .header {
+     padding-bottom: 0;
+@@ -4450,6 +4472,115 @@ StScrollBar {
+     font-size: 12px;
+     color: #767b81; }
+ 
++/* Quick Options polish (0164): one disclosure, attached sheets. */
++/* The 30px raised disclosure of a card and of a level row. */
++.luma-quick-options .luma-quick-disclosure-slot {
++  width: 30px; }
++.luma-quick-options .quick-slider .luma-quick-disclosure {
++  width: 28px;
++  height: 28px;
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  border-radius: 10px;
++  background-color: #fff;
++  color: #30343a;
++  icon-size: 14px;
++  box-shadow: 0 2px 5px rgba(20, 27, 34, 0.11); }
++  .luma-quick-options .quick-slider .luma-quick-disclosure:hover {
++    background-color: rgba(35, 44, 52, 0.115); }
++.luma-quick-options .luma-quick-disclosure-icon {
++  icon-size: 14px; }
++
++/* The outline an open sheet and its owner share (QuickSheetFrame). */
++.luma-sheet-frame {
++  -luma-sheet-fill: rgba(35, 44, 52, 0.072);
++  -luma-sheet-line: rgba(35, 39, 45, 0.09);
++  -luma-sheet-radius: 10px; }
++.luma-quick-options .quick-settings-grid .luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .luma-sheet-owner:hover,
++.luma-quick-options .quick-settings-grid .luma-sheet-owner:checked {
++  border-color: transparent;
++  box-shadow: none; }
++.luma-quick-options .quick-settings-grid .quick-toggle-has-menu.luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .quick-toggle.luma-sheet-owner,
++.luma-quick-options .quick-settings-grid .luma-quick-action.luma-sheet-owner,
++.luma-quick-options .quick-slider .luma-quick-disclosure.luma-sheet-owner {
++  background-color: transparent; }
++/* An open pill that is on keeps its wash over the shared fill. */
++.luma-quick-options .quick-settings-grid .luma-quick-pill.luma-sheet-owner:checked {
++  background-color: rgba(35, 44, 52, 0.105); }
++
++/* The sheet's title row: a plain title and a muted count, no icon. */
++.luma-quick-detail .luma-sheet-title {
++  height: 32px;
++  padding: 0 8px;
++  spacing: 8px; }
++.luma-quick-detail .luma-sheet-title-text {
++  font-size: 13px;
++  font-weight: 700;
++  color: #30343a; }
++.luma-quick-detail .luma-sheet-count {
++  font-size: 11px;
++  font-weight: 500;
++  color: #767b81; }
++
++/* A choice: 44px, two lines, the whole row is the button. */
++.quick-toggle-menu.luma-quick-detail .luma-sheet-row {
++  min-height: 0;
++  height: 32px;
++  padding: 6px 12px 6px 10px;
++  margin: 1px 0;
++  spacing: 10px;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #30343a; }
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:hover,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:focus,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-row:checked {
++    background-color: #fff; }
++.luma-quick-detail .luma-sheet-row-icon {
++  width: 24px;
++  icon-size: 19px;
++  color: #767b81; }
++.luma-quick-detail .luma-sheet-row:checked .luma-sheet-row-icon {
++  color: #31373e; }
++.luma-quick-detail .luma-sheet-row-title {
++  font-size: 13px;
++  font-weight: 700; }
++.luma-quick-detail .luma-sheet-row-state {
++  padding-top: 2px;
++  font-size: 11px;
++  font-weight: 500;
++  color: #767b81; }
++.luma-quick-detail .luma-sheet-row-dot {
++  width: 6px;
++  height: 6px;
++  border-radius: 3px;
++  background-color: #31373e;
++  box-shadow: 0 0 0 3px rgba(49, 55, 62, 0.14); }
++
++/* The settings link: a hairline, then a plain row in sentence case. */
++.quick-toggle-menu.luma-quick-detail .popup-separator-menu-item {
++  padding: 6px 0; }
++  .quick-toggle-menu.luma-quick-detail .popup-separator-menu-item .popup-separator-menu-item-separator {
++    height: 1px;
++    margin: 0;
++    background-color: rgba(35, 39, 45, 0.09); }
++.quick-toggle-menu.luma-quick-detail .luma-sheet-link {
++  min-height: 0;
++  height: 20px;
++  padding: 8px 10px;
++  border-radius: 10px;
++  background-color: transparent;
++  color: #30343a;
++  font-size: 13px;
++  font-weight: 600; }
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-link:hover,
++  .quick-toggle-menu.luma-quick-detail .luma-sheet-link:focus {
++    background-color: #fff; }
++
+ /* Beam: Luma's level indicator (osdWindow.js). A 236 x 48 surface, at the
+  * shelf islands' radius (SHELF_ISLAND_RADIUS, 15), on the
+  * Quick Options surface of the current appearance mode: the same fill, 1px
+diff --git a/data/theme/luma-controls.css b/data/theme/luma-controls.css
+index 71a83bb..f8c56fb 100644
+--- a/data/theme/luma-controls.css
++++ b/data/theme/luma-controls.css
+@@ -3,19 +3,20 @@
+  * fails the build if one is not, or if a pair drops below its threshold.
+  *
+  * Ink is the one emphasis a view may keep. Every on state -- an on tile's icon
+- * plate, a checked pill, a keyboard-brightness step -- takes the one state
+- * fill; a slider's value runs in it and its handle is a surface disc ringed in
+- * it. A tile's chevron takes no plate of its own, only a hairline, so it never
+- * reads as a hole in the tile. Notifications and Calendar are ordinary quiet
+- * buttons of the panel, not the variant sheet's stock slabs.
++ * plate, a keyboard-brightness step -- takes the one state fill; a slider's
++ * value runs in it and its handle is a surface disc ringed in it. A utility
++ * pill that is on is not a filled slab: it takes the design's tinted wash
++ * (luma-shelf.css, Quick Options polish). The chevron rules below are the
++ * fallback; luma-shelf.css raises a card's disclosure as the design does and
++ * gives a pill's chevron no box. Quick Options no longer shows Notifications
++ * or Calendar buttons; their rules stay for anything else that styles
++ * .luma-status-routes.
+  *
+  * Loaded after luma-shelf.css; every selector here is one class more specific
+  * than the rule it replaces, so order is not what decides it. */
+ 
+ /* light */
+ .luma-quick-options.luma-surface-light .quick-toggle:checked .quick-toggle-icon,
+-.luma-quick-options.luma-surface-light .quick-toggle.luma-quick-pill:checked,
+-.luma-quick-options.luma-surface-light .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
+ .luma-quick-options.luma-surface-light .luma-quick-detail .keyboard-brightness-level .button:checked {
+   background-color: #61728a;
+   color: #ffffff; }
+@@ -42,8 +43,6 @@
+ 
+ /* dark */
+ .luma-quick-options.luma-surface-dark .quick-toggle:checked .quick-toggle-icon,
+-.luma-quick-options.luma-surface-dark .quick-toggle.luma-quick-pill:checked,
+-.luma-quick-options.luma-surface-dark .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
+ .luma-quick-options.luma-surface-dark .luma-quick-detail .keyboard-brightness-level .button:checked {
+   background-color: #8a99a8;
+   color: #161a1f; }
+@@ -70,8 +69,6 @@
+ 
+ /* frost */
+ .luma-quick-options.luma-surface-frost .quick-toggle:checked .quick-toggle-icon,
+-.luma-quick-options.luma-surface-frost .quick-toggle.luma-quick-pill:checked,
+-.luma-quick-options.luma-surface-frost .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
+ .luma-quick-options.luma-surface-frost .luma-quick-detail .keyboard-brightness-level .button:checked {
+   background-color: #a9b5c1;
+   color: #161a1f; }
+@@ -98,8 +95,6 @@
+ 
+ /* glass */
+ .luma-quick-options.luma-surface-glass .quick-toggle:checked .quick-toggle-icon,
+-.luma-quick-options.luma-surface-glass .quick-toggle.luma-quick-pill:checked,
+-.luma-quick-options.luma-surface-glass .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
+ .luma-quick-options.luma-surface-glass .luma-quick-detail .keyboard-brightness-level .button:checked {
+   background-color: #a9b5c1;
+   color: #161a1f; }
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index d18cbf7..2e61caa 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -578,6 +578,265 @@
+   -barlevel-active-background-color: #f2f5f7;
+   -slider-handle-border-color: rgba(14,19,26,0.82); }
+ 
++
++/* Quick Options polish (0164), per appearance mode. Values are the panel's
++ * own tokens above and the Design Center's Quick Settings v5: the frame an
++ * open sheet shares with its owner, the raised 30px disclosure (which beats
++ * luma-controls.css's hairline chevron: the design raises it), the tinted
++ * wash of an on pill (never the filled slab), the chevron inside a pill with
++ * no box of its own, and the sheet's title, rows and link. */
++/* light */
++.luma-quick-options.luma-surface-light .luma-sheet-frame {
++  -luma-sheet-fill: rgba(35,39,45,0.06);
++  -luma-sheet-line: rgba(35,39,45,0.09); }
++.luma-quick-options.luma-surface-light .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-light .quick-slider .luma-quick-disclosure {
++  border-color: rgba(35,39,45,0.09);
++  background-color: #ffffff;
++  color: #30343a;
++  box-shadow: 0 2px 5px rgba(20,27,34,0.11); }
++.luma-quick-options.luma-surface-light .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button:hover,
++.luma-quick-options.luma-surface-light .quick-slider .luma-quick-disclosure:hover {
++  background-color: rgba(35,44,52,0.115); }
++.luma-quick-options.luma-surface-light .quick-slider .luma-quick-disclosure.luma-sheet-owner,
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-action.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill {
++  border-color: rgba(35,39,45,0.09);
++  background-color: rgba(35,39,45,0.06);
++  color: rgba(48,52,58,0.78); }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill:hover {
++  background-color: rgba(35,44,52,0.115);
++  color: #30343a; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill:checked {
++  border-color: rgba(35,44,52,0.18);
++  background-color: rgba(35,44,52,0.105);
++  color: #303840; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill.luma-sheet-owner:checked {
++  border-color: transparent; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-light .quick-settings-grid .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  border-color: transparent;
++  background-color: transparent;
++  color: inherit; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none;
++  color: inherit; }
++.luma-quick-options.luma-surface-light .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++  background-color: rgba(35,44,52,0.115); }
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-title-text,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-link {
++  color: #30343a; }
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-count,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row-state {
++  color: rgba(48,52,58,0.78); }
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row-icon {
++  color: #767b81; }
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row:checked .luma-sheet-row-icon {
++  color: #31373e; }
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row:hover,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row:focus,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row:checked,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-link:hover,
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-link:focus {
++  background-color: #ffffff; }
++.luma-quick-options.luma-surface-light .luma-quick-detail .luma-sheet-row-dot {
++  background-color: #31373e;
++  box-shadow: 0 0 0 3px rgba(49,55,62,0.14); }
++.luma-quick-options.luma-surface-light .luma-quick-detail .popup-separator-menu-item .popup-separator-menu-item-separator {
++  background-color: rgba(35,39,45,0.09); }
++.luma-quick-options.luma-surface-light .quick-slider {
++  border-color: rgba(35,39,45,0.09); }
++/* dark: the base dark sheet (and the high-contrast sheet) already carry
++ * these values; only what luma-controls.css would otherwise override is
++ * restated, so high contrast keeps its own lines and ink. */
++.luma-quick-options.luma-surface-dark .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-dark .quick-slider .luma-quick-disclosure {
++  border-color: rgba(255,255,255,0.075);
++  background-color: #2a2f36;
++  color: #e9ebec;
++  box-shadow: 0 2px 5px rgba(20,27,34,0.11); }
++.luma-quick-options.luma-surface-dark .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button:hover,
++.luma-quick-options.luma-surface-dark .quick-slider .luma-quick-disclosure:hover {
++  background-color: rgba(255,255,255,0.12); }
++.luma-quick-options.luma-surface-dark .quick-slider .luma-quick-disclosure.luma-sheet-owner,
++.luma-quick-options.luma-surface-dark .quick-settings-grid .luma-quick-action.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-dark .quick-settings-grid .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-dark .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-dark .quick-settings-grid .luma-quick-pill .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-dark .quick-settings-grid .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  border-color: transparent;
++  background-color: transparent;
++  color: inherit; }
++.luma-quick-options.luma-surface-dark .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-dark .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none;
++  color: inherit; }
++.luma-quick-options.luma-surface-dark .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++  background-color: rgba(255,255,255,0.12); }
++/* frost */
++.luma-quick-options.luma-surface-frost .luma-sheet-frame {
++  -luma-sheet-fill: rgba(10,20,33,0.20);
++  -luma-sheet-line: rgba(255,255,255,0.15); }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-frost .quick-slider .luma-quick-disclosure {
++  border-color: rgba(255,255,255,0.15);
++  background-color: rgba(255,255,255,0.15);
++  color: #ffffff;
++  box-shadow: 0 3px 8px rgba(7,13,21,0.16); }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button:hover,
++.luma-quick-options.luma-surface-frost .quick-slider .luma-quick-disclosure:hover {
++  background-color: rgba(255,255,255,0.19); }
++.luma-quick-options.luma-surface-frost .quick-slider .luma-quick-disclosure.luma-sheet-owner,
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-action.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill {
++  border-color: rgba(255,255,255,0.15);
++  background-color: rgba(10,20,33,0.20);
++  color: rgba(255,255,255,0.88); }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill:hover {
++  background-color: rgba(255,255,255,0.19);
++  color: #ffffff; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill:checked {
++  border-color: rgba(255,255,255,0.24);
++  background-color: rgba(255,255,255,0.13);
++  color: #ffffff; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill.luma-sheet-owner:checked {
++  border-color: transparent; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-frost .quick-settings-grid .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  border-color: transparent;
++  background-color: transparent;
++  color: inherit; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none;
++  color: inherit; }
++.luma-quick-options.luma-surface-frost .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++  background-color: rgba(255,255,255,0.19); }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-title-text,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-link {
++  color: #ffffff; }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-count,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row-state {
++  color: rgba(255,255,255,0.88); }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row-icon {
++  color: rgba(255,255,255,0.88); }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row:checked .luma-sheet-row-icon {
++  color: #f2f5f7; }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row:hover,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row:focus,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row:checked,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-link:hover,
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-link:focus {
++  background-color: rgba(255,255,255,0.15); }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .luma-sheet-row-dot {
++  background-color: #f2f5f7;
++  box-shadow: 0 0 0 3px rgba(242,245,247,0.14); }
++.luma-quick-options.luma-surface-frost .luma-quick-detail .popup-separator-menu-item .popup-separator-menu-item-separator {
++  background-color: rgba(255,255,255,0.15); }
++.luma-quick-options.luma-surface-frost .quick-slider {
++  border-color: rgba(255,255,255,0.15); }
++/* glass */
++.luma-quick-options.luma-surface-glass .luma-sheet-frame {
++  -luma-sheet-fill: rgba(10,20,33,0.20);
++  -luma-sheet-line: rgba(255,255,255,0.15); }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-glass .quick-slider .luma-quick-disclosure {
++  border-color: rgba(255,255,255,0.15);
++  background-color: rgba(255,255,255,0.15);
++  color: #ffffff;
++  box-shadow: 0 3px 8px rgba(7,13,21,0.16); }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .quick-toggle-has-menu .quick-toggle-menu-button:hover,
++.luma-quick-options.luma-surface-glass .quick-slider .luma-quick-disclosure:hover {
++  background-color: rgba(255,255,255,0.19); }
++.luma-quick-options.luma-surface-glass .quick-slider .luma-quick-disclosure.luma-sheet-owner,
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-action.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill {
++  border-color: rgba(255,255,255,0.15);
++  background-color: rgba(10,20,33,0.20);
++  color: rgba(255,255,255,0.90); }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill:hover {
++  background-color: rgba(255,255,255,0.19);
++  color: #ffffff; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill.luma-sheet-owner {
++  border-color: transparent;
++  background-color: transparent; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill:checked {
++  border-color: rgba(255,255,255,0.24);
++  background-color: rgba(255,255,255,0.13);
++  color: #ffffff; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill.luma-sheet-owner:checked {
++  border-color: transparent; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .quick-toggle.luma-quick-pill:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill .quick-toggle:checked .quick-toggle-icon,
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill .quick-toggle .quick-toggle-icon,
++.luma-quick-options.luma-surface-glass .quick-settings-grid .quick-toggle.luma-quick-pill .quick-toggle-icon {
++  border-color: transparent;
++  background-color: transparent;
++  color: inherit; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button,
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill.quick-toggle-has-menu .quick-toggle-menu-button:hover {
++  border-color: transparent;
++  background-color: transparent;
++  box-shadow: none;
++  color: inherit; }
++.luma-quick-options.luma-surface-glass .quick-settings-grid .luma-quick-pill .quick-toggle-menu-button:hover .luma-quick-disclosure-disc {
++  background-color: rgba(255,255,255,0.19); }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-title-text,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-link {
++  color: #ffffff; }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-count,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row-state {
++  color: rgba(255,255,255,0.90); }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row-icon {
++  color: rgba(255,255,255,0.90); }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row:checked .luma-sheet-row-icon {
++  color: #f2f5f7; }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row:hover,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row:focus,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row:checked,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-link:hover,
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-link:focus {
++  background-color: rgba(255,255,255,0.15); }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .luma-sheet-row-dot {
++  background-color: #f2f5f7;
++  box-shadow: 0 0 0 3px rgba(242,245,247,0.14); }
++.luma-quick-options.luma-surface-glass .luma-quick-detail .popup-separator-menu-item .popup-separator-menu-item-separator {
++  background-color: rgba(255,255,255,0.15); }
++.luma-quick-options.luma-surface-glass .quick-slider {
++  border-color: rgba(255,255,255,0.15); }
++
+ /* Upstream Dash fills overview-icon rather than overview-tile. Clear every
+  * reachable state at the Shelf boundary; otherwise a stock square remains
+  * behind the clipped artwork after hover or keyboard focus moves away. */
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 4c59da8..0088218 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -15,7 +15,7 @@ import * as CtrlAltTab from './ctrlAltTab.js';
+ import * as DND from './dnd.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as PanelMenu from './panelMenu.js';
+-import {QuickSettingsMenu, QuickUtilityRow, SystemIndicator} from './quickSettings.js';
++import {QuickMenuToggle, QuickSettingsMenu, QuickToggle, SystemIndicator} from './quickSettings.js';
+ import * as Main from './main.js';
+ import {DASH_TILE_SIZE, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
+ import {SURFACE_INK} from './lumaSurfaceMaterials.js';
+@@ -1492,26 +1492,12 @@ class QuickSettings extends PanelMenu.Button {
+     }
+ 
+     _createNotificationSurface() {
+-        // The resting collection is the notification tray the Shelf beacon
+-        // opens; Quick Options routes to that same surface.
++        // Notifications and the calendar have surfaces of their own (the
++        // Shelf beacon's tray and the clock), so Quick Options ends at its
++        // footer: nothing routes to them from here. The empty routes box is
++        // kept, unparented, for the presentation switch that shows and hides
++        // it.
+         this._notificationRoutes = new St.BoxLayout({style_class: 'luma-status-routes'});
+-        const history = new St.Button({label: _('Notifications'), style_class: 'button',
+-            can_focus: true, x_expand: true});
+-        history.connect('clicked', () => {
+-            this.menu.close();
+-            this.openNotifications();
+-        });
+-        this._notificationRoutes.add_child(history);
+-        const calendar = new St.Button({label: _('Calendar'), style_class: 'button',
+-            can_focus: true, x_expand: true});
+-        calendar.connect('clicked', () => {
+-            this.menu.close();
+-            const app = Shell.AppSystem.get_default().lookup_app('org.projectluma.Calendar.desktop');
+-            app?.activate();
+-        });
+-        calendar.visible = Shell.AppSystem.get_default().lookup_app('org.projectluma.Calendar.desktop') !== null;
+-        this._notificationRoutes.add_child(calendar);
+-        this.menu.box.add_child(this._notificationRoutes);
+         this.connect('destroy', () => {
+             if (!this._statusActive) { this._statusViewport.destroy(); this._statusHover.destroy(); }
+         });
+@@ -1727,53 +1713,82 @@ class QuickSettings extends PanelMenu.Button {
+         this._indicators.add_child(this._system);
+ 
+         // The design's order: what you are connected to, the things you flick
+-        // on and off, the two levels, then everything else, then the account.
+-        // Every item here is still the indicator's own actor.
++        // on and off, the levels, then the account. Every item here is still
++        // the indicator's own actor.
+         const sibling = this.menu.getFirstItem();
+ 
+-        if (this._network)
+-            this._addItemsBefore(this._network.quickSettingsItems, sibling);
++        // Connectivity cards: Wi-Fi and Bluetooth side by side, then any
++        // other connection this machine has (wired, mobile, VPN).
++        const wifi = this._network?._wirelessToggle;
++        if (wifi)
++            this._addItemsBefore([wifi], sibling);
+         if (this._bluetooth)
+             this._addItemsBefore(this._bluetooth.quickSettingsItems, sibling);
+-        // Cast sits with the things you connect to (ADR-034).
+-        this._addItemsBefore(this._cast.quickSettingsItems, sibling);
+-
+-        // The utility pills: one row, across the panel.
+-        this._utilityRow = new QuickUtilityRow();
+-        this.menu.insertItemBefore(this._utilityRow, sibling,
+-            N_QUICK_SETTINGS_COLUMNS);
+-        for (const indicator of [this._location, this._nightLight]) {
+-            for (const item of indicator.quickSettingsItems)
+-                this._utilityRow.adopt(item);
++        if (this._network) {
++            this._addItemsBefore(this._network.quickSettingsItems
++                .filter(item => item !== wifi), sibling);
+         }
+ 
++        // Utility pills, three to a row: Tiling (an extension, which arrives
++        // later and goes in front of Location), Location, Warm light,
++        // Airplane mode, Keyboard, Cast, then GNOME's other switches. Each
++        // shows only when it can work: the indicators already hide Keyboard
++        // without a backlight and Airplane mode without a radio.
++        const pills = [
++            this._location, this._nightLight, this._rfkill, this._backlight,
++            this._cast, this._camera, this._remoteAccess, this._thunderbolt,
++            this._autoRotate, this._unsafeMode,
++        ].flatMap(indicator => indicator.quickSettingsItems);
++        this._firstPill = pills.find(item => this._isPill(item)) ?? sibling;
++        for (const item of pills)
++            this._addItemsBefore([item], sibling, this._isPill(item) ? 1 : N_QUICK_SETTINGS_COLUMNS);
++
+         this._addItemsBefore(this._brightness.quickSettingsItems,
+             sibling, N_QUICK_SETTINGS_COLUMNS);
+         this._addItemsBefore(this._volumeOutput.quickSettingsItems,
+             sibling, N_QUICK_SETTINGS_COLUMNS);
++        // The microphone sits right under Volume, and only while an app is
++        // recording: the moment the shelf shows the microphone indicator.
+         this._addItemsBefore(this._volumeInput.quickSettingsItems,
+             sibling, N_QUICK_SETTINGS_COLUMNS);
++        // External pills go after Cast; anything wider goes after the levels.
++        this._pillsEnd = this._brightness.quickSettingsItems[0] ?? sibling;
+ 
+-        this._addItemsBefore(this._camera.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._remoteAccess.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._thunderbolt.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._backlight.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._rfkill.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._autoRotate.quickSettingsItems, sibling);
+-        this._addItemsBefore(this._unsafeMode.quickSettingsItems, sibling);
+-
+-        // append background apps
+-        this._backgroundApps.quickSettingsItems.forEach(
+-            item => this.menu.addItem(item, N_QUICK_SETTINGS_COLUMNS));
++        // Background apps keep running and keep their code path; the row is
++        // not shown in Quick Options (the brief: Monitor is its home).
+ 
+         // The account and its four actions close the panel, as the design has
+         // them, so they are added after everything else rather than first.
+         this._system.quickSettingsItems.forEach(
+             item => this.menu.addItem(item, N_QUICK_SETTINGS_COLUMNS));
++
++        this._indicatorsReady = true;
++        const pending = [...this._pendingExternal ?? []];
++        this._pendingExternal?.clear();
++        for (const [indicator, colSpan] of pending)
++            this.addExternalIndicator(indicator, colSpan);
++    }
++
++    // A pill is any plain switch, with or without a menu. Wi-Fi, Bluetooth
++    // and the other connections are cards; sliders and the footer span the
++    // panel.
++    _isPill(item) {
++        return item instanceof QuickToggle || item instanceof QuickMenuToggle;
+     }
+ 
+     _addItemsBefore(items, sibling, colSpan = 1) {
+-        items.forEach(item => this.menu.insertItemBefore(item, sibling, colSpan));
++        items.forEach(item => {
++            if (colSpan === 1 && this._isPill(item) && !this._isConnectivity(item)) {
++                item.add_style_class_name('luma-quick-pill');
++                item.setPill?.(true);
++            }
++            this.menu.insertItemBefore(item, sibling, colSpan);
++        });
++    }
++
++    _isConnectivity(item) {
++        return (this._network?.quickSettingsItems ?? []).includes(item) ||
++            (this._bluetooth?.quickSettingsItems ?? []).includes(item);
+     }
+ 
+     /**
+@@ -1784,13 +1799,35 @@ class QuickSettings extends PanelMenu.Button {
+      * @param {number=} colSpan
+      */
+     addExternalIndicator(indicator, colSpan = 1) {
++        // An extension can arrive before the built-in indicators are set up
++        // (their setup is asynchronous); its items wait for them, so they
++        // land in their places rather than in front of everything.
++        if (!this._indicatorsReady) {
++            this._pendingExternal ??= new Map();
++            this._pendingExternal.set(indicator, colSpan);
++            indicator.connectObject('destroy',
++                () => this._pendingExternal.delete(indicator), this);
++            return;
++        }
++        indicator.disconnectObject(this);
++
+         // Insert before first non-privacy indicator if it exists
+-        let sibling = this._brightness ?? null;
++        const sibling = this._brightness ?? null;
+         this._indicators.insert_child_below(indicator, sibling);
+ 
+-        // Insert before background apps if it exists
+-        sibling = this._backgroundApps?.quickSettingsItems?.at(-1) ?? null;
+-        this._addItemsBefore(indicator.quickSettingsItems, sibling, colSpan);
++        // A switch becomes a pill: Tiling first, as the design orders it,
++        // anything else after Cast. Wider items go after the levels, above
++        // the account.
++        for (const item of indicator.quickSettingsItems) {
++            if (colSpan === 1 && this._isPill(item)) {
++                const tiling = item.constructor.name === 'TilingToggle';
++                this._addItemsBefore([item],
++                    tiling ? this._firstPill : this._pillsEnd, 1);
++            } else {
++                this._addItemsBefore([item],
++                    this._system.quickSettingsItems[0], colSpan);
++            }
++        }
+     }
+ });
+ 
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+index da37681..31b232f 100644
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -5,7 +5,6 @@ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Graphene from 'gi://Graphene';
+-import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+ import St from 'gi://St';
+ import Shell from 'gi://Shell';
+@@ -21,6 +20,78 @@ import {PopupAnimation} from './boxpointer.js';
+ const DIM_BRIGHTNESS = -0.4;
+ export const POPUP_ANIMATION_TIME = 400;
+ 
++// The disclosure chevron of every card, pill and level row. Bundled with the
++// Shell and drawn as filled outlines, never strokes.
++const DISCLOSURE_CLOSED = 'luma-disclosure-down-symbolic';
++const DISCLOSURE_OPEN = 'luma-disclosure-up-symbolic';
++// A pill's chevron is 26px of layout and 32px to the pointer.
++const PILL_CHEVRON_OVERHANG = 6;
++
++// The disclosure a card, pill or level opens its sheet with. In a pill its
++// hit area runs a few pixels past its own box, over the pill's edge, so the
++// pill keeps room for a one-word label and the chevron is still 32px wide to
++// the pointer.
++const QuickDisclosureButton = GObject.registerClass(
++class QuickDisclosureButton extends St.Button {
++    setPickOverhang(overhang) {
++        this._pickOverhang = overhang;
++    }
++
++    vfunc_pick(pickContext) {
++        super.vfunc_pick(pickContext);
++        if (!this._pickOverhang || !this.reactive || !this.visible)
++            return;
++        const [width, height] = this.get_size();
++        const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
++        this.pick_box(pickContext, new Clutter.ActorBox({
++            x1: rtl ? -this._pickOverhang : width,
++            y1: 0,
++            x2: rtl ? 0 : width + this._pickOverhang,
++            y2: height,
++        }));
++    }
++});
++
++// The chevron sits on a disc of its own, so a pill's chevron can show a hover
++// fill smaller than its hit area.
++function disclosureGlyph() {
++    return new St.Bin({
++        style_class: 'luma-quick-disclosure-disc',
++        child: new St.Icon({
++            style_class: 'luma-quick-disclosure-icon',
++            icon_name: DISCLOSURE_CLOSED,
++        }),
++        x_align: Clutter.ActorAlign.CENTER,
++        y_align: Clutter.ActorAlign.CENTER,
++    });
++}
++
++/**
++ * Mark whatever a detail sheet hangs from while the sheet is open, so it can
++ * give up its own fill and outline to the one shape the grid draws round it
++ * and the sheet (QuickSheetFrame). The mark comes off only once the sheet has
++ * finished closing, so the owner never flashes its own outline mid-collapse.
++ *
++ * @param {PopupMenu.PopupMenuBase} menu - the detail sheet
++ * @param {St.Widget} owner - the card, pill or disclosure it hangs from
++ */
++export function trackSheetOwner(menu, owner) {
++    let open = false;
++    menu.connect('open-state-changed', (m, isOpen) => {
++        open = isOpen;
++        if (open)
++            owner.add_style_class_name('luma-sheet-owner');
++        else if (!menu.actor.visible)
++            owner.remove_style_class_name('luma-sheet-owner');
++    });
++    // An unanimated close finishes (and says so) before it reports the new
++    // open state; an animated one finishes after.
++    menu.connect('menu-closed', () => {
++        if (!open)
++            owner.remove_style_class_name('luma-sheet-owner');
++    });
++}
++
+ export const QuickSettingsItem = GObject.registerClass({
+     Properties: {
+         'has-menu': GObject.ParamSpec.boolean(
+@@ -131,10 +202,16 @@ export const QuickToggle = GObject.registerClass({
+         this.bind_property_full('subtitle',
+             this._subtitle, 'visible',
+             GObject.BindingFlags.SYNC_CREATE,
+-            (bind, source) => [true, source !== null],
++            (bind, source) => [true, source !== null && !this._pill],
+             null);
+     }
+ 
++    // A utility pill is an icon and one word: it shows no status line.
++    setPill(pill) {
++        this._pill = pill;
++        this._subtitle.visible = !pill && this.subtitle !== null;
++    }
++
+     get label() {
+         console.warn('Trying to get label from QuickToggle. Use title instead.');
+         return this.title;
+@@ -183,15 +260,17 @@ export const QuickMenuToggle = GObject.registerClass({
+             x_expand: true,
+         });
+         this._box.add_child(contents);
++        this._contents = contents;
+ 
+         const separator = new St.Widget({style_class: 'quick-toggle-separator'});
+         this._box.add_child(separator);
+ 
+-        this._menuButton = new St.Button({
+-            style_class: 'quick-toggle-menu-button icon-button',
++        this._menuButton = new QuickDisclosureButton({
++            style_class: 'quick-toggle-menu-button icon-button luma-quick-disclosure',
+             // The detail opens in place, below the card, so the chevron points
+-            // at it rather than off to the side.
+-            child: new St.Icon({icon_name: 'pan-down-symbolic'}),
++            // at it rather than off to the side. The glyph is a fills-only
++            // chevron: stroked symbolic glyphs render as blobs in St.
++            child: disclosureGlyph(),
+             can_focus: true,
+             x_expand: false,
+             y_align: Clutter.ActorAlign.CENTER,
+@@ -242,9 +321,10 @@ export const QuickMenuToggle = GObject.registerClass({
+                 this.menu.open();
+         });
+         this.menu.connect('open-state-changed', (menu, open) => {
+-            this._menuButton.child.icon_name = open
+-                ? 'pan-up-symbolic' : 'pan-down-symbolic';
++            this._menuButton.child.child.icon_name = open
++                ? DISCLOSURE_OPEN : DISCLOSURE_CLOSED;
+         });
++        trackSheetOwner(this.menu, this);
+         this._menuButton.connect('popup-menu', () => this.emit('popup-menu'));
+         contents.connect('popup-menu', () => this.emit('popup-menu'));
+         this.connect('popup-menu', () => {
+@@ -252,49 +332,10 @@ export const QuickMenuToggle = GObject.registerClass({
+                 this.menu.open();
+         });
+     }
+-});
+-
+-/**
+- * The utility row: the design's pills, side by side across the panel.
+- *
+- * The toggles inside are the indicators' own actors, moved here rather than
+- * recreated, so Location is still the location indicator and Warm light is
+- * still the night-light indicator. The row hides itself when every toggle in
+- * it is hidden, which is how absent hardware becomes an absent control rather
+- * than an empty space.
+- */
+-export const QuickUtilityRow = GObject.registerClass(
+-class QuickUtilityRow extends QuickSettingsItem {
+-    _init() {
+-        super._init({
+-            style_class: 'luma-quick-utility-row',
+-            reactive: false,
+-            can_focus: false,
+-        });
+-
+-        this._row = new St.BoxLayout({
+-            layout_manager: new Clutter.BoxLayout({homogeneous: true}),
+-            style_class: 'luma-quick-utility-box',
+-            x_expand: true,
+-        });
+-        this.set_child(this._row);
+-        this.hide();
+-    }
+-
+-    adopt(toggle) {
+-        if (!toggle)
+-            return;
+-        toggle.get_parent()?.remove_child(toggle);
+-        toggle.add_style_class_name('luma-quick-pill');
+-        toggle.x_expand = true;
+-        this._row.add_child(toggle);
+-        toggle.connectObject('notify::visible',
+-            () => this._updateVisibility(), this);
+-        this._updateVisibility();
+-    }
+ 
+-    _updateVisibility() {
+-        this.visible = [...this._row].some(child => child.visible);
++    setPill(pill) {
++        this._contents.setPill(pill);
++        this._menuButton.setPickOverhang(pill ? PILL_CHEVRON_OVERHANG : 0);
+     }
+ });
+ 
+@@ -324,6 +365,10 @@ export const QuickSlider = GObject.registerClass({
+             'title', null, null,
+             GObject.ParamFlags.READWRITE,
+             null),
++        'level-detail': GObject.ParamSpec.string(
++            'level-detail', null, null,
++            GObject.ParamFlags.READWRITE,
++            null),
+     },
+     Signals: {
+         'icon-clicked': {},
+@@ -415,7 +460,9 @@ export const QuickSlider = GObject.registerClass({
+             GObject.BindingFlags.SYNC_CREATE,
+             (bind, source) => [true, !!source],
+             null);
++        this._valueLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+         this.slider.connect('notify::value', () => this._updateLevelValue());
++        this.connect('notify::level-detail', () => this._updateLevelValue());
+         this._updateLevelValue();
+ 
+         // for focus indication
+@@ -436,15 +483,23 @@ export const QuickSlider = GObject.registerClass({
+         sliderBin.set_accessible(sliderAccessible);
+         sliderBin.connect('event', (bin, event) => this.slider.event(event, false));
+ 
++        // The same disclosure as the cards', at the end of the row. Its slot
++        // is kept when there is nothing to disclose, so every level's track
++        // ends at the same place.
+         this._menuButton = new St.Button({
+-            child: new St.Icon({icon_name: 'go-next-symbolic'}),
+-            style_class: 'icon-button flat',
++            child: disclosureGlyph(),
++            style_class: 'luma-quick-disclosure',
+             can_focus: true,
+             x_expand: false,
+             y_expand: false,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+-        box.add_child(this._menuButton);
++        this._menuSlot = new St.Bin({
++            style_class: 'luma-quick-disclosure-slot',
++            child: this._menuButton,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        box.add_child(this._menuSlot);
+ 
+         this.bind_property('menu-button-accessible-name',
+             this._menuButton, 'accessible-name',
+@@ -459,19 +514,120 @@ export const QuickSlider = GObject.registerClass({
+                 this.menu.open();
+         });
+         this.menu.connect('open-state-changed', (menu, open) => {
+-            this._menuButton.child.icon_name = open
+-                ? 'pan-up-symbolic' : 'pan-down-symbolic';
++            this._menuButton.child.child.icon_name = open
++                ? DISCLOSURE_OPEN : DISCLOSURE_CLOSED;
+         });
++        trackSheetOwner(this.menu, this._menuButton);
+         this.slider.connect('popup-menu', () => {
+             if (this.menuEnabled)
+                 this.menu.open();
+         });
+     }
+ 
++    // A level's detail sheet hangs from its disclosure, not from the row.
++    getSheetAnchor() {
++        return this._menuButton;
++    }
++
+     _updateLevelValue() {
+-        this._valueLabel.text = new Intl.NumberFormat(undefined, {
++        const percent = new Intl.NumberFormat(undefined, {
+             style: 'percent', maximumFractionDigits: 0,
+         }).format(this.slider.value);
++        // "44% · Buds4 Pro": where the sound is going, without opening
++        // anything.
++        this._valueLabel.text = this.levelDetail
++            ? `${percent} · ${this.levelDetail}` : percent;
++    }
++});
++
++/**
++ * One choice in a detail sheet: a device, a network, an output.
++ *
++ * The whole row is the button; there is no "Connect" text button beside it.
++ * It reads as two lines, the name and then the state ("Connected · 82%",
++ * "Not connected", "Secured"), may lead with a muted icon (a device type,
++ * signal bars), and the current choice takes the raised row fill and a dot on
++ * the trailing side.
++ */
++export const QuickSheetRow = GObject.registerClass(
++class QuickSheetRow extends PopupMenu.PopupBaseMenuItem {
++    _init(params = {}) {
++        super._init({style_class: 'luma-sheet-row', ...params});
++
++        this._icon = new St.Icon({
++            style_class: 'luma-sheet-row-icon',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this.add_child(this._icon);
++
++        const copy = new St.BoxLayout({
++            style_class: 'luma-sheet-row-copy',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._titleLabel = new St.Label({style_class: 'luma-sheet-row-title'});
++        this._stateLabel = new St.Label({style_class: 'luma-sheet-row-state'});
++        this._titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._stateLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        copy.add_child(this._titleLabel);
++        copy.add_child(this._stateLabel);
++        this.add_child(copy);
++        this.label_actor = this._titleLabel;
++
++        this._dot = new St.Widget({
++            style_class: 'luma-sheet-row-dot',
++            y_align: Clutter.ActorAlign.CENTER,
++            opacity: 0,
++        });
++        this.add_child(this._dot);
++        this._current = false;
++    }
++
++    setTitle(text) {
++        this._titleLabel.text = text ?? '';
++        this._syncAccessibleName();
++    }
++
++    setState(text) {
++        this._stateLabel.set({text: text ?? '', visible: !!text});
++        this._syncAccessibleName();
++    }
++
++    setIcon(icon) {
++        if (icon instanceof Gio.Icon)
++            this._icon.gicon = icon;
++        else
++            this._icon.icon_name = icon ?? '';
++        this._icon.visible = !!icon;
++    }
++
++    get iconActor() {
++        return this._icon;
++    }
++
++    get current() {
++        return this._current;
++    }
++
++    setCurrent(current) {
++        this._current = !!current;
++        // The dot keeps its slot either way, so names never shift.
++        this._dot.opacity = this._current ? 255 : 0;
++        if (this._current) {
++            this.add_style_pseudo_class('checked');
++            this.add_accessible_state(Atk.StateType.CHECKED);
++        } else {
++            this.remove_style_pseudo_class('checked');
++            this.remove_accessible_state(Atk.StateType.CHECKED);
++        }
++    }
++
++    _syncAccessibleName() {
++        const {text: title} = this._titleLabel;
++        const {text: state} = this._stateLabel;
++        this.accessible_name = state ? `${title}, ${state}` : title;
+     }
+ });
+ 
+@@ -540,8 +696,45 @@ class QuickToggleMenu extends PopupMenu.PopupMenuBase {
+         sourceActor.connect('notify::checked',
+             () => this._syncChecked());
+         this._syncChecked();
++
++        // Luma's sheet title: a plain title on the leading side and a muted
++        // count on the trailing side ("Bluetooth devices", "3 connected").
++        // The card the sheet hangs from already shows the icon, so the title
++        // repeats neither the icon nor the card's name. GNOME's header above
++        // stays built, hidden, for anything that still reaches into it.
++        this._titleRow = new St.BoxLayout({
++            style_class: 'luma-sheet-title',
++            visible: false,
++        });
++        this._titleLabel = new St.Label({
++            style_class: 'luma-sheet-title-text',
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._titleSuffix = new St.BoxLayout({
++            style_class: 'luma-sheet-title-suffix',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._countLabel = new St.Label({
++            style_class: 'luma-sheet-count',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._titleRow.add_child(this._titleLabel);
++        this._titleRow.add_child(this._titleSuffix);
++        this._titleRow.add_child(this._countLabel);
++        this.box.insert_child_above(this._titleRow, this._header);
+     }
+ 
++    /**
++     * The sheet's title and count. The icon is accepted for compatibility
++     * with GNOME's header and is not shown.
++     *
++     * @param {string|Gio.Icon} icon - unused: the owning card shows it
++     * @param {string} title - sentence case, e.g. "Bluetooth devices"
++     * @param {string=} subtitle - the muted count, e.g. "3 connected"
++     */
+     setHeader(icon, title, subtitle = '') {
+         if (icon instanceof Gio.Icon)
+             this._headerIcon.gicon = icon;
+@@ -554,17 +747,28 @@ class QuickToggleMenu extends PopupMenu.PopupMenuBase {
+             visible: !!subtitle,
+         });
+ 
+-        this._header.show();
++        this._titleLabel.text = title;
++        this.setCount(subtitle);
++        this._titleRow.show();
++    }
++
++    setCount(text) {
++        this._countLabel.set({
++            text: text ?? '',
++            visible: !!text,
++        });
+     }
+ 
+     addHeaderSuffix(actor) {
+-        const {layoutManager: headerLayout} = this._header;
+-        const side = this.actor.text_direction === Clutter.TextDirection.RTL
+-            ? Clutter.GridPosition.LEFT
+-            : Clutter.GridPosition.RIGHT;
+-        this._header.remove_child(this._headerSpacer);
+-        headerLayout.attach_next_to(actor, this._headerTitle, side, 1, 1);
+-        headerLayout.attach_next_to(this._headerSpacer, actor, side, 1, 1);
++        this._titleSuffix.add_child(actor);
++    }
++
++    // Settings links close every sheet, under a hairline, as a plain row
++    // rather than a filled button.
++    addSettingsAction(title, desktopFile) {
++        const item = super.addSettingsAction(title, desktopFile);
++        item.add_style_class_name('luma-sheet-link');
++        return item;
+     }
+ 
+     open(animate) {
+@@ -650,6 +854,93 @@ const QuickSettingsLayoutMeta = GObject.registerClass({
+     },
+ }, class QuickSettingsLayoutMeta extends Clutter.LayoutMeta {});
+ 
++// Luma's grid is six units across: a connectivity card takes three, a
++// utility pill two, a level or the footer all six. The public API still counts
++// GNOME's two columns, so an extension that asks for a span of two still gets
++// the whole width.
++const GRID_UNITS = 6;
++// The least room left under a detail sheet before the next row.
++const SHEET_GAP = 8;
++
++/**
++ * The outline of an open detail sheet and whatever it hangs from, drawn as
++ * one shape: the card (or pill, or level disclosure) keeps its top corners,
++ * loses its bottom ones, and runs into the sheet; the sheet's corner under the
++ * owner is square, its others rounded. The owner and the sheet paint no fill
++ * or outline of their own while it is open (.luma-sheet-owner), so there is
++ * exactly one fill and one hairline in every appearance mode, translucent
++ * ones included. Colours come from the stylesheet (-luma-sheet-fill,
++ * -luma-sheet-line, -luma-sheet-radius).
++ */
++const QuickSheetFrame = GObject.registerClass(
++class QuickSheetFrame extends St.DrawingArea {
++    _init() {
++        super._init({style_class: 'luma-sheet-frame', reactive: false});
++        this._geometry = null;
++    }
++
++    setGeometry(geometry) {
++        const same = JSON.stringify(geometry) === JSON.stringify(this._geometry);
++        this._geometry = geometry;
++        if (!same)
++            this.queue_repaint();
++    }
++
++    vfunc_repaint() {
++        const cr = this.get_context();
++        const geometry = this._geometry;
++        if (!geometry || this.width <= 0 || this.height <= 0) {
++            cr.$dispose();
++            return;
++        }
++
++        const node = this.get_theme_node();
++        const [surfaceWidth] = this.get_surface_size();
++        cr.scale(surfaceWidth / this.width, surfaceWidth / this.width);
++
++        const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
++        const [hasRadius, radiusLength] = node.lookup_length('-luma-sheet-radius', false);
++        const [, fill] = node.lookup_color('-luma-sheet-fill', false);
++        const [hasLine, line] = node.lookup_color('-luma-sheet-line', false);
++        const lineWidth = scaleFactor;
++        const e = lineWidth / 2;
++
++        const L = e, R = geometry.width - e, T = e, B = geometry.height - e;
++        const ownerLeft = Math.max(L, geometry.ownerX + e);
++        const ownerRight = Math.min(R, geometry.ownerX + geometry.ownerWidth - e);
++        const sheetTop = geometry.sheetTop + e;
++        const radius = Math.max(0, Math.min(
++            hasRadius ? radiusLength : 10 * scaleFactor,
++            (ownerRight - ownerLeft) / 2, (B - sheetTop) / 2, sheetTop - T));
++
++        cr.newSubPath();
++        cr.arc(ownerLeft + radius, T + radius, radius, Math.PI, 1.5 * Math.PI);
++        cr.arc(ownerRight - radius, T + radius, radius, 1.5 * Math.PI, 2 * Math.PI);
++        if (ownerRight < R - 1) {
++            cr.lineTo(ownerRight, sheetTop);
++            cr.arc(R - radius, sheetTop + radius, radius, 1.5 * Math.PI, 2 * Math.PI);
++        }
++        cr.arc(R - radius, B - radius, radius, 0, 0.5 * Math.PI);
++        cr.arc(L + radius, B - radius, radius, 0.5 * Math.PI, Math.PI);
++        if (ownerLeft > L + 1) {
++            cr.arc(L + radius, sheetTop + radius, radius, Math.PI, 1.5 * Math.PI);
++            cr.lineTo(ownerLeft, sheetTop);
++        }
++        cr.closePath();
++
++        cr.setSourceColor(fill);
++        if (hasLine) {
++            cr.fillPreserve();
++            cr.setSourceColor(line);
++            cr.setLineWidth(lineWidth);
++            cr.stroke();
++        } else {
++            cr.fill();
++        }
++        cr.$dispose();
++    }
++});
++
+ const QuickSettingsLayout = GObject.registerClass({
+     Properties: {
+         'row-spacing': GObject.ParamSpec.int(
+@@ -666,10 +957,24 @@ const QuickSettingsLayout = GObject.registerClass({
+             1, GLib.MAXINT32, 1),
+     },
+ }, class QuickSettingsLayout extends Clutter.LayoutManager {
+-    _init(overlay, params) {
++    _init(frame, params) {
+         super._init(params);
+ 
+-        this._overlay = overlay;
++        this._frame = frame;
++        // Detail sheets live in the grid itself, in flow under the row that
++        // owns them, so opening one pushes everything below it down instead
++        // of laying a second surface over the controls.
++        this._sheets = new Map();
++    }
++
++    addSheet(sheet, owner) {
++        this._sheets.set(sheet, owner);
++        this.layout_changed();
++    }
++
++    removeSheet(sheet) {
++        this._sheets.delete(sheet);
++        this.layout_changed();
+     }
+ 
+     _containerStyleChanged() {
+@@ -696,52 +1001,78 @@ const QuickSettingsLayout = GObject.registerClass({
+         return Math.clamp(columnSpan, 1, this.nColumns);
+     }
+ 
++    _isGridItem(child) {
++        return child.visible && child !== this._frame && !this._sheets.has(child);
++    }
++
++    // What a child is decides its width and which children it may share a
++    // row with: cards only with cards, pills only with pills.
++    _getKind(container, child) {
++        if (child.has_style_class_name?.('luma-quick-pill'))
++            return 'pill';
++        return this._getColSpan(container, child) >= this.nColumns ? 'full' : 'card';
++    }
++
++    _getUnits(container, child, kind) {
++        if (kind === 'pill')
++            return GRID_UNITS / 3;
++        if (kind === 'full')
++            return GRID_UNITS;
++        return GRID_UNITS / this.nColumns * this._getColSpan(container, child);
++    }
++
+     _getMaxChildWidth(container) {
+         let [minWidth, natWidth] = [0, 0];
+ 
+         for (const child of container) {
+-            if (child === this._overlay)
++            if (!this._isGridItem(child))
+                 continue;
+ 
+             const [childMin, childNat] = child.get_preferred_width(-1);
+-            const colSpan = this._getColSpan(container, child);
+-            minWidth = Math.max(minWidth, childMin / colSpan);
+-            natWidth = Math.max(natWidth, childNat / colSpan);
++            const units = this._getUnits(container, child,
++                this._getKind(container, child));
++            minWidth = Math.max(minWidth, childMin / units);
++            natWidth = Math.max(natWidth, childNat / units);
+         }
+ 
+         return [minWidth, natWidth];
+     }
+ 
++    /**
++     * Rows of the grid, with the width each child takes in units. The last
++     * row of pills (or a card on its own) never leaves an empty cell: two
++     * pills take half the width each, one takes all of it.
++     *
++     * @param {Clutter.Actor} container - the grid
++     * @returns {object[]} rows
++     */
+     _getRows(container) {
+         const rows = [];
+-        let lineIndex = 0;
+-        let curRow;
+-
+-        /** private */
+-        function appendRow() {
+-            curRow = [];
+-            rows.push(curRow);
+-            lineIndex = 0;
+-        }
++        let row = null;
++        let used = 0;
+ 
+         for (const child of container) {
+-            if (!child.visible)
++            if (!this._isGridItem(child))
+                 continue;
+ 
+-            if (child === this._overlay)
+-                continue;
+-
+-            if (lineIndex === 0)
+-                appendRow();
+-
+-            const colSpan = this._getColSpan(container, child);
+-            const fitsRow = lineIndex + colSpan <= this.nColumns;
+-
+-            if (!fitsRow)
+-                appendRow();
++            const kind = this._getKind(container, child);
++            const units = this._getUnits(container, child, kind);
++            if (!row || row.kind !== kind || used + units > GRID_UNITS) {
++                row = {kind, items: []};
++                rows.push(row);
++                used = 0;
++            }
++            row.items.push({child, units});
++            used += units;
++        }
+ 
+-            curRow.push(child);
+-            lineIndex = (lineIndex + colSpan) % this.nColumns;
++        for (const {kind, items} of rows) {
++            const total = items.reduce((sum, item) => sum + item.units, 0);
++            if (kind === 'full' || total >= GRID_UNITS)
++                continue;
++            const each = GRID_UNITS / items.length;
++            if (Number.isInteger(each))
++                items.forEach(item => (item.units = each));
+         }
+ 
+         return rows;
+@@ -759,6 +1090,50 @@ const QuickSettingsLayout = GObject.registerClass({
+         return [minHeight, natHeight];
+     }
+ 
++    // Where every row and every open sheet goes, for a given width. Shared by
++    // the height request and the allocation so the two can never disagree.
++    _plan(container, width) {
++        const rows = this._getRows(container);
++        const unit = (width - (GRID_UNITS - 1) * this.column_spacing) / GRID_UNITS;
++        const sheets = [...this._sheets].filter(([sheet, owner]) =>
++            sheet.visible && owner.visible && owner.get_parent() === container);
++
++        const placed = [];
++        const placedSheets = [];
++        let y = 0;
++        rows.forEach(({items}, index) => {
++            const [, rowHeight] = this._getRowHeight(items.map(i => i.child));
++
++            let column = 0;
++            for (const {child, units} of items) {
++                const x = Math.round(column * (unit + this.column_spacing));
++                const end = Math.round((column + units) * (unit + this.column_spacing) - this.column_spacing);
++                placed.push({child, x, y, width: end - x, height: rowHeight});
++                column += units;
++            }
++
++            let next = y + rowHeight;
++            for (const [sheet, owner] of sheets) {
++                if (!items.some(i => i.child === owner))
++                    continue;
++                const bottomMargin = owner.margin_bottom;
++                // The sheet overlaps its owner by a pixel, so the two share
++                // an edge rather than meeting at a seam.
++                const top = y + rowHeight - bottomMargin - 1;
++                const [, height] = sheet.get_preferred_height(width);
++                placedSheets.push({sheet, owner, y: top, height});
++                next = Math.max(next,
++                    top + height + Math.max(bottomMargin, SHEET_GAP));
++            }
++
++            y = next;
++            if (index < rows.length - 1)
++                y += this.row_spacing;
++        });
++
++        return {placed, placedSheets, height: Math.ceil(y)};
++    }
++
+     vfunc_get_child_meta_type() {
+         return QuickSettingsLayoutMeta.$gtype;
+     }
+@@ -774,67 +1149,67 @@ const QuickSettingsLayout = GObject.registerClass({
+ 
+     vfunc_get_preferred_width(container, _forHeight) {
+         const [childMin, childNat] = this._getMaxChildWidth(container);
+-        const spacing = (this.nColumns - 1) * this.column_spacing;
+-        return [this.nColumns * childMin + spacing, this.nColumns * childNat + spacing];
++        const spacing = (GRID_UNITS - 1) * this.column_spacing;
++        return [GRID_UNITS * childMin + spacing, GRID_UNITS * childNat + spacing];
+     }
+ 
+     vfunc_get_preferred_height(container, forWidth) {
+-        const rows = this._getRows(container);
+-
+-        let [minHeight, natHeight] =
+-            this._overlay.get_preferred_height(forWidth);
+-
+-        const spacing = (rows.length - 1) * this.row_spacing;
+-        minHeight += spacing;
+-        natHeight += spacing;
+-
+-        rows.forEach(row => {
+-            const [rowMin, rowNat] = this._getRowHeight(row);
+-            minHeight += rowMin;
+-            natHeight += rowNat;
+-        });
+-
+-        return [minHeight, natHeight];
++        const width = forWidth >= 0
++            ? forWidth : this.vfunc_get_preferred_width(container, -1)[1];
++        const {height} = this._plan(container, width);
++        return [height, height];
+     }
+ 
+     vfunc_allocate(container, box) {
+-        const rows = this._getRows(container);
+-
+-        const [, overlayHeight] =
+-            this._overlay.get_preferred_height(box.get_width());
+-
+-        const availWidth = box.get_width() - (this.nColumns - 1) * this.column_spacing;
+-        const childWidth = Math.floor(availWidth / this.nColumns);
+-
+-        this._overlay.allocate_available_size(0, 0, box.get_width(), overlayHeight);
+-
++        const width = box.get_width();
++        const {placed, placedSheets} = this._plan(container, width);
+         const isRtl = container.text_direction === Clutter.TextDirection.RTL;
+ 
+         const childBox = new Clutter.ActorBox();
+-        let y = box.y1;
+-        rows.forEach(row => {
+-            const [, rowNat] = this._getRowHeight(row);
+-
+-            let lineIndex = 0;
+-            row.forEach(child => {
+-                const colSpan = this._getColSpan(container, child);
+-                const width =
+-                    childWidth * colSpan + this.column_spacing * (colSpan - 1);
+-                let x = box.x1 + lineIndex * (childWidth + this.column_spacing);
+-                if (isRtl)
+-                    x = box.x2 - width - x;
+-
+-                childBox.set_origin(x, y);
+-                childBox.set_size(width, rowNat);
+-                child.allocate(childBox);
+-
+-                lineIndex = (lineIndex + colSpan) % this.nColumns;
+-            });
++        for (const {child, x, y, width: w, height: h} of placed) {
++            const left = isRtl ? box.x2 - x - w : box.x1 + x;
++            childBox.set_origin(left, box.y1 + y);
++            childBox.set_size(w, h);
++            child.allocate(childBox);
++        }
+ 
+-            y += rowNat + this.row_spacing;
++        for (const {sheet, y, height} of placedSheets) {
++            childBox.set_origin(box.x1, box.y1 + y);
++            childBox.set_size(width, height);
++            sheet.allocate(childBox);
++        }
+ 
+-            if (row.some(c => c.menu?.actor.visible))
+-                y += overlayHeight;
++        // One outline round the open sheet and its owner; while one sheet
++        // closes as another opens, the opening one has it.
++        const framed = placedSheets.find(p => p.sheet._delegate?.isOpen) ?? placedSheets.at(-1);
++        if (!framed) {
++            this._frame.allocate(new Clutter.ActorBox());
++            this._frame.setGeometry(null);
++            return;
++        }
++
++        const ownerBox = framed.owner.get_allocation_box();
++        let ownerX = ownerBox.x1, ownerY = ownerBox.y1, ownerWidth = ownerBox.get_width();
++        const anchor = framed.owner.getSheetAnchor?.() ?? framed.owner;
++        if (anchor !== framed.owner) {
++            const origin = anchor.apply_relative_transform_to_point(framed.owner,
++                new Graphene.Point3D());
++            ownerX += origin.x;
++            ownerY += origin.y;
++            ownerWidth = anchor.width;
++        }
++
++        const top = Math.min(ownerY, box.y1 + framed.y);
++        const bottom = box.y1 + framed.y + framed.height;
++        this._frame.allocate(new Clutter.ActorBox({
++            x1: box.x1, y1: top, x2: box.x2, y2: bottom,
++        }));
++        this._frame.setGeometry({
++            ownerX: ownerX - box.x1,
++            ownerWidth,
++            sheetTop: box.y1 + framed.y - top,
++            width,
++            height: bottom - top,
+         });
+     }
+ });
+@@ -916,66 +1291,20 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             () => this._updateLumaHeader(), this);
+         this._updateLumaHeader();
+ 
+-        // Overlay layer for menus
+-        this._overlay = new Clutter.Actor({
+-            layout_manager: new Clutter.BinLayout(),
+-        });
+-
+-        // "clone"
+-        const placeholder = new Clutter.Actor({
+-            constraints: new Clutter.BindConstraint({
+-                coordinate: Clutter.BindCoordinate.HEIGHT,
+-                source: this._overlay,
+-            }),
+-        });
+-
++        // The grid. Its first child is the outline of an open detail sheet,
++        // so it paints under every card, and the detail sheets follow it.
++        // Items go in before the hidden marker getFirstItem() returns.
++        this._sheetFrame = new QuickSheetFrame();
++        this._itemsStart = new Clutter.Actor({visible: false});
+         this._grid = new St.Widget({
+             style_class: 'quick-settings-grid',
+-            layout_manager: new QuickSettingsLayout(placeholder, {
++            layout_manager: new QuickSettingsLayout(this._sheetFrame, {
+                 nColumns,
+             }),
+         });
+         this.box.add_child(this._grid);
+-        this._grid.add_child(placeholder);
+-
+-        const xConstraint = new Clutter.BindConstraint({
+-            coordinate: Clutter.BindCoordinate.X,
+-            source: this._boxPointer,
+-        });
+-        const yConstraint = new Clutter.BindConstraint({
+-            coordinate: Clutter.BindCoordinate.Y,
+-            source: this._boxPointer,
+-        });
+-
+-        // Pick up additional spacing from any intermediate actors
+-        const updateOffset = (constraint, axis) => {
+-            const laters = global.compositor.get_laters();
+-            laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
+-                const offset = this._grid.apply_relative_transform_to_point(
+-                    this._boxPointer, new Graphene.Point3D());
+-                constraint.offset = offset[axis];
+-                return GLib.SOURCE_REMOVE;
+-            });
+-        };
+-
+-        this._grid.connect('notify::x', () => updateOffset(xConstraint, 'x'));
+-        this.box.connect('notify::x', () => updateOffset(xConstraint, 'x'));
+-        this._boxPointer.bin.connect('notify::x',
+-            () => updateOffset(xConstraint, 'x'));
+-
+-        this._grid.connect('notify::y', () => updateOffset(yConstraint, 'y'));
+-        this.box.connect('notify::y',  () => updateOffset(yConstraint, 'y'));
+-        this._boxPointer.bin.connect('notify::y',
+-            () => updateOffset(yConstraint, 'y'));
+-
+-        this._overlay.add_constraint(xConstraint);
+-        this._overlay.add_constraint(yConstraint);
+-        this._overlay.add_constraint(new Clutter.BindConstraint({
+-            coordinate: Clutter.BindCoordinate.WIDTH,
+-            source: this._grid,
+-        }));
+-
+-        this.actor.add_child(this._overlay);
++        this._grid.add_child(this._sheetFrame);
++        this._grid.add_child(this._itemsStart);
+     }
+ 
+     _updateLumaHeader() {
+@@ -1019,19 +1348,33 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             // physical sheet over the desktop. The root panel alone owns the
+             // compositor backdrop; the detail retains only its pane fill.
+             item.menu._materialBinding?.setEnabled(false);
+-            this._overlay.add_child(item.menu.actor);
++
++            // In flow, in the grid, under its owner's row: the grid places
++            // it, so GNOME's constraint pinning it under the owner goes.
++            const sheet = item.menu.actor;
++            sheet.clear_constraints();
++            this._grid.insert_child_above(sheet, this._sheetFrame);
++            this._grid.layout_manager.addSheet(sheet, item);
++            item.connect('destroy', () => {
++                this._grid.layout_manager.removeSheet(sheet);
++                if (this._activeMenu === item.menu)
++                    this._activeMenu = null;
++            });
+ 
+             item.menu.connect('open-state-changed', (m, isOpen) => {
+-                // Attached details share the panel material; no dim overlay.
++                // Only one sheet is open at a time.
+                 if (isOpen && this._activeMenu !== item.menu)
+                     this._activeMenu?.close();
+-                this._activeMenu = isOpen ? item.menu : null;
++                if (isOpen)
++                    this._activeMenu = item.menu;
++                else if (this._activeMenu === item.menu)
++                    this._activeMenu = null;
+             });
+         }
+     }
+ 
+     getFirstItem() {
+-        return this._grid.get_first_child();
++        return this._itemsStart;
+     }
+ 
+     open(animate) {
+diff --git a/js/ui/status/backlight.js b/js/ui/status/backlight.js
+index 29a4601..dd6cf6f 100644
+--- a/js/ui/status/backlight.js
++++ b/js/ui/status/backlight.js
+@@ -160,9 +160,10 @@ class KeyboardBrightnessToggle extends QuickMenuToggle {
+     _init() {
+         super._init({
+             title: _('Keyboard'),
+-            iconName: 'display-brightness-symbolic',
++            iconName: 'keyboard-brightness-high-symbolic',
+             menuButtonAccessibleName: _('Open keyboard brightness menu'),
+         });
++        this.menu.setHeader('keyboard-brightness-high-symbolic', _('Keyboard backlight'));
+ 
+         this._proxy = new BrightnessProxy(Gio.DBus.session, BUS_NAME, OBJECT_PATH,
+             (proxy, error) => {
+diff --git a/js/ui/status/bluetooth.js b/js/ui/status/bluetooth.js
+index a9cd143..b0d9990 100644
+--- a/js/ui/status/bluetooth.js
++++ b/js/ui/status/bluetooth.js
+@@ -8,9 +8,8 @@ import GObject from 'gi://GObject';
+ import Pango from 'gi://Pango';
+ import St from 'gi://St';
+ 
+-import {Spinner} from '../animation.js';
+ import * as PopupMenu from '../popupMenu.js';
+-import {QuickMenuToggle, SystemIndicator} from '../quickSettings.js';
++import {QuickMenuToggle, QuickSheetRow, SystemIndicator} from '../quickSettings.js';
+ 
+ import {loadInterfaceXML} from '../../misc/fileUtils.js';
+ 
+@@ -197,8 +196,12 @@ const BtClient = GObject.registerClass({
+     }
+ });
+ 
++// A device in the Bluetooth sheet: its muted type icon, its name, and under
++// it the state ("Connected · 82%", "Not connected", "Connecting…"). The whole
++// row is the button: it connects the device, or disconnects it if it is
++// connected, as GNOME's own row does.
+ const BluetoothDeviceItem = GObject.registerClass(
+-class BluetoothDeviceItem extends PopupMenu.PopupBaseMenuItem {
++class BluetoothDeviceItem extends QuickSheetRow {
+     constructor(device, client) {
+         super({
+             style_class: 'bt-device-item',
+@@ -206,58 +209,64 @@ class BluetoothDeviceItem extends PopupMenu.PopupBaseMenuItem {
+ 
+         this._device = device;
+         this._client = client;
+-
+-        this._icon = new St.Icon({
+-            style_class: 'popup-menu-icon',
+-        });
+-        this.add_child(this._icon);
+-
+-        this._label = new St.Label({
+-            x_expand: true,
+-        });
+-        this.add_child(this._label);
+-
+-        this._subtitle = new St.Label({
+-            style_class: 'device-subtitle',
+-        });
+-        this.add_child(this._subtitle);
+-
+-        this._spinner = new Spinner(16, {hideOnStop: true});
+-        this.add_child(this._spinner);
+-
+-        this._spinner.bind_property('visible',
+-            this._subtitle, 'visible',
+-            GObject.BindingFlags.SYNC_CREATE |
+-            GObject.BindingFlags.INVERT_BOOLEAN);
++        this._busy = false;
+ 
+         this._device.bind_property('connectable',
+             this, 'visible',
+             GObject.BindingFlags.SYNC_CREATE);
+-        this._device.bind_property('icon',
+-            this._icon, 'icon-name',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        this._device.bind_property('alias',
+-            this._label, 'text',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        this._device.bind_property_full('connected',
+-            this._subtitle, 'text',
+-            GObject.BindingFlags.SYNC_CREATE,
+-            (bind, source) => [true, source ? _('Disconnect') : _('Connect')],
+-            null);
+ 
+-        this.connect('destroy', () => (this._spinner = null));
+         this.connect('activate', () => this._toggleConnected().catch(logError));
+         this._device.connectObject(
+-            'notify::alias', () => this._updateAccessibleName(),
+-            'notify::connected', () => this._updateAccessibleName(),
++            'notify::alias', () => this._sync(),
++            'notify::icon', () => this._sync(),
++            'notify::connected', () => this._sync(),
++            'notify::battery-percentage', () => this._sync(),
++            'notify::battery-type', () => this._sync(),
+             this);
+-        this._updateAccessibleName();
++        this._sync();
+     }
+ 
+     async _toggleConnected() {
+-        this._spinner.play();
+-        await this._client.toggleDevice(this._device);
+-        this._spinner?.stop();
++        this._busy = true;
++        this._sync();
++        try {
++            await this._client.toggleDevice(this._device);
++        } finally {
++            this._busy = false;
++            if (this.get_parent())
++                this._sync();
++        }
++    }
++
++    // The battery UPower reports for the device, when there is one.
++    _battery() {
++        const {batteryType, batteryPercentage} = this._device;
++        if (batteryType === undefined || batteryType === GnomeBluetooth.BatteryType?.NONE)
++            return null;
++        if (typeof batteryPercentage !== 'number' || batteryPercentage < 0)
++            return null;
++        return Math.round(batteryPercentage);
++    }
++
++    _state() {
++        const {connected} = this._device;
++        if (this._busy)
++            return connected ? _('Disconnecting…') : _('Connecting…');
++        if (!connected)
++            return _('Not connected');
++        const battery = this._battery();
++        return battery === null
++            ? _('Connected')
++            // Translators: a connected Bluetooth device and its battery level
++            : _('Connected · %d%%').format(battery);
++    }
++
++    _sync() {
++        this.setIcon(this._device.icon || 'bluetooth-active-symbolic');
++        this.setTitle(this._device.alias);
++        this.setState(this._state());
++        this.setCurrent(this._device.connected);
++        this._updateAccessibleName();
+     }
+ 
+     _updateAccessibleName() {
+@@ -277,7 +286,7 @@ class BluetoothToggle extends QuickMenuToggle {
+             menuButtonAccessibleName: _('Open Bluetooth menu'),
+         });
+ 
+-        this.menu.setHeader('bluetooth-active-symbolic', _('Bluetooth'));
++        this.menu.setHeader('bluetooth-active-symbolic', _('Bluetooth devices'));
+ 
+         this._deviceItems = new Map();
+         this._deviceSection = new PopupMenu.PopupMenuSection();
+@@ -300,7 +309,7 @@ class BluetoothToggle extends QuickMenuToggle {
+             GObject.BindingFlags.INVERT_BOOLEAN);
+ 
+         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-        this.menu.addSettingsAction(_('Bluetooth Settings'),
++        this.menu.addSettingsAction(_('Bluetooth settings'),
+             'gnome-bluetooth-panel.desktop');
+ 
+         this._client = client;
+@@ -412,12 +421,21 @@ class BluetoothToggle extends QuickMenuToggle {
+ 
+         if (nConnected > 1)
+             /* Translators: This is the number of connected bluetooth devices */
+-            this.subtitle = ngettext('%d Connected', '%d Connected', nConnected).format(nConnected);
++            this.subtitle = ngettext('%d connected', '%d connected', nConnected).format(nConnected);
+         else if (nConnected === 1)
+             this.subtitle = connectedDevices[0].alias;
+         else
+             this.subtitle = null;
+ 
++        const nListed = devices.filter(dev => dev.connectable).length;
++        if (nConnected > 0)
++            this.menu.setCount(ngettext('%d connected', '%d connected', nConnected).format(nConnected));
++        else if (nListed > 0)
++            /* Translators: the number of paired Bluetooth devices listed */
++            this.menu.setCount(ngettext('%d device', '%d devices', nListed).format(nListed));
++        else
++            this.menu.setCount('');
++
+         this._updateDeviceVisibility();
+     }
+ 
+diff --git a/js/ui/status/cast.js b/js/ui/status/cast.js
+index 60e1f81..af35c4b 100644
+--- a/js/ui/status/cast.js
++++ b/js/ui/status/cast.js
+@@ -1,6 +1,7 @@
+ // Luma Cast in Quick Settings and on the shelf (ADR-034, "What people see").
+ import Atk from 'gi://Atk';
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Pango from 'gi://Pango';
+@@ -60,14 +61,27 @@ class CastToggle extends QuickMenuToggle {
+         this._cast.connectObject(
+             'available-changed', () => this._sync(),
+             'session-changed', () => this._sync(),
++            'devices-changed', () => this._sync(),
+             this);
++        this._network = Gio.NetworkMonitor.get_default();
++        this._network.connectObject('notify::network-available',
++            () => this._sync(), this);
+         this._sync();
+     }
+ 
++    // Cast shows only when there is something to cast to: a screen the
++    // service already knows (pinned, recent or nearby), or a network that
++    // screens can be found on. It stays while a session is running.
++    _hasTargets() {
++        const cast = this._cast;
++        return cast.casting || cast.devices.size > 0 ||
++            this._network.network_available;
++    }
++
+     _sync() {
+         const cast = this._cast;
+         const session = cast.session;
+-        this.visible = cast.available;
++        this.visible = cast.available && this._hasTargets();
+         this.checked = cast.casting && session.state === 'streaming';
+         this.icon_name = cast.casting ? 'luma-cast-on-symbolic' : 'luma-cast-symbolic';
+         if (!cast.casting) {
+diff --git a/js/ui/status/network.js b/js/ui/status/network.js
+index 4eb54c4..827160b 100644
+--- a/js/ui/status/network.js
++++ b/js/ui/status/network.js
+@@ -17,7 +17,7 @@ import * as Signals from '../../misc/signals.js';
+ import * as Util from '../../misc/util.js';
+ 
+ import {Spinner} from '../animation.js';
+-import {QuickMenuToggle, SystemIndicator} from '../quickSettings.js';
++import {QuickMenuToggle, QuickSheetRow, SystemIndicator} from '../quickSettings.js';
+ 
+ import {loadInterfaceXML} from '../../misc/fileUtils.js';
+ import {registerDestroyableType} from '../../misc/signalTracker.js';
+@@ -300,19 +300,23 @@ class NMConnectionItem extends NMMenuItem {
+         });
+         this.add_child(this._icon);
+ 
+-        this._label = new St.Label({
++        // The name, and under it the state: the whole row connects or
++        // disconnects, so there is no "Connect" text button beside it.
++        const copy = new St.BoxLayout({
++            style_class: 'luma-sheet-row-copy',
++            orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+-            y_expand: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+-        this.add_child(this._label);
++        this._label = new St.Label({style_class: 'luma-sheet-row-title'});
++        copy.add_child(this._label);
+ 
+         this._subtitle = new St.Label({
+-            style_class: 'device-subtitle',
+-            y_expand: true,
+-            y_align: Clutter.ActorAlign.CENTER,
++            style_class: 'device-subtitle luma-sheet-row-state',
+         });
+-        this.add_child(this._subtitle);
++        copy.add_child(this._subtitle);
++        this.add_child(copy);
++        this.add_style_class_name('luma-sheet-row');
+ 
+         this.bind_property('icon-name',
+             this._icon, 'icon-name',
+@@ -357,23 +361,35 @@ class NMConnectionItem extends NMMenuItem {
+     }
+ 
+     _getSubtitleLabel() {
+-        return this.is_active ? _('Disconnect') : _('Connect');
++        switch (this.state) {
++        case NM.ActiveConnectionState.ACTIVATING:
++            return _('Connecting…');
++        case NM.ActiveConnectionState.DEACTIVATING:
++            return _('Disconnecting…');
++        default:
++            return this.is_active ? _('Connected') : _('Not connected');
++        }
+     }
+ 
+     _sync() {
+         this._label.text = this.name;
+ 
++        this._subtitle.text = this._getSubtitleLabel();
++        this.setOrnament(PopupMenu.Ornament.HIDDEN);
++        if (this.is_active)
++            this.add_style_pseudo_class('checked');
++        else
++            this.remove_style_pseudo_class('checked');
+         if (this.radioMode) {
+-            this._subtitle.text = null;
+             this.accessible_name = this.name;
+             this.accessible_role = Atk.Role.CHECK_MENU_ITEM;
+-            this.setOrnament(this.is_active
+-                ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NO_DOT);
++            if (this.is_active)
++                this.add_accessible_state(Atk.StateType.CHECKED);
++            else
++                this.remove_accessible_state(Atk.StateType.CHECKED);
+         } else {
+             this.accessible_name = this._getAccessibleName();
+-            this._subtitle.text = this._getSubtitleLabel();
+             this.accessible_role = Atk.Role.MENU_ITEM;
+-            this.setOrnament(PopupMenu.Ornament.HIDDEN);
+         }
+     }
+ 
+@@ -996,53 +1012,28 @@ const WirelessNetwork = GObject.registerClass({
+ });
+ registerDestroyableType(WirelessNetwork);
+ 
++// A network in the Wi-Fi sheet: signal bars, the name, and under it the
++// state ("Connected", "Connecting…", "Secured", "Open"). The whole row joins.
+ const NMWirelessNetworkItem = GObject.registerClass(
+-class NMWirelessNetworkItem extends PopupMenu.PopupBaseMenuItem {
++class NMWirelessNetworkItem extends QuickSheetRow {
+     _init(network) {
+         super._init({style_class: 'nm-network-item'});
+ 
+         this._network = network;
+ 
+-        const icons = new St.BoxLayout();
+-        this.add_child(icons);
+-
+-        this._signalIcon = new St.Icon({style_class: 'popup-menu-icon'});
+-        icons.add_child(this._signalIcon);
+-
+-        this._secureIcon = new St.Icon({
+-            style_class: 'wireless-secure-icon',
+-            y_align: Clutter.ActorAlign.END,
+-        });
+-        icons.add_child(this._secureIcon);
+-
+-        this._label = new St.Label();
+-        this.add_child(this._label);
+-
+-        this._selectedIcon = new St.Icon({
+-            style_class: 'popup-menu-icon',
+-            icon_name: 'object-select-symbolic',
+-        });
+-        this.add_child(this._selectedIcon);
+-
+         this._network.bind_property('icon-name',
+-            this._signalIcon, 'icon-name',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        this._network.bind_property('name',
+-            this._label, 'text',
++            this.iconActor, 'icon-name',
+             GObject.BindingFlags.SYNC_CREATE);
+-        this._network.bind_property('is-active',
+-            this._selectedIcon, 'visible',
+-            GObject.BindingFlags.SYNC_CREATE);
+-        this._network.bind_property_full('secure',
+-            this._secureIcon, 'icon-name',
+-            GObject.BindingFlags.SYNC_CREATE,
+-            (bind, source) => [true, source ? 'network-wireless-encrypted-symbolic' : ''],
+-            null);
++        this.iconActor.show();
+         this._network.connectObject(
++            'notify::name', () => this._sync(),
+             'notify::is-active', () => this._isActiveChanged(),
+-            'notify::secure', () => this._updateAccessibleName(),
++            'notify::secure', () => this._sync(),
+             'notify::signal-strength', () => this._updateAccessibleName(),
+             this);
++        this._network._device.connectObject('notify::state',
++            () => this._sync(), this);
++        this._sync();
+     }
+ 
+     get network() {
+@@ -1050,21 +1041,37 @@ class NMWirelessNetworkItem extends PopupMenu.PopupBaseMenuItem {
+     }
+ 
+     _isActiveChanged() {
+-        if (this._network.is_active)
+-            this.add_accessible_state(Atk.StateType.CHECKED);
++        this._sync();
++    }
++
++    _sync() {
++        const {is_active: active, secure} = this._network;
++        const {state} = this._network._device;
++        const connecting = active &&
++            state >= NM.DeviceState.PREPARE && state < NM.DeviceState.ACTIVATED;
++        this.setTitle(this._network.name);
++        if (connecting)
++            this.setState(_('Connecting…'));
++        else if (active)
++            this.setState(_('Connected'));
+         else
+-            this.remove_accessible_state(Atk.StateType.CHECKED);
++            this.setState(secure ? _('Secured') : _('Open'));
++        this.setCurrent(active);
++        this._updateAccessibleName();
+     }
+ 
+     _updateAccessibleName() {
+         const secureString = this._network.secure ? _('Secure') : _('Not secure');
+         const signalStrengthString = _('Signal strength %s%%').format(this._network.signal_strength);
+         // translators: The first placeholder is the network name, the second and indication whether it is secure, and the last the signal strength indication
+-        this.accessible_name = _('%s, %s, %s').format(this._label.text, secureString, signalStrengthString);
++        this.accessible_name = _('%s, %s, %s').format(this._network.name, secureString, signalStrengthString);
+     }
+ });
+ 
+ const NMWirelessDeviceItem = GObject.registerClass({
++    Signals: {
++        'networks-changed': {},
++    },
+     Properties: {
+         'is-hotspot': GObject.ParamSpec.boolean('is-hotspot', null, null,
+             GObject.ParamFlags.READABLE,
+@@ -1291,6 +1298,8 @@ const NMWirelessDeviceItem = GObject.registerClass({
+             if (item.visible)
+                 nVisible++;
+         }
++        this.nVisibleNetworks = nVisible;
++        this.emit('networks-changed');
+     }
+ 
+     setDeviceName(name) {
+@@ -1544,7 +1553,7 @@ class NMVpnToggle extends NMToggle {
+ 
+         this.menu.setHeader('network-vpn-symbolic', _('VPN'));
+         this.menuButtonAccessibleName = _('Open VPN menu');
+-        this.menu.addSettingsAction(_('VPN Settings'),
++        this.menu.addSettingsAction(_('VPN settings'),
+             'gnome-network-panel.desktop');
+     }
+ 
+@@ -1795,7 +1804,8 @@ class NMWirelessToggle extends NMDeviceToggle {
+             this, 'menu-enabled',
+             GObject.BindingFlags.INVERT_BOOLEAN);
+ 
+-        this._scanningSpinner = new Spinner(16);
++        // Shown only while a scan runs, beside the count.
++        this._scanningSpinner = new Spinner(16, {hideOnStop: true});
+ 
+         this.menu.connectObject('open-state-changed', (m, isOpen) => {
+             if (isOpen)
+@@ -1804,13 +1814,21 @@ class NMWirelessToggle extends NMDeviceToggle {
+                 this._stopScanning();
+         });
+ 
+-        this.menu.setHeader('network-wireless-symbolic', _('Wi–Fi'));
+-        this.menuButtonAccessibleName = _('Open Wi–Fi menu');
++        this.menu.setHeader('network-wireless-symbolic', _('Wi-Fi networks'));
++        this.menuButtonAccessibleName = _('Open Wi-Fi menu');
+         this.menu.addHeaderSuffix(this._scanningSpinner);
+-        this.menu.addSettingsAction(_('All Networks'),
++        this.menu.addSettingsAction(_('Wi-Fi settings'),
+             'gnome-wifi-panel.desktop');
+     }
+ 
++    _syncCount() {
++        const n = [...this._items.values()]
++            .reduce((sum, item) => sum + (item.nVisibleNetworks ?? 0), 0);
++        this.menu.setCount(this._client?.wireless_enabled && n > 0
++            // Translators: the number of Wi-Fi networks listed
++            ? ngettext('%d available', '%d available', n).format(n) : '');
++    }
++
+     setClient(client) {
+         super.setClient(client);
+ 
+@@ -1876,7 +1894,14 @@ class NMWirelessToggle extends NMDeviceToggle {
+     }
+ 
+     _createDeviceMenuItem(device) {
+-        return new NMWirelessDeviceItem(this._client, device);
++        const item = new NMWirelessDeviceItem(this._client, device);
++        item.connect('networks-changed', () => this._syncCount());
++        return item;
++    }
++
++    _sync() {
++        super._sync();
++        this._syncCount();
+     }
+ 
+     _updateChecked() {
+@@ -1904,9 +1929,9 @@ class NMWiredToggle extends NMDeviceToggle {
+     constructor() {
+         super(NM.DeviceType.ETHERNET);
+ 
+-        this.menu.setHeader('network-wired-symbolic', _('Wired Connections'));
++        this.menu.setHeader('network-wired-symbolic', _('Wired connections'));
+         this.menuButtonAccessibleName = _('Open wired connections menu');
+-        this.menu.addSettingsAction(_('Wired Settings'),
++        this.menu.addSettingsAction(_('Wired settings'),
+             'gnome-network-panel.desktop');
+     }
+ 
+@@ -1920,9 +1945,9 @@ class NMBluetoothToggle extends NMDeviceToggle {
+     constructor() {
+         super(NM.DeviceType.BT);
+ 
+-        this.menu.setHeader('network-cellular-symbolic', _('Bluetooth Tethers'));
++        this.menu.setHeader('network-cellular-symbolic', _('Bluetooth tethers'));
+         this.menuButtonAccessibleName = _('Open Bluetooth tethers menu');
+-        this.menu.addSettingsAction(_('Bluetooth Settings'),
++        this.menu.addSettingsAction(_('Bluetooth settings'),
+             'gnome-network-panel.desktop');
+     }
+ 
+@@ -1941,10 +1966,10 @@ class NMModemToggle extends NMDeviceToggle {
+     constructor() {
+         super(NM.DeviceType.MODEM);
+ 
+-        this.menu.setHeader('network-cellular-symbolic', _('Mobile Connections'));
++        this.menu.setHeader('network-cellular-symbolic', _('Mobile connections'));
+         this.menuButtonAccessibleName = _('Open mobile connections menu');
+ 
+-        const settingsLabel = _('Mobile Broadband Settings');
++        const settingsLabel = _('Mobile broadband settings');
+         this._wwanSettings = this.menu.addSettingsAction(settingsLabel,
+             'gnome-wwan-panel.desktop');
+         this._legacySettings = this.menu.addSettingsAction(settingsLabel,
+diff --git a/js/ui/status/rfkill.js b/js/ui/status/rfkill.js
+index 1c47eda..57a07d8 100644
+--- a/js/ui/status/rfkill.js
++++ b/js/ui/status/rfkill.js
+@@ -94,8 +94,11 @@ const RfkillToggle = GObject.registerClass(
+ class RfkillToggle extends QuickToggle {
+     _init() {
+         super._init({
+-            title: _('Airplane Mode'),
++            // One word, like every other pill: "Airplane mode" does not fit a
++            // pill at the panel's width without clipping.
++            title: _('Airplane'),
+             iconName: 'airplane-mode-symbolic',
++            accessible_name: _('Airplane mode'),
+         });
+ 
+         this._manager = getRfkillManager();
+diff --git a/js/ui/status/system.js b/js/ui/status/system.js
+index 3b2727c..51759f2 100644
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -16,7 +16,7 @@ import * as UserWidget from '../userWidget.js';
+ import * as PopupMenu from '../popupMenu.js';
+ import {PopupAnimation} from '../boxpointer.js';
+ 
+-import {QuickSettingsItem, QuickToggle, SystemIndicator} from '../quickSettings.js';
++import {QuickSettingsItem, QuickToggle, SystemIndicator, trackSheetOwner} from '../quickSettings.js';
+ import {loadInterfaceXML} from '../../misc/fileUtils.js';
+ 
+ const BUS_NAME = 'org.freedesktop.UPower';
+@@ -307,7 +307,10 @@ class ShutdownItem extends QuickSettingsItem {
+         this._systemActions = new SystemActions.getDefault();
+         this._items = [];
+ 
+-        this.menu.setHeader('system-shutdown-symbolic', C_('title', 'Power Off'));
++        this.menu.setHeader('system-shutdown-symbolic', C_('title', 'Power off'));
++        // The sheet hangs from this button, as a level's hangs from its
++        // disclosure.
++        trackSheetOwner(this.menu, this);
+ 
+         this._addSystemAction(_('Lock'), 'can-lock-screen', () => {
+             Main.panel.closeQuickSettings();
+@@ -324,19 +327,19 @@ class ShutdownItem extends QuickSettingsItem {
+             Main.panel.closeQuickSettings();
+         });
+ 
+-        this._addSystemAction(_('Power Off…'), 'can-power-off', () => {
++        this._addSystemAction(_('Power off…'), 'can-power-off', () => {
+             this._systemActions.activatePowerOff();
+             Main.panel.closeQuickSettings();
+         });
+ 
+         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+ 
+-        this._addSystemAction(_('Log Out…'), 'can-logout', () => {
++        this._addSystemAction(_('Log out…'), 'can-logout', () => {
+             this._systemActions.activateLogout();
+             Main.panel.closeQuickSettings();
+         });
+ 
+-        this._addSystemAction(_('Switch User…'), 'can-switch-user', () => {
++        this._addSystemAction(_('Switch user…'), 'can-switch-user', () => {
+             this._systemActions.activateSwitchUser();
+             Main.panel.closeQuickSettings();
+         });
+@@ -426,6 +429,7 @@ class SystemItem extends QuickSettingsItem {
+         this._actions.add_child(shutdownItem);
+         this.child.add_child(this._actions);
+         this.menu = shutdownItem.menu;
++        this._shutdownItem = shutdownItem;
+         this._privateItems = [];
+         Main.sessionMode.connectObject('updated', () => this._syncSession(), this);
+         this._syncSession();
+@@ -453,6 +457,11 @@ class SystemItem extends QuickSettingsItem {
+     get powerToggle() {
+         return this._powerToggle;
+     }
++
++    // The power sheet hangs from the power button, not from the footer.
++    getSheetAnchor() {
++        return this._shutdownItem;
++    }
+ });
+ 
+ export const Indicator = GObject.registerClass(
+diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
+index 13b6ae8..f52272d 100644
+--- a/js/ui/status/volume.js
++++ b/js/ui/status/volume.js
+@@ -12,7 +12,7 @@ import * as ModalDialog from '../modalDialog.js';
+ import * as PopupMenu from '../popupMenu.js';
+ import * as ShellEntry from '../shellEntry.js';
+ 
+-import {QuickSlider, SystemIndicator} from '../quickSettings.js';
++import {QuickSheetRow, QuickSlider, SystemIndicator} from '../quickSettings.js';
+ 
+ const ALLOW_AMPLIFIED_VOLUME_KEY = 'allow-volume-above-100-percent';
+ const UNMUTE_DEFAULT_VOLUME = 0.25;
+@@ -206,7 +206,7 @@ const AirPlayMenuItem = GObject.registerClass({
+     Signals: {'availability-changed': {}},
+ }, class AirPlayMenuItem extends PopupMenu.PopupSubMenuMenuItem {
+     _init(control) {
+-        super._init(_('AirPlay Speakers'), true);
++        super._init(_('AirPlay speakers'), true);
+         this.add_style_class_name('luma-airplay-item');
+         this.icon.icon_name = NETWORK_SPEAKER_ICON;
+ 
+@@ -473,7 +473,7 @@ const StreamSlider = GObject.registerClass({
+         this.menu.addMenuItem(this._deviceSection);
+ 
+         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+-        this.menu.addSettingsAction(_('Sound Settings'),
++        this.menu.addSettingsAction(_('Sound settings'),
+             'gnome-sound-panel.desktop');
+ 
+         this._stream = null;
+@@ -525,11 +525,14 @@ const StreamSlider = GObject.registerClass({
+         if (!device)
+             return;
+ 
++        // The whole row switches to the device: its name, and under it where
++        // it lives; the one in use takes the dot.
+         const {description, origin} = device;
+-        const name = origin
+-            ? `${description} – ${origin}`
+-            : description;
+-        const item = new PopupMenu.PopupImageMenuItem(name, this._deviceIcon(device));
++        const item = new QuickSheetRow();
++        item.setIcon(this._deviceIcon(device));
++        item.setTitle(description);
++        item._lumaOrigin = origin;
++        item.setState(origin || _('Available'));
+         item.connect('activate', () => {
+             const dev = this._lookupDevice(id);
+             if (dev)
+@@ -556,10 +559,20 @@ const StreamSlider = GObject.registerClass({
+ 
+     _setActiveDevice(activeId) {
+         for (const [id, item] of this._deviceItems) {
+-            item.setOrnament(id === activeId
+-                ? PopupMenu.Ornament.CHECK
+-                : PopupMenu.Ornament.NONE);
++            const current = id === activeId;
++            item.setCurrent(current);
++            item.setState(current
++                ? [_('In use'), item._lumaOrigin].filter(Boolean).join(' · ')
++                : item._lumaOrigin || _('Available'));
+         }
++        this._syncLevelDetail(activeId);
++    }
++
++    // The device in use, named under the level: "44% · Buds4 Pro".
++    _syncLevelDetail(activeId) {
++        const device = activeId !== undefined && activeId !== null
++            ? this._lookupDevice(activeId) : null;
++        this.levelDetail = device?.description ?? null;
+     }
+ 
+     _shouldBeVisible() {
+@@ -569,6 +582,10 @@ const StreamSlider = GObject.registerClass({
+     _sync() {
+         this.visible = this._shouldBeVisible();
+         this.menuEnabled = this._deviceItems.size > 1;
++        const n = this._deviceItems.size;
++        this.menu.setCount?.(n > 1
++            // Translators: the number of sound outputs or inputs listed
++            ? ngettext('%d available', '%d available', n).format(n) : '');
+     }
+ 
+     _sliderChanged() {
+@@ -686,7 +703,7 @@ class OutputStreamSlider extends StreamSlider {
+             'audio-volume-overamplified-symbolic',
+         ];
+ 
+-        this.menu.setHeader('audio-headphones-symbolic', _('Sound Output'));
++        this.menu.setHeader('audio-headphones-symbolic', _('Sound output'));
+         this.menuButtonAccessibleName = _('Open sound output menu');
+ 
+         // AirPlay speakers are chosen in a picker below the outputs; the
+@@ -835,7 +852,7 @@ class InputStreamSlider extends StreamSlider {
+             'microphone-sensitivity-high-symbolic',
+         ];
+ 
+-        this.menu.setHeader('audio-input-microphone-symbolic', _('Sound Input'));
++        this.menu.setHeader('audio-input-microphone-symbolic', _('Microphone'));
+         this.menuButtonAccessibleName = _('Open sound input menu');
+     }
+ 

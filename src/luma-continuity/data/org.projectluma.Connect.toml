@@ -1,0 +1,16 @@
+# Luma Connect's background agent (ADR-033): the Connect daemon keeps paired phones
+# linked and the account current while Luma Connect is closed. The daemon is a
+# separate system-installed program, so exec names it by its absolute path.
+# Installed as /usr/share/luma/background/org.projectluma.Connect.toml.
+schema_version = "0.2"
+
+[application]
+id = "org.projectluma.Connect"
+name = "Luma Connect"
+
+[background]
+agent = "org.projectluma.Connect.Agent"
+exec = "/usr/bin/luma-connect-daemon --agent"
+category = "communication"
+wake = ["login", "network", "resume"]
+publishes = ["enabled", "phones", "phones-reachable", "account", "hub-sync", "live-extension:org.projectluma.Connect.Devices"]

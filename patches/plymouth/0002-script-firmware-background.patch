@@ -1,0 +1,494 @@
+diff --git a/src/plugins/splash/script/plugin.c b/src/plugins/splash/script/plugin.c
+index 2ff1029..c8710a9 100644
+--- a/src/plugins/splash/script/plugin.c
++++ b/src/plugins/splash/script/plugin.c
+@@ -427,6 +427,12 @@ show_splash_screen (ply_boot_splash_plugin_t *plugin,
+         plugin->loop = loop;
+         plugin->mode = mode;
+ 
++        /* plymouth change-mode shows the splash again in the new mode. The
++         * running script keeps its state, so let Plymouth.GetMode() report
++         * the mode it is now in rather than the one it started in. */
++        if (plugin->is_animating && plugin->script_plymouth_lib != NULL)
++                plugin->script_plymouth_lib->mode = mode;
++
+         ply_event_loop_watch_for_exit (loop, (ply_event_loop_exit_handler_t)
+                                        detach_from_event_loop,
+                                        plugin);
+diff --git a/src/plugins/splash/script/script-lib-sprite.c b/src/plugins/splash/script/script-lib-sprite.c
+index b9d7165..5566f79 100644
+--- a/src/plugins/splash/script/script-lib-sprite.c
++++ b/src/plugins/splash/script/script-lib-sprite.c
+@@ -25,6 +25,7 @@
+ #include "ply-key-file.h"
+ #include "ply-pixel-buffer.h"
+ #include "ply-pixel-display.h"
++#include "ply-renderer.h"
+ #include "script.h"
+ #include "script-parse.h"
+ #include "script-execute.h"
+@@ -34,6 +35,7 @@
+ #include <assert.h>
+ #include <stdlib.h>
+ #include <math.h>
++#include <stdio.h>
+ 
+ #include "script-lib-sprite.script.h"
+ 
+@@ -395,10 +397,319 @@ static script_return_t sprite_window_set_background_bottom_color (script_state_t
+         return script_return_obj_null ();
+ }
+ 
++
++#define BGRT_STATUS_ORIENTATION_OFFSET_0    (0 << 1)
++#define BGRT_STATUS_ORIENTATION_OFFSET_90   (1 << 1)
++#define BGRT_STATUS_ORIENTATION_OFFSET_180  (2 << 1)
++#define BGRT_STATUS_ORIENTATION_OFFSET_270  (3 << 1)
++#define BGRT_STATUS_ORIENTATION_OFFSET_MASK (3 << 1)
++
++static bool
++read_sysfs_int (const char *path,
++                int        *value)
++{
++        char buf[64];
++        bool ret = false;
++        FILE *f = fopen (path, "r");
++
++        if (!f)
++                return false;
++        if (fgets (buf, sizeof(buf), f) && sscanf (buf, "%d", value) == 1)
++                ret = true;
++        fclose (f);
++        return ret;
++}
++
++static bool
++get_bgrt_sysfs_info (int                         *x_offset,
++                     int                         *y_offset,
++                     ply_pixel_buffer_rotation_t *rotation)
++{
++        int status;
++
++        if (!read_sysfs_int ("/sys/firmware/acpi/bgrt/status", &status))
++                return false;
++
++        switch (status & BGRT_STATUS_ORIENTATION_OFFSET_MASK) {
++        case BGRT_STATUS_ORIENTATION_OFFSET_0:
++                *rotation = PLY_PIXEL_BUFFER_ROTATE_UPRIGHT;
++                break;
++        case BGRT_STATUS_ORIENTATION_OFFSET_90:
++                *rotation = PLY_PIXEL_BUFFER_ROTATE_COUNTER_CLOCKWISE;
++                break;
++        case BGRT_STATUS_ORIENTATION_OFFSET_180:
++                *rotation = PLY_PIXEL_BUFFER_ROTATE_UPSIDE_DOWN;
++                break;
++        case BGRT_STATUS_ORIENTATION_OFFSET_270:
++                *rotation = PLY_PIXEL_BUFFER_ROTATE_CLOCKWISE;
++                break;
++        }
++
++        return read_sysfs_int ("/sys/firmware/acpi/bgrt/xoffset", x_offset) &&
++               read_sysfs_int ("/sys/firmware/acpi/bgrt/yoffset", y_offset);
++}
++
++static bool
++load_firmware_image (script_lib_sprite_data_t *data)
++{
++        if (data->firmware_image_tried)
++                return data->firmware_image != NULL;
++
++        data->firmware_image_tried = true;
++        data->firmware_image = ply_image_new ("/sys/firmware/acpi/bgrt/image");
++        if (!ply_image_load (data->firmware_image)) {
++                ply_trace ("the firmware published no boot logo");
++                ply_image_free (data->firmware_image);
++                data->firmware_image = NULL;
++                return false;
++        }
++        data->firmware_raw_width = ply_image_get_width (data->firmware_image);
++        data->firmware_raw_height = ply_image_get_height (data->firmware_image);
++        if (data->firmware_raw_width == 0 || data->firmware_raw_height == 0) {
++                ply_trace ("the firmware boot logo has no size");
++                ply_image_free (data->firmware_image);
++                data->firmware_image = NULL;
++                return false;
++        }
++        return true;
++}
++
++static void
++free_firmware_background (script_lib_display_t *display)
++{
++        if (display->firmware_background != NULL)
++                ply_pixel_buffer_free (display->firmware_background);
++        display->firmware_background = NULL;
++        display->firmware_background_tried = false;
++}
++
++/* Rebuild the screen the firmware left on this display. The firmware drew its
++ * logo in device pixels, at the ACPI BGRT offsets, so the screen is composed
++ * in device pixels too: the raw logo, never scaled, placed by the same rules
++ * as two-step's UseFirmwareBackground. Only then is the buffer given the
++ * canvas's device scale, so a HiDPI display (device scale 2) shows the logo
++ * exactly where and as large as the firmware did. canvas is the buffer being
++ * drawn into; without one (a script asking whether there is a logo), the
++ * display's own size and scale are used. The result is cached per display
++ * and rebuilt when the canvas size or scale changes. */
++static ply_pixel_buffer_t *
++get_firmware_background (script_lib_display_t *display,
++                         ply_pixel_buffer_t   *canvas)
++{
++        script_lib_sprite_data_t *data = display->data;
++        ply_pixel_buffer_rotation_t panel_rotation = PLY_PIXEL_BUFFER_ROTATE_UPRIGHT;
++        ply_pixel_buffer_rotation_t bgrt_rotation = PLY_PIXEL_BUFFER_ROTATE_UPRIGHT;
++        int x_offset, y_offset, sysfs_x_offset, sysfs_y_offset, width, height;
++        int panel_width = 0, panel_height = 0, panel_scale = 1;
++        int screen_width, screen_height, screen_scale, device_width, device_height;
++        ply_pixel_buffer_t *bgrt_buffer, *upright, *background;
++        bool have_panel_props;
++
++        if (canvas != NULL) {
++                screen_width = ply_pixel_buffer_get_width (canvas);
++                screen_height = ply_pixel_buffer_get_height (canvas);
++                screen_scale = ply_pixel_buffer_get_device_scale (canvas);
++        } else {
++                screen_width = ply_pixel_display_get_width (display->pixel_display);
++                screen_height = ply_pixel_display_get_height (display->pixel_display);
++                screen_scale = ply_pixel_display_get_device_scale (display->pixel_display);
++        }
++        if (screen_scale < 1)
++                screen_scale = 1;
++
++        if (display->firmware_background_tried &&
++            (display->firmware_width != (unsigned long) screen_width ||
++             display->firmware_height != (unsigned long) screen_height ||
++             display->firmware_scale != screen_scale))
++                free_firmware_background (display);
++
++        if (display->firmware_background_tried)
++                return display->firmware_background;
++
++        display->firmware_background_tried = true;
++        display->firmware_width = screen_width;
++        display->firmware_height = screen_height;
++        display->firmware_scale = screen_scale;
++
++        if (!load_firmware_image (data))
++                return NULL;
++
++        if (!get_bgrt_sysfs_info (&sysfs_x_offset, &sysfs_y_offset, &bgrt_rotation)) {
++                ply_trace ("get bgrt sysfs info failed");
++                return NULL;
++        }
++
++        device_width = screen_width * screen_scale;
++        device_height = screen_height * screen_scale;
++        bgrt_buffer = ply_image_get_buffer (data->firmware_image);
++        have_panel_props = ply_renderer_get_panel_properties (ply_pixel_display_get_renderer (display->pixel_display),
++                                                              &panel_width, &panel_height,
++                                                              &panel_rotation, &panel_scale);
++
++        if (have_panel_props &&
++            (panel_rotation == PLY_PIXEL_BUFFER_ROTATE_CLOCKWISE ||
++             panel_rotation == PLY_PIXEL_BUFFER_ROTATE_COUNTER_CLOCKWISE) &&
++            (panel_width - data->firmware_raw_width) / 2 != sysfs_x_offset &&
++            (panel_height - data->firmware_raw_width) / 2 == sysfs_x_offset)
++                bgrt_rotation = panel_rotation;
++
++        if (bgrt_rotation != PLY_PIXEL_BUFFER_ROTATE_UPRIGHT) {
++                if (bgrt_rotation != panel_rotation) {
++                        ply_trace ("bgrt orientation mismatch, bgrt_rot %d panel_rot %d",
++                                   (int) bgrt_rotation, (int) panel_rotation);
++                        return NULL;
++                }
++                if (panel_rotation == PLY_PIXEL_BUFFER_ROTATE_CLOCKWISE ||
++                    panel_rotation == PLY_PIXEL_BUFFER_ROTATE_COUNTER_CLOCKWISE) {
++                        int temp = panel_width;
++                        panel_width = panel_height;
++                        panel_height = temp;
++                }
++                panel_rotation = PLY_PIXEL_BUFFER_ROTATE_UPRIGHT;
++        }
++
++        /* An upright copy at device scale 1: every raw pixel of the logo. The
++         * shared image keeps its own scale, so each display starts from the
++         * same raw pixels. */
++        ply_pixel_buffer_set_device_scale (bgrt_buffer, 1);
++        ply_pixel_buffer_set_device_rotation (bgrt_buffer, have_panel_props ? panel_rotation : PLY_PIXEL_BUFFER_ROTATE_UPRIGHT);
++        upright = ply_pixel_buffer_rotate_upright (bgrt_buffer);
++        ply_pixel_buffer_set_device_rotation (bgrt_buffer, PLY_PIXEL_BUFFER_ROTATE_UPRIGHT);
++
++        width = ply_pixel_buffer_get_width (upright);
++        height = ply_pixel_buffer_get_height (upright);
++
++        /* Device pixels throughout. */
++        x_offset = (device_width - width) / 2;
++        y_offset = device_height * 382 / 1000 - height / 2;
++
++        if (have_panel_props &&
++            (panel_width - data->firmware_raw_width) / 2 == sysfs_x_offset) {
++                if (panel_rotation == PLY_PIXEL_BUFFER_ROTATE_CLOCKWISE ||
++                    panel_rotation == PLY_PIXEL_BUFFER_ROTATE_COUNTER_CLOCKWISE) {
++                        if (panel_rotation == PLY_PIXEL_BUFFER_ROTATE_COUNTER_CLOCKWISE)
++                                sysfs_y_offset = panel_height - data->firmware_raw_height - sysfs_y_offset;
++                        x_offset = sysfs_y_offset + (device_width - panel_height) / 2;
++                        y_offset = sysfs_x_offset + (device_height - panel_width) * 382 / 1000;
++                } else {
++                        x_offset = sysfs_x_offset + (device_width - panel_width) / 2;
++                        y_offset = sysfs_y_offset + (device_height - panel_height) * 382 / 1000;
++                }
++        }
++
++        if (!have_panel_props &&
++            (device_width - width) / 2 == sysfs_x_offset &&
++            (device_height - height) / 2 == sysfs_y_offset) {
++                x_offset = sysfs_x_offset;
++                y_offset = sysfs_y_offset;
++        }
++
++        if (x_offset < 0 || y_offset < 0 ||
++            x_offset + width > device_width || y_offset + height > device_height) {
++                ply_trace ("the firmware boot logo does not fit a %dx%d screen", device_width, device_height);
++                ply_pixel_buffer_free (upright);
++                return NULL;
++        }
++
++        ply_trace ("keeping %dx%d firmware boot logo at %dx%d for %dx%d screen (device scale %d)",
++                   width, height, x_offset, y_offset, device_width, device_height, screen_scale);
++
++        background = ply_pixel_buffer_new (device_width, device_height);
++        ply_pixel_buffer_fill_with_hex_color (background, NULL, 0x000000);
++        ply_pixel_buffer_fill_with_buffer (background, upright, x_offset, y_offset);
++        ply_pixel_buffer_free (upright);
++        ply_pixel_buffer_set_device_scale (background, screen_scale);
++        /* Keep the blending path for this buffer even at full opacity: the
++         * opaque same-scale fast path in ply_pixel_buffer_fill_with_buffer
++         * sizes its copy in logical units but copies device pixels, so at a
++         * device scale above 1 it would draw only part of this screen. */
++        ply_pixel_buffer_set_opaque (background, false);
++
++        display->firmware_background = background;
++        return background;
++}
++
++static script_return_t sprite_window_has_firmware_background (script_state_t *state,
++                                                              void           *user_data)
++{
++        script_lib_sprite_data_t *data = user_data;
++        ply_list_node_t *node;
++
++        for (node = ply_list_get_first_node (data->displays);
++             node;
++             node = ply_list_get_next_node (data->displays, node)) {
++                script_lib_display_t *display = ply_list_node_get_data (node);
++                if (get_firmware_background (display, NULL) != NULL)
++                        return script_return_obj (script_obj_new_number (1));
++        }
++        return script_return_obj (script_obj_new_number (0));
++}
++
++static script_return_t sprite_window_get_firmware_background_opacity (script_state_t *state,
++                                                                      void           *user_data)
++{
++        script_lib_sprite_data_t *data = user_data;
++
++        return script_return_obj (script_obj_new_number (data->firmware_opacity));
++}
++
++static script_return_t sprite_window_set_firmware_background_opacity (script_state_t *state,
++                                                                      void           *user_data)
++{
++        script_lib_sprite_data_t *data = user_data;
++        ply_list_node_t *node;
++        double opacity = script_obj_hash_get_number (state->local, "value");
++
++        if (isnan (opacity))
++                opacity = 0;
++        opacity = CLAMP (opacity, 0.0, 1.0);
++        if (fabs (opacity - data->firmware_opacity) < 0.001)
++                return script_return_obj_null ();
++
++        data->firmware_opacity = opacity;
++        data->full_refresh = true;
++
++        /* Faded out: nothing will draw it again, so do not keep a screen
++         * sized copy of it for the rest of the boot. */
++        if (opacity <= 0) {
++                for (node = ply_list_get_first_node (data->displays);
++                     node;
++                     node = ply_list_get_next_node (data->displays, node))
++                        free_firmware_background (ply_list_node_get_data (node));
++        }
++        return script_return_obj_null ();
++}
++
+ static void script_lib_draw_brackground (ply_pixel_buffer_t       *pixel_buffer,
+                                          ply_rectangle_t          *clip_area,
+-                                         script_lib_sprite_data_t *data)
++                                         script_lib_sprite_data_t *data,
++                                         script_lib_display_t     *display)
+ {
++        ply_pixel_buffer_t *firmware_background = NULL;
++        ply_rectangle_t firmware_clip;
++
++        if (data->firmware_opacity > 0)
++                firmware_background = get_firmware_background (display, pixel_buffer);
++
++        /* ply_pixel_buffer_fill_with_buffer takes its clip in the source's
++         * device pixels; the draw handler's clip is logical. */
++        if (firmware_background != NULL) {
++                int scale = ply_pixel_buffer_get_device_scale (firmware_background);
++
++                firmware_clip = *clip_area;
++                firmware_clip.x *= scale;
++                firmware_clip.y *= scale;
++                firmware_clip.width *= scale;
++                firmware_clip.height *= scale;
++        }
++
++        if (firmware_background != NULL && data->firmware_opacity >= 1.0) {
++                ply_pixel_buffer_fill_with_buffer_with_clip (pixel_buffer,
++                                                             firmware_background,
++                                                             0, 0, &firmware_clip);
++                return;
++        }
++
+         if (data->background_color_start == data->background_color_end) {
+                 ply_pixel_buffer_fill_with_hex_color (pixel_buffer,
+                                                       clip_area,
+@@ -409,6 +720,12 @@ static void script_lib_draw_brackground (ply_pixel_buffer_t       *pixel_buffer,
+                                                      data->background_color_start,
+                                                      data->background_color_end);
+         }
++
++        if (firmware_background != NULL)
++                ply_pixel_buffer_fill_with_buffer_at_opacity_with_clip (pixel_buffer,
++                                                                        firmware_background,
++                                                                        0, 0, &firmware_clip,
++                                                                        data->firmware_opacity);
+ }
+ 
+ static void script_lib_sprite_draw_area (script_lib_display_t *display,
+@@ -446,9 +763,9 @@ static void script_lib_sprite_draw_area (script_lib_display_t *display,
+                 if (position_x > x || position_y > y ||
+                     ((int) ply_pixel_buffer_get_width (sprite->image) + position_x) < (x + width) ||
+                     ((int) ply_pixel_buffer_get_height (sprite->image) + position_y) < (y + height))
+-                        script_lib_draw_brackground (pixel_buffer, &clip_area, data);
++                        script_lib_draw_brackground (pixel_buffer, &clip_area, data, display);
+         } else {
+-                script_lib_draw_brackground (pixel_buffer, &clip_area, data);
++                script_lib_draw_brackground (pixel_buffer, &clip_area, data, display);
+         }
+ 
+         for (node = ply_list_get_first_node (data->sprite_list);
+@@ -536,6 +853,11 @@ add_display (script_lib_sprite_data_t *data,
+ 
+         script_display->pixel_display = pixel_display;
+         script_display->data = data;
++        script_display->firmware_background = NULL;
++        script_display->firmware_background_tried = false;
++        script_display->firmware_width = 0;
++        script_display->firmware_height = 0;
++        script_display->firmware_scale = 0;
+         ply_pixel_display_set_draw_handler (pixel_display,
+                                             (ply_pixel_display_draw_handler_t)
+                                             script_lib_sprite_draw_area, script_display);
+@@ -682,11 +1004,32 @@ script_lib_sprite_data_t *script_lib_sprite_setup (script_state_t *state,
+                                     "green",
+                                     "blue",
+                                     NULL);
++        script_add_native_function (window_hash,
++                                    "HasFirmwareBackground",
++                                    sprite_window_has_firmware_background,
++                                    data,
++                                    NULL);
++        script_add_native_function (window_hash,
++                                    "GetFirmwareBackgroundOpacity",
++                                    sprite_window_get_firmware_background_opacity,
++                                    data,
++                                    NULL);
++        script_add_native_function (window_hash,
++                                    "SetFirmwareBackgroundOpacity",
++                                    sprite_window_set_firmware_background_opacity,
++                                    data,
++                                    "value",
++                                    NULL);
+         script_obj_unref (window_hash);
+ 
+         data->script_main_op = script_parse_string (script_lib_sprite_string, "script-lib-sprite.script");
+         data->background_color_start = 0x000000;
+         data->background_color_end = 0x000000;
++        data->firmware_image = NULL;
++        data->firmware_raw_width = 0;
++        data->firmware_raw_height = 0;
++        data->firmware_image_tried = false;
++        data->firmware_opacity = 0;
+         data->full_refresh = true;
+         script_return_t ret = script_execute (state, data->script_main_op);
+ 
+@@ -744,6 +1087,7 @@ void script_lib_sprite_pixel_display_removed (script_lib_sprite_data_t *data,
+                 display = ply_list_node_get_data (node);
+ 
+                 if (display->pixel_display == pixel_display) {
++                        free_firmware_background (display);
+                         ply_list_remove_node (data->displays, node);
+                         update = true;
+                 }
+@@ -861,6 +1205,7 @@ void script_lib_sprite_destroy (script_lib_sprite_data_t *data)
+              node = ply_list_get_next_node (data->displays, node)) {
+                 script_lib_display_t *display = ply_list_node_get_data (node);
+                 ply_pixel_display_set_draw_handler (display->pixel_display, NULL, NULL);
++                free_firmware_background (display);
+         }
+ 
+         node = ply_list_get_first_node (data->sprite_list);
+@@ -876,6 +1221,8 @@ void script_lib_sprite_destroy (script_lib_sprite_data_t *data)
+         }
+ 
+         ply_list_free (data->sprite_list);
++        if (data->firmware_image != NULL)
++                ply_image_free (data->firmware_image);
+         script_parse_op_free (data->script_main_op);
+         script_obj_native_class_destroy (data->class);
+         free (data);
+diff --git a/src/plugins/splash/script/script-lib-sprite.h b/src/plugins/splash/script/script-lib-sprite.h
+index 6783d25..254ce5a 100644
+--- a/src/plugins/splash/script/script-lib-sprite.h
++++ b/src/plugins/splash/script/script-lib-sprite.h
+@@ -25,6 +25,7 @@
+ #include "script.h"
+ #include "ply-pixel-buffer.h"
+ #include "ply-pixel-display.h"
++#include "ply-image.h"
+ 
+ typedef struct
+ {
+@@ -37,6 +38,13 @@ typedef struct
+         bool                       full_refresh;
+         unsigned int               max_width;
+         unsigned int               max_height;
++        /* The firmware's boot logo (ACPI BGRT), loaded when a script first
++         * asks for it and drawn over the background at firmware_opacity. */
++        ply_image_t               *firmware_image;
++        int                        firmware_raw_width;
++        int                        firmware_raw_height;
++        bool                       firmware_image_tried;
++        double                     firmware_opacity;
+ } script_lib_sprite_data_t;
+ 
+ typedef struct
+@@ -45,6 +53,14 @@ typedef struct
+         script_lib_sprite_data_t *data;
+         int                       x;
+         int                       y;
++        /* The firmware's screen for this display: black with the BGRT logo
++         * where the firmware drew it. Built on first use, rebuilt when the
++         * display changes size, freed once the script fades it out. */
++        ply_pixel_buffer_t       *firmware_background;
++        unsigned long             firmware_width;
++        unsigned long             firmware_height;
++        int                       firmware_scale;
++        bool                      firmware_background_tried;
+ } script_lib_display_t;
+ 
+ typedef struct

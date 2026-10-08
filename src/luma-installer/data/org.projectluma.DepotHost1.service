@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.DepotHost1
+Exec=/usr/bin/python3 -P -m luma_installer.depot_host

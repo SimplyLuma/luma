@@ -1,0 +1,184 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Start the converged Luma GNOME session from greetd on a Wayland-only mobile
+# target. Package installation and recovery orchestration live elsewhere; this
+# launcher changes no system configuration and never falls back to Xorg.
+
+set -eu
+
+for path in \
+  /usr/bin/gnome-session \
+  /usr/bin/gnome-shell \
+  /usr/bin/ibus-daemon \
+  /usr/bin/systemd-inhibit \
+  /usr/share/gnome-session/sessions/gnome.session \
+  /usr/share/gnome-shell/gnome-shell-osk-layouts.gresource \
+  /usr/lib/systemd/user/luma-shell-session.target; do
+  if [ ! -e "$path" ]; then
+    printf 'luma-shell-session: required runtime path is missing: %s\n' \
+      "$path" >&2
+    exit 1
+  fi
+done
+
+# greetd owns the VT and logind session. GNOME Shell becomes the compositor,
+# so no DISPLAY or inherited Wayland socket may leak in from a rescue shell.
+unset DISPLAY WAYLAND_DISPLAY
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_CLASS=user
+export XDG_SESSION_DESKTOP=luma
+export XDG_CURRENT_DESKTOP=Luma:GNOME
+export DESKTOP_SESSION=luma
+export LUMA_DEVICE_CLASS=handheld
+export GDK_BACKEND=wayland
+export MOZ_ENABLE_WAYLAND=1
+
+# GNOME Shell's native keyboard uses IBus for composition and language input.
+# The accessibility setting that enables the keyboard is provisioned and
+# verified separately in the authenticated luma user session.
+export GTK_IM_MODULE=ibus
+export QT_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+
+# P5 can carry an audited private copy of Fedora's Mutter library which relaxes
+# only the handheld logical-area filter. Never expose it through the global
+# loader configuration. Source-built images do not need this bring-up bridge;
+# if the private copy exists, however, its exact hash is mandatory.
+mutter_private_dir=/usr/local/lib64/luma-handheld
+mutter_private=$mutter_private_dir/libmutter-18.so.0
+mutter_private_sha256=49572c97fcb961550f6681efc17f066339bf6a95b447e4975019ee6b57e5d974
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
+export LD_LIBRARY_PATH
+if [ -e "$mutter_private" ]; then
+  actual_mutter_sha256=$(sha256sum "$mutter_private" | cut -d ' ' -f 1)
+  if [ "$actual_mutter_sha256" != "$mutter_private_sha256" ]; then
+    printf 'luma-shell-session: refusing unexpected private Mutter: %s\n' \
+      "$actual_mutter_sha256" >&2
+    exit 1
+  fi
+  LD_LIBRARY_PATH=$mutter_private_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+  export LD_LIBRARY_PATH
+fi
+
+# Keep the physical logind identity supplied by greetd and remove display
+# sockets inherited by the user manager from the preceding Phosh session.
+for variable in XDG_SESSION_ID XDG_SEAT XDG_VTNR; do
+  eval "value=\${$variable:-}"
+  if [ -z "$value" ]; then
+    printf 'luma-shell-session: greetd did not provide %s\n' "$variable" >&2
+    exit 1
+  fi
+done
+
+/usr/bin/systemctl --user unset-environment DISPLAY WAYLAND_DISPLAY
+/usr/bin/systemctl --user import-environment \
+  XDG_SESSION_ID XDG_SEAT XDG_VTNR \
+  XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP \
+  XDG_CURRENT_DESKTOP DESKTOP_SESSION LUMA_DEVICE_CLASS \
+  GDK_BACKEND MOZ_ENABLE_WAYLAND GTK_IM_MODULE QT_IM_MODULE XMODIFIERS \
+  LD_LIBRARY_PATH
+
+# Fedora's systemd-managed GNOME session detaches the compositor from the
+# greetd VT/logind scope on this bring-up image. Run the same Luma Shell binary
+# directly as the display server so Mutter remains in the authenticated
+# physical session. The stock IBus user unit has a Requisite on the GNOME
+# Session initialization target, which this direct diagnostic lane deliberately
+# does not start. Start the same daemon directly and replace any instance left
+# by a preceding graphical iteration; normal product sessions retain Fedora's
+# systemd-managed unit.
+/usr/bin/ibus-daemon --panel disable --daemonize --replace
+
+# This direct display-server path bypasses gnome-session, which would normally
+# raise the graphical user-session target. Explicitly raise it so portals,
+# settings integration, GVfs, and other shared desktop services follow the
+# active Luma session instead of remaining stopped after a rescue compositor.
+/usr/bin/systemctl --user reset-failed xdg-desktop-portal-gtk.service || true
+/usr/bin/systemctl --user start luma-shell-session.target
+
+shell_pid=
+power_inhibitor_pid=
+shell_attempt=0
+shell_max_attempts=3
+refresh_display_bound_services() {
+  display_poll_attempt=0
+  while [ "$display_poll_attempt" -lt 50 ]; do
+    display_poll_attempt=$((display_poll_attempt + 1))
+    display_name=$(
+      /usr/bin/systemctl --user show-environment |
+        /usr/bin/sed -n 's/^WAYLAND_DISPLAY=//p' |
+        /usr/bin/head -n 1
+    )
+    display_suffix=${display_name#wayland-}
+    case "$display_name:$display_suffix" in
+      wayland-*:*[!0-9]*|wayland-*:)
+        ;;
+      wayland-*:* )
+        if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+           [ -S "$XDG_RUNTIME_DIR/$display_name" ]; then
+          # Services started with graphical-session.target predate Mutter's
+          # host socket on this direct compositor path.  Refresh only active
+          # display-bound services once the authenticated socket exists.
+          /usr/bin/systemctl --user try-restart luma-android.service || true
+          return 0
+        fi
+        ;;
+    esac
+    sleep 0.1
+  done
+  printf 'luma-shell-session: host Wayland socket was not published in time\n' >&2
+  return 0
+}
+stop_shell() {
+  if [ -n "$shell_pid" ]; then
+    kill -TERM "$shell_pid" 2>/dev/null || true
+  fi
+}
+stop_session() {
+  if [ -n "$power_inhibitor_pid" ]; then
+    kill -TERM "$power_inhibitor_pid" 2>/dev/null || true
+  fi
+  /usr/bin/systemctl --user stop luma-shell-session.target || true
+}
+trap stop_shell HUP INT TERM
+trap stop_session EXIT
+
+# logind reads the physical key independently of Shell. Hold a session-scoped
+# inhibitor so the handheld extension can turn the panel off/on without a short
+# press also triggering firmware shutdown. The inhibitor dies with this login.
+/usr/bin/systemd-inhibit \
+  --what=handle-power-key \
+  --who='Luma Handheld Shell' \
+  --why='Short press controls the handheld display' \
+  --mode=block \
+  /usr/bin/sleep infinity &
+power_inhibitor_pid=$!
+
+while [ "$shell_attempt" -lt "$shell_max_attempts" ]; do
+  shell_attempt=$((shell_attempt + 1))
+  shell_started_at=$(date +%s)
+  printf 'luma-shell-session: starting compositor attempt %s/%s\n' \
+    "$shell_attempt" "$shell_max_attempts" >&2
+
+  /usr/bin/gnome-shell --wayland --display-server --mode=user &
+  shell_pid=$!
+  refresh_display_bound_services
+  set +e
+  wait "$shell_pid"
+  shell_status=$?
+  set -e
+  shell_pid=
+
+  shell_runtime=$(( $(date +%s) - shell_started_at ))
+  if [ "$shell_attempt" -ge "$shell_max_attempts" ] ||
+     [ "$shell_runtime" -ge 15 ]; then
+    exit "$shell_status"
+  fi
+
+  # The FP6 display can be handed to userspace just before Adreno's legacy
+  # firmware lookup completes. Retry only a compositor that exits during that
+  # narrow boot window; a later exit remains a real session termination.
+  printf 'luma-shell-session: compositor exited after %ss; retrying early boot\n' \
+    "$shell_runtime" >&2
+  sleep 2
+done

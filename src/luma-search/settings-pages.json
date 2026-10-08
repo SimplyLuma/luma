@@ -1,0 +1,549 @@
+{
+ "version": 1,
+ "comment": "Settings pages and options Luma Search offers by name and by the words people type. Each opens its Settings panel (launch-panel) or a desktop action. Only panels present on every Luma machine are listed; hardware panels (Wi-Fi, Bluetooth, Wacom, Mobile Network) come from Settings' own search provider, which knows whether they exist.",
+ "pages": [
+  {
+   "id": "default-apps",
+   "title": "Default Apps",
+   "path": "Apps",
+   "panel": "applications",
+   "keywords": [
+    "default",
+    "default apps",
+    "default browser",
+    "browser",
+    "mail app",
+    "email app",
+    "open with",
+    "preferred apps",
+    "music player",
+    "video player",
+    "photo viewer",
+    "calendar app"
+   ]
+  },
+  {
+   "id": "background-activity",
+   "title": "Background Activity",
+   "path": "Apps",
+   "panel": "applications",
+   "keywords": [
+    "background",
+    "background apps",
+    "running in background",
+    "agents",
+    "battery drain",
+    "keep running",
+    "stop app",
+    "memory"
+   ]
+  },
+  {
+   "id": "open-at-login",
+   "title": "Open at Login",
+   "path": "Apps › Background Activity",
+   "panel": "applications",
+   "keywords": [
+    "login",
+    "log in",
+    "startup",
+    "start up",
+    "startup apps",
+    "autostart",
+    "launch at login",
+    "open at startup",
+    "start automatically"
+   ]
+  },
+  {
+   "id": "app-permissions",
+   "title": "App Permissions",
+   "path": "Apps",
+   "panel": "applications",
+   "keywords": [
+    "permissions",
+    "flatpak",
+    "sandbox",
+    "camera access",
+    "microphone access",
+    "uninstall"
+   ]
+  },
+  {
+   "id": "dark-style",
+   "title": "Dark Style",
+   "path": "Appearance",
+   "panel": "background",
+   "keywords": [
+    "dark",
+    "dark mode",
+    "dark theme",
+    "night mode",
+    "light mode",
+    "light style",
+    "theme",
+    "style"
+   ]
+  },
+  {
+   "id": "accent-color",
+   "title": "Accent Color",
+   "path": "Appearance",
+   "panel": "background",
+   "keywords": [
+    "accent",
+    "accent colour",
+    "colour",
+    "color",
+    "highlight color"
+   ]
+  },
+  {
+   "id": "wallpaper",
+   "title": "Wallpaper",
+   "path": "Appearance",
+   "panel": "background",
+   "keywords": [
+    "background",
+    "desktop picture",
+    "desktop background",
+    "lock screen picture"
+   ]
+  },
+  {
+   "id": "transparency",
+   "title": "Transparency",
+   "path": "Appearance",
+   "panel": "background",
+   "keywords": [
+    "glass",
+    "frost",
+    "transparency",
+    "translucent",
+    "blur",
+    "reduce transparency"
+   ]
+  },
+  {
+   "id": "night-light",
+   "title": "Night Light",
+   "path": "Displays",
+   "panel": "display",
+   "keywords": [
+    "night",
+    "night shift",
+    "blue light",
+    "warm colors",
+    "warmer",
+    "color temperature",
+    "sunset",
+    "eye strain",
+    "redshift"
+   ]
+  },
+  {
+   "id": "cast",
+   "title": "Cast",
+   "path": "Displays",
+   "panel": "display",
+   "keywords": [
+    "cast",
+    "casting",
+    "screen mirroring",
+    "mirror screen",
+    "airplay",
+    "chromecast",
+    "miracast",
+    "tv",
+    "projector",
+    "wireless display"
+   ]
+  },
+  {
+   "id": "display-scale",
+   "title": "Scale",
+   "path": "Displays",
+   "panel": "display",
+   "keywords": [
+    "scaling",
+    "zoom",
+    "hidpi",
+    "make everything bigger",
+    "fractional scaling",
+    "size"
+   ]
+  },
+  {
+   "id": "display-resolution",
+   "title": "Resolution and Refresh Rate",
+   "path": "Displays",
+   "panel": "display",
+   "keywords": [
+    "resolution",
+    "refresh rate",
+    "hz",
+    "monitor",
+    "external display",
+    "arrangement",
+    "orientation",
+    "rotate screen"
+   ]
+  },
+  {
+   "id": "automatic-suspend",
+   "title": "Automatic Suspend",
+   "path": "Power",
+   "panel": "power",
+   "keywords": [
+    "sleep",
+    "suspend",
+    "auto suspend",
+    "hibernate",
+    "idle",
+    "lid",
+    "stay awake",
+    "keep awake",
+    "caffeine",
+    "turn off when idle"
+   ]
+  },
+  {
+   "id": "screen-blank",
+   "title": "Screen Blank",
+   "path": "Power",
+   "panel": "power",
+   "keywords": [
+    "screen off",
+    "blank screen",
+    "dim screen",
+    "turn off display",
+    "screen timeout",
+    "display sleep"
+   ]
+  },
+  {
+   "id": "power-mode",
+   "title": "Power Mode",
+   "path": "Power",
+   "panel": "power",
+   "keywords": [
+    "performance",
+    "power saver",
+    "battery saver",
+    "low power",
+    "balanced",
+    "energy"
+   ]
+  },
+  {
+   "id": "battery-percentage",
+   "title": "Battery Percentage",
+   "path": "Power",
+   "panel": "power",
+   "keywords": [
+    "battery",
+    "battery level",
+    "percentage",
+    "charge"
+   ]
+  },
+  {
+   "id": "do-not-disturb",
+   "title": "Do Not Disturb",
+   "path": "Notifications",
+   "panel": "notifications",
+   "keywords": [
+    "dnd",
+    "focus",
+    "quiet",
+    "silence notifications",
+    "mute notifications",
+    "banners"
+   ]
+  },
+  {
+   "id": "screen-lock",
+   "title": "Screen Lock",
+   "path": "Privacy & Security",
+   "panel": "privacy",
+   "keywords": [
+    "lock",
+    "lock screen",
+    "auto lock",
+    "automatic screen lock",
+    "password after sleep",
+    "lock delay"
+   ]
+  },
+  {
+   "id": "location-services",
+   "title": "Location Services",
+   "path": "Privacy & Security",
+   "panel": "privacy",
+   "keywords": [
+    "location",
+    "gps",
+    "geolocation"
+   ]
+  },
+  {
+   "id": "file-history",
+   "title": "File History & Trash",
+   "path": "Privacy & Security",
+   "panel": "privacy",
+   "keywords": [
+    "recent files",
+    "history",
+    "trash",
+    "temporary files",
+    "empty trash automatically"
+   ]
+  },
+  {
+   "id": "sound-output",
+   "title": "Output Device and Volume",
+   "path": "Sound",
+   "panel": "sound",
+   "keywords": [
+    "volume",
+    "speakers",
+    "headphones",
+    "output",
+    "audio output",
+    "sound output",
+    "balance"
+   ]
+  },
+  {
+   "id": "sound-input",
+   "title": "Microphone",
+   "path": "Sound",
+   "panel": "sound",
+   "keywords": [
+    "mic",
+    "microphone",
+    "input",
+    "input volume",
+    "recording level"
+   ]
+  },
+  {
+   "id": "alert-sound",
+   "title": "Alert Sound",
+   "path": "Sound",
+   "panel": "sound",
+   "keywords": [
+    "alert",
+    "beep",
+    "system sounds",
+    "notification sound"
+   ]
+  },
+  {
+   "id": "hot-corner",
+   "title": "Hot Corner",
+   "path": "Multitasking",
+   "panel": "multitasking",
+   "keywords": [
+    "hot corner",
+    "active edges",
+    "screen edges"
+   ]
+  },
+  {
+   "id": "workspaces",
+   "title": "Workspaces",
+   "path": "Multitasking",
+   "panel": "multitasking",
+   "keywords": [
+    "workspace",
+    "desktops",
+    "virtual desktops",
+    "spaces",
+    "app switching"
+   ]
+  },
+  {
+   "id": "dock",
+   "title": "Dock",
+   "path": "Dash",
+   "panel": "dash",
+   "keywords": [
+    "dock",
+    "taskbar",
+    "shelf",
+    "dash",
+    "islands",
+    "dock position"
+   ]
+  },
+  {
+   "id": "keyboard-shortcuts",
+   "title": "Keyboard Shortcuts",
+   "path": "Keyboard",
+   "panel": "keyboard",
+   "keywords": [
+    "shortcuts",
+    "hotkeys",
+    "keybindings",
+    "key bindings",
+    "screenshot shortcut"
+   ]
+  },
+  {
+   "id": "input-sources",
+   "title": "Input Sources",
+   "path": "Keyboard",
+   "panel": "keyboard",
+   "keywords": [
+    "keyboard layout",
+    "input method",
+    "typing language",
+    "dvorak",
+    "compose key"
+   ]
+  },
+  {
+   "id": "natural-scrolling",
+   "title": "Natural Scrolling",
+   "path": "Mouse & Touchpad",
+   "panel": "mouse",
+   "keywords": [
+    "scroll direction",
+    "reverse scrolling",
+    "scrolling",
+    "natural"
+   ]
+  },
+  {
+   "id": "tap-to-click",
+   "title": "Tap to Click",
+   "path": "Mouse & Touchpad",
+   "panel": "mouse",
+   "keywords": [
+    "tap",
+    "touchpad",
+    "trackpad",
+    "click",
+    "pointer speed",
+    "mouse speed"
+   ]
+  },
+  {
+   "id": "date-time",
+   "title": "Date & Time",
+   "path": "System",
+   "panel": "datetime",
+   "keywords": [
+    "time",
+    "date",
+    "clock",
+    "time zone",
+    "timezone",
+    "24-hour",
+    "am pm",
+    "clock format"
+   ]
+  },
+  {
+   "id": "region-language",
+   "title": "Region & Language",
+   "path": "System",
+   "panel": "region",
+   "keywords": [
+    "language",
+    "region",
+    "formats",
+    "locale",
+    "units"
+   ]
+  },
+  {
+   "id": "users",
+   "title": "Users",
+   "path": "System",
+   "panel": "users",
+   "keywords": [
+    "account",
+    "password",
+    "change password",
+    "profile picture",
+    "avatar",
+    "user",
+    "automatic login",
+    "fingerprint"
+   ]
+  },
+  {
+   "id": "about",
+   "title": "About This Computer",
+   "path": "System",
+   "panel": "about",
+   "keywords": [
+    "about",
+    "version",
+    "luma version",
+    "system info",
+    "specs",
+    "hardware",
+    "memory",
+    "processor",
+    "device name",
+    "hostname"
+   ]
+  },
+  {
+   "id": "search-locations",
+   "title": "Search Locations",
+   "path": "Search",
+   "panel": "search",
+   "keywords": [
+    "search",
+    "indexing",
+    "file search",
+    "search folders",
+    "exclude from search"
+   ]
+  },
+  {
+   "id": "large-text",
+   "title": "Large Text",
+   "path": "Accessibility",
+   "panel": "universal-access",
+   "keywords": [
+    "text size",
+    "font size",
+    "bigger text",
+    "larger text",
+    "accessibility"
+   ]
+  },
+  {
+   "id": "reduce-animation",
+   "title": "Reduce Animation",
+   "path": "Accessibility",
+   "panel": "universal-access",
+   "keywords": [
+    "animations",
+    "motion",
+    "reduce motion"
+   ]
+  },
+  {
+   "id": "depot-updates",
+   "title": "Updates",
+   "path": "Depot",
+   "desktop": "org.projectluma.Depot.desktop",
+   "action": "updates",
+   "keywords": [
+    "update",
+    "updates",
+    "upgrade",
+    "software update",
+    "system update",
+    "check for updates",
+    "os update"
+   ]
+  }
+ ]
+}

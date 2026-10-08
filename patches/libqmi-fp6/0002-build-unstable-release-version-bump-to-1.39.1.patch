@@ -1,0 +1,29 @@
+From 30f3e998e6cbda364ac1bc73223de20561e6d555 Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Thu, 2 Jul 2026 15:25:04 +0200
+Subject: [PATCH] build: unstable release version bump to 1.39.1
+
+So that ModemManager can depend on the new LOC Register Events client
+identification API.
+
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/meson.build b/meson.build
+index 9f1932d3..d943921b 100644
+--- a/meson.build
++++ b/meson.build
+@@ -3,7 +3,7 @@
+ 
+ project(
+   'libqmi', 'c',
+-  version: '1.39.0',
++  version: '1.39.1',
+   license: 'GPL2',
+   default_options: [
+     'buildtype=debugoptimized',
+-- 
+2.54.0 (Apple Git-157)
+

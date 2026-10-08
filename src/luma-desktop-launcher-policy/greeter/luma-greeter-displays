@@ -1,0 +1,42 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Show the login screen on the displays people arranged.
+#
+# GDM runs as its own account with its own display configuration, which it
+# never gets: with a laptop docked to a monitor the login screen opened on the
+# laptop panel however the desktop was set up. Before GDM starts, the most
+# recently changed arrangement of anyone on this computer is handed to it.
+# Nothing is read from GDM or written anywhere else.
+set -eu
+
+passwd_file=${LUMA_GREETER_PASSWD:-}
+gdm_root=${LUMA_GREETER_GDM_ROOT:-/var/lib/gdm}
+
+accounts() {
+  if [ -n "$passwd_file" ]; then cat "$passwd_file"; else getent passwd; fi
+}
+
+newest=""
+newest_time=0
+for home in $(accounts | awk -F: '$3 >= 1000 && $3 < 60000 { print $6 }'); do
+  candidate="$home/.config/monitors.xml"
+  [ -f "$candidate" ] && [ ! -L "$candidate" ] || continue
+  modified=$(stat -c %Y "$candidate")
+  if [ "$modified" -gt "$newest_time" ]; then
+    newest=$candidate
+    newest_time=$modified
+  fi
+done
+[ -n "$newest" ] || exit 0
+
+for config in "$gdm_root"/seat*/config "$gdm_root/.config"; do
+  [ -d "$config" ] && [ ! -L "$config" ] || continue
+  owner=$(stat -c %u "$config")
+  group=$(stat -c %g "$config")
+  partial="$config/.monitors.xml.luma"
+  install -m 0644 -o "$owner" -g "$group" "$newest" "$partial"
+  mv -f "$partial" "$config/monitors.xml"
+  if command -v restorecon >/dev/null 2>&1; then
+    restorecon "$config/monitors.xml" 2>/dev/null || :
+  fi
+done

@@ -1,0 +1,80 @@
+From: Project Luma
+Subject: [PATCH] luma: the dock lists only apps with windows
+
+Nick's dock showed a "Sound" app with a generic speaker icon he never opened,
+beside Characters, and clicking the speaker opened Characters. The dash took
+its running apps from the session application tracker, which also counts
+every DBusActivatable app whose bus name is owned: luma-audio-devices, a
+windowless service, and Characters for the 10-20 seconds it runs as a search
+provider after every overview search. Those icons joined and left the dock
+while the pointer was over it, so a click landed on whatever had shifted into
+place.
+
+The dock now takes an app as running only when it has a window a person can
+switch to (lumaDockWindows.appWindows: not skip-taskbar, not an attached
+dialog, not the desktop), minimized windows included, and redisplays when
+windows are tracked or untracked. The running dot follows the same rule.
+Items stay bound to their own ShellApp, so activation is exact. The tracker is
+unchanged for the Monitor, app menus and the app grid, which do need
+registered background apps (ADR-033 keeps them out of the shelf).
+
+Generated against the Shell .85 tree (0124 applied) for release .86.
+---
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -13,7 +13,6 @@
+ import * as DockWindows from './lumaDockWindows.js';
+ import * as Main from './main.js';
+ import * as Overview from './overview.js';
+-import * as SessionApplications from './sessionApplications.js';
+ import {DASH_TILE_GAP, SHELF_DIVIDER_LENGTH} from './shelfMetrics.js';
+ 
+ export const DASH_ANIMATION_TIME = 200;
+@@ -32,6 +31,15 @@
+         });
+         this.connectObject('notify::hover', () => this._syncShelfArtwork(),
+             'notify::pressed', () => this._syncShelfArtwork(), this);
++        this.app.connectObject('windows-changed',
++            () => this._updateRunningStyle(), this);
++    }
++
++    // In the dock an app is running when it has a window a person can see
++    // and switch to. Background agents, search providers and other
++    // D-Bus-activated services without one never mark it as running.
++    _updateRunningStyle() {
++        this._dot.visible = DockWindows.appWindows(this.app).length > 0;
+     }
+ 
+     _createIcon(iconSize) {
+@@ -471,12 +479,13 @@
+         this._workId = Main.initializeDeferredWork(this._box, this._redisplay.bind(this));
+ 
+         this._appSystem = Shell.AppSystem.get_default();
+-        this._sessionApplications = SessionApplications.getDefault();
+         this._appSystem.connectObject(
+             'installed-changed', () => this._queueRedisplay(),
+             'app-state-changed', () => this._queueRedisplay(),
+             this);
+-        this._sessionApplications.connectObject('changed',
++        // A window appearing or leaving can change whether an app has one
++        // the dock counts, without changing the app's state.
++        Shell.WindowTracker.get_default().connectObject('tracked-windows-changed',
+             () => this._queueRedisplay(), this);
+ 
+         AppFavorites.getAppFavorites().connectObject('changed',
+@@ -838,7 +847,13 @@
+     _redisplay() {
+         const favorites = AppFavorites.getAppFavorites().getFavoriteMap();
+ 
+-        const running = this._sessionApplications.getRunning();
++        // Only apps with a real window join the dock. Counting every
++        // D-Bus-activatable app that owned its bus name put windowless
++        // services in it (Sound's device prompts service, Characters while
++        // it answered a search), and each came and went under the pointer, so
++        // a click could land on the app that had just shifted into place.
++        const running = this._appSystem.get_running()
++            .filter(app => DockWindows.appWindows(app).length > 0);
+ 
+         const children = this._box.get_children().filter(actor => {
+             return actor.child &&

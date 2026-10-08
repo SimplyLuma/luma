@@ -1,0 +1,201 @@
+{
+  "date": "2026-09-23",
+  "minute": 640,
+  "selected": "oak",
+  "unit": "F",
+  "places": [
+    {
+      "id": "oak",
+      "n": "Oakland",
+      "r": "California",
+      "off": 0,
+      "base": 62,
+      "amp": 9,
+      "rain": [
+        18,
+        21
+      ],
+      "rise": 421,
+      "set": 1142,
+      "aq": 28,
+      "uv": 5,
+      "wind": [
+        11,
+        250
+      ],
+      "hum": 64,
+      "me": true
+    },
+    {
+      "id": "lis",
+      "n": "Lisbon",
+      "r": "Portugal",
+      "off": 8,
+      "base": 74,
+      "amp": 8,
+      "rain": null,
+      "rise": 441,
+      "set": 1181,
+      "aq": 19,
+      "uv": 7,
+      "wind": [
+        8,
+        320
+      ],
+      "hum": 52
+    },
+    {
+      "id": "tok",
+      "n": "Tokyo",
+      "r": "Japan",
+      "off": 16,
+      "base": 71,
+      "amp": 6,
+      "rain": [
+        2,
+        9
+      ],
+      "rise": 330,
+      "set": 1080,
+      "aq": 41,
+      "uv": 3,
+      "wind": [
+        6,
+        40
+      ],
+      "hum": 78
+    },
+    {
+      "id": "sac",
+      "n": "Sacramento",
+      "r": "California",
+      "off": 0,
+      "base": 78,
+      "amp": 13,
+      "rain": null,
+      "rise": 418,
+      "set": 1135,
+      "aq": 35,
+      "uv": 7,
+      "wind": [
+        5,
+        180
+      ],
+      "hum": 38
+    }
+  ],
+  "search": [
+    {
+      "id": "kc",
+      "n": "Kansas City",
+      "r": "MO",
+      "zip": "64105",
+      "off": 2,
+      "h": 21
+    },
+    {
+      "id": "nyc",
+      "n": "New York",
+      "r": "NY",
+      "zip": "10001",
+      "off": 3,
+      "h": 40
+    },
+    {
+      "id": "chi",
+      "n": "Chicago",
+      "r": "IL",
+      "zip": "60601",
+      "off": 2,
+      "h": 27
+    },
+    {
+      "id": "sea",
+      "n": "Seattle",
+      "r": "WA",
+      "zip": "98101",
+      "off": 0,
+      "h": 150
+    },
+    {
+      "id": "aus",
+      "n": "Austin",
+      "r": "TX",
+      "zip": "78701",
+      "off": 2,
+      "h": 30
+    },
+    {
+      "id": "den",
+      "n": "Denver",
+      "r": "CO",
+      "zip": "80202",
+      "off": 1,
+      "h": 60
+    },
+    {
+      "id": "lon",
+      "n": "London",
+      "r": "United Kingdom",
+      "zip": "",
+      "off": 8,
+      "h": 200
+    },
+    {
+      "id": "par",
+      "n": "Paris",
+      "r": "France",
+      "zip": "",
+      "off": 9,
+      "h": 210
+    },
+    {
+      "id": "ber",
+      "n": "Berlin",
+      "r": "Germany",
+      "zip": "",
+      "off": 9,
+      "h": 220
+    },
+    {
+      "id": "syd",
+      "n": "Sydney",
+      "r": "Australia",
+      "zip": "",
+      "off": 17,
+      "h": 90
+    },
+    {
+      "id": "mex",
+      "n": "Mexico City",
+      "r": "Mexico",
+      "zip": "",
+      "off": 1,
+      "h": 45
+    },
+    {
+      "id": "tor",
+      "n": "Toronto",
+      "r": "Canada",
+      "zip": "",
+      "off": 3,
+      "h": 180
+    },
+    {
+      "id": "kcks",
+      "n": "Kansas City",
+      "r": "KS",
+      "zip": "66101",
+      "off": 2,
+      "h": 21
+    },
+    {
+      "id": "sf",
+      "n": "San Francisco",
+      "r": "CA",
+      "zip": "94103",
+      "off": 0,
+      "h": 240
+    }
+  ]
+}

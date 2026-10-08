@@ -1,0 +1,23 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 21 Sep 2026 12:30:00 -0500
+Subject: [PATCH] luma: the folders island has its own glyph
+
+Arrange mode names the dock's folders slot luma-dock-folders-symbolic, and
+nothing shipped it: the image's icon check failed on it, and a running
+Shell drew the generic folder fallback beside the Luma glyphs of the other
+slots. A folder with its tab and flap line, on the same 24-unit grid with
+2-unit strokes outlined to fills, like the live extensions and system tray
+glyphs.
+
+---
+diff --git a/data/icons/hicolor/scalable/status/luma-dock-folders-symbolic.svg b/data/icons/hicolor/scalable/status/luma-dock-folders-symbolic.svg
+new file mode 100644
+index 0000000..1049fee
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-dock-folders-symbolic.svg
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Luma "dock folders": a folder with its tab and the line of its front flap, drawn on the 24-unit Lucide grid (2-unit strokes, round ends) and outlined to fills for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path fill="#2e3436" fill-rule="evenodd" d="M4.5,3.5 H9.4 A1.5,1.5 0 0 1 10.46,3.94 L12.02,5.5 H19.5 A3,3 0 0 1 22.5,8.5 V17 A3,3 0 0 1 19.5,20 H4.5 A3,3 0 0 1 1.5,17 V6.5 A3,3 0 0 1 4.5,3.5 Z M4.5,5.5 A1,1 0 0 0 3.5,6.5 V17 A1,1 0 0 0 4.5,18 H19.5 A1,1 0 0 0 20.5,17 V8.5 A1,1 0 0 0 19.5,7.5 H11.19 L9.19,5.5 Z M3.5,10.5 H20.5 V12.5 H3.5 Z"/>
++</svg>

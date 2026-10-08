@@ -1,0 +1,673 @@
+From 792b708bf4d9a3ddf71df1ee5ab6a5f21250acaa Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 15:37:24 +0000
+Subject: [PATCH] settings: compose scoped Privacy routes and native schema
+ contracts
+
+---
+ shell/cc-luma-fixture.c       |   4 +-
+ shell/cc-luma-preferences.c   |   6 ++
+ shell/cc-luma-preferences.h   |   3 +
+ shell/cc-luma-privacy.c       |  72 +++++++++++++
+ shell/cc-luma-privacy.h       |   9 ++
+ shell/cc-luma-view-privacy.c  | 191 ++++++++++++++++++++++++++++++++++
+ shell/cc-luma-view-private.h  |   2 +
+ shell/cc-luma-view.c          |  15 +++
+ shell/meson.build             |   6 +-
+ shell/test-luma-fixture.c     |  32 ++++++
+ shell/test-luma-preferences.c |  17 +++
+ shell/test-luma-view.c        |  89 ++++++++++++++++
+ 12 files changed, 442 insertions(+), 4 deletions(-)
+ create mode 100644 shell/cc-luma-privacy.c
+ create mode 100644 shell/cc-luma-privacy.h
+ create mode 100644 shell/cc-luma-view-privacy.c
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 7bb1bf8..aab3383 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -510,8 +510,8 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+           g_autofree char *file = g_strconcat (id, ".png", NULL);
+           return g_build_filename (self->resource_dir, file, NULL);
+         }
+-  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos", "calendar", "phone", "clock", "depot", "maps", "settings", "calc", "contacts", "notes", "term", "reel", "camera", "ari", "canvas" };
+-  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos", "calendar", "phone", "clock", "app-store", "maps", "settings", "calculator", "contacts", "notes", "terminal", "video-editor", "camera", "ari", "designer" };
++  const char *apps[] = { "write", "viola", "messages", "filer", "tide", "charlie", "photos", "calendar", "phone", "clock", "depot", "maps", "settings", "calc", "contacts", "notes", "term", "reel", "camera", "ari", "canvas", "weather", "session" };
++  const char *artwork[] = { "documents", "browser", "messages", "files", "music", "mail", "photos", "calendar", "phone", "clock", "app-store", "maps", "settings", "calculator", "contacts", "notes", "terminal", "video-editor", "camera", "ari", "designer", "weather", "daw" };
+   if (self->resource_dir && id)
+     for (guint i = 0; i < G_N_ELEMENTS (apps); i++)
+       if (g_str_equal (id, apps[i]))
+diff --git a/shell/cc-luma-preferences.c b/shell/cc-luma-preferences.c
+index 74f374a..673501d 100644
+--- a/shell/cc-luma-preferences.c
++++ b/shell/cc-luma-preferences.c
+@@ -161,6 +161,12 @@ CcLumaPreferences *cc_luma_preferences_new_native (CcLumaPreferenceSet set, GErr
+       { "d", "s", "b", "b", NULL } },
+     { "org.gnome.desktop.peripherals.keyboard",
+       { "repeat", "delay", "repeat-interval", NULL }, { "b", "i|u", "i|u", NULL } },
++    { "org.gnome.desktop.screensaver",
++      { "lock-enabled", "lock-delay", NULL }, { "b", "u", NULL } },
++    { "org.gnome.desktop.privacy",
++      { "disable-camera", "disable-microphone", "remember-recent-files", "recent-files-max-age", "remove-old-trash-files", "remove-old-temp-files", "old-files-age", NULL },
++      { "b", "b", "b", "i", "b", "b", "u", NULL } },
++    { "org.gnome.system.location", { "enabled", NULL }, { "b", NULL } },
+   };
+   G_STATIC_ASSERT (G_N_ELEMENTS (native) == CC_LUMA_PREFS_COUNT);
+   if ((guint) set >= G_N_ELEMENTS (native)) {
+diff --git a/shell/cc-luma-preferences.h b/shell/cc-luma-preferences.h
+index 6180c12..631f8e2 100644
+--- a/shell/cc-luma-preferences.h
++++ b/shell/cc-luma-preferences.h
+@@ -35,6 +35,9 @@ typedef enum {
+   CC_LUMA_PREFS_A11Y_SOUND,
+   CC_LUMA_PREFS_A11Y_MAGNIFIER,
+   CC_LUMA_PREFS_A11Y_REPEAT,
++  CC_LUMA_PREFS_SCREEN_LOCK,
++  CC_LUMA_PREFS_PRIVACY,
++  CC_LUMA_PREFS_LOCATION,
+   CC_LUMA_PREFS_COUNT,
+ } CcLumaPreferenceSet;
+ CcLumaPreferences *cc_luma_preferences_new_native (CcLumaPreferenceSet set,
+diff --git a/shell/cc-luma-privacy.c b/shell/cc-luma-privacy.c
+new file mode 100644
+index 0000000..d3a88b1
+--- /dev/null
++++ b/shell/cc-luma-privacy.c
+@@ -0,0 +1,72 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-privacy.h"
++#include <gio/gio.h>
++#include <string.h>
++typedef struct { const char *page, *key; GType type; const char *choices[10]; } Field;
++static const Field fields[] = {
++  { "p-lock", "lock.blank", G_TYPE_STRING, { "1", "2", "3", "5", "8", "10", "15", "0", NULL } },
++  { "p-lock", "lock.delay", G_TYPE_STRING, { "0", "30", "60", "300", NULL } },
++  { "p-lock", "lock.auto", G_TYPE_BOOLEAN, { NULL } },
++  { "p-lock", "lock.notes", G_TYPE_BOOLEAN, { NULL } },
++  { "p-loc", "loc", G_TYPE_BOOLEAN, { NULL } },
++  { "p-cam", "cam", G_TYPE_BOOLEAN, { NULL } },
++  { "p-mic", "mic", G_TYPE_BOOLEAN, { NULL } },
++  { "p-files", "hist", G_TYPE_BOOLEAN, { NULL } },
++  { "p-files", "trash", G_TYPE_BOOLEAN, { NULL } },
++  { "p-files", "temp", G_TYPE_BOOLEAN, { NULL } },
++  { "p-files", "histKeep", G_TYPE_STRING, { "1", "7", "30", "forever", NULL } },
++  { "p-files", "trashAge", G_TYPE_STRING, { "1", "7", "30", NULL } },
++  { "p-diag", "diag", G_TYPE_STRING, { "never", "ask", "auto", NULL } },
++  { "p-dev", "tbolt", G_TYPE_BOOLEAN, { NULL } },
++};
++static const struct { const char *page, *key; } permissions[] = {
++  { "p-loc", "appLoc" }, { "p-cam", "appCam" }, { "p-mic", "appMic" }
++};
++gboolean cc_luma_privacy_page (const char *page)
++{
++  if (!page) return FALSE;
++  if (g_str_equal (page, "privacy")) return TRUE;
++  for (guint i = 0; i < G_N_ELEMENTS (fields); i++) if (g_str_equal (page, fields[i].page)) return TRUE;
++  return FALSE;
++}
++static gboolean valid (const Field *field, JsonNode *value)
++{
++  if (!value || !JSON_NODE_HOLDS_VALUE (value) || json_node_get_value_type (value) != field->type) return FALSE;
++  if (field->type == G_TYPE_BOOLEAN) return TRUE;
++  for (guint i = 0; field->choices[i]; i++) if (g_str_equal (field->choices[i], json_node_get_string (value))) return TRUE;
++  return FALSE;
++}
++gboolean cc_luma_privacy_validate (CcLumaFixture *model)
++{
++  for (guint i = 0; i < G_N_ELEMENTS (fields); i++) if (!valid (&fields[i], cc_luma_fixture_get (model, fields[i].key))) return FALSE;
++  for (guint i = 0; i < G_N_ELEMENTS (permissions); i++) {
++    JsonNode *node = cc_luma_fixture_get (model, permissions[i].key);
++    if (!node || !JSON_NODE_HOLDS_OBJECT (node)) return FALSE;
++    JsonObject *object = json_node_get_object (node);
++    g_autoptr(GList) names = json_object_get_members (object);
++    for (GList *name = names; name; name = name->next) {
++      const char *id = name->data;
++      JsonNode *flag = json_object_get_member (object, id);
++      if (!*id || strchr (id, '.') || !cc_luma_fixture_app_name (model, id) ||
++          !JSON_NODE_HOLDS_VALUE (flag) || json_node_get_value_type (flag) != G_TYPE_BOOLEAN) return FALSE;
++    }
++  }
++  return TRUE;
++}
++gboolean cc_luma_privacy_set (CcLumaFixture *model, const char *page,
++                             const char *key, JsonNode *value, GError **error)
++{
++  if (page && key && cc_luma_privacy_validate (model)) {
++    for (guint i = 0; i < G_N_ELEMENTS (fields); i++)
++      if (g_str_equal (page, fields[i].page) && g_str_equal (key, fields[i].key) && valid (&fields[i], value))
++        return cc_luma_fixture_set (model, key, value, error);
++    for (guint i = 0; i < G_N_ELEMENTS (permissions); i++) {
++      g_autofree char *prefix = g_strconcat (permissions[i].key, ".", NULL);
++      if (g_str_equal (page, permissions[i].page) && g_str_has_prefix (key, prefix) &&
++          value && JSON_NODE_HOLDS_VALUE (value) && json_node_get_value_type (value) == G_TYPE_BOOLEAN &&
++          cc_luma_fixture_get (model, key)) return cc_luma_fixture_set (model, key, value, error);
++    }
++  }
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid or cross-page Settings privacy preference");
++  return FALSE;
++}
+diff --git a/shell/cc-luma-privacy.h b/shell/cc-luma-privacy.h
+new file mode 100644
+index 0000000..1bab330
+--- /dev/null
++++ b/shell/cc-luma-privacy.h
+@@ -0,0 +1,9 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include "cc-luma-fixture.h"
++G_BEGIN_DECLS
++gboolean cc_luma_privacy_page (const char *page);
++gboolean cc_luma_privacy_validate (CcLumaFixture *model);
++gboolean cc_luma_privacy_set (CcLumaFixture *model, const char *page,
++                             const char *key, JsonNode *value, GError **error);
++G_END_DECLS
+diff --git a/shell/cc-luma-view-privacy.c b/shell/cc-luma-view-privacy.c
+new file mode 100644
+index 0000000..323d595
+--- /dev/null
++++ b/shell/cc-luma-view-privacy.c
+@@ -0,0 +1,191 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++#include "cc-luma-privacy.h"
++
++static void flag (View *v, GtkBox *rows, const char *key, const char *title, const char *hint)
++{
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  cc_luma_view_row (rows, title, hint, cc_luma_view_toggle (v, key, name, title));
++}
++static void link_clicked (GtkButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v && gtk_widget_is_ancestor (GTK_WIDGET (button), root))
++    cc_luma_view_navigate (v, g_object_get_data (G_OBJECT (button), "cf-target"));
++}
++static void link_row (View *v, GtkBox *rows, const char *target, const char *title,
++                      const char *hint, const char *icon, const char *status)
++{
++  GtkWidget *item = luma_details_item_new (title, hint, icon);
++  g_autofree char *name = g_strconcat ("cf-go-", target, NULL);
++  gtk_widget_set_name (item, name);
++  g_object_set_data_full (G_OBJECT (item), "cf-target", g_strdup (target), g_free);
++  g_signal_connect_object (item, "clicked", G_CALLBACK (link_clicked), v->root, 0);
++  GtkWidget *trail = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
++  if (status) gtk_box_append (GTK_BOX (trail), cc_luma_view_label (status, "meta", TRUE));
++  gtk_box_append (GTK_BOX (trail), luma_ui_icon_new ("chevron-right"));
++  luma_details_item_set_trail (LUMA_DETAILS_ITEM (item), trail);
++  gtk_box_append (rows, item);
++}
++static void facts (View *v)
++{
++  const char *titles[] = { "Disk encryption", "Secure Boot", "Firmware" };
++  const char *values[] = { "On", "On", "Up to date" };
++  GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 20);
++  gtk_widget_set_name (row, "cf-security-facts");
++  for (guint i = 0; i < G_N_ELEMENTS (titles); i++) {
++    GtkWidget *fact = gtk_box_new (GTK_ORIENTATION_VERTICAL, 4);
++    gtk_widget_set_hexpand (fact, TRUE);
++    gtk_box_append (GTK_BOX (fact), luma_ui_icon_new ("shield-check"));
++    gtk_box_append (GTK_BOX (fact), cc_luma_view_label (values[i], "body", FALSE));
++    gtk_box_append (GTK_BOX (fact), cc_luma_view_label (titles[i], "small", TRUE));
++    gtk_box_append (GTK_BOX (row), fact);
++  }
++  /* Exact sample facts are fixture-only. A production adapter must supply
++   * actual encrypted-device, Secure Boot and firmware evidence. */
++  gtk_box_append (v->body, row);
++}
++static void privacy (View *v)
++{
++  g_autofree char *meta = g_strdup_printf ("Screen locks %s · location %s",
++    cc_luma_view_flag (v, "lock.auto") ? "when it turns off" : "only when you lock it",
++    cc_luma_view_flag (v, "loc") ? "on" : "off");
++  cc_luma_view_header (v, "Privacy & Security", meta, NULL); facts (v);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  link_row (v, rows, "p-lock", "Screen lock", "When the screen locks, and what shows on it", "lock", NULL);
++  link_row (v, rows, "p-loc", "Location", "Apps that can see where you are", "map-pin", cc_luma_view_flag (v, "loc") ? "On" : "Off");
++  link_row (v, rows, "p-cam", "Camera", NULL, "camera", cc_luma_view_flag (v, "cam") ? "On" : "Off");
++  link_row (v, rows, "p-mic", "Microphone", NULL, "mic", cc_luma_view_flag (v, "mic") ? "On" : "Off");
++  rows = cc_luma_view_group (v, NULL);
++  link_row (v, rows, "p-files", "File history and trash", "Recent files, the trash and temporary files", "history", NULL);
++  const char *diag = cc_luma_view_text (v, "diag");
++  link_row (v, rows, "p-diag", "Problem reports", NULL, "triangle-alert", g_str_equal (diag, "never") ? "Off" : g_str_equal (diag, "ask") ? "Ask first" : "Automatic");
++  link_row (v, rows, "p-dev", "Device security", "Encryption, Secure Boot and firmware", "shield-check", NULL);
++}
++static void screen_lock (View *v)
++{
++  cc_luma_view_header (v, "Screen lock", cc_luma_view_flag (v, "lock.auto") ? "Locks when the screen turns off" : "Locks only when you lock it", NULL);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  const char * const blank[] = { "1", "1 minute", "2", "2 minutes", "3", "3 minutes", "5", "5 minutes", "8", "8 minutes", "10", "10 minutes", "15", "15 minutes", "0", "Never", NULL };
++  const char * const delay[] = { "0", "Straight away", "30", "30 seconds", "60", "1 minute", "300", "5 minutes", NULL };
++  cc_luma_view_row (rows, "Turn the screen off after", NULL, cc_luma_view_picker (v, "lock.blank", blank));
++  flag (v, rows, "lock.auto", "Lock when the screen turns off", NULL);
++  if (cc_luma_view_flag (v, "lock.auto")) cc_luma_view_row (rows, "Lock after", "Time to wake it without your password", cc_luma_view_picker (v, "lock.delay", delay));
++  flag (v, rows, "lock.notes", "Notifications on the lock screen", NULL);
++}
++static void permissions (View *v)
++{
++  gboolean location = g_str_equal (v->page, "p-loc"), camera = g_str_equal (v->page, "p-cam");
++  const char *master = location ? "loc" : camera ? "cam" : "mic";
++  const char *prefix = location ? "appLoc" : camera ? "appCam" : "appMic";
++  gboolean enabled = cc_luma_view_flag (v, master);
++  cc_luma_view_header (v, location ? "Location" : camera ? "Camera" : "Microphone",
++    location ? enabled ? "Worked out from nearby Wi‑Fi networks" : "No app can see where you are" :
++    camera ? enabled ? "Apps you allow can use the camera" : "No app can use the camera" :
++    enabled ? "Apps you allow can use the microphone" : "No app can use the microphone", master);
++  if (!enabled) return;
++  GtkBox *rows = cc_luma_view_group (v, "Apps that asked");
++  JsonObject *apps = json_node_get_object (cc_luma_fixture_get (v->model, prefix));
++  g_autoptr(GList) names = json_object_get_members (apps);
++  for (GList *name = names; name; name = name->next) {
++    const char *id = name->data;
++    g_autofree char *key = g_strconcat (prefix, ".", id, NULL);
++    g_autofree char *widget_name = g_strconcat ("cf-", key, NULL);
++    GtkWidget *item = luma_details_item_new (cc_luma_fixture_app_name (v->model, id), location && g_str_equal (id, "maps") ? "Last used today" : NULL, NULL);
++    luma_details_item_set_lead (LUMA_DETAILS_ITEM (item), cc_luma_view_image (v, id, 30, 30));
++    luma_details_item_set_trail (LUMA_DETAILS_ITEM (item), cc_luma_view_toggle (v, key, widget_name, cc_luma_fixture_app_name (v->model, id)));
++    gtk_box_append (rows, item);
++  }
++}
++static void confirmed (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  guint64 *generation = g_object_get_data (G_OBJECT (dialog), "cf-privacy-generation");
++  if (!v || !generation || *generation != v->generation || !g_str_equal (v->page, "p-files") || !gtk_widget_get_root (root)) return;
++  luma_toast_show (root, g_object_get_data (G_OBJECT (dialog), "cf-privacy-message"), "done");
++}
++static void clear_history (GtkButton *button, View *v);
++static void empty_trash (GtkButton *button, View *v);
++static void ask (View *v, const char *title, const char *body, const char *caption, const char *message)
++{
++  LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title, body, caption, "trash-2", NULL);
++  guint64 *generation = g_new (guint64, 1); *generation = v->generation;
++  g_object_set_data_full (G_OBJECT (dialog), "cf-privacy-generation", generation, g_free);
++  g_object_set_data_full (G_OBJECT (dialog), "cf-privacy-message", g_strdup (message), g_free);
++  g_signal_connect_object (dialog, "confirmed", G_CALLBACK (confirmed), v->root, 0);
++}
++static void clear_history (GtkButton *button, View *v) { ask (v, "Clear recent files?", "The files stay where they are. Only the list is cleared.", "Clear", "Recent files cleared"); }
++static void empty_trash (GtkButton *button, View *v) { ask (v, "Empty the trash?", "214 items, 1.2 GB. They can’t be brought back.", "Empty trash", "Trash emptied"); }
++static void clear_temp (GtkButton *button, View *v) { luma_toast_show (v->root, "380 MB of temporary files deleted", "done"); }
++static void command (View *v, GtkBox *rows, const char *name, const char *title, const char *hint, const char *caption, GCallback callback)
++{
++  GtkWidget *button = cc_luma_view_command (v, caption, callback); gtk_widget_set_name (button, name);
++  cc_luma_view_row (rows, title, hint, button);
++}
++static void files (View *v)
++{
++  cc_luma_view_header (v, "File history and trash", cc_luma_view_flag (v, "hist") ? "Remembering files you open" : "Not remembering files you open", NULL);
++  GtkBox *rows = cc_luma_view_group (v, "Recent files");
++  flag (v, rows, "hist", "Remember files I open", "Shown in Recent and in search");
++  const char * const history[] = { "1", "1 day", "7", "7 days", "30", "30 days", "forever", "Forever", NULL };
++  const char * const age[] = { "1", "1 day", "7", "7 days", "30", "30 days", NULL };
++  if (cc_luma_view_flag (v, "hist")) cc_luma_view_row (rows, "Keep for", NULL, cc_luma_view_picker (v, "histKeep", history));
++  command (v, rows, "cf-clearhist", "Clear recent files", NULL, "Clear…", G_CALLBACK (clear_history));
++  rows = cc_luma_view_group (v, "Trash and temporary files");
++  flag (v, rows, "trash", "Empty the trash on its own", NULL);
++  flag (v, rows, "temp", "Delete temporary files on their own", NULL);
++  if (cc_luma_view_flag (v, "trash") || cc_luma_view_flag (v, "temp")) cc_luma_view_row (rows, "After", NULL, cc_luma_view_picker (v, "trashAge", age));
++  command (v, rows, "cf-emptytrash", "Empty the trash", "1.2 GB in 214 items", "Empty…", G_CALLBACK (empty_trash));
++  command (v, rows, "cf-cleartemp", "Delete temporary files", "380 MB", "Delete…", G_CALLBACK (clear_temp));
++  /* Feedback follows the fixture exactly. This never opens Housekeeping,
++   * RecentManager, a trash store or an installed application's data. */
++}
++static void diag_selected (GtkCheckButton *control, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v || !gtk_check_button_get_active (control) || !gtk_widget_is_ancestor (GTK_WIDGET (control), root) || !g_str_equal (v->page, "p-diag")) return;
++  g_autoptr(JsonNode) value = json_node_init_string (json_node_alloc (), g_object_get_data (G_OBJECT (control), "cf-diag-value"));
++  g_autoptr(GError) error = NULL;
++  if (cc_luma_privacy_set (v->model, v->page, "diag", value, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static void diagnostics (View *v)
++{
++  cc_luma_view_header (v, "Problem reports", "When an app crashes, a report can help the Luma team fix it", NULL);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  const char *values[] = { "never", "ask", "auto" }, *titles[] = { "Don’t send", "Ask me each time", "Send automatically" };
++  GtkCheckButton *group = NULL;
++  for (guint i = 0; i < G_N_ELEMENTS (values); i++) {
++    GtkWidget *control = gtk_check_button_new ();
++    gtk_check_button_set_group (GTK_CHECK_BUTTON (control), group);
++    if (!group) group = GTK_CHECK_BUTTON (control);
++    gtk_check_button_set_active (GTK_CHECK_BUTTON (control), g_str_equal (values[i], cc_luma_view_text (v, "diag")));
++    g_autofree char *name = g_strconcat ("cf-diag-", values[i], NULL); gtk_widget_set_name (control, name);
++    gtk_accessible_update_property (GTK_ACCESSIBLE (control), GTK_ACCESSIBLE_PROPERTY_LABEL, titles[i], -1);
++    g_object_set_data_full (G_OBJECT (control), "cf-diag-value", g_strdup (values[i]), g_free);
++    g_signal_connect_object (control, "toggled", G_CALLBACK (diag_selected), v->root, 0);
++    cc_luma_view_row (rows, titles[i], i == 1 ? "You see what’s in it first" : NULL, control);
++  }
++}
++static void device (View *v)
++{
++  cc_luma_view_header (v, "Device security", "Every check passed", NULL);
++  GtkBox *rows = cc_luma_view_group (v, NULL);
++  const char *titles[] = { "Disk encryption", "Secure Boot", "TPM", "Firmware" };
++  const char *values[] = { "On", "On", "Version 2.0", "Up to date" };
++  const char *icons[] = { "lock", "shield-check", "cpu", "refresh-cw" };
++  for (guint i = 0; i < G_N_ELEMENTS (titles); i++) {
++    GtkWidget *item = luma_details_item_new (titles[i], NULL, icons[i]);
++    luma_details_item_set_trail (LUMA_DETAILS_ITEM (item), cc_luma_view_label (values[i], "meta", TRUE)); gtk_box_append (rows, item);
++  }
++  rows = cc_luma_view_group (v, "Thunderbolt"); flag (v, rows, "tbolt", "Allow new Thunderbolt devices", "Devices you already use keep working");
++}
++void cc_luma_view_privacy_render (View *v)
++{
++  if (g_str_equal (v->page, "privacy")) privacy (v);
++  else if (g_str_equal (v->page, "p-lock")) screen_lock (v);
++  else if (g_str_equal (v->page, "p-loc") || g_str_equal (v->page, "p-cam") || g_str_equal (v->page, "p-mic")) permissions (v);
++  else if (g_str_equal (v->page, "p-files")) files (v);
++  else if (g_str_equal (v->page, "p-diag")) diagnostics (v);
++  else if (g_str_equal (v->page, "p-dev")) device (v);
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index d955785..618fb04 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -2,6 +2,7 @@
+ #pragma once
+ #include "cc-luma-view.h"
+ #include "cc-luma-displays.h"
++#include "cc-luma-privacy.h"
+ #include <luma-ui.h>
+ #include <string.h>
+ 
+@@ -78,6 +79,7 @@ void cc_luma_view_nightlight_render (View *v);
+ void cc_luma_view_power_render (View *v);
+ void cc_luma_view_pointer_render (View *v);
+ void cc_luma_view_a11y_render (View *v);
++void cc_luma_view_privacy_render (View *v);
+ void cc_luma_view_keyboard_render (View *v);
+ void cc_luma_view_defaults_render (View *v);
+ void cc_luma_view_media_render (View *v);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 9c91de3..a9a19c3 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -83,6 +83,7 @@ GtkWidget *cc_luma_view_row (GtkBox *rows, const char *title, const char *subtit
+ }
+ static gboolean page_supported (const char *page)
+ {
++  if (cc_luma_privacy_page (page)) return TRUE;
+   if (page && g_str_has_prefix (page, "app:")) return TRUE;
+   const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
+     "bluetooth", "windows", "shelf", "appearance", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps", "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
+@@ -144,6 +145,12 @@ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, GtkWidget *roo
+   if (!owner_page || !g_str_equal (owner_page, v->page)) return;
+   const char *key = g_object_get_data (G_OBJECT (widget), "cf-key");
+   g_autoptr (GError) error = NULL;
++  if (cc_luma_privacy_page (v->page)) {
++    g_autoptr(JsonNode) value = json_node_init_boolean (json_node_alloc (), gtk_switch_get_active (widget));
++    if (cc_luma_privacy_set (v->model, v->page, key, value, &error)) cc_luma_view_queue_refresh (v);
++    else cc_luma_view_report_error (v, error);
++    return;
++  }
+   if (g_str_equal (v->page, "a11y") || g_str_has_prefix (v->page, "a-")) {
+     g_autoptr(JsonNode) value = json_node_init_boolean (json_node_alloc (), gtk_switch_get_active (widget));
+     if (cc_luma_a11y_set (v->model, key, value, &error)) cc_luma_view_queue_refresh (v);
+@@ -186,6 +193,12 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   g_autoptr (JsonNode) n = json_node_new (JSON_NODE_VALUE);
+   g_autoptr (GError) error = NULL;
+   g_variant_get (parameter, "(&s&s)", &key, &value);
++  if (cc_luma_privacy_page (v->page)) {
++    json_node_set_string (n, value);
++    if (cc_luma_privacy_set (v->model, v->page, key, n, &error)) cc_luma_view_queue_refresh (v);
++    else cc_luma_view_report_error (v, error);
++    return;
++  }
+   if (g_str_equal (v->page, "a11y") || g_str_has_prefix (v->page, "a-")) {
+     gboolean own = (g_str_equal (v->page, "a-see") && g_str_equal (key, "cursor")) ||
+       (g_str_equal (v->page, "a-zoom") && g_str_equal (key, "zoomF"));
+@@ -774,6 +787,7 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "sound-alert")) cc_luma_view_sound_alert_render (v);
+   else if (g_str_equal (v->page, "power")) cc_luma_view_power_render (v);
+   else if (g_str_equal (v->page, "mouse")) cc_luma_view_pointer_render (v);
++  else if (cc_luma_privacy_page (v->page)) cc_luma_view_privacy_render (v);
+   else if (g_str_equal (v->page, "a11y") || g_str_has_prefix (v->page, "a-")) cc_luma_view_a11y_render (v);
+   else if (g_str_equal (v->page, "keyboard")) cc_luma_view_keyboard_render (v);
+   else if (g_str_equal (v->page, "defaults")) cc_luma_view_defaults_render (v);
+@@ -866,6 +880,7 @@ static gboolean page_valid (CcLumaFixture *model, const char *page)
+   if (g_str_equal (page, "apps")) return cc_luma_fixture_apps_validate (model);
+   if (g_str_has_prefix (page, "app:")) return cc_luma_fixture_prepare_app (model, page + 4, NULL);
+   if (g_str_equal (page, "power")) return cc_luma_power_fixture_validate (model);
++  if (cc_luma_privacy_page (page)) return cc_luma_privacy_validate (model);
+   if (g_str_equal (page, "mouse")) return cc_luma_pointer_validate (model);
+   if (g_str_equal (page, "a11y") || g_str_has_prefix (page, "a-")) return cc_luma_a11y_validate (model);
+   if (g_str_equal (page, "keyboard")) return cc_luma_keyboard_validate (model);
+diff --git a/shell/meson.build b/shell/meson.build
+index c84645f..1cfc3c2 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -71,6 +71,7 @@ common_sources = files(
+   'cc-luma-displays.c',
+   'cc-luma-sound.c',
+   'cc-luma-device-options.c',
++  'cc-luma-privacy.c',
+   'cc-luma-keyboard.c',
+   'cc-luma-application-options.c',
+   'cc-luma-applications.c',
+@@ -93,6 +94,7 @@ common_sources = files(
+   'cc-luma-view-sound.c',
+   'cc-luma-view-nightlight.c',
+   'cc-luma-view-devices.c',
++  'cc-luma-view-privacy.c',
+   'cc-luma-view-keyboard.c',
+   'cc-luma-view-application-options.c',
+ )
+@@ -233,7 +235,7 @@ test('luma-settings-identity', identity_test,
+ 
+ fixture_test = executable(
+   'test-luma-fixture',
+-  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c'],
++  ['test-luma-fixture.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-privacy.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c'],
+   dependencies: [json_glib_dep, gio_dep],
+ )
+ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+@@ -269,7 +271,7 @@ applications_test = executable('test-luma-applications',
+   ['test-luma-applications.c', 'cc-luma-applications.c'], dependencies: [gio_dep])
+ test('luma-settings-applications', applications_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+-fixture_view_sources = ['cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c']
++fixture_view_sources = ['cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-privacy.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-privacy.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c']
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1')]
+ fixture_view_test = executable('test-luma-view', ['test-luma-view.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+ folder_portal_test = executable('test-luma-folder-portal', ['test-luma-folder-portal.c'] + fixture_view_sources, dependencies: fixture_view_deps)
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index 8496026..f1eba20 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -8,6 +8,7 @@
+ #include "cc-luma-device-options.h"
+ #include "cc-luma-keyboard.h"
+ #include "cc-luma-application-options.h"
++#include "cc-luma-privacy.h"
+ #include <gio/gio.h>
+ #include <math.h>
+ 
+@@ -755,6 +756,36 @@ static void accessibility_model (void)
+   g_assert_cmpstr (data_after, ==, data_before);
+ }
+ 
++static void privacy_model (void)
++{
++  g_autoptr(CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_assert_true (cc_luma_privacy_validate (model));
++  g_autoptr(JsonNode) off = json_node_init_boolean (json_node_alloc (), FALSE);
++  g_autoptr(JsonNode) delay = json_node_init_string (json_node_alloc (), "300");
++  g_assert_true (cc_luma_privacy_set (model, "p-lock", "lock.delay", delay, NULL));
++  g_assert_true (cc_luma_privacy_set (model, "p-lock", "lock.auto", off, NULL));
++  g_assert_true (cc_luma_privacy_set (model, "p-cam", "appCam.camera", off, NULL));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "appCam.camera")));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "appCam.messages")));
++  const char *bad_pages[] = { "privacy", "p-loc", "p-mic", "wifi", NULL };
++  for (guint i = 0; i < G_N_ELEMENTS (bad_pages); i++)
++    g_assert_false (cc_luma_privacy_set (model, bad_pages[i], "appCam.messages", off, NULL));
++  g_assert_false (cc_luma_privacy_set (model, "p-cam", "appCam.new-app", off, NULL));
++  g_assert_false (cc_luma_privacy_set (model, "p-cam", "appCam", off, NULL));
++  g_assert_false (cc_luma_privacy_set (model, "p-lock", "wifi", off, NULL));
++  g_autoptr(JsonNode) invalid = json_node_init_string (json_node_alloc (), "999");
++  g_assert_false (cc_luma_privacy_set (model, "p-lock", "lock.delay", invalid, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "lock.delay")), ==, "300");
++  g_assert_false (cc_luma_privacy_set (model, "p-files", "trashAge", invalid, NULL));
++  g_assert_false (cc_luma_privacy_set (model, "p-diag", "diag", invalid, NULL));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "appMic.phone")));
++  g_autoptr(JsonNode) peer = json_node_init_string (json_node_alloc (), "invalid retention");
++  g_assert_true (cc_luma_fixture_set (model, "histKeep", peer, NULL));
++  g_assert_false (cc_luma_privacy_validate (model));
++  g_assert_false (cc_luma_privacy_set (model, "p-cam", "appCam.messages", off, NULL));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "appCam.messages")));
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -783,6 +814,7 @@ int main (int argc, char **argv)
+       g_test_add_func ("/settings/fixture/application-options", application_options_model);
+       g_test_add_func ("/settings/fixture/apps", apps_model);
+       g_test_add_func ("/settings/fixture/accessibility", accessibility_model);
++      g_test_add_func ("/settings/fixture/privacy", privacy_model);
+     }
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-preferences.c b/shell/test-luma-preferences.c
+index 76354a2..9c6a383 100644
+--- a/shell/test-luma-preferences.c
++++ b/shell/test-luma-preferences.c
+@@ -278,6 +278,22 @@ static void backend_boundaries (void)
+   g_clear_object (&self); g_clear_object (&settings); g_clear_object (&backend); drain ();
+   remove_backups (directory);
+ }
++static void privacy_native_catalog (void)
++{
++  const CcLumaPreferenceSet sets[] = { CC_LUMA_PREFS_SCREEN_LOCK, CC_LUMA_PREFS_PRIVACY, CC_LUMA_PREFS_LOCATION };
++  for (guint i = 0; i < G_N_ELEMENTS (sets); i++) {
++    g_autoptr(GError) error = NULL;
++    g_autoptr(CcLumaPreferences) self = cc_luma_preferences_new_native (sets[i], &error);
++    g_assert_no_error (error); g_assert_nonnull (self);
++    cc_luma_preferences_start (self); drain ();
++    g_autoptr(GVariant) values = cc_luma_preferences_dup_values (self);
++    g_autoptr(GVariant) writable = cc_luma_preferences_dup_writable (self);
++    g_assert_nonnull (values); g_assert_nonnull (writable);
++    g_assert_cmpuint (g_variant_n_children (values), ==, i == 0 ? 2 : i == 1 ? 7 : 1);
++    g_assert_cmpuint (g_variant_n_children (writable), ==, g_variant_n_children (values));
++    cc_luma_preferences_stop (self); g_assert_null (cc_luma_preferences_dup_values (self));
++  }
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -289,5 +305,6 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/preferences/recovery-and-paths", recovery_and_paths);
+   g_test_add_func ("/settings/preferences/recovery-refusals", recovery_refusals);
+   g_test_add_func ("/settings/preferences/backend-boundaries", backend_boundaries);
++  g_test_add_func ("/settings/preferences/privacy-native-catalog", privacy_native_catalog);
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index f1043e5..835e4e6 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1023,6 +1023,94 @@ static void accessibility_view (void)
+   }
+ }
+ 
++static void privacy_view (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  const char *ids[] = { "maps", "weather", "clock", "camera", "messages", "phone", "memos", "session" };
++  g_autoptr(CcLumaFixture) assets = cc_luma_fixture_load (json, NULL);
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (assets), "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  /* Functional widget tests use valid decoding inputs. The separate native
++   * smoke stages canonical scenario artwork and verifies loaded pictures. */
++  for (guint i = 0; i < G_N_ELEMENTS (ids); i++) {
++    g_autofree char *path = cc_luma_fixture_asset_path (assets, ids[i], NULL);
++    g_assert_nonnull (path); g_assert_true (g_file_set_contents (path, art, -1, NULL));
++  }
++  const int widths[] = { 1180, 390 };
++  for (guint presentation = 0; presentation < G_N_ELEMENTS (widths); presentation++) {
++    g_autoptr(CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++    GtkWidget *window = gtk_window_new ();
++    GtkWidget *view = cc_luma_view_new (model, "privacy", NULL);
++    g_assert_nonnull (view); View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++    gtk_window_set_child (GTK_WINDOW (window), view);
++    /* Native LumaApplicationWindow installs its window host during creation.
++     * Match that composition before allocation: first-click lazy installation
++     * in a bare GtkWindow has width zero and cannot select the phone drawer. */
++    LumaLayerHost *host = luma_layer_host_install (GTK_WINDOW (window));
++    gtk_window_set_default_size (GTK_WINDOW (window), widths[presentation], 740);
++    gtk_window_present (GTK_WINDOW (window)); wait_ms (150);
++    g_assert_cmpint (gtk_widget_get_width (window), ==, widths[presentation]);
++    g_assert_cmpint (gtk_widget_get_width (GTK_WIDGET (host)), ==, widths[presentation]);
++    g_assert_nonnull (find_name (view, "cf-security-facts"));
++    const char *pages[] = { "p-lock", "p-loc", "p-cam", "p-mic", "p-files", "p-diag", "p-dev" };
++    for (guint i = 0; i < G_N_ELEMENTS (pages); i++) {
++      g_autofree char *name = g_strconcat ("cf-go-", pages[i], NULL);
++      g_assert_true (LUMA_IS_DETAILS_ITEM (find_name (view, name)));
++      g_signal_emit_by_name (find_name (view, name), "clicked"); wait_ms (100);
++      g_assert_cmpstr (v->page, ==, pages[i]);
++      g_assert_true (has_text (view, i == 0 ? "Screen lock" : i == 1 ? "Location" : i == 2 ? "Camera" : i == 3 ? "Microphone" : i == 4 ? "File history and trash" : i == 5 ? "Problem reports" : "Device security"));
++      g_signal_emit_by_name (find_name (view, "cf-go-privacy"), "back"); wait_ms (100);
++    }
++    cc_luma_view_navigate (v, "p-lock"); wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-lock.delay"), "clicked"); wait_ms (100);
++    GtkWidget *menu = find_type (window, widths[presentation] == 390 ? LUMA_TYPE_MENU_DRAWER : LUMA_TYPE_FLOATING_MENU);
++    g_test_message ("Privacy menu width=%d actual-window=%d view=%d floating=%p drawer=%p", widths[presentation], gtk_widget_get_width (window), gtk_widget_get_width (view), find_type (window, LUMA_TYPE_FLOATING_MENU), find_type (window, LUMA_TYPE_MENU_DRAWER));
++    g_assert_nonnull (menu); GtkWidget *five = find_button_caption (menu, "5 minutes"); g_assert_nonnull (five);
++    g_signal_emit_by_name (five, "clicked"); wait_ms (500);
++    g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "lock.delay")), ==, "300");
++    GtkWidget *old_notes = g_object_ref (find_name (view, "cf-lock.notes"));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-lock.auto")), FALSE); wait_ms (100);
++    g_assert_null (find_name (view, "cf-lock.delay"));
++    cc_luma_view_navigate (v, "p-cam"); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (old_notes), FALSE); drain (); g_object_unref (old_notes);
++    g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "lock.notes")));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-appCam.camera")), FALSE); wait_ms (100);
++    g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "appCam.camera")));
++    g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "appCam.messages")));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-cam")), FALSE); wait_ms (100);
++    g_assert_null (find_name (view, "cf-appCam.camera")); g_assert_true (has_text (view, "No app can use the camera"));
++    cc_luma_view_navigate (v, "p-files"); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-hist")), FALSE); wait_ms (100);
++    g_assert_null (find_name (view, "cf-histKeep"));
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-trash")), FALSE); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-temp")), FALSE); wait_ms (100);
++    g_assert_null (find_name (view, "cf-trashAge"));
++    g_signal_emit_by_name (find_name (view, "cf-clearhist"), "clicked"); wait_ms (100);
++    GtkWidget *dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog);
++    g_signal_emit_by_name (find_button_caption (dialog, "Clear"), "clicked"); wait_dialog_closed (window);
++    g_assert_true (has_text (window, "Recent files cleared"));
++    g_signal_emit_by_name (find_name (view, "cf-emptytrash"), "clicked"); wait_ms (100);
++    dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog); g_object_ref (dialog);
++    cc_luma_view_navigate (v, "p-diag"); wait_ms (100);
++    g_signal_emit_by_name (dialog, "confirmed", FALSE); drain ();
++    g_assert_false (has_text (window, "Trash emptied"));
++    g_signal_emit_by_name (find_button_caption (dialog, "Cancel"), "clicked"); wait_dialog_closed (window); g_object_unref (dialog);
++    gtk_check_button_set_active (GTK_CHECK_BUTTON (find_name (view, "cf-diag-never")), TRUE); wait_ms (100);
++    g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "diag")), ==, "never");
++    cc_luma_view_navigate (v, "p-dev"); wait_ms (100);
++    gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-tbolt")), TRUE); wait_ms (100);
++    g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "tbolt")));
++    g_assert_cmpint (gtk_widget_get_width (window), ==, widths[presentation]); g_assert_null (cc_luma_view_get_error (view));
++    gpointer weak_view = view; g_object_add_weak_pointer (G_OBJECT (view), &weak_view);
++    gtk_window_destroy (GTK_WINDOW (window)); wait_ms (100); g_assert_null (weak_view);
++  }
++  for (guint i = 0; i < G_N_ELEMENTS (ids); i++) {
++    g_autofree char *path = cc_luma_fixture_asset_path (assets, ids[i], NULL);
++    g_assert_cmpint (g_remove (path), ==, 0);
++  }
++  remove_asset_fixture (dir);
++}
+ static void apps_view (void)
+ {
+   g_autofree char *dir = asset_fixture ();
+@@ -1182,6 +1270,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/application-options", application_options_view);
+   g_test_add_func ("/settings/view/apps", apps_view);
+   g_test_add_func ("/settings/view/accessibility", accessibility_view);
++  g_test_add_func ("/settings/view/privacy", privacy_view);
+   g_test_add_func ("/settings/view/displays", displays_view);
+   g_test_add_func ("/settings/view/sound", sound_views);
+   g_test_add_func ("/settings/view/nightlight", nightlight_view);
+-- 
+2.55.0
+

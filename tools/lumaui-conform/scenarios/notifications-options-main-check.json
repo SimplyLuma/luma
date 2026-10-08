@@ -1,0 +1,38 @@
+{
+  "app": "notifications-options-main-check",
+  "title": "Notifications and Quick Options \u00b7 Studio desktop 1440",
+  "spec": {
+    "url": "mockups/luma-next-70.html?desktop=1",
+    "window": "#pop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "ready": "#lshell",
+    "init_script": "const query = Document.prototype.querySelector, queries = Document.prototype.querySelectorAll;\nDocument.prototype.querySelector=function(s){return query.call(this,s)||query.call(this,'#lshell')?.shadowRoot?.querySelector(s)||null;};\nDocument.prototype.querySelectorAll=function(s){const own=queries.call(this,s);return own.length?own:(query.call(this,'#lshell')?.shadowRoot?.querySelectorAll(s)||own);};\nconst timeout=window.setTimeout;window.setTimeout=(fn,delay,...args)=>[700,2600,44000,45000,110000,190000].includes(delay)?0:timeout(fn,delay,...args);",
+    "before": [
+      {
+        "eval": "const r=document.querySelector('#lshell').shadowRoot;r.querySelector('#nl').click();r.querySelector('[data-act=clear]')?.click();document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));"
+      },
+      {
+        "eval": "lumaDesk.mat('solid');lumaShell.mat('solid');"
+      }
+    ]
+  },
+  "states": [
+    {
+      "name": "quick-main",
+      "about": "quick main",
+      "window": "#pop",
+      "spec": [
+        {
+          "click": "[data-act=qs]"
+        }
+      ]
+    }
+  ],
+  "phone_states": [],
+  "groups": [],
+  "pairs": [],
+  "text_aliases": {}
+}

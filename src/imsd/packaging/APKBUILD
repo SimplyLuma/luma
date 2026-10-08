@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+# Maintainer: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+pkgname=imsd
+pkgver=0.3.0
+pkgrel=0
+pkgdesc="Userspace IMS/VoLTE daemon for mainline Linux phones"
+url="https://forgejo.catcrafts.net/Catcrafts/imsd"
+arch="aarch64 x86_64"
+license="GPL-3.0-only"
+# the media leg dlopen's the AMR-WB codecs; pw-record/pw-play drive PipeWire —
+# none of which abuild's .so auto-scan can see
+depends="modemmanager opencore-amr vo-amrwbenc pipewire-tools"
+# clang/libc++ C++26 modules build (see Makefile); llvm-runtimes ships the
+# libc++ std module sources (/usr/share/libc++/v1/std.cppm) it precompiles
+makedepends="clang lld libc++-dev llvm-libunwind-dev llvm-runtimes glib-dev pkgconf"
+# the versioned provides both satisfies soc-qcom-modem's 81voltd dependency
+# and excludes the real package: 81voltd serves the modem's own ims-PDN
+# requests, which races imsd for the PDN and flaps it with a new prefix every
+# ~2.5 min — the two IMS stacks cannot share one PDN
+provides="81voltd=$pkgver-r$pkgrel"
+source="$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
+builddir="$srcdir/$pkgname"
+
+build() {
+	make
+}
+
+check() {
+	make check
+}
+
+package() {
+	make install DESTDIR="$pkgdir"
+}

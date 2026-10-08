@@ -1,0 +1,43 @@
+--- a/hwcomposer/luma-task-resize.h
++++ b/hwcomposer/luma-task-resize.h
+@@ -30,6 +30,7 @@
+         uint64_t generation;
+         unsigned retries;
+         bool interactive;
++        bool delivery_started;
+     };
+     std::function<void(const TaskResize&)> deliver;
+     std::chrono::milliseconds pause;
+@@ -58,6 +59,7 @@
+             // delivery. A new configure, Close, or acknowledgement can replace
+             // or erase this generation while the worker waits for Android.
+             next->second.due = Clock::time_point::max();
++            next->second.delivery_started = true;
+             lock.unlock();
+             deliver(request.size); // Existing authenticated, bounded socket.
+             lock.lock();
+@@ -93,17 +95,20 @@
+             std::lock_guard<std::mutex> lock(mutex);
+             pending.insert_or_assign(size.task, Pending{size, Clock::now() +
+                 (interactive ? pause : std::chrono::milliseconds(0)),
+-                ++generation, 0, interactive});
++                ++generation, 0, interactive, false});
+         }
+         wake.notify_one();
+     }
+-    // HWC supplies actual Android task bounds, not the host viewport's clipped
+-    // or scaled buffer size. Two pixels permit fractional-scale rounding.
++    // HWC supplies composed task-layer bounds rather than a package-manager
++    // acknowledgement. Never accept them before the first request dispatch;
++    // two pixels permit fractional-scale rounding after dispatch.
+     void observe_bounds(TaskResize actual) {
+         {
+             std::lock_guard<std::mutex> lock(mutex);
+             const auto found = pending.find(actual.task);
+-            if (found == pending.end()) return;
++            // A matching old/composed layer before first delivery is not an
++            // acknowledgement of this newly submitted task resize.
++            if (found == pending.end() || !found->second.delivery_started) return;
+             const auto& expected = found->second.size;
+             if (std::abs(actual.left - expected.left) <= 2 &&
+                     std::abs(actual.top - expected.top) <= 2 &&

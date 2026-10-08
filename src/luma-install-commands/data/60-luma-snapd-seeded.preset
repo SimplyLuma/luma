@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: MPL-2.0
+# Seed snapd at boot so the first snap command is never told the device is not yet seeded (ADR-038).
+enable snapd.seeded.service

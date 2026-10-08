@@ -1,0 +1,22 @@
+[Default Applications]
+x-scheme-handler/sms=org.projectluma.Messages.desktop
+x-scheme-handler/tel=org.projectluma.Phone.desktop
+x-scheme-handler/luma-depot=org.projectluma.Depot.desktop
+x-scheme-handler/appstream=org.projectluma.Depot.desktop
+application/vnd.android.package-archive=org.projectluma.ApplicationInstaller.desktop
+application/vnd.projectluma.android-package-set=org.projectluma.ApplicationInstaller.desktop
+application/x-ms-dos-executable=org.projectluma.ApplicationInstaller.desktop
+application/x-msdownload=org.projectluma.ApplicationInstaller.desktop
+application/x-msi=org.projectluma.ApplicationInstaller.desktop
+application/vnd.microsoft.portable-executable=org.projectluma.ApplicationInstaller.desktop
+application/x-rpm=org.projectluma.ApplicationInstaller.desktop
+application/vnd.debian.binary-package=org.projectluma.ApplicationInstaller.desktop
+application/vnd.appimage=org.projectluma.ApplicationInstaller.desktop
+application/vnd.flatpak=org.projectluma.ApplicationInstaller.desktop
+application/vnd.flatpak.ref=org.projectluma.ApplicationInstaller.desktop
+application/vnd.flatpak.repo=org.projectluma.ApplicationInstaller.desktop
+application/vnd.snap=org.projectluma.ApplicationInstaller.desktop
+text/plain=org.projectluma.Notes.desktop
+text/markdown=org.projectluma.Notes.desktop
+text/x-markdown=org.projectluma.Notes.desktop
+text/x-readme=org.projectluma.Notes.desktop

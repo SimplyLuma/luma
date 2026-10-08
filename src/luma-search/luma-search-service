@@ -1,0 +1,592 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""D-Bus activated, idle-exit Luma Search provider aggregator."""
+
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import replace
+import os
+import sys
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from luma_search.contract import (  # noqa: E402
+    PRECOMPUTED_EVIDENCE,
+    SearchResult,
+    normalize_terms,
+    rank_results,
+)
+from luma_search.files import FileIndex, path_to_uri, uri_to_path  # noqa: E402
+from luma_search import places, ranking  # noqa: E402
+from luma_search.providers import Provider, discover_providers, kind_from_categories  # noqa: E402
+
+
+BUS_NAME = "org.projectluma.Search"
+OBJECT_PATH = "/org/projectluma/Search"
+INTERFACE = "org.projectluma.Search1"
+PROVIDER_INTERFACE = "org.gnome.Shell.SearchProvider2"
+FILER_DESKTOP_ID = "org.gnome.Nautilus.desktop"
+FILES_PROVIDER_ID = "files"
+FILE_RESULTS = 8
+SETTINGS_PAGES_PROVIDER_ID = "settings-pages"
+SETTINGS_DESKTOP_ID = "org.gnome.Settings.desktop"
+SETTING_RESULTS = 5
+PLACES_PROVIDER_ID = "filer-places"
+PLACE_RESULTS = 4
+PLACES_PATHS = (
+    Path(__file__).with_name(places.PLACES_FILE),
+    Path("/usr/share/luma-search") / places.PLACES_FILE,
+)
+SETTINGS_PAGES_PATHS = (
+    Path(__file__).with_name("settings-pages.json"),
+    Path("/usr/share/luma-search/settings-pages.json"),
+)
+IDLE_SECONDS = 30
+PROVIDER_TIMEOUT_MS = 450
+PROVIDER_QUERY_BUDGET_SECONDS = 0.18
+INTERFACE_XML_PATHS = (
+    Path(__file__).with_name("org.projectluma.Search1.xml"),
+    Path("/usr/share/dbus-1/interfaces/org.projectluma.Search1.xml"),
+)
+
+
+def _load_interface_xml() -> str:
+    for path in INTERFACE_XML_PATHS:
+        if path.is_file():
+            return path.read_text()
+    searched = ", ".join(str(path) for path in INTERFACE_XML_PATHS)
+    raise FileNotFoundError(f"Luma Search interface XML not found in: {searched}")
+
+
+def _metadata_value(metadata: dict[str, object], key: str, default: str = "") -> str:
+    value = metadata.get(key)
+    if value is None:
+        return default
+    if hasattr(value, "unpack"):
+        value = value.unpack()
+    return value if isinstance(value, str) else default
+
+
+class SearchService:
+    def __init__(self) -> None:
+        xml = _load_interface_xml()
+        self._node = Gio.DBusNodeInfo.new_for_xml(xml)
+        self._connection: Gio.DBusConnection | None = None
+        self._loop = GLib.MainLoop()
+        self._idle_source = 0
+        self._request_pool = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="luma-search-request"
+        )
+        self._provider_pool = ThreadPoolExecutor(
+            max_workers=16, thread_name_prefix="luma-search-provider"
+        )
+        self._search_settings = Gio.Settings.new("org.projectluma.search")
+        self._provider_settings = Gio.Settings.new("org.gnome.desktop.search-providers")
+        self._all_providers: tuple[Provider, ...] = ()
+        self._providers: tuple[Provider, ...] = ()
+        self._enabled_provider_ids: frozenset[str] = frozenset()
+        self._enabled_kinds: frozenset[str] = frozenset()
+        self._allow_sensitive_snippets = False
+        self._files_enabled = False
+        privacy_source = Gio.SettingsSchemaSource.get_default()
+        self._privacy_settings = (
+            Gio.Settings.new("org.gnome.desktop.privacy")
+            if privacy_source and privacy_source.lookup("org.gnome.desktop.privacy", True)
+            else None
+        )
+        self._files = FileIndex(
+            remember_recent=lambda: (
+                self._privacy_settings.get_boolean("remember-recent-files")
+                if self._privacy_settings else True
+            ),
+            recent_max_age_days=lambda: (
+                self._privacy_settings.get_int("recent-files-max-age")
+                if self._privacy_settings else -1
+            ),
+        )
+        self._settings_pages = self._load_settings_pages()
+        self._places_table = places.load_table(PLACES_PATHS)
+        self._reload_policy()
+        self._search_settings.connect("changed", lambda *_args: self._reload_policy())
+        self._provider_settings.connect("changed", lambda *_args: self._reload_policy())
+
+    def run(self) -> int:
+        Gio.bus_own_name(
+            Gio.BusType.SESSION,
+            BUS_NAME,
+            Gio.BusNameOwnerFlags.NONE,
+            self._on_bus_acquired,
+            None,
+            lambda *_args: self._loop.quit(),
+        )
+        self._touch_idle()
+        self._loop.run()
+        self._request_pool.shutdown(wait=False, cancel_futures=True)
+        self._provider_pool.shutdown(wait=False, cancel_futures=True)
+        return 0
+
+    def _on_bus_acquired(self, connection: Gio.DBusConnection, _name: str) -> None:
+        self._connection = connection
+        connection.register_object(
+            OBJECT_PATH,
+            self._node.interfaces[0],
+            self._on_method_call,
+            None,
+            None,
+        )
+
+    def _touch_idle(self) -> None:
+        if self._idle_source:
+            GLib.source_remove(self._idle_source)
+        self._idle_source = GLib.timeout_add_seconds(IDLE_SECONDS, self._quit_if_idle)
+
+    def _reload_policy(self) -> None:
+        self._enabled_kinds = frozenset(self._search_settings.get_strv("enabled-kinds"))
+        self._allow_sensitive_snippets = self._search_settings.get_boolean(
+            "allow-sensitive-snippets"
+        )
+        # Files and folders come from the LocalSearch index directly, in place
+        # of Filer's provider; switching Files off in Settings still hides them.
+        self._files_enabled = "file" in self._enabled_kinds and (
+            FILER_DESKTOP_ID not in self._provider_settings.get_strv("disabled")
+        )
+        if self._provider_settings.get_boolean("disable-external"):
+            self._all_providers = discover_providers()
+            self._providers = ()
+            self._enabled_provider_ids = frozenset()
+            return
+        enabled = frozenset(self._provider_settings.get_strv("enabled"))
+        disabled = frozenset(self._provider_settings.get_strv("disabled"))
+        order = {
+            desktop_id: index
+            for index, desktop_id in enumerate(
+                self._provider_settings.get_strv("sort-order")
+            )
+        }
+        installed = []
+        for provider in discover_providers():
+            app = Gio.DesktopAppInfo.new(provider.desktop_id)
+            if app is None:
+                continue
+            if provider.kind == "app":
+                provider = replace(provider, kind=kind_from_categories(app.get_categories()))
+            installed.append(provider)
+        self._all_providers = tuple(installed)
+        preference_enabled = tuple(
+            provider
+            for provider in self._all_providers
+            if (
+                provider.desktop_id in enabled
+                if provider.default_disabled
+                else provider.desktop_id not in disabled
+            )
+        )
+        self._enabled_provider_ids = frozenset(item.id for item in preference_enabled)
+        providers = (
+            provider
+            for provider in preference_enabled
+            if provider.kind in self._enabled_kinds
+            and provider.desktop_id != FILER_DESKTOP_ID
+        )
+        self._providers = tuple(
+            sorted(
+                providers,
+                key=lambda provider: (
+                    order.get(provider.desktop_id, len(order)),
+                    provider.name.casefold(),
+                    provider.id,
+                ),
+            )[:32]
+        )
+
+    def _quit_if_idle(self) -> bool:
+        self._idle_source = 0
+        self._loop.quit()
+        return GLib.SOURCE_REMOVE
+
+    def _on_method_call(
+        self,
+        _connection: Gio.DBusConnection,
+        _sender: str,
+        _path: str,
+        _interface: str,
+        method: str,
+        parameters: GLib.Variant,
+        invocation: Gio.DBusMethodInvocation,
+    ) -> None:
+        self._touch_idle()
+        if method == "Query":
+            query, generation, limit = parameters.unpack()
+            future = self._request_pool.submit(
+                self._query, query, generation, min(max(limit, 1), 100)
+            )
+            future.add_done_callback(
+                lambda completed: GLib.idle_add(self._finish_query, invocation, completed)
+            )
+        elif method == "Activate":
+            provider_id, result_id, terms, timestamp = parameters.unpack()
+            future = self._request_pool.submit(
+                self._activate, provider_id, result_id, terms, timestamp
+            )
+            future.add_done_callback(
+                lambda completed: GLib.idle_add(self._finish_empty, invocation, completed)
+            )
+        elif method == "Reveal":
+            provider_id, result_id, timestamp = parameters.unpack()
+            future = self._request_pool.submit(self._reveal, provider_id, result_id, timestamp)
+            future.add_done_callback(
+                lambda completed: GLib.idle_add(self._finish_empty, invocation, completed)
+            )
+        elif method == "ListProviders":
+            invocation.return_value(
+                GLib.Variant("(aa{sv})", ([self._provider_dict(item) for item in self._all_providers],))
+            )
+        else:
+            invocation.return_dbus_error(
+                "org.projectluma.Search.Error.UnknownMethod", f"Unknown method: {method}"
+            )
+
+    def _provider_dict(self, provider: Provider) -> dict[str, GLib.Variant]:
+        return {
+            "id": GLib.Variant("s", provider.id),
+            "name": GLib.Variant("s", provider.name),
+            "kind": GLib.Variant("s", provider.kind),
+            "desktop-id": GLib.Variant("s", provider.desktop_id),
+            "description": GLib.Variant("s", provider.description),
+            "default-disabled": GLib.Variant("b", provider.default_disabled),
+            "enabled": GLib.Variant("b", provider.id in self._enabled_provider_ids),
+        }
+
+    @staticmethod
+    def _result_dict(result: SearchResult) -> dict[str, GLib.Variant]:
+        return {
+            "provider-id": GLib.Variant("s", result.provider_id),
+            "result-id": GLib.Variant("s", result.result_id),
+            "application-id": GLib.Variant("s", result.application_id),
+            "kind": GLib.Variant("s", result.kind),
+            "title": GLib.Variant("s", result.title),
+            "subtitle": GLib.Variant("s", result.subtitle),
+            "snippet": GLib.Variant("s", result.snippet),
+            "icon-name": GLib.Variant("s", result.icon_name),
+            "provider-name": GLib.Variant("s", result.provider_name),
+            "score": GLib.Variant("i", result.score),
+            "score-evidence": GLib.Variant("s", result.score_evidence),
+            "default-action": GLib.Variant("s", result.default_action),
+            "secondary-actions": GLib.Variant("as", result.secondary_actions),
+            "privacy": GLib.Variant("s", result.privacy),
+            "stale": GLib.Variant("b", result.stale),
+            "unavailable": GLib.Variant("b", result.unavailable),
+            "remote": GLib.Variant("b", result.remote),
+            "requires-unlock": GLib.Variant("b", result.requires_unlock),
+            "requires-network": GLib.Variant("b", result.requires_network),
+            "activation-token": GLib.Variant("s", result.activation_token),
+            "generation": GLib.Variant("u", result.generation),
+            "provider-priority": GLib.Variant("u", result.provider_priority),
+        }
+
+    def _query(self, query: str, generation: int, limit: int) -> tuple[SearchResult, ...]:
+        terms = normalize_terms(query)
+        if not terms:
+            return ()
+        enabled_kinds = self._enabled_kinds
+        providers = self._providers
+        allow_sensitive_snippets = self._allow_sensitive_snippets
+        candidates = list(self._query_apps(generation)) if "app" in enabled_kinds else []
+        if "setting" in enabled_kinds:
+            candidates.extend(self._query_settings_pages(terms, generation))
+        futures = {
+            self._provider_pool.submit(
+                self._query_provider, provider, terms, generation, priority + 1
+            ): provider
+            for priority, provider in enumerate(providers)
+        }
+        if self._files_enabled:
+            futures[self._provider_pool.submit(self._query_files, terms, generation)] = None
+            candidates.extend(self._query_places(terms, generation))
+        done, pending = wait(futures, timeout=PROVIDER_QUERY_BUDGET_SECONDS)
+        for future in done:
+            try:
+                candidates.extend(future.result())
+            except Exception:
+                continue
+        for future in pending:
+            future.cancel()
+        # A standard folder is both a place and a folder; show it once.
+        place_uris = {
+            item.result_id.rstrip("/") for item in candidates
+            if item.provider_id == PLACES_PROVIDER_ID
+        }
+        candidates = [
+            item for item in candidates
+            if item.provider_id != FILES_PROVIDER_ID
+            or item.result_id.rstrip("/") not in place_uris
+        ]
+        return rank_results(
+            candidates,
+            query,
+            limit=limit,
+            allow_sensitive_snippets=allow_sensitive_snippets,
+        )
+
+    @staticmethod
+    def _load_settings_pages() -> tuple[dict, ...]:
+        import json
+
+        for path in SETTINGS_PAGES_PATHS:
+            try:
+                pages = json.loads(path.read_text()).get("pages", [])
+            except (OSError, ValueError):
+                continue
+            # Only pages whose Settings panel or app is installed here.
+            return tuple(
+                page for page in pages
+                if page.get("id") and page.get("title") and (
+                    Gio.DesktopAppInfo.new(f"gnome-{page['panel']}-panel.desktop")
+                    if page.get("panel") else Gio.DesktopAppInfo.new(page.get("desktop", ""))
+                ) is not None
+            )
+        return ()
+
+    def _query_settings_pages(self, terms: tuple[str, ...], generation: int):
+        results = []
+        for item in ranking.rank_setting_pages(self._settings_pages, terms, SETTING_RESULTS):
+            page = item["page"]
+            results.append(SearchResult(
+                provider_id=SETTINGS_PAGES_PROVIDER_ID,
+                result_id=page["id"],
+                kind="setting",
+                title=page["title"],
+                application_id=SETTINGS_DESKTOP_ID if page.get("panel") else page["desktop"],
+                subtitle=f"Settings › {page['path']}" if page.get("panel") else page["path"],
+                icon_name="preferences-system-symbolic",
+                provider_name="Settings",
+                score=item["score"],
+                score_evidence=PRECOMPUTED_EVIDENCE,
+                generation=generation,
+                provider_priority=0,
+            ))
+        return tuple(results)
+
+    def _places(self) -> list[dict]:
+        # Filer's places are Filer's: without Filer there is nothing to open.
+        if Gio.DesktopAppInfo.new(FILER_DESKTOP_ID) is None:
+            return []
+        return places.resolve_places(self._places_table, places.system_environment())
+
+    def _query_places(self, terms: tuple[str, ...], generation: int):
+        return tuple(
+            SearchResult(
+                provider_id=PLACES_PROVIDER_ID,
+                result_id=item["place"]["uri"],
+                kind="file",
+                title=item["place"]["title"],
+                application_id=FILER_DESKTOP_ID,
+                subtitle=item["place"]["description"],
+                icon_name=item["place"]["icon"],
+                provider_name="Filer",
+                score=item["score"],
+                score_evidence=PRECOMPUTED_EVIDENCE,
+                generation=generation,
+                provider_priority=0,
+            )
+            for item in places.rank_places(self._places(), terms, PLACE_RESULTS)
+        )
+
+    def _query_files(self, terms: tuple[str, ...], generation: int):
+        results = []
+        for item in self._files.search(terms)[:FILE_RESULTS]:
+            is_folder = os.path.isdir(item["path"])
+            results.append(SearchResult(
+                provider_id=FILES_PROVIDER_ID,
+                result_id=path_to_uri(item["path"]),
+                kind="file",
+                title=item["name"],
+                application_id=FILER_DESKTOP_ID,
+                subtitle=self._files.short_parent(item["path"]),
+                icon_name="folder-symbolic" if is_folder else "text-x-generic-symbolic",
+                provider_name="Files",
+                score=item["score"],
+                score_evidence=PRECOMPUTED_EVIDENCE,
+                secondary_actions=("reveal",),
+                generation=generation,
+                provider_priority=0,
+            ))
+        return tuple(results)
+
+    @staticmethod
+    def _query_apps(generation: int):
+        for app in Gio.AppInfo.get_all():
+            if not app.should_show() or not app.get_id():
+                continue
+            title = app.get_display_name() or app.get_name() or ""
+            yield SearchResult(
+                provider_id="applications",
+                result_id=app.get_id(),
+                kind="app",
+                title=title,
+                application_id=app.get_id(),
+                subtitle=app.get_description() or "",
+                icon_name=(app.get_icon().to_string() if app.get_icon() else "application-x-executable-symbolic"),
+                provider_name="Applications",
+                generation=generation,
+            )
+
+    @staticmethod
+    def _provider_proxy(provider: Provider) -> Gio.DBusProxy:
+        # Proxy construction otherwise performs synchronous property loading and
+        # may auto-start a provider before the per-call timeout below applies.
+        # Keep construction side-effect free so the timed method call owns the
+        # complete activation and response budget.
+        flags = (
+            Gio.DBusProxyFlags.DO_NOT_LOAD_PROPERTIES
+            | Gio.DBusProxyFlags.DO_NOT_CONNECT_SIGNALS
+            | Gio.DBusProxyFlags.DO_NOT_AUTO_START_AT_CONSTRUCTION
+        )
+        if not provider.autostart:
+            flags |= Gio.DBusProxyFlags.DO_NOT_AUTO_START
+        return Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SESSION,
+            flags,
+            None,
+            provider.bus_name,
+            provider.object_path,
+            PROVIDER_INTERFACE,
+            None,
+        )
+
+    def _query_provider(
+        self, provider: Provider, terms: tuple[str, ...], generation: int, priority: int
+    ):
+        proxy = self._provider_proxy(provider)
+        ids = proxy.call_sync(
+            "GetInitialResultSet",
+            GLib.Variant("(as)", (terms,)),
+            Gio.DBusCallFlags.NONE,
+            PROVIDER_TIMEOUT_MS,
+            None,
+        ).unpack()[0][:20]
+        if not ids:
+            return ()
+        metadata = proxy.call_sync(
+            "GetResultMetas",
+            GLib.Variant("(as)", (ids,)),
+            Gio.DBusCallFlags.NONE,
+            PROVIDER_TIMEOUT_MS,
+            None,
+        ).unpack()[0]
+        results = []
+        for item in metadata:
+            result_id = _metadata_value(item, "id")
+            title = _metadata_value(item, "name")
+            if not result_id or not title:
+                continue
+            results.append(SearchResult(
+                provider_id=provider.id,
+                result_id=result_id,
+                kind=provider.kind,
+                title=title,
+                application_id=provider.desktop_id,
+                subtitle=provider.name,
+                snippet=_metadata_value(item, "description"),
+                provider_name=provider.name,
+                privacy="sensitive" if provider.kind in {"mail", "message"} else "public",
+                generation=generation,
+                provider_priority=priority,
+            ))
+        return tuple(results)
+
+    def _reveal(self, provider_id: str, result_id: str, timestamp: int) -> None:
+        if provider_id != FILES_PROVIDER_ID:
+            raise ValueError("only files and folders can be shown in their folder")
+        self._files.record_pick(uri_to_path(result_id))
+        Gio.bus_get_sync(Gio.BusType.SESSION, None).call_sync(
+            "org.freedesktop.FileManager1",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1",
+            "ShowItems",
+            GLib.Variant("(ass)", ([result_id], "")),
+            None,
+            Gio.DBusCallFlags.NONE,
+            PROVIDER_TIMEOUT_MS * 4,
+            None,
+        )
+
+    def _activate(self, provider_id: str, result_id: str, terms: list[str], timestamp: int) -> None:
+        if provider_id == SETTINGS_PAGES_PROVIDER_ID:
+            page = next((p for p in self._settings_pages if p["id"] == result_id), None)
+            if page is None:
+                raise ValueError("unknown settings page")
+            if not page.get("panel"):
+                app = Gio.DesktopAppInfo.new(page["desktop"])
+                if page.get("action"):
+                    app.launch_action(page["action"], None)
+                else:
+                    app.launch([], None)
+                return
+            Gio.bus_get_sync(Gio.BusType.SESSION, None).call_sync(
+                "org.gnome.Settings", "/org/gnome/Settings", "org.gtk.Actions", "Activate",
+                GLib.Variant("(sava{sv})", (
+                    "launch-panel",
+                    [GLib.Variant("(sav)", (page["panel"], [GLib.Variant("s", v) for v in page.get("params", [])]))],
+                    {},
+                )),
+                None, Gio.DBusCallFlags.NONE, PROVIDER_TIMEOUT_MS * 4, None,
+            )
+            return
+        if provider_id == PLACES_PROVIDER_ID:
+            place = next((p for p in self._places() if p["uri"] == result_id), None)
+            if place is None:
+                raise ValueError("unknown Filer place")
+            # The same location Filer's own sidebar opens (applications:///,
+            # trash:///, a folder); Filer handles its own schemes.
+            Gio.DesktopAppInfo.new(FILER_DESKTOP_ID).launch_uris([place["uri"]], None)
+            return
+        if provider_id == FILES_PROVIDER_ID:
+            self._files.record_pick(uri_to_path(result_id))
+            Gio.AppInfo.launch_default_for_uri(result_id, None)
+            return
+        if provider_id == "applications":
+            app = Gio.DesktopAppInfo.new(result_id)
+            if app is None:
+                raise ValueError("unknown application result")
+            app.launch([], None)
+            return
+        provider = next((item for item in self._providers if item.id == provider_id), None)
+        if provider is None:
+            raise ValueError("unknown provider")
+        self._provider_proxy(provider).call_sync(
+            "ActivateResult",
+            GLib.Variant("(sasu)", (result_id, terms, timestamp)),
+            Gio.DBusCallFlags.NONE,
+            PROVIDER_TIMEOUT_MS,
+            None,
+        )
+
+    def _finish_query(self, invocation, future) -> bool:
+        try:
+            results = future.result()
+            invocation.return_value(
+                GLib.Variant("(aa{sv})", ([self._result_dict(item) for item in results],))
+            )
+        except Exception as error:  # D-Bus boundary: return a typed remote error.
+            invocation.return_dbus_error("org.projectluma.Search.Error.QueryFailed", str(error))
+        return GLib.SOURCE_REMOVE
+
+    @staticmethod
+    def _finish_empty(invocation, future) -> bool:
+        try:
+            future.result()
+            invocation.return_value(None)
+        except Exception as error:
+            invocation.return_dbus_error("org.projectluma.Search.Error.ActivationFailed", str(error))
+        return GLib.SOURCE_REMOVE
+
+
+if __name__ == "__main__":
+    raise SystemExit(SearchService().run())

@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.project_luma.ShellState1
+Exec=/usr/libexec/luma-shell-state-service
+SystemdService=luma-shell-state.service

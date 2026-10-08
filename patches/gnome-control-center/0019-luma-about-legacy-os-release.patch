@@ -1,0 +1,195 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] about: Luma logo and release name on images from before release names
+
+Images composed before release names (os-release ID=luma with no LOGO and no
+VERSION_CODENAME, PRETTY_NAME="Luma 1.0") showed GNOME's logo and "Luma 1.0",
+and os-release comes from the image, so an updated Settings is the only place
+to correct it.
+
+- Logo: with ID=luma and no LOGO, About uses luma-logo, looked up as
+  luma-logo-text-dark / luma-logo-text / luma-logo-dark / luma-logo like any
+  LOGO value. Other systems keep upstream's gnome-logo fallback.
+- Name: with ID=luma and no VERSION_CODENAME or no IMAGE_VERSION (luma-release's
+  own os-release, "Luma (Prairie, Beta 0)", layered on an older image), About's
+  Operating System row,
+  System Details › OS Name and the copied report start with PRETTY_NAME and
+  switch to luma-update's BootedName (org.projectluma.Update1, read with
+  Properties.Get on the system bus) when it is a string starting "Luma (".
+  An image's own os-release (VERSION_CODENAME and IMAGE_VERSION) shows
+  PRETTY_NAME only, with no D-Bus call.
+
+---
+diff --git a/panels/system/about/cc-about-page.c b/panels/system/about/cc-about-page.c
+index 7170eae..5fcb5a0 100644
+--- a/panels/system/about/cc-about-page.c
++++ b/panels/system/about/cc-about-page.c
+@@ -75,6 +75,7 @@ about_page_setup_overview (CcAboutPage *self)
+ 
+   os_name_text = get_os_name ();
+   adw_action_row_set_subtitle (self->os_name_row, os_name_text);
++  luma_os_name_update_async (G_OBJECT (self->os_name_row), "subtitle");
+ }
+ 
+ static gboolean
+@@ -131,8 +132,14 @@ setup_os_logo (CcAboutPage *self)
+   gboolean dark;
+ 
+   dark = use_dark_theme (self);
+-  if (logo_name == NULL)
+-    logo_name = g_strdup ("gnome-logo");
++  /* Luma: an image from before os-release carried LOGO still shows Luma's. */
++  if (logo_name == NULL || *logo_name == '\0')
++    {
++      g_autofree char *os_id = g_get_os_info (G_OS_INFO_KEY_ID);
++
++      g_free (logo_name);
++      logo_name = g_strdup (g_strcmp0 (os_id, "luma") == 0 ? "luma-logo" : "gnome-logo");
++    }
+ 
+   array = g_ptr_array_new_with_free_func (g_free);
+   if (dark)
+diff --git a/panels/system/about/cc-system-details-window.c b/panels/system/about/cc-system-details-window.c
+index c651e3e..819211d 100644
+--- a/panels/system/about/cc-system-details-window.c
++++ b/panels/system/about/cc-system-details-window.c
+@@ -321,6 +321,109 @@ create_graphics_rows (CcSystemDetailsWindow *self, GSList *devices)
+     }
+ }
+ 
++/* Luma: an image from before release names (os-release ID=luma without
++ * VERSION_CODENAME) has PRETTY_NAME="Luma 1.0", and luma-release layered on
++ * such an image has no IMAGE_VERSION. luma-update's BootedName property carries
++ * the booted release's name ("Luma (Prairie, Beta 0, Nightly 20260916)"); once
++ * read it replaces PRETTY_NAME. An image's own os-release (VERSION_CODENAME and
++ * IMAGE_VERSION) shows PRETTY_NAME and never asks. */
++static char *luma_booted_name = NULL;
++
++static gboolean
++luma_os_release_is_legacy (void)
++{
++  g_autofree char *id = g_get_os_info (G_OS_INFO_KEY_ID);
++  g_autofree char *codename = NULL;
++  g_autofree char *image_version = NULL;
++
++  if (g_strcmp0 (id, "luma") != 0)
++    return FALSE;
++
++  codename = g_get_os_info (G_OS_INFO_KEY_VERSION_CODENAME);
++  if (codename == NULL || *codename == '\0')
++    return TRUE;
++
++  /* luma-release's own os-release names the stage only ("Luma (Prairie,
++   * Beta 0)") and has no IMAGE_VERSION; images replace it with the build's. */
++  image_version = g_get_os_info ("IMAGE_VERSION");
++  return image_version == NULL || *image_version == '\0';
++}
++
++static void
++luma_booted_name_cb (GObject      *source,
++                     GAsyncResult *result,
++                     gpointer      user_data)
++{
++  GWeakRef *target_ref = user_data;
++  g_autoptr(GObject) target = g_weak_ref_get (target_ref);
++  g_autoptr(GVariant) reply = NULL;
++  g_autoptr(GVariant) value = NULL;
++  g_autoptr(GError) error = NULL;
++  const char *booted_name;
++  const char *property;
++
++  g_weak_ref_clear (target_ref);
++  g_free (target_ref);
++
++  reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  if (reply == NULL)
++    {
++      g_debug ("luma-update BootedName unavailable: %s", error->message);
++      return;
++    }
++
++  g_variant_get (reply, "(v)", &value);
++  if (!g_variant_is_of_type (value, G_VARIANT_TYPE_STRING))
++    return;
++
++  booted_name = g_variant_get_string (value, NULL);
++  if (!g_str_has_prefix (booted_name, "Luma ("))
++    return;
++
++  g_free (luma_booted_name);
++  luma_booted_name = g_strdup (booted_name);
++
++  if (target == NULL)
++    return;
++
++  property = g_object_get_data (target, "luma-os-name-property");
++  if (g_strcmp0 (property, "value") == 0)
++    cc_info_entry_set_value (CC_INFO_ENTRY (target), luma_booted_name);
++  else
++    adw_action_row_set_subtitle (ADW_ACTION_ROW (target), luma_booted_name);
++}
++
++void
++luma_os_name_update_async (GObject    *target,
++                           const char *property)
++{
++  g_autoptr(GDBusConnection) bus = NULL;
++  GWeakRef *target_ref;
++
++  if (!luma_os_release_is_legacy ())
++    return;
++
++  bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, NULL);
++  if (bus == NULL)
++    return;
++
++  g_object_set_data (target, "luma-os-name-property", (gpointer) property);
++  target_ref = g_new0 (GWeakRef, 1);
++  g_weak_ref_init (target_ref, target);
++  g_dbus_connection_call (bus,
++                          "org.projectluma.Update1",
++                          "/org/projectluma/Update1",
++                          "org.freedesktop.DBus.Properties",
++                          "Get",
++                          g_variant_new ("(ss)", "org.projectluma.Update1", "BootedName"),
++                          G_VARIANT_TYPE ("(v)"),
++                          G_DBUS_CALL_FLAGS_NONE,
++                          5000,
++                          NULL,
++                          luma_booted_name_cb,
++                          target_ref);
++}
++
+ char *
+ get_os_name (void)
+ {
+@@ -328,6 +431,9 @@ get_os_name (void)
+   g_autofree gchar *version_id = NULL;
+   g_autofree gchar *pretty_name = NULL;
+ 
++  if (luma_booted_name != NULL && luma_os_release_is_legacy ())
++    return g_strdup (luma_booted_name);
++
+   name = g_get_os_info (G_OS_INFO_KEY_NAME);
+   version_id = g_get_os_info (G_OS_INFO_KEY_VERSION_ID);
+   pretty_name = g_get_os_info (G_OS_INFO_KEY_PRETTY_NAME);
+@@ -864,6 +970,7 @@ system_details_window_setup_overview (CcSystemDetailsWindow *self)
+ 
+   os_name_text = get_os_name ();
+   cc_info_entry_set_value (self->os_name_row, os_name_text);
++  luma_os_name_update_async (G_OBJECT (self->os_name_row), "value");
+ 
+   os_build_text = get_os_image_version ();
+   cc_info_entry_set_value (self->os_build_row, os_build_text);
+diff --git a/panels/system/about/cc-system-details-window.h b/panels/system/about/cc-system-details-window.h
+index 851ccfb..d8dc90a 100644
+--- a/panels/system/about/cc-system-details-window.h
++++ b/panels/system/about/cc-system-details-window.h
+@@ -30,6 +30,8 @@ CcSystemDetailsWindow   *cc_system_details_window_new   (void);
+ char                    *get_hardware_model_string      (void);
+ char                    *get_cpu_info                   (void);
+ char                    *get_os_name                    (void);
++void                     luma_os_name_update_async      (GObject    *target,
++                                                         const char *property);
+ guint64                  get_ram_size_dmi               (void);
+ guint64                  get_ram_size_libgtop           (void);
+ char                    *get_primary_disk_info          (void);

@@ -1,0 +1,66 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] mouse: Call the pointing stick page TrackPoint and say what it is
+
+Settings › Mouse & Touchpad showed a "Pointing Stick" tab on laptops with a
+pointing stick, a name few owners recognize. The tab and its page are now
+"TrackPoint", the name ThinkPad owners know, and the page opens with one line
+that says what it is: "The small pointer control in the middle of your
+keyboard."
+
+- "Pointing Stick Acceleration" is now "Acceleration"; the page already names
+  the device.
+- The acceleration info text names the TrackPoint instead of the pointing
+  stick.
+- The panel's search keywords gain "TrackPoint" and "Pointing stick".
+- Nothing else changes: the page keeps its speed and acceleration controls
+  and still appears only when a pointing stick is present.
+
+diff --git a/panels/mouse/cc-mouse-panel.blp b/panels/mouse/cc-mouse-panel.blp
+index 1e7533b..d093b9d 100644
+--- a/panels/mouse/cc-mouse-panel.blp
++++ b/panels/mouse/cc-mouse-panel.blp
+@@ -304,13 +304,14 @@ template $CcMousePanel: $CcPanel {
+         }
+ 
+         Adw.ViewStackPage pointingstick_stack_page {
+-          title: _("_Pointing Stick");
++          title: _("Track_Point");
+           use-underline: true;
+           icon-name: "input-pointing-stick-symbolic";
+ 
+           child: Adw.PreferencesPage {
+             Adw.PreferencesGroup pointingstick_group {
+-              title: _("Pointing Stick");
++              title: _("TrackPoint");
++              description: _("The small pointer control in the middle of your keyboard.");
+ 
+               Adw.ActionRow pointingstick_row {
+                 title: _("Po_inter Speed");
+@@ -337,7 +338,7 @@ template $CcMousePanel: $CcPanel {
+               }
+ 
+               Adw.ActionRow pointingstick_accel_profile {
+-                title: _("Pointing Stick _Acceleration");
++                title: _("_Acceleration");
+                 subtitle: _("Recommended for most users and applications");
+                 activatable-widget: pointingstick_accel_switch;
+                 use-underline: true;
+@@ -345,7 +346,7 @@ template $CcMousePanel: $CcPanel {
+                 [suffix]
+                 $CcListRowInfoButton {
+                   valign: center;
+-                  text: _("Turning pointing stick acceleration off can allow faster and more precise movements, but can also make the pointing stick more difficult to use.");
++                  text: _("Turning acceleration off can allow faster and more precise movements, but can also make the TrackPoint more difficult to use.");
+                 }
+ 
+                 [suffix]
+diff --git a/panels/mouse/gnome-mouse-panel.desktop.in b/panels/mouse/gnome-mouse-panel.desktop.in
+index 43b3934..5ed38a1 100644
+--- a/panels/mouse/gnome-mouse-panel.desktop.in
++++ b/panels/mouse/gnome-mouse-panel.desktop.in
+@@ -11,4 +11,4 @@ StartupNotify=true
+ Categories=GNOME;GTK;Settings;HardwareSettings;X-GNOME-Settings-Panel;X-GNOME-DevicesSettings;
+ OnlyShowIn=GNOME;Unity;
+ # Translators: Search terms to find the Mouse and Touchpad panel. Do NOT translate or localize the semicolons! The list MUST also end with a semicolon!
+-Keywords=Trackpad;Pointer;Click;Tap;Double;Button;Trackball;Scroll;
++Keywords=Trackpad;Pointer;Click;Tap;Double;Button;Trackball;Scroll;TrackPoint;Pointing stick;

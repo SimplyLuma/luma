@@ -1,0 +1,195 @@
+{
+ "cached-update": null,
+ "deployments": [
+  {
+   "base-checksum": "8d56e03eedde844cbd6f2e3d18e6d3384d9b1ec63bf8fa7b5d9a452fe7028e26",
+   "base-commit-meta": {
+    "org.projectluma.base-image-digest": "",
+    "org.projectluma.build-id": "",
+    "org.projectluma.build-version": "",
+    "org.projectluma.channel": "",
+    "org.projectluma.image-tree": "",
+    "org.projectluma.provenance-sha256": "",
+    "org.projectluma.sbom-sha256": "",
+    "org.projectluma.source-dirty": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "1.0.0-nightly.20260915.6"
+   },
+   "base-local-replacements": [
+    [
+     [
+      "luma-application-installer-0.1.0-1.luma.31.preview20260915.4~vmtest2.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.31.preview20260915.4~vmtest2.fc44",
+      "noarch"
+     ],
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260914.17.fc44",
+      "noarch"
+     ]
+    ]
+   ],
+   "base-removals": [],
+   "base-version": "1.0.0-nightly.20260915.6",
+   "booted": false,
+   "checksum": "b10f4f7ea45192928a446444ef800b421c93c32aa2ac1866317689873aba10d9",
+   "id": "luma-b10f4f7ea45192928a446444ef800b421c93c32aa2ac1866317689873aba10d9.0",
+   "origin": "luma:luma/1/x86_64/nightly",
+   "osname": "luma",
+   "packages": [],
+   "pinned": false,
+   "requested-base-local-replacements": [
+    "luma-application-installer-0.1.0-1.luma.31.preview20260915.4~vmtest2.fc44.noarch"
+   ],
+   "requested-base-removals": [],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 0,
+   "staged": true,
+   "timestamp": 1789489670,
+   "unlocked": "none",
+   "version": "1.0.0-nightly.20260915.6"
+  },
+  {
+   "base-checksum": "8d56e03eedde844cbd6f2e3d18e6d3384d9b1ec63bf8fa7b5d9a452fe7028e26",
+   "base-commit-meta": {
+    "org.projectluma.base-image-digest": "",
+    "org.projectluma.build-id": "",
+    "org.projectluma.build-version": "",
+    "org.projectluma.channel": "",
+    "org.projectluma.image-tree": "",
+    "org.projectluma.provenance-sha256": "",
+    "org.projectluma.sbom-sha256": "",
+    "org.projectluma.source-dirty": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "1.0.0-nightly.20260915.6"
+   },
+   "base-local-replacements": [
+    [
+     [
+      "luma-application-installer-0.1.0-1.luma.31.preview20260915.4~vmtest2.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.31.preview20260915.4~vmtest2.fc44",
+      "noarch"
+     ],
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260914.17.fc44",
+      "noarch"
+     ]
+    ]
+   ],
+   "base-removals": [
+    [
+     "luma-tide-0.1.0-2.luma.14.surfacepreview20260913.1.fc44.noarch",
+     "luma-tide",
+     0,
+     "0.1.0",
+     "2.luma.14.surfacepreview20260913.1.fc44",
+     "noarch"
+    ],
+    [
+     "luma-darkroom-0.1.0-1.luma.3.fc44.noarch",
+     "luma-darkroom",
+     0,
+     "0.1.0",
+     "1.luma.3.fc44",
+     "noarch"
+    ]
+   ],
+   "base-version": "1.0.0-nightly.20260915.6",
+   "booted": true,
+   "checksum": "95fba762829fe724c6c6fd226a5edef492fceb736f543b8234d55e60484304c9",
+   "id": "luma-95fba762829fe724c6c6fd226a5edef492fceb736f543b8234d55e60484304c9.0",
+   "origin": "luma:luma/1/x86_64/nightly",
+   "osname": "luma",
+   "packages": [],
+   "pinned": false,
+   "requested-base-local-replacements": [
+    "luma-application-installer-0.1.0-1.luma.31.preview20260915.4~vmtest2.fc44.noarch"
+   ],
+   "requested-base-removals": [
+    "luma-darkroom",
+    "luma-tide"
+   ],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1789489340,
+   "unlocked": "none",
+   "version": "1.0.0-nightly.20260915.6"
+  },
+  {
+   "base-checksum": "58648876f1d8d7119ade5f8c0c376aef3e430d2340e4e43b9ea28fdfac3678e4",
+   "base-commit-meta": {
+    "org.projectluma.base-image-digest": "",
+    "org.projectluma.build-id": "",
+    "org.projectluma.build-version": "",
+    "org.projectluma.channel": "",
+    "org.projectluma.image-tree": "",
+    "org.projectluma.provenance-sha256": "",
+    "org.projectluma.sbom-sha256": "",
+    "org.projectluma.source-dirty": "",
+    "org.projectluma.source-revision": "",
+    "ostree.bootable": true,
+    "version": "1.0.0-nightly.20260915.5"
+   },
+   "base-local-replacements": [
+    [
+     [
+      "luma-application-installer-0.1.0-1.luma.31.preview20260915.4~vmtest2.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.31.preview20260915.4~vmtest2.fc44",
+      "noarch"
+     ],
+     [
+      "luma-application-installer-0.1.0-1.luma.30.preview20260914.17.fc44.noarch",
+      "luma-application-installer",
+      0,
+      "0.1.0",
+      "1.luma.30.preview20260914.17.fc44",
+      "noarch"
+     ]
+    ]
+   ],
+   "base-removals": [],
+   "base-version": "1.0.0-nightly.20260915.5",
+   "booted": false,
+   "checksum": "b3dea06aa22f08649cbb1b0fa3ec1780c36d4c17989805e127c0f9afa5d7f300",
+   "id": "luma-b3dea06aa22f08649cbb1b0fa3ec1780c36d4c17989805e127c0f9afa5d7f300.0",
+   "origin": "luma:luma/1/x86_64/nightly",
+   "osname": "luma",
+   "packages": [],
+   "pinned": false,
+   "requested-base-local-replacements": [
+    "luma-application-installer-0.1.0-1.luma.31.preview20260915.4~vmtest2.fc44.noarch"
+   ],
+   "requested-base-removals": [],
+   "requested-local-packages": [],
+   "requested-packages": [],
+   "serial": 0,
+   "staged": false,
+   "timestamp": 1789488924,
+   "unlocked": "none",
+   "version": "1.0.0-nightly.20260915.5"
+  }
+ ],
+ "transaction": null,
+ "update-driver": null
+}

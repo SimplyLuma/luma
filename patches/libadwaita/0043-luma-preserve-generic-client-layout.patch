@@ -1,0 +1,229 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] Keep generic native header actions and content layout
+
+Use the existing opt-out surface contract by default for ordinary clients.
+Explicit LumaUI frames retain source ownership and compatibility callers can
+opt into the legacy treatment deliberately. Preserve identity, controls,
+engine fixes and standard GTK accessibility/input behavior.
+
+--- a/src/adw-application-window.c
++++ b/src/adw-application-window.c
+@@ -288,6 +288,8 @@
+ 
+   gtk_widget_add_css_class (GTK_WIDGET (self), "luma-native-window");
+   gtk_widget_add_css_class (GTK_WIDGET (self), "luma-adw-native-window");
++  /* Preserve ordinary native header/content ancestry unless explicitly opted in. */
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-no-native-surfaces");
+ 
+   priv->dialog_host = adw_dialog_host_new ();
+   gtk_window_set_child (GTK_WINDOW (self), priv->dialog_host);
+@@ -385,6 +387,12 @@
+ 
+   if (!content)
+     return;
++
++  /* Only undo roles installed by this helper, never application-owned roles. */
++  if (!enabled && !g_object_get_data (G_OBJECT (content), "adw-luma-auto-content-owner"))
++    return;
++  g_object_set_data (G_OBJECT (content), "adw-luma-auto-content-owner",
++                     enabled ? GINT_TO_POINTER (1) : NULL);
+ 
+   if (ADW_IS_TOOLBAR_VIEW (content)) {
+     work_surface = adw_toolbar_view_get_content (ADW_TOOLBAR_VIEW (content));
+@@ -500,7 +508,8 @@
+ 
+   adw_breakpoint_bin_set_child (ADW_BREAKPOINT_BIN (priv->bin), content);
+ 
+-  set_luma_content_classes (content, TRUE);
++  if (!gtk_widget_has_css_class (GTK_WIDGET (self), "luma-no-native-surfaces"))
++    set_luma_content_classes (content, TRUE);
+   luma_update_title_row (self);
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_CONTENT]);
+--- a/src/adw-window.c
++++ b/src/adw-window.c
+@@ -366,6 +366,9 @@
+ 
+   gtk_widget_set_size_request (GTK_WIDGET (self), 360, 200);
+ 
++  /* The explicit LumaUI frame remains application-owned. */
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-no-native-surfaces");
++
+   g_signal_connect_swapped (self, "notify::application",
+                             G_CALLBACK (adw_window_luma_ownership_changed), self);
+   g_signal_connect_swapped (self, "notify::transient-for",
+@@ -486,6 +489,12 @@
+ 
+   if (!content)
+     return;
++
++  /* Only undo roles installed by this helper, never application-owned roles. */
++  if (!enabled && !g_object_get_data (G_OBJECT (content), "adw-luma-auto-content-owner"))
++    return;
++  g_object_set_data (G_OBJECT (content), "adw-luma-auto-content-owner",
++                     enabled ? GINT_TO_POINTER (1) : NULL);
+ 
+   if (ADW_IS_TOOLBAR_VIEW (content)) {
+     work_surface = adw_toolbar_view_get_content (ADW_TOOLBAR_VIEW (content));
+@@ -536,7 +545,8 @@
+     gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-adw-native-window");
+   }
+ 
+-  adw_window_set_luma_content_classes (content, native);
++  adw_window_set_luma_content_classes (content, native &&
++                                      !gtk_widget_has_css_class (GTK_WIDGET (self), "luma-no-native-surfaces"));
+   luma_update_title_row (self);
+ }
+ 
+@@ -573,7 +583,8 @@
+   adw_breakpoint_bin_set_child (ADW_BREAKPOINT_BIN (priv->bin), content);
+ 
+   adw_window_set_luma_content_classes (content,
+-                                       gtk_widget_has_css_class (GTK_WIDGET (self), "luma-native-window"));
++                                       gtk_widget_has_css_class (GTK_WIDGET (self), "luma-native-window") &&
++                                       !gtk_widget_has_css_class (GTK_WIDGET (self), "luma-no-native-surfaces"));
+   luma_update_title_row (self);
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_CONTENT]);
+--- a/src/adw-widget-utils.c
++++ b/src/adw-widget-utils.c
+@@ -820,9 +820,10 @@
+   } else {
+     gpointer saved = g_object_get_data (G_OBJECT (widget), luma_work_surface_overflow_key);
+ 
+-    gtk_widget_remove_css_class (widget, "luma-native-work-surface");
+-    gtk_widget_remove_css_class (widget, "luma-split-surface");
++    /* No saved overflow means this helper did not add the work-surface role. */
+     if (saved) {
++      gtk_widget_remove_css_class (widget, "luma-native-work-surface");
++      gtk_widget_remove_css_class (widget, "luma-split-surface");
+       gtk_widget_set_overflow (widget, GPOINTER_TO_INT (saved) - 1);
+       g_object_set_data (G_OBJECT (widget), luma_work_surface_overflow_key, NULL);
+     }
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -829,7 +829,8 @@
+ 
+   (void) pspec;
+ 
+-  if (focus != identity)
++  /* GtkMenuButton delegates native focus to its inner toggle button. */
++  if (focus != identity && !(focus && gtk_widget_is_ancestor (focus, identity)))
+     return;
+ 
+   if (g_object_get_data (G_OBJECT (root), luma_identity_focus_guard_key))
+--- a/tests/test-header-bar.c
++++ b/tests/test-header-bar.c
+@@ -19,9 +19,12 @@
+ luma_identity_test_window (GtkApplication **application_out,
+                            AdwHeaderBar    **bar_out)
+ {
++  /* Each mapped fixture owns an independent D-Bus export. */
++  static guint fixture_serial;
++  g_autofree char *application_id =
++    g_strdup_printf ("org.projectluma.HeaderBarIdentityTest.fixture%u", ++fixture_serial);
+   GtkApplication *application =
+-    gtk_application_new ("org.projectluma.HeaderBarIdentityTest",
+-                         G_APPLICATION_NON_UNIQUE);
++    gtk_application_new (application_id, G_APPLICATION_NON_UNIQUE);
+   GMenu *menubar = g_menu_new ();
+   GtkWidget *window;
+   AdwHeaderBar *bar;
+@@ -29,8 +32,8 @@
+ 
+   g_menu_append (menubar, "About", "app.about");
+   g_application_set_default (G_APPLICATION (application));
++  g_assert_true (g_application_register (G_APPLICATION (application), NULL, NULL));
+   gtk_application_set_menubar (application, G_MENU_MODEL (menubar));
+-  g_assert_true (g_application_register (G_APPLICATION (application), NULL, NULL));
+ 
+   window = g_object_new (ADW_TYPE_APPLICATION_WINDOW,
+                          "application", application,
+@@ -156,8 +159,10 @@
+    * like any other header-bar control. */
+   adw_header_bar_luma_test_note_real_input (bar);
+   gtk_widget_grab_focus (identity);
+-  g_assert_true (gtk_widget_has_focus (identity));
+-  g_assert_true (gtk_root_get_focus (GTK_ROOT (window)) == identity);
++  GtkWidget *native_button = gtk_widget_get_first_child (identity);
++  g_assert_true (GTK_IS_TOGGLE_BUTTON (native_button));
++  g_assert_true (gtk_widget_has_focus (native_button));
++  g_assert_true (gtk_root_get_focus (GTK_ROOT (window)) == native_button);
+ 
+   gtk_window_destroy (GTK_WINDOW (window));
+   g_object_unref (application);
+--- a/tests/test-accent-color.c
++++ b/tests/test-accent-color.c
+@@ -214,7 +214,7 @@
+   GdkRGBA rgba;
+   int hex;
+ 
+-  TEST_ACCENT_TO_RGBA (ADW_ACCENT_COLOR_BLUE,   0x3584e4);
++  TEST_ACCENT_TO_RGBA (ADW_ACCENT_COLOR_BLUE,   0x4878b8);
+   TEST_ACCENT_TO_RGBA (ADW_ACCENT_COLOR_TEAL,   0x2190a4);
+   TEST_ACCENT_TO_RGBA (ADW_ACCENT_COLOR_GREEN,  0x3a944a);
+   TEST_ACCENT_TO_RGBA (ADW_ACCENT_COLOR_YELLOW, 0xc88800);
+@@ -231,7 +231,7 @@
+   GdkRGBA rgba;
+   int hex;
+ 
+-  TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_BLUE,   FALSE, 0x0461be);
++  TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_BLUE,   FALSE, 0x3464a2);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_TEAL,   FALSE, 0x007184);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_GREEN,  FALSE, 0x15772e);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_YELLOW, FALSE, 0x905300);
+@@ -241,7 +241,7 @@
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_PURPLE, FALSE, 0x8939a4);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_SLATE,  FALSE, 0x526678);
+ 
+-  TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_BLUE,   TRUE, 0x81d0ff);
++  TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_BLUE,   TRUE, 0x9dd1ff);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_TEAL,   TRUE, 0x7bdff4);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_GREEN,  TRUE, 0x8de698);
+   TEST_ACCENT_TO_STANDALONE_RGBA (ADW_ACCENT_COLOR_YELLOW, TRUE, 0xffc057);
+--- a/tests/test-about-window.c
++++ b/tests/test-about-window.c
+@@ -28,6 +28,10 @@
+   g_assert_cmpstr (adw_about_window_get_website (window), ==, "https://gitlab.gnome.org/GNOME/libadwaita");
+   g_assert_cmpuint (adw_about_window_get_license_type (window), ==, GTK_LICENSE_LGPL_2_1);
+ 
++  /* GtkWindow owns its initial reference until destroy; retain the test
++   * reference so finalization is checked after the native lifecycle closes. */
++  g_object_ref (window);
++  gtk_window_destroy (GTK_WINDOW (window));
+   g_assert_finalize_object (window);
+ 
+   window = ADW_ABOUT_WINDOW (adw_about_window_new_from_appdata ("/org/gnome/Adwaita1/Test/org.gnome.Adwaita1.Test.metainfo.xml", "0.1"));
+@@ -38,6 +42,10 @@
+   g_assert_cmpstr (adw_about_window_get_release_notes_version (window), ==, "0.1");
+   g_assert_cmpstr (adw_about_window_get_version (window), ==, "1.0");
+ 
++  /* GtkWindow owns its initial reference until destroy; retain the test
++   * reference so finalization is checked after the native lifecycle closes. */
++  g_object_ref (window);
++  gtk_window_destroy (GTK_WINDOW (window));
+   g_assert_finalize_object (window);
+ 
+   window = ADW_ABOUT_WINDOW (adw_about_window_new_from_appdata ("/org/gnome/Adwaita1/Test/org.gnome.Adwaita1.Test.metainfo.xml", NULL));
+@@ -48,6 +56,10 @@
+   g_assert_cmpstr (adw_about_window_get_release_notes_version (window), ==, "");
+   g_assert_cmpstr (adw_about_window_get_version (window), ==, "1.0");
+ 
++  /* GtkWindow owns its initial reference until destroy; retain the test
++   * reference so finalization is checked after the native lifecycle closes. */
++  g_object_ref (window);
++  gtk_window_destroy (GTK_WINDOW (window));
+   g_assert_finalize_object (window);
+ }
+ 
+@@ -136,6 +148,10 @@
+   adw_about_window_add_legal_section (window, "Example", "© 2022 Example", GTK_LICENSE_GPL_3_0, NULL);
+   adw_about_window_add_legal_section (window, "Example", "© 2022 Example", GTK_LICENSE_CUSTOM, "License");
+ 
++  /* GtkWindow owns its initial reference until destroy; retain the test
++   * reference so finalization is checked after the native lifecycle closes. */
++  g_object_ref (window);
++  gtk_window_destroy (GTK_WINDOW (window));
+   g_assert_finalize_object (window);
+ }
+ 

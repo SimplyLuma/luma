@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Luma Connect
+Comment=Your Luma account, its devices and your phones
+Exec=luma-connect
+Icon=org.projectluma.Connect
+Terminal=false
+Categories=Settings;
+StartupNotify=true
+X-GNOME-UsesNotifications=true

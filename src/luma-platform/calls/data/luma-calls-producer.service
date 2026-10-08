@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Project Luma call activity producer
+Documentation=https://github.com/SimplyLuma/luma
+After=luma-semantic-broker.service pipewire.service
+Wants=pipewire.service
+PartOf=graphical-session.target
+# The login screen is a graphical session too, run by a transient greeter
+# user with no calendar or calls of its own.
+ConditionEnvironment=XDG_SESSION_CLASS=user
+
+[Service]
+Type=simple
+# The Semantic Broker derives a publisher's application identity from the
+# caller's cgroup: it must sit in an "app-<app-id>-<hex>.scope" unit whose
+# app id has a root-owned desktop file.  A plain app.slice service would
+# resolve as an unverified native client and be refused, so the producer is
+# launched into a transient application scope named for org.projectluma.Calls.
+ExecStart=/usr/bin/systemd-run --user --quiet --scope \
+  --unit=app-org.projectluma.Calls-%b --collect \
+  /usr/libexec/luma-calls-producer
+# systemd-run execs the producer in place, so without this every line it logs
+# is attributed to "systemd-run" and `journalctl -t luma-calls` finds nothing.
+SyslogIdentifier=luma-calls
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=graphical-session.target

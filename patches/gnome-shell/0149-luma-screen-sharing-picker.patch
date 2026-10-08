@@ -1,0 +1,2406 @@
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 17 Sep 2026 15:40:00 -0400
+Subject: [PATCH] luma: the screen sharing picker, the edge and the Stop pill
+
+When an application asks to share the screen, the ScreenCast portal showed
+GNOME's "Share Screen" dialog: a list of window names with nothing to look
+at. Luma shows Share instead -- the requesting application on the card's
+axis, a plain title, a Windows / Screens switch over live previews of every
+window and screen, a few clear options, and equal Cancel and Share buttons.
+While sharing, what is shared wears a violet edge and a pill above the shelf
+holds Stop.
+
+The card is drawn by the Shell because the previews are live window content
+and the card is modal over the session, neither of which a GTK portal process
+can do; luma-portal implements the ScreenCast backend and asks the Shell over
+one private interface. ADR-041 records the decision and the measured cost of
+the alternative.
+
+The picker (lumaShare.js, luma-share.css):
+- The authentication prompt's card language: the same scrim, 24 radius, Quick
+  Options tokens, 17px/750 title, 13.5px muted body and equal button pair,
+  600 wide, scrolling inside itself when it is taller than the screen.
+- The requester's 56 icon with a 26 violet screen badge overlapping its lower
+  right corner by 7, ringed 3 in the card; a neutral system screen when the
+  requester cannot be resolved. The name and icon come from the system, never
+  from text the application supplied, and a site is named only when the
+  request carries a trusted origin.
+- A Windows / Screens segmented control, hidden when the request allows one
+  type. Previews are 16:10 tiles, 3 columns for windows and 2 for screens,
+  with the source at 92% of its tile so its own corners and shadow show, an
+  18 app icon, the window title and the application's name or the monitor's
+  resolution. Hover, focus and a 2.5 violet chosen ring, with a 22 violet
+  check badge.
+- A window preview is the dock's live preview renderer (0117), now exported
+  rather than copied: a clone of the window actor already in the scene graph,
+  painted at thumbnail size. A screen preview clones the window group -- the
+  wallpaper and every window, and no Shell chrome -- so a preview can never
+  contain the picker drawing itself.
+- Show pointer maps to the portal's cursor mode; Hide notifications while
+  sharing reads Luma Cast's own silence-notifications key, so the two never
+  disagree. Let <app> control this computer appears only for a RemoteDesktop
+  request that asked for keyboard or pointer.
+- Keyboard: focus starts on the first preview, arrows move the choice, Space
+  selects, Enter shares, Escape cancels. With the pointer, a second click on
+  the chosen preview shares it, so a double-click shares; this uses no
+  button-press handler, which would stop firing silently once St.Button
+  handles clicks as gestures. With several sources allowed a second click
+  deselects instead. Previews are radio
+  buttons, or checkboxes when the request allows several sources, named
+  "<app>, <window>"; the tabs are a tab list and the options are switches
+  with their own descriptions.
+
+While sharing:
+- A shared window wears a 2.5 violet ring with a 7 halo that follows it; a
+  shared monitor gets a 3 inset violet edge. Both are CaptureHidden actors
+  whose violet is drawn by a child, so they are on the screen and never in
+  the stream: Clutter paints an actor's own node (where St draws its
+  background and border) before paint(), which is all CaptureHidden
+  overrides, so an edge styled on the outer actor went into every screen
+  stream. The screen edge takes no input, so the shared screen stays usable.
+- A 40 pill in the shelf surface slot, placed by the one shelf placement
+  helper, names what is shared and with whom and holds Stop. Stop ends every
+  stream for the session and tells the backend to close it.
+- Banners wait and arrive once sharing stops. Casting drops what it silences,
+  because a receiver may be left running for hours; a share is a conversation
+  that ends, and what waited is still worth seeing.
+- The Well's sharing mark stands down while the pill is up, so the same thing
+  is not said twice. Other kinds of remote access keep it.
+
+The owner's three open questions are not answered yet. Each interim answer is
+one constant at the top of lumaShare.js: the pill replaces the Well's mark,
+the pill stays for the whole share, and there is no "choose on screen" mode.
+
+The picker's card carries the Shell ink ledger (0150) itself, because its
+stylesheet is created here: frost is the smoked veil rgba(28,33,40,0.88) and
+glass rgba(14,19,26,0.82), both with white ink, and the Share button and the
+Stop pill keep their light plate on hover on both smoked treatments. Without
+that last part the unqualified :hover laid #3d4249 under the plate's dark
+label, which 0150's verify-treatment-ink.py fails at %build. The selected
+tab, the tab hover and the pill's own surface also name their ink on frost,
+where they had inherited the light card's dark ink from an unqualified rule.
+
+Reuse rather than a second copy: lumaCapture's shelf surface takes a style
+prefix, the dock's preview thumbnail is exported, and reading the monitors'
+names moves out of Luma Cast's manager into one listDisplays().
+---
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index 86c0f25..b9475f8 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -8,6 +8,7 @@
+     <file>gnome-shell-high-contrast.css</file>
+     <file>luma-capture.css</file>
+     <file>luma-seal.css</file>
++    <file>luma-share.css</file>
+     <file>luma-cast.css</file>
+     <file>luma-shelf.css</file>
+     <file>gnome-shell-start.svg</file>
+diff --git a/data/theme/luma-share.css b/data/theme/luma-share.css
+new file mode 100644
+index 0000000..136f331
+--- /dev/null
++++ b/data/theme/luma-share.css
+@@ -0,0 +1,393 @@
++/* Luma Share: the screen sharing picker, the sharing edge and the Stop pill
++ * (lumaShare.js).
++ *
++ * The card is the authentication prompt's card (luma-seal.css): the same
++ * scrim, radius, tokens, title and body, and the same equal button pair. Only
++ * the sharing colour is Share's own.
++ *
++ *            fill                     ink      muted                   line                     control                 active
++ * light      #f1f2f3                  #30343a  #767b81                 rgba(35,39,45,.09)       rgba(35,44,52,.072)     #31373e
++ * dark       #21252b                  #e9ebec  #969da4                 rgba(255,255,255,.075)   rgba(255,255,255,.072)  #e6e9eb
++ * frost      rgba(244,245,246,.80)    #30343a  #767b81                 rgba(35,39,45,.09)       rgba(35,44,52,.072)     #31373e
++ * glass      rgba(22,29,40,.38)       #ffffff  rgba(255,255,255,.70)   rgba(255,255,255,.15)    rgba(10,20,33,.20)      #ffffff
++ *
++ * Violet #7d5cf0 is sharing. Red means recording (Capture) and the
++ * authentication prompt is neutral, so sharing needed its own colour. */
++
++/* ── Scrim and card ──────────────────────────────────────────────────────── */
++.luma-share-scrim { background-color: rgba(8, 10, 14, 0.46); }
++
++.luma-share-card-shadow {
++  border-radius: 24px;
++  background-color: rgba(0, 0, 0, 0.01);
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.28); }
++
++.luma-share-card {
++  font-family: 'Figtree', system-ui, sans-serif;
++  padding: 26px 24px 20px;
++  border-radius: 24px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 40px 90px -24px rgba(0, 0, 0, 0.6); }
++.luma-share-card.luma-surface-dark { background-color: #21252b; color: #e9ebec; border-color: rgba(255, 255, 255, 0.075); }
++.luma-share-card.luma-surface-frost { background-color: rgba(28, 33, 40, 0.88); color: #ffffff;
++  border-color: rgba(255, 255, 255, 0.15); }
++.luma-share-card.luma-surface-glass { background-color: rgba(14, 19, 26, 0.82); color: #ffffff; border-color: rgba(255, 255, 255, 0.15); }
++
++/* ── Who is asking ───────────────────────────────────────────────────────── */
++.luma-share-who { width: 56px; height: 56px; }
++.luma-share-app-icon { icon-shadow: 0 8px 18px -6px rgba(12, 17, 24, 0.45); }
++
++/* A 26 violet circle with the screen glyph, ringed 3 in the card's fill. */
++.luma-share-badge {
++  width: 26px;
++  height: 26px;
++  border-radius: 16px;
++  border: 3px solid #f1f2f3;
++  background-color: #7d5cf0;
++  color: #ffffff; }
++.luma-share-badge-glyph { width: 13px; height: 13px; }
++.luma-surface-dark .luma-share-badge { border-color: #21252b; }
++.luma-surface-frost .luma-share-badge { border-color: rgba(255, 255, 255, 0.22); }
++.luma-surface-glass .luma-share-badge { border-color: #141a22; }
++
++/* The requester could not be resolved: a neutral system screen. */
++.luma-share-system {
++  width: 56px;
++  height: 56px;
++  border-radius: 28px;
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #30343a; }
++.luma-share-system-glyph { width: 24px; height: 24px; }
++.luma-surface-dark .luma-share-system { border-color: rgba(255, 255, 255, 0.075); background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-glass .luma-share-system,
++.luma-surface-frost .luma-share-system { border-color: rgba(255, 255, 255, 0.15); background-color: rgba(10, 20, 33, 0.20); color: #ffffff; }
++
++/* ── Words ───────────────────────────────────────────────────────────────── */
++.luma-share-title {
++  margin-top: 14px;
++  font-size: 17px;
++  font-weight: 750;
++  letter-spacing: -0.31px;
++  text-align: center;
++  color: #30343a; }
++.luma-share-body {
++  margin-top: 6px;
++  padding: 0 40px;
++  font-size: 13.5px;
++  text-align: center;
++  color: #767b81; }
++.luma-surface-dark .luma-share-title { color: #e9ebec; }
++.luma-surface-dark .luma-share-body { color: #969da4; }
++.luma-surface-glass .luma-share-title,
++.luma-surface-frost .luma-share-title { color: #ffffff; }
++.luma-surface-glass .luma-share-body,
++.luma-surface-frost .luma-share-body { color: rgba(255, 255, 255, 0.90); }
++
++/* ── Windows / Screens ───────────────────────────────────────────────────── */
++.luma-share-tabs {
++  margin-top: 18px;
++  padding: 3px;
++  border-radius: 12px;
++  spacing: 0;
++  background-color: rgba(35, 44, 52, 0.072); }
++.luma-surface-dark .luma-share-tabs { background-color: rgba(255, 255, 255, 0.072); }
++.luma-surface-glass .luma-share-tabs,
++.luma-surface-frost .luma-share-tabs { background-color: rgba(10, 20, 33, 0.20); }
++
++.luma-share-tab {
++  height: 32px;
++  padding: 0 16px;
++  border-radius: 10px;
++  font-size: 13px;
++  font-weight: 650;
++  color: #767b81;
++  transition-duration: 140ms; }
++.luma-share-tab:hover { color: #30343a; }
++.luma-share-tab:checked {
++  background-color: #f1f2f3;
++  box-shadow: 0 1px 2px rgba(12, 17, 24, 0.14);
++  border: 1px solid rgba(35, 39, 45, 0.09);
++  color: #30343a; }
++.luma-share-tab:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-surface-dark .luma-share-tab { color: #969da4; }
++.luma-surface-dark .luma-share-tab:hover { color: #e9ebec; }
++.luma-surface-dark .luma-share-tab:checked { background-color: #21252b; border-color: rgba(255, 255, 255, 0.075); color: #e9ebec; }
++.luma-surface-frost .luma-share-tab:checked { background-color: rgba(28, 33, 40, 0.88); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
++.luma-surface-glass .luma-share-tab,
++.luma-surface-frost .luma-share-tab { color: rgba(255, 255, 255, 0.90); }
++.luma-surface-glass .luma-share-tab:hover,
++.luma-surface-frost .luma-share-tab:hover { color: #ffffff; }
++.luma-surface-glass .luma-share-tab:checked { background-color: rgba(14, 19, 26, 0.82); border-color: rgba(255, 255, 255, 0.15); color: #ffffff; }
++.luma-surface-dark .luma-share-tab:focus,
++.luma-surface-glass .luma-share-tab:focus,
++.luma-surface-frost .luma-share-tab:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++
++/* ── Previews ────────────────────────────────────────────────────────────── */
++.luma-share-grid-scroll { margin-top: 16px; }
++.luma-share-grid { spacing: 14px; }
++.luma-share-row { spacing: 12px; }
++
++.luma-share-tile {
++  padding: 0;
++  border-radius: 12px;
++  background-color: transparent; }
++.luma-share-tile:focus { box-shadow: none !important; }
++
++/* The 16:10 preview: a hairline frame the window sits inside at 92%, so its
++ * own corners and shadow show. Hover, focus and chosen are drawn on it. */
++.luma-share-tile-frame {
++  border-radius: 12px;
++  box-shadow: inset 0 0 0 1px rgba(35, 39, 45, 0.09); }
++.luma-surface-dark .luma-share-tile-frame { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.075); }
++.luma-surface-glass .luma-share-tile-frame,
++.luma-surface-frost .luma-share-tile-frame { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
++
++.luma-share-tile-frame.luma-share-tile-hover { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.22); }
++.luma-surface-dark .luma-share-tile-frame.luma-share-tile-hover,
++.luma-surface-glass .luma-share-tile-frame.luma-share-tile-hover,
++.luma-surface-frost .luma-share-tile-frame.luma-share-tile-hover { box-shadow: inset 0 0 0 2px rgba(233, 235, 236, 0.22); }
++
++.luma-share-tile:focus .luma-share-tile-frame { box-shadow: inset 0 0 0 2px #31373e; }
++.luma-surface-dark .luma-share-tile:focus .luma-share-tile-frame { box-shadow: inset 0 0 0 2px #e6e9eb; }
++.luma-surface-glass .luma-share-tile:focus .luma-share-tile-frame,
++.luma-surface-frost .luma-share-tile:focus .luma-share-tile-frame { box-shadow: inset 0 0 0 2px #ffffff; }
++
++.luma-share-tile-frame.luma-share-tile-chosen,
++.luma-share-tile:focus .luma-share-tile-frame.luma-share-tile-chosen { box-shadow: inset 0 0 0 2.5px #7d5cf0; }
++
++.luma-share-screen-preview { border-radius: 12px; }
++
++/* The 22 violet check in the preview's top right, ringed 2 in the card. */
++.luma-share-check {
++  width: 22px;
++  height: 22px;
++  border-radius: 13px;
++  border: 2px solid #f1f2f3;
++  background-color: #7d5cf0;
++  color: #ffffff; }
++.luma-share-check-glyph { width: 11px; height: 11px; }
++.luma-surface-dark .luma-share-check { border-color: #21252b; }
++.luma-surface-frost .luma-share-check { border-color: rgba(255, 255, 255, 0.22); }
++.luma-surface-glass .luma-share-check { border-color: #141a22; }
++
++.luma-share-caption {
++  margin-top: 8px;
++  spacing: 6px; }
++.luma-share-caption-icon { width: 18px; height: 18px; }
++.luma-share-caption-screen {
++  width: 18px;
++  height: 18px;
++  border-radius: 5px;
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #767b81; }
++.luma-share-caption-screen-glyph { width: 11px; height: 11px; }
++.luma-surface-dark .luma-share-caption-screen { background-color: rgba(255, 255, 255, 0.072); color: #969da4; }
++.luma-surface-glass .luma-share-caption-screen,
++.luma-surface-frost .luma-share-caption-screen { background-color: rgba(10, 20, 33, 0.20); color: rgba(255, 255, 255, 0.90); }
++
++.luma-share-caption-title {
++  font-size: 12.5px;
++  font-weight: 650;
++  color: #30343a; }
++.luma-share-caption-detail {
++  font-size: 11.5px;
++  text-align: right;
++  color: #767b81; }
++.luma-surface-dark .luma-share-caption-title { color: #e9ebec; }
++.luma-surface-dark .luma-share-caption-detail { color: #969da4; }
++.luma-surface-glass .luma-share-caption-title,
++.luma-surface-frost .luma-share-caption-title { color: #ffffff; }
++.luma-surface-glass .luma-share-caption-detail,
++.luma-surface-frost .luma-share-caption-detail { color: rgba(255, 255, 255, 0.90); }
++
++.luma-share-empty {
++  margin: 22px 0;
++  font-size: 13px;
++  text-align: center;
++  color: #767b81; }
++.luma-surface-dark .luma-share-empty { color: #969da4; }
++.luma-surface-glass .luma-share-empty,
++.luma-surface-frost .luma-share-empty { color: rgba(255, 255, 255, 0.90); }
++
++/* ── Options ─────────────────────────────────────────────────────────────── */
++.luma-share-options {
++  margin-top: 18px;
++  padding: 4px;
++  border-radius: 14px;
++  background-color: rgba(35, 44, 52, 0.072); }
++.luma-surface-dark .luma-share-options { background-color: rgba(255, 255, 255, 0.072); }
++.luma-surface-glass .luma-share-options,
++.luma-surface-frost .luma-share-options { background-color: rgba(10, 20, 33, 0.20); }
++
++.luma-share-option {
++  min-height: 40px;
++  padding: 7px 10px;
++  border-radius: 10px;
++  background-color: transparent; }
++.luma-share-option:hover { background-color: rgba(35, 44, 52, 0.05); }
++.luma-share-option:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-surface-dark .luma-share-option:hover { background-color: rgba(255, 255, 255, 0.05); }
++.luma-surface-dark .luma-share-option:focus,
++.luma-surface-glass .luma-share-option:focus,
++.luma-surface-frost .luma-share-option:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++.luma-surface-glass .luma-share-option:hover,
++.luma-surface-frost .luma-share-option:hover { background-color: rgba(10, 20, 33, 0.14); }
++
++.luma-share-option-title {
++  font-size: 13px;
++  font-weight: 650;
++  color: #30343a; }
++.luma-share-option-line {
++  margin-top: 1px;
++  font-size: 11.5px;
++  color: #767b81; }
++.luma-surface-dark .luma-share-option-title { color: #e9ebec; }
++.luma-surface-dark .luma-share-option-line { color: #969da4; }
++.luma-surface-glass .luma-share-option-title,
++.luma-surface-frost .luma-share-option-title { color: #ffffff; }
++.luma-surface-glass .luma-share-option-line,
++.luma-surface-frost .luma-share-option-line { color: rgba(255, 255, 255, 0.90); }
++
++.luma-share-switch {
++  width: 36px;
++  height: 22px;
++  border-radius: 11px;
++  background-color: rgba(35, 44, 52, 0.16);
++  transition-duration: 140ms; }
++.luma-share-switch.luma-share-switch-on { background-color: #7d5cf0; }
++.luma-share-switch-knob {
++  border-radius: 9px;
++  background-color: #ffffff;
++  box-shadow: 0 1px 2px rgba(12, 17, 24, 0.28); }
++.luma-surface-dark .luma-share-switch { background-color: rgba(255, 255, 255, 0.18); }
++.luma-surface-glass .luma-share-switch,
++.luma-surface-frost .luma-share-switch { background-color: rgba(255, 255, 255, 0.22); }
++.luma-surface-dark .luma-share-switch.luma-share-switch-on,
++.luma-surface-glass .luma-share-switch.luma-share-switch-on,
++.luma-surface-frost .luma-share-switch.luma-share-switch-on { background-color: #7d5cf0; }
++
++/* ── Buttons ─────────────────────────────────────────────────────────────── */
++.luma-share-actions { margin-top: 16px; }
++.luma-share-button {
++  height: 42px;
++  border-radius: 12px;
++  font-size: 13.5px;
++  font-weight: 700;
++  transition-duration: 140ms; }
++.luma-share-cancel { background-color: rgba(35, 44, 52, 0.072); color: #30343a; }
++.luma-share-cancel:hover { background-color: rgba(35, 44, 52, 0.115); }
++.luma-share-cancel:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.75) !important; }
++.luma-share-share { background-color: #30343a; color: #f1f2f3; }
++.luma-share-share:hover { background-color: #3d4249; }
++.luma-share-share:focus { box-shadow: inset 0 0 0 2px rgba(241, 242, 243, 0.8) !important; }
++.luma-share-share:insensitive { background-color: rgba(48, 52, 58, 0.40); color: #f1f2f3; }
++
++.luma-surface-dark .luma-share-cancel { background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-dark .luma-share-cancel:hover { background-color: rgba(255, 255, 255, 0.12); }
++.luma-surface-dark .luma-share-cancel:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++.luma-surface-dark .luma-share-share { background-color: #e9ebec; color: #21252b; }
++.luma-surface-dark .luma-share-share:hover { background-color: #ffffff; }
++/* The smoked cards keep the light plate on hover too; without this the
++ * unqualified hover laid #3d4249 under the plate's dark label. */
++.luma-surface-frost .luma-share-share:hover,
++.luma-surface-glass .luma-share-share:hover { background-color: #ffffff; }
++.luma-surface-dark .luma-share-share:focus { box-shadow: inset 0 0 0 2px rgba(33, 37, 43, 0.8) !important; }
++.luma-surface-dark .luma-share-share:insensitive { background-color: rgba(233, 235, 236, 0.40); color: #21252b; }
++
++.luma-surface-glass .luma-share-cancel,
++.luma-surface-frost .luma-share-cancel { background-color: rgba(10, 20, 33, 0.20); color: #ffffff; }
++.luma-surface-glass .luma-share-cancel:hover,
++.luma-surface-frost .luma-share-cancel:hover { background-color: rgba(10, 20, 33, 0.30); }
++.luma-surface-glass .luma-share-cancel:focus,
++.luma-surface-frost .luma-share-cancel:focus { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.75) !important; }
++.luma-surface-glass .luma-share-share,
++.luma-surface-frost .luma-share-share { background-color: #ffffff; color: #1b2230; }
++.luma-surface-glass .luma-share-share:focus,
++.luma-surface-frost .luma-share-share:focus { box-shadow: inset 0 0 0 2px rgba(27, 34, 48, 0.8) !important; }
++.luma-surface-glass .luma-share-share:insensitive,
++.luma-surface-frost .luma-share-share:insensitive { background-color: rgba(255, 255, 255, 0.40); color: #1b2230; }
++
++/* ── While sharing ───────────────────────────────────────────────────────── */
++
++/* A shared window's ring, with its halo, drawn 7 outside the frame. */
++.luma-share-window-edge {
++  border-radius: 16px;
++  border: 7px solid rgba(125, 92, 240, 0.22);
++  box-shadow: inset 0 0 0 2.5px #7d5cf0; }
++
++/* A shared monitor's edge, 3 inside that monitor. A border rather than an
++ * inset shadow: St paints an inset shadow only into a background it renders
++ * itself, and this actor has none, so the shadow alone drew nothing. */
++.luma-share-screen-edge { border: 3px solid #7d5cf0; }
++
++/* ── The Stop pill ───────────────────────────────────────────────────────── */
++
++/* The pill is one Luma shelf surface (lumaCapture's ShelfSurface): a deep
++ * shadow on its own actor, the material, and a 1px line. Same look as
++ * Capture's recording pill, in the same slot, so the two never read as two
++ * different kinds of thing. */
++.luma-share-surface {
++  font-family: 'Figtree', system-ui, sans-serif;
++  background-color: #f1f2f3;
++  color: #30343a;
++  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26); }
++.luma-share-surface.luma-surface-dark {
++  background-color: #21252b;
++  color: #e9ebec; }
++.luma-share-surface.luma-surface-frost { background-color: rgba(28, 33, 40, 0.88); color: #ffffff; }
++.luma-share-surface.luma-surface-glass {
++  background-color: rgba(14, 19, 26, 0.82);
++  color: #ffffff; }
++.luma-share-shadow {
++  background-color: rgba(0, 0, 0, 0.01);
++  box-shadow: 0 30px 70px -24px rgba(0, 0, 0, 0.55); }
++.luma-share-line { border: 1px solid rgba(35, 39, 45, 0.09); }
++.luma-share-line.luma-surface-dark { border-color: rgba(255, 255, 255, 0.075); }
++.luma-share-line.luma-surface-glass,
++.luma-share-line.luma-surface-frost { border-color: rgba(255, 255, 255, 0.15); }
++
++.luma-share-pill, .luma-share-pill-shadow, .luma-share-pill-line { border-radius: 20px; }
++.luma-share-pill { height: 40px; }
++.luma-share-pill-row {
++  padding: 0 6px 0 10px;
++  spacing: 9px; }
++.luma-share-pill-mark {
++  width: 22px;
++  height: 22px;
++  border-radius: 11px;
++  background-color: #7d5cf0;
++  color: #ffffff; }
++.luma-share-pill-mark-glyph { width: 12px; height: 12px; }
++.luma-share-pill-text {
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-size: 13px;
++  font-weight: 650;
++  color: #30343a; }
++.luma-surface-dark .luma-share-pill-text { color: #e9ebec; }
++.luma-surface-glass .luma-share-pill-text,
++.luma-surface-frost .luma-share-pill-text { color: #ffffff; }
++
++.luma-share-pill-stop {
++  height: 28px;
++  padding: 0 13px;
++  border-radius: 14px;
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-size: 12.5px;
++  font-weight: 700;
++  background-color: #30343a;
++  color: #f1f2f3;
++  transition-duration: 140ms; }
++.luma-share-pill-stop:hover { background-color: #3d4249; }
++.luma-share-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(241, 242, 243, 0.8) !important; }
++.luma-surface-dark .luma-share-pill-stop { background-color: #e9ebec; color: #21252b; }
++.luma-surface-dark .luma-share-pill-stop:hover { background-color: #ffffff; }
++.luma-surface-frost .luma-share-pill-stop:hover,
++.luma-surface-glass .luma-share-pill-stop:hover { background-color: #ffffff; }
++.luma-surface-dark .luma-share-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(33, 37, 43, 0.8) !important; }
++.luma-surface-glass .luma-share-pill-stop,
++.luma-surface-frost .luma-share-pill-stop { background-color: #ffffff; color: #1b2230; }
++.luma-surface-glass .luma-share-pill-stop:focus,
++.luma-surface-frost .luma-share-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(27, 34, 48, 0.8) !important; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index de1a93e..c687f25 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -113,6 +113,7 @@
+     <file>ui/lumaSealAuth.js</file>
+     <file>ui/lumaSealCopy.js</file>
+     <file>ui/lumaSealGlyph.js</file>
++    <file>ui/lumaShare.js</file>
+     <file>ui/lumaShelfSurface.js</file>
+     <file>ui/lumaWindowMotion.js</file>
+     <file>ui/lumaWindowPath.js</file>
+diff --git a/js/ui/lumaCapture.js b/js/ui/lumaCapture.js
+index a47ee2f..2dc856a 100644
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -383,30 +383,34 @@ export function chooseFolder() {
+ // One Luma surface: a shadow, the material with its 1px line, and content.
+ // St draws one shadow per actor, so the deep shadow sits on its own actor
+ // behind the material, as Beam and Quick Options do.
+-const Surface = GObject.registerClass(
+-class Surface extends St.Widget {
++//
++// `prefix` names the style classes, so another shelf surface in the same slot
++// uses this one rather than repeating it: Luma Share's Stop pill passes
++// 'luma-share' (lumaShare.js).
++export const ShelfSurface = GObject.registerClass(
++class ShelfSurface extends St.Widget {
+     _init(kind, radius, params = {}) {
+-        const {onScreenOnly = true, ...widgetParams} = params;
++        const {onScreenOnly = true, prefix = 'luma-capture', ...widgetParams} = params;
+         super._init({
+             layout_manager: new Clutter.BinLayout(),
+             ...widgetParams,
+         });
+         this._onScreenOnly = onScreenOnly;
+         this._shadow = new St.Widget({
+-            style_class: `luma-capture-shadow luma-capture-${kind}-shadow`,
++            style_class: `${prefix}-shadow ${prefix}-${kind}-shadow`,
+             x_expand: true,
+             y_expand: true,
+         });
+         this.add_child(this._shadow);
+         this.surface = new St.Widget({
+-            style_class: `luma-capture-surface luma-capture-${kind}`,
++            style_class: `${prefix}-surface ${prefix}-${kind}`,
+             layout_manager: new Clutter.BinLayout(),
+             x_expand: true,
+             y_expand: true,
+         });
+         this.add_child(this.surface);
+         this._line = new St.Widget({
+-            style_class: `luma-capture-line luma-capture-${kind}-line`,
++            style_class: `${prefix}-line ${prefix}-${kind}-line`,
+             x_expand: true,
+             y_expand: true,
+         });
+@@ -431,6 +435,8 @@ class Surface extends St.Widget {
+     }
+ });
+ 
++const Surface = ShelfSurface;
++
+ // The shell's tooltip (the dock's pill) for Capture's controls, opened
+ // SHELF_SURFACE_GAP beyond the bar's desktop-facing edge.
+ const CaptureTooltip = GObject.registerClass(
+diff --git a/js/ui/lumaCast.js b/js/ui/lumaCast.js
+index 93025da..f7de746 100644
+--- a/js/ui/lumaCast.js
++++ b/js/ui/lumaCast.js
+@@ -162,6 +162,58 @@ function normaliseDevice(raw) {
+     };
+ }
+ 
++// Monitors, with their connectors and the names the room uses, sorted with
++// the built-in panel first. Cast names them for "one display" and the screen
++// sharing picker names them on its Screens tab (lumaShare.js), so the reading
++// lives here once.
++export async function listDisplays() {
++    try {
++        const reply = await Gio.DBus.session.call('org.gnome.Mutter.DisplayConfig',
++            '/org/gnome/Mutter/DisplayConfig', 'org.gnome.Mutter.DisplayConfig', 'GetCurrentState',
++            null, null, Gio.DBusCallFlags.NONE, -1, null);
++        const [, monitors, logical] = reply.deepUnpack();
++        const manager = global.backend.get_monitor_manager();
++        const inLayout = new Set();
++        for (const lm of logical) {
++            for (const [connector] of lm[5])
++                inLayout.add(connector);
++        }
++        const displays = monitors
++            .map(([[connector], , props]) => {
++                const p = unpackDict(props);
++                return {
++                    connector,
++                    builtin: Boolean(p['is-builtin']),
++                    name: p['is-builtin'] ? _('Built-in display') : (p['display-name'] || connector),
++                    index: manager.get_monitor_for_connector(connector),
++                };
++            })
++            .filter(d => inLayout.has(d.connector) && d.index >= 0)
++            .sort((a, b) => Number(b.builtin) - Number(a.builtin) || a.index - b.index);
++        // Two identical monitors get numbers, the way Displays shows them.
++        const counts = new Map();
++        for (const d of displays)
++            counts.set(d.name, (counts.get(d.name) ?? 0) + 1);
++        const seen = new Map();
++        for (const d of displays) {
++            if (counts.get(d.name) > 1) {
++                seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
++                d.name = `${d.name} ${seen.get(d.name)}`;
++            }
++        }
++        return displays;
++    } catch (e) {
++        // A session without DisplayConfig can't name its monitors; one entry
++        // per monitor is the honest fallback.
++        logError(e, 'Luma: reading displays');
++        return Main.layoutManager.monitors.map((m, index) => ({
++            connector: `monitor-${index}`, builtin: index === Main.layoutManager.primaryIndex,
++            name: index === Main.layoutManager.primaryIndex ? _('Built-in display') : _('Display %d').format(index + 1),
++            index,
++        }));
++    }
++}
++
+ function optionalSettings(schemaId) {
+     const schema = Gio.SettingsSchemaSource.get_default()?.lookup(schemaId, true);
+     return schema ? new Gio.Settings({settings_schema: schema}) : null;
+@@ -611,50 +663,7 @@ class CastManager extends Signals.EventEmitter {
+ 
+     // Monitors, with their connectors and names, for "one display".
+     async _refreshDisplays() {
+-        try {
+-            const reply = await this._bus.call('org.gnome.Mutter.DisplayConfig',
+-                '/org/gnome/Mutter/DisplayConfig', 'org.gnome.Mutter.DisplayConfig', 'GetCurrentState',
+-                null, null, Gio.DBusCallFlags.NONE, -1, null);
+-            const [, monitors, logical] = reply.deepUnpack();
+-            const manager = global.backend.get_monitor_manager();
+-            const inLayout = new Set();
+-            for (const lm of logical) {
+-                for (const [connector] of lm[5])
+-                    inLayout.add(connector);
+-            }
+-            this.displays = monitors
+-                .map(([[connector], , props]) => {
+-                    const p = unpackDict(props);
+-                    return {
+-                        connector,
+-                        builtin: Boolean(p['is-builtin']),
+-                        name: p['is-builtin'] ? _('Built-in display') : (p['display-name'] || connector),
+-                        index: manager.get_monitor_for_connector(connector),
+-                    };
+-                })
+-                .filter(d => inLayout.has(d.connector) && d.index >= 0)
+-                .sort((a, b) => Number(b.builtin) - Number(a.builtin) || a.index - b.index);
+-            // Two identical monitors get numbers, the way Displays shows them.
+-            const counts = new Map();
+-            for (const d of this.displays)
+-                counts.set(d.name, (counts.get(d.name) ?? 0) + 1);
+-            const seen = new Map();
+-            for (const d of this.displays) {
+-                if (counts.get(d.name) > 1) {
+-                    seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
+-                    d.name = `${d.name} ${seen.get(d.name)}`;
+-                }
+-            }
+-        } catch (e) {
+-            // A session without DisplayConfig can't name its monitors; one
+-            // entry per monitor is the honest fallback.
+-            logError(e, 'Luma Cast: reading displays');
+-            this.displays = Main.layoutManager.monitors.map((m, index) => ({
+-                connector: `monitor-${index}`, builtin: index === Main.layoutManager.primaryIndex,
+-                name: index === Main.layoutManager.primaryIndex ? _('Built-in display') : _('Display %d').format(index + 1),
+-                index,
+-            }));
+-        }
++        this.displays = await listDisplays();
+         this.emit('displays-changed');
+         this._syncPrivacy();
+     }
+diff --git a/js/ui/lumaDockWindows.js b/js/ui/lumaDockWindows.js
+index d855097..4b4dc79 100644
+--- a/js/ui/lumaDockWindows.js
++++ b/js/ui/lumaDockWindows.js
+@@ -340,7 +340,9 @@ class RoundedThumbnail extends Shell.GLSLEffect {
+     }
+ });
+ 
+-const PreviewThumbnail = GObject.registerClass(
++// Exported because the screen sharing picker shows the same live previews
++// (lumaShare.js): one renderer, not two.
++export const PreviewThumbnail = GObject.registerClass(
+ class PreviewThumbnail extends St.Widget {
+     _init(window) {
+         super._init({style_class: 'luma-dock-preview-thumbnail', clip_to_allocation: false});
+diff --git a/js/ui/lumaSealGlyph.js b/js/ui/lumaSealGlyph.js
+index db4b7ca..5927c6e 100644
+--- a/js/ui/lumaSealGlyph.js
++++ b/js/ui/lumaSealGlyph.js
+@@ -1,4 +1,6 @@
+-// Luma Seal: stroked glyphs drawn in the widget's own ink.
++// Luma's stroked glyphs, drawn in the widget's own ink. Named for Seal, the
++// authentication prompt, which was the first surface to need them; Share's
++// screen glyph is here too rather than in a second copy of the path tracer.
+ //
+ // The prompt's glyphs are line drawings with round caps. They are stroked
+ // with Cairo in the theme node's foreground colour, so CSS alone decides
+@@ -28,6 +30,8 @@ export const GLYPHS = {
+         ],
+     },
+     check: {box: 14, stroke: 2.2, paths: ['m3 7.5 2.5 2.5L11 4.5']},
++    // Luma Share's screen: a display on its stand.
++    screen: {box: 24, stroke: 1.9, rects: [[2.5, 4, 19, 12, 2]], paths: ['M8.5 20h7', 'M12 16v4']},
+     alert: {box: 14, stroke: 2.2, circles: [[7, 7, 5.5]], paths: ['M7 4.5v3M7 9.6h.01']},
+     chevron: {box: 12, stroke: 2.2, paths: ['m4.5 3 3 3-3 3']},
+ };
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+new file mode 100644
+index 0000000..f877726
+--- /dev/null
++++ b/js/ui/lumaShare.js
+@@ -0,0 +1,1534 @@
++// Luma Share: the screen sharing picker, the sharing edge and the Stop pill.
++//
++// When an application asks the ScreenCast portal to share the screen,
++// luma-portal (the portal backend) asks this module, over
++// org.projectluma.Shell.ScreenShare, to show the picker and hand back what
++// the person chose. The stream itself is still created by the backend through
++// Mutter's ScreenCast API, exactly as xdg-desktop-portal-gnome does it; see
++// ADR-041 for why the picker is drawn here and not in a GTK portal process.
++//
++// Nothing here starts, stops or reads a stream. It shows what could be
++// shared, returns what was chosen, and while sharing draws the violet edge
++// and the pill. The edge and the pill are CaptureHidden actors (lumaCapture),
++// so they paint on the screen and never into a recording or a cast.
++//
++// Previews are the dock's live window previews (patch 0117): a Clutter clone
++// of the window actor already in the scene graph, painted at thumbnail size.
++// A screen preview clones global.window_group — the wallpaper and every
++// window, and no shell chrome, so a preview can never contain the picker.
++
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Graphene from 'gi://Graphene';
++import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as ModalDialog from './modalDialog.js';
++import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
++import {CaptureHidden, ShelfSurface} from './lumaCapture.js';
++import {Glyph} from './lumaSealGlyph.js';
++import {PreviewThumbnail} from './lumaDockWindows.js';
++import {listDisplays} from './lumaCast.js';
++import {placeShelfBar} from './lumaShelfSurface.js';
++
++const STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-share.css';
++
++const BUS_NAME = 'org.freedesktop.impl.portal.desktop.luma';
++const OBJECT_PATH = '/org/projectluma/Shell/ScreenShare';
++
++// ── The three interim answers ──────────────────────────────────────────────
++//
++// The owner has not answered the open questions yet (handoff, "Open questions
++// for the owner: screen sharing"). Each interim answer is one constant, so
++// changing it is a one-line change and nothing else moves.
++
++// 1. While screen sharing, the Stop pill is the indicator and the Well's
++//    sharing mark is hidden for that session. Other remote-access kinds keep
++//    their mark. Set to true to keep both.
++export const KEEP_WELL_MARK_WHILE_SHARING = false;
++
++// 2. The pill stays visible for as long as sharing lasts. A positive number
++//    of milliseconds would hide it after that long instead, macOS style.
++export const PILL_VISIBLE_MS = 0;
++
++// 3. No "Choose on screen" mode. Set to true to offer picking a real window
++//    on the desktop.
++export const OFFER_CHOOSE_ON_SCREEN = false;
++
++// ── Measurements ───────────────────────────────────────────────────────────
++
++const CARD_WIDTH = 600;
++const SCREEN_INSET = 16;
++const CARD_MARGIN = 56;
++const APP_ICON_SIZE = 56;
++const REQUESTER_BADGE = 26;
++const BADGE_OVERLAP = 7;
++const SCRIM_BLUR = 14;
++const OPEN_TIME = 240;
++const SCRIM_TIME = 200;
++const CLOSE_TIME = 180;
++
++const WINDOW_COLUMNS = 3;
++const SCREEN_COLUMNS = 2;
++const COLUMN_GAP = 12;
++const ROW_GAP = 14;
++const TILE_ASPECT = 10 / 16;
++// The window sits at 92% of its tile, so its own corners and shadow show.
++const TILE_FILL = 0.92;
++const CAPTION_GAP = 8;
++
++// The portal's own vocabulary.
++const PORTAL_SUCCESS = 0;
++const PORTAL_CANCELLED = 1;
++
++// org.freedesktop.portal.ScreenCast source types and cursor modes.
++const SourceType = {MONITOR: 1, WINDOW: 2, VIRTUAL: 4};
++const CursorMode = {HIDDEN: 1, EMBEDDED: 2, METADATA: 4};
++
++const INTERFACE = `
++<node>
++  <interface name="org.projectluma.Shell.ScreenShare">
++    <method name="Choose">
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="u" name="response" direction="out"/>
++      <arg type="a{sv}" name="results" direction="out"/>
++    </method>
++    <method name="Cancel"/>
++    <method name="SessionStarted">
++      <arg type="s" name="session_handle" direction="in"/>
++      <arg type="a{sv}" name="info" direction="in"/>
++    </method>
++    <method name="SessionClosed">
++      <arg type="s" name="session_handle" direction="in"/>
++    </method>
++    <signal name="StopRequested">
++      <arg type="s" name="session_handle"/>
++    </signal>
++  </interface>
++</node>`;
++
++const log = message => console.log(`Luma Share: ${message}`);
++const reduceMotion = () => !St.Settings.get().enable_animations;
++const stageScale = () => St.ThemeContext.get_for_stage(global.stage).scale_factor;
++
++let stylesheetLoaded = false;
++function loadStylesheet() {
++    if (stylesheetLoaded)
++        return;
++    stylesheetLoaded = true;
++    St.ThemeContext.get_for_stage(global.stage).get_theme()
++        .load_stylesheet(Gio.File.new_for_uri(STYLESHEET_URI));
++}
++
++// The same test the authentication prompt makes: no blur when transparency
++// is reduced, in high contrast, or without hardware acceleration.
++function blurAllowed() {
++    const source = Gio.SettingsSchemaSource.get_default();
++    const lookup = (id, key) => {
++        const schema = source?.lookup(id, true);
++        return schema?.has_key(key) ? new Gio.Settings({settings_schema: schema}).get_boolean(key) : false;
++    };
++    if (lookup('org.project_luma.shell-state', 'reduce-transparency') ||
++        lookup('org.gnome.desktop.a11y.interface', 'high-contrast'))
++        return false;
++    if (GLib.getenv('LUMA_MUTTER_ALLOW_SOFTWARE_BLUR') === '1')
++        return true;
++    try {
++        return global.backend.is_rendering_hardware_accelerated();
++    } catch {
++        return false;
++    }
++}
++
++function unpackDict(dict) {
++    const out = {};
++    for (const [key, value] of Object.entries(dict ?? {}))
++        out[key] = value instanceof GLib.Variant ? value.deepUnpack() : value;
++    return out;
++}
++
++// Every window a person could reasonably share: the ordinary windows of
++// ordinary applications, in the order the window list shows them. Attached
++// dialogs ride their parent's preview, as they do in the dock.
++export function shareableWindows() {
++    return global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null)
++        .filter(window =>
++            window.window_type === Meta.WindowType.NORMAL &&
++            !window.is_skip_taskbar() &&
++            !window.is_override_redirect() &&
++            window.get_compositor_private() !== null);
++}
++
++// ── One preview tile ───────────────────────────────────────────────────────
++
++const PreviewTile = GObject.registerClass({
++    Signals: {'chosen': {}},
++}, class PreviewTile extends St.Button {
++    _init(source, multiple) {
++        const app = source.kind === 'window'
++            ? Shell.WindowTracker.get_default().get_window_app(source.window)
++            : null;
++        super._init({
++            style_class: 'luma-share-tile',
++            can_focus: true,
++            x_expand: false,
++            accessible_role: multiple ? Atk.Role.CHECK_BOX : Atk.Role.RADIO_BUTTON,
++        });
++        this.source = source;
++        this._multiple = multiple;
++        this.chosen = false;
++
++        const column = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            reactive: false,
++        });
++        this.set_child(column);
++
++        this._frame = new St.Widget({
++            style_class: 'luma-share-tile-frame',
++            layout_manager: new Clutter.FixedLayout(),
++            x_expand: true,
++        });
++        column.add_child(this._frame);
++
++        this._content = source.kind === 'window'
++            ? new PreviewThumbnail(source.window)
++            : new ScreenPreview(source.monitor);
++        this._content.add_style_class_name('luma-share-preview');
++        this._frame.add_child(this._content);
++
++        this._check = new St.Bin({
++            style_class: 'luma-share-check',
++            visible: false,
++            child: new Glyph('check', {style_class: 'luma-share-check-glyph'}),
++        });
++        this._frame.add_child(this._check);
++
++        const caption = new St.BoxLayout({
++            style_class: 'luma-share-caption',
++            x_expand: true,
++            reactive: false,
++        });
++        column.add_child(caption);
++
++        if (app) {
++            caption.add_child(new St.Icon({
++                style_class: 'luma-share-caption-icon',
++                gicon: app.get_icon(),
++                icon_size: 18,
++                y_align: Clutter.ActorAlign.CENTER,
++            }));
++        } else {
++            caption.add_child(new St.Bin({
++                style_class: 'luma-share-caption-screen',
++                y_align: Clutter.ActorAlign.CENTER,
++                child: new Glyph('screen', {style_class: 'luma-share-caption-screen-glyph'}),
++            }));
++        }
++
++        this._title = new St.Label({
++            style_class: 'luma-share-caption-title',
++            text: source.title,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        caption.add_child(this._title);
++
++        this._detail = new St.Label({
++            style_class: 'luma-share-caption-detail',
++            text: source.detail,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        caption.add_child(this._detail);
++
++        // "Tide, Library" — the application, then what of it is shared.
++        this.accessible_name = source.detail
++            ? `${source.detail}, ${source.title}`
++            : source.title;
++
++        this.connect('clicked', () => this.emit('chosen'));
++        this.connect('notify::hover', () => this._syncStyle());
++        this.connect('key-focus-in', () => this._syncStyle());
++        this.connect('key-focus-out', () => this._syncStyle());
++        this._syncStyle();
++    }
++
++    setChosen(chosen) {
++        if (this.chosen === chosen)
++            return;
++        this.chosen = chosen;
++        if (chosen)
++            this.add_accessible_state(Atk.StateType.CHECKED);
++        else
++            this.remove_accessible_state(Atk.StateType.CHECKED);
++        this._check.visible = chosen;
++        if (chosen && !reduceMotion()) {
++            this._check.set_scale(0.6, 0.6);
++            this._check.ease({
++                scale_x: 1, scale_y: 1,
++                duration: 160,
++                mode: Clutter.AnimationMode.EASE_OUT_BACK,
++            });
++        }
++        this._syncStyle();
++    }
++
++    _syncStyle() {
++        const classes = {
++            'luma-share-tile-chosen': this.chosen,
++            'luma-share-tile-hover': this.hover && !this.chosen,
++        };
++        for (const [name, on] of Object.entries(classes)) {
++            if (on)
++                this._frame.add_style_class_name(name);
++            else
++                this._frame.remove_style_class_name(name);
++        }
++    }
++
++    // The tile lays out its own preview so the window sits at TILE_FILL of the
++    // 16:10 frame, centred, with the check badge in the frame's top right.
++    setTileWidth(width) {
++        const height = Math.round(width * TILE_ASPECT);
++        this._frame.set_size(width, height);
++        const inner = Math.round(width * TILE_FILL);
++        const innerHeight = Math.round(height * TILE_FILL);
++        this._content.set_position(Math.round((width - inner) / 2),
++            Math.round((height - innerHeight) / 2));
++        this._content.set_size(inner, innerHeight);
++        const scale = stageScale();
++        const [, , badge] = this._check.get_preferred_size();
++        this._check.set_position(Math.round(width - badge - 6 * scale), Math.round(6 * scale));
++        this._title.width = -1;
++    }
++});
++
++// A monitor's live content: the wallpaper and every window on it, clipped to
++// that monitor and scaled into the tile. global.window_group holds the
++// background group and every window actor and no shell chrome, so nothing
++// here can show the picker drawing itself.
++const ScreenPreview = GObject.registerClass(
++class ScreenPreview extends St.Widget {
++    _init(monitor) {
++        super._init({
++            style_class: 'luma-share-screen-preview',
++            clip_to_allocation: true,
++            layout_manager: new Clutter.FixedLayout(),
++        });
++        this._monitor = monitor;
++        this._clone = new Clutter.Clone({
++            source: global.window_group,
++            pivot_point: new Graphene.Point({x: 0, y: 0}),
++        });
++        Shell.util_set_hidden_from_pick(this._clone, true);
++        this.add_child(this._clone);
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const width = box.get_width();
++        const height = box.get_height();
++        const monitor = this._monitor;
++        const scale = Math.min(width / Math.max(1, monitor.width),
++            height / Math.max(1, monitor.height));
++        this._clone.allocate(new Clutter.ActorBox({
++            x1: 0, y1: 0,
++            x2: global.window_group.width || monitor.width,
++            y2: global.window_group.height || monitor.height,
++        }));
++        this._clone.set_scale(scale, scale);
++        this._clone.set_position(
++            Math.round((width - monitor.width * scale) / 2 - monitor.x * scale),
++            Math.round((height - monitor.height * scale) / 2 - monitor.y * scale));
++    }
++});
++
++// ── A switch row ───────────────────────────────────────────────────────────
++
++const OptionRow = GObject.registerClass({
++    Signals: {'toggled': {}},
++}, class OptionRow extends St.Button {
++    _init(title, description, active) {
++        super._init({
++            style_class: 'luma-share-option',
++            can_focus: true,
++            x_expand: true,
++            accessible_role: Atk.Role.TOGGLE_BUTTON,
++            accessible_name: title,
++        });
++        const row = new St.BoxLayout({x_expand: true, reactive: false});
++        this.set_child(row);
++        const words = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        row.add_child(words);
++        words.add_child(new St.Label({
++            style_class: 'luma-share-option-title',
++            text: title,
++            x_align: Clutter.ActorAlign.START,
++        }));
++        const line = new St.Label({
++            style_class: 'luma-share-option-line',
++            text: description,
++            x_align: Clutter.ActorAlign.START,
++        });
++        line.clutter_text.line_wrap = true;
++        line.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
++        words.add_child(line);
++        this.get_accessible()?.set_description(description);
++
++        this._track = new St.Widget({
++            style_class: 'luma-share-switch',
++            layout_manager: new Clutter.FixedLayout(),
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._knob = new St.Widget({style_class: 'luma-share-switch-knob'});
++        this._track.add_child(this._knob);
++        row.add_child(this._track);
++
++        this.active = Boolean(active);
++        this.connect('clicked', () => this.setActive(!this.active));
++        this._track.connect('notify::width', () => this._place(false));
++        this._sync(false);
++    }
++
++    setActive(active) {
++        if (this.active === active)
++            return;
++        this.active = active;
++        this._sync(true);
++        this.emit('toggled');
++    }
++
++    _sync(animate) {
++        if (this.active) {
++            this._track.add_style_class_name('luma-share-switch-on');
++            this.add_accessible_state(Atk.StateType.CHECKED);
++        } else {
++            this._track.remove_style_class_name('luma-share-switch-on');
++            this.remove_accessible_state(Atk.StateType.CHECKED);
++        }
++        this._place(animate);
++    }
++
++    _place(animate) {
++        // Measuring the track before the row is on the stage asks St for a
++        // theme node it cannot have yet; the track places the knob again when
++        // it is first allocated (notify::width).
++        if (!this._track.get_stage())
++            return;
++        const scale = stageScale();
++        const inset = 2 * scale;
++        const size = Math.max(0, this._track.height - 2 * inset) || 18 * scale;
++        this._knob.set_size(size, size);
++        const x = this.active
++            ? Math.max(inset, this._track.width - inset - size)
++            : inset;
++        this._knob.remove_all_transitions();
++        if (animate && !reduceMotion()) {
++            this._knob.y = inset;
++            this._knob.ease({x, duration: 140, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        } else {
++            this._knob.set_position(x, inset);
++        }
++    }
++});
++
++// ── The picker ─────────────────────────────────────────────────────────────
++
++export const SharePicker = GObject.registerClass({
++    Signals: {'done': {param_types: [GObject.TYPE_VARIANT]}},
++}, class SharePicker extends ModalDialog.ModalDialog {
++    _init(request) {
++        super._init({
++            styleClass: 'luma-share-chrome',
++            shellReactive: true,
++            shouldFadeIn: false,
++            shouldFadeOut: false,
++        });
++        loadStylesheet();
++
++        this._request = request;
++        this._answered = false;
++        this._closing = false;
++        this._tiles = [];
++        this._mode = null;
++
++        this._types = request.types || SourceType.WINDOW | SourceType.MONITOR;
++        this._multiple = Boolean(request.multiple);
++        this._cursorModes = request.cursorModes || CursorMode.HIDDEN;
++        this._wantsControl = Boolean(request.control);
++
++        this.connect('closed', () => this._answer(PORTAL_CANCELLED, {}));
++        Main.sessionMode.connectObject('updated', () => {
++            this.visible = !Main.sessionMode.isLocked;
++        }, this);
++
++        this._build();
++        this._open();
++    }
++
++    // ── Building ─────────────────────────────────────────────────────────
++
++    _build() {
++        const scale = stageScale();
++        this.dialogLayout.hide();
++
++        this._scrim = new St.Widget({style_class: 'luma-share-scrim', opacity: 0});
++        this._scrim.add_constraint(new Clutter.BindConstraint({
++            source: this,
++            coordinate: Clutter.BindCoordinate.SIZE,
++        }));
++        if (blurAllowed()) {
++            this._scrim.add_effect_with_name('luma-share-blur', new Shell.BlurEffect({
++                mode: Shell.BlurMode.BACKGROUND,
++                radius: SCRIM_BLUR * scale,
++                brightness: 1,
++            }));
++        }
++        this.insert_child_below(this._scrim, null);
++
++        this._holder = new St.Widget({
++            layout_manager: new Clutter.BinLayout(),
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.START,
++            opacity: 0,
++            pivot_point: new Graphene.Point({x: 0.5, y: 0.5}),
++        });
++        this.add_child(this._holder);
++
++        this._shadow = new St.Widget({
++            style_class: 'luma-share-card-shadow',
++            x_expand: true,
++            y_expand: true,
++        });
++        this._holder.add_child(this._shadow);
++
++        this._card = new St.BoxLayout({
++            style_class: 'luma-share-card',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            reactive: true,
++            accessible_role: Atk.Role.DIALOG,
++        });
++        this._card.request_mode = Clutter.RequestMode.HEIGHT_FOR_WIDTH;
++        this._holder.add_child(this._card);
++        this._material = SurfaceMaterials.bindSurface(this._card, {
++            cornerRadii: 24 * scale,
++            classActors: [this._holder, this._shadow],
++        });
++        global.focus_manager.add_group(this._card);
++
++        this._buildRequester();
++        this._buildWords();
++        this._buildTabs();
++        this._buildGrid();
++        this._buildOptions();
++        this._buildActions();
++
++        Main.layoutManager.connectObject('monitors-changed', () => this._place(), this);
++        this._setMode(this._types & SourceType.WINDOW ? 'windows' : 'screens');
++    }
++
++    _buildRequester() {
++        const {icon} = this._request.requester;
++        if (icon) {
++            this._who = new St.Widget({
++                style_class: 'luma-share-who',
++                layout_manager: new Clutter.FixedLayout(),
++                x_align: Clutter.ActorAlign.CENTER,
++            });
++            this._who.add_child(new St.Icon({
++                style_class: 'luma-share-app-icon',
++                gicon: icon,
++                icon_size: APP_ICON_SIZE,
++            }));
++            this._badge = new St.Bin({
++                style_class: 'luma-share-badge',
++                child: new Glyph('screen', {style_class: 'luma-share-badge-glyph'}),
++            });
++            this._who.add_child(this._badge);
++            this._badge.connect('notify::width', () => this._placeBadge());
++            this._placeBadge();
++        } else {
++            // The requester could not be resolved: a neutral system screen,
++            // never a generic application placeholder.
++            this._who = new St.Bin({
++                style_class: 'luma-share-system',
++                x_align: Clutter.ActorAlign.CENTER,
++                child: new Glyph('screen', {style_class: 'luma-share-system-glyph'}),
++            });
++        }
++        this._card.add_child(this._who);
++    }
++
++    _placeBadge() {
++        // Placed once it is on the stage and has a size (notify::width).
++        if (!this._badge?.get_stage())
++            return;
++        const scale = stageScale();
++        const size = APP_ICON_SIZE * scale;
++        const [badgeWidth] = this._badge.get_size();
++        const offset = size + BADGE_OVERLAP * scale - badgeWidth + 3 * scale;
++        this._badge.set_position(offset, offset);
++    }
++
++    _buildWords() {
++        const name = this._request.requester.name;
++        this._title = this._label('luma-share-title',
++            /* Translators: %s is an application name. */
++            _('%s wants to share your screen').format(name));
++        this._body = this._label('luma-share-body', this._request.bodyText);
++        this._card.add_child(this._title);
++        this._card.add_child(this._body);
++        this._card.accessible_name = this._title.text;
++        this._card.get_accessible()?.set_description(this._body.text);
++    }
++
++    _label(styleClass, text) {
++        const label = new St.Label({style_class: styleClass, text, x_expand: true});
++        label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++        label.clutter_text.line_wrap = true;
++        label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
++        label.clutter_text.line_alignment = Pango.Alignment.CENTER;
++        return label;
++    }
++
++    _buildTabs() {
++        const both = (this._types & SourceType.WINDOW) && (this._types & SourceType.MONITOR);
++        this._tabs = new St.BoxLayout({
++            style_class: 'luma-share-tabs',
++            x_align: Clutter.ActorAlign.CENTER,
++            visible: both,
++            accessible_role: Atk.Role.PAGE_TAB_LIST,
++        });
++        this._card.add_child(this._tabs);
++        if (!both)
++            return;
++        this._tabButtons = {};
++        for (const [mode, text] of [['windows', _('Windows')], ['screens', _('Screens')]]) {
++            const button = new St.Button({
++                style_class: 'luma-share-tab',
++                label: text,
++                can_focus: true,
++                accessible_role: Atk.Role.PAGE_TAB,
++            });
++            button.connect('clicked', () => this._setMode(mode));
++            this._tabs.add_child(button);
++            this._tabButtons[mode] = button;
++        }
++    }
++
++    _buildGrid() {
++        this._scroll = new St.ScrollView({
++            style_class: 'luma-share-grid-scroll',
++            hscrollbar_policy: St.PolicyType.NEVER,
++            vscrollbar_policy: St.PolicyType.AUTOMATIC,
++            x_expand: true,
++            y_expand: true,
++        });
++        this._grid = new St.BoxLayout({
++            style_class: 'luma-share-grid',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this._scroll.set_child(this._grid);
++        this._card.add_child(this._scroll);
++
++        this._empty = this._label('luma-share-empty',
++            _('No windows are open. Share a screen instead.'));
++        this._empty.visible = false;
++        this._card.add_child(this._empty);
++    }
++
++    _buildOptions() {
++        this._options = new St.BoxLayout({
++            style_class: 'luma-share-options',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this._card.add_child(this._options);
++
++        // Show pointer maps to the portal's cursor mode. It is offered only
++        // when the request allows a cursor to be in the stream at all.
++        const pointerPossible = Boolean(this._cursorModes &
++            (CursorMode.EMBEDDED | CursorMode.METADATA));
++        this._pointer = new OptionRow(_('Show pointer'),
++            _('Your pointer appears in what they see.'), pointerPossible);
++        this._pointer.visible = pointerPossible;
++        this._options.add_child(this._pointer);
++
++        this._hideNotifications = new OptionRow(_('Hide notifications while sharing'),
++            _('Banners wait until you stop.'), getShare().silenceDefault);
++        this._options.add_child(this._hideNotifications);
++
++        // Only for a RemoteDesktop request that asked for keyboard or pointer.
++        this._control = new OptionRow(
++            /* Translators: %s is an application name. */
++            _('Let %s control this computer').format(this._request.requester.name),
++            _('It can move the pointer and type while you share.'), false);
++        this._control.visible = this._wantsControl;
++        this._options.add_child(this._control);
++    }
++
++    _buildActions() {
++        this._actions = new St.Widget({
++            style_class: 'luma-share-actions',
++            layout_manager: new Clutter.GridLayout({
++                column_homogeneous: true,
++                column_spacing: 10 * stageScale(),
++            }),
++            x_expand: true,
++        });
++        this._card.add_child(this._actions);
++        const grid = this._actions.layout_manager;
++
++        this._cancelButton = new St.Button({
++            style_class: 'luma-share-button luma-share-cancel',
++            label: _('Cancel'),
++            can_focus: true,
++            x_expand: true,
++        });
++        this._cancelButton.connect('clicked', () => this._cancel());
++        grid.attach(this._cancelButton, 0, 0, 1, 1);
++
++        this._shareButton = new St.Button({
++            style_class: 'luma-share-button luma-share-share',
++            label: _('Share'),
++            can_focus: true,
++            x_expand: true,
++            reactive: false,
++        });
++        this._shareButton.add_style_pseudo_class('insensitive');
++        this._shareButton.connect('clicked', () => this._share());
++        grid.attach(this._shareButton, 1, 0, 1, 1);
++    }
++
++    // ── Sources ──────────────────────────────────────────────────────────
++
++    _setMode(mode) {
++        if (this._mode === mode)
++            return;
++        this._mode = mode;
++        for (const [name, button] of Object.entries(this._tabButtons ?? {})) {
++            if (name === mode) {
++                button.add_style_pseudo_class('checked');
++                button.add_accessible_state(Atk.StateType.SELECTED);
++            } else {
++                button.remove_style_pseudo_class('checked');
++                button.remove_accessible_state(Atk.StateType.SELECTED);
++            }
++        }
++        this._fillGrid();
++    }
++
++    _sources() {
++        if (this._mode === 'screens') {
++            return Main.layoutManager.monitors.map((monitor, index) => {
++                const display = this._request.displays?.[index];
++                return {
++                    kind: 'screen',
++                    monitor,
++                    index,
++                    connector: display?.connector ?? `monitor-${index}`,
++                    title: display?.name ?? _('Display %d').format(index + 1),
++                    detail: `${monitor.width} × ${monitor.height}`,
++                };
++            });
++        }
++        const tracker = Shell.WindowTracker.get_default();
++        return shareableWindows().map(window => {
++            const app = tracker.get_window_app(window);
++            return {
++                kind: 'window',
++                window,
++                id: window.get_id(),
++                title: window.get_title() || app?.get_name() || _('Window'),
++                detail: app?.get_name() ?? '',
++            };
++        });
++    }
++
++    _fillGrid() {
++        this._grid.destroy_all_children();
++        this._tiles = [];
++        this._chosen = new Set();
++        this._syncShare();
++
++        const sources = this._sources();
++        const columns = this._mode === 'screens' ? SCREEN_COLUMNS : WINDOW_COLUMNS;
++        this._columns = columns;
++        this._empty.visible = sources.length === 0 && this._mode === 'windows';
++        this._scroll.visible = sources.length > 0;
++        if (sources.length === 0)
++            return;
++
++        const scale = stageScale();
++        const inner = this._innerWidth();
++        const tileWidth = Math.floor((inner - (columns - 1) * COLUMN_GAP * scale) / columns);
++
++        let row = null;
++        sources.forEach((source, index) => {
++            if (index % columns === 0) {
++                row = new St.BoxLayout({
++                    style_class: 'luma-share-row',
++                    x_expand: true,
++                    x_align: Clutter.ActorAlign.START,
++                });
++                this._grid.add_child(row);
++            }
++            const tile = new PreviewTile(source, this._multiple);
++            tile.connect('chosen', () => this._clicked(tile));
++            tile.connect('key-press-event', (actor, event) => this._onTileKey(tile, event));
++            row.add_child(tile);
++            // Sized once it is on the stage: sizing measures the check badge,
++            // and St has no theme node for a widget that is not on the stage.
++            tile.setTileWidth(tileWidth);
++            this._tiles.push(tile);
++        });
++    }
++
++    _innerWidth() {
++        const scale = stageScale();
++        const monitor = Main.layoutManager.monitors[this._monitorConstraint?.index ?? 0] ??
++            Main.layoutManager.primaryMonitor;
++        const width = Math.min(CARD_WIDTH * scale,
++            (monitor?.width ?? CARD_WIDTH * scale) - 2 * SCREEN_INSET * scale);
++        const node = this._card.get_theme_node();
++        return Math.floor(width - node.get_horizontal_padding() -
++            2 * node.get_border_width(St.Side.LEFT));
++    }
++
++    // Selection only. The keyboard comes here too, so nothing here shares:
++    // Space must select and arrows must move the choice, never share.
++    _choose(tile) {
++        if (this._multiple) {
++            tile.setChosen(!tile.chosen);
++        } else {
++            for (const other of this._tiles)
++                other.setChosen(other === tile);
++        }
++        this._syncShare();
++    }
++
++    // A pointer click. Clicking the tile that is already chosen shares it, so
++    // a double-click shares: the first click chooses, the second shares. No
++    // event API is involved, so this cannot silently stop working the way a
++    // button-press override can once St.Button handles clicks as gestures.
++    // With several sources allowed a second click deselects instead, so the
++    // rule applies only to a single choice.
++    _clicked(tile) {
++        const again = !this._multiple && tile.chosen;
++        this._choose(tile);
++        if (again)
++            this._share();
++    }
++
++    get _selection() {
++        return this._tiles.filter(tile => tile.chosen);
++    }
++
++    _syncShare() {
++        const any = this._selection.length > 0;
++        this._shareButton.reactive = any;
++        if (any)
++            this._shareButton.remove_style_pseudo_class('insensitive');
++        else
++            this._shareButton.add_style_pseudo_class('insensitive');
++    }
++
++    // ── Keyboard ─────────────────────────────────────────────────────────
++
++    _onTileKey(tile, event) {
++        const symbol = event.get_key_symbol();
++        const index = this._tiles.indexOf(tile);
++        const columns = this._columns ?? 1;
++        let next = -1;
++        switch (symbol) {
++        case Clutter.KEY_Left:
++        case Clutter.KEY_KP_Left:
++            next = index - 1;
++            break;
++        case Clutter.KEY_Right:
++        case Clutter.KEY_KP_Right:
++            next = index + 1;
++            break;
++        case Clutter.KEY_Up:
++        case Clutter.KEY_KP_Up:
++            next = index - columns;
++            break;
++        case Clutter.KEY_Down:
++        case Clutter.KEY_KP_Down:
++            next = index + columns;
++            break;
++        case Clutter.KEY_space:
++        case Clutter.KEY_KP_Space:
++            this._choose(tile);
++            return Clutter.EVENT_STOP;
++        case Clutter.KEY_Return:
++        case Clutter.KEY_KP_Enter:
++        case Clutter.KEY_ISO_Enter:
++            if (!tile.chosen)
++                this._choose(tile);
++            this._share();
++            return Clutter.EVENT_STOP;
++        default:
++            return Clutter.EVENT_PROPAGATE;
++        }
++        if (next >= 0 && next < this._tiles.length) {
++            this._tiles[next].grab_key_focus();
++            // Arrow keys move the choice, as they do in a radio group.
++            if (!this._multiple)
++                this._choose(this._tiles[next]);
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_key_press_event(event) {
++        const symbol = event.get_key_symbol();
++        if (symbol === Clutter.KEY_Escape) {
++            this._cancel();
++            return Clutter.EVENT_STOP;
++        }
++        if (symbol === Clutter.KEY_Tab && this._tabButtons) {
++            const state = event.get_state();
++            if (state & Clutter.ModifierType.CONTROL_MASK) {
++                this._setMode(this._mode === 'windows' ? 'screens' : 'windows');
++                return Clutter.EVENT_STOP;
++            }
++        }
++        return super.vfunc_key_press_event(event);
++    }
++
++    // ── Answering ────────────────────────────────────────────────────────
++
++    _cancel() {
++        this._answer(PORTAL_CANCELLED, {});
++        this.close(global.get_current_time());
++    }
++
++    _share() {
++        const selection = this._selection;
++        if (selection.length === 0)
++            return;
++        const windows = [];
++        const monitors = [];
++        for (const tile of selection) {
++            if (tile.source.kind === 'window')
++                windows.push(tile.source.id);
++            else
++                monitors.push(tile.source.connector);
++        }
++        let cursorMode = CursorMode.HIDDEN;
++        if (this._pointer.visible && this._pointer.active) {
++            cursorMode = this._cursorModes & CursorMode.EMBEDDED
++                ? CursorMode.EMBEDDED : CursorMode.METADATA;
++        }
++        this._answer(PORTAL_SUCCESS, {
++            'windows': new GLib.Variant('at', windows),
++            'monitors': new GLib.Variant('as', monitors),
++            'cursor-mode': new GLib.Variant('u', cursorMode),
++            'hide-notifications': new GLib.Variant('b', this._hideNotifications.active),
++            'allow-control': new GLib.Variant('b',
++                this._control.visible && this._control.active),
++        });
++        // What was chosen is remembered here so the edge and the pill know
++        // what to mark; nothing is shared until the backend starts a stream.
++        getShare().rememberChoice({
++            requester: this._request.requester,
++            windows: selection.filter(t => t.source.kind === 'window').map(t => t.source.window),
++            monitors: selection.filter(t => t.source.kind === 'screen').map(t => t.source.index),
++            hideNotifications: this._hideNotifications.active,
++        });
++        this.close(global.get_current_time());
++    }
++
++    _answer(response, results) {
++        if (this._answered)
++            return;
++        this._answered = true;
++        this.emit('done', new GLib.Variant('(ua{sv})', [response, results]));
++    }
++
++    // ── Opening and closing ──────────────────────────────────────────────
++
++    _open() {
++        if (!this.open()) {
++            log('could not take the keyboard and pointer; the request is cancelled');
++            this._answer(PORTAL_CANCELLED, {});
++            return;
++        }
++        this._place();
++        this._tiles[0]?.grab_key_focus();
++        this._scrim.ease({
++            opacity: 255,
++            duration: SCRIM_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++        if (reduceMotion()) {
++            this._holder.opacity = 255;
++            return;
++        }
++        this._holder.set({translation_y: 10 * stageScale(), scale_x: 0.985, scale_y: 0.985});
++        this._holder.ease({
++            opacity: 255,
++            duration: CLOSE_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++        this._holder.ease({
++            translation_y: 0, scale_x: 1, scale_y: 1,
++            duration: OPEN_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUINT,
++        });
++    }
++
++    _place() {
++        const monitor = Main.layoutManager.monitors[this._monitorConstraint.index] ??
++            Main.layoutManager.primaryMonitor;
++        if (!monitor)
++            return;
++        const scale = stageScale();
++        const width = Math.min(CARD_WIDTH * scale, monitor.width - 2 * SCREEN_INSET * scale);
++        this._holder.width = width;
++        const [, natural] = this._card.get_preferred_height(width);
++        const available = monitor.height - CARD_MARGIN * scale;
++        this._scroll.vscrollbar_policy = natural > available
++            ? St.PolicyType.AUTOMATIC : St.PolicyType.NEVER;
++        const height = Math.min(natural, available);
++        this._holder.height = height;
++        this._holder.set_position(
++            monitor.x + Math.round((monitor.width - width) / 2),
++            monitor.y + Math.max(SCREEN_INSET * scale, Math.round((monitor.height - height) / 2)));
++        this._balance(this._title, width);
++    }
++
++    // The authentication prompt's balanced title (polkitAgent.js): as many
++    // lines as it needs at full width, each as close to the same length as
++    // the words allow, and centred on the card. Measured with the label's own
++    // height-for-width, so no Pango objects are shared with the text actor.
++    _balance(label, cardWidth) {
++        label.ensure_style();
++        const node = this._card.get_theme_node();
++        const inner = Math.floor(cardWidth - node.get_horizontal_padding() -
++            2 * node.get_border_width(St.Side.LEFT));
++        label.set({width: -1, x_expand: true});
++        const heightAt = width => label.get_preferred_height(width)[1];
++        const [, natural] = label.get_preferred_width(-1);
++        const target = heightAt(inner);
++        let fit = Math.min(inner, natural);
++        if (natural > inner && target > 0) {
++            let low = Math.floor(inner / 2);
++            let high = inner;
++            if (heightAt(low) <= target)
++                high = low;
++            while (high - low > 1) {
++                const mid = Math.floor((low + high) / 2);
++                if (heightAt(mid) > target)
++                    low = mid;
++                else
++                    high = mid;
++            }
++            fit = high;
++        }
++        label.set({width: Math.min(inner, fit + 2), x_expand: false,
++            x_align: Clutter.ActorAlign.CENTER});
++    }
++
++    close(timestamp) {
++        if (this._closing) {
++            super.close(timestamp);
++            return;
++        }
++        this._closing = true;
++        if (this.state === ModalDialog.State.CLOSED) {
++            super.close(timestamp);
++            return;
++        }
++        this.popModal();
++        this.reactive = false;
++        this._card.reactive = false;
++        const finish = () => super.close(timestamp);
++        if (reduceMotion()) {
++            finish();
++            return;
++        }
++        this._scrim.ease({
++            opacity: 0, duration: SCRIM_TIME, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++        this._holder.ease({
++            opacity: 0, scale_x: 0.985, scale_y: 0.985,
++            duration: CLOSE_TIME,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++            onComplete: finish,
++        });
++    }
++});
++
++// ── The sharing edge ───────────────────────────────────────────────────────
++
++// A shared window wears a violet ring that follows it; a shared monitor gets
++// an inset violet edge. Both are CaptureHidden, so they are on the screen and
++// never in the stream.
++//
++// The violet is drawn by a child, never by the CaptureHidden actor itself.
++// Clutter paints an actor's own node first -- which is where St draws a
++// widget's background and border -- and only then calls paint(), which is
++// all CaptureHidden overrides. An edge styled on the outer actor therefore
++// went into every screen stream; styled on a child, it is held back with the
++// rest of the children. tests/gnome-shell/screen-sharing checks the frames
++// the application receives for exactly this.
++function edgeFace(styleClass) {
++    return new St.Widget({style_class: styleClass, x_expand: true, y_expand: true});
++}
++const WindowEdge = GObject.registerClass(
++class WindowEdge extends CaptureHidden {
++    _init(window) {
++        super._init({reactive: false, layout_manager: new Clutter.BinLayout()});
++        this.add_child(edgeFace('luma-share-window-edge'));
++        Shell.util_set_hidden_from_pick(this, true);
++        this._window = window;
++        this._actor = window.get_compositor_private();
++        window.connectObject(
++            'position-changed', () => this._follow(),
++            'size-changed', () => this._follow(),
++            'unmanaged', () => this.destroy(), this);
++        global.window_manager.connectObject('switch-workspace', () => this._follow(), this);
++        this._actor?.connectObject('notify::visible', () => this._follow(), this);
++        this._follow();
++    }
++
++    _follow() {
++        const rect = this._window.get_frame_rect();
++        const scale = stageScale();
++        const halo = 7 * scale;
++        this.set_position(rect.x - halo, rect.y - halo);
++        this.set_size(rect.width + 2 * halo, rect.height + 2 * halo);
++        this.visible = this._window.showing_on_its_workspace() &&
++            !this._window.minimized;
++    }
++});
++
++const ScreenEdge = GObject.registerClass(
++class ScreenEdge extends CaptureHidden {
++    _init(monitorIndex) {
++        super._init({reactive: false, layout_manager: new Clutter.BinLayout()});
++        this.add_child(edgeFace('luma-share-screen-edge'));
++        Shell.util_set_hidden_from_pick(this, true);
++        this._monitorIndex = monitorIndex;
++        this._follow();
++        Main.layoutManager.connectObject('monitors-changed', () => this._follow(), this);
++    }
++
++    _follow() {
++        const monitor = Main.layoutManager.monitors[this._monitorIndex];
++        if (!monitor) {
++            this.visible = false;
++            return;
++        }
++        this.visible = true;
++        this.set_position(monitor.x, monitor.y);
++        this.set_size(monitor.width, monitor.height);
++    }
++});
++
++// ── The Stop pill ──────────────────────────────────────────────────────────
++
++const SharePill = GObject.registerClass({
++    Signals: {'stop': {}},
++}, class SharePill extends ShelfSurface {
++    _init() {
++        super._init('pill', 20, {
++            prefix: 'luma-share',
++            visible: false,
++            reactive: true,
++        });
++        this.surface.set({
++            accessible_role: Atk.Role.STATUSBAR,
++            accessible_name: _('Sharing your screen'),
++        });
++        const row = new St.BoxLayout({
++            style_class: 'luma-share-pill-row',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this.setContent(row);
++        row.add_child(new St.Bin({
++            style_class: 'luma-share-pill-mark',
++            y_align: Clutter.ActorAlign.CENTER,
++            child: new Glyph('screen', {style_class: 'luma-share-pill-mark-glyph'}),
++        }));
++        this._label = new St.Label({
++            style_class: 'luma-share-pill-text',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        row.add_child(this._label);
++        this.stopButton = new St.Button({
++            style_class: 'luma-share-pill-stop',
++            can_focus: true,
++            label: _('Stop'),
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Stop sharing your screen'),
++        });
++        this.stopButton.connect('clicked', () => this.emit('stop'));
++        row.add_child(this.stopButton);
++        this.connect('notify::height', () => this.setRadius(this.height / 2));
++    }
++
++    setText(text) {
++        this._label.text = text;
++        this.surface.accessible_name = text;
++    }
++});
++
++// ── The manager ────────────────────────────────────────────────────────────
++
++let theShare = null;
++
++/** @returns {ShareManager} the session's screen sharing manager. */
++export function getShare() {
++    theShare ??= new ShareManager();
++    return theShare;
++}
++
++// For messageTray, which must not construct one.
++/** @returns {?ShareManager} the manager, if one exists. */
++export function peekShare() {
++    return theShare;
++}
++
++export const ShareManager = GObject.registerClass({
++    Signals: {'privacy-changed': {}, 'sharing-changed': {}},
++}, class ShareManager extends GObject.Object {
++    _init() {
++        super._init();
++        this._picker = null;
++        this._choice = null;
++        this._sessions = new Map();
++        this._edges = [];
++        this._handles = new Set();
++        this._held = [];
++        this._hideId = 0;
++
++        this._dbus = Gio.DBusExportedObject.wrapJSObject(INTERFACE, this);
++        this._dbus.export(Gio.DBus.session, OBJECT_PATH);
++
++        this._pill = new SharePill();
++        this._pill.connect('stop', () => this.stopSharing());
++        Main.layoutManager.addTopChrome(this._pill);
++
++        const controller = global.backend.get_remote_access_controller();
++        controller?.connect('new-handle', (o, handle) => this._onNewHandle(handle));
++    }
++
++    // ── Settings ─────────────────────────────────────────────────────────
++
++    // One setting family with Luma Cast's (ADR-034): the same key decides
++    // whether a shared or cast surface is quiet, so the two never disagree.
++    get silenceDefault() {
++        this._settings ??= (() => {
++            const schema = Gio.SettingsSchemaSource.get_default()
++                ?.lookup('org.projectluma.cast', true);
++            return schema ? new Gio.Settings({settings_schema: schema}) : null;
++        })();
++        return this._settings?.get_boolean('silence-notifications') ?? true;
++    }
++
++    /** @returns {boolean} true while a share is holding banners back. */
++    get silencing() {
++        return this.sharing && [...this._sessions.values()]
++            .some(session => session.hideNotifications);
++    }
++
++    /** @returns {boolean} true while at least one session is sharing. */
++    get sharing() {
++        return this._sessions.size > 0;
++    }
++
++    /** @returns {boolean} true while the pill stands in for the Well's mark. */
++    get pillReplacesWellMark() {
++        return !KEEP_WELL_MARK_WHILE_SHARING && this.sharing;
++    }
++
++    // ── The private interface ────────────────────────────────────────────
++
++    // Only luma-portal may ask. The check is the bus name it owns, so an
++    // ordinary application on the session bus cannot reach the picker even
++    // though the interface is on the session bus.
++    async _callerIsPortal(invocation) {
++        const sender = invocation.get_sender();
++        try {
++            const reply = await Gio.DBus.session.call(
++                'org.freedesktop.DBus', '/org/freedesktop/DBus',
++                'org.freedesktop.DBus', 'GetNameOwner',
++                new GLib.Variant('(s)', [BUS_NAME]), new GLib.VariantType('(s)'),
++                Gio.DBusCallFlags.NONE, -1, null);
++            const [owner] = reply.deepUnpack();
++            return owner === sender;
++        } catch (e) {
++            log(`could not check the caller against ${BUS_NAME}: ${e.message}`);
++            return false;
++        }
++    }
++
++    async ChooseAsync([options], invocation) {
++        if (!await this._callerIsPortal(invocation)) {
++            invocation.return_error_literal(Gio.dbus_error_quark(),
++                Gio.DBusError.ACCESS_DENIED, 'not the Luma portal backend');
++            return;
++        }
++        if (this._picker) {
++            invocation.return_value(new GLib.Variant('(ua{sv})', [PORTAL_CANCELLED, {}]));
++            return;
++        }
++        try {
++            const request = await this._describe(unpackDict(options));
++            const picker = new SharePicker(request);
++            this._picker = picker;
++            picker.connect('done', (o, answer) => {
++                if (this._picker === picker)
++                    this._picker = null;
++                invocation.return_value(answer);
++            });
++        } catch (e) {
++            // A portal backend must always answer: an unanswered call leaves
++            // the application waiting for ever, which looks exactly like the
++            // feature not existing.
++            logError(e, 'Luma Share: could not show the picker');
++            this._picker = null;
++            invocation.return_value(new GLib.Variant('(ua{sv})', [PORTAL_CANCELLED, {}]));
++        }
++    }
++
++    // The application gave up while the picker was on screen. It comes off,
++    // and nothing was chosen.
++    Cancel() {
++        this._picker?.close(global.get_current_time());
++    }
++
++    SessionStarted(handle, info) {
++        const data = unpackDict(info);
++        const choice = this._choice;
++        this._choice = null;
++        const requester = choice?.requester ?? {
++            name: this._resolveName(data['app-id']) ?? _('An app'),
++            icon: this._resolveIcon(data['app-id']),
++        };
++        const windows = choice?.windows ?? this._windowsById(data.windows ?? []);
++        const monitors = choice?.monitors ?? this._monitorsByConnector(data.monitors ?? []);
++        this._sessions.set(handle, {
++            requester,
++            windows,
++            monitors,
++            hideNotifications: choice?.hideNotifications ??
++                (data['hide-notifications'] ?? this.silenceDefault),
++        });
++        log(`sharing ${windows.length} window(s) and ${monitors.length} screen(s) ` +
++            `with ${requester.name} (${handle})`);
++        this._sync();
++    }
++
++    SessionClosed(handle) {
++        if (!this._sessions.delete(handle))
++            return;
++        log(`sharing ended (${handle})`);
++        this._sync();
++    }
++
++    // ── What the picker chose ────────────────────────────────────────────
++
++    rememberChoice(choice) {
++        this._choice = choice;
++    }
++
++    _windowsById(ids) {
++        const wanted = new Set(ids.map(id => String(id)));
++        return shareableWindows().filter(w => wanted.has(String(w.get_id())));
++    }
++
++    _monitorsByConnector(connectors) {
++        const manager = global.backend.get_monitor_manager();
++        return connectors
++            .map(connector => manager.get_monitor_for_connector(connector))
++            .filter(index => index >= 0);
++    }
++
++    // ── Describing the requester ─────────────────────────────────────────
++
++    _resolveApp(appId) {
++        if (!appId)
++            return null;
++        const system = Shell.AppSystem.get_default();
++        return system.lookup_app(`${appId}.desktop`) ?? system.lookup_app(appId) ?? null;
++    }
++
++    _resolveName(appId) {
++        return this._resolveApp(appId)?.get_name() ?? null;
++    }
++
++    _resolveIcon(appId) {
++        return this._resolveApp(appId)?.get_icon() ?? null;
++    }
++
++    async _describe(options) {
++        const appId = options['app-id'] ?? '';
++        const app = this._resolveApp(appId);
++        const name = app?.get_name() ?? _('An app');
++        // A site is named only when the request carries an origin the portal
++        // trusts. Free prose from the application is never drawn.
++        const origin = options['trusted-origin'] ?? '';
++        const seen = origin || name;
++        let displays = [];
++        try {
++            displays = await listDisplays();
++        } catch (e) {
++            logError(e, 'Luma Share: reading displays');
++        }
++        return {
++            requester: {name, icon: app?.get_icon() ?? null, appId},
++            types: options.types ?? 0,
++            multiple: Boolean(options.multiple),
++            cursorModes: options['cursor-modes'] ?? 0,
++            control: Boolean(options.control),
++            displays,
++            bodyText: /* Translators: the first %s is a window or screen, the
++                        second is who will see it. */
++                _('Choose a window or a whole screen. %s will see it until you stop sharing.')
++                    .format(seen),
++        };
++    }
++
++    // ── While sharing ────────────────────────────────────────────────────
++
++    _onNewHandle(handle) {
++        if (handle.is_recording)
++            return;
++        this._handles.add(handle);
++        handle.connect('stopped', () => {
++            this._handles.delete(handle);
++        });
++    }
++
++    /** Stops every stream of every sharing session. */
++    stopSharing() {
++        for (const handle of [...this._handles]) {
++            try {
++                handle.stop();
++            } catch (e) {
++                logError(e, 'Luma Share: stopping a remote access handle');
++            }
++        }
++        // The backend closes the session properly, and tells the application,
++        // when it sees this.
++        for (const handle of this._sessions.keys())
++            this._dbus.emit_signal('StopRequested', new GLib.Variant('(s)', [handle]));
++    }
++
++    _sync() {
++        this._syncEdges();
++        this._syncPill();
++        // The Well's sharing mark stands down while the pill is up.
++        Main.panel?.statusArea?.screenSharing?.syncSharingMark?.();
++        this.emit('sharing-changed');
++        Main.messageTray?.sharePrivacyChanged?.();
++        this.emit('privacy-changed');
++    }
++
++    _syncEdges() {
++        for (const edge of this._edges)
++            edge.destroy();
++        this._edges = [];
++        for (const session of this._sessions.values()) {
++            for (const window of session.windows) {
++                const edge = new WindowEdge(window);
++                global.window_group.add_child(edge);
++                global.window_group.set_child_above_sibling(edge, null);
++                this._edges.push(edge);
++            }
++            for (const index of session.monitors) {
++                const edge = new ScreenEdge(index);
++                // Not reactive and hidden from picking, so under Wayland it
++                // takes no input: the shared screen stays usable beneath it.
++                Main.layoutManager.addTopChrome(edge);
++                this._edges.push(edge);
++            }
++        }
++    }
++
++    _pillText() {
++        const session = [...this._sessions.values()][0];
++        if (!session)
++            return '';
++        const who = session.requester.name;
++        if (session.windows.length === 1 && session.monitors.length === 0) {
++            const app = Shell.WindowTracker.get_default().get_window_app(session.windows[0]);
++            const what = app?.get_name() ?? session.windows[0].get_title();
++            /* Translators: the first %s is what is shared, the second is who sees it. */
++            return _('Sharing %s with %s').format(what, who);
++        }
++        /* Translators: %s is who sees the screen. */
++        return _('Sharing your screen with %s').format(who);
++    }
++
++    _syncPill() {
++        if (this._hideId) {
++            GLib.source_remove(this._hideId);
++            this._hideId = 0;
++        }
++        if (!this.sharing) {
++            this._pill.hide();
++            this._releaseHeld();
++            return;
++        }
++        this._pill.setText(this._pillText());
++        this._pill.show();
++        this._pill.opacity = 0;
++        const [, , width, height] = this._pill.get_preferred_size();
++        const place = placeShelfBar({width, height});
++        if (place)
++            this._pill.set_position(place.x, place.y);
++        this._pill.ease({
++            opacity: 255,
++            duration: reduceMotion() ? 0 : 160,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++        });
++        if (PILL_VISIBLE_MS > 0) {
++            this._hideId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PILL_VISIBLE_MS, () => {
++                this._hideId = 0;
++                this._pill.hide();
++                return GLib.SOURCE_REMOVE;
++            });
++        }
++    }
++
++    // ── Notifications ────────────────────────────────────────────────────
++
++    /**
++     * A banner that arrived while sharing. It is kept and shown once sharing
++     * stops; the notification list collects it either way.
++     *
++     * @param {object} notification the notification to hold
++     */
++    hold(notification) {
++        if (!this._held.includes(notification))
++            this._held.push(notification);
++    }
++
++    _releaseHeld() {
++        const held = this._held;
++        this._held = [];
++        for (const notification of held) {
++            if (notification.acknowledged)
++                continue;
++            Main.messageTray?.showHeldNotification?.(notification);
++        }
++    }
++});
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 3afeb4f..3dee6b6 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -36,6 +36,7 @@ import * as LumaSearch from './lumaSearch.js';
+ import * as LumaDisplayArrival from './lumaDisplayArrival.js';
+ import * as LumaWindowCorners from './lumaWindowCorners.js';
+ import * as LumaWindowWatch from './lumaWindowWatch.js';
++import * as LumaShare from './lumaShare.js';
+ import * as NotificationDaemon from './notificationDaemon.js';
+ import * as WindowAttentionHandler from './windowAttentionHandler.js';
+ import * as Screenshot from './screenshot.js';
+@@ -71,6 +72,7 @@ export let lumaSearch = null;
+ export let lumaDisplayArrival = null;
+ export let lumaWindowCorners = null;
+ export let lumaWindowWatch = null;
++export let lumaShare = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
+ export let welcomeDialog = null;
+@@ -265,6 +267,16 @@ async function _initializeUI() {
+             logError(error, 'Failed to round window corners');
+         }
+     }
++    // The screen sharing picker. It is created here, not on the first
++    // request, because luma-portal calls it over the session bus and the name
++    // has to be there before an application asks to share.
++    if (sessionMode.hasOverview) {
++        try {
++            lumaShare = LumaShare.getShare();
++        } catch (error) {
++            logError(error, 'Failed to initialize the screen sharing picker');
++        }
++    }
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index e851030..064b019 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -13,6 +13,7 @@ import * as MessageList from './messageList.js';
+ import * as SignalTracker from '../misc/signalTracker.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import {peekCast} from './lumaCast.js';
++import {peekShare} from './lumaShare.js';
+ 
+ const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+ 
+@@ -1349,7 +1350,8 @@ export const MessageTray = GObject.registerClass({
+ 
+     _isLimited() {
+         return this._busy || !!this._monitor?.inFullscreen ||
+-            Boolean(peekCast()?.silencing) || this._isCaptured();
++            Boolean(peekCast()?.silencing) || Boolean(peekShare()?.silencing) ||
++            this._isCaptured();
+     }
+ 
+     // Luma Cast: a captured monitor shows no banner at all, critical or not;
+@@ -1374,14 +1376,33 @@ export const MessageTray = GObject.registerClass({
+         this._onFullscreenChanged();
+     }
+ 
++    // Screen sharing started, stopped, or changed whether banners wait.
++    sharePrivacyChanged() {
++        this._onFullscreenChanged();
++    }
++
++    // Luma Share: a banner that waited while the screen was shared arrives
++    // when sharing stops. Casting drops what it silenced, because a receiver
++    // is left running for hours; a share is a conversation that ends, and
++    // what waited is still worth seeing. See lumaShare.js.
++    showHeldNotification(notification) {
++        if (notification.acknowledged || this._notificationQueue.includes(notification))
++            return;
++        notification.lifecycleState = NotificationLifecycleState.QUEUED;
++        this._notificationQueue.push(notification);
++        this._updateState();
++    }
++
+     // Presentation, full-screen play and a busy session collect ordinary
+     // notifications quietly instead of covering the work.
+     _restLimitedCards() {
+         if (!this._isLimited())
+             return;
+         for (const entry of [...this._cards]) {
+-            if (!this._isExempt(entry.notification))
+-                this._restCard(entry, false);
++            if (this._isExempt(entry.notification))
++                continue;
++            peekShare()?.hold(entry.notification);
++            this._restCard(entry, false);
+         }
+     }
+ 
+@@ -1422,6 +1443,9 @@ export const MessageTray = GObject.registerClass({
+                     this._notificationQueue = this._notificationQueue.filter(n => {
+                         if (this._isExempt(n))
+                             return true;
++                        // Sharing is the exception: what waited is held and
++                        // shown once sharing stops.
++                        peekShare()?.hold(n);
+                         n.lifecycleState = NotificationLifecycleState.WAITING;
+                         changed = true;
+                         return false;
+diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
+index 72e3ae5..3ef1085 100644
+--- a/js/ui/status/remoteAccess.js
++++ b/js/ui/status/remoteAccess.js
+@@ -6,6 +6,7 @@ import St from 'gi://St';
+ 
+ import * as Main from '../main.js';
+ import * as PanelMenu from '../panelMenu.js';
++import {peekShare} from '../lumaShare.js';
+ import {SystemIndicator} from '../quickSettings.js';
+ 
+ // Minimum amount of time the shared indicator is visible (in micro seconds)
+@@ -170,6 +171,20 @@ export const ScreenSharingIndicator = GObject.registerClass({
+         this.add_action(this._clickGesture);
+     }
+ 
++    // Luma: while a screen is shared through Luma's picker, the Stop pill
++    // above the shelf is the indicator for that session and this mark stands
++    // down, so the person is not told the same thing twice. Other kinds of
++    // remote access keep it. KEEP_WELL_MARK_WHILE_SHARING in lumaShare.js is
++    // the one line that brings both back.
++    get _standsDown() {
++        return Boolean(peekShare()?.pillReplacesWellMark);
++    }
++
++    // Luma Share calls this when a session starts or ends.
++    syncSharingMark() {
++        this._sync();
++    }
++
+     _onNewHandle(handle) {
+         if (handle.isRecording)
+             return;
+@@ -198,10 +213,12 @@ export const ScreenSharingIndicator = GObject.registerClass({
+             delete this._hideIndicatorId;
+         }
+ 
+-        if (this._handles.size > 0) {
++        if (this._handles.size > 0 && !this._standsDown) {
+             if (!this.visible)
+                 this._visibleTimeUs = GLib.get_monotonic_time();
+             this.show();
++        } else if (this.visible && this._standsDown) {
++            this._hideIndicator();
+         } else if (this.visible) {
+             const currentTimeUs = GLib.get_monotonic_time();
+             const timeSinceVisibleUs = currentTimeUs - this._visibleTimeUs;

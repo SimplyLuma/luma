@@ -1,0 +1,31 @@
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -526,9 +526,6 @@
+         this._stack.add_child(this._clock);
+         this._stack.layout_manager = new PrairieUnlockContentLayout(
+             this._clock, this._promptBox);
+-        // Prairie presents credentials immediately. The clock remains part of
+-        // the composed surface, but there is no curtain state to dismiss.
+-        this._showPrompt();
+ 
+         this.allowCancel = false;
+ 
+@@ -598,6 +595,11 @@
+         this._idleWatchId = this._idleMonitor.add_idle_watch(IDLE_TIMEOUT * 1000, this._escape.bind(this));
+ 
+         this.connect('destroy', this._onDestroy.bind(this));
++
++        // Unmapped actors and disabled animation update the adjustment
++        // synchronously. Initialize transition targets and lifecycle hooks
++        // before starting the credential prompt and its authentication.
++        this._showPrompt();
+     }
+ 
+     vfunc_key_press_event(event) {
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -24,3 +24,4 @@
+ 
+ const CROSSFADE_TIME = 300;
++const FADE_OUT_SCALE = 0.3;
+ const NotificationsBox = GObject.registerClass({

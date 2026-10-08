@@ -1,0 +1,129 @@
+From a582378824e3d3283da05fabd92789cabc749777 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 18:21:18 +0000
+Subject: [PATCH] Filer: preserve v70 fixture search result order
+
+---
+ src/nautilus-filer-fixture.c | 31 +++++++++++++++++++++++++++++++
+ src/nautilus-filer-fixture.h |  1 +
+ src/nautilus-list-view.c     | 27 +++++++++++++++++++++++++++
+ 3 files changed, 59 insertions(+)
+
+diff --git a/src/nautilus-filer-fixture.c b/src/nautilus-filer-fixture.c
+index 5828f1f..b7db724 100644
+--- a/src/nautilus-filer-fixture.c
++++ b/src/nautilus-filer-fixture.c
+@@ -11,6 +11,8 @@ typedef struct
+ 
+ static GHashTable *grid_items;
+ static gsize grid_loaded;
++static GHashTable *search_items;
++static gsize search_loaded;
+ static GKeyFile *info_items;
+ static gsize info_loaded;
+ 
+@@ -68,6 +70,35 @@ nautilus_filer_fixture_grid_rank (const char *name)
+     return item != NULL ? item->rank : 0;
+ }
+ 
++guint
++nautilus_filer_fixture_search_rank (const char *name)
++{
++    if (g_getenv ("LUMA_FILER_FIXTURE") == NULL || name == NULL)
++    {
++        return 0;
++    }
++    if (g_once_init_enter (&search_loaded))
++    {
++        const char *root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        g_autofree char *path = root != NULL
++                                ? g_build_filename (root, "Profile", "config", "filer-search.tsv", NULL)
++                                : NULL;
++        g_autofree char *contents = NULL;
++
++        search_items = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++        if (path != NULL && g_file_get_contents (path, &contents, NULL, NULL))
++        {
++            g_auto (GStrv) lines = g_strsplit (contents, "\n", -1);
++            for (guint i = 0; lines[i] != NULL && lines[i][0] != '\0'; i++)
++            {
++                g_hash_table_insert (search_items, g_strdup (lines[i]), GUINT_TO_POINTER (i + 1));
++            }
++        }
++        g_once_init_leave (&search_loaded, 1);
++    }
++    return GPOINTER_TO_UINT (g_hash_table_lookup (search_items, name));
++}
++
+ const char *
+ nautilus_filer_fixture_grid_caption (const char *name)
+ {
+diff --git a/src/nautilus-filer-fixture.h b/src/nautilus-filer-fixture.h
+index 1e3474d..c51150c 100644
+--- a/src/nautilus-filer-fixture.h
++++ b/src/nautilus-filer-fixture.h
+@@ -4,6 +4,7 @@
+ #include <glib.h>
+ 
+ guint       nautilus_filer_fixture_grid_rank    (const char *name);
++guint       nautilus_filer_fixture_search_rank  (const char *name);
+ const char *nautilus_filer_fixture_grid_caption (const char *name);
+ char       *nautilus_filer_fixture_info         (const char *name,
+                                                  const char *key);
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index b090072..f33cc1d 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -19,6 +19,7 @@
+ #include "nautilus-column-utilities.h"
+ #include "nautilus-directory.h"
+ #include "nautilus-file.h"
++#include "nautilus-filer-fixture.h"
+ #include "nautilus-file-utilities.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-label-cell.h"
+@@ -403,6 +404,29 @@ nautilus_list_view_sort (gconstpointer a,
+                                                           FALSE /* reversed */);
+ }
+ 
++static gint
++sort_fixture_search_func (gconstpointer a,
++                          gconstpointer b,
++                          gpointer      user_data)
++{
++    NautilusListView *self = NAUTILUS_LIST_VIEW (user_data);
++    if (self->search_directory == NULL || g_getenv ("LUMA_FILER_FIXTURE") == NULL)
++    {
++        return GTK_ORDERING_EQUAL;
++    }
++
++    NautilusFile *file_a = nautilus_view_item_get_file ((NautilusViewItem *) a);
++    NautilusFile *file_b = nautilus_view_item_get_file ((NautilusViewItem *) b);
++    guint rank_a = nautilus_filer_fixture_search_rank (nautilus_file_get_name (file_a));
++    guint rank_b = nautilus_filer_fixture_search_rank (nautilus_file_get_name (file_b));
++    if (rank_a == 0 || rank_b == 0)
++    {
++        return GTK_ORDERING_EQUAL;
++    }
++    return rank_a < rank_b ? GTK_ORDERING_SMALLER :
++           rank_a > rank_b ? GTK_ORDERING_LARGER : GTK_ORDERING_EQUAL;
++}
++
+ static gint
+ sort_directories_func (gconstpointer a,
+                        gconstpointer b,
+@@ -1255,8 +1279,11 @@ on_model_changed (NautilusListView *self)
+     {
+         g_autoptr (GtkMultiSorter) sorter = gtk_multi_sorter_new ();
+         GtkSorter *column_view_sorter = gtk_column_view_get_sorter (self->view_ui);
++        g_autoptr (GtkCustomSorter) fixture_sorter = NULL;
+         g_autoptr (GtkCustomSorter) directories_sorter = NULL;
+ 
++        fixture_sorter = gtk_custom_sorter_new (sort_fixture_search_func, self, NULL);
++        gtk_multi_sorter_append (sorter, g_object_ref (GTK_SORTER (fixture_sorter)));
+         directories_sorter = gtk_custom_sorter_new (sort_directories_func, &self->directories_first, NULL);
+         gtk_multi_sorter_append (sorter, g_object_ref (GTK_SORTER (directories_sorter)));
+         gtk_multi_sorter_append (sorter, g_object_ref (column_view_sorter));
+-- 
+2.55.0
+

@@ -1,0 +1,189 @@
+--- a/nautilus.spec
++++ b/nautilus.spec
+@@ -20,7 +20,8 @@
+ 
+ Name:           nautilus
+ Version:        50.2.2
+-Release:        %autorelease
++Release:        1.luma.61.lumaui20260926%{?dist}
++Requires:       prairie-icon-theme >= 0.1.0-1.luma.21
+ Summary:        File manager for GNOME
+ 
+ # Sources are GPL-3.0-or-later and Appdata is CC0-1.0.
+@@ -29,7 +30,125 @@
+ Source0:        https://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
+ # https://pagure.io/fedora-workstation/issue/442
+ Patch:          default-terminal.patch
+-
++Patch1000:      0001-luma-single-global-search-action.patch
++Patch1001:      0002-luma-blank-sidebar-title.patch
++Patch1002:      0003-luma-files-aesthetic-v1.patch
++Patch1003:      0004-luma-filer-identity-and-devices.patch
++Patch1004:      0005-luma-sidebar-divider-contract.patch
++Patch1005:      0006-luma-window-template-types.patch
++Patch1006:      0007-luma-natural-attached-breadcrumb.patch
++Patch1007:      0008-luma-pathbar-natural-measure.patch
++Patch1008:      0009-luma-remove-redundant-tooltips.patch
++Patch1009:      0010-prairie-empty-folder-state.patch
++Patch1010:      0011-luma-title-label-metrics.patch
++Patch1011:      0012-luma-responsive-filer.patch
++Patch1012:      0013-luma-applications-location.patch
++Patch1013:      0014-luma-personal-storage.patch
++Patch1014:      0015-luma-application-installer-drop.patch
++Patch1015:      0016-luma-production-filer.patch
++Patch1016:      0017-nautilus-implement-Atlas-islands-and-native-Columns-.patch
++Patch1017:      0018-nautilus-align-Filer-with-the-running-simulator.patch
++Patch1018:      0019-luma-title-and-native-control-convergence.patch
++Patch1019:      0020-luma-shared-component-boundaries.patch
++Patch1020:      0021-luma-remove-duplicate-title-divider.patch
++Patch1021:      0022-luma-final-island-spacing-and-stroke.patch
++Patch1022:      0023-luma-filer-chrome-and-icons.patch
++Patch1023:      0024-luma-filer-identity-navigation-contrast.patch
++Patch1024:      0025-luma-filer-density-sidebar-and-type.patch
++Patch1025:      0026-luma-filer-toolbar-and-list-refinement.patch
++Patch1026:      0027-luma-filer-history-inset.patch
++Patch1027:      0028-luma-filer-view-picker-glyph-size.patch
++Patch1028:      0029-luma-filer-button-owned-history-frames.patch
++Patch1029:      0030-luma-filer-application-icons-and-location-title.patch
++Patch1030:      0031-luma-native-chooser-islands.patch
++Patch1031:      0032-luma-filer-accent-icons-and-test-link-efficiency.patch
++Patch1032:      0033-luma-native-about-file-dialog.patch
++Patch1033:      0034-luma-consume-shared-navigation.patch
++Patch1034:      0035-luma-leading-chrome-and-native-picker-surfaces.patch
++Patch1035:      0036-luma-report-installer-request-errors.patch
++Patch1036:      0037-luma-native-file-dock-bridge.patch
++Patch1037:      0038-luma-applications-uninstall.patch
++Patch1038:      0039-luma-menu-surface-ownership.patch
++Patch1039:      0040-luma-shared-empty-panes.patch
++Patch1040:      0041-luma-translucent-title-ownership.patch
++Patch1041:      0042-luma-native-picker-chrome.patch
++Patch1042:      0044-luma-initialize-shared-surface.patch
++Patch1043:      0045-luma-root-toolbar-material-ownership.patch
++Patch1044:      0046-luma-portal-application-chooser.patch
++Patch1045:      0047-luma-remember-column-view-zoom.patch
++Patch1046:      0048-luma-live-view-mode-default.patch
++Patch1047:      0049-luma-pin-folder-to-dock.patch
++Patch1048:      0049-luma-quiet-view-switcher.patch
++Patch1049:      0050-luma-drag-a-folder-to-the-dock.patch
++Patch1050:      0051-luma-filer-navigation-polish.patch
++Patch1051:      0052-luma-shared-sidebar-reorder-feedback.patch
++Patch1052:      0053-luma-trash-actions-and-compact-list.patch
++Patch1053:      0054-luma-compact-new-folder-prompt.patch
++Patch1054:      0055-luma-system-notice-controls.patch
++Patch1055:      0056-luma-preserve-sidebar-width.patch
++Patch1056:      0057-lumaui-list-table-header.patch
++Patch1057:      0057-z-lumaui-view-switcher-context.patch
++Patch1058:      0058-lumaui-view-mode-switch.patch
++Patch1059:      0059-lumaui-information-pane.patch
++Patch1060:      0060-lumaui-adaptive-ancestor-columns.patch
++Patch1061:      0061-lumaui-sidebar-and-trail.patch
++Patch1062:      0062-lumaui-location-meta.patch
++Patch1063:      0063-lumaui-isolated-native-fixture.patch
++Patch1064:      0064-lumaui-fixture-containment.patch
++Patch1065:      0065-lumaui-native-conform-states.patch
++Patch1066:      0066-lumaui-conform-fixture-setup.patch
++Patch1067:      0067-lumaui-information-preview.patch
++Patch1068:      0068-lumaui-fixture-size-sort.patch
++Patch1069:      0069-lumaui-grid-fixture-data.patch
++Patch1070:      0070-lumaui-window-title.patch
++Patch1071:      0071-lumaui-columns-information.patch
++Patch1072:      0072-lumaui-columns-fixture-order.patch
++Patch1073:      0073-lumaui-preinitialized-gtk.patch
++Patch1074:      0074-lumaui-grid-fixture-faces.patch
++Patch1075:      0075-lumaui-search-column-headings.patch
++Patch1076:      0076-lumaui-fixture-location-trail.patch
++Patch1077:      0077-lumaui-search-results-rows.patch
++Patch1078:      0078-lumaui-fixture-global-search.patch
++Patch1079:      0079-lumaui-search-result-locations.patch
++Patch1080:      0080-lumaui-grid-tile-scale.patch
++Patch1081:      0081-lumaui-empty-folder-title.patch
++Patch1082:      0082-lumaui-inline-search-snippets.patch
++Patch1083:      0083-filer-search-group-and-snippet-label.patch
++Patch1084:      0084-filer-search-columns-and-fixture-labels.patch
++Patch1085:      0085-filer-phone-grid.patch
++Patch1086:      0086-filer-responsive-list-columns.patch
++Patch1087:      0087-filer-phone-grid-tiles.patch
++Patch1088:      0088-filer-responsive-window-width.patch
++Patch1089:      0089-filer-responsive-width-notify.patch
++Patch1090:      0090-filer-phone-list-and-grid-width.patch
++Patch1091:      0091-filer-phone-faces-and-fixture-sizes.patch
++Patch1092:      0092-filer-grid-art-badges.patch
++Patch1093:      0093-filer-document-app-icons.patch
++Patch1094:      0094-filer-play-and-write-art.patch
++Patch1095:      0095-filer-fixture-unselected-states.patch
++Patch1096:      0096-filer-search-list-results.patch
++Patch1097:      0097-filer-native-content-island.patch
++Patch1098:      0098-filer-search-result-row-rhythm.patch
++Patch1099:      0099-filer-clear-loaded-search-selection.patch
++Patch1100:      0100-filer-search-results-unselected.patch
++Patch1101:      0101-filer-video-play-icon.patch
++Patch1102:      0102-filer-pdf-viewer-artwork.patch
++Patch1103:      0103-filer-ogg-document-tile.patch
++Patch1104:      0104-filer-search-result-order.patch
++Patch1105:      0105-filer-transitive-search-order.patch
++Patch1106:      0106-filer-test-empty-folder-titled-by-location.patch
++
++BuildRequires:  luma-ui-reorder-feedback >= 1
++Requires:       luma-ui-reorder-feedback >= 1
++Requires:       luma-application-installer >= 0.1.0-1.luma.20.preview20260906.1
++
++BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.80~lumaui.20260926.1
++Requires:       luma-developer-platform >= 0.1.0-1.luma.80~lumaui.20260926.1
++BuildRequires:  google-figtree-fonts
++BuildRequires:  xorg-x11-server-Xvfb
++# Column choices persist through GVfs metadata; without it %check reads defaults.
++BuildRequires:  gvfs
++BuildRequires:  dbus-daemon
+ BuildRequires:  desktop-file-utils
+ BuildRequires:  gcc
+ BuildRequires:  gettext
+@@ -74,6 +193,7 @@
+ # don't depend on soname, rather on exact version
+ Requires:       %{name}-extensions%{_isa} = %{version}-%{release}
+ # For the org.freedesktop.Tracker3.Miner.Files GSettings schema
++Requires:       libadwaita >= 1.9.3-1.luma.41.preview20260905
+ Requires:       localsearch
+ 
+ Recommends:     glycin-thumbnailer%{_isa}
+@@ -117,12 +237,25 @@
+ 
+ %build
+ %meson \
++  -Dtests=all \
++  -Dc_link_args="%{build_ldflags} %{build_cflags} -flto=2" \
+   -Ddocs=true \
+   -Dextensions=true \
+   -Dintrospection=true \
+   -Dselinux=true \
+   -Dcloudproviders=%{?with_cloudproviders:true}%{?!with_cloudproviders:false}
+   %{nil}
++# Blueprint declares a directory target; regenerate its inputs explicitly so
++# incremental source builds cannot package stale UI resources.
++generated_ui=$(mktemp -d)
++blueprint-compiler batch-compile --minify "$generated_ui" src/resources src/resources/ui/*.blp
++for ui in "$generated_ui"/ui/*.ui; do
++  target="%{_vpath_builddir}/src/resources/ui/${ui##*/}"
++  if ! cmp -s "$ui" "$target"; then
++    install -D -m 0644 "$ui" "$target"
++  fi
++done
++rm -rf "$generated_ui"
+ %meson_build
+ 
+ %install
+@@ -131,9 +264,15 @@
+ %find_lang %{name}
+ 
+ %check
++filer_test_root=$(mktemp -d)
++mkdir -p "$filer_test_root/config" "$filer_test_root/data" "$filer_test_root/cache" "$filer_test_root/runtime"
++chmod 0700 "$filer_test_root/runtime"
++XDG_RUNTIME_DIR="$filer_test_root/runtime" XDG_CONFIG_HOME="$filer_test_root/config" XDG_DATA_HOME="$filer_test_root/data" XDG_CACHE_HOME="$filer_test_root/cache" GSK_RENDERER=cairo GIO_USE_VOLUME_MONITOR=unix xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs test-properties-about test-filename-common-prefix test-filename-utilities test-luma-empty-picker test-portal-file-chooser test-luma-column-view-zoom test-luma-column-header-menu
++rm -rf "$filer_test_root"
+ desktop-file-validate $RPM_BUILD_ROOT%{_datadir}/applications/*.desktop
+ 
+ %files  -f %{name}.lang
++%license LUCIDE-LICENSE
+ %doc NEWS README.md
+ %license LICENSE
+ %{_datadir}/applications/*

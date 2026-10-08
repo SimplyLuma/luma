@@ -1,0 +1,105 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] iio: imu: inv_icm42600: add ICM-42630 identity
+
+The Fairphone 6 identifies its SPI IMU as ICM-42630 and returns 0x0c from
+WHO_AM_I.  Describing it as an ICM-42631 fallback makes the data path work,
+but SPI modalias generation uses only the first compatible string.  The
+driver consequently never autoloads for spi:icm42630 and also reports the
+wrong silicon identity after a manual load.
+
+Add the exact ICM-42630 identity to the binding, core hardware table, and
+both bus match tables.  It uses the existing ICM-42600-family default
+configuration, which is the path physically exercised on the FP6.
+---
+ .../bindings/iio/imu/invensense,icm42600.yaml      |  1 +
+ drivers/iio/imu/inv_icm42600/inv_icm42600.h       |  2 ++
+ drivers/iio/imu/inv_icm42600/inv_icm42600_core.c  |  5 +++++
+ drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c   |  4 ++++
+ drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c   |  4 ++++
+ 5 files changed, 16 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/iio/imu/invensense,icm42600.yaml b/Documentation/devicetree/bindings/iio/imu/invensense,icm42600.yaml
+--- a/Documentation/devicetree/bindings/iio/imu/invensense,icm42600.yaml
++++ b/Documentation/devicetree/bindings/iio/imu/invensense,icm42600.yaml
+@@ -34,5 +34,6 @@ properties:
+       - invensense,icm42605
+       - invensense,icm42622
++      - invensense,icm42630
+       - invensense,icm42631
+       - invensense,icm42686
+       - invensense,icm42688
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600.h b/drivers/iio/imu/inv_icm42600/inv_icm42600.h
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600.h
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600.h
+@@ -24,6 +24,7 @@ enum inv_icm42600_chip {
+ 	INV_CHIP_ICM42686,
+ 	INV_CHIP_ICM42622,
+ 	INV_CHIP_ICM42688,
++	INV_CHIP_ICM42630,
+ 	INV_CHIP_ICM42631,
+ 	INV_CHIP_NB,
+ };
+@@ -381,5 +382,6 @@ enum inv_icm42600_sensor_mode {
+ #define INV_ICM42600_WHOAMI_ICM42622			0x46
+ #define INV_ICM42600_WHOAMI_ICM42688			0x47
++#define INV_ICM42600_WHOAMI_ICM42630			0x0C
+ #define INV_ICM42600_WHOAMI_ICM42631			0x5C
+ 
+ /* User bank 1 (MSB 0x10) */
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c b/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600_core.c
+@@ -172,6 +172,11 @@ static const struct inv_icm42600_hw inv_icm42600_hw[INV_CHIP_NB] = {
+ 		.name = "icm42688",
+ 		.conf = &inv_icm42600_default_conf,
+ 	},
++	[INV_CHIP_ICM42630] = {
++		.whoami = INV_ICM42600_WHOAMI_ICM42630,
++		.name = "icm42630",
++		.conf = &inv_icm42600_default_conf,
++	},
+ 	[INV_CHIP_ICM42631] = {
+ 		.whoami = INV_ICM42600_WHOAMI_ICM42631,
+ 		.name = "icm42631",
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c b/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600_i2c.c
+@@ -80,5 +80,6 @@ static const struct i2c_device_id inv_icm42600_id[] = {
+ 	{ "icm42605", INV_CHIP_ICM42605 },
+ 	{ "icm42622", INV_CHIP_ICM42622 },
++	{ "icm42630", INV_CHIP_ICM42630 },
+ 	{ "icm42631", INV_CHIP_ICM42631 },
+ 	{ "icm42686", INV_CHIP_ICM42686 },
+ 	{ "icm42688", INV_CHIP_ICM42688 },
+@@ -101,6 +102,9 @@ static const struct of_device_id inv_icm42600_of_matches[] = {
+ 		.compatible = "invensense,icm42622",
+ 		.data = (void *)INV_CHIP_ICM42622,
+ 	}, {
++		.compatible = "invensense,icm42630",
++		.data = (void *)INV_CHIP_ICM42630,
++	}, {
+ 		.compatible = "invensense,icm42631",
+ 		.data = (void *)INV_CHIP_ICM42631,
+ 	}, {
+diff --git a/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c b/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c
+--- a/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c
++++ b/drivers/iio/imu/inv_icm42600/inv_icm42600_spi.c
+@@ -77,5 +77,6 @@ static const struct spi_device_id inv_icm42600_id[] = {
+ 	{ "icm42605", INV_CHIP_ICM42605 },
+ 	{ "icm42622", INV_CHIP_ICM42622 },
++	{ "icm42630", INV_CHIP_ICM42630 },
+ 	{ "icm42631", INV_CHIP_ICM42631 },
+ 	{ "icm42686", INV_CHIP_ICM42686 },
+ 	{ "icm42688", INV_CHIP_ICM42688 },
+@@ -98,6 +99,9 @@ static const struct of_device_id inv_icm42600_of_matches[] = {
+ 		.compatible = "invensense,icm42622",
+ 		.data = (void *)INV_CHIP_ICM42622,
+ 	}, {
++		.compatible = "invensense,icm42630",
++		.data = (void *)INV_CHIP_ICM42630,
++	}, {
+ 		.compatible = "invensense,icm42631",
+ 		.data = (void *)INV_CHIP_ICM42631,
+ 	}, {
+-- 
+2.51.0

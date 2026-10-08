@@ -1,0 +1,101 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] simple: ipa: tune settling independently for local autofocus
+
+Small local refocus movements do not need the same settling delay as the
+initial coarse traversal.  Make the local delay independently tunable while
+retaining the conservative full-sweep default.  This reduces touch-refocus
+latency without increasing movement at the actuator end stops.
+
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -44,7 +44,8 @@ private:
+ 	double fineStepMin_;
+ 	double localRadius_;
+ 	double focusLossThreshold_;
+ 	uint32_t settleSkip_;
++	uint32_t localSettleSkip_;
+ 	uint32_t focusLossFrames_;
+ 	uint32_t refocusCooldownFrames_;
+ 	uint32_t refocusCooldown_;
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -32,18 +32,20 @@ namespace {
+ constexpr double kDefaultLocalRadius = 12.0;
+ constexpr double kDefaultFocusLossThreshold = 0.30;
+ constexpr uint32_t kDefaultSettleSkip = 3;
++constexpr uint32_t kDefaultLocalSettleSkip = 2;
+ constexpr uint32_t kDefaultFocusLossFrames = 8;
+ constexpr uint32_t kDefaultRefocusCooldownFrames = 24;
+ 
+ } /* namespace */
+ 
+ Af::Af()
+ 	: steps_(0), sweepStart_(kDefaultSweepStart),
+ 	  sweepStop_(kDefaultSweepStop), coarseStep_(kDefaultCoarseStep),
+ 	  stepDivisor_(kDefaultStepDivisor), fineStepMin_(kDefaultFineStepMin),
+ 	  localRadius_(kDefaultLocalRadius),
+ 	  focusLossThreshold_(kDefaultFocusLossThreshold),
+ 	  settleSkip_(kDefaultSettleSkip),
++	  localSettleSkip_(kDefaultLocalSettleSkip),
+ 	  focusLossFrames_(kDefaultFocusLossFrames),
+ 	  refocusCooldownFrames_(kDefaultRefocusCooldownFrames),
+ 	  refocusCooldown_(0), defaultContinuous_(false), localSweep_(false)
+@@ -61,7 +63,9 @@ int Af::init(IPAContext &context,
+ 	localRadius_ = tuningData["localRadius"].get<double>(kDefaultLocalRadius);
+ 	focusLossThreshold_ = tuningData["focusLossThreshold"].get<double>(
+ 		kDefaultFocusLossThreshold);
+ 	settleSkip_ = tuningData["settleFrames"].get<uint32_t>(kDefaultSettleSkip);
++	localSettleSkip_ = tuningData["localSettleFrames"].get<uint32_t>(
++		kDefaultLocalSettleSkip);
+ 	focusLossFrames_ = tuningData["focusLossFrames"].get<uint32_t>(
+ 		kDefaultFocusLossFrames);
+ 	refocusCooldownFrames_ = tuningData["refocusCooldownFrames"].get<uint32_t>(
+@@ -71,9 +75,10 @@ int Af::init(IPAContext &context,
+ 	if (sweepStart_ < 0.0 || sweepStop_ > 100.0 ||
+ 	    sweepStart_ >= sweepStop_ || coarseStep_ <= 0.0 ||
+ 	    coarseStep_ >= sweepStop_ - sweepStart_ || stepDivisor_ <= 1.0 ||
+ 	    fineStepMin_ <= 0.0 || localRadius_ < coarseStep_ ||
+ 	    focusLossThreshold_ <= 0.0 || focusLossThreshold_ >= 1.0 ||
+-	    settleSkip_ == 0 || focusLossFrames_ == 0) {
++	    settleSkip_ == 0 || localSettleSkip_ == 0 ||
++	    localSettleSkip_ > settleSkip_ || focusLossFrames_ == 0) {
+ 		LOG(IPASoftAutoFocus, Error) << "Invalid autofocus tuning";
+ 		return -EINVAL;
+ 	}
+@@ -91,5 +96,6 @@ int Af::init(IPAContext &context,
+ 	LOG(IPASoftAutoFocus, Info)
+ 		<< "AF tuning range " << sweepStart_ << "-" << sweepStop_
+ 		<< ", coarse " << coarseStep_ << ", settle " << settleSkip_
++		<< ", local settle " << localSettleSkip_
+ 		<< ", local radius " << localRadius_
+ 		<< ", continuous " << defaultContinuous_;
+@@ -184,8 +190,8 @@ void Af::restart(IPAContext &context, bool local)
+ 	focus.stop = local ? std::min(sweepStop_, current + localRadius_)
+ 			   : sweepStop_;
+ 	focus.step = local ? std::max(fineStepMin_, coarseStep_ / 2.0)
+ 			   : coarseStep_;
+-	focus.skip = settleSkip_;
++	focus.skip = local ? localSettleSkip_ : settleSkip_;
+ 	focus.settled = false;
+ 	focus.lossCount = 0;
+ 	context.activeState.knobs.focus_pos = focus.start;
+@@ -252,8 +258,8 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ 	const double next = focus_pos + focus.step;
+ 	if (next <= focus.stop) {
+ 		focus_pos = next;
+ 		/* Do not measure another frame until this move has settled. */
+-		focus.skip = settleSkip_;
++		focus.skip = localSweep_ ? localSettleSkip_ : settleSkip_;
+ 		return;
+ 	}
+ 
+@@ -269,7 +275,7 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ 		<< focus.sharpness_max << "), next range " << focus.start
+ 		<< ".." << focus.stop;
+ 	focus_pos = focus.start;
+ 	focus.step /= stepDivisor_;
+-	focus.skip = settleSkip_;
++	focus.skip = localSweep_ ? localSettleSkip_ : settleSkip_;
+ 
+ 	if (focus.step >= fineStepMin_) {
+ 		/* Look for the maximum again at the finer step. */

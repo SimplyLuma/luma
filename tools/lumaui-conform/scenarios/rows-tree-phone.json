@@ -1,0 +1,53 @@
+{
+  "app": "rows-tree-phone",
+  "title": "SB1 tree rows in the phone places drawer (vs Notes' sidebar drawer)",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=notes",
+    "window": "#n-side",
+    "exclude": [
+      "#n-side .sfoot"
+    ],
+    "exclude_note": "The sidebar foot is F2's SidebarFoot, not a rows part.",
+    "accent_note": "The Studio tints its light mode with the wallpaper's hue (168); the kit's tokens are the default accent (258), so the spec is pinned to it."
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "tests/fixtures/contacts-v70"
+    ],
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "notes-drawer",
+      "LUMAUI_ROWS_PHOTOS": "{run}/fixtures/contacts-v70"
+    }
+  },
+  "states": [
+    {
+      "name": "drawer",
+      "about": "Notes at phone width with its sidebar open",
+      "spec": [
+        {
+          "eval": "document.body.style.setProperty('--acc', '258')"
+        },
+        {
+          "click": "#w-notes [data-lside]"
+        }
+      ],
+      "gtk": []
+    }
+  ],
+  "phone_states": [
+    "drawer"
+  ],
+  "groups": [
+    {
+      "name": "tree",
+      "spec": "#n-side"
+    }
+  ],
+  "pairs_note": "No structure pair: the surface fills its window, so the window's own frame paint would be read as the sidebar's.",
+  "phone_note": "Run with --phone only. The spec's window is the drawer card itself, so the GTK surface is SidebarToggle's card filling its window."
+}

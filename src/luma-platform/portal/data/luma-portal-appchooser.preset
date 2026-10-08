@@ -1,0 +1,2 @@
+# The backend is D-Bus activated on demand; it is not a session service.
+disable luma-portal-appchooser.service

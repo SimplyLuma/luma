@@ -1,0 +1,16 @@
+{
+  "opening": {"place": null, "directions": false, "mode": "drive", "navigation": null, "layer": "map", "view": {"x": 1100, "y": 740, "zoom": 0.78}, "query": ""},
+  "places": [
+    {"id": "studio", "name": "Luma Studio", "icon": "building", "category": "Workplace", "x": 760, "y": 900, "address": "118 Alameda Ave, Studio 4", "favourite": "Studio", "hours": "Your workplace", "image": "life-work-suite.webp"},
+    {"id": "loft", "name": "The Loft", "icon": "building", "category": "Event space", "x": 1440, "y": 430, "address": "2201 Broadway", "favourite": "Loft", "rating": 4.8, "hours": "Launch night, Oct 1 · 6 to 10 PM", "image": "life-professionals-loft.webp"},
+    {"id": "home", "name": "Home", "icon": "house", "category": "Home", "x": 1720, "y": 1080, "address": "3410 Lakeshore Ave", "favourite": "Home", "hours": "", "image": "life-hero-home.webp"},
+    {"id": "duende", "name": "Duende", "icon": "utensils", "category": "Spanish restaurant", "x": 1150, "y": 560, "address": "468 19th St", "rating": 4.6, "price": "$$$", "hours": "Open until 11 PM", "image": "life-sync-terrace.webp"},
+    {"id": "door", "name": "Blue Door Coffee", "icon": "coffee", "category": "Coffee", "x": 980, "y": 760, "address": "1520 Franklin St", "rating": 4.7, "price": "$", "hours": "Open until 6 PM", "image": "life-hero-studio.webp"},
+    {"id": "books", "name": "Paper Lantern Books", "icon": "book", "category": "Bookstore", "x": 1320, "y": 820, "address": "1911 Telegraph Ave", "rating": 4.9, "price": "$$", "hours": "Closes at 8 PM", "image": "life-hero-writing.webp"},
+    {"id": "park", "name": "Lakeside Park", "icon": "tree-pine", "category": "Park", "x": 1580, "y": 700, "address": "666 Bellevue Ave", "rating": 4.8, "hours": "Open 24 hours", "image": "life-footer.webp"}
+  ],
+  "recent_ids": ["duende", "door", "books"],
+  "route": {"drive": {"minutes": 9, "distance": "2.4 mi", "via": "via Broadway"}, "transit": {"minutes": 14, "distance": "1 transfer", "via": "Line 6, then walk 4 min"}, "walk": {"minutes": 38, "distance": "1.9 mi", "via": "via Franklin St"}, "bike": {"minutes": 13, "distance": "2.1 mi", "via": "Mostly bike lanes"}},
+  "route_points": [[760, 900], [760, 820], [980, 820], [980, 640], [1180, 640], [1180, 500], [1440, 500], [1440, 430]],
+  "steps": [["arrow-up", "Head north on Alameda Ave", "0.2 mi"], ["corner-up-right", "Turn right onto 12th St", "0.5 mi"], ["corner-up-left", "Turn left onto Franklin St", "0.6 mi"], ["corner-up-right", "Turn right onto 20th St", "0.4 mi"], ["corner-up-left", "Turn left onto Broadway", "0.5 mi"], ["map-pin", "The Loft is on your right", ""]]
+}

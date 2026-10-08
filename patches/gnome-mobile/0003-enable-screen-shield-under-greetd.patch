@@ -1,0 +1,33 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Enable ScreenShield for the explicit greetd mobile session
+
+GNOME Shell normally treats a sufficiently new GDM service as the capability
+probe for ScreenShield. The isolated FP6 bake-off deliberately keeps greetd
+as its rollback-capable session launcher, while GNOME Mobile's power manager
+requires a non-null ScreenShield.
+
+Allow the launcher to opt this one session into ScreenShield without changing
+the behavior of ordinary desktop or non-Luma sessions.
+---
+ js/ui/main.js | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 554316e..2312ad1 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -247,7 +247,11 @@ async function _initializeUI() {
+     magnifier = new Magnifier.Magnifier();
+     locatePointer = new LocatePointer.LocatePointer();
+ 
+-    if (LoginManager.canLock())
++    // GNOME Shell normally uses GDM presence as the lock-screen capability
++    // probe. The isolated FP6 bake-off is intentionally launched by greetd,
++    // but its mobile power manager still requires ScreenShield. Enable the
++    // shield only for the explicitly marked greetd candidate session.
++    if (LoginManager.canLock() || GLib.getenv('LUMA_GREETD_SESSION') === '1')
+         screenShield = new ScreenShield.ScreenShield();
+ 
+     inputMethod = new InputMethod.InputMethod();
+-- 
+2.51.0

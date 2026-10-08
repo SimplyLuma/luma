@@ -1,0 +1,100 @@
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -276,6 +276,7 @@
+     }
+ 
+     _setFullView(enabled) {
++        if (enabled) this._embed.set_size_request(-1, -1);
+         if (this._fullButton) {
+             this._fullButton.set_image(Gtk.Image.new_from_icon_name(
+                 enabled ? 'view-restore-symbolic' : 'view-fullscreen-symbolic', Gtk.IconSize.MENU));
+@@ -298,7 +299,8 @@
+         } else {
+             this.unmaximize();
+             this.set_resizable(false);
+-            if (this._restoreSize) this.resize(...this._restoreSize);
++            this._lastWindowSize = [0, 0];
++            this._resizeWindow();
+         }
+     }
+ 
+@@ -317,35 +319,11 @@
+     }
+ 
+     _getMaxSize() {
+-        let gdkWin = this.get_window();
+-        let display = this.get_display();
+-        let underWayland = Sushi.running_under_wayland(display);
+-        let monitor = display.get_monitor_at_window(gdkWin);
+-        let geometry = monitor.get_geometry();
+-
+-        // Scale our maximum with the actual monitor geometry
+-        let scaleW = 1.0;
+-        let scaleH = 1.0;
+-
+-        // FIXME: We can only trust GTK >= 3.24.9 to report the right
+-        // monitor geometry under Wayland when fractional scaling is enabled.
+-        // Disable the scaling logic for older GTK versions.
+-        // See https://gitlab.gnome.org/GNOME/gtk/issues/1828
+-        let versionCheck = Gtk.check_version(3, 24, 9);
+-        if (!versionCheck) {
+-            scaleW = (geometry.width / WINDOW_MAX_W_BASE);
+-            scaleH = (geometry.height / WINDOW_MAX_H_BASE);
+-        }
+-
+-        // reduce by scale factor only under Wayland, otherwise
+-        // X11 HiDPI windows are shown too small -- Issue #91
+-        if (underWayland) {
+-            scaleW = scaleW / this.get_scale_factor ();
+-            scaleH = scaleH / this.get_scale_factor ();
+-        }
+-
+-        return [Math.floor(scaleW * WINDOW_MAX_W),
+-                Math.floor(scaleH * WINDOW_MAX_H)];
++        const display = this.get_display();
++        const monitor = display.get_monitor_at_window(this.get_window());
++        const area = monitor.get_workarea();
++        return [Math.min(1080, Math.floor((area.width - 28) * 0.74)),
++                Math.min(800, Math.floor((area.height - 26) * 0.88) - 50)];
+     }
+ 
+     _resizeWindow() {
+@@ -356,6 +334,15 @@
+             return;
+ 
+         let maxSize = this._getMaxSize();
++        const mime = this._fileInfo?.get_content_type() || '';
++        const profile = mime === 'text/html' ? [820, 600] :
++            ['text/markdown', 'text/x-markdown'].includes(mime) ? [720, 600] :
++            mime === 'text/plain' ? [680, 520] :
++            mime.startsWith('text/') ? [720, 520] :
++            mime.startsWith('audio/') ? [460, 176] :
++            mime === 'inode/directory' ? [480, 500] :
++            mime === 'application/pdf' ? [640, maxSize[1]] : null;
++        if (profile) maxSize = maxSize.map((limit, index) => Math.min(limit, profile[index]));
+         let rendererSize = [this._renderer.get_preferred_width(), this._renderer.get_preferred_height()];
+         let natSize = [rendererSize[0][1], rendererSize[1][1]];
+         let windowSize;
+@@ -373,7 +360,10 @@
+         if ((windowSize[0] > 0 && windowSize[0] != this._lastWindowSize[0]) ||
+             (windowSize[1] > 0 && windowSize[1] != this._lastWindowSize[1])) {
+             this._lastWindowSize = windowSize;
+-            this.resize(windowSize[0], windowSize[1]);
++            // GTK ignores resize() for a non-resizable window without a content
++            // request. Keep the pane sized while preserving disabled edge grips.
++            this._embed.set_size_request(windowSize[0], windowSize[1]);
++            this.resize(windowSize[0], windowSize[1] + 50);
+         }
+     }
+ 
+--- a/src/viewers/html.js
++++ b/src/viewers/html.js
+@@ -42,7 +42,7 @@
+         super._init({transition_type: Gtk.StackTransitionType.NONE});
+         this._cancel = new Gio.Cancellable();
+         this._markdown = info.get_content_type() !== 'text/html';
+-        this.viewSwitch = new Gtk.Box({spacing: 0});
++        this.viewSwitch = new Gtk.Box({spacing: 0, valign: Gtk.Align.CENTER});
+         this.viewSwitch.get_accessible().set_name('Show as');
+         this.viewSwitch.get_style_context().add_class('linked');
+         const rendered = new Gtk.ToggleButton({label: this._markdown ? 'Preview' : 'Page', active: true});

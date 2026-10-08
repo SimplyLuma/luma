@@ -1,0 +1,39 @@
+From a200201bd96c6cafc5029f8043db8eb5825c7444 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 03:56:38 +0000
+Subject: [PATCH] Filer selected photo thumbnail
+
+---
+ src/nautilus-window.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index d7bdd76..83cafdd 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -892,6 +892,22 @@ update_action_center (NautilusWindow *window)
+         g_autoptr (GdkPaintable) preview = nautilus_file_get_icon_paintable (
+             file, 42, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
+             NAUTILUS_FILE_ICON_FLAGS_USE_THUMBNAILS);
++        const char *mime = nautilus_file_get_mime_type (file);
++        if (mime != NULL && g_str_has_prefix (mime, "image/"))
++        {
++            g_autoptr (GFile) image = nautilus_file_get_location (file);
++            g_autofree char *path = image != NULL ? g_file_get_path (image) : NULL;
++            if (path != NULL)
++            {
++                g_autoptr (GdkPixbuf) scaled =
++                    gdk_pixbuf_new_from_file_at_scale (path, 42, 28, TRUE, NULL);
++                if (scaled != NULL)
++                {
++                    g_clear_object (&preview);
++                    preview = GDK_PAINTABLE (gdk_texture_new_for_pixbuf (scaled));
++                }
++            }
++        }
+         if (preview != NULL)
+             luma_bar_item_chip_set_paintable (items[0], preview);
+         g_signal_connect (items[3], "activated", G_CALLBACK (on_bar_share), window);
+-- 
+2.55.0
+

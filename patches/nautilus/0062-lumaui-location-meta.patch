@@ -1,0 +1,104 @@
+From 3a755d563d1b272a1b994b4299187f3ed7115078 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:06:49 +0000
+Subject: [PATCH] Filer: show location ancestry and item count in trail
+
+---
+ src/nautilus-window.c | 53 +++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 53 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 250a220..3c91812 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -49,6 +49,7 @@
+ #include "nautilus-bookmark-list.h"
+ #include "nautilus-clipboard.h"
+ #include "nautilus-dnd.h"
++#include "nautilus-directory.h"
+ #include "nautilus-enums.h"
+ #include "nautilus-file.h"
+ #include "nautilus-file-operations.h"
+@@ -323,6 +324,14 @@ update_location_trail (NautilusWindow *window)
+     g_autoptr (GFile) home = g_file_new_for_path (g_get_home_dir ());
+     g_autofree char *parent_name = parent != NULL
+                                    ? g_file_get_basename (parent) : NULL;
++    g_autofree char *relative = parent != NULL
++                                ? g_file_get_relative_path (home, parent) : NULL;
++    g_autofree char *path_meta = NULL;
++    g_autoptr (NautilusFile) directory = location != NULL
++                                         ? nautilus_file_get (location) : NULL;
++    g_autoptr (NautilusDirectory) listing = location != NULL
++                                             ? nautilus_directory_get (location) : NULL;
++    guint count;
+     const char *title = window->active_slot != NULL
+                         ? nautilus_window_slot_get_title (window->active_slot) : _("Files");
+ 
+@@ -333,6 +342,37 @@ update_location_trail (NautilusWindow *window)
+     }
+     luma_navigation_trail_bar_set_place (window->location_trail,
+                                           parent_name, title != NULL ? title : _("Files"));
++    luma_navigation_trail_bar_clear_meta (window->location_trail);
++    if (relative != NULL && *relative != '\0')
++    {
++        g_auto (GStrv) components = g_strsplit (relative, G_DIR_SEPARATOR_S, -1);
++        g_autofree char *joined = g_strjoinv (" › ", components);
++        path_meta = g_strdup_printf (_("Home › %s"), joined);
++    }
++    else if (parent != NULL && g_file_equal (parent, home))
++    {
++        path_meta = g_strdup (_("Home"));
++    }
++    else if (parent_name != NULL)
++    {
++        path_meta = g_strdup (parent_name);
++    }
++    if (path_meta != NULL)
++    {
++        luma_navigation_trail_bar_add_meta (window->location_trail, path_meta, NULL);
++    }
++    if (listing != NULL && nautilus_directory_are_all_files_seen (listing))
++    {
++        g_autolist (NautilusFile) files = nautilus_directory_get_file_list (listing);
++        count = g_list_length (files);
++    }
++    else if (directory == NULL ||
++             !nautilus_file_get_directory_item_count (directory, &count, NULL))
++    {
++        return;
++    }
++    g_autofree char *count_meta = g_strdup_printf (ngettext ("%u item", "%u items", count), count);
++    luma_navigation_trail_bar_add_meta (window->location_trail, count_meta, NULL);
+ }
+ 
+ static void
+@@ -460,6 +500,17 @@ on_slot_title_changed (NautilusWindowSlot *slot,
+     }
+ }
+ 
++static void
++on_slot_loading_changed (NautilusWindowSlot *slot,
++                         GParamSpec        *pspec,
++                         NautilusWindow    *window)
++{
++    if (window->active_slot == slot && !nautilus_window_slot_get_loading (slot))
++    {
++        update_location_trail (window);
++    }
++}
++
+ static void
+ on_slot_location_changed (NautilusWindowSlot *slot,
+                           GParamSpec         *pspec,
+@@ -571,6 +622,8 @@ nautilus_window_create_and_init_slot (NautilusWindow *window)
+                       G_CALLBACK (on_slot_selection_changed), window);
+     g_signal_connect (slot, "notify::title",
+                       G_CALLBACK (on_slot_title_changed), window);
++    g_signal_connect (slot, "notify::loading",
++                      G_CALLBACK (on_slot_loading_changed), window);
+ 
+     AdwTabPage *current = get_current_page (window);
+     AdwTabPage *page = adw_tab_view_add_page (window->tab_view, GTK_WIDGET (slot), current);
+-- 
+2.55.0
+

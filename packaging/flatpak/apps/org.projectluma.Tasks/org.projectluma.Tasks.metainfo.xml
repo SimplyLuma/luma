@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8'?>
+<component type="desktop-application">
+  <id>org.projectluma.Tasks</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <name>Tasks</name>
+  <summary>Tasks for Luma</summary>
+  <description>
+    <p>Create task lists, keep track of what needs doing, and work together on shared lists across Luma devices.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Tasks.desktop</launchable>
+  <releases>
+    <release version="0.1.2" date="2026-10-08">
+      <description><p>Show readable local dates and times for shared and local comments.</p></description>
+    </release>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <screenshots>
+    <screenshot type="default">
+      <caption>Today’s tasks and checklist</caption>
+      <image width="1014" height="730">https://dl.simplyluma.com/media/org.projectluma.Tasks/8c6d5588fd6c3034403c39111d923cd520433b7223f732265cc94d043a6e699a.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://projectluma.org/apps/tasks</url>
+</component>

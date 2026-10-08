@@ -1,0 +1,75 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 23:20:00 -0500
+Subject: [PATCH] compositor: trace Presence identity and render gate
+
+Log the first client identity observed by the authenticated handoff matcher and
+the first frame rendered above the startup shield. These bounded diagnostics
+make a failed pre-login reveal distinguishable from a compositor crash without
+logging any credential or user content.
+---
+ src/render.c | 8 +++++++-
+ src/server.c | 20 +++++++++++++++++---
+ 2 files changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/src/render.c b/src/render.c
+index f8f20d1..a125a32 100644
+--- a/src/render.c
++++ b/src/render.c
+@@ -560,6 +560,7 @@ phoc_renderer_render_output (PhocRenderer *self, PhocOutput *output, PhocRender
+   PhocDesktop *desktop = phoc_server_get_desktop (server);
+   PhocWorkspace *workspace = phoc_desktop_get_active_workspace (desktop);
+   PhocView *handoff_view = NULL;
++  static gboolean logged_handoff_render;
+   pixman_region32_t *damage = ctx->damage;
+ 
+   g_assert (PHOC_IS_RENDERER (self));
+@@ -642,8 +643,13 @@ phoc_renderer_render_output (PhocRenderer *self, PhocOutput *output, PhocRender
+       }
+     }
+   }
+-  if (handoff_view && phoc_desktop_view_check_visibility (desktop, handoff_view))
++  if (handoff_view && phoc_desktop_view_check_visibility (desktop, handoff_view)) {
++    if (!logged_handoff_render) {
++      g_message ("Rendering Luma Presence above startup shield");
++      logged_handoff_render = TRUE;
++    }
+     render_view (output, handoff_view, ctx);
++  }
+ 
+   wlr_output_add_software_cursors_to_render_pass (wlr_output, ctx->render_pass, damage);
+ 
+diff --git a/src/server.c b/src/server.c
+index 4dbf311..3166b04 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -218,11 +218,26 @@ phoc_server_set_handoff_app_id (PhocServer *self, const char *app_id)
+ gboolean
+ phoc_server_is_handoff_view (PhocServer *self, PhocView *view)
+ {
++  const char *view_app_id;
++  gboolean matches;
++  static gboolean logged_identity;
++
+   g_return_val_if_fail (PHOC_IS_SERVER (self), FALSE);
+   g_return_val_if_fail (PHOC_IS_VIEW (view), FALSE);
+ 
+-  return self->handoff_app_id &&
+-         g_strcmp0 (self->handoff_app_id, phoc_view_get_app_id (view)) == 0;
++  view_app_id = phoc_view_get_app_id (view);
++  matches = self->handoff_app_id &&
++            g_strcmp0 (self->handoff_app_id, view_app_id) == 0;
++
++  if (!logged_identity && view_app_id) {
++    g_message ("Luma Presence identity: expected=%s actual=%s match=%d",
++               self->handoff_app_id ?: "(null)",
++               view_app_id,
++               matches);
++    logged_identity = TRUE;
++  }
++
++  return matches;
+ }
+ 
+ 
+-- 
+2.51.0

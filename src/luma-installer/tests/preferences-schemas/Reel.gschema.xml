@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist><schema id="org.projectluma.Reel" path="/org/projectluma/Reel/">
+<key name="show-welcome" type="b"><default>true</default><summary>Show the Creative collection welcome screen</summary></key>
+</schema></schemalist>

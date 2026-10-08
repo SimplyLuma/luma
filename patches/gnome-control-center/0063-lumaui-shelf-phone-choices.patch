@@ -1,0 +1,47 @@
+diff --git a/shell/cc-luma-view-shelf.c b/shell/cc-luma-view-shelf.c
+index 5c82962..8e3f41a 100644
+--- a/shell/cc-luma-view-shelf.c
++++ b/shell/cc-luma-view-shelf.c
+@@ -70,7 +70,10 @@ static void segment_row (View *v, GtkBox *card, const char *key, const char *tit
+   gtk_widget_set_name (control, name);
+   g_object_set_data_full (G_OBJECT (control), "cf-key", g_strdup (key), g_free);
+   g_signal_connect_object (control, "changed", G_CALLBACK (arrangement_changed), v->root, 0);
+-  cf_row (card, NULL, title, subtitle, rigid (control), FALSE);
++  /* Phone rows must see the shared mode switch directly so cf_rows_wrap
++   * places it below the label and fills the available width. */
++  cf_row (card, NULL, title, subtitle,
++          cc_luma_view_phone_device () ? control : rigid (control), FALSE);
+ }
+ 
+ static void preset_clicked (GtkButton *button, GtkWidget *root)
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index d7f3e21..ce82a75 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1691,6 +1691,26 @@ static void phone_device (void)
+   g_assert_null (cc_luma_view_get_error (view));
+   gtk_window_destroy (GTK_WINDOW (window)); drain ();
+ 
++  /* Shelf arrangement uses the same full-width phone choices, including short labels. */
++  view = cc_luma_view_new (model, "shelf", NULL);
++  window = phone_window (view);
++  const char *choices[] = { "cf-edge", "cf-spread", "cf-joined", "cf-float" };
++  for (guint i = 0; i < G_N_ELEMENTS (choices); i++)
++    {
++      seg = find_name (view, choices[i]);
++      g_assert_true (LUMA_IS_MODE_SWITCH (seg));
++      line = gtk_widget_get_parent (gtk_widget_get_parent (seg));
++      words = gtk_widget_get_first_child (line);
++      while (words && !gtk_widget_has_css_class (words, "cf-t")) words = gtk_widget_get_next_sibling (words);
++      g_assert_nonnull (words);
++      g_assert_true (gtk_widget_compute_bounds (words, line, &a));
++      g_assert_true (gtk_widget_compute_bounds (seg, line, &b));
++      g_assert_cmpfloat (b.origin.y, >=, a.origin.y + a.size.height + 9);
++      g_assert_cmpfloat (fabs (b.size.width - a.size.width), <=, 1);
++      g_assert_true (luma_mode_switch_get_fill (LUMA_MODE_SWITCH (seg)));
++    }
++  gtk_window_destroy (GTK_WINDOW (window)); drain ();
++
+   /* Appearance: Light and Dark side by side, equal, inside the hero; each preview 210:128. */
+   view = cc_luma_view_new (model, "appearance", NULL);
+   window = phone_window (view);

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Viola
+GenericName=Web Browser
+Comment=Access the Internet
+Exec=/usr/bin/viola-browser %U
+Icon=viola-browser
+Terminal=false
+StartupNotify=true
+StartupWMClass=org.projectluma.Viola.NativeIntegration
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;

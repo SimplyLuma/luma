@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.projectluma.AudioRoute1
+Exec=/usr/libexec/luma-fp6-audio-route-service
+User=root
+SystemdService=luma-fp6-audio-route.service

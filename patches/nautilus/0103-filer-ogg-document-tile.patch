@@ -1,0 +1,37 @@
+From b491e950fe9e77cc8b2d3889d0a9eceea07380f0 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 17:51:13 +0000
+Subject: [PATCH] Filer: render OGG files as document tiles
+
+---
+ src/nautilus-grid-cell.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index a00d2a7..d920999 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -151,6 +151,20 @@ update_icon (NautilusGridCell *self)
+ 
+     g_object_get (self, "icon-size", &icon_size, NULL);
+     icon_paintable = nautilus_file_get_icon_paintable (file, icon_size, scale_factor, flags);
++    const char *display_name = nautilus_file_get_display_name (file);
++    const char *extension = display_name != NULL ? strrchr (display_name, '.') : NULL;
++    if (extension != NULL && g_ascii_strcasecmp (extension, ".ogg") == 0)
++    {
++        GtkIconTheme *theme = gtk_icon_theme_get_for_display (gtk_widget_get_display (GTK_WIDGET (self)));
++        if (theme != NULL && gtk_icon_theme_has_icon (theme, "text-x-generic"))
++        {
++            g_clear_object (&icon_paintable);
++            icon_paintable = GDK_PAINTABLE (gtk_icon_theme_lookup_icon (theme, "text-x-generic",
++                                                                        NULL, icon_size, scale_factor,
++                                                                        GTK_TEXT_DIR_NONE, 0));
++            show_thumbnail = FALSE;
++        }
++    }
+     gtk_widget_set_visible (self->icon, TRUE);
+     nautilus_image_set_size (NAUTILUS_IMAGE (self->icon), icon_size);
+     nautilus_image_set_fallback (NAUTILUS_IMAGE (self->icon), icon_paintable);
+-- 
+2.55.0
+

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<component type="desktop-application">
+  <id>org.projectluma.Leaf</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND MIT</project_license>
+  <name>Leaf</name>
+  <summary>Read your books, or listen to them</summary>
+  <description>
+    <p>Leaf holds your library, shows you one page at a time, and reads the book aloud when you would rather listen. There is no shop and no account.</p>
+    <ul>
+      <li>Continue reading exactly where you left off, on every device</li>
+      <li>Highlights and notes that follow whole sentences through every change of size or typeface</li>
+      <li>Read aloud with the page following the voice, a sleep timer and speed control</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Leaf.desktop</launchable>
+  <developer id="org.projectluma"><name>Project Luma</name></developer>
+  <url type="homepage">https://projectluma.org/apps/leaf</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-12"/>
+  </releases>
+  <provides><mediatype>application/epub+zip</mediatype></provides>
+</component>

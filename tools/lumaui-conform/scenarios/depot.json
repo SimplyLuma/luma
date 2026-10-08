@@ -1,0 +1,47 @@
+{
+  "app": "depot",
+  "title": "Depot",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=depot",
+    "window": "#w-depot",
+    "exclude": [".grip", ".pop.toast-gone"]
+  },
+  "gtk": {
+    "pythonpath": ["src/luma-platform/appkit", "src/luma-installer", "src/luma-depot"],
+    "module": "luma_depot.window",
+    "fixtures": ["tests/fixtures/depot-v70.json", "assets/icon-theme/Prairie/scalable/apps"],
+    "env": {"LUMA_DEPOT_FIXTURE": "{run}/fixtures/depot-v70.json", "LUMA_DEPOT_ICON_ROOT": "{run}/fixtures/apps", "LUMA_DEPOT_STUDIO_ROOT": "/design/mockups"}
+  },
+  "states": [
+    {"name": "discover", "about": "Discover opening state", "spec": [], "gtk": []},
+    {"name": "your-apps", "about": "Installed apps, sorted by name", "spec": [{"click": "#dp-side [data-dview=\"apps\"]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "apps"}}]},
+    {"name": "updates", "about": "System and app updates", "spec": [{"click": "#dp-side [data-dview=\"updates\"]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "updates"}}]},
+    {"name": "update-done", "about": "System update downloaded and waiting for restart", "spec": [{"click": "#dp-side [data-dview=\"updates\"]"}, {"click": "[data-dsys]", "wait": 3800}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "update-done"}}]},
+    {"name": "whats-new", "about": "Expanded system update notes", "spec": [{"click": "#dp-side [data-dview=\"updates\"]"}, {"click": "[data-dnew]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "whats-new"}}]},
+    {"name": "media", "about": "Media category", "spec": [{"click": "#dp-side [data-dcat=\"media\"]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "category:media"}}]},
+    {"name": "app", "about": "Tide app listing", "spec": [{"click": "#dp-body [data-dapp=\"tide\"]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "app:tide"}}]},
+    {"name": "search", "about": "Search results for music", "spec": [{"eval": "(() => { const q = document.querySelector('#w-depot #dp-q'); q.focus(); q.value = 'music'; q.oninput(); })()"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "search:music"}}]},
+    {"name": "uninstall-menu", "about": "Discord installed-row menu", "spec": [{"click": "#dp-side [data-dview=\"apps\"]"}, {"click": "[data-dmenu=\"discord\"]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "menu:discord"}}]},
+    {"name": "uninstall-dialog", "about": "Discord uninstall confirmation, keep data by default", "spec": [{"click": "#dp-side [data-dview=\"apps\"]"}, {"click": "[data-dmenu=\"discord\"]"}, {"click": "[data-dun=\"discord\"]"}], "gtk": [{"env": {"LUMA_DEPOT_FIXTURE_STATE": "uninstall:discord"}}]}
+  ],
+  "phone_states": ["discover", "your-apps", "updates", "update-done", "app", "uninstall-dialog"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-depot > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#dp-top"},
+    {"name": "sidebar foot", "spec": "#dp-side .sfoot"},
+    {"name": "sidebar", "spec": "#dp-side"},
+    {"name": "dialog", "spec": "#w-depot .lconf"},
+    {"name": "menu", "spec": "#w-depot > #lmenu"},
+    {"name": "feature", "spec": "#dp-body .dhero"},
+    {"name": "app header", "spec": "#dp-body .dapp"},
+    {"name": "system update", "spec": "#dp-body .dsys"},
+    {"name": "table header", "spec": "#dp-body .lthead"},
+    {"name": "content", "spec": "#dp-body"},
+    {"name": "main", "spec": "#dp-main"}
+  ],
+  "pairs": [
+    {"spec": "#dp-side", "gtk": "dp-sidebar", "name": "sidebar"},
+    {"spec": "#dp-main", "gtk": "dp-island", "name": "main island"},
+    {"spec": "#dp-body", "gtk": "dp-scroll", "name": "content"}
+  ]
+}

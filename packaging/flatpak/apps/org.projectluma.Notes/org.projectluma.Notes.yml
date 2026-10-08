@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# Sources are attached by seal-first-party-source.py with exact archive SHA256.
+# This template cannot build until a source archive has been sealed.
+id: org.projectluma.Notes
+runtime: org.projectluma.Platform
+runtime-version: '44'
+sdk: org.projectluma.Sdk
+command: prairie-notes
+# Compose the real catalogue inside the SDK without fetching future release
+# URLs. The publisher stages the exact included SHA-addressed image bytes.
+appstream-compose: false
+finish-args:
+  - --talk-name=org.projectluma.ApplicationDirectory1
+  - --metadata=X-Luma=min-host-continuity=63
+  - --metadata=X-Luma=min-host-installer=64
+  - --metadata=X-Luma=min-host-core=97
+  - --metadata=X-Luma=app-data-schema=notes-v1
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --talk-name=org.projectluma.Connect1
+  - --talk-name=org.projectluma.AppData1
+  - --env=LUMA_NOTES_STYLE_PATH=/app/share/prairie-core/notes.css
+modules:
+  - name: notes
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core
+      - cp -a src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/
+      - install -Dm755 src/prairie-core/bin/prairie-notes /app/bin/prairie-notes-real
+      - printf '#!/bin/sh\nexec python3 -m luma_appkit.migration_startup prairie-notes-real "$@"\n' > /app/bin/prairie-notes
+      - chmod 755 /app/bin/prairie-notes
+      - install -Dm644 src/prairie-core/data/org.projectluma.Notes.desktop /app/share/applications/org.projectluma.Notes.desktop
+      - install -Dm644 src/prairie-core/data/org.projectluma.Notes.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Notes.svg
+      - install -Dm644 src/prairie-core/style/notes.css /app/share/prairie-core/notes.css
+      - install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Notes.metainfo.xml
+      - install -Dm644 depot-media/9e33144fcc137fa18dee7c5de0ec0fbaebc00a639952e02619e13cbd8f0a5dd2.png /app/share/luma-app-media/9e33144fcc137fa18dee7c5de0ec0fbaebc00a639952e02619e13cbd8f0a5dd2.png
+      - install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Notes/LICENSE.md

@@ -1,0 +1,22 @@
+/* Contacts: this app's layout only. Every part (rows, cards, buttons, fields,
+ * the corner pill, toasts) is LumaUI's and styled by the kit; nothing here
+ * selects a kit part or sets a colour. Numbers are v70's (.cpad, .chero, .cgrid). */
+
+/* The page: the hero, then Contact beside Together. */
+.ct-actions { margin-top: 22px; }
+.ct-grid { margin-top: 32px; border-spacing: 12px; }
+.ct-card-row { border-spacing: 12px; }
+.ct-reach { border-spacing: 10px; }
+.ct-work { margin-top: 6px; }
+.ct-share-row { border-spacing: 12px; margin-top: 4px; }
+.ct-note-private { border-spacing: 6px; margin-top: 10px; }
+textview.ct-note-editor {
+  margin-top: 6px; padding: 10px; border-radius: 10px;
+  background: @luma_content; box-shadow: inset 0 0 0 1px @luma_line;
+}
+textview.ct-note-editor:focus-within { box-shadow: 0 0 0 2px @luma_focus_ring; }
+.ct-together-list { padding-bottom: 12px; }
+.ct-prose { color: @luma_ink_secondary; }
+
+/* The account is the first item of the indexed scroller, before A. */
+row.ct-account-row { padding: 0; }

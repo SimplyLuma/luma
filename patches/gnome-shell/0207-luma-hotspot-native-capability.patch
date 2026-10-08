@@ -1,0 +1,19 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: use native adapter capability for hotspots
+
+libnm exposes NM_SUPPORTED, not SUPPORTED. The missing enum made every
+real adapter fail the capability check before a secured profile was created.
+GPL-2.0-or-later, following GNOME Shell upstream.
+
+diff --git a/js/ui/status/network.js b/js/ui/status/network.js
+--- a/js/ui/status/network.js
++++ b/js/ui/status/network.js
+@@ -1856,7 +1856,7 @@
+                 for (const item of this._items.values()) if (item.is_hotspot) item.activate();
+             } else {
+                 const device = [...this._items.keys()].find(d =>
+-                    d.get_capabilities() & NM.DeviceCapabilities.SUPPORTED &&
++                    d.get_capabilities() & NM.DeviceCapabilities.NM_SUPPORTED &&
+                     d.get_wireless_capabilities() & NM.DeviceWifiCapabilities.AP);
+                 if (!device) throw new Error('No hotspot-capable adapter');
+                 // Reuse only this control's secured sharing profile. An

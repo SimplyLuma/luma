@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Waydroid
+GenericName=Android Container
+Exec=waydroid
+Comment=Android compatibility runtime managed through Luma
+Icon=waydroid
+NoDisplay=true
+Categories=X-WayDroid-App;Utility;
+X-Purism-FormFactor=Workstation;Mobile;

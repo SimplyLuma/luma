@@ -1,0 +1,881 @@
+diff --git a/src/nautilus-pathbar.c b/src/nautilus-pathbar.c
+index 3ba8de1..c5acee7 100644
+--- a/src/nautilus-pathbar.c
++++ b/src/nautilus-pathbar.c
+@@ -71,6 +71,7 @@ enum
+ {
+     PROP_0,
+     PROP_WINDOW_SLOT,
++    PROP_COMPACT,
+     NUM_PROPERTIES
+ };
+ 
+@@ -107,6 +108,14 @@ struct _NautilusPathBar
+ 
+     GtkWidget *scrolled;
+     GtkWidget *buttons_box;
++    GtkWidget *ancestor_overflow_button;
++    GtkWidget *compact_button;
++    GtkWidget *compact_root_icon;
++    GtkWidget *compact_root_label;
++    GtkWidget *compact_separator;
++    GtkWidget *compact_current_label;
++    GMenu *ancestor_menu;
++    gboolean compact;
+ 
+     GFile *current_path;
+     gpointer current_button_data;
+@@ -147,15 +156,23 @@ static void     action_pathbar_open_item_new_tab (GSimpleAction *action,
+ static void     action_pathbar_properties (GSimpleAction *action,
+                                            GVariant      *state,
+                                            gpointer       user_data);
++static void     action_pathbar_open_ancestor (GSimpleAction *action,
++                                              GVariant      *parameter,
++                                              gpointer       user_data);
+ static void     pop_up_pathbar_context_menu (NautilusPathBar *self,
+                                              NautilusFile    *file);
+ static void nautilus_path_bar_clear_buttons (NautilusPathBar *self);
++static const char *get_dir_name (ButtonData *button_data);
++static GIcon *get_gicon (ButtonData *button_data);
++static void rebuild_ancestor_menu (NautilusPathBar *self);
++static void update_compact_path (NautilusPathBar *self);
+ 
+ const GActionEntry path_bar_actions[] =
+ {
+     { .name = "open-item-new-tab", .activate = action_pathbar_open_item_new_tab },
+     { .name = "open-item-new-window", .activate = action_pathbar_open_item_new_window },
+-    { .name = "properties", .activate = action_pathbar_properties}
++    { .name = "properties", .activate = action_pathbar_properties},
++    { .name = "open-ancestor", .activate = action_pathbar_open_ancestor, .parameter_type = "s" },
+ };
+ 
+ 
+@@ -184,6 +201,19 @@ action_pathbar_open_item_new_tab (GSimpleAction *action,
+     }
+ }
+ 
++static void
++action_pathbar_open_ancestor (GSimpleAction *action,
++                              GVariant      *parameter,
++                              gpointer       user_data)
++{
++    NautilusPathBar *self = NAUTILUS_PATH_BAR (user_data);
++    g_autoptr (GFile) location = NULL;
++
++    location = g_file_new_for_uri (g_variant_get_string (parameter, NULL));
++    g_signal_emit (self, path_bar_signals[OPEN_LOCATION], 0,
++                   location, 0);
++}
++
+ static void
+ action_pathbar_open_item_new_window (GSimpleAction *action,
+                                      GVariant      *state,
+@@ -241,6 +271,12 @@ on_adjustment_changed (GtkAdjustment   *adjustment,
+     {
+         gtk_viewport_scroll_to (viewport, last, NULL);
+     }
++
++    gtk_widget_set_visible (self->ancestor_overflow_button,
++                            !self->compact &&
++                            gtk_adjustment_get_upper (adjustment) >
++                            gtk_adjustment_get_page_size (adjustment) + 1.0);
++    rebuild_ancestor_menu (self);
+ }
+ 
+ static gboolean
+@@ -252,28 +288,13 @@ bind_current_view_menu_model_to_popover (NautilusPathBar *self)
+     return G_SOURCE_REMOVE;
+ }
+ 
+-static gboolean
+-on_scroll (GtkEventControllerScroll *scroll,
+-           gdouble                   dx,
+-           gdouble                   dy,
+-           GtkScrolledWindow        *self)
++static void
++on_ancestor_menu_active_changed (GtkMenuButton    *button,
++                                 GParamSpec       *pspec,
++                                 NautilusPathBar *self)
+ {
+-    GtkAdjustment *hadjustment;
+-    gdouble step;
+-    gdouble new_value;
+-
+-    if (dy == 0)
+-    {
+-        return GDK_EVENT_PROPAGATE;
+-    }
+-
+-    /* Scroll horizontally when vertically scrolled */
+-    hadjustment = gtk_scrolled_window_get_hadjustment (self);
+-    step = gtk_adjustment_get_step_increment (hadjustment);
+-    new_value = gtk_adjustment_get_value (hadjustment) + dy * step;
+-    gtk_adjustment_set_value (hadjustment, new_value);
+-
+-    return GDK_EVENT_STOP;
++    if (gtk_menu_button_get_active (button))
++        rebuild_ancestor_menu (self);
+ }
+ 
+ 
+@@ -282,11 +303,28 @@ nautilus_path_bar_init (NautilusPathBar *self)
+ {
+     GtkAdjustment *adjustment;
+     GtkBuilder *builder;
+-    GtkEventController *controller;
++    GtkWidget *compact_box;
+     g_autoptr (GError) error = NULL;
+ 
+     self->os_name = g_get_os_info (G_OS_INFO_KEY_NAME);
+ 
++    self->ancestor_menu = g_menu_new ();
++
++    self->ancestor_overflow_button = gtk_menu_button_new ();
++    gtk_widget_add_css_class (self->ancestor_overflow_button, "flat");
++    gtk_widget_add_css_class (self->ancestor_overflow_button, "luma-path-overflow");
++    gtk_menu_button_set_icon_name (GTK_MENU_BUTTON (self->ancestor_overflow_button),
++                                   "pan-down-symbolic");
++    gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (self->ancestor_overflow_button),
++                                    G_MENU_MODEL (self->ancestor_menu));
++    gtk_widget_set_visible (self->ancestor_overflow_button, FALSE);
++    gtk_accessible_update_property (GTK_ACCESSIBLE (self->ancestor_overflow_button),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL, _("Path"),
++                                    -1);
++    g_signal_connect (self->ancestor_overflow_button, "notify::active",
++                      G_CALLBACK (on_ancestor_menu_active_changed), self);
++    gtk_box_append (GTK_BOX (self), self->ancestor_overflow_button);
++
+     self->scrolled = gtk_scrolled_window_new ();
+     gtk_widget_add_css_class (self->scrolled, "luma-path-crumbs");
+     /* Scroll horizontally only and don't use internal scrollbar. */
+@@ -300,10 +338,6 @@ nautilus_path_bar_init (NautilusPathBar *self)
+     adjustment = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scrolled));
+     g_signal_connect (adjustment, "changed", G_CALLBACK (on_adjustment_changed), self);
+ 
+-    controller = gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+-    gtk_widget_add_controller (GTK_WIDGET (self->scrolled), controller);
+-    g_signal_connect (controller, "scroll", G_CALLBACK (on_scroll), self->scrolled);
+-
+     self->buttons_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+     gtk_widget_set_margin_start (self->buttons_box, 8);
+     gtk_widget_set_margin_end (self->buttons_box, 8);
+@@ -320,6 +354,45 @@ nautilus_path_bar_init (NautilusPathBar *self)
+                                     GTK_ACCESSIBLE_PROPERTY_LABEL, _("Current Folder Menu"),
+                                     -1);
+ 
++    compact_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
++    gtk_widget_set_hexpand (compact_box, TRUE);
++
++    self->compact_root_icon = gtk_image_new ();
++    gtk_widget_add_css_class (self->compact_root_icon, "luma-compact-root-icon");
++    gtk_box_append (GTK_BOX (compact_box), self->compact_root_icon);
++
++    self->compact_root_label = gtk_label_new (NULL);
++    gtk_label_set_single_line_mode (GTK_LABEL (self->compact_root_label), TRUE);
++    gtk_widget_add_css_class (self->compact_root_label, "luma-compact-root-label");
++    gtk_box_append (GTK_BOX (compact_box), self->compact_root_label);
++
++    self->compact_separator = gtk_image_new_from_icon_name ("go-next-symbolic");
++    gtk_widget_add_css_class (self->compact_separator, "luma-compact-path-separator");
++    gtk_box_append (GTK_BOX (compact_box), self->compact_separator);
++
++    self->compact_current_label = gtk_label_new (NULL);
++    gtk_label_set_single_line_mode (GTK_LABEL (self->compact_current_label), TRUE);
++    gtk_label_set_ellipsize (GTK_LABEL (self->compact_current_label), PANGO_ELLIPSIZE_MIDDLE);
++    gtk_widget_set_hexpand (self->compact_current_label, TRUE);
++    gtk_widget_set_halign (self->compact_current_label, GTK_ALIGN_FILL);
++    gtk_widget_add_css_class (self->compact_current_label, "luma-compact-current-label");
++    gtk_box_append (GTK_BOX (compact_box), self->compact_current_label);
++
++    self->compact_button = gtk_menu_button_new ();
++    gtk_menu_button_set_child (GTK_MENU_BUTTON (self->compact_button), compact_box);
++    gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (self->compact_button),
++                                    G_MENU_MODEL (self->ancestor_menu));
++    gtk_widget_set_hexpand (self->compact_button, TRUE);
++    gtk_widget_set_visible (self->compact_button, FALSE);
++    gtk_widget_add_css_class (self->compact_button, "flat");
++    gtk_widget_add_css_class (self->compact_button, "luma-compact-folder-title");
++    gtk_accessible_update_property (GTK_ACCESSIBLE (self->compact_button),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL, _("Current Path"),
++                                    -1);
++    g_signal_connect (self->compact_button, "notify::active",
++                      G_CALLBACK (on_ancestor_menu_active_changed), self);
++    gtk_box_append (GTK_BOX (self), self->compact_button);
++
+     builder = gtk_builder_new ();
+ 
+     /* Add context menu for pathbar buttons */
+@@ -374,6 +447,7 @@ nautilus_path_bar_finalize (GObject *object)
+     g_clear_object (&self->extensions_section);
+     g_clear_object (&self->templates_submenu);
+     g_clear_object (&self->button_menu);
++    g_clear_object (&self->ancestor_menu);
+     g_clear_object (&self->current_view_menu_popover);
+     g_free (self->os_name);
+ 
+@@ -432,6 +506,54 @@ get_dir_name (ButtonData *button_data)
+     }
+ }
+ 
++static void
++rebuild_ancestor_menu (NautilusPathBar *self)
++{
++    GList *l;
++
++    g_menu_remove_all (self->ancestor_menu);
++
++    /* button_list is current-to-root. Menus read naturally root-to-current. */
++    for (l = g_list_last (self->button_list); l != NULL; l = l->prev)
++    {
++        ButtonData *button_data = BUTTON_DATA (l->data);
++        g_autofree gchar *uri = NULL;
++        g_autoptr (GMenuItem) item = NULL;
++
++        if (!self->compact && l == self->button_list)
++            continue;
++
++        uri = g_file_get_uri (button_data->path);
++        item = g_menu_item_new (get_dir_name (button_data), NULL);
++        g_menu_item_set_action_and_target (item, "pathbar.open-ancestor", "s", uri);
++        g_menu_append_item (self->ancestor_menu, item);
++    }
++}
++
++static void
++update_presentation (NautilusPathBar *self)
++{
++    GtkAdjustment *adjustment;
++    gboolean overflowing;
++
++    adjustment = gtk_scrolled_window_get_hadjustment (GTK_SCROLLED_WINDOW (self->scrolled));
++    overflowing = gtk_adjustment_get_upper (adjustment) >
++                  gtk_adjustment_get_page_size (adjustment) + 1.0;
++
++    gtk_widget_set_visible (self->current_view_menu_button, !self->compact);
++    gtk_widget_set_visible (self->ancestor_overflow_button,
++                            !self->compact && overflowing);
++    gtk_widget_set_visible (self->scrolled, !self->compact);
++    gtk_widget_set_visible (self->compact_button, self->compact);
++
++    if (self->compact)
++        gtk_widget_add_css_class (GTK_WIDGET (self), "compact");
++    else
++        gtk_widget_remove_css_class (GTK_WIDGET (self), "compact");
++
++    rebuild_ancestor_menu (self);
++}
++
+ static void
+ button_data_free (ButtonData *button_data)
+ {
+@@ -463,6 +585,13 @@ nautilus_path_bar_set_property (GObject      *object,
+         }
+         break;
+ 
++        case PROP_COMPACT:
++        {
++            self->compact = g_value_get_boolean (value);
++            update_presentation (self);
++        }
++        break;
++
+         default:
+         {
+             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+@@ -497,6 +626,10 @@ nautilus_path_bar_class_init (NautilusPathBarClass *path_bar_class)
+                              NAUTILUS_TYPE_WINDOW_SLOT,
+                              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS);
+ 
++    properties [PROP_COMPACT] =
++        g_param_spec_boolean ("compact", NULL, NULL, FALSE,
++                              G_PARAM_WRITABLE | G_PARAM_STATIC_STRINGS);
++
+     g_object_class_install_properties (gobject_class, NUM_PROPERTIES, properties);
+ }
+ 
+@@ -975,6 +1108,50 @@ get_gicon (ButtonData *button_data)
+     return NULL;
+ }
+ 
++static void
++update_compact_path (NautilusPathBar *self)
++{
++    ButtonData *current_data;
++    ButtonData *root_data;
++    const char *current_name;
++    const char *root_name;
++    gboolean at_root;
++    g_autofree char *accessible_name = NULL;
++    g_autoptr (GIcon) root_icon = NULL;
++
++    if (self->button_list == NULL)
++        return;
++
++    current_data = BUTTON_DATA (self->button_list->data);
++    root_data = BUTTON_DATA (g_list_last (self->button_list)->data);
++    current_name = get_dir_name (current_data);
++    root_name = get_dir_name (root_data);
++    at_root = current_data == root_data;
++
++    gtk_label_set_text (GTK_LABEL (self->compact_root_label), root_name);
++    gtk_label_set_text (GTK_LABEL (self->compact_current_label), current_name);
++    gtk_widget_set_visible (self->compact_separator, !at_root);
++    gtk_widget_set_visible (self->compact_current_label, !at_root);
++
++    root_icon = get_gicon (root_data);
++    if (root_icon != NULL)
++    {
++        gtk_image_set_from_gicon (GTK_IMAGE (self->compact_root_icon), root_icon);
++        gtk_widget_set_visible (self->compact_root_icon, TRUE);
++    }
++    else
++    {
++        gtk_widget_set_visible (self->compact_root_icon, FALSE);
++    }
++
++    accessible_name = at_root
++                      ? g_strdup (root_name)
++                      : g_strdup_printf ("%s, %s", root_name, current_name);
++    gtk_accessible_update_property (GTK_ACCESSIBLE (self->compact_button),
++                                    GTK_ACCESSIBLE_PROPERTY_LABEL,
++                                    accessible_name, -1);
++}
++
+ static void
+ nautilus_path_bar_update_button_appearance (ButtonData *button_data,
+                                             gboolean    current_dir)
+@@ -1020,6 +1197,9 @@ nautilus_path_bar_update_button_appearance (ButtonData *button_data,
+         }
+     }
+ 
++    if (current_dir)
++        update_compact_path (button_data->path_bar);
++
+     icon = get_gicon (button_data);
+     if (icon != NULL)
+     {
+@@ -1432,4 +1612,6 @@ nautilus_path_bar_set_path (NautilusPathBar *self,
+ 
+     g_set_object (&self->current_path, file_path);
+     self->current_button_data = button_data;
++    update_compact_path (self);
++    rebuild_ancestor_menu (self);
+ }
+diff --git a/src/nautilus-toolbar.c b/src/nautilus-toolbar.c
+index 7525d25..27b5de2 100644
+--- a/src/nautilus-toolbar.c
++++ b/src/nautilus-toolbar.c
+@@ -50,7 +50,13 @@ struct _NautilusToolbar
+     GtkWidget *search_button_stack;
+     GtkWidget *search_button;
+     GtkWidget *search_button_placeholder;
++    GtkWidget *view_controls;
++    GtkWidget *compact_sidebar_button;
++    GtkWidget *compact_back_button;
++    GtkWidget *compact_search_button;
++    GtkWidget *compact_overflow_button;
+     GMenuModel *main_menu;
++    GMenu *compact_menu;
+ 
+     gboolean show_location_entry;
+     GtkWidget *focus_before_location_entry;
+@@ -62,6 +68,7 @@ struct _NautilusToolbar
+ 
+     gboolean show_view_controls;
+     gboolean show_history_controls;
++    gboolean compact;
+ 
+     /* active slot & bindings */
+     NautilusWindowSlot *window_slot;
+@@ -77,6 +84,8 @@ enum
+     PROP_SIDEBAR_BUTTON_ACTIVE,
+     PROP_SHOW_VIEW_CONTROLS,
+     PROP_SHOW_HISTORY_CONTROLS,
++    PROP_COMPACT,
++    PROP_COMPACT_MENU,
+     NUM_PROPERTIES
+ };
+ 
+@@ -86,17 +95,70 @@ G_DEFINE_TYPE (NautilusToolbar, nautilus_toolbar, ADW_TYPE_BIN);
+ 
+ static void nautilus_toolbar_set_window_slot_real (NautilusToolbar    *self,
+                                                    NautilusWindowSlot *slot);
++
++static void
++rebuild_compact_menu (NautilusToolbar *self)
++{
++    g_autoptr (GMenu) modes = g_menu_new ();
++    g_autoptr (GMenu) zoom = g_menu_new ();
++    g_autoptr (GMenu) options = g_menu_new ();
++    g_autoptr (GMenuItem) grid = NULL;
++    g_autoptr (GMenuItem) list = NULL;
++    g_autoptr (GMenuModel) sort_section = NULL;
++    GMenuModel *view_menu;
++
++    g_menu_remove_all (self->compact_menu);
++
++    grid = g_menu_item_new (_("Grid View"), NULL);
++    g_menu_item_set_action_and_target (grid, "slot.files-view-mode", "u", 2);
++    g_menu_append_item (modes, grid);
++
++    list = g_menu_item_new (_("List View"), NULL);
++    g_menu_item_set_action_and_target (list, "slot.files-view-mode", "u", 1);
++    g_menu_append_item (modes, list);
++    g_menu_append_section (self->compact_menu, _("View"), G_MENU_MODEL (modes));
++
++    g_menu_append (zoom, _("Zoom Out"), "view.zoom-out");
++    g_menu_append (zoom, _("Zoom In"), "view.zoom-in");
++    g_menu_append_section (self->compact_menu, _("Icon Size"), G_MENU_MODEL (zoom));
++
++    if (self->view_controls != NULL)
++    {
++        view_menu = nautilus_view_controls_get_menu_model (
++            NAUTILUS_VIEW_CONTROLS (self->view_controls));
++        if (view_menu != NULL && g_menu_model_get_n_items (view_menu) > 1)
++        {
++            sort_section = g_menu_model_get_item_link (view_menu, 1,
++                                                       G_MENU_LINK_SECTION);
++            if (sort_section != NULL)
++                g_menu_append_section (self->compact_menu, _("Sort"), sort_section);
++        }
++    }
++
++    g_menu_append (options, _("Show Hidden Files"), "view.show-hidden-files");
++    g_menu_append (options, _("Visible Columns…"), "view.visible-columns");
++    g_menu_append (options, _("Captions…"), "view.visible-captions");
++    g_menu_append_section (self->compact_menu, NULL, G_MENU_MODEL (options));
++
++    if (self->main_menu != NULL)
++        g_menu_append_section (self->compact_menu, NULL, self->main_menu);
++}
++
+ static void
+ toolbar_update_appearance (NautilusToolbar *self)
+ {
+     gboolean show_location_entry;
++    gboolean search_visible;
++    gboolean compact_chrome_visible;
+ 
+     show_location_entry = self->show_location_entry ||
+                           g_settings_get_boolean (nautilus_preferences,
+                                                   NAUTILUS_PREFERENCES_ALWAYS_USE_LOCATION_ENTRY);
+ 
+-    if (self->window_slot != NULL &&
+-        nautilus_window_slot_get_search_visible (self->window_slot))
++    search_visible = self->window_slot != NULL &&
++                     nautilus_window_slot_get_search_visible (self->window_slot);
++
++    if (search_visible)
+     {
+         gtk_stack_set_visible_child_name (GTK_STACK (self->toolbar_switcher), "search");
+     }
+@@ -116,6 +178,12 @@ toolbar_update_appearance (NautilusToolbar *self)
+                                  search_global ? self->search_button_placeholder : self->search_button);
+     gtk_stack_set_visible_child (GTK_STACK (self->history_controls_stack),
+                                  search_global ? self->history_controls_placeholder : self->history_controls);
++
++    compact_chrome_visible = self->compact && !search_visible && !show_location_entry;
++    gtk_widget_set_visible (self->compact_sidebar_button, compact_chrome_visible);
++    gtk_widget_set_visible (self->compact_back_button, compact_chrome_visible);
++    gtk_widget_set_visible (self->compact_search_button, compact_chrome_visible);
++    gtk_widget_set_visible (self->compact_overflow_button, compact_chrome_visible);
+ }
+ 
+ static void
+@@ -256,12 +324,20 @@ action_prompt_home_location (GtkWidget  *widget,
+ static void
+ nautilus_toolbar_init (NautilusToolbar *self)
+ {
++    GtkPopover *compact_popover;
++
+     g_type_ensure (NAUTILUS_TYPE_HISTORY_CONTROLS);
+     g_type_ensure (NAUTILUS_TYPE_VIEW_CONTROLS);
+     g_type_ensure (NAUTILUS_TYPE_PATH_BAR);
+     g_type_ensure (NAUTILUS_TYPE_LOCATION_ENTRY);
+ 
++    self->compact_menu = g_menu_new ();
+     gtk_widget_init_template (GTK_WIDGET (self));
++    rebuild_compact_menu (self);
++
++    compact_popover = gtk_menu_button_get_popover (GTK_MENU_BUTTON (self->compact_overflow_button));
++    if (compact_popover != NULL)
++        gtk_widget_add_css_class (GTK_WIDGET (compact_popover), "luma-compact-menu");
+ 
+     GtkShortcutController *shortcuts = GTK_SHORTCUT_CONTROLLER (gtk_shortcut_controller_new ());
+ 
+@@ -357,6 +433,18 @@ nautilus_toolbar_get_property (GObject    *object,
+         }
+         break;
+ 
++        case PROP_COMPACT:
++        {
++            g_value_set_boolean (value, self->compact);
++        }
++        break;
++
++        case PROP_COMPACT_MENU:
++        {
++            g_value_set_object (value, self->compact_menu);
++        }
++        break;
++
+         default:
+         {
+             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+@@ -395,6 +483,7 @@ nautilus_toolbar_set_property (GObject      *object,
+         case PROP_MAIN_MENU:
+         {
+             g_set_object (&self->main_menu, g_value_get_object (value));
++            rebuild_compact_menu (self);
+         }
+         break;
+ 
+@@ -428,6 +517,17 @@ nautilus_toolbar_set_property (GObject      *object,
+         }
+         break;
+ 
++        case PROP_COMPACT:
++        {
++            self->compact = g_value_get_boolean (value);
++            if (self->compact)
++                gtk_widget_add_css_class (GTK_WIDGET (self), "compact");
++            else
++                gtk_widget_remove_css_class (GTK_WIDGET (self), "compact");
++            toolbar_update_appearance (self);
++        }
++        break;
++
+         default:
+         {
+             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+@@ -443,6 +543,7 @@ nautilus_toolbar_dispose (GObject *object)
+ 
+     adw_bin_set_child (ADW_BIN (object), NULL);
+     g_clear_object (&self->main_menu);
++    g_clear_object (&self->compact_menu);
+     gtk_widget_dispose_template (GTK_WIDGET (self), NAUTILUS_TYPE_TOOLBAR);
+ 
+     G_OBJECT_CLASS (nautilus_toolbar_parent_class)->dispose (object);
+@@ -513,6 +614,13 @@ nautilus_toolbar_class_init (NautilusToolbarClass *klass)
+     properties[PROP_SHOW_VIEW_CONTROLS] =
+         g_param_spec_boolean ("show-view-controls", NULL, NULL, TRUE,
+                               G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
++    properties[PROP_COMPACT] =
++        g_param_spec_boolean ("compact", NULL, NULL, FALSE,
++                              G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
++    properties[PROP_COMPACT_MENU] =
++        g_param_spec_object ("compact-menu", NULL, NULL,
++                             G_TYPE_MENU_MODEL,
++                             G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+ 
+     g_object_class_install_properties (oclass, NUM_PROPERTIES, properties);
+ 
+@@ -529,6 +637,11 @@ nautilus_toolbar_class_init (NautilusToolbarClass *klass)
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, search_button_stack);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, search_button);
+     gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, search_button_placeholder);
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, view_controls);
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_sidebar_button);
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_back_button);
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_search_button);
++    gtk_widget_class_bind_template_child (widget_class, NautilusToolbar, compact_overflow_button);
+ 
+     gtk_widget_class_bind_template_callback (widget_class, nautilus_toolbar_close_location_entry);
+ 
+diff --git a/src/nautilus-view-controls.c b/src/nautilus-view-controls.c
+index 6f31ada..cdd3ece 100644
+--- a/src/nautilus-view-controls.c
++++ b/src/nautilus-view-controls.c
+@@ -197,3 +197,11 @@ nautilus_view_controls_init (NautilusViewControls *self)
+ {
+     gtk_widget_init_template (GTK_WIDGET (self));
+ }
++
++GMenuModel *
++nautilus_view_controls_get_menu_model (NautilusViewControls *self)
++{
++    g_return_val_if_fail (NAUTILUS_IS_VIEW_CONTROLS (self), NULL);
++
++    return self->view_menu;
++}
+diff --git a/src/nautilus-view-controls.h b/src/nautilus-view-controls.h
+index 8ec21e8..7553739 100644
+--- a/src/nautilus-view-controls.h
++++ b/src/nautilus-view-controls.h
+@@ -17,4 +17,6 @@ G_BEGIN_DECLS
+ 
+ G_DECLARE_FINAL_TYPE (NautilusViewControls, nautilus_view_controls, NAUTILUS, VIEW_CONTROLS, AdwBin)
+ 
++GMenuModel *nautilus_view_controls_get_menu_model (NautilusViewControls *self);
++
+ G_END_DECLS
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 3c89021..4f974ce 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -146,6 +146,102 @@
+     font-weight: 400;
+   }
+ 
++  /* Compact is still the same native toolbar, with five durable controls.
++   * The current path becomes a title/menu while navigation and overflow keep
++   * their original actions. Nothing is duplicated in a mobile-only surface. */
++  .luma-files-window .luma-action-toolbar-overlay.compact .nautilus-pathbar {
++    min-width: 0;
++    min-height: 30px;
++    background-color: var(--view-bg-color);
++    background-image: none;
++    border: 1px solid var(--headerbar-shade-color);
++    border-radius: 8px;
++    box-shadow: none;
++  }
++
++  .luma-files-window .nautilus-pathbar.compact > .luma-compact-folder-title > button {
++    min-width: 0;
++    min-height: 28px;
++    padding: 0 9px;
++    background: var(--view-bg-color);
++    border: none;
++    border-radius: 7px;
++    box-shadow: none;
++  }
++
++  .luma-files-window .luma-compact-root-icon {
++    -gtk-icon-size: 14px;
++    color: var(--accent-color);
++  }
++
++  .luma-files-window .luma-compact-root-label {
++    color: color-mix(in srgb, var(--headerbar-fg-color) 58%, transparent);
++    font-size: 12px;
++    font-weight: 500;
++    transform: translate(0, 1px);
++  }
++
++  .luma-files-window .luma-compact-path-separator {
++    -gtk-icon-size: 7px;
++    color: color-mix(in srgb, var(--headerbar-fg-color) 38%, transparent);
++  }
++
++  .luma-files-window .luma-compact-current-label {
++    color: var(--headerbar-fg-color);
++    font-size: 12px;
++    font-weight: 600;
++    transform: translate(0, 1px);
++  }
++
++  .luma-files-window .luma-compact-toolbar-button,
++  .luma-files-window .luma-compact-toolbar-button > button {
++    min-width: 32px;
++    min-height: 30px;
++    padding: 0;
++    border-radius: 8px;
++    background-color: var(--view-bg-color);
++    background-image: none;
++    color: var(--headerbar-fg-color);
++    box-shadow: inset 0 0 0 1px var(--headerbar-shade-color);
++  }
++
++  .luma-files-window .luma-compact-toolbar-button image {
++    -gtk-icon-size: 14px;
++  }
++
++  .luma-files-window .luma-compact-toolbar-button:hover,
++  .luma-files-window .luma-compact-toolbar-button > button:hover {
++    background-color: var(--hover-color);
++  }
++
++  .luma-files-window .luma-compact-toolbar-button:checked,
++  .luma-files-window .luma-compact-toolbar-button > button:checked {
++    background-color: color-mix(in srgb, var(--accent-bg-color) 12%, var(--view-bg-color));
++    color: var(--accent-color);
++  }
++
++  .luma-files-window popover.luma-compact-menu label.title {
++    padding: 7px 12px 4px;
++    color: color-mix(in srgb, var(--headerbar-fg-color) 60%, transparent);
++    font-size: 11px;
++    font-weight: 700;
++  }
++
++  .luma-files-window popover.luma-compact-menu separator {
++    margin: 5px 4px;
++    background-color: color-mix(in srgb, var(--headerbar-fg-color) 8%, transparent);
++  }
++
++  .luma-files-window .luma-path-overflow > button {
++    min-width: 26px;
++    min-height: 28px;
++    padding: 0;
++    border: none;
++    border-right: 1px solid var(--headerbar-shade-color);
++    border-radius: 0;
++    box-shadow: none;
++  }
++
+   /* Figtree's 12px ink rounds one device pixel above the optical center of
+    * these 30px controls. Move only the text atoms; icons and hit geometry are
+    * already centered and remain untouched. */
+diff --git a/src/resources/ui/nautilus-toolbar.blp b/src/resources/ui/nautilus-toolbar.blp
+index 8431f3a..9500da6 100644
+--- a/src/resources/ui/nautilus-toolbar.blp
++++ b/src/resources/ui/nautilus-toolbar.blp
+@@ -24,7 +24,8 @@ template $NautilusToolbar: Adw.Bin {
+ 
+           $NautilusPathBar path_bar {
+             valign: center;
+-            hexpand: false;
++            hexpand: bind template.compact;
++            compact: bind template.compact;
+             margin-start: 4;
+             window-slot: bind template.window-slot;
+           }
+@@ -39,6 +40,7 @@ template $NautilusToolbar: Adw.Bin {
+             hexpand: false;
+             hhomogeneous: true;
+             transition-type: crossfade;
++            visible: bind template.compact inverted;
+ 
+             ToggleButton search_button {
+               valign: center;
+@@ -105,11 +107,33 @@ template $NautilusToolbar: Adw.Bin {
+     }
+ 
+     [start]
+-    ToggleButton show_sidebar_button {
+-      visible: bind template.show-sidebar-button bidirectional;
++    ToggleButton compact_sidebar_button {
++      visible: bind template.compact;
+       active: bind template.sidebar-button-active bidirectional;
+-      tooltip-text: _("Show Sidebar");
+       icon-name: "sidebar-show-symbolic";
++
++      accessibility {
++        label: _("Show Sidebar");
++      }
++
++      styles [
++        "luma-compact-toolbar-button",
++      ]
++    }
++
++    [start]
++    Button compact_back_button {
++      visible: bind template.compact;
++      action-name: "slot.back";
++      icon-name: "go-previous-symbolic";
++
++      accessibility {
++        label: _("Back");
++      }
++
++      styles [
++        "luma-compact-toolbar-button",
++      ]
+     }
+ 
+     [start]
+@@ -127,6 +151,7 @@ template $NautilusToolbar: Adw.Bin {
+ 
+     [end]
+     MenuButton {
++      visible: bind template.compact inverted;
+       icon-name: "open-menu-symbolic";
+       menu-model: bind template.main-menu;
+ 
+@@ -139,6 +164,37 @@ template $NautilusToolbar: Adw.Bin {
+       ]
+     }
+ 
++    [end]
++    MenuButton compact_overflow_button {
++      visible: bind template.compact;
++      icon-name: "view-more-symbolic";
++      menu-model: bind template.compact-menu;
++
++      styles [
++        "luma-compact-toolbar-button",
++      ]
++
++      accessibility {
++        label: _("More Options");
++      }
++    }
++
++    [end]
++    ToggleButton compact_search_button {
++      visible: bind template.compact;
++      icon-name: "edit-find-symbolic";
++      action-name: "slot.search-global";
++      active: bind template.window-slot as <$NautilusWindowSlot>.search-visible;
++
++      styles [
++        "luma-compact-toolbar-button",
++      ]
++
++      accessibility {
++        label: _("Search");
++      }
++    }
++
+     [end]
+     Button new_folder_button {
+       visible: bind template.show-new-folder-button;
+@@ -149,7 +205,7 @@ template $NautilusToolbar: Adw.Bin {
+     }
+ 
+     [end]
+-    $NautilusViewControls {
++    $NautilusViewControls view_controls {
+       visible: bind template.show-view-controls;
+       window-slot: bind template.window-slot;
+     }
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+index a2b8841..045172c 100644
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -101,7 +101,8 @@ menu tab_menu_model {
+ }
+ 
+ template $NautilusWindow: Adw.ApplicationWindow {
+-  height-request: 380;
++  width-request: 360;
++  height-request: 480;
+   show-menubar: false;
+   title: bind template.active-slot as <$NautilusWindowSlot>.title;
+ 
+@@ -255,17 +256,31 @@ template $NautilusWindow: Adw.ApplicationWindow {
+   }
+ 
+   Adw.Breakpoint {
+-    condition ("max-width: 682sp")
++    condition ("max-width: 1023px and min-width: 640px")
++
++    setters {
++      split_view.min-sidebar-width: 190;
++      split_view.max-sidebar-width: 210;
++      sidebar_action_surface.width-request: 210;
++    }
++  }
++
++  Adw.Breakpoint {
++    condition ("max-width: 639px")
+ 
+     setters {
+       split_view.collapsed: true;
+       split_view.enable-show-gesture: true;
+       split_view.enable-hide-gesture: true;
++      split_view.min-sidebar-width: 232;
++      split_view.max-sidebar-width: 300;
++      split_view.sidebar-width-fraction: 0.85;
+       toolbar.show-sidebar-button: true;
+       toolbar.show-view-controls: false;
+       toolbar.show-history-controls: false;
++      toolbar.compact: true;
+       sidebar_action_surface.visible: false;
+-      action_bar.revealed: true;
++      action_bar.revealed: false;
+       progress_indicator.popover-position: 2;
+     }
+   }
+

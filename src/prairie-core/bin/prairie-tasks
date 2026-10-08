@@ -1,0 +1,3 @@
+#!/usr/bin/python3
+from prairie_apps.tasks import main
+raise SystemExit(main())

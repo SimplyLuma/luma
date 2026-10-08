@@ -1,0 +1,395 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Thu, 17 Sep 2026 11:54:16 -0400
+Subject: [PATCH] luma: the now-playing island always ends whole, and says when
+ it did not
+
+The now-playing island's show and hide animations and its title and
+artwork fades now end in a known state however they stop. A show cut short
+by anything but a hide still leaves the island opaque at its natural size,
+and a hide cut short by anything but a show still hides it. A fade that is
+stopped leaves the title or artwork opaque.
+
+A guard (lumaMediaIslandGuard.js) checks the island about a second after it
+last changed with nothing animating. If the island or its content is still
+translucent, is held narrower than its content, has its controls hidden or
+squeezed out, or carries an insensitive state it should not, the guard
+writes one line to the journal and puts the island back: the opacity of each
+part, the size against the natural size, style classes, pseudo-classes, the
+title's font, the last show or hide and what stopped it, and the last fade.
+It reports at most once a minute and counts the times in between. It does
+nothing while anything on the island is animating, and costs nothing while
+the island is hidden.
+---
+ js/js-resources.gresource.xml |   1 +
+ js/ui/lumaMediaIslandGuard.js | 218 ++++++++++++++++++++++++++++++++++
+ js/ui/shelf.js                |  23 +++-
+ js/ui/shelfMedia.js           |  33 +++--
+ 4 files changed, 264 insertions(+), 11 deletions(-)
+ create mode 100644 js/ui/lumaMediaIslandGuard.js
+
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index aa94a66..6a85d63 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -113,6 +113,7 @@
+     <file>ui/lumaWindowPath.js</file>
+     <file>ui/mediaArtwork.js</file>
+     <file>ui/iconMask.js</file>
++    <file>ui/lumaMediaIslandGuard.js</file>
+     <file>ui/shelfMedia.js</file>
+     <file>ui/notificationDaemon.js</file>
+     <file>ui/osdMonitorLabeler.js</file>
+diff --git a/js/ui/lumaMediaIslandGuard.js b/js/ui/lumaMediaIslandGuard.js
+new file mode 100644
+index 0000000..a58f52f
+--- /dev/null
++++ b/js/ui/lumaMediaIslandGuard.js
+@@ -0,0 +1,218 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Keeps the now-playing island whole. Its show and hide animations, and the
++// module's title and artwork crossfades, end in one known state: the island
++// opaque, at its natural size, with its controls inside it. If about a second
++// after the last animation should have ended the island is still translucent,
++// narrower than its content, missing its controls or carrying an insensitive
++// state, the guard writes one line to the journal saying what it found and
++// which animation was last and what stopped it, then puts the island back.
++import GLib from 'gi://GLib';
++
++const GRACE_MS = 1000;
++const CHECK_MS = 500;
++const LOG_INTERVAL_MS = 60 * 1000;
++
++const now = () => GLib.get_monotonic_time() / 1000;
++const EASED = ['opacity', 'width', 'height'];
++
++export class MediaIslandGuard {
++    constructor(island, media, {vertical, sync}) {
++        this._island = island;
++        this._media = media;
++        this._vertical = vertical;
++        this._sync = sync;
++        this._timer = 0;
++        this._seen = 0;
++        this._cause = null;
++        this._last = null;
++        this._lastLog = -Infinity;
++        this._suppressed = 0;
++        this.snaps = 0;
++        const queue = () => this.queue();
++        island.connectObject('notify::opacity', queue, 'notify::width', queue,
++            'notify::height', queue, 'notify::visible', queue, 'notify::mapped', queue,
++            'notify::allocation', queue, this);
++        island._content?.connectObject('notify::opacity', queue, this);
++        media._copy.connectObject('notify::opacity', queue, this);
++        media._controls.connectObject('notify::visible', queue, 'notify::allocation', queue, this);
++        media.connectObject('notify::opacity', queue, 'eligibility-changed', queue, this);
++        this.queue();
++    }
++
++    // The island is about to animate: whatever animation is still running is
++    // being interrupted by this one. Returns the record the animation reports
++    // its end to.
++    begin(kind, duration) {
++        this._cause = kind;
++        const motion = {kind, started: Math.round(now()), duration, finished: null, interruptedBy: null};
++        this._next = motion;
++        return motion;
++    }
++
++    started(motion) {
++        this._cause = null;
++        this._last = motion;
++        this.queue(motion.duration + GRACE_MS);
++    }
++
++    // Returns what stopped the animation: another island animation, the guard,
++    // or something outside the island ("external").
++    stopped(motion, finished) {
++        const by = finished ? null : this._cause && motion !== this._next ? this._cause : 'external';
++        motion.finished = finished;
++        motion.interruptedBy = by;
++        motion.endedAfter = Math.round(now() - motion.started);
++        this.queue();
++        return by;
++    }
++
++    queue(delay = CHECK_MS) {
++        if (this._timer || this._destroyed)
++            return;
++        this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT_IDLE, Math.max(250, delay), () => {
++            this._timer = 0;
++            this._check();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _actors() {
++        const media = this._media;
++        return {island: this._island, material: this._island._content, module: media,
++            identity: media._identity, copy: media._copy, art: media._art, controls: media._controls};
++    }
++
++    _check() {
++        const island = this._island, media = this._media;
++        if (this._destroyed || !media.eligible || !island.visible || !island.mapped)
++            return;
++        const actors = this._actors();
++        const moving = Object.values(actors).some(actor =>
++            actor && EASED.some(property => actor.get_transition(property)));
++        const settleAt = this._last ? this._last.started + this._last.duration + GRACE_MS : 0;
++        if (moving || now() < settleAt) {
++            this._seen = 0;
++            this.queue(moving ? GRACE_MS : settleAt - now());
++            return;
++        }
++        const problems = this._problems(actors);
++        if (!problems.length) {
++            this._seen = 0;
++            return;
++        }
++        // Act only on a state that has lasted: a second after it was first
++        // seen with nothing animating.
++        this._seen ||= now();
++        if (now() - this._seen < GRACE_MS) {
++            this.queue(GRACE_MS - (now() - this._seen));
++            return;
++        }
++        this._seen = 0;
++        this._restore(problems, actors);
++    }
++
++    _problems(actors) {
++        const problems = [];
++        const island = this._island, media = this._media;
++        for (const [name, actor] of Object.entries(actors)) {
++            if (actor && actor.opacity < 255)
++                problems.push(`${name} opacity ${actor.opacity}`);
++        }
++        for (const button of [media._previous, media._toggle, media._next]) {
++            const expected = button.reactive ? 255 : 89;
++            if (button.opacity !== expected)
++                problems.push(`control opacity ${button.opacity}, not ${expected}`);
++        }
++        const vertical = this._vertical();
++        const [, natural] = vertical
++            ? island.get_preferred_height(island.width)
++            : island.get_preferred_width(island.height);
++        const size = vertical ? island.height : island.width;
++        if (vertical ? island.natural_height_set : island.natural_width_set)
++            problems.push(`${vertical ? 'height' : 'width'} held at ${Math.round(size)}`);
++        if (size < natural - 1)
++            problems.push(`${Math.round(size)}px of ${Math.round(natural)}px`);
++        const controls = media._controls;
++        if (controls.get_parent() !== media || !controls.visible || controls.get_n_children() < 3) {
++            problems.push('controls missing');
++        } else if (!vertical && controls.has_allocation()) {
++            // Squeezed out: the island gives the title its room first, so a
++            // short island draws the artwork and title and no controls.
++            const [, wanted] = controls.get_preferred_width(-1);
++            const given = controls.get_allocation_box().get_width();
++            if (given < wanted - 1)
++                problems.push(`controls given ${Math.round(given)}px of ${Math.round(wanted)}px`);
++        }
++        for (const [name, actor] of Object.entries(actors)) {
++            if (/insensitive|transition/.test(actor?.style_class ?? ''))
++                problems.push(`${name} class "${actor.style_class}"`);
++        }
++        // St marks every non-reactive widget insensitive; only the island's
++        // buttons are meant to be reactive.
++        if (media._identity.has_style_pseudo_class('insensitive'))
++            problems.push('identity insensitive');
++        return problems;
++    }
++
++    _describe(actors) {
++        const vertical = this._vertical();
++        const island = this._island;
++        const [, natural] = vertical
++            ? island.get_preferred_height(island.width)
++            : island.get_preferred_width(island.height);
++        const out = {size: Math.round(vertical ? island.height : island.width), natural: Math.round(natural)};
++        out.opacity = Object.fromEntries(Object.entries(actors).map(([name, actor]) => [name, actor?.opacity]));
++        out.classes = Object.fromEntries(Object.entries(actors).map(([name, actor]) => [name, actor?.style_class ?? '']));
++        out.pseudo = Object.fromEntries(Object.entries(actors).map(([name, actor]) => [name, actor?.pseudo_class ?? '']));
++        try {
++            out.font = this._media._title.get_theme_node().get_font().to_string();
++        } catch {
++            out.font = null;
++        }
++        out.lastAnimation = this._last;
++        out.lastCrossfade = this._media._lastMotion ?? null;
++        return out;
++    }
++
++    _restore(problems, actors) {
++        const at = now();
++        const details = this._describe(actors);
++        if (at - this._lastLog >= LOG_INTERVAL_MS) {
++            const suppressed = this._suppressed ? ` (${this._suppressed} more since the last report)` : '';
++            console.warn(`Luma shelf: the now-playing island was left ${problems.join('; ')}; restored it${suppressed}. ${JSON.stringify(details)}`);
++            this._lastLog = at;
++            this._suppressed = 0;
++        } else {
++            this._suppressed++;
++        }
++        this.snaps++;
++        const media = this._media;
++        this._cause = 'guard';
++        this._next = null;
++        for (const actor of Object.values(actors)) {
++            actor?.remove_all_transitions();
++            if (actor)
++                actor.opacity = 255;
++        }
++        this._cause = null;
++        media._oldCopy?.destroy();
++        media._oldCopy = null;
++        if (media._controls.get_parent() !== media)
++            media.add_child(media._controls);
++        media._controls.show();
++        media._identity.reactive = true;
++        this._island.set_size(-1, -1);
++        media._render();
++        this._sync();
++        this.queue(GRACE_MS);
++    }
++
++    destroy() {
++        this._destroyed = true;
++        if (this._timer)
++            GLib.source_remove(this._timer);
++        this._timer = 0;
++        for (const actor of [this._island, this._island._content, this._media, this._media._copy, this._media._controls])
++            actor?.disconnectObject(this);
++    }
++}
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index 44114f5..e5e70bf 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -9,6 +9,7 @@ import St from 'gi://St';
+ import * as Main from './main.js';
+ import * as PanelMenu from './panelMenu.js';
+ import {ShelfMedia} from './shelfMedia.js';
++import {MediaIslandGuard} from './lumaMediaIslandGuard.js';
+ import {Well} from './lumaWell.js';
+ import {NotificationBeacon} from './lumaNotificationBeacon.js';
+ import {LumaIconMask} from './iconMask.js';
+@@ -474,9 +475,15 @@ class Shelf extends St.Widget {
+         this._mediaIsland.visible = false;
+         this._group._mediaIsland = this._mediaIsland;
+         this._group._statusIsland = this._actionsIsland;
++        this._mediaGuard = new MediaIslandGuard(this._mediaIsland, this._media,
++            {vertical: () => this._vertical, sync: () => { this._sync(); this._queueDockWidth(); }});
+         this._media.connectObject('eligibility-changed', () => {
+             const show = this._media.eligible;
+             const property = this._vertical ? 'height' : 'width';
++            // Every show and hide ends in a known state, however it stops: an
++            // animation cut short by anything but the opposite one still
++            // leaves the island opaque at its natural size, or hidden.
++            const motion = this._mediaGuard.begin(show ? 'show' : 'hide', 200);
+             this._mediaIsland.remove_all_transitions();
+             if (show) {
+                 this._mediaIsland.visible = true;
+@@ -490,16 +497,26 @@ class Shelf extends St.Widget {
+                 this._mediaIsland.opacity = 0;
+                 this._mediaIsland.ease({[property]: target, opacity: 255, duration: 200,
+                     mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-                    onComplete: () => { this._mediaIsland[property] = -1; this._sync(); }});
++                    onStopped: finished => {
++                        if (!this._mediaGuard || this._mediaGuard.stopped(motion, finished) === 'hide')
++                            return;
++                        this._mediaIsland.opacity = 255;
++                        this._mediaIsland[property] = -1;
++                        this._sync();
++                    }});
+             } else {
+                 this._mediaIsland.ease({[property]: 0, opacity: 0, duration: 200,
+                     mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-                    onComplete: () => {
++                    onStopped: finished => {
++                        if (!this._mediaGuard || this._mediaGuard.stopped(motion, finished) === 'show')
++                            return;
+                         this._mediaIsland.visible = false;
++                        this._mediaIsland.opacity = 255;
+                         this._mediaIsland[property] = -1;
+                         this._sync();
+                     }});
+             }
++            this._mediaGuard.started(motion);
+         }, this);
+         this._mediaIsland.connectObject('notify::width', () => this._queueDockWidth(),
+             'notify::height', () => this._queueDockWidth(), this);
+@@ -528,6 +545,8 @@ class Shelf extends St.Widget {
+         };
+ 
+         this.connect('destroy', () => {
++            this._mediaGuard?.destroy();
++            this._mediaGuard = null;
+             if (this._panelAddToStatusArea) {
+                 Main.panel.addToStatusArea = this._panelAddToStatusArea;
+                 this._panelAddToStatusArea = null;
+diff --git a/js/ui/shelfMedia.js b/js/ui/shelfMedia.js
+index 2a17c19..539f8cd 100644
+--- a/js/ui/shelfMedia.js
++++ b/js/ui/shelfMedia.js
+@@ -159,9 +159,9 @@ export const ShelfMedia = GObject.registerClass({
+             }
+             this._oldCopy = old;
+             this._copyStack.add_child(old);
+-            old.ease({opacity: 0, duration: 160, onComplete: () => {
++            old.ease({opacity: 0, duration: 160, onStopped: () => {
+                 if (this._oldCopy === old) this._oldCopy = null;
+-                old.destroy();
++                if (!this._disposed) old.destroy();
+             }});
+         }
+         this._title.text = title;
+@@ -181,13 +181,30 @@ export const ShelfMedia = GObject.registerClass({
+             button.opacity = enabled ? 255 : 89;
+         }
+         if (changed && St.Settings.get().enable_animations) {
+-            this._copy.remove_all_transitions();
+-            this._copy.opacity = 0;
+-            this._copy.ease({opacity: 255, duration: 160});
++            this._crossfade(this._copy, 'title', 'track change');
+         }
+         this._updateArt(player);
+     }
+ 
++    // Fades an actor in, and whatever stops the fade leaves it opaque. The
++    // last fade is kept for the island guard's report.
++    _crossfade(actor, kind, cause) {
++        this._fadeCause = cause;
++        actor.remove_all_transitions();
++        this._fadeCause = null;
++        actor.opacity = 0;
++        const motion = {kind, started: GLib.get_monotonic_time() / 1000, duration: 160,
++            finished: null, interruptedBy: null};
++        this._lastMotion = motion;
++        actor.ease({opacity: 255, duration: 160, onStopped: finished => {
++            motion.finished = finished;
++            if (!finished && !this._disposed) {
++                motion.interruptedBy = this._fadeCause ?? 'external';
++                actor.opacity = 255;
++            }
++        }});
++    }
++
+     _updateArt(player) {
+         const fallback = player.app?.get_icon() ?? new Gio.ThemedIcon({name: 'audio-x-generic-symbolic'});
+         const url = player.trackCoverUrl || '';
+@@ -203,10 +220,8 @@ export const ShelfMedia = GObject.registerClass({
+         Mpris.loadShelfArtwork(url, this._cancellable).then(icon => {
+             if (this._disposed || this._artGeneration !== generation || !icon) return;
+             this._art.gicon = icon;
+-            if (St.Settings.get().enable_animations) {
+-                this._art.opacity = 0;
+-                this._art.ease({opacity: 255, duration: 160});
+-            }
++            if (St.Settings.get().enable_animations)
++                this._crossfade(this._art, 'artwork', 'new artwork');
+         }).catch(() => {}); // Keep the source icon when artwork is unavailable.
+     }
+ 

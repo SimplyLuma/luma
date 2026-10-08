@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+/dts-v1/;
+/plugin/;
+
+/*
+ * Lab-only second-stage overlay.  The canonical FP6 fingerprint overlay stays
+ * disabled for release composition; a physically reviewed diagnostic may
+ * apply this overlay after it to permit the GPL control shim to probe.
+ */
+
+&{/focalfp-ft9362} {
+	status = "okay";
+};

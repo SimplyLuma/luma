@@ -1,0 +1,723 @@
+{
+ "comment": "Reviewed input for the schema 4 catalogue (generate-depot-seed.py). For each listing it names the official, automated channel Depot installs it from when that is not a Flatpak (a snap from a verified Snap Store publisher, the publisher's signed RPM repository with its key's fingerprint pinned here, or Fedora's own repository), the words written for Luma's own apps, and the reason a listing still sends people to the publisher's website. Store metadata (icons, screenshots, descriptions, releases) is generated into depot-listings.json by scripts/depot/enrich-listings.py; 'metadata' below says where it comes from. Schema 3 (catalog-3.json, older Depots) is untouched by this file.",
+ "applications": {
+  "nordvpn": {
+   "backend": "snap",
+   "repository": "snap-store",
+   "source_id": "nordvpn",
+   "distribution": "publisher",
+   "architectures": [
+    "x86_64",
+    "aarch64"
+   ],
+   "reference_url": "https://snapcraft.io/nordvpn",
+   "homepage": "https://nordvpn.com/download/linux/",
+   "qualification": "pending",
+   "qualification_reason": "NordVPN's own snap, published on the Snap Store by NordVPN (verified), strictly confined. Its VPN service needs network, firewall and system-observation interfaces that the Snap Store does not connect by itself; Depot connects exactly those (the ones NordVPN's status command asks for) after installing.",
+   "sign_in": "required-third-party",
+   "sources": {
+    "snap": {
+     "name": "nordvpn",
+     "publisher": "nordvpn",
+     "channel": "stable",
+     "connect": [
+      "system-observe",
+      "hardware-observe",
+      "network-control",
+      "network-observe",
+      "firewall-control",
+      "login-session-observe",
+      "network-manager"
+     ]
+    }
+   },
+   "channel": {
+    "kind": "snap",
+    "title": "NordVPN’s snap",
+    "publisher": "NordVPN",
+    "publisher_verified": true
+   },
+   "metadata": {
+    "snap": "nordvpn",
+    "override": {
+     "summary": "Encrypt your connection and browse privately through NordVPN’s servers."
+    }
+   }
+  },
+  "termius": {
+   "backend": "snap",
+   "repository": "snap-store",
+   "source_id": "termius-app",
+   "distribution": "publisher",
+   "architectures": [
+    "x86_64"
+   ],
+   "reference_url": "https://snapcraft.io/termius-app",
+   "homepage": "https://termius.com/download/linux",
+   "qualification": "pending",
+   "qualification_reason": "Termius's own snap, published on the Snap Store by Termius (verified), strictly confined. Depot connects the keyring interface so saved passwords work; serial-port and raw-usb (serial cable support) stay unconnected.",
+   "sign_in": "third-party",
+   "sources": {
+    "snap": {
+     "name": "termius-app",
+     "publisher": "termius",
+     "channel": "stable",
+     "connect": [
+      "password-manager-service"
+     ]
+    }
+   },
+   "channel": {
+    "kind": "snap",
+    "title": "Termius’s snap",
+    "publisher": "Termius",
+    "publisher_verified": true
+   },
+   "metadata": {
+    "snap": "termius-app",
+    "override": {
+     "summary": "An SSH, Mosh and SFTP client whose hosts and keys follow you between devices."
+    }
+   }
+  },
+  "chatgpt": {
+   "backend": "rpm",
+   "repository": "openai",
+   "source_id": "chatgpt",
+   "distribution": "publisher",
+   "architectures": [
+    "x86_64",
+    "aarch64"
+   ],
+   "reference_url": "https://learn.chatgpt.com/docs/linux/linux-app",
+   "homepage": "https://chatgpt.com/download",
+   "qualification": "pending",
+   "qualification_reason": "OpenAI's own Fedora package from OpenAI's signed repository. Luma checks the repository key against the fingerprint OpenAI publishes before adding it.",
+   "sign_in": "required-third-party",
+   "sources": {
+    "rpm_repository": {
+     "id": "openai",
+     "name": "OpenAI",
+     "package": "chatgpt",
+     "baseurl": "https://persistent.oaistatic.com/codex-app-prod/linux/rpm/$basearch",
+     "gpgkey": "https://persistent.oaistatic.com/codex-app-prod/linux/repository-signing-key.gpg",
+     "fingerprints": [
+      "3BFA0E4AE8B8CC16A2D9BA684A3B4A566C4660E4"
+     ],
+     "repo_gpgcheck": false
+    }
+   },
+   "channel": {
+    "kind": "rpm-repository",
+    "title": "OpenAI’s software repository",
+    "publisher": "OpenAI",
+    "publisher_verified": true
+   },
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/15/ec/71/15ec7161-5fae-4018-f178-8ab4f0b1a02d/AppIcon-0-0-1x_U007epad-0-0-0-1-0-P3-85-220.png/1024x1024bb.png",
+     "screenshots": [
+      {
+       "url": "https://store-images.s-microsoft.com/image/apps.1008.14314868180609929.d43036af-4b49-4b9b-9813-b08bb6f34d9d.dade6906-5c61-4b90-9a58-1f53d1d05090",
+       "caption": "Chat with a preview of what it built"
+      },
+      {
+       "url": "https://store-images.s-microsoft.com/image/apps.38792.14314868180609929.d43036af-4b49-4b9b-9813-b08bb6f34d9d.2af191e6-a9fd-4f2f-bb07-79cb7efe0908",
+       "caption": "Start a new task"
+      },
+      {
+       "url": "https://store-images.s-microsoft.com/image/apps.39499.14314868180609929.d43036af-4b49-4b9b-9813-b08bb6f34d9d.fac87ef7-0dbc-4cec-a326-11badc854d8a",
+       "caption": "Work on a slide deck"
+      },
+      {
+       "url": "https://store-images.s-microsoft.com/image/apps.45895.14314868180609929.d43036af-4b49-4b9b-9813-b08bb6f34d9d.92b9dc7d-813f-4c7c-943e-ba8c3d49a60d",
+       "caption": "Connect plugins"
+      }
+     ],
+     "summary": "OpenAI’s assistant for chat, documents and code.",
+     "description": "ChatGPT is OpenAI’s desktop app for its assistant. Ask questions, draft and edit text, and work with files and screenshots.\n\nIts Work mode builds documents, slides, spreadsheets and small websites from a goal, and Codex, the coding agent, helps plan, write and review code. Plugins connect services such as Google Drive and Gmail.\n\nAn OpenAI account is required; some features need a paid plan.",
+     "developer_name": "OpenAI",
+     "license": "Proprietary",
+     "homepage": "https://chatgpt.com/download/",
+     "support_url": "https://help.openai.com/",
+     "privacy_url": "https://openai.com/policies/privacy-policy/",
+     "categories": [
+      "work"
+     ]
+    }
+   }
+  },
+  "mega": {
+   "backend": "rpm",
+   "repository": "mega",
+   "source_id": "megasync",
+   "distribution": "publisher",
+   "architectures": [
+    "x86_64",
+    "aarch64"
+   ],
+   "reference_url": "https://mega.io/desktop",
+   "homepage": "https://mega.io/desktop",
+   "qualification": "pending",
+   "qualification_reason": "MEGA's own Fedora package from MEGA's signed repository, with the repository key pinned by fingerprint.",
+   "sign_in": "required-third-party",
+   "sources": {
+    "rpm_repository": {
+     "id": "mega",
+     "name": "MEGA",
+     "package": "megasync",
+     "baseurl": "https://mega.nz/linux/repo/Fedora_$releasever/",
+     "gpgkey": "https://mega.nz/linux/repo/Fedora_$releasever/repodata/repomd.xml.key",
+     "fingerprints": [
+      "B01C811880480C854C73EC7E1A664B787094A482"
+     ],
+     "repo_gpgcheck": false
+    }
+   },
+   "channel": {
+    "kind": "rpm-repository",
+    "title": "MEGA’s software repository",
+    "publisher": "MEGA",
+    "publisher_verified": true
+   },
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://mega.io/wp-content/uploads/logo-mega.png",
+     "screenshots": [
+      {
+       "url": "https://mega.io/wp-content/uploads/2023/01/DA-img-3.png",
+       "caption": "Restore earlier versions of your files"
+      },
+      {
+       "url": "https://mega.io/wp-content/uploads/2023/01/DA-img-4.png",
+       "caption": "Follow uploads and downloads"
+      }
+     ],
+     "summary": "Sync and back up your folders to MEGA’s encrypted cloud.",
+     "description": "The MEGA desktop app keeps folders on this computer in sync with MEGA cloud storage, which is end-to-end encrypted, and can back up other folders too.\n\nIt shows the progress of uploads and downloads, restores earlier versions of files and files you removed, and opens MEGA links to stream or download them.\n\nA MEGA account is required; there is a free tier.",
+     "developer_name": "MEGA",
+     "license": "Proprietary",
+     "homepage": "https://mega.io/desktop",
+     "support_url": "https://help.mega.io/",
+     "privacy_url": "https://mega.io/privacy",
+     "categories": [
+      "utilities"
+     ]
+    }
+   }
+  },
+  "teamviewer": {
+   "backend": "rpm",
+   "repository": "teamviewer",
+   "source_id": "teamviewer",
+   "distribution": "publisher",
+   "architectures": [
+    "x86_64"
+   ],
+   "reference_url": "https://www.teamviewer.com/en/download/linux/",
+   "homepage": "https://www.teamviewer.com/en/download/linux/",
+   "qualification": "pending",
+   "qualification_reason": "TeamViewer's own package from TeamViewer's signed repository, with the repository key pinned by fingerprint. It runs TeamViewer's background service.",
+   "sign_in": "third-party",
+   "sources": {
+    "rpm_repository": {
+     "id": "teamviewer",
+     "name": "TeamViewer",
+     "package": "teamviewer",
+     "baseurl": "https://linux.teamviewer.com/yum/stable/main/binary-$basearch/",
+     "gpgkey": "https://linux.teamviewer.com/pubkey/currentkey.asc",
+     "fingerprints": [
+      "AB2985BDE164897BA46EA69A234FAACB575B15D1"
+     ],
+     "repo_gpgcheck": false
+    }
+   },
+   "channel": {
+    "kind": "rpm-repository",
+    "title": "TeamViewer’s software repository",
+    "publisher": "TeamViewer",
+    "publisher_verified": true
+   },
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxhwREidrLzJDVybKyEeVWO_g537YiOhR5.QJ8NzUxig26OoAvUu9M0qDJD1YNEcOtttUU8qK0M1DXBKYFgKd5Vo-&format=source",
+     "screenshots": [
+      {
+       "url": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxhwREidrLzJDVybKyEeVWO8lfi8IkAHZVMC9cSgGoRo4A42mWqa8QO8vSA32gCAq8davcQGKYKNmOtBCW2w_XCM-&format=source",
+       "caption": "Control a remote session"
+      },
+      {
+       "url": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxhwREidrLzJDVybKyEeVWO.YHunVV9LYzhvaCPGMNtNiYzuLlyQr7r4EBrrhJ8IPcM_TUBuqJBBz9Sud2miY_1E-&format=source",
+       "caption": "Your devices in one list"
+      },
+      {
+       "url": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxhwREidrLzJDVybKyEeVWO.MZ9MwKyTXDqDBW2xYStxZSixsYogGQ1UpuFkVcLC7PikjxotDEpUP8Mcrxt5sE1g-&format=source",
+       "caption": "Reach your computers from anywhere"
+      }
+     ],
+     "summary": "Remote access and support for computers and devices.",
+     "description": "TeamViewer lets you see and control another computer over the internet, to help someone or to reach your own computers while you are away.\n\nTransfer files, print remotely and connect with a partner’s ID and password. Keep a list of your devices and set up unattended access.\n\nOne-off sessions need no account; device lists and unattended access need a TeamViewer account, and commercial use needs a licence.",
+     "developer_name": "TeamViewer",
+     "license": "Proprietary",
+     "homepage": "https://www.teamviewer.com/",
+     "support_url": "https://www.teamviewer.com/en/support/",
+     "privacy_url": "https://www.teamviewer.com/privacy-policy/",
+     "categories": [
+      "utilities"
+     ]
+    }
+   }
+  },
+  "ollama": {
+   "visibility": "withdrawn",
+   "qualification_reason": "Ollama on Linux is a command-line tool and background service with no window of its own; `sudo dnf install ollama` installs Fedora's package on Luma. It stays in catalog-3 for older Depots."
+  },
+  "sevenzip": {
+   "visibility": "withdrawn",
+   "qualification_reason": "7-Zip on Linux is a command-line tool with no window of its own; Filer opens and makes 7z and zip archives. It stays in catalog-3 for older Depots."
+  },
+  "virtualbox": {
+   "channel": {
+    "kind": "publisher",
+    "title": "Oracle’s website",
+    "publisher": "Oracle",
+    "reason": "VirtualBox needs its own kernel drivers, built on the computer it runs on. Luma’s system image is signed and read-only, so those drivers cannot be built or loaded, and a package from Oracle’s repository would install but never start a virtual machine."
+   },
+   "homepage": "https://www.virtualbox.org/wiki/Linux_Downloads",
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://raw.githubusercontent.com/VirtualBox/virtualbox/main/src/VBox/Artwork/OSE/virtualbox.svg",
+     "screenshots": [
+      {
+       "url": "https://docs.oracle.com/en/virtualization/virtualbox/7.2/user/img/seamless.png",
+       "caption": "Guest windows beside your own"
+      }
+     ],
+     "summary": "Run other operating systems in virtual machines.",
+     "description": "VirtualBox runs other operating systems, such as Windows, Linux and BSD, as virtual machines on your computer.\n\nA manager window creates and configures machines with their virtual disks, networking, USB devices and shared folders, and takes snapshots you can go back to. Guest Additions add a shared clipboard, display resizing and seamless windows.\n\nNo account is needed.",
+     "developer_name": "Oracle",
+     "license": "GPL-3.0-only",
+     "homepage": "https://www.virtualbox.org/wiki/Linux_Downloads",
+     "support_url": "https://www.virtualbox.org/wiki/Community",
+     "privacy_url": "https://www.oracle.com/legal/privacy/",
+     "categories": [
+      "utilities"
+     ]
+    }
+   },
+   "sign_in": "none"
+  },
+  "expressvpn": {
+   "channel": {
+    "kind": "publisher",
+    "title": "ExpressVPN’s website",
+    "publisher": "ExpressVPN",
+    "reason": "ExpressVPN offers its Linux app only as a download from your ExpressVPN account page. There is no public repository or store package for Depot to install and update it from."
+   },
+   "homepage": "https://www.expressvpn.com/vpn-software/vpn-linux",
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxl_eSX9dEIboc0HgmpFsdjiaSh44Hy9gtVO0xXZkdyuDiCvdjuvtx_FIoQTR1U6XbsL2ILRhI1mG5Pr.yQndWgk-&format=source",
+     "screenshots": [
+      {
+       "url": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxl_eSX9dEIboc0HgmpFsdjjbf3Tm3Cq3FAnnlK8sumt6_yIzMD7X3zkbXYByGqm_RCF2ulgeWUtGAENX_3EP0uA-&format=source",
+       "caption": "Choose a server location"
+      },
+      {
+       "url": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxl_eSX9dEIboc0HgmpFsdji7Yg6k._aH0.TmviwXu5gnLK1Ae2IAEDWlxlUJKOlKxdBO2nLcC6NX8pdVo4y2430-&format=source",
+       "caption": "Test your connection’s speed"
+      },
+      {
+       "url": "https://images-eds-ssl.xboxlive.com/image?url=4rt9.lXDC4H_93laV1_eHHFT949fUipzkiFOBH3fAiZZUCdYojwUyX2aTonS1aIwMrx6NUIsHfUHSLzjGJFxxl_eSX9dEIboc0HgmpFsdjiHS_MjlyRqz6VT88jHS_mo6RJs08.7U4NDvzRdHVjW8k82VFnaDS3AkSRAg0bll0c-&format=source",
+       "caption": "Help when you need it"
+      }
+     ],
+     "summary": "A subscription VPN with one-click connect.",
+     "description": "ExpressVPN sends your internet traffic through an encrypted tunnel to a server in a location you choose.\n\nThe app has a one-click connect button, a server list with favourites, a speed test, ad and tracker blocking, and a kill switch.\n\nA paid ExpressVPN subscription and account are required.",
+     "developer_name": "ExpressVPN",
+     "license": "Proprietary",
+     "homepage": "https://www.expressvpn.com/vpn-software/vpn-linux",
+     "support_url": "https://www.expressvpn.com/support/",
+     "privacy_url": "https://www.expressvpn.com/privacy-policy",
+     "categories": [
+      "utilities"
+     ]
+    }
+   },
+   "sign_in": "required-third-party"
+  },
+  "figma": {
+   "publisher": "Figma",
+   "distribution": "publisher",
+   "homepage": "https://www.figma.com/",
+   "reference_url": "https://www.figma.com/downloads/",
+   "qualification_reason": "Figma publishes desktop apps for macOS and Windows only. On Luma it runs in the web browser at figma.com, with the same files and features.",
+   "summary": "Design, prototype and collaborate, in your browser.",
+   "description": "Figma is a collaborative interface design tool. Figma does not publish a Linux app, so on Luma you use it at figma.com in your browser, where it works fully, with the same files, plugins and real-time collaboration as the desktop apps. Figma needs a Figma account.",
+   "channel": {
+    "kind": "publisher",
+    "title": "figma.com",
+    "publisher": "Figma",
+    "web": true,
+    "reason": "Figma publishes no Linux app; it runs fully in the browser at figma.com. Luma does not install unofficial builds."
+   },
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://static.figma.com/app/icon/2/icon-512.png",
+     "screenshots": [
+      {
+       "url": "https://cdn.sanity.io/images/599r6htc/regionalized/2f76430d9baf4c1cd5f067c051c2d97be256fa0a-2223x1250.png",
+       "caption": "Design with layers and properties"
+      },
+      {
+       "url": "https://cdn.sanity.io/images/599r6htc/regionalized/c6a0a58afc2722851abd21d93a1840360c851ad9-2464x1378.png",
+       "caption": "Mobile designs with their code"
+      },
+      {
+       "url": "https://cdn.sanity.io/images/599r6htc/regionalized/27b4dd2e187fa49f76ee760f9f81905e0a30f514-2223x1250.png",
+       "caption": "Inspect components in Dev Mode"
+      }
+     ],
+     "developer_name": "Figma",
+     "license": "Proprietary",
+     "homepage": "https://www.figma.com/",
+     "support_url": "https://help.figma.com/",
+     "privacy_url": "https://www.figma.com/legal/privacy/",
+     "categories": [
+      "create"
+     ]
+    }
+   },
+   "sign_in": "required-third-party"
+  },
+  "claude": {
+   "channel": {
+    "kind": "deb-repository",
+    "title": "Anthropic’s software repository",
+    "publisher": "Anthropic",
+    "publisher_verified": true
+   },
+   "metadata": {
+    "authored": {
+     "kind": "publisher",
+     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4e/98/52/4e9852f9-553a-5c52-3097-3417caedb04b/AppIcon-0-0-1x_U007epad-0-1-85-220.png/1024x1024bb.png",
+     "screenshots": [
+      {
+       "url": "https://cdn.prod.website-files.com/6889473510b50328dbb70ae6/6a8f16a6d44c900b29172541_aacbc99c7782f29da95a30ed84ff0054_260826-Cowork-InAppBrowser-4K-Thumbnail_003.webp",
+       "caption": "Cowork with a built-in browser"
+      }
+     ],
+     "summary": "Anthropic’s AI assistant for writing, analysis and code.",
+     "description": "Claude is Anthropic’s AI assistant. The desktop app offers chat and projects: attach documents and images, and connect services such as Google Drive and Slack.\n\nOn Luma it runs from Anthropic’s own Debian package in a private Debian capsule. Cowork, which runs tasks in its own virtual machine, is not available in the capsule.\n\nAn Anthropic account is required; some features need a paid plan.",
+     "developer_name": "Anthropic",
+     "license": "Proprietary",
+     "homepage": "https://claude.ai/download",
+     "support_url": "https://support.claude.com/",
+     "privacy_url": "https://www.anthropic.com/legal/privacy",
+     "categories": [
+      "work"
+     ]
+    }
+   },
+   "homepage": "https://claude.ai/download",
+   "sign_in": "required-third-party",
+   "backend": "deb",
+   "repository": "anthropic",
+   "source_id": "claude-desktop",
+   "distribution": "publisher",
+   "architectures": [
+    "x86_64",
+    "aarch64"
+   ],
+   "reference_url": "https://code.claude.com/docs/en/desktop-linux",
+   "qualification": "pending",
+   "qualification_reason": "Anthropic's own Debian package from Anthropic's signed APT repository (key pinned by fingerprint), run in Luma's Debian capsule. Cowork's virtual machine needs KVM, which a capsule does not provide.",
+   "sandbox": "deb-capsule",
+   "sources": {
+    "deb_repository": {
+     "id": "anthropic",
+     "name": "Anthropic",
+     "package": "claude-desktop",
+     "url": "https://downloads.claude.ai/claude-desktop/apt/stable",
+     "suite": "stable",
+     "component": "main",
+     "key": "https://downloads.claude.ai/claude-desktop/key.asc",
+     "fingerprints": [
+      "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
+     ]
+    }
+   }
+  },
+  "ari": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-ari/data/org.projectluma.Ari.svg",
+     "description": "Ari answers questions and changes personal settings for you, like the dock, the theme and the wallpaper. Every change she makes shows as a step you can undo.\n\nAri runs an open model on this computer. Your conversations and her activity log stay here, and what she reads on the web can inform an answer but never make a change."
+    }
+   }
+  },
+  "calendar": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Calendar.svg",
+     "description": "Calendar shows your day, week or month at a glance, with your events and reminders in one place.\n\nCreate and move events, see what is coming up next, and use the calendars on your Luma account and other accounts you add. It works the same on a desktop, a tablet or a phone."
+    }
+   }
+  },
+  "camera": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Camera.svg",
+     "description": "Camera takes photos and records video with the cameras on your device, with a live preview and your latest shot a tap away.\n\nPictures and videos go straight into Photos."
+    }
+   },
+   "screenshots_pending": "Needs a camera; renders \"No camera found\" without one."
+  },
+  "charlie": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon_rpm": {
+      "package": "luma-charlie",
+      "path": "usr/share/icons/hicolor/256x256/apps/org.projectluma.Charlie.png"
+     },
+     "description": "Charlie is Luma’s mail app: read, write and organize email from your accounts in one calm window."
+    }
+   }
+  },
+  "clock": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Clock.svg",
+     "description": "Clock keeps the time in the cities you care about, wakes you with alarms, and has a stopwatch and a timer when you need one.\n\nAlarms and timers ring even when Clock is closed."
+    }
+   }
+  },
+  "connect": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-continuity/data/icons/hicolor/scalable/apps/org.projectluma.Connect.svg",
+     "description": "Connect is where your Luma account, your computers and your phone come together.\n\nSign in once to bring your contacts, calendars, notes and messages to every Luma device, see which devices are connected, and pair a phone so its calls and messages reach this computer."
+    }
+   },
+   "screenshots_pending": "Shows only sign-in and an empty state without an account and a paired phone."
+  },
+  "contacts": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Contacts.svg",
+     "description": "Contacts keeps the people you know, with their numbers, addresses and notes.\n\nFind anyone as you type, and have the same contacts on every device signed in to your Luma account."
+    }
+   },
+   "screenshots_pending": "The packaged app is missing its call, mail, message and video icons, so a render shows broken icons."
+  },
+  "darkroom": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-darkroom/data/org.projectluma.Darkroom.svg",
+     "description": "Darkroom is Luma’s photo editor. Your originals are never changed: every adjustment can be tuned or taken back later.\n\nAdjust colour and light, crop and straighten reversibly, work in layers with editable masks, retouch, step back through history or keep snapshots, then export at full resolution. The same app runs in a desktop window and on a handheld."
+    }
+   }
+  },
+  "displays": {
+   "system_tool": true,
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-displays/data/org.projectluma.Displays.svg",
+     "description": "When you plug in displays together for the first time, Displays asks how you want to use them: extend, mirror, or just one.\n\nDrag them to match your desk and set rotation, refresh rate and scale while you see the result. Every arrangement you keep is remembered and can be named, like Home or Office."
+    }
+   }
+  },
+  "filer": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.gnome.Nautilus.svg",
+     "description": "Filer is where your files live: browse folders, drives and servers, find anything by name, and preview a file without opening it.\n\nOrganize with drag and drop, tabs and a sidebar of your favourite places, open and make zip archives, and share files with the apps you use. Filer is Luma’s build of GNOME Files."
+    }
+   },
+   "screenshots_pending": "The packaged Filer is missing two navigation icons, so a render shows broken icons."
+  },
+  "imager": {
+   "system_tool": true,
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-imager/data/org.projectluma.Imager.svg",
+     "description": "Imager writes Luma, another system, or an image file onto a USB drive, then reads the drive back to make sure it holds exactly what was written.\n\nDrives inside the computer are never listed, and Luma asks for permission before any drive is erased."
+    }
+   }
+  },
+  "leaf": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-leaf/data/org.projectluma.Leaf.svg",
+     "description": "Leaf holds your library, shows you one page at a time, and reads the book aloud when you would rather listen. There is no shop and no account.\n\n• Continue exactly where you left off, on every device\n• Highlights and notes that stay with their sentences when you change the size or typeface\n• Read aloud with the page following the voice, a sleep timer and speed control"
+    }
+   }
+  },
+  "messages": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Messages.svg",
+     "description": "Messages sends and receives texts, pictures and group conversations from your phone number.\n\nOn a Luma phone it works on its own; on a computer, pair your phone in Connect and your conversations appear here too, so you can reply from whichever is closer."
+    }
+   },
+   "screenshots_pending": "Without a modem every conversation shows a \"Cellular messaging is unavailable\" notice."
+  },
+  "mods": {
+   "system_tool": true,
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Mods.svg",
+     "description": "Mods is where you discover, review and manage changes to Luma itself.\n\nEach mod says what it changes before you turn it on, and you can turn it off again at any time."
+    }
+   }
+  },
+  "monitor": {
+   "system_tool": true,
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.gnome.SystemMonitor.svg",
+     "description": "Monitor shows what this computer is doing right now: which apps are using the processor, memory, disk and network.\n\nWhen something is slowing the computer down, Monitor shows you what it is."
+    }
+   }
+  },
+  "notes": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Notes.svg",
+     "description": "Notes is for everything you want to write down: quick thoughts, lists, longer drafts and plain text files.\n\nNotes save as you type, can be searched and organized into folders, and follow you to every device signed in to your Luma account. Notes also opens and edits ordinary text files."
+    }
+   }
+  },
+  "phone": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Phone.svg",
+     "description": "Phone makes and receives calls, with a keypad, your favourites and your recent calls.\n\nOn a Luma phone it uses the phone’s own connection; on a computer, pair your phone in Connect to answer calls here."
+    }
+   },
+   "screenshots_pending": "The packaged app is missing its icons and needs a modem to show anything but an error."
+  },
+  "photos": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Photos.svg",
+     "description": "Photos brings every picture and video together in one library, arranged by when they were taken.\n\nBrowse by years, months and days, keep favourites, collect photos into albums, search, and open any photo full screen."
+    }
+   }
+  },
+  "tasks": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Tasks.svg",
+     "description": "Tasks keeps your to-dos in lists, with due dates and notes.\n\nSee what is due and what is next, tick things off as you go, and have the same lists on every device signed in to your Luma account."
+    }
+   }
+  },
+  "tide": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "src/luma-tide/data/org.projectluma.Tide.svg",
+     "description": "Tide plays your music from every place it lives: the files on this computer and your own music server.\n\nIt keeps every playable copy of a track and tells you plainly whether it is here, streamable or out of reach right now. Play gapless albums, build playlists and a queue that survives a restart, and control playback from the system. Tide also adds a Navidrome or other Subsonic-compatible server as a source; its sign-in stays in the system keyring."
+    }
+   }
+  },
+  "viewer": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Viewer.svg",
+     "description": "Viewer opens a file, fast, and lets you look at it without starting a heavier app.\n\nZoom in, step to the next file in the folder, and open the file in the app that edits it when you are ready."
+    }
+   }
+  },
+  "viola": {
+   "metadata": {
+    "authored": {
+     "kind": "verified",
+     "rendered_screenshots": false,
+     "description": "Viola is Luma’s web browser, built around workspaces: keep work, home and projects apart, each with its own tabs.\n\nGroup and split tabs, use separate profiles, keep a video playing in a mini player while you work, and keep your workspaces organized across devices with end-to-end encrypted sync.",
+     "screenshots": [
+      {
+       "url": "https://violabrowser.com/img/viola-hero-feature-shadow-2x.png",
+       "caption": "Workspaces, tab groups and a mini player"
+      }
+     ],
+     "icon_rpm": {
+      "package": "viola-browser-stable",
+      "path": "usr/share/icons/hicolor/256x256/apps/viola-browser.png"
+     }
+    }
+   }
+  },
+  "voice-memos": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
+     "description": "Voice Memos records lectures, ideas and conversations with one tap and plays them back whenever you need them.\n\nGive your recordings names so they are easy to find again."
+    }
+   },
+   "screenshots_pending": "Recording needs PipeWire and the desktop layout is unfinished; render on a device."
+  },
+  "weather": {
+   "metadata": {
+    "authored": {
+     "kind": "luma",
+     "icon": "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Weather.svg",
+     "description": "Weather shows the conditions and forecast for the places you care about: the next hours, the coming days, and what it feels like outside right now.\n\nAdd a city by name and keep all your places a tap away."
+    }
+   }
+  },
+  "firefox": {
+   "metadata": {
+    "icon": "https://hg-edge.mozilla.org/mozilla-central/raw-file/tip/browser/branding/official/default256.png"
+   }
+  },
+  "thunderbird": {
+   "metadata": {
+    "icon": "https://hg-edge.mozilla.org/comm-central/raw-file/tip/mail/branding/thunderbird/default256.png"
+   }
+  },
+  "heroic": {
+   "metadata": {
+    "icon": "https://raw.githubusercontent.com/Heroic-Games-Launcher/HeroicGamesLauncher/main/public/icon.png"
+   }
+  },
+  "rpi-imager": {
+   "metadata": {
+    "icon": "https://raw.githubusercontent.com/raspberrypi/rpi-imager/main/src/icons/AppIcon-compiled.icns"
+   }
+  },
+  "tor-browser": {
+   "metadata": {
+    "icon": "https://gitlab.torproject.org/api/v4/projects/tpo%2Fapplications%2Ftor-browser/repository/files/browser%2Fbranding%2Ftb-release%2Fdefault256.png/raw?ref=tor-browser-140.3.0esr-15.0-1"
+   }
+  }
+ }
+}

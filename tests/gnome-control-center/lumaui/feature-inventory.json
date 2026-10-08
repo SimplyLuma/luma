@@ -1,0 +1,1209 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "id": "me",
+      "title": "Luma account",
+      "features": [
+        "Tx: myName",
+        "Vl: Username",
+        "Vl: Email",
+        "Bt: pw",
+        "Sw: sync.look",
+        "Sw: sync.wifi",
+        "Sw: sync.shelf",
+        "Vl: Nick\u2019s ThinkPad",
+        "Vl: Studio desktop",
+        "Bt: signout",
+        "Account identity and Luma sign-in status",
+        "Sync preferences and sign-out confirmation"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "wifi",
+      "title": "Wi\u2011Fi",
+      "features": [
+        "Bt: hidden",
+        "Nv: wifi-known",
+        "Nv: hotspot",
+        "Sw: airplane",
+        "Action: qr",
+        "Nearby networks and signal/security/saved status",
+        "Unknown locked-network password",
+        "Connect delay and cancellation",
+        "Hidden network form",
+        "Airplane and Wi-Fi radio dependencies"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "libnm reads implemented; view/actions unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "wifi-net",
+      "title": "Studio North",
+      "features": [
+        "Sw: autoJoin",
+        "Sw: allUsers",
+        "Pk: metered",
+        "Vl: Signal",
+        "Vl: Speed",
+        "Vl: Security",
+        "Vl: Band",
+        "Vl: IPv4",
+        "Vl: IPv6",
+        "Vl: Router",
+        "Vl: DNS",
+        "Bt: qr",
+        "Bt: forget",
+        "Real addresses and copy actions",
+        "Share QR and password",
+        "Forget confirmation and scoped Undo"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "libnm reads implemented; view/actions unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "wifi-known",
+      "title": "Known networks",
+      "features": [
+        "Every saved network and per-network Forget/Undo"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "libnm reads implemented; view/actions unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "hotspot",
+      "title": "Hotspot",
+      "features": [
+        "Tx: hsName",
+        "Tx: hsPass",
+        "Pk: hsBand",
+        "Name/password/band fields and sharing status"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "libnm reads implemented; view/actions unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "network",
+      "title": "Network",
+      "features": [
+        "Sw: eth",
+        "Sw: vpn",
+        "Pk: proxy",
+        "Action: vpnadd"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "libnm reads implemented; view/actions unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "bluetooth",
+      "title": "Bluetooth",
+      "features": [
+        "Bt: btsend",
+        "Connected and nearby devices",
+        "Delayed scan and pairing",
+        "Pair code",
+        "Connect/disconnect",
+        "Send files",
+        "Forget confirmation and Undo"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "appearance",
+      "title": "Appearance",
+      "features": [
+        "Sw: tint",
+        "Action: addwall",
+        "Both theme miniatures",
+        "Every CFACC swatch",
+        "Every CFWALL wallpaper with its approved artwork"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "shelf",
+      "title": "Shelf",
+      "features": [
+        "Sg: edge",
+        "Sg: spread",
+        "Sg: joined",
+        "Sg: float",
+        "Pk: hide",
+        "Rg: isz",
+        "Nv: datetime",
+        "Nv: power",
+        "All eight CFPRE presets",
+        "Free island dragging",
+        "Shelf preview apps and live clock"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "windows",
+      "title": "Windows & Workspaces",
+      "features": [
+        "Sw: tile",
+        "Rg: gap",
+        "Sw: edgeTile",
+        "Sw: hot",
+        "Sw: edges",
+        "Rd: ws",
+        "Rg: wsN",
+        "Rd: wsMon",
+        "Rd: swi",
+        "Three window geometry previews",
+        "Conditional gap and fixed workspace count"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "notifications",
+      "title": "Notifications",
+      "features": [
+        "Sw: lockN",
+        "Pk: nshow",
+        "Sw: na.",
+        "Every application notification toggle in na",
+        "DND preview and notification count"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "search",
+      "title": "Search",
+      "features": [
+        "Nv: search-places",
+        "Sw: askAri",
+        "All provider icons, enabled switches, drag handles and drop positions in sa"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "search-places",
+      "title": "Folders to search",
+      "features": [
+        "Sw: sl.",
+        "Bt: addplace",
+        "All places in sl, including disabled external drive"
+      ],
+      "fixture_ui": "partial implementation; exact composition/actions open",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "displays",
+      "title": "Displays",
+      "features": [
+        "Nv: nightlight",
+        "Join/mirror modes",
+        "Both monitor selection and external monitor dragging",
+        "Every resolution and refresh mode",
+        "Per-display scale, rotation, brightness/HDR, main display, profile",
+        "15-second Keep/Go back transaction"
+      ],
+      "fixture_ui": "partial draft implemented; full native check1080 fails shared text-only action API",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "nightlight",
+      "title": "Night Light",
+      "features": [
+        "Rd: nightWhen",
+        "Pk: nightFrom",
+        "Pk: nightTo",
+        "Rg: nightT",
+        "Bt: nightoff",
+        "Temperature gradient and indicator",
+        "Day/night schedule spans and live time marker",
+        "Header on/off control"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "sound",
+      "title": "Sound",
+      "features": [
+        "Pk: cfg",
+        "Rg: bal",
+        "Bt: test",
+        "Sw: overamp",
+        "Pk: inDev",
+        "Rg: inVol",
+        "Nv: sound-levels",
+        "Nv: sound-alert",
+        "Every CFOUT output",
+        "Output and microphone live level meters"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "sound-levels",
+      "title": "Volume by app",
+      "features": [
+        "Rg: lv.",
+        "System sounds and every active app volume"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "sound-alert",
+      "title": "Alert sound",
+      "features": [
+        "Rd: alert"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "Sound-family Gvc cancellation/unavailable checks tested; alert owner, production view and actions unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "power",
+      "title": "Power",
+      "features": [
+        "Rd: charge",
+        "Vl: MX Master 3S",
+        "Vl: WH-1000XM5",
+        "Sw: autoBright",
+        "Sw: dim",
+        "Sw: autoSaver",
+        "Pk: blank",
+        "Sw: susBat",
+        "Pk: susBatD",
+        "Sw: susAc",
+        "Pk: susAcD",
+        "Pk: pbtn",
+        "Sw: pct",
+        "Battery status and history",
+        "All three power modes",
+        "Peripheral charge"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "mouse",
+      "title": "Mouse & Touchpad",
+      "features": [
+        "Sg: mBtn",
+        "Rg: mSpeed",
+        "Sw: mAccel",
+        "Sg: mNat",
+        "Sw: tp",
+        "Sw: tpType",
+        "Rg: tSpeed",
+        "Sw: tTap",
+        "Rd: tSec",
+        "Sg: tScroll",
+        "Sg: tNat",
+        "Mouse/touchpad tabs",
+        "Live pointing-device demo"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "keyboard",
+      "title": "Keyboard",
+      "features": [
+        "Rd: perWin",
+        "Pk: altKey",
+        "Pk: compose",
+        "Nv: shortcuts",
+        "Action: addsrc",
+        "Every input layout reorder/use/remove/add",
+        "Keyboard demo and live physical key feedback"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "shortcuts",
+      "title": "Keyboard shortcuts",
+      "features": [
+        "Every shortcut in CFSHORT and physical key capture"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "printers",
+      "title": "Printers",
+      "features": [
+        "Sw: prDef",
+        "Pk: prPaper",
+        "Pk: prDuplex",
+        "Pk: prProf",
+        "Bt: rmprinter",
+        "Action: addprinter",
+        "Action: testpage",
+        "Printer hero, toner level and pending-job status"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "apps",
+      "title": "Apps",
+      "features": [
+        "Nv: defaults",
+        "Nv: media",
+        "Nv: app:",
+        "Every installed app with size and category"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "defaults",
+      "title": "Default apps",
+      "features": [
+        "Pk: def.",
+        "Web, Mail, Calendar, Music, Video and Photos defaults"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "media",
+      "title": "Removable media",
+      "features": [
+        "Sw: neverMedia",
+        "Pk: media.",
+        "Audio, Photos, Video and Software handling"
+      ],
+      "fixture_ui": "partial fixture controls compiled; exact composition/actions and visual gate incomplete",
+      "live_adapter": "read-only native observations tested; production view/actions remain unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "accounts",
+      "title": "Online Accounts",
+      "features": [
+        "Nv: acct-fm",
+        "Nv: acct-nc",
+        "Bt: connect",
+        "Connected account cards",
+        "All eight sign-in provider actions"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "acct-fm",
+      "title": "Fastmail",
+      "features": [
+        "Sw: fmMail",
+        "Sw: fmCal",
+        "Sw: fmCon",
+        "Sw: fmFiles",
+        "Bt: rmacct"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "acct-nc",
+      "title": "Nextcloud",
+      "features": [
+        "Sw: ncFiles",
+        "Sw: ncCal",
+        "Sw: ncCon",
+        "Bt: rmacct"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "privacy",
+      "title": "Privacy & Security",
+      "features": [
+        "Nv: p-lock",
+        "Nv: p-loc",
+        "Nv: p-cam",
+        "Nv: p-mic",
+        "Nv: p-files",
+        "Nv: p-diag",
+        "Nv: p-dev",
+        "Three device-security facts"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-lock",
+      "title": "Screen lock",
+      "features": [
+        "Pk: lock.blank",
+        "Sw: lock.auto",
+        "Pk: lock.delay",
+        "Sw: lock.notes"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "actual upstream CcScreenPage uses native lock/session/notification observers and scoped durable-backed edits; isolated desktop/phone controls, external changes, Back and 100ms teardown PASS; outer window composition and visual parity remain open",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-loc",
+      "title": "Location",
+      "features": [
+        "Sw: appLoc.",
+        "Every appLoc permission",
+        "Header on/off control"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "native schema catalog and PermissionStore read/scoped existing-app edit adapter tested on isolated memory/private bus; Changed subscriptions and production view binding unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-cam",
+      "title": "Camera",
+      "features": [
+        "Sw: appCam.",
+        "Every appCam permission",
+        "Header on/off control"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "native schema catalog and PermissionStore read/scoped existing-app edit adapter tested on isolated memory/private bus; Changed subscriptions and production view binding unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-mic",
+      "title": "Microphone",
+      "features": [
+        "Sw: appMic.",
+        "Every appMic permission",
+        "Header on/off control"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "native schema catalog and PermissionStore read/scoped existing-app edit adapter tested on isolated memory/private bus; Changed subscriptions and production view binding unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-files",
+      "title": "File history and trash",
+      "features": [
+        "Sw: hist",
+        "Pk: histKeep",
+        "Bt: clearhist",
+        "Sw: trash",
+        "Sw: temp",
+        "Pk: trashAge",
+        "Bt: emptytrash",
+        "Bt: cleartemp"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "native GNOME lock/privacy/location schema catalogs verified with isolated memory backend; production view/actions and PermissionStore binding unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-diag",
+      "title": "Problem reports",
+      "features": [
+        "Rd: diag"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "p-dev",
+      "title": "Device security",
+      "features": [
+        "Vl: Disk encryption",
+        "Vl: Secure Boot",
+        "Vl: TPM",
+        "Vl: Firmware",
+        "Sw: tbolt"
+      ],
+      "fixture_ui": "partial; eight routes compiled, scoped controls/dialog/stale-callback regression PASS desktop+phone; fourteen of sixteen actual native smokes PASS, p-mic both widths fail absent canonical Session art(request11)",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "wellbeing",
+      "title": "Wellbeing",
+      "features": [
+        "Sw: limit",
+        "Pk: limitH",
+        "Sw: gray",
+        "Sw: eyes",
+        "Sw: move",
+        "Pk: moveS",
+        "Sw: brSound",
+        "Seven-day history and daily average"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "a11y",
+      "title": "Accessibility",
+      "features": [
+        "Sw: a11yMenu",
+        "Nv: a-see",
+        "Nv: a-hear",
+        "Nv: a-type",
+        "Nv: a-point",
+        "Nv: a-zoom"
+      ],
+      "fixture_ui": "partial compiled accessibility routes; 12 desktop/phone native smokes and controls/lifetime regression PASS; exact Flash paint and visual gate incomplete",
+      "live_adapter": "native read-only schema catalog implemented, fixture isolation guards tested; production view/writes unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "a-see",
+      "title": "Seeing",
+      "features": [
+        "Sw: hc",
+        "Sw: motion",
+        "Sw: large",
+        "Pk: cursor",
+        "Sw: scrollbars",
+        "Sw: soundKeys",
+        "Sw: reader",
+        "Bt: reader"
+      ],
+      "fixture_ui": "partial compiled accessibility routes; 12 desktop/phone native smokes and controls/lifetime regression PASS; exact Flash paint and visual gate incomplete",
+      "live_adapter": "native schema catalog and bounded Orca action implemented; private-bus success/cancellation/timeout/error checks PASS; production view/writes unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "a-hear",
+      "title": "Hearing",
+      "features": [
+        "Sw: vAlert",
+        "Sg: vAlertHow",
+        "Bt: flash",
+        "Sw: overamp"
+      ],
+      "fixture_ui": "partial compiled accessibility routes; 12 desktop/phone native smokes and controls/lifetime regression PASS; exact Flash paint and visual gate incomplete",
+      "live_adapter": "native read-only schema catalog implemented, fixture isolation guards tested; production view/writes unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "a-type",
+      "title": "Typing",
+      "features": [
+        "Sw: osk",
+        "Sw: rep",
+        "Rg: repDelay",
+        "Rg: repSpeed",
+        "Sw: blink",
+        "Rg: blinkS",
+        "Sw: sticky",
+        "Sw: slow",
+        "Sw: bounce",
+        "Sw: kbdA11y"
+      ],
+      "fixture_ui": "partial compiled accessibility routes; 12 desktop/phone native smokes and controls/lifetime regression PASS; exact Flash paint and visual gate incomplete",
+      "live_adapter": "native read-only schema catalog implemented, fixture isolation guards tested; production view/writes unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "a-point",
+      "title": "Pointing and clicking",
+      "features": [
+        "Sw: mkeys",
+        "Sw: locate",
+        "Rg: dbl",
+        "Sw: hold",
+        "Sw: hover"
+      ],
+      "fixture_ui": "partial compiled accessibility routes; 12 desktop/phone native smokes and controls/lifetime regression PASS; exact Flash paint and visual gate incomplete",
+      "live_adapter": "native read-only schema catalog implemented, fixture isolation guards tested; production view/writes unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "a-zoom",
+      "title": "Zoom",
+      "features": [
+        "Rg: zoomX",
+        "Pk: zoomF",
+        "Sw: cross",
+        "Sw: invert",
+        "Header on/off control"
+      ],
+      "fixture_ui": "partial compiled accessibility routes; 12 desktop/phone native smokes and controls/lifetime regression PASS; exact Flash paint and visual gate incomplete",
+      "live_adapter": "native read-only schema catalog implemented, fixture isolation guards tested; production view/writes unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "sharing",
+      "title": "Sharing",
+      "features": [
+        "Tx: devName",
+        "Sw: fileShare",
+        "Sw: fsPass",
+        "Sw: media2",
+        "Nv: remote",
+        "Nv: ssh"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "region",
+      "title": "Region & Language",
+      "features": [
+        "Pk: lang",
+        "Pk: fmt",
+        "Pk: loginLang",
+        "All six format examples",
+        "Every language and format choice"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "datetime",
+      "title": "Date & Time",
+      "features": [
+        "Sw: autoTime",
+        "Bt: settime",
+        "Sw: autoZone",
+        "Pk: zone",
+        "Sg: h24",
+        "Sw: wday",
+        "Sw: date",
+        "Sw: secs",
+        "Sw: wnum",
+        "Live time/date/zone and Change form"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "users",
+      "title": "Users",
+      "features": [
+        "Bt: pw",
+        "Sw: finger",
+        "Sw: autoLogin",
+        "Vl: Account type",
+        "Nv: user-priya",
+        "Action: pic",
+        "Action: adduser",
+        "Current user and Priya account rows"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "user-priya",
+      "title": "Priya Raman",
+      "features": [
+        "Sg: pType",
+        "Sw: pAuto",
+        "Bt: parental",
+        "Bt: pwreset",
+        "Bt: rmuser"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "remote",
+      "title": "Remote Desktop",
+      "features": [
+        "Sw: rdShare",
+        "Sw: rdCtl",
+        "Sw: rdLogin",
+        "Sharing/login tabs",
+        "Connection credentials and reveal/copy controls"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "ssh",
+      "title": "Secure Shell",
+      "features": [
+        "Sw: ssh",
+        "Vl: Command",
+        "Actual connection command and copy"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "about",
+      "title": "About",
+      "features": [
+        "Tx: devName",
+        "Vl: Model",
+        "Vl: Memory",
+        "Vl: Processor",
+        "Vl: Graphics",
+        "Nv: ~disks",
+        "Vl: Updates",
+        "Nv: about-sys",
+        "System identity artwork and status",
+        "Hardware and software values"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "about-sys",
+      "title": "System details",
+      "features": [
+        "Vl: Luma",
+        "Vl: Kernel",
+        "Vl: Desktop",
+        "Vl: Firmware",
+        "Vl: Processor",
+        "Vl: Graphics",
+        "Vl: Disk",
+        "Action: copysys",
+        "Every system detail and Copy all"
+      ],
+      "fixture_ui": "unported",
+      "live_adapter": "unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:filer",
+      "title": "Filer",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: search",
+        "Part of Luma notice"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:photos",
+      "title": "Photos",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:viola",
+      "title": "Viola",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Part of Luma notice"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:write",
+      "title": "Write",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:tide",
+      "title": "Tide",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: bg",
+        "Permission: search",
+        "Permission: wall",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:messages",
+      "title": "Messages",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: cam",
+        "Permission: mic",
+        "Permission: notif",
+        "Permission: bg",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:notes",
+      "title": "Notes",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:contacts",
+      "title": "Contacts",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:calendar",
+      "title": "Calendar",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: bg",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:charlie",
+      "title": "Charlie",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: bg",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:maps",
+      "title": "Maps",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: loc",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:camera",
+      "title": "Camera",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: cam",
+        "Permission: mic",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:memos",
+      "title": "Memos",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: mic",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:ari",
+      "title": "Ari",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: bg",
+        "Permission: shot",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:canvas",
+      "title": "Canvas",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:reel",
+      "title": "Reel",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: mic",
+        "Uninstall confirmation, optional data removal and owning-app handoff"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:term",
+      "title": "Terminal",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Part of Luma notice"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
+      "id": "app:depot",
+      "title": "Depot",
+      "features": [
+        "Identity, version, source, approved icon and Open",
+        "App/documents/cache storage and Clear cache",
+        "Permission: notif",
+        "Permission: search",
+        "Part of Luma notice"
+      ],
+      "fixture_ui": "partial Apps fixture implementation; 38 desktop/phone native smokes PASS1055; Open unsupported, intermittent teardown and exact visuals remain open",
+      "live_adapter": "GAppInfo registry/default reads tested; live detail metadata, launch, permissions, cache and uninstall unported",
+      "visual_gate": "unmeasured; no conform PASS"
+    }
+  ],
+  "scenario_states": [
+    "wifi",
+    "network",
+    "bluetooth",
+    "appearance",
+    "shelf",
+    "windows",
+    "notifications",
+    "search",
+    "displays",
+    "sound",
+    "power",
+    "mouse",
+    "keyboard",
+    "printers",
+    "apps",
+    "accounts",
+    "privacy",
+    "wellbeing",
+    "a11y",
+    "sharing",
+    "region",
+    "datetime",
+    "users",
+    "remote",
+    "ssh",
+    "about",
+    "me",
+    "wifi-net",
+    "wifi-known",
+    "hotspot",
+    "search-places",
+    "nightlight",
+    "sound-levels",
+    "sound-alert",
+    "shortcuts",
+    "defaults",
+    "media",
+    "acct-fm",
+    "acct-nc",
+    "p-lock",
+    "p-loc",
+    "p-cam",
+    "p-mic",
+    "p-files",
+    "p-diag",
+    "p-dev",
+    "a-see",
+    "a-hear",
+    "a-type",
+    "a-point",
+    "a-zoom",
+    "user-priya",
+    "about-sys",
+    "app-filer",
+    "app-photos",
+    "app-viola",
+    "app-write",
+    "app-tide",
+    "app-messages",
+    "app-notes",
+    "app-contacts",
+    "app-calendar",
+    "app-charlie",
+    "app-maps",
+    "app-camera",
+    "app-memos",
+    "app-ari",
+    "app-canvas",
+    "app-reel",
+    "app-term",
+    "app-depot",
+    "wifi-off",
+    "wifi-join",
+    "wifi-hidden",
+    "wifi-share",
+    "wifi-metered",
+    "wifi-forget",
+    "search-results",
+    "search-empty"
+  ],
+  "shared_features": [
+    {
+      "feature": "AppWindow identity and window controls",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Grouped navigation and account card",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Sidebar toggle/F9 and phone drawer",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Sidebar foot search and editable result rows",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "QUERY empty-results state",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Theme, accent and approved wallpaper fixture isolation",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Every picker uses phone drawer",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "ActionCenter inline editors and display transaction",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "DestructiveDialog and scoped Undo toast",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Slow I/O with cancellation and generation tokens",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "No backend access or persistent writes in fixture mode",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Live GNOME adapters for every page/action",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Read-modify-write with one-time backup for existing stores",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "High contrast and keyboard/accessibility navigation",
+      "status": "open; evidence incomplete"
+    },
+    {
+      "feature": "Four conform variants with complete element inventory",
+      "status": "open; evidence incomplete"
+    }
+  ]
+}

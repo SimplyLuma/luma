@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.projectluma.search" path="/org/projectluma/search/">
+    <key name="enabled-kinds" type="as">
+      <default>['app', 'setting', 'file', 'mail', 'contact', 'calendar', 'message', 'photo', 'music', 'place']</default>
+      <summary>Search result kinds shown by system Search</summary>
+    </key>
+    <key name="allow-sensitive-snippets" type="b">
+      <default>false</default>
+      <summary>Allow mail and message providers to expose result snippets</summary>
+    </key>
+  </schema>
+</schemalist>

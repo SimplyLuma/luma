@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.gnome.Nautilus</id>
+  <name>Filer</name>
+  <summary>Browse and organize your files</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="com.simplyluma"><name>Luma</name></developer>
+  <description>
+    <p>Organize files, browse connected storage and manage folders with
+    Luma's responsive desktop, tablet and phone interface.</p>
+    <p>Filer is Luma's maintained downstream version of GNOME Files
+    (Nautilus), built from the same source as its native system integration.
+    GNOME Files and its contributors retain their upstream credit and licenses.</p>
+  </description>
+  <launchable type="desktop-id">org.gnome.Nautilus.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <url type="vcs-browser">https://gitlab.gnome.org/GNOME/nautilus</url>
+  <screenshots>
+    <screenshot type="default"><caption>Browse files on desktop</caption><image width="1440" height="828">https://dl.simplyluma.com/media/org.gnome.Nautilus/8b88a2a0111cbeb580953321850fffb099b4162f7892c3ff97ee2480e41ee920.png</image></screenshot>
+    <screenshot><caption>Browse files on a compact display</caption><image width="500" height="828">https://dl.simplyluma.com/media/org.gnome.Nautilus/75964861f9fed91d26e2c5580574cfd1a185e7acdf9bbf079d9e46b63293b2cc.png</image></screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="50.2.2.67" date="2026-10-07"/></releases>
+</component>

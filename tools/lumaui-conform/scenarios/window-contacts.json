@@ -1,0 +1,308 @@
+{
+  "app": "window-contacts",
+  "title": "Window chrome (Contacts)",
+  "about": "The window LumaUI draws around every app, measured on Contacts: frame, radius, shadow and rim, the title row and identity, the window controls at rest, hovered, pressed and focused, an inactive window, a maximized one, and Frost. Only the frame is reported (scope); the app's own content is contacts.json's job.",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=contacts",
+    "window": "#w-contacts",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "contacts",
+    "fixtures": [
+      "tests/fixtures/contacts-v70.json",
+      "tests/fixtures/contacts-v70",
+      "assets/icon-theme/Prairie/scalable/apps"
+    ],
+    "env": {
+      "LUMA_CONTACTS_FIXTURE": "{run}/fixtures/contacts-v70.json",
+      "LUMAUI_CONFORM_ICON_DIRS": "{run}/fixtures/apps"
+    }
+  },
+  "frame": true,
+  "frame_note": "frame: compare the window's own radius, shadow layers and rim, and the frame colour at frame_probes (window coordinates; negative counts from the right or bottom edge).",
+  "frame_probes": [
+    {
+      "name": "title row",
+      "x": 420,
+      "y": 6,
+      "w": 240,
+      "h": 34
+    },
+    {
+      "name": "right gutter",
+      "x": -8,
+      "y": 200,
+      "w": 8,
+      "h": 240
+    },
+    {
+      "name": "bottom gutter",
+      "x": 420,
+      "y": -8,
+      "w": 300,
+      "h": 8
+    }
+  ],
+  "scope": {
+    "groups": [
+      "window controls",
+      "title row",
+      "window"
+    ],
+    "subjects": "^(island \\(main\\)|sidebar|identity icon|title row|window controls|minimize|zoom|close|identity menu)$"
+  },
+  "states": [
+    {
+      "name": "active",
+      "about": "The focused window at rest (Priya selected, v70's opening state)",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "inactive",
+      "about": "Another window has focus. v70 draws an inactive window exactly as an active one.",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "backdrop": true
+        }
+      ]
+    },
+    {
+      "name": "hover-minimize",
+      "about": "The pointer over Minimize",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "hover": "#w-contacts > .wctl [data-w=\"min\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight",
+          "widget": "lumaui-window-minimize"
+        }
+      ]
+    },
+    {
+      "name": "hover-maximize",
+      "about": "The pointer over Zoom (maximize)",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "hover": "#w-contacts > .wctl [data-w=\"max\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight",
+          "widget": "lumaui-window-maximize"
+        }
+      ]
+    },
+    {
+      "name": "hover-close",
+      "about": "The pointer over Close",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "hover": "#w-contacts > .wctl [data-w=\"close\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight",
+          "widget": "lumaui-window-close"
+        }
+      ]
+    },
+    {
+      "name": "pressed-close",
+      "about": "Close held down (v70 has no pressed rule, so it stays the hover)",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "press": "#w-contacts > .wctl [data-w=\"close\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "flags": "prelight|active",
+          "widget": "lumaui-window-close"
+        }
+      ]
+    },
+    {
+      "name": "focus-close",
+      "about": "Close focused from the keyboard (v70 :focus-visible, a 2 px accent ring 2 px out)",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "focus": "#w-contacts > .wctl [data-w=\"close\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "focus": "lumaui-window-close"
+        }
+      ]
+    },
+    {
+      "name": "identity-menu",
+      "about": "The identity's menu open: v70's own menu (lMenu, .crpop/.crmi) hung from the identity, holding the app's own commands (v70 opens it from Charlie's title; Contacts' rows are the app's). Only the menu's placement and surface are the frame's; its rows are the kit Menu's (K).",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "eval": "(async () => { const rows = [[\"user-plus\",\"New contact\"],[\"search\",\"Search people\"],[\"download\",\"Import vCard\\u2026\"],\"-\",[\"info\",\"About Contacts\"],[null,\"Quit Contacts\"]]; const w = document.querySelector('#w-contacts'), a = document.querySelector('#c-top b');\n  const ic = async n => n ? (await (await fetch('../icons/' + n + '.svg')).text()).replace('<svg', '<svg class=\"i\" data-icon=\"' + n + '\"') : '';\n  let html = ''; for (const r of rows) html += r === '-' ? '<span class=\"crsep\"></span>' : `<button class=\"crmi\" type=\"button\">${await ic(r[0])}<span>${r[1]}</span></button>`;\n  w.insertAdjacentHTML('beforeend', `<div class=\"crpop\" id=\"lmenu\">${html}</div>`); const p = document.querySelector('#lmenu'), wr = w.getBoundingClientRect(), q = a.closest('.tbar').querySelector('.chev') || a, r = q.getBoundingClientRect();\n  p.style.left = Math.max(8, Math.min(wr.width - p.offsetWidth - 8, r.right - wr.left - p.offsetWidth)) + 'px'; p.style.top = (r.bottom - wr.top + 8) + 'px'; })()"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "lumaui-identity"
+        }
+      ]
+    },
+    {
+      "name": "maximized",
+      "about": "Maximized (v70 toggleMax from a double-click on the title row); the desk is sized so the window is the headless monitor, 1920x1200",
+      "viewport": {
+        "width": 1936,
+        "height": 1314
+      },
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "dblclick": "#c-top"
+        }
+      ],
+      "gtk": [
+        {
+          "maximize": true
+        }
+      ]
+    },
+    {
+      "name": "frost",
+      "about": "The Frost material (v70 body[data-mat=frost]). Luma's Frost is one light appearance (the kit forces the light scheme), so it is measured against v70's Frost in light.",
+      "spec": [
+        {
+          "click": "[data-ct=\"PR\"]"
+        },
+        {
+          "eval": "document.body.dataset.mat = 'frost'"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_CONFORM_TREATMENT": "frost"
+          }
+        }
+      ],
+      "themes": [
+        "light"
+      ]
+    }
+  ],
+  "phone_states": [
+    "active"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-contacts > .wctl"
+    },
+    {
+      "name": "title row",
+      "spec": "#c-top"
+    },
+    {
+      "name": "identity menu",
+      "spec": "#lmenu"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#c-side"
+    },
+    {
+      "name": "island",
+      "spec": "#c-main"
+    }
+  ],
+  "text_aliases": {
+    "Just now": "10:40 AM"
+  },
+  "pairs": [
+    {
+      "spec": "#c-top",
+      "gtk": "lumaui-title-row",
+      "name": "title row"
+    },
+    {
+      "spec": "#w-contacts > .wctl",
+      "gtk": "lumaui-window-controls",
+      "name": "window controls"
+    },
+    {
+      "spec": "#w-contacts > .wctl [data-w=\"min\"]",
+      "gtk": "lumaui-window-minimize",
+      "name": "minimize"
+    },
+    {
+      "spec": "#w-contacts > .wctl [data-w=\"max\"]",
+      "gtk": "lumaui-window-maximize",
+      "name": "zoom"
+    },
+    {
+      "spec": "#w-contacts > .wctl [data-w=\"close\"]",
+      "gtk": "lumaui-window-close",
+      "name": "close"
+    },
+    {
+      "spec": "#c-top img",
+      "gtk": "lumaui-identity-icon",
+      "name": "identity icon"
+    },
+    {
+      "spec": "#c-side",
+      "gtk": "ct-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#c-main",
+      "gtk": "ct-island",
+      "name": "island (main)"
+    },
+    {
+      "spec": "#lmenu",
+      "gtk": "lumaui-identity-menu>contents",
+      "name": "identity menu"
+    }
+  ]
+}

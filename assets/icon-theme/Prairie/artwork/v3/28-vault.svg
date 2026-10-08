@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#c08bd0"/><stop offset=".52" stop-color="#9360a8"/><stop offset="1" stop-color="#654077"/></linearGradient>
+    <radialGradient id="bloom" cx=".17" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="rim" x1="330" y1="180" x2="700" y2="850" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".3" stop-color="#eceeeb"/><stop offset=".62" stop-color="#bfc5c0"/><stop offset=".82" stop-color="#e9ebe8"/><stop offset="1" stop-color="#929a94"/></linearGradient>
+    <linearGradient id="face" x1="340" y1="230" x2="690" y2="790" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".36" stop-color="#f8f8f6"/><stop offset=".7" stop-color="#e0e2df"/><stop offset=".88" stop-color="#f1f2ef"/><stop offset="1" stop-color="#bdc2bd"/></linearGradient>
+    <radialGradient id="faceLight" cx="410" cy="320" r="390" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity=".86"/><stop offset=".52" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <filter id="moldShadow" x="-35%" y="-35%" width="170%" height="170%"><feDropShadow dx="0" dy="0" stdDeviation="22" flood-color="#1a1020" flood-opacity=".38"/></filter>
+    <path id="shieldOuter" d="M512 156 802 270v224c0 184-112 310-290 378-178-68-290-194-290-378V270Z"/>
+    <path id="shieldFace" d="M512 214 748 306v188c0 144-84 248-236 314-152-66-236-170-236-314V306Z"/>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#tile)"/><rect width="1024" height="1024" fill="url(#bloom)"/>
+  <use href="#shieldOuter" fill="url(#rim)" stroke="#fff" stroke-opacity=".5" stroke-width="12" filter="url(#moldShadow)"/>
+  <g filter="url(#moldShadow)"><use href="#shieldFace" fill="url(#face)" stroke="#fff" stroke-opacity=".46" stroke-width="9"/><use href="#shieldFace" fill="url(#faceLight)"/></g>
+</svg>

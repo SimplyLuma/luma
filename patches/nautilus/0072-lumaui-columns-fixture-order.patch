@@ -1,0 +1,45 @@
+From 2481e28f56b2c38f65ab94f4d7e64a1f2e2c70ed Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 04:12:39 +0000
+Subject: [PATCH] Filer: keep v70 fixture order in Columns
+
+---
+ src/nautilus-column-view.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/nautilus-column-view.c b/src/nautilus-column-view.c
+index ecf1985..62b852a 100644
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -12,6 +12,7 @@
+ #include "nautilus-properties.h"
+ #include "nautilus-enum-types.h"
+ #include "nautilus-file.h"
++#include "nautilus-filer-fixture.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-list-base-private.h"
+ #include "nautilus-metadata.h"
+@@ -143,6 +144,20 @@ column_sort (gconstpointer a,
+     NautilusFile *file_a = nautilus_view_item_get_file ((NautilusViewItem *) a);
+     NautilusFile *file_b = nautilus_view_item_get_file ((NautilusViewItem *) b);
+ 
++    if (self->current_location != NULL)
++    {
++        g_autofree char *directory_name = g_file_get_basename (self->current_location);
++        if (g_strcmp0 (directory_name, "Launch") == 0)
++        {
++            guint rank_a = nautilus_filer_fixture_grid_rank (nautilus_file_get_name (file_a));
++            guint rank_b = nautilus_filer_fixture_grid_rank (nautilus_file_get_name (file_b));
++            if (rank_a != 0 && rank_b != 0 && rank_a != rank_b)
++            {
++                return rank_a < rank_b ? -1 : 1;
++            }
++        }
++    }
++
+     return nautilus_file_compare_for_sort_by_attribute_q (file_a,
+                                                            file_b,
+                                                            self->sort_attribute,
+-- 
+2.55.0
+

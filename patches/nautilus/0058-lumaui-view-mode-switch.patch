@@ -1,0 +1,446 @@
+From c711432959828fc5971280e6fccf138c34689e5a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:28:04 +0000
+Subject: [PATCH] Filer: use LumaUI ModeSwitch for file views
+
+---
+ src/nautilus-view-controls.c                  | 107 ++++++++++++++++++
+ src/nautilus-window-slot.c                    |   8 ++
+ src/nautilus-window-slot.h                    |   1 +
+ src/resources/style.css                       |  58 ++--------
+ src/resources/ui/nautilus-view-controls.blp   |  46 +-------
+ .../display/test-luma-column-header-menu.c    |  35 ++++++
+ 6 files changed, 159 insertions(+), 96 deletions(-)
+
+diff --git a/src/nautilus-view-controls.c b/src/nautilus-view-controls.c
+index cdd3ece..9ae0048 100644
+--- a/src/nautilus-view-controls.c
++++ b/src/nautilus-view-controls.c
+@@ -8,12 +8,16 @@
+ 
+ #include "nautilus-toolbar-menu-sections.h"
+ #include "nautilus-window-slot.h"
++#include <glib/gi18n.h>
++#include <luma-ui.h>
+ 
+ struct _NautilusViewControls
+ {
+     AdwBin parent_instance;
+ 
+     GtkWidget *view_controls;
++    GtkWidget *mode_host;
++    LumaModeSwitch *mode_switch;
+     GMenuModel *view_menu;
+ 
+     NautilusWindowSlot *window_slot;
+@@ -31,6 +35,80 @@ enum
+ 
+ static GParamSpec *properties[N_PROPS];
+ 
++static const char *
++view_mode_key (guint view_id)
++{
++    switch (view_id)
++    {
++        case 2: return "grid";
++        case 1: return "list";
++        case 4: return "columns";
++        default: return NULL;
++    }
++}
++
++static void
++on_view_mode_state_changed (GActionGroup *group,
++                            const char   *action_name,
++                            GVariant     *state,
++                            gpointer      user_data)
++{
++    NautilusViewControls *self = NAUTILUS_VIEW_CONTROLS (user_data);
++    const char *key;
++
++    if (g_strcmp0 (action_name, "files-view-mode") != 0)
++    {
++        return;
++    }
++
++    key = view_mode_key (g_variant_get_uint32 (state));
++    if (key != NULL)
++    {
++        luma_mode_switch_set_current (self->mode_switch, key);
++    }
++}
++
++static void
++on_view_mode_enabled_changed (GActionGroup *group,
++                              const char   *action_name,
++                              gboolean      enabled,
++                              gpointer      user_data)
++{
++    NautilusViewControls *self = NAUTILUS_VIEW_CONTROLS (user_data);
++
++    if (g_strcmp0 (action_name, "files-view-mode") == 0)
++    {
++        gtk_widget_set_sensitive (GTK_WIDGET (self->mode_switch), enabled);
++    }
++}
++
++static void
++on_mode_changed (LumaModeSwitch *switcher,
++                 const char     *key,
++                 gpointer        user_data)
++{
++    NautilusViewControls *self = NAUTILUS_VIEW_CONTROLS (user_data);
++    GActionGroup *group;
++    guint view_id;
++
++    if (self->window_slot == NULL)
++    {
++        return;
++    }
++
++    view_id = g_strcmp0 (key, "grid") == 0 ? 2 :
++              g_strcmp0 (key, "list") == 0 ? 1 :
++              g_strcmp0 (key, "columns") == 0 ? 4 : 0;
++    if (view_id == 0)
++    {
++        return;
++    }
++
++    group = nautilus_window_slot_get_action_group (self->window_slot);
++    g_action_group_change_action_state (group, "files-view-mode",
++                                        g_variant_new_uint32 (view_id));
++}
++
+ static void
+ on_slot_toolbar_menu_sections_changed (NautilusViewControls *self,
+                                        GParamSpec           *param,
+@@ -68,6 +146,8 @@ disconnect_toolbar_menu_sections_change_handler (NautilusViewControls *self)
+     g_signal_handlers_disconnect_by_func (self->window_slot,
+                                           G_CALLBACK (on_slot_toolbar_menu_sections_changed),
+                                           self);
++    g_signal_handlers_disconnect_by_data (
++        nautilus_window_slot_get_action_group (self->window_slot), self);
+ }
+ 
+ 
+@@ -89,9 +169,27 @@ nautilus_view_controls_set_window_slot (NautilusViewControls *self,
+ 
+     if (self->window_slot != NULL)
+     {
++        GActionGroup *group = nautilus_window_slot_get_action_group (self->window_slot);
++        g_autoptr (GVariant) state = g_action_group_get_action_state (group, "files-view-mode");
++
+         on_slot_toolbar_menu_sections_changed (self, NULL, self->window_slot);
+         g_signal_connect_swapped (self->window_slot, "notify::toolbar-menu-sections",
+                                   G_CALLBACK (on_slot_toolbar_menu_sections_changed), self);
++        g_signal_connect (group, "action-state-changed",
++                          G_CALLBACK (on_view_mode_state_changed), self);
++        g_signal_connect (group, "action-enabled-changed",
++                          G_CALLBACK (on_view_mode_enabled_changed), self);
++        if (state != NULL)
++        {
++            on_view_mode_state_changed (group, "files-view-mode", state, self);
++        }
++        on_view_mode_enabled_changed (
++            group, "files-view-mode",
++            g_action_group_get_action_enabled (group, "files-view-mode"), self);
++    }
++    else
++    {
++        gtk_widget_set_sensitive (GTK_WIDGET (self->mode_switch), FALSE);
+     }
+ 
+     g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_WINDOW_SLOT]);
+@@ -190,12 +288,21 @@ nautilus_view_controls_class_init (NautilusViewControlsClass *klass)
+                                                  "/org/gnome/nautilus/ui/nautilus-view-controls.ui");
+     gtk_widget_class_bind_template_child (widget_class, NautilusViewControls, view_menu);
+     gtk_widget_class_bind_template_child (widget_class, NautilusViewControls, view_controls);
++    gtk_widget_class_bind_template_child (widget_class, NautilusViewControls, mode_host);
+ }
+ 
+ static void
+ nautilus_view_controls_init (NautilusViewControls *self)
+ {
+     gtk_widget_init_template (GTK_WIDGET (self));
++    self->mode_switch = LUMA_MODE_SWITCH (luma_mode_switch_new (_("View mode")));
++    gtk_widget_set_name (GTK_WIDGET (self->mode_switch), "filer-view-modes");
++    luma_mode_switch_add (self->mode_switch, "grid", _("Grid"), "grid-2x2");
++    luma_mode_switch_add (self->mode_switch, "list", _("List"), "list");
++    luma_mode_switch_add (self->mode_switch, "columns", _("Columns"), "columns-3");
++    gtk_box_append (GTK_BOX (self->mode_host), GTK_WIDGET (self->mode_switch));
++    g_signal_connect (self->mode_switch, "changed", G_CALLBACK (on_mode_changed), self);
++    gtk_widget_set_sensitive (GTK_WIDGET (self->mode_switch), FALSE);
+ }
+ 
+ GMenuModel *
+diff --git a/src/nautilus-window-slot.c b/src/nautilus-window-slot.c
+index be37487..89b39cd 100644
+--- a/src/nautilus-window-slot.c
++++ b/src/nautilus-window-slot.c
+@@ -3314,6 +3314,14 @@ nautilus_window_slot_get_toolbar_menu_sections (NautilusWindowSlot *self)
+            : NULL;
+ }
+ 
++GActionGroup *
++nautilus_window_slot_get_action_group (NautilusWindowSlot *self)
++{
++    g_return_val_if_fail (NAUTILUS_IS_WINDOW_SLOT (self), NULL);
++
++    return self->slot_action_group;
++}
++
+ gboolean
+ nautilus_window_slot_get_active (NautilusWindowSlot *self)
+ {
+diff --git a/src/nautilus-window-slot.h b/src/nautilus-window-slot.h
+index c692258..49b7876 100644
+--- a/src/nautilus-window-slot.h
++++ b/src/nautilus-window-slot.h
+@@ -86,6 +86,7 @@ const gchar*   nautilus_window_slot_get_icon_name                (NautilusWindow
+ const gchar*   nautilus_window_slot_get_tooltip                  (NautilusWindowSlot *slot);
+ 
+ NautilusToolbarMenuSections * nautilus_window_slot_get_toolbar_menu_sections (NautilusWindowSlot *slot);
++GActionGroup *nautilus_window_slot_get_action_group       (NautilusWindowSlot *slot);
+ 
+ GMenuModel* nautilus_window_slot_get_templates_menu (NautilusWindowSlot *self);
+ 
+diff --git a/src/resources/style.css b/src/resources/style.css
+index d610eec..00de961 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -261,17 +261,15 @@
+     transform: translate(0, 1px);
+   }
+ 
+-  .luma-files-window .luma-view-controls button {
++  .luma-files-window .luma-view-controls > menubutton > button {
+     min-width: 28px;
+     min-height: 28px;
+     padding: 0;
+   }
+ 
+-  /* History, view, and main-menu actions are one secondary-control family.
+-   * Keep their neutral material identical; checked view modes alone carry the
+-   * blue selection treatment below. */
++  /* History and view-menu actions share a neutral material. */
+   .luma-files-window .luma-history-controls button,
+-  .luma-files-window .luma-view-controls button {
++  .luma-files-window .luma-view-controls > menubutton > button {
+     background-color: @luma_content;
+     background-image: none;
+     color: @luma_ink;
+@@ -288,11 +286,6 @@
+     -gtk-icon-size: 14px;
+   }
+ 
+-  .luma-files-window .luma-view-controls button:checked {
+-    background-color: @luma_ink;
+-    color: @luma_content;
+-  }
+-
+   /* The desktop workspace is two real sibling islands: navigation and file
+    * content. Their separation is structural, not a user stylesheet overlay. */
+   .luma-files-window .luma-files-workspace {
+@@ -1060,18 +1053,7 @@ window.luma-files-window .luma-search-field:checked {
+   outline: none;
+ }
+ 
+-/* The three pickers are one segment: every corner rounded, not just the pair
+- * at the leading end, and the chosen one is ink so its glyph reads against it.
+- * It was drawing ink on ink, which is the blank block. */
+-window.luma-files-window .luma-view-mode-controls {
+-  padding: 2px;
+-  border-radius: 10px;
+-  background-color: alpha(@luma_ink, 0.04);
+-  box-shadow: none;
+-}
+-
+-window.luma-files-window .luma-view-controls button,
+-window.luma-files-window .luma-view-mode-controls button {
++window.luma-files-window .luma-view-controls > menubutton > button {
+   min-width: 28px;
+   min-height: 26px;
+   padding: 0;
+@@ -1083,20 +1065,12 @@ window.luma-files-window .luma-view-mode-controls button {
+   box-shadow: none;
+ }
+ 
+-window.luma-files-window .luma-view-controls button:hover,
+-window.luma-files-window .luma-view-mode-controls button:hover {
++window.luma-files-window .luma-view-controls > menubutton > button:hover {
+   background-color: @luma_hover;
+   color: @luma_ink;
+ }
+ 
+-window.luma-files-window .luma-view-controls button:checked,
+-window.luma-files-window .luma-view-mode-controls button:checked {
+-  background-color: @luma_ink;
+-  color: @luma_content;
+-}
+-
+-window.luma-files-window .luma-view-controls button image,
+-window.luma-files-window .luma-view-mode-controls button image {
++window.luma-files-window .luma-view-controls > menubutton > button image {
+   -gtk-icon-size: 15px;
+ }
+ 
+@@ -1187,13 +1161,6 @@ window.luma-files-window .nautilus-grid-view .icon-ui-labels-box > label.caption
+ 
+ 
+ 
+-/* GtkImage can receive its own foreground from toolkit button rules. Set the
+- * selected symbol's foreground at that node, as well as on the button. */
+-window.luma-files-window .luma-view-controls button:checked image,
+-window.luma-files-window .luma-view-mode-controls button:checked image {
+-  color: @luma_content;
+-}
+-
+ /* Reviewed against the desktop Filer simulator: compact native list rows,
+  * readable metadata and one continuous material per browsing column. */
+ window.luma-files-window .nautilus-list-view columnview {
+@@ -1299,15 +1266,9 @@ window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:hov
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field:checked {
+   background: @luma_hover;
+ }
+-window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field image,
+-window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls image {
++window.luma-files-window headerbar.luma-secondary-toolbar .luma-search-field image {
+   -gtk-icon-size: 15px;
+ }
+-window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls button {
+-  min-width: 26px;
+-  min-height: 24px;
+-  padding: 0;
+-}
+ window.luma-files-window .nautilus-list-view .nautilus-view-cell > label.dim-label {
+   opacity: 1;
+   color: @luma_muted;
+@@ -1321,11 +1282,6 @@ window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls
+   -gtk-icon-size: 13px;
+ }
+ 
+-/* Compact Lucide view glyphs retain the native button/selection area. */
+-window.luma-files-window headerbar.luma-secondary-toolbar .luma-view-mode-controls button image {
+-  -gtk-icon-size: 13px;
+-}
+-
+ /* Match the simulator's button-owned frames, never the container allocation. */
+ window.luma-files-window headerbar.luma-secondary-toolbar .luma-history-controls {
+   border: none;
+diff --git a/src/resources/ui/nautilus-view-controls.blp b/src/resources/ui/nautilus-view-controls.blp
+index 726e158..3af6c10 100644
+--- a/src/resources/ui/nautilus-view-controls.blp
++++ b/src/resources/ui/nautilus-view-controls.blp
+@@ -50,51 +50,7 @@ template $NautilusViewControls: Adw.Bin {
+       "luma-view-controls",
+     ]
+ 
+-    Box {
+-      styles [
+-        "linked",
+-        "luma-view-mode-controls",
+-      ]
+-
+-      ToggleButton {
+-        child: Image {
+-          icon-name: "view-grid-symbolic";
+-          pixel-size: 16;
+-        };
+-        action-name: "slot.files-view-mode";
+-        action-target: "uint32 2";
+-
+-        accessibility {
+-          label: _("Grid View");
+-        }
+-      }
+-
+-      ToggleButton {
+-        child: Image {
+-          icon-name: "view-list-symbolic";
+-          pixel-size: 16;
+-        };
+-        action-name: "slot.files-view-mode";
+-        action-target: "uint32 1";
+-
+-        accessibility {
+-          label: _("List View");
+-        }
+-      }
+-
+-      ToggleButton {
+-        child: Image {
+-          icon-name: "view-dual-symbolic";
+-          pixel-size: 16;
+-        };
+-        action-name: "slot.files-view-mode";
+-        action-target: "uint32 4";
+-
+-        accessibility {
+-          label: _("Column View");
+-        }
+-      }
+-    }
++    Box mode_host {}
+ 
+     MenuButton {
+       /* Translators: This is a noun, meaning the options pertaining to the view. */
+diff --git a/test/automated/display/test-luma-column-header-menu.c b/test/automated/display/test-luma-column-header-menu.c
+index 33ae8b0..3cb3845 100644
+--- a/test/automated/display/test-luma-column-header-menu.c
++++ b/test/automated/display/test-luma-column-header-menu.c
+@@ -13,10 +13,44 @@
+ #include <nautilus-global-preferences.h>
+ #include <nautilus-list-base.h>
+ #include <nautilus-list-view.h>
++#include <nautilus-view-controls.h>
++#include <nautilus-window-slot.h>
+ #include <nautilus-resources.h>
+ #include <nautilus-tag-manager.h>
+ #include <test-utilities.h>
+ #include <glib/gstdio.h>
++#include <luma-ui.h>
++
++static GtkWidget *
++find_named_widget (GtkWidget *widget, const char *name)
++{
++    if (g_strcmp0 (gtk_widget_get_name (widget), name) == 0)
++        return widget;
++    for (GtkWidget *child = gtk_widget_get_first_child (widget); child;
++         child = gtk_widget_get_next_sibling (child))
++    {
++        GtkWidget *found = find_named_widget (child, name);
++        if (found != NULL) return found;
++    }
++    return NULL;
++}
++
++static void
++test_view_modes_follow_slot (void)
++{
++    g_autoptr (NautilusWindowSlot) slot = nautilus_window_slot_new (NAUTILUS_MODE_BROWSE);
++    g_autoptr (NautilusViewControls) controls = g_object_ref_sink (
++        g_object_new (NAUTILUS_TYPE_VIEW_CONTROLS, "window-slot", slot, NULL));
++    GtkWidget *widget = find_named_widget (GTK_WIDGET (controls), "filer-view-modes");
++    GActionGroup *group = nautilus_window_slot_get_action_group (slot);
++    GAction *action = g_action_map_lookup_action (G_ACTION_MAP (group), "files-view-mode");
++
++    g_assert_true (LUMA_IS_MODE_SWITCH (widget));
++    g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_uint32 (4));
++    g_assert_cmpstr (luma_mode_switch_get_current (LUMA_MODE_SWITCH (widget)), ==, "columns");
++    g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_uint32 (2));
++    g_assert_cmpstr (luma_mode_switch_get_current (LUMA_MODE_SWITCH (widget)), ==, "grid");
++}
+ 
+ static GtkColumnView *
+ find_columns (GtkWidget *widget)
+@@ -409,6 +443,7 @@ main (int argc, char **argv)
+     g_autoptr (NautilusApplication) app = nautilus_application_new ();
+     g_log_set_always_fatal (G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL | G_LOG_LEVEL_WARNING);
+     test_v70_table_labels ();
++    test_view_modes_follow_slot ();
+     test_header_columns ();
+     test_details_selection ();
+     test_favorites ();
+-- 
+2.55.0
+

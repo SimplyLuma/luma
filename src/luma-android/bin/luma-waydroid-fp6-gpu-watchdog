@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import os
+import selectors
+import subprocess
+import sys
+from pathlib import Path
+
+from luma_android.kernel import (
+    FP6_GPU_FAULT_MARKER,
+    fp6_kernel_admission,
+    fp6_software_service_admitted,
+    is_fp6,
+)
+
+
+GPU_FAULT_SIGNATURES = (
+    b"hangcheck detected gpu lockup",
+    b"Timeout waiting for GMU",
+)
+
+
+def check_admission() -> bool:
+    admission = fp6_kernel_admission()
+    if admission.allowed:
+        return True
+    if admission.reason == "kernel-not-admitted" and fp6_software_service_admitted():
+        return True
+    print(
+        "Luma FP6 Android GPU gate: "
+        f"{admission.reason} ({admission.notes_sha256 or 'no kernel identity'})",
+        file=sys.stderr,
+    )
+    return False
+
+
+def latch_fault(message: bytes) -> None:
+    summary = message.decode("utf-8", errors="replace").strip()[:512]
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(FP6_GPU_FAULT_MARKER, flags, 0o644)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(summary + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    subprocess.run(
+        ["/usr/bin/systemctl", "--no-block", "stop", "waydroid-container.service"],
+        check=False,
+        timeout=5,
+    )
+
+
+def monitor() -> int:
+    if not is_fp6():
+        return 0
+    if not check_admission():
+        return 69
+    journal = subprocess.Popen(
+        [
+            "/usr/bin/journalctl",
+            "--dmesg",
+            "--follow",
+            "--lines=0",
+            "--output=cat",
+            "--no-pager",
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+    if journal.stdout is None:
+        return 72
+    carry = b""
+    selector = selectors.DefaultSelector()
+    selector.register(journal.stdout, selectors.EVENT_READ)
+    try:
+        while True:
+            for _key, _mask in selector.select(timeout=5):
+                record = os.read(journal.stdout.fileno(), 65536)
+                if record:
+                    message = carry + record
+                    if any(signature in message for signature in GPU_FAULT_SIGNATURES):
+                        latch_fault(message)
+                        return 70
+                    carry = message[-128:]
+            if journal.poll() is not None:
+                subprocess.run(
+                    ["/usr/bin/systemctl", "--no-block", "stop", "waydroid-container.service"],
+                    check=False,
+                    timeout=5,
+                )
+                return 72
+            if not check_admission():
+                subprocess.run(
+                    ["/usr/bin/systemctl", "--no-block", "stop", "waydroid-container.service"],
+                    check=False,
+                    timeout=5,
+                )
+                return 71
+    finally:
+        if journal.poll() is None:
+            journal.terminate()
+            try:
+                journal.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                journal.kill()
+
+
+def main() -> int:
+    if sys.argv[1:] == ["--check"]:
+        return 0 if (not is_fp6() or check_admission()) else 69
+    if sys.argv[1:]:
+        print("usage: luma-waydroid-fp6-gpu-watchdog [--check]", file=sys.stderr)
+        return 2
+    return monitor()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

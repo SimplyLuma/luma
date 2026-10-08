@@ -1,0 +1,34 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 21:10:00 -0500
+Subject: [PATCH] session: keep routine compositor startup out of the VT
+
+The authenticated handheld transition briefly exposes its dedicated virtual
+terminal while the greeter compositor releases DRM and Phoc acquires it.
+Phoc already sends its diagnostics through systemd-cat; do not force verbose
+wlroots logging for every normal login. Debug sessions can still opt in through
+the upstream ~/.phoshdebug hook by adding `-v` to COMPOSITOR_ARGS.
+
+---
+ data/phosh-session.in | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/data/phosh-session.in b/data/phosh-session.in
+index 2776c71..827b55d 100755
+--- a/data/phosh-session.in
++++ b/data/phosh-session.in
+@@ -1,6 +1,7 @@
+ #!/bin/sh
+ 
+ COMPOSITOR="@compositor@"
++COMPOSITOR_ARGS=${COMPOSITOR_ARGS:-}
+ PHOC_INI="@pkgdatadir@/phoc.ini"
+ PHOSH_SESSION_BIN=${PHOSH_SESSION_BIN:-gnome-session}
+ 
+@@ -57,4 +58,4 @@ fi
+ 
+ [ -n "$WLR_BACKENDS" ] || WLR_BACKENDS=drm,libinput
+ export WLR_BACKENDS
+-exec $SYSTEMD_CAT $DBUS_RUN_SESSION "${COMPOSITOR}" -v -S -C "${PHOC_INI}" -E "${PHOSH_SESSION_BIN} --session=phosh"
++exec $SYSTEMD_CAT $DBUS_RUN_SESSION "${COMPOSITOR}" $COMPOSITOR_ARGS -S -C "${PHOC_INI}" -E "${PHOSH_SESSION_BIN} --session=phosh"
+-- 
+2.53.0

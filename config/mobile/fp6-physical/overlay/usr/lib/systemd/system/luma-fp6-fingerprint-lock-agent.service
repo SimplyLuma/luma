@@ -1,0 +1,18 @@
+[Unit]
+Description=Luma Fairphone 6 fingerprint lock agent
+Requires=luma-fp6-fingerprint-backend.service luma-fp6-fingerprint-stock-runtime.service
+After=luma-fp6-fingerprint-backend.service luma-fp6-fingerprint-stock-runtime.service greetd.service
+ConditionKernelCommandLine=androidboot.slot_suffix=_b
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-fp6-fingerprint-lock-agent
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=45
+TimeoutStopFailureMode=terminate
+SendSIGKILL=no
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

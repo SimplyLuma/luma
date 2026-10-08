@@ -1,0 +1,504 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 22:00:00 -0500
+Subject: [PATCH] luma: three fingers switch app, four switch workspace
+
+Three fingers sideways switched workspace, which is the gesture people
+reach for to change app -- and on a machine with one workspace it did
+nothing at all, which is how most people have it.
+
+Three fingers sideways now moves between apps, in the order they were last
+used, following the fingers: the app being left goes with them, the one
+being gone to comes in behind it, and letting go either finishes the move
+or puts everything back where it was. Four fingers sideways is workspaces.
+Three fingers up is still the overview, which cannot collide with either
+of them: that one is vertical.
+
+The gestures have to be told how many fingers they are for, because "three
+or more" made a four-finger swipe do both. The tracker takes a finger
+count and whether it is exact, and the two sideways gestures are exact.
+
+The finger count for workspaces is a setting, so someone who wants the old
+gesture back can have it, and the defaults are written once: after that
+they are the person's, and a later change of mind here does not overrule
+theirs.
+
+---
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index d2d47e9..e7d1602 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -103,6 +103,7 @@
+     <file>ui/lumaCastDialogs.js</file>
+     <file>ui/lumaCastSheet.js</file>
+     <file>ui/magnifier.js</file>
++    <file>ui/lumaAppSwitch.js</file>
+     <file>ui/main.js</file>
+     <file>ui/messageList.js</file>
+     <file>ui/messageTray.js</file>
+diff --git a/js/ui/lumaAppSwitch.js b/js/ui/lumaAppSwitch.js
+new file mode 100644
+index 0000000..2a4fed0
+--- /dev/null
++++ b/js/ui/lumaAppSwitch.js
+@@ -0,0 +1,293 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Three fingers sideways switches app, the way three fingers sideways
++// switches page on a phone: the app you are leaving goes with your fingers,
++// the one you are going to comes in behind it, and letting go either
++// finishes the move or puts everything back. Four fingers sideways is for
++// workspaces (workspaceAnimation), and three fingers up is still the
++// overview, which does not collide: that one is vertical.
++import Clutter from 'gi://Clutter';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++import * as SwipeTracker from './swipeTracker.js';
++
++const SWITCH_TIME = 250;
++// More than this and it is not a switch any more, it is a list; the apps
++// past it are still reachable, one swipe at a time.
++const MAX_STEPS = 3;
++
++/** The windows of one app on one monitor, cloned so the real ones can stay
++ * where they are while the copies move. */
++const AppClones = GObject.registerClass(
++class AppClones extends Clutter.Actor {
++    _init(app, monitor) {
++        super._init({width: monitor.width, height: monitor.height});
++
++        this._app = app;
++        this._monitor = monitor;
++        this._records = [];
++
++        for (const actor of this._windowActors()) {
++            const clone = new Clutter.Clone({
++                source: actor,
++                x: actor.x - monitor.x,
++                y: actor.y - monitor.y,
++            });
++            const record = {actor, clone};
++            actor.connectObject('destroy', () => {
++                clone.destroy();
++                this._records.splice(this._records.indexOf(record), 1);
++            }, this);
++            this._records.push(record);
++            this.add_child(clone);
++        }
++
++        this.connect('destroy', () => this._onDestroy());
++    }
++
++    get app() {
++        return this._app;
++    }
++
++    get isEmpty() {
++        return this._records.length === 0;
++    }
++
++    _windowActors() {
++        const tracker = Shell.WindowTracker.get_default();
++        const geometry = global.display.get_monitor_geometry(this._monitor.index);
++        return global.get_window_actors().filter(actor => {
++            const window = actor.meta_window;
++            if (!window || window.is_override_redirect() || window.minimized)
++                return false;
++            if (window.get_window_type() === Meta.WindowType.DESKTOP)
++                return false;
++            if (tracker.get_window_app(window) !== this._app)
++                return false;
++            const [intersects] = window.get_frame_rect().intersect(geometry);
++            return intersects;
++        });
++    }
++
++    /** Hide the windows these clones stand in for, and show them again
++     * afterwards: two of the same windows on screen at once is worse than
++     * either. */
++    setWindowsVisible(visible) {
++        for (const {actor} of this._records)
++            actor.visible = visible;
++    }
++
++    _onDestroy() {
++        this.setWindowsVisible(true);
++        for (const {clone} of this._records)
++            clone.destroy();
++        this._records = [];
++    }
++});
++
++export class LumaAppSwitchGesture {
++    constructor(settings) {
++        this._settings = settings;
++        this._switch = null;
++
++        this._tracker = new SwipeTracker.SwipeTracker(global.stage,
++            Clutter.Orientation.HORIZONTAL,
++            Shell.ActionMode.NORMAL,
++            {
++                allowDrag: false,
++                allowScroll: false,
++                fingerCount: 3,
++                exactFingerCount: true,
++                phase: Clutter.EventPhase.CAPTURE,
++                name: 'Luma app switch',
++            });
++        this._tracker.connect('begin', this._begin.bind(this));
++        this._tracker.connect('update', this._update.bind(this));
++        this._tracker.connect('end', this._end.bind(this));
++
++        Main.overview.connectObject(
++            'showing', () => (this._tracker.enabled = false),
++            'hiding', () => (this._tracker.enabled = true), this);
++
++        this._syncEnabled();
++        this._settings?.connectObject('changed::touchpad-app-switch',
++            () => this._syncEnabled(), this);
++    }
++
++    get tracker() {
++        return this._tracker;
++    }
++
++    _syncEnabled() {
++        const wanted = this._settings?.get_boolean('touchpad-app-switch') ?? true;
++        this._tracker.enabled = wanted && !Main.overview.visible;
++    }
++
++    /** The apps as the person last used them, one window each: the order
++     * Alt+Tab would show, which is the order they expect. */
++    appOrder() {
++        const tracker = Shell.WindowTracker.get_default();
++        const seen = new Set();
++        const order = [];
++        for (const window of global.display.get_tab_list(Meta.TabList.NORMAL, null)) {
++            const app = tracker.get_window_app(window);
++            if (!app || seen.has(app))
++                continue;
++            seen.add(app);
++            order.push({app, window});
++        }
++        return order;
++    }
++
++    _begin(tracker, monitorIndex) {
++        if (this._switch)
++            return;
++
++        const order = this.appOrder();
++        if (order.length < 2) {
++            // Nothing to switch to: the gesture still ends, at where it began.
++            tracker.confirmSwipe(global.screen_width, [0], 0, 0);
++            return;
++        }
++
++        const monitor = Main.layoutManager.monitors[monitorIndex] ??
++            Main.layoutManager.primaryMonitor;
++        const steps = Math.min(MAX_STEPS, order.length - 1);
++        const points = [];
++        for (let i = -steps; i <= steps; i++)
++            points.push(i);
++
++        const animate = St.Settings.get().enable_animations;
++        const state = {monitor, order, steps, groups: new Map(), animate, progress: 0};
++        this._switch = state;
++
++        if (animate) {
++            state.container = new St.Widget({
++                name: 'lumaAppSwitchGroup',
++                x: monitor.x, y: monitor.y,
++                width: monitor.width, height: monitor.height,
++                clip_to_allocation: false,
++            });
++            Main.uiGroup.insert_child_above(state.container, global.window_group);
++
++            // The app being left, and the ones on either side of it: enough
++            // for the move to be shown, and no more work than that.
++            for (let i = -steps; i <= steps; i++) {
++                const entry = order[this._indexFor(state, i)];
++                if (!entry || state.groups.has(entry.app))
++                    continue;
++                const clones = new AppClones(entry.app, monitor);
++                if (clones.isEmpty) {
++                    clones.destroy();
++                    continue;
++                }
++                clones.x = i * monitor.width;
++                clones.setWindowsVisible(false);
++                state.container.add_child(clones);
++                state.groups.set(entry.app, {clones, offset: i});
++            }
++        }
++
++        tracker.confirmSwipe(monitor.width, points, 0, 0);
++    }
++
++    /** Which app a number of steps away is. Swiping left (a negative
++     * progress) goes to the app used before this one, which is the next one
++     * in the list, the way Alt+Tab goes back through them. */
++    _indexFor(state, step) {
++        const index = Math.round(-step);
++        if (index < 0 || index >= state.order.length)
++            return -1;
++        return index;
++    }
++
++    _update(_tracker, progress) {
++        const state = this._switch;
++        if (!state)
++            return;
++
++        state.progress = progress;
++        if (!state.container)
++            return;
++
++        for (const {clones, offset} of state.groups.values())
++            clones.x = (offset - progress) * state.monitor.width;
++    }
++
++    _end(_tracker, duration, endProgress) {
++        const state = this._switch;
++        if (!state) {
++            this._switch = null;
++            return;
++        }
++
++        const index = this._indexFor(state, endProgress);
++        const target = index >= 0 ? state.order[index] : null;
++
++        const finish = () => {
++            this._finish(state, target, endProgress !== 0);
++        };
++
++        if (!state.container || duration === 0) {
++            finish();
++            return;
++        }
++
++        let left = state.groups.size;
++        if (left === 0) {
++            finish();
++            return;
++        }
++        for (const {clones, offset} of state.groups.values()) {
++            clones.ease({
++                x: (offset - endProgress) * state.monitor.width,
++                duration: duration || SWITCH_TIME,
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++                onStopped: () => {
++                    if (--left === 0)
++                        finish();
++                },
++            });
++        }
++    }
++
++    _finish(state, target, switched) {
++        this._switch = null;
++
++        if (state.container) {
++            // The clones go before the windows come back, so nothing is
++            // ever drawn twice.
++            for (const {clones} of state.groups.values())
++                clones.setWindowsVisible(true);
++            state.container.destroy();
++        }
++
++        if (switched && target)
++            Main.activateWindow(target.window, global.get_current_time());
++    }
++
++    /** For the tests, and for a keyboard shortcut later: switch without a
++     * touchpad. */
++    switchBy(step) {
++        const order = this.appOrder();
++        if (order.length < 2)
++            return false;
++        const index = Math.max(0, Math.min(order.length - 1, Math.round(-step)));
++        if (index === 0)
++            return false;
++        Main.activateWindow(order[index].window, global.get_current_time());
++        return true;
++    }
++
++    destroy() {
++        if (this._switch)
++            this._finish(this._switch, null, false);
++        Main.overview.disconnectObject(this);
++        this._settings?.disconnectObject(this);
++        this._tracker.enabled = false;
++        this._tracker = null;
++    }
++}
+diff --git a/js/ui/swipeTracker.js b/js/ui/swipeTracker.js
+index 05b5b2c..6e6f63f 100644
+--- a/js/ui/swipeTracker.js
++++ b/js/ui/swipeTracker.js
+@@ -103,9 +103,15 @@ const TouchpadSwipeGesture = GObject.registerClass({
+         'end':    {param_types: [GObject.TYPE_UINT, GObject.TYPE_DOUBLE]},
+     },
+ }, class TouchpadSwipeGesture extends GObject.Object {
+-    _init(actor, allowedModes) {
++    _init(actor, allowedModes, fingerCount = GESTURE_FINGER_COUNT, exactFingerCount = false) {
+         super._init();
+         this._allowedModes = allowedModes;
++        // Luma: a gesture that means something else with another finger on
++        // the touchpad has to say so. Three fingers sideways switches app
++        // and four switches workspace, so "three or more" is not good
++        // enough for either of them.
++        this._fingerCount = fingerCount;
++        this._exactFingerCount = exactFingerCount;
+         this._state = TouchpadState.NONE;
+         this._cumulativeX = 0;
+         this._cumulativeY = 0;
+@@ -124,7 +130,10 @@ const TouchpadSwipeGesture = GObject.registerClass({
+         if (event.get_gesture_phase() === Clutter.TouchpadGesturePhase.BEGIN)
+             this._state = TouchpadState.NONE;
+ 
+-        if (event.get_touchpad_gesture_finger_count() < GESTURE_FINGER_COUNT)
++        const fingers = event.get_touchpad_gesture_finger_count();
++        if (this._exactFingerCount
++            ? fingers !== this._fingerCount
++            : fingers < this._fingerCount)
+             return Clutter.EVENT_PROPAGATE;
+ 
+         if ((this._allowedModes & Main.actionMode) === 0)
+@@ -371,6 +380,10 @@ export const SwipeTracker = GObject.registerClass({
+             allowScroll: true,
+             phase: Clutter.EventPhase.BUBBLE,
+             name: 'SwipeTracker',
++            // Luma: how many fingers this gesture is for, and whether that
++            // number is exact.
++            fingerCount: GESTURE_FINGER_COUNT,
++            exactFingerCount: false,
+         });
+ 
+         super._init();
+@@ -382,9 +395,10 @@ export const SwipeTracker = GObject.registerClass({
+         this._history = new EventHistory();
+         this._reset();
+ 
++        this._fingerCount = params.fingerCount;
+         this._panGesture = new Clutter.PanGesture({
+-            min_n_points: params.allowDrag ? 1 : GESTURE_FINGER_COUNT,
+-            max_n_points: params.allowDrag ? 0 : GESTURE_FINGER_COUNT,
++            min_n_points: params.allowDrag ? 1 : params.fingerCount,
++            max_n_points: params.allowDrag ? 0 : params.fingerCount,
+         });
+         this._panGesture.connect('may-recognize', () => {
+             return (this._allowedModes & Main.actionMode) !== 0;
+@@ -405,7 +419,8 @@ export const SwipeTracker = GObject.registerClass({
+             null);
+         actor.add_action_full(params.name, params.phase, this._panGesture);
+ 
+-        this._touchpadGesture = new TouchpadSwipeGesture(actor, allowedModes);
++        this._touchpadGesture = new TouchpadSwipeGesture(actor, allowedModes,
++            params.fingerCount, params.exactFingerCount);
+         this._touchpadGesture.connect('begin', this._beginTouchpadGesture.bind(this));
+         this._touchpadGesture.connect('update', this._updateTouchpadGesture.bind(this));
+         this._touchpadGesture.connect('end', this._endTouchpadGesture.bind(this));
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 51819f8..849fedd 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -21,6 +21,7 @@ import * as SwitchMonitor from './switchMonitor.js';
+ import * as LumaDisplayArrival from './lumaDisplayArrival.js';
+ import * as IBusManager from '../misc/ibusManager.js';
+ import * as WorkspaceAnimation from './workspaceAnimation.js';
++import * as LumaAppSwitch from './lumaAppSwitch.js';
+ 
+ import * as Main from './main.js';
+ import * as LumaGrid from './lumaGrid.js';
+@@ -506,6 +507,30 @@ class ResizePopup extends St.Widget {
+     }
+ });
+ 
++// Luma: the touchpad gesture defaults, written once. After that they are
++// the person's, and a later change of mind here does not overrule theirs.
++function lumaGestureSettings() {
++    let settings;
++    try {
++        settings = new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
++    } catch (e) {
++        return null;
++    }
++
++    try {
++        if (settings.get_uint('touchpad-gesture-migration') < 1) {
++            settings.set_int('touchpad-workspace-fingers', 4);
++            settings.set_boolean('touchpad-app-switch', true);
++            settings.set_uint('touchpad-gesture-migration', 1);
++            log('[luma-gestures] four fingers switch workspace, three switch app');
++        }
++    } catch (e) {
++        logError(e, '[luma-gestures] the gesture defaults could not be written');
++    }
++
++    return settings;
++}
++
+ export class WindowManager {
+     constructor() {
+         this._shellwm =  global.window_manager;
+@@ -964,6 +989,8 @@ export class WindowManager {
+ 
+         this._workspaceAnimation =
+             new WorkspaceAnimation.WorkspaceAnimationController();
++        // Luma: three fingers sideways switches app.
++        this._lumaAppSwitch = new LumaAppSwitch.LumaAppSwitchGesture(lumaGestureSettings());
+ 
+         this._shellwm.connect('kill-switch-workspace', () => {
+             this._workspaceAnimation.cancelSwitchAnimation();
+diff --git a/js/ui/workspaceAnimation.js b/js/ui/workspaceAnimation.js
+index f7c2f7a..8a9ea8a 100644
+--- a/js/ui/workspaceAnimation.js
++++ b/js/ui/workspaceAnimation.js
+@@ -1,4 +1,5 @@
+ import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
+ import Shell from 'gi://Shell';
+@@ -340,6 +341,20 @@ export const MonitorGroup = GObject.registerClass({
+     }
+ });
+ 
++// Luma: how many fingers switch workspace, from the Luma settings, with
++// the Shell's own default if the schema is not installed.
++function lumaWorkspaceFingers() {
++    try {
++        const settings = new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
++        const fingers = settings.get_int('touchpad-workspace-fingers');
++        if (fingers === 3 || fingers === 4)
++            return fingers;
++    } catch (e) {
++        // No Luma settings here: the Shell's own gesture, unchanged.
++    }
++    return 3;
++}
++
+ export class WorkspaceAnimationController {
+     constructor() {
+         this._movingWindow = null;
+@@ -356,12 +371,17 @@ export class WorkspaceAnimationController {
+             this._swipeTracker.enabled = true;
+         });
+ 
++        // Luma: four fingers sideways is workspaces; three is apps
++        // (lumaAppSwitch.js). The count is a setting, so someone who wants
++        // the old three-finger workspaces can have them back.
+         const swipeTracker = new SwipeTracker.SwipeTracker(global.stage,
+             Clutter.Orientation.HORIZONTAL,
+             Shell.ActionMode.NORMAL,
+             {
+                 allowDrag: false,
+                 phase: Clutter.EventPhase.CAPTURE,
++                fingerCount: lumaWorkspaceFingers(),
++                exactFingerCount: true,
+                 name: 'WorkspaceAnimation swipe tracker',
+             });
+         swipeTracker.connect('begin', this._switchWorkspaceBegin.bind(this));

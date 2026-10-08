@@ -1,0 +1,10 @@
+{
+  "_doc": "Terminal pane canvas from v70; native VTE cells and their enclosing island share this role.",
+  "lumaui": {
+    "colors": {
+      "light": {"terminal_pane": "#ffffff"},
+      "dark": {"terminal_pane": "#111315"},
+      "high_contrast": {"terminal_pane": "@window_bg_color"}
+    }
+  }
+}

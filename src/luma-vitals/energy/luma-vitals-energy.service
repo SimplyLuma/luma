@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Luma Vitals: publish the processor's energy counters for battery reports
+Documentation=file:///usr/share/doc/luma-vitals/026-luma-vitals.md
+ConditionPathExistsGlob=/sys/class/powercap/intel-rapl:*
+
+[Service]
+ExecStart=/usr/libexec/luma-vitals-energy
+Restart=on-failure
+RestartSec=30
+# It must never be the process it would report.
+Nice=10
+CPUWeight=10
+MemoryMax=32M
+RuntimeDirectory=luma-vitals
+RuntimeDirectoryMode=0755
+UMask=0022
+# Root only to read /sys/class/powercap, which is root-only for a reason; it
+# needs no capability, no network, no filesystem and no device of its own.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictAddressFamilies=
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,684 @@
+{
+  "app": "tide",
+  "title": "Tide",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=tide",
+    "window": "#w-tide",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "luma_tide",
+    "pythonpath": [
+      "src/luma-tide"
+    ],
+    "fixtures": [
+      "tests/fixtures/tide-v70.json"
+    ],
+    "env": {
+      "LUMA_TIDE_FIXTURE": "{run}/fixtures/tide-v70.json",
+      "LUMA_TIDE_FIXTURE_CLOCK": "0",
+      "LUMAUI_CONFORM_SETTLE_MS": "3000"
+    }
+  },
+  "states": [
+    {
+      "name": "album",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": []
+    },
+    {
+      "name": "paused",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpp]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-play-pause"
+        }
+      ]
+    },
+    {
+      "name": "albums",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tview=\"albums\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-view-albums"
+        }
+      ]
+    },
+    {
+      "name": "artists",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tview=\"artists\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-view-artists"
+        }
+      ]
+    },
+    {
+      "name": "songs",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tview=\"songs\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-view-songs"
+        }
+      ]
+    },
+    {
+      "name": "sources",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        }
+      ]
+    },
+    {
+      "name": "source",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"nd\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-nd"
+        }
+      ]
+    },
+    {
+      "name": "add-source",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"add\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-add"
+        }
+      ]
+    },
+    {
+      "name": "edit-source",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"nd\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"edit:nd\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-nd"
+        },
+        {
+          "activate": "td-source-edit"
+        }
+      ]
+    },
+    {
+      "name": "source-menu",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcmore=\"nd\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-more-nd"
+        }
+      ]
+    },
+    {
+      "name": "sign-out-confirm",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"nd\"]"
+        },
+        {
+          "click": "[data-tsrcout=\"nd\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-nd"
+        },
+        {
+          "activate": "td-source-sign-out"
+        }
+      ]
+    },
+    {
+      "name": "remove-confirm",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"nd\"]"
+        },
+        {
+          "click": "[data-tsrcrm=\"nd\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-nd"
+        },
+        {
+          "activate": "td-source-remove"
+        }
+      ]
+    },
+    {
+      "name": "queue",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tqueue]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-up-next"
+        }
+      ]
+    },
+    {
+      "name": "outputs",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tout]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-output"
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tsearch]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-search-open"
+        }
+      ]
+    },
+    {
+      "name": "now-next",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "eval": "const b=document.createElement('button'); b.dataset.tnow=''; document.querySelector('#w-tide').append(b); b.click(); b.remove();"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_TIDE_NOW": "next"
+          }
+        }
+      ]
+    },
+    {
+      "name": "now-about",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "eval": "const b=document.createElement('button'); b.dataset.tnow=''; document.querySelector('#w-tide').append(b); b.click(); b.remove();"
+        },
+        {
+          "click": "[data-tnowtab=\"about\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_TIDE_NOW": "about"
+          }
+        }
+      ]
+    },
+    {
+      "name": "album-paused",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tplayall=\"pet\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-play-album"
+        }
+      ]
+    },
+    {
+      "name": "song-paused",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tplay=\"pet:7\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-play-song-pet:7"
+        }
+      ]
+    },
+    {
+      "name": "next-song",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tstep=\"1\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-next"
+        }
+      ]
+    },
+    {
+      "name": "love-album",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tlike=\"al:pet\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-love-album"
+        }
+      ]
+    },
+    {
+      "name": "repeat",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-trep]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-repeat"
+        }
+      ]
+    },
+    {
+      "name": "shuffle",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tshuf]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-shuffle"
+        }
+      ]
+    },
+    {
+      "name": "source-local",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"dev\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-dev"
+        }
+      ]
+    },
+    {
+      "name": "source-downloads",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcat=\"dl\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-dl"
+        }
+      ]
+    },
+    {
+      "name": "source-local-menu",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tpane=\"sources\"]"
+        },
+        {
+          "click": "[data-tsrcmore=\"dev\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-sources-open"
+        },
+        {
+          "activate": "td-source-more-dev"
+        }
+      ]
+    },
+    {
+      "name": "album-generated",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tview=\"albums\"]"
+        },
+        {
+          "click": "[data-talbum=\"hdn\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-view-albums"
+        },
+        {
+          "activate": "td-album-hdn"
+        }
+      ]
+    },
+    {
+      "name": "album-empty",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tview=\"albums\"]"
+        },
+        {
+          "click": "[data-talbum=\"blue\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "td-view-albums"
+        },
+        {
+          "activate": "td-album-blue"
+        }
+      ]
+    },
+    {
+      "name": "search-results",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tsearch]"
+        },
+        {
+          "eval": "const q=document.querySelector('#t-q'); q.value=\"love\"; q.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_TIDE_QUERY": "love"
+          }
+        }
+      ]
+    },
+    {
+      "name": "search-empty",
+      "spec": [
+        {
+          "eval": "const last=setInterval(()=>{},1000); for(let id=1;id<=last;id++) clearInterval(id); const seek=document.querySelector('#t-rng'); seek.value=64; seek.dispatchEvent(new Event('input',{bubbles:true}));"
+        },
+        {
+          "click": "[data-tsearch]"
+        },
+        {
+          "eval": "const q=document.querySelector('#t-q'); q.value=\"no matches here\"; q.dispatchEvent(new Event('input',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_TIDE_QUERY": "no matches here"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "album",
+    "paused",
+    "albums",
+    "artists",
+    "songs",
+    "sources",
+    "source",
+    "add-source",
+    "edit-source",
+    "source-menu",
+    "sign-out-confirm",
+    "remove-confirm",
+    "queue",
+    "outputs",
+    "search",
+    "now-next",
+    "now-about",
+    "album-paused",
+    "song-paused",
+    "next-song",
+    "love-album",
+    "repeat",
+    "shuffle",
+    "source-local",
+    "source-downloads",
+    "source-local-menu",
+    "album-generated",
+    "album-empty",
+    "search-results",
+    "search-empty"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-tide > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "corner pill",
+      "spec": "#t-float"
+    },
+    {
+      "name": "details",
+      "spec": "#t-pane"
+    },
+    {
+      "name": "player deck",
+      "spec": "#t-bot"
+    },
+    {
+      "name": "main",
+      "spec": "#t-main"
+    }
+  ],
+  "pairs": [
+    {
+      "name": "island",
+      "spec": "#t-main",
+      "gtk": "td-island"
+    },
+    {
+      "name": "corner pill",
+      "spec": "#t-float",
+      "gtk": "td-corner"
+    },
+    {
+      "name": "hero light",
+      "spec": "#t-body .herobg",
+      "gtk": "td-light"
+    },
+    {
+      "name": "deck",
+      "spec": "#t-bot",
+      "gtk": "td-deck"
+    },
+    {
+      "name": "details",
+      "spec": "#t-pane",
+      "gtk": "td-pane"
+    }
+  ]
+}

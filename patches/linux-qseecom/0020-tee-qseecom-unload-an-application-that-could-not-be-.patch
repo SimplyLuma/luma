@@ -1,0 +1,64 @@
+From b27e0a4a67448a31a9a982a65d4ec8887668a6b1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 10:42:46 +0200
+Subject: [PATCH 20/41] tee: qseecom: unload an application that could not be
+ handed to anyone
+
+Both failure paths after a successful load return without unloading. The
+application is then live in TZ with nothing owning it: no session to close and
+unload it on, and in the first case not even a registry entry, so its name
+cannot be resolved again either. TZ refuses a second load and only a reboot
+clears it -- exactly the trap unloading on session close was written to remove.
+
+Only reachable on allocation failure, but the consequence outlives the failure.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 23 ++++++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 8455d2c1c..f335e06b0 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -1321,13 +1321,23 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 		return ret;
+ 	}
+ 
++	/*
++	 * From here the application is live in TZ. Anything that fails now has
++	 * to put it back, because nothing else can: without a session there is
++	 * no close to unload it on, and without a registry entry the name
++	 * cannot even be resolved again. TZ would refuse to load it a second
++	 * time and only a reboot would clear it -- exactly the trap unloading
++	 * on session close exists to avoid.
++	 */
+ 	ret = qseecom_tee_app_remember(qtee, app_name, app_id);
+ 	if (ret)
+-		return ret;
++		goto err_shutdown;
+ 
+ 	ret = qseecom_tee_session_add(ctxdata, app_id, NULL, &arg->session);
+-	if (ret)
+-		return ret;
++	if (ret) {
++		qseecom_tee_app_forget(qtee, app_id);
++		goto err_shutdown;
++	}
+ 
+ 	dev_info(qtee->dev, "loaded '%s' as app %u\n", app_name, app_id);
+ 
+@@ -1335,6 +1345,13 @@ static int qseecom_tee_supp_load_app(struct tee_context *ctx,
+ 	arg->ret_origin = 0;
+ 
+ 	return 0;
++
++err_shutdown:
++	if (qcom_scm_qseecom_app_shutdown(app_id))
++		dev_err(qtee->dev,
++			"app %u loaded but could not be unloaded after a failed load; it is stuck until reboot\n",
++			app_id);
++	return ret;
+ }
+ 
+ /*

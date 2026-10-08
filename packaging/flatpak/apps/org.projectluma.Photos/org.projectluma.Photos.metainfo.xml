@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Photos</id>
+  <name>Photos</name>
+  <summary>Organize and edit your photos</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Browse and organize your photos, apply adjustments, and crop images with Luma’s responsive photo library.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Photos.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Photo library and editing</caption>
+      <image width="1430" height="890">https://dl.simplyluma.com/media/org.projectluma.Photos/39f76e9a097324ccab7b6e1827f7991a3b104ed61fffc6212591bd96ddbbd3fd.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.2" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Save edited photos with their crop, rotation and colour adjustments while preserving the original file.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

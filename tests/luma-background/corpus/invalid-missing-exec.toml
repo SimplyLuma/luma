@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+[application]
+id = "com.example.Usage"
+name = "Usage"
+
+[background]
+agent = "com.example.Usage.Agent"
+category = "sync"
+wake = ["login"]

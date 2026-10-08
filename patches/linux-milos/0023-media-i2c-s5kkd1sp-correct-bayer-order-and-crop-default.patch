@@ -1,0 +1,56 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] media: i2c: s5kkd1sp: correct Bayer order and default crop
+
+A physically captured packed-RAW10 frame from the Fairphone 6 front camera
+shows that the S5KKD1SP stream starts with a GBRG Bayer cell.  The initial
+driver advertised GRBG, swapping the red and blue samples and producing a
+strong purple cast after demosaicing.
+
+Advertise the observed GBRG order and answer CROP_DEFAULT selection queries.
+The latter describes the full active array to libcamera instead of making it
+fall back to guessed sensor geometry.
+
+--- a/drivers/media/i2c/s5kkd1sp.c
++++ b/drivers/media/i2c/s5kkd1sp.c
+@@ -603,7 +603,7 @@ static void s5kkd1sp_log_reg(struct s5kkd1sp *sensor, u32 reg,
+ 
+ static void s5kkd1sp_fill_format(struct v4l2_mbus_framefmt *fmt)
+ {
+-	fmt->code = MEDIA_BUS_FMT_SGRBG10_1X10;
++	fmt->code = MEDIA_BUS_FMT_SGBRG10_1X10;
+ 	fmt->width = 3104;
+ 	fmt->height = 2336;
+ 	fmt->field = V4L2_FIELD_NONE;
+@@ -628,7 +628,7 @@ static int s5kkd1sp_enum_mbus_code(struct v4l2_subdev *sd,
+ {
+ 	if (code->index)
+ 		return -EINVAL;
+-	code->code = MEDIA_BUS_FMT_SGRBG10_1X10;
++	code->code = MEDIA_BUS_FMT_SGBRG10_1X10;
+ 	return 0;
+ }
+ 
+@@ -637,7 +637,7 @@ static int s5kkd1sp_enum_frame_size(struct v4l2_subdev *sd,
+ 				    struct v4l2_subdev_state *state,
+ 				    struct v4l2_subdev_frame_size_enum *fse)
+ {
+-	if (fse->index || fse->code != MEDIA_BUS_FMT_SGRBG10_1X10)
++	if (fse->index || fse->code != MEDIA_BUS_FMT_SGBRG10_1X10)
+ 		return -EINVAL;
+ 	fse->min_width = fse->max_width = 3104;
+ 	fse->min_height = fse->max_height = 2336;
+@@ -647,11 +647,9 @@ static int s5kkd1sp_get_selection(struct v4l2_subdev *sd,
+ 				  struct v4l2_subdev_state *state,
+ 				  struct v4l2_subdev_selection *sel)
+ {
+-	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+-		return -EINVAL;
+-
+ 	switch (sel->target) {
+ 	case V4L2_SEL_TGT_CROP:
++	case V4L2_SEL_TGT_CROP_DEFAULT:
+ 	case V4L2_SEL_TGT_CROP_BOUNDS:
+ 	case V4L2_SEL_TGT_NATIVE_SIZE:
+ 		sel->r.left = 0;
+-- 
+2.51.0

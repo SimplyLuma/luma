@@ -1,0 +1,29 @@
+[Unit]
+Description=Project Luma FP6 carrier modem profile selection
+After=rmtfs.service tqftpserv.service
+Wants=rmtfs.service tqftpserv.service
+Before=luma-fp6-primary-gw-session.service ModemManager.service luma-fp6-cellular-link.service luma-fp6-imsd.service
+ConditionPathExists=/etc/luma/fp6-carrier-pdc.conf
+ConditionPathExists=/sys/firmware/devicetree/base/model
+StartLimitIntervalSec=180
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-fp6-carrier-pdc
+RemainAfterExit=yes
+TimeoutStartSec=180
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_QIPCRTR
+
+[Install]
+WantedBy=multi-user.target

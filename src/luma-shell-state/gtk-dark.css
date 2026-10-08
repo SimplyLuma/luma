@@ -1,0 +1,36 @@
+/* Generated from config/shared/design-tokens.json. */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained-dark.css");
+@import url("luma-common.css");
+/* Default profile */
+/* Focused and unfocused outer elevation is deliberately identical. */
+window.csd decoration {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82);
+  transition: none;
+}
+/* Focused and unfocused outer elevation is deliberately identical. */
+window.csd:backdrop decoration {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045), 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82);
+  transition: none;
+}
+window.csd.luma-no-frame-shadow:not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom) decoration, window.csd.luma-no-frame-shadow:not(.fullscreen):not(.tiled):not(.tiled-top):not(.tiled-left):not(.tiled-right):not(.tiled-bottom):backdrop decoration {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+}
+window.csd.fullscreen decoration,
+window.csd.fullscreen:backdrop decoration,
+window.csd.tiled decoration,
+window.csd.tiled:backdrop decoration,
+window.csd.tiled-top decoration,
+window.csd.tiled-top:backdrop decoration,
+window.csd.tiled-left decoration,
+window.csd.tiled-left:backdrop decoration,
+window.csd.tiled-right decoration,
+window.csd.tiled-right:backdrop decoration,
+window.csd.tiled-bottom decoration,
+window.csd.tiled-bottom:backdrop decoration {
+  box-shadow: none;
+  border-radius: 0;
+  transition: none;
+}
+/* Maximized desktop work areas are inset; fullscreen stays square. */
+window.csd.maximized:not(.fullscreen) decoration { border-radius: 15px; }
+window.csd.maximized:not(.fullscreen) headerbar { border-radius: 15px 15px 0 0; }

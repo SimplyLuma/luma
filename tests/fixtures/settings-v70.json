@@ -1,0 +1,1746 @@
+{
+  "version": 1,
+  "spec_sha256": "66d185165a453b0691e3b1603260651652d575110280af0855369aa7423ba454",
+  "selected": "wifi",
+  "settings": {
+    "wifi": true,
+    "net": "Studio North",
+    "airplane": false,
+    "hotspot": false,
+    "hsName": "Nick’s ThinkPad",
+    "hsPass": "lantern-orbit-42",
+    "autoJoin": true,
+    "allUsers": true,
+    "metered": "auto",
+    "eth": false,
+    "vpn": false,
+    "proxy": "off",
+    "bt": true,
+    "join": "join",
+    "dsel": "ext",
+    "arr": {
+      "side": "top",
+      "off": 0.5
+    },
+    "d": {
+      "int": {
+        "res": "1920 × 1200",
+        "hz": "60 Hz",
+        "scale": "125",
+        "rot": "Landscape",
+        "bright": 72,
+        "prof": "Built-in, factory calibrated",
+        "primary": false
+      },
+      "ext": {
+        "res": "3840 × 2160",
+        "hz": "60 Hz",
+        "scale": "150",
+        "rot": "Landscape",
+        "hdr": false,
+        "prof": "Dell U2723QE",
+        "primary": true
+      }
+    },
+    "night": true,
+    "nightWhen": "sun",
+    "nightFrom": "21:00",
+    "nightTo": "06:30",
+    "nightT": 55,
+    "out": "spk",
+    "vol": 62,
+    "bal": 0,
+    "cfg": "Stereo",
+    "overamp": false,
+    "inDev": "int",
+    "inVol": 70,
+    "alert": "Default",
+    "lv": {
+      "system": 80,
+      "tide": 100,
+      "viola": 70,
+      "messages": 90,
+      "reel": 100
+    },
+    "pmode": "bal",
+    "charge": "max",
+    "pbtn": "suspend",
+    "pct": true,
+    "autoBright": true,
+    "dim": true,
+    "autoSaver": true,
+    "blank": "5",
+    "susBat": true,
+    "susBatD": "15",
+    "susAc": false,
+    "susAcD": "60",
+    "mtab": "touchpad",
+    "mBtn": "left",
+    "mSpeed": 0,
+    "mAccel": true,
+    "mNat": false,
+    "tp": true,
+    "tpType": true,
+    "tSpeed": 20,
+    "tSec": "two",
+    "tTap": true,
+    "tScroll": "two",
+    "tNat": true,
+    "srcs": [
+      "English (US)"
+    ],
+    "src": "English (US)",
+    "perWin": "all",
+    "altKey": "AltRight",
+    "compose": "off",
+    "acc": 250,
+    "wall": "prism",
+    "tint": true,
+    "preset": "luma",
+    "edge": "bottom",
+    "spread": "spread",
+    "joined": "separate",
+    "float": "floating",
+    "hide": "never",
+    "isz": 40,
+    "tile": true,
+    "gap": 8,
+    "edgeTile": true,
+    "hot": true,
+    "edges": true,
+    "ws": "dynamic",
+    "wsN": 4,
+    "wsMon": "primary",
+    "swi": "current",
+    "dnd": false,
+    "lockN": true,
+    "nshow": "6",
+    "na": {
+      "messages": true,
+      "charlie": true,
+      "calendar": true,
+      "phone": true,
+      "tasks": true,
+      "clock": true,
+      "depot": true,
+      "tide": false,
+      "maps": false
+    },
+    "sa": [
+      [
+        "filer",
+        true
+      ],
+      [
+        "settings",
+        true
+      ],
+      [
+        "calc",
+        true
+      ],
+      [
+        "contacts",
+        true
+      ],
+      [
+        "calendar",
+        true
+      ],
+      [
+        "charlie",
+        true
+      ],
+      [
+        "notes",
+        true
+      ],
+      [
+        "tide",
+        true
+      ],
+      [
+        "depot",
+        true
+      ],
+      [
+        "term",
+        false
+      ]
+    ],
+    "askAri": true,
+    "sl": {
+      "Home": true,
+      "Documents": true,
+      "Downloads": true,
+      "Music": true,
+      "Pictures": true,
+      "Videos": true,
+      "Archive HD": false
+    },
+    "def": {
+      "web": "viola",
+      "mail": "charlie",
+      "cal": "calendar",
+      "music": "tide",
+      "video": "viewer",
+      "photo": "photos"
+    },
+    "media": {
+      "audio": "tide",
+      "photos": "photos",
+      "video": "viewer",
+      "software": "ask"
+    },
+    "neverMedia": false,
+    "lock": {
+      "blank": "5",
+      "auto": true,
+      "delay": "0",
+      "notes": true
+    },
+    "loc": true,
+    "cam": true,
+    "mic": true,
+    "hist": true,
+    "histKeep": "30",
+    "trash": true,
+    "temp": true,
+    "trashAge": "30",
+    "diag": "ask",
+    "tbolt": false,
+    "appLoc": {
+      "maps": true,
+      "weather": true,
+      "clock": false
+    },
+    "appCam": {
+      "camera": true,
+      "messages": true,
+      "phone": true
+    },
+    "appMic": {
+      "memos": true,
+      "messages": true,
+      "phone": true,
+      "session": true
+    },
+    "limit": false,
+    "limitH": "6",
+    "gray": true,
+    "eyes": true,
+    "move": false,
+    "moveS": "5-60",
+    "brSound": true,
+    "a11yMenu": false,
+    "hc": false,
+    "motion": false,
+    "large": false,
+    "cursor": "default",
+    "soundKeys": false,
+    "scrollbars": false,
+    "reader": false,
+    "vAlert": false,
+    "vAlertHow": "window",
+    "osk": false,
+    "rep": true,
+    "repDelay": 50,
+    "repSpeed": 60,
+    "blink": true,
+    "blinkS": 50,
+    "sticky": false,
+    "slow": false,
+    "bounce": false,
+    "kbdA11y": false,
+    "mkeys": false,
+    "locate": false,
+    "dbl": 40,
+    "hold": false,
+    "hover": false,
+    "zoom": false,
+    "zoomX": 2,
+    "zoomF": "push",
+    "cross": false,
+    "invert": false,
+    "devName": "Nick’s ThinkPad",
+    "fileShare": false,
+    "fsPass": true,
+    "media2": false,
+    "lang": "en-US",
+    "fmt": "US",
+    "loginLang": "en-US",
+    "autoTime": true,
+    "autoZone": true,
+    "zone": "America/Chicago",
+    "h24": false,
+    "wday": true,
+    "date": true,
+    "secs": false,
+    "wnum": false,
+    "autoLogin": false,
+    "finger": false,
+    "pType": "std",
+    "pAuto": false,
+    "rdShare": false,
+    "rdCtl": false,
+    "rdLogin": false,
+    "rdTab": "share",
+    "ssh": false,
+    "sync": {
+      "look": true,
+      "wifi": true,
+      "shelf": true
+    },
+    "myName": "Nick",
+    "hsBand": "auto",
+    "prDef": true,
+    "prPaper": "Letter",
+    "prDuplex": "long",
+    "prProf": "Automatic",
+    "fmMail": true,
+    "fmCal": true,
+    "fmCon": true,
+    "fmFiles": false,
+    "ncFiles": true,
+    "ncCal": true,
+    "ncCon": false
+  },
+  "data": {
+    "CFNETS": [
+      {
+        "n": "Studio North",
+        "sig": 4,
+        "lock": true,
+        "known": true,
+        "band": "5 GHz"
+      },
+      {
+        "n": "Studio North Guest",
+        "sig": 3,
+        "lock": false,
+        "known": true,
+        "band": "2.4 GHz"
+      },
+      {
+        "n": "Priya’s phone",
+        "sig": 3,
+        "lock": true,
+        "band": "5 GHz"
+      },
+      {
+        "n": "Harbor Café",
+        "sig": 2,
+        "lock": false,
+        "band": "2.4 GHz"
+      },
+      {
+        "n": "Maple Court 2F",
+        "sig": 2,
+        "lock": true,
+        "band": "5 GHz"
+      },
+      {
+        "n": "Coastline Rail",
+        "sig": 1,
+        "lock": true,
+        "band": "2.4 GHz"
+      }
+    ],
+    "CFKNOWN": [
+      "Studio North",
+      "Studio North Guest",
+      "Coastline Rail",
+      "Harbor Café",
+      "Luma Office",
+      "Home"
+    ],
+    "CFBT": [
+      {
+        "id": "hp",
+        "n": "WH-1000XM5",
+        "i": "headphones",
+        "kind": "Headphones",
+        "on": true,
+        "bat": 80
+      },
+      {
+        "id": "ms",
+        "n": "MX Master 3S",
+        "i": "mouse",
+        "kind": "Mouse",
+        "on": true,
+        "bat": 55
+      },
+      {
+        "id": "kb",
+        "n": "Keychron K3",
+        "i": "keyboard",
+        "kind": "Keyboard",
+        "on": false
+      }
+    ],
+    "CFNEAR": [
+      {
+        "id": "jbl",
+        "n": "JBL Flip 6",
+        "i": "volume-2",
+        "kind": "Speaker"
+      },
+      {
+        "id": "px",
+        "n": "Pixel 9",
+        "i": "smartphone",
+        "kind": "Phone"
+      },
+      {
+        "id": "k2",
+        "n": "MX Keys",
+        "i": "keyboard",
+        "kind": "Keyboard",
+        "code": "482 913"
+      }
+    ],
+    "CFOUT": [
+      {
+        "id": "spk",
+        "n": "Speakers",
+        "s": "Built in",
+        "i": "volume-2"
+      },
+      {
+        "id": "hp",
+        "n": "WH-1000XM5",
+        "s": "Bluetooth",
+        "i": "headphones"
+      },
+      {
+        "id": "dock",
+        "n": "Studio monitors",
+        "s": "USB dock",
+        "i": "music"
+      }
+    ],
+    "CFDISP": {
+      "int": {
+        "n": "Built-in display",
+        "m": "14″ · ThinkPad",
+        "w": 1920,
+        "h": 1200,
+        "res": [
+          "1920 × 1200",
+          "1680 × 1050",
+          "1280 × 800"
+        ],
+        "hz": [
+          "60 Hz",
+          "48 Hz"
+        ]
+      },
+      "ext": {
+        "n": "Dell U2723QE",
+        "m": "27″ · USB-C",
+        "w": 3840,
+        "h": 2160,
+        "res": [
+          "3840 × 2160",
+          "2560 × 1440",
+          "1920 × 1080"
+        ],
+        "hz": [
+          "60 Hz",
+          "50 Hz",
+          "30 Hz"
+        ]
+      }
+    },
+    "CFACC": [
+      [
+        250,
+        "Blue"
+      ],
+      [
+        195,
+        "Teal"
+      ],
+      [
+        150,
+        "Green"
+      ],
+      [
+        95,
+        "Yellow"
+      ],
+      [
+        55,
+        "Orange"
+      ],
+      [
+        25,
+        "Red"
+      ],
+      [
+        350,
+        "Pink"
+      ],
+      [
+        300,
+        "Purple"
+      ]
+    ],
+    "CFWALL": [
+      [
+        "prism",
+        "Prism"
+      ],
+      [
+        "meadow",
+        "Meadow"
+      ],
+      [
+        "blue-fog",
+        "Blue fog"
+      ],
+      [
+        "ember",
+        "Ember"
+      ],
+      [
+        "luma-creatives",
+        "Creatives"
+      ]
+    ],
+    "CFPRE": [
+      [
+        "luma",
+        "Luma",
+        {
+          "edge": "bottom",
+          "spread": "spread",
+          "joined": "separate",
+          "float": "floating"
+        }
+      ],
+      [
+        "one",
+        "One bar",
+        {
+          "edge": "bottom",
+          "spread": "together",
+          "joined": "joined",
+          "float": "floating"
+        }
+      ],
+      [
+        "grown",
+        "Grown",
+        {
+          "edge": "bottom",
+          "spread": "together",
+          "joined": "separate",
+          "float": "edge"
+        }
+      ],
+      [
+        "tabs",
+        "Tabs",
+        {
+          "edge": "bottom",
+          "spread": "spread",
+          "joined": "separate",
+          "float": "edge"
+        }
+      ],
+      [
+        "taskbar",
+        "Taskbar",
+        {
+          "edge": "bottom",
+          "spread": "spread",
+          "joined": "joined",
+          "float": "edge"
+        }
+      ],
+      [
+        "split",
+        "Split",
+        {
+          "edge": "bottom",
+          "spread": "spread",
+          "joined": "separate",
+          "float": "floating"
+        }
+      ],
+      [
+        "side",
+        "Side",
+        {
+          "edge": "left",
+          "spread": "spread",
+          "joined": "separate",
+          "float": "floating"
+        }
+      ],
+      [
+        "free",
+        "Free",
+        {
+          "edge": "bottom",
+          "spread": "spread",
+          "joined": "separate",
+          "float": "floating"
+        }
+      ]
+    ],
+    "CFFMT": {
+      "US": [
+        "United States",
+        "Thursday, September 24, 2026",
+        "3:42 PM",
+        "1,234,567.89",
+        "$1,234.56",
+        "Imperial",
+        "Letter"
+      ],
+      "GB": [
+        "United Kingdom",
+        "Thursday 24 September 2026",
+        "15:42",
+        "1,234,567.89",
+        "£1,234.56",
+        "Metric",
+        "A4"
+      ],
+      "DE": [
+        "Deutschland",
+        "Donnerstag, 24. September 2026",
+        "15:42",
+        "1.234.567,89",
+        "1.234,56 €",
+        "Metric",
+        "A4"
+      ],
+      "FR": [
+        "France",
+        "jeudi 24 septembre 2026",
+        "15:42",
+        "1 234 567,89",
+        "1 234,56 €",
+        "Metric",
+        "A4"
+      ],
+      "IN": [
+        "India",
+        "Thursday, 24 September 2026",
+        "3:42 pm",
+        "12,34,567.89",
+        "₹1,234.56",
+        "Metric",
+        "A4"
+      ],
+      "JP": [
+        "日本",
+        "2026年9月24日木曜日",
+        "15:42",
+        "1,234,567.89",
+        "￥1,235",
+        "Metric",
+        "A4"
+      ]
+    },
+    "CFLANG": [
+      [
+        "en-US",
+        "English (United States)"
+      ],
+      [
+        "en-GB",
+        "English (United Kingdom)"
+      ],
+      [
+        "de-DE",
+        "Deutsch"
+      ],
+      [
+        "es-ES",
+        "Español"
+      ],
+      [
+        "fr-FR",
+        "Français"
+      ],
+      [
+        "hi-IN",
+        "हिन्दी"
+      ],
+      [
+        "ja-JP",
+        "日本語"
+      ],
+      [
+        "pt-BR",
+        "Português (Brasil)"
+      ]
+    ],
+    "CFZONE": [
+      [
+        "America/Chicago",
+        "Chicago"
+      ],
+      [
+        "America/New_York",
+        "New York"
+      ],
+      [
+        "America/Los_Angeles",
+        "Los Angeles"
+      ],
+      [
+        "Europe/London",
+        "London"
+      ],
+      [
+        "Europe/Berlin",
+        "Berlin"
+      ],
+      [
+        "Asia/Kolkata",
+        "Kolkata"
+      ],
+      [
+        "Asia/Tokyo",
+        "Tokyo"
+      ],
+      [
+        "Australia/Sydney",
+        "Sydney"
+      ]
+    ],
+    "CFAPPS": [
+      "filer",
+      "photos",
+      "viola",
+      "write",
+      "tide",
+      "messages",
+      "notes",
+      "contacts",
+      "calendar",
+      "charlie",
+      "maps",
+      "camera",
+      "memos",
+      "ari",
+      "canvas",
+      "reel",
+      "term",
+      "depot"
+    ],
+    "CFSZ": {
+      "filer": [
+        12,
+        3,
+        41
+      ],
+      "photos": [
+        38,
+        2100,
+        610
+      ],
+      "viola": [
+        210,
+        340,
+        820
+      ],
+      "write": [
+        64,
+        88,
+        12
+      ],
+      "tide": [
+        52,
+        18400,
+        230
+      ],
+      "messages": [
+        71,
+        960,
+        140
+      ],
+      "notes": [
+        9,
+        14,
+        3
+      ],
+      "contacts": [
+        8,
+        22,
+        1
+      ],
+      "calendar": [
+        14,
+        6,
+        4
+      ],
+      "charlie": [
+        48,
+        3200,
+        260
+      ],
+      "maps": [
+        96,
+        410,
+        1300
+      ],
+      "camera": [
+        22,
+        0,
+        18
+      ],
+      "memos": [
+        11,
+        640,
+        2
+      ],
+      "ari": [
+        140,
+        5200,
+        90
+      ],
+      "canvas": [
+        180,
+        720,
+        400
+      ],
+      "reel": [
+        320,
+        9800,
+        2400
+      ],
+      "term": [
+        6,
+        1,
+        0
+      ],
+      "depot": [
+        58,
+        30,
+        380
+      ]
+    },
+    "CFPERMS": {
+      "maps": [
+        "loc"
+      ],
+      "weather": [
+        "loc"
+      ],
+      "camera": [
+        "cam",
+        "mic"
+      ],
+      "messages": [
+        "cam",
+        "mic",
+        "notif",
+        "bg"
+      ],
+      "memos": [
+        "mic"
+      ],
+      "reel": [
+        "mic"
+      ],
+      "ari": [
+        "bg",
+        "shot",
+        "search"
+      ],
+      "filer": [
+        "search"
+      ],
+      "charlie": [
+        "notif",
+        "bg",
+        "search"
+      ],
+      "calendar": [
+        "notif",
+        "bg",
+        "search"
+      ],
+      "tide": [
+        "notif",
+        "bg",
+        "search",
+        "wall"
+      ]
+    },
+    "CFPERM": {
+      "search": [
+        "Search",
+        "Offers results when you search"
+      ],
+      "notif": [
+        "Notifications",
+        "Shows notifications"
+      ],
+      "bg": [
+        "Run in background",
+        "Keeps working when its window is closed"
+      ],
+      "shot": [
+        "Screenshots",
+        "Can take pictures of the screen at any time"
+      ],
+      "wall": [
+        "Change wallpaper",
+        "Can set the desktop background"
+      ],
+      "sound": [
+        "Sounds",
+        "Plays sounds"
+      ],
+      "inh": [
+        "Keyboard shortcuts",
+        "Can block system shortcuts while focused"
+      ],
+      "cam": [
+        "Camera",
+        "Takes pictures and video"
+      ],
+      "mic": [
+        "Microphone",
+        "Records sound"
+      ],
+      "loc": [
+        "Location",
+        "Knows where this computer is"
+      ]
+    },
+    "CFSHORT": [
+      [
+        "Windows",
+        [
+          [
+            "Close window",
+            "Alt F4"
+          ],
+          [
+            "Maximise",
+            "Super ↑"
+          ],
+          [
+            "Tile left",
+            "Super ←"
+          ],
+          [
+            "Tile right",
+            "Super →"
+          ],
+          [
+            "Hide window",
+            "Super H"
+          ],
+          [
+            "Switch windows",
+            "Alt Tab"
+          ]
+        ]
+      ],
+      [
+        "Workspaces",
+        [
+          [
+            "Next workspace",
+            "Super PgDn"
+          ],
+          [
+            "Previous workspace",
+            "Super PgUp"
+          ],
+          [
+            "Move window to next workspace",
+            "Shift Super PgDn"
+          ]
+        ]
+      ],
+      [
+        "Shelf",
+        [
+          [
+            "Open the app launcher",
+            "Super"
+          ],
+          [
+            "Quick Options",
+            "Super S"
+          ],
+          [
+            "Show notifications",
+            "Super V"
+          ],
+          [
+            "Open app 1–9 on the shelf",
+            "Super 1"
+          ]
+        ]
+      ],
+      [
+        "Screenshots",
+        [
+          [
+            "Take a screenshot",
+            "Print"
+          ],
+          [
+            "Screenshot a window",
+            "Alt Print"
+          ],
+          [
+            "Record the screen",
+            "Shift Ctrl Alt R"
+          ]
+        ]
+      ],
+      [
+        "Launchers",
+        [
+          [
+            "Filer",
+            "Super E"
+          ],
+          [
+            "Ask Ari",
+            "Super Space"
+          ],
+          [
+            "Terminal",
+            "Ctrl Alt T"
+          ],
+          [
+            "Settings",
+            "Super I"
+          ]
+        ]
+      ],
+      [
+        "Accessibility",
+        [
+          [
+            "Zoom in",
+            "Super Alt ="
+          ],
+          [
+            "Zoom out",
+            "Super Alt -"
+          ],
+          [
+            "Screen reader",
+            "Super Alt S"
+          ]
+        ]
+      ]
+    ],
+    "CFKB": {
+      "codes": [
+        [
+          "Backquote",
+          "Digit1",
+          "Digit2",
+          "Digit3",
+          "Digit4",
+          "Digit5",
+          "Digit6",
+          "Digit7",
+          "Digit8",
+          "Digit9",
+          "Digit0",
+          "Minus",
+          "Equal",
+          "Backspace"
+        ],
+        [
+          "Tab",
+          "KeyQ",
+          "KeyW",
+          "KeyE",
+          "KeyR",
+          "KeyT",
+          "KeyY",
+          "KeyU",
+          "KeyI",
+          "KeyO",
+          "KeyP",
+          "BracketLeft",
+          "BracketRight",
+          "Backslash"
+        ],
+        [
+          "CapsLock",
+          "KeyA",
+          "KeyS",
+          "KeyD",
+          "KeyF",
+          "KeyG",
+          "KeyH",
+          "KeyJ",
+          "KeyK",
+          "KeyL",
+          "Semicolon",
+          "Quote",
+          "Enter"
+        ],
+        [
+          "ShiftLeft",
+          "KeyZ",
+          "KeyX",
+          "KeyC",
+          "KeyV",
+          "KeyB",
+          "KeyN",
+          "KeyM",
+          "Comma",
+          "Period",
+          "Slash",
+          "ShiftRight"
+        ],
+        [
+          "ControlLeft",
+          "MetaLeft",
+          "AltLeft",
+          "Space",
+          "AltRight",
+          "ContextMenu",
+          "ControlRight"
+        ]
+      ],
+      "w": {
+        "Backspace": 1.9,
+        "Tab": 1.5,
+        "Backslash": 1.4,
+        "CapsLock": 1.8,
+        "Enter": 2.1,
+        "ShiftLeft": 2.35,
+        "ShiftRight": 2.55,
+        "ControlLeft": 1.3,
+        "MetaLeft": 1.3,
+        "AltLeft": 1.3,
+        "Space": 6,
+        "AltRight": 1.3,
+        "ContextMenu": 1.3,
+        "ControlRight": 1.3
+      },
+      "L": {
+        "English (US)": [
+          "` 1 2 3 4 5 6 7 8 9 0 - = ⌫",
+          "Tab q w e r t y u i o p [ ] \\",
+          "Caps a s d f g h j k l ; ' Return",
+          "Shift z x c v b n m , . / Shift",
+          "Ctrl Super Alt _ Alt Menu Ctrl"
+        ],
+        "Deutsch": [
+          "^ 1 2 3 4 5 6 7 8 9 0 ß ´ ⌫",
+          "Tab q w e r t z u i o p ü + #",
+          "Caps a s d f g h j k l ö ä Return",
+          "Shift y x c v b n m , . - Shift",
+          "Strg Super Alt _ AltGr Menu Strg"
+        ],
+        "Français": [
+          "² & é \" ' ( - è _ ç à ) = ⌫",
+          "Tab a z e r t y u i o p ^ $ *",
+          "Caps q s d f g h j k l m ù Return",
+          "Shift w x c v b n , ; : ! Shift",
+          "Ctrl Super Alt _ AltGr Menu Ctrl"
+        ]
+      }
+    },
+    "CFWEEK": [
+      [
+        "Fri",
+        200
+      ],
+      [
+        "Sat",
+        105
+      ],
+      [
+        "Sun",
+        130
+      ],
+      [
+        "Mon",
+        340
+      ],
+      [
+        "Tue",
+        370
+      ],
+      [
+        "Wed",
+        295
+      ],
+      [
+        "Today",
+        252
+      ]
+    ],
+    "CFGRPS": [
+      [
+        "",
+        [
+          "wifi",
+          "network",
+          "bluetooth"
+        ]
+      ],
+      [
+        "Desktop",
+        [
+          "appearance",
+          "shelf",
+          "windows",
+          "notifications",
+          "search"
+        ]
+      ],
+      [
+        "Devices",
+        [
+          "displays",
+          "sound",
+          "power",
+          "mouse",
+          "keyboard",
+          "printers"
+        ]
+      ],
+      [
+        "You",
+        [
+          "apps",
+          "accounts",
+          "privacy",
+          "wellbeing",
+          "a11y"
+        ]
+      ],
+      [
+        "System",
+        [
+          "sharing",
+          "region",
+          "datetime",
+          "users",
+          "remote",
+          "ssh",
+          "about"
+        ]
+      ]
+    ],
+    "CFMINS": [
+      [
+        "1",
+        "1 minute"
+      ],
+      [
+        "2",
+        "2 minutes"
+      ],
+      [
+        "3",
+        "3 minutes"
+      ],
+      [
+        "5",
+        "5 minutes"
+      ],
+      [
+        "8",
+        "8 minutes"
+      ],
+      [
+        "10",
+        "10 minutes"
+      ],
+      [
+        "15",
+        "15 minutes"
+      ],
+      [
+        "0",
+        "Never"
+      ]
+    ],
+    "CFAPPINFO": {
+      "filer": {
+        "name": "Filer",
+        "spec_artwork": "luma-v3-files.svg"
+      },
+      "photos": {
+        "name": "Photos",
+        "spec_artwork": "luma-v3-photos.svg"
+      },
+      "viola": {
+        "name": "Viola",
+        "spec_artwork": "luma-v3-browser.svg"
+      },
+      "write": {
+        "name": "Write",
+        "spec_artwork": "luma-v3-documents.svg"
+      },
+      "tide": {
+        "name": "Tide",
+        "spec_artwork": "luma-v3-music.svg"
+      },
+      "messages": {
+        "name": "Messages",
+        "spec_artwork": "luma-v3-messages.svg"
+      },
+      "notes": {
+        "name": "Notes",
+        "spec_artwork": "luma-v3-notes.svg"
+      },
+      "contacts": {
+        "name": "Contacts",
+        "spec_artwork": "luma-v3-contacts.svg"
+      },
+      "term": {
+        "name": "Terminal",
+        "spec_artwork": "luma-v3-terminal.svg"
+      },
+      "calendar": {
+        "name": "Calendar",
+        "spec_artwork": "luma-v3-calendar.svg"
+      },
+      "depot": {
+        "name": "Depot",
+        "spec_artwork": "luma-v3-app-store.svg"
+      },
+      "weather": {
+        "name": "Weather",
+        "spec_artwork": "luma-v3-weather.svg"
+      },
+      "clock": {
+        "name": "Clock",
+        "spec_artwork": "luma-v3-clock.svg"
+      },
+      "charlie": {
+        "name": "Charlie",
+        "spec_artwork": "luma-v3-mail.svg"
+      },
+      "monitor": {
+        "name": "Monitor",
+        "spec_artwork": "luma-v3-monitor.svg"
+      },
+      "leaf": {
+        "name": "Leaf",
+        "spec_artwork": "leaf.svg"
+      },
+      "viewer": {
+        "name": "Viewer",
+        "spec_artwork": "luma-v3-viewer.svg"
+      },
+      "valet": {
+        "name": "Valet",
+        "spec_artwork": "luma-v3-valet.svg"
+      },
+      "settings": {
+        "name": "Settings",
+        "spec_artwork": "luma-v3-settings.svg"
+      },
+      "memos": {
+        "name": "Memos",
+        "spec_artwork": "luma-v3-memo.svg"
+      },
+      "tasks": {
+        "name": "Tasks",
+        "spec_artwork": "tasks.svg"
+      },
+      "disks": {
+        "name": "Disks",
+        "spec_artwork": "disks.svg"
+      },
+      "camera": {
+        "name": "Camera",
+        "spec_artwork": "luma-v3-camera.svg"
+      },
+      "maps": {
+        "name": "Maps",
+        "spec_artwork": "luma-v3-maps.svg"
+      },
+      "phone": {
+        "name": "Phone",
+        "spec_artwork": "luma-v3-phone.svg"
+      },
+      "calc": {
+        "name": "Calculator",
+        "spec_artwork": "luma-v3-calculator.svg"
+      },
+      "ari": {
+        "name": "Ari",
+        "spec_artwork": "luma-v3-ari.svg"
+      },
+      "canvas": {
+        "name": "Canvas",
+        "spec_artwork": "luma-v3-designer.svg"
+      },
+      "grid": {
+        "name": "Grid",
+        "spec_artwork": "luma-v3-spreadsheets.svg"
+      },
+      "stage": {
+        "name": "Stage",
+        "spec_artwork": "luma-v3-presentations.svg"
+      },
+      "session": {
+        "name": "Session",
+        "spec_artwork": "luma-v3-daw.svg"
+      },
+      "darkroom": {
+        "name": "Darkroom",
+        "spec_artwork": "luma-v3-photo-editor.svg"
+      },
+      "reel": {
+        "name": "Reel",
+        "spec_artwork": "luma-v3-video-editor.svg"
+      }
+    },
+  "CFAPPCATS": {
+    "filer": "tools",
+    "photos": "media",
+    "viola": "work",
+    "write": "work",
+    "tide": "media",
+    "messages": "work",
+    "notes": "work",
+    "contacts": "work",
+    "calendar": "work",
+    "maps": "tools",
+    "camera": "media",
+    "memos": "tools",
+    "canvas": "create",
+    "reel": "create",
+    "term": "tools"
+  },
+  "CFNOTIFY": {
+      "from": "Priya Raman",
+      "text": "Timeline is on slide 7",
+      "when": "now",
+      "count": 3
+    },
+    "CFPOWER": {
+      "status": "On battery · about 5 h 10 min left",
+      "percentage": 78,
+      "remaining": "About 5 h 10 min left",
+      "history": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        99,
+        97,
+        93,
+        86,
+        79,
+        71,
+        64,
+        80,
+        94,
+        88,
+        78
+      ],
+      "devices": [
+        {
+          "name": "MX Master 3S",
+          "percentage": 55,
+          "icon": "mouse"
+        },
+        {
+          "name": "WH-1000XM5",
+          "percentage": 80,
+          "icon": "headphones"
+        }
+      ]
+    },
+    "CFWIFI": {
+      "share_password": "maple-harbor-2208",
+      "share_codes": {
+        "Studio North": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 29 29\"><rect x=\"-2\" y=\"-2\" width=\"29\" height=\"29\" fill=\"#fff\"/><g fill=\"#111\"><rect x=\"7\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"18\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"19\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"20\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"0\" y=\"18\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"19\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"20\" width=\"3\" height=\"3\"/></g></svg>",
+        "Studio North Guest": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 29 29\"><rect x=\"-2\" y=\"-2\" width=\"29\" height=\"29\" fill=\"#fff\"/><g fill=\"#111\"><rect x=\"12\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"18\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"19\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"20\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"0\" y=\"18\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"19\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"20\" width=\"3\" height=\"3\"/></g></svg>",
+        "Priya’s phone": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 29 29\"><rect x=\"-2\" y=\"-2\" width=\"29\" height=\"29\" fill=\"#fff\"/><g fill=\"#111\"><rect x=\"8\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"18\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"19\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"20\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"0\" y=\"18\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"19\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"20\" width=\"3\" height=\"3\"/></g></svg>",
+        "Harbor Café": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 29 29\"><rect x=\"-2\" y=\"-2\" width=\"29\" height=\"29\" fill=\"#fff\"/><g fill=\"#111\"><rect x=\"8\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"18\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"19\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"20\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"0\" y=\"18\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"19\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"20\" width=\"3\" height=\"3\"/></g></svg>",
+        "Maple Court 2F": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 29 29\"><rect x=\"-2\" y=\"-2\" width=\"29\" height=\"29\" fill=\"#fff\"/><g fill=\"#111\"><rect x=\"12\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"18\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"19\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"20\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"0\" y=\"18\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"19\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"20\" width=\"3\" height=\"3\"/></g></svg>",
+        "Coastline Rail": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"-2 -2 29 29\"><rect x=\"-2\" y=\"-2\" width=\"29\" height=\"29\" fill=\"#fff\"/><g fill=\"#111\"><rect x=\"10\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"0\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"1\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"2\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"3\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"4\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"5\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"6\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"7\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"8\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"9\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"10\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"11\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"12\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"2\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"13\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"14\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"6\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"15\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"5\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"16\" width=\"1\" height=\"1\"/><rect x=\"1\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"3\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"4\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"17\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"18\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"19\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"16\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"23\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"20\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"12\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"21\" width=\"1\" height=\"1\"/><rect x=\"8\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"10\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"22\" width=\"1\" height=\"1\"/><rect x=\"7\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"14\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"18\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"20\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"21\" y=\"23\" width=\"1\" height=\"1\"/><rect x=\"9\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"11\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"13\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"15\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"17\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"19\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"22\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"24\" y=\"24\" width=\"1\" height=\"1\"/><rect x=\"0\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"18\" y=\"0\" width=\"7\" height=\"7\"/><rect x=\"19\" y=\"1\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"20\" y=\"2\" width=\"3\" height=\"3\"/><rect x=\"0\" y=\"18\" width=\"7\" height=\"7\"/><rect x=\"1\" y=\"19\" width=\"5\" height=\"5\" fill=\"#fff\"/><rect x=\"2\" y=\"20\" width=\"3\" height=\"3\"/></g></svg>"
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "me",
+      "title": "Luma account",
+      "parent": null
+    },
+    {
+      "id": "wifi",
+      "title": "Wi‑Fi",
+      "parent": null
+    },
+    {
+      "id": "wifi-net",
+      "title": "Studio North",
+      "parent": "wifi"
+    },
+    {
+      "id": "wifi-known",
+      "title": "Known networks",
+      "parent": "wifi"
+    },
+    {
+      "id": "hotspot",
+      "title": "Hotspot",
+      "parent": "wifi"
+    },
+    {
+      "id": "network",
+      "title": "Network",
+      "parent": null
+    },
+    {
+      "id": "bluetooth",
+      "title": "Bluetooth",
+      "parent": null
+    },
+    {
+      "id": "appearance",
+      "title": "Appearance",
+      "parent": null
+    },
+    {
+      "id": "shelf",
+      "title": "Shelf",
+      "parent": null
+    },
+    {
+      "id": "windows",
+      "title": "Windows & Workspaces",
+      "parent": null
+    },
+    {
+      "id": "notifications",
+      "title": "Notifications",
+      "parent": null
+    },
+    {
+      "id": "search",
+      "title": "Search",
+      "parent": null
+    },
+    {
+      "id": "search-places",
+      "title": "Folders to search",
+      "parent": "search"
+    },
+    {
+      "id": "displays",
+      "title": "Displays",
+      "parent": null
+    },
+    {
+      "id": "nightlight",
+      "title": "Night Light",
+      "parent": "displays"
+    },
+    {
+      "id": "sound",
+      "title": "Sound",
+      "parent": null
+    },
+    {
+      "id": "sound-levels",
+      "title": "Volume by app",
+      "parent": "sound"
+    },
+    {
+      "id": "sound-alert",
+      "title": "Alert sound",
+      "parent": "sound"
+    },
+    {
+      "id": "power",
+      "title": "Power",
+      "parent": null
+    },
+    {
+      "id": "mouse",
+      "title": "Mouse & Touchpad",
+      "parent": null
+    },
+    {
+      "id": "keyboard",
+      "title": "Keyboard",
+      "parent": null
+    },
+    {
+      "id": "shortcuts",
+      "title": "Keyboard shortcuts",
+      "parent": "keyboard"
+    },
+    {
+      "id": "printers",
+      "title": "Printers",
+      "parent": null
+    },
+    {
+      "id": "apps",
+      "title": "Apps",
+      "parent": null
+    },
+    {
+      "id": "defaults",
+      "title": "Default apps",
+      "parent": "apps"
+    },
+    {
+      "id": "media",
+      "title": "Removable media",
+      "parent": "apps"
+    },
+    {
+      "id": "accounts",
+      "title": "Online Accounts",
+      "parent": null
+    },
+    {
+      "id": "acct-fm",
+      "title": "Fastmail",
+      "parent": "accounts"
+    },
+    {
+      "id": "acct-nc",
+      "title": "Nextcloud",
+      "parent": "accounts"
+    },
+    {
+      "id": "privacy",
+      "title": "Privacy & Security",
+      "parent": null
+    },
+    {
+      "id": "p-lock",
+      "title": "Screen lock",
+      "parent": "privacy"
+    },
+    {
+      "id": "p-loc",
+      "title": "Location",
+      "parent": "privacy"
+    },
+    {
+      "id": "p-cam",
+      "title": "Camera",
+      "parent": "privacy"
+    },
+    {
+      "id": "p-mic",
+      "title": "Microphone",
+      "parent": "privacy"
+    },
+    {
+      "id": "p-files",
+      "title": "File history and trash",
+      "parent": "privacy"
+    },
+    {
+      "id": "p-diag",
+      "title": "Problem reports",
+      "parent": "privacy"
+    },
+    {
+      "id": "p-dev",
+      "title": "Device security",
+      "parent": "privacy"
+    },
+    {
+      "id": "wellbeing",
+      "title": "Wellbeing",
+      "parent": null
+    },
+    {
+      "id": "a11y",
+      "title": "Accessibility",
+      "parent": null
+    },
+    {
+      "id": "a-see",
+      "title": "Seeing",
+      "parent": "a11y"
+    },
+    {
+      "id": "a-hear",
+      "title": "Hearing",
+      "parent": "a11y"
+    },
+    {
+      "id": "a-type",
+      "title": "Typing",
+      "parent": "a11y"
+    },
+    {
+      "id": "a-point",
+      "title": "Pointing and clicking",
+      "parent": "a11y"
+    },
+    {
+      "id": "a-zoom",
+      "title": "Zoom",
+      "parent": "a11y"
+    },
+    {
+      "id": "sharing",
+      "title": "Sharing",
+      "parent": null
+    },
+    {
+      "id": "region",
+      "title": "Region & Language",
+      "parent": null
+    },
+    {
+      "id": "datetime",
+      "title": "Date & Time",
+      "parent": null
+    },
+    {
+      "id": "users",
+      "title": "Users",
+      "parent": null
+    },
+    {
+      "id": "user-priya",
+      "title": "Priya Raman",
+      "parent": "users"
+    },
+    {
+      "id": "remote",
+      "title": "Remote Desktop",
+      "parent": null
+    },
+    {
+      "id": "ssh",
+      "title": "Secure Shell",
+      "parent": null
+    },
+    {
+      "id": "about",
+      "title": "About",
+      "parent": null
+    },
+    {
+      "id": "about-sys",
+      "title": "System details",
+      "parent": "about"
+    }
+  ]
+}

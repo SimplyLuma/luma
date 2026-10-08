@@ -1,0 +1,21 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] arm64: dts: qcom: milos: correct FP6 front camera rotation
+
+Physical preview and a native-resolution RAW capture show the Fairphone 6
+front camera is inverted when described as 270 degrees.  Correct the sensor
+mounting metadata by rotating it 180 degrees to 90.  Preview mirroring remains
+an application policy and is deliberately not encoded as sensor geometry.
+
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -733,7 +733,7 @@
+ 		pinctrl-0 = <&cam_mclk3_default &s5kkd1sp_reset_default>;
+ 
+ 		orientation = <0>;
+-		rotation = <270>;
++		rotation = <90>;
+ 
+ 		port {
+ 			s5kkd1sp_ep: endpoint {
+-- 
+2.51.0

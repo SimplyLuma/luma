@@ -1,0 +1,39 @@
+From: Project Luma <engineering@projectluma.org>
+Subject: [PATCH] window: allocate the styled shadow for inset maximized windows
+
+Luma maximizes to an inset work area, and LumaUI keeps its ordinary rounded
+frame and elevation there. get_shadow_width discarded the CSS shadow extents
+for every maximized window, so the buffer ended at the frame and only shadow
+fragments inside the rounded corners could survive.
+
+Calculate the actual style extents for a maximized CSD window too. Do not add
+resize-handle margins to it: maximizing still disables resizing. A maximized
+style with no outer shadow continues to have zero extents, and fullscreen
+continues to have none regardless of style. The compositor's frame rectangle,
+maximize state, work-area inset and restore geometry remain unchanged.
+
+--- a/gtk/gtkwindow.c
++++ b/gtk/gtkwindow.c
+@@ -4236,8 +4236,7 @@ get_shadow_width (GtkWindow *window,
+       !priv->use_client_shadow)
+     goto out;
+ 
+-  if (priv->maximized ||
+-      priv->fullscreen)
++  if (priv->fullscreen)
+     goto out;
+ 
+   style = gtk_css_node_get_style (gtk_widget_get_css_node (GTK_WIDGET (window)));
+@@ -4245,6 +4244,12 @@ get_shadow_width (GtkWindow *window,
+   /* Calculate the size of the drop shadows ... */
+   gtk_css_shadow_value_get_extents (style->used->box_shadow, shadow_width);
+ 
++  /* A maximized window may still have a styled shadow in an inset work area,
++   * but it has no resize handles. In particular, shadow:none stays zero.
++   */
++  if (priv->maximized)
++    return;
++
+   shadow_width->left = MAX (shadow_width->left, RESIZE_HANDLE_SIZE);
+   shadow_width->top = MAX (shadow_width->top, RESIZE_HANDLE_SIZE);
+   shadow_width->bottom = MAX (shadow_width->bottom, RESIZE_HANDLE_SIZE);

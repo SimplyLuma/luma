@@ -1,0 +1,72 @@
+{
+  "app": "bar-photos",
+  "title": "Search, text segment, size range and pager against Photos' bar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=photos",
+    "window": "#w-photos",
+    "exclude": [
+      "#w-photos *:not(:has(#p-bar)):not(#p-bar):not(#p-bar *)",
+      "#p-bar .bt",
+      "#p-bar .psize input"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "photos",
+      "LUMAUI_BAR_HOST": "212,46,960,694",
+      "LUMAUI_BAR_HOST_PHONE": "8,46,374,774"
+    }
+  },
+  "states": [
+    {
+      "name": "library",
+      "about": "The library bar: search, Years/Months/Days/All, the size range and Import",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "library"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pager",
+      "about": "A photo open: Library and the pager",
+      "spec": [
+        {
+          "click": "[data-photo]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMAUI_BAR_STATE": "pager"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "library",
+    "pager"
+  ],
+  "groups": [
+    {
+      "name": "bar",
+      "spec": "#p-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#p-bar",
+      "gtk": "bar",
+      "name": "bar"
+    }
+  ]
+}

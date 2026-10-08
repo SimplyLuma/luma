@@ -1,0 +1,14 @@
+[Unit]
+Description=Ari, Luma's assistant
+Documentation=file:///usr/share/doc/luma-ari/README.md
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.projectluma.Ari1
+ExecStart=/usr/libexec/luma-ari/ari-daemon
+Restart=on-failure
+# Ari never runs as root and holds no special privilege (brief §7.2 rule 4).
+NoNewPrivileges=yes
+PrivateTmp=yes

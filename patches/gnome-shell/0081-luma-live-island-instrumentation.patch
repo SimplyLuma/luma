@@ -1,0 +1,54 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: report where the live island loses its contents
+
+The island has been reported drawing its material with no writing inside
+it. The payload published by the agenda producer is known good, so the
+text is being lost somewhere between the button and the viewport. Log the
+measurements from every layer behind LUMA_LIVE_DEBUG rather than guessing
+at one of them.
+
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -212,6 +212,17 @@
+             ? `${extension.title}, ${extension.subtitle}`
+             : extension.title;
+         this.show();
++        // An island that draws its material but no writing has been reported
++        // more than once, and the payload is only one of four places it can
++        // be lost: the button, its container, the scroll viewport and the
++        // island. Reading all four beats guessing at any one of them.
++        if (GLib.getenv('LUMA_LIVE_DEBUG')) {
++            log(`luma-live: title=${JSON.stringify(this._title.text)} ` +
++                `subtitle=${JSON.stringify(this._subtitle.text)} ` +
++                `button.visible=${this.visible} container.visible=${this.container?.visible} ` +
++                `button.w=${Math.round(this.width)} container.w=${Math.round(this.container?.width ?? -1)} ` +
++                `title.w=${Math.round(this._title.width)} title.mapped=${this._title.mapped}`);
++        }
+     }
+ 
+     // An action is only renderable when the broker gave us everything needed
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -906,9 +906,19 @@
+             this._liveContent.orientation = this._vertical
+                 ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+             this._liveScroll.set_size(-1, -1);
+-            liveSize = Math.min(measure(this._liveContent) + 2 * this._padding * scale, available / 3);
++            const liveNatural = measure(this._liveContent);
++            liveSize = Math.min(liveNatural + 2 * this._padding * scale, available / 3);
+             setViewport(this._liveScroll, Math.max(1, liveSize - 2 * this._padding * scale), DASH_TILE_SIZE * scale);
+             liveSize = measure(this._liveIsland);
++            if (GLib.getenv('LUMA_LIVE_DEBUG')) {
++                log(`luma-live: natural=${Math.round(liveNatural)} ` +
++                    `viewport=${Math.round(Math.max(1, liveSize - 2 * this._padding * scale))} ` +
++                    `island=${Math.round(liveSize)} padding=${this._padding} scale=${scale} ` +
++                    `available=${Math.round(available)} ` +
++                    `content.w=${Math.round(this._liveContent.width)} ` +
++                    `scroll.w=${Math.round(this._liveScroll.width)} ` +
++                    `island.visible=${this._liveIsland.visible}`);
++            }
+         }
+         const others = this._group.get_children().filter(actor => actor !== this._dockIsland && actor.visible);
+         const gap = this._group._separate ? others.length * this._padding * scale : 0;

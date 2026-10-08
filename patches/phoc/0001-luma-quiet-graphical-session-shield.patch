@@ -1,0 +1,52 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 21:31:00 -0500
+Subject: [PATCH] output-shield: use a quiet Luma handoff surface
+
+Phoc raises an opaque black output shield with an animated ring while Phosh is
+starting.  That is a useful generic diagnostic affordance, but it becomes a
+second, visibly unrelated loading screen during Luma's authenticated mobile
+handoff.
+
+Use the dominant Prism blue for the compositor-owned safety shield and do not
+request the generic spinner.  The shield still protects uninitialized content
+and fades through Phoc's existing shell-readiness protocol; only its ordinary
+presentation changes.
+
+---
+ src/output-shield.c | 5 ++++-
+ src/server.c        | 2 +-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/output-shield.c b/src/output-shield.c
+index 2850556..e85af0e 100644
+--- a/src/output-shield.c
++++ b/src/output-shield.c
+@@ -267,7 +267,10 @@ phoc_output_shield_init (PhocOutputShield *self)
+ {
+   g_autoptr (PhocTimedAnimation) fade_anim = NULL;
+ 
+-  self->color_rect = phoc_color_rect_new (&(PhocBox){}, &(PhocColor){0.0f, 0.0f, 0.0f, 1.0f});
++  /* Luma Prism's dominant blue keeps compositor startup visually continuous
++   * until the shell publishes the real background layer. */
++  self->color_rect = phoc_color_rect_new (&(PhocBox){},
++                                           &(PhocColor){0.0706f, 0.2353f, 0.5529f, 1.0f});
+ 
+   self->easer = g_object_new (PHOC_TYPE_PROPERTY_EASER,
+                               "target", self->color_rect,
+diff --git a/src/server.c b/src/server.c
+index 554752c..7ea2aa9 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -594,8 +594,8 @@ phoc_server_init (PhocServer *self)
+ 
+   wl_list_init (&self->new_surface.link);
+ 
+-  /* show a spinner the first time output shield is raised */
+-  self->show_spinner = TRUE;
++  /* Luma keeps the authenticated compositor handoff quiet. */
++  self->show_spinner = FALSE;
+   self->dt_compatibles = gm_device_tree_get_compatibles (NULL, &err);
+ 
+   messages_debug = g_getenv ("G_MESSAGES_DEBUG");
+-- 
+2.53.0

@@ -1,0 +1,228 @@
+diff --git a/js/ui/messageTray.js b/js/ui/messageTray.js
+index 7f392338..136d9ddc 100644
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -14,9 +14,9 @@ import * as SignalTracker from '../misc/signalTracker.js';
+ 
+ const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+ 
+-export const ANIMATION_TIME = 200;
++export const ANIMATION_TIME = 240;
+ 
+-const NOTIFICATION_TIMEOUT = 4000;
++const NOTIFICATION_TIMEOUT = 7000;
+ 
+ const HIDE_TIMEOUT = 200;
+ const LONGER_HIDE_TIMEOUT = 600;
+@@ -722,22 +722,34 @@ export const MessageTray = GObject.registerClass({
+             this._onStatusChanged(status);
+         });
+ 
+-        const constraint = new Layout.MonitorConstraint({primary: true});
++        this._monitorConstraint = new Layout.MonitorConstraint({
++            index: Main.layoutManager.primaryMonitor?.index ?? 0,
++        });
+         Main.layoutManager.panelBox.bind_property('visible',
+-            constraint, 'work-area',
++            this._monitorConstraint, 'work-area',
+             GObject.BindingFlags.SYNC_CREATE);
+-        this.add_constraint(constraint);
++        this.add_constraint(this._monitorConstraint);
++
++        const updateMonitor = () => {
++            const focusWindow = global.display.get_focus_window();
++            this._monitorConstraint.index = focusWindow?.get_monitor() ??
++                global.display.get_current_monitor();
++        };
++        global.display.connectObject('notify::focus-window', updateMonitor, this);
++        Main.layoutManager.connectObject('monitors-changed', updateMonitor, this);
++        updateMonitor();
+ 
+         this._bannerBin = new St.Widget({
+             name: 'notification-container',
+             reactive: true,
+             track_hover: true,
+-            y_align: Clutter.ActorAlign.START,
+-            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.END,
++            x_align: Clutter.ActorAlign.END,
+             y_expand: true,
+             x_expand: true,
+             layout_manager: new Clutter.BinLayout(),
+         });
++        this._bannerBin.set_style('margin: 14px;');
+         this._bannerBin.connect('key-release-event',
+             this._onNotificationKeyRelease.bind(this));
+         this._bannerBin.connect('notify::hover',
+@@ -1140,7 +1152,7 @@ export const MessageTray = GObject.registerClass({
+         this._bannerBin.add_child(this._banner);
+ 
+         this._bannerBin.opacity = 0;
+-        this._bannerBin.y = -this._banner.height;
++        this._banner.translation_x = 26;
+         this.show();
+ 
+         global.compositor.disable_unredirect();
+@@ -1191,13 +1203,8 @@ export const MessageTray = GObject.registerClass({
+             duration: ANIMATION_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+         });
+-        this._bannerBin.set_pivot_point(0.5, 0.5);
+-        this._bannerBin.scale_x = 0.9;
+-        this._bannerBin.scale_y = 0.9;
+-        this._bannerBin.ease({
+-            y: 0,
+-            scale_x: 1,
+-            scale_y: 1,
++        this._banner.ease({
++            translation_x: 0,
+             duration: ANIMATION_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+             onComplete: () => {
+@@ -1264,8 +1271,8 @@ export const MessageTray = GObject.registerClass({
+             duration,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+         });
+-        this._bannerBin.ease({
+-            y: -this._bannerBin.height,
++        this._banner.ease({
++            translation_x: 26,
+             duration,
+             mode: Clutter.AnimationMode.EASE_OUT_BACK,
+             onStopped: () => {
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index e2e0a09b..d0c93f05 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -644,9 +644,9 @@ class Panel extends St.Widget {
+         this._updateBox(panel.center, this._centerBox);
+         this._updateBox(panel.right, this._rightBox);
+ 
+-        // Prairie notifications are a screen-level surface. Keep them centered
+-        // independently of the clock's deliberately left-aligned panel slot.
+-        Main.messageTray.bannerAlignment = Clutter.ActorAlign.CENTER;
++        // Luma notifications are a screen-level surface.  Their bottom-right
++        // anchor is independent of the clock/status actor.
++        Main.messageTray.bannerAlignment = Clutter.ActorAlign.END;
+ 
+         if (this._sessionStyle)
+             this.remove_style_class_name(this._sessionStyle);
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+index c3463880..d7c25810 100644
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -791,9 +791,10 @@ class MessagesIndicator extends St.Label {
+     }
+ 
+     _sync() {
+-        const doNotDisturb = !this._settings.get_boolean('show-banners');
+         this.text = this._count > 99 ? '99+' : `${this._count}`;
+-        this.visible = !doNotDisturb && this._count > 0;
++        this.accessible_name = `${this._count} notifications waiting`;
++        // Do Not Disturb suppresses heads-up presentation, never history.
++        this.visible = this._count > 0;
+     }
+ });
+ 
+diff --git a/data/theme/gnome-shell-sass/widgets/_notifications.scss b/data/theme/gnome-shell-sass/widgets/_notifications.scss
+index d80cb627..18dec6b3 100644
+--- a/data/theme/gnome-shell-sass/widgets/_notifications.scss
++++ b/data/theme/gnome-shell-sass/widgets/_notifications.scss
+@@ -1,15 +1,21 @@
+ /* Notifications & Message Tray */
+ 
+ $notification_banner_height: 64px;
+-$notification_banner_width: 34em;
++$notification_banner_width: 352px;
+ 
+ // Banner notifications
+ .notification-banner {
+   min-height: $notification_banner_height;
+   width: $notification_banner_width;
+-  box-shadow: 0 2px 4px 2px $shadow_color;
+-  border-radius: $modal_radius;
+-  margin: $base_margin;
++  padding: 11px 12px;
++  color: if($variant == 'light', #282f36, #e6eaec);
++  background-color: if($variant == 'light', rgba(252, 252, 251, .96), rgba(38, 42, 48, .96));
++  box-shadow: 0 3px 10px rgba(10, 14, 19, .16),
++              0 20px 44px rgba(10, 14, 19, .20);
++  border: 1px solid if($variant == 'light', rgba(35, 44, 52, .10), rgba(255, 255, 255, .085));
++  border-radius: 18px;
++  margin: 0;
++  font-family: "Figtree";
+ 
+   @if $contrast == 'high' {
+     @include draw_hc_inset();
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index a1965dec..d5252187 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -1364,10 +1364,15 @@ StScrollBar {
+ /* Notifications & Message Tray */
+ .notification-banner {
+   min-height: 64px;
+-  width: 34em;
+-  box-shadow: 0 2px 4px 2px rgba(0, 0, 0, 0.05);
+-  border-radius: 16px;
+-  margin: 4px; }
++  width: 352px;
++  padding: 11px 12px;
++  color: #282f36;
++  background-color: rgba(252, 252, 251, 0.96);
++  box-shadow: 0 3px 10px rgba(10, 14, 19, 0.16), 0 20px 44px rgba(10, 14, 19, 0.2);
++  border: 1px solid rgba(35, 44, 52, 0.1);
++  border-radius: 18px;
++  margin: 0;
++  font-family: "Figtree"; }
+ 
+ .notification-buttons-bin {
+   spacing: 0; }
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 592d5b51..5ee6657f 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -1364,10 +1364,15 @@ StScrollBar {
+ /* Notifications & Message Tray */
+ .notification-banner {
+   min-height: 64px;
+-  width: 34em;
+-  box-shadow: 0 2px 4px 2px rgba(0, 0, 0, 0.2);
+-  border-radius: 16px;
+-  margin: 4px; }
++  width: 352px;
++  padding: 11px 12px;
++  color: #e6eaec;
++  background-color: rgba(38, 42, 48, 0.96);
++  box-shadow: 0 3px 10px rgba(10, 14, 19, 0.16), 0 20px 44px rgba(10, 14, 19, 0.2);
++  border: 1px solid rgba(255, 255, 255, 0.085);
++  border-radius: 18px;
++  margin: 0;
++  font-family: "Figtree"; }
+ 
+ .notification-buttons-bin {
+   spacing: 0; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index 718c86cc..a0c81206 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -1531,10 +1531,14 @@ StScrollBar {
+ /* Notifications & Message Tray */
+ .notification-banner {
+   min-height: 64px;
+-  width: 34em;
+-  box-shadow: 0 2px 4px 2px transparent;
+-  border-radius: 16px;
+-  margin: 4px;
++  width: 352px;
++  padding: 11px 12px;
++  color: #e6eaec;
++  background-color: #1a1a1a;
++  border: 1px solid rgba(255, 255, 255, 0.4);
++  border-radius: 18px;
++  margin: 0;
++  font-family: "Figtree";
+   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+ 
+ .notification-buttons-bin {
+

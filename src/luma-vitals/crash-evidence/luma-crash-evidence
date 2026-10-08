@@ -1,0 +1,90 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Keep the firmware's record of why the machine last died (ADR-026 §6).
+
+When a processor or platform controller hangs, the firmware resets the machine
+itself: no shutdown, no kernel panic, nothing in the journal. What survives is
+the ACPI Boot Error Record Table (BERT) the firmware hands the next boot —
+on Intel platforms it carries the Crash Log that names the timeout. The kernel
+prints only a line ("Skipped 1 error records") for anything over 1 KB, and the
+firmware replaces the record on a later boot, so unless it is copied at boot it
+is gone. This runs once per boot, copies the table and its data region under
+/var/lib/luma/crash/<boot id>/, and says in the journal whether it is new.
+
+It reads only /sys/firmware/acpi/tables and writes only its state directory.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import sys
+import time
+from pathlib import Path
+
+TABLES = Path(os.environ.get("LUMA_CRASH_TABLES", "/sys/firmware/acpi/tables"))
+STATE = Path(os.environ.get("STATE_DIRECTORY", "/var/lib/luma/crash").split(":")[0])
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+KEEP = 30
+
+
+def log(priority: int, message: str, **fields: str) -> None:
+    try:
+        from systemd import journal  # python3-systemd, when installed
+        journal.send(message, SYSLOG_IDENTIFIER="luma-crash-evidence", PRIORITY=priority, **fields)
+    except ImportError:
+        print(f"<{priority}>{message}", file=sys.stderr, flush=True)
+
+
+def read(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
+
+
+def previous_digests(state: Path, current: str) -> set[str]:
+    digests = set()
+    for summary in state.glob("*/summary.json"):
+        if summary.parent.name == current:
+            continue
+        try:
+            digests.add(json.loads(summary.read_text()).get("sha256", ""))
+        except (OSError, ValueError):
+            continue
+    return digests
+
+
+def prune(state: Path) -> None:
+    captures = sorted((p for p in state.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime)
+    for old in captures[:-KEEP]:
+        shutil.rmtree(old, ignore_errors=True)
+
+
+def main() -> int:
+    header, data = read(TABLES / "BERT"), read(TABLES / "data" / "BERT")
+    if not header and not data:
+        return 0  # This firmware keeps no boot error record: nothing to say.
+    boot_id = read(BOOT_ID).decode().strip().replace("-", "") or "unknown-boot"
+    digest = hashlib.sha256(header + data).hexdigest()
+    new = digest not in previous_digests(STATE, boot_id)
+    target = STATE / boot_id
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "BERT").write_bytes(header)
+    (target / "BERT.data").write_bytes(data)
+    summary = {"boot_id": boot_id, "captured": int(time.time()), "sha256": digest,
+               "table_bytes": len(header), "data_bytes": len(data), "new": new}
+    (target / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
+    prune(STATE)
+    if new:
+        log(3, f"The firmware recorded a hardware error before this boot ({len(data)} bytes); "
+               f"kept in {target}", LUMA_CRASH_EVIDENCE="bert", LUMA_CRASH_SHA256=digest)
+    else:
+        log(6, f"The firmware's boot error record is unchanged from an earlier boot; kept in {target}",
+            LUMA_CRASH_EVIDENCE="bert", LUMA_CRASH_SHA256=digest)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

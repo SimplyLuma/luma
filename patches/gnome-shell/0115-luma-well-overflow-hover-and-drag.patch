@@ -1,0 +1,104 @@
+From: Project Luma
+Subject: [PATCH] luma: menus switch on hover only over their visible targets
+
+The whole status island was the Quick Settings source, so moving from the Well overflow chip toward its tiles opened Quick Options. Menus now name the actors that switch them on hover, empty menus never open on hover, the Well overflow popover switches only from its chip, a drag ignores the invisible hover overlay so tiles can be dropped into the Well, and arrow keys move across the overflow tiles.
+---
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index 45e9e5d..511c80d 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -610,6 +610,14 @@ export const Well = GObject.registerClass({
+             // Left-aligned to the Well itself, not to the count that opened it.
+             this._popover = new PopupMenu.PopupMenu(this, 0, this.arrowSide);
+             this._popover.actor.add_style_class_name('luma-well-popover');
++            // The popover's source is the whole Well, but only the count is
++            // its button: hovering a pinned item while another shelf menu is
++            // open must not swap that menu for this one.
++            this._popover.hoverTargets = [this._chip];
++            // Arrow keys move across the grid, as they do in any menu.
++            this._popover.actor.connect('key-press-event', (_actor, event) =>
++                global.focus_manager.navigate_from_event(event)
++                    ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE);
+             Main.uiGroup.add_child(this._popover.actor);
+             this._popover.actor.hide();
+             Main.panel.menuManager.addMenu(this._popover);
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 127e124..1a4e775 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -976,6 +976,9 @@ class QuickSettings extends PanelMenu.Button {
+             this._statusBox.connectObject('notify::width', () => this._syncStatusClip(),
+                 'notify::height', () => this._syncStatusClip(), this);
+             this._statusHover = new St.Widget({style_class: 'luma-status-hover', reactive: false, opacity: 0});
++            // It covers the whole island. Never let it be what a drag finds
++            // under the pointer, or nothing can be dropped into the Well.
++            Shell.util_set_hidden_from_pick(this._statusHover, true);
+             this._statusViewport = new St.ScrollView({child: this._statusBox,
+                 enable_mouse_scrolling: true, overlay_scrollbars: true,
+                 hscrollbar_policy: St.PolicyType.EXTERNAL, vscrollbar_policy: St.PolicyType.NEVER});
+@@ -1033,6 +1036,11 @@ class QuickSettings extends PanelMenu.Button {
+             this.add_child(this._statusViewport);
+             this.add_child(this._statusHover);
+             this.add_style_class_name('luma-status-cluster');
++            // The island's padding, the Well and the dividers are part of
++            // this button, but only the grid and the clock read as it. Moving
++            // across the rest -- up from the Well to its own popover -- must
++            // not switch an open shelf menu to Quick Settings.
++            this.menu.hoverTargets = [this._statusControls, this._statusClock];
+             this.accessible_role = Atk.Role.PUSH_BUTTON;
+             this.set_cursor_type(Clutter.CursorType.POINTER);
+             dateMenu.setStatusOnly(true);
+@@ -1165,6 +1173,7 @@ class QuickSettings extends PanelMenu.Button {
+         this.remove_child(this._statusHover);
+         this.add_child(this._indicators);
+         this.remove_style_class_name('luma-status-cluster');
++        this.menu.hoverTargets = null;
+         this.set_style(null);
+         this.accessible_role = Atk.Role.MENU;
+         this.set_cursor_type(Clutter.CursorType.DEFAULT);
+diff --git a/js/ui/popupMenu.js b/js/ui/popupMenu.js
+index b2b3343..90db5a6 100644
+--- a/js/ui/popupMenu.js
++++ b/js/ui/popupMenu.js
+@@ -1528,9 +1528,11 @@ export class PopupMenuManager {
+             }
+         } else if (event.type() === Clutter.EventType.ENTER &&
+                    (event.get_flags() & Clutter.EventFlags.FLAG_GRAB_NOTIFY) === 0) {
+-            const hoveredMenu = this._findMenuForSource(targetActor);
++            const hoveredMenu = this._findMenuForHover(targetActor);
+ 
+-            if (hoveredMenu && hoveredMenu !== menu)
++            // Two menus of one source never replace each other on hover.
++            if (hoveredMenu && hoveredMenu !== menu &&
++                hoveredMenu.sourceActor !== menu.sourceActor)
+                 this._changeMenu(hoveredMenu);
+         } else if ((event.type() === Clutter.EventType.BUTTON_PRESS ||
+                     event.type() === Clutter.EventType.TOUCH_BEGIN) &&
+@@ -1553,6 +1555,27 @@ export class PopupMenuManager {
+         return null;
+     }
+ 
++    // Hovering moves to another menu only once the pointer is on what reads
++    // as that menu's button. A source can be larger than that -- the status
++    // island is one reactive button around the Well, the quick-settings grid
++    // and the clock, with padding between -- so a menu may list its visible
++    // targets in hoverTargets. Entering the rest of its source leaves it
++    // closed, and the search carries on to any source around it. A button
++    // without a menu of its own (a live extension island) is not a target:
++    // "opening" its dummy menu would only close the real one.
++    _findMenuForHover(actor) {
++        for (let source = actor; source; source = source.get_parent()) {
++            const menu = this._menus.find(m => m.sourceActor === source);
++            if (!menu || menu instanceof PopupDummyMenu)
++                continue;
++            const targets = menu.hoverTargets;
++            if (!targets || targets.some(target => target?.contains(actor)))
++                return menu;
++        }
++
++        return null;
++    }
++
+     _closeMenu(isUser, menu) {
+         // If this isn't a user action, we called close()
+         // on the BoxPointer ourselves, so we shouldn't

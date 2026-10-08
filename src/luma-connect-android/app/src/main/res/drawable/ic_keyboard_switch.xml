@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keyboard outline. Drawn for Luma Connect. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M4,5h16a2,2 0,0 1,2 2v10a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V7a2,2 0,0 1,2 -2zM4,7v10h16V7H4zM6,9h2v2H6V9zM10,9h2v2h-2V9zM14,9h2v2h-2V9zM6,13h2v2H6v-2zM9,13h6v2H9v-2zM16,13h2v2h-2v-2zM17,9h1v2h-1V9z" />
+</vector>

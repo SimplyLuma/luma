@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Keep the fingerprint/QSEE transport away from the FP6 GPU's cold-start
+# window.  The accepted live sequence initializes it only after Phoc owns DRM
+# and Phosh owns the lock-screen D-Bus interface.
+
+set -Eeuo pipefail
+
+phosh_ready() {
+  pgrep -u 1000 -x phoc >/dev/null &&
+    pgrep -u 1000 -x phosh >/dev/null &&
+    sudo -n -u luma env \
+      XDG_RUNTIME_DIR=/run/user/1000 \
+      DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+      gdbus call --session --dest org.gnome.ScreenSaver \
+      --object-path /org/gnome/ScreenSaver \
+      --method org.gnome.ScreenSaver.GetActive >/dev/null 2>&1
+}
+
+for _ in $(seq 1 240); do
+  if phosh_ready; then
+    sleep 2
+    if phosh_ready; then
+      printf 'event=luma_fp6_graphical_gate state=ready compositor=phoc shell=phosh\n'
+      exit 0
+    fi
+  fi
+  sleep 0.5
+done
+
+printf 'event=luma_fp6_graphical_gate state=failed reason=session_timeout\n' >&2
+exit 1

@@ -1,0 +1,376 @@
+diff --git a/configure b/configure
+index df4c4a9..ffb1e8a 100755
+--- a/configure
++++ b/configure
+@@ -1221,6 +1221,7 @@ enable_l3codeca_acm
+ enable_l3codecx_ax
+ enable_light_msstyles
+ enable_loadperf
++enable_luma_relay
+ enable_localspl
+ enable_localui
+ enable_lz32
+@@ -22692,6 +22693,7 @@ wine_fn_config_makefile dlls/l3codeca.acm enable_l3codeca_acm
+ wine_fn_config_makefile dlls/l3codecx.ax enable_l3codecx_ax
+ wine_fn_config_makefile dlls/light.msstyles enable_light_msstyles
+ wine_fn_config_makefile dlls/loadperf enable_loadperf
++wine_fn_config_makefile dlls/luma_relay enable_luma_relay
+ wine_fn_config_makefile dlls/localspl enable_localspl
+ wine_fn_config_makefile dlls/localspl/tests enable_tests
+ wine_fn_config_makefile dlls/localui enable_localui
+@@ -24992,4 +24994,3 @@ printf "%s\n" "
+ $as_me: Finished.  Do '${MAKE-make}' to compile Wine.
+ " >&6
+ 
+-
+diff --git a/configure.ac b/configure.ac
+index b8ae3db..4bbc5b7 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2834,6 +2834,7 @@ WINE_CONFIG_MAKEFILE(dlls/l3codeca.acm)
+ WINE_CONFIG_MAKEFILE(dlls/l3codecx.ax)
+ WINE_CONFIG_MAKEFILE(dlls/light.msstyles)
+ WINE_CONFIG_MAKEFILE(dlls/loadperf)
++WINE_CONFIG_MAKEFILE(dlls/luma_relay)
+ WINE_CONFIG_MAKEFILE(dlls/localspl)
+ WINE_CONFIG_MAKEFILE(dlls/localspl/tests)
+ WINE_CONFIG_MAKEFILE(dlls/localui)
+diff --git a/dlls/luma_relay/Makefile.in b/dlls/luma_relay/Makefile.in
+new file mode 100644
+index 0000000..f66a6f9
+--- /dev/null
++++ b/dlls/luma_relay/Makefile.in
+@@ -0,0 +1,7 @@
++MODULE    = luma_relay.dll
++UNIXLIB   = luma_relay.so
++IMPORTLIB = luma_relay
++
++SOURCES = \
++	luma_relay.c \
++	unixlib.c
+diff --git a/dlls/luma_relay/luma_relay.c b/dlls/luma_relay/luma_relay.c
+new file mode 100644
+index 0000000..9c98deb
+--- /dev/null
++++ b/dlls/luma_relay/luma_relay.c
+@@ -0,0 +1,40 @@
++/*
++ * Luma Relay private Wine integration
++ *
++ * Copyright 2026 Project Luma
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ */
++
++#include <stdarg.h>
++
++#include "windef.h"
++#include "winbase.h"
++#include "winternl.h"
++#include "wine/unixlib.h"
++#include "luma_relay.h"
++
++static BOOL unix_ready;
++
++BOOL WINAPI LumaRelayNotify( const char *message, DWORD length )
++{
++    struct relay_notify_params params;
++
++    if (!unix_ready || !message || !length || length > 16 * 1024) return FALSE;
++    params.message = message;
++    params.length = length;
++    return !WINE_UNIX_CALL( relay_unix_notify, &params );
++}
++
++BOOL WINAPI DllMain( HINSTANCE instance, DWORD reason, void *reserved )
++{
++    if (reason == DLL_PROCESS_ATTACH)
++    {
++        DisableThreadLibraryCalls( instance );
++        unix_ready = !__wine_init_unix_call();
++    }
++    return TRUE;
++}
+diff --git a/dlls/luma_relay/luma_relay.spec b/dlls/luma_relay/luma_relay.spec
+new file mode 100644
+index 0000000..ca9e508
+--- /dev/null
++++ b/dlls/luma_relay/luma_relay.spec
+@@ -0,0 +1 @@
++@ stdcall LumaRelayNotify(ptr long)
+diff --git a/dlls/luma_relay/unixlib.c b/dlls/luma_relay/unixlib.c
+new file mode 100644
+index 0000000..1fdde39
+--- /dev/null
++++ b/dlls/luma_relay/unixlib.c
+@@ -0,0 +1,99 @@
++/*
++ * Luma Relay private Wine integration
++ *
++ * Copyright 2026 Project Luma
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ */
++
++#if 0
++#pragma makedep unix
++#endif
++
++#include "config.h"
++
++#include <stddef.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
++#include "ntstatus.h"
++#define WIN32_NO_STATUS
++#include "windef.h"
++#include "winternl.h"
++#include "wine/unixlib.h"
++#include "luma_relay.h"
++
++#ifndef MSG_NOSIGNAL
++#define MSG_NOSIGNAL 0
++#endif
++
++static NTSTATUS relay_notify( void *args )
++{
++    const struct relay_notify_params *params = args;
++    const char *path = getenv( "LUMA_RELAY_NOTIFY_SOCKET" );
++    struct sockaddr_un address = {0};
++    size_t path_length, sent = 0;
++    int fd, result;
++
++    if (!path || !params->message || !params->length || params->length > 16 * 1024)
++        return STATUS_INVALID_PARAMETER;
++    path_length = strlen( path );
++    if (!path_length || path_length >= sizeof(address.sun_path)) return STATUS_NAME_TOO_LONG;
++
++    address.sun_family = AF_UNIX;
++    memcpy( address.sun_path, path, path_length + 1 );
++    if ((fd = socket( AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0 )) < 0)
++        return STATUS_UNSUCCESSFUL;
++    if (connect( fd, (struct sockaddr *)&address,
++                 offsetof(struct sockaddr_un, sun_path) + path_length + 1 ) < 0)
++        goto failed;
++    while (sent < params->length)
++    {
++        result = send( fd, params->message + sent, params->length - sent, MSG_NOSIGNAL );
++        if (result <= 0) goto failed;
++        sent += result;
++    }
++    shutdown( fd, SHUT_WR );
++    close( fd );
++    return STATUS_SUCCESS;
++
++failed:
++    close( fd );
++    return STATUS_UNSUCCESSFUL;
++}
++
++const unixlib_entry_t __wine_unix_call_funcs[] =
++{
++    relay_notify,
++};
++
++#ifdef _WIN64
++
++struct relay_notify_params32
++{
++    UINT32 message;
++    UINT32 length;
++};
++
++static NTSTATUS wow64_relay_notify( void *args )
++{
++    const struct relay_notify_params32 *params32 = args;
++    struct relay_notify_params params;
++
++    params.message = (const char *)(ULONG_PTR)params32->message;
++    params.length = params32->length;
++    return relay_notify( &params );
++}
++
++const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
++{
++    wow64_relay_notify,
++};
++
++#endif
+diff --git a/include/Makefile.in b/include/Makefile.in
+index e0987ce..8b37010 100644
+--- a/include/Makefile.in
++++ b/include/Makefile.in
+@@ -438,6 +438,7 @@ SOURCES = \
+ 	lmuseflg.h \
+ 	lmwksta.h \
+ 	loadperf.h \
++	luma_relay.h \
+ 	lowlevelmonitorconfigurationapi.h \
+ 	lzexpand.h \
+ 	mapi.h \
+diff --git a/include/luma_relay.h b/include/luma_relay.h
+new file mode 100644
+index 0000000..d64d169
+--- /dev/null
++++ b/include/luma_relay.h
+@@ -0,0 +1,31 @@
++/*
++ * Luma Relay private Wine integration
++ *
++ * Copyright 2026 Project Luma
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ */
++
++#ifndef __WINE_LUMA_RELAY_H
++#define __WINE_LUMA_RELAY_H
++
++#include "windef.h"
++
++struct relay_notify_params
++{
++    const char *message;
++    ULONG length;
++};
++
++enum relay_unix_funcs
++{
++    relay_unix_notify,
++    relay_unix_funcs_count,
++};
++
++BOOL WINAPI LumaRelayNotify( const char *message, DWORD length );
++
++#endif
+diff --git a/programs/explorer/Makefile.in b/programs/explorer/Makefile.in
+index e6668da..3cdc537 100644
+--- a/programs/explorer/Makefile.in
++++ b/programs/explorer/Makefile.in
+@@ -1,5 +1,5 @@
+ MODULE    = explorer.exe
+-IMPORTS   = rpcrt4 user32 gdi32 advapi32 win32u
++IMPORTS   = rpcrt4 user32 gdi32 advapi32 luma_relay win32u
+ DELAYIMPORTS = comctl32 shell32 oleaut32 ole32 shlwapi
+ 
+ EXTRADLLFLAGS = -mwindows -municode
+diff --git a/programs/explorer/systray.c b/programs/explorer/systray.c
+index fcbceb6..59d94ff 100644
+--- a/programs/explorer/systray.c
++++ b/programs/explorer/systray.c
+@@ -19,6 +19,7 @@
+  */
+ 
+ #include <assert.h>
++#include <stdio.h>
+ 
+ #include <windows.h>
+ #include <ntuser.h>
+@@ -28,6 +29,8 @@
+ #include <wine/debug.h>
+ #include <wine/list.h>
+ 
++#include "luma_relay.h"
++
+ #include "explorer_private.h"
+ #include "resource.h"
+ 
+@@ -160,6 +163,76 @@ static WNDCLASSEXW tray_icon_class =
+ static void do_hide_systray(void);
+ static void do_show_systray(void);
+ 
++static BOOL append_json_wide( char **cursor, const char *end, const WCHAR *text )
++{
++    char utf8[4096];
++    int length, i;
++
++    if (!(length = WideCharToMultiByte( CP_UTF8, WC_ERR_INVALID_CHARS, text, -1,
++                                        utf8, sizeof(utf8), NULL, NULL ))) return FALSE;
++    for (i = 0; i < length - 1; ++i)
++    {
++        unsigned char character = utf8[i];
++        const char *escape = NULL;
++
++        if (character == '"') escape = "\\\"";
++        else if (character == '\\') escape = "\\\\";
++        else if (character == '\n') escape = "\\n";
++        else if (character == '\r') escape = "\\r";
++        else if (character == '\t') escape = "\\t";
++        if (escape)
++        {
++            if (*cursor + 2 >= end) return FALSE;
++            *(*cursor)++ = escape[0];
++            *(*cursor)++ = escape[1];
++        }
++        else if (character < 0x20)
++        {
++            int written;
++            if (*cursor + 6 >= end) return FALSE;
++            written = snprintf( *cursor, end - *cursor, "\\u%04x", character );
++            if (written != 6) return FALSE;
++            *cursor += written;
++        }
++        else
++        {
++            if (*cursor + 1 >= end) return FALSE;
++            *(*cursor)++ = character;
++        }
++    }
++    return TRUE;
++}
++
++/* Relay owns the host boundary. Wine receives only a private per-app socket. */
++static BOOL relay_native_notification( struct icon *icon )
++{
++    char disabled[2], message[8192], *cursor = message;
++    const char *end = message + sizeof(message);
++    int result;
++
++    if (GetEnvironmentVariableA( "LUMA_RELAY_NOTIFICATIONS", disabled, sizeof(disabled) ) &&
++        disabled[0] == '0') return TRUE;
++    if (!GetEnvironmentVariableA( "LUMA_RELAY_NOTIFY_SOCKET", NULL, 0 )) return FALSE;
++
++    result = snprintf( cursor, end - cursor,
++                       "{\"schema\":1,\"operation\":\"add\",\"id\":\"tray-%p-%u\","
++                       "\"urgency\":%u,\"title\":\"",
++                       icon->owner, icon->id,
++                       (icon->info_flags & NIIF_ICONMASK) == NIIF_ERROR ? 2 : 1 );
++    if (result < 0 || result >= end - cursor) return FALSE;
++    cursor += result;
++    if (!append_json_wide( &cursor, end, icon->info_title )) return FALSE;
++    if (cursor + 10 >= end) return FALSE;
++    memcpy( cursor, "\",\"body\":\"", 10 );
++    cursor += 10;
++    if (!append_json_wide( &cursor, end, icon->info_text )) return FALSE;
++    if (cursor + 3 >= end) return FALSE;
++    memcpy( cursor, "\"}", 2 );
++    cursor += 2;
++
++    return LumaRelayNotify( message, cursor - message );
++}
++
+ /* Retrieves icon record by owner window and ID */
+ static struct icon *get_icon(HWND owner, UINT id)
+ {
+@@ -735,7 +808,8 @@ static BOOL modify_icon( struct icon *icon, NOTIFYICONDATAW *nid )
+         if (icon->info_icon) DestroyIcon( icon->info_icon );
+         icon->info_icon = CopyIcon( nid->hBalloonIcon );
+ 
+-        update_balloon( icon );
++        if (relay_native_notification( icon )) icon->info_text[0] = 0;
++        else update_balloon( icon );
+     }
+     if (icon->state & NIS_HIDDEN) hide_icon( icon );
+     else show_icon( icon );

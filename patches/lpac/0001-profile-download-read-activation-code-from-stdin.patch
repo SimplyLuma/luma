@@ -1,0 +1,97 @@
+From 4f81f359d8209a5d86e4f3f197237442af12d4f8 Mon Sep 17 00:00:00 2001
+From: Project Luma <codex@project-luma.local>
+Date: Wed, 26 Aug 2026 19:05:00 -0500
+Subject: [PATCH] profile: accept activation code from standard input
+
+Activation codes are bearer secrets. Passing one with -a exposes it in the
+process argument vector. Add -A, which reads exactly one bounded line from
+standard input, so a privileged broker can provide the secret without placing
+it in argv or the environment.
+---
+ src/applet/profile/download.c | 41 ++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/src/applet/profile/download.c b/src/applet/profile/download.c
+index de9f26f..ffee424 100644
+--- a/src/applet/profile/download.c
++++ b/src/applet/profile/download.c
+@@ -15,9 +15,11 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <sys/mman.h>
+ #include <unistd.h>
+ 
+-static const char *opt_string = "s:m:i:c:a:ph?";
++static const char *opt_string = "s:m:i:c:a:Aph?";
++static const size_t activation_code_max = 4096;
+ 
+ static volatile int cancelled = 0;
+ 
+@@ -51,6 +53,35 @@ static bool is_strict_matching_id(const char *token) {
+     return true;
+ }
+ 
++static void secure_activation_code_free(char **line) {
++    if (line == NULL || *line == NULL)
++        return;
++    explicit_bzero(*line, activation_code_max + 2);
++    (void)munlock(*line, activation_code_max + 2);
++    free(*line);
++    *line = NULL;
++}
++
++static char *read_activation_code(void) {
++    char *line = calloc(activation_code_max + 2, 1);
++    if (line == NULL)
++        return NULL;
++
++    /* Best effort: avoid copying a bearer secret into swap or crash dumps. */
++    (void)mlock(line, activation_code_max + 2);
++    if (fgets(line, (int)activation_code_max + 2, stdin) == NULL) {
++        secure_activation_code_free(&line);
++        return NULL;
++    }
++    const size_t length = strlen(line);
++    if (length == 0 || (length > activation_code_max && line[length - 1] != '\n')) {
++        secure_activation_code_free(&line);
++        return NULL;
++    }
++    line[strcspn(line, "\r\n")] = '\0';
++    return line;
++}
++
+ static void sigint_handler(__attribute__((unused)) int x) { cancelled = 1; }
+ 
+ static cJSON *build_download_result_json(const struct es10b_load_bound_profile_package_result *result) {
+@@ -103,6 +134,7 @@ static int applet_main(int argc, char **argv) {
+     char *imei = NULL;
+     char *confirmation_code = NULL;
+     char *activation_code = NULL;
++    _cleanup_(secure_activation_code_free) char *activation_code_stdin = NULL;
+     int interactive_preview = 0;
+ 
+     _cleanup_(es10a_euicc_configured_addresses_free) struct es10a_euicc_configured_addresses configured_addresses = {0};
+@@ -131,6 +163,12 @@ static int applet_main(int argc, char **argv) {
+             if (strncasecmp(activation_code, "LPA:", 4) == 0)
+                 activation_code += 4; // ignore uri scheme
+             break;
++        case 'A':
++            activation_code_stdin = read_activation_code();
++            activation_code = activation_code_stdin;
++            if (activation_code != NULL && strncasecmp(activation_code, "LPA:", 4) == 0)
++                activation_code += 4;
++            break;
+         case 'p':
+             interactive_preview = 1;
+             break;
+@@ -142,6 +180,7 @@ static int applet_main(int argc, char **argv) {
+             printf("\t -i IMEI\n");
+             printf("\t -c Confirmation Code (Password)\n");
+             printf("\t -a Activation Code (e.g: 'LPA:***')\n");
++            printf("\t -A Read Activation Code from standard input\n");
+             printf("\t -p Interactive preview profile\n");
+             printf("\t -h This help info\n");
+             return -1;
+-- 
+2.51.0

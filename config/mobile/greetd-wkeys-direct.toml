@@ -1,0 +1,16 @@
+[terminal]
+vt = 1
+switch = true
+
+[general]
+source_profile = true
+
+# One-shot physical-compositor keyboard comparison. The live config is restored
+# to Luma immediately after greetd starts this authenticated initial session.
+[initial_session]
+command = "/usr/local/bin/luma-wkeys-direct-session"
+user = "luma"
+
+[default_session]
+command = "agreety --cmd /usr/local/bin/luma-shell-session"
+user = "greetd"

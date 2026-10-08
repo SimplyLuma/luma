@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Do Not Disturb, hotspot, approval and Luma Keyboard. Kept apart from strings.xml so these features can be removed together. -->
+<resources>
+    <string name="channel_requests">Requests from your computer</string>
+
+    <string name="dnd_rule_trigger">When your computer is in Do Not Disturb</string>
+    <string name="dnd_rule_on">Your computer is in Do Not Disturb</string>
+    <string name="dnd_rule_off">Your computer is not in Do Not Disturb</string>
+    <string name="dnd_needs_access_title">Match Do Not Disturb with %1$s?</string>
+    <string name="dnd_needs_access_text">Tap to let Luma Connect turn Do Not Disturb on and off.</string>
+
+    <string name="hotspot_title">Share your mobile connection with %1$s?</string>
+    <string name="hotspot_text">Tap to open hotspot settings. Your computer joins the network once it appears.</string>
+
+    <string name="approval_notification_title">Approve on %1$s?</string>
+    <string name="approval_notification_text">%1$s · %2$s</string>
+    <string name="approval_notification_public">Your computer is waiting for your approval</string>
+
+    <string name="keyboard_label">Luma Keyboard</string>
+    <string name="keyboard_subtype">Typing from your computer</string>
+    <string name="keyboard_typing_from">Typing from %1$s</string>
+    <string name="keyboard_choose">Choose keyboard</string>
+    <string name="keyboard_next">Next keyboard</string>
+</resources>

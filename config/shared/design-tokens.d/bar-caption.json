@@ -1,0 +1,15 @@
+{
+  "_doc": "v71 .cvr2 .ib (5099), Canvas/Stage/Session second-row commands:52high,20glyph,3gap,11px600caption,18radius.",
+  "lumaui": {
+    "bar": {
+      "caption": {
+        "height": 52,
+        "radius": 18,
+        "font_size": 11,
+        "font_weight": 600,
+        "gap": 3,
+        "icon_size": 20
+      }
+    }
+  }
+}

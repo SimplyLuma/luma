@@ -1,0 +1,108 @@
+From 6a84f40cfcac670ad2e8f730f0261c348f5644fe Mon Sep 17 00:00:00 2001
+From: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+Date: Mon, 29 Jun 2026 00:23:51 +0200
+Subject: [PATCH] arm64: dts: qcom: milos-fairphone-fp6: add NFC
+
+Add the Samsung S3NRN4V NCI NFC controller on i2c1. Its XI clock is
+provided by the RF_CLK2 PMIC buffer and gated through the controller's
+CLK_REQ line on tlmm GPIO6. PVDD is fed from PM7550 LDO20, the rail the
+downstream driver switches for this chip.
+
+The enable line is routed to the chip's power-down input, which is
+asserted high to turn the chip off (the downstream driver treats VEN as
+active-low on this design) -- hence GPIO_ACTIVE_HIGH, unlike the
+exynos5433-tm2 wiring of the same driver. The pin is pulled up so the
+chip stays off while the line is not driven.
+
+Assisted-by: Claude:claude-opus-4-8
+Assisted-by: Claude:claude-fable-5
+Signed-off-by: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+---
+ .../boot/dts/qcom/milos-fairphone-fp6.dts     | 49 ++++++++++++++++++-
+ 1 file changed, 47 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+index e5944a1b25..1f3dce43dd 100644
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -700,9 +700,29 @@ &gpu_zap_shader {
+ };
+ 
+ &i2c1 {
+-	/* Samsung NFC @ 0x27 */
+-
+ 	status = "okay";
++
++	/*
++	 * Samsung S3NRN4V NFC controller. XI is driven by the RF_CLK2 PMIC
++	 * buffer; the chip has no oscillator of its own and gates the clock
++	 * via its CLK_REQ line, so the clock must be voted on in response
++	 * to it.
++	 */
++	nfc@27 {
++		compatible = "samsung,s3nrn4v";
++		reg = <0x27>;
++
++		clk-req-gpios = <&tlmm 6 GPIO_ACTIVE_HIGH>;
++		clocks = <&rpmhcc RPMH_RF_CLK2>;
++		en-gpios = <&tlmm 56 GPIO_ACTIVE_HIGH>;
++		interrupt-parent = <&tlmm>;
++		interrupts = <31 IRQ_TYPE_EDGE_RISING>;
++		pinctrl-0 = <&nfc_clk_req_default>, <&nfc_irq_default>,
++			    <&nfc_pd_default>;
++		pinctrl-names = "default";
++		pvdd-supply = <&vreg_l20b>;
++		wake-gpios = <&tlmm 7 GPIO_ACTIVE_HIGH>;
++	};
+ };
+ 
+ &i2c3 {
+@@ -1091,6 +1111,13 @@ &tlmm {
+ 			       <13 1>, /* NC */
+ 			       <63 2>; /* WLAN UART */
+ 
++	nfc_clk_req_default: nfc-clk-req-default-state {
++		pins = "gpio6";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	ts_active: ts-irq-active-state {
+ 		pins = "gpio19";
+ 		function = "gpio";
+@@ -1105,6 +1132,13 @@ ts_suspend: ts-irq-suspend-state {
+ 		bias-disable;
+ 	};
+ 
++	nfc_irq_default: nfc-irq-default-state {
++		pins = "gpio31";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	qup_uart11_sleep_cts: qup-uart11-sleep-cts-state {
+ 		pins = "gpio48";
+ 		function = "gpio";
+@@ -1172,6 +1206,17 @@ disp_reset_n_suspend: disp-reset-n-suspend-state {
+ 		bias-pull-down;
+ 	};
+ 
++	/*
++	 * Pulled up so the NFC chip stays powered down while the line is
++	 * not driven (it is the chip's active-high power-down input).
++	 */
++	nfc_pd_default: nfc-pd-default-state {
++		pins = "gpio56";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-up;
++	};
++
+ 	sdc2_card_det_n: sdc2-card-det-state {
+ 		pins = "gpio65";
+ 		function = "gpio";
+-- 
+2.54.0 (Apple Git-157)
+

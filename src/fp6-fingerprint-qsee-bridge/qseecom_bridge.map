@@ -1,0 +1,7 @@
+LUMA_QSEECOM_1.0 {
+	global:
+		QSEECom_start_app;
+		QSEECom_shutdown_app;
+		QSEECom_send_cmd;
+	local: *;
+};

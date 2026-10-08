@@ -1,0 +1,38 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 21:45:00 -0500
+Subject: [PATCH] top-panel: begin folded before the first frame
+
+The drag surface begins folded, but the top-panel mirror state was initialized
+as unfolded until the first drag-state notification.  That mismatch exposes the
+entire quick-options surface for a frame during authenticated shell startup.
+Initialize the public and instance state to the real folded state so Home is
+the first user-session surface ever presented.
+
+---
+ src/top-panel.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/top-panel.c b/src/top-panel.c
+index 5ebd292..51f5a2b 100644
+--- a/src/top-panel.c
++++ b/src/top-panel.c
+@@ -919,7 +919,7 @@ phosh_top_panel_class_init (PhoshTopPanelClass *klass)
+   props[PROP_TOP_PANEL_STATE] =
+     g_param_spec_enum ("state", "", "",
+                        PHOSH_TYPE_TOP_PANEL_STATE,
+-                       PHOSH_TOP_PANEL_STATE_UNFOLDED,
++                       PHOSH_TOP_PANEL_STATE_FOLDED,
+                        G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+   /**
+    * PhoshTopPanel:on-lockscreen:
+@@ -1103,7 +1103,7 @@ phosh_top_panel_init (PhoshTopPanel *self)
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
+   self->cancel = g_cancellable_new ();
+-  self->state = PHOSH_TOP_PANEL_STATE_UNFOLDED;
++  self->state = PHOSH_TOP_PANEL_STATE_FOLDED;
+   self->kb_settings = g_settings_new (KEYBINDINGS_SCHEMA_ID);
+   g_signal_connect (self, "configure-event", G_CALLBACK (on_configure_event), NULL);
+ 
+-- 
+2.53.0

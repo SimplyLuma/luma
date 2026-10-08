@@ -1,0 +1,189 @@
+--- a/src/viewers/audio.js
++++ b/src/viewers/audio.js
+@@ -46,8 +46,6 @@
+     return str;
+ }
+ 
+-const COVER_ART_ARCHIVE_URL = "https://coverartarchive.org/release/%s";
+-const MUSIC_BRAINZ_ASIN_FORMAT = "https://musicbrainz.org/ws/2/release/?query=release:\"%s\"AND artist:\"%s\"&limit=1&fmt=json";
+ const fetchCoverArt = function(_tagList, _cancellable, _callback) {
+     function _fetchFromTags() {
+         let coverSample = null;
+@@ -85,175 +83,8 @@
+         return null;
+     }
+ 
+-    function _getCacheFile(mbid) {
+-        let cachePath = GLib.build_filenamev([GLib.get_user_cache_dir(), 'sushi']);
+-        return Gio.File.new_for_path(GLib.build_filenamev([cachePath, `${mbid}.jpg`]));
+-    }
+-
+-    function _fetchFromStream(stream, done) {
+-        GdkPixbuf.Pixbuf.new_from_stream_async(stream, _cancellable, (o, res) => {
+-            let cover;
+-            try {
+-                cover = GdkPixbuf.Pixbuf.new_from_stream_finish(res);
+-            } catch (e) {
+-                done(e, null);
+-                return;
+-            }
+-
+-            done(null, cover);
+-        });
+-    }
+-
+-    function _fetchFromCache(mbid, done) {
+-        let file = _getCacheFile(mbid);
+-        file.query_info_async(Gio.FILE_ATTRIBUTE_STANDARD_TYPE, 0, 0, _cancellable, (f, res) => {
+-            try {
+-                file.query_info_finish(res);
+-            } catch (e) {
+-                done(e, null);
+-                return;
+-            }
+-
+-            file.read_async(0, _cancellable, (f, res) => {
+-                let stream;
+-                try {
+-                    stream = file.read_finish(res);
+-                } catch (e) {
+-                    done(e, null);
+-                    return;
+-                }
+-
+-                _fetchFromStream(stream, done);
+-            });
+-        });
+-    }
+-
+-    function _saveToCache(mbid, stream, done) {
+-        let cacheFile = _getCacheFile(mbid);
+-        let cachePath = cacheFile.get_parent().get_path();
+-        GLib.mkdir_with_parents(cachePath, 448);
+-
+-        cacheFile.replace_async(null, false, Gio.FileCreateFlags.PRIVATE, 0, _cancellable, (f, res) => {
+-            let outStream;
+-            try {
+-                outStream = cacheFile.replace_finish(res);
+-            } catch (e) {
+-                done(e);
+-                return;
+-            }
+-
+-            outStream.splice_async(
+-                stream,
+-                Gio.OutputStreamSpliceFlags.CLOSE_SOURCE |
+-                Gio.OutputStreamSpliceFlags.CLOSE_TARGET,
+-                0, _cancellable, (s, res) => {
+-                    try {
+-                        outStream.splice_finish(res);
+-                    } catch (e) {
+-                        done(e);
+-                        return;
+-                    }
+-
+-                    done();
+-                });
+-        });
+-    }
+-
+-    function decode(buffer) {
+-        let decoder = new TextDecoder('utf8');
+-        return decoder.decode(buffer);
+-    }
+-
+-    function _fetchCoverArtArchiveImage(uri, mbid, done) {
+-        let session = new Soup.Session();
+-
+-        let message = Soup.Message.new('GET', uri);
+-        message.request_headers.append('User-Agent', 'gnome-sushi');
+-
+-        session.send_async(message, 0, _cancellable, (r, res) => {
+-            let stream;
+-            try {
+-                stream = session.send_finish(res);
+-            } catch (e) {
+-                done(e, null);
+-                return;
+-            }
+-
+-            _saveToCache(mbid, stream, (err) => {
+-                if (err)
+-                    logError(err, 'Unable to save cover to cache');
+-                _fetchFromCache(mbid, done);
+-            });
+-        });
+-    }
+-
+-    function _fetchCoverArtArchiveMetadata(mbid, done) {
+-        let uri = COVER_ART_ARCHIVE_URL.format(mbid);
+-        let session = new Soup.Session();
+-
+-        let message = Soup.Message.new('GET', uri);
+-        message.request_headers.append('User-Agent', 'gnome-sushi');
+-        session.send_and_read_async(message, 0, _cancellable, (r, res) => {
+-            try {
+-                let data = decode(session.send_and_read_finish(res).get_data());
+-                if (message.get_status() !== Soup.Status.OK)
+-                  return;
+-
+-                let json_data = JSON.parse (data);
+-
+-                let uri = json_data['images'][0]['thumbnails']['small'];
+-                _fetchCoverArtArchiveImage(uri, mbid, done);
+-                return;
+-            } catch (e) {
+-                done(e, null);
+-            }
+-        });
+-    }
+-
+-    function _fetchFromMusicBrainz(done) {
+-        let artist = _tagList.get_string('artist')[1];
+-        let album = _tagList.get_string('album')[1];
+-
+-        let uri = MUSIC_BRAINZ_ASIN_FORMAT.format(album, artist);
+-        let session = new Soup.Session();
+-
+-        let message = Soup.Message.new('GET', uri);
+-        message.request_headers.append('User-Agent', 'gnome-sushi');
+-
+-        session.send_and_read_async(message, 0, _cancellable, (r, res) => {
+-            let mbid = null;
+-            try {
+-                let data = decode(session.send_and_read_finish(res).get_data());
+-                if (message.get_status() !== Soup.Status.OK)
+-                    return;
+-
+-                let json_response = JSON.parse(data);
+-
+-                if (!('releases' in json_response) || json_response['releases'].length === 0)
+-                    return;
+-
+-                mbid = json_response['releases'][0]['id'];
+-            } catch (e) {
+-              done (e, null);
+-              return;
+-            }
+-
+-            _fetchFromCache(mbid, (err, cover) => {
+-                if (cover)
+-                    done(null, cover);
+-                else
+-                    _fetchCoverArtArchiveMetadata(mbid, done);
+-            });
+-        });
+-    }
+-
+-   let cover = _fetchFromTags();
+-   if (cover) {
+-       _callback(null, cover);
+-       return;
+-   }
+-
+-    _fetchFromMusicBrainz(_callback);
++    // Preview only embedded artwork. Never disclose file tags to remote services.
++    _callback(null, _fetchFromTags());
+ }
+ 
+ const AudioPlayer = GObject.registerClass({

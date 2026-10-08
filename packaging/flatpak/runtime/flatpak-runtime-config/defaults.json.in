@@ -1,0 +1,7 @@
+{
+  "libdir": "%{_libdir}",
+  "cflags": "%{build_cflags}",
+  "cxxflags": "%{build_cxxflags}",
+  "cppflags": "",
+  "ldflags": "-L/app/lib %{build_ldflags}"
+}

@@ -1,0 +1,29 @@
+<!doctype html><title>Loopback call</title>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- A WebRTC call to itself: the microphone goes out through one peer connection and plays back from the other, as a video call does. -->
+<audio id=far autoplay></audio>
+<script>
+const log = (...a) => console.log('[call]', ...a);
+async function main() {
+  const local = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: false, noiseSuppression: false, autoGainControl: false}});
+  const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection();
+  pc1.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate);
+  pc2.onicecandidate = e => e.candidate && pc1.addIceCandidate(e.candidate);
+  pc2.ontrack = e => { far.srcObject = e.streams[0]; far.play().catch(err => log('play', err.message)); };
+  local.getTracks().forEach(t => pc1.addTrack(t, local));
+  await pc1.setLocalDescription(); await pc2.setRemoteDescription(pc1.localDescription);
+  await pc2.setLocalDescription(); await pc1.setRemoteDescription(pc2.localDescription);
+  try {
+    navigator.mediaSession.setActionHandler('hangup', () => log('HANGUP-ACTION'));
+    navigator.mediaSession.setActionHandler('togglemicrophone', () => log('TOGGLEMIC-ACTION'));
+    navigator.mediaSession.setMicrophoneActive(true);
+    navigator.mediaSession.metadata = new MediaMetadata({title: 'Loopback call'});
+    log('mediaSession handlers set');
+  } catch (e) { log('mediaSession', e.message); }
+  const ctx = new AudioContext(); const an = ctx.createAnalyser(); ctx.createMediaStreamSource(local).connect(an);
+  const buf = new Float32Array(2048);
+  setInterval(() => { an.getFloatTimeDomainData(buf); let s = 0; for (const v of buf) s += v*v; log('local-rms', Math.sqrt(s/buf.length).toFixed(4)); }, 1000);
+  log('connected');
+}
+main().catch(e => log('error', e.message));
+</script>

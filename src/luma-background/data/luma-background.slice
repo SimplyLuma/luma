@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma background agents
+Documentation=https://projectluma.org/developer/kit/background-agents
+Before=slices.target
+
+[Slice]
+# Background work shares the processor and disk with what the person is doing
+# at a fifth of an ordinary application's weight.
+CPUWeight=20
+IOWeight=20
+# An agent that outgrows MemoryHigh is throttled rather than killed, and that
+# stall shows up as memory pressure in every slice above it. Left to the
+# session-wide systemd-oomd policy, the pressure is judged at the person's
+# user slice, where oomd kills the largest cgroup: quite possibly the app in
+# front of them. Judging it here first, with a lower limit and a shorter
+# window, means the stalled agent is the one that is stopped (and restarted
+# like a crash).
+ManagedOOMMemoryPressure=kill
+ManagedOOMMemoryPressureLimit=40%
+ManagedOOMMemoryPressureDurationSec=10s

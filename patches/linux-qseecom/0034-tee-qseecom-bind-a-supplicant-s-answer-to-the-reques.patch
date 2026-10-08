@@ -1,0 +1,158 @@
+From b098e2287db5f356a0487b2b9970380669fccbbe Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 13:01:19 +0200
+Subject: [PATCH 34/41] tee: qseecom: bind a supplicant's answer to the request
+ it took
+
+The generation check in the send path could never fire. taken_gen is assigned
+from req_gen at the moment a request is taken, and req_gen only advances where
+taken is cleared, so for as long as a request is taken the two are equal by
+construction and the -ESTALE branch was unreachable. The hole it was meant to
+close stayed open: a supplicant that overran the timeout, whose request was
+abandoned and replaced, could still answer, and its stale success would be
+applied to the new request with the reply buffer never filled -- which is the
+observed way to hang the secure world.
+
+A counter the kernel never shows anyone cannot do this, because the answer
+carries nothing to compare against. Hand it out instead: RECV now returns the
+generation in a VALUE_OUTPUT and SEND takes it back in a VALUE_INPUT, the shape
+OP-TEE settled on for the same problem. Comparing the echoed value against
+req_gen makes the rejection real.
+
+While here, clear pending when a request is taken rather than only when it
+completes. A second thread receiving on the same fd would otherwise see pending
+still set, return from the wait immediately, find the request taken, and spin
+at full CPU taking the supplicant mutex every iteration.
+
+Reported-by: Kimi K3
+Assisted-by: Claude:claude-opus-5
+---
+ Documentation/tee/qseecom.rst | 12 +++++++
+ drivers/tee/qseecom/core.c    | 61 +++++++++++++++++++++++++++++++----
+ 2 files changed, 66 insertions(+), 7 deletions(-)
+
+diff --git a/Documentation/tee/qseecom.rst b/Documentation/tee/qseecom.rst
+index 15d2d85d8..2eab4cb22 100644
+--- a/Documentation/tee/qseecom.rst
++++ b/Documentation/tee/qseecom.rst
+@@ -115,6 +115,18 @@ other's requests. The first context to receive claims that role, and a receive
+ or send from any other is refused. Merely opening the device is not claiming
+ it, because loading an application opens the same device.
+ 
++``TEE_IOC_SUPPL_RECV`` returns two parameters: a VALUE_INPUT whose first
++element identifies the request, and a MEMREF_INOUT naming the listener buffer
++to look at. The identifier is an INPUT because the direction is the
++supplicant's: the kernel is handing it a value, exactly as OP-TEE does. ``TEE_IOC_SUPPL_SEND`` takes that identifier back as a VALUE_OUTPUT
++in its first parameter. The change of attribute is not a typo: parameter
++directions on this interface are named from the supplicant's point of view, and
++the core only transfers a value that is marked INPUT on the way out to the
++supplicant and OUTPUT on the way back in. A supplicant that overran the timeout returns to find
++its request abandoned and possibly a new one in the slot; echoing the
++identifier is what lets an answer to the old request be rejected with
++``-ESTALE`` instead of being applied to the new one.
++
+ Anything other than an explicit success is reported to the secure world as a
+ failure. Claiming success without having filled the request buffer leaves the
+ application acting on whatever was in it, which has been observed to hang the
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index 4b468cc1b..ade92440f 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -1067,8 +1067,9 @@ static int qseecom_tee_supp_recv(struct tee_context *ctx, u32 *func,
+ 	struct qseecom_tee_supp *supp = &qtee->supp;
+ 	struct qseecom_tee_listener *listener;
+ 	unsigned int i;
++	u32 gen = 0;
+ 
+-	if (*num_params < 1)
++	if (*num_params < 2)
+ 		return -EINVAL;
+ 
+ 	/* See qseecom_tee_supp_open(): whoever receives first, receives. */
+@@ -1120,6 +1121,12 @@ static int qseecom_tee_supp_recv(struct tee_context *ctx, u32 *func,
+ 			if (listener && !supp->taken) {
+ 				supp->taken = true;
+ 				supp->taken_gen = supp->req_gen;
++				/*
++				 * Taken, so no longer waiting to be taken.
++				 * Leaving this set spins any other receiver.
++				 */
++				WRITE_ONCE(supp->pending, false);
++				gen = supp->req_gen;
+ 				goto got_request;
+ 			}
+ 		}
+@@ -1138,11 +1145,30 @@ static int qseecom_tee_supp_recv(struct tee_context *ctx, u32 *func,
+ 	 * look at.
+ 	 */
+ 	*func = listener->scm.id;
+-	*num_params = 1;
+-	param[0].attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT;
+-	param[0].u.memref.shm = listener->shm;
+-	param[0].u.memref.shm_offs = 0;
+-	param[0].u.memref.size = listener->scm.sb_len;
++	*num_params = 2;
++
++	/*
++	 * Which request this is. The supplicant echoes it back in SUPPL_SEND
++	 * so a late answer can be told from an answer to the request now
++	 * outstanding. A generation the kernel never shows anyone cannot do
++	 * that, because the answer would carry nothing to compare against.
++	 *
++	 * VALUE_INPUT, not VALUE_OUTPUT: direction is from the supplicant's
++	 * point of view, and this is the kernel handing it something. It is
++	 * also the only thing that works -- params_to_supp() copies a, b and c
++	 * for the INPUT and INOUT cases and zeroes everything else, so an
++	 * OUTPUT parameter arrives as zero. OP-TEE marks its equivalent the
++	 * same way.
++	 */
++	param[0].attr = TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INPUT;
++	param[0].u.value.a = gen;
++	param[0].u.value.b = 0;
++	param[0].u.value.c = 0;
++
++	param[1].attr = TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT;
++	param[1].u.memref.shm = listener->shm;
++	param[1].u.memref.shm_offs = 0;
++	param[1].u.memref.size = listener->scm.sb_len;
+ 
+ 	return 0;
+ }
+@@ -1154,6 +1180,21 @@ static int qseecom_tee_supp_send(struct tee_context *ctx, u32 ret,
+ 	struct qseecom_tee *qtee = ctxdata->qtee;
+ 	struct qseecom_tee_supp *supp = &qtee->supp;
+ 
++	/*
++	 * VALUE_OUTPUT here, against the VALUE_INPUT the receive handed out.
++	 * The asymmetry is the core's: params_to_supp() only fills a value it
++	 * is passing to the supplicant when the parameter is marked INPUT, and
++	 * params_from_supp() only reads one back when it is marked OUTPUT --
++	 * "only out and in/out values can be updated". Both are named for the
++	 * supplicant's direction, so the same number changes attribute as it
++	 * turns around. Getting this wrong is silent: the value arrives zeroed
++	 * rather than rejected, and every answer then looks stale.
++	 */
++	if (num_params < 1 ||
++	    (param[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) !=
++	    TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_OUTPUT)
++		return -EINVAL;
++
+ 	scoped_guard(mutex, &supp->mutex) {
+ 		if (supp->recv_ctx != ctx)
+ 			return -EPERM;
+@@ -1168,8 +1209,14 @@ static int qseecom_tee_supp_send(struct tee_context *ctx, u32 ret,
+ 		 * slot; applying the stale answer would hand one application
+ 		 * the reply meant for another, and a bogus success is what
+ 		 * wedges the secure world.
++		 *
++		 * The generation compared is the one handed out by the receive
++		 * that took the request, echoed back by the supplicant. A
++		 * purely internal counter cannot do this: taken_gen is set from
++		 * req_gen when a request is taken, so the two are equal for as
++		 * long as the request is taken and the comparison never fails.
+ 		 */
+-		if (supp->taken_gen != supp->req_gen)
++		if (param[0].u.value.a != supp->req_gen)
+ 			return -ESTALE;
+ 
+ 		/*

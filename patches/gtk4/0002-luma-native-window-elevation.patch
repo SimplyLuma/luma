@@ -1,0 +1,90 @@
+From cb47458474f6e8560b01d019d45e3fd5a53a0f09 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Mon, 31 Aug 2026 10:32:00 -0500
+Subject: [PATCH] theme: make Luma window elevation the native GTK default
+
+Apply the same 15px frame radius and layered focus elevation to ordinary GTK
+CSD windows in both appearances. This is source-owned toolkit behavior, not a
+user theme or per-application injection, and leaves popups, server-side
+decorations, tiled, maximized, and fullscreen behavior upstream-owned.
+
+diff --git a/gtk/theme/Default/Default-dark.css b/gtk/theme/Default/Default-dark.css
+index 81d7ba0..00f5333 100644
+--- a/gtk/theme/Default/Default-dark.css
++++ b/gtk/theme/Default/Default-dark.css
+@@ -1725,9 +1725,9 @@ colorchooser .popover.osd { border-radius: 5px; }
+ /********************** Window Decorations * */
+ window { border-width: 0px; }
+ 
+-window.csd { box-shadow: 0 3px 9px 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.75); margin: 0px; border-radius: 8px 8px 0 0; }
++window.csd { box-shadow: 0 3px 8px rgba(9, 11, 14, 0.38), 0 22px 52px -15px rgba(9, 11, 14, 0.72), 0 64px 120px -30px rgba(9, 11, 14, 0.82), 0 0 0 1px rgba(255, 255, 255, 0.045); margin: 0px; border-radius: 15px 15px 0 0; }
+ 
+-window.csd:backdrop { box-shadow: 0 3px 9px 1px transparent, 0 2px 6px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.75); transition: 200ms ease-out; }
++window.csd:backdrop { box-shadow: 0 3px 8px rgba(9, 11, 14, 0.24), 0 22px 52px -15px rgba(9, 11, 14, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.035); transition: 200ms ease-out; }
+ 
+ window.csd.popup { border-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.65); }
+ 
+diff --git a/gtk/theme/Default/Default-light.css b/gtk/theme/Default/Default-light.css
+index 5390b6e..c639464 100644
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -1737,9 +1737,9 @@ colorchooser .popover.osd { border-radius: 5px; }
+ /********************** Window Decorations * */
+ window { border-width: 0px; }
+ 
+-window.csd { box-shadow: 0 5px 16px rgba(30, 41, 59, 0.04), 0 0 0 1px rgba(17, 24, 39, 0.10); margin: 0px; border-radius: 8px 8px 0 0; }
++window.csd { box-shadow: 0 2px 5px rgba(25, 27, 31, 0.18), 0 18px 42px -14px rgba(25, 27, 31, 0.42), 0 54px 110px -28px rgba(25, 27, 31, 0.56), 0 0 0 1px rgba(17, 24, 39, 0.10); margin: 0px; border-radius: 15px 15px 0 0; }
+ 
+-window.csd:backdrop { box-shadow: 0 5px 16px rgba(30, 41, 59, 0.02), 0 0 0 1px rgba(17, 24, 39, 0.08); transition: 200ms ease-out; }
++window.csd:backdrop { box-shadow: 0 2px 5px rgba(25, 27, 31, 0.12), 0 18px 42px -14px rgba(25, 27, 31, 0.28), 0 0 0 1px rgba(17, 24, 39, 0.08); transition: 200ms ease-out; }
+ 
+ window.csd.popup { border-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.13); }
+ 
+diff --git a/gtk/theme/Default/_common.scss b/gtk/theme/Default/_common.scss
+index de493b2..e73a470 100644
+--- a/gtk/theme/Default/_common.scss
++++ b/gtk/theme/Default/_common.scss
+@@ -4205,28 +4205,31 @@ window {
+ 
+   &.csd {
+     @if $variant == 'light' {
+-      // Project Luma's calm elevation: match the dock's measured falloff.
+-      // Keep the same quiet one-layer falloff as libadwaita windows.
+-      box-shadow: 0 5px 16px rgba(30, 41, 59, 0.04),
++      box-shadow: 0 2px 5px rgba(25, 27, 31, 0.18),
++                  0 18px 42px -14px rgba(25, 27, 31, 0.42),
++                  0 54px 110px -28px rgba(25, 27, 31, 0.56),
+                   0 0 0 1px rgba(17, 24, 39, 0.10);
+     } @else {
+-      box-shadow: 0 3px 9px 1px transparentize(black, 0.5),
+-                  0 0 0 1px $_wm_border; //doing borders with box-shadow
++      box-shadow: 0 3px 8px rgba(9, 11, 14, 0.38),
++                  0 22px 52px -15px rgba(9, 11, 14, 0.72),
++                  0 64px 120px -30px rgba(9, 11, 14, 0.82),
++                  0 0 0 1px rgba(255, 255, 255, 0.045);
+     }
+     margin: 0px;
+-    border-radius: $window_radius $window_radius 0 0;
++    border-radius: 15px 15px 0 0;
+     &:backdrop {
+       // the transparent shadow here is to enforce that the shadow extents don't
+       // change when we go to backdrop, to prevent jumping windows.
+       // The biggest shadow should be in the same order then in the active state
+       // or the jumping will happen during the transition.
+       @if $variant == 'light' {
+-        box-shadow: 0 5px 16px rgba(30, 41, 59, 0.02),
++        box-shadow: 0 2px 5px rgba(25, 27, 31, 0.12),
++                    0 18px 42px -14px rgba(25, 27, 31, 0.28),
+                     0 0 0 1px rgba(17, 24, 39, 0.08);
+       } @else {
+-        box-shadow: 0 3px 9px 1px transparent,
+-                    0 2px 6px 2px transparentize(black, 0.8),
+-                    0 0 0 1px $_wm_border_backdrop;
++        box-shadow: 0 3px 8px rgba(9, 11, 14, 0.24),
++                    0 22px 52px -15px rgba(9, 11, 14, 0.48),
++                    0 0 0 1px rgba(255, 255, 255, 0.035);
+       }
+       transition: $backdrop_transition;
+     }
+-- 
+2.54.0

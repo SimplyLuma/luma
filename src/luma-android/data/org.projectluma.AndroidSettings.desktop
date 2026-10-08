@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Android Applications
+Comment=Manage Android applications, privacy, and resource use
+Exec=luma-android-settings
+Icon=org.projectluma.AndroidSettings
+Terminal=false
+Type=Application
+NoDisplay=true
+Categories=Settings;
+Keywords=Android;APK;Applications;Permissions;Waydroid;
+StartupNotify=true
+X-Purism-FormFactor=Workstation;Mobile;

@@ -1,0 +1,145 @@
+diff -ruN a/src/libsushi/sushi-media-bin.c b/src/libsushi/sushi-media-bin.c
+--- a/src/libsushi/sushi-media-bin.c	2026-09-11 11:54:03
++++ b/src/libsushi/sushi-media-bin.c	2026-09-11 11:58:26
+@@ -169,6 +169,7 @@
+   ERROR,
+   SIZE_CHANGE,
+   TAGS_CHANGE,
++  MEDIA_INFO_CHANGE,
+   LAST_SIGNAL
+ };
+ 
+@@ -1235,6 +1236,11 @@
+                     0, NULL, NULL, NULL,
+                     G_TYPE_NONE, 0);
+ 
++  /* Fired on the GTK/main-thread bus handler when facts become available. */
++  sushi_media_bin_signals[MEDIA_INFO_CHANGE] =
++      g_signal_new ("media-info-change", G_TYPE_FROM_CLASS (object_class),
++                    G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 0);
++
+   /* Action signals for key bindings */
+   SMB_DEFINE_ACTION_SIGNAL (object_class, "toggle", sushi_media_bin_action_toggle, 1, G_TYPE_STRING);
+   SMB_DEFINE_ACTION_SIGNAL (object_class, "seek", sushi_media_bin_action_seek, 1, G_TYPE_INT);
+@@ -1479,6 +1485,7 @@
+     return;
+ 
+   priv->duration = duration;
++  g_signal_emit (self, sushi_media_bin_signals[MEDIA_INFO_CHANGE], 0);
+ 
+   duration = GST_TIME_AS_SECONDS (duration);
+   gtk_label_set_label (priv->audio_duration_label, format_time (duration));
+@@ -1885,6 +1892,7 @@
+     priv->video_width = priv->video_height = 0;
+ 
+   g_signal_emit (self, sushi_media_bin_signals[SIZE_CHANGE], 0);
++  g_signal_emit (self, sushi_media_bin_signals[MEDIA_INFO_CHANGE], 0);
+ 
+   gst_caps_unref (caps);
+   gst_object_unref (collection);
+@@ -1976,6 +1984,9 @@
+  * Sets the media URI to play
+  */
+ SMB_DEFINE_SETTER_STRING (uri, URI,
++  priv->duration = -1;
++  priv->video_width = priv->video_height = 0;
++  g_signal_emit (self, sushi_media_bin_signals[MEDIA_INFO_CHANGE], 0);
+   /* Make playbin show the first video frame if there is an URI
+    * and the widget is realized.
+    */
+@@ -2291,4 +2302,43 @@
+   gst_memory_unref (memory);
+ 
+   return retval;
++}
++
++/**
++ * sushi_media_bin_get_media_duration:
++ * @self: a #SushiMediaBin
++ *
++ * Returns: the known stream duration in seconds, or -1 if unavailable.
++ */
++gdouble
++sushi_media_bin_get_media_duration (SushiMediaBin *self)
++{
++  gint64 duration;
++  g_return_val_if_fail (SUSHI_IS_MEDIA_BIN (self), -1);
++  duration = SMB_PRIVATE (self)->duration;
++  return duration > 0 ? (gdouble) duration / GST_SECOND : -1;
++}
++
++/**
++ * sushi_media_bin_get_video_width:
++ * @self: a #SushiMediaBin
++ * Returns: the negotiated video width, or 0 if unavailable.
++ */
++gint
++sushi_media_bin_get_video_width (SushiMediaBin *self)
++{
++  g_return_val_if_fail (SUSHI_IS_MEDIA_BIN (self), 0);
++  return SMB_PRIVATE (self)->video_width;
++}
++
++/**
++ * sushi_media_bin_get_video_height:
++ * @self: a #SushiMediaBin
++ * Returns: the negotiated video height, or 0 if unavailable.
++ */
++gint
++sushi_media_bin_get_video_height (SushiMediaBin *self)
++{
++  g_return_val_if_fail (SUSHI_IS_MEDIA_BIN (self), 0);
++  return SMB_PRIVATE (self)->video_height;
+ }
+diff -ruN a/src/libsushi/sushi-media-bin.h b/src/libsushi/sushi-media-bin.h
+--- a/src/libsushi/sushi-media-bin.h	2026-09-11 11:54:03
++++ b/src/libsushi/sushi-media-bin.h	2026-09-11 11:54:59
+@@ -67,6 +67,10 @@
+ GstTagList    *sushi_media_bin_get_audio_tags       (SushiMediaBin *self);
+ GstTagList    *sushi_media_bin_get_video_tags       (SushiMediaBin *self);
+ 
++gdouble        sushi_media_bin_get_media_duration   (SushiMediaBin *self);
++gint           sushi_media_bin_get_video_width      (SushiMediaBin *self);
++gint           sushi_media_bin_get_video_height     (SushiMediaBin *self);
++
+ void           sushi_media_bin_toggle_playback      (SushiMediaBin *self);
+ 
+ void           sushi_media_bin_play                 (SushiMediaBin *self);
+diff -ruN a/src/ui/mainWindow.js b/src/ui/mainWindow.js
+--- a/src/ui/mainWindow.js	2026-09-11 11:54:03
++++ b/src/ui/mainWindow.js	2026-09-11 11:54:59
+@@ -399,6 +399,12 @@
+         renderer.connect('error', (r, err) => { this._reportError(err); });
+         renderer.connect('notify::fullscreen', this._onRendererFullscreen.bind(this));
+         renderer.connect('notify::ready', this._onRendererReady.bind(this));
++        const player = renderer._player || renderer;
++        if (typeof player.get_media_duration === 'function') {
++            player.connect('media-info-change', () => {
++                if (this._renderer === renderer) this._updateFileFacts();
++            });
++        }
+         const buffer = renderer._view?.get_buffer?.();
+         if (buffer) buffer.connect('changed', () => { if (this._renderer === renderer) this._updateFileFacts(); });
+         this._onRendererReady();
+@@ -417,6 +423,21 @@
+         const facts = [names[mime] || Gio.content_type_get_description(mime)];
+         if (this._renderer._pix) {
+             facts.push(`${this._renderer._pix.get_width()} × ${this._renderer._pix.get_height()}`);
++        }
++        const player = this._renderer._player || this._renderer;
++        if (typeof player.get_media_duration === 'function') {
++            const width = player.get_video_width();
++            const height = player.get_video_height();
++            if (width > 0 && height > 0) facts.push(`${width} × ${height}`);
++            const duration = player.get_media_duration();
++            if (Number.isFinite(duration) && duration > 0) {
++                const seconds = Math.floor(duration);
++                const hours = Math.floor(seconds / 3600);
++                const minutes = Math.floor(seconds / 60) % 60;
++                facts.push(hours > 0
++                    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
++                    : `${minutes}:${String(seconds % 60).padStart(2, '0')}`);
++            }
+         }
+         const document = this._renderer._model?.document;
+         if (document) facts.push(`${document.get_n_pages()} pages`);

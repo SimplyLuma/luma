@@ -1,0 +1,38 @@
+diff --git a/src/dbus.ts b/src/dbus.ts
+--- a/src/dbus.ts
++++ b/src/dbus.ts
+@@ -1,7 +1,12 @@
+ const node = `<node>
+     <interface name="org.gnome.Shell.Extensions.TilingShell">
+         <method name="openLayoutEditor" />
++        <method name="newLayout" />
++        <method name="selectLayout">
++            <arg type="i" name="monitorIndex" direction="in" />
++            <arg type="s" name="layoutId" direction="in" />
++        </method>
+     </interface>
+ </node>`;
+ 
+ import { Gio } from './gi/ext';
+diff --git a/src/extension.ts b/src/extension.ts
+--- a/src/extension.ts
++++ b/src/extension.ts
+@@ -188,7 +188,18 @@ export default class TilingShellExtension extends Extension {
+     public openLayoutEditor() {
+         this._indicator?.openLayoutEditor();
+     }
+ 
++    public newLayout() {
++        this._indicator?.newLayoutOnClick(true);
++    }
++
++    public selectLayout(monitorIndex: number, layoutId: string) {
++        GlobalState.get().setSelectedLayoutOfMonitor(
++            layoutId,
++            monitorIndex,
++        );
++    }
++
+     private _createTilingManagers() {
+         debug('building a tiling manager for each monitor');
+         this._tilingManagers.forEach((tm) => tm.destroy());

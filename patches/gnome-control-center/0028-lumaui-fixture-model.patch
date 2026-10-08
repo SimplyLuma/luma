@@ -1,0 +1,348 @@
+From b109f2175c6723f9497e3e901df350dd6dbf3044 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 21:15:37 -0500
+Subject: [PATCH] Settings: add an isolated in-memory v70 fixture model
+
+---
+ shell/cc-luma-fixture.c   | 181 ++++++++++++++++++++++++++++++++++++++
+ shell/cc-luma-fixture.h   |  18 ++++
+ shell/meson.build         |  11 ++-
+ shell/test-luma-fixture.c |  85 ++++++++++++++++++
+ 4 files changed, 294 insertions(+), 1 deletion(-)
+ create mode 100644 shell/cc-luma-fixture.c
+ create mode 100644 shell/cc-luma-fixture.h
+ create mode 100644 shell/test-luma-fixture.c
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+new file mode 100644
+index 0000000..058c4a1
+--- /dev/null
++++ b/shell/cc-luma-fixture.c
+@@ -0,0 +1,181 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-fixture.h"
++#include <gio/gio.h>
++
++struct _CcLumaFixture
++{
++  GObject parent_instance;
++  JsonNode *root;
++};
++G_DEFINE_TYPE (CcLumaFixture, cc_luma_fixture, G_TYPE_OBJECT)
++
++static void
++cc_luma_fixture_finalize (GObject *object)
++{
++  CcLumaFixture *self = CC_LUMA_FIXTURE (object);
++  g_clear_pointer (&self->root, json_node_free);
++  G_OBJECT_CLASS (cc_luma_fixture_parent_class)->finalize (object);
++}
++static void
++cc_luma_fixture_class_init (CcLumaFixtureClass *klass)
++{
++  G_OBJECT_CLASS (klass)->finalize = cc_luma_fixture_finalize;
++}
++static void cc_luma_fixture_init (CcLumaFixture *self) {}
++
++static gboolean
++member_type (JsonObject *object, const char *key, JsonNodeType type)
++{
++  JsonNode *node = json_object_get_member (object, key);
++  return node && json_node_get_node_type (node) == type;
++}
++
++CcLumaFixture *
++cc_luma_fixture_parse (const char *data, gssize length, GError **error)
++{
++  g_autoptr (JsonParser) parser = json_parser_new ();
++  JsonNode *root;
++  JsonObject *object;
++  CcLumaFixture *self;
++
++  if (!json_parser_load_from_data (parser, data, length, error))
++    return NULL;
++  root = json_parser_get_root (parser);
++  if (!root || !JSON_NODE_HOLDS_OBJECT (root))
++    goto invalid;
++  object = json_node_get_object (root);
++  if (!member_type (object, "version", JSON_NODE_VALUE) ||
++      json_node_get_value_type (json_object_get_member (object, "version")) != G_TYPE_INT64 ||
++      json_object_get_int_member (object, "version") != 1 ||
++      !member_type (object, "settings", JSON_NODE_OBJECT) ||
++      !member_type (object, "data", JSON_NODE_OBJECT) ||
++      !member_type (object, "pages", JSON_NODE_ARRAY))
++    goto invalid;
++  {
++    JsonArray *pages = json_object_get_array_member (object, "pages");
++    if (json_array_get_length (pages) == 0)
++      goto invalid;
++    for (guint i = 0; i < json_array_get_length (pages); i++)
++      {
++        JsonNode *page = json_array_get_element (pages, i);
++        JsonNode *id;
++        if (!JSON_NODE_HOLDS_OBJECT (page))
++          goto invalid;
++        id = json_object_get_member (json_node_get_object (page), "id");
++        if (!id || !JSON_NODE_HOLDS_VALUE (id) ||
++            json_node_get_value_type (id) != G_TYPE_STRING ||
++            !*json_node_get_string (id))
++          goto invalid;
++      }
++  }
++  self = g_object_new (CC_TYPE_LUMA_FIXTURE, NULL);
++  self->root = json_node_copy (root);
++  return self;
++invalid:
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
++                       "Invalid Settings fixture: expected version 1, settings, data and named pages");
++  return NULL;
++}
++
++CcLumaFixture *
++cc_luma_fixture_load (const char *path, GError **error)
++{
++  g_autofree char *contents = NULL;
++  gsize length;
++  if (!path || !*path)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "Settings fixture path is empty");
++      return NULL;
++    }
++  if (!g_file_get_contents (path, &contents, &length, error))
++    return NULL;
++  return cc_luma_fixture_parse (contents, length, error);
++}
++
++static JsonObject *
++parent_for_key (CcLumaFixture *self, const char *key, char **leaf)
++{
++  g_auto (GStrv) parts = NULL;
++  JsonObject *object = json_object_get_object_member (json_node_get_object (self->root), "settings");
++  if (!key || !*key)
++    return NULL;
++  parts = g_strsplit (key, ".", -1);
++  for (guint i = 0; parts[i]; i++)
++    {
++      if (!*parts[i])
++        return NULL;
++      if (!parts[i+1])
++        {
++          *leaf = g_strdup (parts[i]);
++          return object;
++        }
++      if (!member_type (object, parts[i], JSON_NODE_OBJECT))
++        return NULL;
++      object = json_object_get_object_member (object, parts[i]);
++    }
++  return NULL;
++}
++
++JsonNode *
++cc_luma_fixture_get (CcLumaFixture *self, const char *key)
++{
++  g_autofree char *leaf = NULL;
++  JsonObject *object = parent_for_key (self, key, &leaf);
++  return object ? json_object_get_member (object, leaf) : NULL;
++}
++
++gboolean
++cc_luma_fixture_set (CcLumaFixture *self, const char *key, JsonNode *value, GError **error)
++{
++  g_autofree char *leaf = NULL;
++  JsonObject *object = parent_for_key (self, key, &leaf);
++  JsonNode *previous = object ? json_object_get_member (object, leaf) : NULL;
++  /* Widgets may edit a scalar, never replace an entire setting subtree. */
++  if (!previous || !value || !JSON_NODE_HOLDS_VALUE (previous) ||
++      !JSON_NODE_HOLDS_VALUE (value) ||
++      json_node_get_value_type (previous) != json_node_get_value_type (value))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                   "Unknown setting or incompatible value: %s", key ? key : "(null)");
++      return FALSE;
++    }
++  json_object_set_member (object, leaf, json_node_copy (value));
++  return TRUE;
++}
++JsonObject *
++cc_luma_fixture_get_data (CcLumaFixture *self)
++{
++  return json_object_get_object_member (json_node_get_object (self->root), "data");
++}
++JsonArray *
++cc_luma_fixture_get_pages (CcLumaFixture *self)
++{
++  return json_object_get_array_member (json_node_get_object (self->root), "pages");
++}
++gboolean
++cc_luma_fixture_has_page (CcLumaFixture *self, const char *page)
++{
++  JsonArray *pages = cc_luma_fixture_get_pages (self);
++  if (!page)
++    return FALSE;
++  for (guint i = 0; i < json_array_get_length (pages); i++)
++    if (g_str_equal (json_object_get_string_member (json_array_get_object_element (pages, i), "id"), page))
++      return TRUE;
++  if (g_str_has_prefix (page, "app:"))
++    {
++      JsonObject *data = cc_luma_fixture_get_data (self);
++      if (member_type (data, "CFAPPS", JSON_NODE_ARRAY))
++        {
++          JsonArray *apps = json_object_get_array_member (data, "CFAPPS");
++          for (guint i = 0; i < json_array_get_length (apps); i++)
++            {
++              JsonNode *node = json_array_get_element (apps, i);
++              if (JSON_NODE_HOLDS_VALUE (node) && json_node_get_value_type (node) == G_TYPE_STRING &&
++                  g_str_equal (json_node_get_string (node), page+4))
++                return TRUE;
++            }
++        }
++    }
++  return FALSE;
++}
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+new file mode 100644
+index 0000000..d87ec11
+--- /dev/null
++++ b/shell/cc-luma-fixture.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include <json-glib/json-glib.h>
++
++G_BEGIN_DECLS
++#define CC_TYPE_LUMA_FIXTURE (cc_luma_fixture_get_type ())
++G_DECLARE_FINAL_TYPE (CcLumaFixture, cc_luma_fixture, CC, LUMA_FIXTURE, GObject)
++
++/* This model owns only an in-memory copy. No service or persistent store is opened. */
++CcLumaFixture *cc_luma_fixture_load (const char *path, GError **error);
++CcLumaFixture *cc_luma_fixture_parse (const char *data, gssize length, GError **error);
++JsonNode *cc_luma_fixture_get (CcLumaFixture *self, const char *key);
++gboolean cc_luma_fixture_set (CcLumaFixture *self, const char *key,
++                              JsonNode *value, GError **error);
++JsonObject *cc_luma_fixture_get_data (CcLumaFixture *self);
++JsonArray *cc_luma_fixture_get_pages (CcLumaFixture *self);
++gboolean cc_luma_fixture_has_page (CcLumaFixture *self, const char *page);
++G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index 75d2470..7d582e8 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -112,9 +112,10 @@ libshell_dep = declare_dependency(
+ # gnome-control-center #
+ ########################
+ 
+-shell_sources = common_sources + files('main.c')
++shell_sources = common_sources + files('main.c', 'cc-luma-fixture.c')
+ 
+ shell_deps = common_deps + [
++  json_glib_dep,
+   libdevice_dep,
+   liblanguage_dep,
+   libwidgets_dep,
+@@ -177,3 +178,11 @@ install_data (
+   'org.gnome.Settings.gschema.xml',
+   install_dir : control_center_schemadir
+ )
++
++# The fixture model has no GTK or system-service dependency.
++fixture_test = executable(
++  'test-luma-fixture',
++  ['test-luma-fixture.c', 'cc-luma-fixture.c'],
++  dependencies: [json_glib_dep, gio_dep],
++)
++test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+new file mode 100644
+index 0000000..bf91a29
+--- /dev/null
++++ b/shell/test-luma-fixture.c
+@@ -0,0 +1,85 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-fixture.h"
++#include <gio/gio.h>
++
++static const char fixture[] = "{\"version\":1,\"settings\":{\"wifi\":true,\"d\":{\"ext\":{\"scale\":\"150\"}},\"vol\":62},\"data\":{\"CFAPPS\":[\"tide\"]},\"pages\":[{\"id\":\"wifi\"}]}";
++static void
++invalid (void)
++{
++  const char *bad[] = { "[]", "null", "{}", "{", "{\"version\":1,\"settings\":{},\"data\":{},\"pages\":[]}", "{\"version\":1,\"settings\":{},\"data\":{},\"pages\":[{\"id\":3}]}" };
++  for (guint i = 0; i < G_N_ELEMENTS (bad); i++)
++    {
++      g_autoptr (GError) error = NULL;
++      g_autoptr (CcLumaFixture) model = cc_luma_fixture_parse (bad[i], -1, &error);
++      g_assert_null (model);
++      g_assert_nonnull (error);
++    }
++  g_autoptr (GError) error = NULL;
++  g_assert_null (cc_luma_fixture_load ("", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++}
++static void
++isolation (void)
++{
++  g_autoptr (CcLumaFixture) a = cc_luma_fixture_parse (fixture, -1, NULL);
++  g_autoptr (CcLumaFixture) b = cc_luma_fixture_parse (fixture, -1, NULL);
++  g_autoptr (JsonNode) value = json_node_init_boolean (json_node_alloc (), FALSE);
++  g_assert_true (cc_luma_fixture_set (a, "wifi", value, NULL));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (a, "wifi")));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (b, "wifi")));
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (a, "vol")), ==, 62);
++}
++static void
++edit_boundaries (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_parse (fixture, -1, NULL);
++  g_autoptr (JsonNode) value = json_node_init_string (json_node_alloc (), "125");
++  g_autoptr (GError) error = NULL;
++  g_assert_true (cc_luma_fixture_set (model, "d.ext.scale", value, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.ext.scale")), ==, "125");
++  const char *bad[] = {"wifi", "d", "d..scale", "d.ext.missing", "new", "", NULL};
++  for (guint i = 0; i < G_N_ELEMENTS (bad); i++)
++    {
++      g_assert_false (cc_luma_fixture_set (model, bad[i], value, &error));
++      g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++      g_clear_error (&error);
++    }
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++}
++static void
++pages (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_parse (fixture, -1, NULL);
++  g_assert_true (cc_luma_fixture_has_page (model, "wifi"));
++  g_assert_true (cc_luma_fixture_has_page (model, "app:tide"));
++  g_assert_false (cc_luma_fixture_has_page (model, "app:fake"));
++  g_assert_false (cc_luma_fixture_has_page (model, "fake"));
++  g_assert_false (cc_luma_fixture_has_page (model, NULL));
++}
++static void
++v70 (void)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), &error);
++  g_assert_no_error (error);
++  g_assert_nonnull (model);
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Studio North");
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "d.ext.scale")), ==, "150");
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "vol")), ==, 62);
++  g_assert_cmpuint (json_array_get_length (cc_luma_fixture_get_pages (model)), ==, 53);
++  g_assert_true (cc_luma_fixture_has_page (model, "wifi-net"));
++  g_assert_true (cc_luma_fixture_has_page (model, "a-zoom"));
++  g_assert_true (cc_luma_fixture_has_page (model, "app:filer"));
++}
++int main (int argc, char **argv)
++{
++  g_test_init (&argc, &argv, NULL);
++  g_test_add_func ("/settings/fixture/invalid", invalid);
++  g_test_add_func ("/settings/fixture/isolation", isolation);
++  g_test_add_func ("/settings/fixture/edit-boundaries", edit_boundaries);
++  g_test_add_func ("/settings/fixture/pages", pages);
++  if (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"))
++    g_test_add_func ("/settings/fixture/v70", v70);
++  return g_test_run ();
++}
+-- 
+2.55.0
+

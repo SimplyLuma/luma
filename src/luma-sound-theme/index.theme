@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+[Sound Theme]
+Name=Luma
+Comment=Project Luma event sounds
+Inherits=freedesktop
+Directories=stereo
+
+[stereo]
+OutputProfile=stereo

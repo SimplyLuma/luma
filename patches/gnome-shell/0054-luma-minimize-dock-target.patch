@@ -1,0 +1,52 @@
+From: Project Luma
+Subject: [PATCH] wm: animate minimize and restore through the live Shelf icon
+
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -1188,6 +1188,20 @@
+         return this._shelfEdge ? [Math.max(1, natural), Math.max(1, natural)] : [minimum, natural];
+     }
+ 
++    getShelfIconGeometry(window) {
++        if (!this._shelfEdge || !this.mapped)
++            return null;
++        const app = Shell.WindowTracker.get_default().get_window_app(window);
++        const item = this._box.get_children().find(child =>
++            child.child?._delegate?.app === app);
++        const icon = item?.child?._delegate?.icon?.icon;
++        if (!app || !icon?.mapped)
++            return null;
++        const [x, y] = icon.get_transformed_position();
++        const [width, height] = icon.get_transformed_size();
++        return width > 0 && height > 0 ? {x, y, width, height} : null;
++    }
++
+     setShelfEdge(edge) {
+         this._shelfEdge = edge;
+         // Shelf owns scrolling and its padded viewport. The overview clip
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1177,7 +1177,10 @@
+             });
+         } else {
+             let xDest, yDest, xScale, yScale;
+-            const [success, geom] = actor.meta_window.get_icon_geometry();
++            const dockGeometry = Main.overview.dash.getShelfIconGeometry(actor.meta_window);
++            const [success, geom] = dockGeometry
++                ? [true, dockGeometry]
++                : actor.meta_window.get_icon_geometry();
+             if (success) {
+                 xDest = geom.x;
+                 yDest = geom.y;
+@@ -1244,7 +1247,10 @@
+                 onStopped: () => this._unminimizeWindowDone(shellwm, actor),
+             });
+         } else {
+-            const [success, geom] = actor.meta_window.get_icon_geometry();
++            const dockGeometry = Main.overview.dash.getShelfIconGeometry(actor.meta_window);
++            const [success, geom] = dockGeometry
++                ? [true, dockGeometry]
++                : actor.meta_window.get_icon_geometry();
+             if (success) {
+                 actor.set_position(geom.x, geom.y);
+                 actor.set_scale(

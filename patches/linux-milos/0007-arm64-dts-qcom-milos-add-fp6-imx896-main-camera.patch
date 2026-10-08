@@ -1,0 +1,92 @@
+From: Project Luma <luma@projectluma.dev>
+Subject: [PATCH] arm64: dts: qcom: milos: add FP6 IMX896 main camera
+
+Describe the Fairphone 6 rear-main sensor using the rail, reset, MCLK, CCI,
+and CSIPHY wiring published in Fairphone's Volcano ODM device tree.  The
+sensor uses the existing GPIO27-backed 1.8 V regulator shared with its OIS.
+
+---
+ arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts | 29 ++++++++++++++++++++++++
+ arch/arm64/boot/dts/qcom/milos.dtsi              | 25 +++++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/milos.dtsi b/arch/arm64/boot/dts/qcom/milos.dtsi
+--- a/arch/arm64/boot/dts/qcom/milos.dtsi
++++ b/arch/arm64/boot/dts/qcom/milos.dtsi
+@@ -2548,6 +2548,10 @@
+ 				port@0 {
+ 					reg = <0>;
+ 
++					csiphy0_ep: endpoint {
++						remote-endpoint = <&imx896_ep>;
++						data-lanes = <0 1 2>;
++					};
+ 				};
+ 
+ 				port@1 {
+@@ -3029,3 +3033,24 @@
++			cam_mclk0_default: cam-mclk0-default-state {
++				pins = "gpio83";
++				function = "cam_mclk";
++				drive-strength = <4>;
++				bias-disable;
++			};
++
++			cam_mclk0_sleep: cam-mclk0-sleep-state {
++				pins = "gpio83";
++				function = "cam_mclk";
++				drive-strength = <2>;
++				bias-pull-down;
++			};
++
++			imx896_reset_default: imx896-reset-default-state {
++				pins = "gpio40";
++				function = "gpio";
++				drive-strength = <2>;
++				bias-disable;
++			};
++
+ 			cam_mclk1_default: cam-mclk1-default-state {
+ 				pins = "gpio84";
+ 				function = "cam_mclk";
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -639,6 +639,35 @@
+ &cci0_i2c0 {
+ 	/* Main cam: Sony IMX896 @ 0x1a */
+ 
++	camera@1a {
++		compatible = "sony,imx896";
++		reg = <0x1a>;
++
++		clocks = <&camcc CAM_CC_MCLK0_CLK>;
++		assigned-clocks = <&camcc CAM_CC_MCLK0_CLK>;
++		assigned-clock-rates = <24000000>;
++
++		vddaux-supply = <&vreg_l5p>;
++		vdda-supply = <&vreg_ois_avdd0_1p8>;
++		vddd-supply = <&vreg_l1p>;
++		vddio-supply = <&vreg_l6p>;
++
++		reset-gpios = <&tlmm 40 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam_mclk0_default &imx896_reset_default>;
++
++		orientation = <1>;
++		rotation = <270>;
++
++		port {
++			imx896_ep: endpoint {
++				remote-endpoint = <&csiphy0_ep>;
++				data-lanes = <0 1 2>;
++				link-frequencies = /bits/ 64 <1131433333>;
++			};
++		};
++	};
++
+ 	eeprom@50 {
+ 		compatible = "puya,p24c128f", "atmel,24c128";
+ 		reg = <0x50>;
+-- 
+2.51.0

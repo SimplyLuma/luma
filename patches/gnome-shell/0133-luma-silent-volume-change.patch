@@ -1,0 +1,95 @@
+From dbb74c138cd808cc843bf00a6adbbf024a005e84 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 19:01:11 -0400
+Subject: [PATCH 3/3] luma: no sound when the volume slider changes the volume
+
+GNOME plays the audio-volume-change "pop" after the volume slider moves (in
+Quick Options and the volume menu) when nothing is playing. Luma shows the
+new level on screen and makes no sound for it, so the call, its cancellable
+and the timeout that scheduled it are removed. Other event sounds are
+unaffected, and org.gnome.desktop.sound event-sounds is untouched.
+
+The volume keys' sound is removed in gnome-settings-daemon, and Luma's sound
+theme disables the event as a backstop.
+
+Dropping this patch restores GNOME's slider feedback sound.
+---
+ js/ui/status/volume.js | 35 ++---------------------------------
+ 1 file changed, 2 insertions(+), 33 deletions(-)
+
+diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
+index 1418eed..13b6ae8 100644
+--- a/js/ui/status/volume.js
++++ b/js/ui/status/volume.js
+@@ -441,8 +441,6 @@ const StreamSlider = GObject.registerClass({
+ 
+         this._control = control;
+ 
+-        this._inDrag = false;
+-        this._notifyVolumeChangeId = 0;
+ 
+         this._soundSettings = new Gio.Settings({
+             schema_id: 'org.gnome.desktop.sound',
+@@ -451,13 +449,10 @@ const StreamSlider = GObject.registerClass({
+             () => this._amplifySettingsChanged());
+         this._amplifySettingsChanged();
+ 
++        // Luma: changing the volume makes no sound of its own. Beam shows the
++        // change; GNOME's audio-volume-change feedback is not played.
+         this._sliderChangedId = this.slider.connect('notify::value',
+             () => this._sliderChanged());
+-        this.slider.connect('drag-begin', () => (this._inDrag = true));
+-        this.slider.connect('drag-end', () => {
+-            this._inDrag = false;
+-            this._notifyVolumeChange();
+-        });
+ 
+         this.connect('icon-clicked', () => {
+             if (!this._stream)
+@@ -482,7 +477,6 @@ const StreamSlider = GObject.registerClass({
+             'gnome-sound-panel.desktop');
+ 
+         this._stream = null;
+-        this._volumeCancellable = null;
+         this._icons = [];
+ 
+         this._sync();
+@@ -584,7 +578,6 @@ const StreamSlider = GObject.registerClass({
+         const value = this.slider.value;
+         const volume = value * this._control.get_vol_max_norm();
+         const prevMuted = this._stream.is_muted;
+-        const prevVolume = this._stream.volume;
+         if (volume < 1) {
+             this._stream.volume = 0;
+             if (!prevMuted)
+@@ -595,30 +588,6 @@ const StreamSlider = GObject.registerClass({
+                 this._stream.change_is_muted(false);
+         }
+         this._stream.push_volume();
+-
+-        const volumeChanged = this._stream.volume !== prevVolume;
+-        if (volumeChanged && !this._notifyVolumeChangeId && !this._inDrag) {
+-            this._notifyVolumeChangeId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT, 30, () => {
+-                this._notifyVolumeChange();
+-                this._notifyVolumeChangeId = 0;
+-            });
+-            GLib.Source.set_name_by_id(this._notifyVolumeChangeId,
+-                '[gnome-shell] this._notifyVolumeChangeId');
+-        }
+-    }
+-
+-    _notifyVolumeChange() {
+-        if (this._volumeCancellable)
+-            this._volumeCancellable.cancel();
+-        this._volumeCancellable = null;
+-
+-        if (this._stream.state === Gvc.MixerStreamState.RUNNING)
+-            return; // feedback not necessary while playing
+-
+-        this._volumeCancellable = new Gio.Cancellable();
+-        const player = global.display.get_sound_player();
+-        player.play_from_theme('audio-volume-change',
+-            _('Volume changed'), this._volumeCancellable);
+     }
+ 
+     _changeSlider(value) {

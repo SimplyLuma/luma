@@ -1,0 +1,28 @@
+[Unit]
+Description=Luma FP6 Android GPU safety watchdog
+Documentation=https://project-luma.local/android
+PartOf=waydroid-container.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-waydroid-fp6-gpu-watchdog
+# Status 71 means containment disappeared and the watchdog successfully
+# stopped the container.  This is also the expected race-free result when a
+# user intentionally ends the software-isolated session.
+SuccessExitStatus=71
+Restart=no
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+DevicePolicy=closed
+ReadWritePaths=/run

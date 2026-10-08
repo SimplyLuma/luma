@@ -1,0 +1,77 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+
+set -eu
+
+# The FP6 production Mesa stack is intentionally smaller than Fedora's full
+# desktop graphics stack. Render the disposable Qt keyboard surface in
+# software; KWin still presents the completed surface through Luma's real
+# Wayland compositor, and typing continues through KWin's real input-method
+# protocol rather than a synthetic key injector.
+export QT_QUICK_BACKEND=software
+export QSG_RHI_BACKEND=software
+export LIBGL_ALWAYS_SOFTWARE=1
+
+case "${LUMA_KWIN_KEYBOARD_ENGINE:-}" in
+  plasma)
+    exec /usr/bin/plasma-keyboard
+    ;;
+  maliit)
+    exec /usr/bin/maliit-keyboard
+    ;;
+  lomiri)
+    # Ubuntu Touch's maintained keyboard is a plug-in loaded by the Maliit
+    # server, not the unrelated maliit-keyboard front end packaged by Fedora.
+    # Ubuntu's generic server.conf still names the historical `en_us` subview,
+    # while the current plug-in exports `en`. Keep the correction and feature
+    # choices inside the lab's throwaway home rather than altering the runtime.
+    mkdir -p "$HOME/.config/maliit.org"
+    printf '%s\n' \
+      '[maliit]' \
+      'onscreen\active=liblomiri-keyboard-plugin.so:en' \
+      'onscreen\enabled=liblomiri-keyboard-plugin.so:en, liblomiri-keyboard-plugin.so:emoji' \
+      'pluginsettings\liblomiri-keyboard-plugin.so\current_style=lomiri' \
+      'pluginsettings\liblomiri-keyboard-plugin.so\word_engine_enabled=true' \
+      >"$HOME/.config/maliit.org/server.conf"
+    export QML_BAD_GUI_RENDER_LOOP=1
+    export PULSE_PROP=media.role=feedbacksound
+    # The toolkit otherwise prefers Qt's ambient icon theme when one is set.
+    # Lomiri's own test harness pins Suru so its keyboard action icons resolve.
+    export UITK_ICON_THEME=suru
+    # Lomiri's own user unit starts Maliit only after the shell is ready because
+    # an early server can fail while publishing keyboard geometry. KWin starts
+    # its configured input method as part of compositor startup, so direct
+    # physical-compositor trials opt into a short, bounded ordering delay.
+    lomiri_delay=${LUMA_LOMIRI_KEYBOARD_START_DELAY:-0}
+    case "$lomiri_delay" in
+      0|1|2|3|4|5) ;;
+      *)
+        printf 'KWin keyboard lab: invalid Lomiri startup delay: %s\n' \
+          "$lomiri_delay" >&2
+        exit 2
+        ;;
+    esac
+    [ "$lomiri_delay" = 0 ] || sleep "$lomiri_delay"
+    set +e
+    /usr/bin/maliit-server
+    status=$?
+    set -e
+    printf 'KWin keyboard lab: Lomiri Maliit exited with status %s\n' \
+      "$status" >&2
+    # KWin 6 does not always tear down the compositor when its legacy
+    # input-method-v1 child dies. Fail closed so a crashed comparison cannot
+    # strand the phone in a compositor with no keyboard; the outer direct
+    # session then resumes Luma. Verify the parent identity before signaling.
+    parent_pid=$PPID
+    if [ -r "/proc/$parent_pid/comm" ] &&
+        [ "$(cat "/proc/$parent_pid/comm")" = kwin_wayland ]; then
+      kill -TERM "$parent_pid" 2>/dev/null || true
+    fi
+    exit "$status"
+    ;;
+  *)
+    printf 'KWin keyboard lab: unsupported engine: %s\n' \
+      "${LUMA_KWIN_KEYBOARD_ENGINE:-unset}" >&2
+    exit 2
+    ;;
+esac

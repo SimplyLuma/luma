@@ -1,0 +1,7 @@
+{
+  "uuid": "handheld@project-luma.local",
+  "name": "Luma Handheld",
+  "description": "Adaptive edge gestures and single-surface window posture for Luma handheld devices.",
+  "shell-version": ["50"],
+  "version": 2
+}

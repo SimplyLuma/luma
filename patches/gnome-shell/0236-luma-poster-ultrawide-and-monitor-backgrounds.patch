@@ -1,0 +1,221 @@
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -397,7 +397,7 @@
+             if (this._entry.reactive)
+                 this._activateNext(this._entry === this._passwordEntry);
+         });
+-        this._mainBox.add_child(this._submitButton);
++        this._inputRow.add_child(this._submitButton);
+ 
+         this._spinner = new Animation.Spinner(DEFAULT_BUTTON_WELL_ICON_SIZE);
+         this._spinner.opacity = 0;
+diff --git a/js/gdm/loginDialog.js b/js/gdm/loginDialog.js
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -844,7 +844,8 @@
+         const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
+         const inset = 20 * scale;
+         const cardWidth = Math.min(Math.max(0, width - 2 * inset),
+-            Math.min(480 * scale, Math.max(380 * scale, width * 0.334)));
++            Math.min(720 * scale, Math.max(480 * scale, width * 0.16)));
++        this._posterCard.configureSize(cardWidth, scale);
+         const card = new Clutter.ActorBox();
+         card.x1 = rtl ? inset : width - inset - cardWidth;
+         card.x2 = card.x1 + cardWidth;
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -165,7 +165,8 @@
+         const rtl = container.get_text_direction() === Clutter.TextDirection.RTL;
+         const inset = 20 * scaleFactor;
+         const cardWidth = Math.min(Math.max(0, width - 2 * inset),
+-            Math.min(480 * scaleFactor, Math.max(380 * scaleFactor, width * 0.334)));
++            Math.min(720 * scaleFactor, Math.max(480 * scaleFactor, width * 0.16)));
++        this._card.configureSize(cardWidth, scaleFactor);
+         this._clock.allocatePoster(width, height, cardWidth, scaleFactor, rtl);
+         actorBox.x1 = rtl ? inset : width - inset - cardWidth;
+         actorBox.x2 = actorBox.x1 + cardWidth;
+diff --git a/js/ui/prairieLogin.js b/js/ui/prairieLogin.js
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -360,6 +360,17 @@
+         });
+     }
+ 
++    configureSize(width, scale) {
++        const wide = width >= 600 * scale;
++        const compact = width < 420 * scale;
++        for (const [name, enabled] of [['wide', wide], ['compact', compact]]) {
++            if (enabled)
++                this.add_style_class_name(name);
++            else
++                this.remove_style_class_name(name);
++        }
++    }
++
+     addStatusControl(control) {
+         this._status.insert_child_below(control, this._powerButton);
+         const focusTarget = control._button ?? control;
+@@ -548,7 +559,16 @@
+                     x_align: Clutter.ActorAlign.FILL,
+                     y_align: Clutter.ActorAlign.FILL,
+                 });
+-                this._wallpaper.content.set({background: getLoginWallpaper()});
++                // On the lock screen, keep each display's actual desktop
++                // background. A new shared Meta.Background replaces every
++                // monitor with the same picture and can show the wrong crop.
++                const desktopBackground = !Main.sessionMode.isGreeter
++                    ? Main.layoutManager._bgManagers?.[monitorIndex]
++                        ?.backgroundActor?.content?.background
++                    : null;
++                this._wallpaper.content.set({
++                    background: desktopBackground ?? getLoginWallpaper(),
++                });
+             } catch (error) {
+                 // The login screen must always draw; the stylesheet picture
+                 // is a correct, if less exact, wallpaper.
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -719,3 +719,32 @@
+ .poster-away-title { font-family: "Figtree"; font-size: 13px; font-weight: 650; color: #eceeed; }
+ .poster-away-summary { font-family: "Figtree"; font-size: 12px; color: rgba(236, 238, 237, 0.64); }
+ .poster-away-time { font-family: "Figtree"; font-size: 11.5px; color: rgba(236, 238, 237, 0.42); font-feature-settings: "tnum"; }
++
++/* Poster scales the controls to the actual display, and the panel colour
++ * fills its actor even when the older SVG cannot scale to an ultrawide. */
++.poster-card { background-image: none; background-color: rgba(28, 31, 39, 0.86); }
++.prairie-login-input-row { spacing: 12px; }
++.login-dialog-prompt-layout.prairie-auth-card,
++.login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
++.prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
++.prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
++.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row .a11y-button,
++.poster-card.wide .poster-status-row .login-dialog-session-list-button,
++.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .poster-greeting { font-size: 34px; }
++.poster-card.wide .poster-avatar { icon-size: 96px; }
++.poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
++.poster-card.wide .prairie-auth-card,
++.poster-card.wide .prairie-login-input-well { width: 560px; }
++.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
++.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
++.poster-card.wide .prairie-login-input-row { spacing: 16px; }
++.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.compact { padding: 18px 16px; }
++.poster-card.compact .prairie-auth-card,
++.poster-card.compact .prairie-login-input-well { width: 276px; }
++.poster-card.compact .prairie-password-field { width: 220px; }
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -5663,3 +5663,32 @@
+   font-size: 11.5px;
+   color: rgba(236, 238, 237, 0.42);
+   font-feature-settings: "tnum"; }
++
++/* Poster scales the controls to the actual display, and the panel colour
++ * fills its actor even when the older SVG cannot scale to an ultrawide. */
++.poster-card { background-image: none; background-color: rgba(28, 31, 39, 0.86); }
++.prairie-login-input-row { spacing: 12px; }
++.login-dialog-prompt-layout.prairie-auth-card,
++.login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
++.prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
++.prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
++.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row .a11y-button,
++.poster-card.wide .poster-status-row .login-dialog-session-list-button,
++.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .poster-greeting { font-size: 34px; }
++.poster-card.wide .poster-avatar { icon-size: 96px; }
++.poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
++.poster-card.wide .prairie-auth-card,
++.poster-card.wide .prairie-login-input-well { width: 560px; }
++.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
++.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
++.poster-card.wide .prairie-login-input-row { spacing: 16px; }
++.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.compact { padding: 18px 16px; }
++.poster-card.compact .prairie-auth-card,
++.poster-card.compact .prairie-login-input-well { width: 276px; }
++.poster-card.compact .prairie-password-field { width: 220px; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -5887,3 +5887,32 @@
+   font-size: 11.5px;
+   color: rgba(236, 238, 237, 0.42);
+   font-feature-settings: "tnum"; }
++
++/* Poster scales the controls to the actual display, and the panel colour
++ * fills its actor even when the older SVG cannot scale to an ultrawide. */
++.poster-card { background-image: none; background-color: rgba(28, 31, 39, 0.86); }
++.prairie-login-input-row { spacing: 12px; }
++.login-dialog-prompt-layout.prairie-auth-card,
++.login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
++.prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
++.prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
++.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row .a11y-button,
++.poster-card.wide .poster-status-row .login-dialog-session-list-button,
++.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .poster-greeting { font-size: 34px; }
++.poster-card.wide .poster-avatar { icon-size: 96px; }
++.poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
++.poster-card.wide .prairie-auth-card,
++.poster-card.wide .prairie-login-input-well { width: 560px; }
++.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
++.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
++.poster-card.wide .prairie-login-input-row { spacing: 16px; }
++.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.compact { padding: 18px 16px; }
++.poster-card.compact .prairie-auth-card,
++.poster-card.compact .prairie-login-input-well { width: 276px; }
++.poster-card.compact .prairie-password-field { width: 220px; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -5837,3 +5837,32 @@
+   font-size: 11.5px;
+   color: rgba(236, 238, 237, 0.42);
+   font-feature-settings: "tnum"; }
++
++/* Poster scales the controls to the actual display, and the panel colour
++ * fills its actor even when the older SVG cannot scale to an ultrawide. */
++.poster-card { background-image: none; background-color: rgba(28, 31, 39, 0.86); }
++.prairie-login-input-row { spacing: 12px; }
++.login-dialog-prompt-layout.prairie-auth-card,
++.login-dialog-prompt-layout.prairie-login-input-well { width: 376px; }
++.prairie-login-submit-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 11px; }
++.prairie-login-submit-button .prairie-login-submit-icon { icon-size: 18px; }
++.poster-card.wide .poster-status-row { spacing: 18px; }
++.poster-card.wide .poster-status-row .a11y-button,
++.poster-card.wide .poster-status-row .login-dialog-session-list-button,
++.poster-card.wide .prairie-login-power-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 12px; }
++.poster-card.wide .prairie-login-power-icon { icon-size: 21px; }
++.poster-card.wide .poster-wifi-icon { icon-size: 21px; }
++.poster-card.wide .poster-greeting { font-size: 34px; }
++.poster-card.wide .poster-avatar { icon-size: 96px; }
++.poster-card.wide .poster-avatar .prairie-login-avatar-initial { font-size: 38px; }
++.poster-card.wide .prairie-auth-card,
++.poster-card.wide .prairie-login-input-well { width: 560px; }
++.poster-card.wide .prairie-password-field { width: 488px; height: 56px; border-radius: 14px; }
++.poster-card.wide .prairie-login-entry { min-height: 44px; font-size: 18px; }
++.poster-card.wide .prairie-login-input-row { spacing: 16px; }
++.poster-card.wide .prairie-login-submit-button { width: 56px; height: 56px; min-width: 56px; min-height: 56px; border-radius: 13px; }
++.poster-card.wide .prairie-login-submit-icon { icon-size: 22px; }
++.poster-card.compact { padding: 18px 16px; }
++.poster-card.compact .prairie-auth-card,
++.poster-card.compact .prairie-login-input-well { width: 276px; }
++.poster-card.compact .prairie-password-field { width: 220px; }

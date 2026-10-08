@@ -1,0 +1,212 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] about: name Luma, drop GNOME's donation row and GNOME rows
+
+Settings › About showed a "Support GNOME" donation row, and System Details
+listed "GNOME Version" and "Windowing System". Luma presents itself as one
+system (ADR-040): the donation row and both rows are removed, from the page
+and from the copied details report.
+
+The operating system name is os-release's PRETTY_NAME, exactly as the image
+renders it: "Luma (Prairie, Beta 0, Nightly 20260916)", "Luma (Prairie,
+Beta 1)", "Luma (Version 1, Prairie)". Nothing is appended or re-derived, in
+About's OS row, System Details › OS Name or the copied report. The build is
+the separate OS Build row: os-release IMAGE_VERSION, else BUILD_ID; the row
+and its report line are left out when neither is set (upstream printed
+"(null)" in the report).
+
+The logo is os-release's LOGO icon (luma-logo, from luma-logos: About asks
+for luma-logo-text-dark / luma-logo-text in dark and light, at 192 px); the
+spec no longer builds in Fedora's distributor logo.
+
+---
+diff --git a/panels/system/about/cc-about-page.blp b/panels/system/about/cc-about-page.blp
+index 1f2800b..f0e6ac5 100644
+--- a/panels/system/about/cc-about-page.blp
++++ b/panels/system/about/cc-about-page.blp
+@@ -24,25 +24,6 @@ template $CcAboutPage: Adw.NavigationPage {
+         }
+       }
+ 
+-      Adw.PreferencesGroup {
+-        Adw.ActionRow {
+-          title: _("Support GNOME");
+-          subtitle: _("GNOME needs your help. Please donate today.");
+-
+-          [suffix]
+-          Button {
+-            label: _("D_onate");
+-            use-underline: true;
+-            valign: center;
+-            styles [
+-              "suggested-action",
+-            ]
+-
+-            clicked => $on_donate_button_clicked_cb(template);
+-          }
+-        }
+-      }
+-
+       Adw.PreferencesGroup {
+         $CcHostnameEntry hostname_row {
+           title: _("_Device Name");
+diff --git a/panels/system/about/cc-about-page.c b/panels/system/about/cc-about-page.c
+index ebd8fd3..7170eae 100644
+--- a/panels/system/about/cc-about-page.c
++++ b/panels/system/about/cc-about-page.c
+@@ -153,12 +153,6 @@ setup_os_logo (CcAboutPage *self)
+ #endif
+ }
+ 
+-static void
+-on_donate_button_clicked_cb (CcAboutPage *self)
+-{
+-  g_app_info_launch_default_for_uri ("https://donate.gnome.org/", NULL, NULL);
+-}
+-
+ static void
+ cc_about_page_dispose (GObject *object)
+ {
+@@ -193,7 +187,6 @@ cc_about_page_class_init (CcAboutPageClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcAboutPage, processor_row);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, cc_about_page_open_system_details);
+-  gtk_widget_class_bind_template_callback (widget_class, on_donate_button_clicked_cb);
+ }
+ 
+ static void
+diff --git a/panels/system/about/cc-system-details-window.blp b/panels/system/about/cc-system-details-window.blp
+index 3e9f263..9b62c36 100644
+--- a/panels/system/about/cc-system-details-window.blp
++++ b/panels/system/about/cc-system-details-window.blp
+@@ -125,14 +125,6 @@ template $CcSystemDetailsWindow: Adw.Dialog {
+               label: _("OS Type");
+             }
+ 
+-            $CcInfoEntry gnome_version_row {
+-              label: _("GNOME Version");
+-            }
+-
+-            $CcInfoEntry windowing_system_row {
+-              label: _("Windowing System");
+-            }
+-
+             $CcInfoEntry virtualization_row {
+               label: _("Virtualization");
+             }
+diff --git a/panels/system/about/cc-system-details-window.c b/panels/system/about/cc-system-details-window.c
+index 58e8846..c651e3e 100644
+--- a/panels/system/about/cc-system-details-window.c
++++ b/panels/system/about/cc-system-details-window.c
+@@ -67,8 +67,6 @@ struct _CcSystemDetailsWindow
+   CcInfoEntry       *os_name_row;
+   CcInfoEntry       *os_build_row;
+   CcInfoEntry       *os_type_row;
+-  CcInfoEntry       *gnome_version_row;
+-  CcInfoEntry       *windowing_system_row;
+   CcInfoEntry       *virtualization_row;
+   CcInfoEntry       *kernel_row;
+ };
+@@ -349,6 +347,17 @@ get_os_image_version (void)
+ 
+   image_version = g_get_os_info ("IMAGE_VERSION");
+ 
++  /* Luma (ADR-040): os-release PRETTY_NAME is the whole release name, so the
++   * build stays in this row; IMAGE_VERSION and BUILD_ID carry the same id. */
++  if (image_version == NULL || *image_version == '\0')
++    {
++      g_free (image_version);
++      image_version = g_get_os_info ("BUILD_ID");
++    }
++
++  if (image_version != NULL && *image_version == '\0')
++    g_clear_pointer (&image_version, g_free);
++
+   return image_version;
+ }
+ 
+@@ -635,19 +644,6 @@ system_details_window_setup_virt (CcSystemDetailsWindow *self)
+   set_virtualization_label (self, g_variant_get_string (inner, NULL));
+ }
+ 
+-static const char *
+-get_windowing_system (void)
+-{
+-  GdkDisplay *display;
+-
+-  display = gdk_display_get_default ();
+-
+-  if (GDK_IS_WAYLAND_DISPLAY (display))
+-    return _("Wayland");
+-
+-  return C_("Windowing system (Wayland, or Unknown)", "Unknown");
+-}
+-
+ guint64
+ get_ram_size_libgtop (void)
+ {
+@@ -715,7 +711,6 @@ on_copy_button_clicked_cb (GtkWidget              *widget,
+   g_autofree char *os_build_text = NULL;
+   g_autofree char *hardware_model_text = NULL;
+   g_autofree char *firmware_version_text = NULL;
+-  g_autofree char *windowing_system_text = NULL;
+   g_autofree char *kernel_version_text = NULL;
+   g_autoslist(GpuData) graphics_hardware_list = NULL;
+   GSList *l;
+@@ -798,24 +793,19 @@ on_copy_button_clicked_cb (GtkWidget              *widget,
+   os_name_text = get_os_name ();
+   g_string_append_printf (result_str, "%s\n", os_name_text);
+ 
+-  g_string_append (result_str, "- ");
+-  system_details_window_title_print_padding ("**OS Build:**", result_str, 0);
+   os_build_text = get_os_image_version ();
+-  g_string_append_printf (result_str, "%s\n", os_build_text);
++  if (os_build_text != NULL)
++    {
++      g_string_append (result_str, "- ");
++      system_details_window_title_print_padding ("**OS Build:**", result_str, 0);
++      g_string_append_printf (result_str, "%s\n", os_build_text);
++    }
+ 
+   g_string_append (result_str, "- ");
+   system_details_window_title_print_padding ("**OS Type:**", result_str, 0);
+   os_type_text = get_os_type ();
+   g_string_append_printf (result_str, "%s\n", os_type_text);
+ 
+-  g_string_append (result_str, "- ");
+-  system_details_window_title_print_padding ("**GNOME Version:**", result_str, 0);
+-  g_string_append_printf (result_str, "%s\n", MAJOR_VERSION);
+-
+-  g_string_append (result_str, "- ");
+-  system_details_window_title_print_padding (_("**Windowing System:**"), result_str, 0);
+-  g_string_append_printf (result_str, "%s\n", get_windowing_system ());
+-
+   g_string_append (result_str, "- ");
+   system_details_window_title_print_padding ("**Kernel Version:**", result_str, 0);
+   kernel_version_text = get_kernel_version_string ();
+@@ -882,10 +872,6 @@ system_details_window_setup_overview (CcSystemDetailsWindow *self)
+   os_type_text = get_os_type ();
+   cc_info_entry_set_value (self->os_type_row, os_type_text);
+ 
+-  cc_info_entry_set_value (self->gnome_version_row, MAJOR_VERSION);
+-
+-  cc_info_entry_set_value (self->windowing_system_row, get_windowing_system ());
+-
+   kernel_version_text = get_kernel_version_string ();
+   cc_info_entry_set_value (self->kernel_row, kernel_version_text);
+   gtk_widget_set_visible (GTK_WIDGET (self->kernel_row), kernel_version_text != NULL);
+@@ -911,7 +897,6 @@ cc_system_details_window_class_init (CcSystemDetailsWindowClass *klass)
+ 
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, toast_overlay);
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, disk_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, gnome_version_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, graphics_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, hardware_model_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, firmware_version_row);
+@@ -922,7 +907,6 @@ cc_system_details_window_class_init (CcSystemDetailsWindowClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, os_type_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, processor_row);
+   gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, virtualization_row);
+-  gtk_widget_class_bind_template_child (widget_class, CcSystemDetailsWindow, windowing_system_row);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_copy_button_clicked_cb);
+ 

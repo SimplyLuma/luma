@@ -1,0 +1,75 @@
+--- Drag a folder from Filer onto the Dock.
+Subject: [PATCH] luma: drag a folder onto the Dock to pin it
+
+Filer's Shell file-drag bridge (0037) refuses anything that is not a regular
+file, because it was built for dropping a file on an app's Dock tile to open
+it. A folder therefore never started a drag at all, which is why dragging
+one onto the Dock did nothing rather than doing something wrong.
+
+A drag is now all regular files or all folders, and never a mixture: the
+kind is decided by the first item and held to by the rest. A mixed selection
+starts no Shell drag, because the drop would have to guess what was meant.
+The Shell refuses the same mixture at its end.
+
+This also carries a comment that belongs in 0049 and cannot go there,
+because 0049 has already shipped in 1.luma.57 and its source has to keep
+reproducing that package. The comment says why the schema is looked up
+before GSettings is constructed: not as a redundant lookup, but because
+g_settings_new on an uninstalled schema aborts the process, so removing it
+would turn "no Luma Shell" into "Filer crashes on right-click".
+---
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -6953,8 +6953,11 @@
+         GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+         g_autoptr (GSettingsSchema) schema = NULL;
+ 
+-        /* Constructing GSettings for a schema that is not installed aborts
+-         * the process, so the schema is looked up before anything else. */
++        /* Look the schema up before constructing GSettings, and do not
++         * "simplify" this away: g_settings_new on a schema that is not
++         * installed aborts the process. Without the lookup a machine with no
++         * Luma Shell does not lose a menu item, it loses Filer -- a crash on
++         * right-clicking a folder. */
+         if (source != NULL)
+         {
+             schema = g_settings_schema_source_lookup (source, LUMA_SHELL_STATE_SCHEMA, TRUE);
+--- a/src/nautilus-list-base.c
++++ b/src/nautilus-list-base.c
+@@ -287,12 +287,17 @@
+     g_autoptr (GVariant) reply = NULL;
+     GVariantBuilder builder;
+     const char *token;
++    gboolean all_directories;
+ 
+     if (files == NULL || g_list_length (files) > 64)
+     {
+         return NULL;
+     }
+     g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(ss)"));
++    /* Which kind this is, decided by the first item and held to by the
++     * rest. */
++    all_directories = nautilus_file_get_file_type (NAUTILUS_FILE (files->data)) ==
++                      G_FILE_TYPE_DIRECTORY;
+     for (GList *item = files; item != NULL; item = item->next)
+     {
+         NautilusFile *file = item->data;
+@@ -300,8 +305,17 @@
+         g_autofree char *uri = g_file_get_uri (location);
+         const char *mime = nautilus_file_get_mime_type (file);
+ 
++        gboolean is_directory = nautilus_file_get_file_type (file) == G_FILE_TYPE_DIRECTORY;
++        gboolean is_regular = nautilus_file_get_file_type (file) == G_FILE_TYPE_REGULAR;
++
++        /* Two kinds of drag, and never a mixture. All regular files is the
++         * original one: drop them on an app's Dock tile to open them. All
++         * folders is the other: drop them on the Dock to pin them. A
++         * selection holding both is neither, and does not start a Shell drag
++         * at all -- the Shell would have to guess what the person meant. */
+         if (!g_file_is_native (location) ||
+-            nautilus_file_get_file_type (file) != G_FILE_TYPE_REGULAR ||
++            (!is_regular && !is_directory) ||
++            (is_directory != all_directories) ||
+             mime == NULL || strlen (uri) > 8192 || strlen (mime) > 256)
+         {
+             g_variant_builder_clear (&builder);

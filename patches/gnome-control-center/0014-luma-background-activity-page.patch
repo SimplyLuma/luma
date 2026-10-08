@@ -1,0 +1,871 @@
+From: Project Luma
+Subject: [PATCH] applications: add the Background Activity page (Luma ADR-033)
+
+Settings › Apps gains a Background Activity row under Default Apps. Its page
+lists every app with a background agent, as luma-background reports it over
+org.projectluma.Background1: the app's switch; whether it is Always On,
+running, waiting, paused for Power Saver or stopped after crashes; its memory;
+and, expanded, what the agent is for, when it starts, when it last ran, its
+memory against its limit, its processor use, and Stop Now. Turning off an app
+people rely on asks first and says what they will miss ("You won't get
+messages or calls while Messages is closed"), and the row keeps saying so
+while it is off. "Show Only Running" filters the list. Resource use is read
+only while the page is shown.
+
+The page changes nothing itself: every switch and Stop Now is a request to
+the service, and the rows are redrawn from its answer and its AgentChanged
+signal. Without the service the page says background activity is unavailable.
+
+The existing per-app "Run in Background" switch for sandboxed apps keeps
+writing the portal permission store, which luma-background follows.
+
+SPDX-License-Identifier: GPL-2.0-or-later
+---
+diff --git a/panels/applications/cc-applications-panel.blp b/panels/applications/cc-applications-panel.blp
+index e000d1e..c728968 100644
+--- a/panels/applications/cc-applications-panel.blp
++++ b/panels/applications/cc-applications-panel.blp
+@@ -42,6 +42,14 @@ template $CcApplicationsPanel: $CcPanel {
+                 action-name: "navigation.push";
+                 action-target: "'default-apps'";
+               }
++
++              $CcListRow background_activity_row {
++                title: _("_Background Activity");
++                subtitle: _("Apps that keep working when their windows are closed");
++                show-arrow: true;
++                action-name: "navigation.push";
++                action-target: "'background-activity'";
++              }
+             }
+ 
+             Adw.PreferencesGroup {
+@@ -129,6 +137,19 @@ template $CcApplicationsPanel: $CcPanel {
+     };
+   }
+ 
++  [subpage]
++  Adw.NavigationPage {
++    title: _("Background Activity");
++    tag: "background-activity";
++
++    child: Adw.ToolbarView {
++      [top]
++      Adw.HeaderBar {}
++
++      content: $CcBackgroundActivityPage {};
++    };
++  }
++
+   [subpage]
+   Adw.NavigationPage app_settings_page {
+     title: _("App Settings");
+diff --git a/panels/applications/cc-applications-panel.c b/panels/applications/cc-applications-panel.c
+index a2012de..a661c43 100644
+--- a/panels/applications/cc-applications-panel.c
++++ b/panels/applications/cc-applications-panel.c
+@@ -37,6 +37,7 @@
+ #include "cc-removable-media-settings.h"
+ #include "cc-applications-resources.h"
+ #include "cc-applications-row.h"
++#include "cc-background-activity-page.h"
+ #include "cc-default-apps-page.h"
+ #include "cc-removable-media-settings.h"
+ #ifdef HAVE_SNAP
+@@ -1914,6 +1915,7 @@ cc_applications_panel_class_init (CcApplicationsPanelClass *klass)
+   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+ 
++  g_type_ensure (CC_TYPE_BACKGROUND_ACTIVITY_PAGE);
+   g_type_ensure (CC_TYPE_DEFAULT_APPS_PAGE);
+   g_type_ensure (CC_TYPE_LIST_ROW);
+   g_type_ensure (CC_TYPE_LIST_ROW_INFO_BUTTON);
+diff --git a/panels/applications/cc-background-activity-page.c b/panels/applications/cc-background-activity-page.c
+new file mode 100644
+index 0000000..85d7643
+--- /dev/null
++++ b/panels/applications/cc-background-activity-page.c
+@@ -0,0 +1,723 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
++ *
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++/*
++ * Settings › Apps › Background Activity (Project Luma ADR-033).
++ *
++ * Every app with a background agent: its switch, what it is for, whether it
++ * is running, when it last ran and what it is using, and a way to stop it.
++ * The state belongs to luma-background (org.projectluma.Background1); this
++ * page shows it and asks for changes, and redraws from the service's answer.
++ */
++
++#define G_LOG_DOMAIN "cc-background-activity"
++
++#include <config.h>
++#include <glib/gi18n.h>
++#include <gio/gdesktopappinfo.h>
++
++#include "cc-background-activity-page.h"
++
++#define BACKGROUND_BUS_NAME "org.projectluma.Background1"
++#define BACKGROUND_OBJECT_PATH "/org/projectluma/Background1"
++#define BACKGROUND_INTERFACE "org.projectluma.Background1"
++#define REFRESH_SECONDS 3
++
++typedef struct
++{
++  CcBackgroundActivityPage *page;
++  char *app_id;
++  GVariant *agent;           /* a{sv}, the last description */
++  AdwExpanderRow *row;
++  GtkSwitch *toggle;
++  AdwActionRow *purpose_row;
++  AdwActionRow *last_run_row;
++  AdwActionRow *memory_row;
++  AdwActionRow *cpu_row;
++  AdwActionRow *wake_row;
++  AdwButtonRow *stop_row;
++  gboolean updating;
++} AgentRow;
++
++struct _CcBackgroundActivityPage
++{
++  AdwBin parent_instance;
++
++  GCancellable *cancellable;
++  GDBusConnection *connection;
++  guint agents_changed_id;
++  guint agent_changed_id;
++  guint name_watch_id;
++  guint refresh_id;
++  gboolean service_present;
++
++  AdwPreferencesGroup *intro_group;
++  AdwSwitchRow *running_only_row;
++  AdwPreferencesGroup *apps_group;
++  GHashTable *rows;          /* app id -> AgentRow */
++  GPtrArray *order;          /* AgentRow*, in the service's order */
++};
++
++G_DEFINE_TYPE (CcBackgroundActivityPage, cc_background_activity_page, ADW_TYPE_BIN)
++
++static void refresh (CcBackgroundActivityPage *self);
++
++/* -- Values ------------------------------------------------------------- */
++
++static const char *
++lookup_string (GVariant *agent, const char *key)
++{
++  const char *value = NULL;
++  if (agent == NULL || !g_variant_lookup (agent, key, "&s", &value))
++    return "";
++  return value;
++}
++
++static gboolean
++lookup_bool (GVariant *agent, const char *key)
++{
++  gboolean value = FALSE;
++  if (agent != NULL)
++    g_variant_lookup (agent, key, "b", &value);
++  return value;
++}
++
++static guint64
++lookup_uint64 (GVariant *agent, const char *key)
++{
++  guint64 value = 0;
++  if (agent != NULL)
++    g_variant_lookup (agent, key, "t", &value);
++  return value;
++}
++
++static char *
++describe_last_run (gint64 usec)
++{
++  g_autoptr(GDateTime) then = NULL;
++  g_autoptr(GDateTime) now = g_date_time_new_now_local ();
++  GTimeSpan elapsed;
++
++  if (usec <= 0)
++    return g_strdup (_("Not yet"));
++  then = g_date_time_new_from_unix_local_usec (usec);
++  if (then == NULL)
++    return g_strdup (_("Not yet"));
++  elapsed = g_date_time_difference (now, then);
++  if (elapsed < G_TIME_SPAN_MINUTE)
++    return g_strdup (_("Just now"));
++  if (elapsed < G_TIME_SPAN_HOUR)
++    {
++      int minutes = (int) (elapsed / G_TIME_SPAN_MINUTE);
++      return g_strdup_printf (ngettext ("%d minute ago", "%d minutes ago", minutes), minutes);
++    }
++  if (g_date_time_get_day_of_year (now) == g_date_time_get_day_of_year (then) &&
++      g_date_time_get_year (now) == g_date_time_get_year (then))
++    {
++      g_autofree char *time = g_date_time_format (then, "%X");
++      /* Translators: %s is a time of day */
++      return g_strdup_printf (_("Today at %s"), time);
++    }
++  if (elapsed < 2 * G_TIME_SPAN_DAY)
++    return g_strdup (_("Yesterday"));
++  return g_date_time_format (then, "%x");
++}
++
++static const char *
++state_label (const char *state)
++{
++  if (g_str_equal (state, "running"))
++    return _("Running");
++  if (g_str_equal (state, "idle"))
++    return _("Waiting");
++  if (g_str_equal (state, "paused"))
++    return _("Paused for Power Saver");
++  if (g_str_equal (state, "failed"))
++    return _("Stopped after repeated crashes");
++  return _("Off");
++}
++
++static char *
++describe_wakes (GVariant *agent)
++{
++  g_autoptr(GVariant) wakes = g_variant_lookup_value (agent, "wake", G_VARIANT_TYPE_STRING_ARRAY);
++  g_autoptr(GPtrArray) parts = g_ptr_array_new ();
++  const char **list = NULL;
++
++  if (wakes == NULL)
++    return g_strdup (_("When the app asks"));
++  list = g_variant_get_strv (wakes, NULL);
++  for (guint i = 0; list[i] != NULL; i++)
++    {
++      /* The first phrase starts the sentence, the rest continue it. */
++      gboolean first = parts->len == 0;
++      if (g_str_equal (list[i], "login"))
++        g_ptr_array_add (parts, (gpointer) (first ? _("At login") : _("at login")));
++      else if (g_str_equal (list[i], "network"))
++        g_ptr_array_add (parts, (gpointer) (first ? _("When online") : _("when online")));
++      else if (g_str_equal (list[i], "resume"))
++        g_ptr_array_add (parts, (gpointer) (first ? _("After sleep") : _("after sleep")));
++      else if (g_str_equal (list[i], "schedule"))
++        g_ptr_array_add (parts, (gpointer) (first ? _("On a schedule") : _("on a schedule")));
++    }
++  g_free (list);
++  if (parts->len == 0)
++    return g_strdup (_("When the app asks"));
++  g_ptr_array_add (parts, NULL);
++  /* Translators: the separator between the moments an app starts */
++  return g_strjoinv (_(", "), (char **) parts->pdata);
++}
++
++/* -- Service calls ------------------------------------------------------- */
++
++static void
++set_allowed_done (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  CcBackgroundActivityPage *self = user_data;
++
++  if (reply == NULL && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    g_warning ("Could not change background activity: %s", error->message);
++  /* Whatever happened, the service's state is the truth. */
++  if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    refresh (self);
++}
++
++static void
++call_set_allowed (CcBackgroundActivityPage *self, const char *app_id, gboolean allowed)
++{
++  if (self->connection == NULL)
++    return;
++  g_dbus_connection_call (self->connection, BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH,
++                          BACKGROUND_INTERFACE, "SetAllowed",
++                          g_variant_new ("(sb)", app_id, allowed), NULL,
++                          G_DBUS_CALL_FLAGS_NONE, 30000, self->cancellable,
++                          set_allowed_done, self);
++}
++
++static void
++stop_now_activated (AdwButtonRow *button, AgentRow *agent_row)
++{
++  CcBackgroundActivityPage *self = agent_row->page;
++  if (self->connection == NULL)
++    return;
++  gtk_widget_set_sensitive (GTK_WIDGET (button), FALSE);
++  g_dbus_connection_call (self->connection, BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH,
++                          BACKGROUND_INTERFACE, "StopNow",
++                          g_variant_new ("(s)", agent_row->app_id), NULL,
++                          G_DBUS_CALL_FLAGS_NONE, 30000, self->cancellable,
++                          set_allowed_done, self);
++}
++
++/* -- Rows ------------------------------------------------------------------ */
++
++typedef struct
++{
++  CcBackgroundActivityPage *page;
++  char *app_id;
++} TurnOffRequest;
++
++static void
++turn_off_response (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  TurnOffRequest *request = user_data;
++  const char *response = adw_alert_dialog_choose_finish (ADW_ALERT_DIALOG (source), result);
++
++  if (g_str_equal (response, "turn-off"))
++    call_set_allowed (request->page, request->app_id, FALSE);
++  else
++    refresh (request->page);
++  g_object_unref (request->page);
++  g_free (request->app_id);
++  g_free (request);
++}
++
++static gboolean
++toggle_state_set (GtkSwitch *toggle, gboolean state, AgentRow *agent_row)
++{
++  CcBackgroundActivityPage *self = agent_row->page;
++
++  if (agent_row->updating)
++    return FALSE;
++
++  if (!state && lookup_bool (agent_row->agent, "essential") && lookup_bool (agent_row->agent, "allowed"))
++    {
++      /* An app people rely on: say what they will miss before it happens. */
++      g_autofree char *heading = g_strdup_printf (_("Turn Off Background Activity for %s?"),
++                                                  lookup_string (agent_row->agent, "name"));
++      g_autofree char *body = g_strdup_printf ("%s.", lookup_string (agent_row->agent, "consequence"));
++      AdwDialog *dialog = adw_alert_dialog_new (heading, body);
++      TurnOffRequest *request = g_new0 (TurnOffRequest, 1);
++
++      adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog),
++                                      "cancel", _("_Cancel"),
++                                      "turn-off", _("_Turn Off"),
++                                      NULL);
++      adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "turn-off",
++                                                ADW_RESPONSE_DESTRUCTIVE);
++      adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "cancel");
++      adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
++      request->page = g_object_ref (self);
++      request->app_id = g_strdup (agent_row->app_id);
++      adw_alert_dialog_choose (ADW_ALERT_DIALOG (dialog), GTK_WIDGET (self), NULL,
++                               turn_off_response, request);
++      return TRUE;
++    }
++
++  call_set_allowed (self, agent_row->app_id, state);
++  return TRUE;
++}
++
++static void
++agent_row_free (gpointer data)
++{
++  AgentRow *agent_row = data;
++  g_clear_pointer (&agent_row->agent, g_variant_unref);
++  g_free (agent_row->app_id);
++  g_free (agent_row);
++}
++
++static AdwActionRow *
++add_property_row (AdwExpanderRow *row, const char *title)
++{
++  AdwActionRow *property = ADW_ACTION_ROW (adw_action_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (property), title);
++  gtk_widget_add_css_class (GTK_WIDGET (property), "property");
++  adw_action_row_set_subtitle_selectable (property, TRUE);
++  adw_expander_row_add_row (row, GTK_WIDGET (property));
++  return property;
++}
++
++static AgentRow *
++agent_row_new (CcBackgroundActivityPage *self, const char *app_id)
++{
++  AgentRow *agent_row = g_new0 (AgentRow, 1);
++  g_autofree char *desktop_id = g_strconcat (app_id, ".desktop", NULL);
++  g_autoptr(GDesktopAppInfo) info = g_desktop_app_info_new (desktop_id);
++  GtkWidget *icon;
++
++  agent_row->page = self;
++  agent_row->app_id = g_strdup (app_id);
++  agent_row->row = ADW_EXPANDER_ROW (adw_expander_row_new ());
++
++  if (info != NULL && g_app_info_get_icon (G_APP_INFO (info)) != NULL)
++    icon = gtk_image_new_from_gicon (g_app_info_get_icon (G_APP_INFO (info)));
++  else
++    icon = gtk_image_new_from_icon_name ("application-x-executable");
++  gtk_image_set_icon_size (GTK_IMAGE (icon), GTK_ICON_SIZE_LARGE);
++  gtk_widget_add_css_class (icon, "lowres-icon");
++  adw_expander_row_add_prefix (agent_row->row, icon);
++
++  agent_row->toggle = GTK_SWITCH (gtk_switch_new ());
++  gtk_widget_set_valign (GTK_WIDGET (agent_row->toggle), GTK_ALIGN_CENTER);
++  g_signal_connect (agent_row->toggle, "state-set", G_CALLBACK (toggle_state_set), agent_row);
++  adw_expander_row_add_suffix (agent_row->row, GTK_WIDGET (agent_row->toggle));
++
++  agent_row->purpose_row = add_property_row (agent_row->row, _("Purpose"));
++  agent_row->wake_row = add_property_row (agent_row->row, _("Starts"));
++  agent_row->last_run_row = add_property_row (agent_row->row, _("Last Run"));
++  agent_row->memory_row = add_property_row (agent_row->row, _("Memory"));
++  agent_row->cpu_row = add_property_row (agent_row->row, _("Processor"));
++
++  agent_row->stop_row = ADW_BUTTON_ROW (adw_button_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (agent_row->stop_row), _("_Stop Now"));
++  adw_preferences_row_set_use_underline (ADW_PREFERENCES_ROW (agent_row->stop_row), TRUE);
++  adw_button_row_set_start_icon_name (agent_row->stop_row, "media-playback-stop-symbolic");
++  g_signal_connect (agent_row->stop_row, "activated", G_CALLBACK (stop_now_activated), agent_row);
++  adw_expander_row_add_row (agent_row->row, GTK_WIDGET (agent_row->stop_row));
++
++  return agent_row;
++}
++
++static void
++agent_row_update (AgentRow *agent_row, GVariant *agent)
++{
++  const char *state = lookup_string (agent, "state");
++  gboolean allowed = lookup_bool (agent, "allowed");
++  gboolean essential = lookup_bool (agent, "essential");
++  gboolean active = g_str_equal (state, "running") || g_str_equal (state, "paused");
++  guint64 memory = lookup_uint64 (agent, "memory");
++  guint64 memory_max = lookup_uint64 (agent, "memory-max");
++  double cpu = 0.0;
++  gint64 last_run = 0;
++  g_autoptr(GString) subtitle = g_string_new (NULL);
++  g_autofree char *last_run_text = NULL;
++  g_autofree char *wakes = NULL;
++  g_autofree char *accessible = NULL;
++
++  g_clear_pointer (&agent_row->agent, g_variant_unref);
++  agent_row->agent = g_variant_ref (agent);
++  g_variant_lookup (agent, "cpu-percent", "d", &cpu);
++  g_variant_lookup (agent, "last-run", "x", &last_run);
++
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (agent_row->row), lookup_string (agent, "name"));
++
++  if (!allowed && essential)
++    {
++      /* Off, for an app people rely on: the line says what they are missing. */
++      g_string_append (subtitle, lookup_string (agent, "consequence"));
++    }
++  else
++    {
++      if (essential)
++        g_string_append (subtitle, _("Always On"));
++      if (subtitle->len > 0)
++        g_string_append (subtitle, " · ");
++      g_string_append (subtitle, state_label (state));
++      if (active && memory > 0)
++        {
++          g_autofree char *size = g_format_size (memory);
++          g_string_append_printf (subtitle, " · %s", size);
++        }
++    }
++  adw_expander_row_set_subtitle (agent_row->row, subtitle->str);
++
++  agent_row->updating = TRUE;
++  gtk_switch_set_active (agent_row->toggle, allowed);
++  gtk_switch_set_state (agent_row->toggle, allowed);
++  agent_row->updating = FALSE;
++  accessible = g_strdup_printf (_("Run %s in the background"), lookup_string (agent, "name"));
++  gtk_accessible_update_property (GTK_ACCESSIBLE (agent_row->toggle),
++                                  GTK_ACCESSIBLE_PROPERTY_LABEL, accessible,
++                                  GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, lookup_string (agent, "explanation"),
++                                  -1);
++
++  adw_action_row_set_subtitle (agent_row->purpose_row, lookup_string (agent, "explanation"));
++  wakes = describe_wakes (agent);
++  adw_action_row_set_subtitle (agent_row->wake_row, wakes);
++  last_run_text = describe_last_run (last_run);
++  adw_action_row_set_subtitle (agent_row->last_run_row, last_run_text);
++
++  if (active)
++    {
++      g_autofree char *used = g_format_size (memory);
++      g_autofree char *limit = g_format_size (memory_max);
++      g_autofree char *memory_text = g_strdup_printf (_("%s of %s"), used, limit);
++      g_autofree char *cpu_text = g_strdup_printf ("%.1f%%", cpu);
++      adw_action_row_set_subtitle (agent_row->memory_row, memory_text);
++      adw_action_row_set_subtitle (agent_row->cpu_row, cpu_text);
++    }
++  else
++    {
++      adw_action_row_set_subtitle (agent_row->memory_row, _("Not running"));
++      adw_action_row_set_subtitle (agent_row->cpu_row, _("Not running"));
++    }
++  gtk_widget_set_visible (GTK_WIDGET (agent_row->memory_row), allowed);
++  gtk_widget_set_visible (GTK_WIDGET (agent_row->cpu_row), allowed);
++  gtk_widget_set_visible (GTK_WIDGET (agent_row->stop_row), active);
++  gtk_widget_set_sensitive (GTK_WIDGET (agent_row->stop_row), TRUE);
++}
++
++/* -- The list ---------------------------------------------------------------- */
++
++static void
++apply_filter (CcBackgroundActivityPage *self)
++{
++  gboolean running_only = adw_switch_row_get_active (self->running_only_row);
++  guint visible = 0;
++
++  for (guint i = 0; i < self->order->len; i++)
++    {
++      AgentRow *agent_row = g_ptr_array_index (self->order, i);
++      const char *state = lookup_string (agent_row->agent, "state");
++      gboolean show = !running_only || g_str_equal (state, "running") || g_str_equal (state, "paused");
++      gtk_widget_set_visible (GTK_WIDGET (agent_row->row), show);
++      visible += show;
++    }
++
++  if (!self->service_present)
++    adw_preferences_group_set_description (self->apps_group,
++                                           _("Background activity isn’t available right now."));
++  else if (self->order->len == 0)
++    adw_preferences_group_set_description (self->apps_group,
++                                           _("No apps use background activity."));
++  else if (visible == 0)
++    adw_preferences_group_set_description (self->apps_group,
++                                           _("No apps are running in the background."));
++  else
++    adw_preferences_group_set_description (self->apps_group, NULL);
++  gtk_widget_set_visible (GTK_WIDGET (self->running_only_row), self->order->len > 0);
++}
++
++static void
++apply_agents (CcBackgroundActivityPage *self, GVariant *agents)
++{
++  g_autoptr(GHashTable) seen = g_hash_table_new (g_str_hash, g_str_equal);
++  g_autoptr(GPtrArray) order = g_ptr_array_new ();
++  GVariantIter iter;
++  GVariant *agent;
++
++  g_variant_iter_init (&iter, agents);
++  while ((agent = g_variant_iter_next_value (&iter)) != NULL)
++    {
++      const char *app_id = lookup_string (agent, "app-id");
++      AgentRow *agent_row;
++
++      if (*app_id == '\0' || g_hash_table_contains (seen, app_id))
++        {
++          g_variant_unref (agent);
++          continue;
++        }
++      agent_row = g_hash_table_lookup (self->rows, app_id);
++      if (agent_row == NULL)
++        {
++          agent_row = agent_row_new (self, app_id);
++          g_hash_table_insert (self->rows, agent_row->app_id, agent_row);
++        }
++      agent_row_update (agent_row, agent);
++      g_hash_table_add (seen, agent_row->app_id);
++      g_ptr_array_add (order, agent_row);
++      g_variant_unref (agent);
++    }
++
++  /* Remove rows for apps that no longer have an agent. */
++  for (guint i = 0; i < self->order->len; i++)
++    {
++      AgentRow *agent_row = g_ptr_array_index (self->order, i);
++      if (!g_hash_table_contains (seen, agent_row->app_id))
++        {
++          adw_preferences_group_remove (self->apps_group, GTK_WIDGET (agent_row->row));
++          g_hash_table_remove (self->rows, agent_row->app_id);
++        }
++    }
++
++  /* Only when the list itself changed are rows placed again, in the
++   * service's order: a periodic refresh must not move focus or collapse a
++   * row someone has open. */
++  {
++    gboolean same = order->len == self->order->len;
++    for (guint i = 0; same && i < order->len; i++)
++      same = g_ptr_array_index (order, i) == g_ptr_array_index (self->order, i);
++    for (guint i = 0; !same && i < order->len; i++)
++      {
++        AgentRow *agent_row = g_ptr_array_index (order, i);
++        if (gtk_widget_get_parent (GTK_WIDGET (agent_row->row)) != NULL)
++          {
++            g_object_ref (agent_row->row);
++            adw_preferences_group_remove (self->apps_group, GTK_WIDGET (agent_row->row));
++            adw_preferences_group_add (self->apps_group, GTK_WIDGET (agent_row->row));
++            g_object_unref (agent_row->row);
++          }
++        else
++          adw_preferences_group_add (self->apps_group, GTK_WIDGET (agent_row->row));
++      }
++  }
++
++  g_ptr_array_set_size (self->order, 0);
++  for (guint i = 0; i < order->len; i++)
++    g_ptr_array_add (self->order, g_ptr_array_index (order, i));
++  apply_filter (self);
++}
++
++static void
++list_agents_done (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  CcBackgroundActivityPage *self;
++  g_autoptr(GVariant) agents = NULL;
++
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    return;
++  self = user_data;
++  if (reply == NULL)
++    {
++      self->service_present = FALSE;
++      agents = g_variant_ref_sink (g_variant_new_array (G_VARIANT_TYPE_VARDICT, NULL, 0));
++      apply_agents (self, agents);
++      return;
++    }
++  self->service_present = TRUE;
++  agents = g_variant_get_child_value (reply, 0);
++  apply_agents (self, agents);
++}
++
++static void
++refresh (CcBackgroundActivityPage *self)
++{
++  if (self->connection == NULL)
++    return;
++  g_dbus_connection_call (self->connection, BACKGROUND_BUS_NAME, BACKGROUND_OBJECT_PATH,
++                          BACKGROUND_INTERFACE, "ListAgents", NULL, G_VARIANT_TYPE ("(aa{sv})"),
++                          G_DBUS_CALL_FLAGS_NONE, 10000, self->cancellable,
++                          list_agents_done, self);
++}
++
++static gboolean
++refresh_tick (gpointer user_data)
++{
++  refresh (user_data);
++  return G_SOURCE_CONTINUE;
++}
++
++static void
++service_signal (GDBusConnection *connection, const char *sender, const char *path,
++                const char *interface, const char *signal, GVariant *parameters,
++                gpointer user_data)
++{
++  CcBackgroundActivityPage *self = user_data;
++
++  if (g_str_equal (signal, "AgentChanged"))
++    {
++      const char *app_id = NULL;
++      g_autoptr(GVariant) agent = NULL;
++      AgentRow *agent_row;
++
++      g_variant_get (parameters, "(&s@a{sv})", &app_id, &agent);
++      agent_row = g_hash_table_lookup (self->rows, app_id);
++      if (agent_row != NULL)
++        {
++          agent_row_update (agent_row, agent);
++          apply_filter (self);
++          return;
++        }
++    }
++  refresh (self);
++}
++
++static void
++name_appeared (GDBusConnection *connection, const char *name, const char *owner, gpointer user_data)
++{
++  refresh (user_data);
++}
++
++static void
++name_vanished (GDBusConnection *connection, const char *name, gpointer user_data)
++{
++  refresh (user_data);
++}
++
++static void
++bus_ready (GObject *source, GAsyncResult *result, gpointer user_data)
++{
++  g_autoptr(GError) error = NULL;
++  GDBusConnection *connection = g_bus_get_finish (result, &error);
++  CcBackgroundActivityPage *self;
++
++  if (connection == NULL)
++    {
++      if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++        g_warning ("No session bus: %s", error->message);
++      return;
++    }
++  self = user_data;
++  self->connection = connection;
++  self->agents_changed_id =
++    g_dbus_connection_signal_subscribe (connection, BACKGROUND_BUS_NAME, BACKGROUND_INTERFACE,
++                                        "AgentsChanged", BACKGROUND_OBJECT_PATH, NULL,
++                                        G_DBUS_SIGNAL_FLAGS_NONE, service_signal, self, NULL);
++  self->agent_changed_id =
++    g_dbus_connection_signal_subscribe (connection, BACKGROUND_BUS_NAME, BACKGROUND_INTERFACE,
++                                        "AgentChanged", BACKGROUND_OBJECT_PATH, NULL,
++                                        G_DBUS_SIGNAL_FLAGS_NONE, service_signal, self, NULL);
++  self->name_watch_id =
++    g_bus_watch_name_on_connection (connection, BACKGROUND_BUS_NAME, G_BUS_NAME_WATCHER_FLAGS_AUTO_START,
++                                    name_appeared, name_vanished, self, NULL);
++  refresh (self);
++}
++
++static void
++page_map (GtkWidget *widget)
++{
++  CcBackgroundActivityPage *self = CC_BACKGROUND_ACTIVITY_PAGE (widget);
++
++  GTK_WIDGET_CLASS (cc_background_activity_page_parent_class)->map (widget);
++  refresh (self);
++  /* Resource use is only read while someone is looking at it. */
++  if (self->refresh_id == 0)
++    self->refresh_id = g_timeout_add_seconds (REFRESH_SECONDS, refresh_tick, self);
++}
++
++static void
++page_unmap (GtkWidget *widget)
++{
++  CcBackgroundActivityPage *self = CC_BACKGROUND_ACTIVITY_PAGE (widget);
++
++  g_clear_handle_id (&self->refresh_id, g_source_remove);
++  GTK_WIDGET_CLASS (cc_background_activity_page_parent_class)->unmap (widget);
++}
++
++static void
++cc_background_activity_page_dispose (GObject *object)
++{
++  CcBackgroundActivityPage *self = CC_BACKGROUND_ACTIVITY_PAGE (object);
++
++  g_cancellable_cancel (self->cancellable);
++  g_clear_handle_id (&self->refresh_id, g_source_remove);
++  g_clear_handle_id (&self->name_watch_id, g_bus_unwatch_name);
++  if (self->connection != NULL)
++    {
++      if (self->agents_changed_id)
++        g_dbus_connection_signal_unsubscribe (self->connection, self->agents_changed_id);
++      if (self->agent_changed_id)
++        g_dbus_connection_signal_unsubscribe (self->connection, self->agent_changed_id);
++      self->agents_changed_id = self->agent_changed_id = 0;
++    }
++  g_clear_object (&self->connection);
++  g_clear_object (&self->cancellable);
++  g_clear_pointer (&self->order, g_ptr_array_unref);
++  g_clear_pointer (&self->rows, g_hash_table_unref);
++
++  G_OBJECT_CLASS (cc_background_activity_page_parent_class)->dispose (object);
++}
++
++static void
++cc_background_activity_page_class_init (CcBackgroundActivityPageClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
++
++  object_class->dispose = cc_background_activity_page_dispose;
++  widget_class->map = page_map;
++  widget_class->unmap = page_unmap;
++}
++
++static void
++cc_background_activity_page_init (CcBackgroundActivityPage *self)
++{
++  AdwPreferencesPage *page = ADW_PREFERENCES_PAGE (adw_preferences_page_new ());
++
++  self->cancellable = g_cancellable_new ();
++  self->rows = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, agent_row_free);
++  self->order = g_ptr_array_new ();
++
++  self->intro_group = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  adw_preferences_group_set_description (self->intro_group,
++    _("Apps with background activity keep working when their windows are closed, "
++      "so messages, reminders and alarms arrive on time. Background activity "
++      "uses little memory and pauses in Power Saver unless it delivers messages, "
++      "calls, reminders or alarms."));
++  self->running_only_row = ADW_SWITCH_ROW (adw_switch_row_new ());
++  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->running_only_row), _("Show Only _Running"));
++  adw_preferences_row_set_use_underline (ADW_PREFERENCES_ROW (self->running_only_row), TRUE);
++  gtk_widget_set_visible (GTK_WIDGET (self->running_only_row), FALSE);
++  g_signal_connect_swapped (self->running_only_row, "notify::active", G_CALLBACK (apply_filter), self);
++  adw_preferences_group_add (self->intro_group, GTK_WIDGET (self->running_only_row));
++  adw_preferences_page_add (page, self->intro_group);
++
++  self->apps_group = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
++  adw_preferences_group_set_title (self->apps_group, _("Apps"));
++  adw_preferences_page_add (page, self->apps_group);
++
++  adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (page));
++
++  g_bus_get (G_BUS_TYPE_SESSION, self->cancellable, bus_ready, self);
++}
+diff --git a/panels/applications/cc-background-activity-page.h b/panels/applications/cc-background-activity-page.h
+new file mode 100644
+index 0000000..97970a7
+--- /dev/null
++++ b/panels/applications/cc-background-activity-page.h
+@@ -0,0 +1,30 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
++ *
++ * Copyright (C) 2026 Project Luma contributors
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#pragma once
++
++#include <adwaita.h>
++
++G_BEGIN_DECLS
++
++#define CC_TYPE_BACKGROUND_ACTIVITY_PAGE (cc_background_activity_page_get_type ())
++G_DECLARE_FINAL_TYPE (CcBackgroundActivityPage, cc_background_activity_page, CC, BACKGROUND_ACTIVITY_PAGE, AdwBin)
++
++G_END_DECLS
+diff --git a/panels/applications/meson.build b/panels/applications/meson.build
+index 8fdffd3..346190d 100644
+--- a/panels/applications/meson.build
++++ b/panels/applications/meson.build
+@@ -30,6 +30,7 @@ blueprints = custom_target(
+ 
+ sources = files(
+   'cc-applications-panel.c',
++  'cc-background-activity-page.c',
+   'cc-applications-row.c',
+   'cc-application-shortcut-dialog.c',
+   'cc-default-apps-page.c',
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index 3ae9da6..58393ac 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -5,6 +5,7 @@ panels/applications/cc-application-shortcut-dialog.blp
+ panels/applications/cc-application-shortcut-dialog.c
+ panels/applications/cc-applications-panel.blp
+ panels/applications/cc-applications-panel.c
++panels/applications/cc-background-activity-page.c
+ panels/applications/cc-default-apps-page.blp
+ panels/applications/cc-default-apps-row.c
+ panels/applications/cc-removable-media-settings.c

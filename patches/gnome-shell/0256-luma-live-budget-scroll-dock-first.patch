@@ -1,0 +1,63 @@
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1246,7 +1246,13 @@
+             if (!island?.visible || seen.has(island))
+                 continue;
+             seen.add(island);
+-            total += island.get_preferred_width(-1)[1];
++            const natural = island.get_preferred_width(-1)[1];
++            // The native dock gives up length through its scrolling viewport
++            // in _syncGeometry. Budget its reachable one-tile minimum here,
++            // rather than hiding every activity to fit all favourite icons.
++            total += island === this._dockIsland
++                ? Math.min(natural, (DASH_TILE_SIZE + 2 * this._padding) * scale)
++                : natural;
+             count++;
+         }
+         total += Math.max(0, count - 1) * Arrangement.ISLAND_GAP * scale;
+@@ -3047,6 +3053,15 @@
+             ? measure(this._dockContent, this._vertical) : 0;
+         this._dockNatural = Arrangement.dockViewportBudget(contentNatural,
+             edgeLength('dock'), DASH_TILE_SIZE * scale);
++        // A narrowed budget is only valid for the measured dock/edge. Restore
++        // its candidates when those inputs change, never on the relayout that
++        // hiding a tile itself schedules (which would oscillate on tiny edges).
++        const liveFitSignature = JSON.stringify([contentNatural, edgeLength('live'),
++            scale, this._padding, this._resolved]);
++        if (liveFitSignature !== this._liveFitSignature) {
++            this._liveFitSignature = liveFitSignature;
++            this._syncLiveBudget(true);
++        }
+         this._setDockLength(this._dockNatural, this._dockNatural < contentNatural);
+ 
+         // Keep all status controls reachable on a short/narrow display. Both
+@@ -3092,6 +3107,29 @@
+             this._queueDockWidth();
+             return;
+         }
++        // Give a dock sharing this row the measured space its peers leave.
++        // Waiting for _syncGeometry to shorten it can read the previous
++        // preferred-size cache: the next dock measurement then restores the
++        // wider viewport and truncates the trailing status island instead.
++        const dockGroup = this._resolved?.find(p => p.islands.includes('dock'));
++        if (dockGroup && !this._vertical) {
++            let peers = 0, count = 0;
++            const seen = new Set();
++            for (const id of dockGroup.islands) {
++                const island = this.islandActorFor(id);
++                if (!island?.visible || seen.has(island))
++                    continue;
++                seen.add(island);
++                count++;
++                if (island !== this._dockIsland)
++                    peers += island.get_preferred_width(this._thickness * scale)[1];
++            }
++            const gaps = Math.max(0, count - 1) * Arrangement.ISLAND_GAP * scale;
++            const available = edgeLength('dock') - peers - gaps - 2 * this._padding * scale;
++            this._dockNatural = Math.min(this._dockNatural,
++                Math.max(DASH_TILE_SIZE * scale, available));
++            this._setDockLength(this._dockNatural, this._dockNatural < contentNatural);
++        }
+         this._syncGeometry();
+     }
+ });

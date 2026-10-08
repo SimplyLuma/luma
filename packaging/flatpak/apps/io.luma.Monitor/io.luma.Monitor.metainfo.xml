@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.luma.Monitor</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND MIT</project_license>
+  <name>Monitor</name>
+  <summary>View your system and application activity</summary>
+  <description>
+    <p>Monitor is a responsive Luma application for desktop and handheld computers.</p>
+  </description>
+  <launchable type="desktop-id">io.luma.Monitor.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <releases>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <caption>View live processor and application activity</caption>
+      <image type="source" width="1014" height="790">https://dl.simplyluma.com/media/io.luma.Monitor/0b9c9c9c6c7fbff3596edf45195a7f0d4e749053e878aa1f1eaddc3f2a8efaa0.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+</component>

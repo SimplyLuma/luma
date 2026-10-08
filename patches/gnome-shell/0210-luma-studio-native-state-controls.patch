@@ -1,0 +1,88 @@
+From: Luma Shell Notifications
+Subject: [PATCH] luma: Restore native page switch and measured notification controls
+
+Reuse the native Switch state and thumb while retaining provider routing,
+fill the notification collection column, round its app badge, and scope
+Studio control ink above inherited Quick Options rules.
+
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1364,7 +1364,8 @@
+         this._pageHeading = new St.Label({style_class: 'luma-options-page-title', x_expand: true,
+             y_align: Clutter.ActorAlign.CENTER}); header.add_child(this._pageHeading);
+         this._pageSwitch = new St.Button({style_class: 'luma-options-page-switch', can_focus: true,
+-            child: new St.Widget({style_class: 'toggle-switch'})});
++            accessible_role: Atk.Role.TOGGLE_BUTTON,
++            child: new PopupMenu.Switch(false)});
+         this._pageSwitch.connect('clicked', () => this._activeMenu?._studioRadio?.emit('clicked', 1));
+         this._pageSwitch.connect('notify::checked', () => {
+             if (this._pageSwitch.checked) this._pageSwitch.child.add_style_pseudo_class('checked');
+@@ -1372,6 +1373,7 @@
+             this._pageSwitch.child.state = this._pageSwitch.checked;
+         });
+         this._pageSwitch.child.reactive = false;
++        this._pageSwitch.child.accessible_role = Atk.Role.REDUNDANT_OBJECT;
+         header.add_child(this._pageSwitch); this._pageHost.add_child(header);
+         this._pageScroll = new St.ScrollView({style_class: 'luma-options-page-scroll',
+             x_expand: true, overlay_scrollbars: true,
+@@ -1415,6 +1417,7 @@
+             item._valueLabel.y_align = Clutter.ActorAlign.CENTER;
+             item._menuButton.add_style_class_name('luma-options-level-key');
+         }
++        volume.menu._studioTitle = _('Sound output');
+         volume._menuButton.child.child.icon_name = 'luma-headphones-symbolic';
+         const output = volume._control;
+         const syncOutput = () => {
+@@ -1535,6 +1538,7 @@
+             if (monitor) this._pageScroll.set_style(`max-height: ${Math.max(160, monitor.height / scale - 160)}px;`);
+             this._pageHeading.text = menu._studioTitle ?? item.title ?? menu._titleLabel.text;
+             const radio = menu._studioRadio;
++            this._pageSwitch.accessible_name = this._pageHeading.text;
+             this._pageSwitch.visible = !!radio;
+             this._pageSwitch.checked = radio?.checked ?? false;
+             this._pageRadioBinding?.unbind();
+--- a/js/ui/messageList.js
++++ b/js/ui/messageList.js
+@@ -738,11 +738,11 @@
+         this._header.sourceTitle.connectObject('notify::text', upper, this);
+         upper();
+ 
+-        for (const icon of [sourceIcon, this._tileImage]) {
++        for (const icon of [sourceIcon, this._tileImage, this._appBadge]) {
+             try {
+                 const mask = new LumaIconMask();
+                 mask.set_uniform_float(mask.get_uniform_location('radius'), 1,
+-                    [CARD_TILE_RADIUS / CARD_TILE_SIZE]);
++                    [icon === this._appBadge ? 0.5 : CARD_TILE_RADIUS / CARD_TILE_SIZE]);
+                 icon.add_effect_with_name('luma-tile-mask', mask);
+             } catch (error) {
+                 // Without a shader path the tile still clips its own fill.
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -460,7 +460,7 @@
+         this._fresh = false;
+         this._state = 'tray';
+         this._records = records();
+-        const column = new St.BoxLayout({style_class: 'luma-lip-tray', orientation: Clutter.Orientation.VERTICAL});
++        const column = new St.BoxLayout({style_class: 'luma-lip-tray', orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+         const header = new St.BoxLayout({style_class: 'luma-lip-tray-header'});
+         header.add_child(new St.Label({text: _('Notifications'), style_class: 'luma-lip-heading', y_align: Clutter.ActorAlign.CENTER}));
+         this._count = new St.Label({style_class: 'luma-lip-count', y_align: Clutter.ActorAlign.CENTER});
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2989,3 +2989,15 @@
+ .luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-header .message-source-title,
+ .luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-header .event-time,
+ .luma-notification-lip.luma-surface-light .luma-lip-count { color: rgba(22,25,29,.56); }
++
++/* Scoped Studio controls: resolve inherited main and detail presentation. */
++.popup-menu.luma-surface-light .popup-menu-content.quick-settings.luma-studio-options { background-color: #eceef1; color: #16191d; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-slider .slider { background-color: transparent; -barlevel-active-background-color: #2b3036; -barlevel-background-color: rgba(25,27,31,.055); }
++.quick-settings.luma-studio-options .luma-options-level-key:checked { color: #e7e9e8; background-color: #353a42; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-level-key:checked { color: #16191d; background-color: #fff; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-row:checked { background-color: transparent; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-row:checked { background-color: transparent; }
++.quick-settings.luma-studio-options .luma-options-detail .luma-sheet-link { color: #e7e9e8; }
++.quick-settings.luma-studio-options.luma-surface-light .luma-options-detail .luma-sheet-link { color: #16191d; }
++.luma-notification-lip .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry .hint-text { color: rgba(231,233,232,.42); }
++.luma-notification-lip.luma-surface-light .notification-banner.luma-lip-card .message-action-bin .luma-inline-reply-entry .hint-text { color: rgba(22,25,29,.56); }

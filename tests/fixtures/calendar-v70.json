@@ -1,0 +1,593 @@
+{
+  "base": "2026-09-21",
+  "today": "2026-09-23",
+  "view": "month",
+  "week_start": 0,
+  "calendars": {
+    "work": {
+      "name": "Work",
+      "hue": 250,
+      "tone": "blue"
+    },
+    "personal": {
+      "name": "Personal",
+      "hue": 150,
+      "tone": "green"
+    },
+    "family": {
+      "name": "Family",
+      "hue": 25,
+      "tone": "amber"
+    },
+    "hol": {
+      "name": "Holidays",
+      "hue": 60,
+      "tone": "amber",
+      "writable": false
+    }
+  },
+  "people": {
+    "me": {
+      "name": "You",
+      "handle": "nick"
+    },
+    "PR": {
+      "name": "Priya Raman",
+      "handle": "priya"
+    },
+    "NF": {
+      "name": "Nora Feld",
+      "handle": "nora"
+    },
+    "SK": {
+      "name": "Sam Kaur",
+      "handle": "samk"
+    },
+    "TH": {
+      "name": "Theo Marsh",
+      "handle": "theo"
+    },
+    "MO": {
+      "name": "Dad",
+      "phone": "+1 (510) 555-0142"
+    },
+    "AR": {
+      "name": "Alex Ruiz",
+      "handle": "alexr"
+    },
+    "CL": {
+      "name": "Lena Okafor",
+      "handle": "lena"
+    }
+  },
+  "events": [
+    {
+      "o": 0,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 1
+    },
+    {
+      "o": 1,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 2
+    },
+    {
+      "o": 2,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 3
+    },
+    {
+      "o": 3,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 4
+    },
+    {
+      "o": 4,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 5
+    },
+    {
+      "o": 7,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 6
+    },
+    {
+      "o": 8,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 7
+    },
+    {
+      "o": 9,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 8
+    },
+    {
+      "o": 10,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 9
+    },
+    {
+      "o": 11,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 10
+    },
+    {
+      "o": 14,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 11
+    },
+    {
+      "o": 15,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 12
+    },
+    {
+      "o": 16,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 13
+    },
+    {
+      "o": 17,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 14
+    },
+    {
+      "o": 18,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 15
+    },
+    {
+      "o": 21,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 16
+    },
+    {
+      "o": 22,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 17
+    },
+    {
+      "o": 23,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 18
+    },
+    {
+      "o": 24,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 19
+    },
+    {
+      "o": 25,
+      "s": 570,
+      "e": 585,
+      "t": "Standup",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "Luma Hub",
+      "id": 20
+    },
+    {
+      "o": 0,
+      "s": 660,
+      "e": 720,
+      "t": "Design review",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF"
+      ],
+      "id": 21
+    },
+    {
+      "o": 0,
+      "s": 1110,
+      "e": 1200,
+      "t": "Dinner with Nora",
+      "cal": "personal",
+      "people": [
+        "NF"
+      ],
+      "loc": "Nopa, Divisadero St",
+      "id": 22
+    },
+    {
+      "o": 1,
+      "s": 0,
+      "e": 0,
+      "t": "First day of autumn",
+      "cal": "hol",
+      "all": true,
+      "id": 23
+    },
+    {
+      "o": 1,
+      "s": 780,
+      "e": 840,
+      "t": "Lunch with Alex",
+      "cal": "personal",
+      "people": [
+        "AR"
+      ],
+      "loc": "Tartine Manufactory",
+      "id": 24
+    },
+    {
+      "o": 1,
+      "s": 900,
+      "e": 990,
+      "t": "Fairphone build review",
+      "cal": "work",
+      "people": [
+        "SK"
+      ],
+      "id": 25
+    },
+    {
+      "o": 2,
+      "s": 630,
+      "e": 690,
+      "t": "Press call · The Verge",
+      "cal": "work",
+      "people": [
+        "NF"
+      ],
+      "loc": "Video call",
+      "video": true,
+      "id": 26
+    },
+    {
+      "o": 2,
+      "s": 840,
+      "e": 900,
+      "t": "Launch walkthrough",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "loc": "The studio",
+      "note": "Bring the Fairphone build. Walk the installer end to end.",
+      "id": 27
+    },
+    {
+      "o": 2,
+      "s": 1050,
+      "e": 1095,
+      "t": "Call Dad",
+      "cal": "family",
+      "people": [
+        "MO"
+      ],
+      "id": 28
+    },
+    {
+      "o": 3,
+      "s": 720,
+      "e": 780,
+      "t": "Podcast recording",
+      "cal": "work",
+      "loc": "Studio B",
+      "note": "Talking points are in Notes → Launch → Press.",
+      "id": 29
+    },
+    {
+      "o": 3,
+      "s": 960,
+      "e": 1020,
+      "t": "1:1 with Priya",
+      "cal": "work",
+      "people": [
+        "PR"
+      ],
+      "id": 30
+    },
+    {
+      "o": 4,
+      "s": 660,
+      "e": 720,
+      "t": "Mirror load test",
+      "cal": "work",
+      "people": [
+        "SK"
+      ],
+      "id": 31
+    },
+    {
+      "o": 4,
+      "s": 1140,
+      "e": 1320,
+      "t": "Movie night",
+      "cal": "personal",
+      "people": [
+        "TH",
+        "CL"
+      ],
+      "loc": "Theo’s place",
+      "id": 32
+    },
+    {
+      "o": 5,
+      "s": 600,
+      "e": 780,
+      "t": "Climbing",
+      "cal": "personal",
+      "people": [
+        "TH",
+        "CL",
+        "AR"
+      ],
+      "loc": "Mission Cliffs",
+      "id": 33
+    },
+    {
+      "o": 6,
+      "s": 660,
+      "e": 750,
+      "t": "Brunch with Dad",
+      "cal": "family",
+      "people": [
+        "MO"
+      ],
+      "loc": "Sacramento",
+      "id": 34
+    },
+    {
+      "o": 7,
+      "s": 900,
+      "e": 960,
+      "t": "Tech Central bi-weekly",
+      "cal": "work",
+      "id": 35
+    },
+    {
+      "o": 8,
+      "s": 600,
+      "e": 660,
+      "t": "Launch rehearsal",
+      "cal": "work",
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "id": 36
+    },
+    {
+      "o": 9,
+      "s": 0,
+      "e": 0,
+      "t": "Release candidate",
+      "cal": "work",
+      "all": true,
+      "id": 37
+    },
+    {
+      "o": 10,
+      "s": 720,
+      "e": 810,
+      "t": "Lunch with Lena",
+      "cal": "personal",
+      "people": [
+        "CL"
+      ],
+      "id": 38
+    },
+    {
+      "o": 12,
+      "s": 600,
+      "e": 720,
+      "t": "Farmers market",
+      "cal": "personal",
+      "id": 39
+    },
+    {
+      "o": 15,
+      "s": 0,
+      "e": 0,
+      "t": "Press preview",
+      "cal": "work",
+      "all": true,
+      "id": 40
+    },
+    {
+      "o": 21,
+      "s": 0,
+      "e": 0,
+      "t": "Columbus Day",
+      "cal": "hol",
+      "all": true,
+      "id": 41
+    },
+    {
+      "o": 23,
+      "s": 0,
+      "e": 0,
+      "t": "Luma 1.0 launch",
+      "cal": "work",
+      "all": true,
+      "people": [
+        "PR",
+        "NF",
+        "SK"
+      ],
+      "id": 42
+    }
+  ],
+  "now_minute": 630
+}

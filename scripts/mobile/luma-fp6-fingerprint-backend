@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Persistent, fail-closed FP6 fingerprint backend bootstrap. This owns only
+# the hardware/secure-world adapter beneath Luma's shared lock UI.
+
+set -Eeuo pipefail
+umask 077
+
+runtime=${LUMA_FP6_RUNTIME_ROOT:-/usr/lib/luma/fp6-fingerprint}
+stage=${LUMA_FP6_ENROLLMENT_STAGE:-/run/luma/fp6-fingerprint}
+state=/var/lib/luma/fingerprint/qsee-state
+phase=/sys/bus/platform/devices/qcomtee/luma_focal_phase
+firmware_path=/sys/module/firmware_class/parameters/path
+expected_model='The Fairphone (Gen. 6)'
+expected_kernel=$(uname -r)
+expected_boot_sha=c6acad3a30d944d59648258eef383c33a3b51ac1148a98ef24256ee4dee61dd8
+expected_rollback_boot_sha=
+expected_config_sha=5bddfee4390b0f66de5709b99282e79ee3787a01749d5cc8d28ea82d6bbed7fe
+expected_qcomtee_sha=2368279b3ebaeb5485d88676e95d88b23655f39eb548382d4076d030b45da591
+expected_listener_sha=e871f3e7e13e5030945baed60038cb029badd6d69afb5bc6e342c5c343338389
+expected_helper_sha=7c369b4796de9a48fe6fe796abb12f159eb43674a1e746b756ed93921a914408
+expected_focal_sha=3d90a639fc07d43afd04f31c6ebe313824cb5714356f6ef9de51777cb0a6cded
+expected_original_focal_sha=be860585db2c68ca80b3ee9e5e4929413c0d7207f9524ba489f974c46e26d051
+expected_old_firmware_path=/lib/firmware/postmarketos
+qcomtee_module=$runtime/qcomtee-freezer-v144.ko
+focal_module=$runtime/focaltech_fp.ko
+
+case $expected_kernel in
+  7.1.2-luma-fp-cma1) ;;
+  7.1.2-luma-fp-ims1)
+    expected_boot_sha=2eb1c71fe073c8624ed6f1a4f1267744cd7c8281b52c4f64eca65b9f9050a1e6
+    expected_rollback_boot_sha=481f0a3e0533395cab125697e89ecc0e2dfd8b6261f45300a0775040ace3e51a
+    expected_config_sha=9f34ca9af43d09ea5165026f2596523d338b0d32222cc75070105d6b3313d130
+    expected_qcomtee_sha=4d0ea4adced5a9b4a32176e01289ec3f7ec4d55f7ac9a3801433b1e419b32d16
+    expected_focal_sha=c19c78729d636f7336ee3a7e2aa64f833fc3b72c37ccd12e6b8a855793edb2f1
+    expected_original_focal_sha=a31f0434bfb38176fb1c0c247e7557a107fb9720894356c6d29e57db3f9b1bf3
+    qcomtee_module=$runtime/qcomtee-freezer-v144-ims1.ko
+    focal_module=$runtime/focaltech_fp-ims1.ko
+    ;;
+  *) printf 'event=luma_fp6_fingerprint_backend state=failed reason=kernel\n' >&2; exit 1 ;;
+esac
+
+qcomtee_loaded=false
+candidate_focal_loaded=false
+original_focal_loaded=false
+driver_prepared=false
+listener_pid=
+success=false
+marker="luma-fp6-fingerprint-backend-$(cat /proc/sys/kernel/random/uuid)"
+
+event() { printf 'event=luma_fp6_fingerprint_backend %s\n' "$*"; }
+fail() { event state=failed reason="$1" >&2; exit 1; }
+critical_faults() {
+  grep -Ei 'page allocation failure|WARNING: CPU|hangcheck|GMU.*(timeout|fault)|GPU.*(timeout|fault|hang)|qsee.*(fault|timeout)|qcomtee.*(fault|timeout)|TEE.*(fault|timeout)|BUG:|kernel panic|Oops:|Call trace:' || true
+}
+
+cleanup() {
+  local status=$?
+  set +e
+  if [[ $success != true ]]; then
+    if [[ -n $listener_pid ]] && kill -0 "$listener_pid" 2>/dev/null; then
+      kill -TERM "$listener_pid" 2>/dev/null || true
+      for _ in $(seq 1 50); do
+        ! kill -0 "$listener_pid" 2>/dev/null && break
+        sleep 0.1
+      done
+    fi
+    if [[ -r $phase ]]; then
+      printf '%s\n' abort >"$phase" 2>/dev/null || true
+    fi
+    if [[ $driver_prepared == true ]]; then
+      "$runtime/fp6-focal-driver-stage" cleanup 2>/dev/null || true
+    fi
+    if [[ $qcomtee_loaded == true ]] && grep -qw qcomtee /proc/modules; then
+      rmmod qcomtee 2>/dev/null || true
+    fi
+    [[ ! -w $firmware_path ]] || printf '%s' "$expected_old_firmware_path" >"$firmware_path" 2>/dev/null || true
+    if [[ $candidate_focal_loaded == true ]] && grep -qw focaltech_fp /proc/modules; then
+      rmmod focaltech_fp 2>/dev/null || true
+    fi
+    if [[ $original_focal_loaded == true ]] && ! grep -qw focaltech_fp /proc/modules; then
+      modprobe focaltech_fp 2>/dev/null || true
+    fi
+    if [[ -r $stage/listener.log ]]; then
+      sed -n '1,120p' "$stage/listener.log" >&2 || true
+    fi
+    if [[ -d $stage && ! -L $stage ]]; then
+      find "$stage" -depth -delete 2>/dev/null || true
+    fi
+  fi
+  return "$status"
+}
+trap cleanup EXIT INT TERM HUP
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ -d $runtime && ! -L $runtime ]] || fail runtime_identity
+[[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == "$expected_model" ]] || fail model
+grep -qw androidboot.slot_suffix=_b /proc/cmdline || fail slot
+[[ $(uname -r) == "$expected_kernel" ]] || fail kernel
+actual_boot_sha=$(head -c 100663296 /dev/disk/by-partlabel/boot_b | sha256sum | cut -d' ' -f1)
+if [[ -n $expected_rollback_boot_sha ]]; then
+  [[ $actual_boot_sha == "$expected_boot_sha" || $actual_boot_sha == "$expected_rollback_boot_sha" ]] || fail boot_hash
+else
+  [[ $actual_boot_sha == "$expected_boot_sha" ]] || fail boot_hash
+fi
+[[ $(gzip -dc /proc/config.gz | sha256sum | cut -d' ' -f1) == "$expected_config_sha" ]] || fail runtime_config_hash
+gzip -dc /proc/config.gz | awk '
+  $0 == "# CONFIG_MODULE_SIG_FORCE is not set" { found = 1 }
+  END { exit !found }
+' || fail signature_policy
+(
+  cd "$runtime"
+  sha256sum -c manifest.sha256
+) >/dev/null || fail runtime_manifest
+
+[[ $(sha256sum "$qcomtee_module" | cut -d' ' -f1) == "$expected_qcomtee_sha" ]] || fail qcomtee_hash
+[[ $(sha256sum "$runtime/luma-qcomtee-listener-supplicant" | cut -d' ' -f1) == "$expected_listener_sha" ]] || fail listener_hash
+[[ $(sha256sum "$runtime/fp6-focal-driver-stage" | cut -d' ' -f1) == "$expected_helper_sha" ]] || fail helper_hash
+[[ $(sha256sum "$focal_module" | cut -d' ' -f1) == "$expected_focal_sha" ]] || fail focal_hash
+[[ $(modinfo -F vermagic "$qcomtee_module" | awk '{print $1}') == "$expected_kernel" ]] || fail qcomtee_vermagic
+[[ $(modinfo -F name "$qcomtee_module") == qcomtee ]] || fail qcomtee_name
+[[ -z $(modinfo -F signer "$qcomtee_module") ]] || fail qcomtee_signature
+[[ $(find "$runtime/firmware" -maxdepth 1 -type f -name 'focal64.b??' | wc -l) -eq 9 ]] || fail firmware_count
+
+[[ -d /sys/bus/platform/devices/qcomtee && ! -L /sys/bus/platform/devices/qcomtee/driver ]] || fail platform_state
+! grep -qw qcomtee /proc/modules || fail qcomtee_already_loaded
+! pgrep -f '[l]uma-qcomtee-listener-supplicant' >/dev/null || fail listener_already_running
+[[ $(cat "$firmware_path") == "$expected_old_firmware_path" ]] || fail firmware_path_precondition
+
+if grep -qw focaltech_fp /proc/modules; then
+  original_focal_loaded=true
+  installed_focal=$(modinfo -n focaltech_fp)
+  [[ $(sha256sum "$installed_focal" | cut -d' ' -f1) == "$expected_original_focal_sha" ]] || fail installed_focal_hash
+  modprobe -r focaltech_fp || fail original_focal_unload
+fi
+
+install -d -m 0700 -o root -g root "$stage" "$state"
+cp -a "$runtime/firmware" "$stage/firmware"
+printf '%s' "$stage/firmware" >"$firmware_path"
+insmod "$focal_module"
+candidate_focal_loaded=true
+[[ -c /dev/focaltech_fp ]] || fail focal_device
+printf '<6>%s\n' "$marker" >/dev/kmsg
+
+"$runtime/fp6-focal-driver-stage" prepare
+driver_prepared=true
+insmod "$qcomtee_module" luma_focal_enroll_service=1
+qcomtee_loaded=true
+[[ -c /dev/luma-fp6-fingerprint && -c /dev/luma-fp6-qsee-listener ]] || fail transport_devices
+[[ $(stat -c %a /dev/luma-fp6-fingerprint) == 600 ]] || fail fingerprint_device_mode
+[[ $(stat -c %a /dev/luma-fp6-qsee-listener) == 600 ]] || fail listener_device_mode
+
+: >"$stage/listener.log"
+chmod 0600 "$stage/listener.log"
+"$runtime/luma-qcomtee-listener-supplicant" --state-dir "$state" >"$stage/listener.log" 2>&1 &
+listener_pid=$!
+printf '%s\n' "$listener_pid" >"$stage/listener.pid"
+for _ in $(seq 1 50); do
+  [[ $(grep -c 'event=listener_registered transport=qseecomcompat' "$stage/listener.log" || true) -eq 3 ]] && break
+  kill -0 "$listener_pid" 2>/dev/null || fail listener_exited
+  sleep 0.1
+done
+[[ $(grep -c 'event=listener_registered transport=qseecomcompat' "$stage/listener.log" || true) -eq 3 ]] || fail listener_not_ready
+for listener_id in 10 8192 28672; do
+  grep -Eq "event=listener_registered transport=qseecomcompat id=$listener_id([[:space:]]|$)" "$stage/listener.log" || fail listener_identity
+done
+
+[[ $(cat "$phase") == secure-prepared ]] || fail secure_prepare_state
+"$runtime/fp6-focal-driver-stage" prepare-probe
+if ! printf '%s\n' probe >"$phase"; then
+  [[ $(cat "$phase") == probe-retry ]] || fail physical_probe
+  "$runtime/fp6-focal-driver-stage" retry-probe
+  printf '%s\n' probe >"$phase" || fail physical_probe_retry
+fi
+[[ $(cat "$phase") == device-initialized ]] || fail device_initialize_state
+"$runtime/fp6-focal-driver-stage" finish-probe
+printf '%s\n' enumerate >"$phase" || fail enumeration
+[[ $(cat "$phase") == complete ]] || fail enumeration_state
+new_faults=$(dmesg | sed -n "/$marker/,\$p" | critical_faults)
+[[ -z $new_faults ]] || fail critical_fault
+
+success=true
+trap - EXIT INT TERM HUP
+event state=active listeners=10,8192,28672 match_on_chip=true raw_images=0 freezer_aware=true

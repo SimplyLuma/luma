@@ -1,0 +1,104 @@
+{
+  "selected": "dry",
+  "memos": [
+    {
+      "id": "dry",
+      "t": "Launch dry run",
+      "when": "Today, 9:52 AM",
+      "grp": "Today",
+      "dur": 252,
+      "where": "Studio",
+      "fav": true,
+      "marks": [
+        64,
+        171
+      ],
+      "tx": [
+        [
+          "You",
+          "Okay, dry run for the launch walkthrough. Priya opens with the milestones slide, then I do the live demo."
+        ],
+        [
+          "Priya",
+          "Keep the demo under two minutes. Start with Filer, because everyone gets it instantly."
+        ],
+        [
+          "You",
+          "Then Messages, then the shelf. The notification lip is the moment people will remember."
+        ],
+        [
+          "Nora",
+          "We need the homepage crop on screen while you talk about Tide."
+        ],
+        [
+          "You",
+          "Good. Last thing: the ISO link goes live at seven thirty sharp, not before."
+        ]
+      ]
+    },
+    {
+      "id": "lip",
+      "t": "Idea: notifications as a lip",
+      "when": "Today, 8:14 AM",
+      "grp": "Today",
+      "dur": 48,
+      "where": "Walking",
+      "tx": [
+        [
+          "You",
+          "What if notifications drop out of the top edge like the drawers in Write, and then tuck back in, leaving a little tab that buzzes. Not in your way, but you know it’s there."
+        ]
+      ]
+    },
+    {
+      "id": "theo",
+      "t": "Call with Theo about the lease",
+      "when": "Yesterday, 4:30 PM",
+      "grp": "This week",
+      "dur": 365,
+      "where": "Studio",
+      "tx": [
+        [
+          "Theo",
+          "Same terms as this year, except the rent review moves from January to March."
+        ],
+        [
+          "You",
+          "That works. Can we add a clause about the roof repairs?"
+        ],
+        [
+          "Theo",
+          "I’ll ask. They usually agree to two business days for urgent repairs."
+        ],
+        [
+          "You",
+          "Great. Send page four and I’ll sign it this week."
+        ]
+      ]
+    },
+    {
+      "id": "playlist",
+      "t": "Saturday dinner playlist",
+      "when": "Monday, 7:02 PM",
+      "grp": "This week",
+      "dur": 80,
+      "where": "Kitchen",
+      "tx": [
+        [
+          "You",
+          "For Maya’s dinner: start with Pet Sounds, then something slower. No more than two hours. Bring dessert, not wine."
+        ]
+      ]
+    },
+    {
+      "id": "hum",
+      "t": "Melody",
+      "when": "Sunday, 11:40 PM",
+      "grp": "This week",
+      "dur": 32,
+      "music": true,
+      "tx": []
+    }
+  ],
+  "deleted": []
+}

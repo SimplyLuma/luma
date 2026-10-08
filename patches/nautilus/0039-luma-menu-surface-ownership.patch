@@ -1,0 +1,28 @@
+From: Project Luma
+Subject: [PATCH] Keep Filer island paint out of descendant popovers
+
+Paint the owned sidebar/content surfaces and file views. Generic viewport
+descendant selectors also match GtkPopoverMenu internals, covering the shared
+menu surface with a second, rectangular background. Leave those containers
+transparent instead of overriding or recreating the toolkit menu contract.
+
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -300,7 +300,6 @@
+   }
+ 
+   .luma-files-window .luma-sidebar-surface,
+-  .luma-files-window .luma-sidebar-surface viewport,
+   .luma-files-window .luma-sidebar-surface .navigation-sidebar {
+     background-color: @luma_content;
+     color: @luma_ink;
+@@ -345,8 +344,7 @@
+ 
+ 
+   .luma-files-window .luma-content-surface,
+-  .luma-files-window .luma-content-surface .view,
+-  .luma-files-window .luma-content-surface viewport {
++  .luma-files-window .luma-content-surface .view {
+     background-color: @luma_content;
+     color: @luma_ink;
+   }

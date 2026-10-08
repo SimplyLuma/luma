@@ -1,0 +1,164 @@
+From 3c8eef46ac4d63338f72bb13be03cdc00c3b38c6 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 23:11:50 +0000
+Subject: [PATCH] Filer: derive search header from live results view
+
+---
+ src/nautilus-window.c | 71 ++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 54 insertions(+), 17 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 085ed78..76f27ea 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -121,6 +121,7 @@ struct _NautilusWindow
+     GtkWidget *location_meta;
+     GtkWidget *location_scope;
+     GFile *search_origin;
++    GObject *search_model;
+     GtkWidget *information_host;
+     LumaDetailsPane *information_pane;
+ 
+@@ -367,17 +368,12 @@ on_search_scope_changed (LumaModeSwitch *switcher,
+     {
+         return;
+     }
+-    GFile *location = nautilus_window_slot_get_location (window->active_slot);
+-    if (location == NULL || !g_file_has_uri_scheme (location, SCHEME_SEARCH))
+-    {
+-        return;
+-    }
+-    g_autoptr (NautilusDirectory) directory = nautilus_directory_get (location);
+-    if (!NAUTILUS_IS_SEARCH_DIRECTORY (directory))
++    NautilusFilesView *view = nautilus_window_slot_get_current_view (window->active_slot);
++    if (view == NULL)
+     {
+         return;
+     }
+-    NautilusQuery *current = nautilus_search_directory_get_query (NAUTILUS_SEARCH_DIRECTORY (directory));
++    NautilusQuery *current = nautilus_files_view_get_search_query (view);
+     if (current == NULL)
+     {
+         return;
+@@ -399,6 +395,18 @@ on_search_scope_changed (LumaModeSwitch *switcher,
+     }
+ }
+ 
++static void update_location_header (NautilusWindow *window);
++
++static void
++on_search_results_changed (GListModel     *model,
++                           guint           position,
++                           guint           removed,
++                           guint           added,
++                           NautilusWindow *window)
++{
++    update_location_header (window);
++}
++
+ static void
+ set_search_scope_label (NautilusWindow *window,
+                         const char     *label)
+@@ -433,6 +441,8 @@ set_search_scope_label (NautilusWindow *window,
+ static void
+ update_location_header (NautilusWindow *window)
+ {
++    NautilusFilesView *view = window->active_slot != NULL
++                             ? nautilus_window_slot_get_current_view (window->active_slot) : NULL;
+     GFile *location = window->active_slot != NULL
+                       ? nautilus_window_slot_get_location (window->active_slot) : NULL;
+     g_autoptr (GFile) parent = location != NULL ? g_file_get_parent (location) : NULL;
+@@ -448,12 +458,27 @@ update_location_header (NautilusWindow *window)
+     g_autoptr (NautilusDirectory) listing = location != NULL
+                                              ? nautilus_directory_get (location) : NULL;
+     guint count;
+-    gboolean searching = location != NULL &&
+-                         g_file_has_uri_scheme (location, SCHEME_SEARCH) &&
+-                         NAUTILUS_IS_SEARCH_DIRECTORY (listing);
+-    NautilusQuery *query = searching
+-                           ? nautilus_search_directory_get_query (NAUTILUS_SEARCH_DIRECTORY (listing))
+-                           : NULL;
++    NautilusQuery *query = view != NULL ? nautilus_files_view_get_search_query (view) : NULL;
++    gboolean searching = query != NULL;
++    g_autoptr (GObject) model = NULL;
++    if (searching)
++    {
++        g_object_get (view, "model", &model, NULL);
++    }
++    if (window->search_model != model)
++    {
++        if (window->search_model != NULL)
++        {
++            g_signal_handlers_disconnect_by_func (window->search_model,
++                                                  G_CALLBACK (on_search_results_changed), window);
++        }
++        g_set_object (&window->search_model, model);
++        if (window->search_model != NULL)
++        {
++            g_signal_connect (window->search_model, "items-changed",
++                              G_CALLBACK (on_search_results_changed), window);
++        }
++    }
+     const char *title = window->active_slot != NULL
+                         ? nautilus_window_slot_get_title (window->active_slot) : _("Files");
+ 
+@@ -475,7 +500,7 @@ update_location_header (NautilusWindow *window)
+     {
+         gtk_box_remove (GTK_BOX (window->location_meta), child);
+     }
+-    if (parent != NULL && (g_file_equal (parent, home) || relative != NULL))
++    if (!searching && parent != NULL && (g_file_equal (parent, home) || relative != NULL))
+     {
+         append_location_crumb (window, _("Home"), home);
+         if (relative != NULL && *relative != '\0')
+@@ -495,12 +520,16 @@ update_location_header (NautilusWindow *window)
+             }
+         }
+     }
+-    else if (parent != NULL)
++    else if (!searching && parent != NULL)
+     {
+         g_autofree char *name = g_file_get_basename (parent);
+         append_location_crumb (window, name, parent);
+     }
+-    if (listing != NULL && nautilus_directory_are_all_files_seen (listing))
++    if (searching)
++    {
++        count = model != NULL ? g_list_model_get_n_items (G_LIST_MODEL (model)) : 0;
++    }
++    else if (listing != NULL && nautilus_directory_are_all_files_seen (listing))
+     {
+         g_autolist (NautilusFile) files = nautilus_directory_get_file_list (listing);
+         count = g_list_length (files);
+@@ -1731,6 +1760,12 @@ nautilus_window_finalize (GObject *object)
+     g_clear_object (&window->selected_file);
+     g_clear_object (&window->selected_volume);
+     g_clear_object (&window->search_origin);
++    if (window->search_model != NULL)
++    {
++        g_signal_handlers_disconnect_by_func (window->search_model,
++                                              G_CALLBACK (on_search_results_changed), window);
++        g_clear_object (&window->search_model);
++    }
+ 
+     g_signal_handlers_disconnect_by_func (nautilus_file_undo_manager_get (),
+                                           G_CALLBACK (nautilus_window_on_undo_changed),
+@@ -2153,6 +2188,7 @@ apply_fixture_state (gpointer data)
+                     return G_SOURCE_CONTINUE;
+                 }
+             }
++            update_location_header (window);
+             nautilus_files_view_set_selection (view, NULL, FALSE);
+             return G_SOURCE_REMOVE;
+         }
+@@ -2173,6 +2209,7 @@ apply_fixture_state (gpointer data)
+             nautilus_query_set_location (query, home);
+         }
+         nautilus_window_slot_search (slot, query);
++        update_location_header (window);
+         g_object_set_data (G_OBJECT (window), "filer-fixture-search-started", GINT_TO_POINTER (1));
+         return G_SOURCE_CONTINUE;
+     }
+-- 
+2.55.0
+

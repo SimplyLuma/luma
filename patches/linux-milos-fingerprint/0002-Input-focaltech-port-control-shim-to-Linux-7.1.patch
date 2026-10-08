@@ -1,0 +1,177 @@
+From f53a0d75b04a62f769b248efe03867f3f60593c7 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Thu, 20 Aug 2026 21:12:58 -0500
+Subject: [PATCH 2/2] Input: focaltech: port control shim to Linux 7.1
+
+Adapt Fairphone's Android 6.1 control shim to Linux 7.1 API signatures and
+make the subsystem fail closed by default. Also unwind allocated resources
+through the existing unprobe path during driver removal and reject IRQ wake
+setup failures instead of leaving partially initialized state behind.
+
+This patch does not enable direct SPI access, implement the FocalTech trusted
+application protocol, or make fingerprint authentication ready.
+
+---
+ drivers/input/finger/Kconfig                |  9 ++--
+ drivers/input/finger/focal_finger/Kconfig   |  5 ++-
+ drivers/input/finger/focal_finger/ff_core.c | 46 ++++++++-------------
+ drivers/input/finger/focal_finger/ff_spi.c  |  3 +-
+ 4 files changed, 27 insertions(+), 36 deletions(-)
+
+diff --git a/drivers/input/finger/Kconfig b/drivers/input/finger/Kconfig
+index 8f0177d22..cbb8f4d32 100644
+--- a/drivers/input/finger/Kconfig
++++ b/drivers/input/finger/Kconfig
+@@ -4,12 +4,13 @@
+ #
+ menuconfig INPUT_FINGERPRINT
+ 	bool "Fingerprint"
+-	default y
++	default n
++	depends on OF && GPIOLIB
+ 	help
+-	  Say Y here, and a list of supported Fingerprint will be displayed.
+-	  This option doesn't affect the kernel.
++	  Say Y here to expose fingerprint sensor drivers. Authentication also
++	  requires a reviewed userspace backend and secure matching policy.
+ 
+-	  If unsure, say Y.
++	  If unsure, say N.
+ 
+ if INPUT_FINGERPRINT
+ 
+diff --git a/drivers/input/finger/focal_finger/Kconfig b/drivers/input/finger/focal_finger/Kconfig
+index a6c3abf93..8ca8412f4 100644
+--- a/drivers/input/finger/focal_finger/Kconfig
++++ b/drivers/input/finger/focal_finger/Kconfig
+@@ -5,11 +5,12 @@
+ 
+ config FINGER_FOCAL
+ 	tristate "FINGER FOCAL fingerprint"
++	depends on INPUT_FINGERPRINT
+ 	help
+ 	  Say Y here if you have a FINGER FOCAL fingerprint and want to enable
+-	  support for the built-in touchscreen.
++	  its normal-world power, reset, and interrupt control shim.
+ 
+ 	  If unsure, say N.
+ 
+ 	  To compile this driver as a module, choose M here: the
+-	  module will be called FINGER_FOCAL.
++	  module will be called focaltech_fp.
+diff --git a/drivers/input/finger/focal_finger/ff_core.c b/drivers/input/finger/focal_finger/ff_core.c
+index fba93d55d..2ff18ecb4 100644
+--- a/drivers/input/finger/focal_finger/ff_core.c
++++ b/drivers/input/finger/focal_finger/ff_core.c
+@@ -675,9 +675,9 @@ static long ff_ctl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+     return ret;
+ }
+ 
+-static unsigned int ff_ctl_poll(struct file *filp, struct poll_table_struct *wait)
++static __poll_t ff_ctl_poll(struct file *filp, struct poll_table_struct *wait)
+ {
+-    unsigned int mask = 0;
++    __poll_t mask = 0;
+     ff_context_t *ff_ctx = filp->private_data;
+ 
+     FF_LOGV("'%s' enter.", __func__);
+@@ -1200,8 +1200,18 @@ static int ff_register_irq(ff_context_t *ff_ctx)
+         FF_LOGI("irq_num:%d", ff_ctx->irq_num);
+         irqflags = IRQF_TRIGGER_RISING | IRQF_ONESHOT;
+         ret = request_irq(ff_ctx->irq_num, ff_irq_handler, irqflags, FF_DRV_NAME, ff_ctx);
++        if (ret < 0) {
++            FF_LOGE("request_irq(%d) failed,ret=%d", ff_ctx->irq_num, ret);
++            return ret;
++        }
+         ff_ctx->b_irq_enabled = true;
+-        enable_irq_wake(ff_ctx->irq_num);
++        ret = enable_irq_wake(ff_ctx->irq_num);
++        if (ret < 0) {
++            FF_LOGE("enable_irq_wake(%d) failed,ret=%d", ff_ctx->irq_num, ret);
++            free_irq(ff_ctx->irq_num, ff_ctx);
++            ff_ctx->irq_num = -1;
++            ff_ctx->b_irq_enabled = false;
++        }
+     } else {
+         FF_LOGE("irq_num:%d is invalid", ff_ctx->irq_num);
+         ret = ff_ctx->irq_num;
+@@ -1235,7 +1245,7 @@ static int ff_register_device(ff_context_t *ff_ctx)
+     }
+     FF_LOGD("ff devno:%x, %x", (int)ff_devno, (int)ff_ctx->ff_cdev.dev);
+ 
+-    ff_ctx->ff_class = class_create(THIS_MODULE, FF_DRV_NAME);
++    ff_ctx->ff_class = class_create(FF_DRV_NAME);
+     if (IS_ERR(ff_ctx->ff_class)) {
+         ret = PTR_ERR(ff_ctx->ff_class);
+         FF_LOGE("create ff class fails,ret=%d", ret);
+@@ -1434,43 +1444,23 @@ static void ff_unprobe(ff_context_t *ff_ctx)
+     FF_LOGI("'%s' leave.", __func__);
+ }
+ 
+-static int ff_remove(struct platform_device *pdev)
++static void ff_remove(struct platform_device *pdev)
+ {
+     ff_context_t *ff_ctx = platform_get_drvdata(pdev);
+ 
+     FF_LOGI("'%s' enter.", __func__);
+     if (ff_ctx && ff_ctx->b_ff_probe) {
++        ff_unprobe(ff_ctx);
+         device_destroy(ff_ctx->ff_class, ff_ctx->ff_cdev.dev);
+         class_destroy(ff_ctx->ff_class);
+         cdev_del(&ff_ctx->ff_cdev);
+         unregister_chrdev_region(ff_ctx->ff_cdev.dev, 1);
+-
+-        sysfs_remove_group(&pdev->dev.kobj, &ff_attrs_group);
+-
+-        /* De-init the wake lock. */
+-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
+-        wakeup_source_trash(&ff_ctx->wake_lock);
+-        wakeup_source_trash(&ff_ctx->wake_lock_ctl);
+-        ff_ctx->p_ws = NULL;
+-        ff_ctx->p_ws_ctl = NULL;
+-#else
+-        wakeup_source_unregister(ff_ctx->p_ws);
+-        wakeup_source_unregister(ff_ctx->p_ws_ctl);
+-#endif
+-        cancel_work_sync(&ff_ctx->event_work);
+-
+-        if (ff_ctx->b_screen_onoff_event) {
+-#if defined(CONFIG_FB)
+-            fb_unregister_client(&ff_ctx->fb_notif);
+-#endif
+-        }
+-
+         platform_set_drvdata(pdev, NULL);
++        if (g_ff_ctx == ff_ctx)
++            g_ff_ctx = NULL;
+         kfree(ff_ctx);
+-        ff_ctx = NULL;
+     }
+     FF_LOGI("'%s' leave.", __func__);
+-    return 0;
+ }
+ 
+ static const struct of_device_id ff_dt_match[] = {
+diff --git a/drivers/input/finger/focal_finger/ff_spi.c b/drivers/input/finger/focal_finger/ff_spi.c
+index 04e599a2c..0b73b79a2 100644
+--- a/drivers/input/finger/focal_finger/ff_spi.c
++++ b/drivers/input/finger/focal_finger/ff_spi.c
+@@ -459,7 +459,7 @@ static int ff_spi_probe(struct spi_device *spi)
+     return 0;
+ }
+ 
+-static int ff_spi_remove(struct spi_device *spi)
++static void ff_spi_remove(struct spi_device *spi)
+ {
+     struct ff_spi_context *spi_ctx = spi_get_drvdata(spi);
+ 
+@@ -475,7 +475,6 @@ static int ff_spi_remove(struct spi_device *spi)
+ 
+     spi_set_drvdata(spi, NULL);
+     FF_LOGI("'%s' leave.", __func__);
+-    return 0;
+ }
+ 
+ static const struct of_device_id ff_spi_dt_match[] = {
+-- 
+2.54.0 (Apple Git-157)

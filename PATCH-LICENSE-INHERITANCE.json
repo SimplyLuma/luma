@@ -1,0 +1,800 @@
+{
+  "schema": "org.projectluma.public-patch-license-inheritance/v1",
+  "source_snapshot_sha256": "6fd2a4fccad0a356c8659c70c75ae5a014cbaa56852170ac56472276290a594a",
+  "rule": "A downstream patch does not erase the modified upstream source license. Package aggregate terms and partial ledger license lists are evidence for component attribution, not permission to blanket relicense every file. Explicit per-file SPDX/copyright notices control. Unknown families remain listed honestly.",
+  "families": [
+    {
+      "family": "android-device-waydroid",
+      "path": "patches/android-device-waydroid/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "android-frameworks-base",
+      "path": "patches/android-frameworks-base/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "android-frameworks-native",
+      "path": "patches/android-frameworks-native/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "android-hardware-libhardware",
+      "path": "patches/android-hardware-libhardware/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "android-hardware-waydroid",
+      "path": "patches/android-hardware-waydroid/",
+      "status": "documented",
+      "observed_patch_headers": {
+        "patches/android-hardware-waydroid/working-tree-20260912/luma-window-frame.h": [
+          "Apache-2.0"
+        ],
+        "patches/android-hardware-waydroid/working-tree-20260912/prairie-titlebar.cpp": [
+          "Apache-2.0"
+        ],
+        "patches/android-hardware-waydroid/working-tree-20260912/prairie-titlebar.h": [
+          "Apache-2.0"
+        ],
+        "patches/android-hardware-waydroid/native/luma-rgb-copy-bounds.h": [
+          "Apache-2.0"
+        ],
+        "patches/android-hardware-waydroid/native/luma-task-lifetime.h": [
+          "Apache-2.0"
+        ],
+        "patches/android-hardware-waydroid/native/luma-task-resize.h": [
+          "Apache-2.0"
+        ],
+        "patches/android-hardware-waydroid/native/luma-window-callbacks.h": [
+          "Apache-2.0"
+        ]
+      },
+      "documented_component_licenses": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "evidence": {
+        "document": "docs/research/source-register.md",
+        "line": 121
+      },
+      "note": "HWC source and dependencies retain their individual terms; not all Android patch families inherit this expression."
+    },
+    {
+      "family": "android-lineage-sdk",
+      "path": "patches/android-lineage-sdk/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "android-mesa",
+      "path": "patches/android-mesa/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "android-soong",
+      "path": "patches/android-soong/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "cage",
+      "path": "patches/cage/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "MIT"
+      ],
+      "evidence": {
+        "document": "docs/research/source-register.md",
+        "line": 108
+      },
+      "note": ""
+    },
+    {
+      "family": "dash-to-dock",
+      "path": "patches/dash-to-dock/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-2.0-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 44
+      },
+      "note": ""
+    },
+    {
+      "family": "fwupd",
+      "path": "patches/fwupd/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "gnome-calculator",
+      "path": "patches/gnome-calculator/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-or-later",
+        "CC-BY-SA-3.0",
+        "CC0-1.0"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 56
+      },
+      "note": "Code and artwork have different terms; preserve per-file notices."
+    },
+    {
+      "family": "gnome-calendar",
+      "path": "patches/gnome-calendar/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-or-later",
+        "CC0-1.0"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 57
+      },
+      "note": ""
+    },
+    {
+      "family": "gnome-control-center",
+      "path": "patches/gnome-control-center/",
+      "status": "documented",
+      "observed_patch_headers": {
+        "patches/gnome-control-center/0042-lumaui-appearance-page.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0043-lumaui-discovery-model.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0069-settings-retain-decoded-artwork.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0006-luma-dash-settings-panel.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0014-luma-background-activity-page.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0016-luma-cast-settings-page.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0028-lumaui-fixture-model.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0033-lumaui-bluetooth-fixture.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0034-lumaui-page-modules.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0035-lumaui-windows-model.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0040-lumaui-shelf-page.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0046-lumaui-live-network-adapter.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0047-lumaui-display-draft-model.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0051-settings-add-accessibility-routes-and-bounded-native-reader-action.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0052-settings-add-scoped-native-preference-edits-with-durable-recovery.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0054-settings-scoped-native-permission-edits.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0055-settings-native-screen-lock-view.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-control-center/0056-settings-native-permission-views.patch": [
+          "GPL-2.0-or-later"
+        ]
+      },
+      "documented_component_licenses": [
+        "GPL-2.0-or-later",
+        "CC0-1.0"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 48
+      },
+      "note": ""
+    },
+    {
+      "family": "gnome-mobile",
+      "path": "patches/gnome-mobile/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "gnome-settings-daemon",
+      "path": "patches/gnome-settings-daemon/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "gnome-shell",
+      "path": "patches/gnome-shell/",
+      "status": "documented",
+      "observed_patch_headers": {
+        "patches/gnome-shell/0100-luma-ask-about-new-display-arrangements.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0102-luma-every-window-gets-luma-corners.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0103-luma-log-windows-that-flash.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0044-luma-dock-tile-geometry.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0060-luma-grid-layout.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0059-luma-media-live-island.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0064-luma-native-grid.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0071-luma-grid-centred-scroll.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0078-luma-sticky-dock-chrome.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0144-luma-capture-thumbnail-drag.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0145-luma-now-playing-island-stays-whole.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0174-luma-three-fingers-switch-app-four-switch-workspace.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0192-luma-studio-notification-lip.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0248-luma-native-symbolic-and-workarea-layout.patch": [
+          "GPL-2.0-or-later"
+        ],
+        "patches/gnome-shell/0258-luma-unresponsive-dialog-material.patch": [
+          "GPL-2.0-or-later"
+        ]
+      },
+      "documented_component_licenses": [
+        "GPL-2.0-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 20
+      },
+      "note": ""
+    },
+    {
+      "family": "gnome-text-editor",
+      "path": "patches/gnome-text-editor/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "greetd",
+      "path": "patches/greetd/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "gtk3",
+      "path": "patches/gtk3/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "gtk4",
+      "path": "patches/gtk4/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "LGPL-2.0-or-later",
+        "LGPL-2.1-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 49
+      },
+      "note": "Ledger explicitly requires the complete Fedora mixed-source license expression; this list is partial."
+    },
+    {
+      "family": "ibus",
+      "path": "patches/ibus/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "latinime",
+      "path": "patches/latinime/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "libadwaita",
+      "path": "patches/libadwaita/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "LGPL-2.1-or-later",
+        "MIT"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 50
+      },
+      "note": ""
+    },
+    {
+      "family": "libcamera",
+      "path": "patches/libcamera/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "LGPL-2.1-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/source-register.md",
+        "line": 99
+      },
+      "note": ""
+    },
+    {
+      "family": "libhandy",
+      "path": "patches/libhandy/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "libqmi-fp6",
+      "path": "patches/libqmi-fp6/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_license_expressions": [
+        "LGPL-2.1-or-later",
+        "GPL-2.0-or-later"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/libqmi-fp6.spec",
+        "field": "License"
+      },
+      "note": "Aggregate package expression, not a substitute for each modified file's upstream notice."
+    },
+    {
+      "family": "linux-android-container",
+      "path": "patches/linux-android-container/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/linux-android-container/0001-mm-memfd-add-ashmem-ioctl-compatibility.patch": [
+          "GPL-2.0"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-milos",
+      "path": "patches/linux-milos/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/linux-milos/0005-media-i2c-add-fp6-s5kkd1sp-front-camera.patch": [
+          "GPL-2.0"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-milos-fingerprint",
+      "path": "patches/linux-milos-fingerprint/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-2.0-only"
+      ],
+      "evidence": {
+        "document": "docs/research/source-register.md",
+        "line": 103
+      },
+      "note": ""
+    },
+    {
+      "family": "linux-milos-nfc",
+      "path": "patches/linux-milos-nfc/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-2.0-only"
+      ],
+      "evidence": {
+        "document": "docs/research/source-register.md",
+        "line": 102
+      },
+      "note": ""
+    },
+    {
+      "family": "linux-qcomtee-control-v18",
+      "path": "patches/linux-qcomtee-control-v18/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qcomtee-control-v22",
+      "path": "patches/linux-qcomtee-control-v22/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qcomtee-control-v23",
+      "path": "patches/linux-qcomtee-control-v23/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qcomtee-control-v24",
+      "path": "patches/linux-qcomtee-control-v24/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qcomtee-control-v25",
+      "path": "patches/linux-qcomtee-control-v25/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qseecom",
+      "path": "patches/linux-qseecom/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/linux-qseecom/0002-firmware-qcom-scm-add-QSEECom-app-loading-and-listen.patch": [
+          "GPL-2.0-only"
+        ],
+        "patches/linux-qseecom/0007-Documentation-tee-document-the-QSEECOM-driver.patch": [
+          "GPL-2.0"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qseecom-dedicated-heaps",
+      "path": "patches/linux-qseecom-dedicated-heaps/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qseecom-qseelog",
+      "path": "patches/linux-qseecom-qseelog/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qseecom-shmbridge",
+      "path": "patches/linux-qseecom-shmbridge/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-qseecom-stock-heaps",
+      "path": "patches/linux-qseecom-stock-heaps/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "linux-zumapro",
+      "path": "patches/linux-zumapro/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/linux-zumapro/0001-luma-tokay-embedded-diagnostic.patch": [
+          "GPL-2.0-only"
+        ],
+        "patches/linux-zumapro/0002-luma-tokay-persist-embedded-dtb.patch": [
+          "GPL-2.0-only"
+        ],
+        "patches/linux-zumapro/0003-luma-tokay-copy-embedded-dtb.patch": [
+          "GPL-2.0-only"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "lpac",
+      "path": "patches/lpac/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_license_expressions": [
+        "AGPL-3.0-only AND LGPL-2.1-only AND MIT AND CC0-1.0"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/lpac-fp6.spec",
+        "field": "License"
+      },
+      "note": "Aggregate package expression, not a substitute for each modified file's upstream notice."
+    },
+    {
+      "family": "modemmanager-fp6",
+      "path": "patches/modemmanager-fp6/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_license_expressions": [
+        "GPL-2.0-or-later",
+        "LGPL-2.1-or-later",
+        "LGPL-2.1-or-later",
+        "LGPL-2.1-or-later"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/ModemManager-fp6.spec",
+        "field": "License"
+      },
+      "note": "Aggregate package expression, not a substitute for each modified file's upstream notice."
+    },
+    {
+      "family": "mutter",
+      "path": "patches/mutter/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "nautilus",
+      "path": "patches/nautilus/",
+      "status": "documented",
+      "observed_patch_headers": {
+        "patches/nautilus/0140-filer-v71-phone-tap-opens-folder.patch": [
+          "GPL-3.0-or-later"
+        ],
+        "patches/nautilus/0013-luma-applications-location.patch": [
+          "GPL-3.0-or-later"
+        ],
+        "patches/nautilus/0015-luma-application-installer-drop.patch": [
+          "GPL-3.0-or-later"
+        ],
+        "patches/nautilus/0017-nautilus-implement-Atlas-islands-and-native-Columns-.patch": [
+          "GPL-3.0-or-later"
+        ]
+      },
+      "documented_component_licenses": [
+        "GPL-3.0-or-later",
+        "CC0-1.0",
+        "LGPL-2.1-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 51
+      },
+      "note": "Extensions library and main application have different terms."
+    },
+    {
+      "family": "phoc",
+      "path": "patches/phoc/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 21
+      },
+      "note": ""
+    },
+    {
+      "family": "phosh",
+      "path": "patches/phosh/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 21
+      },
+      "note": ""
+    },
+    {
+      "family": "plymouth",
+      "path": "patches/plymouth/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-2.0-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 30
+      },
+      "note": "Luma-owned theme assets have separate Apache-2.0 notices; preserve asset notices."
+    },
+    {
+      "family": "ptyxis",
+      "path": "patches/ptyxis/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/ptyxis/0001-luma-terminal-native-kit.patch": [
+          "GPL-3.0-or-later"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "qsee-supplicant",
+      "path": "patches/qsee-supplicant/",
+      "status": "documented",
+      "observed_patch_headers": {
+        "patches/qsee-supplicant/0002-add-ufs-rpmb-listener.patch": [
+          "BSD-3-Clause-Clear"
+        ]
+      },
+      "documented_component_licenses": [
+        "BSD-2-Clause",
+        "BSD-3-Clause-Clear"
+      ],
+      "evidence": {
+        "document": "docs/research/source-register.md",
+        "line": 103
+      },
+      "note": "Preserve individual imported author notices; no blanket reassignment."
+    },
+    {
+      "family": "rmtfs",
+      "path": "patches/rmtfs/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_license_expressions": [
+        "BSD-3-Clause"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/rmtfs-fp6.spec",
+        "field": "License"
+      },
+      "note": "Aggregate package expression, not a substitute for each modified file's upstream notice."
+    },
+    {
+      "family": "speech-dispatcher",
+      "path": "patches/speech-dispatcher/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_license_expressions": [
+        "GPL-2.0-or-later AND LGPL-2.1-only OR LGPL-2.0-only",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later",
+        "GPL-2.0-or-later"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/speech-dispatcher-luma.spec",
+        "field": "License"
+      },
+      "note": "Aggregate package expression, not a substitute for each modified file's upstream notice."
+    },
+    {
+      "family": "stevia",
+      "path": "patches/stevia/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/stevia/0001-luma-latinime-completer.patch": [
+          "GPL-3.0-or-later"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "sushi",
+      "path": "patches/sushi/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {
+        "patches/sushi/0002-quick-view-listings.patch": [
+          "GPL-2.0-or-later"
+        ]
+      },
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "tiling-shell",
+      "path": "patches/tiling-shell/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 46
+      },
+      "note": ""
+    },
+    {
+      "family": "u-boot-zumapro",
+      "path": "patches/u-boot-zumapro/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "webkitgtk",
+      "path": "patches/webkitgtk/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_license_expressions": [
+        "LGPL-2.1-only AND BSD-2-Clause AND BSD-3-Clause AND ISC AND bzip2-1.0.6 AND NCSA AND MIT AND GPL-2.0-only AND MPL-1.1 AND SunPro AND Apache-2.0 AND GPL-3.0-or-later WITH Bison-exception-2.2 AND GPL-3.0-or-later WITH Autoconf-exception-3.0 AND MPL-2.0 AND OFL-1.1 AND (AFL-2.0 OR GPL-2.0-or-later) AND BSD-Source-Code AND BSD-2-Clause-Views AND LGPL-2.1-or-later AND (NCSA OR MIT) AND Apache-2.0 WITH LLVM-exception AND ICU AND BSL-1.0",
+        "MIT AND LGPL-2.1-only AND BSD-3-Clause AND (Apache-2.0 OR GPL-3.0-or-later)",
+        "MIT AND LGPL-2.1-only AND BSD-3-Clause AND (Apache-2.0 OR GPL-3.0-or-later)"
+      ],
+      "evidence": {
+        "document": "packaging/rpm/webkitgtk-luma.spec",
+        "field": "License"
+      },
+      "note": "Aggregate package expression, not a substitute for each modified file's upstream notice."
+    },
+    {
+      "family": "weston",
+      "path": "patches/weston/",
+      "status": "upstream-license-not-established-by-this-audit",
+      "observed_patch_headers": {},
+      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
+    },
+    {
+      "family": "wine",
+      "path": "patches/wine/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "LGPL-2.1-or-later"
+      ],
+      "evidence": {
+        "document": "docs/research/component-ledger.md",
+        "line": 33
+      },
+      "note": ""
+    }
+  ]
+}

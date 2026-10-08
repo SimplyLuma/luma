@@ -1,0 +1,17 @@
+[Unit]
+Description=Luma Fairphone 6 read-only stock biometric runtime mounts
+After=local-fs.target
+Before=luma-fp6-fingerprint-lock-agent.service
+ConditionKernelCommandLine=androidboot.slot_suffix=_b
+ConditionPathExists=/var/tmp/luma-stock-qrel1695-images/system_a.img
+ConditionPathExists=/etc/waydroid-extra/images/system.img
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/luma-fp6-fingerprint-restore-mounts
+TimeoutStartSec=60
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

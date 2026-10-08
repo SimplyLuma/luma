@@ -1,0 +1,29 @@
+From: Project Luma <project-luma@local>
+Subject: [PATCH] libipa: add S5KKD1SP sensor helper
+
+The S5KKD1SP V4L2 control uses gain values from 1 through 64 and the kernel
+driver converts them to the sensor register encoding by shifting left five.
+Expose that identity real-gain model to the Simple IPA. The black pedestal is
+not yet physically calibrated and is intentionally left unspecified.
+
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -846,6 +846,16 @@
+ 	}
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("ov13b10", CameraSensorHelperOv13b10)
++
++class CameraSensorHelperS5kkd1sp : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperS5kkd1sp()
++	{
++		gain_ = AnalogueGainLinear{ 1, 0, 0, 1 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("s5kkd1sp", CameraSensorHelperS5kkd1sp)
+ 
+ class CameraSensorHelperVd55g1 : public CameraSensorHelper
+ {
+-- 
+2.51.0

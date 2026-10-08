@@ -1,0 +1,12 @@
+[Unit]
+Description=Update apps every six hours
+Documentation=https://simplyluma.com/apps
+PartOf=graphical-session.target
+
+[Timer]
+OnStartupSec=20min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=graphical-session.target

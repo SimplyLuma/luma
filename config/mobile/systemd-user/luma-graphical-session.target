@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Project Luma graphical session anchor
+Documentation=man:systemd.special(7)
+BindsTo=graphical-session.target
+Before=graphical-session.target
+After=graphical-session-pre.target
+Wants=graphical-session-pre.target xdg-desktop-portal.service
+StopWhenUnneeded=yes

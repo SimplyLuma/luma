@@ -1,0 +1,45 @@
+#!/usr/bin/python3
+from __future__ import annotations
+
+import os
+import re
+import stat
+import subprocess
+from pathlib import Path
+
+
+NODES = ("binder", "hwbinder", "vndbinder")
+
+
+def main() -> int:
+    sys_root = Path(os.environ.get("LUMA_BINDER_SYS_ROOT", "/sys/class/misc"))
+    dev_root = Path(os.environ.get("LUMA_BINDER_DEV_ROOT", "/dev"))
+    for name in NODES:
+        identity = (sys_root / name / "dev").read_text(encoding="utf-8").strip()
+        match = re.fullmatch(r"([0-9]+):([0-9]+)", identity)
+        if not match:
+            raise RuntimeError(f"invalid built-in Binder identity for {name}")
+        major, minor = (int(value) for value in match.groups())
+        target = dev_root / name
+        try:
+            current = target.lstat()
+        except FileNotFoundError:
+            current = None
+        if current is not None:
+            if stat.S_ISCHR(current.st_mode) and current.st_rdev == os.makedev(major, minor):
+                target.chmod(0o666)
+                continue
+            if stat.S_ISLNK(current.st_mode) and os.readlink(target) == f"/dev/binderfs/{name}":
+                target.unlink()
+            else:
+                raise RuntimeError(f"refusing unexpected existing Binder path: {target}")
+        os.mknod(target, stat.S_IFCHR | 0o666, os.makedev(major, minor))
+        target.chmod(0o666)
+        os.chown(target, 0, 0)
+    if Path("/usr/sbin/restorecon").is_file():
+        subprocess.run(["/usr/sbin/restorecon", *[str(dev_root / n) for n in NODES]], check=False)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

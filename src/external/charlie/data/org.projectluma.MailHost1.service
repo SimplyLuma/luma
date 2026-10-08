@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.MailHost1
+Exec=/usr/bin/python3 -P -m charlie_luma.host_mail

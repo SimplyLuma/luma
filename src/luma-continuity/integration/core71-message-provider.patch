@@ -1,0 +1,141 @@
+--- a/src/prairie-core/prairie_apps/messages.py
++++ b/src/prairie-core/prairie_apps/messages.py
+@@ -322,10 +322,20 @@
+         self.add_css_class("messages-window")
+         if self.context.input_mode.value == "touch":
+             self.add_css_class("messages-touch")
+-        self.store = MessageStore(); self.store.recover_interrupted()
++        self.continuity = getattr(application, "message_provider", None)
++        if self.continuity is None:
++            try:
++                from luma_continuity.message_provider import selected_provider
++            except ModuleNotFoundError as error:
++                if error.name not in {"luma_continuity", "luma_continuity.message_provider"} or (Path.home() / ".config/luma-connect/messages-phone.json").exists(): raise
++            else:
++                self.continuity = selected_provider(store_factory=MessageStore, dispatch=GLib.idle_add)
++        self.store = MessageStore(self.continuity.store_path if self.continuity else None)
++        self.store.recover_interrupted()
+         self.incoming_revision = self.store.external_revision()
+-        self.transport = ModemMessagingTransport()
+-        self.mms_transport = MmsMessagingTransport()
++        # The selected provider must never acquire the local modem.
++        self.transport = self.continuity.sms_transport() if self.continuity else ModemMessagingTransport()
++        self.mms_transport = self.continuity.mms_transport() if self.continuity else MmsMessagingTransport()
+         self.mms_capability = MmsCapability()
+         self.content_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="messages-content")
+         self.peer_presence: dict[str, tuple[float, str]] = {}
+@@ -377,7 +387,18 @@
+         GLib.idle_add(self._restore_last_conversation)
+         self.connect("close-request", self._close_requested)
+         self._reload_threads()
++        if self.continuity: self.continuity.start(self._continuity_changed)
+         GLib.idle_add(self._start_external_context_load)
++
++    def _continuity_changed(self, state) -> None:
++        if self.closed: return
++        self.capability = self.transport.inspect()
++        detail = {"offline": "Phone offline. Messages stay queued.",
++                  "unavailable": "Phone access is unavailable.",
++                  "attention": "Some sends need review. Do not resend until their status is known."}.get(state["state"], self.capability.reason)
++        self.transport_status.set_label(detail); self.transport_status.set_visible(True)
++        self._composer_changed(self.composer_buffer)
++        self._reload_threads(); self._render_messages()
+ 
+     def _start_external_context_load(self) -> bool:
+         self.mms_transport.start(self._mms_message, self._mms_capability_changed)
+@@ -386,7 +407,7 @@
+ 
+     def _load_external_context(self) -> None:
+         capability = self.transport.inspect()
+-        contacts = load_contacts()
++        contacts = self.continuity.contacts() if self.continuity else load_contacts()
+         GLib.idle_add(self._external_context_ready, capability, contacts)
+ 
+     def _external_context_ready(
+@@ -400,7 +421,7 @@
+         self.contacts = contacts
+         self._sync_contact_names()
+         self.transport_status.set_label(capability.reason)
+-        self.transport_status.set_visible(not capability.available)
++        self.transport_status.set_visible(self.continuity is not None or not capability.available)
+         self._composer_changed(self.composer_buffer)
+         self._reload_threads()
+         self._poll_received()
+@@ -545,7 +566,7 @@
+         self.draft_content.set_visible(False)
+         bottom.append(self.draft_content)
+         self.transport_status = Gtk.Label(label=self.capability.reason, wrap=True); self.transport_status.add_css_class("messages-transport-status")
+-        self.transport_status.set_visible(not self.capability.available); bottom.append(self.transport_status)
++        self.transport_status.set_visible(self.continuity is not None or not self.capability.available); bottom.append(self.transport_status)
+         composer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, valign=Gtk.Align.END); composer.add_css_class("messages-composer")
+         attach = _icon_button("attach", "Add attachment", "messages-composer-button"); attach.connect("clicked", self._attachment_requested); composer.append(attach)
+         self.composer_view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, accepts_tab=False, hexpand=True); self.composer_view.add_css_class("messages-composer-input")
+@@ -1239,7 +1260,7 @@
+                 ready = False
+                 reason = "The draft exceeds the carrier's MMS attachment limits."
+         self.transport_status.set_label(reason)
+-        self.transport_status.set_visible(not ready)
++        self.transport_status.set_visible(self.continuity is not None or not ready)
+         sendable = bool(
+             ready and self.current_address and has_content
+         )
+@@ -1302,7 +1323,10 @@
+         writer = MessageStore(self.store.path)
+         try:
+             record = writer.message(uid)
+-            if record.attachments:
++            if self.continuity:
++                result = self.continuity.send_message(uid)
++                state = result["state"]
++            elif record.attachments:
+                 with tempfile.TemporaryDirectory(prefix=".mms-send-", dir=writer.path.parent) as temporary:
+                     parts = [(part.uid, part.content_type, str(writer.attachment_path(part))) for part in record.attachments]
+                     if body:
+@@ -1319,9 +1343,9 @@
+         except Exception as failure:
+             state = "failed"; error = str(failure)
+         try:
+-            writer.update_state(
+-                uid, state, transport_id,
+-            )
++            # Provider owns queue/receipt state; a fast receipt must not be overwritten.
++            if self.continuity is None or error:
++                writer.update_state(uid, state, transport_id)
+         except Exception as failure:
+             state = "failed"
+             error = error or str(failure)
+@@ -1504,11 +1528,14 @@
+         self._open_thread(thread, reveal=True); self.composer_view.grab_focus()
+ 
+     def _refresh(self, *_args) -> None:
+-        self.capability = self.transport.inspect(); self.transport_status.set_label(self.capability.reason); self.transport_status.set_visible(not self.capability.available)
++        self.capability = self.transport.inspect(); self.transport_status.set_label(self.capability.reason); self.transport_status.set_visible(self.continuity is not None or not self.capability.available)
+         self._poll_received(); self._reload_threads()
+ 
+     def _poll_received(self) -> bool:
+         if self.closed: return GLib.SOURCE_REMOVE
++        if self.continuity:
++            self.continuity.refresh()
++            return GLib.SOURCE_CONTINUE
+         if self.polling: return GLib.SOURCE_CONTINUE
+         self.polling = True; threading.Thread(target=self._collect_received, daemon=True).start(); return GLib.SOURCE_CONTINUE
+ 
+@@ -1640,6 +1667,7 @@
+ 
+     def _close_requested(self, *_args) -> bool:
+         self.closed = True
++        if self.continuity: self.continuity.close()
+         if self.presence_expiry:
+             GLib.source_remove(self.presence_expiry)
+             self.presence_expiry = 0
+@@ -1651,8 +1679,9 @@
+ 
+ 
+ class MessagesApplication(Adw.Application):
+-    def __init__(self) -> None:
++    def __init__(self, *, message_provider=None) -> None:
+         super().__init__(application_id=APPLICATION_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE); self.pending_address = ""
++        self.message_provider = message_provider
+     def do_startup(self) -> None:
+         Adw.Application.do_startup(self); install_appkit(); install_theme(); install_messages_theme()
+         # A notification names the conversation it came from, so clicking it

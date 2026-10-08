@@ -1,0 +1,32 @@
+{
+  "_source": "v71 .tpmini/.tmhit/.tmprog, lines4718\u20134724: quiet52px media row,18px hit radius,44px artwork,2px neutral progress with12px sides and2px bottom.",
+  "lumaui": {
+    "media": {
+      "mini": {
+        "row_height": 52,
+        "radius": 18,
+        "gap": 2,
+        "content_gap": 12,
+        "padding_x": 6,
+        "progress_slot": 8,
+        "progress_height": 2,
+        "progress_side": 12,
+        "progress_bottom": 2
+      }
+    },
+    "type_scale": {
+      "media_mini_title": {
+        "size": 14.5,
+        "weight": 650,
+        "line_height": 1.45,
+        "tracking_em": 0
+      },
+      "media_mini_detail": {
+        "size": 12.5,
+        "weight": 400,
+        "line_height": 1.45,
+        "tracking_em": 0
+      }
+    }
+  }
+}

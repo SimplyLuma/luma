@@ -1,0 +1,25 @@
+# lumaui-conform: the ThinkPad's GTK stack (every package at the ThinkPad's NVR,
+# thinkpad-rpmqa.txt) plus Node and Playwright's headless Chromium, for
+# throwaway capture containers on the build server. Built by install.sh.
+# rpms/ holds the Luma builds from the build host's pool, digests checked
+# against the ThinkPad's (install.sh); thinkpad-share.tar is the ThinkPad's
+# hicolor/locolor icons and MIME database, as installed apps shape both.
+FROM registry.fedoraproject.org/fedora:44
+COPY rpms /tmp/rpms
+COPY thinkpad-rpmqa.txt ship-rpmqa.txt pin.sh thinkpad-share.tar /tmp/
+RUN sh /tmp/pin.sh && rm -rf /tmp/rpms /tmp/pin.sh /var/cache/dnf /var/lib/dnf/repos /var/log/dnf* \
+ && rm -rf /usr/share/icons/hicolor /usr/share/icons/locolor /usr/share/mime \
+ && tar -C / -xf /tmp/thinkpad-share.tar && rm /tmp/thinkpad-share.tar \
+ && fc-cache -f >/dev/null && glib-compile-schemas /usr/share/glib-2.0/schemas \
+ && ln -sf ../usr/share/zoneinfo/America/Chicago /etc/localtime
+ARG PLAYWRIGHT=1.62.1
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright LUMAUI_CONFORM_PLAYWRIGHT=/opt/lumaui-conform/node_modules/playwright
+RUN mkdir -p /opt/lumaui-conform && cd /opt/lumaui-conform && npm init -y >/dev/null \
+ && npm install --no-audit --no-fund playwright@$PLAYWRIGHT >/dev/null \
+ && npx playwright install --only-shell chromium >/dev/null && rm -rf /root/.npm /root/.cache \
+ && for s in /opt/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell; do mv "$s" "$s.real" \
+      && printf '#!/bin/sh\n# lumaui-conform: no font hinting, so glyph advances stay fractional as on the Mac (hinted, Linux\n# Chromium rounds them and text runs ~10%% wider).\nexec "$0.real" --font-render-hinting=none "$@"\n' > "$s" && chmod 755 "$s"; done \
+ && useradd -u 1000 -m conform && mkdir -p /run/user/1000 && chown conform /run/user/1000 && chmod 700 /run/user/1000
+ENV LANG=en_US.UTF-8 TZ=America/Chicago XDG_RUNTIME_DIR=/run/user/1000
+USER conform
+WORKDIR /home/conform

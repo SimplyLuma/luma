@@ -1,0 +1,28 @@
+From: Project Luma
+Subject: [PATCH] theme: keep native corners on tiled windows
+
+Tiling places windows with gaps between them, so a tiled window is a
+floating card like any other and keeps its corners. Only fullscreen
+windows meet the display edge. Tiled windows still draw no outer
+shadow (0032), so their surface extents match the tile exactly.
+
+--- a/src/stylesheet/widgets/_window.scss
++++ b/src/stylesheet/widgets/_window.scss
+@@ -107,6 +107,17 @@
+     outline: none;
+   }
+ 
++  // Tiled windows sit in a gapped layout and keep the same corners.
++  &.csd.tiled:not(.fullscreen),
++  &.csd.tiled-top:not(.fullscreen),
++  &.csd.tiled-left:not(.fullscreen),
++  &.csd.tiled-right:not(.fullscreen),
++  &.csd.tiled-bottom:not(.fullscreen) {
++    --window-radius: 15px;
++    border-radius: var(--window-radius);
++    outline: none;
++  }
++
+   &.solid-csd {
+     margin: 0;
+     padding: 5px;

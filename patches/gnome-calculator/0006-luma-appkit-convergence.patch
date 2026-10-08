@@ -1,0 +1,301 @@
+diff --git a/src/ui/math-window.blp b/src/ui/math-window.blp
+index e23449f..66484d3 100644
+--- a/src/ui/math-window.blp
++++ b/src/ui/math-window.blp
+@@ -1,63 +1,151 @@
+ using Gtk 4.0;
+ using Adw 1;
+ 
++menu primary_menu {
++  section {
++    item {
++      label: _("_New Window");
++      action: "app.new-window";
++    }
++  }
++
++  section {
++    label: _("Result Format");
++
++    item {
++      label: _("_Automatic");
++      action: "win.number-format";
++      target: "automatic";
++    }
++
++    item {
++      label: _("_Fixed");
++      action: "win.number-format";
++      target: "fixed";
++    }
++
++    item {
++      label: _("_Scientific");
++      action: "win.number-format";
++      target: "scientific";
++    }
++
++    item {
++      label: _("_Engineering");
++      action: "win.number-format";
++      target: "engineering";
++    }
++  }
++
++  section {
++    item {
++      label: _("_Help");
++      action: "app.help";
++    }
++
++    item {
++      label: _("A_bout Calculator");
++      action: "app.about";
++    }
++
++    item {
++      label: _("_Quit Calculator");
++      action: "app.quit";
++    }
++  }
++}
++
+ template $MathWindow: Adw.ApplicationWindow {
+   title: _("Calculator");
+   default-width: 320;
+   default-height: 440;
+   width-request: 300;
+   height-request: 420;
+ 
+   styles [
+     "luma-calculator-window",
+   ]
+ 
+   Adw.ToolbarView {
+     [top]
+     Adw.HeaderBar {
+       centering-policy: strict;
++      show-start-title-buttons: false;
++      show-end-title-buttons: true;
++      decoration-layout: ":minimize,maximize,close";
+ 
+       styles [
+         "luma-calculator-titlebar",
+       ]
+ 
+-      [title]
+-      Label {
+-        label: _("Calculator");
+-        ellipsize: end;
++      [start]
++      MenuButton {
++        menu-model: primary_menu;
++        focus-on-click: false;
++
++        accessibility {
++          label: _("Calculator Menu");
++        }
+ 
+         styles [
+-          "luma-calculator-title",
+-          "luma-title-label",
++          "luma-identity-button",
+         ]
++
++        child: Box {
++          spacing: 8;
++
++          Image {
++            icon-name: "org.gnome.Calculator";
++
++            styles [
++              "luma-identity-icon",
++            ]
++          }
++
++          Label {
++            label: _("Calculator");
++            ellipsize: end;
++          }
++
++          Image {
++            icon-name: "pan-down-symbolic";
++
++            styles [
++              "luma-identity-chevron",
++            ]
++          }
++        };
+       }
++
++      [title]
++      Box {}
+     }
+ 
+     content: Box {
+       vexpand: true;
+       orientation: vertical;
+ 
+       styles [
+         "luma-calculator-surface",
+       ]
+ 
+       Box {
+         overflow: hidden;
+         orientation: vertical;
+ 
+         styles [
+           "display-container",
+         ]
+ 
+         $MathDisplay _display {
+           equation: bind template.equation;
+         }
+       }
+ 
+       $MathButtons _buttons {
+         vexpand: true;
+         equation: bind template.equation;
+       }
+     };
+   }
+ }
+diff --git a/src/ui/style.css b/src/ui/style.css
+index a04772e..a3f4500 100644
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -605,3 +605,133 @@ button.action-button {
+     background-color: #365f97;
+   }
+ }
++
++/* Shared Luma Application Kit composition. These selectors are opt-in and
++ * consume the semantic libadwaita tokens used by Filer and Luma-native apps;
++ * third-party Calculator builds retain their upstream presentation. */
++.luma-calculator-window {
++  background-color: @luma_window;
++  color: @luma_ink;
++  font-family: "Figtree";
++}
++
++headerbar.luma-calculator-titlebar {
++  min-height: 42px;
++  padding: 0 8px 0 12px;
++  background-color: @luma_window;
++  background-image: none;
++  color: @luma_ink;
++  border: none;
++  box-shadow: none;
++}
++
++headerbar.luma-calculator-titlebar > windowhandle > box {
++  padding-top: 0;
++  padding-bottom: 0;
++}
++
++.luma-calculator-surface {
++  margin: 0 9px 9px;
++  border-radius: 10px;
++  background-color: @luma_content;
++  color: @luma_ink;
++  box-shadow: inset 0 0 0 1px @luma_line,
++              0 2px 5px rgba(25, 27, 31, 0.16),
++              0 18px 36px -16px rgba(25, 27, 31, 0.48);
++}
++
++.luma-calculator-surface .display-container {
++  min-height: 76px;
++  margin: 0;
++  border: none;
++  border-bottom: 1px solid @luma_line;
++  border-radius: 10px 10px 0 0;
++  background-color: transparent;
++  color: @luma_ink;
++  box-shadow: none;
++}
++
++.luma-calculator-surface mathdisplay,
++.luma-calculator-surface mathdisplay textview,
++.luma-calculator-surface mathdisplay textview text {
++  background-color: transparent;
++  color: @luma_ink;
++}
++
++.luma-calculator-surface .sourceview,
++.luma-calculator-surface .display-result {
++  color: @luma_ink;
++  font-family: "Figtree";
++}
++
++.luma-calculator-surface .info-view {
++  color: @luma_muted;
++}
++
++.luma-calculator-surface widget.math-buttons,
++.luma-calculator-surface box.math-buttons {
++  margin: 8px;
++}
++
++.luma-calculator-surface box.math-buttons,
++.luma-calculator-surface .math-buttons grid.buttons,
++.luma-calculator-surface .math-buttons grid.buttons > grid {
++  border-spacing: 4px;
++}
++
++.luma-calculator-surface .math-buttons grid.buttons > button,
++.luma-calculator-surface .math-buttons grid.buttons > menubutton > button,
++.luma-calculator-surface .math-buttons grid.buttons > stack > button,
++.luma-calculator-surface .math-buttons grid.buttons > grid > button,
++.luma-calculator-surface .math-buttons grid.buttons > grid > menubutton > button,
++.luma-calculator-surface .math-buttons grid.buttons > grid > stack > button {
++  padding: 2px 4px;
++  border: none;
++  border-radius: 8px;
++  background-color: @luma_fill;
++  background-image: none;
++  color: @luma_ink;
++  box-shadow: none;
++  font-family: "Figtree";
++  font-size: 13px;
++  font-weight: 600;
++}
++
++.luma-calculator-surface .math-buttons grid.buttons button:hover,
++.luma-calculator-surface .math-buttons grid.buttons menubutton > button:hover {
++  background-color: @luma_hover;
++}
++
++.luma-calculator-surface .math-buttons grid.buttons button:active,
++.luma-calculator-surface .math-buttons grid.buttons button.keyboard-activating,
++.luma-calculator-surface .math-buttons grid.buttons menubutton > button:active {
++  background-color: @luma_selected;
++}
++
++.luma-calculator-surface .math-buttons grid.buttons button.function-button {
++  border: 1px solid @luma_line;
++  background-color: transparent;
++  color: @luma_muted;
++  font-weight: 700;
++}
++
++.luma-calculator-surface .math-buttons grid.buttons button.operator-button {
++  background-color: color-mix(in srgb, @luma_ink 9%, transparent);
++  color: @luma_ink;
++  font-size: 18px;
++  font-weight: 600;
++}
++
++@media (prefers-color-scheme: dark) {
++  .luma-calculator-surface {
++    box-shadow: inset 0 0 0 1px @luma_line,
++                0 2px 6px rgba(0, 0, 0, 0.42),
++                0 20px 38px -15px rgba(0, 0, 0, 0.78);
++  }
++}
++
++.luma-calculator-surface .math-buttons grid.buttons button.result-button {
++  background-color: @luma_ink;
++  color: @luma_content;
++  font-size: 18px;
++  font-weight: 600;
++}

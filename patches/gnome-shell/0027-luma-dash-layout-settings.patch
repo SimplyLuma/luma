@@ -1,0 +1,729 @@
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -198,3 +198,93 @@
+   background-gradient-start: rgba(255, 255, 255, 0.13);
+   background-gradient-end: rgba(255, 255, 255, 0.04);
+   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
++
++/* Native Dash layout variants. Existing separate bottom surfaces remain the
++ * default. Connected mode owns exactly one material/stroke/shadow stack. */
++.luma-shelf-root.luma-shelf-separate > .luma-shelf-group {
++  background-color: transparent;
++  border-radius: 0;
++}
++.luma-shelf-root.luma-shelf-connected > .luma-shelf-group > .luma-shelf-island > .luma-shelf-material {
++  background-color: transparent;
++  border-radius: 0;
++}
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-bottom > .luma-shelf-material,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-bottom > .luma-shelf-shadow,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-bottom > .luma-shelf-stroke {
++  border-radius: 15px 15px 0 0;
++}
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-top > .luma-shelf-material,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-top > .luma-shelf-shadow,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-top > .luma-shelf-stroke {
++  border-radius: 0 0 15px 15px;
++}
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-left > .luma-shelf-material,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-left > .luma-shelf-shadow,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-left > .luma-shelf-stroke {
++  border-radius: 0 15px 15px 0;
++}
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-right > .luma-shelf-material,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-right > .luma-shelf-shadow,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-attached.luma-shelf-right > .luma-shelf-stroke {
++  border-radius: 15px 0 0 15px;
++}
++.luma-shelf-vertical .luma-shelf-dock-island #dash .dash-item-container .overview-tile,
++.luma-shelf-vertical .luma-shelf-dock-island #dash .dash-item-container .show-apps {
++  margin: 2.5px 0;
++}
++.luma-shelf-vertical .luma-shelf-actions-island .luma-shelf-material {
++  padding: 9px 7px;
++}
++.luma-shelf-vertical .luma-shelf-actions-box {
++  spacing: 7px;
++}
++.luma-shelf-vertical .luma-shelf-actions-box .luma-clock-content {
++  padding-top: 0;
++  spacing: 3px;
++}
++.luma-shelf-vertical .luma-shelf-actions-box .luma-clock-time,
++.luma-shelf-vertical .luma-shelf-actions-box .luma-clock-date {
++  min-width: 0;
++  text-align: center;
++}
++.luma-shelf-vertical .luma-shelf-actions-box .luma-clock-time {
++  font-size: 11px;
++}
++.luma-shelf-vertical .luma-shelf-actions-box .luma-clock-date {
++  font-size: 8px;
++}
++.luma-shelf-vertical .luma-shelf-live-island .luma-shelf-material {
++  padding: 7px;
++}
++.luma-shelf-vertical .luma-live-extension-content {
++  spacing: 3px;
++  padding: 0;
++}
++.luma-shelf-vertical .luma-live-extension-text {
++  width: 36px;
++  min-width: 0;
++}
++.luma-shelf-vertical .luma-live-extension-title,
++.luma-shelf-vertical .luma-live-extension-subtitle {
++  min-width: 0;
++  text-align: center;
++  font-size: 11px;
++}
++
++.luma-shelf-root.luma-shelf-connected.luma-shelf-flush > .luma-shelf-material,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-flush > .luma-shelf-shadow,
++.luma-shelf-root.luma-shelf-connected.luma-shelf-flush > .luma-shelf-stroke {
++  border-radius: 0;
++}
++
++.luma-shelf-horizontal .luma-shelf-divider-after > .luma-shelf-material {
++  border-right: 1px solid rgba(255, 255, 255, 0.12);
++}
++.luma-shelf-horizontal:rtl .luma-shelf-divider-after > .luma-shelf-material {
++  border-right-width: 0;
++  border-left: 1px solid rgba(255, 255, 255, 0.12);
++}
++.luma-shelf-vertical .luma-shelf-divider-after > .luma-shelf-material {
++  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
++}
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -26,6 +26,13 @@
+             showLabel: false,
+             popupMenuSide: St.Side.BOTTOM,
+         });
++    }
++
++    popupMenu() {
++        const edge = Main.overview.dash._shelfEdge ?? 'bottom';
++        this._popupMenuSide = St.Side[edge.toUpperCase()];
++        this._menu?.setArrowSide(this._popupMenuSide);
++        return super.popupMenu();
+     }
+ 
+     // Disable scale-n-fade methods used during DND by parent
+@@ -111,12 +118,21 @@
+ 
+         const labelWidth = this.label.get_width();
+         const xOffset = Math.floor((itemWidth - labelWidth) / 2);
+-        const x = Math.clamp(stageX + xOffset, 0, global.stage.width - labelWidth);
++        let x = Math.clamp(stageX + xOffset, 0, global.stage.width - labelWidth);
+ 
+         const node = this.label.get_theme_node();
+         const yOffset = node.get_length('-y-offset');
+ 
+-        const y = stageY - this.label.height - yOffset;
++        let y = stageY - this.label.height - yOffset;
++        const edge = Main.overview.dash._shelfEdge;
++        if (edge === 'top')
++            y = stageY + this.height + yOffset;
++        else if (edge === 'left' || edge === 'right') {
++            x = edge === 'left' ? stageX + this.width + yOffset : stageX - labelWidth - yOffset;
++            y = stageY + (this.height - this.label.height) / 2;
++        }
++        x = Math.clamp(x, 0, global.stage.width - labelWidth);
++        y = Math.clamp(y, 0, global.stage.height - this.label.height);
+ 
+         this.label.set_position(x, y);
+         this.label.ease({
+@@ -877,7 +893,13 @@
+         }
+     }
+ 
+-    handleDragOver(source, actor, x, _y, _time) {
++    handleDragOver(source, actor, x, y, _time) {
++        const vertical = this._shelfEdge === 'left' || this._shelfEdge === 'right';
++        const axis = vertical ? 1 : 0;
++        const extent = actor => vertical ? actor.height : actor.width;
++        const rtl = !vertical && this.text_direction === Clutter.TextDirection.RTL;
++        if (vertical)
++            x = y;
+         const app = Dash.getAppFromSource(source);
+ 
+         // Don't allow favoriting of transient apps
+@@ -894,23 +916,23 @@
+ 
+         const children = this._box.get_children();
+         let numChildren = children.length;
+-        let boxWidth = this._box.width;
++        let boxWidth = extent(this._box);
+ 
+         // Keep the placeholder out of the index calculation; assuming that
+         // the remove target has the same size as "normal" items, we don't
+         // need to do the same adjustment there.
+         if (this._dragPlaceholder) {
+-            boxWidth -= this._dragPlaceholder.width;
++            boxWidth -= extent(this._dragPlaceholder);
+ 
+             if (source === Main.xdndHandler) {
+                 // XdndHandler invokes us through _box._delegate, so x is
+                 // local to _box, not to the outer Dash actor.
+-                const [boxStageX] = this._box.get_transformed_position();
+-                const [placeholderStageX] =
+-                    this._dragPlaceholder.get_transformed_position();
++                const boxStageX = this._box.get_transformed_position()[axis];
++                const placeholderStageX =
++                    this._dragPlaceholder.get_transformed_position()[axis];
+                 const placeholderStart = placeholderStageX - boxStageX;
+                 const placeholderEnd =
+-                    placeholderStart + this._dragPlaceholder.width;
++                    placeholderStart + extent(this._dragPlaceholder);
+ 
+                 // Remove the temporary actor from pointer geometry exactly
+                 // where it exists. While the pointer is over the open gap,
+@@ -920,14 +942,14 @@
+                 if (x >= placeholderStart && x <= placeholderEnd)
+                     return DND.DragMotionResult.MOVE_DROP;
+                 if (x > placeholderEnd)
+-                    x -= this._dragPlaceholder.width;
++                    x -= extent(this._dragPlaceholder);
+             }
+             numChildren--;
+         }
+ 
+         // Same with the separator
+         if (this._separator) {
+-            boxWidth -= this._separator.width;
++            boxWidth -= extent(this._separator);
+             numChildren--;
+         }
+ 
+@@ -935,10 +957,10 @@
+         if (this._emptyDropTarget)
+             pos = 0; // always insert at the start when dash is empty
+         else if (source === Main.xdndHandler &&
+-                 this.text_direction === Clutter.TextDirection.RTL)
++                 rtl)
+             pos = numChildren - Math.max(0, Math.min(numChildren,
+                 Math.round(x * numChildren / boxWidth)));
+-        else if (this.text_direction === Clutter.TextDirection.RTL)
++        else if (rtl)
+             pos = numChildren - Math.floor(x * numChildren / boxWidth);
+         else if (source === Main.xdndHandler)
+             pos = Math.max(0, Math.min(numChildren,
+@@ -972,8 +994,8 @@
+             }
+ 
+             this._dragPlaceholder = new DragPlaceholderItem();
+-            this._dragPlaceholder.child.set_width(this.iconSize);
+-            this._dragPlaceholder.child.set_height(this.iconSize / 2);
++            this._dragPlaceholder.child.set_width(vertical ? this.iconSize / 2 : this.iconSize);
++            this._dragPlaceholder.child.set_height(vertical ? this.iconSize : this.iconSize / 2);
+             this._box.insert_child_at_index(
+                 this._dragPlaceholder,
+                 this._dragPlaceholderPos);
+@@ -1045,6 +1067,17 @@
+         this._queueRedisplay();
+     }
+ 
++    setShelfEdge(edge) {
++        this._shelfEdge = edge;
++        const vertical = edge === 'left' || edge === 'right';
++        const orientation = vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._box.layout_manager.orientation = orientation;
++        this._dashContainer.orientation = orientation;
++        this._dashContainer.x_align = vertical ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER;
++        this._box.y_expand = !vertical;
++        this._clearDragPlaceholder();
++    }
++
+     setFixedIconSize(size) {
+         this._fixedIconSize = true;
+         this.iconSize = size;
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -1062,6 +1062,11 @@
+             this.remove_style_class_name('luma-shelf-clock');
+     }
+ 
++    setShelfOrientation(vertical) {
++        this._timeDisplay.x_align = vertical ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.END;
++        this._dateDisplay.x_align = vertical ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.END;
++    }
++
+     _getEventSource() {
+         return new Calendar.DBusEventSource();
+     }
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -74,7 +74,7 @@
+         });
+         text.add_child(this._title);
+         text.add_child(this._subtitle);
+-        const content = new St.BoxLayout({
++        const content = this._shelfContent = new St.BoxLayout({
+             style_class: 'luma-live-extension-content',
+         });
+         content.add_child(this._icon);
+@@ -162,6 +162,11 @@
+         this.show();
+     }
+ 
++    setShelfOrientation(vertical) {
++        this._shelfContent.orientation = vertical
++            ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++    }
++
+     _openApplication() {
+         if (!this._current)
+             return;
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -53,35 +53,71 @@
+ const LEGACY_DESKTOP_DOCK_UUID = 'dash-to-dock@micxgx.gmail.com';
+ const SHELF_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-shelf.css';
+ 
+-const ShelfLayout = GObject.registerClass(
+-class ShelfLayout extends Clutter.LayoutManager {
+-    vfunc_get_preferred_width(container, forHeight) {
+-        const child = container.get_first_child();
+-        return child?.get_preferred_width(forHeight) ?? [0, 0];
+-    }
+-
+-    vfunc_get_preferred_height(container, forWidth) {
+-        const child = container.get_first_child();
+-        return child?.get_preferred_height(forWidth) ?? [0, 0];
++// Geometry is independent of St so every shape can be tested without changing
++// a user's session. Left/right are physical monitor edges, including in RTL.
++export function dashGeometry(monitor, edge, protrude, span, floatEnds, natural, scale = 1) {
++    const vertical = edge === 'left' || edge === 'right';
++    const thickness = SHELF_HEIGHT * scale;
++    const inset = protrude ? 0 : SHELF_EDGE_INSET * scale;
++    const gutter = !span || floatEnds ? SHELF_EDGE_INSET * scale : 0;
++    const available = Math.max(1, (vertical ? monitor.height : monitor.width) - 2 * gutter);
++    const length = span ? available : Math.min(available, natural);
++    const width = vertical ? thickness : length;
++    const height = vertical ? length : thickness;
++    const x = vertical
++        ? monitor.x + (edge === 'left' ? inset : monitor.width - inset - width)
++        : monitor.x + (monitor.width - width) / 2;
++    const y = vertical
++        ? monitor.y + (monitor.height - height) / 2
++        : monitor.y + (edge === 'top' ? inset : monitor.height - inset - height);
++    return {x, y, width, height, vertical, available, reserve: protrude && span};
++}
++
++const ShelfGroupLayout = GObject.registerClass(
++class ShelfGroupLayout extends Clutter.LayoutManager {
++    _measure(container) {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const children = container.get_children().filter(child => child.visible);
++        const sizes = children.map(child => container._vertical
++            ? child.get_preferred_height(SHELF_HEIGHT * scale)[1]
++            : child.get_preferred_width(SHELF_HEIGHT * scale)[1]);
++        const gap = container._separate ? SHELF_ISLAND_GAP * scale : 0;
++        return {children, sizes, gap, length: sizes.reduce((a, b) => a + b, 0) +
++            Math.max(0, sizes.length - 1) * gap, thickness: SHELF_HEIGHT * scale};
++    }
++
++    vfunc_get_preferred_width(container, _forHeight) {
++        const m = this._measure(container);
++        return [0, container._vertical ? m.thickness : m.length];
++    }
++
++    vfunc_get_preferred_height(container, _forWidth) {
++        const m = this._measure(container);
++        return [0, container._vertical ? m.length : m.thickness];
+     }
+ 
+     vfunc_allocate(container, box) {
+-        const child = container.get_first_child();
+-        if (!child)
+-            return;
+-
+-        const width = box.get_width();
+-        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const [, naturalWidth] = child.get_preferred_width(SHELF_HEIGHT * scale);
+-        const childWidth = Math.min(width, naturalWidth);
+-        const x = Math.floor((width - childWidth) / 2);
+-        const childBox = new Clutter.ActorBox({
+-            x1: x,
+-            y1: 0,
+-            x2: x + childWidth,
+-            y2: SHELF_HEIGHT * scale,
+-        });
+-        child.allocate(childBox);
++        const {children, sizes, gap, length} = this._measure(container);
++        const vertical = container._vertical;
++        const available = vertical ? box.get_height() : box.get_width();
++        const spacing = children.length > 1
++            ? gap + Math.max(0, available - length) / (children.length - 1) : 0;
++        const rtl = !vertical && container.text_direction === Clutter.TextDirection.RTL;
++        let offset = rtl ? available : 0;
++        let remaining = available;
++        children.forEach((child, i) => {
++            const size = Math.min(sizes[i], Math.max(0, remaining));
++            remaining -= size + spacing;
++            if (rtl)
++                offset -= size;
++            child.allocate(new Clutter.ActorBox({
++                x1: vertical ? 0 : offset,
++                y1: vertical ? offset : 0,
++                x2: vertical ? box.get_width() : offset + size,
++                y2: vertical ? offset + size : box.get_height(),
++            }));
++            offset += rtl ? -spacing : size + spacing;
++        });
+     }
+ });
+ 
+@@ -93,6 +129,7 @@
+             layout_manager: new Clutter.BinLayout(),
+         });
+         this._content = child;
++        this._decorations = [];
+ 
+         for (const shadowClass of ['far', 'middle', 'near']) {
+             const shadow = new St.Widget({
+@@ -103,6 +140,7 @@
+                 coordinate: Clutter.BindCoordinate.ALL,
+             }));
+             this.add_child(shadow);
++            this._decorations.push(shadow);
+         }
+ 
+         child.add_style_class_name('luma-shelf-material');
+@@ -117,6 +155,7 @@
+             coordinate: Clutter.BindCoordinate.ALL,
+         }));
+         this.add_child(stroke);
++        this._decorations.push(stroke);
+     }
+ 
+     // Constraint-backed shadow actors deliberately do not participate in
+@@ -124,12 +163,17 @@
+     // panel buttons that paint outside a zero-width allocation cannot leak
+     // through without their surface.
+     vfunc_get_preferred_width(forHeight) {
++        if (this._vertical) {
++            const width = SHELF_HEIGHT * St.ThemeContext.get_for_stage(global.stage).scale_factor;
++            return [width, width];
++        }
+         return this._content.get_preferred_width(forHeight);
+     }
+ 
+-    vfunc_get_preferred_height(_forWidth) {
++    vfunc_get_preferred_height(forWidth) {
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const height = SHELF_HEIGHT * scale;
++        const height = this._vertical ? Math.max(SHELF_HEIGHT * scale,
++            this._content.get_preferred_height(forWidth)[1]) : SHELF_HEIGHT * scale;
+         return [height, height];
+     }
+ });
+@@ -148,11 +192,9 @@
+             name: 'lumaShelf',
+             style_class: 'luma-shelf',
+             reactive: false,
+-            // The actor is 64 px high so Mutter reserves both the 50 px
+-            // material and its 14 px screen-edge breathing room. Allocate the
+-            // material at the actor's top rather than centering it in that
+-            // reserve, which would incorrectly halve the visible inset.
+-            layout_manager: new ShelfLayout(),
++            // Only the target edge geometry participates in struts. Animation
++            // is confined to the visual child, never the work-area actor.
++            layout_manager: new Clutter.BinLayout(),
+         });
+ 
+         this._settings = new Gio.Settings({
+@@ -165,17 +207,22 @@
+         St.ThemeContext.get_for_stage(global.stage)
+             .get_theme()
+             .load_stylesheet(this._stylesheet);
+-        this._settings.connectObject('changed', () => this._sync(), this);
++        this._settings.connectObject('changed', (_settings, key) => this._settingsChanged(key), this);
++        St.Settings.get().connectObject('notify::enable-animations', () => this._sync(), this);
++        St.ThemeContext.get_for_stage(global.stage).connectObject(
++            'notify::scale-factor', () => this._sync(), this);
+         Main.sessionMode.connectObject('updated', () => {
+             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._sync());
+         }, this);
+         Main.layoutManager.connectObject('monitors-changed', () => this._sync(), this);
+-        this._group = new St.BoxLayout({
++        this._group = new St.Widget({
+             style_class: 'luma-shelf-group',
+-            x_align: Clutter.ActorAlign.CENTER,
+-            y_align: Clutter.ActorAlign.START,
+-        });
+-        this.add_child(this._group);
++            layout_manager: new ShelfGroupLayout(),
++            x_expand: true,
++            y_expand: true,
++        });
++        this._surface = new ShelfIsland('luma-shelf-root', this._group);
++        this.add_child(this._surface);
+ 
+         // The overview Dash already owns favorites, drag/drop, Show Apps, and
+         // keyboard state. Adopt that one actor instead of running a second
+@@ -214,19 +261,27 @@
+             style_class: 'luma-shelf-actions-box',
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+-        this._actionsMaterial = new St.Bin({child: this._actionsBox});
++        this._actionsScroll = new St.ScrollView({
++            hscrollbar_policy: St.PolicyType.NEVER,
++            vscrollbar_policy: St.PolicyType.NEVER,
++            enable_mouse_scrolling: true,
++            overlay_scrollbars: true,
++        });
++        this._actionsScroll.set_child(this._actionsBox);
++        this._actionsMaterial = new St.Bin({child: this._actionsScroll});
+         this._actionsIsland = new ShelfIsland(
+             'luma-shelf-actions-island', this._actionsMaterial);
+ 
+         Main.layoutManager.addChrome(this, {
+-            affectsStruts: true,
++            affectsStruts: false,
+             trackFullscreen: true,
+         });
+         Main.ctrlAltTabManager.addGroup(
+-            this, _('Shelf'), 'shell-focus-dash-symbolic');
++            this, _('Dash'), 'shell-focus-dash-symbolic');
+ 
+         this._dash.connectObject('notify::width', () => this._queueDockWidth(), this);
+-        this._actionsBox.connectObject('notify::width', () => this._queueDockWidth(), this);
++        this._actionsBox.connectObject('notify::width', () => this._queueDockWidth(),
++            'notify::height', () => this._queueDockWidth(), this);
+         // A scroll view allocates the dash at least the viewport's width, so
+         // a dash that lost an item never reports a narrower width; its box
+         // does report the item leaving.
+@@ -234,6 +289,27 @@
+             'child-added', () => this._queueDockWidth(),
+             'child-removed', () => this._queueDockWidth(), this);
+         this._sync();
++    }
++
++    _settingsChanged(key) {
++        const shapeKeys = ['shelf-edge-mode', 'shelf-span-full',
++            'shelf-float-ends', 'shelf-surface-mode'];
++        if (!this._positioned || !shapeKeys.includes(key) ||
++            !St.Settings.get().enable_animations) {
++            this._sync();
++            return;
++        }
++        // Fade the previous shape out before relayout, then reveal the new
++        // shape. The 220ms transition owns no duplicate interactive actors.
++        this._surface.remove_all_transitions();
++        this._surface.ease({opacity: 0, duration: 110,
++            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
++            onComplete: () => {
++                this._sync();
++                this._surface.opacity = 0;
++                this._surface.ease({opacity: 255, duration: 110,
++                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++            }});
+     }
+ 
+     _isDesktopSession() {
+@@ -265,7 +341,7 @@
+             'keyboard',
+             'quickSettings',
+         ];
+-        const arrowSide = St.Side.BOTTOM;
++        const arrowSide = St.Side[this._edge.toUpperCase()];
+ 
+         for (const role of actionRoles) {
+             const indicator = indicators[role];
+@@ -286,6 +362,7 @@
+             }
+             container.visible = indicator.visible;
+             indicator.setShelfPresentation?.(true);
++            indicator.setShelfOrientation?.(this._vertical);
+             this._setMenuSide(indicator, arrowSide);
+         }
+ 
+@@ -294,9 +371,18 @@
+         if (live) {
+             if (!this._liveIsland) {
+                 live.get_parent()?.remove_child(live);
+-                this._liveMaterial = new St.Bin({child: live});
++                this._liveContent = new St.BoxLayout();
++                this._liveContent.add_child(live);
++                this._liveScroll = new St.ScrollView({
++                    enable_mouse_scrolling: true,
++                    overlay_scrollbars: true,
++                });
++                this._liveScroll.set_child(this._liveContent);
++                this._liveMaterial = new St.Bin({child: this._liveScroll});
+                 this._liveIsland = new ShelfIsland(
+                     'luma-shelf-live-island', this._liveMaterial);
++                liveIndicator.connectObject('notify::width', () => this._queueDockWidth(),
++                    'notify::height', () => this._queueDockWidth(), this);
+                 liveIndicator.connectObject('notify::visible', () => {
+                     this._liveIsland.visible = liveIndicator.visible;
+                     this._queueDockWidth();
+@@ -307,6 +393,7 @@
+                 this._group.insert_child_at_index(this._liveIsland, 1);
+             }
+             this._liveIsland.visible = liveIndicator.visible;
++            liveIndicator.setShelfOrientation(this._vertical);
+         }
+     }
+ 
+@@ -320,6 +407,12 @@
+     }
+ 
+     _sync() {
++        this._previousVisualPosition = [this.x + this._surface.translation_x,
++            this.y + this._surface.translation_y];
++        this._surface.remove_all_transitions();
++        this._surface.opacity = 255;
++        this._surface.translation_x = 0;
++        this._surface.translation_y = 0;
+         if (!this._isDesktopSession()) {
+             this.hide();
+             this._restorePanelActors();
+@@ -335,6 +428,24 @@
+         const actionsVisible = this._settings.get_boolean('shelf-actions-visible');
+         const surfaceMode = this._settings.get_string('shelf-surface-mode');
+         const material = this._settings.get_string('shelf-material');
++        this._edge = this._settings.get_string('shelf-edge');
++        this._vertical = this._edge === 'left' || this._edge === 'right';
++        this._protrude = this._settings.get_string('shelf-edge-mode') === 'protruding';
++        this._span = this._settings.get_boolean('shelf-span-full');
++        this._floatEnds = this._settings.get_boolean('shelf-float-ends');
++        this._group._vertical = this._vertical;
++        this._group._separate = surfaceMode === 'separate';
++        const orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++        this._actionsBox.orientation = orientation;
++        this._dockContent.orientation = orientation;
++        this._dash.setShelfEdge(this._edge);
++        this._dockScroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
++        this._dockScroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
++        this._dockScroll.set_size(-1, -1);
++        this._surface.set_style_class_name(`luma-shelf-island luma-shelf-root luma-shelf-${surfaceMode} ` +
++            `luma-shelf-${this._edge} ${this._vertical ? 'luma-shelf-vertical' : 'luma-shelf-horizontal'} ` +
++            `${this._protrude ? 'luma-shelf-attached' : ''} ${this._span && !this._floatEnds ? 'luma-shelf-flush' : ''}`);
++        this._surface._decorations.forEach(actor => actor.visible = surfaceMode === 'connected');
+ 
+         this._group.remove_all_children();
+         if (dockVisible)
+@@ -342,11 +453,19 @@
+         if (actionsVisible)
+             this._group.add_child(this._actionsIsland);
+         this._group.set_style_class_name(
+-            `luma-shelf-group luma-shelf-${surfaceMode} luma-shelf-material-${material}`);
++            `luma-shelf-group luma-shelf-material luma-shelf-${surfaceMode} luma-shelf-material-${material}`);
+ 
+         this._adoptPanelActors();
+-        this._syncGeometry();
+-        this._queueDockWidth();
++        const visibleIslands = this._group.get_children().filter(actor => actor.visible);
++        for (const island of this._group.get_children()) {
++            island.remove_style_class_name('luma-shelf-divider-after');
++            if (surfaceMode === 'connected' && island !== visibleIslands.at(-1))
++                island.add_style_class_name('luma-shelf-divider-after');
++            island._vertical = this._vertical;
++            island._decorations.forEach(actor => actor.visible = surfaceMode === 'separate');
++        }
++        this._surface._vertical = this._vertical;
++        this._syncDockWidth();
+     }
+ 
+     _syncGeometry() {
+@@ -355,9 +474,37 @@
+             return;
+ 
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const reserve = (SHELF_HEIGHT + SHELF_EDGE_INSET) * scale;
+-        this.set_position(monitor.x, monitor.y + monitor.height - reserve);
+-        this.set_size(monitor.width, reserve);
++        const natural = this._vertical
++            ? this._group.get_preferred_height(SHELF_HEIGHT * scale)[1]
++            : this._group.get_preferred_width(SHELF_HEIGHT * scale)[1];
++        const geometry = dashGeometry(monitor, this._edge, this._protrude,
++            this._span, this._floatEnds, natural, scale);
++        const explicitChange = this._previousVisualPosition !== null && this._previousVisualPosition !== undefined;
++        const moved = this.x !== geometry.x || this.y !== geometry.y;
++        const [oldX, oldY] = this._previousVisualPosition ??
++            [this.x + this._surface.translation_x, this.y + this._surface.translation_y];
++        this._previousVisualPosition = null;
++        this.set_position(geometry.x, geometry.y);
++        this.set_size(geometry.width, geometry.height);
++        if (this._reserves !== geometry.reserve) {
++            // Supported chrome tracking API: remove old strut metadata before
++            // admitting the new policy. No private strut array or polling.
++            Main.layoutManager.untrackChrome(this);
++            Main.layoutManager.trackChrome(this, {
++                affectsStruts: geometry.reserve,
++                trackFullscreen: true,
++            });
++            this._reserves = geometry.reserve;
++        }
++        if (this._positioned && St.Settings.get().enable_animations &&
++            (moved || explicitChange) && (oldX !== geometry.x || oldY !== geometry.y)) {
++            this._surface.remove_all_transitions();
++            this._surface.translation_x = oldX - geometry.x;
++            this._surface.translation_y = oldY - geometry.y;
++            this._surface.ease({translation_x: 0, translation_y: 0,
++                duration: 220, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        }
++        this._positioned = true;
+     }
+ 
+     _normaliseDockIcons() {
+@@ -405,15 +552,49 @@
+             return;
+ 
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const [, naturalDockWidth] = this._dash.get_preferred_width(-1);
+-        const [, actionsWidth] = this._actionsIsland.get_preferred_width(-1);
+-        const maxWidth = Math.max(1,
+-            monitor.width - 2 * SHELF_EDGE_INSET * scale -
+-            actionsWidth - SHELF_ISLAND_GAP * scale);
+-        this._dockScroll.width = Math.min(naturalDockWidth, maxWidth);
+-        if (naturalDockWidth > maxWidth)
++        const measure = actor => this._vertical
++            ? actor.get_preferred_height(SHELF_HEIGHT * scale)[1]
++            : actor.get_preferred_width(SHELF_HEIGHT * scale)[1];
++        const naturalDock = measure(this._dash);
++        const edgeLength = this._vertical ? monitor.height : monitor.width;
++        const gutter = !this._span || this._floatEnds ? 2 * SHELF_EDGE_INSET * scale : 0;
++        const available = Math.max(1, edgeLength - gutter);
++        const setViewport = (scroll, length, cross) => {
++            scroll.hscrollbar_policy = this._vertical ? St.PolicyType.NEVER : St.PolicyType.EXTERNAL;
++            scroll.vscrollbar_policy = this._vertical ? St.PolicyType.EXTERNAL : St.PolicyType.NEVER;
++            scroll.set_size(this._vertical ? cross : length,
++                this._vertical ? length : -1);
++        };
++        // Keep all status controls reachable on a short/narrow display. Both
++        // adopted panel content and the dock use native scrollable boundaries;
++        // no child is silently discarded to satisfy geometry.
++        let liveSize = 0;
++        if (this._liveIsland?.visible) {
++            this._liveContent.orientation = this._vertical
++                ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
++            this._liveScroll.set_size(-1, -1);
++            liveSize = Math.min(measure(this._liveContent) + 20 * scale, available / 3);
++            setViewport(this._liveScroll, Math.max(1, liveSize - 20 * scale), 36 * scale);
++            liveSize = measure(this._liveIsland);
++        }
++        const others = this._group.get_children().filter(actor => actor !== this._dockIsland && actor.visible);
++        const gap = this._group._separate ? others.length * SHELF_ISLAND_GAP * scale : 0;
++        this._actionsScroll.set_size(-1, -1);
++        const actionsBudget = Math.max(1, available - liveSize - gap - SHELF_HEIGHT * scale);
++        const actionsPadding = (this._vertical ? 18 : 21) * scale;
++        const actionsLength = Math.min(measure(this._actionsBox), Math.max(1, actionsBudget - actionsPadding));
++        setViewport(this._actionsScroll, actionsLength, 36 * scale);
++        const otherSize = others.reduce((sum, actor) => sum + measure(actor), 0);
++        const maxLength = Math.max(1, edgeLength - gutter - otherSize - gap - 14 * scale);
++        const length = Math.min(naturalDock, maxLength);
++        if (this._vertical)
++            this._dockScroll.set_size(SHELF_ICON_SIZE * scale, length);
++        else
++            this._dockScroll.set_size(length, -1);
++        if (naturalDock > maxLength)
+             this._dockScroll.add_style_pseudo_class('overflowing');
+         else
+             this._dockScroll.remove_style_pseudo_class('overflowing');
++        this._syncGeometry();
+     }
+ });

@@ -1,0 +1,30 @@
+From 72b2bbcbeca51ced01960f591628cfd428f08361 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local.invalid>
+Date: Sun, 27 Sep 2026 18:39:00 +0000
+Subject: [PATCH] Paint the Filer location band opaquely
+
+---
+ src/resources/style.css | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -38,10 +38,14 @@
+   color: @luma_ink;
+ }
+ 
+-/* The location heading is part of the same inset content surface as the files. */
++/* The location heading is part of the same inset content surface as the files.
++ * Paint its toolbar band opaquely so the platform's scroll treatment cannot
++ * show diagonal marks through the heading. */
++.luma-files-window toolbarview.luma-content-surface > .top-bar,
+ .luma-files-window #filer-location-row,
+ .luma-files-window .luma-action-toolbar-overlay headerbar.luma-secondary-toolbar {
+   background-color: @luma_content;
++  background-image: none;
+ }
+ .luma-files-window #filer-location-scope image { -gtk-icon-size: 0px; }
+ .luma-files-window box.lumaui-bar-chip { min-width: 243px; }
+-- 
+2.55.0

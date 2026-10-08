@@ -1,0 +1,14 @@
+{
+  "_doc": "v71 media typography: Tide .feature b, .tnt b, .twin .hero h2, .hero .by and .stage h2/.by. Large and compact album heroes have explicit roles so other surfaces retain their existing scale.",
+  "lumaui": {
+    "type_scale": {
+      "feature_title": {"size": 28, "weight": 700, "line_height": 1.05, "tracking_em": -0.035},
+      "now_title": {"size": 22, "weight": 700, "line_height": 1.2, "tracking_em": -0.02},
+      "now_display": {"size": 32, "weight": 700, "line_height": 1.45, "tracking_em": -0.03},
+      "album_hero_title": {"size": 58, "weight": 700, "line_height": 1.0, "tracking_em": -0.05},
+      "album_hero_title_compact": {"size": 36, "weight": 700, "line_height": 1.0, "tracking_em": -0.05},
+      "album_artist": {"size": 16, "weight": 500, "line_height": 1.45, "tracking_em": 0},
+      "media_credit": {"size": 16, "weight": 400, "line_height": 1.45, "tracking_em": 0}
+    }
+  }
+}

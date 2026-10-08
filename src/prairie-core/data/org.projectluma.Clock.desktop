@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Clock
+Comment=World clocks, alarms, a stopwatch and a timer
+Exec=prairie-clock
+Icon=org.projectluma.Clock
+Terminal=false
+Categories=Utility;Clock;
+Keywords=Clock;Alarm;Timer;Stopwatch;Time;
+StartupNotify=true
+DBusActivatable=true
+X-Purism-FormFactor=Workstation;Mobile;
+X-GNOME-UsesNotifications=true

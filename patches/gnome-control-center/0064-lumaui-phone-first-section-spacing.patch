@@ -1,0 +1,13 @@
+diff --git a/shell/luma-settings.css b/shell/luma-settings.css
+index d7dfa37..42d1101 100644
+--- a/shell/luma-settings.css
++++ b/shell/luma-settings.css
+@@ -21,6 +21,8 @@ label.cf-h1 { line-height: 37px; }
+ .cf-row.bt { min-height: 36px; padding-top: 8px; padding-bottom: 8px; }
+ .cf-group { margin-top: 26px; }
+ .cf-hero + .cf-group { margin-top: 24px; }
++/* v71 phone first section follows the hero without the desktop 24px gap. */
++.cf-island-page > .cf-hero:first-child + .cf-group { margin-top: 0; }
+ .cf-h6 { min-height: 24px; margin: 0 4px 8px; }
+ .cf-note { margin: 8px 6px 0; font-size: 12px; letter-spacing: 0.12px; color: @luma_faint; }
+ .cf-card { border-radius: 16px; box-shadow: inset 0 0 0 1px @luma_menu_border; }

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Leaf
+GenericName=Book Reader
+Comment=Read your books, or listen to them
+Exec=org.projectluma.Leaf %U
+Icon=org.projectluma.Leaf
+Terminal=false
+Categories=Office;Viewer;Literature;GTK;
+MimeType=application/epub+zip;
+StartupNotify=true
+DBusActivatable=true
+Keywords=Books;Ebook;EPUB;Reader;Read aloud;Library;

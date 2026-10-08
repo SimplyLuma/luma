@@ -1,0 +1,78 @@
+--- a/js/misc/introspect.js
++++ b/js/misc/introspect.js
+@@ -49,6 +49,8 @@
+         this._syncRunningApplications();
+ 
+         this._senderChecker = new DBusSenderChecker(APP_ALLOWLIST);
++        // Monitor receives only app IDs and PIDs, never the portal window data.
++        this._monitorSenderChecker = new DBusSenderChecker(['io.luma.Monitor']);
+ 
+         this._settings = St.Settings.get();
+         this._settings.connect('notify::enable-animations',
+@@ -130,6 +132,46 @@
+         }
+ 
+         invocation.return_value(new GLib.Variant('(a{sa{sv}})', [this._runningApplications]));
++    }
++
++    async GetMonitorApplicationsAsync(params, invocation) {
++        try {
++            await this._monitorSenderChecker.checkInvocation(invocation);
++        } catch (e) {
++            invocation.return_gerror(e);
++            return;
++        }
++        const apps = {};
++        for (const app of this._appSystem.get_running()) {
++            if (this._isStandaloneApp(app))
++                apps[app.get_id()] = app.get_pids().filter(pid => pid > 0);
++        }
++        invocation.return_value(new GLib.Variant('(a{sau})', [apps]));
++    }
++
++    async RequestMonitorQuitAsync(params, invocation) {
++        try {
++            await this._monitorSenderChecker.checkInvocation(invocation);
++        } catch (e) {
++            invocation.return_gerror(e);
++            return;
++        }
++        const [appId, expectedPids] = params;
++        const app = this._appSystem.get_running().find(a => a.get_id() === appId);
++        // Refuse stale selections or a different instance of the same app.
++        const currentPids = app?.get_pids() ?? [];
++        const matches = expectedPids.length > 0 && currentPids.length > 0 &&
++            currentPids.every(pid => expectedPids.includes(pid));
++        // ShellApp requests app.quit or normal window deletion. It never kills
++        // the process, so application save/cancel prompts retain their meaning.
++        let requested = false;
++        if (matches && this._isStandaloneApp(app)) {
++            // Activate the existing window before asking it to close, so an
++            // application-owned save/cancel prompt is visible above Monitor.
++            app.activate_full(-1, global.display.get_current_time_roundtrip());
++            requested = app.request_quit();
++        }
++        invocation.return_value(new GLib.Variant('(b)', [Boolean(requested)]));
+     }
+ 
+     async GetWindowsAsync(params, invocation) {
+--- a/data/dbus-interfaces/org.gnome.Shell.Introspect.xml
++++ b/data/dbus-interfaces/org.gnome.Shell.Introspect.xml
+@@ -60,6 +60,17 @@
+           - "width"       (u): (readonly) width of the window
+           - "height"      (u): (readonly) height of the window
+     -->
++    <!-- Luma Monitor-only interface: no window titles or other portal data.
++         Quit is a request, not evidence that an application has exited. -->
++    <method name="GetMonitorApplications">
++      <arg name="apps" direction="out" type="a{sau}" />
++    </method>
++    <method name="RequestMonitorQuit">
++      <arg name="app_id" direction="in" type="s" />
++      <arg name="expected_pids" direction="in" type="au" />
++      <arg name="requested" direction="out" type="b" />
++    </method>
++
+     <method name="GetWindows">
+       <arg name="windows" direction="out" type="a{ta{sv}}" />
+     </method>

@@ -1,0 +1,183 @@
+{
+  "_doc": "Viewer v70 sample data from vwSide/VWF, read-only in-memory fixture. Sample artwork is isolated here; generated receipt and frame follow vwDraw.",
+  "selected": "offsite",
+  "files": [
+    {
+      "uid": "offsite",
+      "name": "Offsite-hero.jpg",
+      "kind": "JPEG image",
+      "size_text": "2.1 MB",
+      "group": "Today",
+      "where": "~/Pictures/Offsite",
+      "modified": "Today, 9:40 AM",
+      "asset": "viewer-v70/offsite.webp",
+      "camera": [
+        [
+          "Lens",
+          "23 mm \u00b7 \u0192/2"
+        ],
+        [
+          "Exposure",
+          "1/250 s \u00b7 ISO 400"
+        ],
+        [
+          "Taken",
+          "21 September, 5:48 PM"
+        ],
+        [
+          "Place",
+          "Oakland, California"
+        ]
+      ]
+    },
+    {
+      "uid": "receipt",
+      "name": "Receipt, Parcel & Post.png",
+      "kind": "PNG image",
+      "size_text": "1.2 MB",
+      "group": "Today",
+      "where": "~/Downloads",
+      "modified": "Today, 9:40 AM",
+      "generated": "receipt",
+      "width": 900,
+      "height": 1240
+    },
+    {
+      "uid": "lease",
+      "name": "Lease-2027-draft.pdf",
+      "kind": "PDF document",
+      "size_text": "1.2 MB",
+      "group": "Today",
+      "where": "~/Documents/Studio",
+      "modified": "Today, 9:40 AM",
+      "pages": 3
+    },
+    {
+      "uid": "v7",
+      "name": "Filer, take seven.webp",
+      "kind": "WebP image",
+      "size_text": "480 KB",
+      "group": "This week",
+      "where": "~/Design/Luma",
+      "modified": "Today, 9:40 AM",
+      "asset": "viewer-v70/v7.png"
+    },
+    {
+      "uid": "v6",
+      "name": "Filer, take six.webp",
+      "kind": "WebP image",
+      "size_text": "470 KB",
+      "group": "This week",
+      "where": "~/Design/Luma",
+      "modified": "Today, 9:40 AM",
+      "asset": "viewer-v70/v6.png"
+    },
+    {
+      "uid": "frame",
+      "name": "Frame 1.png",
+      "kind": "PNG image",
+      "size_text": "8.5 KB",
+      "group": "This week",
+      "where": "~/Documents",
+      "modified": "15 September 2026",
+      "generated": "frame",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "uid": "terrace",
+      "name": "Terrace.jpg",
+      "kind": "JPEG image",
+      "size_text": "2.7 MB",
+      "group": "This week",
+      "where": "~/Pictures/Offsite",
+      "modified": "Today, 9:40 AM",
+      "asset": "viewer-v70/terrace.webp",
+      "camera": [
+        [
+          "Lens",
+          "23 mm \u00b7 \u0192/2"
+        ],
+        [
+          "Exposure",
+          "1/250 s \u00b7 ISO 400"
+        ],
+        [
+          "Taken",
+          "21 September, 5:48 PM"
+        ],
+        [
+          "Place",
+          "Oakland, California"
+        ]
+      ]
+    },
+    {
+      "uid": "gone1",
+      "name": "374dbd570a3b548.png",
+      "kind": "",
+      "size_text": "",
+      "group": "Earlier",
+      "where": "",
+      "modified": "Today, 9:40 AM",
+      "gone": true
+    },
+    {
+      "uid": "gone2",
+      "name": "e42e990219a26d4.png",
+      "kind": "",
+      "size_text": "",
+      "group": "Earlier",
+      "where": "",
+      "modified": "Today, 9:40 AM",
+      "gone": true
+    }
+  ],
+  "people": [
+    {
+      "name": "Priya Raman",
+      "username": "priya",
+      "hue": 330,
+      "asset": "viewer-v70/face-PR.jpg"
+    },
+    {
+      "name": "Nora Feld",
+      "username": "nora",
+      "hue": 45,
+      "asset": "viewer-v70/face-NF.jpg"
+    },
+    {
+      "name": "Theo Marsh",
+      "username": "theo",
+      "hue": 350,
+      "asset": "viewer-v70/face-TH.jpg"
+    },
+    {
+      "name": "Sam Kaur",
+      "username": "samk",
+      "hue": 200,
+      "asset": "viewer-v70/face-SK.jpg"
+    },
+    {
+      "name": "Alex Ruiz",
+      "username": "alexr",
+      "hue": 262,
+      "asset": "viewer-v70/face-AR.jpg"
+    },
+    {
+      "name": "Ada Chen",
+      "username": "ada",
+      "hue": 200
+    },
+    {
+      "name": "Jordan Kim",
+      "username": "jordan.k",
+      "hue": 100
+    },
+    {
+      "name": "Zoe Martin",
+      "username": "zoe",
+      "hue": 270
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] appearance: present Dark before Light without changing a saved selection
+
+The creator review requests Dark first. Selection and accessibility must follow
+the semantic mode ID, not its column number; existing saved Light remains Light.
+
+diff --git a/shell/cc-luma-view-appearance.c b/shell/cc-luma-view-appearance.c
+--- a/shell/cc-luma-view-appearance.c
++++ b/shell/cc-luma-view-appearance.c
+@@ -161,7 +161,7 @@
+ static gboolean styles_fluid (View *v) { return v->phone && cc_luma_view_phone_device (); }
+ static GtkWidget *modes (View *v)
+ {
+-  const char *ids[] = { "light", "dark" }, *names[] = { "Light", "Dark" };
++  const char *ids[] = { "dark", "light" }, *names[] = { "Dark", "Light" };
+   gboolean dark = adw_style_manager_get_dark (adw_style_manager_get_default ());
+   gboolean fluid = styles_fluid (v);
+   GtkWidget *group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, fluid ? 10 : 18);
+@@ -179,13 +179,13 @@
+       gtk_button_set_child (GTK_BUTTON (button), content);
+       gtk_widget_add_css_class (button, "cf-style");
+       if (fluid) gtk_widget_add_css_class (button, "phone");
+-      if ((i == 1) == dark) gtk_widget_add_css_class (button, "on");
++      if (g_str_equal (ids[i], "dark") == dark) gtk_widget_add_css_class (button, "on");
+       g_autofree char *name = g_strconcat ("cf-mode-", ids[i], NULL);
+       gtk_widget_set_name (button, name);
+       g_object_set_data (G_OBJECT (button), "cf-mode", (gpointer) ids[i]);
+       gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, names[i], -1);
+       gtk_accessible_update_state (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_STATE_PRESSED,
+-                                   (i == 1) == dark ? GTK_ACCESSIBLE_TRISTATE_TRUE : GTK_ACCESSIBLE_TRISTATE_FALSE, -1);
++                                   g_str_equal (ids[i], "dark") == dark ? GTK_ACCESSIBLE_TRISTATE_TRUE : GTK_ACCESSIBLE_TRISTATE_FALSE, -1);
+       g_signal_connect_object (button, "clicked", G_CALLBACK (mode_clicked), v->root, 0);
+       gtk_box_append (GTK_BOX (group), button);
+     }
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -525,6 +525,9 @@
+   g_assert_true (luma_surface_policy_select (policy, "dark", NULL));
+   GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "appearance", NULL));
+   g_assert_true (has_text (view, "Dark · Blue accent · Prism"));
++  GtkWidget *first_mode = find_name (view, "cf-mode-dark");
++  g_assert_true (gtk_widget_get_first_child (gtk_widget_get_parent (first_mode)) == first_mode);
++  g_assert_true (gtk_widget_get_next_sibling (first_mode) == find_name (view, "cf-mode-light"));
+   g_signal_emit_by_name (find_name (view, "cf-mode-light"), "clicked"); drain ();
+   g_assert_false (adw_style_manager_get_dark (manager));
+   g_assert_true (has_text (view, "Light · Blue accent · Prism"));

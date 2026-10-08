@@ -1,0 +1,101 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 18:00:00 -0500
+Subject: [PATCH] luma: a maximized window is the shell's largest tile
+
+Dragging a window into the full-screen tile left the gap every tile keeps
+-- from the Dash's islands, and from the screen on the edges the Dash does
+not hold -- while maximizing the same window went edge to edge. Two ways
+of asking for "as big as it goes" gave two different windows.
+
+Mutter now takes a per-edge inset off the rectangle it maximizes to, and
+this is where that inset comes from: the same per-edge outer gap this
+extension gives tiles, published for each monitor whenever it can change
+-- when a monitor gets its tiling manager, when the gap setting changes,
+and when the work area changes because the Dash took or freed an edge.
+The two are equal by construction rather than by two places agreeing.
+
+Turning the extension off clears the insets, so a maximized window goes
+back to filling its work area. A Mutter without the inset is left alone.
+
+---
+diff --git a/components/tilingsystem/tilingManager.js b/components/tilingsystem/tilingManager.js
+--- a/components/tilingsystem/tilingManager.js
++++ b/components/tilingsystem/tilingManager.js
+@@ -48,6 +48,33 @@
+   return buildMargin({ top: side("top"), bottom: side("bottom"), left: side("left"), right: side("right") });
+ }
+ const LUMA_NO_OUTER = buildMargin({});
++// Luma: a maximized window is the shell's largest tile. Mutter takes these
++// insets off the rectangle it maximizes to, so a maximized window keeps the
++// same gap from each edge that the full-screen tile does -- the same
++// per-edge outer gap, published from the one place that owns it, rather
++// than two places agreeing. A fullscreen window is not affected.
++export function lumaPublishMaximizeInsets(monitorIndex) {
++  const display = global.display;
++  if (typeof display?.set_maximize_inset !== "function") return false;
++  const outer = lumaOuterGaps(monitorIndex);
++  try {
++    display.set_maximize_inset(monitorIndex, Meta.Side.TOP, Math.round(outer.top));
++    display.set_maximize_inset(monitorIndex, Meta.Side.BOTTOM, Math.round(outer.bottom));
++    display.set_maximize_inset(monitorIndex, Meta.Side.LEFT, Math.round(outer.left));
++    display.set_maximize_inset(monitorIndex, Meta.Side.RIGHT, Math.round(outer.right));
++  } catch (e) {
++    lumaTilingVitals("maximize-inset-refused", `monitor ${monitorIndex}: ${e}`, { monitor: monitorIndex });
++    return false;
++  }
++  return true;
++}
++export function lumaClearMaximizeInsets() {
++  try {
++    global.display?.clear_maximize_insets?.();
++  } catch (e) {
++    // A Mutter without the maximize inset: nothing to clear.
++  }
++}
+ function lumaTilingVitals(event, message, fields = {}) {
+   const entry = { MESSAGE: `[luma-tiling] ${message}`, LUMA_COMPONENT: "tiling", LUMA_EVENT: event };
+   for (const [key, value] of Object.entries(fields))
+@@ -156,6 +183,7 @@
+       this._monitor.index,
+       monitorScalingFactor
+     );
++    lumaPublishMaximizeInsets(this._monitor.index);
+   }
+ 
+   /**
+@@ -202,6 +230,7 @@
+       this._workspaceTilingLayout.forEach(
+         (tilingLayout) => tilingLayout.relayout({ outerGaps })
+       );
++      lumaPublishMaximizeInsets(this._monitor.index);
+     });
+     this._signals.connect(
+       global.display,
+@@ -423,6 +452,7 @@
+     this._tilingSuggestionsLayout?.relayout({ containerRect: this._workArea, outerGaps });
+     this._snapAssist.workArea = this._workArea;
+     this._edgeTilingManager.workarea = this._workArea;
++    lumaPublishMaximizeInsets(this._monitor.index);
+     this._lumaQueueReflow();
+   }
+   // Luma: the area the layout's tiles divide -- the work area less the
+diff --git a/extension.js b/extension.js
+--- a/extension.js
++++ b/extension.js
+@@ -75,7 +75,7 @@
+     return GLib.SOURCE_REMOVE;
+   });
+ }
+-import { TilingManager } from "./components/tilingsystem/tilingManager.js";
++import { TilingManager, lumaClearMaximizeInsets } from "./components/tilingsystem/tilingManager.js";
+ import Settings from "./settings/settings.js";
+ import SignalHandling from "./utils/signalHandling.js";
+ import GlobalState from "./utils/globalState.js";
+@@ -732,6 +732,7 @@
+     this._indicator = null;
+     this._tilingManagers.forEach((tm) => tm.destroy());
+     this._tilingManagers = [];
++    lumaClearMaximizeInsets();
+     this._resizingManager?.destroy();
+     this._resizingManager = null;
+     this._windowBorderManager?.destroy();

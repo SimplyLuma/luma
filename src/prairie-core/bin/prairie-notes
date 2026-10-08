@@ -1,0 +1,7 @@
+#!/usr/bin/python3
+from pathlib import Path
+if not Path('/.flatpak-info').exists():
+    from luma_installer.native_app_roles import launch_if_owned
+    launch_if_owned('org.projectluma.Notes')
+from prairie_apps.notes import main
+raise SystemExit(main())

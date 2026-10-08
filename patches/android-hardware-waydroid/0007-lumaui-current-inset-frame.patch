@@ -1,0 +1,750 @@
+From: Project Luma <builds@projectluma.invalid>
+Subject: [PATCH] LumaUI: current controls and inset Android frame
+
+Applies after 0001-0004; 0008 reconciles the historical resize/input fixes.
+
+--- a/hwcomposer/prairie-titlebar.cpp
++++ b/hwcomposer/prairie-titlebar.cpp
+@@ -59,37 +59,19 @@
+     return (alpha << 24) | (red << 16) | (green << 8) | blue;
+ }
+ 
+-uint32_t frame_opacity(SurfaceTreatment treatment) {
+-    if (treatment == SurfaceTreatment::Glass) return 79;   // 31%
+-    if (treatment == SurfaceTreatment::Frost) return 186;  // 73%
+-    return 255;
+-}
+-
+-uint32_t control_opacity(SurfaceTreatment treatment) {
+-    if (treatment == SurfaceTreatment::Glass) return 219;  // 86%
+-    if (treatment == SurfaceTreatment::Frost) return 235;  // 92%
+-    return 255;
+-}
+-
+ int outer_width(const window& window) { return frame(window).outer.width; }
+-bool dark_frame(const window& window) { return window.surface_treatment == "dark"; }
+-uint32_t frame_ink(const window& window) { return dark_frame(window) ? LUMA_FRAME_DARK_INK : LUMA_FRAME_LIGHT_INK; }
++LumaFrameMaterial frame_material(const window& window) {
++    if (window.surface_treatment == "dark") return LUMA_FRAME_DARK;
++    if (window.surface_treatment == "frost") return LUMA_FRAME_FROST;
++    if (window.surface_treatment == "glass") return LUMA_FRAME_GLASS;
++    return LUMA_FRAME_LIGHT;
++}
++uint32_t frame_ink(const window& window) { return luma_frame_style(frame_material(window)).ink; }
+ int control_left(const window& window, int kind) {
+-    // Match the native order at the right: minimize, maximize, close.
+-    const int position = kind == 0 ? 0 : kind == 1 ? 2 : 1;
+-    return luma_frame_controls(frame(window)).x + LUMA_FRAME_CONTROL_PADDING +
+-        (2 - position) * LUMA_FRAME_CONTROL_SIZE;
+-}
+-
+-
+-constexpr uint32_t kCloseHover = 0x29bd5a4e;
+-constexpr uint32_t kMinimizeHover = 0x29b0782b;
+-constexpr uint32_t kMaximizeHover = 0x294f8a52;
+-constexpr uint32_t kHeaderHover = 0xffeceef1;
+-constexpr uint32_t kCloseGlyphHover = 0xffbd5a4e;
+-constexpr uint32_t kMinimizeGlyphHover = 0xffb0782b;
+-constexpr uint32_t kMaximizeGlyphHover = 0xff4f8a52;
+-constexpr int kIconSize = 11;
++    return luma_frame_control(frame(window), kind == 0 ? 2 : kind == 1 ? 0 : 1).x;
++}
++constexpr int kIconSize = LUMA_FRAME_GLYPH_SIZE;
++static_assert(kIconSize == LUMA_FRAME_CONTROL_ICON_SIZE, "LumaUI glyph size drift");
+ constexpr int kShadowInset = 24;
+ constexpr int kShadowOffsetY = 5;
+ constexpr float kShadowSigma = 8.0f;
+@@ -137,32 +119,6 @@
+     composite_premultiplied(pixels[y * outer_width(window) + x], color);
+ }
+ 
+-void disc(window& window, int left, int top, int diameter, uint32_t color) {
+-    constexpr int samples = 4;
+-    const float radius = static_cast<float>(diameter) / 2.0f;
+-    const float center_x = static_cast<float>(left) + radius;
+-    const float center_y = static_cast<float>(top) + radius;
+-    for (int y = top; y < top + diameter; ++y) {
+-        for (int x = left; x < left + diameter; ++x) {
+-            int inside = 0;
+-            for (int sample_y = 0; sample_y < samples; ++sample_y) {
+-                for (int sample_x = 0; sample_x < samples; ++sample_x) {
+-                    const float px = x + (sample_x + 0.5f) / samples;
+-                    const float py = y + (sample_y + 0.5f) / samples;
+-                    const float dx = px - center_x;
+-                    const float dy = py - center_y;
+-                    if (dx * dx + dy * dy <= radius * radius)
+-                        ++inside;
+-                }
+-            }
+-            const uint32_t alpha = (color >> 24) * inside /
+-                (samples * samples);
+-            if (alpha != 0)
+-                pixel(window, x, y, (alpha << 24) | (color & 0x00ffffff));
+-        }
+-    }
+-}
+-
+ void draw_mask(window& window, int left, int top, const uint8_t* mask,
+                uint32_t color) {
+     for (int y = 0; y < kIconSize; ++y) {
+@@ -177,56 +133,35 @@
+ }
+ 
+ void draw_control(window& window, int button_left, int kind) {
+-    constexpr int circle_top = (kTitlebarHeight - kControlDiameter) / 2;
+-    const int circle_left = button_left +
+-        (kControlAllocation - kControlDiameter) / 2;
++    LumaFrameMaterial material = frame_material(window);
++    LumaFrameStyle style = luma_frame_style(material);
+     const bool hovered = window.hovered_chrome_target == kind + 2;
+-    if (hovered) {
+-        const uint32_t hover = kind == 0 ? kCloseHover :
+-            (kind == 1 ? kMinimizeHover : kMaximizeHover);
+-        disc(window, circle_left + 1, circle_top + 1,
+-             kControlDiameter - 2, hover);
+-    }
+-
+-    const uint32_t glyph = hovered ?
+-        (kind == 0 ? kCloseGlyphHover :
+-         (kind == 1 ? kMinimizeGlyphHover : kMaximizeGlyphHover)) : frame_ink(window);
++    LumaFrameRect rect = {button_left, (kTitlebarHeight - LUMA_FRAME_CONTROL_SIZE) / 2,
++                         LUMA_FRAME_CONTROL_SIZE, LUMA_FRAME_CONTROL_SIZE};
++    if (hovered)
++        for (int y = rect.y; y < rect.y + rect.height; ++y)
++            for (int x = rect.x; x < rect.x + rect.width; ++x)
++                premultiplied_pixel(window, x, y, luma_frame_button_pixel(rect, x, y, material, kind == 0));
+     const uint8_t* mask = kind == 0 ? luma_frame_close_glyph :
+-        (kind == 1 ? luma_frame_minimize_glyph :
+-         (window.maximized ? luma_frame_restore_glyph : luma_frame_maximize_glyph));
+-    const int icon_left = button_left + (kControlAllocation - kIconSize) / 2;
+-    constexpr int icon_top = (kTitlebarHeight - kIconSize) / 2;
+-    draw_mask(window, icon_left, icon_top, mask, glyph);
++                         kind == 1 ? luma_frame_minimize_glyph : luma_frame_maximize_glyph;
++    // Native LumaUI keeps maximize-2 as its Zoom symbol, including when maximized.
++    uint32_t ink = hovered ? (kind == 0 ? style.close_ink : style.ink) : style.muted;
++    draw_mask(window, rect.x + (rect.width - kIconSize) / 2,
++              rect.y + (rect.height - kIconSize) / 2, mask, ink);
+ }
+ 
+ void draw_back(window& window) {
+-    const int left = luma_frame_back(frame(window)).x;
+-    constexpr int center_y = kTitlebarHeight / 2;
+-    if (window.hovered_chrome_target ==
+-            static_cast<int>(TitlebarTarget::Back)) {
+-        constexpr int radius = 8;
+-        for (int y = center_y - kBackButtonSize / 2;
+-                y < center_y + kBackButtonSize / 2; ++y) {
+-            for (int x = left; x < left + kBackButtonSize; ++x) {
+-                const int nearest_x = std::clamp(x, left + radius,
+-                                                 left + kBackButtonSize - radius - 1);
+-                const int nearest_y = std::clamp(y, center_y - kBackButtonSize / 2 + radius,
+-                                                 center_y + kBackButtonSize / 2 - radius - 1);
+-                const int dx = x - nearest_x;
+-                const int dy = y - nearest_y;
+-                if (dx * dx + dy * dy <= radius * radius)
+-                    pixel(window, x, y, dark_frame(window) ? LUMA_FRAME_DARK_CONTENT : kHeaderHover);
+-            }
+-        }
+-    }
+-    // Rotate the exact App Kit minimize chevron, preserving its optical size
+-    // and antialiasing instead of drawing an oversized ten-pixel back arrow.
+-    uint8_t back_mask[kIconSize * kIconSize];
+-    for (int y = 0; y < kIconSize; ++y)
+-        for (int x = 0; x < kIconSize; ++x)
+-            back_mask[y * kIconSize + x] = luma_frame_minimize_glyph[(kIconSize - 1 - x) * kIconSize + y];
+-    draw_mask(window, left + (kBackButtonSize - kIconSize) / 2,
+-              (kTitlebarHeight - kIconSize) / 2, back_mask, frame_ink(window));
++    LumaFrameRect rect = luma_frame_back(frame(window));
++    LumaFrameMaterial material = frame_material(window);
++    const bool hovered = window.hovered_chrome_target == static_cast<int>(TitlebarTarget::Back);
++    if (hovered)
++        for (int y = rect.y; y < rect.y + rect.height; ++y)
++            for (int x = rect.x; x < rect.x + rect.width; ++x)
++                premultiplied_pixel(window, x, y, luma_frame_button_pixel(rect, x, y, material, false));
++    LumaFrameStyle style = luma_frame_style(material);
++    draw_mask(window, rect.x + (rect.width - kIconSize) / 2,
++              rect.y + (rect.height - kIconSize) / 2, luma_frame_back_glyph,
++              hovered ? style.ink : style.muted);
+ }
+ 
+ uint32_t rounded_top_coverage(int width, int x, int y) {
+@@ -343,7 +278,7 @@
+         return;
+     }
+     // Match the shared App Kit Figtree title size and semibold weight.
+-    FT_Set_Char_Size(face, 0, LUMA_FRAME_TITLE_SIZE * 64, 72, 72);
++    FT_Set_Char_Size(face, 0, static_cast<FT_F26Dot6>(LUMA_FRAME_TITLE_SIZE * 64), 72, 72);
+     FT_Fixed weight = LUMA_FRAME_TITLE_WEIGHT << 16;
+     FT_Set_Var_Design_Coordinates(face, 1, &weight);
+     const int title_left = LUMA_FRAME_IDENTITY_INSET + LUMA_FRAME_IDENTITY_ICON_SIZE + LUMA_FRAME_IDENTITY_GAP;
+@@ -490,21 +425,13 @@
+     }
+     if (y < 0)
+         return TitlebarTarget::Content;
+-    const int half_hit = kControlHitSize / 2;
+-    for (int index = 0; index < 3; ++index) {
+-        const int button_left = control_left(window, index);
+-        const int center = button_left + kControlAllocation / 2;
+-        if (x >= center - half_hit && x < center + half_hit) {
+-            if (index == 0)
+-                return TitlebarTarget::Close;
+-            if (index == 1)
+-                return TitlebarTarget::Minimize;
+-            return TitlebarTarget::Maximize;
+-        }
+-    }
+-    const int back_left = luma_frame_back(frame(window)).x;
+-    if (x >= back_left && x < back_left + kBackButtonSize)
+-        return TitlebarTarget::Back;
++    switch (luma_frame_control_at(frame(window), x, y)) {
++    case 0: return TitlebarTarget::Minimize;
++    case 1: return TitlebarTarget::Maximize;
++    case 2: return TitlebarTarget::Close;
++    case 3: return TitlebarTarget::Back;
++    default: break;
++    }
+     return TitlebarTarget::Drag;
+ }
+ 
+@@ -606,8 +533,8 @@
+     window.titlebar_data_size = size;
+     const SurfaceTreatment treatment = read_surface_treatment();
+     window.surface_treatment = treatment_name(treatment);
+-    const bool dark = treatment == SurfaceTreatment::Dark;
+-    window.dark_appearance = dark;
++    const LumaFrameMaterial material = frame_material(window);
++    window.dark_appearance = treatment == SurfaceTreatment::Dark;
+     auto* pixels = static_cast<uint32_t*>(data);
+     for (int y = 0; y < height; ++y) {
+         const bool interior = y >= geometry.content.y + LUMA_FRAME_ISLAND_RADIUS &&
+@@ -615,22 +542,10 @@
+         const int left = interior ? geometry.content.x + LUMA_FRAME_ISLAND_RADIUS : width;
+         const int right = interior ? geometry.content.x + geometry.content.width - LUMA_FRAME_ISLAND_RADIUS : width;
+         for (int x = 0; x < left; ++x)
+-            pixels[y * width + x] = scale_premultiplied(
+-                luma_frame_pixel(geometry, x, y, dark, window.maximized),
+-                frame_opacity(treatment));
++            pixels[y * width + x] = luma_frame_pixel_material(geometry, x, y, material);
+         for (int x = right; x < width; ++x)
+-            pixels[y * width + x] = scale_premultiplied(
+-                luma_frame_pixel(geometry, x, y, dark, window.maximized),
+-                frame_opacity(treatment));
+-    }
+-    const auto back = luma_frame_back(geometry);
+-    for (int y = 0; y < kTitlebarHeight; ++y)
+-        for (int x = std::max(0, back.x - 16); x < width; ++x) {
+-            composite_premultiplied(pixels[y * width + x], scale_premultiplied(
+-                luma_frame_controls_pixel(geometry, x, y, dark), control_opacity(treatment)));
+-            composite_premultiplied(pixels[y * width + x], scale_premultiplied(
+-                luma_frame_control_surface(back, x, y, dark), control_opacity(treatment)));
+-        }
++            pixels[y * width + x] = luma_frame_pixel_material(geometry, x, y, material);
++    }
+     for (int index = 0; index < 3; ++index)
+         draw_control(window, control_left(window, index), index);
+     draw_back(window);
+--- a/hwcomposer/prairie-titlebar.h
++++ b/hwcomposer/prairie-titlebar.h
+@@ -16,11 +16,11 @@
+ constexpr int kTitlebarHeight = LUMA_FRAME_HEADER_HEIGHT;
+ constexpr int kControlDiameter = LUMA_FRAME_CONTROL_SIZE;
+ constexpr int kControlAllocation = LUMA_FRAME_CONTROL_SIZE;
+-constexpr int kControlSpacing = 0;
+-constexpr int kControlInset = 12;
++constexpr int kControlSpacing = LUMA_FRAME_CONTROL_GAP;
++constexpr int kControlInset = LUMA_FRAME_CONTROL_INSET;
+ constexpr int kControlHitSize = LUMA_FRAME_CONTROL_SIZE;
+ constexpr int kWindowRadius = LUMA_FRAME_WINDOW_RADIUS;
+-constexpr int kBackButtonSize = LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_PADDING;
++constexpr int kBackButtonSize = LUMA_FRAME_CONTROL_SIZE;
+ constexpr int kBackButtonInset = 7;
+ 
+ enum class TitlebarTarget {
+--- a/hwcomposer/luma-window-frame.h
++++ b/hwcomposer/luma-window-frame.h
+@@ -80,56 +80,122 @@
+     return a;
+ }
+ 
+-/* Premultiplied ARGB overlay. Transparent interior preserves the real app
+- * surface; opaque corner masks and the inner stroke stay within its island.
+- */
+-static inline uint32_t
+-luma_frame_pixel(LumaWindowFrame f, int x, int y, bool dark, bool maximized)
++/* The same LumaUI frame palette used by the native toolkit sheets. */
++typedef enum { LUMA_FRAME_LIGHT, LUMA_FRAME_DARK, LUMA_FRAME_FROST, LUMA_FRAME_GLASS } LumaFrameMaterial;
++typedef struct {
++    uint32_t top, bottom, ink, muted, hover, close_hover, close_ink, edge;
++} LumaFrameStyle;
++#define LUMA_FRAME_STYLE(M) ((LumaFrameStyle){LUMA_FRAME_##M##_WINDOW_TOP, \
++    LUMA_FRAME_##M##_WINDOW_BOTTOM, LUMA_FRAME_##M##_FRAME_INK, \
++    LUMA_FRAME_##M##_FRAME_MUTED, LUMA_FRAME_##M##_WINDOW_CONTROL_HOVER, \
++    LUMA_FRAME_##M##_WINDOW_CLOSE_HOVER, LUMA_FRAME_##M##_WINDOW_CLOSE_HOVER_INK, \
++    LUMA_FRAME_##M##_ISLAND_EDGE})
++static inline LumaFrameStyle luma_frame_style(LumaFrameMaterial material)
++{
++    switch (material) {
++    case LUMA_FRAME_DARK: return LUMA_FRAME_STYLE(DARK);
++    case LUMA_FRAME_FROST: return LUMA_FRAME_STYLE(FROST);
++    case LUMA_FRAME_GLASS: return LUMA_FRAME_STYLE(GLASS);
++    default: return LUMA_FRAME_STYLE(LIGHT);
++    }
++}
++#undef LUMA_FRAME_STYLE
++
++static inline uint32_t luma_frame_premultiply(uint32_t color, double coverage)
++{
++    unsigned a = (unsigned)lround((color >> 24) * coverage);
++    return (a << 24) | ((((color >> 16) & 255) * a / 255) << 16) |
++        ((((color >> 8) & 255) * a / 255) << 8) | ((color & 255) * a / 255);
++}
++static inline uint32_t luma_frame_over(uint32_t below, uint32_t above)
++{
++    unsigned inverse = 255 - (above >> 24);
++    uint32_t out = 0;
++    for (unsigned shift = 0; shift <= 24; shift += 8) {
++        unsigned channel = ((above >> shift) & 255) + ((below >> shift) & 255) * inverse / 255;
++        out |= (channel > 255 ? 255 : channel) << shift;
++    }
++    return out;
++}
++
++/* Transparent island interior keeps Android's real surface and input owner.
++ * Maximized windows keep LumaUI's current corner treatment; fullscreen and
++ * handheld bypass decoration at the caller. */
++static inline uint32_t luma_frame_pixel_material(LumaWindowFrame f, int x, int y,
++                                                LumaFrameMaterial material)
+ {
+     if (!f.decorated || x < 0 || y < 0 || x >= f.outer.width || y >= f.outer.height)
+         return 0;
+-    /* The large central region never needs raster work, including on hover. */
+-    if (x >= f.content.x + LUMA_FRAME_ISLAND_RADIUS &&
+-        x < f.content.x + f.content.width - LUMA_FRAME_ISLAND_RADIUS &&
+-        y >= f.content.y + LUMA_FRAME_ISLAND_RADIUS &&
+-        y < f.content.y + f.content.height - LUMA_FRAME_ISLAND_RADIUS)
++    /* Most of an application window is untouched Android content. Avoid
++     * distance/gradient work in that area during interactive resizing. */
++    if (x >= f.content.x + LUMA_FRAME_ISLAND_RADIUS + 2 &&
++            x < f.content.x + f.content.width - LUMA_FRAME_ISLAND_RADIUS - 2 &&
++            y >= f.content.y + LUMA_FRAME_ISLAND_RADIUS + 2 &&
++            y < f.content.y + f.content.height - LUMA_FRAME_ISLAND_RADIUS - 2)
+         return 0;
+     double outer = luma_frame_coverage(luma_frame_distance(
+-        x + 0.5, y + 0.5, f.outer, maximized ? 0 : LUMA_FRAME_WINDOW_RADIUS));
++        x + 0.5, y + 0.5, f.outer, LUMA_FRAME_WINDOW_RADIUS));
+     double distance = luma_frame_distance(x + 0.5, y + 0.5, f.content, LUMA_FRAME_ISLAND_RADIUS);
+     double hole = luma_frame_coverage(distance);
+-    double alpha = outer * (1 - hole);
+-    uint32_t base = dark ? LUMA_FRAME_DARK_WINDOW : LUMA_FRAME_LIGHT_WINDOW;
+-    double shade = luma_frame_shadow(f.content, LUMA_FRAME_ISLAND_RADIUS, x + 0.5, y + 0.5, dark);
+-    uint32_t shade_color = dark ? LUMA_FRAME_DARK_SHADOW_COLOR : LUMA_FRAME_LIGHT_SHADOW_COLOR;
+-    unsigned br = (unsigned)lround(((base >> 16) & 255) * (1 - shade) + ((shade_color >> 16) & 255) * shade);
+-    unsigned bg = (unsigned)lround(((base >> 8) & 255) * (1 - shade) + ((shade_color >> 8) & 255) * shade);
+-    unsigned bb = (unsigned)lround((base & 255) * (1 - shade) + (shade_color & 255) * shade);
+-    base = (br << 16) | (bg << 8) | bb;
+-    double border = hole * luma_frame_coverage(-distance - 1) * (dark ? 0.08 : 0.095);
+-    unsigned a = (unsigned)lround(255 * (alpha + border * (1 - alpha)));
+-    unsigned ink = dark ? 255 : 39;
+-    unsigned red = (unsigned)lround(((base >> 16) & 255) * alpha + ink * border * (1 - alpha));
+-    unsigned green = (unsigned)lround(((base >> 8) & 255) * alpha + ink * border * (1 - alpha));
+-    unsigned blue = (unsigned)lround((base & 255) * alpha + ink * border * (1 - alpha));
+-    return (a << 24) | (red << 16) | (green << 8) | blue;
+-}
+-
+-/* Shared compatibility geometry mirrors the toolkit's connected controls:
+- * three 20px targets in a 2px padded pill, at the trailing 8px header inset. */
++    if (hole == 1 && distance < -1.5) return 0;
++    LumaFrameStyle style = luma_frame_style(material);
++    uint32_t top = luma_frame_premultiply(style.top, outer * (1 - hole));
++    uint32_t bottom = luma_frame_premultiply(style.bottom, outer * (1 - hole));
++    double progress = (double)y / (f.outer.height > 1 ? f.outer.height - 1 : 1);
++    uint32_t gradient = 0;
++    for (unsigned shift = 0; shift <= 24; shift += 8)
++        gradient |= (uint32_t)lround(((top >> shift) & 255) * (1 - progress) +
++                                    ((bottom >> shift) & 255) * progress) << shift;
++    double edge = outer * hole * luma_frame_coverage(-distance - 1);
++    return luma_frame_over(gradient, luma_frame_premultiply(style.edge, edge));
++}
++static inline uint32_t luma_frame_pixel(LumaWindowFrame f, int x, int y, bool dark, bool maximized)
++{
++    (void)maximized;
++    return luma_frame_pixel_material(f, x, y, dark ? LUMA_FRAME_DARK : LUMA_FRAME_LIGHT);
++}
++
++/* Individual 30px LumaUI controls, two pixels apart. Back sits immediately
++ * before Minimize with the title row's shared slot spacing. */
+ static inline LumaFrameRect luma_frame_controls(LumaWindowFrame f)
+ {
+-    int height = LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_PADDING;
+-    int width = 3 * LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_PADDING;
++    int width = 3 * LUMA_FRAME_CONTROL_SIZE + 2 * LUMA_FRAME_CONTROL_GAP;
+     return (LumaFrameRect){f.outer.width - LUMA_FRAME_CONTROL_INSET - width,
+-                          (f.header - height) / 2, width, height};
+-}
+-
++                          (f.header - LUMA_FRAME_CONTROL_SIZE) / 2,
++                          width, LUMA_FRAME_CONTROL_SIZE};
++}
+ static inline LumaFrameRect luma_frame_back(LumaWindowFrame f)
+ {
+     LumaFrameRect controls = luma_frame_controls(f);
+-    return (LumaFrameRect){controls.x - LUMA_FRAME_BACK_GAP - controls.height,
+-                          controls.y, controls.height, controls.height};
++    return (LumaFrameRect){controls.x - LUMA_FRAME_BACK_GAP - LUMA_FRAME_CONTROL_SIZE,
++                          controls.y, LUMA_FRAME_CONTROL_SIZE, LUMA_FRAME_CONTROL_SIZE};
++}
++/* 0 Minimize, 1 Maximize, 2 Close, 3 Android Back. */
++static inline LumaFrameRect luma_frame_control(LumaWindowFrame f, unsigned index)
++{
++    if (index == 3) return luma_frame_back(f);
++    LumaFrameRect r = luma_frame_controls(f);
++    r.x += (int)index * (LUMA_FRAME_CONTROL_SIZE + LUMA_FRAME_CONTROL_GAP);
++    r.width = LUMA_FRAME_CONTROL_SIZE;
++    return r;
++}
++static inline int luma_frame_control_at(LumaWindowFrame f, int x, int y)
++{
++    if (!f.decorated) return -1;
++    for (unsigned index = 0; index < 4; ++index) {
++        LumaFrameRect r = luma_frame_control(f, index);
++        if (x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
++            return (int)index;
++    }
++    return -1;
++}
++static inline uint32_t luma_frame_button_pixel(LumaFrameRect r, int x, int y,
++                                               LumaFrameMaterial material, bool close)
++{
++    LumaFrameStyle style = luma_frame_style(material);
++    double coverage = luma_frame_coverage(luma_frame_distance(
++        x + 0.5, y + 0.5, r, LUMA_FRAME_CONTROL_RADIUS));
++    return luma_frame_premultiply(close ? style.close_hover : style.hover, coverage);
+ }
+ 
+ /* Values deliberately match xdg_toplevel.resize_edge, allowing a native
+@@ -149,83 +215,4 @@
+     return (top ? 1u : bottom ? 2u : 0u) | (left ? 4u : right ? 8u : 0u);
+ }
+ 
+-/* Premultiplied control-pill surface. Glyphs and hover use the same source
+- * symbols and semantic colours as GtkWindowControls, rendered by the backend. */
+-static inline uint32_t luma_frame_control_surface(LumaFrameRect r, int x, int y, bool dark)
+-{
+-    double d = luma_frame_distance(x + 0.5, y + 0.5, r, r.height / 2.0);
+-    double coverage = luma_frame_coverage(d);
+-    double stroke = coverage * luma_frame_coverage(-d - 1) * 0.055;
+-    double shadow = luma_frame_shadow(r, r.height / 2.0, x + 0.5, y + 0.5, dark) * (1 - coverage);
+-    uint32_t fill = dark ? LUMA_FRAME_DARK_CONTENT : LUMA_FRAME_LIGHT_CONTENT;
+-    uint32_t shade = dark ? LUMA_FRAME_DARK_SHADOW_COLOR : LUMA_FRAME_LIGHT_SHADOW_COLOR;
+-    unsigned line = dark ? 255 : 33;
+-    unsigned a = (unsigned)lround(255 * (coverage + shadow));
+-    unsigned red = (unsigned)lround(((fill >> 16) & 255) * (coverage - stroke) + line * stroke + ((shade >> 16) & 255) * shadow);
+-    unsigned green = (unsigned)lround(((fill >> 8) & 255) * (coverage - stroke) + line * stroke + ((shade >> 8) & 255) * shadow);
+-    unsigned blue = (unsigned)lround((fill & 255) * (coverage - stroke) + line * stroke + (shade & 255) * shadow);
+-    return (a << 24) | (red << 16) | (green << 8) | blue;
+-}
+-static inline uint32_t luma_frame_controls_pixel(LumaWindowFrame f, int x, int y, bool dark)
+-{
+-    return luma_frame_control_surface(luma_frame_controls(f), x, y, dark);
+-}
+-
+-/* Exact native 11px symbolic alpha, rasterized by GdkPixbuf/librsvg from
+- * Prairie window controls. Lucide ISC/MIT notices are retained by the theme. */
+-/* source SHA256 a1c758be8a9110c05d13b6a90a7ca2710c45eb88fd3a035f7eeb21479ae3833e */
+-static const uint8_t luma_frame_close_glyph[121] = {
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,32,52,0,0,0,52,32,0,0,
+-    0,0,52,223,53,0,53,223,52,0,0,
+-    0,0,0,53,223,100,223,53,0,0,0,
+-    0,0,0,0,100,255,100,0,0,0,0,
+-    0,0,0,53,223,100,223,53,0,0,0,
+-    0,0,52,223,53,0,53,223,52,0,0,
+-    0,0,32,52,0,0,0,52,32,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-};
+-/* source SHA256 a5207f4e3cde7bee1bf2a29a4a6f0e15156a0dfa83342b0397fdae3b8c436865 */
+-static const uint8_t luma_frame_minimize_glyph[121] = {
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,31,1,0,1,31,0,0,0,
+-    0,0,0,140,144,1,144,140,0,0,0,
+-    0,0,0,1,152,208,152,1,0,0,0,
+-    0,0,0,0,1,90,1,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-};
+-/* source SHA256 6e859341f48aec92fb414688e4c0967d6a82b677e78f5693928a7bdcf92f3d1b */
+-static const uint8_t luma_frame_maximize_glyph[121] = {
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,1,56,68,68,68,56,1,0,0,
+-    0,0,54,215,153,153,153,215,54,0,0,
+-    0,0,64,155,0,0,0,155,64,0,0,
+-    0,0,64,155,0,0,0,155,64,0,0,
+-    0,0,64,155,0,0,0,155,64,0,0,
+-    0,0,54,215,153,153,153,215,54,0,0,
+-    0,0,1,56,68,68,68,56,1,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-};
+-/* source SHA256 ac9f5c1916e12823b2f6143db6da32c4ea12d96114c18d7b06f535e4ac138b92 */
+-static const uint8_t luma_frame_restore_glyph[121] = {
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,134,153,153,153,55,0,0,
+-    0,0,10,51,155,170,161,179,151,0,0,
+-    0,0,140,193,170,170,224,156,151,0,0,
+-    0,0,151,68,0,0,163,167,151,0,0,
+-    0,0,151,68,0,0,163,152,131,0,0,
+-    0,0,151,118,68,68,188,55,0,0,0,
+-    0,0,56,153,153,153,141,10,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-    0,0,0,0,0,0,0,0,0,0,0,
+-};
++#include "luma-frame-glyphs.h"
+--- a/hwcomposer/luma-frame-tokens.h
++++ b/hwcomposer/luma-frame-tokens.h
+@@ -1,20 +1,23 @@
+ /* Generated from config/shared/design-tokens.json. */
+ #pragma once
+-#define LUMA_FRAME_GAP 9
+-#define LUMA_FRAME_WINDOW_RADIUS 15
+-#define LUMA_FRAME_ISLAND_RADIUS 10
+-#define LUMA_FRAME_HEADER_HEIGHT 42
+-#define LUMA_FRAME_TITLE_SIZE 13
+-#define LUMA_FRAME_TITLE_WEIGHT 650
+-#define LUMA_FRAME_CONTROL_SIZE 20
+-#define LUMA_FRAME_CONTROL_PADDING 2
+-#define LUMA_FRAME_CONTROL_INSET 8
++#define LUMA_FRAME_GAP 8
++#define LUMA_FRAME_WINDOW_RADIUS 20
++#define LUMA_FRAME_ISLAND_RADIUS 12
++#define LUMA_FRAME_HEADER_HEIGHT 46
++#define LUMA_FRAME_TITLE_SIZE 13.5
++#define LUMA_FRAME_TITLE_WEIGHT 600
++#define LUMA_FRAME_CONTROL_SIZE 30
++#define LUMA_FRAME_CONTROL_PADDING 0
++#define LUMA_FRAME_CONTROL_GAP 2
++#define LUMA_FRAME_CONTROL_RADIUS 9
++#define LUMA_FRAME_CONTROL_ICON_SIZE 14
++#define LUMA_FRAME_CONTROL_INSET 10
++#define LUMA_FRAME_IDENTITY_INSET 14
++#define LUMA_FRAME_IDENTITY_ICON_SIZE 22
++#define LUMA_FRAME_IDENTITY_GAP 9
++#define LUMA_FRAME_BACK_GAP 9
+ #define LUMA_FRAME_RESIZE_BAND 9
+ #define LUMA_FRAME_RESIZE_CORNER 20
+-#define LUMA_FRAME_IDENTITY_INSET 12
+-#define LUMA_FRAME_IDENTITY_ICON_SIZE 20
+-#define LUMA_FRAME_IDENTITY_GAP 8
+-#define LUMA_FRAME_BACK_GAP 8
+ #define LUMA_FRAME_LIGHT_SHADOW_NEAR_Y 2
+ #define LUMA_FRAME_LIGHT_SHADOW_NEAR_BLUR 5
+ #define LUMA_FRAME_LIGHT_SHADOW_NEAR_ALPHA 0.16
+@@ -31,11 +34,55 @@
+ #define LUMA_FRAME_DARK_SHADOW_FAR_SPREAD -15
+ #define LUMA_FRAME_DARK_SHADOW_FAR_ALPHA 0.78
+ #define LUMA_FRAME_DARK_SHADOW_COLOR 0x000000u
+-#define LUMA_FRAME_LIGHT_WINDOW 0xfff1f2f3u
+-#define LUMA_FRAME_LIGHT_CONTENT 0xfffbfbfau
++#define LUMA_FRAME_LIGHT_WINDOW 0xffeceef1u
++#define LUMA_FRAME_LIGHT_CONTENT 0xffffffffu
+ #define LUMA_FRAME_LIGHT_INK 0xff1f2937u
+-#define LUMA_FRAME_LIGHT_MUTED 0xff757e87u
+-#define LUMA_FRAME_DARK_WINDOW 0xff21252bu
+-#define LUMA_FRAME_DARK_CONTENT 0xff2a2e34u
+-#define LUMA_FRAME_DARK_INK 0xffe4e8eau
+-#define LUMA_FRAME_DARK_MUTED 0xff8b949cu
++#define LUMA_FRAME_LIGHT_MUTED 0xff6c6f73u
++#define LUMA_FRAME_DARK_WINDOW 0xff202124u
++#define LUMA_FRAME_DARK_CONTENT 0xff25282du
++#define LUMA_FRAME_DARK_INK 0xfff2f3f5u
++#define LUMA_FRAME_DARK_MUTED 0xff8d8f93u
++#define LUMA_FRAME_LIGHT_WINDOW_TOP 0xffeceef1u
++#define LUMA_FRAME_LIGHT_WINDOW_BOTTOM 0xffeceef1u
++#define LUMA_FRAME_LIGHT_FRAME_INK 0xff090b0fu
++#define LUMA_FRAME_LIGHT_FRAME_MUTED 0xff2c2e32u
++#define LUMA_FRAME_LIGHT_WINDOW_CONTROL_HOVER 0x1614161bu
++#define LUMA_FRAME_LIGHT_WINDOW_CLOSE_HOVER 0xffde3b3du
++#define LUMA_FRAME_LIGHT_WINDOW_CLOSE_HOVER_INK 0xffffffffu
++#define LUMA_FRAME_LIGHT_ISLAND_EDGE 0x1a14161au
++#define LUMA_FRAME_LIGHT_ISLAND_OUT 0x00ffffffu
++#define LUMA_FRAME_LIGHT_ISLAND_LIP 0xbfffffffu
++#define LUMA_FRAME_LIGHT_WINDOW_RING 0x2914161au
++#define LUMA_FRAME_DARK_WINDOW_TOP 0xff232428u
++#define LUMA_FRAME_DARK_WINDOW_BOTTOM 0xff1c1d20u
++#define LUMA_FRAME_DARK_FRAME_INK 0xfff2f3f5u
++#define LUMA_FRAME_DARK_FRAME_MUTED 0xff8d8f93u
++#define LUMA_FRAME_DARK_WINDOW_CONTROL_HOVER 0x1affffffu
++#define LUMA_FRAME_DARK_WINDOW_CLOSE_HOVER 0xffde3b3du
++#define LUMA_FRAME_DARK_WINDOW_CLOSE_HOVER_INK 0xffffffffu
++#define LUMA_FRAME_DARK_ISLAND_EDGE 0x73000000u
++#define LUMA_FRAME_DARK_ISLAND_OUT 0x08ffffffu
++#define LUMA_FRAME_DARK_ISLAND_LIP 0x00000000u
++#define LUMA_FRAME_DARK_WINDOW_RING 0x80000000u
++#define LUMA_FRAME_FROST_WINDOW_TOP 0xbd28282eu
++#define LUMA_FRAME_FROST_WINDOW_BOTTOM 0xd116161au
++#define LUMA_FRAME_FROST_FRAME_INK 0xfff2f3f5u
++#define LUMA_FRAME_FROST_FRAME_MUTED 0xd6f2f3f6u
++#define LUMA_FRAME_FROST_WINDOW_CONTROL_HOVER 0x24ffffffu
++#define LUMA_FRAME_FROST_WINDOW_CLOSE_HOVER 0xffde3b3du
++#define LUMA_FRAME_FROST_WINDOW_CLOSE_HOVER_INK 0xffffffffu
++#define LUMA_FRAME_FROST_ISLAND_EDGE 0x59ffffffu
++#define LUMA_FRAME_FROST_ISLAND_OUT 0x40000000u
++#define LUMA_FRAME_FROST_ISLAND_LIP 0x00ffffffu
++#define LUMA_FRAME_FROST_WINDOW_RING 0xd9000000u
++#define LUMA_FRAME_GLASS_WINDOW_TOP 0xffeceef1u
++#define LUMA_FRAME_GLASS_WINDOW_BOTTOM 0xffeceef1u
++#define LUMA_FRAME_GLASS_FRAME_INK 0xff090b0fu
++#define LUMA_FRAME_GLASS_FRAME_MUTED 0xff2c2e32u
++#define LUMA_FRAME_GLASS_WINDOW_CONTROL_HOVER 0x1614161bu
++#define LUMA_FRAME_GLASS_WINDOW_CLOSE_HOVER 0xffde3b3du
++#define LUMA_FRAME_GLASS_WINDOW_CLOSE_HOVER_INK 0xffffffffu
++#define LUMA_FRAME_GLASS_ISLAND_EDGE 0x1a14161au
++#define LUMA_FRAME_GLASS_ISLAND_OUT 0x00ffffffu
++#define LUMA_FRAME_GLASS_ISLAND_LIP 0xbfffffffu
++#define LUMA_FRAME_GLASS_WINDOW_RING 0x2914161au
+--- a/hwcomposer/luma-frame-glyphs.h
++++ b/hwcomposer/luma-frame-glyphs.h
+@@ -0,0 +1,136 @@
++/* SPDX-License-Identifier: ISC AND MIT
++ * ISC License
++ *
++ * Copyright (c) 2026 Lucide Icons and Contributors
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ *
++ * ---
++ *
++ * The following Lucide icons are derived from the Feather project:
++ *
++ * airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
++ *
++ * The MIT License (MIT) (for the icons listed above)
++ *
++ * Copyright (c) 2013-present Cole Bemis
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in all
++ * copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */
++/* Generated by scripts/developer/generate-luma-frame-glyphs.py.
++ * Lucide symbolic geometry, ISC; see assets/icon-theme/Prairie/upstream/lucide/lumaui/LICENSE.txt.
++ * Exact native LumaUI control SVGs, rasterized at the shared control_icon size. */
++#pragma once
++#include <stdint.h>
++#define LUMA_FRAME_GLYPH_SIZE 14
++/* assets/icon-theme/Prairie/symbolic/actions/lumaui-minus-symbolic.svg SHA256 161b43c73129331e7aed6bc43a3bac4df3eefc529365e248ae7ab890303481b5 */
++static const uint8_t luma_frame_minimize_glyph[196] = {
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,51,119,119,119,119,119,119,119,119,51,0,0,
++    0,0,51,119,119,119,119,119,119,119,119,51,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++};
++/* assets/icon-theme/Prairie/symbolic/actions/lumaui-maximize-2-symbolic.svg SHA256 64d61565acb4bfa678f6931d594227682a6989025e74585c0065427ebdc656b2 */
++static const uint8_t luma_frame_maximize_glyph[196] = {
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,116,187,187,201,177,0,
++    0,0,0,0,0,0,0,0,27,51,95,236,198,0,
++    0,0,0,0,0,0,0,0,0,51,223,98,182,0,
++    0,0,0,0,0,0,0,0,51,223,55,55,182,0,
++    0,0,0,0,0,0,0,35,225,55,0,27,112,0,
++    0,0,0,0,0,0,0,10,34,0,0,0,0,0,
++    0,0,0,0,0,34,10,0,0,0,0,0,0,0,
++    0,112,27,0,55,225,35,0,0,0,0,0,0,0,
++    0,182,55,51,223,55,0,0,0,0,0,0,0,0,
++    0,182,95,223,55,0,0,0,0,0,0,0,0,0,
++    0,198,236,95,51,27,0,0,0,0,0,0,0,0,
++    0,177,201,187,187,112,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++};
++/* assets/icon-theme/Prairie/symbolic/actions/lumaui-minimize-2-symbolic.svg SHA256 c7326118a6d3a45cb46cdcebd98cc65fb48b90193be55a851d7b7e476d2beb67 */
++static const uint8_t luma_frame_restore_glyph[196] = {
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,1,13,0,0,54,109,0,
++    0,0,0,0,0,0,0,71,156,0,55,225,55,0,
++    0,0,0,0,0,0,0,76,161,51,223,55,0,0,
++    0,0,0,0,0,0,0,76,180,223,55,0,0,0,
++    0,0,0,0,0,0,0,100,251,175,153,150,11,0,
++    0,0,0,0,0,0,0,20,93,68,68,65,2,0,
++    0,2,65,68,68,93,20,0,0,0,0,0,0,0,
++    0,11,150,153,175,251,100,0,0,0,0,0,0,0,
++    0,0,0,51,223,181,76,0,0,0,0,0,0,0,
++    0,0,51,223,55,161,76,0,0,0,0,0,0,0,
++    0,55,225,55,0,156,71,0,0,0,0,0,0,0,
++    0,109,54,0,0,13,1,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++};
++/* assets/icon-theme/Prairie/symbolic/actions/lumaui-x-symbolic.svg SHA256 06d00634a42e66168fa2655935ad1dbd8e40fbb00457324ec5c2d8aaf1d96776 */
++static const uint8_t luma_frame_close_glyph[196] = {
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,194,55,0,0,0,0,55,194,0,0,0,
++    0,0,0,50,223,56,0,0,51,223,55,0,0,0,
++    0,0,0,0,50,223,56,51,223,55,0,0,0,0,
++    0,0,0,0,0,50,229,230,55,0,0,0,0,0,
++    0,0,0,0,0,51,229,230,56,0,0,0,0,0,
++    0,0,0,0,51,223,55,50,223,56,0,0,0,0,
++    0,0,0,51,223,55,0,0,50,223,56,0,0,0,
++    0,0,0,194,55,0,0,0,0,55,194,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++};
++/* assets/icon-theme/Prairie/symbolic/actions/lumaui-chevron-left-symbolic.svg SHA256 f0503285c5356f81bccc1bd5af9c5b1b2a0dcb85230f827ec3d21042cbf39964 */
++static const uint8_t luma_frame_back_glyph[196] = {
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,21,200,28,0,0,0,0,
++    0,0,0,0,0,0,21,209,107,0,0,0,0,0,
++    0,0,0,0,0,21,209,107,0,0,0,0,0,0,
++    0,0,0,0,13,209,105,0,0,0,0,0,0,0,
++    0,0,0,0,13,209,105,0,0,0,0,0,0,0,
++    0,0,0,0,0,21,209,108,0,0,0,0,0,0,
++    0,0,0,0,0,0,21,209,108,0,0,0,0,0,
++    0,0,0,0,0,0,0,21,200,28,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++    0,0,0,0,0,0,0,0,0,0,0,0,0,0,
++};

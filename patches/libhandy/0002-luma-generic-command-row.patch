@@ -1,0 +1,365 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Wed, 2 Sep 2026 03:00:00 -0500
+Subject: [PATCH] header-bar: host application actions on the Luma command row
+
+Carry the Luma command row into libhandy's HdyHeaderBar with the same
+contract as the GTK 3 downstream: the header that owns the automatic
+application identity re-hosts its packed actions on a command surface below
+the title row, keeps them as the application's real widgets, reaches them
+from show_all, and returns them when the identity leaves.
+---
+
+diff --git a/src/hdy-header-bar.c b/src/hdy-header-bar.c
+index d2ec0cc..d4f6a8c 100644
+--- a/src/hdy-header-bar.c
++++ b/src/hdy-header-bar.c
+@@ -106,6 +106,11 @@ typedef struct {
+   GtkWidget *luma_identity;
+   GtkWidget *luma_identity_toplevel;
+ 
++  GtkWidget *luma_command_bar;
++  GtkWidget *luma_command_start;
++  GtkWidget *luma_command_end;
++  GList *luma_command_children;
++
+   guint tick_id;
+   GtkProgressTracker tracker;
+   gboolean first_frame_skipped;
+@@ -155,6 +160,11 @@ static GParamSpec *props[LAST_PROP] = { NULL, };
+ 
+ static const gchar luma_identity_owner_key[] = "hdy-header-bar-luma-identity-owner";
+ static void add_automatic_luma_identity (HdyHeaderBar *self);
++static void luma_enter_command_row (HdyHeaderBar *self);
++static void luma_leave_command_row (HdyHeaderBar *self);
++static gboolean luma_command_row_active (HdyHeaderBar *self);
++static void luma_command_row_measure (HdyHeaderBar *self, GtkOrientation orientation, gint for_size, gint *minimum, gint *natural);
++static gint luma_command_row_height (HdyHeaderBar *self, gint width);
+ static void remove_automatic_luma_identity (HdyHeaderBar *self);
+ 
+ static void hdy_header_bar_buildable_init (GtkBuildableIface *iface);
+@@ -999,6 +1009,8 @@ hdy_header_bar_measure (GtkWidget      *widget,
+   else
+     hdy_header_bar_compute_size_for_opposing_orientation (widget, MAX (for_size, css_width), minimum, natural);
+ 
++  luma_command_row_measure (HDY_HEADER_BAR (widget), orientation, for_size, minimum, natural);
++
+   hdy_css_measure (widget, orientation, minimum, natural);
+ }
+ 
+@@ -1458,6 +1470,24 @@ hdy_header_bar_size_allocate (GtkWidget     *widget,
+   hdy_css_size_allocate (widget, allocation);
+ 
+   direction = gtk_widget_get_direction (widget);
++
++  /* Luma: split the header into the 42px title row and, when this header
++   * hosts the application's command row, that row directly below it. */
++  if (luma_command_row_active (self)) {
++    GtkAllocation bar_allocation;
++    gint command_height = luma_command_row_height (self, allocation->width);
++
++    bar_allocation.x = allocation->x;
++    bar_allocation.y = allocation->y + MAX (allocation->height - command_height, 0);
++    bar_allocation.width = allocation->width;
++    bar_allocation.height = command_height;
++    gtk_widget_size_allocate (priv->luma_command_bar, &bar_allocation);
++
++    allocation->height = MAX (allocation->height - command_height, 0);
++    allocation->x += direction == GTK_TEXT_DIR_RTL ? 8 : 12;
++    allocation->width = MAX (allocation->width - 20, 0);
++  }
++
+   nvis_children = count_visible_children (self);
+   allocations = g_newa (GtkAllocation, nvis_children);
+ 
+@@ -1555,6 +1585,7 @@ hdy_header_bar_destroy (GtkWidget *widget)
+   HdyHeaderBar *self = HDY_HEADER_BAR (widget);
+   HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
+ 
++  luma_leave_command_row (self);
+   remove_automatic_luma_identity (self);
+ 
+   if (priv->label_sizing_box) {
+@@ -1727,6 +1758,20 @@ hdy_header_bar_pack (HdyHeaderBar *self,
+   child->widget = widget;
+   child->pack_type = pack_type;
+ 
++  if (luma_command_row_active (self) && widget != priv->luma_identity) {
++    GtkWidget *group = pack_type == GTK_PACK_START ? priv->luma_command_start
++                                                   : priv->luma_command_end;
++
++    priv->luma_command_children = g_list_append (priv->luma_command_children, child);
++    if (pack_type == GTK_PACK_START)
++      gtk_box_pack_start (GTK_BOX (group), widget, FALSE, FALSE, 0);
++    else
++      gtk_box_pack_end (GTK_BOX (group), widget, FALSE, FALSE, 0);
++    g_signal_connect (widget, "notify::visible", G_CALLBACK (notify_child_cb), self);
++    gtk_widget_show (group);
++    return;
++  }
++
+   priv->children = g_list_append (priv->children, child);
+ 
+   gtk_widget_freeze_child_notify (widget);
+@@ -1787,6 +1832,19 @@ hdy_header_bar_remove (GtkContainer *container,
+     g_free (child);
+     gtk_widget_queue_resize (GTK_WIDGET (container));
+     _hdy_header_bar_update_separator_visibility (self);
++    return;
++  }
++
++  for (l = priv->luma_command_children; l; l = l->next) {
++    child = l->data;
++    if (child->widget != widget)
++      continue;
++    g_signal_handlers_disconnect_by_func (widget, notify_child_cb, self);
++    gtk_container_remove (GTK_CONTAINER (gtk_widget_get_parent (widget)), widget);
++    priv->luma_command_children = g_list_delete_link (priv->luma_command_children, l);
++    g_free (child);
++    gtk_widget_queue_resize (GTK_WIDGET (container));
++    return;
+   }
+ }
+ 
+@@ -1828,6 +1886,9 @@ hdy_header_bar_forall (GtkContainer *container,
+ 
+   if (include_internals && priv->titlebar_end_box != NULL)
+     (* callback) (priv->titlebar_end_box, callback_data);
++
++  if (include_internals && priv->luma_command_bar != NULL)
++    (* callback) (priv->luma_command_bar, callback_data);
+ }
+ 
+ static void
+@@ -2222,6 +2283,7 @@ add_automatic_luma_identity (HdyHeaderBar *self)
+                            "position", 0,
+                            NULL);
+   g_object_set_data (G_OBJECT (toplevel), luma_identity_owner_key, self);
++  luma_enter_command_row (self);
+ }
+ 
+ static void
+@@ -2230,6 +2292,8 @@ remove_automatic_luma_identity (HdyHeaderBar *self)
+   HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
+   GtkWidget *identity;
+ 
++  luma_leave_command_row (self);
++
+   if (priv->luma_identity_toplevel)
+     g_signal_handlers_disconnect_by_func (priv->luma_identity_toplevel,
+                                           application_changed, self);
+@@ -2249,6 +2313,204 @@ remove_automatic_luma_identity (HdyHeaderBar *self)
+   gtk_container_remove (GTK_CONTAINER (self), identity);
+ }
+ 
++/* Luma command row (see gtkheaderbar.c in the Luma GTK 3 downstream).
++ *
++ * A header bar that owns the automatic Luma application identity presents the
++ * application's packed actions on a secondary command surface below the clean
++ * title row.  Transient windows, headers without the automatic identity, and
++ * the luma-no-command-row escape class are left untouched.
++ */
++
++static gboolean
++luma_command_row_active (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++
++  return priv->luma_command_bar != NULL &&
++         gtk_widget_get_visible (priv->luma_command_bar);
++}
++
++static gint
++luma_command_row_height (HdyHeaderBar *self,
++                         gint          width)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  gint minimum = 0, natural = 0;
++
++  if (!luma_command_row_active (self))
++    return 0;
++
++  gtk_widget_get_preferred_height_for_width (priv->luma_command_bar, width,
++                                             &minimum, &natural);
++  return natural;
++}
++
++static void
++luma_command_row_measure (HdyHeaderBar   *self,
++                          GtkOrientation  orientation,
++                          gint            for_size,
++                          gint           *minimum,
++                          gint           *natural)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  gint bar_minimum = 0, bar_natural = 0;
++
++  if (!luma_command_row_active (self))
++    return;
++
++  if (orientation == GTK_ORIENTATION_HORIZONTAL) {
++    gtk_widget_get_preferred_width (priv->luma_command_bar, &bar_minimum, &bar_natural);
++    *minimum = MAX (*minimum, bar_minimum);
++    *natural = MAX (*natural, bar_natural);
++  } else {
++    if (for_size < 0)
++      gtk_widget_get_preferred_height (priv->luma_command_bar, &bar_minimum, &bar_natural);
++    else
++      gtk_widget_get_preferred_height_for_width (priv->luma_command_bar, for_size,
++                                                 &bar_minimum, &bar_natural);
++    *minimum += bar_minimum;
++    *natural += bar_natural;
++  }
++}
++
++static void
++luma_update_command_bar_visibility (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GList *l;
++  gboolean visible = FALSE;
++
++  if (!priv->luma_command_bar)
++    return;
++
++  for (l = priv->luma_command_children; l; l = l->next) {
++    Child *child = l->data;
++    if (gtk_widget_get_visible (child->widget)) {
++      visible = TRUE;
++      break;
++    }
++  }
++
++  gtk_widget_set_visible (priv->luma_command_bar, visible);
++  gtk_widget_queue_resize (GTK_WIDGET (self));
++}
++
++static void
++luma_command_child_visibility (GObject      *child,
++                               GParamSpec   *pspec,
++                               HdyHeaderBar *self)
++{
++  luma_update_command_bar_visibility (self);
++}
++
++static void
++luma_enter_command_row (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GtkStyleContext *context = gtk_widget_get_style_context (GTK_WIDGET (self));
++  GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (self));
++  GList *l, *next;
++
++  if (priv->luma_command_bar ||
++      !priv->luma_identity ||
++      !GTK_IS_WINDOW (toplevel) ||
++      gtk_window_get_transient_for (GTK_WINDOW (toplevel)) != NULL ||
++      gtk_style_context_has_class (context, "luma-no-command-row"))
++    return;
++
++  priv->luma_command_start = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_style_context_add_class (gtk_widget_get_style_context (priv->luma_command_start),
++                               "luma-command-group");
++  gtk_widget_set_valign (priv->luma_command_start, GTK_ALIGN_CENTER);
++  priv->luma_command_end = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_style_context_add_class (gtk_widget_get_style_context (priv->luma_command_end),
++                               "luma-command-group");
++  gtk_widget_set_valign (priv->luma_command_end, GTK_ALIGN_CENTER);
++
++  priv->luma_command_bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_style_context_add_class (gtk_widget_get_style_context (priv->luma_command_bar),
++                               "luma-command-bar");
++  gtk_box_pack_start (GTK_BOX (priv->luma_command_bar), priv->luma_command_start, FALSE, FALSE, 0);
++  gtk_box_pack_end (GTK_BOX (priv->luma_command_bar), priv->luma_command_end, FALSE, FALSE, 0);
++  gtk_widget_show (priv->luma_command_start);
++  gtk_widget_show (priv->luma_command_end);
++  gtk_widget_set_parent (priv->luma_command_bar, GTK_WIDGET (self));
++  gtk_style_context_add_class (context, "luma-command-host");
++
++  for (l = priv->children; l; l = next) {
++    Child *child = l->data;
++    GtkWidget *group;
++
++    next = l->next;
++    if (child->widget == priv->luma_identity)
++      continue;
++
++    group = child->pack_type == GTK_PACK_START ? priv->luma_command_start
++                                               : priv->luma_command_end;
++    g_object_ref (child->widget);
++    g_signal_handlers_disconnect_by_func (child->widget, notify_child_cb, self);
++    gtk_widget_unparent (child->widget);
++    priv->children = g_list_delete_link (priv->children, l);
++    if (child->pack_type == GTK_PACK_START)
++      gtk_box_pack_start (GTK_BOX (group), child->widget, FALSE, FALSE, 0);
++    else
++      gtk_box_pack_end (GTK_BOX (group), child->widget, FALSE, FALSE, 0);
++    g_signal_connect (child->widget, "notify::visible", G_CALLBACK (notify_child_cb), self);
++    g_signal_connect (child->widget, "notify::visible",
++                      G_CALLBACK (luma_command_child_visibility), self);
++    g_object_unref (child->widget);
++    priv->luma_command_children = g_list_append (priv->luma_command_children, child);
++  }
++
++  luma_update_command_bar_visibility (self);
++  _hdy_header_bar_update_separator_visibility (self);
++}
++
++static void
++luma_leave_command_row (HdyHeaderBar *self)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (self);
++  GtkStyleContext *context = gtk_widget_get_style_context (GTK_WIDGET (self));
++  GList *l, *next;
++
++  if (!priv->luma_command_bar)
++    return;
++
++  for (l = priv->luma_command_children; l; l = next) {
++    Child *child = l->data;
++
++    next = l->next;
++    g_object_ref (child->widget);
++    g_signal_handlers_disconnect_by_func (child->widget, luma_command_child_visibility, self);
++    g_signal_handlers_disconnect_by_func (child->widget, notify_child_cb, self);
++    gtk_container_remove (GTK_CONTAINER (gtk_widget_get_parent (child->widget)), child->widget);
++    priv->children = g_list_append (priv->children, child);
++    gtk_widget_set_parent (child->widget, GTK_WIDGET (self));
++    g_signal_connect (child->widget, "notify::visible", G_CALLBACK (notify_child_cb), self);
++    g_object_unref (child->widget);
++  }
++  g_list_free (priv->luma_command_children);
++  priv->luma_command_children = NULL;
++
++  gtk_widget_unparent (priv->luma_command_bar);
++  priv->luma_command_bar = NULL;
++  priv->luma_command_start = NULL;
++  priv->luma_command_end = NULL;
++  gtk_style_context_remove_class (context, "luma-command-host");
++  gtk_widget_queue_resize (GTK_WIDGET (self));
++}
++
++static void
++hdy_header_bar_show_all (GtkWidget *widget)
++{
++  HdyHeaderBarPrivate *priv = hdy_header_bar_get_instance_private (HDY_HEADER_BAR (widget));
++
++  GTK_WIDGET_CLASS (hdy_header_bar_parent_class)->show_all (widget);
++
++  if (priv->luma_command_bar)
++    gtk_widget_show_all (priv->luma_command_bar);
++}
++
+ static void
+ hdy_header_bar_hierarchy_changed (GtkWidget *widget,
+                                   GtkWidget *previous_toplevel)
+@@ -2305,6 +2567,7 @@ hdy_header_bar_class_init (HdyHeaderBarClass *class)
+   widget_class->realize = hdy_header_bar_realize;
+   widget_class->unrealize = hdy_header_bar_unrealize;
+   widget_class->hierarchy_changed = hdy_header_bar_hierarchy_changed;
++  widget_class->show_all = hdy_header_bar_show_all;
+ 
+   container_class->add = hdy_header_bar_add;
+   container_class->remove = hdy_header_bar_remove;
+-- 
+2.54.0

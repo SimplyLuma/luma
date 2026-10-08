@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Fedora packages removed from the Luma desktop image. Removal uses rpm's own
+# dependency check, exactly like `rpm-ostree override remove`: if anything
+# still requires one of these, the image build fails instead of silently
+# removing the dependent package too.
+
+# ADR-030 section 3: Luma owns updates; Depot is the one place to see them.
+gnome-software
+gnome-software-rpm-ostree
+
+# Fedora's first-login Tour is not part of the Luma desktop contract.
+gnome-tour
+
+# Characters is removed (owner decision 2026-09-22); the Super+. emoji and
+# symbol picker replaces it.
+gnome-characters
+
+# Luma Monitor (luma-monitor) replaces the Fedora System Monitor launcher.
+gnome-system-monitor
+
+# ADR-040: the background logo extension draws the distributor's mark on the
+# wallpaper; Luma ships no such extension. (fedora-logos and
+# fedora-logos-httpd are obsoleted by luma-logos.)
+gnome-shell-extension-background-logo
+
+# ADR-040: luma-release replaces Fedora's release packages (it obsoletes them
+# and provides system-release); none of them may come back.
+fedora-release-common
+fedora-release-silverblue
+fedora-release-identity-silverblue
+fedora-release-ostree-desktop
+
+# Office, Creative and Studio are optional Depot collections (owner 2026-10-04).
+luma-write
+luma-grid-preview
+luma-stage-preview
+luma-canvas-preview
+luma-reel
+luma-darkroom
+luma-session
+luma-session-instruments
+sfizz
+
+# Creator preview baseline (owner 2026-10-05): one Luma app per core role.
+# Remove the upstream frontends, retaining their platform services/libraries.
+gnome-disk-utility
+gnome-calculator
+ptyxis
+gnome-terminal
+gnome-console
+yelp
+# The language pack requires the exact Firefox release; remove both together.
+firefox
+firefox-langpacks
+gnome-extensions-app
+
+# Optional Depot applications: never preinstalled in the creator image.
+openemu-linux
+luma-imager

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"><title>SD card — Graphite</title><defs><radialGradient id="light" cx=".28" cy=".23" r=".86"><stop stop-color="#fff" stop-opacity=".23"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".65"/><stop offset=".45" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#153b62" stop-opacity=".3"/></linearGradient><radialGradient id="shadow"><stop stop-color="#1b3044" stop-opacity=".25"/><stop offset="1" stop-color="#1b3044" stop-opacity="0"/></radialGradient><linearGradient id="shell" x1="0" y1="0" x2=".35" y2="1"><stop stop-color="#596670"/><stop offset=".48" stop-color="#303e48"/><stop offset="1" stop-color="#1a2731"/></linearGradient><linearGradient id="label" x1="0" y1="0" x2=".35" y2="1"><stop stop-color="#d5dfe2"/><stop offset="1" stop-color="#aebfc6"/></linearGradient></defs>
+<ellipse cx="129" cy="214" rx="66" ry="9" fill="url(#shadow)"/>
+<path d="M91 38 H178 Q186 38 186 46 V202 Q186 210 178 210 H78 Q70 210 70 202 V94 H73 V78 H70 V62Z" fill="url(#shell)" stroke="#1a2731" stroke-width=".7"/><path d="M91 38 H178 Q186 38 186 46 V202 Q186 210 178 210 H78 Q70 210 70 202 V94 H73 V78 H70 V62Z" fill="url(#light)" stroke="url(#rim)" stroke-width="1.2"/>
+
+<rect x="83" y="76" width="90" height="117" rx="5" fill="url(#label)" stroke="#235977" stroke-opacity=".12" stroke-width="1"/>
+<rect x="83" y="76" width="90" height="117" rx="5" fill="url(#light)"/>
+<path d="M88 191 H168" stroke="#fff" stroke-opacity=".16" stroke-width="1"/>
+<rect x="69.5" y="80" width="3" height="10" rx="1" fill="#3c4c58" stroke="#607986" stroke-width=".7"/>
+
+
+<path d="M81 206 H175" stroke="#fff" stroke-opacity=".24" stroke-width="1"/>
+</svg>

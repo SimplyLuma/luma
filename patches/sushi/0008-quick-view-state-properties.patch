@@ -1,0 +1,37 @@
+--- a/src/ui/application.js
++++ b/src/ui/application.js
+@@ -76,6 +76,10 @@
+         super(application, '/org/gnome/NautilusPreviewer/org.gnome.NautilusPreviewer2.xml');
+     }
+ 
++    get Visible() { return !!this.application._mainWindow; }
++
++    get ParentHandle() { return this.Visible ? (this.application._parentHandle || '') : ''; }
++
+     ShowFile(uri, windowHandle, closeIfAlreadyShown) {
+         this.application.showFile(uri, windowHandle, closeIfAlreadyShown);
+     }
+@@ -143,6 +147,7 @@
+     }
+ 
+     updateParentHandle(handle) {
++        this._parentHandle = handle;
+         this._skeleton2.impl.emit_property_changed(
+             'ParentHandle', new GLib.Variant('s', handle));
+     }
+--- a/src/ui/mainWindow.js
++++ b/src/ui/mainWindow.js
+@@ -276,6 +276,13 @@
+     }
+ 
+     _setFullView(enabled) {
++        if (this._fullButton) {
++            this._fullButton.set_image(Gtk.Image.new_from_icon_name(
++                enabled ? 'view-restore-symbolic' : 'view-fullscreen-symbolic', Gtk.IconSize.MENU));
++            const label = enabled ? 'Exit full screen' : 'Full screen';
++            this._fullButton.set_tooltip_text(label);
++            this._fullButton.get_accessible().set_name(label);
++        }
+         if (this._fullView === enabled) return;
+         this._fullView = enabled;
+         if (this._renderer) {

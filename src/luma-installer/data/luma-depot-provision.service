@@ -1,0 +1,22 @@
+[Unit]
+Description=Install the apps chosen while installing Luma
+Documentation=https://simplyluma.com/apps
+# The session is up before this starts, and nothing waits for it: first-boot
+# apps arrive in the background and never hold up login. There is no user-level
+# network-online target to order after; Depot waits for connectivity itself and
+# retries with a growing delay.
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionPathExists=/etc/luma/first-boot-apps.json
+ConditionPathExists=!%S/luma/depot/first-boot-done
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/luma-depot --provision
+Nice=10
+IOSchedulingClass=idle
+Restart=on-failure
+RestartSec=5min
+
+[Install]
+WantedBy=graphical-session.target

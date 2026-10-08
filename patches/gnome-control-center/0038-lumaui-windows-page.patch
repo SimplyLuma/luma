@@ -1,0 +1,449 @@
+From 4946721c8ff11ca3ab01231664bac1fc9e938706 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:53:00 +0000
+Subject: [PATCH] Settings: compose Windows and Workspaces with bound fixture
+ controls
+
+---
+ shell/cc-luma-fixture.c      |   9 +++
+ shell/cc-luma-view-image.c   |   5 +-
+ shell/cc-luma-view-private.h |   5 ++
+ shell/cc-luma-view-windows.c | 146 +++++++++++++++++++++++++++++++++++
+ shell/cc-luma-view.c         |  32 +++++---
+ shell/meson.build            |   3 +-
+ shell/test-luma-view.c       |  45 +++++++++++
+ 7 files changed, 231 insertions(+), 14 deletions(-)
+ create mode 100644 shell/cc-luma-view-windows.c
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 981479d..1337f8b 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -370,6 +370,15 @@ char *cc_luma_fixture_asset_path (CcLumaFixture *self, const char *id, GError **
+           g_autofree char *file = g_strconcat (id, ".png", NULL);
+           return g_build_filename (self->resource_dir, file, NULL);
+         }
++  const char *apps[] = { "write", "viola", "messages" };
++  const char *artwork[] = { "documents", "browser", "messages" };
++  if (self->resource_dir && id)
++    for (guint i = 0; i < G_N_ELEMENTS (apps); i++)
++      if (g_str_equal (id, apps[i]))
++        {
++          g_autofree char *file = g_strdup_printf ("luma-v3-%s.svg", artwork[i]);
++          return g_build_filename (self->resource_dir, file, NULL);
++        }
+   g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown fixture asset or no fixture resource directory");
+   return NULL;
+ }
+diff --git a/shell/cc-luma-view-image.c b/shell/cc-luma-view-image.c
+index 1e92493..83b2195 100644
+--- a/shell/cc-luma-view-image.c
++++ b/shell/cc-luma-view-image.c
+@@ -7,6 +7,7 @@ typedef struct {
+   char *path;
+   int width, height;
+   guint64 generation;
++  gboolean application;
+ } ImageJob;
+ static void image_job_free (ImageJob *job)
+ {
+@@ -36,7 +37,8 @@ static void image_decoded (GObject *source, GAsyncResult *result, gpointer unuse
+   if (!v || v->generation != job->generation || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+   if (!image) { cc_luma_view_report_error (v, error); return; }
+   g_autoptr (GdkTexture) texture = gdk_texture_new_for_pixbuf (image);
+-  gtk_picture_set_paintable (GTK_PICTURE (picture), GDK_PAINTABLE (texture));
++  g_autoptr (GdkPaintable) normalized = job->application ? luma_application_icon_new (GDK_PAINTABLE (texture)) : NULL;
++  gtk_picture_set_paintable (GTK_PICTURE (picture), normalized ? normalized : GDK_PAINTABLE (texture));
+ }
+ GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height)
+ {
+@@ -54,6 +56,7 @@ GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height
+       cc_luma_view_report_error (v, error);
+       return picture;
+     }
++  job->application = g_str_has_suffix (job->path, ".svg");
+   job->width = width; job->height = height; job->generation = v->generation;
+   g_autoptr (GTask) task = g_task_new (NULL, v->images_cancel, image_decoded, NULL);
+   g_task_set_task_data (task, job, (GDestroyNotify) image_job_free);
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index c57d704..cff2ced 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -7,6 +7,8 @@
+ typedef struct {
+   CcLumaFixture *model;
+   GtkBox *body;
++  GtkBox *tiles_host;
++  GtkLabel *subtitle;
+   char *page;
+   guint refresh;
+   guint connection;
+@@ -42,3 +44,6 @@ void cc_luma_view_bluetooth_render (View *v);
+ 
+ GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height);
+ void cc_luma_view_report_error (View *v, const GError *error);
++
++GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, const char *accessible);
++void cc_luma_view_windows_render (View *v);
+diff --git a/shell/cc-luma-view-windows.c b/shell/cc-luma-view-windows.c
+new file mode 100644
+index 0000000..396dd2f
+--- /dev/null
++++ b/shell/cc-luma-view-windows.c
+@@ -0,0 +1,146 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++#include "cc-luma-desktop.h"
++
++static GtkWidget *tiles (View *v);
++
++static void choice_changed (GtkCheckButton *button, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v || !gtk_check_button_get_active (button)) return;
++  const char *key = g_object_get_data (G_OBJECT (button), "cf-key");
++  const char *value = g_object_get_data (G_OBJECT (button), "cf-value");
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_windows_set_choice (v->model, key, value, &error)) cc_luma_view_queue_refresh (v);
++  else cc_luma_view_report_error (v, error);
++}
++static void choices (View *v, GtkBox *rows, const char *key, const char * const *values)
++{
++  GtkCheckButton *first = NULL;
++  for (guint i = 0; values[i]; i += 3)
++    {
++      GtkWidget *button = gtk_check_button_new ();
++      if (first) gtk_check_button_set_group (GTK_CHECK_BUTTON (button), first);
++      else first = GTK_CHECK_BUTTON (button);
++      gtk_check_button_set_active (GTK_CHECK_BUTTON (button), g_str_equal (cc_luma_view_text (v, key), values[i]));
++      gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
++      g_autofree char *name = g_strdup_printf ("cf-%s-%s", key, values[i]);
++      gtk_widget_set_name (button, name);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, values[i + 1], -1);
++      g_object_set_data_full (G_OBJECT (button), "cf-key", g_strdup (key), g_free);
++      g_object_set_data_full (G_OBJECT (button), "cf-value", g_strdup (values[i]), g_free);
++      /* TODO(kit-request settings-02-type-and-control-roles.md): compact radio. */
++      cc_luma_view_row (rows, values[i + 1], values[i + 2], button);
++      g_signal_connect_object (button, "toggled", G_CALLBACK (choice_changed), v->root, 0);
++    }
++}
++static void number_changed (GtkRange *range, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *key = g_object_get_data (G_OBJECT (range), "cf-key");
++  g_autoptr (GError) error = NULL;
++  gint64 value = (gint64) gtk_range_get_value (range);
++  if (!cc_luma_windows_set_number (v->model, key, value, &error))
++    { cc_luma_view_report_error (v, error); return; }
++  /* Keep the emitting slider alive, including through a continuous drag. */
++  GtkLabel *output = g_object_get_data (G_OBJECT (range), "cf-output");
++  g_autofree char *caption = g_strdup_printf ("%" G_GINT64_FORMAT "%s", value, g_str_equal (key, "gap") ? " px" : "");
++  gtk_label_set_text (output, caption);
++  if (g_str_equal (key, "gap") && v->tiles_host)
++    {
++      GtkWidget *old = gtk_widget_get_first_child (GTK_WIDGET (v->tiles_host));
++      if (old) gtk_box_remove (v->tiles_host, old);
++      gtk_box_append (v->tiles_host, tiles (v));
++    }
++  else if (g_str_equal (key, "wsN") && v->subtitle)
++    {
++      g_autofree char *meta = g_strdup_printf ("%s · %" G_GINT64_FORMAT " workspaces", cc_luma_view_flag (v, "tile") ? "Tiling" : "Free windows", value);
++      gtk_label_set_text (v->subtitle, meta);
++    }
++}
++static void number_row (View *v, GtkBox *rows, const char *key, const char *title, int low, int high, int step, const char *suffix)
++{
++  gint64 value = json_node_get_int (cc_luma_fixture_get (v->model, key));
++  GtkWidget *controls = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
++  GtkWidget *scale = gtk_scale_new_with_range (GTK_ORIENTATION_HORIZONTAL, low, high, step);
++  gtk_scale_set_draw_value (GTK_SCALE (scale), FALSE);
++  gtk_range_set_value (GTK_RANGE (scale), value);
++  gtk_widget_set_size_request (scale, 140, -1);
++  gtk_widget_set_hexpand (scale, TRUE);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (scale), GTK_ACCESSIBLE_PROPERTY_LABEL, title, -1);
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  gtk_widget_set_name (scale, name);
++  g_autofree char *caption = g_strdup_printf ("%" G_GINT64_FORMAT "%s", value, suffix);
++  gtk_box_append (GTK_BOX (controls), scale);
++  GtkWidget *output = cc_luma_view_label (caption, "caption", TRUE);
++  gtk_box_append (GTK_BOX (controls), output);
++  g_object_set_data (G_OBJECT (scale), "cf-output", output);
++  g_object_set_data_full (G_OBJECT (scale), "cf-key", g_strdup (key), g_free);
++  g_signal_connect_object (scale, "value-changed", G_CALLBACK (number_changed), v->root, 0);
++  cc_luma_view_row (rows, title, NULL, controls);
++}
++static void boolean_row (View *v, GtkBox *rows, const char *key, const char *title, const char *subtitle)
++{
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  cc_luma_view_row (rows, title, subtitle, cc_luma_view_toggle (v, key, name, title));
++}
++static GtkWidget *tiles (View *v)
++{
++  CcLumaPreviewRect rects[3];
++  g_autoptr (GError) error = NULL;
++  if (!cc_luma_windows_rects (v->model, rects, &error))
++    { cc_luma_view_report_error (v, error); return gtk_box_new (GTK_ORIENTATION_VERTICAL, 0); }
++  GtkWidget *overlay = gtk_overlay_new ();
++  gtk_widget_set_name (overlay, "cf-tiles");
++  gtk_widget_set_size_request (overlay, 360, 176);
++  gtk_widget_set_halign (overlay, GTK_ALIGN_CENTER);
++  GtkWidget *background = cc_luma_view_image (v, cc_luma_view_text (v, "wall"), 720, 352);
++  gtk_overlay_set_child (GTK_OVERLAY (overlay), background);
++  GtkWidget *fixed = gtk_fixed_new ();
++  const char *apps[] = { "write", "viola", "messages" };
++  /* The first window is frontmost in both tiled and overlapping modes. */
++  for (int i = 2; i >= 0; i--)
++    {
++      GtkWidget *icon = cc_luma_view_image (v, apps[i], 44, 44);
++      gtk_widget_set_size_request (icon, 22, 22);
++      gtk_widget_set_halign (icon, GTK_ALIGN_CENTER);
++      gtk_widget_set_valign (icon, GTK_ALIGN_CENTER);
++      GtkWidget *window = luma_card_new (icon, FALSE);
++      gtk_widget_set_size_request (window, (int) rects[i].width, (int) rects[i].height);
++      g_autofree char *name = g_strdup_printf ("cf-tile-%s", apps[i]);
++      gtk_widget_set_name (window, name);
++      gtk_fixed_put (GTK_FIXED (fixed), window, rects[i].x, rects[i].y);
++    }
++  gtk_overlay_add_overlay (GTK_OVERLAY (overlay), fixed);
++  return overlay;
++}
++void cc_luma_view_windows_render (View *v)
++{
++  const char *ws[] = { "dynamic", "As many as you need", "Empty workspaces go away on their own", "fixed", "A fixed number", "", NULL };
++  const char *monitors[] = { "primary", "Workspaces on the main display only", "", "all", "Workspaces on every display", "", NULL };
++  const char *switching[] = { "current", "Apps on this workspace", "", "all", "Apps on every workspace", "", NULL };
++  gint64 count = json_node_get_int (cc_luma_fixture_get (v->model, "wsN"));
++  g_autofree char *space = g_str_equal (cc_luma_view_text (v, "ws"), "dynamic") ?
++    g_strdup ("workspaces come and go") : g_strdup_printf ("%" G_GINT64_FORMAT " workspaces", count);
++  g_autofree char *meta = g_strdup_printf ("%s · %s", cc_luma_view_flag (v, "tile") ? "Tiling" : "Free windows", space);
++  cc_luma_view_header (v, "Windows & Workspaces", meta, NULL);
++  v->tiles_host = GTK_BOX (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
++  gtk_box_append (v->tiles_host, tiles (v));
++  GtkWidget *hero = luma_card_new (GTK_WIDGET (v->tiles_host), TRUE);
++  luma_card_set_recessed (LUMA_CARD (hero), TRUE);
++  gtk_widget_set_margin_top (hero, 20);
++  gtk_box_append (v->body, hero);
++  GtkBox *rows = cc_luma_view_group (v, "Tiling");
++  boolean_row (v, rows, "tile", "Tile windows", "New windows sit side by side instead of on top of each other");
++  if (cc_luma_view_flag (v, "tile")) number_row (v, rows, "gap", "Space between windows", 0, 24, 2, " px");
++  boolean_row (v, rows, "edgeTile", "Drag to an edge to tile", "Drop a window on the left, right or top edge");
++  rows = cc_luma_view_group (v, "General");
++  boolean_row (v, rows, "hot", "Hot corner", "Point at the top left corner to see all windows");
++  boolean_row (v, rows, "edges", "Screen edges", "Drag a window against an edge to resize it");
++  rows = cc_luma_view_group (v, "Workspaces");
++  choices (v, rows, "ws", ws);
++  if (g_str_equal (cc_luma_view_text (v, "ws"), "fixed")) number_row (v, rows, "wsN", "Number of workspaces", 1, 9, 1, "");
++  choices (v, cc_luma_view_group (v, "On more than one display"), "wsMon", monitors);
++  choices (v, cc_luma_view_group (v, "Switching apps"), "swi", switching);
++}
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index f7e9175..6595d06 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -1,6 +1,7 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-view-private.h"
+ #include "cc-luma-bluetooth.h"
++#include "cc-luma-desktop.h"
+ #include <luma-ui.h>
+ #include <string.h>
+ 
+@@ -88,8 +89,10 @@ static GtkWidget *link_button (View *v, const char *caption, const char *target)
+   g_signal_connect (button, "clicked", G_CALLBACK (navigate), v);
+   return button;
+ }
+-static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, View *v)
++static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, GtkWidget *root)
+ {
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
+   const char *key = g_object_get_data (G_OBJECT (widget), "cf-key");
+   g_autoptr (GError) error = NULL;
+   if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
+@@ -105,7 +108,7 @@ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, View *v)
+   /* Avoid destroying the emitting widget inside its notification. */
+   cc_luma_view_queue_refresh (v);
+ }
+-static GtkWidget *toggle (View *v, const char *key, const char *name, const char *accessible)
++GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, const char *accessible)
+ {
+   GtkWidget *w = gtk_switch_new ();
+   gtk_widget_set_valign (w, GTK_ALIGN_CENTER);
+@@ -113,7 +116,7 @@ static GtkWidget *toggle (View *v, const char *key, const char *name, const char
+   gtk_switch_set_active (GTK_SWITCH (w), cc_luma_view_flag (v, key));
+   g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
+   gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+-  g_signal_connect (w, "notify::active", G_CALLBACK (switch_changed), v);
++  g_signal_connect_object (w, "notify::active", G_CALLBACK (switch_changed), v->root, 0);
+   return w;
+ }
+ typedef struct { const char *key; const char * const *choices; } Pick;
+@@ -252,10 +255,11 @@ void cc_luma_view_header (View *v, const char *title, const char *subtitle, cons
+   GtkWidget *titles = gtk_box_new (GTK_ORIENTATION_VERTICAL, 3);
+   gtk_widget_set_hexpand (titles, TRUE);
+   gtk_box_append (GTK_BOX (titles), cc_luma_view_label (title, "title-1", FALSE));
+-  gtk_box_append (GTK_BOX (titles), cc_luma_view_label (subtitle, "caption", TRUE));
++  v->subtitle = GTK_LABEL (cc_luma_view_label (subtitle, "caption", TRUE));
++  gtk_box_append (GTK_BOX (titles), GTK_WIDGET (v->subtitle));
+   gtk_box_append (GTK_BOX (head), titles);
+   if (switch_key)
+-    gtk_box_append (GTK_BOX (head), toggle (v, switch_key, g_str_equal (switch_key, "wifi") ? "cf-wifi" : g_str_equal (switch_key, "bt") ? "cf-bt" : "cf-hotspot", title));
++    gtk_box_append (GTK_BOX (head), cc_luma_view_toggle (v, switch_key, g_str_equal (switch_key, "wifi") ? "cf-wifi" : g_str_equal (switch_key, "bt") ? "cf-bt" : "cf-hotspot", title));
+   gtk_box_append (v->body, head);
+ }
+ static void center_changed (LumaActionCenter *center, const char *state, gpointer unused)
+@@ -483,7 +487,7 @@ static void wifi (View *v)
+     GtkBox *more = cc_luma_view_group (v, "More");
+     nav_row (v, more, "Known networks", "Networks this computer joins on its own", "wifi-known", luma_count_badge_new (json_array_get_length (known), FALSE));
+     nav_row (v, more, "Hotspot", "Share this computer’s connection", "hotspot", cc_luma_view_label (cc_luma_view_flag (v, "hotspot") ? "On" : "Off", "body", TRUE));
+-    cc_luma_view_row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", toggle (v, "airplane", "cf-airplane", "Airplane mode"));
++    cc_luma_view_row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", cc_luma_view_toggle (v, "airplane", "cf-airplane", "Airplane mode"));
+   }
+ }
+ static void copy_value (LumaBarItem *item, GtkWidget *root)
+@@ -515,8 +519,8 @@ static void wifi_details (View *v)
+   gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
+   cc_luma_view_header (v, *cc_luma_view_text (v, "net") ? cc_luma_view_text (v, "net") : "Network", "Connected · WPA3 · 5 GHz", NULL);
+   settings = cc_luma_view_group (v, NULL);
+-  cc_luma_view_row (settings, "Join automatically", NULL, toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
+-  cc_luma_view_row (settings, "Available to everyone on this computer", NULL, toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
++  cc_luma_view_row (settings, "Join automatically", NULL, cc_luma_view_toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
++  cc_luma_view_row (settings, "Available to everyone on this computer", NULL, cc_luma_view_toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
+   cc_luma_view_row (settings, "Metered", "Luma holds back big downloads on metered networks", picker (v, "metered", metered_choices));
+   connection = cc_luma_view_group (v, "Connection");
+   cc_luma_view_row (connection, "Signal", NULL, cc_luma_view_label ("Excellent", "body", TRUE));
+@@ -567,11 +571,11 @@ static void network (View *v)
+   GtkBox *wired, *vpn, *proxy;
+   cc_luma_view_header (v, "Network", cc_luma_view_flag (v, "vpn") ? "Cable unplugged · VPN on" : "Cable unplugged · VPN off", NULL);
+   wired = cc_luma_view_group (v, "Wired");
+-  GtkWidget *ethernet = cc_luma_view_row (wired, "Ethernet", "Cable unplugged", toggle (v, "eth", "cf-ethernet", "Ethernet"));
++  GtkWidget *ethernet = cc_luma_view_row (wired, "Ethernet", "Cable unplugged", cc_luma_view_toggle (v, "eth", "cf-ethernet", "Ethernet"));
+   gtk_widget_set_sensitive (ethernet, FALSE);
+   gtk_widget_set_tooltip_text (ethernet, "Plug in a cable to use Ethernet");
+   vpn = cc_luma_view_group (v, "VPN");
+-  cc_luma_view_row (vpn, "Studio North VPN", cc_luma_view_flag (v, "vpn") ? "Connected" : "WireGuard", toggle (v, "vpn", "cf-vpn", "Studio North VPN"));
++  cc_luma_view_row (vpn, "Studio North VPN", cc_luma_view_flag (v, "vpn") ? "Connected" : "WireGuard", cc_luma_view_toggle (v, "vpn", "cf-vpn", "Studio North VPN"));
+   gtk_box_append (vpn, luma_add_row_new ("Add a VPN", "plus", NULL));
+   proxy = cc_luma_view_group (v, "Proxy");
+   cc_luma_view_row (proxy, "Proxy", "For networks that require one", picker (v, "proxy", proxy_choices));
+@@ -583,6 +587,8 @@ static void render (View *v)
+   g_clear_object (&v->images_cancel);
+   v->images_cancel = g_cancellable_new ();
+   v->generation++;
++  v->tiles_host = NULL;
++  v->subtitle = NULL;
+   while ((child = gtk_widget_get_first_child (GTK_WIDGET (v->body))))
+     gtk_box_remove (v->body, child);
+   if (g_str_equal (v->page, "wifi")) wifi (v);
+@@ -591,6 +597,7 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "hotspot")) hotspot (v);
+   else if (g_str_equal (v->page, "network")) network (v);
+   else if (g_str_equal (v->page, "bluetooth")) cc_luma_view_bluetooth_render (v);
++  else if (g_str_equal (v->page, "windows")) cc_luma_view_windows_render (v);
+ }
+ static void view_free (View *v)
+ {
+@@ -668,12 +675,13 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   View *v;
+   if (!page) page = "wifi";
+   if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
+-      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth"))
++      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network") && !g_str_equal (page, "bluetooth") && !g_str_equal (page, "windows"))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+     }
+-  if (!valid_wifi_model (model) || (g_str_equal (page, "bluetooth") && !cc_luma_bluetooth_validate (model)))
++  if (!valid_wifi_model (model) || (g_str_equal (page, "bluetooth") && !cc_luma_bluetooth_validate (model)) ||
++      (g_str_equal (page, "windows") && !cc_luma_windows_validate (model)))
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Settings fixture contains invalid Wi-Fi data");
+       return NULL;
+diff --git a/shell/meson.build b/shell/meson.build
+index fca3ab1..0b7750c 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -70,6 +70,7 @@ common_sources = files(
+   'cc-luma-view.c',
+   'cc-luma-view-image.c',
+   'cc-luma-view-bluetooth.c',
++  'cc-luma-view-windows.c',
+ )
+ 
+ 
+@@ -195,7 +196,7 @@ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 6d837d0..9fc11c4 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -324,6 +324,50 @@ static void remove_asset_fixture (const char *dir)
+   if (g_file_test (image, G_FILE_TEST_EXISTS)) g_assert_cmpint (g_remove (image), ==, 0);
+   g_assert_cmpint (g_rmdir (dir), ==, 0);
+ }
++static void windows_view (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  g_autoptr (CcLumaFixture) untouched = load ();
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  const char *files[] = { "prism.png", "luma-v3-documents.svg", "luma-v3-browser.svg", "luma-v3-messages.svg" };
++  for (guint i = 0; i < G_N_ELEMENTS (files); i++)
++    { g_autofree char *p = g_build_filename (dir, files[i], NULL); g_assert_true (g_file_set_contents (p, art, -1, NULL)); }
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "windows", NULL));
++  g_assert_nonnull (find_name (view, "cf-tiles"));
++  g_assert_true (has_text (view, "Tiling · workspaces come and go"));
++  g_assert_null (find_name (view, "cf-wsN"));
++  GtkWidget *gap = find_name (view, "cf-gap");
++  gtk_range_set_value (GTK_RANGE (gap), 18); drain ();
++  g_assert_true (gap == find_name (view, "cf-gap"));
++  g_assert_true (has_text (view, "18 px"));
++  gtk_range_set_value (GTK_RANGE (gap), 24); drain ();
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (model, "gap")), ==, 24);
++  gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-tile")), FALSE); drain ();
++  g_assert_null (find_name (view, "cf-gap"));
++  g_assert_true (has_text (view, "Free windows · workspaces come and go"));
++  gtk_check_button_set_active (GTK_CHECK_BUTTON (find_name (view, "cf-ws-fixed")), TRUE); drain ();
++  GtkWidget *count = find_name (view, "cf-wsN");
++  g_assert_nonnull (count);
++  gtk_range_set_value (GTK_RANGE (count), 7); drain ();
++  g_assert_true (has_text (view, "Free windows · 7 workspaces"));
++  gtk_check_button_set_active (GTK_CHECK_BUTTON (find_name (view, "cf-wsMon-all")), TRUE); drain ();
++  gtk_check_button_set_active (GTK_CHECK_BUTTON (find_name (view, "cf-swi-all")), TRUE); drain ();
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "wsMon")), ==, "all");
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "swi")), ==, "all");
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (untouched, "tile")));
++  g_assert_cmpint (json_node_get_int (cc_luma_fixture_get (untouched, "wsN")), ==, 4);
++  wait_ms (100); g_assert_null (cc_luma_view_get_error (view));
++  GtkWidget *orphan = g_object_ref (find_name (view, "cf-tile"));
++  g_object_unref (view);
++  gtk_switch_set_active (GTK_SWITCH (orphan), TRUE);
++  g_object_unref (orphan); wait_ms (100);
++  for (guint i = 1; i < G_N_ELEMENTS (files); i++)
++    { g_autofree char *p = g_build_filename (dir, files[i], NULL); g_assert_cmpint (g_remove (p), ==, 0); }
++  remove_asset_fixture (dir);
++}
+ static void asset_loading (void)
+ {
+   g_autofree char *dir = asset_fixture ();
+@@ -393,6 +437,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/bluetooth-pairing", bluetooth_pairing);
+   g_test_add_func ("/settings/view/copy-addresses", copy_addresses);
+   g_test_add_func ("/settings/view/asset-loading", asset_loading);
++  g_test_add_func ("/settings/view/windows", windows_view);
+   g_test_add_func ("/settings/view/missing-asset", missing_asset);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

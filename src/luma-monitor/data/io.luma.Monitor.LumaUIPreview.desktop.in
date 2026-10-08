@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Monitor (LumaUI preview)
+Comment=Resource activity on LumaUI
+Exec=@PREVIEW_DIR@/bin/run
+Icon=@PREVIEW_DIR@/assets/icon-theme/Prairie/scalable/apps/luma-v3-monitor.svg
+Terminal=false
+Categories=System;Monitor;Utility;
+StartupNotify=true
+StartupWMClass=io.luma.Monitor.LumaUIPreview
+DBusActivatable=false

@@ -1,0 +1,11 @@
+diff --git a/src/resources/ui/nautilus-window.blp b/src/resources/ui/nautilus-window.blp
+--- a/src/resources/ui/nautilus-window.blp
++++ b/src/resources/ui/nautilus-window.blp
+@@ -124,6 +124,7 @@ template $NautilusWindow: Adw.ApplicationWindow {
+           [top]
+           Adw.HeaderBar {
++            title-widget: Box {};
+ 
+             [end]
+             MenuButton {
+               tooltip-text: _("Main Menu");

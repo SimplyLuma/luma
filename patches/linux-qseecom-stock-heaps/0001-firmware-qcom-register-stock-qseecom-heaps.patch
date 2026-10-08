@@ -1,0 +1,245 @@
+From: Project Luma <noreply@project-luma.local>
+Date: Fri, 21 Aug 2026 20:05:00 -0500
+Subject: [PATCH] firmware: qcom: register stock QSEECOM heaps
+
+Fairphone's FP6 securemsm driver registers both the complete QSEECOM TA heap
+and the separate apps heap with SHM Bridge before initializing QSEECOM.  The
+generic TZ memory allocator instead registers each allocation independently,
+and has no representation of the apps heap.
+
+Add opt-in device-tree properties for the downstream whole-heap contract.  A
+whole-pool TA registration suppresses overlapping per-allocation bridges and
+requires every later DMA allocation to remain inside the registered pool.  A
+separate apps-region phandle registers the complete apps heap.  Both paths
+validate 4 MiB alignment and the 32-bit physical window before registering.
+
+The properties are absent on existing platforms, so their behavior is
+unchanged.  Logs intentionally report sizes and acceptance only, never
+physical addresses or buffer contents.
+---
+ drivers/firmware/qcom/qcom_scm.c   | 58 ++++++++++++++++++++++++++++++
+ drivers/firmware/qcom/qcom_tzmem.c | 71 +++++++++++++++++++++++++++++++++++--
+ drivers/firmware/qcom/qcom_tzmem.h |  1 +
+ 3 files changed, 127 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/firmware/qcom/qcom_tzmem.h b/drivers/firmware/qcom/qcom_tzmem.h
+index 9c4846ee0..967c30c4c 100644
+--- a/drivers/firmware/qcom/qcom_tzmem.h
++++ b/drivers/firmware/qcom/qcom_tzmem.h
+@@ -7,4 +7,5 @@ struct device;
+ 
+ int qcom_tzmem_enable(struct device *dev);
++int qcom_tzmem_register_reserved_pool(struct device *dev);
+ 
+ #endif /* __QCOM_TZMEM_PRIV_H */
+diff --git a/drivers/firmware/qcom/qcom_tzmem.c b/drivers/firmware/qcom/qcom_tzmem.c
+index 26cfb5384..edbbbe333 100644
+--- a/drivers/firmware/qcom/qcom_tzmem.c
++++ b/drivers/firmware/qcom/qcom_tzmem.c
+@@ -15,6 +15,7 @@
+ #include <linux/mm.h>
+ #include <linux/radix-tree.h>
+ #include <linux/slab.h>
++#include <linux/sizes.h>
+ #include <linux/spinlock.h>
+ #include <linux/types.h>
+ 
+@@ -53,6 +54,11 @@ static void qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
+ 
+ }
+ 
++static int qcom_tzmem_init_reserved_pool(struct device *dev)
++{
++	return 0;
++}
++
+ #elif IS_ENABLED(CONFIG_QCOM_TZMEM_MODE_SHMBRIDGE)
+ 
+ #include <linux/firmware/qcom/qcom_scm.h>
+@@ -60,8 +66,13 @@ static void qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
+ #include <linux/of.h>
++#include <linux/of_reserved_mem.h>
+ 
+ #define QCOM_SHM_BRIDGE_NUM_VM_SHIFT 9
+ 
+ static bool qcom_tzmem_using_shm_bridge;
++static bool qcom_tzmem_reserved_pool_bridge;
++static phys_addr_t qcom_tzmem_reserved_pool_base;
++static size_t qcom_tzmem_reserved_pool_size;
++static u64 qcom_tzmem_reserved_pool_handle;
+ 
+ /* List of machines that are known to not support SHM bridge correctly. */
+ static const char *const qcom_tzmem_blacklist[] = {
+@@ -157,10 +168,73 @@ void qcom_tzmem_shm_bridge_delete(u64 handle)
+ }
+ EXPORT_SYMBOL_GPL(qcom_tzmem_shm_bridge_delete);
+ 
++static void qcom_tzmem_reserved_pool_cleanup(void *data)
++{
++	qcom_tzmem_shm_bridge_delete(qcom_tzmem_reserved_pool_handle);
++	qcom_tzmem_reserved_pool_bridge = false;
++}
++
++static int qcom_tzmem_init_reserved_pool(struct device *dev)
++{
++	struct device_node *node;
++	struct reserved_mem *rmem;
++	int ret;
++
++	if (!of_property_read_bool(dev->of_node,
++				   "qcom,tzmem-whole-pool-shmbridge"))
++		return 0;
++
++	node = of_parse_phandle(dev->of_node, "memory-region", 0);
++	if (!node)
++		return -EINVAL;
++
++	rmem = of_reserved_mem_lookup(node);
++	of_node_put(node);
++	if (!rmem || !rmem->size)
++		return -EINVAL;
++
++	if (!IS_ALIGNED(rmem->base, SZ_4M) ||
++	    !IS_ALIGNED(rmem->size, SZ_4M) ||
++	    rmem->base > U32_MAX ||
++	    rmem->size > (u64)U32_MAX + 1 - rmem->base)
++		return -ERANGE;
++
++	ret = qcom_tzmem_shm_bridge_create(rmem->base, rmem->size,
++					   &qcom_tzmem_reserved_pool_handle);
++	if (ret)
++		return ret;
++
++	qcom_tzmem_reserved_pool_base = rmem->base;
++	qcom_tzmem_reserved_pool_size = rmem->size;
++	qcom_tzmem_reserved_pool_bridge = true;
++
++	ret = devm_add_action_or_reset(dev, qcom_tzmem_reserved_pool_cleanup,
++				       NULL);
++	if (ret)
++		return ret;
++
++	dev_info(dev, "SHM Bridge whole TA pool ready: size=%zu\n",
++		 qcom_tzmem_reserved_pool_size);
++	return 0;
++}
++
+ static int qcom_tzmem_init_area(struct qcom_tzmem_area *area)
+ {
+ 	int ret;
+ 
++	if (qcom_tzmem_reserved_pool_bridge) {
++		if (area->paddr < qcom_tzmem_reserved_pool_base ||
++		    area->size > qcom_tzmem_reserved_pool_size ||
++		    area->paddr - qcom_tzmem_reserved_pool_base >
++			qcom_tzmem_reserved_pool_size - area->size)
++			return -ERANGE;
++
++		dev_info(qcom_tzmem_dev,
++			 "SHM Bridge allocation covered by whole TA pool: size=%zu\n",
++			 area->size);
++		return 0;
++	}
++
+ 	u64 *handle __free(kfree) = kzalloc(sizeof(*handle), GFP_KERNEL);
+ 	if (!handle)
+ 		return -ENOMEM;
+@@ -184,6 +258,9 @@ static void qcom_tzmem_cleanup_area(struct qcom_tzmem_area *area)
+ {
+ 	u64 *handle = area->priv;
+ 
++	if (qcom_tzmem_reserved_pool_bridge)
++		return;
++
+ 	qcom_tzmem_shm_bridge_delete(*handle);
+ 	kfree(handle);
+ }
+@@ -521,6 +598,12 @@ int qcom_tzmem_enable(struct device *dev)
+ }
+ EXPORT_SYMBOL_GPL(qcom_tzmem_enable);
+ 
++int qcom_tzmem_register_reserved_pool(struct device *dev)
++{
++	return qcom_tzmem_init_reserved_pool(dev);
++}
++EXPORT_SYMBOL_GPL(qcom_tzmem_register_reserved_pool);
++
+ MODULE_DESCRIPTION("TrustZone memory allocator for Qualcomm firmware drivers");
+ MODULE_AUTHOR("Bartosz Golaszewski <bartosz.golaszewski@linaro.org>");
+ MODULE_LICENSE("GPL");
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 6c4d83bc1..c11083940 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2714,6 +2714,55 @@ static const struct of_device_id qcom_scm_qseecom_allowlist[] __maybe_unused = {
+ 	{ }
+ };
+ 
++static void qcom_scm_qseecom_apps_bridge_free(void *data)
++{
++	u64 *handle = data;
++
++	qcom_tzmem_shm_bridge_delete(*handle);
++}
++
++static int qcom_scm_qseecom_apps_bridge_init(struct qcom_scm *scm)
++{
++	struct device_node *node;
++	struct reserved_mem *rmem;
++	u64 *handle;
++	int ret;
++
++	node = of_parse_phandle(scm->dev->of_node,
++				"qcom,qseecom-apps-region", 0);
++	if (!node)
++		return 0;
++
++	rmem = of_reserved_mem_lookup(node);
++	of_node_put(node);
++	if (!rmem || !rmem->size)
++		return -EINVAL;
++
++	if (!IS_ALIGNED(rmem->base, SZ_4M) ||
++	    !IS_ALIGNED(rmem->size, SZ_4M) ||
++	    rmem->base > U32_MAX ||
++	    rmem->size > (u64)U32_MAX + 1 - rmem->base)
++		return -ERANGE;
++
++	handle = devm_kzalloc(scm->dev, sizeof(*handle), GFP_KERNEL);
++	if (!handle)
++		return -ENOMEM;
++
++	ret = qcom_tzmem_shm_bridge_create(rmem->base, rmem->size, handle);
++	if (ret)
++		return ret;
++
++	ret = devm_add_action_or_reset(scm->dev,
++				       qcom_scm_qseecom_apps_bridge_free,
++				       handle);
++	if (ret)
++		return ret;
++
++	dev_info(scm->dev, "qseecom: SHM Bridge apps pool ready: size=%llu\n",
++		 (unsigned long long)rmem->size);
++	return 0;
++}
++
+ static void qcom_scm_qseecom_free(void *data)
+ {
+ 	struct platform_device *qseecom_dev = data;
+@@ -2757,6 +2806,13 @@ static int qcom_scm_qseecom_init(struct qcom_scm *scm)
+ 	u32 version;
+ 	int ret;
+ 
++	ret = qcom_tzmem_register_reserved_pool(scm->dev);
++	if (ret)
++		return ret;
++	ret = qcom_scm_qseecom_apps_bridge_init(scm);
++	if (ret)
++		return ret;
++
+ 	/*
+ 	 * Note: We do two steps of validation here: First, we try to query the
+ 	 * QSEECOM version as a check to see if the interface exists on this
+-- 
+2.50.1

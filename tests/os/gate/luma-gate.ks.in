@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Luma OS VM gate: unattended install of a channel commit from an OSTree
+# repository over HTTP, with the Luma OS Release key as the only trust anchor,
+# the way the Atlas installer installs (config/install/atlas on the installer
+# branch): stateroot "luma", remote "luma", origin luma:<channel ref>.
+#
+# Everything marked GATE-ONLY exists so the host can drive a disposable test
+# VM (root SSH with a per-run key); it is never part of a Luma image or of
+# installer media.
+
+text
+lang en_US.UTF-8
+keyboard us
+timezone UTC --utc
+network --bootproto=dhcp --device=link --activate --hostname=luma-gate
+zerombr
+clearpart --all --initlabel --disklabel=gpt
+autopart --type=btrfs --noswap
+bootloader --timeout=3 --append="rhgb quiet"
+# Accounts: the regular stages create none and disable first-boot setup; the
+# gate's no-account stage leaves first-boot setup on, as an install that
+# creates no account does.
+@FIRSTBOOT@
+# A desktop install boots to the login screen (Atlas does the same in %post).
+xconfig --startxonboot
+# GATE-ONLY: root is reachable over SSH with the per-run key; no password.
+rootpw --lock
+sshkey --username=root "@SSH_PUBLIC_KEY@"
+services --enabled=sshd
+firewall --enabled --service=ssh
+poweroff
+
+%pre --interpreter=/usr/bin/bash --erroronfail
+set -euo pipefail
+exec > >(tee /dev/ttyS0) 2>&1
+# The installer runtime must trust exactly one key for the OSTree pull. Its
+# root filesystem may be read-only, so the trusted keyring directory is
+# replaced by a tmpfs holding only the Luma OS Release key.
+dir=/usr/share/ostree/trusted.gpg.d
+if ! { install -d -m 0755 "$dir" && touch "$dir/.luma-writable"; } 2>/dev/null; then
+  [ -d "$dir" ] || { echo "luma-gate: $dir is missing and cannot be created"; exit 1; }
+  mount -t tmpfs -o mode=0755 luma-trust "$dir"
+fi
+rm -f "$dir/.luma-writable" "$dir"/*.gpg
+# The installer runtime has no base64 tool; Anaconda's Python decodes it.
+python3 -c 'import base64, sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.read()))' \
+  >"$dir/luma-release.gpg" <<'KEY'
+@RELEASE_KEY_BASE64@
+KEY
+echo "luma-gate: trusted keys: $(ls "$dir")"
+%end
+
+ostreesetup --osname=@STATEROOT@ --remote=@REMOTE@ --url=@REPO_URL@ --ref=@REF@
+
+%post --nochroot --erroronfail --interpreter=/usr/bin/bash
+set -euo pipefail
+exec > >(tee /dev/ttyS0) 2>&1
+root=${ANA_INSTALL_PATH:-/mnt/sysroot}
+physical=/mnt/sysimage
+# The remote lives only in the image's /etc/ostree/remotes.d/luma.conf, with
+# this gate's repository URL in place of the public one, the way a preview
+# enrollment points it at the preview path: in the root-only mirror list the
+# remote reads (images from nightly 20260915.7 on), or in the remote's url line
+# (earlier images, installed as the previous release).
+conf="$root/etc/ostree/remotes.d/@REMOTE@.conf"
+test -f "$conf"
+if grep -Fxq 'url=mirrorlist=file:///etc/luma/update-mirrorlist' "$conf"; then
+  list="$root/etc/luma/update-mirrorlist"
+  test -f "$list"
+  printf '%s\n' '@REPO_URL@' >"$list"
+  chmod 0600 "$list"
+  grep -Fxq '@REPO_URL@' "$list"
+else
+  sed -i 's#^url=.*#url=@REPO_URL@#' "$conf"
+  grep -Fxq 'url=@REPO_URL@' "$conf"
+fi
+if grep -q '^\[remote "@REMOTE@"\]' "$physical/ostree/repo/config" 2>/dev/null; then
+  ostree remote delete --repo="$physical/ostree/repo" @REMOTE@
+fi
+origin=$(ls "$physical"/ostree/deploy/@STATEROOT@/deploy/*.origin)
+grep -Fxq 'refspec=@REMOTE@:@REF@' "$origin"
+chroot "$root" /usr/sbin/restorecon -RF /etc/ostree/remotes.d /etc/luma || :
+
+# Kernel arguments the release declares in /usr/lib/bootc/kargs.d. Anaconda's
+# ostreesetup does not read them (bootc and container installs do), so the
+# installer adds them to the new deployment, as Atlas must too.
+kargs=$(python3 - "$root/usr/lib/bootc/kargs.d" <<'PY'
+import glob, os, sys, tomllib
+out = []
+for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.toml"))):
+    data = tomllib.load(open(path, "rb"))
+    arches = data.get("match-architectures")
+    if not arches or "x86_64" in arches:
+        out += data.get("kargs", [])
+print(" ".join(out))
+PY
+)
+if [ -n "$kargs" ]; then
+  for karg in $kargs; do
+    case " $(sed -n 's/^options //p' "$physical"/boot/loader/entries/*.conf | head -n 1) " in
+      *" $karg "*) ;;
+      *) ostree admin instutil set-kargs --sysroot="$physical" --merge --append="$karg" ;;
+    esac
+  done
+  echo "luma-gate: kernel arguments from kargs.d: $kargs"
+  grep -h '^options' "$physical"/boot/loader/entries/*.conf
+fi
+
+# Installer stand-in corrections. The gate uses Fedora's Silverblue installer
+# in place of Atlas; two things it does are not what a Luma install is:
+#  * it writes a "/" line to fstab. The root of a composefs deployment is an
+#    overlay that systemd-remount-fs cannot reconfigure, so that unit fails on
+#    every boot (installs without the line, like the qualified parity
+#    machines, do not have it). The installer must not write it.
+#  * it installs Fedora's Flatpaks from its medium and adds the Fedora OCI
+#    Flatpak remote, which ADR-030 removes. Atlas media carry no Flatpaks.
+sed -i -E '/^[^#[:space:]]+[[:space:]]+\/[[:space:]]/d' "$root/etc/fstab"
+if chroot "$root" flatpak remotes --system --columns=name 2>/dev/null | grep -Eqx 'fedora|fedora-testing'; then
+  chroot "$root" flatpak uninstall --system --all --noninteractive --force-remove || :
+  for name in fedora fedora-testing; do
+    chroot "$root" flatpak remote-delete --system --force "$name" 2>/dev/null || :
+  done
+fi
+chroot "$root" systemctl set-default graphical.target
+%end

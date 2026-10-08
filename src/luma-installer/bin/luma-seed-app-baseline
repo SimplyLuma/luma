@@ -1,0 +1,3 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+exec python3 -m luma_installer.app_baseline "$@"

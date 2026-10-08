@@ -1,0 +1,89 @@
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -92,7 +92,7 @@
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button image {
+     -gtk-icon-size: 14px;
+-    color: @luma_folder;
++    color: var(--accent-color);
+   }
+ 
+   .luma-files-window headerbar.luma-secondary-toolbar .nautilus-path-button.luma-path-root image {
+@@ -181,7 +181,7 @@
+ 
+   .luma-files-window .luma-compact-root-icon {
+     -gtk-icon-size: 14px;
+-    color: @luma_folder;
++    color: var(--accent-color);
+   }
+ 
+   .luma-files-window .luma-compact-root-label {
+@@ -381,7 +381,7 @@
+   }
+ 
+   .luma-files-window .navigation-sidebar > row:selected image {
+-    color: @luma_folder;
++    color: var(--accent-color);
+   }
+ 
+   .luma-files-window .navigation-sidebar separator {
+@@ -579,11 +579,11 @@
+ 
+ .luma-files-window .nautilus-column-view .luma-column-row-icon {
+   -gtk-icon-size: 14px;
+-  color: @luma_folder;
++  color: var(--accent-color);
+ }
+ 
+ .luma-files-window .nautilus-column-view .luma-column-symbolic-folder {
+-  color: @luma_folder;
++  color: var(--accent-color);
+ }
+ 
+ .luma-files-window .nautilus-column-view .luma-column-row-chevron {
+@@ -611,7 +611,7 @@
+ }
+ 
+ .luma-files-window .nautilus-column-view .luma-details-icon-frame image {
+-  color: @luma_folder;
++  color: var(--accent-color);
+ }
+ 
+ .luma-files-window .nautilus-column-view .luma-details-name {
+@@ -1090,7 +1090,7 @@
+ }
+ .luma-files-window .nautilus-column-view .luma-column-header-icon {
+   -gtk-icon-size: 14px;
+-  color: @luma_folder;
++  color: var(--accent-color);
+ }
+ 
+ /* ── Corrections from the design review ──────────────────────────────────
+@@ -1336,7 +1336,7 @@
+ }
+ window.luma-files-window .nautilus-list-view .luma-column-symbolic-folder {
+   -gtk-icon-size: 14px;
+-  color: @luma_folder;
++  color: var(--accent-color);
+ }
+ window.luma-files-window .nautilus-list-view columnview > header > button,
+ window.luma-files-window .nautilus-list-view columnview > header > button label {
+--- a/test/automated/meson.build
++++ b/test/automated/meson.build
+@@ -7,8 +7,16 @@
+   include_directories: include_directories('.')
+ )
+ 
++# Fat LTO objects retain native code. Avoid repeating whole-library LTO for
++# each non-installed test executable; production targets remain optimized.
++test_link_args = []
++if '-ffat-lto-objects' in get_option('c_args')
++  test_link_args += ['-fno-lto']
++endif
++
+ libtestutils_dep = declare_dependency(
+   link_with: libtestutils,
++  link_args: test_link_args,
+   include_directories: include_directories('.'),
+   dependencies: libnautilus_dep,
+   sources: resources

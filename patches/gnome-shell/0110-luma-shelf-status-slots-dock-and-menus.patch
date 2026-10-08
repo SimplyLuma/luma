@@ -1,0 +1,401 @@
+From: Project Luma
+Subject: [PATCH] luma: the shelf spec's status grid, dock, menus and live extension options
+
+The status grid is six fixed slots in the spec's order; a slot whose thing
+is off draws at 35%, and a red dot on the microphone marks recording that
+the Well couldn't attribute. Lucide glyphs for the slots are outlined for
+symbolic recolouring. Dock icons lift 2px on hover and dim to 92% when
+pressed, sit full-bleed at radius 10, and name themselves in a 24px
+tooltip 8px above the island. Every shelf menu opens 8px beyond its island
+on the menu surface. A live extension opens its app on click and its
+options on right-click. The date tile keeps the calendar's blue on the
+light treatments.
+
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-bluetooth-symbolic.svg
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M7.707,6.293 L11,9.586 L11,2 Q11,1.586 11.293,1.293 Q11.586,1 12,1 Q12.414,1 12.707,1.293 L17.707,6.293 Q18,6.586 18,7 Q18,7.414 17.707,7.707 L13.414,12 L17.707,16.293 Q18,16.586 18,17 Q18,17.414 17.707,17.707 L12.707,22.707 Q12.414,23 12,23 Q11.586,23 11.293,22.707 Q11,22.414 11,22 L11,14.414 L7.707,17.707 Q7.414,18 7,18 Q6.586,18 6.293,17.707 Q6,17.414 6,17 Q6,16.586 6.293,16.293 L10.586,12 L6.293,7.707 Q6,7.414 6,7 Q6,6.586 6.293,6.293 Q6.586,6 7,6 Q7.414,6 7.707,6.293 Z M13,9.586 L15.586,7 L13,4.414 L13,9.586 Z M13,14.414 L13,19.586 L15.586,17 L13,14.414 Z" fill="#2e3436"/>
++</svg>
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-gauge-symbolic.svg
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M11.293,13.293 L15.293,9.293 Q15.586,9 16,9 Q16.414,9 16.707,9.293 Q17,9.586 17,10 Q17,10.414 16.707,10.707 L12.707,14.707 Q12.414,15 12,15 Q11.586,15 11.293,14.707 Q11,14.414 11,14 Q11,13.586 11.293,13.293 Z" fill="#2e3436"/>
++  <path d="M2.474,19.5 Q0.472,16.033 1.167,12.09 Q1.862,8.147 4.929,5.573 Q7.996,3 12,3 Q16.004,3 19.071,5.573 Q22.138,8.147 22.833,12.09 Q23.528,16.033 21.526,19.5 Q21.319,19.859 20.919,19.966 Q20.519,20.073 20.16,19.866 Q19.801,19.659 19.694,19.259 Q19.587,18.859 19.794,18.5 Q21.432,15.663 20.863,12.437 Q20.295,9.211 17.785,7.105 Q15.276,5 12,5 Q8.724,5 6.215,7.105 Q3.705,9.211 3.137,12.437 Q2.568,15.663 4.206,18.5 Q4.413,18.859 4.306,19.259 Q4.199,19.659 3.84,19.866 Q3.481,20.073 3.081,19.966 Q2.681,19.859 2.474,19.5 Z" fill="#2e3436"/>
++</svg>
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-mic-off-symbolic.svg
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M13,19 L13,22 Q13,22.414 12.707,22.707 Q12.414,23 12,23 Q11.586,23 11.293,22.707 Q11,22.414 11,22 L11,19 Q11,18.586 11.293,18.293 Q11.586,18 12,18 Q12.414,18 12.707,18.293 Q13,18.586 13,19 Z" fill="#2e3436"/>
++  <path d="M14,9.34 L14,5 Q13.991,3.43 12.456,3.071 Q10.922,2.711 10.213,4.119 Q10.027,4.489 9.634,4.619 Q9.241,4.749 8.871,4.563 Q8.501,4.377 8.371,3.984 Q8.241,3.591 8.427,3.221 Q9.843,0.405 12.912,1.123 Q15.981,1.842 16,5 L16,9.34 Q16,9.754 15.707,10.047 Q15.414,10.34 15,10.34 Q14.586,10.34 14.293,10.047 Q14,9.754 14,9.34 Z" fill="#2e3436"/>
++  <path d="M17.657,17.657 Q13.877,21.437 8.938,19.392 Q4,17.346 4,12 L4,10 Q4,9.586 4.293,9.293 Q4.586,9 5,9 Q5.414,9 5.707,9.293 Q6,9.586 6,10 L6,12 Q6,16.009 9.704,17.544 Q13.408,19.078 16.243,16.243 Q16.536,15.95 16.95,15.95 Q17.364,15.95 17.657,16.243 Q17.95,16.536 17.95,16.95 Q17.95,17.364 17.657,17.657 Z" fill="#2e3436"/>
++  <path d="M17.906,13.053 Q18,12.53 18,11.999 L18,10 Q18,9.586 18.293,9.293 Q18.586,9 19,9 Q19.414,9 19.707,9.293 Q20,9.586 20,10 L20,12.001 Q19.999,12.709 19.874,13.407 Q19.801,13.814 19.461,14.051 Q19.121,14.287 18.713,14.214 Q18.306,14.141 18.069,13.801 Q17.833,13.461 17.906,13.053 Z" fill="#2e3436"/>
++  <path d="M2.707,1.293 L22.707,21.293 Q23,21.586 23,22 Q23,22.414 22.707,22.707 Q22.414,23 22,23 Q21.586,23 21.293,22.707 L1.293,2.707 Q1,2.414 1,2 Q1,1.586 1.293,1.293 Q1.586,1 2,1 Q2.414,1 2.707,1.293 Z" fill="#2e3436"/>
++  <path d="M10,9 L10,12 Q10.001,13.334 11.235,13.845 Q12.469,14.356 13.413,13.412 Q13.706,13.12 14.121,13.12 Q14.535,13.12 14.828,13.413 Q15.12,13.706 15.12,14.121 Q15.12,14.535 14.827,14.828 Q12.937,16.715 10.47,15.693 Q8.002,14.671 8,12 L8,9 Q8,8.586 8.293,8.293 Q8.586,8 9,8 Q9.414,8 9.707,8.293 Q10,8.586 10,9 Z" fill="#2e3436"/>
++</svg>
+--- /dev/null
++++ b/data/icons/hicolor/scalable/status/luma-mic-symbolic.svg
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Lucide geometry, ISC; strokes outlined for symbolic recolouring. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
++  <path d="M13,19 L13,22 Q13,22.414 12.707,22.707 Q12.414,23 12,23 Q11.586,23 11.293,22.707 Q11,22.414 11,22 L11,19 Q11,18.586 11.293,18.293 Q11.586,18 12,18 Q12.414,18 12.707,18.293 Q13,18.586 13,19 Z" fill="#2e3436"/>
++  <path d="M20,10 L20,12 Q20,15.314 17.657,17.657 Q15.314,20 12,20 Q8.686,20 6.343,17.657 Q4,15.314 4,12 L4,10 Q4,9.586 4.293,9.293 Q4.586,9 5,9 Q5.414,9 5.707,9.293 Q6,9.586 6,10 L6,12 Q6,14.485 7.757,16.243 Q9.515,18 12,18 Q14.485,18 16.243,16.243 Q18,14.485 18,12 L18,10 Q18,9.586 18.293,9.293 Q18.586,9 19,9 Q19.414,9 19.707,9.293 Q20,9.586 20,10 Z" fill="#2e3436"/>
++  <path d="M12,1 Q16,1 16,5 L16,12 Q16,16 12,16 Q8,16 8,12 L8,5 Q8,1 12,1 Z M12,3 Q10,3 10,5 L10,12 Q10,14 12,14 Q14,14 14,12 L14,5 Q14,3 12,3 Z" fill="#2e3436"/>
++</svg>
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -854,8 +854,8 @@
+ 
+ /* The Well: application status icons, recessed at the start of the status island. */
+ .luma-well { height: 36px; padding: 0 4px; spacing: 2px; border-radius: 10px;
+-  background-color: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 2px rgba(0,0,0,0.35); }
+-.luma-status-light .luma-well { background-color: rgba(25,27,31,0.05); box-shadow: inset 0 0 0 1px rgba(25,27,31,0.07), inset 0 1px 2px rgba(25,27,31,0.10); }
++  background-color: rgba(255,255,255,0.05); box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); }
++.luma-status-light .luma-well { background-color: rgba(25,27,31,0.05); box-shadow: inset 0 1px 2px rgba(25,27,31,0.10); border: 1px solid rgba(25,27,31,0.07); }
+ .luma-well-item { min-width: 28px; height: 28px; padding: 0 6px; border-radius: 8px; color: #e7e9e8; }
+ .luma-status-light .luma-well-item { color: #34383d; }
+ .luma-well-item:hover, .luma-well-item:focus { background-color: rgba(255,255,255,0.08); }
+@@ -888,3 +888,52 @@
+ 
+ .luma-status-cluster .luma-status-clock { min-width: 64px; }
+ .luma-status-cluster .luma-status-time, .luma-status-cluster .luma-status-date { font-feature-settings: "tnum"; }
++
++.luma-status-slot .system-status-icon { icon-size: 14px; }
++.luma-status-recording { width: 5px; height: 5px; border-radius: 999px; background-color: #e0716b; }
++.luma-status-light .luma-status-recording { background-color: #b9544f; }
++/* The date tile on the light treatments: the calendar's blue, as on dark. */
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-badge {
++  background-color: rgba(82, 127, 174, 0.16); box-shadow: inset 0 0 0 1px rgba(82, 127, 174, 0.20); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge-month,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-badge-day,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-badge-month,
++.luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-badge-day { color: #527fae; }
++
++/* ── Shelf spec: the dock ─────────────────────────────────────────────── */
++/* Icons are full-bleed at radius 10 with one small shadow: no plate, no rim. */
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon {
++  border-radius: 10px;
++  background-gradient-direction: none;
++  background-color: transparent;
++  box-shadow: 0 1px 2px rgba(12, 17, 24, 0.22); }
++.luma-shelf-dock-island #dash .dash-item-container .overview-tile:hover .overview-icon {
++  box-shadow: 0 1px 2px rgba(12, 17, 24, 0.22); }
++/* The tooltip: 24 high, 8 above the island, on the menu surface. */
++.dash-label, .dash-label.luma-surface-dark, .dash-label.luma-surface-light,
++.dash-label.luma-surface-frost, .dash-label.luma-surface-glass {
++  -y-offset: 16px;
++  padding: 5px 9px;
++  border: 0;
++  border-radius: 8px;
++  font-size: 11px;
++  font-weight: 650; }
++.dash-label, .dash-label.luma-surface-dark { background-color: #252a30; color: #e7e9e8;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.2); }
++.dash-label.luma-surface-light, .dash-label.luma-surface-frost { background-color: #f6f7f8; color: #34383d;
++  box-shadow: 0 4px 12px rgba(12, 16, 21, 0.2); }
++.dash-label.luma-surface-glass { background-color: rgba(40, 44, 50, 0.78); color: #ffffff; }
++/* The running dot: ink at 55%, the focused pill at full ink (opacity set in code). */
++.luma-shelf-running-indicator { border-radius: 2px; }
++
++/* ── Shelf spec: menus anchored to the shelf ──────────────────────────── */
++.luma-well-popover .popup-menu-content, .luma-shelf-menu .popup-menu-content {
++  padding: 6px; border-radius: 15px; background-color: #252a30;
++  box-shadow: 0 24px 56px -18px rgba(12, 16, 21, 0.68); }
++/* St draws one shadow per actor, so the menu keeps the deeper one. The 8px
++ * gap above the island is the boxpointer's rise, with no arrow drawn. */
++.luma-well-popover, .luma-shelf-menu { -arrow-rise: 0; -arrow-base: 0; -boxpointer-gap: 8px; }
++.luma-shelf-menu .popup-menu-item { min-height: 32px; padding: 0 8px; border-radius: 10px; font-size: 11px; font-weight: 550; }
++.luma-shelf-menu .popup-separator-menu-item { padding: 5px 7px; }
++.luma-shelf-menu .luma-well-menu-heading { min-height: 22px; font-size: 9px; font-weight: 700; }
+--- a/js/ui/boxpointer.js
++++ b/js/ui/boxpointer.js
+@@ -521,10 +521,12 @@
+         const margin = 4 * borderRadius + borderWidth + arrowBase;
+ 
+         let gap = themeNode.get_length('-boxpointer-gap');
+-        // Dock menus point along the clicked icon's centre, but clear the
+-        // painted island on the perpendicular axis, including its padding.
++        // Shelf menus point along the thing clicked, but clear the painted
++        // island on the perpendicular axis: every menu opens 8px beyond the
++        // island that owns it, never over its padding.
+         for (let parent = sourceActor.get_parent(); parent; parent = parent.get_parent()) {
+-            if (!parent.has_style_class_name?.('luma-shelf-dock-island'))
++            if (!parent.has_style_class_name?.('luma-shelf-island') ||
++                parent.has_style_class_name('luma-shelf-root'))
+                 continue;
+             const bounds = parent.get_transformed_extents();
+             const first = bounds.get_top_left();
+@@ -537,7 +539,7 @@
+                 sourceBottomRight.x = last.x;
+             }
+             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-            gap = Math.max(gap, (parent._padding ?? 10) * scale);
++            gap = Math.max(gap, 8 * scale);
+             break;
+         }
+         const padding = themeNode.get_length('-arrow-rise');
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -45,14 +45,22 @@
+             return;
+         const artwork = this.icon;
+         artwork.set_pivot_point(0.5, 0.5);
+-        const scale = this._dragging ? 1.12 : this.pressed ? 0.94 : 1;
+-        const lift = this.hover && !this._dragging ? 3 * St.ThemeContext.get_for_stage(global.stage).scale_factor : 0;
++        // Hover lifts the icon 2px and nothing else; a press dims it to 92%.
++        const scale = this._dragging ? 1.12 : 1;
++        const lift = this.hover && !this._dragging ? 2 * St.ThemeContext.get_for_stage(global.stage).scale_factor : 0;
++        let pressed = artwork.get_effect('luma-pressed');
++        if (!pressed) {
++            pressed = new Clutter.BrightnessContrastEffect();
++            pressed.set_brightness(-0.08);
++            artwork.add_effect_with_name('luma-pressed', pressed);
++        }
++        pressed.enabled = this.pressed && !this._dragging;
+         artwork.remove_all_transitions();
+         artwork.ease({
+             translation_x: edge === 'left' ? lift : edge === 'right' ? -lift : 0,
+             translation_y: edge === 'top' ? lift : edge === 'bottom' ? -lift : 0,
+             scale_x: scale, scale_y: scale,
+-            duration: St.Settings.get().enable_animations ? 120 : 0,
++            duration: St.Settings.get().enable_animations ? 140 : 0,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+         });
+     }
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -255,6 +255,8 @@
+     added.push(idle);
+     menu.sourceActor = anchor;
+     menu.setArrowSide(well.arrowSide);
++    menu.setSourceAlignment?.(0);
++    menu.actor.add_style_class_name('luma-shelf-menu');
+     const id = menu.connect('open-state-changed', (_menu, open) => {
+         if (open)
+             return;
+@@ -475,10 +477,21 @@
+         this._rebuild();
+     }
+ 
+-    setRecordingApps(keys) {
+-        for (const source of this._sources.values())
+-            source.recording = keys.has(source.key);
+-        this._rebuild();
++    // Applications holding a recording stream, by id or name. Returns whether
++    // any of them is in the Well, so the caller can mark the rest elsewhere.
++    setRecordingApps(names) {
++        let matched = false;
++        let changed = false;
++        for (const source of this._sources.values()) {
++            const recording = [...names].some(name => name === source.key || name.includes(source.key) ||
++                name === source.name.toLowerCase());
++            matched ||= recording;
++            changed ||= recording !== source.recording;
++            source.recording = recording;
++        }
++        if (changed)
++            this._rebuild();
++        return matched;
+     }
+ 
+     closeMenus() {
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -165,9 +165,18 @@
+         // press is inside a button is what keeps the two apart.
+         const click = this._click = new Clutter.ClickGesture();
+         click.set_recognize_on_press(true);
+-        click.connect('may-recognize', () => !this._pressIsOnAction());
++        click.connect('may-recognize', () => !this._pressIsOnAction() &&
++            (click.get_button?.() ?? Clutter.BUTTON_PRIMARY) === Clutter.BUTTON_PRIMARY);
+         click.connect('recognize', () => this._openApplication());
+         this.add_action(click);
++        // The island opens its application on a click and its options on a
++        // right-click; it has no overflow button of its own.
++        this.connect('button-release-event', (_actor, event) => {
++            if (event.get_button() !== Clutter.BUTTON_SECONDARY)
++                return Clutter.EVENT_PROPAGATE;
++            this._openOptions();
++            return Clutter.EVENT_STOP;
++        });
+ 
+         this._signal = Gio.DBus.session.signal_subscribe(
+             LUMA_LIVE_EXTENSIONS_BUS,
+@@ -475,6 +484,35 @@
+         this._actions.orientation = orientation;
+     }
+ 
++    _openOptions() {
++        if (!this._current)
++            return;
++        if (!this._options) {
++            this._options = new PopupMenu.PopupMenu(this, 0, St.Side.BOTTOM);
++            this._options.actor.add_style_class_name('luma-shelf-menu');
++            Main.uiGroup.add_child(this._options.actor);
++            this._options.actor.hide();
++            Main.panel.menuManager.addMenu(this._options);
++            this.connect('destroy', () => this._options?.destroy());
++        }
++        const menu = this._options;
++        menu.removeAll();
++        const app = Shell.AppSystem.get_default().lookup_app(`${this._current.application_id}.desktop`);
++        const open = menu.addAction(app ? _('Open %s').format(app.get_name()) : _('Open'), () => this._openApplication());
++        open.sensitive = app !== null;
++        const actions = this._validActions(this._current);
++        if (actions.length)
++            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
++        for (const action of actions) {
++            const item = menu.addAction(action.label, () => this._invokeAction(action));
++            item.sensitive = action.enabled;
++        }
++        const side = this.get_parent() && Main.overview.dash._shelfEdge === 'top' ? St.Side.TOP : St.Side.BOTTOM;
++        menu.setArrowSide(side);
++        menu.setSourceAlignment?.(0);
++        menu.open(true);
++    }
++
+     _openApplication() {
+         if (!this._current)
+             return;
+@@ -898,7 +936,7 @@
+ 
+         this.setMenu(new QuickSettingsMenu(this, N_QUICK_SETTINGS_COLUMNS));
+ 
+-        this._setupIndicators().catch(error =>
++        this._setupIndicators().then(() => this._syncStatusSlots()).catch(error =>
+             logError(error, 'Failed to setup quick settings'));
+     }
+ 
+@@ -974,7 +1012,8 @@
+         if (!this._statusActive) {
+             this._statusActive = true;
+             this.remove_child(this._indicators);
+-            this._statusControls.child = this._indicators;
++            this._ensureStatusSlots();
++            this._statusControls.child = this._statusSlots;
+             this.add_child(this._statusViewport);
+             this.add_child(this._statusHover);
+             this.add_style_class_name('luma-status-cluster');
+@@ -989,6 +1028,86 @@
+         this.setShelfPresentation(true);
+         this._styleStatusCluster();
+         this._updateStatusName();
++    }
++
++    // The shelf's status grid: six slots that never move or disappear, so the
++    // grid is read at a glance. A slot whose thing is off draws at 35%. A red
++    // dot on the microphone says something is recording that the Well
++    // couldn't put a name to.
++    _ensureStatusSlots() {
++        if (this._statusSlots)
++            return;
++        const layout = new ShelfStatusLayout();
++        layout.setShelfPresentation(true);
++        this._statusSlots = new St.Widget({style_class: 'panel-status-indicators-box luma-status-slots',
++            layout_manager: layout});
++        this._slots = {};
++        for (const name of ['mic', 'wifi', 'bluetooth', 'volume', 'power', 'battery']) {
++            const slot = new St.Widget({layout_manager: new Clutter.BinLayout(), style_class: 'luma-status-slot'});
++            slot.icon = new St.Icon({style_class: 'system-status-icon', icon_size: STATUS_GLYPH,
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++            slot.add_child(slot.icon);
++            if (name === 'mic') {
++                slot.dot = new St.Widget({style_class: 'luma-status-recording', visible: false,
++                    x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
++                slot.add_child(slot.dot);
++            }
++            this._slots[name] = slot;
++            this._statusSlots.add_child(slot);
++        }
++        this._syncStatusSlots();
++    }
++
++    _watchSlotSources() {
++        if (this._slotSourcesWatched || !this._system)
++            return;
++        this._slotSourcesWatched = true;
++        const sync = () => this._syncStatusSlots();
++        const actors = [this._network?._primaryIndicator, this._bluetooth?._indicator, this._volumeOutput?._indicator,
++            this._volumeInput?._indicator, this._powerProfiles?._indicator, this._system?._indicator];
++        for (const actor of actors.filter(Boolean))
++            actor.connectObject('notify::icon-name', sync, 'notify::visible', sync, this);
++        this._volumeInput?._input?.connectObject('stream-updated', sync, this);
++        this._volumeInput?._control?.connectObject('stream-added', sync, 'stream-removed', sync, this);
++    }
++
++    _recordingApplications() {
++        const control = this._volumeInput?._control;
++        const names = new Set();
++        try {
++            for (const output of control?.get_source_outputs?.() ?? []) {
++                for (const value of [output.get_application_id?.(), output.get_name?.()])
++                    if (value)
++                        names.add(`${value}`.toLowerCase());
++            }
++        } catch {
++        }
++        return names;
++    }
++
++    _syncStatusSlots() {
++        if (!this._slots)
++            return;
++        this._watchSlotSources();
++        const set = (name, iconName, on) => {
++            const slot = this._slots[name];
++            slot.icon.icon_name = iconName;
++            slot.opacity = on ? 255 : 89;
++        };
++        const wifi = this._network?._primaryIndicator;
++        set('wifi', wifi?.visible && wifi.icon_name ? wifi.icon_name : 'network-wireless-signal-none-symbolic', Boolean(wifi?.visible));
++        set('bluetooth', 'luma-bluetooth-symbolic', Boolean(this._bluetooth?._indicator?.visible));
++        const volume = this._volumeOutput?._indicator?.icon_name ?? 'audio-volume-high-symbolic';
++        set('volume', volume, !volume.includes('muted'));
++        set('power', 'luma-gauge-symbolic', Boolean(this._powerProfiles?._indicator));
++        const battery = this._system?._indicator;
++        set('battery', battery?.visible && battery.icon_name ? battery.icon_name : 'battery-missing-symbolic', Boolean(battery?.visible));
++        const stream = this._volumeInput?._input?.stream;
++        const muted = Boolean(stream?.is_muted);
++        set('mic', muted ? 'luma-mic-off-symbolic' : 'luma-mic-symbolic', !muted);
++        const recording = Boolean(this._volumeInput?._indicator?.visible) && !muted;
++        const matched = recording && this._statusWell ? this._statusWell.setRecordingApps(this._recordingApplications()) : false;
++        this._slots.mic.dot.visible = recording && !matched;
+     }
+ 
+     // The Well sits first in the cluster, with its own targets: a press on it
+@@ -1256,11 +1375,10 @@
+         }
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         this._statusControls.set_height(vertical ? -1 : (DASH_TILE_SIZE - (scope === 'all' && stroked ? 2 : 0) + (flush ? 2 * padding : 0)) * scale);
+-        const columns = this._indicatorsLayout._columns(this._indicators);
++        const columns = 3;
+         const controlWidth = Math.max(DASH_TILE_SIZE, 12 + columns * STATUS_GLYPH + (columns - 1) * STATUS_COLUMN_GAP) * scale;
+         this._statusControls.set_width(vertical ? -1 : controlWidth + (flush ? 2 * padding * scale : 0));
+-        this._indicators.get_children().forEach(child => child.set_style(
+-            s.get_boolean('status-glyph-tiles') ? `background-color: ${light ? 'rgba(25,27,31,0.05)' : 'rgba(255,255,255,0.08)'}; border-radius: 3px;` : null));
++        this._syncStatusSlots();
+         this.remove_style_class_name('luma-status-light');
+         if (light) this.add_style_class_name('luma-status-light');
+         this._statusFlush = flush;
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -28,7 +28,8 @@
+ // ICON_CORNER_RATIO is a fraction of the icon's width so it holds at every
+ // icon size. 0.25 is the radius every Prairie application icon is drawn at,
+ // so the mask agrees with the artwork instead of cutting into it.
+-const ICON_CORNER_RATIO = 0.25;
++// The shelf spec draws every 36px dock icon at radius 10.
++const ICON_CORNER_RATIO = 10 / 36;
+ const LEGACY_DESKTOP_DOCK_UUID = 'dash-to-dock@micxgx.gmail.com';
+ const SHELF_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-shelf.css';
+ 

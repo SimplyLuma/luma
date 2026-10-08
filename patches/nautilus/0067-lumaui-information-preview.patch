@@ -1,0 +1,77 @@
+From dddb659cc08910c0bf5530fb0e04b64ec174a528 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:46:26 +0000
+Subject: [PATCH] Filer: show image previews and readable paths in Information
+
+---
+ src/nautilus-window.c | 35 +++++++++++++++++++++++++++++++----
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index 55d808a..3fb822c 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -59,6 +59,7 @@
+ #include "nautilus-files-view.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-history-controls.h"
++#include "nautilus-image.h"
+ #include "nautilus-list-base.h"
+ #include "nautilus-metadata.h"
+ #include "nautilus-network-address-bar.h"
+@@ -441,12 +442,24 @@ update_information (NautilusWindow *window)
+         return;
+     }
+ 
++    g_autoptr (GFile) file_location = nautilus_file_get_location (file);
+     paintable = nautilus_file_get_icon_paintable (
+         file, 72, gtk_widget_get_scale_factor (GTK_WIDGET (window)),
+         NAUTILUS_FILE_ICON_FLAGS_NONE);
+-    icon = paintable != NULL ? gtk_image_new_from_paintable (paintable)
+-                             : gtk_image_new_from_icon_name ("folder-symbolic");
+-    gtk_image_set_pixel_size (GTK_IMAGE (icon), 72);
++    if (file_location != NULL && nautilus_file_should_show_thumbnail (file))
++    {
++        NautilusImage *preview = nautilus_image_new ();
++        nautilus_image_set_size (preview, 220);
++        nautilus_image_set_fallback (preview, paintable);
++        nautilus_image_set_source (preview, file_location);
++        icon = GTK_WIDGET (preview);
++    }
++    else
++    {
++        icon = paintable != NULL ? gtk_image_new_from_paintable (paintable)
++                                 : gtk_image_new_from_icon_name ("folder-symbolic");
++        gtk_image_set_pixel_size (GTK_IMAGE (icon), 72);
++    }
+     luma_details_pane_add_hero (window->information_pane,
+                                 nautilus_file_get_display_name (file), NULL, icon);
+ 
+@@ -465,9 +478,23 @@ update_information (NautilusWindow *window)
+     {
+         luma_details_pane_add_fact (window->information_pane, _("Modified"), modified);
+     }
+-    g_autoptr (GFile) file_location = nautilus_file_get_location (file);
+     g_autoptr (GFile) parent = file_location != NULL ? g_file_get_parent (file_location) : NULL;
+     where = parent != NULL ? g_file_get_parse_name (parent) : NULL;
++    if (parent != NULL)
++    {
++        const char *fixture_root = g_getenv ("LUMA_FILER_FIXTURE_ROOT");
++        g_autoptr (GFile) root = g_file_new_for_path (
++            fixture_root != NULL ? fixture_root : g_get_home_dir ());
++        g_autofree char *relative = g_file_get_relative_path (root, parent);
++        if (relative != NULL)
++        {
++            g_auto (GStrv) components = g_strsplit (relative, "/", -1);
++            g_autofree char *trail = g_strjoinv (" › ", components);
++            g_free (where);
++            where = fixture_root != NULL ? g_strdup (trail)
++                                         : g_strdup_printf ("%s › %s", _("Home"), trail);
++        }
++    }
+     if (where != NULL)
+     {
+         luma_details_pane_add_fact (window->information_pane, _("Where"), where);
+-- 
+2.55.0
+

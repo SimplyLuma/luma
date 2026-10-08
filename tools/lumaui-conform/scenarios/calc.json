@@ -1,0 +1,76 @@
+{
+  "app": "calc",
+  "title": "Calculator",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=calc",
+    "window": "#w-calc",
+    "exclude": [".grip"],
+    "font_probes": [
+      {"text": "√x", "selector": "#ca-keys .casci [data-cak='sqrt'] span"},
+      {"text": "∛x", "selector": "#ca-keys .casci [data-cak='cbrt'] span"},
+      {"text": "π", "selector": "#ca-keys .casci [data-cak='π'] span"}
+    ]
+  },
+  "gtk": {
+    "pythonpath": ["src/luma-calculator"],
+    "module": "luma_calc.app",
+    "fixtures": ["tests/fixtures/calc-v70.json"],
+    "env": {
+      "LUMA_CALC_FIXTURE": "{run}/fixtures/calc-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "idle",
+      "about": "Basic mode before entering a calculation",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "preview",
+      "about": "An expression and its live answer",
+      "spec": [{"click": "#ca-keys [data-cak='2']"}, {"click": "#ca-keys [data-cak='+']"}, {"click": "#ca-keys [data-cak='3']"}],
+      "gtk": [{"activate": "calc-key-2"}, {"activate": "calc-key-add"}, {"activate": "calc-key-3"}]
+    },
+    {
+      "name": "result",
+      "about": "The result and one reusable tape line",
+      "spec": [{"click": "#ca-keys [data-cak='2']"}, {"click": "#ca-keys [data-cak='+']"}, {"click": "#ca-keys [data-cak='3']"}, {"click": "#ca-keys [data-cak='=']"}],
+      "gtk": [{"activate": "calc-key-2"}, {"activate": "calc-key-add"}, {"activate": "calc-key-3"}, {"activate": "calc-key-equals"}]
+    },
+    {
+      "name": "menu",
+      "about": "Calculator mode and tape actions in the app menu",
+      "spec": [{"eval": "document.querySelector('#ca-top .catitle').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}))"}],
+      "gtk": [{"env": {"LUMA_CALC_MENU": "1"}}]
+    },
+    {
+      "name": "scientific",
+      "about": "The scientific key bank beside basic keys",
+      "spec": [{"eval": "document.querySelector('#ca-top .catitle').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}))"}, {"click": "#ca-pop [data-camode='sci']"}],
+      "gtk": [{"env": {"LUMA_CALC_SCIENTIFIC": "1"}}]
+    }
+  ],
+  "phone_states": ["idle", "preview", "result", "menu"],
+  "app_icon": {
+    "spec_src": "luma-v3-calculator.svg",
+    "gtk": "^luma-v3-calculator$"
+  },
+  "groups": [
+    {"name": "window controls", "spec": "#w-calc > .wctl", "info_only": true},
+    {"name": "menu", "spec": "#ca-pop"},
+    {"name": "tape", "spec": "#ca-tape"},
+    {"name": "display", "spec": "#ca-disp"},
+    {"name": "scientific keys", "spec": ".casci"},
+    {"name": "basic keys", "spec": ".cabasic"},
+    {"name": "title row", "spec": "#ca-top"},
+    {"name": "body", "spec": "#ca-body"}
+  ],
+  "pairs": [
+    {"spec": "#ca-pop", "gtk": "lumaui-identity-menu>contents", "name": "menu"},
+    {"spec": "#ca-tape", "gtk": "calc-tape", "name": "tape"},
+    {"spec": "#ca-keys", "gtk": "calc-keys", "name": "key banks"},
+    {"spec": ".cabasic", "gtk": "calc-basic", "name": "basic keys"},
+    {"spec": ".casci", "gtk": "calc-scientific", "name": "scientific keys"}
+  ]
+}

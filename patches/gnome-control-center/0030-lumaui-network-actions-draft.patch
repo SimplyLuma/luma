@@ -1,0 +1,633 @@
+From 61144da7fb890177dea234ccd22f8ec97e49adba Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 02:58:30 +0000
+Subject: [PATCH] Settings: draft Network and Wi-Fi action compositions
+
+Map network choices to FloatingMenu, network deletion to DestructiveDialog, and hidden-network and sharing flows to ActionCenter/ActionEditor. Compose the Network page from the C kit and bind hotspot text fields to the in-memory fixture. Add fixture-only connect/forget operations and negative tests. Use the exact v70 sample share artwork generated in the fixture; production QR encoding remains owned by the upstream network code. Runtime verification of this commit is pending: luma-dev-f44 entered a stopping state and refuses exec with operation not permitted. The previously exported 0029 build and tests passed before this environment failure. Remaining page and action integration is explicit draft work.
+---
+ shell/cc-luma-fixture.c   |  73 ++++++++++
+ shell/cc-luma-fixture.h   |   2 +
+ shell/cc-luma-view.c      | 288 +++++++++++++++++++++++++++++++++++---
+ shell/test-luma-fixture.c |  43 +++++-
+ shell/test-luma-view.c    |  24 ++++
+ 5 files changed, 413 insertions(+), 17 deletions(-)
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 6c42fa9..0baa9a3 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -210,3 +210,76 @@ cc_luma_fixture_has_page (CcLumaFixture *self, const char *page)
+     }
+   return FALSE;
+ }
++
++/* These are fixture operations. They never open NetworkManager or a keyring. */
++static JsonObject *
++fixture_network (CcLumaFixture *self, const char *name)
++{
++  JsonNode *node = json_object_get_member (cc_luma_fixture_get_data (self), "CFNETS");
++  JsonArray *nets;
++  if (!node || !JSON_NODE_HOLDS_ARRAY (node) || !name || !*name) return NULL;
++  nets = json_node_get_array (node);
++  for (guint i = 0; i < json_array_get_length (nets); i++)
++    {
++      JsonNode *n = json_array_get_element (nets, i);
++      JsonNode *id;
++      if (!JSON_NODE_HOLDS_OBJECT (n)) continue;
++      id = json_object_get_member (json_node_get_object (n), "n");
++      if (id && json_node_get_value_type (id) == G_TYPE_STRING &&
++          g_str_equal (json_node_get_string (id), name)) return json_node_get_object (n);
++    }
++  return NULL;
++}
++static JsonArray *
++fixture_known (CcLumaFixture *self)
++{
++  JsonNode *n = json_object_get_member (cc_luma_fixture_get_data (self), "CFKNOWN");
++  if (!n || !JSON_NODE_HOLDS_ARRAY (n)) return NULL;
++  for (guint i = 0; i < json_array_get_length (json_node_get_array (n)); i++)
++    if (json_node_get_value_type (json_array_get_element (json_node_get_array (n), i)) != G_TYPE_STRING)
++      return NULL;
++  return json_node_get_array (n);
++}
++gboolean
++cc_luma_fixture_connect_network (CcLumaFixture *self, const char *name, GError **error)
++{
++  g_autofree char *owned_name = g_strdup (name);
++  name = owned_name;
++  JsonObject *network = fixture_network (self, name);
++  JsonArray *known = fixture_known (self);
++  JsonNode *current = cc_luma_fixture_get (self, "net");
++  gboolean saved = FALSE;
++  if (!network || !known || !current || json_node_get_value_type (current) != G_TYPE_STRING)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown fixture network or invalid network data");
++      return FALSE;
++    }
++  for (guint i = 0; i < json_array_get_length (known); i++)
++    saved |= g_str_equal (json_array_get_string_element (known, i), name);
++  if (!saved) json_array_add_string_element (known, name);
++  json_object_set_boolean_member (network, "known", TRUE);
++  json_node_set_string (current, name);
++  return TRUE;
++}
++gboolean
++cc_luma_fixture_forget_network (CcLumaFixture *self, const char *name, GError **error)
++{
++  g_autofree char *owned_name = g_strdup (name);
++  name = owned_name;
++  JsonArray *known = fixture_known (self);
++  JsonObject *network = fixture_network (self, name);
++  JsonNode *current = cc_luma_fixture_get (self, "net");
++  gint index = -1;
++  if (!known || !current || json_node_get_value_type (current) != G_TYPE_STRING || !name || !*name)
++    goto invalid;
++  for (guint i = 0; i < json_array_get_length (known); i++)
++    if (g_str_equal (json_array_get_string_element (known, i), name)) { index = i; break; }
++  if (index < 0) goto invalid;
++  json_array_remove_element (known, index);
++  if (network) json_object_set_boolean_member (network, "known", FALSE);
++  if (g_str_equal (json_node_get_string (current), name)) json_node_set_string (current, "");
++  return TRUE;
++invalid:
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown saved fixture network or invalid network data");
++  return FALSE;
++}
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+index da548d2..4338319 100644
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -14,6 +14,8 @@ gboolean cc_luma_fixture_set (CcLumaFixture *self, const char *key,
+                               JsonNode *value, GError **error);
+ gboolean cc_luma_fixture_set_flag (CcLumaFixture *self, const char *key,
+                                    gboolean value, GError **error);
++gboolean cc_luma_fixture_connect_network (CcLumaFixture *self, const char *name, GError **error);
++gboolean cc_luma_fixture_forget_network (CcLumaFixture *self, const char *name, GError **error);
+ JsonObject *cc_luma_fixture_get_data (CcLumaFixture *self);
+ JsonArray *cc_luma_fixture_get_pages (CcLumaFixture *self);
+ gboolean cc_luma_fixture_has_page (CcLumaFixture *self, const char *page);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 87352b0..dfbb980 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -8,9 +8,13 @@ typedef struct {
+   GtkBox *body;
+   char *page;
+   guint refresh;
++  GtkWidget *root;
++  GSimpleActionGroup *actions;
++  LumaActionCenter *center;
+ } View;
+ 
+ static void render (View *view);
++static void queue_refresh (View *v);
+ static gboolean refresh_view (gpointer data)
+ {
+   View *v = data;
+@@ -19,6 +23,10 @@ static gboolean refresh_view (gpointer data)
+   return G_SOURCE_REMOVE;
+ }
+ 
++static void queue_refresh (View *v)
++{
++  if (!v->refresh) v->refresh = g_idle_add (refresh_view, v);
++}
+ static const char *text (View *v, const char *key)
+ {
+   JsonNode *n = cc_luma_fixture_get (v->model, key);
+@@ -91,8 +99,7 @@ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, View *v)
+   if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
+     g_warning ("%s", error->message);
+   /* Avoid destroying the emitting widget inside its notification. */
+-  if (!v->refresh)
+-    v->refresh = g_idle_add (refresh_view, v);
++  queue_refresh (v);
+ }
+ static GtkWidget *toggle (View *v, const char *key, const char *name, const char *accessible)
+ {
+@@ -105,6 +112,123 @@ static GtkWidget *toggle (View *v, const char *key, const char *name, const char
+   g_signal_connect (w, "notify::active", G_CALLBACK (switch_changed), v);
+   return w;
+ }
++typedef struct { const char *key; const char * const *choices; } Pick;
++static gboolean picker_value_allowed (const char *key, const char *value);
++static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *key, *value;
++  g_autoptr (JsonNode) n = json_node_new (JSON_NODE_VALUE);
++  g_autoptr (GError) error = NULL;
++  g_variant_get (parameter, "(&s&s)", &key, &value);
++  if (!picker_value_allowed (key, value)) return;
++  json_node_set_string (n, value);
++  if (cc_luma_fixture_set (v->model, key, n, &error)) queue_refresh (v);
++  else g_warning ("%s", error->message);
++}
++static void open_picker (GtkButton *button, View *v)
++{
++  Pick *pick = g_object_get_data (G_OBJECT (button), "cf-pick");
++  GtkWidget *menu = luma_floating_menu_new (pick->key);
++  for (guint i = 0; pick->choices[i]; i += 2)
++    {
++      g_autofree char *action = g_action_print_detailed_name ("cf.pick",
++        g_variant_new ("(ss)", pick->key, pick->choices[i]));
++      luma_floating_menu_add_item (LUMA_FLOATING_MENU (menu), pick->choices[i + 1], NULL, NULL, NULL,
++        action, g_str_equal (text (v, pick->key), pick->choices[i]));
++    }
++  luma_floating_menu_popup (LUMA_FLOATING_MENU (menu), GTK_WIDGET (button));
++}
++static GtkWidget *picker (View *v, const char *key, const char * const *choices)
++{
++  Pick *pick = g_new0 (Pick, 1);
++  GtkWidget *button, *content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
++  const char *caption = text (v, key);
++  for (guint i = 0; choices[i]; i += 2)
++    if (g_str_equal (caption, choices[i])) { caption = choices[i + 1]; break; }
++  button = gtk_button_new ();
++  gtk_box_append (GTK_BOX (content), label (caption, "body", FALSE));
++  gtk_box_append (GTK_BOX (content), luma_ui_icon_new ("chevron-down"));
++  gtk_button_set_child (GTK_BUTTON (button), content);
++  pick->key = key; pick->choices = choices;
++  g_object_set_data_full (G_OBJECT (button), "cf-pick", pick, g_free);
++  g_signal_connect (button, "clicked", G_CALLBACK (open_picker), v);
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  gtk_widget_set_name (button, name);
++  return button;
++}
++static void entry_changed (GtkEditable *entry, View *v)
++{
++  const char *key = g_object_get_data (G_OBJECT (entry), "cf-key");
++  g_autoptr (JsonNode) n = json_node_new (JSON_NODE_VALUE);
++  g_autoptr (GError) error = NULL;
++  json_node_set_string (n, gtk_editable_get_text (entry));
++  if (!cc_luma_fixture_set (v->model, key, n, &error)) g_warning ("%s", error->message);
++}
++static GtkWidget *entry (View *v, const char *key, const char *caption)
++{
++  GtkWidget *w = gtk_entry_new ();
++  gtk_editable_set_text (GTK_EDITABLE (w), text (v, key));
++  gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, caption, -1);
++  g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
++  g_signal_connect (w, "changed", G_CALLBACK (entry_changed), v);
++  g_autofree char *name = g_strconcat ("cf-", key, NULL);
++  gtk_widget_set_name (w, name);
++  return w;
++}
++static void forget_confirmed (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  const char *name = g_object_get_data (G_OBJECT (dialog), "cf-network");
++  g_autoptr (GError) error = NULL;
++  if (!cc_luma_fixture_forget_network (v->model, name, &error))
++    { luma_toast_show (v->root, error->message, "error"); return; }
++  if (g_str_equal (v->page, "wifi-net"))
++    { g_free (v->page); v->page = g_strdup ("wifi"); }
++  queue_refresh (v);
++  luma_toast_show (v->root, "Network forgotten", "deleted");
++}
++static void forget_clicked (GtkButton *button, View *v)
++{
++  const char *name = g_object_get_data (G_OBJECT (button), "cf-network");
++  g_autofree char *title = g_strdup_printf ("Forget %s?", name);
++  LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title,
++    "This computer won’t join it on its own any more, and the password is removed.", "Forget", "trash-2", NULL);
++  g_object_set_data_full (G_OBJECT (dialog), "cf-network", g_strdup (name), g_free);
++  /* Disconnect if the view disappears while the window modal remains open. */
++  g_signal_connect_object (dialog, "confirmed", G_CALLBACK (forget_confirmed), v->root, 0);
++}
++static GtkWidget *forget_button (View *v, const char *name)
++{
++  GtkWidget *button = gtk_button_new_with_label ("Forget");
++  g_object_set_data_full (G_OBJECT (button), "cf-network", g_strdup (name), g_free);
++  g_signal_connect (button, "clicked", G_CALLBACK (forget_clicked), v);
++  return button;
++}
++static GtkWidget *nav_row (View *v, GtkBox *rows, const char *title, const char *subtitle,
++                         const char *target, GtkWidget *trail)
++{
++  GtkWidget *r = luma_details_item_new (title, subtitle, NULL);
++  luma_details_item_set_trail (LUMA_DETAILS_ITEM (r), trail);
++  g_object_set_data_full (G_OBJECT (r), "cf-target", g_strdup (target), g_free);
++  g_signal_connect (r, "clicked", G_CALLBACK (navigate), v);
++  gtk_box_append (rows, r);
++  return r;
++}
++static const char * const metered_choices[] = { "auto", "Automatic", "yes", "Yes", "no", "No", NULL };
++static const char * const band_choices[] = { "auto", "Automatic", "5", "5 GHz", "2", "2.4 GHz", NULL };
++static const char * const proxy_choices[] = { "off", "Off", "auto", "Automatic", "manual", "Manual", NULL };
++static gboolean picker_value_allowed (const char *key, const char *value)
++{
++  const char * const *choices = g_str_equal (key, "metered") ? metered_choices :
++    g_str_equal (key, "hsBand") ? band_choices : g_str_equal (key, "proxy") ? proxy_choices : NULL;
++  if (!choices) return FALSE;
++  for (guint i = 0; choices[i]; i += 2)
++    if (g_str_equal (value, choices[i])) return TRUE;
++  return FALSE;
++}
+ static void header (View *v, const char *title, const char *subtitle, const char *switch_key)
+ {
+   GtkWidget *head = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
+@@ -117,6 +241,92 @@ static void header (View *v, const char *title, const char *subtitle, const char
+     gtk_box_append (GTK_BOX (head), toggle (v, switch_key, g_str_equal (switch_key, "wifi") ? "cf-wifi" : "cf-hotspot", title));
+   gtk_box_append (v->body, head);
+ }
++static void center_changed (LumaActionCenter *center, const char *state, gpointer unused)
++{
++  if (g_str_equal (state, "bar")) luma_action_center_hide_bar (center);
++}
++static void editor_discarded (LumaActionEditor *editor, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v) luma_action_center_hide_bar (v->center);
++}
++static LumaActionEditor *new_editor (View *v, const char *title, const char *icon, const char *summary)
++{
++  LumaActionEditor *editor = LUMA_ACTION_EDITOR (luma_action_editor_new (title, icon));
++  luma_action_editor_set_summary (editor, summary, NULL);
++  luma_action_editor_set_body (editor, gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
++  g_signal_connect_object (editor, "discarded", G_CALLBACK (editor_discarded), v->root, 0);
++  luma_action_center_set_editor (v->center, editor);
++  return editor;
++}
++static void hidden_joined (LumaBarItem *action, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  luma_action_center_hide_bar (v->center);
++  luma_toast_show (root, "Looking for the network…", "done");
++}
++static void hidden_clicked (GtkButton *button, View *v)
++{
++  LumaActionEditor *editor = new_editor (v, "Join a hidden network", "wifi", "Type its name exactly as it was set up.");
++  GtkWidget *name = gtk_entry_new (), *password = gtk_entry_new ();
++  gtk_entry_set_placeholder_text (GTK_ENTRY (name), "Type here");
++  gtk_entry_set_placeholder_text (GTK_ENTRY (password), "Required");
++  gtk_entry_set_visibility (GTK_ENTRY (password), FALSE);
++  gtk_widget_set_name (name, "cf-hidden-name");
++  gtk_widget_set_name (password, "cf-hidden-password");
++  luma_action_editor_add_field (editor, "Network name", name);
++  luma_action_editor_add_field (editor, "Password", password);
++  g_autoptr (LumaBarItem) primary = luma_bar_item_new_action ("wifi", "Join", NULL);
++  luma_bar_item_set_primary (primary, TRUE);
++  g_signal_connect_object (primary, "activated", G_CALLBACK (hidden_joined), v->root, 0);
++  luma_action_editor_set_primary (editor, primary);
++  luma_action_center_grow (v->center);
++}
++static void share_done (LumaBarItem *action, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v) luma_action_center_hide_bar (v->center);
++}
++static void share_clicked (GtkButton *button, View *v)
++{
++  JsonObject *data = cc_luma_fixture_get_data (v->model);
++  JsonObject *wifi_data = json_object_get_object_member (data, "CFWIFI");
++  JsonObject *codes = json_object_get_object_member (wifi_data, "share_codes");
++  const char *name = *text (v, "net") ? text (v, "net") : "Studio North";
++  const char *svg = json_object_get_string_member (codes, name);
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GInputStream) stream = g_memory_input_stream_new_from_data (svg, strlen (svg), NULL);
++  g_autoptr (GdkPixbuf) pixbuf = gdk_pixbuf_new_from_stream_at_scale (stream, 180, 180, TRUE, NULL, &error);
++  if (!pixbuf) { luma_toast_show (v->root, error->message, "error"); return; }
++  g_autofree char *title = g_strdup_printf ("Join %s", name);
++  LumaActionEditor *editor = new_editor (v, title, "qr-code", "Point a phone’s camera at the code.");
++  GtkWidget *body = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
++  g_autoptr (GdkTexture) texture = gdk_texture_new_for_pixbuf (pixbuf);
++  GtkWidget *picture = gtk_picture_new_for_paintable (GDK_PAINTABLE (texture));
++  gtk_widget_set_size_request (picture, 180, 180);
++  gtk_widget_set_halign (picture, GTK_ALIGN_CENTER);
++  gtk_widget_set_name (picture, "cf-share-code");
++  gtk_box_append (GTK_BOX (body), picture);
++  GtkWidget *caption = label ("Password", "caption", TRUE);
++  GtkWidget *password = label (json_object_get_string_member (wifi_data, "share_password"), "numeric", FALSE);
++  gtk_widget_set_halign (caption, GTK_ALIGN_CENTER);
++  gtk_widget_set_halign (password, GTK_ALIGN_CENTER);
++  gtk_box_append (GTK_BOX (body), caption);
++  gtk_box_append (GTK_BOX (body), password);
++  luma_action_editor_set_body (editor, body);
++  g_autoptr (LumaBarItem) primary = luma_bar_item_new_action ("qr-code", "Done", NULL);
++  luma_bar_item_set_primary (primary, TRUE);
++  g_signal_connect_object (primary, "activated", G_CALLBACK (share_done), v->root, 0);
++  luma_action_editor_set_primary (editor, primary);
++  luma_action_center_grow (v->center);
++}
++static GtkWidget *command (View *v, const char *caption, GCallback callback)
++{
++  GtkWidget *w = gtk_button_new_with_label (caption);
++  g_signal_connect (w, "clicked", callback, v);
++  return w;
++}
+ static void wifi (View *v)
+ {
+   gboolean enabled = flag (v, "wifi");
+@@ -150,6 +360,7 @@ static void wifi (View *v)
+             json_object_get_boolean_member (current, "lock") ? "Secured" : "Open",
+             g_str_equal (text (v, "metered"), "yes") ? "Metered" : "Unlimited data");
+           gtk_box_append (GTK_BOX (hero_body), words (network, detail));
++          gtk_box_append (GTK_BOX (hero_body), command (v, "Share", G_CALLBACK (share_clicked)));
+           gtk_box_append (GTK_BOX (hero_body), link_button (v, "Details", "wifi-net"));
+         }
+       else
+@@ -172,13 +383,12 @@ static void wifi (View *v)
+               json_object_has_member (n, "known") && json_object_get_boolean_member (n, "known") ? "Saved" : NULL,
+               json_object_get_boolean_member (n, "lock") ? luma_ui_icon_new ("lock") : NULL);
+         }
+-      row (near, "Hidden network", "Join a network that doesn’t show its name", NULL);
++      row (near, "Hidden network", "Join a network that doesn’t show its name", command (v, "Join…", G_CALLBACK (hidden_clicked)));
+     }
+   {
+     GtkBox *more = group (v, "More");
+-    g_autofree char *count = g_strdup_printf ("%u", json_array_get_length (known));
+-    row (more, "Known networks", "Networks this computer joins on its own", link_button (v, count, "wifi-known"));
+-    row (more, "Hotspot", "Share this computer’s connection", link_button (v, flag (v, "hotspot") ? "On" : "Off", "hotspot"));
++    nav_row (v, more, "Known networks", "Networks this computer joins on its own", "wifi-known", luma_count_badge_new (json_array_get_length (known), FALSE));
++    nav_row (v, more, "Hotspot", "Share this computer’s connection", "hotspot", label (flag (v, "hotspot") ? "On" : "Off", "body", TRUE));
+     row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", toggle (v, "airplane", "cf-airplane", "Airplane mode"));
+   }
+ }
+@@ -190,7 +400,7 @@ static void wifi_details (View *v)
+   settings = group (v, NULL);
+   row (settings, "Join automatically", NULL, toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
+   row (settings, "Available to everyone on this computer", NULL, toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
+-  row (settings, "Metered", "Luma holds back big downloads on metered networks", label (text (v, "metered"), "body", TRUE));
++  row (settings, "Metered", "Luma holds back big downloads on metered networks", picker (v, "metered", metered_choices));
+   connection = group (v, "Connection");
+   row (connection, "Signal", NULL, label ("Excellent", "body", TRUE));
+   row (connection, "Speed", NULL, label ("1.2 Gb/s", "body", TRUE));
+@@ -201,6 +411,9 @@ static void wifi_details (View *v)
+   row (addresses, "IPv6", NULL, label ("fe80::9a3b:2cff:fe41:7d10", "numeric", TRUE));
+   row (addresses, "Router", NULL, label ("192.168.10.1", "numeric", TRUE));
+   row (addresses, "DNS", NULL, label ("Automatic", "body", TRUE));
++  GtkBox *actions = group (v, NULL);
++  row (actions, "Share this network", "Show a code a phone can scan", command (v, "Share…", G_CALLBACK (share_clicked)));
++  row (actions, "Forget this network", "The password is removed from this computer", forget_button (v, text (v, "net")));
+ }
+ static void known_networks (View *v)
+ {
+@@ -217,7 +430,7 @@ static void known_networks (View *v)
+       gboolean nearby = FALSE;
+       for (guint j = 0; j < json_array_get_length (nets); j++)
+         nearby |= g_str_equal (name, json_object_get_string_member (json_array_get_object_element (nets, j), "n"));
+-      row (rows, name, g_str_equal (name, text (v, "net")) ? "Connected" : nearby ? "In range" : "Not nearby", NULL);
++      row (rows, name, g_str_equal (name, text (v, "net")) ? "Connected" : nearby ? "In range" : "Not nearby", forget_button (v, name));
+     }
+ }
+ static void hotspot (View *v)
+@@ -226,9 +439,23 @@ static void hotspot (View *v)
+   gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
+   header (v, "Hotspot", flag (v, "hotspot") ? "Other devices can join this computer" : "Off", "hotspot");
+   rows = group (v, NULL);
+-  row (rows, "Network name", NULL, label (text (v, "hsName"), "body", FALSE));
+-  row (rows, "Password", NULL, label (text (v, "hsPass"), "numeric", FALSE));
+-  row (rows, "Band", NULL, label ("Automatic", "body", TRUE));
++  row (rows, "Network name", NULL, entry (v, "hsName", "Network name"));
++  row (rows, "Password", NULL, entry (v, "hsPass", "Password"));
++  row (rows, "Band", NULL, picker (v, "hsBand", band_choices));
++}
++static void network (View *v)
++{
++  GtkBox *wired, *vpn, *proxy;
++  header (v, "Network", flag (v, "vpn") ? "Cable unplugged · VPN on" : "Cable unplugged · VPN off", NULL);
++  wired = group (v, "Wired");
++  GtkWidget *ethernet = row (wired, "Ethernet", "Cable unplugged", toggle (v, "eth", "cf-ethernet", "Ethernet"));
++  gtk_widget_set_sensitive (ethernet, FALSE);
++  gtk_widget_set_tooltip_text (ethernet, "Plug in a cable to use Ethernet");
++  vpn = group (v, "VPN");
++  row (vpn, "Studio North VPN", flag (v, "vpn") ? "Connected" : "WireGuard", toggle (v, "vpn", "cf-vpn", "Studio North VPN"));
++  gtk_box_append (vpn, luma_add_row_new ("Add a VPN", "plus", NULL));
++  proxy = group (v, "Proxy");
++  row (proxy, "Proxy", "For networks that require one", picker (v, "proxy", proxy_choices));
+ }
+ static void render (View *v)
+ {
+@@ -239,22 +466,34 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "wifi-net")) wifi_details (v);
+   else if (g_str_equal (v->page, "wifi-known")) known_networks (v);
+   else if (g_str_equal (v->page, "hotspot")) hotspot (v);
++  else if (g_str_equal (v->page, "network")) network (v);
+ }
+ static void view_free (View *v)
+ {
+   if (v->refresh)
+     g_source_remove (v->refresh);
++  g_object_unref (v->center);
++  g_object_unref (v->actions);
+   g_object_unref (v->model);
+   g_free (v->page);
+   g_free (v);
+ }
+ static gboolean valid_wifi_model (CcLumaFixture *model)
+ {
+-  const char *booleans[] = { "wifi", "bt", "airplane", "hotspot", "autoJoin", "allUsers" };
+-  const char *strings[] = { "net", "metered", "hsName", "hsPass" };
++  const char *booleans[] = { "wifi", "bt", "airplane", "hotspot", "autoJoin", "allUsers", "vpn", "eth" };
++  const char *strings[] = { "net", "metered", "hsName", "hsPass", "hsBand", "proxy" };
+   JsonObject *data = cc_luma_fixture_get_data (model);
+   JsonNode *nets = json_object_get_member (data, "CFNETS");
+   JsonNode *known = json_object_get_member (data, "CFKNOWN");
++  JsonNode *sharing = json_object_get_member (data, "CFWIFI");
++  JsonObject *codes;
++  JsonNode *code_map, *password;
++  if (!sharing || !JSON_NODE_HOLDS_OBJECT (sharing)) return FALSE;
++  code_map = json_object_get_member (json_node_get_object (sharing), "share_codes");
++  password = json_object_get_member (json_node_get_object (sharing), "share_password");
++  if (!code_map || !JSON_NODE_HOLDS_OBJECT (code_map) || !password ||
++      json_node_get_value_type (password) != G_TYPE_STRING) return FALSE;
++  codes = json_node_get_object (code_map);
+   if (!nets || !JSON_NODE_HOLDS_ARRAY (nets) || !known || !JSON_NODE_HOLDS_ARRAY (known))
+     return FALSE;
+   for (guint i = 0; i < G_N_ELEMENTS (booleans); i++)
+@@ -281,10 +520,14 @@ static gboolean valid_wifi_model (CcLumaFixture *model)
+           json_node_get_int (sig) < 1 || json_node_get_int (sig) > 4 ||
+           !lock || json_node_get_value_type (lock) != G_TYPE_BOOLEAN ||
+           (saved && json_node_get_value_type (saved) != G_TYPE_BOOLEAN)) return FALSE;
++      JsonNode *code = json_object_get_member (codes, json_node_get_string (name));
++      if (!code || json_node_get_value_type (code) != G_TYPE_STRING) return FALSE;
+     }
+   for (guint i = 0; i < json_array_get_length (json_node_get_array (known)); i++)
+     if (json_node_get_value_type (json_array_get_element (json_node_get_array (known), i)) != G_TYPE_STRING)
+       return FALSE;
++  const char *network = json_node_get_string (cc_luma_fixture_get (model, "net"));
++  if (*network && !json_object_has_member (codes, network)) return FALSE;
+   return TRUE;
+ }
+ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **error)
+@@ -293,7 +536,7 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   View *v;
+   if (!page) page = "wifi";
+   if (!g_str_equal (page, "wifi") && !g_str_equal (page, "wifi-net") &&
+-      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot"))
++      !g_str_equal (page, "wifi-known") && !g_str_equal (page, "hotspot") && !g_str_equal (page, "network"))
+     {
+       g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Settings page is not ported yet: %s", page);
+       return NULL;
+@@ -319,7 +562,20 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   gtk_widget_set_name (scroll, "cf-body");
+   gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+   gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroll), clamp);
+-  g_object_set_data_full (G_OBJECT (scroll), "cf-view", v, (GDestroyNotify) view_free);
++  v->root = luma_pane_new ();
++  gtk_widget_set_name (v->root, "cf-main");
++  luma_pane_set_child (LUMA_PANE (v->root), luma_layer_host_new (scroll));
++  v->actions = g_simple_action_group_new ();
++  GSimpleAction *pick = g_simple_action_new ("pick", G_VARIANT_TYPE ("(ss)"));
++  g_signal_connect_object (pick, "activate", G_CALLBACK (pick_selected), v->root, 0);
++  g_action_map_add_action (G_ACTION_MAP (v->actions), G_ACTION (pick));
++  g_object_unref (pick);
++  gtk_widget_insert_action_group (v->root, "cf", G_ACTION_GROUP (v->actions));
++  g_object_set_data_full (G_OBJECT (v->root), "cf-view", v, (GDestroyNotify) view_free);
++  v->center = g_object_ref_sink (LUMA_ACTION_CENTER (luma_action_center_new (NULL)));
++  gtk_widget_set_name (GTK_WIDGET (v->center), "cf-action-center");
++  luma_action_center_attach (v->center, luma_pane_get_child (LUMA_PANE (v->root)));
++  g_signal_connect (v->center, "state-changed", G_CALLBACK (center_changed), NULL);
+   render (v);
+-  return scroll;
++  return v->root;
+ }
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index bf91a29..5651c1d 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -72,6 +72,43 @@ v70 (void)
+   g_assert_true (cc_luma_fixture_has_page (model, "a-zoom"));
+   g_assert_true (cc_luma_fixture_has_page (model, "app:filer"));
+ }
++static void
++networks (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_autoptr (CcLumaFixture) untouched = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_autoptr (GError) error = NULL;
++  JsonArray *known = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFKNOWN");
++  g_assert_false (cc_luma_fixture_connect_network (model, "invented network", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++  g_clear_error (&error);
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Studio North");
++  g_assert_cmpuint (json_array_get_length (known), ==, 6);
++  g_assert_true (cc_luma_fixture_connect_network (model, "Priya’s phone", NULL));
++  g_assert_cmpuint (json_array_get_length (known), ==, 7);
++  g_assert_true (cc_luma_fixture_connect_network (model, "Priya’s phone", NULL));
++  g_assert_cmpuint (json_array_get_length (known), ==, 7);
++  /* Exercise a name borrowed from the array being mutated. */
++  g_assert_true (cc_luma_fixture_forget_network (model, json_array_get_string_element (known, 6), NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "");
++  g_assert_cmpuint (json_array_get_length (known), ==, 6);
++  g_assert_cmpstr (json_array_get_string_element (known, 0), ==, "Studio North");
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (untouched, "net")), ==, "Studio North");
++  g_assert_cmpuint (json_array_get_length (json_object_get_array_member (cc_luma_fixture_get_data (untouched), "CFKNOWN")), ==, 6);
++  g_assert_false (cc_luma_fixture_forget_network (model, "invented network", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++}
++static void
++radio_atomic (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_parse (
++    "{\"version\":1,\"settings\":{\"wifi\":true,\"airplane\":false},\"data\":{},\"pages\":[{\"id\":\"wifi\"}]}", -1, NULL);
++  g_autoptr (GError) error = NULL;
++  g_assert_false (cc_luma_fixture_set_flag (model, "airplane", TRUE, &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "airplane")));
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -79,7 +116,11 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/fixture/isolation", isolation);
+   g_test_add_func ("/settings/fixture/edit-boundaries", edit_boundaries);
+   g_test_add_func ("/settings/fixture/pages", pages);
++  g_test_add_func ("/settings/fixture/radio-atomic", radio_atomic);
+   if (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"))
+-    g_test_add_func ("/settings/fixture/v70", v70);
++    {
++      g_test_add_func ("/settings/fixture/v70", v70);
++      g_test_add_func ("/settings/fixture/networks", networks);
++    }
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 4b8052e..ca80c2d 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -74,6 +74,28 @@ static void cancel_pending_refresh (void)
+   g_object_unref (view);
+   while (g_main_context_iteration (NULL, FALSE)) {}
+ }
++static void picker_binding (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi-net", NULL));
++  g_assert_true (gtk_widget_activate_action (view, "cf.pick", "(ss)", "metered", "yes"));
++  while (g_main_context_iteration (NULL, FALSE)) {}
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "metered")), ==, "yes");
++  g_assert_true (has_text (view, "Yes"));
++  g_assert_true (gtk_widget_activate_action (view, "cf.pick", "(ss)", "metered", "arbitrary"));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "metered")), ==, "yes");
++  g_assert_true (gtk_widget_activate_action (view, "cf.pick", "(ss)", "hsPass", "not a picker"));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "hsPass")), ==, "lantern-orbit-42");
++  g_object_unref (view);
++}
++static void missing_share_artwork (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  g_autoptr (GError) error = NULL;
++  json_object_remove_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  g_assert_null (cc_luma_view_new (model, "wifi", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -81,5 +103,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/radio-bindings", radio_bindings);
+   g_test_add_func ("/settings/view/reject-unported", reject_unported);
+   g_test_add_func ("/settings/view/cancel-pending-refresh", cancel_pending_refresh);
++  g_test_add_func ("/settings/view/picker-binding", picker_binding);
++  g_test_add_func ("/settings/view/missing-share-artwork", missing_share_artwork);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

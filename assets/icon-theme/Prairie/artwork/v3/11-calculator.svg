@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="steelTop" x1="0" y1="0" x2="454" y2="464" gradientUnits="userSpaceOnUse"><stop stop-color="#b8c1c1"/><stop offset=".42" stop-color="#879192"/><stop offset="1" stop-color="#566060"/></linearGradient>
+    <linearGradient id="steelBottom" x1="0" y1="482" x2="454" y2="1024" gradientUnits="userSpaceOnUse"><stop stop-color="#929c9c"/><stop offset=".46" stop-color="#717b7b"/><stop offset="1" stop-color="#4d5656"/></linearGradient>
+    <linearGradient id="orange" x1="472" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse"><stop stop-color="#ffb43a"/><stop offset=".48" stop-color="#ff8b18"/><stop offset="1" stop-color="#dc5e08"/></linearGradient>
+    <radialGradient id="steelBloom" cx=".15" cy=".02" r=".86"><stop stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="orangeBloom" cx=".16" cy=".02" r=".86"><stop stop-color="#fff" stop-opacity=".24"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="porcelain" x1=".14" y1="0" x2=".86" y2="1"><stop stop-color="#fff"/><stop offset=".48" stop-color="#f3f6f4"/><stop offset="1" stop-color="#c8cfcd"/></linearGradient>
+    <filter id="panelGrain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency=".64 .026" numOctaves="1" seed="11" result="grain"/><feColorMatrix in="grain" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 .08 0" result="softGrain"/><feBlend in="SourceGraphic" in2="softGrain" mode="soft-light"/></filter>
+    <filter id="glyphShadow" x="-32%" y="-32%" width="164%" height="164%"><feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#111614" flood-opacity=".28"/></filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#171b1a"/>
+  <g filter="url(#panelGrain)">
+    <rect width="454" height="464" fill="url(#steelTop)"/>
+    <rect y="482" width="454" height="542" fill="url(#steelBottom)"/>
+    <rect x="472" width="552" height="1024" fill="url(#orange)"/>
+  </g>
+  <rect width="454" height="464" fill="url(#steelBloom)"/>
+  <rect y="482" width="454" height="542" fill="url(#steelBloom)" opacity=".6"/>
+  <rect x="472" width="552" height="1024" fill="url(#orangeBloom)"/>
+
+  <g fill="url(#porcelain)" stroke="#aab3b1" stroke-opacity=".52" stroke-width="8" filter="url(#glyphShadow)">
+    <rect x="142" y="238" width="170" height="70" rx="35"/>
+    <path d="M205 620q-17 0-17 17v47h-47q-17 0-17 17v44q0 17 17 17h47v47q0 17 17 17h44q17 0 17-17v-47h47q17 0 17-17v-44q0-17-17-17h-47v-47q0-17-17-17Z"/>
+    <rect x="654" y="420" width="188" height="72" rx="36"/>
+    <rect x="654" y="548" width="188" height="72" rx="36"/>
+  </g>
+</svg>

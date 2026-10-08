@@ -1,0 +1,11 @@
+Package                  Arch   Version        Repository      Size
+Removing:
+ firefox                 x86_64 0:155.0-1.fc44 <unknown>  287.3 MiB
+Removing dependent packages:
+ firefox-langpacks x86_64 0:155.0-1.fc44 <unknown>   47.6 MiB
+
+Transaction Summary:
+ Removing:           2 packages
+
+After this operation, 335 MiB will be freed (install 0 B, remove 335 MiB).
+Operation aborted by the user.

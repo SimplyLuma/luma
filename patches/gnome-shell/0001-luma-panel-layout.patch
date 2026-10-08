@@ -1,0 +1,449 @@
+--- a/js/ui/sessionMode.js
++++ b/js/ui/sessionMode.js
+@@ -94,8 +94,8 @@ const _modes = {
+         unlockDialog: UnlockDialog,
+         components: USER_SESSION_COMPONENTS,
+         panel: {
+-            left: ['activities'],
+-            center: ['dateMenu'],
++            left: ['dateMenu'],
++            center: [],
+             right: ['screenRecording', 'screenSharing', 'dwellClick', 'a11y', 'keyboard', 'quickSettings'],
+         },
+     },
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -488,5 +488,7 @@ class Panel extends St.Widget {
+         const allocWidth = box.x2 - box.x1;
+         const allocHeight = box.y2 - box.y1;
++        const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const edgeInset = 14 * scaleFactor;
+ 
+         const [, leftNaturalWidth] = this._leftBox.get_preferred_width(-1);
+         const [, centerNaturalWidth] = this._centerBox.get_preferred_width(-1);
+@@ -510,12 +512,14 @@ class Panel extends St.Widget {
+         childBox.y2 = allocHeight;
+         if (this.get_text_direction() === Clutter.TextDirection.RTL) {
+-            childBox.x1 = Math.max(
+-                allocWidth - Math.min(Math.floor(sideWidth), leftNaturalWidth),
+-                0);
+-            childBox.x2 = allocWidth;
++            childBox.x2 = allocWidth - edgeInset;
++            childBox.x1 = Math.max(
++                childBox.x2 - Math.min(Math.floor(sideWidth), leftNaturalWidth),
++                edgeInset);
+         } else {
+-            childBox.x1 = 0;
+-            childBox.x2 = Math.min(Math.floor(sideWidth), leftNaturalWidth);
++            childBox.x1 = edgeInset;
++            childBox.x2 = Math.min(
++                childBox.x1 + Math.min(Math.floor(sideWidth), leftNaturalWidth),
++                allocWidth - edgeInset);
+         }
+         this._leftBox.allocate(childBox);
+ 
+@@ -528,12 +532,14 @@ class Panel extends St.Widget {
+         childBox.y2 = allocHeight;
+         if (this.get_text_direction() === Clutter.TextDirection.RTL) {
+-            childBox.x1 = 0;
+-            childBox.x2 = Math.min(Math.floor(sideWidth), rightNaturalWidth);
++            childBox.x1 = edgeInset;
++            childBox.x2 = Math.min(
++                childBox.x1 + Math.min(Math.floor(sideWidth), rightNaturalWidth),
++                allocWidth - edgeInset);
+         } else {
+-            childBox.x1 = Math.max(
+-                allocWidth - Math.min(Math.floor(sideWidth), rightNaturalWidth),
+-                0);
+-            childBox.x2 = allocWidth;
++            childBox.x2 = allocWidth - edgeInset;
++            childBox.x1 = Math.max(
++                childBox.x2 - Math.min(Math.floor(sideWidth), rightNaturalWidth),
++                edgeInset);
+         }
+         this._rightBox.allocate(childBox);
+     }
+@@ -638,13 +642,9 @@ class Panel extends St.Widget {
+         this._updateBox(panel.center, this._centerBox);
+         this._updateBox(panel.right, this._rightBox);
+ 
+-        if (panel.left.includes('dateMenu'))
+-            Main.messageTray.bannerAlignment = Clutter.ActorAlign.START;
+-        else if (panel.right.includes('dateMenu'))
+-            Main.messageTray.bannerAlignment = Clutter.ActorAlign.END;
+-        // Default to center if there is no dateMenu
+-        else
+-            Main.messageTray.bannerAlignment = Clutter.ActorAlign.CENTER;
++        // Prairie notifications are a screen-level surface. Keep them centered
++        // independently of the clock's deliberately left-aligned panel slot.
++        Main.messageTray.bannerAlignment = Clutter.ActorAlign.CENTER;
+ 
+         if (this._sessionStyle)
+             this.remove_style_class_name(this._sessionStyle);
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -741,13 +741,11 @@ class WeatherSection extends St.Button {
+ });
+ 
+ const MessagesIndicator = GObject.registerClass(
+-class MessagesIndicator extends St.Icon {
++class MessagesIndicator extends St.Label {
+     _init() {
+         super._init({
+             style_class: 'messages-indicator',
+-            icon_name: 'message-indicator-symbolic',
+             visible: false,
+-            y_expand: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+ 
+@@ -794,6 +793,7 @@ class MessagesIndicator extends St.Icon {
+ 
+     _sync() {
+         const doNotDisturb = !this._settings.get_boolean('show-banners');
++        this.text = this._count > 99 ? '99+' : `${this._count}`;
+         this.visible = !doNotDisturb && this._count > 0;
+     }
+ });
+@@ -854,10 +854,25 @@ export const DateMenuButton = GObject.registerClass(
+ class DateMenuButton extends PanelMenu.Button {
+     _init() {
+         super._init(0.5);
+ 
+-        this._clockDisplay = new St.Label({style_class: 'clock'});
+-        this._clockDisplay.clutter_text.y_align = Clutter.ActorAlign.CENTER;
+-        this._clockDisplay.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++        this._timeDisplay = new St.Label({style_class: 'luma-clock-time'});
++        this._timeDisplay.translation_y =
++            St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        this._timeDisplay.clutter_text.y_align = Clutter.ActorAlign.CENTER;
++        this._timeDisplay.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++
++        this._dateDisplay = new St.Label({
++            style_class: 'luma-clock-date luma-secondary-status-text',
++        });
++        this._dateDisplay.clutter_text.y_align = Clutter.ActorAlign.CENTER;
++        this._dateDisplay.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
++
++        const clockContent = new St.BoxLayout({
++            style_class: 'clock luma-clock-content',
++        });
++        clockContent.add_child(this._timeDisplay);
++        clockContent.add_child(new St.Widget({width: 9}));
++        clockContent.add_child(this._dateDisplay);
+ 
+         this._indicator = new MessagesIndicator();
+ 
+@@ -871,10 +882,10 @@ class DateMenuButton extends PanelMenu.Button {
+ 
+         const box = new St.BoxLayout({style_class: 'clock-display-box'});
+         box.add_child(indicatorPad);
+-        box.add_child(this._clockDisplay);
++        box.add_child(clockContent);
+         box.add_child(this._indicator);
+ 
+-        this.label_actor = this._clockDisplay;
++        this.label_actor = this._timeDisplay;
+         this.add_child(box);
+         this.add_style_class_name('clock-display');
+ 
+@@ -968,9 +979,14 @@ class DateMenuButton extends PanelMenu.Button {
+ 
+         // Done with hbox for calendar and event list
+ 
++        this._clockSettings = new Gio.Settings({
++            schema_id: 'org.gnome.desktop.interface',
++        });
++        this._clockSettings.connect('changed', this._updateClock.bind(this));
+         this._clock = new GnomeDesktop.WallClock();
+-        this._clock.bind_property('clock', this._clockDisplay, 'text', GObject.BindingFlags.SYNC_CREATE);
++        this._clock.connect('notify::clock', this._updateClock.bind(this));
+         this._clock.connect('notify::timezone', this._updateTimeZone.bind(this));
++        this._updateClock();
+ 
+         Main.sessionMode.connect('updated', this._sessionUpdated.bind(this));
+         this._sessionUpdated();
+@@ -990,6 +1006,37 @@ class DateMenuButton extends PanelMenu.Button {
+         this._eventSource = eventSource;
+     }
+ 
++    _updateClock() {
++        const now = new Date();
++        const clockFormat = this._clockSettings.get_string('clock-format');
++        const showSeconds = this._clockSettings.get_boolean('clock-show-seconds');
++        let timeFormat;
++
++        if (clockFormat === '24h')
++            timeFormat = showSeconds ? N_('%H:%M:%S') : N_('%H:%M');
++        else
++            timeFormat = showSeconds ? N_('%l:%M:%S %p') : N_('%l:%M %p');
++
++        this._timeDisplay.text = formatDateWithCFormatString(
++            now, T_(timeFormat)).trimStart();
++
++        const showWeekday = this._clockSettings.get_boolean('clock-show-weekday');
++        const showDate = this._clockSettings.get_boolean('clock-show-date');
++        let dateFormat = null;
++
++        if (showWeekday && showDate)
++            dateFormat = N_('%a, %b %-d');
++        else if (showWeekday)
++            dateFormat = N_('%a');
++        else if (showDate)
++            dateFormat = N_('%b %-d');
++
++        this._dateDisplay.visible = dateFormat !== null;
++        this._dateDisplay.text = dateFormat
++            ? formatDateWithCFormatString(now, T_(dateFormat))
++            : '';
++    }
++
+     _updateTimeZone() {
+         clearCachedLocalTimeZone();
+ 
+--- a/js/ui/status/system.js
++++ b/js/ui/status/system.js
+@@ -319,6 +319,7 @@ class Indicator extends SystemIndicator {
+ 
+         this._indicator = this._addIndicator();
+         this._percentageLabel = new St.Label({
++            style_class: 'luma-secondary-status-text',
+             y_expand: true,
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+--- a/data/theme/gnome-shell-sass/widgets/_panel.scss
++++ b/data/theme/gnome-shell-sass/widgets/_panel.scss
+@@ -7,6 +7,6 @@ $transparent_panel_fg_color: $light_1;    // always white for transparent lock screens
+ $system_panel_fg_color: $system_fg_color; // always light for lockscreen, overview
+ 
+-$panel_height: 2.2em;
++$panel_height: 34px;
+ $panel_transition_duration: 250ms; // same as the overview transition duration
+ 
+ #panel {
+@@ -159,3 +159,112 @@ $panel_transition_duration: 250ms; // same as the overview transition duration
+     padding-right: $scaled_padding * 2;
+   }
+ }
++
++// Project Luma light chrome. This is compiled into the native Shell theme;
++// it is not a user-theme or runtime stylesheet override.
++@if $variant == 'light' {
++  #panel, #panel:overview {
++    background-color: #f2f3f5;
++    border: 0;
++    border-bottom: 1px solid rgba(17, 24, 39, 0.10);
++    box-shadow: none;
++    color: #374151;
++    font-weight: normal;
++
++    .panel-button {
++      -natural-hpadding: 0;
++      -minimum-hpadding: 0;
++      background-color: transparent;
++      border: 0;
++      border-radius: 8px;
++      box-shadow: none;
++      color: #374151;
++      font-weight: normal;
++
++      .system-status-icon {
++        -st-icon-style: symbolic;
++        icon-size: 16px;
++        margin: 0;
++        padding: 0;
++      }
++
++      .panel-status-indicators-box {
++        spacing: 12px;
++      }
++    }
++
++    #panelRight .panel-button {
++      -natural-hpadding: 8px;
++      -minimum-hpadding: 6px;
++      margin: 3px 1px;
++      padding: 0;
++      transition-duration: 120ms;
++
++      &:focus, &:hover {
++        background-color: rgba(120, 130, 145, 0.14);
++      }
++
++      &:active, &:checked {
++        background-color: rgba(120, 130, 145, 0.22);
++      }
++    }
++
++    .panel-button.clock-display {
++      background: none;
++      border: 0;
++      box-shadow: none;
++
++      .clock {
++        background-color: transparent;
++        border: 0;
++        border-radius: 8px;
++        box-shadow: none;
++        padding: 0 10px;
++      }
++
++      &:focus .clock, &:hover .clock {
++        background-color: rgba(15, 23, 42, 0.06);
++      }
++
++      &:active .clock, &:checked .clock {
++        background-color: rgba(72, 120, 184, 0.14);
++      }
++    }
++  }
++
++  .clock-display-box {
++    spacing: 0;
++  }
++
++  .luma-clock-content {
++    // The explicit 9px spacer actor owns the time/date gap.
++    spacing: 0;
++  }
++
++  .luma-clock-time {
++    color: #1f2937;
++    font-size: 12.5px;
++    font-weight: 600;
++    font-feature-settings: "tnum";
++    letter-spacing: -0.005em;
++  }
++
++  .luma-secondary-status-text {
++    color: #6b7280;
++    font-size: 11.5px;
++    font-weight: 500;
++  }
++
++  .messages-indicator {
++    min-width: 16px;
++    height: 16px;
++    padding: 0 2px;
++    border-radius: 5px;
++    background-color: #c2984e;
++    color: white;
++    font-size: 10px;
++    font-weight: 700;
++    font-feature-settings: "tnum";
++    text-align: center;
++  }
++}
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 666d8d9..99b177a 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3323,3 +3323,108 @@
+     .login-dialog .user-widget.vertical .user-icon StIcon,
+     .unlock-dialog .user-widget.vertical .user-icon StIcon {
+       padding: 30px; }
++
++/* Project Luma light panel. Keep this generated artifact beside the SCSS so
++ * Fedora's release-tarball build packages the same source-owned treatment. */
++#panel,
++#panel:overview {
++  height: 34px;
++  background-color: #f2f3f5;
++  border: 0;
++  border-bottom: 1px solid rgba(17, 24, 39, 0.1);
++  box-shadow: none;
++  color: #374151;
++  font-weight: normal; }
++
++#panel .panel-button,
++#panel:overview .panel-button {
++  -natural-hpadding: 0;
++  -minimum-hpadding: 0;
++  padding: 0;
++  background-color: transparent;
++  border: 0;
++  border-radius: 8px;
++  box-shadow: none;
++  color: #374151;
++  font-weight: normal; }
++
++#panel .panel-button .system-status-icon,
++#panel:overview .panel-button .system-status-icon {
++  -st-icon-style: symbolic;
++  icon-size: 16px;
++  margin: 0;
++  padding: 0; }
++
++#panel .panel-button .panel-status-indicators-box,
++#panel:overview .panel-button .panel-status-indicators-box {
++  spacing: 12px; }
++
++#panelRight .panel-button {
++  -natural-hpadding: 8px;
++  -minimum-hpadding: 6px;
++  margin: 3px 1px;
++  padding: 0;
++  transition-duration: 120ms; }
++
++#panelRight .panel-button:focus,
++#panelRight .panel-button:hover {
++  background-color: rgba(120, 130, 145, 0.14); }
++
++#panelRight .panel-button:active,
++#panelRight .panel-button:checked {
++  background-color: rgba(120, 130, 145, 0.22); }
++
++#panel .panel-button.clock-display,
++#panel:overview .panel-button.clock-display {
++  background: none;
++  border: 0;
++  box-shadow: none; }
++
++#panel .panel-button.clock-display .clock,
++#panel:overview .panel-button.clock-display .clock {
++  padding: 0 10px;
++  background-color: transparent;
++  border: 0;
++  border-radius: 8px;
++  box-shadow: none; }
++
++#panel .panel-button.clock-display:focus .clock,
++#panel .panel-button.clock-display:hover .clock,
++#panel:overview .panel-button.clock-display:focus .clock,
++#panel:overview .panel-button.clock-display:hover .clock {
++  background-color: rgba(15, 23, 42, 0.06); }
++
++#panel .panel-button.clock-display:active .clock,
++#panel .panel-button.clock-display:checked .clock,
++#panel:overview .panel-button.clock-display:active .clock,
++#panel:overview .panel-button.clock-display:checked .clock {
++  background-color: rgba(72, 120, 184, 0.14); }
++
++.clock-display-box,
++.luma-clock-content {
++  spacing: 0; }
++
++#panel .luma-clock-time {
++  color: #1f2937;
++  font-size: 12.5px;
++  font-weight: 600;
++  font-feature-settings: "tnum";
++  letter-spacing: -0.005em; }
++
++#panel .luma-clock-date,
++#panel .luma-secondary-status-text {
++  color: #6b7280;
++  font-size: 11.5px;
++  font-weight: 500; }
++
++#panel .messages-indicator {
++  min-width: 16px;
++  height: 16px;
++  padding: 0 2px;
++  border-radius: 5px;
++  background-color: #c2984e;
++  color: white;
++  font-size: 10px;
++  font-weight: 700;
++  font-feature-settings: "tnum";
++  text-align: center; }

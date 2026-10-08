@@ -1,0 +1,77 @@
+From 181a61efe2888384a7e97468ec670ba92c1740ed Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 7 Sep 2026 18:35:02 -0500
+Subject: [PATCH] wayland: Vendor protocol and gate blur capability
+
+---
+ src/meson.build                              |  5 ++++-
+ src/wayland/meta-wayland-background-effect.c | 18 ++++++++++++++++--
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index d5af53949..80b48bc08 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1065,7 +1065,10 @@ wayland_protocols = [
+   ['commit-timing', 'staging', 1, ],
+   ['cursor-shape', 'staging', 1, ],
+   ['drm-lease', 'staging', 1, ],
+-  ['ext-background-effect', 'staging', 1, ],
++  # Luma's Fedora 44 base predates wayland-protocols 1.48. The exact
++  # standardized v1 XML is supplied as a package source and installed into
++  # this private protocol directory during %prep.
++  ['ext-background-effect-v1', 'private', ],
+   ['fractional-scale', 'staging', 1, ],
+   ['fifo', 'staging', 1, ],
+   ['gtk-shell', 'private', ],
+diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-wayland-background-effect.c
+index bcfec89f7..2bd444871 100644
+--- a/src/wayland/meta-wayland-background-effect.c
++++ b/src/wayland/meta-wayland-background-effect.c
+@@ -22,7 +22,9 @@
+ #include <glib.h>
+ #include <wayland-server.h>
+ 
++#include "backends/meta-backend-private.h"
+ #include "ext-background-effect-v1-server-protocol.h"
++#include "meta/meta-context.h"
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-region.h"
+ #include "wayland/meta-wayland-surface-private.h"
+@@ -190,7 +192,11 @@ background_effect_manager_bind (struct wl_client *client,
+                                 uint32_t          version,
+                                 uint32_t          id)
+ {
++  MetaWaylandCompositor *compositor = data;
++  MetaContext *context = meta_wayland_compositor_get_context (compositor);
++  MetaBackend *backend = meta_context_get_backend (context);
+   struct wl_resource *resource;
++  uint32_t capabilities = 0;
+ 
+   resource = wl_resource_create (client,
+                                  &ext_background_effect_manager_v1_interface,
+@@ -198,12 +204,20 @@ background_effect_manager_bind (struct wl_client *client,
+                                  id);
+   wl_resource_set_implementation (resource,
+                                   &background_effect_manager_implementation,
+-                                  NULL,
++                                  compositor,
+                                   NULL);
+ 
++  /* A software renderer can implement the protocol while still being the
++   * wrong default execution path for an interactive desktop. Advertise no
++   * blur capability unless an emulator/developer explicitly opts into a
++   * measured software-renderer preview. Clients still discover the real
++   * protocol and effect; this does not substitute a simulated backdrop. */
++  if (meta_backend_is_rendering_hardware_accelerated (backend) ||
++      g_strcmp0 (g_getenv ("LUMA_MUTTER_ALLOW_SOFTWARE_BLUR"), "1") == 0)
++    capabilities |= EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR;
+   ext_background_effect_manager_v1_send_capabilities (
+     resource,
+-    EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR);
++    capabilities);
+ }
+ 
+ void
+-- 
+2.54.0 (Apple Git-157)

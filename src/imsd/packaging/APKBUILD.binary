@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+# Maintainer: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
+# Interim packaging: wraps a crafter-build binary cross-compiled on a dev box
+# (see README "Cross-compiling") into a proper apk, so the daemon is
+# apk-managed on the phone while crafter-build itself isn't packaged for
+# Alpine yet. The source tarball is produced by packaging/make-bin-tarball.sh.
+pkgname=imsd
+pkgver=0.3.0
+pkgrel=0
+pkgdesc="Userspace IMS/VoLTE daemon for mainline Linux phones"
+url="https://forgejo.catcrafts.net/Catcrafts/imsd"
+arch="aarch64"
+license="GPL-3.0-only"
+# the media leg dlopen's the AMR-WB codecs; pw-record/pw-play drive PipeWire
+depends="modemmanager libc++ opencore-amr vo-amrwbenc pipewire-tools"
+# versioned provides = imsd satisfies soc-qcom-modem's 81voltd dependency AND
+# excludes the real package: 81voltd serves the modem's own ims-PDN requests,
+# which races imsd for the PDN and flaps it with a new prefix every ~2.5 min
+# (fp6 journal/ims.md s57) — the two IMS stacks cannot share one PDN
+provides="81voltd=$pkgver-r$pkgrel"
+options="!check"
+source="imsd-$pkgver.tar.gz"
+
+package() {
+    cd "$srcdir/imsd-$pkgver"
+    install -Dm755 imsd "$pkgdir"/usr/bin/imsd
+    install -Dm755 imsd-media "$pkgdir"/usr/libexec/imsd-media
+    install -Dm755 imsd-dialerd "$pkgdir"/usr/bin/imsd-dialerd
+    install -Dm755 ims-pdn-up.sh "$pkgdir"/usr/libexec/ims-pdn-up.sh
+    install -Dm644 imsd.service "$pkgdir"/usr/lib/systemd/system/imsd.service
+    install -Dm644 imsd-dialerd.desktop \
+        "$pkgdir"/etc/xdg/autostart/imsd-dialerd.desktop
+    install -Dm644 net.catcrafts.IMS1.conf \
+        "$pkgdir"/usr/share/dbus-1/system.d/net.catcrafts.IMS1.conf
+}

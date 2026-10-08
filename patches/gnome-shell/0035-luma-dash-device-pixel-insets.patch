@@ -1,0 +1,23 @@
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -219,10 +219,17 @@
+         // Native Dash tiles already contribute half of the 5px inter-icon
+         // gap at each end. Absorb only those outer half-margins; preserve
+         // spacing between icons and measure padding to the artwork bounds.
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const end = this.has_style_class_name('luma-shelf-dock-island')
+-            ? padding - 2.5 : padding;
+-        const insets = this._vertical ? `${end}px ${padding}px` : `${padding}px ${end}px`;
+-        this._content.set_style(`${style} padding: ${insets};`);
++            ? padding - Math.ceil(2.5 * scale) / scale : padding;
++        const insets = this._vertical ? [end, padding, end, padding] : [padding, end, padding, end];
++        // Connected-mode separators are real borders inside the material.
++        // Include them in the selected inset rather than adding another pixel.
++        const node = this._content.get_theme_node();
++        const sides = [St.Side.TOP, St.Side.RIGHT, St.Side.BOTTOM, St.Side.LEFT];
++        const values = insets.map((value, index) =>
++            Math.max(0, value - node.get_border_width(sides[index]) / scale));
++        this._content.set_style(`${style} padding: ${values.map(value => `${value}px`).join(' ')};`);
+     }
+ 
+     setSurfaceVisible(visible, castShadows) {

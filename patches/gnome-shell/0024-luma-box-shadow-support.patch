@@ -1,0 +1,393 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] st: agree on box-shadow texture support and paint bounds
+
+Keep the box-shadow GPU padding, sliced/unsliced mapping and theme paint
+bounds under one private contract. Preserve the legacy helper, icon, text,
+background-image and Cairo inset paths and the CSS blur-to-sigma conversion.
+This source candidate requires native rendering/scale regression evidence.
+
+GNOME Shell 50.3 St sources retain LGPL-2.1 terms and upstream attribution.
+No public St struct, installed header, GIR or exported legacy signature changes.
+
+diff --git a/src/st/st-private.c b/src/st/st-private.c
+--- a/src/st/st-private.c
++++ b/src/st/st-private.c
+@@ -377,11 +377,53 @@
+   return pixels_out;
+ }
+ 
+-CoglPipeline *
+-_st_create_shadow_pipeline (StShadow            *shadow_spec,
++/* Box shadows use the same three-sigma support in their texture, sliced
++ * mapping and paint bounds. Other shadow consumers keep their historical
++ * texture/rectangle contract. Clutter converts the CSS blur radius to sigma. */
++float
++_st_box_shadow_get_padding (StShadow *shadow)
++{
++  return shadow->blur > 0 ? ceilf (0.75f * shadow->blur) * 2.f : 0.f;
++}
++
++gboolean
++_st_box_shadow_get_box (StShadow              *shadow,
++                        const ClutterActorBox *box,
++                        ClutterActorBox       *shadow_box)
++{
++  float extent = _st_box_shadow_get_padding (shadow) + shadow->spread;
++
++  if (shadow->inset)
++    {
++      *shadow_box = *box;
++      return TRUE;
++    }
++
++  if (box->x2 - box->x1 + 2 * shadow->spread <= 0 ||
++      box->y2 - box->y1 + 2 * shadow->spread <= 0)
++    return FALSE;
++
++  *shadow_box = (ClutterActorBox) {
++    box->x1 + shadow->xoffset - extent,
++    box->y1 + shadow->yoffset - extent,
++    box->x2 + shadow->xoffset + extent,
++    box->y2 + shadow->yoffset + extent,
++  };
++  return TRUE;
++}
++
++const StBoxShadowTextureCoords *
++_st_box_shadow_get_texture_coords (CoglPipeline *pipeline)
++{
++  return g_object_get_data (G_OBJECT (pipeline), "st-box-shadow-texture-coords");
++}
++
++static CoglPipeline *
++create_shadow_pipeline (StShadow            *shadow_spec,
+                             ClutterPaintContext *paint_context,
+                             CoglTexture         *src_texture,
+-                            float                resource_scale)
++                            float                resource_scale,
++                         gboolean             box_shadow)
+ {
+   g_autoptr (ClutterPaintNode) texture_node = NULL;
+   g_autoptr (ClutterPaintNode) blur_node = NULL;
+@@ -407,13 +449,15 @@
+   g_return_val_if_fail (src_texture != NULL, NULL);
+ 
+   radius = resource_scale * shadow_spec->blur;
+-  sampling_radius = ceilf (radius);
++  sampling_radius = box_shadow
++    ? resource_scale * _st_box_shadow_get_padding (shadow_spec)
++    : ceilf (radius);
+ 
+   src_width = cogl_texture_get_width (src_texture);
+   src_height = cogl_texture_get_height (src_texture);
+   cogl_context = cogl_texture_get_context (src_texture);
+-  dst_width = src_width + 2 * sampling_radius;
+-  dst_height = src_height + 2 * sampling_radius;
++  dst_width = ceilf (src_width + 2 * sampling_radius);
++  dst_height = ceilf (src_height + 2 * sampling_radius);
+ 
+   texture = cogl_texture_2d_new_with_size (cogl_context, dst_width, dst_height);
+   if (!texture)
+@@ -500,9 +544,45 @@
+   pipeline = cogl_pipeline_copy (shadow_pipeline_template);
+   cogl_pipeline_set_layer_texture (pipeline, 0, texture);
+ 
++  if (box_shadow)
++    {
++      StBoxShadowTextureCoords *coords = g_new (StBoxShadowTextureCoords, 1);
++
++      /* Device-pixel rounding belongs to storage, not the CSS rectangle.
++       * Crop the extra final pixel instead of stretching it over the shadow. */
++      *coords = (StBoxShadowTextureCoords) {
++        .x_scale = resource_scale / dst_width,
++        .y_scale = resource_scale / dst_height,
++        .x_end = (src_width + 2 * sampling_radius) / dst_width,
++        .y_end = (src_height + 2 * sampling_radius) / dst_height,
++      };
++      g_object_set_data_full (G_OBJECT (pipeline), "st-box-shadow-texture-coords",
++                              coords, g_free);
++    }
++
+   g_clear_object (&texture);
+ 
+   return pipeline;
++}
++
++CoglPipeline *
++_st_create_shadow_pipeline (StShadow            *shadow_spec,
++                            ClutterPaintContext *paint_context,
++                            CoglTexture         *src_texture,
++                            float                resource_scale)
++{
++  return create_shadow_pipeline (shadow_spec, paint_context, src_texture,
++                                  resource_scale, FALSE);
++}
++
++CoglPipeline *
++_st_create_box_shadow_pipeline (StShadow            *shadow_spec,
++                                ClutterPaintContext *paint_context,
++                                CoglTexture         *src_texture,
++                                float                resource_scale)
++{
++  return create_shadow_pipeline (shadow_spec, paint_context, src_texture,
++                                  resource_scale, TRUE);
+ }
+ 
+ CoglPipeline *
+@@ -823,3 +903,37 @@
+   clutter_paint_node_add_child (node, pipeline_node);
+   clutter_paint_node_add_rectangle (pipeline_node, &shadow_box);
+ }
++
++/* The unsliced box path shares the new box texture coordinates. Keep the
++ * legacy helper above unchanged: text, icons and background images use it. */
++void
++_st_paint_box_shadow_with_opacity (StShadow         *shadow_spec,
++                                   ClutterPaintNode *node,
++                                   CoglPipeline     *shadow_pipeline,
++                                   ClutterActorBox  *box,
++                                   guint8            paint_opacity)
++{
++  g_autoptr (ClutterPaintNode) pipeline_node = NULL;
++  const StBoxShadowTextureCoords *coords;
++  ClutterActorBox shadow_box;
++  CoglColor color;
++
++  if (!_st_box_shadow_get_box (shadow_spec, box, &shadow_box))
++    return;
++
++  coords = _st_box_shadow_get_texture_coords (shadow_pipeline);
++  g_assert (coords != NULL);
++
++  cogl_color_init_from_4f (&color,
++                           shadow_spec->color.red / 255.0 * paint_opacity / 255.0,
++                           shadow_spec->color.green / 255.0 * paint_opacity / 255.0,
++                           shadow_spec->color.blue / 255.0 * paint_opacity / 255.0,
++                           shadow_spec->color.alpha / 255.0 * paint_opacity / 255.0);
++  cogl_color_premultiply (&color);
++  cogl_pipeline_set_layer_combine_constant (shadow_pipeline, 0, &color);
++
++  pipeline_node = clutter_pipeline_node_new (shadow_pipeline);
++  clutter_paint_node_add_child (node, pipeline_node);
++  clutter_paint_node_add_texture_rectangle (pipeline_node, &shadow_box,
++                                            0, 0, coords->x_end, coords->y_end);
++}
+diff --git a/src/st/st-private.h b/src/st/st-private.h
+--- a/src/st/st-private.h
++++ b/src/st/st-private.h
+@@ -70,3 +70,25 @@
+                                     CoglPipeline     *shadow_pipeline,
+                                     ClutterActorBox  *box,
+                                     guint8            paint_opacity);
++
++/* Private box-shadow contract; not an St/GIR public API. */
++typedef struct {
++  float x_scale, y_scale;
++  float x_end, y_end;
++} StBoxShadowTextureCoords;
++
++float _st_box_shadow_get_padding (StShadow *shadow);
++gboolean _st_box_shadow_get_box (StShadow              *shadow,
++                                 const ClutterActorBox *box,
++                                 ClutterActorBox       *shadow_box);
++const StBoxShadowTextureCoords *
++_st_box_shadow_get_texture_coords (CoglPipeline *pipeline);
++CoglPipeline *_st_create_box_shadow_pipeline (StShadow            *shadow_spec,
++                                              ClutterPaintContext *paint_context,
++                                              CoglTexture         *src_texture,
++                                              float                resource_scale);
++void _st_paint_box_shadow_with_opacity (StShadow         *shadow_spec,
++                                       ClutterPaintNode *node,
++                                       CoglPipeline     *shadow_pipeline,
++                                       ClutterActorBox  *box,
++                                       guint8            paint_opacity);
+diff --git a/src/st/st-theme-node.c b/src/st/st-theme-node.c
+--- a/src/st/st-theme-node.c
++++ b/src/st/st-theme-node.c
+@@ -26,6 +26,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "st-private.h"
+ #include "st-settings.h"
+ #include "st-theme-private.h"
+ #include "st-theme-context.h"
+@@ -4365,9 +4366,9 @@
+   paint_box->y1 -= outline_width;
+   paint_box->y2 += outline_width;
+ 
+-  if (box_shadow)
+-    {
+-      st_shadow_get_box (box_shadow, actor_box, &shadow_box);
++  if (box_shadow &&
++      _st_box_shadow_get_box (box_shadow, actor_box, &shadow_box))
++    {
+ 
+       paint_box->x1 = MIN (paint_box->x1, shadow_box.x1);
+       paint_box->x2 = MAX (paint_box->x2, shadow_box.x2);
+diff --git a/src/st/st-theme-node-drawing.c b/src/st/st-theme-node-drawing.c
+--- a/src/st/st-theme-node-drawing.c
++++ b/src/st/st-theme-node-drawing.c
+@@ -1688,12 +1688,12 @@
+       st_theme_node_compute_maximum_borders (state);
+ 
+       if (st_theme_node_load_border_image (node, cogl_context, resource_scale))
+-        state->box_shadow_pipeline = _st_create_shadow_pipeline (box_shadow_spec,
++        state->box_shadow_pipeline = _st_create_box_shadow_pipeline (box_shadow_spec,
+                                                                  paint_context,
+                                                                  node->border_slices_texture,
+                                                                  state->resource_scale);
+       else if (state->prerendered_texture != NULL)
+-        state->box_shadow_pipeline = _st_create_shadow_pipeline (box_shadow_spec,
++        state->box_shadow_pipeline = _st_create_box_shadow_pipeline (box_shadow_spec,
+                                                                  paint_context,
+                                                                  state->prerendered_texture,
+                                                                  state->resource_scale);
+@@ -1755,7 +1755,7 @@
+                                             width, height, resource_scale);
+ 
+   if (had_box_shadow)
+-    state->box_shadow_pipeline = _st_create_shadow_pipeline (box_shadow_spec,
++    state->box_shadow_pipeline = _st_create_box_shadow_pipeline (box_shadow_spec,
+                                                              paint_context,
+                                                              state->prerendered_texture,
+                                                              state->resource_scale);
+@@ -2147,10 +2147,11 @@
+   StShadow *box_shadow_spec;
+   gfloat xoffset, yoffset;
+   gfloat width, height;
+-  gfloat shadow_width, shadow_height;
+   gfloat xend, yend, top, bottom, left, right;
+   gfloat s_top, s_bottom, s_left, s_right;
+   gfloat shadow_blur_radius, x_spread_factor, y_spread_factor;
++  const StBoxShadowTextureCoords *texture_coords;
++  ClutterActorBox shadow_box;
+   float rectangles[8 * 9];
+   gint idx;
+   CoglColor background_color;
+@@ -2162,6 +2163,10 @@
+   st_theme_node_reduce_border_radius (node, box->x2 - box->x1, box->y2 - box->y1, border_radius);
+ 
+   box_shadow_spec = st_theme_node_get_box_shadow (node);
++  if (!_st_box_shadow_get_box (box_shadow_spec, box, &shadow_box))
++    return;
++  texture_coords = _st_box_shadow_get_texture_coords (state->box_shadow_pipeline);
++  g_assert (texture_coords != NULL);
+ 
+   /* Compute input & output areas :
+    *
+@@ -2185,13 +2190,8 @@
+    *      s_left   = left in offscreen's coordinates (0.0 - 1.0)
+    *      s_right  = right in offscreen's coordinates (0.0 - 1.0)
+    */
+-  if (box_shadow_spec->blur == 0)
+-    shadow_blur_radius = 0;
+-  else
+-    shadow_blur_radius = ceilf (1.5 * box_shadow_spec->blur / 2.0) * 2.0;
+-
+-  shadow_width = state->box_shadow_width + 2 * shadow_blur_radius;
+-  shadow_height = state->box_shadow_height + 2 * shadow_blur_radius;
++  shadow_blur_radius = _st_box_shadow_get_padding (box_shadow_spec);
++
+ 
+   /* Compute input regions parameters */
+   s_top = shadow_blur_radius + box_shadow_spec->blur +
+@@ -2231,13 +2231,13 @@
+   right  = width - right;
+ 
+   /* Final adjustments */
+-  s_top /= shadow_height;
+-  s_bottom /= shadow_height;
+-  s_left /= shadow_width;
+-  s_right /= shadow_width;
+-
+-  s_bottom = 1.0 - s_bottom;
+-  s_right  = 1.0 - s_right;
++  s_top *= texture_coords->y_scale;
++  s_bottom *= texture_coords->y_scale;
++  s_left *= texture_coords->x_scale;
++  s_right *= texture_coords->x_scale;
++
++  s_bottom = texture_coords->y_end - s_bottom;
++  s_right = texture_coords->x_end - s_right;
+ 
+   top += yoffset;
+   bottom += yoffset;
+@@ -2293,7 +2293,7 @@
+ 
+           rectangles[idx++] = s_right;
+           rectangles[idx++] = 0;
+-          rectangles[idx++] = 1;
++          rectangles[idx++] = texture_coords->x_end;
+           rectangles[idx++] = s_top;
+         }
+     }
+@@ -2340,7 +2340,7 @@
+ 
+       rectangles[idx++] = s_right;
+       rectangles[idx++] = s_top;
+-      rectangles[idx++] = 1;
++      rectangles[idx++] = texture_coords->x_end;
+       rectangles[idx++] = s_bottom;
+     }
+ 
+@@ -2357,7 +2357,7 @@
+           rectangles[idx++] = 0;
+           rectangles[idx++] = s_bottom;
+           rectangles[idx++] = s_left;
+-          rectangles[idx++] = 1;
++          rectangles[idx++] = texture_coords->y_end;
+         }
+ 
+       /* Bottom middle */
+@@ -2369,7 +2369,7 @@
+       rectangles[idx++] = s_left;
+       rectangles[idx++] = s_bottom;
+       rectangles[idx++] = s_right;
+-      rectangles[idx++] = 1;
++      rectangles[idx++] = texture_coords->y_end;
+ 
+       if (xend > right)
+         {
+@@ -2381,8 +2381,8 @@
+ 
+           rectangles[idx++] = s_right;
+           rectangles[idx++] = s_bottom;
+-          rectangles[idx++] = 1;
+-          rectangles[idx++] = 1;
++          rectangles[idx++] = texture_coords->x_end;
++          rectangles[idx++] = texture_coords->y_end;
+         }
+     }
+ 
+@@ -2395,6 +2395,8 @@
+                                              idx / 8);
+ 
+ #if 0
++  gfloat shadow_width = state->box_shadow_width + 2 * shadow_blur_radius;
++  gfloat shadow_height = state->box_shadow_height + 2 * shadow_blur_radius;
+   g_autoptr (ClutterPaintNode) color_node = NULL;
+   CoglColor red;
+ 
+@@ -2557,7 +2559,7 @@
+       clutter_paint_node_paint (root_node, nested_paint_context);
+       clutter_paint_context_destroy (nested_paint_context);
+ 
+-      state->box_shadow_pipeline = _st_create_shadow_pipeline (st_theme_node_get_box_shadow (node),
++      state->box_shadow_pipeline = _st_create_box_shadow_pipeline (st_theme_node_get_box_shadow (node),
+                                                                paint_context,
+                                                                buffer, state->resource_scale);
+     }
+@@ -2894,9 +2896,10 @@
+ 
+   if (state->box_shadow_pipeline)
+     {
+-      if (state->alloc_width < node->box_shadow_min_width ||
++      if (state->prerendered_texture || node->border_slices_texture ||
++          state->alloc_width < node->box_shadow_min_width ||
+           state->alloc_height < node->box_shadow_min_height)
+-        _st_paint_shadow_with_opacity (node->box_shadow,
++        _st_paint_box_shadow_with_opacity (node->box_shadow,
+                                        root,
+                                        state->box_shadow_pipeline,
+                                        &allocation,

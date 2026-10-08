@@ -1,0 +1,19 @@
+From: Project Luma
+Subject: [PATCH] theme: retain native corners in inset maximized work areas
+
+--- a/src/stylesheet/widgets/_window.scss
++++ b/src/stylesheet/widgets/_window.scss
+@@ -100,6 +100,13 @@
+     &.ssd-frame { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+   }
+ 
++  // Keep the native content clip round in Luma's inset maximized work area.
++  &.csd.maximized:not(.fullscreen) {
++    --window-radius: 15px;
++    border-radius: var(--window-radius);
++    outline: none;
++  }
++
+   &.solid-csd {
+     margin: 0;
+     padding: 5px;

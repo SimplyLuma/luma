@@ -1,0 +1,953 @@
+From 3cc55e01cc4ac8c7b2e5710dc576459f5375346a Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:21:13 +0000
+Subject: [PATCH] Settings: split page composition from Bluetooth view
+ lifecycle
+
+---
+ shell/cc-luma-view-bluetooth.c | 179 +++++++++++++++
+ shell/cc-luma-view-private.h   |  36 ++++
+ shell/cc-luma-view.c           | 384 ++++++++-------------------------
+ shell/meson.build              |   3 +-
+ 4 files changed, 312 insertions(+), 290 deletions(-)
+ create mode 100644 shell/cc-luma-view-bluetooth.c
+ create mode 100644 shell/cc-luma-view-private.h
+
+diff --git a/shell/cc-luma-view-bluetooth.c b/shell/cc-luma-view-bluetooth.c
+new file mode 100644
+index 0000000..7866f5b
+--- /dev/null
++++ b/shell/cc-luma-view-bluetooth.c
+@@ -0,0 +1,179 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-view-private.h"
++#include "cc-luma-bluetooth.h"
++
++void cc_luma_view_bluetooth_stop (View *v)
++{
++  if (v->scan_timer) { g_source_remove (v->scan_timer); v->scan_timer = 0; }
++  if (v->pair_timer) { g_source_remove (v->pair_timer); v->pair_timer = 0; }
++  g_clear_pointer (&v->pairing, g_free);
++  v->near_count = 0;
++}
++static gboolean scan_next (gpointer data)
++{
++  View *v = data;
++  v->scan_timer = 0;
++  if (!g_str_equal (v->page, "bluetooth") || !cc_luma_view_flag (v, "bt")) return G_SOURCE_REMOVE;
++  JsonArray *near = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNEAR");
++  v->near_count = MIN (v->near_count + 1, json_array_get_length (near));
++  cc_luma_view_queue_refresh (v);
++  if (v->near_count < json_array_get_length (near)) v->scan_timer = g_timeout_add (2200, scan_next, v);
++  return G_SOURCE_REMOVE;
++}
++void cc_luma_view_bluetooth_start (View *v)
++{
++  cc_luma_view_bluetooth_stop (v);
++  if (g_str_equal (v->page, "bluetooth") && cc_luma_view_flag (v, "bt")) v->scan_timer = g_timeout_add (1400, scan_next, v);
++}
++static void bluetooth_on (GtkButton *button, View *v)
++{
++  g_autoptr (GError) error = NULL;
++  if (!cc_luma_fixture_set_flag (v->model, "bt", TRUE, &error))
++    { luma_toast_show (v->root, error->message, "error"); return; }
++  cc_luma_view_bluetooth_start (v); cc_luma_view_queue_refresh (v);
++}
++static void device_connection (GtkButton *button, View *v)
++{
++  const char *id = g_object_get_data (G_OBJECT (button), "cf-device");
++  gboolean active = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "cf-connected"));
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_bluetooth_connect (v->model, id, !active, &error)) cc_luma_view_queue_refresh (v);
++  else luma_toast_show (v->root, error->message, "error");
++}
++static gboolean device_paired (gpointer data)
++{
++  View *v = data;
++  g_autoptr (GError) error = NULL;
++  v->pair_timer = 0;
++  g_autofree char *device_name = NULL;
++  JsonArray *near = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNEAR");
++  for (guint i = 0; i < json_array_get_length (near); i++)
++    {
++      JsonObject *d = json_array_get_object_element (near, i);
++      if (g_strcmp0 (json_object_get_string_member (d, "id"), v->pairing) == 0)
++        device_name = g_strdup (json_object_get_string_member (d, "n"));
++    }
++  if (!cc_luma_bluetooth_pair (v->model, v->pairing, &error)) luma_toast_show (v->root, error->message, "error");
++  else
++    {
++      v->near_count = v->near_count ? v->near_count - 1 : 0;
++      g_autofree char *message = g_strdup_printf ("%s is connected", device_name);
++      luma_toast_show (v->root, message, "done");
++    }
++  g_clear_pointer (&v->pairing, g_free); cc_luma_view_queue_refresh (v);
++  return G_SOURCE_REMOVE;
++}
++static void pair_device (LumaDetailsItem *item, View *v)
++{
++  if (v->pair_timer || !cc_luma_view_flag (v, "bt")) return;
++  v->pairing = g_strdup (g_object_get_data (G_OBJECT (item), "cf-device"));
++  guint delay = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (item), "cf-pair-delay"));
++  v->pair_timer = g_timeout_add (delay, device_paired, v);
++  cc_luma_view_queue_refresh (v);
++}
++static void send_files (GtkButton *button, View *v)
++{
++  luma_toast_show (v->root, "Choose files, then a device", "done");
++}
++static void device_undone (LumaToast *toast, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  CcLumaBluetoothUndo *undo = g_object_get_data (G_OBJECT (toast), "cf-device-undo");
++  g_autoptr (GError) error = NULL;
++  if (!v || !undo) return;
++  if (cc_luma_bluetooth_undo (undo, &error))
++    { cc_luma_view_queue_refresh (v); luma_toast_show (root, "Device restored", "undone"); }
++  else luma_toast_show (root, error->message, "error");
++}
++static void device_forgotten (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (!v) return;
++  g_autoptr (GError) error = NULL;
++  CcLumaBluetoothUndo *undo = cc_luma_bluetooth_forget (v->model, g_object_get_data (G_OBJECT (dialog), "cf-device"), &error);
++  if (!undo) { luma_toast_show (root, error->message, "error"); return; }
++  cc_luma_view_queue_refresh (v);
++  LumaToast *toast = luma_toast_show_with_undo (root, "Device forgotten", "deleted");
++  g_object_set_data_full (G_OBJECT (toast), "cf-device-undo", undo, (GDestroyNotify) cc_luma_bluetooth_undo_free);
++  g_signal_connect_object (toast, "undo", G_CALLBACK (device_undone), root, 0);
++}
++static void device_forget (GtkButton *button, View *v)
++{
++  g_autofree char *title = g_strdup_printf ("Forget %s?", (char *) g_object_get_data (G_OBJECT (button), "cf-device-name"));
++  LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title,
++    "You’ll need to pair it again to use it.", "Forget", "trash-2", NULL);
++  g_object_set_data_full (G_OBJECT (dialog), "cf-device", g_strdup (g_object_get_data (G_OBJECT (button), "cf-device")), g_free);
++  g_signal_connect_object (dialog, "confirmed", G_CALLBACK (device_forgotten), v->root, 0);
++}
++void cc_luma_view_bluetooth_render (View *v)
++{
++  JsonArray *saved = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFBT");
++  JsonArray *near = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNEAR");
++  guint connected_count = 0;
++  for (guint i = 0; i < json_array_get_length (saved); i++)
++    connected_count += json_object_get_boolean_member (json_array_get_object_element (saved, i), "on");
++  g_autofree char *meta = cc_luma_view_flag (v, "bt") ? g_strdup_printf ("%u connected · visible as “%s”", connected_count, cc_luma_view_text (v, "devName")) : g_strdup ("Bluetooth is off");
++  cc_luma_view_header (v, "Bluetooth", meta, "bt");
++  GtkWidget *hero_body = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
++  if (!cc_luma_view_flag (v, "bt"))
++    {
++      gtk_box_append (GTK_BOX (hero_body), luma_ui_icon_new ("bluetooth"));
++      gtk_box_append (GTK_BOX (hero_body), cc_luma_view_label ("Bluetooth is off", "body", FALSE));
++      GtkWidget *on = cc_luma_view_command (v, "Turn on", G_CALLBACK (bluetooth_on));
++      gtk_widget_set_name (on, "cf-bt-on");
++      gtk_box_append (GTK_BOX (hero_body), on);
++    }
++  else
++    {
++      gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words ("Looking for devices", "Put a device in pairing mode and it appears here"));
++      GtkWidget *near_rows = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
++      gtk_widget_set_name (near_rows, "cf-bt-nearby");
++      for (guint i = 0; i < MIN (v->near_count, json_array_get_length (near)); i++)
++        {
++          JsonObject *d = json_array_get_object_element (near, i);
++          const char *id = json_object_get_string_member (d, "id");
++          gboolean pairing = g_strcmp0 (v->pairing, id) == 0;
++          g_autofree char *prompt = pairing && json_object_has_member (d, "code") ?
++            g_strdup_printf ("Type %s on it, then Return", json_object_get_string_member (d, "code")) : NULL;
++          GtkWidget *item = luma_details_item_new (json_object_get_string_member (d, "n"),
++            pairing ? prompt ? prompt : "Pairing…" : json_object_get_string_member (d, "kind"), json_object_get_string_member (d, "i"));
++          gtk_widget_set_hexpand (item, TRUE);
++          g_object_set_data_full (G_OBJECT (item), "cf-device", g_strdup (id), g_free);
++          g_object_set_data (G_OBJECT (item), "cf-pair-delay", GUINT_TO_POINTER (json_object_has_member (d, "code") ? 3200 : 1600));
++          g_signal_connect (item, "clicked", G_CALLBACK (pair_device), v);
++          gtk_box_append (GTK_BOX (near_rows), item);
++        }
++      gtk_box_append (GTK_BOX (hero_body), near_rows);
++    }
++  GtkWidget *hero = luma_card_new (hero_body, TRUE);
++  luma_card_set_recessed (LUMA_CARD (hero), TRUE);
++  gtk_widget_set_margin_top (hero, 20);
++  gtk_box_append (v->body, hero);
++  if (!cc_luma_view_flag (v, "bt")) return;
++  GtkBox *rows = cc_luma_view_group (v, "Your devices");
++  for (guint i = 0; i < json_array_get_length (saved); i++)
++    {
++      JsonObject *d = json_array_get_object_element (saved, i);
++      gboolean active = json_object_get_boolean_member (d, "on");
++      JsonNode *battery = json_object_get_member (d, "bat");
++      g_autofree char *status = active && battery && !JSON_NODE_HOLDS_NULL (battery) ?
++        g_strdup_printf ("Connected · %" G_GINT64_FORMAT "%% battery", json_node_get_int (battery)) : g_strdup (active ? "Connected" : "Not connected");
++      GtkWidget *button = cc_luma_view_command (v, active ? "Disconnect" : "Connect", G_CALLBACK (device_connection));
++      g_object_set_data_full (G_OBJECT (button), "cf-device", g_strdup (json_object_get_string_member (d, "id")), g_free);
++      g_object_set_data (G_OBJECT (button), "cf-connected", GINT_TO_POINTER (active));
++      GtkWidget *actions = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++      gtk_box_append (GTK_BOX (actions), button);
++      GtkWidget *forget = gtk_button_new ();
++      gtk_button_set_child (GTK_BUTTON (forget), luma_ui_icon_new ("x"));
++      g_autofree char *accessible = g_strdup_printf ("Forget %s", json_object_get_string_member (d, "n"));
++      gtk_widget_set_tooltip_text (forget, "Forget");
++      gtk_accessible_update_property (GTK_ACCESSIBLE (forget), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
++      g_object_set_data_full (G_OBJECT (forget), "cf-device", g_strdup (json_object_get_string_member (d, "id")), g_free);
++      g_object_set_data_full (G_OBJECT (forget), "cf-device-name", g_strdup (json_object_get_string_member (d, "n")), g_free);
++      g_signal_connect (forget, "clicked", G_CALLBACK (device_forget), v);
++      gtk_box_append (GTK_BOX (actions), forget);
++      cc_luma_view_row (rows, json_object_get_string_member (d, "n"), status, actions);
++    }
++  rows = cc_luma_view_group (v, NULL);
++  cc_luma_view_row (rows, "Send files", "To a phone or computer nearby", cc_luma_view_command (v, "Send…", G_CALLBACK (send_files)));
++}
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+new file mode 100644
+index 0000000..905329c
+--- /dev/null
++++ b/shell/cc-luma-view-private.h
+@@ -0,0 +1,36 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include "cc-luma-view.h"
++#include <luma-ui.h>
++#include <string.h>
++
++typedef struct {
++  CcLumaFixture *model;
++  GtkBox *body;
++  char *page;
++  guint refresh;
++  guint connection;
++  char *joining;
++  char *connecting;
++  char *variant;
++  guint variant_tick;
++  guint scan_timer;
++  guint near_count;
++  guint pair_timer;
++  char *pairing;
++  GtkWidget *root;
++  GSimpleActionGroup *actions;
++  LumaActionCenter *center;
++} View;
++void cc_luma_view_queue_refresh (View *v);
++const char *cc_luma_view_text (View *v, const char *key);
++gboolean cc_luma_view_flag (View *v, const char *key);
++GtkWidget *cc_luma_view_label (const char *value, const char *role, gboolean muted);
++GtkWidget *cc_luma_view_words (const char *title, const char *subtitle);
++GtkBox *cc_luma_view_group (View *v, const char *title);
++GtkWidget *cc_luma_view_row (GtkBox *rows, const char *title, const char *subtitle, GtkWidget *trail);
++void cc_luma_view_header (View *v, const char *title, const char *subtitle, const char *switch_key);
++GtkWidget *cc_luma_view_command (View *v, const char *caption, GCallback callback);
++void cc_luma_view_bluetooth_start (View *v);
++void cc_luma_view_bluetooth_stop (View *v);
++void cc_luma_view_bluetooth_render (View *v);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 44095dd..f356429 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -1,32 +1,13 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+-#include "cc-luma-view.h"
++#include "cc-luma-view-private.h"
+ #include "cc-luma-bluetooth.h"
+ #include <luma-ui.h>
+ #include <string.h>
+ 
+-typedef struct {
+-  CcLumaFixture *model;
+-  GtkBox *body;
+-  char *page;
+-  guint refresh;
+-  guint connection;
+-  char *joining;
+-  char *connecting;
+-  char *variant;
+-  guint variant_tick;
+-  guint scan_timer;
+-  guint near_count;
+-  guint pair_timer;
+-  char *pairing;
+-  GtkWidget *root;
+-  GSimpleActionGroup *actions;
+-  LumaActionCenter *center;
+-} View;
+-
+ static void render (View *view);
+-static void queue_refresh (View *v);
+-static void start_scan (View *v);
+-static void stop_bluetooth_work (View *v);
++void cc_luma_view_queue_refresh (View *v);
++
++
+ static gboolean refresh_view (gpointer data)
+ {
+   View *v = data;
+@@ -35,21 +16,21 @@ static gboolean refresh_view (gpointer data)
+   return G_SOURCE_REMOVE;
+ }
+ 
+-static void queue_refresh (View *v)
++void cc_luma_view_queue_refresh (View *v)
+ {
+   if (!v->refresh) v->refresh = g_idle_add (refresh_view, v);
+ }
+-static const char *text (View *v, const char *key)
++const char *cc_luma_view_text (View *v, const char *key)
+ {
+   JsonNode *n = cc_luma_fixture_get (v->model, key);
+   return n && json_node_get_value_type (n) == G_TYPE_STRING ? json_node_get_string (n) : "";
+ }
+-static gboolean flag (View *v, const char *key)
++gboolean cc_luma_view_flag (View *v, const char *key)
+ {
+   JsonNode *n = cc_luma_fixture_get (v->model, key);
+   return n && json_node_get_value_type (n) == G_TYPE_BOOLEAN && json_node_get_boolean (n);
+ }
+-static GtkWidget *label (const char *value, const char *role, gboolean muted)
++GtkWidget *cc_luma_view_label (const char *value, const char *role, gboolean muted)
+ {
+   GtkWidget *w = gtk_label_new (value);
+   gtk_label_set_xalign (GTK_LABEL (w), 0);
+@@ -57,34 +38,34 @@ static GtkWidget *label (const char *value, const char *role, gboolean muted)
+   luma_ui_apply_type_full (w, role, muted);
+   return w;
+ }
+-static GtkWidget *words (const char *title, const char *subtitle)
++GtkWidget *cc_luma_view_words (const char *title, const char *subtitle)
+ {
+   GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+   gtk_widget_set_hexpand (box, TRUE);
+-  gtk_box_append (GTK_BOX (box), label (title, "body", FALSE));
++  gtk_box_append (GTK_BOX (box), cc_luma_view_label (title, "body", FALSE));
+   if (subtitle && *subtitle)
+-    gtk_box_append (GTK_BOX (box), label (subtitle, "caption", TRUE));
++    gtk_box_append (GTK_BOX (box), cc_luma_view_label (subtitle, "caption", TRUE));
+   return box;
+ }
+-static GtkBox *group (View *v, const char *title)
++GtkBox *cc_luma_view_group (View *v, const char *title)
+ {
+   GtkWidget *rows = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+   GtkWidget *card = luma_card_new (rows, FALSE);
+   gtk_widget_set_margin_top (card, title ? 8 : 26);
+   if (title)
+     {
+-      GtkWidget *heading = label (title, "label", TRUE);
++      GtkWidget *heading = cc_luma_view_label (title, "label", TRUE);
+       gtk_widget_set_margin_top (heading, 26);
+       gtk_box_append (v->body, heading);
+     }
+   gtk_box_append (v->body, card);
+   return GTK_BOX (rows);
+ }
+-static GtkWidget *row (GtkBox *rows, const char *title, const char *subtitle, GtkWidget *trail)
++GtkWidget *cc_luma_view_row (GtkBox *rows, const char *title, const char *subtitle, GtkWidget *trail)
+ {
+   GtkWidget *r = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+   gtk_widget_add_css_class (r, "cf-setting-row");
+-  gtk_box_append (GTK_BOX (r), words (title, subtitle));
++  gtk_box_append (GTK_BOX (r), cc_luma_view_words (title, subtitle));
+   if (trail)
+     gtk_box_append (GTK_BOX (r), trail);
+   gtk_box_append (rows, r);
+@@ -110,23 +91,23 @@ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, View *v)
+   g_autoptr (GError) error = NULL;
+   if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
+     g_warning ("%s", error->message);
+-  if (!flag (v, "wifi"))
++  if (!cc_luma_view_flag (v, "wifi"))
+     {
+       g_clear_pointer (&v->joining, g_free);
+       g_clear_pointer (&v->connecting, g_free);
+       if (v->connection) { g_source_remove (v->connection); v->connection = 0; }
+     }
+-  if (!flag (v, "bt")) stop_bluetooth_work (v);
+-  else if (g_str_equal (key, "bt")) start_scan (v);
++  if (!cc_luma_view_flag (v, "bt")) cc_luma_view_bluetooth_stop (v);
++  else if (g_str_equal (key, "bt")) cc_luma_view_bluetooth_start (v);
+   /* Avoid destroying the emitting widget inside its notification. */
+-  queue_refresh (v);
++  cc_luma_view_queue_refresh (v);
+ }
+ static GtkWidget *toggle (View *v, const char *key, const char *name, const char *accessible)
+ {
+   GtkWidget *w = gtk_switch_new ();
+   gtk_widget_set_valign (w, GTK_ALIGN_CENTER);
+   gtk_widget_set_name (w, name);
+-  gtk_switch_set_active (GTK_SWITCH (w), flag (v, key));
++  gtk_switch_set_active (GTK_SWITCH (w), cc_luma_view_flag (v, key));
+   g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
+   gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+   g_signal_connect (w, "notify::active", G_CALLBACK (switch_changed), v);
+@@ -144,7 +125,7 @@ static void pick_selected (GSimpleAction *action, GVariant *parameter, GtkWidget
+   g_variant_get (parameter, "(&s&s)", &key, &value);
+   if (!picker_value_allowed (key, value)) return;
+   json_node_set_string (n, value);
+-  if (cc_luma_fixture_set (v->model, key, n, &error)) queue_refresh (v);
++  if (cc_luma_fixture_set (v->model, key, n, &error)) cc_luma_view_queue_refresh (v);
+   else g_warning ("%s", error->message);
+ }
+ static void open_picker (GtkButton *button, View *v)
+@@ -156,7 +137,7 @@ static void open_picker (GtkButton *button, View *v)
+       g_autofree char *action = g_action_print_detailed_name ("cf.pick",
+         g_variant_new ("(ss)", pick->key, pick->choices[i]));
+       luma_floating_menu_add_item (LUMA_FLOATING_MENU (menu), pick->choices[i + 1], NULL, NULL, NULL,
+-        action, g_str_equal (text (v, pick->key), pick->choices[i]));
++        action, g_str_equal (cc_luma_view_text (v, pick->key), pick->choices[i]));
+     }
+   luma_floating_menu_popup (LUMA_FLOATING_MENU (menu), GTK_WIDGET (button));
+ }
+@@ -164,11 +145,11 @@ static GtkWidget *picker (View *v, const char *key, const char * const *choices)
+ {
+   Pick *pick = g_new0 (Pick, 1);
+   GtkWidget *button, *content = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+-  const char *caption = text (v, key);
++  const char *caption = cc_luma_view_text (v, key);
+   for (guint i = 0; choices[i]; i += 2)
+     if (g_str_equal (caption, choices[i])) { caption = choices[i + 1]; break; }
+   button = gtk_button_new ();
+-  gtk_box_append (GTK_BOX (content), label (caption, "body", FALSE));
++  gtk_box_append (GTK_BOX (content), cc_luma_view_label (caption, "body", FALSE));
+   gtk_box_append (GTK_BOX (content), luma_ui_icon_new ("chevron-down"));
+   gtk_button_set_child (GTK_BUTTON (button), content);
+   pick->key = key; pick->choices = choices;
+@@ -189,7 +170,7 @@ static void entry_changed (GtkEditable *entry, View *v)
+ static GtkWidget *entry (View *v, const char *key, const char *caption)
+ {
+   GtkWidget *w = gtk_entry_new ();
+-  gtk_editable_set_text (GTK_EDITABLE (w), text (v, key));
++  gtk_editable_set_text (GTK_EDITABLE (w), cc_luma_view_text (v, key));
+   gtk_accessible_update_property (GTK_ACCESSIBLE (w), GTK_ACCESSIBLE_PROPERTY_LABEL, caption, -1);
+   g_object_set_data_full (G_OBJECT (w), "cf-key", g_strdup (key), g_free);
+   g_signal_connect (w, "changed", G_CALLBACK (entry_changed), v);
+@@ -204,7 +185,7 @@ static void forget_undone (LumaToast *toast, GtkWidget *root)
+   g_autoptr (GError) error = NULL;
+   if (!v || !undo) return;
+   if (cc_luma_network_undo_restore (undo, &error))
+-    { queue_refresh (v); luma_toast_show (root, "Network restored", "undone"); }
++    { cc_luma_view_queue_refresh (v); luma_toast_show (root, "Network restored", "undone"); }
+   else luma_toast_show (root, error->message, "error");
+ }
+ static void forget_confirmed (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
+@@ -218,7 +199,7 @@ static void forget_confirmed (LumaDestructiveDialog *dialog, gboolean checked, G
+     { luma_toast_show (v->root, error->message, "error"); return; }
+   if (g_str_equal (v->page, "wifi-net"))
+     { g_free (v->page); v->page = g_strdup ("wifi"); }
+-  queue_refresh (v);
++  cc_luma_view_queue_refresh (v);
+   LumaToast *toast = luma_toast_show_with_undo (v->root, "Network forgotten", "deleted");
+   g_object_set_data_full (G_OBJECT (toast), "cf-undo", undo, (GDestroyNotify) cc_luma_network_undo_free);
+   g_signal_connect_object (toast, "undo", G_CALLBACK (forget_undone), v->root, 0);
+@@ -262,13 +243,13 @@ static gboolean picker_value_allowed (const char *key, const char *value)
+     if (g_str_equal (value, choices[i])) return TRUE;
+   return FALSE;
+ }
+-static void header (View *v, const char *title, const char *subtitle, const char *switch_key)
++void cc_luma_view_header (View *v, const char *title, const char *subtitle, const char *switch_key)
+ {
+   GtkWidget *head = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
+   GtkWidget *titles = gtk_box_new (GTK_ORIENTATION_VERTICAL, 3);
+   gtk_widget_set_hexpand (titles, TRUE);
+-  gtk_box_append (GTK_BOX (titles), label (title, "title-1", FALSE));
+-  gtk_box_append (GTK_BOX (titles), label (subtitle, "caption", TRUE));
++  gtk_box_append (GTK_BOX (titles), cc_luma_view_label (title, "title-1", FALSE));
++  gtk_box_append (GTK_BOX (titles), cc_luma_view_label (subtitle, "caption", TRUE));
+   gtk_box_append (GTK_BOX (head), titles);
+   if (switch_key)
+     gtk_box_append (GTK_BOX (head), toggle (v, switch_key, g_str_equal (switch_key, "wifi") ? "cf-wifi" : g_str_equal (switch_key, "bt") ? "cf-bt" : "cf-hotspot", title));
+@@ -326,7 +307,7 @@ static void share_clicked (GtkButton *button, View *v)
+   JsonObject *data = cc_luma_fixture_get_data (v->model);
+   JsonObject *wifi_data = json_object_get_object_member (data, "CFWIFI");
+   JsonObject *codes = json_object_get_object_member (wifi_data, "share_codes");
+-  const char *name = *text (v, "net") ? text (v, "net") : "Studio North";
++  const char *name = *cc_luma_view_text (v, "net") ? cc_luma_view_text (v, "net") : "Studio North";
+   const char *svg = json_object_get_string_member (codes, name);
+   g_autoptr (GError) error = NULL;
+   g_autoptr (GInputStream) stream = g_memory_input_stream_new_from_data (svg, strlen (svg), NULL);
+@@ -341,8 +322,8 @@ static void share_clicked (GtkButton *button, View *v)
+   gtk_widget_set_halign (picture, GTK_ALIGN_CENTER);
+   gtk_widget_set_name (picture, "cf-share-code");
+   gtk_box_append (GTK_BOX (body), picture);
+-  GtkWidget *caption = label ("Password", "caption", TRUE);
+-  GtkWidget *password = label (json_object_get_string_member (wifi_data, "share_password"), "numeric", FALSE);
++  GtkWidget *caption = cc_luma_view_label ("Password", "caption", TRUE);
++  GtkWidget *password = cc_luma_view_label (json_object_get_string_member (wifi_data, "share_password"), "body", FALSE);
+   gtk_widget_set_halign (caption, GTK_ALIGN_CENTER);
+   gtk_widget_set_halign (password, GTK_ALIGN_CENTER);
+   gtk_box_append (GTK_BOX (body), caption);
+@@ -354,7 +335,7 @@ static void share_clicked (GtkButton *button, View *v)
+   luma_action_editor_set_primary (editor, primary);
+   luma_action_center_grow (v->center);
+ }
+-static GtkWidget *command (View *v, const char *caption, GCallback callback)
++GtkWidget *cc_luma_view_command (View *v, const char *caption, GCallback callback)
+ {
+   GtkWidget *w = gtk_button_new_with_label (caption);
+   g_signal_connect (w, "clicked", callback, v);
+@@ -365,10 +346,10 @@ static gboolean connected (gpointer data)
+   View *v = data;
+   g_autoptr (GError) error = NULL;
+   v->connection = 0;
+-  if (flag (v, "wifi") && !cc_luma_fixture_connect_network (v->model, v->connecting, &error))
++  if (cc_luma_view_flag (v, "wifi") && !cc_luma_fixture_connect_network (v->model, v->connecting, &error))
+     luma_toast_show (v->root, error->message, "error");
+   g_clear_pointer (&v->connecting, g_free);
+-  queue_refresh (v);
++  cc_luma_view_queue_refresh (v);
+   return G_SOURCE_REMOVE;
+ }
+ static void connect_network (View *v, const char *name)
+@@ -378,22 +359,22 @@ static void connect_network (View *v, const char *name)
+   v->connecting = g_strdup (name);
+   g_clear_pointer (&v->joining, g_free);
+   v->connection = g_timeout_add (1300, connected, v);
+-  queue_refresh (v);
++  cc_luma_view_queue_refresh (v);
+ }
+ static void nearby_clicked (LumaDetailsItem *item, View *v)
+ {
+   const char *name = g_object_get_data (G_OBJECT (item), "cf-network");
+   gboolean password_required = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (item), "cf-password-required"));
+-  if (!flag (v, "wifi")) return;
++  if (!cc_luma_view_flag (v, "wifi")) return;
+   if (!password_required) { connect_network (v, name); return; }
+   char *next = g_strcmp0 (v->joining, name) ? g_strdup (name) : NULL;
+   g_free (v->joining); v->joining = next;
+-  queue_refresh (v);
++  cc_luma_view_queue_refresh (v);
+ }
+ static void join_cancelled (GtkButton *button, View *v)
+ {
+   g_clear_pointer (&v->joining, g_free);
+-  queue_refresh (v);
++  cc_luma_view_queue_refresh (v);
+ }
+ static void join_clicked (GtkButton *button, View *v)
+ {
+@@ -402,7 +383,7 @@ static void join_clicked (GtkButton *button, View *v)
+ static void wifi_on (GtkButton *button, View *v)
+ {
+   g_autoptr (GError) error = NULL;
+-  if (cc_luma_fixture_set_flag (v->model, "wifi", TRUE, &error)) queue_refresh (v);
++  if (cc_luma_fixture_set_flag (v->model, "wifi", TRUE, &error)) cc_luma_view_queue_refresh (v);
+   else luma_toast_show (v->root, error->message, "error");
+ }
+ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+@@ -429,32 +410,32 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+       gtk_accessible_update_property (GTK_ACCESSIBLE (password), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+       gtk_widget_set_hexpand (password, TRUE);
+       gtk_box_append (GTK_BOX (form), password);
+-      gtk_box_append (GTK_BOX (form), command (v, "Cancel", G_CALLBACK (join_cancelled)));
+-      gtk_box_append (GTK_BOX (form), command (v, "Join", G_CALLBACK (join_clicked)));
++      gtk_box_append (GTK_BOX (form), cc_luma_view_command (v, "Cancel", G_CALLBACK (join_cancelled)));
++      gtk_box_append (GTK_BOX (form), cc_luma_view_command (v, "Join", G_CALLBACK (join_clicked)));
+       gtk_box_append (rows, form);
+     }
+ }
+ static void wifi (View *v)
+ {
+-  gboolean enabled = flag (v, "wifi");
+-  const char *network = text (v, "net");
++  gboolean enabled = cc_luma_view_flag (v, "wifi");
++  const char *network = cc_luma_view_text (v, "net");
+   g_autofree char *meta = !enabled ? g_strdup ("Wi‑Fi is off") :
+     *network ? g_strdup_printf ("Connected to %s", network) : g_strdup ("6 networks nearby");
+   GtkWidget *hero, *hero_body;
+   JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNETS");
+   JsonArray *known = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFKNOWN");
+-  header (v, "Wi‑Fi", meta, "wifi");
++  cc_luma_view_header (v, "Wi‑Fi", meta, "wifi");
+   hero_body = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
+   gtk_box_append (GTK_BOX (hero_body), luma_ui_icon_new ("wifi"));
+   if (!enabled)
+     {
+-      gtk_box_append (GTK_BOX (hero_body), words ("Wi‑Fi is off", NULL));
+-      GtkWidget *on = command (v, "Turn on", G_CALLBACK (wifi_on));
++      gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words ("Wi‑Fi is off", NULL));
++      GtkWidget *on = cc_luma_view_command (v, "Turn on", G_CALLBACK (wifi_on));
+       gtk_widget_set_name (on, "cf-wifi-on");
+       gtk_box_append (GTK_BOX (hero_body), on);
+     }
+   else if (!*network)
+-    gtk_box_append (GTK_BOX (hero_body), words ("Not connected", "Pick a network below"));
++    gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words ("Not connected", "Pick a network below"));
+   else
+     {
+       JsonObject *current = NULL;
+@@ -470,13 +451,13 @@ static void wifi (View *v)
+           gint signal = CLAMP (json_object_get_int_member (current, "sig"), 1, 4);
+           g_autofree char *detail = g_strdup_printf ("%s signal · %s · %s", signals[signal - 1],
+             json_object_get_boolean_member (current, "lock") ? "Secured" : "Open",
+-            g_str_equal (text (v, "metered"), "yes") ? "Metered" : "Unlimited data");
+-          gtk_box_append (GTK_BOX (hero_body), words (network, detail));
+-          gtk_box_append (GTK_BOX (hero_body), command (v, "Share", G_CALLBACK (share_clicked)));
++            g_str_equal (cc_luma_view_text (v, "metered"), "yes") ? "Metered" : "Unlimited data");
++          gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words (network, detail));
++          gtk_box_append (GTK_BOX (hero_body), cc_luma_view_command (v, "Share", G_CALLBACK (share_clicked)));
+           gtk_box_append (GTK_BOX (hero_body), link_button (v, "Details", "wifi-net"));
+         }
+       else
+-        gtk_box_append (GTK_BOX (hero_body), words ("Not connected", "Pick a network below"));
++        gtk_box_append (GTK_BOX (hero_body), cc_luma_view_words ("Not connected", "Pick a network below"));
+     }
+   hero = luma_card_new (hero_body, TRUE);
+   luma_card_set_recessed (LUMA_CARD (hero), TRUE);
+@@ -485,7 +466,7 @@ static void wifi (View *v)
+   gtk_box_append (v->body, hero);
+   if (enabled)
+     {
+-      GtkBox *near = group (v, "Nearby");
++      GtkBox *near = cc_luma_view_group (v, "Nearby");
+       for (guint i = 0; i < json_array_get_length (nets); i++)
+         {
+           JsonObject *n = json_array_get_object_element (nets, i);
+@@ -493,37 +474,37 @@ static void wifi (View *v)
+           if (!g_str_equal (name, network))
+             nearby_row (v, near, n);
+         }
+-      row (near, "Hidden network", "Join a network that doesn’t show its name", command (v, "Join…", G_CALLBACK (hidden_clicked)));
++      cc_luma_view_row (near, "Hidden network", "Join a network that doesn’t show its name", cc_luma_view_command (v, "Join…", G_CALLBACK (hidden_clicked)));
+     }
+   {
+-    GtkBox *more = group (v, "More");
++    GtkBox *more = cc_luma_view_group (v, "More");
+     nav_row (v, more, "Known networks", "Networks this computer joins on its own", "wifi-known", luma_count_badge_new (json_array_get_length (known), FALSE));
+-    nav_row (v, more, "Hotspot", "Share this computer’s connection", "hotspot", label (flag (v, "hotspot") ? "On" : "Off", "body", TRUE));
+-    row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", toggle (v, "airplane", "cf-airplane", "Airplane mode"));
++    nav_row (v, more, "Hotspot", "Share this computer’s connection", "hotspot", cc_luma_view_label (cc_luma_view_flag (v, "hotspot") ? "On" : "Off", "body", TRUE));
++    cc_luma_view_row (more, "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", toggle (v, "airplane", "cf-airplane", "Airplane mode"));
+   }
+ }
+ static void wifi_details (View *v)
+ {
+   GtkBox *settings, *connection, *addresses;
+   gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
+-  header (v, *text (v, "net") ? text (v, "net") : "Network", "Connected · WPA3 · 5 GHz", NULL);
+-  settings = group (v, NULL);
+-  row (settings, "Join automatically", NULL, toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
+-  row (settings, "Available to everyone on this computer", NULL, toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
+-  row (settings, "Metered", "Luma holds back big downloads on metered networks", picker (v, "metered", metered_choices));
+-  connection = group (v, "Connection");
+-  row (connection, "Signal", NULL, label ("Excellent", "body", TRUE));
+-  row (connection, "Speed", NULL, label ("1.2 Gb/s", "body", TRUE));
+-  row (connection, "Security", NULL, label ("WPA3", "body", TRUE));
+-  row (connection, "Band", NULL, label ("5 GHz, channel 149", "body", TRUE));
+-  addresses = group (v, "Addresses");
+-  row (addresses, "IPv4", NULL, label ("192.168.10.24", "numeric", TRUE));
+-  row (addresses, "IPv6", NULL, label ("fe80::9a3b:2cff:fe41:7d10", "numeric", TRUE));
+-  row (addresses, "Router", NULL, label ("192.168.10.1", "numeric", TRUE));
+-  row (addresses, "DNS", NULL, label ("Automatic", "body", TRUE));
+-  GtkBox *actions = group (v, NULL);
+-  row (actions, "Share this network", "Show a code a phone can scan", command (v, "Share…", G_CALLBACK (share_clicked)));
+-  row (actions, "Forget this network", "The password is removed from this computer", forget_button (v, text (v, "net")));
++  cc_luma_view_header (v, *cc_luma_view_text (v, "net") ? cc_luma_view_text (v, "net") : "Network", "Connected · WPA3 · 5 GHz", NULL);
++  settings = cc_luma_view_group (v, NULL);
++  cc_luma_view_row (settings, "Join automatically", NULL, toggle (v, "autoJoin", "cf-auto-join", "Join automatically"));
++  cc_luma_view_row (settings, "Available to everyone on this computer", NULL, toggle (v, "allUsers", "cf-all-users", "Available to everyone on this computer"));
++  cc_luma_view_row (settings, "Metered", "Luma holds back big downloads on metered networks", picker (v, "metered", metered_choices));
++  connection = cc_luma_view_group (v, "Connection");
++  cc_luma_view_row (connection, "Signal", NULL, cc_luma_view_label ("Excellent", "body", TRUE));
++  cc_luma_view_row (connection, "Speed", NULL, cc_luma_view_label ("1.2 Gb/s", "body", TRUE));
++  cc_luma_view_row (connection, "Security", NULL, cc_luma_view_label ("WPA3", "body", TRUE));
++  cc_luma_view_row (connection, "Band", NULL, cc_luma_view_label ("5 GHz, channel 149", "body", TRUE));
++  addresses = cc_luma_view_group (v, "Addresses");
++  cc_luma_view_row (addresses, "IPv4", NULL, cc_luma_view_label ("192.168.10.24", "body", TRUE));
++  cc_luma_view_row (addresses, "IPv6", NULL, cc_luma_view_label ("fe80::9a3b:2cff:fe41:7d10", "body", TRUE));
++  cc_luma_view_row (addresses, "Router", NULL, cc_luma_view_label ("192.168.10.1", "body", TRUE));
++  cc_luma_view_row (addresses, "DNS", NULL, cc_luma_view_label ("Automatic", "body", TRUE));
++  GtkBox *actions = cc_luma_view_group (v, NULL);
++  cc_luma_view_row (actions, "Share this network", "Show a code a phone can scan", cc_luma_view_command (v, "Share…", G_CALLBACK (share_clicked)));
++  cc_luma_view_row (actions, "Forget this network", "The password is removed from this computer", forget_button (v, cc_luma_view_text (v, "net")));
+ }
+ static void known_networks (View *v)
+ {
+@@ -532,215 +513,40 @@ static void known_networks (View *v)
+   g_autofree char *meta = g_strdup_printf ("%u networks", json_array_get_length (known));
+   GtkBox *rows;
+   gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
+-  header (v, "Known networks", meta, NULL);
+-  rows = group (v, NULL);
++  cc_luma_view_header (v, "Known networks", meta, NULL);
++  rows = cc_luma_view_group (v, NULL);
+   for (guint i = 0; i < json_array_get_length (known); i++)
+     {
+       const char *name = json_array_get_string_element (known, i);
+       gboolean nearby = FALSE;
+       for (guint j = 0; j < json_array_get_length (nets); j++)
+         nearby |= g_str_equal (name, json_object_get_string_member (json_array_get_object_element (nets, j), "n"));
+-      row (rows, name, g_str_equal (name, text (v, "net")) ? "Connected" : nearby ? "In range" : "Not nearby", forget_button (v, name));
++      cc_luma_view_row (rows, name, g_str_equal (name, cc_luma_view_text (v, "net")) ? "Connected" : nearby ? "In range" : "Not nearby", forget_button (v, name));
+     }
+ }
+ static void hotspot (View *v)
+ {
+   GtkBox *rows;
+   gtk_box_append (v->body, link_button (v, "Wi‑Fi", "wifi"));
+-  header (v, "Hotspot", flag (v, "hotspot") ? "Other devices can join this computer" : "Off", "hotspot");
+-  rows = group (v, NULL);
+-  row (rows, "Network name", NULL, entry (v, "hsName", "Network name"));
+-  row (rows, "Password", NULL, entry (v, "hsPass", "Password"));
+-  row (rows, "Band", NULL, picker (v, "hsBand", band_choices));
++  cc_luma_view_header (v, "Hotspot", cc_luma_view_flag (v, "hotspot") ? "Other devices can join this computer" : "Off", "hotspot");
++  rows = cc_luma_view_group (v, NULL);
++  cc_luma_view_row (rows, "Network name", NULL, entry (v, "hsName", "Network name"));
++  cc_luma_view_row (rows, "Password", NULL, entry (v, "hsPass", "Password"));
++  cc_luma_view_row (rows, "Band", NULL, picker (v, "hsBand", band_choices));
+ }
+ static void network (View *v)
+ {
+   GtkBox *wired, *vpn, *proxy;
+-  header (v, "Network", flag (v, "vpn") ? "Cable unplugged · VPN on" : "Cable unplugged · VPN off", NULL);
+-  wired = group (v, "Wired");
+-  GtkWidget *ethernet = row (wired, "Ethernet", "Cable unplugged", toggle (v, "eth", "cf-ethernet", "Ethernet"));
++  cc_luma_view_header (v, "Network", cc_luma_view_flag (v, "vpn") ? "Cable unplugged · VPN on" : "Cable unplugged · VPN off", NULL);
++  wired = cc_luma_view_group (v, "Wired");
++  GtkWidget *ethernet = cc_luma_view_row (wired, "Ethernet", "Cable unplugged", toggle (v, "eth", "cf-ethernet", "Ethernet"));
+   gtk_widget_set_sensitive (ethernet, FALSE);
+   gtk_widget_set_tooltip_text (ethernet, "Plug in a cable to use Ethernet");
+-  vpn = group (v, "VPN");
+-  row (vpn, "Studio North VPN", flag (v, "vpn") ? "Connected" : "WireGuard", toggle (v, "vpn", "cf-vpn", "Studio North VPN"));
++  vpn = cc_luma_view_group (v, "VPN");
++  cc_luma_view_row (vpn, "Studio North VPN", cc_luma_view_flag (v, "vpn") ? "Connected" : "WireGuard", toggle (v, "vpn", "cf-vpn", "Studio North VPN"));
+   gtk_box_append (vpn, luma_add_row_new ("Add a VPN", "plus", NULL));
+-  proxy = group (v, "Proxy");
+-  row (proxy, "Proxy", "For networks that require one", picker (v, "proxy", proxy_choices));
+-}
+-static void stop_bluetooth_work (View *v)
+-{
+-  if (v->scan_timer) { g_source_remove (v->scan_timer); v->scan_timer = 0; }
+-  if (v->pair_timer) { g_source_remove (v->pair_timer); v->pair_timer = 0; }
+-  g_clear_pointer (&v->pairing, g_free);
+-  v->near_count = 0;
+-}
+-static gboolean scan_next (gpointer data)
+-{
+-  View *v = data;
+-  v->scan_timer = 0;
+-  if (!g_str_equal (v->page, "bluetooth") || !flag (v, "bt")) return G_SOURCE_REMOVE;
+-  JsonArray *near = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNEAR");
+-  v->near_count = MIN (v->near_count + 1, json_array_get_length (near));
+-  queue_refresh (v);
+-  if (v->near_count < json_array_get_length (near)) v->scan_timer = g_timeout_add (2200, scan_next, v);
+-  return G_SOURCE_REMOVE;
+-}
+-static void start_scan (View *v)
+-{
+-  stop_bluetooth_work (v);
+-  if (g_str_equal (v->page, "bluetooth") && flag (v, "bt")) v->scan_timer = g_timeout_add (1400, scan_next, v);
+-}
+-static void bluetooth_on (GtkButton *button, View *v)
+-{
+-  g_autoptr (GError) error = NULL;
+-  if (!cc_luma_fixture_set_flag (v->model, "bt", TRUE, &error))
+-    { luma_toast_show (v->root, error->message, "error"); return; }
+-  start_scan (v); queue_refresh (v);
+-}
+-static void device_connection (GtkButton *button, View *v)
+-{
+-  const char *id = g_object_get_data (G_OBJECT (button), "cf-device");
+-  gboolean active = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (button), "cf-connected"));
+-  g_autoptr (GError) error = NULL;
+-  if (cc_luma_bluetooth_connect (v->model, id, !active, &error)) queue_refresh (v);
+-  else luma_toast_show (v->root, error->message, "error");
+-}
+-static gboolean device_paired (gpointer data)
+-{
+-  View *v = data;
+-  g_autoptr (GError) error = NULL;
+-  v->pair_timer = 0;
+-  g_autofree char *device_name = NULL;
+-  JsonArray *near = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNEAR");
+-  for (guint i = 0; i < json_array_get_length (near); i++)
+-    {
+-      JsonObject *d = json_array_get_object_element (near, i);
+-      if (g_strcmp0 (json_object_get_string_member (d, "id"), v->pairing) == 0)
+-        device_name = g_strdup (json_object_get_string_member (d, "n"));
+-    }
+-  if (!cc_luma_bluetooth_pair (v->model, v->pairing, &error)) luma_toast_show (v->root, error->message, "error");
+-  else
+-    {
+-      v->near_count = v->near_count ? v->near_count - 1 : 0;
+-      g_autofree char *message = g_strdup_printf ("%s is connected", device_name);
+-      luma_toast_show (v->root, message, "done");
+-    }
+-  g_clear_pointer (&v->pairing, g_free); queue_refresh (v);
+-  return G_SOURCE_REMOVE;
+-}
+-static void pair_device (LumaDetailsItem *item, View *v)
+-{
+-  if (v->pair_timer || !flag (v, "bt")) return;
+-  v->pairing = g_strdup (g_object_get_data (G_OBJECT (item), "cf-device"));
+-  guint delay = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (item), "cf-pair-delay"));
+-  v->pair_timer = g_timeout_add (delay, device_paired, v);
+-  queue_refresh (v);
+-}
+-static void send_files (GtkButton *button, View *v)
+-{
+-  luma_toast_show (v->root, "Choose files, then a device", "done");
+-}
+-static void device_undone (LumaToast *toast, GtkWidget *root)
+-{
+-  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  CcLumaBluetoothUndo *undo = g_object_get_data (G_OBJECT (toast), "cf-device-undo");
+-  g_autoptr (GError) error = NULL;
+-  if (!v || !undo) return;
+-  if (cc_luma_bluetooth_undo (undo, &error))
+-    { queue_refresh (v); luma_toast_show (root, "Device restored", "undone"); }
+-  else luma_toast_show (root, error->message, "error");
+-}
+-static void device_forgotten (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
+-{
+-  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  if (!v) return;
+-  g_autoptr (GError) error = NULL;
+-  CcLumaBluetoothUndo *undo = cc_luma_bluetooth_forget (v->model, g_object_get_data (G_OBJECT (dialog), "cf-device"), &error);
+-  if (!undo) { luma_toast_show (root, error->message, "error"); return; }
+-  queue_refresh (v);
+-  LumaToast *toast = luma_toast_show_with_undo (root, "Device forgotten", "deleted");
+-  g_object_set_data_full (G_OBJECT (toast), "cf-device-undo", undo, (GDestroyNotify) cc_luma_bluetooth_undo_free);
+-  g_signal_connect_object (toast, "undo", G_CALLBACK (device_undone), root, 0);
+-}
+-static void device_forget (GtkButton *button, View *v)
+-{
+-  g_autofree char *title = g_strdup_printf ("Forget %s?", (char *) g_object_get_data (G_OBJECT (button), "cf-device-name"));
+-  LumaDestructiveDialog *dialog = luma_destructive_dialog_ask (v->root, title,
+-    "You’ll need to pair it again to use it.", "Forget", "trash-2", NULL);
+-  g_object_set_data_full (G_OBJECT (dialog), "cf-device", g_strdup (g_object_get_data (G_OBJECT (button), "cf-device")), g_free);
+-  g_signal_connect_object (dialog, "confirmed", G_CALLBACK (device_forgotten), v->root, 0);
+-}
+-static void bluetooth (View *v)
+-{
+-  JsonArray *saved = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFBT");
+-  JsonArray *near = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNEAR");
+-  guint connected_count = 0;
+-  for (guint i = 0; i < json_array_get_length (saved); i++)
+-    connected_count += json_object_get_boolean_member (json_array_get_object_element (saved, i), "on");
+-  g_autofree char *meta = flag (v, "bt") ? g_strdup_printf ("%u connected · visible as “%s”", connected_count, text (v, "devName")) : g_strdup ("Bluetooth is off");
+-  header (v, "Bluetooth", meta, "bt");
+-  GtkWidget *hero_body = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
+-  if (!flag (v, "bt"))
+-    {
+-      gtk_box_append (GTK_BOX (hero_body), luma_ui_icon_new ("bluetooth"));
+-      gtk_box_append (GTK_BOX (hero_body), label ("Bluetooth is off", "body", FALSE));
+-      GtkWidget *on = command (v, "Turn on", G_CALLBACK (bluetooth_on));
+-      gtk_widget_set_name (on, "cf-bt-on");
+-      gtk_box_append (GTK_BOX (hero_body), on);
+-    }
+-  else
+-    {
+-      gtk_box_append (GTK_BOX (hero_body), words ("Looking for devices", "Put a device in pairing mode and it appears here"));
+-      GtkWidget *near_rows = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+-      gtk_widget_set_name (near_rows, "cf-bt-nearby");
+-      for (guint i = 0; i < MIN (v->near_count, json_array_get_length (near)); i++)
+-        {
+-          JsonObject *d = json_array_get_object_element (near, i);
+-          const char *id = json_object_get_string_member (d, "id");
+-          gboolean pairing = g_strcmp0 (v->pairing, id) == 0;
+-          g_autofree char *prompt = pairing && json_object_has_member (d, "code") ?
+-            g_strdup_printf ("Type %s on it, then Return", json_object_get_string_member (d, "code")) : NULL;
+-          GtkWidget *item = luma_details_item_new (json_object_get_string_member (d, "n"),
+-            pairing ? prompt ? prompt : "Pairing…" : json_object_get_string_member (d, "kind"), json_object_get_string_member (d, "i"));
+-          gtk_widget_set_hexpand (item, TRUE);
+-          g_object_set_data_full (G_OBJECT (item), "cf-device", g_strdup (id), g_free);
+-          g_object_set_data (G_OBJECT (item), "cf-pair-delay", GUINT_TO_POINTER (json_object_has_member (d, "code") ? 3200 : 1600));
+-          g_signal_connect (item, "clicked", G_CALLBACK (pair_device), v);
+-          gtk_box_append (GTK_BOX (near_rows), item);
+-        }
+-      gtk_box_append (GTK_BOX (hero_body), near_rows);
+-    }
+-  GtkWidget *hero = luma_card_new (hero_body, TRUE);
+-  luma_card_set_recessed (LUMA_CARD (hero), TRUE);
+-  gtk_widget_set_margin_top (hero, 20);
+-  gtk_box_append (v->body, hero);
+-  if (!flag (v, "bt")) return;
+-  GtkBox *rows = group (v, "Your devices");
+-  for (guint i = 0; i < json_array_get_length (saved); i++)
+-    {
+-      JsonObject *d = json_array_get_object_element (saved, i);
+-      gboolean active = json_object_get_boolean_member (d, "on");
+-      JsonNode *battery = json_object_get_member (d, "bat");
+-      g_autofree char *status = active && battery && !JSON_NODE_HOLDS_NULL (battery) ?
+-        g_strdup_printf ("Connected · %" G_GINT64_FORMAT "%% battery", json_node_get_int (battery)) : g_strdup (active ? "Connected" : "Not connected");
+-      GtkWidget *button = command (v, active ? "Disconnect" : "Connect", G_CALLBACK (device_connection));
+-      g_object_set_data_full (G_OBJECT (button), "cf-device", g_strdup (json_object_get_string_member (d, "id")), g_free);
+-      g_object_set_data (G_OBJECT (button), "cf-connected", GINT_TO_POINTER (active));
+-      GtkWidget *actions = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+-      gtk_box_append (GTK_BOX (actions), button);
+-      GtkWidget *forget = gtk_button_new ();
+-      gtk_button_set_child (GTK_BUTTON (forget), luma_ui_icon_new ("x"));
+-      g_autofree char *accessible = g_strdup_printf ("Forget %s", json_object_get_string_member (d, "n"));
+-      gtk_widget_set_tooltip_text (forget, "Forget");
+-      gtk_accessible_update_property (GTK_ACCESSIBLE (forget), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+-      g_object_set_data_full (G_OBJECT (forget), "cf-device", g_strdup (json_object_get_string_member (d, "id")), g_free);
+-      g_object_set_data_full (G_OBJECT (forget), "cf-device-name", g_strdup (json_object_get_string_member (d, "n")), g_free);
+-      g_signal_connect (forget, "clicked", G_CALLBACK (device_forget), v);
+-      gtk_box_append (GTK_BOX (actions), forget);
+-      row (rows, json_object_get_string_member (d, "n"), status, actions);
+-    }
+-  rows = group (v, NULL);
+-  row (rows, "Send files", "To a phone or computer nearby", command (v, "Send…", G_CALLBACK (send_files)));
++  proxy = cc_luma_view_group (v, "Proxy");
++  cc_luma_view_row (proxy, "Proxy", "For networks that require one", picker (v, "proxy", proxy_choices));
+ }
+ static void render (View *v)
+ {
+@@ -752,7 +558,7 @@ static void render (View *v)
+   else if (g_str_equal (v->page, "wifi-known")) known_networks (v);
+   else if (g_str_equal (v->page, "hotspot")) hotspot (v);
+   else if (g_str_equal (v->page, "network")) network (v);
+-  else if (g_str_equal (v->page, "bluetooth")) bluetooth (v);
++  else if (g_str_equal (v->page, "bluetooth")) cc_luma_view_bluetooth_render (v);
+ }
+ static void view_free (View *v)
+ {
+@@ -762,7 +568,7 @@ static void view_free (View *v)
+   g_free (v->joining);
+   g_free (v->connecting);
+   g_free (v->variant);
+-  stop_bluetooth_work (v);
++  cc_luma_view_bluetooth_stop (v);
+   g_object_unref (v->center);
+   g_object_unref (v->actions);
+   g_object_unref (v->model);
+@@ -868,7 +674,7 @@ GtkWidget *cc_luma_view_new (CcLumaFixture *model, const char *page, GError **er
+   luma_action_center_attach (v->center, luma_pane_get_child (LUMA_PANE (v->root)));
+   g_signal_connect (v->center, "state-changed", G_CALLBACK (center_changed), NULL);
+   render (v);
+-  if (g_str_equal (page, "bluetooth")) start_scan (v);
++  if (g_str_equal (page, "bluetooth")) cc_luma_view_bluetooth_start (v);
+   return v->root;
+ }
+ 
+@@ -894,7 +700,7 @@ static gboolean capture_variant (GtkWidget *root, GdkFrameClock *clock, gpointer
+     open_picker (GTK_BUTTON (named_widget (root, "cf-metered")), v);
+   else if (g_str_equal (v->variant, "wifi-forget"))
+     {
+-      GtkWidget *button = forget_button (v, text (v, "net"));
++      GtkWidget *button = forget_button (v, cc_luma_view_text (v, "net"));
+       g_object_ref_sink (button);
+       forget_clicked (GTK_BUTTON (button), v);
+       g_object_unref (button);
+diff --git a/shell/meson.build b/shell/meson.build
+index da2b74f..c9f25d1 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -67,6 +67,7 @@ common_sources = files(
+   'cc-luma-fixture.c',
+   'cc-luma-bluetooth.c',
+   'cc-luma-view.c',
++  'cc-luma-view-bluetooth.c',
+ )
+ 
+ 
+@@ -192,7 +193,7 @@ test('luma-settings-fixture', fixture_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ fixture_view_test = executable(
+   'test-luma-view',
+-  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c'],
++  ['test-luma-view.c', 'cc-luma-view.c', 'cc-luma-view-bluetooth.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c'],
+   dependencies: [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1')],
+ )
+ # The caller supplies a private display and the versioned v70 fixture.
+-- 
+2.55.0
+

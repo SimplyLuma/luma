@@ -1,0 +1,1085 @@
+{
+  "format": "org.projectluma.reel-studio-fixture",
+  "version": 1,
+  "title": "Launch film",
+  "fps": 24,
+  "canvas": [
+    3840,
+    2160
+  ],
+  "status": "Reel \u00b7 Saved",
+  "person": {
+    "initials": "NF",
+    "name": "Nora Feld",
+    "username": "nora",
+    "hue": 45,
+    "face": [
+      "life-sync-terrace.webp",
+      0.36,
+      0.27,
+      5
+    ]
+  },
+  "media": [
+    [
+      "Studio morning",
+      "life-hero-studio",
+      6
+    ],
+    [
+      "Writing",
+      "life-hero-writing",
+      5
+    ],
+    [
+      "Terrace",
+      "life-sync-terrace",
+      7
+    ],
+    [
+      "The loft",
+      "life-professionals-loft",
+      6
+    ],
+    [
+      "Mission St",
+      "life-ari-street",
+      5
+    ],
+    [
+      "Work suite",
+      "life-work-suite",
+      8
+    ],
+    [
+      "Evening",
+      "life-footer",
+      7
+    ],
+    [
+      "Home office",
+      "life-hero-home",
+      4
+    ],
+    [
+      "Darkroom",
+      "life-suite-bg-darkroom",
+      5
+    ],
+    [
+      "Stage",
+      "life-suite-bg-stage",
+      5
+    ],
+    [
+      "Sessions",
+      "life-suite-bg-sessions",
+      6
+    ],
+    [
+      "Portrait",
+      "life-testimonial",
+      4
+    ]
+  ],
+  "effects": {
+    "blur": [
+      "Gaussian blur",
+      "Softens the whole frame"
+    ],
+    "vignette": [
+      "Vignette",
+      "Darkens the edges"
+    ],
+    "grain": [
+      "Film grain",
+      "Fine, moving grain"
+    ],
+    "glow": [
+      "Glow",
+      "Blooms the highlights"
+    ],
+    "sharpen": [
+      "Sharpen",
+      "Crisper edges"
+    ],
+    "bw": [
+      "Black and white",
+      "Luminance only"
+    ],
+    "letterbox": [
+      "Letterbox",
+      "2.39:1 bars"
+    ],
+    "stabilize": [
+      "Stabilise",
+      "Smooths handheld shake"
+    ]
+  },
+  "luts": {
+    "none": [
+      "None",
+      "none",
+      ""
+    ],
+    "warm": [
+      "Warm film",
+      "sepia(.18) saturate(1.1) contrast(1.05)",
+      "rgb(255,170,90)"
+    ],
+    "teal": [
+      "Teal and orange",
+      "saturate(1.2) contrast(1.08)",
+      "rgb(0,150,170)"
+    ],
+    "bleach": [
+      "Bleach bypass",
+      "saturate(.55) contrast(1.25)",
+      ""
+    ],
+    "night": [
+      "Night",
+      "brightness(.8) saturate(.8) hue-rotate(-10deg)",
+      "rgb(40,80,200)"
+    ],
+    "soft": [
+      "Soft pastel",
+      "contrast(.88) brightness(1.06) saturate(.85)",
+      "rgb(255,220,230)"
+    ]
+  },
+  "curves": {
+    "linear": [
+      "Linear",
+      0,
+      0,
+      "M0 60L100 0"
+    ],
+    "soft": [
+      "Soft S",
+      12,
+      0,
+      "M0 60C30 60 30 32 50 30S70 0 100 0"
+    ],
+    "strong": [
+      "Strong S",
+      26,
+      0,
+      "M0 60C38 62 34 30 50 30S62 -2 100 0"
+    ],
+    "lift": [
+      "Lifted blacks",
+      -8,
+      6,
+      "M0 50C30 42 60 14 100 0"
+    ],
+    "fade": [
+      "Matte",
+      -14,
+      8,
+      "M0 46C30 40 60 16 100 6"
+    ]
+  },
+  "blends": [
+    "Normal",
+    "Screen",
+    "Multiply",
+    "Overlay",
+    "Soft light",
+    "Lighten",
+    "Darken"
+  ],
+  "state": {
+    "t": 12.3,
+    "playing": false,
+    "sel": null,
+    "tool": "select",
+    "lib": false,
+    "libTab": "media",
+    "skim": null,
+    "zoom": 1,
+    "snap": true,
+    "focus": false,
+    "exp": "share",
+    "itab": "video",
+    "loop": false,
+    "main": [
+      {
+        "id": "r1",
+        "n": "Studio morning",
+        "img": "life-hero-studio.webp",
+        "d": 6,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": []
+      },
+      {
+        "id": "r2",
+        "n": "Writing",
+        "img": "life-hero-writing.webp",
+        "d": 5,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": []
+      },
+      {
+        "id": "r3",
+        "n": "Terrace",
+        "img": "life-sync-terrace.webp",
+        "d": 7,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 14,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0.25,
+            -0.1
+          ]
+        },
+        "curve": "linear",
+        "lut": "warm",
+        "lutAmt": 70,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": [
+          {
+            "k": "vignette",
+            "amt": 40,
+            "on": true
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "n": "The loft",
+        "img": "life-professionals-loft.webp",
+        "d": 6,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": []
+      },
+      {
+        "id": "r5",
+        "n": "Mission St",
+        "img": "life-ari-street.webp",
+        "d": 5,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": []
+      },
+      {
+        "id": "r6",
+        "n": "Work suite",
+        "img": "life-work-suite.webp",
+        "d": 8,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": []
+      },
+      {
+        "id": "r7",
+        "n": "Evening",
+        "img": "life-footer.webp",
+        "d": 7,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": []
+      }
+    ],
+    "over": [
+      {
+        "id": "r8",
+        "n": "Luma 1.0",
+        "img": "",
+        "d": 4,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": [],
+        "kind": "title",
+        "s": 1,
+        "text": "Luma 1.0",
+        "sub": "A better computer",
+        "style": "big"
+      },
+      {
+        "id": "r9",
+        "n": "Home office",
+        "img": "life-hero-home.webp",
+        "d": 4,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 42,
+        "px": 26,
+        "py": -24,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": [],
+        "kind": "video",
+        "s": 18.5
+      },
+      {
+        "id": "r10",
+        "n": "October 14",
+        "img": "",
+        "d": 5,
+        "adj": {
+          "exp": 0,
+          "con": 0,
+          "hi": 0,
+          "sh": 0,
+          "wh": 0,
+          "bl": 0,
+          "temp": 0,
+          "tint": 0,
+          "sat": 0,
+          "vib": 0
+        },
+        "wheel": {
+          "sh": [
+            0,
+            0
+          ],
+          "mid": [
+            0,
+            0
+          ],
+          "hi": [
+            0,
+            0
+          ]
+        },
+        "curve": "linear",
+        "lut": "none",
+        "lutAmt": 100,
+        "scale": 100,
+        "px": 0,
+        "py": 0,
+        "rot": 0,
+        "ax": 50,
+        "ay": 50,
+        "crop": {
+          "l": 0,
+          "r": 0,
+          "t": 0,
+          "b": 0
+        },
+        "op": 100,
+        "blend": "Normal",
+        "speed": 100,
+        "stab": false,
+        "vol": 0,
+        "pan": 0,
+        "eq": "Flat",
+        "nr": false,
+        "fx": [],
+        "kind": "title",
+        "s": 37,
+        "text": "October 14",
+        "sub": "simplyluma.com",
+        "style": "lower"
+      }
+    ],
+    "audio": [
+      [
+        {
+          "id": "r11",
+          "n": "Late light",
+          "img": "",
+          "d": 44,
+          "adj": {
+            "exp": 0,
+            "con": 0,
+            "hi": 0,
+            "sh": 0,
+            "wh": 0,
+            "bl": 0,
+            "temp": 0,
+            "tint": 0,
+            "sat": 0,
+            "vib": 0
+          },
+          "wheel": {
+            "sh": [
+              0,
+              0
+            ],
+            "mid": [
+              0,
+              0
+            ],
+            "hi": [
+              0,
+              0
+            ]
+          },
+          "curve": "linear",
+          "lut": "none",
+          "lutAmt": 100,
+          "scale": 100,
+          "px": 0,
+          "py": 0,
+          "rot": 0,
+          "ax": 50,
+          "ay": 50,
+          "crop": {
+            "l": 0,
+            "r": 0,
+            "t": 0,
+            "b": 0
+          },
+          "op": 100,
+          "blend": "Normal",
+          "speed": 100,
+          "stab": false,
+          "vol": -8,
+          "pan": 0,
+          "eq": "Flat",
+          "nr": false,
+          "fx": [],
+          "kind": "music",
+          "s": 0,
+          "h": 150
+        }
+      ],
+      [
+        {
+          "id": "r12",
+          "n": "Narration, take 3",
+          "img": "",
+          "d": 11,
+          "adj": {
+            "exp": 0,
+            "con": 0,
+            "hi": 0,
+            "sh": 0,
+            "wh": 0,
+            "bl": 0,
+            "temp": 0,
+            "tint": 0,
+            "sat": 0,
+            "vib": 0
+          },
+          "wheel": {
+            "sh": [
+              0,
+              0
+            ],
+            "mid": [
+              0,
+              0
+            ],
+            "hi": [
+              0,
+              0
+            ]
+          },
+          "curve": "linear",
+          "lut": "none",
+          "lutAmt": 100,
+          "scale": 100,
+          "px": 0,
+          "py": 0,
+          "rot": 0,
+          "ax": 50,
+          "ay": 50,
+          "crop": {
+            "l": 0,
+            "r": 0,
+            "t": 0,
+            "b": 0
+          },
+          "op": 100,
+          "blend": "Normal",
+          "speed": 100,
+          "stab": false,
+          "vol": -3,
+          "pan": 0,
+          "eq": "Flat",
+          "nr": true,
+          "fx": [],
+          "kind": "voice",
+          "s": 4,
+          "h": 190
+        },
+        {
+          "id": "r13",
+          "n": "Narration, take 3 (b)",
+          "img": "",
+          "d": 11,
+          "adj": {
+            "exp": 0,
+            "con": 0,
+            "hi": 0,
+            "sh": 0,
+            "wh": 0,
+            "bl": 0,
+            "temp": 0,
+            "tint": 0,
+            "sat": 0,
+            "vib": 0
+          },
+          "wheel": {
+            "sh": [
+              0,
+              0
+            ],
+            "mid": [
+              0,
+              0
+            ],
+            "hi": [
+              0,
+              0
+            ]
+          },
+          "curve": "linear",
+          "lut": "none",
+          "lutAmt": 100,
+          "scale": 100,
+          "px": 0,
+          "py": 0,
+          "rot": 0,
+          "ax": 50,
+          "ay": 50,
+          "crop": {
+            "l": 0,
+            "r": 0,
+            "t": 0,
+            "b": 0
+          },
+          "op": 100,
+          "blend": "Normal",
+          "speed": 100,
+          "stab": false,
+          "vol": -3,
+          "pan": 0,
+          "eq": "Flat",
+          "nr": false,
+          "fx": [],
+          "kind": "voice",
+          "s": 23,
+          "h": 190
+        }
+      ]
+    ],
+    "trans": {
+      "r2": "dissolve",
+      "r5": "dissolve"
+    },
+    "marks": [
+      5.2,
+      20.4
+    ]
+  },
+  "titles": [
+    [
+      "big",
+      "Centred",
+      "Luma 1.0"
+    ],
+    [
+      "lower",
+      "Lower third",
+      "Priya Raman"
+    ],
+    [
+      "end",
+      "End card",
+      "Thank you"
+    ]
+  ],
+  "transitions": [
+    [
+      "dissolve",
+      "Cross dissolve"
+    ],
+    [
+      "black",
+      "Fade through black"
+    ],
+    [
+      "slide",
+      "Slide"
+    ]
+  ],
+  "sound": [
+    [
+      "Late light",
+      "From Session \u00b7 0:44"
+    ],
+    [
+      "Low tide",
+      "Music \u00b7 2:10"
+    ],
+    [
+      "Room tone",
+      "Sound \u00b7 loop"
+    ],
+    [
+      "Whoosh",
+      "Effect \u00b7 0:01"
+    ]
+  ],
+  "exports": {
+    "share": [
+      "Share",
+      "1080p \u00b7 H.264",
+      180
+    ],
+    "master": [
+      "Master",
+      "4K \u00b7 ProRes 422",
+      11200
+    ],
+    "vertical": [
+      "Vertical",
+      "1080 \u00d7 1920 \u00b7 for phones",
+      150
+    ],
+    "audio": [
+      "Sound only",
+      "WAV \u00b7 48 kHz",
+      8
+    ]
+  },
+  "sharing": {
+    "owner": {
+      "name": "You",
+      "username": "nick",
+      "hue": 250
+    },
+    "collaborators": [
+      {
+        "name": "Priya Raman",
+        "username": "priya",
+        "hue": 330,
+        "face": [
+          "life-ari-street.webp",
+          0.705,
+          0.2,
+          5.2
+        ],
+        "role": "edit"
+      },
+      {
+        "initials": "NF",
+        "name": "Nora Feld",
+        "username": "nora",
+        "hue": 45,
+        "face": [
+          "life-sync-terrace.webp",
+          0.36,
+          0.27,
+          5
+        ],
+        "role": "comment"
+      }
+    ]
+  }
+}

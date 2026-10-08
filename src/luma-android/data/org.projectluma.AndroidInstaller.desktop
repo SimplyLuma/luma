@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Android Application Installer
+Comment=Inspect and install an Android application
+Exec=luma-android-installer %f
+Icon=application-x-apk
+Terminal=false
+Type=Application
+NoDisplay=true
+MimeType=application/vnd.android.package-archive;application/vnd.projectluma.android-package-set;
+Categories=System;
+StartupNotify=true

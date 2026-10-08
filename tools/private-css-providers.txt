@@ -1,0 +1,13 @@
+# Places allowed to load a style sheet through a provider of their own, and
+# why. Every entry needs a reason after the colon: an exclusion with no reason
+# is how something ends up excluded by accident. tools/check-kit-stylesheets.py
+# refuses the file otherwise.
+src/luma-greeter/luma-greeter.c: the greeter runs before a session exists, so there is no surface treatment for a sheet to follow and no kit to own it.
+src/luma-platform/tests/control_styles.py: a kit test that loads candidate sheets itself in order to measure them; using the kit's own loader here would measure the loader.
+src/luma-platform/tests/glass_surface_parity.py: it builds a window the old way on purpose, to prove the appearance layer now outranks an application that paints its own header.
+src/luma-platform/tests/test-lumaui-c1.c: toolkit conformance diagnostic deliberately loads measured component sheets directly; shipped applications use the kit loader.
+src/luma-platform/tools/lumaui-gallery/conform_bar.py: toolkit conformance diagnostic deliberately loads measured component sheets directly; shipped applications use the kit loader.
+src/luma-platform/tools/lumaui-gallery/lumaui_gallery.py: toolkit conformance diagnostic deliberately loads measured component sheets directly; shipped applications use the kit loader.
+src/luma-platform/tools/lumaui-gallery/pages_nav.py: toolkit conformance diagnostic deliberately loads measured component sheets directly; shipped applications use the kit loader.
+src/luma-platform/tools/lumaui-gallery/pages_rows.py: toolkit conformance diagnostic deliberately loads measured component sheets directly; shipped applications use the kit loader.
+src/external/viola/chromium-linux/appkit-spike/sidebar_preferences.py: scoped live user sidebar geometry only (height and radius); no palette tokens; provider is removed when the sidebar closes.

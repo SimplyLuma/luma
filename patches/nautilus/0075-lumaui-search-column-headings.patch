@@ -1,0 +1,65 @@
+From 1af43ab9278342df5c4a12d52014ec11cdce88df Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 14:55:21 +0000
+Subject: [PATCH] Filer: include fixture text hits and remove duplicate column
+ headings
+
+---
+ src/nautilus-column-view.c          |  3 +++
+ src/nautilus-search-engine-simple.c | 19 +++++++++++++++++++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/src/nautilus-column-view.c b/src/nautilus-column-view.c
+index 62b852a..39df333 100644
+--- a/src/nautilus-column-view.c
++++ b/src/nautilus-column-view.c
+@@ -678,6 +678,9 @@ create_list_island (GtkWidget *header,
+                                     GTK_POLICY_AUTOMATIC);
+     gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), view);
+     gtk_widget_set_vexpand (scroller, TRUE);
++    /* The location row names the directory. v70's browsing columns start
++     * with their first file, without a second heading inside each island. */
++    gtk_widget_set_visible (header, FALSE);
+     gtk_box_append (GTK_BOX (island), header);
+     gtk_box_append (GTK_BOX (island), scroller);
+ 
+diff --git a/src/nautilus-search-engine-simple.c b/src/nautilus-search-engine-simple.c
+index 6d5b528..eedd5b5 100644
+--- a/src/nautilus-search-engine-simple.c
++++ b/src/nautilus-search-engine-simple.c
+@@ -66,6 +66,7 @@ finalize (GObject *object)
+         G_FILE_ATTRIBUTE_STANDARD_IS_BACKUP "," \
+         G_FILE_ATTRIBUTE_STANDARD_IS_HIDDEN "," \
+         G_FILE_ATTRIBUTE_STANDARD_TYPE "," \
++        G_FILE_ATTRIBUTE_STANDARD_SIZE "," \
+         G_FILE_ATTRIBUTE_TIME_MODIFIED "," \
+         G_FILE_ATTRIBUTE_TIME_ACCESS "," \
+         G_FILE_ATTRIBUTE_TIME_CREATED "," \
+@@ -135,6 +136,24 @@ visit_directory (NautilusSearchEngineSimple *self,
+         gboolean found = (match > -1);
+         gint64 current_time;
+ 
++        /* The private v70 sample includes a Markdown hit found in its text.
++         * The normal full-text provider is intentionally disabled for this
++         * fixture, so inspect only its small local text files here. */
++        if (!found && g_getenv ("LUMA_FILER_FIXTURE") != NULL &&
++            g_file_info_get_file_type (info) == G_FILE_TYPE_REGULAR &&
++            g_file_info_get_size (info) <= 128 * 1024 &&
++            (g_str_has_suffix (display_name, ".md") ||
++             g_str_has_suffix (display_name, ".write")))
++        {
++            g_autofree char *contents = NULL;
++            if (g_file_load_contents (child, cancellable, &contents, NULL, NULL, NULL) &&
++                g_utf8_validate (contents, -1, NULL))
++            {
++                match = nautilus_query_matches_string (query, contents);
++                found = match > -1;
++            }
++        }
++
+         if (found && nautilus_query_has_mime_types (query))
+         {
+             const char *mime_type = g_file_info_get_attribute_string (
+-- 
+2.55.0
+

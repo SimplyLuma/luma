@@ -1,0 +1,669 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/*
+ * GTK 3 remains a supported application surface. Keep this on the native
+ * theme API so legacy applications inherit Luma without user stylesheets,
+ * launch wrappers, or app-specific mutation.
+ */
+
+* {
+  font-family: Figtree, sans-serif;
+}
+
+window.background {
+  background-color: @theme_bg_color;
+  color: @theme_fg_color;
+}
+
+/*
+ * GtkApplicationWindow supplies these classes at the toolkit boundary. This
+ * is deliberately application-agnostic: real widgets, actions, content and
+ * adaptive behavior remain owned by the application while the system theme
+ * provides the shared Luma frame and work surface.
+ */
+window.luma-native-window:not(.luma-no-native-surfaces) {
+  background-color: @theme_bg_color;
+  color: @theme_fg_color;
+  font-family: Figtree, sans-serif;
+}
+
+window.luma-native-window:not(.luma-no-native-surfaces) > .luma-native-work-surface {
+  margin: 9px 9px 9px;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 10px;
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.16),
+              0 18px 36px -16px alpha(#191b1f, 0.48);
+}
+
+/*
+ * libhandy owns an internal window deck between HdyApplicationWindow and the
+ * application's child. Scope the descendant form to libhandy's explicit
+ * toolkit marker so ordinary GTK containers cannot accidentally acquire
+ * nested work-surface margins.
+ */
+window.luma-hdy-native-window:not(.luma-no-native-surfaces) .luma-native-work-surface {
+  margin: 9px 9px 9px;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 10px;
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.16),
+              0 18px 36px -16px alpha(#191b1f, 0.48);
+}
+
+window.luma-native-window:not(.luma-no-native-surfaces):backdrop,
+window.luma-native-window:not(.luma-no-native-surfaces):backdrop > .luma-native-work-surface {
+  background-color: @theme_bg_color;
+  color: @theme_fg_color;
+  opacity: 1;
+}
+
+window.luma-hdy-native-window:not(.luma-no-native-surfaces):backdrop .luma-native-work-surface {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  opacity: 1;
+  border-color: alpha(@theme_fg_color, 0.10);
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.10),
+              0 18px 36px -16px alpha(#191b1f, 0.24);
+}
+
+window.luma-native-window:not(.luma-no-native-surfaces):backdrop > .luma-native-work-surface {
+  background-color: @theme_base_color;
+  border-color: alpha(@theme_fg_color, 0.10);
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.10),
+              0 18px 36px -16px alpha(#191b1f, 0.24);
+}
+
+/* Outer elevation and its independent inset stroke belong to the light/dark
+ * theme entry point. Work-area islands above retain their own lower elevation. */
+decoration {
+  border: none;
+  border-radius: 15px;
+}
+
+headerbar,
+.titlebar {
+  min-height: 42px;
+  padding: 0 8px 0 12px;
+  border: 0;
+  border-radius: 0;
+  background-color: @theme_bg_color;
+  background-image: none;
+  box-shadow: none;
+}
+
+headerbar .title,
+.titlebar .title {
+  font-family: Figtree, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+headerbar .luma-identity-button {
+  min-height: 32px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+headerbar button.luma-identity-button,
+headerbar .luma-identity-button > button,
+headerbar box.luma-identity-button {
+  min-height: 24px;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 10px;
+  color: @theme_fg_color;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+headerbar button.luma-identity-button:hover,
+headerbar .luma-identity-button > button:hover {
+  background-color: alpha(@theme_fg_color, 0.06);
+}
+
+headerbar button.luma-identity-button:active,
+headerbar button.luma-identity-button:checked,
+headerbar .luma-identity-button > button:active,
+headerbar .luma-identity-button > button:checked {
+  background-color: alpha(@theme_fg_color, 0.105);
+}
+
+headerbar .luma-identity-chevron {
+  opacity: 0.55;
+}
+
+headerbar .luma-identity-icon {
+  border-radius: 6px;
+}
+
+/* GTK 3 accepts font weights only in steps of 100; 600 is the closest legal
+ * value to the 650 used by GTK 4 and libadwaita. */
+headerbar .luma-identity-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/*
+ * Generic Luma command row for GTK 3 and libhandy header bars. The toolkit
+ * re-hosts an application's own packed actions below the 42px title row; the
+ * theme owns only the surface, the connected-group boundaries and the states.
+ */
+headerbar.luma-command-host,
+.titlebar.luma-command-host {
+  padding: 0;
+}
+
+headerbar .luma-command-bar {
+  min-height: 40px;
+  margin: 0 9px 8px;
+  padding: 0 8px;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 10px;
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.12),
+              0 14px 30px -18px alpha(#191b1f, 0.42);
+}
+
+headerbar .luma-command-bar:backdrop {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  opacity: 1;
+}
+
+headerbar .luma-command-group {
+  margin: 5px 0;
+  border-radius: 8px;
+  background-color: alpha(@theme_fg_color, 0.04);
+  box-shadow: inset 0 0 0 1px alpha(@theme_fg_color, 0.10);
+}
+
+headerbar .luma-command-group > button,
+headerbar .luma-command-group > menubutton > button {
+  min-width: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0 9px;
+  border: 0;
+  border-right: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 0;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: @theme_fg_color;
+  text-shadow: none;
+  -gtk-icon-shadow: none;
+}
+
+headerbar .luma-command-group > button:dir(rtl),
+headerbar .luma-command-group > menubutton:dir(rtl) > button {
+  border-right: 0;
+  border-left: 1px solid alpha(@theme_fg_color, 0.10);
+}
+
+headerbar .luma-command-group > button:first-child,
+headerbar .luma-command-group > menubutton:first-child > button {
+  border-radius: 8px 0 0 8px;
+}
+
+headerbar .luma-command-group > button:last-child,
+headerbar .luma-command-group > menubutton:last-child > button {
+  border-right: 0;
+  border-radius: 0 8px 8px 0;
+}
+
+headerbar .luma-command-group > button:first-child:dir(rtl),
+headerbar .luma-command-group > menubutton:first-child:dir(rtl) > button {
+  border-radius: 0 8px 8px 0;
+}
+
+headerbar .luma-command-group > button:last-child:dir(rtl),
+headerbar .luma-command-group > menubutton:last-child:dir(rtl) > button {
+  border-left: 0;
+  border-radius: 8px 0 0 8px;
+}
+
+headerbar .luma-command-group > button:only-child,
+headerbar .luma-command-group > menubutton:only-child > button {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 8px;
+}
+
+headerbar .luma-command-group button:hover {
+  background-color: alpha(@theme_fg_color, 0.06);
+}
+
+headerbar .luma-command-group button:active,
+headerbar .luma-command-group button:checked {
+  background-color: alpha(@theme_fg_color, 0.105);
+}
+
+headerbar .luma-command-group button image {
+  color: @theme_fg_color;
+}
+
+/*
+ * Title-slot controls hosted on the command row keep their own presentation
+ * at the 30px command height; stack switchers take the connected-group look.
+ */
+headerbar .luma-command-bar > .luma-command-title {
+  margin: 5px 0;
+}
+
+headerbar .luma-command-bar > stackswitcher.luma-command-title {
+  border-radius: 8px;
+  background-color: alpha(@theme_fg_color, 0.04);
+  box-shadow: inset 0 0 0 1px alpha(@theme_fg_color, 0.10);
+}
+
+headerbar .luma-command-bar > stackswitcher.luma-command-title > button {
+  min-height: 30px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 0;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+headerbar .luma-command-bar > stackswitcher.luma-command-title > button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+headerbar .luma-command-bar > stackswitcher.luma-command-title > button:last-child {
+  border-right: 0;
+  border-radius: 0 8px 8px 0;
+}
+
+headerbar .luma-command-bar > stackswitcher.luma-command-title > button:checked {
+  background-color: alpha(@theme_fg_color, 0.105);
+}
+
+/*
+ * Sidebars. A paned or leaflet placed on the native work surface presents its
+ * panes as sibling islands; the surface itself turns transparent and the
+ * separator becomes the 9px gap. Secondary header bars inside those islands
+ * are flat pane headers: one title row per window belongs to the identity.
+ */
+window.luma-native-window:not(.luma-no-native-surfaces) > .luma-native-work-surface.luma-split-surface,
+window.luma-hdy-native-window:not(.luma-no-native-surfaces) .luma-native-work-surface.luma-split-surface,
+window.luma-native-window:not(.luma-no-native-surfaces):backdrop > .luma-native-work-surface.luma-split-surface,
+window.luma-hdy-native-window:not(.luma-no-native-surfaces):backdrop .luma-native-work-surface.luma-split-surface {
+  background-color: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+paned.luma-split-paned > separator,
+leaflet.luma-split-leaflet > separator {
+  min-width: 9px;
+  min-height: 9px;
+  margin: 0;
+  background-color: transparent;
+  background-image: none;
+  border: 0;
+  box-shadow: none;
+}
+
+/* One title row per window: the window-owned title row above a leaflet work
+ * surface is flat window material; the first page's header collapses to its
+ * command row (a pane toolbar) inside the sidebar island. */
+headerbar.luma-window-title-row {
+  background: none;
+  box-shadow: none;
+  border: 0;
+}
+
+headerbar.luma-pane-toolbar {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+headerbar.luma-pane-toolbar .luma-command-bar {
+  margin-top: 8px;
+}
+
+/* Sibling islands: the deep elevation shadow is pulled in (negative spread at
+ * least half the blur) so it never paints across the 9px gap onto the next pane. */
+paned.luma-split-paned > *:not(separator),
+leaflet.luma-split-leaflet > *:not(separator) {
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 10px;
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.16),
+              0 10px 20px -14px alpha(#191b1f, 0.40);
+}
+
+paned.luma-split-paned > *:not(separator):backdrop,
+leaflet.luma-split-leaflet > *:not(separator):backdrop {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  opacity: 1;
+  box-shadow: 0 2px 5px alpha(#191b1f, 0.10),
+              0 10px 20px -14px alpha(#191b1f, 0.20);
+}
+
+.luma-split-paned headerbar:not(.luma-command-host),
+.luma-split-leaflet headerbar:not(.luma-command-host) {
+  min-height: 42px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  min-width: 20px;
+  min-height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: alpha(@theme_fg_color, 0.58);
+  background-color: @theme_base_color;
+  background-image: none;
+  box-shadow: none;
+}
+
+headerbar button.titlebutton.minimize,
+.titlebar button.titlebutton.minimize {
+  border-radius: 9999px 0 0 9999px;
+}
+
+headerbar button.titlebutton.close,
+.titlebar button.titlebutton.close {
+  border-radius: 0 9999px 9999px 0;
+}
+
+headerbar button.titlebutton.minimize:hover,
+.titlebar button.titlebutton.minimize:hover {
+  color: #8c5b1e;
+  background-color: rgba(176, 120, 43, 0.16);
+}
+
+headerbar button.titlebutton.maximize:hover,
+.titlebar button.titlebutton.maximize:hover {
+  color: #376f3a;
+  background-color: rgba(79, 138, 82, 0.16);
+}
+
+headerbar button.titlebutton.close:hover,
+.titlebar button.titlebutton.close:hover {
+  color: #9f4037;
+  background-color: rgba(189, 90, 78, 0.16);
+}
+
+/*
+ * Luma's Phosh renderer uses native Phosh widgets and behavior. These rules
+ * provide product identity without placing another window or gesture layer
+ * over the shell.
+ */
+
+phosh-top-panel,
+phosh-top-panel-bg,
+#top-bar-bin,
+#top-bar-bin.p-solid {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+}
+
+phosh-top-panel-bg {
+  border-bottom: 1px solid alpha(@theme_fg_color, 0.10);
+}
+
+#top-bar {
+  min-height: 32px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+#top-bar-bin #top-bar label,
+#top-bar-bin #top-bar image {
+  color: @theme_fg_color;
+  text-shadow: none;
+  -gtk-icon-shadow: none;
+}
+
+phosh-top-panel .phosh-topbar-clock {
+  font-family: Figtree, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+phosh-top-panel .phosh-topbar-clock.left {
+  padding-right: 8px;
+}
+
+phosh-top-panel .phosh-topbar-clock.right {
+  padding-left: 8px;
+}
+
+phosh-top-panel .indicators,
+.phosh-wwan-indicator {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.phosh-topbar-button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 9999px;
+}
+
+widget.phosh-settings-menu > scrolledwindow,
+.phosh-settings-menu {
+  background-color: @theme_bg_color;
+  color: @theme_fg_color;
+}
+
+widget.phosh-settings-menu > scrolledwindow {
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 24px;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.14);
+}
+
+phosh-quick-setting {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+}
+
+phosh-quick-setting:checked {
+  background-color: #4878b8;
+  color: #ffffff;
+  border-color: #4878b8;
+}
+
+.phosh-settings-list-box,
+.phosh-status-page {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+}
+
+.phosh-search-bar {
+  background-color: alpha(@theme_base_color, 0.88);
+  color: @theme_fg_color;
+  font-family: Figtree, sans-serif;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 9999px;
+  padding: 6px 18px 6px 14px;
+  box-shadow: 0 4px 16px rgba(17, 24, 39, 0.10);
+}
+
+.phosh-search-bar:focus {
+  border-color: #4878b8;
+  box-shadow: inset 0 0 0 1px #4878b8;
+}
+
+phosh-activity.phosh-maximized .phosh-drawingarea,
+phosh-activity.phosh-empty .phosh-drawingarea {
+  border-radius: 22px;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.16);
+}
+
+phosh-activity > widget > button:focus {
+  box-shadow: inset 0 0 0 2px #4878b8;
+}
+
+.phosh-activity-close-button {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 8px;
+  margin: 10px;
+  border-radius: 9999px;
+  background-color: alpha(@theme_base_color, 0.92);
+  color: @theme_fg_color;
+  box-shadow: 0 3px 12px rgba(17, 24, 39, 0.16);
+}
+
+.phosh-home-bar {
+  color: rgba(255, 255, 255, 0.94);
+}
+
+#powerbar {
+  opacity: 0.92;
+  -gtk-icon-shadow: 0 1px 2px rgba(17, 24, 39, 0.24);
+}
+
+.phosh-overview,
+phosh-app-grid {
+  font-family: Figtree, sans-serif;
+}
+
+.phosh-search-bar-box {
+  margin: 8px 18px 10px;
+}
+
+phosh-app-grid separator {
+  min-height: 1px;
+  margin: 0 18px;
+  background-color: rgba(255, 255, 255, 0.24);
+}
+
+phosh-app-grid-button button,
+phosh-app-grid-folder-button button {
+  font-family: Figtree, sans-serif;
+  font-size: 13px;
+  border-radius: 18px;
+  padding: 4px 2px;
+  transition: 120ms ease;
+}
+
+phosh-app-grid-button button:active,
+phosh-app-grid-button button:hover:active,
+phosh-app-grid-button button:focus,
+phosh-app-grid-folder-button button:active,
+phosh-app-grid-folder-button button:hover:active,
+phosh-app-grid-folder-button button:focus {
+  background-color: alpha(@theme_fg_color, 0.26);
+  box-shadow: inset 0 0 0 1px alpha(@theme_fg_color, 0.22);
+}
+
+.phosh-favorite {
+  border-radius: 18px;
+  padding: 3px;
+}
+
+.phosh-favorite:active {
+  background-color: alpha(@theme_fg_color, 0.22);
+}
+
+phosh-notification-content,
+.phosh-notification-tray row {
+  border-radius: 16px;
+}
+
+.phosh-system-modal-dialog {
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+  border: 1px solid alpha(@theme_fg_color, 0.10);
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.18);
+}
+
+/* Reusable read-only preview chrome. Applications opt in explicitly; ordinary
+ * application titlebars, identity menus and work-surface gutters are untouched. */
+window.luma-preview-window headerbar.luma-preview-titlebar {
+  min-height: 44px;
+  padding: 0 8px 0 14px;
+}
+headerbar.luma-preview-titlebar button {
+  min-height: 28px;
+  min-width: 28px;
+  margin: 0 2px;
+  padding: 0;
+  border-radius: 8px;
+}
+headerbar.luma-preview-titlebar .luma-preview-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+headerbar.luma-preview-titlebar .luma-preview-facts {
+  font-size: 11px;
+  font-weight: 500;
+  color: alpha(@theme_fg_color, 0.65);
+  font-feature-settings: 'tnum';
+}
+window.luma-preview-window .luma-preview-pane {
+  margin: 0 6px 6px;
+  border-radius: 10px;
+  background-color: @theme_base_color;
+  color: @theme_fg_color;
+}
+
+headerbar.luma-preview-titlebar button.luma-preview-open { padding: 0 12px; }
+
+/* Preview windows use the same outer radius as the shared window token. */
+window.luma-preview-window { border-radius: 15px; }
+
+/* Read-only preview actions share Luma's flat, token-derived controls. */
+headerbar.luma-preview-titlebar button {
+  background-image: none;
+  background-color: transparent;
+  border: 0;
+  box-shadow: none;
+  text-shadow: none;
+  -gtk-icon-shadow: none;
+  color: alpha(@theme_fg_color, 0.65);
+}
+headerbar.luma-preview-titlebar button:hover {
+  background-color: alpha(@theme_fg_color, 0.08);
+  color: @theme_fg_color;
+}
+headerbar.luma-preview-titlebar button.luma-preview-open {
+  background-color: alpha(@theme_fg_color, 0.08);
+  color: @theme_fg_color;
+  box-shadow: inset 0 0 0 1px alpha(@theme_fg_color, 0.10);
+  font-size: 12px;
+  font-weight: 600;
+}
+headerbar.luma-preview-titlebar button.luma-preview-open:hover {
+  background-color: alpha(@theme_fg_color, 0.13);
+}
+window.luma-preview-window .luma-preview-media-pane {
+  background-color: #0b0d10;
+}

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luma-developer-platform"
+version = "0.1.0"
+description = "Developer tools for adaptive, semantic Luma applications"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+luma = "luma_sdk.cli:main"
+luma-sdk = "luma_sdk.cli:main"
+
+[tool.setuptools.package-data]
+luma_sdk = ["templates/**/*"]

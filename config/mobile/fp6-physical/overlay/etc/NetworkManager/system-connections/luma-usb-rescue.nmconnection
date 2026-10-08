@@ -1,0 +1,17 @@
+[connection]
+id=Luma USB rescue
+uuid=8d23da22-b690-4d57-a9df-7af5cf965f7f
+type=ethernet
+interface-name=usb0
+autoconnect=true
+
+[ethernet]
+
+[ipv4]
+address1=172.16.42.1/24
+method=manual
+
+[ipv6]
+method=disabled
+
+[proxy]

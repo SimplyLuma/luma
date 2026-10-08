@@ -1,0 +1,25 @@
+From 9a6ef9b50fc0389edf418a82092fe79b87d99048 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:00:48 +0000
+Subject: [PATCH] Fit eight native file tiles in Filer grid
+
+---
+ src/resources/style.css | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 382c0a8..5d4faa2 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -385,7 +385,7 @@
+ /* Native Grid presentation. Selection and focus decorate the real GtkGridView
+  * child; file models, thumbnails, captions, and zoom remain Nautilus-owned. */
+ .luma-files-window .nautilus-grid-view gridview {
+-  padding: 2px 20px 96px;
++  padding: 2px 0 96px;
+   border-spacing: 6px 4px;
+ }
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Resource budget for everything the Luma OS pipeline runs on the shared build
+# host: scripts, image builds, SBOM and import containers. VMs run under
+# libvirt's machine.slice with their own fixed size (4 vCPU, 6 GiB).
+[Unit]
+Description=Luma OS release pipeline
+
+[Slice]
+CPUQuota=800%
+CPUWeight=20
+MemoryHigh=14G
+MemoryMax=18G
+MemorySwapMax=2G
+IOWeight=20
+TasksMax=8192

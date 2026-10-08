@@ -1,0 +1,13 @@
+[Unit]
+Description=Give circular application icons Luma's rounded-square silhouette
+Documentation=file:///usr/lib/python3/site-packages/luma_installer/icon_plates.py
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-icon-plates
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=graphical-session.target

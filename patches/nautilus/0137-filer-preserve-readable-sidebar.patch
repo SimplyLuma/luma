@@ -1,0 +1,50 @@
+From 1298509cdd9819ee99f37f97477eec9823544623 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local.invalid>
+Date: Sun, 27 Sep 2026 18:42:00 +0000
+Subject: [PATCH] Preserve the readable sidebar after location refreshes
+
+---
+ src/nautilus-sidebar.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/nautilus-sidebar.c b/src/nautilus-sidebar.c
+--- a/src/nautilus-sidebar.c
++++ b/src/nautilus-sidebar.c
+@@ -765,7 +765,7 @@
+ }
+ 
+ static void
+-refresh_luma_file_rail (NautilusSidebar *sidebar)
++refresh_luma_file_sidebar (NautilusSidebar *sidebar)
+ {
+     /* Mount and bookmark updates replace Nautilus's live row children. The
+      * shared adapter keeps their actions and DnD, but needs to arrange the
+@@ -776,7 +776,7 @@
+     if (split != NULL)
+     {
+         luma_navigation_sidebar_adapt_live (ADW_OVERLAY_SPLIT_VIEW (split),
+-                                            GTK_WIDGET (sidebar), "rail");
++                                            GTK_WIDGET (sidebar), "narrow");
+     }
+ }
+ 
+@@ -852,7 +852,7 @@
+             nautilus_sidebar_set_location (sidebar, restore);
+             g_free (original_uri);
+         }
+-        refresh_luma_file_rail (sidebar);
++        refresh_luma_file_sidebar (sidebar);
+         return;
+     }
+ 
+@@ -1349,7 +1349,7 @@
+         g_object_unref (restore);
+         g_free (original_uri);
+     }
+-    refresh_luma_file_rail (sidebar);
++    refresh_luma_file_sidebar (sidebar);
+ }
+ 
+ void
+-- 
+2.55.0

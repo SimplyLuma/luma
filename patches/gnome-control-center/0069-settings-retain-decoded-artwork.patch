@@ -1,0 +1,234 @@
+Subject: [PATCH] Settings: retain local artwork through live page refreshes
+
+--- a/shell/cc-luma-view-image.c
++++ b/shell/cc-luma-view-image.c
+@@ -1,10 +1,12 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-view-private.h"
++#include <glib/gstdio.h>
+ 
+ typedef struct {
+   GWeakRef root;
+   GWeakRef picture;
+   char *path;
++  char *cache_key;
+   int width, height;
+   guint64 generation;
+   gboolean application;
+@@ -14,7 +16,31 @@
+   g_weak_ref_clear (&job->root);
+   g_weak_ref_clear (&job->picture);
+   g_free (job->path);
++  g_free (job->cache_key);
+   g_free (job);
++}
++/* Keep decoded local artwork through unrelated live-model page rebuilds.
++ * Main-thread-only, per-view and bounded; file metadata and requested size
++ * prevent an old wallpaper or another resolution from being reused. */
++static GHashTable *image_cache (GtkWidget *root)
++{
++  GHashTable *cache = g_object_get_data (G_OBJECT (root), "cf-decoded-images");
++  if (!cache)
++    {
++      cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
++      g_object_set_data_full (G_OBJECT (root), "cf-decoded-images", cache,
++                              (GDestroyNotify) g_hash_table_unref);
++    }
++  return cache;
++}
++static char *image_key (const char *path, int width, int height)
++{
++  GStatBuf metadata;
++  if (g_stat (path, &metadata) != 0) return NULL;
++  return g_strdup_printf ("%s:%d:%d:%" G_GINT64_FORMAT ":%" G_GINT64_FORMAT ":%ld:%" G_GUINT64_FORMAT,
++                          path, width, height, (gint64) metadata.st_size,
++                          (gint64) metadata.st_mtim.tv_sec, metadata.st_mtim.tv_nsec,
++                          (guint64) metadata.st_ino);
+ }
+ static void decode_image (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
+ {
+@@ -32,13 +58,29 @@
+   g_autoptr (GdkPixbuf) image = g_task_propagate_pointer (task, &error);
+   g_autoptr (GtkWidget) root = g_weak_ref_get (&job->root);
+   g_autoptr (GtkWidget) picture = g_weak_ref_get (&job->picture);
+-  if (!root || !picture) return;
++  if (!root) return;
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+-  if (!v || v->generation != job->generation || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
+-  if (!image) { cc_luma_view_report_error (v, error); return; }
++  if (!v) return;
++  if (!image)
++    {
++      if (picture && v->generation == job->generation &&
++          !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++        cc_luma_view_report_error (v, error);
++      return;
++    }
+   g_autoptr (GdkTexture) texture = gdk_texture_new_for_pixbuf (image);
+   g_autoptr (GdkPaintable) normalized = job->application ? luma_application_icon_new (GDK_PAINTABLE (texture)) : NULL;
+-  gtk_picture_set_paintable (GTK_PICTURE (picture), normalized ? normalized : GDK_PAINTABLE (texture));
++  GdkPaintable *paintable = normalized ? normalized : GDK_PAINTABLE (texture);
++  if (job->cache_key)
++    {
++      GHashTable *cache = image_cache (root);
++      if (g_hash_table_size (cache) >= 32 && !g_hash_table_contains (cache, job->cache_key))
++        g_hash_table_remove_all (cache);
++      g_hash_table_replace (cache, g_strdup (job->cache_key), g_object_ref (paintable));
++    }
++  /* A completed obsolete decode may populate the cache, never its old widget. */
++  if (picture && v->generation == job->generation)
++    gtk_picture_set_paintable (GTK_PICTURE (picture), paintable);
+ }
+ GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height)
+ {
+@@ -58,7 +100,18 @@
+     }
+   job->application = g_str_has_suffix (job->path, ".svg");
+   job->width = width; job->height = height; job->generation = v->generation;
+-  g_autoptr (GTask) task = g_task_new (NULL, v->images_cancel, image_decoded, NULL);
++  job->cache_key = image_key (job->path, width, height);
++  GdkPaintable *cached = job->cache_key ? g_hash_table_lookup (image_cache (v->root), job->cache_key) : NULL;
++  if (cached)
++    {
++      gtk_picture_set_paintable (GTK_PICTURE (picture), cached);
++      image_job_free (job);
++      return picture;
++    }
++  /* Local file decoding cannot be interrupted by GCancellable; allow it to
++   * finish into the cache when a live-model update replaces this generation.
++   * Weak refs still protect a closed view, and generation protects painting. */
++  g_autoptr (GTask) task = g_task_new (NULL, NULL, image_decoded, NULL);
+   g_task_set_task_data (task, job, (GDestroyNotify) image_job_free);
+   g_task_run_in_thread (task, decode_image);
+   return picture;
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -652,6 +652,119 @@
+   g_assert_null (cc_luma_fixture_asset_path (model, "../../private-data", &error));
+   g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
+   g_object_unref (view); drain ();
++  remove_asset_fixture (dir);
++}
++static void artwork_survives_refresh (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autofree char *path = g_build_filename (dir, "prism.png", NULL);
++  g_autoptr (GdkPixbuf) pixels = gdk_pixbuf_new (GDK_COLORSPACE_RGB, TRUE, 8, 32, 32);
++  gdk_pixbuf_fill (pixels, 0xaa3322ff);
++  g_assert_true (gdk_pixbuf_save (pixels, path, "png", NULL, NULL));
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++  GtkWidget *picture = cc_luma_view_image (v, "prism", 128, 128);
++  gtk_box_append (v->body, picture);
++  gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
++  while (!gtk_picture_get_paintable (GTK_PICTURE (picture)) && g_get_monotonic_time () < deadline)
++    { drain (); g_usleep (1000); }
++  g_autoptr (GdkPaintable) decoded = g_object_ref (gtk_picture_get_paintable (GTK_PICTURE (picture)));
++  g_assert_nonnull (decoded);
++  for (guint tick = 0; tick < 12; tick++)
++    {
++      cc_luma_view_queue_refresh (v);
++      wait_ms (20);
++      picture = cc_luma_view_image (v, "prism", 128, 128);
++      gtk_box_append (v->body, picture);
++      /* No asynchronous blank frame after a warmed page rebuild. */
++      g_assert_true (gtk_picture_get_paintable (GTK_PICTURE (picture)) == decoded);
++    }
++  picture = cc_luma_view_image (v, "prism", 64, 64);
++  gtk_box_append (v->body, picture);
++  g_assert_null (gtk_picture_get_paintable (GTK_PICTURE (picture)));
++  wait_ms (100);
++  g_assert_nonnull (gtk_picture_get_paintable (GTK_PICTURE (picture)));
++  g_assert_cmpint (gdk_paintable_get_intrinsic_width (gtk_picture_get_paintable (GTK_PICTURE (picture))), ==, 64);
++  /* Replacing the same asset invalidates the old cached pixels. */
++  gdk_pixbuf_fill (pixels, 0x2255ccff);
++  g_assert_true (gdk_pixbuf_save (pixels, path, "png", NULL, NULL));
++  picture = cc_luma_view_image (v, "prism", 128, 128);
++  gtk_box_append (v->body, picture);
++  g_assert_null (gtk_picture_get_paintable (GTK_PICTURE (picture)));
++  wait_ms (100);
++  g_assert_nonnull (gtk_picture_get_paintable (GTK_PICTURE (picture)));
++  g_assert_true (gtk_picture_get_paintable (GTK_PICTURE (picture)) != decoded);
++  g_object_unref (view); drain ();
++  remove_asset_fixture (dir);
++}
++static gboolean all_artwork_ready (GtkWidget *root, guint *count)
++{
++  if (GTK_IS_PICTURE (root))
++    {
++      (*count)++;
++      if (!gtk_picture_get_paintable (GTK_PICTURE (root))) return FALSE;
++    }
++  for (GtkWidget *child = gtk_widget_get_first_child (root); child; child = gtk_widget_get_next_sibling (child))
++    if (!all_artwork_ready (child, count)) return FALSE;
++  return TRUE;
++}
++static void preview_pages_survive_refresh (void)
++{
++  g_autofree char *dir = asset_fixture ();
++  g_autofree char *json = g_build_filename (dir, "settings.json", NULL);
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (json, NULL);
++  JsonObject *wifi = json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI");
++  const char *art = json_object_get_string_member (json_object_get_object_member (wifi, "share_codes"), "Studio North");
++  const char *files[] = { "prism.png", "meadow.png", "blue-fog.png", "ember.png", "luma-creatives.png",
++                         "luma-v3-documents.svg", "luma-v3-browser.svg", "luma-v3-messages.svg", "luma-v3-files.svg",
++                         "luma-v3-music.svg", "luma-v3-mail.svg", "luma-v3-photos.svg" };
++  for (guint i = 0; i < G_N_ELEMENTS (files); i++)
++    {
++      g_autofree char *path = g_build_filename (dir, files[i], NULL);
++      g_assert_true (g_file_set_contents (path, art, -1, NULL));
++    }
++  const char *pages[] = { "appearance", "shelf" };
++  for (guint page = 0; page < G_N_ELEMENTS (pages); page++)
++    {
++      GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, pages[page], NULL));
++      View *v = g_object_get_data (G_OBJECT (view), "cf-view");
++      /* Fixtures do not subscribe to live owners. Use the production signal
++       * binding here and assert every event actually rebuilt the generation. */
++      v->model_changed = g_signal_connect_swapped (model, "changed", G_CALLBACK (cc_luma_view_queue_refresh), v);
++      guint count = 0;
++      gint64 deadline = g_get_monotonic_time () + 2 * G_USEC_PER_SEC;
++      while (!all_artwork_ready (view, &count) && g_get_monotonic_time () < deadline)
++        { drain (); g_usleep (1000); count = 0; }
++      count = 0;
++      g_assert_true (all_artwork_ready (view, &count));
++      g_assert_cmpuint (count, >, 0);
++      for (guint tick = 0; tick < 12; tick++)
++        {
++          /* Exactly the same signal as an unrelated live owner's update. */
++          guint64 before = v->generation;
++          g_signal_emit_by_name (model, "changed");
++          gint64 refresh_deadline = g_get_monotonic_time () + G_USEC_PER_SEC;
++          while (v->refresh != 0 && g_get_monotonic_time () < refresh_deadline)
++            {
++              if (!g_main_context_iteration (NULL, FALSE)) g_usleep (1000);
++            }
++          /* Inspect the completed rebuild before any decode callback/frame. */
++          g_assert_cmpuint (v->refresh, ==, 0);
++          g_assert_cmpuint (v->generation, >, before);
++          count = 0;
++          g_assert_true (all_artwork_ready (view, &count));
++          g_assert_cmpuint (count, >, 0);
++        }
++      g_assert_null (cc_luma_view_get_error (view));
++      g_object_unref (view); drain ();
++    }
++  for (guint i = 1; i < G_N_ELEMENTS (files); i++)
++    {
++      g_autofree char *path = g_build_filename (dir, files[i], NULL);
++      g_assert_cmpint (g_remove (path), ==, 0);
++    }
+   remove_asset_fixture (dir);
+ }
+ static void missing_asset (void)
+@@ -1943,6 +2056,8 @@
+   g_test_add_func ("/settings/view/bluetooth-pairing", bluetooth_pairing);
+   g_test_add_func ("/settings/view/copy-addresses", copy_addresses);
+   g_test_add_func ("/settings/view/asset-loading", asset_loading);
++  g_test_add_func ("/settings/view/artwork-survives-refresh", artwork_survives_refresh);
++  g_test_add_func ("/settings/view/preview-pages-survive-refresh", preview_pages_survive_refresh);
+   g_test_add_func ("/settings/view/windows", windows_view);
+   g_test_add_func ("/settings/view/shelf", shelf_view);
+   g_test_add_func ("/settings/view/appearance", appearance_view);

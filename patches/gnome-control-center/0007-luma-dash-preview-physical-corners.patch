@@ -1,0 +1,52 @@
+From: Project Luma
+Subject: [PATCH] Dash preview: reflect physical screen contact per island
+
+--- a/panels/dash/cc-dash-panel.c
++++ b/panels/dash/cc-dash-panel.c
+@@ -34,17 +34,19 @@
+ 
+ static void
+ surface_rect (cairo_t *cr, double x, double y, double w, double h,
+-              const char *edge, gboolean attached, gboolean flush)
++              const char *edge, gboolean attached, gboolean first, gboolean last)
+ {
+   double tl = 5, tr = 5, br = 5, bl = 5;
+-  if (flush) tl = tr = br = bl = 0;
+-  else if (attached)
++  if (attached)
+     {
+       if (g_str_equal (edge, "top")) tl = tr = 0;
+       if (g_str_equal (edge, "bottom")) bl = br = 0;
+       if (g_str_equal (edge, "left")) tl = bl = 0;
+       if (g_str_equal (edge, "right")) tr = br = 0;
+     }
++  gboolean vertical = g_str_equal (edge, "left") || g_str_equal (edge, "right");
++  if (first) { if (vertical) tl = tr = 0; else tl = bl = 0; }
++  if (last) { if (vertical) bl = br = 0; else tr = br = 0; }
+   cairo_new_sub_path (cr);
+   cairo_arc (cr, x+w-tr, y+tr, tr, -G_PI_2, 0);
+   cairo_arc (cr, x+w-br, y+h-br, br, 0, G_PI_2);
+@@ -87,17 +89,19 @@
+   if (!islands)
+     {
+       surface_rect (cr, x, y, vertical ? 20 : length, vertical ? length : 20,
+-                    edge, attached, span && !floating);
++                    edge, attached, span && !floating, span && !floating);
+       cairo_fill (cr);
+     }
+   else
+     {
+       double dock = span ? MIN (length * .55, 100) : length * .62;
+       double status = MIN (length-dock-4, vertical ? 36 : 48);
+-      rounded_rect (cr, x, y, vertical ? 20 : dock, vertical ? dock : 20, 5);
++      surface_rect (cr, x, y, vertical ? 20 : dock, vertical ? dock : 20,
++                    edge, attached, span && !floating, FALSE);
+       cairo_fill (cr);
+-      rounded_rect (cr, vertical ? x : x+length-status, vertical ? y+length-status : y,
+-                    vertical ? 20 : status, vertical ? status : 20, 5);
++      surface_rect (cr, vertical ? x : x+length-status, vertical ? y+length-status : y,
++                    vertical ? 20 : status, vertical ? status : 20,
++                    edge, attached, FALSE, span && !floating);
+       cairo_fill (cr);
+     }
+ }

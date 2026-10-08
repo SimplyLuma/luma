@@ -1,0 +1,819 @@
+{
+  "app": "ari",
+  "title": "Ari",
+  "app_icon": {
+    "spec_src": "ari.svg",
+    "gtk": "^ari$"
+  },
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=ari",
+    "window": "#w-ari",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "ari_ui.lumaui_app",
+    "pythonpath": [
+      "src/luma-ari"
+    ],
+    "fixtures": [
+      "tests/fixtures/ari-v70.json",
+      "tests/fixtures/ari-v70-data"
+    ],
+    "env": {
+      "LUMA_ARI_FIXTURE": "{run}/fixtures/ari-v70.json",
+      "XDG_CONFIG_HOME": "{run}/fixture-config",
+      "XDG_DATA_HOME": "{run}/fixtures/ari-v70-data",
+      "XDG_STATE_HOME": "{run}/fixture-state"
+    }
+  },
+  "states": [
+    {
+      "name": "budget",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "budget"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tips",
+      "spec": [
+        {
+          "click": "[data-aric=\"tips\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "tips"
+          }
+        }
+      ]
+    },
+    {
+      "name": "shots",
+      "spec": [
+        {
+          "click": "[data-aric=\"shots\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "shots"
+          }
+        }
+      ]
+    },
+    {
+      "name": "quiet",
+      "spec": [
+        {
+          "click": "[data-aric=\"quiet\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "quiet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ram",
+      "spec": [
+        {
+          "click": "[data-aric=\"ram\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "ram"
+          }
+        }
+      ]
+    },
+    {
+      "name": "new",
+      "spec": [
+        {
+          "click": "[data-arinew]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "new"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity-all",
+      "spec": [
+        {
+          "click": "[data-ariview=\"activity\"]"
+        },
+        {
+          "click": "[data-arifilter=\"All\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "activity-all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity-files",
+      "spec": [
+        {
+          "click": "[data-ariview=\"activity\"]"
+        },
+        {
+          "click": "[data-arifilter=\"Files\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "activity-files"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity-people",
+      "spec": [
+        {
+          "click": "[data-ariview=\"activity\"]"
+        },
+        {
+          "click": "[data-arifilter=\"People\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "activity-people"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity-apps",
+      "spec": [
+        {
+          "click": "[data-ariview=\"activity\"]"
+        },
+        {
+          "click": "[data-arifilter=\"Apps\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "activity-apps"
+          }
+        }
+      ]
+    },
+    {
+      "name": "activity-settings",
+      "spec": [
+        {
+          "click": "[data-ariview=\"activity\"]"
+        },
+        {
+          "click": "[data-arifilter=\"Settings\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "activity-settings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-all",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-aristore=\"All\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-chat",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-aristore=\"Chat\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-chat"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-code",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-aristore=\"Code\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-code"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-images",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-aristore=\"Images\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-images"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-reasoning",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": "[data-aristore=\"Reasoning\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-reasoning"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-picker",
+      "spec": [
+        {
+          "click": "[data-arimodel]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-picker"
+          }
+        }
+      ]
+    },
+    {
+      "name": "providers",
+      "spec": [
+        {
+          "click": "[data-arimodel]"
+        },
+        {
+          "click": "#ari-pop [data-arikey]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "providers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-key",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": ".aricl [data-arikey=\"openai\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "provider-key"
+          }
+        }
+      ]
+    },
+    {
+      "name": "declined",
+      "spec": [
+        {
+          "click": "[data-arino=\"budget\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "declined"
+          }
+        }
+      ]
+    },
+    {
+      "name": "approved",
+      "spec": [
+        {
+          "click": "[data-ariok=\"budget\"]",
+          "wait": 1500
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "approved"
+          }
+        }
+      ]
+    },
+    {
+      "name": "undo",
+      "spec": [
+        {
+          "click": "[data-ariok=\"budget\"]",
+          "wait": 1500
+        },
+        {
+          "click": "[data-ariundo=\"budget\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "undo"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chats-search",
+      "spec": [
+        {
+          "eval": "(() => { const e = document.querySelector(\"#ari-side [data-arisq]\"); e.value = \"budget\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "chats-search"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chats-empty",
+      "spec": [
+        {
+          "eval": "(() => { const e = document.querySelector(\"#ari-side [data-arisq]\"); e.value = \"no such chat\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "chats-empty"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-search",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "eval": "(() => { const e = document.querySelector(\"#ari-bar [data-arisq]\"); e.value = \"Qwen\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-search"
+          }
+        }
+      ]
+    },
+    {
+      "name": "models-empty",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "eval": "(() => { const e = document.querySelector(\"#ari-bar [data-arisq]\"); e.value = \"no such model\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "models-empty"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-local",
+      "spec": [
+        {
+          "click": "[data-arimodel]"
+        },
+        {
+          "click": "[data-ariset=\"qwen30\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-local"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-cloud",
+      "spec": [
+        {
+          "click": "[data-arimodel]"
+        },
+        {
+          "click": "[data-ariset=\"sonnet\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-cloud"
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-own",
+      "spec": [
+        {
+          "click": "[data-arimodel]"
+        },
+        {
+          "click": "#ari-pop [data-arikey]"
+        },
+        {
+          "click": "[data-approv=\"own\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "provider-own"
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-connected",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": ".aricl [data-arikey=\"openai\"]"
+        },
+        {
+          "eval": "(() => { const e = document.querySelector(\"[data-apkey]\"); e.value = \"fixture-test-key\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        },
+        {
+          "click": "[data-aptest]",
+          "wait": 1200
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "provider-connected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-selection",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": ".aricl [data-arikey=\"openai\"]"
+        },
+        {
+          "eval": "(() => { const e = document.querySelector(\"[data-apkey]\"); e.value = \"fixture-test-key\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        },
+        {
+          "click": "[data-aptest]",
+          "wait": 1200
+        },
+        {
+          "click": "[data-apmod=\"gpt5\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "provider-selection"
+          }
+        }
+      ]
+    },
+    {
+      "name": "busy",
+      "spec": [
+        {
+          "click": "[data-arinew]"
+        },
+        {
+          "eval": "(() => { const timeout = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...args) => timeout(fn, ms === 900 ? 5000 : ms, ...args); })()"
+        },
+        {
+          "click": "[data-arisug=\"local\"]",
+          "wait": 1
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "busy"
+          }
+        }
+      ]
+    },
+    {
+      "name": "model-downloading",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "eval": "(() => { const interval = window.setInterval.bind(window); window.setInterval = (fn, ms, ...args) => { if (ms !== 260) return interval(fn, ms, ...args); const id = interval(() => { const random = Math.random; Math.random = () => .8; try { for (let i = 0; i < 5; i++) fn(...args); } finally { Math.random = random; clearInterval(id); } }, ms); return id; }; })()"
+        },
+        {
+          "click": "[data-arget=\"qwen14\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "model-downloading"
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-checking",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "click": ".aricl [data-arikey=\"openai\"]"
+        },
+        {
+          "eval": "(() => { const e = document.querySelector(\"[data-apkey]\"); e.value = \"fixture-test-key\"; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        },
+        {
+          "eval": "(() => { const timeout = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...args) => timeout(fn, ms === 900 ? 5000 : ms, ...args); })()"
+        },
+        {
+          "click": "[data-aptest]",
+          "wait": 1
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "provider-checking"
+          }
+        }
+      ]
+    },
+    {
+      "name": "approval-working",
+      "spec": [
+        {
+          "eval": "(() => { const original = window.setTimeout; window.setTimeout = (fn, ms, ...args) => original(fn, ms === 1100 ? 5000 : ms, ...args); })()"
+        },
+        {
+          "click": "[data-ariok=\"budget\"]"
+        },
+        {
+          "eval": "(() => { const win = document.querySelector('#w-ari'); if (win.classList.contains('phone') && !win.classList.contains('navopen')) win.querySelector('[data-navtoggle]').click(); })()"
+        },
+        {
+          "click": "[data-ariview=\"activity\"]"
+        },
+        {
+          "eval": "(() => { const win = document.querySelector('#w-ari'); if (win.classList.contains('phone') && win.classList.contains('navopen')) win.querySelector('[data-navtoggle]').click(); })()"
+        },
+        {
+          "eval": "(() => { const win = document.querySelector('#w-ari'); if (win.classList.contains('phone') && !win.classList.contains('navopen')) win.querySelector('[data-navtoggle]').click(); })()"
+        },
+        {
+          "click": "[data-aric=\"budget\"]"
+        },
+        {
+          "eval": "(() => { const win = document.querySelector('#w-ari'); if (win.classList.contains('phone') && win.classList.contains('navopen')) win.querySelector('[data-navtoggle]').click(); })()"
+        },
+        {
+          "wait": 100
+        },
+        {
+          "eval": "(() => { const win = document.querySelector('#w-ari'), card = win.querySelector('[data-arichain=\"budget\"]'); if (!card || !card.querySelector('.aristate.run') || !card.querySelector('.arstep .arispin')) throw new Error('pending approval receipt must show Working and spinner'); if (card.querySelector('[data-ariok]') || card.querySelector('[data-arino]') || card.querySelector('[data-ariundo]')) throw new Error('pending approval must remove decision actions'); if (win.classList.contains('phone')) { if (win.classList.contains('navopen')) throw new Error('choosing chat must close Places drawer'); const c = card.getBoundingClientRect(), w = win.getBoundingClientRect(); if (c.left < w.left || c.right > w.right) throw new Error('pending receipt clips at phone width'); } })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "approval-working"
+          }
+        }
+      ]
+    },
+    {
+      "name": "provider-error",
+      "spec": [
+        {
+          "click": "[data-ariview=\"models\"]"
+        },
+        {
+          "eval": "(() => { const assign = Object.assign; delete window.__ariProviderState; window.__ariRestoreAssign = () => { Object.assign = assign; }; Object.assign = function(target, ...sources) { const result = assign(target, ...sources); if (sources.some(value => value && value.step === 'key' && ['prov', 'key', 'test', 'sel'].every(key => Object.prototype.hasOwnProperty.call(value, key)))) { window.__ariProviderState = target; Object.assign = assign; } return result; }; })()"
+        },
+        {
+          "click": ".aricl [data-arikey=\"openai\"]"
+        },
+        {
+          "eval": "(() => { window.__ariRestoreAssign?.(); delete window.__ariRestoreAssign; if (!window.__ariProviderState) throw new Error('Provider fixture must capture the private reference state'); const e = document.querySelector('[data-apkey]'); e.value = 'fixture-test-key'; e.dispatchEvent(new Event('input', {bubbles:true})); })()"
+        },
+        {
+          "click": "[data-aptest]",
+          "wait": 1200
+        },
+        {
+          "eval": "(() => { const provider = window.__ariProviderState, choice = document.querySelector('#ari-sheet [data-apmod]'); if (!provider || !choice) throw new Error('Provider fixture must reach the existing model renderer'); provider.test = 'bad'; choice.click(); provider.sel = {}; delete window.__ariProviderState; if (!document.querySelector('.aptest.bad')?.textContent.includes('That key didn’t work')) throw new Error('Provider failure feedback must remain visible'); if (document.querySelector('[data-aptest]').disabled) throw new Error('Provider check must permit retry'); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_ARI_STATE": "provider-error"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "budget",
+    "tips",
+    "shots",
+    "quiet",
+    "ram",
+    "new",
+    "activity-all",
+    "activity-files",
+    "activity-people",
+    "activity-apps",
+    "activity-settings",
+    "models-all",
+    "models-chat",
+    "models-code",
+    "models-images",
+    "models-reasoning",
+    "model-picker",
+    "providers",
+    "provider-key",
+    "declined",
+    "approved",
+    "undo",
+    "chats-search",
+    "chats-empty",
+    "models-search",
+    "models-empty",
+    "model-local",
+    "model-cloud",
+    "provider-own",
+    "provider-connected",
+    "provider-selection",
+    "busy",
+    "model-downloading",
+    "provider-checking",
+    "approval-working",
+    "provider-error"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-ari > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#ari-top"
+    },
+    {
+      "name": "sidebar foot",
+      "spec": "#ari-side .lfoot"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#ari-side"
+    },
+    {
+      "name": "model picker",
+      "spec": "#ari-pop"
+    },
+    {
+      "name": "provider sheet",
+      "spec": "#ari-sheet.show"
+    },
+    {
+      "name": "receipt",
+      "spec": ".arich"
+    },
+    {
+      "name": "composer",
+      "spec": "#ari-bar"
+    },
+    {
+      "name": "page",
+      "spec": "#ari-body"
+    },
+    {
+      "name": "island",
+      "spec": "#ari-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#ari-side",
+      "gtk": "ari-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#ari-main",
+      "gtk": "ari-island",
+      "name": "island"
+    },
+    {
+      "spec": "#ari-bar",
+      "gtk": "ari-bar",
+      "name": "action bar"
+    }
+  ]
+}

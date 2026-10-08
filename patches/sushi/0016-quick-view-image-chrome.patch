@@ -1,0 +1,141 @@
+diff -ruN a/src/ui/mainWindow.js b/src/ui/mainWindow.js
+--- a/src/ui/mainWindow.js	2026-09-11 12:02:48
++++ b/src/ui/mainWindow.js	2026-09-11 12:05:30
+@@ -123,7 +123,8 @@
+         this._titlebar.get_style_context().add_class('luma-no-automatic-identity');
+         this._titlebar.get_style_context().add_class('luma-no-command-row');
+         this._titlebar.get_style_context().add_class('luma-preview-titlebar');
+-        const identity = new Gtk.Box({spacing: 10, valign: Gtk.Align.CENTER});
++        const titleRow = new Gtk.Box({spacing: 10, hexpand: true});
++        const identity = new Gtk.Box({spacing: 10, valign: Gtk.Align.CENTER, hexpand: true});
+         this._kindIcon = new Gtk.Image({pixel_size: 16});
+         identity.add(this._kindIcon);
+         const labels = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 0});
+@@ -132,25 +133,27 @@
+         this._fileFacts = new Gtk.Label({xalign: 0, ellipsize: 3, max_width_chars: 42});
+         this._fileFacts.get_style_context().add_class('luma-preview-facts');
+         labels.add(this._fileName); labels.add(this._fileFacts); identity.add(labels);
+-        this._titlebar.pack_start(identity);
++        titleRow.pack_start(identity, true, true, 0);
++        this._titleActions = new Gtk.Box({spacing: 4, valign: Gtk.Align.CENTER});
++        titleRow.pack_end(this._titleActions, false, false, 0);
+         const close = Gtk.Button.new_from_icon_name('window-close-symbolic', Gtk.IconSize.MENU);
+         close.set_tooltip_text('Close'); close.get_accessible().set_name('Close');
+         close.set_valign(Gtk.Align.CENTER);
+         close.connect('clicked', () => this.destroy());
+-        this._titlebar.pack_end(close);
++        this._titleActions.pack_end(close, false, false, 0);
+         this._fullButton = Gtk.Button.new_from_icon_name('view-fullscreen-symbolic', Gtk.IconSize.MENU);
+         this._fullButton.set_tooltip_text('Full screen');
+         this._fullButton.get_accessible().set_name('Full screen');
+         this._fullButton.set_valign(Gtk.Align.CENTER);
+         this._fullButton.connect('clicked', () => this.lookup_action('fullscreen').activate(null));
+-        this._titlebar.pack_end(this._fullButton);
+-        this._titlebar.set_custom_title(new Gtk.Box());
++        this._titleActions.pack_end(this._fullButton, false, false, 0);
++        this._titlebar.set_custom_title(titleRow);
+         this.set_titlebar(this._titlebar);
+ 
+         this._openButton = new Gtk.Button({valign: Gtk.Align.CENTER});
+         this._openButton.get_style_context().add_class('luma-preview-open');
+         this._openButton.connect('clicked', this._onFileOpenClicked.bind(this));
+-        this._titlebar.pack_end(this._openButton);
++        this._titleActions.pack_start(this._openButton, false, false, 0);
+ 
+         this.connect('motion-notify-event', this._onMotionNotifyEvent.bind(this));
+         this.connect('realize', this._onRealize.bind(this));
+@@ -160,21 +163,18 @@
+         this.add(eventBox);
+ 
+         this._embed = new Embed();
+-        const pane = new Gtk.Frame({shadow_type: Gtk.ShadowType.NONE});
++        const pane = this._pane = new Gtk.Frame({shadow_type: Gtk.ShadowType.NONE});
+         pane.get_style_context().add_class('luma-preview-pane');
+         pane.get_style_context().add_class('luma-clip-children');
+         pane.add(this._embed);
+         eventBox.add(pane);
+ 
+-        // call show_all() early when there's still no child Renderer, because show_all() later
+-        // when the Renderer is a child may have unexpected results, see comments in !49
+-        this.show_all();
++        // Show only the children. Mapping this toplevel before setParent()
++        // lets Wayland/Shell classify it as a separate application window.
++        // setParent() realizes it; renderer readiness performs the first map.
++        eventBox.show_all();
++        this._titlebar.show_all();
+ 
+-        // but leave MainWindow not visible, because we want it to be firstly shown/mapped
+-        // when it has its final dimemnsions i.e. when the Renderer has emmitted the 'ready'
+-        // signal, i.e. on the _onRendererReady() handler.
+-        this.hide();
+-
+         this._defineActions();
+     }
+ 
+@@ -336,13 +336,18 @@
+         else if (resizePolicy == Renderer.ResizePolicy.STRETCHED)
+             windowSize = Utils.getScaledSize(natSize, maxSize, true);
+ 
++        // A narrow image is letterboxed; never enlarge its pixels merely to
++        // make the title controls fit. Keep the pane minimum within work area.
++        if (mime.startsWith('image/') || mime.startsWith('video/'))
++            windowSize[0] = Math.min(maxSize[0], Math.max(400, windowSize[0]));
++
+         if ((windowSize[0] > 0 && windowSize[0] != this._lastWindowSize[0]) ||
+             (windowSize[1] > 0 && windowSize[1] != this._lastWindowSize[1])) {
+             this._lastWindowSize = windowSize;
+             // GTK ignores resize() for a non-resizable window without a content
+             // request. Keep the pane sized while preserving disabled edge grips.
+             this._embed.set_size_request(windowSize[0], windowSize[1]);
+-            this.resize(windowSize[0], windowSize[1] + 50);
++            this.resize(windowSize[0] + 12, windowSize[1] + 50);
+         }
+     }
+ 
+@@ -353,6 +358,7 @@
+             [Gio.FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+              Gio.FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+              Gio.FILE_ATTRIBUTE_STANDARD_ICON,
++             Gio.FILE_ATTRIBUTE_STANDARD_SYMBOLIC_ICON,
+              Gio.FILE_ATTRIBUTE_STANDARD_SIZE,
+              Gio.FILE_ATTRIBUTE_STANDARD_TYPE,
+              Gio.FILE_ATTRIBUTE_TIME_MODIFIED].join(','),
+@@ -375,9 +381,16 @@
+         }
+ 
+         this._renderer = renderer;
++        const paneStyle = this._pane.get_style_context();
++        if (this._fileInfo?.get_content_type().startsWith('image/') ||
++            this._fileInfo?.get_content_type().startsWith('video/'))
++            paneStyle.add_class('luma-preview-media-pane');
++        else
++            paneStyle.remove_class('luma-preview-media-pane');
+         this._openButton.set_visible(!!this._hasHandler && !renderer.hideOpen);
+         if (renderer.viewSwitch) {
+-            this._titlebar.pack_end(renderer.viewSwitch);
++            this._titleActions.pack_start(renderer.viewSwitch, false, false, 0);
++            this._titleActions.reorder_child(renderer.viewSwitch, 0);
+             renderer.viewSwitch.show_all();
+         }
+         this._renderer.show_all();
+@@ -391,7 +404,7 @@
+     _createView(fileInfo) {
+         this._fileInfo = fileInfo;
+         this._fileName.set_text(fileInfo.get_display_name());
+-        this._kindIcon.set_from_gicon(fileInfo.get_icon(), Gtk.IconSize.MENU);
++        this._kindIcon.set_from_gicon(fileInfo.get_symbolic_icon() || fileInfo.get_icon(), Gtk.IconSize.MENU);
+         let klass = MimeHandler.getKlass(fileInfo.get_content_type());
+         let renderer = new klass(this.file, fileInfo);
+         this._embedRenderer(renderer);
+diff -ruN a/src/viewers/image.js b/src/viewers/image.js
+--- a/src/viewers/image.js	2026-09-11 12:02:48
++++ b/src/viewers/image.js	2026-09-11 12:02:31
+@@ -38,6 +38,8 @@
+                                          false)
+     },
+ }, class ImageRenderer extends Gtk.DrawingArea {
++    get hasToolbar() { return false; }
++
+     get ready() {
+         return !!this._ready;
+     }

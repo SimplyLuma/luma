@@ -1,0 +1,50 @@
+{
+  "app": "bar-term",
+  "title": "Bar entry (command) against Terminal's command bar",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=term",
+    "window": "#w-term",
+    "exclude": [
+      "#w-term *:not(:has(#tm-bar)):not(#tm-bar):not(#tm-bar *)",
+      "#tm-bar .tmsess",
+      "#tm-bar .tmacts"
+    ]
+  },
+  "gtk": {
+    "module": "conform_bar",
+    "app_id": "org.projectluma.LumaUIGallery",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "env": {
+      "LUMAUI_BAR_SURFACE": "term",
+      "LUMAUI_BAR_HOST": "0,46,1180,702",
+      "LUMAUI_BAR_HOST_PHONE": "0,46,390,782"
+    }
+  },
+  "states": [
+    {
+      "name": "command",
+      "about": "The resting command bar: the prompt ~ $, an empty line and the Return hint",
+      "spec": [],
+      "gtk": []
+    }
+  ],
+  "phone_states": [
+    "command"
+  ],
+  "groups": [
+    {
+      "name": "command bar",
+      "spec": "#tm-bar"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#tm-bar",
+      "gtk": "bar",
+      "name": "command bar"
+    }
+  ],
+  "pairs_note": "Only the bar is compared: everything else in the Terminal window, and the Terminal-only session chip and split keys, are excluded (the fixture keeps their room)."
+}

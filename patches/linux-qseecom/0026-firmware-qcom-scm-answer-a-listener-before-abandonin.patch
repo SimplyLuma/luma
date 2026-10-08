@@ -1,0 +1,79 @@
+From a3b3631e15280a7605801c4b1c60d09b3e72f453 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 11:04:13 +0200
+Subject: [PATCH 26/41] firmware: qcom: scm: answer a listener before
+ abandoning it
+
+Giving up on a listener that will not settle left the application parked in TZ
+waiting for an answer that was never coming, and per this file's own reasoning
+that makes every later QSEECOM call return -EBUSY until the device is power
+cycled. The id is in hand at that point, so answer failure and let the
+application error out instead.
+
+The unexpected-response-type path cannot do the same, because it fires
+precisely when the response does not carry a listener id -- there is nothing to
+answer. Say in the message that the interface is stuck, rather than leaving the
+next person to work out why it went dead.
+
+While here, hoist the id validation above the round check so both paths have it,
+and fix the indentation of the line that introduced it.
+
+Assisted-by: Claude:claude-opus-5
+Assisted-by: Kimi:kimi-k3
+---
+ drivers/firmware/qcom/qcom_scm.c | 32 +++++++++++++++++++++++++-------
+ 1 file changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index 5ecc1f088..c30cdd639 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2179,23 +2179,41 @@ static int qcom_scm_qseecom_service_listeners(struct qcom_scm_qseecom_resp *res)
+ 
+ 	while (res->result == QSEECOM_RESULT_INCOMPLETE) {
+ 		if (res->resp_type != QSEECOM_SCM_RES_QSEOS_LISTENER_ID) {
++			/*
++			 * No listener id to answer with, so the application
++			 * stays parked in TZ and every later QSEECOM call
++			 * returns -EBUSY until the device is power cycled.
++			 * Nothing here can recover it; say so plainly rather
++			 * than leaving the next person to work out why the
++			 * interface went dead.
++			 */
+ 			dev_err(__scm->dev,
+-				"qseecom: incomplete call with unexpected response type %llx\n",
++				"qseecom: incomplete call with unexpected response type %llx; the interface is now stuck until reboot\n",
+ 				res->resp_type);
+ 			return -EPROTO;
+ 		}
+ 
++		if (res->data > U32_MAX)
++			return -EINVAL;
++
++		id = res->data;
++
+ 		if (++rounds > QSEECOM_MAX_LISTENER_ROUNDS) {
++			/*
++			 * Answer failure before giving up. The application is
++			 * parked in TZ waiting for this listener, and leaving
++			 * it there makes every later QSEECOM call return
++			 * -EBUSY until the device is power cycled -- so tell
++			 * it the request failed and let it error out instead.
++			 */
+ 			dev_err(__scm->dev,
+-				"qseecom: listener %llu will not settle, giving up\n",
+-				res->data);
++				"qseecom: listener %u will not settle, failing it\n",
++				id);
++			qcom_scm_qseecom_listener_respond(id,
++					QSEECOM_LISTENER_FAILURE, res);
+ 			return -ELOOP;
+ 		}
+ 
+-		if (res->data > U32_MAX)
+-		return -EINVAL;
+-
+-	id = res->data;
+ 		listener = qcom_scm_qseecom_listener_find(id);
+ 		if (listener) {
+ 			status = listener->service(listener);

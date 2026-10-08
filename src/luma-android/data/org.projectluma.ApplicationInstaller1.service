@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.ApplicationInstaller1
+Exec=/usr/bin/luma-androidd
+SystemdService=luma-android.service

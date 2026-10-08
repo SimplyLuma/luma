@@ -1,0 +1,9 @@
+[Desktop Entry]
+NoDisplay=true
+Name=Wine Configuration
+Exec=winecfg
+Icon=winecfg
+Terminal=false
+Type=Application
+StartupNotify=true
+Categories=X-Wine;

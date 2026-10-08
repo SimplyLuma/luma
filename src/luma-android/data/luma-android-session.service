@@ -1,0 +1,35 @@
+[Unit]
+Description=Project Luma per-user Android session
+Documentation=https://project-luma.local/android
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+# Android is an optional per-user runtime. Never start it for GDM's greeter
+# (a dynamic, non-system UID whose session class is "greeter") or for
+# system users; systemd logs the unmet condition as the reason it skipped.
+ConditionUser=!@system
+ConditionEnvironment=XDG_SESSION_CLASS=user
+ConditionPathExists=/var/lib/waydroid/waydroid.cfg
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+# ReadWritePaths only grants a directory that already exists.
+ExecStartPre=+/usr/bin/mkdir -p %h/.local/share/luma/icons
+ExecStart=/usr/bin/luma-android-session
+ExecStop=/usr/bin/waydroid session stop
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=45
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# Launcher reconciliation publishes rounded application icons here.
+ReadWritePaths=-%h/.local/share/waydroid -%h/.local/share/applications -%h/.local/state/luma-android -%t/waydroid -%t/luma-android -%h/.local/share/luma/icons
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=graphical-session.target

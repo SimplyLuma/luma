@@ -1,0 +1,108 @@
+From 574320c36d2e4de390f64b31d92a598f1b433f63 Mon Sep 17 00:00:00 2001
+From: Project Luma <codex@project-luma.local>
+Date: Wed, 26 Aug 2026 20:25:00 -0500
+Subject: [PATCH] qmicli: pdc: type loads and preserve mapped storage
+
+The PDC load command currently labels every uploaded MBN as a software
+configuration. Hardware profiles therefore cannot be loaded correctly.
+Require an explicit configuration type alongside the path and carry that
+type through every chunk of the upload. Also stop freeing the borrowed
+GMappedFile contents pointer: doing so crashes qmicli before the first chunk
+can be sent.
+
+Signed-off-by: Project Luma <codex@project-luma.local>
+---
+ src/qmicli/qmicli-pdc.c | 29 +++++++++++++++++++++--------
+ 1 file changed, 21 insertions(+), 8 deletions(-)
+
+diff --git a/src/qmicli/qmicli-pdc.c b/src/qmicli/qmicli-pdc.c
+index 4e7a19c4..bced068d 100644
+--- a/src/qmicli/qmicli-pdc.c
++++ b/src/qmicli/qmicli-pdc.c
+@@ -54,6 +54,7 @@ typedef struct {
+     GMappedFile *mapped_file;
+     GArray *checksum;
+     gsize offset;
++    QmiPdcConfigurationType config_type;
+ } LoadConfigFileData;
+ 
+ /* Context */
+@@ -162,7 +163,7 @@ static GOptionEntry entries[] = {
+     {
+         "pdc-load-config", 0, 0, G_OPTION_ARG_STRING, &load_config_str,
+         "Load config to device",
+-        "[Path to config]"
++        "[(platform|software),Path to config]"
+     },
+ #endif
+ #if defined HAVE_QMI_ACTION_PDC_REFRESH
+@@ -1102,7 +1103,8 @@ run_delete_config (void)
+ #if defined HAVE_QMI_ACTION_PDC_LOAD_CONFIG
+ 
+ static LoadConfigFileData *
+-load_config_file_from_string (const gchar *str)
++load_config_file_from_string (const gchar *path,
++                              QmiPdcConfigurationType config_type)
+ {
+     g_autoptr(GError)       error = NULL;
+     g_autoptr(GMappedFile)  mapped_file = NULL;
+@@ -1112,8 +1114,8 @@ load_config_file_from_string (const gchar *str)
+     gsize                   file_size;
+     gsize                   hash_size;
+ 
+-    if (!(mapped_file = g_mapped_file_new (str, FALSE, &error))) {
+-        g_printerr ("error: couldn't map config file: '%s'\n", error->message);
++    if (!(mapped_file = g_mapped_file_new (path, FALSE, &error))) {
++        g_printerr ("error: couldn't map config file '%s': %s\n", path, error->message);
+         return NULL;
+     }
+ 
+@@ -1127,12 +1129,12 @@ load_config_file_from_string (const gchar *str)
+     hash_size = g_checksum_type_get_length (G_CHECKSUM_SHA1);
+     checksum = g_checksum_new (G_CHECKSUM_SHA1);
+     g_checksum_update (checksum, file_contents, file_size);
+-    g_free (file_contents);
+ 
+     data = g_slice_new (LoadConfigFileData);
+     data->mapped_file = g_mapped_file_ref (mapped_file);
+     data->checksum = g_array_sized_new (FALSE, FALSE, sizeof (guint8), hash_size);
+     g_array_set_size (data->checksum, hash_size);
++    data->config_type = config_type;
+     data->offset = 0;
+     g_checksum_get_digest (checksum, &g_array_index (data->checksum, guint8, 0), &hash_size);
+     g_checksum_free (checksum);
+@@ -1170,7 +1172,7 @@ load_config_input_create_chunk (LoadConfigFileData *config_file)
+     g_print ("Uploaded %" G_GSIZE_FORMAT "  of %" G_GSIZE_FORMAT "\n", config_file->offset, full_size);
+ 
+     if (!qmi_message_pdc_load_config_input_set_config_chunk (input,
+-                                                             QMI_PDC_CONFIGURATION_TYPE_SOFTWARE,
++                                                             config_file->config_type,
+                                                              config_file->checksum,
+                                                              full_size,
+                                                              chunk,
+@@ -1266,10 +1268,21 @@ load_config_ready (QmiClientPdc *client,
+ static QmiMessagePdcLoadConfigInput *
+ load_config_input_create (const gchar *str)
+ {
+-    LoadConfigFileData           *config_file;
++    g_auto(GStrv)                 split = NULL;
++    QmiPdcConfigurationType       config_type;
++    LoadConfigFileData           *config_file = NULL;
+     QmiMessagePdcLoadConfigInput *input;
+ 
+-    config_file = load_config_file_from_string (str);
++    split = g_strsplit (str, ",", 2);
++    if (!split[0] || !split[0][0] || !split[1] || !split[1][0]) {
++        g_printerr ("error: expected '(platform|software),Path to config'\n");
++        return NULL;
++    }
++
++    if (!qmicli_read_pdc_configuration_type_from_string (split[0], &config_type))
++        return NULL;
++
++    config_file = load_config_file_from_string (split[1], config_type);
+     if (!config_file)
+         return NULL;
+ 
+-- 
+2.51.0

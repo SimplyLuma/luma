@@ -1,0 +1,127 @@
+diff --git a/src/ui/math-display.blp b/src/ui/math-display.blp
+--- a/src/ui/math-display.blp
++++ b/src/ui/math-display.blp
+@@ -7,6 +7,7 @@ template $MathDisplay: Box {
+     ScrolledWindow display_scrolled {
+       hexpand: true;
+       vscrollbar-policy: never;
++      hscrollbar-policy: never;
+ 
+       styles [
+         "display-scrolled",
+@@ -24,6 +25,7 @@ template $MathDisplay: Box {
+         height-request: "45";
+         input-hints: "no-emoji|no-spellcheck|inhibit-osk";
+         cursor-visible: false;
++        opacity: 0;
+         buffer: bind template.equation;
+ 
+         EventControllerKey event_controller {
+@@ -39,15 +41,17 @@ template $MathDisplay: Box {
+     }
+ 
+     [overlay]
+-    Label zero_label {
++    Label result_label {
+       label: "0";
+       halign: end;
+       valign: center;
+       margin-end: 16;
+       can-target: false;
++      single-line-mode: true;
++      xalign: 1;
+ 
+       styles [
+-        "display-zero",
++        "display-result",
+       ]
+     }
+ 
+diff --git a/src/math-display.vala b/src/math-display.vala
+--- a/src/math-display.vala
++++ b/src/math-display.vala
+@@ -22,7 +22,7 @@ public class MathDisplay : Gtk.Box
+     unowned GtkSource.View source_view;
+ 
+     [GtkChild]
+-    unowned Gtk.Label zero_label;
++    unowned Gtk.Label result_label;
+ 
+     /* Buffer that shows errors etc */
+     [GtkChild]
+@@ -507,7 +507,7 @@ public class MathDisplay : Gtk.Box
+             else
+                 info_view.buffer.text = "";
+         }
+-        info_box.visible = info_view.buffer.text != "";
++        info_box.visible = false;
+     }
+ 
+     private void status_changed_cb ()
+@@ -537,14 +537,14 @@ public class MathDisplay : Gtk.Box
+             spinner.set_visible (false);
+             info_view.left_margin = info_view.right_margin = 12;
+         }
+-        info_box.visible = equation.in_solve || info_view.buffer.text != "";
++        info_box.visible = false;
+     }
+ 
+     private void update_result_scale ()
+     {
+-        zero_label.visible = equation.is_empty;
+-        source_view.remove_css_class ("result-medium");
+-        source_view.remove_css_class ("result-small");
++        result_label.label = equation.is_empty ? "0" : equation.display;
++        result_label.remove_css_class ("result-medium");
++        result_label.remove_css_class ("result-small");
+ 
+         var width = source_view.get_width () - 32;
+         if (width <= 0 || equation.display == "")
+@@ -557,9 +558,9 @@ public class MathDisplay : Gtk.Box
+         layout.get_pixel_size (out text_width, out text_height);
+ 
+         if (text_width * 26 > width * 34)
+-            source_view.add_css_class ("result-small");
++            result_label.add_css_class ("result-small");
+         else if (text_width > width)
+-            source_view.add_css_class ("result-medium");
++            result_label.add_css_class ("result-medium");
+     }
+ 
+     private void error_status_changed_cb ()
+diff --git a/src/ui/style.css b/src/ui/style.css
+--- a/src/ui/style.css
++++ b/src/ui/style.css
+@@ -466,7 +466,7 @@ button.action-button {
+   }
+ 
+   .sourceview {
+-    padding: 12px 16px;
++    padding: 18px 16px 6px;
+     font-family: "Figtree";
+     color: @view_fg_color;
+     font-size: 34px;
+@@ -474,7 +474,7 @@ button.action-button {
+     font-feature-settings: "tnum";
+   }
+ 
+-  .display-zero {
++  .display-result {
+     color: @view_fg_color;
+     font-family: "Figtree";
+     font-size: 34px;
+@@ -485,11 +485,11 @@ button.action-button {
+-  .sourceview.result-medium {
++  .display-result.result-medium {
+     font-size: 26px;
+   }
+ 
+-  .sourceview.result-small {
++  .display-result.result-small {
+     font-size: 20px;
+   }
+ 
+-  mathdisplay.error .sourceview {
++  mathdisplay.error .display-result {
+     color: #c0483c;
+   }

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#515865" /><stop offset="1" stop-color="#242831" /></linearGradient>
+    <radialGradient id="bloom" cx=".18" cy=".02" r=".8"><stop stop-color="#fff" stop-opacity=".25" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></radialGradient>
+    <linearGradient id="porcelain" x1="220" y1="292" x2="810" y2="732" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" /><stop offset=".32" stop-color="#fbfcfb" /><stop offset=".65" stop-color="#dfe3e0" /><stop offset=".84" stop-color="#f4f5f3" /><stop offset="1" stop-color="#b9c0bc" /></linearGradient>
+    <radialGradient id="sheen" cx="320" cy="360" r="420" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity=".8" /><stop offset=".48" stop-color="#fff" stop-opacity=".12" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></radialGradient>
+  <clipPath id="lumaTile"><rect width="1024" height="1024" rx="256" ry="256" /></clipPath></defs>
+  <g clip-path="url(#lumaTile)"><rect width="1024" height="1024" fill="url(#tile)" /><rect width="1024" height="1024" fill="url(#bloom)" />
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m272 356 194 156-194 156" stroke="url(#porcelain)" stroke-width="92" />
+    <path d="m272 356 194 156-194 156" stroke="url(#sheen)" stroke-width="24" opacity=".68" />
+  </g>
+  <g>
+    <rect x="542" y="652" width="264" height="68" rx="34" fill="url(#porcelain)" />
+    <rect x="550" y="660" width="248" height="52" rx="26" fill="url(#sheen)" />
+  </g>
+</g></svg>

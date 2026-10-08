@@ -1,0 +1,140 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 22 Sep 2026 12:00:00 -0500
+Subject: [PATCH] x11: Keep the geometry the shell chose before map
+
+A shell can place a new window before it is mapped by answering the
+window's initial "configure" signal. meta_window_apply_config() applies
+that rectangle as a frame rectangle, but meta_window_x11_configure()
+also stored it in the size hints, which hold the client's request as a
+client rectangle. When a decorated window's frame arrived,
+meta_window_x11_initialize_state() read the size hints back as a client
+rectangle and grew them by the decorations: a window placed in a tile
+was made one title bar taller, pushed back inside the work area, and
+had to be moved to its tile again before it was first shown, sending
+the client three configurations for one placement.
+
+The size hints now get the client rectangle for the frame rectangle the
+shell chose, and a decorated window whose frame does not exist yet
+keeps the chosen frame rectangle until the frame is there. A window the
+shell does not place is configured exactly as before.
+---
+diff --git a/src/x11/window-x11-private.h b/src/x11/window-x11-private.h
+index 94e5aad..25a0599 100644
+--- a/src/x11/window-x11-private.h
++++ b/src/x11/window-x11-private.h
+@@ -105,6 +105,11 @@ struct _MetaWindowX11Private
+   gboolean has_custom_frame_extents;
+   MetaSyncCounter sync_counter;
+ 
++  /* The frame rectangle the shell chose in the initial "configure" signal,
++   * kept until the window is first configured with its frame in place */
++  gboolean has_preconfigured_rect;
++  MtkRectangle preconfigured_rect;
++
+   char *wm_client_machine;
+   char *sm_client_id;
+ };
+diff --git a/src/x11/window-x11.c b/src/x11/window-x11.c
+index d7dda58..f7d05b8 100644
+--- a/src/x11/window-x11.c
++++ b/src/x11/window-x11.c
+@@ -566,23 +566,40 @@ meta_window_x11_initialize_state (MetaWindow *window)
+       MetaGravity gravity = window->size_hints.win_gravity;
+       MetaPlaceFlag place_flags = META_PLACE_FLAG_NONE;
+ 
+-      rect.x = window->size_hints.x;
+-      rect.y = window->size_hints.y;
+-      rect.width = window->size_hints.width;
+-      rect.height = window->size_hints.height;
+-
+       flags = (META_MOVE_RESIZE_CONFIGURE_REQUEST |
+                META_MOVE_RESIZE_MOVE_ACTION |
+                META_MOVE_RESIZE_RESIZE_ACTION |
+                META_MOVE_RESIZE_CONSTRAIN);
+ 
+-      size_hints_flags = window->size_hints.flags;
+-      if (!(size_hints_flags & META_SIZE_HINTS_USER_POSITION) &&
+-          !meta_window_config_get_is_fullscreen (window->config))
+-        flags |= META_MOVE_RESIZE_RECT_INVALID;
+-
+-      adjust_for_gravity (window, TRUE, gravity, &rect);
+-      meta_window_client_rect_to_frame_rect (window, &rect, &rect);
++      if (priv->has_preconfigured_rect)
++        {
++          /* The shell placed the window in the initial "configure" signal,
++           * as a frame rectangle, before its frame existed. Keep that frame
++           * rectangle now that the frame is here, rather than reading it
++           * back from the size hints as a client rectangle and growing it
++           * by the decorations. */
++          rect = priv->preconfigured_rect;
++          priv->has_preconfigured_rect = FALSE;
++
++          meta_topic (META_DEBUG_GEOMETRY,
++                      "Window %s keeps its pre-configured frame (%i,%i) [%ix%i]",
++                      window->desc, rect.x, rect.y, rect.width, rect.height);
++        }
++      else
++        {
++          rect.x = window->size_hints.x;
++          rect.y = window->size_hints.y;
++          rect.width = window->size_hints.width;
++          rect.height = window->size_hints.height;
++
++          size_hints_flags = window->size_hints.flags;
++          if (!(size_hints_flags & META_SIZE_HINTS_USER_POSITION) &&
++              !meta_window_config_get_is_fullscreen (window->config))
++            flags |= META_MOVE_RESIZE_RECT_INVALID;
++
++          adjust_for_gravity (window, TRUE, gravity, &rect);
++          meta_window_client_rect_to_frame_rect (window, &rect, &rect);
++        }
+ 
+       meta_window_move_resize_internal (window, flags, place_flags, rect, NULL);
+     }
+@@ -4690,12 +4707,17 @@ meta_window_x11_shutdown_group (MetaWindow *window)
+ void
+ meta_window_x11_configure (MetaWindow *window)
+ {
++  MetaWindowX11 *window_x11 = META_WINDOW_X11 (window);
++  MetaWindowX11Private *priv =
++    meta_window_x11_get_instance_private (window_x11);
+   g_autoptr (MetaWindowConfig) window_config = NULL;
++  MtkRectangle old_rect;
+   MtkRectangle new_rect;
+ 
+   window_config = meta_window_config_new_from (window->config);
+   if (window->showing_for_first_time)
+     meta_window_config_set_initial (window_config);
++  old_rect = meta_window_config_get_rect (window_config);
+   meta_window_emit_configure (window, window_config);
+ 
+   new_rect = meta_window_config_get_rect (window_config);
+@@ -4706,10 +4728,24 @@ meta_window_x11_configure (MetaWindow *window)
+ 
+   if (meta_window_config_has_position (window_config))
+     {
+-      window->size_hints.x = new_rect.x;
+-      window->size_hints.y = new_rect.y;
+-      window->size_hints.width = new_rect.width;
+-      window->size_hints.height = new_rect.height;
++      MtkRectangle client_rect = new_rect;
++
++      /* A rectangle the shell chose is a frame rectangle, which is how
++       * meta_window_apply_config() applies it; the size hints hold the
++       * client's request, a client rectangle. A frame that does not exist
++       * yet is accounted for when it arrives (see preconfigured_rect). */
++      if (!mtk_rectangle_equal (&old_rect, &new_rect))
++        {
++          priv->has_preconfigured_rect = window->decorated && !priv->frame;
++          priv->preconfigured_rect = new_rect;
++          meta_window_frame_rect_to_client_rect (window, &new_rect,
++                                                 &client_rect);
++        }
++
++      window->size_hints.x = client_rect.x;
++      window->size_hints.y = client_rect.y;
++      window->size_hints.width = client_rect.width;
++      window->size_hints.height = client_rect.height;
+     }
+ 
+   meta_window_apply_config (window, window_config,

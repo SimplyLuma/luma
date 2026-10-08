@@ -1,0 +1,10 @@
+#!/bin/sh
+# Isolated development preview: the installed Darkroom application is untouched.
+set -eu
+worktree=/var/home/nick/Documents/wt/lumaui-darkroom
+preview=/var/home/nick/.local/share/luma-dev/lumaui-darkroom
+export PYTHONPATH="$preview/python:$worktree/src/luma-darkroom${PYTHONPATH:+:$PYTHONPATH}"
+export LUMA_APPKIT_ICON_PATH="$preview/python/icons"
+export GI_TYPELIB_PATH="$worktree/src/luma-platform/_build/ui${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+export LD_LIBRARY_PATH="$worktree/src/luma-platform/_build/ui${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec python3 -c 'import sys; import luma_darkroom.application as app; import luma_darkroom.lumaui_window as window; app.APP_ID = window.APP_ID = "org.projectluma.Darkroom.LumaUIPreview"; sys.argv[0] = "darkroom-preview"; raise SystemExit(app.main())' "$@"

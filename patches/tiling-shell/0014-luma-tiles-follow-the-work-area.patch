@@ -1,0 +1,774 @@
+From: Project Luma
+Subject: [PATCH] luma: tiled windows follow the work area when the Dash moves
+
+When the Dash frees an edge or takes one (Shell .119: an empty edge
+reserves nothing), Mutter changes the work area and the tiling manager's
+layout follows, but the windows already in tiles kept their old size: the
+freed space stayed empty until each window was tiled again. A window's tile
+is stored relative to the work area it was made in, so on a work-area
+change every tiled window on that monitor is eased into the same tile of the
+new work area, with the layout's gaps. Floating windows are not touched,
+minimized ones wait, and maximized ones are re-fitted by Mutter itself.
+
+Only once the layout has settled, so a resume or a monitor hotplug does
+not make windows flicker between places: the re-tile waits until the work
+area has not changed for 500 ms and window memory has finished putting
+windows back, moves each window at most once per settled work area, never
+to another monitor, and stops moving a window that was moved 3 times in
+2 s (logged for Vitals as reflow-stopped). Window memory's own put-back
+after a monitor change waits the same 500 ms for the layout to settle,
+puts each window back once per settled layout, and leaves alone (logged as
+restore-churn) a window it moved 3 times in 2 s.
+
+The settle is only for a resume or a monitor change. A change the Dash
+makes itself (an island came or went; Shell .121 sets Main.shelf.
+workAreaMotion) is followed at once, on the Dash's own curve and duration:
+each window glides from where it was into its tile in one continuous move
+or resize (Main.wm.lumaGlideFrame, no cross-fade), and is simply moved with
+reduced motion. When a band arrives the Dash says where the work area is
+going first (work-area-changing, Main.shelf.workAreaNext), so the tiles
+move with the band before Mutter could push a window out of it; when one
+goes, they follow as soon as Mutter has the larger area.
+
+A window put in a tile stays exactly there: once the client has answered,
+its frame is compared with the tile and put back (at most twice, logged as
+tile-corrected or tile-refused). A client answering a resize late while
+Mutter still had the old work area left a lower tile's window pushed up,
+with a gap above the Dash, and the re-tile then skipped it.
+
+One gap everywhere: the Dash's reservation on an edge already holds the
+margin a window keeps from an island (what maximized windows use), so the
+outer gap on that edge is the rest of the gap, and the whole gap on an edge
+the Dash does not hold (lumaOuterGaps, Main.shelf.reservedMargins). A tiled
+window is then one gap from another window, from an island and from the
+screen, on every edge.
+
+Once per user (luma-settings-migration): an outer gap of 0, set while the
+Dash kept a margin on every edge, becomes the gap between windows, so
+tiles keep a gap at edges the Dash leaves empty; and Tiling Shell's own
+panel button, turned back on, goes back to its default (off). Tiling lives
+in Quick Options.
+
+A window that closes while it is held in its tile takes its hold with it
+(the check is dropped on unmanaging), and only a window can be held at all:
+anything else is refused and logged (tile-hold-type) instead of being
+called as one, which is what raised "window.get_compositor_private is not
+a function" from the check.
+
+---
+diff --git a/components/lumaWindowMemory/windowMemory.js b/components/lumaWindowMemory/windowMemory.js
+--- a/components/lumaWindowMemory/windowMemory.js
++++ b/components/lumaWindowMemory/windowMemory.js
+@@ -25,6 +25,7 @@ import { Clutter, GLib, Gio, Meta, Shell, St } from "../../gi/ext.js";
+ import { buildRectangle } from "../../utils/ui.js";
+ import * as Main from "resource:///org/gnome/shell/ui/main.js";
+ import Tile from "../layout/Tile.js";
++import GlobalState from "../../utils/globalState.js";
+ import { maximizeWindow, unmaximizeWindow } from "../../utils/gnomesupport.js";
+ 
+ const VERSION = 1;
+@@ -49,6 +50,10 @@ const DEFAULT_TIMING = {
+   // frames; a window that has not by then is shown where it is and moved to its
+   // place afterwards with the usual animation.
+   holdAfterShown: 250,
++  // after a resume or a monitor change, windows are put back once the
++  // monitors and work areas have not changed for this long, so a burst of
++  // changes (a dock waking up) moves each window once, not once per change
++  early: 500,
+   holdMax: 1000,
+   // a hold longer than this is logged as a warning, so a regression shows up
+   holdWarn: 500,
+@@ -80,6 +85,8 @@ const TOLERANCE = 0.02;
+ const APP = Symbol("luma-window-memory-app");
+ const ORDINAL = Symbol("luma-window-memory-ordinal");
+ const TOUCHED = Symbol("luma-window-memory-touched");
++const MOVES = Symbol("luma-window-memory-moves");
++const CHURNING = Symbol("luma-window-memory-churning");
+ const OWN_UNTIL = Symbol("luma-window-memory-own");
+ const LEFT = Symbol("luma-window-memory-left");
+ // Where a window was when Tiling Shell last stopped (lock-time re-enable of
+@@ -355,6 +362,7 @@ export default class LumaWindowMemory {
+     for (const id of this._sources) GLib.source_remove(id);
+     this._sources.clear();
+     this._stableId = 0;
++    this._earlyWaitId = 0;
+     if (this._earlyId) global.compositor.get_laters().remove(this._earlyId);
+     this._earlyId = 0;
+     if (this._saveId) {
+@@ -1299,6 +1307,8 @@ export default class LumaWindowMemory {
+         vitals("setup-changing", `monitors changing (${reason}); recording paused`, { reason });
+       }
+       this._stable = false;
++      // Tiling's work-area reflow waits while windows are being put back.
++      GlobalState.get()._lumaLayoutSettling = true;
+       this._monitorsCache = null;
+       for (const data of this._windows.values()) data.settleId = this._clearTimeout(data.settleId);
+     }
+@@ -1315,27 +1325,59 @@ export default class LumaWindowMemory {
+   // showing where Mutter moved them until the monitors have been stable for a
+   // while. If the monitors change again, this runs again; _settle confirms.
+   _queueEarlyPlacement() {
+-    if (this._earlyId || this._asleep || !this._enabled) return;
+-    this._earlyId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
+-      this._earlyId = 0;
+-      if (this._stable || !this._transition || this._asleep || /^(enable|re-enable)/.test(this._transition.reason)) return GLib.SOURCE_REMOVE;
+-      try {
+-        const monitors = this._monitors();
+-        const counts = this._placeAll(false, this._transition, monitors, this._now());
+-        if (counts.moved + counts.inside > 0)
+-          vitals("placed-early", `${monitors.length} monitor(s) after ${this._transition.reason}: ${counts.moved} window(s) put back and ${counts.inside} brought inside before the first frame`, {
+-            reason: this._transition.reason,
+-            monitors: monitors.length,
+-            moved: counts.moved,
+-            inside: counts.inside
+-          });
+-      } catch (e) {
+-        vitals("placed-early-failed", `placing windows for the new monitors failed: ${e}`);
+-      }
+-      return GLib.SOURCE_REMOVE;
++    if (this._asleep || !this._enabled) return;
++    if (this._earlyId) global.compositor.get_laters().remove(this._earlyId);
++    this._earlyId = 0;
++    this._earlyWaitId = this._clearTimeout(this._earlyWaitId);
++    this._earlyWaitId = this._timeout(this.timing.early, () => {
++      this._earlyWaitId = 0;
++      this._earlyId = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++        this._earlyId = 0;
++        if (this._stable || !this._transition || this._asleep || /^(enable|re-enable)/.test(this._transition.reason)) return GLib.SOURCE_REMOVE;
++        try {
++          const monitors = this._monitors();
++          // Once per settled layout: the same monitors and work areas are
++          // not placed twice.
++          const layout = JSON.stringify(monitors.map((m) => {
++            const a = Main.layoutManager.getWorkAreaForMonitor(m.index);
++            return [m.key, m.index, a.x, a.y, a.width, a.height];
++          }));
++          if (this._transition.earlyLayout === layout) return GLib.SOURCE_REMOVE;
++          this._transition.earlyLayout = layout;
++          const counts = this._placeAll(false, this._transition, monitors, this._now());
++          if (counts.moved + counts.inside > 0)
++            vitals("placed-early", `${monitors.length} monitor(s) after ${this._transition.reason}: ${counts.moved} window(s) put back and ${counts.inside} brought inside once the layout settled`, {
++              reason: this._transition.reason,
++              monitors: monitors.length,
++              moved: counts.moved,
++              inside: counts.inside
++            });
++        } catch (e) {
++          vitals("placed-early-failed", `placing windows for the new monitors failed: ${e}`);
++        }
++        return GLib.SOURCE_REMOVE;
++      });
+     });
+   }
+ 
++  // A window put back more than 3 times in 2 s is chasing a layout that
++  // keeps changing: it is left where it is (logged for Vitals) until the
++  // burst is over.
++  _churning(window) {
++    const now = GLib.get_monotonic_time() / 1e3;
++    const moves = window[MOVES] = (window[MOVES] ?? []).filter((t) => now - t < 2e3);
++    if (moves.length < 3) {
++      moves.push(now);
++      window[CHURNING] = false;
++      return false;
++    }
++    if (!window[CHURNING]) {
++      window[CHURNING] = true;
++      vitals("restore-churn", `${window[APP] ?? appIdentity(window) ?? "window"} moved ${moves.length} times in 2 s; left where it is until the monitors settle`, { app: window[APP] ?? appIdentity(window) }, GLib.LogLevelFlags.LEVEL_WARNING);
++    }
++    return true;
++  }
++
+   _resumed() {
+     const hook = LumaWindowMemory.testHooks?.resumed;
+     if (hook) return hook();
+@@ -1491,6 +1533,7 @@ export default class LumaWindowMemory {
+     this._setupKey = key;
+     this._transition = null;
+     this._stable = true;
++    GlobalState.get()._lumaLayoutSettling = false;
+     this._monitorsCache = null;
+     this._quietUntil = now + this.timing.quiet;
+     vitals("setup-stable", `${monitors.length} monitor(s), ${mode} setup after ${transition.reason}: moved ${moved}, kept ${kept}, person moved ${touched}${inside ? `, brought inside ${inside}` : ""}${skipped.size ? `, left alone ${[...skipped].map(([r, n]) => `${n} ${r}`).join("; ")}` : ""}`, {
+@@ -1582,6 +1625,10 @@ export default class LumaWindowMemory {
+         counts.kept++;
+         continue;
+       }
++      if (this._churning(window)) {
++        skip(window, "moved too often while the monitors changed", false);
++        continue;
++      }
+       const expected = this._expectedFrame(window, target.p, monitors);
+       this._apply(window, target.p, monitors);
+       this._veil(window, expected, `put back after ${transition.reason}`);
+diff --git a/components/tilingsystem/tilingManager.js b/components/tilingsystem/tilingManager.js
+old mode 100644
+new mode 100755
+--- a/components/tilingsystem/tilingManager.js
++++ b/components/tilingsystem/tilingManager.js
+@@ -28,6 +28,36 @@ import { KeyBindingsDirection } from "../../keybindings.js";
+ import TilingShellWindowManager from "../../components/windowManager/tilingShellWindowManager.js";
+ import TilingLayoutWithSuggestions from "../windowsSuggestions/tilingLayoutWithSuggestions.js";
+ import { maximizeWindow, unmaximizeWindow } from "../../utils/gnomesupport.js";
++const LUMA_REFLOW_SETTLE = 500;
++const LUMA_REFLOW_BURST = 3;
++const LUMA_REFLOW_WINDOW = 2e3;
++// After a tiling move, how long to wait for the client before checking that
++// the window really is in its tile, and how many times to put it back.
++const LUMA_TILE_CHECK = 350;
++const LUMA_TILE_TRIES = 2;
++// Luma: one gap everywhere. The Dash's reservation on an edge already
++// includes the margin a window keeps from an island, so the outer gap on
++// that edge is only what is left to make up the gap between windows; on an
++// edge the Dash does not hold, the whole gap is the outer gap. A window is
++// then exactly one gap from another window, from an island and from the
++// screen.
++function lumaOuterGaps(monitorIndex, scaleFactor = 1) {
++  const gaps = Settings.get_outer_gaps(scaleFactor);
++  const reserved = Main.shelf?.reservedMargins?.(monitorIndex) ?? {};
++  const side = (name) => Math.max(0, gaps[name] - (reserved[name] ?? 0) * scaleFactor);
++  return buildMargin({ top: side("top"), bottom: side("bottom"), left: side("left"), right: side("right") });
++}
++const LUMA_NO_OUTER = buildMargin({});
++function lumaTilingVitals(event, message, fields = {}) {
++  const entry = { MESSAGE: `[luma-tiling] ${message}`, LUMA_COMPONENT: "tiling", LUMA_EVENT: event };
++  for (const [key, value] of Object.entries(fields))
++    entry[`LUMA_${key.toUpperCase()}`] = String(value);
++  try {
++    GLib.log_structured("luma-tiling", GLib.LogLevelFlags.LEVEL_WARNING, entry);
++  } catch (e) {
++    console.warn(entry.MESSAGE);
++  }
++}
+ const MINIMUM_DISTANCE_TO_RESTORE_ORIGINAL_SIZE = 90;
+ 
+ class SnapAssistingInfo {
+@@ -95,7 +125,7 @@ class TilingManager {
+       const ws = global.workspaceManager.get_workspace_by_index(i);
+       if (!ws) continue;
+       const innerGaps = buildMargin(Settings.get_inner_gaps());
+-      const outerGaps = buildMargin(Settings.get_outer_gaps());
++      const outerGaps = lumaOuterGaps(monitor.index);
+       const layout = GlobalState.get().getSelectedLayoutOfMonitor(
+         monitor.index,
+         ws.index()
+@@ -113,7 +143,7 @@ class TilingManager {
+     }
+     this._tilingSuggestionsLayout = new TilingLayoutWithSuggestions(
+       buildMargin(Settings.get_inner_gaps()),
+-      buildMargin(Settings.get_outer_gaps()),
++      lumaOuterGaps(monitor.index),
+       this._workArea,
+       monitorScalingFactor
+     );
+@@ -168,7 +198,7 @@ class TilingManager {
+       );
+     });
+     this._signals.connect(Settings, Settings.KEY_OUTER_GAPS, () => {
+-      const outerGaps = buildMargin(Settings.get_outer_gaps());
++      const outerGaps = lumaOuterGaps(this._monitor.index);
+       this._workspaceTilingLayout.forEach(
+         (tilingLayout) => tilingLayout.relayout({ outerGaps })
+       );
+@@ -207,7 +237,7 @@ class TilingManager {
+           ws.index()
+         );
+         const innerGaps = buildMargin(Settings.get_inner_gaps());
+-        const outerGaps = buildMargin(Settings.get_outer_gaps());
++        const outerGaps = lumaOuterGaps(this._monitor.index);
+         this._debug("created new tiling layout for active workspace");
+         this._workspaceTilingLayout.set(
+           ws,
+@@ -308,7 +338,7 @@ class TilingManager {
+       });
+       destination = {
+         rect,
+-        tile: TileUtils.build_tile(rect, this._workArea)
++        tile: this._lumaCellTile(rect)
+       };
+     } else if (window.get_monitor() === this._monitor.index) {
+       const enlargeFactor = Math.max(
+@@ -342,10 +372,7 @@ class TilingManager {
+       window.originalSize = windowRectCopy;
+     if (spanFlag) {
+       destination.rect = destination.rect.union(windowRectCopy);
+-      destination.tile = TileUtils.build_tile(
+-        destination.rect,
+-        this._workArea
+-      );
++      destination.tile = this._lumaCellTile(destination.rect);
+     }
+     if (isMaximized) unmaximizeWindow(window);
+     this._easeWindowRect(window, destination.rect, false, force);
+@@ -361,6 +388,13 @@ class TilingManager {
+    * Destroys the tiling manager and cleans up resources.
+    */
+   destroy() {
++    for (const window of [...this._lumaTileChecks?.keys() ?? []])
++      this._lumaReleaseTile(window);
++    this._lumaTileChecks?.clear();
++    if (this._lumaReflowId) {
++      GLib.source_remove(this._lumaReflowId);
++      this._lumaReflowId = 0;
++    }
+     if (this._movingWindowTimerId) {
+       GLib.Source.remove(this._movingWindowTimerId);
+       this._movingWindowTimerId = null;
+@@ -382,14 +416,226 @@ class TilingManager {
+     this._debug(
+       `new work area for monitor ${this._monitor.index}: ${newWorkArea.x} ${newWorkArea.y} ${newWorkArea.width}x${newWorkArea.height}`
+     );
++    const outerGaps = lumaOuterGaps(this._monitor.index);
+     this._workspaceTilingLayout.forEach(
+-      (tl) => tl.relayout({ containerRect: this._workArea })
++      (tl) => tl.relayout({ containerRect: this._workArea, outerGaps })
+     );
++    this._tilingSuggestionsLayout?.relayout({ containerRect: this._workArea, outerGaps });
+     this._snapAssist.workArea = this._workArea;
+     this._edgeTilingManager.workarea = this._workArea;
++    this._lumaQueueReflow();
++  }
++  // Luma: the area the layout's tiles divide -- the work area less the
++  // outer gap on each side, exactly as the drawn layout divides it. Tiles
++  // are read and written in this area, so two halves are the same size even
++  // when the gaps differ from side to side, and every path (the drawn
++  // layout, snap assist, the window menu, the keyboard and the re-tile)
++  // puts a window in the same place.
++  get _lumaCellArea() {
++    const o = lumaOuterGaps(this._monitor.index);
++    return buildRectangle({
++      x: this._workArea.x + o.left,
++      y: this._workArea.y + o.top,
++      width: Math.max(1, this._workArea.width - o.left - o.right),
++      height: Math.max(1, this._workArea.height - o.top - o.bottom)
++    });
++  }
++  // A rectangle held inside the cell area (a drawn tile reaches into the
++  // outer gap at the screen's edges).
++  _lumaInCells(rect, area = this._lumaCellArea) {
++    const x = Math.max(rect.x, area.x), y = Math.max(rect.y, area.y);
++    return buildRectangle({
++      x,
++      y,
++      width: Math.max(1, Math.min(rect.x + rect.width, area.x + area.width) - x),
++      height: Math.max(1, Math.min(rect.y + rect.height, area.y + area.height) - y)
++    });
++  }
++  _lumaCellTile(rect) {
++    const area = this._lumaCellArea;
++    return TileUtils.build_tile(this._lumaInCells(rect, area), area);
++  }
++  // Where a window goes for `tile`: its cell, less half an inner gap on
++  // every side that meets another cell.
++  _lumaWindowRect(tile, scalingFactor = void 0) {
++    const area = this._lumaCellArea;
++    const cell = this._lumaInCells(TileUtils.apply_props(tile, area), area);
++    const gaps = buildTileGaps(cell, buildMargin(Settings.get_inner_gaps()), LUMA_NO_OUTER, area, scalingFactor).gaps;
++    return buildRectangle({
++      x: cell.x + gaps.left,
++      y: cell.y + gaps.top,
++      width: Math.max(1, cell.width - gaps.left - gaps.right),
++      height: Math.max(1, cell.height - gaps.top - gaps.bottom)
++    });
+   }
+ 
++  // Luma: when the Dash frees or takes an edge, the work area changes; the
++  // windows in tiles follow it, keeping their tile's share of the work area
++  // (a tile is stored relative to the work area it was made in), eased like
++  // any tiling move. Floating windows are left alone; maximized windows are
++  // re-fitted by Mutter itself.
++  //
++  // Only once the layout has settled: the reflow waits until the work area
++  // has not changed for LUMA_REFLOW_SETTLE ms and window memory is not
++  // putting windows back (after a resume or a monitor change), moves each
++  // window at most once per settled work area, never to another monitor,
++  // and stops moving a window that was moved more than LUMA_REFLOW_BURST
++  // times in LUMA_REFLOW_WINDOW ms (logged for Vitals).
++  _lumaQueueReflow() {
++    if (this._lumaReflowId)
++      GLib.source_remove(this._lumaReflowId);
++    this._lumaReflowId = 0;
++    // A change the Dash made itself (an island came or went): the windows
++    // follow at once, on the Dash's own motion, with no settle delay. The
++    // settle is only for monitor hotplug and resume.
++    const motion = Main.shelf?.workAreaMotion;
++    const now = GLib.get_monotonic_time() / 1e3;
++    if (motion && now - motion.since < 1e3 && !GlobalState.get()._lumaLayoutSettling) {
++      this._lumaReflowTiles(motion);
++      return;
++    }
++    this._lumaReflowId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, LUMA_REFLOW_SETTLE, () => {
++      this._lumaReflowId = 0;
++      // Waits at most 10 s for window memory to finish putting windows back.
++      if (GlobalState.get()._lumaLayoutSettling && (this._lumaSettleWaits = (this._lumaSettleWaits ?? 0) + 1) < 20) {
++        this._lumaQueueReflow();
++        return GLib.SOURCE_REMOVE;
++      }
++      this._lumaSettleWaits = 0;
++      this._lumaReflowTiles();
++      return GLib.SOURCE_REMOVE;
++    });
++  }
++  _lumaReflowTiles(motion = null) {
++    const area = this._workArea;
++    const key = `${area.x},${area.y},${area.width},${area.height}`;
++    const now = GLib.get_monotonic_time() / 1e3;
++    for (const actor of global.get_window_actors()) {
++      const window = actor.metaWindow;
++      if (!window || window.get_monitor() !== this._monitor.index || !window.assignedTile)
++        continue;
++      if (window.minimized || window.maximizedHorizontally || window.maximizedVertically)
++        continue;
++      if (window.windowType !== Meta.WindowType.NORMAL || window._lumaReflowKey === key)
++        continue;
++      const layout = this._workspaceTilingLayout.get(window.get_workspace());
++      if (!layout)
++        continue;
++      window._lumaReflowMoves = (window._lumaReflowMoves ?? []).filter((t) => now - t < LUMA_REFLOW_WINDOW);
++      if (window._lumaReflowMoves.length >= LUMA_REFLOW_BURST) {
++        if (!window._lumaReflowStopped) {
++          window._lumaReflowStopped = true;
++          lumaTilingVitals("reflow-stopped", `stopped re-tiling "${window.title}": moved ${window._lumaReflowMoves.length} times in ${LUMA_REFLOW_WINDOW} ms`, { title: window.title, monitor: this._monitor.index });
++        }
++        continue;
++      }
++      window._lumaReflowStopped = false;
++      const dest = this._lumaWindowRect(window.assignedTile,
++        this._enableScaling ? getScalingFactorOf(layout)[1] : void 0);
++      window._lumaReflowKey = key;
++      const before = window.get_frame_rect();
++      if (dest.width <= 0 || dest.height <= 0 || before.equal(dest))
++        continue;
++      window._lumaReflowMoves.push(now);
++      // One continuous glide of the window's frame, no fade, on the Dash's
++      // curve (Luma Shell); never move_to_monitor: a window stays on its
++      // tile's monitor.
++      if (Main.wm.lumaGlideFrame) {
++        Main.wm.lumaGlideFrame(window, dest, motion ? { duration: motion.duration, mode: motion.mode } : {});
++      } else {
++        const windowActor = window.get_compositor_private();
++        windowActor.remove_all_transitions();
++        Main.wm._prepareAnimationInfo(global.windowManager, windowActor, before.copy(), Meta.SizeChange.UNMAXIMIZE);
++        window.move_resize_frame(false, dest.x, dest.y, dest.width, dest.height);
++      }
++      this._lumaHoldTile(window, dest, (motion?.duration ?? 250) + LUMA_TILE_CHECK, "re-tile");
++    }
++  }
++  // Luma: a window put in a tile stays exactly there. A client can answer a
++  // resize late, and Mutter keeps a window inside the work area it has at
++  // that moment -- which, while the Dash is changing what it reserves, can
++  // be the one before -- so a lower tile's window could be left pushed up
++  // (a gap above the Dash) or a window left below a band that has gone.
++  // Once the client has answered, the frame is compared with the tile and
++  // put back, at most LUMA_TILE_TRIES times (logged for Vitals).
++  _lumaHoldTile(window, dest, delay = LUMA_TILE_CHECK, why = "tile") {
++    // Only a window is held. Anything else is a caller's mistake and is
++    // said so, not quietly worked around.
++    if (!(window instanceof Meta.Window)) {
++      lumaTilingVitals("tile-hold-type", `asked to hold ${window?.constructor?.name ?? typeof window} in a tile (${why}); only a window can be held`, { why });
++      return;
++    }
++    this._lumaTileChecks ??= new Map();
++    window._lumaTileWant = buildRectangle({ x: dest.x, y: dest.y, width: dest.width, height: dest.height });
++    window._lumaTileTries = 0;
++    // A window that closes while it is held takes its hold with it: the
++    // check never runs against a window Mutter has already let go of.
++    if (!window._lumaTileGoneId) {
++      window._lumaTileGoneId = window.connect("unmanaging", () => {
++        const id = window._lumaTileGoneId;
++        window._lumaTileGoneId = 0;
++        this._lumaReleaseTile(window);
++        if (id)
++          window.disconnect(id);
++      });
++    }
++    const schedule = (ms) => {
++      const old = this._lumaTileChecks.get(window);
++      if (old)
++        GLib.source_remove(old);
++      this._lumaTileChecks.set(window, GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
++        this._lumaTileChecks.delete(window);
++        check();
++        return GLib.SOURCE_REMOVE;
++      }));
++    };
++    const check = () => {
++      const want = window._lumaTileWant;
++      if (!want || !window.assignedTile)
++        return;
++      if (window.minimized || window.maximizedHorizontally || window.maximizedVertically || !window.get_compositor_private())
++        return;
++      const now = window.get_frame_rect();
++      if (now.equal(want)) {
++        window._lumaTileWant = null;
++        return;
++      }
++      // Only a window still mostly in its tile is put back: one that was
++      // moved somewhere else (by the person, or by window memory) is left
++      // alone.
++      const [ok, over] = now.intersect(want);
++      if (!ok || over.width * over.height < want.width * want.height / 2) {
++        window._lumaTileWant = null;
++        return;
++      }
++      if (window._lumaTileTries >= LUMA_TILE_TRIES) {
++        window._lumaTileWant = null;
++        lumaTilingVitals("tile-refused", `"${window.title}" stays at ${now.x},${now.y} ${now.width}x${now.height}, not its tile ${want.x},${want.y} ${want.width}x${want.height} (${why})`, { title: window.title, monitor: this._monitor.index });
++        return;
++      }
++      window._lumaTileTries++;
++      lumaTilingVitals("tile-corrected", `put "${window.title}" back in its tile: ${now.x},${now.y} ${now.width}x${now.height} -> ${want.x},${want.y} ${want.width}x${want.height} (${why})`, { title: window.title, monitor: this._monitor.index });
++      window.move_resize_frame(false, want.x, want.y, want.width, want.height);
++      schedule(LUMA_TILE_CHECK);
++    };
++    schedule(delay);
++  }
++  _lumaReleaseTile(window) {
++    if (!(window instanceof Meta.Window))
++      return;
++    window._lumaTileWant = null;
++    const id = this._lumaTileChecks?.get(window);
++    if (id) {
++      GLib.source_remove(id);
++      this._lumaTileChecks.delete(window);
++    }
++    if (window._lumaTileGoneId) {
++      window.disconnect(window._lumaTileGoneId);
++      window._lumaTileGoneId = 0;
++    }
++  }
+   _onWindowGrabBegin(window, grabOp) {
++    this._lumaReleaseTile(window);
+     if (this._isGrabbingWindow) return;
+     TouchPointer.get().updateWindowPosition(window.get_frame_rect());
+     this._signals.connect(
+@@ -665,9 +911,10 @@ class TilingManager {
+     if (window.maximizedHorizontally || window.maximizedVertically) return;
+     window.originalSize = window.get_frame_rect().copy();
+     window.assignedTile = new Tile({
+-      ...TileUtils.build_tile(selectedTilesRect, this._workArea)
++      ...this._lumaCellTile(selectedTilesRect)
+     });
+     this._easeWindowRect(window, desiredWindowRect);
++    this._lumaHoldTile(window, desiredWindowRect, LUMA_TILE_CHECK, "snap");
+     if (wasSnapAssistingLayout && Settings.SNAP_ASSIST_SYNC_LAYOUT) {
+       GlobalState.get().setSelectedLayoutOfMonitor(
+         wasSnapAssistingLayout.id,
+@@ -756,13 +1003,7 @@ class TilingManager {
+       this._snapAssistingInfo.update(void 0);
+       return;
+     }
+-    const scaledRect = TileUtils.apply_props(tile, this._workArea);
+-    if (scaledRect.x + scaledRect.width > this._workArea.x + this._workArea.width) {
+-      scaledRect.width -= scaledRect.x + scaledRect.width - this._workArea.x - this._workArea.width;
+-    }
+-    if (scaledRect.y + scaledRect.height > this._workArea.y + this._workArea.height) {
+-      scaledRect.height -= scaledRect.y + scaledRect.height - this._workArea.y - this._workArea.height;
+-    }
++    const scaledRect = this._lumaInCells(TileUtils.apply_props(tile, this._lumaCellArea));
+     const currentWs = global.workspaceManager.get_active_workspace();
+     const tilingLayout = this._workspaceTilingLayout.get(currentWs);
+     if (!tilingLayout) return;
+@@ -775,11 +1016,16 @@ class TilingManager {
+     const currentWs = global.workspaceManager.get_active_workspace();
+     const tilingLayout = this._workspaceTilingLayout.get(currentWs);
+     if (!tilingLayout) return;
++    // Luma: a drawn tile reaches into the outer gap at the screen's edges;
++    // the preview shows the cell itself, so what it shows is where the
++    // window goes.
++    const cellArea = this._lumaCellArea;
++    position = this._lumaInCells(position, cellArea);
+     this._selectedTilesPreview.gaps = buildTileGaps(
+       position,
+       tilingLayout.innerGaps,
+-      tilingLayout.outerGaps,
+-      this._workArea,
++      LUMA_NO_OUTER,
++      cellArea,
+       this._enableScaling ? getScalingFactorOf(tilingLayout)[1] : void 0
+     ).gaps;
+     this._selectedTilesPreview.get_parent()?.set_child_above_sibling(this._selectedTilesPreview, null);
+@@ -799,7 +1045,7 @@ class TilingManager {
+           width: position.width - gaps.left - gaps.right,
+           height: position.height - gaps.top - gaps.bottom
+         }),
+-        this._workArea
++        cellArea
+       );
+       this._selectedTilesPreview.updateBorderRadius(
+         !isTop,
+@@ -831,11 +1077,15 @@ class TilingManager {
+   }
+ 
+   _showEdgeTiling(window, edgeTile, pointerX, pointerY, tilingLayout) {
++    // Luma: an edge tile is a share of the work area; it is drawn and
++    // filled as the same share of the cell area, so halves stay halves.
++    const cellArea = this._lumaCellArea;
++    edgeTile = this._lumaInCells(TileUtils.apply_props(TileUtils.build_tile(edgeTile, this._workArea), cellArea), cellArea);
+     this._selectedTilesPreview.gaps = buildTileGaps(
+       edgeTile,
+       tilingLayout.innerGaps,
+-      tilingLayout.outerGaps,
+-      this._workArea,
++      LUMA_NO_OUTER,
++      cellArea,
+       this._enableScaling ? getScalingFactorOf(tilingLayout)[1] : void 0
+     ).gaps;
+     if (!this._selectedTilesPreview.showing) {
+@@ -859,26 +1109,10 @@ class TilingManager {
+     const currentWs = window.get_workspace();
+     const tilingLayout = this._workspaceTilingLayout.get(currentWs);
+     if (!tilingLayout) return;
+-    const scaledRect = TileUtils.apply_props(tile, this._workArea);
+-    if (scaledRect.x + scaledRect.width > this._workArea.x + this._workArea.width) {
+-      scaledRect.width -= scaledRect.x + scaledRect.width - this._workArea.x - this._workArea.width;
+-    }
+-    if (scaledRect.y + scaledRect.height > this._workArea.y + this._workArea.height) {
+-      scaledRect.height -= scaledRect.y + scaledRect.height - this._workArea.y - this._workArea.height;
+-    }
+-    const gaps = buildTileGaps(
+-      scaledRect,
+-      tilingLayout.innerGaps,
+-      tilingLayout.outerGaps,
+-      this._workArea,
+-      this._enableScaling ? getScalingFactorOf(tilingLayout)[1] : void 0
+-    ).gaps;
+-    const destinationRect = buildRectangle({
+-      x: scaledRect.x + gaps.left,
+-      y: scaledRect.y + gaps.top,
+-      width: scaledRect.width - gaps.left - gaps.right,
+-      height: scaledRect.height - gaps.top - gaps.bottom
+-    });
++    const cellArea = this._lumaCellArea;
++    const scaledRect = this._lumaInCells(TileUtils.apply_props(tile, cellArea), cellArea);
++    const destinationRect = this._lumaWindowRect(tile,
++      this._enableScaling ? getScalingFactorOf(tilingLayout)[1] : void 0);
+     if (destinationRect.width <= 0 || destinationRect.height <= 0) return;
+     const isMaximized = window.maximizedHorizontally || window.maximizedVertically;
+     const rememberOriginalSize = !isMaximized;
+@@ -886,15 +1120,7 @@ class TilingManager {
+     if (rememberOriginalSize && !window.assignedTile) {
+       window.originalSize = window.get_frame_rect().copy();
+     }
+-    window.assignedTile = TileUtils.build_tile(
+-      buildRectangle({
+-        x: scaledRect.x,
+-        y: scaledRect.y,
+-        width: scaledRect.width,
+-        height: scaledRect.height
+-      }),
+-      this._workArea
+-    );
++    window.assignedTile = this._lumaCellTile(scaledRect);
+     if (skipAnimation) {
+       window.move_resize_frame(
+         false,
+@@ -906,6 +1132,7 @@ class TilingManager {
+     } else {
+       this._easeWindowRect(window, destinationRect);
+     }
++    this._lumaHoldTile(window, destinationRect, LUMA_TILE_CHECK, "tile");
+   }
+ 
+   onTileFromWindowMenu(tile, window) {
+diff --git a/extension.js b/extension.js
+old mode 100644
+new mode 100755
+--- a/extension.js
++++ b/extension.js
+@@ -19,7 +19,8 @@
+  * SPDX-License-Identifier: GPL-3.0-or-later
+  */
+ import { Extension } from "./polyfill.js";
+-import { Gio, GLib, Meta } from "./gi/ext.js";
++import { Gio, GLib, GObject, Meta } from "./gi/ext.js";
++import { buildRectangle } from "./utils/ui.js";
+ import { logger } from "./utils/logger.js";
+ import {
+   filterUnfocusableWindows,
+@@ -96,6 +97,34 @@ import * as Config from "resource:///org/gnome/shell/misc/config.js";
+ import { RaiseTogetherManager } from "./components/raiseTogether/raiseTogetherManager.js";
+ const debug = logger("extension");
+ 
++// Luma, once per user: the Dash no longer keeps a margin on empty edges
++// (Shell .121), so tiles keep the outer gap themselves -- an outer gap of 0,
++// set while the Dash's margin stood in for it, becomes the gap between
++// windows; and Tiling Shell's own panel button, which the Dash does not
++// show (tiling lives in Quick Options), goes back to its default, off.
++function lumaMigrateSettings(settings) {
++  try {
++    if (settings.get_uint("luma-settings-migration") >= 1) return;
++    const changes = [];
++    if (settings.get_user_value("outer-gaps") !== null && settings.get_uint("outer-gaps") === 0) {
++      settings.set_uint("outer-gaps", settings.get_uint("inner-gaps"));
++      changes.push(`outer gap 0 -> ${settings.get_uint("inner-gaps")}`);
++    }
++    if (settings.get_user_value("show-indicator") !== null && settings.get_boolean("show-indicator")) {
++      settings.reset("show-indicator");
++      changes.push("panel indicator off");
++    }
++    settings.set_uint("luma-settings-migration", 1);
++    GLib.log_structured("luma-tiling", GLib.LogLevelFlags.LEVEL_MESSAGE, {
++      MESSAGE: `[luma-tiling] settings migrated: ${changes.join(", ") || "nothing to change"}`,
++      LUMA_COMPONENT: "tiling",
++      LUMA_EVENT: "settings-migrated"
++    });
++  } catch (e) {
++    console.warn(`[luma-tiling] settings migration failed: ${e}`);
++  }
++}
++
+ class TilingShellExtension extends Extension {
+   _indicator;
+   _tilingManagers;
+@@ -159,6 +188,7 @@ class TilingShellExtension extends Extension {
+       this._lumaWindowMemory?.onSessionModeChanged(!!Main.sessionMode.isLocked);
+     });
+     Settings.initialize(this.getSettings());
++    lumaMigrateSettings(this.getSettings());
+     if (Settings.LAST_VERSION_NAME_INSTALLED === "0") {
+       this._onInstall();
+       if (this.metadata["version-name"]) {
+@@ -253,6 +283,25 @@ class TilingShellExtension extends Extension {
+     // Luma: layouts follow the monitors and the setup, not monitor positions.
+     this._signals.connect(Main.layoutManager, "monitors-changed", () => this._lumaRestoreLayouts());
+     this._lumaRestoreLayouts();
++    // Luma: the Dash says where the work areas are going before it changes
++    // them. A work area that shrinks (a band arrives) is followed at once,
++    // so the tiles glide with the band and Mutter never pushes a window out
++    // of it first; one that grows is followed when Mutter has it, so no
++    // window is ever kept inside the old, smaller area.
++    if (Main.shelf && GObject.signal_lookup("work-area-changing", Main.shelf.constructor.$gtype)) {
++      this._signals.connect(Main.shelf, "work-area-changing", () => {
++        const next = Main.shelf.workAreaNext ?? {};
++        if (this._tilingManagers.length !== getMonitors().length) return;
++        this._tilingManagers.forEach((tm, index) => {
++          const r = next[index];
++          const now = tm._workArea;
++          if (!r || r.width <= 0 || r.height <= 0 || !now) return;
++          const inside = r.x >= now.x && r.y >= now.y && r.x + r.width <= now.x + now.width && r.y + r.height <= now.y + now.height;
++          if (inside)
++            tm.workArea = buildRectangle({ x: r.x, y: r.y, width: r.width, height: r.height });
++        });
++      });
++    }
+     this._signals.connect(global.display, "workareas-changed", () => {
+       const allMonitors = getMonitors();
+       if (this._tilingManagers.length !== allMonitors.length) {
+diff --git a/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml b/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+old mode 100644
+new mode 100755
+--- a/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
++++ b/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+@@ -57,6 +57,11 @@
+             <summary>Inner gaps</summary>
+             <description>Internal gaps between tiles in a layout.</description>
+         </key>
++        <key name="luma-settings-migration" type="u">
++            <default>0</default>
++            <summary>Luma settings migration</summary>
++            <description>The last one-time Luma settings migration applied (1: outer gap and panel indicator).</description>
++        </key>
+         <key name="outer-gaps" type="u">
+             <default>8</default>
+             <summary>Outer gaps</summary>

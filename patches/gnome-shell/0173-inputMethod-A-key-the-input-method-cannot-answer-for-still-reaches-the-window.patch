@@ -1,0 +1,49 @@
+From: Project Luma <engineering@projectluma.org>
+Date: Sun, 20 Sep 2026 17:30:00 -0500
+Subject: [PATCH] inputMethod: A key the input method cannot answer for still
+ reaches the window
+
+Every key goes to the input method first and is given to the window only
+when ibus has answered, even with a plain keyboard layout and no input
+method in use. Switching windows re-targets ibus -- a focus out, a focus
+in, a content type, and on a per-window input source a set-engine, which
+is where "Set global engine failed: Operation was cancelled" in the
+journal comes from -- and a key caught in that had nowhere to go: the
+reply came back for a context that is no longer the current one, or with
+an error, and the key was quietly dropped. The person saw the first
+letters of what they typed disappear.
+
+A key the input method does not answer for now goes to the window
+unfiltered, which is what would have happened had ibus said it did not
+want it.
+diff --git a/js/misc/inputMethod.js b/js/misc/inputMethod.js
+index 4d123c3..3c0ec11 100644
+--- a/js/misc/inputMethod.js
++++ b/js/misc/inputMethod.js
+@@ -346,8 +346,17 @@ export const InputMethod = GObject.registerClass({
+             event.get_key_code() - 8, // Convert XKB keycodes to evcodes
+             state, -1, this._cancellable,
+             (context, res) => {
+-                if (context !== this._context)
++                // The key was taken from the window while the input method
++                // looked at it, so it has to come back one way or another:
++                // if the input method did not take it, or could not answer
++                // because it was re-targeted or went away, the key is still
++                // the person's and goes to the window unfiltered. Switching
++                // windows re-targets the input method, and a key swallowed
++                // there is a letter the person watched disappear.
++                if (context !== this._context) {
++                    this.notify_key_event(event, false);
+                     return;
++                }
+ 
+                 try {
+                     const retval = context.process_key_event_async_finish(res);
+@@ -355,6 +364,7 @@ export const InputMethod = GObject.registerClass({
+                 } catch (e) {
+                     if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                         log(`Error processing key on IM: ${e.message}`);
++                    this.notify_key_event(event, false);
+                 }
+             });
+         return true;

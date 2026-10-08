@@ -1,0 +1,28 @@
+# Applications Luma has had to back off from.
+#
+# Luma starts Chromium and Electron applications with a few switches their
+# publisher did not choose, where the override is plainly better for the
+# person: native Wayland instead of XWayland, and video decoded by the chip
+# built for it rather than the processor. This file is the list of
+# applications where that turned out to break something, and what we stopped
+# doing about it.
+#
+# A line is an application id on its own, meaning Luma adds no switches of its
+# own to it at all, or an id followed by the groups to drop:
+#
+#   video-decode    accelerated video decode
+#   wayland         native Wayland instead of the application's own default
+#
+# The same file is read from three places, and all of them are added together:
+#
+#   /usr/share/luma/energy-flag-exceptions.txt   this file, shipped by Luma
+#   /etc/luma/energy-flag-exceptions.txt         whoever administers the machine
+#   ~/.config/luma/energy-flag-exceptions.txt    the person, and Luma itself
+#
+# Luma appends to the third one when an application fails on the way up with
+# Luma's switches applied, so an application is never left broken by an
+# override; the next launch is the publisher's own. A person can undo that by
+# deleting the line. To skip the switches once without writing anything down,
+# start the application with LUMA_ENERGY_FLAGS=off in the environment.
+#
+# Nothing is listed yet. Add an entry with the date and what broke.

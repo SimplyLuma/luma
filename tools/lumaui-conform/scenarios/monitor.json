@@ -1,0 +1,897 @@
+{
+  "app": "monitor",
+  "title": "Monitor",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=monitor",
+    "window": "#w-monitor",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ],
+    "init_script": "Math.random = () => 0.5; Math.sin = () => 0;"
+  },
+  "gtk": {
+    "module": "luma_monitor.application",
+    "pythonpath": [
+      "src/luma-monitor",
+      "assets/icon-theme/Prairie/scalable/apps"
+    ],
+    "fixtures": [
+      "tests/fixtures/monitor-v70.json"
+    ],
+    "env": {
+      "LUMA_MONITOR_FIXTURE": "{run}/fixtures/monitor-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "cpu",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "mem",
+      "spec": [
+        {
+          "click": "[data-mnr=\"mem\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-mem"
+        }
+      ]
+    },
+    {
+      "name": "disk",
+      "spec": [
+        {
+          "click": "[data-mnr=\"disk\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-disk"
+        }
+      ]
+    },
+    {
+      "name": "net",
+      "spec": [
+        {
+          "click": "[data-mnr=\"net\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-net"
+        }
+      ]
+    },
+    {
+      "name": "en",
+      "spec": [
+        {
+          "click": "[data-mnr=\"en\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-en"
+        }
+      ]
+    },
+    {
+      "name": "selected",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        }
+      ]
+    },
+    {
+      "name": "details",
+      "spec": [
+        {
+          "click": "[data-mnopen=\"viola\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-expand-viola"
+        }
+      ]
+    },
+    {
+      "name": "all",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        }
+      ]
+    },
+    {
+      "name": "mem-all",
+      "spec": [
+        {
+          "click": "[data-mnr=\"mem\"]"
+        },
+        {
+          "click": "[data-mnall]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-mem"
+        },
+        {
+          "activate": "mn-all"
+        }
+      ]
+    },
+    {
+      "name": "disk-all",
+      "spec": [
+        {
+          "click": "[data-mnr=\"disk\"]"
+        },
+        {
+          "click": "[data-mnall]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-disk"
+        },
+        {
+          "activate": "mn-all"
+        }
+      ]
+    },
+    {
+      "name": "net-all",
+      "spec": [
+        {
+          "click": "[data-mnr=\"net\"]"
+        },
+        {
+          "click": "[data-mnall]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-net"
+        },
+        {
+          "activate": "mn-all"
+        }
+      ]
+    },
+    {
+      "name": "en-all",
+      "spec": [
+        {
+          "click": "[data-mnr=\"en\"]"
+        },
+        {
+          "click": "[data-mnall]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-en"
+        },
+        {
+          "activate": "mn-all"
+        }
+      ]
+    },
+    {
+      "name": "background",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mngrp=\"bg\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-group-bg"
+        }
+      ]
+    },
+    {
+      "name": "kernel",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mngrp=\"kern\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-group-kern"
+        }
+      ]
+    },
+    {
+      "name": "process",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mnpick=\"p:3113\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-process-3113"
+        }
+      ]
+    },
+    {
+      "name": "kernel-selected",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mngrp=\"kern\"]"
+        },
+        {
+          "click": "[data-mnpick=\"p:245\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-group-kern"
+        },
+        {
+          "activate": "mn-process-245"
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        }
+      ]
+    },
+    {
+      "name": "priority",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnprio]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-priority"
+        }
+      ]
+    },
+    {
+      "name": "force",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnaskforce]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-force"
+        }
+      ]
+    },
+    {
+      "name": "files",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnsheet=\"files\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-files"
+        }
+      ]
+    },
+    {
+      "name": "maps",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnsheet=\"maps\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-maps"
+        }
+      ]
+    },
+    {
+      "name": "name-sort",
+      "spec": [
+        {
+          "click": "[data-mnsort=\"n\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-sort-name"
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "spec": [
+        {
+          "eval": "(() => { const e=document.querySelector(\"[data-mnq]\");e.value=\"rustc\";e.dispatchEvent(new Event(\"input\",{bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MONITOR_QUERY": "rustc"
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "spec": [
+        {
+          "eval": "(() => { const e=document.querySelector(\"[data-mnq]\");e.value=\"nothing-matches\";e.dispatchEvent(new Event(\"input\",{bubbles:true})); })()"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_MONITOR_QUERY": "nothing-matches"
+          }
+        }
+      ]
+    },
+    {
+      "name": "priority-low",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnprio]"
+        },
+        {
+          "click": "[data-mnprioset=\"5\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-priority"
+        },
+        {
+          "activate": "mn-priority-5"
+        }
+      ]
+    },
+    {
+      "name": "process-details",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mnpick=\"p:3113\"]"
+        },
+        {
+          "click": "[data-mnpdet]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-process-3113"
+        },
+        {
+          "activate": "mn-details"
+        }
+      ]
+    },
+    {
+      "name": "kernel-details",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mngrp=\"kern\"]"
+        },
+        {
+          "click": "[data-mnpick=\"p:245\"]"
+        },
+        {
+          "click": "[data-mnpdet]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-group-kern"
+        },
+        {
+          "activate": "mn-process-245"
+        },
+        {
+          "activate": "mn-details"
+        }
+      ]
+    },
+    {
+      "name": "kernel-more",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mngrp=\"kern\"]"
+        },
+        {
+          "click": "[data-mnpick=\"p:245\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-group-kern"
+        },
+        {
+          "activate": "mn-process-245"
+        },
+        {
+          "activate": "mn-more"
+        }
+      ]
+    },
+    {
+      "name": "system-more",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mnmore=\"sys\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-more-sys"
+        }
+      ]
+    },
+    {
+      "name": "battery-saver",
+      "spec": [
+        {
+          "click": "[data-mnr=\"en\"]"
+        },
+        {
+          "click": "[data-mnperf=\"saver\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-en"
+        },
+        {
+          "activate": "mn-profile-saver"
+        }
+      ]
+    },
+    {
+      "name": "performance",
+      "spec": [
+        {
+          "click": "[data-mnr=\"en\"]"
+        },
+        {
+          "click": "[data-mnperf=\"perf\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-resource-en"
+        },
+        {
+          "activate": "mn-profile-perf"
+        }
+      ]
+    },
+    {
+      "name": "stopped",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnstop]",
+          "wait": 62000
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-stop"
+        }
+      ]
+    },
+    {
+      "name": "continued",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnstop]",
+          "wait": 62000
+        },
+        {
+          "click": "[data-mncont]",
+          "wait": 62000
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-stop"
+        },
+        {
+          "activate": "mn-continue"
+        }
+      ]
+    },
+    {
+      "name": "quit",
+      "spec": [
+        {
+          "click": "[data-mnpick=\"a:viola\"]"
+        },
+        {
+          "click": "[data-mnquit]",
+          "wait": 62000
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-app-viola"
+        },
+        {
+          "activate": "mn-quit"
+        }
+      ]
+    },
+    {
+      "name": "process-stopped",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mnpick=\"p:3113\"]"
+        },
+        {
+          "click": "[data-mnmenu]"
+        },
+        {
+          "click": "[data-mnstop]"
+        },
+        {
+          "click": "[data-mnpdet]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-process-3113"
+        },
+        {
+          "activate": "mn-more"
+        },
+        {
+          "activate": "mn-stop"
+        },
+        {
+          "activate": "mn-details"
+        }
+      ]
+    },
+    {
+      "name": "process-kill",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mnpick=\"p:3113\"]"
+        },
+        {
+          "click": "[data-mnkill]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-process-3113"
+        },
+        {
+          "activate": "mn-force"
+        }
+      ]
+    },
+    {
+      "name": "process-ended",
+      "spec": [
+        {
+          "click": "[data-mnall]"
+        },
+        {
+          "click": "[data-mnpick=\"p:3113\"]"
+        },
+        {
+          "click": "[data-mnend]"
+        }
+      ],
+      "gtk": [
+        {
+          "activate": "mn-all"
+        },
+        {
+          "activate": "mn-process-3113"
+        },
+        {
+          "activate": "mn-end"
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "cpu",
+    "mem",
+    "disk",
+    "net",
+    "en",
+    "selected",
+    "details",
+    "all",
+    "mem-all",
+    "disk-all",
+    "net-all",
+    "en-all",
+    "background",
+    "kernel",
+    "process",
+    "kernel-selected",
+    "more",
+    "priority",
+    "force",
+    "files",
+    "maps",
+    "name-sort",
+    "search",
+    "empty",
+    "priority-low",
+    "process-details",
+    "kernel-details",
+    "kernel-more",
+    "system-more",
+    "battery-saver",
+    "performance",
+    "stopped",
+    "continued",
+    "quit",
+    "process-stopped",
+    "process-kill",
+    "process-ended"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-monitor > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#mn-top"
+    },
+    {
+      "name": "chart",
+      "spec": "#mn-chart"
+    },
+    {
+      "name": "hero",
+      "spec": ".mnhero"
+    },
+    {
+      "name": "table header",
+      "spec": ".mnhd.lthgrid"
+    },
+    {
+      "name": "apps and processes",
+      "spec": ".mnlist"
+    },
+    {
+      "name": "sidebar",
+      "spec": "#mn-side"
+    },
+    {
+      "name": "action center",
+      "spec": "#mn-bar"
+    },
+    {
+      "name": "sheet",
+      "spec": "#mn-sheet"
+    },
+    {
+      "name": "menu",
+      "spec": "#mn-pop"
+    },
+    {
+      "name": "main",
+      "spec": "#mn-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#mn-side",
+      "gtk": "mn-sidebar",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#mn-main",
+      "gtk": "mn-island",
+      "name": "island"
+    },
+    {
+      "spec": "#mn-body",
+      "gtk": "mn-body",
+      "name": "scroll"
+    },
+    {
+      "spec": "#mn-chart",
+      "gtk": "mn-chart",
+      "name": "chart"
+    },
+    {
+      "spec": "#mn-bar",
+      "gtk": "mn-bar",
+      "name": "bar"
+    }
+  ],
+  "fixture_note": "Pin the existing public Math inputs after load, then wait 62 seconds for all 60 history samples to converge to MNA constants and sysCpu 6. Do not access script-local state, rewrite the spec, mask values, or change gate tolerances.",
+  "app_icon": {
+    "spec_src": "monitor.svg",
+    "gtk": "^luma-v3-"
+  }
+}

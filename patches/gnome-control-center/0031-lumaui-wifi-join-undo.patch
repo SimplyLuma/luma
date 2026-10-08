@@ -1,0 +1,401 @@
+From 9833485a138e1cd3dcfef15514ea5d8c04b279b1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 03:08:37 +0000
+Subject: [PATCH] Settings: join nearby fixture networks and undo Forget safely
+
+---
+ shell/cc-luma-fixture.c   |  66 ++++++++++++++++++++++
+ shell/cc-luma-fixture.h   |   4 ++
+ shell/cc-luma-view.c      | 114 ++++++++++++++++++++++++++++++++++++--
+ shell/test-luma-fixture.c |  26 +++++++++
+ shell/test-luma-view.c    |  58 +++++++++++++++++++
+ 5 files changed, 262 insertions(+), 6 deletions(-)
+
+diff --git a/shell/cc-luma-fixture.c b/shell/cc-luma-fixture.c
+index 0baa9a3..6beb4ae 100644
+--- a/shell/cc-luma-fixture.c
++++ b/shell/cc-luma-fixture.c
+@@ -283,3 +283,69 @@ invalid:
+   g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown saved fixture network or invalid network data");
+   return FALSE;
+ }
++
++/* A one-shot command retains only the fields affected by Forget. Restoring it
++ * preserves networks added meanwhile, and never replaces a newer connection. */
++struct _CcLumaNetworkUndo {
++  CcLumaFixture *model;
++  char *name;
++  guint index;
++  gboolean connected;
++  gboolean used;
++};
++CcLumaNetworkUndo *
++cc_luma_fixture_forget_with_undo (CcLumaFixture *self, const char *name, GError **error)
++{
++  CcLumaNetworkUndo *undo = g_new0 (CcLumaNetworkUndo, 1);
++  JsonArray *known = fixture_known (self);
++  JsonNode *current = cc_luma_fixture_get (self, "net");
++  undo->name = g_strdup (name);
++  if (known)
++    for (guint i = 0; i < json_array_get_length (known); i++)
++      if (g_strcmp0 (json_array_get_string_element (known, i), name) == 0) { undo->index = i; break; }
++  undo->connected = current && json_node_get_value_type (current) == G_TYPE_STRING &&
++    g_strcmp0 (json_node_get_string (current), name) == 0;
++  if (!cc_luma_fixture_forget_network (self, undo->name, error))
++    { g_free (undo->name); g_free (undo); return NULL; }
++  undo->model = g_object_ref (self);
++  return undo;
++}
++gboolean
++cc_luma_network_undo_restore (CcLumaNetworkUndo *undo, GError **error)
++{
++  JsonArray *known = fixture_known (undo->model);
++  JsonNode *current = cc_luma_fixture_get (undo->model, "net");
++  if (undo->used || !known || !current || json_node_get_value_type (current) != G_TYPE_STRING)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Network undo has expired or its data is invalid");
++      return FALSE;
++    }
++  gboolean present = FALSE;
++  for (guint i = 0; i < json_array_get_length (known); i++)
++    present |= g_str_equal (json_array_get_string_element (known, i), undo->name);
++  if (!present)
++    {
++      JsonArray *restored = json_array_new ();
++      guint at = MIN (undo->index, json_array_get_length (known));
++      for (guint i = 0; i <= json_array_get_length (known); i++)
++        {
++          if (i == at) json_array_add_string_element (restored, undo->name);
++          if (i < json_array_get_length (known))
++            json_array_add_string_element (restored, json_array_get_string_element (known, i));
++        }
++      json_object_set_array_member (cc_luma_fixture_get_data (undo->model), "CFKNOWN", restored);
++    }
++  JsonObject *network = fixture_network (undo->model, undo->name);
++  if (network) json_object_set_boolean_member (network, "known", TRUE);
++  if (undo->connected && !*json_node_get_string (current)) json_node_set_string (current, undo->name);
++  undo->used = TRUE;
++  return TRUE;
++}
++void
++cc_luma_network_undo_free (CcLumaNetworkUndo *undo)
++{
++  if (!undo) return;
++  g_object_unref (undo->model);
++  g_free (undo->name);
++  g_free (undo);
++}
+diff --git a/shell/cc-luma-fixture.h b/shell/cc-luma-fixture.h
+index 4338319..9babdf6 100644
+--- a/shell/cc-luma-fixture.h
++++ b/shell/cc-luma-fixture.h
+@@ -16,6 +16,10 @@ gboolean cc_luma_fixture_set_flag (CcLumaFixture *self, const char *key,
+                                    gboolean value, GError **error);
+ gboolean cc_luma_fixture_connect_network (CcLumaFixture *self, const char *name, GError **error);
+ gboolean cc_luma_fixture_forget_network (CcLumaFixture *self, const char *name, GError **error);
++typedef struct _CcLumaNetworkUndo CcLumaNetworkUndo;
++CcLumaNetworkUndo *cc_luma_fixture_forget_with_undo (CcLumaFixture *self, const char *name, GError **error);
++gboolean cc_luma_network_undo_restore (CcLumaNetworkUndo *undo, GError **error);
++void cc_luma_network_undo_free (CcLumaNetworkUndo *undo);
+ JsonObject *cc_luma_fixture_get_data (CcLumaFixture *self);
+ JsonArray *cc_luma_fixture_get_pages (CcLumaFixture *self);
+ gboolean cc_luma_fixture_has_page (CcLumaFixture *self, const char *page);
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index dfbb980..52459bc 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -8,6 +8,9 @@ typedef struct {
+   GtkBox *body;
+   char *page;
+   guint refresh;
++  guint connection;
++  char *joining;
++  char *connecting;
+   GtkWidget *root;
+   GSimpleActionGroup *actions;
+   LumaActionCenter *center;
+@@ -98,6 +101,12 @@ static void switch_changed (GtkSwitch *widget, GParamSpec *pspec, View *v)
+   g_autoptr (GError) error = NULL;
+   if (!cc_luma_fixture_set_flag (v->model, key, gtk_switch_get_active (widget), &error))
+     g_warning ("%s", error->message);
++  if (!flag (v, "wifi"))
++    {
++      g_clear_pointer (&v->joining, g_free);
++      g_clear_pointer (&v->connecting, g_free);
++      if (v->connection) { g_source_remove (v->connection); v->connection = 0; }
++    }
+   /* Avoid destroying the emitting widget inside its notification. */
+   queue_refresh (v);
+ }
+@@ -177,18 +186,31 @@ static GtkWidget *entry (View *v, const char *key, const char *caption)
+   gtk_widget_set_name (w, name);
+   return w;
+ }
++static void forget_undone (LumaToast *toast, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  CcLumaNetworkUndo *undo = g_object_get_data (G_OBJECT (toast), "cf-undo");
++  g_autoptr (GError) error = NULL;
++  if (!v || !undo) return;
++  if (cc_luma_network_undo_restore (undo, &error))
++    { queue_refresh (v); luma_toast_show (root, "Network restored", "undone"); }
++  else luma_toast_show (root, error->message, "error");
++}
+ static void forget_confirmed (LumaDestructiveDialog *dialog, gboolean checked, GtkWidget *root)
+ {
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   if (!v) return;
+   const char *name = g_object_get_data (G_OBJECT (dialog), "cf-network");
+   g_autoptr (GError) error = NULL;
+-  if (!cc_luma_fixture_forget_network (v->model, name, &error))
++  CcLumaNetworkUndo *undo = cc_luma_fixture_forget_with_undo (v->model, name, &error);
++  if (!undo)
+     { luma_toast_show (v->root, error->message, "error"); return; }
+   if (g_str_equal (v->page, "wifi-net"))
+     { g_free (v->page); v->page = g_strdup ("wifi"); }
+   queue_refresh (v);
+-  luma_toast_show (v->root, "Network forgotten", "deleted");
++  LumaToast *toast = luma_toast_show_with_undo (v->root, "Network forgotten", "deleted");
++  g_object_set_data_full (G_OBJECT (toast), "cf-undo", undo, (GDestroyNotify) cc_luma_network_undo_free);
++  g_signal_connect_object (toast, "undo", G_CALLBACK (forget_undone), v->root, 0);
+ }
+ static void forget_clicked (GtkButton *button, View *v)
+ {
+@@ -327,6 +349,80 @@ static GtkWidget *command (View *v, const char *caption, GCallback callback)
+   g_signal_connect (w, "clicked", callback, v);
+   return w;
+ }
++static gboolean connected (gpointer data)
++{
++  View *v = data;
++  g_autoptr (GError) error = NULL;
++  v->connection = 0;
++  if (flag (v, "wifi") && !cc_luma_fixture_connect_network (v->model, v->connecting, &error))
++    luma_toast_show (v->root, error->message, "error");
++  g_clear_pointer (&v->connecting, g_free);
++  queue_refresh (v);
++  return G_SOURCE_REMOVE;
++}
++static void connect_network (View *v, const char *name)
++{
++  if (v->connection) g_source_remove (v->connection);
++  g_free (v->connecting);
++  v->connecting = g_strdup (name);
++  g_clear_pointer (&v->joining, g_free);
++  v->connection = g_timeout_add (1300, connected, v);
++  queue_refresh (v);
++}
++static void nearby_clicked (LumaDetailsItem *item, View *v)
++{
++  const char *name = g_object_get_data (G_OBJECT (item), "cf-network");
++  gboolean password_required = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (item), "cf-password-required"));
++  if (!flag (v, "wifi")) return;
++  if (!password_required) { connect_network (v, name); return; }
++  char *next = g_strcmp0 (v->joining, name) ? g_strdup (name) : NULL;
++  g_free (v->joining); v->joining = next;
++  queue_refresh (v);
++}
++static void join_cancelled (GtkButton *button, View *v)
++{
++  g_clear_pointer (&v->joining, g_free);
++  queue_refresh (v);
++}
++static void join_clicked (GtkButton *button, View *v)
++{
++  if (v->joining) connect_network (v, v->joining);
++}
++static void wifi_on (GtkButton *button, View *v)
++{
++  g_autoptr (GError) error = NULL;
++  if (cc_luma_fixture_set_flag (v->model, "wifi", TRUE, &error)) queue_refresh (v);
++  else luma_toast_show (v->root, error->message, "error");
++}
++static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
++{
++  const char *name = json_object_get_string_member (network, "n");
++  gboolean saved = json_object_has_member (network, "known") && json_object_get_boolean_member (network, "known");
++  gboolean locked = json_object_get_boolean_member (network, "lock");
++  GtkWidget *item = luma_details_item_new (name, g_strcmp0 (v->connecting, name) == 0 ? "Connecting…" : saved ? "Saved" : NULL, "wifi");
++  if (locked) luma_details_item_set_trail (LUMA_DETAILS_ITEM (item), luma_ui_icon_new ("lock"));
++  g_object_set_data_full (G_OBJECT (item), "cf-network", g_strdup (name), g_free);
++  g_object_set_data (G_OBJECT (item), "cf-password-required", GINT_TO_POINTER (locked && !saved));
++  g_signal_connect (item, "clicked", G_CALLBACK (nearby_clicked), v);
++  gtk_box_append (rows, item);
++  if (g_strcmp0 (v->joining, name) == 0)
++    {
++      GtkWidget *form = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++      GtkWidget *password = gtk_entry_new ();
++      gtk_widget_add_css_class (form, "cf-setting-row");
++      gtk_widget_set_name (form, "cf-join-form");
++      gtk_widget_set_name (password, "cf-join-password");
++      gtk_entry_set_visibility (GTK_ENTRY (password), FALSE);
++      gtk_entry_set_placeholder_text (GTK_ENTRY (password), "Password");
++      g_autofree char *accessible = g_strdup_printf ("Password for %s", name);
++      gtk_accessible_update_property (GTK_ACCESSIBLE (password), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
++      gtk_widget_set_hexpand (password, TRUE);
++      gtk_box_append (GTK_BOX (form), password);
++      gtk_box_append (GTK_BOX (form), command (v, "Cancel", G_CALLBACK (join_cancelled)));
++      gtk_box_append (GTK_BOX (form), command (v, "Join", G_CALLBACK (join_clicked)));
++      gtk_box_append (rows, form);
++    }
++}
+ static void wifi (View *v)
+ {
+   gboolean enabled = flag (v, "wifi");
+@@ -340,7 +436,12 @@ static void wifi (View *v)
+   hero_body = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
+   gtk_box_append (GTK_BOX (hero_body), luma_ui_icon_new ("wifi"));
+   if (!enabled)
+-    gtk_box_append (GTK_BOX (hero_body), words ("Wi‑Fi is off", NULL));
++    {
++      gtk_box_append (GTK_BOX (hero_body), words ("Wi‑Fi is off", NULL));
++      GtkWidget *on = command (v, "Turn on", G_CALLBACK (wifi_on));
++      gtk_widget_set_name (on, "cf-wifi-on");
++      gtk_box_append (GTK_BOX (hero_body), on);
++    }
+   else if (!*network)
+     gtk_box_append (GTK_BOX (hero_body), words ("Not connected", "Pick a network below"));
+   else
+@@ -379,9 +480,7 @@ static void wifi (View *v)
+           JsonObject *n = json_array_get_object_element (nets, i);
+           const char *name = json_object_get_string_member (n, "n");
+           if (!g_str_equal (name, network))
+-            row (near, name,
+-              json_object_has_member (n, "known") && json_object_get_boolean_member (n, "known") ? "Saved" : NULL,
+-              json_object_get_boolean_member (n, "lock") ? luma_ui_icon_new ("lock") : NULL);
++            nearby_row (v, near, n);
+         }
+       row (near, "Hidden network", "Join a network that doesn’t show its name", command (v, "Join…", G_CALLBACK (hidden_clicked)));
+     }
+@@ -472,6 +571,9 @@ static void view_free (View *v)
+ {
+   if (v->refresh)
+     g_source_remove (v->refresh);
++  if (v->connection) g_source_remove (v->connection);
++  g_free (v->joining);
++  g_free (v->connecting);
+   g_object_unref (v->center);
+   g_object_unref (v->actions);
+   g_object_unref (v->model);
+diff --git a/shell/test-luma-fixture.c b/shell/test-luma-fixture.c
+index 5651c1d..ae99456 100644
+--- a/shell/test-luma-fixture.c
++++ b/shell/test-luma-fixture.c
+@@ -98,6 +98,31 @@ networks (void)
+   g_assert_false (cc_luma_fixture_forget_network (model, "invented network", &error));
+   g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
+ }
++static void network_undo (void)
++{
++  g_autoptr (CcLumaFixture) model = cc_luma_fixture_load (g_getenv ("LUMA_SETTINGS_TEST_FIXTURE"), NULL);
++  g_autoptr (GError) error = NULL;
++  CcLumaNetworkUndo *undo = cc_luma_fixture_forget_with_undo (model, "Studio North", &error);
++  g_assert_no_error (error); g_assert_nonnull (undo);
++  /* A newer connection and newly saved network must survive Undo. */
++  g_assert_true (cc_luma_fixture_connect_network (model, "Priya’s phone", NULL));
++  g_assert_true (cc_luma_network_undo_restore (undo, &error));
++  g_assert_no_error (error);
++  JsonArray *known = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFKNOWN");
++  g_assert_cmpuint (json_array_get_length (known), ==, 7);
++  g_assert_cmpstr (json_array_get_string_element (known, 0), ==, "Studio North");
++  g_assert_cmpstr (json_array_get_string_element (known, 6), ==, "Priya’s phone");
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Priya’s phone");
++  g_assert_false (cc_luma_network_undo_restore (undo, &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++  cc_luma_network_undo_free (undo); g_clear_error (&error);
++  undo = cc_luma_fixture_forget_with_undo (model, "Priya’s phone", NULL);
++  g_assert_true (cc_luma_network_undo_restore (undo, NULL));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Priya’s phone");
++  cc_luma_network_undo_free (undo);
++  g_assert_null (cc_luma_fixture_forget_with_undo (model, "invented", &error));
++  g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
++}
+ static void
+ radio_atomic (void)
+ {
+@@ -121,6 +146,7 @@ int main (int argc, char **argv)
+     {
+       g_test_add_func ("/settings/fixture/v70", v70);
+       g_test_add_func ("/settings/fixture/networks", networks);
++      g_test_add_func ("/settings/fixture/network-undo", network_undo);
+     }
+   return g_test_run ();
+ }
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index ca80c2d..19396e2 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -96,6 +96,62 @@ static void missing_share_artwork (void)
+   g_assert_null (cc_luma_view_new (model, "wifi", &error));
+   g_assert_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA);
+ }
++static GtkWidget *find_network (GtkWidget *root, const char *name)
++{
++  const char *network = g_object_get_data (G_OBJECT (root), "cf-network");
++  if (g_strcmp0 (network, name) == 0) return root;
++  for (GtkWidget *w = gtk_widget_get_first_child (root); w; w = gtk_widget_get_next_sibling (w))
++    {
++      GtkWidget *found = find_network (w, name);
++      if (found) return found;
++    }
++  return NULL;
++}
++static void drain (void) { while (g_main_context_iteration (NULL, FALSE)) {} }
++static void nearby_join (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFNETS");
++  const char *locked = NULL;
++  for (guint i = 0; i < json_array_get_length (nets); i++)
++    {
++      JsonObject *n = json_array_get_object_element (nets, i);
++      if (json_object_get_boolean_member (n, "lock") &&
++          (!json_object_has_member (n, "known") || !json_object_get_boolean_member (n, "known")))
++        { locked = json_object_get_string_member (n, "n"); break; }
++    }
++  g_assert_nonnull (locked);
++  g_signal_emit_by_name (find_network (view, locked), "clicked"); drain ();
++  g_assert_nonnull (find_name (view, "cf-join-password"));
++  g_assert_false (gtk_entry_get_visibility (GTK_ENTRY (find_name (view, "cf-join-password"))));
++  /* A second click cancels the form without saving a credential or connecting. */
++  g_signal_emit_by_name (find_network (view, locked), "clicked"); drain ();
++  g_assert_null (find_name (view, "cf-join-form"));
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Studio North");
++  g_signal_emit_by_name (find_network (view, "Studio North Guest"), "clicked"); drain ();
++  g_assert_true (has_text (view, "Connecting…"));
++  gint64 deadline = g_get_monotonic_time () + 1600 * 1000;
++  while (g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  drain ();
++  g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "net")), ==, "Studio North Guest");
++  g_assert_true (has_text (view, "Connected to Studio North Guest"));
++  /* Destroy with another connection timer outstanding: no late access to View. */
++  g_signal_emit_by_name (find_network (view, "Studio North"), "clicked");
++  g_object_unref (view); drain ();
++}
++static void turn_on (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  g_assert_true (cc_luma_fixture_set_flag (model, "airplane", TRUE, NULL));
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  g_signal_emit_by_name (find_name (view, "cf-wifi-on"), "clicked"); drain ();
++  g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "wifi")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "airplane")));
++  g_assert_false (json_node_get_boolean (cc_luma_fixture_get (model, "bt")));
++  g_assert_nonnull (find_network (view, "Studio North Guest"));
++  g_object_unref (view);
++}
+ int main (int argc, char **argv)
+ {
+   g_test_init (&argc, &argv, NULL);
+@@ -105,5 +161,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/cancel-pending-refresh", cancel_pending_refresh);
+   g_test_add_func ("/settings/view/picker-binding", picker_binding);
+   g_test_add_func ("/settings/view/missing-share-artwork", missing_share_artwork);
++  g_test_add_func ("/settings/view/nearby-join", nearby_join);
++  g_test_add_func ("/settings/view/turn-on", turn_on);
+   return g_test_run ();
+ }
+-- 
+2.55.0
+

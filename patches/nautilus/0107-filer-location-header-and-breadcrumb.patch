@@ -1,0 +1,270 @@
+From 617a47fdfb9e2a3b90d8cfc3a7d48aa383e460f7 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 22:52:17 +0000
+Subject: [PATCH] Filer: show location title above live breadcrumb and count
+
+---
+ src/nautilus-window.c   | 143 +++++++++++++++++++++++++++-------------
+ src/resources/style.css |  29 ++++++++
+ 2 files changed, 127 insertions(+), 45 deletions(-)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index afe4ed8..eea2f85 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -116,7 +116,8 @@ struct _NautilusWindow
+     GtkWidget *location_row;
+     GtkWidget *trail_host;
+     LumaSidebarToggle *sidebar_toggle;
+-    LumaNavigationTrailBar *location_trail;
++    GtkWidget *location_title;
++    GtkWidget *location_meta;
+     GtkWidget *information_host;
+     LumaDetailsPane *information_pane;
+ 
+@@ -322,7 +323,40 @@ action_show_current_location_menu (GSimpleAction *action,
+ }
+ 
+ static void
+-update_location_trail (NautilusWindow *window)
++on_location_crumb_clicked (GtkButton      *button,
++                           NautilusWindow *window)
++{
++    GFile *target = g_object_get_data (G_OBJECT (button), "filer-location-target");
++    if (target != NULL)
++    {
++        nautilus_window_open_location_full (window, target, 0, NULL);
++    }
++}
++
++static void
++append_location_crumb (NautilusWindow *window,
++                       const char     *label,
++                       GFile          *target)
++{
++    GtkWidget *button = gtk_button_new_with_label (label);
++    gtk_widget_add_css_class (button, "filer-location-crumb");
++    g_object_set_data_full (G_OBJECT (button), "filer-location-target",
++                            g_object_ref (target), g_object_unref);
++    g_signal_connect (button, "clicked",
++                      G_CALLBACK (on_location_crumb_clicked), window);
++    gtk_box_append (GTK_BOX (window->location_meta), button);
++}
++
++static void
++append_location_separator (NautilusWindow *window)
++{
++    GtkWidget *separator = gtk_label_new ("›");
++    gtk_widget_add_css_class (separator, "filer-location-separator");
++    gtk_box_append (GTK_BOX (window->location_meta), separator);
++}
++
++static void
++update_location_header (NautilusWindow *window)
+ {
+     GFile *location = window->active_slot != NULL
+                       ? nautilus_window_slot_get_location (window->active_slot) : NULL;
+@@ -332,11 +366,8 @@ update_location_trail (NautilusWindow *window)
+                                     ? g_build_filename (fixture_root, "Home", NULL) : NULL;
+     g_autoptr (GFile) home = g_file_new_for_path (fixture_home != NULL
+                                                   ? fixture_home : g_get_home_dir ());
+-    g_autofree char *parent_name = parent != NULL
+-                                   ? g_file_get_basename (parent) : NULL;
+     g_autofree char *relative = parent != NULL
+                                 ? g_file_get_relative_path (home, parent) : NULL;
+-    g_autofree char *path_meta = NULL;
+     g_autoptr (NautilusFile) directory = location != NULL
+                                          ? nautilus_file_get (location) : NULL;
+     g_autoptr (NautilusDirectory) listing = location != NULL
+@@ -345,33 +376,37 @@ update_location_trail (NautilusWindow *window)
+     const char *title = window->active_slot != NULL
+                         ? nautilus_window_slot_get_title (window->active_slot) : _("Files");
+ 
+-    if (parent != NULL && g_file_equal (parent, home))
++    gtk_label_set_label (GTK_LABEL (window->location_title),
++                         title != NULL ? title : _("Files"));
++    GtkWidget *child;
++    while ((child = gtk_widget_get_first_child (window->location_meta)) != NULL)
+     {
+-        g_clear_pointer (&parent_name, g_free);
+-        parent_name = g_strdup (_("Home"));
++        gtk_box_remove (GTK_BOX (window->location_meta), child);
+     }
+-    /* History belongs to the action center; the location heading in v70
+-     * does not carry a second Back affordance. */
+-    luma_navigation_trail_bar_set_place (window->location_trail,
+-                                          NULL, title != NULL ? title : _("Files"));
+-    luma_navigation_trail_bar_clear_meta (window->location_trail);
+-    if (relative != NULL && *relative != '\0')
++    if (parent != NULL && (g_file_equal (parent, home) || relative != NULL))
+     {
+-        g_auto (GStrv) components = g_strsplit (relative, G_DIR_SEPARATOR_S, -1);
+-        g_autofree char *joined = g_strjoinv (" › ", components);
+-        path_meta = g_strdup_printf (_("Home › %s"), joined);
+-    }
+-    else if (parent != NULL && g_file_equal (parent, home))
+-    {
+-        path_meta = g_strdup (_("Home"));
+-    }
+-    else if (parent_name != NULL)
+-    {
+-        path_meta = g_strdup (parent_name);
++        append_location_crumb (window, _("Home"), home);
++        if (relative != NULL && *relative != '\0')
++        {
++            g_auto (GStrv) components = g_strsplit (relative, G_DIR_SEPARATOR_S, -1);
++            g_autoptr (GString) prefix = g_string_new (NULL);
++            for (guint i = 0; components[i] != NULL; i++)
++            {
++                if (i > 0)
++                {
++                    g_string_append_c (prefix, '/');
++                }
++                g_string_append (prefix, components[i]);
++                g_autoptr (GFile) crumb = g_file_resolve_relative_path (home, prefix->str);
++                append_location_separator (window);
++                append_location_crumb (window, components[i], crumb);
++            }
++        }
+     }
+-    if (path_meta != NULL)
++    else if (parent != NULL)
+     {
+-        luma_navigation_trail_bar_add_meta (window->location_trail, path_meta, NULL);
++        g_autofree char *name = g_file_get_basename (parent);
++        append_location_crumb (window, name, parent);
+     }
+     if (listing != NULL && nautilus_directory_are_all_files_seen (listing))
+     {
+@@ -384,14 +419,16 @@ update_location_trail (NautilusWindow *window)
+         return;
+     }
+     g_autofree char *count_meta = g_strdup_printf (ngettext ("%u item", "%u items", count), count);
+-    luma_navigation_trail_bar_add_meta (window->location_trail, count_meta, NULL);
+-}
+-
+-static void
+-on_trail_back (LumaNavigationTrailBar *trail,
+-               NautilusWindow         *window)
+-{
+-    gtk_widget_activate_action (GTK_WIDGET (window), "slot.up", NULL);
++    if (gtk_widget_get_first_child (window->location_meta) != NULL)
++    {
++        GtkWidget *dot = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++        gtk_widget_add_css_class (dot, "lumaui-trail-dot");
++        gtk_widget_set_valign (dot, GTK_ALIGN_CENTER);
++        gtk_box_append (GTK_BOX (window->location_meta), dot);
++    }
++    GtkWidget *count_label = gtk_label_new (count_meta);
++    gtk_widget_add_css_class (count_label, "filer-location-count");
++    gtk_box_append (GTK_BOX (window->location_meta), count_label);
+ }
+ 
+ static void
+@@ -544,7 +581,7 @@ static void
+ on_location_changed (NautilusWindow *window)
+ {
+     nautilus_window_sync_location_widgets (window);
+-    update_location_trail (window);
++    update_location_header (window);
+     update_information (window);
+ }
+ 
+@@ -566,7 +603,7 @@ on_slot_title_changed (NautilusWindowSlot *slot,
+ {
+     if (window->active_slot == slot)
+     {
+-        update_location_trail (window);
++        update_location_header (window);
+     }
+ }
+ 
+@@ -577,7 +614,7 @@ on_slot_loading_changed (NautilusWindowSlot *slot,
+ {
+     if (window->active_slot == slot && !nautilus_window_slot_get_loading (slot))
+     {
+-        update_location_trail (window);
++        update_location_header (window);
+     }
+ }
+ 
+@@ -2118,13 +2155,29 @@ nautilus_window_init (NautilusWindow *window)
+                     GTK_WIDGET (window->sidebar_toggle));
+     g_signal_connect_swapped (window, "notify::width",
+                               G_CALLBACK (on_window_width_changed), window);
+-    window->location_trail = LUMA_NAVIGATION_TRAIL_BAR (
+-        luma_navigation_trail_bar_new (TRUE));
+-    gtk_widget_set_name (GTK_WIDGET (window->location_trail), "filer-location");
+-    gtk_box_append (GTK_BOX (window->trail_host),
+-                    GTK_WIDGET (window->location_trail));
+-    g_signal_connect (window->location_trail, "back",
+-                      G_CALLBACK (on_trail_back), window);
++    GtkWidget *location = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++    gtk_widget_set_name (location, "filer-location");
++    gtk_widget_set_hexpand (location, TRUE);
++    gtk_widget_set_margin_top (location, 22);
++    gtk_widget_set_margin_bottom (location, 10);
++    gtk_widget_set_margin_start (location, 28);
++    gtk_widget_set_margin_end (location, 28);
++    window->location_title = g_object_new (GTK_TYPE_LABEL,
++                                           "accessible-role", GTK_ACCESSIBLE_ROLE_HEADING,
++                                           NULL);
++    gtk_widget_set_name (window->location_title, "filer-location-title");
++    gtk_label_set_xalign (GTK_LABEL (window->location_title), 0);
++    gtk_label_set_ellipsize (GTK_LABEL (window->location_title), PANGO_ELLIPSIZE_END);
++    gtk_accessible_update_property (GTK_ACCESSIBLE (window->location_title),
++                                    GTK_ACCESSIBLE_PROPERTY_ROLE_DESCRIPTION,
++                                    _("Location"), -1);
++    window->location_meta = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++    gtk_widget_set_name (window->location_meta, "filer-location-meta");
++    gtk_box_set_spacing (GTK_BOX (window->location_meta), 7);
++    gtk_widget_set_margin_top (window->location_meta, 4);
++    gtk_box_append (GTK_BOX (location), window->location_title);
++    gtk_box_append (GTK_BOX (location), window->location_meta);
++    gtk_box_append (GTK_BOX (window->trail_host), location);
+     gtk_widget_set_name (window->location_row, "filer-location-row");
+     window->information_pane = LUMA_DETAILS_PANE (
+         luma_details_pane_new (_("Information"), FALSE));
+diff --git a/src/resources/style.css b/src/resources/style.css
+index c2d1e22..437e5f1 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -9,6 +9,35 @@
+   font-family: "Figtree";
+ }
+ 
++/* Filer's location title and ancestor path are one app-specific heading. */
++.luma-files-window #filer-location-title {
++  font-size: var(--lumaui-t-title-1-size);
++  font-weight: var(--lumaui-t-title-1-weight);
++  letter-spacing: var(--lumaui-t-title-1-tracking);
++  color: @luma_ink;
++}
++
++.luma-files-window #filer-location-meta,
++.luma-files-window #filer-location-meta button {
++  font-size: var(--lumaui-t-meta-size);
++  font-weight: var(--lumaui-t-meta-weight);
++  color: @luma_muted;
++}
++
++.luma-files-window #filer-location-meta button {
++  min-width: 0;
++  min-height: 0;
++  padding: 0;
++  background: none;
++  border: none;
++  border-radius: 0;
++  box-shadow: none;
++}
++
++.luma-files-window #filer-location-meta button:hover {
++  color: @luma_ink;
++}
++
+ /* Filer uses a deliberate two-row native title composition. */
+ .luma-files-window:not(.luma-native-file-chooser) headerbar.luma-titlebar {
+   min-height: 42px;
+-- 
+2.55.0
+

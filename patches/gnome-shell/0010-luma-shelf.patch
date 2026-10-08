@@ -1,0 +1,1020 @@
+diff --git a/data/gnome-shell-theme.gresource.xml b/data/gnome-shell-theme.gresource.xml
+index c6346bb0a877f2f41dd28463607fb5903746daef..7cbf2d5055549c78df42c0c772f3155b0b9fe32e 100644
+--- a/data/gnome-shell-theme.gresource.xml
++++ b/data/gnome-shell-theme.gresource.xml
+@@ -6,6 +6,7 @@
+     <file>gnome-shell-dark.css</file>
+     <file>gnome-shell-light.css</file>
+     <file>gnome-shell-high-contrast.css</file>
++    <file>luma-shelf.css</file>
+     <file>gnome-shell-start.svg</file>
+     <file>pad-osd.css</file>
+     <file>prairie-daybreak.svg</file>
+diff --git a/data/theme/gnome-shell-sass/_widgets.scss b/data/theme/gnome-shell-sass/_widgets.scss
+index 9eac62d958abb05ae1e2c9730978355f986f4d18..0bb5f9b71b5eec28050a41c9832d4a1fea962082 100644
+--- a/data/theme/gnome-shell-sass/_widgets.scss
++++ b/data/theme/gnome-shell-sass/_widgets.scss
+@@ -30,6 +30,7 @@
+ @import 'widgets/screenshot';
+ // Panel
+ @import 'widgets/panel';
++@import 'widgets/shelf';
+ @import 'widgets/corner-ripple';
+ @import 'widgets/quick-settings';
+ // Overview
+diff --git a/data/theme/gnome-shell-sass/widgets/_shelf.scss b/data/theme/gnome-shell-sass/widgets/_shelf.scss
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e3f64c7fdcead692defb84ccb1162e7872dcf53
+--- /dev/null
++++ b/data/theme/gnome-shell-sass/widgets/_shelf.scss
+@@ -0,0 +1,189 @@
++/* Project Luma Shelf
++ *
++ * This is native Shell chrome. Keep model/layout ownership in shelf.js and
++ * material ownership here so a trusted replacement can claim the Shelf
++ * capability without inheriting private implementation details.
++ */
++
++.luma-shelf-group {
++  spacing: 8px;
++}
++
++.luma-shelf-group.luma-shelf-connected {
++  spacing: 0;
++}
++
++.luma-shelf-island {
++  min-height: 50px;
++}
++
++.luma-shelf-material,
++.luma-shelf-shadow,
++.luma-shelf-stroke {
++  border-radius: 15px;
++}
++
++.luma-shelf-material {
++  background-color: #21252b;
++  color: #e7e9e8;
++}
++
++.luma-shelf-stroke {
++  border: 1px solid rgba(255, 255, 255, 0.045);
++}
++
++.luma-shelf-shadow {
++  background-color: rgba(33, 37, 43, 0.01);
++}
++
++.luma-shelf-shadow-near {
++  box-shadow: 0 3px 8px 0 rgba(9, 11, 14, 0.38);
++}
++
++.luma-shelf-shadow-middle {
++  box-shadow: 0 22px 52px -15px rgba(9, 11, 14, 0.72);
++}
++
++.luma-shelf-shadow-far {
++  box-shadow: 0 64px 120px -30px rgba(9, 11, 14, 0.82);
++}
++
++.luma-shelf-dock-scroll {
++  min-height: 36px;
++  padding: 0;
++}
++
++.luma-shelf-dock-island .luma-shelf-material {
++  padding: 7px;
++}
++
++.luma-shelf-dock-island #dash {
++  padding: 0;
++
++  .dash-background {
++    background-color: transparent;
++    border-radius: 0;
++    margin: 0;
++    padding: 0;
++  }
++
++  .dash-item-container {
++    .show-apps,
++    .overview-tile {
++      margin: 0 2.5px;
++      padding: 0;
++
++      .overview-icon {
++        border-radius: 9px;
++        padding: 0;
++      }
++    }
++
++    .app-grid-running-dot {
++      offset-y: 0;
++    }
++  }
++
++  .dash-separator {
++    height: 30px;
++    margin: 3px 5px;
++    background-color: rgba(255, 255, 255, 0.12);
++  }
++}
++
++.luma-shelf-actions-island .luma-shelf-material {
++  padding: 7px 9px 7px 10px;
++}
++
++.luma-shelf-actions-box {
++  spacing: 10px;
++
++  .panel-button {
++    -natural-hpadding: 0;
++    -minimum-hpadding: 0;
++    min-height: 34px;
++    margin: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 9px;
++    background-color: transparent;
++    box-shadow: none;
++    color: #e7e9e8;
++    font-weight: 500;
++    transition-duration: 120ms;
++
++    &:hover,
++    &:focus {
++      background-color: rgba(231, 233, 232, 0.10);
++    }
++
++    &:active,
++    &:checked {
++      background-color: rgba(231, 233, 232, 0.16);
++    }
++
++    .system-status-icon {
++      -st-icon-style: symbolic;
++      icon-size: 11px;
++      margin: 0;
++      padding: 0;
++    }
++  }
++
++  .luma-shelf-status-button {
++    min-width: 34px;
++    min-height: 34px;
++    border-radius: 9px;
++    background-color: rgba(255, 255, 255, 0.085);
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055);
++
++    &:hover,
++    &:focus {
++      background-color: rgba(255, 255, 255, 0.13);
++    }
++
++    &:active,
++    &:checked {
++      background-color: rgba(255, 255, 255, 0.18);
++    }
++  }
++
++  .luma-shelf-status-grid {
++    min-width: 34px;
++    min-height: 34px;
++  }
++
++  .clock-display {
++    min-width: 42px;
++    min-height: 34px;
++  }
++
++  .clock-display-box {
++    spacing: 0;
++  }
++
++  .luma-clock-content {
++    min-width: 42px;
++    spacing: 4px;
++  }
++
++  .luma-clock-time {
++    color: #e7e9e8;
++    font-size: 11px;
++    font-weight: 700;
++  }
++
++  .luma-clock-date {
++    color: rgba(231, 233, 232, 0.60);
++    font-size: 8px;
++    font-weight: 600;
++  }
++}
++
++.luma-shelf-live-island .luma-shelf-material {
++  padding: 7px 10px;
++}
++
++.luma-shelf-dock-scroll:overflowing {
++  box-shadow: inset 8px 0 8px -8px rgba(231, 233, 232, 0.18);
++}
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..18bae1f30c40254599bd74737631e8384659673e
+--- /dev/null
++++ b/data/theme/luma-shelf.css
+@@ -0,0 +1,135 @@
++
++/* Project Luma Shelf
++ *
++ * This is native Shell chrome. Keep model/layout ownership in shelf.js and
++ * material ownership here so a trusted replacement can claim the Shelf
++ * capability without inheriting private implementation details.
++ */
++.luma-shelf-group {
++  spacing: 8px; }
++
++.luma-shelf-group.luma-shelf-connected {
++  spacing: 0; }
++
++.luma-shelf-island {
++  min-height: 50px; }
++
++.luma-shelf-material,
++.luma-shelf-shadow,
++.luma-shelf-stroke {
++  border-radius: 15px; }
++
++.luma-shelf-material {
++  background-color: #21252b;
++  color: #e7e9e8; }
++
++.luma-shelf-stroke {
++  border: 1px solid rgba(255, 255, 255, 0.045); }
++
++.luma-shelf-shadow {
++  background-color: rgba(33, 37, 43, 0.01); }
++
++.luma-shelf-shadow-near {
++  box-shadow: 0 3px 8px 0 rgba(9, 11, 14, 0.38); }
++
++.luma-shelf-shadow-middle {
++  box-shadow: 0 22px 52px -15px rgba(9, 11, 14, 0.72); }
++
++.luma-shelf-shadow-far {
++  box-shadow: 0 64px 120px -30px rgba(9, 11, 14, 0.82); }
++
++.luma-shelf-dock-scroll {
++  min-height: 36px;
++  padding: 0; }
++
++.luma-shelf-dock-island .luma-shelf-material {
++  padding: 7px; }
++
++.luma-shelf-dock-island #dash {
++  padding: 0; }
++  .luma-shelf-dock-island #dash .dash-background {
++    background-color: transparent;
++    border-radius: 0;
++    margin: 0;
++    padding: 0; }
++  .luma-shelf-dock-island #dash .dash-item-container .show-apps,
++  .luma-shelf-dock-island #dash .dash-item-container .overview-tile {
++    margin: 0 2.5px;
++    padding: 0; }
++    .luma-shelf-dock-island #dash .dash-item-container .show-apps .overview-icon,
++    .luma-shelf-dock-island #dash .dash-item-container .overview-tile .overview-icon {
++      border-radius: 9px;
++      padding: 0; }
++  .luma-shelf-dock-island #dash .dash-item-container .app-grid-running-dot {
++    offset-y: 0; }
++  .luma-shelf-dock-island #dash .dash-separator {
++    height: 30px;
++    margin: 3px 5px;
++    background-color: rgba(255, 255, 255, 0.12); }
++
++.luma-shelf-actions-island .luma-shelf-material {
++  padding: 7px 9px 7px 10px; }
++
++.luma-shelf-actions-box {
++  spacing: 10px; }
++  .luma-shelf-actions-box .panel-button {
++    -natural-hpadding: 0;
++    -minimum-hpadding: 0;
++    min-height: 34px;
++    margin: 0;
++    padding: 0;
++    border: 0;
++    border-radius: 9px;
++    background-color: transparent;
++    box-shadow: none;
++    color: #e7e9e8;
++    font-weight: 500;
++    transition-duration: 120ms; }
++    .luma-shelf-actions-box .panel-button:hover,
++    .luma-shelf-actions-box .panel-button:focus {
++      background-color: rgba(231, 233, 232, 0.1); }
++    .luma-shelf-actions-box .panel-button:active,
++    .luma-shelf-actions-box .panel-button:checked {
++      background-color: rgba(231, 233, 232, 0.16); }
++    .luma-shelf-actions-box .panel-button .system-status-icon {
++      -st-icon-style: symbolic;
++      icon-size: 11px;
++      margin: 0;
++      padding: 0; }
++  .luma-shelf-actions-box .luma-shelf-status-button {
++    min-width: 34px;
++    min-height: 34px;
++    border-radius: 9px;
++    background-color: rgba(255, 255, 255, 0.085);
++    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055); }
++    .luma-shelf-actions-box .luma-shelf-status-button:hover,
++    .luma-shelf-actions-box .luma-shelf-status-button:focus {
++      background-color: rgba(255, 255, 255, 0.13); }
++    .luma-shelf-actions-box .luma-shelf-status-button:active,
++    .luma-shelf-actions-box .luma-shelf-status-button:checked {
++      background-color: rgba(255, 255, 255, 0.18); }
++  .luma-shelf-actions-box .luma-shelf-status-grid {
++    min-width: 34px;
++    min-height: 34px; }
++  .luma-shelf-actions-box .clock-display {
++    min-width: 42px;
++    min-height: 34px; }
++  .luma-shelf-actions-box .clock-display-box {
++    spacing: 0; }
++  .luma-shelf-actions-box .luma-clock-content {
++    min-width: 42px;
++    spacing: 4px; }
++  .luma-shelf-actions-box .luma-clock-time {
++    color: #e7e9e8;
++    font-size: 11px;
++    font-weight: 700; }
++  .luma-shelf-actions-box .luma-clock-date {
++    color: rgba(231, 233, 232, 0.6);
++    font-size: 8px;
++    font-weight: 600; }
++
++.luma-shelf-live-island .luma-shelf-material {
++  padding: 7px 10px; }
++
++.luma-shelf-dock-scroll:overflowing {
++  box-shadow: inset 8px 0 8px -8px rgba(231, 233, 232, 0.18); }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 98d4c23ce818b7eb242cd4fb871cd4e707b83f5a..2d1e9483eb5a193661ea1bf44f333c53192e50ff 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -107,6 +107,7 @@
+     <file>ui/runDialog.js</file>
+     <file>ui/screenShield.js</file>
+     <file>ui/screenshot.js</file>
++    <file>ui/shelf.js</file>
+     <file>ui/scripting.js</file>
+     <file>ui/search.js</file>
+     <file>ui/searchController.js</file>
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index 0514e4782ebc961d95d202469592840c70ad9240..498577c960a39f1602b8d7062ddbe65e11152887 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -321,6 +321,7 @@ export const Dash = GObject.registerClass({
+         this._maxWidth = -1;
+         this._maxHeight = -1;
+         this.iconSize = 64;
++        this._fixedIconSize = false;
+         this._shownInitially = false;
+ 
+         this._separator = null;
+@@ -587,6 +588,8 @@ export const Dash = GObject.registerClass({
+     }
+ 
+     _adjustIconSize() {
++        if (this._fixedIconSize)
++            return;
+         // For the icon size, we only consider children which are "proper"
+         // icons (i.e. ignoring drag placeholders) and which are not
+         // animating out (which means they will be destroyed at the end of
+@@ -1041,4 +1044,24 @@ export const Dash = GObject.registerClass({
+         this._maxHeight = maxHeight;
+         this._queueRedisplay();
+     }
++
++    setFixedIconSize(size) {
++        this._fixedIconSize = true;
++        this.iconSize = size;
++        this._showAppsIcon.icon.setIconSize(size);
++        for (const item of this._box.get_children()) {
++            const icon = item.child?._delegate?.icon;
++            icon?.setIconSize(size);
++        }
++        this.emit('icon-size-changed');
++        this._queueRedisplay();
++    }
++
++    setShowAppsAtStart(showAtStart) {
++        const parent = this._showAppsIcon.get_parent();
++        if (parent !== this._dashContainer)
++            return;
++        const index = showAtStart ? 0 : this._dashContainer.get_n_children() - 1;
++        this._dashContainer.set_child_at_index(this._showAppsIcon, index);
++    }
+ });
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+index c3463880ff43baca94ff0770ed0bfc38b0b9d30d..f3959cc904da2134ac4375224ec8a1da3a2794d4 100644
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -873,12 +873,13 @@ class DateMenuButton extends PanelMenu.Button {
+         this._dateDisplay.clutter_text.y_align = Clutter.ActorAlign.CENTER;
+         this._dateDisplay.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+ 
+-        const clockContent = new St.BoxLayout({
++        this._clockContent = new St.BoxLayout({
+             style_class: 'clock luma-clock-content',
+         });
+-        clockContent.add_child(this._timeDisplay);
+-        clockContent.add_child(new St.Widget({width: 9}));
+-        clockContent.add_child(this._dateDisplay);
++        this._clockSpacer = new St.Widget({width: 9});
++        this._clockContent.add_child(this._timeDisplay);
++        this._clockContent.add_child(this._clockSpacer);
++        this._clockContent.add_child(this._dateDisplay);
+ 
+         this._indicator = new MessagesIndicator();
+ 
+@@ -893,7 +894,7 @@ class DateMenuButton extends PanelMenu.Button {
+ 
+         const box = new St.BoxLayout({style_class: 'clock-display-box'});
+         box.add_child(indicatorPad);
+-        box.add_child(clockContent);
++        box.add_child(this._clockContent);
+         box.add_child(this._indicator);
+ 
+         this.label_actor = this._timeDisplay;
+@@ -995,6 +996,26 @@ class DateMenuButton extends PanelMenu.Button {
+         this._sessionUpdated();
+     }
+ 
++    setShelfPresentation(enabled) {
++        this._clockContent.orientation = enabled
++            ? Clutter.Orientation.VERTICAL
++            : Clutter.Orientation.HORIZONTAL;
++        this._clockSpacer.visible = !enabled;
++        this._timeDisplay.x_align = enabled
++            ? Clutter.ActorAlign.END
++            : Clutter.ActorAlign.START;
++        this._dateDisplay.x_align = enabled
++            ? Clutter.ActorAlign.END
++            : Clutter.ActorAlign.START;
++        this._timeDisplay.translation_y = enabled
++            ? 0
++            : St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        if (enabled)
++            this.add_style_class_name('luma-shelf-clock');
++        else
++            this.remove_style_class_name('luma-shelf-clock');
++    }
++
+     _getEventSource() {
+         return new Calendar.DBusEventSource();
+     }
+diff --git a/js/ui/main.js b/js/ui/main.js
+index 01a18b5a2d20e4f5b872033093b650b052b26507..cc842ec1e179036f046006864a1396bb792407b8 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -25,6 +25,7 @@ import * as OsdMonitorLabeler from './osdMonitorLabeler.js';
+ import * as Overview from './overview.js';
+ import * as PadOsd from './padOsd.js';
+ import * as Panel from './panel.js';
++import * as Shelf from './shelf.js';
+ import * as RunDialog from './runDialog.js';
+ import * as WelcomeDialog from './welcomeDialog.js';
+ import * as Layout from './layout.js';
+@@ -58,6 +59,7 @@ const GNOMESHELL_STARTED_MESSAGE_ID = 'f3ea493c22934e26811cd62abe8e203a';
+ export let componentManager = null;
+ export let extensionManager = null;
+ export let panel = null;
++export let shelf = null;
+ export let overview = null;
+ export let runDialog = null;
+ export let lookingGlass = null;
+@@ -246,6 +248,8 @@ async function _initializeUI() {
+ 
+     messageTray = new MessageTray.MessageTray();
+     panel = new Panel.Panel();
++    if (!sessionMode.isGreeter)
++        shelf = new Shelf.Shelf();
+     keyboard = new Keyboard.KeyboardManager();
+     notificationDaemon = new NotificationDaemon.NotificationDaemon();
+     windowAttentionHandler = new WindowAttentionHandler.WindowAttentionHandler();
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index a2a49c6671084b0de95c63943eb2886ba33d40de..da10fa59da2ac2e7ee93ddb40d1106d604ee3a52 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -421,13 +421,127 @@ class UnsafeModeIndicator extends SystemIndicator {
+     }
+ });
+ 
++const ShelfStatusLayout = GObject.registerClass(
++class ShelfStatusLayout extends Clutter.LayoutManager {
++    _init() {
++        super._init();
++        this._shelfPresentation = false;
++    }
++
++    setShelfPresentation(enabled) {
++        if (this._shelfPresentation === enabled)
++            return;
++        this._shelfPresentation = enabled;
++        this.layout_changed();
++    }
++
++    _visibleChildren(container) {
++        return container.get_children().filter(child => child.visible);
++    }
++
++    _columns(container) {
++        return Math.max(2,
++            Math.ceil(this._visibleChildren(container).length / 2));
++    }
++
++    _scale() {
++        return St.ThemeContext.get_for_stage(global.stage).scale_factor;
++    }
++
++    vfunc_get_preferred_width(container, forHeight) {
++        if (!this._shelfPresentation) {
++            let minWidth = 0;
++            let natWidth = 0;
++            const spacing = container.get_theme_node().get_length('spacing');
++            const children = this._visibleChildren(container);
++
++            for (const child of children) {
++                const [childMin, childNat] = child.get_preferred_width(forHeight);
++                minWidth += childMin;
++                natWidth += childNat;
++            }
++            const totalSpacing = Math.max(0, children.length - 1) * spacing;
++            return [minWidth + totalSpacing, natWidth + totalSpacing];
++        }
++
++        const scale = this._scale();
++        const columns = this._columns(container);
++        const width = Math.max(34,
++            8 + columns * 11 + (columns - 1) * 3) * scale;
++        return [width, width];
++    }
++
++    vfunc_get_preferred_height(container, forWidth) {
++        if (!this._shelfPresentation) {
++            let minHeight = 0;
++            let natHeight = 0;
++            for (const child of this._visibleChildren(container)) {
++                const [childMin, childNat] = child.get_preferred_height(forWidth);
++                minHeight = Math.max(minHeight, childMin);
++                natHeight = Math.max(natHeight, childNat);
++            }
++            return [minHeight, natHeight];
++        }
++
++        const height = 34 * this._scale();
++        return [height, height];
++    }
++
++    vfunc_allocate(container, box) {
++        const children = this._visibleChildren(container);
++        if (!this._shelfPresentation) {
++            const spacing = container.get_theme_node().get_length('spacing');
++            const width = box.get_width();
++            const height = box.get_height();
++            const ltr = container.get_text_direction() !== Clutter.TextDirection.RTL;
++            let x = 0;
++
++            for (const child of children) {
++                const [, childWidth] = child.get_preferred_width(height);
++                const [, childHeight] = child.get_preferred_height(childWidth);
++                const childBox = new Clutter.ActorBox();
++                const childX = ltr ? x : width - x - childWidth;
++                childBox.set_origin(childX, Math.floor((height - childHeight) / 2));
++                childBox.set_size(childWidth, childHeight);
++                child.allocate(childBox);
++                x += childWidth + spacing;
++            }
++            return;
++        }
++
++        const scale = this._scale();
++        const columns = Math.max(2, Math.ceil(children.length / 2));
++        const cell = 11 * scale;
++        const gap = 3 * scale;
++        const contentWidth = columns * cell + (columns - 1) * gap;
++        const width = box.x2 - box.x1;
++        const height = box.y2 - box.y1;
++        const startX = Math.floor((width - contentWidth) / 2);
++        const startY = Math.floor((height - (2 * cell + gap)) / 2);
++
++        children.forEach((child, index) => {
++            const column = index % columns;
++            const row = Math.floor(index / columns);
++            const childBox = new Clutter.ActorBox({
++                x1: startX + column * (cell + gap),
++                y1: startY + row * (cell + gap),
++                x2: startX + column * (cell + gap) + cell,
++                y2: startY + row * (cell + gap) + cell,
++            });
++            child.allocate(childBox);
++        });
++    }
++});
++
+ const QuickSettings = GObject.registerClass(
+ class QuickSettings extends PanelMenu.Button {
+     constructor() {
+         super(0.0, C_('System menu in the top bar', 'System'), true);
+ 
+-        this._indicators = new St.BoxLayout({
++        this._indicatorsLayout = new ShelfStatusLayout();
++        this._indicators = new St.Widget({
+             style_class: 'panel-status-indicators-box',
++            layout_manager: this._indicatorsLayout,
+         });
+         this.add_child(this._indicators);
+ 
+@@ -437,6 +551,18 @@ class QuickSettings extends PanelMenu.Button {
+             logError(error, 'Failed to setup quick settings'));
+     }
+ 
++    setShelfPresentation(enabled) {
++        this._indicatorsLayout.setShelfPresentation(enabled);
++        if (enabled) {
++            this._indicators.add_style_class_name('luma-shelf-status-grid');
++            this.add_style_class_name('luma-shelf-status-button');
++        } else {
++            this._indicators.remove_style_class_name('luma-shelf-status-grid');
++            this.remove_style_class_name('luma-shelf-status-button');
++        }
++        this.queue_relayout();
++    }
++
+     async _setupIndicators() {
+         if (Config.HAVE_NETWORKMANAGER) {
+             /** @type {import('./status/network.js')} */
+diff --git a/js/ui/popupMenu.js b/js/ui/popupMenu.js
+index b89abfa934313d06205729306f1e35559550beca..8339634bd535e643d747ca781757269327dce680 100644
+--- a/js/ui/popupMenu.js
++++ b/js/ui/popupMenu.js
+@@ -1045,6 +1045,11 @@ export class PopupMenu extends PopupMenuBase {
+         this._boxPointer.setArrowOrigin(origin);
+     }
+ 
++    setArrowSide(side) {
++        this._arrowSide = side;
++        this._boxPointer.updateArrowSide(side);
++    }
++
+     setSourceAlignment(alignment) {
+         this._boxPointer.setSourceAlignment(alignment);
+     }
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..34970d41fd0d3c5545f56118f4eb6180166def7a
+--- /dev/null
++++ b/js/ui/shelf.js
+@@ -0,0 +1,341 @@
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import St from 'gi://St';
++
++import * as Dash from './dash.js';
++import * as Main from './main.js';
++
++const SHELF_HEIGHT = 50;
++const SHELF_EDGE_INSET = 14;
++const SHELF_ISLAND_GAP = 8;
++const SHELF_ICON_SIZE = 36;
++const LEGACY_DESKTOP_DOCK_UUID = 'dash-to-dock@micxgx.gmail.com';
++const SHELF_STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-shelf.css';
++
++const ShelfLayout = GObject.registerClass(
++class ShelfLayout extends Clutter.LayoutManager {
++    vfunc_get_preferred_width(container, forHeight) {
++        const child = container.get_first_child();
++        return child?.get_preferred_width(forHeight) ?? [0, 0];
++    }
++
++    vfunc_get_preferred_height(container, forWidth) {
++        const child = container.get_first_child();
++        return child?.get_preferred_height(forWidth) ?? [0, 0];
++    }
++
++    vfunc_allocate(container, box) {
++        const child = container.get_first_child();
++        if (!child)
++            return;
++
++        const width = box.get_width();
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const [, naturalWidth] = child.get_preferred_width(SHELF_HEIGHT * scale);
++        const childWidth = Math.min(width, naturalWidth);
++        const x = Math.floor((width - childWidth) / 2);
++        const childBox = new Clutter.ActorBox({
++            x1: x,
++            y1: 0,
++            x2: x + childWidth,
++            y2: SHELF_HEIGHT * scale,
++        });
++        child.allocate(childBox);
++    }
++});
++
++const ShelfIsland = GObject.registerClass(
++class ShelfIsland extends St.Widget {
++    _init(styleClass, child) {
++        super._init({
++            style_class: `luma-shelf-island ${styleClass}`,
++            layout_manager: new Clutter.BinLayout(),
++        });
++        this._content = child;
++
++        for (const shadowClass of ['far', 'middle', 'near']) {
++            const shadow = new St.Widget({
++                style_class: `luma-shelf-shadow luma-shelf-shadow-${shadowClass}`,
++            });
++            shadow.add_constraint(new Clutter.BindConstraint({
++                source: child,
++                coordinate: Clutter.BindCoordinate.ALL,
++            }));
++            this.add_child(shadow);
++        }
++
++        child.add_style_class_name('luma-shelf-material');
++        this.add_child(child);
++
++        const stroke = new St.Widget({
++            style_class: 'luma-shelf-stroke',
++            reactive: false,
++        });
++        stroke.add_constraint(new Clutter.BindConstraint({
++            source: child,
++            coordinate: Clutter.BindCoordinate.ALL,
++        }));
++        this.add_child(stroke);
++    }
++
++    // Constraint-backed shadow actors deliberately do not participate in
++    // measurement. Forward preferred size from the one material actor so
++    // panel buttons that paint outside a zero-width allocation cannot leak
++    // through without their surface.
++    vfunc_get_preferred_width(forHeight) {
++        return this._content.get_preferred_width(forHeight);
++    }
++
++    vfunc_get_preferred_height(_forWidth) {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const height = SHELF_HEIGHT * scale;
++        return [height, height];
++    }
++});
++
++/**
++ * Shelf
++ *
++ * First-party desktop chrome. The settings schema is deliberately renderer-
++ * independent: a future trusted mod may provide another implementation by
++ * claiming the same Shelf capability, without monkey-patching this actor.
++ */
++export const Shelf = GObject.registerClass(
++class Shelf extends St.Widget {
++    _init() {
++        super._init({
++            name: 'lumaShelf',
++            style_class: 'luma-shelf',
++            reactive: false,
++            // The actor is 64 px high so Mutter reserves both the 50 px
++            // material and its 14 px screen-edge breathing room. Allocate the
++            // material at the actor's top rather than centering it in that
++            // reserve, which would incorrectly halve the visible inset.
++            layout_manager: new ShelfLayout(),
++        });
++
++        this._settings = new Gio.Settings({
++            schema_id: 'org.project_luma.shell-state',
++        });
++        this._shellSettings = new Gio.Settings({
++            schema_id: 'org.gnome.shell',
++        });
++        this._stylesheet = Gio.File.new_for_uri(SHELF_STYLESHEET_URI);
++        St.ThemeContext.get_for_stage(global.stage)
++            .get_theme()
++            .load_stylesheet(this._stylesheet);
++        this._settings.connectObject('changed', () => this._sync(), this);
++        Main.sessionMode.connectObject('updated', () => {
++            GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._sync());
++        }, this);
++        Main.layoutManager.connectObject('monitors-changed', () => this._sync(), this);
++        Main.overview.connectObject(
++            'showing', () => this.hide(),
++            'hiding', () => {
++                if (this._isDesktopSession())
++                    this.show();
++            },
++            this);
++
++        this._group = new St.BoxLayout({
++            style_class: 'luma-shelf-group',
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.START,
++        });
++        this.add_child(this._group);
++
++        this._dash = new Dash.Dash();
++        this._dash.setFixedIconSize(SHELF_ICON_SIZE);
++        this._dash.setShowAppsAtStart(true);
++        this._dockScroll = new St.ScrollView({
++            style_class: 'luma-shelf-dock-scroll',
++            hscrollbar_policy: St.PolicyType.EXTERNAL,
++            vscrollbar_policy: St.PolicyType.NEVER,
++            enable_mouse_scrolling: true,
++            overlay_scrollbars: true,
++        });
++        // St.ScrollView requires an StScrollable child. GNOME's native Dash
++        // intentionally remains a plain St.Widget, so keep it unmodified and
++        // place it inside Shell's scrollable BoxLayout boundary.
++        this._dockContent = new St.BoxLayout({
++            orientation: Clutter.Orientation.HORIZONTAL,
++        });
++        this._dockContent.add_child(this._dash);
++        this._dockScroll.set_child(this._dockContent);
++        this._dockMaterial = new St.Bin({child: this._dockScroll});
++        this._dockIsland = new ShelfIsland('luma-shelf-dock-island', this._dockMaterial);
++
++        this._actionsBox = new St.BoxLayout({
++            style_class: 'luma-shelf-actions-box',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._actionsMaterial = new St.Bin({child: this._actionsBox});
++        this._actionsIsland = new ShelfIsland(
++            'luma-shelf-actions-island', this._actionsMaterial);
++
++        Main.layoutManager.addChrome(this, {
++            affectsStruts: true,
++            trackFullscreen: true,
++        });
++        Main.ctrlAltTabManager.addGroup(
++            this, _('Shelf'), 'shell-focus-dash-symbolic');
++
++        this._dash.connectObject('notify::width', () => this._queueDockWidth(), this);
++        this._actionsBox.connectObject('notify::width', () => this._queueDockWidth(), this);
++        this._sync();
++    }
++
++    _isDesktopSession() {
++        return !Main.sessionMode.isGreeter &&
++            Main.sessionMode.currentMode !== 'unlock-dialog' &&
++            GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld';
++    }
++
++    _retireLegacyDesktopDock() {
++        const enabled = this._shellSettings.get_strv('enabled-extensions');
++        if (!enabled.includes(LEGACY_DESKTOP_DOCK_UUID))
++            return;
++        this._shellSettings.set_strv('enabled-extensions',
++            enabled.filter(uuid => uuid !== LEGACY_DESKTOP_DOCK_UUID));
++    }
++
++    _setMenuSide(indicator, side) {
++        indicator?.menu?.setArrowSide(side);
++    }
++
++    _adoptPanelActors() {
++        const indicators = Main.panel.statusArea;
++        const actionRoles = [
++            'dateMenu',
++            'screenRecording',
++            'screenSharing',
++            'dwellClick',
++            'a11y',
++            'keyboard',
++            'quickSettings',
++        ];
++        const arrowSide = St.Side.BOTTOM;
++
++        for (const role of actionRoles) {
++            const indicator = indicators[role];
++            if (!indicator)
++                continue;
++            const container = indicator.container;
++            const parent = container.get_parent();
++            if (parent !== this._actionsBox) {
++                parent?.remove_child(container);
++                this._actionsBox.add_child(container);
++            }
++            if (!indicator._lumaShelfVisibilityBound) {
++                indicator.connectObject('notify::visible', () => {
++                    container.visible = indicator.visible;
++                    this._queueDockWidth();
++                }, this);
++                indicator._lumaShelfVisibilityBound = true;
++            }
++            container.visible = indicator.visible;
++            indicator.setShelfPresentation?.(true);
++            this._setMenuSide(indicator, arrowSide);
++        }
++
++        const liveIndicator = indicators.liveExtensions;
++        const live = liveIndicator?.container;
++        if (live) {
++            if (!this._liveIsland) {
++                live.get_parent()?.remove_child(live);
++                this._liveMaterial = new St.Bin({child: live});
++                this._liveIsland = new ShelfIsland(
++                    'luma-shelf-live-island', this._liveMaterial);
++                liveIndicator.connectObject('notify::visible', () => {
++                    this._liveIsland.visible = liveIndicator.visible;
++                    this._queueDockWidth();
++                }, this);
++            }
++            if (this._liveIsland.get_parent() !== this._group) {
++                this._liveIsland.get_parent()?.remove_child(this._liveIsland);
++                this._group.insert_child_at_index(this._liveIsland, 1);
++            }
++            this._liveIsland.visible = liveIndicator.visible;
++        }
++    }
++
++    _restorePanelActors() {
++        const indicators = Main.panel.statusArea;
++        indicators.quickSettings?.setShelfPresentation?.(false);
++        indicators.dateMenu?.setShelfPresentation?.(false);
++        Main.panel._updatePanel();
++        Main.panel.show();
++        Main.layoutManager.panelBox.show();
++    }
++
++    _sync() {
++        if (!this._isDesktopSession()) {
++            this.hide();
++            this._restorePanelActors();
++            return;
++        }
++
++        this._retireLegacyDesktopDock();
++        Main.panel.hide();
++        Main.layoutManager.panelBox.hide();
++        this.show();
++
++        const dockVisible = this._settings.get_boolean('shelf-dock-visible');
++        const actionsVisible = this._settings.get_boolean('shelf-actions-visible');
++        const surfaceMode = this._settings.get_string('shelf-surface-mode');
++        const material = this._settings.get_string('shelf-material');
++
++        this._group.remove_all_children();
++        if (dockVisible)
++            this._group.add_child(this._dockIsland);
++        if (actionsVisible)
++            this._group.add_child(this._actionsIsland);
++        this._group.set_style_class_name(
++            `luma-shelf-group luma-shelf-${surfaceMode} luma-shelf-material-${material}`);
++
++        this._adoptPanelActors();
++        this._syncGeometry();
++        this._queueDockWidth();
++    }
++
++    _syncGeometry() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        if (!monitor)
++            return;
++
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const reserve = (SHELF_HEIGHT + SHELF_EDGE_INSET) * scale;
++        this.set_position(monitor.x, monitor.y + monitor.height - reserve);
++        this.set_size(monitor.width, reserve);
++    }
++
++    _queueDockWidth() {
++        if (this._widthLaterId)
++            return;
++        this._widthLaterId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._widthLaterId = 0;
++            this._syncDockWidth();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _syncDockWidth() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        if (!monitor || !this._dockIsland.visible)
++            return;
++
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const [, naturalDockWidth] = this._dash.get_preferred_width(-1);
++        const [, actionsWidth] = this._actionsIsland.get_preferred_width(-1);
++        const maxWidth = Math.max(1,
++            monitor.width - 2 * SHELF_EDGE_INSET * scale -
++            actionsWidth - SHELF_ISLAND_GAP * scale);
++        this._dockScroll.width = Math.min(naturalDockWidth, maxWidth);
++        if (naturalDockWidth > maxWidth)
++            this._dockScroll.add_style_pseudo_class('overflowing');
++        else
++            this._dockScroll.remove_style_pseudo_class('overflowing');
++    }
++});

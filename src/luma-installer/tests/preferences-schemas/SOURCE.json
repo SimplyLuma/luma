@@ -1,0 +1,27 @@
+{
+  "Grid.gschema.xml.in": {
+    "scope": "Exact maintained application schema fixture; source notices and release license gates remain authoritative",
+    "sha256": "d3d19043dcbcb3c4b82cf43adf19558b49a1ec8623d7167de5126fb7e73a443e",
+    "source": "src/external/grid/data/io.luma.Grid.gschema.xml.in"
+  },
+  "Reel.gschema.xml": {
+    "scope": "Exact maintained application schema fixture; source notices and release license gates remain authoritative",
+    "sha256": "e7cef19e39a113c0f0657b5d03e6036fb230eca3bc3afc39880797df106028a7",
+    "source": "src/luma-reel/data/org.projectluma.Reel.gschema.xml"
+  },
+  "Session.gschema.xml.in": {
+    "scope": "Exact maintained application schema fixture; source notices and release license gates remain authoritative",
+    "sha256": "31dc4449677143a69c99b713ccb348dc88c40521164ab3e951bcdd751bfae686",
+    "source": "src/external/session/data/app.gschema.xml.in"
+  },
+  "Stage.gschema.xml.in": {
+    "scope": "Exact maintained application schema fixture; source notices and release license gates remain authoritative",
+    "sha256": "d61828c7a3775c8669cba9279e47c8ed2bb7493d664ecd2389cc314e57a73b19",
+    "source": "src/external/stage/data/io.luma.Stage.gschema.xml.in"
+  },
+  "Write.gschema.xml.in": {
+    "scope": "Exact maintained application schema fixture; source notices and release license gates remain authoritative",
+    "sha256": "6a0d9a905b22c846b129bee0f430aa6a297ed33d6ddac0a5448c69b9d3c1d182",
+    "source": "src/external/write/data/org.projectluma.Write.gschema.xml.in"
+  }
+}

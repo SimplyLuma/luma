@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: restore Studio Desktop Apps target in the dock
+
+Show the native Apps target at the start of the Shelf dock. Give it an
+eighteen-pixel glyph and a short divider before the pinned applications.
+---
+diff --git a/js/ui/dash.js b/js/ui/dash.js
+index a59c464..a0679f3 100644
+--- a/js/ui/dash.js
++++ b/js/ui/dash.js
+@@ -410,7 +410,7 @@ class ShowAppsIcon extends DashItemContainer {
+     _createIcon(size) {
+         this._iconActor = new St.Icon({
+             icon_name: 'view-app-grid-symbolic',
+-            icon_size: size,
++            icon_size: this._lumaShelf ? 18 : size,
+             style_class: 'show-apps-icon luma-shelf-artwork',
+             track_hover: true,
+         });
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+index d0fcfbf..eb32bd4 100644
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -685,16 +685,17 @@ export const Shelf = GObject.registerClass({
+         // competing dock model during Activity View.
+         this._dash = Main.overview.dash;
+         this._dash.get_parent()?.remove_child(this._dash);
++        this._dash._showAppsIcon._lumaShelf = true;
+         this._dash.setFixedIconSize(DASH_TILE_SIZE);
+         this._dash.setShowAppsAtStart(true);
+-        // The Shelf names applications with its own hover label and opens the
+-        // catalog from Search, so the dash's Apps tile is redundant here.
+-        // Hiding the actor is what drops its allocation; giving it zero width
+-        // in the stylesheet leaves its container and separator behind as dead
+-        // space at the ends of the dock.
+-        this._dash.showAppsButton?.hide();
++        // Studio Desktop starts the dock with a forty-pixel Apps target and
++        // a short divider before favorites. Keep GNOME's native Apps action.
++        this._dash.showAppsButton?.show();
+         this._normaliseDockIcons();
+-        this._dash._showAppsIcon?.hide();
++        this._dash._showAppsIcon.show();
++        this._appsDivider = new St.Widget({style_class: 'luma-shelf-apps-divider',
++            width: 1, height: 24, y_align: Clutter.ActorAlign.CENTER});
++        this._dash._dashContainer.insert_child_at_index(this._appsDivider, 1);
+         this._dockScroll = new St.ScrollView({
+             style_class: 'luma-shelf-dock-scroll',
+             hscrollbar_policy: St.PolicyType.EXTERNAL,

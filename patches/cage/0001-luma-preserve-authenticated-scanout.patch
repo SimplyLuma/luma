@@ -1,0 +1,52 @@
+From: Project Luma <maintainers@projectluma.org>
+Date: Sun, 30 Aug 2026 22:18:00 -0500
+Subject: [PATCH] cage: preserve authenticated handoff scanout
+
+When the explicitly marked Presence client completes authentication, the next
+compositor immediately assumes the same DRM output. Avoid disabling the final
+Prism frame during Cage teardown so the kernel scans it out continuously until
+Phoc's first atomic commit. Generic Cage exits retain normal cleanup.
+
+---
+ cage.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/cage.c b/cage.c
+index f4b661d..4bf1c30 100644
+--- a/cage.c
++++ b/cage.c
+@@ -74,6 +74,13 @@ server_terminate(struct cg_server *server)
+ 	wl_display_terminate(server->wl_display);
+ }
+ 
++static bool
++luma_preserve_scanout_handoff(void)
++{
++	const char *value = getenv("LUMA_CAGE_SCANOUT_HANDOFF");
++	return value != NULL && value[0] != '\0' && strcmp(value, "0") != 0;
++}
++
+ static void
+ handle_display_destroy(struct wl_listener *listener, void *data)
+ {
+@@ -628,6 +635,18 @@ main(int argc, char *argv[])
+ 	seat_center_cursor(server.seat);
+ 	wl_display_run(server.wl_display);
+ 
++	if (server.return_app_code && luma_preserve_scanout_handoff()) {
++		if (pid != 0) {
++			app_ret = cleanup_primary_client(pid);
++		}
++		if (!ret) {
++			ret = app_ret;
++		}
++		/* The authenticated compositor immediately takes this DRM output.
++		 * Exit without disabling the final Prism scanout in between. */
++		_exit(ret);
++	}
++
+ #if CAGE_HAS_XWAYLAND
+ 	if (xwayland) {
+ 		wl_list_remove(&server.new_xwayland_surface.link);
+-- 
+2.53.0

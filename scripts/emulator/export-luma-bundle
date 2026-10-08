@@ -1,0 +1,755 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Export a verified Luma package bundle for the Luma Emulator.
+
+Runs on the Linux build host, inside a Project Luma checkout. It resolves the
+package set from the repository's own composition inputs — never from a
+handwritten list that could drift — finds the matching built RPMs, verifies
+every one of them, and writes a bundle the Mac can admit without ever needing
+access to the build host itself.
+
+The bundle deliberately follows the existing client-bundle convention rather
+than inventing a second one: an rpms/ directory, SHA256SUMS, ARTIFACT-SOURCES
+recording where each file came from, and a machine-readable manifest.
+
+Nothing about the build host — no address, credential, key, or private path
+outside the bundle's own provenance record — is written into the manifest.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+from pathlib import Path
+
+BUNDLE_FORMAT = 1
+
+
+def log(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def split_nevra(text: str) -> tuple[str, str, str, str] | None:
+    """Split `gnome-shell-50.3-1.luma.71.fc44.x86_64` into its parts.
+
+    Returns (name, version, release, arch). Names contain hyphens and versions
+    do not, so the split is done from the right.
+    """
+    text = text.removesuffix(".rpm")
+    if "." not in text or "-" not in text:
+        return None
+    body, _, arch = text.rpartition(".")
+    if arch not in {"x86_64", "aarch64", "noarch", "src"}:
+        return None
+    rest, _, release = body.rpartition("-")
+    name, _, version = rest.rpartition("-")
+    if not name or not version or not release:
+        return None
+    return name, version, release, arch
+
+
+def read_pins(repo: Path) -> dict[str, tuple[str, str]]:
+    """Collect every pinned NEVRA the repository declares.
+
+    Composition inputs are the source of truth for what release is accepted.
+    Version and release are architecture-independent, so an x86_64 pin still
+    tells us exactly which release an aarch64 bundle should carry.
+    """
+    pins: dict[str, tuple[str, str]] = {}
+    candidates = [repo / "config" / "desktop" / "inputs.env"]
+    candidates += sorted((repo / "config" / "mobile").rglob("inputs.env"))
+    candidates += sorted((repo / "config" / "mobile").glob("*.env"))
+    seen_files = []
+    for path in candidates:
+        if not path.is_file():
+            continue
+        seen_files.append(str(path.relative_to(repo)))
+        for line in path.read_text(errors="replace").splitlines():
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if not key.endswith("NEVRA"):
+                continue
+            parsed = split_nevra(value.strip())
+            if parsed is None:
+                continue
+            name, version, release, _ = parsed
+            # A later file may restate the same package; the composition inputs
+            # are expected to agree, and if they do not that is worth seeing.
+            existing = pins.get(name)
+            if existing and existing != (version, release):
+                log(f"  note: {name} pinned twice ({existing} and {(version, release)});"
+                    " taking the first")
+                continue
+            pins.setdefault(name, (version, release))
+    return pins, seen_files
+
+
+def read_roles(repo: Path, override: str | None = None) -> list[tuple[str, str, str, str | None]]:
+    # The roles file can be supplied separately so the exporter can resolve pins
+    # from a canonical build-host checkout without anything being written into
+    # that checkout.
+    path = Path(override) if override else repo / "config" / "emulator" / "bundle-roles.txt"
+    if not path.is_file():
+        raise SystemExit(f"error: {path} is missing; cannot decide what a faithful image needs")
+    roles = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) not in (3, 4):
+            raise SystemExit(f"error: malformed role line: {line}")
+        scope, requirement, package = parts[0], parts[1], parts[2]
+        family = parts[3] if len(parts) == 4 else None
+        if scope not in {"shared", "desktop", "mobile"}:
+            raise SystemExit(f"error: unknown scope in role line: {line}")
+        if requirement not in {"required", "optional"}:
+            raise SystemExit(f"error: unknown requirement in role line: {line}")
+        roles.append((scope, requirement, package, family))
+    return roles
+
+
+def read_overlay(repo: Path, override: str | None = None) -> list[dict]:
+    """The composition overlay: what makes a guest Luma rather than Fedora."""
+    path = Path(override) if override else repo / "config" / "emulator" / "bundle-overlay.txt"
+    if not path.is_file():
+        return []
+    entries = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) != 4:
+            raise SystemExit(f"error: malformed overlay line: {line}")
+        scope, mode, source, destination = parts
+        if scope not in {"shared", "desktop", "mobile"}:
+            raise SystemExit(f"error: unknown overlay scope: {line}")
+        entries.append({
+            "scope": scope, "mode": mode,
+            "source": source, "destination": destination,
+        })
+    return entries
+
+
+def index_rpms(search_paths: list[Path], arch: str) -> dict[str, list[tuple[str, str, Path]]]:
+    """Index every candidate RPM by package name.
+
+    Debug packages are excluded: they are large, they are never needed to run
+    anything, and including them would quadruple the bundle for no benefit.
+    """
+    wanted = {arch, "noarch"}
+    index: dict[str, list[tuple[str, str, Path]]] = {}
+    for root in search_paths:
+        if not root.exists():
+            log(f"  note: search path does not exist, skipping: {root}")
+            continue
+        for path in root.rglob("*.rpm"):
+            name_text = path.name
+            if "debuginfo" in name_text or "debugsource" in name_text:
+                continue
+            parsed = split_nevra(name_text)
+            if parsed is None:
+                continue
+            name, version, release, package_arch = parsed
+            if package_arch not in wanted:
+                continue
+            index.setdefault(name, []).append((version, release, path))
+    return index
+
+
+def release_sort_key(release: str) -> list:
+    """Order `1.luma.30` before `1.luma.71` and `2.luma.7` after both."""
+    return [int(part) if part.isdigit() else part for part in re.split(r"[.\-]", release)]
+
+
+def resolve(
+    package: str,
+    pins: dict[str, tuple[str, str]],
+    index: dict[str, list[tuple[str, str, Path]]],
+) -> dict:
+    """Pick the file for one package and say exactly how it was chosen."""
+    available = index.get(package, [])
+    pin = pins.get(package)
+
+    if not available:
+        return {"package": package, "status": "unavailable", "pinned": pin}
+
+    if pin is not None:
+        version, release = pin
+        exact = [entry for entry in available if (entry[0], entry[1]) == (version, release)]
+        if exact:
+            chosen = exact[0]
+            return {
+                "package": package,
+                "status": "exact",
+                "pinned": pin,
+                "version": chosen[0],
+                "release": chosen[1],
+                "path": chosen[2],
+            }
+        # The pinned release has no build for this architecture. Take the newest
+        # that does exist, but record it as a substitution so nobody can mistake
+        # this bundle for the composed desktop tuple.
+        #
+        # A package pinned to a Luma downstream release may only be substituted
+        # by another Luma downstream release. Falling back to a stock Fedora
+        # build here would quietly put upstream software in an image the
+        # emulator then calls Luma, which is the one thing this must never do.
+        pool = available
+        if ".luma." in release:
+            pool = [entry for entry in available if ".luma." in entry[1]]
+            if not pool:
+                return {
+                    "package": package,
+                    "status": "unavailable",
+                    "pinned": pin,
+                    "note": "only non-Luma builds exist for this architecture; "
+                            "a stock Fedora package is not an acceptable substitute",
+                }
+        same_version = [entry for entry in pool if entry[0] == version]
+        pool = same_version or pool
+        chosen = sorted(pool, key=lambda entry: (entry[0], release_sort_key(entry[1])))[-1]
+        return {
+            "package": package,
+            "status": "substituted",
+            "pinned": pin,
+            "version": chosen[0],
+            "release": chosen[1],
+            "path": chosen[2],
+        }
+
+    chosen = sorted(available, key=lambda entry: (entry[0], release_sort_key(entry[1])))[-1]
+    return {
+        "package": package,
+        "status": "unpinned",
+        "pinned": None,
+        "version": chosen[0],
+        "release": chosen[1],
+        "path": chosen[2],
+    }
+
+
+def verify_rpm(path: Path, expected_name: str, arch: str) -> tuple[bool, str]:
+    """Confirm the file really is the package its filename claims."""
+    try:
+        output = subprocess.run(
+            ["rpm", "-qp", "--nosignature", "--qf",
+             "%{NAME}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\n", str(path)],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, f"could not read: {error}"
+    if output.returncode != 0:
+        return False, f"rpm refused the file: {output.stderr.strip()[:200]}"
+    fields = output.stdout.strip().split("\t")
+    if len(fields) != 4:
+        return False, "rpm returned an unreadable header"
+    name, _, _, package_arch = fields
+    if name != expected_name:
+        return False, f"header says {name}, filename says {expected_name}"
+    if package_arch not in {arch, "noarch"}:
+        return False, f"architecture {package_arch} is not {arch} or noarch"
+    return True, "ok"
+
+
+def git_revision(repo: Path) -> dict:
+    def run(*args: str) -> str:
+        # `safe.directory` is passed per invocation rather than written to the
+        # host's git configuration: the exporter reads a checkout that belongs
+        # to somebody else and must not modify that user's settings.
+        result = subprocess.run(
+            ["git", "-c", f"safe.directory={repo}", "-C", str(repo), *args],
+            capture_output=True, text=True, check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    return {
+        "commit": run("rev-parse", "HEAD"),
+        "branch": run("rev-parse", "--abbrev-ref", "HEAD"),
+        "dirty": bool(run("status", "--porcelain")),
+        "describe": run("describe", "--always", "--dirty"),
+    }
+
+
+def compatibility_roles(arch: str, *, arm_windows: bool = False) -> list[tuple[str, str, str, str | None]]:
+    roles = [("shared", "required", name, None) for name in (
+        "luma-android-runtime", "luma-relay", "luma-application-installer")]
+    if arch == "x86_64":
+        roles.append(("desktop", "required", "wine-luma-relay-explorer", None))
+    if arm_windows:
+        if arch != "aarch64":
+            raise SystemExit("error: the FEX preview requires an aarch64 guest")
+        roles.append(("shared", "required", "luma-relay-fex", None))
+    return roles
+
+
+def stage_android_images(repo: Path, cache: Path, arch: str, staging: Path) -> dict:
+    """Admit only the architecture-matched, source-pinned archive pair."""
+    pin = repo / "config/android" / f"images-{arch}.env"
+    values = {}
+    for line in pin.read_text().splitlines():
+        if line.startswith("LUMA_ANDROID_") and "=" in line:
+            key, value = line.split("=", 1)
+            values[key] = value
+    records = []
+    for kind in ("SYSTEM", "VENDOR"):
+        prefix = f"LUMA_ANDROID_{kind}_"
+        name = values[prefix + "FILENAME"]
+        source = cache / name
+        if Path(name).name != name or source.is_symlink() or not source.is_file():
+            raise SystemExit(f"error: missing regular pinned image archive: {name}")
+        if (source.stat().st_size != int(values[prefix + "SIZE"])
+                or sha256(source) != values[prefix + "SHA256"]):
+            raise SystemExit(f"error: pinned Android image verification failed: {name}")
+        destination = staging / "runtime/cache" / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        if sha256(destination) != values[prefix + "SHA256"]:
+            raise SystemExit(f"error: Android image changed during copy: {name}")
+        records.append({"file": str(destination.relative_to(staging)),
+                        "sha256": values[prefix + "SHA256"]})
+    for relative in (f"config/android/images-{arch}.env",
+                     "scripts/android/prepare-pinned-images.sh",
+                     "scripts/android/deploy-prairie-waydroid-images.sh"):
+        destination = staging / "runtime" / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo / relative, destination)
+        records.append({"file": str(destination.relative_to(staging)),
+                        "sha256": sha256(destination)})
+    return {"architecture": arch, "files": records}
+
+
+
+def stage_software_video(repo: Path, artifact: Path, staging: Path) -> list[dict]:
+    """Stage the source-built, pinned software profile without test executables."""
+    expected = "2106130c991a6c4c111de31f79154c3d1a58200bb2b70bab85171bb1563c0ef3"
+    module = artifact / "gralloc.default.so"
+    info_file = artifact / "build-info.json"
+    if any(p.is_symlink() or not p.is_file() for p in (module, info_file)):
+        raise SystemExit("error: software video requires regular source-built artifacts")
+    info = json.loads(info_file.read_text())
+    if (sha256(module) != expected or info.get("module_sha256") != expected
+            or info.get("patch_sha256") != "8530911941bff568679cca9f890f05d531dec1b38cf73fda224f68a0da89f646"):
+        raise SystemExit("error: software allocator differs from the tested source pin")
+    licenses = artifact / "licenses"
+    if licenses.is_symlink() or not licenses.is_dir():
+        raise SystemExit("error: allocator license notices are required")
+    notices = sorted(licenses.rglob("*"))
+    if not any(p.is_file() for p in notices) or any(p.is_symlink() for p in notices):
+        raise SystemExit("error: invalid allocator license notices")
+    records = []
+    sources = [(p, Path("runtime/software-video") / p.relative_to(artifact))
+               for p in [module, info_file] + [p for p in notices if p.is_file()]]
+    helper = Path("scripts/android/prepare-software-graphics-images.py")
+    sources.append((repo / helper, Path("runtime") / helper))
+    for source, relative in sources:
+        destination = staging / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        records.append({"file": str(relative), "sha256": sha256(destination)})
+    # Detect a source change during copying, before bundle admission.
+    if sha256(staging / "runtime/software-video/gralloc.default.so") != expected:
+        raise SystemExit("error: software allocator changed during staging")
+    return records
+
+
+def fedora_release() -> str:
+    path = Path("/etc/fedora-release")
+    return path.read_text().strip() if path.is_file() else "unknown"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Export a verified Luma package bundle for the Luma Emulator."
+    )
+    parser.add_argument("--repo", default=".", help="Project Luma checkout to resolve pins from")
+    parser.add_argument(
+        "--roles", default=None,
+        help="path to bundle-roles.txt, when it is not inside --repo",
+    )
+    parser.add_argument("--arch", default="aarch64", choices=["aarch64", "x86_64"])
+    parser.add_argument("--with-compatibility", action="store_true",
+                        help="include existing Android/Relay backends; native-only is the default")
+    parser.add_argument("--with-arm-windows", action="store_true",
+                        help="explicitly add the FEX Windows preview to an ARM compatibility bundle")
+    parser.add_argument("--android-image-cache", type=Path,
+                        help="verified pinned Android ZIP cache; required with --with-compatibility")
+    parser.add_argument("--software-video-artifact", type=Path,
+                        help="opt into the tested ARM emulator software-video profile using a source-built allocator artifact")
+    parser.add_argument("--fedora", default="44", help="Fedora release the bundle targets")
+    parser.add_argument("--output", required=True, help="directory to write the bundle into")
+    parser.add_argument(
+        "--search", action="append", default=[],
+        help="directory to search for built RPMs; repeatable",
+    )
+    parser.add_argument(
+        "--allow-substitutions", action="store_true",
+        help="produce a bundle even when a pinned release has no build for this "
+             "architecture. Every substitution is recorded in the manifest.",
+    )
+    parser.add_argument(
+        "--overlay", default=None,
+        help="path to bundle-overlay.txt, when it is not inside --repo",
+    )
+    parser.add_argument(
+        "--source-commit", default=None,
+        help="record this as the source revision. Use when pins and overlay "
+             "come from a working tree rather than the checkout's own HEAD.",
+    )
+    parser.add_argument(
+        "--source-note", default=None,
+        help="a sentence recorded in the manifest explaining where the inputs "
+             "came from, when that is not simply the checkout's HEAD",
+    )
+    parser.add_argument(
+        "--omit", action="append", default=[], metavar="PACKAGE=REASON",
+        help="knowingly leave a package out, recording why. The bundle is then "
+             "marked incomplete rather than pretending to be whole. Use this "
+             "when the only available build is defective — never to hide a gap.",
+    )
+    parser.add_argument(
+        "--allow-missing-optional", action="store_true", default=True,
+        help="an optional package that is not built is recorded, not fatal (default)",
+    )
+    arguments = parser.parse_args()
+    if arguments.with_compatibility != bool(arguments.android_image_cache):
+        parser.error("--with-compatibility and --android-image-cache must be supplied together")
+    if arguments.with_arm_windows and (not arguments.with_compatibility or arguments.arch != "aarch64"):
+        parser.error("--with-arm-windows requires --with-compatibility and --arch aarch64")
+
+    if arguments.software_video_artifact and (not arguments.with_compatibility or arguments.arch != "aarch64"):
+        parser.error("--software-video-artifact requires ARM --with-compatibility")
+
+    repo = Path(arguments.repo).resolve()
+    roles_path = Path(arguments.roles) if arguments.roles else (
+        repo / "config" / "emulator" / "bundle-roles.txt"
+    )
+    if not roles_path.is_file():
+        raise SystemExit(
+            f"error: {roles_path} is missing. Run this inside a checkout carrying "
+            "config/emulator/bundle-roles.txt, or pass --roles."
+        )
+
+    search_paths = [Path(entry).resolve() for entry in arguments.search]
+    if not search_paths:
+        raise SystemExit("error: at least one --search directory is required")
+
+    log(f"Resolving the package set from {repo}")
+    pins, pin_files = read_pins(repo)
+    log(f"  {len(pins)} pinned NEVRAs from {', '.join(pin_files) or 'no inputs files'}")
+    roles = read_roles(repo, arguments.roles)
+    if arguments.with_compatibility:
+        extra = compatibility_roles(arguments.arch, arm_windows=arguments.with_arm_windows)
+        names = {role[2] for role in extra}
+        roles = [role for role in roles if role[2] not in names] + extra
+    log(f"  {len(roles)} roles declared")
+    overlay = read_overlay(repo, arguments.overlay)
+    log(f"  {len(overlay)} composition overlay entries declared")
+
+    log("Indexing built RPMs")
+    index = index_rpms(search_paths, arguments.arch)
+    log(f"  {sum(len(v) for v in index.values())} candidate files for {arguments.arch}/noarch")
+
+    omissions: dict[str, str] = {}
+    for entry in arguments.omit:
+        package, _, reason = entry.partition("=")
+        if not package or not reason:
+            raise SystemExit(f"error: --omit needs PACKAGE=REASON (got {entry})")
+        omissions[package] = reason
+
+    resolved = []
+    missing_required = []
+    substitutions = []
+    for scope, requirement, package, family in roles:
+        if package in omissions:
+            log(f"  OMIT     {package}: {omissions[package]}")
+            resolved.append({
+                "package": package, "status": "omitted", "pinned": pins.get(package),
+                "scope": scope, "requirement": requirement, "family": family,
+                "omissionReason": omissions[package],
+            })
+            continue
+        entry = resolve(package, pins, index)
+        entry["scope"] = scope
+        entry["requirement"] = requirement
+        entry["family"] = family
+        if entry["status"] == "unavailable":
+            if requirement == "required":
+                missing_required.append(package)
+                log(f"  MISSING  {package} ({scope}, required) — no {arguments.arch} build found")
+            else:
+                log(f"  absent   {package} ({scope}, optional)")
+            resolved.append(entry)
+            continue
+        if entry["status"] == "substituted":
+            substitutions.append(entry)
+            log(f"  SUBST    {package}: pinned {entry['pinned'][1]}, using {entry['release']}")
+        else:
+            log(f"  ok       {package}-{entry['version']}-{entry['release']}")
+        resolved.append(entry)
+
+    # Family coherence. A subpackage resolved independently can land on a
+    # release its parent was never built at; the transaction then fails, or a
+    # mismatched pair gets installed. The primary member decides for all.
+    for family in dict.fromkeys(e.get("family") for e in resolved if e.get("family")):
+        members = [e for e in resolved if e.get("family") == family]
+        primary = members[0]
+        if primary["status"] in {"unavailable", "omitted"}:
+            # A subpackage without its parent is useless and often unresolvable,
+            # so the whole family goes together.
+            for member in members[1:]:
+                if member["status"] not in {"unavailable", "omitted"}:
+                    log(f"  family   {member['package']} omitted with {primary['package']}")
+                    member["status"] = "omitted"
+                    member["omissionReason"] = (
+                        f"omitted with {primary['package']}: "
+                        + primary.get("omissionReason", "its parent is unavailable")
+                    )
+                    member["path"] = None
+            continue
+        target = (primary["version"], primary["release"])
+        for member in members[1:]:
+            if member["status"] in {"unavailable", "omitted"}:
+                continue
+            if (member["version"], member["release"]) == target:
+                continue
+            matches = [
+                candidate for candidate in index.get(member["package"], [])
+                if (candidate[0], candidate[1]) == target
+            ]
+            if not matches:
+                log(f"  FAMILY   {member['package']} has no build at {target[1]}, "
+                    f"which {primary['package']} was resolved to")
+                if member["requirement"] == "required":
+                    missing_required.append(
+                        f"{member['package']} (at {target[1]}, to match {primary['package']})"
+                    )
+                else:
+                    member.update({"status": "unavailable", "path": None})
+                continue
+            log(f"  family   {member['package']} pulled to {target[1]} to match "
+                f"{primary['package']}")
+            member["version"], member["release"] = target
+            member["path"] = matches[0][2]
+            if member["status"] == "exact" and primary["status"] == "substituted":
+                member["status"] = "substituted"
+                substitutions.append(member)
+
+    missing_required = [
+        name for name in missing_required
+        if name.split(" ")[0] not in omissions
+    ]
+    if missing_required:
+        raise SystemExit(
+            "error: required packages have no build for "
+            f"{arguments.arch}: {', '.join(missing_required)}\n"
+            "Build them before exporting. The emulator will not call an image "
+            "faithful without them."
+        )
+    if substitutions and not arguments.allow_substitutions:
+        names = ", ".join(entry["package"] for entry in substitutions)
+        raise SystemExit(
+            f"error: these packages have no {arguments.arch} build at their pinned release: {names}\n"
+            "Build them at the pinned release, or pass --allow-substitutions to "
+            "export a bundle that records the divergence honestly."
+        )
+
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    revision = git_revision(repo)
+    if arguments.source_commit:
+        revision["commit"] = arguments.source_commit
+    revision["note"] = arguments.source_note or ""
+    short = (revision["commit"] or "unknown")[:12]
+    bundle_name = f"luma-emulator-packages-{short}-fedora{arguments.fedora}-{arguments.arch}"
+    output_root = Path(arguments.output).resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="luma-bundle.", dir=str(output_root)) as work:
+        staging = Path(work) / bundle_name
+        rpms = staging / "rpms"
+        rpms.mkdir(parents=True)
+
+        packages = []
+        sources = []
+        log("Verifying and copying")
+        for entry in resolved:
+            if entry["status"] in {"unavailable", "omitted"}:
+                packages.append({
+                    "name": entry["package"], "scope": entry["scope"],
+                    "requirement": entry["requirement"],
+                    "status": "omitted" if entry["status"] == "omitted" else "absent",
+                    "omissionReason": entry.get("omissionReason") or entry.get("note"),
+                })
+                continue
+            source = entry["path"]
+            ok, detail = verify_rpm(source, entry["package"], arguments.arch)
+            if not ok:
+                raise SystemExit(f"error: {source} failed verification: {detail}")
+            destination = rpms / source.name
+            shutil.copy2(source, destination)
+            digest = sha256(destination)
+            parsed = split_nevra(source.name)
+            packages.append({
+                "name": entry["package"],
+                "scope": entry["scope"],
+                "requirement": entry["requirement"],
+                "status": entry["status"],
+                "nevra": source.name.removesuffix(".rpm"),
+                "version": entry["version"],
+                "release": entry["release"],
+                "arch": parsed[3] if parsed else "unknown",
+                "file": source.name,
+                "sha256": digest,
+                "bytes": destination.stat().st_size,
+                "pinnedRelease": entry["pinned"][1] if entry["pinned"] else None,
+            })
+            sources.append(f"{source.name.removesuffix('.rpm')} <- {source}")
+
+        # The composition overlay travels with the packages, from the same
+        # source revision, so a bundle is a complete answer to "make this guest
+        # Luma" rather than only half of one.
+        overlay_records = []
+        if overlay:
+            overlay_root = staging / "overlay"
+            for entry in overlay:
+                source = repo / entry["source"]
+                if not source.is_file():
+                    raise SystemExit(
+                        f"error: overlay source is missing: {entry['source']}"
+                    )
+                destination = overlay_root / entry["scope"] / entry["source"]
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                overlay_records.append({
+                    "scope": entry["scope"],
+                    "mode": entry["mode"],
+                    "source": entry["source"],
+                    "destination": entry["destination"],
+                    "sha256": sha256(destination),
+                    "bytes": destination.stat().st_size,
+                })
+                log(f"  overlay  {entry['source']} -> {entry['destination']}")
+
+        compatibility = None
+        if arguments.with_compatibility:
+            compatibility = stage_android_images(
+                repo, arguments.android_image_cache, arguments.arch, staging)
+            compatibility["windowsExecution"] = arguments.arch == "x86_64"
+            compatibility["armWindowsPreview"] = arguments.with_arm_windows
+            if arguments.software_video_artifact:
+                compatibility["files"].extend(stage_software_video(
+                    repo, arguments.software_video_artifact, staging))
+                compatibility["softwareVideo"] = "surfaceflinger-rgb-v1"
+
+
+        (staging / "SHA256SUMS").write_text(
+            "".join(
+                f"{package['sha256']}  ./rpms/{package['file']}\n"
+                for package in packages if package.get("sha256")
+            ) + "".join(f"{entry['sha256']}  ./{entry['file']}\n"
+                        for entry in (compatibility or {}).get("files", []))
+        )
+        (staging / "ARTIFACT-SOURCES.txt").write_text("\n".join(sources) + "\n")
+
+        installed = [p for p in packages if p.get("sha256")]
+        completeness = "complete"
+        if substitutions:
+            completeness = "complete-with-substitutions"
+        if any(
+            p["requirement"] == "required" and p["status"] in {"absent", "omitted"}
+            for p in packages
+        ):
+            completeness = "incomplete"
+
+        manifest = {
+            "bundleFormat": BUNDLE_FORMAT,
+            "bundleName": bundle_name,
+            "architecture": arguments.arch,
+            "fedoraRelease": arguments.fedora,
+            "fedoraBuildHostRelease": fedora_release(),
+            "sourceCommit": revision["commit"],
+            "sourceBranch": revision["branch"],
+            "sourceDirty": revision["dirty"],
+            "sourceDescribe": revision["describe"],
+            "sourceNote": revision["note"],
+            "compositionInputs": pin_files,
+            "createdAt": stamp,
+            "completeness": completeness,
+            "packageCount": len(installed),
+            "substitutionCount": len(substitutions),
+            "substitutions": [
+                {
+                    "package": entry["package"],
+                    "pinnedRelease": entry["pinned"][1],
+                    "usedRelease": entry["release"],
+                    "reason": f"no {arguments.arch} build exists at the pinned release",
+                }
+                for entry in substitutions
+            ],
+            "overlay": overlay_records,
+            "absentOptional": [
+                p["name"] for p in packages
+                if p["status"] == "absent" and p["requirement"] == "optional"
+            ],
+            "omitted": [
+                {"package": p["name"], "requirement": p["requirement"],
+                 "reason": p.get("omissionReason") or "not recorded"}
+                for p in packages if p["status"] == "omitted"
+            ],
+            "packages": packages,
+            "compatibility": compatibility,
+        }
+        (staging / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+        # gzip, not zstd. macOS ships bsdtar built without zstd support and no
+        # zstd binary, so a .tar.zst bundle is unreadable on a Mac that has not
+        # installed Homebrew — and a public build must not require Homebrew.
+        # gzip costs a few megabytes and works everywhere.
+        archive = output_root / f"{bundle_name}.tar.gz"
+        if archive.exists():
+            archive.unlink()
+        log(f"Writing {archive}")
+        with tarfile.open(archive, "w:gz", compresslevel=9) as tar:
+            tar.add(staging, arcname=bundle_name)
+
+    digest = sha256(archive)
+    (output_root / f"{bundle_name}.tar.gz.sha256").write_text(f"{digest}  {archive.name}\n")
+
+    summary = {
+        "bundle": str(archive),
+        "sha256": digest,
+        "bytes": archive.stat().st_size,
+        "completeness": completeness,
+        "packageCount": len(installed),
+        "substitutions": manifest["substitutions"],
+        "absentOptional": manifest["absentOptional"],
+        "omitted": manifest["omitted"],
+        "overlayEntries": len(overlay_records),
+        "sourceCommit": revision["commit"],
+    }
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,482 @@
+From 040c63250730ae438b3cf4167db19f2aebd830f7 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 10:50:31 -0500
+Subject: [PATCH] Settings: add scoped native permission edits and private-bus
+ regressions
+
+---
+ shell/cc-luma-permissions.c   | 150 ++++++++++++++++++++++
+ shell/cc-luma-permissions.h   |  21 ++++
+ shell/meson.build             |   4 +
+ shell/test-luma-permissions.c | 228 ++++++++++++++++++++++++++++++++++
+ shell/test-luma-view.c        |  11 ++
+ 5 files changed, 414 insertions(+)
+ create mode 100644 shell/cc-luma-permissions.c
+ create mode 100644 shell/cc-luma-permissions.h
+ create mode 100644 shell/test-luma-permissions.c
+
+diff --git a/shell/cc-luma-permissions.c b/shell/cc-luma-permissions.c
+new file mode 100644
+index 0000000..2ab73ea
+--- /dev/null
++++ b/shell/cc-luma-permissions.c
+@@ -0,0 +1,150 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-permissions.h"
++#include "cc-luma-backup.h"
++#include <string.h>
++#define NAME "org.freedesktop.impl.portal.PermissionStore"
++#define PATH "/org/freedesktop/impl/portal/PermissionStore"
++typedef struct { CcLumaPermission kind; char *app, *directory; gboolean enabled; } Operation;
++static const struct { const char *table, *id; } contracts[] = {
++  { "devices", "camera" }, { "devices", "microphone" }, { "location", "location" }
++};
++static void operation_free (Operation *op) { g_free (op->app); g_free (op->directory); g_free (op); }
++static char *owner (GDBusConnection *connection, GCancellable *cancel, GError **error)
++{
++  g_autoptr(GVariant) result = g_dbus_connection_call_sync (connection,
++    "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner",
++    g_variant_new ("(s)", NAME), G_VARIANT_TYPE ("(s)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000, cancel, error);
++  if (!result) return NULL;
++  const char *name; g_variant_get (result, "(&s)", &name);
++  if (!g_dbus_is_unique_name (name)) { g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "PermissionStore has no valid native owner"); return NULL; }
++  return g_strdup (name);
++}
++static gboolean owner_matches (GDBusConnection *connection, const char *expected, GCancellable *cancel, GError **error)
++{
++  g_autofree char *current = owner (connection, cancel, error);
++  if (!current) return FALSE;
++  if (g_str_equal (current, expected)) return TRUE;
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED, "PermissionStore owner changed during the operation"); return FALSE;
++}
++static GVariant *lookup (GDBusConnection *connection, Operation *op, const char *name, GCancellable *cancel, GError **error)
++{
++  g_autoptr(GVariant) reply = g_dbus_connection_call_sync (connection, name, PATH, NAME, "Lookup",
++    g_variant_new ("(ss)", contracts[op->kind].table, contracts[op->kind].id),
++    G_VARIANT_TYPE ("(a{sas}v)"), G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000, cancel, error);
++  if (!reply) return NULL;
++  g_autoptr(GVariant) entries = g_variant_get_child_value (reply, 0);
++  GVariantIter iter; g_variant_iter_init (&iter, entries);
++  const char *app; GVariant *values;
++  g_autoptr(GHashTable) seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++  while (g_variant_iter_next (&iter, "{&s@as}", &app, &values)) {
++    g_variant_unref (values);
++    if (!*app || !g_hash_table_add (seen, g_strdup (app))) {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "PermissionStore returned duplicate or empty application IDs"); return NULL;
++    }
++  }
++  if (!owner_matches (connection, name, cancel, error)) return NULL;
++  return g_steal_pointer (&reply);
++}
++static void read_worker (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++{
++  Operation *op = data; GDBusConnection *connection = source;
++  g_autoptr(GError) error = NULL;
++  g_autofree char *name = owner (connection, cancel, &error);
++  if (!name) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) reply = lookup (connection, op, name, cancel, &error);
++  if (!reply) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) entries = g_variant_get_child_value (reply, 0);
++  g_autoptr(GVariant) opaque = g_variant_get_child_value (reply, 1);
++  GVariant *snapshot = g_variant_ref_sink (g_variant_new ("(s@a{sas}@v)", name, g_variant_ref (entries), g_variant_ref (opaque)));
++  g_task_return_pointer (task, snapshot, (GDestroyNotify) g_variant_unref);
++}
++static void set_worker (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++{
++  static GMutex writes;
++  g_autoptr(GMutexLocker) lock = g_mutex_locker_new (&writes);
++  Operation *op = data; GDBusConnection *connection = source;
++  g_autoptr(GError) error = NULL;
++  g_autofree char *name = owner (connection, cancel, &error);
++  if (!name) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) reply = lookup (connection, op, name, cancel, &error);
++  if (!reply) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) entries = g_variant_get_child_value (reply, 0);
++  g_autoptr(GVariant) before = g_variant_lookup_value (entries, op->app, G_VARIANT_TYPE_STRING_ARRAY);
++  if (!before || !g_variant_n_children (before) ||
++      (op->kind == CC_LUMA_PERMISSION_LOCATION && g_variant_n_children (before) < 2)) {
++    g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "The requested app has no editable native permission record"); return;
++  }
++  g_auto(GStrv) values = g_variant_dup_strv (before, NULL);
++  gboolean known = op->kind == CC_LUMA_PERMISSION_LOCATION ?
++    g_str_equal (values[0], "NONE") || g_str_equal (values[0], "EXACT") || g_str_equal (values[0], "CITY") || g_str_equal (values[0], "NEIGHBORHOOD") || g_str_equal (values[0], "STREET") :
++    g_str_equal (values[0], "yes") || g_str_equal (values[0], "no") || g_str_equal (values[0], "ask");
++  if (!known) { g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "Unknown native permission value remains unchanged"); return; }
++  const char *table = contracts[op->kind].table, *id = contracts[op->kind].id;
++  g_autofree char *identity = g_strjoin ("/", NAME, table, id, op->app, NULL);
++  g_autoptr(GVariant) record = g_variant_ref_sink (g_variant_new ("(sssv)", table, id, op->app, before));
++  g_autoptr(GVariant) saved = cc_luma_backup_once (op->directory, identity, record, 3, cancel, &error);
++  if (!saved) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) boxed = g_variant_get_child_value (saved, 3);
++  g_autoptr(GVariant) original = g_variant_get_variant (boxed);
++  if (!g_variant_is_of_type (original, G_VARIANT_TYPE_STRING_ARRAY)) { g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Permission recovery record has an invalid type"); return; }
++  /* Re-read after durable backup. Refuse a concurrent change to the selected
++   * record; unrelated records are never rewritten or filtered. */
++  g_autoptr(GVariant) latest = lookup (connection, op, name, cancel, &error);
++  if (!latest) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_autoptr(GVariant) current_entries = g_variant_get_child_value (latest, 0);
++  g_autoptr(GVariant) current = g_variant_lookup_value (current_entries, op->app, G_VARIANT_TYPE_STRING_ARRAY);
++  if (!current || !g_variant_equal (current, before)) { g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_BUSY, "The app permission changed while preparing its edit; refresh first"); return; }
++  if (g_task_return_error_if_cancelled (task)) return;
++  g_free (values[0]); values[0] = g_strdup (op->kind == CC_LUMA_PERMISSION_LOCATION ? op->enabled ? "EXACT" : "NONE" : op->enabled ? "yes" : "no");
++  /* SetPermission is the upstream scoped write contract. Require the entry
++   * to exist rather than recreating a deleted table record. Lookup/re-read
++   * also require the selected app. This API supplies no atomic compare/set;
++   * callers must refresh after native errors or competing owner changes. */
++  /* Once dispatch begins cancellation cannot prove the daemon did not edit.
++   * Finish the bounded call and report its actual reply; callers refresh on
++   * an error/timeout, whose write outcome may be unknown. */
++  g_task_set_check_cancellable (task, FALSE);
++  g_autoptr(GVariant) applied = g_dbus_connection_call_sync (connection, name, PATH, NAME, "SetPermission",
++    g_variant_new ("(sbss^as)", table, FALSE, id, op->app, values), G_VARIANT_TYPE_UNIT,
++    G_DBUS_CALL_FLAGS_NO_AUTO_START, 5000, NULL, &error);
++  if (!applied) { g_task_return_error (task, g_steal_pointer (&error)); return; }
++  g_task_return_boolean (task, TRUE);
++}
++static GTask *prepare (GDBusConnection *connection, CcLumaPermission kind, GCancellable *cancel, GAsyncReadyCallback callback, gpointer data, gpointer tag)
++{
++  GTask *task = g_task_new (connection, cancel, callback, data); g_task_set_source_tag (task, tag);
++  if ((guint) kind >= G_N_ELEMENTS (contracts)) { g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Unknown Settings permission domain"); g_object_unref (task); return NULL; }
++  if (g_getenv ("LUMA_SETTINGS_FIXTURE")) { g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Fixture Settings cannot contact PermissionStore"); g_object_unref (task); return NULL; }
++  if (g_task_return_error_if_cancelled (task)) { g_object_unref (task); return NULL; }
++  Operation *op = g_new0 (Operation, 1); op->kind = kind; g_task_set_task_data (task, op, (GDestroyNotify) operation_free); return task;
++}
++void cc_luma_permissions_read_async (GDBusConnection *connection, CcLumaPermission kind, GCancellable *cancel, GAsyncReadyCallback callback, gpointer data)
++{
++  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
++  g_autoptr(GTask) task = prepare (connection, kind, cancel, callback, data, cc_luma_permissions_read_async);
++  if (task) g_task_run_in_thread (task, read_worker);
++}
++GVariant *cc_luma_permissions_read_finish (GDBusConnection *connection, GAsyncResult *result, GError **error)
++{
++  g_return_val_if_fail (g_task_is_valid (result, connection), NULL);
++  g_return_val_if_fail (g_async_result_is_tagged (result, cc_luma_permissions_read_async), NULL);
++  return g_task_propagate_pointer (G_TASK (result), error);
++}
++void cc_luma_permissions_set_async (GDBusConnection *connection, CcLumaPermission kind, const char *app, gboolean enabled,
++  const char *backup_dir, GCancellable *cancel, GAsyncReadyCallback callback, gpointer data)
++{
++  g_return_if_fail (G_IS_DBUS_CONNECTION (connection));
++  g_autoptr(GTask) task = prepare (connection, kind, cancel, callback, data, cc_luma_permissions_set_async);
++  if (!task) return;
++  g_autofree char *expected = g_build_filename (g_get_user_data_dir (), "luma", "settings", "backups", NULL);
++  g_autofree char *actual = backup_dir && g_path_is_absolute (backup_dir) ? g_canonicalize_filename (backup_dir, NULL) : NULL;
++  if (!app || !*app || g_strcmp0 (expected, actual)) { g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "Permission edits require an existing app and the documented Settings recovery store"); return; }
++  Operation *op = g_task_get_task_data (task); op->app = g_strdup (app); op->directory = g_strdup (actual); op->enabled = enabled;
++  g_task_run_in_thread (task, set_worker);
++}
++gboolean cc_luma_permissions_set_finish (GDBusConnection *connection, GAsyncResult *result, GError **error)
++{
++  g_return_val_if_fail (g_task_is_valid (result, connection), FALSE);
++  g_return_val_if_fail (g_async_result_is_tagged (result, cc_luma_permissions_set_async), FALSE);
++  return g_task_propagate_boolean (G_TASK (result), error);
++}
+diff --git a/shell/cc-luma-permissions.h b/shell/cc-luma-permissions.h
+new file mode 100644
+index 0000000..526716a
+--- /dev/null
++++ b/shell/cc-luma-permissions.h
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#pragma once
++#include <gio/gio.h>
++G_BEGIN_DECLS
++typedef enum { CC_LUMA_PERMISSION_CAMERA, CC_LUMA_PERMISSION_MICROPHONE, CC_LUMA_PERMISSION_LOCATION } CcLumaPermission;
++/* Existing GNOME/portal PermissionStore. Caller supplies its connection;
++ * tests supply only a private bus. No service activation or fixture I/O.
++ * Reads return (sa{sas}v): unique owner, exact app permissions, opaque data. */
++void cc_luma_permissions_read_async (GDBusConnection *connection, CcLumaPermission kind,
++  GCancellable *cancel, GAsyncReadyCallback callback, gpointer data);
++GVariant *cc_luma_permissions_read_finish (GDBusConnection *connection, GAsyncResult *result, GError **error);
++/* Change only a requested existing app permission, preserving other fields,
++ * entries and opaque data. Backup is durable before SetPermission; directory
++ * must be the documented app-local store, including in private tests.
++ * Cancellation prevents dispatch; after dispatch the bounded native reply
++ * decides the result. An error/timeout may have an unknown write outcome. */
++void cc_luma_permissions_set_async (GDBusConnection *connection, CcLumaPermission kind,
++  const char *app, gboolean enabled, const char *backup_dir, GCancellable *cancel,
++  GAsyncReadyCallback callback, gpointer data);
++gboolean cc_luma_permissions_set_finish (GDBusConnection *connection, GAsyncResult *result, GError **error);
++G_END_DECLS
+diff --git a/shell/meson.build b/shell/meson.build
+index 1cfc3c2..e300df4 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -82,6 +82,7 @@ common_sources = files(
+   'cc-luma-services.c',
+   'cc-luma-power-reads.c',
+   'cc-luma-preferences.c',
++  'cc-luma-permissions.c',
+   'cc-luma-identity.c',
+   'cc-luma-view.c',
+   'cc-luma-view-image.c',
+@@ -246,6 +247,9 @@ preferences_test = executable(
+   include_directories: top_inc, dependencies: [gio_dep])
+ test('luma-settings-preferences', preferences_test,
+   env: ['G_DEBUG=fatal-warnings', 'GSETTINGS_BACKEND=memory', 'GSETTINGS_SCHEMA_DIR=' + meson.current_build_dir() / 'test-fixture-schemas'])
++permissions_test = executable('test-luma-permissions',
++  ['test-luma-permissions.c', 'cc-luma-permissions.c', 'cc-luma-backup.c'], dependencies: [gio_dep])
++test('luma-settings-permissions', permissions_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+ search_locations_test = executable('test-luma-search-locations',
+   ['test-luma-search-locations.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c'],
+diff --git a/shell/test-luma-permissions.c b/shell/test-luma-permissions.c
+new file mode 100644
+index 0000000..9e4d050
+--- /dev/null
++++ b/shell/test-luma-permissions.c
+@@ -0,0 +1,228 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#include "cc-luma-permissions.h"
++#include <glib/gstdio.h>
++#define NAME "org.freedesktop.impl.portal.PermissionStore"
++#define PATH "/org/freedesktop/impl/portal/PermissionStore"
++static GDBusConnection *service, *client;
++static GVariant *entries;
++static guint lookups, writes;
++static gboolean conflict, unrelated, lose_owner, hold_lookup, hold_write, refuse_write;
++static GDBusMethodInvocation *pending;
++typedef struct { gboolean done, success; GVariant *snapshot; GError *error; } Seen;
++static void drain (void) { while (g_main_context_iteration (NULL, FALSE)) {} }
++static void wait_seen (Seen *seen)
++{
++  gint64 deadline = g_get_monotonic_time () + 7000000;
++  while (!seen->done && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  g_assert_true (seen->done);
++}
++static void read_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  Seen *seen = data; seen->snapshot = cc_luma_permissions_read_finish (G_DBUS_CONNECTION (source), result, &seen->error); seen->done = TRUE;
++}
++static void set_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  Seen *seen = data; seen->success = cc_luma_permissions_set_finish (G_DBUS_CONNECTION (source), result, &seen->error); seen->done = TRUE;
++}
++static void name_call (const char *method)
++{
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) result = g_dbus_connection_call_sync (service, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", method,
++    g_str_equal (method, "RequestName") ? g_variant_new ("(su)", NAME, 0u) : g_variant_new ("(s)", NAME), G_VARIANT_TYPE ("(u)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
++  g_assert_no_error (error); g_assert_nonnull (result);
++  guint code; g_variant_get (result, "(u)", &code); g_assert_true (code == 1 || code == 4);
++}
++static void replace (const char *app, GVariant *values)
++{
++  GVariantBuilder builder; g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sas}"));
++  GVariantIter iter; g_variant_iter_init (&iter, entries);
++  const char *key; GVariant *old; gboolean found = FALSE;
++  while (g_variant_iter_next (&iter, "{&s@as}", &key, &old)) {
++    if (g_str_equal (key, app)) { g_variant_builder_add (&builder, "{s@as}", key, g_variant_ref (values)); found = TRUE; }
++    else g_variant_builder_add (&builder, "{s@as}", key, g_variant_ref (old));
++    g_variant_unref (old);
++  }
++  g_assert_true (found); g_clear_pointer (&entries, g_variant_unref); entries = g_variant_ref_sink (g_variant_builder_end (&builder));
++}
++static void reset (gboolean location)
++{
++  g_assert_null (pending); name_call ("RequestName");
++  lookups = writes = 0; conflict = unrelated = lose_owner = hold_lookup = hold_write = refuse_write = FALSE;
++  g_clear_pointer (&entries, g_variant_unref);
++  entries = g_variant_parse (G_VARIANT_TYPE ("a{sas}"), location ?
++    "{'org.example.Selected': ['EXACT', '1712345678', 'future metadata'], 'org.example.Other': ['NONE', '999'], 'unknown record': []}" :
++    "{'org.example.Selected': ['yes', 'future metadata'], 'org.example.Other': ['no'], 'unknown record': []}", NULL, NULL, NULL);
++  g_assert_nonnull (entries);
++}
++static void method (GDBusConnection *connection, const char *sender, const char *path,
++  const char *interface, const char *name, GVariant *parameters, GDBusMethodInvocation *invocation, gpointer data)
++{
++  g_assert_cmpstr (path, ==, PATH); g_assert_cmpstr (interface, ==, NAME);
++  if (g_str_equal (name, "Lookup")) {
++    const char *table, *id; g_variant_get (parameters, "(&s&s)", &table, &id);
++    g_assert_true ((g_str_equal (table, "devices") && (g_str_equal (id, "camera") || g_str_equal (id, "microphone"))) ||
++                   (g_str_equal (table, "location") && g_str_equal (id, "location")));
++    lookups++;
++    if (lookups == 2) {
++      if (conflict) { const char *values[] = { "no", "concurrent selected edit", NULL }; g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_strv (values, -1)); replace ("org.example.Selected", value); }
++      if (unrelated) { const char *values[] = { "yes", "external unrelated metadata", NULL }; g_autoptr(GVariant) value = g_variant_ref_sink (g_variant_new_strv (values, -1)); replace ("org.example.Other", value); }
++      if (lose_owner) name_call ("ReleaseName");
++    }
++    if (hold_lookup) { g_assert_null (pending); pending = g_object_ref (invocation); return; }
++    g_dbus_method_invocation_return_value (invocation, g_variant_new ("(@a{sas}v)", g_variant_ref (entries), g_variant_new_string ("opaque metadata unchanged")));
++  } else {
++    g_assert_cmpstr (name, ==, "SetPermission");
++    const char *table, *id, *app; gboolean create; GVariant *values;
++    g_variant_get (parameters, "(&sb&s&s@as)", &table, &create, &id, &app, &values);
++    g_assert_false (create); g_assert_cmpstr (app, ==, "org.example.Selected"); writes++;
++    if (refuse_write) { g_variant_unref (values); g_dbus_method_invocation_return_dbus_error (invocation, NAME ".Error", "Private permission service refused write"); return; }
++    replace (app, values); g_variant_unref (values);
++    if (hold_write) { g_assert_null (pending); pending = g_object_ref (invocation); return; }
++    g_dbus_method_invocation_return_value (invocation, NULL);
++  }
++}
++static char *directory (void) { return g_build_filename (g_get_user_data_dir (), "luma", "settings", "backups", NULL); }
++static void cleanup_backups (void)
++{
++  g_autofree char *dir = directory (); g_autoptr(GDir) files = g_dir_open (dir, 0, NULL); const char *name;
++  while (files && (name = g_dir_read_name (files))) { g_autofree char *path = g_build_filename (dir, name, NULL); g_assert_cmpint (g_remove (path), ==, 0); }
++  g_clear_pointer (&files, g_dir_close);
++}
++static void read_and_scoped_edit (void)
++{
++  reset (FALSE); cleanup_backups ();
++  Seen read = { 0 }; cc_luma_permissions_read_async (client, CC_LUMA_PERMISSION_CAMERA, NULL, read_done, &read); g_assert_false (read.done); wait_seen (&read);
++  g_assert_no_error (read.error); g_assert_nonnull (read.snapshot); g_assert_true (g_variant_is_of_type (read.snapshot, G_VARIANT_TYPE ("(sa{sas}v)")));
++  g_autoptr(GVariant) opaque = g_variant_get_child_value (read.snapshot, 2); g_autoptr(GVariant) payload = g_variant_get_variant (opaque);
++  g_assert_cmpstr (g_variant_get_string (payload, NULL), ==, "opaque metadata unchanged");
++  g_autoptr(GVariant) unknown = g_variant_lookup_value (entries, "unknown record", G_VARIANT_TYPE_STRING_ARRAY); g_assert_nonnull (unknown); g_assert_cmpuint (g_variant_n_children (unknown), ==, 0);
++  lookups = 0; unrelated = TRUE;
++  g_autofree char *dir = directory (); Seen edit = { 0 };
++  cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_CAMERA, "org.example.Selected", FALSE, dir, NULL, set_done, &edit); wait_seen (&edit);
++  g_assert_true (edit.success); g_assert_no_error (edit.error); g_assert_cmpuint (writes, ==, 1);
++  g_autoptr(GVariant) selected = g_variant_lookup_value (entries, "org.example.Selected", G_VARIANT_TYPE_STRING_ARRAY);
++  g_auto(GStrv) values = g_variant_dup_strv (selected, NULL); g_assert_cmpstr (values[0], ==, "no"); g_assert_cmpstr (values[1], ==, "future metadata");
++  g_autoptr(GVariant) other = g_variant_lookup_value (entries, "org.example.Other", G_VARIANT_TYPE_STRING_ARRAY);
++  g_auto(GStrv) other_values = g_variant_dup_strv (other, NULL); g_assert_cmpstr (other_values[1], ==, "external unrelated metadata");
++  g_autoptr(GVariant) old = g_variant_get_child_value (read.snapshot, 1); g_autoptr(GVariant) old_selected = g_variant_lookup_value (old, "org.example.Selected", G_VARIANT_TYPE_STRING_ARRAY);
++  g_auto(GStrv) old_values = g_variant_dup_strv (old_selected, NULL); g_assert_cmpstr (old_values[0], ==, "yes");
++  g_variant_unref (read.snapshot);
++  g_autoptr(GDir) files = g_dir_open (dir, 0, NULL); const char *name = g_dir_read_name (files); g_assert_nonnull (name);
++  g_autofree char *path = g_build_filename (dir, name, NULL); GStatBuf info; g_assert_cmpint (g_stat (path, &info), ==, 0); g_assert_cmpuint (info.st_mode & 0777, ==, 0600);
++  g_autofree char *before = NULL; g_assert_true (g_file_get_contents (path, &before, NULL, NULL));
++  lookups = 0; unrelated = FALSE; edit = (Seen) { 0 }; cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_CAMERA, "org.example.Selected", TRUE, dir, NULL, set_done, &edit); wait_seen (&edit);
++  g_assert_true (edit.success); g_assert_no_error (edit.error);
++  g_autofree char *after = NULL; g_assert_true (g_file_get_contents (path, &after, NULL, NULL)); g_assert_cmpstr (after, ==, before);
++}
++static void location_metadata (void)
++{
++  reset (TRUE); cleanup_backups (); g_autofree char *dir = directory (); Seen seen = { 0 };
++  cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_LOCATION, "org.example.Selected", FALSE, dir, NULL, set_done, &seen); wait_seen (&seen);
++  g_assert_true (seen.success); g_assert_no_error (seen.error);
++  g_autoptr(GVariant) selected = g_variant_lookup_value (entries, "org.example.Selected", G_VARIANT_TYPE_STRING_ARRAY);
++  g_auto(GStrv) values = g_variant_dup_strv (selected, NULL); g_assert_cmpstr (values[0], ==, "NONE"); g_assert_cmpstr (values[1], ==, "1712345678"); g_assert_cmpstr (values[2], ==, "future metadata");
++}
++static void changed_and_owner (void)
++{
++  g_autofree char *dir = directory ();
++  for (guint test = 0; test < 2; test++) {
++    reset (FALSE); cleanup_backups (); conflict = test == 0; lose_owner = test == 1; Seen seen = { 0 };
++    cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_MICROPHONE, "org.example.Selected", FALSE, dir, NULL, set_done, &seen); wait_seen (&seen);
++    g_assert_false (seen.success); g_assert_nonnull (seen.error); if (test == 0) g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_BUSY);
++    g_assert_cmpuint (writes, ==, 0); g_clear_error (&seen.error);
++  }
++}
++static void boundaries (void)
++{
++  reset (FALSE); cleanup_backups (); g_autofree char *dir = directory (); Seen seen = { 0 };
++  g_autoptr(GCancellable) cancel = g_cancellable_new (); g_cancellable_cancel (cancel);
++  cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_CAMERA, "org.example.Selected", FALSE, dir, cancel, set_done, &seen); wait_seen (&seen);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_CANCELLED); g_clear_error (&seen.error); g_assert_cmpuint (lookups + writes, ==, 0);
++  seen = (Seen) { 0 }; cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_CAMERA, "org.example.Selected", FALSE, "/tmp/unapproved-settings-backups", NULL, set_done, &seen); wait_seen (&seen);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED); g_clear_error (&seen.error); g_assert_cmpuint (lookups + writes, ==, 0);
++  seen = (Seen) { 0 }; cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_CAMERA, "org.example.Missing", FALSE, dir, NULL, set_done, &seen); wait_seen (&seen);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED); g_clear_error (&seen.error); g_assert_cmpuint (writes, ==, 0);
++  g_setenv ("LUMA_SETTINGS_FIXTURE", "", TRUE); guint before = lookups;
++  seen = (Seen) { 0 }; cc_luma_permissions_read_async (client, CC_LUMA_PERMISSION_CAMERA, NULL, read_done, &seen); wait_seen (&seen);
++  g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED); g_clear_error (&seen.error); g_assert_null (seen.snapshot); g_assert_cmpuint (lookups, ==, before); g_unsetenv ("LUMA_SETTINGS_FIXTURE");
++  name_call ("ReleaseName"); seen = (Seen) { 0 }; cc_luma_permissions_read_async (client, CC_LUMA_PERMISSION_CAMERA, NULL, read_done, &seen); wait_seen (&seen);
++  g_assert_nonnull (seen.error); g_clear_error (&seen.error); g_assert_null (seen.snapshot); g_assert_cmpuint (lookups, ==, before);
++}
++static void dispatched_cancellation (void)
++{
++  reset (FALSE); cleanup_backups (); hold_write = TRUE;
++  g_autofree char *dir = directory (); g_autoptr(GCancellable) cancel = g_cancellable_new (); Seen seen = { 0 };
++  cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_CAMERA, "org.example.Selected", FALSE, dir, cancel, set_done, &seen);
++  gint64 deadline = g_get_monotonic_time () + 5000000;
++  while (!pending && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++  g_assert_nonnull (pending); g_cancellable_cancel (cancel);
++  g_dbus_method_invocation_return_value (pending, NULL); g_clear_object (&pending); wait_seen (&seen);
++  g_assert_true (seen.success); g_assert_no_error (seen.error); g_assert_cmpuint (writes, ==, 1);
++}
++static void cancelled_and_bounded_read (void)
++{
++  for (guint timeout = 0; timeout < 2; timeout++) {
++    reset (FALSE); hold_lookup = TRUE;
++    g_autoptr(GCancellable) cancel = g_cancellable_new (); Seen seen = { 0 };
++    gint64 start = g_get_monotonic_time ();
++    cc_luma_permissions_read_async (client, CC_LUMA_PERMISSION_CAMERA, cancel, read_done, &seen);
++    gint64 deadline = start + 5000000;
++    while (!pending && g_get_monotonic_time () < deadline) { drain (); g_usleep (1000); }
++    g_assert_nonnull (pending);
++    if (!timeout) g_cancellable_cancel (cancel);
++    wait_seen (&seen); g_assert_null (seen.snapshot); g_assert_nonnull (seen.error);
++    if (!timeout) g_assert_error (seen.error, G_IO_ERROR, G_IO_ERROR_CANCELLED);
++    else g_assert_cmpint (g_get_monotonic_time () - start, <, 6500000);
++    g_clear_error (&seen.error); g_assert_cmpuint (writes, ==, 0);
++    g_dbus_method_invocation_return_value (pending, g_variant_new ("(@a{sas}v)", g_variant_ref (entries), g_variant_new_string ("late response")));
++    g_clear_object (&pending); drain (); g_assert_null (seen.snapshot);
++  }
++}
++static void recovery_and_native_error (void)
++{
++  reset (FALSE); cleanup_backups (); g_autofree char *dir = directory (); Seen seen = { 0 };
++  refuse_write = TRUE;
++  cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_MICROPHONE, "org.example.Selected", FALSE, dir, NULL, set_done, &seen); wait_seen (&seen);
++  g_assert_false (seen.success); g_assert_nonnull (seen.error); g_clear_error (&seen.error); g_assert_cmpuint (writes, ==, 1);
++  g_autoptr(GVariant) selected = g_variant_lookup_value (entries, "org.example.Selected", G_VARIANT_TYPE_STRING_ARRAY);
++  g_auto(GStrv) values = g_variant_dup_strv (selected, NULL); g_assert_cmpstr (values[0], ==, "yes");
++  g_autoptr(GDir) files = g_dir_open (dir, 0, NULL); const char *name = g_dir_read_name (files); g_assert_nonnull (name);
++  g_autofree char *path = g_build_filename (dir, name, NULL);
++  g_assert_true (g_file_set_contents (path, "corrupt native permission recovery", -1, NULL));
++  refuse_write = FALSE; lookups = writes = 0; seen = (Seen) { 0 };
++  cc_luma_permissions_set_async (client, CC_LUMA_PERMISSION_MICROPHONE, "org.example.Selected", FALSE, dir, NULL, set_done, &seen); wait_seen (&seen);
++  g_assert_false (seen.success); g_assert_nonnull (seen.error); g_clear_error (&seen.error); g_assert_cmpuint (writes, ==, 0);
++  g_autofree char *contents = NULL; g_assert_true (g_file_get_contents (path, &contents, NULL, NULL));
++  g_assert_cmpstr (contents, ==, "corrupt native permission recovery");
++}
++int main (int argc, char **argv)
++{
++  /* Set the private recovery store before any GLib path cache is initialized. */
++  g_autofree char *scratch = g_dir_make_tmp ("settings-permission-data-XXXXXX", NULL); g_assert_nonnull (scratch);
++  g_setenv ("XDG_DATA_HOME", scratch, TRUE); g_test_init (&argc, &argv, NULL);
++  g_autoptr(GTestDBus) bus = g_test_dbus_new (G_TEST_DBUS_NONE); g_test_dbus_up (bus);
++  g_autoptr(GError) error = NULL;
++  GDBusConnectionFlags flags = G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT | G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION;
++  service = g_dbus_connection_new_for_address_sync (g_test_dbus_get_bus_address (bus), flags, NULL, NULL, &error); g_assert_no_error (error);
++  client = g_dbus_connection_new_for_address_sync (g_test_dbus_get_bus_address (bus), flags, NULL, NULL, &error); g_assert_no_error (error);
++  g_dbus_connection_set_exit_on_close (service, FALSE); g_dbus_connection_set_exit_on_close (client, FALSE);
++  const char *xml = "<node><interface name='" NAME "'><method name='Lookup'><arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='a{sas}' direction='out'/><arg type='v' direction='out'/></method><method name='SetPermission'><arg type='s' direction='in'/><arg type='b' direction='in'/><arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='as' direction='in'/></method></interface></node>";
++  g_autoptr(GDBusNodeInfo) info = g_dbus_node_info_new_for_xml (xml, &error); g_assert_no_error (error);
++  const GDBusInterfaceVTable vtable = { .method_call = method };
++  guint registered = g_dbus_connection_register_object (service, PATH, info->interfaces[0], &vtable, NULL, NULL, &error); g_assert_no_error (error); g_assert_cmpuint (registered, >, 0);
++  g_test_add_func ("/settings/permissions/read-and-scoped-edit", read_and_scoped_edit);
++  g_test_add_func ("/settings/permissions/location-metadata", location_metadata);
++  g_test_add_func ("/settings/permissions/changed-and-owner", changed_and_owner);
++  g_test_add_func ("/settings/permissions/boundaries", boundaries);
++  g_test_add_func ("/settings/permissions/dispatched-cancellation", dispatched_cancellation);
++  g_test_add_func ("/settings/permissions/cancelled-and-bounded-read", cancelled_and_bounded_read);
++  g_test_add_func ("/settings/permissions/recovery-and-native-error", recovery_and_native_error);
++  int result = g_test_run ();
++  cleanup_backups (); g_clear_pointer (&entries, g_variant_unref); g_dbus_connection_unregister_object (service, registered);
++  g_dbus_connection_close_sync (client, NULL, NULL); g_dbus_connection_close_sync (service, NULL, NULL); g_clear_object (&client); g_clear_object (&service); drain (); g_test_dbus_down (bus);
++  g_autofree char *backup = directory (); if (g_file_test (backup, G_FILE_TEST_IS_DIR)) g_assert_cmpint (g_rmdir (backup), ==, 0);
++  g_autofree char *settings = g_build_filename (scratch, "luma", "settings", NULL), *luma = g_build_filename (scratch, "luma", NULL);
++  if (g_file_test (settings, G_FILE_TEST_IS_DIR)) g_assert_cmpint (g_rmdir (settings), ==, 0);
++  if (g_file_test (luma, G_FILE_TEST_IS_DIR)) g_assert_cmpint (g_rmdir (luma), ==, 0);
++  g_assert_cmpint (g_rmdir (scratch), ==, 0); return result;
++}
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 835e4e6..e3e8e73 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -1098,7 +1098,18 @@ static void privacy_view (void)
+     g_signal_emit_by_name (find_button_caption (dialog, "Cancel"), "clicked"); wait_dialog_closed (window); g_object_unref (dialog);
+     gtk_check_button_set_active (GTK_CHECK_BUTTON (find_name (view, "cf-diag-never")), TRUE); wait_ms (100);
+     g_assert_cmpstr (json_node_get_string (cc_luma_fixture_get (model, "diag")), ==, "never");
++    cc_luma_view_navigate (v, "p-files"); wait_ms (100);
++    g_signal_emit_by_name (find_name (view, "cf-emptytrash"), "clicked"); wait_ms (100);
++    dialog = find_type (window, LUMA_TYPE_DESTRUCTIVE_DIALOG); g_assert_nonnull (dialog);
++    g_signal_emit_by_name (find_button_caption (dialog, "Empty trash"), "clicked"); wait_dialog_closed (window);
++    g_assert_true (has_text (window, "Trash emptied"));
++    GtkWidget *old_cleanup = g_object_ref (find_name (view, "cf-cleartemp"));
++    g_signal_emit_by_name (old_cleanup, "clicked"); drain ();
++    g_assert_true (has_text (window, "380 MB of temporary files deleted"));
+     cc_luma_view_navigate (v, "p-dev"); wait_ms (100);
++    LumaToast *prior_toast = LUMA_TOAST (find_type (window, LUMA_TYPE_TOAST)); g_assert_nonnull (prior_toast);
++    g_signal_emit_by_name (old_cleanup, "clicked"); drain (); g_object_unref (old_cleanup);
++    g_assert_true (find_type (window, LUMA_TYPE_TOAST) == GTK_WIDGET (prior_toast));
+     gtk_switch_set_active (GTK_SWITCH (find_name (view, "cf-tbolt")), TRUE); wait_ms (100);
+     g_assert_true (json_node_get_boolean (cc_luma_fixture_get (model, "tbolt")));
+     g_assert_cmpint (gtk_widget_get_width (window), ==, widths[presentation]); g_assert_null (cc_luma_view_get_error (view));
+-- 
+2.55.0
+

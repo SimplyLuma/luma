@@ -1,0 +1,75 @@
+From 979740c13c4a1582b0de4f3a4f39965a83802fd3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dawid=20Wr=C3=B3bel?= <me@dawidwrobel.com>
+Date: Mon, 3 Aug 2026 02:15:37 +0200
+Subject: [PATCH 06/41] tee: qseecom: reject a request too short for the
+ address it must carry
+
+The address-patch descriptor names an offset into the request to write a
+buffer's physical address at, and the offset was checked with
+
+	if (off > req_size - width)
+
+which wraps when the request is shorter than the width. A caller passing a
+zero-length request as parameter 0 therefore has every offset accepted, and the
+offset lands in a put_unaligned_le32()/le64() against the staging buffer -- an
+attacker-chosen offset for a kernel write, reachable by anyone who can open the
+client device and start a session.
+
+Check the length before subtracting from it.
+
+While here, bound the staging allocation. Its size is the sum of the request,
+the response and every patched buffer; all of those are individually bounded by
+the shared memory they refer to, so a wrapped total should not be reachable, but
+the total is what the buffer is sized from and the copies that follow trust it.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/tee/qseecom/core.c | 21 ++++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/tee/qseecom/core.c b/drivers/tee/qseecom/core.c
+index c3009aef5..9cbb9f201 100644
+--- a/drivers/tee/qseecom/core.c
++++ b/drivers/tee/qseecom/core.c
+@@ -65,6 +65,11 @@
+ /* Physical alignment TZ requires of an application image. */
+ #define QSEECOM_TEE_IMAGE_ALIGN		SZ_4M
+ 
++/* Sanity bound on one invoke's staging buffer, request plus response plus
++ * every patched buffer.
++ */
++#define QSEECOM_TEE_MAX_XFER		SZ_16M
++
+ /* Sanity bound on an application image, so a bad size cannot exhaust memory. */
+ #define QSEECOM_TEE_MAX_IMAGE		SZ_16M
+ 
+@@ -652,7 +657,12 @@ static int qseecom_tee_check_patch(struct tee_param *voff,
+ 	if (width != 4 && width != 8)
+ 		return -EINVAL;
+ 
+-	if (off > req_size - width)
++	/*
++	 * Both halves matter. Without the first, a request shorter than the
++	 * width makes the subtraction wrap and every offset passes, which puts
++	 * an attacker-chosen offset into a put_unaligned() further down.
++	 */
++	if (req_size < width || off > req_size - width)
+ 		return -EINVAL;
+ 
+ 	shm = pbuf->u.memref.shm;
+@@ -735,6 +745,15 @@ static int qseecom_tee_invoke_func(struct tee_context *ctx,
+ 		for (k = 2; k < arg->num_params; k += 2)
+ 			need += param[k + 1].u.memref.size;
+ 
++		/*
++		 * Every size here is bounded by the shared memory it refers to,
++		 * so this should not be reachable -- but the total is what the
++		 * staging buffer is sized from, and a wrapped total would size
++		 * it far too small for the copies that follow.
++		 */
++		if (need < req_size || need > QSEECOM_TEE_MAX_XFER)
++			return -EINVAL;
++
+ 		bc.initial_size = PAGE_ALIGN(need) + PAGE_SIZE;
+ 		bc.max_size = bc.initial_size;
+ 

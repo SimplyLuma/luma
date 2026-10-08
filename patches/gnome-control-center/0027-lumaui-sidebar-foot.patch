@@ -1,0 +1,151 @@
+From f9c6b22714ca556ebccd634cba3eda4b814e10a1 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 21:09:53 -0500
+Subject: [PATCH] Settings: compose search with the LumaUI sidebar foot
+
+---
+ shell/cc-window.blp | 14 +++--------
+ shell/cc-window.c   | 59 ++++++++++++++++++++++++++++++++++++++++-----
+ 2 files changed, 56 insertions(+), 17 deletions(-)
+
+diff --git a/shell/cc-window.blp b/shell/cc-window.blp
+index 9991ae9..b3f7620 100644
+--- a/shell/cc-window.blp
++++ b/shell/cc-window.blp
+@@ -36,21 +36,13 @@ template $CcWindow: Adw.ApplicationWindow {
+         styles ["luma-island"]
+         overflow: hidden;
+         child: Adw.ToolbarView {
+-          [top]
+-          SearchEntry search_entry {
+-            styles ["luma-sidebar-search"]
+-            hexpand: true;
+-            placeholder-text: _("Search settings");
+-            activate => $search_entry_activate_cb(template);
+-            stop-search => $search_entry_stop_search_cb(template);
+-            EventControllerKey {
+-              key-pressed => $search_entry_key_pressed_cb(template);
+-            }
++          [bottom]
++          Box search_foot {
++            orientation: vertical;
+           }
+           content: ScrolledWindow {
+             hscrollbar-policy: never;
+             $CcPanelList panel_list {
+-              search-query: bind search_entry.text no-sync-create;
+               show-panel => $show_panel_cb(template);
+             }
+           };
+diff --git a/shell/cc-window.c b/shell/cc-window.c
+index 254f5e2..cf1553b 100644
+--- a/shell/cc-window.c
++++ b/shell/cc-window.c
+@@ -43,6 +43,8 @@
+ #include "cc-panel-loader.h"
+ #include "cc-util.h"
+ 
++#include <luma-sidebar-foot.h>
++
+ #define MOUSE_BACK_BUTTON 8
+ 
+ #define DEFAULT_WINDOW_ICON_NAME "gnome-control-center"
+@@ -57,7 +59,8 @@ struct _CcWindow
+   AdwNavigationSplitView *split_view;
+   CcPanelList       *panel_list;
+   GtkWidget         *titlebar;
+-  GtkSearchEntry    *search_entry;
++  GtkWidget         *search_entry;
++  GtkBox            *search_foot;
+ 
+   GtkWidget  *old_panel;
+   GtkWidget  *current_panel;
+@@ -756,6 +759,12 @@ search_entry_key_pressed_cb (CcWindow              *self,
+ {
+   GtkWidget *toplevel;
+ 
++  if (keyval == GDK_KEY_Escape)
++    {
++      search_entry_stop_search_cb (self);
++      return TRUE;
++    }
++
+   /* When pressing Arrow Down on the entry we move focus to match results list */
+   if (keyval == GDK_KEY_Down || keyval == GDK_KEY_KP_Down)
+     {
+@@ -770,6 +779,28 @@ search_entry_key_pressed_cb (CcWindow              *self,
+   return FALSE;
+ }
+ 
++/* Keep native type-ahead search while the kit owns the visible field. */
++static gboolean
++search_type_ahead_cb (GtkEventControllerKey *controller,
++                      guint                  keyval,
++                      guint                  keycode,
++                      GdkModifierType        state,
++                      CcWindow              *self)
++{
++  GtkWidget *focus = gtk_root_get_focus (GTK_ROOT (self));
++  CcPanelListView view = cc_panel_list_get_view (self->panel_list);
++  gunichar character = gdk_keyval_to_unicode (keyval);
++
++  if ((view != CC_PANEL_LIST_MAIN && view != CC_PANEL_LIST_SEARCH) ||
++      (focus && (GTK_IS_EDITABLE (focus) || GTK_IS_TEXT_VIEW (focus))) ||
++      (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) ||
++      !g_unichar_isprint (character) || g_unichar_isspace (character))
++    return FALSE;
++
++  gtk_widget_grab_focus (self->search_entry);
++  return gtk_event_controller_key_forward (controller, self->search_entry);
++}
++
+ static void
+ cc_window_class_init (CcWindowClass *klass)
+ {
+@@ -810,14 +841,11 @@ cc_window_class_init (CcWindowClass *klass)
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, split_view);
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, panel_list);
+   gtk_widget_class_bind_template_child (widget_class, CcWindow, titlebar);
+-  gtk_widget_class_bind_template_child (widget_class, CcWindow, search_entry);
++  gtk_widget_class_bind_template_child (widget_class, CcWindow, search_foot);
+ 
+   gtk_widget_class_bind_template_callback (widget_class, on_split_view_collapsed_changed_cb);
+   gtk_widget_class_bind_template_callback (widget_class, on_development_warning_dialog_responded_cb);
+-  gtk_widget_class_bind_template_callback (widget_class, search_entry_activate_cb);
+-  gtk_widget_class_bind_template_callback (widget_class, search_entry_stop_search_cb);
+   gtk_widget_class_bind_template_callback (widget_class, show_panel_cb);
+-  gtk_widget_class_bind_template_callback (widget_class, search_entry_key_pressed_cb);
+ 
+   gtk_widget_class_add_binding (widget_class, GDK_KEY_Left, GDK_ALT_MASK, go_back_shortcut_cb, NULL);
+   gtk_widget_class_add_binding (widget_class, GDK_KEY_f, GDK_CONTROL_MASK, search_shortcut_cb, NULL);
+@@ -848,7 +876,26 @@ cc_window_init (CcWindow *self)
+     gtk_widget_add_css_class (GTK_WIDGET (self), "devel");
+ 
+   g_object_set_data (G_OBJECT (self), "luma-window-title-row", self->titlebar);
+-  gtk_search_entry_set_key_capture_widget (self->search_entry, GTK_WIDGET (self));
++  {
++    GtkWidget *foot = luma_sidebar_foot_new (_("Search settings"));
++    GtkEventController *entry_keys = gtk_event_controller_key_new ();
++    GtkEventController *type_ahead = gtk_event_controller_key_new ();
++
++    gtk_widget_set_name (foot, "cf-foot");
++    self->search_entry = luma_sidebar_foot_get_entry (LUMA_SIDEBAR_FOOT (foot));
++    gtk_widget_set_name (self->search_entry, "cf-search");
++    gtk_box_append (self->search_foot, foot);
++    g_object_bind_property (self->search_entry, "text", self->panel_list,
++                            "search-query", G_BINDING_SYNC_CREATE);
++    g_signal_connect_swapped (self->search_entry, "activate",
++                              G_CALLBACK (search_entry_activate_cb), self);
++    g_signal_connect_swapped (entry_keys, "key-pressed",
++                              G_CALLBACK (search_entry_key_pressed_cb), self);
++    gtk_widget_add_controller (self->search_entry, entry_keys);
++    g_signal_connect (type_ahead, "key-pressed",
++                      G_CALLBACK (search_type_ahead_cb), self);
++    gtk_widget_add_controller (GTK_WIDGET (self), type_ahead);
++  }
+ }
+ 
+ CcWindow *
+-- 
+2.55.0
+

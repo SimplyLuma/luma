@@ -1,0 +1,64 @@
+From: Project Luma
+Subject: [PATCH] luma: the shelf keeps its work area while the screen is locked
+
+The shelf dropped its struts whenever the session left desktop mode, so every
+lock changed the work area: maximized and tiled windows resized behind the
+lock screen and again during the unlock reveal, and windows that window memory
+restored while locked landed 10px off. The lock screen covers a running
+desktop, so in unlock-dialog mode the shelf now keeps the reservation it had
+(it is still hidden, as 0114 made it), and a monitor change while locked still
+moves it. The greeter, handheld sessions and a shelf that reserved nothing
+drop it as before.
+
+Proposed by the window-memory work (window-memory-14-20260916), which passed
+70/70 with it as an overlay and 64/70 without.
+
+Generated against the Shell .88 tree (0128 applied) for release .89.
+---
+diff --git a/js/ui/shelf.js b/js/ui/shelf.js
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -601,6 +601,12 @@
+             }});
+     }
+ 
++    _keepsWorkArea() {
++        return this._isDesktopSession() ||
++            (!Main.sessionMode.isGreeter && Main.sessionMode.currentMode === 'unlock-dialog' &&
++             GLib.getenv('LUMA_DEVICE_CLASS') !== 'handheld' && this._workAreaTracked);
++    }
++
+     _isDesktopSession() {
+         return !Main.sessionMode.isGreeter &&
+             Main.sessionMode.currentMode !== 'unlock-dialog' &&
+@@ -774,9 +780,15 @@
+         this._surface.translation_x = 0;
+         this._surface.translation_y = 0;
+         if (!this._isDesktopSession()) {
+-            this._trackWorkArea(false);
+             Main.layoutManager.setChromeHidden(this, true);
+             this._restorePanelActors();
++            // The lock screen covers a running desktop: keep its work area, so
++            // maximized and tiled windows do not resize behind the lock screen
++            // and again as it is revealed. Monitor changes still move it.
++            if (this._keepsWorkArea())
++                this._syncGeometry();
++            else
++                this._trackWorkArea(false);
+             return;
+         }
+ 
+@@ -920,8 +932,11 @@
+         // The outer visual actor follows the strut actor's full bounds. Its
+         // group still measures its natural length independently for content-hug.
+         this._surface.set_size(geometry.width, geometry.height);
+-        this._trackWorkArea(this._isDesktopSession() &&
+-            this._group.get_children().some(actor => actor.visible));
++        if (this._isDesktopSession()) {
++            this._trackWorkArea(this._group.get_children().some(actor => actor.visible));
++        } else if (!this._keepsWorkArea()) {
++            this._trackWorkArea(false);
++        }
+         if (!this._chromeAlive())
+             return;
+         const workArea = geometry.workArea;

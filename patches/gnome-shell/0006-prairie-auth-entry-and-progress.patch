@@ -1,0 +1,186 @@
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index 8c17312..8ec8fd4 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -3121,7 +3121,10 @@ StScrollBar {
+       text-align: center; }
+ 
+ .login-dialog-prompt-layout.prairie-login-input-well {
+-  width: 272px;
++  width: 280px;
++  spacing: 8px; }
++
++.prairie-login-input-row {
+   spacing: 8px; }
+ 
+ .login-dialog-button-box.prairie-password-field {
+@@ -3210,7 +3213,9 @@ StScrollBar {
+     icon-size: 18px;
+     color: white; }
+ 
+-.prairie-login-spinner-row {
++.prairie-login-spinner-slot {
++  width: 18px;
++  min-width: 18px;
+   height: 18px;
+   min-height: 18px;
+   color: #4878b8; }
+diff --git a/data/theme/gnome-shell-high-contrast.css b/data/theme/gnome-shell-high-contrast.css
+index ca4db78..5edc800 100644
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -3451,7 +3451,10 @@ StScrollBar {
+       text-align: center; }
+ 
+ .login-dialog-prompt-layout.prairie-login-input-well {
+-  width: 272px;
++  width: 280px;
++  spacing: 8px; }
++
++.prairie-login-input-row {
+   spacing: 8px; }
+ 
+ .login-dialog-button-box.prairie-password-field {
+@@ -3540,7 +3543,9 @@ StScrollBar {
+     icon-size: 18px;
+     color: white; }
+ 
+-.prairie-login-spinner-row {
++.prairie-login-spinner-slot {
++  width: 18px;
++  min-width: 18px;
+   height: 18px;
+   min-height: 18px;
+   color: #4878b8; }
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index cf2a321..d62a862 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -3221,7 +3221,10 @@ StScrollBar {
+       text-align: center; }
+ 
+ .login-dialog-prompt-layout.prairie-login-input-well {
+-  width: 272px;
++  width: 280px;
++  spacing: 8px; }
++
++.prairie-login-input-row {
+   spacing: 8px; }
+ 
+ .login-dialog-button-box.prairie-password-field {
+@@ -3310,7 +3313,9 @@ StScrollBar {
+     icon-size: 18px;
+     color: white; }
+ 
+-.prairie-login-spinner-row {
++.prairie-login-spinner-slot {
++  width: 18px;
++  min-width: 18px;
+   height: 18px;
+   min-height: 18px;
+   color: #4878b8; }
+diff --git a/data/theme/gnome-shell-sass/widgets/_login-lock.scss b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+index bd27820..0d7071c 100644
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -108,10 +108,12 @@ $_gdm_dialog_width: 25em;
+ }
+ 
+ .login-dialog-prompt-layout.prairie-login-input-well {
+-  width: 272px;
++  width: 280px;
+   spacing: 8px;
+ }
+ 
++.prairie-login-input-row { spacing: 8px; }
++
+ .login-dialog-button-box.prairie-password-field {
+   width: 254px;
+   height: 34px;
+@@ -197,7 +199,9 @@ $_gdm_dialog_width: 25em;
+   }
+ }
+ 
+-.prairie-login-spinner-row {
++.prairie-login-spinner-slot {
++  width: 18px;
++  min-width: 18px;
+   height: 18px;
+   min-height: 18px;
+   color: #4878b8;
+diff --git a/js/gdm/authPrompt.js b/js/gdm/authPrompt.js
+index 1b494f9..cafd3e2 100644
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -237,11 +237,18 @@ export const AuthPrompt = GObject.registerClass({
+     }
+ 
+     _initInputRow() {
++        this._inputRow = new St.BoxLayout({
++            style_class: 'prairie-login-input-row',
++            orientation: Clutter.Orientation.HORIZONTAL,
++            x_align: Clutter.ActorAlign.CENTER,
++        });
++        this._inputWell.add_child(this._inputRow);
++
+         this._mainBox = new St.BoxLayout({
+             style_class: 'login-dialog-button-box prairie-password-field',
+             orientation: Clutter.Orientation.HORIZONTAL,
+         });
+-        this._inputWell.add_child(this._mainBox);
++        this._inputRow.add_child(this._mainBox);
+ 
+         this.cancelButton = new St.Button({
+             style_class: 'login-dialog-button cancel-button',
+@@ -342,14 +349,13 @@ export const AuthPrompt = GObject.registerClass({
+ 
+         this._spinner = new Animation.Spinner(DEFAULT_BUTTON_WELL_ICON_SIZE);
+         this._spinner.opacity = 0;
+-        this._spinnerRow = new St.Bin({
+-            style_class: 'prairie-login-spinner-row',
+-            x_expand: true,
++        this._spinnerSlot = new St.Bin({
++            style_class: 'prairie-login-spinner-slot',
+             x_align: Clutter.ActorAlign.CENTER,
+             y_align: Clutter.ActorAlign.CENTER,
+             child: this._spinner,
+         });
+-        this._inputWell.add_child(this._spinnerRow);
++        this._inputRow.add_child(this._spinnerSlot);
+         this._defaultButtonWellActor = this._submitArrow;
+     }
+ 
+diff --git a/js/ui/unlockDialog.js b/js/ui/unlockDialog.js
+index 22bf372..cf5021d 100644
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -477,16 +477,13 @@ export const UnlockDialog = GObject.registerClass({
+         this._swipeTracker.connect('begin', this._swipeBegin.bind(this));
+         this._swipeTracker.connect('update', this._swipeUpdate.bind(this));
+         this._swipeTracker.connect('end', this._swipeEnd.bind(this));
++        this._swipeTracker.enabled = false;
+ 
+         this.connect('scroll-event', (o, event) => {
+             if (this._swipeTracker.canHandleScrollEvent(event))
+                 return Clutter.EVENT_PROPAGATE;
+ 
+-            const direction = event.get_scroll_direction();
+-            if (direction === Clutter.ScrollDirection.UP)
+-                this._showClock();
+-            else if (direction === Clutter.ScrollDirection.DOWN)
+-                this._showPrompt();
++            this._showPrompt();
+             return Clutter.EVENT_STOP;
+         });
+ 
+@@ -529,7 +526,9 @@ export const UnlockDialog = GObject.registerClass({
+         this._stack.add_child(this._clock);
+         this._stack.layout_manager = new PrairieUnlockContentLayout(
+             this._clock, this._promptBox);
+-        this._showClock();
++        // Prairie presents credentials immediately. The clock remains part of
++        // the composed surface, but there is no curtain state to dismiss.
++        this._showPrompt();
+ 
+         this.allowCancel = false;
+ 

@@ -1,0 +1,315 @@
+From: Project Luma
+Subject: [PATCH] luma: direct, stable Dash arrangement
+
+Let saved/preview membership own the folder rail, keep the grabbed carrier
+through preview group changes, and remove the blocking arrangement card.
+
+--- a/js/ui/shelfArrange.js
++++ b/js/ui/shelfArrange.js
+@@ -637,8 +637,9 @@
+         this._announce(_('Arrange islands. Drag an island, or press Control Alt and an arrow key to move the selected island. Escape to finish.'));
+         console.log(`[luma-shelf] arrange mode on${grab ? ` holding ${grab}` : ''}`);
+         if (grab) {
+-            this._pending = {ids: Arrangement.familyOf(grab), grab, x, y, pressed, lifted: true};
+-            this._liftActor(this._shelf.islandActorFor(grab), true);
++            // Recognition is the grab, not merely permission to grab later.
++            // Paint the lifted carrier even before the pointer moves.
++            this._startDrag({ids: Arrangement.familyOf(grab), grab, x, y, pressed}, x, y);
+         }
+         return true;
+     }
+@@ -689,7 +690,8 @@
+         this._layer.add_child(this._decorations);
+         this._overlay = new St.Widget({reactive: false});
+         this._layer.add_child(this._overlay);
+-        this._buildCard(treatment);
++        // Direct manipulation owns the screen; Escape or an empty-desktop
++        // click finishes. Reset remains in the Dash context menu.
+         this._hint = new St.Label({style_class: 'luma-arrange-hint', visible: false});
+         this._layer.add_child(this._hint);
+         this._layer.connect('button-press-event', (_a, event) => this._onPress(event));
+@@ -701,113 +703,6 @@
+         this._scrim.ease({opacity: 255, duration: animate ? 150 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+         this._decorations.opacity = 0;
+         this._decorations.ease({opacity: 255, duration: animate ? 150 : 0, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+-    }
+-
+-    _buildCard(treatment) {
+-        const card = new St.BoxLayout({style_class: `luma-arrange-card luma-arrange-${treatment}`,
+-            orientation: Clutter.Orientation.VERTICAL, reactive: true,
+-            accessible_role: Atk.Role.DIALOG, accessible_name: _('Arrange islands')});
+-        card.add_child(new St.Label({style_class: 'luma-arrange-card-title', text: _('Arrange islands')}));
+-        const body = new St.Label({style_class: 'luma-arrange-card-body',
+-            text: _('Drag an island to move it, or the handle above a group to move the whole group. Drop beside an island to attach it.')});
+-        body.clutter_text.line_wrap = true;
+-        body.clutter_text.ellipsize = 0;
+-        card.add_child(body);
+-        // Free placement (off by default): islands go only beside another
+-        // island or to an edge's start, centre or end unless this is on.
+-        const settings = this._shelf._settings;
+-        if (settings.settings_schema.has_key('shelf-free-placement')) {
+-            const option = new St.Button({style_class: 'luma-arrange-option', can_focus: true,
+-                x_expand: true, accessible_role: Atk.Role.CHECK_BOX,
+-                accessible_name: _('Allow free placement')});
+-            const box = new St.BoxLayout({x_expand: true});
+-            box.add_child(new St.Label({style_class: 'luma-arrange-option-label', text: _('Allow free placement'),
+-                x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
+-            const toggle = new PopupMenu.Switch(settings.get_boolean('shelf-free-placement'));
+-            toggle.y_align = Clutter.ActorAlign.CENTER;
+-            box.add_child(toggle);
+-            option.child = box;
+-            const sync = () => {
+-                const on = settings.get_boolean('shelf-free-placement');
+-                toggle.state = on;
+-                if (on)
+-                    option.add_accessible_state(Atk.StateType.CHECKED);
+-                else
+-                    option.remove_accessible_state(Atk.StateType.CHECKED);
+-            };
+-            option.connect('clicked', () =>
+-                settings.set_boolean('shelf-free-placement', !settings.get_boolean('shelf-free-placement')));
+-            settings.connectObject('changed::shelf-free-placement', () => {
+-                sync();
+-                this._queueDecorate();
+-                this._announce(settings.get_boolean('shelf-free-placement')
+-                    ? _('Free placement on') : _('Free placement off'));
+-            }, option);
+-            sync();
+-            card.add_child(option);
+-            this._freeOption = option;
+-        }
+-        // Married or separated, the one setting behind the folders rail: a
+-        // part of the dock, or the 'folders' island beside it. The rail is
+-        // the same rail either way.
+-        if (settings.settings_schema.has_key('dock-folders-separate') &&
+-            settings.get_strv('dock-folders').length > 0) {
+-            const option = new St.Button({style_class: 'luma-arrange-option', can_focus: true,
+-                x_expand: true, accessible_role: Atk.Role.CHECK_BOX,
+-                accessible_name: _('Separate folders')});
+-            const box = new St.BoxLayout({x_expand: true});
+-            box.add_child(new St.Label({style_class: 'luma-arrange-option-label',
+-                text: _('Separate folders'),
+-                x_expand: true, y_align: Clutter.ActorAlign.CENTER}));
+-            const toggle = new PopupMenu.Switch(settings.get_boolean('dock-folders-separate'));
+-            toggle.y_align = Clutter.ActorAlign.CENTER;
+-            box.add_child(toggle);
+-            option.child = box;
+-            const sync = () => {
+-                const on = settings.get_boolean('dock-folders-separate');
+-                toggle.state = on;
+-                if (on)
+-                    option.add_accessible_state(Atk.StateType.CHECKED);
+-                else
+-                    option.remove_accessible_state(Atk.StateType.CHECKED);
+-            };
+-            option.connect('clicked', () => settings.set_boolean('dock-folders-separate',
+-                !settings.get_boolean('dock-folders-separate')));
+-            settings.connectObject('changed::dock-folders-separate', () => {
+-                sync();
+-                this._queueDecorate();
+-                this._announce(settings.get_boolean('dock-folders-separate')
+-                    ? _('Folders separated') : _('Folders in the dock'));
+-            }, option);
+-            sync();
+-            card.add_child(option);
+-        }
+-        const row = new St.BoxLayout({style_class: 'luma-arrange-card-buttons'});
+-        const reset = new St.Button({style_class: 'luma-arrange-button', label: _('Reset'), can_focus: true});
+-        reset.connect('clicked', () => this.reset());
+-        const done = new St.Button({style_class: 'luma-arrange-button luma-arrange-button-default',
+-            label: _('Done'), can_focus: true});
+-        done.connect('clicked', () => this.end({reason: 'done'}));
+-        row.add_child(reset);
+-        row.add_child(new St.Widget({x_expand: true}));
+-        row.add_child(done);
+-        card.add_child(row);
+-        this._cardBinding = SurfaceMaterials.bindSurface(card, {cornerRadii: 14});
+-        this._card = card;
+-        this._cardReset = reset;
+-        this._layer.add_child(card);
+-        card.connect('notify::width', () => this._placeCard());
+-        card.connect('notify::height', () => this._placeCard());
+-        this._placeCard();
+-    }
+-
+-    _placeCard() {
+-        if (!this._card)
+-            return;
+-        const layout = Main.layoutManager;
+-        const work = layout.getWorkAreaForMonitor(layout.primaryIndex);
+-        this._card.set_position(Math.round(work.x + (work.width - this._card.width) / 2),
+-            Math.round(work.y + (work.height - this._card.height) / 2));
+     }
+ 
+     _destroyLayer() {
+@@ -1006,7 +901,6 @@
+         }
+         this._zones = this._decorations.get_children().filter(a => a._zone);
+         this._updateWeights(this._lastPointer ?? null, null);
+-        this._placeCard();
+         this._cardReset?.set_reactive(!this._shelf.arrangementIsDefault || this._undo.length > 0);
+     }
+ 
+@@ -1249,6 +1143,14 @@
+         return this._shelf._groups.find(group => group.dragging) ?? null;
+     }
+ 
++    _clearGrabAllocation() {
++        const group = this._dragGroup();
++        if (group?._lumaGrabAllocation) {
++            group.row.disconnect(group._lumaGrabAllocation);
++            group._lumaGrabAllocation = 0;
++        }
++    }
++
+     _positionDraggedGroup(x, y) {
+         const drag = this._drag;
+         const group = this._dragGroup();
+@@ -1256,13 +1158,25 @@
+             return [x, y];
+         const part = drag.group || drag.ids.length > 1 ? group : this._shelf.partActorFor(drag.grab);
+         const held = part?.get_stage() && this._shelf.groupForActor(part) === group ? part : group;
++        group.surface.remove_transition('translation-x');
++        group.surface.remove_transition('translation-y');
++        group.surface.remove_transition('opacity');
++        group.surface.set({translation_x: 0, translation_y: 0, opacity: 255});
+         const rect = extentsOf(held);
+         const turned = drag.formEdge && Arrangement.isVertical(drag.formEdge) !== Arrangement.isVertical(drag.edge);
+         const [fx, fy] = turned ? [...drag.grabFraction].reverse() : drag.grabFraction;
+         // Move by the stage-space error of the visible grab point. This also
+         // includes material padding and the lift transform, neither of which
+         // is represented by the group's preferred width or height.
+-        const [gx, gy] = Arrangement.grabbedOrigin([group.x, group.y], rect, [fx, fy], [x, y]);
++        // Clutter updates requested/allocation positions before invalidating
++        // cached transformed extents. Multiple corrections in that update
++        // must share the origin that produced the measured rectangle.
++        const measured = drag.measuredGrab;
++        const same = measured?.group === group && measured.held === held &&
++            ['x', 'y', 'width', 'height'].every(key => measured.rect[key] === rect[key]);
++        const origin = same ? measured.origin : [group.x, group.y];
++        drag.measuredGrab = {group, held, rect, origin};
++        const [gx, gy] = Arrangement.grabbedOrigin(origin, rect, [fx, fy], [x, y]);
+         group.set_position(gx, gy);
+         Main.layoutManager.uiGroup.set_child_above_sibling(this._layer, null);
+         const placed = extentsOf(group);
+@@ -1314,6 +1228,13 @@
+             });
+         };
+         apply();
++        const carrier = this._dragGroup();
++        if (carrier && !carrier._lumaGrabAllocation) {
++            carrier._lumaGrabAllocation = carrier.row.connect('notify::allocation', () => {
++                if (this._drag === drag && drag.pointer)
++                    this._positionDraggedGroup(...drag.pointer);
++            });
++        }
+         // Measure the carried island in its new form; if that changes its
+         // length, place the gap or ghost again at the true length.
+         const row = this._dragGroup()?.row;
+@@ -1483,6 +1404,7 @@
+         const before = drag?.stored ?? shelf.arrangement;
+         const from = drag ? this._dragOrigins() : null;
+         const edgeBefore = drag?.formEdge ?? drag?.edge;
++        this._clearGrabAllocation();
+         this._drag = null;
+         this._undo.push(before);
+         shelf._preview = null;
+@@ -1554,6 +1476,7 @@
+         if (!drag)
+             return;
+         const from = this._dragOrigins();
++        this._clearGrabAllocation();
+         this._drag = null;
+         this._hint?.hide();
+         this._clearTargetVisuals();
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -1720,6 +1720,11 @@
+         this._floatEnds = this._settings.get_boolean('shelf-float-ends');
+         this._freePlacement = this._settings.settings_schema.has_key('shelf-free-placement') &&
+             this._settings.get_boolean('shelf-free-placement');
++        // Resolve saved/preview membership before deciding whether the rail
++        // belongs inside the dock or in its own draggable island.
++        const stored = this._readArrangement();
++        this._arrangement = stored.groups;
++        this._arrangementIsDefault = stored.isDefault;
+         // Married or separated, before the arrangement is resolved: whether
+         // the folders island is there at all decides which bands it holds.
+         this._syncDockFolders();
+@@ -1727,9 +1732,6 @@
+         // Where every island is: the stored arrangement (an empty one is
+         // today's layout, derived from the v1 keys), or arrange mode's
+         // preview while an island is being dragged.
+-        const stored = this._readArrangement();
+-        this._arrangement = stored.groups;
+-        this._arrangementIsDefault = stored.isDefault;
+         this._monitors = this._monitorInfo();
+         const layout = Main.layoutManager;
+         const shared = new Map(this._monitors.map(m => [m.index, m.closedEdges]));
+@@ -2075,18 +2077,28 @@
+         // the screen's ends, square there.
+         const gutterless = this._span && !this._floatEnds;
+         const castShadows = !this._protrude && (!this._span || this._floatEnds);
+-        while (this._groups.length > this._resolved.length) {
++        // The carrier must keep its identity when an attach/apart preview
++        // adds or removes a ghost group. Index reuse otherwise replaces it
++        // with a previously animated band and moves it across the pointer.
++        const carrier = this._preview?.drag ? this._groups.find(group => group.dragging) : null;
++        if (carrier)
++            this._groups.splice(this._groups.indexOf(carrier), 1);
++        const groupCount = this._resolved.length - (carrier ? 1 : 0);
++        while (this._groups.length > groupCount) {
+             const group = this._groups.pop();
+             for (const island of [...group.row.get_children()])
+                 group.row.remove_child(island);
+             group.destroy();
+         }
+-        while (this._groups.length < this._resolved.length) {
++        while (this._groups.length < groupCount) {
+             const group = new ShelfGroupActor();
+             this.add_child(group);
+             layout.trackChrome(group, {affectsStruts: false, trackFullscreen: true});
+             this._groups.push(group);
+         }
++
++        if (carrier)
++            this._groups.push(carrier);
+ 
+         const quick = this._actionsMaterial;
+         const clockEdge = this.edgeOfIsland('clock');
+@@ -2829,7 +2841,11 @@
+         group.set_position(x, y);
+         group.set_size(width, height);
+         group.surface.set_size(width, height);
+-        if (!animate || !group._positioned) {
++        if (!animate || this._preview || !group._positioned) {
++            // Geometry used for hit-testing and the painted preview must
++            // agree on this frame, including reduced-motion mode.
++            group.surface.remove_all_transitions();
++            group.surface.set({translation_x: 0, translation_y: 0, opacity: 255});
+             group._positioned = true;
+             return;
+         }
+--- a/js/ui/lumaDockFolders.js
++++ b/js/ui/lumaDockFolders.js
+@@ -875,7 +875,19 @@
+     }
+ 
+     get separate() {
+-        return this._settings.get_boolean('dock-folders-separate');
++        const shelf = this._shelf;
++        // The legacy preference still defines an untouched default layout.
++        // After a direct move, actual membership owns the presentation: an
++        // adjacent rail after the dock joins it; any other placement detaches.
++        if (!shelf._preview && shelf.arrangementIsDefault)
++            return this._settings.get_boolean('dock-folders-separate');
++        const groups = [...(shelf._preview?.groups ?? shelf.arrangement)];
++        if (shelf._preview?.drag)
++            groups.push(shelf._preview.drag);
++        const dock = groups.find(group => group.islands.includes('dock'));
++        const folders = groups.find(group => group.islands.includes('folders'));
++        return !dock || dock !== folders ||
++            dock.islands[dock.islands.indexOf('dock') + 1] !== 'folders';
+     }
+ 
+     // Hidden, the folders keep their places and their arrangements; only the

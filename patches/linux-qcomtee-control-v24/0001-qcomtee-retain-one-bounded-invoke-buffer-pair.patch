@@ -1,0 +1,72 @@
+diff --git a/drivers/tee/qcomtee/core.c b/drivers/tee/qcomtee/core.c
+index 08f5f6fd2b07..59c7605d36db 100644
+--- a/drivers/tee/qcomtee/core.c
++++ b/drivers/tee/qcomtee/core.c
+@@ -842,6 +842,7 @@ int qcomtee_object_do_invoke_internal(struct qcomtee_object_invoke_ctx *oic,
+ 	qcomtee_fetch_async_reqs(oic);
+ out:
+-	qcomtee_msg_buffers_free(oic);
++	if (!(oic->flags & QCOMTEE_OIC_FLAG_RETAIN_SHM))
++		qcomtee_msg_buffers_free(oic);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/tee/qcomtee/qcomtee_object.h b/drivers/tee/qcomtee/qcomtee_object.h
+index 930f3f856694..8ab6a28ec1d9 100644
+--- a/drivers/tee/qcomtee/qcomtee_object.h
++++ b/drivers/tee/qcomtee/qcomtee_object.h
+@@ -142,6 +142,8 @@ static inline int qcomtee_args_len(struct qcomtee_arg *args)
+ #define QCOMTEE_OIC_FLAG_NOTIFY BIT(2)
+ /* Context has shared state with QTEE. */
+ #define QCOMTEE_OIC_FLAG_SHARED BIT(3)
++/* Keep the registered message SHM across a bounded sequence of invokes. */
++#define QCOMTEE_OIC_FLAG_RETAIN_SHM BIT(4)
+ 
+ /**
+  * struct qcomtee_object_invoke_ctx - QTEE context for object invocation.
+diff --git a/drivers/tee/qcomtee/shm.c b/drivers/tee/qcomtee/shm.c
+index fdcd12953b88..e9675a01be1b 100644
+--- a/drivers/tee/qcomtee/shm.c
++++ b/drivers/tee/qcomtee/shm.c
+@@ -62,6 +62,21 @@ int qcomtee_msg_buffers_alloc(struct qcomtee_object_invoke_ctx *oic,
+ 			return -EINVAL;
+ 	}
+ 
++	/*
++	 * A bounded kernel client may retain one registered message-buffer pair
++	 * across adjacent calls whose buffer layout is identical. This mirrors
++	 * QSEECom's persistent shared-buffer mapping without exposing that memory
++	 * to userspace. Preserve inbound contents; callbacks start from zero.
++	 */
++	if (oic->in_shm || oic->out_shm) {
++		if (!oic->in_shm || !oic->out_shm ||
++		    tee_shm_get_size(oic->in_shm) < size ||
++		    tee_shm_get_size(oic->out_shm) < MAX_OUTBOUND_BUFFER_SIZE)
++			return -EINVAL;
++		memzero_explicit(oic->out_msg.addr, oic->out_msg.size);
++		return 0;
++	}
++
+ 	shm = tee_shm_alloc_priv_buf(ctx, size);
+ 	if (IS_ERR(shm))
+ 		return PTR_ERR(shm);
+@@ -93,8 +109,17 @@ int qcomtee_msg_buffers_alloc(struct qcomtee_object_invoke_ctx *oic,
+ 
+ void qcomtee_msg_buffers_free(struct qcomtee_object_invoke_ctx *oic)
+ {
+-	tee_shm_free(oic->in_shm);
+-	tee_shm_free(oic->out_shm);
++	if (oic->in_shm)
++		tee_shm_free(oic->in_shm);
++	if (oic->out_shm)
++		tee_shm_free(oic->out_shm);
++	oic->in_shm = NULL;
++	oic->out_shm = NULL;
++	oic->in_msg.addr = NULL;
++	oic->in_msg.size = 0;
++	oic->out_msg.addr = NULL;
++	oic->out_msg.size = 0;
++	oic->flags &= ~QCOMTEE_OIC_FLAG_RETAIN_SHM;
+ }
+ 
+ /* Dynamic shared memory pool based on tee_dyn_shm_alloc_helper(). */

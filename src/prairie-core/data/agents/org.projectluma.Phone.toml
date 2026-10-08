@@ -1,0 +1,15 @@
+# Phone's background agent (ADR-033): calls from the phone chosen for calls in
+# Luma Connect ring while Phone is closed.
+# Installed as /usr/share/luma/background/org.projectluma.Phone.toml for luma-background.
+schema_version = "0.2"
+
+[application]
+id = "org.projectluma.Phone"
+name = "Phone"
+
+[background]
+agent = "org.projectluma.Phone.Agent"
+exec = "prairie-phone --agent"
+category = "communication"
+wake = ["login", "network", "resume"]
+publishes = ["call-state", "missed-calls", "badge", "live-extension:org.projectluma.Phone.Call"]

@@ -1,0 +1,25 @@
+[Unit]
+Description=Luma FP6 camera GPU fault containment
+Documentation=https://project-luma.local/docs/research/fp6-camera-backend
+After=systemd-journald.service
+ConditionPathExists=/proc/device-tree/compatible
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/libexec/luma-fp6-camera-gpu-guard --check
+ExecStart=/usr/local/libexec/luma-fp6-camera-gpu-guard
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

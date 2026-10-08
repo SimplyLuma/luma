@@ -1,0 +1,368 @@
+From: Project Luma
+Subject: [PATCH] Shell: measure live status width and align native lock clock
+
+Give every visible privacy indicator its own measured grid column. Keep the
+native app tray's activation and menus unchanged, and mirror the grid in RTL.
+Reuse the shared Pango baseline clock row on the lock/greeter poster; use the
+measured time/period width and align the date to the same baseline. This is
+presentation only: clock settings, wall-clock signals and GDM/PAM stay owned
+by their existing native services.
+
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1289,7 +1289,9 @@
+         const startY = Math.floor((height - (rows * cell + (rows - 1) * rowGap)) / 2);
+ 
+         children.forEach((child, index) => {
+-            const column = index % columns;
++            const logicalColumn = index % columns;
++            const column = container.get_text_direction() === Clutter.TextDirection.RTL
++                ? columns - 1 - logicalColumn : logicalColumn;
+             const row = Math.floor(index / columns);
+             const childBox = new Clutter.ActorBox({
+                 x1: startX + column * (cell + columnGap),
+@@ -1483,6 +1485,7 @@
+                     x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
+                 slot.add_child(slot.dot);
+             }
++            slot.connectObject('notify::visible', () => this._syncStatusControlWidth(), this);
+             this._slots[name] = slot;
+             this._statusSlots.add_child(slot);
+         }
+@@ -1546,6 +1549,24 @@
+             this._slots.battery.opacity = 191;
+         const matched = recording && this._statusWell ? this._statusWell.setRecordingApps(this._recordingApplications()) : false;
+         this._slots.mic.dot.visible = recording && !matched;
++        this._syncStatusControlWidth();
++    }
++
++    _syncStatusControlWidth() {
++        if (!this._statusActive || !this._statusControls || !this._statusSlots)
++            return;
++        if (this._statusVertical) {
++            this._statusControls.set_width(-1);
++            return;
++        }
++        // The native grid measures every visible privacy/system indicator.
++        // A recording microphone must gain a real column, never steal the
++        // Wi-Fi or battery's inset in a fixed three-column allocation.
++        const [, naturalWidth] = this._statusSlots.get_preferred_width(-1);
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        const padding = this._statusSettings.get_string('status-frame-scope') === 'flush'
++            ? 2 * this._statusSettings.get_int('shelf-padding') * scale : 0;
++        this._statusControls.set_width(naturalWidth + padding);
+     }
+ 
+     // The Well sits first in the cluster, with its own targets: a press on it
+@@ -1856,9 +1877,7 @@
+         }
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         this._statusControls.set_height(vertical ? -1 : (DASH_TILE_SIZE - (scope === 'all' && stroked ? 2 : 0) + (flush ? 2 * padding : 0)) * scale);
+-        const columns = 3;
+-        const controlWidth = Math.max(DASH_TILE_SIZE, 12 + columns * STATUS_GLYPH + (columns - 1) * STATUS_COLUMN_GAP) * scale;
+-        this._statusControls.set_width(vertical ? -1 : controlWidth + (flush ? 2 * padding * scale : 0));
++        // _syncStatusSlots measures the live grid, including privacy changes.
+         this._syncStatusSlots();
+         this.remove_style_class_name('luma-status-light');
+         if (light) this.add_style_class_name('luma-status-light');
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -10,6 +10,7 @@
+ import St from 'gi://St';
+ 
+ import {formatDateWithCFormatString} from '../misc/dateUtils.js';
++import {BaselineClockRow} from './lumaClockLayout.js';
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SystemActions from '../misc/systemActions.js';
+@@ -27,7 +28,10 @@
+         this._ampm = new St.Label({style_class: 'poster-ampm'});
+         this._divider = new St.Widget({style_class: 'poster-time-divider'});
+         this._date = new St.Label({style_class: 'poster-date'});
+-        for (const actor of [this._weekday, this._time, this._ampm,
++        this._timeRow = new BaselineClockRow();
++        this._timeRow.add_child(this._time);
++        this._timeRow.add_child(this._ampm);
++        for (const actor of [this._weekday, this._timeRow,
+             this._divider, this._date])
+             this.add_child(actor);
+ 
+@@ -39,6 +43,7 @@
+         this.connect('destroy', () => {
+             this._wallClock.disconnectObject(this);
+             this._wallClock.run_dispose();
++            this._clockSettings.disconnectObject(this);
+             this._clockSettings.run_dispose();
+         });
+     }
+@@ -72,12 +77,20 @@
+         // slots: the theme can report an incomplete preferred size while the
+         // clock and its font are still settling on the greeter.
+         const availableWidth = Math.max(0, width - cardWidth - 96 * scale);
++        // The native authentication card keeps priority on a narrow display.
++        // A decorative poster must never extend behind its credentials.
++        this.visible = availableWidth >= 220 * scale;
++        if (!this.visible) {
++            this.allocate(new Clutter.ActorBox());
++            return;
++        }
++        const inset = 64 * scale;
+         const availableHeight = Math.max(0, height - 112 * scale);
+-        const clockHeight = Math.min(availableHeight, (compact ? 210 : 280) * scale);
++        const clockHeight = Math.min(availableHeight, (compact ? 250 : 280) * scale);
+         this._posterScale = scale;
+         this._posterCompact = compact;
+         const box = new Clutter.ActorBox();
+-        box.x1 = rtl ? width - 64 * scale - availableWidth : 64 * scale;
++        box.x1 = rtl ? width - inset - availableWidth : inset;
+         box.x2 = box.x1 + availableWidth;
+         box.y2 = height - 56 * scale;
+         box.y1 = box.y2 - clockHeight;
+@@ -90,10 +103,19 @@
+         const height = box.y2 - box.y1;
+         const scale = this._posterScale ?? 1;
+         const compact = this._posterCompact ?? false;
+-        const rowHeight = Math.min(height, (compact ? 64 : 88) * scale);
+-        const weekdayHeight = Math.min(height - rowHeight,
+-            (compact ? 132 : 176) * scale);
+-        const gap = Math.max(0, height - weekdayHeight - rowHeight);
++        for (const label of [this._weekday, this._time, this._ampm, this._date])
++            label.ensure_style();
++        this._timeRow.text_direction = this.get_text_direction();
++        const [, timeWidth] = this._timeRow.get_preferred_width(-1);
++        const [, naturalRowHeight] = this._timeRow.get_preferred_height(timeWidth);
++        const rowHeight = Math.min(height, naturalRowHeight);
++        const [, naturalWeekdayHeight] = this._weekday.get_preferred_height(width);
++        const [, dateNaturalWidth] = this._date.get_preferred_width(-1);
++        const stackedDate = timeWidth + 33 * scale + dateNaturalWidth > width;
++        const [, dateNaturalHeight] = this._date.get_preferred_height(dateNaturalWidth);
++        const dateReserve = stackedDate ? dateNaturalHeight + 8 * scale : 0;
++        const weekdayHeight = Math.min(Math.max(0, height - rowHeight - dateReserve), naturalWeekdayHeight);
++        const gap = Math.min(24 * scale, Math.max(0, height - weekdayHeight - rowHeight - dateReserve));
+ 
+         const weekdayBox = new Clutter.ActorBox();
+         weekdayBox.x1 = 0;
+@@ -111,32 +133,26 @@
+             partBox.y2 = y + Math.max(0, partHeight);
+             actor.allocate(partBox);
+         };
+-        const [, naturalTimeWidth] = this._time.get_preferred_width(-1);
+-        let x = Math.min(width, naturalTimeWidth, 240 * scale);
+-        const [, timeHeight] = this._time.get_preferred_height(x);
+-        const timeY = rowY + Math.max(0, rowHeight - timeHeight) / 2;
+-        allocatePart(this._time, 0, timeY, x, timeHeight);
+-        const timeBaseline = this._time.clutter_text.get_layout().get_baseline() / Pango.SCALE;
+-        if (this._ampm.visible) {
+-            const [, naturalAmPmWidth] = this._ampm.get_preferred_width(-1);
+-            // Some themes report the available row width for this tiny label.
+-            // Bound its slot so the divider and date stay beside the time.
+-            const ampmWidth = Math.min(Math.max(0, width - x),
+-                naturalAmPmWidth, 48 * scale);
+-            const [, ampmHeight] = this._ampm.get_preferred_height(ampmWidth);
+-            const ampmBaseline = this._ampm.clutter_text.get_layout().get_baseline() / Pango.SCALE;
+-            allocatePart(this._ampm, x + 8 * scale,
+-                timeY + timeBaseline - ampmBaseline, ampmWidth, ampmHeight);
+-            x += ampmWidth + 8 * scale;
+-        } else {
+-            allocatePart(this._ampm, 0, 0, 0, 0);
+-        }
+-        x += 20 * scale;
+-        allocatePart(this._divider, x, rowY + (rowHeight - 36 * scale) / 2,
+-            1 * scale, 36 * scale);
+-        x += 23 * scale;
+-        allocatePart(this._date, x, rowY + rowHeight - 40 * scale,
+-            width - x, 38 * scale);
++        const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
++        const place = (actor, x, y, partWidth, partHeight) =>
++            allocatePart(actor, rtl ? width - x - partWidth : x, y, partWidth, partHeight);
++        const rowWidth = Math.min(width, timeWidth);
++        place(this._timeRow, 0, rowY, rowWidth, rowHeight);
++        const timeMetrics = this._timeRow._metrics();
++        const commonBaseline = Math.max(0, ...timeMetrics.map(item => item.baseline));
++        const dividerX = rowWidth + 16 * scale;
++        const dividerHeight = Math.min(rowHeight, 36 * scale);
++        const [, naturalDateWidth] = this._date.get_preferred_width(-1);
++        const stacked = dividerX + 17 * scale + naturalDateWidth > width;
++        this._divider.visible = !stacked;
++        place(this._divider, dividerX, rowY + (rowHeight - dividerHeight) / 2,
++            stacked ? 0 : scale, stacked ? 0 : dividerHeight);
++        const dateX = stacked ? 0 : dividerX + 17 * scale;
++        const dateWidth = Math.max(0, Math.min(naturalDateWidth, width - dateX));
++        const [, dateHeight] = this._date.get_preferred_height(dateWidth);
++        const dateBaseline = this._date.clutter_text.get_layout().get_baseline() / Pango.SCALE;
++        place(this._date, dateX, stacked ? rowY + rowHeight + 8 * scale
++            : rowY + commonBaseline - dateBaseline, dateWidth, dateHeight);
+     }
+ });
+ 
+--- a/js/ui/lumaClockLayout.js
++++ b/js/ui/lumaClockLayout.js
+@@ -7,6 +7,24 @@
+ 
+ export const BaselineClockRow = GObject.registerClass(
+ class BaselineClockRow extends St.Widget {
++    _init(params = {}) {
++        super._init(params);
++        // Text can finish shaping after the first theme/allocation pass.
++        // Re-measure baselines when the native font, text or paint attributes
++        // settle, not only when a parent's fixed box changes size.
++        this.connect('child-added', (_row, actor) => {
++            actor.connectObject('style-changed', () => this.queue_relayout(),
++                'notify::visible', () => this.queue_relayout(), this);
++            actor.clutter_text?.connectObject('notify::font-name', () => this.queue_relayout(),
++                'notify::attributes', () => this.queue_relayout(),
++                'notify::text', () => this.queue_relayout(), this);
++        });
++        this.connect('child-removed', (_row, actor) => {
++            actor.disconnectObject(this);
++            actor.clutter_text?.disconnectObject(this);
++        });
++    }
++
+     _metrics() {
+         return this.get_children().filter(actor => actor.visible).map(actor => {
+             actor.ensure_style();
+--- a/data/theme/gnome-shell-sass/widgets/_login-lock.scss
++++ b/data/theme/gnome-shell-sass/widgets/_login-lock.scss
+@@ -669,7 +669,7 @@
+ .poster-weekday { font-family: "Figtree"; font-size: 148px; font-weight: 700; letter-spacing: -0.055em; }
+ .poster-time-row { spacing: 14px; }
+ .poster-time { font-family: "Figtree"; font-size: 64px; font-weight: 250; letter-spacing: -0.04em; font-feature-settings: "tnum"; }
+-.poster-ampm { font-family: "Figtree"; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.75); margin-left: -6px; }
++.poster-ampm { font-family: "Figtree"; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; color: rgba(255, 255, 255, 0.75); margin: 0; }
+ .poster-time-divider { width: 1px; height: 36px; margin: 0 6px; background-color: rgba(255, 255, 255, 0.35); }
+ .poster-date { font-family: "Figtree"; font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.9); }
+ .poster-day.compact .poster-weekday { font-size: 104px; }
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -383,17 +383,17 @@
+         });
+     }
+ 
+-    setOrientation(vertical, padding, outer = false) {
++    setOrientation(vertical, padding, outer = false, minimumThickness = 0) {
+         // Unchanged, nothing is restyled: a drag previews by syncing the
+         // shelf, and groups it does not touch must not lay out again.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+-        const key = `${vertical}:${padding}:${outer}:${scale}:${this._content._statusFlush}`;
++        const key = `${vertical}:${padding}:${outer}:${scale}:${minimumThickness}:${this._content._statusFlush}`;
+         if (this._orientationKey === key)
+             return;
+         this._orientationKey = key;
+         this._vertical = vertical;
+         this._padding = padding;
+-        this._thickness = DASH_TILE_SIZE + 2 * padding;
++        this._thickness = Math.max(DASH_TILE_SIZE + 2 * padding, minimumThickness);
+         this._outer = outer;
+         this._updateStyle();
+         const thickness = this._thickness * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+@@ -2060,6 +2060,21 @@
+         return this._actionsVisible;
+     }
+ 
++    _statusCrossThickness() {
++        const base = DASH_TILE_SIZE + 2 * this._padding;
++        const quick = this._actionsMaterial;
++        if (!this._actionsVisible || !quick?._statusClock ||
++            Arrangement.isVertical(this.edgeOfIsland('clock')))
++            return base;
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        // Native font ascent/descent can exceed a tile's forty-pixel content
++        // box. The material and reserved work area must grow together so the
++        // date stays inside its own surface without compressing Pango lines.
++        const [, clockHeight] = quick._statusClock.get_preferred_height(-1);
++        const padding = quick._statusFlush ? 0 : 2 * this._padding;
++        return Math.max(base, Math.ceil(clockHeight / scale) + padding);
++    }
++
+     // Build or reuse one group actor per placed group and put each island in
+     // its row. Only rows whose islands changed are touched.
+     _syncGroups() {
+@@ -2104,6 +2119,7 @@
+         const clockEdge = this.edgeOfIsland('clock');
+         quick.setStatusParts?.(this._actionsParts, Arrangement.isVertical(clockEdge));
+         this._syncStandaloneParts();
++        this._thickness = this._statusCrossThickness();
+ 
+         // One gap actor serves an attach preview.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+@@ -2217,12 +2233,12 @@
+                     if (!last) for (const i of vertical ? [2, 3] : [1, 2]) radii[i] = 0;
+                 }
+                 island.setCornerRadii(radii);
+-                island.setOrientation(vertical, this._padding);
++                island.setOrientation(vertical, this._padding, false, this._thickness);
+                 // The live slot's ghost is an outline, never a surface.
+                 island.setSurfaceVisible(surfaceMode === 'separate' && !island._isGhost,
+                     (castShadows || !!placed.drag) && !island._isGhost);
+             }
+-            group.surface.setOrientation(vertical, this._padding, true);
++            group.surface.setOrientation(vertical, this._padding, true, this._thickness);
+             if (previous && previous.edge !== placed.edge)
+                 group._edgeChanged = true;
+         });
+@@ -3054,6 +3070,11 @@
+             if (GLib.getenv('LUMA_LIVE_DEBUG'))
+                 log(`luma-live: ${id} natural=${Math.round(liveNatural)} island=${Math.round(liveSize)}`);
+         }
++        const measuredThickness = this._statusCrossThickness();
++        if (measuredThickness !== this._thickness) {
++            this._thickness = measuredThickness;
++            this._syncGroups();
++        }
+         const quickVertical = Arrangement.isVertical(this.edgeOfIsland('quick-options'));
+         this._actionsScroll.set_size(-1, -1);
+         const flushStatus = this._actionsMaterial._statusFlush;
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -1972,7 +1972,7 @@
+  * as a Well item, with their own air around the text. */
+ .luma-status-cluster .luma-status-controls,
+ .luma-status-cluster .luma-status-clock {
+-  height: 28px;
++  min-height: 28px;
+   border-radius: 8px; }
+ .luma-status-cluster .luma-status-controls { padding: 0 7px; }
+ .luma-status-cluster .luma-status-clock { padding: 0 8px; min-width: 56px; }
+@@ -2664,7 +2664,7 @@
+ .luma-shelf-dock-island .luma-shelf-material { padding: 14px; }
+ .luma-shelf-live-island .luma-shelf-material { padding: 14px; }
+ .luma-shelf-actions-island .luma-shelf-material { padding: 14px; }
+-.luma-status-cluster .luma-status-clock, .luma-status-cluster .luma-status-controls { height: 40px; }
++.luma-status-cluster .luma-status-clock, .luma-status-cluster .luma-status-controls { min-height: 40px; }
+ .luma-status-cluster .luma-status-clock-text { spacing: 2px; }
+ .luma-status-cluster .luma-status-clock { min-width: 78px; }
+ .luma-status-cluster .luma-status-date { color: rgba(231,233,232,0.62); font-weight: 500; }
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -4947,7 +4947,7 @@
+   font-weight: 600;
+   letter-spacing: 0.02em;
+   color: rgba(255, 255, 255, 0.75);
+-  margin-left: -6px; }
++  margin: 0; }
+ 
+ .poster-time-divider {
+   width: 1px;
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -4723,7 +4723,7 @@
+   font-weight: 600;
+   letter-spacing: 0.02em;
+   color: rgba(255, 255, 255, 0.75);
+-  margin-left: -6px; }
++  margin: 0; }
+ 
+ .poster-time-divider {
+   width: 1px;
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -4981,7 +4981,7 @@
+   font-weight: 600;
+   letter-spacing: 0.02em;
+   color: rgba(255, 255, 255, 0.75);
+-  margin-left: -6px; }
++  margin: 0; }
+ 
+ .poster-time-divider {
+   width: 1px;

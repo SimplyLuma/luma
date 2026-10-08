@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+ <id>org.projectluma.NaturalVoices</id>
+ <metadata_license>CC0-1.0</metadata_license>
+ <project_license>GPL-3.0-or-later</project_license>
+ <name>Natural Voices</name>
+ <summary>A local natural English reading voice</summary>
+ <description><p>Add a natural English voice for Leaf and other Speech Dispatcher applications. Text and speech stay on your computer. Includes the public-domain LJSpeech medium voice by Bryce Beattie.</p></description>
+ <launchable type="desktop-id">org.projectluma.NaturalVoices.desktop</launchable>
+ <provides><binary>org.projectluma.NaturalVoices</binary></provides>
+ <developer id="org.projectluma"><name>Project Luma</name></developer>
+ <url type="homepage">https://projectluma.org</url>
+ <content_rating type="oars-1.1"/>
+ <releases><release version="1.0.0" date="2026-10-06"/></releases>
+</component>

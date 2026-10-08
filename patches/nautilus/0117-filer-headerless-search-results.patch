@@ -1,0 +1,42 @@
+From 9902c59772a6995d64d7273a6864552b3e3b2d45 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 01:20:58 +0000
+Subject: [PATCH] Hide native file table header in search results
+
+---
+ src/nautilus-list-view.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/nautilus-list-view.c b/src/nautilus-list-view.c
+index f1e9f18..2350d3d 100644
+--- a/src/nautilus-list-view.c
++++ b/src/nautilus-list-view.c
+@@ -40,6 +40,7 @@ struct _NautilusListView
+     NautilusListBase parent_instance;
+ 
+     GtkColumnView *view_ui;
++    LumaColumnViewHeader *luma_header;
+     GtkWidget *search_heading;
+     LumaTypeLabel *search_heading_title;
+     LumaCountBadge *search_heading_count;
+@@ -756,6 +757,8 @@ nautilus_list_view_setup_directory (NautilusListBase  *list_base,
+     {
+         gtk_widget_remove_css_class (GTK_WIDGET (self), "search-results");
+     }
++    luma_column_view_header_set_visible (self->luma_header,
++                                         self->search_directory == NULL);
+ 
+     if (self->search_directory != NULL)
+     {
+@@ -1347,7 +1350,7 @@ nautilus_list_view_init (NautilusListView *self)
+ 
+     setup_view_columns (self);
+     gtk_widget_set_name (GTK_WIDGET (self->view_ui), "filer-list");
+-    luma_table_header_for_column_view (self->view_ui);
++    self->luma_header = luma_table_header_for_column_view (self->view_ui);
+     luma_selection_apply (GTK_WIDGET (self->view_ui));
+ 
+     column_view_sorter = gtk_column_view_get_sorter (self->view_ui);
+-- 
+2.55.0
+

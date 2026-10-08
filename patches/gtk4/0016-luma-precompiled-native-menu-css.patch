@@ -1,0 +1,189 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] Carry native menu CSS in release archive resources
+
+The upstream release archive embeds precompiled CSS. Keep the menu SCSS
+from0010 and its generated Light/Dark CSS in the same maintained resource.
+These blocks were generated using sassc -t compact from _luma-menu.scss.
+
+--- a/gtk/theme/Default/Default-light.css
++++ b/gtk/theme/Default/Default-light.css
+@@ -2033,3 +2033,88 @@
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin-top: 9px; }
+ 
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces).luma-has-command-row > .luma-native-work-surface { margin-top: 0; }
++
++/* Generated native Luma menu contract from _luma-menu.scss. */
++@define-color luma_menu #f6f7f8;
++@define-color luma_menu_ink #252b31;
++@define-color luma_menu_raised #ffffff;
++@define-color luma_menu_border rgba(35, 44, 52, 0.09);
++@define-color luma_menu_shadow #0c1015;
++@define-color luma_menu_passive rgba(35, 44, 52, 0.07);
++@define-color luma_menu_pressed rgba(35, 44, 52, 0.11);
++@define-color luma_menu_destructive #a44449;
++popover.menu > contents { min-width: 276px; padding: 8px; border: none; border-radius: 15px; background-color: @luma_menu; color: @luma_menu_ink; box-shadow: inset 0 0 0 1px @luma_menu_border, 0 4px 12px alpha(@luma_menu_shadow, 0.20), 0 24px 56px -18px alpha(@luma_menu_shadow, 0.68); }
++
++popover.menu > contents > stack > box, popover.menu > contents > scrolledwindow > viewport > stack > box { padding: 0; }
++
++popover.menu > arrow { background-color: @luma_menu; border-color: @luma_menu_border; }
++
++popover.menu.luma-menu-desktop > contents { min-width: 284px; }
++
++popover.menu.luma-menu-dock > contents { min-width: 174px; padding: 6px; }
++
++popover.menu.luma-menu-submenu > contents { min-width: 212px; padding: 6px; }
++
++popover.menu separator { min-height: 1px; margin: 5px 4px; background-color: @luma_menu_border; }
++
++popover.menu label.title { min-height: 14px; padding: 4px 8px 0; margin: 0; text-transform: uppercase; font-size: 11px; font-weight: 700; letter-spacing: 0.11em; opacity: 0.46; }
++
++popover.menu modelbutton, popover.menu button.luma-menu-row { min-height: 32px; padding: 0 8px; border: none; border-radius: 10px; background-color: transparent; color: @luma_menu_ink; font-family: Figtree; font-size: 13px; font-weight: 600; box-shadow: none; outline: none; }
++
++popover.menu modelbutton:hover, popover.menu modelbutton:selected, popover.menu modelbutton:focus, popover.menu modelbutton:focus-visible, popover.menu button.luma-menu-row:hover, popover.menu button.luma-menu-row:selected, popover.menu button.luma-menu-row:focus, popover.menu button.luma-menu-row:focus-visible { background-color: @luma_menu_raised; outline: 0; }
++
++popover.menu modelbutton:active, popover.menu button.luma-menu-row:active { background-color: @luma_menu_pressed; }
++
++popover.menu modelbutton:disabled, popover.menu button.luma-menu-row:disabled { opacity: 0.38; background-color: transparent; }
++
++popover.menu modelbutton image, popover.menu button.luma-menu-row image { -gtk-icon-size: 16px; opacity: 0.88; }
++
++popover.menu modelbutton arrow, popover.menu button.luma-menu-row arrow { opacity: 0.58; }
++
++popover.menu modelbutton check, popover.menu modelbutton radio, popover.menu button.luma-menu-row check, popover.menu button.luma-menu-row radio { min-width: 14px; min-height: 14px; padding: 0; border: none; background: transparent; box-shadow: none; color: inherit; -gtk-icon-size: 14px; opacity: 0.72; }
++
++popover.menu button.luma-menu-row.two-line { min-height: 36px; padding: 5px 8px; font-weight: 650; }
++
++popover.menu .luma-menu-description { font-size: 11px; font-weight: 500; opacity: 0.5; }
++
++popover.menu button.luma-menu-row.luma-menu-destructive { color: @luma_menu_ink; }
++
++popover.menu button.luma-menu-row.luma-menu-destructive:hover, popover.menu button.luma-menu-row.luma-menu-destructive:focus, popover.menu button.luma-menu-row.luma-menu-destructive:focus-visible { background-color: rgba(170, 64, 70, 0.12); color: @luma_menu_destructive; }
++
++popover.menu accelerator { min-width: 18px; margin-left: 10px; padding: 1px 5px; border-radius: 6px; background-color: @luma_menu_passive; color: @luma_menu_ink; font-size: 11px; font-weight: 600; opacity: 0.68; }
++
++popover.menu .luma-menu-submenu-heading { min-height: 31px; padding: 0 8px; font-size: 13px; font-weight: 700; }
++
++popover.menu .luma-menu-count { min-width: 10px; min-height: 18px; padding: 0 5px; border-radius: 99px; background-color: @luma_menu_passive; font-size: 11px; opacity: 0.68; }
++
++popover.menu .luma-menu-check { opacity: 0.72; }
++
++popover.menu modelbutton > .luma-menu-shortcut { margin: 0 0 0 10px; }
++
++popover.menu modelbutton > .luma-menu-shortcut:dir(rtl) { margin: 0 10px 0 0; }
++
++popover.menu .luma-menu-keycap { min-width: 10px; min-height: 18px; padding: 0 4px; border-radius: 4px; background-color: @luma_menu_passive; box-shadow: inset 0 0 0 1px @luma_menu_border; font-size: 11px; font-weight: 600; opacity: 0.68; }
++
++popover.menu.luma-menu-with-actions > contents { min-width: 292px; padding: 0 0 8px; }
++
++popover.menu.luma-menu-with-actions > contents > scrolledwindow > viewport > stack > box > box > box { margin: 0 8px; }
++
++popover.menu.luma-menu-with-actions > contents > scrolledwindow > viewport > stack > box > box > widget:first-child + box > box:first-child > separator { min-height: 0; margin: 0; background: transparent; }
++
++popover.menu.luma-menu-with-actions.luma-menu-desktop > contents { min-width: 300px; }
++
++popover.menu .luma-menu-actions { margin: 0 0 5px; border-bottom: 1px solid @luma_menu_border; }
++
++popover.menu button.luma-menu-action { min-height: 76px; padding: 0 4px; border: none; border-radius: 0; box-shadow: none; background: transparent; color: @luma_menu_ink; font-family: Figtree; font-size: 13px; font-weight: 600; outline: none; }
++
++popover.menu button.luma-menu-action:first-child { border-top-left-radius: 15px; }
++
++popover.menu button.luma-menu-action:last-child { border-top-right-radius: 15px; }
++
++popover.menu button.luma-menu-action:not(:last-child) { border-right: 1px solid @luma_menu_border; }
++
++popover.menu button.luma-menu-action:hover, popover.menu button.luma-menu-action:focus-visible { background-color: @luma_menu_passive; }
++
++popover.menu button.luma-menu-action:disabled { opacity: 0.38; }
++
++popover.menu button.luma-menu-action image { -gtk-icon-size: 24px; opacity: 0.88; }
+--- a/gtk/theme/Default/Default-dark.css
++++ b/gtk/theme/Default/Default-dark.css
+@@ -2021,3 +2021,88 @@
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces) > .luma-native-work-surface { margin-top: 9px; }
+ 
+ window.luma-native-window:not(.luma-adw-native-window):not(.luma-no-native-surfaces).luma-has-command-row > .luma-native-work-surface { margin-top: 0; }
++
++/* Generated native Luma menu contract from _luma-menu.scss. */
++@define-color luma_menu #252a30;
++@define-color luma_menu_ink #f2f4f6;
++@define-color luma_menu_raised #30363d;
++@define-color luma_menu_border rgba(255, 255, 255, 0.075);
++@define-color luma_menu_shadow #0c1015;
++@define-color luma_menu_passive rgba(255, 255, 255, 0.065);
++@define-color luma_menu_pressed rgba(255, 255, 255, 0.105);
++@define-color luma_menu_destructive #a44449;
++popover.menu > contents { min-width: 276px; padding: 8px; border: none; border-radius: 15px; background-color: @luma_menu; color: @luma_menu_ink; box-shadow: inset 0 0 0 1px @luma_menu_border, 0 4px 12px alpha(@luma_menu_shadow, 0.20), 0 24px 56px -18px alpha(@luma_menu_shadow, 0.68); }
++
++popover.menu > contents > stack > box, popover.menu > contents > scrolledwindow > viewport > stack > box { padding: 0; }
++
++popover.menu > arrow { background-color: @luma_menu; border-color: @luma_menu_border; }
++
++popover.menu.luma-menu-desktop > contents { min-width: 284px; }
++
++popover.menu.luma-menu-dock > contents { min-width: 174px; padding: 6px; }
++
++popover.menu.luma-menu-submenu > contents { min-width: 212px; padding: 6px; }
++
++popover.menu separator { min-height: 1px; margin: 5px 4px; background-color: @luma_menu_border; }
++
++popover.menu label.title { min-height: 14px; padding: 4px 8px 0; margin: 0; text-transform: uppercase; font-size: 11px; font-weight: 700; letter-spacing: 0.11em; opacity: 0.46; }
++
++popover.menu modelbutton, popover.menu button.luma-menu-row { min-height: 32px; padding: 0 8px; border: none; border-radius: 10px; background-color: transparent; color: @luma_menu_ink; font-family: Figtree; font-size: 13px; font-weight: 600; box-shadow: none; outline: none; }
++
++popover.menu modelbutton:hover, popover.menu modelbutton:selected, popover.menu modelbutton:focus, popover.menu modelbutton:focus-visible, popover.menu button.luma-menu-row:hover, popover.menu button.luma-menu-row:selected, popover.menu button.luma-menu-row:focus, popover.menu button.luma-menu-row:focus-visible { background-color: @luma_menu_raised; outline: 0; }
++
++popover.menu modelbutton:active, popover.menu button.luma-menu-row:active { background-color: @luma_menu_pressed; }
++
++popover.menu modelbutton:disabled, popover.menu button.luma-menu-row:disabled { opacity: 0.38; background-color: transparent; }
++
++popover.menu modelbutton image, popover.menu button.luma-menu-row image { -gtk-icon-size: 16px; opacity: 0.88; }
++
++popover.menu modelbutton arrow, popover.menu button.luma-menu-row arrow { opacity: 0.58; }
++
++popover.menu modelbutton check, popover.menu modelbutton radio, popover.menu button.luma-menu-row check, popover.menu button.luma-menu-row radio { min-width: 14px; min-height: 14px; padding: 0; border: none; background: transparent; box-shadow: none; color: inherit; -gtk-icon-size: 14px; opacity: 0.72; }
++
++popover.menu button.luma-menu-row.two-line { min-height: 36px; padding: 5px 8px; font-weight: 650; }
++
++popover.menu .luma-menu-description { font-size: 11px; font-weight: 500; opacity: 0.5; }
++
++popover.menu button.luma-menu-row.luma-menu-destructive { color: @luma_menu_ink; }
++
++popover.menu button.luma-menu-row.luma-menu-destructive:hover, popover.menu button.luma-menu-row.luma-menu-destructive:focus, popover.menu button.luma-menu-row.luma-menu-destructive:focus-visible { background-color: rgba(170, 64, 70, 0.12); color: @luma_menu_destructive; }
++
++popover.menu accelerator { min-width: 18px; margin-left: 10px; padding: 1px 5px; border-radius: 6px; background-color: @luma_menu_passive; color: @luma_menu_ink; font-size: 11px; font-weight: 600; opacity: 0.68; }
++
++popover.menu .luma-menu-submenu-heading { min-height: 31px; padding: 0 8px; font-size: 13px; font-weight: 700; }
++
++popover.menu .luma-menu-count { min-width: 10px; min-height: 18px; padding: 0 5px; border-radius: 99px; background-color: @luma_menu_passive; font-size: 11px; opacity: 0.68; }
++
++popover.menu .luma-menu-check { opacity: 0.72; }
++
++popover.menu modelbutton > .luma-menu-shortcut { margin: 0 0 0 10px; }
++
++popover.menu modelbutton > .luma-menu-shortcut:dir(rtl) { margin: 0 10px 0 0; }
++
++popover.menu .luma-menu-keycap { min-width: 10px; min-height: 18px; padding: 0 4px; border-radius: 4px; background-color: @luma_menu_passive; box-shadow: inset 0 0 0 1px @luma_menu_border; font-size: 11px; font-weight: 600; opacity: 0.68; }
++
++popover.menu.luma-menu-with-actions > contents { min-width: 292px; padding: 0 0 8px; }
++
++popover.menu.luma-menu-with-actions > contents > scrolledwindow > viewport > stack > box > box > box { margin: 0 8px; }
++
++popover.menu.luma-menu-with-actions > contents > scrolledwindow > viewport > stack > box > box > widget:first-child + box > box:first-child > separator { min-height: 0; margin: 0; background: transparent; }
++
++popover.menu.luma-menu-with-actions.luma-menu-desktop > contents { min-width: 300px; }
++
++popover.menu .luma-menu-actions { margin: 0 0 5px; border-bottom: 1px solid @luma_menu_border; }
++
++popover.menu button.luma-menu-action { min-height: 76px; padding: 0 4px; border: none; border-radius: 0; box-shadow: none; background: transparent; color: @luma_menu_ink; font-family: Figtree; font-size: 13px; font-weight: 600; outline: none; }
++
++popover.menu button.luma-menu-action:first-child { border-top-left-radius: 15px; }
++
++popover.menu button.luma-menu-action:last-child { border-top-right-radius: 15px; }
++
++popover.menu button.luma-menu-action:not(:last-child) { border-right: 1px solid @luma_menu_border; }
++
++popover.menu button.luma-menu-action:hover, popover.menu button.luma-menu-action:focus-visible { background-color: @luma_menu_passive; }
++
++popover.menu button.luma-menu-action:disabled { opacity: 0.38; }
++
++popover.menu button.luma-menu-action image { -gtk-icon-size: 24px; opacity: 0.88; }

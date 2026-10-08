@@ -1,0 +1,95 @@
+From 5b98b10a2884bf68c701023a157e98f06095d2a6 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Fri, 11 Sep 2026 17:03:06 -0500
+Subject: [PATCH] [LUMA] Grid: hide the live windows, keep the dock, cap at two
+ rows
+
+Grid sits above the window group but below the panel and dock, so both remain
+available while it is open, and it hides the live window actors instead of
+merely stacking above them. Every one of those windows is already represented
+by a card, and leaving them painted behind the grid made it unreadable. The
+hidden actors are restored on destroy, skipping any window unmanaged meanwhile.
+
+gridLayout stops searching row counts up to the window count and takes at most
+two. Past two rows the previews shrink faster than they stay recognisable, so
+further windows widen the rows and use the horizontal overflow scrolling the
+layout and popup already implement.
+---
+ js/ui/gridLayout.js | 11 ++++++++---
+ js/ui/lumaGrid.js   | 20 +++++++++++++++-----
+ 2 files changed, 23 insertions(+), 8 deletions(-)
+
+diff --git a/js/ui/gridLayout.js b/js/ui/gridLayout.js
+index fd760d6..ed8650c 100644
+--- a/js/ui/gridLayout.js
++++ b/js/ui/gridLayout.js
+@@ -2,6 +2,10 @@
+ // Logical-pixel geometry for Luma Grid. Input order is MRU and never changes.
+ export const GRID_GAP = 28;
+ export const GRID_LABEL = 28; // 20px icon/text plus 8px to the preview.
++// Grid never grows past two rows. Beyond that previews shrink faster than
++// they stay recognisable, so extra windows extend the rows and scroll
++// horizontally rather than stacking into a third row.
++export const GRID_MAX_ROWS = 2;
+ 
+ // Exact contiguous minimax partition at a given preview height. Backtracking
+ // prefers fuller earlier rows when widths tie. No window is reordered.
+@@ -43,7 +47,8 @@ export function gridLayout(windows, width, height) {
+     const median = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+     const cap = Math.min(height * 0.6, median * 2 / 3);
+     let best = null;
+-    for (let r = 1; r <= windows.length; r++) {
++    const maxRows = Math.min(GRID_MAX_ROWS, windows.length);
++    for (let r = 1; r <= maxRows; r++) {
+         let low = 0;
+         let high = Math.max(0, Math.min(cap, (height - r * GRID_LABEL - (r - 1) * GRID_GAP) / r));
+         if (best && high <= best.h + 1e-7) continue;
+@@ -58,8 +63,8 @@ export function gridLayout(windows, width, height) {
+     // floor. An individually over-wide preview is reported, never cropped.
+     const h = Math.max(120, best.h);
+     if (best.h < 120) {
+-        best.r = windows.length;
+-        for (let r = 1; r <= windows.length; r++) {
++        best.r = maxRows;
++        for (let r = 1; r <= maxRows; r++) {
+             if (partition(aspects, r, h).width <= width) { best.r = r; break; }
+         }
+     }
+diff --git a/js/ui/lumaGrid.js b/js/ui/lumaGrid.js
+index e506b53..88846a7 100644
+--- a/js/ui/lumaGrid.js
++++ b/js/ui/lumaGrid.js
+@@ -233,6 +233,14 @@ class GridPopup extends St.Widget {
+                 this.destroy();
+         }, this);
+         this.connect('destroy', () => {
++            // Put back exactly the windows this popup hid. A window unmanaged
++            // while Grid was open must not be resurrected, so each actor is
++            // checked for its window before being shown again.
++            this._hiddenActors?.forEach(actor => {
++                if (actor.get_meta_window())
++                    actor.show();
++            });
++            this._hiddenActors = null;
+             if (this._grab)
+                 Main.popModal(this._grab);
+             this._grab = null;
+@@ -243,11 +251,13 @@ class GridPopup extends St.Widget {
+ 
+     open() {
+         Main.uiGroup.add_child(this);
+-        // Above every other shell surface, not merely above the windows. Raised
+-        // only above global.window_group the panel and dock still paint over the
+-        // grid and compete with it; the wallpaper clone and the cards are meant
+-        // to be the only things on screen.
+-        Main.uiGroup.set_child_above_sibling(this, null);
++        // Above the windows but below the panel and dock: both stay available
++        // while Grid is open. The live windows are hidden instead of stacked
++        // under, because every one of them is already represented by a card and
++        // leaving them painted behind the grid makes it unreadable.
++        Main.uiGroup.set_child_above_sibling(this, global.window_group);
++        this._hiddenActors = global.get_window_actors().filter(a => a.visible);
++        this._hiddenActors.forEach(actor => actor.hide());
+         this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
+         this.grab_key_focus();
+         this._syncSelection();

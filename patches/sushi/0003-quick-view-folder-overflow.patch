@@ -1,0 +1,40 @@
+--- a/src/viewers/listing.js
++++ b/src/viewers/listing.js
+@@ -36,6 +36,11 @@
+         const scroll = new Gtk.ScrolledWindow({hexpand: true, vexpand: true});
+         this._list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE});
+         scroll.add(this._list); this.add(scroll);
++        if (this._folder) {
++            scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER);
++            scroll.connect('size-allocate', (_scroll, allocation) => this._fitFolder(allocation.height));
++        }
++        this._scroll = scroll;
+         this.connect('destroy', () => {
+             this._cancel.cancel();
+             if (this._timeout) GLib.source_remove(this._timeout);
+@@ -92,7 +97,25 @@
+             value.get_style_context().add_class('dim-label'); row.add(value);
+             this._list.add(row);
+         }
++        if (this._folder) {
++            this._more = new Gtk.Label({xalign: 0, margin_start: 8, height_request: 30});
++            this._more.get_style_context().add_class('dim-label');
++            this._list.add(this._more);
++        }
+         this._list.show_all();
++        if (this._folder) this._fitFolder(this._scroll.get_allocated_height());
++    }
++    _fitFolder(height) {
++        if (!this._more) return;
++        const rows = this._list.get_children();
++        const more = this._more.get_parent();
++        const entries = rows.filter(row => row !== more);
++        const rowHeight = Math.max(30, entries[0]?.get_allocated_height() ?? 30);
++        const capacity = Math.max(0, Math.floor(height / rowHeight));
++        const shown = entries.length <= capacity ? entries.length : Math.max(0, capacity - 1);
++        entries.forEach((row, index) => row.set_visible(index < shown));
++        this._more.set_text(`and ${entries.length - shown} more`);
++        more.set_visible(shown < entries.length);
+     }
+     get ready() { return !!this._ready; }
+     get fullscreen() { return !!this._fullscreen; }

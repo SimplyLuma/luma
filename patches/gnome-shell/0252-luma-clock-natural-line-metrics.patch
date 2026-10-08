@@ -1,0 +1,32 @@
+From: Project Luma
+Subject: [PATCH] Shell: allocate the status clock from shaped font metrics
+
+The Studio clock uses larger digits than the earlier compact clock. Do not
+force Pango's line box to font-size plus three pixels: that can be shorter
+than the font's actual ascent/descent and clips glyphs with different font
+metrics. Preserve the native paint attributes and let Pango measure the
+line; the existing BaselineClockRow continues to align the actual baselines.
+
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1647,10 +1647,16 @@
+     _setStatusLineHeight(label) {
+-        const attrs = label.clutter_text.get_attributes()?.copy() ?? new Pango.AttrList();
+-        attrs.change(Pango.attr_line_height_new_absolute(
+-            (this._statusFontSize(label) + STATUS_CLOCK_LEADING) *
+-            St.ThemeContext.get_for_stage(global.stage).scale_factor * Pango.SCALE));
++        // A font size is not its shaped line height. Keep native font/ink
++        // attributes, but remove the old compact-clock override if present.
++        // Pango's natural ascent/descent owns the label's preferred height.
++        const attrs = label.clutter_text.get_attributes()?.copy();
++        if (!attrs)
++            return;
++        const lineHeight = attrs.get_iterator().get(Pango.AttrType.ABSOLUTE_LINE_HEIGHT);
++        if (!lineHeight)
++            return;
++        attrs.filter(attribute => attribute.equal(lineHeight));
+         label.clutter_text.set_attributes(attrs);
+     }
+ 
+     _statusIndicatorsChanged() {
+         if (this._statusActive) this._styleStatusCluster();

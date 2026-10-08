@@ -1,0 +1,71 @@
+# libcamera Simple-pipeline tuning for the Fairphone 6 OV13B10.
+#
+# White points and CCMs are numeric calibration data decoded from the stock
+# com.qti.tuned.tsp_ov13b10_fp6.bin profile (sha256 dcd0a321...1dcc69d).
+# They are a strong bring-up baseline, not a substitute for Luma's eventual
+# chart-based calibration. Black level remains adaptive. Autofocus uses a
+# narrow sensor-specific range and sustained-loss local rescans.
+%YAML 1.1
+---
+version: 1
+algorithms:
+  - BlackLevel:
+  - Awb:
+      whitePoints:
+        - { ct: 1900, gains: [ 0.664550, 3.271303 ] }
+        - { ct: 2300, gains: [ 0.858936, 2.518340 ] }
+        - { ct: 2856, gains: [ 1.075148, 2.174275 ] }
+        - { ct: 5000, gains: [ 1.826207, 1.566258 ] }
+        - { ct: 6504, gains: [ 1.999186, 1.425179 ] }
+        - { ct: 7504, gains: [ 1.965229, 1.188095 ] }
+        - { ct: 9500, gains: [ 2.726966, 0.969659 ] }
+      # Wide was visibly green/oversaturated and changed casts while panning.
+      # Stay closer to the stock-derived locus and use smaller AWB updates.
+      clampMargin: 0.20
+      damping: 0.90
+  - Ccm:
+      ccms:
+        - ct: 2800
+          ccm: [ 1.770495, -0.924616,  0.154121,
+                -0.176662,  1.148519,  0.028143,
+                -0.177525, -1.063776,  2.241301 ]
+        - ct: 4000
+          ccm: [ 1.724484, -0.711123, -0.013361,
+                -0.207678,  1.545435, -0.337757,
+                -0.225197, -1.232416,  2.457613 ]
+        - ct: 5000
+          ccm: [ 1.854565, -0.761085, -0.093480,
+                -0.176308,  1.471326, -0.295018,
+                -0.142368, -0.883477,  2.025845 ]
+        - ct: 6500
+          ccm: [ 1.862636, -0.791131, -0.071505,
+                -0.159277,  1.518730, -0.359453,
+                -0.108439, -0.892541,  2.000980 ]
+  - Adjust:
+  - Agc:
+      maxBrightFraction: 0.04
+      # Smooth large scene transitions without sampling stale controls more
+      # frequently than the sensor pipeline can safely apply them.
+      maxExposureStep: 0.12
+  - Af:
+      continuous: true
+      # AW86017: observed useful focus lies in the near half of lens travel.
+      sweepStart: 8.0
+      sweepStop: 62.0
+      # Two-pass full scan: broad acquisition, then one-dioptre refinement.
+      # At 30 fps this settles in roughly 2.3 s instead of an 11 s,
+      # 130-frame three-pass hunt across the actuator range.
+      coarseStep: 4.5
+      stepDivisor: 4.5
+      fineStepMin: 0.5
+      settleFrames: 2
+      localRadius: 4.5
+      # Physical full sweeps repeatedly converged near 29%. Start within a
+      # small safe neighborhood instead of visibly traversing both end stops.
+      startupPosition: 29.0
+      localSettleFrames: 1
+      # Low-light noise and AE/AWB convergence must not look like focus loss.
+      focusLossThreshold: 0.55
+      focusLossFrames: 24
+      refocusCooldownFrames: 120
+...

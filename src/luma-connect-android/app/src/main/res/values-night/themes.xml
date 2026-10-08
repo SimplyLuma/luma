@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LumaConnect" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/luma_window</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:colorAccent">@color/luma_accent</item>
+    </style>
+    <color name="luma_window">#21252B</color>
+    <color name="luma_accent">#5E91D2</color>
+</resources>

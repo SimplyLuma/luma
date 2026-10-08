@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.projectluma.Displays
+Exec=/usr/bin/org.projectluma.Displays --gapplication-service

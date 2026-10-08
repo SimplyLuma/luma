@@ -1,0 +1,23 @@
+LIBSELINUX_R {
+  global:
+    freecon;
+    getcon;
+    getpidcon;
+    selabel_lookup;
+    selinux_android_service_context_handle;
+    selinux_check_access;
+    selinux_status_open;
+    selinux_status_updated;
+  local: *;
+};
+
+LIBBINDER {
+  global:
+    _ZN7android7BBinder16setRequestingSidEb;
+    _ZNK7android14IPCThreadState13getCallingSidEv;
+};
+
+LIBC {
+  global:
+    ioctl;
+};

@@ -1,0 +1,6 @@
+# Luma defaults for Tiling Shell. Tiling lives in Quick Options, so the
+# extension's own panel button stays off; tiles keep an outer gap as wide as
+# the gap between them on every edge, including edges the Dash leaves empty.
+[org.gnome.shell.extensions.tilingshell]
+show-indicator=false
+outer-gaps=16

@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.projectluma.Energy1
+Exec=/usr/libexec/luma-energy-service
+SystemdService=luma-energy.service

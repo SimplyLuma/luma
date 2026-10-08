@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Read-only Android image analysis environment. It creates derived files only
+# in ignored build storage and has no USB/device access.
+FROM registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
+
+RUN dnf install -y \
+      android-tools-1:37.0.0-3.fc44 \
+      e2fsprogs-1.47.3-4.fc44 \
+      file-5.46-10.fc44 \
+      xz-1:5.8.2-2.fc44 \
+    && dnf clean all
+
+WORKDIR /work

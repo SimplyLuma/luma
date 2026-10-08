@@ -1,0 +1,345 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Sat, 26 Sep 2026 00:00:00 +0000
+Subject: [PATCH] luma: the live tiles are one family
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Studio Desktop builds every live tile from five parts: a 40px picture, the
+copy (13/650 over 11.5/500, up to 170px), a hero, round 32px wells and one
+34px key a step brighter; red only ends a call. An upcoming event leads with
+its calendar's icon and reads "7:30 – 8:15 · 8 min" with a Join key, a
+recording is a red dot, its running time and a waveform with pause and
+stop, a call counts up in green, and music names only the artist.
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 773d6cf..6f5806a 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3044,3 +3044,59 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+   background-color: rgba(255,255,255,0.16); }
+ .luma-surface-smoke .luma-media-control.luma-media-primary {
+   background-color: rgba(255,255,255,0.20); }
++
++/* Studio Desktop live tiles: one family of five parts. A 40px picture
++ * (radius 11), copy (13/650 over 11.5/500, up to 170px), a hero (21/600),
++ * round 32px wells with a 15px glyph and one 34px key with a 14px glyph, a
++ * step brighter. Red only ends a call. A tile sits the island padding in
++ * from the left and 10px in from the right. */
++.luma-shelf-live-island .luma-shelf-material,
++.luma-shelf-media-island .luma-shelf-material { padding-right: 10px; }
++.luma-shelf-live-island .luma-live-extension-content { spacing: 10px; }
++.luma-shelf-live-island .luma-live-extension-text {
++  min-width: 0; max-width: 170px; spacing: 1px; padding-right: 10px; }
++.luma-shelf-live-island .luma-live-extension-title {
++  font-size: 13px; font-weight: 650; }
++.luma-shelf-live-island .luma-live-extension-subtitle {
++  font-size: 11.5px; font-weight: 500; font-feature-settings: "tnum"; }
++.luma-shelf-live-island .luma-live-extension-call .luma-live-extension-text { max-width: 104px; }
++.luma-shelf-live-island .luma-live-extension-call .luma-live-extension-subtitle { color: #65b58c; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-call .luma-live-extension-subtitle { color: #3b8967; }
++.luma-shelf-live-island .luma-live-extension-muted .luma-live-extension-subtitle,
++.luma-shelf-live-island .luma-live-extension-deafened .luma-live-extension-subtitle { color: #e0716b; }
++.luma-shelf-live-island .luma-live-extension-actions { spacing: 2px; }
++.luma-shelf-live-island .luma-live-extension-action {
++  min-width: 32px; min-height: 32px; border-radius: 16px;
++  background-color: rgba(255,255,255,0.10); color: rgba(255,255,255,0.92); }
++.luma-shelf-live-island .luma-live-extension-action:hover { background-color: rgba(255,255,255,0.16); }
++.luma-shelf-live-island .luma-live-extension-action .luma-live-extension-action-icon { icon-size: 15px; }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-key {
++  min-width: 34px; min-height: 34px; border-radius: 17px;
++  background-color: rgba(255,255,255,0.20); }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-key:hover { background-color: rgba(255,255,255,0.27); }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-key .luma-live-extension-action-icon { icon-size: 14px; }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end {
++  background-color: #d24c49; color: #ffffff; }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-end:hover { background-color: #db5a56; }
++.luma-shelf-live-island .luma-live-extension-action.luma-live-extension-action-stop { color: #e23439; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action {
++  background-color: rgba(20,22,26,0.06); color: #1d1f23; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action:hover { background-color: rgba(20,22,26,0.10); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-key { background-color: rgba(20,22,26,0.11); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-key:hover { background-color: rgba(20,22,26,0.16); }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-end { background-color: #d24c49; color: #ffffff; }
++.luma-shelf-live-island .luma-shelf-material.luma-surface-light .luma-live-extension-action.luma-live-extension-action-stop { color: #e23439; }
++/* A recording: the red dot, its time as the hero, the waveform. */
++.luma-shelf-live-island .luma-live-extension-recording .luma-live-extension-content { padding-left: 4px; }
++.luma-live-extension-recdot {
++  width: 9px; height: 9px; border-radius: 5px; background-color: #f14445;
++  box-shadow: 0 0 0 4px rgba(241,68,69,0.2); }
++.luma-live-extension-paused .luma-live-extension-recdot {
++  background-color: rgba(231,233,232,0.42); box-shadow: none; }
++.luma-live-extension-hero {
++  font-size: 21px; font-weight: 600; letter-spacing: -0.3px;
++  font-feature-settings: "tnum"; min-width: 52px; }
++.luma-live-extension-wave { spacing: 2px; height: 26px; }
++.luma-live-extension-wave-bar { width: 3px; border-radius: 2px; background-color: #ff645f; }
++.luma-live-extension-paused .luma-live-extension-wave-bar { background-color: rgba(231,233,232,0.42); }
++.luma-shelf-live-island .luma-live-extension-recording .luma-live-extension-actions { spacing: 4px; }
+diff --git a/js/ui/liveActivity.js b/js/ui/liveActivity.js
+index 68e9173..777c07c 100644
+--- a/js/ui/liveActivity.js
++++ b/js/ui/liveActivity.js
+@@ -16,6 +16,7 @@
+ export const Style = Object.freeze({
+     CALL: 'call',
+     EVENT: 'event',
++    RECORDING: 'recording',
+     GENERIC: 'generic',
+ });
+ 
+@@ -69,6 +70,11 @@ const ACTION_ICONS = new Map([
+     ['speaker', 'audio-volume-high-symbolic'],
+     ['share-screen', 'screen-shared-symbolic'],
+     ['screen-share', 'screen-shared-symbolic'],
++    // An upcoming event's one key, and a recording's well and key.
++    ['join', 'camera-web-symbolic'],
++    ['pause', 'luma-pause-symbolic'],
++    ['resume', 'luma-mic-symbolic'],
++    ['stop', 'media-playback-stop-symbolic'],
+ ]);
+ 
+ const MICROPHONE_ACTIONS = new Set(['mute', 'mute-microphone', 'microphone-mute', 'unmute', 'microphone', 'mic']);
+@@ -102,6 +108,8 @@ export function styleOf(item) {
+     const category = categoryOf(item);
+     if (category === 'call')
+         return Style.CALL;
++    if (category === 'recording')
++        return Style.RECORDING;
+     if (category === 'event' && parseInstant(item.extension.starts_at) !== null)
+         return Style.EVENT;
+     return Style.GENERIC;
+@@ -240,9 +248,36 @@ export function shownActions(item, actions) {
+         .sort((a, b) => order[actionRole(a)] - order[actionRole(b)]);
+ }
+ 
+-// The kit's call subtitle: "Call · 00:42".
++// A call's line: the running time alone ("0:42"), or what is wrong with
++// the call first ("Muted · 0:42").
+ export function callSubtitle(label, elapsed) {
+-    return `${label} · ${elapsed}`;
++    return label ? `${label} · ${elapsed}` : elapsed;
++}
++
++// A tile's running time as Studio writes it: "0:14", "12:05", "1:02:05".
++// Null before the start, so no clock is invented.
++export function clockText(startMs, nowMs) {
++    if (startMs === null || !Number.isFinite(startMs) || nowMs < startMs)
++        return null;
++    const total = Math.floor((nowMs - startMs) / 1000);
++    const hours = Math.floor(total / 3600);
++    const minutes = Math.floor(total / 60) % 60;
++    const seconds = String(total % 60).padStart(2, '0');
++    return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}`
++        : `${minutes}:${seconds}`;
++}
++
++// An upcoming event's line: "7:30 – 8:15 · 8 min", then "now" from its start.
++export function eventLine(startText, endText, startMs, nowMs) {
++    const minutes = Math.max(0, Math.round((startMs - nowMs) / 60_000));
++    const when = endText ? `${startText} – ${endText}` : startText;
++    return `${when} · ${minutes ? `${minutes} min` : 'now'}`;
++}
++
++// The tile's one main control is its last: Join, Stop, End call. Every
++// other control is a well.
++export function isKey(actions, action) {
++    return actions.length > 0 && actions[actions.length - 1] === action;
+ }
+ 
+ // Up to two initials for a caller with no application icon to show: the first
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index 511647c..9ce6eab 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -168,6 +168,30 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+         this._leading.add_child(this._leadingIcon);
+         this._leading.add_child(this._leadingInitials);
+         this._leading.add_child(this._presence);
++        // A recording (Studio Desktop) is a red dot, its running time as the
++        // hero and a fourteen-bar waveform; it has no picture and no copy.
++        this._recDot = new St.Widget({
++            style_class: 'luma-live-extension-recdot',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._hero = new St.Label({
++            style_class: 'luma-live-extension-hero',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._wave = new St.BoxLayout({
++            style_class: 'luma-live-extension-wave',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        for (const level of [.5, .8, .4, 1, .7, .55, .9, .45, .75, .6, 1, .5, .7, .4]) {
++            this._wave.add_child(new St.Widget({
++                style_class: 'luma-live-extension-wave-bar',
++                style: `height: ${Math.round(26 * level)}px;`,
++                y_align: Clutter.ActorAlign.CENTER,
++            }));
++        }
+         this._leadingTint = null;
+         this._style = null;
+         this._tickId = 0;
+@@ -219,6 +243,9 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+         });
+         content.add_child(this._badge);
+         content.add_child(this._leading);
++        content.add_child(this._recDot);
++        content.add_child(this._hero);
++        content.add_child(this._wave);
+         content.add_child(text);
+         content.add_child(this._short);
+         content.add_child(this._time);
+@@ -365,22 +392,36 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+         this._title.text = extension.title;
+         this._subtitle.text = extension.subtitle ?? '';
+         this._subtitle.visible = Boolean(extension.subtitle);
+-        // The calendar dress -- the date tile and a clock time -- belongs to
+-        // an event and nothing else. A start on anything else is not a date.
+-        this._setSchedule(style === LiveActivity.Style.EVENT ? extension.starts_at : null);
+-        this._leading.visible = style !== LiveActivity.Style.EVENT;
++        // Studio Desktop's tiles: an event leads with its calendar's own
++        // icon and reads "7:30 – 8:15 · 8 min"; a recording is a dot, its
++        // time and a waveform. No date badge and no clock time on the side.
++        this._setSchedule(null);
++        const recording = style === LiveActivity.Style.RECORDING;
++        this._leading.visible = !recording;
++        this._text.visible = !recording;
++        this._recDot.visible = this._hero.visible = this._wave.visible = recording;
+         this._presence.visible = false;
+         if (style === LiveActivity.Style.CALL) {
+             this._presentCall(item);
+         } else {
+-            this._stopTicking();
+-            if (style === LiveActivity.Style.GENERIC) {
++            this._callStart = LiveActivity.parseInstant(extension.starts_at);
++            if (style !== LiveActivity.Style.RECORDING) {
+                 const app = this._sourceApp(item);
+                 if (app)
+                     this._setLeading({gicon: app.get_icon()});
+                 else
+                     this._setLeading({iconName: LiveActivity.categoryIcon(item)});
+             }
++            const paused = recording && this._validActions(item)
++                .some(action => LiveActivity.actionVerb(action.id) === 'resume');
++            if (paused)
++                this.add_style_class_name('luma-live-extension-paused');
++            else
++                this.remove_style_class_name('luma-live-extension-paused');
++            if (this._tickText())
++                this._startTicking();
++            else
++                this._stopTicking();
+         }
+         this.accessible_name = this._subtitle.visible
+             ? `${extension.title}, ${this._subtitle.text}` : extension.title;
+@@ -423,9 +464,9 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+                 this.remove_style_class_name(`luma-live-extension-${name}`);
+         }
+         this._callLabel = state === 'deafened' ? _('Deafened')
+-            : state === 'muted' ? _('Muted') : _('Call');
++            : state === 'muted' ? _('Muted') : null;
+         this._callStart = LiveActivity.parseInstant(extension.starts_at);
+-        const elapsed = LiveActivity.elapsedText(this._callStart, Date.now());
++        const elapsed = LiveActivity.clockText(this._callStart, Date.now());
+         if (elapsed !== null) {
+             this._subtitle.text = LiveActivity.callSubtitle(this._callLabel, elapsed);
+             this._subtitle.visible = true;
+@@ -468,12 +509,10 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+         const schedule = () => {
+             const delay = 1000 - ((Date.now() - (this._callStart ?? 0)) % 1000) + 20;
+             this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+-                const elapsed = LiveActivity.elapsedText(this._callStart, Date.now());
+-                if (elapsed === null || this._style !== LiveActivity.Style.CALL || !this.visible) {
++                if (!this.visible || !this._tickText()) {
+                     this._tickId = 0;
+                     return GLib.SOURCE_REMOVE;
+                 }
+-                this._subtitle.text = LiveActivity.callSubtitle(this._callLabel, elapsed);
+                 schedule();
+                 return GLib.SOURCE_REMOVE;
+             });
+@@ -482,6 +521,43 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+         schedule();
+     }
+ 
++    // Write the tile's running text for now; false when nothing runs. A
++    // call counts up in its line, a recording in its hero, and an event
++    // counts down to its start.
++    _tickText() {
++        const now = Date.now();
++        const extension = this._current?.extension;
++        if (this._style === LiveActivity.Style.CALL) {
++            const elapsed = LiveActivity.clockText(this._callStart, now);
++            if (elapsed === null)
++                return false;
++            this._subtitle.text = LiveActivity.callSubtitle(this._callLabel, elapsed);
++            return true;
++        }
++        if (this._style === LiveActivity.Style.RECORDING) {
++            const elapsed = LiveActivity.clockText(this._callStart, now) ?? '0:00';
++            this._hero.text = elapsed;
++            this.accessible_name = `${extension?.title ?? _('Recording')}, ${elapsed}`;
++            return !this.has_style_class_name('luma-live-extension-paused') && this._callStart !== null;
++        }
++        if (this._style === LiveActivity.Style.EVENT && extension) {
++            const start = LiveActivity.parseInstant(extension.starts_at);
++            const end = LiveActivity.parseInstant(extension.expires_at);
++            const format = ms => GLib.DateTime.new_from_unix_local(Math.floor(ms / 1000))
++                ?.format(this._twelveHour() ? '%-l:%M' : '%H:%M') ?? '';
++            this._subtitle.text = LiveActivity.eventLine(format(start),
++                end !== null ? format(end) : '', start, now);
++            this._subtitle.visible = true;
++            return true;
++        }
++        return false;
++    }
++
++    _twelveHour() {
++        this._clockSettings ??= new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
++        return this._clockSettings.get_string('clock-format') === '12h';
++    }
++
+     _stopTicking() {
+         if (this._tickId)
+             GLib.source_remove(this._tickId);
+@@ -564,8 +640,16 @@ export const LiveExtensionsIndicator = GObject.registerClass({
+         this._actionsKey = key;
+         this._hideTooltip();
+         this._actions.destroy_all_children();
+-        for (const action of actions)
+-            this._actions.add_child(this._createActionButton(action));
++        for (const action of actions) {
++            const button = this._createActionButton(action);
++            // The tile's one main control is a step brighter (the key);
++            // the rest are wells.
++            if (LiveActivity.isKey(actions, action))
++                button.add_style_class_name('luma-live-extension-key');
++            if (LiveActivity.actionVerb(action.id) === 'stop')
++                button.add_style_class_name('luma-live-extension-action-stop');
++            this._actions.add_child(button);
++        }
+         this._actions.visible = actions.length > 0;
+     }
+ 
+diff --git a/js/ui/shelfMedia.js b/js/ui/shelfMedia.js
+index 139a687..a5772b5 100644
+--- a/js/ui/shelfMedia.js
++++ b/js/ui/shelfMedia.js
+@@ -145,9 +145,10 @@ export const ShelfMedia = GObject.registerClass({
+         }
+         const appName = player.source.title || _('Media player');
+         const title = player.shelfTitle || appName;
+-        // "Artist · Source", or the source alone when the player names no one.
++        // The artist (Studio Desktop's music tile), or the source when the
++        // player names no one.
+         const artists = player.shelfArtists.join(', ');
+-        const artist = artists ? `${artists} · ${appName}` : appName;
++        const artist = artists || appName;
+         const changed = this._title.text !== title || this._artist.text !== artist;
+         this._oldCopy?.destroy();
+         this._oldCopy = null;

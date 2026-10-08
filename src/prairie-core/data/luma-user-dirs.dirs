@@ -1,0 +1,2 @@
+# Luma's shared media directory. xdg-user-dirs-update supplies other defaults.
+XDG_PICTURES_DIR="$HOME/Photos"

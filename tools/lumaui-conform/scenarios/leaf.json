@@ -1,0 +1,52 @@
+{
+  "app": "leaf",
+  "title": "Leaf",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=leaf",
+    "window": "#w-leaf",
+    "exclude": [".grip"]
+  },
+  "gtk": {
+    "pythonpath": ["src/luma-leaf"],
+    "module": "luma_leaf",
+    "fixtures": ["tests/fixtures/leaf-v70.json", "tests/fixtures/leaf-covers"],
+    "env": {
+      "LUMA_LEAF_FIXTURE": "{run}/fixtures/leaf-v70.json"
+    }
+  },
+  "states": [
+    {"name": "library", "about": "Reading now, with the hero and all books", "spec": [], "gtk": []},
+    {"name": "want", "about": "Want to read shelf", "spec": [{"click": "[data-lfshelf=\"want\"]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "want"}}]},
+    {"name": "title-sort", "about": "All books sorted by title", "spec": [{"click": "[data-lfshelf=\"all\"]"}, {"click": "[data-lfsort=\"title\"]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "title-sort"}}]},
+    {"name": "highlights", "about": "Highlights and notes empty state", "spec": [{"click": "[data-lfshelf=\"hl\"]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "highlights"}}]},
+    {"name": "reader", "about": "A Tale of Two Cities open at the saved chapter", "spec": [{"click": "[data-lfopen=\"totc\"]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "reader"}}]},
+    {"name": "contents", "about": "Reader contents drawer", "spec": [{"click": "[data-lfopen=\"totc\"]"}, {"click": "[data-lfdraw=\"toc\"]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "contents"}}]},
+    {"name": "type-page", "about": "Reader type and page controls", "spec": [{"click": "[data-lfopen=\"totc\"]"}, {"click": "[data-lfaa]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "type-page"}}]},
+    {"name": "listening", "about": "Read aloud controls", "spec": [{"click": "[data-lflisten=\"totc\"]"}], "gtk": [{"env": {"LUMA_LEAF_STATE": "listening"}}]},
+    {"name": "selection", "about": "Selection bubble above the visible sentence", "spec": [{"click": "[data-lfopen=\"totc\"]"}, {"eval": "(() => { const s = document.querySelector('#lf-text [data-here]'); const r = document.createRange(); r.selectNodeContents(s); const x = window.getSelection(); x.removeAllRanges(); x.addRange(r); document.dispatchEvent(new Event('selectionchange')); })()", "wait": 500}], "gtk": [{"env": {"LUMA_LEAF_STATE": "selection"}}]}
+  ],
+  "phone_states": ["library", "want", "reader", "contents", "type-page", "selection"],
+  "groups": [
+    {"name": "window controls", "spec": "#w-leaf > .wctl", "info_only": true},
+    {"name": "title row", "spec": "#lf-top"},
+    {"name": "sidebar foot", "spec": "#lf-side .shead.lfoot"},
+    {"name": "sidebar", "spec": "#lf-side"},
+    {"name": "hero", "spec": "#lf-lib .lfhero"},
+    {"name": "book shelf", "spec": "#lf-lib .lfshelf"},
+    {"name": "contents drawer", "spec": "#lf-draw"},
+    {"name": "type and page", "spec": "#lf-pop"},
+    {"name": "selection bubble", "spec": "#lf-sel"},
+    {"name": "reader action center", "spec": "#lf-bar"},
+    {"name": "reading page", "spec": "#lf-read"},
+    {"name": "main", "spec": "#lf-main"}
+  ],
+  "pairs": [
+    {"spec": "#lf-side", "gtk": "lf-sidebar", "name": "sidebar"},
+    {"spec": "#lf-main", "gtk": "lf-island", "name": "main island"},
+    {"spec": "#lf-lib .lfhero", "gtk": "lf-hero", "name": "book hero"},
+    {"spec": "#lf-read", "gtk": "lf-reader", "name": "reading page"},
+    {"spec": "#lf-draw", "gtk": "lf-drawer", "name": "contents drawer"},
+    {"spec": "#lf-bar", "gtk": "lf-action-center", "name": "reader action center"},
+    {"spec": "#lf-sel", "gtk": "lf-bubble", "name": "selection bubble"}
+  ]
+}

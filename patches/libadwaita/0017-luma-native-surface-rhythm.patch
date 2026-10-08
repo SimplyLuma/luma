@@ -1,0 +1,398 @@
+From c53da58d6d637228983a8493fd13fdd6fe6c3c6f Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 18:45:54 -0400
+Subject: [PATCH] application-window: own the native work-surface rhythm and
+ clipping
+
+The marked work surface owns its rounded clip so no child can overpaint the
+island border or corners; the previous overflow is restored when the surface
+role is removed. The island begins one 9px step below the title row, or flush
+under a command row which already supplies the 8px step. Header bars in
+generic windows use the 12px/8px title-row inset, never fade in backdrop, and
+carry no slab or hairline. Vertical GtkBox content with a leading header bar
+marks its body as the surface, and application-owned AdwWindow toplevels join
+the same contract as AdwApplicationWindow.
+---
+ src/adw-application-window.c   | 35 +++++++++++---
+ src/adw-toolbar-view.c         |  4 +-
+ src/adw-widget-utils-private.h |  3 ++
+ src/adw-widget-utils.c         | 30 ++++++++++++
+ src/adw-window.c               | 87 ++++++++++++++++++++++++++++++++++
+ src/stylesheet/_common.scss    | 75 ++++++++++++++++++++++++++++-
+ 6 files changed, 224 insertions(+), 10 deletions(-)
+
+diff --git a/src/adw-application-window.c b/src/adw-application-window.c
+index 2b1e6eb..29bd119 100644
+--- a/src/adw-application-window.c
++++ b/src/adw-application-window.c
+@@ -16,6 +16,7 @@
+ #include "adw-gizmo-private.h"
+ #include "adw-gtkbuilder-utils-private.h"
+ #include "adw-main-private.h"
++#include "adw-header-bar.h"
+ #include "adw-toolbar-view.h"
+ #include "adw-widget-utils-private.h"
+ 
+@@ -280,9 +281,14 @@ adw_application_window_init (AdwApplicationWindow *self)
+   gtk_widget_set_visible (priv->titlebar, FALSE);
+   gtk_window_set_titlebar (GTK_WINDOW (self), priv->titlebar);
+ 
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-native-window");
++  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-adw-native-window");
++
+   priv->dialog_host = adw_dialog_host_new ();
+   gtk_window_set_child (GTK_WINDOW (self), priv->dialog_host);
+   adw_dialog_host_set_proxy (ADW_DIALOG_HOST (priv->dialog_host), GTK_WIDGET (self));
++  gtk_widget_remove_css_class (priv->dialog_host, "luma-native-work-surface");
++  gtk_widget_set_overflow (priv->dialog_host, GTK_OVERFLOW_VISIBLE);
+ 
+   priv->bin = adw_breakpoint_bin_new ();
+   adw_breakpoint_bin_set_warning_widget (ADW_BREAKPOINT_BIN (priv->bin),
+@@ -296,9 +302,6 @@ adw_application_window_init (AdwApplicationWindow *self)
+ 
+   gtk_widget_set_size_request (GTK_WIDGET (self), 360, 200);
+ 
+-  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-native-window");
+-  gtk_widget_add_css_class (GTK_WIDGET (self), "luma-adw-native-window");
+-
+   gtk_application_window_set_show_menubar (GTK_APPLICATION_WINDOW (self), FALSE);
+ 
+   if (adw_is_adaptive_preview ())
+@@ -372,15 +375,33 @@ set_luma_content_classes (GtkWidget *content,
+       gtk_widget_add_css_class (content, "luma-window-toolbar-view");
+     else
+       gtk_widget_remove_css_class (content, "luma-window-toolbar-view");
++  } else if (GTK_IS_BOX (content) &&
++             gtk_orientable_get_orientation (GTK_ORIENTABLE (content)) == GTK_ORIENTATION_VERTICAL) {
++    /* A vertical box whose first child is a header bar is the classic
++     * pre-toolbar-view layout. Its header stays in the title row; the last
++     * remaining child is the work surface, provided the layout is exactly
++     * header plus one body. Anything else keeps the flat frame. */
++    GtkWidget *first = gtk_widget_get_first_child (content);
++    GtkWidget *last = gtk_widget_get_last_child (content);
++
++    if (first && (ADW_IS_HEADER_BAR (first) || GTK_IS_HEADER_BAR (first) ||
++                  gtk_widget_has_css_class (first, "titlebar"))) {
++      if (last && last != first && gtk_widget_get_prev_sibling (last) == first) {
++        work_surface = last;
++        if (enabled)
++          gtk_widget_add_css_class (content, "luma-window-header-box");
++        else
++          gtk_widget_remove_css_class (content, "luma-window-header-box");
++      } else {
++        work_surface = NULL;
++      }
++    }
+   }
+ 
+   if (!work_surface)
+     return;
+ 
+-  if (enabled)
+-    gtk_widget_add_css_class (work_surface, "luma-native-work-surface");
+-  else
+-    gtk_widget_remove_css_class (work_surface, "luma-native-work-surface");
++  adw_widget_set_luma_work_surface (work_surface, enabled);
+ }
+ 
+ /**
+diff --git a/src/adw-toolbar-view.c b/src/adw-toolbar-view.c
+index ae9301f..ebbaf6b 100644
+--- a/src/adw-toolbar-view.c
++++ b/src/adw-toolbar-view.c
+@@ -847,7 +847,7 @@ adw_toolbar_view_set_content (AdwToolbarView *self,
+ 
+   if (self->content &&
+       gtk_widget_has_css_class (GTK_WIDGET (self), "luma-window-toolbar-view"))
+-    gtk_widget_remove_css_class (self->content, "luma-native-work-surface");
++    adw_widget_set_luma_work_surface (self->content, FALSE);
+ 
+   if (self->content)
+     gtk_widget_unparent (self->content);
+@@ -857,7 +857,7 @@ adw_toolbar_view_set_content (AdwToolbarView *self,
+   if (self->content) {
+     gtk_widget_insert_before (self->content, GTK_WIDGET (self), self->top_bar);
+     if (gtk_widget_has_css_class (GTK_WIDGET (self), "luma-window-toolbar-view"))
+-      gtk_widget_add_css_class (self->content, "luma-native-work-surface");
++      adw_widget_set_luma_work_surface (self->content, TRUE);
+   }
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_CONTENT]);
+diff --git a/src/adw-widget-utils-private.h b/src/adw-widget-utils-private.h
+index 18bc6ff..df9e8ca 100644
+--- a/src/adw-widget-utils-private.h
++++ b/src/adw-widget-utils-private.h
+@@ -80,4 +80,7 @@ gboolean adw_get_inspector_keybinding_enabled (void);
+ gboolean adw_widget_on_vertical_keynav_failed (GtkWidget        *widget,
+                                                GtkDirectionType  direction);
+ 
++void adw_widget_set_luma_work_surface (GtkWidget *widget,
++                                       gboolean   enabled);
++
+ G_END_DECLS
+diff --git a/src/adw-widget-utils.c b/src/adw-widget-utils.c
+index e43d09a..23c46d1 100644
+--- a/src/adw-widget-utils.c
++++ b/src/adw-widget-utils.c
+@@ -791,3 +791,33 @@ adw_widget_on_vertical_keynav_failed (GtkWidget        *widget,
+   return gtk_widget_child_focus (toplevel, direction == GTK_DIR_UP ?
+                                  GTK_DIR_TAB_BACKWARD : GTK_DIR_TAB_FORWARD);
+ }
++
++/* Luma native work surface: one class, one rounded clip. The application's
++ * widget keeps every other property; its prior overflow is restored when the
++ * surface role is removed. */
++static const char luma_work_surface_overflow_key[] = "adw-luma-work-surface-overflow";
++
++void
++adw_widget_set_luma_work_surface (GtkWidget *widget,
++                                  gboolean   enabled)
++{
++  if (!widget)
++    return;
++
++  if (enabled) {
++    if (!gtk_widget_has_css_class (widget, "luma-native-work-surface")) {
++      g_object_set_data (G_OBJECT (widget), luma_work_surface_overflow_key,
++                         GINT_TO_POINTER (gtk_widget_get_overflow (widget) + 1));
++      gtk_widget_set_overflow (widget, GTK_OVERFLOW_HIDDEN);
++    }
++    gtk_widget_add_css_class (widget, "luma-native-work-surface");
++  } else {
++    gpointer saved = g_object_get_data (G_OBJECT (widget), luma_work_surface_overflow_key);
++
++    gtk_widget_remove_css_class (widget, "luma-native-work-surface");
++    if (saved) {
++      gtk_widget_set_overflow (widget, GPOINTER_TO_INT (saved) - 1);
++      g_object_set_data (G_OBJECT (widget), luma_work_surface_overflow_key, NULL);
++    }
++  }
++}
+diff --git a/src/adw-window.c b/src/adw-window.c
+index 78c66bf..aae0748 100644
+--- a/src/adw-window.c
++++ b/src/adw-window.c
+@@ -15,7 +15,9 @@
+ #include "adw-dialog-private.h"
+ #include "adw-gizmo-private.h"
+ #include "adw-gtkbuilder-utils-private.h"
++#include "adw-header-bar.h"
+ #include "adw-main-private.h"
++#include "adw-toolbar-view.h"
+ #include "adw-widget-utils-private.h"
+ 
+ /**
+@@ -110,6 +112,9 @@ typedef struct
+   GtkWidget *adaptive_preview;
+ } AdwWindowPrivate;
+ 
++static void adw_window_luma_ownership_changed (AdwWindow  *self,
++                                               GParamSpec *pspec);
++
+ static void adw_window_buildable_init (GtkBuildableIface *iface);
+ 
+ G_DEFINE_TYPE_WITH_CODE (AdwWindow, adw_window, GTK_TYPE_WINDOW,
+@@ -343,6 +348,11 @@ adw_window_init (AdwWindow *self)
+ 
+   gtk_widget_set_size_request (GTK_WIDGET (self), 360, 200);
+ 
++  g_signal_connect_swapped (self, "notify::application",
++                            G_CALLBACK (adw_window_luma_ownership_changed), self);
++  g_signal_connect_swapped (self, "notify::transient-for",
++                            G_CALLBACK (adw_window_luma_ownership_changed), self);
++
+   if (adw_is_adaptive_preview ())
+     adw_window_set_adaptive_preview (self, TRUE);
+ 
+@@ -404,11 +414,82 @@ adw_window_new (void)
+  *
+  * This method should always be used instead of [method@Gtk.Window.set_child].
+  */
++static void
++adw_window_set_luma_content_classes (GtkWidget *content,
++                                     gboolean   enabled)
++{
++  GtkWidget *work_surface = content;
++
++  if (!content)
++    return;
++
++  if (ADW_IS_TOOLBAR_VIEW (content)) {
++    work_surface = adw_toolbar_view_get_content (ADW_TOOLBAR_VIEW (content));
++
++    if (enabled)
++      gtk_widget_add_css_class (content, "luma-window-toolbar-view");
++    else
++      gtk_widget_remove_css_class (content, "luma-window-toolbar-view");
++  } else if (GTK_IS_BOX (content) &&
++             gtk_orientable_get_orientation (GTK_ORIENTABLE (content)) == GTK_ORIENTATION_VERTICAL) {
++    GtkWidget *first = gtk_widget_get_first_child (content);
++    GtkWidget *last = gtk_widget_get_last_child (content);
++
++    if (first && (ADW_IS_HEADER_BAR (first) || GTK_IS_HEADER_BAR (first) ||
++                  gtk_widget_has_css_class (first, "titlebar"))) {
++      if (last && last != first && gtk_widget_get_prev_sibling (last) == first) {
++        work_surface = last;
++        if (enabled)
++          gtk_widget_add_css_class (content, "luma-window-header-box");
++        else
++          gtk_widget_remove_css_class (content, "luma-window-header-box");
++      } else {
++        work_surface = NULL;
++      }
++    }
++  }
++
++  if (work_surface)
++    adw_widget_set_luma_work_surface (work_surface, enabled);
++}
++
++/* An AdwWindow that belongs to a GtkApplication and is not transient is an
++ * application-owned top level and receives the same native Luma contract as
++ * AdwApplicationWindow. Dialog-like transient windows stay untouched. */
++static void
++adw_window_update_luma_native (AdwWindow *self)
++{
++  GtkWindow *window = GTK_WINDOW (self);
++  GtkWidget *content = adw_window_get_content (self);
++  gboolean native = gtk_window_get_application (window) != NULL &&
++                    gtk_window_get_transient_for (window) == NULL;
++
++  if (native) {
++    gtk_widget_add_css_class (GTK_WIDGET (self), "luma-native-window");
++    gtk_widget_add_css_class (GTK_WIDGET (self), "luma-adw-native-window");
++  } else {
++    gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-native-window");
++    gtk_widget_remove_css_class (GTK_WIDGET (self), "luma-adw-native-window");
++  }
++
++  adw_window_set_luma_content_classes (content, native);
++}
++
++static void
++adw_window_luma_ownership_changed (AdwWindow  *self,
++                                   GParamSpec *pspec)
++{
++  (void) pspec;
++
++  adw_window_update_luma_native (self);
++}
++
+ void
+ adw_window_set_content (AdwWindow *self,
+                         GtkWidget *content)
+ {
+   AdwWindowPrivate *priv;
++  GtkWidget *old_content;
+ 
+   g_return_if_fail (ADW_IS_WINDOW (self));
+   g_return_if_fail (content == NULL || GTK_IS_WIDGET (content));
+@@ -421,8 +502,14 @@ adw_window_set_content (AdwWindow *self,
+   if (content)
+     g_return_if_fail (gtk_widget_get_parent (content) == NULL);
+ 
++  old_content = adw_window_get_content (self);
++  adw_window_set_luma_content_classes (old_content, FALSE);
++
+   adw_breakpoint_bin_set_child (ADW_BREAKPOINT_BIN (priv->bin), content);
+ 
++  adw_window_set_luma_content_classes (content,
++                                       gtk_widget_has_css_class (GTK_WIDGET (self), "luma-native-window"));
++
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_CONTENT]);
+ }
+ 
+diff --git a/src/stylesheet/_common.scss b/src/stylesheet/_common.scss
+index facf84a..53b1121 100644
+--- a/src/stylesheet/_common.scss
++++ b/src/stylesheet/_common.scss
+@@ -189,8 +189,11 @@ window.luma-native-window:not(.luma-app-window):not(.luma-files-window):not(.lum
+                 0 18px 42px -14px RGB(25 27 31 / 22%);
+   }
+ 
++  // The work surface begins one canonical 9px step below the title row and
++  // keeps the same rhythm on every other edge. When a command row sits
++  // between them, that row already supplies the 8px step.
+   .luma-native-work-surface {
+-    margin: 0 9px 9px;
++    margin: 9px 9px 9px;
+     border: 1px solid unquote("@luma_line");
+     border-radius: 10px;
+     background-color: unquote("@luma_content");
+@@ -199,6 +202,76 @@ window.luma-native-window:not(.luma-app-window):not(.luma-files-window):not(.lum
+                 0 18px 36px -16px RGB(25 27 31 / 48%);
+   }
+ 
++  toolbarview.luma-has-command-row > .luma-native-work-surface,
++  .luma-window-header-box > headerbar.luma-command-host ~ .luma-native-work-surface {
++    margin-top: 0;
++  }
++
++  // Title-row geometry: 42px, 12px leading / 8px trailing inset, no fade
++  // when the window loses focus, no hairline or slab behind it.
++  headerbar {
++    margin-left: 0;
++    margin-right: 0;
++    background: none;
++    box-shadow: none;
++    color: unquote("@luma_ink");
++
++    > windowhandle > box {
++      padding: 0 8px 0 12px;
++
++      > box.start, > box.end {
++        margin-left: 0;
++        margin-right: 0;
++      }
++    }
++
++    &:backdrop {
++      background: none;
++      color: unquote("@luma_ink");
++      transition: none;
++
++      > windowhandle {
++        filter: none;
++        transition: none;
++      }
++    }
++  }
++
++  toolbarview.luma-window-toolbar-view {
++    searchbar > revealer > box,
++    actionbar > revealer > box {
++      background-color: unquote("@luma_window");
++      color: unquote("@luma_ink");
++      box-shadow: none;
++
++      &:backdrop {
++        background-color: unquote("@luma_window");
++
++        > * { filter: none; }
++      }
++    }
++  }
++
++  .luma-command-bar:backdrop,
++  .luma-command-group:backdrop,
++  .luma-command-group:backdrop > button,
++  .luma-command-group:backdrop > menubutton > button {
++    color: unquote("@luma_ink");
++    filter: none;
++    opacity: 1;
++  }
++
++  .luma-command-bar:backdrop {
++    background-color: unquote("@luma_content");
++    border-color: unquote("@luma_line");
++  }
++
++  headerbar windowcontrols:backdrop {
++    background-color: unquote("@luma_content");
++    filter: none;
++    opacity: 1;
++  }
++
+   &:backdrop .luma-native-work-surface {
+     background-color: unquote("@luma_content");
+     border-color: unquote("@luma_line");

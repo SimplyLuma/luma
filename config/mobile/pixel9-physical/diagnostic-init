@@ -1,0 +1,155 @@
+#!/bin/busybox sh
+# SPDX-License-Identifier: Apache-2.0
+
+# Volatile, non-interactive Tokay bring-up probe. This process never mounts a
+# storage-backed filesystem, loads a module, starts a shell service, or reads a
+# unique hardware identifier. It emits an allowlisted report and then reboots.
+
+PATH=/bin
+export PATH
+umask 077
+
+bb=/bin/busybox
+report=/run/luma-pixel9-report.txt
+gadget=/sys/kernel/config/usb_gadget/luma_pixel9_diagnostic
+
+$bb mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+$bb mkdir -p /dev/pts /proc /sys /run /sys/kernel/config
+$bb mount -t devpts devpts /dev/pts 2>/dev/null || true
+$bb mount -t proc proc /proc 2>/dev/null || true
+$bb mount -t sysfs sysfs /sys 2>/dev/null || true
+$bb mount -t tmpfs -o mode=0700,nosuid,nodev tmpfs /run 2>/dev/null || true
+$bb mount -t configfs configfs /sys/kernel/config 2>/dev/null || true
+
+exec </dev/null >/dev/console 2>&1
+
+read_one() {
+	[ -r "$1" ] || return 0
+	$bb tr -d '\000\r\n' <"$1"
+}
+
+make_report() {
+	{
+		echo 'LUMA_PIXEL9_DIAGNOSTIC_REPORT_VERSION=1'
+		echo 'SCOPE=volatile-allowlisted-native-linux-inventory'
+		echo 'PERSISTENT_FILESYSTEMS_MOUNTED=false'
+		echo 'MODULES_AUTOLOADED=false'
+		echo 'INTERACTIVE_SHELL_EXPOSED=false'
+		echo "KERNEL_RELEASE=$($bb uname -r)"
+		echo "MODEL=$(read_one /sys/firmware/devicetree/base/model)"
+		if [ -r /sys/firmware/devicetree/base/compatible ]; then
+			echo 'COMPATIBLE_BEGIN'
+			$bb tr '\000' '\n' </sys/firmware/devicetree/base/compatible
+			echo 'COMPATIBLE_END'
+		fi
+
+		echo 'BLOCK_DEVICES_BEGIN'
+		for node in /sys/class/block/*; do
+			[ -e "$node" ] || continue
+			name=${node##*/}
+			size=$(read_one "$node/size")
+			readonly=$(read_one "$node/ro")
+			echo "$name sectors=$size read_only=$readonly"
+		done
+		echo 'BLOCK_DEVICES_END'
+
+		echo 'POWER_SUPPLIES_BEGIN'
+		for node in /sys/class/power_supply/*; do
+			[ -e "$node" ] || continue
+			name=${node##*/}
+			type=$(read_one "$node/type")
+			status=$(read_one "$node/status")
+			capacity=$(read_one "$node/capacity")
+			echo "$name type=$type status=$status capacity=$capacity"
+		done
+		echo 'POWER_SUPPLIES_END'
+
+		echo 'THERMAL_ZONES_BEGIN'
+		for node in /sys/class/thermal/thermal_zone*; do
+			[ -e "$node" ] || continue
+			name=${node##*/}
+			type=$(read_one "$node/type")
+			temp=$(read_one "$node/temp")
+			echo "$name type=$type temp_millic=$temp"
+		done
+		echo 'THERMAL_ZONES_END'
+
+		echo 'INPUT_DEVICES_BEGIN'
+		for node in /sys/class/input/input*; do
+			[ -e "$node" ] || continue
+			name=${node##*/}
+			description=$(read_one "$node/name")
+			echo "$name name=$description"
+		done
+		echo 'INPUT_DEVICES_END'
+
+		echo 'DRM_CONNECTORS_BEGIN'
+		for node in /sys/class/drm/card*-*; do
+			[ -e "$node" ] || continue
+			name=${node##*/}
+			status=$(read_one "$node/status")
+			echo "$name status=$status"
+		done
+		echo 'DRM_CONNECTORS_END'
+
+		echo 'NETWORK_INTERFACES_BEGIN'
+		for node in /sys/class/net/*; do
+			[ -e "$node" ] || continue
+			name=${node##*/}
+			state=$(read_one "$node/operstate")
+			echo "$name operstate=$state"
+		done
+		echo 'NETWORK_INTERFACES_END'
+		echo 'REPORT_END=true'
+	} >"$report"
+}
+
+setup_acm() {
+	[ -d /sys/kernel/config/usb_gadget ] || return 1
+	$bb mkdir -p "$gadget" || return 1
+	echo 0x1d6b >"$gadget/idVendor" || return 1
+	echo 0x0104 >"$gadget/idProduct" || return 1
+	$bb mkdir -p "$gadget/strings/0x409" "$gadget/configs/c.1/strings/0x409" || return 1
+	echo 'Luma Project' >"$gadget/strings/0x409/manufacturer" || return 1
+	echo 'Pixel 9 volatile diagnostic' >"$gadget/strings/0x409/product" || return 1
+	echo 'Read-only report' >"$gadget/configs/c.1/strings/0x409/configuration" || return 1
+	$bb mkdir -p "$gadget/functions/acm.usb0" || return 1
+	$bb ln -s "$gadget/functions/acm.usb0" "$gadget/configs/c.1/acm.usb0" || return 1
+	for node in /sys/class/udc/*; do
+		[ -e "$node" ] || continue
+		echo "${node##*/}" >"$gadget/UDC" || return 1
+		return 0
+	done
+	return 1
+}
+
+make_report
+echo 'Luma Pixel 9 volatile diagnostic started; automatic reboot in 180 seconds.'
+$bb cat "$report"
+
+if setup_acm; then
+	echo 'USB_ACM_GADGET_READY=true'
+else
+	echo 'USB_ACM_GADGET_READY=false'
+fi
+
+# Repeat the finite report so a host which enumerates late can receive it. The
+# gadget is one-way by policy: ttyGS0 is never read and no shell is attached.
+iteration=0
+while [ "$iteration" -lt 36 ]; do
+	if [ -c /dev/ttyGS0 ]; then
+		{
+			echo 'LUMA_PIXEL9_REPORT_BEGIN'
+			$bb cat "$report"
+			echo 'LUMA_PIXEL9_REPORT_TRANSPORT_END'
+		} >/dev/ttyGS0 2>/dev/null || true
+	fi
+	iteration=$((iteration + 1))
+	$bb sleep 5
+done
+
+echo 'Luma Pixel 9 volatile diagnostic timeout; rebooting to the bootloader-selected stock path.'
+$bb reboot -f
+$bb sleep 10
+echo o >/proc/sysrq-trigger 2>/dev/null || true
+exit 1

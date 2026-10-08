@@ -1,0 +1,341 @@
+From 408bec2682156506b3a7f4fc681a88fb8196f286 Mon Sep 17 00:00:00 2001
+From: Project Luma <devnull@projectluma.local>
+Date: Tue, 1 Sep 2026 18:45:54 -0400
+Subject: [PATCH] header-bar: resolve the generic Luma identity from the
+ desktop entry
+
+Resolve the compatibility identity through GDesktopAppInfo first so the
+localized application name and the registered, possibly full-color, icon come
+from the same authority the shell uses. Fall back to the window and default
+icon names, then the icon theme entry for the application ID, and only then to
+the generic executable icon. The icon is hosted in a clipping box so tile icons
+share the 6px identity radius, and the non-interactive display form receives
+the same 32px, 4/8px, Figtree 13px/650 geometry as the menu-button form. A
+synthesized title label that merely repeats the identity name is hidden.
+
+gio-unix-2.0 becomes a private build dependency on Unix hosts.
+---
+ meson.build                             |   2 +
+ src/adw-header-bar.c                    | 164 +++++++++++++++++++++---
+ src/meson.build                         |   1 +
+ src/stylesheet/widgets/_header-bar.scss |  24 ++++
+ 4 files changed, 171 insertions(+), 20 deletions(-)
+
+diff --git a/meson.build b/meson.build
+index 3703b8d..781758f 100644
+--- a/meson.build
++++ b/meson.build
+@@ -38,6 +38,8 @@ gtk_min_version = '>= 4.21.1'
+ 
+ glib_dep = dependency('glib-2.0', version: glib_min_version)
+ gio_dep = dependency('gio-2.0', version: glib_min_version)
++gio_unix_dep = dependency('gio-unix-2.0', version: glib_min_version,
++                          required: host_machine.system() != 'windows')
+ gtk_dep = dependency('gtk4', version: gtk_min_version)
+ fribidi_dep = dependency('fribidi')
+ appstream_dep = dependency('appstream',
+diff --git a/src/adw-header-bar.c b/src/adw-header-bar.c
+index ecd2f10..344d32d 100644
+--- a/src/adw-header-bar.c
++++ b/src/adw-header-bar.c
+@@ -40,6 +40,9 @@
+ #include "adw-widget-utils-private.h"
+ 
+ #include <glib/gi18n-lib.h>
++#ifdef G_OS_UNIX
++#include <gio/gdesktopappinfo.h>
++#endif
+ 
+ #ifdef GDK_WINDOWING_MACOS
+ #include <gdk/macos/gdkmacos.h>
+@@ -182,6 +185,7 @@ struct _AdwHeaderBar {
+   GtkWidget *back_button;
+   GtkWidget *luma_identity;
+   GtkRoot *luma_identity_root;
++  char *luma_identity_name;
+ 
+   char *decoration_layout;
+ 
+@@ -219,6 +223,7 @@ static GParamSpec *props[LAST_PROP] = { NULL, };
+ 
+ static const char luma_identity_owner_key[] = "adw-header-bar-luma-identity-owner";
+ static void add_automatic_luma_identity (AdwHeaderBar *self);
++static void update_title (AdwHeaderBar *self);
+ 
+ static void adw_header_bar_buildable_init (GtkBuildableIface *iface);
+ 
+@@ -419,43 +424,152 @@ create_luma_fallback_menu (GtkApplication *application,
+   return G_MENU_MODEL (g_steal_pointer (&menu));
+ }
+ 
++/* The desktop entry is the user-visible identity authority: it carries the
++ * localized application name and the registered (possibly full-color) icon.
++ * GtkApplication only knows the application ID, so resolve through
++ * GDesktopAppInfo before falling back to process metadata. */
++static GDesktopAppInfo *
++luma_lookup_desktop_info (GtkApplication *application)
++{
++#ifdef G_OS_UNIX
++  const char *application_id = g_application_get_application_id (G_APPLICATION (application));
++  g_autofree char *desktop_id = NULL;
++
++  if (!application_id || !*application_id)
++    return NULL;
++
++  desktop_id = g_strconcat (application_id, ".desktop", NULL);
++
++  return g_desktop_app_info_new (desktop_id);
++#else
++  return NULL;
++#endif
++}
++
++static char *
++luma_resolve_application_name (GtkApplication *application,
++                               GtkWindow      *window)
++{
++  g_autoptr (GDesktopAppInfo) info = luma_lookup_desktop_info (application);
++  const char *application_name = NULL;
++
++  if (info)
++    application_name = g_app_info_get_display_name (G_APP_INFO (info));
++  if (!application_name || !*application_name)
++    application_name = g_get_application_name ();
++  if (!application_name || !*application_name)
++    application_name = gtk_window_get_title (window);
++  if (!application_name || !*application_name)
++    application_name = g_get_prgname ();
++  if (!application_name || !*application_name)
++    application_name = _("Application");
++
++  return g_strdup (application_name);
++}
++
++static gboolean
++luma_theme_has_icon (GtkWindow  *window,
++                     const char *icon_name)
++{
++  GtkIconTheme *theme;
++
++  if (!icon_name || !*icon_name)
++    return FALSE;
++
++  theme = gtk_icon_theme_get_for_display (gtk_widget_get_display (GTK_WIDGET (window)));
++
++  return gtk_icon_theme_has_icon (theme, icon_name);
++}
++
+ static GtkWidget *
+-create_luma_identity (GtkApplication *application,
+-                      GtkWindow      *window)
++luma_create_application_icon (GtkApplication *application,
++                              GtkWindow      *window)
++{
++  g_autoptr (GDesktopAppInfo) info = luma_lookup_desktop_info (application);
++  const char *application_id = g_application_get_application_id (G_APPLICATION (application));
++  const char *icon_name;
++  GtkWidget *icon = NULL;
++
++  /* 1. The window's own registered icon, 2. the application default icon. */
++  icon_name = gtk_window_get_icon_name (window);
++  if (luma_theme_has_icon (window, icon_name))
++    icon = gtk_image_new_from_icon_name (icon_name);
++
++  if (!icon) {
++    icon_name = gtk_window_get_default_icon_name ();
++    if (luma_theme_has_icon (window, icon_name))
++      icon = gtk_image_new_from_icon_name (icon_name);
++  }
++
++  /* 3. The desktop entry's registered icon, including non-themed files. */
++  if (!icon && info) {
++    GIcon *gicon = g_app_info_get_icon (G_APP_INFO (info));
++
++    if (G_IS_THEMED_ICON (gicon)) {
++      const char * const *names = g_themed_icon_get_names (G_THEMED_ICON (gicon));
++      guint i;
++
++      for (i = 0; names && names[i] && !icon; i++)
++        if (luma_theme_has_icon (window, names[i]))
++          icon = gtk_image_new_from_icon_name (names[i]);
++    } else if (gicon) {
++      icon = gtk_image_new_from_gicon (gicon);
++    }
++  }
++
++  /* 4. An icon registered under the application ID itself. */
++  if (!icon && luma_theme_has_icon (window, application_id))
++    icon = gtk_image_new_from_icon_name (application_id);
++
++  /* 5. Genuine last resort. */
++  if (!icon)
++    icon = gtk_image_new_from_icon_name ("application-x-executable");
++
++  gtk_image_set_pixel_size (GTK_IMAGE (icon), 22);
++
++  return icon;
++}
++
++static GtkWidget *
++create_luma_identity (GtkApplication  *application,
++                      GtkWindow       *window,
++                      char           **name_out)
+ {
+   g_autoptr (GMenuModel) fallback_menu = NULL;
++  g_autofree char *resolved_name = NULL;
+   GMenuModel *menu_model;
+-  const char *application_id;
+   const char *application_name;
+   GtkWidget *button;
+   GtkWidget *box;
++  GtkWidget *icon_box;
+   GtkWidget *icon;
+   GtkWidget *label;
+   GtkWidget *chevron;
+ 
+-  application_name = g_get_application_name ();
+-  if (!application_name || !*application_name)
+-    application_name = gtk_window_get_title (window);
+-  if (!application_name || !*application_name)
+-    application_name = g_get_prgname ();
+-  if (!application_name || !*application_name)
+-    application_name = _("Application");
+-
+-  application_id = g_application_get_application_id (G_APPLICATION (application));
++  resolved_name = luma_resolve_application_name (application, window);
++  application_name = resolved_name;
++  if (name_out)
++    *name_out = g_strdup (resolved_name);
+ 
+   box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+   gtk_widget_add_css_class (box, "luma-identity-content");
+-
+-  icon = gtk_image_new_from_icon_name (application_id && *application_id
+-                                       ? application_id
+-                                       : "application-x-executable-symbolic");
+-  gtk_image_set_pixel_size (GTK_IMAGE (icon), 22);
+-  gtk_widget_add_css_class (icon, "luma-identity-icon");
+-  gtk_box_append (GTK_BOX (box), icon);
++  gtk_widget_set_valign (box, GTK_ALIGN_CENTER);
++
++  /* Full-color tile icons clip to the shared 6px identity radius. The box owns
++   * the rounded clip because GtkImage cannot clip its paintable itself. */
++  icon_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
++  gtk_widget_add_css_class (icon_box, "luma-identity-icon");
++  gtk_widget_set_overflow (icon_box, GTK_OVERFLOW_HIDDEN);
++  gtk_widget_set_valign (icon_box, GTK_ALIGN_CENTER);
++  gtk_widget_set_size_request (icon_box, 20, 20);
++  icon = luma_create_application_icon (application, window);
++  gtk_box_append (GTK_BOX (icon_box), icon);
++  gtk_box_append (GTK_BOX (box), icon_box);
+ 
+   label = gtk_label_new (application_name);
+   gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+   gtk_label_set_max_width_chars (GTK_LABEL (label), 24);
++  gtk_widget_add_css_class (label, "luma-identity-label");
+   gtk_box_append (GTK_BOX (box), label);
+ 
+   menu_model = gtk_application_get_menubar (application);
+@@ -468,6 +582,7 @@ create_luma_identity (GtkApplication *application,
+     gtk_widget_add_css_class (box, "luma-identity-button");
+     gtk_widget_add_css_class (box, "luma-automatic-identity");
+     gtk_widget_add_css_class (box, "luma-identity-display");
++    gtk_widget_set_valign (box, GTK_ALIGN_CENTER);
+     gtk_widget_set_tooltip_text (box, application_name);
+     gtk_accessible_update_property (GTK_ACCESSIBLE (box),
+                                     GTK_ACCESSIBLE_PROPERTY_LABEL, application_name,
+@@ -483,6 +598,7 @@ create_luma_identity (GtkApplication *application,
+   button = gtk_menu_button_new ();
+   gtk_widget_add_css_class (button, "luma-identity-button");
+   gtk_widget_add_css_class (button, "luma-automatic-identity");
++  gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
+   gtk_widget_set_tooltip_text (button, application_name);
+   gtk_accessible_update_property (GTK_ACCESSIBLE (button),
+                                   GTK_ACCESSIBLE_PROPERTY_LABEL, application_name,
+@@ -531,7 +647,9 @@ add_automatic_luma_identity (AdwHeaderBar *self)
+   if (!application)
+     return;
+ 
+-  self->luma_identity = create_luma_identity (application, GTK_WINDOW (root));
++  g_clear_pointer (&self->luma_identity_name, g_free);
++  self->luma_identity = create_luma_identity (application, GTK_WINDOW (root),
++                                              &self->luma_identity_name);
+   self->luma_identity_root = root;
+ 
+   gtk_box_insert_child_after (GTK_BOX (self->start_box),
+@@ -560,7 +678,9 @@ remove_automatic_luma_identity (AdwHeaderBar *self)
+   gtk_box_remove (GTK_BOX (self->start_box), self->luma_identity);
+   self->luma_identity = NULL;
+   self->luma_identity_root = NULL;
++  g_clear_pointer (&self->luma_identity_name, g_free);
+   update_box_visibility (self->start_box);
++  update_title (self);
+ }
+ 
+ static void
+@@ -708,6 +828,9 @@ update_title (AdwHeaderBar *self)
+     title = g_get_prgname ();
+ 
+   gtk_label_set_text (GTK_LABEL (self->title_label), title);
++  gtk_widget_set_visible (self->title_label,
++                          !(self->luma_identity && self->luma_identity_name &&
++                            title && g_str_equal (title, self->luma_identity_name)));
+ }
+ 
+ 
+@@ -956,6 +1079,7 @@ adw_header_bar_dispose (GObject *object)
+   self->center_bin = NULL;
+ 
+   g_clear_object (&self->size_group);
++  g_clear_pointer (&self->luma_identity_name, g_free);
+   g_clear_pointer (&self->handle, gtk_widget_unparent);
+ 
+   G_OBJECT_CLASS (adw_header_bar_parent_class)->dispose (object);
+diff --git a/src/meson.build b/src/meson.build
+index 8a86f9e..1ccf062 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -331,6 +331,7 @@ libadwaita_deps = [
+   glib_dep,
+   fribidi_dep,
+   gio_dep,
++  gio_unix_dep,
+   gtk_dep,
+   appstream_dep,
+   cc.find_library('m', required: false),
+diff --git a/src/stylesheet/widgets/_header-bar.scss b/src/stylesheet/widgets/_header-bar.scss
+index 768974d..6907ad5 100644
+--- a/src/stylesheet/widgets/_header-bar.scss
++++ b/src/stylesheet/widgets/_header-bar.scss
+@@ -112,7 +112,31 @@ headerbar .luma-identity-button > button:checked {
+   background: unquote("@luma_selected");
+ }
+ 
++// The non-interactive display form is a plain box; it must carry the same
++// geometry and Figtree weight as the menu-button form instead of inheriting
++// generic label styling.
++headerbar box.luma-identity-button {
++  min-height: 32px;
++  padding: 4px 8px 4px 4px;
++  border-radius: 10px;
++  color: var(--headerbar-fg-color);
++}
++
++headerbar .luma-identity-button,
++headerbar .luma-identity-button > button,
++headerbar .luma-identity-label {
++  font-family: "Figtree", sans-serif;
++  font-size: 13px;
++  font-weight: 650;
++}
++
+ headerbar .luma-identity-icon {
++  min-width: 22px;
++  min-height: 22px;
++  border-radius: 6px;
++}
++
++headerbar .luma-identity-icon > image {
+   -gtk-icon-size: 20px;
+ }
+ 

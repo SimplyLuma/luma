@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Ari
+Exec=python3 -m ari_ui.lumaui_app
+Icon=org.projectluma.Ari.LumaUIPreview
+Categories=Utility;

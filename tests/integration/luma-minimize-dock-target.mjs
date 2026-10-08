@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const patch=fs.readFileSync('patches/gnome-shell/0054-luma-minimize-dock-target.patch','utf8');
+const text=patch.split('\n').filter(l=>l.startsWith('+')&&!l.startsWith('+++')).map(l=>l.slice(1)).join('\n');
+const body=text.slice(text.indexOf('    getShelfIconGeometry'),text.indexOf('\n    }')+6);
+let app={};const Shell={WindowTracker:{get_default:()=>({get_window_app:()=>app})}};
+const receiver={_shelfEdge:'bottom',mapped:true,_box:{get_children:()=>[{child:{_delegate:{app,icon:{icon:{mapped:true,get_transformed_position:()=>[20,400],get_transformed_size:()=>[48,48]}}}}}]}};
+const method=Function('Shell',`return ({${body}}).getShelfIconGeometry;`)(Shell);
+assert.deepEqual(method.call(receiver,{}),{x:20,y:400,width:48,height:48});
+receiver.mapped=false;assert.equal(method.call(receiver,{}),null);
+receiver.mapped=true;receiver._shelfEdge=null;assert.equal(method.call(receiver,{}),null);
+assert.equal((patch.match(/getShelfIconGeometry\(actor.meta_window\)/g)||[]).length,2);
+console.log('Dock minimize/restore geometry cases passed');

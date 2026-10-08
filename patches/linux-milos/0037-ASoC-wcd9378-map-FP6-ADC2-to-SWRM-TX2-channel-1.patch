@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000037 Mon Sep 17 00:00:00 2001
+From: Project Luma <luma@local>
+Date: Wed, 19 Aug 2026 18:00:00 -0500
+Subject: [PATCH] ASoC: wcd9378: map FP6 ADC2 to SWRM TX2 channel 1
+
+Fairphone's volcano mixer policy maps the FP6 AMIC3 path as ADC2 channel
+SWRM_TX2_CH1 and feeds TX macro SWR_MIC4/DEC2. The current Linux mapping
+instead places ADC1/2/3 on channels 1/2/3 of SWRM TX1. Physical testing
+shows that ADC1 works, while ADC2 through the TX1 channel-2 mapping returns
+only the deterministic DMA startup transient followed by zeros.
+
+Map the three analog ADC device ports to the corresponding SoundWire master
+ports and use channel 1 on each. This matches the hardware policy without
+importing Android's audio HAL or routing framework. DMIC device-port mappings
+remain unchanged; analog and digital paths sharing a master port are mutually
+exclusive DAPM routes.
+
+Signed-off-by: Project Luma <luma@local>
+---
+ .../boot/dts/qcom/milos-fairphone-fp6.dts      | 8 ++++----
+ sound/soc/codecs/wcd9378-sdw.c                 | 8 ++++----
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+index 0a8bb7290000..8e85e1e70000 100644
+--- a/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
++++ b/arch/arm64/boot/dts/qcom/milos-fairphone-fp6.dts
+@@ -1380,12 +1380,12 @@ wcd9378_tx: codec@0,3 {
+ 
+ 		/*
+ 		 * WCD9378 TX port 1 (ADC1)          <=> SWR2 port 1 (SWRM_TX1)
+-		 * WCD9378 TX port 2 (ADC2)          <=> SWR2 port 1
+-		 * WCD9378 TX port 3 (ADC3)          <=> SWR2 port 1
++		 * WCD9378 TX port 2 (ADC2)          <=> SWR2 port 2 (SWRM_TX2)
++		 * WCD9378 TX port 3 (ADC3)          <=> SWR2 port 3 (SWRM_TX3)
+ 		 * WCD9378 TX port 4 (DMIC0,1, MBHC) <=> SWR2 port 2
+ 		 * WCD9378 TX port 5 (DMIC2..5)      <=> SWR2 port 3
+ 		 */
+-		qcom,tx-port-mapping = <1 1 1 2 3>;
++		qcom,tx-port-mapping = <1 2 3 2 3>;
+ 	};
+ };
+ 
+diff --git a/sound/soc/codecs/wcd9378-sdw.c b/sound/soc/codecs/wcd9378-sdw.c
+index 798e31850000..f0beacdd0000 100644
+--- a/sound/soc/codecs/wcd9378-sdw.c
++++ b/sound/soc/codecs/wcd9378-sdw.c
+@@ -32,14 +32,14 @@
+ 	}
+ 
+ /*
+- * Each ADC sits alone on its own TX device port (channel 1); by default
+- * they land on channels 1/2/3 of the same master port (SWRM_TX1 on the
+- * FP6). DMIC/MBHC masks per the downstream qcom,tx_swr_ch_map.
++ * Each ADC sits alone on its own TX device port (channel 1) and lands on
++ * channel 1 of the corresponding master port. This matches the FP6 analog
++ * routing policy. DMIC/MBHC masks follow the downstream channel map.
+  */
+ static struct wcd_sdw_ch_info wcd9378_sdw_tx_ch_info[] = {
+ 	WCD9378_SDW_CH(WCD9378_ADC1, WCD9378_ADC_1_PORT, BIT(0), BIT(0)),
+-	WCD9378_SDW_CH(WCD9378_ADC2, WCD9378_ADC_2_PORT, BIT(0), BIT(1)),
+-	WCD9378_SDW_CH(WCD9378_ADC3, WCD9378_ADC_3_PORT, BIT(0), BIT(2)),
++	WCD9378_SDW_CH(WCD9378_ADC2, WCD9378_ADC_2_PORT, BIT(0), BIT(0)),
++	WCD9378_SDW_CH(WCD9378_ADC3, WCD9378_ADC_3_PORT, BIT(0), BIT(0)),
+ 	WCD9378_SDW_CH(WCD9378_DMIC0, WCD9378_DMIC_0_1_MBHC_PORT, BIT(2), BIT(0)),
+ 	WCD9378_SDW_CH(WCD9378_DMIC1, WCD9378_DMIC_0_1_MBHC_PORT, BIT(3), BIT(1)),
+ 	WCD9378_SDW_CH(WCD9378_MBHC, WCD9378_DMIC_0_1_MBHC_PORT, BIT(2), BIT(2)),
+-- 
+2.54.0

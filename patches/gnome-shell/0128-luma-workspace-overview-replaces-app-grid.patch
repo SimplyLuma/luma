@@ -1,0 +1,1395 @@
+From: Project Luma <builds@project-luma.local>
+Date: Wed, 16 Sep 2026 14:30:00 -0400
+Subject: [PATCH] luma: Super+A and Super+Tab show every desktop as a Grid-style
+ card, and the app grid is gone
+
+Owner report: Super+A opened the stock overview's app grid, with the
+workspace thumbnails pushed to the top at mismatched heights (the ultra-wide
+beside the 1.25x panel), then an icon grid with a page arrow.
+
+Super+A and Super+Tab now open lumaWorkspaceOverview.js: every desktop is a
+rounded card on a plain kit surface (#21252b dark, #f2f3f5 light, following
+the app colour scheme), live previews of the primary display's wallpaper and
+windows, one height for all cards. One or two desktops use Grid's own card
+height; the height shrinks only as far as needed to fit three across, and a
+longer row scrolls (wheel, two-finger scroll, press-and-drag with fling,
+arrow keys, Home/End, 1-9) with the next card peeking in at the edge. The
+current desktop is labelled Current and starts selected. Click, Return or
+Space switches with the card zooming out to fill the display; Escape, a click
+on the surface, Super+A again or a three-finger swipe down zooms back. The
+desktop is switched behind the view, and Mutter's slide is suppressed while
+it is open. Holding Super, Tab and Shift+Tab step and releasing Super
+switches; a tap leaves the view open, as Grid does. Previews reuse Grid's
+RoundedPreview, including its fix for textures cached at another display's
+scale. Reduced motion makes every transition one frame. Dynamic workspaces
+show their trailing empty desktop as New Desktop.
+
+Cards show the primary display only. Luma ships workspaces-only-on-primary,
+so the other displays are the same on every desktop, and a composite of an
+ultra-wide, a portrait panel and a laptop produced the odd, unequal shapes
+the owner reported. The panel and dock stay visible, as with Grid.
+
+Keybindings: org.gnome.shell.keybindings gains toggle-workspace-overview
+(<Super>a, <Super>Tab) and toggle-workspace-overview-backward
+(<Shift><Super>Tab). toggle-application-view now defaults to nothing, and the
+shipped override sets org.gnome.desktop.wm.keybindings switch-applications to
+<Alt>Tab only, so Alt+Tab stays Grid and nothing is bound twice. The app grid
+is no longer reachable: Overview.showApps() (a rebound Show Apps key, D-Bus
+ShowApplications, extensions) opens Luma Search, the app launcher reached by
+tapping Super. Dragging windows between desktops is not offered here; the
+window menu and Super+Shift+Page Up/Down still move them.
+
+Generated against the Shell .87 tree (0127 applied) for release .88.
+---
+diff --git a/data/00_org.gnome.shell.gschema.override b/data/00_org.gnome.shell.gschema.override
+index ac732e6..7a1f657 100644
+--- a/data/00_org.gnome.shell.gschema.override
++++ b/data/00_org.gnome.shell.gschema.override
+@@ -4,3 +4,9 @@ edge-tiling=true
+ dynamic-workspaces=true
+ workspaces-only-on-primary=true
+ focus-change-on-pointer-rest=true
++
++# Luma: Super+Tab opens the workspace overview (org.gnome.shell.keybindings
++# toggle-workspace-overview), so the app switcher, Grid, keeps Alt+Tab only.
++[org.gnome.desktop.wm.keybindings]
++switch-applications=['<Alt>Tab']
++switch-applications-backward=['<Shift><Alt>Tab']
+diff --git a/data/50-gnome-shell-system.xml b/data/50-gnome-shell-system.xml
+index acac872..65f4501 100644
+--- a/data/50-gnome-shell-system.xml
++++ b/data/50-gnome-shell-system.xml
+@@ -17,8 +17,8 @@
+ 	<KeyListEntry name="toggle-overview"
+                       description="Show the overview"/>
+ 
+-	<KeyListEntry name="toggle-application-view"
+-                      description="Show all apps"/>
++	<KeyListEntry name="toggle-workspace-overview"
++                      description="Show all desktops"/>
+ 
+ </KeyListEntries>
+ 
+diff --git a/data/org.gnome.shell.gschema.xml.in b/data/org.gnome.shell.gschema.xml.in
+index 4cb96d4..ef97c30 100644
+--- a/data/org.gnome.shell.gschema.xml.in
++++ b/data/org.gnome.shell.gschema.xml.in
+@@ -164,13 +164,29 @@
+       </description>
+     </key>
+     <key name="toggle-application-view" type="as">
+-      <default>["&lt;Super&gt;a"]</default>
++      <default>[]</default>
+       <summary>Keybinding to open the “Show Applications” view</summary>
+       <description>
+         Keybinding to open the “Show Applications” view of the Activities
+         Overview.
+       </description>
+     </key>
++    <key name="toggle-workspace-overview" type="as">
++      <default>["&lt;Super&gt;a","&lt;Super&gt;Tab"]</default>
++      <summary>Keybinding to show all desktops</summary>
++      <description>
++        Keybinding to open Luma’s workspace overview. While its modifier is
++        held, Tab steps to the next desktop and releasing it switches.
++      </description>
++    </key>
++    <key name="toggle-workspace-overview-backward" type="as">
++      <default>["&lt;Shift&gt;&lt;Super&gt;Tab"]</default>
++      <summary>Keybinding to show all desktops, stepping backward</summary>
++      <description>
++        Keybinding to open Luma’s workspace overview, or step to the previous
++        desktop while it is held.
++      </description>
++    </key>
+     <key name="toggle-overview" type="as">
+       <default>[]</default>
+       <summary>Keybinding to open the overview</summary>
+diff --git a/data/theme/gnome-shell-dark.css b/data/theme/gnome-shell-dark.css
+index c046f8e..a9fa423 100644
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -1391,6 +1391,62 @@ StScrollBar {
+   .modal-dialog .modal-dialog-button-box {
+     padding-top: 6px; }
+ 
++/* Luma workspace overview (ADR-037): a plain kit surface, not the wallpaper.
++ * It follows the app colour scheme (dark only when apps are dark), so the
++ * same rules ship in both Shell stylesheets. */
++.luma-workspace-root .luma-workspace-overview {
++  background-color: #21252b; }
++
++.luma-workspace-root .luma-workspace-card-header {
++  spacing: 8px; }
++
++.luma-workspace-root .luma-workspace-card-title {
++  color: #e4e8ea;
++  font-size: 13px;
++  font-weight: 650; }
++
++.luma-workspace-root .luma-workspace-card-meta {
++  color: #8b949c;
++  font-size: 11px;
++  font-weight: 550; }
++
++.luma-workspace-root .luma-workspace-card-meta.current {
++  color: #80a8d2; }
++
++.luma-workspace-root .luma-workspace-card-frame {
++  background-color: #2a2e34;
++  border: 1px solid rgba(255, 255, 255, 0.08);
++  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30); }
++
++.luma-workspace-root .luma-workspace-card-frame:hover {
++  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42); }
++
++.luma-workspace-root .luma-workspace-card-ring {
++  border: 2px solid #80a8d2; }
++
++.luma-workspace-root.light .luma-workspace-overview {
++  background-color: #f2f3f5; }
++
++.luma-workspace-root.light .luma-workspace-card-title {
++  color: #1f2937; }
++
++.luma-workspace-root.light .luma-workspace-card-meta {
++  color: #757e87; }
++
++.luma-workspace-root.light .luma-workspace-card-meta.current {
++  color: #527fae; }
++
++.luma-workspace-root.light .luma-workspace-card-frame {
++  background-color: #e8eaee;
++  border: 1px solid rgba(17, 24, 39, 0.10);
++  box-shadow: 0 4px 16px rgba(25, 27, 31, 0.10); }
++
++.luma-workspace-root.light .luma-workspace-card-frame:hover {
++  box-shadow: 0 10px 28px rgba(25, 27, 31, 0.18); }
++
++.luma-workspace-root.light .luma-workspace-card-ring {
++  border: 2px solid #527fae; }
++
+ .luma-search-dialog {
+   width: 620px;
+   max-height: 50em;
+diff --git a/data/theme/gnome-shell-light.css b/data/theme/gnome-shell-light.css
+index 74f4a03..e7cbc3f 100644
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -1412,6 +1412,62 @@ StScrollBar {
+   .modal-dialog .modal-dialog-button-box {
+     padding-top: 6px; }
+ 
++/* Luma workspace overview (ADR-037): a plain kit surface, not the wallpaper.
++ * It follows the app colour scheme (dark only when apps are dark), so the
++ * same rules ship in both Shell stylesheets. */
++.luma-workspace-root .luma-workspace-overview {
++  background-color: #21252b; }
++
++.luma-workspace-root .luma-workspace-card-header {
++  spacing: 8px; }
++
++.luma-workspace-root .luma-workspace-card-title {
++  color: #e4e8ea;
++  font-size: 13px;
++  font-weight: 650; }
++
++.luma-workspace-root .luma-workspace-card-meta {
++  color: #8b949c;
++  font-size: 11px;
++  font-weight: 550; }
++
++.luma-workspace-root .luma-workspace-card-meta.current {
++  color: #80a8d2; }
++
++.luma-workspace-root .luma-workspace-card-frame {
++  background-color: #2a2e34;
++  border: 1px solid rgba(255, 255, 255, 0.08);
++  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30); }
++
++.luma-workspace-root .luma-workspace-card-frame:hover {
++  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42); }
++
++.luma-workspace-root .luma-workspace-card-ring {
++  border: 2px solid #80a8d2; }
++
++.luma-workspace-root.light .luma-workspace-overview {
++  background-color: #f2f3f5; }
++
++.luma-workspace-root.light .luma-workspace-card-title {
++  color: #1f2937; }
++
++.luma-workspace-root.light .luma-workspace-card-meta {
++  color: #757e87; }
++
++.luma-workspace-root.light .luma-workspace-card-meta.current {
++  color: #527fae; }
++
++.luma-workspace-root.light .luma-workspace-card-frame {
++  background-color: #e8eaee;
++  border: 1px solid rgba(17, 24, 39, 0.10);
++  box-shadow: 0 4px 16px rgba(25, 27, 31, 0.10); }
++
++.luma-workspace-root.light .luma-workspace-card-frame:hover {
++  box-shadow: 0 10px 28px rgba(25, 27, 31, 0.18); }
++
++.luma-workspace-root.light .luma-workspace-card-ring {
++  border: 2px solid #527fae; }
++
+ .luma-search-dialog {
+   width: 620px;
+   max-height: 50em;
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 9d4132e..68a6c0a 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -148,6 +148,7 @@
+     <file>ui/windowPreview.js</file>
+     <file>ui/gridLayout.js</file>
+     <file>ui/lumaGrid.js</file>
++    <file>ui/lumaWorkspaceOverview.js</file>
+     <file>ui/workspace.js</file>
+     <file>ui/workspaceAnimation.js</file>
+     <file>ui/workspacesView.js</file>
+diff --git a/js/ui/lumaWorkspaceOverview.js b/js/ui/lumaWorkspaceOverview.js
+new file mode 100644
+index 0000000..5b418c8
+--- /dev/null
++++ b/js/ui/lumaWorkspaceOverview.js
+@@ -0,0 +1,1047 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// Luma's workspace overview (Super+A, Super+Tab): every desktop as a card in
++// Grid's visual language on a plain surface. Mutter owns the workspaces, their
++// windows and switching; this only draws them and asks Mutter to switch.
++import Atk from 'gi://Atk';
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import {adjustAnimationTime} from '../misc/animationUtils.js';
++import * as Background from './background.js';
++import * as Main from './main.js';
++import * as SwipeTracker from './swipeTracker.js';
++import {GRID_LABEL, gridCardHeight} from './gridLayout.js';
++import {RoundedPreview} from './lumaGrid.js';
++
++let activeOverview = null;
++
++// Space between desktops. Wider than Grid's 42px: a desktop card is a whole
++// screen in miniature and reads as cramped at a window card's spacing.
++export const WORKSPACE_GAP = 64;
++// Breathing room outside the row, on both sides, as in Grid.
++export const WORKSPACE_EDGE = 56;
++// Up to this many desktops always fit side by side without scrolling.
++export const WORKSPACE_FIT = 3;
++// A card is never shorter than this; past it a long row scrolls instead.
++export const WORKSPACE_MIN_HEIGHT = 150;
++// How much of the next card shows at the edge of a row that scrolls.
++export const WORKSPACE_PEEK = 0.4;
++// Corner radius of a resting card, in logical pixels.
++export const WORKSPACE_RADIUS = 14;
++// Selection ring: its width and its gap from the card, in logical pixels.
++const RING_WIDTH = 2;
++const RING_GAP = 4;
++
++// Grid's curve and durations, so both surfaces move alike. Reduced motion
++// makes every transition a single frame.
++const ENTER_DURATION = 320;
++const LEAVE_DURATION = 260;
++const TRAVEL_MODE = Clutter.AnimationMode.EASE_OUT_QUART;
++const FLING_DECAY = 325;
++const REVEAL_DURATION = 240;
++const DISMISS_TRAVEL = 64;
++
++const PREVIEW_TYPES = [
++    Meta.WindowType.NORMAL,
++    Meta.WindowType.DIALOG,
++    Meta.WindowType.MODAL_DIALOG,
++    Meta.WindowType.UTILITY,
++];
++
++const HOLD_MODIFIERS = Clutter.ModifierType.SUPER_MASK | Clutter.ModifierType.MOD4_MASK |
++    Clutter.ModifierType.META_MASK | Clutter.ModifierType.HYPER_MASK |
++    Clutter.ModifierType.MOD1_MASK | Clutter.ModifierType.CONTROL_MASK;
++
++const lerp = (from, to, progress) => from + (to - from) * progress;
++const duration = msecs => Math.max(1, adjustAnimationTime(msecs));
++
++// Geometry for a row of `count` desktops of one aspect ratio, in logical
++// pixels, inside a viewport of width x height. Cards are Grid's card height
++// for the display, which fits one or two desktops side by side, shrunk only
++// as far as needed to fit up to WORKSPACE_FIT across. With more desktops than
++// that the row scrolls, and the next card peeks in at the edge so there is
++// visibly more. Pure, so the oracle can check it directly.
++export function workspaceLayout(count, aspect, width, height) {
++    if (!(width > 0 && height > 0 && aspect > 0))
++        throw new RangeError('Workspace overview requires a positive viewport and aspect');
++    const shown = Math.min(Math.max(1, count), WORKSPACE_FIT);
++    const peek = count > WORKSPACE_FIT ? WORKSPACE_PEEK : 0;
++    const gaps = shown - 1 + (peek ? 1 : 0);
++    const fitAcross = (width - gaps * WORKSPACE_GAP) / ((shown + peek) * aspect);
++    let cardHeight = Math.max(WORKSPACE_MIN_HEIGHT,
++        Math.min(gridCardHeight(width, height), fitAcross));
++    cardHeight = Math.max(1, Math.min(cardHeight, height - GRID_LABEL, width / aspect));
++    const cardWidth = cardHeight * aspect;
++    const rowWidth = count * cardWidth + Math.max(0, count - 1) * WORKSPACE_GAP;
++    const blockHeight = GRID_LABEL + cardHeight;
++    const labelY = Math.max(0, (height - blockHeight) / 2);
++    let x = (width - rowWidth) / 2;
++    const items = [];
++    for (let index = 0; index < count; index++) {
++        items.push({index, x, y: labelY + GRID_LABEL, width: cardWidth, height: cardHeight, labelY});
++        x += cardWidth + WORKSPACE_GAP;
++    }
++    return {items, cardWidth, cardHeight, rowWidth, overflow: rowWidth > width + 0.5};
++}
++
++export function isOpen() {
++    return activeOverview !== null;
++}
++
++export function toggle() {
++    if (activeOverview && !activeOverview.leaving)
++        activeOverview.dismiss();
++    else
++        show();
++}
++
++export function show(backward = false, modifierMask = 0) {
++    if (activeOverview?.leaving)
++        activeOverview.destroy();
++    if (activeOverview) {
++        activeOverview.step(backward ? 'Left' : 'Right');
++        return;
++    }
++    if (!Main.sessionMode.hasOverview || !Main.sessionMode.hasWorkspaces || Main.sessionMode.isLocked)
++        return;
++    if (Main.overview.visible)
++        Main.overview.hide();
++    activeOverview = new WorkspaceOverview(modifierMask);
++    activeOverview.open();
++}
++
++const ManualLayout = GObject.registerClass(
++class ManualLayout extends Clutter.LayoutManager {
++    vfunc_get_preferred_width() {
++        return [0, 0];
++    }
++
++    vfunc_get_preferred_height() {
++        return [0, 0];
++    }
++
++    vfunc_allocate() {
++    }
++});
++
++function allocate(actor, x, y, width, height) {
++    const box = new Clutter.ActorBox();
++    const x1 = Math.round(x);
++    const y1 = Math.round(y);
++    box.set_origin(x1, y1);
++    box.set_size(Math.max(0, Math.round(x + width) - x1), Math.max(0, Math.round(y + height) - y1));
++    actor.allocate(box);
++}
++
++function uiScale() {
++    return St.ThemeContext.get_for_stage(global.stage).scale_factor;
++}
++
++// Window actors that make up a desktop on one display, bottom to top.
++function desktopWindows(workspace, monitor) {
++    return global.get_window_actors().filter(actor => {
++        const window = actor.meta_window;
++        if (!window || window.minimized || window.is_override_redirect() ||
++            !PREVIEW_TYPES.includes(window.get_window_type()) ||
++            !window.located_on_workspace(workspace))
++            return false;
++        const rect = window.get_frame_rect();
++        return rect.x < monitor.x + monitor.width && rect.x + rect.width > monitor.x &&
++            rect.y < monitor.y + monitor.height && rect.y + rect.height > monitor.y;
++    });
++}
++
++// Windows a person would count as "on" a desktop.
++function countedWindows(workspace) {
++    return workspace.list_windows().filter(window =>
++        window.get_window_type() === Meta.WindowType.NORMAL && !window.skip_taskbar &&
++        !window.is_on_all_workspaces()).length;
++}
++
++const WorkspaceCard = GObject.registerClass(
++class WorkspaceCard extends St.Widget {
++    _init(workspace, overview) {
++        super._init({reactive: true, can_focus: true, track_hover: true,
++            accessible_role: Atk.Role.PUSH_BUTTON});
++        this.workspace = workspace;
++        this._overview = overview;
++        this._selected = false;
++        this._shapeRadius = null;
++        this._monitorRect = null;
++
++        this._ring = new St.Widget({style_class: 'luma-workspace-card-ring', opacity: 0});
++        this._frame = new St.Widget({style_class: 'luma-workspace-card-frame'});
++        // The desktop at the primary display's own size, scaled onto the card
++        // as a whole: its wallpaper and live window clones render at full
++        // resolution and RoundedPreview averages them down, as Grid draws a
++        // window. The same RoundedPreview also corrects a texture cached at
++        // another display's scale.
++        this._body = new Clutter.Actor({clip_to_allocation: true});
++        this._wallpaper = new Meta.BackgroundGroup();
++        this._body.add_child(this._wallpaper);
++        this._windows = new Clutter.Actor();
++        this._body.add_child(this._windows);
++        this._rounded = new RoundedPreview();
++        this._body.add_effect(this._rounded);
++
++        this._header = new St.BoxLayout({style_class: 'luma-workspace-card-header',
++            clip_to_allocation: true});
++        this._title = new St.Label({style_class: 'luma-workspace-card-title',
++            x_expand: true, y_align: Clutter.ActorAlign.CENTER});
++        this._title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._meta = new St.Label({style_class: 'luma-workspace-card-meta',
++            y_align: Clutter.ActorAlign.CENTER});
++        this._header.add_child(this._title);
++        this._header.add_child(this._meta);
++
++        this.add_child(this._ring);
++        this.add_child(this._frame);
++        this.add_child(this._body);
++        this.add_child(this._header);
++
++        const click = new Clutter.ClickGesture();
++        click.connect('recognize', () => overview.activate(this));
++        this.add_action(click);
++        this.connect('notify::hover', () => this._syncSelection());
++        this.connect('key-focus-in', () => overview.selectCard(this));
++
++        workspace.connectObject(
++            'window-added', () => this.queueRebuild(),
++            'window-removed', () => this.queueRebuild(), this);
++        this.connect('destroy', () => {
++            this._destroyed = true;
++            this._wallpaperManager?.destroy();
++            this._wallpaperManager = null;
++            if (this._rebuildLater)
++                global.compositor.get_laters().remove(this._rebuildLater);
++            this._rebuildLater = 0;
++        });
++        this.rebuild();
++    }
++
++    get index() {
++        return this.workspace.index();
++    }
++
++    // Build the desktop for the current primary display.
++    rebuild() {
++        const monitor = Main.layoutManager.primaryMonitor;
++        if (!monitor || this._destroyed)
++            return;
++        const monitorIndex = Main.layoutManager.primaryIndex;
++        if (this._wallpaperMonitor !== monitorIndex || !this._wallpaperManager) {
++            this._wallpaperManager?.destroy();
++            this._wallpaperManager = new Background.BackgroundManager({
++                container: this._wallpaper, monitorIndex, controlPosition: false});
++            this._wallpaperMonitor = monitorIndex;
++        }
++        this._monitorRect = {x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height};
++        this._windows.destroy_all_children();
++        for (const actor of desktopWindows(this.workspace, monitor)) {
++            const clone = new Clutter.Clone({source: actor});
++            clone.set_position(actor.x - monitor.x, actor.y - monitor.y);
++            this._windows.add_child(clone);
++            actor.meta_window.connectObject('notify::minimized', () => this.queueRebuild(),
++                'position-changed', () => this.queueRebuild(),
++                'size-changed', () => this.queueRebuild(), clone);
++        }
++        this.syncLabels();
++        this.queue_relayout();
++    }
++
++    queueRebuild() {
++        // Leaving has already chosen what is drawn; switching restacks and
++        // refocuses windows, and rebuilding then would re-render mid-zoom.
++        if (this._rebuildLater || this._destroyed || this._overview.leaving)
++            return;
++        this._rebuildLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._rebuildLater = 0;
++            this.rebuild();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    get windowCount() {
++        return this._windows.get_n_children();
++    }
++
++    syncLabels() {
++        const manager = global.workspace_manager;
++        const index = this.index;
++        if (index < 0)
++            return;
++        const count = countedWindows(this.workspace);
++        const trailing = Meta.prefs_get_dynamic_workspaces() &&
++            index === manager.n_workspaces - 1 && count === 0 && index > 0;
++        const current = manager.get_active_workspace() === this.workspace;
++        const named = this._overview.workspaceName(index);
++        this._title.text = named ?? (trailing ? _('New Desktop') : _('Desktop %d').format(index + 1));
++        let meta;
++        if (current)
++            meta = _('Current');
++        else if (trailing)
++            meta = '';
++        else if (count === 0)
++            meta = _('Empty');
++        else
++            meta = count === 1 ? _('1 window') : _('%d windows').format(count);
++        this._meta.text = meta;
++        if (current)
++            this._meta.add_style_class_name('current');
++        else
++            this._meta.remove_style_class_name('current');
++        this.accessible_name = meta ? `${this._title.text}, ${meta}` : this._title.text;
++    }
++
++    setSelected(selected) {
++        this._selected = selected;
++        this._syncSelection();
++    }
++
++    _syncSelection() {
++        const travelling = this._overview.travelling || this._overview.leaving;
++        const lifted = this.hover && !travelling;
++        if (!travelling) {
++            this.ease({translation_y: lifted ? -3 * uiScale() : 0,
++                duration: adjustAnimationTime(160), mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        }
++        if (lifted)
++            this._frame.add_style_pseudo_class('hover');
++        else
++            this._frame.remove_style_pseudo_class('hover');
++        this._title.opacity = this._selected || lifted ? 255 : 214;
++        const ring = this._selected && !travelling ? 255 : 0;
++        if (this._ring.opacity !== ring) {
++            this._ring.remove_all_transitions();
++            this._ring.ease({opacity: ring, duration: travelling ? 0 : adjustAnimationTime(140),
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        }
++    }
++
++    // A card resting outside the row's clip is not drawn at all, as in Grid:
++    // Clutter would still render its full-resolution desktop first.
++    vfunc_paint(paintContext) {
++        if (!this._overview.isHidden(this))
++            super.vfunc_paint(paintContext);
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        const scale = uiScale();
++        const width = box.get_width();
++        const label = GRID_LABEL * scale;
++        const height = Math.max(1, box.get_height() - label);
++        const radius = this._shapeRadius ?? WORKSPACE_RADIUS;
++        allocate(this._header, 0, 0, width, 20 * scale);
++        allocate(this._frame, 0, label, width, height);
++        const out = (RING_GAP + RING_WIDTH) * scale;
++        allocate(this._ring, -out, label - out, width + 2 * out, height + 2 * out);
++        const monitor = this._monitorRect ?? {width, height};
++        const fit = Math.max(1e-3, Math.min(width / monitor.width, height / monitor.height));
++        const offsetX = Math.round((width - monitor.width * fit) / 2);
++        const offsetY = Math.round((height - monitor.height * fit) / 2);
++        allocate(this._body, offsetX, label + offsetY, monitor.width, monitor.height);
++        this._body.set_scale(fit, fit);
++        allocate(this._wallpaper, 0, 0, monitor.width, monitor.height);
++        allocate(this._windows, 0, 0, monitor.width, monitor.height);
++        this._rounded.setShape(monitor.width, monitor.height, radius * scale / fit);
++        // St scales CSS lengths itself, so styles take logical pixels.
++        const styleRadius = Math.round(radius * 2) / 2;
++        if (this._styleRadius !== styleRadius) {
++            this._styleRadius = styleRadius;
++            this._frame.set_style(`border-radius: ${styleRadius}px;`);
++            this._ring.set_style(`border-radius: ${styleRadius + RING_GAP + RING_WIDTH}px;`);
++        }
++    }
++});
++
++const WorkspaceOverview = GObject.registerClass(
++class WorkspaceOverview extends St.Widget {
++    _init(modifierMask) {
++        super._init({reactive: true, can_focus: true, style_class: 'luma-workspace-root',
++            accessible_name: _('Desktops'), accessible_role: Atk.Role.PANEL});
++        // The surface follows the app colour scheme, as Luma's windows do:
++        // dark only when apps are dark, whatever the Shell stylesheet is.
++        this._interfaceSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
++        this._interfaceSettings.connectObject('changed::color-scheme', () => this._syncScheme(), this);
++        this._syncScheme();
++        // Opened with Super held, Tab steps between desktops while Super stays
++        // down, and letting go after a step switches, like a hold switcher.
++        // A plain press and release leaves the view open to browse, as Grid.
++        this._holdMask = modifierMask & HOLD_MODIFIERS;
++        this._steppedWhileHeld = false;
++        this._scrollX = null;
++        this._scrollMin = 0;
++        this._scrollMax = 0;
++        this._cards = [];
++        this._selected = 0;
++        this._lastSize = '';
++        this._travelProgress = 0;
++        this._wmSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.wm.preferences'});
++
++        // Every display shows its wallpaper under the surface, so the surface
++        // fades in over the desktop while the real windows are hidden.
++        this._wallpaper = new Meta.BackgroundGroup();
++        this._wallpaperManagers = [];
++        this.add_child(this._wallpaper);
++        this._syncWallpaper();
++        this._backdrop = new St.Widget({style_class: 'luma-workspace-overview', opacity: 0});
++        this.add_child(this._backdrop);
++        this._stage = new St.Widget({clip_to_allocation: true, layout_manager: new ManualLayout()});
++        this.add_child(this._stage);
++
++        const pan = new Clutter.PanGesture({min_n_points: 1, max_n_points: 1});
++        pan.connect('recognize', () => {
++            this._stopFling();
++            this._stopReveal();
++            this._panStartX = this._scrollX;
++            this._flingVelocity = 0;
++        });
++        pan.connect('pan-update', gesture => {
++            const delta = gesture.get_accumulated_delta();
++            const scale = uiScale();
++            this._scrollX = this._clampScroll(this._panStartX - delta.get_x() / scale);
++            this._flingVelocity = -gesture.get_velocity().get_x() / scale;
++            this.queue_relayout();
++        });
++        pan.connect('end', () => this._fling(this._flingVelocity ?? 0));
++        this.add_action(pan);
++
++        const dismiss = new Clutter.ClickGesture();
++        dismiss.connect('may-recognize', () => !this._cards.some(c => c.hover));
++        dismiss.connect('recognize', () => this.dismiss());
++        this.add_action(dismiss);
++
++        this._dismissSwipe = new SwipeTracker.SwipeTracker(global.stage,
++            Clutter.Orientation.VERTICAL, Shell.ActionMode.POPUP,
++            {allowDrag: false, allowScroll: false, name: 'Luma workspace overview dismiss'});
++        this._dismissSwipe.connect('begin', tracker => {
++            const monitor = Main.layoutManager.primaryMonitor;
++            tracker.confirmSwipe(monitor?.height ?? 800, [0, 1], 1, 1);
++        });
++        this._dismissSwipe.connect('end', (_tracker, _duration, endProgress) => {
++            if (endProgress === 0)
++                this.dismiss();
++        });
++
++        this.add_constraint(new Clutter.BindConstraint({source: global.stage,
++            coordinate: Clutter.BindCoordinate.ALL}));
++
++        this._buildCards();
++        const active = global.workspace_manager.get_active_workspace_index();
++        this._currentIndex = active;
++        this._selected = active;
++        this._openCard = this._cards[active] ?? null;
++
++        global.workspace_manager.connectObject(
++            'workspace-added', () => this._queueCards(),
++            'workspace-removed', () => this._queueCards(),
++            'workspaces-reordered', () => this._queueCards(),
++            'active-workspace-changed', () => this.syncLabels(), this);
++        global.display.connectObject(
++            'restacked', () => this._cards.forEach(c => c.queueRebuild()),
++            'workareas-changed', () => this.queueReflow(),
++            // A dialog asking for attention (authentication, close
++            // confirmation) must not open behind this view.
++            'window-created', (_display, window) => {
++                const type = window.get_window_type();
++                if (type === Meta.WindowType.MODAL_DIALOG || type === Meta.WindowType.DIALOG)
++                    this.destroy();
++            }, this);
++        this._wmSettings.connectObject('changed::workspace-names', () => this.syncLabels(), this);
++        Main.layoutManager.connectObject('system-modal-opened', () => this.destroy(),
++            'monitors-changed', () => {
++                this._syncWallpaper();
++                this._cards.forEach(c => c.rebuild());
++                this.queueReflow();
++            }, this);
++        Main.sessionMode.connectObject('updated', () => {
++            if (Main.sessionMode.isLocked || !Main.sessionMode.hasOverview)
++                this.destroy();
++        }, this);
++
++        this.connect('destroy', () => {
++            this._destroyed = true;
++            this._cards = [];
++            this._geometry = null;
++            this._wallpaperManagers.forEach(manager => manager.destroy());
++            this._wallpaperManagers = [];
++            this._stopReveal();
++            this._stopFling();
++            this._cancelTravelStart();
++            this._travelTimeline?.stop();
++            this._travelTimeline = null;
++            for (const id of ['_layoutLater', '_cardsLater']) {
++                if (this[id])
++                    global.compositor.get_laters().remove(this[id]);
++                this[id] = 0;
++            }
++            Main.layoutManager.setWindowsHiddenForGrid(false);
++            this._dismissSwipe?.destroy();
++            this._dismissSwipe = null;
++            if (this._grab)
++                Main.popModal(this._grab);
++            this._grab = null;
++            if (activeOverview === this)
++                activeOverview = null;
++        });
++    }
++
++    get leaving() {
++        return this._leaving === true;
++    }
++
++    get travelling() {
++        return this._travelTimeline !== null && this._travelTimeline !== undefined;
++    }
++
++    _syncScheme() {
++        if (this._interfaceSettings.get_string('color-scheme') === 'prefer-dark')
++            this.remove_style_class_name('light');
++        else
++            this.add_style_class_name('light');
++    }
++
++    workspaceName(index) {
++        const name = this._wmSettings.get_strv('workspace-names')[index]?.trim();
++        return name ? name : null;
++    }
++
++    syncLabels() {
++        if (this._leaving || this._destroyed)
++            return;
++        this._currentIndex = global.workspace_manager.get_active_workspace_index();
++        this._cards.forEach(card => card.syncLabels());
++    }
++
++    _syncWallpaper() {
++        this._wallpaperManagers.forEach(manager => manager.destroy());
++        this._wallpaperManagers = Main.layoutManager.monitors.map((_monitor, monitorIndex) =>
++            new Background.BackgroundManager({container: this._wallpaper, monitorIndex}));
++    }
++
++    _buildCards() {
++        const manager = global.workspace_manager;
++        const wanted = [];
++        for (let i = 0; i < manager.n_workspaces; i++)
++            wanted.push(manager.get_workspace_by_index(i));
++        const selected = this._cards[this._selected]?.workspace ?? null;
++        const keep = new Map(this._cards.map(card => [card.workspace, card]));
++        this._cards = wanted.map(workspace => {
++            const existing = keep.get(workspace);
++            keep.delete(workspace);
++            if (existing)
++                return existing;
++            const card = new WorkspaceCard(workspace, this);
++            this._stage.add_child(card);
++            return card;
++        });
++        keep.forEach(card => card.destroy());
++        if (selected)
++            this._selected = Math.max(0, this._cards.findIndex(c => c.workspace === selected));
++        this._selected = Math.max(0, Math.min(this._selected, this._cards.length - 1));
++        this.syncLabels();
++    }
++
++    _queueCards() {
++        if (this._cardsLater || this._destroyed)
++            return;
++        this._cardsLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._cardsLater = 0;
++            // Leaving has already chosen a desktop; an emptied dynamic
++            // workspace Mutter removes behind the zoom changes nothing.
++            if (this._destroyed || this._leaving)
++                return GLib.SOURCE_REMOVE;
++            this._buildCards();
++            if (this._cards.length === 0) {
++                this.destroy();
++                return GLib.SOURCE_REMOVE;
++            }
++            this.reflow();
++            this._syncSelection();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    isHidden(card) {
++        if (this._destroyed || this.travelling || this._leaving)
++            return false;
++        const box = card.get_allocation_box();
++        const width = this._stage.get_allocation_box().get_width();
++        return box.x2 <= 0 || box.x1 >= width;
++    }
++
++    // The primary display and its work area, in stage coordinates.
++    _areas() {
++        const index = Main.layoutManager.primaryIndex;
++        const area = Main.layoutManager.getWorkAreaForMonitor(index);
++        const monitor = Main.layoutManager.primaryMonitor ?? area;
++        return {area, monitor};
++    }
++
++    // The row's logical size: the primary display across, its work area down.
++    _viewport() {
++        const scale = uiScale();
++        const {area, monitor} = this._areas();
++        const width = Math.max(1, monitor.width / scale - 2 * WORKSPACE_EDGE);
++        const height = Math.max(1, area.height / scale - 56);
++        const aspect = monitor.width / Math.max(1, monitor.height);
++        return {scale, width, height, aspect,
++            size: `${width}:${height}:${aspect}:${this._cards.length}`};
++    }
++
++    _clampScroll(x) {
++        return Math.max(this._scrollMin, Math.min(this._scrollMax, x));
++    }
++
++    _layout() {
++        const {width, height, aspect, size} = this._viewport();
++        if (!this._dirty && this._lastSize === size && this._geometry)
++            return false;
++        this._geometry = workspaceLayout(this._cards.length, aspect, width, height);
++        const items = this._geometry.items;
++        const first = items[0];
++        const last = items[items.length - 1];
++        const overflow = this._geometry.overflow;
++        const previousStart = this._rowStart;
++        this._rowStart = first?.x ?? 0;
++        // A row that fits sits centred and does not scroll; a longer one
++        // scrolls between its first and last card resting on the margins.
++        this._scrollMin = overflow ? first.x : 0;
++        this._scrollMax = overflow ? last.x + last.width - width : 0;
++        if (this._scrollX === null) {
++            const focus = items[Math.min(this._currentIndex ?? 0, items.length - 1)];
++            this._scrollX = focus && overflow ? focus.x + focus.width / 2 - width / 2 : 0;
++        } else if (previousStart !== undefined) {
++            this._scrollX += this._rowStart - previousStart;
++        }
++        this._scrollX = this._clampScroll(this._scrollX);
++        this._reflowed = this._lastSize !== '';
++        this._lastSize = size;
++        this._dirty = false;
++        this._homes();
++        return true;
++    }
++
++    // Where each card rests, relative to the stage widget (the primary display).
++    _homes() {
++        const scale = uiScale();
++        const {area, monitor} = this._areas();
++        const top = area.y - monitor.y;
++        return this._geometry.items.map((item, index) => {
++            const home = {x: (WORKSPACE_EDGE + item.x - this._scrollX) * scale,
++                y: top + (28 + item.labelY) * scale,
++                width: item.width * scale, height: (item.height + GRID_LABEL) * scale};
++            const card = this._cards[index];
++            if (card)
++                card.home = {x: monitor.x + home.x, y: monitor.y + home.y, width: home.width, height: home.height};
++            return home;
++        });
++    }
++
++    reflow() {
++        if (this._destroyed)
++            return;
++        this._dirty = true;
++        this._layout();
++        this.queue_relayout();
++    }
++
++    queueReflow() {
++        this._dirty = true;
++        if (this._layoutLater || this._destroyed)
++            return;
++        this._layoutLater = global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._layoutLater = 0;
++            this.reflow();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    selectCard(card) {
++        const index = this._cards.indexOf(card);
++        if (index < 0 || index === this._selected)
++            return;
++        this._selected = index;
++        this._syncSelection();
++    }
++
++    _syncSelection() {
++        this._cards.forEach((card, i) => card.setSelected(i === this._selected));
++        const card = this._cards[this._selected];
++        if (card && !card.has_key_focus())
++            card.grab_key_focus();
++    }
++
++    step(direction) {
++        const count = this._cards.length;
++        if (!count || this._leaving)
++            return;
++        if (direction === 'Home')
++            this._selected = 0;
++        else if (direction === 'End')
++            this._selected = count - 1;
++        else if (direction === 'Left')
++            this._selected = (this._selected + count - 1) % count;
++        else if (direction === 'Right')
++            this._selected = (this._selected + 1) % count;
++        this._syncSelection();
++        this._reveal(this._selected);
++    }
++
++    activate(card) {
++        if (this._leaving)
++            return;
++        this.dismiss(card ?? null);
++    }
++
++    open() {
++        this._layout();
++        Main.uiGroup.add_child(this);
++        this.ensure_style();
++        // Above the windows and below the panel and dock, which stay usable,
++        // exactly where Grid sits.
++        Main.uiGroup.set_child_above_sibling(this, global.window_group);
++        Main.layoutManager.setWindowsHiddenForGrid(true);
++        this._grab = Main.pushModal(this, {actionMode: Shell.ActionMode.POPUP});
++        this.grab_key_focus();
++        this._syncSelection();
++        this._log('open');
++        this._travel(false, () => {
++            this._cards.forEach(card => card._syncSelection());
++            this.queue_relayout();
++            this._checkRested();
++        });
++    }
++
++    _log(what) {
++        const {monitor} = this._areas();
++        const g = this._geometry;
++        console.log(`[luma-workspaces] ${what}: ${this._cards.length} desktops current=${this._currentIndex} ` +
++            `selected=${this._selected} primary=${monitor.width}x${monitor.height}+${monitor.x}+${monitor.y} ` +
++            `card=${Math.round(g?.cardWidth)}x${Math.round(g?.cardHeight)} scroll=${g?.overflow ?? false} ` +
++            `windows=[${this._cards.map(c => c.windowCount).join(',')}] ` +
++            `dynamic=${Meta.prefs_get_dynamic_workspaces()} animations=${St.Settings.get().enable_animations}`);
++    }
++
++    _checkRested() {
++        global.compositor.get_laters().add(Meta.LaterType.IDLE, () => {
++            if (this._destroyed || this._leaving)
++                return GLib.SOURCE_REMOVE;
++            const {monitor} = this._areas();
++            const heights = new Set();
++            this._cards.forEach((card, index) => {
++                const home = card.home;
++                if (!home || !card.get_stage())
++                    return;
++                const box = card.get_allocation_box();
++                heights.add(Math.round(box.get_height()));
++                const off = Math.max(Math.abs(box.x1 + monitor.x - home.x), Math.abs(box.y1 + monitor.y - home.y),
++                    Math.abs(box.get_width() - home.width), Math.abs(box.get_height() - home.height));
++                if (off > 2 || card.opacity !== 255)
++                    console.warn(`[luma-workspaces] desktop ${index} not at rest: ${Math.round(box.get_width())}x${Math.round(box.get_height())} opacity=${card.opacity}`);
++            });
++            if (heights.size > 1)
++                console.warn(`[luma-workspaces] desktops have different heights: ${[...heights].join(',')}`);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    // One transition drives everything: the focus desktop between the whole
++    // display and its place in the row, the others growing in place, the
++    // surface fading over the wallpaper, and the labels arriving last.
++    _travel(leaving, onDone) {
++        this._travelTimeline?.stop();
++        this._travelProgress = leaving ? 1 : 0;
++        this._travelLeaving = leaving;
++        const timeline = this._travelTimeline = new Clutter.Timeline({
++            actor: this,
++            duration: duration(leaving ? LEAVE_DURATION : ENTER_DURATION),
++            progress_mode: TRAVEL_MODE,
++        });
++        this._cards.forEach(card => {
++            card.remove_all_transitions();
++            card.translation_y = 0;
++            card._syncSelection();
++        });
++        timeline.connect('new-frame', () => {
++            this._travelProgress = leaving ? 1 - timeline.get_progress() : timeline.get_progress();
++            this.queue_relayout();
++        });
++        timeline.connect('stopped', (_timeline, finished) => {
++            if (this._travelTimeline !== timeline)
++                return;
++            this._travelTimeline = null;
++            this._travelProgress = leaving ? 0 : 1;
++            this.queue_relayout();
++            if (finished)
++                onDone();
++        });
++        // As in Grid, the clock starts once the first frame is on screen, so
++        // the first render of every desktop is not counted into the curve.
++        this._cancelTravelStart();
++        this._travelStartId = global.stage.connect_after('after-paint', () => {
++            this._cancelTravelStart();
++            if (this._travelTimeline === timeline)
++                timeline.start();
++        });
++        this.queue_relayout();
++        this.queue_redraw();
++    }
++
++    _cancelTravelStart() {
++        if (this._travelStartId)
++            global.stage.disconnect(this._travelStartId);
++        this._travelStartId = 0;
++    }
++
++    _placeTravelling(card, home, stageRect) {
++        const progress = this._travelProgress;
++        if (progress >= 1) {
++            card._shapeRadius = null;
++            card._header.opacity = 255;
++            card.opacity = 255;
++            return home;
++        }
++        const header = this._travelLeaving
++            ? Math.max(0, (progress - 0.5) * 2) : Math.max(0, (progress - 0.4) / 0.6);
++        card._header.opacity = Math.round(255 * Math.min(1, header));
++        const focus = this._leaving ? this._chosenCard : this._openCard;
++        if (card !== focus) {
++            const inset = 0.03 * (1 - progress);
++            card.opacity = Math.round(255 * progress);
++            card._shapeRadius = null;
++            return {x: home.x + home.width * inset, y: home.y + home.height * inset,
++                width: home.width * (1 - 2 * inset), height: home.height * (1 - 2 * inset)};
++        }
++        // The focus desktop is the screen itself at progress 0: the whole
++        // primary display with square corners, its label just above it.
++        card.opacity = 255;
++        const label = GRID_LABEL * uiScale();
++        card._shapeRadius = lerp(0, WORKSPACE_RADIUS, progress);
++        return {x: lerp(0, home.x, progress), y: lerp(-label, home.y, progress),
++            width: lerp(stageRect.width, home.width, progress),
++            height: lerp(stageRect.height + label, home.height, progress)};
++    }
++
++    // Leave into `card`'s desktop (or back to the current one), zooming it to
++    // fill the display, then hand the desktop back.
++    dismiss(card = null) {
++        if (this._leaving)
++            return;
++        this._stopFling();
++        this._stopReveal();
++        const chosen = card ?? this._openCard ?? null;
++        this._leaving = true;
++        this.reactive = false;
++        this._dismissSwipe?.destroy();
++        this._dismissSwipe = null;
++        this._chosenCard = chosen;
++        if (chosen) {
++            this._stage.set_child_above_sibling(chosen, null);
++            // Switch now, behind the view: Mutter's slide is suppressed while
++            // this view is open, and the zoom is the transition.
++            if (chosen.workspace.index() >= 0 &&
++                chosen.workspace !== global.workspace_manager.get_active_workspace())
++                chosen.workspace.activate(global.get_current_time());
++        }
++        this._log(`leave to ${chosen ? this._cards.indexOf(chosen) : -1}`);
++        if (!this._geometry || !chosen) {
++            this.destroy();
++            return;
++        }
++        this._travel(true, () => this.destroy());
++    }
++
++    _fling(velocity) {
++        this._stopFling();
++        if (Math.abs(velocity) < 0.05 || !St.Settings.get().enable_animations)
++            return;
++        const start = this._scrollX;
++        const timeline = this._flingTimeline = new Clutter.Timeline({actor: this, duration: 5 * FLING_DECAY});
++        timeline.connect('new-frame', (_timeline, elapsed) => {
++            const target = start + velocity * FLING_DECAY * (1 - Math.exp(-elapsed / FLING_DECAY));
++            this._scrollX = this._clampScroll(target);
++            this.queue_relayout();
++            if (this._scrollX !== target)
++                this._stopFling();
++        });
++        timeline.connect('stopped', () => {
++            if (this._flingTimeline === timeline)
++                this._flingTimeline = null;
++        });
++        timeline.start();
++    }
++
++    _stopFling() {
++        const timeline = this._flingTimeline;
++        this._flingTimeline = null;
++        timeline?.stop();
++    }
++
++    _reveal(index) {
++        const item = this._geometry?.items[index];
++        if (!item)
++            return;
++        const {width} = this._viewport();
++        let target = this._scrollX;
++        if (item.x - this._scrollX < 0)
++            target = item.x;
++        else if (item.x + item.width - this._scrollX > width)
++            target = item.x + item.width - width;
++        target = this._clampScroll(target);
++        if (Math.abs(target - this._scrollX) < 0.5)
++            return;
++        this._stopFling();
++        this._stopReveal();
++        if (!St.Settings.get().enable_animations) {
++            this._scrollX = target;
++            this.queue_relayout();
++            return;
++        }
++        const start = this._scrollX;
++        const timeline = this._revealTimeline = new Clutter.Timeline({
++            actor: this, duration: duration(REVEAL_DURATION),
++            progress_mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
++        timeline.connect('new-frame', () => {
++            this._scrollX = lerp(start, target, timeline.get_progress());
++            this.queue_relayout();
++        });
++        timeline.connect('stopped', () => {
++            if (this._revealTimeline === timeline)
++                this._revealTimeline = null;
++        });
++        timeline.start();
++    }
++
++    _stopReveal() {
++        const timeline = this._revealTimeline;
++        this._revealTimeline = null;
++        timeline?.stop();
++    }
++
++    vfunc_key_press_event(event) {
++        if (this._leaving)
++            return Clutter.EVENT_STOP;
++        const key = event.get_key_symbol();
++        const state = event.get_state();
++        const directions = new Map([[Clutter.KEY_Left, 'Left'], [Clutter.KEY_Right, 'Right'],
++            [Clutter.KEY_Up, 'Left'], [Clutter.KEY_Down, 'Right'],
++            [Clutter.KEY_Home, 'Home'], [Clutter.KEY_End, 'End']]);
++        if (directions.has(key)) {
++            this.step(directions.get(key));
++        } else if (key === Clutter.KEY_Tab || key === Clutter.KEY_ISO_Left_Tab) {
++            this.step(state & Clutter.ModifierType.SHIFT_MASK ? 'Left' : 'Right');
++            if (this._holdMask && state & this._holdMask)
++                this._steppedWhileHeld = true;
++        } else if (key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter ||
++            key === Clutter.KEY_ISO_Enter || key === Clutter.KEY_space) {
++            this.activate(this._cards[this._selected]);
++        } else if (key === Clutter.KEY_Escape) {
++            this.dismiss();
++        } else if ((key === Clutter.KEY_a || key === Clutter.KEY_A) &&
++            state & (Clutter.ModifierType.SUPER_MASK | Clutter.ModifierType.MOD4_MASK)) {
++            // The shortcut that opened the view closes it.
++            this.dismiss();
++        } else if (key >= Clutter.KEY_1 && key <= Clutter.KEY_9) {
++            const card = this._cards[key - Clutter.KEY_1];
++            if (card)
++                this.activate(card);
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_key_release_event(_event) {
++        if (!this._leaving && this._steppedWhileHeld) {
++            const [, , mods] = global.get_pointer();
++            if ((mods & this._holdMask) === 0)
++                this.activate(this._cards[this._selected]);
++        }
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_scroll_event(event) {
++        if (this._leaving)
++            return Clutter.EVENT_STOP;
++        const direction = event.get_scroll_direction();
++        let dx = 0;
++        let dy = 0;
++        if (direction === Clutter.ScrollDirection.SMOOTH)
++            [dx, dy] = event.get_scroll_delta();
++        else if (direction === Clutter.ScrollDirection.UP)
++            dy = -1;
++        else if (direction === Clutter.ScrollDirection.DOWN)
++            dy = 1;
++        else if (direction === Clutter.ScrollDirection.LEFT)
++            dx = -1;
++        else if (direction === Clutter.ScrollDirection.RIGHT)
++            dx = 1;
++        // The row is the only axis that travels, so any two-finger scroll or
++        // wheel moves along it, as in Grid.
++        this._stopFling();
++        this._stopReveal();
++        this._scrollX = this._clampScroll(this._scrollX + (dx + dy) * 60);
++        this.queue_relayout();
++        return Clutter.EVENT_STOP;
++    }
++
++    vfunc_captured_event(event) {
++        if (event.type() === Clutter.EventType.TOUCHPAD_SWIPE &&
++            event.get_touchpad_gesture_finger_count() === 3) {
++            const phase = event.get_gesture_phase();
++            if (phase === Clutter.TouchpadGesturePhase.BEGIN) {
++                this._swipeTravel = 0;
++            } else if (phase === Clutter.TouchpadGesturePhase.UPDATE) {
++                const [, dy] = event.get_gesture_motion_delta();
++                this._swipeTravel = (this._swipeTravel ?? 0) + dy;
++            } else if (phase === Clutter.TouchpadGesturePhase.END) {
++                const travelled = this._swipeTravel ?? 0;
++                this._swipeTravel = 0;
++                if (travelled > DISMISS_TRAVEL) {
++                    this.dismiss();
++                    return Clutter.EVENT_STOP;
++                }
++            } else {
++                this._swipeTravel = 0;
++            }
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    vfunc_allocate(box) {
++        this.set_allocation(box);
++        if (this._destroyed)
++            return;
++        allocate(this._wallpaper, 0, 0, box.get_width(), box.get_height());
++        allocate(this._backdrop, 0, 0, box.get_width(), box.get_height());
++        this._backdrop.opacity = Math.round(255 * Math.min(1, Math.max(0, this._travelProgress)));
++        const {monitor} = this._areas();
++        // The whole primary display, so the focus desktop can start as the
++        // screen itself; no card is ever drawn onto another display.
++        allocate(this._stage, monitor.x, monitor.y, monitor.width, monitor.height);
++        if (!this._geometry)
++            return;
++        if (this._lastSize !== this._viewport().size)
++            this.queueReflow();
++        const homes = this._homes();
++        const reflowed = this._reflowed;
++        this._reflowed = false;
++        this._geometry.items.forEach((_item, index) => {
++            const card = this._cards[index];
++            if (!card)
++                return;
++            const place = this._placeTravelling(card, homes[index], monitor);
++            card.save_easing_state();
++            card.set_easing_duration(reflowed && !this.travelling ? adjustAnimationTime(220) : 0);
++            card.set_easing_mode(Clutter.AnimationMode.EASE_OUT_QUAD);
++            allocate(card, place.x, place.y, place.width, place.height);
++            card.restore_easing_state();
++        });
++    }
++});
+diff --git a/js/ui/overview.js b/js/ui/overview.js
+index eba707b..950731a 100644
+--- a/js/ui/overview.js
++++ b/js/ui/overview.js
+@@ -656,6 +656,15 @@ export class Overview extends Signals.EventEmitter {
+     }
+ 
+     showApps() {
++        // Luma has no app grid (ADR-037). Anything asking for all apps (a
++        // rebound Show Apps key, D-Bus ShowApplications, an extension) gets
++        // Luma Search, which is the app launcher.
++        if (Main.lumaSearch) {
++            if (this._shown)
++                this.hide();
++            Main.lumaSearch.open();
++            return;
++        }
+         if (this._shown) {
+             this._overview.accessible_name = _('Applications');
+             this._overview.controls.showApplications();
+@@ -666,6 +675,8 @@ export class Overview extends Signals.EventEmitter {
+ 
+     selectApp(id) {
+         this.showApps();
++        if (Main.lumaSearch)
++            return;
+         this._overview.controls.appDisplay.selectApp(id);
+     }
+ 
+diff --git a/js/ui/shellDBus.js b/js/ui/shellDBus.js
+index 5b45efa..a364658 100644
+--- a/js/ui/shellDBus.js
++++ b/js/ui/shellDBus.js
+@@ -200,7 +200,7 @@ export class GnomeShell {
+             return;
+         }
+ 
+-        Main.overview.show(ControlsState.APP_GRID);
++        Main.overview.showApps();
+         invocation.return_value(null);
+     }
+ 
+diff --git a/js/ui/windowManager.js b/js/ui/windowManager.js
+index 9ee8b50..b5558cd 100644
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -24,6 +24,7 @@ import * as WorkspaceAnimation from './workspaceAnimation.js';
+ 
+ import * as Main from './main.js';
+ import * as LumaGrid from './lumaGrid.js';
++import * as LumaWorkspaceOverview from './lumaWorkspaceOverview.js';
+ 
+ export const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+ 
+@@ -756,6 +757,23 @@ export class WindowManager {
+             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+             this._startSwitcher.bind(this));
+ 
++        // Luma's workspace overview: Super+A and Super+Tab by default, while
++        // Alt+Tab stays with Grid. Holding Super, Tab steps and letting go
++        // switches (ADR-037).
++        this.addKeybinding('toggle-workspace-overview',
++            new Gio.Settings({schema_id: SHELL_KEYBINDINGS_SCHEMA}),
++            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
++            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
++            (display, window, event, binding) =>
++                LumaWorkspaceOverview.show(false, binding.get_mask()));
++
++        this.addKeybinding('toggle-workspace-overview-backward',
++            new Gio.Settings({schema_id: SHELL_KEYBINDINGS_SCHEMA}),
++            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
++            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
++            (display, window, event, binding) =>
++                LumaWorkspaceOverview.show(true, binding.get_mask()));
++
+         this.addKeybinding('toggle-message-tray',
+             new Gio.Settings({schema_id: SHELL_KEYBINDINGS_SCHEMA}),
+             Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+@@ -1148,7 +1166,9 @@ export class WindowManager {
+ 
+     _shouldAnimate() {
+         const overviewOpen = Main.overview.visible && !Main.overview.closing;
+-        return !(overviewOpen || this._workspaceAnimation.gestureActive);
++        // The workspace overview's zoom is its own switch transition.
++        return !(overviewOpen || LumaWorkspaceOverview.isOpen() ||
++            this._workspaceAnimation.gestureActive);
+     }
+ 
+     _shouldAnimateActor(actor, types) {

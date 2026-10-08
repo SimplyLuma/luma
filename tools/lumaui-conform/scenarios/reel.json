@@ -1,0 +1,724 @@
+{
+  "app": "reel",
+  "title": "Reel",
+  "spec": {
+    "url": "mockups/luma-next-70.html?app=reel",
+    "window": "#w-reel",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ]
+  },
+  "gtk": {
+    "module": "luma_reel.lumaui_application",
+    "pythonpath": [
+      "src/luma-reel"
+    ],
+    "fixtures": [
+      "tests/fixtures/reel-v70.json"
+    ],
+    "env": {
+      "LUMA_REEL_FIXTURE": "{run}/fixtures/reel-v70.json"
+    }
+  },
+  "states": [
+    {
+      "name": "story",
+      "about": "Opening player and 44 second story; browser and inspector closed",
+      "spec": [],
+      "gtk": []
+    },
+    {
+      "name": "browser-media",
+      "spec": [
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"media\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-media"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-titles",
+      "spec": [
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"titles\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-titles"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-trans",
+      "spec": [
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"trans\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-trans"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-fx",
+      "spec": [
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"fx\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-fx"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-lut",
+      "spec": [
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"lut\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-lut"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-audio",
+      "spec": [
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"audio\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-audio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inspector-video",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"video\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "inspector-video"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inspector-colour",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"colour\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "inspector-colour"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inspector-audio",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"audio\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "inspector-audio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "inspector-fx",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"fx\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "inspector-fx"
+          }
+        }
+      ]
+    },
+    {
+      "name": "title-text",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r8\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"text\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "title-text"
+          }
+        }
+      ]
+    },
+    {
+      "name": "title-video",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r8\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"video\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "title-video"
+          }
+        }
+      ]
+    },
+    {
+      "name": "music-audio",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r11\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "music-audio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "voice-audio",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r12\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "voice-audio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "blend-menu",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlblend]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "blend-menu"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lut-menu",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"colour\"]"
+        },
+        {
+          "click": "[data-rllutpick]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "lut-menu"
+          }
+        }
+      ]
+    },
+    {
+      "name": "export-share",
+      "spec": [
+        {
+          "click": "[data-rlexport]"
+        },
+        {
+          "click": "[data-rlex=\"share\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "export-share"
+          }
+        }
+      ]
+    },
+    {
+      "name": "export-master",
+      "spec": [
+        {
+          "click": "[data-rlexport]"
+        },
+        {
+          "click": "[data-rlex=\"master\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "export-master"
+          }
+        }
+      ]
+    },
+    {
+      "name": "export-vertical",
+      "spec": [
+        {
+          "click": "[data-rlexport]"
+        },
+        {
+          "click": "[data-rlex=\"vertical\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "export-vertical"
+          }
+        }
+      ]
+    },
+    {
+      "name": "export-audio",
+      "spec": [
+        {
+          "click": "[data-rlexport]"
+        },
+        {
+          "click": "[data-rlex=\"audio\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "export-audio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "share",
+      "spec": [
+        {
+          "click": "#rl-top [data-share]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "share"
+          }
+        }
+      ]
+    },
+    {
+      "name": "more",
+      "spec": [
+        {
+          "click": "#rl-top [data-docmore]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "more"
+          }
+        }
+      ]
+    },
+    {
+      "name": "picture-title",
+      "about": "Picture layers and image effects at a deterministic story time",
+      "spec": [
+        {
+          "eval": "const lane=document.querySelector('#rl-lanes'), r=lane.getBoundingClientRect(), p=Math.max(8,(lane.clientWidth-24)/44); lane.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,clientX:r.left+2*p,clientY:r.top+2})); document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "picture-title"
+          }
+        }
+      ]
+    },
+    {
+      "name": "picture-cutaway",
+      "about": "Picture layers and image effects at a deterministic story time",
+      "spec": [
+        {
+          "eval": "const lane=document.querySelector('#rl-lanes'), r=lane.getBoundingClientRect(), p=Math.max(8,(lane.clientWidth-24)/44); lane.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,clientX:r.left+20*p,clientY:r.top+2})); document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "picture-cutaway"
+          }
+        }
+      ]
+    },
+    {
+      "name": "picture-dissolve",
+      "about": "Picture layers and image effects at a deterministic story time",
+      "spec": [
+        {
+          "eval": "const lane=document.querySelector('#rl-lanes'), r=lane.getBoundingClientRect(), p=Math.max(8,(lane.clientWidth-24)/44); lane.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,clientX:r.left+10.775*p,clientY:r.top+2})); document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "picture-dissolve"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-fx-selected",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"fx\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-fx-selected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "browser-lut-selected",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rltab=\"lut\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "browser-lut-selected"
+          }
+        }
+      ]
+    },
+    {
+      "name": "picture-effects",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "click": "[data-rlitab=\"fx\"]"
+        },
+        {
+          "click": "[data-rlfxdel=\"0\"]"
+        },
+        {
+          "click": "[data-rlopenfx]"
+        },
+        {
+          "click": "[data-rladdfx=\"blur\"]"
+        },
+        {
+          "eval": "const input=document.querySelector('[data-rlfxamt=\"0\"]'); input.value=24; input.dispatchEvent(new Event(\"input\",{bubbles:true}));"
+        },
+        {
+          "click": "[data-rladdfx=\"grain\"]"
+        },
+        {
+          "eval": "const input=document.querySelector('[data-rlfxamt=\"1\"]'); input.value=40; input.dispatchEvent(new Event(\"input\",{bubbles:true}));"
+        },
+        {
+          "click": "[data-rladdfx=\"glow\"]"
+        },
+        {
+          "eval": "const input=document.querySelector('[data-rlfxamt=\"2\"]'); input.value=30; input.dispatchEvent(new Event(\"input\",{bubbles:true}));"
+        },
+        {
+          "click": "[data-rladdfx=\"letterbox\"]"
+        },
+        {
+          "click": "[data-rllib]"
+        },
+        {
+          "click": "[data-rlclose]",
+          "wait": 7000
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "picture-effects"
+          }
+        }
+      ]
+    },
+    {
+      "name": "picture-cropped",
+      "spec": [
+        {
+          "eval": "document.querySelector('[data-rlclip=\"r3\"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, button:0, clientX:0, clientY:0})); document.dispatchEvent(new PointerEvent('pointerup', {bubbles:true}));"
+        },
+        {
+          "eval": "for (const [key,value] of Object.entries({px:5,py:2,scale:110,rot:5,\"crop.l\":8,\"crop.r\":4,\"crop.t\":5,\"crop.b\":7})) {const input=document.querySelector(`[data-rlf=\"${key}\"]`); input.value=value; input.dispatchEvent(new Event(\"input\",{bubbles:true}));}"
+        },
+        {
+          "click": "[data-rlclose]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "picture-cropped"
+          }
+        }
+      ]
+    },
+    {
+      "name": "picture-lower-title",
+      "spec": [
+        {
+          "eval": "const lane=document.querySelector(\"#rl-lanes\"), r=lane.getBoundingClientRect(), p=Math.max(8,(lane.clientWidth-24)/44); lane.dispatchEvent(new PointerEvent(\"pointerdown\",{bubbles:true,button:0,clientX:r.left+39*p,clientY:r.top+2})); document.dispatchEvent(new PointerEvent(\"pointerup\",{bubbles:true}));"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_REEL_STATE": "picture-lower-title"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "story",
+    "browser-media",
+    "browser-titles",
+    "browser-trans",
+    "browser-fx",
+    "browser-lut",
+    "browser-audio",
+    "inspector-video",
+    "inspector-colour",
+    "inspector-audio",
+    "inspector-fx",
+    "title-text",
+    "title-video",
+    "music-audio",
+    "voice-audio",
+    "blend-menu",
+    "lut-menu",
+    "export-share",
+    "export-master",
+    "export-vertical",
+    "export-audio",
+    "share",
+    "more",
+    "picture-title",
+    "picture-cutaway",
+    "picture-dissolve",
+    "browser-fx-selected",
+    "browser-lut-selected",
+    "picture-effects",
+    "picture-cropped",
+    "picture-lower-title"
+  ],
+  "groups": [
+    {
+      "name": "window controls",
+      "spec": "#w-reel > .wctl",
+      "info_only": true
+    },
+    {
+      "name": "title row",
+      "spec": "#rl-top"
+    },
+    {
+      "name": "transport",
+      "spec": "#rl-ctl"
+    },
+    {
+      "name": "picture",
+      "spec": "#rl-pic"
+    },
+    {
+      "name": "timeline tools",
+      "spec": "#rl-tlh"
+    },
+    {
+      "name": "story",
+      "spec": "#rl-lanes"
+    },
+    {
+      "name": "browser",
+      "spec": "#rl-lib"
+    },
+    {
+      "name": "inspector",
+      "spec": "#rl-insp"
+    },
+    {
+      "name": "export",
+      "spec": "#rl-sheet"
+    },
+    {
+      "name": "menu",
+      "spec": "#rl-pop"
+    },
+    {
+      "name": "main",
+      "spec": "#rl-work"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#rl-work",
+      "gtk": "rl-work",
+      "name": "main island"
+    },
+    {
+      "spec": "#rl-stage",
+      "gtk": "rl-stage",
+      "name": "player stage"
+    },
+    {
+      "spec": "#rl-player",
+      "gtk": "rl-player",
+      "name": "player"
+    },
+    {
+      "spec": "#rl-pic",
+      "gtk": "rl-pic",
+      "name": "picture"
+    },
+    {
+      "spec": "#rl-ctl",
+      "gtk": "rl-ctl",
+      "name": "transport"
+    },
+    {
+      "spec": "#rl-tlh",
+      "gtk": "rl-tlh",
+      "name": "timeline header"
+    },
+    {
+      "spec": "#rl-lanes",
+      "gtk": "rl-lanes",
+      "name": "timeline"
+    },
+    {
+      "spec": "#rl-lib",
+      "gtk": "rl-lib",
+      "name": "browser"
+    },
+    {
+      "spec": "#rl-insp",
+      "gtk": "rl-insp",
+      "name": "inspector"
+    }
+  ]
+}

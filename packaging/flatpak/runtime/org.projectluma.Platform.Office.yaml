@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: Apache-2.0
+# LibreOfficeKit 26.2 for Write, Grid and Stage (ADR-028 section 12).
+#
+# Fedora 44's LibreOffice RPMs are installed into an empty root together with
+# their whole dependency closure. Everything the Luma Platform runtime does not
+# already carry is copied into the extension prefix, and absolute links into
+# /usr are rewritten to stay inside the extension. Apps declare the extension
+# point themselves (directory lib/office, add-ld-path lib64), so only apps that
+# ask for LibreOfficeKit download it, and they find the engine through
+# LUMA_LIBREOFFICE_PROGRAM=/app/lib/office/lib64/libreoffice/program.
+flatpak:
+  id: org.projectluma.Platform.Office
+  build-extension: true
+  runtime: org.projectluma.Platform
+  runtime-version: '44'
+  branch: '44'
+  name: luma/office
+  component: luma-platform-office
+  appstream-compose: false
+  packages:
+  - libreoffice-core
+  - libreoffice-writer
+  - libreoffice-calc
+  - libreoffice-impress
+  - libreoffice-graphicfilter
+  - libreoffice-pdfimport
+  - libreoffice-langpack-en
+  - libreoffice-opensymbol-fonts
+  # tools the cleanup script runs inside the install root (all in the runtime,
+  # so none of them is copied into the extension)
+  - coreutils-single
+  - findutils
+  - grep
+  - sed
+  - rpm
+  cleanup-commands: |
+    test -s /tmp/runtime-packages.txt
+    rpm -qa --qf '%{NAME}\n' | sort -u > /tmp/installed-packages.txt
+    sort -u /tmp/runtime-packages.txt > /tmp/runtime-sorted.txt
+    # Java is a hard RPM dependency of LibreOffice but LibreOfficeKit never
+    # starts a JVM; the standalone systemd tools are only dependency noise.
+    comm -23 /tmp/installed-packages.txt /tmp/runtime-sorted.txt \
+      | grep -v -E '^(java-[0-9]+-openjdk.*|javapackages-.*|lksctp-tools|systemd-standalone-.*)$' \
+      > /tmp/office-packages.txt
+    mkdir -p /app
+    cp /tmp/office-packages.txt /app/office-packages.txt
+    for p in $(cat /tmp/office-packages.txt); do rpm -ql "$p"; done \
+      | grep -E '^/(usr|etc)/' | sort -u > /tmp/office-files.txt
+    while read -r f; do
+      if [ ! -L "$f" ] && [ ! -f "$f" ]; then continue; fi
+      case "$f" in
+        /usr/share/doc/*|/usr/share/man/*|/usr/share/info/*|/usr/include/*) continue ;;
+        /usr/lib/.build-id/*|/usr/lib/systemd/*|/usr/lib64/pkgconfig/*) continue ;;
+        /usr/share/applications/*|/usr/share/metainfo/*|/usr/share/appdata/*) continue ;;
+        /usr/share/icons/*|/usr/share/mime/*|/usr/bin/*|/usr/sbin/*) continue ;;
+        /usr/*) d="/app/${f#/usr/}" ;;
+        /etc/*) d="/app/etc/${f#/etc/}" ;;
+      esac
+      mkdir -p "$(dirname "$d")"
+      cp -a "$f" "$d"
+    done < /tmp/office-files.txt
+    # Absolute links into /usr or /etc that name something now inside the
+    # extension become relative; links to runtime files stay absolute, because
+    # the runtime is mounted at /usr in the sandbox too.
+    find /app -type l | while read -r l; do
+      t=$(readlink "$l")
+      case "$t" in
+        /usr/*) inside="/app/${t#/usr/}" ;;
+        /etc/*) inside="/app/etc/${t#/etc/}" ;;
+        *) continue ;;
+      esac
+      if [ -e "$inside" ] || [ -L "$inside" ]; then
+        ln -sfn "$(realpath -m --relative-to="$(dirname "$l")" "$inside")" "$l"
+      fi
+    done
+    test -f /app/lib64/libreoffice/program/libsofficeapp.so

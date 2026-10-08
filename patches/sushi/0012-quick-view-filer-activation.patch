@@ -1,0 +1,43 @@
+--- a/src/org.gnome.NautilusPreviewer2.xml
++++ b/src/org.gnome.NautilusPreviewer2.xml
+@@ -4,6 +4,7 @@
+       <arg type="s" direction="in" name="uri" />
+       <arg type="s" direction="in" name="windowHandle" />
+       <arg type="b" direction="in" name="closeIfAlreadyShown" />
++      <arg type="s" direction="in" name="activationToken" />
+     </method>
+     <method name="Close">
+     </method>
+@@ -11,7 +12,7 @@
+     <property name="ParentHandle" type="s" access="read" />
+     <property name="Visible" type="b" access="read" />
+     <signal name="SelectionEvent">
+-      <arg type="q" name="direction" />
++      <arg type="u" name="direction" />
+     </signal>
+   </interface>
+ </node>
+--- a/src/ui/application.js
++++ b/src/ui/application.js
+@@ -80,8 +80,8 @@
+ 
+     get ParentHandle() { return this.Visible ? (this.application._parentHandle || '') : ''; }
+ 
+-    ShowFile(uri, windowHandle, closeIfAlreadyShown) {
+-        this.application.showFile(uri, windowHandle, closeIfAlreadyShown);
++    ShowFile(uri, windowHandle, closeIfAlreadyShown, activationToken) {
++        this.application.showFile(uri, windowHandle, closeIfAlreadyShown, activationToken);
+     }
+ }
+ 
+@@ -152,8 +152,9 @@
+             'ParentHandle', new GLib.Variant('s', handle));
+     }
+ 
+-    showFile(uri, windowHandle, closeIfAlreadyShown) {
++    showFile(uri, windowHandle, closeIfAlreadyShown, activationToken = null) {
+         this._ensureMainWindow();
++        if (activationToken) this._mainWindow.set_startup_id(activationToken);
+ 
+         let file = Gio.file_new_for_uri(uri);
+         if (closeIfAlreadyShown &&

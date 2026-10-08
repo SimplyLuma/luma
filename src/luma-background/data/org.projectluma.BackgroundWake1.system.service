@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+[D-BUS Service]
+Name=org.projectluma.BackgroundWake1
+Exec=/bin/false
+User=root
+SystemdService=luma-background-wake.service

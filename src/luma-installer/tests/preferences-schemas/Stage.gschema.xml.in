@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="@APP_ID@" path="@SETTINGS_PATH@">
+    <key name="default-new-format" type="s"><default>'pptx'</default><summary>Default format for new presentations</summary></key>
+    <key name="recovery-interval-seconds" type="u"><default>120</default><summary>Recovery snapshot interval</summary></key>
+    <key name="present-without-motion" type="b"><default>false</default><summary>Disable motion during a show</summary></key>
+    <key name="show-welcome" type="b"><default>true</default><summary>Show the Creative collection welcome screen</summary></key>
+  </schema>
+</schemalist>

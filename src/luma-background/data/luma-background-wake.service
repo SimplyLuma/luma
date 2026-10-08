@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma wake-ups for alarms
+Documentation=https://projectluma.org/developer/kit/background-agents
+
+[Service]
+Type=dbus
+BusName=org.projectluma.BackgroundWake1
+ExecStart=/usr/libexec/luma-background-wake
+# It only talks to D-Bus: systemd arms the RTC alarm, polkit decides who may.
+# Root without any capability is still allowed to ask systemd (polkit
+# authorizes UID 0), and needs nothing else.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+MemoryMax=64M

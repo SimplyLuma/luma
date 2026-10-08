@@ -1,0 +1,387 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <builds@project-luma.local>
+Date: Tue, 22 Sep 2026 16:40:00 -0500
+Subject: [PATCH] luma: Beam finds Filer's places
+
+Typing "Applications", "apps", "trash" or "bin" found nothing: Beam had
+providers for apps, files and Settings pages, but none for the places in
+Filer's sidebar, and Filer's own search provider (which Beam replaces)
+never offered them either.
+
+- lumaFilerPlaces.js reads luma-search's filer-places.json (shared with
+  the Python service) and resolves Home, Recent, Starred, Applications,
+  Desktop and the standard folders, Network, Trash, System Disk and the
+  user's bookmarks, in Filer's translated labels. Places Filer would not
+  show (Recent with recent files off, System Disk in personal-storage
+  mode, a missing folder) are not offered.
+- lumaPlacesSearch.js ranks them by name and everyday words ("apps",
+  "bin", "other locations") with the Settings-page model and opens Filer
+  at the location its sidebar opens (applications:///, trash:///, ...).
+- A standard folder found both as a place and as a folder shows once.
+---
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -86,6 +86,8 @@
+     <file>ui/lumaSurfaceMaterials.js</file>
+     <file>ui/lumaFileIndex.js</file>
+     <file>ui/lumaFileSearch.js</file>
++    <file>ui/lumaFilerPlaces.js</file>
++    <file>ui/lumaPlacesSearch.js</file>
+     <file>ui/lumaSearch.js</file>
+     <file>ui/lumaSearchRanking.js</file>
+     <file>ui/lumaSettingsSearch.js</file>
+diff --git a/js/ui/lumaFilerPlaces.js b/js/ui/lumaFilerPlaces.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/lumaFilerPlaces.js
+@@ -0,0 +1,179 @@
++// Filer's places (Home, Applications, Trash, the standard folders, the
++// user's bookmarks) for Beam (Luma Search).
++//
++// The table ships with luma-search as filer-places.json and is shared with
++// the Python twin, luma_search/places.py. Everything that depends on the
++// machine comes in through an environment object, so the same code runs in
++// the Shell and in tests (tests/search/places-gjs.js).
++
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import Gettext from 'gettext';
++
++import * as Ranking from './lumaSearchRanking.js';
++
++export const PLACES_FILE = ['luma-search', 'filer-places.json'];
++export const FILER_DOMAIN = 'nautilus';
++const XDG_KEYS = ['DESKTOP', 'DOCUMENTS', 'DOWNLOAD', 'MUSIC', 'PICTURES', 'VIDEOS'];
++
++Gio._promisify(Gio.File.prototype, 'load_contents_async');
++
++export async function loadTable(dirs = GLib.get_system_data_dirs()) {
++    for (const dir of dirs) {
++        const file = Gio.File.new_for_path(GLib.build_filenamev([dir, ...PLACES_FILE]));
++        let contents;
++        try {
++            // eslint-disable-next-line no-await-in-loop
++            [contents] = await file.load_contents_async(null);
++        } catch {
++            continue;
++        }
++        return JSON.parse(new TextDecoder().decode(contents));
++    }
++    return {places: []};
++}
++
++const pathUri = path => GLib.filename_to_uri(path, null);
++const sameUri = uri => (uri.split('/').length > 4 ? uri.replace(/\/+$/, '') : uri);
++
++function shortPath(path, home) {
++    if (path === home)
++        return '~';
++    if (path.startsWith(`${home.replace(/\/+$/, '')}/`))
++        return `~/${path.slice(home.replace(/\/+$/, '').length + 1)}`;
++    return path;
++}
++
++function parseBookmarks(text) {
++    const marks = [];
++    for (const raw of (text ?? '').split('\n')) {
++        const line = raw.trim();
++        const [uri] = line.split(' ', 1);
++        if (!line || !uri.includes('://'))
++            continue;
++        marks.push([uri, line.slice(uri.length).trim()]);
++    }
++    return marks;
++}
++
++function uriPath(uri) {
++    try {
++        return GLib.Uri.parse(uri, GLib.UriFlags.NONE);
++    } catch {
++        return null;
++    }
++}
++
++function basename(path) {
++    const trimmed = path.replace(/\/+$/, '');
++    return trimmed.slice(trimmed.lastIndexOf('/') + 1);
++}
++
++// Every place Filer offers on this machine, in Filer's own words.
++export function resolvePlaces(table, env) {
++    const places = [];
++    const seen = new Set();
++    const home = env.home.replace(/\/+$/, '') || '/';
++    const exists = env.exists ?? (path => GLib.file_test(path, GLib.FileTest.IS_DIR));
++    const translate = env.translate ?? (text => text);
++
++    const add = (id, title, uri, icon, keywords, description) => {
++        const key = sameUri(uri);
++        if (!title.trim() || seen.has(key))
++            return;
++        seen.add(key);
++        places.push({id, title, uri, icon, keywords, description});
++    };
++
++    for (const entry of table.places ?? []) {
++        if (entry.when === 'remember-recent-files' && env.rememberRecent === false)
++            continue;
++        if (entry.when === 'not-personal-storage-only' && env.personalStorageOnly)
++            continue;
++        const keywords = [...entry.keywords ?? []];
++        const label = entry.label;
++        let title = label ? translate(label) : '';
++        // Typing Filer's English word still finds the place in any language.
++        if (label && title !== label)
++            keywords.push(label);
++        let path = '';
++        if (entry.home) {
++            path = home;
++        } else if (entry.xdg) {
++            path = (env.specialDirs?.[entry.xdg] ?? '').replace(/\/+$/, '');
++            // Unset, missing, or pointing at home: Filer has no such place.
++            if (!path || path === home || !exists(path))
++                continue;
++            title ||= basename(path);
++        }
++        const icon = entry.icon ?? 'folder-symbolic';
++        if (path)
++            add(entry.id, title, pathUri(path), icon, keywords, shortPath(path, home));
++        else if (entry.uri)
++            add(entry.id, title, entry.uri, icon, keywords, 'Filer');
++    }
++
++    for (const [uri, label] of parseBookmarks(env.bookmarks)) {
++        const parsed = uriPath(uri);
++        const local = parsed?.get_scheme() === 'file';
++        let path = '';
++        try {
++            path = local ? GLib.filename_from_uri(uri)[0] ?? '' : '';
++        } catch {
++            continue;
++        }
++        if (local && !exists(path))
++            continue;
++        const fallback = local ? basename(path)
++            : basename(parsed?.get_path() ?? '') ||
++              (parsed?.get_host() ?? uri);
++        add(`bookmark:${uri}`, label || fallback, uri,
++            local ? 'folder-symbolic' : 'folder-remote-symbolic', [],
++            local ? shortPath(path.replace(/\/+$/, '') || '/', home) : 'Filer');
++    }
++    return places;
++}
++
++// Filer places rank like Settings pages: name first, then the words people
++// use for them.
++export function scorePlace(place, terms) {
++    return Ranking.scoreSettingPage({title: place.title, keywords: place.keywords}, terms);
++}
++
++export function rankPlaces(places, terms, limit = 4) {
++    const ranked = [];
++    places.forEach((place, index) => {
++        const score = scorePlace(place, terms);
++        if (score !== null)
++            ranked.push({place, index, score});
++    });
++    ranked.sort((a, b) => (b.score - a.score) || (a.index - b.index));
++    return ranked.slice(0, limit);
++}
++
++function optionalSettings(schemaId, key) {
++    const schema = Gio.SettingsSchemaSource.get_default()?.lookup(schemaId, true);
++    return schema?.has_key(key) ? new Gio.Settings({schema_id: schemaId}) : null;
++}
++
++// This session's folders, bookmarks, language and Filer settings.
++export function systemEnvironment() {
++    const specialDirs = {};
++    for (const key of XDG_KEYS)
++        specialDirs[key] = GLib.get_user_special_dir(GLib.UserDirectory[`DIRECTORY_${key}`]);
++    let bookmarks = '';
++    try {
++        const path = GLib.build_filenamev([GLib.get_user_config_dir(), 'gtk-3.0', 'bookmarks']);
++        bookmarks = new TextDecoder().decode(GLib.file_get_contents(path)[1]);
++    } catch {}
++    const privacy = optionalSettings('org.gnome.desktop.privacy', 'remember-recent-files');
++    const filer = optionalSettings('org.gnome.nautilus.preferences', 'personal-storage-only');
++    return {
++        home: GLib.get_home_dir(),
++        specialDirs,
++        bookmarks,
++        translate: text => Gettext.dgettext(FILER_DOMAIN, text),
++        rememberRecent: privacy?.get_boolean('remember-recent-files') ?? true,
++        personalStorageOnly: filer?.get_boolean('personal-storage-only') ?? false,
++    };
++}
+diff --git a/js/ui/lumaPlacesSearch.js b/js/ui/lumaPlacesSearch.js
+new file mode 100644
+--- /dev/null
++++ b/js/ui/lumaPlacesSearch.js
+@@ -0,0 +1,111 @@
++// Filer's places for Beam (Luma Search): Home, Applications, Recent,
++// Starred, the standard folders, Network, Trash and the user's bookmarks,
++// by name and by the words people use for them ("apps", "bin"). Opening a
++// result opens Filer at the same location its sidebar opens.
++
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import St from 'gi://St';
++
++import * as Places from './lumaFilerPlaces.js';
++import * as Ranking from './lumaSearchRanking.js';
++
++const FILER_DESKTOP_ID = 'org.gnome.Nautilus.desktop';
++const SEARCH_PROVIDERS_SCHEMA = 'org.gnome.desktop.search-providers';
++const LUMA_SEARCH_SCHEMA = 'org.projectluma.search';
++
++Gio._promisify(Gio.DesktopAppInfo.prototype, 'launch_uris_async');
++
++function optionalSettings(schemaId) {
++    const source = Gio.SettingsSchemaSource.get_default();
++    return source?.lookup(schemaId, true) ? new Gio.Settings({schema_id: schemaId}) : null;
++}
++
++export class LumaPlacesSearchProvider {
++    constructor() {
++        // 'file' in the id gives the row the Files kind mark.
++        this.id = 'luma-filer-places';
++        this.isRemoteProvider = false;
++        this.canLaunchSearch = false;
++        this.lumaKind = 'file';
++        this.maxResults = 4;
++        // No appInfo: the provider belongs to the Shell (see lumaFileSearch.js).
++        this.appInfo = null;
++        this._table = null;
++        this._loading = null;
++        this._found = new Map();
++        this._providerSettings = optionalSettings(SEARCH_PROVIDERS_SCHEMA);
++        this._lumaSettings = optionalSettings(LUMA_SEARCH_SCHEMA);
++    }
++
++    // Filer's places follow the same switches as files and folders, and
++    // are only offered when Filer is there to open them.
++    get enabled() {
++        if (this._lumaSettings &&
++            !this._lumaSettings.get_strv('enabled-kinds').includes('file'))
++            return false;
++        if (this._providerSettings?.get_strv('disabled').includes(FILER_DESKTOP_ID))
++            return false;
++        return Gio.DesktopAppInfo.new(FILER_DESKTOP_ID) !== null;
++    }
++
++    warmUp() {
++        this._load().catch(e => console.warn(`Luma Search places: ${e.message}`));
++    }
++
++    _load() {
++        this._loading ??= Places.loadTable().then(table => {
++            this._table = table;
++        });
++        return this._loading;
++    }
++
++    async getInitialResultSet(terms, cancellable) {
++        if (!this.enabled)
++            return [];
++        await this._load();
++        if (cancellable?.is_cancelled())
++            throw new GLib.Error(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED, 'Operation was cancelled');
++        // Folders and bookmarks change; read them for every search.
++        const places = Places.resolvePlaces(this._table, Places.systemEnvironment());
++        const ranked = Places.rankPlaces(places, Ranking.splitTerms(terms.join(' ')), this.maxResults);
++        // Keep earlier matches: a slower search may still ask for their rows.
++        for (const item of ranked)
++            this._found.set(item.place.uri, item);
++        return ranked.map(item => item.place.uri);
++    }
++
++    getSubsearchResultSet(_previousResults, terms, cancellable) {
++        return this.getInitialResultSet(terms, cancellable);
++    }
++
++    filterResults(results, maxNumber) {
++        return results.slice(0, maxNumber);
++    }
++
++    getResultMetas(ids) {
++        return Promise.resolve(ids.filter(id => this._found.has(id)).map(id => {
++            const {place, score} = this._found.get(id);
++            const gicon = Gio.ThemedIcon.new_with_default_fallbacks(place.icon);
++            return {
++                id,
++                name: place.title,
++                description: place.description,
++                createIcon: size => new St.Icon({gicon, icon_size: size}),
++                lumaScore: score,
++                lumaKindLabel: _('Place'),
++            };
++        }));
++    }
++
++    activateResult(uri) {
++        if (!this._found.has(uri))
++            return;
++        // The location Filer's sidebar opens (applications:///, trash:///,
++        // a folder); Filer handles its own schemes.
++        const filer = Gio.DesktopAppInfo.new(FILER_DESKTOP_ID);
++        const context = global.create_app_launch_context(0, -1);
++        filer?.launch_uris_async([uri], context, null).catch(e =>
++            console.warn(`Luma Search places: could not open ${uri} in Filer: ${e.message}`));
++    }
++}
+diff --git a/js/ui/lumaSearch.js b/js/ui/lumaSearch.js
+--- a/js/ui/lumaSearch.js
++++ b/js/ui/lumaSearch.js
+@@ -5,6 +5,7 @@
+ import St from 'gi://St';
+ 
+ import * as LumaFileSearch from './lumaFileSearch.js';
++import * as LumaPlacesSearch from './lumaPlacesSearch.js';
+ import * as LumaSettingsSearch from './lumaSettingsSearch.js';
+ import * as Main from './main.js';
+ import * as ModalDialog from './modalDialog.js';
+@@ -158,6 +159,10 @@
+         // Settings pages and options, next to Settings' own panel results.
+         this._settingsProvider = new LumaSettingsSearch.LumaSettingsSearchProvider();
+         this._results.addProvider(this._settingsProvider);
++        // Filer's places: Home, Applications, Trash, the standard folders
++        // and bookmarks.
++        this._placesProvider = new LumaPlacesSearch.LumaPlacesSearchProvider();
++        this._results.addProvider(this._placesProvider);
+         this._results.y_expand = false;
+         this._results.connect('result-activated', () => this.close());
+         this._results.hide();
+@@ -191,6 +196,7 @@
+         this._entry.text = '';
+         this._fileProvider.warmUp();
+         this._settingsProvider.warmUp();
++        this._placesProvider.warmUp();
+         const opened = super.open();
+         if (opened) {
+             this._entry.grab_key_focus();
+diff --git a/js/ui/search.js b/js/ui/search.js
+--- a/js/ui/search.js
++++ b/js/ui/search.js
+@@ -1014,6 +1014,8 @@
+         // Settings' own panels and Luma's pages can name the same thing;
+         // show it once, and show at most a handful of settings.
+         const seenSettings = new Set();
++        // A standard folder is both a Filer place and a folder; show it once.
++        const seenLocations = new Set();
+         const contentShown = new Map();
+         let shown = 0;
+         for (const row of this._merged.get_children()) {
+@@ -1022,6 +1024,11 @@
+                 const key = Ranking.foldText(row.metaInfo.name);
+                 visible &&= !seenSettings.has(key) && seenSettings.size < LUMA_MAX_SETTING_ROWS;
+                 seenSettings.add(key);
++            } else if (row._lumaRank.kind === 'file' && typeof row.metaInfo.id === 'string' &&
++                       row.metaInfo.id.includes('://')) {
++                const key = row.metaInfo.id.replace(/(.:\/\/.*[^/])\/+$/, '$1');
++                visible &&= !seenLocations.has(key);
++                seenLocations.add(key);
+             } else if (LUMA_CONTENT_KINDS.includes(row._lumaRank.kind)) {
+                 const count = contentShown.get(row._lumaRank.kind) ?? 0;
+                 visible &&= count < LUMA_MAX_CONTENT_ROWS;

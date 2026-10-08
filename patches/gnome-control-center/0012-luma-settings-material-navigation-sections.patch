@@ -1,0 +1,204 @@
+From: Project Luma
+Subject: [PATCH] Settings: bind the native shell to Luma materials and sections
+
+The Control Center shell owns the application window, so it must initialize
+Luma UI itself rather than relying on an individual panel to do so.  Keep the
+real panel model and hardware visibility gates, but arrange its visible rows
+into the product navigation order and add native section headings.
+
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -102,6 +102,7 @@ shell_deps = common_deps + [
+   liblanguage_dep,
+   libwidgets_dep,
+   libshell_dep,
++  dependency('luma-ui-1'),
+ ]
+ 
+ if host_is_linux_not_s390
+--- a/shell/cc-window.blp
++++ b/shell/cc-window.blp
+@@ -4,7 +4,7 @@ using Adw 1;
+ template $CcWindow: Adw.ApplicationWindow {
+   styles ["luma-preferences", "luma-app-window", "luma-sibling-islands"]
+-  default-width: 980;
+-  default-height: 640;
++  default-width: 944;
++  default-height: 688;
+ 
+   Adw.Breakpoint break_point {
+     condition ("max-width: 550sp")
+@@ -29,7 +29,7 @@ template $CcWindow: Adw.ApplicationWindow {
+     content: Adw.NavigationSplitView split_view {
+       styles ["luma-island-split", "luma-window-body"]
+-      min-sidebar-width: 178;
+-      max-sidebar-width: 178;
++      min-sidebar-width: 188;
++      max-sidebar-width: 188;
+       sidebar-width-unit: sp;
+       notify::collapsed => $on_split_view_collapsed_changed_cb(template);
+ 
+--- a/shell/cc-window.c
++++ b/shell/cc-window.c
+@@ -32,5 +32,6 @@
+ #include <gio/gdesktopappinfo.h>
+ #include <gtk/gtk.h>
++#include <luma-ui.h>
+ #include <string.h>
+ #include <time.h>
+ 
+@@ -835,2 +836,6 @@ cc_window_init (CcWindow *self)
+ {
++  /* The application shell, not an arbitrary panel, owns material policy.
++   * This binds both existing and future windows to the live compositor
++   * backdrop and to the shared reloadable semantic token providers. */
++  luma_init ();
+   gtk_widget_init_template (GTK_WIDGET (self));
+--- a/shell/cc-panel-list.c
++++ b/shell/cc-panel-list.c
+@@ -21,6 +21,7 @@
+ #define G_LOG_DOMAIN "cc-panel-list"
+ 
+ #include <string.h>
++#include <glib/gi18n.h>
+ 
+ #include "cc-log.h"
+ #include "cc-panel-list.h"
+@@ -377,37 +378,65 @@
+ 
+   "separator",
+ 
+-  "display",
+-  "sound",
+-  "power",
+-  "multitasking",
+   "background",
+-  "dash",
+-
+-  "separator",
+-
+-  "applications",
+   "notifications",
+   "search",
+-  "online-accounts",
+-  "sharing",
++  "multitasking",
++  "dash",
++  "sound",
++  "universal-access",
+   "wellbeing",
+ 
+   "separator",
+ 
+-  "mouse",
++  "display",
+   "keyboard",
+-  "color",
+-  "printers",
++  "mouse",
+   "wacom",
++  "printers",
++  "color",
++
++  "separator",
+ 
++  "applications",
++  "online-accounts",
++  "sharing",
++
+   "separator",
+ 
+-  "universal-access",
++  "power",
+   "privacy",
+   "system",
+   "reset-settings",
+ };
++
++static const gchar *
++section_title_for_panel (const gchar *panel_id)
++{
++  guint section = 0;
++
++  for (guint i = 0; panel_order[i] != NULL; i++)
++    {
++      if (g_str_equal (panel_order[i], "separator"))
++        {
++          section++;
++          continue;
++        }
++      if (!g_str_equal (panel_order[i], panel_id))
++        continue;
++
++      switch (section)
++        {
++        case 0: return _("Network");
++        case 1: return _("Personalisation");
++        case 2: return _("Devices");
++        case 3: return _("Applications & Services");
++        case 4: return _("System");
++        default: return NULL;
++        }
++    }
++  return NULL;
++}
+ 
+ static guint
+ get_panel_id_index (const gchar *panel_id)
+@@ -492,26 +521,45 @@
+              GtkListBoxRow *before,
+              gpointer       user_data)
+ {
+-  guint pid;
++  const gchar *panel_id;
++  const gchar *section_title;
++  GtkWidget *header;
++  GtkWidget *label;
++  g_autofree gchar *uppercase_title = NULL;
+ 
+-  if (!before)
+-    return;
++  panel_id = get_panel_id_from_row (user_data, row);
++  section_title = section_title_for_panel (panel_id);
++  if (section_title == NULL ||
++      (before != NULL &&
++       g_strcmp0 (section_title,
++                  section_title_for_panel (get_panel_id_from_row (user_data, before))) == 0))
++    {
++      gtk_list_box_row_set_header (row, NULL);
++      return;
++    }
+ 
+-  pid = get_panel_id_index (get_panel_id_from_row (user_data, row));
+-  if (pid > 0 && g_str_equal (panel_order[pid-1], "separator"))
++  header = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++  if (before != NULL)
+     {
+       GtkWidget *separator;
+ 
+       separator = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+       gtk_widget_set_hexpand (separator, TRUE);
+       gtk_widget_add_css_class (separator, "luma-navigation-divider");
+-
+-      gtk_list_box_row_set_header (row, separator);
++      gtk_box_append (GTK_BOX (header), separator);
+     }
+-  else
+-    {
+-      gtk_list_box_row_set_header (row, NULL);
+-    }
++
++  uppercase_title = g_utf8_strup (section_title, -1);
++  label = gtk_label_new (uppercase_title);
++  gtk_label_set_xalign (GTK_LABEL (label), 0.0);
++  gtk_widget_add_css_class (label, "caption");
++  gtk_widget_add_css_class (label, "dim-label");
++  gtk_widget_set_margin_start (label, 11);
++  gtk_widget_set_margin_end (label, 11);
++  gtk_widget_set_margin_top (label, before != NULL ? 7 : 9);
++  gtk_widget_set_margin_bottom (label, 4);
++  gtk_box_append (GTK_BOX (header), label);
++  gtk_list_box_row_set_header (row, header);
+ }
+ 
+ /*

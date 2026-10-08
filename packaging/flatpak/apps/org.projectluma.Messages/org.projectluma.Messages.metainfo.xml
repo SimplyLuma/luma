@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Messages</id>
+  <name>Messages</name>
+  <summary>Keep your conversations together</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0 AND CC-BY-SA-4.0</project_license>
+  <developer id="com.simplyluma">
+    <name>Luma</name>
+  </developer>
+  <description>
+    <p>Manage your conversations with Luma’s responsive messaging interface on desktop, tablet, and phone.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Messages.desktop</launchable>
+  <url type="homepage">https://simplyluma.com</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Conversation view</caption>
+      <image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Messages/582a2febf98c585bc088781c442e5376a354b5ca924f254d3bf244ade38a0b1c.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.3" date="2026-10-08"><description><p>Keep the first message visible when a new Luma conversation receives its permanent identity.</p></description></release>
+    <release version="0.1.2" date="2026-10-08"><description><p>Include the maintained Messages theme namespace for signed application startup.</p></description></release>
+    <release version="0.1.1" date="2026-10-07">
+      <description><p>Load the application stylesheet correctly in the sandbox.</p></description>
+    </release>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+</component>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<component type="desktop-application">
+  <id>org.projectluma.Mods</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Mods</name>
+  <summary>Review and manage changes that make Luma yours</summary>
+  <description>
+    <p>Discover bounded changes, review their effects and publishers, and manage your installed Mods. Luma preserves the previous state so changes can be undone.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Mods.desktop</launchable>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <url type="homepage">https://simplyluma.com/apps/mods</url>
+  <url type="bugtracker">https://github.com/SimplyLuma/OS/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-07" />
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Discover and review changes for Luma</caption>
+      <image type="source" width="1014" height="640">https://dl.simplyluma.com/media/org.projectluma.Mods/8471041c907fc2e92802073f2346df34fb324f2ebcb121fb9a06aeb4f60fa44a.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Discover and review changes for Luma</caption>
+      <image type="source" width="1430" height="640">https://dl.simplyluma.com/media/org.projectluma.Mods/ad04d1bc6129e121170e72247768d275f6db34ac595ad6d4fc2bc1b29465bb6c.png</image>
+    </screenshot>
+  </screenshots>
+</component>

@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <luma@local>
+Date: Wed, 26 Aug 2026 13:00:00 -0500
+Subject: [PATCH] gpfs: preserve object tail on offset-zero header writes
+
+The Qualcomm GPFS client updates sealed objects in chunks.  A later write at
+offset zero updates the object's header and does not imply truncation.  Build
+the atomic replacement from the existing object before overlaying the new
+bytes, so a header refresh cannot discard a previously written template tail.
+
+---
+ src/gpfs.c | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/src/gpfs.c b/src/gpfs.c
+index 8fc24d8..c70f72f 100644
+--- a/src/gpfs.c
++++ b/src/gpfs.c
+@@ -73,8 +73,10 @@ static int atomic_write(struct qs_store *store, const char *path,
+ 			const void *data, size_t length, bool backup)
+ {
+ 	char leaf[256], tmp[320] = "", bak[320];
+-	int parent = -1, fd = -1, rc = -1;
++	uint8_t buffer[16384];
++	int parent = -1, source = -1, fd = -1, rc = -1;
+ 	size_t done = 0;
++	ssize_t got;
+ 
+ 	if (qs_open_parent(store, path, true, &parent, leaf, sizeof(leaf)))
+ 		return -1;
+@@ -94,7 +96,33 @@ static int atomic_write(struct qs_store *store, const char *path,
+ 	fd = openat(parent, tmp, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+ 		    store->file_mode);
+ 	if (fd < 0)
+ 		goto out;
++	/*
++	 * GPFS offset-zero writes are header overlays, not implicit truncates.
++	 * Seed the temporary replacement with the current object so that a
++	 * subsequent header refresh preserves chunks already written beyond the
++	 * header.  A missing object is the normal new-object case.
++	 */
++	source = openat(parent, leaf, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++	if (source < 0 && errno != ENOENT)
++		goto out;
++	if (source >= 0) {
++		while ((got = read(source, buffer, sizeof(buffer))) > 0) {
++			size_t copied = 0;
++
++			while (copied < (size_t)got) {
++				ssize_t n = write(fd, buffer + copied,
++						  (size_t)got - copied);
++				if (n < 0)
++					goto out;
++				copied += (size_t)n;
++			}
++		}
++		if (got < 0)
++			goto out;
++	}
++	if (lseek(fd, 0, SEEK_SET) < 0)
++		goto out;
+ 	while (done < length) {
+ 		ssize_t n = write(fd, (const uint8_t *)data + done, length - done);
+ 		if (n < 0)
+@@ -110,6 +138,8 @@ out:
+ 		unlinkat(parent, tmp, 0);
+ 	if (fd >= 0)
+ 		close(fd);
++	if (source >= 0)
++		close(source);
+ 	if (parent >= 0)
+ 		close(parent);
+ 	return rc;
+-- 
+2.51.0

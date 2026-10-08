@@ -1,0 +1,100 @@
+From: Project Luma <luma@project-luma.org>
+Date: Sun, 16 Aug 2026 16:00:00 +0000
+Subject: [PATCH] drm/msm/a810: capture GMU start timeout state
+
+The Fairphone 6 A810 failure begins with a GMU firmware initialization
+timeout. Later OOB, GPU hangcheck, DPU hangcheck, and CX-collapse failures are
+secondary and do not reveal why the GMU failed to resume.
+
+Add A810-only diagnostics after the existing GMU start timeout. Record the
+selected cold/warm path, firmware and retention values, reset and interrupt
+state, RPMh and power-clock state, FAL and fence configuration, retained log
+pointer, clock rates, and runtime-PM state.
+
+This patch does not change power sequencing, boot selection, timeout length,
+or recovery behavior. The additional MMIO reads and log messages occur only
+after the existing timeout has already fired.
+
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c | 46 +++++++++++++++++++++++++--
+ 1 file changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index 515656ec0..654fd304a 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -288,15 +288,46 @@ int a6xx_gmu_wait_for_idle(struct a6xx_gmu *gmu)
+ 	return spin_until(a6xx_gmu_check_idle_level(gmu));
+ }
+ 
+-static int a6xx_gmu_start(struct a6xx_gmu *gmu)
++static void a810_gmu_log_start_timeout(struct a6xx_gmu *gmu,
++		unsigned int state, u32 fw_version, u32 fw_init_result)
++{
++	struct a6xx_gpu *a6xx_gpu = container_of(gmu, struct a6xx_gpu, gmu);
++
++	DRM_DEV_ERROR(gmu->dev,
++		"A810 GMU start timeout: boot=%s fw_version=0x%08x fw_init=0x%08x tcm_ret=0x%08x\n",
++		state == GMU_WARM_BOOT ? "warm" : "cold", fw_version,
++		fw_init_result,
++		a6xx_cx_misc_read(a6xx_gpu, REG_A7XX_CX_MISC_TCM_RET_CNTL));
++	DRM_DEV_ERROR(gmu->dev,
++		"A810 GMU start timeout: sysreset=0x%08x boot_config=0x%08x cm3_cfg=0x%08x gmu2host=0x%08x ao_host=0x%08x\n",
++		gmu_read(gmu, REG_A6XX_GMU_CM3_SYSRESET),
++		gmu_read(gmu, REG_A6XX_GMU_CM3_BOOT_CONFIG),
++		gmu_read(gmu, REG_A6XX_GMU_CM3_CFG),
++		gmu_read(gmu, REG_A6XX_GMU_GMU2HOST_INTR_INFO),
++		gmu_read(gmu, REG_A6XX_GMU_AO_HOST_INTERRUPT_STATUS));
++	DRM_DEV_ERROR(gmu->dev,
++		"A810 GMU start timeout: rpmh_state=0x%08x pwr_clk=0x%08x falnext=0x%08x fal=0x%08x fence=0x%08x log_wptr=0x%08x\n",
++		gmu_read(gmu, REG_A8XX_GPU_GMU_CX_GMU_RPMH_POWER_STATE),
++		gmu_read(gmu, REG_A8XX_GMU_PWR_CLK_STATUS),
++		gmu_read(gmu, REG_A8XX_GPU_GMU_CX_GMU_CX_FALNEXT_INTF),
++		gmu_read(gmu, REG_A8XX_GPU_GMU_CX_GMU_CX_FAL_INTF),
++		gmu_read(gmu, REG_A6XX_GMU_AHB_FENCE_RANGE_0),
++		gmu_read(gmu, REG_A8XX_GMU_GENERAL_9));
++	DRM_DEV_ERROR(gmu->dev,
++		"A810 GMU start timeout: core_clk=%lu hub_clk=%lu gmu_runtime_active=%d\n",
++		clk_get_rate(gmu->core_clk), clk_get_rate(gmu->hub_clk),
++		pm_runtime_active(gmu->dev));
++}
++
++static int a6xx_gmu_start(struct a6xx_gmu *gmu, unsigned int state)
+ {
+ 	struct a6xx_gpu *a6xx_gpu = container_of(gmu, struct a6xx_gpu, gmu);
+ 	struct adreno_gpu *adreno_gpu = &a6xx_gpu->base;
+-	u32 mask, reset_val, val;
++	u32 fw_version, mask, reset_val, val;
+ 	int ret;
+ 
+-	val = gmu_read(gmu, REG_A6XX_GMU_CM3_DTCM_START + 0xff8);
+-	if (val <= 0x20010004) {
++	fw_version = gmu_read(gmu, REG_A6XX_GMU_CM3_DTCM_START + 0xff8);
++	if (fw_version <= 0x20010004) {
+ 		mask = 0xffffffff;
+ 		reset_val = 0xbabeface;
+ 	} else {
+@@ -322,8 +353,11 @@ static int a6xx_gmu_start(struct a6xx_gmu *gmu)
+ 	ret = gmu_poll_timeout(gmu, REG_A6XX_GMU_CM3_FW_INIT_RESULT, val,
+ 		(val & mask) == reset_val, 100, 10000);
+ 
+-	if (ret)
++	if (ret) {
+ 		DRM_DEV_ERROR(gmu->dev, "GMU firmware initialization timed out\n");
++		if (adreno_is_a810(adreno_gpu))
++			a810_gmu_log_start_timeout(gmu, state, fw_version, val);
++	}
+ 
+ 	set_bit(GMU_STATUS_FW_START, &gmu->status);
+ 
+@@ -1039,7 +1073,7 @@ static int a6xx_gmu_fw_start(struct a6xx_gmu *gmu, unsigned int state)
+ 	/* Set up the lowest idle level on the GMU */
+ 	a6xx_gmu_power_config(gmu);
+ 
+-	ret = a6xx_gmu_start(gmu);
++	ret = a6xx_gmu_start(gmu, state);
+ 	if (ret)
+ 		return ret;
+ 
+-- 
+2.51.0

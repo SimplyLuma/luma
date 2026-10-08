@@ -1,0 +1,13 @@
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -220,8 +220,9 @@
+         // gap at each end. Absorb only those outer half-margins; preserve
+         // spacing between icons and measure padding to the artwork bounds.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
++        // St rounds the CSS margin in logical pixels before display scaling.
+         const end = this.has_style_class_name('luma-shelf-dock-island')
+-            ? padding - Math.ceil(2.5 * scale) / scale : padding;
++            ? padding - Math.ceil(2.5) : padding;
+         const insets = this._vertical ? [end, padding, end, padding] : [padding, end, padding, end];
+         // Connected-mode separators are real borders inside the material.
+         // Include them in the selected inset rather than adding another pixel.

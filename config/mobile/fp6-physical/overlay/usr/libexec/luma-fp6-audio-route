@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+die() {
+	printf 'error: %s\n' "$*" >&2
+	exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || die 'FP6 audio routing requires root'
+[ "$(tr -d '\000' </proc/device-tree/model)" = 'The Fairphone (Gen. 6)' ] || \
+	die 'this audio adapter is restricted to the Fairphone 6'
+
+command -v amixer >/dev/null || die 'amixer is not installed'
+command -v flock >/dev/null || die 'flock is not installed'
+[ "$(cat /proc/asound/F6/id 2>/dev/null)" = F6 ] || \
+	die 'the expected F6 ALSA card is not present'
+
+route=${1:-status}
+case "$route" in
+	speaker|earpiece|mute|status) ;;
+	*) die 'usage: luma-fp6-audio-route {speaker|earpiece|mute|status}' ;;
+esac
+
+exec 9>/run/lock/luma-fp6-audio-route.lock
+flock 9
+
+control_exists() {
+	amixer -c F6 cget "name=$1" >/dev/null 2>&1
+}
+
+for control in \
+	'Amplifier L PCM Playback Volume' \
+	'Amplifier R PCM Playback Volume' \
+	'Amplifier L Profile Set' \
+	'Amplifier R Profile Set'; do
+	control_exists "$control" || die "missing ALSA control: $control"
+done
+
+set_control() {
+	amixer -q -c F6 cset "name=$1" "$2"
+}
+
+show_status() {
+	left_profile=$(amixer -c F6 cget "name=Amplifier L Profile Set" | sed -n 's/^[[:space:]]*: values=\([-0-9]*\).*/\1/p' | head -n 1)
+	right_profile=$(amixer -c F6 cget "name=Amplifier R Profile Set" | sed -n 's/^[[:space:]]*: values=\([-0-9]*\).*/\1/p' | head -n 1)
+	case "$left_profile:$right_profile" in
+		0:0) printf 'route=speaker\n' ;;
+		1:0) printf 'route=earpiece\n' ;;
+		*) printf 'route=unknown\n' ;;
+	esac
+	for control in \
+		'Amplifier L Profile Set' \
+		'Amplifier R Profile Set' \
+		'Amplifier L PCM Playback Volume' \
+		'Amplifier R PCM Playback Volume'; do
+		amixer -c F6 cget "name=$control"
+	done
+}
+
+if [ "$route" = status ]; then
+	show_status
+	exit 0
+fi
+
+# A partial route transition must fail quiet. The selected UCM profile owns
+# the PCM; this helper changes only the two AW88261 endpoint policies beneath
+# that stable PipeWire sink.
+fail_quiet() {
+	set_control 'Amplifier L PCM Playback Volume' 0 >/dev/null 2>&1 || true
+	set_control 'Amplifier R PCM Playback Volume' 0 >/dev/null 2>&1 || true
+}
+trap fail_quiet ERR INT TERM
+
+case "$route" in
+	speaker)
+		set_control 'Amplifier L Profile Set' 0
+		set_control 'Amplifier R Profile Set' 0
+		set_control 'Amplifier L PCM Playback Volume' 352
+		set_control 'Amplifier R PCM Playback Volume' 352
+		;;
+	earpiece)
+		set_control 'Amplifier L Profile Set' 1
+		set_control 'Amplifier R Profile Set' 0
+		set_control 'Amplifier L PCM Playback Volume' 320
+		set_control 'Amplifier R PCM Playback Volume' 0
+		;;
+	mute)
+		fail_quiet
+		;;
+esac
+
+trap - ERR INT TERM
+printf 'route=%s\n' "$route"

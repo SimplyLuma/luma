@@ -1,0 +1,68 @@
+{
+  "id": "com.rhyme.viola",
+  "runtime": "org.projectluma.Platform",
+  "runtime-version": "44",
+  "sdk": "org.projectluma.Sdk",
+  "command": "viola-browser",
+  "finish-args": [
+    "--metadata=X-Luma=app-data-schema=viola-profile-v1",
+    "--metadata=X-Luma=min-host-installer=61",
+    "--metadata=X-Luma=min-host-viola=35",
+    "--share=ipc",
+    "--share=network",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--socket=pulseaudio",
+    "--device=dri",
+    "--filesystem=xdg-run/luma-viola:ro",
+    "--filesystem=xdg-download:create",
+    "--talk-name=org.projectluma.AppData1",
+    "--talk-name=org.projectluma.ViolaHost1",
+    "--talk-name=org.projectluma.ApplicationDirectory1",
+    "--talk-name=org.freedesktop.portal.Flatpak"
+  ],
+  "modules": [
+    {
+      "name": "viola",
+      "buildsystem": "simple",
+      "modules": [
+        {
+          "name": "zypak",
+          "buildsystem": "autotools",
+          "sources": [
+            {
+              "type": "git",
+              "url": "https://github.com/refi64/zypak",
+              "tag": "v2025.09",
+              "commit": "693a71c5ffa80ec9c9ce2ae03b1ccc493c698e53"
+            }
+          ]
+        }
+      ],
+      "build-commands": [
+        "python3 -B packaging/viola/flatpak-source.py .",
+        "install -d /app/lib/viola /app/share/viola-browser/luma-host /app/bin",
+        "cp -a viola-engine/engine /app/lib/viola/browser",
+        "mv /app/lib/viola/browser/chrome-sandbox.packaged /app/lib/viola/browser/chrome-sandbox",
+        "chmod 755 /app/lib/viola/browser/chrome-sandbox",
+        "cp -a src/external/viola/chromium-linux/appkit-spike/. /app/share/viola-browser/luma-host/",
+        "for command in viola-browser viola-engine; do install -m755 packaging/viola/$command /app/bin/$command; done",
+        "install -m755 src/external/viola/chromium-linux/luma-package/viola-browser /app/bin/viola-browser-real",
+        "install -d /app/share/applications /app/share/dbus-1/services",
+        "printf '[Desktop Entry]\\nType=Application\\nName=Viola\\nComment=Browse the web\\nExec=viola-browser %%U\\nIcon=com.rhyme.viola\\nTerminal=false\\nStartupNotify=true\\nCategories=Network;WebBrowser;\\nMimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;\\n' > /app/share/applications/com.rhyme.viola.desktop",
+        "printf '[D-BUS Service]\\nName=com.rhyme.viola\\nExec=/app/bin/viola-browser\\n' > /app/share/dbus-1/services/com.rhyme.viola.service",
+        "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/com.rhyme.viola.svg",
+        "install -Dm644 depot.metainfo.xml /app/share/metainfo/com.rhyme.viola.metainfo.xml",
+        "install -d /app/share/licenses/com.rhyme.viola",
+        "cp -a viola-engine/system/usr/share/licenses/viola-browser-stable/. /app/share/licenses/com.rhyme.viola/",
+        "install -m644 src/external/viola/chromium-linux/appkit-spike/CHROMIUM-LICENSE /app/share/licenses/com.rhyme.viola/CHROMIUM-LICENSE",
+        "install -m644 LICENSE.md /app/share/licenses/com.rhyme.viola/LUMA-LICENSE.md",
+        "install -Dm644 depot-media/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png /app/share/luma-app-media/2bb5ef1d0a5356f914e12354f57c00fc02e5a1edc843e8a96bfbb87538ea9c9f.png"
+      ],
+      "only-arches": [
+        "x86_64"
+      ]
+    }
+  ],
+  "appstream-compose": false
+}

@@ -1,0 +1,38 @@
+{
+  "_doc": "v71 phone apps (K-ROWS, kit requests camera-03 and phone-13): the camera's capture yellow (oklch .88 .15 90, always on the dark media palette); the call green on every phone in both modes (.pnbig.voice oklch .63 .17 150 with its .7 glow, the quick call .62 .16 150); a fully round radius; the video call panel's 30.",
+  "lumaui": {
+    "radius": {
+      "round": 999
+    },
+    "call": {
+      "panel_radius": 30,
+      "key_shadow_y": 8,
+      "key_shadow_blur": 20,
+      "key_shadow_spread": -8
+    },
+    "colors": {
+      "_doc": "Same in every appearance.",
+      "light": {
+        "media_capture": "#fed252",
+        "call": "#0fa44d",
+        "call_quick": "#20a04e",
+        "call_ink": "#ffffff",
+        "call_shadow": "alpha(#0fa44d, 0.7)"
+      },
+      "dark": {
+        "media_capture": "#fed252",
+        "call": "#0fa44d",
+        "call_quick": "#20a04e",
+        "call_ink": "#ffffff",
+        "call_shadow": "alpha(#0fa44d, 0.7)"
+      },
+      "high_contrast": {
+        "media_capture": "#fed252",
+        "call": "#0fa44d",
+        "call_quick": "#20a04e",
+        "call_ink": "#ffffff",
+        "call_shadow": "alpha(#0fa44d, 0.7)"
+      }
+    }
+  }
+}

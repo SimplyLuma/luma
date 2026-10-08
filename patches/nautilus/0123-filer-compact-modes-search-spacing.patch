@@ -1,0 +1,40 @@
+From a963626e61398991e82be7b1a73d0e5103c146c3 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 03:17:54 +0000
+Subject: [PATCH] Use compact Filer modes and roomy search results
+
+---
+ src/nautilus-window.c   | 1 +
+ src/resources/style.css | 4 ++++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/src/nautilus-window.c b/src/nautilus-window.c
+index deab44c..d0cd51d 100644
+--- a/src/nautilus-window.c
++++ b/src/nautilus-window.c
+@@ -2576,6 +2576,7 @@ nautilus_window_init (NautilusWindow *window)
+     luma_mode_switch_add (window->action_modes, "grid", _("Grid"), "layout-grid");
+     luma_mode_switch_add (window->action_modes, "list", _("List"), "list");
+     luma_mode_switch_add (window->action_modes, "columns", _("Columns"), "columns-3");
++    luma_mode_switch_set_icon_only (window->action_modes, TRUE);
+     g_signal_connect (window->action_modes, "changed",
+                       G_CALLBACK (on_bar_mode_changed), window);
+     window->action_modes_item = luma_bar_item_new_modes (window->action_modes);
+diff --git a/src/resources/style.css b/src/resources/style.css
+index 21f1fd7..6cfb4a9 100644
+--- a/src/resources/style.css
++++ b/src/resources/style.css
+@@ -1120,6 +1120,10 @@ window.luma-files-window .nautilus-list-view columnview > listview > row {
+ window.luma-files-window .nautilus-list-view.search-results columnview > listview > row {
+   min-height: 52px;
+ }
++window.luma-files-window .nautilus-list-view.search-results .nautilus-view-cell {
++  padding-top: 8px;
++  padding-bottom: 8px;
++}
+ 
+ /* Hover and focus render identically, as everywhere else in Luma. An accent
+  * ring on top of the fill is a second visual language for one state. */
+-- 
+2.55.0
+

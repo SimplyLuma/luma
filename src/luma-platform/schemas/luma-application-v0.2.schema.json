@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectluma.org/schemas/application/v0.2",
+  "title": "Luma application contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "application",
+    "platform",
+    "responsive",
+    "distribution",
+    "lifecycle",
+    "conformance"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.2" },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version", "entrypoint"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+){2,}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "version": { "type": "string", "minLength": 1 },
+        "entrypoint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ui_contract", "semantics_contract"],
+      "properties": {
+        "ui_contract": { "const": "1" },
+        "semantics_contract": { "const": "1" }
+      }
+    },
+    "responsive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adaptive", "test_widths", "input_modes", "presentation_modes"],
+      "properties": {
+        "adaptive": { "const": true },
+        "test_widths": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 320, "maximum": 3840 }
+        },
+        "input_modes": {
+          "type": "array",
+          "items": { "enum": ["pointer", "touch", "keyboard", "pen"] }
+        },
+        "presentation_modes": {
+          "type": "array",
+          "items": { "enum": ["windowed", "fullscreen-mobile"] }
+        }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "substrate",
+        "flatpak_manifest",
+        "appstream_metadata",
+        "desktop_file",
+        "icon",
+        "portal_first",
+        "portals"
+      ],
+      "properties": {
+        "substrate": { "const": "flatpak" },
+        "flatpak_manifest": { "type": "string", "minLength": 1 },
+        "appstream_metadata": { "type": "string", "minLength": 1 },
+        "desktop_file": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string", "minLength": 1 },
+        "portal_first": { "const": true },
+        "portals": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "account",
+              "background",
+              "camera",
+              "file-chooser",
+              "global-shortcuts",
+              "inhibit",
+              "location",
+              "microphone",
+              "network-monitor",
+              "notifications",
+              "open-uri",
+              "printing",
+              "realtime",
+              "remote-desktop",
+              "screencast",
+              "secret",
+              "settings",
+              "sharing",
+              "trash",
+              "wallpaper"
+            ]
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app_data", "cache", "user_documents", "reset_supported", "uninstall_choices"],
+      "properties": {
+        "app_data": { "enum": ["removable", "retained"] },
+        "cache": { "const": "removable" },
+        "user_documents": { "const": "preserved" },
+        "reset_supported": { "const": true },
+        "uninstall_choices": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["keep-data", "remove-app-data"] }
+        }
+      }
+    },
+    "conformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accessibility", "keyboard", "semantics", "reduced_motion", "evidence"],
+      "properties": {
+        "accessibility": { "type": "boolean" },
+        "keyboard": { "type": "boolean" },
+        "semantics": { "type": "boolean" },
+        "reduced_motion": { "type": "boolean" },
+        "evidence": { "type": "string", "minLength": 1 }
+      }
+    },
+    "background": {
+      "description": "A background agent (ADR-033). See docs/developer/kit/background-agents.md.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "exec", "category", "wake"],
+      "properties": {
+        "agent": { "type": "string", "maxLength": 255, "pattern": "^[A-Za-z_-][A-Za-z0-9_-]*(\\.[A-Za-z_-][A-Za-z0-9_-]*)+$" },
+        "exec": { "type": "string", "minLength": 1, "pattern": "^[^-=%$`;|&<>\\\\\"'(){}*?\\[\\]~#!\\t\\r\\n][^%$`;|&<>\\\\\"'(){}*?\\[\\]~#!\\t\\r\\n]*$" },
+        "category": { "enum": ["communication", "calendar", "alarms", "mail", "sync", "widget-data", "other"] },
+        "wake": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["login", "network", "resume", "schedule"] } },
+        "interval": { "type": "string", "pattern": "^[1-9][0-9]{0,4}[mhd]$" },
+        "publishes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^([a-z][a-z0-9._-]{0,63}|live-extension:[A-Za-z0-9_.-]{1,128})$" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,61 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Hand an alarm scheduled by an earlier Clock over to the Clock service.
+
+Clock releases before the alarm service scheduled every alarm and timer as a
+systemd user timer running
+
+    prairie-clock-alarm alarm <uid> [--snoozed]
+    prairie-clock-alarm timer <uid>
+
+Those units stay on disk until Clock next starts and withdraws them. If one
+fires first, this is what it runs: it records which alarm fired and starts the
+Clock service through D-Bus activation. The service withdraws every old unit and
+rings the alarm. It runs outside this unit, so the unit's sleep inhibitor ends
+with this script.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+
+from gi.repository import Gio, GLib
+
+from prairie_apps.clock_alarms import APP_ID, hand_off
+
+
+def start_service() -> bool:
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+            "StartServiceByName", GLib.Variant("(su)", (APP_ID, 0)), GLib.VariantType("(u)"),
+            Gio.DBusCallFlags.NONE, 30000, None,
+        )
+        return True
+    except GLib.Error as error:
+        print(f"prairie-clock-alarm: D-Bus activation failed: {error.message}", file=sys.stderr)
+    # Without the service file, a transient unit of its own keeps the service
+    # out of this one-shot unit's cgroup.
+    result = subprocess.run(
+        ["systemd-run", "--user", "--quiet", "--collect", "prairie-clock", "--gapplication-service"],
+        check=False, capture_output=True, text=True, timeout=30,
+    )
+    return result.returncode == 0
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 3 or argv[1] not in {"alarm", "timer"}:
+        print(__doc__, file=sys.stderr)
+        return 2
+    try:
+        hand_off(argv[1], argv[2])
+    except (OSError, ValueError) as error:
+        print(f"prairie-clock-alarm: {error}", file=sys.stderr)
+    return 0 if start_service() else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

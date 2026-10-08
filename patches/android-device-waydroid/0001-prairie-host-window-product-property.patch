@@ -1,0 +1,27 @@
+diff --git a/system.prop b/system.prop
+index de8cf1d..f6aceea 100644
+--- a/system.prop
++++ b/system.prop
+@@ -24,6 +24,11 @@ debug.sf.disable_backpressure=1
+ # Disable RescueParty
+ persist.sys.disable_rescue=true
+ 
++# Prairie's Wayland client owns desktop/tablet window chrome. Suppress both
++# legacy app-side captions and WindowManager Shell decorations so Android
++# content has one move/resize/control surface instead of nested decorations.
++ro.luma.host_window_chrome=true
++
+ # LMKd
+ ro.lmk.low=1001
+ ro.lmk.medium=800
+--- a/manifest.xml
++++ b/manifest.xml
+@@ -178,7 +178,7 @@
+     <hal format="hidl">
+         <name>vendor.waydroid.window</name>
+         <transport>hwbinder</transport>
+-        <version>1.2</version>
++        <version>1.3</version>
+         <interface>
+             <name>IWaydroidWindow</name>
+             <instance>default</instance>

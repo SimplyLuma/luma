@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.projectluma.Tide</id>
+  <name>Tide</name>
+  <summary>A source-aware native music library and player</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="org.projectluma">
+    <name translate="no">Project Luma</name>
+  </developer>
+  <description>
+    <p>Tide scans real music, preserves every playable copy, and explains whether a track is here, streamable, or currently unavailable.</p>
+    <p>Its persistent queue, playlists, GStreamer playback, and MPRIS controls work across Luma desktop and handheld presentations.</p>
+    <p>Tide can also add a Navidrome or other Subsonic-compatible server as a source, keeping its library browsable alongside local music. Sign-in details are kept only in the system keyring, and a server Tide can't currently reach stays in the library, ready to try again.</p>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Tide.desktop</launchable>
+  <url type="homepage">https://projectluma.org/apps/tide</url>
+  <provides><binary>org.projectluma.Tide</binary></provides>
+  <supports><control>keyboard</control><control>pointing</control><control>touch</control></supports>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="0.1.0" date="2026-08-30"/></releases>
+</component>

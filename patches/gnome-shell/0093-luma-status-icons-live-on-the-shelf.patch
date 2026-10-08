@@ -1,0 +1,133 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] luma: status icons from applications and extensions live on the shelf
+
+Linux applications and Shell extensions put status icons in the top panel:
+tray icons, hardware monitors, the Save and Cancel menu of a Tiling Shell
+layout being edited. Luma has no top panel, so they had nowhere to appear
+and the flows that depend on them could not be finished. The shelf now
+adopts every panel indicator it does not already place -- including ones
+added after it is built -- into the secondary controls island, sized and
+coloured like Luma's own controls, visible only while its owner shows it,
+with its menu opening from the shelf edge.
+
+Screen sharing and recording indicators drew their icons without the
+status icon class and inherited a full-size glyph; they now draw at the
+shelf's icon size in GNOME's amber.
+
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -803,3 +803,36 @@
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-badge-day { color: #2c343a; }
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-frost .luma-live-extension-time,
+ .luma-shelf-live-island .luma-shelf-material.luma-surface-glass .luma-live-extension-time { color: rgba(44, 52, 58, 0.62); }
++
++/* Status icons from applications and extensions -- tray icons, hardware
++ * monitors, a layout editor's Save button -- sit with the secondary controls
++ * at the size of Luma's own icons. Their colour follows the shelf material. */
++.luma-shelf-actions-box .luma-shelf-extra .panel-button {
++  min-width: 36px;
++  color: inherit;
++  padding: 0 6px; }
++.luma-shelf-actions-box .luma-shelf-extra .panel-button StIcon {
++  icon-size: 16px; }
++.luma-shelf-actions-box .luma-shelf-extra .panel-button StLabel {
++  font-size: 12px;
++  font-weight: 600; }
++.luma-shelf-actions-box .luma-shelf-extra .panel-button StBoxLayout {
++  spacing: 6px; }
++
++/* Screen sharing and recording draw their own icons without the status-icon
++ * class, so they inherited a full-size glyph. They keep GNOME's amber, which
++ * says the screen is leaving the computer. */
++.luma-shelf-actions-box .screen-sharing-indicator,
++.luma-shelf-actions-box .screen-recording-indicator {
++  padding: 0 10px;
++  color: #f5c26b; }
++.luma-shelf-actions-box .screen-sharing-indicator StBoxLayout,
++.luma-shelf-actions-box .screen-recording-indicator StBoxLayout {
++  spacing: 8px; }
++.luma-shelf-actions-box .screen-sharing-indicator StIcon,
++.luma-shelf-actions-box .screen-recording-indicator StIcon {
++  icon-size: 16px; }
++.luma-shelf-actions-box .screen-recording-indicator StLabel {
++  font-size: 12px;
++  font-weight: 600;
++  font-feature-settings: "tnum"; }
+--- a/js/ui/shelf.js
++++ b/js/ui/shelf.js
+@@ -464,7 +464,24 @@
+         this._mediaIsland.connectObject('notify::width', () => this._queueDockWidth(),
+             'notify::height', () => this._queueDockWidth(), this);
+ 
++        // Applications and extensions put status icons in the top panel: tray
++        // icons, hardware monitors, the Save button of a layout being edited.
++        // Luma has no top panel, so anything added to it after the shelf is
++        // built is adopted the moment it arrives instead of vanishing with it.
++        this._panelAddToStatusArea = Main.panel.addToStatusArea;
++        Main.panel.addToStatusArea = (...args) => {
++            const indicator = this._panelAddToStatusArea.apply(Main.panel, args);
++            this._queueAdoptPanelActors();
++            return indicator;
++        };
++
+         this.connect('destroy', () => {
++            if (this._panelAddToStatusArea) {
++                Main.panel.addToStatusArea = this._panelAddToStatusArea;
++                this._panelAddToStatusArea = null;
++            }
++            if (this._adoptLaterId) GLib.source_remove(this._adoptLaterId);
++            this._adoptLaterId = 0;
+             this._workArea?.destroy();
+             for (const actor of this._edgeInsets ?? []) actor.destroy();
+             if (this._indicatorLaterId) GLib.source_remove(this._indicatorLaterId);
+@@ -546,6 +563,17 @@
+         indicator?.menu?.setArrowSide(side);
+     }
+ 
++    _queueAdoptPanelActors() {
++        if (this._adoptLaterId)
++            return;
++        this._adoptLaterId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._adoptLaterId = 0;
++            if (this._isDesktopSession())
++                this._sync();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
+     _adoptPanelActors() {
+         const indicators = Main.panel.statusArea;
+         const actionRoles = [
+@@ -555,6 +583,14 @@
+             'a11y',
+             'keyboard',
+         ];
++        // Everything else the panel holds came from an application or an
++        // extension. It joins the secondary controls, at the same size and in
++        // the same material as Luma's own, and shows only while its owner
++        // shows it.
++        const shellRoles = new Set(['activities', 'appMenu', 'dateMenu',
++            'quickSettings', 'liveExtensions', ...actionRoles]);
++        const extraRoles = Object.keys(indicators).filter(role =>
++            !shellRoles.has(role) && indicators[role]?.container);
+         const arrowSide = St.Side[this._edge.toUpperCase()];
+ 
+         const quick = indicators.quickSettings;
+@@ -568,11 +604,16 @@
+         this._setMenuSide(quick, arrowSide);
+         quick._statusArrowSide = arrowSide;
+         this._auxBox.orientation = this._vertical ? Clutter.Orientation.VERTICAL : Clutter.Orientation.HORIZONTAL;
+-        for (const role of actionRoles) {
++        for (const role of [...actionRoles, ...extraRoles]) {
+             const indicator = indicators[role];
+             if (!indicator)
+                 continue;
+             const container = indicator.container;
++            if (!actionRoles.includes(role) && !container._lumaShelfExtra) {
++                container.add_style_class_name('luma-shelf-extra');
++                container.connectObject('destroy', () => this._queueAdoptPanelActors(), this);
++                container._lumaShelfExtra = true;
++            }
+             const parent = container.get_parent();
+             if (parent !== this._auxBox) {
+                 parent?.remove_child(container);

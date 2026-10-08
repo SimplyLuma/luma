@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: Apache-2.0
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/*
+ * Lab-only, base-resolved form of the FP6 FT9362 overlay.
+ *
+ * The active boot_b DTB pinned by FP6_FINGERPRINT_BASE_DTB_SHA256 was built
+ * without /__symbols__, so a label-based overlay cannot be applied to it.
+ * In that exact DTB, /soc@0/pinctrl@f100000 has phandle 0x35.  This overlay
+ * deliberately uses target-path plus that verified phandle and must never be
+ * applied to a different base DTB.  The candidate builder enforces the hash.
+ */
+
+&{/} {
+	focalfp_ft9362: focalfp-ft9362 {
+		compatible = "focaltech,fp";
+		interrupt-parent = <0x35>;
+		interrupts = <75 IRQ_TYPE_EDGE_RISING>;
+		irq-gpios = <0x35 75 0>;
+		reset-gpios = <0x35 74 0>;
+		vdd-gpios = <0x35 29 0>;
+		focaltech_fp,irq-gpio = <0x35 75 0>;
+		focaltech_fp,reset-gpio = <0x35 74 0>;
+		focaltech_fp,vdd-gpio = <0x35 29 0>;
+		pinctrl-names = "fpsensor_finger_rst_low",
+				"fpsensor_finger_rst_high",
+				"fpsensor_eint_as_int",
+				"fpsensor_finger_power_low",
+				"fpsensor_finger_power_high";
+		pinctrl-0 = <&fingerprint_pins_rst_output0>;
+		pinctrl-1 = <&fingerprint_pins_rst_output1>;
+		pinctrl-2 = <&fingerprint_pins_eint_as_int>;
+		pinctrl-3 = <&fingerprint_pins_power_output0>;
+		pinctrl-4 = <&fingerprint_pins_power_output1>;
+		status = "disabled";
+	};
+};
+
+&{/soc@0/pinctrl@f100000} {
+	fingerprint_pins_rst_output0: focaltech-reset-low-state {
+		pins = "gpio74";
+		function = "gpio";
+		drive-strength = <2>;
+		output-low;
+		bias-disable;
+	};
+
+	fingerprint_pins_rst_output1: focaltech-reset-high-state {
+		pins = "gpio74";
+		function = "gpio";
+		drive-strength = <2>;
+		output-high;
+		bias-disable;
+	};
+
+	fingerprint_pins_eint_as_int: focaltech-irq-active-state {
+		pins = "gpio75";
+		function = "gpio";
+		drive-strength = <2>;
+		input-enable;
+		bias-disable;
+	};
+
+	fingerprint_pins_power_output0: focaltech-power-low-state {
+		pins = "gpio29";
+		function = "gpio";
+		drive-strength = <2>;
+		output-low;
+		bias-disable;
+	};
+
+	fingerprint_pins_power_output1: focaltech-power-high-state {
+		pins = "gpio29";
+		function = "gpio";
+		drive-strength = <2>;
+		output-high;
+		bias-disable;
+	};
+};

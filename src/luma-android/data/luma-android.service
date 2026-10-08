@@ -1,0 +1,41 @@
+[Unit]
+Description=Project Luma Android runtime broker
+Documentation=https://project-luma.local/android
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+After=systemd-tmpfiles-setup.service
+# Android is an optional per-user runtime. Never start it for GDM's greeter
+# (a dynamic, non-system UID whose session class is "greeter") or for
+# system users; systemd logs the unmet condition as the reason it skipped.
+ConditionUser=!@system
+ConditionEnvironment=XDG_SESSION_CLASS=user
+
+[Service]
+Type=dbus
+BusName=org.projectluma.Android1
+# ReadWritePaths only grants a directory that already exists.
+ExecStartPre=+/usr/bin/mkdir -p %h/.local/share/luma/icons
+# GSettings (host appearance sync) opens dconf's per-user change-notification
+# file under %t/dconf. ProtectSystem=strict otherwise leaves it read-only, so
+# dconf cannot map that file and warns on every settings lookup.
+ExecStartPre=+/usr/bin/mkdir -p -m 0700 %t/dconf
+ExecStart=/usr/bin/luma-androidd
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=luma-android
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+StateDirectory=luma-android
+StateDirectoryMode=0700
+# Launcher reconciliation publishes rounded application icons here.
+ReadWritePaths=-%h/.local/share/luma-android -%h/.local/share/applications -%h/.local/share/waydroid -%h/.local/state/luma-android -%h/.local/share/luma/icons -%t/dconf
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=graphical-session.target

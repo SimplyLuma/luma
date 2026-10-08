@@ -1,0 +1,36 @@
+From: Project Luma <luma@project-luma.org>
+Date: Sun, 16 Aug 2026 20:30:00 +0000
+Subject: [PATCH] drm/msm/a810: use the Gen8.3 GMU AHB fence range
+
+Fairphone's Android 16 Qualcomm graphics driver programs the Gen8.3 GMU AHB
+fence lower bound to 0x8a0. The Milos DRM driver instead applies the generic
+A8xx lower bound of 0x8c0 to A810.
+
+The FP6 timeout diagnostic established that the GMU cold-boots with correct
+core and hub clocks and begins executing far enough to advance its retained
+log pointer, but never sets CM3_FW_INIT_RESULT. Match the authoritative Gen8.3
+fence range for A810 while leaving every other A8xx GPU unchanged.
+
+This is a one-variable behavior test. It must remain RAM-only until a bounded
+FP6 workload completes without a GMU timeout, GPU/DPU hangcheck, or recovery
+failure.
+
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index 654fd304a..3e7477cd4 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -1009,7 +1009,7 @@ static int a6xx_gmu_fw_start(struct a6xx_gmu *gmu, unsigned int state)
+ 
+ 	if (adreno_is_a8xx(adreno_gpu)) {
+ 		fence_range_upper = 0x32;
+-		fence_range_lower = 0x8c0;
++		fence_range_lower = adreno_is_a810(adreno_gpu) ? 0x8a0 : 0x8c0;
+ 	} else if (adreno_is_a7xx(adreno_gpu)) {
+ 		fence_range_upper = 0x32;
+ 		fence_range_lower = 0x8a0;
+-- 
+2.51.0

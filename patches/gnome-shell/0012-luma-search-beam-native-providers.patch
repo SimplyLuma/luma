@@ -1,0 +1,1190 @@
+--- a/data/theme/gnome-shell-sass/widgets/_dialogs.scss
++++ b/data/theme/gnome-shell-sass/widgets/_dialogs.scss
+@@ -25,63 +25,203 @@
+ // Luma Search is a shell-owned modal Beam, separate from Window View.
+ .luma-search-dialog {
+   width: 620px;
+-  max-height: 44em;
+-  padding: $base_padding * 3;
+-  border-radius: 22px;
+-  background-color: if($variant == 'light', rgba(246, 247, 248, 0.98), rgba(37, 40, 45, 0.98));
++  max-height: 50em;
++  padding: 0;
++  spacing: 0;
++  border-radius: 0;
++  background-color: transparent;
+   color: $fg_color;
+-  border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .88));
+-  box-shadow: 0 24px 64px rgba(12, 16, 21, 0.34);
++  border: none;
++  box-shadow: none;
+ 
+   .modal-dialog-content-box {
+     max-width: 50em;
+     padding: 0;
++    spacing: 0;
+   }
+ 
+-  .luma-search-stage { spacing: $base_padding * 2; }
++  .luma-search-stage { spacing: $base_padding + 2px; }
+ 
++  .luma-search-field,
++  .luma-search-intro,
++  #searchResults {
++    border-radius: 18px;
++    background-color: if($variant == 'light', #fbfbfa, #2a2e34);
++    border: if($contrast == 'high', 2px solid $fg_color, 1px solid if($variant == 'light', rgba(39, 48, 56, .095), rgba(255, 255, 255, .08)));
++    box-shadow: 0 18px 48px -18px rgba(8, 12, 17, .70);
++  }
++
++  .luma-search-field {
++    height: 64px;
++    padding: 0 $base_padding * 3;
++    spacing: $base_padding * 2;
++
++    &:focus {
++      border-color: if($variant == 'light', rgba(67, 113, 156, .45), rgba(128, 168, 210, .48));
++      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, .70), inset 0 0 0 1px if($variant == 'light', rgba(67, 113, 156, .16), rgba(128, 168, 210, .18));
++    }
++  }
++
+   .luma-search-entry {
+     width: auto;
+     margin: 0;
+-    padding: $base_padding * 2;
+-    border-radius: 14px;
+-    background-color: if($variant == 'light', rgba(255, 255, 255, 0.94), rgba(54, 58, 64, 0.96));
++    padding: 0;
++    border-radius: 0;
++    background-color: transparent;
+     color: $fg_color;
+-    border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .89));
+-    font-size: 1.18em;
++    border: none;
++    box-shadow: none;
++    font-family: 'Figtree';
++    font-size: 18px;
++    font-weight: 600;
++
++    &:focus {
++      background-color: transparent;
++      border: none;
++      box-shadow: none;
++    }
++
++    .search-entry-icon {
++      icon-size: 18px;
++      padding: 0 $base_padding * 2 0 0;
++      color: if($variant == 'light', #757e87, #8b949c);
++    }
+   }
+ 
++  .luma-search-escape {
++    padding: 3px 7px;
++    border-radius: 7px;
++    background-color: if($variant == 'light', rgba(39, 48, 56, .04), rgba(255, 255, 255, .038));
++    color: if($variant == 'light', #757e87, #8b949c);
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600;
++  }
++
+   .luma-search-intro {
+-    spacing: $base_padding * 2;
+-    padding: $base_padding * 5 $base_padding * 3;
++    spacing: $base_padding + 2px;
++    padding: $base_padding * 4 $base_padding * 3;
+     color: $fg_color;
+     text-align: center;
+   }
+ 
+-  .luma-search-intro-title { font-size: 1.22em; font-weight: 700; }
+-  .luma-search-intro-subtitle { color: transparentize($fg_color, .35); }
++  .luma-search-intro-title {
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 700;
++  }
++  .luma-search-intro-subtitle {
++    color: if($variant == 'light', #757e87, #8b949c);
++    font-family: 'Figtree';
++    font-size: 12px;
++    font-weight: 550;
++  }
+   .luma-search-suggestions { spacing: $base_padding; }
+ 
+   .luma-search-suggestion {
+-    padding: $base_padding $base_padding * 2;
++    padding: 4px $base_padding * 2;
+     border-radius: 999px;
+-    background-color: transparentize($fg_color, .945);
++    background-color: if($variant == 'light', rgba(39, 48, 56, .04), rgba(255, 255, 255, .038));
+     color: $fg_color;
+-    border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .90));
+-
+-    &:hover, &:focus { background-color: transparentize($fg_color, .90); }
+-    &:active { background-color: transparentize($fg_color, .85); }
++    border: if($contrast == 'high', 2px solid $fg_color, 1px solid if($variant == 'light', rgba(39, 48, 56, .095), rgba(255, 255, 255, .08)));
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600;
++
++    &:hover, &:focus { background-color: if($variant == 'light', rgba(39, 48, 56, .08), rgba(255, 255, 255, .08)); }
++    &:active { background-color: if($variant == 'light', rgba(39, 48, 56, .12), rgba(255, 255, 255, .12)); }
+   }
+ 
+-  #searchResults { min-height: 16em; max-height: 34em; }
+-  #searchResultsContent { max-width: 50em; }
++  #searchResults {
++    margin: 0;
++    padding: 0;
++    min-height: 0;
++    max-height: 34em;
++  }
++  #searchResultsContent { max-width: 620px; }
++  .search-display { padding: 6px; }
++  .search-statusbox {
++    min-height: 108px;
++    spacing: $base_padding * 2;
++    padding: $base_padding * 3;
++  }
++  .search-statustext {
++    color: if($variant == 'light', #757e87, #8b949c);
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 600;
++  }
++  .search-section { spacing: 0; }
++  .search-section-separator { height: 2px; }
+   .search-section-content {
++    padding: 0;
+     margin: 0;
+-    background-color: transparentize($card_bg_color, .22);
++    background-color: transparent;
+     color: $fg_color;
+-    border: if($contrast == 'high', 2px solid $fg_color, 1px solid transparentize($fg_color, .91));
++    border: none;
++    border-radius: 0;
+   }
+-  .list-search-result-description { color: transparentize($fg_color, .35); }
++  .list-search-results { spacing: 2px; }
++
++  .luma-search-result {
++    min-height: 48px;
++    padding: $base_padding + 2px $base_padding + 4px;
++    border-radius: 12px;
++    background-color: transparent;
++    color: $fg_color;
++    border: none;
++    box-shadow: none;
++
++    &:hover, &:focus {
++      background-color: if($variant == 'light', rgba(39, 48, 56, .06), rgba(255, 255, 255, .06));
++    }
++    &:selected {
++      background-color: if($variant == 'light', rgba(39, 48, 56, .105), rgba(255, 255, 255, .108));
++    }
++    &:active {
++      background-color: if($variant == 'light', rgba(39, 48, 56, .14), rgba(255, 255, 255, .14));
++    }
++  }
++  .luma-search-result-content { spacing: $base_padding * 2; }
++  .luma-search-result-mark {
++    width: 32px;
++    height: 32px;
++    border-radius: 10px;
++    color: $fg_color;
++    background-color: if($variant == 'light', rgba(70, 125, 176, .12), rgba(128, 168, 210, .14));
++
++    &.kind-setting, &.kind-calendar, &.kind-photo {
++      background-color: if($variant == 'light', rgba(130, 91, 162, .12), rgba(181, 139, 208, .14));
++    }
++    &.kind-contact, &.kind-music {
++      background-color: if($variant == 'light', rgba(178, 117, 40, .12), rgba(209, 148, 71, .14));
++    }
++    &.kind-message, &.kind-place {
++      background-color: if($variant == 'light', rgba(55, 139, 94, .12), rgba(101, 181, 140, .14));
++    }
++  }
++  .luma-search-result-copy { spacing: 1px; }
++  .luma-search-result-title {
++    color: $fg_color;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 650;
++  }
++  .luma-search-result-description {
++    color: if($variant == 'light', #757e87, #8b949c);
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 550;
++  }
++  .luma-search-result-kind {
++    padding: 3px 7px;
++    border-radius: 999px;
++    background-color: if($variant == 'light', rgba(39, 48, 56, .04), rgba(255, 255, 255, .038));
++    color: if($variant == 'light', #757e87, #8b949c);
++    font-family: 'Figtree';
++    font-size: 10px;
++    font-weight: 600;
++  }
+ }
+ 
+ // lists in dialogs
+--- a/js/ui/lumaSearch.js
++++ b/js/ui/lumaSearch.js
+@@ -1,7 +1,5 @@
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
+-import GioUnix from 'gi://GioUnix';
+-import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import St from 'gi://St';
+ 
+@@ -10,116 +8,6 @@
+ import * as Search from './search.js';
+ import * as ShellEntry from './shellEntry.js';
+ 
+-const SearchProxy = Gio.DBusProxy.makeProxyWrapper(`
+-<node>
+-  <interface name="org.projectluma.Search1">
+-    <method name="Query">
+-      <arg name="query" type="s" direction="in"/>
+-      <arg name="generation" type="u" direction="in"/>
+-      <arg name="limit" type="u" direction="in"/>
+-      <arg name="results" type="aa{sv}" direction="out"/>
+-    </method>
+-    <method name="Activate">
+-      <arg name="provider_id" type="s" direction="in"/>
+-      <arg name="result_id" type="s" direction="in"/>
+-      <arg name="terms" type="as" direction="in"/>
+-      <arg name="timestamp" type="u" direction="in"/>
+-    </method>
+-  </interface>
+-</node>`);
+-
+-const KIND_LABELS = {
+-    app: _('App'),
+-    setting: _('Setting'),
+-    file: _('File'),
+-    mail: _('Mail'),
+-    contact: _('Contact'),
+-    calendar: _('Calendar'),
+-    message: _('Message'),
+-    photo: _('Photo'),
+-    music: _('Music'),
+-    place: _('Place'),
+-};
+-
+-class LumaSearchProvider {
+-    constructor() {
+-        this.id = 'org.projectluma.Search';
+-        this.canLaunchSearch = false;
+-        this.isRemoteProvider = false;
+-        // SearchResultsView passes provider appInfo through GNOME's parental
+-        // controls and provider-display paths. Use a real DesktopAppInfo so
+-        // the complete Gio.AppInfo contract (including should_show()) is
+-        // available instead of an incomplete lookalike object.
+-        this.appInfo = GioUnix.DesktopAppInfo.new(
+-            'org.projectluma.SearchSettings.desktop');
+-        if (!this.appInfo)
+-            throw new Error('Luma Search desktop application is not installed');
+-        this._metas = new Map();
+-        this._generation = 0;
+-        this._proxy = null;
+-    }
+-
+-    async getInitialResultSet(terms, cancellable) {
+-        this._proxy ??= new SearchProxy(
+-            Gio.DBus.session,
+-            'org.projectluma.Search',
+-            '/org/projectluma/Search');
+-        const generation = ++this._generation;
+-        const [results] = await this._proxy.QueryAsync(
+-            terms.join(' '), generation, 40, cancellable);
+-        this._metas.clear();
+-        return results.map(result => {
+-            const unpack = key => result[key]?.deepUnpack?.() ?? result[key] ?? '';
+-            const providerId = unpack('provider-id');
+-            const resultId = unpack('result-id');
+-            const id = JSON.stringify([providerId, resultId]);
+-            const kind = unpack('kind');
+-            const subtitle = unpack('subtitle');
+-            const snippet = unpack('snippet');
+-            const typeLabel = KIND_LABELS[kind] ?? _('Result');
+-            const context = [typeLabel, subtitle, snippet].filter(Boolean).join(' · ');
+-            this._metas.set(id, {
+-                id,
+-                name: unpack('title'),
+-                description: context,
+-                createIcon: size => new St.Icon({
+-                    icon_name: unpack('icon-name') || 'edit-find-symbolic',
+-                    icon_size: size,
+-                }),
+-                providerId,
+-                resultId,
+-            });
+-            return id;
+-        });
+-    }
+-
+-    getSubsearchResultSet(_previousResults, terms, cancellable) {
+-        return this.getInitialResultSet(terms, cancellable);
+-    }
+-
+-    async getResultMetas(ids, _cancellable) {
+-        return ids.map(id => this._metas.get(id));
+-    }
+-
+-    filterResults(results, maxNumber) {
+-        return results.slice(0, maxNumber);
+-    }
+-
+-    activateResult(id, terms) {
+-        const meta = this._metas.get(id);
+-        if (!meta)
+-            return;
+-        this._proxy.ActivateAsync(
+-            meta.providerId,
+-            meta.resultId,
+-            terms,
+-            global.get_current_time()).catch(logError);
+-    }
+-
+-    launchSearch() {
+-    }
+-}
+-
+ const LumaSearchDialog = GObject.registerClass(
+ class LumaSearchDialog extends ModalDialog.ModalDialog {
+     _init() {
+@@ -144,13 +32,19 @@
+             style_class: 'luma-search-stage',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+-            y_expand: true,
++            y_expand: false,
+         });
+         this.contentLayout.add_child(stage);
+ 
++        this._fieldIsland = new St.BoxLayout({
++            style_class: 'luma-search-field',
++            orientation: Clutter.Orientation.HORIZONTAL,
++            x_expand: true,
++        });
+         this._entry = new St.Entry({
+-            style_class: 'search-entry luma-search-entry',
++            style_class: 'luma-search-entry',
+             hint_text: _('Search this machine'),
++            accessible_name: _('Search this machine'),
+             can_focus: true,
+             track_hover: true,
+             x_expand: true,
+@@ -160,7 +54,13 @@
+             icon_name: 'edit-find-symbolic',
+         }));
+         ShellEntry.addContextMenu(this._entry);
+-        stage.add_child(this._entry);
++        this._fieldIsland.add_child(this._entry);
++        this._fieldIsland.add_child(new St.Label({
++            style_class: 'luma-search-escape',
++            text: _('esc'),
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        stage.add_child(this._fieldIsland);
+ 
+         this._intro = new St.BoxLayout({
+             style_class: 'luma-search-intro',
+@@ -175,7 +75,10 @@
+             style_class: 'luma-search-intro-subtitle',
+             text: _('Applications and settings first, then your files, mail, people, days and music.'),
+         }));
+-        const suggestions = new St.BoxLayout({style_class: 'luma-search-suggestions'});
++        const suggestions = new St.BoxLayout({
++            style_class: 'luma-search-suggestions',
++            x_align: Clutter.ActorAlign.CENTER,
++        });
+         for (const suggestion of [_('Reel'), _('dark'), _('cursor size'), _('Nora'), _('wallpaper'), _('Retro')]) {
+             const button = new St.Button({
+                 style_class: 'luma-search-suggestion',
+@@ -191,8 +94,10 @@
+         this._intro.add_child(suggestions);
+         stage.add_child(this._intro);
+ 
+-        this._results = new Search.SearchResultsView({brokerOnly: true});
+-        this._results.addProvider(new LumaSearchProvider());
++        // Use the same provider orchestration, cancellation, metadata and
++        // activation paths as GNOME's mature Activity View search. Compact is
++        // presentation-only: it renders every provider as a Beam result row.
++        this._results = new Search.SearchResultsView({compact: true});
+         this._results.connect('result-activated', () => this.close());
+         this._results.hide();
+         stage.add_child(this._results);
+@@ -200,8 +105,14 @@
+         this._text = this._entry.clutter_text;
+         this._text.connect('text-changed', this._onTextChanged.bind(this));
+         this._text.connect('key-press-event', this._onEntryKeyPress.bind(this));
+-        this._text.connect('key-focus-in', () => this._results.highlightDefault(true));
+-        this._text.connect('key-focus-out', () => this._results.highlightDefault(false));
++        this._text.connect('key-focus-in', () => {
++            this._fieldIsland.add_style_pseudo_class('focus');
++            this._results.highlightDefault(true);
++        });
++        this._text.connect('key-focus-out', () => {
++            this._fieldIsland.remove_style_pseudo_class('focus');
++            this._results.highlightDefault(false);
++        });
+         this.setInitialKeyFocus(this._entry);
+     }
+ 
+@@ -214,6 +125,8 @@
+         island.width = Math.min(620, workArea.width - 48);
+         island.y_align = Clutter.ActorAlign.START;
+         island.margin_top = Math.round(workArea.height * 0.13);
++        this._results.set_style(
++            `max-height: ${Math.round(workArea.height * 0.46)}px;`);
+         const animate = St.Settings.get().enable_animations;
+         island.translation_y = animate ? 10 : 0;
+         island.scale_x = animate ? 0.985 : 1;
+--- a/js/ui/search.js
++++ b/js/ui/search.js
+@@ -4,6 +4,7 @@
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Meta from 'gi://Meta';
++import Pango from 'gi://Pango';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+@@ -23,6 +24,27 @@
+ const MAX_LIST_SEARCH_RESULTS_ROWS = 5;
+ const SEARCH_SPINNER_SIZE = 64;
+ 
++function getProviderKind(provider) {
++    const identity = [provider.id, provider.appInfo?.get_id?.()]
++        .filter(Boolean).join(' ').toLowerCase();
++    const kinds = [
++        ['setting', _('Setting'), ['setting', 'controlcenter']],
++        ['file', _('File'), ['nautilus', 'file', 'tracker', 'localsearch']],
++        ['mail', _('Mail'), ['mail', 'geary', 'evolution']],
++        ['contact', _('Contact'), ['contact', 'addressbook']],
++        ['calendar', _('Calendar'), ['calendar']],
++        ['message', _('Message'), ['message', 'chat']],
++        ['photo', _('Photo'), ['photo', 'shotwell']],
++        ['music', _('Music'), ['music', 'rhythmbox', 'tide']],
++        ['place', _('Place'), ['map', 'place']],
++    ];
++    for (const [kind, label, markers] of kinds) {
++        if (markers.some(marker => identity.includes(marker)))
++            return {kind, label};
++    }
++    return {kind: 'app', label: _('App')};
++}
++
+ const MaxWidthBox = GObject.registerClass(
+ class MaxWidthBox extends St.BoxLayout {
+     vfunc_allocate(box) {
+@@ -76,6 +98,11 @@
+     _init(provider, metaInfo, resultsView) {
+         super._init(provider, metaInfo, resultsView);
+ 
++        if (resultsView.compact) {
++            this._initCompact(metaInfo);
++            return;
++        }
++
+         this.style_class = 'list-search-result';
+ 
+         const content = new St.BoxLayout({
+@@ -129,6 +156,66 @@
+         return 24;
+     }
+ 
++    _initCompact(metaInfo) {
++        this.style_class = 'list-search-result luma-search-result';
++        const {kind, label} = getProviderKind(this.provider);
++        const content = new St.BoxLayout({
++            style_class: 'luma-search-result-content',
++            orientation: Clutter.Orientation.HORIZONTAL,
++            x_expand: true,
++        });
++        this.set_child(content);
++
++        const resultIcon = metaInfo.createIcon(17) ?? new St.Icon({
++            icon_name: 'edit-find-symbolic',
++            icon_size: 17,
++        });
++        content.add_child(new St.Bin({
++            style_class: `luma-search-result-mark kind-${kind}`,
++            child: resultIcon,
++            x_align: Clutter.ActorAlign.CENTER,
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++
++        const copy = new St.BoxLayout({
++            style_class: 'luma-search-result-copy',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        const title = new St.Label({
++            style_class: 'luma-search-result-title',
++            text: metaInfo.name,
++            x_align: Clutter.ActorAlign.START,
++        });
++        title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        title.clutter_text.line_wrap = false;
++        copy.add_child(title);
++        this.label_actor = title;
++
++        if (metaInfo.description) {
++            this._descriptionLabel = new St.Label({
++                style_class: 'list-search-result-description luma-search-result-description',
++                x_align: Clutter.ActorAlign.START,
++            });
++            this._descriptionLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++            this._descriptionLabel.clutter_text.line_wrap = false;
++            copy.add_child(this._descriptionLabel);
++            this.get_accessible().add_relationship(
++                Atk.RelationType.DESCRIBED_BY,
++                this._descriptionLabel.get_accessible());
++            this._resultsView.connectObject(
++                'terms-changed', this._highlightTerms.bind(this), this);
++            this._highlightTerms();
++        }
++        content.add_child(copy);
++        content.add_child(new St.Label({
++            style_class: 'luma-search-result-kind',
++            text: label,
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++    }
++
+     _highlightTerms() {
+         const markup = this._resultsView.highlightTerms(this.metaInfo['description'].split('\n')[0]);
+         this._descriptionLabel.clutter_text.set_markup(markup);
+@@ -299,15 +386,16 @@
+             style_class: 'search-section-content',
+             x_expand: true,
+         });
+-        this.providerInfo = new ProviderInfo(provider);
+-        this.providerInfo.connect('key-focus-in', this._keyFocusIn.bind(this));
+-        this.providerInfo.connect('clicked', () => {
+-            this.providerInfo.animateLaunch();
+-            provider.launchSearch(this._terms);
+-            Main.overview.toggle();
+-        });
+-
+-        this._container.add_child(this.providerInfo);
++        if (!resultsView.compact) {
++            this.providerInfo = new ProviderInfo(provider);
++            this.providerInfo.connect('key-focus-in', this._keyFocusIn.bind(this));
++            this.providerInfo.connect('clicked', () => {
++                this.providerInfo.animateLaunch();
++                provider.launchSearch(this._terms);
++                Main.overview.toggle();
++            });
++            this._container.add_child(this.providerInfo);
++        }
+ 
+         this._content = new St.BoxLayout({
+             style_class: 'list-search-results',
+@@ -320,7 +408,7 @@
+     }
+ 
+     _setMoreCount(count) {
+-        this.providerInfo.setMoreCount(count);
++        this.providerInfo?.setMoreCount(count);
+     }
+ 
+     _getMaxDisplayedResults() {
+@@ -578,6 +666,9 @@
+             x_expand: true,
+             y_expand: true,
+         });
++        this._compact = params.compact ?? false;
++        if (this._compact)
++            this.add_style_class_name('luma-search-results');
+ 
+         this._parentalControlsManager = ParentalControlsManager.getDefault();
+         this._parentalControlsManager.connect('app-filter-changed', this._reloadRemoteProviders.bind(this));
+@@ -611,7 +702,8 @@
+             y_align: Clutter.ActorAlign.CENTER,
+         });
+ 
+-        this._statusSpinner = new Spinner(SEARCH_SPINNER_SIZE);
++        this._statusSpinner = new Spinner(
++            this._compact ? 24 : SEARCH_SPINNER_SIZE);
+ 
+         this._statusText = new St.Label({style_class: 'search-statustext'});
+ 
+@@ -653,6 +745,10 @@
+         return this._terms;
+     }
+ 
++    get compact() {
++        return this._compact;
++    }
++
+     addProvider(provider) {
+         this._registerProvider(provider);
+     }
+@@ -798,8 +894,10 @@
+             return;
+ 
+         let providerDisplay;
+-        if (provider.appInfo)
++        if (this._compact)
+             providerDisplay = new ListSearchResults(provider, this);
++        else if (provider.appInfo)
++            providerDisplay = new ListSearchResults(provider, this);
+         else
+             providerDisplay = new GridSearchResults(provider, this);
+ 
+@@ -863,7 +961,10 @@
+                 this._statusText.set_text(_('Searching'));
+             } else {
+                 this._statusSpinner.stop();
+-                this._statusText.set_text(_('No results'));
++                const query = this._terms.join(' ');
++                this._statusText.set_text(query
++                    ? _('No results for “%s”').format(query)
++                    : _('No results'));
+             }
+         }
+     }
+
+--- a/data/theme/gnome-shell-light.css
++++ b/data/theme/gnome-shell-light.css
+@@ -1411,7 +1411,175 @@
+     max-width: 28em; }
+   .modal-dialog .modal-dialog-button-box {
+     padding-top: 6px; }
++
++.luma-search-dialog {
++  width: 620px;
++  max-height: 50em;
++  padding: 0;
++  spacing: 0;
++  border-radius: 0;
++  background-color: transparent;
++  color: #222226;
++  border: none;
++  box-shadow: none; }
++  .luma-search-dialog .modal-dialog-content-box {
++    max-width: 50em;
++    padding: 0;
++    spacing: 0; }
++  .luma-search-dialog .luma-search-stage {
++    spacing: 8px; }
++  .luma-search-dialog .luma-search-field,
++  .luma-search-dialog .luma-search-intro,
++  .luma-search-dialog #searchResults {
++    border-radius: 18px;
++    background-color: #fbfbfa;
++    border: 1px solid rgba(39, 48, 56, 0.095);
++    box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7); }
++  .luma-search-dialog .luma-search-field {
++    height: 64px;
++    padding: 0 18px;
++    spacing: 12px; }
++    .luma-search-dialog .luma-search-field:focus {
++      border-color: rgba(67, 113, 156, 0.45);
++      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7), inset 0 0 0 1px rgba(67, 113, 156, 0.16); }
++  .luma-search-dialog .luma-search-entry {
++    width: auto;
++    margin: 0;
++    padding: 0;
++    border-radius: 0;
++    background-color: transparent;
++    color: #222226;
++    border: none;
++    box-shadow: none;
++    font-family: 'Figtree';
++    font-size: 18px;
++    font-weight: 600; }
++    .luma-search-dialog .luma-search-entry:focus {
++      background-color: transparent;
++      border: none;
++      box-shadow: none; }
++    .luma-search-dialog .luma-search-entry .search-entry-icon {
++      icon-size: 18px;
++      padding: 0 12px 0 0;
++      color: #757e87; }
++  .luma-search-dialog .luma-search-escape {
++    padding: 3px 7px;
++    border-radius: 7px;
++    background-color: rgba(39, 48, 56, 0.04);
++    color: #757e87;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600; }
++  .luma-search-dialog .luma-search-intro {
++    spacing: 8px;
++    padding: 24px 18px;
++    color: #222226;
++    text-align: center; }
++  .luma-search-dialog .luma-search-intro-title {
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 700; }
++  .luma-search-dialog .luma-search-intro-subtitle {
++    color: #757e87;
++    font-family: 'Figtree';
++    font-size: 12px;
++    font-weight: 550; }
++  .luma-search-dialog .luma-search-suggestions {
++    spacing: 6px; }
++  .luma-search-dialog .luma-search-suggestion {
++    padding: 4px 12px;
++    border-radius: 999px;
++    background-color: rgba(39, 48, 56, 0.04);
++    color: #222226;
++    border: 1px solid rgba(39, 48, 56, 0.095);
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600; }
++    .luma-search-dialog .luma-search-suggestion:hover, .luma-search-dialog .luma-search-suggestion:focus {
++      background-color: rgba(39, 48, 56, 0.08); }
++    .luma-search-dialog .luma-search-suggestion:active {
++      background-color: rgba(39, 48, 56, 0.12); }
++  .luma-search-dialog #searchResults {
++    margin: 0;
++    padding: 0;
++    min-height: 0;
++    max-height: 34em; }
++  .luma-search-dialog #searchResultsContent {
++    max-width: 620px; }
++  .luma-search-dialog .search-display {
++    padding: 6px; }
++  .luma-search-dialog .search-statusbox {
++    min-height: 108px;
++    spacing: 12px;
++    padding: 18px; }
++  .luma-search-dialog .search-statustext {
++    color: #757e87;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 600; }
++  .luma-search-dialog .search-section {
++    spacing: 0; }
++  .luma-search-dialog .search-section-separator {
++    height: 2px; }
++  .luma-search-dialog .search-section-content {
++    padding: 0;
++    margin: 0;
++    background-color: transparent;
++    color: #222226;
++    border: none;
++    border-radius: 0; }
++  .luma-search-dialog .list-search-results {
++    spacing: 2px; }
++  .luma-search-dialog .luma-search-result {
++    min-height: 48px;
++    padding: 8px 10px;
++    border-radius: 12px;
++    background-color: transparent;
++    color: #222226;
++    border: none;
++    box-shadow: none; }
++    .luma-search-dialog .luma-search-result:hover, .luma-search-dialog .luma-search-result:focus {
++      background-color: rgba(39, 48, 56, 0.06); }
++    .luma-search-dialog .luma-search-result:selected {
++      background-color: rgba(39, 48, 56, 0.105); }
++    .luma-search-dialog .luma-search-result:active {
++      background-color: rgba(39, 48, 56, 0.14); }
++  .luma-search-dialog .luma-search-result-content {
++    spacing: 12px; }
++  .luma-search-dialog .luma-search-result-mark {
++    width: 32px;
++    height: 32px;
++    border-radius: 10px;
++    color: #222226;
++    background-color: rgba(70, 125, 176, 0.12); }
++    .luma-search-dialog .luma-search-result-mark.kind-setting, .luma-search-dialog .luma-search-result-mark.kind-calendar, .luma-search-dialog .luma-search-result-mark.kind-photo {
++      background-color: rgba(130, 91, 162, 0.12); }
++    .luma-search-dialog .luma-search-result-mark.kind-contact, .luma-search-dialog .luma-search-result-mark.kind-music {
++      background-color: rgba(178, 117, 40, 0.12); }
++    .luma-search-dialog .luma-search-result-mark.kind-message, .luma-search-dialog .luma-search-result-mark.kind-place {
++      background-color: rgba(55, 139, 94, 0.12); }
++  .luma-search-dialog .luma-search-result-copy {
++    spacing: 1px; }
++  .luma-search-dialog .luma-search-result-title {
++    color: #222226;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 650; }
++  .luma-search-dialog .luma-search-result-description {
++    color: #757e87;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 550; }
++  .luma-search-dialog .luma-search-result-kind {
++    padding: 3px 7px;
++    border-radius: 999px;
++    background-color: rgba(39, 48, 56, 0.04);
++    color: #757e87;
++    font-family: 'Figtree';
++    font-size: 10px;
++    font-weight: 600; }
+
++
+ .dialog-list {
+   spacing: 18px; }
+   .dialog-list .dialog-list-title {
+--- a/data/theme/gnome-shell-dark.css
++++ b/data/theme/gnome-shell-dark.css
+@@ -1390,7 +1390,175 @@
+     max-width: 28em; }
+   .modal-dialog .modal-dialog-button-box {
+     padding-top: 6px; }
++
++.luma-search-dialog {
++  width: 620px;
++  max-height: 50em;
++  padding: 0;
++  spacing: 0;
++  border-radius: 0;
++  background-color: transparent;
++  color: #ffffff;
++  border: none;
++  box-shadow: none; }
++  .luma-search-dialog .modal-dialog-content-box {
++    max-width: 50em;
++    padding: 0;
++    spacing: 0; }
++  .luma-search-dialog .luma-search-stage {
++    spacing: 8px; }
++  .luma-search-dialog .luma-search-field,
++  .luma-search-dialog .luma-search-intro,
++  .luma-search-dialog #searchResults {
++    border-radius: 18px;
++    background-color: #2a2e34;
++    border: 1px solid rgba(255, 255, 255, 0.08);
++    box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7); }
++  .luma-search-dialog .luma-search-field {
++    height: 64px;
++    padding: 0 18px;
++    spacing: 12px; }
++    .luma-search-dialog .luma-search-field:focus {
++      border-color: rgba(128, 168, 210, 0.48);
++      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7), inset 0 0 0 1px rgba(128, 168, 210, 0.18); }
++  .luma-search-dialog .luma-search-entry {
++    width: auto;
++    margin: 0;
++    padding: 0;
++    border-radius: 0;
++    background-color: transparent;
++    color: #ffffff;
++    border: none;
++    box-shadow: none;
++    font-family: 'Figtree';
++    font-size: 18px;
++    font-weight: 600; }
++    .luma-search-dialog .luma-search-entry:focus {
++      background-color: transparent;
++      border: none;
++      box-shadow: none; }
++    .luma-search-dialog .luma-search-entry .search-entry-icon {
++      icon-size: 18px;
++      padding: 0 12px 0 0;
++      color: #8b949c; }
++  .luma-search-dialog .luma-search-escape {
++    padding: 3px 7px;
++    border-radius: 7px;
++    background-color: rgba(255, 255, 255, 0.038);
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600; }
++  .luma-search-dialog .luma-search-intro {
++    spacing: 8px;
++    padding: 24px 18px;
++    color: #ffffff;
++    text-align: center; }
++  .luma-search-dialog .luma-search-intro-title {
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 700; }
++  .luma-search-dialog .luma-search-intro-subtitle {
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 12px;
++    font-weight: 550; }
++  .luma-search-dialog .luma-search-suggestions {
++    spacing: 6px; }
++  .luma-search-dialog .luma-search-suggestion {
++    padding: 4px 12px;
++    border-radius: 999px;
++    background-color: rgba(255, 255, 255, 0.038);
++    color: #ffffff;
++    border: 1px solid rgba(255, 255, 255, 0.08);
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600; }
++    .luma-search-dialog .luma-search-suggestion:hover, .luma-search-dialog .luma-search-suggestion:focus {
++      background-color: rgba(255, 255, 255, 0.08); }
++    .luma-search-dialog .luma-search-suggestion:active {
++      background-color: rgba(255, 255, 255, 0.12); }
++  .luma-search-dialog #searchResults {
++    margin: 0;
++    padding: 0;
++    min-height: 0;
++    max-height: 34em; }
++  .luma-search-dialog #searchResultsContent {
++    max-width: 620px; }
++  .luma-search-dialog .search-display {
++    padding: 6px; }
++  .luma-search-dialog .search-statusbox {
++    min-height: 108px;
++    spacing: 12px;
++    padding: 18px; }
++  .luma-search-dialog .search-statustext {
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 600; }
++  .luma-search-dialog .search-section {
++    spacing: 0; }
++  .luma-search-dialog .search-section-separator {
++    height: 2px; }
++  .luma-search-dialog .search-section-content {
++    padding: 0;
++    margin: 0;
++    background-color: transparent;
++    color: #ffffff;
++    border: none;
++    border-radius: 0; }
++  .luma-search-dialog .list-search-results {
++    spacing: 2px; }
++  .luma-search-dialog .luma-search-result {
++    min-height: 48px;
++    padding: 8px 10px;
++    border-radius: 12px;
++    background-color: transparent;
++    color: #ffffff;
++    border: none;
++    box-shadow: none; }
++    .luma-search-dialog .luma-search-result:hover, .luma-search-dialog .luma-search-result:focus {
++      background-color: rgba(255, 255, 255, 0.06); }
++    .luma-search-dialog .luma-search-result:selected {
++      background-color: rgba(255, 255, 255, 0.108); }
++    .luma-search-dialog .luma-search-result:active {
++      background-color: rgba(255, 255, 255, 0.14); }
++  .luma-search-dialog .luma-search-result-content {
++    spacing: 12px; }
++  .luma-search-dialog .luma-search-result-mark {
++    width: 32px;
++    height: 32px;
++    border-radius: 10px;
++    color: #ffffff;
++    background-color: rgba(128, 168, 210, 0.14); }
++    .luma-search-dialog .luma-search-result-mark.kind-setting, .luma-search-dialog .luma-search-result-mark.kind-calendar, .luma-search-dialog .luma-search-result-mark.kind-photo {
++      background-color: rgba(181, 139, 208, 0.14); }
++    .luma-search-dialog .luma-search-result-mark.kind-contact, .luma-search-dialog .luma-search-result-mark.kind-music {
++      background-color: rgba(209, 148, 71, 0.14); }
++    .luma-search-dialog .luma-search-result-mark.kind-message, .luma-search-dialog .luma-search-result-mark.kind-place {
++      background-color: rgba(101, 181, 140, 0.14); }
++  .luma-search-dialog .luma-search-result-copy {
++    spacing: 1px; }
++  .luma-search-dialog .luma-search-result-title {
++    color: #ffffff;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 650; }
++  .luma-search-dialog .luma-search-result-description {
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 550; }
++  .luma-search-dialog .luma-search-result-kind {
++    padding: 3px 7px;
++    border-radius: 999px;
++    background-color: rgba(255, 255, 255, 0.038);
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 10px;
++    font-weight: 600; }
+
++
+ .dialog-list {
+   spacing: 18px; }
+   .dialog-list .dialog-list-title {
+--- a/data/theme/gnome-shell-high-contrast.css
++++ b/data/theme/gnome-shell-high-contrast.css
+@@ -1557,7 +1557,175 @@
+     max-width: 28em; }
+   .modal-dialog .modal-dialog-button-box {
+     padding-top: 6px; }
++
++.luma-search-dialog {
++  width: 620px;
++  max-height: 50em;
++  padding: 0;
++  spacing: 0;
++  border-radius: 0;
++  background-color: transparent;
++  color: #ffffff;
++  border: none;
++  box-shadow: none; }
++  .luma-search-dialog .modal-dialog-content-box {
++    max-width: 50em;
++    padding: 0;
++    spacing: 0; }
++  .luma-search-dialog .luma-search-stage {
++    spacing: 8px; }
++  .luma-search-dialog .luma-search-field,
++  .luma-search-dialog .luma-search-intro,
++  .luma-search-dialog #searchResults {
++    border-radius: 18px;
++    background-color: #2a2e34;
++    border: 2px solid #ffffff;
++    box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7); }
++  .luma-search-dialog .luma-search-field {
++    height: 64px;
++    padding: 0 18px;
++    spacing: 12px; }
++    .luma-search-dialog .luma-search-field:focus {
++      border-color: rgba(128, 168, 210, 0.48);
++      box-shadow: 0 18px 48px -18px rgba(8, 12, 17, 0.7), inset 0 0 0 1px rgba(128, 168, 210, 0.18); }
++  .luma-search-dialog .luma-search-entry {
++    width: auto;
++    margin: 0;
++    padding: 0;
++    border-radius: 0;
++    background-color: transparent;
++    color: #ffffff;
++    border: none;
++    box-shadow: none;
++    font-family: 'Figtree';
++    font-size: 18px;
++    font-weight: 600; }
++    .luma-search-dialog .luma-search-entry:focus {
++      background-color: transparent;
++      border: none;
++      box-shadow: none; }
++    .luma-search-dialog .luma-search-entry .search-entry-icon {
++      icon-size: 18px;
++      padding: 0 12px 0 0;
++      color: #8b949c; }
++  .luma-search-dialog .luma-search-escape {
++    padding: 3px 7px;
++    border-radius: 7px;
++    background-color: rgba(255, 255, 255, 0.038);
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600; }
++  .luma-search-dialog .luma-search-intro {
++    spacing: 8px;
++    padding: 24px 18px;
++    color: #ffffff;
++    text-align: center; }
++  .luma-search-dialog .luma-search-intro-title {
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 700; }
++  .luma-search-dialog .luma-search-intro-subtitle {
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 12px;
++    font-weight: 550; }
++  .luma-search-dialog .luma-search-suggestions {
++    spacing: 6px; }
++  .luma-search-dialog .luma-search-suggestion {
++    padding: 4px 12px;
++    border-radius: 999px;
++    background-color: rgba(255, 255, 255, 0.038);
++    color: #ffffff;
++    border: 2px solid #ffffff;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 600; }
++    .luma-search-dialog .luma-search-suggestion:hover, .luma-search-dialog .luma-search-suggestion:focus {
++      background-color: rgba(255, 255, 255, 0.08); }
++    .luma-search-dialog .luma-search-suggestion:active {
++      background-color: rgba(255, 255, 255, 0.12); }
++  .luma-search-dialog #searchResults {
++    margin: 0;
++    padding: 0;
++    min-height: 0;
++    max-height: 34em; }
++  .luma-search-dialog #searchResultsContent {
++    max-width: 620px; }
++  .luma-search-dialog .search-display {
++    padding: 6px; }
++  .luma-search-dialog .search-statusbox {
++    min-height: 108px;
++    spacing: 12px;
++    padding: 18px; }
++  .luma-search-dialog .search-statustext {
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 600; }
++  .luma-search-dialog .search-section {
++    spacing: 0; }
++  .luma-search-dialog .search-section-separator {
++    height: 2px; }
++  .luma-search-dialog .search-section-content {
++    padding: 0;
++    margin: 0;
++    background-color: transparent;
++    color: #ffffff;
++    border: none;
++    border-radius: 0; }
++  .luma-search-dialog .list-search-results {
++    spacing: 2px; }
++  .luma-search-dialog .luma-search-result {
++    min-height: 48px;
++    padding: 8px 10px;
++    border-radius: 12px;
++    background-color: transparent;
++    color: #ffffff;
++    border: none;
++    box-shadow: none; }
++    .luma-search-dialog .luma-search-result:hover, .luma-search-dialog .luma-search-result:focus {
++      background-color: rgba(255, 255, 255, 0.06); }
++    .luma-search-dialog .luma-search-result:selected {
++      background-color: rgba(255, 255, 255, 0.108); }
++    .luma-search-dialog .luma-search-result:active {
++      background-color: rgba(255, 255, 255, 0.14); }
++  .luma-search-dialog .luma-search-result-content {
++    spacing: 12px; }
++  .luma-search-dialog .luma-search-result-mark {
++    width: 32px;
++    height: 32px;
++    border-radius: 10px;
++    color: #ffffff;
++    background-color: rgba(128, 168, 210, 0.14); }
++    .luma-search-dialog .luma-search-result-mark.kind-setting, .luma-search-dialog .luma-search-result-mark.kind-calendar, .luma-search-dialog .luma-search-result-mark.kind-photo {
++      background-color: rgba(181, 139, 208, 0.14); }
++    .luma-search-dialog .luma-search-result-mark.kind-contact, .luma-search-dialog .luma-search-result-mark.kind-music {
++      background-color: rgba(209, 148, 71, 0.14); }
++    .luma-search-dialog .luma-search-result-mark.kind-message, .luma-search-dialog .luma-search-result-mark.kind-place {
++      background-color: rgba(101, 181, 140, 0.14); }
++  .luma-search-dialog .luma-search-result-copy {
++    spacing: 1px; }
++  .luma-search-dialog .luma-search-result-title {
++    color: #ffffff;
++    font-family: 'Figtree';
++    font-size: 14px;
++    font-weight: 650; }
++  .luma-search-dialog .luma-search-result-description {
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 11px;
++    font-weight: 550; }
++  .luma-search-dialog .luma-search-result-kind {
++    padding: 3px 7px;
++    border-radius: 999px;
++    background-color: rgba(255, 255, 255, 0.038);
++    color: #8b949c;
++    font-family: 'Figtree';
++    font-size: 10px;
++    font-weight: 600; }
+
++
+ .dialog-list {
+   spacing: 18px; }
+   .dialog-list .dialog-list-title {

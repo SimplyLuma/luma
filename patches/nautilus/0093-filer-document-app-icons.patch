@@ -1,0 +1,106 @@
+From 94d3545779d30d483d832b5e59966bfcc9753633 Mon Sep 17 00:00:00 2001
+From: Nick McMillen <153555205+nmcmil@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 16:22:20 +0000
+Subject: [PATCH] Filer: use native app artwork inside document tiles
+
+---
+ src/nautilus-grid-cell.c | 48 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+diff --git a/src/nautilus-grid-cell.c b/src/nautilus-grid-cell.c
+index 4337664..fc0f69e 100644
+--- a/src/nautilus-grid-cell.c
++++ b/src/nautilus-grid-cell.c
+@@ -35,6 +35,7 @@ struct _NautilusGridCell
+     GtkWidget *third_caption;
+     GtkWidget *extension_badge;
+     GtkWidget *duration_badge;
++    GtkWidget *document_app_icon;
+ 
+     gboolean in_file_change;
+ };
+@@ -48,6 +49,7 @@ update_art_badges (NautilusGridCell *self,
+     const char *name = nautilus_file_get_display_name (file);
+     const char *dot = name != NULL ? strrchr (name, '.') : NULL;
+     const char *extension = dot != NULL ? dot + 1 : NULL;
++    const char *app_icon = NULL;
+     gboolean show_extension = extension != NULL &&
+                               (g_ascii_strcasecmp (extension, "stage") == 0 ||
+                                g_ascii_strcasecmp (extension, "grid") == 0 ||
+@@ -57,6 +59,42 @@ update_art_badges (NautilusGridCell *self,
+                                g_ascii_strcasecmp (extension, "ogg") == 0);
+     g_autofree char *duration = nautilus_filer_fixture_info (name, "length");
+ 
++    if (extension != NULL)
++    {
++        if (g_ascii_strcasecmp (extension, "stage") == 0)
++        {
++            app_icon = "io.luma.Stage";
++        }
++        else if (g_ascii_strcasecmp (extension, "grid") == 0)
++        {
++            app_icon = "io.luma.Grid";
++        }
++        else if (g_ascii_strcasecmp (extension, "write") == 0)
++        {
++            app_icon = "io.luma.Write";
++        }
++        else if (g_ascii_strcasecmp (extension, "md") == 0)
++        {
++            app_icon = "org.projectluma.Notes";
++        }
++        else if (g_ascii_strcasecmp (extension, "ogg") == 0)
++        {
++            app_icon = "org.projectluma.VoiceMemos";
++        }
++    }
++
++    GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (self));
++    if (app_icon != NULL && display != NULL &&
++        gtk_icon_theme_has_icon (gtk_icon_theme_get_for_display (display), app_icon))
++    {
++        gtk_image_set_from_icon_name (GTK_IMAGE (self->document_app_icon), app_icon);
++        gtk_widget_set_visible (self->document_app_icon, TRUE);
++    }
++    else
++    {
++        gtk_widget_set_visible (self->document_app_icon, FALSE);
++    }
++
+     if (show_extension)
+     {
+         g_autofree char *upper = g_ascii_strup (extension, -1);
+@@ -282,6 +320,7 @@ nautilus_grid_cell_dispose (GObject *object)
+ 
+     gtk_widget_unparent (self->extension_badge);
+     gtk_widget_unparent (self->duration_badge);
++    gtk_widget_unparent (self->document_app_icon);
+     gtk_widget_dispose_template (GTK_WIDGET (self), NAUTILUS_TYPE_GRID_CELL);
+     g_clear_object (&self->item_signal_group);
+ 
+@@ -428,6 +467,11 @@ nautilus_grid_cell_size_allocate (GtkWidget *widget,
+         40, 14
+     };
+     gtk_widget_size_allocate (self->duration_badge, &child_allocation, -1);
++    child_allocation = (GtkAllocation) {
++        MAX (0, (width - 26) / 2), MAX (0, (icon_size - 26) / 2 - 4),
++        26, 26
++    };
++    gtk_widget_size_allocate (self->document_app_icon, &child_allocation, -1);
+ 
+     /* Put the emblems_box into the "end" margin. */
+     child_allocation.width = side;
+@@ -537,6 +581,10 @@ nautilus_grid_cell_init (NautilusGridCell *self)
+     gtk_label_set_xalign (GTK_LABEL (self->duration_badge), 1.0);
+     gtk_widget_set_visible (self->duration_badge, FALSE);
+     gtk_widget_set_parent (self->duration_badge, GTK_WIDGET (self));
++    self->document_app_icon = gtk_image_new ();
++    gtk_image_set_pixel_size (GTK_IMAGE (self->document_app_icon), 26);
++    gtk_widget_set_visible (self->document_app_icon, FALSE);
++    gtk_widget_set_parent (self->document_app_icon, GTK_WIDGET (self));
+ 
+     g_signal_connect (self, "notify::icon-size",
+                       G_CALLBACK (on_icon_size_changed), NULL);
+-- 
+2.55.0
+

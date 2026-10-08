@@ -1,0 +1,32 @@
+/* Phone's app-only surfaces; dialing keys and call text belong to LumaUI. */
+.pn-history.pn-history { box-shadow: inset 0 0 0 var(--lumaui-stack-hover-lift) @luma_border; border-radius: var(--lumaui-stack-radius); }
+.pn-history-row.pn-history-row { padding: var(--lumaui-sidebar-row-gap) var(--lumaui-details-body-padding-top); }
+.pn-history-row.pn-history-row + .pn-history-row { box-shadow: inset 0 var(--lumaui-stack-hover-lift) 0 @luma_border; }
+.pn-history-row.pn-history-row.missed { color: @luma_danger_ink; }
+.pn-call-surface.pn-call-surface, .pn-video-tile.pn-video-tile { background: @luma_media_scrim; color: @luma_on_media; }
+
+
+.pn-video-tile.pn-video-tile { background: @luma_media_surface; }
+.pn-video-tile.pn-video-tile.group { border-radius: var(--lumaui-details-body-padding-x); }
+.pn-video-tile.pn-video-tile.speaking { box-shadow: inset 0 0 0 var(--lumaui-stack-gap) @luma_good; }
+.pn-self.pn-self { border-radius: var(--lumaui-stack-radius); background: @luma_media_surface; box-shadow: 0 0 0 var(--lumaui-stack-hover-lift) @luma_float_ring; }
+
+.pn-name.pn-name { background: @luma_media_surface; color: @luma_on_media; border-radius: var(--lumaui-bar-subject-close-radius); box-shadow: inset 0 var(--lumaui-stack-hover-lift) 0 @luma_chip_highlight, 0 0 0 var(--lumaui-stack-hover-lift) @luma_chip_ring; }
+.pn-muted-marker.pn-muted-marker { color: @luma_danger_ink; }
+
+/* v71 dial pad: the call key is green on every phone; video and delete are round. */
+.pn-round.pn-round.pn-call { background: @luma_call_quick; background-image: none; color: @luma_call_ink; box-shadow: none; }
+.pn-round.pn-round { padding: 0; border: none; border-radius: var(--lumaui-radius-round); background: @luma_control_fill; color: @luma_ink; }
+.pn-plain.pn-plain { padding: 0; border: none; background: none; box-shadow: none; color: @luma_ink_secondary; }
+.pn-plain.pn-plain:disabled { opacity: 0; }
+.pn-result-open.pn-result-open { padding: 0; border: none; background: none; box-shadow: none; }
+
+/* v71 phone calls: six round controls over the call, End alone below. */
+.pn-control.pn-control { padding: 0; border: none; background: none; box-shadow: none; color: @luma_on_media; }
+.pn-control-face.pn-control-face { background: @luma_media_soft_key; color: @luma_media_soft_key_ink; border-radius: var(--lumaui-radius-round); }
+.pn-control.pn-control:hover .pn-control-face { background: @luma_media_soft_key_hover; }
+.pn-control.pn-control.on .pn-control-face { background: @luma_media_key; color: @luma_media_scrim; }
+.pn-end.pn-end { padding: 0; border: none; border-radius: var(--lumaui-radius-round); background: @luma_danger_fill; color: @luma_danger_fill_ink; }
+.pn-hide.pn-hide { padding: 0; border: none; background: none; box-shadow: none; color: @luma_on_media; }
+.pn-call-controls.pn-call-controls.video { background: @luma_media_bar; border-radius: var(--lumaui-call-panel-radius); }
+.pn-call-head.pn-call-head { color: @luma_on_media; }

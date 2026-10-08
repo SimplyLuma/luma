@@ -1,0 +1,177 @@
+{
+  "source": "Luma icon-family local selection at revision 40; original URL supplied by owner on 2026-09-27",
+  "revision": 40,
+  "savedAt": "2026-09-27T18:23:34",
+  "icons": {
+    "filer": {
+      "key": "A",
+      "source": "filer/filer-a.svg",
+      "bytes": 4941
+    },
+    "phone": {
+      "key": "A",
+      "source": "phone/phone-a.svg",
+      "bytes": 5793
+    },
+    "messages": {
+      "key": "A",
+      "source": "messages/messages-a.svg",
+      "bytes": 4841
+    },
+    "notes": {
+      "key": "B",
+      "source": "notes/notes-b.svg",
+      "bytes": 5906
+    },
+    "grid": {
+      "key": "A",
+      "source": "grid/grid-a.svg",
+      "bytes": 2682
+    },
+    "terminal": {
+      "key": "B",
+      "source": "terminal/terminal-b.svg",
+      "bytes": 7523
+    },
+    "tide": {
+      "key": "B",
+      "source": "tide/tide-b.svg",
+      "bytes": 15154
+    },
+    "contacts": {
+      "key": "A",
+      "source": "contacts/contacts-a.svg",
+      "bytes": 4584
+    },
+    "photos": {
+      "key": "C",
+      "source": "photos/photos-c.svg",
+      "bytes": 3881
+    },
+    "camera": {
+      "key": "B",
+      "source": "camera/camera-b.svg",
+      "bytes": 5141
+    },
+    "depot": {
+      "key": "B",
+      "source": "depot/depot-b.svg",
+      "bytes": 4543
+    },
+    "settings": {
+      "key": "A",
+      "source": "settings/settings-a.svg",
+      "bytes": 11567
+    },
+    "weather": {
+      "key": "A",
+      "source": "weather/weather-a.svg",
+      "bytes": 7424
+    },
+    "valet": {
+      "key": "B",
+      "source": "valet/valet-b.svg",
+      "bytes": 3746
+    },
+    "viewer": {
+      "key": "B",
+      "source": "viewer/viewer-b.svg",
+      "bytes": 4207
+    },
+    "ari": {
+      "key": "B",
+      "source": "ari/ari-b.svg",
+      "bytes": 5262
+    },
+    "sessions": {
+      "key": "B",
+      "source": "sessions/sessions-b.svg",
+      "bytes": 9341
+    },
+    "darkroom": {
+      "key": "A",
+      "source": "darkroom/darkroom-a.svg",
+      "bytes": 3923
+    },
+    "canvas": {
+      "key": "B",
+      "source": "canvas/canvas-b.svg",
+      "bytes": 3004
+    },
+    "calendar": {
+      "key": "A",
+      "source": "calendar/calendar-a.svg",
+      "bytes": 4829
+    },
+    "stage": {
+      "key": "A",
+      "source": "stage/stage-a.svg",
+      "bytes": 3220
+    },
+    "write": {
+      "key": "A",
+      "source": "write/write-a.svg",
+      "bytes": 3411
+    },
+    "memos": {
+      "key": "A",
+      "source": "memos/memos-a.svg",
+      "bytes": 17728
+    },
+    "maps": {
+      "key": "C",
+      "source": "maps/maps-c.svg",
+      "bytes": 2919
+    },
+    "tasks": {
+      "key": "C",
+      "source": "tasks/tasks-c.svg",
+      "bytes": 4778
+    },
+    "reel": {
+      "key": "C",
+      "source": "reel/reel-c.svg",
+      "bytes": 5617
+    },
+    "connect": {
+      "key": "A",
+      "source": "connect/connect-a.svg",
+      "bytes": 7003
+    },
+    "vault": {
+      "key": "A",
+      "source": "vault/vault-a.svg",
+      "bytes": 9532
+    },
+    "calculator": {
+      "key": "B",
+      "source": "calculator/calculator-b.svg",
+      "bytes": 11137
+    },
+    "clock": {
+      "key": "A",
+      "source": "clock/clock-a.svg",
+      "bytes": 7379
+    },
+    "disks": {
+      "key": "B",
+      "source": "disks/disks-b.svg",
+      "bytes": 9859
+    },
+    "monitor": {
+      "key": "A",
+      "source": "monitor/monitor-a.svg",
+      "bytes": 3275
+    },
+    "leaf": {
+      "key": "A",
+      "source": "leaf/leaf-a.svg",
+      "bytes": 5650
+    },
+    "relay": {
+      "key": "B",
+      "source": "relay/relay-b.svg",
+      "bytes": 12609
+    }
+  }
+}

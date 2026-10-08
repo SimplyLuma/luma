@@ -1,0 +1,76 @@
+#!/bin/sh
+# Prepare the scratch Maps preview after the four-variant conform gate passes.
+# Run on the host; --check only validates the inputs and writes nothing.
+set -eu
+app_tree=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+worktree=$(git -C "$app_tree" rev-parse --show-toplevel)
+source_script="$HOME/Documents/LumaDesign/tools/sync-lumaui-preview.sh"
+dest="$HOME/.local/share/luma-dev/lumaui-maps"
+desktop="$HOME/.local/share/applications/org.projectluma.Maps.LumaUIPreview.desktop"
+
+test -f "$source_script"
+test -f "$app_tree/data/maps.css"
+test -f "$app_tree/data/providers.toml"
+test -f "$app_tree/data/icons/org.projectluma.Maps.svg"
+test -f "$app_tree/bin/lumaui-preview-run"
+test -d "$app_tree/luma_maps"
+test -z "$(git -C "$worktree" status --porcelain)" || {
+    echo 'Maps preview: commit all app changes before syncing.' >&2
+    exit 2
+}
+# The shared scratch sync has release-specific defaults. Pin the versions on
+# this host instead, including Maps' data owner, and retain the launch guard.
+installed_nvr() {
+    for package in luma-developer-platform prairie-core-apps luma-maps; do
+        nvr=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "$package") || {
+            echo "Maps preview: $package is required on this host." >&2
+            return 2
+        }
+        printf '%s %s\n' "$package" "$nvr"
+    done
+}
+base_nvr=$(installed_nvr)
+if [ "${1:-}" = --check ]; then
+    test "$#" -eq 1
+    printf 'Maps preview inputs OK: %s\n' "$worktree"
+    exit 0
+fi
+test "$#" -eq 2 && test "$1" = --gate || {
+    echo 'Usage: sync-lumaui-maps-preview --check | --gate YYYYMMDD-HHMMSS' >&2
+    exit 2
+}
+stamp=$2
+case "$stamp" in *[!0-9-]*|'') echo 'Maps preview: invalid gate stamp.' >&2; exit 2 ;; esac
+commit_epoch=$(git -C "$worktree" log -1 --format=%ct)
+for variant in dark light dark-phone light-phone; do
+    report="$HOME/Documents/LumaDesign/conform/maps/$stamp-$variant/REPORT.md"
+    test -f "$report" && grep -q '^# lumaui-conform: maps, .*: \*\*PASS\*\*$' "$report" && \
+        test "$(stat -c %Y "$report")" -ge "$commit_epoch" || {
+        echo "Maps preview: current four-variant PASS missing for $variant ($report)." >&2
+        exit 2
+    }
+done
+
+LUMAUI_HOST=local LUMAUI_LAUNCHER= LUMAUI_WORKTREE="$worktree" \
+    LUMAUI_DEST=.local/share/luma-dev/lumaui-maps sh "$source_script"
+printf '%s\n' "$base_nvr" > "$dest/BASE-NVR"
+mkdir -p "$dest/python/data/icons" "$dest/python/icons" "$(dirname "$desktop")"
+rsync -a --delete --exclude __pycache__ "$app_tree/luma_maps/" "$dest/python/luma_maps/"
+cp "$app_tree/data/maps.css" "$app_tree/data/providers.toml" "$dest/python/data/"
+cp "$app_tree/data/icons/org.projectluma.Maps.svg" "$dest/python/icons/"
+cp "$app_tree/data/icons/org.projectluma.Maps.svg" "$dest/python/data/icons/"
+cp "$app_tree/bin/lumaui-preview-run" "$dest/bin/run-maps"
+chmod 755 "$dest/bin/run-maps"
+cat > "$desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Maps (LumaUI preview)
+Comment=Isolated Maps preview from $worktree
+Exec=$dest/bin/run-maps
+Icon=org.projectluma.Maps
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=org.projectluma.Maps.LumaUIPreview
+DESKTOP
+printf 'Maps preview staged at %s; launcher %s\n' "$dest" "$desktop"

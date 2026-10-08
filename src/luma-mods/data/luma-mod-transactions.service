@@ -1,0 +1,21 @@
+[Unit]
+Description=Project Luma gated Mod transaction service
+Documentation=https://github.com/SimplyLuma/luma
+
+[Service]
+Type=dbus
+BusName=org.projectluma.ModTransactions1
+ExecStart=/usr/libexec/luma-mod-transaction-service
+User=root
+Group=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/luma/mods /var/lib/rpm-ostree /boot
+# The privileged admission worker connects only to the HTTPS catalog bases
+# pinned in the root-owned client configuration. D-Bus and local resolver
+# access still require AF_UNIX.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+MemoryDenyWriteExecute=yes

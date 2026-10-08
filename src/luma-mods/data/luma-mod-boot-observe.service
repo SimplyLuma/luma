@@ -1,0 +1,22 @@
+[Unit]
+Description=Observe a pending Project Luma Mod deployment
+Documentation=https://github.com/SimplyLuma/luma
+After=local-fs.target ostree-finalize-staged.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-mod-system-health observe
+StateDirectory=luma/mods
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/luma/mods /var/lib/rpm-ostree /boot
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

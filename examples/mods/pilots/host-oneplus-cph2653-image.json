@@ -1,0 +1,11 @@
+{
+  "luma_base": "0.1.0",
+  "architecture": "aarch64",
+  "presentation": "handheld",
+  "kernel_release": "6.15.10-luma.oneplus-cph2653",
+  "install_mode": "image-compose",
+  "hardware": ["product:OnePlus:CPH2653"],
+  "capabilities": {"org.luma.apps.core": "1.0.0"},
+  "installed_mods": {},
+  "effect_owners": {}
+}

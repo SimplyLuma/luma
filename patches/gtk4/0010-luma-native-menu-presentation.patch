@@ -1,0 +1,457 @@
+From: Project Luma <devnull@projectluma.local>
+Subject: [PATCH] menus: native trailing state and individual accelerator keycaps
+
+GTK owns ordinary app and text-edit menu rows. Preserve GtkModelButton action,
+shortcut activation and accessible radio/check roles while placing the visible
+state at the logical trailing edge. Split parsed modifiers and the key rather
+than splitting translated display text on '+', which is itself a valid key.
+
+Based on GTK 4.22.4, LGPL-2.1-or-later. The earlier Luma convergence indicator
+fix was inspected against this exact source; no obsolete menu runtime or
+quick-action restructuring is restored here.
+
+diff --git a/gtk/gtkmodelbutton.c b/gtk/gtkmodelbutton.c
+--- a/gtk/gtkmodelbutton.c
++++ b/gtk/gtkmodelbutton.c
+@@ -380,33 +380,13 @@
+         gtk_widget_insert_before (button->end_indicator, GTK_WIDGET (button), child);
+ 
+       child = gtk_widget_get_last_child (GTK_WIDGET (button));
+-      if (button->end_indicator && child != button->end_indicator)
+-        gtk_widget_insert_after (button->end_indicator, GTK_WIDGET (button), child);
+-    }
+-}
+-
+-static void
+-update_end_indicator (GtkModelButton *self)
+-{
+-  const gboolean is_ltr = gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_LTR;
+-
+-  if (!self->end_indicator)
+-    return;
+-
+-  if (is_ltr)
+-    {
+-      gtk_widget_add_css_class (self->end_indicator, "right");
+-      gtk_widget_remove_css_class (self->end_indicator, "left");
+-    }
+-  else
+-    {
+-      gtk_widget_add_css_class (self->end_indicator, "left");
+-      gtk_widget_remove_css_class (self->end_indicator, "right");
++      if (button->start_indicator && child != button->start_box)
++        gtk_widget_insert_after (button->start_box, GTK_WIDGET (button), child);
+     }
+ }
+ 
+ static GtkStateFlags
+-get_start_indicator_state (GtkModelButton *self)
++get_indicator_state (GtkModelButton *self)
+ {
+   GtkStateFlags state = gtk_widget_get_state_flags (GTK_WIDGET (self));
+ 
+@@ -423,6 +403,29 @@
+ }
+ 
+ static void
++update_end_indicator (GtkModelButton *self)
++{
++  const gboolean is_ltr = gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_LTR;
++
++  if (!self->end_indicator)
++    return;
++
++  gtk_widget_set_state_flags (self->end_indicator, get_indicator_state (self), TRUE);
++
++  if (is_ltr)
++    {
++      gtk_widget_add_css_class (self->end_indicator, "right");
++      gtk_widget_remove_css_class (self->end_indicator, "left");
++    }
++  else
++    {
++      gtk_widget_add_css_class (self->end_indicator, "left");
++      gtk_widget_remove_css_class (self->end_indicator, "right");
++    }
++}
++
++
++static void
+ update_start_indicator (GtkModelButton *self)
+ {
+   const gboolean is_ltr = gtk_widget_get_direction (GTK_WIDGET (self)) == GTK_TEXT_DIR_LTR;
+@@ -430,7 +433,7 @@
+   if (!self->start_indicator)
+     return;
+ 
+-  gtk_widget_set_state_flags (self->start_indicator, get_start_indicator_state (self), TRUE);
++  gtk_widget_set_state_flags (self->start_indicator, get_indicator_state (self), TRUE);
+ 
+   if (is_ltr)
+     {
+@@ -453,7 +456,7 @@
+   update_start_indicator (self);
+   update_end_indicator (self);
+ 
+-  indicator_state = get_start_indicator_state (self);
++  indicator_state = get_indicator_state (self);
+   if (self->iconic)
+     gtk_widget_set_state_flags (GTK_WIDGET (self), indicator_state, TRUE);
+ }
+@@ -500,13 +503,13 @@
+       break;
+ 
+     case GTK_BUTTON_ROLE_CHECK:
+-      start_name = "check";
+-      end_name = NULL;
++      start_name = NULL;
++      end_name = "check";
+       break;
+ 
+     case GTK_BUTTON_ROLE_RADIO:
+-      start_name = "radio";
+-      end_name = NULL;
++      start_name = NULL;
++      end_name = "check";
+       break;
+ 
+     default:
+@@ -554,6 +557,7 @@
+     {
+       g_clear_pointer (&self->end_indicator, gtk_widget_unparent);
+     }
++  update_node_ordering (self);
+ }
+ 
+ static void
+@@ -844,6 +848,52 @@
+   g_object_notify_by_pspec (G_OBJECT (button), properties[PROP_POPOVER]);
+ }
+ 
++/* Keep accelerator semantics on GtkModelButton. Only its visual label is
++ * split into native keycaps; the key itself may be a literal plus sign. */
++static void
++append_menu_keycap (GtkWidget *box,
++                    const char *text)
++{
++  GtkWidget *label = g_object_new (GTK_TYPE_LABEL,
++                                  "label", text,
++                                  "accessible-role", GTK_ACCESSIBLE_ROLE_PRESENTATION,
++                                  NULL);
++  gtk_widget_add_css_class (label, "luma-menu-keycap");
++  gtk_box_append (GTK_BOX (box), label);
++}
++
++static void
++set_menu_keycaps (GtkWidget *box,
++                 guint key,
++                 GdkModifierType mods)
++{
++  GtkWidget *child;
++  const GdkModifierType masks[] = {
++    GDK_SHIFT_MASK, GDK_CONTROL_MASK, GDK_ALT_MASK,
++    GDK_SUPER_MASK, GDK_HYPER_MASK, GDK_META_MASK
++  };
++  char *text;
++
++  while ((child = gtk_widget_get_first_child (box)) != NULL)
++    gtk_box_remove (GTK_BOX (box), child);
++
++  for (guint i = 0; i < G_N_ELEMENTS (masks); i++)
++    if (mods & masks[i])
++      {
++        gsize length;
++        text = gtk_accelerator_get_label (0, masks[i]);
++        length = strlen (text);
++        if (length && text[length - 1] == '+')
++          text[length - 1] = '\0';
++        append_menu_keycap (box, text);
++        g_free (text);
++      }
++
++  text = gtk_accelerator_get_label (key, 0);
++  append_menu_keycap (box, text);
++  g_free (text);
++}
++
+ static void
+ update_accel (GtkModelButton *self,
+               const char     *accel)
+@@ -852,23 +902,24 @@
+     {
+       guint key;
+       GdkModifierType mods;
+-      char *str;
+ 
+       if (!self->accel_label)
+         {
+-          self->accel_label = g_object_new (GTK_TYPE_LABEL,
++          self->accel_label = g_object_new (GTK_TYPE_BOX,
+                                             "accessible-role", GTK_ACCESSIBLE_ROLE_PRESENTATION,
+-                                            "css-name", "accelerator",
++                                            "orientation", GTK_ORIENTATION_HORIZONTAL,
++                                            "spacing", 3,
+                                             NULL);
++          gtk_widget_add_css_class (self->accel_label, "luma-menu-shortcut");
++          gtk_widget_set_valign (self->accel_label, GTK_ALIGN_CENTER);
+           gtk_widget_insert_before (self->accel_label, GTK_WIDGET (self), NULL);
+           gtk_widget_set_hexpand (self->accel_label, TRUE),
+           gtk_widget_set_halign (self->accel_label, GTK_ALIGN_END);
+         }
+ 
+       gtk_accelerator_parse (accel, &key, &mods);
+-      str = gtk_accelerator_get_label (key, mods);
+-      gtk_label_set_label (GTK_LABEL (self->accel_label), str);
+-      g_free (str);
++      set_menu_keycaps (self->accel_label, key, mods);
++      update_node_ordering (self);
+ 
+       if (GTK_IS_POPOVER (gtk_widget_get_native (GTK_WIDGET (self))))
+         {
+diff --git a/gtk/theme/Default/_luma-menu.scss b/gtk/theme/Default/_luma-menu.scss
+new file mode 100644
+--- /dev/null
++++ b/gtk/theme/Default/_luma-menu.scss
+@@ -0,0 +1,213 @@
++// Generated from config/shared/design-tokens.json; native GTK theme only.
++@define-color luma_menu #{if($variant == light, #f6f7f8, #252a30)};
++@define-color luma_menu_ink #{if($variant == light, #252b31, #f2f4f6)};
++@define-color luma_menu_raised #{if($variant == light, #ffffff, #30363d)};
++@define-color luma_menu_border #{if($variant == light, rgba(35, 44, 52, 0.09), rgba(255, 255, 255, 0.075))};
++@define-color luma_menu_shadow #{if($variant == light, #0c1015, #0c1015)};
++@define-color luma_menu_passive #{if($variant == light, rgba(35, 44, 52, 0.07), rgba(255, 255, 255, 0.065))};
++@define-color luma_menu_pressed #{if($variant == light, rgba(35, 44, 52, 0.11), rgba(255, 255, 255, 0.105))};
++@define-color luma_menu_destructive #{if($variant == light, #a44449, #a44449)};
++
++// Luma: the context-menu contract (docs/design/context-menu-contract.md).
++// Every GtkPopoverMenu — a text view's cut and paste, a menu button, the
++// identity menu, an application's right-click — draws to these numbers.
++// Base widths are defined per variant; the application kit
++// sets the variant class, and a menu without one is the application menu.
++
++
++popover.menu {
++  > contents {
++    min-width: 276px;
++    padding: 8px;
++    border: none;
++    border-radius: 15px;
++    background-color: unquote("@luma_menu");
++    color: unquote("@luma_menu_ink");
++    box-shadow: inset 0 0 0 1px unquote("@luma_menu_border"),
++                0 4px 12px unquote("alpha(@luma_menu_shadow, 0.20)"),
++                0 24px 56px -18px unquote("alpha(@luma_menu_shadow, 0.68)");
++
++    > stack > box,
++    > scrolledwindow > viewport > stack > box {
++      padding: 0;
++    }
++  }
++
++  > arrow {
++    background-color: unquote("@luma_menu");
++    border-color: unquote("@luma_menu_border");
++  }
++
++  &.luma-menu-desktop > contents { min-width: 284px; }
++  &.luma-menu-dock > contents { min-width: 174px; padding: 6px; }
++  &.luma-menu-submenu > contents { min-width: 212px; padding: 6px; }
++
++  // A rule sits between every group.
++  separator {
++    min-height: 1px;
++    margin: 5px 4px;
++    background-color: unquote("@luma_menu_border");
++  }
++
++  // A group's heading: small, tracked, at reduced opacity of the ink.
++  label.title {
++    min-height: 14px;
++    padding: 4px 8px 0;
++    margin: 0;
++    text-transform: uppercase;
++    font-size: 11px;
++    font-weight: 700;
++    letter-spacing: 0.11em;
++    opacity: 0.46;
++  }
++
++  // Rows: the toolkit's model button, and the kit's custom row for what the
++  // model cannot say (a destructive command, a choice that explains itself).
++  modelbutton,
++  button.luma-menu-row {
++    min-height: 32px;
++    padding: 0 8px;
++    border: none;
++    border-radius: 10px;
++    background-color: transparent;
++    color: unquote("@luma_menu_ink");
++    font-family: Figtree;
++    font-size: 13px;
++    font-weight: 600;
++    box-shadow: none;
++    outline: none;
++
++    &:hover,
++    &:selected,
++    &:focus,
++    &:focus-visible {
++      background-color: unquote("@luma_menu_raised");
++      outline: 0;
++    }
++
++    &:active { background-color: unquote("@luma_menu_pressed"); }
++
++    &:disabled {
++      opacity: 0.38;
++      background-color: transparent;
++    }
++
++    image { -gtk-icon-size: 16px; opacity: 0.88; }
++
++    arrow { opacity: 0.58; }
++    check, radio {
++      min-width: 14px;
++      min-height: 14px;
++      padding: 0;
++      border: none;
++      background: transparent;
++      box-shadow: none;
++      color: inherit;
++      -gtk-icon-size: 14px;
++      opacity: 0.72;
++    }
++  }
++
++  button.luma-menu-row.two-line {
++    min-height: 36px;
++    padding: 5px 8px;
++    font-weight: 650;
++  }
++
++  .luma-menu-description {
++    font-size: 11px;
++    font-weight: 500;
++    opacity: 0.5;
++  }
++
++  // Calm at rest; red only under the pointer or focus.
++  button.luma-menu-row.luma-menu-destructive {
++    color: unquote("@luma_menu_ink");
++
++    &:hover,
++    &:focus,
++    &:focus-visible {
++      background-color: rgba(170, 64, 70, 0.12);
++      color: unquote("@luma_menu_destructive");
++    }
++  }
++
++  // A shortcut is drawn as the key it names: a cap on the passive surface.
++  accelerator {
++    min-width: 18px;
++    margin-left: 10px;
++    padding: 1px 5px;
++    border-radius: 6px;
++    background-color: unquote("@luma_menu_passive");
++    color: unquote("@luma_menu_ink");
++    font-size: 11px;
++    font-weight: 600;
++    opacity: 0.68;
++  }
++
++  .luma-menu-submenu-heading {
++    min-height: 31px;
++    padding: 0 8px;
++    font-size: 13px;
++    font-weight: 700;
++  }
++  .luma-menu-count {
++    min-width: 10px;
++    min-height: 18px;
++    padding: 0 5px;
++    border-radius: 99px;
++    background-color: unquote("@luma_menu_passive");
++    font-size: 11px;
++    opacity: 0.68;
++  }
++  .luma-menu-check { opacity: 0.72; }
++  modelbutton > .luma-menu-shortcut { margin: 0 0 0 10px; }
++  modelbutton > .luma-menu-shortcut:dir(rtl) { margin: 0 10px 0 0; }
++  .luma-menu-keycap {
++    min-width: 10px;
++    min-height: 18px;
++    padding: 0 4px;
++    border-radius: 4px;
++    background-color: unquote("@luma_menu_passive");
++    box-shadow: inset 0 0 0 1px unquote("@luma_menu_border");
++    font-size: 11px;
++    font-weight: 600;
++    opacity: 0.68;
++  }
++
++  &.luma-menu-with-actions > contents {
++    min-width: 292px;
++    padding: 0 0 8px;
++    > scrolledwindow > viewport > stack > box > box > box { margin: 0 8px; }
++    > scrolledwindow > viewport > stack > box > box > widget:first-child + box > box:first-child > separator {
++      min-height: 0;
++      margin: 0;
++      background: transparent;
++    }
++  }
++  &.luma-menu-with-actions.luma-menu-desktop > contents { min-width: 300px; }
++  .luma-menu-actions {
++    margin: 0 0 5px;
++    border-bottom: 1px solid unquote("@luma_menu_border");
++  }
++  button.luma-menu-action {
++    min-height: 76px;
++    padding: 0 4px;
++    border: none;
++    border-radius: 0;
++    box-shadow: none;
++    background: transparent;
++    color: unquote("@luma_menu_ink");
++    font-family: Figtree;
++    font-size: 13px;
++    font-weight: 600;
++    outline: none;
++    &:first-child { border-top-left-radius: 15px; }
++    &:last-child { border-top-right-radius: 15px; }
++    &:not(:last-child) { border-right: 1px solid unquote("@luma_menu_border"); }
++    &:hover, &:focus-visible { background-color: unquote("@luma_menu_passive"); }
++    &:disabled { opacity: 0.38; }
++    image { -gtk-icon-size: 24px; opacity: 0.88; }
++  }
++
++}
+diff --git a/gtk/theme/Default/Default-light.scss b/gtk/theme/Default/Default-light.scss
+--- a/gtk/theme/Default/Default-light.scss
++++ b/gtk/theme/Default/Default-light.scss
+@@ -11,3 +11,5 @@
+ @import 'drawing';
+ @import 'common';
+ @import 'colors-public';
++
++@import 'luma-menu';
+diff --git a/gtk/theme/Default/Default-dark.scss b/gtk/theme/Default/Default-dark.scss
+--- a/gtk/theme/Default/Default-dark.scss
++++ b/gtk/theme/Default/Default-dark.scss
+@@ -5,3 +5,5 @@
+ @import 'drawing';
+ @import 'common';
+ @import 'colors-public';
++
++@import 'luma-menu';
+diff --git a/gtk/theme/Default/meson.build b/gtk/theme/Default/meson.build
+--- a/gtk/theme/Default/meson.build
++++ b/gtk/theme/Default/meson.build
+@@ -2,6 +2,7 @@
+   '_colors-public.scss',
+   '_colors.scss',
+   '_common.scss',
++  '_luma-menu.scss',
+   '_drawing.scss',
+ ])
+ 
